@@ -124,6 +124,12 @@ const UIStrings = {
    *@description Text for copying
    */
   copy: 'Copy',
+  /**
+   * @description A tooltip text that shows when hovering over a button next to value objects,
+   * which are based on bytes and can be shown in a hexadecimal viewer.
+   * Clicking on the button will display that object in the memory inspector panel.
+   */
+  revealInMemoryInpector: 'Reveal in Memory Inspector panel',
 };
 const str_ = i18n.i18n.registerUIStrings('ui/legacy/components/object_ui/ObjectPropertiesSection.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -386,31 +392,31 @@ export class ObjectPropertiesSection extends UI.TreeOutline.TreeOutlineInShadow 
 
   static createPropertyValueWithCustomSupport(
       value: SDK.RemoteObject.RemoteObject, wasThrown: boolean, showPreview: boolean, parentElement?: Element,
-      linkifier?: Components.Linkifier.Linkifier, variableName?: string): ObjectPropertyValue {
+      linkifier?: Components.Linkifier.Linkifier, isSyntheticProperty?: boolean,
+      variableName?: string): ObjectPropertyValue {
     if (value.customPreview()) {
       const result = (new CustomPreviewComponent(value)).element;
       result.classList.add('object-properties-section-custom-section');
       return new ObjectPropertyValue(result);
     }
     return ObjectPropertiesSection.createPropertyValue(
-        value, wasThrown, showPreview, parentElement, linkifier, variableName);
+        value, wasThrown, showPreview, parentElement, linkifier, isSyntheticProperty, variableName);
   }
 
   static appendMemoryIcon(element: Element, obj: SDK.RemoteObject.RemoteObject, expression?: string): void {
-    // We show the memory icon only on ArrayBuffer, WebAssembly.Memory and DWARF memory instances.
-    // TypedArrays DataViews are also supported, but showing the icon next to their
-    // previews is quite a significant visual overhead, and users can easily get to
-    // their buffers and open the memory inspector from there.
-    const arrayBufferOrWasmMemory =
-        (obj.type === 'object' && (obj.subtype === 'arraybuffer' || obj.subtype === 'webassemblymemory'));
-    if (!arrayBufferOrWasmMemory && !LinearMemoryInspector.LinearMemoryInspectorController.isDWARFMemoryObject(obj)) {
+    const isOfMemoryType =
+        (obj.type === 'object' && obj.subtype &&
+         LinearMemoryInspector.LinearMemoryInspectorController.ACCEPTED_MEMORY_TYPES.includes(obj.subtype));
+
+    if (!isOfMemoryType && !LinearMemoryInspector.LinearMemoryInspectorController.isDWARFMemoryObject(obj)) {
       return;
     }
+
     const memoryIcon = new IconButton.Icon.Icon();
     memoryIcon.data = {
-      iconName: 'ic_memory_16x16',
-      color: 'var(--color-text-secondary)',
-      width: '13px',
+      iconName: 'memory',
+      color: 'var(--icon-default)',
+      width: '16px',
       height: '13px',
     };
 
@@ -422,14 +428,22 @@ export class ObjectPropertiesSection extends UI.TreeOutline.TreeOutlineInShadow 
       void controller.openInspectorView(obj, /* address */ undefined, expression);
     };
 
-    UI.Tooltip.Tooltip.install(memoryIcon, 'Reveal in Memory Inspector panel');
-    element.classList.add('object-value-with-memory-icon');
+    const revealText = i18nString(UIStrings.revealInMemoryInpector);
+    UI.Tooltip.Tooltip.install(memoryIcon, revealText);
+    UI.ARIAUtils.setLabel(memoryIcon, revealText);
+
+    // Directly set property on memory icon, so that the memory icon is also
+    // styled within the context of code mirror.
+    memoryIcon.style.setProperty('vertical-align', 'sub');
+    memoryIcon.style.setProperty('cursor', 'pointer');
+
     element.appendChild(memoryIcon);
   }
 
   static createPropertyValue(
       value: SDK.RemoteObject.RemoteObject, wasThrown: boolean, showPreview: boolean, parentElement?: Element,
-      linkifier?: Components.Linkifier.Linkifier, variableName?: string): ObjectPropertyValue {
+      linkifier?: Components.Linkifier.Linkifier, isSyntheticProperty = false,
+      variableName?: string): ObjectPropertyValue {
     let propertyValue;
     const type = value.type;
     const subtype = value.subtype;
@@ -465,7 +479,9 @@ export class ObjectPropertiesSection extends UI.TreeOutline.TreeOutlineInShadow 
         propertyValue.element.textContent = description;
         UI.Tooltip.Tooltip.install(propertyValue.element as HTMLElement, description);
       }
-      this.appendMemoryIcon(valueElement, value, variableName);
+      if (!isSyntheticProperty) {
+        this.appendMemoryIcon(valueElement, value, variableName);
+      }
     }
 
     if (wasThrown) {
@@ -647,7 +663,7 @@ export class RootElement extends UI.TreeOutline.TreeElement {
   private readonly propertiesMode: ObjectPropertiesMode;
   private readonly extraProperties: SDK.RemoteObject.RemoteObjectProperty[];
   private readonly targetObject: SDK.RemoteObject.RemoteObject|undefined;
-  toggleOnClick: boolean;
+  override toggleOnClick: boolean;
   constructor(
       object: SDK.RemoteObject.RemoteObject, linkifier?: Components.Linkifier.Linkifier, emptyPlaceholder?: string|null,
       propertiesMode: ObjectPropertiesMode = ObjectPropertiesMode.OwnAndInternalAndInherited,
@@ -670,19 +686,19 @@ export class RootElement extends UI.TreeOutline.TreeElement {
     this.listItemElement.addEventListener('contextmenu', this.onContextMenu.bind(this), false);
   }
 
-  onexpand(): void {
+  override onexpand(): void {
     if (this.treeOutline) {
       this.treeOutline.element.classList.add('expanded');
     }
   }
 
-  oncollapse(): void {
+  override oncollapse(): void {
     if (this.treeOutline) {
       this.treeOutline.element.classList.remove('expanded');
     }
   }
 
-  ondblclick(_e: Event): boolean {
+  override ondblclick(_e: Event): boolean {
     return true;
   }
 
@@ -706,7 +722,7 @@ export class RootElement extends UI.TreeOutline.TreeElement {
     void contextMenu.show();
   }
 
-  async onpopulate(): Promise<void> {
+  override async onpopulate(): Promise<void> {
     const treeOutline = (this.treeOutline as ObjectPropertiesSection | null);
     const skipProto = treeOutline ? Boolean(treeOutline.skipProtoInternal) : false;
     return ObjectPropertyTreeElement.populate(
@@ -721,7 +737,7 @@ export const InitialVisibleChildrenLimit = 200;
 
 export class ObjectPropertyTreeElement extends UI.TreeOutline.TreeElement {
   property: SDK.RemoteObject.RemoteObjectProperty;
-  toggleOnClick: boolean;
+  override toggleOnClick: boolean;
   private highlightChanges: UI.UIUtils.HighlightChange[];
   private linkifier: Components.Linkifier.Linkifier|undefined;
   private readonly maxNumPropertiesToShow: number;
@@ -990,7 +1006,7 @@ export class ObjectPropertyTreeElement extends UI.TreeOutline.TreeElement {
     this.highlightChanges = [];
   }
 
-  async onpopulate(): Promise<void> {
+  override async onpopulate(): Promise<void> {
     const propertyValue = (this.property.value as SDK.RemoteObject.RemoteObject);
     console.assert(typeof propertyValue !== 'undefined');
     const treeOutline = (this.treeOutline as ObjectPropertiesSection | null);
@@ -1005,7 +1021,7 @@ export class ObjectPropertyTreeElement extends UI.TreeOutline.TreeElement {
     }
   }
 
-  ondblclick(event: Event): boolean {
+  override ondblclick(event: Event): boolean {
     const target = (event.target as HTMLElement);
     const inEditableElement = target.isSelfOrDescendant(this.valueElement) ||
         (this.expandedValueElement && target.isSelfOrDescendant(this.expandedValueElement));
@@ -1016,7 +1032,7 @@ export class ObjectPropertyTreeElement extends UI.TreeOutline.TreeElement {
     return false;
   }
 
-  onenter(): boolean {
+  override onenter(): boolean {
     if (this.property.value && !this.property.value.customPreview() &&
         (this.property.writable || this.property.setter)) {
       this.startEditing();
@@ -1025,16 +1041,16 @@ export class ObjectPropertyTreeElement extends UI.TreeOutline.TreeElement {
     return false;
   }
 
-  onattach(): void {
+  override onattach(): void {
     this.update();
     this.updateExpandable();
   }
 
-  onexpand(): void {
+  override onexpand(): void {
     this.showExpandedValueElement(true);
   }
 
-  oncollapse(): void {
+  override oncollapse(): void {
     this.showExpandedValueElement(false);
   }
 
@@ -1049,7 +1065,7 @@ export class ObjectPropertyTreeElement extends UI.TreeOutline.TreeElement {
     }
   }
 
-  private createExpandedValueElement(value: SDK.RemoteObject.RemoteObject): Element|null {
+  private createExpandedValueElement(value: SDK.RemoteObject.RemoteObject, isSyntheticProperty: boolean): Element|null {
     const needsAlternateValue = value.hasChildren && !value.customPreview() && value.subtype !== 'node' &&
         value.type !== 'function' && (value.type !== 'object' || value.preview);
     if (!needsAlternateValue) {
@@ -1065,7 +1081,9 @@ export class ObjectPropertyTreeElement extends UI.TreeOutline.TreeElement {
     }
     valueElement.classList.add('object-value-' + (value.subtype || value.type));
     UI.Tooltip.Tooltip.install(valueElement, value.description || '');
-    ObjectPropertiesSection.appendMemoryIcon(valueElement, value);
+    if (!isSyntheticProperty) {
+      ObjectPropertiesSection.appendMemoryIcon(valueElement, value);
+    }
     return valueElement;
   }
 
@@ -1092,7 +1110,7 @@ export class ObjectPropertyTreeElement extends UI.TreeOutline.TreeElement {
       const showPreview = this.property.name !== '[[Prototype]]';
       this.propertyValue = ObjectPropertiesSection.createPropertyValueWithCustomSupport(
           this.property.value, this.property.wasThrown, showPreview, this.listItemElement, this.linkifier,
-          this.path() /* variableName */);
+          this.property.synthetic, this.path() /* variableName */);
       this.valueElement = (this.propertyValue.element as HTMLElement);
     } else if (this.property.getter) {
       this.valueElement = document.createElement('span');
@@ -1122,7 +1140,7 @@ export class ObjectPropertyTreeElement extends UI.TreeOutline.TreeElement {
 
     const valueText = this.valueElement.textContent;
     if (this.property.value && valueText && !this.property.wasThrown) {
-      this.expandedValueElement = this.createExpandedValueElement(this.property.value);
+      this.expandedValueElement = this.createExpandedValueElement(this.property.value, this.property.synthetic);
     }
 
     const experiment = Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.IMPORTANT_DOM_PROPERTIES);
@@ -1133,8 +1151,8 @@ export class ObjectPropertyTreeElement extends UI.TreeOutline.TreeElement {
     if (this.property.webIdl?.applicable && experiment) {
       const icon = new IconButton.Icon.Icon();
       icon.data = {
-        iconName: 'star_outline',
-        color: 'var(--color-text-secondary)',
+        iconName: 'star',
+        color: 'var(--icon-default)',
         width: '16px',
         height: '16px',
       };
@@ -1376,7 +1394,7 @@ export class ObjectPropertyTreeElement extends UI.TreeOutline.TreeElement {
 }
 
 export class ArrayGroupingTreeElement extends UI.TreeOutline.TreeElement {
-  toggleOnClick: boolean;
+  override toggleOnClick: boolean;
   private readonly fromIndex: number;
   private readonly toIndex: number;
   private readonly object: SDK.RemoteObject.RemoteObject;
@@ -1610,7 +1628,7 @@ export class ArrayGroupingTreeElement extends UI.TreeOutline.TreeElement {
         treeNode, properties, internalProperties, false, false, object, linkifier);
   }
 
-  async onpopulate(): Promise<void> {
+  override async onpopulate(): Promise<void> {
     if (this.propertyCount >= ArrayGroupingTreeElement.bucketThreshold) {
       await ArrayGroupingTreeElement.populateRanges(
           this, this.object, this.fromIndex, this.toIndex, false, this.linkifier);
@@ -1621,7 +1639,7 @@ export class ArrayGroupingTreeElement extends UI.TreeOutline.TreeElement {
     await ArrayGroupingTreeElement.populateAsFragment(this, this.object, this.fromIndex, this.toIndex, this.linkifier);
   }
 
-  onattach(): void {
+  override onattach(): void {
     this.listItemElement.classList.add('object-properties-section-name');
   }
 
@@ -1813,7 +1831,7 @@ export class ExpandableTextPropertyValue extends ObjectPropertyValue {
     UI.ARIAUtils.markAsButton(copyButton);
   }
 
-  appendApplicableItems(_event: Event, contextMenu: UI.ContextMenu.ContextMenu, _object: Object): void {
+  override appendApplicableItems(_event: Event, contextMenu: UI.ContextMenu.ContextMenu, _object: Object): void {
     if (this.text.length < this.maxDisplayableTextLength && this.expandElement) {
       contextMenu.clipboardSection().appendItem(this.expandElementText || '', this.expandText.bind(this));
     }

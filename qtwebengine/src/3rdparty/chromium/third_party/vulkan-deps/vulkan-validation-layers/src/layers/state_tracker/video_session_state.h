@@ -16,8 +16,8 @@
 #pragma once
 
 #include "state_tracker/base_node.h"
-#include "hash_util.h"
-#include "vk_safe_struct.h"
+#include "utils/hash_util.h"
+#include "generated/vk_safe_struct.h"
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -261,7 +261,7 @@ struct VideoReferenceSlot {
 
 class VideoSessionDeviceState {
   public:
-    VideoSessionDeviceState(uint32_t reference_slot_count)
+    VideoSessionDeviceState(uint32_t reference_slot_count = 0)
         : initialized_(false),
           is_active_(reference_slot_count, false),
           all_pictures_(reference_slot_count),
@@ -348,7 +348,7 @@ class VIDEO_SESSION_STATE : public BASE_NODE {
         }
     }
 
-    uint32_t GetVideoDecodeOperationCount(VkVideoDecodeInfoKHR const *pDecodeInfo) { return 1; }
+    uint32_t GetVideoDecodeOperationCount(VkVideoDecodeInfoKHR const *) { return 1; }
 
   private:
     MemoryBindingMap GetMemoryBindings(ValidationStateTracker *dev_data, VkVideoSessionKHR vs);

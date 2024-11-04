@@ -59,7 +59,7 @@ class PERFETTO_EXPORT_COMPONENT ScatteredStreamWriter {
     // pointer is nullptr, the caller should not write anything.
     //
     // The implementation considers the patch ready to apply when the caller
-    // writes the the first byte a value that's different than 0 (the
+    // writes the first byte a value that's different than 0 (the
     // implementation periodically checks for this).
     virtual uint8_t* AnnotatePatch(uint8_t* patch_addr);
   };
@@ -85,7 +85,12 @@ class PERFETTO_EXPORT_COMPONENT ScatteredStreamWriter {
     write_ptr_ = end;
   }
 
-  inline void WriteBytes(const uint8_t* src, size_t size) {
+  inline void WriteBytes(const uint8_t* src,
+                         size_t size) PERFETTO_NO_SANITIZE_UNDEFINED {
+    // If the stream writer hasn't been initialized, constructing the end
+    // pointer below invokes undefined behavior because `write_ptr_` is null.
+    // Since this function is on the hot path, we suppress the warning instead
+    // of adding a conditional branch.
     uint8_t* const end = write_ptr_ + size;
     if (PERFETTO_LIKELY(end <= cur_range_.end))
       return WriteBytesUnsafe(src, size);

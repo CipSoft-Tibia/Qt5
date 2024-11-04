@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
 #include <QTest>
 
 #include <QCoreApplication>
@@ -248,7 +249,9 @@ void tst_QFileSystemWatcher::watchDirectory_data()
     QTest::addColumn<QStringList>("testDirNames");
     const QStringList testDirNames = {QStringLiteral("testdir"), QStringLiteral("testdir2")};
 
+#if !defined(QT_NO_INOTIFY)
     QTest::newRow("native backend") << "native" << testDirNames;
+#endif
     QTest::newRow("poller backend") << "poller" << testDirNames;
 }
 
@@ -736,7 +739,8 @@ public slots:
         QCOMPARE(finfo.absolutePath(), moveSrcDir.absolutePath());
 
         if (!added) {
-            foreach (const QFileInfo &fi, moveDestination.entryInfoList(QDir::Files | QDir::NoSymLinks))
+            const auto entries = moveDestination.entryInfoList(QDir::Files | QDir::NoSymLinks);
+            for (const QFileInfo &fi : entries)
                 watcher->addPath(fi.absoluteFilePath());
             added = true;
         }
@@ -776,9 +780,9 @@ void tst_QFileSystemWatcher::signalsEmittedAfterFileMoved()
     QVERIFY(watcher.addPath(movePath));
 
     // add files to watcher
-    QFileInfoList files = testDir.entryInfoList(QDir::Files | QDir::NoSymLinks);
+    const QFileInfoList files = testDir.entryInfoList(QDir::Files | QDir::NoSymLinks);
     QCOMPARE(files.size(), fileCount);
-    foreach (const QFileInfo &finfo, files)
+    for (const QFileInfo &finfo : files)
         QVERIFY(watcher.addPath(finfo.absoluteFilePath()));
 
     // create the signal receiver
@@ -790,7 +794,7 @@ void tst_QFileSystemWatcher::signalsEmittedAfterFileMoved()
     QCOMPARE(changedSpy.count(), 0);
 
     // move files to second directory
-    foreach (const QFileInfo &finfo, files)
+    for (const QFileInfo &finfo : files)
         QVERIFY(testDir.rename(finfo.fileName(), QString("movehere/%2").arg(finfo.fileName())));
 
     QCoreApplication::processEvents();

@@ -277,6 +277,21 @@ QBindable<QmlSensorReading*> QmlSensor::bindableReading() const
 }
 
 /*!
+    \qmlmethod bool Sensor::isFeatureSupported(feature)
+    \since QtSensors 6.7
+    Checks if a specific feature is supported by the backend.
+    Returns \c true if the \a feature is supported, and \c false otherwise.
+    For feature descriptions see \l {QSensor::Feature}.
+
+    Please see QSensor::isFeatureSupported for information.
+*/
+
+bool QmlSensor::isFeatureSupported(Feature feature) const
+{
+    return sensor()->isFeatureSupported(static_cast<QSensor::Feature>(feature));
+}
+
+/*!
     \qmlproperty Sensor::AxesOrientationMode Sensor::axesOrientationMode
     \since QtSensors 5.1
     This property holds the mode that affects how the screen orientation changes reading values.

@@ -30,8 +30,9 @@ struct QQmlSourceLocation;
 
 namespace QV4 {
 
-struct Q_QML_EXPORT FunctionData {
-    CompiledData::CompilationUnitBase *compilationUnit;
+struct Q_QML_EXPORT FunctionData
+{
+    CompilationUnitRuntimeData *compilationUnit;
 
     // Intentionally require an ExecutableCompilationUnit but save only a pointer to
     // CompilationUnitBase. This is so that we can take advantage of the standard layout
@@ -51,6 +52,11 @@ protected:
     ~Function();
 
 public:
+    struct JSTypedFunction {
+        QList<QQmlType> argumentTypes;
+        QQmlType returnType;
+    };
+
     const CompiledData::Function *compiledFunction;
 
     QV4::ExecutableCompilationUnit *executableCompilationUnit() const
@@ -74,7 +80,10 @@ public:
     typedef ReturnedValue (*JittedCode)(CppStackFrame *, ExecutionEngine *);
     JittedCode jittedCode;
     JSC::MacroAssemblerCodeRef *codeRef;
-    const QQmlPrivate::AOTCompiledFunction *aotCompiledFunction = nullptr;
+    union {
+        const QQmlPrivate::AOTCompiledFunction *aotCompiledFunction = nullptr;
+        const JSTypedFunction *jsTypedFunction;
+    };
 
     // first nArguments names in internalClass are the actual arguments
     Heap::InternalClass *internalClass;

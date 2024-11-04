@@ -4,7 +4,8 @@
 
 #include "chrome/browser/ui/webui/tab_search/tab_search_ui.h"
 
-#include "base/cxx17_backports.h"
+#include <algorithm>
+
 #include "base/metrics/histogram_functions.h"
 #include "base/trace_event/trace_event.h"
 #include "build/branding_buildflags.h"
@@ -24,6 +25,7 @@
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/webui/web_ui_util.h"
 #include "ui/views/style/platform_style.h"
+#include "ui/webui/color_change_listener/color_change_handler.h"
 
 TabSearchUI::TabSearchUI(content::WebUI* web_ui)
     : ui::MojoBubbleWebUIController(web_ui,
@@ -62,6 +64,7 @@ TabSearchUI::TabSearchUI(content::WebUI* web_ui)
       {"collapseRecentlyClosed", IDS_TAB_SEARCH_COLLAPSE_RECENTLY_CLOSED},
 
   };
+  webui::SetupChromeRefresh2023(source);
   source->AddLocalizedStrings(kStrings);
   source->AddBoolean("useRipples", views::PlatformStyle::kUseRipples);
 
@@ -79,7 +82,7 @@ TabSearchUI::TabSearchUI(content::WebUI* web_ui)
                      features::kTabSearchSearchDistance.Get());
   source->AddDouble(
       "searchThreshold",
-      base::clamp<double>(features::kTabSearchSearchThreshold.Get(),
+      std::clamp<double>(features::kTabSearchSearchThreshold.Get(),
                           features::kTabSearchSearchThresholdMin,
                           features::kTabSearchSearchThresholdMax));
   source->AddDouble("searchTitleWeight", features::kTabSearchTitleWeight.Get());
@@ -116,6 +119,13 @@ TabSearchUI::TabSearchUI(content::WebUI* web_ui)
 TabSearchUI::~TabSearchUI() = default;
 
 WEB_UI_CONTROLLER_TYPE_IMPL(TabSearchUI)
+
+void TabSearchUI::BindInterface(
+    mojo::PendingReceiver<color_change_listener::mojom::PageHandler>
+        pending_receiver) {
+  color_provider_handler_ = std::make_unique<ui::ColorChangeHandler>(
+      web_ui()->GetWebContents(), std::move(pending_receiver));
+}
 
 void TabSearchUI::BindInterface(
     mojo::PendingReceiver<tab_search::mojom::PageHandlerFactory> receiver) {

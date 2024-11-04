@@ -5,6 +5,7 @@ License: Apache 2.0
 License File: src/LICENSE
 Version: 0
 Security Critical: yes
+Shipped: yes
 
 Description:
 This directory contains the source code of Abseil for C++. Open Screen primarily

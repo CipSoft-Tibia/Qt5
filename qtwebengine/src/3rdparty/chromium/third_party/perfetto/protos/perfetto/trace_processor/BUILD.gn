@@ -28,17 +28,16 @@ perfetto_proto_library("@TYPE@") {
   }
 }
 
+perfetto_proto_library("stack_descriptor") {
+  proto_generators = [ "descriptor" ]
+  generate_descriptor = "stack.descriptor"
+  sources = [ "stack.proto" ]
+}
+
 perfetto_proto_library("metrics_impl_@TYPE@") {
   proto_generators = [
     "zero",
     "source_set",
   ]
   sources = [ "metrics_impl.proto" ]
-}
-
-if (enable_perfetto_grpc) {
-  perfetto_grpc_library("cloud_trace_processor_grpc") {
-    deps = [ ":lite" ]
-    sources = [ "cloud_trace_processor.proto" ]
-  }
 }

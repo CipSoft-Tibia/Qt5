@@ -15,8 +15,8 @@
 // We mean it.
 //
 
-#include <QJsonObject>
-#include <QTypeRevision>
+#include <QtCore/qcbormap.h>
+#include <QtCore/qversionnumber.h>
 
 #include <cstdlib>
 
@@ -30,24 +30,24 @@ class QmlTypeRegistrar
     QString m_targetNamespace;
     QTypeRevision m_moduleVersion;
     QList<quint8> m_pastMajorVersions;
-    QStringList m_includes;
+    QList<QString> m_includes;
     bool m_followForeignVersioning = false;
-    QVector<QJsonObject> m_types;
-    QVector<QJsonObject> m_foreignTypes;
-    QStringList m_referencedTypes;
+    QVector<QCborMap> m_types;
+    QVector<QCborMap> m_foreignTypes;
+    QList<QAnyStringView> m_referencedTypes;
 
-    QJsonValue findType(const QString &name) const;
-    QJsonValue findTypeForeign(const QString &name) const;
+    QCborValue findType(QAnyStringView name) const;
+    QCborValue findTypeForeign(QAnyStringView name) const;
 
 public:
-    void write(QTextStream &os);
+    void write(QTextStream &os, QAnyStringView outFileName) const;
     bool generatePluginTypes(const QString &pluginTypesFile);
     void setModuleNameAndNamespace(const QString &module, const QString &targetNamespace);
     void setModuleVersions(QTypeRevision moduleVersion, const QList<quint8> &pastMajorVersions,
                            bool followForeignVersioning);
     void setIncludes(const QList<QString> &includes);
-    void setTypes(const QVector<QJsonObject> &types, const QVector<QJsonObject> &foreignTypes);
-    void setReferencedTypes(const QStringList &referencedTypes);
+    void setTypes(const QVector<QCborMap> &types, const QVector<QCborMap> &foreignTypes);
+    void setReferencedTypes(const QList<QAnyStringView> &referencedTypes);
 
     static bool argumentsFromCommandLineAndFile(QStringList &allArguments,
                                                 const QStringList &arguments);

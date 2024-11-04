@@ -76,12 +76,10 @@ void appendProtocolUpgradeHeaders(const QHttp2Configuration &config, QHttpNetwor
     Q_ASSERT(request);
     // RFC 2616, 14.10
     // RFC 7540, 3.2
-    QByteArray value(request->headerField("Connection"));
+    const QByteArray connectionHeader = request->headerField("Connection");
+    const auto separator = connectionHeader.isEmpty() ? QByteArrayView() : QByteArrayView(", ");
     // We _append_ 'Upgrade':
-    if (value.size())
-        value += ", ";
-
-    value += "Upgrade, HTTP2-Settings";
+    QByteArray value = connectionHeader + separator + "Upgrade, HTTP2-Settings";
     request->setHeaderField("Connection", value);
     // This we just (re)write.
     request->setHeaderField("Upgrade", "h2c");
@@ -198,6 +196,33 @@ bool is_protocol_upgraded(const QHttpNetworkReply &reply)
 
     return false;
 }
+
+std::vector<uchar> assemble_hpack_block(const std::vector<Frame> &frames)
+{
+    std::vector<uchar> hpackBlock;
+
+    size_t total = 0;
+    for (const auto &frame : frames) {
+        if (qAddOverflow(total, size_t{frame.hpackBlockSize()}, &total))
+            return hpackBlock;
+    }
+
+    if (!total)
+        return hpackBlock;
+
+    hpackBlock.resize(total);
+    auto dst = hpackBlock.begin();
+    for (const auto &frame : frames) {
+        if (const auto hpackBlockSize = frame.hpackBlockSize()) {
+            const uchar *src = frame.hpackBlockBegin();
+            std::copy(src, src + hpackBlockSize, dst);
+            dst += hpackBlockSize;
+        }
+    }
+
+    return hpackBlock;
+}
+
 
 } // namespace Http2
 

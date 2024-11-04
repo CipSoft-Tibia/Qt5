@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#import <Carbon/Carbon.h>
-
 #import "content/browser/web_contents/web_contents_view_mac.h"
+
+#import <Carbon/Carbon.h>
 
 #include <memory>
 #include <string>
@@ -12,7 +12,7 @@
 
 #import "base/mac/mac_util.h"
 #import "base/mac/scoped_sending_event.h"
-#import "base/message_loop/message_pump_mac.h"
+#import "base/message_loop/message_pump_apple.h"
 #include "base/task/current_thread.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/thread_restrictions.h"
@@ -33,7 +33,6 @@
 #include "content/public/browser/web_contents_view_delegate.h"
 #include "mojo/public/cpp/bindings/pending_associated_receiver.h"
 #include "mojo/public/cpp/bindings/pending_associated_remote.h"
-#include "ui/base/cocoa/cocoa_base_utils.h"
 #include "ui/base/dragdrop/mojom/drag_drop_types.mojom.h"
 #include "ui/display/display_util.h"
 #include "ui/gfx/mac/coordinate_conversion.h"
@@ -80,7 +79,7 @@ void WebContentsViewMac::InstallCreateHookForTests(
 std::unique_ptr<WebContentsView> CreateWebContentsView(
     WebContentsImpl* web_contents,
     std::unique_ptr<WebContentsViewDelegate> delegate,
-    RenderViewHostDelegateView** render_view_host_delegate_view) {
+    raw_ptr<RenderViewHostDelegateView>* render_view_host_delegate_view) {
   auto rv =
       std::make_unique<WebContentsViewMac>(web_contents, std::move(delegate));
   *render_view_host_delegate_view = rv.get();
@@ -183,9 +182,7 @@ void WebContentsViewMac::StartDragging(
   // TODO(crbug.com/1302094): The param `drag_obj_rect` is unused.
 
   if (remote_ns_view_) {
-    // TODO(https://crbug.com/898608): Non-trivial gfx::ImageSkias fail to
-    // serialize.
-    remote_ns_view_->StartDrag(drop_data, mask, gfx::ImageSkia(), cursor_offset,
+    remote_ns_view_->StartDrag(drop_data, mask, image, cursor_offset,
                                is_privileged);
   } else {
     in_process_ns_view_bridge_->StartDrag(drop_data, mask, image, cursor_offset,
@@ -311,10 +308,9 @@ void WebContentsViewMac::OnMenuClosed() {
 
 gfx::Rect WebContentsViewMac::GetViewBounds() const {
   NSRect window_bounds =
-      [GetInProcessNSView() convertRect:[GetInProcessNSView() bounds]
-                                 toView:nil];
-  window_bounds.origin = ui::ConvertPointFromWindowToScreen(
-      [GetInProcessNSView() window], window_bounds.origin);
+      [GetInProcessNSView() convertRect:GetInProcessNSView().bounds toView:nil];
+  window_bounds.origin =
+      [GetInProcessNSView().window convertPointToScreen:window_bounds.origin];
   return gfx::ScreenRectFromNSRect(window_bounds);
 }
 
@@ -323,7 +319,7 @@ void WebContentsViewMac::CreateView(gfx::NativeView context) {
       std::make_unique<remote_cocoa::WebContentsNSViewBridge>(ns_view_id_,
                                                               this);
 
-  drag_dest_.reset([[WebDragDest alloc] initWithWebContentsImpl:web_contents_]);
+  drag_dest_ = [[WebDragDest alloc] initWithWebContentsImpl:web_contents_];
   if (delegate_)
     [drag_dest_ setDragDelegate:delegate_->GetDragDestDelegate()];
 }
@@ -346,14 +342,11 @@ RenderWidgetHostViewBase* WebContentsViewMac::CreateViewForWidget(
           ? g_create_render_widget_host_view(render_widget_host)
           : new RenderWidgetHostViewMac(render_widget_host);
   if (delegate()) {
-    base::scoped_nsobject<NSObject<RenderWidgetHostViewMacDelegate>>
-        rw_delegate(delegate()->CreateRenderWidgetHostViewDelegate(
-            render_widget_host, false));
-
-    view->SetDelegate(rw_delegate.get());
+    view->SetDelegate(
+        delegate()->GetDelegateForHost(render_widget_host, /*is_popup=*/false));
   }
 
-  // Add the RenderWidgetHostView to the ui::Layer heirarchy.
+  // Add the RenderWidgetHostView to the ui::Layer hierarchy.
   child_views_.push_back(view->GetWeakPtr());
   if (views_host_) {
     auto* remote_cocoa_application = views_host_->GetRemoteCocoaApplication();
@@ -393,10 +386,8 @@ RenderWidgetHostViewBase* WebContentsViewMac::CreateViewForChildWidget(
   }
 
   if (delegate()) {
-    base::scoped_nsobject<NSObject<RenderWidgetHostViewMacDelegate>>
-        rw_delegate(delegate()->CreateRenderWidgetHostViewDelegate(
-            render_widget_host, true));
-    view->SetDelegate(rw_delegate.get());
+    view->SetDelegate(
+        delegate()->GetDelegateForHost(render_widget_host, /*is_popup=*/true));
   }
   return view;
 }
@@ -418,8 +409,9 @@ void WebContentsViewMac::SetOverscrollControllerEnabled(bool enabled) {
 // would fire when the event-tracking loop polls for events.  So we need to
 // bounce the message via Cocoa, instead.
 bool WebContentsViewMac::CloseTabAfterEventTrackingIfNeeded() {
-  if (!base::MessagePumpMac::IsHandlingSendEvent())
+  if (!base::message_pump_apple::IsHandlingSendEvent()) {
     return false;
+  }
 
   deferred_close_weak_ptr_factory_.InvalidateWeakPtrs();
   auto weak_ptr = deferred_close_weak_ptr_factory_.GetWeakPtr();

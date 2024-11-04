@@ -67,7 +67,23 @@ bool JingleSocketOptionToP2PSocketOption(rtc::Socket::Option option,
   return true;
 }
 
-const size_t kDefaultMaximumInFlightBytes = 64 * 1024;  // 64 KB
+// 640KB, 10x max UDP packet size. This controls the maximum size we can write
+// to the IPC buffer, which is consumed by the shared network service process.
+//
+// If this buffer is too small, we'll see more MaxPendingBytesWouldBlock
+// events and text log entries from WebRTC (search for kSendErrorLogLimit).
+// As is, rate limiting in the layer in WebRTC that calls this layer, isn't very
+// sophisticated and the cost of being blocked by this limit can be quite high.
+// After being blocked, this implementation will fire an event once bytes have
+// been freed up, which is then fanned out to all potentially waiting writers.
+// That can create a storm of calls to `Send[To]` which may then cause multiple
+// blocking errors again, both wasting CPU and spamming the log.
+// The network service is single threaded and shared with other render
+// processes. So having this max value large enough to accommodate multiple
+// buffers, allows for more efficient bulk processing and less back-and-forth
+// synchronizing between the render processes and network service.
+// See also: bugs.webrtc.org/9622 and crbug/856088.
+const size_t kDefaultMaximumInFlightBytes = 10 * 64 * 1024;
 
 // IpcPacketSocket implements rtc::AsyncPacketSocket interface
 // using P2PSocketClient that works over IPC-channel. It must be used
@@ -94,7 +110,9 @@ class IpcPacketSocket : public rtc::AsyncPacketSocket,
   typedef std::list<InFlightPacketRecord> InFlightPacketList;
 
   // Always takes ownership of client even if initialization fails.
-  bool Init(network::P2PSocketType type,
+  bool Init(P2PSocketDispatcher* dispatcher,
+            const net::NetworkTrafficAnnotationTag& traffic_annotation,
+            network::P2PSocketType type,
             std::unique_ptr<P2PSocketClientImpl> client,
             const rtc::SocketAddress& local_address,
             uint16_t min_port,
@@ -129,6 +147,11 @@ class IpcPacketSocket : public rtc::AsyncPacketSocket,
                       const base::TimeTicks& timestamp) override;
 
  private:
+  int SendToInternal(const void* pv,
+                     size_t cb,
+                     const rtc::SocketAddress& addr,
+                     const rtc::PacketOptions& options);
+
   enum InternalState {
     kIsUninitialized,
     kIsOpening,
@@ -266,12 +289,15 @@ void IpcPacketSocket::IncrementDiscardCounters(size_t bytes_discarded) {
   }
 }
 
-bool IpcPacketSocket::Init(network::P2PSocketType type,
-                           std::unique_ptr<P2PSocketClientImpl> client,
-                           const rtc::SocketAddress& local_address,
-                           uint16_t min_port,
-                           uint16_t max_port,
-                           const rtc::SocketAddress& remote_address) {
+bool IpcPacketSocket::Init(
+    P2PSocketDispatcher* dispatcher,
+    const net::NetworkTrafficAnnotationTag& traffic_annotation,
+    network::P2PSocketType type,
+    std::unique_ptr<P2PSocketClientImpl> client,
+    const rtc::SocketAddress& local_address,
+    uint16_t min_port,
+    uint16_t max_port,
+    const rtc::SocketAddress& remote_address) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK_EQ(state_, kIsUninitialized);
 
@@ -307,8 +333,12 @@ bool IpcPacketSocket::Init(network::P2PSocketType type,
   // Certificate will be tied to domain name not to IP address.
   network::P2PHostAndIPEndPoint remote_info(remote_address.hostname(),
                                             remote_endpoint);
+  dispatcher->GetP2PSocketManager()->CreateSocket(
+      type, local_endpoint, network::P2PPortRange(min_port, max_port),
+      remote_info, net::MutableNetworkTrafficAnnotationTag(traffic_annotation),
+      client_ptr->CreatePendingRemote(), client_ptr->CreatePendingReceiver());
 
-  client_ptr->Init(type, local_endpoint, min_port, max_port, remote_info, this);
+  client_ptr->Init(this);
 
   return true;
 }
@@ -350,6 +380,18 @@ int IpcPacketSocket::SendTo(const void* data,
                             size_t data_size,
                             const rtc::SocketAddress& address,
                             const rtc::PacketOptions& options) {
+  int result = SendToInternal(data, data_size, address, options);
+  // Ensure a batch is sent in case the packet in the batch has been dropped.
+  if (result < 0 && options.last_packet_in_batch) {
+    client_->FlushBatch();
+  }
+  return result;
+}
+
+int IpcPacketSocket::SendToInternal(const void* data,
+                                    size_t data_size,
+                                    const rtc::SocketAddress& address,
+                                    const rtc::PacketOptions& options) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   switch (state_) {
@@ -420,7 +462,6 @@ int IpcPacketSocket::SendTo(const void* data,
   // Ensure packet_id is not 0. It can't be the case according to
   // P2PSocketClientImpl::Send().
   DCHECK_NE(packet_id, 0uL);
-
   in_flight_packet_records_.push_back(
       InFlightPacketRecord(packet_id, data_size));
   TraceSendThrottlingState();
@@ -595,7 +636,8 @@ void IpcPacketSocket::OnSendComplete(
   SignalSentPacket(this, rtc::SentPacket(send_metrics.rtc_packet_id,
                                          send_metrics.send_time_ms));
 
-  if (writable_signal_expected_ && send_bytes_available_ > 0) {
+  if (writable_signal_expected_ &&
+      send_bytes_available_ > (max_in_flight_bytes_ / 2)) {
     blink::WebRtcLogMessage(base::StringPrintf(
         "IpcPacketSocket: sending is unblocked. %d packets in flight.",
         static_cast<int>(in_flight_packet_records_.size())));
@@ -717,8 +759,10 @@ void AsyncAddressResolverImpl::OnAddressResolved(
 
 IpcPacketSocketFactory::IpcPacketSocketFactory(
     P2PSocketDispatcher* socket_dispatcher,
-    const net::NetworkTrafficAnnotationTag& traffic_annotation)
-    : socket_dispatcher_(socket_dispatcher),
+    const net::NetworkTrafficAnnotationTag& traffic_annotation,
+    bool batch_udp_packets)
+    : batch_udp_packets_(batch_udp_packets),
+      socket_dispatcher_(socket_dispatcher),
       traffic_annotation_(traffic_annotation) {}
 
 IpcPacketSocketFactory::~IpcPacketSocketFactory() {}
@@ -729,10 +773,11 @@ rtc::AsyncPacketSocket* IpcPacketSocketFactory::CreateUdpSocket(
     uint16_t max_port) {
   auto socket_dispatcher = socket_dispatcher_.Lock();
   DCHECK(socket_dispatcher);
-  auto socket_client = std::make_unique<P2PSocketClientImpl>(
-      socket_dispatcher, traffic_annotation_);
+  auto socket_client =
+      std::make_unique<P2PSocketClientImpl>(batch_udp_packets_);
   std::unique_ptr<IpcPacketSocket> socket(new IpcPacketSocket());
-  if (!socket->Init(network::P2P_SOCKET_UDP, std::move(socket_client),
+  if (!socket->Init(socket_dispatcher, traffic_annotation_,
+                    network::P2P_SOCKET_UDP, std::move(socket_client),
                     local_address, min_port, max_port, rtc::SocketAddress())) {
     return nullptr;
   }
@@ -774,12 +819,14 @@ rtc::AsyncPacketSocket* IpcPacketSocketFactory::CreateClientTcpSocket(
   }
   auto socket_dispatcher = socket_dispatcher_.Lock();
   DCHECK(socket_dispatcher);
-  auto socket_client = std::make_unique<P2PSocketClientImpl>(
-      socket_dispatcher, traffic_annotation_);
+  auto socket_client =
+      std::make_unique<P2PSocketClientImpl>(/*batch_packets=*/false);
   std::unique_ptr<IpcPacketSocket> socket(new IpcPacketSocket());
-  if (!socket->Init(type, std::move(socket_client), local_address, 0, 0,
-                    remote_address))
+  if (!socket->Init(socket_dispatcher, traffic_annotation_, type,
+                    std::move(socket_client), local_address, 0, 0,
+                    remote_address)) {
     return nullptr;
+  }
   return socket.release();
 }
 

@@ -2,728 +2,568 @@
 //
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
+//
+// Auto-generated file. Do not edit!
+//   Specification: eval/f16-tanh.yaml
+//   Generator: tools/generate-tanh-eval.py
 
-#include <algorithm>
-#include <cmath>
-#include <cstddef>
-#include <cstdint>
-#include <cstdlib>
-#include <iomanip>
-#include <ios>
-#include <vector>
+
+#include <limits>
 
 #include <gtest/gtest.h>
 
-#include <fp16.h>
+#include "math-evaluation-tester.h"
 
-#include <xnnpack/aligned-allocator.h>
-#include <xnnpack/common.h>
 #include <xnnpack/isa-checks.h>
-#include <xnnpack/math.h>
-#include <xnnpack/math-stubs.h>
-
-
-constexpr int kBlockSize = 1024;
 
 
 #if XNN_ENABLE_ARM_FP16_VECTOR && XNN_ARCH_ARM64
-  TEST(TANH__AARCH64_NEONFP16ARITH_EXPM1_RR1_P3_DIV, positive_saturation) {
+  TEST(TANH__AARCH64_NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_DIV, positive_saturation) {
     TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x4482); n <= UINT16_C(0x7C00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0x7C00));
-      }
-      xnn_math_f16_tanh__aarch64_neonfp16arith_expm1_rr1_p3_div(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0x3C00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__aarch64_neonfp16arith_expm1minus_rr1_p3h1ts_div, 1.0f);
   }
 
-  TEST(TANH__AARCH64_NEONFP16ARITH_EXPM1_RR1_P3_DIV, negative_saturation) {
+  TEST(TANH__AARCH64_NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_DIV, negative_saturation) {
     TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0xC482); n <= UINT16_C(0xFC00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0xFC00));
-      }
-      xnn_math_f16_tanh__aarch64_neonfp16arith_expm1_rr1_p3_div(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0xBC00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__aarch64_neonfp16arith_expm1minus_rr1_p3h1ts_div, -1.0f);
   }
 
-  TEST(TANH__AARCH64_NEONFP16ARITH_EXPM1_RR1_P3_DIV, positive_nan) {
+  TEST(TANH__AARCH64_NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_DIV, nan) {
     TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__aarch64_neonfp16arith_expm1_rr1_p3_div(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
-  }
-
-  TEST(TANH__AARCH64_NEONFP16ARITH_EXPM1_RR1_P3_DIV, negative_nan) {
-    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = UINT16_C(0x8000) | std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__aarch64_neonfp16arith_expm1_rr1_p3_div(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__aarch64_neonfp16arith_expm1minus_rr1_p3h1ts_div);
   }
 #endif  // XNN_ENABLE_ARM_FP16_VECTOR && XNN_ARCH_ARM64
 
+
+#if XNN_ENABLE_ARM_FP16_VECTOR && XNN_ARCH_ARM64
+  TEST(TANH__AARCH64_NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_DIV, positive_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__aarch64_neonfp16arith_expm1minus_rr1_p3h2ts_div, 1.0f);
+  }
+
+  TEST(TANH__AARCH64_NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_DIV, negative_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__aarch64_neonfp16arith_expm1minus_rr1_p3h2ts_div, -1.0f);
+  }
+
+  TEST(TANH__AARCH64_NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_DIV, nan) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__aarch64_neonfp16arith_expm1minus_rr1_p3h2ts_div);
+  }
+#endif  // XNN_ENABLE_ARM_FP16_VECTOR && XNN_ARCH_ARM64
+
+
 #if XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
-  TEST(TANH__NEONFP16ARITH_EXPM1_RR1_P3_NR1FMA, positive_saturation) {
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_NR1FMA, positive_saturation) {
     TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x4482); n <= UINT16_C(0x7C00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0x7C00));
-      }
-      xnn_math_f16_tanh__neonfp16arith_expm1_rr1_p3_nr1fma(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0x3C00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_nr1fma, 1.0f);
   }
 
-  TEST(TANH__NEONFP16ARITH_EXPM1_RR1_P3_NR1FMA, negative_saturation) {
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_NR1FMA, negative_saturation) {
     TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0xC482); n <= UINT16_C(0xFC00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0xFC00));
-      }
-      xnn_math_f16_tanh__neonfp16arith_expm1_rr1_p3_nr1fma(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0xBC00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_nr1fma, -1.0f);
   }
 
-  TEST(TANH__NEONFP16ARITH_EXPM1_RR1_P3_NR1FMA, positive_nan) {
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_NR1FMA, nan) {
     TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__neonfp16arith_expm1_rr1_p3_nr1fma(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
-  }
-
-  TEST(TANH__NEONFP16ARITH_EXPM1_RR1_P3_NR1FMA, negative_nan) {
-    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = UINT16_C(0x8000) | std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__neonfp16arith_expm1_rr1_p3_nr1fma(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_nr1fma);
   }
 #endif  // XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
 
+
 #if XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
-  TEST(TANH__NEONFP16ARITH_EXPM1_RR1_P3_NR1RECPS, positive_saturation) {
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_NR1FMAADJ, positive_saturation) {
     TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x4482); n <= UINT16_C(0x7C00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0x7C00));
-      }
-      xnn_math_f16_tanh__neonfp16arith_expm1_rr1_p3_nr1recps(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0x3C00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_nr1fmaadj, 1.0f);
   }
 
-  TEST(TANH__NEONFP16ARITH_EXPM1_RR1_P3_NR1RECPS, negative_saturation) {
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_NR1FMAADJ, negative_saturation) {
     TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0xC482); n <= UINT16_C(0xFC00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0xFC00));
-      }
-      xnn_math_f16_tanh__neonfp16arith_expm1_rr1_p3_nr1recps(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0xBC00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_nr1fmaadj, -1.0f);
   }
 
-  TEST(TANH__NEONFP16ARITH_EXPM1_RR1_P3_NR1RECPS, positive_nan) {
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_NR1FMAADJ, nan) {
     TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__neonfp16arith_expm1_rr1_p3_nr1recps(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
-  }
-
-  TEST(TANH__NEONFP16ARITH_EXPM1_RR1_P3_NR1RECPS, negative_nan) {
-    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = UINT16_C(0x8000) | std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__neonfp16arith_expm1_rr1_p3_nr1recps(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_nr1fmaadj);
   }
 #endif  // XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
 
+
 #if XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
-  TEST(TANH__NEONFP16ARITH_EXPM1_RR1_P3_RECPE, DISABLED_positive_saturation) {
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_NR1RECPS, positive_saturation) {
     TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x4482); n <= UINT16_C(0x7C00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0x7C00));
-      }
-      xnn_math_f16_tanh__neonfp16arith_expm1_rr1_p3_recpe(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0x3C00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_nr1recps, 1.0f);
   }
 
-  TEST(TANH__NEONFP16ARITH_EXPM1_RR1_P3_RECPE, DISABLED_negative_saturation) {
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_NR1RECPS, negative_saturation) {
     TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0xC482); n <= UINT16_C(0xFC00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0xFC00));
-      }
-      xnn_math_f16_tanh__neonfp16arith_expm1_rr1_p3_recpe(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0xBC00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_nr1recps, -1.0f);
   }
 
-  TEST(TANH__NEONFP16ARITH_EXPM1_RR1_P3_RECPE, positive_nan) {
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_NR1RECPS, nan) {
     TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__neonfp16arith_expm1_rr1_p3_recpe(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
-  }
-
-  TEST(TANH__NEONFP16ARITH_EXPM1_RR1_P3_RECPE, negative_nan) {
-    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = UINT16_C(0x8000) | std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__neonfp16arith_expm1_rr1_p3_recpe(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_nr1recps);
   }
 #endif  // XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
 
+
+#if XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_NR1RECPSADJ, positive_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_nr1recpsadj, 1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_NR1RECPSADJ, negative_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_nr1recpsadj, -1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_NR1RECPSADJ, nan) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_nr1recpsadj);
+  }
+#endif  // XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+
+
+#if XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_RECPE, positive_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_recpe, 1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_RECPE, negative_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_recpe, -1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_RECPE, nan) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_recpe);
+  }
+#endif  // XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+
+
+#if XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_RECPEADJ, positive_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_recpeadj, 1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_RECPEADJ, negative_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_recpeadj, -1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H1TS_RECPEADJ, nan) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h1ts_recpeadj);
+  }
+#endif  // XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+
+
+#if XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_NR1FMA, positive_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_nr1fma, 1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_NR1FMA, negative_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_nr1fma, -1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_NR1FMA, nan) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_nr1fma);
+  }
+#endif  // XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+
+
+#if XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_NR1FMAADJ, positive_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_nr1fmaadj, 1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_NR1FMAADJ, negative_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_nr1fmaadj, -1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_NR1FMAADJ, nan) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_nr1fmaadj);
+  }
+#endif  // XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+
+
+#if XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_NR1RECPS, positive_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_nr1recps, 1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_NR1RECPS, negative_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_nr1recps, -1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_NR1RECPS, nan) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_nr1recps);
+  }
+#endif  // XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+
+
+#if XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_NR1RECPSADJ, positive_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_nr1recpsadj, 1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_NR1RECPSADJ, negative_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_nr1recpsadj, -1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_NR1RECPSADJ, nan) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_nr1recpsadj);
+  }
+#endif  // XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+
+
+#if XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_RECPE, positive_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_recpe, 1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_RECPE, negative_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_recpe, -1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_RECPE, nan) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_recpe);
+  }
+#endif  // XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+
+
+#if XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_RECPEADJ, positive_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_recpeadj, 1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_RECPEADJ, negative_saturation) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_recpeadj, -1.0f);
+  }
+
+  TEST(TANH__NEONFP16ARITH_EXPM1MINUS_RR1_P3H2TS_RECPEADJ, nan) {
+    TEST_REQUIRES_ARM_NEON_FP16_ARITH;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__neonfp16arith_expm1minus_rr1_p3h2ts_recpeadj);
+  }
+#endif  // XNN_ENABLE_ARM_FP16_VECTOR && (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+
+
 #if XNN_ARCH_X86 || XNN_ARCH_X86_64
-  TEST(TANH__AVX2_EXPM1_RR1_P3_DIV, positive_saturation) {
-    TEST_REQUIRES_X86_AVX2;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x4482); n <= UINT16_C(0x7C00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0x7C00));
-      }
-      xnn_math_f16_tanh__avx2_expm1_rr1_p3_div(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0x3C00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__F16C_EXPM1MINUS_RR1_P3H2TS_DIV, positive_saturation) {
+    TEST_REQUIRES_X86_F16C;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__f16c_expm1minus_rr1_p3h2ts_div, 1.0f);
   }
 
-  TEST(TANH__AVX2_EXPM1_RR1_P3_DIV, negative_saturation) {
-    TEST_REQUIRES_X86_AVX2;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0xC482); n <= UINT16_C(0xFC00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0xFC00));
-      }
-      xnn_math_f16_tanh__avx2_expm1_rr1_p3_div(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0xBC00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__F16C_EXPM1MINUS_RR1_P3H2TS_DIV, negative_saturation) {
+    TEST_REQUIRES_X86_F16C;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__f16c_expm1minus_rr1_p3h2ts_div, -1.0f);
   }
 
-  TEST(TANH__AVX2_EXPM1_RR1_P3_DIV, positive_nan) {
-    TEST_REQUIRES_X86_AVX2;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__avx2_expm1_rr1_p3_div(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
-  }
-
-  TEST(TANH__AVX2_EXPM1_RR1_P3_DIV, negative_nan) {
-    TEST_REQUIRES_X86_AVX2;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = UINT16_C(0x8000) | std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__avx2_expm1_rr1_p3_div(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__F16C_EXPM1MINUS_RR1_P3H2TS_DIV, nan) {
+    TEST_REQUIRES_X86_F16C;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__f16c_expm1minus_rr1_p3h2ts_div);
   }
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
 
+
 #if XNN_ARCH_X86 || XNN_ARCH_X86_64
-  TEST(TANH__AVX2_EXPM1_RR1_P3_RCP, positive_saturation) {
-    TEST_REQUIRES_X86_AVX2;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x4482); n <= UINT16_C(0x7C00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0x7C00));
-      }
-      xnn_math_f16_tanh__avx2_expm1_rr1_p3_rcp(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0x3C00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__F16C_EXPM1MINUS_RR1_P3H2TS_RCP, positive_saturation) {
+    TEST_REQUIRES_X86_F16C;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__f16c_expm1minus_rr1_p3h2ts_rcp, 1.0f);
   }
 
-  TEST(TANH__AVX2_EXPM1_RR1_P3_RCP, negative_saturation) {
-    TEST_REQUIRES_X86_AVX2;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0xC482); n <= UINT16_C(0xFC00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0xFC00));
-      }
-      xnn_math_f16_tanh__avx2_expm1_rr1_p3_rcp(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0xBC00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__F16C_EXPM1MINUS_RR1_P3H2TS_RCP, negative_saturation) {
+    TEST_REQUIRES_X86_F16C;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__f16c_expm1minus_rr1_p3h2ts_rcp, -1.0f);
   }
 
-  TEST(TANH__AVX2_EXPM1_RR1_P3_RCP, positive_nan) {
-    TEST_REQUIRES_X86_AVX2;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__avx2_expm1_rr1_p3_rcp(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
-  }
-
-  TEST(TANH__AVX2_EXPM1_RR1_P3_RCP, negative_nan) {
-    TEST_REQUIRES_X86_AVX2;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = UINT16_C(0x8000) | std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__avx2_expm1_rr1_p3_rcp(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__F16C_EXPM1MINUS_RR1_P3H2TS_RCP, nan) {
+    TEST_REQUIRES_X86_F16C;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__f16c_expm1minus_rr1_p3h2ts_rcp);
   }
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
 
+
 #if XNN_ARCH_X86 || XNN_ARCH_X86_64
-  TEST(TANH__FMA3_P17, positive_saturation) {
-    TEST_REQUIRES_X86_FMA3;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x4482); n <= UINT16_C(0x7C00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0x7C00));
-      }
-      xnn_math_f16_tanh__fma3_p17(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0x3C00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__F16C_POLYNOMIAL_P17H8T2, positive_saturation) {
+    TEST_REQUIRES_X86_F16C;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__f16c_polynomial_p17h8t2, 1.0f);
   }
 
-  TEST(TANH__FMA3_P17, negative_saturation) {
-    TEST_REQUIRES_X86_FMA3;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0xC482); n <= UINT16_C(0xFC00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0xFC00));
-      }
-      xnn_math_f16_tanh__fma3_p17(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0xBC00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__F16C_POLYNOMIAL_P17H8T2, negative_saturation) {
+    TEST_REQUIRES_X86_F16C;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__f16c_polynomial_p17h8t2, -1.0f);
   }
 
-  TEST(TANH__FMA3_P17, positive_nan) {
-    TEST_REQUIRES_X86_FMA3;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__fma3_p17(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
-  }
-
-  TEST(TANH__FMA3_P17, negative_nan) {
-    TEST_REQUIRES_X86_FMA3;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = UINT16_C(0x8000) | std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__fma3_p17(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__F16C_POLYNOMIAL_P17H8T2, nan) {
+    TEST_REQUIRES_X86_F16C;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__f16c_polynomial_p17h8t2);
   }
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
 
+
 #if XNN_ARCH_X86 || XNN_ARCH_X86_64
-  TEST(TANH__FMA3_P19, positive_saturation) {
-    TEST_REQUIRES_X86_FMA3;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x4482); n <= UINT16_C(0x7C00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0x7C00));
-      }
-      xnn_math_f16_tanh__fma3_p19(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0x3C00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__F16C_POLYNOMIAL_P19H9T2, positive_saturation) {
+    TEST_REQUIRES_X86_F16C;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__f16c_polynomial_p19h9t2, 1.0f);
   }
 
-  TEST(TANH__FMA3_P19, negative_saturation) {
-    TEST_REQUIRES_X86_FMA3;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0xC482); n <= UINT16_C(0xFC00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0xFC00));
-      }
-      xnn_math_f16_tanh__fma3_p19(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0xBC00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__F16C_POLYNOMIAL_P19H9T2, negative_saturation) {
+    TEST_REQUIRES_X86_F16C;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__f16c_polynomial_p19h9t2, -1.0f);
   }
 
-  TEST(TANH__FMA3_P19, positive_nan) {
-    TEST_REQUIRES_X86_FMA3;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__fma3_p19(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
-  }
-
-  TEST(TANH__FMA3_P19, negative_nan) {
-    TEST_REQUIRES_X86_FMA3;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = UINT16_C(0x8000) | std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__fma3_p19(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__F16C_POLYNOMIAL_P19H9T2, nan) {
+    TEST_REQUIRES_X86_F16C;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__f16c_polynomial_p19h9t2);
   }
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
 
+
 #if XNN_ARCH_X86 || XNN_ARCH_X86_64
-  TEST(TANH__F16C_P19, positive_saturation) {
-    TEST_REQUIRES_X86_F16C;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x4482); n <= UINT16_C(0x7C00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0x7C00));
-      }
-      xnn_math_f16_tanh__f16c_p19(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0x3C00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__FMA3_EXPM1MINUS_RR1_P3H2TS_DIV, positive_saturation) {
+    TEST_REQUIRES_X86_FMA3;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__fma3_expm1minus_rr1_p3h2ts_div, 1.0f);
   }
 
-  TEST(TANH__F16C_P19, negative_saturation) {
-    TEST_REQUIRES_X86_F16C;
-
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0xC482); n <= UINT16_C(0xFC00); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(n + i, UINT16_C(0xFC00));
-      }
-      xnn_math_f16_tanh__f16c_p19(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        const uint16_t reference_output = UINT16_C(0xBC00);
-        ASSERT_EQ(reference_output, outputs[i])
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", reference = 0x" << std::hex << std::setw(4) << std::setfill('0') << reference_output
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__FMA3_EXPM1MINUS_RR1_P3H2TS_DIV, negative_saturation) {
+    TEST_REQUIRES_X86_FMA3;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__fma3_expm1minus_rr1_p3h2ts_div, -1.0f);
   }
 
-  TEST(TANH__F16C_P19, positive_nan) {
-    TEST_REQUIRES_X86_F16C;
+  TEST(TANH__FMA3_EXPM1MINUS_RR1_P3H2TS_DIV, nan) {
+    TEST_REQUIRES_X86_FMA3;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__fma3_expm1minus_rr1_p3h2ts_div);
+  }
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
 
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__f16c_p19(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint32_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  TEST(TANH__FMA3_EXPM1MINUS_RR1_P3H2TS_RCP, positive_saturation) {
+    TEST_REQUIRES_X86_FMA3;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__fma3_expm1minus_rr1_p3h2ts_rcp, 1.0f);
   }
 
-  TEST(TANH__F16C_P19, negative_nan) {
-    TEST_REQUIRES_X86_F16C;
+  TEST(TANH__FMA3_EXPM1MINUS_RR1_P3H2TS_RCP, negative_saturation) {
+    TEST_REQUIRES_X86_FMA3;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__fma3_expm1minus_rr1_p3h2ts_rcp, -1.0f);
+  }
 
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> inputs(kBlockSize);
-    std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> outputs(kBlockSize);
-    for (uint16_t n = UINT16_C(0x7C01); n < UINT16_C(0x8000); n += kBlockSize) {
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        inputs[i] = UINT16_C(0x8000) | std::min<uint16_t>(UINT16_C(0x7FFF), n + i);
-      }
-      xnn_math_f16_tanh__f16c_p19(kBlockSize * sizeof(uint16_t), inputs.data(), outputs.data());
-      for (uint16_t i = 0; i < kBlockSize; i++) {
-        ASSERT_TRUE((outputs[i] & UINT16_C(0x7FFF)) > UINT16_C(0x7C00))
-          << "input = 0x" << std::hex << std::setw(4) << std::setfill('0') << inputs[i]
-          << ", optimized = 0x" << std::hex << std::setw(4) << std::setfill('0') << outputs[i];
-      }
-    }
+  TEST(TANH__FMA3_EXPM1MINUS_RR1_P3H2TS_RCP, nan) {
+    TEST_REQUIRES_X86_FMA3;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__fma3_expm1minus_rr1_p3h2ts_rcp);
+  }
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  TEST(TANH__FMA3_POLYNOMIAL_P17H8T2, positive_saturation) {
+    TEST_REQUIRES_X86_FMA3;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__fma3_polynomial_p17h8t2, 1.0f);
+  }
+
+  TEST(TANH__FMA3_POLYNOMIAL_P17H8T2, negative_saturation) {
+    TEST_REQUIRES_X86_FMA3;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__fma3_polynomial_p17h8t2, -1.0f);
+  }
+
+  TEST(TANH__FMA3_POLYNOMIAL_P17H8T2, nan) {
+    TEST_REQUIRES_X86_FMA3;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__fma3_polynomial_p17h8t2);
+  }
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  TEST(TANH__FMA3_POLYNOMIAL_P19H9T2, positive_saturation) {
+    TEST_REQUIRES_X86_FMA3;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__fma3_polynomial_p19h9t2, 1.0f);
+  }
+
+  TEST(TANH__FMA3_POLYNOMIAL_P19H9T2, negative_saturation) {
+    TEST_REQUIRES_X86_FMA3;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__fma3_polynomial_p19h9t2, -1.0f);
+  }
+
+  TEST(TANH__FMA3_POLYNOMIAL_P19H9T2, nan) {
+    TEST_REQUIRES_X86_FMA3;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__fma3_polynomial_p19h9t2);
+  }
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  TEST(TANH__AVX2_EXPM1MINUS_RR1_P3H2TS_DIV, positive_saturation) {
+    TEST_REQUIRES_X86_AVX2;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__avx2_expm1minus_rr1_p3h2ts_div, 1.0f);
+  }
+
+  TEST(TANH__AVX2_EXPM1MINUS_RR1_P3H2TS_DIV, negative_saturation) {
+    TEST_REQUIRES_X86_AVX2;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__avx2_expm1minus_rr1_p3h2ts_div, -1.0f);
+  }
+
+  TEST(TANH__AVX2_EXPM1MINUS_RR1_P3H2TS_DIV, nan) {
+    TEST_REQUIRES_X86_AVX2;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__avx2_expm1minus_rr1_p3h2ts_div);
+  }
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  TEST(TANH__AVX2_EXPM1MINUS_RR1_P3H2TS_RCP, positive_saturation) {
+    TEST_REQUIRES_X86_AVX2;
+    MathEvaluationTester()
+      .input_range(0x1.208p+2f, std::numeric_limits<float>::infinity())
+      .TestOutputMatchReference(xnn_math_f16_tanh__avx2_expm1minus_rr1_p3h2ts_rcp, 1.0f);
+  }
+
+  TEST(TANH__AVX2_EXPM1MINUS_RR1_P3H2TS_RCP, negative_saturation) {
+    TEST_REQUIRES_X86_AVX2;
+    MathEvaluationTester()
+      .input_range(-std::numeric_limits<float>::infinity(), -0x1.208p+2f)
+      .TestOutputMatchReference(xnn_math_f16_tanh__avx2_expm1minus_rr1_p3h2ts_rcp, -1.0f);
+  }
+
+  TEST(TANH__AVX2_EXPM1MINUS_RR1_P3H2TS_RCP, nan) {
+    TEST_REQUIRES_X86_AVX2;
+    MathEvaluationTester()
+      .TestNaN(xnn_math_f16_tanh__avx2_expm1minus_rr1_p3h2ts_rcp);
   }
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64

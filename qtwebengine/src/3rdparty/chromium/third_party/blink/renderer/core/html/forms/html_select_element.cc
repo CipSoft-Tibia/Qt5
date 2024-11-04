@@ -42,6 +42,7 @@
 #include "third_party/blink/renderer/core/dom/element_traversal.h"
 #include "third_party/blink/renderer/core/dom/events/scoped_event_queue.h"
 #include "third_party/blink/renderer/core/dom/events/simulated_click_options.h"
+#include "third_party/blink/renderer/core/dom/focus_params.h"
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/dom/node_lists_node_data.h"
 #include "third_party/blink/renderer/core/dom/node_traversal.h"
@@ -60,9 +61,9 @@
 #include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/core/layout/hit_test_request.h"
 #include "third_party/blink/renderer/core/layout/hit_test_result.h"
-#include "third_party/blink/renderer/core/layout/layout_block_flow.h"
-#include "third_party/blink/renderer/core/layout/layout_object_factory.h"
 #include "third_party/blink/renderer/core/layout/layout_theme.h"
+#include "third_party/blink/renderer/core/layout/ng/flex/layout_ng_flexible_box.h"
+#include "third_party/blink/renderer/core/layout/ng/layout_ng_block_flow.h"
 #include "third_party/blink/renderer/core/page/chrome_client.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/page/spatial_navigation.h"
@@ -254,6 +255,7 @@ void HTMLSelectElement::add(
   }
 
   HTMLElement* before_element = nullptr;
+  ContainerNode* target_container = this;
   if (before) {
     switch (before->GetContentType()) {
       case V8UnionHTMLElementOrLong::ContentType::kHTMLElement:
@@ -261,11 +263,15 @@ void HTMLSelectElement::add(
         break;
       case V8UnionHTMLElementOrLong::ContentType::kLong:
         before_element = options()->item(before->GetAsLong());
+        if (before_element && before_element->parentNode()) {
+          target_container = before_element->parentNode();
+        }
         break;
     }
   }
 
-  InsertBefore(element_to_insert, before_element, exception_state);
+  target_container->InsertBefore(element_to_insert, before_element,
+                                 exception_state);
   SetNeedsValidityCheck();
 }
 
@@ -321,7 +327,9 @@ void HTMLSelectElement::SetValue(const String& value,
 
 void HTMLSelectElement::SetAutofillValue(const String& value,
                                          WebAutofillState autofill_state) {
+  bool user_has_edited_the_field = user_has_edited_the_field_;
   SetValue(value, true, autofill_state);
+  SetUserHasEditedTheField(user_has_edited_the_field);
 }
 
 String HTMLSelectElement::SuggestedValue() const {
@@ -396,11 +404,11 @@ bool HTMLSelectElement::CanSelectAll() const {
 }
 
 LayoutObject* HTMLSelectElement::CreateLayoutObject(
-    const ComputedStyle& style,
-    LegacyLayout legacy_layout) {
-  if (UsesMenuList())
-    return LayoutObjectFactory::CreateFlexibleBox(*this, style, legacy_layout);
-  return LayoutObjectFactory::CreateBlockFlow(*this, style, legacy_layout);
+    const ComputedStyle& style) {
+  if (UsesMenuList()) {
+    return MakeGarbageCollected<LayoutNGFlexibleBox>(this);
+  }
+  return MakeGarbageCollected<LayoutNGBlockFlow>(this);
 }
 
 HTMLCollection* HTMLSelectElement::selectedOptions() {
@@ -426,12 +434,12 @@ void HTMLSelectElement::OptionElementChildrenChanged(
 
 void HTMLSelectElement::AccessKeyAction(
     SimulatedClickCreationScope creation_scope) {
-  Focus();
+  Focus(FocusParams(FocusTrigger::kUserGesture));
   DispatchSimulatedClick(nullptr, creation_scope);
 }
 
-Element* HTMLSelectElement::namedItem(const AtomicString& name) {
-  return options()->namedItem(name);
+HTMLOptionElement* HTMLSelectElement::namedItem(const AtomicString& name) {
+  return To<HTMLOptionElement>(options()->namedItem(name));
 }
 
 HTMLOptionElement* HTMLSelectElement::item(unsigned index) {
@@ -788,7 +796,7 @@ void HTMLSelectElement::OptionInserted(HTMLOptionElement& option,
       .GetFrame()
       ->GetPage()
       ->GetChromeClient()
-      .SelectFieldOptionsChanged(*this);
+      .SelectOrSelectListFieldOptionsChanged(*this);
 }
 
 void HTMLSelectElement::OptionRemoved(HTMLOptionElement& option) {
@@ -815,7 +823,7 @@ void HTMLSelectElement::OptionRemoved(HTMLOptionElement& option) {
       .GetFrame()
       ->GetPage()
       ->GetChromeClient()
-      .SelectFieldOptionsChanged(*this);
+      .SelectOrSelectListFieldOptionsChanged(*this);
 }
 
 void HTMLSelectElement::OptGroupInsertedOrRemoved(
@@ -1148,7 +1156,8 @@ String HTMLSelectElement::OptionAtIndex(int index) const {
 
 void HTMLSelectElement::TypeAheadFind(const KeyboardEvent& event) {
   int index = type_ahead_.HandleEvent(
-      event, TypeAhead::kMatchPrefix | TypeAhead::kCycleFirstChar);
+      event, event.charCode(),
+      TypeAhead::kMatchPrefix | TypeAhead::kCycleFirstChar);
   if (index < 0)
     return;
   SelectOption(OptionAtListIndex(index), kDeselectOtherOptionsFlag |
@@ -1418,12 +1427,11 @@ void HTMLSelectElement::ResetTypeAheadSessionForTesting() {
   type_ahead_.ResetSession();
 }
 
-void HTMLSelectElement::CloneNonAttributePropertiesFrom(
-    const Element& source,
-    CloneChildrenFlag flag) {
+void HTMLSelectElement::CloneNonAttributePropertiesFrom(const Element& source,
+                                                        NodeCloningData& data) {
   const auto& source_element = static_cast<const HTMLSelectElement&>(source);
   user_has_edited_the_field_ = source_element.user_has_edited_the_field_;
-  HTMLFormControlElement::CloneNonAttributePropertiesFrom(source, flag);
+  HTMLFormControlElement::CloneNonAttributePropertiesFrom(source, data);
 }
 
 void HTMLSelectElement::ChangeRendering() {

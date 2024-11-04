@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium OS Authors. All rights reserved.
+// Copyright 2019 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -4530,6 +4530,9 @@ std::string ToString(GroupTag v) {
   return kAllEnums[1].str(static_cast<uint16_t>(v));
 }
 std::string ToString(AttrName v) {
+  return kAllEnums[2].str(static_cast<uint16_t>(v));
+}
+std::string_view ToStrView(AttrName v) {
   return kAllEnums[2].str(static_cast<uint16_t>(v));
 }
 std::string ToString(E_auth_info_required v) {

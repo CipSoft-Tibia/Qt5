@@ -44,26 +44,27 @@ Check this with the following command:
     em++ --version
 \endcode
 
-Each minor version of Qt targets a specific Emcsripten version, which remains unchanged
+Each minor version of Qt targets a specific Emscripten version, which remains unchanged
 in patch releases. Qt's binary packages are built using the target Emscripten version.
 Applications should use the same version since Emscripten does not guarantee
 \l{https://github.com/emscripten-core/emscripten/blob/main/ChangeLog.md}{ABI compatibility}
 between versions.
 
-The Emcsripten versions are:
+The Emscripten versions are:
 \list
    \li Qt 6.2: 2.0.14
    \li Qt 6.3: 3.0.0
    \li Qt 6.4: 3.1.14
    \li Qt 6.5: 3.1.25
    \li Qt 6.6: 3.1.37
+   \li Qt 6.7: 3.1.50
 \endlist
 
 Use \c emsdk to install specific \c Emscripten versions. For example, to install
-it for Qt 6.6 enter:
+it for Qt 6.7 enter:
 \list
-    \li ./emsdk install 3.1.37
-    \li ./emsdk activate 3.1.37
+    \li ./emsdk install 3.1.50
+    \li ./emsdk activate 3.1.50
 \endlist
 
 On Windows, Emscripten is in your path after installation. On macOS or Linux
@@ -79,7 +80,7 @@ Check this with the following command:
     em++ --version
 \endcode
 
-You can build Qt from source if you require more flexibility when selecting the Emcsripten
+You can build Qt from source if you require more flexibility when selecting the Emscripten
 version. In this case the versions above are minimum versions. Later versions are
 expected to work but may introduce behavior changes which require making changes to Qt.
 
@@ -392,7 +393,7 @@ modules are listed below, other modules may or may not work.
     \li \l {Qt GUI}
     \li \l {Qt Network}
     \li \l {Qt Widgets}
-    \li \l {Qt QML}
+    \li \l {Qt Qml}
     \li \l {Qt Quick}
     \li \l {Qt Quick Controls}
     \li \l {Qt Quick Layouts}
@@ -597,7 +598,7 @@ asynchronous on WebAssembly.
 \li \l {https://doc.qt.io/qt-5/qfiledialog.html#getOpenFileContent}{QFileDialog::getOpenFileContent() }
 opens a native file dialog where the user can pick a file
 \li \l {https://doc.qt.io/qt-5/qfiledialog.html#saveFileContent}{QFileDialog::saveFileContent()}
-saves a file to the local file system via file download}
+saves a file to the local file system via file download
 \endlist
 
 \section2 Clipboard Access
@@ -610,9 +611,6 @@ by handling an input event (e.g. CTRL+c), or by using the
 Browsers that support the Clipboard API are preferred. Note that a requirement for this API
 is that the web page is served over a secure connection (e.g. https), and that some browsers
 my require changing configuration flags.
-
-See \l{https:...}{caniuse} for which browsers currently support the
-  Clipboard API. The following versions are known to work:
 
 \list
     \li Chrome version 66 and Safari version 13.1 support the Clipboard API

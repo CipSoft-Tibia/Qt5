@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 source_set("download") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "ar_quick_look_coordinator.h",
     "ar_quick_look_coordinator.mm",
@@ -19,23 +18,20 @@ source_set("download") {
     "download_manager_state_view.mm",
     "download_manager_view_controller.h",
     "download_manager_view_controller.mm",
-    "legacy_download_manager_state_view.h",
-    "legacy_download_manager_state_view.mm",
     "pass_kit_coordinator.h",
     "pass_kit_coordinator.mm",
     "radial_progress_view.h",
     "radial_progress_view.mm",
     "safari_download_coordinator.h",
     "safari_download_coordinator.mm",
+    "unopened_downloads_tracker.h",
+    "unopened_downloads_tracker.mm",
     "vcard_coordinator.h",
     "vcard_coordinator.mm",
   ]
   deps = [
     "resources:background_compact",
     "resources:background_regular",
-    "resources:done_badge",
-    "resources:download_close",
-    "resources:error_badge",
     "//base",
     "//components/infobars/core",
     "//components/strings",
@@ -45,18 +41,19 @@ source_set("download") {
     "//ios/chrome/browser/main",
     "//ios/chrome/browser/overlays",
     "//ios/chrome/browser/overlays/public/common/confirmation",
+    "//ios/chrome/browser/shared/coordinator/alert",
+    "//ios/chrome/browser/shared/coordinator/chrome_coordinator",
+    "//ios/chrome/browser/shared/coordinator/layout_guide",
+    "//ios/chrome/browser/shared/model/web_state_list:web_state_list",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/shared/public/features",
+    "//ios/chrome/browser/shared/ui/symbols",
+    "//ios/chrome/browser/shared/ui/util",
     "//ios/chrome/browser/store_kit",
-    "//ios/chrome/browser/ui:feature_flags",
-    "//ios/chrome/browser/ui/alert_coordinator",
-    "//ios/chrome/browser/ui/commands",
-    "//ios/chrome/browser/ui/coordinators:chrome_coordinators",
     "//ios/chrome/browser/ui/download/activities",
-    "//ios/chrome/browser/ui/icons:symbols",
-    "//ios/chrome/browser/ui/main:layout_guide_util",
     "//ios/chrome/browser/ui/presenters",
-    "//ios/chrome/browser/ui/util",
     "//ios/chrome/browser/web:web_internal",
-    "//ios/chrome/browser/web_state_list:web_state_list",
+    "//ios/chrome/browser/web_state_list",
     "//ios/chrome/common/ui/colors",
     "//ios/chrome/common/ui/util",
     "//ios/public/provider/chrome/browser/branded_images:branded_images_api",
@@ -79,7 +76,6 @@ source_set("download") {
 }
 
 source_set("unit_tests") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
   sources = [
     "ar_quick_look_coordinator_unittest.mm",
@@ -96,16 +92,16 @@ source_set("unit_tests") {
     "//base",
     "//base/test:test_support",
     "//ios/chrome/app/strings",
-    "//ios/chrome/browser/browser_state:test_support",
     "//ios/chrome/browser/download",
     "//ios/chrome/browser/download:test_support",
     "//ios/chrome/browser/infobars",
-    "//ios/chrome/browser/main:test_support",
     "//ios/chrome/browser/overlays",
     "//ios/chrome/browser/overlays/public/web_content_area",
-    "//ios/chrome/browser/ui/commands",
-    "//ios/chrome/browser/web_state_list:test_support",
-    "//ios/chrome/browser/web_state_list:web_state_list",
+    "//ios/chrome/browser/shared/model/browser/test:test_support",
+    "//ios/chrome/browser/shared/model/browser_state:test_support",
+    "//ios/chrome/browser/shared/model/web_state_list:web_state_list",
+    "//ios/chrome/browser/shared/model/web_state_list/test:test_support",
+    "//ios/chrome/browser/shared/public/commands",
     "//ios/chrome/test:test_support",
     "//ios/chrome/test/app:test_support",
     "//ios/chrome/test/fakes",
@@ -125,10 +121,7 @@ source_set("unit_tests") {
 }
 
 source_set("eg2_tests") {
-  configs += [
-    "//build/config/compiler:enable_arc",
-    "//build/config/ios:xctest_config",
-  ]
+  configs += [ "//build/config/ios:xctest_config" ]
   testonly = true
 
   sources = [
@@ -144,13 +137,12 @@ source_set("eg2_tests") {
     "//ios/chrome/app/strings",
     "//ios/chrome/browser/download:mime_types",
     "//ios/chrome/browser/download:test_support",
+    "//ios/chrome/browser/shared/model/url:constants",
     "//ios/chrome/browser/ui/infobars/banners:public",
-    "//ios/chrome/browser/url:constants",
     "//ios/chrome/test:eg_test_support+eg2",
     "//ios/chrome/test/earl_grey:eg_test_support+eg2",
     "//ios/testing:embedded_test_server_support",
     "//ios/testing/earl_grey:eg_test_support+eg2",
-    "//ios/third_party/earl_grey2:test_lib",
     "//ios/web/common",
     "//ios/web/public/test:element_selector",
     "//net:test_support",
@@ -161,7 +153,6 @@ source_set("eg2_tests") {
 }
 
 source_set("features") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "features.h",
     "features.mm",

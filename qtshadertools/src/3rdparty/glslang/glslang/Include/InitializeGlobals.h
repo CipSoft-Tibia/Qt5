@@ -38,7 +38,7 @@
 namespace QtShaderTools {
 namespace glslang {
 
-bool InitializePoolIndex();
+inline bool InitializePoolIndex() { return true; } // DEPRECATED: No need to call
 
 } // end namespace glslang
 } // namespace QtShaderTools

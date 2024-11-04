@@ -59,9 +59,9 @@ class BaseRingBufferTest : public testing::Test {
 
   void SetUp() override {
     delay_set_token_ = false;
-    command_buffer_.reset(new CommandBufferDirect());
-    api_mock_.reset(new AsyncAPIMock(true, command_buffer_->service()));
-    command_buffer_->set_handler(api_mock_.get());
+    command_buffer_ = std::make_unique<CommandBufferDirect>();
+    api_mock_ = std::make_unique<AsyncAPIMock>(true, command_buffer_.get(),
+                                               command_buffer_->service());
 
     // ignore noops in the mock - we don't want to inspect the internals of the
     // helper.
@@ -85,7 +85,7 @@ class BaseRingBufferTest : public testing::Test {
   bool delay_set_token_;
 
   std::unique_ptr<int8_t[]> buffer_;
-  raw_ptr<int8_t> buffer_start_;
+  raw_ptr<int8_t, DanglingUntriaged> buffer_start_;
   base::test::SingleThreadTaskEnvironment task_environment_;
 };
 

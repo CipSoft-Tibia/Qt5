@@ -2,10 +2,12 @@
 #ifndef Paragraph_DEFINED
 #define Paragraph_DEFINED
 
+#include "include/core/SkPath.h"
 #include "modules/skparagraph/include/FontCollection.h"
 #include "modules/skparagraph/include/Metrics.h"
 #include "modules/skparagraph/include/ParagraphStyle.h"
 #include "modules/skparagraph/include/TextStyle.h"
+#include <unordered_set>
 
 class SkCanvas;
 
@@ -69,6 +71,7 @@ public:
     // This function will return the number of unresolved glyphs or
     // -1 if not applicable (has not been shaped yet - valid case)
     virtual int32_t unresolvedGlyphs() = 0;
+    virtual std::unordered_set<SkUnichar> unresolvedCodepoints() = 0;
 
     // Experimental API that allows fast way to update some of "immutable" paragraph attributes
     // but not the text itself
@@ -94,6 +97,116 @@ public:
     // lineNumber begins at 0. If info is null, this signals the end of that line.
     using Visitor = std::function<void(int lineNumber, const VisitorInfo*)>;
     virtual void visit(const Visitor&) = 0;
+
+    struct ExtendedVisitorInfo {
+        const SkFont&   font;
+        SkPoint         origin;
+        SkSize          advance;
+        int             count;
+        const uint16_t* glyphs;     // count values
+        SkPoint*        positions;  // count values
+        const SkRect*   bounds;     // count values
+        const uint32_t* utf8Starts; // count+1 values
+        unsigned        flags;
+    };
+    using ExtendedVisitor = std::function<void(int lineNumber, const ExtendedVisitorInfo*)>;
+    virtual void extendedVisit(const ExtendedVisitor&) = 0;
+
+    /* Returns path for a given line
+     *
+     * @param lineNumber  a line number
+     * @param dest        a resulting path
+     * @return            a number glyphs that could not be converted to path
+     */
+    virtual int getPath(int lineNumber, SkPath* dest) = 0;
+
+    /* Returns path for a text blob
+     *
+     * @param textBlob    a text blob
+     * @return            a path
+     */
+    static SkPath GetPath(SkTextBlob* textBlob);
+
+    /* Checks if a given text blob contains
+     * glyph with emoji
+     *
+     * @param textBlob    a text blob
+     * @return            true if there is such a glyph
+     */
+    virtual bool containsEmoji(SkTextBlob* textBlob) = 0;
+
+    /* Checks if a given text blob contains colored font or bitmap
+     *
+     * @param textBlob    a text blob
+     * @return            true if there is such a glyph
+     */
+    virtual bool containsColorFontOrBitmap(SkTextBlob* textBlob) = 0;
+
+    // Editing API
+    virtual int getLineNumberAt(TextIndex codeUnitIndex) const = 0;
+
+    /* Returns line metrics info for the line
+     *
+     * @param lineNumber    a line number
+     * @param lineMetrics   an address to return the info (in case of null just skipped)
+     * @return              true if the line is found; false if not
+     */
+    virtual bool getLineMetricsAt(int lineNumber, LineMetrics* lineMetrics) const = 0;
+
+    /* Returns the visible text on the line (excluding a possible ellipsis)
+     *
+     * @param lineNumber    a line number
+     * @param includeSpaces indicates if the whitespaces should be included
+     * @return              the range of the text that is shown in the line
+     */
+    virtual TextRange getActualTextRange(int lineNumber, bool includeSpaces) const = 0;
+
+    struct GlyphClusterInfo {
+        SkRect fBounds;
+        TextRange fClusterTextRange;
+        TextDirection fGlyphClusterPosition;
+    };
+
+    /** Finds a glyph cluster for text index
+     *
+     * @param codeUnitIndex   a text index
+     * @param glyphInfo       a glyph cluster info filled if not null
+     * @return                true if glyph cluster was found; false if not
+     */
+    virtual bool getGlyphClusterAt(TextIndex codeUnitIndex, GlyphClusterInfo* glyphInfo) = 0;
+
+    /** Finds the closest glyph cluster for a visual text position
+     *
+     * @param dx              x coordinate
+     * @param dy              y coordinate
+     * @param glyphInfo       a glyph cluster info filled if not null
+     * @return
+     */
+    virtual bool getClosestGlyphClusterAt(SkScalar dx,
+                                          SkScalar dy,
+                                          GlyphClusterInfo* glyphInfo) = 0;
+
+    struct FontInfo {
+        FontInfo(const SkFont font, const TextRange textRange)
+            : fFont(font), fTextRange(textRange) { }
+        virtual ~FontInfo() = default;
+        FontInfo(const FontInfo& ) = default;
+        SkFont fFont;
+        TextRange fTextRange;
+    };
+
+    /** Returns the font that is used to shape the text at the position
+     *
+     * @param codeUnitIndex   text index
+     * @return                font info or an empty font info if the text is not found
+     */
+    virtual SkFont getFontAt(TextIndex codeUnitIndex) const = 0;
+
+    /** Returns the information about all the fonts used to shape the paragraph text
+     *
+     * @return                a list of fonts and text ranges
+     */
+    virtual std::vector<FontInfo> getFonts() const = 0;
 
 protected:
     sk_sp<FontCollection> fFontCollection;

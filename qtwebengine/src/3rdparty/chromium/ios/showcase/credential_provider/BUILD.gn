@@ -18,23 +18,18 @@ source_set("credential_provider") {
     ]
   }
   frameworks = [ "UIKit.framework" ]
-  configs += [ "//build/config/compiler:enable_arc" ]
 }
 
 source_set("eg2_tests") {
-  configs += [
-    "//build/config/compiler:enable_arc",
-    "//build/config/ios:xctest_config",
-  ]
+  configs += [ "//build/config/ios:xctest_config" ]
   testonly = true
   sources = []
   deps = [
     "//base",
-    "//ios/chrome/common/ui/confirmation_alert",
+    "//ios/chrome/common/ui/confirmation_alert:constants",
     "//ios/chrome/common/ui/promo_style:constants",
     "//ios/showcase/test:eg2_test",
     "//ios/testing/earl_grey:eg_test_support+eg2",
-    "//ios/third_party/earl_grey2:test_lib",
     "//ui/base",
   ]
 

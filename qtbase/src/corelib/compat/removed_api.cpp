@@ -210,7 +210,7 @@ void QObject::setObjectName(const QString &name)
 
 void QSettings::beginGroup(const QString &prefix)
 {
-    return beginGroup(qToAnyStringViewIgnoringNull(prefix));
+    beginGroup(qToAnyStringViewIgnoringNull(prefix));
 }
 
 int QSettings::beginReadArray(const QString &prefix)
@@ -586,6 +586,8 @@ void QThreadPool::startOnReservedThread(std::function<void()> functionToRun)
 
 #endif // QT_CONFIG(thread)
 
+#if QT_CONFIG(xmlstream)
+
 #include "qxmlstream.h"
 
 QStringView QXmlStreamAttributes::value(const QString &namespaceUri, const QString &name) const
@@ -613,6 +615,8 @@ QStringView QXmlStreamAttributes::value(QLatin1StringView qualifiedName) const
     return value(QAnyStringView(qualifiedName));
 }
 
+#endif // xmlstream
+
 // inlined API
 #if QT_CONFIG(thread)
 #include "qmutex.h"
@@ -625,3 +629,306 @@ QStringView QXmlStreamAttributes::value(QLatin1StringView qualifiedName) const
 // order sections alphabetically to reduce chances of merge conflicts
 
 #endif // QT_CORE_REMOVED_SINCE(6, 6)
+
+#if QT_CORE_REMOVED_SINCE(6, 7)
+
+#include "qbitarray.h"
+
+QBitArray QBitArray::operator~() const
+{
+    return QBitArray(*this).inverted_inplace();
+}
+
+#include "qbytearray.h"
+
+QByteArray QByteArray::left(qsizetype len)  const
+{
+    if (len >= size())
+        return *this;
+    if (len < 0)
+        len = 0;
+    return QByteArray(data(), len);
+}
+
+QByteArray QByteArray::right(qsizetype len) const
+{
+    if (len >= size())
+        return *this;
+    if (len < 0)
+        len = 0;
+    return QByteArray(end() - len, len);
+}
+
+QByteArray QByteArray::mid(qsizetype pos, qsizetype len) const
+{
+    qsizetype p = pos;
+    qsizetype l = len;
+    using namespace QtPrivate;
+    switch (QContainerImplHelper::mid(size(), &p, &l)) {
+    case QContainerImplHelper::Null:
+        return QByteArray();
+    case QContainerImplHelper::Empty:
+    {
+        return QByteArray(DataPointer::fromRawData(&_empty, 0));
+    }
+    case QContainerImplHelper::Full:
+        return *this;
+    case QContainerImplHelper::Subset:
+        return QByteArray(d.data() + p, l);
+    }
+    Q_UNREACHABLE_RETURN(QByteArray());
+}
+
+#ifdef Q_CC_MSVC
+// previously inline methods, only needed for MSVC compat
+QByteArray QByteArray::first(qsizetype n) const
+{ return sliced(0, n); }
+QByteArray QByteArray::last(qsizetype n) const
+{ return sliced(size() - n, n); }
+QByteArray QByteArray::sliced(qsizetype pos) const
+{ return sliced(pos, size() - pos); }
+QByteArray QByteArray::sliced(qsizetype pos, qsizetype n) const
+{ verify(pos, n); return QByteArray(d.data() + pos, n); }
+QByteArray QByteArray::chopped(qsizetype n) const
+{ return sliced(0, size() - n); }
+#endif
+
+#include "qcborstreamreader.h"
+
+QCborError QCborStreamReader::lastError()
+{
+    return std::as_const(*this).lastError();
+}
+
+#include "qdatetime.h" // also inlined API
+
+QDateTime::QDateTime(QDate date, QTime time, const QTimeZone &timeZone)
+    : QDateTime(date, time, timeZone, TransitionResolution::LegacyBehavior) {}
+QDateTime::QDateTime(QDate date, QTime time)
+    : QDateTime(date, time, TransitionResolution::LegacyBehavior) {}
+void QDateTime::setDate(QDate date) { setDate(date, TransitionResolution::LegacyBehavior); }
+void QDateTime::setTime(QTime time) { setTime(time, TransitionResolution::LegacyBehavior); }
+void QDateTime::setTimeZone(const QTimeZone &toZone)
+{
+    setTimeZone(toZone, TransitionResolution::LegacyBehavior);
+}
+
+bool QDateTime::precedes(const QDateTime &other) const
+{
+    return compareThreeWay(*this, other) < 0;
+}
+
+#include "qdatastream.h"
+
+QDataStream &QDataStream::writeBytes(const char *s, uint len)
+{
+    return writeBytes(s, qint64(len));
+}
+
+int QDataStream::skipRawData(int len)
+{
+    return int(skipRawData(qint64(len)));
+}
+
+int QDataStream::readBlock(char *data, int len)
+{
+    return int(readBlock(data, qint64(len)));
+}
+
+int QDataStream::readRawData(char *s, int len)
+{
+    return int(readRawData(s, qint64(len)));
+}
+
+int QDataStream::writeRawData(const char *s, int len)
+{
+    return writeRawData(s, qint64(len));
+}
+
+#if defined(Q_OS_ANDROID)
+
+#include "qjniobject.h"
+
+jclass QJniObject::loadClass(const QByteArray &className, JNIEnv *env, bool /*binEncoded*/)
+{
+    return QJniObject::loadClass(className, env);
+}
+
+QByteArray QJniObject::toBinaryEncClassName(const QByteArray &className)
+{
+    return QByteArray(className).replace('/', '.');
+}
+
+void QJniObject::callVoidMethodV(JNIEnv *env, jmethodID id, va_list args) const
+{
+    env->CallVoidMethodV(javaObject(), id, args);
+}
+
+#endif // Q_OS_ANDROID
+
+#include "qlocale.h"
+
+QStringList QLocale::uiLanguages() const
+{
+    return uiLanguages(TagSeparator::Dash);
+}
+
+QString QLocale::name() const
+{
+    return name(TagSeparator::Underscore);
+}
+
+QString QLocale::bcp47Name() const
+{
+    return bcp47Name(TagSeparator::Dash);
+}
+
+#if QT_CONFIG(datestring)
+
+QDate QLocale::toDate(const QString &string, FormatType format) const
+{
+    return toDate(string, dateFormat(format), DefaultTwoDigitBaseYear);
+}
+
+QDate QLocale::toDate(const QString &string, FormatType format, QCalendar cal) const
+{
+    return toDate(string, dateFormat(format), cal, DefaultTwoDigitBaseYear);
+}
+
+QDateTime QLocale::toDateTime(const QString &string, FormatType format) const
+{
+    return toDateTime(string, dateTimeFormat(format), DefaultTwoDigitBaseYear);
+}
+
+QDateTime QLocale::toDateTime(const QString &string, FormatType format, QCalendar cal) const
+{
+    return toDateTime(string, dateTimeFormat(format), cal, DefaultTwoDigitBaseYear);
+}
+
+QDate QLocale::toDate(const QString &string, const QString &format) const
+{
+    return toDate(string, format, QCalendar(), DefaultTwoDigitBaseYear);
+}
+
+QDate QLocale::toDate(const QString &string, const QString &format, QCalendar cal) const
+{
+    return toDate(string, format, cal, DefaultTwoDigitBaseYear);
+}
+
+QDateTime QLocale::toDateTime(const QString &string, const QString &format) const
+{
+    return toDateTime(string, format, QCalendar(), DefaultTwoDigitBaseYear);
+}
+
+QDateTime QLocale::toDateTime(const QString &string, const QString &format, QCalendar cal) const
+{
+    return toDateTime(string, format, cal, DefaultTwoDigitBaseYear);
+}
+
+#endif // datestring
+
+#include "qobject.h"
+
+void qt_qFindChildren_helper(const QObject *parent, const QMetaObject &mo,
+                             QList<void*> *list, Qt::FindChildOptions options)
+{
+    qt_qFindChildren_helper(parent, QAnyStringView(), mo, list, options);
+}
+
+void qt_qFindChildren_helper(const QObject *parent, const QString &name, const QMetaObject &mo,
+                             QList<void*> *list, Qt::FindChildOptions options)
+{
+    qt_qFindChildren_helper(parent, QAnyStringView{name}, mo, list, options);
+}
+
+QObject *qt_qFindChild_helper(const QObject *parent, const QString &name, const QMetaObject &mo,
+                              Qt::FindChildOptions options)
+{
+    return qt_qFindChild_helper(parent, QAnyStringView{name}, mo, options);
+}
+
+void QObject::moveToThread(QThread *targetThread)
+{
+    moveToThread(targetThread, QT6_CALL_NEW_OVERLOAD);
+}
+
+#include "qobjectdefs.h"
+
+bool QMetaObject::invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *slot, Qt::ConnectionType type, void *ret)
+{
+    return invokeMethodImpl(object, slot, type, 1, &ret, nullptr, nullptr);
+}
+
+#include "qstring.h"
+
+QString QString::left(qsizetype n) const
+{
+    if (size_t(n) >= size_t(size()))
+        return *this;
+    return QString((const QChar*) d.data(), n);
+}
+
+QString QString::right(qsizetype n) const
+{
+    if (size_t(n) >= size_t(size()))
+        return *this;
+    return QString(constData() + size() - n, n);
+}
+
+QString QString::mid(qsizetype position, qsizetype n) const
+{
+    qsizetype p = position;
+    qsizetype l = n;
+    using namespace QtPrivate;
+    switch (QContainerImplHelper::mid(size(), &p, &l)) {
+    case QContainerImplHelper::Null:
+        return QString();
+    case QContainerImplHelper::Empty:
+        return QString(DataPointer::fromRawData(&_empty, 0));
+    case QContainerImplHelper::Full:
+        return *this;
+    case QContainerImplHelper::Subset:
+        return QString(constData() + p, l);
+    }
+    Q_UNREACHABLE_RETURN(QString());
+}
+
+#ifdef Q_CC_MSVC
+// previously inline methods, only needed for MSVC compat
+QString QString::first(qsizetype n) const
+{ return sliced(0, n); }
+QString QString::last(qsizetype n) const
+{ return sliced(size() - n, n); }
+QString QString::sliced(qsizetype pos) const
+{ return sliced(pos, size() - pos); }
+QString QString::sliced(qsizetype pos, qsizetype n) const
+{ verify(pos, n); return QString(begin() + pos, n); }
+QString QString::chopped(qsizetype n) const
+{ return sliced(0, size() - n); }
+#endif
+
+#include "qtimezone.h"
+
+bool QTimeZone::operator==(const QTimeZone &other) const
+{
+    return comparesEqual(*this, other);
+}
+
+bool QTimeZone::operator!=(const QTimeZone &other) const
+{
+    return !comparesEqual(*this, other);
+}
+
+#include "qurl.h"
+
+QUrl QUrl::fromEncoded(const QByteArray &input, ParsingMode mode)
+{
+    return QUrl::fromEncoded(QByteArrayView(input), mode);
+}
+
+
+// #include "qotherheader.h"
+// // implement removed functions from qotherheader.h
+// order sections alphabetically to reduce chances of merge conflicts
+
+#endif // QT_CORE_REMOVED_SINCE(6, 7)

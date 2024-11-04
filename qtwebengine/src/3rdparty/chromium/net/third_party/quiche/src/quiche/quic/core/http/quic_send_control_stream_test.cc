@@ -130,8 +130,7 @@ TEST_P(QuicSendControlStreamTest, WriteSettings) {
       "4040"  // 0x40 as the reserved frame type
       "01"    // 1 byte frame length
       "61");  //  payload "a"
-  if ((!GetQuicReloadableFlag(quic_verify_request_headers_2) ||
-       perspective() == Perspective::IS_CLIENT) &&
+  if (perspective() == Perspective::IS_CLIENT &&
       QuicSpdySessionPeer::LocalHttpDatagramSupport(&session_) ==
           HttpDatagramSupport::kDraft04) {
     expected_write_data = absl::HexStringToBytes(
@@ -152,8 +151,7 @@ TEST_P(QuicSendControlStreamTest, WriteSettings) {
         "01"         // 1 byte frame length
         "61");       //  payload "a"
   }
-  if (GetQuicReloadableFlag(quic_verify_request_headers_2) &&
-      perspective() == Perspective::IS_SERVER &&
+  if (perspective() == Perspective::IS_SERVER &&
       QuicSpdySessionPeer::LocalHttpDatagramSupport(&session_) ==
           HttpDatagramSupport::kNone) {
     expected_write_data = absl::HexStringToBytes(
@@ -174,8 +172,7 @@ TEST_P(QuicSendControlStreamTest, WriteSettings) {
         "01"    // 1 byte frame length
         "61");  //  payload "a"
   }
-  if (GetQuicReloadableFlag(quic_verify_request_headers_2) &&
-      perspective() == Perspective::IS_SERVER &&
+  if (perspective() == Perspective::IS_SERVER &&
       QuicSpdySessionPeer::LocalHttpDatagramSupport(&session_) !=
           HttpDatagramSupport::kNone) {
     expected_write_data = absl::HexStringToBytes(
@@ -253,14 +250,14 @@ TEST_P(QuicSendControlStreamTest, WritePriorityBeforeSettings) {
       .Times(4);
   send_control_stream_->WritePriorityUpdate(
       /* stream_id = */ 0,
-      QuicStreamPriority{/* urgency = */ 3, /* incremental = */ false});
+      HttpStreamPriority{/* urgency = */ 3, /* incremental = */ false});
 
   EXPECT_TRUE(testing::Mock::VerifyAndClearExpectations(&session_));
 
   EXPECT_CALL(session_, WritevData(send_control_stream_->id(), _, _, _, _, _));
   send_control_stream_->WritePriorityUpdate(
       /* stream_id = */ 0,
-      QuicStreamPriority{/* urgency = */ 3, /* incremental = */ false});
+      HttpStreamPriority{/* urgency = */ 3, /* incremental = */ false});
 }
 
 TEST_P(QuicSendControlStreamTest, CloseControlStream) {

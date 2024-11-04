@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
+import m from 'mithril';
+
+import {raf} from '../core/raf_scheduler';
 
 import {globals} from './globals';
 
@@ -49,7 +51,7 @@ export class CookieConsent implements m.ClassComponent {
               onclick: () => {
                 this.showCookieConsent = false;
                 localStorage.setItem(COOKIE_ACK_KEY, 'true');
-                globals.rafScheduler.scheduleFullRedraw();
+                raf.scheduleFullRedraw();
               },
             },
             'OK')),

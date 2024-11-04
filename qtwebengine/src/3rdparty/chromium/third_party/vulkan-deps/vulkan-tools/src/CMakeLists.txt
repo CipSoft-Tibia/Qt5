@@ -1,6 +1,7 @@
 # ~~~
 # Copyright (c) 2014-2023 Valve Corporation
 # Copyright (c) 2014-2023 LunarG, Inc.
+# Copyright (c) 2023-2023 RasterGrid Kft.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,16 +19,15 @@ cmake_minimum_required(VERSION 3.17.2)
 
 project(Vulkan-Tools)
 
-# find_package(), include() and global project settings --------------------------------------------------------------------------
+# This variable enables downstream users to customize the target API
+# variant (e.g. Vulkan SC)
+set(API_TYPE "vulkan")
 
-find_package(PythonInterp 3 QUIET)
+add_subdirectory(scripts)
 
 # User-interface declarations ----------------------------------------------------------------------------------------------------
 # This section contains variables that affect development GUIs (e.g. CMake GUI and IDEs), such as option(), folders, and variables
 # with the CACHE property.
-
-# Enable beta Vulkan extensions
-add_definitions(-DVK_ENABLE_BETA_EXTENSIONS)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -37,6 +37,10 @@ option(BUILD_ICD "Build icd" ON)
 # Installing the Mock ICD to system directories is probably not desired since this ICD is not a very complete implementation.
 # Require the user to ask that it be installed if they really want it.
 option(INSTALL_ICD "Install icd" OFF)
+
+if (UNIX AND NOT APPLE) # i.e. Linux
+    option(ENABLE_ADDRESS_SANITIZER "Use addres sanitization" OFF)
+endif()
 
 if(WIN32)
     # Optional: Allow specify the exact version used in the vulkaninfo executable
@@ -49,29 +53,6 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # "Helper" targets that don't have interesting source code should set their FOLDER property to this
 set(TOOLS_HELPER_FOLDER "Helper Targets")
 
-# ~~~
-# Find Vulkan Headers and Loader
-# Search order:
-#  User-supplied CMAKE_PREFIX_PATH containing paths to the header and/or loader install dirs
-#  CMake options VULKAN_HEADERS_INSTALL_DIR and/or VULKAN_LOADER_INSTALL_DIR
-#  Env vars VULKAN_HEADERS_INSTALL_DIR and/or VULKAN_LOADER_INSTALL_DIR
-#  If on MacOS
-#   CMake option MOTLENVK_REPO_ROOT
-#   Env vars MOLTENVK_REPO_ROOT
-#  Fallback to FindVulkan operation using SDK install or system installed components.
-# ~~~
-set(VULKAN_HEADERS_INSTALL_DIR "HEADERS-NOTFOUND" CACHE PATH "Absolute path to a Vulkan-Headers install directory")
-set(VULKAN_LOADER_INSTALL_DIR "LOADER-NOTFOUND" CACHE PATH "Absolute path to a Vulkan-Loader install directory")
-if(WIN32 AND "${VULKAN_LOADER_INSTALL_DIR}" STREQUAL "LOADER-NOTFOUND")
-    if(CMAKE_CL_64)
-        set(VULKAN_LOADER_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/x64")
-    else()
-        set(VULKAN_LOADER_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/x86")
-    endif()
-endif()
-set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH};${VULKAN_HEADERS_INSTALL_DIR};${VULKAN_LOADER_INSTALL_DIR};
-    $ENV{VULKAN_HEADERS_INSTALL_DIR};$ENV{VULKAN_LOADER_INSTALL_DIR})
-
 if(APPLE)
     set(MOLTENVK_REPO_ROOT "MOLTENVK-NOTFOUND" CACHE PATH "Absolute path to a MoltenVK repo directory")
     if(NOT MOLTENVK_REPO_ROOT AND NOT DEFINED ENV{MOLTENVK_REPO_ROOT})
@@ -83,13 +64,15 @@ if(APPLE)
     endif()
     message(STATUS "Using MoltenVK repo location at ${MOLTENVK_REPO_ROOT}")
 endif()
-message(STATUS "Using find_package to locate Vulkan")
-find_package(Vulkan)
+
 find_package(VulkanHeaders REQUIRED CONFIG)
-get_filename_component(Vulkan_LIBRARY_DIR ${Vulkan_LIBRARY} DIRECTORY)
-message(STATUS "Vulkan FOUND = ${Vulkan_FOUND}")
-message(STATUS "Vulkan Lib Dir = ${Vulkan_LIBRARY_DIR}")
-message(STATUS "Vulkan Lib = ${Vulkan_LIBRARY}")
+
+# Find and create the Vulkan::Vulkan library
+find_library(Vulkan_LIBRARY NAMES vulkan vulkan-1)
+add_library(Vulkan::Vulkan UNKNOWN IMPORTED)
+set_target_properties(Vulkan::Vulkan PROPERTIES
+    IMPORTED_LOCATION ${Vulkan_LIBRARY})
+target_link_libraries(Vulkan::Vulkan INTERFACE Vulkan::Headers)
 
 include(GNUInstallDirs)
 
@@ -120,7 +103,7 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang")
     else()
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99 ${COMMON_COMPILE_FLAGS}")
     endif()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMMON_COMPILE_FLAGS} -std=c++11 -fno-rtti")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMMON_COMPILE_FLAGS} -std=c++14 -fno-rtti")
     if(UNIX)
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fvisibility=hidden")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden")
@@ -141,15 +124,20 @@ elseif(MSVC)
     add_compile_options("/w34245")
 endif()
 
-# Optional codegen target
-if(PYTHONINTERP_FOUND)
-    add_custom_target(VulkanTools_generated_source
-                      COMMAND ${PYTHON_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/generate_source.py
-                              ${VULKAN_HEADERS_REGISTRY_DIRECTORY} --incremental
-                      )
-else()
-    message("WARNING: VulkanTools_generated_source target requires python 3")
+# NOTE: Our custom code generation target isn't desirable for system package managers or add_subdirectory users.
+# So this target needs to be off by default to avoid obtuse build errors or patches.
+option(TOOLS_CODEGEN "Enable helper codegen target")
+if (TOOLS_CODEGEN)
+    find_package(Python3 REQUIRED QUIET)
+    add_custom_target(tools_codegen
+        COMMAND Python3::Interpreter ${PROJECT_SOURCE_DIR}/scripts/generate_source.py
+            "${VULKAN_HEADERS_INSTALL_DIR}/${CMAKE_INSTALL_DATADIR}/vulkan/registry"
+            --incremental --api ${API_TYPE}
+    )
 endif()
+
+# Default to using the static CRT
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 if(APPLE)
     include(mac_common.cmake)
@@ -165,4 +153,12 @@ endif()
 
 if(BUILD_ICD)
     add_subdirectory(icd)
+endif()
+
+add_subdirectory(windows-runtime-installer)
+
+option(BUILD_TESTS "Build the tests")
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
 endif()

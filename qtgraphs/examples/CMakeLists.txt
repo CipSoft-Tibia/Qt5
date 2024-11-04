@@ -3,6 +3,12 @@
 
 qt_examples_build_begin(EXTERNAL_BUILD)
 
-add_subdirectory(graphs)
+if(QT_FEATURE_graphs_3d)
+    add_subdirectory(graphs/3d)
+endif()
+
+if(QT_FEATURE_graphs_2d)
+    add_subdirectory(graphs/2d)
+endif()
 
 qt_examples_build_end()

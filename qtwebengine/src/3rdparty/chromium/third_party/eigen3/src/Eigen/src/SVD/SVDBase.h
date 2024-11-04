@@ -283,8 +283,9 @@ public:
   /** \returns true if \a V (full or thin) is asked for in this SVD decomposition */
   inline bool computeV() const { return m_computeFullV || m_computeThinV; }
 
-  inline Index rows() const { return m_rows; }
-  inline Index cols() const { return m_cols; }
+  inline Index rows() const { return m_rows.value(); }
+  inline Index cols() const { return m_cols.value(); }
+  inline Index diagSize() const { return m_diagSize.value(); }
   
   #ifdef EIGEN_PARSED_BY_DOXYGEN
   /** \returns a (least squares) solution of \f$ A x = b \f$ using the current SVD decomposition of A.
@@ -348,7 +349,10 @@ protected:
   bool m_computeFullU, m_computeThinU;
   bool m_computeFullV, m_computeThinV;
   unsigned int m_computationOptions;
-  Index m_nonzeroSingularValues, m_rows, m_cols, m_diagSize;
+  Index m_nonzeroSingularValues;
+  internal::variable_if_dynamic<Index, RowsAtCompileTime> m_rows;
+  internal::variable_if_dynamic<Index, ColsAtCompileTime> m_cols;
+  internal::variable_if_dynamic<Index, DiagSizeAtCompileTime> m_diagSize;
   RealScalar m_prescribedThreshold;
 
   /** \brief Default Constructor.
@@ -356,7 +360,10 @@ protected:
    * Default constructor of SVDBase
    */
   SVDBase()
-      : m_info(Success),
+      : m_matrixU(MatrixUType()),
+        m_matrixV(MatrixVType()),
+        m_singularValues(SingularValuesType()),
+        m_info(Success),
         m_isInitialized(false),
         m_isAllocated(false),
         m_usePrescribedThreshold(false),
@@ -365,9 +372,11 @@ protected:
         m_computeFullV(false),
         m_computeThinV(false),
         m_computationOptions(0),
-        m_rows(-1),
-        m_cols(-1),
-        m_diagSize(0) {}
+        m_nonzeroSingularValues(0),
+        m_rows(RowsAtCompileTime),
+        m_cols(ColsAtCompileTime),
+        m_diagSize(DiagSizeAtCompileTime),
+        m_prescribedThreshold(0) {}
 };
 
 #ifndef EIGEN_PARSED_BY_DOXYGEN
@@ -406,15 +415,15 @@ bool SVDBase<Derived>::allocate(Index rows, Index cols, unsigned int computation
   eigen_assert(rows >= 0 && cols >= 0);
 
   if (m_isAllocated &&
-      rows == m_rows &&
-      cols == m_cols &&
+      rows == m_rows.value() &&
+      cols == m_cols.value() &&
       computationOptions == m_computationOptions)
   {
     return true;
   }
 
-  m_rows = rows;
-  m_cols = cols;
+  m_rows.setValue(rows);
+  m_cols.setValue(cols);
   m_info = Success;
   m_isInitialized = false;
   m_isAllocated = true;
@@ -427,12 +436,12 @@ bool SVDBase<Derived>::allocate(Index rows, Index cols, unsigned int computation
   eigen_assert(!(m_computeFullU && m_computeThinU) && "SVDBase: you can't ask for both full and thin U");
   eigen_assert(!(m_computeFullV && m_computeThinV) && "SVDBase: you can't ask for both full and thin V");
 
-  m_diagSize = (std::min)(m_rows, m_cols);
-  m_singularValues.resize(m_diagSize);
+  m_diagSize.setValue(numext::mini(m_rows.value(), m_cols.value()));
+  m_singularValues.resize(m_diagSize.value());
   if(RowsAtCompileTime==Dynamic)
-    m_matrixU.resize(m_rows, m_computeFullU ? m_rows : m_computeThinU ? m_diagSize : 0);
+    m_matrixU.resize(m_rows.value(), m_computeFullU ? m_rows.value() : m_computeThinU ? m_diagSize.value() : 0);
   if(ColsAtCompileTime==Dynamic)
-    m_matrixV.resize(m_cols, m_computeFullV ? m_cols : m_computeThinV ? m_diagSize : 0);
+    m_matrixV.resize(m_cols.value(), m_computeFullV ? m_cols.value() : m_computeThinV ? m_diagSize.value() : 0);
 
   return false;
 }

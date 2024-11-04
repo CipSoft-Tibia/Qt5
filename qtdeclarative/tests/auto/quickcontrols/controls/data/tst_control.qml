@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtQuick
 import QtTest
@@ -464,6 +464,36 @@ TestCase {
         control.background.y = 10
         control.height -= 20
         verify(control.background.height !== control.height)
+    }
+
+    Component {
+        id: backgroundTest2
+        Button {
+            id: btn
+            width: 100
+            height: 100
+            topInset: 0
+            objectName: ""
+
+            background: Rectangle {
+                id: bg
+                implicitHeight: 80
+                border.color: "red"
+                y: btn.objectName === "aaa" ? 20 : 0
+            }
+        }
+    }
+
+    // QTBUG-120033: Make sure that the binding for y on the tab button's background doesn't get removed
+    function test_background2() {
+        let button = createTemporaryObject(backgroundTest2, testCase)
+        verify(button)
+
+        verify(button.background.y === 0)
+        button.objectName = "aaa"
+        verify(button.background.y === 20)
+        button.objectName = ""
+        verify(button.background.y === 0)
     }
 
     Component {
@@ -1034,7 +1064,7 @@ TestCase {
         verify(control)
 
         compare(control.hovered, false)
-        compare(control.hoverEnabled, Qt.styleHints.useHoverEffects)
+        compare(control.hoverEnabled, Application.styleHints.useHoverEffects)
 
         control.hoverEnabled = false
 
@@ -1068,7 +1098,7 @@ TestCase {
 
     function test_hoverEnabled() {
         let control = createTemporaryObject(component, testCase)
-        compare(control.hoverEnabled, Qt.styleHints.useHoverEffects)
+        compare(control.hoverEnabled, Application.styleHints.useHoverEffects)
 
         let child = component.createObject(control)
         let grandChild = component.createObject(child)

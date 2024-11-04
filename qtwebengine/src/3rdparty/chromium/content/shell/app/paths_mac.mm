@@ -4,9 +4,9 @@
 
 #include "content/shell/app/paths_mac.h"
 
+#include "base/apple/bundle_locations.h"
+#include "base/apple/foundation_util.h"
 #include "base/base_paths.h"
-#include "base/mac/bundle_locations.h"
-#include "base/mac/foundation_util.h"
 #include "base/path_service.h"
 #include "content/public/common/content_paths.h"
 
@@ -18,7 +18,7 @@ base::FilePath GetContentsPath() {
   base::PathService::Get(base::FILE_EXE, &path);
 
   // Up to Contents.
-  if (base::mac::IsBackgroundOnlyProcess()) {
+  if (base::apple::IsBackgroundOnlyProcess()) {
     // The running executable is the helper, located at:
     // Content Shell.app/Contents/Frameworks/
     // Content Shell Framework.framework/Versions/C/Helpers/Content Shell
@@ -52,24 +52,26 @@ void OverrideFrameworkBundlePath() {
   base::FilePath helper_path =
       GetFrameworksPath().Append("Content Shell Framework.framework");
 
-  base::mac::SetOverrideFrameworkBundlePath(helper_path);
+  base::apple::SetOverrideFrameworkBundlePath(helper_path);
 }
 
 void OverrideOuterBundlePath() {
   base::FilePath path = GetContentsPath().DirName();
 
-  base::mac::SetOverrideOuterBundlePath(path);
+  base::apple::SetOverrideOuterBundlePath(path);
 }
 
 void OverrideChildProcessPath() {
-  base::FilePath helper_path = base::mac::FrameworkBundlePath()
+  base::FilePath helper_path = base::apple::FrameworkBundlePath()
                                    .Append("Helpers")
                                    .Append("Content Shell Helper.app")
                                    .Append("Contents")
                                    .Append("MacOS")
                                    .Append("Content Shell Helper");
 
-  base::PathService::Override(content::CHILD_PROCESS_EXE, helper_path);
+  base::PathService::OverrideAndCreateIfNeeded(
+      content::CHILD_PROCESS_EXE, helper_path, /*is_absolute=*/true,
+      /*create=*/false);
 }
 
 void OverrideSourceRootPath() {
@@ -85,8 +87,8 @@ void OverrideSourceRootPath() {
 
 base::FilePath GetResourcesPakFilePath() {
   NSString* pak_path =
-      [base::mac::FrameworkBundle() pathForResource:@"content_shell"
-                                             ofType:@"pak"];
+      [base::apple::FrameworkBundle() pathForResource:@"content_shell"
+                                               ofType:@"pak"];
 
   return base::FilePath([pak_path fileSystemRepresentation]);
 }

@@ -14,6 +14,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/mock_callback.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_simple_task_runner.h"
 #include "components/password_manager/core/browser/affiliation/affiliation_backend.h"
@@ -24,6 +25,8 @@
 #include "components/password_manager/core/browser/affiliation/mock_affiliation_fetcher.h"
 #include "components/password_manager/core/browser/affiliation/mock_affiliation_fetcher_factory.h"
 #include "components/password_manager/core/browser/password_form_digest.h"
+#include "components/password_manager/core/common/password_manager_features.h"
+#include "components/password_manager/core/common/password_manager_pref_names.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
 #include "services/network/test/test_network_connection_tracker.h"
@@ -142,7 +145,10 @@ class AffiliationServiceImplTest : public testing::Test {
     service_->Init(network_connection_tracker, database_path);
   }
 
-  void DestroyService() { service_->Shutdown(); }
+  void DestroyService() {
+    fake_affiliation_api_.SetFetcherFactory(nullptr);
+    service_->Shutdown();
+  }
 
   void RunUntilIdle() { task_environment_.RunUntilIdle(); }
 
@@ -575,7 +581,7 @@ class AffiliationServiceImplTestWithFetcherFactory
 };
 
 TEST_F(AffiliationServiceImplTestWithFetcherFactory,
-       GetAffiliationsAndBrandingSucceds) {
+       GetAffiliationsAndBrandingSucceeds) {
   // The first request allows on-demand fetching, and should trigger a fetch.
   // Then, it should succeed after the fetch is complete.
   service()->GetAffiliationsAndBranding(
@@ -642,20 +648,21 @@ TEST_F(AffiliationServiceImplTestWithFetcherFactory,
   testing::Mock::VerifyAndClearExpectations(mock_consumer());
 }
 
-TEST_F(AffiliationServiceImplTestWithFetcherFactory,
-       UpdateAffiliationsAndBranding) {
-  base::MockOnceClosure completion_callback;
+TEST_F(AffiliationServiceImplTestWithFetcherFactory, GetGroupingInfoUsesCache) {
+  base::MockCallback<AffiliationService::GroupsCallback> completion_callback;
 
-  service()->UpdateAffiliationsAndBranding(
-      {FacetURI::FromCanonicalSpec(kTestFacetURIAlpha1)},
-      completion_callback.Get());
+  service()->GetGroupingInfo({FacetURI::FromCanonicalSpec(kTestFacetURIAlpha1)},
+                             completion_callback.Get());
   background_task_runner()->RunUntilIdle();
 
-  EXPECT_CALL(completion_callback, Run);
-  ASSERT_TRUE(fake_affiliation_api()->HasPendingRequest());
-  fake_affiliation_api()->ServeNextRequest();
-  background_task_runner()->RunUntilIdle();
+  EXPECT_FALSE(fake_affiliation_api()->HasPendingRequest());
 
+  GroupedFacets group;
+  group.facets = {
+      Facet(FacetURI::FromCanonicalSpec(kTestFacetURIAlpha1)),
+  };
+
+  EXPECT_CALL(completion_callback, Run(testing::UnorderedElementsAre(group)));
   RunUntilIdle();
 }
 

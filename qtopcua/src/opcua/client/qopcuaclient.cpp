@@ -262,6 +262,29 @@ Q_DECLARE_LOGGING_CATEGORY(QT_OPCUA)
 */
 
 /*!
+    \fn void QOpcUaClient::registerNodesFinished(const QStringList &nodesToRegister, const QStringList &registeredNodeIds, QOpcUa::UaStatusCode statusCode)
+    \since 6.7
+
+    This signal is emitted after a \l registerNodes() operation has finished.
+    \a nodesToRegister contains the node ids from the request for correlation purposes.
+    The node ids returned by the server are in \a registeredNodeIds and have the same ordering as the ids in the request.
+    \a statusCode indicates if the operation was successful.
+
+    \sa registerNodes()
+*/
+
+/*!
+    \fn void QOpcUaClient::unregisterNodesFinished(const QStringList &nodesToUnregister, QOpcUa::UaStatusCode statusCode)
+    \since 6.7
+
+    This signal is emitted after a \l unregisterNodes() operation has finished.
+    \a nodesToUnregister contains the node ids from the request for correlation purposes.
+    \a statusCode indicates if the operation was successful.
+
+    \sa unregisterNodes()
+*/
+
+/*!
     \internal QOpcUaClientImpl is an opaque type (as seen from the public API).
     This prevents users of the public API to use this constructor (even though
     it is public).
@@ -270,6 +293,53 @@ QOpcUaClient::QOpcUaClient(QOpcUaClientImpl *impl, QObject *parent)
     : QObject(*(new QOpcUaClientPrivate(impl)), parent)
 {
     impl->m_client = this;
+
+    // callback from client implementation
+    QObject::connect(impl, &QOpcUaClientImpl::stateAndOrErrorChanged, this,
+                    [this](QOpcUaClient::ClientState state, QOpcUaClient::ClientError error) {
+        Q_D(QOpcUaClient);
+        d->setStateAndError(state, error);
+        if (state == QOpcUaClient::ClientState::Connected) {
+            d->updateNamespaceArray();
+            d->setupNamespaceArrayMonitoring();
+        }
+    });
+
+    QObject::connect(impl, &QOpcUaClientImpl::endpointsRequestFinished,
+                     this, &QOpcUaClient::endpointsRequestFinished);
+
+    QObject::connect(impl, &QOpcUaClientImpl::findServersFinished,
+                     this, &QOpcUaClient::findServersFinished);
+
+    QObject::connect(impl, &QOpcUaClientImpl::readNodeAttributesFinished,
+                     this, &QOpcUaClient::readNodeAttributesFinished);
+
+    QObject::connect(impl, &QOpcUaClientImpl::writeNodeAttributesFinished,
+                     this, &QOpcUaClient::writeNodeAttributesFinished);
+
+    QObject::connect(impl, &QOpcUaClientImpl::addNodeFinished,
+                     this, &QOpcUaClient::addNodeFinished);
+
+    QObject::connect(impl, &QOpcUaClientImpl::deleteNodeFinished,
+                     this, &QOpcUaClient::deleteNodeFinished);
+
+    QObject::connect(impl, &QOpcUaClientImpl::addReferenceFinished,
+                     this, &QOpcUaClient::addReferenceFinished);
+
+    QObject::connect(impl, &QOpcUaClientImpl::deleteReferenceFinished,
+                     this, &QOpcUaClient::deleteReferenceFinished);
+
+    QObject::connect(impl, &QOpcUaClientImpl::connectError,
+                     this, &QOpcUaClient::connectError);
+
+    QObject::connect(impl, &QOpcUaClientImpl::passwordForPrivateKeyRequired,
+                     this, &QOpcUaClient::passwordForPrivateKeyRequired);
+
+    QObject::connect(impl, &QOpcUaClientImpl::registerNodesFinished,
+                     this, &QOpcUaClient::registerNodesFinished);
+
+    QObject::connect(impl, &QOpcUaClientImpl::unregisterNodesFinished,
+                     this, &QOpcUaClient::unregisterNodesFinished);
 }
 
 /*!
@@ -686,7 +756,7 @@ bool QOpcUaClient::requestEndpoints(const QUrl &url)
     Returns \c true if the asynchronous call has been successfully dispatched.
 
     \a localeIds can be used to select the language of the application names returned by the request.
-    The format is specified in OPC-UA part 3, 8.4, for example "en" for English, or "de-DE" for
+    The format is specified in OPC UA 1.05 part 3, 8.4, for example "en" for English, or "de-DE" for
     German (Germany). If more than one locale ID is specified, the server uses the first match. If there
     is no match or \a localeIds is empty, a default locale is chosen by the server.
 
@@ -946,7 +1016,7 @@ QList<QOpcUaUserTokenPolicy::TokenType> QOpcUaClient::supportedUserTokenTypes() 
 
     Starts a read raw history \a request for one or multiple nodes. This is the Qt OPC UA representation for the OPC UA
     ReadHistory service for reading raw historical data defined in
-    \l {https://reference.opcfoundation.org/v104/Core/docs/Part4/5.10.3/} {OPC-UA part 4, 5.10.3}.
+    \l {https://reference.opcfoundation.org/v105/Core/docs/Part4/5.10.3/} {OPC UA 1.05 part 4, 5.10.3}.
 
     The start timestamp, end timestamp, number of values per node, returnBounds and nodes to read
     can be specified in a \l QOpcUaHistoryReadRawRequest.
@@ -988,6 +1058,99 @@ QOpcUaHistoryReadResponse *QOpcUaClient::readHistoryData(const QOpcUaHistoryRead
 {
     Q_D(const QOpcUaClient);
     return d->m_impl->readHistoryData(request);
+}
+
+/*!
+    \since 6.7
+
+    Registers the node ids in \a nodesToRegister on the server and returns \c true if the request
+    has been successfully dispatched.
+    The results are returned in the \l registerNodesFinished() signal.
+
+    The node registration service is used to let the server know that a node will be accessed frequently
+    so it may perform operations like keeping the connection to an external resource open.
+    The server may also return an alias node id which is recommended to be numeric. This might come in
+    handy if a node with a long string identifier node id is used in many requests.
+    The real performance gain (if any) depends on the server's implementation.
+
+    The registered node ids are only guaranteed to be valid for the current session.
+    Any registrations that are no longer needed should be unregistered as soon as possible so the
+    server may free the associated resources.
+
+    \sa unregisterNodes()
+ */
+bool QOpcUaClient::registerNodes(const QStringList &nodesToRegister)
+{
+    Q_D(const QOpcUaClient);
+    return d->m_impl->registerNodes(nodesToRegister);
+}
+
+/*!
+    \since 6.7
+
+    Unregisters the node ids in \a nodesToUnregister on the server and returns \c true if the request
+    has been successfully dispatched.
+    The results are returned in the \l unregisterNodesFinished() signal.
+
+    The node ids to pass in \a nodesToUnregister must have been obtained via \l registerNodes().
+
+    \sa registerNodes()
+ */
+bool QOpcUaClient::unregisterNodes(const QStringList &nodesToUnregister)
+{
+    Q_D(const QOpcUaClient);
+    return d->m_impl->unregisterNodes(nodesToUnregister);
+}
+
+/*!
+    \since 6.7
+
+    Starts a read event history request for one or multiple node ids with the parameters in \a request.
+
+    Returns a \l QOpcUaHistoryReadResponse which contains the state of the request if the asynchronous
+    request has been successfully dispatched. The results are returned in the
+    \l QOpcUaHistoryReadResponse::readHistoryEventsFinished(const QList<QOpcUaHistoryEvent> &results, QOpcUa::UaStatusCode serviceResult)
+    signal.
+
+    The following example retrieves historic events for the last two days for two nodes. Up to 10 events per node are returned at a time.
+    While there are more events matching the filter and the provided time range, \c hasMoreData() will be true and more events can be
+    fetched via \b readMoreData().
+
+    \code
+    QOpcUaMonitoringParameters::EventFilter filter;
+    filter << QOpcUaSimpleAttributeOperand("Message");
+    filter << QOpcUaSimpleAttributeOperand("Time");
+
+    const QOpcUaHistoryReadEventRequest request({ QOpcUaReadItem("ns=2;s=EventHistorian"), QOpcUaReadItem("ns=2;s=EventHistorian2") },
+                                                QDateTime::currentDateTime().addDays(-2), QDateTime::currentDateTime(),
+                                                filter, 10);
+
+    // The response object must be freed by the user after all wanted data has been retrieved
+    const auto response = opcuaClient->readHistoryEvents(request);
+
+    QObject::connect(response, &QOpcUaHistoryReadResponse::readHistoryEventsFinished, this,
+                     [response](const QList<QOpcUaHistoryEvent> &results, QOpcUa::UaStatusCode serviceResult) {
+        if (serviceResult != QOpcUa::UaStatusCode::Good) {
+            qDebug() << "Service call failed with" << serviceResult;
+            return;
+        }
+
+        // Print what we got so far
+        for (const auto &result : response->events()) {
+            qDebug() << "Results for" << result.nodeId() << result.statusCode();
+            for (const auto &event : result.events())
+                qDebug() << "    Event:" << event;
+        }
+
+        if (response->hasMoreData())
+            response->readMoreData();
+    });
+    \endcode
+*/
+QOpcUaHistoryReadResponse *QOpcUaClient::readHistoryEvents(const QOpcUaHistoryReadEventRequest &request)
+{
+    Q_D(const QOpcUaClient);
+    return d->m_impl->readHistoryEvents(request);
 }
 
 QT_END_NAMESPACE

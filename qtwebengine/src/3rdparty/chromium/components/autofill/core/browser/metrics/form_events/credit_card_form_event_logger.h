@@ -10,6 +10,7 @@
 #include "base/memory/raw_ptr.h"
 #include "components/autofill/core/browser/autofill_client.h"
 #include "components/autofill/core/browser/autofill_field.h"
+#include "components/autofill/core/browser/autofill_trigger_details.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
 #include "components/autofill/core/browser/form_structure.h"
 #include "components/autofill/core/browser/metrics/autofill_metrics.h"
@@ -17,13 +18,14 @@
 #include "components/autofill/core/browser/metrics/form_events/form_events.h"
 #include "components/autofill/core/browser/metrics/payments/card_metadata_metrics.h"
 #include "components/autofill/core/browser/personal_data_manager.h"
-#include "components/autofill/core/browser/sync_utils.h"
 #include "components/autofill/core/common/autofill_tick_clock.h"
 #include "components/autofill/core/common/signatures.h"
 
 namespace autofill {
 
 enum class UnmaskAuthFlowType;
+
+namespace autofill_metrics {
 
 class CreditCardFormEventLogger : public FormEventLoggerBase {
  public:
@@ -54,15 +56,17 @@ class CreditCardFormEventLogger : public FormEventLoggerBase {
                             const autofill_metrics::CardMetadataLoggingContext&
                                 metadata_logging_context);
 
-  void OnDidShowSuggestions(const FormStructure& form,
-                            const AutofillField& field,
-                            const base::TimeTicks& form_parsed_timestamp,
-                            AutofillSyncSigninState sync_state,
-                            bool off_the_record) override;
+  void OnDidShowSuggestions(
+      const FormStructure& form,
+      const AutofillField& field,
+      const base::TimeTicks& form_parsed_timestamp,
+      AutofillMetrics::PaymentsSigninState signin_state_for_metrics,
+      bool off_the_record) override;
 
-  void OnDidSelectCardSuggestion(const CreditCard& credit_card,
-                                 const FormStructure& form,
-                                 AutofillSyncSigninState sync_state);
+  void OnDidSelectCardSuggestion(
+      const CreditCard& credit_card,
+      const FormStructure& form,
+      AutofillMetrics::PaymentsSigninState signin_state_for_metrics);
 
   // To be called whenever (by BrowserAutofillManager) whenever a form is filled
   // (but not on preview).
@@ -85,7 +89,8 @@ class CreditCardFormEventLogger : public FormEventLoggerBase {
       const AutofillField& field,
       const base::flat_set<FieldGlobalId>& newly_filled_fields,
       const base::flat_set<FieldGlobalId>& safe_fields,
-      AutofillSyncSigninState sync_state);
+      AutofillMetrics::PaymentsSigninState signin_state_for_metrics,
+      const AutofillTriggerSource trigger_source);
 
   // Logging what type of authentication flow was prompted.
   void LogCardUnmaskAuthenticationPromptShown(UnmaskAuthFlowType flow);
@@ -121,7 +126,6 @@ class CreditCardFormEventLogger : public FormEventLoggerBase {
   using FormEventLoggerBase::Log;
 
  private:
-  bool IsLocalDuplicateOfServerCard(const CreditCard& credit_card);
   FormEvent GetCardNumberStatusFormEvent(const CreditCard& credit_card);
   void RecordCardUnmaskFlowEvent(UnmaskAuthFlowType flow,
                                  UnmaskAuthFlowEvent event);
@@ -130,6 +134,8 @@ class CreditCardFormEventLogger : public FormEventLoggerBase {
   bool DoSuggestionsIncludeVirtualCard();
 
   UnmaskAuthFlowType current_authentication_flow_;
+  bool has_logged_suggestion_with_metadata_shown_ = false;
+  bool has_logged_suggestion_with_metadata_selected_ = false;
   bool has_logged_masked_server_card_suggestion_selected_ = false;
   bool has_logged_virtual_card_suggestion_selected_ = false;
   bool logged_suggestion_filled_was_masked_server_card_ = false;
@@ -140,6 +146,9 @@ class CreditCardFormEventLogger : public FormEventLoggerBase {
   std::vector<Suggestion> suggestions_;
   bool has_eligible_offer_ = false;
   bool card_selected_has_offer_ = false;
+  // If true, the selected server card was filled and it had an equivalent local
+  // version on file.
+  bool server_card_with_local_duplicate_filled_ = false;
   autofill_metrics::CardMetadataLoggingContext metadata_logging_context_;
 
   // Set when a list of suggestion is shown.
@@ -149,6 +158,8 @@ class CreditCardFormEventLogger : public FormEventLoggerBase {
   raw_ptr<PersonalDataManager> personal_data_manager_;
   raw_ptr<AutofillClient> client_;
 };
+
+}  // namespace autofill_metrics
 
 }  // namespace autofill
 

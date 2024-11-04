@@ -109,7 +109,7 @@ initial/original one.
 
 .. note::
 
-   The subscription process is (an) internal API and is managed implictly.
+   The subscription process is (an) internal API and is managed implicitly.
 
 When a scope is being destroyed the subscriptions for this scope will be
 destroyed as well.
@@ -117,7 +117,7 @@ destroyed as well.
 Logger
 ~~~~~~
 
-weston uses a logger type of a subscriber for logging everyhing in the code
+weston uses a logger type of a subscriber for logging everything in the code
 (through the help of :func:`weston_log()`).  The subscriber method
 (:func:`weston_log_subscriber_create_log()`) takes an :samp:`FILE *` as an
 argument in case the std :samp:`stdout` file-descriptor is not where the data

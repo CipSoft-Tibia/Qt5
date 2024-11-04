@@ -1123,6 +1123,7 @@ QSGRhiSupport::RhiCreateResult QSGRhiSupport::createRhi(QQuickWindow *window, QS
             debugMarkers, timestamps, preferSoftware, forcePreferSwRenderer ? " [FORCED]" : "", pipelineCacheSave);
 
     QRhi::Flags flags;
+    flags |= QRhi::SuppressSmokeTestWarnings;
     if (debugMarkers)
         flags |= QRhi::EnableDebugMarkers;
     if (timestamps)
@@ -1515,12 +1516,17 @@ void QSGRhiSupport::applySwapChainFormat(QRhiSwapChain *scWithWindowSet, QQuickW
     QRhiSwapChain::Format swapChainFormat = QRhiSwapChain::SDR;
 
     QByteArray hdrRequest = qgetenv("QSG_RHI_HDR");
+    if (hdrRequest.isEmpty())
+        hdrRequest = window->property("_qt_sg_hdr_format").toByteArray();
+
     if (!hdrRequest.isEmpty()) {
         hdrRequest = hdrRequest.toLower();
         if (hdrRequest == QByteArrayLiteral("scrgb") || hdrRequest == QByteArrayLiteral("extendedsrgblinear"))
             swapChainFormat = QRhiSwapChain::HDRExtendedSrgbLinear;
         else if (hdrRequest == QByteArrayLiteral("hdr10"))
             swapChainFormat = QRhiSwapChain::HDR10;
+        else if (hdrRequest == QByteArrayLiteral("p3"))
+            swapChainFormat = QRhiSwapChain::HDRExtendedDisplayP3Linear;
     }
 
     const char *fmtStr = "unknown";
@@ -1533,6 +1539,9 @@ void QSGRhiSupport::applySwapChainFormat(QRhiSwapChain *scWithWindowSet, QQuickW
         break;
     case QRhiSwapChain::HDR10:
         fmtStr = "HDR10";
+        break;
+    case QRhiSwapChain::HDRExtendedDisplayP3Linear:
+        fmtStr = "Extended Linear Display P3";
         break;
     default:
         break;

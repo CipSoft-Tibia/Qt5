@@ -11,6 +11,7 @@
 
 #include <QtCore/qnamespace.h>
 #include <QtCore/qobjectdefs_impl.h>
+#include <QtCore/qtcoreexports.h>
 #include <QtCore/qtmetamacros.h>
 
 QT_BEGIN_NAMESPACE
@@ -142,6 +143,12 @@ struct QMetaMethodReturnArgument
     void *data;
 };
 
+template <typename T>
+struct QTemplatedMetaMethodReturnArgument : QMetaMethodReturnArgument
+{
+    using Type = T;
+};
+
 namespace QtPrivate {
 namespace Invoke {
 #if QT_VERSION <= QT_VERSION_CHECK(7, 0, 0)
@@ -164,7 +171,8 @@ template <typename T> inline QMetaMethodArgument argument(const char *name, cons
     }
 }
 
-template <typename T> inline QMetaMethodReturnArgument returnArgument(const char *name, T &t)
+template <typename T>
+inline QTemplatedMetaMethodReturnArgument<T> returnArgument(const char *name, T &t)
 {
     return { qMetaTypeInterfaceForType<T>(), name, std::addressof(t) };
 }
@@ -217,7 +225,7 @@ template <typename... Args> inline auto invokeMethodHelper(QMetaMethodReturnArgu
 } // namespace QtPrivate
 
 template <typename T> void qReturnArg(const T &&) = delete;
-template <typename T> inline QMetaMethodReturnArgument qReturnArg(T &data)
+template <typename T> inline QTemplatedMetaMethodReturnArgument<T> qReturnArg(T &data)
 {
     return QtPrivate::Invoke::returnArgument(nullptr, data);
 }
@@ -255,6 +263,7 @@ struct Q_CORE_EXPORT QMetaObject
     int indexOfSignal(const char *signal) const;
     int indexOfSlot(const char *slot) const;
     int indexOfEnumerator(const char *name) const;
+
     int indexOfProperty(const char *name) const;
     int indexOfClassInfo(const char *name) const;
 
@@ -354,14 +363,14 @@ struct Q_CORE_EXPORT QMetaObject
     }
 #endif // Qt < 7.0
 
-    template <typename... Args> static
+    template <typename ReturnArg, typename... Args> static
 #ifdef Q_QDOC
     bool
 #else
     QtPrivate::Invoke::IfNotOldStyleArgs<bool, Args...>
 #endif
     invokeMethod(QObject *obj, const char *member, Qt::ConnectionType c,
-                 QMetaMethodReturnArgument r, Args &&... arguments)
+                 QTemplatedMetaMethodReturnArgument<ReturnArg> r, Args &&... arguments)
     {
         auto h = QtPrivate::invokeMethodHelper(r, std::forward<Args>(arguments)...);
         return invokeMethodImpl(obj, member, c, h.parameterCount(), h.parameters.data(),
@@ -376,17 +385,17 @@ struct Q_CORE_EXPORT QMetaObject
 #endif
     invokeMethod(QObject *obj, const char *member, Qt::ConnectionType c, Args &&... arguments)
     {
-        QMetaMethodReturnArgument r = {};
+        QTemplatedMetaMethodReturnArgument<void> r = {};
         return invokeMethod(obj, member, c, r, std::forward<Args>(arguments)...);
     }
 
-    template <typename... Args> static
+    template <typename ReturnArg, typename... Args> static
 #ifdef Q_QDOC
     bool
 #else
     QtPrivate::Invoke::IfNotOldStyleArgs<bool, Args...>
 #endif
-    invokeMethod(QObject *obj, const char *member, QMetaMethodReturnArgument r,
+    invokeMethod(QObject *obj, const char *member, QTemplatedMetaMethodReturnArgument<ReturnArg> r,
                  Args &&... arguments)
     {
         return invokeMethod(obj, member, Qt::AutoConnection, r, std::forward<Args>(arguments)...);
@@ -400,7 +409,7 @@ struct Q_CORE_EXPORT QMetaObject
 #endif
     invokeMethod(QObject *obj, const char *member, Args &&... arguments)
     {
-        QMetaMethodReturnArgument r = {};
+        QTemplatedMetaMethodReturnArgument<void> r = {};
         return invokeMethod(obj, member, Qt::AutoConnection, r, std::forward<Args>(arguments)...);
     }
 
@@ -409,31 +418,99 @@ struct Q_CORE_EXPORT QMetaObject
     static bool invokeMethod(QObject *context, Functor &&function, Qt::ConnectionType type = Qt::AutoConnection, FunctorReturnType *ret = nullptr);
     template<typename Functor, typename FunctorReturnType>
     static bool invokeMethod(QObject *context, Functor &&function, FunctorReturnType *ret);
+
+    template<typename Functor, typename FunctorReturnType, typename... Args>
+    static bool invokeMethod(QObject *context, Functor &&function, Qt::ConnectionType type, QTemplatedMetaMethodReturnArgument<FunctorReturnType> ret, Args &&...arguments);
+    template<typename Functor, typename FunctorReturnType, typename... Args>
+    static bool invokeMethod(QObject *context, Functor &&function, QTemplatedMetaMethodReturnArgument<FunctorReturnType> ret, Args &&...arguments);
+    template<typename Functor, typename... Args>
+    static bool invokeMethod(QObject *context, Functor &&function, Qt::ConnectionType type, Args &&...arguments);
+    template<typename Functor, typename... Args>
+    static bool invokeMethod(QObject *context, Functor &&function, Args &&...arguments);
 #else
     template <typename Func>
     static std::enable_if_t<!std::disjunction_v<std::is_convertible<Func, const char *>,
                                                 QtPrivate::Invoke::AreOldStyleArgs<Func>>,
                             bool>
     invokeMethod(typename QtPrivate::ContextTypeForFunctor<Func>::ContextType *object,
-                 Func &&function,
-                 Qt::ConnectionType type = Qt::AutoConnection,
-                 typename QtPrivate::Callable<Func>::ReturnType *ret = nullptr)
+                 Func &&function, Qt::ConnectionType type,
+                 typename QtPrivate::Callable<Func>::ReturnType *ret)
     {
-        static_assert(QtPrivate::Callable<Func>::ArgumentCount <= 0,
-                      "QMetaObject::invokeMethod cannot call functions with arguments!");
-        using Prototype = typename QtPrivate::Callable<Func>::Function;
-        return invokeMethodImpl(object, QtPrivate::makeCallableObject<Prototype>(std::forward<Func>(function)), type, ret);
+        using R = typename QtPrivate::Callable<Func>::ReturnType;
+        const auto getReturnArg = [ret]() -> QTemplatedMetaMethodReturnArgument<R> {
+            if constexpr (std::is_void_v<R>)
+                return {};
+            else
+                return ret ? qReturnArg(*ret) : QTemplatedMetaMethodReturnArgument<R>{};
+        };
+        return invokeMethod(object, std::forward<Func>(function), type, getReturnArg());
     }
-
     template <typename Func>
     static std::enable_if_t<!std::disjunction_v<std::is_convertible<Func, const char *>,
                                                 QtPrivate::Invoke::AreOldStyleArgs<Func>>,
                             bool>
     invokeMethod(typename QtPrivate::ContextTypeForFunctor<Func>::ContextType *object,
-                 Func &&function,
-                 typename QtPrivate::Callable<Func>::ReturnType *ret)
+                 Func &&function, typename QtPrivate::Callable<Func>::ReturnType *ret)
     {
         return invokeMethod(object, std::forward<Func>(function), Qt::AutoConnection, ret);
+    }
+
+    template <typename Func, typename... Args>
+    static std::enable_if_t<!std::disjunction_v<std::is_convertible<Func, const char *>,
+                                                QtPrivate::Invoke::AreOldStyleArgs<Args...>>,
+                            bool>
+    invokeMethod(typename QtPrivate::ContextTypeForFunctor<Func>::ContextType *object,
+                 Func &&function, Qt::ConnectionType type,
+                 QTemplatedMetaMethodReturnArgument<
+                         typename QtPrivate::Callable<Func, Args...>::ReturnType>
+                         ret,
+                 Args &&...args)
+    {
+        return invokeMethodCallableHelper(object, std::forward<Func>(function), type, ret,
+                                          std::forward<Args>(args)...);
+    }
+
+    template <typename Func, typename... Args>
+    static std::enable_if_t<!std::disjunction_v<std::is_convertible<Func, const char *>,
+                                                QtPrivate::Invoke::AreOldStyleArgs<Args...>>,
+                            bool>
+    invokeMethod(typename QtPrivate::ContextTypeForFunctor<Func>::ContextType *object,
+                 Func &&function, Qt::ConnectionType type, Args &&...args)
+    {
+        using R = typename QtPrivate::Callable<Func, Args...>::ReturnType;
+        QTemplatedMetaMethodReturnArgument<R> r{ QtPrivate::qMetaTypeInterfaceForType<R>(), nullptr,
+                                                 nullptr };
+        return invokeMethod(object, std::forward<Func>(function), type, r,
+                            std::forward<Args>(args)...);
+    }
+
+    template <typename Func, typename... Args>
+    static std::enable_if_t<!std::disjunction_v<std::is_convertible<Func, const char *>,
+                                                QtPrivate::Invoke::AreOldStyleArgs<Args...>>,
+                            bool>
+    invokeMethod(typename QtPrivate::ContextTypeForFunctor<Func>::ContextType *object,
+                 Func &&function,
+                 QTemplatedMetaMethodReturnArgument<
+                         typename QtPrivate::Callable<Func, Args...>::ReturnType>
+                         ret,
+                 Args &&...args)
+    {
+        return invokeMethod(object, std::forward<Func>(function), Qt::AutoConnection, ret,
+                            std::forward<Args>(args)...);
+    }
+
+    template <typename Func, typename... Args>
+    static std::enable_if_t<!std::disjunction_v<std::is_convertible<Func, const char *>,
+                                                QtPrivate::Invoke::AreOldStyleArgs<Args...>>,
+                            bool>
+    invokeMethod(typename QtPrivate::ContextTypeForFunctor<Func>::ContextType *object,
+                 Func &&function, Args &&...args)
+    {
+        using R = typename QtPrivate::Callable<Func, Args...>::ReturnType;
+        QTemplatedMetaMethodReturnArgument<R> r{ QtPrivate::qMetaTypeInterfaceForType<R>(), nullptr,
+                                                 nullptr };
+        return invokeMethod(object, std::forward<Func>(function), Qt::AutoConnection, r,
+                            std::forward<Args>(args)...);
     }
 
 #endif
@@ -523,10 +600,41 @@ struct Q_CORE_EXPORT QMetaObject
     } d;
 
 private:
+    // Just need to have this here with a separate name so the other inline
+    // functions can call this without any ambiguity
+    template <typename Func, typename... Args>
+    static bool
+    invokeMethodCallableHelper(typename QtPrivate::ContextTypeForFunctor<Func>::ContextType *object,
+            Func &&function, Qt::ConnectionType type, const QMetaMethodReturnArgument &ret,
+            Args &&...args)
+    {
+        using Callable = QtPrivate::Callable<Func, Args...>;
+        using ExpectedArguments = typename Callable::Arguments;
+        static_assert(sizeof...(Args) <= ExpectedArguments::size, "Too many arguments");
+        using ActualArguments = QtPrivate::List<Args...>;
+        static_assert(QtPrivate::CheckCompatibleArguments<ActualArguments,
+                              ExpectedArguments>::value,
+                "Incompatible arguments");
+
+        auto h = QtPrivate::invokeMethodHelper(ret, std::forward<Args>(args)...);
+
+        // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+        auto callable = new QtPrivate::QCallableObject<std::decay_t<Func>, ActualArguments,
+                typename Callable::ReturnType>(std::forward<Func>(function));
+        return invokeMethodImpl(object, callable, type, h.parameterCount(), h.parameters.data(),
+                h.typeNames.data(), h.metaTypes.data());
+    }
+
     static bool invokeMethodImpl(QObject *object, const char *member, Qt::ConnectionType type,
                                  qsizetype parameterCount, const void *const *parameters, const char *const *names,
                                  const QtPrivate::QMetaTypeInterface * const *metaTypes);
+    static bool invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *slotObj,
+                                 Qt::ConnectionType type, qsizetype parameterCount,
+                                 const void *const *params, const char *const *names,
+                                 const QtPrivate::QMetaTypeInterface *const *metaTypes);
+#if QT_CORE_REMOVED_SINCE(6, 7)
     static bool invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *slot, Qt::ConnectionType type, void *ret);
+#endif
     static QObject *newInstanceImpl(const QMetaObject *mobj, qsizetype parameterCount,
                                     const void **parameters, const char **typeNames,
                                     const QtPrivate::QMetaTypeInterface **metaTypes);

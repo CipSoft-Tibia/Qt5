@@ -411,6 +411,7 @@ struct Q_QML_COMPILER_PRIVATE_EXPORT Pragma
         FunctionSignatureBehavior,
         NativeMethodBehavior,
         ValueTypeBehavior,
+        Translator,
     };
 
     enum ListPropertyAssignBehaviorValue
@@ -453,6 +454,7 @@ struct Q_QML_COMPILER_PRIVATE_EXPORT Pragma
         FunctionSignatureBehaviorValue functionSignatureBehavior;
         NativeMethodBehaviorValue nativeMethodBehavior;
         ValueTypeBehaviorValues::Int valueTypeBehavior;
+        uint translationContextIndex;
     };
 
     QV4::CompiledData::Location location;
@@ -471,6 +473,12 @@ struct Q_QML_COMPILER_PRIVATE_EXPORT Document
     QV4::Compiler::JSUnitGenerator jsGenerator;
 
     QV4::CompiledData::CompilationUnit javaScriptCompilationUnit;
+
+    bool isSingleton() const {
+        return std::any_of(pragmas.constBegin(), pragmas.constEnd(), [](const Pragma *pragma) {
+            return pragma->type == Pragma::Singleton;
+        });
+    }
 
     int registerString(const QString &str) { return jsGenerator.registerString(str); }
     QString stringAt(int index) const { return jsGenerator.stringForIndex(index); }
@@ -499,9 +507,6 @@ struct Q_QML_COMPILER_PRIVATE_EXPORT IRBuilder : public QQmlJS::AST::Visitor
 public:
     IRBuilder(const QSet<QString> &illegalNames);
     bool generateFromQml(const QString &code, const QString &url, Document *output);
-
-    static bool isSignalPropertyName(const QString &name);
-    static QString signalNameFromSignalPropertyName(const QString &signalPropertyName);
 
     using QQmlJS::AST::Visitor::visit;
     using QQmlJS::AST::Visitor::endVisit;

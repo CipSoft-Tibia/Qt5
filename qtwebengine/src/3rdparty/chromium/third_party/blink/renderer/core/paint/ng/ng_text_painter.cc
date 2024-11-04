@@ -23,6 +23,7 @@
 #include "third_party/blink/renderer/core/paint/svg_object_painter.h"
 #include "third_party/blink/renderer/core/paint/timing/paint_timing_detector.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
+#include "third_party/blink/renderer/core/style/paint_order_array.h"
 #include "third_party/blink/renderer/core/style/shadow_list.h"
 #include "third_party/blink/renderer/core/svg/svg_element.h"
 #include "third_party/blink/renderer/platform/fonts/font.h"
@@ -268,8 +269,7 @@ void NGTextPainter::PaintDecorationsExceptLineThrough(
     const ComputedStyle& style,
     const TextPaintStyle& text_style,
     TextDecorationInfo& decoration_info,
-    TextDecorationLine lines_to_paint,
-    const PhysicalRect& decoration_rect) {
+    TextDecorationLine lines_to_paint) {
   if (!decoration_info.HasAnyLine(lines_to_paint &
                                   ~TextDecorationLine::kLineThrough))
     return;
@@ -300,8 +300,7 @@ void NGTextPainter::PaintDecorationsOnlyLineThrough(
     const PaintInfo& paint_info,
     const ComputedStyle& style,
     const TextPaintStyle& text_style,
-    TextDecorationInfo& decoration_info,
-    const PhysicalRect& decoration_rect) {
+    TextDecorationInfo& decoration_info) {
   if (!decoration_info.HasAnyLine(TextDecorationLine::kLineThrough))
     return;
 
@@ -439,10 +438,11 @@ void NGTextPainter::PaintSvgTextFragment(
       GetSvgStyleToPaint(state, SvgPaintMode::kText, selection_style_scope,
                          has_fill, has_visible_stroke);
 
-  for (int i = 0; i < 3; i++) {
+  const PaintOrderArray paint_order(state.Style().PaintOrder());
+  for (unsigned i = 0; i < 3; i++) {
     absl::optional<LayoutSVGResourceMode> resource_mode;
 
-    switch (state.Style().PaintOrderType(i)) {
+    switch (paint_order[i]) {
       case PT_FILL:
         if (has_fill)
           resource_mode = kApplyToFillMode;
@@ -486,10 +486,11 @@ void NGTextPainter::PaintSvgDecorationsExceptLineThrough(
       GetSvgStyleToPaint(state, SvgPaintMode::kTextDecoration,
                          selection_style_scope, has_fill, has_visible_stroke);
 
-  for (int i = 0; i < 3; i++) {
+  const PaintOrderArray paint_order(state.Style().PaintOrder());
+  for (unsigned i = 0; i < 3; i++) {
     absl::optional<LayoutSVGResourceMode> resource_mode;
 
-    switch (state.Style().PaintOrderType(i)) {
+    switch (paint_order[i]) {
       case PT_FILL:
         if (has_fill)
           resource_mode = kApplyToFillMode;
@@ -531,10 +532,11 @@ void NGTextPainter::PaintSvgDecorationsOnlyLineThrough(
       GetSvgStyleToPaint(state, SvgPaintMode::kTextDecoration,
                          selection_style_scope, has_fill, has_visible_stroke);
 
-  for (int i = 0; i < 3; i++) {
+  const PaintOrderArray paint_order(state.Style().PaintOrder());
+  for (unsigned i = 0; i < 3; i++) {
     absl::optional<LayoutSVGResourceMode> resource_mode;
 
-    switch (state.Style().PaintOrderType(i)) {
+    switch (paint_order[i]) {
       case PT_FILL:
         if (has_fill)
           resource_mode = kApplyToFillMode;

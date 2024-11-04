@@ -42,7 +42,6 @@ struct packet_traits<numext::int32_t> : default_packet_traits {
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size = sve_packet_size_selector<numext::int32_t, EIGEN_ARM64_SVE_VL>::size,
-    HasHalfPacket = 0,
 
     HasAdd = 1,
     HasSub = 1,
@@ -377,7 +376,6 @@ struct packet_traits<float> : default_packet_traits {
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size = sve_packet_size_selector<float, EIGEN_ARM64_SVE_VL>::size,
-    HasHalfPacket = 0,
 
     HasAdd = 1,
     HasSub = 1,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qqmldomtop_p.h"
 #include "qqmldomelements_p.h"
+#include "qqmldom_utils_p.h"
 
 #include <QtCore/QDir>
 #include <QtCore/QFileInfo>
@@ -26,7 +27,7 @@ static ErrorGroups myExportErrors()
     return res;
 }
 
-bool ModuleScope::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
+bool ModuleScope::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const
 {
     bool cont = true;
     cont = cont && self.dvValueField(visitor, Fields::uri, uri);
@@ -35,19 +36,19 @@ bool ModuleScope::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
         int minorVersion = version.minorVersion;
         return self.subMapItem(Map(
                 self.pathFromOwner().field(Fields::exports),
-                [minorVersion](DomItem &mapExp, QString name) -> DomItem {
+                [minorVersion](const DomItem &mapExp, QString name) -> DomItem {
                     DomItem mapExpOw = mapExp.owner();
                     QList<DomItem> exports =
                             mapExp.ownerAs<ModuleIndex>()->exportsWithNameAndMinorVersion(
                                     mapExpOw, name, minorVersion);
                     return mapExp.subListItem(List::fromQList<DomItem>(
                             mapExp.pathFromOwner().key(name), exports,
-                            [](DomItem &, const PathEls::PathComponent &, DomItem &el) {
+                            [](const DomItem &, const PathEls::PathComponent &, const DomItem &el) {
                                 return el;
                             },
                             ListOptions::Normal));
                 },
-                [](DomItem &mapExp) {
+                [](const DomItem &mapExp) {
                     DomItem mapExpOw = mapExp.owner();
                     return mapExp.ownerAs<ModuleIndex>()->exportNames(mapExpOw);
                 },
@@ -57,11 +58,11 @@ bool ModuleScope::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
         Path basePath = Path::Current(PathCurrent::Obj).field(Fields::exports);
         return self.subMapItem(Map(
                 self.pathFromOwner().field(Fields::symbols),
-                [basePath](DomItem &mapExp, QString name) -> DomItem {
+                [basePath](const DomItem &mapExp, QString name) -> DomItem {
                     QList<Path> symb({ basePath.key(name) });
                     return mapExp.subReferencesItem(PathEls::Key(name), symb);
                 },
-                [](DomItem &mapExp) {
+                [](const DomItem &mapExp) {
                     DomItem mapExpOw = mapExp.owner();
                     return mapExp.ownerAs<ModuleIndex>()->exportNames(mapExpOw);
                 },
@@ -73,7 +74,7 @@ bool ModuleScope::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
     return cont;
 }
 
-std::shared_ptr<OwningItem> ModuleIndex::doCopy(DomItem &) const
+std::shared_ptr<OwningItem> ModuleIndex::doCopy(const DomItem &) const
 {
     return std::make_shared<ModuleIndex>(*this);
 }
@@ -113,14 +114,14 @@ ModuleIndex::~ModuleIndex()
     }
 }
 
-bool ModuleIndex::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
+bool ModuleIndex::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const
 {
     bool cont = self.dvValueField(visitor, Fields::uri, uri());
     cont = cont && self.dvValueField(visitor, Fields::majorVersion, majorVersion());
     cont = cont && self.dvItemField(visitor, Fields::moduleScope, [this, &self]() {
         return self.subMapItem(Map(
                 pathFromOwner(self).field(Fields::moduleScope),
-                [](DomItem &map, QString minorVersionStr) {
+                [](const DomItem &map, QString minorVersionStr) {
                     bool ok;
                     int minorVersion = minorVersionStr.toInt(&ok);
                     if (minorVersionStr.isEmpty()
@@ -130,7 +131,7 @@ bool ModuleIndex::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
                         return DomItem();
                     return map.copy(map.ownerAs<ModuleIndex>()->ensureMinorVersion(minorVersion));
                 },
-                [this](DomItem &) {
+                [this](const DomItem &) {
                     QSet<QString> res;
                     for (int el : minorVersions())
                         if (el >= 0)
@@ -150,7 +151,7 @@ bool ModuleIndex::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
     return cont;
 }
 
-QSet<QString> ModuleIndex::exportNames(DomItem &self) const
+QSet<QString> ModuleIndex::exportNames(const DomItem &self) const
 {
     QSet<QString> res;
     QList<Path> mySources = sources();
@@ -161,7 +162,7 @@ QSet<QString> ModuleIndex::exportNames(DomItem &self) const
     return res;
 }
 
-QList<DomItem> ModuleIndex::autoExports(DomItem &self) const
+QList<DomItem> ModuleIndex::autoExports(const DomItem &self) const
 {
     QList<DomItem> res;
     Path selfPath = canonicalPath(self).field(Fields::autoExports);
@@ -201,7 +202,7 @@ QList<DomItem> ModuleIndex::autoExports(DomItem &self) const
     QList<ModuleAutoExport> knownExports;
     for (Path p : mySources) {
         DomItem autoExports = self.path(p).field(Fields::autoExports);
-        for (DomItem i : autoExports.values()) {
+        for (const DomItem &i : autoExports.values()) {
             if (const ModuleAutoExport *iPtr = i.as<ModuleAutoExport>()) {
                 if (!knownAutoImportUris.contains(iPtr->import.uri.toString())
                     || !knownExports.contains(*iPtr)) {
@@ -218,7 +219,7 @@ QList<DomItem> ModuleIndex::autoExports(DomItem &self) const
     return res;
 }
 
-QList<DomItem> ModuleIndex::exportsWithNameAndMinorVersion(DomItem &self, QString name,
+QList<DomItem> ModuleIndex::exportsWithNameAndMinorVersion(const DomItem &self, QString name,
                                                            int minorVersion) const
 {
     Path myPath = Paths::moduleScopePath(uri(), Version(majorVersion(), minorVersion))
@@ -245,12 +246,12 @@ QList<DomItem> ModuleIndex::exportsWithNameAndMinorVersion(DomItem &self, QStrin
                 undef.append(exportItem);
             } else {
                 if (majorVersion() < 0)
-                    self.addError(myVersioningErrors()
+                    self.addError(std::move(myVersioningErrors()
                                           .error(tr("Module %1 (unversioned) has versioned entries "
                                                     "for '%2' from %3")
                                                          .arg(uri(), name,
                                                               source.canonicalPath().toString()))
-                                          .withPath(myPath));
+                                                    .withPath(myPath)));
                 if ((versionPtr->majorVersion == majorVersion()
                      || versionPtr->majorVersion == Version::Undefined)
                     && versionPtr->minorVersion >= vNow
@@ -265,11 +266,11 @@ QList<DomItem> ModuleIndex::exportsWithNameAndMinorVersion(DomItem &self, QStrin
     }
     if (!undef.isEmpty()) {
         if (!res.isEmpty()) {
-            self.addError(myVersioningErrors()
+            self.addError(std::move(myVersioningErrors()
                                   .error(tr("Module %1 (major version %2) has versioned and "
                                             "unversioned entries for '%3'")
                                                  .arg(uri(), QString::number(majorVersion()), name))
-                                  .withPath(myPath));
+                                            .withPath(myPath)));
             return res + undef;
         } else {
             return undef;
@@ -343,7 +344,7 @@ void ModuleIndex::mergeWith(std::shared_ptr<ModuleIndex> o)
     }
 }
 
-QList<Path> ModuleIndex::qmldirsToLoad(DomItem &self)
+QList<Path> ModuleIndex::qmldirsToLoad(const DomItem &self)
 {
     // this always checks the filesystem to the qmldir file to load
     DomItem env = self.environment();
@@ -355,10 +356,15 @@ QList<Path> ModuleIndex::qmldirsToLoad(DomItem &self)
             + QLatin1String("/qmldir");
     QString dirPath;
     if (majorVersion() >= 0) {
+        qCDebug(QQmlJSDomImporting)
+                << "ModuleIndex::qmldirsToLoad: Searching versioned module" << subPath
+                << majorVersion() << "in" << envPtr->loadPaths().join(u", ");
         for (QString path : envPtr->loadPaths()) {
             QDir dir(path);
             QFileInfo fInfo(dir.filePath(subPathV));
             if (fInfo.isFile()) {
+                qCDebug(QQmlJSDomImporting)
+                        << "Found versioned module in " << fInfo.canonicalFilePath();
                 logicalPath = subPathV;
                 dirPath = fInfo.canonicalFilePath();
                 break;
@@ -366,10 +372,14 @@ QList<Path> ModuleIndex::qmldirsToLoad(DomItem &self)
         }
     }
     if (dirPath.isEmpty()) {
+        qCDebug(QQmlJSDomImporting) << "ModuleIndex::qmldirsToLoad: Searching unversioned module"
+                                    << subPath << "in" << envPtr->loadPaths().join(u", ");
         for (QString path : envPtr->loadPaths()) {
             QDir dir(path);
             QFileInfo fInfo(dir.filePath(subPath + QLatin1String("/qmldir")));
             if (fInfo.isFile()) {
+                qCDebug(QQmlJSDomImporting)
+                        << "Found unversioned module in " << fInfo.canonicalFilePath();
                 logicalPath = subPath + QLatin1String("/qmldir");
                 dirPath = fInfo.canonicalFilePath();
                 break;
@@ -380,10 +390,14 @@ QList<Path> ModuleIndex::qmldirsToLoad(DomItem &self)
         QMutexLocker l(mutex());
         m_qmldirPaths = QList<Path>({ Paths::qmldirFilePath(dirPath) });
     } else if (uri() != u"QML") {
-        addErrorLocal(myExportErrors()
-                              .warning(tr("Failed to find main qmldir file for %1 %2")
-                                               .arg(uri(), QString::number(majorVersion())))
-                              .handle());
+        const QString loadPaths = envPtr->loadPaths().join(u", "_s);
+        qCDebug(QQmlJSDomImporting) << "ModuleIndex::qmldirsToLoad: qmldir at"
+                                    << (uri() + u"/qmldir"_s) << " was not found in " << loadPaths;
+        addErrorLocal(
+                myExportErrors()
+                        .warning(tr("Failed to find main qmldir file for %1 %2 in %3.")
+                                         .arg(uri(), QString::number(majorVersion()), loadPaths))
+                        .handle());
     }
     return qmldirPaths();
 }

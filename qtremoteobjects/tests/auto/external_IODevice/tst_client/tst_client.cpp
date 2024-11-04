@@ -1,5 +1,5 @@
 // Copyright (C) 2018 Ford Motor Company
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QRemoteObjectNode>
@@ -55,7 +55,7 @@ private slots:
         QVERIFY(pp->waitForSource());
 
         QString pongStr;
-        connect(pp.data(), &PingPongReplica::pong, [&pongStr](const QString &str) {
+        connect(pp.data(), &PingPongReplica::pong, this, [&pongStr](const QString &str) {
             pongStr = str;
         });
         pp->ping("yahoo");

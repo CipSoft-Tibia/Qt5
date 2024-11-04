@@ -1,4 +1,5 @@
-load("//bazel:macros.bzl", "exports_files_legacy", "skia_cc_binary_with_flags")
+load("//bazel:skia_rules.bzl", "exports_files_legacy", "skia_cc_binary_with_flags")
+load("//bazel:macros.bzl", "py_binary")
 
 licenses(["notice"])
 
@@ -36,7 +37,6 @@ skia_cc_binary_with_flags(
     name = "sksl_minify",
     srcs = ["SkSLMinify.cpp"],
     set_flags = {
-        "enable_sksl": ["True"],
         "enable_skslc": ["True"],
     },
     deps = [

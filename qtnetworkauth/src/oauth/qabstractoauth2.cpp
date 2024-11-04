@@ -47,6 +47,11 @@ using namespace Qt::StringLiterals;
     \property QAbstractOAuth2::scope
     \brief This property holds the desired scope which defines the
     permissions requested by the client.
+
+    The scope value is updated to the scope value granted by the
+    authorization server. In case of an empty scope response, the
+    \l {https://datatracker.ietf.org/doc/html/rfc6749#section-5.1}
+    {requested scope is assumed as granted and does not change}.
 */
 
 /*!
@@ -236,7 +241,7 @@ QNetworkReply *QAbstractOAuth2::head(const QUrl &url, const QVariantMap &paramet
 {
     Q_D(QAbstractOAuth2);
     QNetworkReply *reply = d->networkAccessManager()->head(d->createRequest(url, &parameters));
-    connect(reply, &QNetworkReply::finished, [this, reply]() { emit finished(reply); });
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() { emit finished(reply); });
     return reply;
 }
 
@@ -252,7 +257,7 @@ QNetworkReply *QAbstractOAuth2::get(const QUrl &url, const QVariantMap &paramete
 {
     Q_D(QAbstractOAuth2);
     QNetworkReply *reply = d->networkAccessManager()->get(d->createRequest(url, &parameters));
-    connect(reply, &QNetworkReply::finished, [this, reply]() { emit finished(reply); });
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() { emit finished(reply); });
     return reply;
 }
 
@@ -287,7 +292,7 @@ QNetworkReply *QAbstractOAuth2::post(const QUrl &url, const QByteArray &data)
 {
     Q_D(QAbstractOAuth2);
     QNetworkReply *reply = d->networkAccessManager()->post(d->createRequest(url), data);
-    connect(reply, &QNetworkReply::finished, [this, reply]() { emit finished(reply); });
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() { emit finished(reply); });
     return reply;
 }
 
@@ -307,7 +312,7 @@ QNetworkReply *QAbstractOAuth2::post(const QUrl &url, QHttpMultiPart *multiPart)
 {
     Q_D(QAbstractOAuth2);
     QNetworkReply *reply = d->networkAccessManager()->post(d->createRequest(url), multiPart);
-    connect(reply, &QNetworkReply::finished, [this, reply]() { emit finished(reply); });
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() { emit finished(reply); });
     return reply;
 }
 
@@ -342,7 +347,7 @@ QNetworkReply *QAbstractOAuth2::put(const QUrl &url, const QByteArray &data)
 {
     Q_D(QAbstractOAuth2);
     QNetworkReply *reply = d->networkAccessManager()->put(d->createRequest(url), data);
-    connect(reply, &QNetworkReply::finished, std::bind(&QAbstractOAuth::finished, this, reply));
+    connect(reply, &QNetworkReply::finished, this, std::bind(&QAbstractOAuth::finished, this, reply));
     return reply;
 }
 
@@ -362,7 +367,7 @@ QNetworkReply *QAbstractOAuth2::put(const QUrl &url, QHttpMultiPart *multiPart)
 {
     Q_D(QAbstractOAuth2);
     QNetworkReply *reply = d->networkAccessManager()->put(d->createRequest(url), multiPart);
-    connect(reply, &QNetworkReply::finished, std::bind(&QAbstractOAuth::finished, this, reply));
+    connect(reply, &QNetworkReply::finished, this, std::bind(&QAbstractOAuth::finished, this, reply));
     return reply;
 }
 
@@ -379,7 +384,7 @@ QNetworkReply *QAbstractOAuth2::deleteResource(const QUrl &url, const QVariantMa
     Q_D(QAbstractOAuth2);
     QNetworkReply *reply = d->networkAccessManager()->deleteResource(
                 d->createRequest(url, &parameters));
-    connect(reply, &QNetworkReply::finished, [this, reply]() { emit finished(reply); });
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() { emit finished(reply); });
     return reply;
 }
 

@@ -7,6 +7,7 @@
 #include "qwasmevent.h"
 #include "qwasmscreen.h"
 #include "qwasmwindow.h"
+#include "qwasmdrag.h"
 
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/qpointingdevice.h>
@@ -31,33 +32,47 @@ ClientArea::ClientArea(QWasmWindow *window, QWasmScreen *screen, emscripten::val
     m_pointerUpCallback = std::make_unique<qstdweb::EventCallback>(element, "pointerup", callback);
     m_pointerCancelCallback =
             std::make_unique<qstdweb::EventCallback>(element, "pointercancel", callback);
+
+        element.call<void>("setAttribute", emscripten::val("draggable"), emscripten::val("true"));
+
+        m_dragStartCallback = std::make_unique<qstdweb::EventCallback>(
+                    element, "dragstart", [this](emscripten::val webEvent) {
+                            webEvent.call<void>("preventDefault");
+                            auto event = *DragEvent::fromWeb(webEvent, m_window->window());
+                            QWasmDrag::instance()->onNativeDragStarted(&event);
+                        });
+        m_dragOverCallback = std::make_unique<qstdweb::EventCallback>(
+                    element, "dragover", [this](emscripten::val webEvent) {
+                            webEvent.call<void>("preventDefault");
+                            auto event = *DragEvent::fromWeb(webEvent, m_window->window());
+                            QWasmDrag::instance()->onNativeDragOver(&event);
+                        });
+        m_dropCallback = std::make_unique<qstdweb::EventCallback>(
+                    element, "drop", [this](emscripten::val webEvent) {
+                            webEvent.call<void>("preventDefault");
+                            auto event = *DragEvent::fromWeb(webEvent, m_window->window());
+                            QWasmDrag::instance()->onNativeDrop(&event);
+                        });
+        m_dragEndCallback = std::make_unique<qstdweb::EventCallback>(
+                    element, "dragend", [this](emscripten::val webEvent) {
+                            webEvent.call<void>("preventDefault");
+                            auto event = *DragEvent::fromWeb(webEvent, m_window->window());
+                            QWasmDrag::instance()->onNativeDragFinished(&event);
+                        });
+
 }
 
 bool ClientArea::processPointer(const PointerEvent &event)
 {
-    const auto localScreenPoint =
-            dom::mapPoint(event.target, m_screen->element(), event.localPoint);
-    const auto pointInScreen = m_screen->mapFromLocal(localScreenPoint);
-
-    const QPointF pointInTargetWindowCoords = m_window->window()->mapFromGlobal(pointInScreen);
 
     switch (event.type) {
     case EventType::PointerDown:
         m_element.call<void>("setPointerCapture", event.pointerId);
-        m_window->window()->requestActivate();
+        if ((m_window->window()->flags() & Qt::WindowDoesNotAcceptFocus) != Qt::WindowDoesNotAcceptFocus)
+            m_window->window()->requestActivate();
         break;
     case EventType::PointerUp:
         m_element.call<void>("releasePointerCapture", event.pointerId);
-        break;
-    case EventType::PointerEnter:
-        if (event.isPrimary) {
-            QWindowSystemInterface::handleEnterEvent(m_window->window(), pointInTargetWindowCoords,
-                                                     pointInScreen);
-        }
-        break;
-    case EventType::PointerLeave:
-        if (event.isPrimary)
-            QWindowSystemInterface::handleLeaveEvent(m_window->window());
         break;
     default:
         break;
@@ -72,7 +87,7 @@ bool ClientArea::processPointer(const PointerEvent &event)
 bool ClientArea::deliverEvent(const PointerEvent &event)
 {
     const auto pointInScreen = m_screen->mapFromLocal(
-            dom::mapPoint(event.target, m_screen->element(), event.localPoint));
+        dom::mapPoint(event.target(), m_screen->element(), event.localPoint));
 
     const auto geometryF = m_screen->geometry().toRectF();
     const QPointF targetPointClippedToScreen(

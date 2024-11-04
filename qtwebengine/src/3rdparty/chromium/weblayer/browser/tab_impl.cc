@@ -10,12 +10,12 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
-#include "base/guid.h"
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
 #include "base/task/thread_pool.h"
 #include "base/time/default_tick_clock.h"
+#include "base/uuid.h"
 #include "build/build_config.h"
 #include "cc/layers/layer.h"
 #include "components/autofill/content/browser/content_autofill_driver_factory.h"
@@ -30,12 +30,8 @@
 #include "components/find_in_page/find_tab_helper.h"
 #include "components/find_in_page/find_types.h"
 #include "components/infobars/content/content_infobar_manager.h"
-#include "components/js_injection/browser/js_communication_host.h"
-#include "components/js_injection/browser/web_message_host.h"
-#include "components/js_injection/browser/web_message_host_factory.h"
 #include "components/permissions/permission_manager.h"
 #include "components/permissions/permission_request_manager.h"
-#include "components/permissions/permission_result.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/core/browser/db/database_manager.h"
 #include "components/sessions/content/session_tab_helper.h"
@@ -44,6 +40,7 @@
 #include "components/translate/core/browser/translate_manager.h"
 #include "components/ukm/content/source_url_recorder.h"
 #include "components/webapps/browser/installable/installable_manager.h"
+#include "components/webapps/browser/installable/ml_installability_promoter.h"
 #include "components/webrtc/media_stream_devices_controller.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -76,7 +73,6 @@
 #include "weblayer/browser/file_select_helper.h"
 #include "weblayer/browser/host_content_settings_map_factory.h"
 #include "weblayer/browser/i18n_util.h"
-#include "weblayer/browser/js_communication/web_message_host_factory_wrapper.h"
 #include "weblayer/browser/navigation_controller_impl.h"
 #include "weblayer/browser/navigation_entry_data.h"
 #include "weblayer/browser/no_state_prefetch/prerender_tab_helper.h"
@@ -92,8 +88,6 @@
 #include "weblayer/browser/weblayer_features.h"
 #include "weblayer/common/isolated_world_ids.h"
 #include "weblayer/public/fullscreen_delegate.h"
-#include "weblayer/public/js_communication/web_message.h"
-#include "weblayer/public/js_communication/web_message_host_factory.h"
 #include "weblayer/public/new_tab_delegate.h"
 #include "weblayer/public/tab_observer.h"
 
@@ -125,7 +119,6 @@
 #include "ui/gfx/android/java_bitmap.h"
 #include "weblayer/browser/java/jni/TabImpl_jni.h"
 #include "weblayer/browser/javascript_tab_modal_dialog_manager_delegate_android.h"
-#include "weblayer/browser/js_communication/web_message_host_factory_proxy.h"
 #include "weblayer/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
 #include "weblayer/browser/safe_browsing/weblayer_safe_browsing_tab_observer_delegate.h"
 #include "weblayer/browser/translate_client_impl.h"
@@ -325,7 +318,8 @@ TabImpl::TabImpl(ProfileImpl* profile,
                  const std::string& guid)
     : profile_(profile),
       web_contents_(std::move(web_contents)),
-      guid_(guid.empty() ? base::GenerateGUID() : guid) {
+      guid_(guid.empty() ? base::Uuid::GenerateRandomV4().AsLowercaseString()
+                         : guid) {
   GetTabs().insert(this);
   DCHECK(web_contents_);
   // This code path is hit when the page requests a new tab, which should
@@ -429,7 +423,7 @@ TabImpl::TabImpl(ProfileImpl* profile,
   webapps::InstallableManager::CreateForWebContents(web_contents_.get());
 
 #if BUILDFLAG(IS_ANDROID)
-  // Must be created after InstallableManager.
+  // Must be created after InstallableManager and MLInstallabilityPromoter.
   WebLayerAppBannerManagerAndroid::CreateForWebContents(web_contents_.get());
 #endif
 }
@@ -445,9 +439,6 @@ TabImpl::~TabImpl() {
     // Some user-data on WebContents directly or indirectly references this.
     // Remove that linkage to avoid use-after-free.
     web_contents_->RemoveUserData(&kWebContentsUserDataKey);
-    web_contents_->RemoveUserData(
-        autofill::ContentAutofillDriverFactory::
-            kContentAutofillDriverFactoryWebContentsUserDataKey);
     // Have Profile handle the task posting to ensure the WebContents is
     // deleted before Profile. To do otherwise means it would be possible for
     // the Profile to outlive the WebContents, which is problematic (crash).
@@ -552,26 +543,6 @@ void TabImpl::SetData(const std::map<std::string, std::string>& data) {
 
 const std::map<std::string, std::string>& TabImpl::GetData() {
   return data_;
-}
-
-std::u16string TabImpl::AddWebMessageHostFactory(
-    std::unique_ptr<WebMessageHostFactory> factory,
-    const std::u16string& js_object_name,
-    const std::vector<std::string>& allowed_origin_rules) {
-  if (!js_communication_host_) {
-    js_communication_host_ =
-        std::make_unique<js_injection::JsCommunicationHost>(
-            web_contents_.get());
-  }
-  return js_communication_host_->AddWebMessageHostFactory(
-      std::make_unique<WebMessageHostFactoryWrapper>(std::move(factory)),
-      js_object_name, allowed_origin_rules);
-}
-
-void TabImpl::RemoveWebMessageHostFactory(
-    const std::u16string& js_object_name) {
-  if (js_communication_host_)
-    js_communication_host_->RemoveWebMessageHostFactory(js_object_name);
 }
 
 void TabImpl::ExecuteScriptWithUserGestureForTests(
@@ -774,28 +745,6 @@ base::android::ScopedJavaLocalRef<jobjectArray> TabImpl::GetData(JNIEnv* env) {
     flattened_map.push_back(kv.second);
   }
   return base::android::ToJavaArrayOfStrings(env, flattened_map);
-}
-
-base::android::ScopedJavaLocalRef<jstring> TabImpl::RegisterWebMessageCallback(
-    JNIEnv* env,
-    const base::android::JavaParamRef<jstring>& js_object_name,
-    const base::android::JavaParamRef<jobjectArray>& js_origins,
-    const base::android::JavaParamRef<jobject>& client) {
-  auto proxy = std::make_unique<WebMessageHostFactoryProxy>(client);
-  std::vector<std::string> origins;
-  base::android::AppendJavaStringArrayToStringVector(env, js_origins, &origins);
-  std::u16string result = AddWebMessageHostFactory(
-      std::move(proxy),
-      base::android::ConvertJavaStringToUTF16(env, js_object_name), origins);
-  return base::android::ConvertUTF16ToJavaString(env, result);
-}
-
-void TabImpl::UnregisterWebMessageCallback(
-    JNIEnv* env,
-    const base::android::JavaParamRef<jstring>& js_object_name) {
-  std::u16string name;
-  base::android::ConvertJavaStringToUTF16(env, js_object_name, &name);
-  RemoveWebMessageHostFactory(name);
 }
 
 jboolean TabImpl::CanTranslate(JNIEnv* env) {
@@ -1218,11 +1167,6 @@ void TabImpl::InitializeAutofillDriver() {
   DCHECK(autofill::AutofillProvider::FromWebContents(web_contents));
 
   AutofillClientImpl::CreateForWebContents(web_contents);
-
-  autofill::ContentAutofillDriverFactory::CreateForWebContentsAndDelegate(
-      web_contents, AutofillClientImpl::FromWebContents(web_contents),
-      base::BindRepeating(&autofill::AndroidDriverInitHook,
-                          AutofillClientImpl::FromWebContents(web_contents)));
 }
 
 #endif  // BUILDFLAG(IS_ANDROID)

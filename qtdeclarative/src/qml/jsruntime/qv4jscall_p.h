@@ -14,11 +14,26 @@
 // We mean it.
 //
 
+#include <private/qqmlengine_p.h>
+#include <private/qqmllistwrapper_p.h>
+#include <private/qqmlvaluetype_p.h>
+#include <private/qqmlvaluetypewrapper_p.h>
 #include <private/qv4alloca_p.h>
+#include <private/qv4context_p.h>
+#include <private/qv4dateobject_p.h>
+#include <private/qv4function_p.h>
 #include <private/qv4functionobject_p.h>
 #include <private/qv4object_p.h>
 #include <private/qv4qobjectwrapper_p.h>
+#include <private/qv4regexpobject_p.h>
 #include <private/qv4scopedvalue_p.h>
+#include <private/qv4stackframe_p.h>
+#include <private/qv4urlobject_p.h>
+#include <private/qv4variantobject_p.h>
+
+#if QT_CONFIG(regularexpression)
+#include <QtCore/qregularexpression.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -110,9 +125,18 @@ ReturnedValue convertAndCall(
         types[i + 1] = argumentType;
         if (const qsizetype argumentSize = argumentType.sizeOf()) {
             Q_ALLOCA_VAR(void, argument, argumentSize);
-            argumentType.construct(argument);
-            if (i < argc)
-                ExecutionEngine::metaTypeFromJS(argv[i], argumentType, argument);
+            if (argumentType.flags() & QMetaType::NeedsConstruction) {
+                argumentType.construct(argument);
+                if (i < argc)
+                    ExecutionEngine::metaTypeFromJS(argv[i], argumentType, argument);
+            } else if (i >= argc
+                        || !ExecutionEngine::metaTypeFromJS(argv[i], argumentType, argument)) {
+                // If we can't convert the argument, we need to default-construct it even if it
+                // doesn't formally need construction.
+                // E.g. an int doesn't need construction, but we still want it to be 0.
+                argumentType.construct(argument);
+            }
+
             values[i + 1] = argument;
         } else {
             values[i + 1] = nullptr;
@@ -124,6 +148,8 @@ ReturnedValue convertAndCall(
     if (const qsizetype returnSize = types[0].sizeOf()) {
         Q_ALLOCA_ASSIGN(void, returnValue, returnSize);
         values[0] = returnValue;
+        if (types[0].flags() & QMetaType::NeedsConstruction)
+            types[0].construct(returnValue);
     } else {
         values[0] = nullptr;
     }
@@ -139,13 +165,16 @@ ReturnedValue convertAndCall(
     ReturnedValue result;
     if (values[0]) {
         result = engine->metaTypeToJS(types[0], values[0]);
-        types[0].destruct(values[0]);
+        if (types[0].flags() & QMetaType::NeedsDestruction)
+            types[0].destruct(values[0]);
     } else {
         result = Encode::undefined();
     }
 
-    for (qsizetype i = 1, end = numFunctionArguments + 1; i < end; ++i)
-        types[i].destruct(values[i]);
+    for (qsizetype i = 1, end = numFunctionArguments + 1; i < end; ++i) {
+        if (types[i].flags() & QMetaType::NeedsDestruction)
+            types[i].destruct(values[i]);
+    }
 
     return result;
 }
@@ -178,57 +207,221 @@ bool convertAndCall(ExecutionEngine *engine, QObject *thisObject,
     const QMetaType resultType = types[0];
     if (scope.hasException()) {
         // Clear the return value
+        resultType.destruct(result);
         resultType.construct(result);
-    } else {
+    } else if (resultType == QMetaType::fromType<QVariant>()) {
         // When the return type is QVariant, JS objects are to be returned as
         // QJSValue wrapped in QVariant. metaTypeFromJS unwraps them, unfortunately.
-        if (resultType == QMetaType::fromType<QVariant>()) {
-            new (result) QVariant(ExecutionEngine::toVariant(jsResult, QMetaType {}));
-        } else {
-            resultType.construct(result);
-            ExecutionEngine::metaTypeFromJS(jsResult, resultType, result);
-        }
+        *static_cast<QVariant *>(result) = ExecutionEngine::toVariant(jsResult, QMetaType {});
+    } else if (!ExecutionEngine::metaTypeFromJS(jsResult, resultType, result)) {
+        // If we cannot convert, also clear the return value.
+        // The caller may have given us an uninitialized QObject*, expecting it to be overwritten.
+        resultType.destruct(result);
+        resultType.construct(result);
     }
     return !jsResult->isUndefined();
 }
 
+inline ReturnedValue coerce(
+    ExecutionEngine *engine, const Value &value, const QQmlType &qmlType, bool isList);
+
+inline QObject *coerceQObject(const Value &value, const QQmlType &qmlType)
+{
+    QObject *o;
+    if (const QV4::QObjectWrapper *wrapper = value.as<QV4::QObjectWrapper>())
+        o = wrapper->object();
+    else if (const QV4::QQmlTypeWrapper *wrapper = value.as<QQmlTypeWrapper>())
+        o = wrapper->object();
+    else
+        return nullptr;
+
+    return (o && qmlobject_can_qml_cast(o, qmlType)) ? o : nullptr;
+}
+
+enum CoercionProblem
+{
+    InsufficientAnnotation,
+    InvalidListType
+};
+
+Q_QML_PRIVATE_EXPORT void warnAboutCoercionToVoid(
+        ExecutionEngine *engine, const Value &value, CoercionProblem problem);
+
+inline ReturnedValue coerceListType(
+    ExecutionEngine *engine, const Value &value, const QQmlType &qmlType)
+{
+    QMetaType type = qmlType.qListTypeId();
+    const auto metaSequence = [&]() {
+        // TODO: We should really add the metasequence to the same QQmlType that holds
+        //       all the other type information. Then we can get rid of the extra
+        //       QQmlMetaType::qmlListType() here.
+        return qmlType.isSequentialContainer()
+                ? qmlType.listMetaSequence()
+                : QQmlMetaType::qmlListType(type).listMetaSequence();
+    };
+
+    if (const QV4::Sequence *sequence = value.as<QV4::Sequence>()) {
+        if (sequence->d()->listType() == type)
+            return value.asReturnedValue();
+    }
+
+    if (const QmlListWrapper *list = value.as<QmlListWrapper>()) {
+        if (list->d()->propertyType() == type)
+            return value.asReturnedValue();
+    }
+
+    QMetaType listValueType = qmlType.typeId();
+    if (!listValueType.isValid()) {
+        warnAboutCoercionToVoid(engine, value, InvalidListType);
+        return value.asReturnedValue();
+    }
+
+    QV4::Scope scope(engine);
+
+    const ArrayObject *array = value.as<ArrayObject>();
+    if (!array) {
+        return (listValueType.flags() & QMetaType::PointerToQObject)
+                   ? QmlListWrapper::create(engine, listValueType)
+                   : SequencePrototype::fromData(engine, type, metaSequence(), nullptr);
+    }
+
+    if (listValueType.flags() & QMetaType::PointerToQObject) {
+        QV4::Scoped<QmlListWrapper> newList(scope, QmlListWrapper::create(engine, type));
+        QQmlListProperty<QObject> *listProperty = newList->d()->property();
+
+        const qsizetype length = array->getLength();
+        qsizetype i = 0;
+        for (; i < length; ++i) {
+            ScopedValue v(scope, array->get(i));
+            listProperty->append(listProperty, coerceQObject(v, qmlType));
+        }
+
+        return newList->asReturnedValue();
+    }
+
+    QV4::Scoped<Sequence> sequence(
+            scope, SequencePrototype::fromData(engine, type, metaSequence(), nullptr));
+    const qsizetype length = array->getLength();
+    for (qsizetype i = 0; i < length; ++i)
+        sequence->containerPutIndexed(i, array->get(i));
+    return sequence->asReturnedValue();
+}
+
+inline ReturnedValue coerce(
+    ExecutionEngine *engine, const Value &value, const QQmlType &qmlType, bool isList)
+{
+    // These are all the named non-list, non-QObject builtins. Only those need special handling.
+    // Some of them may be wrapped in VariantObject because that is how they are stored in VME
+    // properties.
+    if (isList)
+        return coerceListType(engine, value, qmlType);
+
+    const QMetaType metaType = qmlType.typeId();
+    if (!metaType.isValid()) {
+        if (!value.isUndefined())
+            warnAboutCoercionToVoid(engine, value, InsufficientAnnotation);
+        return value.asReturnedValue();
+    }
+
+    switch (metaType.id()) {
+    case QMetaType::Void:
+        return Encode::undefined();
+    case QMetaType::QVariant:
+        return value.asReturnedValue();
+    case QMetaType::Int:
+        return Encode(value.toInt32());
+    case QMetaType::Double:
+        return value.convertedToNumber();
+    case QMetaType::QString:
+        return value.toString(engine)->asReturnedValue();
+    case QMetaType::Bool:
+        return Encode(value.toBoolean());
+    case QMetaType::QDateTime:
+        if (value.as<DateObject>())
+            return value.asReturnedValue();
+        if (const VariantObject *varObject = value.as<VariantObject>()) {
+            const QVariant &var = varObject->d()->data();
+            switch (var.metaType().id()) {
+            case QMetaType::QDateTime:
+                return engine->newDateObject(var.value<QDateTime>())->asReturnedValue();
+            case QMetaType::QTime:
+                return engine->newDateObject(var.value<QTime>(), nullptr, -1, 0)->asReturnedValue();
+            case QMetaType::QDate:
+                return engine->newDateObject(var.value<QDate>(), nullptr, -1, 0)->asReturnedValue();
+            default:
+                break;
+            }
+        }
+        return engine->newDateObject(QDateTime())->asReturnedValue();
+    case QMetaType::QUrl:
+        if (value.as<UrlObject>())
+            return value.asReturnedValue();
+        if (const VariantObject *varObject = value.as<VariantObject>()) {
+            const QVariant &var = varObject->d()->data();
+            return var.metaType() == QMetaType::fromType<QUrl>()
+                       ? engine->newUrlObject(var.value<QUrl>())->asReturnedValue()
+                       : engine->newUrlObject()->asReturnedValue();
+        }
+        // Since URL properties are stored as string, we need to support the string conversion here.
+        if (const String *string = value.stringValue())
+            return engine->newUrlObject(QUrl(string->toQString()))->asReturnedValue();
+        return engine->newUrlObject()->asReturnedValue();
+#if QT_CONFIG(regularexpression)
+    case QMetaType::QRegularExpression:
+        if (value.as<RegExpObject>())
+            return value.asReturnedValue();
+        if (const VariantObject *varObject = value.as<VariantObject>()) {
+            const QVariant &var = varObject->d()->data();
+            if (var.metaType() == QMetaType::fromType<QRegularExpression>())
+                return engine->newRegExpObject(var.value<QRegularExpression>())->asReturnedValue();
+        }
+        return engine->newRegExpObject(QString(), 0)->asReturnedValue();
+#endif
+    default:
+        break;
+    }
+
+    if (metaType.flags() & QMetaType::PointerToQObject) {
+        return coerceQObject(value, qmlType)
+                ? value.asReturnedValue()
+                : Encode::null();
+    }
+
+    if (const QQmlValueTypeWrapper *wrapper = value.as<QQmlValueTypeWrapper>()) {
+        if (wrapper->type() == metaType)
+            return value.asReturnedValue();
+    }
+
+    if (void *target = QQmlValueTypeProvider::heapCreateValueType(qmlType, value)) {
+        Heap::QQmlValueTypeWrapper *wrapper = engine->memoryManager->allocate<QQmlValueTypeWrapper>(
+                nullptr, metaType, qmlType.metaObjectForValueType(),
+                nullptr, -1, Heap::ReferenceObject::NoFlag);
+        Q_ASSERT(!wrapper->gadgetPtr());
+        wrapper->setGadgetPtr(target);
+        return wrapper->asReturnedValue();
+    }
+
+    return Encode::undefined();
+}
+
 template<typename Callable>
 ReturnedValue coerceAndCall(
-        ExecutionEngine *engine, const QQmlPrivate::AOTCompiledFunction *typedFunction,
-        const Value *thisObject, const Value *argv, int argc, Callable call)
+    ExecutionEngine *engine,
+    const Function::JSTypedFunction *typedFunction, const CompiledData::Function *compiledFunction,
+    const Value *argv, int argc, Callable call)
 {
     Scope scope(engine);
-    QV4::JSCallArguments jsCallData(scope, argc);
 
-    const qsizetype numFunctionArguments = typedFunction->argumentTypes.size();
-    for (qsizetype i = 0; i < numFunctionArguments; ++i) {
-        const QMetaType argumentType = typedFunction->argumentTypes[i];
-        if (const qsizetype argumentSize = argumentType.sizeOf()) {
-            Q_ALLOCA_VAR(void, argument, argumentSize);
-            argumentType.construct(argument);
-            if (i < argc)
-                ExecutionEngine::metaTypeFromJS(argv[i], argumentType, argument);
-            jsCallData.args[i] = engine->metaTypeToJS(argumentType, argument);
-        } else {
-            jsCallData.args[i] = argv[i];
-        }
+    QV4::JSCallArguments jsCallData(scope, typedFunction->argumentTypes.size());
+    const CompiledData::Parameter *formals = compiledFunction->formalsTable();
+    for (qsizetype i = 0; i < jsCallData.argc; ++i) {
+        jsCallData.args[i] = coerce(
+            engine, i < argc ? argv[i] : Encode::undefined(),
+            typedFunction->argumentTypes[i], formals[i].type.isList());
     }
 
-    ScopedValue result(scope, call(thisObject, jsCallData.args, argc));
-    const QMetaType returnType = typedFunction->returnType;
-    if (const qsizetype returnSize = returnType.sizeOf()) {
-        Q_ALLOCA_VAR(void, returnValue, returnSize);
-        if (scope.hasException()) {
-            returnType.construct(returnValue);
-        } else if (returnType == QMetaType::fromType<QVariant>()) {
-            new (returnValue) QVariant(ExecutionEngine::toVariant(result, QMetaType {}));
-        } else {
-            returnType.construct(returnValue);
-            ExecutionEngine::metaTypeFromJS(result, returnType, returnValue);
-        }
-        return engine->metaTypeToJS(returnType, returnValue);
-    }
-    return result->asReturnedValue();
+    ScopedValue result(scope, call(jsCallData.args, jsCallData.argc));
+    return coerce(engine, result, typedFunction->returnType, compiledFunction->returnType.isList());
 }
 
 // Note: \a to is unininitialized here! This is in contrast to most other related functions.
@@ -236,12 +429,12 @@ inline void coerce(
         ExecutionEngine *engine, QMetaType fromType, const void *from, QMetaType toType, void *to)
 {
     if ((fromType.flags() & QMetaType::PointerToQObject)
-        && (toType.flags() & QMetaType::PointerToQObject)) {
+            && (toType.flags() & QMetaType::PointerToQObject)) {
         QObject *fromObj = *static_cast<QObject * const*>(from);
         *static_cast<QObject **>(to)
                 = (fromObj && fromObj->metaObject()->inherits(toType.metaObject()))
-                ? fromObj
-                : nullptr;
+                    ? fromObj
+                    : nullptr;
         return;
     }
 
@@ -273,9 +466,9 @@ inline void coerce(
         return;
     }
 
-           // TODO: This is expensive. We might establish a direct C++-to-C++ type coercion, like we have
-           //       for JS-to-JS. However, we shouldn't need this very often. Most of the time the compiler
-           //       will generate code that passes the right arguments.
+    // TODO: This is expensive. We might establish a direct C++-to-C++ type coercion, like we have
+    //       for JS-to-JS. However, we shouldn't need this very often. Most of the time the compiler
+    //       will generate code that passes the right arguments.
     if (toType.flags() & QMetaType::NeedsConstruction)
         toType.construct(to);
     QV4::Scope scope(engine);

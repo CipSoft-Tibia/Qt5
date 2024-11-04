@@ -30,6 +30,14 @@ namespace litehtml
 			bottom	= val.bottom;
 			return *this;
 		}
+
+		string to_string() const
+		{
+			return	"left: " + left.to_string() +
+					", right: " + right.to_string() +
+					", top: " + top.to_string() +
+					", bottom: " + bottom.to_string();
+		}
 	};
 }
 

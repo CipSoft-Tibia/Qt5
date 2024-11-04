@@ -12,12 +12,13 @@
 #include <arm_neon.h>
 #include <assert.h>
 
+#include "config/aom_dsp_rtcd.h"
+
 #include "aom/aom_integer.h"
 #include "aom_dsp/aom_dsp_common.h"
-#include "aom_dsp/blend.h"
+#include "aom_dsp/arm/blend_neon.h"
 #include "aom_dsp/arm/mem_neon.h"
-#include "aom_ports/mem.h"
-#include "config/aom_dsp_rtcd.h"
+#include "aom_dsp/blend.h"
 
 static INLINE void blend8x1(int16x8_t mask, int16x8_t src_0, int16x8_t src_1,
                             const int16x8_t v_maxval, int16x8_t *res) {
@@ -86,19 +87,21 @@ static INLINE void blend_4x4(uint8_t *dst, uint32_t dst_stride,
                              const int16x8_t vec_round_bits) {
   int16x8_t src0_0, src0_1;
   int16x8_t src1_0, src1_1;
-  uint64x2_t tu0 = vdupq_n_u64(0), tu1 = vdupq_n_u64(0), tu2 = vdupq_n_u64(0),
-             tu3 = vdupq_n_u64(0);
+  uint16x8_t tu0 = vdupq_n_u16(0);
+  uint16x8_t tu1 = vdupq_n_u16(0);
+  uint16x8_t tu2 = vdupq_n_u16(0);
+  uint16x8_t tu3 = vdupq_n_u16(0);
   int16x8_t mask0_1, mask2_3;
   int16x8_t res0, res1;
 
   load_unaligned_u16_4x4(src0, src0_stride, &tu0, &tu1);
   load_unaligned_u16_4x4(src1, src1_stride, &tu2, &tu3);
 
-  src0_0 = vreinterpretq_s16_u64(tu0);
-  src0_1 = vreinterpretq_s16_u64(tu1);
+  src0_0 = vreinterpretq_s16_u16(tu0);
+  src0_1 = vreinterpretq_s16_u16(tu1);
 
-  src1_0 = vreinterpretq_s16_u64(tu2);
-  src1_1 = vreinterpretq_s16_u64(tu3);
+  src1_0 = vreinterpretq_s16_u16(tu2);
+  src1_1 = vreinterpretq_s16_u16(tu3);
 
   mask0_1 = vcombine_s16(mask0, mask1);
   mask2_3 = vcombine_s16(mask2, mask3);
@@ -150,9 +153,10 @@ void aom_lowbd_blend_a64_d16_mask_neon(
   assert(IS_POWER_OF_TWO(h));
   assert(IS_POWER_OF_TWO(w));
 
-  uint8x8_t s0, s1, s2, s3;
-  uint32x2_t tu0 = vdup_n_u32(0), tu1 = vdup_n_u32(0), tu2 = vdup_n_u32(0),
-             tu3 = vdup_n_u32(0);
+  uint8x8_t s0 = vdup_n_u8(0);
+  uint8x8_t s1 = vdup_n_u8(0);
+  uint8x8_t s2 = vdup_n_u8(0);
+  uint8x8_t s3 = vdup_n_u8(0);
   uint8x16_t t0, t1, t2, t3, t4, t5, t6, t7;
   int16x8_t mask0, mask1, mask2, mask3;
   int16x8_t mask4, mask5, mask6, mask7;
@@ -197,10 +201,10 @@ void aom_lowbd_blend_a64_d16_mask_neon(
       } while (i < h);
     } else {
       do {
-        load_unaligned_u8_4x4(mask_tmp, mask_stride, &tu0, &tu1);
+        load_unaligned_u8_4x4(mask_tmp, mask_stride, &s0, &s1);
 
-        mask0 = vreinterpretq_s16_u16(vmovl_u8(vreinterpret_u8_u32(tu0)));
-        mask1 = vreinterpretq_s16_u16(vmovl_u8(vreinterpret_u8_u32(tu1)));
+        mask0 = vreinterpretq_s16_u16(vmovl_u8(s0));
+        mask1 = vreinterpretq_s16_u16(vmovl_u8(s1));
 
         mask0_low = vget_low_s16(mask0);
         mask1_low = vget_high_s16(mask0);
@@ -412,14 +416,9 @@ void aom_lowbd_blend_a64_d16_mask_neon(
       } while (i < h);
     } else {
       do {
-        load_unaligned_u8_4x4(mask_tmp, 2 * mask_stride, &tu0, &tu1);
-        load_unaligned_u8_4x4(mask_tmp + mask_stride, 2 * mask_stride, &tu2,
-                              &tu3);
-
-        s0 = vreinterpret_u8_u32(tu0);
-        s1 = vreinterpret_u8_u32(tu1);
-        s2 = vreinterpret_u8_u32(tu2);
-        s3 = vreinterpret_u8_u32(tu3);
+        load_unaligned_u8_4x4(mask_tmp, 2 * mask_stride, &s0, &s1);
+        load_unaligned_u8_4x4(mask_tmp + mask_stride, 2 * mask_stride, &s2,
+                              &s3);
 
         mask0 = vreinterpretq_s16_u16(vaddl_u8(s0, s2));
         mask1 = vreinterpretq_s16_u16(vaddl_u8(s1, s3));
@@ -442,6 +441,260 @@ void aom_lowbd_blend_a64_d16_mask_neon(
         src0_tmp += (4 * src0_stride);
         src1_tmp += (4 * src1_stride);
       } while (i < h);
+    }
+  }
+}
+
+void aom_blend_a64_mask_neon(uint8_t *dst, uint32_t dst_stride,
+                             const uint8_t *src0, uint32_t src0_stride,
+                             const uint8_t *src1, uint32_t src1_stride,
+                             const uint8_t *mask, uint32_t mask_stride, int w,
+                             int h, int subw, int subh) {
+  assert(IMPLIES(src0 == dst, src0_stride == dst_stride));
+  assert(IMPLIES(src1 == dst, src1_stride == dst_stride));
+
+  assert(h >= 1);
+  assert(w >= 1);
+  assert(IS_POWER_OF_TWO(h));
+  assert(IS_POWER_OF_TWO(w));
+
+  if ((subw | subh) == 0) {
+    if (w > 8) {
+      do {
+        int i = 0;
+        do {
+          uint8x16_t m0 = vld1q_u8(mask + i);
+          uint8x16_t s0 = vld1q_u8(src0 + i);
+          uint8x16_t s1 = vld1q_u8(src1 + i);
+
+          uint8x16_t blend = alpha_blend_a64_u8x16(m0, s0, s1);
+
+          vst1q_u8(dst + i, blend);
+          i += 16;
+        } while (i < w);
+
+        mask += mask_stride;
+        src0 += src0_stride;
+        src1 += src1_stride;
+        dst += dst_stride;
+      } while (--h != 0);
+    } else if (w == 8) {
+      do {
+        uint8x8_t m0 = vld1_u8(mask);
+        uint8x8_t s0 = vld1_u8(src0);
+        uint8x8_t s1 = vld1_u8(src1);
+
+        uint8x8_t blend = alpha_blend_a64_u8x8(m0, s0, s1);
+
+        vst1_u8(dst, blend);
+
+        mask += mask_stride;
+        src0 += src0_stride;
+        src1 += src1_stride;
+        dst += dst_stride;
+      } while (--h != 0);
+    } else {
+      do {
+        uint8x8_t m0 = load_unaligned_u8_4x2(mask, mask_stride);
+        uint8x8_t s0 = load_unaligned_u8_4x2(src0, src0_stride);
+        uint8x8_t s1 = load_unaligned_u8_4x2(src1, src1_stride);
+
+        uint8x8_t blend = alpha_blend_a64_u8x8(m0, s0, s1);
+
+        store_unaligned_u8_4x2(dst, dst_stride, blend);
+
+        mask += 2 * mask_stride;
+        src0 += 2 * src0_stride;
+        src1 += 2 * src1_stride;
+        dst += 2 * dst_stride;
+        h -= 2;
+      } while (h != 0);
+    }
+  } else if ((subw & subh) == 1) {
+    if (w > 8) {
+      do {
+        int i = 0;
+        do {
+          uint8x16_t m0 = vld1q_u8(mask + 0 * mask_stride + 2 * i);
+          uint8x16_t m1 = vld1q_u8(mask + 1 * mask_stride + 2 * i);
+          uint8x16_t m2 = vld1q_u8(mask + 0 * mask_stride + 2 * i + 16);
+          uint8x16_t m3 = vld1q_u8(mask + 1 * mask_stride + 2 * i + 16);
+          uint8x16_t s0 = vld1q_u8(src0 + i);
+          uint8x16_t s1 = vld1q_u8(src1 + i);
+
+          uint8x16_t m_avg = avg_blend_pairwise_u8x16_4(m0, m1, m2, m3);
+          uint8x16_t blend = alpha_blend_a64_u8x16(m_avg, s0, s1);
+
+          vst1q_u8(dst + i, blend);
+
+          i += 16;
+        } while (i < w);
+
+        mask += 2 * mask_stride;
+        src0 += src0_stride;
+        src1 += src1_stride;
+        dst += dst_stride;
+      } while (--h != 0);
+    } else if (w == 8) {
+      do {
+        uint8x8_t m0 = vld1_u8(mask + 0 * mask_stride);
+        uint8x8_t m1 = vld1_u8(mask + 1 * mask_stride);
+        uint8x8_t m2 = vld1_u8(mask + 0 * mask_stride + 8);
+        uint8x8_t m3 = vld1_u8(mask + 1 * mask_stride + 8);
+        uint8x8_t s0 = vld1_u8(src0);
+        uint8x8_t s1 = vld1_u8(src1);
+
+        uint8x8_t m_avg = avg_blend_pairwise_u8x8_4(m0, m1, m2, m3);
+        uint8x8_t blend = alpha_blend_a64_u8x8(m_avg, s0, s1);
+
+        vst1_u8(dst, blend);
+
+        mask += 2 * mask_stride;
+        src0 += src0_stride;
+        src1 += src1_stride;
+        dst += dst_stride;
+      } while (--h != 0);
+    } else {
+      do {
+        uint8x8_t m0 = vld1_u8(mask + 0 * mask_stride);
+        uint8x8_t m1 = vld1_u8(mask + 1 * mask_stride);
+        uint8x8_t m2 = vld1_u8(mask + 2 * mask_stride);
+        uint8x8_t m3 = vld1_u8(mask + 3 * mask_stride);
+        uint8x8_t s0 = load_unaligned_u8_4x2(src0, src0_stride);
+        uint8x8_t s1 = load_unaligned_u8_4x2(src1, src1_stride);
+
+        uint8x8_t m_avg = avg_blend_pairwise_u8x8_4(m0, m1, m2, m3);
+        uint8x8_t blend = alpha_blend_a64_u8x8(m_avg, s0, s1);
+
+        store_unaligned_u8_4x2(dst, dst_stride, blend);
+
+        mask += 4 * mask_stride;
+        src0 += 2 * src0_stride;
+        src1 += 2 * src1_stride;
+        dst += 2 * dst_stride;
+        h -= 2;
+      } while (h != 0);
+    }
+  } else if (subw == 1 && subh == 0) {
+    if (w > 8) {
+      do {
+        int i = 0;
+
+        do {
+          uint8x16_t m0 = vld1q_u8(mask + 2 * i);
+          uint8x16_t m1 = vld1q_u8(mask + 2 * i + 16);
+          uint8x16_t s0 = vld1q_u8(src0 + i);
+          uint8x16_t s1 = vld1q_u8(src1 + i);
+
+          uint8x16_t m_avg = avg_blend_pairwise_u8x16(m0, m1);
+          uint8x16_t blend = alpha_blend_a64_u8x16(m_avg, s0, s1);
+
+          vst1q_u8(dst + i, blend);
+
+          i += 16;
+        } while (i < w);
+
+        mask += mask_stride;
+        src0 += src0_stride;
+        src1 += src1_stride;
+        dst += dst_stride;
+      } while (--h != 0);
+    } else if (w == 8) {
+      do {
+        uint8x8_t m0 = vld1_u8(mask);
+        uint8x8_t m1 = vld1_u8(mask + 8);
+        uint8x8_t s0 = vld1_u8(src0);
+        uint8x8_t s1 = vld1_u8(src1);
+
+        uint8x8_t m_avg = avg_blend_pairwise_u8x8(m0, m1);
+        uint8x8_t blend = alpha_blend_a64_u8x8(m_avg, s0, s1);
+
+        vst1_u8(dst, blend);
+
+        mask += mask_stride;
+        src0 += src0_stride;
+        src1 += src1_stride;
+        dst += dst_stride;
+      } while (--h != 0);
+    } else {
+      do {
+        uint8x8_t m0 = vld1_u8(mask + 0 * mask_stride);
+        uint8x8_t m1 = vld1_u8(mask + 1 * mask_stride);
+        uint8x8_t s0 = load_unaligned_u8_4x2(src0, src0_stride);
+        uint8x8_t s1 = load_unaligned_u8_4x2(src1, src1_stride);
+
+        uint8x8_t m_avg = avg_blend_pairwise_u8x8(m0, m1);
+        uint8x8_t blend = alpha_blend_a64_u8x8(m_avg, s0, s1);
+
+        store_unaligned_u8_4x2(dst, dst_stride, blend);
+
+        mask += 2 * mask_stride;
+        src0 += 2 * src0_stride;
+        src1 += 2 * src1_stride;
+        dst += 2 * dst_stride;
+        h -= 2;
+      } while (h != 0);
+    }
+  } else {
+    if (w > 8) {
+      do {
+        int i = 0;
+        do {
+          uint8x16_t m0 = vld1q_u8(mask + 0 * mask_stride + i);
+          uint8x16_t m1 = vld1q_u8(mask + 1 * mask_stride + i);
+          uint8x16_t s0 = vld1q_u8(src0 + i);
+          uint8x16_t s1 = vld1q_u8(src1 + i);
+
+          uint8x16_t m_avg = avg_blend_u8x16(m0, m1);
+          uint8x16_t blend = alpha_blend_a64_u8x16(m_avg, s0, s1);
+
+          vst1q_u8(dst + i, blend);
+
+          i += 16;
+        } while (i < w);
+
+        mask += 2 * mask_stride;
+        src0 += src0_stride;
+        src1 += src1_stride;
+        dst += dst_stride;
+      } while (--h != 0);
+    } else if (w == 8) {
+      do {
+        uint8x8_t m0 = vld1_u8(mask + 0 * mask_stride);
+        uint8x8_t m1 = vld1_u8(mask + 1 * mask_stride);
+        uint8x8_t s0 = vld1_u8(src0);
+        uint8x8_t s1 = vld1_u8(src1);
+
+        uint8x8_t m_avg = avg_blend_u8x8(m0, m1);
+        uint8x8_t blend = alpha_blend_a64_u8x8(m_avg, s0, s1);
+
+        vst1_u8(dst, blend);
+
+        mask += 2 * mask_stride;
+        src0 += src0_stride;
+        src1 += src1_stride;
+        dst += dst_stride;
+      } while (--h != 0);
+    } else {
+      do {
+        uint8x8_t m0_2 =
+            load_unaligned_u8_4x2(mask + 0 * mask_stride, 2 * mask_stride);
+        uint8x8_t m1_3 =
+            load_unaligned_u8_4x2(mask + 1 * mask_stride, 2 * mask_stride);
+        uint8x8_t s0 = load_unaligned_u8_4x2(src0, src0_stride);
+        uint8x8_t s1 = load_unaligned_u8_4x2(src1, src1_stride);
+
+        uint8x8_t m_avg = avg_blend_u8x8(m0_2, m1_3);
+        uint8x8_t blend = alpha_blend_a64_u8x8(m_avg, s0, s1);
+
+        store_unaligned_u8_4x2(dst, dst_stride, blend);
+
+        mask += 4 * mask_stride;
+        src0 += 2 * src0_stride;
+        src1 += 2 * src1_stride;
+        dst += 2 * dst_stride;
+        h -= 2;
+      } while (h != 0);
     }
   }
 }

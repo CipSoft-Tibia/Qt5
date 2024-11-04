@@ -6,6 +6,7 @@ default	rel
 %define XMMWORD
 %define YMMWORD
 %define ZMMWORD
+%define _CET_ENDBR
 
 %ifdef BORINGSSL_PREFIX
 %include "boringssl_prefix_symbols_nasm.inc"
@@ -18,6 +19,7 @@ global	aes_hw_encrypt
 ALIGN	16
 aes_hw_encrypt:
 
+_CET_ENDBR
 %ifdef BORINGSSL_DISPATCH_TEST
 EXTERN	BORINGSSL_function_hit
 	mov	BYTE[((BORINGSSL_function_hit+1))],1
@@ -48,6 +50,7 @@ global	aes_hw_decrypt
 ALIGN	16
 aes_hw_decrypt:
 
+_CET_ENDBR
 	movups	xmm2,XMMWORD[rcx]
 	mov	eax,DWORD[240+r8]
 	movups	xmm0,XMMWORD[r8]
@@ -546,6 +549,7 @@ $L$SEH_begin_aes_hw_ecb_encrypt:
 
 
 
+_CET_ENDBR
 	lea	rsp,[((-88))+rsp]
 	movaps	XMMWORD[rsp],xmm6
 	movaps	XMMWORD[16+rsp],xmm7
@@ -919,6 +923,7 @@ $L$SEH_begin_aes_hw_ctr32_encrypt_blocks:
 
 
 
+_CET_ENDBR
 %ifdef BORINGSSL_DISPATCH_TEST
 	mov	BYTE[BORINGSSL_function_hit],1
 %endif
@@ -1307,6 +1312,8 @@ $L$ctr32_enc_done:
 	pxor	xmm13,xmm0
 	movdqu	xmm15,XMMWORD[80+rdi]
 	pxor	xmm14,xmm0
+	prefetcht0	[448+rdi]
+	prefetcht0	[512+rdi]
 	pxor	xmm15,xmm0
 	DB	102,15,56,220,209
 	DB	102,15,56,220,217
@@ -1536,6 +1543,7 @@ $L$SEH_begin_aes_hw_cbc_encrypt:
 
 
 
+_CET_ENDBR
 	test	rdx,rdx
 	jz	NEAR $L$cbc_ret
 
@@ -2157,6 +2165,7 @@ global	aes_hw_set_decrypt_key
 ALIGN	16
 aes_hw_set_decrypt_key:
 
+_CET_ENDBR
 	DB	0x48,0x83,0xEC,0x08
 
 	call	__aesni_set_encrypt_key
@@ -2202,6 +2211,7 @@ ALIGN	16
 aes_hw_set_encrypt_key:
 __aesni_set_encrypt_key:
 
+_CET_ENDBR
 %ifdef BORINGSSL_DISPATCH_TEST
 	mov	BYTE[((BORINGSSL_function_hit+3))],1
 %endif
@@ -2575,6 +2585,7 @@ $L$key_expansion_256b:
 	DB	0F3h,0C3h		;repret
 
 
+section	.rdata rdata align=8
 ALIGN	64
 $L$bswap_mask:
 	DB	15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
@@ -2600,6 +2611,8 @@ $L$key_rcon1b:
 	DB	32,98,121,32,60,97,112,112,114,111,64,111,112,101,110,115
 	DB	115,108,46,111,114,103,62,0
 ALIGN	64
+section	.text
+
 EXTERN	__imp_RtlVirtualUnwind
 
 ALIGN	16

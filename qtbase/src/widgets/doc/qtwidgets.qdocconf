@@ -39,7 +39,8 @@ depends += \
     qtlinguist \
     qthelp \
     qtopengl \
-    qtshadertools
+    qtshadertools \
+    qttestlib
 
 headerdirs  += ..
 
@@ -83,3 +84,6 @@ manifestmeta.highlighted.names = \
 manifestmeta.highlighted.names += \
     "QtWidgets/System Tray Icon Example" \
     "QtWidgets/Taking a Screenshot"
+
+# Enforce zero documentation warnings
+warninglimit = 0

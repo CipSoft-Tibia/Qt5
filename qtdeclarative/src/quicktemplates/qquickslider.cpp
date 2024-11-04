@@ -250,6 +250,8 @@ void QQuickSliderPrivate::itemDestroyed(QQuickItem *item)
 QQuickSlider::QQuickSlider(QQuickItem *parent)
     : QQuickControl(*(new QQuickSliderPrivate), parent)
 {
+    Q_D(QQuickSlider);
+    d->setSizePolicy(QLayoutPolicy::Preferred, QLayoutPolicy::Fixed);
     setActiveFocusOnTab(true);
 #ifdef Q_OS_MACOS
     setFocusPolicy(Qt::TabFocus);
@@ -533,6 +535,11 @@ void QQuickSlider::setOrientation(Qt::Orientation orientation)
     if (d->orientation == orientation)
         return;
 
+    if (orientation == Qt::Horizontal)
+        d->setSizePolicy(QLayoutPolicy::Preferred, QLayoutPolicy::Fixed);
+    else
+        d->setSizePolicy(QLayoutPolicy::Fixed, QLayoutPolicy::Preferred);
+
     d->orientation = orientation;
     emit orientationChanged();
 }
@@ -662,7 +669,7 @@ void QQuickSlider::decrease()
 
     This property holds the threshold (in logical pixels) at which a touch drag event will be initiated.
     The mouse drag threshold won't be affected.
-    The default value is \c Qt.styleHints.startDragDistance.
+    The default value is \c Application.styleHints.startDragDistance.
 
     \sa QStyleHints
 */

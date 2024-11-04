@@ -1,15 +1,17 @@
-// Copyright 2021 The Chromium Authors
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 package org.chromium.base.jank_tracker;
 
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.robolectric.annotation.Config;
@@ -37,18 +39,22 @@ public class JankMetricUMARecorderTest {
 
     @Test
     public void testRecordMetricsToNative() {
-        long[] timestampsNs = new long[] {1_000_000_000L, 2_000_000_000L, 3_000_000_000L};
         long[] durationsNs = new long[] {5_000_000L, 8_000_000L, 30_000_000L};
-        long[] jankBurstsNs = new long[] {30_000L};
-        int missedFrames = 3;
+        boolean[] jankyFrames = new boolean[] {false, false, true};
 
-        JankMetrics metric = new JankMetrics(timestampsNs, durationsNs, jankBurstsNs, missedFrames);
+        JankMetrics metric = new JankMetrics(durationsNs, jankyFrames);
 
-        JankMetricUMARecorder.recordJankMetricsToUMA(metric, JankScenario.OMNIBOX_FOCUS);
+        JankMetricUMARecorder.recordJankMetricsToUMA(metric, 0, 1000);
 
         // Ensure that the relevant fields are sent down to native.
-        verify(mNativeMock)
-                .recordJankMetrics(
-                        "OmniboxFocus", timestampsNs, durationsNs, jankBurstsNs, missedFrames);
+        verify(mNativeMock).recordJankMetrics(durationsNs, jankyFrames, 0, 1000);
+    }
+
+    @Test
+    public void testRecordNullMetrics() {
+        JankMetricUMARecorder.recordJankMetricsToUMA(null, 0, 0);
+        verify(mNativeMock, never())
+                .recordJankMetrics(ArgumentMatchers.any(), ArgumentMatchers.any(),
+                        ArgumentMatchers.anyLong(), ArgumentMatchers.anyLong());
     }
 }

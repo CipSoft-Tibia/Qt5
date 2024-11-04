@@ -224,5 +224,15 @@ message PowerSupplyProperties {
   // Unused unless Adaptive Charging is supported on the system.
   optional bool adaptive_charging_heuristic_enabled = 35;
 
-  // Next ID to use: 36
+  // Indicates whether charging is limited by Charge Limit, which prevents
+  // charging over a default battery percentage of 80%. Percentage is
+  // configurable via |PowerManagementPolicy::adaptive_charging_hold_percent|.
+  // Set to true if the battery percentage is close to or above the limit
+  // (defined in the code as greater than or equal to
+  // |PowerManagementPolicy::adaptive_charging_hold_percent| -
+  // |PowerManagementPolicy::adaptive_charging_hold_delta_percent| - 1) and
+  // Charge Limit is enabled.
+  optional bool charge_limited = 36;
+
+  // Next ID to use: 37
 }

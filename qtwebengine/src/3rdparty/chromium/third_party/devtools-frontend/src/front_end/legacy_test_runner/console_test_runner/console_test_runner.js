@@ -2,17 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import '../test_runner/test_runner.js';
 import '../../panels/console/console-legacy.js';
 import '../../ui/legacy/components/object_ui/object_ui-legacy.js';
 
 import * as ConsoleCounters from '../../panels/console_counters/console_counters.js';
+import {TestRunner} from '../test_runner/test_runner.js';
 
 /**
  * @fileoverview using private properties isn't a Closure violation in tests.
  */
 
-self.ConsoleTestRunner = self.ConsoleTestRunner || {};
+export const ConsoleTestRunner = {};
 
 /** @typedef {function(!Element, !SDK.ConsoleMessage=):string} */
 ConsoleTestRunner.Formatter;
@@ -541,7 +541,7 @@ ConsoleTestRunner.waitUntilConsoleEditorLoaded = function() {
  * @param {!Function} callback
  */
 ConsoleTestRunner.waitUntilMessageReceived = function(callback) {
-  TestRunner.addSniffer(self.SDK.consoleModel, 'addMessage', callback, false);
+  TestRunner.addSniffer(SDK.ConsoleModel.prototype, 'addMessage', callback, false);
 };
 
 /**
@@ -560,10 +560,10 @@ ConsoleTestRunner.waitUntilNthMessageReceived = function(count, callback) {
     if (--count === 0) {
       TestRunner.safeWrap(callback)();
     } else {
-      TestRunner.addSniffer(self.SDK.consoleModel, 'addMessage', override, false);
+      TestRunner.addSniffer(SDK.ConsoleModel.prototype, 'addMessage', override, false);
     }
   }
-  TestRunner.addSniffer(self.SDK.consoleModel, 'addMessage', override, false);
+  TestRunner.addSniffer(SDK.ConsoleModel.prototype, 'addMessage', override, false);
 };
 
 /**

@@ -1,5 +1,5 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef TST_QMLTYPEREGISTRAR_H
 #define TST_QMLTYPEREGISTRAR_H
@@ -461,6 +461,29 @@ public:
     int revisioned() const { return 24; }
 };
 
+class AddedInLateMinorVersion : public QObject
+{
+    Q_OBJECT
+    QML_ADDED_IN_VERSION(1, 5)
+    Q_PROPERTY(int revisioned READ revisioned CONSTANT)
+    QML_NAMED_ELEMENT(MinorVersioned)
+public:
+    AddedInLateMinorVersion(QObject *parent = nullptr) : QObject(parent) {}
+    int revisioned() const { return 123; }
+};
+
+class RemovedInLateMinorVersion : public QObject
+{
+    Q_OBJECT
+    QML_ADDED_IN_VERSION(1, 2)
+    QML_REMOVED_IN_VERSION(1, 4)
+    Q_PROPERTY(int revisioned READ revisioned CONSTANT)
+    QML_NAMED_ELEMENT(MinorVersioned)
+public:
+    RemovedInLateMinorVersion(QObject *parent = nullptr) : QObject(parent) { }
+    int revisioned() const { return 456; }
+};
+
 class RemovedInEarlyVersion : public AddedInLateVersion
 {
     Q_OBJECT
@@ -469,6 +492,23 @@ class RemovedInEarlyVersion : public AddedInLateVersion
     QML_REMOVED_IN_VERSION(1, 8)
 public:
     RemovedInEarlyVersion(QObject *parent = nullptr) : AddedInLateVersion(parent) {}
+};
+
+class AddedIn1_5 : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    QML_ADDED_IN_VERSION(1, 5)
+};
+
+// Slightly absurd. The reason for such a thing may be a change in the versioning
+// scheme of the base class. We still have to retain all of the version information
+// so that you can at least use version 1.5.
+class AddedIn1_0 : public AddedIn1_5
+{
+    Q_OBJECT
+    QML_ELEMENT
+    QML_ADDED_IN_VERSION(1, 0)
 };
 
 class HasResettableProperty : public QObject
@@ -516,6 +556,17 @@ private:
     int m_i;
 };
 
+class Structured
+{
+    Q_GADGET
+    QML_VALUE_TYPE(structured)
+    QML_STRUCTURED_VALUE
+    Q_PROPERTY(int i MEMBER m_i FINAL)
+
+private:
+    int m_i;
+};
+
 class AnonymousAndUncreatable : public QObject
 {
      Q_OBJECT
@@ -539,6 +590,24 @@ class TypedEnum : public QObject
     Q_OBJECT
     QML_ELEMENT
 public:
+    enum UChar: uchar       { V0 = 41 };
+    Q_ENUM(UChar)
+    enum Int8_T: int8_t     { V1 = 42 };
+    Q_ENUM(Int8_T)
+    enum UInt8_T: uint8_t   { V2 = 43 };
+    Q_ENUM(UInt8_T)
+    enum Int16_T: int16_t   { V3 = 44 };
+    Q_ENUM(Int16_T)
+    enum UInt16_T: uint16_t { V4 = 45 };
+    Q_ENUM(UInt16_T)
+    enum Int32_T: int32_t   { V5 = 46 };
+    Q_ENUM(Int32_T)
+    enum UInt32_T: uint32_t { V6 = 47 };
+    Q_ENUM(UInt32_T)
+
+    // TODO: We cannot handle 64bit numbers as underlying types for enums.
+    //       Luckily, moc generates bad code for those. So we don't have to, for now.
+
     enum S: qint16 {
         A, B, C
     };
@@ -668,6 +737,54 @@ struct NotNamespaceForeign {
     QML_ELEMENT
 };
 
+class NameExplosion : public QObject
+{
+    Q_OBJECT
+    QML_NAMED_ELEMENT(Name1)
+    QML_NAMED_ELEMENT(Name2)
+    QML_ELEMENT
+    QML_ANONYMOUS
+};
+
+class JavaScriptExtension : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    Q_CLASSINFO("QML.Extended", "SymbolPrototype")
+    Q_CLASSINFO("QML.ExtensionIsJavaScript", "true")
+};
+
+class LongNumberTypes : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    Q_PROPERTY(qint64   a MEMBER m_a)
+    Q_PROPERTY(int64_t  b MEMBER m_b)
+    Q_PROPERTY(quint64  c MEMBER m_c)
+    Q_PROPERTY(uint64_t d MEMBER m_d)
+
+    qint64   m_a = 1;
+    int64_t  m_b = 2;
+    quint64  m_c = 3;
+    uint64_t m_d = 4;
+};
+
+struct EnumList
+{
+    Q_GADGET
+    QML_ANONYMOUS
+    QML_FOREIGN(QList<NetworkManager::NM>)
+    QML_SEQUENTIAL_CONTAINER(NetworkManager::NM)
+};
+
+class ConstInvokable : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+public:
+    Q_INVOKABLE const QObject *getObject() { return nullptr; }
+};
+
 class tst_qmltyperegistrar : public QObject
 {
     Q_OBJECT
@@ -712,12 +829,14 @@ private slots:
 
     void addRemoveVersion_data();
     void addRemoveVersion();
+    void addInMinorVersion();
     void typeInModuleMajorVersionZero();
     void resettableProperty();
     void duplicateExportWarnings();
     void clonedSignal();
     void baseVersionInQmltypes();
     void constructibleValueType();
+    void structuredValueType();
     void anonymousAndUncreatable();
     void omitInvisible();
     void typedEnum();
@@ -726,6 +845,17 @@ private slots:
     void sequenceRegistration();
     void valueTypeSelfReference();
     void foreignNamespaceFromGadget();
+
+    void nameExplosion_data();
+    void nameExplosion();
+
+    void javaScriptExtension();
+
+    void consistencyWarnings();
+    void relatedAddedInVersion();
+    void longNumberTypes();
+    void enumList();
+    void constReturnType();
 
 private:
     QByteArray qmltypesData;

@@ -22,9 +22,13 @@ quic_trace::EncryptionLevel EncryptionLevelToProto(EncryptionLevel level) {
     case ENCRYPTION_FORWARD_SECURE:
       return quic_trace::ENCRYPTION_1RTT;
     case NUM_ENCRYPTION_LEVELS:
-      QUIC_BUG(quic_bug_10284_1) << "Invalid encryption level specified";
+      QUIC_BUG(EncryptionLevelToProto.Invalid)
+          << "Invalid encryption level specified";
       return quic_trace::ENCRYPTION_UNKNOWN;
   }
+  QUIC_BUG(EncryptionLevelToProto.Unknown)
+      << "Unknown encryption level specified " << static_cast<int>(level);
+  return quic_trace::ENCRYPTION_UNKNOWN;
 }
 
 QuicTraceVisitor::QuicTraceVisitor(const QuicConnection* connection)
@@ -48,7 +52,8 @@ void QuicTraceVisitor::OnPacketSent(
     QuicPacketNumber packet_number, QuicPacketLength packet_length,
     bool /*has_crypto_handshake*/, TransmissionType /*transmission_type*/,
     EncryptionLevel encryption_level, const QuicFrames& retransmittable_frames,
-    const QuicFrames& /*nonretransmittable_frames*/, QuicTime sent_time) {
+    const QuicFrames& /*nonretransmittable_frames*/, QuicTime sent_time,
+    uint32_t /*batch_id*/) {
   quic_trace::Event* event = trace_.add_events();
   event->set_event_type(quic_trace::PACKET_SENT);
   event->set_time_us(ConvertTimestampToRecordedFormat(sent_time));

@@ -5,9 +5,11 @@
 import 'chrome://resources/cr_components/managed_footnote/managed_footnote.js';
 import './item.js';
 import './shared_style.css.js';
+import './review_panel.js';
 
-import {CrContainerShadowMixin} from 'chrome://resources/cr_elements/cr_container_shadow_mixin.js';
 import {I18nMixin} from 'chrome://resources/cr_elements/i18n_mixin.js';
+import {assert} from 'chrome://resources/js/assert_ts.js';
+import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {IronA11yAnnouncer} from 'chrome://resources/polymer/v3_0/iron-a11y-announcer/iron-a11y-announcer.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
@@ -16,8 +18,7 @@ import {getTemplate} from './item_list.html.js';
 
 type Filter = (info: chrome.developerPrivate.ExtensionInfo) => boolean;
 
-const ExtensionsItemListElementBase =
-    I18nMixin(CrContainerShadowMixin(PolymerElement));
+const ExtensionsItemListElementBase = I18nMixin(PolymerElement);
 
 export class ExtensionsItemListElement extends ExtensionsItemListElementBase {
   static get is() {
@@ -63,6 +64,16 @@ export class ExtensionsItemListElement extends ExtensionsItemListElementBase {
         type: Number,
         value: 0,
       },
+
+      showSafetyCheckReviewPanel_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('safetyCheckShowReviewPanel'),
+      },
+
+      hasSafetyCheckTriggeringExtension_: {
+        type: Boolean,
+        computed: 'computeHasSafetyCheckTriggeringExtension_(extensions)',
+      },
     };
   }
 
@@ -75,6 +86,8 @@ export class ExtensionsItemListElement extends ExtensionsItemListElementBase {
   private maxColumns_: number;
   private shownAppsCount_: number;
   private shownExtensionsCount_: number;
+  private showSafetyCheckReviewPanel_: boolean;
+  private hasSafetyCheckTriggeringExtension_: boolean;
 
   getDetailsButton(id: string): HTMLElement|null {
     const item =
@@ -82,10 +95,28 @@ export class ExtensionsItemListElement extends ExtensionsItemListElementBase {
     return item && item.getDetailsButton();
   }
 
+  getRemoveButton(id: string): HTMLElement|null {
+    const item =
+        this.shadowRoot!.querySelector<ExtensionsItemElement>(`#${id}`);
+    return item && item.getRemoveButton();
+  }
+
   getErrorsButton(id: string): HTMLElement|null {
     const item =
         this.shadowRoot!.querySelector<ExtensionsItemElement>(`#${id}`);
     return item && item.getErrorsButton();
+  }
+
+  /**
+   * Focus the remove button for the item matching `id`. If the remove button is
+   * not visible, focus the details button instead.
+   */
+  focusItemButton(id: string) {
+    const item =
+        this.shadowRoot!.querySelector<ExtensionsItemElement>(`#${id}`);
+    assert(item);
+    const buttonToFocus = item.getRemoveButton() || item.getDetailsButton();
+    buttonToFocus!.focus();
   }
 
   /**
@@ -104,6 +135,20 @@ export class ExtensionsItemListElement extends ExtensionsItemListElementBase {
                s => s.toLowerCase().includes(formattedFilter));
   }
 
+  private computeHasSafetyCheckTriggeringExtension_(): boolean {
+    if (!this.extensions) {
+      return false;
+    }
+    for (const extension of this.extensions) {
+      if (!!extension.safetyCheckText &&
+          !!extension.safetyCheckText.panelString &&
+          this.showSafetyCheckReviewPanel_) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private shouldShowEmptyItemsMessage_() {
     if (!this.apps || !this.extensions) {
       return;
@@ -117,7 +162,7 @@ export class ExtensionsItemListElement extends ExtensionsItemListElementBase {
         this.shownExtensionsCount_ === 0;
   }
 
-  private onNoExtensionsTap_(e: Event) {
+  private onNoExtensionsClick_(e: Event) {
     if ((e.target as HTMLElement).tagName === 'A') {
       chrome.metricsPrivate.recordUserAction('Options_GetMoreExtensions');
     }

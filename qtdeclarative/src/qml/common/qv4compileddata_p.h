@@ -43,7 +43,7 @@ QT_BEGIN_NAMESPACE
 // Also change the comment behind the number to describe the latest change. This has the added
 // benefit that if another patch changes the version too, it will result in a merge conflict, and
 // not get removed silently.
-#define QV4_DATA_STRUCTURE_VERSION 0x3D // Reserve special value for "no translation context"
+#define QV4_DATA_STRUCTURE_VERSION 0x3F // Refactor compilation units
 
 class QIODevice;
 class QQmlTypeNameCache;
@@ -1203,7 +1203,7 @@ struct Unit
         ListPropertyAssignReplace
                 = ListPropertyAssignReplaceIfDefault | ListPropertyAssignReplaceIfNotDefault,
         ComponentsBound = 0x200,
-        FunctionSignaturesEnforced = 0x400,
+        FunctionSignaturesIgnored = 0x400,
         NativeMethodsAcceptThisObject = 0x800,
         ValueTypesCopied = 0x1000,
         ValueTypesAddressable = 0x2000,
@@ -1333,6 +1333,20 @@ struct Unit
         return reinterpret_cast<const TranslationData *>(reinterpret_cast<const char *>(this) + offsetToTranslationTable);
     }
 
+    const quint32_le *translationContextIndex() const{
+        if ( translationTableSize == 0)
+            return nullptr;
+        return reinterpret_cast<const quint32_le*>((reinterpret_cast<const char *>(this))
+                                                    + offsetToTranslationTable
+                                                    + translationTableSize * sizeof(CompiledData::TranslationData)); }
+
+    quint32_le *translationContextIndex() {
+        if ( translationTableSize == 0)
+            return nullptr;
+        return reinterpret_cast<quint32_le*>((reinterpret_cast<char *>(this))
+                                                    + offsetToTranslationTable
+                                                    + translationTableSize * sizeof(CompiledData::TranslationData)); }
+
     const ImportEntry *importEntryTable() const { return reinterpret_cast<const ImportEntry *>(reinterpret_cast<const char *>(this) + offsetToImportEntryTable); }
     const ExportEntry *localExportEntryTable() const { return reinterpret_cast<const ExportEntry *>(reinterpret_cast<const char *>(this) + offsetToLocalExportEntryTable); }
     const ExportEntry *indirectExportEntryTable() const { return reinterpret_cast<const ExportEntry *>(reinterpret_cast<const char *>(this) + offsetToIndirectExportEntryTable); }
@@ -1363,28 +1377,6 @@ struct TypeReferenceMap : QHash<int, TypeReference>
         if (it != end())
             return *it;
         return *insert(nameIndex, loc);
-    }
-
-    template <typename Iterator>
-    void collectFromFunctions(Iterator it, Iterator end)
-    {
-        for (; it != end; ++it) {
-            auto formal = it->formalsBegin();
-            auto formalEnd = it->formalsEnd();
-            for ( ; formal != formalEnd; ++formal) {
-                if (!formal->type.indexIsCommonType()) {
-                    TypeReference &r
-                            = this->add(formal->type.typeNameIndexOrCommonType(), it->location);
-                    r.errorWhenNotFound = false;
-                }
-            }
-
-            if (!it->returnType.indexIsCommonType()) {
-                TypeReference &r
-                    = this->add(it->returnType.typeNameIndexOrCommonType(), it->location);
-                r.errorWhenNotFound = false;
-            }
-        }
     }
 
     template <typename CompiledObject>
@@ -1418,54 +1410,20 @@ struct TypeReferenceMap : QHash<int, TypeReference>
             this->add(ic->nameIndex, ic->location);
         }
     }
+
+    template <typename Iterator>
+    void collectFromObjects(Iterator it, Iterator end)
+    {
+        for (; it != end; ++it)
+            collectFromObject(*it);
+    }
 };
 
 using DependentTypesHasher = std::function<QByteArray()>;
 
 // This is how this hooks into the existing structures:
 
-struct CompilationUnitBase
-{
-    Q_DISABLE_COPY(CompilationUnitBase)
-
-    CompilationUnitBase() = default;
-    ~CompilationUnitBase() = default;
-
-    CompilationUnitBase(CompilationUnitBase &&other) noexcept { *this = std::move(other); }
-
-    CompilationUnitBase &operator=(CompilationUnitBase &&other) noexcept
-    {
-        if (this != &other) {
-            runtimeStrings = other.runtimeStrings;
-            other.runtimeStrings = nullptr;
-            constants = other.constants;
-            other.constants = nullptr;
-            runtimeRegularExpressions = other.runtimeRegularExpressions;
-            other.runtimeRegularExpressions = nullptr;
-            runtimeClasses = other.runtimeClasses;
-            other.runtimeClasses = nullptr;
-            imports = other.imports;
-            other.imports = nullptr;
-        }
-        return *this;
-    }
-
-    // pointers either to data->constants() or little-endian memory copy.
-    Heap::String **runtimeStrings = nullptr; // Array
-    const StaticValue* constants = nullptr;
-    QV4::StaticValue *runtimeRegularExpressions = nullptr;
-    Heap::InternalClass **runtimeClasses = nullptr;
-    const StaticValue** imports = nullptr;
-};
-
-Q_STATIC_ASSERT(std::is_standard_layout<CompilationUnitBase>::value);
-Q_STATIC_ASSERT(offsetof(CompilationUnitBase, runtimeStrings) == 0);
-Q_STATIC_ASSERT(offsetof(CompilationUnitBase, constants) == sizeof(QV4::Heap::String **));
-Q_STATIC_ASSERT(offsetof(CompilationUnitBase, runtimeRegularExpressions) == offsetof(CompilationUnitBase, constants) + sizeof(const StaticValue *));
-Q_STATIC_ASSERT(offsetof(CompilationUnitBase, runtimeClasses) == offsetof(CompilationUnitBase, runtimeRegularExpressions) + sizeof(const StaticValue *));
-Q_STATIC_ASSERT(offsetof(CompilationUnitBase, imports) == offsetof(CompilationUnitBase, runtimeClasses) + sizeof(const StaticValue *));
-
-struct CompilationUnit : public CompilationUnitBase
+struct CompilationUnit
 {
     Q_DISABLE_COPY(CompilationUnit)
 
@@ -1473,6 +1431,9 @@ struct CompilationUnit : public CompilationUnitBase
     const QmlUnit *qmlData = nullptr;
     QStringList dynamicStrings;
     const QQmlPrivate::AOTCompiledFunction *aotCompiledFunctions = nullptr;
+
+    // pointers either to data->constants() or little-endian memory copy.
+    const StaticValue *constants = nullptr;
 public:
     using CompiledObject = CompiledData::Object;
 
@@ -1504,9 +1465,6 @@ public:
         delete [] constants;
         constants = nullptr;
 #endif
-
-        delete [] imports;
-        imports = nullptr;
     }
 
     CompilationUnit(CompilationUnit &&other) noexcept
@@ -1522,15 +1480,15 @@ public:
             qmlData = other.qmlData;
             other.qmlData = nullptr;
             dynamicStrings = std::move(other.dynamicStrings);
-            aotCompiledFunctions = other.aotCompiledFunctions;
             other.dynamicStrings.clear();
+            aotCompiledFunctions = other.aotCompiledFunctions;
+            other.aotCompiledFunctions = nullptr;
+            constants = other.constants;
+            other.constants = nullptr;
             m_fileName = std::move(other.m_fileName);
             other.m_fileName.clear();
             m_finalUrlString = std::move(other.m_finalUrlString);
             other.m_finalUrlString.clear();
-            m_module = other.m_module;
-            other.m_module = nullptr;
-            CompilationUnitBase::operator=(std::move(other));
         }
         return *this;
     }
@@ -1580,9 +1538,6 @@ public:
     QString fileName() const { return m_fileName; }
     QString finalUrlString() const { return m_finalUrlString; }
 
-    Heap::Module *module() const { return m_module; }
-    void setModule(Heap::Module *module) { m_module = module; }
-
     QString bindingValueAsString(const CompiledData::Binding *binding) const
     {
         using namespace CompiledData;
@@ -1624,8 +1579,6 @@ public:
 private:
     QString m_fileName; // initialized from data->sourceFileIndex
     QString m_finalUrlString; // initialized from data->finalUrlIndex
-
-    Heap::Module *m_module = nullptr;
 };
 
 class SaveableUnitPointer

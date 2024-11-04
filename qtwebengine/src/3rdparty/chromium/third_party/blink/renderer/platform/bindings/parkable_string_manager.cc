@@ -21,6 +21,7 @@
 #include "third_party/blink/renderer/platform/disk_data_allocator.h"
 #include "third_party/blink/renderer/platform/instrumentation/memory_pressure_listener.h"
 #include "third_party/blink/renderer/platform/scheduler/public/main_thread.h"
+#include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "third_party/blink/renderer/platform/wtf/wtf.h"
@@ -85,7 +86,7 @@ const base::TimeDelta ParkableStringManager::kFirstParkingDelay;
 // static
 ParkableStringManagerDumpProvider*
 ParkableStringManagerDumpProvider::Instance() {
-  static ParkableStringManagerDumpProvider instance;
+  DEFINE_STATIC_LOCAL(ParkableStringManagerDumpProvider, instance, ());
   return &instance;
 }
 
@@ -228,6 +229,9 @@ void ParkableStringManager::RemoveOnMainThread(ParkableStringImpl* string) {
 
   if (string->has_on_disk_data()) {
     data_allocator().Discard(std::move(string->metadata_->on_disk_metadata_));
+    // Now data_allocator may have enough free space for pending compressed
+    // strings. Schedule for them.
+    ScheduleAgingTaskIfNeeded();
   }
 
   delete string;
@@ -322,21 +326,12 @@ size_t ParkableStringManager::Size() const {
 }
 
 void ParkableStringManager::RecordStatisticsAfter5Minutes() const {
-  base::UmaHistogramTimes("Memory.ParkableString.MainThreadTime.5min",
-                          total_unparking_time_);
-  if (base::ThreadTicks::IsSupported()) {
-    base::UmaHistogramTimes("Memory.ParkableString.ParkingThreadTime.5min",
-                            total_parking_thread_time_);
-  }
   Statistics stats = ComputeStatistics();
   base::UmaHistogramCounts100000("Memory.ParkableString.TotalSizeKb.5min",
                                  static_cast<int>(stats.original_size / 1000));
   base::UmaHistogramCounts100000(
       "Memory.ParkableString.CompressedSizeKb.5min",
       static_cast<int>(stats.compressed_size / 1000));
-  size_t savings = stats.compressed_original_size - stats.compressed_size;
-  base::UmaHistogramCounts100000("Memory.ParkableString.SavingsKb.5min",
-                                 static_cast<int>(savings / 1000));
   if (stats.compressed_original_size != 0) {
     int ratio_percentage = static_cast<int>((100 * stats.compressed_size) /
                                             stats.compressed_original_size);
@@ -344,24 +339,14 @@ void ParkableStringManager::RecordStatisticsAfter5Minutes() const {
         "Memory.ParkableString.CompressionRatio.5min", ratio_percentage);
   }
 
-  // May not be usable, e.g. Incognito, permission or write failure.
-  base::UmaHistogramBoolean("Memory.ParkableString.DiskIsUsable.5min",
-                            data_allocator().may_write());
   // These metrics only make sense if the disk allocator is used.
   if (data_allocator().may_write()) {
     base::UmaHistogramTimes("Memory.ParkableString.DiskWriteTime.5min",
                             total_disk_write_time_);
     base::UmaHistogramTimes("Memory.ParkableString.DiskReadTime.5min",
                             total_disk_read_time_);
-
-    base::UmaHistogramCounts100000(
-        "Memory.ParkableString.MemorySavingsKb.5min",
-        std::max(0, static_cast<int>(stats.savings_size)) / 1000);
     base::UmaHistogramCounts100000("Memory.ParkableString.OnDiskSizeKb.5min",
                                    static_cast<int>(stats.on_disk_size / 1000));
-    base::UmaHistogramCounts100000(
-        "Memory.ParkableString.OnDiskFootprintKb.5min",
-        static_cast<int>(data_allocator().disk_footprint()) / 1000);
   }
 }
 
@@ -411,9 +396,10 @@ void ParkableStringManager::ScheduleAgingTaskIfNeeded() {
   if (has_pending_aging_task_)
     return;
 
-  base::TimeDelta delay = base::Seconds(kAgingIntervalInSeconds);
-  if (base::FeatureList::IsEnabled(features::kDelayFirstParkingOfStrings) &&
-      !first_string_aging_was_delayed_) {
+  base::TimeDelta delay = kAgingInterval;
+  // Delay the first aging tick, since this renderer may be short-lived, we do
+  // not want to waste CPU time compressing memory that is going away soon.
+  if (!first_string_aging_was_delayed_) {
     delay = kFirstParkingDelay;
     first_string_aging_was_delayed_ = true;
   }

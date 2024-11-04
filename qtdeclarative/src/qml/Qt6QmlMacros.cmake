@@ -537,13 +537,19 @@ Check https://doc.qt.io/qt-6/qt-cmake-policy-qtp0001.html for policy details."
         if(arg_NAMESPACE)
             list(APPEND type_registration_extra_args NAMESPACE ${arg_NAMESPACE})
         endif()
+        set_target_properties(${target} PROPERTIES _qt_internal_has_qmltypes TRUE)
         _qt_internal_qml_type_registration(${target} ${type_registration_extra_args})
+    else()
+        set_target_properties(${target} PROPERTIES _qt_internal_has_qmltypes FALSE)
     endif()
 
     set(output_targets)
 
     if(NOT arg_NO_GENERATE_QMLDIR)
         _qt_internal_target_generate_qmldir(${target})
+        set_source_files_properties(${arg_OUTPUT_DIRECTORY}/qmldir
+            PROPERTIES GENERATED TRUE
+        )
 
         # Embed qmldir in qrc. The following comments relate mostly to Qt5->6 transition.
         # The requirement to keep the same resource name might no longer apply, but it doesn't
@@ -586,6 +592,14 @@ Check https://doc.qt.io/qt-6/qt-cmake-policy-qtp0001.html for policy details."
                 PREFIX "${prefix}"
                 OUTPUT_TARGETS resource_targets
             )
+
+            # Save the resource name in a property so we can reference it later in a qml plugin
+            # constructor, to avoid discarding the resource if it's in a static library.
+            __qt_internal_sanitize_resource_name(
+                sanitized_qmldir_resource_name "${qmldir_resource_name}")
+            set_property(TARGET ${target} APPEND PROPERTY
+                _qt_qml_module_sanitized_resource_names "${sanitized_qmldir_resource_name}")
+
             list(APPEND output_targets ${resource_targets})
             # If we are adding the same file twice, we need a different resource
             # name for the second one. It has the same QT_RESOURCE_ALIAS but a
@@ -710,6 +724,55 @@ Check https://doc.qt.io/qt-6/qt-cmake-policy-qtp0001.html for policy details."
         endif()
     endforeach()
 
+    if(${QT_QML_GENERATE_QMLLS_INI})
+        if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.19.0")
+            # collect all build dirs obtained from all the qt_add_qml_module calls and
+            # write the .qmlls.ini file in a deferred call
+
+            if(NOT "${arg_OUTPUT_DIRECTORY}" STREQUAL "")
+                set(output_folder "${arg_OUTPUT_DIRECTORY}")
+            else()
+                set(output_folder "${CMAKE_CURRENT_BINARY_DIR}")
+            endif()
+            string(REPLACE "." ";" uri_bits "${arg_URI}")
+            set(build_folder "${output_folder}")
+            foreach(bit IN LISTS uri_bits)
+                get_filename_component(build_folder "${build_folder}" DIRECTORY)
+            endforeach()
+            get_directory_property(_qmlls_ini_build_folders _qmlls_ini_build_folders)
+            list(APPEND _qmlls_ini_build_folders "${build_folder}")
+            set_directory_properties(PROPERTIES _qmlls_ini_build_folders "${_qmlls_ini_build_folders}")
+
+            # if no call with id 'qmlls_ini_generation_id' was deferred for this directory, do it now
+            cmake_language(DEFER GET_CALL qmlls_ini_generation_id call)
+            if("${call}" STREQUAL "")
+                cmake_language(EVAL CODE
+                    "cmake_language(DEFER ID qmlls_ini_generation_id CALL _qt_internal_write_deferred_qmlls_ini_file)"
+                )
+            endif()
+        else()
+            get_property(__qt_internal_generate_qmlls_ini_warning GLOBAL PROPERTY __qt_internal_generate_qmlls_ini_warning)
+            if (NOT "${__qt_internal_generate_qmlls_ini_warning}")
+                message(WARNING "QT_QML_GENERATE_QMLLS_INI is not supported on CMake versions < 3.19, disabling...")
+                set_property(GLOBAL PROPERTY __qt_internal_generate_qmlls_ini_warning ON)
+            endif()
+        endif()
+    endif()
+endfunction()
+
+function(_qt_internal_write_deferred_qmlls_ini_file)
+    set(qmlls_ini_file "${CMAKE_CURRENT_SOURCE_DIR}/.qmlls.ini")
+    get_directory_property(_qmlls_ini_build_folders _qmlls_ini_build_folders)
+    list(REMOVE_DUPLICATES _qmlls_ini_build_folders)
+    if(NOT CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+        # replace cmake list separator ';' with unix path separator ':'
+        string(REPLACE ";" ":" concatenated_build_dirs "${_qmlls_ini_build_folders}")
+    else()
+        # cmake list separator and windows path separator are both ';', so no replacement needed
+        set(concatenated_build_dirs "${_qmlls_ini_build_folders}")
+    endif()
+    set(file_content "[General]\nbuildDir=${concatenated_build_dirs}\nno-cmake-calls=false\n")
+    file(CONFIGURE OUTPUT "${qmlls_ini_file}" CONTENT "${file_content}")
 endfunction()
 
 if(NOT QT_NO_CREATE_VERSIONLESS_FUNCTIONS)
@@ -758,6 +821,42 @@ macro(_qt_internal_genex_getjoinedproperty var target property item_prefix glue)
     set(${var} "$<${have_${var}}:${item_prefix}$<JOIN:${${var}},${glue}${item_prefix}>>")
 endmacro()
 
+
+# Creates a genex that will call a c++ macro on each of the list values.
+# Handles empty lists.
+macro(_qt_internal_genex_get_list_joined_with_macro var input_list macro_name with_ending_semicolon)
+    set(${var} "${input_list}")
+    set(have_${var} "$<BOOL:${${var}}>")
+
+    set(_macro_begin "${macro_name}(")
+    set(_macro_end ")")
+    if(with_ending_semicolon)
+        string(APPEND _macro_end ";")
+    endif()
+    set(_macro_glue "${_macro_end}\n${_macro_begin}")
+
+    string(JOIN "" ${var}
+        "${_macro_begin}"
+        "$<JOIN:${${var}},${_macro_glue}>"
+        "${_macro_end}")
+
+    set(${var} "$<${have_${var}}:${${var}}>")
+
+    unset(_macro_begin)
+    unset(_macro_end)
+    unset(_macro_glue)
+endmacro()
+
+# Reads a target property that contains a list of values and creates a genex that will
+# call a c++ macro on each of the values.
+# Handles empty properties.
+macro(_qt_internal_genex_get_property_joined_with_macro var target property macro_name
+        with_ending_semicolon)
+    _qt_internal_genex_getproperty(${var} ${target} ${property})
+    _qt_internal_genex_get_list_joined_with_macro("${var}" "${${var}}" "${macro_name}"
+        "${with_ending_semicolon}")
+endmacro()
+
 macro(_qt_internal_genex_getoption var target property)
     set(${var} "$<BOOL:$<TARGET_PROPERTY:${target},${property}>>")
 endmacro()
@@ -781,7 +880,8 @@ endfunction()
 function(_qt_internal_assign_to_qmllint_targets_folder target)
     get_property(folder_name GLOBAL PROPERTY QT_QMLLINTER_TARGETS_FOLDER)
     if("${folder_name}" STREQUAL "")
-        set(folder_name QmlLinter)
+        get_property(__qt_qt_targets_folder GLOBAL PROPERTY QT_TARGETS_FOLDER)
+        set(folder_name "${__qt_qt_targets_folder}/QmlLinter")
         set_property(GLOBAL PROPERTY QT_QMLLINTER_TARGETS_FOLDER ${folder_name})
     endif()
     set_property(TARGET ${target} PROPERTY FOLDER "${folder_name}")
@@ -1062,14 +1162,20 @@ function(_qt_internal_add_all_qmllint_target_deferred target)
     add_custom_target(${target} ${target_commands})
     _qt_internal_assign_to_qmllint_targets_folder(${target})
 endfunction()
-function(_qt_internal_target_enable_qmlcachegen target output_targets_var qmlcachegen)
 
-    set(output_targets)
+function(_qt_internal_target_enable_qmlcachegen target qmlcachegen)
     set_target_properties(${target} PROPERTIES _qt_cachegen_set_up TRUE)
 
     get_target_property(target_binary_dir ${target} BINARY_DIR)
     set(qmlcache_dir ${target_binary_dir}/.rcc/qmlcache)
     set(qmlcache_resource_name qmlcache_${target})
+
+    # Save the resource name in a property so we can reference it later in a qml plugin
+    # constructor, to avoid discarding the resource if it's in a static library.
+    __qt_internal_sanitize_resource_name(
+        sanitized_qmlcache_resource_name "${qmlcache_resource_name}")
+    set_target_properties(${target} PROPERTIES _qt_cachegen_sanitized_resource_name
+        "${sanitized_qmlcache_resource_name}")
 
     # INTEGRITY_SYMBOL_UNIQUENESS
     # The cache loader file name has to be unique, because the Integrity compiler uses the file name
@@ -1129,6 +1235,7 @@ function(_qt_internal_target_enable_qmlcachegen target output_targets_var qmlcac
             ${qmlcache_loader_cpp}
             TARGET_DIRECTORY ${target}
             PROPERTIES GENERATED TRUE
+                       SKIP_AUTOGEN TRUE
         )
     endif()
     get_target_property(target_source_dir ${target} SOURCE_DIR)
@@ -1138,25 +1245,11 @@ function(_qt_internal_target_enable_qmlcachegen target output_targets_var qmlcac
     endif()
 
     # TODO: Probably need to reject ${target} being an object library as unsupported
-    get_target_property(target_type ${target} TYPE)
-    if(target_type STREQUAL "STATIC_LIBRARY")
-        set(extra_conditions "")
-        _qt_internal_propagate_qmlcache_object_lib(
-            ${target}
-            "${qmlcache_loader_cpp}"
-            "${extra_conditions}"
-            output_target)
-
-        list(APPEND output_targets ${output_target})
-    else()
-        target_sources(${target} PRIVATE "${qmlcache_loader_cpp}")
-        target_link_libraries(${target} PRIVATE
-            ${QT_CMAKE_EXPORT_NAMESPACE}::QmlPrivate
-            ${QT_CMAKE_EXPORT_NAMESPACE}::Core
-        )
-    endif()
-
-    set(${output_targets_var} ${output_targets} PARENT_SCOPE)
+    target_sources(${target} PRIVATE "${qmlcache_loader_cpp}")
+    target_link_libraries(${target} PRIVATE
+        ${QT_CMAKE_EXPORT_NAMESPACE}::QmlPrivate
+        ${QT_CMAKE_EXPORT_NAMESPACE}::Core
+    )
 endfunction()
 
 # We cannot defer writing out the qmldir file to generation time because the
@@ -1620,6 +1713,148 @@ if(NOT QT_NO_CREATE_VERSIONLESS_FUNCTIONS)
     endfunction()
 endif()
 
+# Get extern declaration for types registration function.
+function(_qt_internal_qml_get_types_extern_declaration register_types_function_name out_var)
+    set(with_ending_semicolon FALSE)
+    _qt_internal_genex_get_list_joined_with_macro(
+        content
+        "${register_types_function_name}"
+        "QT_DECLARE_EXTERN_SYMBOL_VOID"
+        ${with_ending_semicolon}
+    )
+
+    string(PREPEND content "\n")
+    set(${out_var} "${content}" PARENT_SCOPE)
+endfunction()
+
+# Get code block that should reference the types registration function in the plugin constructor.
+# Ensures the symbol is not discarded when linking.
+function(_qt_internal_qml_get_types_keep_reference register_types_function_name out_var)
+    set(with_ending_semicolon FALSE)
+    _qt_internal_genex_get_list_joined_with_macro(
+        content
+        "${register_types_function_name}"
+        "QT_KEEP_SYMBOL"
+        ${with_ending_semicolon}
+    )
+
+    string(PREPEND content "\n")
+    set(${out_var} "${content}" PARENT_SCOPE)
+endfunction()
+
+# Get extern declaration for cachegen resource.
+function(_qt_internal_qml_get_cachegen_extern_resource_declaration target out_var)
+    set(with_ending_semicolon FALSE)
+    _qt_internal_genex_get_property_joined_with_macro(
+        content
+        "${target}"
+        "_qt_cachegen_sanitized_resource_name"
+        "QT_DECLARE_EXTERN_RESOURCE"
+        ${with_ending_semicolon}
+    )
+
+    string(PREPEND content "\n")
+    set(${out_var} "${content}" PARENT_SCOPE)
+endfunction()
+
+# Get code block that should reference the cachegen resource in the plugin constructor.
+# Ensures the resource is not discarded when linking.
+function(_qt_internal_qml_get_cachegen_resource_keep_reference target out_var)
+    set(with_ending_semicolon FALSE)
+    _qt_internal_genex_get_property_joined_with_macro(
+        content
+        "${target}"
+        "_qt_cachegen_sanitized_resource_name"
+        "QT_KEEP_RESOURCE"
+        ${with_ending_semicolon}
+    )
+
+    string(PREPEND content "\n")
+    set(${out_var} "${content}" PARENT_SCOPE)
+endfunction()
+
+# Get extern declaration for a regular resource.
+function(_qt_internal_qml_get_resource_extern_declarations target out_var)
+    set(with_ending_semicolon FALSE)
+    _qt_internal_genex_get_property_joined_with_macro(
+        content
+        "${target}"
+        "_qt_qml_module_sanitized_resource_names"
+        "QT_DECLARE_EXTERN_RESOURCE"
+        ${with_ending_semicolon}
+    )
+
+    string(PREPEND content "\n")
+    set(${out_var} "${content}" PARENT_SCOPE)
+endfunction()
+
+# Get code block that should reference regular resources in the plugin constructor.
+# Ensures the resources are not discarded when linking.
+function(_qt_internal_qml_get_resource_keep_references target out_var)
+    set(with_ending_semicolon FALSE)
+    _qt_internal_genex_get_property_joined_with_macro(
+        content
+        "${target}"
+        "_qt_qml_module_sanitized_resource_names"
+        "QT_KEEP_RESOURCE"
+        ${with_ending_semicolon}
+    )
+
+    string(PREPEND content "\n")
+    set(${out_var} "${content}" PARENT_SCOPE)
+endfunction()
+
+# Get 3 different code blocks that should be inserted into various locations of the generated
+# qml plugin cpp file. The code blocks ensure that if a target links to a plugin backed by a static
+# library and initializes the plugin using Q_IMPORT_PLUGIN, none of the resources or type
+# registration functions in the backing library are discarded by the linker.
+function(_qt_internal_qml_get_symbols_to_keep
+        target
+        backing_target_type
+        register_types_function_name
+        out_var_intro
+        out_var_intro_namespaced
+        out_var_constructor)
+    set(intro_content "")
+    set(intro_namespaced_content "")
+
+    # External symbol declarations.
+    _qt_internal_qml_get_types_extern_declaration("${register_types_function_name}" output)
+    string(APPEND intro_namespaced_content "${output}")
+
+    if(backing_target_type STREQUAL "STATIC_LIBRARY")
+        _qt_internal_qml_get_cachegen_extern_resource_declaration(${target} output)
+        string(APPEND intro_content "${output}")
+
+        _qt_internal_qml_get_resource_extern_declarations(${target} output)
+        string(APPEND intro_content "${output}")
+    endif()
+
+
+    # Reference the external symbols in the plugin constructor to prevent the linker from
+    # discarding the symbols.
+    # The types symbol is an exported symbol, so we always reference it.
+    set(constructor_content "")
+
+    _qt_internal_qml_get_types_keep_reference("${register_types_function_name}" output)
+    string(APPEND constructor_content "${output}")
+
+    # Only reference the resources if the backing library is static.
+    # If the backing library is shared, the symbols will not be found at link time because they
+    # are not exported symbols.
+    if(backing_target_type STREQUAL "STATIC_LIBRARY")
+        _qt_internal_qml_get_cachegen_resource_keep_reference(${target} output)
+        string(APPEND constructor_content "${output}")
+
+        _qt_internal_qml_get_resource_keep_references(${target} output)
+        string(APPEND constructor_content "${output}")
+    endif()
+
+    set(${out_var_intro} "${intro_content}" PARENT_SCOPE)
+    set(${out_var_intro_namespaced} "${intro_namespaced_content}" PARENT_SCOPE)
+    set(${out_var_constructor} "${constructor_content}" PARENT_SCOPE)
+endfunction()
+
 function(_qt_internal_set_qml_target_multi_config_output_directory target output_directory)
     # In multi-config builds we need to make sure that at least one configuration has the dynamic
     # plugin that is located next to qmldir file, otherwise QML engine won't be able to load the
@@ -1724,6 +1959,10 @@ function(qt6_add_qml_plugin target)
         endif()
     endif()
 
+    if(arg_BACKING_TARGET AND TARGET "${arg_BACKING_TARGET}")
+        get_target_property(backing_type ${arg_BACKING_TARGET} TYPE)
+    endif()
+
     if(TARGET ${target})
         # Plugin target already exists. Perform a few sanity checks, but we
         # otherwise trust that the target is appropriate for use as a plugin.
@@ -1771,7 +2010,6 @@ function(qt6_add_qml_plugin target)
         if(TARGET "${arg_BACKING_TARGET}")
             # Ensure that the plugin type we create will be compatible with the
             # type of backing target we were given
-            get_target_property(backing_type ${arg_BACKING_TARGET} TYPE)
             if(backing_type STREQUAL "STATIC_LIBRARY")
                 if(lib_type STREQUAL "")
                     set(lib_type STATIC)
@@ -1866,6 +2104,36 @@ function(qt6_add_qml_plugin target)
         )
     endif()
 
+    # Work around QTBUG-115152.
+    # Assign / duplicate the backing library's metatypes file to the qml plugin.
+    # This ensures that the metatypes are passed as foreign types to qmltyperegistrar when
+    # a consumer links against the plugin, but not the backing library.
+    # This is needed because the plugin links PRIVATEly to the backing library and thus the
+    # backing library's INTERFACE_SOURCES don't end up in the final consumer's SOURCES.
+    # Arguably doing this is cleaner than changing the linkage to PUBLIC, because that will
+    # propagate not only the INTERFACE_SOURCES, but also other link dependencies, which might
+    # be unwanted.
+    # In general this is a workaround due to CMake's limitations around support for propagating
+    # custom properties across targets to a final consumer target.
+    # https://gitlab.kitware.com/cmake/cmake/-/issues/20416
+    if(arg_BACKING_TARGET
+            AND TARGET "${arg_BACKING_TARGET}" AND NOT arg_BACKING_TARGET STREQUAL target)
+        get_target_property(plugin_meta_types_file "${target}" INTERFACE_QT_META_TYPES_BUILD_FILE)
+        get_target_property(
+            backing_meta_types_file "${arg_BACKING_TARGET}" INTERFACE_QT_META_TYPES_BUILD_FILE)
+        get_target_property(
+            backing_meta_types_file_name
+            "${arg_BACKING_TARGET}" INTERFACE_QT_META_TYPES_FILE_NAME)
+        get_target_property(backing_has_qmltypes "${arg_BACKING_TARGET}" _qt_internal_has_qmltypes)
+        if(backing_has_qmltypes AND NOT plugin_meta_types_file)
+            _qt_internal_assign_build_metatypes_files_and_properties(
+                "${target}"
+                METATYPES_FILE_NAME "${backing_meta_types_file_name}"
+                METATYPES_FILE_PATH "${backing_meta_types_file}"
+            )
+        endif()
+    endif()
+
     if(ANDROID)
         _qt_internal_get_qml_plugin_output_name(plugin_output_name ${target}
             BACKING_TARGET "${arg_BACKING_TARGET}"
@@ -1905,29 +2173,69 @@ function(qt6_add_qml_plugin target)
         set(qt_qml_plugin_moc_include_name "${generated_cpp_file_name_base}.moc")
         set(qt_qml_plugin_intro "")
         set(qt_qml_plugin_outro "")
+        set(qt_qml_plugin_constructor_content "")
+
+        # Get the target that contains the resource names.
+        set(target_with_prop "${target}")
+        if(NOT arg_BACKING_TARGET STREQUAL "" AND TARGET "${arg_BACKING_TARGET}")
+            set(target_with_prop "${arg_BACKING_TARGET}")
+        endif()
+
+        _qt_internal_qml_get_symbols_to_keep(
+            "${target_with_prop}"
+            "${backing_type}"
+            "${register_types_function_name}"
+            extra_intro_content
+            extra_intro_namespaced_content
+            extra_costructor_content
+        )
+
+        string(APPEND qt_qml_plugin_intro "${extra_intro_content}\n\n")
+
         if (arg_NAMESPACE)
-            string(APPEND qt_qml_plugin_intro "namespace ${arg_NAMESPACE} {\n\n")
+            string(APPEND qt_qml_plugin_intro "namespace ${arg_NAMESPACE} {\n")
             string(APPEND qt_qml_plugin_outro "} // namespace ${arg_NAMESPACE}")
         endif()
 
-        string(APPEND qt_qml_plugin_intro "extern void ${register_types_function_name}();\nQ_GHS_KEEP_REFERENCE(${register_types_function_name})")
+        string(APPEND qt_qml_plugin_intro "${extra_intro_namespaced_content}")
 
-        # Indenting here is deliberately different so as to make the generated
-        # file have sensible indenting
-        set(qt_qml_plugin_constructor_content
-        "volatile auto registration = &${register_types_function_name};
-        Q_UNUSED(registration)"
-        )
+        string(APPEND qt_qml_plugin_constructor_content "${extra_costructor_content}")
 
-        set(generated_cpp_file
-            "${CMAKE_CURRENT_BINARY_DIR}/${generated_cpp_file_name_base}.cpp"
+        # Configure file from the template.
+        set(generated_cpp_file_in
+            "${CMAKE_CURRENT_BINARY_DIR}/${generated_cpp_file_name_base}_in.cpp"
         )
         configure_file(
             "${__qt_qml_macros_module_base_dir}/Qt6QmlPluginTemplate.cpp.in"
-            "${generated_cpp_file}"
+            "${generated_cpp_file_in}"
             @ONLY
         )
-        target_sources(${target} PRIVATE "${generated_cpp_file}")
+
+        get_target_property(template_generated ${target} _qt_qml_plugin_template_generated)
+
+        if(NOT template_generated)
+            # Generate the file to allow adding generator expressions.
+            set(generated_cpp_file
+                "${CMAKE_CURRENT_BINARY_DIR}/${generated_cpp_file_name_base}.cpp"
+            )
+            file(GENERATE OUTPUT "${generated_cpp_file}"
+                 INPUT "${generated_cpp_file_in}"
+            )
+
+            # We can't rely on policy CMP0118 since user project controls it
+            set(scope_args)
+            if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.18")
+                set(scope_args TARGET_DIRECTORY ${target})
+            endif()
+            set_source_files_properties("${generated_cpp_file}" ${scope_args}
+                PROPERTIES GENERATED TRUE
+            )
+
+            # Because the add_qml_plugin function might be called multiple times on the same target,
+            # Only generate and add the cpp file once.
+            set_target_properties(${target} PROPERTIES _qt_qml_plugin_template_generated TRUE)
+            target_sources(${target} PRIVATE "${generated_cpp_file}")
+        endif()
 
         # The generated cpp file expects to include its moc-ed output file.
         set_target_properties(${target} PROPERTIES AUTOMOC TRUE)
@@ -2264,6 +2572,23 @@ function(qt6_target_qml_sources target)
                         "and .mjs. This leads to unexpected component names."
                     )
                 endif()
+                if(qml_file_ext AND qml_file_ext STREQUAL ".js" AND skip_qmldir STREQUAL "NOTFOUND")
+                    file(
+                        STRINGS ${qml_file_src} pragma_library
+                        REGEX "^\\.pragma library$"
+                        LIMIT_COUNT 1
+                        LIMIT_INPUT 128
+                    )
+                    if(NOT pragma_library)
+                        message(AUTHOR_WARNING
+                            "${qml_file_src} is not an ECMAScript module and also doesn't contain "
+                            "'.pragma library'. It will be re-evaluated in the context of every "
+                            "QML document that explicitly or implicitly imports ${uri}. Set its "
+                            "QT_QML_SKIP_QMLDIR_ENTRY source file property to FALSE if you really "
+                            "want this to happen. Set it to TRUE to prevent it."
+                        )
+                    endif()
+                endif()
 
                 # We previously accepted the singular form of this property name
                 # during tech preview. Issue a warning for that, but still
@@ -2328,8 +2653,7 @@ function(qt6_target_qml_sources target)
             # after we know there will be at least one file to compile.
             get_target_property(is_cachegen_set_up ${target} _qt_cachegen_set_up)
             if(NOT is_cachegen_set_up)
-                _qt_internal_target_enable_qmlcachegen(${target} resource_target ${qmlcachegen})
-                list(APPEND output_targets ${resource_target})
+                _qt_internal_target_enable_qmlcachegen(${target} ${qmlcachegen})
             endif()
 
             # We ensured earlier that arg_PREFIX always ends with "/"
@@ -2442,6 +2766,7 @@ function(qt6_target_qml_sources target)
             if(NOT TARGET ${target}_tooling)
                 add_library(${target}_tooling INTERFACE)
                 add_dependencies(${target} ${target}_tooling)
+                set_target_properties(${target}_tooling PROPERTIES QT_EXCLUDE_FROM_TRANSLATION ON)
             endif()
             target_sources(${target}_tooling PRIVATE
                 ${copied_files}
@@ -2467,6 +2792,14 @@ function(qt6_target_qml_sources target)
     )
     math(EXPR counter "${counter} + 1")
     set_target_properties(${target} PROPERTIES QT_QML_MODULE_RAW_QML_SETS ${counter})
+
+    # Save the resource name in a property so we can reference it later in a qml plugin
+    # constructor, to avoid discarding the resource if it's in a static library.
+    __qt_internal_sanitize_resource_name(
+        sanitized_resource_name "${resource_name}")
+    set_property(TARGET ${target}
+        APPEND PROPERTY _qt_qml_module_sanitized_resource_names "${sanitized_resource_name}")
+
     list(APPEND output_targets ${resource_targets})
 
     if(arg_OUTPUT_TARGETS)
@@ -2523,6 +2856,9 @@ function(qt6_generate_foreign_qml_types source_target destination_qml_target)
         VERBATIM
     )
 
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.27")
+        set_source_files_properties(${additional_sources} PROPERTIES SKIP_LINTING ON)
+    endif()
     target_sources(${destination_qml_target} PRIVATE ${additional_sources})
 endfunction()
 
@@ -2546,9 +2882,12 @@ endif()
 # NAMESPACE: Specifies a namespace the type registration function shall be
 #   generated into. (OPTIONAL)
 #
+# REGISTRATIONS_TARGET: Specifies a separate target the generated .cpp file
+#   shall be added to. If not given, the main backing target is used. (OPTIONAL)
+#
 function(_qt_internal_qml_type_registration target)
     set(args_option)
-    set(args_single NAMESPACE)
+    set(args_single NAMESPACE REGISTRATIONS_TARGET)
     set(args_multi  MANUAL_MOC_JSON_FILES)
 
     get_target_property(skipped ${target} _qt_is_skipped_test)
@@ -2613,7 +2952,7 @@ function(_qt_internal_qml_type_registration target)
 
     set(cmd_args)
     set(plugin_types_file "${output_dir}/${qmltypes_output_name}")
-    set(generated_marker_file "${target_binary_dir}/.generated/${qmltypes_output_name}")
+    set(generated_marker_file "${target_binary_dir}/.qt/qmltypes/${qmltypes_output_name}")
     get_filename_component(generated_marker_dir "${generated_marker_file}" DIRECTORY)
     set_target_properties(${target} PROPERTIES
         QT_QML_MODULE_PLUGIN_TYPES_FILE ${plugin_types_file}
@@ -2730,20 +3069,25 @@ function(_qt_internal_qml_type_registration target)
     endif()
     add_dependencies(all_qmltyperegistrations ${target}_qmltyperegistration)
 
-    # Both ${target} (via target_sources) and ${target}_qmltyperegistration (via add_custom_target
-    # DEPENDS option) depend on ${type_registration_cpp_file}.
-    # The new Xcode build system requires a common target to drive the generation of files,
-    # otherwise project configuration fails.
-    # Make ${target} the common target, by adding it as a dependency for
-    # ${target}_qmltyperegistration.
-    # The consequence is that the ${target}_qmllint target will now first build ${target} when using
-    # the Xcode generator (mostly only relevant for projects using Qt for iOS).
-    # See QTBUG-95763.
-    if(CMAKE_GENERATOR STREQUAL "Xcode")
-        add_dependencies(${target}_qmltyperegistration ${target})
+    set(effective_target ${target})
+    if(arg_REGISTRATIONS_TARGET)
+        set(effective_target ${arg_REGISTRATIONS_TARGET})
     endif()
 
-    target_sources(${target} PRIVATE ${type_registration_cpp_file})
+    # Both ${effective_target} (via target_sources) and ${target}_qmltyperegistration (via
+    # add_custom_target DEPENDS option) depend on ${type_registration_cpp_file}.
+    # The new Xcode build system requires a common target to drive the generation of files,
+    # otherwise project configuration fails.
+    # Make ${effective_target} the common target, by adding it as a dependency for
+    # ${target}_qmltyperegistration.
+    # The consequence is that the ${target}_qmllint target will now first build ${effective_target}
+    # when using the Xcode generator (mostly only relevant for projects using Qt for iOS).
+    # See QTBUG-95763.
+    if(CMAKE_GENERATOR STREQUAL "Xcode")
+        add_dependencies(${target}_qmltyperegistration ${effective_target})
+    endif()
+
+    target_sources(${effective_target} PRIVATE ${type_registration_cpp_file})
 
     # FIXME: The generated .cpp file has usually lost the path information for
     #        the headers it #include's. Since these generated .cpp files are in
@@ -2752,7 +3096,7 @@ function(_qt_internal_qml_type_registration target)
     #        paths are needed, but add the source directory to at least handle
     #        the common case of headers in the same directory as the target.
     #        See QTBUG-93443.
-    target_include_directories(${target} PRIVATE ${target_source_dir})
+    target_include_directories(${effective_target} PRIVATE ${target_source_dir})
 
     # Circumvent "too many sections" error when doing a 32 bit debug build on Windows with
     # MinGW.
@@ -2769,7 +3113,7 @@ function(_qt_internal_qml_type_registration target)
     if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.18")
         set_source_files_properties(
             ${type_registration_cpp_file}
-            TARGET_DIRECTORY ${target}
+            TARGET_DIRECTORY ${effective_target}
             PROPERTIES
                 SKIP_AUTOGEN TRUE
                 GENERATED TRUE
@@ -2777,7 +3121,7 @@ function(_qt_internal_qml_type_registration target)
         )
     endif()
 
-    target_include_directories(${target} PRIVATE
+    target_include_directories(${effective_target} PRIVATE
         $<TARGET_PROPERTY:${QT_CMAKE_EXPORT_NAMESPACE}::QmlPrivate,INTERFACE_INCLUDE_DIRECTORIES>
     )
 endfunction()
@@ -2877,6 +3221,61 @@ function(_qt_internal_collect_qml_import_paths out_var target)
     set(${out_var} "${qml_import_paths}" PARENT_SCOPE)
 endfunction()
 
+# This function returns the path to the qmlimportscanner executable.
+# The are a few cases to handle:
+# When used in a user project, the tool should already be built and we can find the path
+# via the imported target.
+# When used in an example that is built as part of the qtdeclarative build (or top-level build),
+# there is no imported target yet. Here we have to differentiate whether the tool will be run at
+# build time or configure time.
+# If at configure time, we show an error, there is nothing to run yet. Such a setup is currently not
+# supported.
+# If at build time, we return the path where the built tool will be located after it is built.
+function(_qt_internal_find_qmlimportscanner_path out_path scan_at_configure_time)
+    # Find location of qmlimportscanner via the imported target.
+    set(tool_path "")
+    set(tool_name "qmlimportscanner")
+    set(import_scanner_target "${QT_CMAKE_EXPORT_NAMESPACE}::${tool_name}")
+    if(TARGET "${import_scanner_target}")
+        get_target_property(tool_path "${import_scanner_target}" IMPORTED_LOCATION)
+        if(NOT tool_path)
+            set(configs "RELWITHDEBINFO;RELEASE;MINSIZEREL;DEBUG")
+            foreach(config ${configs})
+                get_target_property(tool_path
+                    "${import_scanner_target}" IMPORTED_LOCATION_${config})
+                if(tool_path)
+                    break()
+                endif()
+            endforeach()
+        endif()
+    endif()
+
+    if(NOT QT_BUILDING_QT)
+        set(building_user_project TRUE)
+    else()
+        set(building_user_project FALSE)
+    endif()
+
+    if(NOT EXISTS "${tool_path}"
+            AND (building_user_project OR scan_at_configure_time))
+        message(FATAL_ERROR "The qmlimportscanner tool could not be found.
+Possible reasons include:
+* The file was deleted, renamed, or moved to another location.
+* An install or uninstall procedure did not complete successfully.
+* The installation was faulty.
+")
+    endif()
+
+    # We are building Qt, the tool is not built yet and we need to run it at build time.
+    if(NOT tool_path)
+        qt_path_join(tool_path
+            "${QT_BUILD_DIR}/${INSTALL_LIBEXECDIR}"
+            "${tool_name}${CMAKE_EXECUTABLE_SUFFIX}")
+    endif()
+
+    set(${out_path} "${tool_path}" PARENT_SCOPE)
+endfunction()
+
 function(_qt_internal_scan_qml_imports target imports_file_var when_to_scan)
     if(NOT "${ARGN}" STREQUAL "")
         message(FATAL_ERROR "Unknown/unexpected arguments: ${ARGN}")
@@ -2884,39 +3283,29 @@ function(_qt_internal_scan_qml_imports target imports_file_var when_to_scan)
 
     if(when_to_scan STREQUAL "BUILD_PHASE")
         set(scan_at_build_time TRUE)
+        set(scan_at_configure_time FALSE)
+        set(imports_file_infix "build")
     elseif(when_to_scan STREQUAL "IMMEDIATELY")
         set(scan_at_build_time FALSE)
+        set(scan_at_configure_time TRUE)
+        set(imports_file_infix "conf")
     else()
         message(FATAL_ERROR "Unexpected value for when_to_scan: ${when_to_scan}")
     endif()
 
-    # Find location of qmlimportscanner.
-    get_target_property(tool_path ${QT_CMAKE_EXPORT_NAMESPACE}::qmlimportscanner IMPORTED_LOCATION)
-    if(NOT tool_path)
-        set(configs "RELWITHDEBINFO;RELEASE;MINSIZEREL;DEBUG")
-        foreach(config ${configs})
-            get_target_property(tool_path
-                ${QT_CMAKE_EXPORT_NAMESPACE}::qmlimportscanner IMPORTED_LOCATION_${config})
-            if(tool_path)
-                break()
-            endif()
-        endforeach()
-    endif()
-
-    if(NOT EXISTS "${tool_path}")
-        message(FATAL_ERROR "The package \"QmlImportScanner\" references the file
-   \"${tool_path}\"
-but this file does not exist.  Possible reasons include:
-* The file was deleted, renamed, or moved to another location.
-* An install or uninstall procedure did not complete successfully.
-* The installation package was faulty.
-")
-    endif()
+    _qt_internal_find_qmlimportscanner_path(tool_path "${scan_at_configure_time}")
 
     get_target_property(target_source_dir ${target} SOURCE_DIR)
     get_target_property(target_binary_dir ${target} BINARY_DIR)
-    set(out_dir "${target_binary_dir}/.qt_plugins")
-    set(imports_file "${out_dir}/Qt6_QmlPlugins_Imports_${target}.cmake")
+    set(out_dir "${target_binary_dir}/.qt/qml_imports")
+
+    # Create separate files for scanning at build time vs configure time. Otherwise calling
+    # ninja clean will re-run qmlimportscanner directly after the clean, which is
+    # both weird and sometimes prints warnings due to the tool not finding qml files that were
+    # cleaned from the build dir.
+    set(file_base_name "${target}_${imports_file_infix}")
+
+    set(imports_file "${out_dir}/${file_base_name}.cmake")
     set(${imports_file_var} "${imports_file}" PARENT_SCOPE)
     file(MAKE_DIRECTORY ${out_dir})
 
@@ -2932,7 +3321,12 @@ but this file does not exist.  Possible reasons include:
     # Construct the -importPath arguments.
     set(import_path_arguments)
     foreach(path IN LISTS qml_import_paths)
-        list(APPEND import_path_arguments -importPath ${path})
+        if(EXISTS "${path}" OR scan_at_build_time)
+            list(APPEND import_path_arguments -importPath ${path})
+        else()
+            message(DEBUG "The import path ${path} is mentioned for ${target}, but it doesn't"
+                " exists.")
+        endif()
     endforeach()
 
     list(APPEND cmd_args ${import_path_arguments})
@@ -2950,7 +3344,7 @@ but this file does not exist.  Possible reasons include:
     # of arguments on the command line
     string(LENGTH "${cmd_args}" length)
     if(length GREATER 240)
-        set(rsp_file "${out_dir}/Qt6_QmlPlugins_Imports_${target}.rsp")
+        set(rsp_file "${out_dir}/${file_base_name}.rsp")
         list(JOIN cmd_args "\n" rsp_file_content)
         file(WRITE ${rsp_file} "${rsp_file_content}")
         set(cmd_args "@${rsp_file}")
@@ -3005,9 +3399,16 @@ endmacro()
 
 
 # This function is called as a finalizer in qt6_finalize_executable() for any
-# target that links against the Qml library for a statically built Qt.
+# target that links against the Qml library.
 function(qt6_import_qml_plugins target)
-    if(QT6_IS_SHARED_LIBS_BUILD)
+    if(NOT TARGET ${QT_CMAKE_EXPORT_NAMESPACE}::qmlimportscanner)
+        return()
+    endif()
+
+    get_target_property(is_imported ${QT_CMAKE_EXPORT_NAMESPACE}::qmlimportscanner IMPORTED)
+    if(NOT is_imported)
+        message(DEBUG "qt6_import_qml_plugins is called before qmlimportscanner is built."
+            " Skip calling qmlimportscanner because it doesn't yet exist.")
         return()
     endif()
 
@@ -3033,39 +3434,68 @@ function(qt6_import_qml_plugins target)
         math(EXPR last_index "${qml_import_scanner_imports_count} - 1")
         foreach(index RANGE 0 ${last_index})
             _qt_internal_parse_qml_imports_entry(entry ${index})
-            if(entry_PATH AND entry_PLUGIN)
-                # Sometimes a plugin appears multiple times with different versions.
-                # Make sure to process it only once.
-                list(FIND added_plugins "${entry_PLUGIN}" _index)
-                if(NOT _index EQUAL -1)
-                    continue()
+            if(entry_PATH)
+                if(NOT entry_PLUGIN)
+                    # Check if qml module is built within the build tree, and should have a plugin
+                    # target, but its qmldir file is not generated yet.
+                    get_property(dirs GLOBAL PROPERTY _qt_all_qml_output_dirs)
+                    if(dirs)
+                        list(FIND dirs "${entry_PATH}" index)
+                        if(NOT index EQUAL -1)
+                            get_property(qml_targets GLOBAL PROPERTY _qt_all_qml_targets)
+                            list(GET qml_targets ${index} qml_module)
+                            if(qml_module AND TARGET ${qml_module})
+                                get_target_property(entry_LINKTARGET
+                                    ${qml_module} QT_QML_MODULE_PLUGIN_TARGET)
+                                if(entry_LINKTARGET AND TARGET ${entry_LINKTARGET})
+                                    get_target_property(entry_PLUGIN ${entry_LINKTARGET}
+                                        OUTPUT_NAME)
+                                endif()
+                            endif()
+                        endif()
+                    endif()
                 endif()
-                list(APPEND added_plugins "${entry_PLUGIN}")
 
-                # Link against the Qml plugin.
-                # For plugins provided by Qt, we assume those plugin targets are already defined
-                # (typically brought in via find_package(Qt6...) ).
-                # For other plugins, the targets can come from the project itself.
-                #
-                if(entry_LINKTARGET)
-                    if(TARGET ${entry_LINKTARGET})
-                        list(APPEND plugins_to_link "${entry_LINKTARGET}")
+                if(entry_PLUGIN)
+                    # Sometimes a plugin appears multiple times with different versions.
+                    # Make sure to process it only once.
+                    list(FIND added_plugins "${entry_PLUGIN}" _index)
+                    if(NOT _index EQUAL -1)
+                        continue()
+                    endif()
+                    list(APPEND added_plugins "${entry_PLUGIN}")
+
+                    # Link against the Qml plugin.
+                    # For plugins provided by Qt, we assume those plugin targets are already defined
+                    # (typically brought in via find_package(Qt6...) ).
+                    # For other plugins, the targets can come from the project itself.
+                    #
+                    if(entry_LINKTARGET)
+                        if(TARGET ${entry_LINKTARGET})
+                            get_target_property(target_type ${entry_LINKTARGET} TYPE)
+                            if(target_type STREQUAL "STATIC_LIBRARY")
+                                list(APPEND plugins_to_link "${entry_LINKTARGET}")
+                            endif()
+                        else()
+                            message(WARNING
+                                "The qml plugin '${entry_PLUGIN}' is a dependency of '${target}', "
+                                "but the link target it defines (${entry_LINKTARGET}) does not "
+                                "exist in the current scope. The plugin will not be linked."
+                            )
+                        endif()
+                    elseif(TARGET ${entry_PLUGIN})
+                        get_target_property(target_type ${entry_PLUGIN} TYPE)
+                        if(target_type STREQUAL "STATIC_LIBRARY")
+                            list(APPEND plugins_to_link "${entry_PLUGIN}")
+                        endif()
                     else()
+                        # TODO: QTBUG-94605 Figure out if this is a reasonable scenario to support
                         message(WARNING
                             "The qml plugin '${entry_PLUGIN}' is a dependency of '${target}', "
-                            "but the link target it defines (${entry_LINKTARGET}) does not exist "
-                            "in the current scope. The plugin will not be linked."
+                            "but there is no target by that name in the current scope. The plugin "
+                            "will not be linked."
                         )
                     endif()
-                elseif(TARGET ${entry_PLUGIN})
-                    list(APPEND plugins_to_link "${entry_PLUGIN}")
-                else()
-                    # TODO: QTBUG-94605 Figure out if this is a reasonable scenario to support
-                    message(WARNING
-                        "The qml plugin '${entry_PLUGIN}' is a dependency of '${target}', "
-                        "but there is no target by that name in the current scope. The plugin will "
-                        "not be linked."
-                    )
                 endif()
             endif()
         endforeach()
@@ -3097,6 +3527,17 @@ if(NOT QT_NO_CREATE_VERSIONLESS_FUNCTIONS)
         endif()
     endfunction()
 endif()
+
+function(_qt_internal_add_qml_deploy_info_finalizer target)
+    get_property(finalizer_added TARGET ${target} PROPERTY _qt_qml_deploy_finalizer_added)
+    if(NOT finalizer_added)
+        set_property(TARGET ${target} APPEND PROPERTY
+            INTERFACE_QT_EXECUTABLE_FINALIZERS
+            _qt_internal_generate_deploy_qml_imports_script
+        )
+        set_property(TARGET ${target} PROPERTY _qt_qml_deploy_finalizer_added TRUE)
+    endif()
+endfunction()
 
 # This function may be called as a finalizer in qt6_finalize_executable() for any
 # target that links against the Qml library for a shared Qt.
@@ -3153,7 +3594,7 @@ function(_qt_internal_generate_deploy_qml_imports_script target)
     file(GENERATE OUTPUT "${filename}" CONTENT
 "# Auto-generated deploy QML imports script for target \"${target}\".
 # Do not edit, all changes will be lost.
-# This file should only be included by qt_deploy_qml_imports().
+# This file should only be included by qt6_deploy_qml_imports().
 
 set(__qt_opts $<${is_bundle}:BUNDLE>)
 if(arg_NO_QT_IMPORTS)
@@ -3205,6 +3646,7 @@ function(qt6_generate_deploy_qml_app_script)
         POST_EXCLUDE_REGEXES
         POST_INCLUDE_FILES
         POST_EXCLUDE_FILES
+        DEPLOY_TOOL_OPTIONS
     )
     set(multi_value_options
         ${qt_deploy_runtime_dependencies_options}
@@ -3259,11 +3701,32 @@ function(qt6_generate_deploy_qml_app_script)
     string(MAKE_C_IDENTIFIER "${arg_TARGET}" target_id)
     set(deploy_script_name "qml_app_${target_id}")
 
+    get_target_property(is_bundle ${arg_TARGET} MACOSX_BUNDLE)
+
+    set(unsupported_platform_extra_message "")
     if(QT6_IS_SHARED_LIBS_BUILD)
         set(qt_build_type_string "shared Qt libs")
     else()
         set(qt_build_type_string "static Qt libs")
     endif()
+
+    if(CMAKE_CROSSCOMPILING)
+        string(APPEND qt_build_type_string ", cross-compiled")
+    endif()
+
+    if(NOT is_bundle)
+        string(APPEND qt_build_type_string ", non-bundle app")
+        set(unsupported_platform_extra_message
+            "Executable targets have to be app bundles to use this command on Apple platforms.")
+    endif()
+
+    set(skip_message
+        "_qt_internal_show_skip_runtime_deploy_message(\"${qt_build_type_string}\"")
+    if(unsupported_platform_extra_message)
+        string(APPEND skip_message
+            "\n    EXTRA_MESSAGE \"${unsupported_platform_extra_message}\"")
+    endif()
+    string(APPEND skip_message "\n)")
 
     set(common_deploy_args "")
     if(arg_NO_TRANSLATIONS)
@@ -3280,52 +3743,126 @@ function(qt6_generate_deploy_qml_app_script)
         endif()
     endforeach()
 
-    if(APPLE AND NOT IOS AND QT6_IS_SHARED_LIBS_BUILD)
-        # TODO: Handle non-bundle applications if possible.
-        get_target_property(is_bundle ${arg_TARGET} MACOSX_BUNDLE)
-        if(NOT is_bundle)
-            message(FATAL_ERROR
-                "Executable targets have to be app bundles to use this command "
-                "on Apple platforms."
-            )
+    _qt_internal_should_skip_deployment_api(skip_deployment skip_reason)
+    _qt_internal_should_skip_post_build_deployment_api(skip_post_build_deployment
+        post_build_skip_reason)
+
+    if(APPLE AND NOT IOS AND QT6_IS_SHARED_LIBS_BUILD AND is_bundle)
+        # TODO: Consider handling non-bundle applications in the future using the generic cmake
+        # runtime dependency feature.
+
+        set(should_post_build FALSE)
+        if(arg_MACOS_BUNDLE_POST_BUILD AND NOT skip_post_build_deployment)
+            set(should_post_build TRUE)
         endif()
 
-        qt6_generate_deploy_script(
-            TARGET ${arg_TARGET}
-            NAME ${deploy_script_name}
-            OUTPUT_SCRIPT deploy_script
-            CONTENT "
-qt_deploy_qml_imports(TARGET ${arg_TARGET} PLUGINS_FOUND plugins_found)
+        # Generate the real deployment script when both post build step either deployment are
+        # enabled.
+        # If we skip deployment, but not the POST_BUILD step, we still need to generate the
+        # regular deploy script to run it during POST_BUILD time.
+        if(NOT skip_deployment OR should_post_build)
+            qt6_generate_deploy_script(
+                TARGET ${arg_TARGET}
+                NAME ${deploy_script_name}
+                OUTPUT_SCRIPT real_deploy_script
+                CONTENT "
+qt6_deploy_qml_imports(TARGET ${arg_TARGET} PLUGINS_FOUND plugins_found)
 if(NOT DEFINED __QT_DEPLOY_POST_BUILD)
-    qt_deploy_runtime_dependencies(
+    qt6_deploy_runtime_dependencies(
         EXECUTABLE $<TARGET_FILE_NAME:${arg_TARGET}>.app
         ADDITIONAL_MODULES \${plugins_found}
     ${common_deploy_args})
 endif()")
-        if(arg_MACOS_BUNDLE_POST_BUILD)
+        endif()
+
+        # Generate a no-op script either if we skip deployment or the post build step.
+        if(skip_deployment)
+            _qt_internal_generate_no_op_deploy_script(
+                FUNCTION_NAME "qt6_generate_deploy_qml_app_script"
+                SKIP_REASON "${skip_reason}"
+                TARGET ${arg_TARGET}
+                NAME ${deploy_script_name}
+                OUTPUT_SCRIPT no_op_deploy_script
+            )
+        endif()
+
+        if(skip_post_build_deployment)
+            _qt_internal_generate_no_op_deploy_script(
+                FUNCTION_NAME "qt6_generate_deploy_qml_app_script"
+                SKIP_REASON "${post_build_skip_reason}"
+                TARGET ${arg_TARGET}
+                NAME ${deploy_script_name}
+                OUTPUT_SCRIPT no_op_post_build_script
+            )
+        endif()
+
+        # Choose which deployment script to use during installation.
+        if(skip_deployment)
+            set(deploy_script "${no_op_deploy_script}")
+        else()
+            set(deploy_script "${real_deploy_script}")
+        endif()
+
+        # Choose which deployment script to use during the post build step.
+        if(should_post_build)
+            set(post_build_deploy_script "${real_deploy_script}")
+        elseif(skip_post_build_deployment)
+            # Explicitly asked to skip post build, show a no-op message.
+            set(post_build_deploy_script "${no_op_post_build_script}")
+        endif()
+
+        if(should_post_build OR skip_post_build_deployment)
             # We must not deploy the runtime dependencies, otherwise we interfere
             # with CMake's RPATH rewriting at install time. We only need the QML
             # imports deployed to the bundle anyway, the build RPATHs will allow
             # the regular libraries, frameworks and non-QML plugins to still be
             # found, even if they are outside the app bundle.
+
+            # Support Xcode, which places the application build dir into a configuration specific
+            # subdirectory. Override both the deploy prefix and install prefix, because we
+            # differentiate them in the qml installation implementation due to ENV{DESTDIR}
+            # handling.
+            set(deploy_path_suffix "")
+            get_cmake_property(is_multi_config GENERATOR_IS_MULTI_CONFIG)
+            if(is_multi_config)
+                set(deploy_path_suffix "/$<CONFIG>")
+            endif()
+
+            set(target_binary_dir_with_config_prefix
+                "$<TARGET_PROPERTY:${arg_TARGET},BINARY_DIR>${deploy_path_suffix}")
+
+            set(post_build_install_prefix
+                "CMAKE_INSTALL_PREFIX=${target_binary_dir_with_config_prefix}")
+
+            set(post_build_deploy_prefix
+                "QT_DEPLOY_PREFIX=${target_binary_dir_with_config_prefix}")
+
             add_custom_command(TARGET ${arg_TARGET} POST_BUILD
                 COMMAND ${CMAKE_COMMAND}
-                -D "QT_DEPLOY_PREFIX=$<TARGET_PROPERTY:${arg_TARGET},BINARY_DIR>"
+                -D "${post_build_install_prefix}"
+                -D "${post_build_deploy_prefix}"
                 -D "__QT_DEPLOY_IMPL_DIR=${deploy_impl_dir}"
                 -D "__QT_DEPLOY_POST_BUILD=TRUE"
-                -P "${deploy_script}"
+                -P "${post_build_deploy_script}"
                 VERBATIM
             )
         endif()
-
+    elseif(skip_deployment)
+            _qt_internal_generate_no_op_deploy_script(
+                FUNCTION_NAME "qt6_generate_deploy_qml_app_script"
+                SKIP_REASON "${skip_reason}"
+                TARGET ${arg_TARGET}
+                NAME ${deploy_script_name}
+                OUTPUT_SCRIPT deploy_script
+            )
     elseif(WIN32 AND QT6_IS_SHARED_LIBS_BUILD)
         qt6_generate_deploy_script(
             TARGET ${arg_TARGET}
             NAME ${deploy_script_name}
             OUTPUT_SCRIPT deploy_script
             CONTENT "
-qt_deploy_qml_imports(TARGET ${arg_TARGET} PLUGINS_FOUND plugins_found)
-qt_deploy_runtime_dependencies(
+qt6_deploy_qml_imports(TARGET ${arg_TARGET} PLUGINS_FOUND plugins_found)
+qt6_deploy_runtime_dependencies(
     EXECUTABLE $<TARGET_FILE:${arg_TARGET}>
     ADDITIONAL_MODULES \${plugins_found}
     GENERATE_QT_CONF
@@ -3337,8 +3874,8 @@ ${common_deploy_args})")
             NAME ${deploy_script_name}
             OUTPUT_SCRIPT deploy_script
             CONTENT "
-qt_deploy_qml_imports(TARGET ${arg_TARGET} PLUGINS_FOUND plugins_found)
-qt_deploy_runtime_dependencies(
+qt6_deploy_qml_imports(TARGET ${arg_TARGET} PLUGINS_FOUND plugins_found)
+qt6_deploy_runtime_dependencies(
     EXECUTABLE $<TARGET_FILE:${arg_TARGET}>
     ADDITIONAL_MODULES \${plugins_found}
     GENERATE_QT_CONF
@@ -3361,18 +3898,17 @@ ${common_deploy_args})")
             NAME ${deploy_script_name}
             OUTPUT_SCRIPT deploy_script
             CONTENT "
-_qt_internal_show_skip_runtime_deploy_message(\"${qt_build_type_string}\")
-qt_deploy_qml_imports(TARGET ${arg_TARGET} NO_QT_IMPORTS)
+${skip_message}
+qt6_deploy_qml_imports(TARGET ${arg_TARGET} NO_QT_IMPORTS)
 ")
     elseif(NOT arg_NO_UNSUPPORTED_PLATFORM_ERROR AND NOT QT_INTERNAL_NO_UNSUPPORTED_PLATFORM_ERROR)
         # Currently we don't deploy runtime dependencies if cross-compiling or using a static Qt.
-        # We also don't do it if targeting Linux, but we could provide an option to do
-        # so if we had a deploy tool or purely CMake-based deploy implementation.
         # Error out by default unless the project opted out of the error.
         # This provides us a migration path in the future without breaking compatibility promises.
         message(FATAL_ERROR
             "Support for installing runtime dependencies is not implemented for "
-            "this target platform (${CMAKE_SYSTEM_NAME}, ${qt_build_type_string})."
+            "this target platform (${CMAKE_SYSTEM_NAME}, ${qt_build_type_string}). "
+            ${unsupported_platform_extra_message}
         )
     else()
         qt6_generate_deploy_script(
@@ -3380,8 +3916,7 @@ qt_deploy_qml_imports(TARGET ${arg_TARGET} NO_QT_IMPORTS)
             NAME ${deploy_script_name}
             OUTPUT_SCRIPT deploy_script
             CONTENT "
-include(${QT_DEPLOY_SUPPORT})
-_qt_internal_show_skip_runtime_deploy_message(\"${qt_build_type_string}\")
+${skip_message}
 _qt_internal_show_skip_qml_runtime_deploy_message()
 ")
     endif()

@@ -11,6 +11,7 @@
 #include "common/debug.h"
 #include "common/utilities.h"
 #include "libANGLE/Context.h"
+#include "libANGLE/Display.h"
 #include "libANGLE/Renderbuffer.h"
 #include "libANGLE/Texture.h"
 #include "libANGLE/angletypes.h"
@@ -310,10 +311,18 @@ Image::Image(rx::EGLImplFactory *factory,
              const AttributeMap &attribs)
     : mState(id, target, buffer, attribs),
       mImplementation(factory->createImage(mState, context, target, attribs)),
-      mOrphanedAndNeedsInit(false)
+      mOrphanedAndNeedsInit(false),
+      mSharedContextMutex(nullptr)
 {
     ASSERT(mImplementation != nullptr);
     ASSERT(buffer != nullptr);
+
+    if (kIsSharedContextMutexEnabled && context != nullptr)
+    {
+        ASSERT(context->isSharedContextMutexActive());
+        mSharedContextMutex = context->getContextMutex();
+        mSharedContextMutex->addRef();
+    }
 
     mState.source->addImageSource(this);
 }
@@ -350,6 +359,12 @@ void Image::onDestroy(const Display *display)
 Image::~Image()
 {
     SafeDelete(mImplementation);
+
+    if (mSharedContextMutex != nullptr)
+    {
+        mSharedContextMutex->release();
+        mSharedContextMutex = nullptr;
+    }
 }
 
 void Image::setLabel(EGLLabelKHR label)
@@ -482,6 +497,12 @@ rx::ImageImpl *Image::getImplementation() const
 
 Error Image::initialize(const Display *display, const gl::Context *context)
 {
+    if (kIsSharedContextMutexEnabled && mSharedContextMutex == nullptr)
+    {
+        mSharedContextMutex = display->getSharedContextMutexManager()->create();
+        mSharedContextMutex->addRef();
+    }
+
     if (IsExternalImageTarget(mState.target))
     {
         ExternalImageSibling *externalSibling = rx::GetAs<ExternalImageSibling>(mState.source);

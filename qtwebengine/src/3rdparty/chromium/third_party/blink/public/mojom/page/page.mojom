@@ -10,6 +10,7 @@ import "third_party/blink/public/mojom/frame/frame_replication_state.mojom";
 import "third_party/blink/public/mojom/frame/remote_frame.mojom";
 import "third_party/blink/public/mojom/frame/view_transition_state.mojom";
 import "third_party/blink/public/mojom/navigation/was_activated_option.mojom";
+import "third_party/blink/public/mojom/page/browsing_context_group_info.mojom";
 import "third_party/blink/public/mojom/page/page_visibility_state.mojom";
 import "third_party/blink/public/mojom/tokens/tokens.mojom";
 import "third_party/blink/public/mojom/webpreferences/web_preferences.mojom";
@@ -74,6 +75,14 @@ struct PrerenderPageActivationParams {
   // PerformanceNavigationTiming. It is 0 if this blink::WebViewImpl does not
   // host the main frame, to avoid sending the data cross-origin.
   mojo_base.mojom.TimeTicks activation_start;
+
+  // Holds texture references (stored in the GPU process) and geometry state for
+  // the previous Document displayed by this frame. This is used to support
+  // transitions when navigating between same-origin Documents.
+  // See https://drafts.csswg.org/css-view-transitions-1/ for details.
+  // This is analogous to CommitNavigationParams field but for prerender
+  // activations.
+  blink.mojom.ViewTransitionState? view_transition_state;
 };
 
 // Used for broadcast messages from browser to renderer for messages that need
@@ -141,4 +150,9 @@ interface PageBroadcast {
     mojo_base.mojom.UnguessableToken devtools_frame_token,
     RemoteFrameInterfacesFromBrowser remote_frame_interfaces,
     RemoteMainFrameInterfaces remote_main_frame_interfaces);
+
+  // Update the page's browsing context group, with the information contained
+  // in `browsing_context_group_info`.
+  UpdatePageBrowsingContextGroup(
+    blink.mojom.BrowsingContextGroupInfo browsing_context_group_info);
 };

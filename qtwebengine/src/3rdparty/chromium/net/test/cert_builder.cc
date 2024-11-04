@@ -19,8 +19,8 @@
 #include "net/cert/pki/extended_key_usage.h"
 #include "net/cert/pki/parse_certificate.h"
 #include "net/cert/pki/verify_signed_data.h"
+#include "net/cert/time_conversions.h"
 #include "net/cert/x509_util.h"
-#include "net/der/encode_values.h"
 #include "net/der/input.h"
 #include "net/der/parse_values.h"
 #include "net/der/parser.h"
@@ -503,7 +503,7 @@ void CertBuilder::SetCaIssuersAndOCSPUrls(
     ASSERT_TRUE(CBB_add_asn1(&aia, &access_description, CBS_ASN1_SEQUENCE));
     ASSERT_TRUE(
         CBB_add_asn1(&access_description, &access_method, CBS_ASN1_OBJECT));
-    ASSERT_TRUE(CBBAddBytes(&access_method, entry.first.AsStringPiece()));
+    ASSERT_TRUE(CBBAddBytes(&access_method, entry.first.AsStringView()));
     ASSERT_TRUE(CBB_add_asn1(&access_description, &access_location,
                              CBS_ASN1_CONTEXT_SPECIFIC | 6));
     ASSERT_TRUE(CBBAddBytes(&access_location, entry.second.spec()));
@@ -673,7 +673,7 @@ void CertBuilder::SetExtendedKeyUsages(
   for (const auto& oid : purpose_oids) {
     CBB purpose_cbb;
     ASSERT_TRUE(CBB_add_asn1(&eku, &purpose_cbb, CBS_ASN1_OBJECT));
-    ASSERT_TRUE(CBBAddBytes(&purpose_cbb, oid.AsStringPiece()));
+    ASSERT_TRUE(CBBAddBytes(&purpose_cbb, oid.AsStringView()));
     ASSERT_TRUE(CBB_flush(&eku));
   }
   SetExtension(der::Input(kExtKeyUsageOid), FinishCBB(cbb.get()));
@@ -894,6 +894,11 @@ void CertBuilder::SetTBSSignatureAlgorithmTLV(
   Invalidate();
 }
 
+void CertBuilder::SetSerialNumber(uint64_t serial_number) {
+  serial_number_ = serial_number;
+  Invalidate();
+}
+
 void CertBuilder::SetRandomSerialNumber() {
   serial_number_ = base::RandUint64();
   Invalidate();
@@ -932,7 +937,7 @@ std::string CertBuilder::GetSubjectKeyIdentifier() {
 
   auto& extension_value = extensions_[ski_oid];
   der::Input ski_value;
-  if (!ParseSubjectKeyIdentifier(der::Input(&extension_value.value),
+  if (!ParseSubjectKeyIdentifier(der::Input(extension_value.value),
                                  &ski_value)) {
     return std::string();
   }
@@ -943,7 +948,7 @@ bool CertBuilder::GetValidity(base::Time* not_before,
                               base::Time* not_after) const {
   der::GeneralizedTime not_before_generalized_time;
   der::GeneralizedTime not_after_generalized_time;
-  if (!ParseValidity(der::Input(&validity_tlv_), &not_before_generalized_time,
+  if (!ParseValidity(der::Input(validity_tlv_), &not_before_generalized_time,
                      &not_after_generalized_time) ||
       !GeneralizedTimeToTime(not_before_generalized_time, not_before) ||
       !GeneralizedTimeToTime(not_after_generalized_time, not_after)) {

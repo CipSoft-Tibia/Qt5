@@ -18,10 +18,9 @@
 #include "content/browser/gpu/gpu_process_host.h"
 #include "content/public/browser/browser_child_process_host.h"
 #include "content/public/browser/browser_child_process_host_iterator.h"
-#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
 #include "content/public/browser/child_process_data.h"
 #include "content/public/browser/render_process_host.h"
-#include "content/public/common/content_features.h"
 #include "gpu/config/gpu_feature_type.h"
 #include "gpu/config/gpu_info.h"
 #include "gpu/config/gpu_switches.h"
@@ -442,18 +441,6 @@ void SystemInfoHandler::GetProcessInfo(
 
 Response SystemInfoHandler::GetFeatureState(const String& in_featureState,
                                             bool* featureEnabled) {
-  if (in_featureState == "PrerenderHoldback") {
-    *featureEnabled =
-        base::FeatureList::IsEnabled(features::kPrerender2Holdback);
-    return Response::Success();
-  }
-
-  if (in_featureState == "PreloadingHoldback") {
-    *featureEnabled =
-        base::FeatureList::IsEnabled(features::kPreloadingHoldback);
-    return Response::Success();
-  }
-
   return Response::InvalidParams("Unknown feature");
 }
 

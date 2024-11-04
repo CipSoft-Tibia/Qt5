@@ -34,15 +34,17 @@ class QQmlEnginePrivate;
 struct InlineComponentData {
 
     InlineComponentData() = default;
-    InlineComponentData(const CompositeMetaTypeIds &typeIds, int objectIndex, int nameIndex, int totalObjectCount, int totalBindingCount, int totalParserStatusCount)
-        :   typeIds(typeIds)
-          , objectIndex(objectIndex)
-          , nameIndex(nameIndex)
-          , totalObjectCount(totalObjectCount)
-          , totalBindingCount(totalBindingCount)
-          , totalParserStatusCount(totalParserStatusCount) {}
+    InlineComponentData(
+            const QQmlType &qmlType, int objectIndex, int nameIndex, int totalObjectCount,
+            int totalBindingCount, int totalParserStatusCount)
+        : qmlType(qmlType)
+        , objectIndex(objectIndex)
+        , nameIndex(nameIndex)
+        , totalObjectCount(totalObjectCount)
+        , totalBindingCount(totalBindingCount)
+        , totalParserStatusCount(totalParserStatusCount) {}
 
-    CompositeMetaTypeIds typeIds;
+    QQmlType qmlType;
     int objectIndex = -1;
     int nameIndex = -1;
     int totalObjectCount = 0;
@@ -63,12 +65,39 @@ struct ResolvedTypeReferenceMap: public QHash<int, ResolvedTypeReference*>
     bool addToHash(QCryptographicHash *hash, QHash<quintptr, QByteArray> *checksums) const;
 };
 
+struct CompilationUnitRuntimeData
+{
+    Heap::String **runtimeStrings = nullptr; // Array
+
+    // pointers either to data->constants() or little-endian memory copy.
+    // We keep this member twice so that the JIT can access it via standard layout.
+    const StaticValue *constants = nullptr;
+
+    QV4::StaticValue *runtimeRegularExpressions = nullptr;
+    Heap::InternalClass **runtimeClasses = nullptr;
+    const StaticValue **imports = nullptr;
+
+    QV4::Lookup *runtimeLookups = nullptr;
+    QVector<QV4::Function *> runtimeFunctions;
+    QVector<QV4::Heap::InternalClass *> runtimeBlocks;
+    mutable QVector<QV4::Heap::Object *> templateObjects;
+};
+
+static_assert(std::is_standard_layout_v<CompilationUnitRuntimeData>);
+static_assert(offsetof(CompilationUnitRuntimeData, runtimeStrings) == 0);
+static_assert(offsetof(CompilationUnitRuntimeData, constants) == sizeof(QV4::Heap::String **));
+static_assert(offsetof(CompilationUnitRuntimeData, runtimeRegularExpressions) == offsetof(CompilationUnitRuntimeData, constants) + sizeof(const StaticValue *));
+static_assert(offsetof(CompilationUnitRuntimeData, runtimeClasses) == offsetof(CompilationUnitRuntimeData, runtimeRegularExpressions) + sizeof(const StaticValue *));
+static_assert(offsetof(CompilationUnitRuntimeData, imports) == offsetof(CompilationUnitRuntimeData, runtimeClasses) + sizeof(const StaticValue *));
+
 class Q_QML_PRIVATE_EXPORT ExecutableCompilationUnit final
     : public CompiledData::CompilationUnit,
+      public CompilationUnitRuntimeData,
       public QQmlRefCounted<ExecutableCompilationUnit>
 {
     Q_DISABLE_COPY_MOVE(ExecutableCompilationUnit)
 public:
+    friend class QQmlRefCounted<ExecutableCompilationUnit>;
     friend class QQmlRefPointer<ExecutableCompilationUnit>;
 
     static QQmlRefPointer<ExecutableCompilationUnit> create(
@@ -104,10 +133,6 @@ public:
         return m_finalUrl;
     }
 
-    QV4::Lookup *runtimeLookups = nullptr;
-    QVector<QV4::Function *> runtimeFunctions;
-    QVector<QV4::Heap::InternalClass *> runtimeBlocks;
-    mutable QVector<QV4::Heap::Object *> templateObjects;
     mutable QQmlNullableValue<QUrl> m_url;
     mutable QQmlNullableValue<QUrl> m_finalUrl;
 
@@ -127,7 +152,7 @@ public:
     QHash<int, IdentifierHash> namedObjectsPerComponentCache;
     inline IdentifierHash namedObjectsPerComponent(int componentObjectIndex);
 
-    void finalizeCompositeType(CompositeMetaTypeIds typeIdsForComponent);
+    void finalizeCompositeType(const QQmlType &type);
 
     int m_totalBindingsCount = 0; // Number of bindings used in this type
     int m_totalParserStatusCount = 0; // Number of instantiated types that are QQmlParserStatus subclasses
@@ -145,10 +170,9 @@ public:
 
     bool verifyChecksum(const CompiledData::DependentTypesHasher &dependencyHasher) const;
 
-    CompositeMetaTypeIds typeIdsForComponent(const QString &inlineComponentName = QString()) const;
+    QQmlType qmlTypeForComponent(const QString &inlineComponentName = QString()) const;
 
-    CompositeMetaTypeIds typeIds;
-    bool isRegistered = false;
+    QQmlType qmlType;
 
     QHash<QString, InlineComponentData> inlineComponentData;
 
@@ -193,9 +217,9 @@ public:
         return ListPropertyAssignBehavior::Append;
     }
 
-    bool enforcesFunctionSignature() const
+    bool ignoresFunctionSignature() const
     {
-        return data->flags & CompiledData::Unit::FunctionSignaturesEnforced;
+        return data->flags & CompiledData::Unit::FunctionSignaturesIgnored;
     }
 
     bool nativeMethodsAcceptThisObjects() const
@@ -314,11 +338,17 @@ public:
 
     static bool verifyHeader(const CompiledData::Unit *unit, QDateTime expectedSourceTimeStamp,
                              QString *errorString);
+
+    Heap::Module *module() const { return m_module; }
+    void setModule(Heap::Module *module) { m_module = module; }
+
 protected:
     quint32 totalStringCount() const
     { return data->stringTableSize; }
 
 private:
+    Heap::Module *m_module = nullptr;
+
     struct ResolveSetEntry
     {
         ResolveSetEntry() {}

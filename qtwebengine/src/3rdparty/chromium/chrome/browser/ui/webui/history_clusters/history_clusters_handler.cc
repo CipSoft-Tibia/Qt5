@@ -28,17 +28,20 @@
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_finder.h"
-#include "chrome/common/pref_names.h"
+#include "chrome/browser/ui/tabs/tab_group.h"
+#include "chrome/browser/ui/tabs/tab_group_model.h"
+#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/history/core/browser/history_types.h"
+#include "components/history/core/common/pref_names.h"
 #include "components/history_clusters/core/cluster_metrics_utils.h"
 #include "components/history_clusters/core/config.h"
 #include "components/history_clusters/core/features.h"
 #include "components/history_clusters/core/history_cluster_type_utils.h"
 #include "components/history_clusters/core/history_clusters_prefs.h"
 #include "components/history_clusters/ui/query_clusters_state.h"
-#include "components/image_service/image_service.h"
 #include "components/keyed_service/core/service_access_type.h"
+#include "components/page_image_service/image_service.h"
 #include "components/prefs/pref_service.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_service.h"
@@ -338,7 +341,8 @@ void HistoryClustersHandler::RemoveVisits(
 }
 
 void HistoryClustersHandler::OpenVisitUrlsInTabGroup(
-    std::vector<mojom::URLVisitPtr> visits) {
+    std::vector<mojom::URLVisitPtr> visits,
+    const absl::optional<std::string>& tab_group_name) {
   auto* browser = chrome::FindTabbedBrowser(profile_, false);
   if (!browser) {
     return;
@@ -372,7 +376,16 @@ void HistoryClustersHandler::OpenVisitUrlsInTabGroup(
   if (tab_indices.empty()) {
     return;
   }
-  model->AddToNewGroup(tab_indices);
+  auto new_group_id = model->AddToNewGroup(tab_indices);
+  if (!new_group_id.is_empty() && tab_group_name) {
+    if (auto* group_model = model->group_model()) {
+      auto* tab_group = group_model->GetTabGroup(new_group_id);
+      // Copy and modify the existing visual data with a new title.
+      tab_groups::TabGroupVisualData visual_data = *tab_group->visual_data();
+      visual_data.SetTitle(base::UTF8ToUTF16(*tab_group_name));
+      tab_group->SetVisualData(visual_data);
+    }
+  }
 }
 
 void HistoryClustersHandler::OnDebugMessage(const std::string& message) {

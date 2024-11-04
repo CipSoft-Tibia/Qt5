@@ -3,14 +3,13 @@
 # found in the LICENSE file.
 
 source_set("itunes_urls") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "itunes_urls_handler_tab_helper.h",
     "itunes_urls_handler_tab_helper.mm",
   ]
   deps = [
     "//base",
-    "//ios/chrome/browser/ui/commands",
+    "//ios/chrome/browser/shared/public/commands",
     "//ios/web",
     "//url",
   ]
@@ -21,15 +20,14 @@ source_set("itunes_urls") {
 }
 
 source_set("unit_tests") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
   sources = [ "itunes_urls_handler_tab_helper_unittest.mm" ]
   deps = [
     ":itunes_urls",
     "//base",
     "//base/test:test_support",
-    "//ios/chrome/browser/browser_state:test_support",
-    "//ios/chrome/browser/ui/commands",
+    "//ios/chrome/browser/shared/model/browser_state:test_support",
+    "//ios/chrome/browser/shared/public/commands",
     "//ios/chrome/test/fakes",
     "//ios/web/public",
     "//ios/web/public/test:test",

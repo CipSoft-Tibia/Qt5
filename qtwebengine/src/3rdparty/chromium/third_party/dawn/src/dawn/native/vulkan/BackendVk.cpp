@@ -23,8 +23,8 @@
 #include "dawn/common/SystemUtils.h"
 #include "dawn/native/Instance.h"
 #include "dawn/native/VulkanBackend.h"
-#include "dawn/native/vulkan/AdapterVk.h"
 #include "dawn/native/vulkan/DeviceVk.h"
+#include "dawn/native/vulkan/PhysicalDeviceVk.h"
 #include "dawn/native/vulkan/UtilsVulkan.h"
 #include "dawn/native/vulkan/VulkanError.h"
 
@@ -66,8 +66,6 @@ struct SkippedMessage {
 constexpr SkippedMessage kSkippedMessages[] = {
     // These errors are generated when simultaneously using a read-only depth/stencil attachment as
     // a texture binding. This is valid Vulkan.
-    // The substring matching matches both
-    // VK_PIPELINE_STAGE_2_NONE and VK_PIPELINE_STAGE_2_NONE_KHR.
     //
     // When storeOp=NONE is not present, Dawn uses storeOp=STORE, but Vulkan validation layer
     // considers the image read-only and produces a hazard. Dawn can't rely on storeOp=NONE and
@@ -79,21 +77,48 @@ constexpr SkippedMessage kSkippedMessages[] = {
      "depth aspect during store with storeOp VK_ATTACHMENT_STORE_OP_STORE. Access info (usage: "
      "SYNC_LATE_FRAGMENT_TESTS_DEPTH_STENCIL_ATTACHMENT_WRITE, prior_usage: "
      "SYNC_FRAGMENT_SHADER_SHADER_STORAGE_READ, read_barriers: VkPipelineStageFlags2KHR(0)"},
+    {"SYNC-HAZARD-WRITE-AFTER-READ",
+     "depth aspect during store with storeOp VK_ATTACHMENT_STORE_OP_STORE. Access info (usage: "
+     "SYNC_LATE_FRAGMENT_TESTS_DEPTH_STENCIL_ATTACHMENT_WRITE, prior_usage: "
+     "SYNC_FRAGMENT_SHADER_SHADER_STORAGE_READ, read_barriers: VkPipelineStageFlags2(0)"},
     // Depth used in sampling
     {"SYNC-HAZARD-WRITE-AFTER-READ",
      "depth aspect during store with storeOp VK_ATTACHMENT_STORE_OP_STORE. Access info (usage: "
      "SYNC_LATE_FRAGMENT_TESTS_DEPTH_STENCIL_ATTACHMENT_WRITE, prior_usage: "
      "SYNC_FRAGMENT_SHADER_SHADER_SAMPLED_READ, read_barriers: VkPipelineStageFlags2KHR(0)"},
+    {"SYNC-HAZARD-WRITE-AFTER-READ",
+     "depth aspect during store with storeOp VK_ATTACHMENT_STORE_OP_STORE. Access info (usage: "
+     "SYNC_LATE_FRAGMENT_TESTS_DEPTH_STENCIL_ATTACHMENT_WRITE, prior_usage: "
+     "SYNC_FRAGMENT_SHADER_SHADER_SAMPLED_READ, read_barriers: VkPipelineStageFlags2(0)"},
     // Stencil used as storage
     {"SYNC-HAZARD-WRITE-AFTER-READ",
      "stencil aspect during store with stencilStoreOp VK_ATTACHMENT_STORE_OP_STORE. Access info "
      "(usage: SYNC_LATE_FRAGMENT_TESTS_DEPTH_STENCIL_ATTACHMENT_WRITE, prior_usage: "
      "SYNC_FRAGMENT_SHADER_SHADER_STORAGE_READ, read_barriers: VkPipelineStageFlags2KHR(0)"},
+    {"SYNC-HAZARD-WRITE-AFTER-READ",
+     "stencil aspect during store with stencilStoreOp VK_ATTACHMENT_STORE_OP_STORE. Access info "
+     "(usage: SYNC_LATE_FRAGMENT_TESTS_DEPTH_STENCIL_ATTACHMENT_WRITE, prior_usage: "
+     "SYNC_FRAGMENT_SHADER_SHADER_STORAGE_READ, read_barriers: VkPipelineStageFlags2(0)"},
     // Stencil used in sampling (note no tests actually hit this)
     {"SYNC-HAZARD-WRITE-AFTER-READ",
      "stencil aspect during store with stencilStoreOp VK_ATTACHMENT_STORE_OP_STORE. Access info "
      "(usage: SYNC_LATE_FRAGMENT_TESTS_DEPTH_STENCIL_ATTACHMENT_WRITE, prior_usage: "
      "SYNC_FRAGMENT_SHADER_SHADER_SAMPLED_READ, read_barriers: VkPipelineStageFlags2KHR(0)"},
+    {"SYNC-HAZARD-WRITE-AFTER-READ",
+     "stencil aspect during store with stencilStoreOp VK_ATTACHMENT_STORE_OP_STORE. Access info "
+     "(usage: SYNC_LATE_FRAGMENT_TESTS_DEPTH_STENCIL_ATTACHMENT_WRITE, prior_usage: "
+     "SYNC_FRAGMENT_SHADER_SHADER_SAMPLED_READ, read_barriers: VkPipelineStageFlags2(0)"},
+
+    // http://crbug.com/dawn/1916
+    {"SYNC-HAZARD-WRITE-AFTER-WRITE",
+     "Access info (usage: SYNC_COPY_TRANSFER_WRITE, prior_usage: SYNC_COPY_TRANSFER_WRITE, "
+     "write_barriers: 0, command: vkCmdCopyBufferToImage"},
+    {"SYNC-HAZARD-READ-AFTER-WRITE",
+     "Access info (usage: SYNC_COPY_TRANSFER_READ, prior_usage: SYNC_COPY_TRANSFER_WRITE, "
+     "write_barriers: 0, command: vkCmdCopyBufferToImage"},
+    {"SYNC-HAZARD-WRITE-AFTER-WRITE",
+     "Access info (usage: SYNC_IMAGE_LAYOUT_TRANSITION, prior_usage: SYNC_COPY_TRANSFER_WRITE, "
+     "write_barriers: 0, command: vkCmdCopyBufferToImage"},
 
     // http://anglebug.com/7513
     {"VUID-VkGraphicsPipelineCreateInfo-pStages-06896",
@@ -128,6 +153,15 @@ bool ShouldReportDebugMessage(const char* messageId, const char* message) {
         return true;
     }
 
+    // Some Vulkan drivers send "error" messages of "VK_SUCCESS" when zero devices are
+    // available; seen in crbug.com/1464122. This is not a real error that we care about.
+    // The messageId is ignored because drivers may report
+    // __FILE__: __LINE__ info here.
+    // https://github.com/Mesa3D/mesa/blob/22.2/src/amd/vulkan/radv_device.c#L1201
+    if (strcmp(message, "VK_SUCCESS") == 0) {
+        return false;
+    }
+
     for (const SkippedMessage& msg : kSkippedMessages) {
         if (strstr(messageId, msg.messageId) != nullptr &&
             strstr(message, msg.messageContents) != nullptr) {
@@ -147,7 +181,7 @@ OnDebugUtilsCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     }
 
     if (!(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)) {
-        dawn::WarningLog() << pCallbackData->pMessage;
+        dawn::WarningLog() << pCallbackData->pMessageIdName << ": " << pCallbackData->pMessage;
         return VK_FALSE;
     }
 
@@ -173,7 +207,7 @@ OnDebugUtilsCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 
     // We get to this line if no device was associated with the message. Crash so that the failure
     // is loud and makes tests fail in Debug.
-    dawn::ErrorLog() << pCallbackData->pMessage;
+    dawn::ErrorLog() << pCallbackData->pMessageIdName << ": " << pCallbackData->pMessage;
     ASSERT(false);
 
     return VK_FALSE;
@@ -222,8 +256,8 @@ const VulkanGlobalInfo& VulkanInstance::GetGlobalInfo() const {
     return mGlobalInfo;
 }
 
-const std::vector<VkPhysicalDevice>& VulkanInstance::GetPhysicalDevices() const {
-    return mPhysicalDevices;
+const std::vector<VkPhysicalDevice>& VulkanInstance::GetVkPhysicalDevices() const {
+    return mVkPhysicalDevices;
 }
 
 // static
@@ -297,6 +331,14 @@ MaybeError VulkanInstance::Initialize(const InstanceBase* instance, ICD icd) {
     DAWN_TRY(mFunctions.LoadGlobalProcs(mVulkanLib));
 
     DAWN_TRY_ASSIGN(mGlobalInfo, GatherGlobalInfo(mFunctions));
+#if DAWN_PLATFORM_IS(WINDOWS)
+    if (icd != ICD::SwiftShader && mGlobalInfo.apiVersion < VK_MAKE_API_VERSION(0, 1, 1, 0)) {
+        // See crbug.com/850881, crbug.com/863086, crbug.com/1465064
+        return DAWN_INTERNAL_ERROR(
+            "Windows Vulkan 1.0 driver is unsupported. At least Vulkan 1.1 is required on "
+            "Windows.");
+    }
+#endif
 
     VulkanGlobalKnobs usedGlobalKnobs = {};
     DAWN_TRY_ASSIGN(usedGlobalKnobs, CreateVkInstance(instance));
@@ -308,7 +350,7 @@ MaybeError VulkanInstance::Initialize(const InstanceBase* instance, ICD icd) {
         DAWN_TRY(RegisterDebugUtils());
     }
 
-    DAWN_TRY_ASSIGN(mPhysicalDevices, GatherPhysicalDevices(mInstance, mFunctions));
+    DAWN_TRY_ASSIGN(mVkPhysicalDevices, GatherPhysicalDevices(mInstance, mFunctions));
 
     return {};
 }
@@ -457,25 +499,9 @@ Backend::Backend(InstanceBase* instance) : BackendConnection(instance, wgpu::Bac
 
 Backend::~Backend() = default;
 
-std::vector<Ref<AdapterBase>> Backend::DiscoverDefaultAdapters() {
-    AdapterDiscoveryOptions options;
-    auto result = DiscoverAdapters(&options);
-    if (result.IsError()) {
-        GetInstance()->ConsumedError(result.AcquireError());
-        return {};
-    }
-    return result.AcquireSuccess();
-}
-
-ResultOrError<std::vector<Ref<AdapterBase>>> Backend::DiscoverAdapters(
-    const AdapterDiscoveryOptionsBase* optionsBase) {
-    ASSERT(optionsBase->backendType == WGPUBackendType_Vulkan);
-
-    const AdapterDiscoveryOptions* options =
-        static_cast<const AdapterDiscoveryOptions*>(optionsBase);
-
-    std::vector<Ref<AdapterBase>> adapters;
-
+std::vector<Ref<PhysicalDeviceBase>> Backend::DiscoverPhysicalDevices(
+    const RequestAdapterOptions* options) {
+    std::vector<Ref<PhysicalDeviceBase>> physicalDevices;
     InstanceBase* instance = GetInstance();
     for (ICD icd : kICDs) {
 #if DAWN_PLATFORM_IS(MACOS)
@@ -484,28 +510,53 @@ ResultOrError<std::vector<Ref<AdapterBase>>> Backend::DiscoverAdapters(
             continue;
         }
 #endif  // DAWN_PLATFORM_IS(MACOS)
-        if (options->forceSwiftShader && icd != ICD::SwiftShader) {
+        if (options->forceFallbackAdapter && icd != ICD::SwiftShader) {
             continue;
         }
-        if (mVulkanInstances[icd] == nullptr && instance->ConsumedError([&]() -> MaybeError {
-                DAWN_TRY_ASSIGN(mVulkanInstances[icd], VulkanInstance::Create(instance, icd));
-                return {};
-            }())) {
-            // Instance failed to initialize.
-            continue;
-        }
-        const std::vector<VkPhysicalDevice>& physicalDevices =
-            mVulkanInstances[icd]->GetPhysicalDevices();
-        for (uint32_t i = 0; i < physicalDevices.size(); ++i) {
-            Ref<Adapter> adapter =
-                AcquireRef(new Adapter(instance, mVulkanInstances[icd].Get(), physicalDevices[i]));
-            if (instance->ConsumedError(adapter->Initialize())) {
+        if (mPhysicalDevices[icd].empty()) {
+            if (!mVulkanInstancesCreated[icd]) {
+                mVulkanInstancesCreated.set(icd);
+
+                instance->ConsumedErrorAndWarnOnce([&]() -> MaybeError {
+                    DAWN_TRY_ASSIGN(mVulkanInstances[icd], VulkanInstance::Create(instance, icd));
+                    return {};
+                }());
+            }
+
+            if (mVulkanInstances[icd] == nullptr) {
+                // Instance failed to initialize.
                 continue;
             }
-            adapters.push_back(std::move(adapter));
+
+            const std::vector<VkPhysicalDevice>& vkPhysicalDevices =
+                mVulkanInstances[icd]->GetVkPhysicalDevices();
+            for (VkPhysicalDevice vkPhysicalDevice : vkPhysicalDevices) {
+                Ref<PhysicalDevice> physicalDevice = AcquireRef(
+                    new PhysicalDevice(instance, mVulkanInstances[icd].Get(), vkPhysicalDevice));
+                if (instance->ConsumedErrorAndWarnOnce(physicalDevice->Initialize())) {
+                    continue;
+                }
+                mPhysicalDevices[icd].push_back(std::move(physicalDevice));
+            }
         }
+        physicalDevices.insert(physicalDevices.end(), mPhysicalDevices[icd].begin(),
+                               mPhysicalDevices[icd].end());
     }
-    return adapters;
+    return physicalDevices;
+}
+
+void Backend::ClearPhysicalDevices() {
+    for (ICD icd : kICDs) {
+        mPhysicalDevices[icd].clear();
+    }
+}
+
+size_t Backend::GetPhysicalDeviceCountForTesting() const {
+    size_t count = 0;
+    for (ICD icd : kICDs) {
+        count += mPhysicalDevices[icd].size();
+    }
+    return count;
 }
 
 BackendConnection* Connect(InstanceBase* instance) {

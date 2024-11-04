@@ -247,6 +247,7 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
   void SuspendForFrameClosed() override;
 
   bool HasAvailableVideoFrame() const override;
+  bool HasReadableVideoFrame() const override;
 
   scoped_refptr<WebAudioSourceProviderImpl> GetAudioSourceProvider() override;
 
@@ -419,9 +420,10 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
   bool CouldPlayIfEnoughData() override;
   bool IsMediaPlayerRendererClient() override;
   void StopForDemuxerReset() override;
-  bool RestartForHls() override;
+  void RestartForHls() override;
   bool IsSecurityOriginCryptographic() const override;
   void UpdateLoadedUrl(const GURL& url) override;
+  void DemuxerRequestsSeek(base::TimeDelta seek_time) override;
 
 #if BUILDFLAG(ENABLE_FFMPEG)
   void AddAudioTrack(const std::string& id,
@@ -433,6 +435,11 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
                      const std::string& language,
                      bool is_first_track) override;
 #endif  // BUILDFLAG(ENABLE_FFMPEG)
+
+#if BUILDFLAG(ENABLE_HLS_DEMUXER)
+  base::SequenceBound<media::HlsDataSourceProvider> GetHlsDataSourceProvider()
+      override;
+#endif  // BUILDFLAG(ENABLE_HLS_DEMUXER)
 
   // Simplified watch time reporting.
   void OnSimpleWatchTimerTick();
@@ -658,7 +665,7 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
   base::TimeDelta GetCurrentTimeInternal() const;
 
   // Called by the compositor the very first time a frame is received.
-  void OnFirstFrame(base::TimeTicks frame_time);
+  void OnFirstFrame(base::TimeTicks frame_time, bool is_frame_readable);
 
   // Records the encryption scheme used by the stream |stream_name|. This is
   // only recorded when metadata is available.
@@ -712,6 +719,9 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
                                          media::Pipeline::StartType start_type,
                                          bool is_streaming,
                                          bool is_static);
+
+  // Notifies the `client_` and the `delegate_` about metadata change.
+  void DidMediaMetadataChange();
 
   WebLocalFrame* const frame_;
 
@@ -1066,6 +1076,9 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
   // to false as soon as |has_first_frame_| is set to true.
   bool needs_first_frame_ = false;
 
+  // Whether the rendered frame is readable, e.g. can be converted to image.
+  bool is_frame_readable_ = false;
+
   // True if StartPipeline() completed a lazy load startup.
   bool did_lazy_load_ = false;
 
@@ -1083,6 +1096,10 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
   const bool should_pause_background_muted_audio_;
 
   bool was_suspended_for_frame_closed_ = false;
+
+  // Request pipeline to suspend. It should not block other signals after
+  // suspended.
+  bool pending_oneshot_suspend_ = false;
 
   base::CancelableOnceClosure have_enough_after_lazy_load_cb_;
 

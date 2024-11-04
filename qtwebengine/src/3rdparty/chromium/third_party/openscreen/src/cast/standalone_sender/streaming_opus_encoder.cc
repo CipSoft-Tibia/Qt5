@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,7 @@
 #include "platform/base/span.h"
 #include "util/chrono_helpers.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 using clock_operators::operator<<;
 
@@ -86,12 +85,18 @@ void StreamingOpusEncoder::UseHighQuality() {
 
 void StreamingOpusEncoder::EncodeAndSend(const float* interleaved_samples,
                                          int num_samples,
+                                         Clock::time_point capture_begin_time,
+                                         Clock::time_point capture_end_time,
                                          Clock::time_point reference_time) {
   OSP_DCHECK(interleaved_samples);
   OSP_DCHECK_GT(num_samples, 0);
 
   ResolveTimestampsAndMaybeSkip(reference_time);
 
+  if (frame_.capture_begin_time == Clock::time_point::min()) {
+    frame_.capture_begin_time = capture_begin_time;
+  }
+  frame_.capture_end_time = capture_end_time;
   while (num_samples > 0) {
     const int samples_copied =
         FillInputBuffer(interleaved_samples, num_samples);
@@ -219,5 +224,4 @@ constexpr int StreamingOpusEncoder::kDefaultCastAudioFramesPerSecond;
 // static
 constexpr int StreamingOpusEncoder::kOpusMaxPayloadSize;
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

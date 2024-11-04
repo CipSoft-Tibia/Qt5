@@ -30,13 +30,6 @@ namespace internal {
 #endif
 #endif
 
-// Disable the code for older versions of gcc that don't support many of the required avx512 math instrinsics.
-#if EIGEN_GNUC_STRICT_AT_LEAST(5,3,0) || EIGEN_COMP_CLANG || EIGEN_COMP_MSVC >= 1923 || EIGEN_COMP_ICC >= 1900
-#define EIGEN_HAS_AVX512_MATH 1
-#else
-#define EIGEN_HAS_AVX512_MATH 0
-#endif
-
 typedef __m512 Packet16f;
 typedef __m512i Packet16i;
 typedef __m512d Packet8d;
@@ -70,7 +63,6 @@ struct packet_traits<half> : default_packet_traits {
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size = 16,
-    HasHalfPacket = 1,
 
     HasCmp    = 1,
     HasAdd    = 1,
@@ -84,19 +76,19 @@ struct packet_traits<half> : default_packet_traits {
     HasMax    = 1,
     HasConj   = 1,
     HasSetLinear = 0,
-    HasLog    = EIGEN_HAS_AVX512_MATH,
-    HasLog1p  = EIGEN_HAS_AVX512_MATH,
-    HasExp    = EIGEN_HAS_AVX512_MATH,
-    HasExpm1  = EIGEN_HAS_AVX512_MATH,
-    HasSqrt   = EIGEN_HAS_AVX512_MATH,
-    HasRsqrt  = EIGEN_HAS_AVX512_MATH,
-    HasBessel = EIGEN_HAS_AVX512_MATH,
-    HasNdtri  = EIGEN_HAS_AVX512_MATH,
+    HasSqrt   = 1,
+    HasRsqrt  = 1,
+    HasLog    = 1,
+    HasLog1p  = 1,
+    HasExp    = 1,
+    HasExpm1  = 1,
+    HasBessel = 1,
+    HasNdtri  = 1,
     HasSin    = EIGEN_FAST_MATH,
     HasCos    = EIGEN_FAST_MATH,
     HasTanh   = EIGEN_FAST_MATH,
     HasErf    = EIGEN_FAST_MATH,
-    HasBlend = 0,
+    HasBlend  = 0,
     HasRound  = 1,
     HasFloor  = 1,
     HasCeil   = 1,
@@ -113,31 +105,29 @@ template<> struct packet_traits<float>  : default_packet_traits
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size = 16,
-    HasHalfPacket = 1,
 
     HasAbs = 1,
-    HasMin    = 1,
-    HasMax    = 1,
-    HasConj   = 1,
-    HasBlend = 0,
+    HasMin   = 1,
+    HasMax   = 1,
+    HasConj  = 1,
+    HasBlend = 1,
     HasSin = EIGEN_FAST_MATH,
     HasCos = EIGEN_FAST_MATH,
     HasACos = 1,
     HasASin = 1,
     HasATan = 1,
-#if EIGEN_HAS_AVX512_MATH
+    HasATanh = 1,
+    HasSqrt = 1,
+    HasRsqrt = 1,
     HasLog = 1,
     HasLog1p  = 1,
     HasExpm1  = 1,
     HasNdtri = 1,
     HasBessel  = 1,
     HasExp = 1,
-    HasSqrt = EIGEN_FAST_MATH,
-    HasRsqrt = EIGEN_FAST_MATH,
     HasReciprocal = EIGEN_FAST_MATH,
     HasTanh = EIGEN_FAST_MATH,
     HasErf = EIGEN_FAST_MATH,
-#endif
     HasCmp  = 1,
     HasDiv = 1,
     HasRound = 1,
@@ -154,13 +144,11 @@ template<> struct packet_traits<double> : default_packet_traits
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size = 8,
-    HasHalfPacket = 1,
-#if EIGEN_HAS_AVX512_MATH
+    HasBlend = 1,
+    HasSqrt = 1,
+    HasRsqrt = 1,
     HasLog  = 1,
     HasExp = 1,
-    HasSqrt = EIGEN_FAST_MATH,
-    HasRsqrt = EIGEN_FAST_MATH,
-#endif
     HasATan = 1,
     HasCmp  = 1,
     HasDiv = 1,
@@ -178,6 +166,7 @@ template<> struct packet_traits<int> : default_packet_traits
   enum {
     Vectorizable = 1,
     AlignedOnScalar = 1,
+    HasBlend = 0,
     HasCmp = 1,
     HasDiv = 1,
     size=16
@@ -346,17 +335,24 @@ EIGEN_STRONG_INLINE Packet16i psub<Packet16i>(const Packet16i& a,
 
 template <>
 EIGEN_STRONG_INLINE Packet16f pnegate(const Packet16f& a) {
-  const __m512i mask = _mm512_set1_epi32(0x80000000);
+  // NOTE: MSVC seems to struggle with _mm512_set1_epi32, leading to random results.
+  //       The intel docs give it a relatively high latency as well, so we're probably
+  //       better off with using _mm512_set_epi32 directly anyways.
+  const __m512i mask = _mm512_set_epi32(0x80000000,0x80000000,0x80000000,0x80000000,
+                                        0x80000000,0x80000000,0x80000000,0x80000000,
+                                        0x80000000,0x80000000,0x80000000,0x80000000,
+                                        0x80000000,0x80000000,0x80000000,0x80000000);
   return _mm512_castsi512_ps(_mm512_xor_epi32(_mm512_castps_si512(a), mask));
 }
 template <>
 EIGEN_STRONG_INLINE Packet8d pnegate(const Packet8d& a) {
-  const __m512i mask = _mm512_set1_epi64(0x8000000000000000ULL);
+  const __m512i mask = _mm512_set_epi64(0x8000000000000000ULL, 0x8000000000000000ULL, 0x8000000000000000ULL, 0x8000000000000000ULL,
+                                        0x8000000000000000ULL, 0x8000000000000000ULL, 0x8000000000000000ULL, 0x8000000000000000ULL);
   return _mm512_castsi512_pd(_mm512_xor_epi64(_mm512_castpd_si512(a), mask));
 }
 template <>
 EIGEN_STRONG_INLINE Packet16i pnegate(const Packet16i& a) {
-  return _mm512_sub_epi32(_mm512_set1_epi32(0), a);
+  return _mm512_sub_epi32(_mm512_setzero_si512(), a);
 }
 
 template <>
@@ -458,9 +454,16 @@ template <>
 EIGEN_DEVICE_FUNC inline Packet16f pselect(const Packet16f& mask,
                                            const Packet16f& a,
                                            const Packet16f& b) {
-  __mmask16 mask16 = _mm512_cmp_epi32_mask(
-      _mm512_castps_si512(mask), _mm512_setzero_epi32(), _MM_CMPINT_EQ);
+  __mmask16 mask16 = _mm512_cmpeq_epi32_mask(_mm512_castps_si512(mask), _mm512_setzero_epi32());
   return _mm512_mask_blend_ps(mask16, a, b);
+}
+
+template <>
+EIGEN_DEVICE_FUNC inline Packet16i pselect(const Packet16i& mask,
+                                           const Packet16i& a,
+                                           const Packet16i& b) {
+  __mmask16 mask16 = _mm512_cmpeq_epi32_mask(mask, _mm512_setzero_epi32());
+  return _mm512_mask_blend_epi32(mask16, a, b);
 }
 
 template <>
@@ -547,6 +550,7 @@ EIGEN_STRONG_INLINE Packet8d pmax<PropagateNaN, Packet8d>(const Packet8d& a, con
 template<int I_> EIGEN_STRONG_INLINE Packet8f extract256(Packet16f x) { return _mm512_extractf32x8_ps(x,I_); }
 template<int I_> EIGEN_STRONG_INLINE Packet2d extract128(Packet8d x) { return _mm512_extractf64x2_pd(x,I_); }
 EIGEN_STRONG_INLINE Packet16f cat256(Packet8f a, Packet8f b) { return _mm512_insertf32x8(_mm512_castps256_ps512(a),b,1); }
+EIGEN_STRONG_INLINE Packet16i cat256i(Packet8i a, Packet8i b) { return _mm512_inserti32x8(_mm512_castsi256_si512(a), b, 1); }
 #else
 // AVX512F does not define _mm512_extractf32x8_ps to extract _m256 from _m512
 template<int I_> EIGEN_STRONG_INLINE Packet8f extract256(Packet16f x) {
@@ -561,6 +565,9 @@ template<int I_> EIGEN_STRONG_INLINE Packet2d extract128(Packet8d x) {
 EIGEN_STRONG_INLINE Packet16f cat256(Packet8f a, Packet8f b) {
   return _mm512_castsi512_ps(_mm512_inserti64x4(_mm512_castsi256_si512(_mm256_castps_si256(a)),
                                                 _mm256_castps_si256(b),1));
+}
+EIGEN_STRONG_INLINE Packet16i cat256i(Packet8i a, Packet8i b) {
+  return _mm512_inserti64x4(_mm512_castsi256_si512(a), b, 1);
 }
 #endif
 
@@ -584,65 +591,71 @@ EIGEN_STRONG_INLINE __m256i Pack32To16(Packet16f rf) {
 }
 
 template <>
+EIGEN_STRONG_INLINE Packet16f pisnan(const Packet16f& a) {
+  __mmask16 mask = _mm512_cmp_ps_mask(a, a, _CMP_UNORD_Q);
+  return _mm512_castsi512_ps(_mm512_maskz_set1_epi32(mask, 0xffffffffu));
+}
+
+template <>
 EIGEN_STRONG_INLINE Packet16f pcmp_eq(const Packet16f& a, const Packet16f& b) {
   __mmask16 mask = _mm512_cmp_ps_mask(a, b, _CMP_EQ_OQ);
   return _mm512_castsi512_ps(
-      _mm512_mask_set1_epi32(_mm512_set1_epi32(0), mask, 0xffffffffu));
+      _mm512_mask_set1_epi32(_mm512_setzero_epi32(), mask, 0xffffffffu));
 }
 template<> EIGEN_STRONG_INLINE Packet16f pcmp_le(const Packet16f& a, const Packet16f& b) {
   __mmask16 mask = _mm512_cmp_ps_mask(a, b, _CMP_LE_OQ);
   return _mm512_castsi512_ps(
-      _mm512_mask_set1_epi32(_mm512_set1_epi32(0), mask, 0xffffffffu));
+      _mm512_mask_set1_epi32(_mm512_setzero_epi32(), mask, 0xffffffffu));
 }
 
 template<> EIGEN_STRONG_INLINE Packet16f pcmp_lt(const Packet16f& a, const Packet16f& b) {
   __mmask16 mask = _mm512_cmp_ps_mask(a, b, _CMP_LT_OQ);
   return _mm512_castsi512_ps(
-      _mm512_mask_set1_epi32(_mm512_set1_epi32(0), mask, 0xffffffffu));
+      _mm512_mask_set1_epi32(_mm512_setzero_epi32(), mask, 0xffffffffu));
 }
 
 template<> EIGEN_STRONG_INLINE Packet16f pcmp_lt_or_nan(const Packet16f& a, const Packet16f& b) {
   __mmask16 mask = _mm512_cmp_ps_mask(a, b, _CMP_NGE_UQ);
   return _mm512_castsi512_ps(
-      _mm512_mask_set1_epi32(_mm512_set1_epi32(0), mask, 0xffffffffu));
+      _mm512_mask_set1_epi32(_mm512_setzero_epi32(), mask, 0xffffffffu));
 }
 
 template<> EIGEN_STRONG_INLINE Packet16i pcmp_eq(const Packet16i& a, const Packet16i& b) {
   __mmask16 mask = _mm512_cmp_epi32_mask(a, b, _MM_CMPINT_EQ);
-  return _mm512_mask_set1_epi32(_mm512_set1_epi32(0), mask, 0xffffffffu);
+  return _mm512_mask_set1_epi32(_mm512_setzero_epi32(), mask, 0xffffffffu);
 }
 template<> EIGEN_STRONG_INLINE Packet16i pcmp_le(const Packet16i& a, const Packet16i& b) {
   __mmask16 mask = _mm512_cmp_epi32_mask(a, b, _MM_CMPINT_LE);
-  return _mm512_mask_set1_epi32(_mm512_set1_epi32(0), mask, 0xffffffffu);
+  return _mm512_mask_set1_epi32(_mm512_setzero_epi32(), mask, 0xffffffffu);
 }
 template<> EIGEN_STRONG_INLINE Packet16i pcmp_lt(const Packet16i& a, const Packet16i& b) {
   __mmask16 mask = _mm512_cmp_epi32_mask(a, b, _MM_CMPINT_LT);
-  return _mm512_mask_set1_epi32(_mm512_set1_epi32(0), mask, 0xffffffffu);
+  return _mm512_mask_set1_epi32(_mm512_setzero_epi32(), mask, 0xffffffffu);
 }
 
 template <>
 EIGEN_STRONG_INLINE Packet8d pcmp_eq(const Packet8d& a, const Packet8d& b) {
   __mmask8 mask = _mm512_cmp_pd_mask(a, b, _CMP_EQ_OQ);
   return _mm512_castsi512_pd(
-      _mm512_mask_set1_epi64(_mm512_set1_epi64(0), mask, 0xffffffffffffffffu));
+      _mm512_mask_set1_epi64(_mm512_setzero_epi32(), mask, 0xffffffffffffffffu));
 }
 template <>
 EIGEN_STRONG_INLINE Packet8d pcmp_le(const Packet8d& a, const Packet8d& b) {
   __mmask8 mask = _mm512_cmp_pd_mask(a, b, _CMP_LE_OQ);
   return _mm512_castsi512_pd(
-      _mm512_mask_set1_epi64(_mm512_set1_epi64(0), mask, 0xffffffffffffffffu));
+      _mm512_mask_set1_epi64(_mm512_setzero_epi32(), mask, 0xffffffffffffffffu));
 }
 template <>
 EIGEN_STRONG_INLINE Packet8d pcmp_lt(const Packet8d& a, const Packet8d& b) {
   __mmask8 mask = _mm512_cmp_pd_mask(a, b, _CMP_LT_OQ);
   return _mm512_castsi512_pd(
-      _mm512_mask_set1_epi64(_mm512_set1_epi64(0), mask, 0xffffffffffffffffu));
+      _mm512_mask_set1_epi64(_mm512_setzero_epi32(), mask, 0xffffffffffffffffu));
 }
 template <>
 EIGEN_STRONG_INLINE Packet8d pcmp_lt_or_nan(const Packet8d& a, const Packet8d& b) {
   __mmask8 mask = _mm512_cmp_pd_mask(a, b, _CMP_NGE_UQ);
   return _mm512_castsi512_pd(
-      _mm512_mask_set1_epi64(_mm512_set1_epi64(0), mask, 0xffffffffffffffffu));
+      _mm512_mask_set1_epi64(_mm512_setzero_epi32(), mask, 0xffffffffffffffffu));
 }
 
 template<> EIGEN_STRONG_INLINE Packet16f print<Packet16f>(const Packet16f& a) { return _mm512_roundscale_ps(a, _MM_FROUND_CUR_DIRECTION); }
@@ -1840,11 +1853,16 @@ EIGEN_DEVICE_FUNC inline void ptranspose(PacketBlock<Packet16i, 4>& kernel) {
 }
 
 template <>
-EIGEN_STRONG_INLINE Packet16f pblend(const Selector<16>& /*ifPacket*/,
-                                     const Packet16f& /*thenPacket*/,
-                                     const Packet16f& /*elsePacket*/) {
-  eigen_assert(false && "To be implemented");
-  return Packet16f();
+EIGEN_STRONG_INLINE Packet16f pblend(const Selector<16>& ifPacket,
+                                     const Packet16f& thenPacket,
+                                     const Packet16f& elsePacket) {
+  __mmask16 m = (ifPacket.select[0]) | (ifPacket.select[1] << 1) | (ifPacket.select[2] << 2) |
+                (ifPacket.select[3] << 3) | (ifPacket.select[4] << 4) | (ifPacket.select[5] << 5) |
+                (ifPacket.select[6] << 6) | (ifPacket.select[7] << 7) | (ifPacket.select[8] << 8) |
+                (ifPacket.select[9] << 9) | (ifPacket.select[10] << 10) | (ifPacket.select[11] << 11) |
+                (ifPacket.select[12] << 12) | (ifPacket.select[13] << 13) | (ifPacket.select[14] << 14) |
+                (ifPacket.select[15] << 15);
+  return _mm512_mask_blend_ps(m, elsePacket, thenPacket);
 }
 template <>
 EIGEN_STRONG_INLINE Packet8d pblend(const Selector<8>& ifPacket,
@@ -2288,25 +2306,22 @@ struct packet_traits<bfloat16> : default_packet_traits {
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size = 16,
-    HasHalfPacket = 1,
     HasBlend = 0,
     HasInsert = 1,
     HasSin = EIGEN_FAST_MATH,
     HasCos = EIGEN_FAST_MATH,
-#if EIGEN_HAS_AVX512_MATH
+    HasSqrt = 1,
+    HasRsqrt = 1,
 #ifdef EIGEN_VECTORIZE_AVX512DQ
     HasLog = 1,  // Currently fails test with bad accuracy.
     HasLog1p  = 1,
     HasExpm1  = 1,
     HasNdtri = 1,
-    HasBessel  = 1,
+    HasBessel = 1,
 #endif
     HasExp = 1,
-    HasSqrt = EIGEN_FAST_MATH,
-    HasRsqrt = EIGEN_FAST_MATH,
     HasTanh = EIGEN_FAST_MATH,
     HasErf = EIGEN_FAST_MATH,
-#endif
     HasCmp  = 1,
     HasDiv = 1
   };

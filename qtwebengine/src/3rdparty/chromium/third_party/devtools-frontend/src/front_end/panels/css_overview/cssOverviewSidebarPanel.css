@@ -7,7 +7,7 @@
 .overview-sidebar-panel {
   overflow: auto;
   display: flex;
-  background: var(--color-background-elevation-1);
+  background: var(--sys-color-cdt-base-container);
 }
 
 .overview-sidebar-panel-item {
@@ -29,12 +29,12 @@
 }
 
 .overview-sidebar-panel-item.selected {
-  background: var(--color-primary);
+  background: var(--color-primary-old);
   color: var(--color-background);
 }
 
 .overview-toolbar {
-  border-bottom: 1px solid var(--color-details-hairline);
+  border-bottom: 1px solid var(--sys-color-divider);
   flex: 0 0 auto;
 }
 

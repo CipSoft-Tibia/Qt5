@@ -94,12 +94,12 @@ const char kPageContentAnnotationsValidationBatchSizeOverride[] =
 // Enables the specific annotation type to run validation at startup after a
 // delay. A comma separated list of inputs can be given as a value which will be
 // used as input for the validation job.
-const char kPageContentAnnotationsValidationPageTopics[] =
-    "page-content-annotations-validation-page-topics";
 const char kPageContentAnnotationsValidationPageEntities[] =
     "page-content-annotations-validation-page-entities";
 const char kPageContentAnnotationsValidationContentVisibility[] =
     "page-content-annotations-validation-content-visibility";
+const char kPageContentAnnotationsValidationTextEmbedding[] =
+    "page-content-annotations-validation-text-embedding";
 
 // Writes the output of page content annotation validations to the given file.
 const char kPageContentAnnotationsValidationWriteToFile[] =
@@ -121,8 +121,9 @@ bool ShouldPurgeModelAndFeaturesStoreOnStartup() {
 }
 
 bool IsDebugLogsEnabled() {
-  base::CommandLine* cmd_line = base::CommandLine::ForCurrentProcess();
-  return cmd_line->HasSwitch(kDebugLoggingEnabled);
+  static bool enabled =
+      base::CommandLine::ForCurrentProcess()->HasSwitch(kDebugLoggingEnabled);
+  return enabled;
 }
 
 // Parses a list of hosts to have hints fetched for. This overrides scheduling
@@ -211,8 +212,9 @@ absl::optional<std::string> GetModelOverride() {
 }
 
 bool ShouldLogPageContentAnnotationsInput() {
-  return base::CommandLine::ForCurrentProcess()->HasSwitch(
+  static bool enabled = base::CommandLine::ForCurrentProcess()->HasSwitch(
       kPageContentAnnotationsLoggingEnabled);
+  return enabled;
 }
 
 absl::optional<base::TimeDelta> PageContentAnnotationsValidationStartupDelay() {
@@ -251,11 +253,12 @@ absl::optional<size_t> PageContentAnnotationsValidationBatchSize() {
 
 bool LogPageContentAnnotationsValidationToConsole() {
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-  return command_line->HasSwitch(kPageContentAnnotationsValidationPageTopics) ||
-         command_line->HasSwitch(
+  return command_line->HasSwitch(
              kPageContentAnnotationsValidationPageEntities) ||
          command_line->HasSwitch(
-             kPageContentAnnotationsValidationContentVisibility);
+             kPageContentAnnotationsValidationContentVisibility) ||
+         command_line->HasSwitch(
+             kPageContentAnnotationsValidationTextEmbedding);
 }
 
 absl::optional<std::vector<std::string>>
@@ -264,10 +267,6 @@ PageContentAnnotationsValidationInputForType(AnnotationType type) {
 
   std::string value;
   switch (type) {
-    case AnnotationType::kPageTopics:
-      value = command_line->GetSwitchValueASCII(
-          kPageContentAnnotationsValidationPageTopics);
-      break;
     case AnnotationType::kPageEntities:
       value = command_line->GetSwitchValueASCII(
           kPageContentAnnotationsValidationPageEntities);
@@ -275,6 +274,10 @@ PageContentAnnotationsValidationInputForType(AnnotationType type) {
     case AnnotationType::kContentVisibility:
       value = command_line->GetSwitchValueASCII(
           kPageContentAnnotationsValidationContentVisibility);
+      break;
+    case AnnotationType::kTextEmbedding:
+      value = command_line->GetSwitchValueASCII(
+          kPageContentAnnotationsValidationTextEmbedding);
       break;
     default:
       break;

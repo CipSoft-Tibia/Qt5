@@ -96,9 +96,11 @@ class HttpServerPropertiesTest : public TestWithTaskEnvironment {
     test_clock_.Advance(base::Seconds(12345));
 
     SchemefulSite site1(GURL("https://foo.test/"));
-    network_anonymization_key1_ = NetworkAnonymizationKey(site1, site1);
+    network_anonymization_key1_ =
+        NetworkAnonymizationKey::CreateSameSite(site1);
     SchemefulSite site2(GURL("https://bar.test/"));
-    network_anonymization_key2_ = NetworkAnonymizationKey(site2, site2);
+    network_anonymization_key2_ =
+        NetworkAnonymizationKey::CreateSameSite(site2);
   }
 
   // This is a little awkward, but need to create and configure the
@@ -920,10 +922,9 @@ TEST_F(AlternateProtocolServerPropertiesTest, SetWithEmptyHostname) {
             alternative_service_info_vector[0].alternative_service());
 }
 
-// Regression test for https://crbug.com/516486:
 // GetAlternativeServiceInfos() should remove |server_info_map_|
 // elements with empty value.
-TEST_F(AlternateProtocolServerPropertiesTest, DISABLED_EmptyVector) {
+TEST_F(AlternateProtocolServerPropertiesTest, EmptyVector) {
   url::SchemeHostPort server("https", "foo", 443);
   const AlternativeService alternative_service(kProtoHTTP2, "bar", 443);
   base::Time expiration = test_clock_.Now() - base::Days(1);

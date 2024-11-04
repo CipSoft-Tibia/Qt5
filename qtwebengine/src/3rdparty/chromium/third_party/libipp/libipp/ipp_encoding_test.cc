@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium OS Authors. All rights reserved.
+// Copyright 2019 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -79,16 +79,19 @@ template <size_t BytesCount, typename Integer>
 void TestWriteInt(const std::vector<uint8_t>& binary, const Integer value) {
   std::vector<uint8_t> buffer(BytesCount, 123);
   uint8_t* ptr = buffer.data();
-  const bool result = WriteInteger<BytesCount, Integer>(&ptr, value);
-  if (binary.empty()) {
-    EXPECT_FALSE(result);
-    EXPECT_EQ(ptr, buffer.data());
-    EXPECT_EQ(buffer, std::vector<uint8_t>(BytesCount, 123));
-  } else {
-    EXPECT_TRUE(result);
-    EXPECT_EQ(ptr, buffer.data() + BytesCount);
-    EXPECT_EQ(buffer, binary);
-  }
+  WriteInteger<BytesCount, Integer>(&ptr, value);
+  EXPECT_EQ(ptr, buffer.data() + BytesCount);
+  EXPECT_EQ(buffer, binary);
+}
+
+template <size_t BytesCount, typename Integer>
+void TestWriteUnsigned(const std::vector<uint8_t>& binary,
+                       const Integer value) {
+  std::vector<uint8_t> buffer(BytesCount, 123);
+  uint8_t* ptr = buffer.data();
+  WriteUnsigned<BytesCount, Integer>(&ptr, value);
+  EXPECT_EQ(ptr, buffer.data() + BytesCount);
+  EXPECT_EQ(buffer, binary);
 }
 
 template <size_t BytesCount, typename SignedInteger, typename UnsignedInteger>
@@ -105,7 +108,7 @@ void TestWrite(const std::vector<uint8_t>& binary, const int64_t value) {
     TestWriteInt<BytesCount, SignedInteger>(binary, value);
   }
   if ((value >= 0) && (value <= std::numeric_limits<UnsignedInteger>::max())) {
-    TestWriteInt<BytesCount, UnsignedInteger>(binary, value);
+    TestWriteUnsigned<BytesCount, UnsignedInteger>(binary, value);
   }
 }
 
@@ -118,15 +121,9 @@ void TestReadAndWrite(const TestCase& tc) {
   TestRead<2, int16_t, uint16_t>(tc.as2bytes, tc.value);
   TestRead<2, int32_t, uint32_t>(tc.as2bytes, tc.value);
   TestRead<4, int32_t, uint32_t>(tc.as4bytes, tc.value);
-  // test write
+  // test write (only matching types are allowed)
   TestWrite<1, int8_t, uint8_t>(tc.as1byte, tc.value);
-  TestWrite<1, int16_t, uint16_t>(tc.as1byte, tc.value);
-  TestWrite<1, int32_t, uint32_t>(tc.as1byte, tc.value);
-  TestWrite<2, int8_t, uint8_t>(tc.as2bytes, tc.value);
   TestWrite<2, int16_t, uint16_t>(tc.as2bytes, tc.value);
-  TestWrite<2, int32_t, uint32_t>(tc.as2bytes, tc.value);
-  TestWrite<4, int8_t, uint8_t>(tc.as4bytes, tc.value);
-  TestWrite<4, int16_t, uint16_t>(tc.as4bytes, tc.value);
   TestWrite<4, int32_t, uint32_t>(tc.as4bytes, tc.value);
 }
 

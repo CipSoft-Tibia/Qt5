@@ -1,5 +1,5 @@
 // Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qt3dwindow.h"
 #include "qt3dwindow_p.h"
@@ -303,7 +303,8 @@ void setupWindowSurface(QWindow *window, Qt3DRender::API api) noexcept
     }
 
     format.setDepthBufferSize(24);
-    format.setSamples(4);
+    if (!QSurfaceFormat::defaultFormat().stereo())
+        format.setSamples(4);
     format.setStencilBufferSize(8);
     window->setFormat(format);
     QSurfaceFormat::setDefaultFormat(format);

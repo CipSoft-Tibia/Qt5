@@ -260,7 +260,7 @@ static void customConstruct(const QtPrivate::QMetaTypeInterface *iface, QVariant
     if constexpr (moveOption == ForceMove)
         Q_ASSERT(isMoveConstructible(iface));
     if constexpr (nullability == NonNull)
-        Q_ASSUME(copy != nullptr);
+        Q_ASSERT(copy != nullptr);
 
     // need to check for nullptr_t here, as this can get called by fromValue(nullptr). fromValue() uses
     // std::addressof(value) which in this case returns the address of the nullptr object.
@@ -516,7 +516,7 @@ void QVariant::create(int type, const void *copy)
 */
 void QVariant::create(QMetaType type, const void *copy)
 {
-    *this = QVariant(type, copy);
+    *this = QVariant::fromMetaType(type, copy);
 }
 
 /*!
@@ -544,7 +544,7 @@ QVariant::QVariant(const QVariant &p)
 }
 
 /*!
-    \fn template <typename T, typename... Args, if_constructible<T, Args...> = true> QVariant::QVariant(std::in_place_type_t<T>, Args&&... args) noexcept(is_noexcept_constructible<q20::remove_cvref_t<T>, Args...>::value)
+    \fn template <typename T, typename... Args, QVariant::if_constructible<T, Args...> = true> QVariant::QVariant(std::in_place_type_t<T>, Args&&... args) noexcept(is_noexcept_constructible<q20::remove_cvref_t<T>, Args...>::value)
 
     \since 6.6
     Constructs a new variant containing a value of type \c T. The contained
@@ -561,7 +561,7 @@ QVariant::QVariant(const QVariant &p)
 
 /*!
 
-    \fn template <typename T, typename U, typename... Args, if_constructible<T, std::initializer_list<U> &, Args...> = true> explicit QVariant::QVariant(std::in_place_type_t<T>, std::initializer_list<U> il, Args&&... args) noexcept(is_noexcept_constructible<q20::remove_cvref_t<T>, std::initializer_list<U> &, Args... >::value)
+    \fn template <typename T, typename U, typename... Args, QVariant::if_constructible<T, std::initializer_list<U> &, Args...> = true> explicit QVariant::QVariant(std::in_place_type_t<T>, std::initializer_list<U> il, Args&&... args) noexcept(is_noexcept_constructible<q20::remove_cvref_t<T>, std::initializer_list<U> &, Args... >::value)
 
     \since 6.6
     \overload
@@ -572,7 +572,7 @@ QVariant::QVariant(const QVariant &p)
 
 
 /*!
-    \fn template <typename T, typename... Args, if_constructible<T, Args...> = true> QVariant::emplace(Args&&... args)
+    \fn template <typename T, typename... Args, QVariant::if_constructible<T, Args...> = true> QVariant::emplace(Args&&... args)
 
     \since 6.6
     Replaces the object currently held in \c{*this} with an object of
@@ -583,7 +583,7 @@ QVariant::QVariant(const QVariant &p)
  */
 
 /*!
-    \fn template <typename T, typename U, typename... Args, if_constructible<T, std::initializer_list<U> &, Args...> = true> QVariant::emplace(std::initializer_list<U> list, Args&&... args)
+    \fn template <typename T, typename U, typename... Args, QVariant::if_constructible<T, std::initializer_list<U> &, Args...> = true> QVariant::emplace(std::initializer_list<U> list, Args&&... args)
 
     \since 6.6
     \overload
@@ -910,27 +910,27 @@ void *QVariant::prepareForEmplace(QMetaType type)
 */
 
 /*!
-    Constructs variant of type \a type, and initializes with
-    \a copy if \a copy is not \nullptr.
+    Constructs a variant of type \a type, and initializes it with
+    a copy of \c{*copy} if \a copy is not \nullptr (in which case, \a copy
+    must point to an object of type \a type).
 
-    Note that you have to pass the address of the variable you want stored.
+    Note that you have to pass the address of the object you want stored.
 
     Usually, you never have to use this constructor, use QVariant::fromValue()
     instead to construct variants from the pointer types represented by
     \c QMetaType::VoidStar, and \c QMetaType::QObjectStar.
 
-    If \a type does not support copy and default construction, the variant will
-    be invalid.
+    If \a type does not support copy construction and \a copy is not \nullptr,
+    the variant will be invalid. Similarly, if \a copy is \nullptr and
+    \a type does not support default construction, the variant will be
+    invalid.
 
-    \sa QVariant::fromValue(), QMetaType::Type
+    \sa QVariant::fromMetaType, QVariant::fromValue(), QMetaType::Type
 */
-QVariant::QVariant(QMetaType type, const void *copy) : d(type.iface())
+QVariant::QVariant(QMetaType type, const void *copy)
+    : d()
 {
-    type.registerType();
-    if (isValidMetaTypeForVariant(type.iface(), copy))
-        customConstruct(type.iface(), &d, copy);
-    else
-        d = {};
+    *this = fromMetaType(type, copy);
 }
 
 QVariant::QVariant(int val) noexcept : d(std::piecewise_construct_t{}, val) {}
@@ -2589,7 +2589,7 @@ QT_WARNING_POP
 
 #endif
 
-/*! \fn template<typename T> void QVariant::setValue(T &&value)
+/*! \fn template<typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, QVariant>>> void QVariant::setValue(T &&value)
 
     Stores a copy of \a value. If \c{T} is a type that QVariant
     doesn't support, QMetaType is used to store the value. A compile
@@ -2602,19 +2602,19 @@ QT_WARNING_POP
     \sa value(), fromValue(), canConvert()
  */
 
-/*! \fn template<typename T> void QVariant::setValue(const QVariant &value)
+/*! \fn void QVariant::setValue(const QVariant &value)
 
     Copies \a value over this QVariant. It is equivalent to simply
     assigning \a value to this QVariant.
 */
 
-/*! \fn template<typename T> void QVariant::setValue(QVariant &&value)
+/*! \fn void QVariant::setValue(QVariant &&value)
 
     Moves \a value over this QVariant. It is equivalent to simply
     move assigning \a value to this QVariant.
 */
 
-/*! \fn template<typename T> T QVariant::value() const
+/*! \fn template<typename T> T QVariant::value() const &
 
     Returns the stored value converted to the template type \c{T}.
     Call canConvert() to find out whether a type can be converted.
@@ -2654,7 +2654,7 @@ QT_WARNING_POP
     \sa canView(), Q_DECLARE_SEQUENTIAL_CONTAINER_METATYPE()
 */
 
-/*! \fn bool QVariant::canConvert() const
+/*! \fn template<typename T> bool QVariant::canConvert() const
 
     Returns \c true if the variant can be converted to the template type \c{T},
     otherwise false.
@@ -2670,7 +2670,7 @@ QT_WARNING_POP
     \sa convert()
 */
 
-/*! \fn bool QVariant::canView() const
+/*! \fn template<typename T> bool QVariant::canView() const
 
     Returns \c true if a mutable view of the template type \c{T} can be created on this variant,
     otherwise \c false.
@@ -2690,7 +2690,7 @@ QT_WARNING_POP
     \sa setValue(), value()
 */
 
-/*! \fn template<typename T> static QVariant QVariant::fromValue(T &&value)
+/*! \fn template<typename T, QVariant::if_rvalue<T> = true> static QVariant QVariant::fromValue(T &&value)
 
     \since 6.6
     \overload
@@ -2715,6 +2715,41 @@ QT_WARNING_POP
     \overload
 */
 
+
+/*!
+    \since 6.7
+
+    Creates a variant of type \a type, and initializes it with
+    a copy of \c{*copy} if \a copy is not \nullptr (in which case, \a copy
+    must point to an object of type \a type).
+
+    Note that you have to pass the address of the object you want stored.
+
+    Usually, you never have to use this constructor, use QVariant::fromValue()
+    instead to construct variants from the pointer types represented by
+    \c QMetaType::VoidStar, and \c QMetaType::QObjectStar.
+
+    If \a type does not support copy construction and \a copy is not \nullptr,
+    the variant will be invalid. Similarly, if \a copy is \nullptr and
+    \a type does not support default construction, the variant will be
+    invalid.
+
+    Returns the QVariant created as described above.
+
+    \sa QVariant::fromValue(), QMetaType::Type
+*/
+QVariant QVariant::fromMetaType(QMetaType type, const void *copy)
+{
+    QVariant result;
+    type.registerType();
+    const auto iface = type.iface();
+    if (isValidMetaTypeForVariant(iface, copy)) {
+        result.d = Private(iface);
+        customConstruct(iface, &result.d, copy);
+    }
+    return result;
+}
+
 /*!
     \fn template<typename T> T qvariant_cast(const QVariant &value)
     \relates QVariant
@@ -2724,6 +2759,14 @@ QT_WARNING_POP
     This function is equivalent to QVariant::value().
 
     \sa QVariant::value()
+*/
+
+/*!
+    \fn template<typename T> T QVariant::qvariant_cast(QVariant &&value)
+    \overload
+    \since 6.7
+
+    Returns the given \a value converted to the template type \c{T}.
 */
 
 /*! \fn template<typename T> T qVariantValue(const QVariant &value)

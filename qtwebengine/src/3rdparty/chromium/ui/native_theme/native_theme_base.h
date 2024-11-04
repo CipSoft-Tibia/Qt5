@@ -72,6 +72,10 @@ class NATIVE_THEME_EXPORT NativeThemeBase : public NativeTheme {
     kScrollbarArrow,
     kScrollbarArrowHovered,
     kScrollbarArrowPressed,
+    // TODO(1374503): kScrollbarCorner overlaps with
+    // NativeTheme::Part::kScrollbarCorner. Make ControlColorId a enum class
+    // or remove the class completely in favor of ColorProvider colors.
+    kScrollbarCornerControlColorId,
     kScrollbarTrack,
     kScrollbarThumb,
     kScrollbarThumbHovered,
@@ -119,14 +123,16 @@ class NATIVE_THEME_EXPORT NativeThemeBase : public NativeTheme {
       Part part,
       State state,
       const gfx::Rect& rect,
-      NativeTheme::ScrollbarOverlayColorTheme theme,
+      const ScrollbarThumbExtraParams& extra_params,
       ColorScheme color_scheme) const;
 
-  virtual void PaintScrollbarCorner(cc::PaintCanvas* canvas,
-                                    const ColorProvider* color_provider,
-                                    State state,
-                                    const gfx::Rect& rect,
-                                    ColorScheme color_scheme) const;
+  virtual void PaintScrollbarCorner(
+      cc::PaintCanvas* canvas,
+      const ColorProvider* color_provider,
+      State state,
+      const gfx::Rect& rect,
+      const ScrollbarTrackExtraParams& extra_params,
+      ColorScheme color_scheme) const;
 
   void PaintCheckbox(cc::PaintCanvas* canvas,
                      const ColorProvider* color_provider,

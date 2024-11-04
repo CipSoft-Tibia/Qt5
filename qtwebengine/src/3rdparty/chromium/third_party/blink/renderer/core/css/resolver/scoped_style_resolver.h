@@ -31,6 +31,7 @@
 
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/active_style_sheets.h"
+#include "third_party/blink/renderer/core/css/cascade_layer.h"
 #include "third_party/blink/renderer/core/css/element_rule_collector.h"
 #include "third_party/blink/renderer/core/css/rule_set.h"
 #include "third_party/blink/renderer/core/dom/tree_scope.h"
@@ -72,10 +73,13 @@ class CORE_EXPORT ScopedStyleResolver final
   const FontFeatureValuesStorage* FontFeatureValuesForFamily(
       AtomicString font_family);
 
-  void RebuildCascadeLayerMap(const ActiveStyleSheetVector&);
+  void RebuildCascadeLayerMap(const ActiveStyleSheetVector& sheets);
   bool HasCascadeLayerMap() const { return cascade_layer_map_.Get(); }
   const CascadeLayerMap* GetCascadeLayerMap() const {
     return cascade_layer_map_;
+  }
+  const HeapVector<Member<CSSStyleSheet>>& GetStyleSheets() const {
+    return style_sheets_;
   }
 
   void AppendActiveStyleSheets(unsigned index, const ActiveStyleSheetVector&);
@@ -113,6 +117,7 @@ class CORE_EXPORT ScopedStyleResolver final
       const StyleRuleKeyframes* new_rule,
       const StyleRuleKeyframes* existing_rule) const;
   void AddPositionFallbackRules(const RuleSet&);
+  void AddViewTransitionsRules(const RuleSet&);
 
   CounterStyleMap& EnsureCounterStyleMap();
 

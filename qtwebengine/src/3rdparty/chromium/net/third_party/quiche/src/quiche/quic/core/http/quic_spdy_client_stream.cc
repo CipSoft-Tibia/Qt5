@@ -6,6 +6,7 @@
 
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "quiche/quic/core/http/quic_client_promised_info.h"
 #include "quiche/quic/core/http/quic_spdy_client_session.h"
@@ -28,8 +29,7 @@ QuicSpdyClientStream::QuicSpdyClientStream(QuicStreamId id,
       response_code_(0),
       header_bytes_read_(0),
       header_bytes_written_(0),
-      session_(session),
-      has_preliminary_headers_(false) {}
+      session_(session) {}
 
 QuicSpdyClientStream::QuicSpdyClientStream(PendingStream* pending,
                                            QuicSpdyClientSession* session)
@@ -38,8 +38,7 @@ QuicSpdyClientStream::QuicSpdyClientStream(PendingStream* pending,
       response_code_(0),
       header_bytes_read_(0),
       header_bytes_written_(0),
-      session_(session),
-      has_preliminary_headers_(false) {}
+      session_(session) {}
 
 QuicSpdyClientStream::~QuicSpdyClientStream() = default;
 
@@ -74,13 +73,7 @@ bool QuicSpdyClientStream::ParseAndValidateStatusCode() {
                     << response_headers_[":status"].as_string() << " on stream "
                     << id();
     set_headers_decompressed(false);
-    if (response_code_ == 100 && !has_preliminary_headers_) {
-      // This is 100 Continue, save it to enable "Expect: 100-continue".
-      has_preliminary_headers_ = true;
-      preliminary_headers_ = std::move(response_headers_);
-    } else {
-      response_headers_.clear();
-    }
+    preliminary_headers_.push_back(std::move(response_headers_));
   }
 
   return true;
@@ -89,7 +82,8 @@ bool QuicSpdyClientStream::ParseAndValidateStatusCode() {
 void QuicSpdyClientStream::OnInitialHeadersComplete(
     bool fin, size_t frame_len, const QuicHeaderList& header_list) {
   QuicSpdyStream::OnInitialHeadersComplete(fin, frame_len, header_list);
-
+  time_to_response_headers_received_ =
+      session()->GetClock()->ApproximateNow() - creation_time();
   QUICHE_DCHECK(headers_decompressed());
   header_bytes_read_ += frame_len;
   if (rst_sent()) {
@@ -203,12 +197,9 @@ size_t QuicSpdyClientStream::SendRequest(Http2HeaderBlock headers,
   return bytes_sent;
 }
 
-bool QuicSpdyClientStream::AreHeadersValid(
-    const QuicHeaderList& header_list) const {
-  if (!GetQuicReloadableFlag(quic_verify_request_headers_2)) {
-    return true;
-  }
-  if (!QuicSpdyStream::AreHeadersValid(header_list)) {
+bool QuicSpdyClientStream::ValidatedReceivedHeaders(
+    const QuicHeaderList& header_list) {
+  if (!QuicSpdyStream::ValidatedReceivedHeaders(header_list)) {
     return false;
   }
   // Verify the presence of :status header.
@@ -217,11 +208,24 @@ bool QuicSpdyClientStream::AreHeadersValid(
     if (pair.first == ":status") {
       saw_status = true;
     } else if (absl::StrContains(pair.first, ":")) {
-      QUIC_DLOG(ERROR) << "Unexpected ':' in header " << pair.first << ".";
+      set_invalid_request_details(
+          absl::StrCat("Unexpected ':' in header ", pair.first, "."));
+      QUIC_DLOG(ERROR) << invalid_request_details();
       return false;
     }
   }
+  if (!saw_status) {
+    set_invalid_request_details("Missing :status in response header.");
+    QUIC_DLOG(ERROR) << invalid_request_details();
+    return false;
+  }
   return saw_status;
+}
+
+void QuicSpdyClientStream::OnFinRead() {
+  time_to_response_complete_ =
+      session()->GetClock()->ApproximateNow() - creation_time();
+  QuicSpdyStream::OnFinRead();
 }
 
 }  // namespace quic

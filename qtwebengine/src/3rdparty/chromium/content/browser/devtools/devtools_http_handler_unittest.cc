@@ -25,6 +25,7 @@
 #include "base/test/task_environment.h"
 #include "base/values.h"
 #include "content/browser/devtools/devtools_agent_host_impl.h"
+#include "content/browser/devtools/devtools_manager.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/content_browser_client.h"
@@ -51,6 +52,8 @@
 namespace content {
 namespace {
 
+using ::testing::HasSubstr;
+using ::testing::Not;
 using ::testing::Return;
 
 const uint16_t kDummyPort = 4321;
@@ -59,10 +62,10 @@ const base::FilePath::CharType kDevToolsActivePortFileName[] =
 
 class DummyServerSocket : public net::ServerSocket {
  public:
-  DummyServerSocket() {}
-
   // net::ServerSocket "implementation"
-  int Listen(const net::IPEndPoint& address, int backlog) override {
+  int Listen(const net::IPEndPoint& address,
+             int backlog,
+             absl::optional<bool> ipv6_only) override {
     return net::OK;
   }
 
@@ -152,12 +155,29 @@ class MockDevToolsManagerDelegate : public DevToolsManagerDelegate {
   MockDevToolsManagerDelegate() { last_instance = this; }
   MOCK_METHOD(scoped_refptr<DevToolsAgentHost>,
               CreateNewTarget,
-              (const GURL& url, bool for_tab),
+              (const GURL& url, TargetType target_type),
+              (override));
+  MOCK_METHOD(DevToolsAgentHost::List,
+              RemoteDebuggingTargets,
+              (TargetType target_type),
               (override));
 };
 
 MockDevToolsManagerDelegate* MockDevToolsManagerDelegate::last_instance =
     nullptr;
+
+class MockDevToolsAgentHostWithType : public MockDevToolsAgentHost {
+ public:
+  explicit MockDevToolsAgentHostWithType(const std::string& type)
+      : type_(type) {}
+
+  std::string GetType() override { return type_; }
+
+ private:
+  ~MockDevToolsAgentHostWithType() override = default;
+
+  std::string type_;
+};
 
 class BrowserClient : public ContentBrowserClient {
  public:
@@ -179,12 +199,20 @@ class DevToolsHttpHandlerTest : public testing::Test {
   void SetUp() override {
     content_client_ = std::make_unique<ContentClient>();
     browser_content_client_ = std::make_unique<BrowserClient>();
-    SetBrowserClientForTesting(browser_content_client_.get());
+    original_client_ =
+        SetBrowserClientForTesting(browser_content_client_.get());
+    DevToolsManager::ShutdownForTests();
+  }
+
+  void TearDown() override {
+    SetBrowserClientForTesting(original_client_);
+    DevToolsManager::ShutdownForTests();
   }
 
  private:
   std::unique_ptr<ContentClient> content_client_;
   std::unique_ptr<ContentBrowserClient> browser_content_client_;
+  raw_ptr<ContentBrowserClient> original_client_ = nullptr;
   content::BrowserTaskEnvironment task_environment_;
 };
 
@@ -218,7 +246,6 @@ TEST_F(DevToolsHttpHandlerTest, TestServerSocketFailed) {
   // Make sure the handler actually stops.
   run_loop_2.Run();
 }
-
 
 TEST_F(DevToolsHttpHandlerTest, TestDevToolsActivePort) {
   base::RunLoop run_loop, run_loop_2;
@@ -279,8 +306,9 @@ TEST_F(DevToolsHttpHandlerTest, MutatingActionsiRequireSafeVerb) {
   EXPECT_GE(delegate.request_status(), 0);
   EXPECT_EQ(405, request->response_info().headers->response_code());
 
-  EXPECT_CALL(*MockDevToolsManagerDelegate::last_instance,
-              CreateNewTarget(GURL("about:blank"), false))
+  EXPECT_CALL(
+      *MockDevToolsManagerDelegate::last_instance,
+      CreateNewTarget(GURL("about:blank"), DevToolsManagerDelegate::kFrame))
       .WillOnce(Return(base::MakeRefCounted<MockDevToolsAgentHost>()));
 
   request = request_context->CreateRequest(
@@ -308,8 +336,9 @@ TEST_F(DevToolsHttpHandlerTest, TestJsonNew) {
   int port = factory->port();
   net::TestDelegate delegate;
 
-  EXPECT_CALL(*MockDevToolsManagerDelegate::last_instance,
-              CreateNewTarget(GURL("about:blank"), false));
+  EXPECT_CALL(
+      *MockDevToolsManagerDelegate::last_instance,
+      CreateNewTarget(GURL("about:blank"), DevToolsManagerDelegate::kFrame));
   GURL url(base::StringPrintf("http://127.0.0.1:%d/json/new", port));
   auto request_context = net::CreateTestURLRequestContextBuilder()->Build();
   auto request = request_context->CreateRequest(
@@ -320,7 +349,8 @@ TEST_F(DevToolsHttpHandlerTest, TestJsonNew) {
   EXPECT_GE(delegate.request_status(), 0);
 
   EXPECT_CALL(*MockDevToolsManagerDelegate::last_instance,
-              CreateNewTarget(GURL("http://example.com"), false));
+              CreateNewTarget(GURL("http://example.com"),
+                              DevToolsManagerDelegate::kFrame));
   url = GURL(base::StringPrintf(
       "http://127.0.0.1:%d/json/new?%s", port,
       base::EscapeQueryParamValue("http://example.com", true).c_str()));
@@ -332,7 +362,8 @@ TEST_F(DevToolsHttpHandlerTest, TestJsonNew) {
   EXPECT_GE(delegate.request_status(), 0);
 
   EXPECT_CALL(*MockDevToolsManagerDelegate::last_instance,
-              CreateNewTarget(GURL("http://example.com"), true));
+              CreateNewTarget(GURL("http://example.com"),
+                              DevToolsManagerDelegate::kTab));
   url = GURL(base::StringPrintf(
       "http://127.0.0.1:%d/json/new?%s&for_tab", port,
       base::EscapeQueryParamValue("http://example.com", true).c_str()));
@@ -342,6 +373,63 @@ TEST_F(DevToolsHttpHandlerTest, TestJsonNew) {
   request->Start();
   delegate.RunUntilComplete();
   EXPECT_GE(delegate.request_status(), 0);
+
+  DevToolsAgentHost::StopRemoteDebuggingServer();
+  // Make sure the handler actually stops.
+  run_loop_2.Run();
+}
+
+TEST_F(DevToolsHttpHandlerTest, TestJsonList) {
+  base::RunLoop run_loop, run_loop_2;
+  auto* factory = new TCPServerSocketFactory(run_loop.QuitClosure(),
+                                             run_loop_2.QuitClosure());
+  DevToolsAgentHost::StartRemoteDebuggingServer(
+      base::WrapUnique(factory), base::FilePath(), base::FilePath());
+  // Our dummy socket factory will post a quit message once the server will
+  // become ready.
+  run_loop.Run();
+  int port = factory->port();
+  net::TestDelegate delegate;
+
+  EXPECT_CALL(*MockDevToolsManagerDelegate::last_instance,
+              RemoteDebuggingTargets(DevToolsManagerDelegate::kFrame));
+  GURL url(base::StringPrintf("http://127.0.0.1:%d/json", port));
+  auto request_context = net::CreateTestURLRequestContextBuilder()->Build();
+  auto request = request_context->CreateRequest(
+      url, net::DEFAULT_PRIORITY, &delegate, TRAFFIC_ANNOTATION_FOR_TESTS);
+  request->set_method("PUT");
+  request->Start();
+  delegate.RunUntilComplete();
+
+  EXPECT_CALL(*MockDevToolsManagerDelegate::last_instance,
+              RemoteDebuggingTargets(DevToolsManagerDelegate::kFrame))
+      .WillOnce(Return(std::vector<scoped_refptr<DevToolsAgentHost>>{
+          base::MakeRefCounted<MockDevToolsAgentHostWithType>("service_worker"),
+          base::MakeRefCounted<MockDevToolsAgentHostWithType>("tab")}));
+  url = GURL(base::StringPrintf("http://127.0.0.1:%d/json/list", port));
+  request = request_context->CreateRequest(
+      url, net::DEFAULT_PRIORITY, &delegate, TRAFFIC_ANNOTATION_FOR_TESTS);
+  request->set_method("PUT");
+  request->Start();
+  delegate.RunUntilComplete();
+  EXPECT_THAT(delegate.data_received(),
+              HasSubstr(R"("type": "service_worker")"));
+  EXPECT_THAT(delegate.data_received(), Not(HasSubstr(R"("type": "tab")")));
+
+  EXPECT_CALL(*MockDevToolsManagerDelegate::last_instance,
+              RemoteDebuggingTargets(DevToolsManagerDelegate::kTab))
+      .WillOnce(Return(std::vector<scoped_refptr<DevToolsAgentHost>>{
+          base::MakeRefCounted<MockDevToolsAgentHostWithType>("service_worker"),
+          base::MakeRefCounted<MockDevToolsAgentHostWithType>("tab")}));
+  url = GURL(base::StringPrintf("http://127.0.0.1:%d/json/list?for_tab", port));
+  request = request_context->CreateRequest(
+      url, net::DEFAULT_PRIORITY, &delegate, TRAFFIC_ANNOTATION_FOR_TESTS);
+  request->set_method("PUT");
+  request->Start();
+  delegate.RunUntilComplete();
+  EXPECT_THAT(delegate.data_received(),
+              HasSubstr(R"("type": "service_worker")"));
+  EXPECT_THAT(delegate.data_received(), HasSubstr(R"("type": "tab")"));
 
   DevToolsAgentHost::StopRemoteDebuggingServer();
   // Make sure the handler actually stops.

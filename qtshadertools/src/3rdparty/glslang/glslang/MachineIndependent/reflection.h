@@ -33,8 +33,6 @@
 // POSSIBILITY OF SUCH DAMAGE.
 //
 
-#if !defined(GLSLANG_WEB) && !defined(GLSLANG_ANGLE)
-
 #ifndef _REFLECTION_INCLUDED
 #define _REFLECTION_INCLUDED
 
@@ -60,7 +58,7 @@ class TReflection {
 public:
     TReflection(EShReflectionOptions opts, EShLanguage first, EShLanguage last)
         : options(opts), firstStage(first), lastStage(last), badReflection(TObjectReflection::badReflection())
-    { 
+    {
         for (int dim=0; dim<3; ++dim)
             localSize[dim] = 0;
     }
@@ -129,7 +127,7 @@ public:
         else
             return badReflection;
     }
-    
+
     // for mapping a storage block index to the storage block's description
     int getNumStorageBuffers() const { return (int)indexToBufferBlock.size(); }
     const TObjectReflection&  getStorageBufferBlock(int i) const
@@ -221,5 +219,3 @@ protected:
 } // namespace QtShaderTools
 
 #endif // _REFLECTION_INCLUDED
-
-#endif // !GLSLANG_WEB && !GLSLANG_ANGLE

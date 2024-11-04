@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QTestEventLoop>
@@ -53,6 +53,7 @@ private slots:
     void setStackSize();
     void exit();
     void start();
+    void startSlotUsedInStringBasedLookups();
     void terminate();
     void quit();
     void started();
@@ -99,6 +100,7 @@ private slots:
 
     void terminateAndPrematureDestruction();
     void terminateAndDoubleDestruction();
+    void terminateSelfStressTest();
 
     void bindingListCleanupAfterDelete();
 };
@@ -464,6 +466,56 @@ void tst_QThread::start()
         QVERIFY(thread.isFinished());
         QVERIFY(!thread.isRunning());
     }
+}
+
+class QThreadStarter : public QObject
+{
+    Q_OBJECT
+public:
+    using QObject::QObject;
+Q_SIGNALS:
+    void start(QThread::Priority);
+};
+
+class QThreadSelfStarter : public QThread
+{
+    Q_OBJECT
+public:
+    using QThread::QThread;
+
+    void check()
+    {
+        QVERIFY(connect(this, SIGNAL(starting(Priority)),
+                        this, SLOT(start(Priority))));
+        QVERIFY(QMetaObject::invokeMethod(this, "start", Q_ARG(Priority, IdlePriority)));
+    }
+
+Q_SIGNALS:
+    void starting(Priority);
+};
+
+void tst_QThread::startSlotUsedInStringBasedLookups()
+{
+    // QTBUG-124723
+
+    QThread thread;
+    {
+        QThreadStarter starter;
+        QVERIFY(QObject::connect(&starter, SIGNAL(start(QThread::Priority)),
+                                 &thread, SLOT(start(QThread::Priority))));
+    }
+    {
+        QThreadSelfStarter selfStarter;
+        selfStarter.check();
+        if (QTest::currentTestFailed())
+            return;
+        selfStarter.exit();
+        selfStarter.wait(30s);
+    }
+    QVERIFY(QMetaObject::invokeMethod(&thread, "start",
+                                      Q_ARG(QThread::Priority, QThread::IdlePriority)));
+    thread.exit();
+    thread.wait(30s);
 }
 
 void tst_QThread::terminate()
@@ -1355,9 +1407,6 @@ void tst_QThread::quitLock()
 
 void tst_QThread::create()
 {
-#if !QT_CONFIG(cxx11_future)
-    QSKIP("This test requires QThread::create");
-#else
     {
         const auto &function = [](){};
         QScopedPointer<QThread> thread(QThread::create(function));
@@ -1597,7 +1646,6 @@ void tst_QThread::create()
         QVERIFY(!thread);
     }
 #endif // QT_NO_EXCEPTIONS
-#endif // QT_CONFIG(cxx11_future)
 }
 
 void tst_QThread::createDestruction()
@@ -1834,6 +1882,53 @@ void tst_QThread::terminateAndDoubleDestruction()
     };
 
     TestObject obj;
+}
+
+void tst_QThread::terminateSelfStressTest()
+{
+    // This simply tests that QThread::terminate() doesn't crash or causes
+    // sanitizer reports when a thread cancels itself.
+#ifdef Q_OS_ANDROID
+    QSKIP("Android cannot cancel threads");
+#endif
+
+#ifdef Q_OS_WIN
+    QSKIP("QTBUG-127050");
+#endif
+
+    struct Thread : QThread {
+        void run() override {
+            terminate();
+            while (true) sleep(1ns); // QTBUG-127008
+        }
+    };
+
+    {
+        // first, try with one:
+        Thread t;
+        t.start();
+        QVERIFY(t.wait(10s));
+    }
+
+    constexpr QThread::Priority priorities[] = {
+        QThread::IdlePriority,
+        QThread::LowestPriority,
+        QThread::LowPriority,
+        QThread::NormalPriority,
+        QThread::HighPriority,
+        QThread::HighestPriority,
+        QThread::TimeCriticalPriority,
+        QThread::InheritPriority,
+    };
+
+    QVarLengthArray<Thread, 1024> threads(3 * QThread::idealThreadCount());
+
+    size_t i = 0;
+    for (Thread &t : threads)
+        t.start(priorities[i++ % std::size(priorities)]);
+
+    for (Thread &t : threads)
+        QVERIFY2(t.wait(60s), QByteArray::number(&t - threads.data()).constData());
 }
 
 void tst_QThread::bindingListCleanupAfterDelete()

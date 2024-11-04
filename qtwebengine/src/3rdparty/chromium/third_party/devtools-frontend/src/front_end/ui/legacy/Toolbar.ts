@@ -33,6 +33,7 @@ import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
 import * as Root from '../../core/root/root.js';
+import * as IconButton from '../components/icon_button/icon_button.js';
 
 import * as Utils from './utils/utils.js';
 
@@ -45,9 +46,9 @@ import {Icon} from './Icon.js';
 import {bindCheckbox} from './SettingsUI.js';
 import {type Suggestion} from './SuggestBox.js';
 import {Events as TextPromptEvents, TextPrompt} from './TextPrompt.js';
+import toolbarStyles from './toolbar.css.legacy.js';
 import {Tooltip} from './Tooltip.js';
 import {CheckboxLabel, LongClickController} from './UIUtils.js';
-import toolbarStyles from './toolbar.css.legacy.js';
 
 const UIStrings = {
   /**
@@ -122,7 +123,7 @@ export class Toolbar {
       if (buttons && buttons.length) {
         if (!longClickController) {
           longClickController = new LongClickController(button.element, showOptions);
-          longClickGlyph = Icon.create('largeicon-longclick-triangle', 'long-click-glyph');
+          longClickGlyph = Icon.create('triangle-bottom-right', 'long-click-glyph');
           button.element.appendChild(longClickGlyph);
           longClickButtons = buttons;
         }
@@ -220,7 +221,7 @@ export class Toolbar {
     const button = action.toggleable() ? makeToggle() : makeButton();
 
     if (options.showLabel) {
-      button.setText(action.title());
+      button.setText(options.label?.() || action.title());
     }
 
     let handler = (_event: {
@@ -412,12 +413,13 @@ export class Toolbar {
 
     const filtered = extensions.filter(e => e.location === location);
     const items = await Promise.all(filtered.map(extension => {
-      const {separator, actionId, showLabel, loadItem} = extension;
+      const {separator, actionId, showLabel, label, loadItem} = extension;
       if (separator) {
         return new ToolbarSeparator();
       }
       if (actionId) {
-        return Toolbar.createActionButtonForId(actionId, {showLabel: Boolean(showLabel), userActionCode: undefined});
+        return Toolbar.createActionButtonForId(
+            actionId, {label, showLabel: Boolean(showLabel), userActionCode: undefined});
       }
       // TODO(crbug.com/1134103) constratint the case checked with this if using TS type definitions once UI is TS-authored.
       if (!loadItem) {
@@ -434,6 +436,7 @@ export class Toolbar {
   }
 }
 export interface ToolbarButtonOptions {
+  label?: () => Platform.UIString.LocalizedString;
   showLabel: boolean;
   userActionCode?: Host.UserMetrics.Action;
 }
@@ -470,7 +473,7 @@ export class ToolbarItem<T = any> extends Common.ObjectWrapper.ObjectWrapper<T> 
       return;
     }
     this.title = title;
-    ARIAUtils.setAccessibleName(this.element, title);
+    ARIAUtils.setLabel(this.element, title);
     if (actionId === undefined) {
       Tooltip.install(this.element, title);
     } else {
@@ -633,7 +636,7 @@ export class ToolbarButton extends ToolbarItem<ToolbarButton.EventTypes> {
     if (shrinkable) {
       this.element.classList.add('toolbar-has-dropdown-shrinkable');
     }
-    const dropdownArrowIcon = Icon.create('smallicon-triangle-down', 'toolbar-dropdown-arrow');
+    const dropdownArrowIcon = Icon.create('triangle-down', 'toolbar-dropdown-arrow');
     this.element.appendChild(dropdownArrowIcon);
   }
 
@@ -680,7 +683,7 @@ export class ToolbarInput extends ToolbarItem<ToolbarInput.EventTypes> {
     super(element);
 
     const internalPromptElement = this.element.createChild('div', 'toolbar-input-prompt');
-    ARIAUtils.setAccessibleName(internalPromptElement, placeholder);
+    ARIAUtils.setLabel(internalPromptElement, placeholder);
     internalPromptElement.addEventListener('focus', () => this.element.classList.add('focused'));
     internalPromptElement.addEventListener('blur', () => this.element.classList.remove('focused'));
 
@@ -704,7 +707,10 @@ export class ToolbarInput extends ToolbarItem<ToolbarInput.EventTypes> {
 
     const clearButton = this.element.createChild('div', 'toolbar-input-clear-button');
     clearButton.title = UIStrings.clearInput;
-    clearButton.appendChild(Icon.create('mediumicon-gray-cross-active', 'search-cancel-button'));
+    const clearIcon = new IconButton.Icon.Icon();
+    clearIcon.data = {color: 'var(--icon-default)', width: '16px', height: '16px', iconName: 'cross-circle-filled'};
+    clearIcon.classList.add('search-cancel-button');
+    clearButton.appendChild(clearIcon);
     clearButton.addEventListener('click', () => {
       this.setValue('', true);
       this.prompt.focus();
@@ -713,7 +719,7 @@ export class ToolbarInput extends ToolbarItem<ToolbarInput.EventTypes> {
     this.updateEmptyStyles();
   }
 
-  applyEnabledState(enabled: boolean): void {
+  override applyEnabledState(enabled: boolean): void {
     this.prompt.setEnabled(enabled);
   }
 
@@ -729,6 +735,9 @@ export class ToolbarInput extends ToolbarItem<ToolbarInput.EventTypes> {
     return this.prompt.textWithCurrentSuggestion();
   }
 
+  valueWithoutSuggestion(): string {
+    return this.prompt.text();
+  }
   private onKeydownCallback(event: KeyboardEvent): void {
     if (event.key === 'Enter' && this.prompt.text()) {
       this.dispatchEventToListeners(ToolbarInput.Event.EnterPressed, this.prompt.text());
@@ -814,13 +823,13 @@ export class ToolbarMenuButton extends ToolbarButton {
   private triggerTimeout?: number;
   private lastTriggerTime?: number;
   constructor(contextMenuHandler: (arg0: ContextMenu) => void, useSoftMenu?: boolean) {
-    super('', 'largeicon-menu');
+    super('', 'dots-vertical');
     this.contextMenuHandler = contextMenuHandler;
     this.useSoftMenu = Boolean(useSoftMenu);
     ARIAUtils.markAsMenuButton(this.element);
   }
 
-  mouseDown(event: MouseEvent): void {
+  override mouseDown(event: MouseEvent): void {
     if (event.buttons !== 1) {
       super.mouseDown(event);
       return;
@@ -849,7 +858,7 @@ export class ToolbarMenuButton extends ToolbarButton {
     this.lastTriggerTime = Date.now();
   }
 
-  clicked(event: Event): void {
+  override clicked(event: Event): void {
     if (this.triggerTimeout) {
       clearTimeout(this.triggerTimeout);
     }
@@ -862,8 +871,8 @@ export class ToolbarSettingToggle extends ToolbarToggle {
   private readonly setting: Common.Settings.Setting<boolean>;
   private willAnnounceState: boolean;
 
-  constructor(setting: Common.Settings.Setting<boolean>, glyph: string, title: string) {
-    super(title, glyph);
+  constructor(setting: Common.Settings.Setting<boolean>, glyph: string, title: string, toggledGlyph?: string) {
+    super(title, glyph, toggledGlyph);
     this.defaultTitle = title;
     this.setting = setting;
     this.settingChanged();
@@ -884,7 +893,7 @@ export class ToolbarSettingToggle extends ToolbarToggle {
     this.setTitle(this.defaultTitle);
   }
 
-  clicked(event: Event): void {
+  override clicked(event: Event): void {
     this.willAnnounceState = true;
     this.setting.set(!this.toggled());
     super.clicked(event);
@@ -915,12 +924,12 @@ export class ToolbarComboBox extends ToolbarItem<void> {
     element.classList.add('toolbar-select-container');
     super(element);
     this.selectElementInternal = (this.element.createChild('select', 'toolbar-item') as HTMLSelectElement);
-    const dropdownArrowIcon = Icon.create('smallicon-triangle-down', 'toolbar-dropdown-arrow');
+    const dropdownArrowIcon = Icon.create('triangle-down', 'toolbar-dropdown-arrow');
     this.element.appendChild(dropdownArrowIcon);
     if (changeHandler) {
       this.selectElementInternal.addEventListener('change', changeHandler, false);
     }
-    ARIAUtils.setAccessibleName(this.selectElementInternal, title);
+    ARIAUtils.setLabel(this.selectElementInternal, title);
     super.setTitle(title);
     if (className) {
       this.selectElementInternal.classList.add(className);
@@ -952,7 +961,7 @@ export class ToolbarComboBox extends ToolbarItem<void> {
     return option;
   }
 
-  applyEnabledState(enabled: boolean): void {
+  override applyEnabledState(enabled: boolean): void {
     super.applyEnabledState(enabled);
     this.selectElementInternal.disabled = !enabled;
   }
@@ -1078,7 +1087,7 @@ export class ToolbarCheckbox extends ToolbarItem<void> {
     this.inputElement.checked = value;
   }
 
-  applyEnabledState(enabled: boolean): void {
+  override applyEnabledState(enabled: boolean): void {
     super.applyEnabledState(enabled);
     this.inputElement.disabled = !enabled;
   }
@@ -1103,17 +1112,19 @@ export function registerToolbarItem(registration: ToolbarItemRegistration): void
 
 function getRegisteredToolbarItems(): ToolbarItemRegistration[] {
   return registeredToolbarItems.filter(
-      item => Root.Runtime.Runtime.isDescriptorEnabled({experiment: undefined, condition: item.condition}));
+      item => Root.Runtime.Runtime.isDescriptorEnabled({experiment: item.experiment, condition: item.condition}));
 }
 
 export interface ToolbarItemRegistration {
   order?: number;
   location: ToolbarItemLocation;
   separator?: boolean;
+  label?: () => Platform.UIString.LocalizedString;
   showLabel?: boolean;
   actionId?: string;
   condition?: string;
   loadItem?: (() => Promise<Provider>);
+  experiment?: string;
 }
 
 // TODO(crbug.com/1167717): Make this a const enum again

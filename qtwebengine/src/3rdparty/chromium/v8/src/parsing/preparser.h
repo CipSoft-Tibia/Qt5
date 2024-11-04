@@ -1191,7 +1191,7 @@ class PreParser : public ParserBase<PreParser> {
                                       const PreParserIdentifier& name,
                                       ClassInfo* class_info,
                                       int class_token_pos) {
-    DCHECK_IMPLIES(IsNull(name), class_info->is_anonymous);
+    DCHECK_IMPLIES(IsEmptyIdentifier(name), class_info->is_anonymous);
     // Declare a special class variable for anonymous classes with the dot
     // if we need to save it for static private method access.
     scope->DeclareClassVariable(ast_value_factory(), name.string_,
@@ -1506,6 +1506,9 @@ class PreParser : public ParserBase<PreParser> {
     result.string_ = ast_value_factory()->empty_string();
     return result;
   }
+  V8_INLINE bool IsEmptyIdentifier(PreParserIdentifier subject) {
+    return subject.string_->IsEmpty();
+  }
 
   // Producing data during the recursive descent.
   PreParserIdentifier GetSymbol() const {
@@ -1536,8 +1539,7 @@ class PreParser : public ParserBase<PreParser> {
     return PreParserExpression::This();
   }
 
-  V8_INLINE PreParserExpression
-  NewSuperPropertyReference(Scope* home_object_scope, int pos) {
+  V8_INLINE PreParserExpression NewSuperPropertyReference(int pos) {
     return PreParserExpression::Default();
   }
 
@@ -1651,6 +1653,11 @@ class PreParser : public ParserBase<PreParser> {
   }
 
   V8_INLINE bool ParsingDynamicFunctionDeclaration() const { return false; }
+
+  V8_INLINE FunctionLiteral::EagerCompileHint GetEmbedderCompileHint(
+      FunctionLiteral::EagerCompileHint current_compile_hint, int position) {
+    return current_compile_hint;
+  }
 
 // Generate empty functions here as the preparser does not collect source
 // ranges for block coverage.

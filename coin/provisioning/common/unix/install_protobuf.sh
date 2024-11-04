@@ -22,7 +22,7 @@ fi
 
 version="21.9"
 sha1="3226a0e49d048759b702ae524da79387c59f05cc"
-internalUrl="http://ci-files01-hki.intra.qt.io/input/automotive_suite/protobuf-all-$version.zip"
+internalUrl="http://ci-files01-hki.ci.qt.io/input/automotive_suite/protobuf-all-$version.zip"
 externalUrl="https://github.com/protocolbuffers/protobuf/releases/download/v$version/protobuf-all-$version.zip"
 
 targetDir="$HOME/protobuf-$version"
@@ -40,17 +40,17 @@ echo "Configuring and building protobuf"
 
 installPrefix="/usr/local"
 if uname -a |grep -q Darwin; then
-    extraCMakeArgs="-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11"
+    extraCMakeArgs=("-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11)
     SetEnvVar PATH "\$PATH:$installPrefix/bin"
 fi
 
 buildDir="$HOME/build-protobuf-$version"
 mkdir "$buildDir"
 cd "$buildDir"
-cmake $targetDir -G"Ninja Multi-Config" \
+cmake "$targetDir" -G"Ninja Multi-Config" \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DCMAKE_INSTALL_PREFIX=$installPrefix \
-    $extraCMakeArgs \
+    "${extraCMakeArgs[@]}" \
     -Dprotobuf_BUILD_TESTS=OFF \
     -Dprotobuf_BUILD_EXAMPLES=OFF \
     -Dprotobuf_BUILD_PROTOC_BINARIES=ON \

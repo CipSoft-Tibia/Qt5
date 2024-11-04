@@ -8,6 +8,7 @@
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "components/autofill/core/browser/autofill_suggestion_generator.h"
+#include "components/autofill/core/browser/browser_autofill_manager_test_api.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/form_structure.h"
 #include "components/autofill/core/browser/form_structure_test_api.h"
@@ -23,20 +24,9 @@
 
 namespace autofill {
 
-namespace {
-
-FormStructureTestApi test_api(FormStructure* form_structure) {
-  return FormStructureTestApi(form_structure);
-}
-
-}  // namespace
-
-TestBrowserAutofillManager::TestBrowserAutofillManager(
-    TestAutofillDriver* driver,
-    TestAutofillClient* client)
-    : BrowserAutofillManager(driver, client, "en-US"),
-      client_(client),
-      driver_(driver) {}
+TestBrowserAutofillManager::TestBrowserAutofillManager(AutofillDriver* driver,
+                                                       AutofillClient* client)
+    : BrowserAutofillManager(driver, client, "en-US") {}
 
 TestBrowserAutofillManager::~TestBrowserAutofillManager() = default;
 
@@ -80,13 +70,11 @@ void TestBrowserAutofillManager::OnAskForValuesToFill(
     const FormData& form,
     const FormFieldData& field,
     const gfx::RectF& bounding_box,
-    AutoselectFirstSuggestion autoselect_first_suggestion,
-    FormElementWasClicked form_element_was_clicked) {
+    AutofillSuggestionTriggerSource trigger_source) {
   TestAutofillManagerWaiter waiter(*this,
                                    {AutofillManagerEvent::kAskForValuesToFill});
   AutofillManager::OnAskForValuesToFill(form, field, bounding_box,
-                                        autoselect_first_suggestion,
-                                        form_element_was_clicked);
+                                        trigger_source);
   ASSERT_TRUE(waiter.Wait());
 }
 
@@ -130,14 +118,6 @@ void TestBrowserAutofillManager::UploadVotesAndLogQuality(
     run_loop_->Quit();
   }
 
-  // If the feature is disabled, StoreUploadVotesAndLogQualityCallback does
-  // not get called.
-  // TODO(crbug.com/1383502): Remove the following if clause.
-  if (!observed_submission &&
-      !base::FeatureList::IsEnabled(features::kAutofillDelayBlurVotes)) {
-    run_loop_->Quit();
-  }
-
   if (expected_observed_submission_ != absl::nullopt)
     EXPECT_EQ(expected_observed_submission_, observed_submission);
 
@@ -168,20 +148,20 @@ void TestBrowserAutofillManager::UploadVotesAndLogQuality(
 void TestBrowserAutofillManager::StoreUploadVotesAndLogQualityCallback(
     FormSignature form_signature,
     base::OnceClosure callback) {
-  // TODO(crbug.com/1383502): Remove this DCHECK statement.
-  DCHECK(base::FeatureList::IsEnabled(features::kAutofillDelayBlurVotes));
   BrowserAutofillManager::StoreUploadVotesAndLogQualityCallback(
       form_signature, std::move(callback));
   run_loop_->Quit();
 }
 
 const gfx::Image& TestBrowserAutofillManager::GetCardImage(
-    const CreditCard& credit_card) const {
+    const CreditCard& credit_card) {
   return card_image_;
 }
 
-void TestBrowserAutofillManager::ScheduleRefill(const FormData& form) {
-  TriggerRefillForTest(form);
+void TestBrowserAutofillManager::ScheduleRefill(
+    const FormData& form,
+    const AutofillTriggerDetails& trigger_details) {
+  test_api(*this).TriggerRefill(form, trigger_details);
 }
 
 bool TestBrowserAutofillManager::MaybeStartVoteUploadProcess(
@@ -200,40 +180,31 @@ bool TestBrowserAutofillManager::MaybeStartVoteUploadProcess(
   return false;
 }
 
-int TestBrowserAutofillManager::GetPackedCreditCardID(int credit_card_id) {
-  std::string credit_card_guid =
-      base::StringPrintf("00000000-0000-0000-0000-%012d", credit_card_id);
-
-  return suggestion_generator_for_test()->MakeFrontendId(
-      Suggestion::BackendId(credit_card_guid), Suggestion::BackendId());
-}
-
 void TestBrowserAutofillManager::AddSeenForm(
     const FormData& form,
     const std::vector<ServerFieldType>& heuristic_types,
     const std::vector<ServerFieldType>& server_types,
     bool preserve_values_in_form_structure) {
-  std::vector<std::vector<std::pair<PatternSource, ServerFieldType>>>
+  std::vector<std::vector<std::pair<HeuristicSource, ServerFieldType>>>
       all_heuristic_types;
   for (ServerFieldType type : heuristic_types)
-    all_heuristic_types.push_back({{GetActivePatternSource(), type}});
+    all_heuristic_types.push_back({{GetActiveHeuristicSource(), type}});
   AddSeenForm(form, all_heuristic_types, server_types,
               preserve_values_in_form_structure);
 }
 
 void TestBrowserAutofillManager::AddSeenForm(
     const FormData& form,
-    const std::vector<std::vector<std::pair<PatternSource, ServerFieldType>>>&
+    const std::vector<std::vector<std::pair<HeuristicSource, ServerFieldType>>>&
         heuristic_types,
     const std::vector<ServerFieldType>& server_types,
     bool preserve_values_in_form_structure) {
   auto form_structure = std::make_unique<FormStructure>(
       preserve_values_in_form_structure ? form : test::WithoutValues(form));
-  test_api(form_structure.get()).SetFieldTypes(heuristic_types, server_types);
-  test_api(form_structure.get())
-      .IdentifySections(/*ignore_autocomplete=*/false);
+  test_api(*form_structure).SetFieldTypes(heuristic_types, server_types);
+  test_api(*form_structure).IdentifySections(/*ignore_autocomplete=*/false);
   AddSeenFormStructure(std::move(form_structure));
-  form_interactions_ukm_logger()->OnFormsParsed(client()->GetUkmSourceId());
+  form_interactions_ukm_logger()->OnFormsParsed(client().GetUkmSourceId());
 }
 
 void TestBrowserAutofillManager::AddSeenFormStructure(
@@ -254,31 +225,31 @@ void TestBrowserAutofillManager::OnAskForValuesToFillTest(
     const FormData& form,
     const FormFieldData& field,
     const gfx::RectF& bounding_box,
-    AutoselectFirstSuggestion autoselect_first_suggestion,
-    FormElementWasClicked form_element_was_clicked) {
+    AutofillSuggestionTriggerSource trigger_source) {
   TestAutofillManagerWaiter waiter(*this,
                                    {AutofillManagerEvent::kAskForValuesToFill});
   BrowserAutofillManager::OnAskForValuesToFill(form, field, bounding_box,
-                                               autoselect_first_suggestion,
-                                               form_element_was_clicked);
+                                               trigger_source);
   ASSERT_TRUE(waiter.Wait());
 }
 
 void TestBrowserAutofillManager::SetAutofillProfileEnabled(
+    TestAutofillClient& client,
     bool autofill_profile_enabled) {
   autofill_profile_enabled_ = autofill_profile_enabled;
   if (!autofill_profile_enabled_) {
     // Profile data is refreshed when this pref is changed.
-    client()->GetPersonalDataManager()->ClearProfiles();
+    client.GetPersonalDataManager()->ClearProfiles();
   }
 }
 
 void TestBrowserAutofillManager::SetAutofillCreditCardEnabled(
+    TestAutofillClient& client,
     bool autofill_credit_card_enabled) {
   autofill_credit_card_enabled_ = autofill_credit_card_enabled;
   if (!autofill_credit_card_enabled_) {
     // Credit card data is refreshed when this pref is changed.
-    client()->GetPersonalDataManager()->ClearCreditCards();
+    client.GetPersonalDataManager()->ClearCreditCards();
   }
 }
 
@@ -289,13 +260,6 @@ void TestBrowserAutofillManager::SetExpectedSubmittedFieldTypes(
 
 void TestBrowserAutofillManager::SetExpectedObservedSubmission(bool expected) {
   expected_observed_submission_ = expected;
-}
-
-int TestBrowserAutofillManager::MakeFrontendId(
-    const MakeFrontendIdParams& params) {
-  return suggestion_generator_for_test()->MakeFrontendId(
-      Suggestion::BackendId(params.credit_card_id),
-      Suggestion::BackendId(params.profile_id));
 }
 
 }  // namespace autofill

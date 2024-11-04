@@ -43,7 +43,7 @@ BASE_FEATURE(kUseThreadPriorityLowest,
              base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kAboveNormalCompositingBrowserWin,
              "AboveNormalCompositingBrowserWin",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 namespace {
 
@@ -52,7 +52,7 @@ namespace {
 std::atomic<bool> g_use_thread_priority_lowest{false};
 // Flag used to map Compositing ThreadType |THREAD_PRIORITY_ABOVE_NORMAL| on the
 // UI thread for |kAboveNormalCompositingBrowserWin| Feature.
-std::atomic<bool> g_above_normal_compositing_browser{false};
+std::atomic<bool> g_above_normal_compositing_browser{true};
 
 // These values are sometimes returned by ::GetThreadPriority().
 constexpr int kWinDisplayPriority1 = 5;
@@ -103,7 +103,8 @@ DWORD __stdcall ThreadFunc(void* params) {
 
   if (thread_params->thread_type != ThreadType::kDefault)
     internal::SetCurrentThreadType(thread_params->thread_type,
-                                   thread_params->message_pump_type);
+                                   thread_params->message_pump_type,
+                                   /* override_priority */ true);
 
   // Retrieve a copy of the thread handle to use as the key in the
   // thread name mapping.
@@ -285,7 +286,7 @@ void PlatformThread::Sleep(TimeDelta duration) {
 
 // static
 void PlatformThread::SetName(const std::string& name) {
-  ThreadIdNameManager::GetInstance()->SetName(name);
+  SetNameCommon(name);
 
   // The SetThreadDescription API works even if no debugger is attached.
   static auto set_thread_description_func =

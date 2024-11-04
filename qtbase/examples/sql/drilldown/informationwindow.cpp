@@ -9,9 +9,9 @@ InformationWindow::InformationWindow(int id, QSqlRelationalTableModel *items,
     : QDialog(parent)
 {
 //! [0] //! [1]
-    QLabel *itemLabel = new QLabel(tr("Item: "));
-    QLabel *descriptionLabel = new QLabel(tr("Description: "));
-    QLabel *imageFileLabel = new QLabel(tr("Image file: "));
+    QLabel *itemLabel = new QLabel(tr("Item:"));
+    QLabel *descriptionLabel = new QLabel(tr("Description:"));
+    QLabel *imageFileLabel = new QLabel(tr("Image file:"));
 
     createButtons();
 
@@ -37,12 +37,8 @@ InformationWindow::InformationWindow(int id, QSqlRelationalTableModel *items,
 //! [3]
 
 //! [4]
-    connect(descriptionEditor, &QTextEdit::textChanged, [=]() {
-        enableButtons();
-    });
-    connect(imageFileEditor, &QComboBox::currentIndexChanged, [=]() {
-        enableButtons();
-    });
+    connect(descriptionEditor, &QTextEdit::textChanged, this, [this]() { enableButtons(true); });
+    connect(imageFileEditor, &QComboBox::currentIndexChanged, this, [this]() { enableButtons(true); });
 
     QFormLayout *formLayout = new QFormLayout;
     formLayout->addRow(itemLabel, itemText);

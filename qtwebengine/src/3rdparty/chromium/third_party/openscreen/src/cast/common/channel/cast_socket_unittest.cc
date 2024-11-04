@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 using ::cast::channel::CastMessage;
 
@@ -128,8 +127,10 @@ TEST_F(CastSocketTest, ReadMultipleMessagesPerBlock) {
   message2.set_source_id("alt-source");
   message2.set_destination_id("alt-destination");
   message2.set_namespace_("alt-namespace");
+
+  // Some devices will populate the binary field with string data.
   message2.set_payload_type(CastMessage::STRING);
-  message2.set_payload_utf8("alternate payload");
+  message2.set_payload_binary("alternate payload");
   ErrorOr<std::vector<uint8_t>> serialized_or_error =
       message_serialization::Serialize(message2);
   ASSERT_TRUE(serialized_or_error);
@@ -163,5 +164,4 @@ TEST_F(CastSocketTest, SanitizedAddress) {
   EXPECT_EQ(result2[1], 129);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

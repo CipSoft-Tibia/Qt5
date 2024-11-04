@@ -77,7 +77,6 @@ class QUIC_NO_EXPORT TlsChloExtractor
   void OnError(QuicFramer* /*framer*/) override {}
   bool OnProtocolVersionMismatch(ParsedQuicVersion version) override;
   void OnPacket() override {}
-  void OnPublicResetPacket(const QuicPublicResetPacket& /*packet*/) override {}
   void OnVersionNegotiationPacket(
       const QuicVersionNegotiationPacket& /*packet*/) override {}
   void OnRetryPacket(QuicConnectionId /*original_connection_id*/,
@@ -112,8 +111,11 @@ class QUIC_NO_EXPORT TlsChloExtractor
                       QuicTime /*timestamp*/) override {
     return true;
   }
-  void OnAckEcnCounts(const QuicEcnCounts& /*ecn_counts*/) override {}
-  bool OnAckFrameEnd(QuicPacketNumber /*start*/) override { return true; }
+  bool OnAckFrameEnd(
+      QuicPacketNumber /*start*/,
+      const absl::optional<QuicEcnCounts>& /*ecn_counts*/) override {
+    return true;
+  }
   bool OnStopWaitingFrame(const QuicStopWaitingFrame& /*frame*/) override {
     return true;
   }

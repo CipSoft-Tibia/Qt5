@@ -34,6 +34,7 @@ class HistoryClustersServiceTaskUpdateClusterTriggerability
       base::WeakPtr<HistoryClustersService> weak_history_clusters_service,
       ClusteringBackend* const backend,
       history::HistoryService* const history_service,
+      bool likely_has_unclustered_visits_or_unprocessed_clusters,
       base::OnceClosure callback);
   ~HistoryClustersServiceTaskUpdateClusterTriggerability() override;
 
@@ -125,6 +126,10 @@ class HistoryClustersServiceTaskUpdateClusterTriggerability
   // Tracks the time `this` was created to use for the max time we should update
   // clusters for.
   base::Time task_created_time_;
+
+  // Whether it is likely that there are unclustered visits to cluster or old
+  // clusters that do not yet have their triggerability calculated.
+  const bool likely_has_unclustered_visits_or_unprocessed_clusters_ = false;
 
   // Tracks whether at least one cluster's triggerability was updated (for
   // metrics only).

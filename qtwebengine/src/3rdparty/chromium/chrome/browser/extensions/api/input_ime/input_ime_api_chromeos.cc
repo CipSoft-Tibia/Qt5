@@ -6,9 +6,9 @@
 
 #include <stddef.h>
 
-#include <memory>
 #include <utility>
 
+#include "ash/constants/ash_features.h"
 #include "ash/public/cpp/keyboard/keyboard_config.h"
 #include "base/feature_list.h"
 #include "base/strings/stringprintf.h"
@@ -26,6 +26,7 @@
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/process_manager.h"
 #include "extensions/common/manifest_handlers/background_info.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/ime/ash/component_extension_ime_manager.h"
 #include "ui/base/ime/ash/extension_ime_util.h"
 #include "ui/base/ime/ash/ime_keymap.h"
@@ -33,6 +34,7 @@
 #include "ui/base/ime/ash/text_input_method.h"
 #include "ui/base/ime/constants.h"
 #include "ui/base/ui_base_features.h"
+#include "ui/events/keycodes/dom/keycode_converter.h"
 
 namespace {
 
@@ -210,6 +212,25 @@ std::string GetKeyFromEvent(const ui::KeyEvent& event) {
   return base::UTF16ToUTF8(std::u16string(1, ch));
 }
 
+std::string GetKeyFromEventForGoogleBrandedInputMethod(
+    const ui::KeyEvent& event) {
+  switch (event.key_code()) {
+    case ui::VKEY_F1:
+    case ui::VKEY_F2:
+    case ui::VKEY_F3:
+    case ui::VKEY_F4:
+    case ui::VKEY_F5:
+    case ui::VKEY_F6:
+    case ui::VKEY_F7:
+    case ui::VKEY_F8:
+    case ui::VKEY_F9:
+    case ui::VKEY_F10:
+      return ui::KeycodeConverter::DomKeyToKeyString(event.GetDomKey());
+    default:
+      return GetKeyFromEvent(event);
+  }
+}
+
 // TODO(b/247441188): Change the input extension JS API to use
 // PersonalizationMode instead of a bool.
 bool ConvertPersonalizationMode(const TextInputMethod::InputContext& context) {
@@ -368,7 +389,11 @@ class ImeObserverChromeOS
         properties->find(ui::kPropertyFromVK) != properties->end())
       keyboard_event.extension_id = extension_id_;
 
-    keyboard_event.key = GetKeyFromEvent(event);
+    keyboard_event.key =
+        (extension_id_ == "jkghodnilhceideoidjikpgommlajknk" &&
+         base::FeatureList::IsEnabled(ash::features::kJapaneseFunctionRow))
+            ? GetKeyFromEventForGoogleBrandedInputMethod(event)
+            : GetKeyFromEvent(event);
     keyboard_event.code = event.code() == ui::DomCode::NONE
                               ? ash::KeyboardCodeToDomKeycode(event.key_code())
                               : event.GetCodeString();
@@ -454,7 +479,6 @@ class ImeObserverChromeOS
               context.autocapitalization_mode);
       private_api_input_context.spell_check =
           ConvertInputContextSpellCheck(context.spellcheck_mode);
-      private_api_input_context.has_been_password = false;
       private_api_input_context.should_do_learning =
           ConvertPersonalizationMode(context);
       private_api_input_context.focus_reason =
@@ -831,7 +855,7 @@ class ImeObserverChromeOS
     }
   }
 
-  std::string extension_id_;
+  extensions::ExtensionId extension_id_;
   raw_ptr<Profile, DanglingUntriaged> profile_;
 };
 
@@ -896,7 +920,9 @@ bool InputImeEventRouter::RegisterImeExtension(
           std::string(),  // TODO(uekawa): Set short name.
           layout, languages,
           false,  // 3rd party IMEs are always not for login.
-          component.options_page_url, component.input_view_url));
+          component.options_page_url, component.input_view_url,
+          // Not applicable to 3rd-party IMEs.
+          /*handwriting_language=*/absl::nullopt));
     }
   }
 
@@ -983,8 +1009,8 @@ ExtensionFunction::ResponseAction InputImeClearCompositionFunction::Run() {
     return RespondNow(Error(InformativeError(error, static_function_name())));
   }
 
-  std::unique_ptr<ClearComposition::Params> parent_params(
-      ClearComposition::Params::Create(args()));
+  absl::optional<ClearComposition::Params> parent_params =
+      ClearComposition::Params::Create(args());
   const ClearComposition::Params::Parameters& params =
       parent_params->parameters;
 
@@ -1016,8 +1042,8 @@ InputImeSetAssistiveWindowPropertiesFunction::Run() {
   if (!engine) {
     return RespondNow(Error(InformativeError(error, static_function_name())));
   }
-  std::unique_ptr<SetAssistiveWindowProperties::Params> parent_params(
-      SetAssistiveWindowProperties::Params::Create(args()));
+  absl::optional<SetAssistiveWindowProperties::Params> parent_params =
+      SetAssistiveWindowProperties::Params::Create(args());
   const SetAssistiveWindowProperties::Params::Parameters& params =
       parent_params->parameters;
   const input_ime::AssistiveWindowProperties& window = params.properties;
@@ -1044,8 +1070,8 @@ InputImeSetAssistiveWindowButtonHighlightedFunction::Run() {
   if (!engine) {
     return RespondNow(Error(InformativeError(error, static_function_name())));
   }
-  std::unique_ptr<SetAssistiveWindowButtonHighlighted::Params> parent_params(
-      SetAssistiveWindowButtonHighlighted::Params::Create(args()));
+  absl::optional<SetAssistiveWindowButtonHighlighted::Params> parent_params =
+      SetAssistiveWindowButtonHighlighted::Params::Create(args());
   const SetAssistiveWindowButtonHighlighted::Params::Parameters& params =
       parent_params->parameters;
   ui::ime::AssistiveWindowButton button;
@@ -1065,8 +1091,8 @@ InputImeSetAssistiveWindowButtonHighlightedFunction::Run() {
 
 ExtensionFunction::ResponseAction
 InputImeSetCandidateWindowPropertiesFunction::Run() {
-  std::unique_ptr<SetCandidateWindowProperties::Params> parent_params(
-      SetCandidateWindowProperties::Params::Create(args()));
+  absl::optional<SetCandidateWindowProperties::Params> parent_params =
+      SetCandidateWindowProperties::Params::Create(args());
   const SetCandidateWindowProperties::Params::Parameters& params =
       parent_params->parameters;
 
@@ -1152,8 +1178,8 @@ ExtensionFunction::ResponseAction InputImeSetCandidatesFunction::Run() {
     return RespondNow(Error(InformativeError(error, static_function_name())));
   }
 
-  std::unique_ptr<SetCandidates::Params> parent_params(
-      SetCandidates::Params::Create(args()));
+  absl::optional<SetCandidates::Params> parent_params =
+      SetCandidates::Params::Create(args());
   const SetCandidates::Params::Parameters& params = parent_params->parameters;
 
   std::vector<InputMethodEngine::Candidate> candidates_out;
@@ -1190,8 +1216,8 @@ ExtensionFunction::ResponseAction InputImeSetCursorPositionFunction::Run() {
     return RespondNow(Error(InformativeError(error, static_function_name())));
   }
 
-  std::unique_ptr<SetCursorPosition::Params> parent_params(
-      SetCursorPosition::Params::Create(args()));
+  absl::optional<SetCursorPosition::Params> parent_params =
+      SetCursorPosition::Params::Create(args());
   const SetCursorPosition::Params::Parameters& params =
       parent_params->parameters;
 
@@ -1207,8 +1233,8 @@ ExtensionFunction::ResponseAction InputImeSetCursorPositionFunction::Run() {
 }
 
 ExtensionFunction::ResponseAction InputImeSetMenuItemsFunction::Run() {
-  std::unique_ptr<SetMenuItems::Params> parent_params(
-      SetMenuItems::Params::Create(args()));
+  absl::optional<SetMenuItems::Params> parent_params =
+      SetMenuItems::Params::Create(args());
   const input_ime::MenuParameters& params = parent_params->parameters;
 
   std::string error;
@@ -1216,6 +1242,11 @@ ExtensionFunction::ResponseAction InputImeSetMenuItemsFunction::Run() {
       GetEngine(browser_context(), extension_id(), &error);
   if (!engine) {
     return RespondNow(Error(InformativeError(error, static_function_name())));
+  }
+
+  if (engine->GetActiveComponentId() != params.engine_id) {
+    return RespondNow(
+        Error(InformativeError(kErrorEngineNotActive, static_function_name())));
   }
 
   std::vector<ash::input_method::InputMethodManager::MenuItem> items_out;
@@ -1233,8 +1264,8 @@ ExtensionFunction::ResponseAction InputImeSetMenuItemsFunction::Run() {
 }
 
 ExtensionFunction::ResponseAction InputImeUpdateMenuItemsFunction::Run() {
-  std::unique_ptr<UpdateMenuItems::Params> parent_params(
-      UpdateMenuItems::Params::Create(args()));
+  absl::optional<UpdateMenuItems::Params> parent_params =
+      UpdateMenuItems::Params::Create(args());
   const input_ime::MenuParameters& params = parent_params->parameters;
 
   std::string error;
@@ -1242,6 +1273,11 @@ ExtensionFunction::ResponseAction InputImeUpdateMenuItemsFunction::Run() {
       GetEngine(browser_context(), extension_id(), &error);
   if (!engine) {
     return RespondNow(Error(InformativeError(error, static_function_name())));
+  }
+
+  if (engine->GetActiveComponentId() != params.engine_id) {
+    return RespondNow(
+        Error(InformativeError(kErrorEngineNotActive, static_function_name())));
   }
 
   std::vector<ash::input_method::InputMethodManager::MenuItem> items_out;
@@ -1259,8 +1295,8 @@ ExtensionFunction::ResponseAction InputImeUpdateMenuItemsFunction::Run() {
 }
 
 ExtensionFunction::ResponseAction InputImeDeleteSurroundingTextFunction::Run() {
-  std::unique_ptr<DeleteSurroundingText::Params> parent_params(
-      DeleteSurroundingText::Params::Create(args()));
+  absl::optional<DeleteSurroundingText::Params> parent_params =
+      DeleteSurroundingText::Params::Create(args());
   const DeleteSurroundingText::Params::Parameters& params =
       parent_params->parameters;
 
@@ -1285,8 +1321,8 @@ InputMethodPrivateFinishComposingTextFunction::Run() {
       Profile::FromBrowserContext(browser_context()), extension_id(), &error);
   if (!engine)
     return RespondNow(Error(InformativeError(error, static_function_name())));
-  std::unique_ptr<FinishComposingText::Params> parent_params(
-      FinishComposingText::Params::Create(args()));
+  absl::optional<FinishComposingText::Params> parent_params =
+      FinishComposingText::Params::Create(args());
   const FinishComposingText::Params::Parameters& params =
       parent_params->parameters;
   engine->FinishComposingText(params.context_id, &error);

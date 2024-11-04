@@ -659,6 +659,8 @@ QByteArray QSpirvShader::remappedSpirvBinary(RemapFlags flags, QString *errorMes
 
 QByteArray QSpirvShader::translateToGLSL(int version,
                                          GlslFlags flags,
+                                         QShader::Stage stage,
+                                         const MultiViewInfo &multiViewInfo,
                                          QVector<SeparateToCombinedImageSamplerMapping> *separateToCombinedImageSamplerMappings) const
 {
     d->spirvCrossErrorMsg.clear();
@@ -670,6 +672,7 @@ QByteArray QSpirvShader::translateToGLSL(int version,
     spvc_compiler_options options = nullptr;
     if (spvc_compiler_create_compiler_options(d->glslGen, &options) != SPVC_SUCCESS)
         return QByteArray();
+
     spvc_compiler_options_set_uint(options, SPVC_COMPILER_OPTION_GLSL_VERSION,
                                    version);
     spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_GLSL_ES,
@@ -686,6 +689,12 @@ QByteArray QSpirvShader::translateToGLSL(int version,
     // those we just disabled above).
     spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_GLSL_ENABLE_420PACK_EXTENSION,
                                    false);
+
+    if (stage == QShader::VertexStage && multiViewInfo.viewCount > 1) {
+        spvc_compiler_options_set_uint(options, SPVC_COMPILER_OPTION_GLSL_OVR_MULTIVIEW_VIEW_COUNT,
+                                       uint(multiViewInfo.viewCount));
+    }
+
     spvc_compiler_install_compiler_options(d->glslGen, options);
 
     // Let's say the shader has these separate imagers and samplers:
@@ -750,6 +759,8 @@ QByteArray QSpirvShader::translateToHLSL(int version, QShader::NativeResourceBin
                                    true);
     spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_HLSL_POINT_COORD_COMPAT,
                                    true);
+    spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_HLSL_FORCE_STORAGE_BUFFER_AS_UAV,
+                                   true);
     spvc_compiler_install_compiler_options(d->hlslGen, options);
 
     // D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT is 16, so we cannot have combined
@@ -767,7 +778,7 @@ QByteArray QSpirvShader::translateToHLSL(int version, QShader::NativeResourceBin
     for (const QShaderDescription::InOutVariable &var : d->shaderDescription.combinedImageSamplers()) {
         spvc_hlsl_resource_binding bindingMapping;
         bindingMapping.stage = stage; // will be per-stage but we have a per-shader NativeResourceBindingMap so it's ok
-        bindingMapping.desc_set = 0;
+        bindingMapping.desc_set = var.descriptorSet;
         bindingMapping.binding = var.binding;
         bindingMapping.srv.register_space = 0;
         bindingMapping.srv.register_binding = regBinding; // t0, t1, ...
@@ -785,7 +796,7 @@ QByteArray QSpirvShader::translateToHLSL(int version, QShader::NativeResourceBin
     for (const QShaderDescription::InOutVariable &var : d->shaderDescription.separateImages()) {
         spvc_hlsl_resource_binding bindingMapping;
         bindingMapping.stage = stage;
-        bindingMapping.desc_set = 0;
+        bindingMapping.desc_set = var.descriptorSet;
         bindingMapping.binding = var.binding;
         bindingMapping.srv.register_space = 0;
         bindingMapping.srv.register_binding = regBinding; // tN, tN+1, ..., where N is the next reg after the combined image sampler ones
@@ -797,7 +808,7 @@ QByteArray QSpirvShader::translateToHLSL(int version, QShader::NativeResourceBin
     for (const QShaderDescription::InOutVariable &var : d->shaderDescription.separateSamplers()) {
         spvc_hlsl_resource_binding bindingMapping;
         bindingMapping.stage = stage;
-        bindingMapping.desc_set = 0;
+        bindingMapping.desc_set = var.descriptorSet;
         bindingMapping.binding = var.binding;
         bindingMapping.sampler.register_space = 0;
         bindingMapping.sampler.register_binding = regBinding; // sN, sN+1, ..., where N is the next reg after the combined image sampler ones
@@ -810,7 +821,7 @@ QByteArray QSpirvShader::translateToHLSL(int version, QShader::NativeResourceBin
     for (const QShaderDescription::UniformBlock &blk : d->shaderDescription.uniformBlocks()) {
         spvc_hlsl_resource_binding bindingMapping;
         bindingMapping.stage = stage;
-        bindingMapping.desc_set = 0;
+        bindingMapping.desc_set = blk.descriptorSet;
         bindingMapping.binding = blk.binding;
         bindingMapping.cbv.register_space = 0;
         bindingMapping.cbv.register_binding = regBinding; // b0, b1, ...
@@ -821,9 +832,10 @@ QByteArray QSpirvShader::translateToHLSL(int version, QShader::NativeResourceBin
 
     regBinding = 0; // UAVs
     for (const QShaderDescription::StorageBlock &blk : d->shaderDescription.storageBlocks()) {
+        // readonly is also mapped to UAV due to FORCE_STORAGE_BUFFER_AS_UAV. (would be an SRV by default)
         spvc_hlsl_resource_binding bindingMapping;
         bindingMapping.stage = stage;
-        bindingMapping.desc_set = 0;
+        bindingMapping.desc_set = blk.descriptorSet;
         bindingMapping.binding = blk.binding;
         bindingMapping.uav.register_space = 0;
         bindingMapping.uav.register_binding = regBinding; // u0, u1, ...
@@ -834,7 +846,7 @@ QByteArray QSpirvShader::translateToHLSL(int version, QShader::NativeResourceBin
     for (const QShaderDescription::InOutVariable &var : d->shaderDescription.storageImages()) {
         spvc_hlsl_resource_binding bindingMapping;
         bindingMapping.stage = stage;
-        bindingMapping.desc_set = 0;
+        bindingMapping.desc_set = var.descriptorSet;
         bindingMapping.binding = var.binding;
         bindingMapping.uav.register_space = 0;
         bindingMapping.uav.register_binding = regBinding; // u0, u1, ...
@@ -857,6 +869,7 @@ QByteArray QSpirvShader::translateToMSL(int version,
                                         QShader::Stage stage,
                                         QShader::NativeResourceBindingMap *nativeBindings,
                                         QShader::NativeShaderInfo *shaderInfo,
+                                        const MultiViewInfo &multiViewInfo,
                                         const TessellationInfo &tessInfo) const
 {
     d->spirvCrossErrorMsg.clear();
@@ -926,6 +939,14 @@ QByteArray QSpirvShader::translateToMSL(int version,
 
     if (stage == QShader::TessellationEvaluationStage)
         spvc_compiler_set_execution_mode_with_arguments(d->mslGen, SpvExecutionModeOutputVertices, uint(tessInfo.infoForTese.vertexCount), 0, 0);
+
+    uint spvViewMaskBufferIndex = 24;
+    const bool isMultiView = stage == QShader::VertexStage && multiViewInfo.viewCount > 1;
+    if (isMultiView) {
+        spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_MSL_MULTIVIEW, 1);
+        spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_MSL_MULTIVIEW_LAYERED_RENDERING, 1);
+        spvc_compiler_options_set_uint(options, SPVC_COMPILER_OPTION_MSL_VIEW_MASK_BUFFER_INDEX, spvViewMaskBufferIndex);
+    }
 
     // leave platform set to macOS, it won't matter in practice (hopefully)
     spvc_compiler_install_compiler_options(d->mslGen, options);
@@ -1021,6 +1042,9 @@ QByteArray QSpirvShader::translateToMSL(int version,
 
     if (spvc_compiler_msl_needs_buffer_size_buffer(d->mslGen))
         shaderInfo->extraBufferBindings[QShaderPrivate::MslBufferSizeBufferBinding] = spvBufferSizeBufferIndex;
+
+    if (isMultiView)
+        shaderInfo->extraBufferBindings[QShaderPrivate::MslMultiViewMaskBufferBinding] = spvViewMaskBufferIndex;
 
     // (Aim to) only store extraBufferBindings entries for things that really
     // are present, because the presence of a key can already trigger certain

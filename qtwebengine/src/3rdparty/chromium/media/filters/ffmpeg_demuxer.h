@@ -260,6 +260,7 @@ class MEDIA_EXPORT FFmpegDemuxer : public Demuxer {
   void OnSelectedVideoTrackChanged(const std::vector<MediaTrack::Id>& track_ids,
                                    base::TimeDelta curr_time,
                                    TrackChangeCB change_completed_cb) override;
+  void SetPlaybackRate(double rate) override {}
 
   // The lowest demuxed timestamp.  If negative, DemuxerStreams must use this to
   // adjust packet timestamps such that external clients see a zero-based
@@ -272,7 +273,8 @@ class MEDIA_EXPORT FFmpegDemuxer : public Demuxer {
   }
 
   container_names::MediaContainerName container() const {
-    return glue_ ? glue_->container() : container_names::CONTAINER_UNKNOWN;
+    return glue_ ? glue_->container()
+                 : container_names::MediaContainerName::kContainerUnknown;
   }
 
  private:
@@ -303,7 +305,7 @@ class MEDIA_EXPORT FFmpegDemuxer : public Demuxer {
   FFmpegDemuxerStream* FindPreferredStreamForSeeking(base::TimeDelta seek_time);
 
   // FFmpeg callbacks during seeking.
-  void OnSeekFrameSuccess();
+  void OnSeekFrameDone(int result);
 
   // FFmpeg callbacks during reading + helper method to initiate reads.
   void ReadFrameIfNeeded();
@@ -333,9 +335,11 @@ class MEDIA_EXPORT FFmpegDemuxer : public Demuxer {
 
   void SetLiveness(StreamLiveness liveness);
 
-  void SeekInternal(base::TimeDelta time, base::OnceClosure seek_cb);
+  void SeekInternal(base::TimeDelta time,
+                    base::OnceCallback<void(int)> seek_cb);
   void OnVideoSeekedForTrackChange(DemuxerStream* video_stream,
-                                   base::OnceClosure seek_completed_cb);
+                                   base::OnceClosure seek_completed_cb,
+                                   int result);
   void SeekOnVideoTrackChange(base::TimeDelta seek_to_time,
                               TrackChangeCB seek_completed_cb,
                               DemuxerStream::Type stream_type,
@@ -347,7 +351,7 @@ class MEDIA_EXPORT FFmpegDemuxer : public Demuxer {
   // Executes |pending_seek_cb_| with |status| and closes out the async trace.
   void RunPendingSeekCB(PipelineStatus status);
 
-  raw_ptr<DemuxerHost, DanglingUntriaged> host_ = nullptr;
+  raw_ptr<DemuxerHost, AcrossTasksDanglingUntriaged> host_ = nullptr;
 
   scoped_refptr<base::SequencedTaskRunner> task_runner_;
 

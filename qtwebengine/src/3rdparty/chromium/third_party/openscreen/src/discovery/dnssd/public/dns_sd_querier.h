@@ -1,19 +1,20 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef DISCOVERY_DNSSD_PUBLIC_DNS_SD_QUERIER_H_
 #define DISCOVERY_DNSSD_PUBLIC_DNS_SD_QUERIER_H_
 
+#include <string>
+
 #include "discovery/dnssd/public/dns_sd_instance_endpoint.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
 class DnsSdQuerier {
  public:
-  // TODO(rwkeane): Add support for expiring records in addition to deleting
-  // them.
+  // TODO(issuetracker.google.com/281739775): Add support for expiring records
+  // in addition to deleting them.
   class Callback {
    public:
     virtual ~Callback() = default;
@@ -59,7 +60,6 @@ class DnsSdQuerier {
   virtual void ReinitializeQueries(const std::string& service) = 0;
 };
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery
 
 #endif  // DISCOVERY_DNSSD_PUBLIC_DNS_SD_QUERIER_H_

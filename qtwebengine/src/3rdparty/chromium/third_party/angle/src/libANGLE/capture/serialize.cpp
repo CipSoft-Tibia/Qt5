@@ -405,10 +405,14 @@ void SerializeRasterizerState(JsonSerializer *json, const gl::RasterizerState &r
     json->addScalar("CullFace", rasterizerState.cullFace);
     json->addString("CullMode", ToString(rasterizerState.cullMode));
     json->addScalar("FrontFace", rasterizerState.frontFace);
+    json->addString("PolygonMode", ToString(rasterizerState.polygonMode));
+    json->addScalar("PolygonOffsetPoint", rasterizerState.polygonOffsetPoint);
+    json->addScalar("PolygonOffsetLine", rasterizerState.polygonOffsetLine);
     json->addScalar("PolygonOffsetFill", rasterizerState.polygonOffsetFill);
     json->addScalar("PolygonOffsetFactor", rasterizerState.polygonOffsetFactor);
     json->addScalar("PolygonOffsetUnits", rasterizerState.polygonOffsetUnits);
     json->addScalar("PolygonOffsetClamp", rasterizerState.polygonOffsetClamp);
+    json->addScalar("DepthClamp", rasterizerState.depthClamp);
     json->addScalar("PointDrawMode", rasterizerState.pointDrawMode);
     json->addScalar("MultiSample", rasterizerState.multiSample);
     json->addScalar("RasterizerDiscard", rasterizerState.rasterizerDiscard);
@@ -575,6 +579,8 @@ void SerializeContextState(JsonSerializer *json, const gl::State &state)
     SerializeRectangle(json, "Viewport", state.getViewport());
     json->addScalar("Near", state.getNearPlane());
     json->addScalar("Far", state.getFarPlane());
+    json->addString("ClipOrigin", ToString(state.getClipOrigin()));
+    json->addString("ClipDepthMode", ToString(state.getClipDepthMode()));
     SerializeResourceID(json, "ReadFramebufferID", state.getReadFramebuffer());
     SerializeResourceID(json, "DrawFramebufferID", state.getDrawFramebuffer());
     json->addScalar("RenderbufferID", state.getRenderbufferId().value);
@@ -909,41 +915,41 @@ void SerializeInterfaceBlocksVector(JsonSerializer *json,
     }
 }
 
+void SerializeCompiledShaderState(JsonSerializer *json, const gl::SharedCompiledShaderState &state)
+{
+    json->addCString("Type", gl::ShaderTypeToString(state->shaderType));
+    json->addScalar("Version", state->shaderVersion);
+    json->addString("TranslatedSource", state->translatedSource);
+    json->addVectorAsHash("CompiledBinary", state->compiledBinary);
+    SerializeWorkGroupSize(json, state->localSize);
+    SerializeShaderVariablesVector(json, state->inputVaryings);
+    SerializeShaderVariablesVector(json, state->outputVaryings);
+    SerializeShaderVariablesVector(json, state->uniforms);
+    SerializeInterfaceBlocksVector(json, state->uniformBlocks);
+    SerializeInterfaceBlocksVector(json, state->shaderStorageBlocks);
+    SerializeShaderVariablesVector(json, state->allAttributes);
+    SerializeShaderVariablesVector(json, state->activeAttributes);
+    SerializeShaderVariablesVector(json, state->activeOutputVariables);
+    json->addScalar("NumViews", state->numViews);
+    json->addScalar("SpecConstUsageBits", state->specConstUsageBits.bits());
+    if (state->geometryShaderInputPrimitiveType.valid())
+    {
+        json->addString("GeometryShaderInputPrimitiveType",
+                        ToString(state->geometryShaderInputPrimitiveType.value()));
+    }
+    if (state->geometryShaderOutputPrimitiveType.valid())
+    {
+        json->addString("GeometryShaderOutputPrimitiveType",
+                        ToString(state->geometryShaderOutputPrimitiveType.value()));
+    }
+    json->addScalar("GeometryShaderInvocations", state->geometryShaderInvocations);
+}
+
 void SerializeShaderState(JsonSerializer *json, const gl::ShaderState &shaderState)
 {
     GroupScope group(json, "ShaderState");
     json->addString("Label", shaderState.getLabel());
-    json->addCString("Type", gl::ShaderTypeToString(shaderState.getShaderType()));
-    json->addScalar("Version", shaderState.getShaderVersion());
-    json->addString("TranslatedSource", shaderState.getTranslatedSource());
-    json->addVectorAsHash("CompiledBinary", shaderState.getCompiledBinary());
     json->addString("Source", shaderState.getSource());
-    SerializeWorkGroupSize(json, shaderState.getLocalSize());
-    SerializeShaderVariablesVector(json, shaderState.getInputVaryings());
-    SerializeShaderVariablesVector(json, shaderState.getOutputVaryings());
-    SerializeShaderVariablesVector(json, shaderState.getUniforms());
-    SerializeInterfaceBlocksVector(json, shaderState.getUniformBlocks());
-    SerializeInterfaceBlocksVector(json, shaderState.getShaderStorageBlocks());
-    SerializeShaderVariablesVector(json, shaderState.getAllAttributes());
-    SerializeShaderVariablesVector(json, shaderState.getActiveAttributes());
-    SerializeShaderVariablesVector(json, shaderState.getActiveOutputVariables());
-    json->addScalar("NumViews", shaderState.getNumViews());
-    json->addScalar("SpecConstUsageBits", shaderState.getSpecConstUsageBits().bits());
-    if (shaderState.getGeometryShaderInputPrimitiveType().valid())
-    {
-        json->addString("GeometryShaderInputPrimitiveType",
-                        ToString(shaderState.getGeometryShaderInputPrimitiveType().value()));
-    }
-    if (shaderState.getGeometryShaderOutputPrimitiveType().valid())
-    {
-        json->addString("GeometryShaderOutputPrimitiveType",
-                        ToString(shaderState.getGeometryShaderOutputPrimitiveType().value()));
-    }
-    if (shaderState.getGeometryShaderInvocations().valid())
-    {
-        json->addScalar("GeometryShaderInvocations",
-                        shaderState.getGeometryShaderInvocations().value());
-    }
     json->addCString("CompileStatus", CompileStatusToString(shaderState.getCompileStatus()));
 }
 
@@ -957,10 +963,13 @@ void SerializeShader(const gl::Context *context,
 
     GroupScope group(json, "Shader", id);
     SerializeShaderState(json, shader->getState());
+    SerializeCompiledShaderState(json, shader->getCompiledState());
     json->addScalar("Handle", shader->getHandle().value);
-    json->addScalar("RefCount", shader->getRefCount());
+    // TODO: implement MEC context validation only after all contexts have been initialized
+    // http://anglebug.com/8029
+    // json->addScalar("RefCount", shader->getRefCount());
     json->addScalar("FlaggedForDeletion", shader->isFlaggedForDeletion());
-    // Do not serialize mType because it is already serialized in SerializeShaderState.
+    // Do not serialize mType because it is already serialized in SerializeCompiledShaderState.
     json->addString("InfoLogString", shader->getInfoLogString());
     // Do not serialize compiler resources string because it can vary between test modes.
     json->addScalar("CurrentMaxComputeWorkGroupInvocations",
@@ -996,6 +1005,13 @@ void SerializeBlockMemberInfo(JsonSerializer *json, const sh::BlockMemberInfo &b
 void SerializeActiveVariable(JsonSerializer *json, const gl::ActiveVariable &activeVariable)
 {
     json->addScalar("ActiveShaders", activeVariable.activeShaders().to_ulong());
+    GroupScope group(json, "Ids");
+    for (const gl::ShaderType shaderType : gl::AllShaderTypes())
+    {
+        json->addScalar(
+            gl::ShaderTypeToString(shaderType),
+            activeVariable.isActive(shaderType) ? activeVariable.getIds()[shaderType] : 0);
+    }
 }
 
 void SerializeBufferVariablesVector(JsonSerializer *json,
@@ -1007,7 +1023,7 @@ void SerializeBufferVariablesVector(JsonSerializer *json,
         json->addScalar("BufferIndex", bufferVariable.bufferIndex);
         SerializeBlockMemberInfo(json, bufferVariable.blockInfo);
         json->addScalar("TopLevelArraySize", bufferVariable.topLevelArraySize);
-        SerializeActiveVariable(json, bufferVariable);
+        SerializeActiveVariable(json, bufferVariable.activeVariable);
         SerializeShaderVariable(json, bufferVariable);
     }
 }
@@ -1027,13 +1043,6 @@ void SerializeProgramState(JsonSerializer *json, const gl::ProgramState &program
 {
     json->addString("Label", programState.getLabel());
     SerializeWorkGroupSize(json, programState.getComputeShaderLocalSize());
-
-    auto attachedShaders = programState.getAttachedShaders();
-    std::vector<GLint> shaderHandles(attachedShaders.size());
-    std::transform(attachedShaders.begin(), attachedShaders.end(), shaderHandles.begin(),
-                   [](gl::Shader *shader) { return shader ? shader->getHandle().value : 0; });
-    json->addVector("Handle", shaderHandles);
-    json->addScalar("LocationsUsedForXfbExtension", programState.getLocationsUsedForXfbExtension());
 
     json->addVectorOfStrings("TransformFeedbackVaryingNames",
                              programState.getTransformFeedbackVaryingNames());
@@ -1086,6 +1095,15 @@ void SerializeProgram(JsonSerializer *json,
     program->resolveLink(context);
 
     GroupScope group(json, "Program", id);
+
+    std::vector<GLint> shaderHandles;
+    for (gl::ShaderType shaderType : gl::AllShaderTypes())
+    {
+        gl::Shader *shader = program->getAttachedShader(shaderType);
+        shaderHandles.push_back(shader ? shader->getHandle().value : 0);
+    }
+    json->addVector("Handle", shaderHandles);
+
     SerializeProgramState(json, program->getState());
     json->addScalar("IsValidated", program->isValidated());
     SerializeProgramBindings(json, program->getAttributeBindings());
@@ -1093,7 +1111,9 @@ void SerializeProgram(JsonSerializer *json,
     SerializeProgramAliasedBindings(json, program->getFragmentOutputIndexes());
     json->addScalar("IsLinked", program->isLinked());
     json->addScalar("IsFlaggedForDeletion", program->isFlaggedForDeletion());
-    json->addScalar("RefCount", program->getRefCount());
+    // TODO: implement MEC context validation only after all contexts have been initialized
+    // http://anglebug.com/8029
+    // json->addScalar("RefCount", program->getRefCount());
     json->addScalar("ID", program->id().value);
 
     // Serialize uniforms.

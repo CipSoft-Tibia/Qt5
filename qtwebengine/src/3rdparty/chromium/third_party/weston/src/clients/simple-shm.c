@@ -35,11 +35,15 @@
 #include <signal.h>
 #include <errno.h>
 
+#include <linux/input.h>
+
 #include <wayland-client.h>
 #include "shared/os-compatibility.h"
 #include <libweston/zalloc.h>
 #include "xdg-shell-client-protocol.h"
 #include "fullscreen-shell-unstable-v1-client-protocol.h"
+
+#define MAX_BUFFER_ALLOC	2
 
 struct display {
 	struct wl_display *display;
@@ -47,32 +51,94 @@ struct display {
 	struct wl_compositor *compositor;
 	struct xdg_wm_base *wm_base;
 	struct zwp_fullscreen_shell_v1 *fshell;
+	struct wl_seat *seat;
+	struct wl_keyboard *keyboard;
 	struct wl_shm *shm;
 	bool has_xrgb;
 };
 
 struct buffer {
+	struct window *window;
 	struct wl_buffer *buffer;
 	void *shm_data;
 	int busy;
+	int width, height;
+	size_t size;	/* width * 4 * height */
+	struct wl_list buffer_link; /** window::buffer_list */
 };
 
 struct window {
 	struct display *display;
 	int width, height;
+	int init_width, init_height;
 	struct wl_surface *surface;
 	struct xdg_surface *xdg_surface;
 	struct xdg_toplevel *xdg_toplevel;
-	struct buffer buffers[2];
+	struct wl_list buffer_list;
 	struct buffer *prev_buffer;
 	struct wl_callback *callback;
 	bool wait_for_configure;
+	bool maximized;
+	bool fullscreen;
+	bool needs_update_buffer;
 };
 
 static int running = 1;
 
 static void
 redraw(void *data, struct wl_callback *callback, uint32_t time);
+
+static struct buffer *
+alloc_buffer(struct window *window, int width, int height)
+{
+	struct buffer *buffer = calloc(1, sizeof(*buffer));
+
+	buffer->width = width;
+	buffer->height = height;
+	wl_list_insert(&window->buffer_list, &buffer->buffer_link);
+
+	return buffer;
+}
+
+static void
+destroy_buffer(struct buffer *buffer)
+{
+	if (buffer->buffer)
+		wl_buffer_destroy(buffer->buffer);
+
+	munmap(buffer->shm_data, buffer->size);
+	wl_list_remove(&buffer->buffer_link);
+	free(buffer);
+}
+
+static struct buffer *
+pick_free_buffer(struct window *window)
+{
+	struct buffer *b;
+	struct buffer *buffer = NULL;
+
+	wl_list_for_each(b, &window->buffer_list, buffer_link) {
+		if (!b->busy) {
+			buffer = b;
+			break;
+		}
+	}
+
+	return buffer;
+}
+
+static void
+prune_old_released_buffers(struct window *window)
+{
+	struct buffer *b, *b_next;
+
+	wl_list_for_each_safe(b, b_next,
+			      &window->buffer_list, buffer_link) {
+		if (!b->busy && (b->width != window->width ||
+		    b->height != window->height))
+			destroy_buffer(b);
+	}
+}
 
 static void
 buffer_release(void *data, struct wl_buffer *buffer)
@@ -87,15 +153,19 @@ static const struct wl_buffer_listener buffer_listener = {
 };
 
 static int
-create_shm_buffer(struct display *display, struct buffer *buffer,
-		  int width, int height, uint32_t format)
+create_shm_buffer(struct window *window, struct buffer *buffer, uint32_t format)
 {
 	struct wl_shm_pool *pool;
 	int fd, size, stride;
 	void *data;
+	int width, height;
+	struct display *display;
 
+	width = window->width;
+	height = window->height;
 	stride = width * 4;
 	size = stride * height;
+	display = window->display;
 
 	fd = os_create_anonymous_file(size);
 	if (fd < 0) {
@@ -119,10 +189,76 @@ create_shm_buffer(struct display *display, struct buffer *buffer,
 	wl_shm_pool_destroy(pool);
 	close(fd);
 
+	buffer->size = size;
 	buffer->shm_data = data;
 
 	return 0;
 }
+
+static void
+keyboard_handle_keymap(void *data, struct wl_keyboard *keyboard,
+		       uint32_t format, int fd, uint32_t size)
+{
+	/* Just so we don’t leak the keymap fd */
+	close(fd);
+}
+
+static void
+keyboard_handle_enter(void *data, struct wl_keyboard *keyboard,
+		      uint32_t serial, struct wl_surface *surface,
+		      struct wl_array *keys)
+{
+}
+
+static void
+keyboard_handle_leave(void *data, struct wl_keyboard *keyboard,
+		      uint32_t serial, struct wl_surface *surface)
+{
+}
+
+static void
+keyboard_handle_key(void *data, struct wl_keyboard *keyboard,
+		    uint32_t serial, uint32_t time, uint32_t key,
+		    uint32_t state)
+{
+	if (key == KEY_ESC && state)
+		running = 0;
+}
+
+static void
+keyboard_handle_modifiers(void *data, struct wl_keyboard *keyboard,
+			  uint32_t serial, uint32_t mods_depressed,
+			  uint32_t mods_latched, uint32_t mods_locked,
+			  uint32_t group)
+{
+}
+
+static const struct wl_keyboard_listener keyboard_listener = {
+	keyboard_handle_keymap,
+	keyboard_handle_enter,
+	keyboard_handle_leave,
+	keyboard_handle_key,
+	keyboard_handle_modifiers,
+};
+
+static void
+seat_handle_capabilities(void *data, struct wl_seat *seat,
+			 enum wl_seat_capability caps)
+{
+	struct display *d = data;
+
+	if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !d->keyboard) {
+		d->keyboard = wl_seat_get_keyboard(seat);
+		wl_keyboard_add_listener(d->keyboard, &keyboard_listener, d);
+	} else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && d->keyboard) {
+		wl_keyboard_destroy(d->keyboard);
+		d->keyboard = NULL;
+	}
+}
+
+static const struct wl_seat_listener seat_listener = {
+	seat_handle_capabilities,
+};
 
 static void
 handle_xdg_surface_configure(void *data, struct xdg_surface *surface,
@@ -145,8 +281,39 @@ static const struct xdg_surface_listener xdg_surface_listener = {
 static void
 handle_xdg_toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
 			      int32_t width, int32_t height,
-			      struct wl_array *state)
+			      struct wl_array *states)
 {
+	struct window *window = data;
+	uint32_t *p;
+
+	window->fullscreen = false;
+	window->maximized = false;
+
+	wl_array_for_each(p, states) {
+		uint32_t state = *p;
+		switch (state) {
+		case XDG_TOPLEVEL_STATE_FULLSCREEN:
+			window->fullscreen = true;
+			break;
+		case XDG_TOPLEVEL_STATE_MAXIMIZED:
+			window->maximized = true;
+			break;
+		}
+	}
+
+	if (width > 0 && height > 0) {
+		if (!window->fullscreen && !window->maximized) {
+			window->init_width = width;
+			window->init_height = height;
+		}
+		window->width = width;
+		window->height = height;
+	} else if (!window->fullscreen && !window->maximized) {
+		window->width = window->init_width;
+		window->height = window->init_height;
+	}
+
+	window->needs_update_buffer = true;
 }
 
 static void
@@ -164,6 +331,7 @@ static struct window *
 create_window(struct display *display, int width, int height)
 {
 	struct window *window;
+	int i;
 
 	window = zalloc(sizeof *window);
 	if (!window)
@@ -173,7 +341,11 @@ create_window(struct display *display, int width, int height)
 	window->display = display;
 	window->width = width;
 	window->height = height;
+	window->init_width = width;
+	window->init_height = height;
 	window->surface = wl_compositor_create_surface(display->compositor);
+	window->needs_update_buffer = false;
+	wl_list_init(&window->buffer_list);
 
 	if (display->wm_base) {
 		window->xdg_surface =
@@ -190,6 +362,9 @@ create_window(struct display *display, int width, int height)
 					  &xdg_toplevel_listener, window);
 
 		xdg_toplevel_set_title(window->xdg_toplevel, "simple-shm");
+		xdg_toplevel_set_app_id(window->xdg_toplevel,
+				"org.freedesktop.weston.simple-shm");
+
 		wl_surface_commit(window->surface);
 		window->wait_for_configure = true;
 	} else if (display->fshell) {
@@ -201,19 +376,23 @@ create_window(struct display *display, int width, int height)
 		assert(0);
 	}
 
+	for (i = 0; i < MAX_BUFFER_ALLOC; i++)
+		alloc_buffer(window, window->width, window->height);
+
 	return window;
 }
 
 static void
 destroy_window(struct window *window)
 {
+	struct buffer *buffer, *buffer_next;
+
 	if (window->callback)
 		wl_callback_destroy(window->callback);
 
-	if (window->buffers[0].buffer)
-		wl_buffer_destroy(window->buffers[0].buffer);
-	if (window->buffers[1].buffer)
-		wl_buffer_destroy(window->buffers[1].buffer);
+	wl_list_for_each_safe(buffer, buffer_next,
+			      &window->buffer_list, buffer_link)
+		destroy_buffer(buffer);
 
 	if (window->xdg_toplevel)
 		xdg_toplevel_destroy(window->xdg_toplevel);
@@ -226,20 +405,25 @@ destroy_window(struct window *window)
 static struct buffer *
 window_next_buffer(struct window *window)
 {
-	struct buffer *buffer;
+	struct buffer *buffer = NULL;
 	int ret = 0;
 
-	if (!window->buffers[0].busy)
-		buffer = &window->buffers[0];
-	else if (!window->buffers[1].busy)
-		buffer = &window->buffers[1];
-	else
+	if (window->needs_update_buffer) {
+		int i;
+
+		for (i = 0; i < MAX_BUFFER_ALLOC; i++)
+			alloc_buffer(window, window->width, window->height);
+
+		window->needs_update_buffer = false;
+	}
+
+	buffer = pick_free_buffer(window);
+
+	if (!buffer)
 		return NULL;
 
 	if (!buffer->buffer) {
-		ret = create_shm_buffer(window->display, buffer,
-					window->width, window->height,
-					WL_SHM_FORMAT_XRGB8888);
+		ret = create_shm_buffer(window, buffer, WL_SHM_FORMAT_XRGB8888);
 
 		if (ret < 0)
 			return NULL;
@@ -306,6 +490,8 @@ redraw(void *data, struct wl_callback *callback, uint32_t time)
 	struct window *window = data;
 	struct buffer *buffer;
 
+	prune_old_released_buffers(window);
+
 	buffer = window_next_buffer(window);
 	if (!buffer) {
 		fprintf(stderr,
@@ -370,6 +556,10 @@ registry_handle_global(void *data, struct wl_registry *registry,
 		d->wm_base = wl_registry_bind(registry,
 					      id, &xdg_wm_base_interface, 1);
 		xdg_wm_base_add_listener(d->wm_base, &xdg_wm_base_listener, d);
+	} else if (strcmp(interface, "wl_seat") == 0) {
+		d->seat = wl_registry_bind(registry, id,
+					   &wl_seat_interface, 1);
+		wl_seat_add_listener(d->seat, &seat_listener, d);
 	} else if (strcmp(interface, "zwp_fullscreen_shell_v1") == 0) {
 		d->fshell = wl_registry_bind(registry,
 					     id, &zwp_fullscreen_shell_v1_interface, 1);
@@ -396,7 +586,7 @@ create_display(void)
 {
 	struct display *display;
 
-	display = malloc(sizeof *display);
+	display = zalloc(sizeof *display);
 	if (display == NULL) {
 		fprintf(stderr, "out of memory\n");
 		exit(1);

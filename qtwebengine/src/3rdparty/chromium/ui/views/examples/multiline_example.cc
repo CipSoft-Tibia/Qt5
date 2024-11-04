@@ -112,6 +112,7 @@ class MultilineExample::RenderTextView : public View {
 
     render_text_->SetText(new_contents);
     render_text_->SetStyle(gfx::TEXT_STYLE_UNDERLINE, false);
+    render_text_->SetStyle(gfx::TEXT_STYLE_STRIKE, false);
     render_text_->ApplyStyle(gfx::TEXT_STYLE_ITALIC, true, italic_range);
     render_text_->ApplyWeight(gfx::Font::Weight::BOLD, bold_range);
     UpdateColors();
@@ -205,7 +206,7 @@ void MultilineExample::CreateExampleView(View* container) {
   textfield_ = container->AddChildView(std::make_unique<Textfield>());
   textfield_->set_controller(this);
   textfield_->SetText(kTestString);
-  textfield_->SetAssociatedLabel(label);
+  textfield_->SetAccessibleName(label);
 }
 
 void MultilineExample::ContentsChanged(Textfield* sender,

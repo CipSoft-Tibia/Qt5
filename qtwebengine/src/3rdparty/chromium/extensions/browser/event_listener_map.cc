@@ -263,6 +263,24 @@ bool EventListenerMap::HasProcessListener(
   return false;
 }
 
+bool EventListenerMap::HasProcessListenerForEvent(
+    content::RenderProcessHost* process,
+    int worker_thread_id,
+    const std::string& extension_id,
+    const std::string& event_name) const {
+  for (const auto& it : listeners_) {
+    for (const auto& listener : it.second) {
+      if (listener->process() == process &&
+          listener->extension_id() == extension_id &&
+          listener->worker_thread_id() == worker_thread_id &&
+          listener->event_name() == event_name) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void EventListenerMap::RemoveListenersForExtension(
     const std::string& extension_id) {
   for (auto it = listeners_.begin(); it != listeners_.end();) {
@@ -297,19 +315,6 @@ void EventListenerMap::LoadUnfilteredLazyListeners(
         is_for_service_worker
             ? Extension::GetBaseURLFromExtensionId(extension_id)
             : GURL(),
-        absl::nullopt));
-  }
-}
-
-void EventListenerMap::LoadUnfilteredWorkerListeners(
-    content::BrowserContext* browser_context,
-    const ExtensionId& extension_id,
-    const std::set<std::string>& event_names) {
-  for (const auto& name : event_names) {
-    AddListener(EventListener::ForExtensionServiceWorker(
-        name, extension_id, nullptr, browser_context,
-        Extension::GetBaseURLFromExtensionId(extension_id),
-        blink::mojom::kInvalidServiceWorkerVersionId, kMainThreadId,
         absl::nullopt));
   }
 }

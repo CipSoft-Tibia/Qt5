@@ -13,6 +13,8 @@
 #include "core/fxge/renderdevicedriver_iface.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
+class CFX_DIBBase;
+
 class CGdiDeviceDriver : public RenderDeviceDriverIface {
  protected:
   CGdiDeviceDriver(HDC hDC, DeviceType device_type);
@@ -45,20 +47,22 @@ class CGdiDeviceDriver : public RenderDeviceDriverIface {
                         uint32_t color,
                         BlendMode blend_type) override;
   bool GetClipBox(FX_RECT* pRect) override;
+  bool MultiplyAlpha(float alpha) override;
+  bool MultiplyAlpha(const RetainPtr<CFX_DIBBase>& mask) override;
 
   void DrawLine(float x1, float y1, float x2, float y2);
 
-  bool GDI_SetDIBits(const RetainPtr<CFX_DIBitmap>& pBitmap,
+  bool GDI_SetDIBits(const RetainPtr<CFX_DIBBase>& source,
                      const FX_RECT& src_rect,
                      int left,
                      int top);
-  bool GDI_StretchDIBits(const RetainPtr<CFX_DIBitmap>& pBitmap,
+  bool GDI_StretchDIBits(const RetainPtr<CFX_DIBBase>& source,
                          int dest_left,
                          int dest_top,
                          int dest_width,
                          int dest_height,
                          const FXDIB_ResampleOptions& options);
-  bool GDI_StretchBitMask(const RetainPtr<CFX_DIBitmap>& pBitmap,
+  bool GDI_StretchBitMask(const RetainPtr<CFX_DIBBase>& source,
                           int dest_left,
                           int dest_top,
                           int dest_width,

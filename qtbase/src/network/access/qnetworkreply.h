@@ -97,9 +97,15 @@ public:
     QVariant header(QNetworkRequest::KnownHeaders header) const;
 
     // raw headers:
+#if QT_NETWORK_REMOVED_SINCE(6, 7)
     bool hasRawHeader(const QByteArray &headerName) const;
+#endif
+    bool hasRawHeader(QAnyStringView headerName) const;
     QList<QByteArray> rawHeaderList() const;
+#if QT_NETWORK_REMOVED_SINCE(6, 7)
     QByteArray rawHeader(const QByteArray &headerName) const;
+#endif
+    QByteArray rawHeader(QAnyStringView headerName) const;
 
     typedef QPair<QByteArray, QByteArray> RawHeaderPair;
     const QList<RawHeaderPair>& rawHeaderPairs() const;

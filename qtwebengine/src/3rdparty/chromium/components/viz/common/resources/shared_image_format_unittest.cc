@@ -7,6 +7,7 @@
 #include <limits>
 #include <vector>
 
+#include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace viz {
@@ -32,7 +33,7 @@ class SharedImageFormatTest : public testing::Test {
 
 TEST_F(SharedImageFormatTest, MultiPlaneYUVBiplanar8bit) {
   // 8-bit 4:2:0 Y_UV biplanar format (YUV_420_BIPLANAR)
-  SharedImageFormat format = MultiPlaneFormat::kYUV_420_BIPLANAR;
+  SharedImageFormat format = MultiPlaneFormat::kNV12;
   // Test for NumChannelsInPlane
   std::vector<int> expected_channels = {1, 2};
   TestNumChannelsInPlane(expected_channels, format);
@@ -46,7 +47,22 @@ TEST_F(SharedImageFormatTest, MultiPlaneYUVBiplanar8bit) {
 
 TEST_F(SharedImageFormatTest, MultiPlaneYVU) {
   // 8-bit 4:2:0 Y_V_U format (YVU_420)
-  SharedImageFormat format = MultiPlaneFormat::kYVU_420;
+  SharedImageFormat format = MultiPlaneFormat::kYV12;
+  // Test for NumChannelsInPlane
+  std::vector<int> expected_channels = {1, 1, 1};
+  TestNumChannelsInPlane(expected_channels, format);
+
+  EXPECT_EQ(format.EstimatedSizeInBytes(kDefaultSize), 15000u);
+
+  // Y: 9 bytes per row (1 channel * 1 byte * 9 width) * 9 rows = 81 bytes.
+  // V: 5 bytes per row (1 channels * 1 byte * 5 width) * 5 rows = 25 bytes.
+  // U: 5 bytes per row (1 channels * 1 byte * 5 width) * 5 rows = 25 bytes.
+  EXPECT_EQ(format.EstimatedSizeInBytes(kOddSize), 131u);
+}
+
+TEST_F(SharedImageFormatTest, MultiPlaneI420) {
+  // 8-bit 4:2:0 Y_U_V format (I420)
+  SharedImageFormat format = MultiPlaneFormat::kI420;
   // Test for NumChannelsInPlane
   std::vector<int> expected_channels = {1, 1, 1};
   TestNumChannelsInPlane(expected_channels, format);
@@ -149,21 +165,36 @@ TEST_F(SharedImageFormatTest, SinglePlaneETC1) {
   EXPECT_EQ(format.EstimatedSizeInBytes(kOddSize), 45u);
 }
 
-TEST_F(SharedImageFormatTest, SinglePlaneP010) {
-  auto format = SharedImageFormat::SinglePlane(ResourceFormat::P010);
+TEST_F(SharedImageFormatTest, LegacyMultiPlaneP010) {
+  auto format = LegacyMultiPlaneFormat::kP010;
   EXPECT_EQ(1, format.NumberOfPlanes());
 
   EXPECT_EQ(format.EstimatedSizeInBytes(kDefaultSize), 30000u);
   EXPECT_EQ(format.EstimatedSizeInBytes(kOddSize), 262u);
 }
 
-TEST_F(SharedImageFormatTest, SinglePlaneYUV_420_BIPLANAR) {
-  auto format =
-      SharedImageFormat::SinglePlane(ResourceFormat::YUV_420_BIPLANAR);
+TEST_F(SharedImageFormatTest, LegacyMultiPlaneYV12) {
+  auto format = LegacyMultiPlaneFormat::kYV12;
   EXPECT_EQ(1, format.NumberOfPlanes());
 
   EXPECT_EQ(format.EstimatedSizeInBytes(kDefaultSize), 15000u);
   EXPECT_EQ(format.EstimatedSizeInBytes(kOddSize), 131u);
+}
+
+TEST_F(SharedImageFormatTest, LegacyMultiPlaneNV12) {
+  auto format = LegacyMultiPlaneFormat::kNV12;
+  EXPECT_EQ(1, format.NumberOfPlanes());
+
+  EXPECT_EQ(format.EstimatedSizeInBytes(kDefaultSize), 15000u);
+  EXPECT_EQ(format.EstimatedSizeInBytes(kOddSize), 131u);
+}
+
+TEST_F(SharedImageFormatTest, LegacyMultiPlaneNV12A) {
+  auto format = LegacyMultiPlaneFormat::kNV12A;
+  EXPECT_EQ(1, format.NumberOfPlanes());
+
+  EXPECT_EQ(format.EstimatedSizeInBytes(kDefaultSize), 25000u);
+  EXPECT_EQ(format.EstimatedSizeInBytes(kOddSize), 212u);
 }
 
 TEST_F(SharedImageFormatTest, EstimatedSizeInBytesOverflow) {
@@ -177,6 +208,21 @@ TEST_F(SharedImageFormatTest, EstimatedSizeInBytesOverflow) {
 
   // EstimatedSizeInBytes() will return 0 on overflow.
   EXPECT_EQ(format.EstimatedSizeInBytes(max_size), 0u);
+
+  // VerifySizeInBytes() should return false on overflow.
+  EXPECT_FALSE(format.VerifySizeInBytes(max_size));
+}
+
+TEST_F(SharedImageFormatTest, PrefersExternalSampler) {
+  auto singleplanar_format = SinglePlaneFormat::kRGBA_F16;
+  auto multiplanar_format = MultiPlaneFormat::kNV12;
+  EXPECT_FALSE(singleplanar_format.PrefersExternalSampler());
+  EXPECT_FALSE(multiplanar_format.PrefersExternalSampler());
+
+#if BUILDFLAG(IS_OZONE)
+  multiplanar_format.SetPrefersExternalSampler();
+  EXPECT_TRUE(multiplanar_format.PrefersExternalSampler());
+#endif
 }
 
 }  // namespace

@@ -37,10 +37,6 @@ class Q_QML_EXPORT QQmlComponent : public QObject
     Q_PROPERTY(qreal progress READ progress NOTIFY progressChanged)
     Q_PROPERTY(Status status READ status NOTIFY statusChanged)
     Q_PROPERTY(QUrl url READ url CONSTANT)
-    QML_NAMED_ELEMENT(Component)
-    QML_ADDED_IN_VERSION(2, 0)
-    QML_ATTACHED(QQmlComponentAttached)
-    Q_CLASSINFO("QML.OmitFromQmlTypes", "true")
 
 public:
     enum CompilationMode { PreferSynchronous, Asynchronous };
@@ -104,7 +100,10 @@ Q_SIGNALS:
 protected:
     QQmlComponent(QQmlComponentPrivate &dd, QObject* parent);
 
-#if QT_DEPRECATED_SINCE(6, 3)
+#if defined(Q_MOC_RUN)
+    // TODO: moc on macOS cannot decipher the deprecation below
+    Q_INVOKABLE void createObject(QQmlV4Function *);
+#elif QT_DEPRECATED_SINCE(6, 3)
     QT_DEPRECATED_X("Use the overload with proper arguments")
     Q_INVOKABLE void createObject(QQmlV4Function *);
 #endif
@@ -143,8 +142,6 @@ struct OverridableAttachedType<QQmlComponent, QQmlComponentAttached>
 
 } // namespace QQmlPrivate
 
-
 QT_END_NAMESPACE
-QML_DECLARE_TYPE(QQmlComponent)
 
 #endif // QQMLCOMPONENT_H

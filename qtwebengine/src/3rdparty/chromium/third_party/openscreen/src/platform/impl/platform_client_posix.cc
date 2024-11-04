@@ -1,4 +1,4 @@
-// Copyright (c) 2019 The Chromium Authors. All rights reserved.
+// Copyright (c) 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -51,8 +51,8 @@ UdpSocketReaderPosix* PlatformClientPosix::udp_socket_reader() {
   return udp_socket_reader_.get();
 }
 
-TaskRunner* PlatformClientPosix::GetTaskRunner() {
-  return task_runner_.get();
+TaskRunner& PlatformClientPosix::GetTaskRunner() {
+  return *task_runner_;
 }
 
 PlatformClientPosix::~PlatformClientPosix() {

@@ -13,6 +13,7 @@
 
 #include "base/time/time.h"
 #include "components/autofill/core/browser/autofill_profile_import_process.h"
+#include "components/autofill/core/browser/country_type.h"
 #include "components/autofill/core/browser/data_model/autofill_profile.h"
 #include "components/autofill/core/browser/data_model/autofill_profile_comparator.h"
 #include "components/autofill/core/browser/form_structure.h"
@@ -105,17 +106,6 @@ class TimestampedSameOriginQueue {
   const size_t max_size_;
 };
 
-// Returns true if minimum requirements for import of a given `profile` have
-// been met. An address submitted via a form must have at least the fields
-// required as determined by its country code. No verification of validity of
-// the contents is performed. This is an existence check only. Assumes `profile`
-// has been finalized.
-bool IsMinimumAddress(const AutofillProfile& profile,
-                      const std::string& predicted_country_code,
-                      const std::string& app_locale,
-                      LogBuffer* import_log_buffer,
-                      bool collect_metrics);
-
 // Checks suitability of an an import candidate `profile` by validating some
 // of the profiles values.
 bool IsValidLearnableProfile(const AutofillProfile& profile,
@@ -128,10 +118,11 @@ bool IsValidLearnableProfile(const AutofillProfile& profile,
 // - The country determined by the variation service stored in
 //   `variation_country_code`.
 // - The country code corresponding to `app_locale`.
-std::string GetPredictedCountryCode(const AutofillProfile& profile,
-                                    const std::string& variation_country_code,
-                                    const std::string& app_locale,
-                                    LogBuffer* import_log_buffer);
+std::string GetPredictedCountryCode(
+    const AutofillProfile& profile,
+    const GeoIpCountryCode& variation_country_code,
+    const std::string& app_locale,
+    LogBuffer* import_log_buffer);
 
 // Stores recently submitted profile fragments, which are merged against future
 // import candidates to construct a complete profile. This enables importing
@@ -139,14 +130,13 @@ std::string GetPredictedCountryCode(const AutofillProfile& profile,
 class MultiStepImportMerger {
  public:
   MultiStepImportMerger(const std::string& app_locale,
-                        const std::string& variation_country_code);
+                        const GeoIpCountryCode& variation_country_code);
   ~MultiStepImportMerger();
 
   // Removes updated multi-step candidates, merges `profile` with multi-step
   // candidates and potentially stores it as a multi-step candidate itself.
   // `profile` and `import_metadata` are updated accordingly, if the profile
   // can be merged. See `MergeProfileWithMultiStepCandidates()` for details.
-  // Only applicable when `kAutofillEnableMultiStepImports` is enabled.
   void ProcessMultiStepImport(AutofillProfile& profile,
                               ProfileImportMetadata& import_metadata);
 
@@ -183,12 +173,11 @@ class MultiStepImportMerger {
       AutofillProfile& profile,
       ProfileImportMetadata& import_metadata);
 
-  // With AutofillComplementCountryEarly, merging can fail if one profile
-  // fragment contains an observed country and the complemented country of the
-  // other profile disagrees with it. This function attempts to make `profile_a`
-  // and `profile_b` mergeable by removing the complemented country.
+  // Merging can fail if one profile fragment contains an observed country and
+  // the complemented country of the other profile disagrees with it.
+  // This function attempts to make `profile_a` and `profile_b` mergeable by
+  // removing the complemented country.
   // If successful, true is returned and the complemented country removed.
-  // TODO(crbug.com/1287498): Remove AutofillComplementCountryEarly reference.
   bool MergeableByRemovingIncorrectlyComplementedCountry(
       AutofillProfile& profile_a,
       bool& complemented_profile_a,
@@ -205,7 +194,7 @@ class MultiStepImportMerger {
   // Needed to predict the country code of a merged import candidate, to
   // ultimately decide if the profile meets the minimum import requirements.
   std::string app_locale_;
-  std::string variation_country_code_;
+  GeoIpCountryCode variation_country_code_;
   AutofillProfileComparator comparator_;
 
   // Represents a submitted form, stored to be considered as a merge candidate

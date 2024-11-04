@@ -244,14 +244,14 @@ QPixmap QCocoaDrag::dragPixmap(QDrag *drag, QPoint &hotSpot) const
         QFontMetrics fm(f);
 
         if (data->hasImage()) {
-            const QImage img = data->imageData().value<QImage>();
+            QImage img = data->imageData().value<QImage>();
             if (!img.isNull()) {
-                pm = QPixmap::fromImage(img).scaledToWidth(dragImageMaxChars *fm.averageCharWidth());
+                pm = QPixmap::fromImage(std::move(img)).scaledToWidth(dragImageMaxChars *fm.averageCharWidth());
             }
         }
 
         if (pm.isNull() && (data->hasText() || data->hasUrls()) ) {
-            QString s = data->hasText() ? data->text() : data->urls().first().toString();
+            QString s = data->hasText() ? data->text() : data->urls().constFirst().toString();
             if (s.length() > dragImageMaxChars)
                 s = s.left(dragImageMaxChars -3) + QChar(0x2026);
             if (!s.isEmpty()) {

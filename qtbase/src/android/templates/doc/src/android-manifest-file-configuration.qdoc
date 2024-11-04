@@ -50,8 +50,10 @@ Qt sets the following manifest configuration by default:
     \li {1, 5} \l {Android: App Manifest <manifest>}{<manifest>}
     \li package
     \li Sets the package name. The default value is \c {org.qtproject.example.app_name}.
+        \warning This field is deprecated and moved to \c build.gradle. It will be removed
+        in an upcoming release.
 \row
-    \li \c {android:installLocation}
+    \li android:installLocation
     \li Sets the app's installation location, whether internal or external storage.
         The default value is \c auto.
 \row
@@ -63,12 +65,12 @@ Qt sets the following manifest configuration by default:
     \li Sets the public version name. Populated from \c ANDROID_VERSION_NAME (qmake)
         and \c QT_ANDROID_VERSION_NAME (CMake). The default value is \c {1.0}.
 \row
-    \li \c {<supports-screens>}
+    \li <supports-screens>
     \li Sets the screen sizes that the app supports,
         default values are \c anyDensity, \c largeScreens,
         \c normalScreens, and \c smallScreens.
 \row
-    \li {1, 7} \l {Android: App Manifest <application>}{<application>}
+    \li {1, 6} \l {Android: App Manifest <application>}{<application>}
     \li android:name
     \li The application class name. Default value is
         \c {org.qtproject.qt.android.bindings.QtApplication}.
@@ -91,12 +93,9 @@ Qt sets the following manifest configuration by default:
     \li Whether or not to use Auto Backup on devices where it is available.
         The default value is \c false.
 \row
-    \li {1, 7} \l {Android: App Manifest <activity>}{<activity>}
+    \li {1, 6} \l {Android: App Manifest <activity>}{<activity>}
     \li android:name
     \li The activity class name. The default value is \c {org.qtproject.qt.android.bindings.QtActivity}.
-\row
-    \li android:label
-    \li The activity name label. Default value is the Qt project's target name.
 \row
     \li android:configChanges
     \li Lists configuration changes that the activity handles. Default value is

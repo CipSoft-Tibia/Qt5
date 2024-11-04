@@ -296,6 +296,8 @@ static_library("bundled_libxml") {
     configs -= [ "//build/config/win:lean_and_mean" ]
   }
 
+  sources += [ "chromium/disabled_libxml_features.cc" ]
+
   public_configs = [ ":libxml_config" ]
   public_deps = [ "//third_party/icu:icuuc" ]
   deps = [ "//third_party/zlib" ]

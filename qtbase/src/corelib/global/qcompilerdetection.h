@@ -2,8 +2,6 @@
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include <QtCore/qsystemdetection.h>
-
 #if 0
 #pragma qt_class(QtCompilerDetection)
 #pragma qt_sync_skip_header_check
@@ -14,6 +12,7 @@
 #define QCOMPILERDETECTION_H
 
 #include <QtCore/qprocessordetection.h>
+#include <QtCore/qsystemdetection.h>
 #include <QtCore/qtconfiginclude.h>
 
 /*
@@ -77,9 +76,9 @@
 #  define Q_DECL_EXPORT __declspec(dllexport)
 #  define Q_DECL_IMPORT __declspec(dllimport)
 #  if _MSC_VER < 1938 // stdext is deprecated since VS 2022 17.8
-#    define QT_MAKE_UNCHECKED_ARRAY_ITERATOR(x) stdext::make_unchecked_array_iterator(x) // Since _MSC_VER >= 1800
 #    define QT_MAKE_CHECKED_ARRAY_ITERATOR(x, N) stdext::make_checked_array_iterator(x, size_t(N)) // Since _MSC_VER >= 1500
 #  endif
+#  define Q_COMPILER_COMPLAINS_ABOUT_RETURN_AFTER_UNREACHABLE
 
 #elif defined(__BORLANDC__) || defined(__TURBOC__)
 #  define Q_CC_BOR
@@ -851,6 +850,15 @@
 #    if _MSC_VER >= 1910
 #      define Q_COMPILER_CONSTEXPR
 #    endif
+// MSVC versions before 19.36 have a bug in C++20 comparison implementation.
+// This leads to ambiguities when resolving comparison operator overloads in
+// certain scenarios (the buggy MSVC versions were checked using our CI and
+// compiler explorer).
+#    if _MSC_VER < 1936
+#      define Q_COMPILER_LACKS_THREE_WAY_COMPARE_SYMMETRY
+#    endif
+// QTBUG-124376: MSVC is slow at compiling qstrnlen()
+#    define Q_COMPILER_SLOW_QSTRNLEN_COMPILATION
 #  endif /* __cplusplus */
 #endif // defined(Q_CC_MSVC) && !defined(Q_CC_CLANG)
 
@@ -962,6 +970,13 @@
 #  ifndef Q_NODISCARD_CTOR
 #    define Q_NODISCARD_CTOR [[nodiscard]]
 #  endif
+// [[nodiscard("reason")]] (P1301)
+#  ifndef Q_NODISCARD_X
+#    define Q_NODISCARD_X(message) [[nodiscard(message)]]
+#  endif
+#  ifndef Q_NODISCARD_CTOR_X
+#    define Q_NODISCARD_CTOR_X(message) [[nodiscard(message)]]
+#  endif
 #endif
 
 #if __has_cpp_attribute(maybe_unused)
@@ -1013,8 +1028,14 @@
 #ifndef Q_REQUIRED_RESULT
 #  define Q_REQUIRED_RESULT
 #endif
+#ifndef Q_NODISCARD_X
+#  define Q_NODISCARD_X(message) Q_REQUIRED_RESULT
+#endif
 #ifndef Q_NODISCARD_CTOR
 #  define Q_NODISCARD_CTOR
+#endif
+#ifndef Q_NODISCARD_CTOR_X
+#  define Q_NODISCARD_CTOR_X(message) Q_NODISCARD_CTOR
 #endif
 #ifndef Q_DECL_DEPRECATED
 #  define Q_DECL_DEPRECATED
@@ -1202,11 +1223,11 @@
 #endif
 #endif
 #ifndef Q_FALLTHROUGH
-#  if defined(Q_CC_GNU_ONLY) && Q_CC_GNU >= 700
+#  ifdef Q_CC_GNU
 #    define Q_FALLTHROUGH() __attribute__((fallthrough))
 #  else
 #    define Q_FALLTHROUGH() (void)0
-#endif
+#  endif
 #endif
 
 
@@ -1385,7 +1406,11 @@ QT_WARNING_DISABLE_MSVC(4530) /* C++ exception handler used, but unwind semantic
 #endif
 
 #if defined(__cplusplus) && __cplusplus >= 202002L // P0846 doesn't have a feature macro :/
+# if !defined(Q_CC_MSVC_ONLY) || Q_CC_MSVC >= 1939 // claims C++20 support but lacks P0846
+                                                   // 1939 is known to work
+                                                   // 1936 is known to fail
 #  define QT_COMPILER_HAS_P0846
+# endif
 #endif
 
 #ifdef QT_COMPILER_HAS_P0846

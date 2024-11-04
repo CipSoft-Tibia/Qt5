@@ -45,6 +45,13 @@
 #include "shared/helpers.h"
 #include "shared/timespec-util.h"
 
+#include "tablet-unstable-v2-server-protocol.h"
+
+struct tablet_output_listener {
+	struct wl_listener base;
+	struct wl_list tablet_list;
+};
+
 void
 evdev_led_update(struct evdev_device *device, enum weston_led weston_leds)
 {
@@ -58,6 +65,21 @@ evdev_led_update(struct evdev_device *device, enum weston_led weston_leds)
 		leds |= LIBINPUT_LED_SCROLL_LOCK;
 
 	libinput_device_led_update(device->device, leds);
+}
+
+static void
+ensure_pointer_capability(struct libinput_device *libinput_device)
+{
+	struct evdev_device *device = libinput_device_get_user_data(libinput_device);
+	struct weston_seat *seat = device->seat;
+
+	if (!libinput_device_has_capability(libinput_device, LIBINPUT_DEVICE_CAP_POINTER))
+		return;
+
+	if (!(device->seat_caps & EVDEV_SEAT_POINTER)) {
+		weston_seat_init_pointer(seat);
+		device->seat_caps |= EVDEV_SEAT_POINTER;
+	}
 }
 
 static void
@@ -97,6 +119,8 @@ handle_pointer_motion(struct libinput_device *libinput_device,
 	struct timespec time;
 	double dx_unaccel, dy_unaccel;
 
+	ensure_pointer_capability(libinput_device);
+
 	timespec_from_usec(&time,
 			   libinput_event_pointer_get_time_usec(pointer_event));
 	dx_unaccel = libinput_event_pointer_get_dx_unaccelerated(pointer_event);
@@ -106,12 +130,10 @@ handle_pointer_motion(struct libinput_device *libinput_device,
 		.mask = WESTON_POINTER_MOTION_REL |
 			WESTON_POINTER_MOTION_REL_UNACCEL,
 		.time = time,
-		.dx = libinput_event_pointer_get_dx(pointer_event),
-		.dy = libinput_event_pointer_get_dy(pointer_event),
-		.dx_unaccel = dx_unaccel,
-		.dy_unaccel = dy_unaccel,
 	};
-
+	event.rel = weston_coord(libinput_event_pointer_get_dx(pointer_event),
+				 libinput_event_pointer_get_dy(pointer_event));
+	event.rel_unaccel = weston_coord(dx_unaccel, dy_unaccel);
 	notify_motion(device->seat, &time, &event);
 
 	return true;
@@ -125,9 +147,12 @@ handle_pointer_motion_absolute(
 	struct evdev_device *device =
 		libinput_device_get_user_data(libinput_device);
 	struct weston_output *output = device->output;
+	struct weston_coord_global pos;
 	struct timespec time;
 	double x, y;
 	uint32_t width, height;
+
+	ensure_pointer_capability(libinput_device);
 
 	if (!output)
 		return false;
@@ -141,9 +166,8 @@ handle_pointer_motion_absolute(
 							      width);
 	y = libinput_event_pointer_get_absolute_y_transformed(pointer_event,
 							      height);
-
-	weston_output_transform_coordinate(device->output, x, y, &x, &y);
-	notify_motion_absolute(device->seat, &time, x, y);
+	pos = weston_coord_global_from_output_point(x, y, output);
+	notify_motion_absolute(device->seat, &time, pos);
 
 	return true;
 }
@@ -160,6 +184,8 @@ handle_pointer_button(struct libinput_device *libinput_device,
 		libinput_event_pointer_get_seat_button_count(pointer_event);
 	struct timespec time;
 
+	ensure_pointer_capability(libinput_device);
+
 	/* Ignore button events that are not seat wide state changes. */
 	if ((button_state == LIBINPUT_BUTTON_STATE_PRESSED &&
 	     seat_button_count != 1) ||
@@ -171,8 +197,8 @@ handle_pointer_button(struct libinput_device *libinput_device,
 			   libinput_event_pointer_get_time_usec(pointer_event));
 
 	notify_button(device->seat, &time,
-		      libinput_event_pointer_get_button(pointer_event),
-                      button_state);
+	              libinput_event_pointer_get_button(pointer_event),
+	              button_state);
 
 	return true;
 }
@@ -227,7 +253,6 @@ static bool
 handle_pointer_axis(struct libinput_device *libinput_device,
 		    struct libinput_event_pointer *pointer_event)
 {
-	static int warned;
 	struct evdev_device *device =
 		libinput_device_get_user_data(libinput_device);
 	double vert, horiz;
@@ -238,6 +263,8 @@ handle_pointer_axis(struct libinput_device *libinput_device,
 	uint32_t wl_axis_source;
 	bool has_vert, has_horiz;
 	struct timespec time;
+
+	ensure_pointer_capability(libinput_device);
 
 	has_vert = libinput_event_pointer_has_axis(pointer_event,
 				   LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL);
@@ -259,10 +286,8 @@ handle_pointer_axis(struct libinput_device *libinput_device,
 		wl_axis_source = WL_POINTER_AXIS_SOURCE_CONTINUOUS;
 		break;
 	default:
-		if (warned < 5) {
-			weston_log("Unknown scroll source %d.\n", source);
-			warned++;
-		}
+		weston_log_paced(&device->unknown_scroll_pacer, 5, 0,
+				 "Unknown scroll source %d.\n", source);
 		return false;
 	}
 
@@ -425,6 +450,7 @@ handle_touch_with_coords(struct libinput_device *libinput_device,
 	uint32_t width, height;
 	struct timespec time;
 	int32_t slot;
+	struct weston_coord_global pos;
 
 	if (!device->output)
 		return;
@@ -438,16 +464,16 @@ handle_touch_with_coords(struct libinput_device *libinput_device,
 	x =  libinput_event_touch_get_x_transformed(touch_event, width);
 	y =  libinput_event_touch_get_y_transformed(touch_event, height);
 
-	weston_output_transform_coordinate(device->output,
-					   x, y, &x, &y);
+	pos = weston_coord_global_from_output_point(x, y, device->output);
 
 	if (weston_touch_device_can_calibrate(device->touch_device)) {
 		norm.x = libinput_event_touch_get_x_transformed(touch_event, 1);
 		norm.y = libinput_event_touch_get_y_transformed(touch_event, 1);
 		notify_touch_normalized(device->touch_device, &time, slot,
-					x, y, &norm, touch_type);
+					&pos, &norm, touch_type);
 	} else {
-		notify_touch(device->touch_device, &time, slot, x, y, touch_type);
+		notify_touch(device->touch_device, &time, slot,
+			     &pos, touch_type);
 	}
 }
 
@@ -477,7 +503,7 @@ handle_touch_up(struct libinput_device *libinput_device,
 	timespec_from_usec(&time,
 			   libinput_event_touch_get_time_usec(touch_event));
 
-	notify_touch(device->touch_device, &time, slot, 0, 0, WL_TOUCH_UP);
+	notify_touch(device->touch_device, &time, slot, NULL, WL_TOUCH_UP);
 }
 
 static void
@@ -490,6 +516,247 @@ handle_touch_frame(struct libinput_device *libinput_device,
 	notify_touch_frame(device->touch_device);
 }
 
+static void
+process_tablet_axis(struct weston_output *output, struct weston_tablet *tablet,
+		    struct weston_tablet_tool *tool,
+		    struct libinput_event_tablet_tool *axis_event)
+{
+	struct timespec time;
+	const int NORMALIZED_AXIS_MAX = 65535;
+
+	timespec_from_usec(&time,
+			   libinput_event_tablet_tool_get_time(axis_event));
+
+	if (libinput_event_tablet_tool_x_has_changed(axis_event) ||
+	    libinput_event_tablet_tool_y_has_changed(axis_event)) {
+		double x, y;
+		uint32_t width, height;
+		struct weston_coord_global pos;
+
+		width = output->current_mode->width;
+		height = output->current_mode->height;
+		x = libinput_event_tablet_tool_get_x_transformed(axis_event,
+								 width);
+		y = libinput_event_tablet_tool_get_y_transformed(axis_event,
+								 height);
+
+		pos = weston_coord_global_from_output_point(x, y, output);
+		notify_tablet_tool_motion(tool, &time, pos);
+	}
+
+	if (libinput_event_tablet_tool_pressure_has_changed(axis_event)) {
+		double pressure;
+
+		pressure = libinput_event_tablet_tool_get_pressure(axis_event);
+		/* convert axis range [0.0, 1.0] to [0, 65535] */
+		pressure *= NORMALIZED_AXIS_MAX;
+		notify_tablet_tool_pressure(tool, &time, pressure);
+	}
+
+	if (libinput_event_tablet_tool_distance_has_changed(axis_event)) {
+		double distance;
+
+		distance = libinput_event_tablet_tool_get_distance(axis_event);
+		/* convert axis range [0.0, 1.0] to [0, 65535] */
+		distance *= NORMALIZED_AXIS_MAX;
+		notify_tablet_tool_distance(tool, &time, distance);
+	}
+
+	if (libinput_event_tablet_tool_tilt_x_has_changed(axis_event) ||
+	    libinput_event_tablet_tool_tilt_y_has_changed(axis_event)) {
+		double tx, ty;
+
+		tx = libinput_event_tablet_tool_get_tilt_x(axis_event);
+		ty = libinput_event_tablet_tool_get_tilt_y(axis_event);
+		notify_tablet_tool_tilt(tool, &time,
+					wl_fixed_from_double(tx),
+					wl_fixed_from_double(ty));
+	}
+}
+
+static void
+idle_notify_tablet_tool_frame(void *data)
+{
+	struct weston_tablet_tool *tool = data;
+
+	notify_tablet_tool_frame(tool, &tool->frame_time);
+	timespec_from_nsec(&tool->frame_time, 0);
+}
+
+/*
+ * libinput does not provide frame information. So assume that all events that
+ * belong to the same hardware event have the same timestamp and are created
+ * together. Use an idle callback to delay the frame event until all events that
+ * blong together have been handled.
+ */
+static void
+async_notify_tablet_tool_frame(struct weston_tablet_tool *tool,
+			       struct timespec *time)
+{
+	if (timespec_eq(&tool->frame_time, time))
+		return;
+
+	/* If this is a second timestamp, then push out the first frame and use
+	 * the already queued callback for the new timestamp. Otherwise queue a
+	 * new callback. */
+	if (!timespec_is_zero(&tool->frame_time))
+		notify_tablet_tool_frame(tool, &tool->frame_time);
+	else {
+		struct wl_event_loop *loop;
+
+		loop = wl_display_get_event_loop(tool->seat->compositor->wl_display);
+		wl_event_loop_add_idle(loop, idle_notify_tablet_tool_frame, tool);
+	}
+	tool->frame_time = *time;
+}
+
+static void
+handle_tablet_proximity(struct libinput_device *libinput_device,
+			struct libinput_event_tablet_tool *proximity_event)
+{
+	struct evdev_device *device;
+	struct weston_tablet *tablet;
+	struct weston_tablet_tool *tool;
+	struct libinput_tablet_tool *libinput_tool;
+	struct timespec time;
+
+	device = libinput_device_get_user_data(libinput_device);
+	timespec_from_usec(&time,
+			   libinput_event_tablet_tool_get_time(proximity_event));
+	libinput_tool = libinput_event_tablet_tool_get_tool(proximity_event);
+
+	tool = libinput_tablet_tool_get_user_data(libinput_tool);
+	tablet = device->tablet;
+
+	if (libinput_event_tablet_tool_get_proximity_state(proximity_event) ==
+	    LIBINPUT_TABLET_TOOL_PROXIMITY_STATE_OUT) {
+		notify_tablet_tool_proximity_out(tool, &time);
+		async_notify_tablet_tool_frame(tool, &time);
+		return;
+	}
+
+	if (!tool) {
+		uint64_t serial;
+		enum libinput_tablet_tool_type libinput_tool_type;
+		uint32_t type;
+
+		serial = libinput_tablet_tool_get_serial(libinput_tool);
+		libinput_tool_type = libinput_tablet_tool_get_type(libinput_tool);
+
+		switch (libinput_tool_type) {
+		case LIBINPUT_TABLET_TOOL_TYPE_PEN:
+			type = ZWP_TABLET_TOOL_V2_TYPE_PEN;
+			break;
+		case LIBINPUT_TABLET_TOOL_TYPE_ERASER:
+			type = ZWP_TABLET_TOOL_V2_TYPE_ERASER;
+			break;
+		default:
+			weston_log("Unknown libinput tool type %d\n",
+				   libinput_tool_type);
+			return;
+		}
+
+		tool = weston_seat_add_tablet_tool(device->seat);
+		tool->serial = serial;
+		tool->hwid = libinput_tablet_tool_get_tool_id(libinput_tool);
+		tool->type = type;
+		tool->capabilities = 0;
+
+		if (libinput_tablet_tool_has_distance(libinput_tool))
+		    tool->capabilities |= 1 << ZWP_TABLET_TOOL_V2_CAPABILITY_DISTANCE;
+		if (libinput_tablet_tool_has_pressure(libinput_tool))
+		    tool->capabilities |= 1 << ZWP_TABLET_TOOL_V2_CAPABILITY_PRESSURE;
+		if (libinput_tablet_tool_has_tilt(libinput_tool))
+		    tool->capabilities |= 1 << ZWP_TABLET_TOOL_V2_CAPABILITY_TILT;
+
+		/* unique tools are tracked globally, others per tablet */
+		if (libinput_tablet_tool_is_unique(libinput_tool))
+			wl_list_insert(&device->seat->tablet_tool_list, &tool->link);
+		else
+			wl_list_insert(&tablet->tool_list, &tool->link);
+
+		libinput_tablet_tool_set_user_data(libinput_tool, tool);
+
+		notify_tablet_tool_added(tool);
+	}
+
+	notify_tablet_tool_proximity_in(tool, &time, tablet);
+	process_tablet_axis(device->output, tablet, tool, proximity_event);
+	async_notify_tablet_tool_frame(tool, &time);
+}
+
+static void
+handle_tablet_axis(struct libinput_device *libinput_device,
+		   struct libinput_event_tablet_tool *axis_event)
+{
+	struct evdev_device *device =
+		libinput_device_get_user_data(libinput_device);
+	struct weston_tablet_tool *tool;
+	struct weston_tablet *tablet = device->tablet;
+	struct libinput_tablet_tool *libinput_tool;
+	struct timespec time;
+
+	libinput_tool = libinput_event_tablet_tool_get_tool(axis_event);
+	tool = libinput_tablet_tool_get_user_data(libinput_tool);
+	timespec_from_usec(&time,
+			   libinput_event_tablet_tool_get_time(axis_event));
+
+	process_tablet_axis(device->output, tablet, tool, axis_event);
+
+	async_notify_tablet_tool_frame(tool, &time);
+}
+
+static void
+handle_tablet_tip(struct libinput_device *libinput_device,
+		  struct libinput_event_tablet_tool *tip_event)
+{
+	struct evdev_device *device =
+		libinput_device_get_user_data(libinput_device);
+	struct weston_tablet_tool *tool;
+	struct libinput_tablet_tool *libinput_tool;
+	struct timespec time;
+
+	libinput_tool = libinput_event_tablet_tool_get_tool(tip_event);
+	tool = libinput_tablet_tool_get_user_data(libinput_tool);
+	timespec_from_usec(&time,
+			   libinput_event_tablet_tool_get_time(tip_event));
+
+	process_tablet_axis(device->output, device->tablet, tool, tip_event);
+
+	if (libinput_event_tablet_tool_get_tip_state(tip_event) ==
+	    LIBINPUT_TABLET_TOOL_TIP_DOWN)
+			notify_tablet_tool_down(tool, &time);
+	else
+		notify_tablet_tool_up(tool, &time);
+	async_notify_tablet_tool_frame(tool, &time);
+}
+
+
+static void
+handle_tablet_button(struct libinput_device *libinput_device,
+		     struct libinput_event_tablet_tool *button_event)
+{
+	struct weston_tablet_tool *tool;
+	struct libinput_tablet_tool *libinput_tool;
+	struct timespec time;
+	uint32_t button;
+	enum zwp_tablet_tool_v2_button_state state;
+
+	libinput_tool = libinput_event_tablet_tool_get_tool(button_event);
+	tool = libinput_tablet_tool_get_user_data(libinput_tool);
+	timespec_from_usec(&time,
+			   libinput_event_tablet_tool_get_time(button_event));
+	button = libinput_event_tablet_tool_get_button(button_event);
+	if (libinput_event_tablet_tool_get_button_state(button_event) ==
+	    LIBINPUT_BUTTON_STATE_PRESSED)
+		state = ZWP_TABLET_TOOL_V2_BUTTON_STATE_PRESSED;
+	else
+		state = ZWP_TABLET_TOOL_V2_BUTTON_STATE_RELEASED;
+
+	notify_tablet_tool_button(tool, &time, button, state);
+	async_notify_tablet_tool_frame(tool, &time);
+}
+
 int
 evdev_device_process_event(struct libinput_event *event)
 {
@@ -499,6 +766,9 @@ evdev_device_process_event(struct libinput_event *event)
 		libinput_device_get_user_data(libinput_device);
 	int handled = 1;
 	bool need_frame = false;
+
+	if (!device)
+		return 0;
 
 	switch (libinput_event_get_type(event)) {
 	case LIBINPUT_EVENT_KEYBOARD_KEY:
@@ -538,6 +808,22 @@ evdev_device_process_event(struct libinput_event *event)
 	case LIBINPUT_EVENT_TOUCH_FRAME:
 		handle_touch_frame(libinput_device,
 				   libinput_event_get_touch_event(event));
+		break;
+	case LIBINPUT_EVENT_TABLET_TOOL_PROXIMITY:
+		handle_tablet_proximity(libinput_device,
+				libinput_event_get_tablet_tool_event(event));
+		break;
+	case LIBINPUT_EVENT_TABLET_TOOL_TIP:
+		handle_tablet_tip(libinput_device,
+				  libinput_event_get_tablet_tool_event(event));
+		break;
+	case LIBINPUT_EVENT_TABLET_TOOL_AXIS:
+		handle_tablet_axis(libinput_device,
+				libinput_event_get_tablet_tool_event(event));
+		break;
+	case LIBINPUT_EVENT_TABLET_TOOL_BUTTON:
+		handle_tablet_button(libinput_device,
+				libinput_event_get_tablet_tool_event(event));
 		break;
 	default:
 		handled = 0;
@@ -689,6 +975,33 @@ evdev_device_set_output(struct evdev_device *device,
 	evdev_device_set_calibration(device);
 }
 
+static void
+evdev_device_init_tablet(struct evdev_device *device,
+			 struct libinput_device *libinput_device,
+			 struct weston_seat *seat)
+{
+	struct weston_tablet *tablet;
+	struct udev_device *udev_device;
+
+	tablet = weston_seat_add_tablet(seat);
+	tablet->name = strdup(libinput_device_get_name(libinput_device));
+	tablet->vid = libinput_device_get_id_vendor(libinput_device);
+	tablet->pid = libinput_device_get_id_product(libinput_device);
+
+	udev_device = libinput_device_get_udev_device(libinput_device);
+	if (udev_device) {
+		tablet->path = udev_device_get_devnode(udev_device);
+		udev_device_unref(udev_device);
+	}
+
+	wl_list_insert(&seat->tablet_list, &tablet->link);
+	device->seat_caps |= EVDEV_SEAT_TABLET;
+
+	device->tablet = tablet;
+
+	notify_tablet_added(tablet);
+}
+
 struct evdev_device *
 evdev_device_create(struct libinput_device *libinput_device,
 		    struct weston_seat *seat)
@@ -705,19 +1018,33 @@ evdev_device_create(struct libinput_device *libinput_device,
 
 	if (libinput_device_has_capability(libinput_device,
 					   LIBINPUT_DEVICE_CAP_KEYBOARD)) {
-		weston_seat_init_keyboard(seat, NULL);
+		if (weston_seat_init_keyboard(seat, NULL) < 0) {
+			free(device);
+			return NULL;
+		}
+
 		device->seat_caps |= EVDEV_SEAT_KEYBOARD;
 	}
-	if (libinput_device_has_capability(libinput_device,
-					   LIBINPUT_DEVICE_CAP_POINTER)) {
-		weston_seat_init_pointer(seat);
-		device->seat_caps |= EVDEV_SEAT_POINTER;
-	}
+
 	if (libinput_device_has_capability(libinput_device,
 					   LIBINPUT_DEVICE_CAP_TOUCH)) {
-		weston_seat_init_touch(seat);
+		if (weston_seat_init_touch(seat) < 0) {
+			/* maybe we're a keyboard + touch device thus we need
+			 * to release the keyboard in case we couldn't make use
+			 * of the touch */
+			if (device->seat_caps & EVDEV_SEAT_KEYBOARD)
+				weston_seat_release_keyboard(seat);
+
+			free(device);
+			return NULL;
+		}
+
 		device->seat_caps |= EVDEV_SEAT_TOUCH;
 		device->touch_device = create_touch_device(device);
+	}
+	if (libinput_device_has_capability(libinput_device,
+					   LIBINPUT_DEVICE_CAP_TABLET_TOOL)) {
+		evdev_device_init_tablet(device, libinput_device, seat);
 	}
 
 	libinput_device_set_user_data(libinput_device, device);
@@ -737,6 +1064,8 @@ evdev_device_destroy(struct evdev_device *device)
 		weston_touch_device_destroy(device->touch_device);
 		weston_seat_release_touch(device->seat);
 	}
+	if (device->seat_caps & EVDEV_SEAT_TABLET)
+		weston_seat_release_tablet(device->tablet);
 
 	if (device->output)
 		wl_list_remove(&device->output_destroy_listener.link);

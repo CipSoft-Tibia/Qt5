@@ -1,10 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cast/streaming/answer_messages.h"
 
 #include <chrono>
+#include <string_view>
 #include <utility>
 
 #include "gmock/gmock.h"
@@ -12,8 +13,7 @@
 #include "util/chrono_helpers.h"
 #include "util/json/json_serialization.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -70,7 +70,7 @@ const Answer kValidAnswer{
     1234,                         // udp_port
     std::vector<int>{1, 2, 3},    // send_indexes
     std::vector<Ssrc>{123, 456},  // ssrcs
-    absl::optional<Constraints>(Constraints{
+    std::optional<Constraints>(Constraints{
         AudioConstraints{
             96000,              // max_sample_rate
             7,                  // max_channels
@@ -80,7 +80,7 @@ const Answer kValidAnswer{
         },                      // audio
         VideoConstraints{
             40000.0,  // max_pixels_per_second
-            absl::optional<Dimensions>(
+            std::optional<Dimensions>(
                 Dimensions{320, 480, SimpleFraction{15000, 101}}),
             Dimensions{1920, 1080, SimpleFraction{288, 2}},
             300000,             // min_bit_rate
@@ -88,10 +88,10 @@ const Answer kValidAnswer{
             milliseconds(3000)  // max_delay
         }                       // video
     }),                         // constraints
-    absl::optional<DisplayDescription>(DisplayDescription{
-        absl::optional<Dimensions>(Dimensions{640, 480, SimpleFraction{30, 1}}),
-        absl::optional<AspectRatio>(AspectRatio{16, 9}),  // aspect_ratio
-        absl::optional<AspectRatioConstraint>(
+    std::optional<DisplayDescription>(DisplayDescription{
+        std::optional<Dimensions>(Dimensions{640, 480, SimpleFraction{30, 1}}),
+        std::optional<AspectRatio>(AspectRatio{16, 9}),  // aspect_ratio
+        std::optional<AspectRatioConstraint>(
             AspectRatioConstraint::kFixed),  // scaling
     }),
     std::vector<int>{7, 8, 9},              // receiver_rtcp_event_log
@@ -102,7 +102,7 @@ const Answer kValidAnswer{
 constexpr int kValidMaxPixelsPerSecond = 1920 * 1080 * 30;
 constexpr Dimensions kValidDimensions{1920, 1080, SimpleFraction{60, 1}};
 static const VideoConstraints kValidVideoConstraints{
-    kValidMaxPixelsPerSecond, absl::optional<Dimensions>(kValidDimensions),
+    kValidMaxPixelsPerSecond, std::optional<Dimensions>(kValidDimensions),
     kValidDimensions,         300 * 1000,
     300 * 1000 * 1000,        milliseconds(3000)};
 
@@ -150,7 +150,7 @@ void ExpectEqualsValidAnswerJson(const Answer& answer) {
   EXPECT_THAT(answer.rtp_extensions, ElementsAre("adaptive_playout_delay"));
 }
 
-void ExpectFailureOnParse(absl::string_view raw_json) {
+void ExpectFailureOnParse(std::string_view raw_json) {
   ErrorOr<Json::Value> root = json::Parse(raw_json);
   // Must be a valid JSON object, but not a valid answer.
   ASSERT_TRUE(root.is_value());
@@ -162,7 +162,7 @@ void ExpectFailureOnParse(absl::string_view raw_json) {
 
 // Functions that use ASSERT_* must return void, so we use an out parameter
 // here instead of returning.
-void ExpectSuccessOnParse(absl::string_view raw_json, Answer* out = nullptr) {
+void ExpectSuccessOnParse(std::string_view raw_json, Answer* out = nullptr) {
   ErrorOr<Json::Value> root = json::Parse(raw_json);
   // Must be a valid JSON object, but not a valid answer.
   ASSERT_TRUE(root.is_value());
@@ -575,34 +575,33 @@ TEST(AnswerMessagesTest, DisplayDescriptionTryParse) {
 
 TEST(AnswerMessagesTest, DisplayDescriptionIsValid) {
   const DisplayDescription kInvalidEmptyDescription{
-      absl::optional<Dimensions>{}, absl::optional<AspectRatio>{},
-      absl::optional<AspectRatioConstraint>{}};
+      std::optional<Dimensions>{}, std::optional<AspectRatio>{},
+      std::optional<AspectRatioConstraint>{}};
 
   DisplayDescription has_valid_dimensions = kInvalidEmptyDescription;
-  has_valid_dimensions.dimensions =
-      absl::optional<Dimensions>(kValidDimensions);
+  has_valid_dimensions.dimensions = std::optional<Dimensions>(kValidDimensions);
 
   DisplayDescription has_invalid_dimensions = kInvalidEmptyDescription;
   has_invalid_dimensions.dimensions =
-      absl::optional<Dimensions>(kValidDimensions);
+      std::optional<Dimensions>(kValidDimensions);
   has_invalid_dimensions.dimensions->width = 0;
 
   DisplayDescription has_aspect_ratio = kInvalidEmptyDescription;
   has_aspect_ratio.aspect_ratio =
-      absl::optional<AspectRatio>{AspectRatio{16, 9}};
+      std::optional<AspectRatio>{AspectRatio{16, 9}};
 
   DisplayDescription has_invalid_aspect_ratio = kInvalidEmptyDescription;
   has_invalid_aspect_ratio.aspect_ratio =
-      absl::optional<AspectRatio>{AspectRatio{0, 20}};
+      std::optional<AspectRatio>{AspectRatio{0, 20}};
 
   DisplayDescription has_aspect_ratio_constraint = kInvalidEmptyDescription;
   has_aspect_ratio_constraint.aspect_ratio_constraint =
-      absl::optional<AspectRatioConstraint>(AspectRatioConstraint::kFixed);
+      std::optional<AspectRatioConstraint>(AspectRatioConstraint::kFixed);
 
   DisplayDescription has_constraint_and_dimensions =
       has_aspect_ratio_constraint;
   has_constraint_and_dimensions.dimensions =
-      absl::optional<Dimensions>(kValidDimensions);
+      std::optional<Dimensions>(kValidDimensions);
 
   DisplayDescription has_constraint_and_ratio = has_aspect_ratio_constraint;
   has_constraint_and_ratio.aspect_ratio = AspectRatio{4, 3};
@@ -619,5 +618,4 @@ TEST(AnswerMessagesTest, DisplayDescriptionIsValid) {
 // Instead of being tested here, Answer's IsValid is checked in all other
 // relevant tests.
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

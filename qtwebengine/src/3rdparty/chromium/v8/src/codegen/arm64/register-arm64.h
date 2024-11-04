@@ -35,7 +35,7 @@ namespace internal {
          R(x19) R(x20) R(x21) R(x22) R(x23) R(x24) R(x25) \
   R(x27)
 
-#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#ifdef V8_COMPRESS_POINTERS
 #define MAYBE_ALLOCATABLE_GENERAL_REGISTERS(R)
 #else
 #define MAYBE_ALLOCATABLE_GENERAL_REGISTERS(R) R(x28)
@@ -269,6 +269,13 @@ ASSERT_TRIVIALLY_COPYABLE(Register);
 static_assert(sizeof(Register) <= sizeof(int),
               "Register can efficiently be passed by value");
 
+// Assign |source| value to |no_reg| and return the |source|'s previous value.
+inline Register ReassignRegister(Register& source) {
+  Register result = source;
+  source = Register::no_reg();
+  return result;
+}
+
 // Stack frame alignment and padding.
 constexpr int ArgumentPaddingSlots(int argument_count) {
   // Stack frames are aligned to 16 bytes.
@@ -496,10 +503,10 @@ ALIAS_REGISTER(Register, wip1, w17);
 ALIAS_REGISTER(Register, kRootRegister, x26);
 ALIAS_REGISTER(Register, rr, x26);
 // Pointer cage base register.
-#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#ifdef V8_COMPRESS_POINTERS
 ALIAS_REGISTER(Register, kPtrComprCageBaseRegister, x28);
 #else
-ALIAS_REGISTER(Register, kPtrComprCageBaseRegister, kRootRegister);
+ALIAS_REGISTER(Register, kPtrComprCageBaseRegister, no_reg);
 #endif
 // Context pointer register.
 ALIAS_REGISTER(Register, cp, x27);
@@ -599,7 +606,6 @@ constexpr Register kJavaScriptCallTargetRegister = kJSFunctionRegister;
 constexpr Register kJavaScriptCallNewTargetRegister = x3;
 constexpr Register kJavaScriptCallExtraArg1Register = x2;
 
-constexpr Register kOffHeapTrampolineRegister = ip0;
 constexpr Register kRuntimeCallFunctionRegister = x1;
 constexpr Register kRuntimeCallArgCountRegister = x0;
 constexpr Register kRuntimeCallArgvRegister = x11;

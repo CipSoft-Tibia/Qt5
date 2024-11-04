@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtest.h>
 #include <QLibraryInfo>
@@ -69,7 +69,8 @@ tst_examples::tst_examples()
         << "examples/quick/shapes/content/interactive.qml"_L1 // relies on resources
         << "examples/demos/addressbook/qml/main.qml"_L1 // relies on resources
         << "examples/demos/robotarm/main.qml"_L1 // relies on custom import
-        << "examples/demos/FX_Material_Showroom/main.qml"_L1; // relies on custom import
+        << "examples/demos/FX_Material_Showroom/main.qml"_L1 // relies on custom import
+        << "examples/demos/car-configurator/main.qml"_L1; // relies on custom import
 
 #if !QT_CONFIG(opengl)
     //No support for Particles

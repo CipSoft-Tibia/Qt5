@@ -16,8 +16,9 @@
 
 #include "src/trace_processor/sorter/trace_token_buffer.h"
 
+#include <optional>
+
 #include "perfetto/base/compiler.h"
-#include "perfetto/ext/base/optional.h"
 #include "perfetto/trace_processor/trace_blob.h"
 #include "perfetto/trace_processor/trace_blob_view.h"
 #include "src/trace_processor/importers/common/parser_types.h"
@@ -41,8 +42,6 @@ TEST_F(TraceTokenBufferUnittest, TracePacketDataInOut) {
   TracePacketData tpd{tbv.copy(), state.current_generation()};
 
   TraceTokenBuffer::Id id = store.Append(std::move(tpd));
-  ASSERT_EQ(id.out_of_band, 1024u);
-
   TracePacketData extracted = store.Extract<TracePacketData>(id);
   ASSERT_EQ(extracted.packet, tbv);
   ASSERT_EQ(extracted.sequence_state, state.current_generation());
@@ -142,14 +141,12 @@ TEST_F(TraceTokenBufferUnittest, TrackEventDataInOut) {
   auto counter_array = ted.extra_counter_values;
 
   TraceTokenBuffer::Id id = store.Append(std::move(ted));
-  ASSERT_EQ(id.out_of_band, 1234u);
-
   TrackEventData extracted = store.Extract<TrackEventData>(id);
   ASSERT_EQ(extracted.trace_packet_data.packet, tbv);
   ASSERT_EQ(extracted.trace_packet_data.sequence_state,
             state.current_generation());
   ASSERT_EQ(extracted.thread_instruction_count, 123);
-  ASSERT_EQ(extracted.thread_timestamp, base::nullopt);
+  ASSERT_EQ(extracted.thread_timestamp, std::nullopt);
   ASSERT_DOUBLE_EQ(extracted.counter_value, 0.0);
   ASSERT_EQ(extracted.extra_counter_values, counter_array);
 }

@@ -1,13 +1,13 @@
 include_rules = [
+    "+base/apple/bridging.h",
+    "+base/apple/scoped_cftyperef.h",
     "+base/atomic_sequence_num.h",
     "+base/barrier_closure.h",
     "+base/cancelable_callback.h",
     "+base/memory/values_equivalent.h",
     "+base/files/file.h",
     "+base/files/file_path.h",
-    "+base/guid.h",
-    "+base/mac/foundation_util.h",
-    "+base/memory/scoped_policy.h",
+    "+base/apple/foundation_util.h",
     "+base/memory/scoped_refptr.h",
     "+base/profiler/sample_metadata.h",
     "+base/strings/stringprintf.h",
@@ -21,6 +21,7 @@ include_rules = [
     "+base/tracing",
     "+base/unguessable_token.h",
     "+base/values.h",
+    "+base/uuid.h",
     "+cc/animation/animation_host.h",
     "+cc/animation/animation_id_provider.h",
     "+cc/animation/animation_timeline.h",
@@ -107,12 +108,15 @@ include_rules = [
     "+ui/base/ui_base_features.h",
     "+ui/display/screen_info.h",
     "+ui/display/screen_infos.h",
+    "+ui/events/event_constants.h",
     "+ui/events/types/scroll_types.h",
     "+ui/gfx/animation/keyframe/animation_curve.h",
     "+ui/gfx/animation/keyframe/keyframed_animation_curve.h",
     "+ui/gfx/animation/keyframe/timing_function.h",
+    "+ui/gfx/codec/png_codec.h",
     "+ui/gfx/geometry",
     "+ui/gfx/range/range.h",
+    "+ui/gfx/selection_bound.h",
     "-web",
     # We do not want any new dependencies into core/exported until we resolve
     # controller layer.
@@ -190,5 +194,8 @@ specific_include_rules = {
     ],
     "media_values.h": [
         "+ui/base/pointer/pointer_device.h",
+    ],
+    "xml_http_request.cc": [
+        "+net/base/mime_util.h",
     ],
 }

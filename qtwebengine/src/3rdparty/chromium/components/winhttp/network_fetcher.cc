@@ -37,7 +37,7 @@
 namespace winhttp {
 namespace {
 
-// TODO(crbug.com/1376713) - implement a way to express priority for
+// TODO(crbug.com/1164512) - implement a way to express priority for
 // foreground/background network fetches.
 constexpr base::TaskTraits kTaskTraits = {
     base::MayBlock(), base::TaskPriority::USER_VISIBLE,
@@ -286,14 +286,6 @@ HRESULT NetworkFetcher::SendRequest(const std::string& data) {
 
 void NetworkFetcher::SendRequestComplete() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  std::wstring all;
-  QueryHeadersString(
-      request_handle_.get(),
-      WINHTTP_QUERY_RAW_HEADERS_CRLF | WINHTTP_QUERY_FLAG_REQUEST_HEADERS,
-      WINHTTP_HEADER_NAME_BY_INDEX, &all);
-  VLOG(3) << "request headers: " << all;
-
   net_error_ = ReceiveResponse();
   if (FAILED(net_error_))
     CompleteFetch();
@@ -309,10 +301,16 @@ HRESULT NetworkFetcher::ReceiveResponse() {
 void NetworkFetcher::HeadersAvailable() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  std::wstring all;
+  std::wstring request_headers;
+  QueryHeadersString(
+      request_handle_.get(),
+      WINHTTP_QUERY_RAW_HEADERS_CRLF | WINHTTP_QUERY_FLAG_REQUEST_HEADERS,
+      WINHTTP_HEADER_NAME_BY_INDEX, &request_headers);
+  VLOG(3) << "request headers:" << std::endl << request_headers;
+  std::wstring response_headers;
   QueryHeadersString(request_handle_.get(), WINHTTP_QUERY_RAW_HEADERS_CRLF,
-                     WINHTTP_HEADER_NAME_BY_INDEX, &all);
-  VLOG(3) << "response headers: " << all;
+                     WINHTTP_HEADER_NAME_BY_INDEX, &response_headers);
+  VLOG(3) << "response headers:" << std::endl << response_headers;
 
   net_error_ = QueryHeadersInt(request_handle_.get(), WINHTTP_QUERY_STATUS_CODE,
                                WINHTTP_HEADER_NAME_BY_INDEX, &response_code_);
@@ -325,12 +323,8 @@ void NetworkFetcher::HeadersAvailable() {
   net_error_ =
       QueryHeadersInt(request_handle_.get(), WINHTTP_QUERY_CONTENT_LENGTH,
                       WINHTTP_HEADER_NAME_BY_INDEX, &content_length);
-  if (FAILED(net_error_)) {
-    CompleteFetch();
-    return;
-  }
-
-  std::move(fetch_started_callback_).Run(response_code_, content_length);
+  std::move(fetch_started_callback_)
+      .Run(response_code_, SUCCEEDED(net_error_) ? content_length : -1);
 
   // Start reading the body of response.
   net_error_ = ReadData();

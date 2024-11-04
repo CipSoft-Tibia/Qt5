@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtQuick
 import QtQuick.Window
@@ -48,17 +48,6 @@ TestCase {
     Component {
         id: windowComponent
         Window { }
-    }
-
-    Component {
-        id: styledWindowComponent
-        Window {
-            Material.theme: Material.Dark
-            Material.primary: Material.Brown
-            Material.accent: Material.Green
-            Material.background: Material.Yellow
-            Material.foreground: Material.Grey
-        }
     }
 
     Component {
@@ -1308,5 +1297,72 @@ TestCase {
         compare(textFieldActiveFocusSpy.count, 2)
         // false => true => false.
         compare(buttonActiveFocusSpy.count, 2)
+    }
+
+    Component {
+        id: childWindowComponent
+
+        ApplicationWindow {
+            objectName: "parentWindow"
+            property alias childWindow: childWindow
+
+            Material.theme: Material.Dark
+            Material.primary: Material.Brown
+            Material.accent: Material.Green
+            Material.background: Material.Yellow
+            Material.foreground: Material.Grey
+
+            ApplicationWindow {
+                id: childWindow
+                objectName: "childWindow"
+            }
+        }
+    }
+
+    function test_windowBackgroundColorPropagation() {
+        let parentWindow = createTemporaryObject(childWindowComponent, testCase)
+        verify(parentWindow)
+
+        let childWindow = parentWindow.childWindow
+        compare(childWindow.Material.theme, Material.Dark)
+    }
+
+    Component {
+        id: themePropagationWithBehaviorComponent
+
+        ApplicationWindow {
+            width: 200
+            height: 200
+            visible: true
+
+            Material.theme: Material.Dark
+
+            property alias listView: listView
+
+            ListView {
+                id: listView
+                anchors.fill: parent
+                header: Text {
+                    text: `Material.theme for header is ${Material.theme} - should be 1`
+
+                    Rectangle {
+                        anchors.fill: parent
+                        z: -1
+                    }
+
+                    Material.elevation: 6
+                    // Having this would break the theme (QTBUG-122783)
+                    Behavior on Material.elevation {}
+                }
+            }
+        }
+    }
+
+    function test_themePropagationWithBehavior() {
+        let window = createTemporaryObject(themePropagationWithBehaviorComponent, testCase)
+        verify(window)
+
+        let headerItem = window.listView.headerItem
+        compare(headerItem.Material.theme, Material.Dark)
     }
 }

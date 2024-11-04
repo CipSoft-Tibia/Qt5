@@ -22,6 +22,7 @@
 //
 
 #include "private/qglobal_p.h"
+#include <sys/stat.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -35,18 +36,17 @@ QT_BEGIN_NAMESPACE
  * - FUTEX_PRIVATE_FLAG         2.6.22
  * - O_CLOEXEC                  2.6.23
  * - eventfd                    2.6.23
+ * - FUTEX_WAIT_BITSET          2.6.25
  * - pipe2 & dup3               2.6.27
  * - accept4                    2.6.28
  * - renameat2                  3.16                    QT_CONFIG(renameat2)
  * - getrandom                  3.17                    QT_CONFIG(getentropy)
- * - statx                      4.11                    QT_CONFIG(statx)
+ * - statx                      4.11                    STATX_BASIC_STATS
  */
 
-#if QT_CONFIG(statx) && !QT_CONFIG(glibc)
+#if defined(__GLIBC__) && defined(STATX_BASIC_STATS)
 // if using glibc, the statx() function in sysdeps/unix/sysv/linux/statx.c
 // falls back to stat() for us.
-// (Using QT_CONFIG(glibc) instead of __GLIBC__ because the macros aren't
-// defined in assembler mode)
 #  define QT_ELF_NOTE_OS_MAJOR      4
 #  define QT_ELF_NOTE_OS_MINOR      11
 #  define QT_ELF_NOTE_OS_PATCH      0
@@ -59,6 +59,7 @@ QT_BEGIN_NAMESPACE
 #  define QT_ELF_NOTE_OS_MINOR      16
 #  define QT_ELF_NOTE_OS_PATCH      0
 #else
+
 #  define QT_ELF_NOTE_OS_MAJOR      2
 #  define QT_ELF_NOTE_OS_MINOR      6
 #  define QT_ELF_NOTE_OS_PATCH      28

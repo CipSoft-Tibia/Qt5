@@ -54,7 +54,6 @@
 #include "core/fxcrt/autorestorer.h"
 #include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_2d_size.h"
-#include "core/fxcrt/fx_memory.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxcrt/fx_system.h"
 #include "core/fxcrt/span_util.h"
@@ -70,12 +69,8 @@
 #include "core/fxge/text_glyph_pos.h"
 #include "third_party/base/check.h"
 #include "third_party/base/containers/contains.h"
+#include "third_party/base/containers/span.h"
 #include "third_party/base/notreached.h"
-#include "third_party/base/span.h"
-
-#if defined(_SKIA_SUPPORT_)
-#include "core/fxge/skia/fx_skia_device.h"
-#endif
 
 namespace {
 
@@ -161,28 +156,6 @@ bool Type3CharMissingStrokeColor(const CPDF_Type3Char* pChar,
   return pChar && (!pChar->colored() || MissingStrokeColor(pColorState));
 }
 
-#ifdef _SKIA_SUPPORT_
-class ScopedSkiaDeviceFlush {
- public:
-  FX_STACK_ALLOCATED();
-
-  explicit ScopedSkiaDeviceFlush(CFX_RenderDevice* pDevice)
-      : m_pDevice(pDevice) {}
-
-  ScopedSkiaDeviceFlush(const ScopedSkiaDeviceFlush&) = delete;
-  ScopedSkiaDeviceFlush& operator=(const ScopedSkiaDeviceFlush&) = delete;
-
-  ~ScopedSkiaDeviceFlush() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
-      m_pDevice->Flush(/*release=*/false);
-    }
-  }
-
- private:
-  UnownedPtr<CFX_RenderDevice> const m_pDevice;
-};
-#endif
-
 }  // namespace
 
 CPDF_RenderStatus::CPDF_RenderStatus(CPDF_RenderContext* pContext,
@@ -219,9 +192,6 @@ void CPDF_RenderStatus::Initialize(const CPDF_RenderStatus* pParentStatus,
 void CPDF_RenderStatus::RenderObjectList(
     const CPDF_PageObjectHolder* pObjectHolder,
     const CFX_Matrix& mtObj2Device) {
-#if defined(_SKIA_SUPPORT_)
-  DebugVerifyDeviceIsPreMultiplied();
-#endif
   CFX_FloatRect clip_rect = mtObj2Device.GetInverse().TransformRect(
       CFX_FloatRect(m_pDevice->GetClipBox()));
   for (const auto& pCurObj : *pObjectHolder) {
@@ -242,16 +212,10 @@ void CPDF_RenderStatus::RenderObjectList(
     if (m_bStopped)
       return;
   }
-#if defined(_SKIA_SUPPORT_)
-  DebugVerifyDeviceIsPreMultiplied();
-#endif
 }
 
 void CPDF_RenderStatus::RenderSingleObject(CPDF_PageObject* pObj,
                                            const CFX_Matrix& mtObj2Device) {
-#if defined(_SKIA_SUPPORT_)
-  DebugVerifyDeviceIsPreMultiplied();
-#endif
   AutoRestorer<int> restorer(&g_CurrentRecursionDepth);
   if (++g_CurrentRecursionDepth > kRenderMaxRecursionDepth) {
     return;
@@ -265,9 +229,6 @@ void CPDF_RenderStatus::RenderSingleObject(CPDF_PageObject* pObj,
     return;
   }
   ProcessObjectNoClip(pObj, mtObj2Device);
-#if defined(_SKIA_SUPPORT_)
-  DebugVerifyDeviceIsPreMultiplied();
-#endif
 }
 
 bool CPDF_RenderStatus::ContinueSingleObject(CPDF_PageObject* pObj,
@@ -317,9 +278,6 @@ FX_RECT CPDF_RenderStatus::GetObjectClippedRect(
 
 void CPDF_RenderStatus::ProcessObjectNoClip(CPDF_PageObject* pObj,
                                             const CFX_Matrix& mtObj2Device) {
-#if defined(_SKIA_SUPPORT_)
-  DebugVerifyDeviceIsPreMultiplied();
-#endif
   bool bRet = false;
   switch (pObj->GetType()) {
     case CPDF_PageObject::Type::kText:
@@ -340,9 +298,6 @@ void CPDF_RenderStatus::ProcessObjectNoClip(CPDF_PageObject* pObj,
   }
   if (!bRet)
     DrawObjWithBackground(pObj, mtObj2Device);
-#if defined(_SKIA_SUPPORT_)
-  DebugVerifyDeviceIsPreMultiplied();
-#endif
 }
 
 bool CPDF_RenderStatus::DrawObjWithBlend(CPDF_PageObject* pObj,
@@ -388,9 +343,6 @@ void CPDF_RenderStatus::DrawObjWithBackground(CPDF_PageObject* pObj,
 
 bool CPDF_RenderStatus::ProcessForm(const CPDF_FormObject* pFormObj,
                                     const CFX_Matrix& mtObj2Device) {
-#if defined(_SKIA_SUPPORT_)
-  DebugVerifyDeviceIsPreMultiplied();
-#endif
   RetainPtr<const CPDF_Dictionary> pOC =
       pFormObj->form()->GetDict()->GetDictFor("OC");
   if (pOC && !m_Options.CheckOCGDictVisible(pOC.Get()))
@@ -412,9 +364,6 @@ bool CPDF_RenderStatus::ProcessForm(const CPDF_FormObject* pFormObj,
     status.RenderObjectList(pFormObj->form(), matrix);
     m_bStopped = status.m_bStopped;
   }
-#if defined(_SKIA_SUPPORT_)
-  DebugVerifyDeviceIsPreMultiplied();
-#endif
   return true;
 }
 
@@ -612,9 +561,6 @@ bool CPDF_RenderStatus::SelectClipPath(const CPDF_PathObject* path_obj,
 
 bool CPDF_RenderStatus::ProcessTransparency(CPDF_PageObject* pPageObj,
                                             const CFX_Matrix& mtObj2Device) {
-#if defined(_SKIA_SUPPORT_)
-  DebugVerifyDeviceIsPreMultiplied();
-#endif
   const BlendMode blend_type = pPageObj->m_GeneralState.GetBlendType();
   RetainPtr<CPDF_Dictionary> pSMaskDict =
       pPageObj->m_GeneralState.GetMutableSoftMask();
@@ -677,9 +623,6 @@ bool CPDF_RenderStatus::ProcessTransparency(CPDF_PageObject* pPageObj,
   if (!bitmap_device.Create(width, height, FXDIB_Format::kArgb, backdrop))
     return true;
 
-  RetainPtr<CFX_DIBitmap> bitmap = bitmap_device.GetBitmap();
-  bitmap->Clear(0);
-
   CFX_Matrix new_matrix = mtObj2Device;
   new_matrix.Translate(-rect.left, -rect.top);
 
@@ -689,7 +632,6 @@ bool CPDF_RenderStatus::ProcessTransparency(CPDF_PageObject* pPageObj,
     if (!pTextMask->Create(width, height, FXDIB_Format::k8bppMask))
       return true;
 
-    pTextMask->Clear(0);
     CFX_DefaultRenderDevice text_device;
     text_device.Attach(pTextMask);
     for (size_t i = 0; i < pPageObj->m_ClipPath.GetTextCount(); ++i) {
@@ -714,12 +656,13 @@ bool CPDF_RenderStatus::ProcessTransparency(CPDF_PageObject* pPageObj,
   bitmap_render.SetFormResource(std::move(pFormResource));
   bitmap_render.Initialize(nullptr, nullptr);
   bitmap_render.ProcessObjectNoClip(pPageObj, new_matrix);
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
   if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
-    bitmap_device.Flush(true);
-    bitmap->UnPreMultiply();
+    // Safe because `CFX_SkiaDeviceDriver` always uses pre-multiplied alpha.
+    // TODO(crbug.com/pdfium/2011): Remove the need for this.
+    bitmap_device.GetBitmap()->ForcePreMultiply();
   }
-#endif  // _SKIA_SUPPORT_
+#endif  // _SKIA_SUPPORT
   m_bStopped = bitmap_render.m_bStopped;
   if (pSMaskDict) {
     CFX_Matrix smask_matrix =
@@ -727,28 +670,21 @@ bool CPDF_RenderStatus::ProcessTransparency(CPDF_PageObject* pPageObj,
     RetainPtr<CFX_DIBBase> pSMaskSource =
         LoadSMask(pSMaskDict.Get(), &rect, smask_matrix);
     if (pSMaskSource)
-      bitmap->MultiplyAlpha(pSMaskSource);
+      bitmap_device.MultiplyAlpha(pSMaskSource);
   }
   if (pTextMask) {
-    bitmap->MultiplyAlpha(pTextMask);
+    bitmap_device.MultiplyAlpha(pTextMask);
     pTextMask.Reset();
   }
   if (group_alpha != 1.0f && transparency.IsGroup()) {
-    bitmap->MultiplyAlpha(static_cast<int32_t>(group_alpha * 255));
+    bitmap_device.MultiplyAlpha(group_alpha);
   }
-#if defined(_SKIA_SUPPORT_)
-  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-    bitmap->PreMultiply();
-#endif
   transparency = m_Transparency;
   if (pPageObj->IsForm()) {
     transparency.SetGroup();
   }
-  CompositeDIBitmap(bitmap, rect.left, rect.top, 0, 255, blend_type,
-                    transparency);
-#if defined(_SKIA_SUPPORT_)
-  DebugVerifyDeviceIsPreMultiplied();
-#endif
+  CompositeDIBitmap(bitmap_device.GetBitmap(), rect.left, rect.top, 0, 255,
+                    blend_type, transparency);
   return true;
 }
 
@@ -785,7 +721,9 @@ RetainPtr<CFX_DIBitmap> CPDF_RenderStatus::GetBackdrop(
   }
   CFX_Matrix FinalMatrix = m_DeviceMatrix;
   FinalMatrix.Translate(-bbox.left, -bbox.top);
-  pBackdrop->Clear(pBackdrop->IsAlphaFormat() ? 0 : 0xffffffff);
+  if (!pBackdrop->IsAlphaFormat()) {
+    pBackdrop->Clear(0xffffffff);
+  }
 
   CFX_DefaultRenderDevice device;
   device.Attach(pBackdrop);
@@ -813,13 +751,6 @@ std::unique_ptr<CPDF_GraphicStates> CPDF_RenderStatus::CloneObjStates(
   }
   return pStates;
 }
-
-#if defined(_SKIA_SUPPORT_)
-void CPDF_RenderStatus::DebugVerifyDeviceIsPreMultiplied() const {
-  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-    m_pDevice->DebugVerifyBitmapIsPreMultiplied();
-}
-#endif
 
 bool CPDF_RenderStatus::ProcessText(CPDF_TextObject* textobj,
                                     const CFX_Matrix& mtObj2Device,
@@ -1012,7 +943,6 @@ bool CPDF_RenderStatus::ProcessType3Text(CPDF_TextObject* textobj,
                                   FXDIB_Format::kArgb, nullptr)) {
           return true;
         }
-        bitmap_device.GetBitmap()->Clear(0);
         CPDF_RenderStatus status(m_pContext, &bitmap_device);
         status.SetOptions(options);
         status.SetTransparency(pForm->GetTransparency());
@@ -1078,7 +1008,6 @@ bool CPDF_RenderStatus::ProcessType3Text(CPDF_TextObject* textobj,
   if (!pBitmap->Create(rect.Width(), rect.Height(), FXDIB_Format::k8bppMask))
     return true;
 
-  pBitmap->Clear(0);
   for (const TextGlyphPos& glyph : glyphs) {
     if (!glyph.m_pGlyph || !glyph.m_pGlyph->GetBitmap()->IsMaskFormat())
       continue;
@@ -1193,9 +1122,6 @@ void CPDF_RenderStatus::DrawTilingPattern(CPDF_TilingPattern* pattern,
     return;
 
   CFX_RenderDevice::StateRestorer restorer(m_pDevice);
-#ifdef _SKIA_SUPPORT_
-  ScopedSkiaDeviceFlush scoped_skia_device_flush(m_pDevice);
-#endif
   if (!ClipPattern(pPageObj, mtObj2Device, stroke))
     return;
 
@@ -1283,10 +1209,6 @@ void CPDF_RenderStatus::CompositeDIBitmap(
         }
         pDIBitmap->MultiplyAlpha(bitmap_alpha);
       }
-#if defined(_SKIA_SUPPORT_)
-      if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-        pDIBitmap->PreMultiply();
-#endif
       if (m_pDevice->SetDIBits(pDIBitmap, left, top)) {
         return;
       }
@@ -1445,7 +1367,7 @@ RetainPtr<CFX_DIBitmap> CPDF_RenderStatus::LoadSMask(
   if (!pMask->Create(width, height, FXDIB_Format::k8bppMask))
     return nullptr;
 
-  pdfium::span<uint8_t> dest_buf = pMask->GetBuffer();
+  pdfium::span<uint8_t> dest_buf = pMask->GetWritableBuffer();
   pdfium::span<const uint8_t> src_buf = bitmap->GetBuffer();
   int dest_pitch = pMask->GetPitch();
   int src_pitch = bitmap->GetPitch();

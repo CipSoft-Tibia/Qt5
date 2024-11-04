@@ -244,11 +244,6 @@ class TestQuicVisitor : public QuicFramerVisitorInterface {
 
   void OnPacket() override {}
 
-  void OnPublicResetPacket(const QuicPublicResetPacket& packet) override {
-    public_reset_packet_ = std::make_unique<QuicPublicResetPacket>((packet));
-    EXPECT_EQ(0u, framer_->current_received_frame_type());
-  }
-
   void OnVersionNegotiationPacket(
       const QuicVersionNegotiationPacket& packet) override {
     version_negotiation_packet_ =
@@ -397,9 +392,11 @@ class TestQuicVisitor : public QuicFramerVisitorInterface {
     return true;
   }
 
-  void OnAckEcnCounts(const QuicEcnCounts& /*ecn_counts*/) override {}
-
-  bool OnAckFrameEnd(QuicPacketNumber /*start*/) override { return true; }
+  bool OnAckFrameEnd(
+      QuicPacketNumber /*start*/,
+      const absl::optional<QuicEcnCounts>& /*ecn_counts*/) override {
+    return true;
+  }
 
   bool OnStopWaitingFrame(const QuicStopWaitingFrame& frame) override {
     ++frame_count_;
@@ -637,7 +634,6 @@ class TestQuicVisitor : public QuicFramerVisitorInterface {
   bool accept_public_header_;
 
   std::unique_ptr<QuicPacketHeader> header_;
-  std::unique_ptr<QuicPublicResetPacket> public_reset_packet_;
   std::unique_ptr<QuicIetfStatelessResetPacket> stateless_reset_packet_;
   std::unique_ptr<QuicVersionNegotiationPacket> version_negotiation_packet_;
   std::unique_ptr<QuicConnectionId> retry_original_connection_id_;
@@ -708,7 +704,6 @@ class QuicFramerTest : public QuicTestWithParam<ParsedQuicVersion> {
                          std::unique_ptr<QuicEncrypter>(encrypter_));
 
     framer_.set_visitor(&visitor_);
-    framer_.InferPacketHeaderTypeFromVersion();
     visitor_.set_framer(&framer_);
   }
 
@@ -1061,16 +1056,6 @@ TEST_P(QuicFramerTest, LargePacket) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   unsigned char packet[kMaxIncomingPacketSize + 1] = {
-    // public flags (8 byte connection_id)
-    0x28,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x78, 0x56, 0x34, 0x12,
-    // private flags
-    0x00,
-  };
-  unsigned char packet46[kMaxIncomingPacketSize + 1] = {
     // type (short header 4 byte packet number)
     0x43,
     // connection_id
@@ -1079,12 +1064,6 @@ TEST_P(QuicFramerTest, LargePacket) {
     0x78, 0x56, 0x34, 0x12,
   };
   // clang-format on
-  unsigned char* p = packet;
-  size_t p_size = ABSL_ARRAYSIZE(packet);
-  if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
-  }
 
   const size_t header_size = GetPacketHeaderSize(
       framer_.transport_version(), kPacket8ByteConnectionId,
@@ -1092,9 +1071,9 @@ TEST_P(QuicFramerTest, LargePacket) {
       PACKET_4BYTE_PACKET_NUMBER, quiche::VARIABLE_LENGTH_INTEGER_LENGTH_0, 0,
       quiche::VARIABLE_LENGTH_INTEGER_LENGTH_0);
 
-  memset(p + header_size, 0, kMaxIncomingPacketSize - header_size);
+  memset(packet + header_size, 0, kMaxIncomingPacketSize - header_size);
 
-  QuicEncryptedPacket encrypted(AsChars(p), p_size, false);
+  QuicEncryptedPacket encrypted(AsChars(packet), ABSL_ARRAYSIZE(packet), false);
   EXPECT_FALSE(framer_.ProcessPacket(encrypted));
 
   ASSERT_TRUE(visitor_.header_.get());
@@ -1106,68 +1085,9 @@ TEST_P(QuicFramerTest, LargePacket) {
   EXPECT_EQ("Packet too large.", framer_.detailed_error());
 }
 
-TEST_P(QuicFramerTest, PacketHeader) {
-  if (framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
-
-  // clang-format off
-  PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"Unable to read public flags.",
-       {0x28}},
-      // connection_id
-      {"Unable to read ConnectionId.",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"Unable to read packet number.",
-       {0x12, 0x34, 0x56, 0x78}},
-  };
-  // clang-format on
-
-  PacketFragments& fragments = packet;
-
-  std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(fragments));
-
-  EXPECT_FALSE(framer_.ProcessPacket(*encrypted));
-  EXPECT_THAT(framer_.error(), IsError(QUIC_MISSING_PAYLOAD));
-  ASSERT_TRUE(visitor_.header_.get());
-  EXPECT_EQ(FramerTestConnectionId(),
-            visitor_.header_->destination_connection_id);
-  EXPECT_FALSE(visitor_.header_->reset_flag);
-  EXPECT_FALSE(visitor_.header_->version_flag);
-  EXPECT_EQ(kPacketNumber, visitor_.header_->packet_number);
-
-  CheckFramingBoundaries(fragments, QUIC_INVALID_PACKET_HEADER);
-
-  PacketHeaderFormat format;
-  QuicLongHeaderType long_packet_type = INVALID_PACKET_TYPE;
-  bool version_flag;
-  QuicConnectionId destination_connection_id, source_connection_id;
-  QuicVersionLabel version_label;
-  std::string detailed_error;
-  bool use_length_prefix;
-  absl::optional<absl::string_view> retry_token;
-  ParsedQuicVersion parsed_version = UnsupportedQuicVersion();
-  const QuicErrorCode error_code = QuicFramer::ParsePublicHeaderDispatcher(
-      *encrypted, kQuicDefaultConnectionIdLength, &format, &long_packet_type,
-      &version_flag, &use_length_prefix, &version_label, &parsed_version,
-      &destination_connection_id, &source_connection_id, &retry_token,
-      &detailed_error);
-  EXPECT_FALSE(retry_token.has_value());
-  EXPECT_FALSE(use_length_prefix);
-  EXPECT_THAT(error_code, IsQuicNoError());
-  EXPECT_EQ(GOOGLE_QUIC_PACKET, format);
-  EXPECT_FALSE(version_flag);
-  EXPECT_EQ(kQuicDefaultConnectionIdLength, destination_connection_id.length());
-  EXPECT_EQ(FramerTestConnectionId(), destination_connection_id);
-  EXPECT_EQ(EmptyQuicConnectionId(), source_connection_id);
-}
-
 TEST_P(QuicFramerTest, LongPacketHeader) {
   // clang-format off
-  PacketFragments packet46 = {
+  PacketFragments packet = {
     // type (long header with packet type ZERO_RTT)
     {"Unable to read first byte.",
      {0xD3}},
@@ -1186,14 +1106,13 @@ TEST_P(QuicFramerTest, LongPacketHeader) {
   };
   // clang-format on
 
-  if (!framer_.version().HasIetfInvariantHeader() ||
-      QuicVersionHasLongHeaderLengths(framer_.transport_version())) {
+  if (QuicVersionHasLongHeaderLengths(framer_.transport_version())) {
     return;
   }
 
   SetDecrypterLevel(ENCRYPTION_ZERO_RTT);
   std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(packet46));
+      AssemblePacketFromFragments(packet));
 
   EXPECT_FALSE(framer_.ProcessPacket(*encrypted));
   EXPECT_THAT(framer_.error(), IsError(QUIC_MISSING_PAYLOAD));
@@ -1204,7 +1123,7 @@ TEST_P(QuicFramerTest, LongPacketHeader) {
   EXPECT_TRUE(visitor_.header_->version_flag);
   EXPECT_EQ(kPacketNumber, visitor_.header_->packet_number);
 
-  CheckFramingBoundaries(packet46, QUIC_INVALID_PACKET_HEADER);
+  CheckFramingBoundaries(packet, QUIC_INVALID_PACKET_HEADER);
 
   PacketHeaderFormat format;
   QuicLongHeaderType long_packet_type = INVALID_PACKET_TYPE;
@@ -1232,10 +1151,6 @@ TEST_P(QuicFramerTest, LongPacketHeader) {
 }
 
 TEST_P(QuicFramerTest, LongPacketHeaderWithBothConnectionIds) {
-  if (!framer_.version().HasIetfInvariantHeader()) {
-    // This test requires an IETF long header.
-    return;
-  }
   SetDecrypterLevel(ENCRYPTION_ZERO_RTT);
   // clang-format off
   unsigned char packet[] = {
@@ -1336,19 +1251,6 @@ TEST_P(QuicFramerTest, AllZeroPacketParsingFails) {
 TEST_P(QuicFramerTest, ParsePublicHeader) {
   // clang-format off
   unsigned char packet[] = {
-    // public flags (version included, 8-byte connection ID,
-    // 4-byte packet number)
-    0x29,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // version
-    QUIC_VERSION_BYTES,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-    // padding frame
-    0x00,
-  };
-  unsigned char packet46[] = {
       // public flags (long header with packet type HANDSHAKE and
       // 4-byte packet number)
       0xE3,
@@ -1391,9 +1293,6 @@ TEST_P(QuicFramerTest, ParsePublicHeader) {
     ReviseFirstByteByVersion(packet49);
     p = packet49;
     p_length = ABSL_ARRAYSIZE(packet49);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_length = ABSL_ARRAYSIZE(packet46);
   }
 
   uint8_t first_byte = 0x33;
@@ -1411,12 +1310,11 @@ TEST_P(QuicFramerTest, ParsePublicHeader) {
 
   QuicDataReader reader(AsChars(p), p_length);
   const QuicErrorCode parse_error = QuicFramer::ParsePublicHeader(
-      &reader, kQuicDefaultConnectionIdLength,
-      /*ietf_format=*/
-      framer_.version().HasIetfInvariantHeader(), &first_byte, &format,
-      &version_present, &has_length_prefix, &version_label, &parsed_version,
-      &destination_connection_id, &source_connection_id, &long_packet_type,
-      &retry_token_length_length, &retry_token, &detailed_error);
+      &reader, kQuicDefaultConnectionIdLength, /*ietf_format=*/true,
+      &first_byte, &format, &version_present, &has_length_prefix,
+      &version_label, &parsed_version, &destination_connection_id,
+      &source_connection_id, &long_packet_type, &retry_token_length_length,
+      &retry_token, &detailed_error);
   EXPECT_THAT(parse_error, IsQuicNoError());
   EXPECT_EQ("", detailed_error);
   EXPECT_EQ(p[0], first_byte);
@@ -1430,12 +1328,8 @@ TEST_P(QuicFramerTest, ParsePublicHeader) {
   EXPECT_EQ(quiche::VARIABLE_LENGTH_INTEGER_LENGTH_0,
             retry_token_length_length);
   EXPECT_EQ(absl::string_view(), retry_token);
-  if (framer_.version().HasIetfInvariantHeader()) {
-    EXPECT_EQ(IETF_QUIC_LONG_HEADER_PACKET, format);
-    EXPECT_EQ(HANDSHAKE, long_packet_type);
-  } else {
-    EXPECT_EQ(GOOGLE_QUIC_PACKET, format);
-  }
+  EXPECT_EQ(IETF_QUIC_LONG_HEADER_PACKET, format);
+  EXPECT_EQ(HANDSHAKE, long_packet_type);
 }
 
 TEST_P(QuicFramerTest, ParsePublicHeaderProxBadSourceConnectionIdLength) {
@@ -1540,8 +1434,6 @@ TEST_P(QuicFramerTest, ClientConnectionIdFromShortHeaderToServer) {
     return;
   }
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
-  QuicFramerPeer::SetLastSerializedClientConnectionId(&framer_,
-                                                      TestConnectionId(0x33));
   QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_SERVER);
   // clang-format off
   unsigned char packet[] = {
@@ -1572,16 +1464,6 @@ TEST_P(QuicFramerTest, PacketHeaderWith0ByteConnectionId) {
 
   // clang-format off
   PacketFragments packet = {
-      // public flags (0 byte connection_id)
-      {"Unable to read public flags.",
-       {0x20}},
-      // connection_id
-      // packet number
-      {"Unable to read packet number.",
-       {0x12, 0x34, 0x56, 0x78}},
-  };
-
-  PacketFragments packet46 = {
         // type (short header, 4 byte packet number)
         {"Unable to read first byte.",
          {0x43}},
@@ -1603,9 +1485,7 @@ TEST_P(QuicFramerTest, PacketHeaderWith0ByteConnectionId) {
   // clang-format on
 
   PacketFragments& fragments =
-      framer_.version().HasHeaderProtection()
-          ? packet_hp
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      framer_.version().HasHeaderProtection() ? packet_hp : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_FALSE(framer_.ProcessPacket(*encrypted));
@@ -1622,21 +1502,6 @@ TEST_P(QuicFramerTest, PacketHeaderWithVersionFlag) {
   SetDecrypterLevel(ENCRYPTION_ZERO_RTT);
   // clang-format off
   PacketFragments packet = {
-      // public flags (0 byte connection_id)
-      {"Unable to read public flags.",
-       {0x29}},
-      // connection_id
-      {"Unable to read ConnectionId.",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // version tag
-      {"Unable to read protocol version.",
-       {QUIC_VERSION_BYTES}},
-      // packet number
-      {"Unable to read packet number.",
-       {0x12, 0x34, 0x56, 0x78}},
-  };
-
-  PacketFragments packet46 = {
       // type (long header with packet type ZERO_RTT_PROTECTED and 4 bytes
       // packet number)
       {"Unable to read first byte.",
@@ -1683,9 +1548,7 @@ TEST_P(QuicFramerTest, PacketHeaderWithVersionFlag) {
 
   ReviseFirstByteByVersion(packet49);
   PacketFragments& fragments =
-      framer_.version().HasLongHeaderLengths()
-          ? packet49
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      framer_.version().HasLongHeaderLengths() ? packet49 : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_FALSE(framer_.ProcessPacket(*encrypted));
@@ -1707,18 +1570,6 @@ TEST_P(QuicFramerTest, PacketHeaderWith4BytePacketNumber) {
 
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id and 4 byte packet number)
-      {"Unable to read public flags.",
-       {0x28}},
-      // connection_id
-      {"Unable to read ConnectionId.",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"Unable to read packet number.",
-       {0x12, 0x34, 0x56, 0x78}},
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"Unable to read first byte.",
        {0x43}},
@@ -1744,9 +1595,7 @@ TEST_P(QuicFramerTest, PacketHeaderWith4BytePacketNumber) {
   // clang-format on
 
   PacketFragments& fragments =
-      framer_.version().HasHeaderProtection()
-          ? packet_hp
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      framer_.version().HasHeaderProtection() ? packet_hp : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_FALSE(framer_.ProcessPacket(*encrypted));
@@ -1767,18 +1616,6 @@ TEST_P(QuicFramerTest, PacketHeaderWith2BytePacketNumber) {
 
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id and 2 byte packet number)
-      {"Unable to read public flags.",
-       {0x18}},
-      // connection_id
-      {"Unable to read ConnectionId.",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"Unable to read packet number.",
-       {0x56, 0x78}},
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 2 byte packet number)
       {"Unable to read first byte.",
        {0x41}},
@@ -1806,9 +1643,7 @@ TEST_P(QuicFramerTest, PacketHeaderWith2BytePacketNumber) {
   // clang-format on
 
   PacketFragments& fragments =
-      framer_.version().HasHeaderProtection()
-          ? packet_hp
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      framer_.version().HasHeaderProtection() ? packet_hp : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   if (framer_.version().HasHeaderProtection()) {
@@ -1835,18 +1670,6 @@ TEST_P(QuicFramerTest, PacketHeaderWith1BytePacketNumber) {
 
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id and 1 byte packet number)
-      {"Unable to read public flags.",
-       {0x08}},
-      // connection_id
-      {"Unable to read ConnectionId.",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"Unable to read packet number.",
-       {0x78}},
-  };
-
-  PacketFragments packet46 = {
       // type (8 byte connection_id and 1 byte packet number)
       {"Unable to read first byte.",
        {0x40}},
@@ -1875,9 +1698,7 @@ TEST_P(QuicFramerTest, PacketHeaderWith1BytePacketNumber) {
   // clang-format on
 
   PacketFragments& fragments =
-      framer_.version().HasHeaderProtection()
-          ? packet_hp
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      framer_.version().HasHeaderProtection() ? packet_hp : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   if (framer_.version().HasHeaderProtection()) {
@@ -1969,24 +1790,6 @@ TEST_P(QuicFramerTest, PacketWithDiversificationNonce) {
   SetDecrypterLevel(ENCRYPTION_ZERO_RTT);
   // clang-format off
   unsigned char packet[] = {
-    // public flags: includes nonce flag
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // nonce
-    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-    0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-    0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (padding)
-    0x00,
-    0x00, 0x00, 0x00, 0x00
-  };
-
-  unsigned char packet46[] = {
     // type: Long header with packet type ZERO_RTT_PROTECTED and 1 byte packet
     // number.
     0xD0,
@@ -2046,9 +1849,6 @@ TEST_P(QuicFramerTest, PacketWithDiversificationNonce) {
   if (framer_.version().HasLongHeaderLengths()) {
     p = packet49;
     p_size = ABSL_ARRAYSIZE(packet49);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   QuicEncryptedPacket encrypted(AsChars(p), p_size, false);
@@ -2065,21 +1865,6 @@ TEST_P(QuicFramerTest, PacketWithDiversificationNonce) {
 TEST_P(QuicFramerTest, LargePublicFlagWithMismatchedVersions) {
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id, version flag and an unknown flag)
-    0x29,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // version tag
-    'Q', '0', '0', '0',
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (padding frame)
-    0x00,
-    0x00, 0x00, 0x00, 0x00
-  };
-
-  unsigned char packet46[] = {
     // type (long header, ZERO_RTT_PROTECTED, 4-byte packet number)
     0xD3,
     // version tag
@@ -2121,9 +1906,6 @@ TEST_P(QuicFramerTest, LargePublicFlagWithMismatchedVersions) {
   if (framer_.version().HasLongHeaderLengths()) {
     p = packet49;
     p_size = ABSL_ARRAYSIZE(packet49);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
   QuicEncryptedPacket encrypted(AsChars(p), p_size, false);
   EXPECT_TRUE(framer_.ProcessPacket(encrypted));
@@ -2137,33 +1919,6 @@ TEST_P(QuicFramerTest, PaddingFrame) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x28,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // paddings
-    0x00, 0x00,
-    // frame type (stream frame with fin)
-    0xFF,
-    // stream id
-    0x01, 0x02, 0x03, 0x04,
-    // offset
-    0x3A, 0x98, 0xFE, 0xDC,
-    0x32, 0x10, 0x76, 0x54,
-    // data length
-    0x00, 0x0c,
-    // data
-    'h',  'e',  'l',  'l',
-    'o',  ' ',  'w',  'o',
-    'r',  'l',  'd',  '!',
-    // paddings
-    0x00, 0x00,
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -2224,9 +1979,6 @@ TEST_P(QuicFramerTest, PaddingFrame) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   QuicEncryptedPacket encrypted(AsChars(p), p_size, false);
@@ -2252,36 +2004,6 @@ TEST_P(QuicFramerTest, StreamFrame) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x28}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (stream frame with fin)
-      {"",
-       {0xFF}},
-      // stream id
-      {"Unable to read stream_id.",
-       {0x01, 0x02, 0x03, 0x04}},
-      // offset
-      {"Unable to read offset.",
-       {0x3A, 0x98, 0xFE, 0xDC,
-        0x32, 0x10, 0x76, 0x54}},
-      {"Unable to read frame data.",
-       {
-         // data length
-         0x00, 0x0c,
-         // data
-         'h',  'e',  'l',  'l',
-         'o',  ' ',  'w',  'o',
-         'r',  'l',  'd',  '!'}},
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -2343,9 +2065,8 @@ TEST_P(QuicFramerTest, StreamFrame) {
   // clang-format on
 
   PacketFragments& fragments =
-      VersionHasIetfQuicFrames(framer_.transport_version())
-          ? packet_ietf
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      VersionHasIetfQuicFrames(framer_.transport_version()) ? packet_ietf
+                                                            : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
@@ -2443,17 +2164,6 @@ TEST_P(QuicFramerTest, MissingDiversificationNonce) {
 
   // clang-format off
   unsigned char packet[] = {
-        // public flags (8 byte connection_id)
-        0x28,
-        // connection_id
-        0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE,
-        // packet number
-        0x12, 0x34, 0x56, 0x78,
-        // padding frame
-        0x00,
-    };
-
-  unsigned char packet46[] = {
         // type (long header, ZERO_RTT_PROTECTED, 4-byte packet number)
         0xD3,
         // version tag
@@ -2493,9 +2203,6 @@ TEST_P(QuicFramerTest, MissingDiversificationNonce) {
   if (framer_.version().HasLongHeaderLengths()) {
     p = packet49;
     p_length = ABSL_ARRAYSIZE(packet49);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_length = ABSL_ARRAYSIZE(packet46);
   }
   QuicEncryptedPacket encrypted(AsChars(p), p_length, false);
   EXPECT_FALSE(framer_.ProcessPacket(encrypted));
@@ -2503,108 +2210,17 @@ TEST_P(QuicFramerTest, MissingDiversificationNonce) {
     EXPECT_THAT(framer_.error(), IsError(QUIC_DECRYPTION_FAILURE));
     EXPECT_EQ("Unable to decrypt ENCRYPTION_ZERO_RTT header protection.",
               framer_.detailed_error());
-  } else if (framer_.version().HasIetfInvariantHeader()) {
+  } else {
     // Cannot read diversification nonce.
     EXPECT_THAT(framer_.error(), IsError(QUIC_INVALID_PACKET_HEADER));
     EXPECT_EQ("Unable to read nonce.", framer_.detailed_error());
-  } else {
-    EXPECT_THAT(framer_.error(), IsError(QUIC_DECRYPTION_FAILURE));
   }
-}
-
-TEST_P(QuicFramerTest, StreamFrame3ByteStreamId) {
-  if (framer_.version().HasIetfInvariantHeader()) {
-    // This test is nonsensical for IETF Quic.
-    return;
-  }
-  // clang-format off
-  PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x28}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (stream frame with fin)
-      {"",
-       {0xFE}},
-      // stream id
-      {"Unable to read stream_id.",
-       {0x02, 0x03, 0x04}},
-      // offset
-      {"Unable to read offset.",
-       {0x3A, 0x98, 0xFE, 0xDC,
-        0x32, 0x10, 0x76, 0x54}},
-      {"Unable to read frame data.",
-       {
-         // data length
-         0x00, 0x0c,
-         // data
-         'h',  'e',  'l',  'l',
-         'o',  ' ',  'w',  'o',
-         'r',  'l',  'd',  '!'}},
-  };
-  // clang-format on
-
-  PacketFragments& fragments = packet;
-  std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(fragments));
-  EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
-
-  EXPECT_THAT(framer_.error(), IsQuicNoError());
-  ASSERT_TRUE(visitor_.header_.get());
-  EXPECT_TRUE(CheckDecryption(
-      *encrypted, !kIncludeVersion, !kIncludeDiversificationNonce,
-      kPacket8ByteConnectionId, kPacket0ByteConnectionId));
-
-  ASSERT_EQ(1u, visitor_.stream_frames_.size());
-  EXPECT_EQ(0u, visitor_.ack_frames_.size());
-  // Stream ID should be the last 3 bytes of kStreamId.
-  EXPECT_EQ(0x00FFFFFF & kStreamId, visitor_.stream_frames_[0]->stream_id);
-  EXPECT_TRUE(visitor_.stream_frames_[0]->fin);
-  EXPECT_EQ(kStreamOffset, visitor_.stream_frames_[0]->offset);
-  CheckStreamFrameData("hello world!", visitor_.stream_frames_[0].get());
-
-  CheckFramingBoundaries(fragments, QUIC_INVALID_STREAM_DATA);
 }
 
 TEST_P(QuicFramerTest, StreamFrame2ByteStreamId) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x28}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (stream frame with fin)
-      {"",
-       {0xFD}},
-      // stream id
-      {"Unable to read stream_id.",
-       {0x03, 0x04}},
-      // offset
-      {"Unable to read offset.",
-       {0x3A, 0x98, 0xFE, 0xDC,
-        0x32, 0x10, 0x76, 0x54}},
-      {"Unable to read frame data.",
-       {
-         // data length
-         0x00, 0x0c,
-         // data
-         'h',  'e',  'l',  'l',
-         'o',  ' ',  'w',  'o',
-         'r',  'l',  'd',  '!'}},
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -2666,9 +2282,8 @@ TEST_P(QuicFramerTest, StreamFrame2ByteStreamId) {
   // clang-format on
 
   PacketFragments& fragments =
-      VersionHasIetfQuicFrames(framer_.transport_version())
-          ? packet_ietf
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      VersionHasIetfQuicFrames(framer_.transport_version()) ? packet_ietf
+                                                            : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
@@ -2694,36 +2309,6 @@ TEST_P(QuicFramerTest, StreamFrame1ByteStreamId) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x28}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (stream frame with fin)
-      {"",
-       {0xFC}},
-      // stream id
-      {"Unable to read stream_id.",
-       {0x04}},
-      // offset
-      {"Unable to read offset.",
-       {0x3A, 0x98, 0xFE, 0xDC,
-        0x32, 0x10, 0x76, 0x54}},
-      {"Unable to read frame data.",
-       {
-         // data length
-         0x00, 0x0c,
-         // data
-         'h',  'e',  'l',  'l',
-         'o',  ' ',  'w',  'o',
-         'r',  'l',  'd',  '!'}},
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -2785,9 +2370,8 @@ TEST_P(QuicFramerTest, StreamFrame1ByteStreamId) {
   // clang-format on
 
   PacketFragments& fragments =
-      VersionHasIetfQuicFrames(framer_.transport_version())
-          ? packet_ietf
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      VersionHasIetfQuicFrames(framer_.transport_version()) ? packet_ietf
+                                                            : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
@@ -2810,48 +2394,9 @@ TEST_P(QuicFramerTest, StreamFrame1ByteStreamId) {
 }
 
 TEST_P(QuicFramerTest, StreamFrameWithVersion) {
-  // If IETF frames are in use then we must also have the IETF
-  // header invariants.
-  if (VersionHasIetfQuicFrames(framer_.transport_version())) {
-    QUICHE_DCHECK(framer_.version().HasIetfInvariantHeader());
-  }
-
   SetDecrypterLevel(ENCRYPTION_ZERO_RTT);
   // clang-format off
   PacketFragments packet = {
-      // public flags (version, 8 byte connection_id)
-      {"",
-       {0x29}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // version tag
-      {"",
-       {QUIC_VERSION_BYTES}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (stream frame with fin)
-      {"",
-       {0xFE}},
-      // stream id
-      {"Unable to read stream_id.",
-       {0x02, 0x03, 0x04}},
-      // offset
-      {"Unable to read offset.",
-       {0x3A, 0x98, 0xFE, 0xDC,
-        0x32, 0x10, 0x76, 0x54}},
-      {"Unable to read frame data.",
-       {
-         // data length
-         0x00, 0x0c,
-         // data
-         'h',  'e',  'l',  'l',
-         'o',  ' ',  'w',  'o',
-         'r',  'l',  'd',  '!'}},
-  };
-
-  PacketFragments packet46 = {
       // public flags (long header with packet type ZERO_RTT_PROTECTED and
       // 4-byte packet number)
       {"",
@@ -2987,10 +2532,7 @@ TEST_P(QuicFramerTest, StreamFrameWithVersion) {
   PacketFragments& fragments =
       VersionHasIetfQuicFrames(framer_.transport_version())
           ? packet_ietf
-          : (framer_.version().HasLongHeaderLengths()
-                 ? packet49
-                 : (framer_.version().HasIetfInvariantHeader() ? packet46
-                                                               : packet));
+          : (framer_.version().HasLongHeaderLengths() ? packet49 : packet);
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
@@ -3021,29 +2563,6 @@ TEST_P(QuicFramerTest, RejectPacket) {
 
   // clang-format off
   unsigned char packet[] = {
-      // public flags (8 byte connection_id)
-      0x28,
-      // connection_id
-      0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-      // packet number
-      0x12, 0x34, 0x56, 0x78,
-
-      // frame type (stream frame with fin)
-      0xFF,
-      // stream id
-      0x01, 0x02, 0x03, 0x04,
-      // offset
-      0x3A, 0x98, 0xFE, 0xDC,
-      0x32, 0x10, 0x76, 0x54,
-      // data length
-      0x00, 0x0c,
-      // data
-      'h',  'e',  'l',  'l',
-      'o',  ' ',  'w',  'o',
-      'r',  'l',  'd',  '!',
-  };
-
-  unsigned char packet46[] = {
       // type (short header, 4 byte packet number)
       0x43,
       // connection_id
@@ -3067,15 +2586,7 @@ TEST_P(QuicFramerTest, RejectPacket) {
   };
   // clang-format on
 
-  unsigned char* p = packet;
-  if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-  }
-  QuicEncryptedPacket encrypted(AsChars(p),
-                                framer_.version().HasIetfInvariantHeader()
-                                    ? ABSL_ARRAYSIZE(packet46)
-                                    : ABSL_ARRAYSIZE(packet),
-                                false);
+  QuicEncryptedPacket encrypted(AsChars(packet), ABSL_ARRAYSIZE(packet), false);
   EXPECT_TRUE(framer_.ProcessPacket(encrypted));
 
   EXPECT_THAT(framer_.error(), IsQuicNoError());
@@ -3093,13 +2604,6 @@ TEST_P(QuicFramerTest, RejectPublicHeader) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x28,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 1 byte packet number)
     0x40,
     // connection_id
@@ -3109,12 +2613,7 @@ TEST_P(QuicFramerTest, RejectPublicHeader) {
   };
   // clang-format on
 
-  QuicEncryptedPacket encrypted(
-      framer_.version().HasIetfInvariantHeader() ? AsChars(packet46)
-                                                 : AsChars(packet),
-      framer_.version().HasIetfInvariantHeader() ? ABSL_ARRAYSIZE(packet46)
-                                                 : ABSL_ARRAYSIZE(packet),
-      false);
+  QuicEncryptedPacket encrypted(AsChars(packet), ABSL_ARRAYSIZE(packet), false);
   EXPECT_TRUE(framer_.ProcessPacket(encrypted));
 
   EXPECT_THAT(framer_.error(), IsQuicNoError());
@@ -3126,34 +2625,6 @@ TEST_P(QuicFramerTest, AckFrameOneAckBlock) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x2C}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (ack frame)
-      // (one ack block, 2 byte largest observed, 2 byte block length)
-      {"",
-       {0x45}},
-      // largest acked
-      {"Unable to read largest acked.",
-       {0x12, 0x34}},
-      // Zero delta time.
-      {"Unable to read ack delay time.",
-       {0x00, 0x00}},
-      // first ack block length.
-      {"Unable to read first ack block length.",
-       {0x12, 0x34}},
-      // num timestamps.
-      {"Unable to read num received packets.",
-       {0x00}}
-  };
-
-  PacketFragments packet46 = {
       // type (short packet, 4 byte packet number)
       {"",
        {0x43}},
@@ -3218,9 +2689,8 @@ TEST_P(QuicFramerTest, AckFrameOneAckBlock) {
   // clang-format on
 
   PacketFragments& fragments =
-      VersionHasIetfQuicFrames(framer_.transport_version())
-          ? packet_ietf
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      VersionHasIetfQuicFrames(framer_.transport_version()) ? packet_ietf
+                                                            : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
@@ -3247,34 +2717,6 @@ TEST_P(QuicFramerTest, FirstAckFrameUnderflow) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x2C}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (ack frame)
-      // (one ack block, 2 byte largest observed, 2 byte block length)
-      {"",
-       {0x45}},
-      // largest acked
-      {"Unable to read largest acked.",
-       {0x12, 0x34}},
-      // Zero delta time.
-      {"Unable to read ack delay time.",
-       {0x00, 0x00}},
-      // first ack block length.
-      {"Unable to read first ack block length.",
-       {0x88, 0x88}},
-      // num timestamps.
-      {"Underflow with first ack block length 34952 largest acked is 4660.",
-       {0x00}}
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -3331,9 +2773,8 @@ TEST_P(QuicFramerTest, FirstAckFrameUnderflow) {
   // clang-format on
 
   PacketFragments& fragments =
-      VersionHasIetfQuicFrames(framer_.transport_version())
-          ? packet_ietf
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      VersionHasIetfQuicFrames(framer_.transport_version()) ? packet_ietf
+                                                            : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_FALSE(framer_.ProcessPacket(*encrypted));
@@ -3634,44 +3075,6 @@ TEST_P(QuicFramerTest, AckFrameFirstAckBlockLengthZero) {
 
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       { 0x2C }},
-      // connection_id
-      {"",
-       { 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10 }},
-      // packet number
-      {"",
-       { 0x12, 0x34, 0x56, 0x78 }},
-
-      // frame type (ack frame)
-      // (more than one ack block, 2 byte largest observed, 2 byte block length)
-      {"",
-       { 0x65 }},
-      // largest acked
-      {"Unable to read largest acked.",
-       { 0x12, 0x34 }},
-      // Zero delta time.
-      {"Unable to read ack delay time.",
-       { 0x00, 0x00 }},
-      // num ack blocks ranges.
-      {"Unable to read num of ack blocks.",
-       { 0x01 }},
-      // first ack block length.
-      {"Unable to read first ack block length.",
-       { 0x00, 0x00 }},
-      // gap to next block.
-      { "First block length is zero.",
-        { 0x01 }},
-      // ack block length.
-      { "First block length is zero.",
-        { 0x0e, 0xaf }},
-      // Number of timestamps.
-      { "First block length is zero.",
-        { 0x00 }},
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        { 0x43 }},
@@ -3710,11 +3113,8 @@ TEST_P(QuicFramerTest, AckFrameFirstAckBlockLengthZero) {
   };
 
   // clang-format on
-  PacketFragments& fragments =
-      framer_.version().HasIetfInvariantHeader() ? packet46 : packet;
-
   std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(fragments));
+      AssemblePacketFromFragments(packet));
 
   EXPECT_FALSE(framer_.ProcessPacket(*encrypted));
   EXPECT_THAT(framer_.error(), IsError(QUIC_INVALID_ACK_DATA));
@@ -3727,41 +3127,13 @@ TEST_P(QuicFramerTest, AckFrameFirstAckBlockLengthZero) {
   EXPECT_EQ(0u, visitor_.stream_frames_.size());
   ASSERT_EQ(1u, visitor_.ack_frames_.size());
 
-  CheckFramingBoundaries(fragments, QUIC_INVALID_ACK_DATA);
+  CheckFramingBoundaries(packet, QUIC_INVALID_ACK_DATA);
 }
 
 TEST_P(QuicFramerTest, AckFrameOneAckBlockMaxLength) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x2C}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (ack frame)
-      // (one ack block, 4 byte largest observed, 2 byte block length)
-      {"",
-       {0x49}},
-      // largest acked
-      {"Unable to read largest acked.",
-       {0x12, 0x34, 0x56, 0x78}},
-      // Zero delta time.
-      {"Unable to read ack delay time.",
-       {0x00, 0x00}},
-      // first ack block length.
-      {"Unable to read first ack block length.",
-       {0x12, 0x34}},
-      // num timestamps.
-      {"Unable to read num received packets.",
-       {0x00}}
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -3818,9 +3190,8 @@ TEST_P(QuicFramerTest, AckFrameOneAckBlockMaxLength) {
   // clang-format on
 
   PacketFragments& fragments =
-      VersionHasIetfQuicFrames(framer_.transport_version())
-          ? packet_ietf
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      VersionHasIetfQuicFrames(framer_.transport_version()) ? packet_ietf
+                                                            : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
@@ -3846,74 +3217,6 @@ TEST_P(QuicFramerTest, AckFrameTwoTimeStampsMultipleAckBlocks) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       { 0x2C }},
-      // connection_id
-      {"",
-       { 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10 }},
-      // packet number
-      {"",
-       { 0x12, 0x34, 0x56, 0x78 }},
-
-      // frame type (ack frame)
-      // (more than one ack block, 2 byte largest observed, 2 byte block length)
-      {"",
-       { 0x65 }},
-      // largest acked
-      {"Unable to read largest acked.",
-       { 0x12, 0x34 }},
-      // Zero delta time.
-      {"Unable to read ack delay time.",
-       { 0x00, 0x00 }},
-      // num ack blocks ranges.
-      {"Unable to read num of ack blocks.",
-       { 0x04 }},
-      // first ack block length.
-      {"Unable to read first ack block length.",
-       { 0x00, 0x01 }},
-      // gap to next block.
-      { "Unable to read gap to next ack block.",
-        { 0x01 }},
-      // ack block length.
-      { "Unable to ack block length.",
-        { 0x0e, 0xaf }},
-      // gap to next block.
-      { "Unable to read gap to next ack block.",
-        { 0xff }},
-      // ack block length.
-      { "Unable to ack block length.",
-        { 0x00, 0x00 }},
-      // gap to next block.
-      { "Unable to read gap to next ack block.",
-        { 0x91 }},
-      // ack block length.
-      { "Unable to ack block length.",
-        { 0x01, 0xea }},
-      // gap to next block.
-      { "Unable to read gap to next ack block.",
-        { 0x05 }},
-      // ack block length.
-      { "Unable to ack block length.",
-        { 0x00, 0x04 }},
-      // Number of timestamps.
-      { "Unable to read num received packets.",
-        { 0x02 }},
-      // Delta from largest observed.
-      { "Unable to read sequence delta in received packets.",
-        { 0x01 }},
-      // Delta time.
-      { "Unable to read time delta in received packets.",
-        { 0x76, 0x54, 0x32, 0x10 }},
-      // Delta from largest observed.
-      { "Unable to read sequence delta in received packets.",
-        { 0x02 }},
-      // Delta time.
-      { "Unable to read incremental time delta in received packets.",
-        { 0x32, 0x10 }},
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        { 0x43 }},
@@ -4051,9 +3354,8 @@ TEST_P(QuicFramerTest, AckFrameTwoTimeStampsMultipleAckBlocks) {
 
   // clang-format on
   PacketFragments& fragments =
-      VersionHasIetfQuicFrames(framer_.transport_version())
-          ? packet_ietf
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      VersionHasIetfQuicFrames(framer_.transport_version()) ? packet_ietf
+                                                            : packet;
 
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
@@ -4404,31 +3706,6 @@ TEST_P(QuicFramerTest, AckFrameTimeStampDeltaTooHigh) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   unsigned char packet[] = {
-      // public flags (8 byte connection_id)
-      0x28,
-      // connection_id
-      0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-      // packet number
-      0x12, 0x34, 0x56, 0x78,
-
-      // frame type (ack frame)
-      // (no ack blocks, 1 byte largest observed, 1 byte block length)
-      0x40,
-      // largest acked
-      0x01,
-      // Zero delta time.
-      0x00, 0x00,
-      // first ack block length.
-      0x01,
-      // num timestamps.
-      0x01,
-      // Delta from largest observed.
-      0x01,
-      // Delta time.
-      0x10, 0x32, 0x54, 0x76,
-  };
-
-  unsigned char packet46[] = {
       // type (short header, 4 byte packet number)
       0x43,
       // connection_id
@@ -4457,9 +3734,7 @@ TEST_P(QuicFramerTest, AckFrameTimeStampDeltaTooHigh) {
     // ACK Timestamp is not a feature of IETF QUIC.
     return;
   }
-  QuicEncryptedPacket encrypted(
-      AsChars(framer_.version().HasIetfInvariantHeader() ? packet46 : packet),
-      ABSL_ARRAYSIZE(packet), false);
+  QuicEncryptedPacket encrypted(AsChars(packet), ABSL_ARRAYSIZE(packet), false);
   EXPECT_FALSE(framer_.ProcessPacket(encrypted));
   EXPECT_TRUE(absl::StartsWith(framer_.detailed_error(),
                                "delta_from_largest_observed too high"));
@@ -4469,35 +3744,6 @@ TEST_P(QuicFramerTest, AckFrameTimeStampSecondDeltaTooHigh) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   unsigned char packet[] = {
-      // public flags (8 byte connection_id)
-      0x28,
-      // connection_id
-      0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-      // packet number
-      0x12, 0x34, 0x56, 0x78,
-
-      // frame type (ack frame)
-      // (no ack blocks, 1 byte largest observed, 1 byte block length)
-      0x40,
-      // largest acked
-      0x03,
-      // Zero delta time.
-      0x00, 0x00,
-      // first ack block length.
-      0x03,
-      // num timestamps.
-      0x02,
-      // Delta from largest observed.
-      0x01,
-      // Delta time.
-      0x10, 0x32, 0x54, 0x76,
-      // Delta from largest observed.
-      0x03,
-      // Delta time.
-      0x10, 0x32,
-  };
-
-  unsigned char packet46[] = {
       // type (short header, 4 byte packet number)
       0x43,
       // connection_id
@@ -4530,9 +3776,7 @@ TEST_P(QuicFramerTest, AckFrameTimeStampSecondDeltaTooHigh) {
     // ACK Timestamp is not a feature of IETF QUIC.
     return;
   }
-  QuicEncryptedPacket encrypted(
-      AsChars(framer_.version().HasIetfInvariantHeader() ? packet46 : packet),
-      ABSL_ARRAYSIZE(packet), false);
+  QuicEncryptedPacket encrypted(AsChars(packet), ABSL_ARRAYSIZE(packet), false);
   EXPECT_FALSE(framer_.ProcessPacket(encrypted));
   EXPECT_TRUE(absl::StartsWith(framer_.detailed_error(),
                                "delta_from_largest_observed too high"));
@@ -4546,24 +3790,6 @@ TEST_P(QuicFramerTest, NewStopWaitingFrame) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x2C}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (stop waiting frame)
-      {"",
-       {0x06}},
-      // least packet number awaiting an ack, delta from packet number.
-      {"Unable to read least unacked delta.",
-        {0x00, 0x00, 0x00, 0x08}}
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -4582,11 +3808,8 @@ TEST_P(QuicFramerTest, NewStopWaitingFrame) {
   };
   // clang-format on
 
-  PacketFragments& fragments =
-      framer_.version().HasIetfInvariantHeader() ? packet46 : packet;
-
   std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(fragments));
+      AssemblePacketFromFragments(packet));
 
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
   EXPECT_THAT(framer_.error(), IsQuicNoError());
@@ -4600,32 +3823,17 @@ TEST_P(QuicFramerTest, NewStopWaitingFrame) {
   const QuicStopWaitingFrame& frame = *visitor_.stop_waiting_frames_[0];
   EXPECT_EQ(kLeastUnacked, frame.least_unacked);
 
-  CheckFramingBoundaries(fragments, QUIC_INVALID_STOP_WAITING_DATA);
+  CheckFramingBoundaries(packet, QUIC_INVALID_STOP_WAITING_DATA);
 }
 
 TEST_P(QuicFramerTest, InvalidNewStopWaitingFrame) {
   // The Stop Waiting frame is not in IETF QUIC
-  if (VersionHasIetfQuicFrames(version_.transport_version) &&
-      framer_.version().HasIetfInvariantHeader()) {
+  if (VersionHasIetfQuicFrames(version_.transport_version)) {
     return;
   }
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-    // frame type (stop waiting frame)
-    0x06,
-    // least packet number awaiting an ack, delta from packet number.
-    0x13, 0x34, 0x56, 0x78,
-    0x9A, 0xA8,
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -4639,11 +3847,7 @@ TEST_P(QuicFramerTest, InvalidNewStopWaitingFrame) {
   };
   // clang-format on
 
-  QuicEncryptedPacket encrypted(
-      AsChars(framer_.version().HasIetfInvariantHeader() ? packet46 : packet),
-      framer_.version().HasIetfInvariantHeader() ? ABSL_ARRAYSIZE(packet46)
-                                                 : ABSL_ARRAYSIZE(packet),
-      false);
+  QuicEncryptedPacket encrypted(AsChars(packet), ABSL_ARRAYSIZE(packet), false);
   EXPECT_FALSE(framer_.ProcessPacket(encrypted));
   EXPECT_THAT(framer_.error(), IsError(QUIC_INVALID_STOP_WAITING_DATA));
   EXPECT_EQ("Invalid unacked delta.", framer_.detailed_error());
@@ -4653,31 +3857,6 @@ TEST_P(QuicFramerTest, RstStreamFrame) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x28}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (rst stream frame)
-      {"",
-       {0x01}},
-      // stream id
-      {"Unable to read stream_id.",
-       {0x01, 0x02, 0x03, 0x04}},
-      // sent byte offset
-      {"Unable to read rst stream sent byte offset.",
-       {0x3A, 0x98, 0xFE, 0xDC,
-        0x32, 0x10, 0x76, 0x54}},
-      // error code QUIC_STREAM_CANCELLED
-      {"Unable to read rst stream error code.",
-       {0x00, 0x00, 0x00, 0x06}}
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -4729,9 +3908,8 @@ TEST_P(QuicFramerTest, RstStreamFrame) {
   // clang-format on
 
   PacketFragments& fragments =
-      VersionHasIetfQuicFrames(framer_.transport_version())
-          ? packet_ietf
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      VersionHasIetfQuicFrames(framer_.transport_version()) ? packet_ietf
+                                                            : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
@@ -4752,34 +3930,6 @@ TEST_P(QuicFramerTest, ConnectionCloseFrame) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x28}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (connection close frame)
-      {"",
-       {0x02}},
-      // error code
-      {"Unable to read connection close error code.",
-       {0x00, 0x00, 0x00, 0x11}},
-      {"Unable to read connection close error details.",
-       {
-         // error details length
-         0x0, 0x0d,
-         // error details
-         'b',  'e',  'c',  'a',
-         'u',  's',  'e',  ' ',
-         'I',  ' ',  'c',  'a',
-         'n'}
-      }
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -4840,9 +3990,8 @@ TEST_P(QuicFramerTest, ConnectionCloseFrame) {
   // clang-format on
 
   PacketFragments& fragments =
-      VersionHasIetfQuicFrames(framer_.transport_version())
-          ? packet_ietf
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      VersionHasIetfQuicFrames(framer_.transport_version()) ? packet_ietf
+                                                            : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
@@ -4877,34 +4026,6 @@ TEST_P(QuicFramerTest, ConnectionCloseFrameWithUnknownErrorCode) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x28}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (connection close frame)
-      {"",
-       {0x02}},
-      // error code larger than QUIC_LAST_ERROR
-      {"Unable to read connection close error code.",
-       {0x00, 0x00, 0xC0, 0xDE}},
-      {"Unable to read connection close error details.",
-       {
-         // error details length
-         0x0, 0x0d,
-         // error details
-         'b',  'e',  'c',  'a',
-         'u',  's',  'e',  ' ',
-         'I',  ' ',  'c',  'a',
-         'n'}
-      }
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -4965,9 +4086,8 @@ TEST_P(QuicFramerTest, ConnectionCloseFrameWithUnknownErrorCode) {
   // clang-format on
 
   PacketFragments& fragments =
-      VersionHasIetfQuicFrames(framer_.transport_version())
-          ? packet_ietf
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      VersionHasIetfQuicFrames(framer_.transport_version()) ? packet_ietf
+                                                            : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
@@ -5005,35 +4125,6 @@ TEST_P(QuicFramerTest, ConnectionCloseFrameWithExtractedInfoIgnoreGCuic) {
 
   // clang-format off
   PacketFragments packet = {
-    // public flags (8 byte connection_id)
-    {"",
-     {0x28}},
-    // connection_id
-    {"",
-     {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-    // packet number
-    {"",
-     {0x12, 0x34, 0x56, 0x78}},
-    // frame type (connection close frame)
-    {"",
-     {0x02}},
-    // error code
-    {"Unable to read connection close error code.",
-     {0x00, 0x00, 0x00, 0x11}},
-    {"Unable to read connection close error details.",
-     {
-       // error details length
-       0x0, 0x13,
-       // error details
-      '1',  '7',  '7',  '6',
-      '7',  ':',  'b',  'e',
-      'c',  'a',  'u',  's',
-      'e',  ' ',  'I',  ' ',
-      'c',  'a',  'n'}
-    }
-  };
-
-  PacketFragments packet46 = {
     // type (short header, 4 byte packet number)
     {"",
      {0x43}},
@@ -5095,9 +4186,8 @@ TEST_P(QuicFramerTest, ConnectionCloseFrameWithExtractedInfoIgnoreGCuic) {
   // clang-format on
 
   PacketFragments& fragments =
-      VersionHasIetfQuicFrames(framer_.transport_version())
-          ? packet_ietf
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      VersionHasIetfQuicFrames(framer_.transport_version()) ? packet_ietf
+                                                            : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
@@ -5261,38 +4351,6 @@ TEST_P(QuicFramerTest, GoAwayFrame) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x28}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (go away frame)
-      {"",
-       {0x03}},
-      // error code
-      {"Unable to read go away error code.",
-       {0x00, 0x00, 0x00, 0x09}},
-      // stream id
-      {"Unable to read last good stream id.",
-       {0x01, 0x02, 0x03, 0x04}},
-      // stream id
-      {"Unable to read goaway reason.",
-       {
-         // error details length
-         0x0, 0x0d,
-         // error details
-         'b',  'e',  'c',  'a',
-         'u',  's',  'e',  ' ',
-         'I',  ' ',  'c',  'a',
-         'n'}
-      }
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -5325,10 +4383,8 @@ TEST_P(QuicFramerTest, GoAwayFrame) {
   };
   // clang-format on
 
-  PacketFragments& fragments =
-      framer_.version().HasIetfInvariantHeader() ? packet46 : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(fragments));
+      AssemblePacketFromFragments(packet));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
 
   EXPECT_THAT(framer_.error(), IsQuicNoError());
@@ -5341,7 +4397,7 @@ TEST_P(QuicFramerTest, GoAwayFrame) {
   EXPECT_EQ(0x9u, visitor_.goaway_frame_.error_code);
   EXPECT_EQ("because I can", visitor_.goaway_frame_.reason_phrase);
 
-  CheckFramingBoundaries(fragments, QUIC_INVALID_GOAWAY_DATA);
+  CheckFramingBoundaries(packet, QUIC_INVALID_GOAWAY_DATA);
 }
 
 TEST_P(QuicFramerTest, GoAwayFrameWithUnknownErrorCode) {
@@ -5352,38 +4408,6 @@ TEST_P(QuicFramerTest, GoAwayFrameWithUnknownErrorCode) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x28}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (go away frame)
-      {"",
-       {0x03}},
-      // error code larger than QUIC_LAST_ERROR
-      {"Unable to read go away error code.",
-       {0x00, 0x00, 0xC0, 0xDE}},
-      // stream id
-      {"Unable to read last good stream id.",
-       {0x01, 0x02, 0x03, 0x04}},
-      // stream id
-      {"Unable to read goaway reason.",
-       {
-         // error details length
-         0x0, 0x0d,
-         // error details
-         'b',  'e',  'c',  'a',
-         'u',  's',  'e',  ' ',
-         'I',  ' ',  'c',  'a',
-         'n'}
-      }
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -5416,10 +4440,8 @@ TEST_P(QuicFramerTest, GoAwayFrameWithUnknownErrorCode) {
   };
   // clang-format on
 
-  PacketFragments& fragments =
-      framer_.version().HasIetfInvariantHeader() ? packet46 : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(fragments));
+      AssemblePacketFromFragments(packet));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
 
   EXPECT_THAT(framer_.error(), IsQuicNoError());
@@ -5432,7 +4454,7 @@ TEST_P(QuicFramerTest, GoAwayFrameWithUnknownErrorCode) {
   EXPECT_EQ(0xC0DE, visitor_.goaway_frame_.error_code);
   EXPECT_EQ("because I can", visitor_.goaway_frame_.reason_phrase);
 
-  CheckFramingBoundaries(fragments, QUIC_INVALID_GOAWAY_DATA);
+  CheckFramingBoundaries(packet, QUIC_INVALID_GOAWAY_DATA);
 }
 
 TEST_P(QuicFramerTest, WindowUpdateFrame) {
@@ -5444,28 +4466,6 @@ TEST_P(QuicFramerTest, WindowUpdateFrame) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x28}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (window update frame)
-      {"",
-       {0x04}},
-      // stream id
-      {"Unable to read stream_id.",
-       {0x01, 0x02, 0x03, 0x04}},
-      // byte offset
-      {"Unable to read window byte_offset.",
-       {0x3A, 0x98, 0xFE, 0xDC,
-        0x32, 0x10, 0x76, 0x54}},
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -5489,10 +4489,8 @@ TEST_P(QuicFramerTest, WindowUpdateFrame) {
 
   // clang-format on
 
-  PacketFragments& fragments =
-      framer_.version().HasIetfInvariantHeader() ? packet46 : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(fragments));
+      AssemblePacketFromFragments(packet));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
 
   EXPECT_THAT(framer_.error(), IsQuicNoError());
@@ -5504,7 +4502,7 @@ TEST_P(QuicFramerTest, WindowUpdateFrame) {
   EXPECT_EQ(kStreamId, visitor_.window_update_frame_.stream_id);
   EXPECT_EQ(kStreamOffset, visitor_.window_update_frame_.max_data);
 
-  CheckFramingBoundaries(fragments, QUIC_INVALID_WINDOW_UPDATE_DATA);
+  CheckFramingBoundaries(packet, QUIC_INVALID_WINDOW_UPDATE_DATA);
 }
 
 TEST_P(QuicFramerTest, MaxDataFrame) {
@@ -5601,24 +4599,6 @@ TEST_P(QuicFramerTest, BlockedFrame) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   PacketFragments packet = {
-      // public flags (8 byte connection_id)
-      {"",
-       {0x28}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // packet number
-      {"",
-       {0x12, 0x34, 0x56, 0x78}},
-      // frame type (blocked frame)
-      {"",
-       {0x05}},
-      // stream id
-      {"Unable to read stream_id.",
-       {0x01, 0x02, 0x03, 0x04}},
-  };
-
-  PacketFragments packet46 = {
       // type (short header, 4 byte packet number)
       {"",
        {0x43}},
@@ -5659,9 +4639,8 @@ TEST_P(QuicFramerTest, BlockedFrame) {
   // clang-format on
 
   PacketFragments& fragments =
-      VersionHasIetfQuicFrames(framer_.transport_version())
-          ? packet_ietf
-          : (framer_.version().HasIetfInvariantHeader() ? packet46 : packet);
+      VersionHasIetfQuicFrames(framer_.transport_version()) ? packet_ietf
+                                                            : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
@@ -5690,18 +4669,6 @@ TEST_P(QuicFramerTest, PingFrame) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   unsigned char packet[] = {
-     // public flags (8 byte connection_id)
-     0x28,
-     // connection_id
-     0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-     // packet number
-     0x12, 0x34, 0x56, 0x78,
-
-     // frame type (ping frame)
-     0x07,
-    };
-
-  unsigned char packet46[] = {
      // type (short header, 4 byte packet number)
      0x43,
      // connection_id
@@ -5729,13 +4696,10 @@ TEST_P(QuicFramerTest, PingFrame) {
   QuicEncryptedPacket encrypted(
       AsChars(VersionHasIetfQuicFrames(framer_.transport_version())
                   ? packet_ietf
-                  : (framer_.version().HasIetfInvariantHeader() ? packet46
-                                                                : packet)),
+                  : packet),
       VersionHasIetfQuicFrames(framer_.transport_version())
           ? ABSL_ARRAYSIZE(packet_ietf)
-          : (framer_.version().HasIetfInvariantHeader()
-                 ? ABSL_ARRAYSIZE(packet46)
-                 : ABSL_ARRAYSIZE(packet)),
+          : ABSL_ARRAYSIZE(packet),
       false);
   EXPECT_TRUE(framer_.ProcessPacket(encrypted));
 
@@ -5828,12 +4792,9 @@ TEST_P(QuicFramerTest, ParseAckFrequencyFrame) {
 }
 
 TEST_P(QuicFramerTest, MessageFrame) {
-  if (!VersionSupportsMessageFrames(framer_.transport_version())) {
-    return;
-  }
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
-  PacketFragments packet46 = {
+  PacketFragments packet = {
        // type (short header, 4 byte packet number)
        {"",
         {0x43}},
@@ -5891,7 +4852,7 @@ TEST_P(QuicFramerTest, MessageFrame) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     encrypted = AssemblePacketFromFragments(packet_ietf);
   } else {
-    encrypted = AssemblePacketFromFragments(packet46);
+    encrypted = AssemblePacketFromFragments(packet);
   }
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
 
@@ -5908,214 +4869,8 @@ TEST_P(QuicFramerTest, MessageFrame) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     CheckFramingBoundaries(packet_ietf, QUIC_INVALID_MESSAGE_DATA);
   } else {
-    CheckFramingBoundaries(packet46, QUIC_INVALID_MESSAGE_DATA);
+    CheckFramingBoundaries(packet, QUIC_INVALID_MESSAGE_DATA);
   }
-}
-
-TEST_P(QuicFramerTest, PublicResetPacketV33) {
-  // clang-format off
-  PacketFragments packet = {
-      // public flags (public reset, 8 byte connection_id)
-      {"",
-       {0x0A}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      {"Unable to read reset message.",
-       {
-         // message tag (kPRST)
-         'P', 'R', 'S', 'T',
-         // num_entries (2) + padding
-         0x02, 0x00, 0x00, 0x00,
-         // tag kRNON
-         'R', 'N', 'O', 'N',
-         // end offset 8
-         0x08, 0x00, 0x00, 0x00,
-         // tag kRSEQ
-         'R', 'S', 'E', 'Q',
-         // end offset 16
-         0x10, 0x00, 0x00, 0x00,
-         // nonce proof
-         0x89, 0x67, 0x45, 0x23,
-         0x01, 0xEF, 0xCD, 0xAB,
-         // rejected packet number
-         0xBC, 0x9A, 0x78, 0x56,
-         0x34, 0x12, 0x00, 0x00,
-       }
-      }
-  };
-  // clang-format on
-  if (framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
-
-  std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(packet));
-  EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
-  ASSERT_THAT(framer_.error(), IsQuicNoError());
-  ASSERT_TRUE(visitor_.public_reset_packet_.get());
-  EXPECT_EQ(FramerTestConnectionId(),
-            visitor_.public_reset_packet_->connection_id);
-  EXPECT_EQ(kNonceProof, visitor_.public_reset_packet_->nonce_proof);
-  EXPECT_EQ(
-      IpAddressFamily::IP_UNSPEC,
-      visitor_.public_reset_packet_->client_address.host().address_family());
-
-  CheckFramingBoundaries(packet, QUIC_INVALID_PUBLIC_RST_PACKET);
-}
-
-TEST_P(QuicFramerTest, PublicResetPacket) {
-  QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_CLIENT);
-
-  // clang-format off
-  PacketFragments packet = {
-      // public flags (public reset, 8 byte connection_id)
-      {"",
-       {0x0E}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      {"Unable to read reset message.",
-       {
-         // message tag (kPRST)
-         'P', 'R', 'S', 'T',
-         // num_entries (2) + padding
-         0x02, 0x00, 0x00, 0x00,
-         // tag kRNON
-         'R', 'N', 'O', 'N',
-         // end offset 8
-         0x08, 0x00, 0x00, 0x00,
-         // tag kRSEQ
-         'R', 'S', 'E', 'Q',
-         // end offset 16
-         0x10, 0x00, 0x00, 0x00,
-         // nonce proof
-         0x89, 0x67, 0x45, 0x23,
-         0x01, 0xEF, 0xCD, 0xAB,
-         // rejected packet number
-         0xBC, 0x9A, 0x78, 0x56,
-         0x34, 0x12, 0x00, 0x00,
-       }
-      }
-  };
-  // clang-format on
-
-  if (framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
-
-  std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(packet));
-  EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
-  ASSERT_THAT(framer_.error(), IsQuicNoError());
-  ASSERT_TRUE(visitor_.public_reset_packet_.get());
-  EXPECT_EQ(FramerTestConnectionId(),
-            visitor_.public_reset_packet_->connection_id);
-  EXPECT_EQ(kNonceProof, visitor_.public_reset_packet_->nonce_proof);
-  EXPECT_EQ(
-      IpAddressFamily::IP_UNSPEC,
-      visitor_.public_reset_packet_->client_address.host().address_family());
-
-  CheckFramingBoundaries(packet, QUIC_INVALID_PUBLIC_RST_PACKET);
-}
-
-TEST_P(QuicFramerTest, PublicResetPacketWithTrailingJunk) {
-  // clang-format off
-  unsigned char packet[] = {
-    // public flags (public reset, 8 byte connection_id)
-    0x0A,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // message tag (kPRST)
-    'P', 'R', 'S', 'T',
-    // num_entries (2) + padding
-    0x02, 0x00, 0x00, 0x00,
-    // tag kRNON
-    'R', 'N', 'O', 'N',
-    // end offset 8
-    0x08, 0x00, 0x00, 0x00,
-    // tag kRSEQ
-    'R', 'S', 'E', 'Q',
-    // end offset 16
-    0x10, 0x00, 0x00, 0x00,
-    // nonce proof
-    0x89, 0x67, 0x45, 0x23,
-    0x01, 0xEF, 0xCD, 0xAB,
-    // rejected packet number
-    0xBC, 0x9A, 0x78, 0x56,
-    0x34, 0x12, 0x00, 0x00,
-    // trailing junk
-    'j', 'u', 'n', 'k',
-  };
-  // clang-format on
-  if (framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
-
-  QuicEncryptedPacket encrypted(AsChars(packet), ABSL_ARRAYSIZE(packet), false);
-  EXPECT_FALSE(framer_.ProcessPacket(encrypted));
-  ASSERT_THAT(framer_.error(), IsError(QUIC_INVALID_PUBLIC_RST_PACKET));
-  EXPECT_EQ("Unable to read reset message.", framer_.detailed_error());
-}
-
-TEST_P(QuicFramerTest, PublicResetPacketWithClientAddress) {
-  // clang-format off
-  PacketFragments packet = {
-      // public flags (public reset, 8 byte connection_id)
-      {"",
-       {0x0A}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      {"Unable to read reset message.",
-       {
-         // message tag (kPRST)
-         'P', 'R', 'S', 'T',
-         // num_entries (2) + padding
-         0x03, 0x00, 0x00, 0x00,
-         // tag kRNON
-         'R', 'N', 'O', 'N',
-         // end offset 8
-         0x08, 0x00, 0x00, 0x00,
-         // tag kRSEQ
-         'R', 'S', 'E', 'Q',
-         // end offset 16
-         0x10, 0x00, 0x00, 0x00,
-         // tag kCADR
-         'C', 'A', 'D', 'R',
-         // end offset 24
-         0x18, 0x00, 0x00, 0x00,
-         // nonce proof
-         0x89, 0x67, 0x45, 0x23,
-         0x01, 0xEF, 0xCD, 0xAB,
-         // rejected packet number
-         0xBC, 0x9A, 0x78, 0x56,
-         0x34, 0x12, 0x00, 0x00,
-         // client address: 4.31.198.44:443
-         0x02, 0x00,
-         0x04, 0x1F, 0xC6, 0x2C,
-         0xBB, 0x01,
-       }
-      }
-  };
-  // clang-format on
-  if (framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
-
-  std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(packet));
-  EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
-  ASSERT_THAT(framer_.error(), IsQuicNoError());
-  ASSERT_TRUE(visitor_.public_reset_packet_.get());
-  EXPECT_EQ(FramerTestConnectionId(),
-            visitor_.public_reset_packet_->connection_id);
-  EXPECT_EQ(kNonceProof, visitor_.public_reset_packet_->nonce_proof);
-  EXPECT_EQ("4.31.198.44",
-            visitor_.public_reset_packet_->client_address.host().ToString());
-  EXPECT_EQ(443, visitor_.public_reset_packet_->client_address.port());
-
-  CheckFramingBoundaries(packet, QUIC_INVALID_PUBLIC_RST_PACKET);
 }
 
 TEST_P(QuicFramerTest, IetfStatelessResetPacket) {
@@ -6133,9 +4888,6 @@ TEST_P(QuicFramerTest, IetfStatelessResetPacket) {
       0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f,
   };
   // clang-format on
-  if (!framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
   QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_CLIENT);
   QuicFramerPeer::SetLastSerializedServerConnectionId(&framer_,
                                                       TestConnectionId(0x33));
@@ -6176,9 +4928,6 @@ TEST_P(QuicFramerTest, IetfStatelessResetPacketInvalidStatelessResetToken) {
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   };
   // clang-format on
-  if (!framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
   QuicFramerPeer::SetLastSerializedServerConnectionId(&framer_,
                                                       TestConnectionId(0x33));
   QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_CLIENT);
@@ -6205,19 +4954,6 @@ TEST_P(QuicFramerTest, IetfStatelessResetPacketInvalidStatelessResetToken) {
 TEST_P(QuicFramerTest, VersionNegotiationPacketClient) {
   // clang-format off
   PacketFragments packet = {
-      // public flags (version, 8 byte connection_id)
-      {"",
-       {0x29}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // version tag
-      {"Unable to read supported version in negotiation.",
-       {QUIC_VERSION_BYTES,
-        'Q', '2', '.', '0'}},
-  };
-
-  PacketFragments packet46 = {
       // type (long header)
       {"",
        {0x8F}},
@@ -6259,9 +4995,7 @@ TEST_P(QuicFramerTest, VersionNegotiationPacketClient) {
   QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_CLIENT);
 
   PacketFragments& fragments =
-      framer_.version().HasLongHeaderLengths()     ? packet49
-      : framer_.version().HasIetfInvariantHeader() ? packet46
-                                                   : packet;
+      framer_.version().HasLongHeaderLengths() ? packet49 : packet;
   std::unique_ptr<QuicEncryptedPacket> encrypted(
       AssemblePacketFromFragments(fragments));
   EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
@@ -6280,10 +5014,6 @@ TEST_P(QuicFramerTest, VersionNegotiationPacketClient) {
 }
 
 TEST_P(QuicFramerTest, VersionNegotiationPacketServer) {
-  if (!framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
-
   QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_SERVER);
   // clang-format off
   unsigned char packet[] = {
@@ -6329,45 +5059,6 @@ TEST_P(QuicFramerTest, VersionNegotiationPacketServer) {
   EXPECT_EQ("Server received version negotiation packet.",
             framer_.detailed_error());
   EXPECT_FALSE(visitor_.version_negotiation_packet_.get());
-}
-
-TEST_P(QuicFramerTest, OldVersionNegotiationPacket) {
-  // clang-format off
-  PacketFragments packet = {
-      // public flags (version, 8 byte connection_id)
-      {"",
-       {0x2D}},
-      // connection_id
-      {"",
-       {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-      // version tag
-      {"Unable to read supported version in negotiation.",
-       {QUIC_VERSION_BYTES,
-        'Q', '2', '.', '0'}},
-  };
-  // clang-format on
-
-  if (framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
-
-  QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_CLIENT);
-
-  std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(packet));
-  EXPECT_TRUE(framer_.ProcessPacket(*encrypted));
-  ASSERT_THAT(framer_.error(), IsQuicNoError());
-  ASSERT_TRUE(visitor_.version_negotiation_packet_.get());
-  EXPECT_EQ(1u, visitor_.version_negotiation_packet_->versions.size());
-  EXPECT_EQ(GetParam(), visitor_.version_negotiation_packet_->versions[0]);
-
-  // Remove the last version from the packet so that every truncated
-  // version of the packet is invalid, otherwise checking boundaries
-  // is annoyingly complicated.
-  for (size_t i = 0; i < 4; ++i) {
-    packet.back().fragment.pop_back();
-  }
-  CheckFramingBoundaries(packet, QUIC_INVALID_VERSION_NEGOTIATION_PACKET);
 }
 
 TEST_P(QuicFramerTest, ParseIetfRetryPacket) {
@@ -6512,19 +5203,6 @@ TEST_P(QuicFramerTest, BuildPaddingFramePacket) {
 
   // clang-format off
   unsigned char packet[kMaxOutgoingPacketSize] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (padding frame)
-    0x00,
-    0x00, 0x00, 0x00, 0x00
-  };
-
-  unsigned char packet46[kMaxOutgoingPacketSize] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -6554,8 +5232,6 @@ TEST_P(QuicFramerTest, BuildPaddingFramePacket) {
   unsigned char* p = packet;
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
   }
 
   uint64_t header_size = GetPacketHeaderSize(
@@ -6570,8 +5246,7 @@ TEST_P(QuicFramerTest, BuildPaddingFramePacket) {
 
   quiche::test::CompareCharArraysWithHexError(
       "constructed packet", data->data(), data->length(), AsChars(p),
-      framer_.version().HasIetfInvariantHeader() ? ABSL_ARRAYSIZE(packet46)
-                                                 : ABSL_ARRAYSIZE(packet));
+      ABSL_ARRAYSIZE(packet));
 }
 
 TEST_P(QuicFramerTest, BuildStreamFramePacketWithNewPaddingFrame) {
@@ -6589,33 +5264,6 @@ TEST_P(QuicFramerTest, BuildStreamFramePacketWithNewPaddingFrame) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // paddings
-    0x00, 0x00,
-    // frame type (stream frame with fin)
-    0xFF,
-    // stream id
-    0x01, 0x02, 0x03, 0x04,
-    // offset
-    0x3A, 0x98, 0xFE, 0xDC,
-    0x32, 0x10, 0x76, 0x54,
-    // data length
-    0x00, 0x0c,
-    // data
-    'h',  'e',  'l',  'l',
-    'o',  ' ',  'w',  'o',
-    'r',  'l',  'd',  '!',
-    // paddings
-    0x00, 0x00,
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -6678,9 +5326,6 @@ TEST_P(QuicFramerTest, BuildStreamFramePacketWithNewPaddingFrame) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
   QuicEncryptedPacket encrypted(AsChars(p), p_size, false);
 
@@ -6701,19 +5346,6 @@ TEST_P(QuicFramerTest, Build4ByteSequenceNumberPaddingFramePacket) {
 
   // clang-format off
   unsigned char packet[kMaxOutgoingPacketSize] = {
-    // public flags (8 byte connection_id and 4 byte packet number)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (padding frame)
-    0x00,
-    0x00, 0x00, 0x00, 0x00
-  };
-
-  unsigned char packet46[kMaxOutgoingPacketSize] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -6743,8 +5375,6 @@ TEST_P(QuicFramerTest, Build4ByteSequenceNumberPaddingFramePacket) {
   unsigned char* p = packet;
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
   }
 
   uint64_t header_size = GetPacketHeaderSize(
@@ -6759,8 +5389,7 @@ TEST_P(QuicFramerTest, Build4ByteSequenceNumberPaddingFramePacket) {
 
   quiche::test::CompareCharArraysWithHexError(
       "constructed packet", data->data(), data->length(), AsChars(p),
-      framer_.version().HasIetfInvariantHeader() ? ABSL_ARRAYSIZE(packet46)
-                                                 : ABSL_ARRAYSIZE(packet));
+      ABSL_ARRAYSIZE(packet));
 }
 
 TEST_P(QuicFramerTest, Build2ByteSequenceNumberPaddingFramePacket) {
@@ -6776,19 +5405,6 @@ TEST_P(QuicFramerTest, Build2ByteSequenceNumberPaddingFramePacket) {
 
   // clang-format off
   unsigned char packet[kMaxOutgoingPacketSize] = {
-    // public flags (8 byte connection_id and 2 byte packet number)
-    0x1C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x56, 0x78,
-
-    // frame type (padding frame)
-    0x00,
-    0x00, 0x00, 0x00, 0x00
-  };
-
-  unsigned char packet46[kMaxOutgoingPacketSize] = {
     // type (short header, 2 byte packet number)
     0x41,
     // connection_id
@@ -6818,8 +5434,6 @@ TEST_P(QuicFramerTest, Build2ByteSequenceNumberPaddingFramePacket) {
   unsigned char* p = packet;
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
   }
 
   uint64_t header_size = GetPacketHeaderSize(
@@ -6834,8 +5448,7 @@ TEST_P(QuicFramerTest, Build2ByteSequenceNumberPaddingFramePacket) {
 
   quiche::test::CompareCharArraysWithHexError(
       "constructed packet", data->data(), data->length(), AsChars(p),
-      framer_.version().HasIetfInvariantHeader() ? ABSL_ARRAYSIZE(packet46)
-                                                 : ABSL_ARRAYSIZE(packet));
+      ABSL_ARRAYSIZE(packet));
 }
 
 TEST_P(QuicFramerTest, Build1ByteSequenceNumberPaddingFramePacket) {
@@ -6851,19 +5464,6 @@ TEST_P(QuicFramerTest, Build1ByteSequenceNumberPaddingFramePacket) {
 
   // clang-format off
   unsigned char packet[kMaxOutgoingPacketSize] = {
-    // public flags (8 byte connection_id and 1 byte packet number)
-    0x0C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x78,
-
-    // frame type (padding frame)
-    0x00,
-    0x00, 0x00, 0x00, 0x00
-  };
-
-  unsigned char packet46[kMaxOutgoingPacketSize] = {
     // type (short header, 1 byte packet number)
     0x40,
     // connection_id
@@ -6893,8 +5493,6 @@ TEST_P(QuicFramerTest, Build1ByteSequenceNumberPaddingFramePacket) {
   unsigned char* p = packet;
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
   }
 
   uint64_t header_size = GetPacketHeaderSize(
@@ -6909,8 +5507,7 @@ TEST_P(QuicFramerTest, Build1ByteSequenceNumberPaddingFramePacket) {
 
   quiche::test::CompareCharArraysWithHexError(
       "constructed packet", data->data(), data->length(), AsChars(p),
-      framer_.version().HasIetfInvariantHeader() ? ABSL_ARRAYSIZE(packet46)
-                                                 : ABSL_ARRAYSIZE(packet));
+      ABSL_ARRAYSIZE(packet));
 }
 
 TEST_P(QuicFramerTest, BuildStreamFramePacket) {
@@ -6931,27 +5528,6 @@ TEST_P(QuicFramerTest, BuildStreamFramePacket) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (stream frame with fin and no length)
-    0xDF,
-    // stream id
-    0x01, 0x02, 0x03, 0x04,
-    // offset
-    0x3A, 0x98, 0xFE, 0xDC,
-    0x32, 0x10, 0x76, 0x54,
-    // data
-    'h',  'e',  'l',  'l',
-    'o',  ' ',  'w',  'o',
-    'r',  'l',  'd',  '!',
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -7002,9 +5578,6 @@ TEST_P(QuicFramerTest, BuildStreamFramePacket) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
   quiche::test::CompareCharArraysWithHexError(
       "constructed packet", data->data(), data->length(), AsChars(p), p_size);
@@ -7015,9 +5588,7 @@ TEST_P(QuicFramerTest, BuildStreamFramePacketWithVersionFlag) {
   header.destination_connection_id = FramerTestConnectionId();
   header.reset_flag = false;
   header.version_flag = true;
-  if (framer_.version().HasIetfInvariantHeader()) {
-    header.long_packet_type = ZERO_RTT_PROTECTED;
-  }
+  header.long_packet_type = ZERO_RTT_PROTECTED;
   header.packet_number = kPacketNumber;
   if (QuicVersionHasLongHeaderLengths(framer_.transport_version())) {
     header.length_length = quiche::VARIABLE_LENGTH_INTEGER_LENGTH_2;
@@ -7029,26 +5600,6 @@ TEST_P(QuicFramerTest, BuildStreamFramePacketWithVersionFlag) {
 
   // clang-format off
   unsigned char packet[] = {
-      // public flags (version, 8 byte connection_id)
-      0x2D,
-      // connection_id
-      0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-      // version tag
-      QUIC_VERSION_BYTES,
-      // packet number
-      0x12, 0x34, 0x56, 0x78,
-
-      // frame type (stream frame with fin and no length)
-      0xDF,
-      // stream id
-      0x01, 0x02, 0x03, 0x04,
-      // offset
-      0x3A, 0x98, 0xFE, 0xDC, 0x32, 0x10, 0x76, 0x54,
-      // data
-      'h',  'e',  'l',  'l',  'o',  ' ',  'w',  'o',  'r', 'l', 'd', '!',
-  };
-
-  unsigned char packet46[] = {
       // type (long header with packet type ZERO_RTT_PROTECTED)
       0xD3,
       // version tag
@@ -7136,9 +5687,6 @@ TEST_P(QuicFramerTest, BuildStreamFramePacketWithVersionFlag) {
   } else if (framer_.version().HasLongHeaderLengths()) {
     p = packet49;
     p_size = ABSL_ARRAYSIZE(packet49);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
   quiche::test::CompareCharArraysWithHexError(
       "constructed packet", data->data(), data->length(), AsChars(p), p_size);
@@ -7308,7 +5856,7 @@ TEST_P(QuicFramerTest, CryptoFrame) {
   CheckFramingBoundaries(fragments, QUIC_INVALID_FRAME_DATA);
 }
 
-TEST_P(QuicFramerTest, BuildVersionNegotiationPacket) {
+TEST_P(QuicFramerTest, BuildOldVersionNegotiationPacket) {
   SetQuicFlag(quic_disable_version_negotiation_grease_randomness, true);
   // clang-format off
   unsigned char packet[] = {
@@ -7320,7 +5868,21 @@ TEST_P(QuicFramerTest, BuildVersionNegotiationPacket) {
       0xDA, 0x5A, 0x3A, 0x3A,
       QUIC_VERSION_BYTES,
   };
-  unsigned char packet46[] = {
+  QuicConnectionId connection_id = FramerTestConnectionId();
+  std::unique_ptr<QuicEncryptedPacket> data(
+      QuicFramer::BuildVersionNegotiationPacket(
+          connection_id, EmptyQuicConnectionId(), /*ietf_quic=*/false,
+          /*use_length_prefix=*/false,
+          SupportedVersions(GetParam())));
+  quiche::test::CompareCharArraysWithHexError(
+      "constructed packet", data->data(), data->length(), AsChars(packet),
+      ABSL_ARRAYSIZE(packet));
+}
+
+TEST_P(QuicFramerTest, BuildVersionNegotiationPacket) {
+  SetQuicFlag(quic_disable_version_negotiation_grease_randomness, true);
+  // clang-format off
+  unsigned char packet[] = {
       // type (long header)
       0xC0,
       // version tag
@@ -7354,16 +5916,12 @@ TEST_P(QuicFramerTest, BuildVersionNegotiationPacket) {
   if (framer_.version().HasLongHeaderLengths()) {
     p = packet49;
     p_size = ABSL_ARRAYSIZE(packet49);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   QuicConnectionId connection_id = FramerTestConnectionId();
   std::unique_ptr<QuicEncryptedPacket> data(
       QuicFramer::BuildVersionNegotiationPacket(
-          connection_id, EmptyQuicConnectionId(),
-          framer_.version().HasIetfInvariantHeader(),
+          connection_id, EmptyQuicConnectionId(), /*ietf_quic=*/true,
           framer_.version().HasLengthPrefixedConnectionIds(),
           SupportedVersions(GetParam())));
   quiche::test::CompareCharArraysWithHexError(
@@ -7422,27 +5980,6 @@ TEST_P(QuicFramerTest, BuildAckFramePacketOneAckBlock) {
 
   // clang-format off
   unsigned char packet[] = {
-      // public flags (8 byte connection_id)
-      0x2C,
-      // connection_id
-      0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-      // packet number
-      0x12, 0x34, 0x56, 0x78,
-
-      // frame type (ack frame)
-      // (no ack blocks, 2 byte largest observed, 2 byte block length)
-      0x45,
-      // largest acked
-      0x12, 0x34,
-      // Zero delta time.
-      0x00, 0x00,
-      // first ack block length.
-      0x12, 0x34,
-      // num timestamps.
-      0x00,
-  };
-
-  unsigned char packet46[] = {
       // type (short header, 4 byte packet number)
       0x43,
       // connection_id
@@ -7488,9 +6025,6 @@ TEST_P(QuicFramerTest, BuildAckFramePacketOneAckBlock) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   std::unique_ptr<QuicPacket> data(BuildDataPacket(header, frames));
@@ -8214,27 +6748,6 @@ TEST_P(QuicFramerTest, BuildAckFramePacketOneAckBlockMaxLength) {
 
   // clang-format off
   unsigned char packet[] = {
-      // public flags (8 byte connection_id)
-      0x2C,
-      // connection_id
-      0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-      // packet number
-      0x12, 0x34, 0x56, 0x78,
-
-      // frame type (ack frame)
-      // (no ack blocks, 4 byte largest observed, 4 byte block length)
-      0x4A,
-      // largest acked
-      0x12, 0x34, 0x56, 0x78,
-      // Zero delta time.
-      0x00, 0x00,
-      // first ack block length.
-      0x12, 0x34, 0x56, 0x78,
-      // num timestamps.
-      0x00,
-  };
-
-  unsigned char packet46[] = {
       // type (short header, 4 byte packet number)
       0x43,
       // connection_id
@@ -8281,9 +6794,6 @@ TEST_P(QuicFramerTest, BuildAckFramePacketOneAckBlockMaxLength) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   std::unique_ptr<QuicPacket> data(BuildDataPacket(header, frames));
@@ -8312,45 +6822,6 @@ TEST_P(QuicFramerTest, BuildAckFramePacketMultipleAckBlocks) {
 
   // clang-format off
   unsigned char packet[] = {
-      // public flags (8 byte connection_id)
-      0x2C,
-      // connection_id
-      0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-      // packet number
-      0x12, 0x34, 0x56, 0x78,
-
-      // frame type (ack frame)
-      // (has ack blocks, 2 byte largest observed, 2 byte block length)
-      0x65,
-      // largest acked
-      0x12, 0x34,
-      // Zero delta time.
-      0x00, 0x00,
-      // num ack blocks ranges.
-      0x04,
-      // first ack block length.
-      0x00, 0x01,
-      // gap to next block.
-      0x01,
-      // ack block length.
-      0x0e, 0xaf,
-      // gap to next block.
-      0xff,
-      // ack block length.
-      0x00, 0x00,
-      // gap to next block.
-      0x91,
-      // ack block length.
-      0x01, 0xea,
-      // gap to next block.
-      0x05,
-      // ack block length.
-      0x00, 0x04,
-      // num timestamps.
-      0x00,
-  };
-
-  unsigned char packet46[] = {
       // type (short header, 4 byte packet number)
       0x43,
       // connection_id
@@ -8429,9 +6900,6 @@ TEST_P(QuicFramerTest, BuildAckFramePacketMultipleAckBlocks) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   std::unique_ptr<QuicPacket> data(BuildDataPacket(header, frames));
@@ -8463,99 +6931,6 @@ TEST_P(QuicFramerTest, BuildAckFramePacketMaxAckBlocks) {
 
   // clang-format off
   unsigned char packet[] = {
-      // public flags (8 byte connection_id)
-      0x2C,
-      // connection_id
-      0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-      // packet number
-      0x12, 0x34, 0x56, 0x78,
-      // frame type (ack frame)
-      // (has ack blocks, 2 byte largest observed, 2 byte block length)
-      0x65,
-      // largest acked
-      0x12, 0x34,
-      // Zero delta time.
-      0x00, 0x00,
-      // num ack blocks ranges.
-      0xff,
-      // first ack block length.
-      0x0f, 0xdd,
-      // 255 = 4 * 63 + 3
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x01,
-      // num timestamps.
-      0x00,
-  };
-
-  unsigned char packet46[] = {
       // type (short header, 4 byte packet number)
       0x43,
       // connection_id
@@ -8738,9 +7113,6 @@ TEST_P(QuicFramerTest, BuildAckFramePacketMaxAckBlocks) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   std::unique_ptr<QuicPacket> data(BuildDataPacket(header, frames));
@@ -8748,47 +7120,6 @@ TEST_P(QuicFramerTest, BuildAckFramePacketMaxAckBlocks) {
 
   quiche::test::CompareCharArraysWithHexError(
       "constructed packet", data->data(), data->length(), AsChars(p), p_size);
-}
-
-TEST_P(QuicFramerTest, BuildNewStopWaitingPacket) {
-  if (framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
-  QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_CLIENT);
-  QuicPacketHeader header;
-  header.destination_connection_id = FramerTestConnectionId();
-  header.reset_flag = false;
-  header.version_flag = false;
-  header.packet_number = kPacketNumber;
-
-  QuicStopWaitingFrame stop_waiting_frame;
-  stop_waiting_frame.least_unacked = kLeastUnacked;
-
-  QuicFrames frames = {QuicFrame(stop_waiting_frame)};
-
-  // clang-format off
-  unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (stop waiting frame)
-    0x06,
-    // least packet number awaiting an ack, delta from packet number.
-    0x00, 0x00, 0x00, 0x08,
-  };
-
-  // clang-format on
-
-  std::unique_ptr<QuicPacket> data(BuildDataPacket(header, frames));
-  ASSERT_TRUE(data != nullptr);
-
-  quiche::test::CompareCharArraysWithHexError(
-      "constructed packet", data->data(), data->length(), AsChars(packet),
-      ABSL_ARRAYSIZE(packet));
 }
 
 TEST_P(QuicFramerTest, BuildRstFramePacketQuic) {
@@ -8810,25 +7141,6 @@ TEST_P(QuicFramerTest, BuildRstFramePacketQuic) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (rst stream frame)
-    0x01,
-    // stream id
-    0x01, 0x02, 0x03, 0x04,
-    // sent byte offset
-    0x08, 0x07, 0x06, 0x05,
-    0x04, 0x03, 0x02, 0x01,
-    // error code
-    0x05, 0x06, 0x07, 0x08,
-  };
-
-  unsigned char packet46[] = {
     // type (short packet, 4 byte packet number)
     0x43,
     // connection_id
@@ -8876,9 +7188,6 @@ TEST_P(QuicFramerTest, BuildRstFramePacketQuic) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
   QuicEncryptedPacket encrypted(AsChars(p), p_size, false);
 
@@ -8901,27 +7210,6 @@ TEST_P(QuicFramerTest, BuildCloseFramePacket) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (connection close frame)
-    0x02,
-    // error code
-    0x00, 0x00, 0x00, 0x01,
-    // error details length
-    0x00, 0x0d,
-    // error details
-    'b',  'e',  'c',  'a',
-    'u',  's',  'e',  ' ',
-    'I',  ' ',  'c',  'a',
-    'n',
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -8971,9 +7259,6 @@ TEST_P(QuicFramerTest, BuildCloseFramePacket) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   std::unique_ptr<QuicPacket> data(BuildDataPacket(header, frames));
@@ -9005,27 +7290,6 @@ TEST_P(QuicFramerTest, BuildCloseFramePacketExtendedInfo) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (connection close frame)
-    0x02,
-    // error code
-    0x05, 0x06, 0x07, 0x08,
-    // error details length
-    0x00, 0x0d,
-    // error details
-    'b',  'e',  'c',  'a',
-    'u',  's',  'e',  ' ',
-    'I',  ' ',  'c',  'a',
-    'n',
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -9077,9 +7341,6 @@ TEST_P(QuicFramerTest, BuildCloseFramePacketExtendedInfo) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   std::unique_ptr<QuicPacket> data(BuildDataPacket(header, frames));
@@ -9104,55 +7365,6 @@ TEST_P(QuicFramerTest, BuildTruncatedCloseFramePacket) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (connection close frame)
-    0x02,
-    // error code
-    0x00, 0x00, 0x00, 0x01,
-    // error details length
-    0x01, 0x00,
-    // error details (truncated to 256 bytes)
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -9258,9 +7470,6 @@ TEST_P(QuicFramerTest, BuildTruncatedCloseFramePacket) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   std::unique_ptr<QuicPacket> data(BuildDataPacket(header, frames));
@@ -9423,29 +7632,6 @@ TEST_P(QuicFramerTest, BuildGoAwayPacket) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (go away frame)
-    0x03,
-    // error code
-    0x05, 0x06, 0x07, 0x08,
-    // stream id
-    0x01, 0x02, 0x03, 0x04,
-    // error details length
-    0x00, 0x0d,
-    // error details
-    'b',  'e',  'c',  'a',
-    'u',  's',  'e',  ' ',
-    'I',  ' ',  'c',  'a',
-    'n',
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -9469,19 +7655,12 @@ TEST_P(QuicFramerTest, BuildGoAwayPacket) {
   };
 
   // clang-format on
-
-  unsigned char* p = packet;
-  size_t p_size = ABSL_ARRAYSIZE(packet);
-  if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
-  }
-
   std::unique_ptr<QuicPacket> data(BuildDataPacket(header, frames));
   ASSERT_TRUE(data != nullptr);
 
   quiche::test::CompareCharArraysWithHexError(
-      "constructed packet", data->data(), data->length(), AsChars(p), p_size);
+      "constructed packet", data->data(), data->length(), AsChars(packet),
+      ABSL_ARRAYSIZE(packet));
 }
 
 TEST_P(QuicFramerTest, BuildTruncatedGoAwayPacket) {
@@ -9505,57 +7684,6 @@ TEST_P(QuicFramerTest, BuildTruncatedGoAwayPacket) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (go away frame)
-    0x03,
-    // error code
-    0x05, 0x06, 0x07, 0x08,
-    // stream id
-    0x01, 0x02, 0x03, 0x04,
-    // error details length
-    0x01, 0x00,
-    // error details (truncated to 256 bytes)
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-    'A',  'A',  'A',  'A',  'A',  'A',  'A',  'A',
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -9607,18 +7735,12 @@ TEST_P(QuicFramerTest, BuildTruncatedGoAwayPacket) {
   };
   // clang-format on
 
-  unsigned char* p = packet;
-  size_t p_size = ABSL_ARRAYSIZE(packet);
-  if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
-  }
-
   std::unique_ptr<QuicPacket> data(BuildDataPacket(header, frames));
   ASSERT_TRUE(data != nullptr);
 
   quiche::test::CompareCharArraysWithHexError(
-      "constructed packet", data->data(), data->length(), AsChars(p), p_size);
+      "constructed packet", data->data(), data->length(), AsChars(packet),
+      ABSL_ARRAYSIZE(packet));
 }
 
 TEST_P(QuicFramerTest, BuildWindowUpdatePacket) {
@@ -9637,23 +7759,6 @@ TEST_P(QuicFramerTest, BuildWindowUpdatePacket) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (window update frame)
-    0x04,
-    // stream id
-    0x01, 0x02, 0x03, 0x04,
-    // byte offset
-    0x11, 0x22, 0x33, 0x44,
-    0x55, 0x66, 0x77, 0x88,
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -9696,9 +7801,6 @@ TEST_P(QuicFramerTest, BuildWindowUpdatePacket) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   quiche::test::CompareCharArraysWithHexError(
@@ -9818,20 +7920,6 @@ TEST_P(QuicFramerTest, BuildBlockedPacket) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (blocked frame)
-    0x05,
-    // stream id
-    0x01, 0x02, 0x03, 0x04,
-  };
-
-  unsigned char packet46[] = {
     // type (short packet, 4 byte packet number)
     0x43,
     // connection_id
@@ -9868,9 +7956,6 @@ TEST_P(QuicFramerTest, BuildBlockedPacket) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   quiche::test::CompareCharArraysWithHexError(
@@ -9889,18 +7974,6 @@ TEST_P(QuicFramerTest, BuildPingPacket) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (ping frame)
-    0x07,
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -9928,8 +8001,6 @@ TEST_P(QuicFramerTest, BuildPingPacket) {
   unsigned char* p = packet;
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
   }
 
   std::unique_ptr<QuicPacket> data(BuildDataPacket(header, frames));
@@ -9937,8 +8008,7 @@ TEST_P(QuicFramerTest, BuildPingPacket) {
 
   quiche::test::CompareCharArraysWithHexError(
       "constructed packet", data->data(), data->length(), AsChars(p),
-      framer_.version().HasIetfInvariantHeader() ? ABSL_ARRAYSIZE(packet46)
-                                                 : ABSL_ARRAYSIZE(packet));
+      ABSL_ARRAYSIZE(packet));
 }
 
 TEST_P(QuicFramerTest, BuildHandshakeDonePacket) {
@@ -10023,9 +8093,6 @@ TEST_P(QuicFramerTest, BuildAckFrequencyPacket) {
 }
 
 TEST_P(QuicFramerTest, BuildMessagePacket) {
-  if (!VersionSupportsMessageFrames(framer_.transport_version())) {
-    return;
-  }
   QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_CLIENT);
   QuicPacketHeader header;
   header.destination_connection_id = FramerTestConnectionId();
@@ -10038,7 +8105,7 @@ TEST_P(QuicFramerTest, BuildMessagePacket) {
   QuicFrames frames = {QuicFrame(&frame), QuicFrame(&frame2)};
 
   // clang-format off
-  unsigned char packet46[] = {
+  unsigned char packet[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -10079,7 +8146,7 @@ TEST_P(QuicFramerTest, BuildMessagePacket) {
   };
   // clang-format on
 
-  unsigned char* p = packet46;
+  unsigned char* p = packet;
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
   }
@@ -10089,7 +8156,7 @@ TEST_P(QuicFramerTest, BuildMessagePacket) {
 
   quiche::test::CompareCharArraysWithHexError(
       "constructed packet", data->data(), data->length(), AsChars(p),
-      ABSL_ARRAYSIZE(packet46));
+      ABSL_ARRAYSIZE(packet));
 }
 
 // Test that the MTU discovery packet is serialized correctly as a PING packet.
@@ -10105,18 +8172,6 @@ TEST_P(QuicFramerTest, BuildMtuDiscoveryPacket) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (ping frame)
-    0x07,
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -10147,14 +8202,11 @@ TEST_P(QuicFramerTest, BuildMtuDiscoveryPacket) {
   unsigned char* p = packet;
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
   }
 
   quiche::test::CompareCharArraysWithHexError(
       "constructed packet", data->data(), data->length(), AsChars(p),
-      framer_.version().HasIetfInvariantHeader() ? ABSL_ARRAYSIZE(packet46)
-                                                 : ABSL_ARRAYSIZE(packet));
+      ABSL_ARRAYSIZE(packet));
 }
 
 TEST_P(QuicFramerTest, BuildPublicResetPacket) {
@@ -10181,10 +8233,6 @@ TEST_P(QuicFramerTest, BuildPublicResetPacket) {
     0x01, 0xEF, 0xCD, 0xAB,
   };
   // clang-format on
-
-  if (framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
 
   std::unique_ptr<QuicEncryptedPacket> data(
       framer_.BuildPublicResetPacket(reset_packet));
@@ -10229,10 +8277,6 @@ TEST_P(QuicFramerTest, BuildPublicResetPacketWithClientAddress) {
       0x34, 0x12,
   };
   // clang-format on
-
-  if (framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
 
   std::unique_ptr<QuicEncryptedPacket> data(
       framer_.BuildPublicResetPacket(reset_packet));
@@ -10301,10 +8345,6 @@ TEST_P(QuicFramerTest, BuildPublicResetPacketWithEndpointId) {
       0x01, 0xEF, 0xCD, 0xAB,
   };
   // clang-format on
-
-  if (framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
 
   std::unique_ptr<QuicEncryptedPacket> data(
       framer_.BuildPublicResetPacket(reset_packet));
@@ -10415,21 +8455,6 @@ TEST_P(QuicFramerTest, EncryptPacket) {
   QuicPacketNumber packet_number = kPacketNumber;
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x28,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // redundancy
-    'a',  'b',  'c',  'd',
-    'e',  'f',  'g',  'h',
-    'i',  'j',  'k',  'l',
-    'm',  'n',  'o',  'p',
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -10466,8 +8491,6 @@ TEST_P(QuicFramerTest, EncryptPacket) {
   if (framer_.version().HasHeaderProtection()) {
     p = packet50;
     p_size = ABSL_ARRAYSIZE(packet50);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
   }
 
   std::unique_ptr<QuicPacket> raw(new QuicPacket(
@@ -10509,23 +8532,6 @@ TEST_P(QuicFramerTest, EncryptPacketWithVersionFlag) {
   QuicPacketNumber packet_number = kPacketNumber;
   // clang-format off
   unsigned char packet[] = {
-    // public flags (version, 8 byte connection_id)
-    0x29,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // version tag
-    'Q', '.', '1', '0',
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // redundancy
-    'a',  'b',  'c',  'd',
-    'e',  'f',  'g',  'h',
-    'i',  'j',  'k',  'l',
-    'm',  'n',  'o',  'p',
-  };
-
-  unsigned char packet46[] = {
     // type (long header with packet type ZERO_RTT_PROTECTED)
     0xD3,
     // version tag
@@ -10573,9 +8579,6 @@ TEST_P(QuicFramerTest, EncryptPacketWithVersionFlag) {
   if (framer_.version().HasHeaderProtection()) {
     p = packet50;
     p_size = ABSL_ARRAYSIZE(packet50);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   std::unique_ptr<QuicPacket> raw(new QuicPacket(
@@ -10775,43 +8778,6 @@ TEST_P(QuicFramerTest, StopPacketProcessing) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x28,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (stream frame with fin)
-    0xFF,
-    // stream id
-    0x01, 0x02, 0x03, 0x04,
-    // offset
-    0x3A, 0x98, 0xFE, 0xDC,
-    0x32, 0x10, 0x76, 0x54,
-    // data length
-    0x00, 0x0c,
-    // data
-    'h',  'e',  'l',  'l',
-    'o',  ' ',  'w',  'o',
-    'r',  'l',  'd',  '!',
-
-    // frame type (ack frame)
-    0x40,
-    // least packet number awaiting an ack
-    0x12, 0x34, 0x56, 0x78,
-    0x9A, 0xA0,
-    // largest observed packet number
-    0x12, 0x34, 0x56, 0x78,
-    0x9A, 0xBF,
-    // num missing packets
-    0x01,
-    // missing packet
-    0x12, 0x34, 0x56, 0x78,
-    0x9A, 0xBE,
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -10902,9 +8868,6 @@ TEST_P(QuicFramerTest, StopPacketProcessing) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
   QuicEncryptedPacket encrypted(AsChars(p), p_size, false);
   EXPECT_TRUE(framer_.ProcessPacket(encrypted));
@@ -13391,26 +11354,6 @@ TEST_P(QuicFramerTest, AckFrameWithInvalidLargestObserved) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (ack frame)
-    0x45,
-    // largest observed
-    0x00, 0x00,
-    // Zero delta time.
-    0x00, 0x00,
-    // first ack block length.
-    0x00, 0x00,
-    // num timestamps.
-    0x00
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -13456,8 +11399,6 @@ TEST_P(QuicFramerTest, AckFrameWithInvalidLargestObserved) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
   }
 
   QuicEncryptedPacket encrypted(AsChars(p), p_size, false);
@@ -13469,26 +11410,6 @@ TEST_P(QuicFramerTest, FirstAckBlockJustUnderFlow) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (ack frame)
-    0x45,
-    // largest observed
-    0x00, 0x02,
-    // Zero delta time.
-    0x00, 0x00,
-    // first ack block length.
-    0x00, 0x03,
-    // num timestamps.
-    0x00
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -13534,9 +11455,6 @@ TEST_P(QuicFramerTest, FirstAckBlockJustUnderFlow) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   QuicEncryptedPacket encrypted(AsChars(p), p_size, false);
@@ -13549,36 +11467,6 @@ TEST_P(QuicFramerTest, ThirdAckBlockJustUnderflow) {
   SetDecrypterLevel(ENCRYPTION_FORWARD_SECURE);
   // clang-format off
   unsigned char packet[] = {
-    // public flags (8 byte connection_id)
-    0x2C,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x78,
-
-    // frame type (ack frame)
-    0x60,
-    // largest observed
-    0x0A,
-    // Zero delta time.
-    0x00, 0x00,
-    // Num of ack blocks
-    0x02,
-    // first ack block length.
-    0x02,
-    // gap to next block
-    0x01,
-    // ack block length
-    0x01,
-    // gap to next block
-    0x01,
-    // ack block length
-    0x06,
-    // num timestamps.
-    0x00
-  };
-
-  unsigned char packet46[] = {
     // type (short header, 4 byte packet number)
     0x43,
     // connection_id
@@ -13642,9 +11530,6 @@ TEST_P(QuicFramerTest, ThirdAckBlockJustUnderflow) {
   if (VersionHasIetfQuicFrames(framer_.transport_version())) {
     p = packet_ietf;
     p_size = ABSL_ARRAYSIZE(packet_ietf);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_size = ABSL_ARRAYSIZE(packet46);
   }
 
   QuicEncryptedPacket encrypted(AsChars(p), p_size, false);
@@ -14118,20 +12003,6 @@ TEST_P(QuicFramerTest, UndecryptablePacketWithoutDecrypter) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (version included, 8-byte connection ID,
-    // 4-byte packet number)
-    0x28,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x00,
-    // padding frames
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  };
-  unsigned char packet46[] = {
     // public flags (long header with packet type HANDSHAKE and
     // 4-byte packet number)
     0xE3,
@@ -14180,9 +12051,6 @@ TEST_P(QuicFramerTest, UndecryptablePacketWithoutDecrypter) {
     ReviseFirstByteByVersion(packet49);
     p = packet49;
     p_length = ABSL_ARRAYSIZE(packet49);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_length = ABSL_ARRAYSIZE(packet46);
   }
   // First attempt decryption without the handshake crypter.
   EXPECT_FALSE(
@@ -14221,20 +12089,6 @@ TEST_P(QuicFramerTest, UndecryptablePacketWithDecrypter) {
 
   // clang-format off
   unsigned char packet[] = {
-    // public flags (version included, 8-byte connection ID,
-    // 4-byte packet number)
-    0x28,
-    // connection_id
-    0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
-    // packet number
-    0x12, 0x34, 0x56, 0x00,
-    // padding frames
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  };
-  unsigned char packet46[] = {
     // public flags (long header with packet type HANDSHAKE and
     // 4-byte packet number)
     0xE3,
@@ -14283,9 +12137,6 @@ TEST_P(QuicFramerTest, UndecryptablePacketWithDecrypter) {
     ReviseFirstByteByVersion(packet49);
     p = packet49;
     p_length = ABSL_ARRAYSIZE(packet49);
-  } else if (framer_.version().HasIetfInvariantHeader()) {
-    p = packet46;
-    p_length = ABSL_ARRAYSIZE(packet46);
   }
 
   EXPECT_FALSE(
@@ -14814,9 +12665,6 @@ TEST_P(QuicFramerTest, CoalescedPacketWithZeroesRoundTrip) {
 }
 
 TEST_P(QuicFramerTest, ClientReceivesWrongVersion) {
-  if (!framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
   QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_CLIENT);
 
   // clang-format off
@@ -14906,9 +12754,6 @@ TEST_P(QuicFramerTest, PacketHeaderWithVariableLengthConnectionId) {
 }
 
 TEST_P(QuicFramerTest, MultiplePacketNumberSpaces) {
-  if (!framer_.version().HasIetfInvariantHeader()) {
-    return;
-  }
   framer_.EnableMultiplePacketNumberSpacesSupport();
 
   // clang-format off
@@ -15020,7 +12865,7 @@ TEST_P(QuicFramerTest, IetfRetryPacketRejected) {
   }
 
   // clang-format off
-  PacketFragments packet46 = {
+  PacketFragments packet = {
     // public flags (IETF Retry packet, 0-length original destination CID)
     {"Unable to read first byte.",
      {0xf0}},
@@ -15034,16 +12879,15 @@ TEST_P(QuicFramerTest, IetfRetryPacketRejected) {
   // clang-format on
 
   std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(packet46));
+      AssemblePacketFromFragments(packet));
 
   EXPECT_FALSE(framer_.ProcessPacket(*encrypted));
   EXPECT_THAT(framer_.error(), IsError(QUIC_INVALID_PACKET_HEADER));
-  CheckFramingBoundaries(packet46, QUIC_INVALID_PACKET_HEADER);
+  CheckFramingBoundaries(packet, QUIC_INVALID_PACKET_HEADER);
 }
 
 TEST_P(QuicFramerTest, RetryPacketRejectedWithMultiplePacketNumberSpaces) {
-  if (!framer_.version().HasIetfInvariantHeader() ||
-      framer_.version().SupportsRetry()) {
+  if (framer_.version().SupportsRetry()) {
     return;
   }
   framer_.EnableMultiplePacketNumberSpacesSupport();
@@ -15067,84 +12911,6 @@ TEST_P(QuicFramerTest, RetryPacketRejectedWithMultiplePacketNumberSpaces) {
 
   EXPECT_FALSE(framer_.ProcessPacket(*encrypted));
   EXPECT_THAT(framer_.error(), IsError(QUIC_INVALID_PACKET_HEADER));
-  CheckFramingBoundaries(packet, QUIC_INVALID_PACKET_HEADER);
-}
-
-TEST_P(QuicFramerTest, ProcessPublicHeaderNoVersionInferredType) {
-  // The framer needs to have Perspective::IS_SERVER and configured to infer the
-  // packet header type from the packet (not the version). The framer's version
-  // needs to be one that uses the IETF packet format.
-  if (!framer_.version().KnowsWhichDecrypterToUse()) {
-    return;
-  }
-  QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_SERVER);
-
-  // Prepare a packet that uses the Google QUIC packet header but has no version
-  // field.
-
-  // clang-format off
-  PacketFragments packet = {
-    // public flags (1-byte packet number, 8-byte connection_id, no version)
-    {"Unable to read public flags.",
-     {0x08}},
-    // connection_id
-    {"Unable to read ConnectionId.",
-     {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-    // packet number
-    {"Unable to read packet number.",
-     {0x01}},
-    // padding
-    {"Invalid public header type for expected version.",
-     {0x00}},
-  };
-  // clang-format on
-
-  PacketFragments& fragments = packet;
-
-  std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(fragments));
-
-  EXPECT_FALSE(framer_.ProcessPacket(*encrypted));
-  EXPECT_THAT(framer_.error(), IsError(QUIC_INVALID_PACKET_HEADER));
-  EXPECT_EQ("Invalid public header type for expected version.",
-            framer_.detailed_error());
-  CheckFramingBoundaries(fragments, QUIC_INVALID_PACKET_HEADER);
-}
-
-TEST_P(QuicFramerTest, ProcessMismatchedHeaderVersion) {
-  // The framer needs to have Perspective::IS_SERVER and configured to infer the
-  // packet header type from the packet (not the version). The framer's version
-  // needs to be one that uses the IETF packet format.
-  if (!framer_.version().KnowsWhichDecrypterToUse()) {
-    return;
-  }
-  QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_SERVER);
-
-  // clang-format off
-  PacketFragments packet = {
-    // public flags (Google QUIC header with version present)
-    {"Unable to read public flags.",
-     {0x09}},
-    // connection_id
-    {"Unable to read ConnectionId.",
-     {0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}},
-    // version tag
-    {"Unable to read protocol version.",
-     {QUIC_VERSION_BYTES}},
-    // packet number
-    {"Unable to read packet number.",
-     {0x01}},
-  };
-  // clang-format on
-
-  std::unique_ptr<QuicEncryptedPacket> encrypted(
-      AssemblePacketFromFragments(packet));
-  framer_.ProcessPacket(*encrypted);
-
-  EXPECT_FALSE(framer_.ProcessPacket(*encrypted));
-  EXPECT_THAT(framer_.error(), IsError(QUIC_INVALID_PACKET_HEADER));
-  EXPECT_EQ("Invalid public header type for expected version.",
-            framer_.detailed_error());
   CheckFramingBoundaries(packet, QUIC_INVALID_PACKET_HEADER);
 }
 
@@ -15446,10 +13212,6 @@ TEST_P(QuicFramerTest, WriteServerVersionNegotiationProbeResponse) {
 }
 
 TEST_P(QuicFramerTest, ClientConnectionIdFromLongHeaderToClient) {
-  if (!framer_.version().HasIetfInvariantHeader()) {
-    // This test requires an IETF long header.
-    return;
-  }
   SetDecrypterLevel(ENCRYPTION_HANDSHAKE);
   QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_CLIENT);
   // clang-format off
@@ -15515,10 +13277,6 @@ TEST_P(QuicFramerTest, ClientConnectionIdFromLongHeaderToClient) {
 }
 
 TEST_P(QuicFramerTest, ClientConnectionIdFromLongHeaderToServer) {
-  if (!framer_.version().HasIetfInvariantHeader()) {
-    // This test requires an IETF long header.
-    return;
-  }
   SetDecrypterLevel(ENCRYPTION_HANDSHAKE);
   QuicFramerPeer::SetPerspective(&framer_, Perspective::IS_SERVER);
   // clang-format off
@@ -15588,10 +13346,6 @@ TEST_P(QuicFramerTest, ClientConnectionIdFromLongHeaderToServer) {
 }
 
 TEST_P(QuicFramerTest, ProcessAndValidateIetfConnectionIdLengthClient) {
-  if (!framer_.version().HasIetfInvariantHeader()) {
-    // This test requires an IETF long header.
-    return;
-  }
   char connection_id_lengths = 0x05;
   QuicDataReader reader(&connection_id_lengths, 1);
 
@@ -15626,10 +13380,6 @@ TEST_P(QuicFramerTest, ProcessAndValidateIetfConnectionIdLengthClient) {
 }
 
 TEST_P(QuicFramerTest, ProcessAndValidateIetfConnectionIdLengthServer) {
-  if (!framer_.version().HasIetfInvariantHeader()) {
-    // This test requires an IETF long header.
-    return;
-  }
   char connection_id_lengths = 0x50;
   QuicDataReader reader(&connection_id_lengths, 1);
 
@@ -16428,12 +14178,7 @@ TEST_P(QuicFramerTest, ShortHeaderWithNonDefaultConnectionIdLength) {
     0x00, 0x00, 0x00, 0x00
   };
   MockConnectionIdGenerator generator;
-  if (version_.HasIetfInvariantHeader()) {
     EXPECT_CALL(generator, ConnectionIdLength(0x28)).WillOnce(Return(9));
-  } else {
-    packet[0] = 0x0a;
-    EXPECT_CALL(generator, ConnectionIdLength(_)).Times(0);
-  }
   unsigned char* p = packet;
   size_t p_size = ABSL_ARRAYSIZE(packet);
 
@@ -16463,13 +14208,8 @@ TEST_P(QuicFramerTest, ShortHeaderWithNonDefaultConnectionIdLength) {
           &use_length_prefix, &version_label, &parsed_version,
           &destination_connection_id, &source_connection_id, &retry_token,
           &detailed_error, generator));
-  if (version_.HasIetfInvariantHeader()) {
-    EXPECT_EQ(format, IETF_QUIC_SHORT_HEADER_PACKET);
-    EXPECT_EQ(destination_connection_id.length(), 9);
-  } else {
-    EXPECT_EQ(format, GOOGLE_QUIC_PACKET);
-    EXPECT_EQ(destination_connection_id.length(), 8);
-  }
+  EXPECT_EQ(format, IETF_QUIC_SHORT_HEADER_PACKET);
+  EXPECT_EQ(destination_connection_id.length(), 9);
   EXPECT_EQ(long_packet_type, INVALID_PACKET_TYPE);
   EXPECT_FALSE(version_flag);
   EXPECT_FALSE(use_length_prefix);
@@ -16529,12 +14269,8 @@ TEST_P(QuicFramerTest, ReportEcnCountsIfPresent) {
     EXPECT_CALL(visitor, OnDecryptedPacket(_, _)).Times(1);
     EXPECT_CALL(visitor, OnAckFrameStart(_, _)).Times(1).WillOnce(Return(true));
     EXPECT_CALL(visitor, OnAckRange(_, _)).Times(1).WillOnce(Return(true));
-    if (GetQuicRestartFlag(quic_receive_ecn) && ecn_marks) {
-      EXPECT_CALL(visitor, OnAckEcnCounts(_)).Times(1);
-    } else {
-      EXPECT_CALL(visitor, OnAckEcnCounts(_)).Times(0);
-    }
-    EXPECT_CALL(visitor, OnAckFrameEnd(_)).Times(1).WillOnce(Return(true));
+    EXPECT_CALL(visitor, OnAckFrameEnd(_, ack_frame.ecn_counters))
+        .Times(1).WillOnce(Return(true));
     EXPECT_CALL(visitor, OnPacketComplete()).Times(1);
     ASSERT_TRUE(framer_.ProcessPacket(
                     QuicEncryptedPacket(buffer, encrypted_length, false)));

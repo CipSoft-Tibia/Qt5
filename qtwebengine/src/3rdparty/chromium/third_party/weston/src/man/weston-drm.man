@@ -2,9 +2,7 @@
 .SH NAME
 weston-drm \- the DRM backend for Weston
 .SH SYNOPSIS
-.B weston-launch
-.LP
-.B weston --backend=drm-backend.so
+.B weston --backend=drm
 .
 .\" ***************************************************************
 .SH DESCRIPTION
@@ -33,19 +31,6 @@ the first DRM device returned by
 .BR udev (7).
 Combining multiple graphics devices is not supported yet.
 
-The DRM backend relies on
-.B weston-launch
-for managing input device access and DRM master status, so that
-.B weston
-can be run without root privileges. On switching away from the
-virtual terminal (VT) hosting Weston, all input devices are closed and
-the DRM master capability is dropped, so that other servers,
-including
-.BR Xorg (1),
-can run on other VTs. On switching back to Weston's VT, input devices
-and DRM master are re-acquired through the parent process
-.BR weston-launch .
-
 The DRM backend also supports virtual outputs that are transmitted over
 an RTP session as a series of JPEG images (RTP payload type 26) to a remote
 client. Virtual outputs are configured in the
@@ -58,6 +43,32 @@ section of
 .
 The DRM backend uses the following entries from
 .BR weston.ini .
+.SS Section core
+.TP
+\fBgbm-format\fR=\fIformat\fR
+Sets the default pixel format for DRM KMS framebuffers.
+.IR Format " can be"
+.BR xrgb8888 ", " xrgb2101010 ", " rgb565
+or others. Weston recognizes the names of most pixel formats defined by
+the kernel DRM subsystem in
+.B drm_fourcc.h
+header without the DRM_FORMAT_ prefix.
+The actually supported pixel formats depend on the DRM driver and hardware,
+and the renderer used. Using Pixman-renderer, DRM-backend supports
+.BR xrgb8888 ", " xrgb2101010 ", " rgb565
+and some of their permutations.
+The formats supported with GL-renderer depend on the EGL and OpenGL ES 2 or 3
+implementations. The names are case-insensitive. This setting applies only to
+.RB "outputs in SDR mode, see " eotf-mode " in " weston.ini (5).
+
+.RB "If not specified, " xrgb8888 " is used. See also " gbm-format " in"
+.BR output " section."
+.TP
+\fBpageflip-timeout\fR=\fImilliseconds\fR
+sets Weston's pageflip timeout in milliseconds.  This sets a timer to exit
+gracefully with a log message and an exit code of 1 in case the DRM driver is
+non-responsive.  Setting it to 0 disables this feature.
+
 .SS Section output
 .TP
 \fBname\fR=\fIconnector\fR
@@ -123,6 +134,14 @@ and possibly flipped. Possible values are
 .BR flipped ", " flipped-rotate-90 ", " flipped-rotate-180 ", and "
 .BR flipped-rotate-270 .
 .TP
+\fBgbm-format\fR=\fIformat\fR
+Set the DRM KMS framebuffer format for this specific output. If not set,
+.RB "the value from " gbm-format " option in " core " section is used"
+.RB "for SDR mode outputs and " xrgb2101010 " for other modes."
+.RI "For the possible values for " format " see "
+.BR gbm-format " option in " core " section."
+.RB "For SDR mode, see " eotf-mode " in " weston.ini (7).
+.TP
 \fBpixman-shadow\fR=\fIboolean\fR
 If using the Pixman-renderer, use shadow framebuffers. Defaults to
 .BR true .
@@ -146,6 +165,15 @@ Defaults to false. Note that
 When a connector is disconnected, there is no EDID information to provide
 a list of video modes. Therefore a forced output should also have a
 detailed mode line specified.
+.TP
+\fBmax-bpc\fR=\fIN\fR
+.RB "Set \(dq" "max bpc" "\(dq KMS property to value"
+.IR N ,
+silenty clamped to the hardware driver supported range. This artificially
+limits the driver chosen link bits-per-channel which may be useful for working
+around sink hardware (e.g. monitor) limitations. The default is 16 which is
+practically unlimited. If you need to work around hardware issues, try a lower
+value like 8. A value of 0 means that the current max bpc will be reprogrammed.
 
 .SS Section remote-output
 .TP
@@ -201,11 +229,6 @@ Use graphics and input devices designated for seat
 instead of the seat defined in the environment variable
 .BR XDG_SEAT ". If neither is specified, seat0 will be assumed."
 .TP
-\fB\-\-tty\fR=\fIx\fR
-Launch Weston on tty
-.I x
-instead of using the current tty.
-.TP
 .B \-\-continue\-without\-input
 Allow Weston to start without input devices. Used for testing purposes.
 .
@@ -218,23 +241,10 @@ The minimum libinput verbosity level to be printed to Weston's log.
 Valid values are
 .BR debug ", " info ", and " error ". Default is " info .
 .TP
-.B WESTON_TTY_FD
-The file descriptor (integer) of the opened tty where
-.B weston
-will run. Set by
-.BR weston-launch .
-.TP
-.B WESTON_LAUNCHER_SOCK
-The file descriptor (integer) where
-.B weston-launch
-is listening. Automatically set by
-.BR weston-launch .
-.TP
 .B XDG_SEAT
 The seat Weston will start on, unless overridden on the command line.
 .
 .\" ***************************************************************
 .SH "SEE ALSO"
 .BR weston (1)
-.\".BR weston-launch (1),
 .\".BR weston.ini (5)

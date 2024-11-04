@@ -11,7 +11,7 @@ QT_BEGIN_NAMESPACE
     \inmodule QtOpcUa
     \brief The OPC UA SimpleAttributeOperand type.
 
-    The SimpleAttributeOperand is specified in OPC-UA part 4, 7.4.4.5.
+    The SimpleAttributeOperand is specified in OPC UA 1.05 part 4, 7.7.4.5.
     It is used when a node attribute is required as operand.
 
     For example, the following simple attribute operand represents the value
@@ -60,7 +60,7 @@ QOpcUaSimpleAttributeOperand::QOpcUaSimpleAttributeOperand(const QString &name, 
 
 /*!
     Constructs a simple attribute operand for the attribute \a attributeId of an object or variable of type \a typeId.
-    This can be used for requesting the ConditionId in an event filter as described in OPC-UA part 9, Table 8.
+    This can be used for requesting the ConditionId in an event filter as described in OPC UA 1.05 part 9, 5.5.2.
 */
 QOpcUaSimpleAttributeOperand::QOpcUaSimpleAttributeOperand(QOpcUa::NodeAttribute attributeId, const QString &typeId)
     : data(new QOpcUaSimpleAttributeOperandData)
@@ -80,12 +80,16 @@ QOpcUaSimpleAttributeOperand &QOpcUaSimpleAttributeOperand::operator=(const QOpc
 }
 
 /*!
-    Returns \c true if this simple attribute operand has the same value as \a rhs.
+    \fn bool QOpcUaSimpleAttributeOperand::operator==(const QOpcUaSimpleAttributeOperand &lhs,
+                                                      const QOpcUaSimpleAttributeOperand &rhs)
+
+    Returns \c true if \a lhs has the same value as \a rhs.
 */
-bool QOpcUaSimpleAttributeOperand::operator==(const QOpcUaSimpleAttributeOperand &rhs) const
+bool comparesEqual(const QOpcUaSimpleAttributeOperand &lhs,
+                   const QOpcUaSimpleAttributeOperand &rhs) noexcept
 {
-    return attributeId() == rhs.attributeId() && browsePath() == rhs.browsePath() &&
-            indexRange() == rhs.indexRange() && typeId() == rhs.typeId();
+    return lhs.attributeId() == rhs.attributeId() && rhs.browsePath() == rhs.browsePath() &&
+            lhs.indexRange() == rhs.indexRange() && lhs.typeId() == rhs.typeId();
 }
 
 /*!
@@ -173,5 +177,13 @@ void QOpcUaSimpleAttributeOperand::setTypeId(const QString &typeId)
 {
     data->typeId = typeId;
 }
+
+/*!
+    \fn bool QOpcUaSimpleAttributeOperand::operator!=(const QOpcUaSimpleAttributeOperand &lhs,
+                                                      const QOpcUaSimpleAttributeOperand &rhs)
+    \since 6.7
+
+    Returns \c true if \a lhs has a different value than \a rhs.
+*/
 
 QT_END_NAMESPACE

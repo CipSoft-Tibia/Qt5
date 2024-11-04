@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "base/check_is_test.h"
+#include "base/gtest_prod_util.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "base/time/time.h"
@@ -20,8 +21,11 @@
 #include "components/permissions/permission_uma_util.h"
 #include "components/permissions/request_type.h"
 #include "content/public/browser/global_routing_id.h"
+#include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "ui/gfx/geometry/rect.h"
 
 class GURL;
 
@@ -72,8 +76,9 @@ class PermissionRequestManager
       public content::WebContentsUserData<PermissionRequestManager>,
       public PermissionPrompt::Delegate {
  public:
-  class Observer {
+  class Observer : public base::CheckedObserver {
    public:
+    virtual void OnTabVisibilityChanged(content::Visibility visibility) {}
     virtual void OnPromptAdded() {}
     virtual void OnPromptRemoved() {}
     // Called when recreation of the permission prompt is not possible. It means
@@ -95,9 +100,6 @@ class PermissionRequestManager
     virtual void OnNavigation(content::NavigationHandle* navigation_handle) {}
 
     virtual void OnRequestDecided(permissions::PermissionAction action) {}
-
-   protected:
-    virtual ~Observer() = default;
   };
 
   enum AutoResponseType { NONE, ACCEPT_ONCE, ACCEPT_ALL, DENY_ALL, DISMISS };
@@ -161,6 +163,7 @@ class PermissionRequestManager
   void Deny() override;
   void Dismiss() override;
   void Ignore() override;
+  void OpenHelpCenterLink(const ui::Event& event) override;
   void PreIgnoreQuietPrompt() override;
   bool WasCurrentRequestAlreadyDisplayed() override;
   bool ShouldDropCurrentRequestIfCannotShowQuietly() const override;
@@ -173,7 +176,12 @@ class PermissionRequestManager
   void SetManageClicked() override;
   void SetLearnMoreClicked() override;
   base::WeakPtr<PermissionPrompt::Delegate> GetWeakPtr() override;
+  content::WebContents* GetAssociatedWebContents() override;
   bool RecreateView() override;
+
+  // Returns the bounds of the active permission prompt view if we're
+  // displaying one.
+  absl::optional<gfx::Rect> GetPromptBubbleViewBoundsInScreen() const;
 
   void set_manage_clicked() { did_click_manage_ = true; }
   void set_learn_more_clicked() { did_click_learn_more_ = true; }
@@ -238,7 +246,11 @@ class PermissionRequestManager
     enabled_app_level_notification_permission_for_testing_ = enabled;
   }
 
-  base::ObserverList<Observer>::Unchecked* get_observer_list_for_testing() {
+  void set_embedding_origin_for_testing(const GURL& embedding_origin) {
+    embedding_origin_for_testing_ = embedding_origin;
+  }
+
+  base::ObserverList<Observer>* get_observer_list_for_testing() {
     CHECK_IS_TEST();
     return &observer_list_;
   }
@@ -359,6 +371,7 @@ class PermissionRequestManager
   // Calls RequestFinished on a request and all its duplicates.
   void RequestFinishedIncludingDuplicates(PermissionRequest* request);
 
+  void NotifyTabVisibilityChanged(content::Visibility visibility);
   void NotifyPromptAdded();
   void NotifyPromptRemoved();
   void NotifyPromptRecreateFailed();
@@ -427,8 +440,8 @@ class PermissionRequestManager
   // not prempt a request if the incoming request is already validated.
   std::set<PermissionRequest*> validated_requests_set_;
 
-  base::ObserverList<Observer>::Unchecked observer_list_;
-  AutoResponseType auto_response_for_test_;
+  base::ObserverList<Observer> observer_list_;
+  AutoResponseType auto_response_for_test_ = NONE;
 
   // Suppress notification permission prompts in this tab, regardless of the
   // origin requesting the permission.
@@ -494,6 +507,8 @@ class PermissionRequestManager
   absl::optional<base::TimeDelta> time_to_decision_for_test_;
 
   absl::optional<bool> enabled_app_level_notification_permission_for_testing_;
+
+  absl::optional<GURL> embedding_origin_for_testing_;
 
   // A timer is used to pre-ignore the permission request if it's been displayed
   // as a quiet chip.

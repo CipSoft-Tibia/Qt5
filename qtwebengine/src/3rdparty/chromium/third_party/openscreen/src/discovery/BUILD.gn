@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -20,7 +20,12 @@ source_set("public") {
     "dnssd/public/dns_sd_service.h",
     "dnssd/public/dns_sd_txt_record.h",
     "mdns/public/mdns_constants.h",
+    "mdns/public/mdns_domain_confirmed_provider.h",
+    "mdns/public/mdns_reader.h",
+    "mdns/public/mdns_record_changed_callback.h",
+    "mdns/public/mdns_records.h",
     "mdns/public/mdns_service.h",
+    "mdns/public/mdns_writer.h",
     "public/dns_sd_service_factory.h",
     "public/dns_sd_service_publisher.h",
     "public/dns_sd_service_watcher.h",
@@ -30,46 +35,38 @@ source_set("public") {
     "dnssd/public/dns_sd_instance.cc",
     "dnssd/public/dns_sd_instance_endpoint.cc",
     "dnssd/public/dns_sd_txt_record.cc",
+    "mdns/public/mdns_reader.cc",
+    "mdns/public/mdns_records.cc",
     "mdns/public/mdns_service.cc",
+    "mdns/public/mdns_writer.cc",
   ]
   public_deps = [ "../platform" ]
   deps = [ "../util" ]
   friend = [ ":unittests" ]
 }
 
-# TODO(https://issuetracker.google.com/issues/194234872):
-# Move implementation files to impl/
 source_set("mdns") {
   visibility += [ "..:gn_all" ]
-  public = [
-    "mdns/mdns_domain_confirmed_provider.h",
-    "mdns/mdns_record_changed_callback.h",
-    "mdns/mdns_records.h",
-  ]
+  public = []
   sources = [
-    "mdns/mdns_probe.cc",
-    "mdns/mdns_probe.h",
-    "mdns/mdns_probe_manager.cc",
-    "mdns/mdns_probe_manager.h",
-    "mdns/mdns_publisher.cc",
-    "mdns/mdns_publisher.h",
-    "mdns/mdns_querier.cc",
-    "mdns/mdns_querier.h",
-    "mdns/mdns_reader.cc",
-    "mdns/mdns_reader.h",
-    "mdns/mdns_receiver.cc",
-    "mdns/mdns_receiver.h",
-    "mdns/mdns_records.cc",
-    "mdns/mdns_responder.cc",
-    "mdns/mdns_responder.h",
-    "mdns/mdns_sender.cc",
-    "mdns/mdns_sender.h",
-    "mdns/mdns_service_impl.cc",
-    "mdns/mdns_service_impl.h",
-    "mdns/mdns_trackers.cc",
-    "mdns/mdns_trackers.h",
-    "mdns/mdns_writer.cc",
-    "mdns/mdns_writer.h",
+    "mdns/impl/mdns_probe.cc",
+    "mdns/impl/mdns_probe.h",
+    "mdns/impl/mdns_probe_manager.cc",
+    "mdns/impl/mdns_probe_manager.h",
+    "mdns/impl/mdns_publisher.cc",
+    "mdns/impl/mdns_publisher.h",
+    "mdns/impl/mdns_querier.cc",
+    "mdns/impl/mdns_querier.h",
+    "mdns/impl/mdns_receiver.cc",
+    "mdns/impl/mdns_receiver.h",
+    "mdns/impl/mdns_responder.cc",
+    "mdns/impl/mdns_responder.h",
+    "mdns/impl/mdns_sender.cc",
+    "mdns/impl/mdns_sender.h",
+    "mdns/impl/mdns_service_impl.cc",
+    "mdns/impl/mdns_service_impl.h",
+    "mdns/impl/mdns_trackers.cc",
+    "mdns/impl/mdns_trackers.h",
   ]
 
   public_deps = [ "../third_party/abseil" ]
@@ -167,18 +164,18 @@ source_set("unittests") {
     "dnssd/public/dns_sd_instance_endpoint_unittest.cc",
     "dnssd/public/dns_sd_instance_unittest.cc",
     "dnssd/public/dns_sd_txt_record_unittest.cc",
-    "mdns/mdns_probe_manager_unittest.cc",
-    "mdns/mdns_probe_unittest.cc",
-    "mdns/mdns_publisher_unittest.cc",
-    "mdns/mdns_querier_unittest.cc",
-    "mdns/mdns_random_unittest.cc",
-    "mdns/mdns_reader_unittest.cc",
-    "mdns/mdns_receiver_unittest.cc",
-    "mdns/mdns_records_unittest.cc",
-    "mdns/mdns_responder_unittest.cc",
-    "mdns/mdns_sender_unittest.cc",
-    "mdns/mdns_trackers_unittest.cc",
-    "mdns/mdns_writer_unittest.cc",
+    "mdns/impl/mdns_probe_manager_unittest.cc",
+    "mdns/impl/mdns_probe_unittest.cc",
+    "mdns/impl/mdns_publisher_unittest.cc",
+    "mdns/impl/mdns_querier_unittest.cc",
+    "mdns/impl/mdns_random_unittest.cc",
+    "mdns/impl/mdns_receiver_unittest.cc",
+    "mdns/impl/mdns_responder_unittest.cc",
+    "mdns/impl/mdns_sender_unittest.cc",
+    "mdns/impl/mdns_trackers_unittest.cc",
+    "mdns/public/mdns_reader_unittest.cc",
+    "mdns/public/mdns_records_unittest.cc",
+    "mdns/public/mdns_writer_unittest.cc",
     "public/dns_sd_service_watcher_unittest.cc",
   ]
 
@@ -198,7 +195,7 @@ source_set("unittests") {
 openscreen_fuzzer_test("mdns_fuzzer") {
   visibility += [ "..:fuzzer_tests_all" ]
   public = []
-  sources = [ "mdns/mdns_reader_fuzztest.cc" ]
+  sources = [ "mdns/public/mdns_reader_fuzztest.cc" ]
 
   deps = [
     ":mdns",

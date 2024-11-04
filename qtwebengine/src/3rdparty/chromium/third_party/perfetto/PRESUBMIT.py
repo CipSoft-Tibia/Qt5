@@ -77,6 +77,7 @@ def CheckChange(input, output):
   results += RunAndReportIfLong(CheckMergedTraceConfigProto, input, output)
   results += RunAndReportIfLong(CheckProtoEventList, input, output)
   results += RunAndReportIfLong(CheckBannedCpp, input, output)
+  results += RunAndReportIfLong(CheckBadCppPatterns, input, output)
   results += RunAndReportIfLong(CheckSqlModules, input, output)
   results += RunAndReportIfLong(CheckSqlMetrics, input, output)
   results += RunAndReportIfLong(CheckTestData, input, output)
@@ -93,6 +94,10 @@ def CheckChangeOnCommit(input_api, output_api):
 
 
 def CheckBuild(input_api, output_api):
+  # The script invocation doesn't work on Windows.
+  if input_api.is_windows:
+    return []
+
   tool = 'tools/gen_bazel'
 
   # If no GN files were modified, bail out.
@@ -111,6 +116,10 @@ def CheckBuild(input_api, output_api):
 
 
 def CheckAndroidBlueprint(input_api, output_api):
+  # The script invocation doesn't work on Windows.
+  if input_api.is_windows:
+    return []
+
   tool = 'tools/gen_android_bp'
 
   # If no GN files were modified, bail out.
@@ -129,6 +138,10 @@ def CheckAndroidBlueprint(input_api, output_api):
 
 
 def CheckIncludeGuards(input_api, output_api):
+  # The script invocation doesn't work on Windows.
+  if input_api.is_windows:
+    return []
+
   tool = 'tools/fix_include_guards'
 
   def file_filter(x):
@@ -192,7 +205,30 @@ def CheckBannedCpp(input_api, output_api):
   return errors
 
 
+def CheckBadCppPatterns(input_api, output_api):
+  bad_patterns = [
+      (r'.*/tracing_service_impl[.]cc$', r'\btrigger_config\(\)',
+       'Use GetTriggerMode(session->config) rather than .trigger_config()'),
+  ]
+  errors = []
+  for file_regex, code_regex, message in bad_patterns:
+    filt = lambda x: input_api.FilterSourceFile(x, files_to_check=[file_regex])
+    for f in input_api.AffectedSourceFiles(filt):
+      for line_number, line in f.ChangedContents():
+        if input_api.re.search(r'^\s*//', line):
+          continue  # Skip comments
+        if input_api.re.search(code_regex, line):
+          errors.append(
+              output_api.PresubmitError('{}:{} {}'.format(
+                  f.LocalPath(), line_number, message)))
+  return errors
+
+
 def CheckIncludeViolations(input_api, output_api):
+  # The script invocation doesn't work on Windows.
+  if input_api.is_windows:
+    return []
+
   tool = 'tools/check_include_violations'
 
   def file_filter(x):
@@ -207,6 +243,10 @@ def CheckIncludeViolations(input_api, output_api):
 
 
 def CheckBinaryDescriptors(input_api, output_api):
+  # The script invocation doesn't work on Windows.
+  if input_api.is_windows:
+    return []
+
   tool = 'tools/gen_binary_descriptors'
 
   def file_filter(x):
@@ -224,6 +264,10 @@ def CheckBinaryDescriptors(input_api, output_api):
 
 
 def CheckMergedTraceConfigProto(input_api, output_api):
+  # The script invocation doesn't work on Windows.
+  if input_api.is_windows:
+    return []
+
   tool = 'tools/gen_merged_protos'
 
   def build_file_filter(x):
@@ -257,6 +301,10 @@ def CheckProtoEventList(input_api, output_api):
 
 
 def CheckProtoComments(input_api, output_api):
+  # The script invocation doesn't work on Windows.
+  if input_api.is_windows:
+    return []
+
   tool = 'tools/check_proto_comments'
 
   def file_filter(x):
@@ -271,6 +319,10 @@ def CheckProtoComments(input_api, output_api):
 
 
 def CheckSqlModules(input_api, output_api):
+  # The script invocation doesn't work on Windows.
+  if input_api.is_windows:
+    return []
+
   tool = 'tools/check_sql_modules.py'
 
   def file_filter(x):
@@ -285,6 +337,10 @@ def CheckSqlModules(input_api, output_api):
 
 
 def CheckSqlMetrics(input_api, output_api):
+  # The script invocation doesn't work on Windows.
+  if input_api.is_windows:
+    return []
+
   tool = 'tools/check_sql_metrics.py'
 
   def file_filter(x):
@@ -299,6 +355,10 @@ def CheckSqlMetrics(input_api, output_api):
 
 
 def CheckTestData(input_api, output_api):
+  # The script invocation doesn't work on Windows.
+  if input_api.is_windows:
+    return []
+
   tool = 'tools/test_data'
   if subprocess.call([tool, 'status', '--quiet']):
     return [
@@ -313,6 +373,10 @@ def CheckTestData(input_api, output_api):
 
 
 def CheckAmalgamatedPythonTools(input_api, output_api):
+  # The script invocation doesn't work on Windows.
+  if input_api.is_windows:
+    return []
+
   tool = 'tools/gen_amalgamated_python_tools'
 
   # If no GN files were modified, bail out.

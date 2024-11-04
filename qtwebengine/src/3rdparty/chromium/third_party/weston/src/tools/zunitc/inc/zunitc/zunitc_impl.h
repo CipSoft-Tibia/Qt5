@@ -77,7 +77,7 @@ struct zuc_registration {
 	zucimpl_test_fn fn;		/**< function implementing base test. */
 	zucimpl_test_fn_f fn_f;	/**< function implementing test with
 					   fixture. */
-} __attribute__ ((aligned (32)));
+} __attribute__ ((aligned (64)));
 
 
 int

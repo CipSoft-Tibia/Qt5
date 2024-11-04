@@ -8,8 +8,6 @@
 #include "base/numerics/safe_conversions.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "components/power_scheduler/power_mode.h"
-#include "components/power_scheduler/power_mode_arbiter.h"
 #include "services/network/public/cpp/url_loader_completion_status.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
@@ -17,6 +15,7 @@
 #include "third_party/blink/public/common/chrome_debug_urls.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/frame/frame_owner_element_type.h"
+#include "third_party/blink/public/mojom/devtools/console_message.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/devtools/inspector_issue.mojom-blink.h"
 #include "third_party/blink/public/mojom/frame/frame_owner_properties.mojom-blink.h"
 #include "third_party/blink/public/mojom/frame/media_player_action.mojom-blink.h"
@@ -30,7 +29,9 @@
 #include "third_party/blink/renderer/bindings/core/v8/script_controller.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_evaluation_result.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_function.h"
+#include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/element_traversal.h"
+#include "third_party/blink/renderer/core/dom/focus_params.h"
 #include "third_party/blink/renderer/core/dom/ignore_opens_during_unload_count_incrementer.h"
 #include "third_party/blink/renderer/core/editing/editing_utilities.h"
 #include "third_party/blink/renderer/core/editing/frame_selection.h"
@@ -48,6 +49,7 @@
 #include "third_party/blink/renderer/core/frame/savable_resources.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
 #include "third_party/blink/renderer/core/fullscreen/fullscreen.h"
+#include "third_party/blink/renderer/core/fullscreen/scoped_allow_fullscreen.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/core/html/html_link_element.h"
 #include "third_party/blink/renderer/core/html/html_meta_element.h"
@@ -73,6 +75,7 @@
 #include "third_party/blink/renderer/platform/widget/frame_widget.h"
 
 #if BUILDFLAG(IS_MAC)
+#include "base/apple/foundation_util.h"
 #include "third_party/blink/renderer/core/editing/substring_util.h"
 #include "third_party/blink/renderer/platform/fonts/mac/attributed_string_type_converter.h"
 #include "ui/base/mojom/attributed_string.mojom-blink.h"
@@ -166,7 +169,7 @@ HitTestResult HitTestResultForRootFramePos(
       frame->View()->ConvertFromRootFrame(pos_in_root_frame));
   HitTestResult result = frame->GetEventHandler().HitTestResultAtLocation(
       location, HitTestRequest::kReadOnly | HitTestRequest::kActive);
-  result.SetToShadowHostIfInRestrictedShadowRoot();
+  result.SetToShadowHostIfInUAShadowRoot();
   return result;
 }
 
@@ -322,10 +325,7 @@ void ActiveURLMessageFilter::DidDispatchOrReject(mojo::Message* message,
 }
 
 LocalFrameMojoHandler::LocalFrameMojoHandler(blink::LocalFrame& frame)
-    : frame_(frame),
-      script_execution_power_mode_voter_(
-          power_scheduler::PowerModeArbiter::GetInstance()->NewVoter(
-              "PowerModeVoter.ScriptExecutionVoter")) {
+    : frame_(frame) {
   frame.GetRemoteNavigationAssociatedInterfaces()->GetInterface(
       back_forward_cache_controller_host_remote_.BindNewEndpointAndPassReceiver(
           frame.GetTaskRunner(TaskType::kInternalDefault)));
@@ -728,7 +728,7 @@ void LocalFrameMojoHandler::AdvanceFocusForIME(
     return;
 
   next_element->scrollIntoViewIfNeeded(true /*centerIfNeeded*/);
-  next_element->Focus();
+  next_element->Focus(FocusParams(FocusTrigger::kUserGesture));
 }
 
 void LocalFrameMojoHandler::ReportContentSecurityPolicyViolation(
@@ -803,8 +803,6 @@ void LocalFrameMojoHandler::JavaScriptMethodExecuteRequest(
 
   v8::HandleScope handle_scope(ToIsolate(frame_));
   v8::Local<v8::Value> result;
-  script_execution_power_mode_voter_->VoteFor(
-      power_scheduler::PowerMode::kScriptExecution);
   if (!CallMethodOnFrame(frame_, object_name, method_name, std::move(arguments),
                          converter.get())
            .ToLocal(&result)) {
@@ -816,9 +814,6 @@ void LocalFrameMojoHandler::JavaScriptMethodExecuteRequest(
   } else {
     std::move(callback).Run({});
   }
-
-  script_execution_power_mode_voter_->ResetVoteAfterTimeout(
-      power_scheduler::PowerModeVoter::kScriptExecutionTimeout);
 }
 
 void LocalFrameMojoHandler::JavaScriptExecuteRequest(
@@ -827,9 +822,6 @@ void LocalFrameMojoHandler::JavaScriptExecuteRequest(
     JavaScriptExecuteRequestCallback callback) {
   TRACE_EVENT_INSTANT0("test_tracing", "JavaScriptExecuteRequest",
                        TRACE_EVENT_SCOPE_THREAD);
-
-  script_execution_power_mode_voter_->VoteFor(
-      power_scheduler::PowerMode::kScriptExecution);
 
   v8::HandleScope handle_scope(ToIsolate(frame_));
   v8::Local<v8::Value> result =
@@ -849,9 +841,6 @@ void LocalFrameMojoHandler::JavaScriptExecuteRequest(
   } else {
     std::move(callback).Run({});
   }
-
-  script_execution_power_mode_voter_->ResetVoteAfterTimeout(
-      power_scheduler::PowerModeVoter::kScriptExecutionTimeout);
 }
 
 void LocalFrameMojoHandler::JavaScriptExecuteRequestForTests(
@@ -936,9 +925,6 @@ void LocalFrameMojoHandler::JavaScriptExecuteRequestInIsolatedWorld(
     return;
   }
 
-  script_execution_power_mode_voter_->VoteFor(
-      power_scheduler::PowerMode::kScriptExecution);
-
   WebScriptSource web_script_source(javascript);
   frame_->RequestExecuteScript(
       world_id, {&web_script_source, 1u},
@@ -956,9 +942,6 @@ void LocalFrameMojoHandler::JavaScriptExecuteRequestInIsolatedWorld(
           ? mojom::blink::WantResultOption::kWantResultDateAndRegExpAllowed
           : mojom::blink::WantResultOption::kNoResult,
       mojom::blink::PromiseResultOption::kDoNotWait);
-
-  script_execution_power_mode_voter_->ResetVoteAfterTimeout(
-      power_scheduler::PowerModeVoter::kScriptExecutionTimeout);
 }
 
 #if BUILDFLAG(IS_MAC)
@@ -1002,11 +985,13 @@ void LocalFrameMojoHandler::GetStringForRange(
     GetStringForRangeCallback callback) {
   gfx::Point baseline_point;
   ui::mojom::blink::AttributedStringPtr attributed_string = nullptr;
-  NSAttributedString* string = SubstringUtil::AttributedSubstringInRange(
-      frame_, base::checked_cast<WTF::wtf_size_t>(range.start()),
-      base::checked_cast<WTF::wtf_size_t>(range.length()), baseline_point);
-  if (string)
-    attributed_string = ui::mojom::blink::AttributedString::From(string);
+  base::apple::ScopedCFTypeRef<CFAttributedStringRef> string =
+      SubstringUtil::AttributedSubstringInRange(
+          frame_, base::checked_cast<WTF::wtf_size_t>(range.start()),
+          base::checked_cast<WTF::wtf_size_t>(range.length()), baseline_point);
+  if (string) {
+    attributed_string = ui::mojom::blink::AttributedString::From(string.get());
+  }
 
   std::move(callback).Run(std::move(attributed_string), baseline_point);
 }
@@ -1265,14 +1250,16 @@ void LocalFrameMojoHandler::ZoomToFindInPageRect(
 void LocalFrameMojoHandler::InstallCoopAccessMonitor(
     const FrameToken& accessed_window,
     network::mojom::blink::CrossOriginOpenerPolicyReporterParamsPtr
-        coop_reporter_params) {
+        coop_reporter_params,
+    bool is_in_same_virtual_coop_related_group) {
   blink::Frame* accessed_frame = Frame::ResolveFrame(accessed_window);
   // The Frame might have been deleted during the cross-process communication.
   if (!accessed_frame)
     return;
 
   accessed_frame->DomWindow()->InstallCoopAccessMonitor(
-      frame_, std::move(coop_reporter_params));
+      frame_, std::move(coop_reporter_params),
+      is_in_same_virtual_coop_related_group);
 }
 
 void LocalFrameMojoHandler::OnPortalActivated(
@@ -1377,7 +1364,7 @@ void LocalFrameMojoHandler::AddResourceTimingEntryForFailedSubframeNavigation(
   response.SetEncodedDataLength(completion_status.encoded_data_length);
   response.SetHttpStatusCode(response_code);
   if (!normalized_server_timing.empty()) {
-    response.SetHttpHeaderField("Server-Timing",
+    response.SetHttpHeaderField(http_names::kServerTiming,
                                 AtomicString(normalized_server_timing));
   }
 
@@ -1388,6 +1375,21 @@ void LocalFrameMojoHandler::AddResourceTimingEntryForFailedSubframeNavigation(
   info->is_secure_transport = is_secure_transport;
   info->timing = std::move(load_timing_info);
   subframe->Owner()->AddResourceTiming(std::move(info));
+}
+
+void LocalFrameMojoHandler::RequestFullscreenDocumentElement() {
+  // Bail early and report failure if fullscreen is not enabled.
+  if (!Fullscreen::FullscreenEnabled(*frame_->GetDocument(),
+                                     ReportOptions::kReportOnFailure)) {
+    return;
+  }
+  if (auto* document_element = frame_->GetDocument()->documentElement()) {
+    // `kWindowOpen` assumes this function is only invoked for newly created
+    // windows (e.g. fullscreen popups). Update this if additional callers are
+    // added. See: https://chromestatus.com/feature/6002307972464640
+    ScopedAllowFullscreen allow_fullscreen(ScopedAllowFullscreen::kWindowOpen);
+    Fullscreen::RequestFullscreen(*document_element);
+  }
 }
 
 void LocalFrameMojoHandler::RequestFullscreenVideoElement() {

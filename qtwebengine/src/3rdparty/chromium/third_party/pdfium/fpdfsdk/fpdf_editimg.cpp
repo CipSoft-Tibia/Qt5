@@ -24,6 +24,7 @@
 #include "core/fpdfapi/render/cpdf_renderstatus.h"
 #include "core/fxcrt/stl_util.h"
 #include "core/fxge/cfx_defaultrenderdevice.h"
+#include "core/fxge/dib/cfx_dibitmap.h"
 #include "fpdfsdk/cpdfsdk_customaccess.h"
 #include "fpdfsdk/cpdfsdk_helpers.h"
 
@@ -405,5 +406,24 @@ FPDFImageObj_GetImageMetadata(FPDF_PAGEOBJECT image_object,
     metadata->colorspace =
         static_cast<int>(pSource->GetColorSpace()->GetFamily());
   }
+  return true;
+}
+
+FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV
+FPDFImageObj_GetImagePixelSize(FPDF_PAGEOBJECT image_object,
+                               unsigned int* width,
+                               unsigned int* height) {
+  CPDF_ImageObject* pImgObj = CPDFImageObjectFromFPDFPageObject(image_object);
+  if (!pImgObj || !width || !height) {
+    return false;
+  }
+
+  RetainPtr<CPDF_Image> pImg = pImgObj->GetImage();
+  if (!pImg) {
+    return false;
+  }
+
+  *width = pImg->GetPixelWidth();
+  *height = pImg->GetPixelHeight();
   return true;
 }

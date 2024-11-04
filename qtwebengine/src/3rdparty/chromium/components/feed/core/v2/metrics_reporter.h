@@ -89,7 +89,10 @@ class MetricsReporter {
   void StreamScrollStart();
 
   // Called when the Feed surface is opened and closed.
-  void SurfaceOpened(const StreamType& stream_type, SurfaceId surface_id);
+  void SurfaceOpened(const StreamType& stream_type,
+                     SurfaceId surface_id,
+                     SingleWebFeedEntryPoint single_web_feed_entry_point =
+                         SingleWebFeedEntryPoint::kOther);
   void SurfaceClosed(SurfaceId surface_id);
 
   // Network metrics.
@@ -103,21 +106,14 @@ class MetricsReporter {
 
   struct LoadStreamResultSummary {
     LoadStreamResultSummary();
-    LoadStreamResultSummary(
-        LoadStreamStatus load_from_store_status,
-        LoadStreamStatus final_status,
-        bool is_initial_load,
-        bool loaded_new_content_from_network,
-        base::TimeDelta stored_content_age,
-        ContentOrder content_order,
-        absl::optional<feedstore::Metadata::StreamMetadata> stream_metadata);
+    LoadStreamResultSummary(const LoadStreamResultSummary& src);
     ~LoadStreamResultSummary();
-    LoadStreamStatus load_from_store_status;
-    LoadStreamStatus final_status;
-    bool is_initial_load;
-    bool loaded_new_content_from_network;
+    LoadStreamStatus load_from_store_status = LoadStreamStatus::kNoStatus;
+    LoadStreamStatus final_status = LoadStreamStatus::kNoStatus;
+    bool is_initial_load = false;
+    bool loaded_new_content_from_network = false;
     base::TimeDelta stored_content_age;
-    ContentOrder content_order;
+    ContentOrder content_order = ContentOrder::kUnspecified;
     absl::optional<feedstore::Metadata::StreamMetadata> stream_metadata;
   };
   virtual void OnLoadStream(const StreamType& stream_type,
@@ -140,6 +136,7 @@ class MetricsReporter {
   void OnEnterBackground();
 
   static void OnImageFetched(const GURL& url, int net_error_or_http_status);
+  static void OnResourceFetched(int net_error_or_http_status);
 
   // Actions upload.
   static void OnUploadActionsBatch(UploadActionsBatchStatus status);
@@ -222,7 +219,7 @@ class MetricsReporter {
   StreamStats& ForStream(const StreamType& stream_type);
 
   raw_ptr<PrefService> profile_prefs_;
-  raw_ptr<Delegate> delegate_ = nullptr;
+  raw_ptr<Delegate, DanglingUntriaged> delegate_ = nullptr;
 
   StreamStats for_you_stats_;
   StreamStats web_feed_stats_;

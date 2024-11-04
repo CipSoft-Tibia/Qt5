@@ -54,6 +54,8 @@
 #elif defined(__AVX__)
   // 32 bytes static alignment is preferred only if really required
   #define EIGEN_IDEAL_MAX_ALIGN_BYTES 32
+#elif defined __HVX__ && (__HVX_LENGTH__ == 128)
+  #define EIGEN_IDEAL_MAX_ALIGN_BYTES 128
 #else
   #define EIGEN_IDEAL_MAX_ALIGN_BYTES 16
 #endif
@@ -416,6 +418,12 @@
 #define EIGEN_VECTORIZE_MSA
 #include <msa.h>
 #endif
+
+#elif defined __HVX__ && (__HVX_LENGTH__ == 128)
+
+#define EIGEN_VECTORIZE
+#define EIGEN_VECTORIZE_HVX
+#include <hexagon_types.h>
 
 #endif
 #endif

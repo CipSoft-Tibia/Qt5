@@ -12,6 +12,7 @@ ts_library("application") {
     "BackgroundServiceView_test.ts",
     "DOMStorageModel_test.ts",
     "IndexedDBModel_test.ts",
+    "IndexedDBViews_test.ts",
     "InterestGroupStorageView_test.ts",
     "InterestGroupTreeElement_test.ts",
     "PreloadingTreeElement_test.ts",
@@ -25,14 +26,17 @@ ts_library("application") {
     "SharedStorageListTreeElement_test.ts",
     "SharedStorageModel_test.ts",
     "SharedStorageTreeElement_test.ts",
+    "StorageBucketsModel_test.ts",
+    "StorageBucketsTreeElement_test.ts",
     "StorageView_test.ts",
-    "TrustTokensTreeElement_test.ts",
     "preloading/PreloadingView_test.ts",
   ]
 
   deps = [
     "../../../../../front_end/core/sdk:bundle",
     "../../../../../front_end/panels/application:bundle",
+    "../../../../../front_end/ui/components/render_coordinator:bundle",
+    "../../helpers",
     "./components",
     "./preloading/components",
   ]

@@ -16,7 +16,12 @@
 // Up to 10 minutes, with 100 buckets.
 #define PAGE_LOAD_HISTOGRAM(name, sample)                          \
   UMA_HISTOGRAM_CUSTOM_TIMES(name, sample, base::Milliseconds(10), \
-                             base::Minutes(10), 100)
+                             base::Minutes(10), 100)               \
+                                                                   \
+// 1 ms to 1 minute, with 100 buckets.
+#define PAGE_LOAD_SHORT_HISTOGRAM(name, sample)                   \
+  UMA_HISTOGRAM_CUSTOM_TIMES(name, sample, base::Milliseconds(1), \
+                             base::Minutes(1), 100)
 
 // Up to 1 hour, with 100 buckets.
 #define PAGE_LOAD_LONG_HISTOGRAM(name, sample)                     \
@@ -220,6 +225,10 @@ bool IsGoogleSearchResultUrl(const GURL& url);
 
 // Whether the given url is a Google Search redirector URL.
 bool IsGoogleSearchRedirectorUrl(const GURL& url);
+
+// Whether the given url has a domain from a known list that can serve
+// zstd content-coded responses.
+bool IsZstdUrl(const GURL& url);
 
 // Whether the given query string contains the given component. The query
 // parameter should contain the query string of a URL (the portion following

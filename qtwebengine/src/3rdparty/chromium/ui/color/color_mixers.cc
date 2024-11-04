@@ -14,20 +14,19 @@
 
 namespace ui {
 
-void AddColorMixers(ColorProvider* provider,
-                    const ColorProviderManager::Key& key) {
+void AddColorMixers(ColorProvider* provider, const ColorProviderKey& key) {
   AddRefColorMixer(provider, key);
   // TODO(tluk): Determine the correct place to insert the sys color mixer.
   AddSysColorMixer(provider, key);
   AddCoreDefaultColorMixer(provider, key);
   AddNativeCoreColorMixer(provider, key);
   AddUiColorMixer(provider, key);
-  AddNativeUiColorMixer(provider, key);
   if (features::IsChromeRefresh2023()) {
     // This must come after the UI and native UI mixers to ensure leaf node
     // colors are overridden with GM3 recipes when the refresh flag is enabled.
     AddMaterialUiColorMixer(provider, key);
   }
+  AddNativeUiColorMixer(provider, key);
   AddNativePostprocessingMixer(provider, key);
 }
 

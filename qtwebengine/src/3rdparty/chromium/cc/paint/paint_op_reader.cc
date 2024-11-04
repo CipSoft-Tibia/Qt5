@@ -22,6 +22,7 @@
 #include "base/rand_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/types/optional_util.h"
+#include "cc/paint/color_filter.h"
 #include "cc/paint/image_transfer_cache_entry.h"
 #include "cc/paint/paint_cache.h"
 #include "cc/paint/paint_flags.h"
@@ -34,11 +35,18 @@
 #include "cc/paint/transfer_cache_deserialize_helper.h"
 #include "components/crash/core/common/crash_key.h"
 #include "third_party/skia/include/core/SkColorSpace.h"
+#include "third_party/skia/include/core/SkImage.h"
 #include "third_party/skia/include/core/SkPath.h"
 #include "third_party/skia/include/core/SkRRect.h"
+#include "third_party/skia/include/core/SkScalar.h"
 #include "third_party/skia/include/core/SkSerialProcs.h"
-#include "third_party/skia/include/private/chromium/GrSlug.h"
+#include "third_party/skia/include/effects/SkHighContrastFilter.h"
+#include "third_party/skia/include/private/SkGainmapInfo.h"
 #include "third_party/skia/include/private/chromium/SkChromeRemoteGlyphCache.h"
+#include "third_party/skia/include/private/chromium/Slug.h"
+#include "ui/gfx/hdr_metadata.h"
+#include "ui/gfx/mojom/hdr_metadata.mojom.h"
+#include "ui/gfx/mojom/hdr_metadata_mojom_traits.h"
 
 namespace cc {
 namespace {
@@ -182,8 +190,15 @@ void PaintOpReader::ReadData(size_t bytes, void* data) {
 void PaintOpReader::ReadSize(size_t* size) {
   // size_t is always serialized as uint64_t to make the serialized result
   // portable between 32bit and 64bit processes.
-  uint64_t size64 = 0;
-  ReadSimple(&size64);
+  uint32_t lo = 0u;
+  uint32_t hi = 0u;
+  ReadSimple(&lo);
+  ReadSimple(&hi);
+
+  // size_t is always aligned to only 4 bytes. Avoid undefined behavior by
+  // reading as two uint32_ts and combining the result.
+  // https://crbug.com/1429994
+  uint64_t size64 = static_cast<uint64_t>(hi) << 32 | lo;
   *size = base::checked_cast<size_t>(size64);
 }
 
@@ -221,6 +236,13 @@ void PaintOpReader::Read(SkRRect* rect) {
 
 void PaintOpReader::Read(SkColor4f* color) {
   ReadSimple(color);
+  // Colors are generally [0, 1], sometimes with a wider gamut, but
+  // infinite and NaN colors don't make sense and shouldn't be produced by a
+  // renderer, so encountering a non-finite color implies the paint op buffer
+  // is invalid.
+  if (valid_ && !SkScalarsAreFinite(color->vec(), 4)) {
+    SetInvalid(DeserializationError::kNonFiniteSkColor4f);
+  }
 }
 
 void PaintOpReader::Read(SkPath* path) {
@@ -277,7 +299,7 @@ void PaintOpReader::Read(SkPath* path) {
 }
 
 void PaintOpReader::Read(PaintFlags* flags) {
-  ReadSimple(&flags->color_);
+  Read(&flags->color_);
   Read(&flags->width_);
   Read(&flags->miter_limit_);
 
@@ -289,8 +311,7 @@ void PaintOpReader::Read(PaintFlags* flags) {
                   DeserializationError::kSkPathEffectUnflattenFailure);
   ReadFlattenable(&flags->mask_filter_, SkMaskFilter::Deserialize,
                   DeserializationError::kSkMaskFilterUnflattenFailure);
-  ReadFlattenable(&flags->color_filter_, SkColorFilter::Deserialize,
-                  DeserializationError::kSkColorFilterUnflattenFailure);
+  Read(&flags->color_filter_);
 
   if (enable_security_constraints_) {
     size_t bytes = 0;
@@ -330,6 +351,9 @@ void PaintOpReader::Read(PaintImage* image) {
       case PaintOp::SerializedImageType::kImageData: {
         SkColorType color_type;
         Read(&color_type);
+        if (!valid_) {
+          return;
+        }
         // Color types requiring alignment larger than kDefaultAlignment is not
         // supported.
         if (static_cast<size_t>(SkColorTypeBytesPerPixel(color_type)) >
@@ -361,7 +385,7 @@ void PaintOpReader::Read(PaintImage* image) {
 
         *image = PaintImageBuilder::WithDefault()
                      .set_id(PaintImage::GetNextId())
-                     .set_texture_image(SkImage::MakeRasterCopy(pixmap),
+                     .set_texture_image(SkImages::RasterFromPixmapCopy(pixmap),
                                         PaintImage::kNonLazyStableId)
                      .TakePaintImage();
       }
@@ -494,7 +518,31 @@ void PaintOpReader::Read(sk_sp<SkColorSpace>* color_space) {
   DidRead(size);
 }
 
-void PaintOpReader::Read(sk_sp<GrSlug>* slug) {
+void PaintOpReader::Read(SkGainmapInfo* gainmap_info) {
+  Read(&gainmap_info->fGainmapRatioMin);
+  Read(&gainmap_info->fGainmapRatioMax);
+  Read(&gainmap_info->fGainmapGamma);
+  Read(&gainmap_info->fEpsilonSdr);
+  Read(&gainmap_info->fEpsilonHdr);
+  Read(&gainmap_info->fDisplayRatioSdr);
+  Read(&gainmap_info->fDisplayRatioHdr);
+  Read(&gainmap_info->fDisplayRatioHdr);
+  uint32_t base_image_type = 0;
+  Read(&base_image_type);
+  switch (base_image_type) {
+    case 0:
+      gainmap_info->fBaseImageType = SkGainmapInfo::BaseImageType::kSDR;
+      break;
+    case 1:
+      gainmap_info->fBaseImageType = SkGainmapInfo::BaseImageType::kHDR;
+      break;
+    default:
+      SetInvalid(DeserializationError::kSkGainmapInfoDeserializationFailure);
+      break;
+  }
+}
+
+void PaintOpReader::Read(sk_sp<sktext::gpu::Slug>* slug) {
   AssertFieldAlignment();
 
   size_t data_bytes = 0u;
@@ -505,16 +553,16 @@ void PaintOpReader::Read(sk_sp<GrSlug>* slug) {
   }
 
   if (remaining_bytes_ < data_bytes) {
-    SetInvalid(DeserializationError::kInsufficientRemainingBytes_Read_GrSlug);
+    SetInvalid(DeserializationError::kInsufficientRemainingBytes_Read_Slug);
     return;
   }
 
-  *slug = GrSlug::Deserialize(const_cast<const char*>(memory_), data_bytes,
-                              options_->strike_client);
+  *slug = sktext::gpu::Slug::Deserialize(const_cast<const char*>(memory_),
+                                         data_bytes, options_->strike_client);
   DidRead(data_bytes);
 
   if (!*slug) {
-    SetInvalid(DeserializationError::kGrSlugDeserializeFailure);
+    SetInvalid(DeserializationError::kSlugDeserializeFailure);
     return;
   }
 }
@@ -724,6 +772,29 @@ void PaintOpReader::Read(gpu::Mailbox* mailbox) {
   ReadData(sizeof(gpu::Mailbox::Name), (*mailbox).name);
 }
 
+void PaintOpReader::Read(SkHighContrastConfig* config) {
+  ReadSimple(&config->fGrayscale);
+  ReadEnum<SkHighContrastConfig::InvertStyle,
+           SkHighContrastConfig::InvertStyle::kLast>(&config->fInvertStyle);
+  ReadSimple(&config->fContrast);
+}
+
+void PaintOpReader::Read(gfx::HDRMetadata* hdr_metadata) {
+  size_t size = 0;
+  ReadSize(&size);
+  if (remaining_bytes_ < size) {
+    valid_ = false;
+  }
+  if (!valid_ || size == 0) {
+    return;
+  }
+  uint8_t* scratch = CopyScratchSpace(size);
+  if (!gfx::mojom::HDRMetadata::Deserialize(scratch, size, hdr_metadata)) {
+    SetInvalid(DeserializationError::kHdrMetadataDeserializeFailure);
+  }
+  DidRead(size);
+}
+
 void PaintOpReader::Read(scoped_refptr<SkottieWrapper>* skottie) {
   if (!options_->is_privileged) {
     valid_ = false;
@@ -794,6 +865,19 @@ const volatile void* PaintOpReader::ExtractReadableMemory(size_t bytes) {
   const volatile void* extracted_memory = memory_;
   DidRead(bytes);
   return extracted_memory;
+}
+
+void PaintOpReader::Read(sk_sp<ColorFilter>* filter) {
+  ColorFilter::Type type;
+  ReadEnum(&type);
+  if (!valid_) {
+    return;
+  }
+  if (type == ColorFilter::Type::kNull) {
+    *filter = nullptr;
+    return;
+  }
+  *filter = ColorFilter::Deserialize(*this, type);
 }
 
 void PaintOpReader::Read(sk_sp<PaintFilter>* filter) {
@@ -893,14 +977,11 @@ void PaintOpReader::Read(sk_sp<PaintFilter>* filter) {
 void PaintOpReader::ReadColorFilterPaintFilter(
     sk_sp<PaintFilter>* filter,
     const absl::optional<PaintFilter::CropRect>& crop_rect) {
-  sk_sp<SkColorFilter> color_filter;
+  sk_sp<ColorFilter> color_filter;
   sk_sp<PaintFilter> input;
 
-  ReadFlattenable(&color_filter, SkColorFilter::Deserialize,
-                  DeserializationError::kSkColorFilterUnflattenFailure);
+  Read(&color_filter);
   Read(&input);
-  if (!color_filter)
-    SetInvalid(DeserializationError::kZeroSkColorFilterBytes);
   if (!valid_)
     return;
   filter->reset(new ColorFilterPaintFilter(std::move(color_filter),
@@ -956,16 +1037,19 @@ void PaintOpReader::ReadDropShadowPaintFilter(
 void PaintOpReader::ReadMagnifierPaintFilter(
     sk_sp<PaintFilter>* filter,
     const absl::optional<PaintFilter::CropRect>& crop_rect) {
-  SkRect src_rect = SkRect::MakeEmpty();
+  SkRect lens_bounds = SkRect::MakeEmpty();
+  SkScalar zoom_amount = 1.f;
   SkScalar inset = 0.f;
   sk_sp<PaintFilter> input;
 
-  Read(&src_rect);
+  Read(&lens_bounds);
+  Read(&zoom_amount);
   Read(&inset);
   Read(&input);
   if (!valid_)
     return;
-  filter->reset(new MagnifierPaintFilter(src_rect, inset, std::move(input),
+  filter->reset(new MagnifierPaintFilter(lens_bounds, zoom_amount, inset,
+                                         std::move(input),
                                          base::OptionalToPtr(crop_rect)));
 }
 
@@ -986,18 +1070,13 @@ void PaintOpReader::ReadAlphaThresholdPaintFilter(
     sk_sp<PaintFilter>* filter,
     const absl::optional<PaintFilter::CropRect>& crop_rect) {
   SkRegion region;
-  SkScalar inner_min = 0.f;
-  SkScalar outer_max = 0.f;
   sk_sp<PaintFilter> input;
 
   Read(&region);
-  ReadSimple(&inner_min);
-  ReadSimple(&outer_max);
   Read(&input);
   if (!valid_)
     return;
-  filter->reset(new AlphaThresholdPaintFilter(region, inner_min, outer_max,
-                                              std::move(input),
+  filter->reset(new AlphaThresholdPaintFilter(region, std::move(input),
                                               base::OptionalToPtr(crop_rect)));
 }
 
@@ -1456,9 +1535,10 @@ inline void PaintOpReader::DidRead(size_t bytes_read) {
   // All data are aligned with PaintOpWriter::kDefaultAlignment at least.
   size_t aligned_bytes =
       base::bits::AlignUp(bytes_read, PaintOpWriter::kDefaultAlignment);
-  memory_ += aligned_bytes;
   DCHECK_LE(aligned_bytes, remaining_bytes_);
-  remaining_bytes_ -= aligned_bytes;
+  bytes_read = std::min(aligned_bytes, remaining_bytes_);
+  memory_ += bytes_read;
+  remaining_bytes_ -= bytes_read;
 }
 
 }  // namespace cc

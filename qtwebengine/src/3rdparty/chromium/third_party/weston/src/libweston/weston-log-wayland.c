@@ -59,7 +59,7 @@ struct weston_log_debug_wayland {
 static struct weston_log_debug_wayland *
 to_weston_log_debug_wayland(struct weston_log_subscriber *sub)
 {
-        return container_of(sub, struct weston_log_debug_wayland, base);
+	return container_of(sub, struct weston_log_debug_wayland, base);
 }
 
 static void

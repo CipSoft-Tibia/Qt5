@@ -34,9 +34,13 @@
 #  include "private/qshortcutmap_p.h"
 #endif
 
+#include <QtCore/qpointer.h>
+
 #include <memory>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcVirtualKeyboard)
 
 class QColorTrcLut;
 class QPlatformIntegration;
@@ -113,7 +117,8 @@ public:
     static void processEnterEvent(QWindowSystemInterfacePrivate::EnterEvent *e);
     static void processLeaveEvent(QWindowSystemInterfacePrivate::LeaveEvent *e);
 
-    static void processActivatedEvent(QWindowSystemInterfacePrivate::ActivatedWindowEvent *e);
+    static void processFocusWindowEvent(QWindowSystemInterfacePrivate::FocusWindowEvent *e);
+
     static void processWindowStateChangedEvent(QWindowSystemInterfacePrivate::WindowStateChangedEvent *e);
     static void processWindowScreenChangedEvent(QWindowSystemInterfacePrivate::WindowScreenChangedEvent *e);
     static void processWindowDevicePixelRatioChangedEvent(QWindowSystemInterfacePrivate::WindowDevicePixelRatioChangedEvent *e);
@@ -161,6 +166,9 @@ public:
     static bool processNativeEvent(QWindow *window, const QByteArray &eventType, void *message, qintptr *result);
 
     static bool sendQWindowEventToQPlatformWindow(QWindow *window, QEvent *event);
+
+    static bool maybeForwardEventToVirtualKeyboard(QEvent *e);
+    static bool isUsingVirtualKeyboard();
 
     static inline Qt::Alignment visualAlignment(Qt::LayoutDirection direction, Qt::Alignment alignment)
     {

@@ -85,19 +85,14 @@ constexpr MatchParams kDefaultMatchParams = kDefaultMatchParamsWith<>;
 // MatchingPatterns (see GetMatchPatterns()), which holds several hundred
 // objects.
 // Using packed DenseSets reduces the size of the struct by 40 to 24 on 64 bit
-// platforms, and from 20 to 16 bytes on 32 bit platforms. The pragma saves
-// another 2 bytes.
-#pragma pack(push, 1)
+// platforms, and from 20 to 16 bytes on 32 bit platforms.
 struct MatchingPattern {
   const char16_t* positive_pattern;
   const char16_t* negative_pattern;
   const float positive_score = 1.1;
-  const DenseSet<MatchAttribute, MatchAttribute::kMaxValue, /*packed=*/true>
-      match_field_attributes;
-  const DenseSet<MatchFieldType, MatchFieldType::kMaxValue, /*packed=*/true>
-      match_field_input_types;
+  const DenseSet<MatchAttribute> match_field_attributes;
+  const DenseSet<MatchFieldType> match_field_input_types;
 };
-#pragma pack(pop)
 
 }  // namespace autofill
 

@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 import("//build/config/linux/pkg_config.gni")
+import("//build/config/cronet/config.gni")
 import("//build/config/nacl/config.gni")
 import("//build/shim_headers.gni")
 
@@ -41,28 +42,32 @@ static_library("bundled_libevent") {
   ]
 
   defines = [ "HAVE_CONFIG_H" ]
-
+  if (is_cronet_build) {
+    include_dirs = [ "compat" ]
+  } else {
+    include_dirs = []
+  }
   if (is_apple) {
     sources += [
       "kqueue.c",
       "mac/config.h",
       "mac/event-config.h",
     ]
-    include_dirs = [ "mac" ]
+    include_dirs += [ "mac" ]
   } else if (is_linux || is_chromeos) {
     sources += [
       "epoll.c",
       "linux/config.h",
       "linux/event-config.h",
     ]
-    include_dirs = [ "linux" ]
+    include_dirs += [ "linux" ]
   } else if (is_android) {
     sources += [
       "android/config.h",
       "android/event-config.h",
       "epoll.c",
     ]
-    include_dirs = [ "android" ]
+    include_dirs += [ "android" ]
   }
 
   if (!is_debug) {

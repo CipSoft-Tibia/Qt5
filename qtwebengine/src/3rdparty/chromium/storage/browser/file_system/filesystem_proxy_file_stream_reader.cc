@@ -13,6 +13,7 @@
 #include "base/location.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/task/task_runner.h"
+#include "base/types/expected_macros.h"
 #include "base/types/pass_key.h"
 #include "net/base/file_stream.h"
 #include "net/base/io_buffer.h"
@@ -222,21 +223,15 @@ void FilesystemProxyFileStreamReader::DidGetFileInfoForGetLength(
                           file_was_found);
   }
 
-  if (!result.has_value()) {
-    std::move(callback).Run(net::FileErrorToNetError(result.error()));
-    return;
-  }
-
-  const auto& file_info = result.value();
-  if (file_info.is_directory) {
-    std::move(callback).Run(net::ERR_FILE_NOT_FOUND);
-    return;
-  }
-  if (!VerifySnapshotTime(expected_modification_time_, file_info)) {
-    std::move(callback).Run(net::ERR_UPLOAD_FILE_CHANGED);
-    return;
-  }
-  std::move(callback).Run(file_info.size);
+  std::move(callback).Run([&]() -> int64_t {
+    ASSIGN_OR_RETURN(const auto& file_info, result, net::FileErrorToNetError);
+    if (file_info.is_directory) {
+      return net::ERR_FILE_NOT_FOUND;
+    }
+    return VerifySnapshotTime(expected_modification_time_, file_info)
+               ? file_info.size
+               : net::ERR_UPLOAD_FILE_CHANGED;
+  }());
 }
 
 void FilesystemProxyFileStreamReader::OnRead(int read_result) {

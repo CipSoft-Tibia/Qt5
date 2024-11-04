@@ -277,7 +277,6 @@ bool QProcessPrivate::openChannel(Channel &channel)
             setErrorAndEmit(QProcess::FailedToStart,
                             QProcess::tr("Could not open output redirection for writing"));
         }
-        cleanup();
         return false;
     }
     case Channel::PipeSource: {
@@ -539,9 +538,9 @@ void QProcessPrivate::startProcess()
     q->setProcessState(QProcess::Starting);
 
     if (!openChannels()) {
-        QString errorString = QProcess::tr("Process failed to start: %1").arg(qt_error_string());
+        // openChannel sets the error string
+        Q_ASSERT(!errorString.isEmpty());
         cleanup();
-        setErrorAndEmit(QProcess::FailedToStart, errorString);
         return;
     }
 

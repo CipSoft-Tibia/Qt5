@@ -48,6 +48,3 @@ tagfile                 = qtquick3dphysics.tags
 
 # Highlighted examples in Data Visualization & 3D category
 manifestmeta.highlighted.names = "QtQuick3DPhysics/Qt Quick 3D Physics - CharacterController Example"
-
-# Fail the documentation build if there are more warnings than the limit
-warninglimit = 0

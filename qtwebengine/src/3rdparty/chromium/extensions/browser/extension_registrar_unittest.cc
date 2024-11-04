@@ -27,9 +27,13 @@
 #include "base/test/scoped_feature_list.h"
 #include "chrome/browser/ash/crosapi/browser_util.h"
 #include "chrome/common/pref_names.h"  // nogncheck
+#include "chromeos/ash/components/standalone_browser/feature_refs.h"
 #include "chromeos/ash/components/standalone_browser/lacros_availability.h"
+#include "components/account_id/account_id.h"  // nogncheck
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/testing_pref_service.h"
+#include "components/user_manager/fake_user_manager.h"
+#include "components/user_manager/scoped_user_manager.h"
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 namespace extensions {
@@ -50,14 +54,6 @@ class TestExtensionSystem : public MockExtensionSystem {
   TestExtensionSystem& operator=(const TestExtensionSystem&) = delete;
 
   ~TestExtensionSystem() override {}
-
-  // MockExtensionSystem:
-  void RegisterExtensionWithRequestContexts(
-      const Extension* extension,
-      base::OnceClosure callback) override {
-    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE, std::move(callback));
-  }
 };
 
 class TestExtensionRegistrarDelegate : public ExtensionRegistrar::Delegate {
@@ -137,15 +133,9 @@ class ExtensionRegistrarTest : public ExtensionsTest {
   // Adds the extension as enabled and verifies the result.
   void AddEnabledExtension() {
     SCOPED_TRACE("AddEnabledExtension");
-    ExtensionRegistry* extension_registry =
-        ExtensionRegistry::Get(browser_context());
-
     EXPECT_CALL(delegate_, PostActivateExtension(extension_));
     registrar_->AddExtension(extension_);
     ExpectInSet(ExtensionRegistry::ENABLED);
-    EXPECT_FALSE(IsExtensionReady());
-
-    TestExtensionRegistryObserver(extension_registry).WaitForExtensionReady();
     EXPECT_TRUE(IsExtensionReady());
 
     EXPECT_EQ(disable_reason::DISABLE_NONE,
@@ -239,15 +229,8 @@ class ExtensionRegistrarTest : public ExtensionsTest {
 
   void EnableExtension() {
     SCOPED_TRACE("EnableExtension");
-    ExtensionRegistry* extension_registry =
-        ExtensionRegistry::Get(browser_context());
-
     EXPECT_CALL(delegate_, PostActivateExtension(extension_));
     registrar_->EnableExtension(extension_->id());
-    ExpectInSet(ExtensionRegistry::ENABLED);
-    EXPECT_FALSE(IsExtensionReady());
-
-    TestExtensionRegistryObserver(extension_registry).WaitForExtensionReady();
     ExpectInSet(ExtensionRegistry::ENABLED);
     EXPECT_TRUE(IsExtensionReady());
 
@@ -568,10 +551,17 @@ TEST_F(ExtensionRegistrarTest, DisableNotAshKeeplistedExtension) {
 TEST_F(ExtensionRegistrarTest,
        DisableNotAshKeeplistedForceInstalledExtensionIfAshDisabled) {
   base::test::ScopedFeatureList feature_list;
-  feature_list.InitAndEnableFeature(ash::features::kLacrosOnly);
+  feature_list.InitWithFeatures(ash::standalone_browser::GetFeatureRefs(), {});
+  auto fake_user_manager = std::make_unique<user_manager::FakeUserManager>();
+  auto* primary_user =
+      fake_user_manager->AddUser(AccountId::FromUserEmail("test@test"));
+  fake_user_manager->UserLoggedIn(primary_user->GetAccountId(),
+                                  primary_user->username_hash(),
+                                  /*browser_restart=*/false,
+                                  /*is_child=*/false);
+  auto scoped_user_manager = std::make_unique<user_manager::ScopedUserManager>(
+      std::move(fake_user_manager));
 
-  auto set_lacros_primary =
-      crosapi::browser_util::SetLacrosPrimaryBrowserForTest(true);
   static_cast<TestingPrefServiceSimple*>(pref_service())
       ->registry()
       ->RegisterIntegerPref(
@@ -592,14 +582,14 @@ TEST_F(ExtensionRegistrarTest,
 // disabled if ash is still enabled.
 TEST_F(ExtensionRegistrarTest,
        NotDisableNotAshKeeplistedForceInstalledExtensionIfAshEnabled) {
-  auto set_lacros_primary =
-      crosapi::browser_util::SetLacrosPrimaryBrowserForTest(true);
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures({}, ash::standalone_browser::GetFeatureRefs());
   static_cast<TestingPrefServiceSimple*>(pref_service())
       ->registry()
       ->RegisterIntegerPref(
           prefs::kLacrosLaunchSwitch,
           static_cast<int>(
-              ash::standalone_browser::LacrosAvailability::kLacrosPrimary));
+              ash::standalone_browser::LacrosAvailability::kLacrosOnly));
   EXPECT_TRUE(crosapi::browser_util::IsAshWebBrowserEnabled());
 
   // Prevent the extension from being disabled (by the user).

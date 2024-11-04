@@ -93,9 +93,7 @@ public:
                             const SkPaint& initialPaint,
                             const SkPaint& drawingPaint) override;
     void drawVertices(const SkVertices*, sk_sp<SkBlender>, const SkPaint&, bool) override;
-#ifdef SK_ENABLE_SKSL
     void drawMesh(const SkMesh&, sk_sp<SkBlender>, const SkPaint&) override;
-#endif
 
     // PDF specific methods.
     void drawSprite(const SkBitmap& bitmap, int x, int y,
@@ -133,10 +131,10 @@ private:
 
     SkMatrix fInitialTransform;
 
-    SkTHashSet<SkPDFIndirectReference> fGraphicStateResources;
-    SkTHashSet<SkPDFIndirectReference> fXObjectResources;
-    SkTHashSet<SkPDFIndirectReference> fShaderResources;
-    SkTHashSet<SkPDFIndirectReference> fFontResources;
+    skia_private::THashSet<SkPDFIndirectReference> fGraphicStateResources;
+    skia_private::THashSet<SkPDFIndirectReference> fXObjectResources;
+    skia_private::THashSet<SkPDFIndirectReference> fShaderResources;
+    skia_private::THashSet<SkPDFIndirectReference> fFontResources;
     int fNodeId;
 
     SkDynamicMemoryWStream fContent;

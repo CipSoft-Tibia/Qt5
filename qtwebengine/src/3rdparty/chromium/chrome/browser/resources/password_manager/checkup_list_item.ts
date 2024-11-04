@@ -175,7 +175,7 @@ export class CheckupListItemElement extends CheckupListItemElementBase {
   }
 
   private onDeletePasswordClick_() {
-    PasswordManagerImpl.getInstance().removeSavedPassword(
+    PasswordManagerImpl.getInstance().removeCredential(
         this.item.id, this.item.storedIn);
     this.dispatchEvent(new CustomEvent('password-removed', {
       bubbles: true,
@@ -184,6 +184,22 @@ export class CheckupListItemElement extends CheckupListItemElementBase {
         removedFromStores: this.item.storedIn,
       },
     }));
+  }
+
+  private getGroupName_(): string {
+    return !this.group ? '' : this.group.name;
+  }
+
+  private getGroupIcon_(): string {
+    return !this.group ? '' : this.group.iconUrl;
+  }
+
+  private getChangeButtonAriaLabel_(): string {
+    return this.i18n('changePasswordAriaDescription', this.getGroupName_());
+  }
+
+  private getMoreButtonAriaLabel_(): string {
+    return this.i18n('moreActionsAriaDescription', this.getGroupName_());
   }
 }
 

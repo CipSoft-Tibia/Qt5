@@ -83,8 +83,7 @@ TEST_F(CanvasResourceProviderTest, CanvasResourceProviderAcceleratedOverlay) {
   auto provider = CanvasResourceProvider::CreateSharedImageProvider(
       kInfo, cc::PaintFlags::FilterQuality::kMedium,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kGPU, true /*is_origin_top_left*/,
-      shared_image_usage_flags);
+      context_provider_wrapper_, RasterMode::kGPU, shared_image_usage_flags);
 
   EXPECT_EQ(provider->Size(), kSize);
   EXPECT_TRUE(provider->IsValid());
@@ -113,8 +112,8 @@ TEST_F(CanvasResourceProviderTest, CanvasResourceProviderTexture) {
   auto provider = CanvasResourceProvider::CreateSharedImageProvider(
       kInfo, cc::PaintFlags::FilterQuality::kLow,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kGPU, true /*is_origin_top_left*/,
-      0u /*shared_image_usage_flags*/);
+      context_provider_wrapper_, RasterMode::kGPU,
+      /*shared_image_usage_flags=*/0u);
 
   EXPECT_EQ(provider->Size(), kSize);
   EXPECT_TRUE(provider->IsValid());
@@ -139,8 +138,7 @@ TEST_F(CanvasResourceProviderTest, CanvasResourceProviderUnacceleratedOverlay) {
   auto provider = CanvasResourceProvider::CreateSharedImageProvider(
       kInfo, cc::PaintFlags::FilterQuality::kLow,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kCPU, true /*is_origin_top_left*/,
-      shared_image_usage_flags);
+      context_provider_wrapper_, RasterMode::kCPU, shared_image_usage_flags);
 
   EXPECT_EQ(provider->Size(), kSize);
   EXPECT_TRUE(provider->IsValid());
@@ -166,8 +164,7 @@ TEST_F(CanvasResourceProviderTest,
   auto provider = CanvasResourceProvider::CreateSharedImageProvider(
       kInfo, cc::PaintFlags::FilterQuality::kMedium,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kGPU, true /*is_origin_top_left*/,
-      shared_image_usage_flags);
+      context_provider_wrapper_, RasterMode::kGPU, shared_image_usage_flags);
 
   EXPECT_EQ(provider->Size(), kSize);
   EXPECT_TRUE(provider->IsValid());
@@ -185,15 +182,18 @@ TEST_F(CanvasResourceProviderTest,
 #endif
 
   // Same resource and sync token if we query again without updating.
-  auto resource = provider->ProduceCanvasResource();
+  auto resource = provider->ProduceCanvasResource(
+      CanvasResourceProvider::FlushReason::kTesting);
   auto sync_token = resource->GetSyncToken();
   ASSERT_TRUE(resource);
-  EXPECT_EQ(resource, provider->ProduceCanvasResource());
+  EXPECT_EQ(resource, provider->ProduceCanvasResource(
+                          CanvasResourceProvider::FlushReason::kTesting));
   EXPECT_EQ(sync_token, resource->GetSyncToken());
 
   // Resource updated after draw.
   provider->Canvas()->clear(SkColors::kWhite);
-  auto new_resource = provider->ProduceCanvasResource();
+  auto new_resource = provider->ProduceCanvasResource(
+      CanvasResourceProvider::FlushReason::kTesting);
   EXPECT_NE(resource, new_resource);
   EXPECT_NE(sync_token, new_resource->GetSyncToken());
 
@@ -206,7 +206,8 @@ TEST_F(CanvasResourceProviderTest,
   std::move(release_callback).Run(std::move(resource), sync_token, false);
 
   provider->Canvas()->clear(SkColors::kBlack);
-  auto resource_again = provider->ProduceCanvasResource();
+  auto resource_again = provider->ProduceCanvasResource(
+      CanvasResourceProvider::FlushReason::kTesting);
   EXPECT_EQ(resource_ptr, resource_again);
   EXPECT_NE(sync_token, resource_again->GetSyncToken());
 }
@@ -221,25 +222,28 @@ TEST_F(CanvasResourceProviderTest,
   auto provider = CanvasResourceProvider::CreateSharedImageProvider(
       kInfo, cc::PaintFlags::FilterQuality::kMedium,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kGPU, true /*is_origin_top_left*/,
-      shared_image_usage_flags);
+      context_provider_wrapper_, RasterMode::kGPU, shared_image_usage_flags);
 
   ASSERT_TRUE(provider->IsValid());
 
   // Same resource returned until the canvas is updated.
-  auto image = provider->Snapshot();
+  auto image =
+      provider->Snapshot(CanvasResourceProvider::FlushReason::kTesting);
   ASSERT_TRUE(image);
-  auto new_image = provider->Snapshot();
+  auto new_image =
+      provider->Snapshot(CanvasResourceProvider::FlushReason::kTesting);
   EXPECT_EQ(image->GetMailboxHolder().mailbox,
             new_image->GetMailboxHolder().mailbox);
-  EXPECT_EQ(provider->ProduceCanvasResource()->GetOrCreateGpuMailbox(
-                kOrderingBarrier),
-            image->GetMailboxHolder().mailbox);
+  EXPECT_EQ(
+      provider
+          ->ProduceCanvasResource(CanvasResourceProvider::FlushReason::kTesting)
+          ->GetOrCreateGpuMailbox(kOrderingBarrier),
+      image->GetMailboxHolder().mailbox);
 
   // Resource updated after draw.
   provider->Canvas()->clear(SkColors::kWhite);
-  provider->FlushCanvas();
-  new_image = provider->Snapshot();
+  provider->FlushCanvas(CanvasResourceProvider::FlushReason::kTesting);
+  new_image = provider->Snapshot(CanvasResourceProvider::FlushReason::kTesting);
   EXPECT_NE(new_image->GetMailboxHolder().mailbox,
             image->GetMailboxHolder().mailbox);
 
@@ -247,8 +251,11 @@ TEST_F(CanvasResourceProviderTest,
   auto original_mailbox = image->GetMailboxHolder().mailbox;
   image.reset();
   provider->Canvas()->clear(SkColors::kBlack);
-  provider->FlushCanvas();
-  EXPECT_EQ(original_mailbox, provider->Snapshot()->GetMailboxHolder().mailbox);
+  provider->FlushCanvas(CanvasResourceProvider::FlushReason::kTesting);
+  EXPECT_EQ(original_mailbox,
+            provider->Snapshot(CanvasResourceProvider::FlushReason::kTesting)
+                ->GetMailboxHolder()
+                .mailbox);
 }
 
 TEST_F(CanvasResourceProviderTest, NoRecycleIfLastRefCallback) {
@@ -260,31 +267,34 @@ TEST_F(CanvasResourceProviderTest, NoRecycleIfLastRefCallback) {
   auto provider = CanvasResourceProvider::CreateSharedImageProvider(
       kInfo, cc::PaintFlags::FilterQuality::kMedium,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kGPU, true /*is_origin_top_left*/,
-      shared_image_usage_flags);
+      context_provider_wrapper_, RasterMode::kGPU, shared_image_usage_flags);
 
   ASSERT_TRUE(provider->IsValid());
 
-  scoped_refptr<StaticBitmapImage> snapshot1 = provider->Snapshot();
+  scoped_refptr<StaticBitmapImage> snapshot1 =
+      provider->Snapshot(CanvasResourceProvider::FlushReason::kTesting);
   ASSERT_TRUE(snapshot1);
 
   // Set up a LastUnrefCallback that recycles the resource asynchronously,
   // similarly to what OffscreenCanvasPlaceholder would do.
-  provider->ProduceCanvasResource()->SetLastUnrefCallback(
-      base::BindOnce([](scoped_refptr<CanvasResource> resource) {}));
+  provider->ProduceCanvasResource(CanvasResourceProvider::FlushReason::kTesting)
+      ->SetLastUnrefCallback(
+          base::BindOnce([](scoped_refptr<CanvasResource> resource) {}));
 
   // Resource updated after draw.
   provider->Canvas()->clear(SkColors::kWhite);
-  provider->FlushCanvas();
-  scoped_refptr<StaticBitmapImage> snapshot2 = provider->Snapshot();
+  provider->FlushCanvas(CanvasResourceProvider::FlushReason::kTesting);
+  scoped_refptr<StaticBitmapImage> snapshot2 =
+      provider->Snapshot(CanvasResourceProvider::FlushReason::kTesting);
   EXPECT_NE(snapshot2->GetMailboxHolder().mailbox,
             snapshot1->GetMailboxHolder().mailbox);
 
   auto snapshot1_mailbox = snapshot1->GetMailboxHolder().mailbox;
   snapshot1.reset();  // resource not recycled due to LastUnrefCallback
   provider->Canvas()->clear(SkColors::kBlack);
-  provider->FlushCanvas();
-  scoped_refptr<StaticBitmapImage> snapshot3 = provider->Snapshot();
+  provider->FlushCanvas(CanvasResourceProvider::FlushReason::kTesting);
+  scoped_refptr<StaticBitmapImage> snapshot3 =
+      provider->Snapshot(CanvasResourceProvider::FlushReason::kTesting);
   // confirm resource is not recycled.
   EXPECT_NE(snapshot3->GetMailboxHolder().mailbox, snapshot1_mailbox);
 }
@@ -305,16 +315,18 @@ TEST_F(CanvasResourceProviderTest,
   auto provider = CanvasResourceProvider::CreateSharedImageProvider(
       kInfo, cc::PaintFlags::FilterQuality::kMedium,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kGPU,
-      true /* is_origin_top_left */, shared_image_usage_flags);
+      context_provider_wrapper_, RasterMode::kGPU, shared_image_usage_flags);
 
   ASSERT_TRUE(provider->IsValid());
 
   // Disabling copy-on-write forces a copy each time the resource is queried.
-  auto resource = provider->ProduceCanvasResource();
-  EXPECT_NE(resource->GetOrCreateGpuMailbox(kOrderingBarrier),
-            provider->ProduceCanvasResource()->GetOrCreateGpuMailbox(
-                kOrderingBarrier));
+  auto resource = provider->ProduceCanvasResource(
+      CanvasResourceProvider::FlushReason::kTesting);
+  EXPECT_NE(
+      resource->GetOrCreateGpuMailbox(kOrderingBarrier),
+      provider
+          ->ProduceCanvasResource(CanvasResourceProvider::FlushReason::kTesting)
+          ->GetOrCreateGpuMailbox(kOrderingBarrier));
 }
 
 TEST_F(CanvasResourceProviderTest, CanvasResourceProviderBitmap) {
@@ -374,8 +386,7 @@ TEST_F(CanvasResourceProviderTest,
   auto provider = CanvasResourceProvider::CreateSharedImageProvider(
       kInfo, cc::PaintFlags::FilterQuality::kMedium,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kGPU, true /*is_origin_top_left*/,
-      shared_image_usage_flags);
+      context_provider_wrapper_, RasterMode::kGPU, shared_image_usage_flags);
 
   EXPECT_EQ(provider->Size(), kSize);
   EXPECT_TRUE(provider->IsValid());
@@ -417,13 +428,18 @@ TEST_F(CanvasResourceProviderTest,
   provider->TryEnableSingleBuffering();
   EXPECT_TRUE(provider->IsSingleBuffered());
 
-  gpu::Mailbox mailbox = gpu::Mailbox::GenerateForSharedImage();
+  viz::TransferableResource tr;
+  tr.mailbox_holder.mailbox = gpu::Mailbox::GenerateForSharedImage();
+  tr.mailbox_holder.texture_target = GL_TEXTURE_2D;
+  tr.mailbox_holder.sync_token = gpu::SyncToken();
+  tr.size = kSize;
+  tr.is_overlay_candidate = true;
+
   scoped_refptr<ExternalCanvasResource> resource =
       ExternalCanvasResource::Create(
-          mailbox, viz::ReleaseCallback(), gpu::SyncToken(), kInfo,
-          GL_TEXTURE_2D, SharedGpuContext::ContextProviderWrapper(),
-          provider->CreateWeakPtr(), cc::PaintFlags::FilterQuality::kMedium,
-          true /*is_origin_top_left*/, true /*is_overlay_candidate*/);
+          tr, viz::ReleaseCallback(),
+          SharedGpuContext::ContextProviderWrapper(), provider->CreateWeakPtr(),
+          cc::PaintFlags::FilterQuality::kMedium, true /*is_origin_top_left*/);
 
   // NewOrRecycledResource() would return nullptr before an ImportResource().
   EXPECT_TRUE(provider->ImportResource(resource));
@@ -455,22 +471,22 @@ TEST_F(CanvasResourceProviderTest, DimensionsExceedMaxTextureSize_SharedImage) {
       SkImageInfo::MakeN32Premul(kMaxTextureSize - 1, kMaxTextureSize),
       cc::PaintFlags::FilterQuality::kLow,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kGPU, true /*is_origin_top_left*/,
-      0u /*shared_image_usage_flags*/);
+      context_provider_wrapper_, RasterMode::kGPU,
+      /*shared_image_usage_flags=*/0u);
   EXPECT_TRUE(provider->SupportsDirectCompositing());
   provider = CanvasResourceProvider::CreateSharedImageProvider(
       SkImageInfo::MakeN32Premul(kMaxTextureSize, kMaxTextureSize),
       cc::PaintFlags::FilterQuality::kLow,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kGPU, true /*is_origin_top_left*/,
-      0u /*shared_image_usage_flags*/);
+      context_provider_wrapper_, RasterMode::kGPU,
+      /*shared_image_usage_flags=*/0u);
   EXPECT_TRUE(provider->SupportsDirectCompositing());
   provider = CanvasResourceProvider::CreateSharedImageProvider(
       SkImageInfo::MakeN32Premul(kMaxTextureSize + 1, kMaxTextureSize),
       cc::PaintFlags::FilterQuality::kLow,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kGPU, true /*is_origin_top_left*/,
-      0u /*shared_image_usage_flags*/);
+      context_provider_wrapper_, RasterMode::kGPU,
+      /*shared_image_usage_flags=*/0u);
   // The CanvasResourceProvider for SharedImage should not be created or valid
   // if the texture size is greater than the maximum value
   EXPECT_TRUE(!provider || !provider->IsValid());
@@ -481,22 +497,19 @@ TEST_F(CanvasResourceProviderTest, DimensionsExceedMaxTextureSize_SwapChain) {
       SkImageInfo::MakeN32Premul(kMaxTextureSize - 1, kMaxTextureSize),
       cc::PaintFlags::FilterQuality::kLow,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, nullptr /* resource_dispatcher */,
-      true /*is_origin_top_left*/);
+      context_provider_wrapper_, /*resource_dispatcher=*/nullptr);
   EXPECT_TRUE(provider->SupportsDirectCompositing());
   provider = CanvasResourceProvider::CreateSwapChainProvider(
       SkImageInfo::MakeN32Premul(kMaxTextureSize, kMaxTextureSize),
       cc::PaintFlags::FilterQuality::kLow,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, nullptr /* resource_dispatcher */,
-      true /*is_origin_top_left*/);
+      context_provider_wrapper_, /*resource_dispatcher=*/nullptr);
   EXPECT_TRUE(provider->SupportsDirectCompositing());
   provider = CanvasResourceProvider::CreateSwapChainProvider(
       SkImageInfo::MakeN32Premul(kMaxTextureSize + 1, kMaxTextureSize),
       cc::PaintFlags::FilterQuality::kLow,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, nullptr /* resource_dispatcher */,
-      true /*is_origin_top_left*/);
+      context_provider_wrapper_, /*resource_dispatcher=*/nullptr);
 
   // The CanvasResourceProvider for SwapChain should not be created or valid
   // if the texture size is greater than the maximum value
@@ -530,8 +543,7 @@ TEST_F(CanvasResourceProviderTest, CanvasResourceProviderDirect2DSwapChain) {
   auto provider = CanvasResourceProvider::CreateSwapChainProvider(
       kInfo, cc::PaintFlags::FilterQuality::kLow,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, nullptr /* resource_dispatcher */,
-      true /*is_origin_top_left*/);
+      context_provider_wrapper_, /*resource_dispatcher=*/nullptr);
 
   ASSERT_TRUE(provider);
   EXPECT_EQ(provider->Size(), kSize);
@@ -549,20 +561,21 @@ TEST_F(CanvasResourceProviderTest, FlushForImage) {
   auto src_provider = CanvasResourceProvider::CreateSharedImageProvider(
       kInfo, cc::PaintFlags::FilterQuality::kMedium,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kGPU, true /*is_origin_top_left*/,
-      0u /*shared_image_usage_flags*/);
+      context_provider_wrapper_, RasterMode::kGPU,
+      /*shared_image_usage_flags=*/0u);
 
   auto dst_provider = CanvasResourceProvider::CreateSharedImageProvider(
       kInfo, cc::PaintFlags::FilterQuality::kMedium,
       CanvasResourceProvider::ShouldInitialize::kCallClear,
-      context_provider_wrapper_, RasterMode::kGPU, true /*is_origin_top_left*/,
-      0u /*shared_image_usage_flags*/);
+      context_provider_wrapper_, RasterMode::kGPU,
+      /*shared_image_usage_flags=*/0u);
 
   MemoryManagedPaintCanvas* dst_canvas =
       static_cast<MemoryManagedPaintCanvas*>(dst_provider->Canvas());
 
   PaintImage paint_image =
-      src_provider->Snapshot()->PaintImageForCurrentFrame();
+      src_provider->Snapshot(CanvasResourceProvider::FlushReason::kTesting)
+          ->PaintImageForCurrentFrame();
   PaintImage::ContentId src_content_id = paint_image.GetContentIdForFrame(0u);
 
   EXPECT_FALSE(dst_canvas->IsCachingImage(src_content_id));
@@ -574,7 +587,8 @@ TEST_F(CanvasResourceProviderTest, FlushForImage) {
   // Modify the canvas to trigger OnFlushForImage
   src_provider->Canvas()->clear(SkColors::kWhite);
   // So that all the cached draws are executed
-  src_provider->ProduceCanvasResource();
+  src_provider->ProduceCanvasResource(
+      CanvasResourceProvider::FlushReason::kTesting);
 
   // The paint canvas may have moved
   dst_canvas = static_cast<MemoryManagedPaintCanvas*>(dst_provider->Canvas());

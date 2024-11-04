@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qaxwidgetpropertysheet.h"
 #include "qdesigneraxwidget.h"
@@ -13,8 +13,6 @@
 #include <private/qdesigner_utils_p.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qtimer.h>
-
-static const char *geometryPropertyC = "geometry";
 
 QT_BEGIN_NAMESPACE
 
@@ -143,7 +141,7 @@ void QAxWidgetPropertySheet::reloadPropertySheet(const struct SavedProperties &p
                                                                  properties.widget);
 
     bool foundGeometry = false;
-    const QString geometryProperty = QLatin1String(geometryPropertyC);
+    const QString geometryProperty = "geometry"_L1;
     for (auto i = properties.changedProperties.cbegin(), cend = properties.changedProperties.cend();
          i != cend; ++i) {
         const QString name = i.key();

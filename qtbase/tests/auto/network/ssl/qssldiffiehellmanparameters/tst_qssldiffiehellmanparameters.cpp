@@ -1,5 +1,5 @@
 // Copyright (C) 2015 Mikkel Krautz <mikkel@krautz.dk>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -11,7 +11,7 @@
 
 // Default DH parameters, exported by qssldiffiehellmanparameters.cpp.
 QT_BEGIN_NAMESPACE
-extern Q_AUTOTEST_EXPORT const char *qssl_dhparams_default_base64;
+extern Q_AUTOTEST_EXPORT const char qssl_dhparams_default_base64[];
 QT_END_NAMESPACE
 
 QT_USE_NAMESPACE

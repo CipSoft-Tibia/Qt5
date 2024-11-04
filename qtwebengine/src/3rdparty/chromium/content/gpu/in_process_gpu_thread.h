@@ -7,7 +7,6 @@
 
 #include "base/memory/raw_ptr.h"
 #include "base/threading/thread.h"
-#include "content/browser/gpu/gpu_main_thread_factory.h"
 #include "content/common/content_export.h"
 #include "content/common/in_process_child_thread_params.h"
 #include "gpu/config/gpu_preferences.h"
@@ -40,7 +39,7 @@ class InProcessGpuThread : public base::Thread {
   gpu::GpuPreferences gpu_preferences_;
 };
 
-CONTENT_EXPORT std::unique_ptr<GpuThreadController> CreateInProcessGpuThread(
+CONTENT_EXPORT base::Thread* CreateInProcessGpuThread(
     const InProcessChildThreadParams& params,
     const gpu::GpuPreferences& gpu_preferences);
 

@@ -8,7 +8,7 @@ source "${BASH_SOURCE%/*}/../unix/DownloadURL.sh"
 # This script will install Nodejs
 
 version="18.16.0"
-urlCache="http://ci-files01-hki.intra.qt.io/input/nodejs/node-v$version.pkg"
+urlCache="http://ci-files01-hki.ci.qt.io/input/nodejs/node-v$version.pkg"
 urlOffcial="https://nodejs.org/dist/v$version/node-v$version.pkg"
 sha256="156aa5b9580288fb0b3c6134eb8fac64e50745d78d33eebe9e29eb7ff87b8e1e"
 

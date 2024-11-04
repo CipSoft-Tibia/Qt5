@@ -102,9 +102,8 @@ class VIEWS_EXPORT Label : public View,
   const std::u16string& GetText() const;
   virtual void SetText(const std::u16string& text);
 
-  // Returns the value of `accessible_name_` if it has been set, otherwise the
-  // text value.
-  const std::u16string& GetAccessibleName() const override;
+  void AdjustAccessibleName(std::u16string& new_name,
+                            ax::mojom::NameFrom& name_from) override;
 
   // Where the label appears in the UI. Passed in from the constructor. This is
   // a value from views::style::TextContext or an enum that extends it.
@@ -296,6 +295,9 @@ class VIEWS_EXPORT Label : public View,
   // Returns true if the label has a selection.
   bool HasSelection() const;
 
+  // Returns true if the label has the whole text selected.
+  bool HasFullSelection() const;
+
   // Selects the entire text. NO-OP if the label is not selectable.
   void SelectAll();
 
@@ -323,8 +325,10 @@ class VIEWS_EXPORT Label : public View,
   View* GetTooltipHandlerForPoint(const gfx::Point& point) override;
   bool GetCanProcessEventsWithinSubtree() const override;
   WordLookupClient* GetWordLookupClient() override;
-  void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
   std::u16string GetTooltipText(const gfx::Point& p) const override;
+
+  // ui::SimpleMenuModel::Delegate:
+  void ExecuteCommand(int command_id, int event_flags) override;
 
  protected:
   // Create a single RenderText instance to actually be painted.
@@ -400,7 +404,6 @@ class VIEWS_EXPORT Label : public View,
   // ui::SimpleMenuModel::Delegate overrides:
   bool IsCommandIdChecked(int command_id) const override;
   bool IsCommandIdEnabled(int command_id) const override;
-  void ExecuteCommand(int command_id, int event_flags) override;
   bool GetAcceleratorForCommandId(int command_id,
                                   ui::Accelerator* accelerator) const override;
 

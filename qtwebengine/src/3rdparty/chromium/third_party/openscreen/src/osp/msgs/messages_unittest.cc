@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,7 @@ using openscreen::msgs::PresentationConnectionMessage;
 using openscreen::msgs::PresentationStartRequest;
 using openscreen::msgs::PresentationUrlAvailabilityRequest;
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 // TODO(btolsch): This is in the current (draft) spec, but should we actually
 // allow this?
@@ -227,5 +226,4 @@ TEST(PresentationMessagesTest, CborEncodeBufferTooLarge) {
   ASSERT_FALSE(EncodePresentationUrlAvailabilityRequest(request, &buffer));
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

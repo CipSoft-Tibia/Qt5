@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,7 +6,28 @@ template("proto_library") {
   assert(defined(invoker.sources), "Need sources for proto_library")
   proto_sources = invoker.sources
 
-  proto_in_dir = rebase_path(get_path_info(proto_sources[0], "dir"), ".")
+  if (defined(invoker.proto_in_dir)) {
+    proto_in_dir = invoker.proto_in_dir
+    has_nested_dirs = false
+    foreach(proto_source, proto_sources) {
+      if (get_path_info(proto_source, "dir") != proto_in_dir) {
+        has_nested_dirs = true
+      }
+    }
+  } else {
+    proto_in_dir = get_path_info(proto_sources[0], "dir")
+    has_nested_dirs = false
+
+    # Sanity check, |proto_in_dir| should be defined to allow sub-directories.
+    foreach(proto_source, proto_sources) {
+      assert(get_path_info(proto_source, "dir") == proto_in_dir,
+             "Please define |proto_in_dir| to allow nested directories.")
+    }
+  }
+
+  # Avoid absolute path because of the assumption that |proto_in_dir| is
+  # relative to the directory of current BUILD.gn file.
+  proto_in_dir = rebase_path(proto_in_dir, ".")
 
   if (defined(invoker.proto_out_dir)) {
     proto_out_dir = rebase_path(invoker.proto_out_dir, "//")
@@ -71,6 +92,9 @@ template("proto_library") {
   config_name = "${target_name}_config"
   config(config_name) {
     include_dirs = []
+    if (has_nested_dirs) {
+      include_dirs += [ cc_out_dir ]
+    }
   }
 
   source_set(source_set_name) {

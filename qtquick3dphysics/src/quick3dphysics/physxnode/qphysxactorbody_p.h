@@ -38,6 +38,7 @@ public:
     bool debugGeometryCapability() override;
     physx::PxTransform getGlobalPose() override;
     void buildShapes(QPhysXWorld *physX);
+    void updateFilters() override;
 
     physx::PxRigidActor *actor = nullptr;
 };

@@ -58,10 +58,16 @@ default_args = {
   # Overwrite default args declared in the Fuchsia sdk
   fuchsia_sdk_readelf_exec =
       "//third_party/llvm-build/Release+Asserts/bin/llvm-readelf"
-  fuchsia_target_api_level = 11
 
   devtools_visibility = [ "*" ]
 }
+
+# These are the targets to skip header checking by default. The files in targets
+# matching these patterns (see "gn help label_pattern" for format) will not have
+# their includes checked for proper dependencies when you run either
+# "gn check" or "gn gen --check".
+no_check_targets = [
+]
 
 # These are the list of GN files that run exec_script. This whitelist exists
 # to force additional review for new uses of exec_script, which is strongly

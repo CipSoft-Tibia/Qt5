@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QDebug>
 #include <qtest.h>
@@ -12,6 +12,8 @@
 #include <private/qabstractsocketengine_p.h>
 #include <cstdio>
 #include <QCoreApplication>
+
+using namespace std::chrono_literals;
 
 const int bufsize = 16*1024;
 char buf[bufsize];
@@ -39,7 +41,7 @@ int main(int argc, char**argv)
     int r = socketEngine->connectToHost(QHostAddress("74.125.77.99"), 80); // google
     bool readyToRead = false;
     bool readyToWrite = false;
-    socketEngine->waitForReadOrWrite(&readyToRead, &readyToWrite, true, true, 10*1000);
+    socketEngine->waitForReadOrWrite(&readyToRead, &readyToWrite, true, true, 10s);
     if (r <= 0) //timeout or error
         exit(1);
     if (readyToWrite) {
@@ -49,7 +51,7 @@ int main(int argc, char**argv)
         if (ret == request.length()) {
             // read the response in a loop
             do {
-                bool waitReadResult = socketEngine->waitForRead(10*1000);
+                bool waitReadResult = socketEngine->waitForRead(10s);
                 int available = socketEngine->bytesAvailable();
                 if (waitReadResult == true && available == 0) {
                     // disconnected

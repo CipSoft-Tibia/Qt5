@@ -18,14 +18,31 @@ source_set("color_headers") {
     "color_provider.h",
     "color_provider_manager.h",
     "color_provider_utils.h",
-    "system_theme.h",
   ]
 
   public_deps = [
+    ":color_provider_key",
     ":mojom",
     "//base",
     "//skia",
     "//ui/gfx:color_utils",
+  ]
+}
+
+# Keep the deps on this target to a minimum so that chromeos/crosapi can depend on it.
+component("color_provider_key") {
+  sources = [
+    "color_provider_key.cc",
+    "color_provider_key.h",
+    "system_theme.h",
+  ]
+
+  defines = [ "IS_COLOR_PROVIDER_KEY_IMPL" ]
+
+  deps = [
+    "//base",
+    "//skia",
+    "//third_party/abseil-cpp:absl",
   ]
 }
 
@@ -61,12 +78,12 @@ component("color") {
   ]
 
   if (is_mac) {
-    frameworks = [ "AppKit.framework" ]
     sources += [
       "mac/native_color_transform.mm",
       "mac/system_color_utils.h",
       "mac/system_color_utils.mm",
     ]
+    frameworks = [ "AppKit.framework" ]
   }
 }
 
@@ -147,9 +164,11 @@ component("mixers") {
   deps = [
     ":color",
     ":color_headers",
+    ":color_provider_key",
     "//skia",
     "//third_party/material_color_utilities",
     "//ui/base:features",
+    "//ui/color/dynamic_color",
     "//ui/gfx:color_utils",
   ]
 
@@ -158,12 +177,8 @@ component("mixers") {
   if (is_chromeos) {
     sources += [ "chromeos/native_color_mixers_chromeos.cc" ]
   } else if (is_mac) {
+    sources += [ "mac/native_color_mixers_mac.mm" ]
     frameworks = [ "AppKit.framework" ]
-    sources += [
-      "mac/native_color_mixers_mac.mm",
-      "mac/scoped_current_nsappearance.h",
-      "mac/scoped_current_nsappearance.mm",
-    ]
   } else if (is_win) {
     sources += [ "win/native_color_mixers_win.cc" ]
     deps += [
@@ -174,5 +189,8 @@ component("mixers") {
 }
 
 mojom("mojom") {
-  sources = [ "color_id.mojom" ]
+  sources = [
+    "color_id.mojom",
+    "scheme_variant.mojom",
+  ]
 }

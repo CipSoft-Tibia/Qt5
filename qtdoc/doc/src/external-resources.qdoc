@@ -1,4 +1,4 @@
-// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
@@ -81,7 +81,7 @@
 */
 
 /*!
-    \externalpage http://qt-project.org/faq/answer/how_to_compress_data_with_qt
+    \externalpage https://wiki.qt.io/Technical_FAQ#How_to_compress_data_with_Qt?
     \title How to compress data with Qt?
 */
 
@@ -192,7 +192,7 @@
     \title Android: App Manifest <meta-data>
 */
 /*!
-    \externalpage https://developer.android.com/studio/#command-tools
+    \externalpage https://developer.android.com/studio/#command-line-tools-only
     \title Android: Android command line tools
 */
 /*!
@@ -226,6 +226,10 @@
 /*!
     \externalpage https://developer.android.com/studio/run/emulator
     \title Android: Android Emulator
+*/
+/*!
+    \externalpage https://developer.android.com/studio/publish/versioning#appversioning
+    \title Android: App Versioning
 */
 /*!
     \externalpage http://developer.android.com/tools/help/adb.html
@@ -268,8 +272,36 @@
     \title Android: Build Configuration Files
 */
 /*!
+   \externalpage https://developer.android.com/reference/android/R.style#Theme_DeviceDefault_DayNight
+   \title Android: Theme_DeviceDefault_DayNight Style
+*/
+/*!
+   \externalpage https://developer.android.com/reference/android/R.style#Theme_Holo_Light
+   \title Android: Theme_Holo_Light Style
+*/
+/*!
+   \externalpage https://developer.android.com/reference/android/app/Application
+   \title Android: Application
+*/
+/*!
     \externalpage https://developer.android.com/reference/android/app/Activity
     \title Android: Activity
+*/
+/*!
+    \externalpage https://developer.android.com/reference/android/app/Activity#onCreate(android.os.Bundle)
+    \title Android: Activity onCreate()
+*/
+/*!
+    \externalpage https://developer.android.com/reference/android/view/ContextThemeWrapper#setTheme(android.content.res.Resources.Theme)
+    \title Android: Activity setTheme()
+*/
+/*!
+    \externalpage https://developer.android.com/reference/java/lang/System#load(java.lang.String)
+    \title Android: System load()
+*/
+/*!
+    \externalpage https://docs.oracle.com/javase/8/docs/technotes/guides/jni/spec/invocation.html#JNJI_OnLoad
+    \title Android: JNI_OnLoad()
 */
 /*!
     \externalpage https://developer.android.com/studio/build/dependencies
@@ -283,6 +315,11 @@
     \externalpage https://developer.android.com/guide/topics/resources/providing-resources#OriginalFiles
     \title Android: Accessing original files
 */
+/*!
+    \externalpage https://developer.android.com/guide/topics/resources/providing-resources
+    \title Android: App resources overview
+*/
+
 /*!
     \externalpage https://developer.android.com/guide/components/fragments
     \title Android: Fragments
@@ -314,6 +351,10 @@
 /*!
     \externalpage https://developer.android.com/reference/android/support/v4/provider/package-summary
     \title Android: Support Library
+*/
+/*!
+    \externalpage https://developer.android.com/build/releases/gradle-plugin
+    \title Android: Android Gradle plugin
 */
 
 /*!
@@ -353,6 +394,12 @@
     \externalpage https://bugreports.qt.io/browse/QTBUG-72086
     \title QTBUG-72086
 */
+
+/*!
+    \externalpage https://bugreports.qt.io/browse/QTBUG-114437
+    \title QTBUG-114437
+*/
+
 /*!
     \externalpage http://strawberryperl.com
     \title Perl
@@ -366,8 +413,8 @@
     \title OpenJDK
 */
 /*!
-    \externalpage https://adoptopenjdk.net/?variant=openjdk8&jvmVariant=hotspot
-    \title AdoptOpenJDK
+    \externalpage https://adoptium.net
+    \title Adoptium
 */
 /*!
     \externalpage http://www.gradle.org
@@ -386,6 +433,12 @@
     \externalpage https://qtcloudservices.com/
     \title Qt Cloud Services
 */
+
+/*!
+    \externalpage http://doc.qt.io/qtcreator/creator-configuring.html
+    \title Qt Creator
+*/
+
 /*!
     \externalpage http://doc.qt.io/qtcreator/creator-configuring.html
     \title Configuring Qt Creator
@@ -423,7 +476,10 @@
     \externalpage https://doc.qt.io/qtcreator/qtcreator-accelbubble-example.html
     \title Qt Creator: Creating a Mobile Application
 */
-
+/*!
+    \externalpage https://doc.qt.io/qtcreator/creator-deploying-android.html
+    \title Qt Creator: Deploying to Android
+*/
 /*!
     \externalpage http://wiki.openssl.org/index.php/Compilation_and_Installation#Configure_Options
     \title OpenSSL Configure Options
@@ -608,6 +664,11 @@
 */
 
 /*!
+    \externalpage https://www.qt.io/product/ui-design-tools
+    \title \QDS
+*/
+
+/*!
     \externalpage https://doc.qt.io/qtforpython-6/tutorials/index.html
     \title Qt for Python Tutorials
 */
@@ -698,6 +759,11 @@
 */
 
 /*!
+    \externalpage https://cmake.org/cmake/help/latest/command/cmake_minimum_required.html#policy-settings
+    \title CMake Policy Settings
+*/
+
+/*!
     \externalpage https://doc.qt.io/QtAndroidAutomotive/
     \title Qt for Android Automotive
 */
@@ -718,11 +784,6 @@
 */
 
 /*!
-    \externalpage https://www.gsmarena.com/samsung_galaxy_tab_s4_10_5-9262.php
-    \title Samsung Galaxy Tab S4
-*/
-
-/*!
     \externalpage https://www.gsmarena.com/google_pixel_3a-9408.php
     \title Pixel 3A
 */
@@ -733,23 +794,13 @@
 */
 
 /*!
-    \externalpage https://www.gsmarena.com/google_pixel_6_pro-10918.php
-    \title Google Pixel 6 Pro
+    \externalpage https://www.gsmarena.com/google_pixel_2-8733.php
+    \title Pixel 2
 */
 
 /*!
-    \externalpage https://www.gsmarena.com/samsung_galaxy_s21_5g-10626.php
-    \title Samsung Galaxy S21
-*/
-
-/*!
-    \externalpage https://www.gsmarena.com/motorola_moto_g_(3rd_gen)-7247.php
-    \title Motorola MotoG 3rd
-*/
-
-/*!
-    \externalpage https://www.gsmarena.com/samsung_galaxy_s10-9536.php
-    \title Samsung Galaxy S10
+    \externalpage https://www.gsmarena.com/google_pixel_2_xl-8720.php
+    \title Pixel 2 XL
 */
 
 /*!
@@ -758,8 +809,63 @@
 */
 
 /*!
+    \externalpage https://www.gsmarena.com/google_pixel_6-11037.php
+    \title Pixel 6
+*/
+
+/*!
+    \externalpage https://www.gsmarena.com/google_pixel_6_pro-10918.php
+    \title Pixel 6 Pro
+*/
+
+/*!
+    \externalpage https://www.gsmarena.com/google_pixel_6a-11229.php
+    \title Pixel 6a
+*/
+
+/*!
+    \externalpage https://www.gsmarena.com/google_pixel_7-11903.php
+    \title Pixel 7
+*/
+
+/*!
+    \externalpage https://www.gsmarena.com/google_pixel_7_pro-11908.php
+    \title Pixel 7 Pro
+*/
+
+/*!
+    \externalpage https://www.gsmarena.com/google_pixel_7a-12170.php
+    \title Pixel 7a
+*/
+
+/*!
+    \externalpage https://www.gsmarena.com/samsung_galaxy_s10-9536.php
+    \title Samsung Galaxy S10
+*/
+
+/*!
+    \externalpage https://www.gsmarena.com/samsung_galaxy_s21_5g-10626.php
+    \title Samsung Galaxy S21
+*/
+
+/*!
+    \externalpage https://www.gsmarena.com/samsung_galaxy_tab_s4_10_5-9262.php
+    \title Samsung Galaxy Tab S4
+*/
+
+/*!
+    \externalpage https://www.gsmarena.com/nothing_phone_(1)-11636.php
+    \title Nothing Phone 1
+*/
+
+/*!
     \externalpage https://www.gsmarena.com/motorola_moto_g5_plus-8453.php
     \title Motorola Moto G5 Plus
+*/
+
+/*!
+    \externalpage https://www.gsmarena.com/samsung_galaxy_tab_a9+-12617.php
+    \title Samsung Galaxy Tab A9+
 */
 
 /*!
@@ -826,3 +932,9 @@
     \title Plug & Paint Extra Filters Example
     \keyword tools/plugandpaint/plugins/extrafilters
 */
+
+/*!
+    \externalpage https://developer.android.com/reference/android/content/Context
+    \title Android: Context
+*/
+

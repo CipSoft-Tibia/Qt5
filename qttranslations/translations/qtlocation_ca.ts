@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="ca">
+<TS version="2.1" language="ca_ES">
 <context>
     <name>GeoServiceProviderFactoryEsri</name>
     <message>
@@ -74,11 +74,11 @@ Visiteu https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     <name>QDeclarativeNavigator</name>
     <message>
         <source>Plugin does not support navigation.</source>
-        <translation>El connector no admet navegació.</translation>
+        <translation type="vanished">El connector no admet navegació.</translation>
     </message>
     <message>
         <source>Failed to create a navigator object.</source>
-        <translation>Ha fallat en crear un objecte navegador.</translation>
+        <translation type="vanished">Ha fallat en crear un objecte navegador.</translation>
     </message>
 </context>
 <context>
@@ -1643,8 +1643,14 @@ Visiteu https://www.mapbox.com</translation>
     <message>
         <source>Qt Location requires app_id and token parameters.
 Please register at https://developer.here.com/ to get your personal application credentials.</source>
-        <translation>Qt Location requereix els paràmetres «app_id» i «token».
+        <translation type="vanished">Qt Location requereix els paràmetres «app_id» i «token».
 Registreu-vos a https://developer.here.com/ per a obtenir les vostres credencials personals de l&apos;aplicació.</translation>
+    </message>
+    <message>
+        <source>Qt Location requires apiKey parameter.
+Please register at https://developer.here.com/ to get your personal application credentials.</source>
+        <translation>El Qt Location requereix el paràmetre «apiKey».
+Registreu-vos a https://developer.here.com/ per a obtenir les vostres credencials personals d&apos;aplicació.</translation>
     </message>
     <message>
         <source>Saving places is not supported.</source>

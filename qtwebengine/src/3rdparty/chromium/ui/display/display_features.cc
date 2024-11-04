@@ -33,6 +33,11 @@ BASE_FEATURE(kUseHDRTransferFunction,
 #endif
 );
 
+// Enables using HDR10(PQ) mode if the monitor says it supports it.
+BASE_FEATURE(kEnableExternalDisplayHDR10Mode,
+             "EnableExternalDisplayHDR10Mode",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 #endif
 
 // This features allows listing all display modes of external displays in the
@@ -75,6 +80,14 @@ BASE_FEATURE(kRequireHdcpKeyProvisioning,
              base::FEATURE_DISABLED_BY_DEFAULT);
 bool IsHdcpKeyProvisioningRequired() {
   return base::FeatureList::IsEnabled(kRequireHdcpKeyProvisioning);
+}
+
+BASE_FEATURE(kPanelSelfRefresh2,
+             "PanelSelfRefresh2",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool IsPanelSelfRefresh2Enabled() {
+  return base::FeatureList::IsEnabled(kPanelSelfRefresh2);
 }
 
 }  // namespace features

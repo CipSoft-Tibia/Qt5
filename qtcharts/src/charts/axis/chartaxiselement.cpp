@@ -238,7 +238,8 @@ void ChartAxisElement::handleTitleVisibleChanged(bool visible)
 
 void ChartAxisElement::handleLabelsAngleChanged(int angle)
 {
-    foreach (QGraphicsItem *item, m_labels->childItems())
+    const auto items = m_labels->childItems();
+    for (QGraphicsItem *item : items)
         item->setRotation(angle);
 
     QGraphicsLayoutItem::updateGeometry();
@@ -247,13 +248,15 @@ void ChartAxisElement::handleLabelsAngleChanged(int angle)
 
 void ChartAxisElement::handleLabelsBrushChanged(const QBrush &brush)
 {
-    foreach (QGraphicsItem *item, m_labels->childItems())
+    const auto items = m_labels->childItems();
+    for (QGraphicsItem *item : items)
         static_cast<QGraphicsTextItem *>(item)->setDefaultTextColor(brush.color());
 }
 
 void ChartAxisElement::handleLabelsFontChanged(const QFont &font)
 {
-    foreach (QGraphicsItem *item, m_labels->childItems())
+    const auto items = m_labels->childItems();
+    for (QGraphicsItem *item : items)
         static_cast<QGraphicsTextItem *>(item)->setFont(font);
     QGraphicsLayoutItem::updateGeometry();
     presenter()->layout()->invalidate();

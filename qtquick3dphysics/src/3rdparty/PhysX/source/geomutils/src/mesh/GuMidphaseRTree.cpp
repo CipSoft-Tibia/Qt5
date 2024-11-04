@@ -237,7 +237,7 @@ struct RayRTreeCallback : RTree::CallbackRaycast, RTree::Callback
 
 	virtual bool processResults(PxU32 numTouched, PxU32* touched)
 	{
-		PxF32 dummy;
+		PxF32 dummy = 0;
 		return RayRTreeCallback::processResults(numTouched, touched, dummy);
 	}
 

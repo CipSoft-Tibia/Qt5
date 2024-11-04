@@ -385,7 +385,8 @@ QGenericUnixServices::QGenericUnixServices()
 
     QDBusPendingCall pendingCall = QDBusConnection::sessionBus().asyncCall(message);
     auto watcher = new QDBusPendingCallWatcher(pendingCall);
-    QObject::connect(watcher, &QDBusPendingCallWatcher::finished, watcher,
+    m_watcherConnection =
+            QObject::connect(watcher, &QDBusPendingCallWatcher::finished, watcher,
                      [this](QDBusPendingCallWatcher *watcher) {
                          watcher->deleteLater();
                          QDBusPendingReply<QVariant> reply = *watcher;
@@ -393,6 +394,13 @@ QGenericUnixServices::QGenericUnixServices()
                              m_hasScreenshotPortalWithColorPicking = true;
                      });
 
+#endif
+}
+
+QGenericUnixServices::~QGenericUnixServices()
+{
+#if QT_CONFIG(dbus)
+    QObject::disconnect(m_watcherConnection);
 #endif
 }
 
@@ -422,6 +430,7 @@ QByteArray QGenericUnixServices::desktopEnvironment() const
 template<typename F>
 void runWithXdgActivationToken(F &&functionToCall)
 {
+#if QT_CONFIG(wayland)
     QWindow *window = qGuiApp->focusWindow();
 
     if (!window) {
@@ -443,6 +452,9 @@ void runWithXdgActivationToken(F &&functionToCall)
                      &QNativeInterface::Private::QWaylandWindow::xdgActivationTokenCreated,
                      waylandWindow, functionToCall, Qt::SingleShotConnection);
     waylandWindow->requestXdgActivationToken(waylandApp->lastInputSerial());
+#else
+    functionToCall({});
+#endif
 }
 
 bool QGenericUnixServices::openUrl(const QUrl &url)
@@ -530,6 +542,7 @@ bool QGenericUnixServices::openDocument(const QUrl &url)
 
 #else
 QGenericUnixServices::QGenericUnixServices() = default;
+QGenericUnixServices::~QGenericUnixServices() = default;
 
 QByteArray QGenericUnixServices::desktopEnvironment() const
 {
@@ -560,9 +573,7 @@ QPlatformServiceColorPicker *QGenericUnixServices::colorPicker(QWindow *parent)
 
 QString QGenericUnixServices::portalWindowIdentifier(QWindow *window)
 {
-    if (QGuiApplication::platformName() == QLatin1String("xcb"))
-        return "x11:"_L1 + QString::number(window->winId(), 16);
-
+    Q_UNUSED(window);
     return QString();
 }
 

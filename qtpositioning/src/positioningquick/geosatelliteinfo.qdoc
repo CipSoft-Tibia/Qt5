@@ -5,7 +5,6 @@
     \qmlvaluetype geoSatelliteInfo
     \ingroup qmlvaluetypes
     \inqmlmodule QtPositioning
-    \ingroup qml-QtPositioning5-basictypes
     \since 6.5
 
     \brief The geoSatelliteInfo type represents basic information about a

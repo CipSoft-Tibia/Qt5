@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -26,6 +26,7 @@
 #include <QtWidgets/QStyle>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QScroller>
+#include <QtWidgets/QStackedWidget>
 #if QT_CONFIG(opengl)
 #include <QtOpenGLWidgets/QOpenGLWidget>
 #endif
@@ -79,6 +80,12 @@ static void sendMouseRelease(QWidget *widget, const QPoint &point, Qt::MouseButt
     QApplication::sendEvent(widget, &event);
 }
 
+static bool isPlatformEGLFS()
+{
+    static const bool isEGLFS = !QGuiApplication::platformName().compare(QLatin1String("eglfs"), Qt::CaseInsensitive);
+    return isEGLFS;
+}
+
 class EventSpy : public QObject
 {
     Q_OBJECT
@@ -108,6 +115,7 @@ protected:
 #if defined QT_BUILD_INTERNAL
 class FriendlyGraphicsScene : public QGraphicsScene
 {
+    using QGraphicsScene::QGraphicsScene;
     friend class tst_QGraphicsView;
     Q_DECLARE_PRIVATE(QGraphicsScene);
 };
@@ -247,6 +255,9 @@ private slots:
     void QTBUG_70255_scrollTo();
 #ifndef QT_NO_CURSOR
     void QTBUG_7438_cursor();
+#endif
+#ifdef QT_BUILD_INTERNAL
+    void QTBUG_53974_mismatched_hide_show_events();
 #endif
     void resizeContentsOnItemDrag_data();
     void resizeContentsOnItemDrag();
@@ -648,6 +659,8 @@ void tst_QGraphicsView::openGLViewport()
 {
     if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::OpenGL))
         QSKIP("QOpenGL is not supported on this platform.");
+    if (isPlatformEGLFS())
+        QSKIP("", "Resizing does not work on EGLFS on top level window", Continue);
 
     QGraphicsScene scene;
     scene.setBackgroundBrush(Qt::white);
@@ -1629,6 +1642,9 @@ void tst_QGraphicsView::itemsInRect_cosmeticAdjust_data()
 
 void tst_QGraphicsView::itemsInRect_cosmeticAdjust()
 {
+    if (isPlatformEGLFS())
+        QSKIP("", "Resizing does not work on EGLFS on top level window", Continue);
+
     QFETCH(QRect, updateRect);
     QFETCH(int, numPaints);
     QFETCH(bool, adjustForAntialiasing);
@@ -1922,6 +1938,9 @@ void tst_QGraphicsView::mapToSceneRect_data()
 
 void tst_QGraphicsView::mapToSceneRect()
 {
+    if (isPlatformEGLFS())
+        QSKIP("", "Resizing does not work on EGLFS on top level window", Continue);
+
     QFETCH(QRect, viewRect);
     QFETCH(QPolygonF, scenePoly);
     QFETCH(qreal, rotation);
@@ -2877,6 +2896,9 @@ public:
 
 void tst_QGraphicsView::scrollBarRanges()
 {
+    if (isPlatformEGLFS())
+        QSKIP("", "Resizing does not work on EGLFS on top level window", Continue);
+
     QFETCH(QByteArray, style);
     QFETCH(QSize, viewportSize);
     QFETCH(QRectF, sceneRect);
@@ -3649,6 +3671,9 @@ void tst_QGraphicsView::moveItemWhileScrolling_data()
 
 void tst_QGraphicsView::moveItemWhileScrolling()
 {
+    if (isPlatformEGLFS())
+        QSKIP("", "Resizing does not work on EGLFS on top level window", Continue);
+
     QFETCH(bool, adjustForAntialiasing);
     QFETCH(bool, changedConnected);
 
@@ -4172,6 +4197,9 @@ void tst_QGraphicsView::update2_data()
 
 void tst_QGraphicsView::update2()
 {
+    if (isPlatformEGLFS())
+        QSKIP("", "Resizing does not work on EGLFS on top level window", Continue);
+
     QFETCH(qreal, penWidth);
     QFETCH(bool, antialiasing);
     QFETCH(bool, changedConnected);
@@ -4771,6 +4799,9 @@ void tst_QGraphicsView::QTBUG_4151_clipAndIgnore()
 
 void tst_QGraphicsView::QTBUG_5859_exposedRect()
 {
+    if (isPlatformEGLFS())
+        QSKIP("", "Resizing does not work on EGLFS on top level window", Continue);
+
     class CustomScene : public QGraphicsScene
     {
     public:
@@ -4963,6 +4994,92 @@ void tst_QGraphicsView::QTBUG_70255_scrollTo()
     point = view.mapFromScene(0, 0);
     QCOMPARE(point, QPoint(0, -500));
 }
+
+#ifdef QT_BUILD_INTERNAL
+void tst_QGraphicsView::QTBUG_53974_mismatched_hide_show_events()
+{
+    QGraphicsView *view = new QGraphicsView;
+    FriendlyGraphicsScene *scene = new FriendlyGraphicsScene(view);
+    view->setScene(scene);
+
+    QStackedWidget *lowLevel = new QStackedWidget;
+    lowLevel->addWidget(new QLabel);
+    lowLevel->addWidget(view);
+
+    QStackedWidget topLevel;
+    topLevel.addWidget(new QLabel);
+    topLevel.addWidget(lowLevel);
+
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+
+    topLevel.show();
+    topLevel.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&topLevel));
+
+    // Starting point
+    QCOMPARE_EQ(topLevel.currentIndex(), 0);
+    QCOMPARE_EQ(lowLevel->currentIndex(), 0);
+
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+
+    // lowLevel is not visible. Changing the current index there
+    // should not affect the refcount.
+    lowLevel->setCurrentIndex(1);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+
+    lowLevel->setCurrentIndex(0);
+    QEXPECT_FAIL("", "The view was already hidden, so the refcount should still be 0", Continue);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+    scene->d_func()->activationRefCount = 0;
+
+    // Make lowLevel visible.
+    topLevel.setCurrentIndex(1);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+
+    // Show and hide the QGV a couple of times.
+    lowLevel->setCurrentIndex(1);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 1);
+
+    lowLevel->setCurrentIndex(0);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+
+    lowLevel->setCurrentIndex(1);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 1);
+
+    lowLevel->setCurrentIndex(0);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+
+    // Make lowLevel hidden again.
+    topLevel.setCurrentIndex(0);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+
+    // Change the current index in the hidden lowLevel
+    lowLevel->setCurrentIndex(1);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+
+    lowLevel->setCurrentIndex(0);
+    QEXPECT_FAIL("", "The view was already hidden, so the refcount should still be 0", Continue);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+    scene->d_func()->activationRefCount = 0;
+
+    // Make lowLevel and the QGV visible.
+    lowLevel->setCurrentIndex(1);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+
+    topLevel.setCurrentIndex(1);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 1);
+
+    // Make lowLevel hidden (keeping the QGV as current index).
+    topLevel.setCurrentIndex(0);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+
+    // Hide the QGV:
+    lowLevel->setCurrentIndex(0);
+    QEXPECT_FAIL("", "The view was already hidden, so the refcount should still be 0", Continue);
+    QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
+    scene->d_func()->activationRefCount = 0;
+}
+#endif
 
 void tst_QGraphicsView::resizeContentsOnItemDrag_data()
 {

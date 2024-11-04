@@ -58,7 +58,9 @@ const std::set<std::string_view> &CommonTemplates::ListOfCppExceptions()
         "this",          "thread_local", "throw",     "true",       "try",
         "typedef",       "typeid",       "typename",  "union",      "unsigned",
         "using",         "virtual",      "void",      "volatile",   "wchar_t",
-        "while",         "xor",          "xor_eq"
+        "while",         "xor",          "xor_eq",
+        // block of Qt Cpp words:
+        "signals",       "slots",        "emit"
     };
 
     return cppExceptions;
@@ -116,10 +118,6 @@ const char *CommonTemplates::ExternalIncludeTemplate()
 {
     return "#include <$include$>\n";
 }
-const char *CommonTemplates::GlobalEnumIncludeTemplate()
-{
-    return "#include <globalenums.h>\n";
-}
 
 const char *CommonTemplates::EnumRegistrationDeclaration()
 {
@@ -163,7 +161,10 @@ const char *CommonTemplates::UsingNestedMessageTemplate()
     return "using $type$ = $scope_namespaces$::$type$;\n"
            "using $list_type$ = $scope_namespaces$::$list_type$;\n";
 }
-
+const char *CommonTemplates::UsingEnumTemplate()
+{
+    return "using $type$ = $scope_namespaces$::$type$;\n";
+}
 const char *CommonTemplates::UsingRepeatedEnumTemplate()
 {
     return "using $list_type$ = QList<$type$>;\n";
@@ -177,21 +178,32 @@ const char *CommonTemplates::NamespaceClosingTemplate()
 {
     return "} // namespace $scope_namespaces$\n";
 }
-const char *CommonTemplates::EnumDeclarationTemplate()
+const char *CommonTemplates::EnumGadgetDeclarationTemplate()
 {
-    return "\nnamespace $classname$ {\n"
-           "Q_NAMESPACE_EXPORT($export_macro$)\n";
+    return "\nnamespace $enum_gadget$ {\n";
 }
-
-const char *CommonTemplates::EnumDeclarationNoExportTemplate()
+const char *CommonTemplates::QNamespaceDeclarationTemplate()
 {
-    return "\nnamespace $classname$ {\n"
-           "Q_NAMESPACE\n";
+    return "Q_NAMESPACE_EXPORT($export_macro$)\n";
 }
-
+const char *CommonTemplates::QNamespaceDeclarationNoExportTemplate()
+{
+    return "Q_NAMESPACE\n";
+}
 const char *CommonTemplates::ClassMessageForwardDeclarationTemplate()
 {
     return "class $classname$;\n";
+}
+
+const char *CommonTemplates::EnumForwardDeclarationTemplate()
+{
+    return "enum $type$ : int32_t;\n"
+           "using $list_type$ = QList<$type$>;\n";
+}
+
+const char *CommonTemplates::EnumClassForwardDeclarationTemplate()
+{
+    return "enum class $type$;\n";
 }
 
 const char *CommonTemplates::ClassMessageQmlBeginDeclarationTemplate()
@@ -252,16 +264,6 @@ const char *CommonTemplates::PropertyRepeatedMessageTemplate()
     return "Q_PROPERTY($property_list_type$ $property_name$Data READ $property_name$ WRITE "
            "set$property_name_cap$ SCRIPTABLE $scriptable$)\n";
 }
-const char *CommonTemplates::PropertyNonScriptableTemplate()
-{
-    return "Q_PROPERTY($property_type$ $property_name$_p READ $property_name$ WRITE "
-           "set$property_name_cap$ SCRIPTABLE false)\n";
-}
-const char *CommonTemplates::PropertyNonScriptableAliasTemplate()
-{
-    return "Q_PROPERTY($qml_alias_type$ $property_name$ READ $property_name$_p WRITE "
-           "set$property_name_cap$_p SCRIPTABLE true)\n";
-}
 const char *CommonTemplates::PropertyMessageTemplate()
 {
     return "Q_PROPERTY($property_type$ *$property_name$_p READ $property_name$_p WRITE "
@@ -280,8 +282,8 @@ const char *CommonTemplates::PropertyOneofTemplate()
 }
 const char *CommonTemplates::PropertyOneofMessageTemplate()
 {
-    return "Q_PROPERTY($property_type$ *$property_name$ "
-           "READ $property_name$_p WRITE set$property_name_cap$_p)\n";
+    return "Q_PROPERTY($property_type$ *$property_name$_p "
+           "READ $property_name$_p WRITE set$property_name_cap$_p SCRIPTABLE false)\n";
 }
 const char *CommonTemplates::PropertyHasOneofTemplate()
 {
@@ -312,6 +314,10 @@ const char *CommonTemplates::MemberOneofTemplate()
 {
     return "QtProtobufPrivate::QProtobufOneof m_$optional_property_name$;\n";
 }
+const char *CommonTemplates::MemberOptionalTemplate()
+{
+    return "std::optional<$scope_type$> m_$optional_property_name$;\n";
+}
 const char *CommonTemplates::MemberRepeatedTemplate()
 {
     return "$scope_list_type$ m_$property_name$;\n";
@@ -330,7 +336,7 @@ const char *CommonTemplates::PrivateBlockTemplate()
 }
 const char *CommonTemplates::EnumDefinitionTemplate()
 {
-    return "enum $type$ {\n";
+    return "enum $type$ : int32_t {\n";
 }
 const char *CommonTemplates::EnumClassDefinitionTemplate()
 {
@@ -346,11 +352,6 @@ const char *CommonTemplates::ConstructorMessageDefinitionTemplate()
     return "$classname$::$classname$()\n"
            "    : QProtobufMessage(&$classname$::staticMetaObject),\n"
            "      dptr(new $dataclassname$)";
-}
-
-const char *CommonTemplates::EmptyConstructorTemplate()
-{
-    return "$classname$() {}\n";
 }
 
 const char *CommonTemplates::UseNamespace()
@@ -385,69 +386,6 @@ const char *CommonTemplates::MoveConstructorDefinitionTemplate()
            "      dptr(std::move(other.dptr))\n"
            "{\n}\n";
 }
-const char *CommonTemplates::DeletedCopyConstructorTemplate()
-{
-    return "$classname$(const $classname$ &) = delete;\n";
-}
-const char *CommonTemplates::DeletedMoveConstructorTemplate()
-{
-    return "$classname$($classname$ &&) = delete;\n";
-}
-const char *CommonTemplates::CopyMemberTemplate()
-{
-    return "m_$property_name$ = other.m_$property_name$;\n";
-}
-const char *CommonTemplates::CopyMemberOneofTemplate()
-{
-    return "m_$optional_property_name$ = other.m_$optional_property_name$;\n";
-}
-const char *CommonTemplates::AssignMemberMessageTemplate()
-{
-    return "if (m_$property_name$ != other.m_$property_name$)\n"
-           "    *m_$property_name$ = *other.m_$property_name$;\n";
-}
-
-const char *CommonTemplates::AssignMemberOneofTemplate()
-{
-    return "set$property_name_cap$_p(other.m_$optional_property_name$);\n";
-}
-
-const char *CommonTemplates::MoveMemberMessageTemplate()
-{
-    return "if (m_$property_name$ != other.m_$property_name$) {\n"
-           "    *m_$property_name$ = std::move(*other.m_$property_name$);\n"
-           "}\n";
-}
-const char *CommonTemplates::MoveAssignMemberMessageTemplate()
-{
-    return "if (m_$property_name$ != other.m_$property_name$)\n"
-           "    *m_$property_name$ = std::move(*other.m_$property_name$);\n";
-}
-
-const char *CommonTemplates::MoveAssignMemberOneofTemplate()
-{
-    return "m_$optional_property_name$ = std::move(other.m_$optional_property_name$);\n";
-}
-
-const char *CommonTemplates::MoveAssignMemberComplexTemplate()
-{
-    return "if (m_$property_name$ != other.m_$property_name$)\n"
-           "    m_$property_name$ = std::move(other.m_$property_name$);\n";
-}
-
-const char *CommonTemplates::MoveConstructorMemberComplexTemplate()
-{
-    return "m_$property_name$ = std::move(other.m_$property_name$);\n";
-}
-
-const char *CommonTemplates::MoveMemberTemplate()
-{
-    return "m_$property_name$ = std::exchange(other.m_$property_name$, 0);\n";
-}
-const char *CommonTemplates::MoveMemberEnumTemplate()
-{
-    return "m_$property_name$ = other.m_$property_name$;\n";
-}
 
 const char *CommonTemplates::AssignmentOperatorDeclarationTemplate()
 {
@@ -461,10 +399,6 @@ const char *CommonTemplates::AssignmentOperatorDefinitionTemplate()
            "    dptr = other.dptr;\n"
            "    return *this;\n"
            "}\n";
-}
-const char *CommonTemplates::AssignmentOperatorReturnTemplate()
-{
-    return "return *this;\n";
 }
 
 const char *CommonTemplates::MoveAssignmentOperatorDeclarationTemplate()
@@ -531,13 +465,44 @@ const char *CommonTemplates::PrivateGetterMessageDefinitionTemplate()
            "}\n\n";
 }
 
+const char *CommonTemplates::ClearMessageDeclarationTemplate()
+{
+    return "void clear$property_name_cap$();\n";
+}
+
+const char *CommonTemplates::ClearQmlMessageDeclarationTemplate()
+{
+    return "Q_INVOKABLE void clear$property_name_cap$();\n";
+}
+
+const char *CommonTemplates::ClearMessageDefinitionTemplate()
+{
+    return "void $classname$::clear$property_name_cap$()\n{\n"
+           "    if (dptr->m_$property_name$) {\n"
+           "        dptr.detach();\n"
+           "        dptr->m_$property_name$.reset();\n"
+           "    }\n"
+           "}\n\n";
+}
+
 const char *CommonTemplates::GetterMessageDeclarationTemplate()
 {
-    return "$getter_type$ &$property_name$() const;\n";
+    return "bool has$property_name_cap$() const;\n"
+           "$getter_type$ &$property_name$();\n"
+           "const $getter_type$ &$property_name$() const;\n";
 }
 const char *CommonTemplates::GetterMessageDefinitionTemplate()
 {
-    return "$getter_type$ &$classname$::$property_name$() const\n{\n"
+    return "bool $classname$::has$property_name_cap$() const\n{\n"
+           "    return dptr->m_$property_name$.operator bool();\n"
+           "}\n\n"
+           "$getter_type$ &$classname$::$property_name$()\n"
+           "{\n"
+           "    dptr.detach();\n"
+           "    return *dptr->m_$property_name$;\n"
+           "}\n"
+           "const $getter_type$ &$classname$::$property_name$() const\n"
+           "{\n"
            "    return *dptr->m_$property_name$;\n"
            "}\n\n";
 }
@@ -552,6 +517,14 @@ const char *CommonTemplates::PrivateGetterOneofDefinitionTemplate()
            "    return dptr->m_$optional_property_name$.holdsField($number$) ?\n"
            "        dptr->m_$optional_property_name$.value<$getter_type$>() : "
            "$getter_type$($initializer$);\n"
+           "}\n\n";
+}
+const char *CommonTemplates::PrivateGetterOptionalDefinitionTemplate()
+{
+    return "$getter_type$ $classname$::$property_name$_p() const\n{\n"
+           "    return dptr->m_$optional_property_name$ ?\n"
+           "        dptr->m_$optional_property_name$.value() : "
+           "$getter_type$();\n"
            "}\n\n";
 }
 
@@ -594,6 +567,16 @@ const char *CommonTemplates::GetterOneofDefinitionTemplate()
            "    return dptr->m_$optional_property_name$.value<$getter_type$>();\n"
            "}\n\n";
 }
+const char *CommonTemplates::GetterOptionalDefinitionTemplate()
+{
+    return "bool $classname$::has$property_name_cap$() const\n{\n"
+           "    return dptr->m_$optional_property_name$.has_value();\n"
+           "}\n"
+           "$getter_type$ $classname$::$property_name$() const\n{\n"
+           "    Q_ASSERT(dptr->m_$optional_property_name$.has_value());\n"
+           "    return dptr->m_$optional_property_name$.value();\n"
+           "}\n\n";
+}
 
 const char *CommonTemplates::GetterOneofMessageDeclarationTemplate()
 {
@@ -623,18 +606,6 @@ const char *CommonTemplates::GetterDefinitionTemplate()
            "}\n\n";
 }
 
-const char *CommonTemplates::GetterNonScriptableDeclarationTemplate()
-{
-    return "$qml_alias_type$ $property_name$_p() const;\n";
-}
-
-const char *CommonTemplates::GetterNonScriptableDefinitionTemplate()
-{
-    return "$qml_alias_type$ $classname$::$property_name$_p() const\n{\n"
-           "    return dptr->m_$property_name$;\n"
-           "}\n\n";
-}
-
 const char *CommonTemplates::GetterComplexDeclarationTemplate()
 {
     return "$getter_type$ &$property_name$();\n";
@@ -645,18 +616,6 @@ const char *CommonTemplates::GetterComplexDefinitionTemplate()
     return "$getter_type$ &$classname$::$property_name$()\n{\n"
            "    dptr.detach();\n"
            "    return dptr->m_$property_name$;\n"
-           "}\n\n";
-}
-
-const char *CommonTemplates::GetterQmlListDeclarationTemplate()
-{
-    return "QQmlListProperty<$scope_type$> $property_name$_l();\n";
-}
-const char *CommonTemplates::GetterQmlListDefinitionTemplate()
-{
-    return "QQmlListProperty<$full_type$> $classname$::$property_name$_l()\n{\n"
-           "    return qProtobufConstructQmlListProperty<$scope_type$>(this, "
-           "&dptr->m_$property_name$);\n"
            "}\n\n";
 }
 
@@ -709,6 +668,9 @@ const char *CommonTemplates::PrivateSetterOneofMessageDeclarationTemplate()
 const char *CommonTemplates::PrivateSetterOneofMessageDefinitionTemplate()
 {
     return "void $classname$::set$property_name_cap$_p($setter_type$ *$property_name$)\n{\n"
+           "    if (dptr->m_$optional_property_name$.holdsField($number$) &&\n"
+           "        dptr->m_$optional_property_name$.value<$setter_type$>() == $property_name$)\n"
+           "        return;\n"
            "    const $setter_type$ &value = *$property_name$;\n"
            "    if (!dptr->m_$optional_property_name$.isEqual(value, $number$)) {\n"
            "        dptr.detach();\n"
@@ -731,10 +693,25 @@ const char *CommonTemplates::PrivateSetterOneofDefinitionTemplate()
            "    }\n"
            "}\n\n";
 }
+const char *CommonTemplates::PrivateSetterOptionalDefinitionTemplate()
+{
+    return "void $classname$::set$property_name_cap$_p($setter_type$ $property_name$)\n"
+           "{\n"
+           "    if (!dptr->m_$optional_property_name$ || dptr->m_$optional_property_name$ != "
+           "$property_name$) {\n"
+           "        dptr.detach();\n"
+           "        dptr->m_$optional_property_name$ = $property_name$;\n"
+           "    }\n"
+           "}\n\n";
+}
 
 const char *CommonTemplates::ClearOneofDeclarationTemplate()
 {
     return "void clear$optional_property_name_cap$();\n";
+}
+const char *CommonTemplates::ClearQmlOneofDeclarationTemplate()
+{
+    return "Q_INVOKABLE void clear$optional_property_name_cap$();\n";
 }
 const char *CommonTemplates::ClearOneofDefinitionTemplate()
 {
@@ -743,6 +720,15 @@ const char *CommonTemplates::ClearOneofDefinitionTemplate()
            "QtProtobuf::InvalidFieldNumber) {\n"
            "        dptr.detach();\n"
            "        dptr->m_$optional_property_name$ = QtProtobufPrivate::QProtobufOneof();\n"
+           "    }\n"
+           "}\n";
+}
+const char *CommonTemplates::ClearOptionalDefinitionTemplate()
+{
+    return "void $classname$::clear$optional_property_name_cap$()\n{\n"
+           "    if (dptr->m_$optional_property_name$.has_value()) {\n"
+           "        dptr.detach();\n"
+           "        dptr->m_$optional_property_name$.reset();\n"
            "    }\n"
            "}\n";
 }
@@ -760,7 +746,16 @@ const char *CommonTemplates::SetterOneofDefinitionTemplate()
            "    }\n"
            "}\n\n";
 }
-
+const char *CommonTemplates::SetterOptionalDefinitionTemplate()
+{
+    return "void $classname$::set$property_name_cap$(const $setter_type$ &$property_name$)\n{\n"
+           "    if (!dptr->m_$optional_property_name$ || dptr->m_$optional_property_name$.value() "
+           "!= $property_name$) {\n"
+           "        dptr.detach();\n"
+           "        dptr->m_$optional_property_name$ = $property_name$;\n"
+           "    }\n"
+           "}\n\n";
+}
 const char *CommonTemplates::SetterDeclarationTemplate()
 {
     return "void set$property_name_cap$(const $setter_type$ &$property_name$);\n";
@@ -777,39 +772,16 @@ const char *CommonTemplates::SetterDefinitionTemplate()
            "}\n\n";
 }
 
-const char *CommonTemplates::SetterNonScriptableDeclarationTemplate()
+const char *CommonTemplates::SetterFloatingPointDefinitionTemplate()
 {
-    return "void set$property_name_cap$_p(const $qml_alias_type$ &$property_name$);\n";
-}
-
-const char *CommonTemplates::SetterNonScriptableDefinitionTemplate()
-{
-    return "void $classname$::set$property_name_cap$_p(const $qml_alias_type$ &$property_name$)\n"
+    return "void $classname$::set$property_name_cap$(const $setter_type$ &$property_name$)\n"
            "{\n"
-           "    if (dptr->m_$property_name$ != $property_name$) {\n"
+           "    if (dptr->m_$property_name$ != $property_name$ ||\n"
+           "        std::signbit(dptr->m_$property_name$) != std::signbit($property_name$)) {\n"
            "        dptr.detach();\n"
            "        dptr->m_$property_name$ = $property_name$;\n"
            "    }\n"
            "}\n\n";
-}
-
-const char *CommonTemplates::SignalsBlockTemplate()
-{
-    return "\nQ_SIGNALS:\n";
-}
-const char *CommonTemplates::SignalTemplate()
-{
-    return "void $property_name$Changed();\n";
-}
-
-const char *CommonTemplates::MetaDataUintDataEntryTemplate()
-{
-    return "const std::array<uint, $size$> qt_protobuf_$classname$_uint_data =";
-}
-
-const char *CommonTemplates::MetaDataCharDataEntryTemplate()
-{
-    return "const char qt_protobuf_$classname$_char_data[$size$] =";
 }
 
 const char *CommonTemplates::JsonNameOffsetsUintDataTemplate()
@@ -873,10 +845,7 @@ const char *CommonTemplates::InitializerMemberTemplate()
 {
     return "m_$property_name$($initializer$)";
 }
-const char *CommonTemplates::InitializerMemberMessageTemplate()
-{
-    return "m_$property_name$(nullptr)";
-}
+
 const char *CommonTemplates::CopyInitializerMemberTemplate()
 {
     return "m_$property_name$(other.m_$property_name$)";
@@ -904,8 +873,8 @@ const char *CommonTemplates::DeclareMetaTypeTemplate()
 const char *CommonTemplates::MetaTypeRegistrationLocalEnumTemplate()
 {
     return "qRegisterProtobufEnumType<$scope_type$>();\n"
-           "qRegisterMetaType<$scope_type$>();\n"
-           "qRegisterMetaType<$scope_list_type$>();\n";
+           "qRegisterMetaType<$type$>();\n"
+           "qRegisterMetaType<$list_type$>();\n";
 }
 const char *CommonTemplates::MetaTypeRegistrationMapTemplate()
 {
@@ -913,14 +882,9 @@ const char *CommonTemplates::MetaTypeRegistrationMapTemplate()
            "qRegisterProtobufMapType<$key_type$, $value_type$>();\n";
 }
 
-const char *CommonTemplates::QEnumTemplate()
-{
-    return "Q_ENUM($type$)\n";
-}
-
 const char *CommonTemplates::QEnumNSTemplate()
 {
-    return "Q_ENUM_NS($type$)\n";
+    return "Q_ENUM_NS($type$)\n\n";
 }
 
 const char *CommonTemplates::RegisterEnumSerializersTemplate()
@@ -942,9 +906,10 @@ const char *CommonTemplates::RegistrarEnumTemplate()
     return "static QtProtobuf::ProtoTypeRegistrar "
            "ProtoTypeRegistrar$enum_gadget$($enum_gadget$::registerTypes);\n";
 }
-const char *CommonTemplates::QmlRegisterTypeTemplate()
+
+const char *CommonTemplates::QmlNamedElement()
 {
-    return "qmlRegisterType<$scope_type$>(\"$qml_package$\", 1, 0, \"$type$\");\n";
+    return "QML_NAMED_ELEMENT($classname$)\n";
 }
 
 const char *CommonTemplates::QmlRegisterGlobalEnumTypeTemplate()
@@ -963,11 +928,6 @@ const char *CommonTemplates::QmlRegisterMessageTypeTemplate()
            "        uri, 1, 0, \"$type$\", "
            "\"You can only use the nested enums of $type$, "
            "but not create its instances in QML scope.\");\n";
-}
-
-const char *CommonTemplates::QmlRegisterProtobufTypes()
-{
-    return "        qRegisterProtobufTypes();\n";
 }
 
 const char *CommonTemplates::RepeatedSuffix()
@@ -1031,7 +991,7 @@ const char *CommonTemplates::QtProtobufFieldEnum()
 }
 const char *CommonTemplates::FieldEnumTemplate()
 {
-    return "enum QtProtobufFieldEnum {\n";
+    return "enum class QtProtobufFieldEnum {\n";
 }
 const char *CommonTemplates::FieldNumberTemplate()
 {
@@ -1049,41 +1009,6 @@ const char *CommonTemplates::ExportMacroTemplate()
            "#else\n"
            "#  define QPB_$export_macro$_EXPORT\n"
            "#endif\n";
-}
-
-const char *CommonTemplates::QmlPluginExportMacroTemplate()
-{
-    return "#if defined(QT_SHARED) || !defined(QT_STATIC)\n"
-           "#  define QPB_QML_EXPORT Q_DECL_EXPORT\n"
-           "#else\n"
-           "#  define QPB_QML_EXPORT\n"
-           "#endif\n";
-}
-
-const char *CommonTemplates::QmlExtensionPluginPreamble()
-{
-    return "\nextern void qml_register_types_$qml_package_escaped$();\n"
-           "Q_GHS_KEEP_REFERENCE(qml_register_types_$qml_package_escaped$);\n";
-}
-
-const char *CommonTemplates::QmlExtensionPluginClass()
-{
-    return "\nclass QPB_QML_EXPORT $plugin_name$Plugin : public QQmlExtensionPlugin\n";
-}
-
-const char *CommonTemplates::QmlExtensionPluginClassBody()
-{
-    return "{\n"
-           "    Q_OBJECT\n"
-           "    Q_PLUGIN_METADATA(IID QQmlExtensionInterface_iid)\n\n"
-           "public:\n"
-           "    $plugin_name$Plugin(QObject *parent = 0) : QQmlExtensionPlugin(parent) { }\n\n"
-           "    void registerTypes(const char *uri) override\n"
-           "    {\n"
-           "        Q_ASSERT(uri == QLatin1String(\"$qml_package$\"));\n"
-           "        volatile auto registration = &qml_register_types_$qml_package_escaped$;\n"
-           "        Q_UNUSED(registration);\n"
-           "        qmlRegisterModule(uri, 1, 0);\n";
 }
 
 const char *CommonTemplates::MocIncludeTemplate()

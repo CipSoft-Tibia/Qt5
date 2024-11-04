@@ -4,6 +4,8 @@
 
 #include "event_posix.h"
 
+#include "scoped_print_handle_posix.h"
+
 namespace content_analysis {
 namespace sdk {
 

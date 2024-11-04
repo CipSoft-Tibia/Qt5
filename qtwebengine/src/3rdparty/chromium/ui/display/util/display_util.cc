@@ -12,9 +12,14 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
 #include "base/notreached.h"
+#include "components/device_event_log/device_event_log.h"
 #include "ui/display/types/display_snapshot.h"
 #include "ui/display/util/edid_parser.h"
 #include "ui/gfx/icc_profile.h"
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "ui/display/display_features.h"
+#endif
 
 namespace display {
 
@@ -147,11 +152,32 @@ gfx::ColorSpace GetColorSpaceFromEdid(const display::EdidParser& edid_parser) {
   EmitEdidColorSpaceChecksOutcomeUma(EdidColorSpaceChecksOutcome::kSuccess);
 
   auto transfer_id = gfx::ColorSpace::TransferID::INVALID;
-  if (base::Contains(edid_parser.supported_color_primary_ids(),
-                     gfx::ColorSpace::PrimaryID::BT2020)) {
+  if (base::Contains(
+          edid_parser.supported_color_primary_matrix_ids(),
+          EdidParser::PrimaryMatrixPair(gfx::ColorSpace::PrimaryID::BT2020,
+                                        gfx::ColorSpace::MatrixID::RGB)) ||
+      base::Contains(edid_parser.supported_color_primary_matrix_ids(),
+                     EdidParser::PrimaryMatrixPair(
+                         gfx::ColorSpace::PrimaryID::BT2020,
+                         gfx::ColorSpace::MatrixID::BT2020_CL)) ||
+      base::Contains(edid_parser.supported_color_primary_matrix_ids(),
+                     EdidParser::PrimaryMatrixPair(
+                         gfx::ColorSpace::PrimaryID::BT2020,
+                         gfx::ColorSpace::MatrixID::BT2020_NCL))) {
     if (base::Contains(edid_parser.supported_color_transfer_ids(),
                        gfx::ColorSpace::TransferID::PQ)) {
       transfer_id = gfx::ColorSpace::TransferID::PQ;
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+      if (base::FeatureList::IsEnabled(
+              display::features::kEnableExternalDisplayHDR10Mode) &&
+          edid_parser.is_external_display() &&
+          base::Contains(
+              edid_parser.supported_color_primary_matrix_ids(),
+              EdidParser::PrimaryMatrixPair(gfx::ColorSpace::PrimaryID::BT2020,
+                                            gfx::ColorSpace::MatrixID::RGB))) {
+        return gfx::ColorSpace::CreateHDR10();
+      }
+#endif
     } else if (base::Contains(edid_parser.supported_color_transfer_ids(),
                               gfx::ColorSpace::TransferID::HLG)) {
       transfer_id = gfx::ColorSpace::TransferID::HLG;
@@ -312,11 +338,19 @@ gfx::DisplayColorSpaces CreateDisplayColorSpaces(
         gfx::ContentColorUsage::kHDR, true /* needs_alpha */, hdr_color_space,
         gfx::BufferFormat::RGBA_1010102);
 
-    // TODO(https://crbug.com/1286074): Populate maximum luminance based on
-    // `hdr_static_metadata`. For now, assume that the HDR maximum luminance
-    // is 1,000% of the SDR maximum luminance.
-    constexpr float kHDRMaxLuminanceRelative = 10.f;
-    display_color_spaces.SetHDRMaxLuminanceRelative(kHDRMaxLuminanceRelative);
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+    if (base::FeatureList::IsEnabled(
+            display::features::kEnableExternalDisplayHDR10Mode) &&
+        snapshot_color_space == gfx::ColorSpace::CreateHDR10()) {
+      // This forces the main ui plane to be always HDR10 regardless of
+      // ContentColorUsage. BT2020 primaries require 10-bit buffer.
+      display_color_spaces = gfx::DisplayColorSpaces(
+          gfx::ColorSpace::CreateHDR10(), gfx::BufferFormat::RGBA_1010102);
+    }
+#endif
+    display_color_spaces.SetHDRMaxLuminanceRelative(
+        hdr_static_metadata->max /
+        display_color_spaces.GetSDRMaxLuminanceNits());
   }
   return display_color_spaces;
 }

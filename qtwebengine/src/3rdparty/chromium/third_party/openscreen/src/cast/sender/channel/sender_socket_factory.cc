@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,7 @@
 
 using ::cast::channel::CastMessage;
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 SenderSocketFactory::Client::~Client() = default;
 
@@ -30,7 +29,7 @@ bool operator<(int a,
 }
 
 SenderSocketFactory::SenderSocketFactory(Client* client,
-                                         TaskRunner* task_runner)
+                                         TaskRunner& task_runner)
     : SenderSocketFactory(client,
                           task_runner,
                           CastTrustStore::Create(),
@@ -38,7 +37,7 @@ SenderSocketFactory::SenderSocketFactory(Client* client,
 
 SenderSocketFactory::SenderSocketFactory(
     Client* client,
-    TaskRunner* task_runner,
+    TaskRunner& task_runner,
     std::unique_ptr<TrustStore> cast_trust_store,
     std::unique_ptr<TrustStore> crl_trust_store)
     : client_(client),
@@ -46,13 +45,12 @@ SenderSocketFactory::SenderSocketFactory(
       cast_trust_store_(std::move(cast_trust_store)),
       crl_trust_store_(std::move(crl_trust_store)) {
   OSP_DCHECK(client);
-  OSP_DCHECK(task_runner);
   OSP_DCHECK(cast_trust_store_);
   OSP_DCHECK(crl_trust_store_);
 }
 
 SenderSocketFactory::~SenderSocketFactory() {
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
 }
 
 void SenderSocketFactory::set_factory(TlsConnectionFactory* factory) {
@@ -63,7 +61,7 @@ void SenderSocketFactory::set_factory(TlsConnectionFactory* factory) {
 void SenderSocketFactory::Connect(const IPEndpoint& endpoint,
                                   DeviceMediaPolicy media_policy,
                                   CastSocket::Client* client) {
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
   OSP_DCHECK(client);
   auto it = FindPendingConnection(endpoint);
   if (it == pending_connections_.end()) {
@@ -104,7 +102,7 @@ void SenderSocketFactory::OnConnected(
   }
 
   auto socket =
-      MakeSerialDelete<CastSocket>(task_runner_, std::move(connection), this);
+      MakeSerialDelete<CastSocket>(&task_runner_, std::move(connection), this);
   pending_auth_.emplace_back(
       new PendingAuth{endpoint, media_policy, std::move(socket), client,
                       std::make_unique<AuthContext>(AuthContext::Create()),
@@ -204,5 +202,4 @@ void SenderSocketFactory::OnMessage(CastSocket* socket, CastMessage message) {
                        std::unique_ptr<CastSocket>(pending->socket.release()));
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

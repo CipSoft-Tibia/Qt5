@@ -14,7 +14,9 @@
 #include "base/trace_event/trace_event.h"
 #include "ui/events/devices/device_data_manager.h"
 #include "ui/events/devices/input_device.h"
+#include "ui/events/devices/keyboard_device.h"
 #include "ui/events/devices/microphone_mute_switch_monitor.h"
+#include "ui/events/devices/touchpad_device.h"
 #include "ui/events/event_utils.h"
 #include "ui/events/ozone/device/device_event.h"
 #include "ui/events/ozone/device/device_manager.h"
@@ -93,7 +95,7 @@ class ProxyDeviceEventDispatcher : public DeviceEventDispatcherEvdev {
   }
 
   void DispatchKeyboardDevicesUpdated(
-      const std::vector<InputDevice>& devices,
+      const std::vector<KeyboardDevice>& devices,
       base::flat_map<int, std::vector<uint64_t>> key_bits_mapping) override {
     ui_thread_runner_->PostTask(
         FROM_HERE,
@@ -122,12 +124,20 @@ class ProxyDeviceEventDispatcher : public DeviceEventDispatcherEvdev {
         base::BindOnce(&EventFactoryEvdev::DispatchPointingStickDevicesUpdated,
                        event_factory_evdev_, devices));
   }
-  void DispatchTouchpadDevicesUpdated(const std::vector<InputDevice>& devices,
-                                      bool has_haptic_touchpad) override {
+  void DispatchTouchpadDevicesUpdated(
+      const std::vector<TouchpadDevice>& devices,
+      bool has_haptic_touchpad) override {
     ui_thread_runner_->PostTask(
         FROM_HERE,
         base::BindOnce(&EventFactoryEvdev::DispatchTouchpadDevicesUpdated,
                        event_factory_evdev_, devices, has_haptic_touchpad));
+  }
+  void DispatchGraphicsTabletDevicesUpdated(
+      const std::vector<InputDevice>& devices) override {
+    ui_thread_runner_->PostTask(
+        FROM_HERE,
+        base::BindOnce(&EventFactoryEvdev::DispatchGraphicsTabletDevicesUpdated,
+                       event_factory_evdev_, devices));
   }
   void DispatchDeviceListsComplete() override {
     ui_thread_runner_->PostTask(
@@ -169,6 +179,13 @@ class ProxyDeviceEventDispatcher : public DeviceEventDispatcherEvdev {
                        event_factory_evdev_, devices));
   }
 
+  void DispatchAnyKeysPressedUpdated(bool any) override {
+    ui_thread_runner_->PostTask(
+        FROM_HERE,
+        base::BindOnce(&EventFactoryEvdev::DispatchAnyKeysPressedUpdated,
+                       event_factory_evdev_, any));
+  }
+
  private:
   scoped_refptr<base::SingleThreadTaskRunner> ui_thread_runner_;
   base::WeakPtr<EventFactoryEvdev> event_factory_evdev_;
@@ -207,10 +224,13 @@ EventFactoryEvdev::EventFactoryEvdev(CursorDelegateEvdev* cursor,
                                      KeyboardLayoutEngine* keyboard_layout)
     : device_manager_(device_manager),
       gamepad_provider_(GamepadProviderOzone::GetInstance()),
-      keyboard_(&modifiers_,
-                keyboard_layout,
-                base::BindRepeating(&EventFactoryEvdev::DispatchUiEvent,
-                                    base::Unretained(this))),
+      keyboard_(
+          &modifiers_,
+          keyboard_layout,
+          base::BindRepeating(&EventFactoryEvdev::DispatchUiEvent,
+                              base::Unretained(this)),
+          base::BindRepeating(&EventFactoryEvdev::DispatchAnyKeysPressedUpdated,
+                              base::Unretained(this))),
       cursor_(cursor),
       input_controller_(&keyboard_,
                         &mouse_button_map_,
@@ -289,9 +309,10 @@ void EventFactoryEvdev::DispatchMouseButtonEvent(
   // Mouse buttons can be remapped, touchpad taps & clicks cannot.
   unsigned int button = params.button;
   if (params.map_type == MouseButtonMapType::kMouse) {
-    button = mouse_button_map_.GetMappedButton(button);
+    button = mouse_button_map_.GetMappedButton(params.device_id, button);
   } else if (params.map_type == MouseButtonMapType::kPointingStick) {
-    button = pointing_stick_button_map_.GetMappedButton(button);
+    button =
+        pointing_stick_button_map_.GetMappedButton(params.device_id, button);
   }
 
   int modifier = MODIFIER_NONE;
@@ -408,7 +429,7 @@ void EventFactoryEvdev::DispatchUiEvent(Event* event) {
 }
 
 void EventFactoryEvdev::DispatchKeyboardDevicesUpdated(
-    const std::vector<InputDevice>& devices,
+    const std::vector<KeyboardDevice>& devices,
     base::flat_map<int, std::vector<uint64_t>> key_bits_mapping) {
   TRACE_EVENT0("evdev", "EventFactoryEvdev::DispatchKeyboardDevicesUpdated");
   input_controller_.SetKeyboardKeyBitsMapping(std::move(key_bits_mapping));
@@ -446,7 +467,7 @@ void EventFactoryEvdev::DispatchPointingStickDevicesUpdated(
 }
 
 void EventFactoryEvdev::DispatchTouchpadDevicesUpdated(
-    const std::vector<InputDevice>& devices,
+    const std::vector<TouchpadDevice>& devices,
     bool has_haptic_touchpad) {
   TRACE_EVENT0("evdev", "EventFactoryEvdev::DispatchTouchpadDevicesUpdated");
 
@@ -475,6 +496,14 @@ void EventFactoryEvdev::DispatchMicrophoneMuteSwitchValueChanged(bool muted) {
   MicrophoneMuteSwitchMonitor::Get()->SetMicrophoneMuteSwitchValue(muted);
 }
 
+void EventFactoryEvdev::DispatchGraphicsTabletDevicesUpdated(
+    const std::vector<InputDevice>& devices) {
+  TRACE_EVENT0("evdev",
+               "EventFactoryEvdev::DispatchGraphicsTabletDevicesUpdated");
+  DeviceHotplugEventObserver* observer = DeviceDataManager::GetInstance();
+  observer->OnGraphicsTabletDevicesUpdated(devices);
+}
+
 void EventFactoryEvdev::DispatchUncategorizedDevicesUpdated(
     const std::vector<InputDevice>& devices) {
   TRACE_EVENT0("evdev",
@@ -489,6 +518,11 @@ void EventFactoryEvdev::DispatchGamepadDevicesUpdated(
   TRACE_EVENT0("evdev", "EventFactoryEvdev::DispatchGamepadDevicesUpdated");
   input_controller_.SetGamepadKeyBitsMapping(std::move(key_bits_mapping));
   gamepad_provider_->DispatchGamepadDevicesUpdated(devices);
+}
+
+void EventFactoryEvdev::DispatchAnyKeysPressedUpdated(bool any) {
+  TRACE_EVENT0("evdev", "EventFactoryEvdev::DispatchAnyKeysPressedUpdated");
+  input_controller_.set_any_keys_pressed(any);
 }
 
 void EventFactoryEvdev::OnDeviceEvent(const DeviceEvent& event) {
@@ -546,7 +580,8 @@ void EventFactoryEvdev::StartThread() {
                                      weak_ptr_factory_.GetWeakPtr()));
   thread_.Start(std::move(proxy_dispatcher), cursor_,
                 base::BindOnce(&EventFactoryEvdev::OnThreadStarted,
-                               weak_ptr_factory_.GetWeakPtr()));
+                               weak_ptr_factory_.GetWeakPtr()),
+                &input_controller_);
 }
 
 void EventFactoryEvdev::OnThreadStarted(

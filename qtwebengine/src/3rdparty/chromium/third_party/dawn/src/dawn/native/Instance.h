@@ -17,11 +17,15 @@
 
 #include <array>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
-#include "dawn/common/RefCounted.h"
+#include "dawn/common/Ref.h"
+#include "dawn/common/ityp_array.h"
 #include "dawn/common/ityp_bitset.h"
 #include "dawn/native/Adapter.h"
 #include "dawn/native/BackendConnection.h"
@@ -37,10 +41,14 @@ class Platform;
 
 namespace dawn::native {
 
+class CallbackTaskManager;
+class DeviceBase;
 class Surface;
-class XlibXcbFunctions;
+class X11Functions;
 
 using BackendsBitset = ityp::bitset<wgpu::BackendType, kEnumCount<wgpu::BackendType>>;
+using BackendsArray = ityp::
+    array<wgpu::BackendType, std::unique_ptr<BackendConnection>, kEnumCount<wgpu::BackendType>>;
 
 InstanceBase* APICreateInstance(const InstanceDescriptor* descriptor);
 
@@ -54,10 +62,20 @@ class InstanceBase final : public RefCountedWithExternalCount {
                            WGPURequestAdapterCallback callback,
                            void* userdata);
 
-    void DiscoverDefaultAdapters();
-    bool DiscoverAdapters(const AdapterDiscoveryOptionsBase* options);
+    // Deprecated: Discover physical devices and save them on the instance.
+    void DiscoverDefaultPhysicalDevices();
+    bool DiscoverPhysicalDevices(const PhysicalDeviceDiscoveryOptionsBase* options);
 
-    const std::vector<Ref<AdapterBase>>& GetAdapters() const;
+    // Deprecated. Use EnumerateAdapters instead.
+    // Return adapters created on physical device discovered by the instance.
+    std::vector<Ref<AdapterBase>> GetAdapters() const;
+
+    // Discovers and returns a vector of adapters.
+    // All systems adapters that can be found are returned if no options are passed.
+    // Otherwise, returns adapters based on the `options`.
+    std::vector<Ref<AdapterBase>> EnumerateAdapters(const RequestAdapterOptions* options = nullptr);
+
+    size_t GetPhysicalDeviceCountForTesting() const;
 
     // Used to handle error that happen up to device creation.
     bool ConsumedError(MaybeError maybeError);
@@ -71,6 +89,22 @@ class InstanceBase final : public RefCountedWithExternalCount {
         *result = resultOrError.AcquireSuccess();
         return false;
     }
+
+    // Consume an error and log its warning at most once. This is useful for
+    // physical device creation errors that happen because the backend is not
+    // supported or doesn't meet the required capabilities.
+    bool ConsumedErrorAndWarnOnce(MaybeError maybeError);
+
+    template <typename T>
+    [[nodiscard]] bool ConsumedErrorAndWarnOnce(ResultOrError<T> resultOrError, T* result) {
+        if (DAWN_UNLIKELY(resultOrError.IsError())) {
+            return ConsumedErrorAndWarnOnce(resultOrError.AcquireError());
+        }
+        *result = resultOrError.AcquireSuccess();
+        return false;
+    }
+
+    const TogglesState& GetTogglesState() const;
 
     // Used to query the details of a toggle. Return nullptr if toggleName is not a valid name
     // of a toggle supported in Dawn.
@@ -93,27 +127,28 @@ class InstanceBase final : public RefCountedWithExternalCount {
     void EnableAdapterBlocklist(bool enable);
     bool IsAdapterBlocklistEnabled() const;
 
-    // TODO(dawn:1374): SetPlatform should become a private helper, and SetPlatformForTesting
-    // will become the NOT thread-safe testing version exposed for special testing cases.
-    void SetPlatform(dawn::platform::Platform* platform);
+    // Testing only API that is NOT thread-safe.
     void SetPlatformForTesting(dawn::platform::Platform* platform);
     dawn::platform::Platform* GetPlatform();
     BlobCache* GetBlobCache(bool enabled = true);
 
     uint64_t GetDeviceCountForTesting() const;
-    void IncrementDeviceCountForTesting();
-    void DecrementDeviceCountForTesting();
+    void AddDevice(DeviceBase* device);
+    void RemoveDevice(DeviceBase* device);
 
     const std::vector<std::string>& GetRuntimeSearchPaths() const;
 
+    const Ref<CallbackTaskManager>& GetCallbackTaskManager() const;
+
     // Get backend-independent libraries that need to be loaded dynamically.
-    const XlibXcbFunctions* GetOrCreateXlibXcbFunctions();
+    const X11Functions* GetOrLoadX11Functions();
 
     // Dawn API
     Surface* APICreateSurface(const SurfaceDescriptor* descriptor);
+    bool APIProcessEvents();
 
   private:
-    InstanceBase();
+    explicit InstanceBase(const TogglesState& instanceToggles);
     ~InstanceBase() override;
 
     void WillDropLastExternalRef() override;
@@ -122,21 +157,30 @@ class InstanceBase final : public RefCountedWithExternalCount {
     InstanceBase& operator=(const InstanceBase& other) = delete;
 
     MaybeError Initialize(const InstanceDescriptor* descriptor);
+    void SetPlatform(dawn::platform::Platform* platform);
 
-    // Lazily creates connections to all backends that have been compiled.
-    void EnsureBackendConnection(wgpu::BackendType backendType);
+    // Lazily creates connections to all backends that have been compiled, may return null even for
+    // compiled in backends.
+    BackendConnection* GetBackendConnection(wgpu::BackendType backendType);
 
-    MaybeError DiscoverAdaptersInternal(const AdapterDiscoveryOptionsBase* options);
+    // Deprecated: Discover physical devices with options, and save them on the instance.
+    void DeprecatedDiscoverPhysicalDevices(const RequestAdapterOptions* options);
+    // Enumerate physical devices according to options and return them.
+    std::vector<Ref<PhysicalDeviceBase>> EnumeratePhysicalDevices(
+        const RequestAdapterOptions* options);
 
-    ResultOrError<Ref<AdapterBase>> RequestAdapterInternal(const RequestAdapterOptions* options);
+    // Helper function that create adapter on given physical device handling required adapter
+    // toggles descriptor.
+    Ref<AdapterBase> CreateAdapter(Ref<PhysicalDeviceBase> physicalDevice,
+                                   FeatureLevel featureLevel,
+                                   const DawnTogglesDescriptor* requiredAdapterToggles,
+                                   wgpu::PowerPreference powerPreference) const;
 
     void ConsumeError(std::unique_ptr<ErrorData> error);
 
+    std::unordered_set<std::string> warningMessages;
+
     std::vector<std::string> mRuntimeSearchPaths;
-
-    BackendsBitset mBackendsConnected;
-
-    bool mDiscoveredDefaultAdapters = false;
 
     bool mBeginCaptureOnStartup = false;
     bool mEnableAdapterBlocklist = false;
@@ -147,17 +191,23 @@ class InstanceBase final : public RefCountedWithExternalCount {
     std::unique_ptr<BlobCache> mBlobCache;
     BlobCache mPassthroughBlobCache;
 
-    std::vector<std::unique_ptr<BackendConnection>> mBackends;
-    std::vector<Ref<AdapterBase>> mAdapters;
+    BackendsArray mBackends;
+    BackendsBitset mBackendsTried;
 
-    FeaturesInfo mFeaturesInfo;
+    std::vector<Ref<PhysicalDeviceBase>> mDeprecatedPhysicalDevices;
+    bool mDeprecatedDiscoveredDefaultPhysicalDevices = false;
+
+    TogglesState mToggles;
     TogglesInfo mTogglesInfo;
 
 #if defined(DAWN_USE_X11)
-    std::unique_ptr<XlibXcbFunctions> mXlibXcbFunctions;
+    std::unique_ptr<X11Functions> mX11Functions;
 #endif  // defined(DAWN_USE_X11)
 
-    std::atomic_uint64_t mDeviceCountForTesting{0};
+    Ref<CallbackTaskManager> mCallbackTaskManager;
+
+    std::set<DeviceBase*> mDevicesList;
+    mutable std::mutex mDevicesListMutex;
 };
 
 }  // namespace dawn::native

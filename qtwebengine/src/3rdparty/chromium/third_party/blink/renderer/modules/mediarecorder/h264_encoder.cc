@@ -6,9 +6,14 @@
 
 #include <utility>
 
+#include "base/containers/fixed_flat_map.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
+#include "media/base/encoder_status.h"
 #include "media/base/video_codecs.h"
+#include "media/base/video_encoder_metrics_provider.h"
 #include "media/base/video_frame.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
@@ -28,45 +33,46 @@ namespace {
 
 absl::optional<EProfileIdc> ToOpenH264Profile(
     media::VideoCodecProfile profile) {
-  static const HashMap<media::VideoCodecProfile, EProfileIdc>
-      kProfileToEProfileIdc({
+  static constexpr auto kProfileToEProfileIdc =
+      base::MakeFixedFlatMap<media::VideoCodecProfile, EProfileIdc>({
           {media::H264PROFILE_BASELINE, PRO_BASELINE},
           {media::H264PROFILE_MAIN, PRO_MAIN},
           {media::H264PROFILE_EXTENDED, PRO_EXTENDED},
           {media::H264PROFILE_HIGH, PRO_HIGH},
       });
 
-  const auto& it = kProfileToEProfileIdc.find(profile);
+  const auto* it = kProfileToEProfileIdc.find(profile);
   if (it != kProfileToEProfileIdc.end()) {
-    return it->value;
+    return it->second;
   }
   return absl::nullopt;
 }
 
 absl::optional<ELevelIdc> ToOpenH264Level(uint8_t level) {
-  static const HashMap<uint8_t, ELevelIdc> kLevelToELevelIdc({
-      {10, LEVEL_1_0},
-      {9, LEVEL_1_B},
-      {11, LEVEL_1_1},
-      {12, LEVEL_1_2},
-      {13, LEVEL_1_3},
-      {20, LEVEL_2_0},
-      {21, LEVEL_2_1},
-      {22, LEVEL_2_2},
-      {30, LEVEL_3_0},
-      {31, LEVEL_3_1},
-      {32, LEVEL_3_2},
-      {40, LEVEL_4_0},
-      {41, LEVEL_4_1},
-      {42, LEVEL_4_2},
-      {50, LEVEL_5_0},
-      {51, LEVEL_5_1},
-      {52, LEVEL_5_2},
-  });
+  static constexpr auto kLevelToELevelIdc =
+      base::MakeFixedFlatMap<uint8_t, ELevelIdc>({
+          {10, LEVEL_1_0},
+          {9, LEVEL_1_B},
+          {11, LEVEL_1_1},
+          {12, LEVEL_1_2},
+          {13, LEVEL_1_3},
+          {20, LEVEL_2_0},
+          {21, LEVEL_2_1},
+          {22, LEVEL_2_2},
+          {30, LEVEL_3_0},
+          {31, LEVEL_3_1},
+          {32, LEVEL_3_2},
+          {40, LEVEL_4_0},
+          {41, LEVEL_4_1},
+          {42, LEVEL_4_2},
+          {50, LEVEL_5_0},
+          {51, LEVEL_5_1},
+          {52, LEVEL_5_2},
+      });
 
-  const auto& it = kLevelToELevelIdc.find(level);
+  const auto* it = kLevelToELevelIdc.find(level);
   if (it != kLevelToELevelIdc.end())
-    return it->value;
+    return it->second;
   return absl::nullopt;
 }
 }  // namespace
@@ -80,10 +86,13 @@ void H264Encoder::ISVCEncoderDeleter::operator()(ISVCEncoder* codec) {
 }
 
 H264Encoder::H264Encoder(
+    scoped_refptr<base::SequencedTaskRunner> encoding_task_runner,
     const VideoTrackRecorder::OnEncodedVideoCB& on_encoded_video_cb,
     VideoTrackRecorder::CodecProfile codec_profile,
     uint32_t bits_per_second)
-    : Encoder(on_encoded_video_cb, bits_per_second),
+    : Encoder(std::move(encoding_task_runner),
+              on_encoded_video_cb,
+              bits_per_second),
       codec_profile_(codec_profile) {
   DCHECK_EQ(codec_profile_.codec_id, VideoTrackRecorder::CodecId::kH264);
 }
@@ -92,7 +101,8 @@ H264Encoder::H264Encoder(
 H264Encoder::~H264Encoder() = default;
 
 void H264Encoder::EncodeFrame(scoped_refptr<media::VideoFrame> frame,
-                              base::TimeTicks capture_timestamp) {
+                              base::TimeTicks capture_timestamp,
+                              bool request_keyframe) {
   TRACE_EVENT0("media", "H264Encoder::EncodeFrame");
   using media::VideoFrame;
   DCHECK(frame->format() == media::VideoPixelFormat::PIXEL_FORMAT_NV12 ||
@@ -133,7 +143,18 @@ void H264Encoder::EncodeFrame(scoped_refptr<media::VideoFrame> frame,
       const_cast<uint8_t*>(frame->visible_data(media::VideoFrame::kVPlane));
 
   SFrameBSInfo info = {};
-  if (openh264_encoder_->EncodeFrame(&picture, &info) != cmResultSuccess) {
+
+  // ForceIntraFrame(false) should be nop, but actually logs, avoid this.
+  if (request_keyframe) {
+    openh264_encoder_->ForceIntraFrame(true);
+  }
+
+  if (int ret = openh264_encoder_->EncodeFrame(&picture, &info);
+      ret != cmResultSuccess) {
+    metrics_provider_->SetError(
+        {media::EncoderStatus::Codes::kEncoderFailedEncode,
+         base::StrCat(
+             {"OpenH264 failed to encode: ", base::NumberToString(ret)})});
     NOTREACHED() << "OpenH264 encoding failed";
     return;
   }
@@ -160,9 +181,10 @@ void H264Encoder::EncodeFrame(scoped_refptr<media::VideoFrame> frame,
     data.append(reinterpret_cast<char*>(layerInfo.pBsBuf), layer_len);
   }
 
+  metrics_provider_->IncrementEncodedFrameCount();
   const bool is_key_frame = info.eFrameType == videoFrameTypeIDR;
   on_encoded_video_cb_.Run(video_params, std::move(data), std::string(),
-                           capture_timestamp, is_key_frame);
+                           absl::nullopt, capture_timestamp, is_key_frame);
 }
 
 bool H264Encoder::ConfigureEncoder(const gfx::Size& size) {
@@ -187,7 +209,6 @@ bool H264Encoder::ConfigureEncoder(const gfx::Size& size) {
   DCHECK_EQ(AUTO_REF_PIC_COUNT, init_params.iNumRefFrame);
   DCHECK(!init_params.bSimulcastAVC);
 
-  init_params.uiIntraPeriod = 100;  // Same as for VpxEncoder.
   init_params.iPicWidth = size.width();
   init_params.iPicHeight = size.height();
 
@@ -239,7 +260,15 @@ bool H264Encoder::ConfigureEncoder(const gfx::Size& size) {
   init_params.sSpatialLayers[0].sSliceArgument.uiSliceMode =
       SM_FIXEDSLCNUM_SLICE;
 
-  if (openh264_encoder_->InitializeExt(&init_params) != cmResultSuccess) {
+  metrics_provider_->Initialize(
+      codec_profile_.profile.value_or(media::H264PROFILE_BASELINE),
+      configured_size_, /*is_hardware_encoder=*/false);
+  if (int ret = openh264_encoder_->InitializeExt(&init_params);
+      ret != cmResultSuccess) {
+    metrics_provider_->SetError(
+        {media::EncoderStatus::Codes::kEncoderInitializationError,
+         base::StrCat(
+             {"OpenH264 failed to initialize: ", base::NumberToString(ret)})});
     DLOG(WARNING) << "Failed to initialize OpenH264 encoder";
     openh264_encoder_.reset();
     return false;

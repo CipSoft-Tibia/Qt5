@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
+import m from 'mithril';
 
+import {clamp} from '../base/math_utils';
 import {Actions} from '../common/actions';
-import {TimeSpan} from '../common/time';
+import {featureFlags} from '../common/feature_flags';
+import {Time} from '../common/time';
+import {raf} from '../core/raf_scheduler';
 
 import {TRACK_SHELL_WIDTH} from './css_constants';
 import {DetailsPanel} from './details_panel';
@@ -27,13 +30,19 @@ import {PanAndZoomHandler} from './pan_and_zoom_handler';
 import {AnyAttrsVnode, PanelContainer} from './panel_container';
 import {TickmarkPanel} from './tickmark_panel';
 import {TimeAxisPanel} from './time_axis_panel';
-import {computeZoom} from './time_scale';
 import {TimeSelectionPanel} from './time_selection_panel';
 import {DISMISSED_PANNING_HINT_KEY} from './topbar';
 import {TrackGroupPanel} from './track_group_panel';
 import {TrackPanel} from './track_panel';
 
 const SIDEBAR_WIDTH = 256;
+
+const OVERVIEW_PANEL_FLAG = featureFlags.register({
+  id: 'overviewVisible',
+  name: 'Overview Panel',
+  description: 'Show the panel providing an overview of the trace',
+  defaultValue: true,
+});
 
 // Checks if the mousePos is within 3px of the start or end of the
 // current selected time range.
@@ -45,8 +54,9 @@ function onTimeRangeBoundary(mousePos: number): 'START'|'END'|null {
     const area = globals.frontendLocalState.selectedArea ?
         globals.frontendLocalState.selectedArea :
         globals.state.areas[selection.areaId];
-    const start = globals.frontendLocalState.timeScale.timeToPx(area.startSec);
-    const end = globals.frontendLocalState.timeScale.timeToPx(area.endSec);
+    const {visibleTimeScale} = globals.frontendLocalState;
+    const start = visibleTimeScale.timeToPx(area.start);
+    const end = visibleTimeScale.timeToPx(area.end);
     const startDrag = mousePos - TRACK_SHELL_WIDTH;
     const startDistance = Math.abs(start - startDrag);
     const endDistance = Math.abs(end - startDrag);
@@ -98,7 +108,7 @@ class TraceViewer implements m.ClassComponent {
     // TODO: Do resize handling better.
     this.onResize = () => {
       updateDimensions();
-      globals.rafScheduler.scheduleFullRedraw();
+      raf.scheduleFullRedraw();
     };
 
     // Once ResizeObservers are out, we can stop accessing the window here.
@@ -111,34 +121,26 @@ class TraceViewer implements m.ClassComponent {
       element: panZoomEl,
       contentOffsetX: SIDEBAR_WIDTH,
       onPanned: (pannedPx: number) => {
+        const {
+          visibleTimeScale,
+        } = globals.frontendLocalState;
+
         this.keepCurrentSelection = true;
-        const traceTime = globals.state.traceTime;
-        const vizTime = globals.frontendLocalState.visibleWindowTime;
-        const origDelta = vizTime.duration;
-        const tDelta = frontendLocalState.timeScale.deltaPxToDuration(pannedPx);
-        let tStart = vizTime.start + tDelta;
-        let tEnd = vizTime.end + tDelta;
-        if (tStart < traceTime.startSec) {
-          tStart = traceTime.startSec;
-          tEnd = tStart + origDelta;
-        } else if (tEnd > traceTime.endSec) {
-          tEnd = traceTime.endSec;
-          tStart = tEnd - origDelta;
-        }
-        frontendLocalState.updateVisibleTime(new TimeSpan(tStart, tEnd));
+        const tDelta = visibleTimeScale.pxDeltaToDuration(pannedPx);
+        frontendLocalState.panVisibleWindow(tDelta);
+
         // If the user has panned they no longer need the hint.
         localStorage.setItem(DISMISSED_PANNING_HINT_KEY, 'true');
-        globals.rafScheduler.scheduleRedraw();
+        raf.scheduleRedraw();
       },
       onZoomed: (zoomedPositionPx: number, zoomRatio: number) => {
         // TODO(hjd): Avoid hardcoding TRACK_SHELL_WIDTH.
         // TODO(hjd): Improve support for zooming in overview timeline.
-        const span = frontendLocalState.visibleWindowTime;
-        const scale = frontendLocalState.timeScale;
         const zoomPx = zoomedPositionPx - TRACK_SHELL_WIDTH;
-        const newSpan = computeZoom(scale, span, 1 - zoomRatio, zoomPx);
-        frontendLocalState.updateVisibleTime(newSpan);
-        globals.rafScheduler.scheduleRedraw();
+        const rect = vnode.dom.getBoundingClientRect();
+        const centerPoint = zoomPx / (rect.width - TRACK_SHELL_WIDTH);
+        frontendLocalState.zoomVisibleWindow(1 - zoomRatio, centerPoint);
+        raf.scheduleRedraw();
       },
       editSelection: (currentPx: number) => {
         return onTimeRangeBoundary(currentPx) !== null;
@@ -151,7 +153,7 @@ class TraceViewer implements m.ClassComponent {
           currentY: number,
           editing: boolean) => {
         const traceTime = globals.state.traceTime;
-        const scale = frontendLocalState.timeScale;
+        const {visibleTimeScale} = frontendLocalState;
         this.keepCurrentSelection = true;
         if (editing) {
           const selection = globals.state.currentSelection;
@@ -159,37 +161,43 @@ class TraceViewer implements m.ClassComponent {
             const area = globals.frontendLocalState.selectedArea ?
                 globals.frontendLocalState.selectedArea :
                 globals.state.areas[selection.areaId];
-            let newTime = scale.pxToTime(currentX - TRACK_SHELL_WIDTH);
+            let newTime =
+                visibleTimeScale.pxToHpTime(currentX - TRACK_SHELL_WIDTH)
+                    .toTime();
             // Have to check again for when one boundary crosses over the other.
             const curBoundary = onTimeRangeBoundary(prevX);
             if (curBoundary == null) return;
-            const keepTime =
-                curBoundary === 'START' ? area.endSec : area.startSec;
+            const keepTime = curBoundary === 'START' ? area.end : area.start;
             // Don't drag selection outside of current screen.
             if (newTime < keepTime) {
-              newTime = Math.max(newTime, scale.pxToTime(scale.startPx));
+              newTime =
+                  Time.max(newTime, visibleTimeScale.timeSpan.start.toTime());
             } else {
-              newTime = Math.min(newTime, scale.pxToTime(scale.endPx));
+              newTime =
+                  Time.max(newTime, visibleTimeScale.timeSpan.end.toTime());
             }
             // When editing the time range we always use the saved tracks,
             // since these will not change.
             frontendLocalState.selectArea(
-                Math.max(Math.min(keepTime, newTime), traceTime.startSec),
-                Math.min(Math.max(keepTime, newTime), traceTime.endSec),
+                Time.max(Time.min(keepTime, newTime), traceTime.start),
+                Time.min(Time.max(keepTime, newTime), traceTime.end),
                 globals.state.areas[selection.areaId].tracks);
           }
         } else {
           let startPx = Math.min(dragStartX, currentX) - TRACK_SHELL_WIDTH;
           let endPx = Math.max(dragStartX, currentX) - TRACK_SHELL_WIDTH;
           if (startPx < 0 && endPx < 0) return;
-          startPx = Math.max(startPx, scale.startPx);
-          endPx = Math.min(endPx, scale.endPx);
+          const {pxSpan} = visibleTimeScale;
+          startPx = clamp(startPx, pxSpan.start, pxSpan.end);
+          endPx = clamp(endPx, pxSpan.start, pxSpan.end);
           frontendLocalState.selectArea(
-              scale.pxToTime(startPx), scale.pxToTime(endPx));
+              visibleTimeScale.pxToHpTime(startPx).toTime('floor'),
+              visibleTimeScale.pxToHpTime(endPx).toTime('ceil'),
+          );
           frontendLocalState.areaY.start = dragStartY;
           frontendLocalState.areaY.end = currentY;
         }
-        globals.rafScheduler.scheduleRedraw();
+        raf.scheduleRedraw();
       },
       endSelection: (edit: boolean) => {
         globals.frontendLocalState.areaY.start = undefined;
@@ -211,14 +219,14 @@ class TraceViewer implements m.ClassComponent {
         // frontendLocalState.
         globals.frontendLocalState.deselectArea();
         // Full redraw to color track shell.
-        globals.rafScheduler.scheduleFullRedraw();
+        raf.scheduleFullRedraw();
       },
     });
   }
 
   onremove() {
     window.removeEventListener('resize', this.onResize);
-    if (this.zoomContent) this.zoomContent.shutdown();
+    if (this.zoomContent) this.zoomContent.dispose();
   }
 
   view() {
@@ -252,6 +260,11 @@ class TraceViewer implements m.ClassComponent {
       } as TrackGroupAttrs));
     }
 
+    const overviewPanel = [];
+    if (OVERVIEW_PANEL_FLAG.get()) {
+      overviewPanel.push(m(OverviewTimelinePanel, {key: 'overview'}));
+    }
+
     return m(
         '.page',
         m('.split-panel',
@@ -269,7 +282,7 @@ class TraceViewer implements m.ClassComponent {
             m('.pinned-panel-container', m(PanelContainer, {
                 doesScroll: false,
                 panels: [
-                  m(OverviewTimelinePanel, {key: 'overview'}),
+                  ...overviewPanel,
                   m(TimeAxisPanel, {key: 'timeaxis'}),
                   m(TimeSelectionPanel, {key: 'timeselection'}),
                   m(NotesPanel, {key: 'notes'}),

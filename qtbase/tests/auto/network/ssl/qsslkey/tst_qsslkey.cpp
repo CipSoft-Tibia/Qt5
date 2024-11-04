@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <qsslkey.h>
@@ -14,6 +14,8 @@
 #include <QtCore/qstring.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qlist.h>
+
+using namespace Qt::StringLiterals;
 
 #ifdef QT_BUILD_INTERNAL
     #if QT_CONFIG(ssl)
@@ -249,7 +251,7 @@ void tst_QSslKey::createPlainTestRows(bool pemOnly)
     QTest::addColumn<QSsl::KeyType>("type");
     QTest::addColumn<int>("length");
     QTest::addColumn<QSsl::EncodingFormat>("format");
-    foreach (KeyInfo keyInfo, keyInfoList) {
+    for (const KeyInfo &keyInfo : std::as_const(keyInfoList)) {
         if (pemOnly && keyInfo.format != QSsl::EncodingFormat::Pem)
             continue;
 
@@ -467,13 +469,18 @@ void tst_QSslKey::toEncryptedPemOrDer_data()
     QTest::addColumn<QSsl::EncodingFormat>("format");
     QTest::addColumn<QString>("password");
 
-    QStringList passwords;
-    passwords << " " << "foobar" << "foo bar"
-              << "aAzZ`1234567890-=~!@#$%^&*()_+[]{}\\|;:'\",.<>/?"; // ### add more (?)
-    foreach (KeyInfo keyInfo, keyInfoList) {
+    const QString passwords[] = {
+        u" "_s,
+        u"foobar"_s,
+        u"foo bar"_s,
+        u"aAzZ`1234567890-=~!@#$%^&*()_+[]{}\\|;:'\",.<>/?"_s,
+        // ### add more (?)
+    };
+
+    for (const KeyInfo &keyInfo : std::as_const(keyInfoList)) {
         if (keyInfo.fileInfo.fileName().contains("pkcs8"))
             continue; // pkcs8 keys are encrypted in a different way than the other keys
-        foreach (QString password, passwords) {
+        for (const QString &password : passwords) {
             const QByteArray testName = keyInfo.fileInfo.fileName().toLatin1()
             + '-' + (keyInfo.algorithm == QSsl::Rsa ? "RSA" :
                                                       (keyInfo.algorithm == QSsl::Dsa ? "DSA" : "EC"))

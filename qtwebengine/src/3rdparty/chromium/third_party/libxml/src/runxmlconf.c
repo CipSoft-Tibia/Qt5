@@ -121,7 +121,7 @@ static void test_log(const char *msg, ...) {
 }
 
 static void
-testErrorHandler(void *userData ATTRIBUTE_UNUSED, xmlErrorPtr error) {
+testErrorHandler(void *userData ATTRIBUTE_UNUSED, const xmlError *error) {
     int res;
 
     if (testErrorsSize >= 32768)
@@ -586,7 +586,6 @@ main(int argc ATTRIBUTE_UNUSED, char **argv ATTRIBUTE_UNUSED) {
     }
     xmlXPathFreeContext(ctxtXPath);
     xmlCleanupParser();
-    xmlMemoryDump();
 
     if (logfile != NULL)
         fclose(logfile);

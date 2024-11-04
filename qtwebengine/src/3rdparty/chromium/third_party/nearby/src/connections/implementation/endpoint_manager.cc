@@ -21,8 +21,11 @@
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "connections/implementation/analytics/throughput_recorder.h"
+#include "connections/implementation/client_proxy.h"
 #include "connections/implementation/endpoint_channel.h"
+#include "connections/implementation/endpoint_channel_manager.h"
 #include "connections/implementation/offline_frames.h"
 #include "connections/implementation/payload_manager.h"
 #include "connections/implementation/proto/offline_wire_formats.pb.h"
@@ -30,18 +33,30 @@
 #include "internal/platform/count_down_latch.h"
 #include "internal/platform/exception.h"
 #include "internal/platform/logging.h"
+#include "internal/platform/mutex.h"
 #include "internal/platform/mutex_lock.h"
+#include "internal/proto/analytics/connections_log.pb.h"
+#include "proto/connections_enums.pb.h"
 
 namespace nearby {
 namespace connections {
 
+namespace {
+using ::location::nearby::analytics::proto::ConnectionsLog;
 using ::location::nearby::connections::OfflineFrame;
 using ::location::nearby::connections::V1Frame;
 using ::nearby::analytics::PacketMetaData;
-using ::nearby::connections::PayloadDirection;
 
-constexpr absl::Duration EndpointManager::kProcessEndpointDisconnectionTimeout;
-constexpr absl::Time EndpointManager::kInvalidTimestamp;
+// We set this to 11s to provide sufficient time for an in-progress WebRTC
+// bandwidth upgrade to resolve. This is chosen to be slightly longer than the
+// 10s timeout in WebRtc::AttemptToConnect().
+constexpr absl::Duration kProcessEndpointDisconnectionTimeout =
+    absl::Seconds(11);
+constexpr absl::Time kInvalidTimestamp = absl::InfinitePast();
+// The maximum time we will wait for the encryption setup during negotiating a
+// connection.
+constexpr absl::Duration kDecryptRetryTimeout = absl::Seconds(3);
+}  // namespace
 
 class EndpointManager::LockedFrameProcessor {
  public:
@@ -89,7 +104,7 @@ class EndpointManager::LockedFrameProcessor {
 void EndpointManager::EndpointChannelLoopRunnable(
     const std::string& runnable_name, ClientProxy* client,
     const std::string& endpoint_id,
-    std::function<ExceptionOr<bool>(EndpointChannel*)> handler) {
+    absl::AnyInvocable<ExceptionOr<bool>(EndpointChannel*)> handler) {
   // EndpointChannelManager will not let multiple channels exist simultaneously
   // for the same endpoint_id; it will be closing "old" channels as new ones
   // come.
@@ -154,6 +169,11 @@ void EndpointManager::EndpointChannelLoopRunnable(
       NEARBY_LOGS(INFO) << "Dropping current channel: last medium="
                         << location::nearby::proto::connections::Medium_Name(
                                last_failed_medium);
+      if (client->IsSafeToDisconnectEnabled(endpoint_id)) {
+        channel_manager_->MarkEndpointStopWaitToDisconnect(
+            endpoint_id, /* is_safe_to_disconnect */ false,
+            /* notify_stop_waiting */ true);
+      }
       break;
     }
   }
@@ -163,14 +183,38 @@ void EndpointManager::EndpointChannelLoopRunnable(
                     << "; endpoint_id=" << endpoint_id;
   // Always clear out all state related to this endpoint before terminating
   // this thread.
-  DiscardEndpoint(client, endpoint_id);
+  DiscardEndpoint(client, endpoint_id, DisconnectionReason::IO_ERROR);
   NEARBY_LOGS(INFO) << "Worker done; worker name=" << runnable_name
                     << "; endpoint_id=" << endpoint_id;
+}
+
+ExceptionOr<OfflineFrame> EndpointManager::TryDecryptFrame(
+    const ByteArray& data, EndpointChannel* endpoint_channel) {
+  auto start_time = SystemClock::ElapsedRealtime();
+  while (true) {
+    ExceptionOr<ByteArray> decrypted = endpoint_channel->TryDecrypt(data);
+    if (decrypted.ok()) {
+      NEARBY_LOGS(VERBOSE) << "Message decrypted after "
+                           << SystemClock::ElapsedRealtime() - start_time;
+      return parser::FromBytes(decrypted.result());
+    }
+    if (decrypted.exception() == Exception::kExecution) {
+      return decrypted.exception();
+    }
+    auto elapsed = SystemClock::ElapsedRealtime() - start_time;
+    if (elapsed > kDecryptRetryTimeout) {
+      NEARBY_LOGS(WARNING) << "Can't decrypt the mesage. Timeout after "
+                           << elapsed;
+      return Exception::kTimeout;
+    }
+    SystemClock::Sleep(absl::Milliseconds(1));
+  }
 }
 
 ExceptionOr<bool> EndpointManager::HandleData(
     const std::string& endpoint_id, ClientProxy* client,
     EndpointChannel* endpoint_channel) {
+  bool try_decrypting = !endpoint_channel->IsEncrypted();
   // Read as much as we can from the healthy EndpointChannel - when it is no
   // longer in good shape (i.e. our read from it throws an Exception), our
   // super class will loop back around and try our luck in case there's been
@@ -185,6 +229,23 @@ ExceptionOr<bool> EndpointManager::HandleData(
       return ExceptionOr<bool>(bytes.exception());
     }
     ExceptionOr<OfflineFrame> wrapped_frame = parser::FromBytes(bytes.result());
+    if (!wrapped_frame.ok() && try_decrypting) {
+      // Workaround for a race condition where the remote party has sent an
+      // encrypted message but our end was still configured as unencrypted when
+      // the message was received. The workaround is to wait until the
+      // encryption set-up has completed on another thread. We run this
+      // workaround if:
+      // - the connection was unencrypted when we started reading from the
+      // channel
+      // - the received frame looks wrong (corrupted)
+      // - it's the first invalid frame.
+      try_decrypting = false;
+      ExceptionOr<OfflineFrame> decrypted =
+          TryDecryptFrame(bytes.result(), endpoint_channel);
+      if (decrypted.ok()) {
+        wrapped_frame = std::move(decrypted);
+      }
+    }
     if (!wrapped_frame.ok()) {
       if (wrapped_frame.GetException().Raised(
               Exception::kInvalidProtocolBuffer)) {
@@ -211,7 +272,7 @@ ExceptionOr<bool> EndpointManager::HandleData(
       } else if (frame_type == V1Frame::DISCONNECTION) {
         NEARBY_LOG(INFO, "Disconnect message for endpoint %s",
                    endpoint_id.c_str());
-        endpoint_channel->Close();
+        ProcessDisconnectionFrame(client, endpoint_id, endpoint_channel, frame);
       } else {
         NEARBY_LOGS(ERROR) << "Unhandled message: endpoint_id=" << endpoint_id
                            << ", frame type="
@@ -223,6 +284,62 @@ ExceptionOr<bool> EndpointManager::HandleData(
     frame_processor->OnIncomingFrame(frame, endpoint_id, client,
                                      endpoint_channel->GetMedium(),
                                      packet_meta_data);
+  }
+}
+
+void EndpointManager::ProcessDisconnectionFrame(
+    ClientProxy* client, const std::string& endpoint_id,
+    EndpointChannel* endpoint_channel, OfflineFrame& frame) {
+  if (!client->IsSafeToDisconnectEnabled(endpoint_id)) {
+    NEARBY_LOGS(INFO)
+        << "EndpointManager received a DISCONNECTION frame from endpoint "
+        << endpoint_id << " on channel " << endpoint_channel->GetType()
+        << ", disconnecting...";
+    endpoint_channel->Close(DisconnectionReason::REMOTE_DISCONNECTION);
+    return;
+  }
+
+  if (!frame.v1().has_disconnection() ||
+      !frame.v1().disconnection().has_request_safe_to_disconnect() ||
+      !frame.v1().disconnection().request_safe_to_disconnect()) {
+    NEARBY_LOGS(INFO) << "[safe-to-disconnect] no need to apply "
+                         "safe-to-disconnect protocol for endpoint "
+                      << endpoint_id << " on channel "
+                      << endpoint_channel->GetType() << ", disconnecting...";
+    endpoint_channel->Close(DisconnectionReason::REMOTE_DISCONNECTION);
+    return;
+  }
+  NEARBY_LOGS(INFO)
+      << "[safe-to-disconnect] received a "
+         "DISCONNECTION frame with request safe to disconnect = true and ack = "
+      << frame.v1().disconnection().ack_safe_to_disconnect()
+      << " from endpoint " << endpoint_id << " on channel "
+      << endpoint_channel->GetType()
+      << ", disconnecting with safe-to-disconnect protocol ...";
+  if (frame.v1().disconnection().ack_safe_to_disconnect()) {
+    channel_manager_->MarkEndpointStopWaitToDisconnect(
+        endpoint_id, /* is_safe_to_disconnect */ true,
+        /* notify_stop_waiting */ true);
+  } else {
+    channel_manager_->MarkEndpointStopWaitToDisconnect(
+        endpoint_id, /* is_safe_to_disconnect */ true,
+        /* notify_stop_waiting */ false);
+    RunOnEndpointManagerThread(
+        "safe-to-disconnect", [this, client, &endpoint_id]() {
+          RemoveEndpoint(client, endpoint_id, /*notify=*/true,
+                         DisconnectionReason::REMOTE_DISCONNECTION);
+        });
+    endpoint_channel->Resume();
+    NEARBY_LOGS(INFO) << "[safe-to-disconnect] Sending "
+                         "DISCONNECTION frame with request 1, ack 1";
+    Exception write_exception = endpoint_channel->Write(
+        parser::ForDisconnection(/* request_safe_to_disconnect= */ true,
+                                 /* ack_safe_to_disconnect= */ true));
+    if (!write_exception.Ok()) {
+      NEARBY_LOGS(INFO) << "[safe-to-disconnect] Failed to send "
+                           "DISCONNECTION frame with ack to endpoint"
+                        << endpoint_id;
+    }
   }
 }
 
@@ -241,10 +358,10 @@ ExceptionOr<bool> EndpointManager::HandleKeepAlive(
     return ExceptionOr<bool>(false);
   }
 
-  // If we haven't written anything to the endpoint for a while, attempt to send
-  // the KeepAlive frame over the endpoint channel. If the write fails, our
-  // super class will loop back around and try our luck again in case there's
-  // been a replacement for this endpoint.
+  // If we haven't written anything to the endpoint for a while, attempt to
+  // send the KeepAlive frame over the endpoint channel. If the write fails,
+  // our super class will loop back around and try our luck again in case
+  // there's been a replacement for this endpoint.
   absl::Time last_write_time = endpoint_channel->GetLastWriteTimestamp();
   absl::Duration duration_until_write_keep_alive =
       last_write_time == kInvalidTimestamp
@@ -274,23 +391,32 @@ ExceptionOr<bool> EndpointManager::HandleKeepAlive(
 
 bool operator==(const EndpointManager::FrameProcessor& lhs,
                 const EndpointManager::FrameProcessor& rhs) {
-  // We're comparing addresses because these objects are callbacks which need to
-  // be matched by exact instances.
+  // We're comparing addresses because these objects are callbacks which need
+  // to be matched by exact instances.
   return &lhs == &rhs;
 }
 
 bool operator<(const EndpointManager::FrameProcessor& lhs,
                const EndpointManager::FrameProcessor& rhs) {
-  // We're comparing addresses because these objects are callbacks which need to
-  // be matched by exact instances.
+  // We're comparing addresses because these objects are callbacks which need
+  // to be matched by exact instances.
   return &lhs < &rhs;
 }
 
 EndpointManager::EndpointManager(EndpointChannelManager* manager)
-    : channel_manager_(manager) {}
+    : EndpointManager(manager, std::make_unique<SingleThreadExecutor>()) {}
+
+EndpointManager::EndpointManager(
+    EndpointChannelManager* manager,
+    std::unique_ptr<SingleThreadExecutor> serial_executor)
+    : channel_manager_(manager), serial_executor_(std::move(serial_executor)) {}
 
 EndpointManager::~EndpointManager() {
   NEARBY_LOG(INFO, "Initiating shutdown of EndpointManager.");
+  {
+    MutexLock lock(&mutex_);
+    is_shutdown_ = true;
+  }
   analytics::ThroughputRecorderContainer::GetInstance().Shutdown();
   CountDownLatch latch(1);
   RunOnEndpointManagerThread("bring-down-endpoints", [this, &latch]() {
@@ -301,7 +427,7 @@ EndpointManager::~EndpointManager() {
   latch.Await();
 
   NEARBY_LOG(INFO, "Bringing down control thread");
-  serial_executor_.Shutdown();
+  serial_executor_->Shutdown();
   NEARBY_LOG(INFO, "EndpointManager is down");
 }
 
@@ -386,10 +512,11 @@ void EndpointManager::RegisterEndpoint(
 
   // NOTE (unique_ptr<> capture):
   // std::unique_ptr<> is not copyable, so we can not pass it to
-  // lambda capture, because lambda eventually is converted to std::function<>.
-  // Instead, we release() a pointer, and pass a raw pointer, which is copyalbe.
-  // We ignore the risk of job not scheduled (and an associated risk of memory
-  // leak), because this may only happen during service shutdown.
+  // lambda capture, because lambda eventually is converted to
+  // std::function<>. Instead, we release() a pointer, and pass a raw pointer,
+  // which is copyalbe. We ignore the risk of job not scheduled (and an
+  // associated risk of memory leak), because this may only happen during
+  // service shutdown.
   RunOnEndpointManagerThread("register-endpoint", [this, client,
                                                    channel = channel.release(),
                                                    &endpoint_id, &info,
@@ -398,8 +525,8 @@ void EndpointManager::RegisterEndpoint(
                                                    &latch]() {
     if (endpoints_.contains(endpoint_id)) {
       NEARBY_LOGS(WARNING) << "Registering duplicate endpoint " << endpoint_id;
-      // We must remove old endpoint state before registering a new one for the
-      // same endpoint_id.
+      // We must remove old endpoint state before registering a new one
+      // for the same endpoint_id.
       RemoveEndpointState(endpoint_id);
     }
 
@@ -407,11 +534,12 @@ void EndpointManager::RegisterEndpoint(
         absl::Milliseconds(connection_options.keep_alive_interval_millis);
     absl::Duration keep_alive_timeout =
         absl::Milliseconds(connection_options.keep_alive_timeout_millis);
-    NEARBY_LOGS(INFO)
-        << "Registering endpoint " << endpoint_id << " for client "
-        << client->GetClientId() << " with keep-alive frame as interval="
-        << absl::FormatDuration(keep_alive_interval)
-        << ", timeout=" << absl::FormatDuration(keep_alive_timeout);
+    NEARBY_LOGS(INFO) << "Registering endpoint " << endpoint_id
+                      << " for client " << client->GetClientId()
+                      << " with keep-alive frame as interval="
+                      << absl::FormatDuration(keep_alive_interval)
+                      << ", timeout="
+                      << absl::FormatDuration(keep_alive_timeout);
 
     // Pass ownership of channel to EndpointChannelManager
     NEARBY_LOGS(INFO) << "Registering endpoint with channel manager: endpoint "
@@ -428,8 +556,8 @@ void EndpointManager::RegisterEndpoint(
     // For every endpoint, there's normally only one Read handler instance
     // running on a dedicated thread. This instance reads data from the
     // endpoint and delegates incoming frames to various FrameProcessors.
-    // Once the frame has been properly handled, it starts reading again for
-    // the next frame. If the handler fails its read and no other
+    // Once the frame has been properly handled, it starts reading again
+    // for the next frame. If the handler fails its read and no other
     // EndpointChannels are available for this endpoint, a disconnection
     // will be initiated.
     endpoint_state.StartEndpointReader([this, client, endpoint_id]() {
@@ -440,17 +568,18 @@ void EndpointManager::RegisterEndpoint(
           });
     });
 
-    // For every endpoint, there's only one KeepAliveManager instance running on
-    // a dedicated thread. This instance will periodically send out a ping* to
-    // the endpoint while listening for an incoming pong**. If it fails to send
-    // the ping, or if no pong is heard within keep_alive_timeout, it initiates
-    // a disconnection.
+    // For every endpoint, there's only one KeepAliveManager instance
+    // running on a dedicated thread. This instance will periodically send
+    // out a ping* to the endpoint while listening for an incoming pong**.
+    // If it fails to send the ping, or if no pong is heard within
+    // keep_alive_timeout, it initiates a disconnection.
     //
     // (*) Bluetooth requires a constant outgoing stream of messages. If
-    // there's silence, Android will break the socket. This is why we ping.
-    // (**) Wifi Hotspots can fail to notice a connection has been lost, and
-    // they will happily keep writing to /dev/null. This is why we listen
-    // for the pong.
+    // there's silence, Android will break the socket. This is why we
+    // ping.
+    // (**) Wifi Hotspots can fail to notice a connection has been lost,
+    // and they will happily keep writing to /dev/null. This is why we
+    // listen for the pong.
     NEARBY_LOGS(VERBOSE) << "EndpointManager enabling KeepAlive for endpoint "
                          << endpoint_id;
     endpoint_state.StartEndpointKeepAliveManager(
@@ -486,7 +615,8 @@ void EndpointManager::UnregisterEndpoint(ClientProxy* client,
   RunOnEndpointManagerThread(
       "unregister-endpoint", [this, client, endpoint_id, &latch]() {
         RemoveEndpoint(client, endpoint_id,
-                       /*notify=*/client->IsConnectedToEndpoint(endpoint_id));
+                       /*notify=*/client->IsConnectedToEndpoint(endpoint_id),
+                       DisconnectionReason::LOCAL_DISCONNECTION);
         latch.CountDown();
       });
   latch.Await();
@@ -519,14 +649,62 @@ std::vector<std::string> EndpointManager::SendPayloadChunk(
 }
 
 // Designed to run asynchronously. It is called from IO thread pools, and
-// jobs in these pools may be waited for from the EndpointManager thread. If we
-// allow synchronous behavior here it will cause a live lock.
+// jobs in these pools may be waited for from the EndpointManager thread. If
+// we allow synchronous behavior here it will cause a live lock.
 void EndpointManager::DiscardEndpoint(ClientProxy* client,
-                                      const std::string& endpoint_id) {
-  NEARBY_LOGS(VERBOSE) << "DiscardEndpoint for endpoint " << endpoint_id;
-  RunOnEndpointManagerThread("discard-endpoint", [this, client, endpoint_id]() {
+                                      const std::string& endpoint_id,
+                                      DisconnectionReason reason) {
+  NEARBY_LOGS(INFO) << "DiscardEndpoint for endpoint " << endpoint_id;
+  if (reason == DisconnectionReason::IO_ERROR) {
+    channel_manager_->MarkEndpointStopWaitToDisconnect(
+        endpoint_id, /* is_safe_to_disconnect */ false,
+        /* notify_stop_waiting */ true);
+  }
+  RunOnEndpointManagerThread("discard-endpoint", [this, client, endpoint_id,
+                                                  reason]() {
+    // `ClientProxy` is destroyed before `EndpointManager` in
+    // `~NearbyConnections`, which means "discard-endpoint" needs to check
+    // if this task is being executing during `~EndpointManager` to
+    // prevent accessing an invalid `ClientProxy` pointer. There are two
+    // cases where "discard-endpoint" can be executed during destruction,
+    // both of which can safely use `is_shutdown_` to check if this is being
+    // executed during the destruction of the object:
+    //
+    // Case 1: "discard-endpoints" is posted to the thread before
+    // destruction, but not executed yet: `~EndpointManager` blocks on
+    // "bring-down-endpoints" and because the executor is a single thread
+    // executor, tasks are guaranteed to execute sequentially
+    // (see
+    // https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Executors.html#newSingleThreadExecutor--)
+    // and this means that the "discard-endpoints" will be executed before
+    // "bring-down-endpoints", blocking the destruction of `is_shutdown_`
+    // and therefore `is_shutdown_` is not garbage memory.
+    //
+    // Case 2: "discard-endpoints" is posted to the thread during
+    // destruction, after "bring-down-endpoints" is called: the executor
+    // will be destructed before `is_shutdown_` because of the ordering of
+    // `EndpointManager`'s member variables, and the executor's destructor
+    // blocks on running all pending tasks
+    // (see
+    // https://source.chromium.org/chromium/chromium/src/+/refs/heads/main:chrome/services/sharing/nearby/platform/scheduled_executor.cc;l=67;drc=e0e0d24aaa54727dc0a8bc4b159ccdf80d3f5d8d),
+    // which means that "discard-endpoints" will run during the destruction
+    // of `serial_executor_` and will still have access to a valid
+    // `is_shutdown_`.
+    //
+    // TODO(b/280653613): Develop a more robost solution to prevent
+    // accessing an already destroyed `ClientProxy` during destruction.
+    {
+      MutexLock lock(&mutex_);
+      if (is_shutdown_) {
+        NEARBY_LOGS(VERBOSE)
+            << "DiscardEndpoint called during destruction, returning early.";
+        return;
+      }
+    }
+
     RemoveEndpoint(client, endpoint_id,
-                   /*notify=*/client->IsConnectedToEndpoint(endpoint_id));
+                   /* notify */client->IsConnectedToEndpoint(endpoint_id),
+                   reason);
   });
 }
 
@@ -548,8 +726,12 @@ std::vector<std::string> EndpointManager::SendControlMessage(
 // @EndpointManagerThread
 void EndpointManager::RemoveEndpoint(ClientProxy* client,
                                      const std::string& endpoint_id,
-                                     bool notify) {
-  NEARBY_LOGS(INFO) << "RemoveEndpoint for endpoint " << endpoint_id;
+                                     bool notify, DisconnectionReason reason) {
+  NEARBY_LOGS(INFO) << "RemoveEndpoint for endpoint: " << endpoint_id
+                    << ", reason: " << reason;
+
+  SafeDisconnectionResult safe_disconnect_result =
+      ConnectionsLog::EstablishedConnection::SAFE_DISCONNECTION;
 
   // Grab the service ID before we destroy the channel.
   EndpointChannel* channel =
@@ -557,16 +739,35 @@ void EndpointManager::RemoveEndpoint(ClientProxy* client,
   std::string service_id =
       channel ? channel->GetServiceId() : std::string(kUnknownServiceId);
 
+  if (client->IsSafeToDisconnectEnabled(endpoint_id)) {
+    if (channel != nullptr) {
+      bool is_safe_disconnection =
+          ApplySafeToDisconnect(endpoint_id, channel, reason);
+      safe_disconnect_result =
+          is_safe_disconnection
+              ? ConnectionsLog::EstablishedConnection::SAFE_DISCONNECTION
+              : ConnectionsLog::EstablishedConnection::UNSAFE_DISCONNECTION;
+      NEARBY_LOGS(INFO) << "[safe-to-disconnect] safe_disconnect_result:"
+                        << (safe_disconnect_result? "true" : "false");
+    }
+  }
+  if (safe_disconnect_result ==
+      ConnectionsLog::EstablishedConnection::UNSAFE_DISCONNECTION) {
+    // TODO(b/297259496): Autoreconnect
+  }
+
   // Unregistering from channel_manager_ will also serve to terminate
   // the dedicated handler and KeepAlive threads we started when we registered
   // this endpoint.
-  if (channel_manager_->UnregisterChannelForEndpoint(endpoint_id)) {
+  if (channel_manager_->UnregisterChannelForEndpoint(endpoint_id, reason,
+                                                     safe_disconnect_result)) {
     // Notify all frame processors of the disconnection immediately and wait
     // for them to clean up state. Only once all processors are done cleaning
     // up, we can remove the endpoint from ClientProxy after which there
     // should be no further interactions with the endpoint.
     // (See b/37352254 for history)
-    WaitForEndpointDisconnectionProcessing(client, service_id, endpoint_id);
+    WaitForEndpointDisconnectionProcessing(client, service_id, endpoint_id,
+                                           reason);
 
     client->OnDisconnected(endpoint_id, notify);
     NEARBY_LOGS(INFO) << "Removed endpoint for endpoint " << endpoint_id;
@@ -574,15 +775,68 @@ void EndpointManager::RemoveEndpoint(ClientProxy* client,
   RemoveEndpointState(endpoint_id);
 }
 
+bool EndpointManager::ApplySafeToDisconnect(const std::string& endpoint_id,
+                                            EndpointChannel* endpoint_channel,
+                                            DisconnectionReason reason) {
+  NEARBY_LOGS(INFO) << "[safe-to-disconnect] ApplySafeToDisconnect reason: "
+                    << reason;
+  bool is_safe_disconnection = false;
+  bool send_disconnection_frame = true;
+  switch (reason) {
+    case DisconnectionReason::UPGRADED:
+    case DisconnectionReason::SHUTDOWN:
+    case DisconnectionReason::UNFINISHED:
+      return true;  // safe disconnection
+    case DisconnectionReason::IO_ERROR:
+      return false;  // unsafe disconnection
+    case DisconnectionReason::LOCAL_DISCONNECTION:
+      is_safe_disconnection = true;
+      send_disconnection_frame = true;
+      break;
+    case DisconnectionReason::REMOTE_DISCONNECTION:
+      is_safe_disconnection = true;
+      send_disconnection_frame = false;
+      break;
+    default:
+      is_safe_disconnection = false;
+      send_disconnection_frame = true;
+  }
+
+  if (send_disconnection_frame) {
+    // If the channel was paused (i.e. during a bandwidth upgrade negotiation)
+    // we resume to ensure the thread won't hang when trying to write to it.
+    endpoint_channel->Resume();
+    NEARBY_LOGS(INFO) << "[safe-to-disconnect] Sending "
+                         "DISCONNECTION frame with request 1, ack 0";
+    Exception write_exception = endpoint_channel->Write(
+        parser::ForDisconnection(/* request_safe_to_disconnect= */ true,
+                                 /* ack_safe_to_disconnect= */ false));
+
+    if (!write_exception.Ok()) {
+      NEARBY_LOGS(WARNING) << "[safe-to-disconnect] Failed to send "
+                              "DISCONNECTION frame to endpoint"
+                           << endpoint_id << " for reason: " << reason;
+      return is_safe_disconnection;
+    }
+  }
+
+  bool state =
+      channel_manager_->CreateNewTimeoutDisconnectedState(endpoint_id);
+  if (!state) return is_safe_disconnection;
+
+  return is_safe_disconnection ||
+         channel_manager_->IsSafeToDisconnect(endpoint_id);
+}
+
 // @EndpointManagerThread
 void EndpointManager::WaitForEndpointDisconnectionProcessing(
     ClientProxy* client, const std::string& service_id,
-    const std::string& endpoint_id) {
+    const std::string& endpoint_id, DisconnectionReason reason) {
   NEARBY_LOGS(INFO) << "Wait: client=" << client
                     << "; service_id=" << service_id
                     << "; endpoint_id=" << endpoint_id;
   CountDownLatch barrier = NotifyFrameProcessorsOnEndpointDisconnect(
-      client, service_id, endpoint_id);
+      client, service_id, endpoint_id, reason);
 
   NEARBY_LOGS(INFO)
       << "Waiting for frame processors to disconnect from endpoint "
@@ -591,15 +845,15 @@ void EndpointManager::WaitForEndpointDisconnectionProcessing(
     NEARBY_LOGS(INFO) << "Failed to disconnect frame processors from endpoint "
                       << endpoint_id;
   } else {
-    NEARBY_LOGS(INFO)
-        << "Finished waiting for frame processors to disconnect from endpoint "
-        << endpoint_id;
+    NEARBY_LOGS(INFO) << "Finished waiting for frame processors to "
+                         "disconnect from endpoint "
+                      << endpoint_id;
   }
 }
 
 CountDownLatch EndpointManager::NotifyFrameProcessorsOnEndpointDisconnect(
     ClientProxy* client, const std::string& service_id,
-    const std::string& endpoint_id) {
+    const std::string& endpoint_id, DisconnectionReason reason) {
   NEARBY_LOGS(INFO) << "NotifyFrameProcessorsOnEndpointDisconnect: client="
                     << client << "; service_id=" << service_id
                     << "; endpoint_id=" << endpoint_id;
@@ -615,7 +869,8 @@ CountDownLatch EndpointManager::NotifyFrameProcessorsOnEndpointDisconnect(
                       << "; frame type=" << V1Frame::FrameType_Name(item.first);
     if (processor) {
       valid++;
-      processor->OnEndpointDisconnect(client, service_id, endpoint_id, barrier);
+      processor->OnEndpointDisconnect(client, service_id, endpoint_id, barrier,
+                                      reason);
     } else {
       barrier.CountDown();
     }
@@ -640,7 +895,8 @@ std::vector<std::string> EndpointManager::SendTransferFrameBytes(
 
     if (channel == nullptr) {
       // We no longer know about this endpoint (it was either explicitly
-      // unregistered, or a read/write error made us unregister it internally).
+      // unregistered, or a read/write error made us unregister it
+      // internally).
       NEARBY_LOGS(ERROR) << "EndpointManager failed to find EndpointChannel "
                             "over which to write "
                          << packet_type << " at offset " << offset
@@ -667,12 +923,15 @@ std::vector<std::string> EndpointManager::SendTransferFrameBytes(
 
 EndpointManager::EndpointState::~EndpointState() {
   // We must unregister the endpoint first to signal the runnables that they
-  // should exit their loops. SingleThreadExecutor destructors will wait for the
-  // workers to finish. |channel_manager_| is null after moved from this object
-  // (in move constructor) which prevents unregistering the channel prematurely.
+  // should exit their loops. SingleThreadExecutor destructors will wait for
+  // the workers to finish. |channel_manager_| is null after moved from this
+  // object (in move constructor) which prevents unregistering the channel
+  // prematurely.
   if (channel_manager_) {
     NEARBY_LOG(VERBOSE, "EndpointState destructor %s", endpoint_id_.c_str());
-    channel_manager_->UnregisterChannelForEndpoint(endpoint_id_);
+    channel_manager_->UnregisterChannelForEndpoint(
+        endpoint_id_, DisconnectionReason::SHUTDOWN,
+        ConnectionsLog::EstablishedConnection::SAFE_DISCONNECTION);
   }
 
   // Make sure the KeepAlive thread isn't blocking shutdown.
@@ -687,18 +946,18 @@ void EndpointManager::EndpointState::StartEndpointReader(Runnable&& runnable) {
 }
 
 void EndpointManager::EndpointState::StartEndpointKeepAliveManager(
-    std::function<void(Mutex*, ConditionVariable*)> runnable) {
+    absl::AnyInvocable<void(Mutex*, ConditionVariable*)> runnable) {
   keep_alive_thread_.Execute(
-      "keep-alive",
-      [runnable, keep_alive_waiter_mutex = keep_alive_waiter_mutex_.get(),
-       keep_alive_waiter = keep_alive_waiter_.get()]() {
+      "keep-alive", [runnable = std::move(runnable),
+                     keep_alive_waiter_mutex = keep_alive_waiter_mutex_.get(),
+                     keep_alive_waiter = keep_alive_waiter_.get()]() mutable {
         runnable(keep_alive_waiter_mutex, keep_alive_waiter);
       });
 }
 
 void EndpointManager::RunOnEndpointManagerThread(const std::string& name,
                                                  Runnable runnable) {
-  serial_executor_.Execute(name, std::move(runnable));
+  serial_executor_->Execute(name, std::move(runnable));
 }
 
 }  // namespace connections

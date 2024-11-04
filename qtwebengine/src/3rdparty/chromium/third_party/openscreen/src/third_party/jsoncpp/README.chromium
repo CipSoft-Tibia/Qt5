@@ -4,6 +4,7 @@ Version: 1.9.4
 License: MIT
 License File: src/LICENSE
 Security Critical: yes
+Shipped: yes
 
 Description:
 JsonCpp is used for parsing and generating JSON data. This

@@ -52,7 +52,7 @@ class DisplayFlightRecorder(gdb.Command):
         # display this data (only) if symbol is not empty (happens if the program is not ran at all)
         if rb.value():
             print("Data at byte {append}, Size: {size}B, "
-                  "Overlaped: {overlap}".format(append=rb.value()['append_pos'],
+                  "Overlapped: {overlap}".format(append=rb.value()['append_pos'],
                                                 size=rb.value()['size'],
                                                 overlap=rb.value()['overlap']))
 

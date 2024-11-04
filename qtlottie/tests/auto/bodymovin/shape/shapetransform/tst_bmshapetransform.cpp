@@ -12,6 +12,8 @@
 #include "private/bmgroup_p.h"
 #include "private/bmshapetransform_p.h"
 
+using namespace Qt::StringLiterals;
+
 class tst_BMShapeTransform: public QObject
 {
     Q_OBJECT
@@ -458,11 +460,7 @@ void tst_BMShapeTransform::loadTestData(const QByteArray &filename)
     if (type != 4)
         QFAIL("It's not shape layer");
 
-    QStringList vs = rootObj.value(QLatin1String("v")).toString().split(u'.');
-    QList<int> vi;
-    foreach (QString v, vs)
-        vi.append(v.toInt());
-    QVersionNumber version = QVersionNumber(vi);
+    const auto version = QVersionNumber::fromString(rootObj.value("v"_L1).toString());
 
     QJsonArray shapes = layerObj.value(QLatin1String("shapes")).toArray();
     QJsonArray::const_iterator shapesIt = shapes.constBegin();

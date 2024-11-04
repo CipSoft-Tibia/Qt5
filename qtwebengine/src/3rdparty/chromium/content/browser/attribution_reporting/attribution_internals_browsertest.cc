@@ -15,26 +15,33 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/gmock_callback_support.h"
 #include "base/time/time.h"
-#include "components/aggregation_service/aggregation_service.mojom.h"
+#include "base/uuid.h"
 #include "components/attribution_reporting/aggregatable_dedup_key.h"
 #include "components/attribution_reporting/aggregatable_trigger_data.h"
 #include "components/attribution_reporting/aggregatable_values.h"
 #include "components/attribution_reporting/aggregation_keys.h"
 #include "components/attribution_reporting/event_trigger_data.h"
 #include "components/attribution_reporting/filters.h"
-#include "components/attribution_reporting/source_registration_error.mojom.h"
+#include "components/attribution_reporting/source_registration_time_config.mojom.h"
 #include "components/attribution_reporting/source_type.mojom.h"
 #include "components/attribution_reporting/suitable_origin.h"
 #include "components/attribution_reporting/trigger_registration.h"
 #include "content/browser/attribution_reporting/attribution_debug_report.h"
+#include "content/browser/attribution_reporting/attribution_input_event.h"
 #include "content/browser/attribution_reporting/attribution_manager.h"
-#include "content/browser/attribution_reporting/attribution_observer_types.h"
+#include "content/browser/attribution_reporting/attribution_os_level_manager.h"
 #include "content/browser/attribution_reporting/attribution_report.h"
+#include "content/browser/attribution_reporting/attribution_reporting.mojom.h"
 #include "content/browser/attribution_reporting/attribution_test_utils.h"
 #include "content/browser/attribution_reporting/attribution_trigger.h"
+#include "content/browser/attribution_reporting/create_report_result.h"
+#include "content/browser/attribution_reporting/os_registration.h"
 #include "content/browser/attribution_reporting/send_result.h"
 #include "content/browser/attribution_reporting/storable_source.h"
+#include "content/browser/attribution_reporting/store_source_result.h"
 #include "content/browser/attribution_reporting/stored_source.h"
+#include "content/browser/attribution_reporting/test/mock_attribution_manager.h"
+#include "content/browser/attribution_reporting/test/mock_content_browser_client.h"
 #include "content/browser/storage_partition_impl.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browsing_data_filter_builder.h"
@@ -49,20 +56,19 @@
 #include "content/shell/browser/shell.h"
 #include "net/base/net_errors.h"
 #include "net/base/schemeful_site.h"
-#include "services/network/public/cpp/trigger_attestation.h"
+#include "services/network/public/cpp/trigger_verification.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
+#include "url/origin.h"
 
 namespace content {
 
 namespace {
 
+using ::attribution_reporting::FilterConfig;
 using ::attribution_reporting::FilterPair;
 using ::attribution_reporting::SuitableOrigin;
-using ::attribution_reporting::mojom::SourceRegistrationError;
 using ::attribution_reporting::mojom::SourceType;
-
-using AttributionFilters = ::attribution_reporting::Filters;
 
 using ::base::test::RunOnceCallback;
 
@@ -70,7 +76,6 @@ using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::IsNull;
 using ::testing::Return;
-using ::testing::VariantWith;
 
 const char kAttributionInternalsUrl[] = "chrome://attribution-internals/";
 
@@ -82,14 +87,14 @@ const std::u16string kMaxInt64String = u"9223372036854775807";
 const std::u16string kMaxUint64String = u"18446744073709551615";
 
 AttributionReport IrreleventEventLevelReport() {
-  return ReportBuilder(
-             AttributionInfoBuilder(SourceBuilder().BuildStored()).Build())
+  return ReportBuilder(AttributionInfoBuilder().Build(),
+                       SourceBuilder().BuildStored())
       .Build();
 }
 
 AttributionReport IrreleventAggregatableReport() {
-  return ReportBuilder(
-             AttributionInfoBuilder(SourceBuilder().BuildStored()).Build())
+  return ReportBuilder(AttributionInfoBuilder().Build(),
+                       SourceBuilder().BuildStored())
       .SetAggregatableHistogramContributions(
           {AggregatableHistogramContribution(1, 2)})
       .BuildAggregatableAttribution();
@@ -110,7 +115,7 @@ class AttributionInternalsWebUiBrowserTest : public ContentBrowserTest {
         .WillByDefault(RunOnceCallback<0>(std::vector<StoredSource>{}));
 
     ON_CALL(*manager, GetPendingReportsForInternalUse)
-        .WillByDefault(RunOnceCallback<2>(std::vector<AttributionReport>{}));
+        .WillByDefault(RunOnceCallback<1>(std::vector<AttributionReport>{}));
 
     static_cast<StoragePartitionImpl*>(shell()
                                            ->web_contents()
@@ -332,24 +337,24 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
           table.children[0].children[3]?.children[0]?.children[1]?.innerText === 'https://b.test' &&
           table.children[1].children[3]?.innerText === 'https://conversion.test' &&
           table.children[0].children[0]?.innerText === $1 &&
-          table.children[0].children[9]?.innerText === 'Navigation' &&
-          table.children[1].children[9]?.innerText === 'Event' &&
-          table.children[0].children[10]?.innerText === '0' &&
-          table.children[1].children[10]?.innerText === $2 &&
+          table.children[0].children[8]?.innerText === 'Navigation' &&
+          table.children[1].children[8]?.innerText === 'Event' &&
+          table.children[0].children[9]?.innerText === '0' &&
+          table.children[1].children[9]?.innerText === $2 &&
+          table.children[0].children[10]?.innerText === '{}' &&
+          table.children[1].children[10]?.innerText === '{\n "a": [\n  "b",\n  "c"\n ]\n}' &&
           table.children[0].children[11]?.innerText === '{}' &&
-          table.children[1].children[11]?.innerText === '{\n "a": [\n  "b",\n  "c"\n ]\n}' &&
-          table.children[0].children[12]?.innerText === '{}' &&
-          table.children[1].children[12]?.innerText === '{\n "a": "0x1"\n}' &&
-          table.children[0].children[13]?.innerText === '0 / 65536' &&
-          table.children[1].children[13]?.innerText === '1300 / 65536' &&
-          table.children[0].children[14]?.innerText === '19' &&
-          table.children[1].children[14]?.innerText === '' &&
+          table.children[1].children[11]?.innerText === '{\n "a": "0x1"\n}' &&
+          table.children[0].children[12]?.innerText === '0 / 65536' &&
+          table.children[1].children[12]?.innerText === '1300 / 65536' &&
+          table.children[0].children[13]?.innerText === '19' &&
+          table.children[1].children[13]?.innerText === '' &&
+          table.children[0].children[14]?.innerText === '' &&
+          table.children[1].children[14]?.children[0]?.children[0]?.innerText === '13' &&
+          table.children[1].children[14]?.children[0]?.children[1]?.innerText === '17' &&
           table.children[0].children[15]?.innerText === '' &&
-          table.children[1].children[15]?.children[0]?.children[0]?.innerText === '13' &&
-          table.children[1].children[15]?.children[0]?.children[1]?.innerText === '17' &&
-          table.children[0].children[16]?.innerText === '' &&
-          table.children[1].children[16]?.children[0]?.children[0]?.innerText === '14' &&
-          table.children[1].children[16]?.children[0]?.children[1]?.innerText === '18' &&
+          table.children[1].children[15]?.children[0]?.children[0]?.innerText === '14' &&
+          table.children[1].children[15]?.children[0]?.children[1]?.innerText === '18' &&
           table.children[0].children[1]?.innerText === 'Unattributable: noised with no reports' &&
           table.children[1].children[1]?.innerText === 'Attributable' &&
           table.children[2].children[1]?.innerText === 'Attributable: reached event-level attribution limit' &&
@@ -378,21 +383,21 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
 }
 
 IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
-                       FailedSourceRegistrationLogShown) {
+                       OsRegistrationsShown) {
   ASSERT_TRUE(NavigateToURL(shell(), GURL(kAttributionInternalsUrl)));
 
   static constexpr char kScript[] = R"(
-    const table = document.querySelector('#sourceRegistrationTable')
+    const table = document.querySelector('#osRegistrationTable')
         .shadowRoot.querySelector('tbody');
 
     const obs = new MutationObserver((_, obs) => {
       if (table.children.length === 1 &&
-          table.children[0].children[1]?.innerText === 'https://b.test' &&
-          table.children[0].children[2]?.innerText === 'https://a.test' &&
-          table.children[0].children[3]?.innerText === '!' &&
-          table.children[0].children[4]?.innerText === '' &&
-          table.children[0].children[5]?.innerText === 'Event' &&
-          table.children[0].children[6]?.innerText === 'Rejected: invalid JSON: invalid syntax') {
+          table.children[0].children[1]?.innerText === 'OS Source' &&
+          table.children[0].children[2]?.innerText === 'https://a.test/' &&
+          table.children[0].children[3]?.innerText === 'https://b.test' &&
+          table.children[0].children[4]?.innerText === 'false' &&
+          table.children[0].children[5]?.innerText === 'false' &&
+          table.children[0].children[6]?.innerText === 'Passed to OS') {
         obs.disconnect();
         document.title = $1;
       }
@@ -403,10 +408,12 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
 
   TitleWatcher title_watcher(shell()->web_contents(), kCompleteTitle);
 
-  manager()->NotifySourceRegistrationFailure(
-      "!", *SuitableOrigin::Deserialize("https://b.test"),
-      *SuitableOrigin::Deserialize("https://a.test"), SourceType::kEvent,
-      SourceRegistrationError::kInvalidJson);
+  manager()->NotifyOsRegistration(
+      OsRegistration(GURL("https://a.test"), /*debug_reporting=*/false,
+                     url::Origin::Create(GURL("https://b.test")),
+                     AttributionInputEvent(), /*is_within_fenced_frame=*/false),
+      /*is_debug_key_allowed=*/false,
+      attribution_reporting::mojom::OsRegistrationResult::kPassedToOs);
   EXPECT_EQ(kCompleteTitle, title_watcher.WaitAndGetTitle());
 }
 
@@ -428,14 +435,17 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
   // Waiting on calls to `MockAttributionManager` is not sufficient because the
   // results are returned in promises.
   static constexpr char kScript[] = R"(
-    const status = document.getElementById('debug-mode-content');
+    const reportDelays = document.getElementById('report-delays');
+    const noise = document.getElementById('noise');
     const obs = new MutationObserver((_, obs) => {
-      if (status.innerText.trim() === '') {
+      if (reportDelays.innerText === 'enabled' &&
+          noise.innerText === 'enabled') {
         obs.disconnect();
         document.title = $1;
       }
     });
-    obs.observe(status, {childList: true, subtree: true, characterData: true});
+    obs.observe(reportDelays, {childList: true, subtree: true, characterData: true});
+    obs.observe(noise, {childList: true, subtree: true, characterData: true});
   )";
   ASSERT_TRUE(ExecJsInWebUI(JsReplace(kScript, kCompleteTitle)));
 
@@ -455,16 +465,78 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
   // Waiting on calls to `MockAttributionManager` is not sufficient because the
   // results are returned in promises.
   static constexpr char kScript[] = R"(
-    const status = document.getElementById('debug-mode-content');
+    const reportDelays = document.getElementById('report-delays');
+    const noise = document.getElementById('noise');
     const obs = new MutationObserver((_, obs) => {
-      if (status.innerText.trim() !== '') {
+      if (reportDelays.innerText === 'disabled' &&
+          noise.innerText === 'disabled') {
         obs.disconnect();
         document.title = $1;
       }
     });
-    obs.observe(status, {childList: true, subtree: true, characterData: true});
+    obs.observe(reportDelays, {childList: true, subtree: true, characterData: true});
+    obs.observe(noise, {childList: true, subtree: true, characterData: true});
   )";
   ASSERT_TRUE(ExecJsInWebUI(JsReplace(kScript, kCompleteTitle)));
+
+  TitleWatcher title_watcher(shell()->web_contents(), kCompleteTitle);
+  ClickRefreshButton();
+  EXPECT_EQ(kCompleteTitle, title_watcher.WaitAndGetTitle());
+}
+
+IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
+                       WebUIShownWithManager_OsSupportDisabled) {
+  ASSERT_TRUE(NavigateToURL(shell(), GURL(kAttributionInternalsUrl)));
+
+  static constexpr char kScript[] = R"(
+    const status = document.getElementById('attribution-support');
+    const setTitleIfDone = (_, obs) => {
+      if (status.innerText === 'web') {
+        if (obs) {
+          obs.disconnect();
+        }
+        document.title = $1;
+        return true;
+      }
+      return false;
+    };
+    if (!setTitleIfDone()) {
+      const obs = new MutationObserver(setTitleIfDone);
+      obs.observe(status, {childList: true, subtree: true, characterData: true});
+    }
+  )";
+  ASSERT_TRUE(ExecJsInWebUI(JsReplace(kScript, kCompleteTitle)));
+
+  TitleWatcher title_watcher(shell()->web_contents(), kCompleteTitle);
+  ClickRefreshButton();
+  EXPECT_EQ(kCompleteTitle, title_watcher.WaitAndGetTitle());
+}
+
+IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
+                       WebUIShownWithManager_OsSupportEnabled) {
+  ASSERT_TRUE(NavigateToURL(shell(), GURL(kAttributionInternalsUrl)));
+
+  static constexpr char kScript[] = R"(
+    const status = document.getElementById('attribution-support');
+    const setTitleIfDone = (_, obs) => {
+      if (status.innerText === 'os, web') {
+        if (obs) {
+          obs.disconnect();
+        }
+        document.title = $1;
+        return true;
+      }
+      return false;
+    };
+    if (!setTitleIfDone()) {
+      const obs = new MutationObserver(setTitleIfDone);
+      obs.observe(status, {childList: true, subtree: true, characterData: true});
+    }
+  )";
+  ASSERT_TRUE(ExecJsInWebUI(JsReplace(kScript, kCompleteTitle)));
+
+  AttributionOsLevelManager::ScopedApiStateForTesting scoped_api_state_setting(
+      AttributionOsLevelManager::ApiState::kEnabled);
 
   TitleWatcher title_watcher(shell()->web_contents(), kCompleteTitle);
   ClickRefreshButton();
@@ -477,32 +549,31 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
 
   const base::Time now = base::Time::Now();
 
+  manager()->NotifyReportSent(ReportBuilder(AttributionInfoBuilder().Build(),
+                                            SourceBuilder(now).BuildStored())
+                                  .SetReportTime(now + base::Hours(3))
+                                  .Build(),
+                              /*is_debug_report=*/false,
+                              SendResult(SendResult::Status::kSent, net::OK,
+                                         /*http_response_code=*/200));
+  manager()->NotifyReportSent(ReportBuilder(AttributionInfoBuilder().Build(),
+                                            SourceBuilder(now).BuildStored())
+                                  .SetReportTime(now + base::Hours(4))
+                                  .SetPriority(-1)
+                                  .Build(),
+                              /*is_debug_report=*/false,
+                              SendResult(SendResult::Status::kDropped));
   manager()->NotifyReportSent(
-      ReportBuilder(
-          AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
-          .SetReportTime(now + base::Hours(3))
-          .Build(),
-      /*is_debug_report=*/false,
-      SendResult(SendResult::Status::kSent, net::OK,
-                 /*http_response_code=*/200));
-  manager()->NotifyReportSent(
-      ReportBuilder(
-          AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
-          .SetReportTime(now + base::Hours(4))
-          .SetPriority(-1)
-          .Build(),
-      /*is_debug_report=*/false, SendResult(SendResult::Status::kDropped));
-  manager()->NotifyReportSent(
-      ReportBuilder(
-          AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
+      ReportBuilder(AttributionInfoBuilder().Build(),
+                    SourceBuilder(now).BuildStored())
           .SetReportTime(now + base::Hours(5))
           .SetPriority(-2)
           .Build(),
       /*is_debug_report=*/false,
       SendResult(SendResult::Status::kFailure, net::ERR_METHOD_NOT_SUPPORTED));
   manager()->NotifyReportSent(
-      ReportBuilder(
-          AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
+      ReportBuilder(AttributionInfoBuilder().Build(),
+                    SourceBuilder(now).BuildStored())
           .SetReportTime(now + base::Hours(11))
           .SetPriority(-8)
           .Build(),
@@ -510,14 +581,13 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
       SendResult(SendResult::Status::kTransientFailure, net::ERR_TIMED_OUT));
 
   ON_CALL(*manager(), GetPendingReportsForInternalUse)
-      .WillByDefault(RunOnceCallback<2>(std::vector<AttributionReport>{
-          ReportBuilder(AttributionInfoBuilder(
-                            SourceBuilder(now)
-                                .SetSourceType(SourceType::kEvent)
-                                .SetAttributionLogic(
-                                    StoredSource::AttributionLogic::kFalsely)
-                                .BuildStored())
-                            .Build())
+      .WillByDefault(RunOnceCallback<1>(std::vector<AttributionReport>{
+          ReportBuilder(
+              AttributionInfoBuilder().Build(),
+              SourceBuilder(now)
+                  .SetSourceType(SourceType::kEvent)
+                  .SetAttributionLogic(StoredSource::AttributionLogic::kFalsely)
+                  .BuildStored())
               .SetReportTime(now)
               .SetPriority(13)
               .Build()}));
@@ -528,8 +598,8 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
           AttributionTrigger::EventLevelResult::kSuccessDroppedLowerPriority,
           AttributionTrigger::AggregatableResult::kNoHistograms,
           /*replaced_event_level_report=*/
-          ReportBuilder(
-              AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
+          ReportBuilder(AttributionInfoBuilder().Build(),
+                        SourceBuilder(now).BuildStored())
               .SetReportTime(now + base::Hours(1))
               .SetPriority(11)
               .Build(),
@@ -543,24 +613,24 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
           .shadowRoot.querySelector('tbody');
       const obs = new MutationObserver((_, obs) => {
         if (table.children.length === 6 &&
-            table.children[0].children[3]?.innerText ===
+            table.children[0].children[2]?.innerText ===
               'https://report.test/.well-known/attribution-reporting/report-event-attribution' &&
-            table.children[0].children[6]?.innerText === '13' &&
-            table.children[0].children[7]?.innerText === 'yes' &&
-            table.children[0].children[2]?.innerText === 'Pending' &&
-            table.children[1].children[6]?.innerText === '11' &&
-            table.children[1].children[2]?.innerText ===
+            table.children[0].children[5]?.innerText === '13' &&
+            table.children[0].children[6]?.innerText === 'true' &&
+            table.children[0].children[1]?.innerText === 'Pending' &&
+            table.children[1].children[5]?.innerText === '11' &&
+            table.children[1].children[1]?.innerText ===
               'Replaced by higher-priority report: 21abd97f-73e8-4b88-9389-a9fee6abda5e' &&
-            table.children[2].children[6]?.innerText === '0' &&
-            table.children[2].children[7]?.innerText === 'no' &&
-            table.children[2].children[2]?.innerText === 'Sent: HTTP 200' &&
+            table.children[2].children[5]?.innerText === '0' &&
+            table.children[2].children[6]?.innerText === 'false' &&
+            table.children[2].children[1]?.innerText === 'Sent: HTTP 200' &&
             !table.children[2].classList.contains('send-error') &&
-            table.children[3].children[2]?.innerText === 'Prohibited by browser policy' &&
+            table.children[3].children[1]?.innerText === 'Prohibited by browser policy' &&
             !table.children[3].classList.contains('send-error') &&
-            table.children[4].children[2]?.innerText === 'Network error: ERR_METHOD_NOT_SUPPORTED' &&
+            table.children[4].children[1]?.innerText === 'Network error: ERR_METHOD_NOT_SUPPORTED' &&
             table.children[4].classList.contains('send-error') &&
-            table.children[5].children[2]?.innerText === 'Network error: ERR_TIMED_OUT' &&
-            table.children[5].children[3]?.innerText ===
+            table.children[5].children[1]?.innerText === 'Network error: ERR_TIMED_OUT' &&
+            table.children[5].children[2]?.innerText ===
               'https://report.test/.well-known/attribution-reporting/debug/report-event-attribution') {
           obs.disconnect();
           document.title = $1;
@@ -586,21 +656,21 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
           .shadowRoot.querySelector('tbody');
       const obs = new MutationObserver((_, obs) => {
         if (table.children.length === 6 &&
-            table.children[5].children[3]?.innerText ===
+            table.children[5].children[2]?.innerText ===
               'https://report.test/.well-known/attribution-reporting/report-event-attribution' &&
-            table.children[5].children[6]?.innerText === '13' &&
-            table.children[5].children[7]?.innerText === 'yes' &&
-            table.children[5].children[2]?.innerText === 'Pending' &&
-            table.children[4].children[6]?.innerText === '11' &&
-            table.children[4].children[2]?.innerText ===
+            table.children[5].children[5]?.innerText === '13' &&
+            table.children[5].children[6]?.innerText === 'true' &&
+            table.children[5].children[1]?.innerText === 'Pending' &&
+            table.children[4].children[5]?.innerText === '11' &&
+            table.children[4].children[1]?.innerText ===
               'Replaced by higher-priority report: 21abd97f-73e8-4b88-9389-a9fee6abda5e' &&
-            table.children[3].children[6]?.innerText === '0' &&
-            table.children[3].children[7]?.innerText === 'no' &&
-            table.children[3].children[2]?.innerText === 'Sent: HTTP 200' &&
-            table.children[2].children[2]?.innerText === 'Prohibited by browser policy' &&
-            table.children[1].children[2]?.innerText === 'Network error: ERR_METHOD_NOT_SUPPORTED' &&
-            table.children[0].children[2]?.innerText === 'Network error: ERR_TIMED_OUT' &&
-            table.children[0].children[3]?.innerText ===
+            table.children[3].children[5]?.innerText === '0' &&
+            table.children[3].children[6]?.innerText === 'false' &&
+            table.children[3].children[1]?.innerText === 'Sent: HTTP 200' &&
+            table.children[2].children[1]?.innerText === 'Prohibited by browser policy' &&
+            table.children[1].children[1]?.innerText === 'Network error: ERR_METHOD_NOT_SUPPORTED' &&
+            table.children[0].children[1]?.innerText === 'Network error: ERR_TIMED_OUT' &&
+            table.children[0].children[2]?.innerText ===
               'https://report.test/.well-known/attribution-reporting/debug/report-event-attribution') {
           obs.disconnect();
           document.title = $1;
@@ -614,7 +684,7 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
     // Sort by priority ascending.
     ASSERT_TRUE(ExecJsInWebUI(R"(
       document.querySelector('#reportTable')
-        .shadowRoot.querySelectorAll('th')[6].click();
+        .shadowRoot.querySelectorAll('th')[5].click();
     )"));
     ASSERT_EQ(kCompleteTitle2, title_watcher.WaitAndGetTitle());
   }
@@ -625,21 +695,21 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
           .shadowRoot.querySelector('tbody');
       const obs = new MutationObserver((_, obs) => {
         if (table.children.length === 6 &&
-            table.children[0].children[3]?.innerText ===
+            table.children[0].children[2]?.innerText ===
               'https://report.test/.well-known/attribution-reporting/report-event-attribution' &&
-            table.children[0].children[6]?.innerText === '13' &&
-            table.children[0].children[7]?.innerText === 'yes' &&
-            table.children[0].children[2]?.innerText === 'Pending' &&
-            table.children[1].children[6]?.innerText === '11' &&
-            table.children[1].children[2]?.innerText ===
+            table.children[0].children[5]?.innerText === '13' &&
+            table.children[0].children[6]?.innerText === 'true' &&
+            table.children[0].children[1]?.innerText === 'Pending' &&
+            table.children[1].children[5]?.innerText === '11' &&
+            table.children[1].children[1]?.innerText ===
               'Replaced by higher-priority report: 21abd97f-73e8-4b88-9389-a9fee6abda5e' &&
-            table.children[2].children[6]?.innerText === '0' &&
-            table.children[2].children[7]?.innerText === 'no' &&
-            table.children[2].children[2]?.innerText === 'Sent: HTTP 200' &&
-            table.children[3].children[2]?.innerText === 'Prohibited by browser policy' &&
-            table.children[4].children[2]?.innerText === 'Network error: ERR_METHOD_NOT_SUPPORTED' &&
-            table.children[5].children[2]?.innerText === 'Network error: ERR_TIMED_OUT' &&
-            table.children[5].children[3]?.innerText ===
+            table.children[2].children[5]?.innerText === '0' &&
+            table.children[2].children[6]?.innerText === 'false' &&
+            table.children[2].children[1]?.innerText === 'Sent: HTTP 200' &&
+            table.children[3].children[1]?.innerText === 'Prohibited by browser policy' &&
+            table.children[4].children[1]?.innerText === 'Network error: ERR_METHOD_NOT_SUPPORTED' &&
+            table.children[5].children[1]?.innerText === 'Network error: ERR_TIMED_OUT' &&
+            table.children[5].children[2]?.innerText ===
               'https://report.test/.well-known/attribution-reporting/debug/report-event-attribution') {
           obs.disconnect();
           document.title = $1;
@@ -653,7 +723,7 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
     // Sort by priority descending.
     ASSERT_TRUE(ExecJsInWebUI(R"(
       document.querySelector('#reportTable')
-        .shadowRoot.querySelectorAll('th')[6].click();
+        .shadowRoot.querySelectorAll('th')[5].click();
     )"));
     ASSERT_EQ(kCompleteTitle3, title_watcher.WaitAndGetTitle());
   }
@@ -665,19 +735,18 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
 
   const base::Time now = base::Time::Now();
 
-  AttributionReport report =
-      ReportBuilder(
-          AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
-          .SetReportTime(now)
-          .SetPriority(7)
-          .Build();
+  AttributionReport report = ReportBuilder(AttributionInfoBuilder().Build(),
+                                           SourceBuilder(now).BuildStored())
+                                 .SetReportTime(now)
+                                 .SetPriority(7)
+                                 .Build();
 
   std::vector<AttributionReport> stored_reports;
   stored_reports.push_back(report);
 
   EXPECT_CALL(*manager(), GetPendingReportsForInternalUse)
       .WillRepeatedly(
-          [&](AttributionReport::Types, int limit,
+          [&](int limit,
               base::OnceCallback<void(std::vector<AttributionReport>)>
                   callback) { std::move(callback).Run(stored_reports); });
 
@@ -703,8 +772,8 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
 
     const setTitleIfDone = (_, obs) => {
       if (table.children.length === 2 &&
-          table.children[0].children[6]?.innerText === '7' &&
-          table.children[1].children[2]?.innerText === 'Sent: HTTP 200') {
+          table.children[0].children[5]?.innerText === '7' &&
+          table.children[1].children[1]?.innerText === 'Sent: HTTP 200') {
         if (obs) {
           obs.disconnect();
         }
@@ -816,21 +885,16 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
   ASSERT_TRUE(NavigateToURL(shell(), GURL(kAttributionInternalsUrl)));
 
   EXPECT_CALL(*manager(), GetPendingReportsForInternalUse)
-      .WillOnce(RunOnceCallback<2>(std::vector<AttributionReport>{
-          ReportBuilder(
-              AttributionInfoBuilder(SourceBuilder().BuildStored()).Build())
+      .WillOnce(RunOnceCallback<1>(std::vector<AttributionReport>{
+          ReportBuilder(AttributionInfoBuilder().Build(),
+                        SourceBuilder().BuildStored())
               .SetPriority(7)
-              .SetReportId(AttributionReport::EventLevelData::Id(5))
+              .SetReportId(AttributionReport::Id(5))
               .Build()}))
-      .WillOnce(RunOnceCallback<2>(std::vector<AttributionReport>{}))
-      .WillOnce(RunOnceCallback<2>(std::vector<AttributionReport>{}));
+      .WillOnce(RunOnceCallback<1>(std::vector<AttributionReport>{}));
 
-  EXPECT_CALL(
-      *manager(),
-      SendReportsForWebUI(
-          ElementsAre(VariantWith<AttributionReport::EventLevelData::Id>(
-              AttributionReport::EventLevelData::Id(5))),
-          _))
+  EXPECT_CALL(*manager(),
+              SendReportsForWebUI(ElementsAre(AttributionReport::Id(5)), _))
       .WillOnce([](const std::vector<AttributionReport::Id>& ids,
                    base::OnceClosure done) { std::move(done).Run(); });
 
@@ -839,7 +903,7 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
         .shadowRoot.querySelector('tbody');
     const setTitleIfDone = (_, obs) => {
       if (table.children.length === 1 &&
-          table.children[0].children[6]?.innerText === '7') {
+          table.children[0].children[5]?.innerText === '7') {
           if (obs) {
             obs.disconnect();
           }
@@ -874,7 +938,7 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
 
   // The real manager would do this itself, but the test manager requires manual
   // triggering.
-  manager()->NotifyReportsChanged(AttributionReport::Type::kEventLevel);
+  manager()->NotifyReportsChanged();
 
   ASSERT_EQ(kSentTitle, sent_title_watcher.WaitAndGetTitle());
 }
@@ -912,56 +976,64 @@ IN_PROC_BROWSER_TEST_F(
       AggregatableHistogramContribution(1, 2)};
 
   manager()->NotifyReportSent(
-      ReportBuilder(
-          AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
+      ReportBuilder(AttributionInfoBuilder().Build(),
+                    SourceBuilder(now).BuildStored())
           .SetReportTime(now + base::Hours(3))
           .SetAggregatableHistogramContributions(contributions)
-          .SetAttestationToken("abc")
+          .SetVerificationToken("abc")
           .BuildAggregatableAttribution(),
       /*is_debug_report=*/false,
       SendResult(SendResult::Status::kSent, net::OK,
                  /*http_response_code=*/200));
   manager()->NotifyReportSent(
-      ReportBuilder(
-          AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
+      ReportBuilder(AttributionInfoBuilder().Build(),
+                    SourceBuilder(now).BuildStored())
           .SetReportTime(now + base::Hours(4))
           .SetAggregatableHistogramContributions(contributions)
           .BuildAggregatableAttribution(),
       /*is_debug_report=*/false, SendResult(SendResult::Status::kDropped));
   manager()->NotifyReportSent(
-      ReportBuilder(
-          AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
+      ReportBuilder(AttributionInfoBuilder().Build(),
+                    SourceBuilder(now).BuildStored())
           .SetReportTime(now + base::Hours(5))
           .SetAggregatableHistogramContributions(contributions)
           .BuildAggregatableAttribution(),
       /*is_debug_report=*/false,
-      SendResult(SendResult::Status::kFailedToAssemble));
+      SendResult(SendResult::Status::kAssemblyFailure));
   manager()->NotifyReportSent(
-      ReportBuilder(
-          AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
+      ReportBuilder(AttributionInfoBuilder().Build(),
+                    SourceBuilder(now).BuildStored())
           .SetReportTime(now + base::Hours(6))
           .SetAggregatableHistogramContributions(contributions)
           .BuildAggregatableAttribution(),
       /*is_debug_report=*/false,
       SendResult(SendResult::Status::kFailure, net::ERR_INVALID_REDIRECT));
   manager()->NotifyReportSent(
-      ReportBuilder(
-          AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
+      ReportBuilder(AttributionInfoBuilder().Build(),
+                    SourceBuilder(now).BuildStored())
           .SetReportTime(now + base::Hours(10))
           .SetAggregatableHistogramContributions(contributions)
           .BuildAggregatableAttribution(),
       /*is_debug_report=*/true,
       SendResult(SendResult::Status::kTransientFailure,
                  net::ERR_INTERNET_DISCONNECTED));
+  manager()->NotifyReportSent(ReportBuilder(AttributionInfoBuilder().Build(),
+                                            SourceBuilder(now).BuildStored())
+                                  .SetReportTime(now + base::Hours(11))
+                                  .BuildNullAggregatable(),
+                              /*is_debug_report=*/false,
+                              SendResult(SendResult::Status::kSent, net::OK,
+                                         /*http_response_code=*/200));
   ON_CALL(*manager(), GetPendingReportsForInternalUse)
-      .WillByDefault(RunOnceCallback<2>(std::vector<AttributionReport>{
-          ReportBuilder(
-              AttributionInfoBuilder(SourceBuilder(now)
-                                         .SetSourceType(SourceType::kEvent)
-                                         .BuildStored())
-                  .Build())
+      .WillByDefault(RunOnceCallback<1>(std::vector<AttributionReport>{
+          ReportBuilder(AttributionInfoBuilder().Build(),
+                        SourceBuilder(now)
+                            .SetSourceType(SourceType::kEvent)
+                            .BuildStored())
               .SetReportTime(now)
               .SetAggregatableHistogramContributions(contributions)
+              .SetAggregationCoordinatorOrigin(
+                  *SuitableOrigin::Deserialize("https://aws.example.test"))
               .BuildAggregatableAttribution()}));
 
   {
@@ -969,21 +1041,24 @@ IN_PROC_BROWSER_TEST_F(
       const table = document.querySelector('#aggregatableReportTable')
           .shadowRoot.querySelector('tbody');
       const obs = new MutationObserver((_, obs) => {
-        if (table.children.length === 6 &&
-            table.children[0].children[3]?.innerText ===
+        if (table.children.length === 7 &&
+            table.children[0].children[2]?.innerText ===
               'https://report.test/.well-known/attribution-reporting/report-aggregate-attribution' &&
-            table.children[0].children[2]?.innerText === 'Pending' &&
-            table.children[0].children[6]?.innerText === '[ {  "key": "0x1",  "value": 2 }]' &&
-            table.children[0].children[7]?.innerText === '' &&
-            table.children[0].children[8]?.innerText === 'aws-cloud' &&
-            table.children[1].children[2]?.innerText === 'Sent: HTTP 200' &&
-            table.children[1].children[7]?.innerText === 'abc' &&
-            table.children[2].children[2]?.innerText === 'Prohibited by browser policy' &&
-            table.children[3].children[2]?.innerText === 'Dropped due to assembly failure' &&
-            table.children[4].children[2]?.innerText === 'Network error: ERR_INVALID_REDIRECT' &&
-            table.children[5].children[2]?.innerText === 'Network error: ERR_INTERNET_DISCONNECTED' &&
-            table.children[5].children[3]?.innerText ===
-              'https://report.test/.well-known/attribution-reporting/debug/report-aggregate-attribution') {
+            table.children[0].children[1]?.innerText === 'Pending' &&
+            table.children[0].children[5]?.innerText === '[ {  "key": "0x1",  "value": 2 }]' &&
+            table.children[0].children[6]?.innerText === '' &&
+            table.children[0].children[7]?.innerText === 'https://aws.example.test' &&
+            table.children[0].children[8]?.innerText === 'false' &&
+            table.children[1].children[1]?.innerText === 'Sent: HTTP 200' &&
+            table.children[1].children[6]?.innerText === 'abc' &&
+            table.children[2].children[1]?.innerText === 'Prohibited by browser policy' &&
+            table.children[3].children[1]?.innerText === 'Dropped due to assembly failure' &&
+            table.children[4].children[1]?.innerText === 'Network error: ERR_INVALID_REDIRECT' &&
+            table.children[5].children[1]?.innerText === 'Network error: ERR_INTERNET_DISCONNECTED' &&
+            table.children[5].children[2]?.innerText ===
+              'https://report.test/.well-known/attribution-reporting/debug/report-aggregate-attribution' &&
+            table.children[6].children[5]?.innerText === '[ {  "key": "0x0",  "value": 0 }]' &&
+            table.children[6].children[8]?.innerText === 'true') {
           obs.disconnect();
           document.title = $1;
         }
@@ -1002,57 +1077,64 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
                        TriggersDisplayed) {
   ASSERT_TRUE(NavigateToURL(shell(), GURL(kAttributionInternalsUrl)));
 
-  const auto create_trigger =
-      [](absl::optional<network::TriggerAttestation> attestation) {
-        return AttributionTrigger(
-            /*reporting_origin=*/*SuitableOrigin::Deserialize("https://r.test"),
-            attribution_reporting::TriggerRegistration(
-                FilterPair{
-                    .positive = *AttributionFilters::Create({{"a", {"b"}}}),
-                    .negative = *AttributionFilters::Create({{"g", {"h"}}})},
-                /*debug_key=*/1,
-                *attribution_reporting::AggregatableDedupKeyList::Create(
-                    {attribution_reporting::AggregatableDedupKey(
-                        /*dedup_key=*/18, FilterPair())}),
-                *attribution_reporting::EventTriggerDataList::Create({
-                    attribution_reporting::EventTriggerData(
-                        /*data=*/2,
-                        /*priority=*/3,
-                        /*dedup_key=*/absl::nullopt,
-                        FilterPair{.positive = *AttributionFilters::Create(
-                                       {{"c", {"d"}}})}),
-                    attribution_reporting::EventTriggerData(
-                        /*data=*/4,
-                        /*priority=*/5,
-                        /*dedup_key=*/6,
-                        FilterPair{.negative = *AttributionFilters::Create(
-                                       {{"e", {"f"}}})}),
-                }),
-                *attribution_reporting::AggregatableTriggerDataList::Create(
-                    {*attribution_reporting::AggregatableTriggerData::Create(
-                         /*key_piece=*/345,
-                         /*source_keys=*/{"a"},
-                         FilterPair{.positive = *AttributionFilters::Create(
-                                        {{"c", {"d"}}})}),
-                     *attribution_reporting::AggregatableTriggerData::Create(
-                         /*key_piece=*/678,
-                         /*source_keys=*/{"b"},
-                         FilterPair{.negative = *AttributionFilters::Create(
-                                        {{"e", {"f"}}})})}),
-                /*aggregatable_values=*/
-                *attribution_reporting::AggregatableValues::Create(
-                    {{"a", 123}, {"b", 456}}),
-                /*debug_reporting=*/false,
-                ::aggregation_service::mojom::AggregationCoordinator::kDefault),
-            *SuitableOrigin::Deserialize("https://d.test"),
-            std::move(attestation),
-            /*is_within_fenced_frame=*/false);
-      };
+  const auto create_trigger = [](std::vector<network::TriggerVerification>
+                                     verifications) {
+    return AttributionTrigger(
+        /*reporting_origin=*/*SuitableOrigin::Deserialize("https://r.test"),
+        attribution_reporting::TriggerRegistration(
+            FilterPair(
+                /*positive=*/{*FilterConfig::Create({{"a", {"b"}}})},
+                /*negative=*/{*FilterConfig::Create(
+                    {{"g", {"h"}}}, /*lookback_window=*/base::Seconds(2))}),
+            /*debug_key=*/1,
+            {attribution_reporting::AggregatableDedupKey(
+                /*dedup_key=*/18, FilterPair())},
+            {
+                attribution_reporting::EventTriggerData(
+                    /*data=*/2,
+                    /*priority=*/3,
+                    /*dedup_key=*/absl::nullopt,
+                    FilterPair(
+                        /*positive=*/{*FilterConfig::Create({{"c", {"d"}}})},
+                        /*negative=*/{})),
+                attribution_reporting::EventTriggerData(
+                    /*data=*/4,
+                    /*priority=*/5,
+                    /*dedup_key=*/6,
+                    FilterPair(
+                        /*positive=*/{},
+                        /*negative=*/{*FilterConfig::Create({{"e", {"f"}}})})),
+            },
+            {*attribution_reporting::AggregatableTriggerData::Create(
+                 /*key_piece=*/345,
+                 /*source_keys=*/{"a"},
+                 FilterPair(
+                     /*positive=*/{},
+                     /*negative=*/{*FilterConfig::Create({{"c", {"d"}}})})),
+             *attribution_reporting::AggregatableTriggerData::Create(
+                 /*key_piece=*/678,
+                 /*source_keys=*/{"b"},
+                 FilterPair(
+                     /*positive=*/{},
+                     /*negative=*/{*FilterConfig::Create({{"e", {"f"}}})}))},
+            /*aggregatable_values=*/
+            *attribution_reporting::AggregatableValues::Create(
+                {{"a", 123}, {"b", 456}}),
+            /*debug_reporting=*/false,
+            /*aggregation_coordinator_origin=*/absl::nullopt,
+            attribution_reporting::mojom::SourceRegistrationTimeConfig::
+                kInclude),
+        *SuitableOrigin::Deserialize("https://d.test"),
+        std::move(verifications),
+        /*is_within_fenced_frame=*/false);
+  };
 
   static constexpr char kScript[] = R"(
-    const expectedAttestation =
+    const expectedVerification =
       '<dl><dt>Token</dt><dd>abc</dd>' +
-      '<dt>Report ID</dt><dd>a2ab30b9-d664-4dfc-a9db-85f9729b9a30</dd></dl>';
+      '<dt>Report ID</dt><dd>aaab30b9-d664-4dfc-a9db-85f9729b9a30</dd></dl>' +
+      '<dl><dt>Token</dt><dd>def</dd>' +
+      '<dt>Report ID</dt><dd>bbab30b9-d664-4dfc-a9db-85f9729b9a30</dd></dl>';
 
     const table = document.querySelector('#triggerTable')
         .shadowRoot.querySelector('tbody');
@@ -1065,7 +1147,7 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
           table.children[0].children[3]?.innerText.includes('{') &&
           table.children[0].children[4]?.innerText === '' &&
           table.children[1].children[4]?.innerText === '123' &&
-          table.children[1].children[7]?.innerHTML === expectedAttestation) {
+          table.children[1].children[7]?.innerHTML === expectedVerification) {
         obs.disconnect();
         document.title = $1;
       }
@@ -1094,12 +1176,18 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
             cleared_debug_key);
       };
 
-  notify_trigger_handled(create_trigger(/*attestation=*/absl::nullopt),
+  notify_trigger_handled(create_trigger(/*verifications=*/{}),
                          AttributionTrigger::EventLevelResult::kSuccess,
                          AttributionTrigger::AggregatableResult::kSuccess);
 
-  notify_trigger_handled(create_trigger(network::TriggerAttestation::Create(
-                             "abc", "a2ab30b9-d664-4dfc-a9db-85f9729b9a30")),
+  std::vector<network::TriggerVerification> verifications;
+  verifications.push_back(*network::TriggerVerification::Create(
+      "abc",
+      base::Uuid::ParseLowercase("aaab30b9-d664-4dfc-a9db-85f9729b9a30")));
+  verifications.push_back(*network::TriggerVerification::Create(
+      "def",
+      base::Uuid::ParseLowercase("bbab30b9-d664-4dfc-a9db-85f9729b9a30")));
+  notify_trigger_handled(create_trigger(std::move(verifications)),
                          AttributionTrigger::EventLevelResult::kSuccess,
                          AttributionTrigger::AggregatableResult::kSuccess,
                          /*cleared_debug_key=*/123);
@@ -1116,24 +1204,17 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
   ASSERT_TRUE(NavigateToURL(shell(), GURL(kAttributionInternalsUrl)));
 
   EXPECT_CALL(*manager(), GetPendingReportsForInternalUse)
-      .WillOnce(RunOnceCallback<2>(std::vector<AttributionReport>{}))
-      .WillOnce(RunOnceCallback<2>(std::vector<AttributionReport>{
-          ReportBuilder(
-              AttributionInfoBuilder(SourceBuilder().BuildStored()).Build())
-              .SetReportId(
-                  AttributionReport::AggregatableAttributionData::Id(5))
+      .WillOnce(RunOnceCallback<1>(std::vector<AttributionReport>{
+          ReportBuilder(AttributionInfoBuilder().Build(),
+                        SourceBuilder().BuildStored())
+              .SetReportId(AttributionReport::Id(5))
               .SetAggregatableHistogramContributions(
                   {AggregatableHistogramContribution(1, 2)})
               .BuildAggregatableAttribution()}))
-      .WillOnce(RunOnceCallback<2>(std::vector<AttributionReport>{}));
+      .WillOnce(RunOnceCallback<1>(std::vector<AttributionReport>{}));
 
-  EXPECT_CALL(
-      *manager(),
-      SendReportsForWebUI(
-          ElementsAre(
-              VariantWith<AttributionReport::AggregatableAttributionData::Id>(
-                  AttributionReport::AggregatableAttributionData::Id(5))),
-          _))
+  EXPECT_CALL(*manager(),
+              SendReportsForWebUI(ElementsAre(AttributionReport::Id(5)), _))
       .WillOnce([](const std::vector<AttributionReport::Id>& ids,
                    base::OnceClosure done) { std::move(done).Run(); });
 
@@ -1183,8 +1264,7 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
 
   // The real manager would do this itself, but the test manager requires manual
   // triggering.
-  manager()->NotifyReportsChanged(
-      AttributionReport::Type::kAggregatableAttribution);
+  manager()->NotifyReportsChanged();
 
   EXPECT_EQ(kSentTitle, sent_title_watcher.WaitAndGetTitle());
 }
@@ -1195,20 +1275,19 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
 
   const base::Time now = base::Time::Now();
 
-  manager()->NotifyReportSent(
-      ReportBuilder(
-          AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
-          .SetReportTime(now)
-          .SetPriority(1)
-          .Build(),
-      /*is_debug_report=*/true,
-      SendResult(SendResult::Status::kSent, net::OK,
-                 /*http_response_code=*/200));
+  manager()->NotifyReportSent(ReportBuilder(AttributionInfoBuilder().Build(),
+                                            SourceBuilder(now).BuildStored())
+                                  .SetReportTime(now)
+                                  .SetPriority(1)
+                                  .Build(),
+                              /*is_debug_report=*/true,
+                              SendResult(SendResult::Status::kSent, net::OK,
+                                         /*http_response_code=*/200));
 
   ON_CALL(*manager(), GetPendingReportsForInternalUse)
-      .WillByDefault(RunOnceCallback<2>(std::vector<AttributionReport>{
-          ReportBuilder(
-              AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
+      .WillByDefault(RunOnceCallback<1>(std::vector<AttributionReport>{
+          ReportBuilder(AttributionInfoBuilder().Build(),
+                        SourceBuilder(now).BuildStored())
               .SetReportTime(now + base::Hours(1))
               .SetPriority(2)
               .Build()}));
@@ -1221,8 +1300,8 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
       const label = document.querySelector('#show-debug-event-reports span');
       const obs = new MutationObserver((_, obs) => {
         if (table.children.length === 2 &&
-            table.children[0].children[6]?.innerText === '1' &&
-            table.children[1].children[6]?.innerText === '2' &&
+            table.children[0].children[5]?.innerText === '1' &&
+            table.children[1].children[5]?.innerText === '2' &&
             label.innerText === '') {
           obs.disconnect();
           document.title = $1;
@@ -1242,15 +1321,14 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
   ASSERT_TRUE(ExecJsInWebUI(R"(
     document.querySelector('#show-debug-event-reports input').click();)"));
 
-  manager()->NotifyReportSent(
-      ReportBuilder(
-          AttributionInfoBuilder(SourceBuilder(now).BuildStored()).Build())
-          .SetReportTime(now + base::Hours(2))
-          .SetPriority(3)
-          .Build(),
-      /*is_debug_report=*/true,
-      SendResult(SendResult::Status::kSent, net::OK,
-                 /*http_response_code=*/200));
+  manager()->NotifyReportSent(ReportBuilder(AttributionInfoBuilder().Build(),
+                                            SourceBuilder(now).BuildStored())
+                                  .SetReportTime(now + base::Hours(2))
+                                  .SetPriority(3)
+                                  .Build(),
+                              /*is_debug_report=*/true,
+                              SendResult(SendResult::Status::kSent, net::OK,
+                                         /*http_response_code=*/200));
 
   // The debug reports, including the newly received one, should be hidden and
   // the label should indicate the number.
@@ -1261,7 +1339,7 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
       const label = document.querySelector('#show-debug-event-reports span');
       const obs = new MutationObserver((_, obs) => {
         if (table.children.length === 1 &&
-            table.children[0].children[6]?.innerText === '2' &&
+            table.children[0].children[5]?.innerText === '2' &&
             label.innerText === ' (2 hidden)') {
           obs.disconnect();
           document.title = $1;
@@ -1290,9 +1368,9 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
       const label = document.querySelector('#show-debug-event-reports span');
       const obs = new MutationObserver((_, obs) => {
         if (table.children.length === 3 &&
-            table.children[0].children[6]?.innerText === '1' &&
-            table.children[1].children[6]?.innerText === '2' &&
-            table.children[2].children[6]?.innerText === '3' &&
+            table.children[0].children[5]?.innerText === '1' &&
+            table.children[1].children[5]?.innerText === '2' &&
+            table.children[2].children[5]?.innerText === '3' &&
             label.innerText === '') {
           obs.disconnect();
           document.title = $1;
@@ -1317,8 +1395,7 @@ IN_PROC_BROWSER_TEST_F(AttributionInternalsWebUiBrowserTest,
       AttributionDebugReport::Create(
           SourceBuilder().SetDebugReporting(true).Build(),
           /*is_debug_cookie_set=*/true,
-          AttributionStorage::StoreSourceResult(
-              StorableSource::Result::kInternalError));
+          StoreSourceResult(StorableSource::Result::kInternalError));
   ASSERT_TRUE(report);
 
   static constexpr char kScript[] = R"(

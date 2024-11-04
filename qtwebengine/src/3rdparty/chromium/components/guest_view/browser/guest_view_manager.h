@@ -77,7 +77,7 @@ class GuestViewManager : public content::BrowserPluginGuestManager,
 
   using GuestViewCreateFunction =
       base::RepeatingCallback<std::unique_ptr<GuestViewBase>(
-          content::WebContents* owner_web_contents)>;
+          content::RenderFrameHost* owner_rfh)>;
   using GuestViewCleanUpFunction =
       base::RepeatingCallback<void(content::BrowserContext*,
                                    int embedder_process_id,
@@ -98,12 +98,12 @@ class GuestViewManager : public content::BrowserPluginGuestManager,
       base::OnceCallback<void(std::unique_ptr<GuestViewBase>)>;
   // Creates a guest and has the GuestViewManager assume ownership.
   void CreateGuest(const std::string& view_type,
-                   content::WebContents* owner_web_contents,
+                   content::RenderFrameHost* owner_rfh,
                    const base::Value::Dict& create_params,
                    UnownedGuestCreatedCallback callback);
   // Creates a guest which the caller will own.
   void CreateGuestAndTransferOwnership(const std::string& view_type,
-                                       content::WebContents* owner_web_contents,
+                                       content::RenderFrameHost* owner_rfh,
                                        const base::Value::Dict& create_params,
                                        OwnedGuestCreatedCallback callback);
 
@@ -114,7 +114,7 @@ class GuestViewManager : public content::BrowserPluginGuestManager,
 
   std::unique_ptr<content::WebContents> CreateGuestWithWebContentsParams(
       const std::string& view_type,
-      content::WebContents* owner_web_contents,
+      content::RenderFrameHost* owner_rfh,
       const content::WebContents::CreateParams& create_params);
 
   content::SiteInstance* GetGuestSiteInstance(
@@ -138,13 +138,14 @@ class GuestViewManager : public content::BrowserPluginGuestManager,
 
   // These methods are virtual so that they can be overriden in tests.
 
-  virtual void AddGuest(int guest_instance_id,
-                        content::WebContents* guest_web_contents);
+  virtual void AddGuest(GuestViewBase* guest);
   // If a GuestView is created but never initialized with a guest WebContents,
-  // this should still be called to invalidate `guest_instance_id`.
+  // this should still be called to invalidate `guest`'s `guest_instance_id`.
   // If `invalidate_id` is false, then the id may be reused to associate a guest
   // with a new guest WebContents.
-  void RemoveGuest(int guest_instance_id, bool invalidate_id);
+  void RemoveGuest(GuestViewBase* guest, bool invalidate_id);
+
+  GuestViewBase* GetGuestFromWebContents(content::WebContents* web_contents);
 
   // This method is called when the embedder process with ID
   // |embedder_process_id| has been destroyed.
@@ -170,7 +171,7 @@ class GuestViewManager : public content::BrowserPluginGuestManager,
 
   // Creates a guest of the provided |view_type|.
   std::unique_ptr<GuestViewBase> CreateGuestInternal(
-      content::WebContents* owner_web_contents,
+      content::RenderFrameHost* owner_rfh,
       const std::string& view_type);
 
   // Adds GuestView types to the GuestView registry.
@@ -208,9 +209,13 @@ class GuestViewManager : public content::BrowserPluginGuestManager,
   static bool GetFullPageGuestHelper(content::WebContents** result,
                                      content::WebContents* guest_web_contents);
 
-  // Contains guests' WebContents, mapping from their instance ids.
-  using GuestInstanceMap = std::map<int, content::WebContents*>;
-  GuestInstanceMap guest_web_contents_by_instance_id_;
+  // Contains guests, mapping from their instance ids.
+  using GuestInstanceMap = std::map<int, GuestViewBase*>;
+  GuestInstanceMap guests_by_instance_id_;
+
+  using WebContentsGuestViewMap =
+      std::map<const content::WebContents*, GuestViewBase*>;
+  WebContentsGuestViewMap webcontents_guestview_map_;
 
   struct ElementInstanceKey {
     int embedder_process_id;
@@ -221,7 +226,6 @@ class GuestViewManager : public content::BrowserPluginGuestManager,
                        int element_instance_id);
 
     bool operator<(const ElementInstanceKey& other) const;
-    bool operator==(const ElementInstanceKey& other) const;
   };
 
   using GuestInstanceIDMap = std::map<ElementInstanceKey, int>;

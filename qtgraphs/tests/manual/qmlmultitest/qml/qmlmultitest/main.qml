@@ -38,10 +38,10 @@ Item {
                 anchors.fill: parent
                 anchors.margins: parent.border.width
                 theme: Theme3D {
-                    type: Theme3D.ThemePrimaryColors
+                    type: Theme3D.Theme.PrimaryColors
                     font.pointSize: 60
                 }
-                scene.activeCamera.cameraPreset: Camera3D.CameraPresetIsometricLeftHigh
+                cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeftHigh
 
                 Surface3DSeries {
                     itemLabelFormat: "Pop density at (@xLabel N, @zLabel E): @yLabel"
@@ -127,14 +127,14 @@ Item {
                 anchors.fill: parent
                 anchors.margins: parent.border.width
                 theme: Theme3D {
-                    type: Theme3D.ThemeDigia
+                    type: Theme3D.Theme.PrimaryColors
                     font.pointSize: 60
                 }
-                scene.activeCamera.cameraPreset: Camera3D.CameraPresetIsometricLeftHigh
+                cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeftHigh
 
                 Scatter3DSeries {
                     itemLabelFormat: "Pop density at (@xLabel N, @zLabel E): @yLabel"
-                    mesh: Abstract3DSeries.MeshCube
+                    mesh: Abstract3DSeries.Mesh.Cube
                     ItemModelScatterDataProxy {
                         id: scatterProxy
                         itemModel: data.sharedData
@@ -168,11 +168,11 @@ Item {
                 anchors.fill: parent
                 anchors.margins: parent.border.width
                 theme: Theme3D {
-                    type: Theme3D.ThemeQt
+                    type: Theme3D.Theme.Qt
                     font.pointSize: 60
                 }
                 selectionMode: AbstractGraph3D.SelectionItemAndRow | AbstractGraph3D.SelectionSlice
-                scene.activeCamera.cameraPreset: Camera3D.CameraPresetIsometricLeftHigh
+                cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeftHigh
 
                 Bar3DSeries {
                     itemLabelFormat: "@seriesName: @valueLabel"
@@ -207,30 +207,30 @@ Item {
     }
 
     function resetCameras() {
-        surfaceGraph.scene.activeCamera.cameraPreset = Camera3D.CameraPresetIsometricLeftHigh
-        scatterGraph.scene.activeCamera.cameraPreset = Camera3D.CameraPresetIsometricLeftHigh
-        barGraph.scene.activeCamera.cameraPreset = Camera3D.CameraPresetIsometricLeftHigh
-        surfaceGraph.scene.activeCamera.zoomLevel = 100.0
-        scatterGraph.scene.activeCamera.zoomLevel = 100.0
-        barGraph.scene.activeCamera.zoomLevel = 100.0
+        surfaceGraph.cameraPreset = AbstractGraph3D.CameraPreset.IsometricLeftHigh
+        scatterGraph.cameraPreset = AbstractGraph3D.CameraPreset.IsometricLeftHigh
+        barGraph.cameraPreset = AbstractGraph3D.CameraPreset.IsometricLeftHigh
+        surfaceGraph.zoomLevel = 100.0
+        scatterGraph.zoomLevel = 100.0
+        barGraph.zoomLevel = 100.0
     }
 
     function changeMMB() {
-        if (barProxy.multiMatchBehavior === ItemModelBarDataProxy.MMBLast) {
-            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MMBAverage
-            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MMBAverage
+        if (barProxy.multiMatchBehavior === ItemModelBarDataProxy.MultiMatchBehavior.Last) {
+            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MultiMatchBehavior.Average
+            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MultiMatchBehavior.Average
             mmbButton.text = "MMB: Average"
-        } else if (barProxy.multiMatchBehavior === ItemModelBarDataProxy.MMBAverage) {
-            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MMBCumulative
-            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MMBCumulativeY
+        } else if (barProxy.multiMatchBehavior === ItemModelBarDataProxy.MultiMatchBehavior.Average) {
+            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MultiMatchBehavior.Cumulative
+            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MultiMatchBehavior.CumulativeY
             mmbButton.text = "MMB: Cumulative"
-        } else if (barProxy.multiMatchBehavior === ItemModelBarDataProxy.MMBCumulative) {
-            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MMBFirst
-            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MMBFirst
+        } else if (barProxy.multiMatchBehavior === ItemModelBarDataProxy.MultiMatchBehavior.Cumulative) {
+            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MultiMatchBehavior.First
+            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MultiMatchBehavior.First
             mmbButton.text = "MMB: First"
         } else {
-            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MMBLast
-            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MMBLast
+            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MultiMatchBehavior.Last
+            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MultiMatchBehavior.Last
             mmbButton.text = "MMB: Last"
         }
     }

@@ -50,6 +50,8 @@ class VIEWS_EXPORT LabelButton : public Button, public NativeThemeDelegate {
   virtual gfx::ImageSkia GetImage(ButtonState for_state) const;
   // TODO(http://crbug.com/1100034) prefer SetImageModel over SetImage().
   void SetImage(ButtonState for_state, const gfx::ImageSkia& image);
+
+  const ui::ImageModel& GetImageModel(ButtonState for_state) const;
   virtual void SetImageModel(ButtonState for_state,
                              const ui::ImageModel& image_model);
   bool HasImage(ButtonState for_state) const;
@@ -57,6 +59,9 @@ class VIEWS_EXPORT LabelButton : public Button, public NativeThemeDelegate {
   // Gets or sets the text shown on the button.
   const std::u16string& GetText() const;
   virtual void SetText(const std::u16string& text);
+
+  // Set the text style of the label.
+  void SetLabelStyle(views::style::TextStyle text_style);
 
   // Makes the button report its preferred size without the label. This lets
   // AnimatingLayoutManager gradually shrink the button until the text is
@@ -68,14 +73,20 @@ class VIEWS_EXPORT LabelButton : public Button, public NativeThemeDelegate {
   void ShrinkDownThenClearText();
 
   // Sets the text color shown for the specified button |for_state| to |color|.
+  // TODO(crbug.com/1421316): Get rid of SkColor versions of these functions in
+  // favor of the ColorId versions.
   void SetTextColor(ButtonState for_state, SkColor color);
 
+  // Sets the text color as above but using ColorId.
+  void SetTextColorId(ButtonState for_state, ui::ColorId color_id);
+
   // Sets the text colors shown for the non-disabled states to |color|.
+  // TODO(crbug.com/1421316): Get rid of SkColor versions of these functions in
+  // favor of the ColorId versions.
   virtual void SetEnabledTextColors(absl::optional<SkColor> color);
 
-  // Enable the text colors to auto adjust for readability for the non-disabled
-  // states. Default to false.
-  void SetEnabledTextColorReadabilityAdjustment(bool enabled);
+  // Sets the text colors shown for the non-disabled states to |color_id|.
+  void SetEnabledTextColorIds(ui::ColorId color_id);
 
   // Gets the current state text color.
   SkColor GetCurrentTextColor() const;
@@ -237,7 +248,7 @@ class VIEWS_EXPORT LabelButton : public Button, public NativeThemeDelegate {
 
   // The image models and colors for each button state.
   ui::ImageModel button_state_image_models_[STATE_COUNT] = {};
-  SkColor button_state_colors_[STATE_COUNT] = {};
+  absl::variant<SkColor, ui::ColorId> button_state_colors_[STATE_COUNT] = {};
 
   // Used to track whether SetTextColor() has been invoked.
   std::array<bool, STATE_COUNT> explicitly_set_colors_ = {};

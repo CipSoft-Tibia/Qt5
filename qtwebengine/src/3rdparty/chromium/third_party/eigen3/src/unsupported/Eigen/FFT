@@ -79,6 +79,8 @@
 
 #include "../../Eigen/src/Core/util/DisableStupidWarnings.h"
 
+// IWYU pragma: begin_exports
+
 #ifdef EIGEN_FFTW_DEFAULT
 // FFTW: faster, GPL -- incompatible with Eigen in LGPL form, bigger code size
 #  include <fftw3.h>
@@ -109,6 +111,8 @@
        struct default_fft_impl : public internal::kissfft_impl<T> {};
   }
 #endif
+
+// IWYU pragma: end_exports
 
 namespace Eigen {
 
@@ -177,15 +181,16 @@ class FFT
     typedef typename impl_type::Scalar Scalar;
     typedef typename impl_type::Complex Complex;
 
-    enum Flag {
-      Default=0, // goof proof
-      Unscaled=1,
-      HalfSpectrum=2,
-      // SomeOtherSpeedOptimization=4
-      Speedy=32767
-    };
+    using Flag = int;
+    static constexpr Flag Default = 0;
+    static constexpr Flag Unscaled = 1;
+    static constexpr Flag HalfSpectrum = 2;
+    static constexpr Flag Speedy = 32767;
 
-    FFT( const impl_type & impl=impl_type() , Flag flags=Default ) :m_impl(impl),m_flag(flags) { }
+    FFT( const impl_type & impl=impl_type() , Flag flags=Default ) :m_impl(impl),m_flag(flags) 
+    {
+        eigen_assert((flags == Default || flags == Unscaled || flags == HalfSpectrum || flags == Speedy) && "invalid flags argument");
+    }
 
     inline
     bool HasFlag(Flag f) const { return (m_flag & (int)f) == f;}

@@ -1,5 +1,5 @@
 // Copyright (C) 2017 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <qlist.h>
@@ -128,6 +128,9 @@ void tst_QRandomGenerator::basics()
 QT_WARNING_PUSH
 QT_WARNING_DISABLE_CLANG("-Wself-move")
 QT_WARNING_DISABLE_CLANG("-Wself-assign-overloaded")
+#if defined(Q_CC_GNU_ONLY) && Q_CC_GNU >= 1301
+QT_WARNING_DISABLE_GCC("-Wself-move")
+#endif
     // copyable && movable
     rng = rng;
     rng = std::move(rng);

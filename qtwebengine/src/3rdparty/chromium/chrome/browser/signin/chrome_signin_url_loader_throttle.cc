@@ -79,7 +79,11 @@ class URLLoaderThrottle::ThrottleResponseAdapter : public ResponseAdapter {
     return throttle_->is_outermost_main_frame_;
   }
 
-  GURL GetURL() const override { return throttle_->request_url_; }
+  GURL GetUrl() const override { return throttle_->request_url_; }
+
+  absl::optional<url::Origin> GetRequestInitiator() const override {
+    return throttle_->request_initiator_;
+  }
 
   const net::HttpResponseHeaders* GetHeaders() const override {
     return headers_;
@@ -124,6 +128,7 @@ void URLLoaderThrottle::WillStartRequest(network::ResourceRequest* request,
                                          bool* defer) {
   request_url_ = request->url;
   request_referrer_ = request->referrer;
+  request_initiator_ = request->request_initiator;
   request_destination_ = request->destination;
   is_outermost_main_frame_ = request->is_outermost_main_frame;
   request_is_fetch_like_api_ = request->is_fetch_like_api;

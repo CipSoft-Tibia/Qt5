@@ -4,9 +4,10 @@
 
 #import "ui/views/controls/menu/menu_controller_cocoa_delegate_impl.h"
 
+#include "base/apple/bridging.h"
+#include "base/apple/foundation_util.h"
 #include "base/logging.h"
-#import "base/mac/scoped_nsobject.h"
-#import "base/message_loop/message_pump_mac.h"
+#import "base/message_loop/message_pump_apple.h"
 #import "skia/ext/skia_utils_mac.h"
 #import "ui/base/cocoa/cocoa_base_utils.h"
 #include "ui/base/interaction/element_tracker_mac.h"
@@ -18,6 +19,7 @@
 #include "ui/gfx/platform_font_mac.h"
 #include "ui/strings/grit/ui_strings.h"
 #include "ui/views/badge_painter.h"
+#include "ui/views/controls/menu/menu_config.h"
 #include "ui/views/layout/layout_provider.h"
 
 namespace {
@@ -36,17 +38,16 @@ NSImage* NewTagImage(const ui::ColorProvider* color_provider) {
   // badge; we add a small degree of bold to prevent color smearing/blurring
   // due to font smoothing. This ensures readability on all platforms and in
   // both light and dark modes.
-  gfx::Font badge_font = gfx::Font(
-      new gfx::PlatformFontMac(gfx::PlatformFontMac::SystemFontType::kMenu));
-  badge_font = badge_font.Derive(views::BadgePainter::kBadgeFontSizeAdjustment,
-                                 gfx::Font::NORMAL, gfx::Font::Weight::MEDIUM);
+  gfx::Font badge_font =
+      views::BadgePainter::GetBadgeFont(views::MenuConfig::instance().font_list)
+          .GetPrimaryFont();
 
   DCHECK(color_provider);
   NSColor* badge_text_color = skia::SkColorToSRGBNSColor(
-      color_provider->GetColor(ui::kColorButtonBackgroundProminent));
+      color_provider->GetColor(ui::kColorBadgeInCocoaMenuForeground));
 
   NSDictionary* badge_attrs = @{
-    NSFontAttributeName : badge_font.GetNativeFont(),
+    NSFontAttributeName : base::apple::CFToNSPtrCast(badge_font.GetCTFont()),
     NSForegroundColorAttributeName : badge_text_color,
   };
 
@@ -81,7 +82,8 @@ NSImage* NewTagImage(const ui::ColorProvider* color_provider) {
                                             yRadius:badge_radius];
         DCHECK(color_provider);
         NSColor* badge_color = skia::SkColorToSRGBNSColor(
-            color_provider->GetColor(ui::kColorButtonBackgroundProminent));
+            color_provider->GetColor(ui::kColorBadgeInCocoaMenuBackground));
+
         [badge_color set];
         [rounded_badge_rect fill];
 
@@ -118,57 +120,26 @@ NSImage* IPHDotImage(const ui::ColorProvider* color_provider) {
 
 // --- Private API begin ---
 
-@interface NSCarbonMenuImpl : NSObject
+// In macOS 13 and earlier, the internals of menus are handled by HI Toolbox,
+// and the bridge to that code is NSCarbonMenuImpl. Starting with macOS 14, the
+// internals of menus are in NSCocoaMenuImpl. Abstract away into a protocol the
+// (one) common method that this code uses that is present on both Impl classes.
+@protocol CrNSMenuImpl <NSObject>
+@optional
 - (void)highlightItemAtIndex:(NSInteger)index;
 @end
 
-@interface NSMenu ()
-- (NSCarbonMenuImpl*)_menuImpl;
+@interface NSMenu (Impl)
+- (id<CrNSMenuImpl>)_menuImpl;
 - (CGRect)_boundsIfOpen;
 @end
 
 // --- Private API end ---
 
-// An NSTextAttachmentCell to show the [New] tag on a menu item.
-//
-// /!\ WARNING /!\
-//
-// Do NOT update to the "new in macOS 10.11" API of NSTextAttachment.image until
-// macOS 10.15 is the minimum required macOS for Chromium. Because menus are
-// Carbon-based, the new NSTextAttachment.image API did not function correctly
-// until then. Specifically, in macOS 10.11-10.12, images that use the new API
-// do not appear. In macOS 10.13-10.14, the flipped flag of -[NSImage
-// imageWithSize:flipped:drawingHandler:] is not respected. Only when 10.15 is
-// the minimum required OS can https://crrev.com/c/2572937 be relanded.
-@interface NewTagAttachmentCell : NSTextAttachmentCell
-@end
-
-@implementation NewTagAttachmentCell
-
-- (instancetype)initWithColorProvider:(const ui::ColorProvider*)colorProvider {
-  if (self = [super init]) {
-    self.image = NewTagImage(colorProvider);
-  }
-  return self;
-}
-
-- (NSPoint)cellBaselineOffset {
-  return NSMakePoint(0, views::BadgePainter::kBadgeBaselineOffsetMac);
-}
-
-- (NSSize)cellSize {
-  return [self.image size];
-}
-
-@end
-
-@interface MenuControllerCocoaDelegateImpl () {
-  NSMutableArray* _menuObservers;
+@implementation MenuControllerCocoaDelegateImpl {
+  NSMutableArray* __strong _menuObservers;
   gfx::Rect _anchorRect;
 }
-@end
-
-@implementation MenuControllerCocoaDelegateImpl
 
 - (instancetype)init {
   if (self = [super init]) {
@@ -179,12 +150,8 @@ NSImage* IPHDotImage(const ui::ColorProvider* color_provider) {
 
 - (void)dealloc {
   for (NSObject* obj in _menuObservers) {
-    [[NSNotificationCenter defaultCenter] removeObserver:obj];
+    [NSNotificationCenter.defaultCenter removeObserver:obj];
   }
-
-  [_menuObservers release];
-
-  [super dealloc];
 }
 
 - (void)setAnchorRect:(gfx::Rect)rect {
@@ -196,17 +163,18 @@ NSImage* IPHDotImage(const ui::ColorProvider* color_provider) {
                       atIndex:(size_t)index
             withColorProvider:(const ui::ColorProvider*)colorProvider {
   if (model->IsNewFeatureAt(index)) {
-    NSMutableAttributedString* attrTitle = [[[NSMutableAttributedString alloc]
-        initWithString:menuItem.title] autorelease];
+    NSTextAttachment* attachment = [[NSTextAttachment alloc] initWithData:nil
+                                                                   ofType:nil];
+    attachment.image = NewTagImage(colorProvider);
+    NSSize newTagSize = attachment.image.size;
 
-    // /!\ WARNING /!\ Do not update this to use NSTextAttachment.image until
-    // macOS 10.15 is the minimum required OS. See the details on the class
-    // comment above.
-    NSTextAttachment* attachment =
-        [[[NSTextAttachment alloc] init] autorelease];
-    attachment.attachmentCell = [[[NewTagAttachmentCell alloc]
-        initWithColorProvider:colorProvider] autorelease];
+    // The baseline offset of the badge image to the menu text baseline.
+    const int kBadgeBaselineOffset = features::IsChromeRefresh2023() ? -2 : -4;
+    attachment.bounds = NSMakeRect(0, kBadgeBaselineOffset, newTagSize.width,
+                                   newTagSize.height);
 
+    NSMutableAttributedString* attrTitle =
+        [[NSMutableAttributedString alloc] initWithString:menuItem.title];
     [attrTitle
         appendAttributedString:[NSAttributedString
                                    attributedStringWithAttachment:attachment]];
@@ -245,7 +213,7 @@ NSImage* IPHDotImage(const ui::ColorProvider* color_provider) {
       NSMenu* const menu_obj = note.object;
       if (alerted_index.has_value()) {
         if ([menu respondsToSelector:@selector(_menuImpl)]) {
-          NSCarbonMenuImpl* menuImpl = [menu_obj _menuImpl];
+          id<CrNSMenuImpl> menuImpl = [menu_obj _menuImpl];
           if ([menuImpl respondsToSelector:@selector(highlightItemAtIndex:)]) {
             const auto index =
                 base::checked_cast<NSInteger>(alerted_index.value());
@@ -280,7 +248,7 @@ NSImage* IPHDotImage(const ui::ColorProvider* color_provider) {
             // guess whether the menu should appear to the left or right of the
             // anchor, if the anchor is near one side of the screen the menu
             // could end up on the other side.
-            gfx::Rect screen_rect = _anchorRect;
+            gfx::Rect screen_rect = self->_anchorRect;
             CGSize menu_size = [menu_obj size];
             screen_rect.Inset(gfx::Insets::TLBR(
                 0, -menu_size.width, -menu_size.height, -menu_size.width));
@@ -308,7 +276,7 @@ NSImage* IPHDotImage(const ui::ColorProvider* color_provider) {
     };
 
     [_menuObservers
-        addObject:[[NSNotificationCenter defaultCenter]
+        addObject:[NSNotificationCenter.defaultCenter
                       addObserverForName:NSMenuDidBeginTrackingNotification
                                   object:menu
                                    queue:nil
@@ -337,7 +305,7 @@ NSImage* IPHDotImage(const ui::ColorProvider* color_provider) {
     };
 
     [_menuObservers
-        addObject:[[NSNotificationCenter defaultCenter]
+        addObject:[NSNotificationCenter.defaultCenter
                       addObserverForName:NSMenuDidEndTrackingNotification
                                   object:menu
                                    queue:nil

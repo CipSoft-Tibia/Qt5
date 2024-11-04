@@ -14,40 +14,40 @@ Item {
         id: initial
     }
 
-    ColorGradient {
+    Gradient {
         id: gradient1;
         stops: [
-            ColorGradientStop { color: "red"; position: 0 },
-            ColorGradientStop { color: "blue"; position: 1 }
+            GradientStop { color: "red"; position: 0 },
+            GradientStop { color: "blue"; position: 1 }
         ]
     }
 
-    ColorGradient {
+    Gradient {
         id: gradient2;
         stops: [
-            ColorGradientStop { color: "green"; position: 0 },
-            ColorGradientStop { color: "red"; position: 1 }
+            GradientStop { color: "green"; position: 0 },
+            GradientStop { color: "red"; position: 1 }
         ]
     }
 
-    ColorGradient {
+    Gradient {
         id: gradient3;
         stops: [
-            ColorGradientStop { color: "gray"; position: 0 },
-            ColorGradientStop { color: "darkgray"; position: 1 }
+            GradientStop { color: "gray"; position: 0 },
+            GradientStop { color: "darkgray"; position: 1 }
         ]
     }
 
-    ThemeColor {
+    Color {
         id: rowColor1
         color: "green"
     }
 
-    ThemeColor {
+    Color {
         id: rowColor2
         color: "blue"
     }
-    ThemeColor {
+    Color {
         id: rowColor3
         color: "red"
     }
@@ -68,10 +68,10 @@ Item {
 
         baseColor: "blue"
         baseGradient: gradient1
-        colorStyle: Theme3D.ColorStyleObjectGradient
+        colorStyle: Theme3D.ColorStyle.ObjectGradient
         itemLabelFormat: "%f"
         itemLabelVisible: false
-        mesh: Abstract3DSeries.MeshCone
+        mesh: Abstract3DSeries.Mesh.Cone
         meshSmooth: true
         multiHighlightColor: "green"
         multiHighlightGradient: gradient2
@@ -113,20 +113,20 @@ Item {
         function test_2_initial_common() {
             // Common properties
             compare(initial.baseColor, "#000000")
-            compare(initial.baseGradient, null)
-            compare(initial.colorStyle, Theme3D.ColorStyleUniform)
+            compare(initial.baseGradient, 0)
+            compare(initial.colorStyle, Theme3D.ColorStyle.Uniform)
             compare(initial.itemLabel, "")
             compare(initial.itemLabelFormat, "@valueLabel")
             compare(initial.itemLabelVisible, true)
-            compare(initial.mesh, Abstract3DSeries.MeshBevelBar)
+            compare(initial.mesh, Abstract3DSeries.Mesh.BevelBar)
             compare(initial.meshRotation, Qt.quaternion(1, 0, 0, 0))
             compare(initial.meshSmooth, false)
             compare(initial.multiHighlightColor, "#000000")
-            compare(initial.multiHighlightGradient, null)
+            compare(initial.multiHighlightGradient, 0)
             compare(initial.name, "")
             compare(initial.singleHighlightColor, "#000000")
-            compare(initial.singleHighlightGradient, null)
-            compare(initial.type, Abstract3DSeries.SeriesTypeBar)
+            compare(initial.singleHighlightGradient, 0)
+            compare(initial.type, Abstract3DSeries.SeriesType.Bar)
             compare(initial.userDefinedMesh, "")
             compare(initial.visible, true)
         }
@@ -146,10 +146,10 @@ Item {
             // Common properties
             compare(initialized.baseColor, "#0000ff")
             compare(initialized.baseGradient, gradient1)
-            compare(initialized.colorStyle, Theme3D.ColorStyleObjectGradient)
+            compare(initialized.colorStyle, Theme3D.ColorStyle.ObjectGradient)
             compare(initialized.itemLabelFormat, "%f")
             compare(initialized.itemLabelVisible, false)
-            compare(initialized.mesh, Abstract3DSeries.MeshCone)
+            compare(initialized.mesh, Abstract3DSeries.Mesh.Cone)
             compare(initialized.meshSmooth, true)
             compare(initialized.multiHighlightColor, "#008000")
             compare(initialized.multiHighlightGradient, gradient2)
@@ -181,10 +181,10 @@ Item {
         function test_3_change_common() {
             change.baseColor = "blue"
             change.baseGradient = gradient1
-            change.colorStyle = Theme3D.ColorStyleObjectGradient
+            change.colorStyle = Theme3D.ColorStyle.ObjectGradient
             change.itemLabelFormat = "%f"
             change.itemLabelVisible = false
-            change.mesh = Abstract3DSeries.MeshCone
+            change.mesh = Abstract3DSeries.Mesh.Cone
             change.meshSmooth = true
             change.multiHighlightColor = "green"
             change.multiHighlightGradient = gradient2
@@ -196,10 +196,10 @@ Item {
 
             compare(change.baseColor, "#0000ff")
             compare(change.baseGradient, gradient1)
-            compare(change.colorStyle, Theme3D.ColorStyleObjectGradient)
+            compare(change.colorStyle, Theme3D.ColorStyle.ObjectGradient)
             compare(change.itemLabelFormat, "%f")
             compare(change.itemLabelVisible, false)
-            compare(change.mesh, Abstract3DSeries.MeshCone)
+            compare(change.mesh, Abstract3DSeries.Mesh.Cone)
             compare(change.meshSmooth, true)
             compare(change.multiHighlightColor, "#008000")
             compare(change.multiHighlightGradient, gradient2)

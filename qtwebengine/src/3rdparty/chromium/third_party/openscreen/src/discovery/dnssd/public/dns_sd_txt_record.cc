@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,12 +7,12 @@
 #include <cctype>
 #include <utility>
 
-namespace openscreen {
-namespace discovery {
+#include "util/span_util.h"
+
+namespace openscreen::discovery {
 
 // static
-bool DnsSdTxtRecord::IsValidTxtValue(const std::string& key,
-                                     const std::vector<uint8_t>& value) {
+bool DnsSdTxtRecord::IsValidTxtValue(const std::string& key, ByteView value) {
   // The max length of any individual TXT record is 255 bytes.
   if (key.size() + value.size() + 1 /* for equals */ > 255) {
     return false;
@@ -29,23 +29,22 @@ bool DnsSdTxtRecord::IsValidTxtValue(const std::string& key, uint8_t value) {
 // static
 bool DnsSdTxtRecord::IsValidTxtValue(const std::string& key,
                                      const std::string& value) {
-  return IsValidTxtValue(key, std::vector<uint8_t>(value.begin(), value.end()));
+  return IsValidTxtValue(key, ByteViewFromString(value));
 }
 
-Error DnsSdTxtRecord::SetValue(const std::string& key,
-                               std::vector<uint8_t> value) {
+Error DnsSdTxtRecord::SetValue(const std::string& key, ByteView value) {
   if (!IsValidTxtValue(key, value)) {
     return Error::Code::kParameterInvalid;
   }
 
-  key_value_txt_[key] = std::move(value);
+  key_value_txt_[key] = std::vector<uint8_t>(value.begin(), value.end());
   ClearFlag(key);
   return Error::None();
 }
 
 Error DnsSdTxtRecord::SetValue(const std::string& key,
                                const std::string& value) {
-  return SetValue(key, std::vector<uint8_t>(value.begin(), value.end()));
+  return SetValue(key, ByteViewFromString(value));
 }
 
 Error DnsSdTxtRecord::SetFlag(const std::string& key, bool value) {
@@ -62,18 +61,24 @@ Error DnsSdTxtRecord::SetFlag(const std::string& key, bool value) {
   return Error::None();
 }
 
-ErrorOr<DnsSdTxtRecord::ValueRef> DnsSdTxtRecord::GetValue(
-    const std::string& key) const {
+ErrorOr<ByteView> DnsSdTxtRecord::GetValue(const std::string& key) const {
   if (!IsKeyValid(key)) {
     return Error::Code::kParameterInvalid;
   }
 
   auto it = key_value_txt_.find(key);
   if (it != key_value_txt_.end()) {
-    return std::cref(it->second);
+    return ByteView(it->second);
   }
 
   return Error::Code::kItemNotFound;
+}
+
+ErrorOr<std::string> DnsSdTxtRecord::GetStringValue(
+    const std::string& key) const {
+  ErrorOr<ByteView> value = GetValue(key);
+  return value ? ErrorOr<std::string>(ByteViewToString(value.value()))
+               : ErrorOr<std::string>(value.error());
 }
 
 ErrorOr<bool> DnsSdTxtRecord::GetFlag(const std::string& key) const {
@@ -163,5 +168,4 @@ bool DnsSdTxtRecord::CaseInsensitiveComparison::operator()(
   return false;
 }
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

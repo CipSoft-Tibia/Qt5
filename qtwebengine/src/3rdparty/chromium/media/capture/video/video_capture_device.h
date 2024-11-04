@@ -35,6 +35,11 @@
 #include "media/capture/video_capture_types.h"
 #include "ui/gfx/gpu_memory_buffer.h"
 
+#if BUILDFLAG(IS_WIN)
+#include <mfobjects.h>
+#include <wrl/client.h>
+#endif
+
 namespace base {
 class Location;
 }  // namespace base
@@ -65,11 +70,26 @@ struct CAPTURE_EXPORT CapturedExternalVideoBuffer {
   CapturedExternalVideoBuffer(gfx::GpuMemoryBufferHandle handle,
                               VideoCaptureFormat format,
                               gfx::ColorSpace color_space);
-  CapturedExternalVideoBuffer(CapturedExternalVideoBuffer&& other);
-  ~CapturedExternalVideoBuffer();
 
+#if BUILDFLAG(IS_WIN)
+  CapturedExternalVideoBuffer(Microsoft::WRL::ComPtr<IMFMediaBuffer> imf_buffer,
+                              gfx::GpuMemoryBufferHandle handle,
+                              VideoCaptureFormat format,
+                              gfx::ColorSpace color_space);
+#endif
+
+  CapturedExternalVideoBuffer(CapturedExternalVideoBuffer&& other);
   CapturedExternalVideoBuffer& operator=(CapturedExternalVideoBuffer&& other);
 
+  CapturedExternalVideoBuffer(const CapturedExternalVideoBuffer&) = delete;
+  CapturedExternalVideoBuffer& operator=(const CapturedExternalVideoBuffer&) =
+      delete;
+
+  ~CapturedExternalVideoBuffer();
+
+#if BUILDFLAG(IS_WIN)
+  Microsoft::WRL::ComPtr<IMFMediaBuffer> imf_buffer;
+#endif
   gfx::GpuMemoryBufferHandle handle;
   VideoCaptureFormat format;
   gfx::ColorSpace color_space;
@@ -165,7 +185,6 @@ class CAPTURE_EXPORT VideoCaptureDevice
     // OnConsumerReportingUtilization(). This identifier is needed because
     // frames are consumed asynchronously and multiple frames can be "in flight"
     // at the same time.
-    // TODO(crbug.com/978143): remove |frame_feedback_id| default value.
     virtual void OnIncomingCapturedData(const uint8_t* data,
                                         int length,
                                         const VideoCaptureFormat& frame_format,
@@ -174,7 +193,16 @@ class CAPTURE_EXPORT VideoCaptureDevice
                                         bool flip_y,
                                         base::TimeTicks reference_time,
                                         base::TimeDelta timestamp,
-                                        int frame_feedback_id = 0) = 0;
+                                        int frame_feedback_id) = 0;
+    // Convenience wrapper that passes in 0 as |frame_feedback_id|.
+    void OnIncomingCapturedData(const uint8_t* data,
+                                int length,
+                                const VideoCaptureFormat& frame_format,
+                                const gfx::ColorSpace& color_space,
+                                int clockwise_rotation,
+                                bool flip_y,
+                                base::TimeTicks reference_time,
+                                base::TimeDelta timestamp);
 
     // Captured a new video frame, data for which is stored in the
     // GpuMemoryBuffer pointed to by |buffer|.  The format of the frame is
@@ -184,14 +212,19 @@ class CAPTURE_EXPORT VideoCaptureDevice
     // |buffer| when creating the content of the output buffer.
     // |clockwise_rotation|, |reference_time|, |timestamp|, and
     // |frame_feedback_id| serve the same purposes as in OnIncomingCapturedData.
-    // TODO(crbug.com/978143): remove |frame_feedback_id| default value.
     virtual void OnIncomingCapturedGfxBuffer(
         gfx::GpuMemoryBuffer* buffer,
         const VideoCaptureFormat& frame_format,
         int clockwise_rotation,
         base::TimeTicks reference_time,
         base::TimeDelta timestamp,
-        int frame_feedback_id = 0) = 0;
+        int frame_feedback_id) = 0;
+    // Convenience wrapper that passes in 0 as |frame_feedback_id|.
+    void OnIncomingCapturedGfxBuffer(gfx::GpuMemoryBuffer* buffer,
+                                     const VideoCaptureFormat& frame_format,
+                                     int clockwise_rotation,
+                                     base::TimeTicks reference_time,
+                                     base::TimeDelta timestamp);
 
     // Captured a new video frame. The data for this frame is in
     // |buffer.handle|, which is owned by the platform-specific capture device.
@@ -207,7 +240,7 @@ class CAPTURE_EXPORT VideoCaptureDevice
         std::vector<CapturedExternalVideoBuffer> scaled_buffers,
         base::TimeTicks reference_time,
         base::TimeDelta timestamp,
-        gfx::Rect visible_rect) = 0;
+        const gfx::Rect& visible_rect) = 0;
 
     // Reserve an output buffer into which contents can be captured directly.
     // The returned |buffer| will always be allocated with a memory size

@@ -18,18 +18,45 @@ package(default_visibility = ["//:__subpackages__"])
 cc_library(
     name = "presence",
     srcs = [
-        "presence_client.cc",
-        "presence_service.cc",
+        "presence_client_impl.cc",
+        "presence_service_impl.cc",
     ],
     hdrs = [
         "presence_client.h",
+        "presence_client_impl.h",
+        "presence_device_provider.h",
         "presence_service.h",
+        "presence_service_impl.h",
     ],
     deps = [
         ":types",
+        "//internal/interop:device",
         "//internal/platform:types",
+        "//internal/proto:metadata_cc_proto",
         "//presence/implementation:internal",  # build_cleaner: keep
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:variant",
+    ],
+)
+
+cc_library(
+    name = "test_support",
+    testonly = 1,
+    srcs = [
+        "fake_presence_client.cc",
+        "fake_presence_service.cc",
+    ],
+    hdrs = [
+        "fake_presence_client.h",
+        "fake_presence_service.h",
+    ],
+    compatible_with = ["//buildenv/target:non_prod"],
+    deps = [
+        ":presence",
+        ":types",
+        "//internal/platform:types",
+        "//internal/proto:metadata_cc_proto",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -60,10 +87,11 @@ cc_library(
         "scan_request_builder.h",
     ],
     deps = [
-        "//internal:device",
-        "//internal/crypto",
+        "//connections/implementation/proto:offline_wire_formats_cc_proto",
+        "//internal/interop:device",
+        "//internal/platform:base",
         "//internal/platform:connection_info",
-        "//internal/platform:logging",
+        "//internal/platform:types",
         "//internal/platform/implementation:types",
         "//internal/proto:credential_cc_proto",
         "//internal/proto:metadata_cc_proto",
@@ -92,15 +120,17 @@ cc_test(
     shard_count = 6,
     deps = [
         ":types",
-        "@com_github_protobuf_matchers//protobuf-matchers:protobuf-matchers",
-        "@com_google_googletest//:gtest_main",
+        "//connections/implementation/proto:offline_wire_formats_cc_proto",
+        "//internal/platform:connection_info",
+        "//internal/platform:types",
+        "//internal/proto:credential_cc_proto",
+        "//internal/proto:metadata_cc_proto",
+        "@com_github_protobuf_matchers//protobuf-matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
-        "//internal/platform:connection_info",
-        "//internal/platform:logging",
-        "//internal/proto:credential_cc_proto",
+        "@com_google_googletest//:gtest_main",
     ] + select({
-        "//tools/cc_target_os:windows": [
+        "@platforms//os:windows": [
             "//internal/platform/implementation/windows",
         ],
         "//conditions:default": [
@@ -118,13 +148,13 @@ cc_test(
     ],
     shard_count = 6,
     deps = [
-        "@com_github_protobuf_matchers//protobuf-matchers:protobuf-matchers",
-        "@com_google_googletest//:gtest_main",
         "//internal/platform:uuid",
         "//internal/proto:credential_cc_proto",
         "//internal/proto:local_credential_cc_proto",
+        "@com_github_protobuf_matchers//protobuf-matchers",
+        "@com_google_googletest//:gtest_main",
     ] + select({
-        "//tools/cc_target_os:windows": [
+        "@platforms//os:windows": [
             "//internal/platform/implementation/windows",
         ],
         "//conditions:default": [
@@ -138,18 +168,22 @@ cc_test(
     size = "small",
     srcs = [
         "presence_client_test.cc",
+        "presence_device_provider_test.cc",
         "presence_service_test.cc",
     ],
     shard_count = 6,
     deps = [
         ":presence",
         ":types",
-        "@com_github_protobuf_matchers//protobuf-matchers:protobuf-matchers",
-        "@com_google_googletest//:gtest_main",
-        "@com_google_absl//absl/status",
         "//internal/platform:test_util",
+        "//internal/platform:types",
+        "//internal/proto:metadata_cc_proto",
+        "@com_github_protobuf_matchers//protobuf-matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ] + select({
-        "//tools/cc_target_os:windows": [
+        "@platforms//os:windows": [
             "//internal/platform/implementation/windows",
         ],
         "//conditions:default": [

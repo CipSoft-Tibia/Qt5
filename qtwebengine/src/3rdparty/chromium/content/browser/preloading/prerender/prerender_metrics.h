@@ -13,6 +13,7 @@
 #include "content/browser/preloading/prerender/prerender_host.h"
 #include "content/public/browser/prerender_trigger_type.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
+#include "services/network/public/mojom/fetch_api.mojom-forward.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 
 namespace content {
@@ -27,8 +28,8 @@ enum class PrerenderCancelledInterface {
   kGamepadHapticsManager = 1,
   kGamepadMonitor = 2,
   // kNotificationService = 3,   Deprecated.
-  kSyncEncryptionKeysExtension = 4,
-  kMaxValue = kSyncEncryptionKeysExtension
+  kTrustedVaultEncryptionKeys = 4,
+  kMaxValue = kTrustedVaultEncryptionKeys
 };
 
 // Used by PrerenderNavigationThrottle, to track the cross-origin cancellation
@@ -52,14 +53,17 @@ enum class PrerenderCrossOriginRedirectionMismatch {
 // some explanations can be attached to the status.
 class PrerenderCancellationReason {
  public:
+  // Tagged by `final_status_`. See `BuildFor*` and `ToDevtoolReasonString`.
   using DetailedReasonVariant =
-      absl::variant<absl::monostate, uint64_t, std::string>;
+      absl::variant<absl::monostate, int32_t, uint64_t, std::string>;
 
   static PrerenderCancellationReason BuildForDisallowActivationState(
       uint64_t disallow_activation_reason);
 
   static PrerenderCancellationReason BuildForMojoBinderPolicy(
       const std::string& interface_name);
+
+  static PrerenderCancellationReason BuildForLoadingError(int32_t error_code);
 
   explicit PrerenderCancellationReason(PrerenderFinalStatus final_status);
   ~PrerenderCancellationReason();
@@ -74,6 +78,9 @@ class PrerenderCancellationReason {
 
   // This is mainly used for displaying a detailed reason on devtools panel.
   std::string ToDevtoolReasonString() const;
+  // Returns disallowed Mojo interface name iff final status is
+  // `kMojoBinderPolicy`.
+  absl::optional<std::string> DisallowedMojoInterface() const;
 
  private:
   PrerenderCancellationReason(PrerenderFinalStatus final_status,
@@ -148,6 +155,58 @@ void CONTENT_EXPORT AnalyzePrerenderActivationHeader(
     net::HttpRequestHeaders prerender_headers,
     PrerenderTriggerType trigger_type,
     const std::string& embedder_histogram_suffix);
+
+// Records ui::PageTransition of prerender activation navigation when transition
+// mismatch happens on prerender activation.
+void RecordPrerenderActivationTransition(
+    int32_t potential_activation_transition,
+    PrerenderTriggerType trigger_type,
+    const std::string& embedder_histogram_suffix);
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// These are also mapped onto the second content internal range of
+// `PreloadingEligibility`.
+enum class PrerenderBackNavigationEligibility {
+  kEligible = 0,
+
+  kNoBackEntry = 1,
+  kTargetIsSameDocument = 2,
+  kMethodNotGet = 3,
+  kTargetIsFailedNavigation = 4,
+  kBfcacheEntryExists = 5,
+  kTargetIsSameSite = 6,
+  kNoHttpCacheEntry = 7,
+  kTargetingOtherWindow = 8,
+  kTargetIsNonHttp = 9,
+  kRelatedActiveContents = 10,
+
+  kMaxValue = kRelatedActiveContents,
+};
+
+// Maps `eligibility` onto a content internal range of PreloadingEligibility.
+CONTENT_EXPORT PreloadingEligibility
+ToPreloadingEligibility(PrerenderBackNavigationEligibility eligibility);
+
+void RecordPrerenderBackNavigationEligibility(
+    PreloadingPredictor predictor,
+    PrerenderBackNavigationEligibility eligibility,
+    PreloadingAttempt* preloading_attempt);
+
+void RecordPrerenderActivationCommitDeferTime(
+    base::TimeDelta time_delta,
+    PrerenderTriggerType trigger_type,
+    const std::string& embedder_histogram_suffix);
+
+void RecordBlockedByClientResourceType(
+    network::mojom::RequestDestination request_destination,
+    PrerenderTriggerType trigger_type,
+    const std::string& embedder_histogram_suffix);
+
+void RecordReceivedPrerendersPerPrimaryPageChangedCount(
+    int number,
+    PrerenderTriggerType trigger_type,
+    const std::string& eagerness_category);
 
 }  // namespace content
 

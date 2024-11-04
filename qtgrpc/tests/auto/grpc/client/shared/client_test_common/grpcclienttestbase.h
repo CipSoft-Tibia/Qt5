@@ -9,9 +9,6 @@
 #include <QUrl>
 
 #include <QtGrpc/qtgrpcglobal.h>
-#if QT_CONFIG(native_grpc)
-#  include <QtGrpc/QGrpcChannel>
-#endif
 #include <QtGrpc/QGrpcHttp2Channel>
 
 #include <server_proc_runner.h>
@@ -24,8 +21,7 @@ protected:
     enum Channel {
         NoChannels = 0x0,
         Qt = 0x1,
-        Native = 0x2,
-        Ssl = 0x4,
+        Ssl = 0x2,
         SslNoCredentials = 0x8,
         WithChannelDeadline = 0x10,
     };

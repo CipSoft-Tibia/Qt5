@@ -16,7 +16,6 @@ Sources.AddSourceMapURLDialog = SourcesModule.AddSourceMapURLDialog.AddSourceMap
 
 /** @constructor */
 Sources.BreakpointEditDialog = SourcesModule.BreakpointEditDialog.BreakpointEditDialog;
-Sources.BreakpointEditDialog.BreakpointType = SourcesModule.BreakpointEditDialog.BreakpointType;
 
 /** @constructor */
 Sources.CallStackSidebarPane = SourcesModule.CallStackSidebarPane.CallStackSidebarPane;
@@ -70,13 +69,6 @@ Sources.GoToLineQuickOpen = SourcesModule.GoToLineQuickOpen.GoToLineQuickOpen;
 Sources.InplaceFormatterEditorAction = SourcesModule.InplaceFormatterEditorAction.InplaceFormatterEditorAction;
 
 /** @constructor */
-Sources.JavaScriptBreakpointsSidebarPane =
-    SourcesModule.JavaScriptBreakpointsSidebarPane.JavaScriptBreakpointsSidebarPane;
-
-Sources.JavaScriptBreakpointsSidebarPane.retrieveLocationForElement =
-    SourcesModule.JavaScriptBreakpointsSidebarPane.retrieveLocationForElement;
-
-/** @constructor */
 Sources.NavigatorView = SourcesModule.NavigatorView.NavigatorView;
 
 Sources.NavigatorView.Types = SourcesModule.NavigatorView.Types;
@@ -113,9 +105,6 @@ Sources.ScopeChainSidebarPane = SourcesModule.ScopeChainSidebarPane.ScopeChainSi
 
 /** @constructor */
 Sources.ScopeChainSidebarPane.OpenLinearMemoryInspector = SourcesModule.ScopeChainSidebarPane.OpenLinearMemoryInspector;
-
-/** @constructor */
-Sources.ScriptFormatterEditorAction = SourcesModule.ScriptFormatterEditorAction.ScriptFormatterEditorAction;
 
 /** @constructor */
 Sources.SearchSourcesView = SourcesModule.SearchSourcesView.SearchSourcesView;

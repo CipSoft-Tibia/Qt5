@@ -14,13 +14,28 @@
  * limitations under the License.
  */
 
-#include "perfetto/public/abi/producer.h"
-
-#include <atomic>
-#include <bitset>
+#include "perfetto/public/abi/producer_abi.h"
 
 #include "perfetto/tracing/backend_type.h"
 #include "perfetto/tracing/tracing.h"
+#include "src/shared_lib/reset_for_testing.h"
+#include "src/tracing/internal/tracing_muxer_impl.h"
+
+namespace perfetto {
+namespace shlib {
+
+void ResetForTesting() {
+  auto* muxer = static_cast<internal::TracingMuxerImpl*>(
+      internal::TracingMuxerImpl::instance_);
+  muxer->AppendResetForTestingCallback([] {
+    perfetto::shlib::ResetDataSourceTls();
+    perfetto::shlib::ResetTrackEventTls();
+  });
+  perfetto::Tracing::ResetForTesting();
+}
+
+}  // namespace shlib
+}  // namespace perfetto
 
 void PerfettoProducerInProcessInit() {
   perfetto::TracingInitArgs args;
@@ -34,8 +49,11 @@ void PerfettoProducerSystemInit() {
   perfetto::Tracing::Initialize(args);
 }
 
-void PerfettoProducerInProcessAndSystemInit() {
-  perfetto::TracingInitArgs args;
-  args.backends = perfetto::kInProcessBackend | perfetto::kSystemBackend;
-  perfetto::Tracing::Initialize(args);
+void PerfettoProducerActivateTriggers(const char* trigger_names[],
+                                      uint32_t ttl_ms) {
+  std::vector<std::string> triggers;
+  for (size_t i = 0; trigger_names[i] != nullptr; i++) {
+    triggers.push_back(trigger_names[i]);
+  }
+  perfetto::Tracing::ActivateTriggers(triggers, ttl_ms);
 }

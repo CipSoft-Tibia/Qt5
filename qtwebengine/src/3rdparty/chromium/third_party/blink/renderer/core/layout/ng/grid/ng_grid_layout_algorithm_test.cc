@@ -37,11 +37,15 @@ class NGGridLayoutAlgorithmTest : public NGBaseLayoutAlgorithmTest,
   void BuildGridItemsAndTrackCollections(NGGridLayoutAlgorithm& algorithm) {
     LayoutUnit unused_intrinsic_block_size;
     auto grid_sizing_tree = algorithm.BuildGridSizingTree();
-    algorithm.ComputeGridGeometry(&grid_sizing_tree,
+
+    algorithm.ComputeGridGeometry(grid_sizing_tree,
                                   &unused_intrinsic_block_size);
 
-    cached_grid_items_ = std::move(grid_sizing_tree[0].grid_items);
-    layout_data_ = std::move(grid_sizing_tree[0].layout_data);
+    auto& [grid_items, layout_data, tree_size] =
+        grid_sizing_tree.TreeRootData();
+
+    cached_grid_items_ = std::move(grid_items);
+    layout_data_ = std::move(layout_data);
   }
 
   const GridItemData& GridItem(wtf_size_t index) {
@@ -62,10 +66,8 @@ class NGGridLayoutAlgorithmTest : public NGBaseLayoutAlgorithmTest,
 
   LayoutUnit BaseRowSizeForChild(const NGGridLayoutAlgorithm& algorithm,
                                  wtf_size_t index) {
-    LayoutUnit offset, size;
-    algorithm.ComputeGridItemOffsetAndSize(GridItem(index), layout_data_.Rows(),
-                                           &offset, &size);
-    return size;
+    return algorithm.ComputeGridItemAvailableSize(GridItem(index),
+                                                  layout_data_.Rows());
   }
 
   // Helper methods to access private data on NGGridLayoutAlgorithm. This class
@@ -1598,7 +1600,8 @@ TEST_F(NGGridLayoutAlgorithmTest, SubgridLineNameList) {
   EXPECT_EQ(ordered_named_grid_row_lines.size(), 3u);
 
   const Vector<NamedGridLine> row_named_lines = {
-      NamedGridLine("a"), NamedGridLine("b"), NamedGridLine("c")};
+      NamedGridLine(AtomicString("a")), NamedGridLine(AtomicString("b")),
+      NamedGridLine(AtomicString("c"))};
   for (wtf_size_t i = 0; i < 3; ++i) {
     EXPECT_EQ(ordered_named_grid_row_lines.find(i)->value[0],
               row_named_lines[i]);
@@ -1644,8 +1647,8 @@ TEST_F(NGGridLayoutAlgorithmTest, SubgridLineNameListWithRepeaters) {
   EXPECT_EQ(auto_repeat_ordered_named_grid_column_lines.size(), 2u);
 
   const Vector<NamedGridLine> column_named_lines = {
-      NamedGridLine("a"), NamedGridLine("b"), NamedGridLine("c"),
-      NamedGridLine("d")};
+      NamedGridLine(AtomicString("a")), NamedGridLine(AtomicString("b")),
+      NamedGridLine(AtomicString("c")), NamedGridLine(AtomicString("d"))};
 
   EXPECT_EQ(ordered_named_grid_column_lines.find(0)->value[0],
             column_named_lines[0]);
@@ -1661,12 +1664,14 @@ TEST_F(NGGridLayoutAlgorithmTest, SubgridLineNameListWithRepeaters) {
   EXPECT_EQ(ordered_named_grid_row_lines.size(), 6u);
 
   const Vector<NamedGridLine> row_named_lines = {
-      NamedGridLine("a"),
-      NamedGridLine("b", /* is_in_repeat */ true, /* is_first_repeat */ true),
-      NamedGridLine("c", /* is_in_repeat */ true, /* is_first_repeat */ true),
-      NamedGridLine("b", /* is_in_repeat */ true),
-      NamedGridLine("c", /* is_in_repeat */ true),
-      NamedGridLine("d")};
+      NamedGridLine(AtomicString("a")),
+      NamedGridLine(AtomicString("b"), /* is_in_repeat */ true,
+                    /* is_first_repeat */ true),
+      NamedGridLine(AtomicString("c"), /* is_in_repeat */ true,
+                    /* is_first_repeat */ true),
+      NamedGridLine(AtomicString("b"), /* is_in_repeat */ true),
+      NamedGridLine(AtomicString("c"), /* is_in_repeat */ true),
+      NamedGridLine(AtomicString("d"))};
 
   for (wtf_size_t i = 0; i < 6; ++i) {
     EXPECT_EQ(ordered_named_grid_row_lines.find(i)->value[0],

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -104,23 +105,24 @@ TEST(TaskRunnerImplTest, TaskRunnerRunsDelayedTasksInOrder) {
 
   std::thread t([&runner] { runner.RunUntilStopped(); });
 
-  std::string ran_tasks = "";
+  std::atomic<int> ran_tasks{0b1111};
 
+  // If task_two runs before task_one, the final value of ran_tasks will be 3.
   const auto kDelayTime = milliseconds(5);
-  const auto task_one = [&ran_tasks] { ran_tasks += "1"; };
+  const auto task_one = [&ran_tasks] { ran_tasks &= 0b0011; };
   runner.PostTaskWithDelay(task_one, kDelayTime);
 
-  const auto task_two = [&ran_tasks] { ran_tasks += "2"; };
+  const auto task_two = [&ran_tasks] { ran_tasks |= 0b1010; };
   runner.PostTaskWithDelay(task_two, kDelayTime * 2);
 
-  EXPECT_EQ(ran_tasks, "");
+  EXPECT_EQ(ran_tasks.load(), 15);
   fake_clock.Advance(kDelayTime);
-  WaitUntilCondition([&ran_tasks] { return ran_tasks == "1"; });
-  EXPECT_EQ(ran_tasks, "1");
+  WaitUntilCondition([&ran_tasks] { return ran_tasks.load() == 3; });
+  EXPECT_EQ(ran_tasks.load(), 3);
 
   fake_clock.Advance(kDelayTime);
-  WaitUntilCondition([&ran_tasks] { return ran_tasks == "12"; });
-  EXPECT_EQ(ran_tasks, "12");
+  WaitUntilCondition([&ran_tasks] { return ran_tasks.load() == 11; });
+  EXPECT_EQ(ran_tasks.load(), 11);
 
   runner.RequestStopSoon();
   t.join();
@@ -272,9 +274,9 @@ TEST(TaskRunnerImplTest, WakesEventWaiterOnPostTask) {
 
 class RepeatedClass {
  public:
-  MOCK_METHOD0(Repeat, absl::optional<Clock::duration>());
+  MOCK_METHOD0(Repeat, std::optional<Clock::duration>());
 
-  absl::optional<Clock::duration> DoCall() {
+  std::optional<Clock::duration> DoCall() {
     auto result = Repeat();
     execution_count++;
     return result;

@@ -4,62 +4,24 @@
 
 #include "qabstractgrpcchannel.h"
 #include "qabstractgrpcchannel_p.h"
+#include "qgrpccallreply.h"
+#include "qgrpcchanneloperation.h"
+#include "qgrpcclientinterceptor.h"
+#include "qgrpcstream.h"
+
+#include <QtCore/qtimer.h>
 
 QT_BEGIN_NAMESPACE
 
 /*!
     \class QAbstractGrpcChannel
     \inmodule QtGrpc
-    \brief The QAbstractGrpcChannel class is interface that represents common
+    \brief The QAbstractGrpcChannel class is an interface that represents common
     gRPC channel functionality.
 
-    You may implement this interface to create your own channels for gRPC transport.
-    QGrpcChannel or QGrpcHttp2Channel, which are full implementations of
-    QAbstractGrpcChannel are recommended to use.
-*/
-
-/*!
-    \fn virtual QGrpcStatus QAbstractGrpcChannel::call(QLatin1StringView method, QLatin1StringView service,
-            QByteArrayView args, QByteArray &ret, const QGrpcCallOptions &options = QGrpcCallOptions()) = 0
-
-    This pure virtual function synchronously calls the RPC method concatenated
-    from the \a method and \a service parameters with the given \a args
-    and writes the result to the output parameter \a ret.
-    Uses \a options argument to set additional parameter for the call.
-
-    You may reimplement this function in a subclass to define your own call
-    mechanism behavior. QGrpcChannel or QGrpcHttp2Channel, which are full
-    implementations of QAbstractGrpcChannel are recommended to use.
-*/
-
-/*!
-    \fn virtual std::shared_ptr<QGrpcCallReply> QAbstractGrpcChannel::call(QLatin1StringView method,
-            QLatin1StringView service, QByteArrayView args, const QGrpcCallOptions &options = QGrpcCallOptions()) = 0
-
-    This pure virtual function asynchronously calls the RPC method combined
-    with the \a method and \a service parameters with the given \a args
-    and returns an asynchronous response in the form of QGrpcCallReply.
-    Uses \a options argument to set additional parameter for the call.
-
-    You may reimplement this function in a subclass to define your own call
-    mechanism behavior. QGrpcChannel or QGrpcHttp2Channel, which are full
-    implementations of QAbstractGrpcChannel are recommended to use.
-*/
-
-/*!
-    \fn virtual std::shared_ptr<QGrpcStream> QAbstractGrpcChannel::startStream(QLatin1StringView method,
-            QLatin1StringView service, QByteArrayView arg, const QGrpcCallOptions &options = QGrpcCallOptions()) = 0
-
-    This pure virtual function creates and starts a stream to the RPC method.
-
-    The RPC method name is constructed by concatenating the \a method
-    and \a service parameters and called with the \a arg argument.
-    Returns a shared pointer to the QGrpcStream. Uses \a options argument
-    to set additional parameter for the stream.
-
-    You may reimplement this function in a subclass to define your own stream
-    mechanism behavior. QGrpcChannel or QGrpcHttp2Channel, which are full
-    implementations of QAbstractGrpcChannel are recommended to use.
+    Implement this interface to create your own custom channel for gRPC
+    transportation. We provide the QGrpcHttp2Channel, which is a fully featured
+    implementation of the QAbstractGrpcChannel for HTTP/2 communication.
 */
 
 /*!
@@ -72,9 +34,237 @@ QT_BEGIN_NAMESPACE
     to perform serialization and deserialization of the message.
 */
 
-QAbstractGrpcChannel::QAbstractGrpcChannel() : dPtr(std::make_unique<QAbstractGrpcChannelPrivate>())
+/*!
+    \fn virtual void QAbstractGrpcChannel::call(std::shared_ptr<QGrpcChannelOperation> channelOperation) = 0
+    \since 6.7
+
+    This pure virtual function is called by public QAbstractGrpcChannel::call
+    method when making unary gRPC call. The \a channelOperation is the
+    pointer to a channel side \l QGrpcChannelOperation primitive that is
+    connected with \l QGrpcCallReply primitive, that is used in
+    \l QAbstractGrpcClient implementations.
+
+    The function should implement the channel-side logic of unary call. The
+    implementation must be asynchronous and must not block the thread where
+    the function was called.
+*/
+
+/*!
+    \fn virtual void QAbstractGrpcChannel::startServerStream(std::shared_ptr<QGrpcChannelOperation> channelOperation) = 0
+    \since 6.7
+
+    This pure virtual function that the starts of the server-side stream. The
+    \a channelOperation is the pointer to a channel side
+    \l QGrpcChannelOperation primitive that is connected with \l QGrpcServerStream
+    primitive, that is used in \l QAbstractGrpcClient implementations.
+
+    The function should implement the channel-side logic of server-side stream.
+    The implementation must be asynchronous and must not block the thread where
+    the function was called.
+*/
+
+/*!
+    \fn virtual void QAbstractGrpcChannel::startClientStream(std::shared_ptr<QGrpcChannelOperation> channelOperation) = 0
+    \since 6.7
+
+    This pure virtual function that the starts of the client-side stream. The
+    \a channelOperation is the pointer to a channel side
+    \l QGrpcChannelOperation primitive that is connected with
+    \l QGrpcClientStream primitive, that is used in \l QAbstractGrpcClient.
+
+    The function should implement the channel-side logic of client-side stream.
+    The implementation must be asynchronous and must not block the thread where
+    the function was called.
+*/
+
+/*!
+    \fn virtual void QAbstractGrpcChannel::startBidirStream(std::shared_ptr<QGrpcChannelOperation> channelOperation) = 0
+    \since 6.7
+
+    This pure virtual function that the starts of the bidirectional stream. The
+    \a channelOperation is the pointer to a channel side
+    \l QGrpcChannelOperation primitive that is connected with
+    \l QGrpcBidirStream primitive, that is used in \l QAbstractGrpcClient.
+
+    The function should implement the channel-side logic of bidirectional
+    stream. The implementation must be asynchronous and must not block the
+    thread where the function was called.
+*/
+
+static std::optional<std::chrono::milliseconds>
+deadlineForCall(const QGrpcChannelOptions &channelOptions, const QGrpcCallOptions &callOptions)
+{
+    if (callOptions.deadline())
+        return *callOptions.deadline();
+    if (channelOptions.deadline())
+        return *channelOptions.deadline();
+    return std::nullopt;
+}
+
+QAbstractGrpcChannel::QAbstractGrpcChannel(const QGrpcChannelOptions &options)
+    : dPtr(std::make_unique<QAbstractGrpcChannelPrivate>(options))
 {
 }
 QAbstractGrpcChannel::~QAbstractGrpcChannel() = default;
+
+/*!
+    Sets the interceptor \a manager for the channel.
+*/
+void QAbstractGrpcChannel::addInterceptorManager(const QGrpcClientInterceptorManager &manager)
+{
+    dPtr->interceptorManager = manager;
+}
+
+/*!
+    \internal
+    Returns QGrpcChannelOptions used by the channel.
+*/
+const QGrpcChannelOptions &QAbstractGrpcChannel::channelOptions() const noexcept
+{
+    return dPtr->channelOptions;
+}
+
+/*!
+    \internal
+    Function constructs \l QGrpcCallReply and \l QGrpcChannelOperation
+    primitives and makes the required for unary gRPC call connections
+    between them.
+
+    The function should not be called directly, but only by
+    \l QAbstractGrpcClient implementations.
+*/
+std::shared_ptr<QGrpcCallReply> QAbstractGrpcChannel::call(QLatin1StringView method,
+                                                           QLatin1StringView service,
+                                                           QByteArrayView arg,
+                                                           const QGrpcCallOptions &options)
+{
+    auto channelOperation = std::make_shared<QGrpcChannelOperation>(method, service, arg, options,
+                                                                    serializer());
+    auto reply = std::make_shared<QGrpcCallReply>(channelOperation);
+
+    QTimer::singleShot(0, channelOperation.get(), [this, reply, channelOperation]() mutable {
+        using Continuation = QGrpcInterceptorContinuation<QGrpcCallReply>;
+        Continuation finalCall([this](Continuation::ReplyType response,
+                                      Continuation::ParamType operation) {
+            QObject::
+                connect(operation.get(), &QGrpcChannelOperation::sendData, operation.get(), []() {
+                    Q_ASSERT_X(false, "QAbstractGrpcChannel::call",
+                               "QAbstractGrpcChannel::call disallows sendData signal from "
+                               "QGrpcChannelOperation");
+                });
+
+            call(operation);
+            return response;
+        });
+        dPtr->interceptorManager.run(finalCall, reply, channelOperation);
+    });
+
+    if (auto deadline = deadlineForCall(dPtr->channelOptions, channelOperation->options()))
+        QTimer::singleShot(*deadline, reply.get(), &QGrpcCallReply::cancel);
+    return reply;
+}
+
+/*!
+    \internal
+    Function constructs \l QGrpcServerStream and \l QGrpcChannelOperation
+    primitives and makes the required for server-side gRPC stream connections
+    between them.
+
+    The function should not be called directly, but only by
+    \l QAbstractGrpcClient implementations.
+*/
+std::shared_ptr<QGrpcServerStream>
+QAbstractGrpcChannel::startServerStream(QLatin1StringView method, QLatin1StringView service,
+                                        QByteArrayView arg, const QGrpcCallOptions &options)
+{
+    auto channelOperation = std::make_shared<QGrpcChannelOperation>(method, service, arg, options,
+                                                                    serializer());
+    auto stream = std::make_shared<QGrpcServerStream>(channelOperation);
+
+    QTimer::singleShot(0, channelOperation.get(), [this, stream, channelOperation]() mutable {
+        using Continuation = QGrpcInterceptorContinuation<QGrpcServerStream>;
+        Continuation finalStream([this](Continuation::ReplyType response,
+                                        Continuation::ParamType operation) {
+            QObject::connect(operation.get(), &QGrpcChannelOperation::sendData, operation.get(),
+                             []() {
+                                 Q_ASSERT_X(false, "QAbstractGrpcChannel::startServerStream",
+                                            "QAbstractGrpcChannel::startServerStream disallows "
+                                            "sendData signal from "
+                                            "QGrpcChannelOperation");
+                             });
+            startServerStream(operation);
+            return response;
+        });
+        dPtr->interceptorManager.run(finalStream, stream, channelOperation);
+    });
+
+    if (auto deadline = deadlineForCall(dPtr->channelOptions, channelOperation->options()))
+        QTimer::singleShot(*deadline, stream.get(), &QGrpcServerStream::cancel);
+    return stream;
+}
+
+/*!
+    \internal
+    Function constructs \l QGrpcClientStream and \l QGrpcChannelOperation
+    primitives and makes the required for client-side gRPC stream connections
+    between them.
+
+    The function should not be called directly, but only by
+    \l QAbstractGrpcClient.
+*/
+std::shared_ptr<QGrpcClientStream>
+QAbstractGrpcChannel::startClientStream(QLatin1StringView method, QLatin1StringView service,
+                                        QByteArrayView arg, const QGrpcCallOptions &options)
+{
+    auto channelOperation = std::make_shared<QGrpcChannelOperation>(method, service, arg, options,
+                                                                    serializer());
+    auto stream = std::make_shared<QGrpcClientStream>(channelOperation);
+
+    QTimer::singleShot(0, channelOperation.get(), [this, stream, channelOperation]() mutable {
+        using Continuation = QGrpcInterceptorContinuation<QGrpcClientStream>;
+        Continuation finalStream([this](Continuation::ReplyType response,
+                                        Continuation::ParamType operation) {
+            startClientStream(operation);
+            return response;
+        });
+        dPtr->interceptorManager.run(finalStream, stream, channelOperation);
+    });
+
+    if (auto deadline = deadlineForCall(dPtr->channelOptions, channelOperation->options()))
+        QTimer::singleShot(*deadline, stream.get(), &QGrpcClientStream::cancel);
+    return stream;
+}
+
+/*!
+    \internal
+    Function constructs \l QGrpcBidirStream and \l QGrpcChannelOperation
+    primitives and makes the required for bidirectional gRPC stream connections
+    between them.
+
+    The function should not be called directly, but only by
+    \l QAbstractGrpcClient.
+*/
+std::shared_ptr<QGrpcBidirStream>
+QAbstractGrpcChannel::startBidirStream(QLatin1StringView method, QLatin1StringView service,
+                                       QByteArrayView arg, const QGrpcCallOptions &options)
+{
+    auto channelOperation = std::make_shared<QGrpcChannelOperation>(method, service, arg, options,
+                                                                    serializer());
+    auto stream = std::make_shared<QGrpcBidirStream>(channelOperation);
+
+    QTimer::singleShot(0, channelOperation.get(), [this, stream, channelOperation]() mutable {
+        using Continuation = QGrpcInterceptorContinuation<QGrpcBidirStream>;
+        Continuation finalStream([this](Continuation::ReplyType response,
+                                        Continuation::ParamType operation) {
+            startBidirStream(operation);
+            return response;
+        });
+        dPtr->interceptorManager.run(finalStream, stream, channelOperation);
+    });
+
+    if (auto deadline = deadlineForCall(dPtr->channelOptions, channelOperation->options()))
+        QTimer::singleShot(*deadline, stream.get(), &QGrpcBidirStream::cancel);
+    return stream;
+}
 
 QT_END_NAMESPACE

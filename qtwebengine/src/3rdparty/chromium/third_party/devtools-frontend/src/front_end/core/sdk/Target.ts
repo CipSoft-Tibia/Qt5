@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 import * as Common from '../common/common.js';
-import * as Host from '../host/host.js';
 import * as Platform from '../platform/platform.js';
 import * as ProtocolClient from '../protocol_client/protocol_client.js';
 import type * as Protocol from '../../generated/protocol.js';
@@ -45,6 +44,10 @@ export class Target extends ProtocolClient.InspectorBackend.TargetBase {
           // This matches backend exposing certain capabilities only for the main frame.
           this.#capabilitiesMask |=
               Capability.DeviceEmulation | Capability.ScreenCapture | Capability.Security | Capability.ServiceWorker;
+          if (targetInfo?.url.startsWith('chrome-extension://')) {
+            this.#capabilitiesMask &= ~Capability.Security;
+          }
+
           // TODO(dgozman): we report service workers for the whole frame tree on the main frame,
           // while we should be able to only cover the subtree corresponding to the target.
         }
@@ -60,6 +63,9 @@ export class Target extends ProtocolClient.InspectorBackend.TargetBase {
         this.#capabilitiesMask = Capability.JS | Capability.Log | Capability.Network | Capability.Target |
             Capability.IO | Capability.Media | Capability.Inspector;
         break;
+      case Type.SharedStorageWorklet:
+        this.#capabilitiesMask = Capability.JS | Capability.Log | Capability.Inspector;
+        break;
       case Type.Worker:
         this.#capabilitiesMask = Capability.JS | Capability.Log | Capability.Network | Capability.Target |
             Capability.IO | Capability.Media | Capability.Emulation;
@@ -74,7 +80,7 @@ export class Target extends ProtocolClient.InspectorBackend.TargetBase {
         this.#capabilitiesMask = Capability.Target | Capability.IO;
         break;
       case Type.Tab:
-        this.#capabilitiesMask = Capability.Target;
+        this.#capabilitiesMask = Capability.Target | Capability.Tracing;
         break;
     }
     this.#typeInternal = type;
@@ -124,7 +130,7 @@ export class Target extends ProtocolClient.InspectorBackend.TargetBase {
     return this.#typeInternal;
   }
 
-  markAsNodeJSForTest(): void {
+  override markAsNodeJSForTest(): void {
     super.markAsNodeJSForTest();
     this.#typeInternal = Type.Node;
   }
@@ -148,7 +154,20 @@ export class Target extends ProtocolClient.InspectorBackend.TargetBase {
     return this.#parentTargetInternal;
   }
 
-  dispose(reason: string): void {
+  outermostTarget(): Target|null {
+    let lastTarget: Target|null = null;
+    let currentTarget: Target|null = this;
+    do {
+      if (currentTarget.type() !== Type.Tab && currentTarget.type() !== Type.Browser) {
+        lastTarget = currentTarget;
+      }
+      currentTarget = currentTarget.parentTarget();
+    } while (currentTarget);
+
+    return lastTarget;
+  }
+
+  override dispose(reason: string): void {
     super.dispose(reason);
     this.#targetManagerInternal.removeTarget(this);
     for (const model of this.#modelByConstructor.values()) {
@@ -166,7 +185,7 @@ export class Target extends ProtocolClient.InspectorBackend.TargetBase {
         const model = new modelClass(this);
         this.#modelByConstructor.set(modelClass, model);
         if (!this.#creatingModels) {
-          this.#targetManagerInternal.modelAdded(this, modelClass, model);
+          this.#targetManagerInternal.modelAdded(this, modelClass, model, this.#targetManagerInternal.isInScope(this));
         }
       }
     }
@@ -185,10 +204,6 @@ export class Target extends ProtocolClient.InspectorBackend.TargetBase {
     this.#inspectedURLInternal = inspectedURL;
     const parsedURL = Common.ParsedURL.ParsedURL.fromString(inspectedURL);
     this.#inspectedURLName = parsedURL ? parsedURL.lastPathComponentWithFragment() : '#' + this.#idInternal;
-    if (this.parentTarget()?.type() !== Type.Frame) {
-      Host.InspectorFrontendHost.InspectorFrontendHostInstance.inspectedURLChanged(
-          inspectedURL || Platform.DevToolsPath.EmptyUrlString);
-    }
     this.#targetManagerInternal.onInspectedURLChange(this);
     if (!this.#nameInternal) {
       this.#targetManagerInternal.onNameChange(this);
@@ -235,6 +250,7 @@ export enum Type {
   ServiceWorker = 'service-worker',
   Worker = 'worker',
   SharedWorker = 'shared-worker',
+  SharedStorageWorklet = 'shared-storage-worklet',
   Node = 'node',
   Browser = 'browser',
   AuctionWorklet = 'auction-worklet',

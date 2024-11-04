@@ -22,6 +22,8 @@
 #include <QQmlParserStatus>
 #include <QtQml/qqml.h>
 #include <QQmlListProperty>
+#include <QtSensors/QSensor>
+
 #include "qmlsensorrange_p.h"
 
 QT_BEGIN_NAMESPACE
@@ -62,6 +64,19 @@ class Q_SENSORSQUICK_PRIVATE_EXPORT QmlSensor : public QObject, public QQmlParse
     QML_UNCREATABLE("Cannot create Sensor")
     QML_ADDED_IN_VERSION(5,0)
 public:
+    // Keep in sync with QSensor::Feature
+    enum Feature : int {
+        Buffering = QSensor::Buffering,
+        AlwaysOn = QSensor::AlwaysOn,
+        GeoValues = QSensor::GeoValues,
+        FieldOfView = QSensor::FieldOfView,
+        AccelerationMode = QSensor::AccelerationMode,
+        SkipDuplicates = QSensor::SkipDuplicates,
+        AxesOrientation = QSensor::AxesOrientation,
+        PressureSensorTemperature = QSensor::PressureSensorTemperature
+    };
+    Q_ENUM(Feature)
+
     // Keep in sync with QSensor::AxesOrientationMode
     enum AxesOrientationMode {
         FixedOrientation,
@@ -104,6 +119,8 @@ public:
 
     QmlSensorReading *reading() const;
     QBindable<QmlSensorReading*> bindableReading() const;
+
+    Q_INVOKABLE Q_REVISION(6, 7) bool isFeatureSupported(Feature feature) const;
 
     AxesOrientationMode axesOrientationMode() const;
     void setAxesOrientationMode(AxesOrientationMode axesOrientationMode);

@@ -7,13 +7,14 @@ import("../../../../../third_party/typescript/typescript.gni")
 ts_library("bindings") {
   testonly = true
   sources = [
-    "BreakpointManager_test.ts",
     "CompilerScriptMapping_test.ts",
+    "ContentProviderBasedProject_test.ts",
     "DebuggerWorkspaceBinding_test.ts",
     "DefaultScriptMapping_test.ts",
     "FileUtils_test.ts",
     "IgnoreListManager_test.ts",
     "LiveLocation_test.ts",
+    "PresentationConsoleMessageHelper_test.ts",
     "ResourceMapping_test.ts",
     "ResourceScriptMapping_test.ts",
     "ResourceUtils_test.ts",

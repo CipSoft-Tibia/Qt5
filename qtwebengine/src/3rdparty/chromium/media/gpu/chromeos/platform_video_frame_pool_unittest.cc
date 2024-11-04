@@ -4,6 +4,7 @@
 
 #include "media/gpu/chromeos/platform_video_frame_pool.h"
 
+#include <drm_fourcc.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <memory>
@@ -14,7 +15,10 @@
 #include "base/test/task_environment.h"
 #include "gpu/command_buffer/common/mailbox_holder.h"
 #include "media/base/format_utils.h"
+#include "media/base/video_types.h"
 #include "media/base/video_util.h"
+#include "media/gpu/chromeos/chromeos_compressed_gpu_memory_buffer_video_frame_utils.h"
+#include "media/gpu/chromeos/fake_chromeos_intel_compressed_gpu_memory_buffer.h"
 #include "media/gpu/chromeos/fourcc.h"
 #include "media/video/fake_gpu_memory_buffer.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -40,6 +44,24 @@ CroStatus::Or<scoped_refptr<VideoFrame>> CreateGpuMemoryBufferVideoFrame(
       visible_rect, natural_size,
       std::make_unique<FakeGpuMemoryBuffer>(coded_size, *gfx_format, modifier),
       mailbox_holders, base::NullCallback(), timestamp);
+}
+
+CroStatus::Or<scoped_refptr<VideoFrame>>
+CreateChromeOSCompressedGpuMemoryBufferVideoFrame(VideoPixelFormat format,
+                                                  const gfx::Size& coded_size,
+                                                  const gfx::Rect& visible_rect,
+                                                  const gfx::Size& natural_size,
+                                                  bool use_protected,
+                                                  bool use_linear_buffers,
+                                                  base::TimeDelta timestamp) {
+  absl::optional<gfx::BufferFormat> gfx_format =
+      VideoPixelFormatToGfxBufferFormat(format);
+  DCHECK(gfx_format);
+  return WrapChromeOSCompressedGpuMemoryBufferAsVideoFrame(
+      visible_rect, natural_size,
+      std::make_unique<FakeChromeOSIntelCompressedGpuMemoryBuffer>(coded_size,
+                                                                   *gfx_format),
+      timestamp);
 }
 
 }  // namespace
@@ -90,6 +112,8 @@ class PlatformVideoFramePoolTest
     EXPECT_EQ(layout_->size(), frame->coded_size());
     EXPECT_EQ(visible_rect_, frame->visible_rect());
     EXPECT_EQ(natural_size_, frame->natural_size());
+    // We can't assert any of the |frame| metadata because the frame creation
+    // callback is a fake.
 
     return frame;
   }
@@ -108,11 +132,13 @@ class PlatformVideoFramePoolTest
   gfx::Size natural_size_;
 };
 
-INSTANTIATE_TEST_SUITE_P(All,
-                         PlatformVideoFramePoolTest,
-                         testing::Values(PIXEL_FORMAT_YV12,
-                                         PIXEL_FORMAT_NV12,
-                                         PIXEL_FORMAT_P016LE));
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    PlatformVideoFramePoolTest,
+    testing::Values(PIXEL_FORMAT_YV12, PIXEL_FORMAT_NV12, PIXEL_FORMAT_P016LE),
+    [](const ::testing::TestParamInfo<VideoPixelFormat>& info) {
+      return VideoPixelFormatToString(info.param);
+    });
 
 TEST_P(PlatformVideoFramePoolTest, SingleFrameReuse) {
   const auto fourcc = Fourcc::FromVideoPixelFormat(GetParam());
@@ -315,6 +341,30 @@ TEST_P(PlatformVideoFramePoolTest, ModifierIsPassed) {
 
   EXPECT_EQ(layout_->modifier(), kSampleModifier);
   EXPECT_TRUE(GetFrame(10));
+}
+
+TEST_P(PlatformVideoFramePoolTest, CompressedGpuMemoryBufferIsPassed) {
+  const VideoPixelFormat pixel_format = GetParam();
+  if (pixel_format != PIXEL_FORMAT_NV12 &&
+      pixel_format != PIXEL_FORMAT_P016LE) {
+    GTEST_SKIP() << "Pixel format doesn't support compressed GPU memory buffer";
+  }
+  const auto fourcc = Fourcc::FromVideoPixelFormat(pixel_format);
+  ASSERT_TRUE(fourcc.has_value());
+
+  SetCreateFrameCB(
+      base::BindRepeating(&CreateChromeOSCompressedGpuMemoryBufferVideoFrame));
+  ASSERT_TRUE(Initialize(fourcc.value()));
+
+  EXPECT_EQ(layout_->modifier(), I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS);
+  constexpr size_t kExpectedNumberOfPlanes = 4u;
+  EXPECT_EQ(layout_->planes().size(), kExpectedNumberOfPlanes);
+  scoped_refptr<VideoFrame> frame = GetFrame(10);
+  EXPECT_EQ(frame->layout().num_planes(), kExpectedNumberOfPlanes);
+  EXPECT_EQ(frame->GetGpuMemoryBuffer()
+                ->CloneHandle()
+                .native_pixmap_handle.planes.size(),
+            kExpectedNumberOfPlanes);
 }
 
 // TODO(akahuang): Add a testcase to verify calling Initialize() only with

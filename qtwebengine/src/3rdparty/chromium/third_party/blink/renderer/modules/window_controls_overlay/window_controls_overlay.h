@@ -19,7 +19,7 @@ namespace blink {
 class Navigator;
 
 class WindowControlsOverlay final
-    : public EventTargetWithInlineData,
+    : public EventTarget,
       public Supplement<Navigator>,
       public WindowControlsOverlayChangedDelegate {
   DEFINE_WRAPPERTYPEINFO();

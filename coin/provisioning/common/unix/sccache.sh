@@ -13,7 +13,7 @@ function installSccache {
     targetVersion=$2
     sha1=$3
     targetFile=sccache-$targetVersion-$targetArch.tar.gz
-    primaryUrl=http://ci-files01-hki.intra.qt.io/input/sccache/$targetFile
+    primaryUrl=http://ci-files01-hki.ci.qt.io/input/sccache/$targetFile
     cacheUrl=https://github.com/mozilla/sccache/releases/download/$targetVersion/$targetFile
     DownloadURL "$primaryUrl" "$cacheUrl" "$sha1" "$targetFile"
 
@@ -27,9 +27,9 @@ function installSccache {
     SetEnvVar "SCCACHE_IDLE_TIMEOUT" "0"
 
     # copy sccache wrapper and place as a first in PATH
-    mkdir -p $HOME/sccache_wrapper
-    cp ${BASH_SOURCE%/*}/sccache_wrapper $HOME/sccache_wrapper/sccache
-    chmod 755 $HOME/sccache_wrapper/sccache
+    mkdir -p "$HOME/sccache_wrapper"
+    cp "${BASH_SOURCE%/*}/sccache_wrapper" "$HOME/sccache_wrapper/sccache"
+    chmod 755 "$HOME/sccache_wrapper/sccache"
     SetEnvVar "PATH" "$HOME/sccache_wrapper:\$PATH"
 
 }

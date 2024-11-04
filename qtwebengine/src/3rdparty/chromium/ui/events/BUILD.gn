@@ -99,6 +99,7 @@ jumbo_component("events_base") {
   sources = [
     "base_event_utils.cc",
     "base_event_utils.h",
+    "event_latency_metadata.h",
     "event_switches.cc",
     "event_switches.h",
     "events_base_export.h",
@@ -128,13 +129,6 @@ jumbo_component("events_base") {
     ]
   }
 
-  if (is_mac) {
-    sources += [
-      "keycodes/keyboard_code_conversion_mac.h",
-      "keycodes/keyboard_code_conversion_mac.mm",
-    ]
-  }
-
   if (is_win) {
     sources += [
       "keycodes/keyboard_code_conversion_win.cc",
@@ -161,13 +155,21 @@ jumbo_component("events_base") {
     "//ui/gfx/geometry",
   ]
 
+  if (is_mac) {
+    sources += [
+      "keycodes/keyboard_code_conversion_mac.h",
+      "keycodes/keyboard_code_conversion_mac.mm",
+    ]
+    deps += [ "//base:i18n" ]
+  }
+
   if (is_fuchsia) {
     sources += [
       "keycodes/keyboard_code_conversion_fuchsia.cc",
       "keycodes/keyboard_code_conversion_fuchsia.h",
     ]
 
-    deps += [ "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.input3:fuchsia.ui.input3_hlcpp" ]
+    deps += [ "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.input3:fuchsia.ui.input3_cpp" ]
   }
 
   if (ozone_platform_x11) {
@@ -226,6 +228,7 @@ jumbo_component("events") {
     "event_rewriter_continuation.h",
     "event_source.cc",
     "event_target.cc",
+    "event_targeter.cc",
     "event_utils.cc",
     "events_exports.cc",
     "events_stub.cc",
@@ -386,7 +389,7 @@ jumbo_component("events") {
     sources += [ "fuchsia/pointer_events_handler.cc" ]
     public_deps += [
       "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.input:fuchsia.ui.input_hlcpp",
-      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.pointer:fuchsia.ui.pointer_hlcpp",
+      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.pointer:fuchsia.ui.pointer_cpp",
     ]
   }
 }
@@ -496,6 +499,7 @@ jumbo_component("gesture_detection") {
     "//ui/display",
     "//ui/gfx",
     "//ui/gfx/geometry",
+    "//ui/latency",
   ]
 
   defines = [ "GESTURE_DETECTION_IMPLEMENTATION" ]
@@ -523,8 +527,6 @@ jumbo_static_library("test_support") {
     "test/keyboard_layout.h",
     "test/motion_event_test_utils.cc",
     "test/motion_event_test_utils.h",
-    "test/platform_event_source_test_api.cc",
-    "test/platform_event_source_test_api.h",
     "test/scoped_event_waiter.cc",
     "test/scoped_event_waiter.h",
     "test/test_event.cc",
@@ -610,11 +612,11 @@ jumbo_static_library("test_support") {
       "fuchsia/util/pointer_event_utility.h",
     ]
 
-    deps += [ "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.pointer:fuchsia.ui.pointer_hlcpp" ]
+    deps += [ "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.pointer:fuchsia.ui.pointer_cpp" ]
   }
 }
 
-if (!is_ios) {
+if (use_blink) {
   test("events_unittests") {
     use_xvfb = use_xvfb_in_this_config
 
@@ -699,6 +701,7 @@ if (!is_ios) {
 
     if (use_ozone) {
       deps += [
+        "//ui/events/devices:unittests",
         "//ui/events/ozone:unittests",
         "//ui/events/ozone/layout",
       ]
@@ -734,8 +737,9 @@ if (!is_ios) {
 
       deps += [
         "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.input:fuchsia.ui.input_hlcpp",
-        "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.input3:fuchsia.ui.input3_hlcpp",
-        "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.pointer:fuchsia.ui.pointer_hlcpp",
+        "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.input3:fuchsia.ui.input3_cpp",
+        "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.pointer:fuchsia.ui.pointer_cpp",
+        "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.pointer:fuchsia.ui.pointer_cpp_hlcpp_conversion",
         "//third_party/fuchsia-sdk/sdk/pkg/scenic_cpp_testing",
       ]
     }

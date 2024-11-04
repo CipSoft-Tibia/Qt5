@@ -31,6 +31,9 @@ static enum xnn_status create_prelu_operator(
   assert(slope_id != XNN_INVALID_VALUE_ID);
   assert(slope_id < num_values);
 
+  const void* slope_data = values[slope_id].fp32_data != NULL ? values[slope_id].fp32_data : values[slope_id].data;
+  assert(slope_data != NULL);
+
   assert(node->num_outputs == 1);
   const uint32_t output_id = node->outputs[0];
   assert(output_id != XNN_INVALID_VALUE_ID);
@@ -41,20 +44,18 @@ static enum xnn_status create_prelu_operator(
 
   enum xnn_status status;
   switch (node->compute_type) {
-#ifndef XNN_NO_F16_OPERATORS
     case xnn_compute_type_fp16:
       status = xnn_create_prelu_nc_f16(
         channel_dim /* channels */, channel_dim /* input stride */, channel_dim /* output stride */,
-        values[slope_id].data /* negative slope */,
+        slope_data /* negative slope */,
         node->flags | XNN_FLAG_FP32_STATIC_WEIGHTS,
         caches,
         &opdata->operator_objects[0]);
       break;
-#endif  // XNN_NO_F16_OPERATORS
     case xnn_compute_type_fp32:
       status = xnn_create_prelu_nc_f32(
         channel_dim /* channels */, channel_dim /* input stride */, channel_dim /* output stride */,
-        values[slope_id].data /* negative slope */,
+        slope_data /* negative slope */,
         node->flags,
         caches,
         &opdata->operator_objects[0]);
@@ -93,7 +94,6 @@ static enum xnn_status setup_prelu_operator(
   assert(output_data != NULL);
 
   switch (opdata->operator_objects[0]->type) {
-#ifndef XNN_NO_F16_OPERATORS
     case xnn_operator_type_prelu_nc_f16:
       return xnn_setup_prelu_nc_f16(
         opdata->operator_objects[0],
@@ -101,7 +101,6 @@ static enum xnn_status setup_prelu_operator(
         input_data,
         output_data,
         threadpool);
-#endif  // XNN_NO_F16_OPERATORS
     case xnn_operator_type_prelu_nc_f32:
       return xnn_setup_prelu_nc_f32(
         opdata->operator_objects[0],

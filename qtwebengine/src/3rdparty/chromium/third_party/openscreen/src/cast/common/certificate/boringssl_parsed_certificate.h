@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,9 +12,9 @@
 
 #include "cast/common/public/parsed_certificate.h"
 #include "platform/base/error.h"
+#include "platform/base/span.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class BoringSSLParsedCertificate final : public ParsedCertificate {
  public:
@@ -38,10 +38,10 @@ class BoringSSLParsedCertificate final : public ParsedCertificate {
   ErrorOr<uint64_t> GetSerialNumber() const override;
 
   bool VerifySignedData(DigestAlgorithm algorithm,
-                        const ConstDataSpan& data,
-                        const ConstDataSpan& signature) const override;
+                        const ByteView& data,
+                        const ByteView& signature) const override;
 
-  bool HasPolicyOid(const ConstDataSpan& oid) const override;
+  bool HasPolicyOid(const ByteView& oid) const override;
 
   void SetNotBeforeTimeForTesting(time_t not_before) override;
   void SetNotAfterTimeForTesting(time_t not_after) override;
@@ -52,7 +52,6 @@ class BoringSSLParsedCertificate final : public ParsedCertificate {
   bssl::UniquePtr<X509> cert_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_CERTIFICATE_BORINGSSL_PARSED_CERTIFICATE_H_

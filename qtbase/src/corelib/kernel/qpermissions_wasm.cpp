@@ -51,9 +51,13 @@ namespace
         {
             updatePermission(permissionName, permissionState["state"].as<std::string>(), {});
         };
-        callbacks.catchFunc = [permissionName](val)
+        callbacks.catchFunc = [permissionName](val err)
         {
-            updatePermission(permissionName, wapiDenied, {});
+            if (err["name"].as<std::string>() == "NotAllowedError")
+                return updatePermission(permissionName, wapiDenied, {});
+
+            qCInfo(lcPermissions, "'%s' '%s'", err["name"].as<std::string>().c_str(),
+                err["message"].as<std::string>().c_str());
         };
 
         val query = val::object();
@@ -131,7 +135,7 @@ namespace
             return cb(Qt::PermissionStatus::Denied);
 
         qstdweb::PromiseCallbacks queryCallbacks;
-        queryCallbacks.thenFunc = [device, cb](val mediaStream)
+        queryCallbacks.thenFunc = [device, cb](val)
         {
             updatePermission(device, wapiGranted, cb);
         };

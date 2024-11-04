@@ -22,6 +22,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/system/sys_info.h"
 #include "base/task/sequence_manager/sequence_manager.h"
+#include "base/threading/hang_watcher.h"
 #include "base/threading/platform_thread.h"
 #include "base/timer/hi_res_timer_manager.h"
 #include "base/trace_event/trace_event.h"
@@ -59,8 +60,8 @@
 #include <signal.h>
 #include <unistd.h>
 
-#include "base/mac/scoped_nsautorelease_pool.h"
-#include "base/message_loop/message_pump_mac.h"
+#include "base/apple/scoped_nsautorelease_pool.h"
+#include "base/message_loop/message_pump_apple.h"
 #include "third_party/blink/public/web/web_view.h"
 #endif  // BUILDFLAG(IS_MAC)
 
@@ -104,12 +105,7 @@ void HandleRendererErrorTestParameters(const base::CommandLine& command_line) {
 }
 
 std::unique_ptr<base::MessagePump> CreateMainThreadMessagePump() {
-#if BUILDFLAG(IS_MAC)
-  // As long as scrollbars on Mac are painted with Cocoa, the message pump
-  // needs to be backed by a Foundation-level loop to process NSTimers. See
-  // http://crbug.com/306348#c24 for details.
-  return base::MessagePump::Create(base::MessagePumpType::NS_RUNLOOP);
-#elif BUILDFLAG(IS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
   // Allow FIDL APIs on renderer main thread.
   return base::MessagePump::Create(base::MessagePumpType::IO);
 #else
@@ -143,6 +139,14 @@ int RendererMain(MainFunctionParams parameters) {
   // expect synchronous events around the main loop of a thread.
   TRACE_EVENT_INSTANT0("startup", "RendererMain", TRACE_EVENT_SCOPE_THREAD);
 
+#if BUILDFLAG(IS_MAC)
+  // Declare that this process has CPU security mitigations enabled (see
+  // RendererSandboxedProcessLauncherDelegate::EnableCpuSecurityMitigations).
+  // This must be done before the first call to
+  // base::SysInfo::NumberOfProcessors().
+  base::SysInfo::SetCpuSecurityMitigationsEnabled();
+#endif
+
   base::CurrentProcess::GetInstance().SetProcessType(
       base::CurrentProcessType::PROCESS_RENDERER);
   base::trace_event::TraceLog::GetInstance()->SetProcessSortIndex(
@@ -151,7 +155,7 @@ int RendererMain(MainFunctionParams parameters) {
   const base::CommandLine& command_line = *parameters.command_line;
 
 #if BUILDFLAG(IS_MAC)
-  base::mac::ScopedNSAutoreleasePool* pool = parameters.autorelease_pool;
+  base::apple::ScopedNSAutoreleasePool* pool = parameters.autorelease_pool;
 #endif  // BUILDFLAG(IS_MAC)
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
@@ -317,6 +321,20 @@ int RendererMain(MainFunctionParams parameters) {
       if (client) {
         client->PostSandboxInitialized();
       }
+    }
+
+    // Start the HangWatcher now that the sandbox is engaged, if it hasn't
+    // already been started.
+    if (base::HangWatcher::IsEnabled() &&
+        !base::HangWatcher::GetInstance()->IsStarted()) {
+      DCHECK(parameters.hang_watcher_not_started_time.has_value());
+      base::TimeDelta uncovered_hang_watcher_time =
+          base::TimeTicks::Now() -
+          parameters.hang_watcher_not_started_time.value();
+      base::UmaHistogramTimes(
+          "HangWatcher.RendererProcess.UncoveredStartupTime",
+          uncovered_hang_watcher_time);
+      base::HangWatcher::GetInstance()->Start();
     }
 
 #if BUILDFLAG(MOJO_RANDOM_DELAYS_ENABLED)

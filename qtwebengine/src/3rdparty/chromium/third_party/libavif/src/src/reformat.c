@@ -7,6 +7,13 @@
 #include <math.h>
 #include <string.h>
 
+#if defined(_WIN32)
+#include <process.h>
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
+
 struct YUVBlock
 {
     float y;
@@ -16,11 +23,24 @@ struct YUVBlock
 
 static avifBool avifPrepareReformatState(const avifImage * image, const avifRGBImage * rgb, avifReformatState * state)
 {
+#if defined(AVIF_ENABLE_EXPERIMENTAL_YCGCO_R)
+    const avifBool useYCgCoRe = (image->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_YCGCO_RE);
+    const avifBool useYCgCoRo = (image->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_YCGCO_RO);
+#else
+    const avifBool useYCgCoRe = AVIF_FALSE;
+    const avifBool useYCgCoRo = AVIF_FALSE;
+#endif
     if ((image->depth != 8) && (image->depth != 10) && (image->depth != 12) && (image->depth != 16)) {
         return AVIF_FALSE;
     }
     if ((rgb->depth != 8) && (rgb->depth != 10) && (rgb->depth != 12) && (rgb->depth != 16)) {
         return AVIF_FALSE;
+    }
+    if (useYCgCoRe || useYCgCoRo) {
+        const int bitOffset = (useYCgCoRe) ? 2 : 1;
+        if (image->depth - bitOffset != rgb->depth) {
+            return AVIF_FALSE;
+        }
     }
     if (rgb->isFloat && rgb->depth != 16) {
         return AVIF_FALSE;
@@ -41,15 +61,17 @@ static avifBool avifPrepareReformatState(const avifImage * image, const avifRGBI
     // YCgCo performs limited-full range adjustment on R,G,B but the current implementation performs range adjustment
     // on Y,U,V. So YCgCo with limited range is unsupported.
     if ((image->matrixCoefficients == 3 /* CICP reserved */) ||
-        ((image->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_YCGCO) && (image->yuvRange == AVIF_RANGE_LIMITED)) ||
+        ((image->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_YCGCO || useYCgCoRe || useYCgCoRo) &&
+         (image->yuvRange == AVIF_RANGE_LIMITED)) ||
         (image->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_BT2020_CL) ||
         (image->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_SMPTE2085) ||
         (image->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_CHROMA_DERIVED_CL) ||
-        (image->matrixCoefficients >= AVIF_MATRIX_COEFFICIENTS_ICTCP)) { // Note the >= catching "future" CICP values here too
+        (image->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_ICTCP) || (image->matrixCoefficients >= AVIF_MATRIX_COEFFICIENTS_LAST)) {
         return AVIF_FALSE;
     }
 
-    if ((image->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_IDENTITY) && (image->yuvFormat != AVIF_PIXEL_FORMAT_YUV444)) {
+    if ((image->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_IDENTITY) && (image->yuvFormat != AVIF_PIXEL_FORMAT_YUV444) &&
+        (image->yuvFormat != AVIF_PIXEL_FORMAT_YUV400)) {
         return AVIF_FALSE;
     }
 
@@ -61,6 +83,12 @@ static avifBool avifPrepareReformatState(const avifImage * image, const avifRGBI
         state->mode = AVIF_REFORMAT_MODE_IDENTITY;
     } else if (image->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_YCGCO) {
         state->mode = AVIF_REFORMAT_MODE_YCGCO;
+#if defined(AVIF_ENABLE_EXPERIMENTAL_YCGCO_R)
+    } else if (useYCgCoRe) {
+        state->mode = AVIF_REFORMAT_MODE_YCGCO_RE;
+    } else if (useYCgCoRo) {
+        state->mode = AVIF_REFORMAT_MODE_YCGCO_RO;
+#endif
     }
 
     if (state->mode != AVIF_REFORMAT_MODE_YUV_COEFFICIENTS) {
@@ -151,7 +179,13 @@ static int avifReformatStateUVToUNorm(avifReformatState * state, float v)
 
     // YCgCo performs limited-full range adjustment on R,G,B but the current implementation performs range adjustment
     // on Y,U,V. So YCgCo with limited range is unsupported.
+#if defined(AVIF_ENABLE_EXPERIMENTAL_YCGCO_R)
+    assert((state->mode != AVIF_REFORMAT_MODE_YCGCO && state->mode != AVIF_REFORMAT_MODE_YCGCO_RE &&
+            state->mode != AVIF_REFORMAT_MODE_YCGCO_RO) ||
+           (state->yuvRange == AVIF_RANGE_FULL));
+#else
     assert((state->mode != AVIF_REFORMAT_MODE_YCGCO) || (state->yuvRange == AVIF_RANGE_FULL));
+#endif
 
     if (state->mode == AVIF_REFORMAT_MODE_IDENTITY) {
         unorm = (int)avifRoundf(v * state->rangeY + state->biasY);
@@ -306,6 +340,19 @@ avifResult avifImageRGBToYUV(avifImage * image, const avifRGBImage * rgb)
                             yuvBlock[bI][bJ].y = 0.5f * rgbPixel[1] + 0.25f * (rgbPixel[0] + rgbPixel[2]);
                             yuvBlock[bI][bJ].u = 0.5f * rgbPixel[1] - 0.25f * (rgbPixel[0] + rgbPixel[2]);
                             yuvBlock[bI][bJ].v = 0.5f * (rgbPixel[0] - rgbPixel[2]);
+#if defined(AVIF_ENABLE_EXPERIMENTAL_YCGCO_R)
+                        } else if (state.mode == AVIF_REFORMAT_MODE_YCGCO_RE || state.mode == AVIF_REFORMAT_MODE_YCGCO_RO) {
+                            // Formulas from JVET-U0093.
+                            const int R = (int)avifRoundf(AVIF_CLAMP(rgbPixel[0] * rgbMaxChannelF, 0.0f, rgbMaxChannelF));
+                            const int G = (int)avifRoundf(AVIF_CLAMP(rgbPixel[1] * rgbMaxChannelF, 0.0f, rgbMaxChannelF));
+                            const int B = (int)avifRoundf(AVIF_CLAMP(rgbPixel[2] * rgbMaxChannelF, 0.0f, rgbMaxChannelF));
+                            const int Co = R - B;
+                            const int t = B + (Co >> 1);
+                            const int Cg = G - t;
+                            yuvBlock[bI][bJ].y = (t + (Cg >> 1)) / state.rangeY;
+                            yuvBlock[bI][bJ].u = Cg / state.rangeUV;
+                            yuvBlock[bI][bJ].v = Co / state.rangeUV;
+#endif
                         } else {
                             float Y = (kr * rgbPixel[0]) + (kg * rgbPixel[1]) + (kb * rgbPixel[2]);
                             yuvBlock[bI][bJ].y = Y;
@@ -338,7 +385,9 @@ avifResult avifImageRGBToYUV(avifImage * image, const avifRGBImage * rgb)
                 }
 
                 // Populate any subsampled channels with averages from the 2x2 block
-                if (image->yuvFormat == AVIF_PIXEL_FORMAT_YUV420) {
+                if (image->yuvFormat == AVIF_PIXEL_FORMAT_YUV400) {
+                    // Do nothing on chroma planes.
+                } else if (image->yuvFormat == AVIF_PIXEL_FORMAT_YUV420) {
                     // YUV420, average 4 samples (2x2)
 
                     float sumU = 0.0f;
@@ -432,7 +481,7 @@ avifResult avifImageRGBToYUV(avifImage * image, const avifRGBImage * rgb)
 
 // Allocates and fills look-up tables for going from YUV limited/full unorm -> full range RGB FP32.
 // Review this when implementing YCgCo limited range support.
-static avifBool avifCreateYUVToRGBLookUpTables(float ** unormFloatTableY, float ** unormFloatTableUV, int depth, const avifReformatState * state)
+static avifBool avifCreateYUVToRGBLookUpTables(float ** unormFloatTableY, float ** unormFloatTableUV, uint32_t depth, const avifReformatState * state)
 {
     const size_t cpCount = (size_t)1 << depth;
 
@@ -529,7 +578,8 @@ static avifResult avifImageYUVAnyToRGBAnySlow(const avifImage * image,
     assert((alphaMultiplyMode == AVIF_ALPHA_MULTIPLY_MODE_NO_OP) || aPlane);
 
     for (uint32_t j = 0; j < image->height; ++j) {
-        const uint32_t uvJ = j >> state->formatInfo.chromaShiftY;
+        // uvJ is used only when hasColor is true.
+        const uint32_t uvJ = hasColor ? (j >> state->formatInfo.chromaShiftY) : 0;
         const uint8_t * ptrY8 = &yPlane[j * yRowBytes];
         const uint8_t * ptrU8 = uPlane ? &uPlane[(uvJ * uRowBytes)] : NULL;
         const uint8_t * ptrV8 = vPlane ? &vPlane[(uvJ * vRowBytes)] : NULL;
@@ -544,7 +594,6 @@ static avifResult avifImageYUVAnyToRGBAnySlow(const avifImage * image,
         uint8_t * ptrB = &rgb->pixels[state->rgbOffsetBytesB + (j * rgb->rowBytes)];
 
         for (uint32_t i = 0; i < image->width; ++i) {
-            uint32_t uvI = i >> state->formatInfo.chromaShiftX;
             float Y, Cb = 0.5f, Cr = 0.5f;
 
             // Calculate Y
@@ -559,6 +608,7 @@ static avifResult avifImageYUVAnyToRGBAnySlow(const avifImage * image,
 
             // Calculate Cb and Cr
             if (hasColor) {
+                const uint32_t uvI = i >> state->formatInfo.chromaShiftX;
                 if (image->yuvFormat == AVIF_PIXEL_FORMAT_YUV444) {
                     uint16_t unormU, unormV;
 
@@ -693,6 +743,19 @@ static avifResult avifImageYUVAnyToRGBAnySlow(const avifImage * image,
                     G = Y + Cb;
                     B = t - Cr;
                     R = t + Cr;
+#if defined(AVIF_ENABLE_EXPERIMENTAL_YCGCO_R)
+                } else if (state->mode == AVIF_REFORMAT_MODE_YCGCO_RE || state->mode == AVIF_REFORMAT_MODE_YCGCO_RO) {
+                    const int YY = unormY;
+                    const int Cg = (int)avifRoundf(Cb * yuvMaxChannel);
+                    const int Co = (int)avifRoundf(Cr * yuvMaxChannel);
+                    const int t = YY - (Cg >> 1);
+                    G = (float)AVIF_CLAMP(t + Cg, 0, state->rgbMaxChannel);
+                    B = (float)AVIF_CLAMP(t - (Co >> 1), 0, state->rgbMaxChannel);
+                    R = (float)AVIF_CLAMP(B + Co, 0, state->rgbMaxChannel);
+                    G /= rgbMaxChannelF;
+                    B /= rgbMaxChannelF;
+                    R /= rgbMaxChannelF;
+#endif
                 } else {
                     // Normal YUV
                     R = Y + (2 * (1 - kr)) * Cr;
@@ -700,7 +763,7 @@ static avifResult avifImageYUVAnyToRGBAnySlow(const avifImage * image,
                     G = Y - ((2 * ((kr * (1 - kr) * Cr) + (kb * (1 - kb) * Cb))) / kg);
                 }
             } else {
-                // Monochrome: just populate all channels with luma (identity mode is irrelevant)
+                // Monochrome: just populate all channels with luma (state->mode is irrelevant)
                 R = Y;
                 G = Y;
                 B = Y;
@@ -1231,37 +1294,16 @@ static avifResult avifRGBImageToF16(avifRGBImage * rgb)
     return AVIF_RESULT_OK;
 }
 
-avifResult avifImageYUVToRGB(const avifImage * image, avifRGBImage * rgb)
+static avifResult avifImageYUVToRGBImpl(const avifImage * image, avifRGBImage * rgb, avifReformatState * state, avifAlphaMultiplyMode alphaMultiplyMode)
 {
-    if (!image->yuvPlanes[AVIF_CHAN_Y]) {
-        return AVIF_RESULT_REFORMAT_FAILED;
-    }
-
-    avifReformatState state;
-    if (!avifPrepareReformatState(image, rgb, &state)) {
-        return AVIF_RESULT_REFORMAT_FAILED;
-    }
-
-    avifAlphaMultiplyMode alphaMultiplyMode = AVIF_ALPHA_MULTIPLY_MODE_NO_OP;
-    if (image->alphaPlane) {
-        if (!avifRGBFormatHasAlpha(rgb->format) || rgb->ignoreAlpha) {
-            // if we are converting some image with alpha into a format without alpha, we should do 'premultiply alpha' before
-            // discarding alpha plane. This has the same effect of rendering this image on a black background, which makes sense.
-            if (!image->alphaPremultiplied) {
-                alphaMultiplyMode = AVIF_ALPHA_MULTIPLY_MODE_MULTIPLY;
-            }
-        } else {
-            if (!image->alphaPremultiplied && rgb->alphaPremultiplied) {
-                alphaMultiplyMode = AVIF_ALPHA_MULTIPLY_MODE_MULTIPLY;
-            } else if (image->alphaPremultiplied && !rgb->alphaPremultiplied) {
-                alphaMultiplyMode = AVIF_ALPHA_MULTIPLY_MODE_UNMULTIPLY;
-            }
-        }
-    }
-
     avifBool convertedWithLibYUV = AVIF_FALSE;
+    // Reformat alpha, if user asks for it, or (un)multiply processing needs it.
+    avifBool reformatAlpha = avifRGBFormatHasAlpha(rgb->format) &&
+                             (!rgb->ignoreAlpha || (alphaMultiplyMode != AVIF_ALPHA_MULTIPLY_MODE_NO_OP));
+    // This value is used only when reformatAlpha is true.
+    avifBool alphaReformattedWithLibYUV = AVIF_FALSE;
     if (!rgb->avoidLibYUV && ((alphaMultiplyMode == AVIF_ALPHA_MULTIPLY_MODE_NO_OP) || avifRGBFormatHasAlpha(rgb->format))) {
-        avifResult libyuvResult = avifImageYUVToRGBLibYUV(image, rgb);
+        avifResult libyuvResult = avifImageYUVToRGBLibYUV(image, rgb, reformatAlpha, &alphaReformattedWithLibYUV);
         if (libyuvResult == AVIF_RESULT_OK) {
             convertedWithLibYUV = AVIF_TRUE;
         } else {
@@ -1271,8 +1313,7 @@ avifResult avifImageYUVToRGB(const avifImage * image, avifRGBImage * rgb)
         }
     }
 
-    // Reformat alpha, if user asks for it, or (un)multiply processing needs it.
-    if (avifRGBFormatHasAlpha(rgb->format) && (!rgb->ignoreAlpha || (alphaMultiplyMode != AVIF_ALPHA_MULTIPLY_MODE_NO_OP))) {
+    if (reformatAlpha && !alphaReformattedWithLibYUV) {
         avifAlphaParams params;
 
         params.width = rgb->width;
@@ -1280,21 +1321,19 @@ avifResult avifImageYUVToRGB(const avifImage * image, avifRGBImage * rgb)
         params.dstDepth = rgb->depth;
         params.dstPlane = rgb->pixels;
         params.dstRowBytes = rgb->rowBytes;
-        params.dstOffsetBytes = state.rgbOffsetBytesA;
-        params.dstPixelBytes = state.rgbPixelBytes;
+        params.dstOffsetBytes = state->rgbOffsetBytesA;
+        params.dstPixelBytes = state->rgbPixelBytes;
 
         if (image->alphaPlane && image->alphaRowBytes) {
             params.srcDepth = image->depth;
             params.srcPlane = image->alphaPlane;
             params.srcRowBytes = image->alphaRowBytes;
             params.srcOffsetBytes = 0;
-            params.srcPixelBytes = state.yuvChannelBytes;
+            params.srcPixelBytes = state->yuvChannelBytes;
 
             avifReformatAlpha(&params);
         } else {
-            if (!convertedWithLibYUV) { // libyuv fills alpha for us
-                avifFillAlpha(&params);
-            }
+            avifFillAlpha(&params);
         }
     }
 
@@ -1318,14 +1357,14 @@ avifResult avifImageYUVToRGB(const avifImage * image, avifRGBImage * rgb)
             // * None of these fast paths currently handle alpha (un)multiply, so avoid all of them
             //   if we can't do alpha (un)multiply as a separated post step (destination format doesn't have alpha).
 
-            if (state.mode == AVIF_REFORMAT_MODE_IDENTITY) {
+            if (state->mode == AVIF_REFORMAT_MODE_IDENTITY) {
                 if ((image->depth == 8) && (rgb->depth == 8) && (image->yuvFormat == AVIF_PIXEL_FORMAT_YUV444) &&
                     (image->yuvRange == AVIF_RANGE_FULL)) {
-                    convertResult = avifImageIdentity8ToRGB8ColorFullRange(image, rgb, &state);
+                    convertResult = avifImageIdentity8ToRGB8ColorFullRange(image, rgb, state);
                 }
 
                 // TODO: Add more fast paths for identity
-            } else if (state.mode == AVIF_REFORMAT_MODE_YUV_COEFFICIENTS) {
+            } else if (state->mode == AVIF_REFORMAT_MODE_YUV_COEFFICIENTS) {
                 if (image->depth > 8) {
                     // yuv:u16
 
@@ -1333,17 +1372,17 @@ avifResult avifImageYUVToRGB(const avifImage * image, avifRGBImage * rgb)
                         // yuv:u16, rgb:u16
 
                         if (hasColor) {
-                            convertResult = avifImageYUV16ToRGB16Color(image, rgb, &state);
+                            convertResult = avifImageYUV16ToRGB16Color(image, rgb, state);
                         } else {
-                            convertResult = avifImageYUV16ToRGB16Mono(image, rgb, &state);
+                            convertResult = avifImageYUV16ToRGB16Mono(image, rgb, state);
                         }
                     } else {
                         // yuv:u16, rgb:u8
 
                         if (hasColor) {
-                            convertResult = avifImageYUV16ToRGB8Color(image, rgb, &state);
+                            convertResult = avifImageYUV16ToRGB8Color(image, rgb, state);
                         } else {
-                            convertResult = avifImageYUV16ToRGB8Mono(image, rgb, &state);
+                            convertResult = avifImageYUV16ToRGB8Mono(image, rgb, state);
                         }
                     }
                 } else {
@@ -1353,17 +1392,17 @@ avifResult avifImageYUVToRGB(const avifImage * image, avifRGBImage * rgb)
                         // yuv:u8, rgb:u16
 
                         if (hasColor) {
-                            convertResult = avifImageYUV8ToRGB16Color(image, rgb, &state);
+                            convertResult = avifImageYUV8ToRGB16Color(image, rgb, state);
                         } else {
-                            convertResult = avifImageYUV8ToRGB16Mono(image, rgb, &state);
+                            convertResult = avifImageYUV8ToRGB16Mono(image, rgb, state);
                         }
                     } else {
                         // yuv:u8, rgb:u8
 
                         if (hasColor) {
-                            convertResult = avifImageYUV8ToRGB8Color(image, rgb, &state);
+                            convertResult = avifImageYUV8ToRGB8Color(image, rgb, state);
                         } else {
-                            convertResult = avifImageYUV8ToRGB8Mono(image, rgb, &state);
+                            convertResult = avifImageYUV8ToRGB8Mono(image, rgb, state);
                         }
                     }
                 }
@@ -1372,7 +1411,7 @@ avifResult avifImageYUVToRGB(const avifImage * image, avifRGBImage * rgb)
 
         if (convertResult == AVIF_RESULT_NOT_IMPLEMENTED) {
             // If we get here, there is no fast path for this combination. Time to be slow!
-            convertResult = avifImageYUVAnyToRGBAnySlow(image, rgb, &state, alphaMultiplyMode);
+            convertResult = avifImageYUVAnyToRGBAnySlow(image, rgb, state, alphaMultiplyMode);
 
             // The slow path also handles alpha (un)multiply, so forget the operation here.
             alphaMultiplyMode = AVIF_ALPHA_MULTIPLY_MODE_NO_OP;
@@ -1404,6 +1443,160 @@ avifResult avifImageYUVToRGB(const avifImage * image, avifRGBImage * rgb)
     return AVIF_RESULT_OK;
 }
 
+typedef struct
+{
+#if defined(_WIN32)
+    HANDLE thread;
+#else
+    pthread_t thread;
+#endif
+    avifImage image;
+    avifRGBImage rgb;
+    avifReformatState * state;
+    avifAlphaMultiplyMode alphaMultiplyMode;
+    avifResult result;
+    avifBool threadCreated;
+} YUVToRGBThreadData;
+
+#if defined(_WIN32)
+static unsigned int __stdcall avifImageYUVToRGBThreadWorker(void * arg)
+#else
+static void * avifImageYUVToRGBThreadWorker(void * arg)
+#endif
+{
+    YUVToRGBThreadData * data = (YUVToRGBThreadData *)arg;
+    data->result = avifImageYUVToRGBImpl(&data->image, &data->rgb, data->state, data->alphaMultiplyMode);
+#if defined(_WIN32)
+    return 0;
+#else
+    return NULL;
+#endif
+}
+
+static avifBool avifCreateYUVToRGBThread(YUVToRGBThreadData * tdata)
+{
+#if defined(_WIN32)
+    tdata->thread = (HANDLE)_beginthreadex(/*security=*/NULL,
+                                           /*stack_size=*/0,
+                                           &avifImageYUVToRGBThreadWorker,
+                                           tdata,
+                                           /*initflag=*/0,
+                                           /*thrdaddr=*/NULL);
+    return tdata->thread != NULL;
+#else
+    // TODO: Set the thread name for ease of debugging.
+    return pthread_create(&tdata->thread, NULL, &avifImageYUVToRGBThreadWorker, tdata) == 0;
+#endif
+}
+
+static avifBool avifJoinYUVToRGBThread(YUVToRGBThreadData * tdata)
+{
+#if defined(_WIN32)
+    return WaitForSingleObject(tdata->thread, INFINITE) == WAIT_OBJECT_0 && CloseHandle(tdata->thread) != 0;
+#else
+    return pthread_join(tdata->thread, NULL) == 0;
+#endif
+}
+
+avifResult avifImageYUVToRGB(const avifImage * image, avifRGBImage * rgb)
+{
+    // It is okay for rgb->maxThreads to be equal to zero in order to allow clients to zero initialize the avifRGBImage struct
+    // with memset.
+    if (!image->yuvPlanes[AVIF_CHAN_Y] || rgb->maxThreads < 0) {
+        return AVIF_RESULT_REFORMAT_FAILED;
+    }
+
+    avifReformatState state;
+    if (!avifPrepareReformatState(image, rgb, &state)) {
+        return AVIF_RESULT_REFORMAT_FAILED;
+    }
+
+    avifAlphaMultiplyMode alphaMultiplyMode = AVIF_ALPHA_MULTIPLY_MODE_NO_OP;
+    if (image->alphaPlane) {
+        if (!avifRGBFormatHasAlpha(rgb->format) || rgb->ignoreAlpha) {
+            // if we are converting some image with alpha into a format without alpha, we should do 'premultiply alpha' before
+            // discarding alpha plane. This has the same effect of rendering this image on a black background, which makes sense.
+            if (!image->alphaPremultiplied) {
+                alphaMultiplyMode = AVIF_ALPHA_MULTIPLY_MODE_MULTIPLY;
+            }
+        } else {
+            if (!image->alphaPremultiplied && rgb->alphaPremultiplied) {
+                alphaMultiplyMode = AVIF_ALPHA_MULTIPLY_MODE_MULTIPLY;
+            } else if (image->alphaPremultiplied && !rgb->alphaPremultiplied) {
+                alphaMultiplyMode = AVIF_ALPHA_MULTIPLY_MODE_UNMULTIPLY;
+            }
+        }
+    }
+
+    // In practice, we rarely need more than 8 threads for YUV to RGB conversion.
+    uint32_t jobs = AVIF_CLAMP(rgb->maxThreads, 1, 8);
+
+    // When yuv format is 420 and chromaUpsampling could be BILINEAR, there is a dependency across the horizontal borders of each
+    // job. So we disallow multithreading in that case.
+    if (image->yuvFormat == AVIF_PIXEL_FORMAT_YUV420 && (rgb->chromaUpsampling == AVIF_CHROMA_UPSAMPLING_AUTOMATIC ||
+                                                         rgb->chromaUpsampling == AVIF_CHROMA_UPSAMPLING_BEST_QUALITY ||
+                                                         rgb->chromaUpsampling == AVIF_CHROMA_UPSAMPLING_BILINEAR)) {
+        jobs = 1;
+    }
+
+    // Each thread worker needs at least 2 Y rows (to account for potential U/V subsampling).
+    if (jobs == 1 || (image->height / 2) < jobs) {
+        return avifImageYUVToRGBImpl(image, rgb, &state, alphaMultiplyMode);
+    }
+
+    AVIF_ARRAY_DECLARE(YUVToRGBThreadDataArray, YUVToRGBThreadData, threadData);
+    YUVToRGBThreadDataArray tdArray;
+    if (!avifArrayCreate(&tdArray, sizeof(YUVToRGBThreadData), jobs)) {
+        return AVIF_RESULT_OUT_OF_MEMORY;
+    }
+    int rowsPerJob = image->height / jobs;
+    if (rowsPerJob % 2) {
+        ++rowsPerJob;
+    }
+    const int rowsForLastJob = image->height - rowsPerJob * (jobs - 1);
+    int startRow = 0;
+    uint32_t i;
+    for (i = 0; i < jobs; ++i, startRow += rowsPerJob) {
+        YUVToRGBThreadData * tdata = &tdArray.threadData[i];
+        const avifCropRect rect = { .x = 0, .y = startRow, .width = image->width, .height = (i == jobs - 1) ? rowsForLastJob : rowsPerJob };
+        if (avifImageSetViewRect(&tdata->image, image, &rect) != AVIF_RESULT_OK) {
+            tdata->result = AVIF_RESULT_REFORMAT_FAILED;
+            break;
+        }
+
+        tdata->rgb = *rgb;
+        tdata->rgb.pixels += startRow * (size_t)rgb->rowBytes;
+        tdata->rgb.height = tdata->image.height;
+
+        tdata->state = &state;
+        tdata->alphaMultiplyMode = alphaMultiplyMode;
+
+        if (i > 0) {
+            tdata->threadCreated = avifCreateYUVToRGBThread(tdata);
+            if (!tdata->threadCreated) {
+                tdata->result = AVIF_RESULT_REFORMAT_FAILED;
+                break;
+            }
+        }
+    }
+    // If above loop ran successfully, Run the first job in the current thread.
+    if (i == jobs) {
+        avifImageYUVToRGBThreadWorker(&tdArray.threadData[0]);
+    }
+    avifResult result = AVIF_RESULT_OK;
+    for (i = 0; i < jobs; ++i) {
+        YUVToRGBThreadData * tdata = &tdArray.threadData[i];
+        if (tdata->threadCreated && !avifJoinYUVToRGBThread(tdata)) {
+            result = AVIF_RESULT_REFORMAT_FAILED;
+        }
+        if (tdata->result != AVIF_RESULT_OK) {
+            result = tdata->result;
+        }
+    }
+    avifArrayDestroy(&tdArray);
+    return result;
+}
+
 // Limited -> Full
 // Plan: subtract limited offset, then multiply by ratio of FULLSIZE/LIMITEDSIZE (rounding), then clamp.
 // RATIO = (FULLY - 0) / (MAXLIMITEDY - MINLIMITEDY)
@@ -1432,7 +1625,7 @@ avifResult avifImageYUVToRGB(const avifImage * image, avifRGBImage * rgb)
     v = (((v * (MAXLIMITEDY - MINLIMITEDY)) + (FULLY / 2)) / FULLY) + MINLIMITEDY; \
     v = AVIF_CLAMP(v, MINLIMITEDY, MAXLIMITEDY)
 
-int avifLimitedToFullY(int depth, int v)
+int avifLimitedToFullY(uint32_t depth, int v)
 {
     switch (depth) {
         case 8:
@@ -1448,7 +1641,7 @@ int avifLimitedToFullY(int depth, int v)
     return v;
 }
 
-int avifLimitedToFullUV(int depth, int v)
+int avifLimitedToFullUV(uint32_t depth, int v)
 {
     switch (depth) {
         case 8:
@@ -1464,7 +1657,7 @@ int avifLimitedToFullUV(int depth, int v)
     return v;
 }
 
-int avifFullToLimitedY(int depth, int v)
+int avifFullToLimitedY(uint32_t depth, int v)
 {
     switch (depth) {
         case 8:
@@ -1480,7 +1673,7 @@ int avifFullToLimitedY(int depth, int v)
     return v;
 }
 
-int avifFullToLimitedUV(int depth, int v)
+int avifFullToLimitedUV(uint32_t depth, int v)
 {
     switch (depth) {
         case 8:

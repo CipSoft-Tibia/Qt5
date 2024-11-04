@@ -496,36 +496,21 @@ int32_t RTCVideoDecoderStreamAdapter::Decode(
     // changed to handle SW decoding and not return
     // WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE.
 
-    // This dapater is diffrent from rtc_video_decoder_dapater.
-    // Consider two cases:
-    // 1. If it's hardware decoder, the D3D11 supports decoding the VP9 kSVC
-    // stream, but DXVA not. Currently just a reasonably temporary measure. Once
-    // the DXVA supports decoding VP9 kSVC stream, the boolen
-    // |need_fallback_to_software| should be removed, and if the OS is windows
-    // but not win7, we will return true in 'Vp9HwSupportForSpatialLayers'
-    // instead of false to Media Capability.
-    // 2. If it's software(libvpx) decoder, currently libvpx can decode vp9 kSVC
+    // This adapter is different from rtc_video_decoder_adapter.
+    // If it's software(libvpx) decoder, currently libvpx can decode vp9 kSVC
     // stream properly. So only when |decoder_info_.is_hardware_accelerated| is
     // true, we will do the decoder capability check.
     if (video_codec_type_ == webrtc::kVideoCodecVP9 &&
         input_image.SpatialIndex().value_or(0) > 0 &&
-        !RTCVideoDecoderAdapter::Vp9HwSupportForSpatialLayers() &&
+        !RTCVideoDecoderAdapter::Vp9HwSupportForSpatialLayers(
+            video_decoder_type_) &&
         decoder_configured_ && decoder_info_.is_hardware_accelerated) {
-      bool need_fallback_to_software = true;
-#if BUILDFLAG(IS_WIN)
-      if (video_decoder_type_ == media::VideoDecoderType::kD3D11 &&
-          base::FeatureList::IsEnabled(media::kD3D11Vp9kSVCHWDecoding)) {
-        need_fallback_to_software = false;
-      }
-#endif
-      if (need_fallback_to_software) {
-        DLOG(ERROR) << __func__
-                    << " fallback to software due to decoder doesn't support "
-                       "decoding VP9 multiple spatial layers.";
-        RecordRTCVideoDecoderFallbackReason(
-            config_.codec(), RTCVideoDecoderFallbackReason::kSpatialLayers);
-        return WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE;
-      }
+      DLOG(ERROR) << __func__
+                  << " fallback to software due to decoder doesn't support "
+                     "decoding VP9 multiple spatial layers.";
+      RecordRTCVideoDecoderFallbackReason(
+          config_.codec(), RTCVideoDecoderFallbackReason::kSpatialLayers);
+      return WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE;
     }
   }
 
@@ -564,16 +549,11 @@ int32_t RTCVideoDecoderStreamAdapter::Decode(
   // Convert to media::DecoderBuffer.
   // TODO(sandersd): What is |render_time_ms|?
   auto pending_buffer = std::make_unique<PendingBuffer>();
+  pending_buffer->buffer =
+      media::DecoderBuffer::CopyFrom(input_image.data(), input_image.size());
   if (spatial_layer_frame_size.size() > 1) {
-    const uint8_t* side_data =
-        reinterpret_cast<const uint8_t*>(spatial_layer_frame_size.data());
-    size_t side_data_size =
-        spatial_layer_frame_size.size() * sizeof(uint32_t) / sizeof(uint8_t);
-    pending_buffer->buffer = media::DecoderBuffer::CopyFrom(
-        input_image.data(), input_image.size(), side_data, side_data_size);
-  } else {
-    pending_buffer->buffer =
-        media::DecoderBuffer::CopyFrom(input_image.data(), input_image.size());
+    pending_buffer->buffer->WritableSideData().spatial_layers =
+        spatial_layer_frame_size;
   }
   pending_buffer->buffer->set_timestamp(
       base::Microseconds(input_image.Timestamp()));
@@ -584,7 +564,8 @@ int32_t RTCVideoDecoderStreamAdapter::Decode(
   if (ShouldReinitializeForSettingHDRColorSpace(input_image)) {
     pending_buffer->new_config = config_;
     pending_buffer->new_config->set_color_space_info(
-        blink::WebRtcToMediaVideoColorSpace(*input_image.ColorSpace()));
+        media::VideoColorSpace::FromGfxColorSpace(
+            blink::WebRtcToGfxColorSpace(*input_image.ColorSpace())));
   }
 
   // Queue for decoding.
@@ -944,10 +925,10 @@ bool RTCVideoDecoderStreamAdapter::ShouldReinitializeForSettingHDRColorSpace(
 
   if (config_.profile() == media::VP9PROFILE_PROFILE2 &&
       input_image.ColorSpace()) {
-    const media::VideoColorSpace& new_color_space =
-        blink::WebRtcToMediaVideoColorSpace(*input_image.ColorSpace());
+    const gfx::ColorSpace& new_color_space =
+        blink::WebRtcToGfxColorSpace(*input_image.ColorSpace());
     if (!config_.color_space_info().IsSpecified() ||
-        new_color_space != config_.color_space_info()) {
+        new_color_space != config_.color_space_info().ToGfxColorSpace()) {
       return true;
     }
   }

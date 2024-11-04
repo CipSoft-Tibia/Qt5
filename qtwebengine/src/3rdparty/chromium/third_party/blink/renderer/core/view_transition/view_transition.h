@@ -109,10 +109,21 @@ class CORE_EXPORT ViewTransition : public ScriptWrappable,
   // transition.
   bool NeedsViewTransitionEffectNode(const LayoutObject& object) const;
 
+  // Returns true if this object needs a clip node to render a subset of its
+  // painting in the snapshot.
+  bool NeedsViewTransitionClipNode(const LayoutObject& object) const;
+
   // Returns true if this object is painted via pseudo elements. Note that this
   // is different from NeedsViewTransitionEffectNode() since the root may not
   // be a transitioning element, but require an effect node.
   bool IsRepresentedViaPseudoElements(const LayoutObject& object) const;
+
+  // Returns true if `node` participates in the transition excluding the
+  // document element. Since the root element's snapshot is hoisted up the
+  // LayoutView, this API should be used for checks which are needed to set up
+  // state for snapshotting an element. This state is set up on the LayoutView
+  // instead of the root element's LayoutView.
+  bool IsTransitionElementExcludingRoot(const Element& node) const;
 
   // Updates an effect node. This effect populates the view transition element
   // id and the shared element resource id. The return value is a result of
@@ -123,8 +134,19 @@ class CORE_EXPORT ViewTransition : public ScriptWrappable,
       const ClipPaintPropertyNodeOrAlias* current_clip,
       const TransformPaintPropertyNodeOrAlias* current_transform);
 
+  // Updates a clip node. The clip tracks the subset of the |object|'s ink
+  // overflow rectangle which should be painted.The return value is a result of
+  // updating the clip node.
+  PaintPropertyChangeType UpdateCaptureClip(
+      const LayoutObject& object,
+      const ClipPaintPropertyNodeOrAlias* current_clip,
+      const TransformPaintPropertyNodeOrAlias* current_transform);
+
   // Returns the effect. One needs to first call UpdateEffect().
-  EffectPaintPropertyNode* GetEffect(const LayoutObject& object) const;
+  const EffectPaintPropertyNode* GetEffect(const LayoutObject& object) const;
+
+  // Returns the clip. One needs to first call UpdateCaptureClip().
+  const ClipPaintPropertyNode* GetCaptureClip(const LayoutObject& object) const;
 
   // Dispatched during a lifecycle update after prepaint has finished its work.
   // This is only done if the lifecycle update was triggered outside of a main
@@ -148,7 +170,7 @@ class CORE_EXPORT ViewTransition : public ScriptWrappable,
 
   // Returns the UA style sheet for the pseudo element tree generated during a
   // transition.
-  String UAStyleSheet() const;
+  CSSStyleSheet* UAStyleSheet() const;
 
   // CommitObserver overrides.
   void WillCommitCompositorFrame() override;
@@ -160,7 +182,8 @@ class CORE_EXPORT ViewTransition : public ScriptWrappable,
   }
 
   bool IsRootTransitioning() const {
-    return style_tracker_ && style_tracker_->IsRootTransitioning();
+    return style_tracker_ && document_->documentElement() &&
+           style_tracker_->IsTransitionElement(*document_->documentElement());
   }
 
   // In physical pixels. See comments on equivalent methods in
@@ -195,6 +218,10 @@ class CORE_EXPORT ViewTransition : public ScriptWrappable,
   // Returns true if lifecycle updates should be throttled for the Document
   // associated with this transition.
   bool ShouldThrottleRendering() const;
+
+  // Ensure the LayoutViewTransitionRoot, representing the snapshot containing
+  // block concept, has up to date style.
+  void UpdateSnapshotContainingBlockStyle();
 
  private:
   friend class ViewTransitionTest;

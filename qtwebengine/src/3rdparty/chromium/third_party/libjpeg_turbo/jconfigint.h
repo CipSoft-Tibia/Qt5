@@ -26,7 +26,7 @@
 #define PACKAGE_NAME  "libjpeg-turbo"
 
 /* Version number of package */
-#define VERSION  "2.1.4"
+#define VERSION  "2.1.5.1"
 
 /* The size of `size_t', as computed by sizeof. */
 #include <stdint.h>

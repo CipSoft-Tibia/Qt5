@@ -36,6 +36,10 @@
 #if BUILDFLAG(ENABLE_DICE_SUPPORT) && !defined(TOOLKIT_QT)
 #include "chrome/browser/web_data_service_factory.h"
 #include "components/keyed_service/core/service_access_type.h"
+#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+#include "chrome/browser/signin/bound_session_credentials/unexportable_key_service_factory.h"
+#include "components/unexportable_keys/unexportable_key_service.h"  // nogncheck
+#endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
@@ -61,9 +65,19 @@ void IdentityManagerFactory::RegisterProfilePrefs(
 }
 
 IdentityManagerFactory::IdentityManagerFactory()
-    : ProfileKeyedServiceFactory("IdentityManager") {
+    : ProfileKeyedServiceFactory(
+          "IdentityManager",
+          ProfileSelections::Builder()
+              .WithRegular(ProfileSelection::kOriginalOnly)
+              // TODO(crbug.com/1418376): Check if this service is needed in
+              // Guest mode.
+              .WithGuest(ProfileSelection::kOriginalOnly)
+              .Build()) {
 #if BUILDFLAG(ENABLE_DICE_SUPPORT) && !defined(TOOLKIT_QT)
   DependsOn(WebDataServiceFactory::GetInstance());
+#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+  DependsOn(UnexportableKeyServiceFactory::GetInstance());
+#endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 #endif
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
   DependsOn(ProfileAccountManagerFactory::GetInstance());
@@ -135,9 +149,12 @@ KeyedService* IdentityManagerFactory::BuildServiceInstanceFor(
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS_LACROS)
 #if !defined(TOOLKIT_QT)
-  params.delete_signin_cookies_on_exit =
-      signin::SettingsDeleteSigninCookiesOnExit(
-          CookieSettingsFactory::GetForProfile(profile).get());
+  {
+    scoped_refptr<content_settings::CookieSettings> cookie_settings =
+        CookieSettingsFactory::GetForProfile(profile);
+    params.delete_signin_cookies_on_exit =
+        signin::SettingsDeleteSigninCookiesOnExit(cookie_settings.get());
+  }
 #else
   params.delete_signin_cookies_on_exit = true;
 #endif
@@ -146,7 +163,11 @@ KeyedService* IdentityManagerFactory::BuildServiceInstanceFor(
 #if BUILDFLAG(ENABLE_DICE_SUPPORT) && !defined(TOOLKIT_QT)
   params.token_web_data = WebDataServiceFactory::GetTokenWebDataForProfile(
       profile, ServiceAccessType::EXPLICIT_ACCESS);
-#endif
+#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+  params.unexportable_key_service =
+      UnexportableKeyServiceFactory::GetForProfile(profile);
+#endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+#endif  // #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
   params.account_manager_facade =

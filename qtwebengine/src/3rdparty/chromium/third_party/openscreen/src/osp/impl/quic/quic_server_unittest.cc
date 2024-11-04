@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,8 +19,7 @@
 #include "platform/test/fake_clock.h"
 #include "platform/test/fake_task_runner.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 namespace {
 
 using ::testing::_;
@@ -50,35 +49,32 @@ class MockConnectionObserver final : public ProtocolConnection::Observer {
 
 class QuicServerTest : public Test {
  public:
-  QuicServerTest() {
-    fake_clock_ = std::make_unique<FakeClock>(
-        Clock::time_point(std::chrono::milliseconds(1298424)));
-    task_runner_ = std::make_unique<FakeTaskRunner>(fake_clock_.get());
-    quic_bridge_ =
-        std::make_unique<FakeQuicBridge>(task_runner_.get(), FakeClock::now);
-  }
+  QuicServerTest()
+      : fake_clock_(Clock::time_point(std::chrono::milliseconds(1298424))),
+        task_runner_(&fake_clock_),
+        quic_bridge_(task_runner_, FakeClock::now) {}
 
  protected:
   std::unique_ptr<ProtocolConnection> ExpectIncomingConnection() {
     MockConnectRequest mock_connect_request;
     NetworkServiceManager::Get()->GetProtocolConnectionClient()->Connect(
-        quic_bridge_->kReceiverEndpoint, &mock_connect_request);
+        quic_bridge_.kReceiverEndpoint, &mock_connect_request);
     std::unique_ptr<ProtocolConnection> stream;
     EXPECT_CALL(mock_connect_request, OnConnectionOpenedMock());
-    EXPECT_CALL(quic_bridge_->mock_server_observer, OnIncomingConnectionMock(_))
+    EXPECT_CALL(quic_bridge_.mock_server_observer, OnIncomingConnectionMock(_))
         .WillOnce(
             Invoke([&stream](std::unique_ptr<ProtocolConnection>& connection) {
               stream = std::move(connection);
             }));
-    quic_bridge_->RunTasksUntilIdle();
+    quic_bridge_.RunTasksUntilIdle();
     return stream;
   }
 
   void SetUp() override {
-    server_ = quic_bridge_->quic_server.get();
+    server_ = quic_bridge_.quic_server.get();
     NetworkServiceManager::Create(nullptr, nullptr,
-                                  std::move(quic_bridge_->quic_client),
-                                  std::move(quic_bridge_->quic_server));
+                                  std::move(quic_bridge_.quic_client),
+                                  std::move(quic_bridge_.quic_server));
   }
 
   void TearDown() override { NetworkServiceManager::Dispose(); }
@@ -86,7 +82,7 @@ class QuicServerTest : public Test {
   void SendTestMessage(ProtocolConnection* connection) {
     MockMessageCallback mock_message_callback;
     MessageDemuxer::MessageWatch message_watch =
-        quic_bridge_->controller_demuxer->WatchMessageType(
+        quic_bridge_.controller_demuxer->WatchMessageType(
             0, msgs::Type::kPresentationConnectionMessage,
             &mock_message_callback);
 
@@ -114,7 +110,7 @@ class QuicServerTest : public Test {
             return ErrorOr<size_t>(Error::Code::kCborParsing);
           return ErrorOr<size_t>(decode_result);
         }));
-    quic_bridge_->RunTasksUntilIdle();
+    quic_bridge_.RunTasksUntilIdle();
 
     ASSERT_GT(decode_result, 0);
     EXPECT_EQ(decode_result, static_cast<ssize_t>(buffer.size() - 1));
@@ -124,9 +120,9 @@ class QuicServerTest : public Test {
     EXPECT_EQ(received_message.message.str, message.message.str);
   }
 
-  std::unique_ptr<FakeClock> fake_clock_;
-  std::unique_ptr<FakeTaskRunner> task_runner_;
-  std::unique_ptr<FakeQuicBridge> quic_bridge_;
+  FakeClock fake_clock_;
+  FakeTaskRunner task_runner_;
+  FakeQuicBridge quic_bridge_;
   QuicServer* server_;
 };
 
@@ -157,7 +153,7 @@ TEST_F(QuicServerTest, OpenImmediate) {
 
 TEST_F(QuicServerTest, States) {
   server_->Stop();
-  EXPECT_CALL(quic_bridge_->mock_server_observer, OnRunning());
+  EXPECT_CALL(quic_bridge_.mock_server_observer, OnRunning());
   EXPECT_TRUE(server_->Start());
   EXPECT_FALSE(server_->Start());
 
@@ -167,27 +163,27 @@ TEST_F(QuicServerTest, States) {
   connection->SetObserver(&mock_connection_observer);
 
   EXPECT_CALL(mock_connection_observer, OnConnectionClosed(_));
-  EXPECT_CALL(quic_bridge_->mock_server_observer, OnStopped());
+  EXPECT_CALL(quic_bridge_.mock_server_observer, OnStopped());
   EXPECT_TRUE(server_->Stop());
   EXPECT_FALSE(server_->Stop());
 
-  EXPECT_CALL(quic_bridge_->mock_server_observer, OnRunning());
+  EXPECT_CALL(quic_bridge_.mock_server_observer, OnRunning());
   EXPECT_TRUE(server_->Start());
 
-  EXPECT_CALL(quic_bridge_->mock_server_observer, OnSuspended());
+  EXPECT_CALL(quic_bridge_.mock_server_observer, OnSuspended());
   EXPECT_TRUE(server_->Suspend());
   EXPECT_FALSE(server_->Suspend());
   EXPECT_FALSE(server_->Start());
 
-  EXPECT_CALL(quic_bridge_->mock_server_observer, OnRunning());
+  EXPECT_CALL(quic_bridge_.mock_server_observer, OnRunning());
   EXPECT_TRUE(server_->Resume());
   EXPECT_FALSE(server_->Resume());
   EXPECT_FALSE(server_->Start());
 
-  EXPECT_CALL(quic_bridge_->mock_server_observer, OnSuspended());
+  EXPECT_CALL(quic_bridge_.mock_server_observer, OnSuspended());
   EXPECT_TRUE(server_->Suspend());
 
-  EXPECT_CALL(quic_bridge_->mock_server_observer, OnStopped());
+  EXPECT_CALL(quic_bridge_.mock_server_observer, OnStopped());
   EXPECT_TRUE(server_->Stop());
 }
 
@@ -201,12 +197,11 @@ TEST_F(QuicServerTest, RequestIds) {
 
   connection->CloseWriteEnd();
   connection.reset();
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   EXPECT_EQ(5u, server_->endpoint_request_ids()->GetNextRequestId(endpoint_id));
 
   server_->Stop();
   EXPECT_EQ(1u, server_->endpoint_request_ids()->GetNextRequestId(endpoint_id));
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

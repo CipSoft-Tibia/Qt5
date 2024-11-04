@@ -48,7 +48,6 @@ export enum IssueCategory {
   Cookie = 'Cookie',
   HeavyAd = 'HeavyAd',
   ContentSecurityPolicy = 'ContentSecurityPolicy',
-  TrustedWebActivity = 'TrustedWebActivity',
   LowTextContrast = 'LowTextContrast',
   Cors = 'Cors',
   AttributionReporting = 'AttributionReporting',
@@ -114,7 +113,7 @@ export function unionIssueKind(a: IssueKind, b: IssueKind): IssueKind {
 }
 
 export function getShowThirdPartyIssuesSetting(): Common.Settings.Setting<boolean> {
-  return Common.Settings.Settings.instance().createSetting('showThirdPartyIssues', false);
+  return Common.Settings.Settings.instance().createSetting('showThirdPartyIssues', true);
 }
 
 export interface AffectedElement {
@@ -169,6 +168,10 @@ export abstract class Issue<IssueCode extends string = string> {
   }
 
   sources(): Iterable<Protocol.Audits.SourceCodeLocation> {
+    return [];
+  }
+
+  trackingSites(): Iterable<string> {
     return [];
   }
 

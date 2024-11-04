@@ -4,33 +4,22 @@
 
 package org.qtproject.qt.android;
 
+import android.app.Activity;
 import android.content.Context;
 import android.graphics.Point;
-import android.os.Bundle;
-import android.util.Log;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.widget.LinearLayout;
-import android.widget.ImageView;
-import android.content.res.TypedArray;
-import android.graphics.drawable.Drawable;
-import android.view.MotionEvent;
-import android.widget.PopupWindow;
-import android.app.Activity;
-import android.view.ViewTreeObserver;
-import android.view.View.OnClickListener;
-import android.view.ViewGroup.LayoutParams;
 import android.view.ViewGroup;
-import android.R;
+import android.view.ViewTreeObserver;
+import android.widget.PopupWindow;
 
 // Helper class that manages a cursor or selection handle
 public class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.OnLayoutChangeListener,
         EditContextView.OnClickListener
 {
-    private View m_layout = null;
-    private EditContextView m_view = null;
+    private final View m_layout;
+    private final EditContextView m_view;
     private PopupWindow m_popup = null;
-    private Activity m_activity;
+    private final Activity m_activity;
     private int m_posX;
     private int m_posY;
     private int m_buttons;
@@ -146,16 +135,16 @@ public class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.O
     @Override
     public void contextButtonClicked(int buttonId) {
         switch (buttonId) {
-        case R.string.cut:
+        case android.R.string.cut:
             QtNativeInputConnection.cut();
             break;
-        case R.string.copy:
+        case android.R.string.copy:
             QtNativeInputConnection.copy();
             break;
-        case R.string.paste:
+        case android.R.string.paste:
             QtNativeInputConnection.paste();
             break;
-        case R.string.selectAll:
+        case android.R.string.selectAll:
             QtNativeInputConnection.selectAll();
             break;
         }

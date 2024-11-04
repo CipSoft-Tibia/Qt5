@@ -200,7 +200,7 @@ export class PaintProfilerView extends Common.ObjectWrapper.eventMixin<EventType
     return result;
   }
 
-  onResize(): void {
+  override onResize(): void {
     this.update();
   }
 
@@ -412,7 +412,7 @@ export class PaintProfilerView extends Common.ObjectWrapper.eventMixin<EventType
     this.selectionWindowInternal.reset();
     this.selectionWindowInternal.setEnabled(false);
   }
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([paintProfilerStyles]);
   }
@@ -439,7 +439,7 @@ export class PaintProfilerCommandLogView extends UI.ThrottledWidget.ThrottledWid
     this.element.classList.add('overflow-auto');
 
     this.treeOutline = new UI.TreeOutline.TreeOutlineInShadow();
-    UI.ARIAUtils.setAccessibleName(this.treeOutline.contentElement, i18nString(UIStrings.commandLog));
+    UI.ARIAUtils.setLabel(this.treeOutline.contentElement, i18nString(UIStrings.commandLog));
     this.element.appendChild(this.treeOutline.element);
     this.setDefaultFocusedElement(this.treeOutline.contentElement);
 
@@ -469,7 +469,7 @@ export class PaintProfilerCommandLogView extends UI.ThrottledWidget.ThrottledWid
     this.update();
   }
 
-  doUpdate(): Promise<void> {
+  override doUpdate(): Promise<void> {
     if (!this.selectionWindow || !this.log.length) {
       this.treeOutline.removeChildren();
       return Promise.resolve();
@@ -508,11 +508,11 @@ export class LogTreeElement extends UI.TreeOutline.TreeElement {
     this.filled = false;
   }
 
-  onattach(): void {
+  override onattach(): void {
     this.update();
   }
 
-  async onpopulate(): Promise<void> {
+  override async onpopulate(): Promise<void> {
     for (const param in this.logItem.params) {
       LogPropertyTreeElement.appendLogPropertyItem(this, param, this.logItem.params[param]);
     }
@@ -525,14 +525,15 @@ export class LogTreeElement extends UI.TreeOutline.TreeElement {
     let str = '';
     let keyCount = 0;
     for (const key in param) {
-      if (++keyCount > 4 || typeof param[key] === 'object' ||
-          (typeof param[key] === 'string' && param[key].length > 100)) {
+      const paramKey = param[key];
+      if (++keyCount > 4 || paramKey === 'object' ||
+          (paramKey=== 'string' && paramKey.length > 100)) {
         return name;
       }
       if (str) {
         str += ', ';
       }
-      str += param[key];
+      str += paramKey;
     }
     return str;
   }
@@ -575,7 +576,7 @@ export class LogPropertyTreeElement extends UI.TreeOutline.TreeElement {
     }
   }
 
-  onattach(): void {
+  override onattach(): void {
     const title = document.createDocumentFragment();
     const nameElement = title.createChild('span', 'name');
     nameElement.textContent = this.property.name;

@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "tst_qmltc.h"
 
@@ -86,6 +86,8 @@
 #include "mysignals.h"
 #include "namespacedtypes.h"
 #include "type.h"
+#include "qmltablemodel.h"
+#include "stringtourl.h"
 #include "signalconnections.h"
 
 // Qt:
@@ -379,7 +381,14 @@ void tst_qmltc::properties()
     QCOMPARE(created.intP(), 42);
     QCOMPARE(created.realP(), 2.32);
     QCOMPARE(created.stringP(), u"hello, world"_s);
-    QCOMPARE(created.urlP(), u"https://www.qt.io/"_s);
+    QCOMPARE(created.urlP(), QUrl(u"https://www.qt.io/"_s));
+    QCOMPARE(created.pointP(), QPoint(100, 200));
+    QCOMPARE(created.quatP(), QQuaternion(400, 100, 200, 300));
+    QCOMPARE(created.rectP(), QRectF(100, 200, 300, 400));
+    QCOMPARE(created.sizeP(), QSizeF(100, 200));
+    QCOMPARE(created.vec2dP(), QVector2D(100, 200));
+    QCOMPARE(created.vec3dP(), QVector3D(100, 200, 300));
+    QCOMPARE(created.vec4dP(), QVector4D(100, 200, 300, 400));
     QCOMPARE(created.varP(), 42.42);
 
     QCOMPARE(created.boolP(), true);
@@ -3232,6 +3241,31 @@ void tst_qmltc::checkExportsNoFileName()
     QQmlEngine e;
     QmltcExportedNoFileNameTest::HelloExportedWorldNoFileName w(&e);
     QCOMPARE(w.myString(), u"Hello! I should be exported by qmltc"_s);
+}
+
+#if QT_CONFIG(qml_table_model)
+void tst_qmltc::qmlTableModel()
+{
+    QQmlEngine e;
+    PREPEND_NAMESPACE(QmlTableModel) createdByQmltc(&e);
+    // check that the tableModel is not default constructed
+    QVariant model = createdByQmltc.model();
+    QVERIFY(model.isValid());
+    QQmlTableModel *tableModel = model.value<QQmlTableModel *>();
+    QVERIFY(tableModel);
+    QCOMPARE(tableModel->property("testName").toString(), u"MyTableModel"_s);
+}
+#endif
+
+void tst_qmltc::urlToString()
+{
+    QQmlEngine e;
+    PREPEND_NAMESPACE(stringToUrl) createdByQmltc(&e);
+    // check that the tableModel is not default constructed
+    QUrl first = createdByQmltc.iconLoader()->source();
+    QUrl second = createdByQmltc.iconLoader2()->source();
+    QCOMPARE(first, QUrl("qrc:/qt/qml/path/to/font.ttf"));
+    QCOMPARE(second, QUrl("qrc:/qt/qml/path/to/font2.ttf"));
 }
 
 void tst_qmltc::signalConnections()

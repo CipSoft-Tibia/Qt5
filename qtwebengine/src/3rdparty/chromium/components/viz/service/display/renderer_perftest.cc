@@ -144,7 +144,7 @@ base::span<const uint8_t> MakePixelSpan(const std::vector<T>& vec) {
                          vec.size() * sizeof(T));
 }
 
-void DeleteSharedImage(scoped_refptr<ContextProvider> context_provider,
+void DeleteSharedImage(scoped_refptr<RasterContextProvider> context_provider,
                        gpu::Mailbox mailbox,
                        const gpu::SyncToken& sync_token,
                        bool is_lost) {
@@ -159,7 +159,7 @@ TransferableResource CreateTestTexture(
     SkColor4f texel_color,
     bool premultiplied_alpha,
     ClientResourceProvider* child_resource_provider,
-    scoped_refptr<ContextProvider> child_context_provider) {
+    scoped_refptr<RasterContextProvider> child_context_provider) {
   using SkPMColor4f = SkRGBA4f<kPremul_SkAlphaType>;
   const SkPMColor4f pixel_color =
       premultiplied_alpha ? texel_color.premul()
@@ -175,11 +175,11 @@ TransferableResource CreateTestTexture(
   gpu::Mailbox mailbox = sii->CreateSharedImage(
       SinglePlaneFormat::kRGBA_8888, size, gfx::ColorSpace(),
       kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType,
-      gpu::SHARED_IMAGE_USAGE_DISPLAY_READ, MakePixelSpan(pixels));
+      gpu::SHARED_IMAGE_USAGE_DISPLAY_READ, "TestLabel", MakePixelSpan(pixels));
   gpu::SyncToken sync_token = sii->GenVerifiedSyncToken();
 
   TransferableResource gl_resource = TransferableResource::MakeGpu(
-      mailbox, GL_LINEAR, GL_TEXTURE_2D, sync_token, size, RGBA_8888,
+      mailbox, GL_TEXTURE_2D, sync_token, size, SinglePlaneFormat::kRGBA_8888,
       false /* is_overlay_candidate */);
   gl_resource.color_space = gfx::ColorSpace();
   auto release_callback = base::BindOnce(
@@ -261,7 +261,7 @@ class RendererPerfTest : public VizPerfTest {
 
     child_context_provider_ =
         base::MakeRefCounted<TestInProcessContextProvider>(
-            TestContextType::kGLES2, /*support_locking=*/false);
+            TestContextType::kGLES2WithRaster, /*support_locking=*/false);
     child_context_provider_->BindToCurrentSequence();
     child_resource_provider_ = std::make_unique<ClientResourceProvider>();
 
@@ -633,7 +633,7 @@ class RendererPerfTest : public VizPerfTest {
   RendererSettings renderer_settings_;
   DebugRendererSettings debug_settings_;
   std::unique_ptr<Display> display_;
-  scoped_refptr<ContextProvider> child_context_provider_;
+  scoped_refptr<RasterContextProvider> child_context_provider_;
   std::unique_ptr<ClientResourceProvider> child_resource_provider_;
   std::vector<TransferableResource> resource_list_;
   std::unique_ptr<gl::DisableNullDrawGLBindings> enable_pixel_output_;

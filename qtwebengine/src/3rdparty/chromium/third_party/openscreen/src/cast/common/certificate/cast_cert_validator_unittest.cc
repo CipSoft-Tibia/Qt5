@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,11 +12,11 @@
 #include "cast/common/public/trust_store.h"
 #include "gtest/gtest.h"
 #include "openssl/pem.h"
+#include "platform/test/byte_view_test_util.h"
 #include "platform/test/paths.h"
 #include "util/crypto/pem_helpers.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 enum TrustStoreDependency {
@@ -87,20 +87,14 @@ void RunTest(Error::Code expected_result,
   // Test that the target certificate is named as we expect.
   EXPECT_EQ(expected_common_name, target_cert->GetCommonName());
 
-#define DATA_SPAN_FROM_LITERAL(s)                                          \
-  ConstDataSpan{const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(s)), \
-                sizeof(s) - 1}
-
   // Test verification of some invalid signatures.
   EXPECT_FALSE(target_cert->VerifySignedData(
-      DigestAlgorithm::kSha256, DATA_SPAN_FROM_LITERAL("bogus data"),
-      DATA_SPAN_FROM_LITERAL("bogus signature")));
+      DigestAlgorithm::kSha256, ByteViewFromLiteral("bogus data"),
+      ByteViewFromLiteral("bogus signature")));
   EXPECT_FALSE(target_cert->VerifySignedData(
-      DigestAlgorithm::kSha256, DATA_SPAN_FROM_LITERAL("bogus data"),
-      DATA_SPAN_FROM_LITERAL("")));
+      DigestAlgorithm::kSha256, ByteViewFromLiteral("bogus data"), ByteView()));
   EXPECT_FALSE(target_cert->VerifySignedData(DigestAlgorithm::kSha256,
-                                             DATA_SPAN_FROM_LITERAL(""),
-                                             DATA_SPAN_FROM_LITERAL("")));
+                                             ByteView(), ByteView()));
 
   // If valid signatures are known for this device certificate, test them.
   if (!optional_signed_data_file_name.empty()) {
@@ -619,5 +613,4 @@ TEST(VerifyCastDeviceCertTest, TimeDateConversionValidate) {
 }
 
 }  // namespace
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

@@ -10,6 +10,7 @@
 #include <QtCore/qbytearray.h>
 #include <QtCore/qstring.h>
 #include "basicmessages.qpb.h"
+#include "tst_qtprotobufgen_gen_exports.qpb.h"
 
 #include <QtCore/qmetatype.h>
 #include <QtCore/qlist.h>
@@ -21,183 +22,535 @@
 namespace qtprotobufnamespace::tests {
 class SimpleSInt32StringMapMessage;
 using SimpleSInt32StringMapMessageRepeated = QList<SimpleSInt32StringMapMessage>;
+namespace SimpleSInt32StringMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt32StringMapMessage_QtProtobufNested
+
 class SimpleSInt64StringMapMessage;
 using SimpleSInt64StringMapMessageRepeated = QList<SimpleSInt64StringMapMessage>;
+namespace SimpleSInt64StringMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt64StringMapMessage_QtProtobufNested
+
 class SimpleInt32StringMapMessage;
 using SimpleInt32StringMapMessageRepeated = QList<SimpleInt32StringMapMessage>;
+namespace SimpleInt32StringMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt32StringMapMessage_QtProtobufNested
+
 class SimpleInt64StringMapMessage;
 using SimpleInt64StringMapMessageRepeated = QList<SimpleInt64StringMapMessage>;
+namespace SimpleInt64StringMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt64StringMapMessage_QtProtobufNested
+
 class SimpleUInt32StringMapMessage;
 using SimpleUInt32StringMapMessageRepeated = QList<SimpleUInt32StringMapMessage>;
+namespace SimpleUInt32StringMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt32StringMapMessage_QtProtobufNested
+
 class SimpleUInt64StringMapMessage;
 using SimpleUInt64StringMapMessageRepeated = QList<SimpleUInt64StringMapMessage>;
+namespace SimpleUInt64StringMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt64StringMapMessage_QtProtobufNested
+
 class SimpleFixed32StringMapMessage;
 using SimpleFixed32StringMapMessageRepeated = QList<SimpleFixed32StringMapMessage>;
+namespace SimpleFixed32StringMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed32StringMapMessage_QtProtobufNested
+
 class SimpleFixed64StringMapMessage;
 using SimpleFixed64StringMapMessageRepeated = QList<SimpleFixed64StringMapMessage>;
+namespace SimpleFixed64StringMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed64StringMapMessage_QtProtobufNested
+
 class SimpleSFixed32StringMapMessage;
 using SimpleSFixed32StringMapMessageRepeated = QList<SimpleSFixed32StringMapMessage>;
+namespace SimpleSFixed32StringMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed32StringMapMessage_QtProtobufNested
+
 class SimpleSFixed64StringMapMessage;
 using SimpleSFixed64StringMapMessageRepeated = QList<SimpleSFixed64StringMapMessage>;
+namespace SimpleSFixed64StringMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed64StringMapMessage_QtProtobufNested
+
 class SimpleStringStringMapMessage;
 using SimpleStringStringMapMessageRepeated = QList<SimpleStringStringMapMessage>;
+namespace SimpleStringStringMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleStringStringMapMessage_QtProtobufNested
+
 class SimpleSInt32SInt32MapMessage;
 using SimpleSInt32SInt32MapMessageRepeated = QList<SimpleSInt32SInt32MapMessage>;
+namespace SimpleSInt32SInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt32SInt32MapMessage_QtProtobufNested
+
 class SimpleSInt64SInt32MapMessage;
 using SimpleSInt64SInt32MapMessageRepeated = QList<SimpleSInt64SInt32MapMessage>;
+namespace SimpleSInt64SInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt64SInt32MapMessage_QtProtobufNested
+
 class SimpleInt32SInt32MapMessage;
 using SimpleInt32SInt32MapMessageRepeated = QList<SimpleInt32SInt32MapMessage>;
+namespace SimpleInt32SInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt32SInt32MapMessage_QtProtobufNested
+
 class SimpleInt64SInt32MapMessage;
 using SimpleInt64SInt32MapMessageRepeated = QList<SimpleInt64SInt32MapMessage>;
+namespace SimpleInt64SInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt64SInt32MapMessage_QtProtobufNested
+
 class SimpleUInt32SInt32MapMessage;
 using SimpleUInt32SInt32MapMessageRepeated = QList<SimpleUInt32SInt32MapMessage>;
+namespace SimpleUInt32SInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt32SInt32MapMessage_QtProtobufNested
+
 class SimpleUInt64SInt32MapMessage;
 using SimpleUInt64SInt32MapMessageRepeated = QList<SimpleUInt64SInt32MapMessage>;
+namespace SimpleUInt64SInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt64SInt32MapMessage_QtProtobufNested
+
 class SimpleFixed32SInt32MapMessage;
 using SimpleFixed32SInt32MapMessageRepeated = QList<SimpleFixed32SInt32MapMessage>;
+namespace SimpleFixed32SInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed32SInt32MapMessage_QtProtobufNested
+
 class SimpleFixed64SInt32MapMessage;
 using SimpleFixed64SInt32MapMessageRepeated = QList<SimpleFixed64SInt32MapMessage>;
+namespace SimpleFixed64SInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed64SInt32MapMessage_QtProtobufNested
+
 class SimpleSFixed32SInt32MapMessage;
 using SimpleSFixed32SInt32MapMessageRepeated = QList<SimpleSFixed32SInt32MapMessage>;
+namespace SimpleSFixed32SInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed32SInt32MapMessage_QtProtobufNested
+
 class SimpleSFixed64SInt32MapMessage;
 using SimpleSFixed64SInt32MapMessageRepeated = QList<SimpleSFixed64SInt32MapMessage>;
+namespace SimpleSFixed64SInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed64SInt32MapMessage_QtProtobufNested
+
 class SimpleStringSInt32MapMessage;
 using SimpleStringSInt32MapMessageRepeated = QList<SimpleStringSInt32MapMessage>;
+namespace SimpleStringSInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleStringSInt32MapMessage_QtProtobufNested
+
 class SimpleSInt32SInt64MapMessage;
 using SimpleSInt32SInt64MapMessageRepeated = QList<SimpleSInt32SInt64MapMessage>;
+namespace SimpleSInt32SInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt32SInt64MapMessage_QtProtobufNested
+
 class SimpleSInt64SInt64MapMessage;
 using SimpleSInt64SInt64MapMessageRepeated = QList<SimpleSInt64SInt64MapMessage>;
+namespace SimpleSInt64SInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt64SInt64MapMessage_QtProtobufNested
+
 class SimpleInt32SInt64MapMessage;
 using SimpleInt32SInt64MapMessageRepeated = QList<SimpleInt32SInt64MapMessage>;
+namespace SimpleInt32SInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt32SInt64MapMessage_QtProtobufNested
+
 class SimpleInt64SInt64MapMessage;
 using SimpleInt64SInt64MapMessageRepeated = QList<SimpleInt64SInt64MapMessage>;
+namespace SimpleInt64SInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt64SInt64MapMessage_QtProtobufNested
+
 class SimpleUInt32SInt64MapMessage;
 using SimpleUInt32SInt64MapMessageRepeated = QList<SimpleUInt32SInt64MapMessage>;
+namespace SimpleUInt32SInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt32SInt64MapMessage_QtProtobufNested
+
 class SimpleUInt64SInt64MapMessage;
 using SimpleUInt64SInt64MapMessageRepeated = QList<SimpleUInt64SInt64MapMessage>;
+namespace SimpleUInt64SInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt64SInt64MapMessage_QtProtobufNested
+
 class SimpleFixed32SInt64MapMessage;
 using SimpleFixed32SInt64MapMessageRepeated = QList<SimpleFixed32SInt64MapMessage>;
+namespace SimpleFixed32SInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed32SInt64MapMessage_QtProtobufNested
+
 class SimpleFixed64SInt64MapMessage;
 using SimpleFixed64SInt64MapMessageRepeated = QList<SimpleFixed64SInt64MapMessage>;
+namespace SimpleFixed64SInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed64SInt64MapMessage_QtProtobufNested
+
 class SimpleSFixed32SInt64MapMessage;
 using SimpleSFixed32SInt64MapMessageRepeated = QList<SimpleSFixed32SInt64MapMessage>;
+namespace SimpleSFixed32SInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed32SInt64MapMessage_QtProtobufNested
+
 class SimpleSFixed64SInt64MapMessage;
 using SimpleSFixed64SInt64MapMessageRepeated = QList<SimpleSFixed64SInt64MapMessage>;
+namespace SimpleSFixed64SInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed64SInt64MapMessage_QtProtobufNested
+
 class SimpleStringSInt64MapMessage;
 using SimpleStringSInt64MapMessageRepeated = QList<SimpleStringSInt64MapMessage>;
+namespace SimpleStringSInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleStringSInt64MapMessage_QtProtobufNested
+
 class SimpleSInt32UInt32MapMessage;
 using SimpleSInt32UInt32MapMessageRepeated = QList<SimpleSInt32UInt32MapMessage>;
+namespace SimpleSInt32UInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt32UInt32MapMessage_QtProtobufNested
+
 class SimpleSInt64UInt32MapMessage;
 using SimpleSInt64UInt32MapMessageRepeated = QList<SimpleSInt64UInt32MapMessage>;
+namespace SimpleSInt64UInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt64UInt32MapMessage_QtProtobufNested
+
 class SimpleInt32UInt32MapMessage;
 using SimpleInt32UInt32MapMessageRepeated = QList<SimpleInt32UInt32MapMessage>;
+namespace SimpleInt32UInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt32UInt32MapMessage_QtProtobufNested
+
 class SimpleInt64UInt32MapMessage;
 using SimpleInt64UInt32MapMessageRepeated = QList<SimpleInt64UInt32MapMessage>;
+namespace SimpleInt64UInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt64UInt32MapMessage_QtProtobufNested
+
 class SimpleUInt32UInt32MapMessage;
 using SimpleUInt32UInt32MapMessageRepeated = QList<SimpleUInt32UInt32MapMessage>;
+namespace SimpleUInt32UInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt32UInt32MapMessage_QtProtobufNested
+
 class SimpleUInt64UInt32MapMessage;
 using SimpleUInt64UInt32MapMessageRepeated = QList<SimpleUInt64UInt32MapMessage>;
+namespace SimpleUInt64UInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt64UInt32MapMessage_QtProtobufNested
+
 class SimpleFixed32UInt32MapMessage;
 using SimpleFixed32UInt32MapMessageRepeated = QList<SimpleFixed32UInt32MapMessage>;
+namespace SimpleFixed32UInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed32UInt32MapMessage_QtProtobufNested
+
 class SimpleFixed64UInt32MapMessage;
 using SimpleFixed64UInt32MapMessageRepeated = QList<SimpleFixed64UInt32MapMessage>;
+namespace SimpleFixed64UInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed64UInt32MapMessage_QtProtobufNested
+
 class SimpleSFixed32UInt32MapMessage;
 using SimpleSFixed32UInt32MapMessageRepeated = QList<SimpleSFixed32UInt32MapMessage>;
+namespace SimpleSFixed32UInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed32UInt32MapMessage_QtProtobufNested
+
 class SimpleSFixed64UInt32MapMessage;
 using SimpleSFixed64UInt32MapMessageRepeated = QList<SimpleSFixed64UInt32MapMessage>;
+namespace SimpleSFixed64UInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed64UInt32MapMessage_QtProtobufNested
+
 class SimpleStringUInt32MapMessage;
 using SimpleStringUInt32MapMessageRepeated = QList<SimpleStringUInt32MapMessage>;
+namespace SimpleStringUInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleStringUInt32MapMessage_QtProtobufNested
+
 class SimpleSInt32UInt64MapMessage;
 using SimpleSInt32UInt64MapMessageRepeated = QList<SimpleSInt32UInt64MapMessage>;
+namespace SimpleSInt32UInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt32UInt64MapMessage_QtProtobufNested
+
 class SimpleSInt64UInt64MapMessage;
 using SimpleSInt64UInt64MapMessageRepeated = QList<SimpleSInt64UInt64MapMessage>;
+namespace SimpleSInt64UInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt64UInt64MapMessage_QtProtobufNested
+
 class SimpleInt32UInt64MapMessage;
 using SimpleInt32UInt64MapMessageRepeated = QList<SimpleInt32UInt64MapMessage>;
+namespace SimpleInt32UInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt32UInt64MapMessage_QtProtobufNested
+
 class SimpleInt64UInt64MapMessage;
 using SimpleInt64UInt64MapMessageRepeated = QList<SimpleInt64UInt64MapMessage>;
+namespace SimpleInt64UInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt64UInt64MapMessage_QtProtobufNested
+
 class SimpleUInt32UInt64MapMessage;
 using SimpleUInt32UInt64MapMessageRepeated = QList<SimpleUInt32UInt64MapMessage>;
+namespace SimpleUInt32UInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt32UInt64MapMessage_QtProtobufNested
+
 class SimpleUInt64UInt64MapMessage;
 using SimpleUInt64UInt64MapMessageRepeated = QList<SimpleUInt64UInt64MapMessage>;
+namespace SimpleUInt64UInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt64UInt64MapMessage_QtProtobufNested
+
 class SimpleFixed32UInt64MapMessage;
 using SimpleFixed32UInt64MapMessageRepeated = QList<SimpleFixed32UInt64MapMessage>;
+namespace SimpleFixed32UInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed32UInt64MapMessage_QtProtobufNested
+
 class SimpleFixed64UInt64MapMessage;
 using SimpleFixed64UInt64MapMessageRepeated = QList<SimpleFixed64UInt64MapMessage>;
+namespace SimpleFixed64UInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed64UInt64MapMessage_QtProtobufNested
+
 class SimpleSFixed32UInt64MapMessage;
 using SimpleSFixed32UInt64MapMessageRepeated = QList<SimpleSFixed32UInt64MapMessage>;
+namespace SimpleSFixed32UInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed32UInt64MapMessage_QtProtobufNested
+
 class SimpleSFixed64UInt64MapMessage;
 using SimpleSFixed64UInt64MapMessageRepeated = QList<SimpleSFixed64UInt64MapMessage>;
+namespace SimpleSFixed64UInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed64UInt64MapMessage_QtProtobufNested
+
 class SimpleStringUInt64MapMessage;
 using SimpleStringUInt64MapMessageRepeated = QList<SimpleStringUInt64MapMessage>;
+namespace SimpleStringUInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleStringUInt64MapMessage_QtProtobufNested
+
 class SimpleSInt32Int32MapMessage;
 using SimpleSInt32Int32MapMessageRepeated = QList<SimpleSInt32Int32MapMessage>;
+namespace SimpleSInt32Int32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt32Int32MapMessage_QtProtobufNested
+
 class SimpleSInt64Int32MapMessage;
 using SimpleSInt64Int32MapMessageRepeated = QList<SimpleSInt64Int32MapMessage>;
+namespace SimpleSInt64Int32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt64Int32MapMessage_QtProtobufNested
+
 class SimpleInt32Int32MapMessage;
 using SimpleInt32Int32MapMessageRepeated = QList<SimpleInt32Int32MapMessage>;
+namespace SimpleInt32Int32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt32Int32MapMessage_QtProtobufNested
+
 class SimpleInt64Int32MapMessage;
 using SimpleInt64Int32MapMessageRepeated = QList<SimpleInt64Int32MapMessage>;
+namespace SimpleInt64Int32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt64Int32MapMessage_QtProtobufNested
+
 class SimpleUInt32Int32MapMessage;
 using SimpleUInt32Int32MapMessageRepeated = QList<SimpleUInt32Int32MapMessage>;
+namespace SimpleUInt32Int32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt32Int32MapMessage_QtProtobufNested
+
 class SimpleUInt64Int32MapMessage;
 using SimpleUInt64Int32MapMessageRepeated = QList<SimpleUInt64Int32MapMessage>;
+namespace SimpleUInt64Int32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt64Int32MapMessage_QtProtobufNested
+
 class SimpleFixed32Int32MapMessage;
 using SimpleFixed32Int32MapMessageRepeated = QList<SimpleFixed32Int32MapMessage>;
+namespace SimpleFixed32Int32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed32Int32MapMessage_QtProtobufNested
+
 class SimpleFixed64Int32MapMessage;
 using SimpleFixed64Int32MapMessageRepeated = QList<SimpleFixed64Int32MapMessage>;
+namespace SimpleFixed64Int32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed64Int32MapMessage_QtProtobufNested
+
 class SimpleSFixed32Int32MapMessage;
 using SimpleSFixed32Int32MapMessageRepeated = QList<SimpleSFixed32Int32MapMessage>;
+namespace SimpleSFixed32Int32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed32Int32MapMessage_QtProtobufNested
+
 class SimpleSFixed64Int32MapMessage;
 using SimpleSFixed64Int32MapMessageRepeated = QList<SimpleSFixed64Int32MapMessage>;
+namespace SimpleSFixed64Int32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed64Int32MapMessage_QtProtobufNested
+
 class SimpleStringInt32MapMessage;
 using SimpleStringInt32MapMessageRepeated = QList<SimpleStringInt32MapMessage>;
+namespace SimpleStringInt32MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleStringInt32MapMessage_QtProtobufNested
+
 class SimpleSInt32Int64MapMessage;
 using SimpleSInt32Int64MapMessageRepeated = QList<SimpleSInt32Int64MapMessage>;
+namespace SimpleSInt32Int64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt32Int64MapMessage_QtProtobufNested
+
 class SimpleSInt64Int64MapMessage;
 using SimpleSInt64Int64MapMessageRepeated = QList<SimpleSInt64Int64MapMessage>;
+namespace SimpleSInt64Int64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt64Int64MapMessage_QtProtobufNested
+
 class SimpleInt32Int64MapMessage;
 using SimpleInt32Int64MapMessageRepeated = QList<SimpleInt32Int64MapMessage>;
+namespace SimpleInt32Int64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt32Int64MapMessage_QtProtobufNested
+
 class SimpleInt64Int64MapMessage;
 using SimpleInt64Int64MapMessageRepeated = QList<SimpleInt64Int64MapMessage>;
+namespace SimpleInt64Int64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt64Int64MapMessage_QtProtobufNested
+
 class SimpleUInt32Int64MapMessage;
 using SimpleUInt32Int64MapMessageRepeated = QList<SimpleUInt32Int64MapMessage>;
+namespace SimpleUInt32Int64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt32Int64MapMessage_QtProtobufNested
+
 class SimpleUInt64Int64MapMessage;
 using SimpleUInt64Int64MapMessageRepeated = QList<SimpleUInt64Int64MapMessage>;
+namespace SimpleUInt64Int64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt64Int64MapMessage_QtProtobufNested
+
 class SimpleFixed32Int64MapMessage;
 using SimpleFixed32Int64MapMessageRepeated = QList<SimpleFixed32Int64MapMessage>;
+namespace SimpleFixed32Int64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed32Int64MapMessage_QtProtobufNested
+
 class SimpleFixed64Int64MapMessage;
 using SimpleFixed64Int64MapMessageRepeated = QList<SimpleFixed64Int64MapMessage>;
+namespace SimpleFixed64Int64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed64Int64MapMessage_QtProtobufNested
+
 class SimpleSFixed32Int64MapMessage;
 using SimpleSFixed32Int64MapMessageRepeated = QList<SimpleSFixed32Int64MapMessage>;
+namespace SimpleSFixed32Int64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed32Int64MapMessage_QtProtobufNested
+
 class SimpleSFixed64Int64MapMessage;
 using SimpleSFixed64Int64MapMessageRepeated = QList<SimpleSFixed64Int64MapMessage>;
+namespace SimpleSFixed64Int64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed64Int64MapMessage_QtProtobufNested
+
 class SimpleStringInt64MapMessage;
 using SimpleStringInt64MapMessageRepeated = QList<SimpleStringInt64MapMessage>;
+namespace SimpleStringInt64MapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleStringInt64MapMessage_QtProtobufNested
+
 class SimpleSInt32ComplexMessageMapMessage;
 using SimpleSInt32ComplexMessageMapMessageRepeated = QList<SimpleSInt32ComplexMessageMapMessage>;
+namespace SimpleSInt32ComplexMessageMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt32ComplexMessageMapMessage_QtProtobufNested
+
 class SimpleSInt64ComplexMessageMapMessage;
 using SimpleSInt64ComplexMessageMapMessageRepeated = QList<SimpleSInt64ComplexMessageMapMessage>;
+namespace SimpleSInt64ComplexMessageMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt64ComplexMessageMapMessage_QtProtobufNested
+
 class SimpleInt32ComplexMessageMapMessage;
 using SimpleInt32ComplexMessageMapMessageRepeated = QList<SimpleInt32ComplexMessageMapMessage>;
+namespace SimpleInt32ComplexMessageMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt32ComplexMessageMapMessage_QtProtobufNested
+
 class SimpleInt64ComplexMessageMapMessage;
 using SimpleInt64ComplexMessageMapMessageRepeated = QList<SimpleInt64ComplexMessageMapMessage>;
+namespace SimpleInt64ComplexMessageMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt64ComplexMessageMapMessage_QtProtobufNested
+
 class SimpleUInt32ComplexMessageMapMessage;
 using SimpleUInt32ComplexMessageMapMessageRepeated = QList<SimpleUInt32ComplexMessageMapMessage>;
+namespace SimpleUInt32ComplexMessageMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt32ComplexMessageMapMessage_QtProtobufNested
+
 class SimpleUInt64ComplexMessageMapMessage;
 using SimpleUInt64ComplexMessageMapMessageRepeated = QList<SimpleUInt64ComplexMessageMapMessage>;
+namespace SimpleUInt64ComplexMessageMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt64ComplexMessageMapMessage_QtProtobufNested
+
 class SimpleFixed32ComplexMessageMapMessage;
 using SimpleFixed32ComplexMessageMapMessageRepeated = QList<SimpleFixed32ComplexMessageMapMessage>;
+namespace SimpleFixed32ComplexMessageMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed32ComplexMessageMapMessage_QtProtobufNested
+
 class SimpleFixed64ComplexMessageMapMessage;
 using SimpleFixed64ComplexMessageMapMessageRepeated = QList<SimpleFixed64ComplexMessageMapMessage>;
+namespace SimpleFixed64ComplexMessageMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixed64ComplexMessageMapMessage_QtProtobufNested
+
 class SimpleSFixed32ComplexMessageMapMessage;
 using SimpleSFixed32ComplexMessageMapMessageRepeated = QList<SimpleSFixed32ComplexMessageMapMessage>;
+namespace SimpleSFixed32ComplexMessageMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed32ComplexMessageMapMessage_QtProtobufNested
+
 class SimpleSFixed64ComplexMessageMapMessage;
 using SimpleSFixed64ComplexMessageMapMessageRepeated = QList<SimpleSFixed64ComplexMessageMapMessage>;
+namespace SimpleSFixed64ComplexMessageMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixed64ComplexMessageMapMessage_QtProtobufNested
+
 class SimpleStringComplexMessageMapMessage;
 using SimpleStringComplexMessageMapMessageRepeated = QList<SimpleStringComplexMessageMapMessage>;
+namespace SimpleStringComplexMessageMapMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleStringComplexMessageMapMessage_QtProtobufNested
+
 
 class SimpleSInt32StringMapMessage_QtProtobufData;
-class SimpleSInt32StringMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt32StringMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -205,11 +558,7 @@ class SimpleSInt32StringMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt32StringMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt32StringMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint32, QString>;
     SimpleSInt32StringMapMessage();
     ~SimpleSInt32StringMapMessage();
@@ -228,9 +577,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt32StringMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt32StringMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt32StringMapMessage_QtProtobufNested
 
 class SimpleSInt64StringMapMessage_QtProtobufData;
-class SimpleSInt64StringMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt64StringMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -238,11 +596,7 @@ class SimpleSInt64StringMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt64StringMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt64StringMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint64, QString>;
     SimpleSInt64StringMapMessage();
     ~SimpleSInt64StringMapMessage();
@@ -261,9 +615,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt64StringMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt64StringMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt64StringMapMessage_QtProtobufNested
 
 class SimpleInt32StringMapMessage_QtProtobufData;
-class SimpleInt32StringMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt32StringMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -271,11 +634,7 @@ class SimpleInt32StringMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt32StringMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 3,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt32StringMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int32, QString>;
     SimpleInt32StringMapMessage();
     ~SimpleInt32StringMapMessage();
@@ -294,9 +653,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt32StringMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt32StringMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 3,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt32StringMapMessage_QtProtobufNested
 
 class SimpleInt64StringMapMessage_QtProtobufData;
-class SimpleInt64StringMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt64StringMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -304,11 +672,7 @@ class SimpleInt64StringMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt64StringMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 4,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt64StringMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int64, QString>;
     SimpleInt64StringMapMessage();
     ~SimpleInt64StringMapMessage();
@@ -327,9 +691,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt64StringMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt64StringMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 4,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt64StringMapMessage_QtProtobufNested
 
 class SimpleUInt32StringMapMessage_QtProtobufData;
-class SimpleUInt32StringMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt32StringMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -337,11 +710,7 @@ class SimpleUInt32StringMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt32StringMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 5,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt32StringMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint32, QString>;
     SimpleUInt32StringMapMessage();
     ~SimpleUInt32StringMapMessage();
@@ -360,9 +729,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt32StringMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt32StringMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 5,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt32StringMapMessage_QtProtobufNested
 
 class SimpleUInt64StringMapMessage_QtProtobufData;
-class SimpleUInt64StringMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt64StringMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -370,11 +748,7 @@ class SimpleUInt64StringMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt64StringMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 6,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt64StringMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint64, QString>;
     SimpleUInt64StringMapMessage();
     ~SimpleUInt64StringMapMessage();
@@ -393,9 +767,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt64StringMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt64StringMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 6,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt64StringMapMessage_QtProtobufNested
 
 class SimpleFixed32StringMapMessage_QtProtobufData;
-class SimpleFixed32StringMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed32StringMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -403,11 +786,7 @@ class SimpleFixed32StringMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed32StringMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 7,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed32StringMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed32, QString>;
     SimpleFixed32StringMapMessage();
     ~SimpleFixed32StringMapMessage();
@@ -426,9 +805,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed32StringMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed32StringMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 7,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed32StringMapMessage_QtProtobufNested
 
 class SimpleFixed64StringMapMessage_QtProtobufData;
-class SimpleFixed64StringMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed64StringMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -436,11 +824,7 @@ class SimpleFixed64StringMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed64StringMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 8,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed64StringMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed64, QString>;
     SimpleFixed64StringMapMessage();
     ~SimpleFixed64StringMapMessage();
@@ -459,9 +843,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed64StringMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed64StringMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 8,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed64StringMapMessage_QtProtobufNested
 
 class SimpleSFixed32StringMapMessage_QtProtobufData;
-class SimpleSFixed32StringMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed32StringMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -469,11 +862,7 @@ class SimpleSFixed32StringMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed32StringMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 9,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed32StringMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed32, QString>;
     SimpleSFixed32StringMapMessage();
     ~SimpleSFixed32StringMapMessage();
@@ -492,9 +881,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed32StringMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed32StringMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 9,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed32StringMapMessage_QtProtobufNested
 
 class SimpleSFixed64StringMapMessage_QtProtobufData;
-class SimpleSFixed64StringMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed64StringMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -502,11 +900,7 @@ class SimpleSFixed64StringMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed64StringMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 10,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed64StringMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed64, QString>;
     SimpleSFixed64StringMapMessage();
     ~SimpleSFixed64StringMapMessage();
@@ -525,9 +919,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed64StringMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed64StringMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 10,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed64StringMapMessage_QtProtobufNested
 
 class SimpleStringStringMapMessage_QtProtobufData;
-class SimpleStringStringMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleStringStringMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -535,11 +938,7 @@ class SimpleStringStringMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleStringStringMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 13,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleStringStringMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QString, QString>;
     SimpleStringStringMapMessage();
     ~SimpleStringStringMapMessage();
@@ -558,9 +957,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleStringStringMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleStringStringMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 13,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleStringStringMapMessage_QtProtobufNested
 
 class SimpleSInt32SInt32MapMessage_QtProtobufData;
-class SimpleSInt32SInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt32SInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -568,11 +976,7 @@ class SimpleSInt32SInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt32SInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt32SInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint32, QtProtobuf::sint32>;
     SimpleSInt32SInt32MapMessage();
     ~SimpleSInt32SInt32MapMessage();
@@ -591,9 +995,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt32SInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt32SInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt32SInt32MapMessage_QtProtobufNested
 
 class SimpleSInt64SInt32MapMessage_QtProtobufData;
-class SimpleSInt64SInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt64SInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -601,11 +1014,7 @@ class SimpleSInt64SInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt64SInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt64SInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint64, QtProtobuf::sint32>;
     SimpleSInt64SInt32MapMessage();
     ~SimpleSInt64SInt32MapMessage();
@@ -624,9 +1033,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt64SInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt64SInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt64SInt32MapMessage_QtProtobufNested
 
 class SimpleInt32SInt32MapMessage_QtProtobufData;
-class SimpleInt32SInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt32SInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -634,11 +1052,7 @@ class SimpleInt32SInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt32SInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 3,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt32SInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int32, QtProtobuf::sint32>;
     SimpleInt32SInt32MapMessage();
     ~SimpleInt32SInt32MapMessage();
@@ -657,9 +1071,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt32SInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt32SInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 3,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt32SInt32MapMessage_QtProtobufNested
 
 class SimpleInt64SInt32MapMessage_QtProtobufData;
-class SimpleInt64SInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt64SInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -667,11 +1090,7 @@ class SimpleInt64SInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt64SInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 4,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt64SInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int64, QtProtobuf::sint32>;
     SimpleInt64SInt32MapMessage();
     ~SimpleInt64SInt32MapMessage();
@@ -690,9 +1109,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt64SInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt64SInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 4,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt64SInt32MapMessage_QtProtobufNested
 
 class SimpleUInt32SInt32MapMessage_QtProtobufData;
-class SimpleUInt32SInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt32SInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -700,11 +1128,7 @@ class SimpleUInt32SInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt32SInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 5,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt32SInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint32, QtProtobuf::sint32>;
     SimpleUInt32SInt32MapMessage();
     ~SimpleUInt32SInt32MapMessage();
@@ -723,9 +1147,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt32SInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt32SInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 5,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt32SInt32MapMessage_QtProtobufNested
 
 class SimpleUInt64SInt32MapMessage_QtProtobufData;
-class SimpleUInt64SInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt64SInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -733,11 +1166,7 @@ class SimpleUInt64SInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt64SInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 6,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt64SInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint64, QtProtobuf::sint32>;
     SimpleUInt64SInt32MapMessage();
     ~SimpleUInt64SInt32MapMessage();
@@ -756,9 +1185,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt64SInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt64SInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 6,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt64SInt32MapMessage_QtProtobufNested
 
 class SimpleFixed32SInt32MapMessage_QtProtobufData;
-class SimpleFixed32SInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed32SInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -766,11 +1204,7 @@ class SimpleFixed32SInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed32SInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 7,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed32SInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed32, QtProtobuf::sint32>;
     SimpleFixed32SInt32MapMessage();
     ~SimpleFixed32SInt32MapMessage();
@@ -789,9 +1223,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed32SInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed32SInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 7,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed32SInt32MapMessage_QtProtobufNested
 
 class SimpleFixed64SInt32MapMessage_QtProtobufData;
-class SimpleFixed64SInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed64SInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -799,11 +1242,7 @@ class SimpleFixed64SInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed64SInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 8,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed64SInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed64, QtProtobuf::sint32>;
     SimpleFixed64SInt32MapMessage();
     ~SimpleFixed64SInt32MapMessage();
@@ -822,9 +1261,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed64SInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed64SInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 8,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed64SInt32MapMessage_QtProtobufNested
 
 class SimpleSFixed32SInt32MapMessage_QtProtobufData;
-class SimpleSFixed32SInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed32SInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -832,11 +1280,7 @@ class SimpleSFixed32SInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed32SInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 9,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed32SInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed32, QtProtobuf::sint32>;
     SimpleSFixed32SInt32MapMessage();
     ~SimpleSFixed32SInt32MapMessage();
@@ -855,9 +1299,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed32SInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed32SInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 9,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed32SInt32MapMessage_QtProtobufNested
 
 class SimpleSFixed64SInt32MapMessage_QtProtobufData;
-class SimpleSFixed64SInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed64SInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -865,11 +1318,7 @@ class SimpleSFixed64SInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed64SInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 10,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed64SInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed64, QtProtobuf::sint32>;
     SimpleSFixed64SInt32MapMessage();
     ~SimpleSFixed64SInt32MapMessage();
@@ -888,9 +1337,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed64SInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed64SInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 10,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed64SInt32MapMessage_QtProtobufNested
 
 class SimpleStringSInt32MapMessage_QtProtobufData;
-class SimpleStringSInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleStringSInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -898,11 +1356,7 @@ class SimpleStringSInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleStringSInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 13,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleStringSInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QString, QtProtobuf::sint32>;
     SimpleStringSInt32MapMessage();
     ~SimpleStringSInt32MapMessage();
@@ -921,9 +1375,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleStringSInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleStringSInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 13,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleStringSInt32MapMessage_QtProtobufNested
 
 class SimpleSInt32SInt64MapMessage_QtProtobufData;
-class SimpleSInt32SInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt32SInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -931,11 +1394,7 @@ class SimpleSInt32SInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt32SInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt32SInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint32, QtProtobuf::sint64>;
     SimpleSInt32SInt64MapMessage();
     ~SimpleSInt32SInt64MapMessage();
@@ -954,9 +1413,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt32SInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt32SInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt32SInt64MapMessage_QtProtobufNested
 
 class SimpleSInt64SInt64MapMessage_QtProtobufData;
-class SimpleSInt64SInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt64SInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -964,11 +1432,7 @@ class SimpleSInt64SInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt64SInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt64SInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint64, QtProtobuf::sint64>;
     SimpleSInt64SInt64MapMessage();
     ~SimpleSInt64SInt64MapMessage();
@@ -987,9 +1451,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt64SInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt64SInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt64SInt64MapMessage_QtProtobufNested
 
 class SimpleInt32SInt64MapMessage_QtProtobufData;
-class SimpleInt32SInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt32SInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -997,11 +1470,7 @@ class SimpleInt32SInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt32SInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 3,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt32SInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int32, QtProtobuf::sint64>;
     SimpleInt32SInt64MapMessage();
     ~SimpleInt32SInt64MapMessage();
@@ -1020,9 +1489,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt32SInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt32SInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 3,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt32SInt64MapMessage_QtProtobufNested
 
 class SimpleInt64SInt64MapMessage_QtProtobufData;
-class SimpleInt64SInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt64SInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1030,11 +1508,7 @@ class SimpleInt64SInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt64SInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 4,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt64SInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int64, QtProtobuf::sint64>;
     SimpleInt64SInt64MapMessage();
     ~SimpleInt64SInt64MapMessage();
@@ -1053,9 +1527,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt64SInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt64SInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 4,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt64SInt64MapMessage_QtProtobufNested
 
 class SimpleUInt32SInt64MapMessage_QtProtobufData;
-class SimpleUInt32SInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt32SInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1063,11 +1546,7 @@ class SimpleUInt32SInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt32SInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 5,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt32SInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint32, QtProtobuf::sint64>;
     SimpleUInt32SInt64MapMessage();
     ~SimpleUInt32SInt64MapMessage();
@@ -1086,9 +1565,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt32SInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt32SInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 5,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt32SInt64MapMessage_QtProtobufNested
 
 class SimpleUInt64SInt64MapMessage_QtProtobufData;
-class SimpleUInt64SInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt64SInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1096,11 +1584,7 @@ class SimpleUInt64SInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt64SInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 6,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt64SInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint64, QtProtobuf::sint64>;
     SimpleUInt64SInt64MapMessage();
     ~SimpleUInt64SInt64MapMessage();
@@ -1119,9 +1603,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt64SInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt64SInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 6,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt64SInt64MapMessage_QtProtobufNested
 
 class SimpleFixed32SInt64MapMessage_QtProtobufData;
-class SimpleFixed32SInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed32SInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1129,11 +1622,7 @@ class SimpleFixed32SInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed32SInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 7,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed32SInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed32, QtProtobuf::sint64>;
     SimpleFixed32SInt64MapMessage();
     ~SimpleFixed32SInt64MapMessage();
@@ -1152,9 +1641,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed32SInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed32SInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 7,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed32SInt64MapMessage_QtProtobufNested
 
 class SimpleFixed64SInt64MapMessage_QtProtobufData;
-class SimpleFixed64SInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed64SInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1162,11 +1660,7 @@ class SimpleFixed64SInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed64SInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 8,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed64SInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed64, QtProtobuf::sint64>;
     SimpleFixed64SInt64MapMessage();
     ~SimpleFixed64SInt64MapMessage();
@@ -1185,9 +1679,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed64SInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed64SInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 8,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed64SInt64MapMessage_QtProtobufNested
 
 class SimpleSFixed32SInt64MapMessage_QtProtobufData;
-class SimpleSFixed32SInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed32SInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1195,11 +1698,7 @@ class SimpleSFixed32SInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed32SInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 9,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed32SInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed32, QtProtobuf::sint64>;
     SimpleSFixed32SInt64MapMessage();
     ~SimpleSFixed32SInt64MapMessage();
@@ -1218,9 +1717,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed32SInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed32SInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 9,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed32SInt64MapMessage_QtProtobufNested
 
 class SimpleSFixed64SInt64MapMessage_QtProtobufData;
-class SimpleSFixed64SInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed64SInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1228,11 +1736,7 @@ class SimpleSFixed64SInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed64SInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 10,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed64SInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed64, QtProtobuf::sint64>;
     SimpleSFixed64SInt64MapMessage();
     ~SimpleSFixed64SInt64MapMessage();
@@ -1251,9 +1755,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed64SInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed64SInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 10,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed64SInt64MapMessage_QtProtobufNested
 
 class SimpleStringSInt64MapMessage_QtProtobufData;
-class SimpleStringSInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleStringSInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1261,11 +1774,7 @@ class SimpleStringSInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleStringSInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 13,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleStringSInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QString, QtProtobuf::sint64>;
     SimpleStringSInt64MapMessage();
     ~SimpleStringSInt64MapMessage();
@@ -1284,9 +1793,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleStringSInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleStringSInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 13,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleStringSInt64MapMessage_QtProtobufNested
 
 class SimpleSInt32UInt32MapMessage_QtProtobufData;
-class SimpleSInt32UInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt32UInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1294,11 +1812,7 @@ class SimpleSInt32UInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt32UInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt32UInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint32, QtProtobuf::uint32>;
     SimpleSInt32UInt32MapMessage();
     ~SimpleSInt32UInt32MapMessage();
@@ -1317,9 +1831,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt32UInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt32UInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt32UInt32MapMessage_QtProtobufNested
 
 class SimpleSInt64UInt32MapMessage_QtProtobufData;
-class SimpleSInt64UInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt64UInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1327,11 +1850,7 @@ class SimpleSInt64UInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt64UInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt64UInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint64, QtProtobuf::uint32>;
     SimpleSInt64UInt32MapMessage();
     ~SimpleSInt64UInt32MapMessage();
@@ -1350,9 +1869,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt64UInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt64UInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt64UInt32MapMessage_QtProtobufNested
 
 class SimpleInt32UInt32MapMessage_QtProtobufData;
-class SimpleInt32UInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt32UInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1360,11 +1888,7 @@ class SimpleInt32UInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt32UInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 3,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt32UInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int32, QtProtobuf::uint32>;
     SimpleInt32UInt32MapMessage();
     ~SimpleInt32UInt32MapMessage();
@@ -1383,9 +1907,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt32UInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt32UInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 3,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt32UInt32MapMessage_QtProtobufNested
 
 class SimpleInt64UInt32MapMessage_QtProtobufData;
-class SimpleInt64UInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt64UInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1393,11 +1926,7 @@ class SimpleInt64UInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt64UInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 4,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt64UInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int64, QtProtobuf::uint32>;
     SimpleInt64UInt32MapMessage();
     ~SimpleInt64UInt32MapMessage();
@@ -1416,9 +1945,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt64UInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt64UInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 4,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt64UInt32MapMessage_QtProtobufNested
 
 class SimpleUInt32UInt32MapMessage_QtProtobufData;
-class SimpleUInt32UInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt32UInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1426,11 +1964,7 @@ class SimpleUInt32UInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt32UInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 5,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt32UInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint32, QtProtobuf::uint32>;
     SimpleUInt32UInt32MapMessage();
     ~SimpleUInt32UInt32MapMessage();
@@ -1449,9 +1983,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt32UInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt32UInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 5,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt32UInt32MapMessage_QtProtobufNested
 
 class SimpleUInt64UInt32MapMessage_QtProtobufData;
-class SimpleUInt64UInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt64UInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1459,11 +2002,7 @@ class SimpleUInt64UInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt64UInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 6,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt64UInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint64, QtProtobuf::uint32>;
     SimpleUInt64UInt32MapMessage();
     ~SimpleUInt64UInt32MapMessage();
@@ -1482,9 +2021,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt64UInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt64UInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 6,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt64UInt32MapMessage_QtProtobufNested
 
 class SimpleFixed32UInt32MapMessage_QtProtobufData;
-class SimpleFixed32UInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed32UInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1492,11 +2040,7 @@ class SimpleFixed32UInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed32UInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 7,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed32UInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed32, QtProtobuf::uint32>;
     SimpleFixed32UInt32MapMessage();
     ~SimpleFixed32UInt32MapMessage();
@@ -1515,9 +2059,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed32UInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed32UInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 7,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed32UInt32MapMessage_QtProtobufNested
 
 class SimpleFixed64UInt32MapMessage_QtProtobufData;
-class SimpleFixed64UInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed64UInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1525,11 +2078,7 @@ class SimpleFixed64UInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed64UInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 8,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed64UInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed64, QtProtobuf::uint32>;
     SimpleFixed64UInt32MapMessage();
     ~SimpleFixed64UInt32MapMessage();
@@ -1548,9 +2097,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed64UInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed64UInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 8,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed64UInt32MapMessage_QtProtobufNested
 
 class SimpleSFixed32UInt32MapMessage_QtProtobufData;
-class SimpleSFixed32UInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed32UInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1558,11 +2116,7 @@ class SimpleSFixed32UInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed32UInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 9,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed32UInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed32, QtProtobuf::uint32>;
     SimpleSFixed32UInt32MapMessage();
     ~SimpleSFixed32UInt32MapMessage();
@@ -1581,9 +2135,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed32UInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed32UInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 9,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed32UInt32MapMessage_QtProtobufNested
 
 class SimpleSFixed64UInt32MapMessage_QtProtobufData;
-class SimpleSFixed64UInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed64UInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1591,11 +2154,7 @@ class SimpleSFixed64UInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed64UInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 10,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed64UInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed64, QtProtobuf::uint32>;
     SimpleSFixed64UInt32MapMessage();
     ~SimpleSFixed64UInt32MapMessage();
@@ -1614,9 +2173,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed64UInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed64UInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 10,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed64UInt32MapMessage_QtProtobufNested
 
 class SimpleStringUInt32MapMessage_QtProtobufData;
-class SimpleStringUInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleStringUInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1624,11 +2192,7 @@ class SimpleStringUInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleStringUInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 13,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleStringUInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QString, QtProtobuf::uint32>;
     SimpleStringUInt32MapMessage();
     ~SimpleStringUInt32MapMessage();
@@ -1647,9 +2211,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleStringUInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleStringUInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 13,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleStringUInt32MapMessage_QtProtobufNested
 
 class SimpleSInt32UInt64MapMessage_QtProtobufData;
-class SimpleSInt32UInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt32UInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1657,11 +2230,7 @@ class SimpleSInt32UInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt32UInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt32UInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint32, QtProtobuf::uint64>;
     SimpleSInt32UInt64MapMessage();
     ~SimpleSInt32UInt64MapMessage();
@@ -1680,9 +2249,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt32UInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt32UInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt32UInt64MapMessage_QtProtobufNested
 
 class SimpleSInt64UInt64MapMessage_QtProtobufData;
-class SimpleSInt64UInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt64UInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1690,11 +2268,7 @@ class SimpleSInt64UInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt64UInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt64UInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint64, QtProtobuf::uint64>;
     SimpleSInt64UInt64MapMessage();
     ~SimpleSInt64UInt64MapMessage();
@@ -1713,9 +2287,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt64UInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt64UInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt64UInt64MapMessage_QtProtobufNested
 
 class SimpleInt32UInt64MapMessage_QtProtobufData;
-class SimpleInt32UInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt32UInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1723,11 +2306,7 @@ class SimpleInt32UInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt32UInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 3,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt32UInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int32, QtProtobuf::uint64>;
     SimpleInt32UInt64MapMessage();
     ~SimpleInt32UInt64MapMessage();
@@ -1746,9 +2325,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt32UInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt32UInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 3,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt32UInt64MapMessage_QtProtobufNested
 
 class SimpleInt64UInt64MapMessage_QtProtobufData;
-class SimpleInt64UInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt64UInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1756,11 +2344,7 @@ class SimpleInt64UInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt64UInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 4,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt64UInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int64, QtProtobuf::uint64>;
     SimpleInt64UInt64MapMessage();
     ~SimpleInt64UInt64MapMessage();
@@ -1779,9 +2363,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt64UInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt64UInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 4,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt64UInt64MapMessage_QtProtobufNested
 
 class SimpleUInt32UInt64MapMessage_QtProtobufData;
-class SimpleUInt32UInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt32UInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1789,11 +2382,7 @@ class SimpleUInt32UInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt32UInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 5,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt32UInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint32, QtProtobuf::uint64>;
     SimpleUInt32UInt64MapMessage();
     ~SimpleUInt32UInt64MapMessage();
@@ -1812,9 +2401,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt32UInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt32UInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 5,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt32UInt64MapMessage_QtProtobufNested
 
 class SimpleUInt64UInt64MapMessage_QtProtobufData;
-class SimpleUInt64UInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt64UInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1822,11 +2420,7 @@ class SimpleUInt64UInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt64UInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 6,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt64UInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint64, QtProtobuf::uint64>;
     SimpleUInt64UInt64MapMessage();
     ~SimpleUInt64UInt64MapMessage();
@@ -1845,9 +2439,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt64UInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt64UInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 6,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt64UInt64MapMessage_QtProtobufNested
 
 class SimpleFixed32UInt64MapMessage_QtProtobufData;
-class SimpleFixed32UInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed32UInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1855,11 +2458,7 @@ class SimpleFixed32UInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed32UInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 7,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed32UInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed32, QtProtobuf::uint64>;
     SimpleFixed32UInt64MapMessage();
     ~SimpleFixed32UInt64MapMessage();
@@ -1878,9 +2477,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed32UInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed32UInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 7,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed32UInt64MapMessage_QtProtobufNested
 
 class SimpleFixed64UInt64MapMessage_QtProtobufData;
-class SimpleFixed64UInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed64UInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1888,11 +2496,7 @@ class SimpleFixed64UInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed64UInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 8,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed64UInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed64, QtProtobuf::uint64>;
     SimpleFixed64UInt64MapMessage();
     ~SimpleFixed64UInt64MapMessage();
@@ -1911,9 +2515,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed64UInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed64UInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 8,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed64UInt64MapMessage_QtProtobufNested
 
 class SimpleSFixed32UInt64MapMessage_QtProtobufData;
-class SimpleSFixed32UInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed32UInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1921,11 +2534,7 @@ class SimpleSFixed32UInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed32UInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 9,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed32UInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed32, QtProtobuf::uint64>;
     SimpleSFixed32UInt64MapMessage();
     ~SimpleSFixed32UInt64MapMessage();
@@ -1944,9 +2553,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed32UInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed32UInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 9,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed32UInt64MapMessage_QtProtobufNested
 
 class SimpleSFixed64UInt64MapMessage_QtProtobufData;
-class SimpleSFixed64UInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed64UInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1954,11 +2572,7 @@ class SimpleSFixed64UInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed64UInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 10,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed64UInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed64, QtProtobuf::uint64>;
     SimpleSFixed64UInt64MapMessage();
     ~SimpleSFixed64UInt64MapMessage();
@@ -1977,9 +2591,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed64UInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed64UInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 10,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed64UInt64MapMessage_QtProtobufNested
 
 class SimpleStringUInt64MapMessage_QtProtobufData;
-class SimpleStringUInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleStringUInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -1987,11 +2610,7 @@ class SimpleStringUInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleStringUInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 13,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleStringUInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QString, QtProtobuf::uint64>;
     SimpleStringUInt64MapMessage();
     ~SimpleStringUInt64MapMessage();
@@ -2010,9 +2629,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleStringUInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleStringUInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 13,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleStringUInt64MapMessage_QtProtobufNested
 
 class SimpleSInt32Int32MapMessage_QtProtobufData;
-class SimpleSInt32Int32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt32Int32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2020,11 +2648,7 @@ class SimpleSInt32Int32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt32Int32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt32Int32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint32, QtProtobuf::int32>;
     SimpleSInt32Int32MapMessage();
     ~SimpleSInt32Int32MapMessage();
@@ -2043,9 +2667,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt32Int32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt32Int32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt32Int32MapMessage_QtProtobufNested
 
 class SimpleSInt64Int32MapMessage_QtProtobufData;
-class SimpleSInt64Int32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt64Int32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2053,11 +2686,7 @@ class SimpleSInt64Int32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt64Int32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt64Int32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint64, QtProtobuf::int32>;
     SimpleSInt64Int32MapMessage();
     ~SimpleSInt64Int32MapMessage();
@@ -2076,9 +2705,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt64Int32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt64Int32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt64Int32MapMessage_QtProtobufNested
 
 class SimpleInt32Int32MapMessage_QtProtobufData;
-class SimpleInt32Int32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt32Int32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2086,11 +2724,7 @@ class SimpleInt32Int32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt32Int32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 3,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt32Int32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int32, QtProtobuf::int32>;
     SimpleInt32Int32MapMessage();
     ~SimpleInt32Int32MapMessage();
@@ -2109,9 +2743,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt32Int32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt32Int32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 3,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt32Int32MapMessage_QtProtobufNested
 
 class SimpleInt64Int32MapMessage_QtProtobufData;
-class SimpleInt64Int32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt64Int32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2119,11 +2762,7 @@ class SimpleInt64Int32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt64Int32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 4,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt64Int32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int64, QtProtobuf::int32>;
     SimpleInt64Int32MapMessage();
     ~SimpleInt64Int32MapMessage();
@@ -2142,9 +2781,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt64Int32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt64Int32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 4,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt64Int32MapMessage_QtProtobufNested
 
 class SimpleUInt32Int32MapMessage_QtProtobufData;
-class SimpleUInt32Int32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt32Int32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2152,11 +2800,7 @@ class SimpleUInt32Int32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt32Int32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 5,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt32Int32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint32, QtProtobuf::int32>;
     SimpleUInt32Int32MapMessage();
     ~SimpleUInt32Int32MapMessage();
@@ -2175,9 +2819,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt32Int32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt32Int32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 5,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt32Int32MapMessage_QtProtobufNested
 
 class SimpleUInt64Int32MapMessage_QtProtobufData;
-class SimpleUInt64Int32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt64Int32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2185,11 +2838,7 @@ class SimpleUInt64Int32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt64Int32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 6,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt64Int32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint64, QtProtobuf::int32>;
     SimpleUInt64Int32MapMessage();
     ~SimpleUInt64Int32MapMessage();
@@ -2208,9 +2857,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt64Int32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt64Int32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 6,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt64Int32MapMessage_QtProtobufNested
 
 class SimpleFixed32Int32MapMessage_QtProtobufData;
-class SimpleFixed32Int32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed32Int32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2218,11 +2876,7 @@ class SimpleFixed32Int32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed32Int32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 7,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed32Int32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed32, QtProtobuf::int32>;
     SimpleFixed32Int32MapMessage();
     ~SimpleFixed32Int32MapMessage();
@@ -2241,9 +2895,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed32Int32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed32Int32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 7,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed32Int32MapMessage_QtProtobufNested
 
 class SimpleFixed64Int32MapMessage_QtProtobufData;
-class SimpleFixed64Int32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed64Int32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2251,11 +2914,7 @@ class SimpleFixed64Int32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed64Int32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 8,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed64Int32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed64, QtProtobuf::int32>;
     SimpleFixed64Int32MapMessage();
     ~SimpleFixed64Int32MapMessage();
@@ -2274,9 +2933,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed64Int32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed64Int32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 8,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed64Int32MapMessage_QtProtobufNested
 
 class SimpleSFixed32Int32MapMessage_QtProtobufData;
-class SimpleSFixed32Int32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed32Int32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2284,11 +2952,7 @@ class SimpleSFixed32Int32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed32Int32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 9,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed32Int32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed32, QtProtobuf::int32>;
     SimpleSFixed32Int32MapMessage();
     ~SimpleSFixed32Int32MapMessage();
@@ -2307,9 +2971,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed32Int32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed32Int32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 9,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed32Int32MapMessage_QtProtobufNested
 
 class SimpleSFixed64Int32MapMessage_QtProtobufData;
-class SimpleSFixed64Int32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed64Int32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2317,11 +2990,7 @@ class SimpleSFixed64Int32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed64Int32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 10,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed64Int32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed64, QtProtobuf::int32>;
     SimpleSFixed64Int32MapMessage();
     ~SimpleSFixed64Int32MapMessage();
@@ -2340,9 +3009,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed64Int32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed64Int32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 10,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed64Int32MapMessage_QtProtobufNested
 
 class SimpleStringInt32MapMessage_QtProtobufData;
-class SimpleStringInt32MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleStringInt32MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2350,11 +3028,7 @@ class SimpleStringInt32MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleStringInt32MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 13,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleStringInt32MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QString, QtProtobuf::int32>;
     SimpleStringInt32MapMessage();
     ~SimpleStringInt32MapMessage();
@@ -2373,9 +3047,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleStringInt32MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleStringInt32MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 13,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleStringInt32MapMessage_QtProtobufNested
 
 class SimpleSInt32Int64MapMessage_QtProtobufData;
-class SimpleSInt32Int64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt32Int64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2383,11 +3066,7 @@ class SimpleSInt32Int64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt32Int64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt32Int64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint32, QtProtobuf::int64>;
     SimpleSInt32Int64MapMessage();
     ~SimpleSInt32Int64MapMessage();
@@ -2406,9 +3085,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt32Int64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt32Int64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt32Int64MapMessage_QtProtobufNested
 
 class SimpleSInt64Int64MapMessage_QtProtobufData;
-class SimpleSInt64Int64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt64Int64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2416,11 +3104,7 @@ class SimpleSInt64Int64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt64Int64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt64Int64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint64, QtProtobuf::int64>;
     SimpleSInt64Int64MapMessage();
     ~SimpleSInt64Int64MapMessage();
@@ -2439,9 +3123,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt64Int64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt64Int64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt64Int64MapMessage_QtProtobufNested
 
 class SimpleInt32Int64MapMessage_QtProtobufData;
-class SimpleInt32Int64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt32Int64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2449,11 +3142,7 @@ class SimpleInt32Int64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt32Int64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 3,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt32Int64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int32, QtProtobuf::int64>;
     SimpleInt32Int64MapMessage();
     ~SimpleInt32Int64MapMessage();
@@ -2472,9 +3161,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt32Int64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt32Int64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 3,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt32Int64MapMessage_QtProtobufNested
 
 class SimpleInt64Int64MapMessage_QtProtobufData;
-class SimpleInt64Int64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt64Int64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2482,11 +3180,7 @@ class SimpleInt64Int64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt64Int64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 4,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt64Int64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int64, QtProtobuf::int64>;
     SimpleInt64Int64MapMessage();
     ~SimpleInt64Int64MapMessage();
@@ -2505,9 +3199,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt64Int64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt64Int64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 4,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt64Int64MapMessage_QtProtobufNested
 
 class SimpleUInt32Int64MapMessage_QtProtobufData;
-class SimpleUInt32Int64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt32Int64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2515,11 +3218,7 @@ class SimpleUInt32Int64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt32Int64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 5,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt32Int64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint32, QtProtobuf::int64>;
     SimpleUInt32Int64MapMessage();
     ~SimpleUInt32Int64MapMessage();
@@ -2538,9 +3237,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt32Int64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt32Int64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 5,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt32Int64MapMessage_QtProtobufNested
 
 class SimpleUInt64Int64MapMessage_QtProtobufData;
-class SimpleUInt64Int64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt64Int64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2548,11 +3256,7 @@ class SimpleUInt64Int64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt64Int64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 6,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt64Int64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint64, QtProtobuf::int64>;
     SimpleUInt64Int64MapMessage();
     ~SimpleUInt64Int64MapMessage();
@@ -2571,9 +3275,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt64Int64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt64Int64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 6,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt64Int64MapMessage_QtProtobufNested
 
 class SimpleFixed32Int64MapMessage_QtProtobufData;
-class SimpleFixed32Int64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed32Int64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2581,11 +3294,7 @@ class SimpleFixed32Int64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed32Int64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 7,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed32Int64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed32, QtProtobuf::int64>;
     SimpleFixed32Int64MapMessage();
     ~SimpleFixed32Int64MapMessage();
@@ -2604,9 +3313,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed32Int64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed32Int64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 7,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed32Int64MapMessage_QtProtobufNested
 
 class SimpleFixed64Int64MapMessage_QtProtobufData;
-class SimpleFixed64Int64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed64Int64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2614,11 +3332,7 @@ class SimpleFixed64Int64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed64Int64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 8,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed64Int64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed64, QtProtobuf::int64>;
     SimpleFixed64Int64MapMessage();
     ~SimpleFixed64Int64MapMessage();
@@ -2637,9 +3351,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed64Int64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed64Int64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 8,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed64Int64MapMessage_QtProtobufNested
 
 class SimpleSFixed32Int64MapMessage_QtProtobufData;
-class SimpleSFixed32Int64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed32Int64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2647,11 +3370,7 @@ class SimpleSFixed32Int64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed32Int64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 9,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed32Int64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed32, QtProtobuf::int64>;
     SimpleSFixed32Int64MapMessage();
     ~SimpleSFixed32Int64MapMessage();
@@ -2670,9 +3389,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed32Int64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed32Int64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 9,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed32Int64MapMessage_QtProtobufNested
 
 class SimpleSFixed64Int64MapMessage_QtProtobufData;
-class SimpleSFixed64Int64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed64Int64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2680,11 +3408,7 @@ class SimpleSFixed64Int64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed64Int64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 10,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed64Int64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed64, QtProtobuf::int64>;
     SimpleSFixed64Int64MapMessage();
     ~SimpleSFixed64Int64MapMessage();
@@ -2703,9 +3427,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed64Int64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed64Int64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 10,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed64Int64MapMessage_QtProtobufNested
 
 class SimpleStringInt64MapMessage_QtProtobufData;
-class SimpleStringInt64MapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleStringInt64MapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2713,11 +3446,7 @@ class SimpleStringInt64MapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleStringInt64MapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 13,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleStringInt64MapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QString, QtProtobuf::int64>;
     SimpleStringInt64MapMessage();
     ~SimpleStringInt64MapMessage();
@@ -2736,9 +3465,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleStringInt64MapMessage_QtProtobufData> dptr;
 };
+namespace SimpleStringInt64MapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 13,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleStringInt64MapMessage_QtProtobufNested
 
 class SimpleSInt32ComplexMessageMapMessage_QtProtobufData;
-class SimpleSInt32ComplexMessageMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt32ComplexMessageMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2746,11 +3484,7 @@ class SimpleSInt32ComplexMessageMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt32ComplexMessageMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt32ComplexMessageMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint32, ComplexMessage>;
     SimpleSInt32ComplexMessageMapMessage();
     ~SimpleSInt32ComplexMessageMapMessage();
@@ -2769,9 +3503,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt32ComplexMessageMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt32ComplexMessageMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt32ComplexMessageMapMessage_QtProtobufNested
 
 class SimpleSInt64ComplexMessageMapMessage_QtProtobufData;
-class SimpleSInt64ComplexMessageMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSInt64ComplexMessageMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2779,11 +3522,7 @@ class SimpleSInt64ComplexMessageMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSInt64ComplexMessageMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt64ComplexMessageMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sint64, ComplexMessage>;
     SimpleSInt64ComplexMessageMapMessage();
     ~SimpleSInt64ComplexMessageMapMessage();
@@ -2802,9 +3541,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt64ComplexMessageMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSInt64ComplexMessageMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt64ComplexMessageMapMessage_QtProtobufNested
 
 class SimpleInt32ComplexMessageMapMessage_QtProtobufData;
-class SimpleInt32ComplexMessageMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt32ComplexMessageMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2812,11 +3560,7 @@ class SimpleInt32ComplexMessageMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt32ComplexMessageMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 3,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt32ComplexMessageMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int32, ComplexMessage>;
     SimpleInt32ComplexMessageMapMessage();
     ~SimpleInt32ComplexMessageMapMessage();
@@ -2835,9 +3579,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt32ComplexMessageMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt32ComplexMessageMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 3,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt32ComplexMessageMapMessage_QtProtobufNested
 
 class SimpleInt64ComplexMessageMapMessage_QtProtobufData;
-class SimpleInt64ComplexMessageMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleInt64ComplexMessageMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2845,11 +3598,7 @@ class SimpleInt64ComplexMessageMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleInt64ComplexMessageMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 4,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt64ComplexMessageMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::int64, ComplexMessage>;
     SimpleInt64ComplexMessageMapMessage();
     ~SimpleInt64ComplexMessageMapMessage();
@@ -2868,9 +3617,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt64ComplexMessageMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleInt64ComplexMessageMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 4,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt64ComplexMessageMapMessage_QtProtobufNested
 
 class SimpleUInt32ComplexMessageMapMessage_QtProtobufData;
-class SimpleUInt32ComplexMessageMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt32ComplexMessageMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2878,11 +3636,7 @@ class SimpleUInt32ComplexMessageMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt32ComplexMessageMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 5,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt32ComplexMessageMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint32, ComplexMessage>;
     SimpleUInt32ComplexMessageMapMessage();
     ~SimpleUInt32ComplexMessageMapMessage();
@@ -2901,9 +3655,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt32ComplexMessageMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt32ComplexMessageMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 5,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt32ComplexMessageMapMessage_QtProtobufNested
 
 class SimpleUInt64ComplexMessageMapMessage_QtProtobufData;
-class SimpleUInt64ComplexMessageMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleUInt64ComplexMessageMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2911,11 +3674,7 @@ class SimpleUInt64ComplexMessageMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleUInt64ComplexMessageMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 6,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt64ComplexMessageMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::uint64, ComplexMessage>;
     SimpleUInt64ComplexMessageMapMessage();
     ~SimpleUInt64ComplexMessageMapMessage();
@@ -2934,9 +3693,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt64ComplexMessageMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleUInt64ComplexMessageMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 6,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt64ComplexMessageMapMessage_QtProtobufNested
 
 class SimpleFixed32ComplexMessageMapMessage_QtProtobufData;
-class SimpleFixed32ComplexMessageMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed32ComplexMessageMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2944,11 +3712,7 @@ class SimpleFixed32ComplexMessageMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed32ComplexMessageMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 7,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed32ComplexMessageMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed32, ComplexMessage>;
     SimpleFixed32ComplexMessageMapMessage();
     ~SimpleFixed32ComplexMessageMapMessage();
@@ -2967,9 +3731,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed32ComplexMessageMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed32ComplexMessageMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 7,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed32ComplexMessageMapMessage_QtProtobufNested
 
 class SimpleFixed64ComplexMessageMapMessage_QtProtobufData;
-class SimpleFixed64ComplexMessageMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleFixed64ComplexMessageMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -2977,11 +3750,7 @@ class SimpleFixed64ComplexMessageMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleFixed64ComplexMessageMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 8,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixed64ComplexMessageMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::fixed64, ComplexMessage>;
     SimpleFixed64ComplexMessageMapMessage();
     ~SimpleFixed64ComplexMessageMapMessage();
@@ -3000,9 +3769,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixed64ComplexMessageMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleFixed64ComplexMessageMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 8,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixed64ComplexMessageMapMessage_QtProtobufNested
 
 class SimpleSFixed32ComplexMessageMapMessage_QtProtobufData;
-class SimpleSFixed32ComplexMessageMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed32ComplexMessageMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -3010,11 +3788,7 @@ class SimpleSFixed32ComplexMessageMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed32ComplexMessageMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 9,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed32ComplexMessageMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed32, ComplexMessage>;
     SimpleSFixed32ComplexMessageMapMessage();
     ~SimpleSFixed32ComplexMessageMapMessage();
@@ -3033,9 +3807,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed32ComplexMessageMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed32ComplexMessageMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 9,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed32ComplexMessageMapMessage_QtProtobufNested
 
 class SimpleSFixed64ComplexMessageMapMessage_QtProtobufData;
-class SimpleSFixed64ComplexMessageMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleSFixed64ComplexMessageMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -3043,11 +3826,7 @@ class SimpleSFixed64ComplexMessageMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleSFixed64ComplexMessageMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 10,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixed64ComplexMessageMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QtProtobuf::sfixed64, ComplexMessage>;
     SimpleSFixed64ComplexMessageMapMessage();
     ~SimpleSFixed64ComplexMessageMapMessage();
@@ -3066,9 +3845,18 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixed64ComplexMessageMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleSFixed64ComplexMessageMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 10,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixed64ComplexMessageMapMessage_QtProtobufNested
 
 class SimpleStringComplexMessageMapMessage_QtProtobufData;
-class SimpleStringComplexMessageMapMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT SimpleStringComplexMessageMapMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -3076,11 +3864,7 @@ class SimpleStringComplexMessageMapMessage : public QProtobufMessage
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleStringComplexMessageMapMessage::MapFieldEntry mapField READ mapField WRITE setMapField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        MapFieldProtoFieldNumber = 13,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleStringComplexMessageMapMessage_QtProtobufNested::QtProtobufFieldEnum;
     using MapFieldEntry = QHash<QString, ComplexMessage>;
     SimpleStringComplexMessageMapMessage();
     ~SimpleStringComplexMessageMapMessage();
@@ -3099,6 +3883,15 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleStringComplexMessageMapMessage_QtProtobufData> dptr;
 };
+namespace SimpleStringComplexMessageMapMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    MapFieldProtoFieldNumber = 13,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleStringComplexMessageMapMessage_QtProtobufNested
 } // namespace qtprotobufnamespace::tests
 
 Q_DECLARE_METATYPE(qtprotobufnamespace::tests::SimpleSInt32StringMapMessage)

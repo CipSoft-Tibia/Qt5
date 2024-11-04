@@ -31,6 +31,10 @@ using ::testing::Invoke;
 
 namespace media {
 
+MATCHER_P(ExpectEncoderStatusCode, expected_code, "encoder status code") {
+  return arg.code() == expected_code;
+}
+
 static const gfx::Size kInputVisibleSize(64, 48);
 
 // Mock implementation of the Mojo "service" side of the VEA dialogue. Upon an
@@ -79,16 +83,16 @@ class MockMojoVideoEncodeAccelerator : public mojom::VideoEncodeAccelerator {
            mojo::AssociatedRemote<mojom::VideoEncodeAcceleratorClient>*));
 
   void Encode(const scoped_refptr<VideoFrame>& frame,
-              bool keyframe,
+              const VideoEncoder::EncodeOptions& options,
               EncodeCallback callback) override {
     EXPECT_NE(-1, configured_bitstream_buffer_id_);
     EXPECT_TRUE(client_);
     client_->BitstreamBufferReady(
         configured_bitstream_buffer_id_,
-        BitstreamBufferMetadata(0, keyframe, frame->timestamp()));
+        BitstreamBufferMetadata(0, options.key_frame, frame->timestamp()));
     configured_bitstream_buffer_id_ = -1;
 
-    DoEncode(frame, keyframe);
+    DoEncode(frame, options.key_frame);
     std::move(callback).Run();
   }
   MOCK_METHOD2(DoEncode, void(const scoped_refptr<VideoFrame>&, bool));
@@ -147,7 +151,7 @@ class MockVideoEncodeAcceleratorClient : public VideoEncodeAccelerator::Client {
                void(unsigned int, const gfx::Size&, size_t));
   MOCK_METHOD2(BitstreamBufferReady,
                void(int32_t, const media::BitstreamBufferMetadata&));
-  MOCK_METHOD1(NotifyError, void(VideoEncodeAccelerator::Error));
+  MOCK_METHOD1(NotifyErrorStatus, void(const media::EncoderStatus&));
   MOCK_METHOD1(NotifyEncoderInfoChange, void(const media::VideoEncoderInfo&));
 };
 
@@ -364,9 +368,9 @@ TEST_F(MojoVideoEncodeAcceleratorTest, MojoDisconnectAfterInitialize) {
   EXPECT_TRUE(mojo_vea()->Initialize(config, mock_vea_client.get(),
                                      std::make_unique<media::NullMediaLog>()));
   mojo_vea_receiver_->Close();
-  EXPECT_CALL(
-      *mock_vea_client,
-      NotifyError(VideoEncodeAccelerator::Error::kPlatformFailureError));
+  EXPECT_CALL(*mock_vea_client,
+              NotifyErrorStatus(ExpectEncoderStatusCode(
+                  EncoderStatus::Codes::kEncoderMojoConnectionError)));
   base::RunLoop().RunUntilIdle();
 }
 

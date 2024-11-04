@@ -11,22 +11,27 @@
 #include "base/test/bind.h"
 #include "base/test/gmock_callback_support.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/test/test_future.h"
 #include "chrome/browser/ash/account_manager/account_apps_availability.h"
 #include "chrome/browser/ash/account_manager/account_apps_availability_factory.h"
 #include "chrome/browser/ash/login/users/fake_chrome_user_manager.h"
 #include "chrome/browser/ash/profiles/profile_helper.h"
 #include "chrome/browser/browser_process_platform_part.h"
+#include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/signin/identity_test_environment_profile_adaptor.h"
 #include "chrome/browser/signin/signin_promo.h"
 #include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/webui/ash/edu_coexistence/edu_coexistence_login_handler.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/test/base/in_process_browser_test.h"
+#include "chromeos/ash/components/standalone_browser/feature_refs.h"
 #include "components/account_manager_core/account_manager_facade.h"
 #include "components/account_manager_core/chromeos/account_manager_facade_factory.h"
 #include "components/account_manager_core/mock_account_manager_facade.h"
 #include "components/signin/public/identity_manager/identity_test_utils.h"
 #include "components/signin/public/identity_manager/primary_account_mutator.h"
+#include "components/supervised_user/core/common/pref_names.h"
 #include "components/supervised_user/core/common/supervised_user_constants.h"
 #include "components/user_manager/scoped_user_manager.h"
 #include "components/user_manager/user_type.h"
@@ -224,12 +229,10 @@ class InlineLoginHandlerTest
         absl::nullopt /* cookie_partition_key */);
     content::StoragePartition* partition =
         signin::GetSigninPartition(web_contents()->GetBrowserContext());
-    base::RunLoop run_loop;
+    base::test::TestFuture<net::CookieAccessResult> future;
     partition->GetCookieManagerForBrowserProcess()->SetCanonicalCookie(
-        *cookie_obj, url, options,
-        base::BindLambdaForTesting(
-            [&](net::CookieAccessResult status) { run_loop.Quit(); }));
-    run_loop.Run();
+        *cookie_obj, url, options, future.GetCallback());
+    EXPECT_TRUE(future.Wait());
 
     // Setup fake Gaia.
     FakeGaia::MergeSessionParams params;
@@ -323,11 +326,11 @@ IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTest, NewAccountAdditionSuccess) {
   }
 
   // Wait until account is added.
-  base::RunLoop run_loop;
+  base::test::TestFuture<void> future;
   EXPECT_CALL(observer,
               OnAccountUpserted(AccountEmailEq(kSecondaryAccount1Email)))
-      .WillOnce(base::test::RunClosure(run_loop.QuitClosure()));
-  run_loop.Run();
+      .WillOnce(base::test::RunOnceClosure(future.GetCallback()));
+  EXPECT_TRUE(future.Wait());
 }
 
 IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTest, PrimaryReauthenticationSuccess) {
@@ -343,11 +346,11 @@ IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTest, PrimaryReauthenticationSuccess) {
   web_ui()->HandleReceivedMessage(kCompleteLoginMessage, args);
 
   // Wait until account is added.
-  base::RunLoop run_loop;
+  base::test::TestFuture<void> future;
   EXPECT_CALL(observer,
               OnAccountUpserted(AccountEmailEq(GetDeviceAccountInfo().email)))
-      .WillOnce(base::test::RunClosure(run_loop.QuitClosure()));
-  run_loop.Run();
+      .WillOnce(base::test::RunOnceClosure(future.GetCallback()));
+  EXPECT_TRUE(future.Wait());
 }
 
 INSTANTIATE_TEST_SUITE_P(InlineLoginHandlerTestSuite,
@@ -359,12 +362,21 @@ class InlineLoginHandlerTestWithArcRestrictions
     : public InlineLoginHandlerTest {
  public:
   InlineLoginHandlerTestWithArcRestrictions() {
-    feature_list_.InitAndEnableFeature(ash::features::kLacrosSupport);
+    auto lacros = ash::standalone_browser::GetFeatureRefs();
+    lacros.push_back(crosapi::browser_util::kLacrosForSupervisedUsers);
+    feature_list_.InitWithFeatures(/*enabled=*/lacros, /*disabled=*/{});
   }
 
   ~InlineLoginHandlerTestWithArcRestrictions() override = default;
 
   void SetUpOnMainThread() override {
+    if (browser() == nullptr) {
+      // Create a new Ash browser window so test code using browser() can work
+      // even when Lacros is the only browser.
+      // TODO(crbug.com/1450158): Remove uses of browser() from such tests.
+      chrome::NewEmptyWindow(ProfileManager::GetActiveUserProfile());
+      SelectFirstBrowser();
+    }
     InlineLoginHandlerTest::SetUpOnMainThread();
     // In-session account addition happens when `AccountAppsAvailability` is
     // already initialized.
@@ -382,16 +394,17 @@ class InlineLoginHandlerTestWithArcRestrictions
     auto* account_apps_availability =
         AccountAppsAvailabilityFactory::GetForProfile(profile());
 
-    // Wait until account is added.
-    base::RunLoop run_loop;
+    base::test::TestFuture<void> future;
     EXPECT_CALL(observer, OnAccountUpserted(AccountEmailEq(email)))
-        .WillOnce([&run_loop, account_apps_availability, is_available_in_arc](
-                      const account_manager::Account& account) {
-          account_apps_availability->SetIsAccountAvailableInArc(
-              account, is_available_in_arc);
-          run_loop.Quit();
-        });
+        .WillOnce(testing::DoAll(
+            base::test::RunOnceClosure(future.GetCallback()),
+            [account_apps_availability,
+             is_available_in_arc](const account_manager::Account& account) {
+              account_apps_availability->SetIsAccountAvailableInArc(
+                  account, is_available_in_arc);
+            }));
     identity_test_env()->MakeAccountAvailable(email);
+    EXPECT_TRUE(future.Wait());
   }
 
   bool ValuesListContainAccount(const base::Value::List& values,
@@ -403,7 +416,7 @@ class InlineLoginHandlerTestWithArcRestrictions
       const base::Value::List& values,
       const std::string& email) {
     for (const base::Value& value : values) {
-      const std::string* email_val = value.FindStringKey("email");
+      const std::string* email_val = value.GetDict().FindString("email");
       EXPECT_TRUE(email_val != nullptr);
       if (*email_val == email)
         return value.Clone();
@@ -460,18 +473,18 @@ IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTestWithArcRestrictions,
   }
 
   // Wait until account is added.
-  base::RunLoop run_loop;
+  base::test::TestFuture<void> future;
   EXPECT_CALL(observer,
               OnAccountUpserted(AccountEmailEq(kSecondaryAccount1Email)))
-      .WillOnce(base::test::RunClosure(run_loop.QuitClosure()));
-  run_loop.Run();
+      .WillOnce(base::test::RunOnceClosure(future.GetCallback()));
+  EXPECT_TRUE(future.Wait());
 
   // Make sure that account was added to ARC.
-  base::RunLoop run_loop_1;
+  base::test::TestFuture<void> future2;
   EXPECT_CALL(apps_availability_observer,
               OnAccountAvailableInArc(AccountEmailEq(kSecondaryAccount1Email)))
-      .WillOnce(base::test::RunClosure(run_loop_1.QuitClosure()));
-  run_loop_1.Run();
+      .WillOnce(base::test::RunOnceClosure(future2.GetCallback()));
+  EXPECT_TRUE(future2.Wait());
 }
 
 IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTestWithArcRestrictions,
@@ -496,11 +509,11 @@ IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTestWithArcRestrictions,
   web_ui()->HandleReceivedMessage(kCompleteLoginMessage, args);
 
   // Wait until account is added.
-  base::RunLoop run_loop;
+  base::test::TestFuture<void> future;
   EXPECT_CALL(observer,
               OnAccountUpserted(AccountEmailEq(GetDeviceAccountInfo().email)))
-      .WillOnce(base::test::RunClosure(run_loop.QuitClosure()));
-  run_loop.Run();
+      .WillOnce(base::test::RunOnceClosure(future.GetCallback()));
+  EXPECT_TRUE(future.Wait());
 
   // Make sure that ARC availability didn't change for account.
   EXPECT_CALL(apps_availability_observer, OnAccountAvailableInArc).Times(0);

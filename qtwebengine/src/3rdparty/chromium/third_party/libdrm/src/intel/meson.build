@@ -23,13 +23,13 @@ libdrm_intel = library(
   [
     files(
       'intel_bufmgr.c', 'intel_bufmgr_fake.c', 'intel_bufmgr_gem.c',
-      'intel_decode.c', 'mm.c', 'intel_chipset.c',
+      'intel_decode.c', 'mm.c',
     ),
     config_file,
   ],
   include_directories : [inc_root, inc_drm],
   link_with : libdrm,
-  dependencies : [dep_pciaccess, dep_pthread_stubs, dep_rt, dep_valgrind, dep_atomic_ops],
+  dependencies : [dep_pciaccess, dep_threads, dep_rt, dep_valgrind, dep_atomic_ops],
   c_args : libdrm_c_args,
   gnu_symbol_visibility : 'hidden',
   version : '1.0.0',

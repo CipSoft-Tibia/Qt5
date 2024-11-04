@@ -4,6 +4,8 @@
 
 import './commerce/shopping_list.js';
 
+import {ShoppingListApiProxy, ShoppingListApiProxyImpl} from '//bookmarks-side-panel.top-chrome/shared/commerce/shopping_list_api_proxy.js';
+import {BookmarkProductInfo} from '//bookmarks-side-panel.top-chrome/shared/shopping_list.mojom-webui.js';
 import {getInstance as getAnnouncerInstance} from 'chrome://resources/cr_elements/cr_a11y_announcer/cr_a11y_announcer.js';
 import {FocusOutlineManager} from 'chrome://resources/js/focus_outline_manager.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
@@ -14,8 +16,6 @@ import {BookmarkFolderElement, FOLDER_OPEN_CHANGED_EVENT, getBookmarkFromElement
 import {BookmarksApiProxy, BookmarksApiProxyImpl} from './bookmarks_api_proxy.js';
 import {BookmarksDragManager} from './bookmarks_drag_manager.js';
 import {getTemplate} from './bookmarks_list.html.js';
-import {ShoppingListApiProxy, ShoppingListApiProxyImpl} from './commerce/shopping_list_api_proxy.js';
-import {BookmarkProductInfo} from './shopping_list.mojom-webui.js';
 
 // Key for localStorage object that refers to all the open folders.
 export const LOCAL_STORAGE_OPEN_FOLDERS_KEY = 'openFolders';
@@ -137,6 +137,9 @@ export class BookmarksListElement extends PolymerElement {
         callbackRouter.priceTrackedForBookmark.addListener(
             (product: BookmarkProductInfo) =>
                 this.onBookmarkPriceTracked(product)),
+        callbackRouter.priceUntrackedForBookmark.addListener(
+            (product: BookmarkProductInfo) =>
+                this.onBookmarkPriceUntracked(product)),
     );
   }
 
@@ -279,8 +282,13 @@ export class BookmarksListElement extends PolymerElement {
     this.splice(`${pathToParentString}.children`, node.index!, 0, node);
     afterNextRender(this, () => {
       this.focusBookmark_(node.id);
-      getAnnouncerInstance().announce(
-          loadTimeData.getStringF('bookmarkCreated', getBookmarkName(node)));
+      if (node.url) {
+        getAnnouncerInstance().announce(
+            loadTimeData.getStringF('bookmarkCreated', getBookmarkName(node)));
+      } else {
+        getAnnouncerInstance().announce(loadTimeData.getStringF(
+            'bookmarkFolderCreated', getBookmarkName(node)));
+      }
     });
   }
 
@@ -435,6 +443,11 @@ export class BookmarksListElement extends PolymerElement {
     this.push('productInfos_', product);
     chrome.metricsPrivate.recordUserAction(
         'Commerce.PriceTracking.SidePanel.TrackedProductsShown');
+  }
+
+  private onBookmarkPriceUntracked(product: BookmarkProductInfo) {
+    this.productInfos_ = this.productInfos_.filter(
+        item => item.bookmarkId !== product.bookmarkId);
   }
 }
 

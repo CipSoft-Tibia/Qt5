@@ -27,7 +27,7 @@ namespace proto {
 class SegmentInfo;
 }  // namespace proto
 
-class ModelExecutionManager;
+class ModelManager;
 class SignalStorageConfig;
 
 class ModelExecutionSchedulerImpl : public ModelExecutionScheduler {
@@ -35,7 +35,7 @@ class ModelExecutionSchedulerImpl : public ModelExecutionScheduler {
   ModelExecutionSchedulerImpl(std::vector<Observer*>&& observers,
                               SegmentInfoDatabase* segment_database,
                               SignalStorageConfig* signal_storage_config,
-                              ModelExecutionManager* model_execution_manager,
+                              ModelManager* model_manager,
                               ModelExecutor* model_executor,
                               base::flat_set<proto::SegmentId> segment_ids,
                               base::Clock* clock,
@@ -52,7 +52,7 @@ class ModelExecutionSchedulerImpl : public ModelExecutionScheduler {
   void RequestModelExecutionForEligibleSegments(bool expired_only) override;
   void RequestModelExecution(const proto::SegmentInfo& segment_info) override;
   void OnModelExecutionCompleted(
-      SegmentId segment_id,
+      const proto::SegmentInfo& segment_info,
       std::unique_ptr<ModelExecutionResult> score) override;
 
  private:
@@ -76,7 +76,7 @@ class ModelExecutionSchedulerImpl : public ModelExecutionScheduler {
   const raw_ptr<SignalStorageConfig> signal_storage_config_;
 
   // The class that executes the models.
-  const raw_ptr<ModelExecutionManager> model_execution_manager_;
+  const raw_ptr<ModelManager> model_manager_;
   const raw_ptr<ModelExecutor> model_executor_;
 
   // The set of all known segments.
@@ -89,6 +89,7 @@ class ModelExecutionSchedulerImpl : public ModelExecutionScheduler {
 
   // In-flight model execution requests. Will be killed if we get a model
   // update.
+  // TODO(ritikagup) : Remove outstanding request handling if not required.
   std::map<SegmentId,
            base::CancelableOnceCallback<
                ModelExecutor::ModelExecutionCallback::RunType>>

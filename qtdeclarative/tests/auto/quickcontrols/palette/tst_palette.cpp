@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/qtest.h>
 #include <QtGui/qpalette.h>
@@ -7,17 +7,22 @@
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcomponent.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/visualtestutils_p.h>
 #include <QtQuickControlsTestUtils/private/controlstestutils_p.h>
 #include <QtQuick/private/qquickitem_p.h>
 #include <QtQuickTemplates2/private/qquickapplicationwindow_p.h>
+#include <QtQuickTemplates2/private/qquickcombobox_p.h>
 #include <QtQuickTemplates2/private/qquickcontrol_p.h>
 #include <QtQuickTemplates2/private/qquickcontrol_p_p.h>
 #include <QtQuickTemplates2/private/qquickpopup_p.h>
 #include <QtQuickTemplates2/private/qquickpopup_p_p.h>
 #include <QtQuickTemplates2/private/qquicktheme_p_p.h>
 #include <QtQuickTemplates2/private/qquickbutton_p.h>
+#include <QtQuickTemplates2/private/qquicktooltip_p.h>
 #include <QtQuickControls2/qquickstyle.h>
+#include <QSignalSpy>
 
+using namespace QQuickVisualTestUtils;
 using namespace QQuickControlsTestUtils;
 
 class tst_palette : public QQmlDataTest
@@ -48,6 +53,16 @@ private slots:
     void updateBindings();
 
     void resolve();
+
+    void resetColor();
+    void updateBindingPalette();
+
+    void comboBoxPopup_data();
+    void comboBoxPopup();
+    void comboBoxPopupWithThemeDefault_data();
+    void comboBoxPopupWithThemeDefault();
+
+    void toolTipPaletteUpdate();
 };
 
 tst_palette::tst_palette()
@@ -456,6 +471,209 @@ void tst_palette::resolve()
             != control->property("palette").value<QQuickPalette*>()->window());
     QCOMPARE(window->property("palette").value<QQuickPalette*>()->windowText(),
              control->property("palette").value<QQuickPalette*>()->windowText());
+}
+
+void tst_palette::resetColor()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.loadUrl(testFileUrl("reset-color.qml"));
+
+    QScopedPointer<QQuickApplicationWindow> window(qobject_cast<QQuickApplicationWindow*>(component.create()));
+    QVERIFY2(!window.isNull(), qPrintable(component.errorString()));
+    auto windowPalette = window->property("palette").value<QQuickPalette*>();
+    QVERIFY(windowPalette);
+
+    auto control = window->property("control").value<QQuickControl*>();
+    QVERIFY(control);
+    auto controlPalette = control->property("palette").value<QQuickPalette*>();
+    QVERIFY(controlPalette);
+    auto item1Palette = window->property("item1Palette").value<QQuickPalette*>();
+    QVERIFY(item1Palette);
+    auto item2Palette = window->property("item2Palette").value<QQuickPalette*>();
+    QVERIFY(item2Palette);
+
+    QCOMPARE(controlPalette->disabled()->window(), item2Palette->disabled()->window());
+    QCOMPARE(controlPalette->disabled()->text(), item1Palette->disabled()->text());
+    QCOMPARE(controlPalette->disabled()->windowText(), windowPalette->disabled()->windowText());
+
+    {
+        QSignalSpy spy(controlPalette, &QQuickPalette::changed);
+        item1Palette->disabled()->setText(Qt::red);
+        QVERIFY(spy.count() == 1 || spy.wait());
+        QCOMPARE(controlPalette->disabled()->text(), QColor(Qt::red));
+    }
+
+    {
+        QSignalSpy spy(controlPalette, &QQuickPalette::changed);
+        item1Palette->disabled()->setWindowText(Qt::red);
+        QVERIFY(spy.count() == 1 || spy.wait());
+        QCOMPARE(controlPalette->disabled()->windowText(), QColor(Qt::red));
+    }
+
+    {
+        QSignalSpy spy(controlPalette, &QQuickPalette::changed);
+        item2Palette->disabled()->setWindowText(Qt::blue);
+        QVERIFY(spy.count() == 1 || spy.wait());
+        QCOMPARE(controlPalette->disabled()->windowText(), QColor(Qt::blue));
+    }
+
+    {
+        QSignalSpy spy(controlPalette, &QQuickPalette::changed);
+        QMetaObject::invokeMethod(window.get(), "resetColor", Qt::DirectConnection);
+        QCOMPARE(controlPalette->window(), windowPalette->window());
+        windowPalette->setWindow(Qt::green);
+        QCOMPARE(controlPalette->window(), QColor(Qt::green));
+        QVERIFY(spy.count() >= 2);
+    }
+
+    {
+        QSignalSpy spy(controlPalette, &QQuickPalette::changed);
+        QMetaObject::invokeMethod(window.get(), "resetGroup", Qt::DirectConnection);
+        QCOMPARE(controlPalette->disabled()->windowText(), windowPalette->disabled()->windowText());
+        windowPalette->disabled()->setWindow(Qt::blue);
+        QCOMPARE(controlPalette->disabled()->window(), QColor(Qt::blue));
+        item2Palette->disabled()->setWindow(Qt::red);
+        QCOMPARE(controlPalette->disabled()->window(), QColor(Qt::blue));
+        if (spy.count() == 0)
+            spy.wait();
+        QCOMPARE(spy.count(), 2);
+    }
+}
+
+void tst_palette::updateBindingPalette()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.loadUrl(testFileUrl("palette-appwindow-bindingpalette.qml"));
+
+    QScopedPointer<QQuickApplicationWindow> window(qobject_cast<QQuickApplicationWindow*>(component.create()));
+    QVERIFY2(!window.isNull(), qPrintable(component.errorString()));
+    auto *windowPalette = window->property("palette").value<QQuickPalette *>();
+    QVERIFY(windowPalette);
+    auto *customPalette = window->property("cstmPalette").value<QQuickPalette *>();
+    QVERIFY(customPalette);
+
+    QCOMPARE(windowPalette->buttonText(), QColor("white"));
+
+    QColor buttonTextColor("red");
+    customPalette->setButtonText(buttonTextColor);
+    QCOMPARE(customPalette->buttonText(), buttonTextColor);
+    QCOMPARE(windowPalette->buttonText(), customPalette->buttonText());
+}
+
+void tst_palette::comboBoxPopup_data()
+{
+    QTest::addColumn<QString>("style");
+    QTest::addColumn<QString>("qmlFilePath");
+
+    QTest::newRow("Window, Basic") << "Basic" << "comboBoxPopupWithWindow.qml";
+    QTest::newRow("ApplicationWindow, Basic") << "Basic" << "comboBoxPopupWithApplicationWindow.qml";
+    QTest::newRow("Window, Fusion") << "Fusion" << "comboBoxPopupWithWindow.qml";
+    QTest::newRow("ApplicationWindow, Fusion") << "Fusion" << "comboBoxPopupWithApplicationWindow.qml";
+}
+
+// Unlike regular popups, which should inherit their palette from the window and not the parent popup,
+// combo box popups should inherit their palette from the combo box itself.
+void tst_palette::comboBoxPopup()
+{
+    QFETCH(QString, style);
+    QFETCH(QString, qmlFilePath);
+
+    qmlClearTypeRegistrations();
+    QQuickStyle::setStyle(style);
+
+    QQuickApplicationHelper helper(this, qmlFilePath);
+    QVERIFY2(helper.ready, helper.failureMessage());
+    QQuickWindow *window = helper.window;
+    window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+
+    const auto *windowPalette = window->property("palette").value<QQuickPalette *>();
+    QVERIFY(windowPalette);
+
+    const auto *popup = window->property("popup").value<QQuickPopup *>();
+    QVERIFY(popup);
+    const auto *popupBackground = popup->background();
+    QCOMPARE(popupBackground->property("color"), QColorConstants::Red);
+    QCOMPARE(popupBackground->property("palette").value<QQuickPalette*>()->toQPalette().window().color(),
+        QColorConstants::Red);
+
+    // This has the default palette.
+    const auto *topLevelComboBox = window->property("topLevelComboBox").value<QQuickComboBox *>();
+    QVERIFY(topLevelComboBox);
+    const auto *topLevelComboBoxBackground = topLevelComboBox->popup()->background();
+    QCOMPARE_NE(topLevelComboBoxBackground->property("color"), QColorConstants::Red);
+    QCOMPARE_NE(topLevelComboBoxBackground->property("palette").value<QQuickPalette*>()->toQPalette().window().color(),
+        QColorConstants::Red);
+
+    // The popup that this combo box is in has its window role set to red,
+    // so the combo box's popup background should be red too.
+    const auto *comboBoxInPopup = window->property("comboBoxInPopup").value<QQuickComboBox *>();
+    QVERIFY(comboBoxInPopup);
+    const auto *comboBoxInPopupBackground = comboBoxInPopup->popup()->background();
+    QCOMPARE(comboBoxInPopupBackground->property("color"), QColorConstants::Red);
+    QCOMPARE(comboBoxInPopupBackground->property("palette").value<QQuickPalette*>()->toQPalette().window().color(),
+        QColorConstants::Red);
+}
+
+void tst_palette::comboBoxPopupWithThemeDefault_data()
+{
+    QTest::addColumn<QString>("style");
+    QTest::addColumn<QColor>("expectedComboBoxPopupBackgroundColor");
+
+    QTest::newRow("Basic") << "Basic" << QColor::fromRgb(0xFFFFFF);
+
+    // We can't test Fusion because it uses the default application palette,
+    // which is the default-constructed QPalette, so the test would always pass.
+}
+
+void tst_palette::comboBoxPopupWithThemeDefault()
+{
+    QFETCH(QString, style);
+    QFETCH(QColor, expectedComboBoxPopupBackgroundColor);
+
+    qmlClearTypeRegistrations();
+    QQuickStyle::setStyle(style);
+
+    QQuickApplicationHelper helper(this, "comboBoxPopupWithThemeDefault.qml");
+    QVERIFY2(helper.ready, helper.failureMessage());
+    QQuickWindow *window = helper.window;
+    window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+
+    const auto *comboBox = window->property("comboBox").value<QQuickComboBox *>();
+    QVERIFY(comboBox);
+    const auto *comboBoxBackground = comboBox->popup()->background();
+    QCOMPARE(comboBoxBackground->property("color"), expectedComboBoxPopupBackgroundColor);
+}
+
+void tst_palette::toolTipPaletteUpdate()
+{
+    QQuickApplicationHelper helper(this, "toolTipPaletteUpdate.qml");
+    QVERIFY2(helper.ready, helper.failureMessage());
+    QQuickWindow *window = helper.window;
+    window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+
+    auto *button = window->findChild<QQuickButton *>("button");
+    QVERIFY(button);
+    auto *attachedToolTip = button->findChild<QQuickToolTipAttached *>();
+    QVERIFY(attachedToolTip);
+    auto *toolTip = attachedToolTip->toolTip();
+    QVERIFY(toolTip);
+
+    auto windowPalette = QQuickWindowPrivate::get(window)->palette();
+    auto toolTipPalette = QQuickPopupPrivate::get(toolTip)->palette();
+
+    QCOMPARE(toolTipPalette->toolTipBase(), windowPalette->toolTipBase());
+    QCOMPARE(toolTipPalette->toolTipText(), windowPalette->toolTipText());
+
+    windowPalette->setToolTipBase(Qt::blue);
+    windowPalette->setToolTipText(Qt::red);
+
+    QCOMPARE(toolTipPalette->toolTipBase(), windowPalette->toolTipBase());
+    QCOMPARE(toolTipPalette->toolTipText(), windowPalette->toolTipText());
 }
 
 QTEST_MAIN(tst_palette)

@@ -2,6 +2,7 @@
 
 #include "basicmessages.qpb.h"
 #include <QtProtobuf/qprotobufserializer.h>
+#include <cmath>
 
 namespace qtprotobufnamespace::tests {
 
@@ -318,22 +319,9 @@ bool SimpleIntMessage::operator !=(const SimpleIntMessage &other) const
     return !this->operator ==(other);
 }
 
-int SimpleIntMessage::testFieldInt_p() const
-{
-    return dptr->m_testFieldInt;
-}
-
 QtProtobuf::int32 SimpleIntMessage::testFieldInt() const
 {
     return dptr->m_testFieldInt;
-}
-
-void SimpleIntMessage::setTestFieldInt_p(const int &testFieldInt)
-{
-    if (dptr->m_testFieldInt != testFieldInt) {
-        dptr.detach();
-        dptr->m_testFieldInt = testFieldInt;
-    }
 }
 
 void SimpleIntMessage::setTestFieldInt(const QtProtobuf::int32 &testFieldInt)
@@ -1149,7 +1137,8 @@ float SimpleFloatMessage::testFieldFloat() const
 
 void SimpleFloatMessage::setTestFieldFloat(const float &testFieldFloat)
 {
-    if (dptr->m_testFieldFloat != testFieldFloat) {
+    if (dptr->m_testFieldFloat != testFieldFloat ||
+        std::signbit(dptr->m_testFieldFloat) != std::signbit(testFieldFloat)) {
         dptr.detach();
         dptr->m_testFieldFloat = testFieldFloat;
     }
@@ -1265,7 +1254,8 @@ double SimpleDoubleMessage::testFieldDouble() const
 
 void SimpleDoubleMessage::setTestFieldDouble(const double &testFieldDouble)
 {
-    if (dptr->m_testFieldDouble != testFieldDouble) {
+    if (dptr->m_testFieldDouble != testFieldDouble ||
+        std::signbit(dptr->m_testFieldDouble) != std::signbit(testFieldDouble)) {
         dptr.detach();
         dptr->m_testFieldDouble = testFieldDouble;
     }
@@ -1489,22 +1479,9 @@ bool SimpleFixedInt32Message::operator !=(const SimpleFixedInt32Message &other) 
     return !this->operator ==(other);
 }
 
-unsigned int SimpleFixedInt32Message::testFieldFixedInt32_p() const
-{
-    return dptr->m_testFieldFixedInt32;
-}
-
 QtProtobuf::fixed32 SimpleFixedInt32Message::testFieldFixedInt32() const
 {
     return dptr->m_testFieldFixedInt32;
-}
-
-void SimpleFixedInt32Message::setTestFieldFixedInt32_p(const unsigned int &testFieldFixedInt32)
-{
-    if (dptr->m_testFieldFixedInt32 != testFieldFixedInt32) {
-        dptr.detach();
-        dptr->m_testFieldFixedInt32 = testFieldFixedInt32;
-    }
 }
 
 void SimpleFixedInt32Message::setTestFieldFixedInt32(const QtProtobuf::fixed32 &testFieldFixedInt32)
@@ -1733,22 +1710,9 @@ bool SimpleSFixedInt32Message::operator !=(const SimpleSFixedInt32Message &other
     return !this->operator ==(other);
 }
 
-int SimpleSFixedInt32Message::testFieldFixedInt32_p() const
-{
-    return dptr->m_testFieldFixedInt32;
-}
-
 QtProtobuf::sfixed32 SimpleSFixedInt32Message::testFieldFixedInt32() const
 {
     return dptr->m_testFieldFixedInt32;
-}
-
-void SimpleSFixedInt32Message::setTestFieldFixedInt32_p(const int &testFieldFixedInt32)
-{
-    if (dptr->m_testFieldFixedInt32 != testFieldFixedInt32) {
-        dptr.detach();
-        dptr->m_testFieldFixedInt32 = testFieldFixedInt32;
-    }
 }
 
 void SimpleSFixedInt32Message::setTestFieldFixedInt32(const QtProtobuf::sfixed32 &testFieldFixedInt32)
@@ -1988,11 +1952,6 @@ bool ComplexMessage::operator !=(const ComplexMessage &other) const
     return !this->operator ==(other);
 }
 
-int ComplexMessage::testFieldInt_p() const
-{
-    return dptr->m_testFieldInt;
-}
-
 QtProtobuf::int32 ComplexMessage::testFieldInt() const
 {
     return dptr->m_testFieldInt;
@@ -2003,16 +1962,26 @@ SimpleStringMessage *ComplexMessage::testComplexField_p() const
     return dptr->m_testComplexField ? dptr->m_testComplexField.get() : nullptr;
 }
 
-SimpleStringMessage &ComplexMessage::testComplexField() const
+bool ComplexMessage::hasTestComplexField() const
+{
+    return dptr->m_testComplexField.operator bool();
+}
+
+SimpleStringMessage &ComplexMessage::testComplexField()
+{
+    dptr.detach();
+    return *dptr->m_testComplexField;
+}
+const SimpleStringMessage &ComplexMessage::testComplexField() const
 {
     return *dptr->m_testComplexField;
 }
 
-void ComplexMessage::setTestFieldInt_p(const int &testFieldInt)
+void ComplexMessage::clearTestComplexField()
 {
-    if (dptr->m_testFieldInt != testFieldInt) {
+    if (dptr->m_testComplexField) {
         dptr.detach();
-        dptr->m_testFieldInt = testFieldInt;
+        dptr->m_testComplexField.reset();
     }
 }
 

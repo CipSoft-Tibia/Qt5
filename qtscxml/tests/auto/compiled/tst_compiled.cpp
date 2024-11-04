@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest>
 #include <QObject>
@@ -234,7 +234,7 @@ void tst_Compiled::topMachine()
         ++doneCounter;
     });
 
-    QObject::connect(&stateMachine, &QScxmlStateMachine::invokedServicesChanged,
+    QObject::connect(&stateMachine, &QScxmlStateMachine::invokedServicesChanged, this,
                      [&invokableServicesCount](const QList<QScxmlInvokableService *> &services) {
         invokableServicesCount = services.size();
     });
@@ -259,7 +259,7 @@ void tst_Compiled::topMachineDynamic()
         ++doneCounter;
     });
 
-    QObject::connect(stateMachine.data(), &QScxmlStateMachine::invokedServicesChanged,
+    QObject::connect(stateMachine.data(), &QScxmlStateMachine::invokedServicesChanged, this,
                      [&invokableServicesCount](const QList<QScxmlInvokableService *> &services) {
         invokableServicesCount = services.size();
     });

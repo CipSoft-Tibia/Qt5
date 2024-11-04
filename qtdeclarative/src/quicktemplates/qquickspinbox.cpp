@@ -62,6 +62,10 @@ static const int AUTO_REPEAT_INTERVAL = 100;
 
     \snippet qtquickcontrols-spinbox-double.qml 1
 
+    A prefix and suffix can be added using regular expressions:
+
+    \snippet qtquickcontrols-spinbox-prefix.qml 1
+
     \sa Tumbler, {Customizing SpinBox}, {Focus Management in Qt Quick Controls}
 */
 
@@ -434,7 +438,8 @@ QString QQuickSpinBoxPrivate::evaluateTextFromValue(int val) const
         QJSValue loc;
 #if QT_CONFIG(qml_locale)
         QV4::ExecutionEngine *v4 = QQmlEnginePrivate::getV4Engine(engine);
-        loc = QJSValuePrivate::fromReturnedValue(QQmlLocale::wrap(v4, locale));
+        loc = QJSValuePrivate::fromReturnedValue(
+                v4->fromData(QMetaType::fromType<QLocale>(), &locale));
 #endif
         text = textFromValue.call(QJSValueList() << val << loc).toString();
     } else {
@@ -452,7 +457,8 @@ int QQuickSpinBoxPrivate::evaluateValueFromText(const QString &text) const
         QJSValue loc;
 #if QT_CONFIG(qml_locale)
         QV4::ExecutionEngine *v4 = QQmlEnginePrivate::getV4Engine(engine);
-        loc = QJSValuePrivate::fromReturnedValue(QQmlLocale::wrap(v4, locale));
+        loc = QJSValuePrivate::fromReturnedValue(
+                v4->fromData(QMetaType::fromType<QLocale>(), &locale));
 #endif
         value = valueFromText.call(QJSValueList() << text << loc).toInt();
     } else {
@@ -467,6 +473,7 @@ QQuickSpinBox::QQuickSpinBox(QQuickItem *parent)
     Q_D(QQuickSpinBox);
     d->up = new QQuickIndicatorButton(this);
     d->down = new QQuickIndicatorButton(this);
+    d->setSizePolicy(QLayoutPolicy::Preferred, QLayoutPolicy::Fixed);
 
     setFlag(ItemIsFocusScope);
     setFiltersChildMouseEvents(true);
@@ -1097,7 +1104,7 @@ void QQuickSpinBox::contentItemChange(QQuickItem *newItem, QQuickItem *oldItem)
     if (newItem) {
         newItem->setActiveFocusOnTab(true);
         if (d->activeFocus)
-            newItem->forceActiveFocus(d->focusReason);
+            newItem->forceActiveFocus(static_cast<Qt::FocusReason>(d->focusReason));
 #if QT_CONFIG(cursor)
         if (d->editable)
             newItem->setCursor(Qt::IBeamCursor);

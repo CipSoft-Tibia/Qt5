@@ -14,7 +14,7 @@
 #include "core/fxge/win32/cfx_psfonttracker.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
 namespace {
 
@@ -204,7 +204,6 @@ restore
     auto bitmap = pdfium::MakeRetain<CFX_DIBitmap>();
     bool result = bitmap->Create(kWidth, kHeight, FXDIB_Format::k1bppRgb);
     ASSERT_TRUE(result);
-    bitmap->Clear(0);
     ASSERT_TRUE(renderer.DrawDIBits(bitmap, /*color=*/0, CFX_Matrix(),
                                     FXDIB_ResampleOptions()));
   }

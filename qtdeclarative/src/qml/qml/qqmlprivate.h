@@ -15,25 +15,26 @@
 // We mean it.
 //
 
-#include <QtQml/qtqmlglobal.h>
-#include <QtQml/qqmlparserstatus.h>
-#include <QtQml/qqmllist.h>
-#include <QtQml/qqmlpropertyvaluesource.h>
+#include <QtQml/qjsprimitivevalue.h>
 #include <QtQml/qjsvalue.h>
+#include <QtQml/qqmllist.h>
+#include <QtQml/qqmlparserstatus.h>
+#include <QtQml/qqmlpropertyvaluesource.h>
+#include <QtQml/qtqmlglobal.h>
 
+#include <QtCore/qdatetime.h>
+#include <QtCore/qdebug.h>
 #include <QtCore/qglobal.h>
-#include <QtCore/qvariant.h>
-#include <QtCore/qurl.h>
+#include <QtCore/qmetacontainer.h>
+#include <QtCore/qmetaobject.h>
 #include <QtCore/qpointer.h>
+#include <QtCore/qurl.h>
+#include <QtCore/qvariant.h>
 #include <QtCore/qversionnumber.h>
 
-#include <QtCore/qmetaobject.h>
-#include <QtCore/qmetacontainer.h>
-#include <QtCore/qdebug.h>
-
 #include <functional>
-#include <type_traits>
 #include <limits>
+#include <type_traits>
 
 QT_BEGIN_NAMESPACE
 
@@ -649,6 +650,20 @@ namespace QQmlPrivate
                 QMetaType resultMetaType, const QMetaObject *resultMetaObject,
                 int ctorIndex, void *ctorArg) const;
 
+        // Those are explicit arguments to the Date() ctor, not implicit coercions.
+        QDateTime constructDateTime(double timestamp) const;
+        QDateTime constructDateTime(const QString &string) const;
+        QDateTime constructDateTime(const QJSPrimitiveValue &arg) const
+        {
+            return arg.type() == QJSPrimitiveValue::String
+                    ? constructDateTime(arg.toString())
+                    : constructDateTime(arg.toDouble());
+        }
+
+        QDateTime constructDateTime(
+                double year, double month, double day = 1,
+                double hours = 0, double minutes = 0, double seconds = 0, double msecs = 0) const;
+
         // All of these lookup functions should be used as follows:
         //
         // while (!fooBarLookup(...)) {
@@ -686,6 +701,7 @@ namespace QQmlPrivate
         void initLoadGlobalLookup(uint index) const;
 
         bool loadScopeObjectPropertyLookup(uint index, void *target) const;
+        bool writeBackScopeObjectPropertyLookup(uint index, void *source) const;
         void initLoadScopeObjectPropertyLookup(uint index, QMetaType type) const;
 
         bool loadSingletonLookup(uint index, void *target) const;
@@ -698,9 +714,11 @@ namespace QQmlPrivate
         void initLoadTypeLookup(uint index, uint importNamespace) const;
 
         bool getObjectLookup(uint index, QObject *object, void *target) const;
+        bool writeBackObjectLookup(uint index, QObject *object, void *source) const;
         void initGetObjectLookup(uint index, QObject *object, QMetaType type) const;
 
         bool getValueLookup(uint index, void *value, void *target) const;
+        bool writeBackValueLookup(uint index, void *value, void *source) const;
         void initGetValueLookup(uint index, const QMetaObject *metaObject, QMetaType type) const;
 
         bool getEnumLookup(uint index, void *target) const;
@@ -820,29 +838,6 @@ namespace QQmlPrivate
         return qstrcmp(metaObject->classInfo(index).value(), "true") == 0;
     }
 
-    inline const char *classElementName(const QMetaObject *metaObject)
-    {
-        const char *elementName = classInfo(metaObject, "QML.Element");
-        if (qstrcmp(elementName, "auto") == 0) {
-            const char *strippedClassName = metaObject->className();
-            for (const char *c = strippedClassName; *c != '\0'; c++) {
-                if (*c == ':')
-                    strippedClassName = c + 1;
-            }
-
-            return strippedClassName;
-        }
-        if (qstrcmp(elementName, "anonymous") == 0)
-            return nullptr;
-
-        if (!elementName) {
-            qWarning().nospace() << "Missing QML.Element class info \"" << elementName << "\""
-                                 << " for " << metaObject->className();
-        }
-
-        return elementName;
-    }
-
     template<class T, class = std::void_t<>>
     struct QmlExtended
     {
@@ -953,7 +948,7 @@ namespace QQmlPrivate
     };
 
     template<class T>
-    struct QmlInterface<T, std::void_t<typename T::QmlIsInterface>>
+    struct QmlInterface<T, std::void_t<typename T::QmlIsInterface, decltype(qobject_interface_iid<T *>())>>
     {
         static constexpr bool Value = bool(T::QmlIsInterface::yes);
     };
@@ -983,7 +978,7 @@ namespace QQmlPrivate
                 return std::is_copy_constructible_v<T>;
         }
 
-        static QMetaType self()
+        static constexpr QMetaType self()
         {
             if constexpr (std::is_base_of_v<QObject, T>)
                 return QMetaType::fromType<T*>();
@@ -991,7 +986,7 @@ namespace QQmlPrivate
                 return QMetaType::fromType<T>();
         }
 
-        static QMetaType list()
+        static constexpr QMetaType list()
         {
             if constexpr (std::is_base_of_v<QObject, T>)
                 return QMetaType::fromType<QQmlListProperty<T>>();
@@ -999,13 +994,28 @@ namespace QQmlPrivate
                 return QMetaType::fromType<QList<T>>();
         }
 
-        static QMetaSequence sequence()
+        static constexpr QMetaSequence sequence()
         {
             if constexpr (std::is_base_of_v<QObject, T>)
                 return QMetaSequence();
             else
                 return QMetaSequence::fromContainer<QList<T>>();
         }
+
+        static constexpr int size()
+        {
+            return sizeof(T);
+        }
+    };
+
+    template<>
+    struct QmlMetaType<void>
+    {
+        static constexpr bool hasAcceptableCtors() { return true; }
+        static constexpr QMetaType self() { return QMetaType(); }
+        static constexpr QMetaType list() { return QMetaType(); }
+        static constexpr QMetaSequence sequence() { return QMetaSequence(); }
+        static constexpr int size() { return 0; }
     };
 
     template<typename T, typename E, typename WrapperT = T>
@@ -1046,7 +1056,7 @@ namespace QQmlPrivate
             3,
             QmlMetaType<T>::self(),
             QmlMetaType<T>::list(),
-            int(sizeof(T)),
+            QmlMetaType<T>::size(),
             Constructors<T>::createInto,
             nullptr,
             ValueType<T, E>::create,

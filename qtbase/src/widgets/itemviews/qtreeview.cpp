@@ -169,6 +169,8 @@ QTreeView::QTreeView(QTreeViewPrivate &dd, QWidget *parent)
 */
 QTreeView::~QTreeView()
 {
+    Q_D(QTreeView);
+    d->clearConnections();
 }
 
 /*!
@@ -180,18 +182,12 @@ void QTreeView::setModel(QAbstractItemModel *model)
     if (model == d->model)
         return;
     if (d->model && d->model != QAbstractItemModelPrivate::staticEmptyModel()) {
-        disconnect(d->model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-                this, SLOT(rowsRemoved(QModelIndex,int,int)));
-
-        disconnect(d->model, SIGNAL(modelAboutToBeReset()), this, SLOT(_q_modelAboutToBeReset()));
+        for (const QMetaObject::Connection &connection : d->modelConnections)
+            QObject::disconnect(connection);
     }
 
     if (d->selectionModel) { // support row editing
-        disconnect(d->selectionModel, SIGNAL(currentRowChanged(QModelIndex,QModelIndex)),
-                   d->model, SLOT(submit()));
-        disconnect(d->model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-                   this, SLOT(rowsRemoved(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(modelAboutToBeReset()), this, SLOT(_q_modelAboutToBeReset()));
+        QObject::disconnect(d->selectionmodelConnection);
     }
     d->viewItems.clear();
     d->expandedIndexes.clear();
@@ -201,20 +197,24 @@ void QTreeView::setModel(QAbstractItemModel *model)
     d->geometryRecursionBlock = false;
     QAbstractItemView::setModel(model);
 
-    // QAbstractItemView connects to a private slot
-    disconnect(d->model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-               this, SLOT(_q_rowsRemoved(QModelIndex,int,int)));
-    // do header layout after the tree
-    disconnect(d->model, SIGNAL(layoutChanged()),
-               d->header, SLOT(_q_layoutChanged()));
-    // QTreeView has a public slot for this
-    connect(d->model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-            this, SLOT(rowsRemoved(QModelIndex,int,int)));
+    if (d->model) {
+        // QAbstractItemView connects to a private slot
+        QObjectPrivate::disconnect(d->model, &QAbstractItemModel::rowsRemoved,
+                                   d, &QAbstractItemViewPrivate::rowsRemoved);
+        // do header layout after the tree
+        QObjectPrivate::disconnect(d->model, &QAbstractItemModel::layoutChanged,
+                                   d->header->d_func(), &QAbstractItemViewPrivate::layoutChanged);
 
-    connect(d->model, SIGNAL(modelAboutToBeReset()), SLOT(_q_modelAboutToBeReset()));
-
+        d->modelConnections = {
+            // QTreeView has a public slot for this
+            QObject::connect(d->model, &QAbstractItemModel::rowsRemoved,
+                             this, &QTreeView::rowsRemoved),
+            QObjectPrivate::connect(d->model, &QAbstractItemModel::modelAboutToBeReset,
+                                    d, &QTreeViewPrivate::modelAboutToBeReset)
+        };
+    }
     if (d->sortingEnabled)
-        d->_q_sortIndicatorChanged(header()->sortIndicatorSection(), header()->sortIndicatorOrder());
+        d->sortIndicatorChanged(header()->sortIndicatorSection(), header()->sortIndicatorOrder());
 }
 
 /*!
@@ -236,8 +236,7 @@ void QTreeView::setSelectionModel(QItemSelectionModel *selectionModel)
     Q_ASSERT(selectionModel);
     if (d->selectionModel) {
         // support row editing
-        disconnect(d->selectionModel, SIGNAL(currentRowChanged(QModelIndex,QModelIndex)),
-                   d->model, SLOT(submit()));
+        QObject::disconnect(d->selectionmodelConnection);
     }
 
     d->header->setSelectionModel(selectionModel);
@@ -245,8 +244,9 @@ void QTreeView::setSelectionModel(QItemSelectionModel *selectionModel)
 
     if (d->selectionModel) {
         // support row editing
-        connect(d->selectionModel, SIGNAL(currentRowChanged(QModelIndex,QModelIndex)),
-                d->model, SLOT(submit()));
+        d->selectionmodelConnection =
+            connect(d->selectionModel, &QItemSelectionModel::currentRowChanged,
+                    d->model, &QAbstractItemModel::submit);
     }
 }
 
@@ -286,16 +286,18 @@ void QTreeView::setHeader(QHeaderView *header)
             d->header->setSelectionModel(d->selectionModel);
     }
 
-    connect(d->header, SIGNAL(sectionResized(int,int,int)),
-            this, SLOT(columnResized(int,int,int)));
-    connect(d->header, SIGNAL(sectionMoved(int,int,int)),
-            this, SLOT(columnMoved()));
-    connect(d->header, SIGNAL(sectionCountChanged(int,int)),
-            this, SLOT(columnCountChanged(int,int)));
-    connect(d->header, SIGNAL(sectionHandleDoubleClicked(int)),
-            this, SLOT(resizeColumnToContents(int)));
-    connect(d->header, SIGNAL(geometriesChanged()),
-            this, SLOT(updateGeometries()));
+    d->headerConnections = {
+        connect(d->header, &QHeaderView::sectionResized,
+                this, &QTreeView::columnResized),
+        connect(d->header, &QHeaderView::sectionMoved,
+                this, &QTreeView::columnMoved),
+        connect(d->header, &QHeaderView::sectionCountChanged,
+                this, &QTreeView::columnCountChanged),
+        connect(d->header, &QHeaderView::sectionHandleDoubleClicked,
+                this, &QTreeView::resizeColumnToContents),
+        connect(d->header, &QHeaderView::geometriesChanged,
+                this, &QTreeView::updateGeometries)
+    };
 
     setSortingEnabled(d->sortingEnabled);
     d->updateGeometry();
@@ -839,11 +841,12 @@ void QTreeView::setSortingEnabled(bool enable)
         //sortByColumn has to be called before we connect or set the sortingEnabled flag
         // because otherwise it will not call sort on the model.
         sortByColumn(header()->sortIndicatorSection(), header()->sortIndicatorOrder());
-        connect(header(), SIGNAL(sortIndicatorChanged(int,Qt::SortOrder)),
-                this, SLOT(_q_sortIndicatorChanged(int,Qt::SortOrder)), Qt::UniqueConnection);
+        d->sortHeaderConnection =
+            QObjectPrivate::connect(header(), &QHeaderView::sortIndicatorChanged,
+                                    d, &QTreeViewPrivate::sortIndicatorChanged,
+                                    Qt::UniqueConnection);
     } else {
-        disconnect(header(), SIGNAL(sortIndicatorChanged(int,Qt::SortOrder)),
-                   this, SLOT(_q_sortIndicatorChanged(int,Qt::SortOrder)));
+        QObject::disconnect(d->sortHeaderConnection);
     }
     d->sortingEnabled = enable;
 }
@@ -1396,12 +1399,12 @@ bool QTreeViewPrivate::expandOrCollapseItemAtPos(const QPoint &pos)
     return false;
 }
 
-void QTreeViewPrivate::_q_modelDestroyed()
+void QTreeViewPrivate::modelDestroyed()
 {
     //we need to clear the viewItems because it contains QModelIndexes to
     //the model currently being destroyed
     viewItems.clear();
-    QAbstractItemViewPrivate::_q_modelDestroyed();
+    QAbstractItemViewPrivate::modelDestroyed();
 }
 
 QRect QTreeViewPrivate::intersectedRect(const QRect rect, const QModelIndex &topLeft, const QModelIndex &bottomRight) const
@@ -1783,7 +1786,10 @@ void QTreeView::drawRow(QPainter *painter, const QStyleOptionViewItem &option,
             const bool oldShowDecorationSelected = opt.showDecorationSelected;
             opt.showDecorationSelected = style()->styleHint(QStyle::SH_ItemView_ShowDecorationSelected,
                                                             &opt, this);
+            opt.features |= QStyleOptionViewItem::HasDecoration;
+            opt.rect = branches;
             style()->drawPrimitive(QStyle::PE_PanelItemViewRow, &opt, painter, this);
+            opt.features &= ~QStyleOptionViewItem::HasDecoration;
 
             // draw background of the item (only alternate row). rest of the background
             // is provided by the delegate
@@ -2581,7 +2587,7 @@ void QTreeView::rowsRemoved(const QModelIndex &parent, int start, int end)
     d->viewItems.clear();
     d->doDelayedItemsLayout();
     d->hasRemovedItems = true;
-    d->_q_rowsRemoved(parent, start, end);
+    d->rowsRemoved(parent, start, end);
 }
 
 /*!
@@ -3091,8 +3097,23 @@ void QTreeViewPrivate::initialize()
     q->setHeader(header);
 #if QT_CONFIG(animation)
     animationsEnabled = q->style()->styleHint(QStyle::SH_Widget_Animation_Duration, nullptr, q) > 0;
-    QObject::connect(&animatedOperation, SIGNAL(finished()), q, SLOT(_q_endAnimatedOperation()));
+    animationConnection =
+        QObjectPrivate::connect(&animatedOperation, &QVariantAnimation::finished,
+                                this, &QTreeViewPrivate::endAnimatedOperation);
 #endif // animation
+}
+
+void QTreeViewPrivate::clearConnections()
+{
+    for (const QMetaObject::Connection &connection : modelConnections)
+        QObject::disconnect(connection);
+    for (const QMetaObject::Connection &connection : headerConnections)
+        QObject::disconnect(connection);
+    QObject::disconnect(selectionmodelConnection);
+    QObject::disconnect(sortHeaderConnection);
+#if QT_CONFIG(animation)
+    QObject::disconnect(animationConnection);
+#endif
 }
 
 void QTreeViewPrivate::expand(int item, bool emitSignal)
@@ -3308,7 +3329,7 @@ QPixmap QTreeViewPrivate::renderTreeToPixmapForAnimation(const QRect &rect) cons
     return pixmap;
 }
 
-void QTreeViewPrivate::_q_endAnimatedOperation()
+void QTreeViewPrivate::endAnimatedOperation()
 {
     Q_Q(QTreeView);
     q->setState(stateBeforeAnimation);
@@ -3317,23 +3338,23 @@ void QTreeViewPrivate::_q_endAnimatedOperation()
 }
 #endif // animation
 
-void QTreeViewPrivate::_q_modelAboutToBeReset()
+void QTreeViewPrivate::modelAboutToBeReset()
 {
     viewItems.clear();
 }
 
-void QTreeViewPrivate::_q_columnsAboutToBeRemoved(const QModelIndex &parent, int start, int end)
+void QTreeViewPrivate::columnsAboutToBeRemoved(const QModelIndex &parent, int start, int end)
 {
     if (start <= 0 && 0 <= end)
         viewItems.clear();
-    QAbstractItemViewPrivate::_q_columnsAboutToBeRemoved(parent, start, end);
+    QAbstractItemViewPrivate::columnsAboutToBeRemoved(parent, start, end);
 }
 
-void QTreeViewPrivate::_q_columnsRemoved(const QModelIndex &parent, int start, int end)
+void QTreeViewPrivate::columnsRemoved(const QModelIndex &parent, int start, int end)
 {
     if (start <= 0 && 0 <= end)
         doDelayedItemsLayout();
-    QAbstractItemViewPrivate::_q_columnsRemoved(parent, start, end);
+    QAbstractItemViewPrivate::columnsRemoved(parent, start, end);
 }
 
 void QTreeViewPrivate::updateAccessibility()
@@ -4018,7 +4039,7 @@ bool QTreeViewPrivate::hasVisibleChildren(const QModelIndex& parent) const
     return false;
 }
 
-void QTreeViewPrivate::_q_sortIndicatorChanged(int column, Qt::SortOrder order)
+void QTreeViewPrivate::sortIndicatorChanged(int column, Qt::SortOrder order)
 {
     model->sort(column, order);
 }

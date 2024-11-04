@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "base/base64.h"
+#include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
@@ -23,6 +24,7 @@
 #include "components/variations/client_filterable_state.h"
 #include "components/variations/pref_names.h"
 #include "components/variations/proto/variations_seed.pb.h"
+#include "components/variations/variations_switches.h"
 #include "components/version_info/version_info.h"
 #include "crypto/signature_verifier.h"
 #include "third_party/protobuf/src/google/protobuf/io/coded_stream.h"
@@ -63,6 +65,14 @@ const uint8_t kPublicKey[] = {
 // prefs to indicate that the latest seed is identical to the safe seed. Used to
 // avoid duplicating storage space.
 constexpr char kIdenticalToSafeSeedSentinel[] = "safe_seed_content";
+
+// Returns true if |signature| is empty and if the command-line flag to accept
+// empty seed signature is specified.
+bool AcceptEmptySeedSignatureForTesting(const std::string& signature) {
+  return signature.empty() &&
+         base::CommandLine::ForCurrentProcess()->HasSwitch(
+             switches::kAcceptEmptySeedSignatureForTesting);
+}
 
 // Verifies a variations seed (the serialized proto bytes) with the specified
 // base-64 encoded signature that was received from the server and returns the
@@ -265,7 +275,8 @@ bool VariationsSeedStore::LoadSafeSeed(VariationsSeed* seed,
   // not used for successfully loaded safe seeds that are rejected after
   // additional validation (expiry and future milestone).
   client_state->reference_date =
-      local_state_->GetTime(prefs::kVariationsSafeSeedDate);
+      ClientFilterableState::GetTimeForStudyDateChecks(/*is_safe_seed=*/true,
+                                                       local_state_);
   client_state->locale =
       local_state_->GetString(prefs::kVariationsSafeSeedLocale);
   client_state->permanent_consistency_country = local_state_->GetString(
@@ -474,41 +485,67 @@ void VariationsSeedStore::ImportInitialSeed(
 }
 #endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 
+LoadSeedResult VariationsSeedStore::VerifyAndParseSeed(
+    VariationsSeed* seed,
+    const std::string& seed_data,
+    const std::string& base64_seed_signature,
+    absl::optional<VerifySignatureResult>* verify_signature_result) {
+  // TODO(crbug/1335082): get rid of |signature_verification_enabled_| and only
+  // support switches::kAcceptEmptySeedSignatureForTesting.
+  if (signature_verification_enabled_ &&
+      !AcceptEmptySeedSignatureForTesting(base64_seed_signature)) {
+    *verify_signature_result =
+        VerifySeedSignature(seed_data, base64_seed_signature);
+    if (*verify_signature_result != VerifySignatureResult::VALID_SIGNATURE) {
+      return LoadSeedResult::kInvalidSignature;
+    }
+  }
+
+  if (!seed->ParseFromString(seed_data)) {
+    return LoadSeedResult::kCorruptProtobuf;
+  }
+
+  return LoadSeedResult::kSuccess;
+}
+
 LoadSeedResult VariationsSeedStore::LoadSeedImpl(
     SeedType seed_type,
     VariationsSeed* seed,
     std::string* seed_data,
     std::string* base64_seed_signature) {
   LoadSeedResult read_result = ReadSeedData(seed_type, seed_data);
-  if (read_result != LoadSeedResult::kSuccess)
+  if (read_result != LoadSeedResult::kSuccess) {
     return read_result;
+  }
 
   *base64_seed_signature = local_state_->GetString(
       seed_type == SeedType::LATEST ? prefs::kVariationsSeedSignature
                                     : prefs::kVariationsSafeSeedSignature);
-  if (signature_verification_enabled_) {
-    const VerifySignatureResult result =
-        VerifySeedSignature(*seed_data, *base64_seed_signature);
+
+  absl::optional<VerifySignatureResult> verify_signature_result;
+  LoadSeedResult result = VerifyAndParseSeed(
+      seed, *seed_data, *base64_seed_signature, &verify_signature_result);
+  if (verify_signature_result.has_value()) {
+    VerifySignatureResult signature_result = verify_signature_result.value();
     if (seed_type == SeedType::LATEST) {
-      UMA_HISTOGRAM_ENUMERATION("Variations.LoadSeedSignature", result,
+      UMA_HISTOGRAM_ENUMERATION("Variations.LoadSeedSignature",
+                                signature_result,
                                 VerifySignatureResult::ENUM_SIZE);
     } else {
       UMA_HISTOGRAM_ENUMERATION(
-          "Variations.SafeMode.LoadSafeSeed.SignatureValidity", result,
-          VerifySignatureResult::ENUM_SIZE);
+          "Variations.SafeMode.LoadSafeSeed.SignatureValidity",
+          signature_result, VerifySignatureResult::ENUM_SIZE);
     }
-    if (result != VerifySignatureResult::VALID_SIGNATURE) {
+    if (signature_result != VerifySignatureResult::VALID_SIGNATURE) {
       ClearPrefs(seed_type);
-      return LoadSeedResult::kInvalidSignature;
     }
   }
 
-  if (!seed->ParseFromString(*seed_data)) {
+  if (result == LoadSeedResult::kCorruptProtobuf) {
     ClearPrefs(seed_type);
-    return LoadSeedResult::kCorruptProtobuf;
   }
 
-  return LoadSeedResult::kSuccess;
+  return result;
 }
 
 LoadSeedResult VariationsSeedStore::ReadSeedData(SeedType seed_type,
@@ -752,7 +789,10 @@ StoreSeedResult VariationsSeedStore::ValidateSeedBytes(
   if (!seed.ParseFromString(seed_bytes))
     return StoreSeedResult::kFailedParse;
 
-  if (signature_verification_enabled) {
+  // TODO(crbug/1335082): get rid of |signature_verification_enabled| and only
+  // support switches::kAcceptEmptySeedSignatureForTesting.
+  if (signature_verification_enabled &&
+      !AcceptEmptySeedSignatureForTesting(base64_seed_signature)) {
     const VerifySignatureResult verify_result =
         VerifySeedSignature(seed_bytes, base64_seed_signature);
     switch (seed_type) {

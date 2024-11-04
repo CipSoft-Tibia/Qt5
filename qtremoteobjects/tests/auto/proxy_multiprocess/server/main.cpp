@@ -1,5 +1,5 @@
 // Copyright (C) 2019 Ford Motor Company
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "mytestserver.h"
 #include "rep_subclass_source.h"
@@ -87,7 +87,7 @@ private Q_SLOTS:
 
         // wait for quit
         bool quit = false;
-        connect(&parent, &MyTestServer::quitApp, [&quit]{quit = true;});
+        connect(&parent, &MyTestServer::quitApp, this, [&quit] { quit = true; });
         QTRY_VERIFY_WITH_TIMEOUT(quit, 5000);
 
         // wait for delivery of events

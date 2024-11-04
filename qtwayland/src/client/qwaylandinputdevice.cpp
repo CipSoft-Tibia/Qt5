@@ -4,6 +4,7 @@
 #include "qwaylandinputdevice_p.h"
 
 #include "qwaylandintegration_p.h"
+#include "qwaylandtextinputv3_p.h"
 #include "qwaylandwindow_p.h"
 #include "qwaylandsurface_p.h"
 #include "qwaylandbuffer_p.h"
@@ -25,9 +26,6 @@
 #include "qwaylandshmbackingstore_p.h"
 #include "qwaylandtextinputv1_p.h"
 #include "qwaylandtextinputv2_p.h"
-#if QT_WAYLAND_TEXT_INPUT_V4_WIP
-#include "qwaylandtextinputv4_p.h"
-#endif // QT_WAYLAND_TEXT_INPUT_V4_WIP
 #include "qwaylandtextinputinterface_p.h"
 #include "qwaylandinputcontext_p.h"
 #include "qwaylandinputmethodcontext_p.h"
@@ -64,18 +62,19 @@ QWaylandInputDevice::Keyboard::Keyboard(QWaylandInputDevice *p)
     : mParent(p)
 {
     init(p->get_keyboard());
-    mRepeatTimer.callOnTimeout([&]() {
+    mRepeatTimer.callOnTimeout(this, [&]() {
         if (!focusWindow()) {
             // We destroyed the keyboard focus surface, but the server didn't get the message yet...
             // or the server didn't send an enter event first.
             return;
         }
         mRepeatTimer.setInterval(1000 / mRepeatRate);
-        handleKey(mRepeatKey.time, QEvent::KeyRelease, mRepeatKey.key, mRepeatKey.modifiers,
-                  mRepeatKey.code, mRepeatKey.nativeVirtualKey, mRepeatKey.nativeModifiers,
+        Qt::KeyboardModifiers modifiers = this->modifiers();
+        handleKey(mRepeatKey.time, QEvent::KeyRelease, mRepeatKey.key, modifiers,
+                  mRepeatKey.code, mRepeatKey.nativeVirtualKey, this->mNativeModifiers,
                   mRepeatKey.text, true);
-        handleKey(mRepeatKey.time, QEvent::KeyPress, mRepeatKey.key, mRepeatKey.modifiers,
-                  mRepeatKey.code, mRepeatKey.nativeVirtualKey, mRepeatKey.nativeModifiers,
+        handleKey(mRepeatKey.time, QEvent::KeyPress, mRepeatKey.key, modifiers,
+                  mRepeatKey.code, mRepeatKey.nativeVirtualKey, this->mNativeModifiers,
                   mRepeatKey.text, true);
     });
 }
@@ -110,7 +109,7 @@ bool QWaylandInputDevice::Keyboard::createDefaultKeymap()
 QWaylandInputDevice::Keyboard::~Keyboard()
 {
     if (mFocus)
-        QWindowSystemInterface::handleWindowActivated(nullptr);
+        QWindowSystemInterface::handleFocusWindowChanged(nullptr);
     if (version() >= 3)
         wl_keyboard_release(object());
     else
@@ -132,7 +131,7 @@ QWaylandInputDevice::Pointer::Pointer(QWaylandInputDevice *seat)
     }
 
     mCursor.frameTimer.setSingleShot(true);
-    mCursor.frameTimer.callOnTimeout([&]() {
+    mCursor.frameTimer.callOnTimeout(this, [&]() {
         cursorTimerCallback();
     });
 #endif
@@ -408,10 +407,8 @@ QWaylandInputDevice::QWaylandInputDevice(QWaylandDisplay *display, int version, 
     if (mQDisplay->textInputManagerv2())
         mTextInput.reset(new QWaylandTextInputv2(mQDisplay, mQDisplay->textInputManagerv2()->get_text_input(wl_seat())));
 
-#if QT_WAYLAND_TEXT_INPUT_V4_WIP
-    if (mQDisplay->textInputManagerv4())
-        mTextInput.reset(new QWaylandTextInputv4(mQDisplay, mQDisplay->textInputManagerv4()->get_text_input(wl_seat())));
-#endif // QT_WAYLAND_TEXT_INPUT_V4_WIP
+    if (mQDisplay->textInputManagerv3())
+        mTextInput.reset(new QWaylandTextInputv3(mQDisplay, mQDisplay->textInputManagerv3()->get_text_input(wl_seat())));
 
     if (mQDisplay->textInputMethodManager())
         mTextInputMethod.reset(new QWaylandTextInputMethod(mQDisplay, mQDisplay->textInputMethodManager()->get_text_input_method(wl_seat())));
@@ -447,9 +444,9 @@ void QWaylandInputDevice::seat_capabilities(uint32_t caps)
                         MaxTouchPoints, 0, QString(), QPointingDeviceUniqueId(), this);
             QWindowSystemInterface::registerInputDevice(mTouchPadDevice);
             mPointerGesturePinch.reset(pointerGestures->createPointerGesturePinch(this));
-            mPointerGesturePinch->init(pointerGestures->get_pinch_gesture(get_pointer()));
+            mPointerGesturePinch->init(pointerGestures->get_pinch_gesture(mPointer->object()));
             mPointerGestureSwipe.reset(pointerGestures->createPointerGestureSwipe(this));
-            mPointerGestureSwipe->init(pointerGestures->get_swipe_gesture(get_pointer()));
+            mPointerGestureSwipe->init(pointerGestures->get_swipe_gesture(mPointer->object()));
         }
     } else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && mPointer) {
         mPointer.reset();
@@ -471,6 +468,11 @@ void QWaylandInputDevice::seat_capabilities(uint32_t caps)
     } else if (!(caps & WL_SEAT_CAPABILITY_TOUCH) && mTouch) {
         mTouch.reset();
     }
+}
+
+void QWaylandInputDevice::seat_name(const QString &name)
+{
+    mSeatName = name;
 }
 
 QWaylandInputDevice::Keyboard *QWaylandInputDevice::createKeyboard(QWaylandInputDevice *device)
@@ -521,6 +523,12 @@ void QWaylandInputDevice::handleEndDrag()
         mPointer->releaseButtons();
 }
 
+void QWaylandInputDevice::handleStartDrag()
+{
+    if (mPointer)
+        mPointer->leavePointers();
+}
+
 #if QT_CONFIG(wayland_datadevice)
 void QWaylandInputDevice::setDataDevice(QWaylandDataDevice *device)
 {
@@ -549,6 +557,18 @@ void QWaylandInputDevice::setTextInput(QWaylandTextInputInterface *textInput)
 {
     mTextInput.reset(textInput);
 }
+
+#if QT_CONFIG(tabletevent)
+void QWaylandInputDevice::setTabletSeat(QWaylandTabletSeatV2 *tabletSeat)
+{
+    mTabletSeat.reset(tabletSeat);
+}
+
+QWaylandTabletSeatV2 *QWaylandInputDevice::tabletSeat() const
+{
+    return mTabletSeat.get();
+}
+#endif
 
 void QWaylandInputDevice::setTextInputMethod(QWaylandTextInputMethod *textInputMethod)
 {
@@ -828,6 +848,8 @@ void QWaylandInputDevice::Pointer::pointer_button(uint32_t serial, uint32_t time
     default: return; // invalid button number (as far as Qt is concerned)
     }
 
+    mLastButton = qt_button;
+
     if (state)
         mButtons |= qt_button;
     else
@@ -866,10 +888,21 @@ void QWaylandInputDevice::Pointer::invalidateFocus()
 
 void QWaylandInputDevice::Pointer::releaseButtons()
 {
+    if (mButtons == Qt::NoButton)
+        return;
+
     mButtons = Qt::NoButton;
 
     if (auto *window = focusWindow()) {
-        ReleaseEvent e(focusWindow(), mParent->mTime, mSurfacePos, mGlobalPos, mButtons, Qt::NoButton, mParent->modifiers());
+        ReleaseEvent e(focusWindow(), mParent->mTime, mSurfacePos, mGlobalPos, mButtons, mLastButton, mParent->modifiers());
+        window->handleMouse(mParent, e);
+    }
+}
+
+void QWaylandInputDevice::Pointer::leavePointers()
+{
+    if (auto *window = focusWindow()) {
+        LeaveEvent e(focusWindow(), mSurfacePos, mGlobalPos);
         window->handleMouse(mParent, e);
     }
 }
@@ -880,8 +913,10 @@ public:
     WheelEvent(QWaylandWindow *surface, Qt::ScrollPhase phase, ulong timestamp, const QPointF &local,
                const QPointF &global, const QPoint &pixelDelta, const QPoint &angleDelta,
                Qt::MouseEventSource source, Qt::KeyboardModifiers modifiers, bool inverted)
-        : QWaylandPointerEvent(QEvent::Wheel, phase, surface, timestamp,
-                               local, global, pixelDelta, angleDelta, source, modifiers, inverted)
+        : QWaylandPointerEvent(QEvent::Wheel, phase, surface, timestamp, local, global,
+                               modifiers & Qt::AltModifier ? pixelDelta.transposed() : pixelDelta,
+                               modifiers & Qt::AltModifier ? angleDelta.transposed() : angleDelta,
+                               source, modifiers, inverted)
     {
     }
 };
@@ -1348,8 +1383,6 @@ void QWaylandInputDevice::Keyboard::keyboard_key(uint32_t serial, uint32_t time,
             mRepeatKey.code = code;
             mRepeatKey.time = time;
             mRepeatKey.text = text;
-            mRepeatKey.modifiers = modifiers;
-            mRepeatKey.nativeModifiers = mNativeModifiers;
             mRepeatKey.nativeVirtualKey = sym;
             mRepeatTimer.setInterval(mRepeatDelay);
             mRepeatTimer.start();
@@ -1542,7 +1575,12 @@ void QWaylandInputDevice::Touch::touch_frame()
     QWindow *window = mFocus ? mFocus->window() : nullptr;
 
     if (mFocus) {
-        const QWindowSystemInterface::TouchPoint &tp = mPendingTouchPoints.last();
+        // Returns a reference to the last item in the list. The list must not be empty.
+        // If the list can be empty, call isEmpty() before calling this function.
+        // See: https://doc.qt.io/qt-5.15/qlist.html#last
+        if (mPendingTouchPoints.empty())
+            return;
+        const QWindowSystemInterface::TouchPoint &tp = mPendingTouchPoints.constLast();
         // When the touch event is received, the global pos is calculated with the margins
         // in mind. Now we need to adjust again to get the correct local pos back.
         QMargins margins = window->frameMargins();

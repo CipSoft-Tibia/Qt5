@@ -31,10 +31,6 @@ class FileSystemContext;
 // A central interface for running FileSystem API operations.
 // All operation methods take callback and returns OperationID, which is
 // an integer value which can be used for cancelling an operation.
-// All operation methods return kErrorOperationID if running (posting) an
-// operation fails, in addition to dispatching the callback with an error
-// code (therefore in most cases the caller does not need to check the
-// returned operation ID).
 class COMPONENT_EXPORT(STORAGE_BROWSER) FileSystemOperationRunner {
  public:
   using GetMetadataCallback = FileSystemOperation::GetMetadataCallback;
@@ -180,7 +176,7 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) FileSystemOperationRunner {
   // the metadata of the file itself (as well as GetMetadata does),
   // while in remote filesystem case the backend may want to download the file
   // into a temporary snapshot file and return the metadata of the
-  // temporary file.  Or if the implementaiton already has the local cache
+  // temporary file.  Or if the implementation already has the local cache
   // data for |url| it can simply return the url to the cache.
   OperationID CreateSnapshotFile(const FileSystemURL& url,
                                  SnapshotFileCallback callback);
@@ -304,7 +300,7 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) FileSystemOperationRunner {
   void FinishOperation(OperationID id);
 
   // Not owned; whatever owns this has to make sure context outlives this.
-  raw_ptr<FileSystemContext> file_system_context_;
+  raw_ptr<FileSystemContext, AcrossTasksDanglingUntriaged> file_system_context_;
 
   using Operations =
       std::map<OperationID, std::unique_ptr<FileSystemOperation>>;

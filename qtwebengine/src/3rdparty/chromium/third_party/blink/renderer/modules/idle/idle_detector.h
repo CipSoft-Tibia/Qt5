@@ -27,9 +27,9 @@ namespace blink {
 class ExceptionState;
 
 class MODULES_EXPORT IdleDetector final
-    : public EventTargetWithInlineData,
+    : public EventTarget,
       public ActiveScriptWrappable<IdleDetector>,
-      public ExecutionContextClient,
+      public ExecutionContextLifecycleObserver,
       public mojom::blink::IdleMonitor {
   DEFINE_WRAPPERTYPEINFO();
 
@@ -45,6 +45,9 @@ class MODULES_EXPORT IdleDetector final
   // EventTarget implementation.
   const AtomicString& InterfaceName() const override;
   ExecutionContext* GetExecutionContext() const override;
+
+  // ExecutionContextLifecycleObserver implementation.
+  void ContextDestroyed() override;
 
   // ActiveScriptWrappable implementation.
   bool HasPendingActivity() const final;
@@ -71,11 +74,12 @@ class MODULES_EXPORT IdleDetector final
               bool is_overridden_by_devtools) override;
 
   void DispatchUserIdleEvent(TimerBase*);
-  void Abort(AbortSignal*);
+  void Abort();
   void OnMonitorDisconnected();
   void OnAddMonitor(ScriptPromiseResolver*,
                     mojom::blink::IdleManagerError,
                     mojom::blink::IdleStatePtr);
+  void Clear();
 
   // State currently visible to script.
   bool has_state_ = false;

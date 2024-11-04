@@ -165,7 +165,7 @@ void QMenuPrivate::init()
     defaultMenuAction = menuAction = new QAction(q);
     menuAction->setMenu(q); // this calls setOverrideMenuAction
     setOverrideMenuAction(nullptr);
-    QObject::connect(menuAction, &QAction::changed, [this] {
+    QObject::connect(menuAction, &QAction::changed, q, [this] {
         if (!tornPopup.isNull())
             tornPopup->updateWindowTitle();
     });
@@ -2674,6 +2674,7 @@ QAction *QMenuPrivate::exec(const QPoint &p, QAction *action, PositionFunction p
     action = syncAction;
     syncAction = nullptr;
     eventLoop = nullptr;
+    popupScreen.clear();
     return action;
 }
 

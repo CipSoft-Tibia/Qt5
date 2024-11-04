@@ -6,6 +6,7 @@
 
 #include "base/test/scoped_feature_list.h"
 #include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/browser/profile_token_quality_test_api.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -24,8 +25,7 @@ const auto kModificationDate = base::Time::FromDoubleT(456);
 // Returns a profile with all fields set. Contains identical data to the data
 // returned from `ConstructCompleteSpecifics()`.
 AutofillProfile ConstructCompleteProfile() {
-  AutofillProfile profile(kGuid, /*origin=*/"",
-                          AutofillProfile::Source::kAccount);
+  AutofillProfile profile(kGuid, AutofillProfile::Source::kAccount);
 
   profile.set_use_count(123);
   profile.set_use_date(kUseDate);
@@ -66,10 +66,11 @@ AutofillProfile ConstructCompleteProfile() {
                                            VerificationStatus::kObserved);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_COUNTRY, u"US",
                                            VerificationStatus::kObserved);
-  profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_STREET_ADDRESS,
-                                           u"123 Fake St. Dep Premise\n"
-                                           u"Apt. 10 Floor 2",
-                                           VerificationStatus::kObserved);
+  profile.SetRawInfoWithVerificationStatus(
+      ADDRESS_HOME_STREET_ADDRESS,
+      u"123 Fake St. Premise Marcos y Oliva\n"
+      u"Apt. 10 Floor 2 Red tree",
+      VerificationStatus::kObserved);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_SORTING_CODE, u"CEDEX",
                                            VerificationStatus::kObserved);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_DEPENDENT_LOCALITY,
@@ -79,14 +80,9 @@ AutofillProfile ConstructCompleteProfile() {
       ADDRESS_HOME_STREET_NAME, u"Fake St.", VerificationStatus::kFormatted);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_HOUSE_NUMBER, u"123",
                                            VerificationStatus::kFormatted);
-  profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_DEPENDENT_STREET_NAME,
-                                           u"Dep",
+  profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_STREET_LOCATION,
+                                           u"Fake St. 123",
                                            VerificationStatus::kFormatted);
-  profile.SetRawInfoWithVerificationStatus(
-      ADDRESS_HOME_STREET_AND_DEPENDENT_STREET_NAME, u"Fake St. Dep",
-      VerificationStatus::kFormatted);
-  profile.SetRawInfoWithVerificationStatus(
-      ADDRESS_HOME_PREMISE_NAME, u"Premise", VerificationStatus::kFormatted);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_SUBPREMISE,
                                            u"Apt. 10 Floor 2",
                                            VerificationStatus::kObserved);
@@ -94,6 +90,13 @@ AutofillProfile ConstructCompleteProfile() {
                                            VerificationStatus::kParsed);
   profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_FLOOR, u"2",
                                            VerificationStatus::kParsed);
+  profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_LANDMARK, u"Red tree",
+                                           VerificationStatus::kParsed);
+  profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_BETWEEN_STREETS,
+                                           u"Marcos y Oliva",
+                                           VerificationStatus::kParsed);
+  profile.SetRawInfoWithVerificationStatus(ADDRESS_HOME_ADMIN_LEVEL2, u"Oxaca",
+                                           VerificationStatus::kObserved);
 
   // All of the following types don't store verification statuses.
   // Set email, phone and company values.
@@ -105,6 +108,16 @@ AutofillProfile ConstructCompleteProfile() {
   profile.SetRawInfoAsInt(BIRTHDATE_DAY, 14);
   profile.SetRawInfoAsInt(BIRTHDATE_MONTH, 3);
   profile.SetRawInfoAsInt(BIRTHDATE_4_DIGIT_YEAR, 1997);
+
+  // Add some `ProfileTokenQuality` observations.
+  test_api(profile.token_quality())
+      .AddObservation(NAME_FIRST,
+                      ProfileTokenQuality::ObservationType::kAccepted,
+                      ProfileTokenQualityTestApi::FormSignatureHash(12));
+  test_api(profile.token_quality())
+      .AddObservation(ADDRESS_HOME_CITY,
+                      ProfileTokenQuality::ObservationType::kEditedFallback,
+                      ProfileTokenQualityTestApi::FormSignatureHash(21));
 
   return profile;
 }
@@ -164,8 +177,8 @@ ContactInfoSpecifics ConstructCompleteSpecifics() {
   SetToken(specifics.mutable_address_country(), "US",
            ContactInfoSpecifics::OBSERVED);
   SetToken(specifics.mutable_address_street_address(),
-           "123 Fake St. Dep Premise\n"
-           "Apt. 10 Floor 2",
+           "123 Fake St. Premise Marcos y Oliva\n"
+           "Apt. 10 Floor 2 Red tree",
            ContactInfoSpecifics::OBSERVED);
   SetToken(specifics.mutable_address_sorting_code(), "CEDEX",
            ContactInfoSpecifics::OBSERVED);
@@ -175,12 +188,7 @@ ContactInfoSpecifics ConstructCompleteSpecifics() {
            ContactInfoSpecifics::FORMATTED);
   SetToken(specifics.mutable_address_thoroughfare_number(), "123",
            ContactInfoSpecifics::FORMATTED);
-  SetToken(specifics.mutable_address_dependent_thoroughfare_name(), "Dep",
-           ContactInfoSpecifics::FORMATTED);
-  SetToken(
-      specifics.mutable_address_thoroughfare_and_dependent_thoroughfare_name(),
-      "Fake St. Dep", ContactInfoSpecifics::FORMATTED);
-  SetToken(specifics.mutable_address_premise_name(), "Premise",
+  SetToken(specifics.mutable_address_street_location(), "Fake St. 123",
            ContactInfoSpecifics::FORMATTED);
   SetToken(specifics.mutable_address_subpremise_name(), "Apt. 10 Floor 2",
            ContactInfoSpecifics::OBSERVED);
@@ -188,7 +196,12 @@ ContactInfoSpecifics ConstructCompleteSpecifics() {
            ContactInfoSpecifics::PARSED);
   SetToken(specifics.mutable_address_floor(), "2",
            ContactInfoSpecifics::PARSED);
-
+  SetToken(specifics.mutable_address_landmark(), "Red tree",
+           ContactInfoSpecifics::PARSED);
+  SetToken(specifics.mutable_address_between_streets(), "Marcos y Oliva",
+           ContactInfoSpecifics::PARSED);
+  SetToken(specifics.mutable_address_admin_level_2(), "Oxaca",
+           ContactInfoSpecifics::OBSERVED);
   // All of the following types don't store verification statuses in
   // AutofillProfile. This corresponds to `VERIFICATION_STATUS_UNSPECIFIED`.
   // Set email, phone and company values and statuses.
@@ -207,13 +220,41 @@ ContactInfoSpecifics ConstructCompleteSpecifics() {
   SetToken(specifics.mutable_birthdate_year(), 1997,
            ContactInfoSpecifics::VERIFICATION_STATUS_UNSPECIFIED);
 
+  // Add some `ProfileTokenQuality` observations.
+  ContactInfoSpecifics::Observation* observation =
+      specifics.mutable_name_first()->mutable_metadata()->add_observations();
+  observation->set_type(
+      static_cast<int>(ProfileTokenQuality::ObservationType::kAccepted));
+  observation->set_form_hash(12);
+  observation =
+      specifics.mutable_address_city()->mutable_metadata()->add_observations();
+  observation->set_type(
+      static_cast<int>(ProfileTokenQuality::ObservationType::kEditedFallback));
+  observation->set_form_hash(21);
+
   return specifics;
 }
 
 }  // namespace
 
+class ContactInfoSyncUtilTest : public testing::Test {
+ public:
+  ContactInfoSyncUtilTest() {
+    features_.InitWithFeatures(
+        {features::kAutofillEnableSupportForLandmark,
+         features::kAutofillEnableSupportForBetweenStreets,
+         features::kAutofillEnableSupportForAdminLevel2,
+         features::kAutofillTrackProfileTokenQuality},
+        {});
+  }
+
+ private:
+  base::test::ScopedFeatureList features_;
+};
+
 // Test that converting AutofillProfile -> ContactInfoSpecifics works.
-TEST(ContactInfoSyncUtilTest, CreateContactInfoEntityDataFromAutofillProfile) {
+TEST_F(ContactInfoSyncUtilTest,
+       CreateContactInfoEntityDataFromAutofillProfile) {
   base::test::ScopedFeatureList honorific_prefixes_feature;
   honorific_prefixes_feature.InitAndEnableFeature(
       features::kAutofillEnableSupportForHonorificPrefixes);
@@ -231,27 +272,25 @@ TEST(ContactInfoSyncUtilTest, CreateContactInfoEntityDataFromAutofillProfile) {
 }
 
 // Test that only profiles with valid GUID are converted.
-TEST(ContactInfoSyncUtilTest,
-     CreateContactInfoEntityDataFromAutofillProfile_InvalidGUID) {
-  AutofillProfile profile(kInvalidGuid, /*origin=*/"",
-                          AutofillProfile::Source::kAccount);
+TEST_F(ContactInfoSyncUtilTest,
+       CreateContactInfoEntityDataFromAutofillProfile_InvalidGUID) {
+  AutofillProfile profile(kInvalidGuid, AutofillProfile::Source::kAccount);
   EXPECT_EQ(CreateContactInfoEntityDataFromAutofillProfile(
                 profile, /*base_contact_info_specifics=*/{}),
             nullptr);
 }
 
 // Test that AutofillProfiles with invalid source are not converted.
-TEST(ContactInfoSyncUtilTest,
-     CreateContactInfoEntityDataFromAutofillProfile_InvalidSource) {
-  AutofillProfile profile(kGuid, /*origin=*/"",
-                          AutofillProfile::Source::kLocalOrSyncable);
+TEST_F(ContactInfoSyncUtilTest,
+       CreateContactInfoEntityDataFromAutofillProfile_InvalidSource) {
+  AutofillProfile profile(kGuid, AutofillProfile::Source::kLocalOrSyncable);
   EXPECT_EQ(CreateContactInfoEntityDataFromAutofillProfile(
                 profile, /*base_contact_info_specifics=*/{}),
             nullptr);
 }
 
 // Test that supported fields and nested messages are successfully trimmed.
-TEST(ContactInfoSyncUtilTest, TrimAllSupportedFieldsFromRemoteSpecifics) {
+TEST_F(ContactInfoSyncUtilTest, TrimAllSupportedFieldsFromRemoteSpecifics) {
   sync_pb::ContactInfoSpecifics contact_info_specifics;
   contact_info_specifics.mutable_address_city()->set_value("City");
   contact_info_specifics.mutable_address_city()->mutable_metadata()->set_status(
@@ -266,8 +305,8 @@ TEST(ContactInfoSyncUtilTest, TrimAllSupportedFieldsFromRemoteSpecifics) {
 
 // Test that supported fields and nested messages are successfully trimmed but
 // that unsupported fields are preserved.
-TEST(ContactInfoSyncUtilTest,
-     TrimAllSupportedFieldsFromRemoteSpecifics_PreserveUnsupportedFields) {
+TEST_F(ContactInfoSyncUtilTest,
+       TrimAllSupportedFieldsFromRemoteSpecifics_PreserveUnsupportedFields) {
   sync_pb::ContactInfoSpecifics contact_info_specifics_with_only_unknown_fields;
 
   // Set an unsupported field in both the top-level message and also in a nested
@@ -294,7 +333,7 @@ TEST(ContactInfoSyncUtilTest,
 
 // Test that the conversion of a profile to specifics preserve the unsupported
 // fields.
-TEST(ContactInfoSyncUtilTest, ContactInfoSpecificsFromAutofillProfile) {
+TEST_F(ContactInfoSyncUtilTest, ContactInfoSpecificsFromAutofillProfile) {
   // If this feature is not available the honorific prefix will be lost in the
   // back and forth conversion.
   base::test::ScopedFeatureList scoped_feature_list;
@@ -327,7 +366,7 @@ TEST(ContactInfoSyncUtilTest, ContactInfoSpecificsFromAutofillProfile) {
 }
 
 // Test that converting ContactInfoSpecifics -> AutofillProfile works.
-TEST(ContactInfoSyncUtilTest, CreateAutofillProfileFromContactInfoSpecifics) {
+TEST_F(ContactInfoSyncUtilTest, CreateAutofillProfileFromContactInfoSpecifics) {
   ContactInfoSpecifics specifics = ConstructCompleteSpecifics();
   AutofillProfile profile = ConstructCompleteProfile();
 
@@ -338,8 +377,8 @@ TEST(ContactInfoSyncUtilTest, CreateAutofillProfileFromContactInfoSpecifics) {
 }
 
 // Test that only specifics with valid GUID are converted.
-TEST(ContactInfoSyncUtilTest,
-     CreateAutofillProfileFromContactInfoSpecifics_InvalidGUID) {
+TEST_F(ContactInfoSyncUtilTest,
+       CreateAutofillProfileFromContactInfoSpecifics_InvalidGUID) {
   ContactInfoSpecifics specifics;
   specifics.set_guid(kInvalidGuid);
   EXPECT_EQ(CreateAutofillProfileFromContactInfoSpecifics(specifics), nullptr);

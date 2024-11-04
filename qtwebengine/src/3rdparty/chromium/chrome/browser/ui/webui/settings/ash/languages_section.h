@@ -5,9 +5,12 @@
 #ifndef CHROME_BROWSER_UI_WEBUI_SETTINGS_ASH_LANGUAGES_SECTION_H_
 #define CHROME_BROWSER_UI_WEBUI_SETTINGS_ASH_LANGUAGES_SECTION_H_
 
+#include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
 #include "base/values.h"
 #include "chrome/browser/ui/webui/settings/ash/os_settings_section.h"
 #include "components/prefs/pref_change_registrar.h"
+#include "ui/base/ime/ash/input_method_manager.h"
 
 namespace content {
 class WebUIDataSource;
@@ -20,31 +23,42 @@ class SearchTagRegistry;
 // Provides UI strings and search tags for Languages & Input settings. Search
 // tags for some input features (e.g., Smart Inputs) are used only when
 // the relevant features are enabled.
-class LanguagesSection : public OsSettingsSection {
+class LanguagesSection : public OsSettingsSection,
+                         public input_method::InputMethodManager::Observer {
  public:
   LanguagesSection(Profile* profile,
                    SearchTagRegistry* search_tag_registry,
                    PrefService* pref_service);
   ~LanguagesSection() override;
 
- private:
   // OsSettingsSection:
   void AddLoadTimeData(content::WebUIDataSource* html_source) override;
   void AddHandlers(content::WebUI* web_ui) override;
   int GetSectionNameMessageId() const override;
   chromeos::settings::mojom::Section GetSection() const override;
   mojom::SearchResultIcon GetSectionIcon() const override;
-  std::string GetSectionPath() const override;
+  const char* GetSectionPath() const override;
   bool LogMetric(chromeos::settings::mojom::Setting setting,
                  base::Value& value) const override;
   void RegisterHierarchy(HierarchyGenerator* generator) const override;
 
+ private:
   bool IsEmojiSuggestionAllowed() const;
   bool IsSpellCheckEnabled() const;
   void UpdateSpellCheckSearchTags();
 
-  PrefService* pref_service_;
+  // input_method::InputMethodManager::Observer:
+  void InputMethodChanged(input_method::InputMethodManager* manager,
+                          Profile* profile,
+                          bool show_message) override;
+
+  raw_ptr<PrefService, ExperimentalAsh> pref_service_;
   PrefChangeRegistrar pref_change_registrar_;
+
+  // Used to monitor input method changes.
+  base::ScopedObservation<input_method::InputMethodManager,
+                          input_method::InputMethodManager::Observer>
+      observation_{this};
 };
 
 }  // namespace ash::settings

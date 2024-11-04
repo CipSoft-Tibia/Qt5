@@ -30,12 +30,14 @@
 #include "perfetto/trace_processor/basic_types.h"
 #include "perfetto/trace_processor/status.h"
 #include "perfetto/trace_processor/trace_processor.h"
-#include "src/trace_processor/prelude/functions/create_function.h"
-#include "src/trace_processor/prelude/functions/create_view_function.h"
-#include "src/trace_processor/prelude/functions/import.h"
+#include "src/trace_processor/perfetto_sql/engine/perfetto_sql_engine.h"
+#include "src/trace_processor/perfetto_sql/intrinsics/functions/create_function.h"
+#include "src/trace_processor/perfetto_sql/intrinsics/functions/create_view_function.h"
+#include "src/trace_processor/perfetto_sql/intrinsics/functions/import.h"
 #include "src/trace_processor/sqlite/db_sqlite_table.h"
 #include "src/trace_processor/sqlite/query_cache.h"
 #include "src/trace_processor/sqlite/scoped_db.h"
+#include "src/trace_processor/sqlite/sqlite_engine.h"
 #include "src/trace_processor/trace_processor_storage_impl.h"
 #include "src/trace_processor/util/sql_modules.h"
 
@@ -106,14 +108,12 @@ class TraceProcessorImpl : public TraceProcessor,
   friend class IteratorImpl;
 
   template <typename Table>
-  void RegisterDbTable(const Table& table) {
-    DbSqliteTable::RegisterTable(*db_, query_cache_.get(), &table,
-                                 Table::Name());
+  void RegisterStaticTable(const Table& table) {
+    engine_.RegisterStaticTable(table, Table::Name());
   }
 
-  void RegisterDynamicTable(std::unique_ptr<DynamicTableGenerator> generator) {
-    DbSqliteTable::RegisterTable(*db_, query_cache_.get(),
-                                 std::move(generator));
+  void RegisterStaticTableFunction(std::unique_ptr<StaticTableFunction> fn) {
+    engine_.RegisterStaticTableFunction(std::move(fn));
   }
 
   template <typename View>
@@ -121,20 +121,10 @@ class TraceProcessorImpl : public TraceProcessor,
 
   bool IsRootMetricField(const std::string& metric_name);
 
-  // Keep this first: we need this to be destroyed after we clean up
-  // everything else.
-  ScopedDb db_;
-
-  // State necessary for CREATE_FUNCTION invocations. We store this here as we
-  // need to finalize any prepared statements *before* we destroy the database.
-  CreateFunction::State create_function_state_;
-
-  std::unique_ptr<QueryCache> query_cache_;
+  PerfettoSqlEngine engine_;
 
   DescriptorPool pool_;
 
-  // Map from module name to module contents. Used for IMPORT function.
-  base::FlatHashMap<std::string, sql_modules::RegisteredModule> sql_modules_;
   std::vector<metrics::SqlMetricFile> sql_metrics_;
   std::unordered_map<std::string, std::string> proto_field_to_sql_metric_path_;
 

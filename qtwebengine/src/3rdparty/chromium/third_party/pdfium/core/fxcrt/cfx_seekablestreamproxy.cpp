@@ -18,7 +18,6 @@
 #include "core/fxcrt/fx_safe_types.h"
 #include "third_party/base/check.h"
 #include "third_party/base/check_op.h"
-#include "third_party/base/cxx17_backports.h"
 
 namespace {
 
@@ -73,7 +72,7 @@ static_assert(sizeof(wchar_t) > 2, "wchar_t is too small");
 
 void UTF16ToWChar(void* pBuffer, size_t iLength) {
   DCHECK(pBuffer);
-  DCHECK_GT(iLength, 0);
+  DCHECK_GT(iLength, 0u);
 
   uint16_t* pSrc = static_cast<uint16_t*>(pBuffer);
   wchar_t* pDst = static_cast<wchar_t*>(pBuffer);
@@ -156,8 +155,7 @@ void CFX_SeekableStreamProxy::Seek(From eSeek, FX_FILESIZE iOffset) {
           new_pos.ValueOrDefault(std::numeric_limits<FX_FILESIZE>::max());
     } break;
   }
-  m_iPosition =
-      pdfium::clamp(m_iPosition, static_cast<FX_FILESIZE>(0), GetSize());
+  m_iPosition = std::clamp(m_iPosition, static_cast<FX_FILESIZE>(0), GetSize());
 }
 
 void CFX_SeekableStreamProxy::SetCodePage(FX_CodePage wCodePage) {

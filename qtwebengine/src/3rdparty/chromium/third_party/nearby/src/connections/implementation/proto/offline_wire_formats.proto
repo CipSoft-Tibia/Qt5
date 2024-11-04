@@ -43,6 +43,11 @@ message V1Frame {
     KEEP_ALIVE = 5;
     DISCONNECTION = 6;
     PAIRED_KEY_ENCRYPTION = 7;
+    AUTHENTICATION_MESSAGE = 8;
+    AUTHENTICATION_RESULT = 9;
+    AUTO_RESUME = 10;
+    AUTO_RECONNECT = 11;
+    BANDWIDTH_UPGRADE_RETRY = 12;
   }
   optional FrameType type = 1;
 
@@ -54,6 +59,11 @@ message V1Frame {
   optional KeepAliveFrame keep_alive = 6;
   optional DisconnectionFrame disconnection = 7;
   optional PairedKeyEncryptionFrame paired_key_encryption = 8;
+  optional AuthenticationMessageFrame authentication_message = 9;
+  optional AuthenticationResultFrame authentication_result = 10;
+  optional AutoResumeFrame auto_resume = 11;
+  optional AutoReconnectFrame auto_reconnect = 12;
+  optional BandwidthUpgradeRetryFrame bandwidth_upgrade_retry = 13;
 }
 
 message ConnectionRequestFrame {
@@ -91,9 +101,14 @@ message ConnectionRequestFrame {
   optional int32 keep_alive_interval_millis = 8;
   optional int32 keep_alive_timeout_millis = 9;
   // The type of {@link Device} object.
-  optional int32 device_type = 10 [default = 0];
+  optional int32 device_type = 10 [default = 0, deprecated = true];
   // The bytes of serialized {@link Device} object.
-  optional bytes device_info = 11;
+  optional bytes device_info = 11 [deprecated = true];
+  // Represents the {@link Device} that invokes the request.
+  oneof Device {
+    ConnectionsDevice connections_device = 12;
+    PresenceDevice presence_device = 13;
+  }
 }
 
 message ConnectionResponseFrame {
@@ -119,6 +134,14 @@ message ConnectionResponseFrame {
   }
   optional ResponseStatus response = 3;
   optional OsInfo os_info = 4;
+  // A bitmask value to indicate which medium supports Multiplex transmission
+  // feature. Each supporting medium could utilize one bit starting from the
+  // least significant bit in this field. eq. BT utilizes the LSB bit which 0x01
+  // means bt supports multiplex while 0x00 means not. Refer to ClientProxy.java
+  // for the bit usages.
+  optional int32 multiplex_socket_bitmask = 5;
+  optional int32 nearby_connections_version = 6 [deprecated = true];
+  optional int32 safe_to_disconnect_version = 7;
 }
 
 message PayloadTransferFrame {
@@ -151,6 +174,7 @@ message PayloadTransferFrame {
     optional int32 flags = 1;
     optional int64 offset = 2;
     optional bytes body = 3;
+    optional int32 index = 4;
   }
 
   // Accompanies CONTROL packets.
@@ -159,6 +183,7 @@ message PayloadTransferFrame {
       UNKNOWN_EVENT_TYPE = 0;
       PAYLOAD_ERROR = 1;
       PAYLOAD_CANCELED = 2;
+      PAYLOAD_RECEIVED_ACK = 3;
     }
 
     optional EventType event = 1;
@@ -238,6 +263,10 @@ message BandwidthUpgradeNegotiationFrame {
       optional int32 port = 3;
       optional int32 frequency = 4;
       optional string gateway = 5 [default = "0.0.0.0"];
+      // IPv6 link-local address, network order (128bits).
+      // The GO should listen on both IPv4 and IPv6 addresses.
+      // https://en.wikipedia.org/wiki/Link-local_address#IPv6
+      optional bytes ip_v6_address = 6;
     }
 
     // Accompanies Medium.WEB_RTC
@@ -280,9 +309,39 @@ message BandwidthUpgradeNegotiationFrame {
   optional ClientIntroductionAck client_introduction_ack = 4;
 }
 
+message BandwidthUpgradeRetryFrame {
+  // Should always match cs/symbol:location.nearby.proto.connections.Medium
+  // LINT.IfChange
+  enum Medium {
+    UNKNOWN_MEDIUM = 0;
+    // 1 is reserved.
+    BLUETOOTH = 2;
+    WIFI_HOTSPOT = 3;
+    BLE = 4;
+    WIFI_LAN = 5;
+    WIFI_AWARE = 6;
+    NFC = 7;
+    WIFI_DIRECT = 8;
+    WEB_RTC = 9;
+    BLE_L2CAP = 10;
+    USB = 11;
+  }
+  // LINT.ThenChange(//depot/google3/third_party/nearby/proto/connections_enums.proto)
+
+  // The mediums this device supports upgrading to. This list should be filtered
+  // by both the strategy and this device's individual limitations.
+  repeated Medium supported_medium = 1;
+
+  // If true, expect the remote endpoint to send back the latest
+  // supported_medium.
+  optional bool is_request = 2;
+}
+
 message KeepAliveFrame {
   // And ack will be sent after receiving KEEP_ALIVE frame.
   optional bool ack = 1;
+  // The sequence number
+  optional uint32 seq_num = 2;
 }
 
 // Informs the remote side to immediately severe the socket connection.
@@ -290,7 +349,12 @@ message KeepAliveFrame {
 // in other situations to trigger a faster disconnection event than waiting for
 // socket closed on the remote side.
 message DisconnectionFrame {
-  // Empty on purpose.
+  // Apply safe-to-disconnect protocol if true.
+  optional bool request_safe_to_disconnect = 1;
+
+  // Ack of receiving Disconnection frame will be sent to the sender
+  // frame.
+  optional bool ack_safe_to_disconnect = 2;
 }
 
 // A paired key encryption packet sent between devices, contains signed data.
@@ -298,6 +362,43 @@ message PairedKeyEncryptionFrame {
   // The encrypted data (raw authentication token for the established
   // connection) in byte array format.
   optional bytes signed_data = 1;
+}
+
+// Nearby Connections authentication frame, contains the bytes format of a
+// DeviceProvider's authentication message.
+message AuthenticationMessageFrame {
+  // An auth message generated by DeviceProvider.
+  // To be sent to the remote device for verification during connection setups.
+  optional bytes auth_message = 1;
+}
+
+// Nearby Connections authentication result frame.
+message AuthenticationResultFrame {
+  // The authentication result. Non null if this frame is used to exchange
+  // authentication result.
+  optional int32 result = 1;
+}
+
+message AutoResumeFrame {
+  enum EventType {
+    UNKNOWN_AUTO_RESUME_EVENT_TYPE = 0;
+    PAYLOAD_RESUME_TRANSFER_START = 1;
+    PAYLOAD_RESUME_TRANSFER_ACK = 2;
+  }
+
+  optional EventType event_type = 1;
+  optional int64 pending_payload_id = 2;
+  optional int32 next_payload_chunk_index = 3;
+}
+
+message AutoReconnectFrame {
+  enum EventType {
+    UNKNOWN_EVENT_TYPE = 0;
+    CLIENT_INTRODUCTION = 1;
+    CLIENT_INTRODUCTION_ACK = 2;
+  }
+  optional string endpoint_id = 1;
+  optional EventType event_type = 2;
 }
 
 message MediumMetadata {
@@ -387,4 +488,40 @@ message OsInfo {
   }
 
   optional OsType type = 1;
+}
+
+enum EndpointType {
+  UNKNOWN_ENDPOINT = 0;
+  CONNECTIONS_ENDPOINT = 1;
+  PRESENCE_ENDPOINT = 2;
+}
+
+message ConnectionsDevice {
+  optional string endpoint_id = 1;
+  optional EndpointType endpoint_type = 2;
+  optional bytes connectivity_info_list = 3;  // Data Elements.
+  optional bytes endpoint_info = 4;
+}
+
+message PresenceDevice {
+  enum DeviceType {
+    UNKNOWN = 0;
+    PHONE = 1;
+    TABLET = 2;
+    DISPLAY = 3;
+    LAPTOP = 4;
+    TV = 5;
+    WATCH = 6;
+  }
+
+  optional string endpoint_id = 1;
+  optional EndpointType endpoint_type = 2;
+  optional bytes connectivity_info_list = 3;  // Data Elements.
+  optional int64 device_id = 4;
+  optional string device_name = 5;
+  optional DeviceType device_type = 6;
+  optional string device_image_url = 7;
+  repeated ConnectionRequestFrame.Medium discovery_medium = 8 [packed = true];
+  repeated int32 actions = 9 [packed = true];
+  repeated int64 identity_type = 10 [packed = true];
 }

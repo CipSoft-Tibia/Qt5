@@ -67,6 +67,9 @@ QT_BEGIN_NAMESPACE
     This property enables continuous collision detection. This will reduce the risk of bodies going
     through other bodies at high velocities (also known as tunnelling). The default value is \c
     false.
+
+    \warning Using trigger bodies with CCD enabled is not supported and can result in missing or
+    false trigger reports.
 */
 
 /*!
@@ -142,6 +145,69 @@ QT_BEGIN_NAMESPACE
 
     This signal is emitted when the physical simulation is done simulating a frame. The \a timestep
     parameter is how long in milliseconds the timestep was in the simulation.
+*/
+
+/*!
+    \qmlproperty int PhysicsWorld::numThreads
+    \since 6.7
+
+    This property defines the number of threads used for the physical simulation. This is how the
+    range of values are interpreted:
+
+    \table
+    \header
+    \li Value
+    \li Range
+    \li Description
+    \row
+    \li Negative
+    \li \c{[-inf, -1]}
+    \li Automatic thread count. The application will try to query the number of threads from the
+    system.
+    \row
+    \li Zero
+    \li \c{{0}}
+    \li No threading, simulation will run sequentially.
+    \row
+    \li Positive
+    \li \c{[1, inf]}
+    \li Specific thread count.
+    \endtable
+
+    The default value is \c{-1}, meaning automatic thread count.
+
+    \note Once the scene has started running it is not possible to change the number of threads.
+*/
+
+/*!
+    \qmlproperty bool PhysicsWorld::reportKinematicKinematicCollisions
+    \since 6.7
+
+    This property controls if collisions between pairs of \e{kinematic} dynamic rigid bodies will
+    trigger a contact report.
+
+    The default value is \c{false}.
+
+    \note Once the scene has started running it is not possible to change this setting.
+    \sa PhysicsWorld::reportStaticKinematicCollisions
+    \sa DynamicRigidBody
+    \sa PhysicsNode::bodyContact
+*/
+
+/*!
+    \qmlproperty bool PhysicsWorld::reportStaticKinematicCollisions
+    \since 6.7
+
+    This property controls if collisions between a static rigid body and a \e{kinematic} dynamic
+    rigid body will trigger a contact report.
+
+    The default value is \c{false}.
+
+    \note Once the scene has started running it is not possible to change this setting.
+    \sa PhysicsWorld::reportKinematicKinematicCollisions
+    \sa StaticRigidBody
+    \sa DynamicRigidBody
+    \sa PhysicsNode::bodyContact
 */
 
 Q_LOGGING_CATEGORY(lcQuick3dPhysics, "qt.quick3d.physics");
@@ -1093,7 +1159,8 @@ void QPhysicsWorld::initPhysics()
 {
     Q_ASSERT(!m_physicsInitialized);
 
-    m_physx->createScene(m_typicalLength, m_typicalSpeed, m_gravity, m_enableCCD, this);
+    const unsigned int numThreads = m_numThreads >= 0 ? m_numThreads : qMax(0, QThread::idealThreadCount());
+    m_physx->createScene(m_typicalLength, m_typicalSpeed, m_gravity, m_enableCCD, this, numThreads);
 
     // Setup worker thread
     SimulationWorker *worker = new SimulationWorker(m_physx);
@@ -1131,6 +1198,7 @@ void QPhysicsWorld::frameFinished(float deltaTime)
     for (auto *physXBody : std::as_const(m_physXBodies)) {
         physXBody->markDirtyShapes();
         physXBody->rebuildDirtyShapes(this, m_physx);
+        physXBody->updateFilters();
 
         // Sync the physics world and the scene
         physXBody->sync(deltaTime, transformCache);
@@ -1291,6 +1359,46 @@ void QPhysicsWorld::setScene(QQuick3DNode *newScene)
     if (sceneOK)
         findPhysicsNodes();
     emit sceneChanged();
+}
+
+int QPhysicsWorld::numThreads() const
+{
+    return m_numThreads;
+}
+
+void QPhysicsWorld::setNumThreads(int newNumThreads)
+{
+    if (m_numThreads == newNumThreads)
+        return;
+    m_numThreads = newNumThreads;
+    emit numThreadsChanged();
+}
+
+bool QPhysicsWorld::reportKinematicKinematicCollisions() const
+{
+    return m_reportKinematicKinematicCollisions;
+}
+
+void QPhysicsWorld::setReportKinematicKinematicCollisions(
+        bool newReportKinematicKinematicCollisions)
+{
+    if (m_reportKinematicKinematicCollisions == newReportKinematicKinematicCollisions)
+        return;
+    m_reportKinematicKinematicCollisions = newReportKinematicKinematicCollisions;
+    emit reportKinematicKinematicCollisionsChanged();
+}
+
+bool QPhysicsWorld::reportStaticKinematicCollisions() const
+{
+    return m_reportStaticKinematicCollisions;
+}
+
+void QPhysicsWorld::setReportStaticKinematicCollisions(bool newReportStaticKinematicCollisions)
+{
+    if (m_reportStaticKinematicCollisions == newReportStaticKinematicCollisions)
+        return;
+    m_reportStaticKinematicCollisions = newReportStaticKinematicCollisions;
+    emit reportStaticKinematicCollisionsChanged();
 }
 
 QT_END_NAMESPACE

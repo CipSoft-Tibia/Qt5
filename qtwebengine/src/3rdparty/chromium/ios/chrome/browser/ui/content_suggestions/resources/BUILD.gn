@@ -22,19 +22,15 @@ imageset("content_suggestions_offline") {
   ]
 }
 
+colorset("fake_omnibox_placeholder_color") {
+  sources = [ "fake_omnibox_placeholder_color.colorset/Contents.json" ]
+}
+
 imageset("ntp_search_icon") {
   sources = [
     "ntp_search_icon.imageset/Contents.json",
     "ntp_search_icon.imageset/ntp_search_icon.png",
     "ntp_search_icon.imageset/ntp_search_icon@2x.png",
     "ntp_search_icon.imageset/ntp_search_icon@3x.png",
-  ]
-}
-
-imageset("sign_out_icon") {
-  sources = [
-    "sign_out_icon.imageset/Contents.json",
-    "sign_out_icon.imageset/sign_out_icon@2x.png",
-    "sign_out_icon.imageset/sign_out_icon@3x.png",
   ]
 }

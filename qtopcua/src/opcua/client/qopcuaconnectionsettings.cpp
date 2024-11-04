@@ -87,7 +87,10 @@ QOpcUaConnectionSettings::~QOpcUaConnectionSettings()
 */
 
 /*!
-    Returns \c true if \a lhs contains the same connection settings as \l rhs; otherwise returns \c
+    \fn bool QOpcUaConnectionSettings::operator==(const QOpcUaConnectionSettings &lhs,
+                                                  const QOpcUaConnectionSettings &rhs)
+
+    Returns \c true if \a lhs contains the same connection settings as \a rhs; otherwise returns \c
     false.
 */
 bool operator==(const QOpcUaConnectionSettings &lhs, const QOpcUaConnectionSettings &rhs) noexcept
@@ -100,10 +103,10 @@ bool operator==(const QOpcUaConnectionSettings &lhs, const QOpcUaConnectionSetti
 }
 
 /*!
-    \fn bool QOpcUaConnectionSettings::operator!=(const QOpcUaConnectionSettings &rhs, const
-    QOpcUaConnectionSettings &rhs)
+    \fn bool QOpcUaConnectionSettings::operator!=(const QOpcUaConnectionSettings &lhs,
+                                                  const QOpcUaConnectionSettings &rhs)
 
-    Returns \c true if \a lhs does not contain the same connection settings as \l rhs; otherwise
+    Returns \c true if \a lhs does not contain the same connection settings as \a rhs; otherwise
     returns \c false.
 */
 
@@ -119,7 +122,7 @@ QStringList QOpcUaConnectionSettings::sessionLocaleIds() const
     Sets \a localeIds as the new list of locale IDs.
     This setting is currently not supported by the open62541 backend.
 
-    For details, see \l{https://reference.opcfoundation.org/v104/Core/docs/Part4/5.6.3/#Table17}
+    For details, see \l{https://reference.opcfoundation.org/v105/Core/docs/Part4/5.6.3/#Table17}
 */
 void QOpcUaConnectionSettings::setSessionLocaleIds(const QStringList &localeIds)
 {
@@ -140,7 +143,7 @@ std::chrono::milliseconds QOpcUaConnectionSettings::secureChannelLifeTime() cons
 /*!
     Sets \a lifeTime as the new secure channel lifetime.
 
-    For details, see \l{https://reference.opcfoundation.org/v104/Core/docs/Part4/5.5.2/#Table11}
+    For details, see \l{https://reference.opcfoundation.org/v105/Core/docs/Part4/5.5.2/#Table11}
 */
 void QOpcUaConnectionSettings::setSecureChannelLifeTime(std::chrono::milliseconds lifeTime)
 {
@@ -161,7 +164,7 @@ std::chrono::milliseconds QOpcUaConnectionSettings::sessionTimeout() const
 /*!
     Sets \a timeout as the new requested session timeout.
 
-    For details, see \l{https://reference.opcfoundation.org/v104/Core/docs/Part4/5.6.2/#Table15}
+    For details, see \l{https://reference.opcfoundation.org/v105/Core/docs/Part4/5.6.2/#Table15}
 */
 void QOpcUaConnectionSettings::setSessionTimeout(std::chrono::milliseconds timeout)
 {

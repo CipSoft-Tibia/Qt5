@@ -60,6 +60,17 @@ QGrpcChannelOptions &QGrpcChannelOptions::operator=(const QGrpcChannelOptions &o
 }
 
 /*!
+    Move-construct a QGrpcChannelOptions instance, making it point at the same
+    object that \a other was pointing to.
+*/
+QGrpcChannelOptions::QGrpcChannelOptions(QGrpcChannelOptions &&other) noexcept = default;
+
+/*!
+    Move-assigns \a other to this QGrpcChannelOptions instance.
+*/
+QGrpcChannelOptions &QGrpcChannelOptions::operator=(QGrpcChannelOptions &&other) noexcept = default;
+
+/*!
     Destroys the QGrpcChannelOptions object.
 */
 QGrpcChannelOptions::~QGrpcChannelOptions() = default;
@@ -95,28 +106,28 @@ QGrpcChannelOptions &QGrpcChannelOptions::withMetadata(const QGrpcMetadata &meta
 }
 
 /*!
-    Returns deadline value for every call on the channel.
+    Returns deadline value for setting up the channel.
 
     Deadline value controls the maximum execution time of any call or stream
     executed on the channel.
 
     If value was not set returns empty std::optional.
 */
-std::optional<std::chrono::milliseconds> QGrpcChannelOptions::deadline() const
+std::optional<std::chrono::milliseconds> QGrpcChannelOptions::deadline() const noexcept
 {
     return dPtr->deadline;
 }
 
 /*!
-    Returns host value for every call on the channel.
+    Returns host value for the channel.
 */
-QUrl QGrpcChannelOptions::host() const
+QUrl QGrpcChannelOptions::host() const noexcept
 {
     return dPtr->host;
 }
 
 /*!
-    Returns metadata used for a call.
+    Returns metadata used for every call on the channel.
 
     If value was not set returns empty QGrpcMetadata.
 */
@@ -141,7 +152,7 @@ QGrpcChannelOptions &QGrpcChannelOptions::withSslConfiguration(
 
     If value was not set returns empty std::optional.
 */
-std::optional<QSslConfiguration> QGrpcChannelOptions::sslConfiguration() const
+std::optional<QSslConfiguration> QGrpcChannelOptions::sslConfiguration() const noexcept
 {
     return dPtr->sslConfiguration;
 }

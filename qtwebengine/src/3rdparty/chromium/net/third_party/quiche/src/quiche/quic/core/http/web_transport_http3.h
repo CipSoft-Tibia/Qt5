@@ -18,6 +18,7 @@
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/web_transport_interface.h"
 #include "quiche/common/platform/api/quiche_mem_slice.h"
+#include "quiche/common/quiche_callbacks.h"
 #include "quiche/web_transport/web_transport.h"
 #include "quiche/spdy/core/http2_header_block.h"
 
@@ -82,19 +83,31 @@ class QUIC_EXPORT_PRIVATE WebTransportHttp3
   WebTransportStream* OpenOutgoingBidirectionalStream() override;
   WebTransportStream* OpenOutgoingUnidirectionalStream() override;
 
+  webtransport::Stream* GetStreamById(webtransport::StreamId id) override;
+
   webtransport::DatagramStatus SendOrQueueDatagram(
       absl::string_view datagram) override;
   QuicByteCount GetMaxDatagramSize() const override;
   void SetDatagramMaxTimeInQueue(absl::Duration max_time_in_queue) override;
 
+  void NotifySessionDraining() override;
+  void SetOnDraining(quiche::SingleUseCallback<void()> callback) override {
+    drain_callback_ = std::move(callback);
+  }
+
   // From QuicSpdyStream::Http3DatagramVisitor.
   void OnHttp3Datagram(QuicStreamId stream_id,
                        absl::string_view payload) override;
+  void OnUnknownCapsule(QuicStreamId /*stream_id*/,
+                        const quiche::UnknownCapsule& /*capsule*/) override {}
 
   bool close_received() const { return close_received_; }
   WebTransportHttp3RejectionReason rejection_reason() const {
     return rejection_reason_;
   }
+
+  void OnGoAwayReceived();
+  void OnDrainSessionReceived();
 
  private:
   // Notifies the visitor that the connection has been closed.  Ensures that the
@@ -115,8 +128,11 @@ class QUIC_EXPORT_PRIVATE WebTransportHttp3
   bool close_received_ = false;
   bool close_notified_ = false;
 
+  quiche::SingleUseCallback<void()> drain_callback_ = nullptr;
+
   WebTransportHttp3RejectionReason rejection_reason_ =
       WebTransportHttp3RejectionReason::kNone;
+  bool drain_sent_ = false;
   // Those are set to default values, which are used if the session is not
   // closed cleanly using an appropriate capsule.
   WebTransportSessionError error_code_ = 0;

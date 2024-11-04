@@ -35,10 +35,11 @@ Bindings.IgnoreListManager.IgnoreListManager.instance({
   forceNew: true,
   debuggerWorkspaceBinding: Bindings.DebuggerWorkspaceBinding.DebuggerWorkspaceBinding.instance(),
 });
+SDK.CPUThrottlingManager.CPUThrottlingManager.instance().setHardwareConcurrency(128);
 
 UI.ActionRegistration.registerActionExtension({
   actionId: 'timeline.record-reload',
-  iconClass: UI.ActionRegistration.IconClass.LARGEICON_REFRESH,
+  iconClass: UI.ActionRegistration.IconClass.REFRESH,
   category: UI.ActionRegistration.ActionCategory.PERFORMANCE,
   contextTypes() {
     return [Timeline.TimelinePanel.TimelinePanel];
@@ -70,7 +71,7 @@ UI.ActionRegistration.registerActionExtension({
   title: () => 'Toggle recording' as Common.UIString.LocalizedString,
   toggleable: true,
   category: UI.ActionRegistration.ActionCategory.PERFORMANCE,
-  iconClass: UI.ActionRegistration.IconClass.LARGEICON_START_RECORDING,
+  iconClass: UI.ActionRegistration.IconClass.START_RECORDING,
   contextTypes() {
     return [Timeline.TimelinePanel.TimelinePanel];
   },
@@ -88,22 +89,35 @@ UI.ActionRegistration.registerActionExtension({
 const actionRegistry = UI.ActionRegistry.ActionRegistry.instance();
 UI.ShortcutRegistry.ShortcutRegistry.instance({forceNew: true, actionRegistry: actionRegistry});
 Common.Settings.settingForTest('flamechartMouseWheelAction').set('zoom');
+
 const params = new URLSearchParams(window.location.search);
 const traceFileName = params.get('trace');
+const cpuprofileName = params.get('cpuprofile');
+const nodeMode = params.get('isNode');
+const isNodeMode = nodeMode === 'true' ? true : false;
 
+const timeline =
+    Timeline.TimelinePanel.TimelinePanel.instance({forceNew: true, isNode: isNodeMode, fullTraceEngine: true});
+const container = document.getElementById('container');
+if (!container) {
+  throw new Error('could not find container');
+}
+container.innerHTML = '';
+timeline.markAsRoot();
+timeline.show(container);
+
+let fileName;
 if (traceFileName) {
-  const timeline = new Timeline.TimelinePanel.TimelinePanel();
-  const container = document.getElementById('container');
-  if (!container) {
-    throw new Error('could not find container');
-  }
-  container.innerHTML = '';
-  timeline.markAsRoot();
-  timeline.show(container);
-  const traceFile = new URL(`../../../../../test/unittests/fixtures/traces/${traceFileName}.json.gz`, import.meta.url);
-  const response = await fetch(traceFile);
+  fileName = `${traceFileName}.json.gz`;
+} else if (cpuprofileName) {
+  fileName = `${cpuprofileName}.cpuprofile.gz`;
+}
+
+if (fileName) {
+  const file = new URL(`../../../../../test/unittests/fixtures/traces/${fileName}`, import.meta.url);
+  const response = await fetch(file);
   const asBlob = await response.blob();
-  const asFile = new File([asBlob], `${traceFileName}.json.gz`, {
+  const asFile = new File([asBlob], `${fileName}`, {
     type: 'application/gzip',
   });
   void timeline.loadFromFile(asFile);

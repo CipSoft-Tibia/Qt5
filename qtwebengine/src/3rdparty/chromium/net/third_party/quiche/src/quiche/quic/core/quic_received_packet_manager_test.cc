@@ -184,6 +184,20 @@ TEST_F(QuicReceivedPacketManagerTest, LimitAckRanges) {
   }
 }
 
+TEST_F(QuicReceivedPacketManagerTest, TrimAckRangesEarly) {
+  const size_t kMaxAckRanges = 10;
+  received_manager_.set_max_ack_ranges(kMaxAckRanges);
+  for (size_t i = 0; i < kMaxAckRanges + 10; ++i) {
+    RecordPacketReceipt(1 + 2 * i);
+    if (i < kMaxAckRanges) {
+      EXPECT_EQ(i + 1, received_manager_.ack_frame().packets.NumIntervals());
+    } else {
+      EXPECT_EQ(kMaxAckRanges,
+                received_manager_.ack_frame().packets.NumIntervals());
+    }
+  }
+}
+
 TEST_F(QuicReceivedPacketManagerTest, IgnoreOutOfOrderTimestamps) {
   EXPECT_FALSE(received_manager_.ack_frame_updated());
   RecordPacketReceipt(1, QuicTime::Zero());
@@ -689,7 +703,7 @@ TEST_F(QuicReceivedPacketManagerTest, CountEcnPackets) {
   RecordPacketReceipt(5, QuicTime::Zero(), ECN_ECT1);
   RecordPacketReceipt(6, QuicTime::Zero(), ECN_CE);
   QuicFrame ack = received_manager_.GetUpdatedAckFrame(QuicTime::Zero());
-  if (GetQuicRestartFlag(quic_receive_ecn)) {
+  if (GetQuicRestartFlag(quic_receive_ecn3)) {
     EXPECT_TRUE(ack.ack_frame->ecn_counters.has_value());
     EXPECT_EQ(ack.ack_frame->ecn_counters->ect0, 1);
     EXPECT_EQ(ack.ack_frame->ecn_counters->ect1, 1);

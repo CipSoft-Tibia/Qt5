@@ -88,7 +88,11 @@ public:
     int maxLineLength = -1;
     int strongMaxLineExtra = 20;
     int minContentLength = 10;
+#if defined (Q_OS_WIN)
+    LineEndings lineEndings = LineEndings::Windows;
+#else
     LineEndings lineEndings = LineEndings::Unix;
+#endif
     TrailingSpace codeTrailingSpace = TrailingSpace::Remove;
     TrailingSpace commentTrailingSpace = TrailingSpace::Remove;
     TrailingSpace stringTrailingSpace = TrailingSpace::Preserve;
@@ -100,7 +104,8 @@ public:
 };
 Q_DECLARE_OPERATORS_FOR_FLAGS(LineWriterOptions::Updates)
 
-using PendingSourceLocationId = QAtomicInt;
+using PendingSourceLocationId = int;
+using PendingSourceLocationIdAtomic = QAtomicInt;
 class LineWriter;
 
 class QMLDOM_EXPORT PendingSourceLocation
@@ -205,7 +210,7 @@ protected:
     int m_utf16Offset = 0; // utf16 offset since start for committed data
     QString m_currentLine;
     LineWriterOptions m_options;
-    PendingSourceLocationId m_lastSourceLocationId;
+    PendingSourceLocationIdAtomic m_lastSourceLocationId;
     QMap<PendingSourceLocationId, PendingSourceLocation> m_pendingSourceLocations;
     QAtomicInt m_lastCallbackId;
     QMap<int, std::function<bool(LineWriter &, TextAddType)>> m_textAddCallbacks;

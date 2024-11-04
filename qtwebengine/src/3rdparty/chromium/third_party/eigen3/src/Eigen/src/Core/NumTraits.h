@@ -16,37 +16,6 @@ namespace Eigen {
 
 namespace internal {
 
-// default implementation of digits10(), based on numeric_limits if specialized,
-// 0 for integer types, and log10(epsilon()) otherwise.
-template< typename T,
-          bool use_numeric_limits = std::numeric_limits<T>::is_specialized,
-          bool is_integer = NumTraits<T>::IsInteger>
-struct default_digits10_impl
-{
-  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
-  static int run() { return std::numeric_limits<T>::digits10; }
-};
-
-template<typename T>
-struct default_digits10_impl<T,false,false> // Floating point
-{
-  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
-  static int run() {
-    using std::log10;
-    using std::ceil;
-    typedef typename NumTraits<T>::Real Real;
-    return int(ceil(-log10(NumTraits<Real>::epsilon())));
-  }
-};
-
-template<typename T>
-struct default_digits10_impl<T,false,true> // Integer
-{
-  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
-  static int run() { return 0; }
-};
-
-
 // default implementation of digits(), based on numeric_limits if specialized,
 // 0 for integer types, and log2(epsilon()) otherwise.
 template< typename T,
@@ -72,6 +41,66 @@ struct default_digits_impl<T,false,false> // Floating point
 
 template<typename T>
 struct default_digits_impl<T,false,true> // Integer
+{
+  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
+  static int run() { return 0; }
+};
+
+// default implementation of digits10(), based on numeric_limits if specialized,
+// 0 for integer types, and floor((digits()-1)*log10(2)) otherwise.
+template< typename T,
+          bool use_numeric_limits = std::numeric_limits<T>::is_specialized,
+          bool is_integer = NumTraits<T>::IsInteger>
+struct default_digits10_impl
+{
+  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
+  static int run() { return std::numeric_limits<T>::digits10; }
+};
+
+template<typename T>
+struct default_digits10_impl<T,false,false> // Floating point
+{
+  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
+  static int run() {
+    using std::log10;
+    using std::floor;
+    typedef typename NumTraits<T>::Real Real;
+    return int(floor((internal::default_digits_impl<Real>::run()-1)*log10(2)));
+  }
+};
+
+template<typename T>
+struct default_digits10_impl<T,false,true> // Integer
+{
+  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
+  static int run() { return 0; }
+};
+
+// default implementation of max_digits10(), based on numeric_limits if specialized,
+// 0 for integer types, and log10(2) * digits() + 1 otherwise.
+template< typename T,
+          bool use_numeric_limits = std::numeric_limits<T>::is_specialized,
+          bool is_integer = NumTraits<T>::IsInteger>
+struct default_max_digits10_impl
+{
+  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
+  static int run() { return std::numeric_limits<T>::max_digits10; }
+};
+
+template<typename T>
+struct default_max_digits10_impl<T,false,false> // Floating point
+{
+  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
+  static int run() {
+    using std::log10;
+    using std::ceil;
+    typedef typename NumTraits<T>::Real Real;
+    return int(ceil(internal::default_digits_impl<Real>::run()*log10(2)+1));
+  }
+};
+
+template<typename T>
+struct default_max_digits10_impl<T,false,true> // Integer
 {
   EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
   static int run() { return 0; }
@@ -143,6 +172,9 @@ EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Tgt bit_cast(const Src& src) {
   * \li digits10() function returning the number of decimal digits that can be represented without change. This is
   *     the analogue of <a href="http://en.cppreference.com/w/cpp/types/numeric_limits/digits10">std::numeric_limits<T>::digits10</a>
   *     which is used as the default implementation if specialized.
+  * \li max_digits10() function returning the number of decimal digits required to uniquely represent all distinct values of the type. This is
+  *     the analogue of <a href="http://en.cppreference.com/w/cpp/types/numeric_limits/max_digits10">std::numeric_limits<T>::max_digits10</a>
+  *     which is used as the default implementation if specialized.
   * \li min_exponent() and max_exponent() functions returning the highest and lowest possible values, respectively,
   *     such that the radix raised to the power exponent-1 is a normalized floating-point number.  These are equivalent to
   *     <a href="http://en.cppreference.com/w/cpp/types/numeric_limits/min_exponent">std::numeric_limits<T>::min_exponent</a>/
@@ -178,6 +210,12 @@ template<typename T> struct GenericNumTraits
   static inline int digits10()
   {
     return internal::default_digits10_impl<T>::run();
+  }
+
+  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
+  static inline int max_digits10()
+  {
+    return internal::default_max_digits10_impl<T>::run();
   }
 
   EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
@@ -243,12 +281,25 @@ template<> struct NumTraits<double> : GenericNumTraits<double>
   static inline double dummy_precision() { return 1e-12; }
 };
 
+// GPU devices treat `long double` as `double`.
+#ifndef EIGEN_GPU_COMPILE_PHASE
 template<> struct NumTraits<long double>
   : GenericNumTraits<long double>
 {
-  EIGEN_CONSTEXPR
-  static inline long double dummy_precision() { return 1e-15l; }
+  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
+  static inline long double dummy_precision() { return static_cast<long double>(1e-15l); }
+
+#if defined(EIGEN_ARCH_PPC) && (__LDBL_MANT_DIG__ == 106)
+  // PowerPC double double causes issues with some values
+  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
+  static inline long double epsilon()
+  {
+    // 2^(-(__LDBL_MANT_DIG__)+1)
+    return static_cast<long double>(2.4651903288156618919116517665087e-32l);
+  }
+#endif
 };
+#endif
 
 template<typename Real_> struct NumTraits<std::complex<Real_> >
   : GenericNumTraits<std::complex<Real_> >
@@ -269,6 +320,8 @@ template<typename Real_> struct NumTraits<std::complex<Real_> >
   static inline Real dummy_precision() { return NumTraits<Real>::dummy_precision(); }
   EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
   static inline int digits10() { return NumTraits<Real>::digits10(); }
+  EIGEN_DEVICE_FUNC EIGEN_CONSTEXPR
+  static inline int max_digits10() { return NumTraits<Real>::max_digits10(); }
 };
 
 template<typename Scalar, int Rows, int Cols, int Options, int MaxRows, int MaxCols>
@@ -299,6 +352,8 @@ struct NumTraits<Array<Scalar, Rows, Cols, Options, MaxRows, MaxCols> >
 
   EIGEN_CONSTEXPR
   static inline int digits10() { return NumTraits<Scalar>::digits10(); }
+  EIGEN_CONSTEXPR
+  static inline int max_digits10() { return NumTraits<Scalar>::max_digits10(); }
 };
 
 template<> struct NumTraits<std::string>
@@ -313,8 +368,10 @@ template<> struct NumTraits<std::string>
 
   EIGEN_CONSTEXPR
   static inline int digits10() { return 0; }
+  EIGEN_CONSTEXPR
+  static inline int max_digits10() { return 0; }
 
-private:
+ private:
   static inline std::string epsilon();
   static inline std::string dummy_precision();
   static inline std::string lowest();

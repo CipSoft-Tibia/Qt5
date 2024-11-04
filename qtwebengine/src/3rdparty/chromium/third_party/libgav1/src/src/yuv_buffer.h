@@ -24,6 +24,7 @@
 #include <type_traits>
 
 #include "src/gav1/frame_buffer.h"
+#include "src/utils/compiler_attributes.h"
 #include "src/utils/constants.h"
 
 namespace libgav1 {
@@ -146,6 +147,11 @@ class YuvBuffer {
 
  private:
   static constexpr int kFrameBufferRowAlignment = 16;
+
+#if LIBGAV1_MSAN
+  void InitializeFrameBorders();
+#endif
+
   int bitdepth_ = 0;
   bool is_monochrome_ = false;
 

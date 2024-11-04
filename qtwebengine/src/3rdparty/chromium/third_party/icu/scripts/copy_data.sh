@@ -10,7 +10,7 @@ set -e # exit if fail
 
 if [ $# -lt 1 ];
 then
-  echo "Usage: "$0" (android|cast|chromeos|common|flutter|ios)" >&2
+  echo "Usage: "$0" (android|cast|chromeos|common|flutter|flutter_desktop|ios)" >&2
   exit 1
 fi
 
@@ -45,7 +45,7 @@ function copy_common {
 function copy_data {
   echo "Copying icudtl.dat for $1"
 
-  rm "${TOPSRC}/$2/icudtl.dat"
+  rm -f "${TOPSRC}/$2/icudtl.dat"
   cp "data/out/tmp/icudt${VERSION}l.dat" "${TOPSRC}/$2/icudtl.dat"
 
   echo "Done with copying pre-built ICU data file for $1."
@@ -119,6 +119,10 @@ case "$1" in
     ;;
   "flutter")
     copy_data Flutter $1
+    backup_outdir $1
+    ;;
+  "flutter_desktop")
+    copy_data Flutter_Desktop $1
     backup_outdir $1
     ;;
 esac

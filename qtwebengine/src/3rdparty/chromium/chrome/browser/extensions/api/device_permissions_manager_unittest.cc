@@ -88,7 +88,7 @@ class DevicePermissionsManagerTest : public testing::Test {
   void TearDown() override { env_.reset(nullptr); }
 
   std::unique_ptr<extensions::TestExtensionEnvironment> env_;
-  raw_ptr<const extensions::Extension> extension_;
+  raw_ptr<const extensions::Extension, DanglingUntriaged> extension_;
   device::FakeUsbDeviceManager fake_usb_manager_;
   device::mojom::UsbDeviceInfoPtr device0_;
   device::mojom::UsbDeviceInfoPtr device1_;
@@ -308,9 +308,8 @@ TEST_F(DevicePermissionsManagerTest, LoadPrefs) {
       "    \"vendor_id\": 0"
       "  }"
       "]");
-  env_->GetExtensionPrefs()->UpdateExtensionPref(
-      extension_->id(), "devices",
-      base::Value::ToUniquePtrValue(std::move(prefs_value)));
+  env_->GetExtensionPrefs()->UpdateExtensionPref(extension_->id(), "devices",
+                                                 std::move(prefs_value));
 
   DevicePermissionsManager* manager =
       DevicePermissionsManager::Get(env_->profile());

@@ -27,12 +27,14 @@
  *
  */
 
+// IWYU pragma: begin_exports
 #include "src/Skyline/SkylineUtil.h"
 #include "src/Skyline/SkylineMatrixBase.h"
 #include "src/Skyline/SkylineStorage.h"
 #include "src/Skyline/SkylineMatrix.h"
 #include "src/Skyline/SkylineInplaceLU.h"
 #include "src/Skyline/SkylineProduct.h"
+// IWYU pragma: end_exports
 
 #include "../../Eigen/src/Core/util/ReenableStupidWarnings.h"
 

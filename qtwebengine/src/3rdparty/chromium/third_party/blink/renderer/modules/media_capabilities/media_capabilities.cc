@@ -56,7 +56,6 @@
 #include "third_party/blink/renderer/modules/encryptedmedia/encrypted_media_utils.h"
 #include "third_party/blink/renderer/modules/encryptedmedia/media_key_system_access.h"
 #include "third_party/blink/renderer/modules/encryptedmedia/media_key_system_access_initializer_base.h"
-#include "third_party/blink/renderer/modules/encryptedmedia/media_keys_controller.h"
 #include "third_party/blink/renderer/modules/media_capabilities/media_capabilities_identifiability_metrics.h"
 #include "third_party/blink/renderer/modules/media_capabilities_names.h"
 #include "third_party/blink/renderer/modules/mediarecorder/media_recorder_handler.h"
@@ -842,7 +841,8 @@ ScriptPromise MediaCapabilities::decodingInfo(
     UseCounter::Count(ExecutionContext::From(script_state),
                       WebFeature::kMediaCapabilitiesDecodingInfoWebrtc);
 
-    auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+    auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+        script_state, exception_state.GetContext());
 
     // IMPORTANT: Acquire the promise before potentially synchronously resolving
     // it in the code that follows. Otherwise the promise returned to JS will be
@@ -1004,7 +1004,8 @@ ScriptPromise MediaCapabilities::decodingInfo(
     return CreateResolvedPromiseToDecodingInfoWith(false, script_state, config);
   }
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
 
   // IMPORTANT: Acquire the promise before potentially synchronously resolving
   // it in the code that follows. Otherwise the promise returned to JS will be
@@ -1041,7 +1042,8 @@ ScriptPromise MediaCapabilities::encodingInfo(
   // Validation errors should return above.
   DCHECK(message.empty());
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
 
   // IMPORTANT: Acquire the promise before potentially synchronously resolving
   // it in the code that follows. Otherwise the promise returned to JS will be
@@ -1115,7 +1117,10 @@ ScriptPromise MediaCapabilities::encodingInfo(
   DCHECK_EQ(config->type(), "record");
   DCHECK(RuntimeEnabledFeatures::MediaCapabilitiesEncodingInfoEnabled());
 
-  if (auto* handler = MakeGarbageCollected<MediaRecorderHandler>()) {
+  if (auto* handler = MakeGarbageCollected<MediaRecorderHandler>(
+          resolver->GetExecutionContext()->GetTaskRunner(
+              TaskType::kInternalMediaRealTime),
+          KeyFrameRequestProcessor::Configuration())) {
     handler->EncodingInfo(ToWebMediaConfiguration(config),
                           WTF::BindOnce(&OnMediaCapabilitiesEncodingInfo,
                                         WrapPersistent(resolver)));
@@ -1338,9 +1343,8 @@ ScriptPromise MediaCapabilities::GetEmeSupport(
   // undefined. See comment above Promise() in script_promise_resolver.h
   ScriptPromise promise = initializer->Promise();
 
-  Page* page = To<LocalDOMWindow>(execution_context)->GetFrame()->GetPage();
-  MediaKeysController::From(page)
-      ->EncryptedMediaClient(execution_context)
+  EncryptedMediaUtils::GetEncryptedMediaClientFromLocalDOMWindow(
+      To<LocalDOMWindow>(execution_context))
       ->RequestMediaKeySystemAccess(WebEncryptedMediaRequest(initializer));
 
   return promise;

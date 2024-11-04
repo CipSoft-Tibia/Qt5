@@ -43,7 +43,7 @@ namespace {
 
 static constexpr uint32_t kFtraceGlobalClockIdForOldKernels = 64;
 
-PERFETTO_ALWAYS_INLINE base::Optional<int64_t> ResolveTraceTime(
+PERFETTO_ALWAYS_INLINE base::StatusOr<int64_t> ResolveTraceTime(
     TraceProcessorContext* context,
     ClockTracker::ClockId clock_id,
     int64_t ts) {
@@ -84,7 +84,7 @@ base::Status FtraceTokenizer::TokenizeFtraceBundle(
       clock_id = BuiltinClock::BUILTIN_CLOCK_BOOTTIME;
       break;
     case FtraceClock::FTRACE_CLOCK_GLOBAL:
-      clock_id = ClockTracker::SeqScopedClockIdToGlobal(
+      clock_id = ClockTracker::SeqenceToGlobalClock(
           packet_sequence_id, kFtraceGlobalClockIdForOldKernels);
       break;
     case FtraceClock::FTRACE_CLOCK_MONO_RAW:
@@ -153,10 +153,12 @@ void FtraceTokenizer::TokenizeFtraceEvent(uint32_t cpu,
   // ClockTracker will increment some error stats if it failed to convert the
   // timestamp so just return.
   int64_t int64_timestamp = static_cast<int64_t>(raw_timestamp);
-  base::Optional<int64_t> timestamp =
+  base::StatusOr<int64_t> timestamp =
       ResolveTraceTime(context_, clock_id, int64_timestamp);
-  if (!timestamp)
+  if (!timestamp.ok()) {
+    DlogWithLimit(timestamp.status());
     return;
+  }
   context_->sorter->PushFtraceEvent(cpu, *timestamp, std::move(event),
                                     state->current_generation());
 }
@@ -212,10 +214,12 @@ void FtraceTokenizer::TokenizeFtraceCompactSchedSwitch(
     event.next_pid = *npid_it;
     event.next_prio = *nprio_it;
 
-    base::Optional<int64_t> timestamp =
+    base::StatusOr<int64_t> timestamp =
         ResolveTraceTime(context_, clock_id, event_timestamp);
-    if (!timestamp)
+    if (!timestamp.ok()) {
+      DlogWithLimit(timestamp.status());
       return;
+    }
     context_->sorter->PushInlineFtraceEvent(cpu, *timestamp, event);
   }
 
@@ -243,6 +247,7 @@ void FtraceTokenizer::TokenizeFtraceCompactSchedWaking(
   auto tcpu_it = compact.waking_target_cpu(&parse_error);
   auto prio_it = compact.waking_prio(&parse_error);
   auto comm_it = compact.waking_comm_index(&parse_error);
+  auto common_flags_it = compact.waking_common_flags(&parse_error);
 
   for (; timestamp_it && pid_it && tcpu_it && prio_it && comm_it;
        ++timestamp_it, ++pid_it, ++tcpu_it, ++prio_it, ++comm_it) {
@@ -257,13 +262,20 @@ void FtraceTokenizer::TokenizeFtraceCompactSchedWaking(
     event.comm = string_table[*comm_it];
 
     event.pid = *pid_it;
-    event.target_cpu = *tcpu_it;
-    event.prio = *prio_it;
+    event.target_cpu = static_cast<uint16_t>(*tcpu_it);
+    event.prio = static_cast<uint16_t>(*prio_it);
 
-    base::Optional<int64_t> timestamp =
+    if (common_flags_it) {
+      event.common_flags = static_cast<uint16_t>(*common_flags_it);
+      common_flags_it++;
+    }
+
+    base::StatusOr<int64_t> timestamp =
         ResolveTraceTime(context_, clock_id, event_timestamp);
-    if (!timestamp)
+    if (!timestamp.ok()) {
+      DlogWithLimit(timestamp.status());
       return;
+    }
     context_->sorter->PushInlineFtraceEvent(cpu, *timestamp, event);
   }
 
@@ -283,12 +295,12 @@ void FtraceTokenizer::HandleFtraceClockSnapshot(int64_t ftrace_ts,
     return;
   latest_ftrace_clock_snapshot_ts_ = ftrace_ts;
 
-  ClockTracker::ClockId global_id = ClockTracker::SeqScopedClockIdToGlobal(
+  ClockTracker::ClockId global_id = ClockTracker::SeqenceToGlobalClock(
       packet_sequence_id, kFtraceGlobalClockIdForOldKernels);
   context_->clock_tracker->AddSnapshot(
-      {ClockTracker::ClockValue(global_id, ftrace_ts),
-       ClockTracker::ClockValue(BuiltinClock::BUILTIN_CLOCK_BOOTTIME,
-                                boot_ts)});
+      {ClockTracker::ClockTimestamp(global_id, ftrace_ts),
+       ClockTracker::ClockTimestamp(BuiltinClock::BUILTIN_CLOCK_BOOTTIME,
+                                    boot_ts)});
 }
 
 }  // namespace trace_processor

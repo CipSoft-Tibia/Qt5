@@ -1,7 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2016 Olivier Goffart <ogoffart@woboq.com>
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qvariant.h>
 
@@ -442,10 +442,20 @@ void tst_QVariant::constructor()
     QVERIFY(var3.isNull());
     QVERIFY(var3.isValid());
 
+    QVariant var3a = QVariant::fromMetaType(QMetaType::fromType<QString>());
+    QCOMPARE(var3a.typeName(), "QString");
+    QVERIFY(var3a.isNull());
+    QVERIFY(var3a.isValid());
+
     QVariant var4 {QMetaType()};
     QCOMPARE(var4.typeId(), QMetaType::UnknownType);
     QVERIFY(var4.isNull());
     QVERIFY(!var4.isValid());
+
+    QVariant var4a = QVariant::fromMetaType(QMetaType());
+    QCOMPARE(var4a.typeId(), QMetaType::UnknownType);
+    QVERIFY(var4a.isNull());
+    QVERIFY(!var4a.isValid());
 
     QVariant var5(QLatin1String("hallo"));
     QCOMPARE(var5.typeId(), QMetaType::QString);
@@ -489,6 +499,14 @@ void tst_QVariant::constructor_invalid()
     }
     {
         QTest::ignoreMessage(QtWarningMsg, QRegularExpression("^Trying to construct an instance of an invalid type"));
+        QVariant variant = QVariant::fromMetaType(QMetaType(typeId));
+        QVERIFY(!variant.isValid());
+        QVERIFY(variant.isNull());
+        QCOMPARE(variant.typeId(), int(QMetaType::UnknownType));
+        QCOMPARE(variant.userType(), int(QMetaType::UnknownType));
+    }
+    {
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("^Trying to construct an instance of an invalid type"));
         QVariant variant(QMetaType(typeId), /* copy */ nullptr);
         QVERIFY(!variant.isValid());
         QVERIFY(variant.isNull());
@@ -522,6 +540,9 @@ void tst_QVariant::isNull()
 
     var3 = QVariant(QMetaType::fromType<QString>());
     QVERIFY( var3.isNull() );
+
+    var3.setValue(QString());
+    QVERIFY( !var3.isNull() );
 
     QVariant var4( 0 );
     QVERIFY( !var4.isNull() );
@@ -2979,9 +3000,11 @@ void tst_QVariant::compareNumerics_data() const
                         QString::number(v.toULongLong()) :
                         QString::number(v.toLongLong());
         switch (v.typeId()) {
-        case QMetaType::Char:
         case QMetaType::Char16:
+            return QString::number(qvariant_cast<char16_t>(v));
         case QMetaType::Char32:
+            return QString::number(qvariant_cast<char32_t>(v));
+        case QMetaType::Char:
         case QMetaType::UChar:
             return QString::number(v.toUInt());
         case QMetaType::SChar:
@@ -3125,7 +3148,7 @@ QT_WARNING_POP
     addComparePair(LLONG_MIN, quint64(LLONG_MIN) + 1);
     addComparePair(LLONG_MIN + 1, quint64(LLONG_MIN) + 1);
     addComparePair(LLONG_MIN, LLONG_MAX - 1);
-    addComparePair(LLONG_MIN, LLONG_MAX);
+    // addComparePair(LLONG_MIN, LLONG_MAX); // already added by addSingleType()
 
     // floating point
     addComparePair(0.f, 0);
@@ -3133,7 +3156,6 @@ QT_WARNING_POP
     addComparePair(0.f, Q_INT64_C(0));
     addComparePair(0.f, Q_UINT64_C(0));
     addComparePair(0.f, 0.);
-    addComparePair(0.f, 1.);
     addComparePair(0.f, 1.);
     addComparePair(float(1 << 24), 1 << 24);
     addComparePair(float(1 << 24) - 1, (1 << 24) - 1);
@@ -3144,7 +3166,7 @@ QT_WARNING_POP
     addComparePair(qQNaN(), std::numeric_limits<float>::quiet_NaN());
     if (sizeof(qreal) == sizeof(double)) {
         addComparePair(std::numeric_limits<float>::min(), std::numeric_limits<double>::min());
-        addComparePair(std::numeric_limits<float>::min(), std::numeric_limits<double>::min());
+        addComparePair(std::numeric_limits<float>::min(), std::numeric_limits<double>::max());
         addComparePair(std::numeric_limits<float>::max(), std::numeric_limits<double>::min());
         addComparePair(std::numeric_limits<float>::max(), std::numeric_limits<double>::max());
         addComparePair(double(Q_INT64_C(1) << 53), Q_INT64_C(1) << 53);
@@ -4373,7 +4395,8 @@ void tst_QVariant::dataStream_data(QDataStream::Version version)
     path = path.prepend(":/stream/").append("/");
     QDir dir(path);
     uint i = 0;
-    foreach (const QFileInfo &fileInfo, dir.entryInfoList(QStringList() << "*.bin")) {
+    const auto entries = dir.entryInfoList(QStringList{u"*.bin"_s});
+    for (const QFileInfo &fileInfo : entries) {
         QTest::newRow((path + fileInfo.fileName()).toLatin1()) << fileInfo.filePath();
         i += 1;
     }
@@ -5796,6 +5819,17 @@ void tst_QVariant::moveOperations()
         const MoveTester tester;
         QVariant::fromValue(std::move(tester));
         QVERIFY(!tester.wasMoved); // we don't want to move from const variables
+    }
+    {
+        QVariant var(std::in_place_type<MoveTester>);
+        const auto p = get_if<MoveTester>(&var);
+        QVERIFY(p);
+        auto &tester = *p;
+        QVERIFY(!tester.wasMoved);
+        [[maybe_unused]] auto copy = var.value<MoveTester>();
+        QVERIFY(!tester.wasMoved);
+        [[maybe_unused]] auto moved = std::move(var).value<MoveTester>();
+        QVERIFY(tester.wasMoved);
     }
 }
 

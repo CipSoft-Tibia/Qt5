@@ -12,6 +12,7 @@
 #endif
 
 // std headers can unfortunately not be forward declared
+#include <cstddef> // std::size_t
 #include <utility>
 
 QT_BEGIN_NAMESPACE
@@ -21,10 +22,13 @@ template <typename Key, typename T> class QHash;
 template <typename Key, typename T> class QMap;
 template <typename Key, typename T> class QMultiHash;
 template <typename Key, typename T> class QMultiMap;
+#ifndef QT_NO_QPAIR
 template <typename T1, typename T2>
 using QPair = std::pair<T1, T2>;
+#endif
 template <typename T> class QQueue;
 template <typename T> class QSet;
+template <typename T, std::size_t E = std::size_t(-1) /* = std::dynamic_extent*/> class QSpan;
 template <typename T> class QStack;
 constexpr qsizetype QVarLengthArrayDefaultPrealloc = 256;
 template <typename T, qsizetype Prealloc = QVarLengthArrayDefaultPrealloc> class QVarLengthArray;
@@ -46,7 +50,7 @@ class QVariant;
 using QVariantList = QList<QVariant>;
 using QVariantMap = QMap<QString, QVariant>;
 using QVariantHash = QHash<QString, QVariant>;
-using QVariantPair = QPair<QVariant, QVariant>;
+using QVariantPair = std::pair<QVariant, QVariant>;
 
 QT_END_NAMESPACE
 

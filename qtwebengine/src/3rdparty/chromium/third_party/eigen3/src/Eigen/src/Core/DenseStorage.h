@@ -56,7 +56,7 @@ struct plain_array
   #define EIGEN_MAKE_UNALIGNED_ARRAY_ASSERT(sizemask)
 #else
   #define EIGEN_MAKE_UNALIGNED_ARRAY_ASSERT(sizemask) \
-    eigen_assert((internal::is_constant_evaluated() || (internal::UIntPtr(array) & (sizemask)) == 0) \
+    eigen_assert((internal::is_constant_evaluated() || (std::uintptr_t(array) & (sizemask)) == 0) \
               && "this assertion is explained here: " \
               "http://eigen.tuxfamily.org/dox-devel/group__TopicUnalignedArrayAssert.html" \
               " **** READ THIS WEB PAGE !!! ****");

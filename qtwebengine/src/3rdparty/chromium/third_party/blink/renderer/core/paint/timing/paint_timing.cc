@@ -164,7 +164,7 @@ void PaintTiming::SetFirstMeaningfulPaintCandidate(base::TimeTicks timestamp) {
     return;
   first_meaningful_paint_candidate_ = timestamp;
   if (GetFrame() && GetFrame()->View() && !GetFrame()->View()->IsAttached()) {
-    GetFrame()->GetFrameScheduler()->OnFirstMeaningfulPaint();
+    GetFrame()->GetFrameScheduler()->OnFirstMeaningfulPaint(timestamp);
   }
 }
 
@@ -176,7 +176,7 @@ void PaintTiming::SetFirstMeaningfulPaint(
 
   TRACE_EVENT_MARK_WITH_TIMESTAMP2("loading,rail,devtools.timeline",
                                    "firstMeaningfulPaint", presentation_time,
-                                   "frame", ToTraceValue(GetFrame()),
+                                   "frame", GetFrameIdForTracing(GetFrame()),
                                    "afterUserInput", had_input);
 
   // Notify FMP for UMA only if there's no user input before FMP, so that layout

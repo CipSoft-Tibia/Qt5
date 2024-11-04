@@ -10,10 +10,16 @@ import shutil
 import subprocess
 import sys
 
+EXACT_MATCHING = 'exact'
+FUZZY_MATCHING = 'fuzzy'
+
 _PNG_OPTIMIZER = 'optipng'
 
+# Each suffix order acts like a path along a tree, with the leaves being the
+# most specific, and the root being the least specific.
 _COMMON_SUFFIX_ORDER = ('_{os}', '')
 _AGG_SUFFIX_ORDER = ('_agg_{os}', '_agg') + _COMMON_SUFFIX_ORDER
+_GDI_SUFFIX_ORDER = ('_gdi_{os}', '_gdi') + _COMMON_SUFFIX_ORDER
 _SKIA_SUFFIX_ORDER = ('_skia_{os}', '_skia') + _COMMON_SUFFIX_ORDER
 
 
@@ -34,14 +40,19 @@ class ImageDiff:
 
 class PNGDiffer():
 
-  def __init__(self, finder, features, reverse_byte_order):
+  def __init__(self, finder, reverse_byte_order, rendering_option):
     self.pdfium_diff_path = finder.ExecutablePath('pdfium_diff')
     self.os_name = finder.os_name
     self.reverse_byte_order = reverse_byte_order
-    if 'SKIA' in features:
+
+    if rendering_option == 'agg':
+      self.suffix_order = _AGG_SUFFIX_ORDER
+    elif rendering_option == 'gdi':
+      self.suffix_order = _GDI_SUFFIX_ORDER
+    elif rendering_option == 'skia':
       self.suffix_order = _SKIA_SUFFIX_ORDER
     else:
-      self.suffix_order = _AGG_SUFFIX_ORDER
+      raise ValueError(f'rendering_option={rendering_option}')
 
   def CheckMissingTools(self, regenerate_expected):
     if regenerate_expected and not shutil.which(_PNG_OPTIMIZER):
@@ -68,10 +79,12 @@ class PNGDiffer():
     except subprocess.CalledProcessError as e:
       return e
 
-  def _RunImageCompareCommand(self, image_diff):
+  def _RunImageCompareCommand(self, image_diff, image_matching_algorithm):
     cmd = [self.pdfium_diff_path]
     if self.reverse_byte_order:
       cmd.append('--reverse-byte-order')
+    if image_matching_algorithm == FUZZY_MATCHING:
+      cmd.append('--fuzzy')
     cmd.extend([image_diff.actual_path, image_diff.expected_path])
     return self._RunCommand(cmd)
 
@@ -82,7 +95,8 @@ class PNGDiffer():
         image_diff.expected_path, image_diff.diff_path
     ])
 
-  def ComputeDifferences(self, input_filename, source_dir, working_dir):
+  def ComputeDifferences(self, input_filename, source_dir, working_dir,
+                         image_matching_algorithm):
     """Computes differences between actual and expected image files.
 
     Returns:
@@ -102,7 +116,8 @@ class PNGDiffer():
       if os.path.exists(expected_path):
         page_diff.expected_path = expected_path
 
-        compare_error = self._RunImageCompareCommand(page_diff)
+        compare_error = self._RunImageCompareCommand(page_diff,
+                                                     image_matching_algorithm)
         if compare_error:
           page_diff.reason = str(compare_error)
 
@@ -115,7 +130,8 @@ class PNGDiffer():
           # Validate that no other paths match.
           for unexpected_path in path_templates.GetExpectedPaths(page)[1:]:
             page_diff.expected_path = unexpected_path
-            if not self._RunImageCompareCommand(page_diff):
+            if not self._RunImageCompareCommand(page_diff,
+                                                image_matching_algorithm):
               page_diff.reason = f'Also matches {unexpected_path}'
               break
           page_diff.expected_path = expected_path
@@ -129,7 +145,8 @@ class PNGDiffer():
 
     return image_diffs
 
-  def Regenerate(self, input_filename, source_dir, working_dir):
+  def Regenerate(self, input_filename, source_dir, working_dir,
+                 image_matching_algorithm):
     path_templates = _PathTemplates(input_filename, source_dir, working_dir,
                                     self.os_name, self.suffix_order)
     for page in itertools.count():
@@ -142,7 +159,8 @@ class PNGDiffer():
         # Match against all expected page images.
         for index, expected_path in enumerate(expected_paths):
           page_diff.expected_path = expected_path
-          if not self._RunImageCompareCommand(page_diff):
+          if not self._RunImageCompareCommand(page_diff,
+                                              image_matching_algorithm):
             if first_match is None:
               first_match = index
             last_match = index

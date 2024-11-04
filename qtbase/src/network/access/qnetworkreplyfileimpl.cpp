@@ -60,7 +60,7 @@ QNetworkReplyFileImpl::QNetworkReplyFileImpl(QNetworkAccessManager *manager, con
         setFinished(true); // We're finished, will emit finished() after ctor is done.
         QMetaObject::invokeMethod(this, "errorOccurred", Qt::QueuedConnection,
             Q_ARG(QNetworkReply::NetworkError, QNetworkReply::ProtocolInvalidOperationError));
-        QMetaObject::invokeMethod(this, [this](){ fileOpenFinished(false); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this, &QNetworkReplyFileImpl::fileOpenFinished, Qt::QueuedConnection, false);
         return;
     }
 #endif
@@ -87,7 +87,7 @@ QNetworkReplyFileImpl::QNetworkReplyFileImpl(QNetworkAccessManager *manager, con
         auto realFile = new QNetworkFile(fileName);
         connect(realFile, &QNetworkFile::headerRead, this, &QNetworkReplyFileImpl::setHeader,
                 Qt::QueuedConnection);
-        connect(realFile, &QNetworkFile::error, this, &QNetworkReplyFileImpl::setError,
+        connect(realFile, &QNetworkFile::networkError, this, &QNetworkReplyFileImpl::setError,
                 Qt::QueuedConnection);
         connect(realFile, SIGNAL(finished(bool)), SLOT(fileOpenFinished(bool)),
                 Qt::QueuedConnection);

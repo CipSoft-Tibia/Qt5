@@ -24,13 +24,13 @@
 #include "dawn/native/DynamicUploader.h"
 #include "dawn/native/EnumMaskIterator.h"
 #include "dawn/native/RenderBundle.h"
-#include "dawn/native/vulkan/AdapterVk.h"
 #include "dawn/native/vulkan/BindGroupVk.h"
 #include "dawn/native/vulkan/BufferVk.h"
 #include "dawn/native/vulkan/CommandRecordingContext.h"
 #include "dawn/native/vulkan/ComputePipelineVk.h"
 #include "dawn/native/vulkan/DeviceVk.h"
 #include "dawn/native/vulkan/FencedDeleter.h"
+#include "dawn/native/vulkan/PhysicalDeviceVk.h"
 #include "dawn/native/vulkan/PipelineLayoutVk.h"
 #include "dawn/native/vulkan/QuerySetVk.h"
 #include "dawn/native/vulkan/RenderPassCache.h"
@@ -141,12 +141,12 @@ class DescriptorSetTracker : public BindGroupTrackerBase<true, uint32_t> {
         BeforeApply();
         for (BindGroupIndex dirtyIndex : IterateBitSet(mDirtyBindGroupsObjectChangedOrIsDynamic)) {
             VkDescriptorSet set = ToBackend(mBindGroups[dirtyIndex])->GetHandle();
+            uint32_t count = static_cast<uint32_t>(mDynamicOffsets[dirtyIndex].size());
             const uint32_t* dynamicOffset =
-                mDynamicOffsetCounts[dirtyIndex] > 0 ? mDynamicOffsets[dirtyIndex].data() : nullptr;
-            device->fn.CmdBindDescriptorSets(recordingContext->commandBuffer, bindPoint,
-                                             ToBackend(mPipelineLayout)->GetHandle(),
-                                             static_cast<uint32_t>(dirtyIndex), 1, &*set,
-                                             mDynamicOffsetCounts[dirtyIndex], dynamicOffset);
+                count > 0 ? mDynamicOffsets[dirtyIndex].data() : nullptr;
+            device->fn.CmdBindDescriptorSets(
+                recordingContext->commandBuffer, bindPoint, ToBackend(mPipelineLayout)->GetHandle(),
+                static_cast<uint32_t>(dirtyIndex), 1, &*set, count, dynamicOffset);
         }
         AfterApply();
     }
@@ -154,9 +154,9 @@ class DescriptorSetTracker : public BindGroupTrackerBase<true, uint32_t> {
 
 // Records the necessary barriers for a synchronization scope using the resource usage
 // data pre-computed in the frontend. Also performs lazy initialization if required.
-void TransitionAndClearForSyncScope(Device* device,
-                                    CommandRecordingContext* recordingContext,
-                                    const SyncScopeResourceUsage& scope) {
+MaybeError TransitionAndClearForSyncScope(Device* device,
+                                          CommandRecordingContext* recordingContext,
+                                          const SyncScopeResourceUsage& scope) {
     std::vector<VkBufferMemoryBarrier> bufferBarriers;
     std::vector<VkImageMemoryBarrier> imageBarriers;
     VkPipelineStageFlags srcStages = 0;
@@ -179,12 +179,13 @@ void TransitionAndClearForSyncScope(Device* device,
         // Clear subresources that are not render attachments. Render attachments will be
         // cleared in RecordBeginRenderPass by setting the loadop to clear when the texture
         // subresource has not been initialized before the render pass.
-        scope.textureUsages[i].Iterate(
-            [&](const SubresourceRange& range, wgpu::TextureUsage usage) {
+        DAWN_TRY(scope.textureUsages[i].Iterate(
+            [&](const SubresourceRange& range, wgpu::TextureUsage usage) -> MaybeError {
                 if (usage & ~wgpu::TextureUsage::RenderAttachment) {
-                    texture->EnsureSubresourceContentInitialized(recordingContext, range);
+                    DAWN_TRY(texture->EnsureSubresourceContentInitialized(recordingContext, range));
                 }
-            });
+                return {};
+            }));
         texture->TransitionUsageForPass(recordingContext, scope.textureUsages[i], &imageBarriers,
                                         &srcStages, &dstStages);
     }
@@ -194,6 +195,7 @@ void TransitionAndClearForSyncScope(Device* device,
                                       nullptr, bufferBarriers.size(), bufferBarriers.data(),
                                       imageBarriers.size(), imageBarriers.data());
     }
+    return {};
 }
 
 MaybeError RecordBeginRenderPass(CommandRecordingContext* recordingContext,
@@ -209,7 +211,6 @@ MaybeError RecordBeginRenderPass(CommandRecordingContext* recordingContext,
         for (ColorAttachmentIndex i :
              IterateBitSet(renderPass->attachmentState->GetColorAttachmentsMask())) {
             const auto& attachmentInfo = renderPass->colorAttachments[i];
-
             bool hasResolveTarget = attachmentInfo.resolveTarget != nullptr;
 
             query.SetColor(i, attachmentInfo.view->GetFormat().format, attachmentInfo.loadOp,
@@ -250,33 +251,30 @@ MaybeError RecordBeginRenderPass(CommandRecordingContext* recordingContext,
             attachments[attachmentCount] = view->GetHandle();
 
             switch (view->GetFormat().GetAspectInfo(Aspect::Color).baseType) {
-                case wgpu::TextureComponentType::Float: {
+                case TextureComponentType::Float: {
                     const std::array<float, 4> appliedClearColor =
                         ConvertToFloatColor(attachmentInfo.clearColor);
-                    for (uint32_t i = 0; i < 4; ++i) {
-                        clearValues[attachmentCount].color.float32[i] = appliedClearColor[i];
+                    for (uint32_t j = 0; j < 4; ++j) {
+                        clearValues[attachmentCount].color.float32[j] = appliedClearColor[j];
                     }
                     break;
                 }
-                case wgpu::TextureComponentType::Uint: {
+                case TextureComponentType::Uint: {
                     const std::array<uint32_t, 4> appliedClearColor =
                         ConvertToUnsignedIntegerColor(attachmentInfo.clearColor);
-                    for (uint32_t i = 0; i < 4; ++i) {
-                        clearValues[attachmentCount].color.uint32[i] = appliedClearColor[i];
+                    for (uint32_t j = 0; j < 4; ++j) {
+                        clearValues[attachmentCount].color.uint32[j] = appliedClearColor[j];
                     }
                     break;
                 }
-                case wgpu::TextureComponentType::Sint: {
+                case TextureComponentType::Sint: {
                     const std::array<int32_t, 4> appliedClearColor =
                         ConvertToSignedIntegerColor(attachmentInfo.clearColor);
-                    for (uint32_t i = 0; i < 4; ++i) {
-                        clearValues[attachmentCount].color.int32[i] = appliedClearColor[i];
+                    for (uint32_t j = 0; j < 4; ++j) {
+                        clearValues[attachmentCount].color.int32[j] = appliedClearColor[j];
                     }
                     break;
                 }
-
-                case wgpu::TextureComponentType::DepthComparison:
-                    UNREACHABLE();
             }
             attachmentCount++;
         }
@@ -512,8 +510,8 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* recordingConte
     // And resets the used query sets which are rewritten on the render pass.
     auto PrepareResourcesForRenderPass = [](Device* device,
                                             CommandRecordingContext* recordingContext,
-                                            const RenderPassResourceUsage& usages) {
-        TransitionAndClearForSyncScope(device, recordingContext, usages);
+                                            const RenderPassResourceUsage& usages) -> MaybeError {
+        DAWN_TRY(TransitionAndClearForSyncScope(device, recordingContext, usages));
 
         // Reset all query set used on current render pass together before beginning render pass
         // because the reset command must be called outside render pass
@@ -521,10 +519,15 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* recordingConte
             ResetUsedQuerySetsOnRenderPass(device, recordingContext->commandBuffer,
                                            usages.querySets[i], usages.queryAvailabilities[i]);
         }
+        return {};
     };
 
     size_t nextComputePassNumber = 0;
     size_t nextRenderPassNumber = 0;
+
+    // Need to track if a render pass has already been recorded for the
+    // VulkanSplitCommandBufferOnComputePassAfterRenderPass workaround.
+    bool hasRecordedRenderPassInCurrentCommandBuffer = false;
 
     Command type;
     while (mCommands.NextCommandId(&type)) {
@@ -580,8 +583,8 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* recordingConte
                     // Since texture has been overwritten, it has been "initialized"
                     dst.texture->SetIsSubresourceContentInitialized(true, range);
                 } else {
-                    ToBackend(dst.texture)
-                        ->EnsureSubresourceContentInitialized(recordingContext, range);
+                    DAWN_TRY(ToBackend(dst.texture)
+                                 ->EnsureSubresourceContentInitialized(recordingContext, range));
                 }
                 ToBackend(src.buffer)
                     ->TransitionUsageNow(recordingContext, wgpu::BufferUsage::CopySrc);
@@ -614,8 +617,8 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* recordingConte
                 SubresourceRange range =
                     GetSubresourcesAffectedByCopy(copy->source, copy->copySize);
 
-                ToBackend(src.texture)
-                    ->EnsureSubresourceContentInitialized(recordingContext, range);
+                DAWN_TRY(ToBackend(src.texture)
+                             ->EnsureSubresourceContentInitialized(recordingContext, range));
 
                 ToBackend(src.texture)
                     ->TransitionUsageNow(recordingContext, wgpu::TextureUsage::CopySrc, range);
@@ -642,15 +645,15 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* recordingConte
                 SubresourceRange srcRange = GetSubresourcesAffectedByCopy(src, copy->copySize);
                 SubresourceRange dstRange = GetSubresourcesAffectedByCopy(dst, copy->copySize);
 
-                ToBackend(src.texture)
-                    ->EnsureSubresourceContentInitialized(recordingContext, srcRange);
+                DAWN_TRY(ToBackend(src.texture)
+                             ->EnsureSubresourceContentInitialized(recordingContext, srcRange));
                 if (IsCompleteSubresourceCopiedTo(dst.texture.Get(), copy->copySize,
                                                   dst.mipLevel)) {
                     // Since destination texture has been overwritten, it has been "initialized"
                     dst.texture->SetIsSubresourceContentInitialized(true, dstRange);
                 } else {
-                    ToBackend(dst.texture)
-                        ->EnsureSubresourceContentInitialized(recordingContext, dstRange);
+                    DAWN_TRY(ToBackend(dst.texture)
+                                 ->EnsureSubresourceContentInitialized(recordingContext, dstRange));
                 }
 
                 if (src.texture.Get() == dst.texture.Get() && src.mipLevel == dst.mipLevel) {
@@ -730,19 +733,31 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* recordingConte
             case Command::BeginRenderPass: {
                 BeginRenderPassCmd* cmd = mCommands.NextCommand<BeginRenderPassCmd>();
 
-                PrepareResourcesForRenderPass(
+                DAWN_TRY(PrepareResourcesForRenderPass(
                     device, recordingContext,
-                    GetResourceUsages().renderPasses[nextRenderPassNumber]);
+                    GetResourceUsages().renderPasses[nextRenderPassNumber]));
 
                 LazyClearRenderPassAttachments(cmd);
                 DAWN_TRY(RecordRenderPass(recordingContext, cmd));
 
+                hasRecordedRenderPassInCurrentCommandBuffer = true;
                 nextRenderPassNumber++;
                 break;
             }
 
             case Command::BeginComputePass: {
                 BeginComputePassCmd* cmd = mCommands.NextCommand<BeginComputePassCmd>();
+
+                // If required, split the command buffer any time a compute pass follows a render
+                // pass to work around a Qualcomm bug.
+                if (hasRecordedRenderPassInCurrentCommandBuffer &&
+                    device->IsToggleEnabled(
+                        Toggle::VulkanSplitCommandBufferOnComputePassAfterRenderPass)) {
+                    // Identified a potential crash case, split the command buffer.
+                    DAWN_TRY(device->SplitRecordingContext(recordingContext));
+                    hasRecordedRenderPassInCurrentCommandBuffer = false;
+                    commands = recordingContext->commandBuffer;
+                }
 
                 DAWN_TRY(
                     RecordComputePass(recordingContext, cmd,
@@ -767,7 +782,11 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* recordingConte
                 auto endIt =
                     querySet->GetQueryAvailability().begin() + cmd->firstQuery + cmd->queryCount;
                 bool hasUnavailableQueries = std::find(startIt, endIt, false) != endIt;
-                if (hasUnavailableQueries) {
+                // Workaround for resolving overlapping queries to a same buffer on Intel Gen12 GPUs
+                // due to Mesa driver issue.
+                // See http://crbug.com/dawn/1823 for more information.
+                bool clearNeeded = device->IsToggleEnabled(Toggle::ClearBufferBeforeResolveQueries);
+                if (hasUnavailableQueries || clearNeeded) {
                     destination->TransitionUsageNow(recordingContext, wgpu::BufferUsage::CopyDst);
                     device->fn.CmdFillBuffer(commands, destination->GetHandle(),
                                              cmd->destinationOffset,
@@ -850,7 +869,6 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* recordingConte
 
                 Buffer* dstBuffer = ToBackend(write->buffer.Get());
                 uint8_t* data = mCommands.NextData<uint8_t>(size);
-                Device* device = ToBackend(GetDevice());
 
                 UploadHandle uploadHandle;
                 DAWN_TRY_ASSIGN(uploadHandle, device->GetDynamicUploader()->Allocate(
@@ -887,24 +905,6 @@ MaybeError CommandBuffer::RecordComputePass(CommandRecordingContext* recordingCo
                                             const ComputePassResourceUsage& resourceUsages) {
     Device* device = ToBackend(GetDevice());
 
-    // If required, split the command buffer any time we detect a dpeth/stencil attachment is
-    // used in a compute pass after being used as a render pass attachment in the same command
-    // buffer.
-    if (device->IsToggleEnabled(
-            Toggle::VulkanSplitCommandBufferOnDepthStencilComputeSampleAfterRenderPass) &&
-        !mRenderPassDepthStencilAttachments.empty()) {
-        for (auto texture : resourceUsages.referencedTextures) {
-            if (texture->GetFormat().HasDepthOrStencil() &&
-                mRenderPassDepthStencilAttachments.find(texture) !=
-                    mRenderPassDepthStencilAttachments.end()) {
-                // Identified a potential crash case, split the command buffer.
-                DAWN_TRY(device->SplitRecordingContext(recordingContext));
-                mRenderPassDepthStencilAttachments.clear();
-                break;
-            }
-        }
-    }
-
     // Write timestamp at the beginning of compute pass if it's set
     if (computePassCmd->beginTimestamp.querySet.Get() != nullptr) {
         RecordWriteTimestampCmd(recordingContext, device,
@@ -935,8 +935,8 @@ MaybeError CommandBuffer::RecordComputePass(CommandRecordingContext* recordingCo
             case Command::Dispatch: {
                 DispatchCmd* dispatch = mCommands.NextCommand<DispatchCmd>();
 
-                TransitionAndClearForSyncScope(device, recordingContext,
-                                               resourceUsages.dispatchUsages[currentDispatch]);
+                DAWN_TRY(TransitionAndClearForSyncScope(
+                    device, recordingContext, resourceUsages.dispatchUsages[currentDispatch]));
                 descriptorSets.Apply(device, recordingContext, VK_PIPELINE_BIND_POINT_COMPUTE);
 
                 device->fn.CmdDispatch(commands, dispatch->x, dispatch->y, dispatch->z);
@@ -948,8 +948,8 @@ MaybeError CommandBuffer::RecordComputePass(CommandRecordingContext* recordingCo
                 DispatchIndirectCmd* dispatch = mCommands.NextCommand<DispatchIndirectCmd>();
                 VkBuffer indirectBuffer = ToBackend(dispatch->indirectBuffer)->GetHandle();
 
-                TransitionAndClearForSyncScope(device, recordingContext,
-                                               resourceUsages.dispatchUsages[currentDispatch]);
+                DAWN_TRY(TransitionAndClearForSyncScope(
+                    device, recordingContext, resourceUsages.dispatchUsages[currentDispatch]));
                 descriptorSets.Apply(device, recordingContext, VK_PIPELINE_BIND_POINT_COMPUTE);
 
                 device->fn.CmdDispatchIndirect(commands, indirectBuffer,
@@ -1056,14 +1056,6 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
 
     DAWN_TRY(RecordBeginRenderPass(recordingContext, device, renderPassCmd));
 
-    // If required, track depth/stencil textures used as render pass attachments.
-    if (device->IsToggleEnabled(
-            Toggle::VulkanSplitCommandBufferOnDepthStencilComputeSampleAfterRenderPass) &&
-        renderPassCmd->attachmentState->HasDepthStencilAttachment()) {
-        mRenderPassDepthStencilAttachments.insert(
-            renderPassCmd->depthStencilAttachment.view->GetTexture());
-    }
-
     // Write timestamp at the beginning of render pass if it's set.
     if (renderPassCmd->beginTimestamp.querySet.Get() != nullptr) {
         RecordWriteTimestampCmd(recordingContext, device,
@@ -1114,7 +1106,7 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* recordingCon
     // on our infra).
     ClampFragDepthArgs clampFragDepthArgs = {0.0f, 1.0f};
     bool clampFragDepthArgsDirty = true;
-    auto ApplyClampFragDepthArgs = [&]() {
+    auto ApplyClampFragDepthArgs = [&] {
         if (!clampFragDepthArgsDirty || lastPipeline == nullptr) {
             return;
         }

@@ -15,58 +15,39 @@
 // We mean it.
 //
 
-#include <private/qtmultimediaglobal_p.h>
-#include <private/qmultimediautils_p.h>
-#include <qaudiodevice.h>
-
 #include <QtCore/qobject.h>
+#include <QtMultimedia/private/qplatformaudioinput_p.h>
 
-#include <qgst_p.h>
-#include <qgstpipeline_p.h>
-#include <private/qplatformaudioinput_p.h>
+#include <common/qgst_p.h>
 
 QT_BEGIN_NAMESPACE
 
-class QGstreamerMessage;
 class QAudioDevice;
 
-class Q_MULTIMEDIA_EXPORT QGstreamerAudioInput : public QObject, public QPlatformAudioInput
+class QGstreamerAudioInput : public QObject, public QPlatformAudioInput
 {
-    Q_OBJECT
-
 public:
     static QMaybe<QPlatformAudioInput *> create(QAudioInput *parent);
     ~QGstreamerAudioInput();
 
-    int volume() const;
-    bool isMuted() const;
-
-    bool setAudioInput(const QAudioDevice &);
-    QAudioDevice audioInput() const;
-
     void setAudioDevice(const QAudioDevice &) override;
-    void setVolume(float volume) override;
-    void setMuted(bool muted) override;
+    void setVolume(float) override;
+    void setMuted(bool) override;
 
-    QGstElement gstElement() const { return gstAudioInput; }
-
-Q_SIGNALS:
-    void mutedChanged(bool);
-    void volumeChanged(int);
+    QGstElement gstElement() const { return m_audioInputBin; }
 
 private:
-    QGstreamerAudioInput(QGstElement autoaudiosrc, QGstElement volume, QAudioInput *parent);
+    explicit QGstreamerAudioInput(QAudioInput *parent);
 
-    float m_volume = 1.;
-    bool m_muted = false;
+    QGstElement createGstElement();
 
     QAudioDevice m_audioDevice;
 
     // Gst elements
-    QGstBin gstAudioInput;
+    QGstBin m_audioInputBin;
 
-    QGstElement audioSrc;
-    QGstElement audioVolume;
+    QGstElement m_audioSrc;
+    QGstElement m_audioVolume;
 };
 
 QT_END_NAMESPACE

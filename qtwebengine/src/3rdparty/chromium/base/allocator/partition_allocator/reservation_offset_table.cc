@@ -9,13 +9,7 @@
 namespace partition_alloc::internal {
 
 #if BUILDFLAG(HAS_64_BIT_POINTERS)
-#if BUILDFLAG(ENABLE_PKEYS)
-ReservationOffsetTable::_PaddedReservationOffsetTables
-    ReservationOffsetTable::padded_reservation_offset_tables_ PA_PKEY_ALIGN;
-#else
-ReservationOffsetTable::_ReservationOffsetTable
-    ReservationOffsetTable::reservation_offset_tables_[];
-#endif  // BUILDFLAG(ENABLE_PKEYS)
+ReservationOffsetTable ReservationOffsetTable::singleton_;
 #else
 ReservationOffsetTable::_ReservationOffsetTable
     ReservationOffsetTable::reservation_offset_table_;

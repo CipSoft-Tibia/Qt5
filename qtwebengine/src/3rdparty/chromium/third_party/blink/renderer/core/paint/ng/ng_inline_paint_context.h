@@ -19,7 +19,7 @@ class CORE_EXPORT NGInlinePaintContext {
   STACK_ALLOCATED();
 
  public:
-  using DecoratingBoxList = Vector<NGDecoratingBox, 4>;
+  using DecoratingBoxList = HeapVector<NGDecoratingBox, 4>;
   const DecoratingBoxList& DecoratingBoxes() const { return decorating_boxes_; }
 
   NGInlineCursor CursorForDescendantsOfLine() const {
@@ -31,6 +31,7 @@ class CORE_EXPORT NGInlinePaintContext {
     decorating_boxes_.emplace_back(std::forward<Args>(args)...);
   }
   void PushDecoratingBoxAncestors(const NGInlineCursor& inline_box);
+  void PushDecoratingBoxes(const base::span<NGDecoratingBox>& boxes);
   void PopDecoratingBox(wtf_size_t size);
   void ClearDecoratingBoxes(
       DecoratingBoxList* saved_decorating_boxes = nullptr);

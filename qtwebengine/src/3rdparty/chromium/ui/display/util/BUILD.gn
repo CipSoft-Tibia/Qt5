@@ -21,13 +21,15 @@ jumbo_component("util") {
 
   defines = [ "DISPLAY_UTIL_IMPLEMENTATION" ]
 
+  public_deps = [ "//ui/display:display_features" ]
+
   deps = [
     "//base",
+    "//components/device_event_log",
     "//skia",
     "//ui/display/types",
     "//ui/gfx:color_space",
     "//ui/gfx/geometry",
-    "//ui/gfx/range",
   ]
 
   if (is_chromeos_ash) {

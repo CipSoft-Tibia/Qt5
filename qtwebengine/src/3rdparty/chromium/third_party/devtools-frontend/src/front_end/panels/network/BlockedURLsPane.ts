@@ -16,11 +16,11 @@ const UIStrings = {
    */
   enableNetworkRequestBlocking: 'Enable network request blocking',
   /**
-   *@description Tooltip text that appears when hovering over the largeicon add button in the Blocked URLs Pane of the Network panel
+   *@description Tooltip text that appears when hovering over the plus button in the Blocked URLs Pane of the Network panel
    */
   addPattern: 'Add pattern',
   /**
-   *@description Tooltip text that appears when hovering over the largeicon clear button in the Blocked URLs Pane of the Network panel
+   *@description Tooltip text that appears when hovering over the clear button in the Blocked URLs Pane of the Network panel
    */
   removeAllPatterns: 'Remove all patterns',
   /**
@@ -68,7 +68,7 @@ export class BlockedURLsPane extends UI.Widget.VBox implements
   private blockedCountForUrl: Map<string, number>;
   private readonly updateThrottler: Common.Throttler.Throttler;
 
-  constructor() {
+  constructor(updateThrottler: Common.Throttler.Throttler) {
     super(true);
 
     this.manager = SDK.NetworkManager.MultitargetNetworkManager.instance();
@@ -81,10 +81,10 @@ export class BlockedURLsPane extends UI.Widget.VBox implements
         i18nString(UIStrings.enableNetworkRequestBlocking), undefined, this.toggleEnabled.bind(this));
     this.toolbar.appendToolbarItem(this.enabledCheckbox);
     this.toolbar.appendSeparator();
-    const addButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.addPattern), 'largeicon-add');
+    const addButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.addPattern), 'plus');
     addButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.addButtonClicked, this);
     this.toolbar.appendToolbarItem(addButton);
-    const clearButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.removeAllPatterns), 'largeicon-clear');
+    const clearButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.removeAllPatterns), 'clear');
     clearButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.removeAll, this);
     this.toolbar.appendToolbarItem(clearButton);
 
@@ -98,19 +98,20 @@ export class BlockedURLsPane extends UI.Widget.VBox implements
 
     this.blockedCountForUrl = new Map();
     SDK.TargetManager.TargetManager.instance().addModelListener(
-        SDK.NetworkManager.NetworkManager, SDK.NetworkManager.Events.RequestFinished, this.onRequestFinished, this);
+        SDK.NetworkManager.NetworkManager, SDK.NetworkManager.Events.RequestFinished, this.onRequestFinished, this,
+        {scoped: true});
 
-    this.updateThrottler = new Common.Throttler.Throttler(200);
+    this.updateThrottler = updateThrottler;
 
     void this.update();
   }
 
-  static instance(opts: {
-    forceNew: boolean|null,
-  } = {forceNew: null}): BlockedURLsPane {
-    const {forceNew} = opts;
-    if (!blockedURLsPaneInstance || forceNew) {
-      blockedURLsPaneInstance = new BlockedURLsPane();
+  static instance(opts?: {
+    forceNew: boolean,
+    updateThrottler: Common.Throttler.Throttler,
+  }): BlockedURLsPane {
+    if (!blockedURLsPaneInstance || opts?.forceNew) {
+      blockedURLsPaneInstance = new BlockedURLsPane(opts?.updateThrottler || new Common.Throttler.Throttler(200));
     }
     return blockedURLsPaneInstance;
   }
@@ -119,7 +120,7 @@ export class BlockedURLsPane extends UI.Widget.VBox implements
     const element = this.contentElement.createChild('div', 'no-blocked-urls');
     const addButton =
         UI.UIUtils.createTextButton(i18nString(UIStrings.addPattern), this.addButtonClicked.bind(this), 'add-button');
-    UI.ARIAUtils.setAccessibleName(addButton, i18nString(UIStrings.addNetworkRequestBlockingPattern));
+    UI.ARIAUtils.setLabel(addButton, i18nString(UIStrings.addNetworkRequestBlockingPattern));
     element.appendChild(
         i18n.i18n.getFormatLocalizedString(str_, UIStrings.networkRequestsAreNotBlockedS, {PH1: addButton}));
     return element;
@@ -282,7 +283,7 @@ export class BlockedURLsPane extends UI.Widget.VBox implements
       void this.updateThrottler.schedule(this.update.bind(this));
     }
   }
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.list.registerCSSFiles([blockedURLsPaneStyles]);
     this.registerCSSFiles([blockedURLsPaneStyles]);

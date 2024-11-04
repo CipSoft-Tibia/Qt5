@@ -17,18 +17,18 @@ MediaUrlDemuxer::MediaUrlDemuxer(
     const GURL& media_url,
     const net::SiteForCookies& site_for_cookies,
     const url::Origin& top_frame_origin,
+    bool has_storage_access,
     bool allow_credentials,
     bool is_hls)
-    : params_{media_url, site_for_cookies, top_frame_origin, allow_credentials,
-              is_hls},
+    : params_{media_url,          site_for_cookies,  top_frame_origin,
+              has_storage_access, allow_credentials, is_hls},
       task_runner_(task_runner) {}
 
 MediaUrlDemuxer::~MediaUrlDemuxer() = default;
 
 // Should never be called since MediaResource::Type is URL.
 std::vector<DemuxerStream*> MediaUrlDemuxer::GetAllStreams() {
-  NOTREACHED();
-  return std::vector<DemuxerStream*>();
+  NOTREACHED_NORETURN();
 }
 
 const MediaUrlParams& MediaUrlDemuxer::GetMediaUrlParams() const {
@@ -36,7 +36,7 @@ const MediaUrlParams& MediaUrlDemuxer::GetMediaUrlParams() const {
 }
 
 MediaResource::Type MediaUrlDemuxer::GetType() const {
-  return MediaResource::Type::URL;
+  return MediaResource::Type::KUrl;
 }
 
 std::string MediaUrlDemuxer::GetDisplayName() const {

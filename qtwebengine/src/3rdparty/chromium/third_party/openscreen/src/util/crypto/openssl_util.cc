@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,9 +12,9 @@
 
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 
-#include "absl/strings/string_view.h"
 #include "util/osp_logging.h"
 
 namespace openscreen {
@@ -31,7 +31,7 @@ namespace {
 // error queue and return, otherwise it will continue calling this function
 // until all errors have been removed from the queue.
 int OpenSSLErrorCallback(const char* str, size_t len, void* context) {
-  OSP_DVLOG << "\t" << absl::string_view(str, len);
+  OSP_DVLOG << "\t" << std::string_view(str, len);
   return 1;
 }
 

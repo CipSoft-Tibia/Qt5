@@ -11,6 +11,7 @@
 #include <memory>
 #include <utility>
 
+#include "base/check.h"
 #include "base/functional/bind.h"
 #include "base/ranges/algorithm.h"
 #include "base/task/thread_pool.h"
@@ -18,6 +19,7 @@
 #include "ui/gfx/gpu_fence.h"
 #include "ui/gfx/gpu_fence_handle.h"
 #include "ui/gl/gl_bindings.h"
+#include "ui/gl/gl_display.h"
 #include "ui/ozone/common/egl_util.h"
 #include "ui/ozone/platform/wayland/gpu/wayland_buffer_manager_gpu.h"
 #include "ui/ozone/platform/wayland/mojom/wayland_overlay_config.mojom.h"
@@ -64,8 +66,13 @@ GbmSurfacelessWayland::SolidColorBufferHolder::GetOrCreateSolidColorBuffer(
     // startup.
     next_buffer_id = buffer_manager->AllocateBufferID();
     // Create wl_buffer on the browser side.
-    buffer_manager->CreateSolidColorBuffer(color, kSolidColorBufferSize,
-                                           next_buffer_id);
+    if (buffer_manager->supports_non_backed_solid_color_buffers()) {
+      buffer_manager->CreateSolidColorBuffer(color, kSolidColorBufferSize,
+                                             next_buffer_id);
+    } else {
+      CHECK(buffer_manager->supports_single_pixel_buffer());
+      buffer_manager->CreateSinglePixelBuffer(color, next_buffer_id);
+    }
     // Allocate a backing structure that will be used to figure out if such
     // buffer has already existed.
     inflight_solid_color_buffers_.emplace_back(
@@ -109,10 +116,10 @@ GbmSurfacelessWayland::GbmSurfacelessWayland(
     gl::GLDisplayEGL* display,
     WaylandBufferManagerGpu* buffer_manager,
     gfx::AcceleratedWidget widget)
-    : Presenter(display, gfx::Size()),
-      buffer_manager_(buffer_manager),
+    : buffer_manager_(buffer_manager),
       widget_(widget),
       solid_color_buffers_holder_(std::make_unique<SolidColorBufferHolder>()),
+      display_(display),
       weak_factory_(this) {
   buffer_manager_->RegisterSurface(widget_, this);
   unsubmitted_frames_.push_back(
@@ -141,7 +148,7 @@ bool GbmSurfacelessWayland::ScheduleOverlayPlane(
     // Only solid color overlays can be non-backed.
     if (!overlay_plane_data.is_solid_color) {
       LOG(WARNING) << "Only solid color overlay planes are allowed to be "
-                      "scheduled without GLImage.";
+                      "scheduled without backing.";
       frame->schedule_planes_succeeded = false;
       return false;
     }
@@ -159,8 +166,10 @@ bool GbmSurfacelessWayland::ScheduleOverlayPlane(
         {overlay_plane_data, nullptr, buf_id, surface_scale_factor()});
   } else {
     std::vector<gfx::GpuFence> acquire_fences;
-    if (gpu_fence)
+    if (gpu_fence &&
+        (buffer_manager_->supports_acquire_fence() || use_egl_fence_sync_)) {
       acquire_fences.push_back(std::move(*gpu_fence));
+    }
 
     frame->schedule_planes_succeeded = image->ScheduleOverlayPlane(
         widget_, overlay_plane_data, std::move(acquire_fences), {});
@@ -222,28 +231,6 @@ void GbmSurfacelessWayland::Present(SwapCompletionCallback completion_callback,
       std::move(fence_wait_task), std::move(fence_retired_callback));
 }
 
-EGLConfig GbmSurfacelessWayland::GetConfig() {
-  if (!config_) {
-    EGLint config_attribs[] = {EGL_BUFFER_SIZE,
-                               32,
-                               EGL_ALPHA_SIZE,
-                               8,
-                               EGL_BLUE_SIZE,
-                               8,
-                               EGL_GREEN_SIZE,
-                               8,
-                               EGL_RED_SIZE,
-                               8,
-                               EGL_RENDERABLE_TYPE,
-                               EGL_OPENGL_ES2_BIT,
-                               EGL_SURFACE_TYPE,
-                               EGL_DONT_CARE,
-                               EGL_NONE};
-    config_ = ChooseEGLConfig(GetEGLDisplay(), config_attribs);
-  }
-  return config_;
-}
-
 void GbmSurfacelessWayland::SetRelyOnImplicitSync() {
   use_egl_fence_sync_ = false;
 }
@@ -269,7 +256,7 @@ bool GbmSurfacelessWayland::Resize(const gfx::Size& size,
   // Remove all the buffers.
   solid_color_buffers_holder_->EraseBuffers(buffer_manager_);
 
-  return gl::SurfacelessEGL::Resize(size, scale_factor, color_space, has_alpha);
+  return true;
 }
 
 GbmSurfacelessWayland::~GbmSurfacelessWayland() {
@@ -374,6 +361,10 @@ void GbmSurfacelessWayland::OnPresentation(
   std::move(pending_presentation_frames_.front()->presentation_callback)
       .Run(feedback);
   pending_presentation_frames_.erase(pending_presentation_frames_.begin());
+}
+
+EGLDisplay GbmSurfacelessWayland::GetEGLDisplay() {
+  return display_->GetDisplay();
 }
 
 }  // namespace ui

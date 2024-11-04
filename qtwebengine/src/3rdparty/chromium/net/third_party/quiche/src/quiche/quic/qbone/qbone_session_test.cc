@@ -26,6 +26,7 @@
 #include "quiche/quic/test_tools/quic_connection_peer.h"
 #include "quiche/quic/test_tools/quic_session_peer.h"
 #include "quiche/quic/test_tools/quic_test_utils.h"
+#include "quiche/common/quiche_callbacks.h"
 
 namespace quic {
 namespace test {
@@ -48,18 +49,8 @@ std::string TestPacketOut(const std::string& body) {
 }
 
 ParsedQuicVersionVector GetTestParams() {
-  ParsedQuicVersionVector test_versions;
-
-  // TODO(b/113130636): Make QBONE work with TLS.
-  for (const auto& version : CurrentSupportedVersionsWithQuicCrypto()) {
-    // QBONE requires MESSAGE frames
-    if (!version.SupportsMessageFrames()) {
-      continue;
-    }
-    test_versions.push_back(version);
-  }
-
-  return test_versions;
+  SetQuicReloadableFlag(quic_disable_version_q046, false);
+  return CurrentSupportedVersionsWithQuicCrypto();
 }
 
 // Used by QuicCryptoServerConfig to provide server credentials, passes
@@ -248,7 +239,7 @@ class FakeTaskRunner {
 
     void Run() {
       if (!cancelled_) {
-        task_();
+        std::move(task_)();
       }
     }
 
@@ -256,7 +247,7 @@ class FakeTaskRunner {
 
    private:
     bool cancelled_ = false;
-    std::function<void()> task_;
+    quiche::SingleUseCallback<void()> task_;
     QuicTime time_;
   };
 
@@ -270,8 +261,9 @@ class FakeTaskRunner {
 
  private:
   using TaskType = std::shared_ptr<InnerTask>;
-  std::priority_queue<TaskType, std::vector<TaskType>,
-                      std::function<bool(const TaskType&, const TaskType&)>>
+  std::priority_queue<
+      TaskType, std::vector<TaskType>,
+      quiche::UnretainedCallback<bool(const TaskType&, const TaskType&)>>
       tasks_;
   MockQuicConnectionHelper* helper_;
 };
@@ -365,11 +357,12 @@ class QboneSessionTest : public QuicTestWithParam<ParsedQuicVersion> {
     // Hook everything up!
     MockPacketWriter* client_writer = static_cast<MockPacketWriter*>(
         QuicConnectionPeer::GetWriter(client_peer_->connection()));
-    ON_CALL(*client_writer, WritePacket(_, _, _, _, _))
+    ON_CALL(*client_writer, WritePacket(_, _, _, _, _, _))
         .WillByDefault(Invoke([this](const char* buffer, size_t buf_len,
                                      const QuicIpAddress& self_address,
                                      const QuicSocketAddress& peer_address,
-                                     PerPacketOptions* options) {
+                                     PerPacketOptions* option,
+                                     const QuicPacketWriterParams& params) {
           char* copy = new char[1024 * 1024];
           memcpy(copy, buffer, buf_len);
           runner_.Schedule([this, copy, buf_len] {
@@ -383,11 +376,12 @@ class QboneSessionTest : public QuicTestWithParam<ParsedQuicVersion> {
         }));
     MockPacketWriter* server_writer = static_cast<MockPacketWriter*>(
         QuicConnectionPeer::GetWriter(server_peer_->connection()));
-    ON_CALL(*server_writer, WritePacket(_, _, _, _, _))
+    ON_CALL(*server_writer, WritePacket(_, _, _, _, _, _))
         .WillByDefault(Invoke([this](const char* buffer, size_t buf_len,
                                      const QuicIpAddress& self_address,
                                      const QuicSocketAddress& peer_address,
-                                     PerPacketOptions* options) {
+                                     PerPacketOptions* options,
+                                     const QuicPacketWriterParams& params) {
           char* copy = new char[1024 * 1024];
           memcpy(copy, buffer, buf_len);
           runner_.Schedule([this, copy, buf_len] {

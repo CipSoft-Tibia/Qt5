@@ -21,6 +21,7 @@ ci.defaults.set(
     reclient_instance = reclient.instance.DEFAULT_TRUSTED,
     reclient_jobs = reclient.jobs.DEFAULT,
     service_account = ci.DEFAULT_SERVICE_ACCOUNT,
+    shadow_service_account = ci.DEFAULT_SHADOW_SERVICE_ACCOUNT,
 )
 
 consoles.console_view(
@@ -38,44 +39,6 @@ consoles.console_view(
     ("fuchsia-fyi-arm64-size", "p/chrome|arm64", "size"),
     ("fuchsia-x64", "p/chrome|x64", "rel"),
 )]
-
-ci.builder(
-    name = "fuchsia-arm64-chrome-rel",
-    builder_spec = builder_config.builder_spec(
-        gclient_config = builder_config.gclient_config(
-            config = "chromium",
-            apply_configs = [
-                "fuchsia_arm64",
-                "fuchsia_arm64_host",
-            ],
-        ),
-        chromium_config = builder_config.chromium_config(
-            config = "chromium",
-            apply_configs = [
-                "mb",
-            ],
-            build_config = builder_config.build_config.RELEASE,
-            target_arch = builder_config.target_arch.ARM,
-            target_bits = 64,
-            target_platform = builder_config.target_platform.FUCHSIA,
-        ),
-        build_gs_bucket = "chromium-fyi-archive",
-        run_tests_serially = True,
-    ),
-    console_view_entry = [
-        consoles.console_view_entry(
-            category = "release",
-            short_name = "a64-chrome",
-        ),
-        consoles.console_view_entry(
-            branch_selector = branches.selector.MAIN,
-            console_view = "sheriff.fuchsia",
-            # TODO(crbug.com/1372224): Move to "fuchsia ci|arm64" once green.
-            category = "fyi|arm64",
-            short_name = "chrome",
-        ),
-    ],
-)
 
 ci.builder(
     name = "fuchsia-fyi-arm64-dbg",
@@ -133,6 +96,7 @@ ci.builder(
             target_platform = builder_config.target_platform.FUCHSIA,
         ),
         build_gs_bucket = "chromium-fyi-archive",
+        run_tests_serially = True,
     ),
     console_view_entry = [
         consoles.console_view_entry(
@@ -167,6 +131,7 @@ ci.builder(
             target_platform = builder_config.target_platform.FUCHSIA,
         ),
         build_gs_bucket = "chromium-fyi-archive",
+        run_tests_serially = True,
     ),
     console_view_entry = [
         consoles.console_view_entry(
@@ -183,8 +148,10 @@ ci.builder(
 )
 
 ci.builder(
-    name = "fuchsia-x64-chrome-rel",
+    name = "fuchsia-fyi-x64-dbg-persistent-emulator",
+    triggered_by = ["ci/fuchsia-fyi-x64-dbg"],
     builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
         gclient_config = builder_config.gclient_config(
             config = "chromium",
             apply_configs = [
@@ -196,7 +163,7 @@ ci.builder(
             apply_configs = [
                 "mb",
             ],
-            build_config = builder_config.build_config.RELEASE,
+            build_config = builder_config.build_config.DEBUG,
             target_bits = 64,
             target_platform = builder_config.target_platform.FUCHSIA,
         ),
@@ -205,15 +172,8 @@ ci.builder(
     ),
     console_view_entry = [
         consoles.console_view_entry(
-            category = "release",
-            short_name = "x64-chrome",
-        ),
-        consoles.console_view_entry(
-            branch_selector = branches.selector.MAIN,
-            console_view = "sheriff.fuchsia",
-            # TODO(crbug.com/1372224): Move to "fuchsia ci|x64" once green.
-            category = "fyi|x64",
-            short_name = "chrome",
+            category = "debug",
+            short_name = "x64-llemu",
         ),
     ],
 )

@@ -5,19 +5,19 @@
 import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
 import type * as Workspace from '../../models/workspace/workspace.js';
+import {PanelUtils} from '../../panels/utils/utils.js';
 import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 
-import {imageNameForResourceType} from '../../panels/utils/utils.js';
 import {FilteredUISourceCodeListProvider} from './FilteredUISourceCodeListProvider.js';
 import {SourcesView} from './SourcesView.js';
 
 export class OpenFileQuickOpen extends FilteredUISourceCodeListProvider {
-  attach(): void {
+  override attach(): void {
     this.setDefaultScores(SourcesView.defaultUISourceCodeScores());
     super.attach();
   }
 
-  uiSourceCodeSelected(
+  override uiSourceCodeSelected(
       uiSourceCode: Workspace.UISourceCode.UISourceCode|null, lineNumber?: number, columnNumber?: number): void {
     Host.userMetrics.actionTaken(Host.UserMetrics.Action.SelectFileFromFilePicker);
 
@@ -31,26 +31,24 @@ export class OpenFileQuickOpen extends FilteredUISourceCodeListProvider {
     }
   }
 
-  filterProject(project: Workspace.Workspace.Project): boolean {
+  override filterProject(project: Workspace.Workspace.Project): boolean {
     return !project.isServiceProject();
   }
 
-  renderItem(itemIndex: number, query: string, titleElement: Element, subtitleElement: Element): void {
+  override renderItem(itemIndex: number, query: string, titleElement: Element, subtitleElement: Element): void {
     super.renderItem(itemIndex, query, titleElement, subtitleElement);
 
     const iconElement = new IconButton.Icon.Icon();
-    const iconName = imageNameForResourceType(this.itemContentTypeAt(itemIndex));
+    const iconData = PanelUtils.iconDataForResourceType(this.itemContentTypeAt(itemIndex));
     iconElement.data = {
-      iconName: iconName,
-      color: 'var(--icon-color)',
-      width: '18px',
-      height: '18px',
+      ...iconData,
+      width: '20px',
+      height: '20px',
     };
-    iconElement.classList.add(iconName);
     titleElement.parentElement?.parentElement?.insertBefore(iconElement, titleElement.parentElement);
   }
 
-  renderAsTwoRows(): boolean {
+  override renderAsTwoRows(): boolean {
     return true;
   }
 }

@@ -10,10 +10,12 @@ qt_internal_add_plugin(QSQLiteDriverPlugin
     PLUGIN_TYPE sqldrivers
     SOURCES
         qsql_sqlite.cpp qsql_sqlite_p.h
+        qsql_sqlite_vfs.cpp qsql_sqlite_vfs_p.h
         smain.cpp
     DEFINES
         QT_NO_CAST_FROM_ASCII
         QT_NO_CAST_TO_ASCII
+        QT_NO_CONTEXTLESS_CONNECT
     LIBRARIES
         Qt::Core
         Qt::CorePrivate

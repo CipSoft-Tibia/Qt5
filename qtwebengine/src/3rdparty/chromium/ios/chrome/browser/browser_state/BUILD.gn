@@ -4,45 +4,7 @@
 
 import("//ios/build/chrome_build.gni")
 
-source_set("browser_state") {
-  sources = [
-    "browser_state_info_cache.cc",
-    "browser_state_info_cache.h",
-    "browser_state_info_cache_observer.h",
-    "browser_state_otr_helper.cc",
-    "browser_state_otr_helper.h",
-    "chrome_browser_state.h",
-    "chrome_browser_state.mm",
-    "chrome_browser_state_manager.h",
-  ]
-
-  public_deps = [
-    "//ios/web",
-    "//net",
-  ]
-
-  deps = [
-    "//base",
-    "//components/autofill/core/browser",
-    "//components/keyed_service/core",
-    "//components/keyed_service/ios",
-    "//components/prefs",
-    "//components/search_engines",
-    "//components/sync_preferences",
-    "//components/variations/net",
-    "//components/webdata_services",
-    "//ios/chrome/browser/net:net_types",
-    "//ios/chrome/browser/prefs:pref_names",
-    "//ios/chrome/browser/url:constants",
-    "//ios/components/webui:url_constants",
-    "//ios/web/public/webui",
-  ]
-
-  configs += [ "//build/config/compiler:enable_arc" ]
-}
-
 source_set("ios_thread") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "ios_chrome_io_thread.h",
     "ios_chrome_io_thread.mm",
@@ -61,10 +23,8 @@ source_set("ios_thread") {
   ]
 }
 
-source_set("browser_state_impl") {
+source_set("browser_state") {
   sources = [
-    "bookmark_model_loaded_observer.cc",
-    "bookmark_model_loaded_observer.h",
     "browser_state_keyed_service_factories.h",
     "browser_state_keyed_service_factories.mm",
     "chrome_browser_state_impl.h",
@@ -75,18 +35,13 @@ source_set("browser_state_impl") {
     "chrome_browser_state_io_data.mm",
     "chrome_browser_state_manager_impl.h",
     "chrome_browser_state_manager_impl.mm",
-    "chrome_browser_state_removal_controller.h",
-    "chrome_browser_state_removal_controller.mm",
     "off_the_record_chrome_browser_state_impl.h",
     "off_the_record_chrome_browser_state_impl.mm",
     "off_the_record_chrome_browser_state_io_data.h",
     "off_the_record_chrome_browser_state_io_data.mm",
   ]
 
-  configs += [ "//build/config/compiler:enable_arc" ]
-
   deps = [
-    ":browser_state",
     ":constants",
     ":ios_thread",
     "//base",
@@ -110,13 +65,16 @@ source_set("browser_state_impl") {
     "//components/proxy_config/ios",
     "//components/signin/ios/browser:active_state_manager",
     "//components/signin/public/identity_manager",
+    "//components/supervised_user/core/browser",
+    "//components/supervised_user/core/common",
     "//components/sync_preferences",
     "//components/user_prefs",
+    "//components/variations/service",
     "//google_apis",
-    "//ios/chrome/browser/application_context",
-    "//ios/chrome/browser/autocomplete",
+    "//ios/chrome/browser/autocomplete/model",
     "//ios/chrome/browser/autofill",
-    "//ios/chrome/browser/bookmarks",
+    "//ios/chrome/browser/bookmarks/model",
+    "//ios/chrome/browser/bring_android_tabs",
     "//ios/chrome/browser/browser_state_metrics",
     "//ios/chrome/browser/browsing_data",
     "//ios/chrome/browser/commerce:shopping_service",
@@ -139,40 +97,49 @@ source_set("browser_state_impl") {
     "//ios/chrome/browser/language",
     "//ios/chrome/browser/mailto_handler:mailto_handler_factory",
     "//ios/chrome/browser/metrics",
+    "//ios/chrome/browser/metrics:google_groups_updater",
     "//ios/chrome/browser/net",
     "//ios/chrome/browser/optimization_guide",
     "//ios/chrome/browser/passwords",
-    "//ios/chrome/browser/paths",
+    "//ios/chrome/browser/photos:photos_service_factory",
     "//ios/chrome/browser/policy",
     "//ios/chrome/browser/policy_url_blocking",
     "//ios/chrome/browser/power_bookmarks",
     "//ios/chrome/browser/prefs",
-    "//ios/chrome/browser/prefs:browser_prefs",
-    "//ios/chrome/browser/prefs:pref_names",
+    "//ios/chrome/browser/promos_manager:event_exporter_factory",
+    "//ios/chrome/browser/promos_manager:factory",
     "//ios/chrome/browser/push_notification:push_notification_browser_state_service_factory",
     "//ios/chrome/browser/reading_list",
     "//ios/chrome/browser/safe_browsing",
+    "//ios/chrome/browser/safety_check:factory",
     "//ios/chrome/browser/screen_time:buildflags",
     "//ios/chrome/browser/search_engines",
     "//ios/chrome/browser/segmentation_platform",
     "//ios/chrome/browser/send_tab_to_self",
     "//ios/chrome/browser/sessions",
+    "//ios/chrome/browser/sessions:session_restoration_service_factory",
+    "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/browser_state",
+    "//ios/chrome/browser/shared/model/paths",
+    "//ios/chrome/browser/shared/model/prefs:browser_prefs",
+    "//ios/chrome/browser/shared/model/prefs:pref_names",
+    "//ios/chrome/browser/shared/model/url:constants",
     "//ios/chrome/browser/signin",
     "//ios/chrome/browser/signin:system_identity",
     "//ios/chrome/browser/signin:trusted_vault_factory",
     "//ios/chrome/browser/snapshots",
     "//ios/chrome/browser/supervised_user",
+    "//ios/chrome/browser/supervised_user:sync_settings_factory",
     "//ios/chrome/browser/sync",
     "//ios/chrome/browser/sync:model_type_store_service_factory",
     "//ios/chrome/browser/sync/glue",
     "//ios/chrome/browser/tabs_search:tabs_search_factory",
     "//ios/chrome/browser/text_selection",
     "//ios/chrome/browser/translate",
+    "//ios/chrome/browser/trusted_vault",
     "//ios/chrome/browser/ui/fullscreen",
     "//ios/chrome/browser/ui/voice",
-    "//ios/chrome/browser/undo",
     "//ios/chrome/browser/unified_consent",
-    "//ios/chrome/browser/url:constants",
     "//ios/chrome/browser/web_state_list/web_usage_enabler",
     "//ios/chrome/browser/webdata_services",
     "//ios/components/cookie_util",
@@ -180,6 +147,7 @@ source_set("browser_state_impl") {
     "//ios/net",
     "//ios/public/provider/chrome/browser/app_distribution:app_distribution_api",
     "//ios/web/net/cookies",
+    "//ios/web/public/browsing_data",
     "//net",
     "//net:extras",
   ]
@@ -195,7 +163,7 @@ source_set("browser_state_impl") {
   allow_circular_includes_from = [
     "//ios/chrome/browser/browser_state_metrics",
     "//ios/chrome/browser/net",
-    "//ios/chrome/browser/prefs:browser_prefs",
+    "//ios/chrome/browser/shared/model/prefs:browser_prefs",
     "//ios/chrome/browser/signin",
     "//ios/chrome/browser/sync",
     "//ios/chrome/browser/sync/glue",
@@ -203,66 +171,9 @@ source_set("browser_state_impl") {
 }
 
 source_set("constants") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "constants.cc",
     "constants.h",
   ]
   deps = [ "//base" ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "chrome_browser_state_unittest.cc",
-    "test_chrome_browser_state_manager_unittest.cc",
-  ]
-  deps = [
-    ":browser_state",
-    ":test_support",
-    "//base",
-    "//components/variations/net",
-    "//ios/web/public/test",
-    "//testing/gtest",
-  ]
-  configs += [ "//build/config/compiler:enable_arc" ]
-}
-
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "test_chrome_browser_state.h",
-    "test_chrome_browser_state.mm",
-    "test_chrome_browser_state_manager.cc",
-    "test_chrome_browser_state_manager.h",
-  ]
-
-  public_deps = [
-    ":browser_state",
-    ":browser_state_impl",
-  ]
-
-  deps = [
-    ":browser_state_impl",
-    "//base",
-    "//components/keyed_service/core",
-    "//components/keyed_service/ios",
-    "//components/profile_metrics",
-    "//components/sync_preferences",
-    "//components/sync_preferences:test_support",
-    "//components/undo",
-    "//components/user_prefs",
-    "//components/webdata_services",
-    "//ios/chrome/browser/net",
-    "//ios/chrome/browser/policy:policy",
-    "//ios/chrome/browser/prefs",
-    "//ios/chrome/browser/prefs:browser_prefs",
-    "//ios/chrome/browser/ui/ntp:logo",
-    "//ios/chrome/browser/webdata_services",
-    "//ios/chrome/test:test_support",
-    "//ios/web",
-    "//net:test_support",
-  ]
-
-  configs += [ "//build/config/compiler:enable_arc" ]
 }

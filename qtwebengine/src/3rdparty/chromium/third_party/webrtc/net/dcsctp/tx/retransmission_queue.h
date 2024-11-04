@@ -113,6 +113,9 @@ class RetransmissionQueue {
   // Returns the current receiver window size.
   size_t rwnd() const { return rwnd_; }
 
+  size_t rtx_packets_count() const { return rtx_packets_count_; }
+  uint64_t rtx_bytes_count() const { return rtx_bytes_count_; }
+
   // Returns the number of bytes of packets that are in-flight.
   size_t outstanding_bytes() const {
     return outstanding_data_.outstanding_bytes();
@@ -221,7 +224,7 @@ class RetransmissionQueue {
   const size_t min_bytes_required_to_send_;
   // If the peer supports RFC3758 - SCTP Partial Reliability Extension.
   const bool partial_reliability_;
-  const std::string log_prefix_;
+  const absl::string_view log_prefix_;
   // The size of the data chunk (DATA/I-DATA) header that is used.
   const size_t data_chunk_header_size_;
   // Called when a new RTT measurement has been done
@@ -241,6 +244,11 @@ class RetransmissionQueue {
   size_t ssthresh_;
   // Partial Bytes Acked. See RFC4960.
   size_t partial_bytes_acked_;
+
+  // See `dcsctp::Metrics`.
+  size_t rtx_packets_count_ = 0;
+  uint64_t rtx_bytes_count_ = 0;
+
   // If set, fast recovery is enabled until this TSN has been cumulative
   // acked.
   absl::optional<UnwrappedTSN> fast_recovery_exit_tsn_ = absl::nullopt;

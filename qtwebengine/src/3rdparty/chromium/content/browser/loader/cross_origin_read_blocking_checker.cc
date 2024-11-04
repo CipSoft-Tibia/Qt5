@@ -97,14 +97,15 @@ CrossOriginReadBlockingChecker::CrossOriginReadBlockingChecker(
     const network::ResourceRequest& request,
     const network::mojom::URLResponseHead& response,
     const storage::BlobDataHandle& blob_data_handle,
-    network::corb::PerFactoryState& corb_state,
+    network::corb::PerFactoryState* corb_state,
     base::OnceCallback<void(Result)> callback)
     : callback_(std::move(callback)) {
   DCHECK(!callback_.is_null());
 
   corb_analyzer_ = network::corb::ResponseAnalyzer::Create(corb_state);
-  auto decision = corb_analyzer_->Init(request.url, request.request_initiator,
-                                       request.mode, response);
+  auto decision =
+      corb_analyzer_->Init(request.url, request.request_initiator, request.mode,
+                           request.destination, response);
   switch (decision) {
     case network::corb::ResponseAnalyzer::Decision::kBlock:
       OnBlocked();

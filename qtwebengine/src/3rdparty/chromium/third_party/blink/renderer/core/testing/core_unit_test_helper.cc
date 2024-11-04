@@ -11,6 +11,7 @@
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/html/html_iframe_element.h"
 #include "third_party/blink/renderer/core/input/event_handler.h"
+#include "third_party/blink/renderer/core/layout/ng/ng_constraint_space_builder.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/scroll/scrollbar_theme.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_array_buffer.h"
@@ -58,7 +59,8 @@ LocalFrame* SingleChildLocalFrameClient::CreateFrame(
 
   child->Init(/*opener=*/nullptr, DocumentToken(), std::move(policy_container),
               parent_frame->DomWindow()->GetStorageKey(),
-              /*document_ukm_source_id=*/ukm::kInvalidSourceId);
+              /*document_ukm_source_id=*/ukm::kInvalidSourceId,
+              /*creator_base_url=*/KURL());
 
   return child;
 }
@@ -83,7 +85,7 @@ void RenderingTestChromeClient::InjectGestureScrollEvent(
           delta, granularity);
   if (injected_type == WebInputEvent::Type::kGestureScrollBegin) {
     gesture_event->data.scroll_begin.scrollable_area_element_id =
-        scrollable_area_element_id.GetStableId();
+        scrollable_area_element_id.GetInternalValue();
   }
   local_frame.GetEventHandler().HandleGestureEvent(*gesture_event);
 }
@@ -156,6 +158,16 @@ void RenderingTest::SetChildFrameHTML(const String& html) {
   ChildDocument().OverrideIsInitialEmptyDocument();
   // And let the frame view exit the initial throttled state.
   ChildDocument().View()->BeginLifecycleUpdates();
+}
+
+NGConstraintSpace RenderingTest::ConstraintSpaceForAvailableSize(
+    LayoutUnit inline_size) const {
+  NGConstraintSpaceBuilder builder(
+      WritingMode::kHorizontalTb,
+      {WritingMode::kHorizontalTb, TextDirection::kLtr},
+      /* is_new_fc */ false);
+  builder.SetAvailableSize(LogicalSize(inline_size, LayoutUnit::Max()));
+  return builder.ToConstraintSpace();
 }
 
 }  // namespace blink

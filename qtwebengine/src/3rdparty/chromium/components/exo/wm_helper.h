@@ -189,7 +189,6 @@ class WMHelper : public chromeos::PowerManagerClient::Observer,
                                  display::ManagedDisplayMode* mode) const;
   aura::Window* GetActiveWindow() const;
   aura::Window* GetFocusedWindow() const;
-  aura::Window* GetRootWindowForNewWindows() const;
   aura::client::CursorClient* GetCursorClient();
   aura::client::DragDropClient* GetDragDropClient();
   void AddPreTargetHandler(ui::EventHandler* handler);
@@ -200,6 +199,9 @@ class WMHelper : public chromeos::PowerManagerClient::Observer,
   bool InTabletMode() const;
   double GetDeviceScaleFactorForWindow(aura::Window* window) const;
   void SetDefaultScaleCancellation(bool default_scale_cancellation);
+  bool use_default_scale_cancellation() const {
+    return default_scale_cancellation_;
+  }
   void AddTabletModeObserver(ash::TabletModeObserver* observer);
   void RemoveTabletModeObserver(ash::TabletModeObserver* observer);
   void AddDisplayConfigurationObserver(
@@ -236,7 +238,8 @@ class WMHelper : public chromeos::PowerManagerClient::Observer,
   void PerformDrop(
       std::vector<WMHelper::DragDropObserver::DropCallback> drop_callbacks,
       std::unique_ptr<ui::OSExchangeData> data,
-      ui::mojom::DragOperation& output_drag_op);
+      ui::mojom::DragOperation& output_drag_op,
+      std::unique_ptr<ui::LayerTreeOwner> drag_image_layer_owner);
 
   base::ObserverList<ExoWindowObserver> exo_window_observers_;
 

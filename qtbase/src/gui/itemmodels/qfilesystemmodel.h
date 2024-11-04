@@ -138,14 +138,16 @@ private:
     Q_PRIVATE_SLOT(d_func(), void _q_performDelayedSort())
     Q_PRIVATE_SLOT(d_func(),
                    void _q_fileSystemChanged(const QString &path,
-                                             const QList<QPair<QString, QFileInfo>> &))
+                                             const QList<std::pair<QString, QFileInfo>> &))
     Q_PRIVATE_SLOT(d_func(), void _q_resolvedName(const QString &fileName, const QString &resolvedName))
 
     friend class QFileDialogPrivate;
 };
 
 inline QString QFileSystemModel::fileName(const QModelIndex &aindex) const
-{ return aindex.data(Qt::DisplayRole).toString(); }
+{
+    return aindex.data(FileNameRole).toString();
+}
 inline QIcon QFileSystemModel::fileIcon(const QModelIndex &aindex) const
 { return qvariant_cast<QIcon>(aindex.data(Qt::DecorationRole)); }
 

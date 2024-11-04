@@ -28,6 +28,8 @@ class Q_SVG_EXPORT QSvgRenderer : public QObject
     Q_PROPERTY(int framesPerSecond READ framesPerSecond WRITE setFramesPerSecond)
     Q_PROPERTY(int currentFrame READ currentFrame WRITE setCurrentFrame)
     Q_PROPERTY(Qt::AspectRatioMode aspectRatioMode READ aspectRatioMode WRITE setAspectRatioMode)
+    Q_PROPERTY(QtSvg::Options options READ options WRITE setOptions)
+    Q_PROPERTY(bool animationEnabled READ isAnimationEnabled WRITE setAnimationEnabled)
 public:
     QSvgRenderer(QObject *parent = nullptr);
     QSvgRenderer(const QString &filename, QObject *parent = nullptr);
@@ -47,12 +49,17 @@ public:
     Qt::AspectRatioMode aspectRatioMode() const;
     void setAspectRatioMode(Qt::AspectRatioMode mode);
 
+    QtSvg::Options options() const;
+    void setOptions(QtSvg::Options flags);
+
     bool animated() const;
     int framesPerSecond() const;
     void setFramesPerSecond(int num);
     int currentFrame() const;
     void setCurrentFrame(int);
     int animationDuration() const;//in seconds
+    bool isAnimationEnabled() const;
+    void setAnimationEnabled(bool enable);
 
     QRectF boundsOnElement(const QString &id) const;
     bool elementExists(const QString &id) const;

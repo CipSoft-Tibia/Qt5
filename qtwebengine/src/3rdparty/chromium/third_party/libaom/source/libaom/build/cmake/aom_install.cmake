@@ -31,8 +31,8 @@ macro(setup_aom_install_targets)
     include("GNUInstallDirs")
     set(AOM_PKG_CONFIG_FILE "${AOM_CONFIG_DIR}/aom.pc")
 
-    # Create a dummy library target for creating aom.pc.
-    create_dummy_source_file(aom_pc c AOM_PKG_CONFIG_SOURCES)
+    # Create a library target for creating aom.pc.
+    create_no_op_source_file(aom_pc c AOM_PKG_CONFIG_SOURCES)
     add_library(aom_pc ${AOM_PKG_CONFIG_SOURCES})
 
     # Setup a rule to generate aom.pc.
@@ -46,11 +46,12 @@ macro(setup_aom_install_targets)
               -DCMAKE_INSTALL_INCLUDEDIR=${CMAKE_INSTALL_INCLUDEDIR}
               -DCMAKE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
               -DCMAKE_PROJECT_NAME=${CMAKE_PROJECT_NAME}
+              -DCMAKE_THREAD_LIBS_INIT=${CMAKE_THREAD_LIBS_INIT}
               -DCONFIG_MULTITHREAD=${CONFIG_MULTITHREAD}
               -DCONFIG_TUNE_VMAF=${CONFIG_TUNE_VMAF}
               -DCONFIG_TUNE_BUTTERAUGLI=${CONFIG_TUNE_BUTTERAUGLI}
+              -DCONFIG_SALIENCY_MAP=${CONFIG_SALIENCY_MAP}
               -DCONFIG_TFLITE=${CONFIG_TFLITE}
-              -DHAVE_PTHREAD_H=${HAVE_PTHREAD_H}
               -P
               "${AOM_ROOT}/build/cmake/pkg_config.cmake"
       COMMENT "Writing aom.pc"

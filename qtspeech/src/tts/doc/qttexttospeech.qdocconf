@@ -21,9 +21,6 @@ depends         += qtcore qtdoc qtgui qtwidgets qtquick qtquickcontrols qtmultim
 ignoresince = 6.4
 examplesinstallpath              = speech
 
-# Fail the documentation build when warnings get introduced
-warninglimit = 0
-
 # Defines the name of the project. You cannot use operators (+, =, -) in
 # the name. Properties for this project are set using a qhp.<projectname>.property
 # format.

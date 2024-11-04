@@ -10,8 +10,10 @@
 #include "include/core/SkBitmap.h"
 #include "include/core/SkData.h"
 #include "include/core/SkImage.h"
+#include "include/core/SkPicture.h"
 #include "include/core/SkSerialProcs.h"
 #include "include/core/SkStream.h"
+#include "include/encode/SkPngEncoder.h"
 
 namespace {
     sk_sp<SkData> collectNonTextureImagesProc(SkImage* img, void* ctx) {
@@ -47,7 +49,7 @@ sk_sp<SkData> SkSharingSerialContext::serializeImage(SkImage* img, void* ctx) {
         if (iter2 != context->fNonTexMap.end()) {
             img = iter2->second.get();
         }
-        return img->encodeToData();
+        return SkPngEncoder::Encode(nullptr, img, {});
     }
     uint32_t fid = context->fImageMap[id];
     // if present, return only the in-file id we registered the first time we serialized it.
@@ -78,7 +80,7 @@ sk_sp<SkImage> SkSharingDeserialContext::deserializeImage(
     // Otherwise, the data is an image, deserialise it, store it in our map at its fid.
     // TODO(nifong): make DeserialProcs accept sk_sp<SkData> so we don't have to copy this.
     sk_sp<SkData> dataView = SkData::MakeWithCopy(data, length);
-    const sk_sp<SkImage> image = SkImage::MakeFromEncoded(std::move(dataView));
+    const sk_sp<SkImage> image = SkImages::DeferredFromEncodedData(std::move(dataView));
     context->fImages.push_back(image);
     return image;
 }

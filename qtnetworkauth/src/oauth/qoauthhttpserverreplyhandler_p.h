@@ -22,6 +22,7 @@
 
 #include <private/qobject_p.h>
 
+#include <QtNetwork/qhostaddress.h>
 #include <QtNetwork/qtcpserver.h>
 
 QT_BEGIN_NAMESPACE
@@ -34,10 +35,13 @@ public:
     explicit QOAuthHttpServerReplyHandlerPrivate(QOAuthHttpServerReplyHandler *p);
     ~QOAuthHttpServerReplyHandlerPrivate();
 
+    QString callback() const;
+
     QTcpServer httpServer;
     QString text;
-    QHostAddress listenAddress = QHostAddress::LocalHost;
     QString path;
+    QHostAddress callbackAddress;
+    quint16 callbackPort = 0;
 
 private:
     void _q_clientConnected();

@@ -505,10 +505,7 @@ void WindowEventDispatcher::OnEventProcessingStarted(ui::Event* event) {
   observer_notifiers_.push(std::make_unique<ObserverNotifier>(this, *event));
 }
 
-void WindowEventDispatcher::OnEventProcessingFinished(
-    ui::Event* event,
-    ui::EventTarget* target,
-    const ui::EventDispatchDetails& details) {
+void WindowEventDispatcher::OnEventProcessingFinished(ui::Event* event) {
   if (in_shutdown_)
     return;
 
@@ -526,8 +523,10 @@ ui::EventDispatchDetails WindowEventDispatcher::PreDispatchEvent(
     ui::EventTarget* target,
     ui::Event* event) {
   if (host_->compositor() && cc::CustomMetricRecorder::Get()) {
-    event_metrics_monitors_.push_back(
-        CreateScropedMetricsMonitorForEvent(*event));
+    // Must destroy existing monitor before creating the new one since the
+    // monitors are expected to be added and removed in stack order (LIFO).
+    event_metrics_monitor_.reset();
+    event_metrics_monitor_ = CreateScropedMetricsMonitorForEvent(*event);
   }
 
   Window* target_window = static_cast<Window*>(target);
@@ -593,9 +592,12 @@ ui::EventDispatchDetails WindowEventDispatcher::PostDispatchEvent(
 
       if (!touchevent.synchronous_handling_disabled()) {
         Window* window = static_cast<Window*>(target);
+        auto event_result = touchevent.force_process_gesture()
+                                ? ui::ER_UNHANDLED
+                                : event.result();
         ui::GestureRecognizer::Gestures gestures =
             Env::GetInstance()->gesture_recognizer()->AckTouchEvent(
-                touchevent.unique_event_id(), event.result(),
+                touchevent.unique_event_id(), event_result,
                 false /* is_source_touch_event_set_blocking */, window);
 
         details = ProcessGestures(window, std::move(gestures));
@@ -607,9 +609,7 @@ ui::EventDispatchDetails WindowEventDispatcher::PostDispatchEvent(
   // monitor creation code in PreDispatchEvent to track latencies properly.
   if (!details.dispatcher_destroyed && host_->compositor() &&
       cc::CustomMetricRecorder::Get()) {
-    std::unique_ptr<cc::EventsMetricsManager::ScopedMonitor> monitor =
-        std::move(event_metrics_monitors_.back());
-    event_metrics_monitors_.pop_back();
+    event_metrics_monitor_.reset();
   }
 
   return details;
@@ -1111,16 +1111,20 @@ WindowEventDispatcher::CreateScropedMetricsMonitorForEvent(
     } else if (gesture->IsScrollGestureEvent()) {
       metrics = cc::ScrollEventMetrics::CreateForBrowser(
           gesture->type(), input_type,
-          /*is_inertial=*/false, gesture->time_stamp());
+          /*is_inertial=*/false, gesture->time_stamp(),
+          base::IdType64<class ui::LatencyInfo>(event.latency()->trace_id()));
       if (gesture->type() == ui::ET_GESTURE_SCROLL_BEGIN)
         has_seen_gesture_scroll_update_after_begin_ = false;
     } else {
       DCHECK(gesture->IsPinchEvent());
-      metrics = cc::PinchEventMetrics::Create(gesture->type(), input_type,
-                                              gesture->time_stamp());
+      metrics = cc::PinchEventMetrics::Create(
+          gesture->type(), input_type, gesture->time_stamp(),
+          base::IdType64<class ui::LatencyInfo>(event.latency()->trace_id()));
     }
   } else {
-    metrics = cc::EventMetrics::Create(event.type(), event.time_stamp());
+    metrics = cc::EventMetrics::Create(
+        event.type(), event.time_stamp(),
+        base::IdType64<class ui::LatencyInfo>(event.latency()->trace_id()));
   }
   cc::EventsMetricsManager::ScopedMonitor::DoneCallback done_callback;
   if (metrics) {

@@ -9,18 +9,20 @@
 
 #include "base/command_line.h"
 #include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "content/common/content_export.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 #if BUILDFLAG(IS_WIN)
 namespace sandbox {
 struct SandboxInterfaceInfo;
 }
 #elif BUILDFLAG(IS_MAC)
-namespace base {
-namespace mac {
+namespace base::apple {
 class ScopedNSAutoreleasePool;
-}
 }
 #endif
 
@@ -42,12 +44,16 @@ struct CONTENT_EXPORT MainFunctionParams {
   MainFunctionParams(MainFunctionParams&&);
   MainFunctionParams& operator=(MainFunctionParams&&);
 
-  const base::CommandLine* command_line;
+  // TODO(crbug.com/1449286): detect under BRP.
+  raw_ptr<const base::CommandLine, DanglingUntriaged> command_line;
 
 #if BUILDFLAG(IS_WIN)
-  sandbox::SandboxInterfaceInfo* sandbox_info = nullptr;
+  raw_ptr<sandbox::SandboxInterfaceInfo> sandbox_info = nullptr;
 #elif BUILDFLAG(IS_MAC)
-  base::mac::ScopedNSAutoreleasePool* autorelease_pool = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter
+  // for: #union
+  RAW_PTR_EXCLUSION base::apple::ScopedNSAutoreleasePool* autorelease_pool =
+      nullptr;
 #elif BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_ANDROID)
   bool zygote_child = false;
 #endif
@@ -56,12 +62,9 @@ struct CONTENT_EXPORT MainFunctionParams {
   // tracing after initializing Mojo.
   bool needs_startup_tracing_after_mojo_init = false;
 
-#if BUILDFLAG(IS_IOS)
-  // For iOS in order to enter the UIApplication we must store the initial
-  // argc/argv from main().
-  int argc = 0;
-  const char** argv = nullptr;
-#endif
+  // If non-null, this is the time the HangWatcher would have started if not
+  // delayed until after sandbox initialization.
+  absl::optional<base::TimeTicks> hang_watcher_not_started_time;
 
   // Used by BrowserTestBase. If set, BrowserMainLoop runs this task instead of
   // the main message loop.

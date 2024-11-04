@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -36,6 +36,7 @@ source_set("base") {
     "osp_logging.h",
     "saturate_cast.h",
     "simple_fraction.h",
+    "span_util.h",
     "std_util.h",
     "stringprintf.h",
     "url.h",
@@ -49,6 +50,8 @@ source_set("base") {
     "json/json_serialization.cc",
     "json/json_value.cc",
     "simple_fraction.cc",
+    "span_util.cc",
+    "std_util.cc",
     "stringprintf.cc",
     "url.cc",
     "yet_another_bit_vector.cc",
@@ -62,7 +65,7 @@ source_set("base") {
   ]
 
   deps = [
-    "../third_party/mozilla",
+    "../third_party/googleurl",
 
     # We do a clone of Chrome's modp_b64 in order to share their BUILD.gn
     # and license files, so this should always be an absolute reference.
@@ -83,6 +86,7 @@ source_set("util") {
     "crypto/rsa_private_key.h",
     "crypto/secure_hash.h",
     "crypto/sha2.h",
+    "serial_delete_ptr.h",
     "trace_logging.h",
   ]
 
@@ -96,6 +100,7 @@ source_set("util") {
     "crypto/rsa_private_key.cc",
     "crypto/secure_hash.cc",
     "crypto/sha2.cc",
+    "scoped_wake_lock.cc",
     "trace_logging/macro_support.h",
     "trace_logging/scoped_trace_operations.cc",
     "trace_logging/scoped_trace_operations.h",
@@ -116,6 +121,14 @@ source_set("util") {
     "../build:openscreen_include_dirs",
     ":trace_logging_config",
   ]
+
+  if (is_mac) {
+    frameworks = [
+      "CoreFoundation.framework",
+      "IOKit.framework",
+    ]
+    sources += [ "scoped_wake_lock_mac.cc" ]
+  }
 }
 
 source_set("unittests") {
@@ -137,6 +150,7 @@ source_set("unittests") {
     "json/json_serialization_unittest.cc",
     "json/json_value_unittest.cc",
     "saturate_cast_unittest.cc",
+    "serial_delete_ptr_unittest.cc",
     "simple_fraction_unittest.cc",
     "std_util_unittest.cc",
     "stringprintf_unittest.cc",

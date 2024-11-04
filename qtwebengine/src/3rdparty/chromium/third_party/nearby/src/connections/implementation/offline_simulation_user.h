@@ -18,6 +18,7 @@
 #include <string>
 
 #include "gtest/gtest.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
 #include "connections/implementation/client_proxy.h"
 #include "connections/implementation/offline_service_controller.h"
@@ -78,6 +79,10 @@ class OfflineSimulationUser {
   // Calls PcpManager::StopAdvertising().
   void StopAdvertising();
 
+  // Calls PcpManager::UpdateAdvertisingOptions().
+  Status UpdateAdvertisingOptions(absl::string_view service_id,
+                                  const AdvertisingOptions& options);
+
   // Calls PcpManager::StartDiscovery().
   // If found_latch is provided, will call found_latch->CountDown() in the
   // endpoint_found_cb callback.
@@ -89,6 +94,10 @@ class OfflineSimulationUser {
 
   // Calls PcpManager::StopDiscovery().
   void StopDiscovery();
+
+  // Calls PcpManager::UpdateDiscoveryOptions().
+  Status UpdateDiscoveryOptions(absl::string_view service_id,
+                                const DiscoveryOptions& options);
 
   // Calls PcpManager::InjectEndpoint();
   void InjectEndpoint(const std::string& service_id,
@@ -123,8 +132,9 @@ class OfflineSimulationUser {
   const DiscoveredInfo& GetDiscovered() const { return discovered_; }
   ByteArray GetInfo() const { return info_; }
 
-  bool WaitForProgress(std::function<bool(const PayloadProgressInfo&)> pred,
-                       absl::Duration timeout);
+  bool WaitForProgress(
+      absl::AnyInvocable<bool(const PayloadProgressInfo&)> pred,
+      absl::Duration timeout);
 
   Payload& GetPayload() { return payload_; }
   void SendPayload(Payload payload) {
@@ -172,8 +182,8 @@ class OfflineSimulationUser {
   void OnEndpointLost(const std::string& endpoint_id);
 
   // PayloadListener callbacks
-  void OnPayload(const std::string& endpoint_id, Payload payload);
-  void OnPayloadProgress(const std::string& endpoint_id,
+  void OnPayload(absl::string_view endpoint_id, Payload payload);
+  void OnPayloadProgress(absl::string_view endpoint_id,
                          const PayloadProgressInfo& info);
 
   std::string service_id_;
@@ -195,7 +205,7 @@ class OfflineSimulationUser {
   CountDownLatch* payload_latch_ = nullptr;
   CountDownLatch* disconnect_latch_ = nullptr;
   Future<bool>* future_ = nullptr;
-  std::function<bool(const PayloadProgressInfo&)> predicate_;
+  absl::AnyInvocable<bool(const PayloadProgressInfo&)> predicate_;
   ClientProxy client_;
   OfflineServiceController ctrl_;
 };

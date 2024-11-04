@@ -10,6 +10,8 @@
 
 #include "pc/peer_connection_factory.h"
 
+#include <algorithm>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -20,10 +22,20 @@
 #include "api/data_channel_interface.h"
 #include "api/jsep.h"
 #include "api/media_stream_interface.h"
+#include "api/task_queue/default_task_queue_factory.h"
 #include "api/test/mock_packet_socket_factory.h"
-#include "api/video_codecs/builtin_video_decoder_factory.h"
-#include "api/video_codecs/builtin_video_encoder_factory.h"
+#include "api/video_codecs/video_decoder_factory_template.h"
+#include "api/video_codecs/video_decoder_factory_template_dav1d_adapter.h"
+#include "api/video_codecs/video_decoder_factory_template_libvpx_vp8_adapter.h"
+#include "api/video_codecs/video_decoder_factory_template_libvpx_vp9_adapter.h"
+#include "api/video_codecs/video_decoder_factory_template_open_h264_adapter.h"
+#include "api/video_codecs/video_encoder_factory_template.h"
+#include "api/video_codecs/video_encoder_factory_template_libaom_av1_adapter.h"
+#include "api/video_codecs/video_encoder_factory_template_libvpx_vp8_adapter.h"
+#include "api/video_codecs/video_encoder_factory_template_libvpx_vp9_adapter.h"
+#include "api/video_codecs/video_encoder_factory_template_open_h264_adapter.h"
 #include "media/base/fake_frame_source.h"
+#include "media/engine/webrtc_media_engine.h"
 #include "modules/audio_device/include/audio_device.h"
 #include "modules/audio_processing/include/audio_processing.h"
 #include "p2p/base/fake_port_allocator.h"
@@ -48,14 +60,8 @@
 #include "pc/test/fake_rtc_certificate_generator.h"
 #include "pc/test/fake_video_track_renderer.h"
 
-using webrtc::DataChannelInterface;
-using webrtc::FakeVideoTrackRenderer;
-using webrtc::MediaStreamInterface;
-using webrtc::PeerConnectionFactoryInterface;
-using webrtc::PeerConnectionInterface;
-using webrtc::PeerConnectionObserver;
-using webrtc::VideoTrackInterface;
-using webrtc::VideoTrackSourceInterface;
+namespace webrtc {
+namespace {
 
 using ::testing::_;
 using ::testing::AtLeast;
@@ -63,8 +69,6 @@ using ::testing::InvokeWithoutArgs;
 using ::testing::NiceMock;
 using ::testing::Return;
 using ::testing::UnorderedElementsAre;
-
-namespace {
 
 static const char kStunIceServer[] = "stun:stun.l.google.com:19302";
 static const char kTurnIceServer[] = "turn:test.com:1234";
@@ -120,8 +124,6 @@ class MockNetworkManager : public rtc::NetworkManager {
               (override));
 };
 
-}  // namespace
-
 class PeerConnectionFactoryTest : public ::testing::Test {
  public:
   PeerConnectionFactoryTest()
@@ -142,9 +144,13 @@ class PeerConnectionFactoryTest : public ::testing::Test {
             FakeAudioCaptureModule::Create()),
         webrtc::CreateBuiltinAudioEncoderFactory(),
         webrtc::CreateBuiltinAudioDecoderFactory(),
-        webrtc::CreateBuiltinVideoEncoderFactory(),
-        webrtc::CreateBuiltinVideoDecoderFactory(), nullptr /* audio_mixer */,
-        nullptr /* audio_processing */);
+        std::make_unique<VideoEncoderFactoryTemplate<
+            LibvpxVp8EncoderTemplateAdapter, LibvpxVp9EncoderTemplateAdapter,
+            OpenH264EncoderTemplateAdapter, LibaomAv1EncoderTemplateAdapter>>(),
+        std::make_unique<VideoDecoderFactoryTemplate<
+            LibvpxVp8DecoderTemplateAdapter, LibvpxVp9DecoderTemplateAdapter,
+            OpenH264DecoderTemplateAdapter, Dav1dDecoderTemplateAdapter>>(),
+        nullptr /* audio_mixer */, nullptr /* audio_processing */);
 
     ASSERT_TRUE(factory_.get() != NULL);
     packet_socket_factory_.reset(
@@ -257,6 +263,46 @@ class PeerConnectionFactoryTest : public ::testing::Test {
   cricket::FakePortAllocator* raw_port_allocator_;
 };
 
+// Since there is no public PeerConnectionFactory API to control RTX usage, need
+// to reconstruct factory with our own ConnectionContext.
+rtc::scoped_refptr<PeerConnectionFactoryInterface>
+CreatePeerConnectionFactoryWithRtxDisabled() {
+  webrtc::PeerConnectionFactoryDependencies pcf_dependencies;
+  pcf_dependencies.signaling_thread = rtc::Thread::Current();
+  pcf_dependencies.worker_thread = rtc::Thread::Current();
+  pcf_dependencies.network_thread = rtc::Thread::Current();
+  pcf_dependencies.task_queue_factory = CreateDefaultTaskQueueFactory();
+  pcf_dependencies.call_factory = CreateCallFactory();
+  pcf_dependencies.trials = std::make_unique<webrtc::FieldTrialBasedConfig>();
+
+  cricket::MediaEngineDependencies media_dependencies;
+  media_dependencies.task_queue_factory =
+      pcf_dependencies.task_queue_factory.get();
+  media_dependencies.adm = rtc::scoped_refptr<webrtc::AudioDeviceModule>(
+      FakeAudioCaptureModule::Create());
+  media_dependencies.audio_encoder_factory =
+      webrtc::CreateBuiltinAudioEncoderFactory();
+  media_dependencies.audio_decoder_factory =
+      webrtc::CreateBuiltinAudioDecoderFactory();
+  media_dependencies.video_encoder_factory =
+      std::make_unique<VideoEncoderFactoryTemplate<
+          LibvpxVp8EncoderTemplateAdapter, LibvpxVp9EncoderTemplateAdapter,
+          OpenH264EncoderTemplateAdapter, LibaomAv1EncoderTemplateAdapter>>();
+  media_dependencies.video_decoder_factory =
+      std::make_unique<VideoDecoderFactoryTemplate<
+          LibvpxVp8DecoderTemplateAdapter, LibvpxVp9DecoderTemplateAdapter,
+          OpenH264DecoderTemplateAdapter, Dav1dDecoderTemplateAdapter>>(),
+  media_dependencies.trials = pcf_dependencies.trials.get();
+  pcf_dependencies.media_engine =
+      cricket::CreateMediaEngine(std::move(media_dependencies));
+
+  rtc::scoped_refptr<webrtc::ConnectionContext> context =
+      ConnectionContext::Create(&pcf_dependencies);
+  context->set_use_rtx(false);
+  return rtc::make_ref_counted<PeerConnectionFactory>(context,
+                                                      &pcf_dependencies);
+}
+
 // Verify creation of PeerConnection using internal ADM, video factory and
 // internal libjingle threads.
 // TODO(henrika): disabling this test since relying on real audio can result in
@@ -274,8 +320,8 @@ TEST(PeerConnectionFactoryTestInternal, DISABLED_CreatePCUsingInternalModules) {
           nullptr /* signaling_thread */, nullptr /* default_adm */,
           webrtc::CreateBuiltinAudioEncoderFactory(),
           webrtc::CreateBuiltinAudioDecoderFactory(),
-          webrtc::CreateBuiltinVideoEncoderFactory(),
-          webrtc::CreateBuiltinVideoDecoderFactory(), nullptr /* audio_mixer */,
+          nullptr /* video_encoder_factory */,
+          nullptr /* video_decoder_factory */, nullptr /* audio_mixer */,
           nullptr /* audio_processing */));
 
   NullPeerConnectionObserver observer;
@@ -318,6 +364,25 @@ TEST_F(PeerConnectionFactoryTest, CheckRtpSenderVideoCapabilities) {
   }
 }
 
+TEST_F(PeerConnectionFactoryTest, CheckRtpSenderRtxEnabledCapabilities) {
+  webrtc::RtpCapabilities video_capabilities =
+      factory_->GetRtpSenderCapabilities(cricket::MEDIA_TYPE_VIDEO);
+  const auto it = std::find_if(
+      video_capabilities.codecs.begin(), video_capabilities.codecs.end(),
+      [](const auto& c) { return c.name == cricket::kRtxCodecName; });
+  EXPECT_TRUE(it != video_capabilities.codecs.end());
+}
+
+TEST(PeerConnectionFactoryTestInternal, CheckRtpSenderRtxDisabledCapabilities) {
+  auto factory = CreatePeerConnectionFactoryWithRtxDisabled();
+  webrtc::RtpCapabilities video_capabilities =
+      factory->GetRtpSenderCapabilities(cricket::MEDIA_TYPE_VIDEO);
+  const auto it = std::find_if(
+      video_capabilities.codecs.begin(), video_capabilities.codecs.end(),
+      [](const auto& c) { return c.name == cricket::kRtxCodecName; });
+  EXPECT_TRUE(it == video_capabilities.codecs.end());
+}
+
 TEST_F(PeerConnectionFactoryTest, CheckRtpSenderDataCapabilities) {
   webrtc::RtpCapabilities data_capabilities =
       factory_->GetRtpSenderCapabilities(cricket::MEDIA_TYPE_DATA);
@@ -349,6 +414,26 @@ TEST_F(PeerConnectionFactoryTest, CheckRtpReceiverVideoCapabilities) {
   for (const auto& header_extension : video_capabilities.header_extensions) {
     EXPECT_FALSE(header_extension.uri.empty());
   }
+}
+
+TEST_F(PeerConnectionFactoryTest, CheckRtpReceiverRtxEnabledCapabilities) {
+  webrtc::RtpCapabilities video_capabilities =
+      factory_->GetRtpReceiverCapabilities(cricket::MEDIA_TYPE_VIDEO);
+  const auto it = std::find_if(
+      video_capabilities.codecs.begin(), video_capabilities.codecs.end(),
+      [](const auto& c) { return c.name == cricket::kRtxCodecName; });
+  EXPECT_TRUE(it != video_capabilities.codecs.end());
+}
+
+TEST(PeerConnectionFactoryTestInternal,
+     CheckRtpReceiverRtxDisabledCapabilities) {
+  auto factory = CreatePeerConnectionFactoryWithRtxDisabled();
+  webrtc::RtpCapabilities video_capabilities =
+      factory->GetRtpReceiverCapabilities(cricket::MEDIA_TYPE_VIDEO);
+  const auto it = std::find_if(
+      video_capabilities.codecs.begin(), video_capabilities.codecs.end(),
+      [](const auto& c) { return c.name == cricket::kRtxCodecName; });
+  EXPECT_TRUE(it == video_capabilities.codecs.end());
 }
 
 TEST_F(PeerConnectionFactoryTest, CheckRtpReceiverDataCapabilities) {
@@ -567,7 +652,7 @@ TEST_F(PeerConnectionFactoryTest, LocalRendering) {
 
   ASSERT_TRUE(source.get() != NULL);
   rtc::scoped_refptr<VideoTrackInterface> track(
-      factory_->CreateVideoTrack("testlabel", source.get()));
+      factory_->CreateVideoTrack(source, "testlabel"));
   ASSERT_TRUE(track.get() != NULL);
   FakeVideoTrackRenderer local_renderer(track.get());
 
@@ -646,3 +731,6 @@ TEST(PeerConnectionFactoryDependenciesTest, UsesPacketSocketFactory) {
 
   called.Wait(kWaitTimeout);
 }
+
+}  // namespace
+}  // namespace webrtc

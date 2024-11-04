@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import * as Common from '../../core/common/common.js';
+import * as Root from '../../core/root/root.js';
 import * as UI from '../../ui/legacy/legacy.js';
 import type * as Profiler from '../profiler/profiler.js';
 import * as i18n from '../../core/i18n/i18n.js';
@@ -137,6 +138,7 @@ UI.ViewManager.registerViewExtension({
   commandPrompt: i18nLazyString(UIStrings.showJavascriptProfiler),
   persistence: UI.ViewManager.ViewPersistence.CLOSEABLE,
   order: 65,
+  experiment: Root.Runtime.ExperimentName.JS_PROFILER_TEMP_ENABLE,
   async loadView() {
     const Profiler = await loadProfilerModule();
     return Profiler.ProfilesPanel.JSProfilerPanel.instance();
@@ -146,9 +148,9 @@ UI.ViewManager.registerViewExtension({
 UI.ActionRegistration.registerActionExtension({
   actionId: 'timeline.toggle-recording',
   category: UI.ActionRegistration.ActionCategory.PERFORMANCE,
-  iconClass: UI.ActionRegistration.IconClass.LARGEICON_START_RECORDING,
+  iconClass: UI.ActionRegistration.IconClass.START_RECORDING,
   toggleable: true,
-  toggledIconClass: UI.ActionRegistration.IconClass.LARGEICON_STOP_RECORDING,
+  toggledIconClass: UI.ActionRegistration.IconClass.STOP_RECORDING,
   toggleWithRedColor: true,
   contextTypes() {
     return maybeRetrieveContextTypes(Timeline => [Timeline.TimelinePanel.TimelinePanel]);
@@ -181,7 +183,7 @@ UI.ActionRegistration.registerActionExtension({
 
 UI.ActionRegistration.registerActionExtension({
   actionId: 'timeline.record-reload',
-  iconClass: UI.ActionRegistration.IconClass.LARGEICON_REFRESH,
+  iconClass: UI.ActionRegistration.IconClass.REFRESH,
   contextTypes() {
     return maybeRetrieveContextTypes(Timeline => [Timeline.TimelinePanel.TimelinePanel]);
   },
@@ -358,9 +360,9 @@ UI.ActionRegistration.registerActionExtension({
   actionId: 'profiler.js-toggle-recording',
   category: UI.ActionRegistration.ActionCategory.JAVASCRIPT_PROFILER,
   title: i18nLazyString(UIStrings.startStopRecording),
-  iconClass: UI.ActionRegistration.IconClass.LARGEICON_START_RECORDING,
+  iconClass: UI.ActionRegistration.IconClass.START_RECORDING,
   toggleable: true,
-  toggledIconClass: UI.ActionRegistration.IconClass.LARGEICON_STOP_RECORDING,
+  toggledIconClass: UI.ActionRegistration.IconClass.STOP_RECORDING,
   toggleWithRedColor: true,
   contextTypes() {
     return maybeRetrieveProfilerContextTypes(Profiler => [Profiler.ProfilesPanel.JSProfilerPanel]);

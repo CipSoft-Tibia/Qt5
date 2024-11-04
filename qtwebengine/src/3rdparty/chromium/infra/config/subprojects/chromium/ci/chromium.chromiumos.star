@@ -6,8 +6,8 @@
 load("//lib/args.star", "args")
 load("//lib/branches.star", "branches")
 load("//lib/builder_config.star", "builder_config")
-load("//lib/builder_health_indicators.star", "DEFAULT_HEALTH_SPEC")
-load("//lib/builders.star", "goma", "os", "reclient", "sheriff_rotations")
+load("//lib/builder_health_indicators.star", "health_spec")
+load("//lib/builders.star", "os", "reclient", "sheriff_rotations")
 load("//lib/ci.star", "ci")
 load("//lib/consoles.star", "consoles")
 
@@ -20,10 +20,15 @@ ci.defaults.set(
     sheriff_rotations = sheriff_rotations.CHROMIUM,
     tree_closing = True,
     execution_timeout = ci.DEFAULT_EXECUTION_TIMEOUT,
-    health_spec = DEFAULT_HEALTH_SPEC,
+    health_spec = health_spec.modified_default(
+        build_time = struct(
+            p50_mins = 60,
+        ),
+    ),
     reclient_instance = reclient.instance.DEFAULT_TRUSTED,
     reclient_jobs = reclient.jobs.DEFAULT,
     service_account = ci.DEFAULT_SERVICE_ACCOUNT,
+    shadow_service_account = ci.DEFAULT_SHADOW_SERVICE_ACCOUNT,
 )
 
 consoles.console_view(
@@ -63,9 +68,6 @@ ci.builder(
     # This builder gets triggered against multiple branches, so it shouldn't be
     # bootstrapped
     bootstrap = False,
-    # This should NOT be removed because the builder gets triggered
-    # against multiple branches. Some of the branches are running on Goma
-    goma_backend = goma.backend.RBE_PROD,
     notifies = ["chrome-lacros-engprod-alerts"],
     properties = {
         # The format of these properties is defined at archive/properties.proto
@@ -190,6 +192,11 @@ ci.builder(
         short_name = "cfi",
     ),
     main_console_view = "main",
+    health_spec = health_spec.modified_default(
+        build_time = struct(
+            p50_mins = 100,
+        ),
+    ),
     reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
 )
 
@@ -760,6 +767,11 @@ ci.builder(
     ),
     main_console_view = "main",
     cq_mirrors_console_view = "mirrors",
+    health_spec = health_spec.modified_default(
+        build_time = struct(
+            p50_mins = 150,
+        ),
+    ),
     reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
 )
 
@@ -915,7 +927,7 @@ ci.builder(
         build_gs_bucket = "chromium-chromiumos-archive",
     ),
     console_view_entry = consoles.console_view_entry(
-        category = "simple|release",
+        category = "default|cfm",
         short_name = "cfm",
     ),
     main_console_view = "main",

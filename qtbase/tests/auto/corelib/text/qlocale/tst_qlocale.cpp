@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QLocale>
@@ -48,8 +48,8 @@ private slots:
 #endif
 
     void ctor();
-    void emptyCtor_data();
-    void emptyCtor();
+    void systemLocale_data();
+    void systemLocale();
     void consistentC();
     void matchingLocales();
     void stringToDouble_data();
@@ -100,6 +100,13 @@ private slots:
     void monthName();
     void standaloneMonthName();
 
+    void languageToString_data();
+    void languageToString();
+    void scriptToString_data();
+    void scriptToString();
+    void territoryToString_data();
+    void territoryToString();
+
     void defaultNumberingSystem_data();
     void defaultNumberingSystem();
 
@@ -124,12 +131,12 @@ private slots:
     void bcp47Name_data();
     void bcp47Name();
 
-#ifdef QT_BUILD_INTERNAL
-    void systemLocale_data();
-    void systemLocale();
-#endif
-
 #ifndef QT_NO_SYSTEMLOCALE
+#  ifdef QT_BUILD_INTERNAL
+    void mySystemLocale_data();
+    void mySystemLocale();
+#  endif
+
     void systemLocaleDayAndMonthNames_data();
     void systemLocaleDayAndMonthNames();
 #endif
@@ -156,20 +163,23 @@ private:
     QString m_decimal, m_thousand, m_sdate, m_ldate, m_time;
     QString m_sysapp;
     QStringList cleanEnv;
-    bool europeanTimeZone;
+    const bool europeanTimeZone;
     void toReal_data();
 
     using TransientLocale = QTestLocaleChange::TransientLocale;
 };
 
 tst_QLocale::tst_QLocale()
+    // Some tests are specific to CET, test if it applies:
+    : europeanTimeZone(
+        QDate(2013, 1, 1).startOfDay().offsetFromUtc() == 3600
+        && QDate(2013, 6, 1).startOfDay().offsetFromUtc() == 7200
+        // ICU in a zone not currently doing DST may ignore any historical DST
+        // excursions in its display-names (Africa/Tripoli).
+        && QDate(QDate::currentDate().year(), 1, 1).startOfDay().offsetFromUtc() == 3600
+        && QDate(QDate::currentDate().year(), 7, 1).startOfDay().offsetFromUtc() == 7200)
 {
     qRegisterMetaType<QLocale::FormatType>("QLocale::FormatType");
-
-    // Test if in Central European Time zone
-    uint x1 = QDateTime(QDate(1990, 1, 1), QTime()).toSecsSinceEpoch();
-    uint x2 = QDateTime(QDate(1990, 6, 1), QTime()).toSecsSinceEpoch();
-    europeanTimeZone = (x1 == 631148400 && x2 == 644191200);
 }
 
 void tst_QLocale::initTestCase()
@@ -194,7 +204,8 @@ void tst_QLocale::initTestCase()
 
     // Get an environment free of any locale-related variables
     cleanEnv.clear();
-    foreach (QString const& entry, QProcess::systemEnvironment()) {
+    const QStringList sysenv = QProcess::systemEnvironment();
+    for (const QString &entry : sysenv) {
         if (entry.startsWith("LANG=") || entry.startsWith("LC_") || entry.startsWith("LANGUAGE="))
             continue;
         cleanEnv << entry;
@@ -575,7 +586,7 @@ static inline bool runSysAppTest(const QString &binary,
 }
 #endif
 
-void tst_QLocale::emptyCtor_data()
+void tst_QLocale::systemLocale_data()
 {
 #if !QT_CONFIG(process)
     QSKIP("No qprocess support");
@@ -593,45 +604,49 @@ void tst_QLocale::emptyCtor_data()
     // Note that the accepted values for fields are implementation-dependent;
     // the template is language[_territory][.codeset][@modifier]
 
+    // "Ordibehesht" is the name (as adapted to English, German or Norsk) of the
+    // second month of the Jalali calendar. If you see anything in Arabic,
+    // setDefault(Persian) has interfered with the system locale setup.
+
     // Vanilla:
-    ADD_CTOR_TEST("C", "C");
+    ADD_CTOR_TEST("C", "C Ordibehesht");
 
     // Standard forms:
-    ADD_CTOR_TEST("en", "en_US");
-    ADD_CTOR_TEST("en_GB", "en_GB");
-    ADD_CTOR_TEST("de", "de_DE");
+    ADD_CTOR_TEST("en", "en_US Ordibehesht");
+    ADD_CTOR_TEST("en_GB", "en_GB Ordibehesht");
+    ADD_CTOR_TEST("de", "de_DE Ordibehescht");
     // Norsk has some quirks:
-    ADD_CTOR_TEST("no", "nb_NO");
-    ADD_CTOR_TEST("nb", "nb_NO");
-    ADD_CTOR_TEST("nn", "nn_NO");
-    ADD_CTOR_TEST("no_NO", "nb_NO");
-    ADD_CTOR_TEST("nb_NO", "nb_NO");
-    ADD_CTOR_TEST("nn_NO", "nn_NO");
+    ADD_CTOR_TEST("no", "nb_NO ordibehesht");
+    ADD_CTOR_TEST("nb", "nb_NO ordibehesht");
+    ADD_CTOR_TEST("nn", "nn_NO ordibehesht");
+    ADD_CTOR_TEST("no_NO", "nb_NO ordibehesht");
+    ADD_CTOR_TEST("nb_NO", "nb_NO ordibehesht");
+    ADD_CTOR_TEST("nn_NO", "nn_NO ordibehesht");
 
     // Not too fussy about case:
-    ADD_CTOR_TEST("DE", "de_DE");
-    ADD_CTOR_TEST("EN", "en_US");
+    ADD_CTOR_TEST("DE", "de_DE Ordibehescht");
+    ADD_CTOR_TEST("EN", "en_US Ordibehesht");
 
     // Invalid fields
-    ADD_CTOR_TEST("bla", "C");
-    ADD_CTOR_TEST("zz", "C");
-    ADD_CTOR_TEST("zz_zz", "C");
-    ADD_CTOR_TEST("zz...", "C");
-    ADD_CTOR_TEST("en.bla", "en_US");
-    ADD_CTOR_TEST("en@bla", "en_US");
-    ADD_CTOR_TEST("en_blaaa", "en_US");
-    ADD_CTOR_TEST("en_zz", "en_US");
-    ADD_CTOR_TEST("en_GB.bla", "en_GB");
-    ADD_CTOR_TEST("en_GB@.bla", "en_GB");
-    ADD_CTOR_TEST("en_GB@bla", "en_GB");
+    ADD_CTOR_TEST("bla", "C Ordibehesht");
+    ADD_CTOR_TEST("zz", "C Ordibehesht");
+    ADD_CTOR_TEST("zz_zz", "C Ordibehesht");
+    ADD_CTOR_TEST("zz...", "C Ordibehesht");
+    ADD_CTOR_TEST("en.bla", "en_US Ordibehesht");
+    ADD_CTOR_TEST("en@bla", "en_US Ordibehesht");
+    ADD_CTOR_TEST("en_blaaa", "en_US Ordibehesht");
+    ADD_CTOR_TEST("en_zz", "en_US Ordibehesht");
+    ADD_CTOR_TEST("en_GB.bla", "en_GB Ordibehesht");
+    ADD_CTOR_TEST("en_GB@.bla", "en_GB Ordibehesht");
+    ADD_CTOR_TEST("en_GB@bla", "en_GB Ordibehesht");
 
     // Empty optional fields, but with punctuators supplied
-    ADD_CTOR_TEST("en.", "en_US");
-    ADD_CTOR_TEST("en@", "en_US");
-    ADD_CTOR_TEST("en.@", "en_US");
-    ADD_CTOR_TEST("en_", "en_US");
-    ADD_CTOR_TEST("en_.", "en_US");
-    ADD_CTOR_TEST("en_.@", "en_US");
+    ADD_CTOR_TEST("en.", "en_US Ordibehesht");
+    ADD_CTOR_TEST("en@", "en_US Ordibehesht");
+    ADD_CTOR_TEST("en.@", "en_US Ordibehesht");
+    ADD_CTOR_TEST("en_", "en_US Ordibehesht");
+    ADD_CTOR_TEST("en_.", "en_US Ordibehesht");
+    ADD_CTOR_TEST("en_.@", "en_US Ordibehesht");
 #undef ADD_CTOR_TEST
 
 #if QT_CONFIG(process) // for runSysApp
@@ -640,7 +655,7 @@ void tst_QLocale::emptyCtor_data()
     QString errorMessage;
     if (runSysApp(m_sysapp, QStringList(), cleanEnv, &defaultLoc, &errorMessage)) {
 #if defined(Q_OS_MACOS)
-        QString localeForInvalidLocale = "C";
+        QString localeForInvalidLocale = "C Ordibehesht";
 #else
         QString localeForInvalidLocale = defaultLoc;
 #endif
@@ -655,7 +670,7 @@ void tst_QLocale::emptyCtor_data()
 #endif // process
 }
 
-void tst_QLocale::emptyCtor()
+void tst_QLocale::systemLocale()
 {
 #if QT_CONFIG(process) // for runSysAppTest
     QLatin1String request(QTest::currentDataTag());
@@ -758,14 +773,24 @@ void tst_QLocale::unixLocaleName_data()
 
 void tst_QLocale::unixLocaleName()
 {
-    QFETCH(QLocale::Language, lang);
-    QFETCH(QLocale::Territory, land);
-    QFETCH(QString, expect);
+    QFETCH(const QLocale::Language, lang);
+    QFETCH(const QLocale::Territory, land);
+    QFETCH(const QString, expect);
+    const auto expected = [expect](QChar ch) {
+        // Kludge around QString::replace() not being const.
+        QString copy = expect;
+        return copy.replace(u'_', ch);
+    };
 
     QLocale::setDefault(QLocale(QLocale::C));
 
-    QLocale locale(lang, land);
+    const QLocale locale(lang, land);
     QCOMPARE(locale.name(), expect);
+    QCOMPARE(locale.name(QLocale::TagSeparator::Dash), expected(u'-'));
+    QCOMPARE(locale.name(QLocale::TagSeparator{'|'}), expected(u'|'));
+    QTest::ignoreMessage(QtWarningMsg, "QLocale::name(): "
+                         "Using non-ASCII separator '\u00ff' (ff) is unsupported");
+    QCOMPARE(locale.name(QLocale::TagSeparator{'\xff'}), QString());
 }
 
 void tst_QLocale::toReal_data()
@@ -1070,7 +1095,8 @@ void tst_QLocale::stringToFloat()
     QLocale locale(locale_name);
     QCOMPARE(locale.name(), locale_name);
 
-    if constexpr (std::numeric_limits<float>::has_denorm != std::denorm_present) {
+    QT_IGNORE_DEPRECATIONS(constexpr bool float_has_denorm = std::numeric_limits<float>::has_denorm != std::denorm_present;)
+    if constexpr (float_has_denorm) {
         if (qstrcmp(QTest::currentDataTag(), "C float -min") == 0
                 || qstrcmp(QTest::currentDataTag(), "C float min") == 0)
             QSKIP("Skipping 'denorm' as this type lacks denormals on this system");
@@ -1079,7 +1105,8 @@ void tst_QLocale::stringToFloat()
     float f = locale.toFloat(num_str, &ok);
     QCOMPARE(ok, good);
 
-    if constexpr (std::numeric_limits<double>::has_denorm != std::denorm_present) {
+    QT_IGNORE_DEPRECATIONS(constexpr bool double_has_denorm = std::numeric_limits<double>::has_denorm != std::denorm_present;)
+    if constexpr (double_has_denorm) {
         if (qstrcmp(QTest::currentDataTag(), "C double min") == 0
                 || qstrcmp(QTest::currentDataTag(), "C double -min") == 0
                 || qstrcmp(QTest::currentDataTag(), "C tiny") == 0
@@ -1126,6 +1153,52 @@ void tst_QLocale::doubleToString_data()
     QTest::addColumn<int>("precision");
 
     int shortest = QLocale::FloatingPointShortest;
+
+    QTest::newRow("C 0 f 0") << QString("C") << QString("0")        << 0.0 << 'f' << 0;
+    QTest::newRow("C 0 f 5") << QString("C") << QString("0.00000")  << 0.0 << 'f' << 5;
+    QTest::newRow("C 0 f -") << QString("C") << QString("0")        << 0.0 << 'f' << shortest;
+    QTest::newRow("C 0 e 0") << QString("C") << QString("0e+00")       << 0.0 << 'e' << 0;
+    QTest::newRow("C 0 e 5") << QString("C") << QString("0.00000e+00") << 0.0 << 'e' << 5;
+    QTest::newRow("C 0 e -") << QString("C") << QString("0e+00")       << 0.0 << 'e' << shortest;
+    QTest::newRow("C 0 g 0") << QString("C") << QString("0")        << 0.0 << 'g' << 0;
+    QTest::newRow("C 0 g 5") << QString("C") << QString("0")        << 0.0 << 'g' << 5;
+    QTest::newRow("C 0 g -") << QString("C") << QString("0")        << 0.0 << 'g' << shortest;
+
+    double d = std::numeric_limits<double>::max();
+    static const char doublemaxfixed[] =
+            "1797693134862315708145274237317043567980705675258449965989174768031572607800285387605"
+            "8955863276687817154045895351438246423432132688946418276846754670353751698604991057655"
+            "1282076245490090389328944075868508455133942304583236903222948165808559332123348274797"
+            "826204144723168738177180919299881250404026184124858368";
+
+    QTest::newRow("C max f 0") << QString("C") << QString(doublemaxfixed) << d << 'f' << 0;
+    QTest::newRow("C max f 5") << QString("C") << doublemaxfixed + QString(".00000")  << d << 'f' << 5;
+    QTest::newRow("C max e 0") << QString("C") << QString("2e+308")       << d << 'e' << 0;
+    QTest::newRow("C max g 0") << QString("C") << QString("2e+308")       << d << 'g' << 0;
+    QTest::newRow("C max e 5") << QString("C") << QString("1.79769e+308") << d << 'e' << 5;
+    QTest::newRow("C max g 5") << QString("C") << QString("1.7977e+308")  << d << 'g' << 5;
+#if QT_CONFIG(doubleconversion)
+    QTest::newRow("C max e -") << QString("C") << QString("1.7976931348623157e+308") << d << 'e' << shortest;
+    QTest::newRow("C max g -") << QString("C") << QString("1.7976931348623157e+308") << d << 'g' << shortest;
+    QTest::newRow("C max f -") << QString("C")
+                               << QString("%1").arg("17976931348623157", -int(strlen(doublemaxfixed)), u'0')
+                               << d << 'f' << shortest;
+#endif
+
+    d = std::numeric_limits<double>::min();
+    QTest::newRow("C min f 0") << QString("C") << QString("0")            << d << 'f' << 0;
+    QTest::newRow("C min f 5") << QString("C") << QString("0.00000")      << d << 'f' << 5;
+    QTest::newRow("C min e 0") << QString("C") << QString("2e-308")       << d << 'e' << 0;
+    QTest::newRow("C min g 0") << QString("C") << QString("2e-308")       << d << 'g' << 0;
+    QTest::newRow("C min e 5") << QString("C") << QString("2.22507e-308") << d << 'e' << 5;
+    QTest::newRow("C min g 5") << QString("C") << QString("2.2251e-308")  << d << 'g' << 5;
+#if QT_CONFIG(doubleconversion)
+    QTest::newRow("C min e -") << QString("C") << QString("2.2250738585072014e-308") << d << 'e' << shortest;
+    QTest::newRow("C min f -") << QString("C")
+                               << QString("0.%1").arg("22250738585072014", 308 - 1 + std::numeric_limits<double>::max_digits10, u'0')
+                               << d << 'f' << shortest;
+    QTest::newRow("C min g -") << QString("C") << QString("2.2250738585072014e-308") << d << 'g' << shortest;
+#endif
 
     QTest::newRow("C 3.4 f 5") << QString("C") << QString("3.40000")     << 3.4 << 'f' << 5;
     QTest::newRow("C 3.4 f 0") << QString("C") << QString("3")           << 3.4 << 'f' << 0;
@@ -1992,6 +2065,10 @@ void tst_QLocale::formatDateTime()
     QFETCH(QString, format);
     QFETCH(QString, result);
 
+#if defined(Q_OS_WASM)
+    QEXPECT_FAIL("dd MMMM yyyy, hh:mm:ss", "Year 0001 doesn't get properly formatted on WASM C locale", Abort);
+#endif // Q_OS_WASM
+
     QLocale l(localeName);
     QCOMPARE(l.toString(dateTime, format), result);
     QCOMPARE(l.toString(dateTime, QStringView(format)), result);
@@ -2013,18 +2090,22 @@ void tst_QLocale::formatTimeZone()
     // LocalTime should vary
     if (europeanTimeZone) {
         // Time definitely in Standard Time
-        QDateTime dt4 = QDate(2013, 1, 1).startOfDay();
-#ifdef Q_OS_WIN
-        QEXPECT_FAIL("", "Windows only returns long name (QTBUG-32759)", Continue);
-#endif // Q_OS_WIN
-        QCOMPARE(enUS.toString(dt4, "t"), QLatin1String("CET"));
+        const QStringList knownCETus = {
+            u"GMT+1"_s, // ICU
+            u"Central Europe Standard Time"_s, // MS (lacks abbreviations)
+            u"CET"_s // Standard abbreviation
+        };
+        const QString cet = enUS.toString(QDate(2013, 1, 1).startOfDay(), u"t");
+        QVERIFY2(knownCETus.contains(cet), qPrintable(cet));
 
         // Time definitely in Daylight Time
-        QDateTime dt5 = QDate(2013, 6, 1).startOfDay();
-#ifdef Q_OS_WIN
-        QEXPECT_FAIL("", "Windows only returns long name (QTBUG-32759)", Continue);
-#endif // Q_OS_WIN
-        QCOMPARE(enUS.toString(dt5, "t"), QLatin1String("CEST"));
+        const QStringList knownCESTus = {
+            u"GMT+2"_s, // ICU
+            u"Central Europe Summer Time"_s, // MS (lacks abbreviations)
+            u"CEST"_s // Standard abbreviation
+        };
+        const QString cest = enUS.toString(QDate(2013, 6, 1).startOfDay(), u"t");
+        QVERIFY2(knownCESTus.contains(cest), qPrintable(cest));
     } else {
         qDebug("(Skipped some CET-only tests)");
     }
@@ -2034,17 +2115,22 @@ void tst_QLocale::formatTimeZone()
     const QDateTime jan(QDate(2010, 1, 1).startOfDay(berlin));
     const QDateTime jul(QDate(2010, 7, 1).startOfDay(berlin));
 
-    QCOMPARE(enUS.toString(jan, "t"), berlin.abbreviation(jan));
-    QCOMPARE(enUS.toString(jul, "t"), berlin.abbreviation(jul));
+    QCOMPARE(enUS.toString(jan, "t"), berlin.displayName(jan, QTimeZone::ShortName, enUS));
+    QCOMPARE(enUS.toString(jul, "t"), berlin.displayName(jul, QTimeZone::ShortName, enUS));
 #endif
 
-    // Current datetime should return current abbreviation
-    QCOMPARE(enUS.toString(QDateTime::currentDateTime(), "t"),
-             QDateTime::currentDateTime().timeZoneAbbreviation());
+    // Current datetime should use current zone's abbreviation:
+    const auto now = QDateTime::currentDateTime();
+    QString zone;
+#if QT_CONFIG(timezone) // Match logic in QDTP's startsWithLocalTimeZone() helper.
+    zone = now.timeRepresentation().displayName(now, QTimeZone::ShortName, enUS);
+    if (zone.isEmpty()) // Fall back to unlocalized from when no timezone backend:
+#endif
+        zone = now.timeZoneAbbreviation();
+    QCOMPARE(enUS.toString(now, "t"), zone);
 
-    // Time on its own will always be current local time zone
-    QCOMPARE(enUS.toString(QTime(1, 2, 3), "t"),
-             QDateTime::currentDateTime().timeZoneAbbreviation());
+    // Time on its own will always use the current local time zone:
+    QCOMPARE(enUS.toString(now.time(), "t"), zone);
 }
 
 void tst_QLocale::toDateTime_data()
@@ -3146,8 +3232,7 @@ void tst_QLocale::ampm_data()
     QTest::newRow("tr_TR") << QString::fromUtf8("\303\226\303\226")
                            << QString::fromUtf8("\303\226\123");
     QTest::newRow("id_ID") << QStringLiteral("AM") << QStringLiteral("PM");
-    // CLDR v44 made Tamil's AM/PM inconsistent; AM was "முற்பகல்" before.
-    QTest::newRow("ta_LK") << QString::fromUtf8("AM") << QString::fromUtf8("பிற்பகல்");
+    QTest::newRow("ta_LK") << QString::fromUtf8("AM") << QString::fromUtf8("PM");
 }
 
 void tst_QLocale::ampm()
@@ -3233,6 +3318,11 @@ void tst_QLocale::timeFormat()
     const QLocale bra("pt_BR");
     QCOMPARE(bra.timeFormat(QLocale::ShortFormat), QLatin1String("HH:mm"));
     QCOMPARE(bra.timeFormat(QLocale::LongFormat), QLatin1String("HH:mm:ss t"));
+
+    // QTBUG-123872 - we kludge CLDR's B to AP:
+    const QLocale tw("zh_TW");
+    QCOMPARE(tw.timeFormat(QLocale::ShortFormat), "APh:mm"_L1);
+    QCOMPARE(tw.timeFormat(QLocale::LongFormat), "APh:mm:ss [t]"_L1);
 }
 
 void tst_QLocale::dateTimeFormat()
@@ -3314,6 +3404,115 @@ void tst_QLocale::standaloneMonthName()
     QCOMPARE(ru.standaloneMonthName(1, QLocale::ShortFormat),
              QString::fromUtf8("\xd1\x8f\xd0\xbd\xd0\xb2."));
     QCOMPARE(ru.standaloneMonthName(1, QLocale::NarrowFormat), QString::fromUtf8("\xd0\xaf"));
+}
+
+void tst_QLocale::languageToString_data()
+{
+    QTest::addColumn<QLocale::Language>("language");
+    QTest::addColumn<QString>("name");
+
+    // Prone to change at CLDR updates.
+    QTest::newRow("cu") << QLocale::Church << u"Church Slavic"_s;
+    QTest::newRow("dyo") << QLocale::JolaFonyi << u"Jola-Fonyi"_s;
+    QTest::newRow("ff") << QLocale::Fulah << u"Fula"_s;
+    QTest::newRow("gd") << QLocale::Gaelic << u"Scottish Gaelic"_s;
+    QTest::newRow("ht") << QLocale::Haitian << u"Haitian Creole"_s;
+    QTest::newRow("lu") << QLocale::LubaKatanga << u"Luba-Katanga"_s;
+    QTest::newRow("mgh") << QLocale::MakhuwaMeetto << u"Makhuwa-Meetto"_s;
+    QTest::newRow("mgo") << QLocale::Meta << u"Meta\u02bc"_s;
+    QTest::newRow("mi") << QLocale::Maori << u"M\u0101" "ori"_s;
+    QTest::newRow("nb") << QLocale::NorwegianBokmal << u"Norwegian Bokm\u00e5" "l"_s;
+    QTest::newRow("nqo") << QLocale::Nko << u"N\u2019" "Ko"_s;
+    QTest::newRow("quc") << QLocale::Kiche << u"K\u02bc" "iche\u02bc"_s;
+    QTest::newRow("sah") << QLocale::Sakha << u"Yakut"_s;
+    QTest::newRow("vo") << QLocale::Volapuk << u"Volap\u00fc" "k"_s;
+}
+
+void tst_QLocale::languageToString()
+{
+    QFETCH(const QLocale::Language, language);
+    QFETCH(const QString, name);
+
+    QCOMPARE(QLocale::languageToString(language), name);
+}
+
+void tst_QLocale::scriptToString_data()
+{
+    QTest::addColumn<QLocale::Script>("script");
+    QTest::addColumn<QString>("name");
+
+    // Prone to change at CLDR updates.
+    QTest::newRow("Cans")
+        << QLocale::CanadianAboriginalScript << u"Unified Canadian Aboriginal Syllabics"_s;
+    QTest::newRow("Dupl") << QLocale::DuployanScript << u"Duployan shorthand"_s;
+    QTest::newRow("Egyp") << QLocale::EgyptianHieroglyphsScript << u"Egyptian hieroglyphs"_s;
+    QTest::newRow("Nkoo") << QLocale::NkoScript << u"N\u2019" "Ko"_s;
+    QTest::newRow("Phag") << QLocale::PhagsPaScript << u"Phags-pa"_s;
+    QTest::newRow("Rohg") << QLocale::HanifiScript << u"Hanifi Rohingya"_s;
+    QTest::newRow("Sgnw") << QLocale::SignWritingScript << u"SignWriting"_s;
+    QTest::newRow("Xsux") << QLocale::CuneiformScript << u"Sumero-Akkadian Cuneiform"_s;
+}
+
+void tst_QLocale::scriptToString()
+{
+    QFETCH(const QLocale::Script, script);
+    QFETCH(const QString, name);
+
+    QCOMPARE(QLocale::scriptToString(script), name);
+}
+
+void tst_QLocale::territoryToString_data()
+{
+    QTest::addColumn<QLocale::Territory>("territory");
+    QTest::addColumn<QString>("name");
+    // Prone to change at CLDR updates.
+
+    QTest::newRow("AX") << QLocale::AlandIslands << u"\u00c5" "land Islands"_s;
+    QTest::newRow("AG") << QLocale::AntiguaAndBarbuda << u"Antigua & Barbuda"_s;
+    QTest::newRow("BA") << QLocale::BosniaAndHerzegovina << u"Bosnia & Herzegovina"_s;
+    QTest::newRow("BL") << QLocale::SaintBarthelemy << u"St. Barth\u00e9" "lemy"_s;
+    QTest::newRow("CC") << QLocale::CocosIslands << u"Cocos (Keeling) Islands"_s;
+    QTest::newRow("CD") << QLocale::CongoKinshasa << u"Congo - Kinshasa"_s;
+    QTest::newRow("CG") << QLocale::CongoBrazzaville << u"Congo - Brazzaville"_s;
+    QTest::newRow("CI") << QLocale::IvoryCoast << u"C\u00f4" "te d\u2019" "Ivoire"_s;
+    QTest::newRow("CW") << QLocale::Curacao << u"Cura\u00e7" "ao"_s;
+    QTest::newRow("EA") << QLocale::CeutaAndMelilla << u"Ceuta & Melilla"_s;
+    QTest::newRow("GS")
+        << QLocale::SouthGeorgiaAndSouthSandwichIslands
+        << u"South Georgia & South Sandwich Islands"_s;
+    QTest::newRow("GW") << QLocale::GuineaBissau << u"Guinea-Bissau"_s;
+    QTest::newRow("HM") << QLocale::HeardAndMcDonaldIslands << u"Heard & McDonald Islands"_s;
+    QTest::newRow("IM") << QLocale::IsleOfMan << u"Isle of Man"_s;
+    QTest::newRow("KN") << QLocale::SaintKittsAndNevis << u"St. Kitts & Nevis"_s;
+    QTest::newRow("LC") << QLocale::SaintLucia << u"St. Lucia"_s;
+    QTest::newRow("MF") << QLocale::SaintMartin << u"St. Martin"_s;
+    QTest::newRow("MK") << QLocale::Macedonia << u"North Macedonia"_s;
+    QTest::newRow("MM") << QLocale::Myanmar << u"Myanmar (Burma)"_s;
+    QTest::newRow("MO") << QLocale::Macao << u"Macao SAR China"_s;
+    QTest::newRow("PM") << QLocale::SaintPierreAndMiquelon << u"St. Pierre & Miquelon"_s;
+    QTest::newRow("PN") << QLocale::Pitcairn << u"Pitcairn Islands"_s;
+    QTest::newRow("RE") << QLocale::Reunion << u"R\u00e9" "union"_s;
+    QTest::newRow("SH") << QLocale::SaintHelena << u"St. Helena"_s;
+    QTest::newRow("SJ") << QLocale::SvalbardAndJanMayen << u"Svalbard & Jan Mayen"_s;
+    QTest::newRow("ST")
+        << QLocale::SaoTomeAndPrincipe << u"S\u00e3" "o Tom\u00e9" " & Pr\u00ed" "ncipe"_s;
+    QTest::newRow("TA") << QLocale::TristanDaCunha << u"Tristan da Cunha"_s;
+    QTest::newRow("TC") << QLocale::TurksAndCaicosIslands << u"Turks & Caicos Islands"_s;
+    QTest::newRow("TR") << QLocale::Turkey << u"T\u00fc" "rkiye"_s;
+    QTest::newRow("TT") << QLocale::TrinidadAndTobago << u"Trinidad & Tobago"_s;
+    QTest::newRow("UM") << QLocale::UnitedStatesOutlyingIslands << u"U.S. Outlying Islands"_s;
+    QTest::newRow("VC") << QLocale::SaintVincentAndGrenadines << u"St. Vincent & Grenadines"_s;
+    QTest::newRow("VI") << QLocale::UnitedStatesVirginIslands << u"U.S. Virgin Islands"_s;
+    QTest::newRow("WF") << QLocale::WallisAndFutuna << u"Wallis & Futuna"_s;
+    QTest::newRow("001") << QLocale::World << u"world"_s;
+}
+
+void tst_QLocale::territoryToString()
+{
+    QFETCH(const QLocale::Territory, territory);
+    QFETCH(const QString, name);
+
+    QCOMPARE(QLocale::territoryToString(territory), name);
 }
 
 void tst_QLocale::currency()
@@ -3429,14 +3628,54 @@ void tst_QLocale::uiLanguages_data()
 
 void tst_QLocale::uiLanguages()
 {
-    // Compare systemLocale(), which tests the same for a stub system locale.
+    // Compare mySystemLocale(), which tests the same for a custom system locale.
     QFETCH(const QLocale, locale);
     QFETCH(const QStringList, all);
-    auto reporter = qScopeGuard([&locale]() {
-        qDebug("\n\t%s", qPrintable(locale.uiLanguages().join(u"\n\t")));
-    });
-    QCOMPARE(locale.uiLanguages(), all);
-    reporter.dismiss();
+    const auto expected = [all](QChar sep) {
+        QStringList adjusted;
+        for (QString name : all)
+            adjusted << name.replace(u'-', sep);
+        return adjusted;
+    };
+
+    {
+        // By default tags are joined with a dash:
+        const QStringList actual = locale.uiLanguages();
+        auto reporter = qScopeGuard([&actual]() {
+            qDebug("\n\t%ls", qUtf16Printable(actual.join("\n\t"_L1)));
+        });
+        QCOMPARE(actual, all);
+        reporter.dismiss();
+    }
+    {
+        // We also support joining with an underscore:
+        const QStringList actual = locale.uiLanguages(QLocale::TagSeparator::Underscore);
+        auto reporter = qScopeGuard([&actual]() {
+            qDebug("\n\t%ls", qUtf16Printable(actual.join("\n\t"_L1)));
+        });
+        QCOMPARE(actual, expected(u'_'));
+        reporter.dismiss();
+    }
+    {
+        // Or, in fact, any ASCII character:
+        const QStringList actual = locale.uiLanguages(QLocale::TagSeparator{'|'});
+        auto reporter = qScopeGuard([&actual]() {
+            qDebug("\n\t%ls", qUtf16Printable(actual.join("\n\t"_L1)));
+        });
+        QCOMPARE(actual, expected(u'|'));
+        reporter.dismiss();
+    }
+    {
+        // Non-ASCII separator (here, y-umlaut) is unsupported.
+        QTest::ignoreMessage(QtWarningMsg, "QLocale::uiLanguages(): "
+                             "Using non-ASCII separator '\u00ff' (ff) is unsupported");
+        const QStringList actual = locale.uiLanguages(QLocale::TagSeparator{'\xff'});
+        auto reporter = qScopeGuard([&actual]() {
+            qDebug("\n\t%ls", qUtf16Printable(actual.join("\n\t"_L1)));
+        });
+        QCOMPARE(actual, QStringList{});
+        reporter.dismiss();
+    }
 }
 
 void tst_QLocale::weekendDays()
@@ -3713,20 +3952,34 @@ void tst_QLocale::bcp47Name_data()
 
 void tst_QLocale::bcp47Name()
 {
-    QFETCH(QString, expect);
-    QCOMPARE(QLocale(QLatin1String(QTest::currentDataTag())).bcp47Name(), expect);
+    QFETCH(const QString, expect);
+    const auto expected = [expect](QChar ch) {
+        // Kludge around QString::replace() not being const.
+        QString copy = expect;
+        return copy.replace(u'-', ch);
+    };
+
+    const auto locale = QLocale(QLatin1String(QTest::currentDataTag()));
+    QCOMPARE(locale.bcp47Name(), expect);
+    QCOMPARE(locale.bcp47Name(QLocale::TagSeparator::Underscore), expected(u'_'));
+    QCOMPARE(locale.bcp47Name(QLocale::TagSeparator{'|'}), expected(u'|'));
+    QTest::ignoreMessage(QtWarningMsg, "QLocale::bcp47Name(): "
+                         "Using non-ASCII separator '\u00ff' (ff) is unsupported");
+    QCOMPARE(locale.bcp47Name(QLocale::TagSeparator{'\xff'}), QString());
 }
 
-#ifdef QT_BUILD_INTERNAL
+#ifndef QT_NO_SYSTEMLOCALE
+#  ifdef QT_BUILD_INTERNAL
 class MySystemLocale : public QSystemLocale
 {
+    Q_DISABLE_COPY_MOVE(MySystemLocale)
 public:
     MySystemLocale(const QString &locale)
     : m_name(locale), m_id(QLocaleId::fromName(locale)), m_locale(locale)
     {
     }
 
-    QVariant query(QueryType type, QVariant /*in*/) const override
+    QVariant query(QueryType type, QVariant &&/*in*/) const override
     {
         switch (type) {
         case UILanguages:
@@ -3757,7 +4010,7 @@ private:
     const QLocale m_locale;
 };
 
-void tst_QLocale::systemLocale_data()
+void tst_QLocale::mySystemLocale_data()
 {
     // Test uses MySystemLocale, so is platform-independent.
     QTest::addColumn<QString>("name");
@@ -3832,7 +4085,7 @@ void tst_QLocale::systemLocale_data()
     // shi_{Tfng,Latn}_MA, vai_{Vaii,Latn}_LR, zh_{Hant,Hans}_{MO,HK}
 }
 
-void tst_QLocale::systemLocale()
+void tst_QLocale::mySystemLocale()
 {
     // Compare uiLanguages(), which tests this for CLDR-derived locales.
     QLocale originalLocale;
@@ -3850,6 +4103,8 @@ void tst_QLocale::systemLocale()
             qDebug("\n\t%s", qPrintable(QLocale::system().uiLanguages().join(u"\n\t")));
         });
         QCOMPARE(QLocale::system().uiLanguages(), uiLanguages);
+        QCOMPARE(QLocale::system().uiLanguages(QLocale::TagSeparator::Underscore),
+                 uiLanguages.replaceInStrings(u"-", u"_"));
         reporter.dismiss();
     }
 
@@ -3857,9 +4112,7 @@ void tst_QLocale::systemLocale()
     QCOMPARE(QLocale(), originalLocale);
     QCOMPARE(QLocale::system(), originalSystemLocale);
 }
-#endif // QT_BUILD_INTERNAL
-
-#ifndef QT_NO_SYSTEMLOCALE
+#  endif // QT_BUILD_INTERNAL
 
 void tst_QLocale::systemLocaleDayAndMonthNames_data()
 {

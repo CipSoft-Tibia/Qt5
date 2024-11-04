@@ -51,6 +51,7 @@ def SetConfigPath(options):
 
   sysroot = options.sysroot
   assert sysroot
+  system_libdir = options.system_libdir
 
   # Compute the library path name based on the architecture.
   arch = options.arch
@@ -58,8 +59,12 @@ def SetConfigPath(options):
     print("You must specify an architecture via -a if using a sysroot.")
     sys.exit(1)
 
-  libdir = sysroot + '/usr/' + options.system_libdir + '/pkgconfig'
-  libdir += ':' + sysroot + '/usr/share/pkgconfig'
+  if '/' in system_libdir or ':' in system_libdir:
+    libdir = system_libdir
+  else:
+    libdir = sysroot + '/usr/' + system_libdir + '/pkgconfig'
+    libdir += ':' + sysroot + '/usr/share/pkgconfig'
+
   os.environ['PKG_CONFIG_LIBDIR'] = libdir
   return libdir
 

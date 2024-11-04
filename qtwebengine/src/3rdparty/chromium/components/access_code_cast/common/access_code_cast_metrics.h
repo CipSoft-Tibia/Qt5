@@ -74,6 +74,24 @@ enum class AccessCodeCastDialogOpenLocation {
 
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
+enum class AccessCodeCastDiscoveryTypeAndSource {
+  kUnknown = 0,
+  kSavedDevicePresentation = 1,
+  kSavedDeviceTabMirror = 2,
+  kSavedDeviceDesktopMirror = 3,
+  kSavedDeviceRemotePlayback = 4,
+  kNewDevicePresentation = 5,
+  kNewDeviceTabMirror = 6,
+  kNewDeviceDesktopMirror = 7,
+  kNewDeviceRemotePlayback = 8,
+
+  // NOTE: Do not reorder existing entries, and add entries only immediately
+  // above this line.
+  kMaxValue = kNewDeviceRemotePlayback
+};
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
 enum class AccessCodeCastUiTabSwitcherUsage {
   kTabSwitcherUiShownAndNotUsed = 0,
   kTabSwitcherUiShownAndUsedToSwitchTabs = 1,
@@ -97,8 +115,13 @@ class AccessCodeCastMetrics {
   static const char kHistogramDialogCloseReason[];
   static const char kHistogramDialogLoadTime[];
   static const char kHistogramDialogOpenLocation[];
+  static const char kHistogramFreezeCount[];
+  static const char kHistogramFreezeDuration[];
+  static const char kHistogramNewDeviceRouteCreationDuration[];
   static const char kHistogramRememberedDevicesCount[];
+  static const char kHistogramRouteDiscoveryTypeAndSource[];
   static const char kHistogramRouteDuration[];
+  static const char kHistogramSavedDeviceRouteCreationDuration[];
   static const char kHistogramUiTabSwitcherUsageType[];
   static const char kHistogramUiTabSwitchingCount[];
 
@@ -111,8 +134,10 @@ class AccessCodeCastMetrics {
   static void RecordAccessCodeNotFoundCount(int count);
 
   // Records the value of the device duration pref on successful creation of
-  // an access code route.
-  static void RecordAccessCodeRouteStarted(base::TimeDelta duration);
+  // an access code route. Also records the discovery type and cast source.
+  static void RecordAccessCodeRouteStarted(base::TimeDelta duration,
+                                           bool is_saved,
+                                           AccessCodeCastCastMode mode);
 
   // Records the result of adding an access code sink.
   static void RecordAddSinkResult(bool is_remembered,
@@ -127,6 +152,13 @@ class AccessCodeCastMetrics {
   // Records where the user clicked to open the AccessCodeCast dialog.
   static void RecordDialogOpenLocation(
       AccessCodeCastDialogOpenLocation location);
+
+  // Records the number of times a mirroring session is paused during its
+  // duration.
+  static void RecordMirroringPauseCount(int count);
+
+  // Records the duration of time that a mirroring session is paused.
+  static void RecordMirroringPauseDuration(base::TimeDelta duration);
 
   // Records the count of cast devices which are currently being remembered
   // being the AccessCodeCastSinkService.
@@ -146,6 +178,17 @@ class AccessCodeCastMetrics {
   // shown and actually used to switch tabs.
   static void RecordTabSwitcherUsageCase(
       AccessCodeCastUiTabSwitcherUsage usage);
+
+  // Records the time that it takes to connect to a saved device. It is a
+  // combination of the time to request a mirroring route + waiting for a
+  // success. It is only recorded if the request was successful.
+  static void RecordSavedDeviceConnectDuration(base::TimeDelta duration);
+
+  // Records the time it takes to connect to a new device. It is the combination
+  // of connecting to our server, validating the access code, constructing a
+  // cast device, opening a channel to that device, and then waiting for
+  // success.
+  static void RecordNewDeviceConnectDuration(base::TimeDelta duration);
 };
 
 #endif  // COMPONENTS_ACCESS_CODE_CAST_COMMON_ACCESS_CODE_CAST_METRICS_H_

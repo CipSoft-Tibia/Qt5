@@ -45,5 +45,5 @@ manifestmeta.highlighted.names = \
     "QtSql/Master Detail Example" \
     "QtSql/SQL Browser"
 
-# Fail the documentation build if there are more warnings than the limit
+# Enforce zero documentation warnings
 warninglimit = 0

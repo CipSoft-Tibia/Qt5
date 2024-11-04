@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,19 +11,17 @@
 #include "platform/api/task_runner.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 Environment::PacketConsumer::~PacketConsumer() = default;
 
 Environment::SocketSubscriber::~SocketSubscriber() = default;
 
 Environment::Environment(ClockNowFunctionPtr now_function,
-                         TaskRunner* task_runner,
+                         TaskRunner& task_runner,
                          const IPEndpoint& local_endpoint)
     : now_function_(now_function), task_runner_(task_runner) {
   OSP_DCHECK(now_function_);
-  OSP_DCHECK(task_runner_);
   ErrorOr<std::unique_ptr<UdpSocket>> result =
       UdpSocket::Create(task_runner_, this, local_endpoint);
   if (result.is_error()) {
@@ -65,6 +63,10 @@ void Environment::SetSocketSubscriber(SocketSubscriber* subscriber) {
   socket_subscriber_ = subscriber;
 }
 
+void Environment::SetStatisticsCollector(StatisticsCollector* collector) {
+  statistics_collector_ = collector;
+}
+
 void Environment::ConsumeIncomingPackets(PacketConsumer* packet_consumer) {
   OSP_DCHECK(packet_consumer);
   OSP_DCHECK(!packet_consumer_);
@@ -90,11 +92,14 @@ int Environment::GetMaxPacketSize() const {
   }
 }
 
-void Environment::SendPacket(ByteView packet) {
+void Environment::SendPacket(ByteView packet, PacketMetadata metadata) {
   OSP_DCHECK(remote_endpoint_.address);
   OSP_DCHECK_NE(remote_endpoint_.port, 0);
   if (socket_) {
     socket_->SendMessage(packet.data(), packet.size(), remote_endpoint_);
+  }
+  if (statistics_collector_) {
+    statistics_collector_->CollectPacketSentEvent(packet, metadata);
   }
 }
 
@@ -156,5 +161,4 @@ void Environment::OnRead(UdpSocket* socket,
       std::move(static_cast<std::vector<uint8_t>&>(packet)));
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

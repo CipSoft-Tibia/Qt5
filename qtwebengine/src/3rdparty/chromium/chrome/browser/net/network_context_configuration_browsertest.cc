@@ -12,7 +12,6 @@
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/functional/bind.h"
-#include "base/guid.h"
 #include "base/location.h"
 #include "base/memory/raw_ptr.h"
 #include "base/path_service.h"
@@ -22,6 +21,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/bind.h"
 #include "base/threading/thread_restrictions.h"
+#include "base/uuid.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/browser_process.h"
@@ -53,10 +53,10 @@
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/network_service_instance.h"
+#include "content/public/browser/network_service_util.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/storage_partition_config.h"
 #include "content/public/common/content_switches.h"
-#include "content/public/common/network_service_util.h"
 #include "content/public/common/url_constants.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
@@ -231,7 +231,7 @@ class NetworkContextConfigurationBrowserTest
 
     std::unique_ptr<net::test_server::BasicHttpResponse> response =
         std::make_unique<net::test_server::BasicHttpResponse>();
-    response->set_content(base::GenerateGUID());
+    response->set_content(base::Uuid::GenerateRandomV4().AsLowercaseString());
     response->set_content_type("text/plain");
     response->AddCustomHeader("Cache-Control", "max-age=60000");
     return std::move(response);
@@ -720,7 +720,7 @@ class NetworkContextConfigurationBrowserTest
     FlushNetworkInterface();
   }
 
-  raw_ptr<Browser, DanglingUntriaged> incognito_ = nullptr;
+  raw_ptr<Browser, AcrossTasksDanglingUntriaged> incognito_ = nullptr;
 
   net::EmbeddedTestServer https_server_;
   std::unique_ptr<net::test_server::ControllableHttpResponse>
@@ -840,10 +840,10 @@ IN_PROC_BROWSER_TEST_P(NetworkContextConfigurationBrowserTest,
   std::string script = R"((url => {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
-    xhr.onload = () => domAutomationController.send(xhr.responseText);
+    xhr.onload = () => chrome.test.sendScriptResult(xhr.responseText);
     xhr.send();
   }))";
-  std::string result =
+  base::Value result =
       extensions::browsertest_util::ExecuteScriptInBackgroundPage(
           GetProfile(), extension->id(), script + "('" + url.spec() + "')");
   EXPECT_EQ("cookie", result);
@@ -1031,7 +1031,14 @@ IN_PROC_BROWSER_TEST_P(NetworkContextConfigurationBrowserTest, PRE_DiskCache) {
 
 // Check if the URL loaded in PRE_DiskCache is still in the cache, across a
 // browser restart.
-IN_PROC_BROWSER_TEST_P(NetworkContextConfigurationBrowserTest, DiskCache) {
+// TODO(https://crbug.com/1464367): Fix test flake and re-enable
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_DiskCache DISABLED_DiskCache
+#else
+#define MAYBE_DiskCache DiskCache
+#endif
+IN_PROC_BROWSER_TEST_P(NetworkContextConfigurationBrowserTest,
+                       MAYBE_DiskCache) {
   if (IsRestartStateWithInProcessNetworkService())
     return;
   // Crashing the network service may corrupt the disk cache, so skip this phase
@@ -1275,7 +1282,7 @@ IN_PROC_BROWSER_TEST_P(NetworkContextConfigurationBrowserTest,
 }
 
 // Disabled due to flakiness. See crbug.com/1189031.
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
 #define MAYBE_UserAgentAndLanguagePrefs DISABLED_UserAgentAndLanguagePrefs
 #else
 #define MAYBE_UserAgentAndLanguagePrefs UserAgentAndLanguagePrefs

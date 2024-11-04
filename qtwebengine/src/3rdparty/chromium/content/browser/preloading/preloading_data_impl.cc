@@ -9,6 +9,7 @@
 #include "base/rand_util.h"
 #include "base/strings/strcat.h"
 #include "content/browser/preloading/prefetch/no_vary_search_helper.h"
+#include "content/browser/preloading/prefetch/prefetch_container.h"
 #include "content/browser/preloading/prefetch/prefetch_document_manager.h"
 #include "content/browser/preloading/preloading.h"
 #include "content/browser/preloading/preloading_attempt_impl.h"
@@ -82,10 +83,10 @@ PreloadingDataImpl::GetSameURLAndNoVarySearchURLMatcher(
           return true;
         }
 
-        const absl::optional<GURL> match_url =
-            prefetch_doc_manager->GetNoVarySearchHelper().MatchUrl(
-                navigated_url);
-        return match_url == predicted_url;
+        base::WeakPtr<PrefetchContainer> prefetch_container =
+            prefetch_doc_manager->MatchUrl(navigated_url);
+        return prefetch_container &&
+               prefetch_container->GetURL() == predicted_url;
       },
       manager, destination_url);
 }
@@ -145,6 +146,29 @@ void PreloadingDataImpl::AddPreloadingPrediction(
   preloading_predictions_.push_back(std::move(prediction));
 }
 
+void PreloadingDataImpl::AddExperimentalPreloadingPrediction(
+    base::StringPiece name,
+    PreloadingURLMatchCallback url_match_predicate,
+    float score,
+    float min_score,
+    float max_score,
+    size_t buckets) {
+  experimental_predictions_.push_back(
+      std::make_unique<ExperimentalPreloadingPrediction>(
+          name, std::move(url_match_predicate), score, min_score, max_score,
+          buckets));
+}
+
+void PreloadingDataImpl::SetIsNavigationInDomainCallback(
+    PreloadingPredictor predictor,
+    PredictorDomainCallback is_navigation_in_domain_callback) {
+  if (is_navigation_in_predictor_domain_callbacks_.contains(predictor)) {
+    return;
+  }
+  is_navigation_in_predictor_domain_callbacks_[predictor] =
+      std::move(is_navigation_in_domain_callback);
+}
+
 PreloadingDataImpl::PreloadingDataImpl(WebContents* web_contents)
     : WebContentsUserData<PreloadingDataImpl>(*web_contents),
       WebContentsObserver(web_contents),
@@ -200,7 +224,9 @@ void PreloadingDataImpl::DidStartNavigation(
   // PrimaryPageChanged is invoked where the metrics are logged to capture if
   // the prediction/triggering was accurate. This doesn't imply that the user
   // navigated to the predicted URL.
+  ResetRecallStats();
   SetIsAccurateTriggeringAndPrediction(navigation_handle->GetURL());
+  RecordRecallStatsToUMA(navigation_handle);
 }
 
 void PreloadingDataImpl::WebContentsDestroyed() {
@@ -210,6 +236,11 @@ void PreloadingDataImpl::WebContentsDestroyed() {
   // avoid the UKM associated to wrong page.
   RecordMetricsForPreloadingAttempts(ukm::kInvalidSourceId);
   RecordUKMForPreloadingPredictions(ukm::kInvalidSourceId);
+
+  for (const auto& experimental_prediction : experimental_predictions_) {
+    experimental_prediction->RecordToUMA();
+  }
+  experimental_predictions_.clear();
 
   // Delete the user data after logging.
   web_contents()->RemoveUserData(UserDataKey());
@@ -240,16 +271,78 @@ void PreloadingDataImpl::RecordPredictionPrecisionToUMA(
                                     : PredictorConfusionMatrix::kFalsePositive);
 }
 
+void PreloadingDataImpl::UpdatePreloadingAttemptRecallStats(
+    const PreloadingAttemptImpl& attempt) {
+  bool is_true_positive = attempt.IsAccurateTriggering();
+  if (is_true_positive) {
+    preloading_attempt_recall_stats_.insert(
+        {attempt.predictor_type(), attempt.preloading_type()});
+  }
+}
+void PreloadingDataImpl::UpdatePredictionRecallStats(
+    const PreloadingPrediction& prediction) {
+  bool is_true_positive = prediction.IsAccuratePrediction();
+  if (is_true_positive) {
+    predictions_recall_stats_.insert(prediction.predictor_type());
+  }
+}
+
+void PreloadingDataImpl::ResetRecallStats() {
+  predictions_recall_stats_.clear();
+  preloading_attempt_recall_stats_.clear();
+}
+
+void PreloadingDataImpl::RecordRecallStatsToUMA(
+    NavigationHandle* navigation_handle) {
+  constexpr PreloadingType kPreloadingTypes[] = {PreloadingType::kPreconnect,
+                                                 PreloadingType::kPrefetch,
+                                                 PreloadingType::kPrerender};
+  for (const auto& [predictor_type, is_navigation_in_domain_callback] :
+       is_navigation_in_predictor_domain_callbacks_) {
+    if (!is_navigation_in_domain_callback.Run(navigation_handle)) {
+      continue;
+    }
+    const auto uma_predictor_recall = base::StrCat(
+        {"Preloading.Predictor.", predictor_type.name(), ".Recall"});
+    base::UmaHistogramEnumeration(
+        uma_predictor_recall, predictions_recall_stats_.contains(predictor_type)
+                                  ? PredictorConfusionMatrix::kTruePositive
+                                  : PredictorConfusionMatrix::kFalseNegative);
+
+    for (const auto& preloading_type : kPreloadingTypes) {
+      const auto uma_attemp_recall =
+          base::StrCat({"Preloading.", PreloadingTypeToString(preloading_type),
+                        ".Attempt.", predictor_type.name(), ".Recall"});
+      base::UmaHistogramEnumeration(
+          uma_attemp_recall, preloading_attempt_recall_stats_.contains(
+                                 {predictor_type, preloading_type})
+                                 ? PredictorConfusionMatrix::kTruePositive
+                                 : PredictorConfusionMatrix::kFalseNegative);
+    }
+  }
+  // Clear registered predictor domain callbacks and get ready for the next
+  // navigation.
+  is_navigation_in_predictor_domain_callbacks_.clear();
+}
+
 void PreloadingDataImpl::SetIsAccurateTriggeringAndPrediction(
     const GURL& navigated_url) {
+  for (auto& experimental_prediction : experimental_predictions_) {
+    experimental_prediction->SetIsAccuratePrediction(navigated_url);
+    experimental_prediction->RecordToUMA();
+  }
+  experimental_predictions_.clear();
+
   for (auto& attempt : preloading_attempts_) {
     attempt->SetIsAccurateTriggering(navigated_url);
     RecordPreloadingAttemptPrecisionToUMA(*attempt);
+    UpdatePreloadingAttemptRecallStats(*attempt);
   }
 
   for (auto& prediction : preloading_predictions_) {
     prediction->SetIsAccuratePrediction(navigated_url);
     RecordPredictionPrecisionToUMA(*prediction);
+    UpdatePredictionRecallStats(*prediction);
   }
 }
 

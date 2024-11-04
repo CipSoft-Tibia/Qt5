@@ -27,6 +27,7 @@
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxcrt/fx_system.h"
 #include "core/fxcrt/span_util.h"
+#include "core/fxcrt/unowned_ptr.h"
 #include "core/fxge/cfx_defaultrenderdevice.h"
 #include "core/fxge/cfx_fillrenderoptions.h"
 #include "core/fxge/cfx_path.h"
@@ -34,8 +35,7 @@
 #include "core/fxge/dib/fx_dib.h"
 #include "third_party/base/check.h"
 #include "third_party/base/check_op.h"
-#include "third_party/base/cxx17_backports.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
 namespace {
 
@@ -390,8 +390,8 @@ void DrawGouraud(const RetainPtr<CFX_DIBitmap>& pBitmap,
       end_index = 0;
     }
 
-    int start_x = pdfium::clamp(min_x, 0, pBitmap->GetWidth());
-    int end_x = pdfium::clamp(max_x, 0, pBitmap->GetWidth());
+    int start_x = std::clamp(min_x, 0, pBitmap->GetWidth());
+    int end_x = std::clamp(max_x, 0, pBitmap->GetWidth());
     float r_unit = (r[end_index] - r[start_index]) / (max_x - min_x);
     float g_unit = (g[end_index] - g[start_index]) / (max_x - min_x);
     float b_unit = (b[end_index] - b[start_index]) / (max_x - min_x);
@@ -767,7 +767,7 @@ struct PatchDrawer {
 
   int max_delta;
   CFX_Path path;
-  CFX_RenderDevice* pDevice;
+  UnownedPtr<CFX_RenderDevice> pDevice;
   int bNoPathSmooth;
   int alpha;
   CoonColor patch_colors[4];
@@ -921,7 +921,9 @@ void CPDF_RenderShading::Draw(CFX_RenderDevice* pDevice,
   if (pBitmap->GetBuffer().empty())
     return;
 
-  pBitmap->Clear(background);
+  if (background != 0) {
+    pBitmap->Clear(background);
+  }
   const CFX_Matrix final_matrix = mtMatrix * buffer.GetMatrix();
   const auto& funcs = pPattern->GetFuncs();
   switch (pPattern->GetShadingType()) {

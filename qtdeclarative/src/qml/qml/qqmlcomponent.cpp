@@ -29,6 +29,9 @@
 #include <QtCore/qloggingcategory.h>
 #include <qqmlinfo.h>
 
+
+using namespace Qt::Literals::StringLiterals;
+
 namespace {
     Q_CONSTINIT thread_local int creationDepth = 0;
 }
@@ -247,7 +250,7 @@ V4_DEFINE_EXTENSION(QQmlComponentExtension, componentExtension);
     }
     \endqml
 
-    \sa {Qt QML}
+    \sa {Qt Qml}
 */
 
 /*!
@@ -1091,8 +1094,15 @@ QObject *QQmlComponentPrivate::beginCreate(QQmlRefPointer<QQmlContextData> conte
             state.appendCreatorErrors();
         enginePriv->dereferenceScarceResources();
     } else {
+        // TODO: extract into function
         rv = loadedType.createWithQQmlData();
         QQmlPropertyCache::ConstPtr propertyCache = QQmlData::ensurePropertyCache(rv);
+        QQmlParserStatus *parserStatus = nullptr;
+        const int parserStatusCast = loadedType.parserStatusCast();
+        if (parserStatusCast != -1) {
+            parserStatus = reinterpret_cast<QQmlParserStatus*>(reinterpret_cast<char *>(rv) + parserStatusCast);
+            parserStatus->classBegin();
+        }
         for (int i = 0, propertyCount = propertyCache->propertyCount(); i < propertyCount; ++i) {
             if (const QQmlPropertyData *propertyData = propertyCache->property(i); propertyData->isRequired()) {
                 state.ensureRequiredPropertyStorage();
@@ -1100,6 +1110,12 @@ QObject *QQmlComponentPrivate::beginCreate(QQmlRefPointer<QQmlContextData> conte
                 info.propertyName = propertyData->name(rv);
                 state.addPendingRequiredProperty(rv, propertyData, info);
             }
+        }
+        if (parserStatus)
+            parserStatus->componentComplete();
+        if (const int finalizerCast = loadedType.finalizerCast(); finalizerCast != -1) {
+            auto* hook = reinterpret_cast<QQmlFinalizerHook *>(reinterpret_cast<char *>(rv) + finalizerCast);
+            hook->componentFinalized();
         }
     }
 
@@ -1321,52 +1337,90 @@ void QQmlComponent::loadFromModule(QAnyStringView uri, QAnyStringView typeName,
                                    QQmlComponent::CompilationMode mode)
 {
     Q_D(QQmlComponent);
+    auto [status, type] = d->prepareLoadFromModule(uri, typeName);
+    d->completeLoadFromModule(uri, typeName, type, status, mode);
+}
 
-    auto enginePriv = QQmlEnginePrivate::get(d->engine);
+LoadHelper::ResolveTypeResult QQmlComponentPrivate::prepareLoadFromModule(QAnyStringView uri,
+                                                                          QAnyStringView typeName)
+{
+    auto enginePriv = QQmlEnginePrivate::get(engine);
     // LoadHelper must be on the Heap as it derives from QQmlRefCount
     auto loadHelper = QQml::makeRefPointer<LoadHelper>(&enginePriv->typeLoader, uri);
 
-    auto [moduleStatus, type] = loadHelper->resolveType(typeName);
+    return loadHelper->resolveType(typeName);
+}
+
+void QQmlComponentPrivate::completeLoadFromModule(QAnyStringView uri, QAnyStringView typeName, QQmlType type,
+                                                  LoadHelper::ResolveTypeResult::Status moduleStatus,
+                                                  QQmlComponent::CompilationMode mode)
+{
+    Q_Q(QQmlComponent);
+
+    // we always mimic the progressChanged behavior from loadUrl
     auto reportError = [&](QString msg) {
         QQmlError error;
         error.setDescription(msg);
-        d->state.errors.push_back(std::move(error));
-        emit statusChanged(Error);
+        state.errors.push_back(std::move(error));
+        progress = 1;
+        emit q->progressChanged(1);
+        emit q->statusChanged(q->Error);
     };
+    auto emitProgressReset = [&](){
+        if (progress != 0) {
+            progress = 0;
+            emit q->progressChanged(0);
+        }
+    };
+    auto emitComplete = [&]() {
+        progress = 1;
+        emit q->progressChanged(1);
+        emit q->statusChanged(q->status());
+    };
+    emitProgressReset();
     if (moduleStatus == LoadHelper::ResolveTypeResult::NoSuchModule) {
-        reportError(QLatin1String(R"(No module named "%1" found)")
-                    .arg(uri.toString()));
+        reportError(QLatin1String(R"(No module named "%1" found)").arg(uri.toString()));
     } else if (!type.isValid()) {
         reportError(QLatin1String(R"(Module "%1" contains no type named "%2")")
                     .arg(uri.toString(), typeName.toString()));
     } else if (type.isCreatable()) {
-        d->clear();
-        // mimic the progressChanged behavior from loadUrl
-        if (d->progress != 0) {
-            d->progress = 0;
-            emit progressChanged(0);
-        }
-        d->loadedType = type;
-        d->progress = 1;
-        emit progressChanged(1);
-        emit statusChanged(status());
-
+        clear();
+        loadedType = type;
+        emitComplete();
     } else if (type.isComposite()) {
+        // loadUrl takes care of signal emission
         loadUrl(type.sourceUrl(), mode);
     } else if (type.isInlineComponentType()) {
         auto baseUrl = type.sourceUrl();
         baseUrl.setFragment(QString());
-        loadUrl(baseUrl, mode);
-        if (!isError()) {
-            d->inlineComponentName = std::make_unique<QString>(type.elementName());
-            Q_ASSERT(!d->inlineComponentName->isEmpty());
+        {
+            // we don't want to emit status changes from the "helper" loadUrl below
+            // because it would signal success to early
+            QSignalBlocker blockSignals(q);
+            // we really need to continue in a synchronous way, otherwise we can't check the CU
+            loadUrl(baseUrl, QQmlComponent::PreferSynchronous);
+        }
+        if (q->isError()) {
+            emitComplete();
+            return;
+        }
+        QString elementName = type.elementName();
+        if (compilationUnit->inlineComponentId(elementName) == -1) {
+            QString realTypeName = typeName.toString();
+            realTypeName.truncate(realTypeName.indexOf(u'.'));
+            QString errorMessage = R"(Type "%1" from module "%2" contains no inline component named "%3".)"_L1.arg(
+                    realTypeName, uri.toString(), elementName);
+            if (elementName == u"qml")
+                errorMessage += " To load the type \"%1\", drop the \".qml\" extension."_L1.arg(realTypeName);
+            reportError(std::move(errorMessage));
+        } else {
+            inlineComponentName = std::make_unique<QString>(std::move(elementName));
+            emitComplete();
         }
     } else if (type.isSingleton() || type.isCompositeSingleton()) {
-        reportError(QLatin1String(R"(%1 is a singleton, and cannot be loaded)")
-                    .arg(typeName.toString()));
+        reportError(QLatin1String(R"(%1 is a singleton, and cannot be loaded)").arg(typeName.toString()));
     } else {
-        reportError(QLatin1String("Could not load %1, as the type is uncreatable")
-                                 .arg(typeName.toString()));
+        reportError(QLatin1String("Could not load %1, as the type is uncreatable").arg(typeName.toString()));
     }
 }
 

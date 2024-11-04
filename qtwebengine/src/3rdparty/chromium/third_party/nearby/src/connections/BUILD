@@ -24,15 +24,17 @@ cc_library(
     copts = ["-DCORE_ADAPTER_DLL"],
     visibility = [
         "//connections:__subpackages__",
+        "//location/nearby/cpp/sharing:__subpackages__",
         "//location/nearby/testing:__subpackages__",
+        "//third_party/nearby/sharing:__subpackages__",
     ],
     deps = [
         ":core_types",
         "//connections/implementation:internal",
-        "//internal:device",
+        "//connections/v3:v3_types",
         "//internal/analytics:event_logger",
+        "//internal/interop:device",
         "//internal/platform:base",
-        "//internal/platform:logging",
         "//internal/platform:types",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
@@ -53,7 +55,6 @@ cc_library(
     hdrs = [
         "advertising_options.h",
         "connection_options.h",
-        "device_provider.h",
         "discovery_options.h",
         "listeners.h",
         "medium_selector.h",
@@ -69,16 +70,16 @@ cc_library(
     copts = ["-DCORE_ADAPTER_DLL"],
     visibility = [
         "//connections:__subpackages__",
-        "//internal/platform/implementation/apple:__subpackages__",
+        "//location/nearby/cpp/sharing:__subpackages__",
         "//location/nearby/testing:__subpackages__",
+        "//third_party/nearby/sharing:__subpackages__",
     ],
     deps = [
-        "//internal:device",
         "//internal/platform:base",
         "//internal/platform:types",
         "//internal/platform:util",
         "//proto:connections_enums_cc_proto",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -98,9 +99,8 @@ cc_test(
         ":core",
         ":core_types",
         "//connections/implementation:internal_test",
-        "//internal:device",
+        "//connections/v3:v3_types",
         "//internal/platform:base",
-        "//internal/platform:logging",
         "//internal/platform:types",
         "//internal/platform/implementation/g3",  # build_cleaner: keep
         "@com_github_protobuf_matchers//protobuf-matchers",

@@ -1,5 +1,5 @@
 // Copyright (C) 2018 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QCborStreamWriter>
@@ -29,7 +29,7 @@ private Q_SLOTS:
 
 // Get the data from TinyCBOR (see src/3rdparty/tinycbor/tests/encoder/data.cpp)
 typedef quint64 CborTag;
-#include "data.cpp"
+#include "encoder/data.cpp"
 
 void encodeVariant(QCborStreamWriter &writer, const QVariant &v)
 {

@@ -11,6 +11,7 @@
 #include "private/qtools_p.h"
 #include "qbytearraymatcher.h"
 #include "qcontainertools_impl.h"
+#include <QtCore/qbytearraylist.h>
 
 #if QT_CONFIG(icu)
 #include <unicode/ucnv.h>
@@ -207,7 +208,7 @@ static inline const uchar *simdFindNonAscii(const uchar *src, const uchar *end, 
             continue;
 
         uint n = _mm256_movemask_epi8(data);
-        Q_ASSUME(n);
+        Q_ASSERT(n);
 
         // find the next probable ASCII character
         // we don't want to load 32 bytes again in this loop if we know there are non-ASCII
@@ -1575,9 +1576,11 @@ QByteArray QLocal8Bit::convertFromUnicode_sys(QStringView in, quint32 codePage,
                     // incomplete sequence, probably a Windows bug. We try to avoid that from
                     // happening by reducing the window size in that case. But let's keep this
                     // branch just in case of other bugs.
+#ifndef QT_NO_DEBUG
                     r = GetLastError();
                     fprintf(stderr,
                             "WideCharToMultiByte: Cannot convert multibyte text (error %d)\n", r);
+#endif // !QT_NO_DEBUG
                     break;
                 }
                 std::tie(out, outlen) = growOut(neededLength);
@@ -1771,7 +1774,7 @@ static qsizetype toLatin1Len(qsizetype l) { return l + 1; }
     operation, encoding UTF-16 encoded data (usually in the form of a QString) to
     the requested encoding.
 
-    The supported encodings are:
+    The following encodings are always supported:
 
     \list
     \li UTF-8
@@ -1784,6 +1787,10 @@ static qsizetype toLatin1Len(qsizetype l) { return l + 1; }
     \li ISO-8859-1 (Latin-1)
     \li The system encoding
     \endlist
+
+    QStringConverter may support more encodings depending on how Qt was
+    compiled. If more codecs are supported, they can be listed using
+    availableCodecs().
 
     \l {QStringConverter}s can be used as follows to convert some encoded
     string to and from UTF-16.
@@ -1951,7 +1958,7 @@ struct QStringConverterICU : QStringConverter
         const void *context;
         ucnv_getToUCallBack(icu_conv, &action, &context);
         if (context != state)
-             ucnv_setToUCallBack(icu_conv, action, &state, nullptr, nullptr, &err);
+             ucnv_setToUCallBack(icu_conv, action, state, nullptr, nullptr, &err);
 
         ucnv_toUnicode(icu_conv, &target, targetLimit, &source, sourceLimit, nullptr, flush, &err);
         // We did reserve enough space:
@@ -1984,7 +1991,7 @@ struct QStringConverterICU : QStringConverter
         const void *context;
         ucnv_getFromUCallBack(icu_conv, &action, &context);
         if (context != state)
-             ucnv_setFromUCallBack(icu_conv, action, &state, nullptr, nullptr, &err);
+             ucnv_setFromUCallBack(icu_conv, action, state, nullptr, nullptr, &err);
 
         ucnv_fromUnicode(icu_conv, &target, targetLimit, &source, sourceLimit, nullptr, flush, &err);
         // We did reserve enough space:
@@ -2199,6 +2206,7 @@ const char *QStringConverter::name() const noexcept
 
     Returns the canonical name of the encoding this QStringConverter can encode or decode.
     Returns a nullptr if the converter is not valid.
+    The returned name is UTF-8 encoded.
 
     \sa isValid()
 */
@@ -2210,6 +2218,8 @@ const char *QStringConverter::name() const noexcept
     \c{std::nullopt} is returned. Such a name may, none the less, be accepted by
     the QStringConverter constructor when Qt is built with ICU, if ICU provides a
     converter with the given name.
+
+    \a name is expected to be UTF-8 encoded.
 */
 std::optional<QStringConverter::Encoding> QStringConverter::encodingForName(const char *name) noexcept
 {
@@ -2219,7 +2229,7 @@ std::optional<QStringConverter::Encoding> QStringConverter::encodingForName(cons
         if (nameMatch(encodingInterfaces[i].name, name))
             return QStringConverter::Encoding(i);
     }
-    if (nameMatch(name, "latin1"))
+    if (nameMatch("latin1", name))
         return QStringConverter::Latin1;
     return std::nullopt;
 }
@@ -2331,6 +2341,64 @@ std::optional<QStringConverter::Encoding> QStringConverter::encodingForHtml(QByt
 
     return Utf8;
 }
+
+static qsizetype availableCodecCount()
+{
+#if !QT_CONFIG(icu)
+    return QStringConverter::Encoding::LastEncoding;
+#else
+    /* icu contains also the names of what Qt provides
+       except for the special Locale one (so add one for it)
+    */
+    return 1 + ucnv_countAvailable();
+#endif
+}
+
+/*!
+    Returns a list of names of supported codecs. The names returned
+    by this function can be passed to QStringEncoder's and
+    QStringDecoder's constructor to create a en- or decoder for
+    the given codec.
+
+    This function may be used to obtain a listing of additional codecs beyond
+    the standard ones. Support for additional codecs requires Qt be compiled
+    with support for the ICU library.
+
+    \note The order of codecs is an internal implementation detail
+    and not guaranteed to be stable.
+ */
+QStringList QStringConverter::availableCodecs()
+{
+    auto availableCodec = [](qsizetype index) -> QString
+    {
+    #if !QT_CONFIG(icu)
+        return QString::fromLatin1(encodingInterfaces[index].name);
+    #else
+        if (index == 0) // "Locale", not provided by icu
+            return QString::fromLatin1(
+                        encodingInterfaces[QStringConverter::Encoding::System].name);
+        // this mirrors the setup we do to set a converters name
+        UErrorCode status = U_ZERO_ERROR;
+        auto icuName = ucnv_getAvailableName(int32_t(index - 1));
+        const char *standardName = ucnv_getStandardName(icuName, "MIME", &status);
+        if (U_FAILURE(status) || !standardName) {
+            status = U_ZERO_ERROR;
+            standardName = ucnv_getStandardName(icuName, "IANA", &status);
+        }
+        if (!standardName)
+            standardName = icuName;
+        return QString::fromLatin1(standardName);
+    #endif
+    };
+
+    qsizetype codecCount = availableCodecCount();
+    QStringList result;
+    result.reserve(codecCount);
+    for (qsizetype i = 0; i < codecCount; ++i)
+        result.push_back(availableCodec(i));
+    return result;
+}
+
 
 /*!
     Tries to determine the encoding of the HTML in \a data by looking at leading byte

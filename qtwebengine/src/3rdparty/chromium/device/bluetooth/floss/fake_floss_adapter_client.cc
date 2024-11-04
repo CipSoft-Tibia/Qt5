@@ -17,7 +17,8 @@ const int kDelayedTaskMs = 100;
 
 }  // namespace
 
-FakeFlossAdapterClient::FakeFlossAdapterClient() = default;
+FakeFlossAdapterClient::FakeFlossAdapterClient()
+    : is_address1_connected_(false) {}
 
 FakeFlossAdapterClient::~FakeFlossAdapterClient() = default;
 
@@ -30,16 +31,29 @@ const char FakeFlossAdapterClient::kKeyboardAddress[] = "aa:aa:aa:aa:aa:aa";
 const char FakeFlossAdapterClient::kPhoneAddress[] = "bb:bb:bb:bb:bb:bb";
 const char FakeFlossAdapterClient::kOldDeviceAddress[] = "cc:cc:cc:cc:cc:cc";
 const char FakeFlossAdapterClient::kClassicAddress[] = "dd:dd:dd:dd:dd:dd";
+const char FakeFlossAdapterClient::kPinCodeDisplayAddress[] =
+    "ee:ee:ee:ee:ee:ee";
+const char FakeFlossAdapterClient::kPinCodeRequestAddress[] =
+    "ff:ff:ff:ff:ff:ff";
 const char FakeFlossAdapterClient::kClassicName[] = "Classic Device";
 const uint32_t FakeFlossAdapterClient::kPasskey = 123456;
+const char FakeFlossAdapterClient::kPinCode[] = "012345";
 const uint32_t FakeFlossAdapterClient::kHeadsetClassOfDevice = 2360344;
+const uint32_t FakeFlossAdapterClient::kKeyboardClassofDevice = 1344;
 
 void FakeFlossAdapterClient::Init(dbus::Bus* bus,
                                   const std::string& service_name,
-                                  const int adapter_index) {
+                                  const int adapter_index,
+                                  base::OnceClosure on_ready) {
   bus_ = bus;
   adapter_path_ = GenerateAdapterPath(adapter_index);
   service_name_ = service_name;
+  std::move(on_ready).Run();
+}
+
+void FakeFlossAdapterClient::SetName(ResponseCallback<Void> callback,
+                                     const std::string& name) {
+  PostDelayedTask(base::BindOnce(std::move(callback), Void{}));
 }
 
 void FakeFlossAdapterClient::StartDiscovery(ResponseCallback<Void> callback) {
@@ -59,6 +73,9 @@ void FakeFlossAdapterClient::StartDiscovery(ResponseCallback<Void> callback) {
     observer.AdapterFoundDevice(FlossDeviceId({kKeyboardAddress, ""}));
     observer.AdapterFoundDevice(FlossDeviceId({kPhoneAddress, ""}));
     observer.AdapterFoundDevice(FlossDeviceId({kOldDeviceAddress, ""}));
+    observer.AdapterFoundDevice(FlossDeviceId({kPinCodeDisplayAddress, ""}));
+    observer.AdapterFoundDevice(
+        FlossDeviceId({kPinCodeRequestAddress, ""}));
     // Simulate a device which sends its name later
     observer.AdapterFoundDevice(FlossDeviceId({kClassicAddress, ""}));
     observer.AdapterFoundDevice(FlossDeviceId({kClassicAddress, kClassicName}));
@@ -76,6 +93,11 @@ void FakeFlossAdapterClient::CreateBond(ResponseCallback<bool> callback,
                                         FlossDeviceId device,
                                         BluetoothTransport transport) {
   // TODO(b/202874707): Simulate pairing failures.
+  for (auto& observer : observers_) {
+    observer.DeviceBondStateChanged(
+        device, /*status=*/0,
+        FlossAdapterClient::BondState::kBondingInProgress);
+  }
 
   if (device.address == kJustWorksAddress) {
     for (auto& observer : observers_) {
@@ -107,6 +129,18 @@ void FakeFlossAdapterClient::CreateBond(ResponseCallback<bool> callback,
     }
 
     PostDelayedTask(base::BindOnce(std::move(callback), true));
+  } else if (device.address == kPinCodeDisplayAddress) {
+    for (auto& observer : observers_) {
+      observer.AdapterPinDisplay(device, std::string(kPinCode));
+    }
+
+    PostDelayedTask(base::BindOnce(std::move(callback), true));
+  } else if (device.address == kPinCodeRequestAddress) {
+    for (auto& observer : observers_) {
+      observer.AdapterPinRequest(device, 0, false);
+    }
+
+    PostDelayedTask(base::BindOnce(std::move(callback), true));
   } else {
     PostDelayedTask(base::BindOnce(
         std::move(callback),
@@ -134,8 +168,12 @@ void FakeFlossAdapterClient::GetRemoteType(
 
 void FakeFlossAdapterClient::GetRemoteClass(ResponseCallback<uint32_t> callback,
                                             FlossDeviceId device) {
+  uint32_t cod = kHeadsetClassOfDevice;
+  if (device.address == kKeyboardAddress) {
+    cod = kKeyboardClassofDevice;
+  }
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-      FROM_HERE, base::BindOnce(std::move(callback), kHeadsetClassOfDevice));
+      FROM_HERE, base::BindOnce(std::move(callback), cod));
 }
 
 void FakeFlossAdapterClient::GetRemoteAppearance(
@@ -153,7 +191,7 @@ void FakeFlossAdapterClient::GetConnectionState(
 
   // One of the bonded devices is already connected at the beginning.
   // The Paired devices will also have paired states at the beginning.
-  if (device.address == kBondedAddress1) {
+  if (device.address == kBondedAddress1 && is_address1_connected_) {
     conn_state = FlossAdapterClient::ConnectionState::kConnectedOnly;
   } else if (device.address == kPairedAddressBrEdr) {
     conn_state = FlossAdapterClient::ConnectionState::kPairedBREDROnly;
@@ -171,6 +209,13 @@ void FakeFlossAdapterClient::GetRemoteUuids(
     FlossDeviceId device) {
   device::BluetoothDevice::UUIDList uuid_list;
   PostDelayedTask(base::BindOnce(std::move(callback), std::move(uuid_list)));
+}
+
+void FakeFlossAdapterClient::GetRemoteVendorProductInfo(
+    ResponseCallback<FlossAdapterClient::VendorProductInfo> callback,
+    FlossDeviceId device) {
+  FlossAdapterClient::VendorProductInfo info;
+  PostDelayedTask(base::BindOnce(std::move(callback), std::move(info)));
 }
 
 void FakeFlossAdapterClient::GetBondState(ResponseCallback<uint32_t> callback,
@@ -199,6 +244,21 @@ void FakeFlossAdapterClient::DisconnectAllEnabledProfiles(
 void FakeFlossAdapterClient::PostDelayedTask(base::OnceClosure callback) {
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
       FROM_HERE, std::move(callback), base::Milliseconds(kDelayedTaskMs));
+}
+
+void FakeFlossAdapterClient::SetAddress1Connected(bool connected) {
+  if (is_address1_connected_ == connected) {
+    return;
+  }
+  is_address1_connected_ = connected;
+  const auto device = FlossDeviceId({.address = kBondedAddress1, .name = ""});
+  for (auto& observer : observers_) {
+    if (connected) {
+      observer.AdapterDeviceConnected(device);
+    } else {
+      observer.AdapterDeviceDisconnected(device);
+    }
+  }
 }
 
 void FakeFlossAdapterClient::NotifyObservers(

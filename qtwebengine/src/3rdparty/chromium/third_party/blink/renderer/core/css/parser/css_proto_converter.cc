@@ -39,10 +39,12 @@ const std::string Converter::kPseudoLookupTable[] = {
     "",  // This is just to fill the zeroth spot. It should not be used.
     "-internal-autofill-previewed",
     "-internal-autofill-selected",
+    "-internal-dialog-in-top-layer",
     "-internal-is-html",
     "-internal-list-box",
     "-internal-media-controls-overlay-cast-button",
     "-internal-multi-select-focus",
+    "-internal-popover-in-top-layer",
     "-internal-shadow-host-has-appearance",
     "-internal-spatial-navigation-focus",
     "-internal-video-persistent",
@@ -106,6 +108,7 @@ const std::string Converter::kPseudoLookupTable[] = {
     "past",
     "placeholder",
     "placeholder-shown",
+    "popover-open",
     "read-only",
     "read-write",
     "required",
@@ -116,6 +119,8 @@ const std::string Converter::kPseudoLookupTable[] = {
     "single-button",
     "start",
     "target",
+    "user-invalid",
+    "user-valid",
     "valid",
     "vertical",
     "visited",
@@ -932,6 +937,8 @@ void Converter::Reset() {
 template <size_t EnumSize, size_t TableSize>
 void Converter::AppendTableValue(int id,
                                  const std::string (&lookup_table)[TableSize]) {
+  // If you hit this assert, you likely need to modify
+  // css/parser/templates/css.proto.tmpl.
   static_assert(EnumSize == TableSize,
                 "Enum used as index should not overflow lookup table");
   CHECK(id > 0 && static_cast<size_t>(id) < TableSize);

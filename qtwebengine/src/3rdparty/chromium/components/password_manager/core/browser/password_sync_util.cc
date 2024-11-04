@@ -7,11 +7,12 @@
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "components/password_manager/core/browser/password_form.h"
+#include "components/password_manager/core/browser/password_manager_features_util.h"
 #include "components/password_manager/core/common/password_manager_features.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/sync/base/user_selectable_type.h"
-#include "components/sync/driver/sync_user_settings.h"
+#include "components/sync/service/sync_user_settings.h"
 #include "google_apis/gaia/gaia_auth_util.h"
 #include "google_apis/gaia/gaia_urls.h"
 #include "url/origin.h"
@@ -64,14 +65,14 @@ bool IsSyncAccountCredential(const GURL& url,
 }
 
 bool IsSyncAccountEmail(const std::string& username,
-                        const signin::IdentityManager* identity_manager) {
+                        const signin::IdentityManager* identity_manager,
+                        signin::ConsentLevel consent_level) {
   // |identity_manager| can be null if user is not signed in.
   if (!identity_manager)
     return false;
 
   std::string sync_email =
-      identity_manager->GetPrimaryAccountInfo(signin::ConsentLevel::kSync)
-          .email;
+      identity_manager->GetPrimaryAccountInfo(consent_level).email;
 
   if (sync_email.empty() || username.empty())
     return false;
@@ -116,6 +117,19 @@ absl::optional<std::string> GetSyncingAccount(
   if (!sync_service || !IsPasswordSyncEnabled(sync_service))
     return absl::nullopt;
   return sync_service->GetAccountInfo().email;
+}
+
+absl::optional<std::string> GetAccountForSaving(
+    const PrefService* pref_service,
+    const syncer::SyncService* sync_service) {
+  if (!sync_service) {
+    return absl::nullopt;
+  }
+  if (IsPasswordSyncEnabled(sync_service) ||
+      features_util::IsOptedInForAccountStorage(pref_service, sync_service)) {
+    return sync_service->GetAccountInfo().email;
+  }
+  return absl::nullopt;
 }
 
 }  // namespace sync_util

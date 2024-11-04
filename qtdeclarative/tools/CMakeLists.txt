@@ -8,11 +8,12 @@ if(QT_FEATURE_commandlineparser)
     add_subdirectory(qmllint)
     add_subdirectory(qmltc)
     add_subdirectory(qmltyperegistrar)
+    add_subdirectory(qmljsrootgen)
 endif()
 add_subdirectory(qmlimportscanner)
 add_subdirectory(qmlformat)
-if (TARGET Qt::LanguageServerPrivate AND QT_FEATURE_commandlineparser
-        AND NOT WASM AND NOT IOS AND NOT ANDROID AND NOT QNX AND NOT INTEGRITY AND NOT WEBOS)
+if (TARGET Qt::LanguageServerPrivate AND QT_FEATURE_commandlineparser AND QT_FEATURE_filesystemwatcher
+        AND NOT WASM AND NOT IOS AND NOT ANDROID AND NOT QNX AND NOT INTEGRITY AND NOT WEBOS AND NOT VXWORKS)
     add_subdirectory(qmlls)
 endif()
 if(QT_FEATURE_xmlstreamwriter)
@@ -68,12 +69,17 @@ if(TARGET Qt::Quick
         AND NOT rtems)
     add_subdirectory(qmleasing)
 endif()
+if(TARGET Qt::Quick
+        AND TARGET Qt::Svg
+        AND NOT ANDROID
+        AND NOT IOS
+        AND NOT WASM
+        AND NOT rtems)
+    add_subdirectory(svgtoqml)
+endif()
 if(QT_FEATURE_thread AND TARGET Qt::QuickTest AND NOT ANDROID AND NOT WASM AND NOT rtems)
     add_subdirectory(qmltestrunner)
 endif()
 if(QT_FEATURE_private_tests AND QT_FEATURE_thread AND NOT ANDROID AND NOT WASM AND NOT IOS AND NOT rtems)
     add_subdirectory(qmljs)
-endif()
-if (QT_FEATURE_private_tests AND NOT CMAKE_CROSSCOMPILING)
-    add_subdirectory(qmljsrootgen)
 endif()

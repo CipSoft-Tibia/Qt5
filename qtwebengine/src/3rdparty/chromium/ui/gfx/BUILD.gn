@@ -7,8 +7,13 @@ import("//build/config/jumbo.gni")
 import("//build/config/ozone.gni")
 import("//build/config/ui.gni")
 import("//device/vr/buildflags/buildflags.gni")
+import("//gpu/vulkan/features.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
 import("//testing/test.gni")
+
+if (is_ios) {
+  import("//build/config/ios/bundle_data_from_filelist.gni")
+}
 
 if (is_android) {
   import("//build/config/android/config.gni")
@@ -109,12 +114,11 @@ jumbo_component("gfx") {
     "image/image_util.h",
     "interpolated_transform.cc",
     "interpolated_transform.h",
-    "nine_image_painter.cc",
-    "nine_image_painter.h",
     "overlay_plane_data.cc",
     "overlay_plane_data.h",
     "overlay_transform_utils.cc",
     "overlay_transform_utils.h",
+    "platform_font.cc",
     "platform_font.h",
     "scrollbar_size.cc",
     "scrollbar_size.h",
@@ -173,7 +177,6 @@ jumbo_component("gfx") {
       "decorated_text_mac.h",
       "decorated_text_mac.mm",
       "font_fallback_mac.mm",
-      "font_render_params_mac.cc",
       "image/image_mac.mm",
       "image/image_skia_util_mac.h",
       "image/image_skia_util_mac.mm",
@@ -202,6 +205,8 @@ jumbo_component("gfx") {
       "system_fonts_win.h",
       "win/crash_id_helper.cc",
       "win/crash_id_helper.h",
+      "win/d3d_shared_fence.cc",
+      "win/d3d_shared_fence.h",
       "win/direct_write.cc",
       "win/direct_write.h",
       "win/hwnd_util.cc",
@@ -224,6 +229,9 @@ jumbo_component("gfx") {
       "win/window_impl.h",
     ]
   }
+  if (is_apple) {
+    sources += [ "font_render_params_mac.cc" ]
+  }
   if (is_ios) {
     sources += [
       "image/image_ios.mm",
@@ -238,9 +246,7 @@ jumbo_component("gfx") {
       "scoped_ui_graphics_push_context_ios.mm",
       "text_utils_ios.mm",
     ]
-    if (use_blink) {
-      sources += [ "font_render_params_mac.cc" ]
-    } else {
+    if (!use_blink) {
       sources += [
         "image/image_skia_rep_ios.cc",
         "image/image_skia_rep_ios.h",
@@ -286,7 +292,7 @@ jumbo_component("gfx") {
     ":gfx_skia",
     ":gfx_switches",
     ":memory_buffer_sources",
-    ":native_widget_types",
+    ":native_widget_types_sources",
     ":resize_image_dimensions",
     ":selection_bound_sources",
     "//base",
@@ -311,6 +317,7 @@ jumbo_component("gfx") {
     "//mojo/public/cpp/bindings:struct_traits",
     "//skia",
     "//third_party/zlib",
+    "//ui/base:ui_data_pack",
   ]
 
   if (!is_apple) {
@@ -404,6 +411,7 @@ jumbo_component("gfx") {
 
   if (is_apple) {
     frameworks = [ "IOSurface.framework" ]
+    deps += [ "//ui/base:features" ]
   }
   if (is_mac) {
     frameworks += [
@@ -414,8 +422,8 @@ jumbo_component("gfx") {
     ]
   }
 
-  if ((!use_aura && !toolkit_views) || is_ios) {
-    sources -= [
+  if (use_aura || toolkit_views) {
+    sources += [
       "nine_image_painter.cc",
       "nine_image_painter.h",
     ]
@@ -489,7 +497,19 @@ source_set("resize_image_dimensions") {
 }
 
 # Depend on this to use native_widget_types.h without pulling in all of gfx.
-source_set("native_widget_types") {
+# The structure here allows native_widget_types to be part of the gfx component
+# in the component build, but be a separate source set in a static build.
+group("native_widget_types") {
+  if (is_component_build) {
+    public_deps = [ ":gfx" ]
+  } else {
+    public_deps = [ ":native_widget_types_sources" ]
+  }
+}
+
+source_set("native_widget_types_sources") {
+  visibility = [ ":*" ]  # Depend on through ":native_widget_types".
+
   public = [ "native_widget_types.h" ]
 
   public_deps = [
@@ -498,6 +518,13 @@ source_set("native_widget_types") {
   ]
 
   deps = [ "//build:chromeos_buildflags" ]
+
+  defines = [ "GFX_IMPLEMENTATION" ]
+
+  if (is_mac) {
+    sources = [ "native_widget_types_mac.mm" ]
+    frameworks = [ "AppKit.framework" ]
+  }
 }
 
 group("selection_bound") {
@@ -511,7 +538,7 @@ group("selection_bound") {
 # Depend on this to use selection_bound.h without pulling in all of gfx.
 # Cannot be a static_library in component builds due to exported functions
 source_set("selection_bound_sources") {
-  visibility = [ ":*" ]
+  visibility = [ ":*" ]  # Depend on through ":selection_bound".
 
   sources = [
     "gfx_export.h",
@@ -568,11 +595,14 @@ jumbo_source_set("memory_buffer_sources") {
     "gpu_fence.h",
     "gpu_fence_handle.cc",
     "gpu_fence_handle.h",
-    "native_pixmap.h",
     "overlay_priority_hint.h",
     "overlay_transform.h",
     "surface_origin.h",
   ]
+
+  if (!is_nacl) {
+    sources += [ "native_pixmap.h" ]
+  }
 
   if (use_blink) {
     sources += [
@@ -591,12 +621,16 @@ jumbo_source_set("memory_buffer_sources") {
 
   deps = [
     ":gfx_switches",
-    ":native_widget_types",
     "//base",
     "//build:chromecast_buildflags",
     "//build:chromeos_buildflags",
+    "//gpu/vulkan:buildflags",
     "//ui/gfx/geometry",
   ]
+
+  if (!is_nacl) {
+    deps += [ ":native_widget_types_sources" ]
+  }
 
   if (is_linux || is_chromeos) {
     sources += [
@@ -604,6 +638,7 @@ jumbo_source_set("memory_buffer_sources") {
       "linux/client_native_pixmap_dmabuf.h",
       "linux/client_native_pixmap_factory_dmabuf.cc",
       "linux/client_native_pixmap_factory_dmabuf.h",
+      "linux/dmabuf_uapi.h",
       "linux/native_pixmap_dmabuf.cc",
       "linux/native_pixmap_dmabuf.h",
     ]
@@ -633,6 +668,11 @@ jumbo_source_set("memory_buffer_sources") {
       "native_pixmap_handle.cc",
       "native_pixmap_handle.h",
     ]
+  }
+
+  if (enable_vulkan) {
+    public_deps +=
+        [ "//third_party/vulkan-deps/vulkan-headers/src:vulkan_headers" ]
   }
 }
 
@@ -687,6 +727,7 @@ jumbo_static_library("test_support") {
     "//base/test:test_support",
     "//skia",
     "//testing/gtest",
+    "//ui/base:ui_data_pack",
     "//ui/gfx/animation",
     "//ui/gfx/animation/keyframe",
     "//ui/gfx/geometry",
@@ -709,6 +750,7 @@ test("gfx_unittests") {
     "geometry/linear_gradient_unittest.cc",
     "geometry/mask_filter_info_unittest.cc",
     "geometry/rrect_f_unittest.cc",
+    "geometry/sin_cos_degrees_unittest.cc",
     "geometry/transform_operations_unittest.cc",
     "geometry/transform_unittest.cc",
     "image/buffer_w_stream_unittest.cc",
@@ -757,7 +799,7 @@ test("gfx_unittests") {
 
   data = [ "test/data/" ]
 
-  if (!is_ios) {
+  if (use_blink) {
     sources += [
       "animation/animation_container_unittest.cc",
       "animation/animation_runner_unittest.cc",
@@ -765,6 +807,7 @@ test("gfx_unittests") {
       "animation/multi_animation_unittest.cc",
       "animation/slide_animation_unittest.cc",
       "animation/tween_unittest.cc",
+      "bidi_line_iterator_unittest.cc",
       "blit_unittest.cc",
       "break_list_unittest.cc",
       "canvas_unittest.cc",
@@ -807,13 +850,14 @@ test("gfx_unittests") {
       "image/image_skia_operations_unittest.cc",
       "image/image_util_unittest.cc",
       "mojom/mojom_traits_unittest.cc",
-      "nine_image_painter_unittest.cc",
       "overlay_transform_utils_unittest.cc",
       "paint_vector_icon_unittest.cc",
       "range/range_unittest.cc",
+      "render_text_unittest.cc",
       "selection_bound_unittest.cc",
       "selection_model_unittest.cc",
       "sequential_id_generator_unittest.cc",
+      "shadow_util_unittest.cc",
       "shadow_value_unittest.cc",
       "skbitmap_operations_unittest.cc",
       "skia_util_unittest.cc",
@@ -849,10 +893,6 @@ test("gfx_unittests") {
   ]
 
   if (use_blink) {
-    sources += [
-      "bidi_line_iterator_unittest.cc",
-      "render_text_unittest.cc",
-    ]
     deps += [ "//third_party:freetype_harfbuzz" ]
   }
 
@@ -870,8 +910,8 @@ test("gfx_unittests") {
     sources += [ "font_fallback_skia_unittest.cc" ]
   }
 
-  if (!use_aura && !is_ios) {
-    sources -= [ "nine_image_painter_unittest.cc" ]
+  if (use_aura || toolkit_views) {
+    sources += [ "nine_image_painter_unittest.cc" ]
   }
 
   if (is_win) {
@@ -980,4 +1020,11 @@ fuzzer_test("render_text_api_fuzzer") {
   ]
 
   dict = "test/data/render_text/unicode_text_fuzzer.dict"
+}
+
+if (is_ios) {
+  bundle_data_from_filelist("unit_tests_bundle_data") {
+    testonly = true
+    filelist_name = "test/data/unit_tests_bundle_data.filelist"
+  }
 }

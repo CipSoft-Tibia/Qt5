@@ -60,12 +60,20 @@ std::u16string AXPlatformNodeDelegate::GetTextContentUTF16() const {
   if (!value.empty())
     return value;
 
+  // The name of a leaf node in Views is displayed inside the View, i.e.
+  // `GetNameFrom` == `ax::mojom::NameFrom::kContents`, except in text fields,
+  // where the name attribute is the field's label and the value attribute is
+  // the field's text contents. For maximum compatibility with the Web code, we
+  // compute the text of a non-leaf text field from the text contents of its
+  // children, even though we currently know of no such text field in Views.
+  //
   // TODO(https://crbug.com/1030703): The check for `IsInvisibleOrIgnored()`
   // should not be needed. `ChildAtIndex()` and `GetChildCount()` are already
   // supposed to skip over nodes that are invisible or ignored, but
   // `ViewAXPlatformNodeDelegate` does not currently implement this behavior.
-  if (IsLeaf() && !IsInvisibleOrIgnored())
+  if (IsLeaf() && !GetData().IsTextField() && !IsInvisibleOrIgnored()) {
     return GetString16Attribute(ax::mojom::StringAttribute::kName);
+  }
 
   std::u16string text_content;
   for (size_t i = 0; i < GetChildCount(); ++i) {
@@ -138,7 +146,7 @@ gfx::NativeViewAccessible AXPlatformNodeDelegate::GetParent() const {
   return nullptr;
 }
 
-absl::optional<size_t> AXPlatformNodeDelegate::GetIndexInParent() {
+absl::optional<size_t> AXPlatformNodeDelegate::GetIndexInParent() const {
   if (node_)
     return node_->GetUnignoredIndexInParent();
 
@@ -159,7 +167,8 @@ size_t AXPlatformNodeDelegate::GetChildCount() const {
   return 0u;
 }
 
-gfx::NativeViewAccessible AXPlatformNodeDelegate::ChildAtIndex(size_t index) {
+gfx::NativeViewAccessible AXPlatformNodeDelegate::ChildAtIndex(
+    size_t index) const {
   return nullptr;
 }
 
@@ -167,20 +176,20 @@ bool AXPlatformNodeDelegate::HasModalDialog() const {
   return false;
 }
 
-gfx::NativeViewAccessible AXPlatformNodeDelegate::GetFirstChild() {
+gfx::NativeViewAccessible AXPlatformNodeDelegate::GetFirstChild() const {
   if (GetChildCount() > 0)
     return ChildAtIndex(0);
   return nullptr;
 }
 
-gfx::NativeViewAccessible AXPlatformNodeDelegate::GetLastChild() {
+gfx::NativeViewAccessible AXPlatformNodeDelegate::GetLastChild() const {
   size_t child_count = GetChildCount();
   if (child_count > 0)
     return ChildAtIndex(child_count - 1);
   return nullptr;
 }
 
-gfx::NativeViewAccessible AXPlatformNodeDelegate::GetNextSibling() {
+gfx::NativeViewAccessible AXPlatformNodeDelegate::GetNextSibling() const {
   AXPlatformNodeDelegate* parent = GetParentDelegate();
   if (!parent)
     return nullptr;
@@ -193,7 +202,7 @@ gfx::NativeViewAccessible AXPlatformNodeDelegate::GetNextSibling() {
   return nullptr;
 }
 
-gfx::NativeViewAccessible AXPlatformNodeDelegate::GetPreviousSibling() {
+gfx::NativeViewAccessible AXPlatformNodeDelegate::GetPreviousSibling() const {
   AXPlatformNodeDelegate* parent = GetParentDelegate();
   if (!parent)
     return nullptr;
@@ -347,11 +356,11 @@ gfx::NativeViewAccessible AXPlatformNodeDelegate::GetTableAncestor() const {
   return nullptr;
 }
 
-std::unique_ptr<ChildIterator> AXPlatformNodeDelegate::ChildrenBegin() {
+std::unique_ptr<ChildIterator> AXPlatformNodeDelegate::ChildrenBegin() const {
   return std::make_unique<ChildIteratorBase>(this, 0);
 }
 
-std::unique_ptr<ChildIterator> AXPlatformNodeDelegate::ChildrenEnd() {
+std::unique_ptr<ChildIterator> AXPlatformNodeDelegate::ChildrenEnd() const {
   return std::make_unique<ChildIteratorBase>(this, GetChildCount());
 }
 
@@ -376,10 +385,10 @@ AXPlatformNodeDelegate::GetHypertextOffsetToHyperlinkChildIndex() const {
   if (node_)
     return node_->GetHypertextOffsetToHyperlinkChildIndex();
 
-  // TODO(nektar): Remove this dummy method once hypertext computation and
+  // TODO(nektar): Remove this method once hypertext computation and
   // selection handling has moved entirely to AXNode / AXPosition.
-  static base::NoDestructor<std::map<int, int>> dummy_map;
-  return *dummy_map;
+  static base::NoDestructor<std::map<int, int>> empty_map;
+  return *empty_map;
 }
 
 bool AXPlatformNodeDelegate::SetHypertextSelection(int start_offset,
@@ -478,18 +487,12 @@ AXPlatformNode* AXPlatformNodeDelegate::GetTargetNodeForRelation(
   if (!GetIntAttribute(attr, &target_id))
     return nullptr;
 
-  return GetFromNodeID(target_id);
-}
-
-std::set<AXPlatformNode*> AXPlatformNodeDelegate::GetNodesForNodeIds(
-    const std::set<int32_t>& ids) {
-  std::set<AXPlatformNode*> nodes;
-  for (int32_t node_id : ids) {
-    if (AXPlatformNode* node = GetFromNodeID(node_id)) {
-      nodes.insert(node);
-    }
+  AXPlatformNode* node = GetFromNodeID(target_id);
+  if (!IsValidRelationTarget(node)) {
+    return nullptr;
   }
-  return nodes;
+
+  return node;
 }
 
 std::vector<AXPlatformNode*> AXPlatformNodeDelegate::GetTargetNodesForRelation(
@@ -505,29 +508,54 @@ std::vector<AXPlatformNode*> AXPlatformNodeDelegate::GetTargetNodesForRelation(
 
   std::vector<ui::AXPlatformNode*> nodes;
   for (int32_t target_id : target_ids) {
-    if (ui::AXPlatformNode* node = GetFromNodeID(target_id)) {
-      if (!base::Contains(nodes, node))
-        nodes.push_back(node);
+    ui::AXPlatformNode* target = GetFromNodeID(target_id);
+    if (target && IsValidRelationTarget(target) &&
+        !base::Contains(nodes, target)) {
+      nodes.push_back(target);
     }
   }
 
   return nodes;
 }
 
-std::set<AXPlatformNode*> AXPlatformNodeDelegate::GetSourceNodesForReverseRelations(
+std::vector<AXPlatformNode*>
+AXPlatformNodeDelegate::GetSourceNodesForReverseRelations(
     ax::mojom::IntAttribute attr) {
   // TODO(accessibility) Implement these if views ever use relations more
   // widely. The use so far has been for the Omnibox to the suggestion
   // popup. If this is ever implemented, then the "popup for" to "controlled
   // by" mapping in AXPlatformRelationWin can be removed, as it would be
   // redundant with setting the controls relationship.
-  return std::set<AXPlatformNode*>();
+  return std::vector<AXPlatformNode*>();
 }
 
-std::set<AXPlatformNode*>
+std::vector<AXPlatformNode*>
 AXPlatformNodeDelegate::GetSourceNodesForReverseRelations(
     ax::mojom::IntListAttribute attr) {
-  return std::set<AXPlatformNode*>();
+  return std::vector<AXPlatformNode*>();
+}
+
+std::vector<ui::AXPlatformNode*>
+AXPlatformNodeDelegate::GetNodesFromRelationIdSet(
+    const std::set<AXNodeID>& ids) {
+  std::vector<ui::AXPlatformNode*> nodes;
+
+  for (AXNodeID node_id : ids) {
+    ui::AXPlatformNode* node = GetFromNodeID(node_id);
+    if (node && IsValidRelationTarget(node)) {
+      nodes.push_back(node);
+    }
+  }
+  return nodes;
+}
+
+bool AXPlatformNodeDelegate::IsValidRelationTarget(
+    AXPlatformNode* target) const {
+  DCHECK_GT(GetUniqueId(), kInvalidAXUniqueId);
+  DCHECK(target);
+  DCHECK_GT(target->GetUniqueId(), kInvalidAXUniqueId);
+  // We should ignore reflexive relations.
+  return GetUniqueId() != target->GetUniqueId();
 }
 
 std::u16string AXPlatformNodeDelegate::GetAuthorUniqueId() const {
@@ -537,8 +565,8 @@ std::u16string AXPlatformNodeDelegate::GetAuthorUniqueId() const {
 }
 
 const AXUniqueId& AXPlatformNodeDelegate::GetUniqueId() const {
-  static base::NoDestructor<AXUniqueId> dummy_unique_id;
-  return *dummy_unique_id;
+  static base::NoDestructor<AXUniqueId> empty_unique_id;
+  return *empty_unique_id;
 }
 
 AXPlatformNodeDelegate* AXPlatformNodeDelegate::GetParentDelegate() const {
@@ -1160,6 +1188,12 @@ std::u16string AXPlatformNodeDelegate::GetLocalizedStringForRoleDescription()
 std::u16string AXPlatformNodeDelegate::GetStyleNameAttributeAsLocalizedString()
     const {
   return std::u16string();
+}
+
+void AXPlatformNodeDelegate::SetIsPrimaryWebContentsForWindow() {}
+
+bool AXPlatformNodeDelegate::IsPrimaryWebContentsForWindow() const {
+  return false;
 }
 
 bool AXPlatformNodeDelegate::ShouldIgnoreHoveredStateForTesting() {

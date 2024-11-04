@@ -309,6 +309,34 @@ TEST_F(FidoDeviceAuthenticatorTest, TestWriteLargeBlobTooLarge) {
   EXPECT_EQ(read.at(0).large_blob, kSmallBlob1);
 }
 
+// Tests writing a large blob for a credential that does not have a large blob
+// key set.
+TEST_F(FidoDeviceAuthenticatorTest, TestWriteLargeBlobNoLargeBlobKey) {
+  for (auto& registration : virtual_device_->mutable_state()->registrations) {
+    registration.second.large_blob_key = absl::nullopt;
+  }
+  AuthenticatorGetAssertionResponse write = GetAssertionForWrite(kSmallBlob1);
+  EXPECT_FALSE(write.large_blob_written);
+}
+
+// Tests that a CTAP error returned while writing a large blob does not fail the
+// entire assertion.
+TEST_F(FidoDeviceAuthenticatorTest, TestWriteLargeBlobCtapError) {
+  VirtualCtap2Device::Config config;
+  config.pin_support = true;
+  config.large_blob_support = true;
+  config.resident_key_support = true;
+  config.available_large_blob_storage = kLargeBlobStorageSize;
+  config.pin_uv_auth_token_support = true;
+  config.ctap2_versions = {Ctap2Version::kCtap2_1};
+  config.override_response_map[CtapRequestCommand::kAuthenticatorLargeBlobs] =
+      CtapDeviceResponseCode::kCtap1ErrInvalidParameter;
+  SetUpAuthenticator(std::move(config));
+
+  AuthenticatorGetAssertionResponse write = GetAssertionForWrite(kSmallBlob1);
+  EXPECT_FALSE(write.large_blob_written);
+}
+
 // Tests garbage collecting a large blob.
 TEST_F(FidoDeviceAuthenticatorTest, TestGarbageCollectLargeBlob) {
   {

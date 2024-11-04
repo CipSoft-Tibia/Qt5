@@ -9,15 +9,16 @@
 #include "ash/public/cpp/network_config_service.h"
 #include "ash/webui/network_ui/network_health_resource_provider.h"
 #include "ash/webui/network_ui/traffic_counters_resource_provider.h"
+#include "ash/webui/settings/public/constants/routes.mojom.h"
 #include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
 #include "base/strings/stringprintf.h"
 #include "chrome/browser/ui/webui/ash/cellular_setup/cellular_setup_localized_strings_provider.h"
+#include "chrome/browser/ui/webui/ash/settings/search/search_tag_registry.h"
+#include "chrome/browser/ui/webui/extension_control_handler.h"
 #include "chrome/browser/ui/webui/settings/ash/internet_handler.h"
-#include "chrome/browser/ui/webui/settings/ash/search/search_tag_registry.h"
-#include "chrome/browser/ui/webui/settings/chromeos/constants/routes.mojom.h"
 #include "chrome/browser/ui/webui/webui_util.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/url_constants.h"
@@ -31,6 +32,7 @@
 #include "content/public/browser/web_ui_data_source.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/webui/web_ui_util.h"
+#include "ui/chromeos/devicetype_utils.h"
 #include "ui/chromeos/strings/grit/ui_chromeos_strings.h"
 #include "ui/chromeos/strings/network/network_element_localized_strings_provider.h"
 
@@ -49,6 +51,7 @@ using ::chromeos::settings::mojom::kHotspotSubpagePath;
 using ::chromeos::settings::mojom::kKnownNetworksSubpagePath;
 using ::chromeos::settings::mojom::kMobileDataNetworksSubpagePath;
 using ::chromeos::settings::mojom::kNetworkSectionPath;
+using ::chromeos::settings::mojom::kPasspointDetailSubpagePath;
 using ::chromeos::settings::mojom::kTetherDetailsSubpagePath;
 using ::chromeos::settings::mojom::kVpnDetailsSubpagePath;
 using ::chromeos::settings::mojom::kWifiDetailsSubpagePath;
@@ -712,7 +715,18 @@ InternetSection::InternetSection(Profile* profile,
 InternetSection::~InternetSection() = default;
 
 void InternetSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
-  static constexpr webui::LocalizedString kLocalizedStrings[] = {
+  const bool isRevampEnabled =
+      ash::features::IsOsSettingsRevampWayfindingEnabled();
+
+  webui::LocalizedString kLocalizedStrings[] = {
+      {"deviceInfoPopupMenuItemTitle",
+       IDS_SETTINGS_DEVICE_INFO_POPUP_MENU_ITEM_TITLE},
+      {"deviceInfoPopupEidLabel", IDS_SETTINGS_DEVICE_INFO_EID_LABEL},
+      {"deviceInfoPopupImeiLabel", IDS_SETTINGS_DEVICE_INFO_IMEI_LABEL},
+      {"deviceInfoPopupA11yEid", IDS_SETTINGS_DEVICE_INFO_A11Y_LABEL_EID},
+      {"deviceInfoPopupA11yImei", IDS_SETTINGS_DEVICE_INFO_A11Y_LABEL_IMEI},
+      {"deviceInfoPopupA11yEidAndImei",
+       IDS_SETTINGS_DEVICE_INFO_A11Y_LABEL_EID_AND_IMEI},
       {"internetAddCellular", IDS_SETTINGS_INTERNET_ADD_CELLULAR},
       {"internetAddConnection", IDS_SETTINGS_INTERNET_ADD_CONNECTION},
       {"internetAddConnectionExpandA11yLabel",
@@ -738,7 +752,9 @@ void InternetSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_INTERNET_TOGGLE_WIFI_ACCESSIBILITY_LABEL},
       {"knownNetworksAll", IDS_SETTINGS_INTERNET_KNOWN_NETWORKS_ALL},
       {"knownNetworksButton", IDS_SETTINGS_INTERNET_KNOWN_NETWORKS_BUTTON},
-      {"knownNetworksMessage", IDS_SETTINGS_INTERNET_KNOWN_NETWORKS_MESSAGE},
+      {"knownNetworksMessage",
+       isRevampEnabled ? IDS_OS_SETTINGS_REVAMP_INTERNET_KNOWN_NETWORKS_MESSAGE
+                       : IDS_SETTINGS_INTERNET_KNOWN_NETWORKS_MESSAGE},
       {"knownNetworksPreferred",
        IDS_SETTINGS_INTERNET_KNOWN_NETWORKS_PREFFERED},
       {"knownNetworksMenuAddPreferred",
@@ -749,6 +765,10 @@ void InternetSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_INTERNET_KNOWN_NETWORKS_MENU_FORGET},
       {"knownNetworksMenuButtonTitle",
        IDS_SETTINGS_INTERNET_KNOWN_NETWORKS_MENU_BUTTON_TITLE},
+      {"mobileDeviceInfoPopupDescription",
+       IDS_SETTINGS_MOBILE_DEVICE_INFO_POPUP_DESCRIPTION},
+      {"mobileDeviceInfoPopupTitle",
+       IDS_SETTINGS_MOBILE_DEVICE_INFO_POPUP_TITLE},
       {"mobileNetworkScanningLabel", IDS_MOBILE_NETWORK_SCANNING_MESSAGE},
       {"networkAllowDataRoaming",
        IDS_SETTINGS_SETTINGS_NETWORK_ALLOW_DATA_ROAMING},
@@ -791,6 +811,8 @@ void InternetSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
       {"networkMeteredDesc", IDS_SETTINGS_INTERNET_NETWORK_METERED_DESC},
       {"networkNameserversLearnMore", IDS_LEARN_MORE},
       {"networkPrefer", IDS_SETTINGS_INTERNET_NETWORK_PREFER},
+      {"networkPreferDescription",
+       IDS_OS_SETTINGS_REVAMP_INTERNET_NETWORK_PREFER_DESCRIPTION},
       {"networkPrimaryUserControlled",
        IDS_SETTINGS_INTERNET_NETWORK_PRIMARY_USER_CONTROLLED},
       {"networkA11yManagedByAdministrator",
@@ -807,11 +829,27 @@ void InternetSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
       {"networkSectionNetwork", IDS_SETTINGS_INTERNET_NETWORK_SECTION_NETWORK},
       {"networkSectionNetworkExpandA11yLabel",
        IDS_SETTINGS_INTERNET_NETWORK_SECTION_NETWORK_ACCESSIBILITY_LABEL},
+      {"networkSectionPasspointRemovalTitle",
+       IDS_SETTINGS_INTERNET_NETWORK_SECTION_PASSPOINT_REMOVAL_TITLE},
+      {"networkSectionPasspointRemovalDescription",
+       IDS_SETTINGS_INTERNET_NETWORK_SECTION_PASSPOINT_REMOVAL_DESCRIPTION},
+      {"networkSectionPasspointRemovalInformation",
+       IDS_SETTINGS_INTERNET_NETWORK_SECTION_PASSPOINT_REMOVAL_INFORMATION},
+      {"networkSectionPasspointGoToSubscriptionTitle",
+       IDS_SETTINGS_INTERNET_NETWORK_SECTION_PASSPOINT_GO_TO_SUBSCRIPTION_TITLE},
+      {"networkSectionPasspointGoToSubscriptionInformation",
+       IDS_SETTINGS_INTERNET_NETWORK_SECTION_PASSPOINT_GO_TO_SUBSCRIPTION_INFORMATION},
+      {"networkSectionPasspointGoToSubscriptionButtonLabel",
+       IDS_SETTINGS_INTERNET_NETWORK_SECTION_PASSPOINT_GO_TO_SUBSCRIPTION_BUTTON},
+      {"passpointRemoveGoToSubscriptionButtonA11yLabel",
+       IDS_SETTINGS_INTERNET_NETWORK_SECTION_PASSPOINT_GO_TO_SUBSCRIPTION_BUTTON_A11Y_LABEL},
       {"networkSectionProxy", IDS_SETTINGS_INTERNET_NETWORK_SECTION_PROXY},
       {"networkSectionProxyExpandA11yLabel",
        IDS_SETTINGS_INTERNET_NETWORK_SECTION_PROXY_ACCESSIBILITY_LABEL},
       {"networkShared", IDS_SETTINGS_INTERNET_NETWORK_SHARED},
-      {"networkSharedOwner", IDS_SETTINGS_INTERNET_NETWORK_SHARED_OWNER},
+      {"networkSharedOwner",
+       isRevampEnabled ? IDS_OS_SETTINGS_REVAMP_INTERNET_NETWORK_SHARED_OWNER
+                       : IDS_SETTINGS_INTERNET_NETWORK_SHARED_OWNER},
       {"networkSharedNotOwner", IDS_SETTINGS_INTERNET_NETWORK_SHARED_NOT_OWNER},
       {"networkVpnBuiltin", IDS_NETWORK_TYPE_VPN_BUILTIN},
       {"networkOutOfRange", IDS_SETTINGS_INTERNET_WIFI_NETWORK_OUT_OF_RANGE},
@@ -859,7 +897,6 @@ void InternetSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_INTERNET_TETHER_CONNECTION_CONNECT_BUTTON},
       {"tetherEnableBluetooth", IDS_ENABLE_BLUETOOTH},
       {"cellularNetworkEsimLabel", IDS_SETTINGS_INTERNET_ESIM_LABEL},
-      {"eidPopupMenuItemTitle", IDS_CELLULAR_SETUP_EID_MENU_ITEM_TITLE},
       {"cellularNetworkPsimLabel", IDS_SETTINGS_INTERNET_PSIM_LABEL},
       {"pSimNotInsertedLabel", IDS_SETTINGS_INTERNET_PSIM_NOT_INSERTED_LABEL},
       {"eSimNetworkNotSetupWithDownloadLink",
@@ -936,8 +973,12 @@ void InternetSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
       {"hotspotToggleA11yLabel",
        IDS_SETTINGS_INTERNET_HOTSPOT_TOGGLE_A11Y_LABEL},
       {"hotspotSummaryStateOn", IDS_SETTINGS_INTERNET_HOTSPOT_SUMMARY_STATE_ON},
+      {"hotspotSummaryStateTurningOn",
+       IDS_SETTINGS_INTERNET_HOTSPOT_SUMMARY_STATE_TURNING_ON},
       {"hotspotSummaryStateOff",
        IDS_SETTINGS_INTERNET_HOTSPOT_SUMMARY_STATE_OFF},
+      {"hotspotSummaryStateTurningOff",
+       IDS_SETTINGS_INTERNET_HOTSPOT_SUMMARY_STATE_TURNING_OFF},
       {"hotspotEnabledA11yLabel",
        IDS_SETTINGS_INTERNET_HOTSPOT_ENABLED_A11Y_LABEL},
       {"hotspotDisabledA11yLabel",
@@ -951,10 +992,13 @@ void InternetSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_INTERNET_HOTSPOT_AUTO_DISABLED_LABEL},
       {"hotspotAutoDisableSublabel",
        IDS_SETTINGS_INTERNET_HOTSPOT_AUTO_DISABLED_SUBLABEL},
-      {"hotspotSettingsTitle", IDS_SETTINGS_INTERNET_HOTSPOT_SETTINGS_TITLE},
       {"hotspotConfigNameLabel",
        IDS_SETTINGS_INTERNET_HOTSPOT_CONFIG_NAME_LABEL},
       {"hotspotConfigNameInfo", IDS_SETTINGS_INTERNET_HOTSPOT_CONFIG_NAME_INFO},
+      {"hotspotConfigNameEmptyInfo",
+       IDS_SETTINGS_INTERNET_HOTSPOT_CONFIG_NAME_EMPTY_INFO},
+      {"hotspotConfigNameTooLongInfo",
+       IDS_SETTINGS_INTERNET_HOTSPOT_CONFIG_NAME_TOO_LONG_INFO},
       {"hotspotConfigPasswordLabel",
        IDS_SETTINGS_INTERNET_HOTSPOT_CONFIG_PASSWORD_LABEL},
       {"hotspotConfigPasswordInfo",
@@ -979,6 +1023,31 @@ void InternetSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_INTERNET_HOTSPOT_CONFIG_INVALID_CONFIGURATION_ERROR_MESSAGE},
       {"hotspotConfigNotLoginErrorMessage",
        IDS_SETTINGS_INTERNET_HOTSPOT_CONFIG_NOT_LOGIN_ERROR_MESSAGE},
+      {"passpointProviderLabel",
+       IDS_SETTINGS_INTERNET_PASSPOINT_PROVIDER_LABEL},
+      {"passpointRemoveButton",
+       IDS_SETTINGS_INTERNET_PASSPOINT_REMOVE_SUBSCRIPTION},
+      {"passpointSectionLabel", IDS_SETTINGS_INTERNET_PASSPOINT_SECTION_LABEL},
+      {"passpointHeadlineText", IDS_SETTINGS_INTERNET_PASSPOINT_HEADLINE},
+      {"passpointSubscriptionExpirationLabel",
+       IDS_SETTINGS_INTERNET_PASSPOINT_SUBSCRIPTION_EXPIRATION},
+      {"passpointSourceLabel", IDS_SETTINGS_INTERNET_PASSPOINT_SOURCE},
+      {"passpointTrustedCALabel", IDS_SETTINGS_INTERNET_PASSPOINT_TRUSTED_CA},
+      {"passpointSystemCALabel", IDS_SETTINGS_INTERNET_PASSPOINT_SYSTEM_CA},
+      {"passpointAssociatedWifiNetworks",
+       IDS_SETTINGS_INTERNET_PASSPOINT_ASSOCIATED_WIFI_NETWORKS},
+      {"passpointDomainsLabel", IDS_SETTINGS_INTERNET_PASSPOINT_DOMAINS},
+      {"passpointDomainsA11yLabel",
+       IDS_SETTINGS_INTERNET_PASSPOINT_DOMAINS_A11Y_LABEL},
+      {"passpointRemovalTitle", IDS_SETTINGS_INTERNET_PASSPOINT_REMOVAL_TITLE},
+      {"passpointRemovalDescription",
+       IDS_SETTINGS_INTERNET_PASSPOINT_REMOVAL_DESCRIPTION},
+      {"passpointLearnMoreA11yLabel",
+       IDS_SETTINGS_INTERNET_PASSPOINT_LEARN_MORE_A11Y},
+      {"passpointRemoveCancelA11yLabel",
+       IDS_SETTINGS_INTERNET_PASSPOINT_REMOVE_CANCEL_A11Y},
+      {"passpointRemoveConfirmA11yLabel",
+       IDS_SETTINGS_INTERNET_PASSPOINT_REMOVE_CONFIRM_A11Y},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
 
@@ -1004,14 +1073,24 @@ void InternetSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
   html_source->AddBoolean(
       "showHiddenToggle",
       base::FeatureList::IsEnabled(::features::kShowHiddenNetworkToggle));
+  html_source->AddBoolean("isSmdsSupportEnabled",
+                          ash::features::IsSmdsSupportEnabled());
   html_source->AddBoolean("isHotspotEnabled",
                           ash::features::IsHotspotEnabled());
+  html_source->AddBoolean("isPasspointEnabled",
+                          ash::features::IsPasspointARCSupportEnabled());
+  html_source->AddBoolean("isPasspointSettingsEnabled",
+                          ash::features::IsPasspointSettingsEnabled() &&
+                              ash::features::IsPasspointARCSupportEnabled());
 
   html_source->AddString("networkGoogleNameserversLearnMoreUrl",
                          chrome::kGoogleNameserversLearnMoreURL);
 
   html_source->AddString("wifiHiddenNetworkLearnMoreUrl",
                          chrome::kWifiHiddenNetworkURL);
+
+  html_source->AddString("wifiPasspointLearnMoreUrl",
+                         chrome::kWifiPasspointURL);
 
   html_source->AddString(
       "networkNotSynced",
@@ -1044,6 +1123,7 @@ void InternetSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
       "hotspotSubpageSubtitle",
       l10n_util::GetStringFUTF16(
           IDS_SETTINGS_INTERNET_HOTSPOT_SUBTITLE_WITH_LEARN_MORE_LINK,
+          ui::GetChromeOSDeviceName(),
           GetHelpUrlWithBoard(chrome::kInstantTetheringLearnMoreURL)));
   html_source->AddString(
       "hotspotMobileDataNotSupportedSublabelWithLink",
@@ -1056,15 +1136,21 @@ void InternetSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
           IDS_SETTINGS_INTERNET_HOTSPOT_NO_MOBILE_DATA_SUBLABEL_WITH_LEARN_MORE_LINK,
           GetHelpUrlWithBoard(chrome::kInstantTetheringLearnMoreURL)));
   html_source->AddString(
+      "hotspotSettingsTitle",
+      l10n_util::GetStringFUTF16(IDS_SETTINGS_INTERNET_HOTSPOT_SETTINGS_TITLE,
+                                 ui::GetChromeOSDeviceName()));
+  html_source->AddString(
       "hotspotSettingsSubtitle",
       l10n_util::GetStringFUTF16(
           IDS_SETTINGS_INTERNET_HOTSPOT_SETTINGS_SUBTITLE_WITH_LEARN_MORE_LINK,
+          ui::GetChromeOSDeviceName(),
           GetHelpUrlWithBoard(chrome::kInstantTetheringLearnMoreURL)));
   html_source->AddBoolean("isUserLoggedIn", IsUserLoggedIn());
 }
 
 void InternetSection::AddHandlers(content::WebUI* web_ui) {
   web_ui->AddMessageHandler(std::make_unique<InternetHandler>(profile()));
+  web_ui->AddMessageHandler(std::make_unique<ExtensionControlHandler>());
 }
 
 int InternetSection::GetSectionNameMessageId() const {
@@ -1079,7 +1165,7 @@ mojom::SearchResultIcon InternetSection::GetSectionIcon() const {
   return mojom::SearchResultIcon::kWifi;
 }
 
-std::string InternetSection::GetSectionPath() const {
+const char* InternetSection::GetSectionPath() const {
   return mojom::kNetworkSectionPath;
 }
 
@@ -1156,6 +1242,13 @@ void InternetSection::RegisterHierarchy(HierarchyGenerator* generator) const {
   RegisterNestedSettingBulk(mojom::Subpage::kMobileDataNetworks,
                             kMobileDataNetworksSettings, generator);
   generator->RegisterTopLevelAltSetting(mojom::Setting::kMobileOnOff);
+
+  // Passpoint details.
+  generator->RegisterNestedSubpage(
+      IDS_SETTINGS_INTERNET_PASSPOINT_DETAILS,
+      mojom::Subpage::kPasspointDetails, mojom::Subpage::kKnownNetworks,
+      mojom::SearchResultIcon::kWifi, mojom::SearchResultDefaultRank::kMedium,
+      mojom::kPasspointDetailSubpagePath);
 
   // Cellular details. Cellular details are considered a child of the mobile
   // data subpage. However, note that if Instant Tethering is not available,

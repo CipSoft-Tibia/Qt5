@@ -1,28 +1,12 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Debug-UTF8|Win32">
-      <Configuration>Debug-UTF8</Configuration>
-      <Platform>Win32</Platform>
-    </ProjectConfiguration>
-    <ProjectConfiguration Include="Debug-UTF8|x64">
-      <Configuration>Debug-UTF8</Configuration>
-      <Platform>x64</Platform>
-    </ProjectConfiguration>
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
       <Platform>Win32</Platform>
     </ProjectConfiguration>
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
-      <Platform>x64</Platform>
-    </ProjectConfiguration>
-    <ProjectConfiguration Include="Release-UTF8|Win32">
-      <Configuration>Release-UTF8</Configuration>
-      <Platform>Win32</Platform>
-    </ProjectConfiguration>
-    <ProjectConfiguration Include="Release-UTF8|x64">
-      <Configuration>Release-UTF8</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
     <ProjectConfiguration Include="Release|Win32">
@@ -38,71 +22,38 @@
     <ProjectGuid>{5EEE68E7-3CB0-4ADB-AF72-4C0BB01F0B18}</ProjectGuid>
     <RootNamespace>drawhtml</RootNamespace>
     <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-UTF8|Win32'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v120</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug-UTF8|Win32'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v120</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v120</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v120</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-UTF8|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v120</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug-UTF8|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v120</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v120</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>v120</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release-UTF8|Win32'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug-UTF8|Win32'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release-UTF8|x64'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug-UTF8|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
@@ -131,26 +82,6 @@
     <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
-    <IntDir>$(Platform)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug-UTF8|Win32'">
-    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
-    <IntDir>$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug-UTF8|x64'">
-    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
-    <IntDir>$(Platform)\$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-UTF8|Win32'">
-    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
-    <IntDir>$(Configuration)\</IntDir>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-UTF8|x64'">
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
     <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
@@ -231,89 +162,14 @@
       <OutputFile>$(OutDir)$(ProjectName).lib</OutputFile>
     </Lib>
   </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug-UTF8|Win32'">
-    <ClCompile>
-      <AdditionalOptions>/MP %(AdditionalOptions)</AdditionalOptions>
-      <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;LITEHTML_UTF8;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <MinimalRebuild>false</MinimalRebuild>
-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <PrecompiledHeader />
-      <WarningLevel>Level3</WarningLevel>
-      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
-      <AdditionalIncludeDirectories>./src/gumbo/visualc/include;./src/gumbo/include/gumbo;./src/gumbo/include;./include/litehtml</AdditionalIncludeDirectories>
-    </ClCompile>
-    <Lib>
-      <OutputFile>$(OutDir)$(ProjectName).lib</OutputFile>
-    </Lib>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug-UTF8|x64'">
-    <Midl>
-      <TargetEnvironment>X64</TargetEnvironment>
-    </Midl>
-    <ClCompile>
-      <AdditionalOptions>/MP %(AdditionalOptions)</AdditionalOptions>
-      <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;LITEHTML_UTF8;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <MinimalRebuild>false</MinimalRebuild>
-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <PrecompiledHeader />
-      <WarningLevel>Level3</WarningLevel>
-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <AdditionalIncludeDirectories>./src/gumbo/visualc/include;./src/gumbo/include/gumbo;./src/gumbo/include;./include/litehtml</AdditionalIncludeDirectories>
-    </ClCompile>
-    <Lib>
-      <OutputFile>$(OutDir)$(ProjectName).lib</OutputFile>
-    </Lib>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release-UTF8|Win32'">
-    <ClCompile>
-      <AdditionalOptions>/MP %(AdditionalOptions)</AdditionalOptions>
-      <Optimization>MaxSpeed</Optimization>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;LITEHTML_UTF8;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <FunctionLevelLinking>true</FunctionLevelLinking>
-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
-      <PrecompiledHeader />
-      <WarningLevel>Level3</WarningLevel>
-      <DebugInformationFormat>OldStyle</DebugInformationFormat>
-      <AdditionalIncludeDirectories>./src/gumbo/visualc/include;./src/gumbo/include/gumbo;./src/gumbo/include;./include/litehtml</AdditionalIncludeDirectories>
-    </ClCompile>
-    <Lib>
-      <OutputFile>$(OutDir)$(ProjectName).lib</OutputFile>
-    </Lib>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release-UTF8|x64'">
-    <Midl>
-      <TargetEnvironment>X64</TargetEnvironment>
-    </Midl>
-    <ClCompile>
-      <AdditionalOptions>/MP %(AdditionalOptions)</AdditionalOptions>
-      <Optimization>MaxSpeed</Optimization>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;LITEHTML_UTF8;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <FunctionLevelLinking>true</FunctionLevelLinking>
-      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
-      <PrecompiledHeader />
-      <WarningLevel>Level3</WarningLevel>
-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <AdditionalIncludeDirectories>./src/gumbo/visualc/include;./src/gumbo/include/gumbo;./src/gumbo/include;./include/litehtml</AdditionalIncludeDirectories>
-    </ClCompile>
-    <Lib>
-      <OutputFile>$(OutDir)$(ProjectName).lib</OutputFile>
-    </Lib>
-  </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\background.cpp" />
-    <ClCompile Include="src\box.cpp" />
-    <ClCompile Include="src\context.cpp" />
+    <ClCompile Include="src\codepoint.cpp" />
+    <ClCompile Include="src\css_borders.cpp" />
     <ClCompile Include="src\css_length.cpp" />
+    <ClCompile Include="src\css_properties.cpp" />
     <ClCompile Include="src\css_selector.cpp" />
     <ClCompile Include="src\document.cpp" />
+    <ClCompile Include="src\document_container.cpp" />
     <ClCompile Include="src\element.cpp" />
     <ClCompile Include="src\el_anchor.cpp" />
     <ClCompile Include="src\el_base.cpp" />
@@ -325,7 +181,6 @@
     <ClCompile Include="src\el_div.cpp" />
     <ClCompile Include="src\el_font.cpp" />
     <ClCompile Include="src\el_image.cpp" />
-    <ClCompile Include="src\el_li.cpp" />
     <ClCompile Include="src\el_link.cpp" />
     <ClCompile Include="src\el_para.cpp" />
     <ClCompile Include="src\el_script.cpp" />
@@ -336,6 +191,7 @@
     <ClCompile Include="src\el_text.cpp" />
     <ClCompile Include="src\el_title.cpp" />
     <ClCompile Include="src\el_tr.cpp" />
+    <ClCompile Include="src\formatting_context.cpp" />
     <ClCompile Include="src\gumbo\attribute.c" />
     <ClCompile Include="src\gumbo\char_ref.c" />
     <ClCompile Include="src\gumbo\error.c" />
@@ -350,27 +206,38 @@
     <ClCompile Include="src\html.cpp" />
     <ClCompile Include="src\html_tag.cpp" />
     <ClCompile Include="src\iterators.cpp" />
+    <ClCompile Include="src\line_box.cpp" />
     <ClCompile Include="src\media_query.cpp" />
     <ClCompile Include="src\num_cvt.cpp" />
+    <ClCompile Include="src\render_block.cpp" />
+    <ClCompile Include="src\render_block_context.cpp" />
+    <ClCompile Include="src\render_flex.cpp" />
+    <ClCompile Include="src\render_image.cpp" />
+    <ClCompile Include="src\render_inline_context.cpp" />
+    <ClCompile Include="src\render_item.cpp" />
+    <ClCompile Include="src\render_table.cpp" />
+    <ClCompile Include="src\string_id.cpp" />
     <ClCompile Include="src\strtod.cpp" />
     <ClCompile Include="src\style.cpp" />
     <ClCompile Include="src\stylesheet.cpp" />
     <ClCompile Include="src\table.cpp" />
+    <ClCompile Include="src\tstring_view.cpp" />
+    <ClCompile Include="src\url.cpp" />
+    <ClCompile Include="src\url_path.cpp" />
     <ClCompile Include="src\utf8_strings.cpp" />
     <ClCompile Include="src\web_color.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\litehtml\attributes.h" />
     <ClInclude Include="include\litehtml\background.h" />
     <ClInclude Include="include\litehtml\borders.h" />
     <ClInclude Include="include\litehtml\box.h" />
-    <ClInclude Include="include\litehtml\context.h" />
     <ClInclude Include="include\litehtml\css_length.h" />
     <ClInclude Include="include\litehtml\css_margins.h" />
     <ClInclude Include="include\litehtml\css_offsets.h" />
     <ClInclude Include="include\litehtml\css_position.h" />
     <ClInclude Include="include\litehtml\css_selector.h" />
     <ClInclude Include="include\litehtml\document.h" />
+    <ClInclude Include="include\litehtml\document_container.h" />
     <ClInclude Include="include\litehtml\element.h" />
     <ClInclude Include="include\litehtml\el_anchor.h" />
     <ClInclude Include="include\litehtml\el_base.h" />
@@ -382,7 +249,6 @@
     <ClInclude Include="include\litehtml\el_div.h" />
     <ClInclude Include="include\litehtml\el_font.h" />
     <ClInclude Include="include\litehtml\el_image.h" />
-    <ClInclude Include="include\litehtml\el_li.h" />
     <ClInclude Include="include\litehtml\el_link.h" />
     <ClInclude Include="include\litehtml\el_para.h" />
     <ClInclude Include="include\litehtml\el_script.h" />
@@ -393,7 +259,9 @@
     <ClInclude Include="include\litehtml\el_text.h" />
     <ClInclude Include="include\litehtml\el_title.h" />
     <ClInclude Include="include\litehtml\el_tr.h" />
+    <ClInclude Include="include\litehtml\master_css.h" />
     <ClInclude Include="include\litehtml\num_cvt.h" />
+    <ClInclude Include="include\litehtml\string_id.h" />
     <ClInclude Include="src\gumbo\include\gumbo\attribute.h" />
     <ClInclude Include="src\gumbo\include\gumbo\char_ref.h" />
     <ClInclude Include="src\gumbo\include\gumbo\error.h" />

@@ -9,6 +9,7 @@
 #include "third_party/blink/renderer/core/layout/geometry/logical_rect.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
 #include "third_party/blink/renderer/core/layout/geometry/writing_mode_converter.h"
+#include "third_party/blink/renderer/core/layout/layout_text.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_fragment_item.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_node_data.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_ink_overflow.h"
@@ -44,7 +45,7 @@ LayoutNGTextCombine* LayoutNGTextCombine::CreateAnonymous(
 }
 
 String LayoutNGTextCombine::GetTextContent() const {
-  DCHECK(!NeedsCollectInlines() && HasNGInlineNodeData()) << this;
+  DCHECK(!NeedsCollectInlines() && GetNGInlineNodeData()) << this;
   return GetNGInlineNodeData()->ItemsData(false).text_content;
 }
 
@@ -220,20 +221,22 @@ PhysicalRect LayoutNGTextCombine::ComputeTextFrameRect(
                       PhysicalSize(one_em, line_height));
 }
 
-PhysicalRect LayoutNGTextCombine::RecalcContentsInkOverflow() const {
+PhysicalRect LayoutNGTextCombine::RecalcContentsInkOverflow(
+    const NGInlineCursor& cursor) const {
   const ComputedStyle& style = Parent()->StyleRef();
   DCHECK(style.GetFont().GetFontDescription().IsVerticalBaseline());
 
   // Note: |text_rect| and |ink_overflow| are in logical direction.
   const PhysicalRect text_rect = ComputeTextFrameRect(PhysicalOffset());
-  LayoutRect ink_overflow = text_rect.ToLayoutRect();
+  LogicalRect ink_overflow(text_rect.offset.left, text_rect.offset.top,
+                           text_rect.size.width, text_rect.size.height);
 
   if (style.HasAppliedTextDecorations()) {
     // |LayoutNGTextCombine| does not support decorating box, as it is not
     // supported in vertical flow and text-combine is only for vertical flow.
-    const LayoutRect decoration_rect =
-        NGInkOverflow::ComputeTextDecorationOverflow(
-            style, style.GetFont(),
+    const LogicalRect decoration_rect =
+        NGInkOverflow::ComputeDecorationOverflow(
+            cursor, style, style.GetFont(),
             /* offset_in_container */ PhysicalOffset(), ink_overflow,
             /* inline_context */ nullptr);
     ink_overflow.Unite(decoration_rect);
@@ -247,7 +250,7 @@ PhysicalRect LayoutNGTextCombine::RecalcContentsInkOverflow() const {
   PhysicalRect local_ink_overflow =
       WritingModeConverter({style.GetWritingMode(), TextDirection::kLtr},
                            text_rect.size)
-          .ToPhysical(LogicalRect(ink_overflow));
+          .ToPhysical(ink_overflow);
   local_ink_overflow.ExpandEdgesToPixelBoundaries();
   return local_ink_overflow;
 }

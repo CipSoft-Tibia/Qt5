@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC
+// Copyright 2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,40 +14,70 @@
 
 #include "fastpair/fast_pair_controller.h"
 
+#include <memory>
 #include <string>
-#include <vector>
 
+#include "gmock/gmock.h"
+#include "protobuf-matchers/protocol-buffer-matchers.h"
 #include "gtest/gtest.h"
+#include "absl/strings/escaping.h"
+#include "fastpair/message_stream/fake_provider.h"
+#include "internal/platform/medium_environment.h"
+#include "internal/platform/single_thread_executor.h"
 
 namespace nearby {
 namespace fastpair {
-using ::nearby::fastpair::FastPairController;
-using StatusCodes = FastPairController::StatusCodes;
 
-struct StatusCodeToStringData {
-  StatusCodes status_code;
-  std::string expected_string_result;
+namespace {
+
+class MediumEnvironmentStarter {
+ public:
+  MediumEnvironmentStarter() { MediumEnvironment::Instance().Start(); }
+  ~MediumEnvironmentStarter() { MediumEnvironment::Instance().Stop(); }
 };
 
-std::vector<StatusCodeToStringData> GetTestData() {
-  static std::vector<StatusCodeToStringData>* kStatusCodeToStringData =
-      new std::vector<StatusCodeToStringData>({
-          {StatusCodes::kOk, "kOk"},
-          {StatusCodes::kError, "kError"},
-      });
+class FastPairControllerTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    BluetoothClassicMedium& seeker_medium =
+        mediums_.GetBluetoothClassic().GetMedium();
+    provider_.DiscoverProvider(seeker_medium);
+    std::string address = provider_.GetMacAddress();
+    NEARBY_LOGS(INFO) << "Provider address: " << address;
+    remote_device_ = seeker_medium.GetRemoteDevice(provider_.GetMacAddress());
+    ASSERT_TRUE(remote_device_.IsValid());
+    fast_pair_device_ =
+        std::make_unique<FastPairDevice>(Protocol::kFastPairRetroactivePairing);
+    fast_pair_device_->SetPublicAddress(remote_device_.GetMacAddress());
+  }
 
-  return *kStatusCodeToStringData;
+  void TearDown() override {
+    executor_.Shutdown();
+    provider_.Shutdown();
+    MediumEnvironment::Instance().Stop();
+  }
+
+  // The medium environment must be initialized (started) before adding
+  // adapters.
+  MediumEnvironmentStarter env_;
+  SingleThreadExecutor executor_;
+  Mediums mediums_;
+  FakeProvider provider_;
+  BluetoothDevice remote_device_;
+  std::unique_ptr<FastPairDevice> fast_pair_device_;
+};
+
+TEST_F(FastPairControllerTest, Constructor) {
+  FastPairController controller(&mediums_, &*fast_pair_device_, &executor_);
 }
 
-using StatusCodeToString = testing::TestWithParam<StatusCodeToStringData>;
+TEST_F(FastPairControllerTest, OpenMessageStream) {
+  FastPairController controller(&mediums_, &*fast_pair_device_, &executor_);
 
-TEST_P(StatusCodeToString, ToStringResultMatches) {
-  EXPECT_EQ(GetParam().expected_string_result,
-            FastPairController::StatusCodeToString(GetParam().status_code));
+  EXPECT_OK(controller.OpenMessageStream());
 }
 
-INSTANTIATE_TEST_CASE_P(StatusCodeToString, StatusCodeToString,
-                        testing::ValuesIn(GetTestData()));
+}  // namespace
 
 }  // namespace fastpair
 }  // namespace nearby

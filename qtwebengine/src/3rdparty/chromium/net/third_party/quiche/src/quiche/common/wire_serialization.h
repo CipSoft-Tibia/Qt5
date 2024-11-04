@@ -347,6 +347,10 @@ absl::Status SerializeIntoWriterCore(QuicheDataWriter& writer, int argno,
   QUICHE_RETURN_IF_ERROR(SerializeIntoWriterCore(writer, argno, data1));
   return SerializeIntoWriterCore(writer, argno + 1, rest...);
 }
+
+inline absl::Status SerializeIntoWriterCore(QuicheDataWriter&, int) {
+  return absl::OkStatus();
+}
 }  // namespace wire_serialization_internal
 
 // SerializeIntoWriter(writer, d1, d2, ... dN) serializes all of supplied data
@@ -369,6 +373,7 @@ template <typename T1, typename... Ts>
 size_t ComputeLengthOnWire(T1 data1, Ts... rest) {
   return data1.GetLengthOnWire() + ComputeLengthOnWire(rest...);
 }
+inline size_t ComputeLengthOnWire() { return 0; }
 
 // SerializeIntoBuffer(allocator, d1, d2, ... dN) computes the length required
 // to store the supplied data, allocates the buffer of appropriate size using
@@ -384,6 +389,25 @@ absl::StatusOr<QuicheBuffer> SerializeIntoBuffer(
   }
 
   QuicheBuffer buffer(allocator, buffer_size);
+  QuicheDataWriter writer(buffer.size(), buffer.data());
+  QUICHE_RETURN_IF_ERROR(SerializeIntoWriter(writer, data...));
+  if (writer.remaining() != 0) {
+    return absl::InternalError(absl::StrCat(
+        "Excess ", writer.remaining(), " bytes allocated while serializing"));
+  }
+  return buffer;
+}
+
+// SerializeIntoBuffer() that returns std::string instead of QuicheBuffer.
+template <typename... Ts>
+absl::StatusOr<std::string> SerializeIntoString(Ts... data) {
+  size_t buffer_size = ComputeLengthOnWire(data...);
+  if (buffer_size == 0) {
+    return std::string();
+  }
+
+  std::string buffer;
+  buffer.resize(buffer_size);
   QuicheDataWriter writer(buffer.size(), buffer.data());
   QUICHE_RETURN_IF_ERROR(SerializeIntoWriter(writer, data...));
   if (writer.remaining() != 0) {

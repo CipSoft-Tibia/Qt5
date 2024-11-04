@@ -27,14 +27,7 @@ using ::testing::Eq;
 using ::testing::IsNull;
 using ::testing::Pointee;
 
-// Extracted from |GetPolicies()| because ASSERT_* macros can only be used in
-// functions that return void.
-void AssertHasPolicyContainerHost(RenderFrameHostImpl* frame) {
-  ASSERT_TRUE(frame->policy_container_host());
-}
-
 const PolicyContainerPolicies& GetPolicies(RenderFrameHostImpl* frame) {
-  AssertHasPolicyContainerHost(frame);
   return frame->policy_container_host()->policies();
 }
 
@@ -58,7 +51,9 @@ network::mojom::ContentSecurityPolicyPtr MakeTestCSP() {
 // presence of navigation history in particular.
 class NavigationPolicyContainerBuilderBrowserTest : public ContentBrowserTest {
  protected:
-  explicit NavigationPolicyContainerBuilderBrowserTest() { StartServer(); }
+  explicit NavigationPolicyContainerBuilderBrowserTest() {
+    CHECK(embedded_test_server()->Start());
+  }
 
   // Returns a pointer to the current root RenderFrameHostImpl.
   RenderFrameHostImpl* root_frame_host() {
@@ -87,10 +82,6 @@ class NavigationPolicyContainerBuilderBrowserTest : public ContentBrowserTest {
 
     return entry->root_node()->frame_entry.get();
   }
-
- private:
-  // Constructor helper. We cannot use ASSERT_* macros in constructors.
-  void StartServer() { ASSERT_TRUE(embedded_test_server()->Start()); }
 };
 
 // Verifies that HistoryPolicies() returns nullptr in the absence of a history
@@ -348,8 +339,8 @@ IN_PROC_BROWSER_TEST_F(NavigationPolicyContainerBuilderBrowserTest,
 
   // Now reload to original url and ensure that history entry policies stored
   // earlier aren't applied to non-local URL (no DCHECK triggered).
-  TestNavigationObserver observer(tab, /*number_of_navigations=*/1);
-  tab->GetController().Reload(ReloadType::ORIGINAL_REQUEST_URL, false);
+  TestNavigationObserver observer(tab, /*expected_number_of_navigations=*/1);
+  tab->GetController().LoadOriginalRequestURL();
   observer.Wait();  // No DCHECK expected.
   EXPECT_EQ(PublicUrl(), tab->GetLastCommittedURL());
 }

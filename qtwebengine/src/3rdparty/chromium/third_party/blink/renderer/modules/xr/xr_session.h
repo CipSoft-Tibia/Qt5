@@ -9,12 +9,15 @@
 
 #include "base/containers/span.h"
 #include "device/vr/public/mojom/vr_service.mojom-blink.h"
+#include "device/vr/public/mojom/xr_session.mojom-blink.h"
 #include "mojo/public/cpp/bindings/pending_associated_remote.h"
 #include "mojo/public/cpp/bindings/remote.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_xr_light_probe_init.h"
 #include "third_party/blink/renderer/core/dom/events/event_target.h"
+#include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
 #include "third_party/blink/renderer/modules/xr/xr_frame_request_callback_collection.h"
 #include "third_party/blink/renderer/modules/xr/xr_input_source.h"
 #include "third_party/blink/renderer/modules/xr/xr_input_source_array.h"
@@ -63,11 +66,9 @@ class XRWebGLLayer;
 
 using XRSessionFeatureSet = HashSet<device::mojom::XRSessionFeature>;
 
-class XRSession final
-    : public EventTargetWithInlineData,
-      public device::mojom::blink::XRSessionClient,
-      public device::mojom::blink::XRInputSourceButtonListener,
-      public ActiveScriptWrappable<XRSession> {
+class XRSession final : public EventTarget,
+                        public device::mojom::blink::XRSessionClient,
+                        public ActiveScriptWrappable<XRSession> {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
@@ -132,6 +133,8 @@ class XRSession final
   const String& interactionMode() const { return interaction_mode_string_; }
   XRDOMOverlayState* domOverlayState() const { return dom_overlay_state_; }
   const String visibilityState() const;
+  absl::optional<float> frameRate() const { return absl::nullopt; }
+  DOMFloat32Array* supportedFrameRates() const { return nullptr; }
   XRRenderState* renderState() const { return render_state_; }
 
   // ARCore by default returns textures in RGBA half-float HDR format and no
@@ -157,12 +160,16 @@ class XRSession final
   DEFINE_ATTRIBUTE_EVENT_LISTENER(squeeze, kSqueeze)
   DEFINE_ATTRIBUTE_EVENT_LISTENER(squeezestart, kSqueezestart)
   DEFINE_ATTRIBUTE_EVENT_LISTENER(squeezeend, kSqueezeend)
+  DEFINE_ATTRIBUTE_EVENT_LISTENER(frameratechange, kFrameratechange)
 
   void updateRenderState(XRRenderStateInit* render_state_init,
                          ExceptionState& exception_state);
 
   const String& depthUsage(ExceptionState& exception_state);
   const String& depthDataFormat(ExceptionState& exception_state);
+
+  ScriptPromise updateTargetFrameRate(float rate,
+                                      ExceptionState&);
 
   ScriptPromise requestReferenceSpace(ScriptState* script_state,
                                       const String& type,
@@ -261,10 +268,6 @@ class XRSession final
       const absl::optional<gpu::MailboxHolder>& output_mailbox_holder,
       const absl::optional<gpu::MailboxHolder>& camera_image_mailbox_holder);
 
-  // XRInputSourceButtonListener
-  void OnButtonEvent(
-      device::mojom::blink::XRInputSourceStatePtr input_source) override;
-
   const HeapVector<Member<XRViewData>>& views();
 
   void AddTransientInputSource(XRInputSource* input_source);
@@ -275,10 +278,6 @@ class XRSession final
   const device::mojom::blink::VRStageParametersPtr& GetStageParameters() const {
     return stage_parameters_;
   }
-
-  mojo::PendingAssociatedRemote<
-      device::mojom::blink::XRInputSourceButtonListener>
-  GetInputClickListener();
 
   bool EmulatedPosition() const {
     // If we don't have display info then we should be using the identity
@@ -317,7 +316,6 @@ class XRSession final
   bool RemoveHitTestSource(XRHitTestSource* hit_test_source);
   bool RemoveHitTestSource(XRTransientInputHitTestSource* hit_test_source);
 
-  bool UsesInputEventing() { return uses_input_eventing_; }
   bool LightEstimationEnabled() { return !!world_light_probe_; }
 
   void Trace(Visitor* visitor) const override;
@@ -578,9 +576,6 @@ class XRSession final
 
   HeapMojoReceiver<device::mojom::blink::XRSessionClient, XRSession>
       client_receiver_;
-  HeapMojoAssociatedReceiver<device::mojom::blink::XRInputSourceButtonListener,
-                             XRSession>
-      input_receiver_;
 
   // Used to schedule video.rVFC callbacks for immersive sessions.
   Vector<ExecuteVfcCallback> vfc_execution_queue_;
@@ -605,7 +600,6 @@ class XRSession final
   int output_width_ = 1;
   int output_height_ = 1;
 
-  bool uses_input_eventing_ = false;
   float recommended_framebuffer_scale_ = 1.0;
 
   // Corresponds to mojo XRSession.supportsViewportScaling

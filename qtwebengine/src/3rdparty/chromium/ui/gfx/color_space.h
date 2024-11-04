@@ -150,7 +150,7 @@ class COLOR_SPACE_EXPORT ColorSpace {
     INVALID,
     // Limited Rec. 709 color range with RGB values ranging from 16 to 235.
     LIMITED,
-    // Full RGB color range with RGB valees from 0 to 255.
+    // Full RGB color range with RGB values from 0 to 255.
     FULL,
     // Range is defined by TransferID/MatrixID.
     DERIVED,
@@ -173,8 +173,7 @@ class COLOR_SPACE_EXPORT ColorSpace {
              MatrixID matrix,
              RangeID range,
              const skcms_Matrix3x3* custom_primary_matrix,
-             const skcms_TransferFunction* cunstom_transfer_fn,
-             bool is_hdr = false);
+             const skcms_TransferFunction* cunstom_transfer_fn);
 
   explicit ColorSpace(const SkColorSpace& sk_color_space, bool is_hdr = false);
 
@@ -407,7 +406,7 @@ class COLOR_SPACE_EXPORT ColorSpace {
   static bool GetTransferFunction(TransferID, skcms_TransferFunction* fn);
   static size_t TransferParamCount(TransferID);
 
-  void SetCustomTransferFunction(const skcms_TransferFunction& fn, bool is_hdr);
+  void SetCustomTransferFunction(const skcms_TransferFunction& fn);
   void SetCustomPrimaries(const skcms_Matrix3x3& to_XYZD50);
 
   PrimaryID primaries_ = PrimaryID::INVALID;

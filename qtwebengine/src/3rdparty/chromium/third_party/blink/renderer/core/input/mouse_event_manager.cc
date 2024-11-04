@@ -91,7 +91,10 @@ void SetMouseEventAttributes(MouseEventInit* initializer,
   initializer->setButtons(
       MouseEvent::WebInputEventModifiersToButtons(mouse_event.GetModifiers()));
   initializer->setView(target_node->GetDocument().domWindow());
-  initializer->setComposed(true);
+  initializer->setComposed(
+      RuntimeEnabledFeatures::NonComposedEnterLeaveEventsEnabled()
+          ? !is_mouse_enter_or_leave
+          : true);
   initializer->setDetail(click_count);
   initializer->setRelatedTarget(related_target);
   UIEventWithKeyState::SetFromWebInputEventModifiers(
@@ -526,10 +529,11 @@ WebInputEventResult MouseEventManager::HandleMouseFocus(
   for (; element; element = element->ParentOrShadowHostElement()) {
     if (element->IsFocusable() && element->IsFocusedElementInDocument())
       return WebInputEventResult::kNotHandled;
-    if (element->IsMouseFocusable() || element->DelegatesFocus())
+    if (element->IsFocusable() || element->DelegatesFocus()) {
       break;
+    }
   }
-  DCHECK(!element || element->IsMouseFocusable() || element->DelegatesFocus());
+  DCHECK(!element || element->IsFocusable() || element->DelegatesFocus());
 
   // To fix <rdar://problem/4895428> Can't drag selected ToDo, we don't focus
   // a node on mouse down if it's selected and inside a focused node. It will
@@ -560,9 +564,10 @@ WebInputEventResult MouseEventManager::HandleMouseFocus(
   // If focus shift is blocked, we eat the event. Note we should never
   // clear swallowEvent if the page already set it (e.g., by canceling
   // default behavior).
-  if (element && !element->IsMouseFocusable() &&
-      SlideFocusOnShadowHostIfNecessary(*element))
+  if (element && !element->IsFocusable() &&
+      SlideFocusOnShadowHostIfNecessary(*element)) {
     return WebInputEventResult::kHandledSystem;
+  }
 
   // We call setFocusedElement even with !element in order to blur
   // current focus element when a link is clicked; this is expected by
@@ -581,9 +586,9 @@ bool MouseEventManager::SlideFocusOnShadowHostIfNecessary(
   if (Element* delegated_target = element.GetFocusableArea()) {
     // Use FocusType::kMouse instead of FocusType::kForward
     // in order to prevent :focus-visible from being set
-    delegated_target->Focus(FocusParams(SelectionBehaviorOnFocus::kReset,
-                                        mojom::blink::FocusType::kMouse,
-                                        nullptr));
+    delegated_target->Focus(FocusParams(
+        SelectionBehaviorOnFocus::kReset, mojom::blink::FocusType::kMouse,
+        nullptr, FocusOptions::Create(), FocusTrigger::kUserGesture));
     return true;
   }
   return false;
@@ -699,7 +704,7 @@ WebInputEventResult MouseEventManager::HandleMousePressEvent(
           .GetSelectionController()
           .MouseDownMayStartSelect() ||
       (mouse_press_node_ && mouse_press_node_->GetLayoutBox() &&
-       mouse_press_node_->GetLayoutBox()->CanBeProgrammaticallyScrolled());
+       mouse_press_node_->GetLayoutBox()->IsUserScrollable());
 
   return swallow_event ? WebInputEventResult::kHandledSystem
                        : WebInputEventResult::kNotHandled;
@@ -996,6 +1001,10 @@ bool MouseEventManager::TryStartDrag(
 WebInputEventResult MouseEventManager::DispatchDragSrcEvent(
     const AtomicString& event_type,
     const WebMouseEvent& event) {
+  CHECK(event_type == event_type_names::kDrag ||
+        event_type == event_type_names::kDragend ||
+        event_type == event_type_names::kDragstart);
+
   return DispatchDragEvent(event_type, GetDragState().drag_src_.Get(), nullptr,
                            event, GetDragState().drag_data_transfer_.Get());
 }

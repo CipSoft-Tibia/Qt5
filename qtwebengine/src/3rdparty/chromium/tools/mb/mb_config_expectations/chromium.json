@@ -38,6 +38,7 @@
     "gn_args": {
       "debuggable_apks": false,
       "is_official_build": true,
+      "symbol_level": 2,
       "target_os": "android",
       "use_remoteexec": true
     }
@@ -87,22 +88,28 @@
   },
   "linux-archive-dbg": {
     "gn_args": {
+      "concurrent_links": 50,
       "is_component_build": true,
       "is_debug": true,
       "symbol_level": 1,
-      "use_remoteexec": true
+      "use_remoteexec": true,
+      "use_remoteexec_links": true
     }
   },
   "linux-archive-rel": {
     "gn_args": {
+      "concurrent_links": 50,
       "dcheck_always_on": false,
+      "enable_updater": true,
       "is_component_build": false,
       "is_debug": false,
-      "use_remoteexec": true
+      "use_remoteexec": true,
+      "use_remoteexec_links": true
     }
   },
   "linux-lacros-archive-rel": {
     "gn_args": {
+      "also_build_ash_chrome": true,
       "chromeos_is_browser_only": true,
       "dcheck_always_on": false,
       "is_component_build": false,

@@ -1,4 +1,4 @@
-// Copyright 2021 The Chromium Authors. All rights reserved.
+// Copyright 2021 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@
 #include "absl/hash/hash_testing.h"
 #include "gtest/gtest.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
 template <int&..., typename T>
 testing::AssertionResult VerifyTypeImplementsAbslHashCorrectly(
@@ -19,7 +18,6 @@ testing::AssertionResult VerifyTypeImplementsAbslHashCorrectly(
   absl::VerifyTypeImplementsAbslHashCorrectly(std::move(values));
 }
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery
 
 #endif  // DISCOVERY_MDNS_TESTING_HASH_TEST_UTIL_ABSEIL_H_

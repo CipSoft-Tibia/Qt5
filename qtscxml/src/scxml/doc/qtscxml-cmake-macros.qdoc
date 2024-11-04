@@ -6,7 +6,7 @@
 \ingroup cmake-macros-qtscxml
 
 \title qt_add_statecharts
-\target qt6_add_statecharts
+\keyword qt6_add_statecharts
 
 \cmakecommandsince 6.1
 

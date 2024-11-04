@@ -32,6 +32,7 @@
 #include "ui/aura/window_tree_host.h"
 #include "ui/base/dragdrop/drop_target_event.h"
 #include "ui/base/dragdrop/mojom/drag_drop_types.mojom-forward.h"
+#include "ui/compositor/layer_tree_owner.h"
 
 namespace ui {
 class DropTargetEvent;
@@ -99,15 +100,19 @@ class CONTENT_EXPORT WebContentsViewAura
   // cleared out once PerformDropCallback() returns.
   struct CONTENT_EXPORT OnPerformDropContext {
     OnPerformDropContext(RenderWidgetHostImpl* target_rwh,
+                         std::unique_ptr<DropData> drop_data,
                          DropMetadata drop_metadata,
                          std::unique_ptr<ui::OSExchangeData> data,
                          base::ScopedClosureRunner end_drag_runner,
                          absl::optional<gfx::PointF> transformed_pt,
                          gfx::PointF screen_pt);
+    OnPerformDropContext(const OnPerformDropContext& other) = delete;
     OnPerformDropContext(OnPerformDropContext&& other);
+    OnPerformDropContext& operator=(const OnPerformDropContext& other) = delete;
     ~OnPerformDropContext();
 
     base::WeakPtr<RenderWidgetHostImpl> target_rwh;
+    std::unique_ptr<DropData> drop_data;
     DropMetadata drop_metadata;
     std::unique_ptr<ui::OSExchangeData> data;
     base::ScopedClosureRunner end_drag_runner;
@@ -117,6 +122,7 @@ class CONTENT_EXPORT WebContentsViewAura
 
   friend class WebContentsViewAuraTest;
   FRIEND_TEST_ALL_PREFIXES(WebContentsViewAuraTest, EnableDisableOverscroll);
+  FRIEND_TEST_ALL_PREFIXES(WebContentsViewAuraTest, RenderViewHostChanged);
   FRIEND_TEST_ALL_PREFIXES(WebContentsViewAuraTest, DragDropFiles);
   FRIEND_TEST_ALL_PREFIXES(WebContentsViewAuraTest,
                            DragDropFilesOriginateFromRenderer);
@@ -249,7 +255,8 @@ class CONTENT_EXPORT WebContentsViewAura
   void OnWindowDestroyed(aura::Window* window) override;
   void OnWindowTargetVisibilityChanged(bool visible) override;
   void OnWindowOcclusionChanged(
-      aura::Window::OcclusionState occlusion_state) override;
+      aura::Window::OcclusionState old_occlusion_state,
+      aura::Window::OcclusionState new_occlusion_state) override;
   bool HasHitTestMask() const override;
   void GetHitTestMask(SkPath* mask) const override;
 
@@ -282,11 +289,11 @@ class CONTENT_EXPORT WebContentsViewAura
   void CompleteDragExit();
 
   // Called from PerformDropCallback() to finish processing the drop.
-  // The override with `drop_data` updates `current_drop_data_` before
+  // The override with `drop_data` updates `current_drag_data_` before
   // completing the drop.
-  void FinishOnPerformDrop(OnPerformDropContext context);
-  void FinishOnPerformDropCallback(OnPerformDropContext context,
-                                   absl::optional<DropData> drop_data);
+  void FinishOnPerformDrop(OnPerformDropContext drop_context);
+  void GotModifiedDropDataFromDelegate(OnPerformDropContext drop_context,
+                                       absl::optional<DropData> drop_data);
 
   // Completes a drop operation by communicating the drop data to the renderer
   // process.
@@ -298,10 +305,12 @@ class CONTENT_EXPORT WebContentsViewAura
 
   // Performs drop if it's run. Otherwise, it exits the drag. Returned by
   // GetDropCallback.
-  void PerformDropOrExitDrag(base::ScopedClosureRunner exit_drag,
-                             DropMetadata drop_metadata,
-                             std::unique_ptr<ui::OSExchangeData> data,
-                             ui::mojom::DragOperation& output_drag_op);
+  void PerformDropOrExitDrag(
+      base::ScopedClosureRunner exit_drag,
+      DropMetadata drop_metadata,
+      std::unique_ptr<ui::OSExchangeData> data,
+      ui::mojom::DragOperation& output_drag_op,
+      std::unique_ptr<ui::LayerTreeOwner> drag_image_layer_owner);
 
   // For unit testing, registers a callback for when a drop operation
   // completes.
@@ -321,6 +330,7 @@ class CONTENT_EXPORT WebContentsViewAura
 #if BUILDFLAG(IS_WIN)
   // Callback for asynchronous retrieval of virtual files.
   void OnGotVirtualFilesAsTempFiles(
+      OnPerformDropContext drop_context,
       const std::vector<std::pair</*temp path*/ base::FilePath,
                                   /*display name*/ base::FilePath>>&
           filepaths_and_names);
@@ -332,6 +342,10 @@ class CONTENT_EXPORT WebContentsViewAura
   std::unique_ptr<AsyncDropTempFileDeleter> async_drop_temp_file_deleter_;
 #endif
   DropCallbackForTesting drop_callback_for_testing_;
+
+  // Calls the delegate's OnPerformDrop() if a delegate is present, otherwise
+  // finishes performing the drop by calling FinishOnPerformDrop().
+  void DelegateOnPerformDrop(OnPerformDropContext drop_context);
 
   // If this callback is initialized it must be run after the drop operation is
   // done to send dragend event in EndDrag function.
@@ -348,7 +362,11 @@ class CONTENT_EXPORT WebContentsViewAura
 
   ui::mojom::DragOperation current_drag_op_;
 
-  std::unique_ptr<DropData> current_drop_data_;
+  // This member holds the dropped data from the drag enter phase to the end
+  // of the drop.  A drop may end if the user releases the mouse button over
+  // the view, if the cursor moves off the view, or some other events occurs
+  // like a change in the RWH.  This member is null when no drop is happening.
+  std::unique_ptr<DropData> current_drag_data_;
 
   raw_ptr<WebDragDestDelegate> drag_dest_delegate_;
 

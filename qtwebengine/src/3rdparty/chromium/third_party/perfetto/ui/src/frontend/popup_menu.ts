@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
-import {globals} from './globals';
+import m from 'mithril';
+
+import {SortDirection} from '../common/state';
+import {raf} from '../core/raf_scheduler';
 
 export interface RegularPopupMenuItem {
   itemType: 'regular';
@@ -42,7 +44,7 @@ export interface GroupPopupMenuItem {
 
 export type PopupMenuItem = RegularPopupMenuItem|GroupPopupMenuItem;
 
-interface PopupMenuButtonAttrs {
+export interface PopupMenuButtonAttrs {
   // Icon for button opening a menu
   icon: string;
   // List of popup menu items
@@ -100,6 +102,21 @@ class PopupHolder {
 // Singleton instance of PopupHolder
 const popupHolder = new PopupHolder();
 
+// For a table column that can be sorted; the standard popup icon should
+// reflect the current sorting direction. This function returns an icon
+// corresponding to optional SortDirection according to which the column is
+// sorted. (Optional because column might be unsorted)
+export function popupMenuIcon(sortDirection?: SortDirection) {
+  switch (sortDirection) {
+    case undefined:
+      return 'more_horiz';
+    case 'DESC':
+      return 'arrow_drop_down';
+    case 'ASC':
+      return 'arrow_drop_up';
+  }
+}
+
 // Component that displays a button that shows a popup menu on click.
 export class PopupMenuButton implements m.ClassComponent<PopupMenuButtonAttrs> {
   popupShown = false;
@@ -112,7 +129,7 @@ export class PopupMenuButton implements m.ClassComponent<PopupMenuButtonAttrs> {
     } else {
       popupHolder.clear();
     }
-    globals.rafScheduler.scheduleFullRedraw();
+    raf.scheduleFullRedraw();
   }
 
   renderItem(item: PopupMenuItem): m.Child {
@@ -140,7 +157,7 @@ export class PopupMenuButton implements m.ClassComponent<PopupMenuButtonAttrs> {
                   } else {
                     this.expandedGroups.add(item.itemId);
                   }
-                  globals.rafScheduler.scheduleFullRedraw();
+                  raf.scheduleFullRedraw();
                 },
               },
               // Show text with up/down arrow, depending on expanded state.
@@ -154,13 +171,16 @@ export class PopupMenuButton implements m.ClassComponent<PopupMenuButtonAttrs> {
   view(vnode: m.Vnode<PopupMenuButtonAttrs, this>) {
     return m(
         '.dropdown',
-        m('i.material-icons',
-          {
-            onclick: () => {
-              this.setVisible(!this.popupShown);
+        m(
+            '.dropdown-button',
+            {
+              onclick: () => {
+                this.setVisible(!this.popupShown);
+              },
             },
-          },
-          vnode.attrs.icon),
+            vnode.children,
+            m('i.material-icons', vnode.attrs.icon),
+            ),
         m(this.popupShown ? '.popup-menu.opened' : '.popup-menu.closed',
           vnode.attrs.items.map((item) => this.renderItem(item))));
   }

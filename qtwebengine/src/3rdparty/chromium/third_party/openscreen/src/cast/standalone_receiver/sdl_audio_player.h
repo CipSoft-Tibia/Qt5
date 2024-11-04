@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@
 
 #include "cast/standalone_receiver/sdl_player_base.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Consumes frames from a Receiver, decodes them, and renders them to an
 // internally-owned SDL audio device.
@@ -20,7 +19,7 @@ class SDLAudioPlayer final : public SDLPlayerBase {
   // |error_callback| is run only if a fatal error occurs, at which point the
   // player has halted and set |error_status()|.
   SDLAudioPlayer(ClockNowFunctionPtr now_function,
-                 TaskRunner* task_runner,
+                 TaskRunner& task_runner,
                  Receiver* receiver,
                  AudioCodec codec,
                  std::function<void()> error_callback);
@@ -49,7 +48,7 @@ class SDLAudioPlayer final : public SDLPlayerBase {
   std::vector<uint8_t> interleaved_audio_buffer_;
 
   // Points to the memory containing the next chunk of interleaved audio.
-  absl::Span<const uint8_t> pending_audio_;
+  ByteView pending_audio_;
 
   // The currently-open SDL audio device (or zero, if not open).
   SDL_AudioDeviceID device_ = 0;
@@ -58,7 +57,6 @@ class SDLAudioPlayer final : public SDLPlayerBase {
   SDL_AudioSpec device_spec_{};
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STANDALONE_RECEIVER_SDL_AUDIO_PLAYER_H_

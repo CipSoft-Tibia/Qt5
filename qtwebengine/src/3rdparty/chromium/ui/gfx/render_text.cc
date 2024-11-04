@@ -6,11 +6,11 @@
 
 #include <limits.h>
 
+#include <algorithm>
 #include <climits>
 
 #include "base/check_op.h"
 #include "base/command_line.h"
-#include "base/cxx17_backports.h"
 #include "base/i18n/break_iterator.h"
 #include "base/i18n/char_iterator.h"
 #include "base/notreached.h"
@@ -383,7 +383,8 @@ void SkiaTextRenderer::DrawStrike(int x,
                                   int width,
                                   SkScalar thickness_factor) {
   const SkScalar text_size = font_.getSize();
-  const SkScalar height = text_size * thickness_factor;
+  // Strike should have a minimum height of 1.0f.
+  const SkScalar height = std::max(1.0f, text_size * thickness_factor);
   const SkScalar top = y - text_size * kStrikeThroughOffset - height / 2;
   SkScalar x_scalar = SkIntToScalar(x);
   const SkRect r =
@@ -568,6 +569,7 @@ void RenderText::SetFontList(const FontList& font_list) {
   styles_[TEXT_STYLE_ITALIC].SetValue((font_style & Font::ITALIC) != 0);
   styles_[TEXT_STYLE_UNDERLINE].SetValue((font_style & Font::UNDERLINE) != 0);
   styles_[TEXT_STYLE_HEAVY_UNDERLINE].SetValue(false);
+  styles_[TEXT_STYLE_STRIKE].SetValue((font_style & Font::STRIKE_THROUGH) != 0);
   baseline_ = kInvalidBaseline;
   cached_bounds_and_offset_valid_ = false;
   OnLayoutTextAttributeChanged(false);
@@ -1279,12 +1281,12 @@ void RenderText::SetDisplayOffset(Vector2d offset) {
     }
   }
 
-  const int horizontal_offset = base::clamp(offset.x(), min_offset, max_offset);
+  const int horizontal_offset = std::clamp(offset.x(), min_offset, max_offset);
 
   // y-offset is set only when the vertical alignment is ALIGN_TOP.
   // TODO(jongkown.lee): Support other vertical alignments.
   DCHECK(vertical_alignment_ == ALIGN_TOP || offset.y() == 0);
-  const int vertical_offset = base::clamp(
+  const int vertical_offset = std::clamp(
       offset.y(),
       std::min(display_rect_.height() - GetStringSize().height(), 0), 0);
 
@@ -1984,7 +1986,7 @@ int RenderText::DetermineBaselineCenteringText(const int display_height,
   const int space =
       display_height - ((internal_leading != 0) ? cap_height : font_height);
   const int baseline_shift = space / 2 - internal_leading;
-  return baseline + base::clamp(baseline_shift, min_shift, max_shift);
+  return baseline + std::clamp(baseline_shift, min_shift, max_shift);
 }
 
 // static
@@ -2099,7 +2101,7 @@ std::u16string RenderText::Elide(const std::u16string& text,
       guess = lo + base::ClampRound<size_t>((available_width - lo_width) *
                                             (hi - lo) / (hi_width - lo_width));
     }
-    guess = base::clamp(guess, lo, hi);
+    guess = std::clamp(guess, lo, hi);
     DCHECK_NE(last_guess, guess);
 
     // Restore colors. They will be truncated to size by SetText.

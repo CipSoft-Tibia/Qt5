@@ -11,6 +11,7 @@
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/values.h"
+#include "components/attribution_reporting/suitable_origin.h"
 #include "content/browser/attribution_reporting/attribution_debug_report.h"
 #include "content/browser/attribution_reporting/attribution_report.h"
 #include "content/browser/attribution_reporting/attribution_utils.h"
@@ -25,7 +26,9 @@
 #include "services/network/public/cpp/resource_request_body.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/mojom/fetch_api.mojom-shared.h"
 #include "url/gurl.h"
+#include "url/origin.h"
 
 namespace content {
 
@@ -61,7 +64,8 @@ void AttributionReportNetworkSender::SendReport(
   net::HttpRequestHeaders headers;
   report.PopulateAdditionalHeaders(headers);
 
-  SendReport(std::move(url), body, std::move(headers),
+  url::Origin origin(report.GetReportingOrigin());
+  SendReport(std::move(url), std::move(origin), body, std::move(headers),
              base::BindOnce(&AttributionReportNetworkSender::OnReportSent,
                             base::Unretained(this), std::move(report),
                             is_debug_report, std::move(sent_callback)));
@@ -70,16 +74,18 @@ void AttributionReportNetworkSender::SendReport(
 void AttributionReportNetworkSender::SendReport(
     AttributionDebugReport report,
     DebugReportSentCallback callback) {
-  GURL url = report.report_url();
+  GURL url(report.ReportUrl());
+  url::Origin origin(report.reporting_origin());
   std::string body = SerializeAttributionJson(report.ReportBody());
   SendReport(
-      std::move(url), body, net::HttpRequestHeaders(),
+      std::move(url), std::move(origin), body, net::HttpRequestHeaders(),
       base::BindOnce(&AttributionReportNetworkSender::OnVerboseDebugReportSent,
                      base::Unretained(this),
                      base::BindOnce(std::move(callback), std::move(report))));
 }
 
 void AttributionReportNetworkSender::SendReport(GURL url,
+                                                url::Origin origin,
                                                 const std::string& body,
                                                 net::HttpRequestHeaders headers,
                                                 UrlLoaderCallback callback) {
@@ -88,15 +94,14 @@ void AttributionReportNetworkSender::SendReport(GURL url,
   resource_request->headers = std::move(headers);
   resource_request->method = net::HttpRequestHeaders::kPostMethod;
   resource_request->credentials_mode = network::mojom::CredentialsMode::kOmit;
+  resource_request->mode = network::mojom::RequestMode::kSameOrigin;
+  resource_request->request_initiator = std::move(origin);
   resource_request->load_flags =
       net::LOAD_DISABLE_CACHE | net::LOAD_BYPASS_CACHE;
   resource_request->trusted_params = network::ResourceRequest::TrustedParams();
   resource_request->trusted_params->isolation_info =
       net::IsolationInfo::CreateTransient();
 
-  // TODO(https://crbug.com/1058018): Update the "policy" field in the traffic
-  // annotation when a setting to disable the API is properly
-  // surfaced/implemented.
   net::NetworkTrafficAnnotationTag traffic_annotation =
       net::DefineNetworkTrafficAnnotation("conversion_measurement_report", R"(
         semantics {
@@ -122,8 +127,13 @@ void AttributionReportNetworkSender::SendReport(GURL url,
         policy {
           cookies_allowed: NO
           setting:
-            "This feature cannot be disabled by settings."
-          policy_exception_justification: "Not implemented."
+            "This feature can be controlled via the 'Ad measurement' setting "
+            "in the 'Ad privacy' section of 'Privacy and Security'."
+          chrome_policy {
+            PrivacySandboxAdMeasurementEnabled {
+              PrivacySandboxAdMeasurementEnabled: false
+            }
+          }
         })");
 
   auto simple_url_loader = network::SimpleURLLoader::Create(
@@ -167,9 +177,9 @@ void AttributionReportNetworkSender::OnReportSent(
                   : !internal_ok             ? Status::kInternalError
                                              : Status::kExternalError;
 
-  const char* status_metric;
-  const char* http_response_or_net_error_code_metric;
-  const char* retry_succeed_metric;
+  const char* status_metric = nullptr;
+  const char* http_response_or_net_error_code_metric = nullptr;
+  const char* retry_succeed_metric = nullptr;
 
   switch (report.GetReportType()) {
     case AttributionReport::Type::kEventLevel:
@@ -198,17 +208,21 @@ void AttributionReportNetworkSender::OnReportSent(
               ? "Conversions.DebugReport.ReportRetrySucceedAggregatable"
               : "Conversions.ReportRetrySucceedAggregatable";
       break;
+    case AttributionReport::Type::kNullAggregatable:
+      break;
   }
 
-  base::UmaHistogramEnumeration(status_metric, status);
+  if (status_metric) {
+    base::UmaHistogramEnumeration(status_metric, status);
 
-  // Since net errors are always negative and HTTP errors are always positive,
-  // it is fine to combine these in a single histogram.
-  base::UmaHistogramSparse(http_response_or_net_error_code_metric,
-                           internal_ok ? response_code : net_error);
+    // Since net errors are always negative and HTTP errors are always positive,
+    // it is fine to combine these in a single histogram.
+    base::UmaHistogramSparse(http_response_or_net_error_code_metric,
+                             internal_ok ? response_code : net_error);
 
-  if (loader->GetNumRetries() > 0) {
-    base::UmaHistogramBoolean(retry_succeed_metric, status == Status::kOk);
+    if (loader->GetNumRetries() > 0) {
+      base::UmaHistogramBoolean(retry_succeed_metric, status == Status::kOk);
+    }
   }
 
   loaders_in_progress_.erase(it);

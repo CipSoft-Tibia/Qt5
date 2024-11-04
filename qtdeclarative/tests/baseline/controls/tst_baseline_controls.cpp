@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qbaselinetest.h>
 
@@ -203,6 +203,7 @@ void tst_Baseline_Controls::runTest(const QString& style)
     QStringList args;
     if (!style.isEmpty())
         args.append({"-style", style});
+    args.append("-useAppWindow");
     if (renderAndGrab(qmlFile, args, &screenShot, &errorMessage)) {
         consecutiveErrors = 0;
     } else {
@@ -233,8 +234,9 @@ bool tst_Baseline_Controls::renderAndGrab(const QString& qmlFile, const QStringL
     bool res = usePipe ? img.load(&grabber, "ppm") : img.load(tmpfile);
     if (!res || img.isNull()) {
         if (errMsg) {
-            QString s("Failed to grab screen. qmlscenegrabber exitcode: %1. Process error: %2. Stderr:%3");
-            *errMsg = s.arg(grabber.exitCode()).arg(grabber.errorString()).arg(blockify(grabber.readAllStandardError()));
+            QString s("Failed to grab screen in %1. qmlscenegrabber exitcode: %2. Process error: %3. Stderr:%4");
+            *errMsg = s.arg(qmlFile).arg(grabber.exitCode())
+                       .arg(grabber.errorString()).arg(blockify(grabber.readAllStandardError()));
         }
         if (!usePipe)
             QFile::remove(tmpfile);

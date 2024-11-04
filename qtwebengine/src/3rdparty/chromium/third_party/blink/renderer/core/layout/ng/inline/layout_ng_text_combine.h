@@ -12,7 +12,9 @@
 namespace blink {
 
 class AffineTransform;
+class LayoutText;
 class NGFragmentItem;
+class NGInlineCursor;
 
 // The layout object for the element having "text-combine-upright:all" in
 // vertical writing mode, e.g. <i style="text-upright:all"><b>12</b>34<i>.
@@ -65,7 +67,7 @@ class CORE_EXPORT LayoutNGTextCombine final : public LayoutNGBlockFlow {
       const PhysicalOffset& inline_root_offset) const;
 
   // Returns ink overflow for text decorations and emphasis mark.
-  PhysicalRect RecalcContentsInkOverflow() const;
+  PhysicalRect RecalcContentsInkOverflow(const NGInlineCursor&) const;
 
   void ResetLayout();
   void SetScaleX(float new_scale_x);
@@ -127,8 +129,9 @@ class CORE_EXPORT LayoutNGTextCombine final : public LayoutNGBlockFlow {
 inline bool LayoutNGTextCombine::ShouldBeParentOf(
     const LayoutObject& layout_object) {
   if (LIKELY(layout_object.IsHorizontalWritingMode()) ||
-      !layout_object.IsText())
+      !layout_object.IsText() || layout_object.IsSVGInlineText()) {
     return false;
+  }
   return UNLIKELY(layout_object.StyleRef().HasTextCombine()) &&
          layout_object.IsLayoutNGObject();
 }

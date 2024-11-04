@@ -15,6 +15,7 @@ enum CSSSampleId {
 
     // These internal properties exist but are mapped to 0 to ensure they don't get
     // reported in use counter.
+    kInternalAlignContentBlock = 0,
     kInternalAlignSelfBlock = 0,
     kInternalEmptyLineHeight = 0,
     kInternalVisitedBackgroundColor = 0,
@@ -42,6 +43,8 @@ enum CSSSampleId {
     kInternalForcedColor = 0,
     kInternalForcedOutlineColor = 0,
     kInternalForcedVisitedColor = 0,
+    kInternalOverflowBlock = 0,
+    kInternalOverflowInline = 0,
 
     // This CSSSampleId represents page load for CSS histograms. It is recorded once
     // per page visit for each CSS histogram being logged on the blink side and the
@@ -300,7 +303,7 @@ enum CSSSampleId {
     kGridColumn = 248,
     kGridRow = 249,
     kGridAutoFlow = 250,
-    kWebkitHighlight = 251,
+    // kWebkitHighlight = 251,
     kAliasWebkitHyphenateCharacter = 252,
     // kWebkitHyphenateLimitAfter = 253,
     // kWebkitHyphenateLimitBefore = 254,
@@ -771,9 +774,9 @@ enum CSSSampleId {
     kToggle = 718,
     kAnchorName = 719,
     kPositionFallback = 720,
-    kAnchorScroll = 721,
-    kPopUpShowDelay = 722,
-    kPopUpHideDelay = 723,
+    // kAnchorScroll = 721,
+    kPopoverShowDelay = 722,
+    kPopoverHideDelay = 723,
     kHyphenateCharacter = 724,
     kScrollTimeline = 725,
     kScrollTimelineName = 726,
@@ -797,6 +800,31 @@ enum CSSSampleId {
     kTopLayer = 744,
     kAnchorDefault = 745,
     kTextWrap = 746,
+    kTextBoxTrim = 747,
+    kOverlay = 748,
+    kWhiteSpaceCollapse = 749,
+    kScrollTimelineAttachment = 750,
+    kViewTimelineAttachment = 751,
+    kScrollStartBlock = 752,
+    kScrollStartInline = 753,
+    kScrollStartX = 754,
+    kScrollStartY = 755,
+    kScrollStart = 756,
+    kScrollStartTargetBlock = 757,
+    kScrollStartTargetInline = 758,
+    kScrollStartTargetX = 759,
+    kScrollStartTargetY = 760,
+    kScrollStartTarget = 761,
+    kTimelineScope = 762,
+    kScrollbarColor = 763,
+    // kWordBoundaryDetection = 764,
+    kPositionFallbackBounds = 765,
+    kTransitionBehavior = 766,
+    kTextAutospace = 767,
+    kNavigationTrigger = 768,
+    kDynamicRangeLimit = 769,
+    kFormSizing = 770,
+
     // 1. Add new features above this line (don't change the assigned numbers of
     //    the existing items).
     // 2. Run the src/tools/metrics/histograms/update_use_counter_css.py script

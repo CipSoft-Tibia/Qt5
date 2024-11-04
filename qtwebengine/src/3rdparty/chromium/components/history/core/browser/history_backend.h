@@ -38,7 +38,7 @@
 #include "components/history/core/browser/sync/history_backend_for_sync.h"
 #include "components/history/core/browser/visit_tracker.h"
 #if !defined(TOOLKIT_QT)
-#include "components/sync/driver/sync_service.h"
+#include "components/sync/service/sync_service.h"
 #endif
 #include "sql/init_status.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -164,8 +164,10 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
 
     // Notify HistoryService that the user is visiting a URL. The event will
     // be forwarded to the HistoryServiceObservers in the correct thread.
-    virtual void NotifyURLVisited(const URLRow& url_row,
-                                  const VisitRow& visit_row) = 0;
+    virtual void NotifyURLVisited(
+        const URLRow& url_row,
+        const VisitRow& visit_row,
+        absl::optional<int64_t> local_navigation_id) = 0;
 
     // Notify HistoryService that some URLs have been modified. The event will
     // be forwarded to the HistoryServiceObservers in the correct thread.
@@ -357,10 +359,21 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   // metrics measuring domain visit counts spanning the following date ranges
   // (all dates are inclusive):
   // {{10/30, 10/3~10/30}, {10/29, 10/2~10/29}, {10/28, 10/1~10/28}}
-  DomainDiversityResults GetDomainDiversity(
+  //
+  // The return value is a pair of results, where the first member counts only
+  // local visits, and the second counts both local and foreign (synced) visits.
+  // TODO(crbug.com/1422210): Once the "V2" domain diversity metrics are
+  // deprecated, return only a single result, the "local" one.
+  std::pair<DomainDiversityResults, DomainDiversityResults> GetDomainDiversity(
       base::Time report_time,
       int number_of_days_to_report,
       DomainMetricBitmaskType metric_type_bitmask);
+
+  // Gets unique domains (eLTD+1) visited within the time range
+  // [`begin_time`, `end_time`) for local and synced visits sorted in
+  // reverse-chronological order.
+  DomainsVisitedResult GetUniqueDomainsVisited(base::Time begin_time,
+                                               base::Time end_time);
 
   // Gets the last time any webpage on the given host was visited within the
   // time range [`begin_time`, `end_time`). If the given host has not been
@@ -488,16 +501,19 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
 
   std::vector<AnnotatedVisit> GetAnnotatedVisits(
       const QueryOptions& options,
+      bool compute_redirect_chain_start_properties,
       bool* limited_by_max_count = nullptr);
 
   // Utility method to Construct `AnnotatedVisit`s.
   std::vector<AnnotatedVisit> ToAnnotatedVisits(
-      const VisitVector& visit_rows) override;
+      const VisitVector& visit_rows,
+      bool compute_redirect_chain_start_properties) override;
 
   // Like above, but will first construct `visit_rows` from each `VisitID`
   // before delegating to the overloaded `ToAnnotatedVisits()` above.
   std::vector<AnnotatedVisit> ToAnnotatedVisits(
-      const std::vector<VisitID>& visit_ids);
+      const std::vector<VisitID>& visit_ids,
+      bool compute_redirect_chain_start_properties);
 
   // Utility method to construct `ClusterVisit`s. Since `duplicate_visits` isn't
   // always useful and requires extra SQL executions, it's only populated if
@@ -519,7 +535,7 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   void ReplaceClusters(const std::vector<int64_t>& ids_to_delete,
                        const std::vector<Cluster>& clusters_to_add);
 
-  int64_t ReserveNextClusterId();
+  int64_t ReserveNextClusterIdWithVisit(const ClusterVisit& cluster_visit);
 
   void AddVisitsToCluster(int64_t cluster_id,
                           const std::vector<ClusterVisit>& visits);
@@ -533,9 +549,14 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
 
   void UpdateClusterTriggerability(const std::vector<Cluster>& clusters);
 
+  // Use `UpdateVisitsInteractionState` instead to preserve the visits' scores.
   void HideVisits(const std::vector<VisitID>& visit_ids);
 
   void UpdateClusterVisit(const history::ClusterVisit& cluster_visit);
+
+  void UpdateVisitsInteractionState(
+      const std::vector<VisitID>& visit_ids,
+      const ClusterVisit::InteractionState interaction_state);
 
   std::vector<Cluster> GetMostRecentClusters(
       base::Time inclusive_min_time,
@@ -576,6 +597,19 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   void RemoveObserver(HistoryBackendObserver* observer) override;
 
   // Generic operations --------------------------------------------------------
+
+#if !defined(TOOLKIT_QT)
+  // Sets the device information for all syncing devices.
+  void SetSyncDeviceInfo(SyncDeviceInfoMap sync_device_info);
+#endif
+
+  // Sets the local device Originator Cache GUID.
+  void SetLocalDeviceOriginatorCacheGuid(
+      std::string local_device_originator_cache_guid);
+
+  // Notifies the history backend that it should consider adding foreign
+  // visits to local segments data.
+  void SetCanAddForeignVisitsToSegments(bool add_foreign_visits);
 
   void ProcessDBTask(
       std::unique_ptr<HistoryDBTask> task,
@@ -653,7 +687,10 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   // and foreign.
   void DeleteAllForeignVisitsAndResetIsKnownToSync() override;
 
-  bool RemoveVisits(const VisitVector& visits);
+  // Removes `visits` from local state. `deletion_reason` specifies the reason
+  // for why the removal action was initiated.
+  bool RemoveVisits(const VisitVector& visits,
+                    DeletionInfo::Reason deletion_reason);
 
   // Returns the `VisitSource` associated with each one of the passed visits.
   // If there is no entry in the map for a given visit, that means the visit
@@ -777,6 +814,8 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   static int GetForeignVisitsToDeletePerBatchForTest();
 #endif
 
+  sql::Database& GetDBForTesting();
+
  protected:
   ~HistoryBackend() override;
 
@@ -806,18 +845,32 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   // of the associated URL (whether added or not) is returned. Both values will
   // be 0 on failure.
   //
+  // If the caller wants to add this visit to the VisitedLinkDatabase, it needs
+  // to provide values for the `top_level_url` and `frame_url` parameters.
+  // `top_level_url` is a GURL representing the top-level frame that this
+  // navigation originated from. `frame_url` is GURL representing the immediate
+  // frame that this navigation originated from. For example, if a link to
+  // `c.com` is clicked in an iframe `b.com` that is embedded in `a.com`, the
+  // `top_level_url` is `a.com` and the `frame_url` is `b.com` (and the `url` is
+  // `c.com`).
+  //
   // This does not schedule database commits, it is intended to be used as a
   // subroutine for AddPage only. It also assumes the database is valid.
   std::pair<URLID, VisitID> AddPageVisit(
       const GURL& url,
       base::Time time,
       VisitID referring_visit,
+      const GURL& external_referrer_url,
       ui::PageTransition transition,
       bool hidden,
       VisitSource visit_source,
       bool should_increment_typed_count,
       VisitID opener_visit,
+      bool consider_for_ntp_most_visited,
+      absl::optional<int64_t> local_navigation_id = absl::nullopt,
       absl::optional<std::u16string> title = absl::nullopt,
+      absl::optional<GURL> top_level_url = absl::nullopt,
+      absl::optional<GURL> frame_url = absl::nullopt,
       absl::optional<base::TimeDelta> visit_duration = absl::nullopt,
       absl::optional<std::string> originator_cache_guid = absl::nullopt,
       absl::optional<VisitID> originator_visit_id = absl::nullopt,
@@ -897,13 +950,27 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   // id and returns it. If there is none found, returns 0.
   SegmentID GetLastSegmentID(VisitID from_visit);
 
-  // Update the segment information. This is called internally when a page is
-  // added. Return the segment id of the segment that has been updated.
-  SegmentID UpdateSegments(const GURL& url,
-                           VisitID from_visit,
-                           VisitID visit_id,
-                           ui::PageTransition transition_type,
-                           const base::Time ts);
+  // Assign segment information for a new visit. This is called internally when
+  // a page is added. Return the segment id of the segment that has been
+  // assigned to `visit_id`.
+  SegmentID AssignSegmentForNewVisit(const GURL& url,
+                                     VisitID from_visit,
+                                     VisitID visit_id,
+                                     ui::PageTransition transition_type,
+                                     const base::Time ts);
+
+  // Calculates the segment ID given a URL, visit ID, and page transition
+  // type(s). If necessary, this method will create a new segment and return its
+  // ID. Returns 0 if no segment ID can be calculated, or a new segment cannot
+  // be created.
+  SegmentID CalculateSegmentID(const GURL& url,
+                               VisitID from_visit,
+                               ui::PageTransition transition_type);
+
+  // Detects if `visit_row`'s segment has changed. If so, updates
+  // `visit_row`'s `segment_id`, and ensures segment visits are not double
+  // counted across the existing and new segments.
+  void UpdateSegmentForExistingForeignVisit(VisitRow& visit_row);
 
   // Favicons ------------------------------------------------------------------
 
@@ -932,11 +999,13 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   void NotifyFaviconsChanged(const std::set<GURL>& page_urls,
                              const GURL& icon_url) override;
   void NotifyURLVisited(const URLRow& url_row,
-                        const VisitRow& visit_row) override;
+                        const VisitRow& visit_row,
+                        absl::optional<int64_t> local_navigation_id) override;
   void NotifyURLsModified(const URLRows& changed_urls,
                           bool is_from_expiration) override;
   void NotifyURLsDeleted(DeletionInfo deletion_info) override;
-  void NotifyVisitUpdated(const VisitRow& visit) override;
+  void NotifyVisitUpdated(const VisitRow& visit,
+                          VisitUpdateReason reason) override;
   void NotifyVisitDeleted(const VisitRow& visit) override;
 
   // Deleting all history ------------------------------------------------------
@@ -1062,7 +1131,20 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   // HistoryBackend::Init() is called. Defined after `observers_` because
   // it unregisters itself as observer during destruction.
   std::unique_ptr<HistorySyncBridge> history_sync_bridge_;
+
+  // Contains device information for all syncing devices.
+  SyncDeviceInfoMap sync_device_info_;
 #endif // !defined(TOOLKIT_QT)
+
+  // Contains the local device Originator Cache GUID, a unique, sync-specific
+  // identifier for the local device.
+  std::string local_device_originator_cache_guid_;
+
+  // Whether segments data should include foreign history; Note that setting
+  // this to true doesn't guarantee segments data is synced, as feature
+  // `kSyncSegmentsData` may be enabled or disabled, or
+  // `kMaxNumNewTabPageDisplays` is reached.
+  bool can_add_foreign_visits_to_segments_ = false;
 };
 
 }  // namespace history

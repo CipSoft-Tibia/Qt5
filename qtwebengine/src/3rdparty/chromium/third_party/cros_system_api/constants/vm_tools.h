@@ -25,17 +25,13 @@ constexpr int kCrashListenerPort = 7779;
 constexpr int kSftpServerPort = 7780;
 
 constexpr int kLmkdKillDecisionPort = 7781;
+constexpr int kVmMemoryManagementServerPort = 7782;
 
 // All ports above this value are reserved for seneschal servers.
 constexpr uint32_t kFirstSeneschalServerPort = 16384;
 
 // Name of the user that runs unstrusted operating systems on Chrome OS.
 constexpr char kCrosVmUser[] = "crosvm";
-
-// Name of the directory under /run/wayland where VM wayland sockets should be
-// created. In Exo parlance this is called the "Security Context". See
-// go/secure-exo-ids for more details.
-constexpr char kConciergeSecurityContext[] = "concierge";
 
 }  // namespace vm_tools
 

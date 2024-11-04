@@ -25,11 +25,13 @@ namespace wgpu::binding {
 ////////////////////////////////////////////////////////////////////////////////
 // wgpu::bindings::GPUShaderModule
 ////////////////////////////////////////////////////////////////////////////////
-GPUShaderModule::GPUShaderModule(wgpu::ShaderModule shader, std::shared_ptr<AsyncRunner> async)
-    : shader_(std::move(shader)), async_(std::move(async)) {}
+GPUShaderModule::GPUShaderModule(const wgpu::ShaderModuleDescriptor& desc,
+                                 wgpu::ShaderModule shader,
+                                 std::shared_ptr<AsyncRunner> async)
+    : shader_(std::move(shader)), async_(std::move(async)), label_(desc.label ? desc.label : "") {}
 
-interop::Promise<interop::Interface<interop::GPUCompilationInfo>> GPUShaderModule::compilationInfo(
-    Napi::Env env) {
+interop::Promise<interop::Interface<interop::GPUCompilationInfo>>
+GPUShaderModule::getCompilationInfo(Napi::Env env) {
     struct GPUCompilationMessage : public interop::GPUCompilationMessage {
         WGPUCompilationMessage message;
 
@@ -44,7 +46,7 @@ interop::Promise<interop::Interface<interop::GPUCompilationInfo>> GPUShaderModul
                 case WGPUCompilationMessageType_Info:
                     return interop::GPUCompilationMessageType::kInfo;
                 default:
-                    UNIMPLEMENTED();
+                    UNREACHABLE();
             }
         }
         uint64_t getLineNum(Napi::Env) override { return message.lineNum; }
@@ -105,11 +107,12 @@ interop::Promise<interop::Interface<interop::GPUCompilationInfo>> GPUShaderModul
 }
 
 std::string GPUShaderModule::getLabel(Napi::Env) {
-    UNIMPLEMENTED();
+    return label_;
 }
 
 void GPUShaderModule::setLabel(Napi::Env, std::string value) {
-    UNIMPLEMENTED();
+    shader_.SetLabel(value.c_str());
+    label_ = value;
 }
 
 }  // namespace wgpu::binding

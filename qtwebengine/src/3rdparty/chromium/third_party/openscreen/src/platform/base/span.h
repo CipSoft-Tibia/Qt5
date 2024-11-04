@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <array>
 #include <cassert>
 #include <type_traits>
 #include <vector>
@@ -51,6 +52,8 @@ using EnableIfConvertible = std::enable_if_t<
 template <typename T>
 class Span {
  public:
+  using value_type = std::remove_cv_t<T>;
+
   constexpr Span() noexcept = default;
   constexpr Span(const Span&) noexcept = default;
   Span(Span&& other) noexcept = default;
@@ -59,8 +62,42 @@ class Span {
 
   constexpr Span(T* data, size_t count) : data_(data), count_(count) {}
 
+  constexpr Span(T* first, T* end) {
+    assert(end >= first);
+    data_ = first;
+    count_ = static_cast<size_t>(end - first);
+  }
+
+  // Vector constructors.
   template <typename U, typename = internal::EnableIfConvertible<U, T>>
   Span(std::vector<U>& v) : data_(v.data()), count_(v.size()) {}  // NOLINT
+
+  template <typename U, typename = internal::EnableIfConvertible<U, T>>
+  Span(const std::vector<U>& v)  // NOLINT
+      : data_(v.data()), count_(v.size()) {}
+
+  // C-style array constructors.
+  template <typename U,
+            std::size_t N,
+            typename = internal::EnableIfConvertible<U, T>>
+  Span(U (&v)[N]) : data_(v), count_(N) {}  // NOLINT
+
+  template <typename U,
+            std::size_t N,
+            typename = internal::EnableIfConvertible<U, T>>
+  Span(const U (&v)[N]) : data_(v), count_(N) {}  // NOLINT
+
+  // Array constructors.
+  template <typename U,
+            std::size_t N,
+            typename = internal::EnableIfConvertible<U, T>>
+  Span(std::array<U, N>& v) : data_(v.data()), count_(v.size()) {}  // NOLINT
+
+  template <typename U,
+            std::size_t N,
+            typename = internal::EnableIfConvertible<U, T>>
+  Span(const std::array<U, N>& v)  // NOLINT
+      : data_(v.data()), count_(v.size()) {}
 
   template <typename U, typename = internal::EnableIfConvertible<U, T>>
   constexpr Span(const Span<U>& other) noexcept
@@ -114,7 +151,7 @@ class Span {
   }
 
   constexpr Span subspan(size_t offset, size_t count) const {
-    assert(offset + count < count_);
+    assert(offset + count <= count_);
     return Span(data_ + offset, count);
   }
 

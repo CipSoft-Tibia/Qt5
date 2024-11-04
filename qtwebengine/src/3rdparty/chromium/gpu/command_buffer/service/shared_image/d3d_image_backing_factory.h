@@ -12,10 +12,10 @@
 
 #include <memory>
 
-#include "components/viz/common/resources/resource_format.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_backing_factory.h"
 #include "gpu/gpu_gles2_export.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/skia/include/core/SkColor.h"
 
 namespace gfx {
 class Size;
@@ -45,6 +45,10 @@ class GPU_GLES2_EXPORT D3DImageBackingFactory
 
   // Returns true if DXGI swap chain shared images for overlays are supported.
   static bool IsSwapChainSupported();
+
+  // Clears the current back buffer to |color| on the immediate context.
+  static bool ClearBackBufferToColor(IDXGISwapChain1* swap_chain,
+                                     const SkColor4f& color);
 
   struct GPU_GLES2_EXPORT SwapChainBackings {
     SwapChainBackings(std::unique_ptr<SharedImageBacking> front_buffer,
@@ -81,6 +85,7 @@ class GPU_GLES2_EXPORT D3DImageBackingFactory
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
       uint32_t usage,
+      std::string debug_label,
       bool is_thread_safe) override;
   std::unique_ptr<SharedImageBacking> CreateSharedImage(
       const Mailbox& mailbox,
@@ -90,6 +95,7 @@ class GPU_GLES2_EXPORT D3DImageBackingFactory
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
       uint32_t usage,
+      std::string debug_label,
       base::span<const uint8_t> pixel_data) override;
   std::unique_ptr<SharedImageBacking> CreateSharedImage(
       const Mailbox& mailbox,
@@ -99,6 +105,7 @@ class GPU_GLES2_EXPORT D3DImageBackingFactory
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
       uint32_t usage,
+      std::string debug_label,
       gfx::GpuMemoryBufferHandle handle) override;
   std::unique_ptr<SharedImageBacking> CreateSharedImage(
       const Mailbox& mailbox,
@@ -109,7 +116,8 @@ class GPU_GLES2_EXPORT D3DImageBackingFactory
       const gfx::ColorSpace& color_space,
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
-      uint32_t usage) override;
+      uint32_t usage,
+      std::string debug_label) override;
 
   bool IsSupported(uint32_t usage,
                    viz::SharedImageFormat format,
@@ -140,9 +148,11 @@ class GPU_GLES2_EXPORT D3DImageBackingFactory
       SkAlphaType alpha_type,
       uint32_t usage);
   bool UseMapOnDefaultTextures();
+  bool SupportsBGRA8UnormStorage();
 
   Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device_;
   absl::optional<bool> map_on_default_textures_;
+  absl::optional<bool> supports_bgra8unorm_storage_;
 
   scoped_refptr<DXGISharedHandleManager> dxgi_shared_handle_manager_;
 };

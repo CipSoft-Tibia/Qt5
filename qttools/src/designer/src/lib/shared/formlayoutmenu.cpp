@@ -31,15 +31,15 @@
 #include <QtCore/qhash.h>
 #include <QtCore/qdebug.h>
 
-static const char buddyPropertyC[] = "buddy";
+QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+static constexpr auto buddyPropertyC = "buddy"_L1;
 static const char *fieldWidgetBaseClasses[] = {
     "QLineEdit", "QComboBox", "QSpinBox", "QDoubleSpinBox", "QCheckBox",
     "QDateEdit", "QTimeEdit", "QDateTimeEdit", "QDial", "QWidget"
 };
-
-QT_BEGIN_NAMESPACE
-
-using namespace Qt::StringLiterals;
 
 namespace qdesigner_internal {
 
@@ -376,15 +376,15 @@ static QFormLayout *managedFormLayout(const QDesignerFormEditorInterface *core, 
 
 // Create the widgets of a control row and apply text properties contained
 // in the struct, called by addFormLayoutRow()
-static QPair<QWidget *,QWidget *>
+static std::pair<QWidget *,QWidget *>
         createWidgets(const FormLayoutRow &row, QWidget *parent,
                       QDesignerFormWindowInterface *formWindow)
 {
     QDesignerFormEditorInterface *core = formWindow->core();
     QDesignerWidgetFactoryInterface *wf = core->widgetFactory();
 
-    QPair<QWidget *,QWidget *> rc{wf->createWidget(u"QLabel"_s, parent),
-                                  wf->createWidget(row.fieldClassName, parent)};
+    std::pair<QWidget *,QWidget *> rc{wf->createWidget(u"QLabel"_s, parent),
+                                      wf->createWidget(row.fieldClassName, parent)};
     // Set up properties of the label
     const QString objectNameProperty = u"objectName"_s;
     QDesignerPropertySheetExtension *labelSheet = qt_extension<QDesignerPropertySheetExtension*>(core->extensionManager(), rc.first);
@@ -416,7 +416,7 @@ static void addFormLayoutRow(const FormLayoutRow &formLayoutRow, int row, QWidge
     undoStack->beginMacro(macroName);
 
     // Create a list of widget insertion commands and pass them a cell position
-    const QPair<QWidget *,QWidget *> widgetPair = createWidgets(formLayoutRow, w, formWindow);
+    const auto widgetPair = createWidgets(formLayoutRow, w, formWindow);
 
     InsertWidgetCommand *labelCmd = new InsertWidgetCommand(formWindow);
     labelCmd->init(widgetPair.first, false, row, 0);
@@ -426,7 +426,7 @@ static void addFormLayoutRow(const FormLayoutRow &formLayoutRow, int row, QWidge
     undoStack->push(controlCmd);
     if (formLayoutRow.buddy) {
         SetPropertyCommand *buddyCommand = new SetPropertyCommand(formWindow);
-        buddyCommand->init(widgetPair.first, QLatin1StringView(buddyPropertyC), widgetPair.second->objectName());
+        buddyCommand->init(widgetPair.first, buddyPropertyC, widgetPair.second->objectName());
         undoStack->push(buddyCommand);
     }
     undoStack->endMacro();

@@ -28,15 +28,12 @@
 #include <intrin.h>
 #endif
 
-namespace absl {
-ABSL_NAMESPACE_BEGIN
-namespace crc_internal {
-
 #if defined(__x86_64__) || defined(_M_X64)
-
-namespace {
-
-#if !defined(_WIN32) && !defined(_WIN64)
+#if ABSL_HAVE_BUILTIN(__cpuid)
+// MSVC-equivalent __cpuid intrinsic declaration for clang-like compilers
+// for non-Windows build environments.
+extern void __cpuid(int[4], int);
+#elif !defined(_WIN32) && !defined(_WIN64)
 // MSVC defines this function for us.
 // https://learn.microsoft.com/en-us/cpp/intrinsics/cpuid-cpuidex
 static void __cpuid(int cpu_info[4], int info_type) {
@@ -46,6 +43,15 @@ static void __cpuid(int cpu_info[4], int info_type) {
                    : "a"(info_type), "c"(0));
 }
 #endif  // !defined(_WIN32) && !defined(_WIN64)
+#endif  // defined(__x86_64__) || defined(_M_X64)
+
+namespace absl {
+ABSL_NAMESPACE_BEGIN
+namespace crc_internal {
+
+#if defined(__x86_64__) || defined(_M_X64)
+
+namespace {
 
 enum class Vendor {
   kUnknown,
@@ -183,8 +189,14 @@ CpuType GetAmdCpuType() {
       break;
     case 0x19:
       switch (model_num) {
+        case 0x0:  // Stepping Ax
         case 0x1:  // Stepping B0
           return CpuType::kAmdMilan;
+        case 0x10:  // Stepping A0
+        case 0x11:  // Stepping B0
+          return CpuType::kAmdGenoa;
+        case 0x44:  // Stepping A0
+          return CpuType::kAmdRyzenV3000;
         default:
           return CpuType::kUnknown;
       }

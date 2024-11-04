@@ -17,16 +17,15 @@
 #ifndef SRC_PROFILING_PERF_PERF_PRODUCER_H_
 #define SRC_PROFILING_PERF_PERF_PRODUCER_H_
 
+#include <unistd.h>
 #include <map>
 #include <memory>
-
-#include <unistd.h>
+#include <optional>
 
 #include <unwindstack/Error.h>
 #include <unwindstack/Regs.h>
 
 #include "perfetto/base/task_runner.h"
-#include "perfetto/ext/base/optional.h"
 #include "perfetto/ext/base/scoped_file.h"
 #include "perfetto/ext/base/unix_socket.h"
 #include "perfetto/ext/base/weak_ptr.h"
@@ -79,7 +78,8 @@ class PerfProducer : public Producer,
   void StopDataSource(DataSourceInstanceID instance_id) override;
   void Flush(FlushRequestID flush_id,
              const DataSourceInstanceID* data_source_ids,
-             size_t num_data_sources) override;
+             size_t num_data_sources,
+             FlushFlags) override;
   void ClearIncrementalState(const DataSourceInstanceID* data_source_ids,
                              size_t num_data_sources) override;
 
@@ -240,7 +240,7 @@ class PerfProducer : public Producer,
 
   // Chooses a random parameter for a callstack sampling option. Done at this
   // level as the choice is shared by all data sources within a tracing session.
-  base::Optional<ProcessSharding> GetOrChooseCallstackProcessShard(
+  std::optional<ProcessSharding> GetOrChooseCallstackProcessShard(
       uint64_t tracing_session_id,
       uint32_t shard_count);
 

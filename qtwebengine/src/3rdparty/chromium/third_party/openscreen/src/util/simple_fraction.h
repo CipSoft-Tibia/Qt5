@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,8 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <string_view>
 
-#include "absl/strings/string_view.h"
 #include "platform/base/error.h"
 
 namespace openscreen {
@@ -24,7 +24,7 @@ namespace openscreen {
 //    equal to zero. Since reductions are not performed, -1/-1 is negative.
 class SimpleFraction {
  public:
-  static ErrorOr<SimpleFraction> FromString(absl::string_view value);
+  static ErrorOr<SimpleFraction> FromString(std::string_view value);
   std::string ToString() const;
 
   constexpr SimpleFraction() = default;

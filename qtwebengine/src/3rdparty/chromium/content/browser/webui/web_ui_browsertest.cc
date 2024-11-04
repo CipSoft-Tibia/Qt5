@@ -25,6 +25,7 @@
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/browser/webui/web_ui_controller_factory_registry.h"
 #include "content/browser/webui/web_ui_impl.h"
+#include "content/common/content_navigation_policy.h"
 #include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
@@ -211,7 +212,7 @@ IN_PROC_BROWSER_TEST_F(WebUIImplBrowserTest, ForceSwapOnDifferenteWebUITypes) {
   // has changed and the new process also has WebUI bindings.
   const GURL web_ui_url2(GetWebUIURL(kChromeUIGpuHost));
   EXPECT_TRUE(WebUIConfigMap::GetInstance().GetConfig(
-      web_contents->GetBrowserContext(), url::Origin::Create(web_ui_url2)));
+      web_contents->GetBrowserContext(), web_ui_url2));
   ASSERT_TRUE(NavigateToURL(web_contents, web_ui_url2));
   auto* new_site_instance = web_contents->GetSiteInstance();
   EXPECT_NE(orig_site_instance, new_site_instance);
@@ -314,8 +315,9 @@ IN_PROC_BROWSER_TEST_F(WebUIImplBrowserTest, SameDocumentNavigationsAndReload) {
   test_handler->AllowJavascriptForTesting();
 
   // Push onto window.history. Back should now be an in-page navigation.
-  ASSERT_TRUE(ExecuteScript(web_contents,
-                            "window.history.pushState({}, '', 'foo.html')"));
+  ASSERT_TRUE(
+      ExecJs(web_contents,
+             "window.history.pushState({}, '', location.href + '#foo')"));
   shell()->GoBackOrForward(-1);
   EXPECT_TRUE(WaitForLoadStop(web_contents));
 
@@ -326,7 +328,18 @@ IN_PROC_BROWSER_TEST_F(WebUIImplBrowserTest, SameDocumentNavigationsAndReload) {
   EXPECT_TRUE(WaitForLoadStop(web_contents));
 
   // Verify that after a reload, the test handler has been disallowed.
-  EXPECT_FALSE(test_handler->IsJavascriptAllowed());
+  if (!ShouldCreateNewHostForAllFrames()) {
+    EXPECT_FALSE(test_handler->IsJavascriptAllowed());
+  } else {
+    // If the RenderFrameHost and WebUI objects changed after navigation, the
+    // `TestWebUIMessageHandler` will point to a stale WebUI and we can't check
+    // the `IsJavascriptAllowed()` value there. So use a new handler here and
+    // check the value on the new handler instead.
+    WebUIMessageHandler* test_handler2 = new TestWebUIMessageHandler;
+    web_contents->GetWebUI()->AddMessageHandler(
+        base::WrapUnique(test_handler2));
+    EXPECT_FALSE(test_handler2->IsJavascriptAllowed());
+  }
 }
 
 // A WebUI message that should require a user gesture is ignored if there is no
@@ -420,10 +433,10 @@ IN_PROC_BROWSER_TEST_F(WebUIImplBrowserTest, DISABLED_NavigateWhileWebUISend) {
   web_contents->GetWebUI()->AddMessageHandler(base::WrapUnique(test_handler));
 
   auto* webui = static_cast<WebUIImpl*>(web_contents->GetWebUI());
-  EXPECT_EQ(web_contents->GetPrimaryMainFrame(), webui->frame_host());
+  EXPECT_EQ(web_contents->GetPrimaryMainFrame(), webui->GetRenderFrameHost());
 
   test_handler->set_finish_closure(base::BindLambdaForTesting([&]() {
-    EXPECT_NE(web_contents->GetPrimaryMainFrame(), webui->frame_host());
+    EXPECT_NE(web_contents->GetPrimaryMainFrame(), webui->GetRenderFrameHost());
   }));
 
   bool received_send_message = false;
@@ -478,7 +491,8 @@ IN_PROC_BROWSER_TEST_F(WebUIImplBrowserTest,
    public:
     Config() : WebUIConfig(kChromeUIUntrustedScheme, "test-host") {}
     std::unique_ptr<WebUIController> CreateWebUIController(
-        WebUI* web_ui) final {
+        WebUI* web_ui,
+        const GURL& url) final {
       class Controller : public WebUIController {
        public:
         explicit Controller(WebUI* web_ui) : WebUIController(web_ui) {

@@ -6,28 +6,32 @@
 
 #include <stddef.h>
 
+#include "base/check.h"
 #include "base/command_line.h"
 #include "base/debug/crash_logging.h"
 #include "base/functional/bind.h"
+#include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/no_destructor.h"
 #include "base/notreached.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/task/thread_pool.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
-#include "content/browser/renderer_host/render_widget_host_impl.h"
-#include "content/browser/web_contents/web_contents_impl.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/web_contents_ax_mode_notifier.h"
 #include "content/public/common/content_switches.h"
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/accessibility/platform/ax_platform_node.h"
 #include "ui/events/base_event_utils.h"
 #include "ui/gfx/color_utils.h"
-#include "ui/native_theme/native_theme.h"
 
 namespace content {
+
+namespace {
+
+BrowserAccessibilityStateImpl* g_instance = nullptr;
 
 // Auto-disable accessibility if this many seconds elapse with user input
 // events but no accessibility API usage.
@@ -48,6 +52,14 @@ constexpr int kOnAccessibilityUsageUpdateDelaySecs = 5;
 // doing so is bad for performance.
 constexpr int kDisableAccessibilitySupportDelaySecs = 2;
 
+// Used for validating the 'basic' bundle parameter for
+// --force-renderer-accessibility.
+const char kAXModeBundleBasic[] = "basic";
+
+// Used for validating the 'form-controls' bundle parameter for
+// --force-renderer-accessibility.
+const char kAXModeBundleFormControls[] = "form-controls";
+
 // Record a histogram for an accessibility mode when it is enabled.
 void RecordNewAccessibilityModeFlags(
     ui::AXMode::ModeFlagHistogramValue mode_flag) {
@@ -56,42 +68,78 @@ void RecordNewAccessibilityModeFlags(
       ui::AXMode::ModeFlagHistogramValue::UMA_AX_MODE_MAX);
 }
 
-// Record a histogram for an experimental accessibility mode when it is enabled.
-void RecordNewExperimentalAccessibilityModeFlags(
-    ui::AXMode::ExperimentalModeFlagHistogramValue experimental_mode_flag) {
-  // TODO(aldietz): Add histogram enumeration for
-  // "Accessibility.ExperimentalModeFlag"
-}
-
 // Update the accessibility histogram 45 seconds after initialization.
 static const int ACCESSIBILITY_HISTOGRAM_DELAY_SECS = 45;
+
+}  // namespace
 
 // static
 BrowserAccessibilityState* BrowserAccessibilityState::GetInstance() {
   return BrowserAccessibilityStateImpl::GetInstance();
 }
 
+// static
+BrowserAccessibilityStateImpl* BrowserAccessibilityStateImpl::GetInstance() {
+  CHECK(g_instance);
+  return g_instance;
+}
+
 // On Android, Mac, Lacros, and Windows there are platform-specific subclasses.
 #if (!BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_MAC) && \
     !BUILDFLAG(IS_CHROMEOS_LACROS)) || defined(TOOLKIT_QT)
 // static
-BrowserAccessibilityStateImpl* BrowserAccessibilityStateImpl::GetInstance() {
-  static base::NoDestructor<BrowserAccessibilityStateImpl> instance;
-  return &*instance;
+std::unique_ptr<BrowserAccessibilityStateImpl>
+BrowserAccessibilityStateImpl::Create() {
+  return base::WrapUnique(new BrowserAccessibilityStateImpl());
 }
 #endif
 
 BrowserAccessibilityStateImpl::BrowserAccessibilityStateImpl()
     : BrowserAccessibilityState(),
       histogram_delay_(base::Seconds(ACCESSIBILITY_HISTOGRAM_DELAY_SECS)) {
-  force_renderer_accessibility_ =
-      base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kForceRendererAccessibility);
+  DCHECK_EQ(g_instance, nullptr);
+  g_instance = this;
 
-  ResetAccessibilityModeValue();
+  bool disallow_changes = false;
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kDisableRendererAccessibility)) {
+    disallow_changes = true;
+  } else if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+                 switches::kForceRendererAccessibility)) {
+#if BUILDFLAG(IS_WIN)
+    std::string ax_mode_bundle = base::WideToUTF8(
+        base::CommandLine::ForCurrentProcess()->GetSwitchValueNative(
+            switches::kForceRendererAccessibility));
+#else
+    std::string ax_mode_bundle =
+        base::CommandLine::ForCurrentProcess()->GetSwitchValueNative(
+            switches::kForceRendererAccessibility);
+#endif
+
+    if (ax_mode_bundle.empty()) {
+      // For backwards compatibility, when --force-renderer-accessibility has no
+      // parameter, use the complete bundle but allow changes.
+      AddAccessibilityModeFlags(ui::kAXModeComplete);
+    } else {
+      // Support --force-renderer-accessibility=[basic|form-controls|complete]
+      disallow_changes = true;
+      if (ax_mode_bundle.compare(kAXModeBundleBasic) == 0) {
+        AddAccessibilityModeFlags(ui::kAXModeBasic);
+      } else if (ax_mode_bundle.compare(kAXModeBundleFormControls) == 0) {
+        AddAccessibilityModeFlags(ui::kAXModeFormControls);
+      } else {
+        // If AXMode is 'complete' or invalid, default to complete bundle.
+        AddAccessibilityModeFlags(ui::kAXModeComplete);
+      }
+    }
+  }
 
   // Hook ourselves up to observe ax mode changes.
   ui::AXPlatformNode::AddAXModeObserver(this);
+
+  if (disallow_changes) {
+    DisallowAXModeChanges();
+  }
 }
 
 void BrowserAccessibilityStateImpl::InitBackgroundTasks() {
@@ -118,6 +166,9 @@ void BrowserAccessibilityStateImpl::InitBackgroundTasks() {
 }
 
 BrowserAccessibilityStateImpl::~BrowserAccessibilityStateImpl() {
+  DCHECK_EQ(g_instance, this);
+  g_instance = nullptr;
+
   // Remove ourselves from the AXMode global observer list.
   ui::AXPlatformNode::RemoveAXModeObserver(this);
 }
@@ -126,8 +177,7 @@ void BrowserAccessibilityStateImpl::OnScreenReaderDetected() {
   // Clear any previous, now obsolete, request to disable support.
   disable_accessibility_request_time_ = base::TimeTicks();
 
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kDisableRendererAccessibility)) {
+  if (disallow_ax_mode_changes_) {
     return;
   }
   EnableAccessibility();
@@ -150,6 +200,10 @@ void BrowserAccessibilityStateImpl::OnScreenReaderStopped() {
 }
 
 void BrowserAccessibilityStateImpl::EnableAccessibility() {
+  // First disable any non-additive modes that restrict or filter the
+  // information available in the tree.
+  RemoveAccessibilityModeFlags(ui::kAXModeFormControls);
+
   AddAccessibilityModeFlags(ui::kAXModeComplete);
 }
 
@@ -163,9 +217,11 @@ bool BrowserAccessibilityStateImpl::IsRendererAccessibilityEnabled() {
 }
 
 void BrowserAccessibilityStateImpl::ResetAccessibilityModeValue() {
+  if (disallow_ax_mode_changes_) {
+    return;
+  }
+
   accessibility_mode_ = ui::AXMode();
-  if (force_renderer_accessibility_)
-    AddAccessibilityModeFlags(ui::kAXModeComplete);
 }
 
 void BrowserAccessibilityStateImpl::MaybeResetAccessibilityMode() {
@@ -197,10 +253,7 @@ void BrowserAccessibilityStateImpl::ResetAccessibilityMode() {
   // the observers are never notified and screen reader support fails to work.
   ui::AXPlatformNode::SetAXMode(accessibility_mode_);
 
-  std::vector<WebContentsImpl*> web_contents_vector =
-      WebContentsImpl::GetAllWebContents();
-  for (size_t i = 0; i < web_contents_vector.size(); ++i)
-    web_contents_vector[i]->SetAccessibilityMode(accessibility_mode_);
+  NotifyWebContentsToSetAXMode(accessibility_mode_);
 }
 
 bool BrowserAccessibilityStateImpl::IsAccessibleBrowser() {
@@ -230,20 +283,23 @@ bool BrowserAccessibilityStateImpl::IsCaretBrowsingEnabled() const {
   return caret_browsing_enabled_;
 }
 
+void BrowserAccessibilityStateImpl::SetPerformanceFilteringAllowed(
+    bool allowed) {
+  performance_filtering_allowed_ = allowed;
+}
+
+bool BrowserAccessibilityStateImpl::IsPerformanceFilteringAllowed() {
+  return performance_filtering_allowed_;
+}
+
 void BrowserAccessibilityStateImpl::UpdateHistogramsOnUIThread() {
   for (auto& callback : ui_thread_histogram_callbacks_)
     std::move(callback).Run();
   ui_thread_histogram_callbacks_.clear();
 
-  UMA_HISTOGRAM_BOOLEAN("Accessibility.ManuallyEnabled",
-                        force_renderer_accessibility_);
-#if BUILDFLAG(IS_WIN) && !defined(TOOLKIT_QT)
-  UMA_HISTOGRAM_ENUMERATION(
-      "Accessibility.WinHighContrastTheme",
-      ui::NativeTheme::GetInstanceForNativeUi()
-          ->GetPlatformHighContrastColorScheme(),
-      ui::NativeTheme::PlatformHighContrastColorScheme::kMaxValue);
-#endif
+  UMA_HISTOGRAM_BOOLEAN(
+      "Accessibility.ManuallyEnabled",
+      !accessibility_mode_.is_mode_off() && disallow_ax_mode_changes_);
 
   ui_thread_done_ = true;
   if (other_thread_done_ && background_thread_done_callback_)
@@ -290,15 +346,16 @@ ui::AXMode BrowserAccessibilityStateImpl::GetAccessibilityMode() {
   // TODO(accessibility) Combine this with the AXMode we store in AXPlatformNode
   // into a single global AXMode tracker in ui/accessibility. The current
   // situation of storing in two places could lead to misalignment.
-  DCHECK_EQ(accessibility_mode_, ui::AXPlatformNode::GetAccessibilityMode())
+  CHECK_EQ(accessibility_mode_, ui::AXPlatformNode::GetAccessibilityMode())
       << "Accessibility modes in content and UI are misaligned.";
   return accessibility_mode_;
 }
 
 void BrowserAccessibilityStateImpl::OnUserInputEvent() {
   // No need to do anything if accessibility is off, or if it was forced on.
-  if (accessibility_mode_.is_mode_off() || force_renderer_accessibility_)
+  if (accessibility_mode_.is_mode_off() || disallow_ax_mode_changes_) {
     return;
+  }
 
   // If we get at least kAutoDisableAccessibilityEventCount user input
   // events, more than kAutoDisableAccessibilityTimeSecs apart, with
@@ -366,16 +423,15 @@ void BrowserAccessibilityStateImpl::UpdateUniqueUserHistograms() {}
 void BrowserAccessibilityStateImpl::SetImageLabelsModeForProfile(
     bool enabled,
     BrowserContext* profile) {}
-
-bool BrowserAccessibilityStateImpl::HasSpokenFeedbackServicePresent() {
-  NOTIMPLEMENTED();
-  return false;
-}
 #endif
 
+void BrowserAccessibilityStateImpl::DisallowAXModeChanges() {
+  disallow_ax_mode_changes_ = true;
+  ui::AXPlatformNode::DisallowAXModeChanges();
+}
+
 void BrowserAccessibilityStateImpl::AddAccessibilityModeFlags(ui::AXMode mode) {
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kDisableRendererAccessibility)) {
+  if (disallow_ax_mode_changes_) {
     return;
   }
 
@@ -387,6 +443,15 @@ void BrowserAccessibilityStateImpl::AddAccessibilityModeFlags(ui::AXMode mode) {
 
   ui::AXMode previous_mode = accessibility_mode_;
   accessibility_mode_ |= mode;
+
+  // Form controls mode is restrictive. There are other modes that should not be
+  // used in combination with it.
+  if (accessibility_mode_.HasExperimentalFlags(
+          ui::AXMode::kExperimentalFormControls)) {
+    CHECK(!accessibility_mode_.has_mode(ui::AXMode::kInlineTextBoxes));
+    CHECK(!accessibility_mode_.has_mode(ui::AXMode::kScreenReader));
+  }
+
   if (accessibility_mode_ == previous_mode)
     return;
 
@@ -450,15 +515,11 @@ void BrowserAccessibilityStateImpl::AddAccessibilityModeFlags(ui::AXMode mode) {
   int new_experimental_mode_flags =
       mode.experimental_flags() & (~previous_mode.experimental_flags());
   if (new_experimental_mode_flags & ui::AXMode::kExperimentalFormControls) {
-    RecordNewExperimentalAccessibilityModeFlags(
-        ui::AXMode::ExperimentalModeFlagHistogramValue::
-            UMA_AX_EXPERIMENTAL_MODE_FORM_CONTROLS);
+    base::UmaHistogramBoolean("Accessibility.ExperimentalModeFlag.FormControls",
+                              true);
   }
 
-  std::vector<WebContentsImpl*> web_contents_vector =
-      WebContentsImpl::GetAllWebContents();
-  for (size_t i = 0; i < web_contents_vector.size(); ++i)
-    web_contents_vector[i]->AddAccessibilityMode(accessibility_mode_);
+  NotifyWebContentsToAddAXMode(accessibility_mode_);
 
   // Add a crash key with the ax_mode, to enable searching for top crashes that
   // occur when accessibility is turned on. This adds it for the browser
@@ -473,8 +534,12 @@ void BrowserAccessibilityStateImpl::AddAccessibilityModeFlags(ui::AXMode mode) {
 
 void BrowserAccessibilityStateImpl::RemoveAccessibilityModeFlags(
     ui::AXMode mode) {
-  if (force_renderer_accessibility_ && mode == ui::kAXModeComplete)
+  // Turning off accessibility or changing the mode will not be allowed if the
+  // --force-renderer-accessibility or --disable-renderer-accessibility command
+  // line flags are present, or during testing
+  if (disallow_ax_mode_changes_) {
     return;
+  }
 
   int raw_flags = accessibility_mode_.flags() ^
                   (mode.flags() & accessibility_mode_.flags());
@@ -486,10 +551,7 @@ void BrowserAccessibilityStateImpl::RemoveAccessibilityModeFlags(
   // Proxy the new AXMode to AXPlatformNode.
   ui::AXPlatformNode::SetAXMode(accessibility_mode_);
 
-  std::vector<WebContentsImpl*> web_contents_vector =
-      WebContentsImpl::GetAllWebContents();
-  for (size_t i = 0; i < web_contents_vector.size(); ++i)
-    web_contents_vector[i]->SetAccessibilityMode(accessibility_mode_);
+  NotifyWebContentsToSetAXMode(accessibility_mode_);
 }
 
 base::CallbackListSubscription

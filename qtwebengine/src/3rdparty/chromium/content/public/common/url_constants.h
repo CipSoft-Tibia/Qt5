@@ -8,6 +8,7 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "content/common/content_export.h"
+#include "device/vr/buildflags/buildflags.h"
 #include "url/url_constants.h"
 
 // Contains constants for known URLs and portions thereof.
@@ -21,7 +22,6 @@ CONTENT_EXPORT extern const char kChromeDevToolsScheme[];
 CONTENT_EXPORT extern const char kChromeErrorScheme[];
 CONTENT_EXPORT extern const char kChromeUIScheme[];  // Used for WebUIs.
 CONTENT_EXPORT extern const char kChromeUIUntrustedScheme[];
-CONTENT_EXPORT extern const char kGuestScheme[];
 CONTENT_EXPORT extern const char kViewSourceScheme[];
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 CONTENT_EXPORT extern const char kExternalFileScheme[];
@@ -55,6 +55,9 @@ CONTENT_EXPORT extern const char kChromeUITracingHost[];
 CONTENT_EXPORT extern const char kChromeUIUkmHost[];
 CONTENT_EXPORT extern const char kChromeUIUntrustedResourcesURL[];
 CONTENT_EXPORT extern const char kChromeUIWebRTCInternalsHost[];
+#if BUILDFLAG(ENABLE_VR)
+CONTENT_EXPORT extern const char kChromeUIWebXrInternalsHost[];
+#endif
 
 // Special URL used to start a navigation to an error page.
 CONTENT_EXPORT extern const char kUnreachableWebDataURL[];

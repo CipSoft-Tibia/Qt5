@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/escaping.h"
 #include "quiche/http2/adapter/header_validator.h"
@@ -13,6 +14,7 @@
 #include "quiche/http2/adapter/http2_visitor_interface.h"
 #include "quiche/http2/adapter/noop_header_validator.h"
 #include "quiche/http2/adapter/oghttp2_util.h"
+#include "quiche/common/quiche_callbacks.h"
 #include "quiche/spdy/core/spdy_protocol.h"
 
 namespace http2 {
@@ -41,13 +43,15 @@ class FrameAttributeCollector : public spdy::SpdyFrameVisitor {
   void VisitData(const spdy::SpdyDataIR& data) override {
     frame_type_ = static_cast<uint8_t>(data.frame_type());
     stream_id_ = data.stream_id();
-    flags_ = (data.fin() ? 0x1 : 0) | (data.padded() ? 0x8 : 0);
+    flags_ =
+        (data.fin() ? END_STREAM_FLAG : 0) | (data.padded() ? PADDED_FLAG : 0);
   }
   void VisitHeaders(const spdy::SpdyHeadersIR& headers) override {
     frame_type_ = static_cast<uint8_t>(headers.frame_type());
     stream_id_ = headers.stream_id();
-    flags_ = 0x4 | (headers.fin() ? 0x1 : 0) | (headers.padded() ? 0x8 : 0) |
-             (headers.has_priority() ? 0x20 : 0);
+    flags_ = END_HEADERS_FLAG | (headers.fin() ? END_STREAM_FLAG : 0) |
+             (headers.padded() ? PADDED_FLAG : 0) |
+             (headers.has_priority() ? PRIORITY_FLAG : 0);
   }
   void VisitPriority(const spdy::SpdyPriorityIR& priority) override {
     frame_type_ = static_cast<uint8_t>(priority.frame_type());
@@ -63,18 +67,18 @@ class FrameAttributeCollector : public spdy::SpdyFrameVisitor {
   void VisitSettings(const spdy::SpdySettingsIR& settings) override {
     frame_type_ = static_cast<uint8_t>(settings.frame_type());
     frame_type_ = 4;
-    flags_ = (settings.is_ack() ? 0x1 : 0);
+    flags_ = (settings.is_ack() ? ACK_FLAG : 0);
   }
   void VisitPushPromise(const spdy::SpdyPushPromiseIR& push_promise) override {
     frame_type_ = static_cast<uint8_t>(push_promise.frame_type());
     frame_type_ = 5;
     stream_id_ = push_promise.stream_id();
-    flags_ = (push_promise.padded() ? 0x8 : 0);
+    flags_ = (push_promise.padded() ? PADDED_FLAG : 0);
   }
   void VisitPing(const spdy::SpdyPingIR& ping) override {
     frame_type_ = static_cast<uint8_t>(ping.frame_type());
     frame_type_ = 6;
-    flags_ = (ping.is_ack() ? 0x1 : 0);
+    flags_ = (ping.is_ack() ? ACK_FLAG : 0);
   }
   void VisitGoAway(const spdy::SpdyGoAwayIR& goaway) override {
     frame_type_ = static_cast<uint8_t>(goaway.frame_type());
@@ -91,7 +95,7 @@ class FrameAttributeCollector : public spdy::SpdyFrameVisitor {
       const spdy::SpdyContinuationIR& continuation) override {
     frame_type_ = static_cast<uint8_t>(continuation.frame_type());
     stream_id_ = continuation.stream_id();
-    flags_ = continuation.end_headers() ? 0x4 : 0;
+    flags_ = continuation.end_headers() ? END_HEADERS_FLAG : 0;
   }
   void VisitUnknown(const spdy::SpdyUnknownIR& unknown) override {
     frame_type_ = static_cast<uint8_t>(unknown.frame_type());
@@ -124,29 +128,6 @@ absl::string_view TracePerspectiveAsString(Perspective p) {
   }
   return "OGHTTP2_SERVER";
 }
-
-class RunOnExit {
- public:
-  RunOnExit() = default;
-  explicit RunOnExit(std::function<void()> f) : f_(std::move(f)) {}
-
-  RunOnExit(const RunOnExit& other) = delete;
-  RunOnExit& operator=(const RunOnExit& other) = delete;
-  RunOnExit(RunOnExit&& other) = delete;
-  RunOnExit& operator=(RunOnExit&& other) = delete;
-
-  ~RunOnExit() {
-    if (f_) {
-      f_();
-    }
-    f_ = {};
-  }
-
-  void emplace(std::function<void()> f) { f_ = std::move(f); }
-
- private:
-  std::function<void()> f_;
-};
 
 Http2ErrorCode GetHttp2ErrorCode(SpdyFramerError error) {
   switch (error) {
@@ -218,6 +199,15 @@ OgHttp2Session::PassthroughHeadersHandler::PassthroughHeadersHandler(
   if (session_.options_.validate_http_headers) {
     QUICHE_VLOG(2) << "instantiating regular header validator";
     validator_ = std::make_unique<HeaderValidator>();
+    if (session_.options_.validate_path) {
+      validator_->SetValidatePath();
+    }
+    if (session_.options_.allow_fragment_in_path) {
+      validator_->SetAllowFragmentInPath();
+    }
+    if (session_.options_.allow_different_host_and_authority) {
+      validator_->SetAllowDifferentHostAndAuthority();
+    }
   } else {
     QUICHE_VLOG(2) << "instantiating noop header validator";
     validator_ = std::make_unique<NoopHeaderValidator>();
@@ -479,7 +469,7 @@ OgHttp2Session::ProcessBytesImpl(absl::string_view bytes) {
     return 0;
   }
   processing_bytes_ = true;
-  RunOnExit r{[this]() { processing_bytes_ = false; }};
+  auto cleanup = absl::MakeCleanup([this]() { processing_bytes_ = false; });
 
   if (options_.blackhole_data_on_connection_error && latched_error_) {
     return static_cast<int64_t>(bytes.size());
@@ -598,7 +588,7 @@ int OgHttp2Session::Send() {
     return 0;
   }
   sending_ = true;
-  RunOnExit r{[this]() { sending_ = false; }};
+  auto cleanup = absl::MakeCleanup([this]() { sending_ = false; });
 
   if (fatal_send_error_) {
     return kSendError;
@@ -751,7 +741,7 @@ bool OgHttp2Session::AfterFrameSent(uint8_t frame_type_int, uint32_t stream_id,
   }
   if (stream_id == 0) {
     if (frame_type == FrameType::SETTINGS) {
-      const bool is_settings_ack = (flags & 0x01);
+      const bool is_settings_ack = (flags & ACK_FLAG);
       if (is_settings_ack && encoder_header_table_capacity_when_acking_) {
         framer_.UpdateHeaderEncoderTableSize(
             encoder_header_table_capacity_when_acking_.value());
@@ -765,7 +755,7 @@ bool OgHttp2Session::AfterFrameSent(uint8_t frame_type_int, uint32_t stream_id,
 
   const bool contains_fin =
       (frame_type == FrameType::DATA || frame_type == FrameType::HEADERS) &&
-      (flags & 0x01) == 0x01;
+      (flags & END_STREAM_FLAG) == END_STREAM_FLAG;
   auto it = stream_map_.find(stream_id);
   const bool still_open_remote =
       it != stream_map_.end() && !it->second.half_closed_remote;
@@ -868,8 +858,8 @@ OgHttp2Session::SendResult OgHttp2Session::WriteForStream(
         state.half_closed_local = true;
         MaybeFinWithRstStream(it);
       }
-      const bool ok =
-          AfterFrameSent(/* DATA */ 0, stream_id, length, fin ? 0x1 : 0x0, 0);
+      const bool ok = AfterFrameSent(/* DATA */ 0, stream_id, length,
+                                     fin ? END_STREAM_FLAG : 0x0, 0);
       if (!ok) {
         LatchErrorAndNotify(Http2ErrorCode::INTERNAL_ERROR,
                             ConnectionError::kSendError);
@@ -1030,6 +1020,7 @@ void OgHttp2Session::OnError(SpdyFramerError error,
 
 void OgHttp2Session::OnCommonHeader(spdy::SpdyStreamId stream_id, size_t length,
                                     uint8_t type, uint8_t flags) {
+  current_frame_type_ = type;
   highest_received_stream_id_ = std::max(static_cast<Http2StreamId>(stream_id),
                                          highest_received_stream_id_);
   if (streams_reset_.contains(stream_id)) {
@@ -1319,7 +1310,7 @@ void OgHttp2Session::OnSettingsAck() {
   if (!settings_ack_callbacks_.empty()) {
     SettingsAckCallback callback = std::move(settings_ack_callbacks_.front());
     settings_ack_callbacks_.pop_front();
-    callback();
+    std::move(callback)();
   }
 
   visitor_.OnSettingsAck();
@@ -1863,7 +1854,6 @@ HeaderType OgHttp2Session::NextHeaderType(
     if (!current_type) {
       return HeaderType::REQUEST;
     } else {
-      QUICHE_DCHECK(current_type == HeaderType::REQUEST);
       return HeaderType::REQUEST_TRAILER;
     }
   } else if (!current_type ||
@@ -1971,6 +1961,13 @@ void OgHttp2Session::DecrementQueuedFrameCount(uint32_t stream_id,
 }
 
 void OgHttp2Session::HandleContentLengthError(Http2StreamId stream_id) {
+  if (current_frame_type_ == static_cast<uint8_t>(FrameType::HEADERS)) {
+    // For consistency, either OnInvalidFrame should always be invoked,
+    // regardless of frame type, or perhaps we should introduce an OnStreamError
+    // callback.
+    visitor_.OnInvalidFrame(
+        stream_id, Http2VisitorInterface::InvalidFrameError::kHttpMessaging);
+  }
   EnqueueFrame(std::make_unique<spdy::SpdyRstStreamIR>(
       stream_id, spdy::ERROR_CODE_PROTOCOL_ERROR));
 }

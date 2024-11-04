@@ -10,11 +10,17 @@
 
 #include "base/functional/callback.h"
 #include "components/permissions/permission_ui_selector.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "ui/gfx/geometry/rect.h"
 #include "url/gurl.h"
 
 namespace content {
 class WebContents;
 }
+
+namespace ui {
+class Event;
+}  // namespace ui
 
 namespace permissions {
 enum class PermissionPromptDisposition;
@@ -64,6 +70,8 @@ class PermissionPrompt {
     virtual void Dismiss() = 0;
     virtual void Ignore() = 0;
 
+    virtual void OpenHelpCenterLink(const ui::Event& event) = 0;
+
     // This method preemptively ignores a permission request but does not
     // finalize a permission prompt. That is needed in case a permission prompt
     // is a quiet chip. This should be called only if an origin is subscribed to
@@ -112,6 +120,8 @@ class PermissionPrompt {
     // survey is triggered to take appropriate actions.
     virtual void SetHatsShownCallback(base::OnceCallback<void()> callback) = 0;
 
+    virtual content::WebContents* GetAssociatedWebContents() = 0;
+
     virtual base::WeakPtr<Delegate> GetWeakPtr() = 0;
 
     // Recreate the UI view because the UI flavor needs to change. Returns true
@@ -140,6 +150,9 @@ class PermissionPrompt {
 
   // Get the type of prompt UI shown for metrics.
   virtual PermissionPromptDisposition GetPromptDisposition() const = 0;
+
+  // Get the prompt view bounds in screen coordinates.
+  virtual absl::optional<gfx::Rect> GetViewBoundsInScreen() const = 0;
 };
 
 }  // namespace permissions

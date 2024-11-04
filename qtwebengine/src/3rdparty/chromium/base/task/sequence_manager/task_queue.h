@@ -11,7 +11,6 @@
 
 #include "base/base_export.h"
 #include "base/check.h"
-#include "base/memory/weak_ptr.h"
 #include "base/task/common/checked_lock.h"
 #include "base/task/common/lazy_now.h"
 #include "base/task/sequence_manager/tasks.h"
@@ -41,15 +40,13 @@ class SequenceManagerImpl;
 class TaskQueueImpl;
 }  // namespace internal
 
-// TODO(kraynov): Make TaskQueue to actually be an interface for TaskQueueImpl
-// and stop using ref-counting because we're no longer tied to task runner
-// lifecycle and there's no other need for ref-counting either.
-// NOTE: When TaskQueue gets automatically deleted on zero ref-count,
-// TaskQueueImpl gets gracefully shutdown. It means that it doesn't get
-// unregistered immediately and might accept some last minute tasks until
-// SequenceManager will unregister it at some point. It's done to ensure that
-// task queue always gets unregistered on the main thread.
-class BASE_EXPORT TaskQueue : public RefCountedThreadSafe<TaskQueue> {
+// TODO(crbug.com/1143007): Make TaskQueue to actually be an interface for
+// TaskQueueImpl.
+//
+// NOTE: TaskQueue is destroyed when its Handle is destroyed, at which point
+// TaskQueueImpl gets unregistered, meaning it stops posting new tasks and is
+// scheduled for deletion after the current task finishes.
+class BASE_EXPORT TaskQueue {
  public:
   // Interface that lets a task queue be throttled by changing the wake up time
   // and optionally, by inserting fences. A wake up in this context is a
@@ -94,11 +91,38 @@ class BASE_EXPORT TaskQueue : public RefCountedThreadSafe<TaskQueue> {
     ~Throttler() = default;
   };
 
+  // Wrapper around a `TaskQueue`, exposed by `SequenceManager` when creating a
+  // task queue. The handle owns the underlying queue and exposes it through a
+  // unique_ptr-like interface, and it's responsible for managing the queue's
+  // lifetime, ensuring the queue is properly unregistered with the queue's
+  // `SequenceManager` when the handle is destroyed.
+  //
+  // TODO(crbug.com/1143007): As part of making TaskQueue an interface that
+  // TaskQueueImpl implements, this handle will need to pass the queue to
+  // sequence manager so it's not destroyed until the current task finishes.
+  class BASE_EXPORT Handle {
+   public:
+    Handle();
+    explicit Handle(std::unique_ptr<TaskQueue> task_queue);
+
+    Handle(Handle&&);
+    Handle& operator=(Handle&&);
+
+    ~Handle();
+
+    void reset() { task_queue_.reset(); }
+
+    TaskQueue* get() const { return task_queue_.get(); }
+    TaskQueue* operator->() const { return task_queue_.get(); }
+
+    explicit operator bool() const { return !!task_queue_; }
+
+   private:
+    std::unique_ptr<TaskQueue> task_queue_;
+  };
+
   // Shuts down the queue. All tasks currently queued will be discarded.
   virtual void ShutdownTaskQueue();
-
-  // Shuts down the queue when there are no more tasks queued.
-  void ShutdownTaskQueueGracefully();
 
   // Queues with higher priority (smaller number) are selected to run before
   // queues of lower priority. Note that there is no starvation protection,
@@ -154,6 +178,7 @@ class BASE_EXPORT TaskQueue : public RefCountedThreadSafe<TaskQueue> {
             const TaskQueue::Spec& spec);
   TaskQueue(const TaskQueue&) = delete;
   TaskQueue& operator=(const TaskQueue&) = delete;
+  virtual ~TaskQueue();
 
   // Information about task execution.
   //
@@ -228,7 +253,7 @@ class BASE_EXPORT TaskQueue : public RefCountedThreadSafe<TaskQueue> {
 
     // Votes to enable or disable the associated TaskQueue. The TaskQueue will
     // only be enabled if all the voters agree it should be enabled, or if there
-    // are no voters.
+    // are no voters. Voters don't keep the queue alive.
     // NOTE this must be called on the thread the associated TaskQueue was
     // created on.
     void SetVoteToEnable(bool enabled);
@@ -236,11 +261,11 @@ class BASE_EXPORT TaskQueue : public RefCountedThreadSafe<TaskQueue> {
     bool IsVotingToEnable() const { return enabled_; }
 
    private:
-    friend class TaskQueue;
-    explicit QueueEnabledVoter(scoped_refptr<TaskQueue> task_queue);
+    friend class internal::TaskQueueImpl;
+    explicit QueueEnabledVoter(WeakPtr<internal::TaskQueueImpl> task_queue);
 
-    scoped_refptr<TaskQueue> const task_queue_;
-    bool enabled_;
+    WeakPtr<internal::TaskQueueImpl> task_queue_;
+    bool enabled_ = true;
   };
 
   // Returns an interface that allows the caller to vote on whether or not this
@@ -422,24 +447,15 @@ class BASE_EXPORT TaskQueue : public RefCountedThreadSafe<TaskQueue> {
   // execution.
   void SetTaskExecutionTraceLogger(TaskExecutionTraceLogger logger);
 
-  base::WeakPtr<TaskQueue> AsWeakPtr() {
-    return weak_ptr_factory_.GetWeakPtr();
+  // TODO(crbug.com/1143007): Remove this once TaskQueueImpl inherits TaskQueue.
+  internal::TaskQueueImpl* GetTaskQueueImplForTest() const {
+    return impl_.get();
   }
-
- protected:
-  virtual ~TaskQueue();
-
-  internal::TaskQueueImpl* GetTaskQueueImpl() const { return impl_.get(); }
 
  private:
   friend class RefCountedThreadSafe<TaskQueue>;
   friend class internal::SequenceManagerImpl;
   friend class internal::TaskQueueImpl;
-
-  void AddQueueEnabledVoter(bool voter_is_enabled);
-  void RemoveQueueEnabledVoter(bool voter_is_enabled);
-  bool AreAllQueueEnabledVotersEnabled() const;
-  void OnQueueEnabledVoteChanged(bool enabled);
 
   bool IsOnMainThread() const;
 
@@ -463,11 +479,7 @@ class BASE_EXPORT TaskQueue : public RefCountedThreadSafe<TaskQueue> {
   const scoped_refptr<const internal::AssociatedThreadId> associated_thread_;
   const scoped_refptr<SingleThreadTaskRunner> default_task_runner_;
 
-  int enabled_voter_count_ = 0;
-  int voter_count_ = 0;
   QueueName name_;
-
-  base::WeakPtrFactory<TaskQueue> weak_ptr_factory_{this};
 };
 
 }  // namespace sequence_manager

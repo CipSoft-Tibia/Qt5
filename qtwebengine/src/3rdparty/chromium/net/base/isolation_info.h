@@ -119,7 +119,7 @@ class NET_EXPORT IsolationInfo {
       const url::Origin& frame_origin,
       const SiteForCookies& site_for_cookies,
       absl::optional<std::set<SchemefulSite>> party_context = absl::nullopt,
-      const base::UnguessableToken* nonce = nullptr);
+      const absl::optional<base::UnguessableToken>& nonce = absl::nullopt);
 
   // TODO(crbug/1372769): Remove this and create a safer way to ensure NIKs
   // created from NAKs aren't used by accident.
@@ -138,19 +138,11 @@ class NET_EXPORT IsolationInfo {
       const absl::optional<url::Origin>& frame_origin,
       const SiteForCookies& site_for_cookies,
       absl::optional<std::set<SchemefulSite>> party_context = absl::nullopt,
-      const base::UnguessableToken* nonce = nullptr);
+      const absl::optional<base::UnguessableToken>& nonce = absl::nullopt);
 
   // Create a new IsolationInfo for a redirect to the supplied origin. |this| is
   // unmodified.
   IsolationInfo CreateForRedirect(const url::Origin& new_origin) const;
-
-  // Intended for temporary use in locations that should be using main frame and
-  // frame origin, but are currently only using frame origin, because the
-  // creating object may be shared across main frame objects. Having a special
-  // constructor for these methods makes it easier to keep track of locating
-  // callsites that need to have their IsolationInfo filled in.
-  static IsolationInfo ToDoUseTopFrameOriginAsWell(
-      const url::Origin& incorrectly_used_frame_origin);
 
   RequestType request_type() const { return request_type_; }
 
@@ -202,15 +194,11 @@ class NET_EXPORT IsolationInfo {
   NetworkAnonymizationKey CreateNetworkAnonymizationKeyForIsolationInfo(
       const absl::optional<url::Origin>& top_frame_origin,
       const absl::optional<url::Origin>& frame_origin,
-      const base::UnguessableToken* nonce) const;
+      const absl::optional<base::UnguessableToken>& nonce) const;
 
   // Serialize the `IsolationInfo` into a string. Fails if transient, returning
   // an empty string.
   std::string Serialize() const;
-
-  // Returns true if the IsolationInfo has a triple keyed scheme. This
-  // means both `frame_site_` and `top_frame_site_` are populated.
-  static bool IsFrameSiteEnabled();
 
   std::string DebugString() const;
 
@@ -219,7 +207,7 @@ class NET_EXPORT IsolationInfo {
                 const absl::optional<url::Origin>& top_frame_origin,
                 const absl::optional<url::Origin>& frame_origin,
                 const SiteForCookies& site_for_cookies,
-                const base::UnguessableToken* nonce,
+                const absl::optional<base::UnguessableToken>& nonce,
                 absl::optional<std::set<SchemefulSite>> party_context);
 
   RequestType request_type_;

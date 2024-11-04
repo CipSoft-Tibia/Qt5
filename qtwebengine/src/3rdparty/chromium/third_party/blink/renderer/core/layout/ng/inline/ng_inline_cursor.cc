@@ -6,6 +6,7 @@
 
 #include "base/containers/adapters.h"
 #include "base/ranges/algorithm.h"
+#include "third_party/blink/renderer/core/editing/frame_selection.h"
 #include "third_party/blink/renderer/core/editing/position_with_affinity.h"
 #include "third_party/blink/renderer/core/html/html_br_element.h"
 #include "third_party/blink/renderer/core/layout/geometry/writing_mode_converter.h"
@@ -109,6 +110,7 @@ bool ShouldIgnoreForPositionForPoint(const NGFragmentItem& item) {
       // All/LayoutViewHitTestTest.PseudoElementAfter* needs this.
       return item.IsGeneratedText();
     case NGFragmentItem::kLine:
+    case NGFragmentItem::kInvalid:
       NOTREACHED();
       break;
   }
@@ -167,6 +169,13 @@ void NGInlineCursor::SetRoot(const NGPhysicalBoxFragment& box_fragment,
 bool NGInlineCursor::TrySetRootFragmentItems() {
   DCHECK(root_block_flow_);
   DCHECK(!fragment_items_ || fragment_items_->Equals(items_));
+  if (UNLIKELY(!root_block_flow_->MayHaveFragmentItems())) {
+#if EXPENSIVE_DCHECKS_ARE_ON()
+    DCHECK(!root_block_flow_->PhysicalFragments().SlowHasFragmentItems());
+#endif
+    fragment_index_ = max_fragment_index_ + 1;
+    return false;
+  }
   for (; fragment_index_ <= max_fragment_index_; IncrementFragmentIndex()) {
     const NGPhysicalBoxFragment* fragment =
         root_block_flow_->GetPhysicalFragment(fragment_index_);
@@ -404,8 +413,7 @@ UBiDiLevel NGInlineCursorPosition::BidiLevel() const {
   if (IsText()) {
     if (IsLayoutGeneratedText()) {
       // TODO(yosin): Until we have clients, we don't support bidi-level for
-      // ellipsis and soft hyphens.
-      NOTREACHED() << this;
+      // ellipsis and soft hyphens. crbug.com/1423660
       return 0;
     }
     const auto& layout_text = *To<LayoutText>(GetLayoutObject());
@@ -415,7 +423,7 @@ UBiDiLevel NGInlineCursorPosition::BidiLevel() const {
       // In case of <br>, <wbr>, text-combine-upright, etc.
       return 0;
     }
-    const NGTextOffset offset = TextOffset();
+    const NGTextOffsetRange offset = TextOffset();
     auto* const item =
         base::ranges::find_if(*items, [offset](const NGInlineItem& item) {
           return item.StartOffset() <= offset.start &&
@@ -845,6 +853,7 @@ PositionWithAffinity NGInlineCursor::PositionForPointInChild(
       DCHECK(child_item.GetLayoutObject()->IsLayoutInline()) << child_item;
       break;
     case NGFragmentItem::kLine:
+    case NGFragmentItem::kInvalid:
       NOTREACHED();
       break;
   }

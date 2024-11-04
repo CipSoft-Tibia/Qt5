@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -9,10 +9,10 @@
 #define UTIL_ENUM_NAME_TABLE_H_
 
 #include <array>
+#include <string_view>
 #include <utility>
 
 #include "absl/strings/match.h"
-#include "absl/strings/string_view.h"
 #include "platform/base/error.h"
 #include "util/osp_logging.h"
 
@@ -38,7 +38,7 @@ ErrorOr<const char*> GetEnumName(const EnumNameTable<Enum, Size>& map,
 // Get the value of an enum from the enum name.
 template <typename Enum, size_t Size>
 ErrorOr<Enum> GetEnum(const EnumNameTable<Enum, Size>& map,
-                      absl::string_view name) {
+                      std::string_view name) {
   for (auto pair : map) {
     if (absl::EqualsIgnoreCase(pair.first, name)) {
       return pair.second;

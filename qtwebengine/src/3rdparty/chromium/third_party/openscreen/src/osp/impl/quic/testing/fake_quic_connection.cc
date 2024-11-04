@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@
 #include "osp/impl/quic/testing/fake_quic_connection_factory.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 FakeQuicStream::FakeQuicStream(Delegate* delegate, uint64_t id)
     : QuicStream(delegate, id) {}
@@ -90,5 +89,4 @@ void FakeQuicConnection::Close() {
   }
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

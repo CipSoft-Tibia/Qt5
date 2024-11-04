@@ -14,11 +14,6 @@
 QT_BEGIN_NAMESPACE
 
 // ---------------- AppearanceOptions
-bool AppearanceOptions::equals(const AppearanceOptions &rhs) const
-{
-    return uiMode == rhs.uiMode && toolWindowFontSettings == rhs.toolWindowFontSettings;
-}
-
 void AppearanceOptions::toSettings(QDesignerSettings &settings) const
 {
     settings.setUiMode(uiMode);
@@ -34,7 +29,7 @@ void AppearanceOptions::fromSettings(const QDesignerSettings &settings)
 // ---------------- QDesignerAppearanceOptionsWidget
 QDesignerAppearanceOptionsWidget::QDesignerAppearanceOptionsWidget(QWidget *parent) :
     QWidget(parent),
-    m_ui(new Ui::AppearanceOptionsWidget)
+    m_ui(new QT_PREPEND_NAMESPACE(Ui)::AppearanceOptionsWidget)
 {
     m_ui->setupUi(this);
 

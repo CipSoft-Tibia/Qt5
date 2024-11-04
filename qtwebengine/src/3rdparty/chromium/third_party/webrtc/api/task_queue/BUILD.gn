@@ -17,6 +17,7 @@ rtc_library("task_queue") {
   sources = [ "task_queue_base.cc" ]
 
   deps = [
+    "..:location",
     "../../rtc_base:checks",
     "../../rtc_base:macromagic",
     "../../rtc_base/system:rtc_export",
@@ -129,6 +130,7 @@ rtc_library("pending_task_safety_flag") {
     "../../api:sequence_checker",
     "../../rtc_base:checks",
     "../../rtc_base/system:no_unique_address",
+    "../../rtc_base/system:rtc_export",
   ]
   absl_deps = [ "//third_party/abseil-cpp/absl/functional:any_invocable" ]
 }

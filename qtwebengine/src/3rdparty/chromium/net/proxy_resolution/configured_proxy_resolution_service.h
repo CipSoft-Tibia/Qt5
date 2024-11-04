@@ -307,6 +307,7 @@ class NET_EXPORT ConfiguredProxyResolutionService
   // asynchronously). Handles logging the result, and cleaning out
   // bad entries from the results list.
   int DidFinishResolvingProxy(const GURL& url,
+                              const GURL& top_frame_url,
                               const std::string& method,
                               ProxyInfo* result,
                               int result_code,
@@ -403,7 +404,7 @@ class NET_EXPORT ConfiguredProxyResolutionService
 
   THREAD_CHECKER(thread_checker_);
 
-  raw_ptr<ProxyDelegate> proxy_delegate_ = nullptr;
+  raw_ptr<ProxyDelegate, DanglingUntriaged> proxy_delegate_ = nullptr;
 
   // Flag used by |SetReady()| to check if |this| has been deleted by a
   // synchronous callback.

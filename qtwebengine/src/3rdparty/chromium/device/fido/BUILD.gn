@@ -40,6 +40,9 @@ component("fido") {
     "fido_parsing_utils.h",
     "fido_transport_protocol.cc",
     "fido_transport_protocol.h",
+    "json_request.cc",
+    "json_request.h",
+    "network_context_factory.h",
     "opaque_attestation_statement.cc",
     "opaque_attestation_statement.h",
     "p256_public_key.cc",
@@ -177,6 +180,8 @@ component("fido") {
       "hid/fido_hid_packet.h",
       "large_blob.cc",
       "large_blob.h",
+      "mac/icloud_keychain.h",
+      "mac/icloud_keychain_sys.h",
       "make_credential_request_handler.cc",
       "make_credential_request_handler.h",
       "make_credential_task.cc",
@@ -243,7 +248,17 @@ component("fido") {
       "Foundation.framework",
       "LocalAuthentication.framework",
       "Security.framework",
+      "AuthenticationServices.framework",
     ]
+
+    deps += [ "//build:branding_buildflags" ]
+
+    if (xcode_version_int >= 1500) {
+      sources += [
+        "mac/icloud_keychain.mm",
+        "mac/icloud_keychain_sys.mm",
+      ]
+    }
   }
 
   if (is_win) {
@@ -279,6 +294,22 @@ component("fido") {
       "//chromeos/dbus/u2f",
       "//chromeos/dbus/u2f:u2f_proto",
       "//dbus",
+    ]
+  }
+
+  if (!is_chromeos && !is_android && !is_qtwebengine) {
+    sources += [
+      "enclave/enclave_authenticator.cc",
+      "enclave/enclave_authenticator.h",
+      "enclave/enclave_discovery.cc",
+      "enclave/enclave_discovery.h",
+      "enclave/enclave_http_client.cc",
+      "enclave/enclave_http_client.h",
+      "enclave/enclave_protocol_utils.cc",
+      "enclave/enclave_protocol_utils.h",
+    ]
+    deps += [
+      "//components/sync/protocol:protocol",
     ]
   }
 }
@@ -451,6 +482,45 @@ source_set("test_support") {
       "mac/fake_touch_id_context.mm",
       "mac/scoped_touch_id_test_environment.h",
       "mac/scoped_touch_id_test_environment.mm",
+    ]
+  }
+}
+
+# This is split from `test_support` because it requires the
+# AuthenticationServices framework to be linked in, and that can't just be done
+# as a dep/framework here.
+if (is_mac) {
+  static_library("icloud_keychain_test_support") {
+    testonly = true
+    sources = [
+      "mac/fake_icloud_keychain_sys.h",
+      "mac/fake_icloud_keychain_sys.mm",
+      "mac/scoped_icloud_keychain_test_environment.h",
+      "mac/scoped_icloud_keychain_test_environment.mm",
+    ]
+    deps = [
+      "//base",
+      "//device/fido",
+    ]
+  }
+}
+
+if (is_win || is_linux || is_mac) {
+  static_library("enclave_service") {
+    testonly = true
+    sources = [
+      "enclave/test/enclave_http_server.cc",
+      "enclave/test/enclave_http_server.h",
+    ]
+    deps = [
+      ":fido",
+      "//base",
+      "//components/cbor",
+      "//components/device_event_log",
+      "//components/sync/protocol:protocol",
+      "//mojo/public/cpp/bindings",
+      "//net",
+      "//net:test_support",
     ]
   }
 }

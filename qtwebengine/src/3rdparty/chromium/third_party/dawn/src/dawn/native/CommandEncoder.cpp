@@ -23,9 +23,11 @@
 #include "dawn/native/ApplyClearColorValueWithDrawHelper.h"
 #include "dawn/native/BindGroup.h"
 #include "dawn/native/BlitBufferToDepthStencil.h"
+#include "dawn/native/BlitColorToColorWithDraw.h"
 #include "dawn/native/BlitDepthToDepth.h"
+#include "dawn/native/BlitTextureToBuffer.h"
 #include "dawn/native/Buffer.h"
-#include "dawn/native/ChainUtils_autogen.h"
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/CommandBuffer.h"
 #include "dawn/native/CommandBufferStateTracker.h"
 #include "dawn/native/CommandValidation.h"
@@ -80,6 +82,25 @@ MaybeError ValidateLinearTextureCopyOffset(const TextureDataLayout& layout,
                         "Offset (%u) is not a multiple of the texel block byte size (%u).",
                         layout.offset, blockInfo.byteSize);
     }
+    return {};
+}
+
+MaybeError ValidateTextureFormatForTextureToBufferCopyInCompatibilityMode(
+    const TextureBase* texture) {
+    DAWN_INVALID_IF(texture->GetFormat().isCompressed,
+                    "%s with format %s cannot be used as the source in a texture to buffer copy in "
+                    "compatibility mode.",
+                    texture, texture->GetFormat().format);
+    return {};
+}
+
+MaybeError ValidateSourceTextureFormatForTextureToTextureCopyInCompatibilityMode(
+    const TextureBase* texture) {
+    DAWN_INVALID_IF(
+        texture->GetFormat().isCompressed,
+        "%s with format %s cannot be used as the source in a texture to texture copy in "
+        "compatibility mode.",
+        texture, texture->GetFormat().format);
     return {};
 }
 
@@ -143,16 +164,32 @@ MaybeError ValidateOrSetAttachmentSize(const TextureViewBase* attachment,
 }
 
 MaybeError ValidateOrSetColorAttachmentSampleCount(const TextureViewBase* colorAttachment,
+                                                   uint32_t implicitSampleCount,
                                                    uint32_t* sampleCount) {
+    uint32_t attachmentSampleCount = 0;
+    std::string implicitPrefixStr;
+    if (implicitSampleCount > 1) {
+        DAWN_INVALID_IF(colorAttachment->GetTexture()->GetSampleCount() != 1,
+                        "Color attachment %s sample count (%u) is not 1 when it has implicit "
+                        "sample count (%u).",
+                        colorAttachment, colorAttachment->GetTexture()->GetSampleCount(),
+                        implicitSampleCount);
+
+        attachmentSampleCount = implicitSampleCount;
+        implicitPrefixStr = "implicit ";
+    } else {
+        attachmentSampleCount = colorAttachment->GetTexture()->GetSampleCount();
+    }
+
     if (*sampleCount == 0) {
-        *sampleCount = colorAttachment->GetTexture()->GetSampleCount();
+        *sampleCount = attachmentSampleCount;
         DAWN_ASSERT(*sampleCount != 0);
     } else {
         DAWN_INVALID_IF(
-            *sampleCount != colorAttachment->GetTexture()->GetSampleCount(),
-            "Color attachment %s sample count (%u) does not match the sample count of the "
+            *sampleCount != attachmentSampleCount,
+            "Color attachment %s %ssample count (%u) does not match the sample count of the "
             "other attachments (%u).",
-            colorAttachment, colorAttachment->GetTexture()->GetSampleCount(), *sampleCount);
+            colorAttachment, implicitPrefixStr, attachmentSampleCount, *sampleCount);
     }
 
     return {};
@@ -215,16 +252,91 @@ MaybeError ValidateResolveTarget(const DeviceBase* device,
     return {};
 }
 
+MaybeError ValidateColorAttachmentDepthSlice(const TextureViewBase* attachment,
+                                             uint32_t depthSlice) {
+    if (attachment->GetDimension() == wgpu::TextureViewDimension::e3D) {
+        const Extent3D& attachmentSize =
+            attachment->GetTexture()->GetMipLevelSingleSubresourceVirtualSize(
+                attachment->GetBaseMipLevel());
+
+        DAWN_INVALID_IF(depthSlice >= attachmentSize.depthOrArrayLayers,
+                        "The depth slice index (%u) of 3D %s used as attachment is >= the "
+                        "depthOrArrayLayers (%u) of its subresource at mip level (%u).",
+                        depthSlice, attachment, attachmentSize.depthOrArrayLayers,
+                        attachment->GetBaseMipLevel());
+    } else {
+        DAWN_INVALID_IF(depthSlice != 0,
+                        "The depth slice index (%u) of non-3D %s used as attachment is not 0.",
+                        depthSlice, attachment);
+    }
+
+    return {};
+}
+
+MaybeError ValidateColorAttachmentRenderToSingleSampled(
+    const DeviceBase* device,
+    const RenderPassColorAttachment& colorAttachment,
+    const DawnRenderPassColorAttachmentRenderToSingleSampled* msaaRenderToSingleSampledDesc) {
+    ASSERT(msaaRenderToSingleSampledDesc != nullptr);
+
+    DAWN_INVALID_IF(
+        !device->HasFeature(Feature::MSAARenderToSingleSampled),
+        "The color attachment %s has implicit sample count while the %s feature is not enabled.",
+        colorAttachment.view, ToAPI(Feature::MSAARenderToSingleSampled));
+
+    DAWN_INVALID_IF(!IsValidSampleCount(msaaRenderToSingleSampledDesc->implicitSampleCount) ||
+                        msaaRenderToSingleSampledDesc->implicitSampleCount <= 1,
+                    "The color attachment %s's implicit sample count (%u) is not supported.",
+                    colorAttachment.view, msaaRenderToSingleSampledDesc->implicitSampleCount);
+
+    DAWN_INVALID_IF(!colorAttachment.view->GetTexture()->IsImplicitMSAARenderTextureViewSupported(),
+                    "Color attachment %s was not created with %s usage, which is required for "
+                    "having implicit sample count (%u).",
+                    colorAttachment.view, wgpu::TextureUsage::TextureBinding,
+                    msaaRenderToSingleSampledDesc->implicitSampleCount);
+
+    DAWN_INVALID_IF(!colorAttachment.view->GetFormat().supportsResolveTarget,
+                    "The color attachment %s format (%s) does not support being used with "
+                    "implicit sample count (%u). The format does not support resolve.",
+                    colorAttachment.view, colorAttachment.view->GetFormat().format,
+                    msaaRenderToSingleSampledDesc->implicitSampleCount);
+
+    DAWN_INVALID_IF(colorAttachment.resolveTarget != nullptr,
+                    "Cannot set %s as a resolve target. No resolve target should be specified "
+                    "for the color attachment %s with implicit sample count (%u).",
+                    colorAttachment.resolveTarget, colorAttachment.view,
+                    msaaRenderToSingleSampledDesc->implicitSampleCount);
+
+    return {};
+}
+
 MaybeError ValidateRenderPassColorAttachment(DeviceBase* device,
                                              const RenderPassColorAttachment& colorAttachment,
                                              uint32_t* width,
                                              uint32_t* height,
                                              uint32_t* sampleCount,
+                                             uint32_t* implicitSampleCount,
                                              UsageValidationMode usageValidationMode) {
     TextureViewBase* attachment = colorAttachment.view;
     if (attachment == nullptr) {
         return {};
     }
+
+    DAWN_TRY(ValidateSingleSType(colorAttachment.nextInChain,
+                                 wgpu::SType::DawnRenderPassColorAttachmentRenderToSingleSampled));
+
+    const DawnRenderPassColorAttachmentRenderToSingleSampled* msaaRenderToSingleSampledDesc =
+        nullptr;
+    FindInChain(colorAttachment.nextInChain, &msaaRenderToSingleSampledDesc);
+    if (msaaRenderToSingleSampledDesc) {
+        DAWN_TRY(ValidateColorAttachmentRenderToSingleSampled(device, colorAttachment,
+                                                              msaaRenderToSingleSampledDesc));
+        *implicitSampleCount = msaaRenderToSingleSampledDesc->implicitSampleCount;
+        // Note: we don't need to check whether the implicit sample count of different attachments
+        // are the same. That already is done by indirectly comparing the sample count in
+        // ValidateOrSetColorAttachmentSampleCount.
+    }
+
     DAWN_TRY(device->ValidateObject(attachment));
     DAWN_TRY(ValidateCanUseAs(attachment->GetTexture(), wgpu::TextureUsage::RenderAttachment,
                               usageValidationMode));
@@ -238,6 +350,16 @@ MaybeError ValidateRenderPassColorAttachment(DeviceBase* device,
     DAWN_TRY(ValidateStoreOp(colorAttachment.storeOp));
     DAWN_INVALID_IF(colorAttachment.loadOp == wgpu::LoadOp::Undefined, "loadOp must be set.");
     DAWN_INVALID_IF(colorAttachment.storeOp == wgpu::StoreOp::Undefined, "storeOp must be set.");
+    if (attachment->GetTexture()->GetUsage() & wgpu::TextureUsage::TransientAttachment) {
+        DAWN_INVALID_IF(colorAttachment.loadOp != wgpu::LoadOp::Clear,
+                        "The color attachment %s has the load op set to %s while its usage (%s) "
+                        "has the transient attachment bit set.",
+                        attachment, wgpu::LoadOp::Load, attachment->GetTexture()->GetUsage());
+        DAWN_INVALID_IF(colorAttachment.storeOp != wgpu::StoreOp::Discard,
+                        "The color attachment %s has the store op set to %s while its usage (%s) "
+                        "has the transient attachment bit set.",
+                        attachment, wgpu::StoreOp::Store, attachment->GetTexture()->GetUsage());
+    }
 
     const dawn::native::Color& clearValue = colorAttachment.clearValue;
     if (colorAttachment.loadOp == wgpu::LoadOp::Clear) {
@@ -246,10 +368,16 @@ MaybeError ValidateRenderPassColorAttachment(DeviceBase* device,
                         "Color clear value (%s) contain a NaN.", &clearValue);
     }
 
-    DAWN_TRY(ValidateOrSetColorAttachmentSampleCount(attachment, sampleCount));
+    DAWN_TRY(
+        ValidateOrSetColorAttachmentSampleCount(attachment, *implicitSampleCount, sampleCount));
 
-    DAWN_TRY(ValidateResolveTarget(device, colorAttachment, usageValidationMode));
+    if (*implicitSampleCount <= 1) {
+        // This step is skipped if implicitSampleCount > 1, because in that case, there shoudn't be
+        // any explicit resolveTarget specified.
+        DAWN_TRY(ValidateResolveTarget(device, colorAttachment, usageValidationMode));
+    }
 
+    DAWN_TRY(ValidateColorAttachmentDepthSlice(attachment, colorAttachment.depthSlice));
     DAWN_TRY(ValidateAttachmentArrayLayersAndLevelCount(attachment));
     DAWN_TRY(ValidateOrSetAttachmentSize(attachment, width, height));
 
@@ -298,85 +426,57 @@ MaybeError ValidateRenderPassDepthStencilAttachment(
     // Read only, or depth doesn't exist.
     if (depthStencilAttachment->depthReadOnly ||
         !IsSubset(Aspect::Depth, attachment->GetAspects())) {
-        if (depthStencilAttachment->depthLoadOp == wgpu::LoadOp::Load &&
-            depthStencilAttachment->depthStoreOp == wgpu::StoreOp::Store) {
-            DAWN_TRY(DAWN_MAKE_DEPRECATION_ERROR(
-                device,
-                "depthLoadOp is (%s) and depthStoreOp is (%s) "
-                "when depthReadOnly (%u) or the attachment (%s) has no depth aspect.",
-                depthStencilAttachment->depthLoadOp, depthStencilAttachment->depthStoreOp,
-                depthStencilAttachment->depthReadOnly, attachment));
-        } else {
-            DAWN_INVALID_IF(depthStencilAttachment->depthLoadOp != wgpu::LoadOp::Undefined,
-                            "depthLoadOp (%s) must not be set if the attachment (%s) has "
-                            "no depth aspect or depthReadOnly (%u) is true.",
-                            depthStencilAttachment->depthLoadOp, attachment,
-                            depthStencilAttachment->depthReadOnly);
-            DAWN_INVALID_IF(depthStencilAttachment->depthStoreOp != wgpu::StoreOp::Undefined,
-                            "depthStoreOp (%s) must not be set if the attachment (%s) has no depth "
-                            "aspect or depthReadOnly (%u) is true.",
-                            depthStencilAttachment->depthStoreOp, attachment,
-                            depthStencilAttachment->depthReadOnly);
-        }
+        DAWN_INVALID_IF(depthStencilAttachment->depthLoadOp != wgpu::LoadOp::Undefined ||
+                            depthStencilAttachment->depthStoreOp != wgpu::StoreOp::Undefined,
+                        "Both depthLoadOp (%s) and depthStoreOp (%s) must not be set if the "
+                        "attachment (%s) has no depth aspect or depthReadOnly (%u) is true.",
+                        depthStencilAttachment->depthLoadOp, depthStencilAttachment->depthStoreOp,
+                        attachment, depthStencilAttachment->depthReadOnly);
     } else {
         DAWN_TRY(ValidateLoadOp(depthStencilAttachment->depthLoadOp));
-        DAWN_INVALID_IF(depthStencilAttachment->depthLoadOp == wgpu::LoadOp::Undefined,
-                        "depthLoadOp must be set if the attachment (%s) has a depth aspect "
-                        "and depthReadOnly (%u) is false.",
-                        attachment, depthStencilAttachment->depthReadOnly);
         DAWN_TRY(ValidateStoreOp(depthStencilAttachment->depthStoreOp));
-        DAWN_INVALID_IF(depthStencilAttachment->depthStoreOp == wgpu::StoreOp::Undefined,
-                        "depthStoreOp must be set if the attachment (%s) has a depth "
-                        "aspect and depthReadOnly (%u) is false.",
+        DAWN_INVALID_IF(depthStencilAttachment->depthLoadOp == wgpu::LoadOp::Undefined ||
+                            depthStencilAttachment->depthStoreOp == wgpu::StoreOp::Undefined,
+                        "Both depthLoadOp (%s) and depthStoreOp (%s) must be set if the attachment "
+                        "(%s) has a depth aspect or depthReadOnly (%u) is false.",
+                        depthStencilAttachment->depthLoadOp, depthStencilAttachment->depthStoreOp,
                         attachment, depthStencilAttachment->depthReadOnly);
     }
 
     // Read only, or stencil doesn't exist.
     if (depthStencilAttachment->stencilReadOnly ||
         !IsSubset(Aspect::Stencil, attachment->GetAspects())) {
-        if (depthStencilAttachment->stencilLoadOp == wgpu::LoadOp::Load &&
-            depthStencilAttachment->stencilStoreOp == wgpu::StoreOp::Store) {
-            DAWN_TRY(DAWN_MAKE_DEPRECATION_ERROR(
-                device,
-                "stencilLoadOp is (%s) and stencilStoreOp is (%s) "
-                "when stencilReadOnly (%u) or the attachment (%s) has no stencil aspect.",
-                depthStencilAttachment->stencilLoadOp, depthStencilAttachment->stencilStoreOp,
-                depthStencilAttachment->stencilReadOnly, attachment));
-        } else {
-            DAWN_INVALID_IF(
-                depthStencilAttachment->stencilLoadOp != wgpu::LoadOp::Undefined,
-                "stencilLoadOp (%s) must not be set if the attachment (%s) has no stencil "
-                "aspect or stencilReadOnly (%u) is true.",
-                depthStencilAttachment->stencilLoadOp, attachment,
-                depthStencilAttachment->stencilReadOnly);
-            DAWN_INVALID_IF(
-                depthStencilAttachment->stencilStoreOp != wgpu::StoreOp::Undefined,
-                "stencilStoreOp (%s) must not be set if the attachment (%s) has no stencil "
-                "aspect or stencilReadOnly (%u) is true.",
-                depthStencilAttachment->stencilStoreOp, attachment,
-                depthStencilAttachment->stencilReadOnly);
-        }
+        DAWN_INVALID_IF(depthStencilAttachment->stencilLoadOp != wgpu::LoadOp::Undefined ||
+                            depthStencilAttachment->stencilStoreOp != wgpu::StoreOp::Undefined,
+                        "Both stencilLoadOp (%s) and stencilStoreOp (%s) must not be set if the "
+                        "attachment (%s) has no stencil aspect or stencilReadOnly (%u) is true.",
+                        depthStencilAttachment->stencilLoadOp,
+                        depthStencilAttachment->stencilStoreOp, attachment,
+                        depthStencilAttachment->stencilReadOnly);
     } else {
         DAWN_TRY(ValidateLoadOp(depthStencilAttachment->stencilLoadOp));
-        DAWN_INVALID_IF(depthStencilAttachment->stencilLoadOp == wgpu::LoadOp::Undefined,
-                        "stencilLoadOp (%s) must be set if the attachment (%s) has a stencil "
-                        "aspect and stencilReadOnly (%u) is false.",
-                        depthStencilAttachment->stencilLoadOp, attachment,
-                        depthStencilAttachment->stencilReadOnly);
         DAWN_TRY(ValidateStoreOp(depthStencilAttachment->stencilStoreOp));
-        DAWN_INVALID_IF(depthStencilAttachment->stencilStoreOp == wgpu::StoreOp::Undefined,
-                        "stencilStoreOp (%s) must be set if the attachment (%s) has a stencil "
-                        "aspect and stencilReadOnly (%u) is false.",
+        DAWN_INVALID_IF(depthStencilAttachment->stencilLoadOp == wgpu::LoadOp::Undefined ||
+                            depthStencilAttachment->stencilStoreOp == wgpu::StoreOp::Undefined,
+                        "Both stencilLoadOp (%s) and stencilStoreOp (%s) must be set if the "
+                        "attachment (%s) has a stencil aspect or stencilReadOnly (%u) is false.",
+                        depthStencilAttachment->stencilLoadOp,
                         depthStencilAttachment->stencilStoreOp, attachment,
                         depthStencilAttachment->stencilReadOnly);
     }
 
-    if (depthStencilAttachment->depthLoadOp == wgpu::LoadOp::Clear) {
-        DAWN_INVALID_IF(std::isnan(depthStencilAttachment->depthClearValue),
-                        "depthClearValue is NaN.");
+    if (depthStencilAttachment->depthLoadOp == wgpu::LoadOp::Clear &&
+        IsSubset(Aspect::Depth, attachment->GetAspects())) {
+        DAWN_INVALID_IF(
+            std::isnan(depthStencilAttachment->depthClearValue),
+            "depthClearValue (%f) must be set and must not be a NaN value if the attachment "
+            "(%s) has a depth aspect and depthLoadOp is clear.",
+            depthStencilAttachment->depthClearValue, attachment);
         DAWN_INVALID_IF(depthStencilAttachment->depthClearValue < 0.0f ||
                             depthStencilAttachment->depthClearValue > 1.0f,
-                        "depthClearValue is not between 0.0 and 1.0");
+                        "depthClearValue (%f) must be between 0.0 and 1.0 if the attachment (%s) "
+                        "has a depth aspect and depthLoadOp is clear.",
+                        depthStencilAttachment->depthClearValue, attachment);
     }
 
     // *sampleCount == 0 must only happen when there is no color attachment. In that case we
@@ -427,9 +527,11 @@ MaybeError ValidateRenderPassDescriptor(DeviceBase* device,
                                         uint32_t* width,
                                         uint32_t* height,
                                         uint32_t* sampleCount,
+                                        uint32_t* implicitSampleCount,
                                         UsageValidationMode usageValidationMode) {
-    DAWN_TRY(ValidateSingleSType(descriptor->nextInChain,
-                                 wgpu::SType::RenderPassDescriptorMaxDrawCount));
+    DAWN_TRY(
+        ValidateSTypes(descriptor->nextInChain, {{wgpu::SType::RenderPassDescriptorMaxDrawCount},
+                                                 {wgpu::SType::RenderPassPixelLocalStorage}}));
 
     uint32_t maxColorAttachments = device->GetLimits().v1.maxColorAttachments;
     DAWN_INVALID_IF(
@@ -440,10 +542,10 @@ MaybeError ValidateRenderPassDescriptor(DeviceBase* device,
     bool isAllColorAttachmentNull = true;
     ColorAttachmentFormats colorAttachmentFormats;
     for (uint32_t i = 0; i < descriptor->colorAttachmentCount; ++i) {
-        DAWN_TRY_CONTEXT(
-            ValidateRenderPassColorAttachment(device, descriptor->colorAttachments[i], width,
-                                              height, sampleCount, usageValidationMode),
-            "validating colorAttachments[%u].", i);
+        DAWN_TRY_CONTEXT(ValidateRenderPassColorAttachment(
+                             device, descriptor->colorAttachments[i], width, height, sampleCount,
+                             implicitSampleCount, usageValidationMode),
+                         "validating colorAttachments[%u].", i);
         if (descriptor->colorAttachments[i].view) {
             isAllColorAttachmentNull = false;
             colorAttachmentFormats->push_back(&descriptor->colorAttachments[i].view->GetFormat());
@@ -514,6 +616,23 @@ MaybeError ValidateRenderPassDescriptor(DeviceBase* device,
         descriptor->colorAttachmentCount == 0 && descriptor->depthStencilAttachment == nullptr,
         "Render pass has no attachments.");
 
+    if (*implicitSampleCount > 1) {
+        // TODO(dawn:1710): support multiple attachments.
+        DAWN_INVALID_IF(
+            descriptor->colorAttachmentCount != 1,
+            "colorAttachmentCount (%u) is not supported when the render pass has implicit sample "
+            "count (%u). (Currently) colorAttachmentCount = 1 is supported.",
+            descriptor->colorAttachmentCount, *implicitSampleCount);
+    }
+
+    const RenderPassPixelLocalStorage* pls = nullptr;
+    FindInChain(descriptor->nextInChain, &pls);
+    if (pls != nullptr) {
+        DAWN_TRY(ValidateHasPLSFeature(device));
+
+        // TODO(dawn:1704): Validate limits, formats, offsets don't collide and the total size.
+    }
+
     return {};
 }
 
@@ -526,6 +645,9 @@ MaybeError ValidateComputePassDescriptor(const DeviceBase* device,
     if (descriptor->timestampWriteCount > 0) {
         DAWN_ASSERT(descriptor->timestampWrites != nullptr);
 
+        // Record the query set and query index used on compute passes for validating query
+        // index overwrite.
+        QueryAvailabilityMap usedQueries;
         // TODO(https://crbug.com/dawn/1452):
         // 1. Add an enum that's TimestampLocationMask and has bit values.
         // 2. Add a function with a switch that converts from one to the other.
@@ -533,14 +655,25 @@ MaybeError ValidateComputePassDescriptor(const DeviceBase* device,
         // 4. Use it here.
         std::unordered_set<wgpu::ComputePassTimestampLocation> writtenLocations;
         for (uint32_t i = 0; i < descriptor->timestampWriteCount; ++i) {
-            DAWN_ASSERT(descriptor->timestampWrites[i].querySet != nullptr);
-            DAWN_TRY_CONTEXT(ValidateTimestampQuery(device, descriptor->timestampWrites[i].querySet,
-                                                    descriptor->timestampWrites[i].queryIndex),
+            QuerySetBase* querySet = descriptor->timestampWrites[i].querySet;
+            DAWN_ASSERT(querySet != nullptr);
+            uint32_t queryIndex = descriptor->timestampWrites[i].queryIndex;
+            DAWN_TRY_CONTEXT(ValidateTimestampQuery(device, querySet, queryIndex),
                              "validating querySet and queryIndex of timestampWrites[%u].", i);
             DAWN_TRY_CONTEXT(ValidateTimestampLocationOnComputePass(
                                  descriptor->timestampWrites[i].location, writtenLocations),
                              "validating location of timestampWrites[%u].", i);
             writtenLocations.insert(descriptor->timestampWrites[i].location);
+
+            auto checkIt = usedQueries.find(querySet);
+            DAWN_INVALID_IF(checkIt != usedQueries.end() && checkIt->second[queryIndex],
+                            "Query index %u of %s is written to twice in a compute pass.",
+                            queryIndex, querySet);
+
+            // Gets the iterator for that querySet or create a new vector of bool set to
+            // false if the querySet wasn't registered.
+            auto addIt = usedQueries.emplace(querySet, querySet->GetQueryCount()).first;
+            addIt->second[queryIndex] = true;
         }
     }
 
@@ -562,9 +695,9 @@ MaybeError ValidateQuerySetResolve(const QuerySetBase* querySet,
         "(%u) in %s.",
         firstQuery, queryCount, querySet->GetQueryCount(), querySet);
 
-    DAWN_INVALID_IF(destinationOffset % 256 != 0,
-                    "The destination buffer %s offset (%u) is not a multiple of 256.", destination,
-                    destinationOffset);
+    DAWN_INVALID_IF(destinationOffset % kQueryResolveAlignment != 0,
+                    "The destination buffer %s offset (%u) is not a multiple of %u.", destination,
+                    destinationOffset, kQueryResolveAlignment);
 
     uint64_t bufferSize = destination->GetSize();
     // The destination buffer must have enough storage, from destination offset, to contain
@@ -636,16 +769,68 @@ bool IsReadOnlyDepthStencilAttachment(
     return true;
 }
 
+// Load resolve texture to MSAA attachment if needed.
+MaybeError ApplyMSAARenderToSingleSampledLoadOp(DeviceBase* device,
+                                                RenderPassEncoder* renderPassEncoder,
+                                                const RenderPassDescriptor* renderPassDescriptor,
+                                                uint32_t implicitSampleCount) {
+    // TODO(dawn:1710): support multiple attachments.
+    ASSERT(renderPassDescriptor->colorAttachmentCount == 1);
+    if (renderPassDescriptor->colorAttachments[0].loadOp != wgpu::LoadOp::Load) {
+        return {};
+    }
+
+    // TODO(dawn:1710): support loading resolve texture on platforms that don't support reading
+    // it in fragment shader such as vulkan.
+    ASSERT(device->IsResolveTextureBlitWithDrawSupported());
+
+    // Read implicit resolve texture in fragment shader and copy to the implicit MSAA attachment.
+    return BlitMSAARenderToSingleSampledColorWithDraw(device, renderPassEncoder,
+                                                      renderPassDescriptor, implicitSampleCount);
+}
 // Tracks the temporary resolve attachments used when the AlwaysResolveIntoZeroLevelAndLayer toggle
 // is active so that the results can be copied from the temporary resolve attachment into the
-// intended target after the render pass is complete.
+// intended target after the render pass is complete. Also used by the
+// ResolveMultipleAttachmentInSeparatePasses toggle to track resolves that need to be done in their
+// own passes.
 struct TemporaryResolveAttachment {
-    TemporaryResolveAttachment(Ref<TextureViewBase> src, Ref<TextureViewBase> dst)
-        : copySrc(std::move(src)), copyDst(std::move(dst)) {}
+    TemporaryResolveAttachment(Ref<TextureViewBase> src,
+                               Ref<TextureViewBase> dst,
+                               wgpu::StoreOp storeOp = wgpu::StoreOp::Store)
+        : copySrc(std::move(src)), copyDst(std::move(dst)), storeOp(storeOp) {}
 
     Ref<TextureViewBase> copySrc;
     Ref<TextureViewBase> copyDst;
+    wgpu::StoreOp storeOp;
 };
+
+bool ShouldUseTextureToBufferBlit(const DeviceBase* device,
+                                  const Format& format,
+                                  const Aspect& aspect) {
+    // Snorm
+    if (format.IsSnorm() && device->IsToggleEnabled(Toggle::UseBlitForSnormTextureToBufferCopy)) {
+        return true;
+    }
+    // BGRA8Unorm
+    if (format.format == wgpu::TextureFormat::BGRA8Unorm &&
+        device->IsToggleEnabled(Toggle::UseBlitForBGRA8UnormTextureToBufferCopy)) {
+        return true;
+    }
+    // Depth
+    if (aspect == Aspect::Depth &&
+        ((format.format == wgpu::TextureFormat::Depth16Unorm &&
+          device->IsToggleEnabled(Toggle::UseBlitForDepth16UnormTextureToBufferCopy)) ||
+         (format.format == wgpu::TextureFormat::Depth32Float &&
+          device->IsToggleEnabled(Toggle::UseBlitForDepth32FloatTextureToBufferCopy)))) {
+        return true;
+    }
+    // Stencil
+    if (aspect == Aspect::Stencil &&
+        device->IsToggleEnabled(Toggle::UseBlitForStencilTextureToBufferCopy)) {
+        return true;
+    }
+    return false;
+}
 
 }  // namespace
 
@@ -654,10 +839,10 @@ Color ClampClearColorValueToLegalRange(const Color& originalColor, const Format&
     double minValue = 0;
     double maxValue = 0;
     switch (aspectInfo.baseType) {
-        case wgpu::TextureComponentType::Float: {
+        case TextureComponentType::Float: {
             return originalColor;
         }
-        case wgpu::TextureComponentType::Sint: {
+        case TextureComponentType::Sint: {
             const uint32_t bitsPerComponent =
                 (aspectInfo.block.byteSize * 8 / format.componentCount);
             maxValue =
@@ -665,16 +850,12 @@ Color ClampClearColorValueToLegalRange(const Color& originalColor, const Format&
             minValue = -static_cast<double>(static_cast<uint64_t>(1) << (bitsPerComponent - 1));
             break;
         }
-        case wgpu::TextureComponentType::Uint: {
+        case TextureComponentType::Uint: {
             const uint32_t bitsPerComponent =
                 (aspectInfo.block.byteSize * 8 / format.componentCount);
             maxValue = static_cast<double>((static_cast<uint64_t>(1) << bitsPerComponent) - 1);
             break;
         }
-        case wgpu::TextureComponentType::DepthComparison:
-        default:
-            UNREACHABLE();
-            break;
     }
 
     return {std::clamp(originalColor.r, minValue, maxValue),
@@ -704,8 +885,8 @@ Ref<CommandEncoder> CommandEncoder::Create(DeviceBase* device,
 }
 
 // static
-CommandEncoder* CommandEncoder::MakeError(DeviceBase* device) {
-    return new CommandEncoder(device, ObjectBase::kError);
+CommandEncoder* CommandEncoder::MakeError(DeviceBase* device, const char* label) {
+    return new CommandEncoder(device, ObjectBase::kError, label);
 }
 
 CommandEncoder::CommandEncoder(DeviceBase* device, const CommandEncoderDescriptor* descriptor)
@@ -722,8 +903,8 @@ CommandEncoder::CommandEncoder(DeviceBase* device, const CommandEncoderDescripto
     }
 }
 
-CommandEncoder::CommandEncoder(DeviceBase* device, ObjectBase::ErrorTag tag)
-    : ApiObjectBase(device, tag),
+CommandEncoder::CommandEncoder(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label)
+    : ApiObjectBase(device, tag, label),
       mEncodingContext(device, this),
       mUsageValidationMode(UsageValidationMode::Default) {
     mEncodingContext.HandleError(DAWN_VALIDATION_ERROR("%s is invalid.", this));
@@ -765,11 +946,15 @@ void CommandEncoder::TrackQueryAvailability(QuerySetBase* querySet, uint32_t que
 // Implementation of the API's command recording methods
 
 ComputePassEncoder* CommandEncoder::APIBeginComputePass(const ComputePassDescriptor* descriptor) {
+    // This function will create new object, need to lock the Device.
+    auto deviceLock(GetDevice()->GetScopedLock());
+
     return BeginComputePass(descriptor).Detach();
 }
 
 Ref<ComputePassEncoder> CommandEncoder::BeginComputePass(const ComputePassDescriptor* descriptor) {
     DeviceBase* device = GetDevice();
+    ASSERT(device->IsLockedByCurrentThreadIfNeeded());
 
     bool success = mEncodingContext.TryEncode(
         this,
@@ -782,6 +967,7 @@ Ref<ComputePassEncoder> CommandEncoder::BeginComputePass(const ComputePassDescri
             if (descriptor == nullptr) {
                 return {};
             }
+            cmd->label = std::string(descriptor->label ? descriptor->label : "");
 
             // Record timestamp writes at the beginning and end of compute pass. The timestamp write
             // at the end also be needed in BeginComputePassCmd because it's required by compute
@@ -820,21 +1006,28 @@ Ref<ComputePassEncoder> CommandEncoder::BeginComputePass(const ComputePassDescri
         return passEncoder;
     }
 
-    return ComputePassEncoder::MakeError(device, this, &mEncodingContext);
+    return ComputePassEncoder::MakeError(device, this, &mEncodingContext,
+                                         descriptor ? descriptor->label : nullptr);
 }
 
 RenderPassEncoder* CommandEncoder::APIBeginRenderPass(const RenderPassDescriptor* descriptor) {
+    // This function will create new object, need to lock the Device.
+    auto deviceLock(GetDevice()->GetScopedLock());
+
     return BeginRenderPass(descriptor).Detach();
 }
 
 Ref<RenderPassEncoder> CommandEncoder::BeginRenderPass(const RenderPassDescriptor* descriptor) {
     DeviceBase* device = GetDevice();
+    ASSERT(device->IsLockedByCurrentThreadIfNeeded());
 
     RenderPassResourceUsageTracker usageTracker;
 
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t sampleCount = 0;
+    // The implicit multisample count used by MSAA render to single sampled.
+    uint32_t implicitSampleCount = 0;
     bool depthReadOnly = false;
     bool stencilReadOnly = false;
     Ref<AttachmentState> attachmentState;
@@ -845,13 +1038,15 @@ Ref<RenderPassEncoder> CommandEncoder::BeginRenderPass(const RenderPassDescripto
         this,
         [&](CommandAllocator* allocator) -> MaybeError {
             DAWN_TRY(ValidateRenderPassDescriptor(device, descriptor, &width, &height, &sampleCount,
-                                                  mUsageValidationMode));
+                                                  &implicitSampleCount, mUsageValidationMode));
 
-            ASSERT(width > 0 && height > 0 && sampleCount > 0);
+            ASSERT(width > 0 && height > 0 && sampleCount > 0 &&
+                   (implicitSampleCount == 0 || implicitSampleCount == sampleCount));
 
             mEncodingContext.WillBeginRenderPass();
             BeginRenderPassCmd* cmd =
                 allocator->Allocate<BeginRenderPassCmd>(Command::BeginRenderPass);
+            cmd->label = std::string(descriptor->label ? descriptor->label : "");
 
             cmd->attachmentState = device->GetOrCreateAttachmentState(descriptor);
             attachmentState = cmd->attachmentState;
@@ -859,19 +1054,40 @@ Ref<RenderPassEncoder> CommandEncoder::BeginRenderPass(const RenderPassDescripto
             for (ColorAttachmentIndex index :
                  IterateBitSet(cmd->attachmentState->GetColorAttachmentsMask())) {
                 uint8_t i = static_cast<uint8_t>(index);
-                TextureViewBase* view = descriptor->colorAttachments[i].view;
-                TextureViewBase* resolveTarget = descriptor->colorAttachments[i].resolveTarget;
+                TextureViewBase* colorTarget;
+                TextureViewBase* resolveTarget;
 
-                cmd->colorAttachments[index].view = view;
+                if (implicitSampleCount <= 1) {
+                    colorTarget = descriptor->colorAttachments[i].view;
+                    resolveTarget = descriptor->colorAttachments[i].resolveTarget;
+
+                    cmd->colorAttachments[index].view = colorTarget;
+                    cmd->colorAttachments[index].depthSlice =
+                        descriptor->colorAttachments[i].depthSlice;
+                    cmd->colorAttachments[index].loadOp = descriptor->colorAttachments[i].loadOp;
+                    cmd->colorAttachments[index].storeOp = descriptor->colorAttachments[i].storeOp;
+                } else {
+                    // We use an implicit MSAA texture and resolve to the client supplied
+                    // attachment.
+                    resolveTarget = descriptor->colorAttachments[i].view;
+                    Ref<TextureViewBase> implicitMSAATargetRef;
+                    DAWN_TRY_ASSIGN(implicitMSAATargetRef,
+                                    device->CreateImplicitMSAARenderTextureViewFor(
+                                        resolveTarget->GetTexture(), implicitSampleCount));
+                    colorTarget = implicitMSAATargetRef.Get();
+
+                    cmd->colorAttachments[index].view = std::move(implicitMSAATargetRef);
+                    cmd->colorAttachments[index].loadOp = wgpu::LoadOp::Clear;
+                    cmd->colorAttachments[index].storeOp = wgpu::StoreOp::Discard;
+                }
+
                 cmd->colorAttachments[index].resolveTarget = resolveTarget;
-                cmd->colorAttachments[index].loadOp = descriptor->colorAttachments[i].loadOp;
-                cmd->colorAttachments[index].storeOp = descriptor->colorAttachments[i].storeOp;
 
                 Color color = descriptor->colorAttachments[i].clearValue;
                 cmd->colorAttachments[index].clearColor =
-                    ClampClearColorValueToLegalRange(color, view->GetFormat());
+                    ClampClearColorValueToLegalRange(color, colorTarget->GetFormat());
 
-                usageTracker.TextureViewUsedAs(view, wgpu::TextureUsage::RenderAttachment);
+                usageTracker.TextureViewUsedAs(colorTarget, wgpu::TextureUsage::RenderAttachment);
 
                 if (resolveTarget != nullptr) {
                     usageTracker.TextureViewUsedAs(resolveTarget,
@@ -884,8 +1100,18 @@ Ref<RenderPassEncoder> CommandEncoder::BeginRenderPass(const RenderPassDescripto
 
                 cmd->depthStencilAttachment.view = view;
 
-                cmd->depthStencilAttachment.clearDepth =
-                    descriptor->depthStencilAttachment->depthClearValue;
+                switch (descriptor->depthStencilAttachment->depthLoadOp) {
+                    case wgpu::LoadOp::Clear:
+                        cmd->depthStencilAttachment.clearDepth =
+                            descriptor->depthStencilAttachment->depthClearValue;
+                        break;
+                    case wgpu::LoadOp::Load:
+                    case wgpu::LoadOp::Undefined:
+                        // Set depthClearValue to 0 if it is the load op is not clear.
+                        // The default value NaN may be invalid in the backend.
+                        cmd->depthStencilAttachment.clearDepth = 0.f;
+                        break;
+                }
                 cmd->depthStencilAttachment.clearStencil =
                     descriptor->depthStencilAttachment->stencilClearValue;
 
@@ -983,18 +1209,27 @@ Ref<RenderPassEncoder> CommandEncoder::BeginRenderPass(const RenderPassDescripto
 
         mEncodingContext.EnterPass(passEncoder.Get());
 
-        if (ShouldApplyClearBigIntegerColorValueWithDraw(device, descriptor)) {
-            MaybeError error =
-                ApplyClearBigIntegerColorValueWithDraw(passEncoder.Get(), descriptor);
-            if (error.IsError()) {
-                return RenderPassEncoder::MakeError(device, this, &mEncodingContext);
-            }
+        MaybeError error;
+
+        if (implicitSampleCount > 1) {
+            error = ApplyMSAARenderToSingleSampledLoadOp(device, passEncoder.Get(), descriptor,
+                                                         implicitSampleCount);
+        } else if (ShouldApplyClearBigIntegerColorValueWithDraw(device, descriptor)) {
+            // This is skipped if implicitSampleCount > 1. Because implicitSampleCount > 1 is only
+            // supported for non-integer textures.
+            error = ApplyClearBigIntegerColorValueWithDraw(passEncoder.Get(), descriptor);
+        }
+
+        if (device->ConsumedError(std::move(error))) {
+            return RenderPassEncoder::MakeError(device, this, &mEncodingContext,
+                                                descriptor ? descriptor->label : nullptr);
         }
 
         return passEncoder;
     }
 
-    return RenderPassEncoder::MakeError(device, this, &mEncodingContext);
+    return RenderPassEncoder::MakeError(device, this, &mEncodingContext,
+                                        descriptor ? descriptor->label : nullptr);
 }
 
 // This function handles render pass workarounds. Because some cases may require
@@ -1005,11 +1240,82 @@ ResultOrError<std::function<void()>> CommandEncoder::ApplyRenderPassWorkarounds(
     RenderPassResourceUsageTracker* usageTracker,
     BeginRenderPassCmd* cmd,
     std::function<void()> passEndCallback) {
+    // dawn:1550
+    // Handle toggle ResolveMultipleAttachmentInSeparatePasses. This identifies passes where there
+    // are multiple MSAA color targets and at least one of them has a resolve target. If that's the
+    // case then the resolves are deferred by removing the resolve targets and forcing the storeOp
+    // to Store. After the pass has ended an new pass is recorded for each resolve target that
+    // resolves it separately.
+    if (device->IsToggleEnabled(Toggle::ResolveMultipleAttachmentInSeparatePasses) &&
+        cmd->attachmentState->GetColorAttachmentsMask().count() > 1) {
+        bool splitResolvesIntoSeparatePasses = false;
+
+        // This workaround needs to apply if there are multiple MSAA color targets (checked above)
+        // and at least one resolve target.
+        for (ColorAttachmentIndex i :
+             IterateBitSet(cmd->attachmentState->GetColorAttachmentsMask())) {
+            if (cmd->colorAttachments[i].resolveTarget.Get() != nullptr) {
+                splitResolvesIntoSeparatePasses = true;
+                break;
+            }
+        }
+
+        if (splitResolvesIntoSeparatePasses) {
+            std::vector<TemporaryResolveAttachment> temporaryResolveAttachments;
+
+            for (ColorAttachmentIndex i :
+                 IterateBitSet(cmd->attachmentState->GetColorAttachmentsMask())) {
+                auto& attachmentInfo = cmd->colorAttachments[i];
+                TextureViewBase* resolveTarget = attachmentInfo.resolveTarget.Get();
+                if (resolveTarget != nullptr) {
+                    // Save the color and resolve targets together for an explicit resolve pass
+                    // after this one ends, then remove the resolve target from this pass and
+                    // force the storeOp to Store.
+                    temporaryResolveAttachments.emplace_back(attachmentInfo.view.Get(),
+                                                             resolveTarget, attachmentInfo.storeOp);
+                    attachmentInfo.storeOp = wgpu::StoreOp::Store;
+                    attachmentInfo.resolveTarget = nullptr;
+                }
+            }
+
+            // Check for other workarounds that need to be applied recursively.
+            return ApplyRenderPassWorkarounds(
+                device, usageTracker, cmd,
+                [this, passEndCallback = std::move(passEndCallback),
+                 temporaryResolveAttachments = std::move(temporaryResolveAttachments)]() -> void {
+                    // Called once the render pass has been ended.
+                    // Handles any separate resolve passes needed for the
+                    // ResolveMultipleAttachmentInSeparatePasses workaround immediately after the
+                    // render pass ends and before any additional commands are recorded.
+                    for (auto& deferredResolve : temporaryResolveAttachments) {
+                        RenderPassColorAttachment attachment = {};
+                        attachment.view = deferredResolve.copySrc.Get();
+                        attachment.resolveTarget = deferredResolve.copyDst.Get();
+                        attachment.loadOp = wgpu::LoadOp::Load;
+                        attachment.storeOp = deferredResolve.storeOp;
+
+                        RenderPassDescriptor resolvePass = {};
+                        resolvePass.colorAttachmentCount = 1;
+                        resolvePass.colorAttachments = &attachment;
+
+                        // Begin and end an empty render pass to force the resolve.
+                        Ref<RenderPassEncoder> encoder = this->BeginRenderPass(&resolvePass);
+                        encoder->End();
+                    }
+
+                    // If there were any other callbacks in the workaround stack, call the next one.
+                    if (passEndCallback) {
+                        passEndCallback();
+                    }
+                });
+        }
+    }
+
     // dawn:56, dawn:1569
     // Handle Toggle AlwaysResolveIntoZeroLevelAndLayer. This swaps out the given resolve attachment
     // for a temporary one that has no layers or mip levels. The results are copied from the
     // temporary attachment into the given attachment when the render pass ends. (Handled at the
-    // bottom of this function)
+    // bottom of this branch)
     if (device->IsToggleEnabled(Toggle::AlwaysResolveIntoZeroLevelAndLayer)) {
         std::vector<TemporaryResolveAttachment> temporaryResolveAttachments;
 
@@ -1031,14 +1337,22 @@ ResultOrError<std::function<void()>> CommandEncoder::ApplyRenderPassWorkarounds(
                 descriptor.dimension = wgpu::TextureDimension::e2D;
                 descriptor.mipLevelCount = 1;
 
+                // We are creating new resources. Device must already be locked via
+                // APIBeginRenderPass -> ApplyRenderPassWorkarounds.
+                // TODO(crbug.com/dawn/1618): In future, all temp resources should be created at
+                // Command Submit time, so the locking would be removed from here at that point.
                 Ref<TextureBase> temporaryResolveTexture;
-                DAWN_TRY_ASSIGN(temporaryResolveTexture, device->CreateTexture(&descriptor));
-
-                TextureViewDescriptor viewDescriptor = {};
                 Ref<TextureViewBase> temporaryResolveView;
-                DAWN_TRY_ASSIGN(
-                    temporaryResolveView,
-                    device->CreateTextureView(temporaryResolveTexture.Get(), &viewDescriptor));
+                {
+                    ASSERT(device->IsLockedByCurrentThreadIfNeeded());
+
+                    DAWN_TRY_ASSIGN(temporaryResolveTexture, device->CreateTexture(&descriptor));
+
+                    TextureViewDescriptor viewDescriptor = {};
+                    DAWN_TRY_ASSIGN(
+                        temporaryResolveView,
+                        device->CreateTextureView(temporaryResolveTexture.Get(), &viewDescriptor));
+                }
 
                 // Save the temporary and given render targets together for copying after
                 // the render pass ends.
@@ -1077,8 +1391,9 @@ ResultOrError<std::function<void()>> CommandEncoder::ApplyRenderPassWorkarounds(
 
                         Extent3D extent3D = copyTarget.copySrc->GetTexture()->GetSize();
 
-                        this->APICopyTextureToTextureInternal(&srcImageCopyTexture,
-                                                              &dstImageCopyTexture, &extent3D);
+                        auto internalUsageScope = MakeInternalUsageScope();
+                        this->APICopyTextureToTexture(&srcImageCopyTexture, &dstImageCopyTexture,
+                                                      &extent3D);
                     }
 
                     // If there were any other callbacks in the workaround stack, call the next one.
@@ -1136,6 +1451,55 @@ void CommandEncoder::APICopyBufferToBuffer(BufferBase* source,
         destination, destinationOffset, size);
 }
 
+// The internal version of APICopyBufferToBuffer which validates against mAllocatedSize instead of
+// mSize of buffers.
+void CommandEncoder::InternalCopyBufferToBufferWithAllocatedSize(BufferBase* source,
+                                                                 uint64_t sourceOffset,
+                                                                 BufferBase* destination,
+                                                                 uint64_t destinationOffset,
+                                                                 uint64_t size) {
+    mEncodingContext.TryEncode(
+        this,
+        [&](CommandAllocator* allocator) -> MaybeError {
+            if (GetDevice()->IsValidationEnabled()) {
+                DAWN_TRY(GetDevice()->ValidateObject(source));
+                DAWN_TRY(GetDevice()->ValidateObject(destination));
+
+                DAWN_INVALID_IF(source == destination,
+                                "Source and destination are the same buffer (%s).", source);
+
+                DAWN_TRY_CONTEXT(ValidateCopySizeFitsInBuffer(source, sourceOffset, size,
+                                                              BufferSizeType::AllocatedSize),
+                                 "validating source %s copy size against allocated size.", source);
+                DAWN_TRY_CONTEXT(ValidateCopySizeFitsInBuffer(destination, destinationOffset, size,
+                                                              BufferSizeType::AllocatedSize),
+                                 "validating destination %s copy size against allocated size.",
+                                 destination);
+                DAWN_TRY(ValidateB2BCopyAlignment(size, sourceOffset, destinationOffset));
+
+                DAWN_TRY_CONTEXT(ValidateCanUseAs(source, wgpu::BufferUsage::CopySrc),
+                                 "validating source %s usage.", source);
+                DAWN_TRY_CONTEXT(ValidateCanUseAs(destination, wgpu::BufferUsage::CopyDst),
+                                 "validating destination %s usage.", destination);
+            }
+
+            mTopLevelBuffers.insert(source);
+            mTopLevelBuffers.insert(destination);
+
+            CopyBufferToBufferCmd* copy =
+                allocator->Allocate<CopyBufferToBufferCmd>(Command::CopyBufferToBuffer);
+            copy->source = source;
+            copy->sourceOffset = sourceOffset;
+            copy->destination = destination;
+            copy->destinationOffset = destinationOffset;
+            copy->size = size;
+
+            return {};
+        },
+        "encoding internal %s.CopyBufferToBuffer(%s, %u, %s, %u, %u).", this, source, sourceOffset,
+        destination, destinationOffset, size);
+}
+
 void CommandEncoder::APICopyBufferToTexture(const ImageCopyBuffer* source,
                                             const ImageCopyTexture* destination,
                                             const Extent3D* copySize) {
@@ -1184,6 +1548,11 @@ void CommandEncoder::APICopyBufferToTexture(const ImageCopyBuffer* source,
 
             if (dst.aspect == Aspect::Depth &&
                 GetDevice()->IsToggleEnabled(Toggle::UseBlitForBufferToDepthTextureCopy)) {
+                // The below function might create new resources. Need to lock the Device.
+                // TODO(crbug.com/dawn/1618): In future, all temp resources should be created at
+                // Command Submit time, so the locking would be removed from here at that point.
+                auto deviceLock(GetDevice()->GetScopedLock());
+
                 DAWN_TRY_CONTEXT(
                     BlitBufferToDepth(GetDevice(), this, source->buffer, srcLayout, dst, *copySize),
                     "copying from %s to depth aspect of %s using blit workaround.", source->buffer,
@@ -1191,6 +1560,11 @@ void CommandEncoder::APICopyBufferToTexture(const ImageCopyBuffer* source,
                 return {};
             } else if (dst.aspect == Aspect::Stencil &&
                        GetDevice()->IsToggleEnabled(Toggle::UseBlitForBufferToStencilTextureCopy)) {
+                // The below function might create new resources. Need to lock the Device.
+                // TODO(crbug.com/dawn/1618): In future, all temp resources should be created at
+                // Command Submit time, so the locking would be removed from here at that point.
+                auto deviceLock(GetDevice()->GetScopedLock());
+
                 DAWN_TRY_CONTEXT(BlitBufferToStencil(GetDevice(), this, source->buffer, srcLayout,
                                                      dst, *copySize),
                                  "copying from %s to stencil aspect of %s using blit workaround.",
@@ -1236,6 +1610,11 @@ void CommandEncoder::APICopyTextureToBuffer(const ImageCopyTexture* source,
                 // copyExtent.height by blockHeight while the divisibility conditions are
                 // checked in validating texture copy range.
                 DAWN_TRY(ValidateTextureCopyRange(GetDevice(), *source, *copySize));
+
+                if (GetDevice()->IsCompatibilityMode()) {
+                    DAWN_TRY(ValidateTextureFormatForTextureToBufferCopyInCompatibilityMode(
+                        source->texture));
+                }
             }
             const TexelBlockInfo& blockInfo =
                 source->texture->GetFormat().GetAspectInfo(source->aspect).block;
@@ -1252,6 +1631,40 @@ void CommandEncoder::APICopyTextureToBuffer(const ImageCopyTexture* source,
 
             TextureDataLayout dstLayout = destination->layout;
             ApplyDefaultTextureDataLayoutOptions(&dstLayout, blockInfo, *copySize);
+
+            if (copySize->width == 0 || copySize->height == 0 ||
+                copySize->depthOrArrayLayers == 0) {
+                // Noop copy but is valid, simply skip encoding any command.
+                return {};
+            }
+
+            auto format = source->texture->GetFormat();
+            auto aspect = ConvertAspect(format, source->aspect);
+
+            // Workaround to use compute pass to emulate texture to buffer copy
+            if (ShouldUseTextureToBufferBlit(GetDevice(), format, aspect)) {
+                // This function might create new resources. Need to lock the Device.
+                // TODO(crbug.com/dawn/1618): In future, all temp resources should be created at
+                // Command Submit time, so the locking would be removed from here at that point.
+                auto deviceLock(GetDevice()->GetScopedLock());
+
+                TextureCopy src;
+                src.texture = source->texture;
+                src.origin = source->origin;
+                src.mipLevel = source->mipLevel;
+                src.aspect = aspect;
+
+                BufferCopy dst;
+                dst.buffer = destination->buffer;
+                dst.bytesPerRow = destination->layout.bytesPerRow;
+                dst.rowsPerImage = destination->layout.rowsPerImage;
+                dst.offset = destination->layout.offset;
+                DAWN_TRY_CONTEXT(BlitTextureToBuffer(GetDevice(), this, src, dst, *copySize),
+                                 "copying texture %s to %s using blit workaround.",
+                                 src.texture.Get(), destination->buffer);
+
+                return {};
+            }
 
             CopyTextureToBufferCmd* t2b =
                 allocator->Allocate<CopyTextureToBufferCmd>(Command::CopyTextureToBuffer);
@@ -1274,19 +1687,6 @@ void CommandEncoder::APICopyTextureToBuffer(const ImageCopyTexture* source,
 void CommandEncoder::APICopyTextureToTexture(const ImageCopyTexture* source,
                                              const ImageCopyTexture* destination,
                                              const Extent3D* copySize) {
-    APICopyTextureToTextureHelper<false>(source, destination, copySize);
-}
-
-void CommandEncoder::APICopyTextureToTextureInternal(const ImageCopyTexture* source,
-                                                     const ImageCopyTexture* destination,
-                                                     const Extent3D* copySize) {
-    APICopyTextureToTextureHelper<true>(source, destination, copySize);
-}
-
-template <bool Internal>
-void CommandEncoder::APICopyTextureToTextureHelper(const ImageCopyTexture* source,
-                                                   const ImageCopyTexture* destination,
-                                                   const Extent3D* copySize) {
     mEncodingContext.TryEncode(
         this,
         [&](CommandAllocator* allocator) -> MaybeError {
@@ -1299,26 +1699,22 @@ void CommandEncoder::APICopyTextureToTextureHelper(const ImageCopyTexture* sourc
                 DAWN_TRY_CONTEXT(ValidateImageCopyTexture(GetDevice(), *destination, *copySize),
                                  "validating destination %s.", destination->texture);
 
-                DAWN_TRY(
-                    ValidateTextureToTextureCopyRestrictions(*source, *destination, *copySize));
-
                 DAWN_TRY_CONTEXT(ValidateTextureCopyRange(GetDevice(), *source, *copySize),
                                  "validating source %s copy range.", source->texture);
                 DAWN_TRY_CONTEXT(ValidateTextureCopyRange(GetDevice(), *destination, *copySize),
                                  "validating source %s copy range.", destination->texture);
 
-                // For internal usages (CopyToCopyInternal) we don't care if the user has added
-                // CopySrc as a usage for this texture, but we will always add it internally.
-                if (Internal) {
-                    DAWN_TRY(ValidateCanUseAs(source->texture, wgpu::TextureUsage::CopySrc,
-                                              UsageValidationMode::Internal));
-                    DAWN_TRY(ValidateCanUseAs(destination->texture, wgpu::TextureUsage::CopyDst,
-                                              UsageValidationMode::Internal));
-                } else {
-                    DAWN_TRY(ValidateCanUseAs(source->texture, wgpu::TextureUsage::CopySrc,
-                                              mUsageValidationMode));
-                    DAWN_TRY(ValidateCanUseAs(destination->texture, wgpu::TextureUsage::CopyDst,
-                                              mUsageValidationMode));
+                DAWN_TRY(
+                    ValidateTextureToTextureCopyRestrictions(*source, *destination, *copySize));
+
+                DAWN_TRY(ValidateCanUseAs(source->texture, wgpu::TextureUsage::CopySrc,
+                                          mUsageValidationMode));
+                DAWN_TRY(ValidateCanUseAs(destination->texture, wgpu::TextureUsage::CopyDst,
+                                          mUsageValidationMode));
+
+                if (GetDevice()->IsCompatibilityMode()) {
+                    DAWN_TRY(ValidateSourceTextureFormatForTextureToTextureCopyInCompatibilityMode(
+                        source->texture));
                 }
             }
 
@@ -1359,6 +1755,11 @@ void CommandEncoder::APICopyTextureToTextureHelper(const ImageCopyTexture* sourc
 
             // Use a blit to copy the depth aspect.
             if (blitDepth) {
+                // This function might create new resources. Need to lock the Device.
+                // TODO(crbug.com/dawn/1618): In future, all temp resources should be created at
+                // Command Submit time, so the locking would be removed from here at that point.
+                auto deviceLock(GetDevice()->GetScopedLock());
+
                 DAWN_TRY_CONTEXT(BlitDepthToDepth(GetDevice(), this, src, dst, *copySize),
                                  "copying depth aspect from %s to %s using blit workaround.",
                                  source->texture, destination->texture);
@@ -1513,6 +1914,11 @@ void CommandEncoder::APIResolveQuerySet(QuerySetBase* querySet,
             // Encode internal compute pipeline for timestamp query
             if (querySet->GetQueryType() == wgpu::QueryType::Timestamp &&
                 !GetDevice()->IsToggleEnabled(Toggle::DisableTimestampQueryConversion)) {
+                // The below function might create new resources. Need to lock the Device.
+                // TODO(crbug.com/dawn/1618): In future, all temp resources should be created at
+                // Command Submit time, so the locking would be removed from here at that point.
+                auto deviceLock(GetDevice()->GetScopedLock());
+
                 DAWN_TRY(EncodeTimestampsToNanosecondsConversion(
                     this, querySet, firstQuery, queryCount, destination, destinationOffset));
             }
@@ -1570,9 +1976,15 @@ void CommandEncoder::APIWriteTimestamp(QuerySetBase* querySet, uint32_t queryInd
 }
 
 CommandBufferBase* CommandEncoder::APIFinish(const CommandBufferDescriptor* descriptor) {
+    // This function will create new object, need to lock the Device.
+    auto deviceLock(GetDevice()->GetScopedLock());
+
     Ref<CommandBufferBase> commandBuffer;
     if (GetDevice()->ConsumedError(Finish(descriptor), &commandBuffer)) {
-        return CommandBufferBase::MakeError(GetDevice());
+        CommandBufferBase* errorCommandBuffer =
+            CommandBufferBase::MakeError(GetDevice(), descriptor ? descriptor->label : nullptr);
+        errorCommandBuffer->SetEncoderLabel(this->GetLabel());
+        return errorCommandBuffer;
     }
     ASSERT(!IsError());
     return commandBuffer.Detach();

@@ -19,7 +19,6 @@
 #include "gpu/command_buffer/service/texture_manager.h"
 #include "gpu/config/gpu_preferences.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "ui/gl/gl_image_stub.h"
 #include "ui/gl/gl_mock.h"
 #include "ui/gl/gl_switches.h"
 
@@ -132,7 +131,7 @@ class ServiceDiscardableManagerTest : public GpuServiceTest {
   GpuPreferences gpu_preferences_;
   scoped_refptr<FeatureInfo> feature_info_;
   MockDestructionObserver destruction_observer_;
-  raw_ptr<TextureManager> texture_manager_;
+  raw_ptr<TextureManager, DanglingUntriaged> texture_manager_;
   FakeCommandBufferServiceBase command_buffer_service_;
   FakeDecoderClient client_;
   std::unique_ptr<MockGLES2Decoder> decoder_;

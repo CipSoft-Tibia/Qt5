@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // Copyright (C) 2017 Eurogiciel, author: <philippe.coval@eurogiciel.fr>
+// Copyright (C) 2023 David Edmundson <davidedmundson@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwaylandxdgshell_p.h"
@@ -88,10 +89,11 @@ void QWaylandXdgSurface::Toplevel::applyConfigure()
         }
     }
 
+    m_applied = m_pending;
+
     if (!surfaceSize.isEmpty())
         m_xdgSurface->m_window->resizeFromApplyConfigure(surfaceSize.grownBy(m_xdgSurface->m_window->windowContentMargins()));
 
-    m_applied = m_pending;
     qCDebug(lcQpaWayland) << "Applied pending xdg_toplevel configure event:" << m_applied.size << m_applied.states;
 }
 
@@ -116,6 +118,7 @@ void QWaylandXdgSurface::Toplevel::xdg_toplevel_configure(int32_t width, int32_t
     auto *xdgStates = static_cast<uint32_t *>(states->data);
     size_t numStates = states->size / sizeof(uint32_t);
 
+    m_pending.suspended = false;
     m_pending.states = Qt::WindowNoState;
     m_toplevelStates = QWaylandWindow::WindowNoState;
 
@@ -142,6 +145,9 @@ void QWaylandXdgSurface::Toplevel::xdg_toplevel_configure(int32_t width, int32_t
         case XDG_TOPLEVEL_STATE_TILED_BOTTOM:
             m_toplevelStates |= QWaylandWindow::WindowTiledBottom;
             break;
+        case XDG_TOPLEVEL_STATE_SUSPENDED:
+            m_pending.suspended = true;
+            break;
         default:
             break;
         }
@@ -152,7 +158,7 @@ void QWaylandXdgSurface::Toplevel::xdg_toplevel_configure(int32_t width, int32_t
 
 void QWaylandXdgSurface::Toplevel::xdg_toplevel_close()
 {
-    m_xdgSurface->m_window->window()->close();
+    QWindowSystemInterface::handleCloseEvent(m_xdgSurface->m_window->window());
 }
 
 void QWaylandXdgSurface::Toplevel::requestWindowFlags(Qt::WindowFlags flags)
@@ -235,7 +241,9 @@ QWaylandXdgSurface::Popup::~Popup()
             leave = m_xdgSurface->window()->window();
         QWindowSystemInterface::handleLeaveEvent(leave);
 
-        if (QWindow *enter = QGuiApplication::topLevelAt(QCursor::pos())) {
+        QWindow *enter = nullptr;
+        if (m_parentXdgSurface && m_parentXdgSurface->window()) {
+            enter = m_parentXdgSurface->window()->window();
             const auto pos = m_xdgSurface->window()->display()->waylandCursor()->pos();
             QWindowSystemInterface::handleEnterEvent(enter, enter->handle()->mapFromGlobal(pos), pos);
         }
@@ -363,13 +371,15 @@ void QWaylandXdgSurface::setWindowFlags(Qt::WindowFlags flags)
 
 bool QWaylandXdgSurface::isExposed() const
 {
+    if (m_toplevel && m_toplevel->m_applied.suspended)
+        return false;
+
     return m_configured || m_pendingConfigureSerial;
 }
 
 bool QWaylandXdgSurface::handleExpose(const QRegion &region)
 {
     if (!isExposed() && !region.isEmpty()) {
-        m_exposeRegion = region;
         return true;
     }
     return false;
@@ -403,7 +413,8 @@ void QWaylandXdgSurface::propagateSizeHints()
 
 void QWaylandXdgSurface::setWindowGeometry(const QRect &rect)
 {
-    set_window_geometry(rect.x(), rect.y(), rect.width(), rect.height());
+    if (window()->isExposed())
+        set_window_geometry(rect.x(), rect.y(), rect.width(), rect.height());
 }
 
 void QWaylandXdgSurface::setSizeHints()
@@ -580,11 +591,7 @@ void QWaylandXdgSurface::setGrabPopup(QWaylandWindow *parent, QWaylandInputDevic
     // Synthesize Qt enter/leave events for popup
     if (!parent)
         return;
-    QWindow *current = QGuiApplication::topLevelAt(QCursor::pos());
     QWindow *leave = parent->window();
-    if (current != leave)
-        return;
-
     QWindowSystemInterface::handleLeaveEvent(leave);
 
     QWindow *enter = nullptr;
@@ -603,16 +610,12 @@ void QWaylandXdgSurface::xdg_surface_configure(uint32_t serial)
     if (!m_configured) {
         // We have to do the initial applyConfigure() immediately, since that is the expose.
         applyConfigure();
-        m_exposeRegion = QRegion(QRect(QPoint(), m_window->geometry().size()));
+        if (isExposed())
+            m_window->sendRecursiveExposeEvent();
     } else {
         // Later configures are probably resizes, so we have to queue them up for a time when we
         // are not painting to the window.
         m_window->applyConfigureWhenPossible();
-    }
-
-    if (!m_exposeRegion.isEmpty()) {
-        m_window->handleExpose(m_exposeRegion);
-        m_exposeRegion = QRegion();
     }
 }
 

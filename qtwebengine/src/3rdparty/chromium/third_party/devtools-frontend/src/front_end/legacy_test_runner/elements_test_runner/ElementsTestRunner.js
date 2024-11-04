@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as Common from '../../core/common/common.js';
 import * as EventListeners from '../../panels/event_listeners/event_listeners.js';
 
 /**
@@ -1196,7 +1197,7 @@ ElementsTestRunner.addNewRuleInStyleSheet = function(styleSheetHeader, selector,
 
 ElementsTestRunner.addNewRule = function(selector, callback) {
   UI.panels.elements.stylesWidget.contentElement.querySelector('.styles-pane-toolbar')
-      .shadowRoot.querySelector('.largeicon-add')
+      .shadowRoot.querySelector('.plus')
       .click();
   TestRunner.addSniffer(
       Elements.StylesSidebarPane.prototype, 'addBlankSection', onBlankSection.bind(null, selector, callback));

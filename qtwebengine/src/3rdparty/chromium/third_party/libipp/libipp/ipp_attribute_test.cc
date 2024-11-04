@@ -1,128 +1,62 @@
-// Copyright 2019 The Chromium OS Authors. All rights reserved.
+// Copyright 2019 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "libipp/ipp_attribute.h"
+#include "ipp_attribute.h"
+#include "frame.h"
 
 #include <limits>
+#include <string_view>
+#include <vector>
 
 #include <gtest/gtest.h>
 
-#include "libipp/ipp_package.h"
-
 namespace ipp {
-
-static bool operator==(const ipp::RangeOfInteger& a,
-                       const ipp::RangeOfInteger& b) {
-  return (a.min_value == b.min_value && a.max_value == b.max_value);
-}
 
 namespace {
 
-void TestNewAttribute(Attribute* attr,
-                      const std::string& name,
-                      bool is_a_set,
-                      AttrType type) {
-  EXPECT_EQ(attr->GetName(), name);
-  if (attr->GetNameAsEnum() != AttrName::_unknown) {
-    EXPECT_EQ(ToString(attr->GetNameAsEnum()), name);
-  }
-  EXPECT_EQ(attr->IsASet(), is_a_set);
-  EXPECT_EQ(attr->GetType(), type);
+void TestNewAttribute(Collection::iterator attr,
+                      std::string_view name,
+                      ValueTag tag) {
+  EXPECT_EQ(attr->Name(), name);
+  EXPECT_EQ(attr->Tag(), tag);
   // default state after creation
-  EXPECT_EQ(attr->GetState(), AttrState::unset);
-  if (is_a_set) {
-    EXPECT_EQ(attr->GetSize(), 0);
+  if (IsOutOfBand(tag)) {
+    EXPECT_EQ(attr->Size(), 0);
   } else {
-    EXPECT_EQ(attr->GetSize(), 1);
+    EXPECT_EQ(attr->Size(), 1);
   }
-}
-
-struct TestCollection : public Collection {
-  SingleValue<bool> hi{AttrName::attributes_charset, AttrType::boolean};
-  std::vector<Attribute*> GetKnownAttributes() override { return {&hi}; }
-};
-
-TEST(attribute, SingleValue) {
-  SingleValue<int> attr(AttrName::job_id, AttrType::integer);
-  TestNewAttribute(&attr, "job-id", false, AttrType::integer);
-  attr.Set(123);
-  EXPECT_EQ(attr.Get(), 123);
-  EXPECT_EQ(attr.GetState(), AttrState::set);
-}
-
-TEST(attribute, SetOfValues) {
-  SetOfValues<RangeOfInteger> attr(AttrName::punching_locations,
-                                   AttrType::rangeOfInteger);
-  TestNewAttribute(&attr, "punching-locations", true, AttrType::rangeOfInteger);
-  RangeOfInteger r1{123, 234};
-  RangeOfInteger r2{123, 234};
-  RangeOfInteger r3{123, 234};
-  attr.Set({r1, r2, r3});
-  EXPECT_EQ(attr.Get(), std::vector<RangeOfInteger>({r1, r2, r3}));
-  EXPECT_EQ(attr.GetState(), AttrState::set);
-  EXPECT_EQ(attr.GetSize(), 3);
-  attr.Resize(2);
-  EXPECT_EQ(attr.Get(), std::vector<RangeOfInteger>({r1, r2}));
-  EXPECT_EQ(attr.GetSize(), 2);
-}
-
-TEST(attribute, OpenSetOfValues) {
-  OpenSetOfValues<int> attr(AttrName::auth_info, AttrType::integer);
-  TestNewAttribute(&attr, "auth-info", true, AttrType::integer);
-  attr.Set({11, 22, 33});
-  attr.Add(std::vector<std::string>({"aaa", "bbb"}));
-  attr.Add({44, 55});
-  EXPECT_EQ(attr.Get(), std::vector<std::string>(
-                            {"11", "22", "33", "aaa", "bbb", "44", "55"}));
-  EXPECT_EQ(attr.GetState(), AttrState::set);
-  EXPECT_EQ(attr.GetSize(), 7);
-  attr.Resize(2);
-  EXPECT_EQ(attr.Get(), std::vector<std::string>({"11", "22"}));
-  EXPECT_EQ(attr.GetSize(), 2);
-  attr.Set(std::vector<std::string>({"xx", "yy", "zz"}));
-  EXPECT_EQ(attr.GetSize(), 3);
-  EXPECT_EQ(attr.Get(), std::vector<std::string>({"xx", "yy", "zz"}));
 }
 
 TEST(attribute, UnknownValueAttribute) {
-  UnknownValueAttribute attr("abc", false, AttrType::name);
-  TestNewAttribute(&attr, "abc", false, AttrType::name);
-  ASSERT_TRUE(attr.SetValue("val"));
+  Collection coll;
+  EXPECT_EQ(Code::kOK, coll.AddAttr("abc", ValueTag::nameWithLanguage,
+                                    StringWithLanguage("val")));
+  Collection::iterator attr = coll.GetAttr("abc");
+  ASSERT_NE(attr, coll.end());
+  TestNewAttribute(attr, "abc", ValueTag::nameWithLanguage);
   StringWithLanguage sl;
-  ASSERT_TRUE(attr.GetValue(&sl));
+  EXPECT_EQ(attr->GetValue(0, sl), Code::kOK);
   EXPECT_EQ(sl.language, "");
   EXPECT_EQ(sl.value, "val");
 }
 
-TEST(attribute, SingleCollection) {
-  SingleCollection<TestCollection> attr(AttrName::baling);
-  TestNewAttribute(&attr, "baling", false, AttrType::collection);
-  EXPECT_EQ(attr.hi.GetState(), AttrState::unset);
-  attr.hi.Set(false);
-  EXPECT_EQ(attr.hi.Get(), false);
-  EXPECT_EQ(attr.hi.GetState(), AttrState::set);
-  EXPECT_EQ(attr.GetState(), AttrState::set);
-}
-
-TEST(attribute, SetOfCollections) {
-  SetOfCollections<TestCollection> attr(AttrName::printer_supply_description);
-  TestNewAttribute(&attr, "printer-supply-description", true,
-                   AttrType::collection);
-  attr[3].hi.SetState(AttrState::not_settable);
-  EXPECT_EQ(attr.GetState(), AttrState::set);
-  EXPECT_EQ(attr.GetSize(), 4);
-  EXPECT_EQ(attr[3].hi.GetState(), AttrState::not_settable);
-}
-
 TEST(attribute, UnknownCollectionAttribute) {
-  UnknownCollectionAttribute attr("abcd", true);
-  TestNewAttribute(&attr, "abcd", true, AttrType::collection);
-  EXPECT_EQ(attr.GetCollection(), nullptr);
-  attr.Resize(3);
-  EXPECT_NE(attr.GetCollection(), nullptr);
-  EXPECT_NE(attr.GetCollection(2), nullptr);
-  EXPECT_EQ(attr.GetCollection(3), nullptr);
+  Collection coll;
+  CollsView::iterator new_coll;
+  EXPECT_EQ(Code::kOK, coll.AddAttr("abcd", new_coll));
+  Collection::iterator attr = coll.GetAttr("abcd");
+  ASSERT_NE(attr, coll.end());
+  EXPECT_EQ(attr->Colls().begin(), new_coll);
+  TestNewAttribute(attr, "abcd", ValueTag::collection);
+  EXPECT_EQ(attr->Colls().size(), 1);
+  EXPECT_EQ(attr->Size(), 1);
+  attr->Resize(3);
+  EXPECT_EQ(attr->Colls().size(), 3);
+  EXPECT_EQ(attr->Size(), 3);
+  Collection::const_iterator attr_const = Collection::const_iterator(attr);
+  EXPECT_EQ(attr_const->Colls().size(), 3);
+  EXPECT_EQ(attr_const->Size(), 3);
 }
 
 TEST(attribute, FromStringToInt) {

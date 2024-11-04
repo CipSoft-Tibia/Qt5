@@ -16,7 +16,7 @@
 
 #include <utility>
 
-#include "dawn/native/d3d12/D3D12Error.h"
+#include "dawn/native/d3d/D3DError.h"
 #include "dawn/native/d3d12/DeviceD3D12.h"
 #include "dawn/native/d3d12/HeapD3D12.h"
 #include "dawn/native/d3d12/ResidencyManagerD3D12.h"
@@ -38,11 +38,9 @@ ResultOrError<std::unique_ptr<ResourceHeapBase>> HeapAllocator::AllocateResource
     heapDesc.Properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
     heapDesc.Properties.CreationNodeMask = 0;
     heapDesc.Properties.VisibleNodeMask = 0;
-    // It is preferred to use a size that is a multiple of the alignment.
-    // However, MSAA heaps are always aligned to 4MB instead of 64KB. This means
-    // if the heap size is too small, the VMM would fragment.
-    // TODO(crbug.com/dawn/849): Consider having MSAA vs non-MSAA heaps.
-    heapDesc.Alignment = D3D12_DEFAULT_MSAA_RESOURCE_PLACEMENT_ALIGNMENT;
+    heapDesc.Alignment = mDevice->IsToggleEnabled(Toggle::D3D12Use64KBAlignedMSAATexture)
+                             ? D3D12_SMALL_MSAA_RESOURCE_PLACEMENT_ALIGNMENT
+                             : D3D12_DEFAULT_MSAA_RESOURCE_PLACEMENT_ALIGNMENT;
     heapDesc.Flags = mHeapFlags;
 
     // CreateHeap will implicitly make the created heap resident. We must ensure enough free

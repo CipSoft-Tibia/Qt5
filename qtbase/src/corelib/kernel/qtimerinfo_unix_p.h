@@ -15,46 +15,38 @@
 // We mean it.
 //
 
-#include "qplatformdefs.h" // _POSIX_MONOTONIC_CLOCK-0
-
 #include <QtCore/private/qglobal_p.h>
-
-// #define QTIMERINFO_DEBUG
 
 #include "qabstracteventdispatcher.h"
 
-#include <sys/time.h> // struct timeval
+#include <sys/time.h> // struct timespec
+#include <chrono>
 
 QT_BEGIN_NAMESPACE
 
 // internal timer info
 struct QTimerInfo {
-    int id;           // - timer identifier
-    Qt::TimerType timerType; // - timer type
-    std::chrono::milliseconds interval; // - timer interval
-    timespec timeout;  // - when to actually fire
-    QObject *obj;     // - object to receive event
-    QTimerInfo **activateRef; // - ref from activateTimers
+    QTimerInfo(int timerId, std::chrono::milliseconds msecs, Qt::TimerType type, QObject *obj)
+        : interval(msecs), id(timerId), timerType(type), obj(obj)
+    {
+    }
 
-#ifdef QTIMERINFO_DEBUG
-    timeval expected; // when timer is expected to fire
-    float cumulativeError;
-    uint count;
-#endif
+    std::chrono::steady_clock::time_point timeout; // - when to actually fire
+    std::chrono::milliseconds interval = std::chrono::milliseconds{-1}; // - timer interval
+    int id = -1; // - timer identifier
+    Qt::TimerType timerType; // - timer type
+    QObject *obj = nullptr; // - object to receive event
+    QTimerInfo **activateRef = nullptr; // - ref from activateTimers
 };
 
-class Q_CORE_EXPORT QTimerInfoList : public QList<QTimerInfo*>
+class Q_CORE_EXPORT QTimerInfoList
 {
-    // state variables used by activateTimers()
-    QTimerInfo *firstTimerInfo;
-
 public:
     QTimerInfoList();
 
-    timespec currentTime;
-    timespec updateCurrentTime();
+    std::chrono::steady_clock::time_point currentTime;
 
-    bool timerWait(timespec &);
+    std::optional<std::chrono::milliseconds> timerWait();
     void timerInsert(QTimerInfo *);
 
     qint64 timerRemainingTime(int timerId);
@@ -68,12 +60,30 @@ public:
     QList<QAbstractEventDispatcher::TimerInfo> registeredTimers(QObject *object) const;
 
     int activateTimers();
+    bool hasPendingTimers();
 
-    QList::const_iterator findTimerById(int timerId) const
+    void clearTimers()
     {
-        auto matchesId = [timerId](const QTimerInfo *t) { return t->id == timerId; };
-        return std::find_if(cbegin(), cend(), matchesId);
+        qDeleteAll(timers);
+        timers.clear();
     }
+
+    bool isEmpty() const { return timers.empty(); }
+
+    qsizetype size() const { return timers.size(); }
+
+    auto findTimerById(int timerId)
+    {
+        auto matchesId = [timerId](const auto &t) { return t->id == timerId; };
+        return std::find_if(timers.cbegin(), timers.cend(), matchesId);
+    }
+
+private:
+    std::chrono::steady_clock::time_point updateCurrentTime();
+
+    // state variables used by activateTimers()
+    QTimerInfo *firstTimerInfo = nullptr;
+    QList<QTimerInfo *> timers;
 };
 
 QT_END_NAMESPACE

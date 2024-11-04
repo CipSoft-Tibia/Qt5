@@ -3,11 +3,8 @@
 // found in the LICENSE file.
 
 #include "base/strings/string_piece_rust.h"
-#include "build/rust/rust_buildflags.h"
 
 #include "testing/gtest/include/gtest/gtest.h"
-
-#if BUILDFLAG(TOOLCHAIN_HAS_RUST)
 
 namespace base {
 namespace {
@@ -31,5 +28,3 @@ TEST(BaseStringPieceRustTest, StrToSlice) {
 
 }  // namespace
 }  // namespace base
-
-#endif  // BUILDFLAG(TOOLCHAIN_HAS_RUST)

@@ -7,17 +7,20 @@
 #include <windows.h>
 #include <shellscalingapi.h>
 
+#include <algorithm>
+
 #include "base/containers/contains.h"
-#include "base/cxx17_backports.h"
 #include "base/debug/alias.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/ranges/algorithm.h"
 #include "base/trace_event/trace_event.h"
 #include "base/win/win_util.h"
 #include "base/win/windows_version.h"
+#include "components/device_event_log/device_event_log.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/display/display.h"
 #include "ui/display/display_layout.h"
@@ -333,7 +336,7 @@ Display CreateDisplayFromDisplayInfo(
     display.set_color_depth(Display::kHDR10BitsPerPixel);
     display.set_depth_per_component(Display::kHDR10BitsPerComponent);
   }
-  display.set_color_spaces(color_spaces);
+  display.SetColorSpaces(color_spaces);
   return display;
 }
 
@@ -500,8 +503,6 @@ std::vector<internal::DisplayInfo> GetDisplayInfosFromSystem() {
   std::vector<internal::DisplayInfo> display_infos;
   EnumDisplayMonitors(nullptr, nullptr, EnumMonitorForDisplayInfoCallback,
                       reinterpret_cast<LPARAM>(&display_infos));
-  DCHECK_EQ(::GetSystemMetrics(SM_CMONITORS),
-            static_cast<int>(display_infos.size()));
   return display_infos;
 }
 
@@ -729,6 +730,13 @@ void ScreenWin::UpdateDisplayInfos() {
     g_instance->UpdateAllDisplaysAndNotify();
 }
 
+// static
+void ScreenWin::UpdateDisplayInfosIfNeeded() {
+  if (g_instance) {
+    g_instance->UpdateAllDisplaysIfPrimaryMonitorChanged();
+  }
+}
+
 HWND ScreenWin::GetHWNDFromNativeWindow(gfx::NativeWindow window) const {
   NOTREACHED();
   return nullptr;
@@ -843,10 +851,31 @@ gfx::Rect ScreenWin::DIPToScreenRectInWindow(gfx::NativeWindow window,
 
 void ScreenWin::UpdateFromDisplayInfos(
     const std::vector<internal::DisplayInfo>& display_infos) {
+  // DisplayInfosToScreenWinDisplays builds a sorted list of non primary
+  // displays.  If the Internal Display Ids list is set, internal displays
+  // are sorted to the start.  When DisplayLayout::Validate checks the list
+  // it expects it to be sorting order to be based on display_id&0xFF and may
+  // return false.  This can lead to the DIP display bounds being incorrectly
+  // calculated if the the internal display list is set (on second+ call to
+  // this function
+  // Fix: Set the internal display list to the empty list before calling
+  // DisplayInfosToScreenWinDisplays - it is already updated based on the new
+  // display_infos at the end of this function
+  std::vector<int64_t> internal_display_ids;
+  SetInternalDisplayIds(internal_display_ids);
+
+  primary_monitor_ = MonitorFromWindow(nullptr, MONITOR_DEFAULTTOPRIMARY);
   screen_win_displays_ = DisplayInfosToScreenWinDisplays(
       display_infos, color_profile_reader_.get(), dxgi_info_.get());
-  displays_ = ScreenWinDisplaysToDisplays(screen_win_displays_);
-  std::vector<int64_t> internal_display_ids;
+  std::vector<Display> displays =
+      ScreenWinDisplaysToDisplays(screen_win_displays_);
+  if (displays != displays_) {
+    DISPLAY_LOG(EVENT) << "Displays updated, count: " << displays.size();
+    for (const auto& display : displays) {
+      DISPLAY_LOG(EVENT) << display.ToString();
+    }
+  }
+  displays_ = std::move(displays);
   for (const auto& display_info : display_infos) {
     if (IsInternalOutputTechnology(display_info.output_technology())) {
       internal_display_ids.push_back(display_info.id());
@@ -917,14 +946,16 @@ void ScreenWin::OnColorProfilesChanged() {
   // color profile was sRGB was indeed correct. Avoid doing an update in these
   // cases.
   if (base::ranges::any_of(displays_, [this](const auto& display) {
-        return display.color_spaces().GetRasterColorSpace() !=
+        return display.GetColorSpaces().GetRasterColorSpace() !=
                color_profile_reader_->GetDisplayColorSpace(display.id());
-      }))
+      })) {
     UpdateAllDisplaysAndNotify();
+  }
 }
 
 void ScreenWin::UpdateAllDisplaysAndNotify() {
   TRACE_EVENT0("ui", "ScreenWin::UpdateAllDisplaysAndNotify");
+  SCOPED_UMA_HISTOGRAM_TIMER("UI.ScreenWin.UpdateDisplaysTime");
 
   std::vector<Display> old_displays = std::move(displays_);
   UpdateFromDisplayInfos(GetDisplayInfosFromSystem());
@@ -932,6 +963,13 @@ void ScreenWin::UpdateAllDisplaysAndNotify() {
   // `displays_` to ensure there are no problems if reentrancy happens.
   std::vector<Display> displays_copy = displays_;
   change_notifier_.NotifyDisplaysChanged(old_displays, displays_copy);
+}
+
+void ScreenWin::UpdateAllDisplaysIfPrimaryMonitorChanged() {
+  HMONITOR monitor = MonitorFromWindow(nullptr, MONITOR_DEFAULTTOPRIMARY);
+  if (monitor != primary_monitor_) {
+    UpdateAllDisplaysAndNotify();
+  }
 }
 
 ScreenWinDisplay ScreenWin::GetScreenWinDisplayNearestHWND(HWND hwnd) const {
@@ -1036,7 +1074,7 @@ void ScreenWin::RecordDisplayScaleFactors() const {
     // Multiply the reported value by 100 to display it as a percentage. Clamp
     // it so that if it's wildly out-of-band we won't send it to the backend.
     const int reported_scale =
-        base::clamp(base::checked_cast<int>(scale_factor * 100), 0, 1000);
+        std::clamp(base::checked_cast<int>(scale_factor * 100), 0, 1000);
     if (!base::Contains(unique_scale_factors, reported_scale)) {
       unique_scale_factors.push_back(reported_scale);
       base::UmaHistogramSparse("UI.DeviceScale", reported_scale);

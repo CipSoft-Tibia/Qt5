@@ -7,6 +7,26 @@ syntax = "proto3";
 option optimize_for = LITE_RUNTIME;
 
 package spaced;
+
+// Output parameters for SetProjectId().
+message SetProjectIdReply {
+  // Set to true if ioctl syscall for setting the project inheritance flag
+  // succeeds.
+  bool success = 1;
+
+  // Errno if success == false.
+  int32 error = 2;
+}
+
+// Output parameters for SetProjectInheritanceFlag().
+message SetProjectInheritanceFlagReply {
+  // Set to true if ioctl syscall for setting the project id succeeds.
+  bool success = 1;
+
+  // Errno if success == false.
+  int32 error = 2;
+}
+
 enum StatefulDiskSpaceState {
   // No value was set.
   NONE = 0;

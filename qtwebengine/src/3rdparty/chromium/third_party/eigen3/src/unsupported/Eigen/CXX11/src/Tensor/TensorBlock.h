@@ -994,9 +994,12 @@ class TensorTernaryExprBlock {
 template <typename Scalar, typename IndexType>
 class StridedLinearBufferCopy {
   typedef typename packet_traits<Scalar>::type Packet;
+  typedef typename unpacket_traits<Packet>::half HalfPacket;
   enum {
     Vectorizable = packet_traits<Scalar>::Vectorizable,
-    PacketSize = packet_traits<Scalar>::size
+    PacketSize = packet_traits<Scalar>::size,
+    HalfPacketSize = unpacket_traits<HalfPacket>::size,
+    HasHalfPacket = static_cast<int>(HalfPacketSize) < static_cast<int>(PacketSize)
   };
 
  public:
@@ -1070,6 +1073,14 @@ class StridedLinearBufferCopy {
         Packet p = ploadu<Packet>(src + i);
         pstoreu<Scalar, Packet>(dst + i, p);
       }
+      if (HasHalfPacket) {
+        const IndexType vectorized_half_size = count - HalfPacketSize;
+        if (i <= vectorized_half_size) {
+          HalfPacket p = ploadu<HalfPacket>(src + i);
+          pstoreu<Scalar, HalfPacket>(dst + i, p);
+          i += HalfPacketSize;
+        }
+      }
       for (; i < count; ++i) {
         dst[i] = src[i];
       }
@@ -1081,6 +1092,14 @@ class StridedLinearBufferCopy {
         Packet p = ploadu<Packet>(src + i);
         pscatter<Scalar, Packet>(dst + i * dst_stride, p, dst_stride);
       }
+      if (HasHalfPacket) {
+        const IndexType vectorized_half_size = count - HalfPacketSize;
+        if (i <= vectorized_half_size) {
+          HalfPacket p = ploadu<HalfPacket>(src + i);
+          pscatter<Scalar, HalfPacket>(dst + i * dst_stride, p, dst_stride);
+          i += HalfPacketSize;
+        }
+      }
       for (; i < count; ++i) {
         dst[i * dst_stride] = src[i];
       }
@@ -1089,7 +1108,8 @@ class StridedLinearBufferCopy {
       // Fill `dst` with value at `*src`.
       eigen_assert(src_stride == 0 && dst_stride == 1);
       const IndexType unrolled_size = count - 4 * PacketSize;
-      Packet p = pload1<Packet>(src);
+      Scalar s = *src;
+      Packet p = pset1<Packet>(s);
       for (; i <= unrolled_size; i += 4 * PacketSize) {
         for (int j = 0; j < 4; ++j) {
           pstoreu<Scalar, Packet>(dst + i + j * PacketSize, p);
@@ -1098,19 +1118,36 @@ class StridedLinearBufferCopy {
       for (; i <= vectorized_size; i += PacketSize) {
         pstoreu<Scalar, Packet>(dst + i, p);
       }
+      if (HasHalfPacket) {
+        const IndexType vectorized_half_size = count - HalfPacketSize;
+        if (i <= vectorized_half_size) {
+          HalfPacket hp = pset1<HalfPacket>(s);
+          pstoreu<Scalar, HalfPacket>(dst + i, hp);
+          i += HalfPacketSize;
+        }
+      }
       for (; i < count; ++i) {
-        dst[i] = *src;
+        dst[i] = s;
       }
       // ******************************************************************** //
     } else if (kind == StridedLinearBufferCopy::Kind::FillScatter) {
       // Scatter `*src` into `dst`.
       eigen_assert(src_stride == 0 && dst_stride != 1);
-      Packet p = pload1<Packet>(src);
+      Scalar s = *src;
+      Packet p = pset1<Packet>(s);
       for (; i <= vectorized_size; i += PacketSize) {
         pscatter<Scalar, Packet>(dst + i * dst_stride, p, dst_stride);
       }
+      if (HasHalfPacket) {
+        const IndexType vectorized_half_size = count - HalfPacketSize;
+        if (i <= vectorized_half_size) {
+          HalfPacket hp = pset1<HalfPacket>(s);
+          pscatter<Scalar, HalfPacket>(dst + i * dst_stride, hp, dst_stride);
+          i += HalfPacketSize;
+        }
+      }
       for (; i < count; ++i) {
-        dst[i * dst_stride] = *src;
+        dst[i * dst_stride] = s;
       }
       // ******************************************************************** //
     } else if (kind == StridedLinearBufferCopy::Kind::Gather) {
@@ -1119,6 +1156,15 @@ class StridedLinearBufferCopy {
       for (; i <= vectorized_size; i += PacketSize) {
         Packet p = pgather<Scalar, Packet>(src + i * src_stride, src_stride);
         pstoreu<Scalar, Packet>(dst + i, p);
+      }
+      if (HasHalfPacket) {
+        const IndexType vectorized_half_size = count - HalfPacketSize;
+        if (i <= vectorized_half_size) {
+          HalfPacket p =
+              pgather<Scalar, HalfPacket>(src + i * src_stride, src_stride);
+          pstoreu<Scalar, HalfPacket>(dst + i, p);
+          i += HalfPacketSize;
+        }
       }
       for (; i < count; ++i) {
         dst[i] = src[i * src_stride];

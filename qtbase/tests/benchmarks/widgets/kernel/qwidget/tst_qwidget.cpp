@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtest.h>
 
@@ -49,7 +49,7 @@ public:
     void setOpaqueChildren(bool enable)
     {
         if (opaqueChildren != enable) {
-            foreach (QWidget *w, children)
+            for (QWidget *w : std::as_const(children))
                 w->setAttribute(Qt::WA_OpaquePaintEvent, enable);
             opaqueChildren = enable;
             processEvents();

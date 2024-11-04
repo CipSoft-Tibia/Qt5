@@ -14,6 +14,7 @@
 
 #include "connections/implementation/offline_simulation_user.h"
 
+#include "absl/functional/any_invocable.h"
 #include "absl/functional/bind_front.h"
 #include "connections/listeners.h"
 #include "internal/platform/byte_array.h"
@@ -72,13 +73,13 @@ void OfflineSimulationUser::OnEndpointLost(const std::string& endpoint_id) {
   if (lost_latch_) lost_latch_->CountDown();
 }
 
-void OfflineSimulationUser::OnPayload(const std::string& endpoint_id,
+void OfflineSimulationUser::OnPayload(absl::string_view endpoint_id,
                                       Payload payload) {
   payload_ = std::move(payload);
   if (payload_latch_) payload_latch_->CountDown();
 }
 
-void OfflineSimulationUser::OnPayloadProgress(const std::string& endpoint_id,
+void OfflineSimulationUser::OnPayloadProgress(absl::string_view endpoint_id,
                                               const PayloadProgressInfo& info) {
   MutexLock lock(&progress_mutex_);
   progress_info_ = info;
@@ -86,7 +87,7 @@ void OfflineSimulationUser::OnPayloadProgress(const std::string& endpoint_id,
 }
 
 bool OfflineSimulationUser::WaitForProgress(
-    std::function<bool(const PayloadProgressInfo&)> predicate,
+    absl::AnyInvocable<bool(const PayloadProgressInfo&)> predicate,
     absl::Duration timeout) {
   Future<bool> future;
   {
@@ -130,6 +131,11 @@ void OfflineSimulationUser::StopAdvertising() {
   ctrl_.StopAdvertising(&client_);
 }
 
+Status OfflineSimulationUser::UpdateAdvertisingOptions(
+    absl::string_view service_id, const AdvertisingOptions& options) {
+  return ctrl_.UpdateAdvertisingOptions(&client_, service_id, options);
+}
+
 Status OfflineSimulationUser::StartDiscovery(const std::string& service_id,
                                              CountDownLatch* found_latch,
                                              CountDownLatch* lost_latch) {
@@ -146,6 +152,11 @@ Status OfflineSimulationUser::StartDiscovery(const std::string& service_id,
 }
 
 void OfflineSimulationUser::StopDiscovery() { ctrl_.StopDiscovery(&client_); }
+
+Status OfflineSimulationUser::UpdateDiscoveryOptions(
+    absl::string_view service_id, const DiscoveryOptions& options) {
+  return ctrl_.UpdateDiscoveryOptions(&client_, service_id, options);
+}
 
 void OfflineSimulationUser::InjectEndpoint(
     const std::string& service_id,

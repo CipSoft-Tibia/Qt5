@@ -135,14 +135,14 @@ class BluetoothServiceRecordBlueZTest : public device::BluetoothTestBlueZ {
  protected:
   BluetoothServiceRecordBlueZ CreateaServiceRecord(const std::string uuid) {
     BluetoothServiceRecordBlueZ record;
-    record.AddRecordEntry(kServiceUuidAttributeId,
-                          BluetoothServiceAttributeValueBlueZ(
-                              BluetoothServiceAttributeValueBlueZ::UUID, 16,
-                              std::make_unique<base::Value>(uuid)));
+    record.AddRecordEntry(
+        kServiceUuidAttributeId,
+        BluetoothServiceAttributeValueBlueZ(
+            BluetoothServiceAttributeValueBlueZ::UUID, 16, base::Value(uuid)));
     return record;
   }
 
-  raw_ptr<BluetoothAdapterBlueZ> adapter_bluez_;
+  raw_ptr<BluetoothAdapterBlueZ, DanglingUntriaged> adapter_bluez_;
   size_t success_callbacks_;
   size_t error_callbacks_;
 

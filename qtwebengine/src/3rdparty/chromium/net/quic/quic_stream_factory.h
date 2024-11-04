@@ -109,7 +109,8 @@ enum QuicPlatformNotification {
 enum AllActiveSessionsGoingAwayReason {
   kClockSkewDetected,
   kIPAddressChanged,
-  kCertDBChanged
+  kCertDBChanged,
+  kCertVerifierChanged
 };
 
 enum CreateSessionFailure {
@@ -249,7 +250,8 @@ class NET_EXPORT_PRIVATE QuicStreamRequest {
 class NET_EXPORT_PRIVATE QuicStreamFactory
     : public NetworkChangeNotifier::IPAddressObserver,
       public NetworkChangeNotifier::NetworkObserver,
-      public CertDatabase::Observer {
+      public CertDatabase::Observer,
+      public CertVerifier::Observer {
  public:
   // This class encompasses |destination| and |server_id|.
   // |destination| is a HostPortPair which is resolved
@@ -415,7 +417,11 @@ class NET_EXPORT_PRIVATE QuicStreamFactory
   // CertDatabase::Observer methods:
 
   // We close all sessions when certificate database is changed.
-  void OnCertDBChanged() override;
+  void OnTrustStoreChanged() override;
+
+  // CertVerifier::Observer:
+  // We close all sessions when certificate verifier settings have changed.
+  void OnCertVerifierChanged() override;
 
   bool is_quic_known_to_work_on_current_network() const {
     return is_quic_known_to_work_on_current_network_;
@@ -437,10 +443,6 @@ class NET_EXPORT_PRIVATE QuicStreamFactory
   QuicChromiumConnectionHelper* helper() { return helper_.get(); }
 
   quic::QuicAlarmFactory* alarm_factory() { return alarm_factory_.get(); }
-
-  void set_server_push_delegate(ServerPushDelegate* push_delegate) {
-    push_delegate_ = push_delegate;
-  }
 
   handles::NetworkHandle default_network() const { return default_network_; }
 
@@ -477,17 +479,27 @@ class NET_EXPORT_PRIVATE QuicStreamFactory
   void OnJobComplete(Job* job, int rv);
   bool HasActiveSession(const QuicSessionKey& session_key) const;
   bool HasActiveJob(const QuicSessionKey& session_key) const;
-  int CreateSession(CompletionOnceCallback callback,
-                    const QuicSessionAliasKey& key,
-                    quic::ParsedQuicVersion quic_version,
-                    int cert_verify_flags,
-                    bool require_confirmation,
-                    const HostResolverEndpointResult& endpoint_result,
-                    base::TimeTicks dns_resolution_start_time,
-                    base::TimeTicks dns_resolution_end_time,
-                    const NetLogWithSource& net_log,
-                    QuicChromiumClientSession** session,
-                    handles::NetworkHandle* network);
+  int CreateSessionSync(const QuicSessionAliasKey& key,
+                        quic::ParsedQuicVersion quic_version,
+                        int cert_verify_flags,
+                        bool require_confirmation,
+                        const HostResolverEndpointResult& endpoint_result,
+                        base::TimeTicks dns_resolution_start_time,
+                        base::TimeTicks dns_resolution_end_time,
+                        const NetLogWithSource& net_log,
+                        QuicChromiumClientSession** session,
+                        handles::NetworkHandle* network);
+  int CreateSessionAsync(CompletionOnceCallback callback,
+                         const QuicSessionAliasKey& key,
+                         quic::ParsedQuicVersion quic_version,
+                         int cert_verify_flags,
+                         bool require_confirmation,
+                         const HostResolverEndpointResult& endpoint_result,
+                         base::TimeTicks dns_resolution_start_time,
+                         base::TimeTicks dns_resolution_end_time,
+                         const NetLogWithSource& net_log,
+                         QuicChromiumClientSession** session,
+                         handles::NetworkHandle* network);
   void FinishCreateSession(CompletionOnceCallback callback,
                            const QuicSessionAliasKey& key,
                            quic::ParsedQuicVersion quic_version,
@@ -501,6 +513,17 @@ class NET_EXPORT_PRIVATE QuicStreamFactory
                            handles::NetworkHandle* network,
                            std::unique_ptr<DatagramClientSocket> socket,
                            int rv);
+  bool CreateSessionHelper(const QuicSessionAliasKey& key,
+                           quic::ParsedQuicVersion quic_version,
+                           int cert_verify_flags,
+                           bool require_confirmation,
+                           const HostResolverEndpointResult& endpoint_result,
+                           base::TimeTicks dns_resolution_start_time,
+                           base::TimeTicks dns_resolution_end_time,
+                           const NetLogWithSource& net_log,
+                           QuicChromiumClientSession** session,
+                           handles::NetworkHandle* network,
+                           std::unique_ptr<DatagramClientSocket> socket);
   void ActivateSession(const QuicSessionAliasKey& key,
                        QuicChromiumClientSession* session,
                        std::set<std::string> dns_aliases);
@@ -602,11 +625,10 @@ class NET_EXPORT_PRIVATE QuicStreamFactory
   // the broken alternative service map in HttpServerProperties.
   bool is_quic_known_to_work_on_current_network_ = false;
 
-  raw_ptr<NetLog> net_log_;
+  NetLogWithSource net_log_;
   raw_ptr<HostResolver> host_resolver_;
   raw_ptr<ClientSocketFactory> client_socket_factory_;
   raw_ptr<HttpServerProperties> http_server_properties_;
-  raw_ptr<ServerPushDelegate> push_delegate_ = nullptr;
   const raw_ptr<CertVerifier> cert_verifier_;
   const raw_ptr<CTPolicyEnforcer> ct_policy_enforcer_;
   const raw_ptr<TransportSecurityState> transport_security_state_;
@@ -689,13 +711,11 @@ class NET_EXPORT_PRIVATE QuicStreamFactory
 
   NetworkConnection network_connection_;
 
-  int num_push_streams_created_ = 0;
-
   QuicConnectivityMonitor connectivity_monitor_;
 
-  raw_ptr<const base::TickClock> tick_clock_ = nullptr;
+  raw_ptr<const base::TickClock, DanglingUntriaged> tick_clock_ = nullptr;
 
-  raw_ptr<base::SequencedTaskRunner> task_runner_ = nullptr;
+  raw_ptr<base::SequencedTaskRunner, DanglingUntriaged> task_runner_ = nullptr;
 
   const raw_ptr<SSLConfigService> ssl_config_service_;
 

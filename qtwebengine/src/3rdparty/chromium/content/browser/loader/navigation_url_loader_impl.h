@@ -5,6 +5,7 @@
 #ifndef CONTENT_BROWSER_LOADER_NAVIGATION_URL_LOADER_IMPL_H_
 #define CONTENT_BROWSER_LOADER_NAVIGATION_URL_LOADER_IMPL_H_
 
+#include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
@@ -17,12 +18,14 @@
 #include "content/public/browser/weak_document_ptr.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "net/base/load_timing_info.h"
 #include "net/url_request/url_request.h"
 #include "ppapi/buildflags/buildflags.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "services/network/public/cpp/record_ontransfersizeupdate_utils.h"
 #include "services/network/public/cpp/single_request_url_loader_factory.h"
 #include "services/network/public/mojom/accept_ch_frame_observer.mojom.h"
+#include "services/network/public/mojom/shared_dictionary_access_observer.mojom.h"
 #include "services/network/public/mojom/url_loader.mojom.h"
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
@@ -36,6 +39,7 @@ struct RedirectInfo;
 namespace content {
 
 class BrowserContext;
+class FrameTreeNode;
 class NavigationEarlyHintsManager;
 class NavigationLoaderInterceptor;
 class PrefetchedSignedExchangeCache;
@@ -60,6 +64,10 @@ class CONTENT_EXPORT NavigationURLLoaderImpl
           prefetched_signed_exchange_cache,
       NavigationURLLoaderDelegate* delegate,
       mojo::PendingRemote<network::mojom::CookieAccessObserver> cookie_observer,
+      mojo::PendingRemote<network::mojom::TrustTokenAccessObserver>
+          trust_token_observer,
+      mojo::PendingRemote<network::mojom::SharedDictionaryAccessObserver>
+          shared_dictionary_observer,
       mojo::PendingRemote<network::mojom::URLLoaderNetworkServiceObserver>
           url_loader_network_observer,
       mojo::PendingRemote<network::mojom::DevToolsObserver> devtools_observer,
@@ -95,6 +103,15 @@ class CONTENT_EXPORT NavigationURLLoaderImpl
  private:
   FRIEND_TEST_ALL_PREFIXES(NavigationURLLoaderImplTest,
                            OnAcceptCHFrameReceivedUKM);
+
+  // Creates a SharedURLLoaderFactory for network-service-bound requests.
+  static scoped_refptr<network::SharedURLLoaderFactory>
+  CreateNetworkLoaderFactory(BrowserContext* browser_context,
+                             StoragePartitionImpl* storage_partition,
+                             FrameTreeNode* frame_tree_node,
+                             const ukm::SourceIdObj& ukm_id,
+                             bool* bypass_redirect_checks);
+
   // Starts the loader by finalizing loader factories initialization and
   // calling Restart().
   // This is called only once (while Restart can be called multiple times).
@@ -134,7 +151,9 @@ class CONTENT_EXPORT NavigationURLLoaderImpl
   // to initially elect to handle a request, and later decide to fallback to
   // the default behavior. This is needed for service worker network fallback
   // and signed exchange (SXG) fallback redirect.
-  void FallbackToNonInterceptedRequest(bool reset_subresource_loader_params);
+  void FallbackToNonInterceptedRequest(
+      bool reset_subresource_loader_params,
+      const net::LoadTimingInfo& timing_info = net::LoadTimingInfo());
 
   scoped_refptr<network::SharedURLLoaderFactory>
   PrepareForNonInterceptedRequest();
@@ -217,7 +236,7 @@ class CONTENT_EXPORT NavigationURLLoaderImpl
   raw_ptr<NavigationURLLoaderDelegate, DanglingUntriaged> delegate_;
   raw_ptr<BrowserContext> browser_context_;
   raw_ptr<StoragePartitionImpl> storage_partition_;
-  raw_ptr<ServiceWorkerMainResourceHandle, DanglingUntriaged>
+  raw_ptr<ServiceWorkerMainResourceHandle, AcrossTasksDanglingUntriaged>
       service_worker_handle_;
 
   std::unique_ptr<network::ResourceRequest> resource_request_;
@@ -276,19 +295,6 @@ class CONTENT_EXPORT NavigationURLLoaderImpl
   // response body to download code.
   absl::optional<network::URLLoaderCompletionStatus> status_;
 
-  // Before creating this URLLoaderRequestController on UI thread, the
-  // embedder may have elected to proxy the URLLoaderFactory receiver, in
-  // which case these fields will contain input (remote) and output (receiver)
-  // endpoints for the proxy. If this controller is handling a receiver for
-  // which proxying is supported, receivers will be plumbed through these
-  // endpoints.
-  //
-  // Note that these are only used for receivers that go to the Network
-  // Service.
-  mojo::PendingReceiver<network::mojom::URLLoaderFactory>
-      proxied_factory_receiver_;
-  mojo::PendingRemote<network::mojom::URLLoaderFactory> proxied_factory_remote_;
-
   // The schemes that this loader can use. For anything else we'll try
   // external protocol handlers.
   std::set<std::string> known_schemes_;
@@ -341,6 +347,11 @@ class CONTENT_EXPORT NavigationURLLoaderImpl
 
   // UKM source id used for recording events associated with navigation loading.
   const ukm::SourceId ukm_source_id_;
+
+  // If this navigation was intercepted by a worker but the worker didn't handle
+  // it, we still expose the worker timing as part of the response.
+  base::TimeTicks intercepting_worker_start_time_;
+  base::TimeTicks intercepting_worker_ready_time_;
 
   base::WeakPtrFactory<NavigationURLLoaderImpl> weak_factory_{this};
 };

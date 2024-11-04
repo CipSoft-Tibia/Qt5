@@ -5,7 +5,7 @@
 #ifndef QGRPCOPERATION_H
 #define QGRPCOPERATION_H
 
-#include <QtCore/QObject>
+#include <QtCore/qobject.h>
 #include <QtGrpc/qgrpcstatus.h>
 #include <QtGrpc/qtgrpcglobal.h>
 #include <QtGrpc/qgrpcmetadata.h>
@@ -13,42 +13,48 @@
 
 QT_BEGIN_NAMESPACE
 
+class QGrpcChannelOperation;
 class QGrpcOperationPrivate;
+
 class Q_GRPC_EXPORT QGrpcOperation : public QObject
 {
     Q_OBJECT
 
 public:
+    ~QGrpcOperation() override;
+
     template <typename T>
     T read() const
     {
         T value;
-        if (auto ser = serializer(); ser)
-            ser->deserialize(&value, data());
+        if (auto ser = serializer(); ser) {
+            if (!ser->deserialize(&value, data()))
+                errorOccurred(deserializationError());
+        }
         return value;
     }
 
-    void setData(const QByteArray &data);
-    void setData(QByteArray &&data);
+    [[nodiscard]] QGrpcMetadata metadata() const noexcept;
+    [[nodiscard]] QLatin1StringView method() const noexcept;
 
-    virtual void abort() = 0;
+    void cancel();
+    [[nodiscard]] bool isFinished() const noexcept;
 
-    void setMetadata(const QGrpcMetadata &metadata);
-    void setMetadata(QGrpcMetadata &&metadata);
-    QGrpcMetadata metadata() const;
 Q_SIGNALS:
     void finished();
-    void errorOccurred(const QGrpcStatus &status);
+    void errorOccurred(const QGrpcStatus &status) const;
 
 protected:
-    explicit QGrpcOperation(std::shared_ptr<QAbstractProtobufSerializer> serializer);
-    ~QGrpcOperation() override;
+    explicit QGrpcOperation(std::shared_ptr<QGrpcChannelOperation> channelOperation);
+
+    [[nodiscard]] const QGrpcChannelOperation *channelOperation() const noexcept;
+    [[nodiscard]] std::shared_ptr<const QAbstractProtobufSerializer> serializer() const noexcept;
 
 private:
     Q_DISABLE_COPY_MOVE(QGrpcOperation)
 
-    QByteArray data() const;
-    std::shared_ptr<QAbstractProtobufSerializer> serializer() const;
+    [[nodiscard]] QByteArray data() const noexcept;
+    [[nodiscard]] QGrpcStatus deserializationError() const;
 
     Q_DECLARE_PRIVATE(QGrpcOperation)
 };

@@ -259,6 +259,9 @@ QPalette QQuickTumblerPrivate::defaultPalette() const
 QQuickTumbler::QQuickTumbler(QQuickItem *parent)
     : QQuickControl(*(new QQuickTumblerPrivate), parent)
 {
+    Q_D(QQuickTumbler);
+    d->setSizePolicy(QLayoutPolicy::Preferred, QLayoutPolicy::Preferred);
+
     setActiveFocusOnTab(true);
 
     connect(this, SIGNAL(leftPaddingChanged()), this, SLOT(_q_updateItemWidths()));
@@ -297,6 +300,12 @@ void QQuickTumbler::setModel(const QVariant &model)
     emit modelChanged();
 
     d->endSetModel();
+
+    if (d->view && d->currentIndexSetDuringModelChange) {
+        const int viewCurrentIndex = d->view->property("currentIndex").toInt();
+        if (viewCurrentIndex != d->currentIndex)
+            d->view->setProperty("currentIndex", d->currentIndex);
+    }
 
     d->currentIndexSetDuringModelChange = false;
 

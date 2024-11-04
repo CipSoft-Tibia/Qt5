@@ -19,6 +19,7 @@ class QHttp1Configuration;
 class QNetworkRequestPrivate;
 class Q_NETWORK_EXPORT QNetworkRequest
 {
+    Q_GADGET
 public:
     enum KnownHeaders {
         ContentTypeHeader,
@@ -35,6 +36,8 @@ public:
         IfMatchHeader,
         IfNoneMatchHeader
     };
+    Q_ENUM(KnownHeaders)
+
     enum Attribute {
         HttpStatusCodeAttribute,
         HttpReasonPhraseAttribute,
@@ -97,6 +100,9 @@ public:
         DefaultTransferTimeoutConstant = 30000
     };
 
+    static constexpr auto DefaultTransferTimeout =
+            std::chrono::milliseconds(DefaultTransferTimeoutConstant);
+
     QNetworkRequest();
     explicit QNetworkRequest(const QUrl &url);
     QNetworkRequest(const QNetworkRequest &other);
@@ -118,9 +124,15 @@ public:
     void setHeader(KnownHeaders header, const QVariant &value);
 
     // raw headers:
+#if QT_NETWORK_REMOVED_SINCE(6, 7)
     bool hasRawHeader(const QByteArray &headerName) const;
+#endif
+    bool hasRawHeader(QAnyStringView headerName) const;
     QList<QByteArray> rawHeaderList() const;
+#if QT_NETWORK_REMOVED_SINCE(6, 7)
     QByteArray rawHeader(const QByteArray &headerName) const;
+#endif
+    QByteArray rawHeader(QAnyStringView headerName) const;
     void setRawHeader(const QByteArray &headerName, const QByteArray &value);
 
     // attributes
@@ -157,7 +169,9 @@ public:
 
 #if QT_CONFIG(http) || defined (Q_OS_WASM)
     int transferTimeout() const;
-    void setTransferTimeout(int timeout = DefaultTransferTimeoutConstant);
+    void setTransferTimeout(int timeout);
+    std::chrono::milliseconds transferTimeoutAsDuration() const;
+    void setTransferTimeout(std::chrono::milliseconds duration = DefaultTransferTimeout);
 #endif // QT_CONFIG(http) || defined (Q_OS_WASM)
 private:
     QSharedDataPointer<QNetworkRequestPrivate> d;

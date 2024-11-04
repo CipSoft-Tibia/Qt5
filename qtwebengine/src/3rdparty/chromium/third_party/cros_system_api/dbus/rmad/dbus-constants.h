@@ -19,6 +19,11 @@ const char kAbortRmaMethod[] = "AbortRma";
 const char kGetLogMethod[] = "GetLog";
 const char kSaveLogMethod[] = "SaveLog";
 const char kRecordBrowserActionMetricMethod[] = "RecordBrowserActionMetric";
+const char kExtractExternalDiagnosticsAppMethod[] =
+    "ExtractExternalDiagnosticsApp";
+const char kInstallExtractedDiagnosticsAppMethod[] =
+    "InstallExtractedDiagnosticsApp";
+const char kGetInstalledDiagnosticsAppMethod[] = "GetInstalledDiagnosticsApp";
 
 // Signals.
 const char kErrorSignal[] = "Error";

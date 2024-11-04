@@ -17,8 +17,10 @@
 
 #include <cstdint>
 
+namespace dawn {
 template <typename T>
 class Ref;
+}  // namespace dawn
 
 namespace dawn::native {
 
@@ -27,13 +29,16 @@ enum class ObjectType : uint32_t;
 class AdapterBase;
 class BindGroupBase;
 class BindGroupLayoutBase;
+class BindGroupLayoutInternalBase;
 class BufferBase;
 class ComputePipelineBase;
 class CommandBufferBase;
 class CommandEncoder;
 class ComputePassEncoder;
 class ExternalTextureBase;
+class SharedTextureMemoryBase;
 class InstanceBase;
+class PhysicalDeviceBase;
 class PipelineBase;
 class PipelineCacheBase;
 class PipelineLayoutBase;
@@ -45,10 +50,10 @@ class RenderPassEncoder;
 class RenderPipelineBase;
 class ResourceHeapBase;
 class SamplerBase;
+class SharedFenceBase;
 class Surface;
 class ShaderModuleBase;
 class SwapChainBase;
-class NewSwapChainBase;
 class TextureBase;
 class TextureViewBase;
 

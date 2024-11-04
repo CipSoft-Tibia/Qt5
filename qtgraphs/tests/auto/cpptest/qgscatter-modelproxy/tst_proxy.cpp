@@ -96,7 +96,7 @@ void tst_proxy::initialProperties()
     QCOMPARE(m_proxy->itemCount(), 0);
     QVERIFY(!m_proxy->series());
 
-    QCOMPARE(m_proxy->type(), QAbstractDataProxy::DataTypeScatter);
+    QCOMPARE(m_proxy->type(), QAbstractDataProxy::DataType::Scatter);
 }
 
 void tst_proxy::initializeProperties()

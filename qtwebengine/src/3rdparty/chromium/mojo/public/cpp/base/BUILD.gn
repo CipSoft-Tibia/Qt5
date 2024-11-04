@@ -69,6 +69,7 @@ component("typemap_traits") {
   public_deps = [
     ":shared_typemap_traits",
     "//base",
+    "//mojo:buildflags",
     "//mojo/public/cpp/base",
     "//mojo/public/mojom/base:base_shared",
   ]
@@ -111,6 +112,8 @@ component("shared_typemap_traits") {
     "token_mojom_traits.h",
     "unguessable_token_mojom_traits.cc",
     "unguessable_token_mojom_traits.h",
+    "uuid_mojom_traits.cc",
+    "uuid_mojom_traits.h",
     "values_mojom_traits.cc",
     "values_mojom_traits.h",
     "version_mojom_traits.cc",
@@ -149,6 +152,7 @@ source_set("tests") {
     "time_unittest.cc",
     "token_unittest.cc",
     "unguessable_token_unittest.cc",
+    "uuid_unittest.cc",
     "values_unittest.cc",
     "version_unittest.cc",
   ]
@@ -158,6 +162,7 @@ source_set("tests") {
     ":shared_typemap_traits",
     "//base",
     "//base/test:test_support",
+    "//build:blink_buildflags",
     "//mojo/public/cpp/test_support:test_utils",
     "//mojo/public/mojom/base",
     "//testing/gtest",

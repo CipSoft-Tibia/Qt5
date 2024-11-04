@@ -13,13 +13,15 @@
 
 namespace blink {
 
-WebIdentityRequester::WebIdentityRequester(ExecutionContext* context)
-    : execution_context_(context) {}
+WebIdentityRequester::WebIdentityRequester(ExecutionContext* context,
+                                           MediationRequirement requirement)
+    : execution_context_(context), requirement_(requirement) {}
 
 void WebIdentityRequester::OnRequestToken(
     mojom::blink::RequestTokenStatus status,
     const absl::optional<KURL>& selected_idp_config_url,
-    const WTF::String& token) {
+    const WTF::String& token,
+    bool is_account_auto_selected) {
   for (const auto& provider_resolver_pair : provider_to_resolver_) {
     KURL provider = provider_resolver_pair.key;
     ScriptPromiseResolver* resolver = provider_resolver_pair.value;
@@ -49,7 +51,8 @@ void WebIdentityRequester::OnRequestToken(
               DOMExceptionCode::kNetworkError, "Error retrieving a token."));
           continue;
         }
-        IdentityCredential* credential = IdentityCredential::Create(token);
+        IdentityCredential* credential =
+            IdentityCredential::Create(token, is_account_auto_selected);
         resolver->Resolve(credential);
         continue;
       }
@@ -58,6 +61,7 @@ void WebIdentityRequester::OnRequestToken(
     }
   }
   provider_to_resolver_.clear();
+  scoped_abort_states_.clear();
   is_requesting_token_ = false;
 }
 
@@ -65,7 +69,7 @@ void WebIdentityRequester::RequestToken() {
   auto* auth_request =
       CredentialManagerProxy::From(execution_context_)->FederatedAuthRequest();
   auth_request->RequestToken(
-      std::move(idp_get_params_),
+      std::move(idp_get_params_), requirement_,
       WTF::BindOnce(&WebIdentityRequester::OnRequestToken,
                     WrapPersistent(this)));
   window_onload_event_listener_.Clear();
@@ -76,7 +80,6 @@ void WebIdentityRequester::RequestToken() {
 void WebIdentityRequester::AppendGetCall(
     ScriptPromiseResolver* resolver,
     const HeapVector<Member<IdentityProviderConfig>>& providers,
-    bool auto_reauthn,
     mojom::blink::RpContext rp_context) {
   if (is_requesting_token_) {
     resolver->Reject(MakeGarbageCollected<DOMException>(
@@ -85,28 +88,30 @@ void WebIdentityRequester::AppendGetCall(
     return;
   }
 
-  Vector<mojom::blink::IdentityProviderConfigPtr> idp_ptrs;
+  Vector<mojom::blink::IdentityProviderPtr> idp_ptrs;
   for (const auto& provider : providers) {
-    mojom::blink::IdentityProviderConfigPtr idp =
+    mojom::blink::IdentityProviderConfigPtr config =
         blink::mojom::blink::IdentityProviderConfig::From(*provider);
-    if (provider_to_resolver_.Contains(KURL(idp->config_url))) {
+    if (provider_to_resolver_.Contains(KURL(config->config_url))) {
       resolver->Reject(MakeGarbageCollected<DOMException>(
           DOMExceptionCode::kNotAllowedError,
           "More than one navigator.credentials.get calls to the same "
           "provider."));
       return;
     }
+    mojom::blink::IdentityProviderPtr idp =
+        mojom::blink::IdentityProvider::NewFederated(std::move(config));
     idp_ptrs.push_back(std::move(idp));
   }
 
   for (const auto& idp_ptr : idp_ptrs) {
-    provider_to_resolver_.insert(KURL(idp_ptr->config_url),
+    provider_to_resolver_.insert(KURL(idp_ptr->get_federated()->config_url),
                                  WrapPersistent(resolver));
   }
 
   mojom::blink::IdentityProviderGetParametersPtr get_params =
-      mojom::blink::IdentityProviderGetParameters::New(
-          std::move(idp_ptrs), auto_reauthn, rp_context);
+      mojom::blink::IdentityProviderGetParameters::New(std::move(idp_ptrs),
+                                                       rp_context);
   idp_get_params_.push_back(std::move(get_params));
 
   if (window_onload_event_listener_ || has_posted_task_)
@@ -185,6 +190,22 @@ void WebIdentityRequester::StopDelayTimer(bool timer_started_before_onload) {
   }
   UMA_HISTOGRAM_MEDIUM_TIMES("Blink.FedCm.Timing.PostTaskDelayDuration",
                              delay_duration);
+}
+
+void WebIdentityRequester::AbortRequest(ScriptState* script_state) {
+  if (!script_state->ContextIsValid()) {
+    return;
+  }
+
+  if (!is_requesting_token_) {
+    OnRequestToken(mojom::blink::RequestTokenStatus::kErrorCanceled,
+                   absl::nullopt, "", /*is_account_auto_selected=*/false);
+    return;
+  }
+
+  auto* auth_request =
+      CredentialManagerProxy::From(script_state)->FederatedAuthRequest();
+  auth_request->CancelTokenRequest();
 }
 
 void WebIdentityRequester::Trace(Visitor* visitor) const {

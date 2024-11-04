@@ -18,7 +18,6 @@
 #include "extensions/common/extension_features.h"
 #include "extensions/common/extension_messages.h"
 #include "extensions/common/manifest_handlers/background_info.h"
-#include "extensions/renderer/api/automation/automation_api_helper.h"
 #include "extensions/renderer/api/messaging/native_renderer_messaging_service.h"
 #include "extensions/renderer/console.h"
 #include "extensions/renderer/dispatcher.h"
@@ -134,10 +133,6 @@ ExtensionFrameHelper::ExtensionFrameHelper(content::RenderFrame* render_frame,
       content::RenderFrameObserverTracker<ExtensionFrameHelper>(render_frame),
       extension_dispatcher_(extension_dispatcher) {
   g_frame_helpers.Get().insert(this);
-  if (render_frame->GetWebFrame()->IsOutermostMainFrame()) {
-    // Manages its own lifetime.
-    new AutomationApiHelper(render_frame);
-  }
 
   render_frame->GetAssociatedInterfaceRegistry()
       ->AddInterface<mojom::LocalFrame>(
@@ -386,7 +381,7 @@ void ExtensionFrameHelper::DidCreateScriptContext(
     // second time here.
     if (is_initializing_main_world_script_context_)
       return;
-    if (render_frame()->IsBrowserSideNavigationPending()) {
+    if (render_frame()->IsRequestingNavigation()) {
       // Defer initializing the extensions script context now because it depends
       // on having the URL of the provisional load which isn't available at this
       // point.
@@ -441,16 +436,15 @@ void ExtensionFrameHelper::OnExtensionValidateMessagePort(int worker_thread_id,
 
 void ExtensionFrameHelper::OnExtensionDispatchOnConnect(
     int worker_thread_id,
-    const PortId& target_port_id,
-    const std::string& channel_name,
-    const ExtensionMsg_TabConnectionInfo& source,
-    const ExtensionMsg_ExternalConnectionInfo& info) {
+    const ExtensionMsg_OnConnectData& connect_data) {
   DCHECK_EQ(kMainThreadId, worker_thread_id);
   extension_dispatcher_->bindings_system()
       ->messaging_service()
-      ->DispatchOnConnect(extension_dispatcher_->script_context_set_iterator(),
-                          target_port_id, channel_name, source, info,
-                          render_frame());
+      ->DispatchOnConnect(
+          extension_dispatcher_->script_context_set_iterator(),
+          connect_data.target_port_id, connect_data.channel_type,
+          connect_data.channel_name, connect_data.tab_source,
+          connect_data.external_connection_info, render_frame());
 }
 
 void ExtensionFrameHelper::OnExtensionDeliverMessage(int worker_thread_id,

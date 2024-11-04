@@ -7,6 +7,12 @@
 ## tst_qmltyperegistrar Test:
 #####################################################################
 
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(tst_qmltyperegistrar LANGUAGES CXX)
+    find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
+endif()
+
 add_subdirectory(VersionZero)
 add_subdirectory(UnregisteredTypes)
 add_subdirectory(foreign)
@@ -92,4 +98,20 @@ qt_internal_add_resource(tst_qmltyperegistrar "resources"
         "/"
     FILES
         duplicatedExports.json
+        missingTypes.json
 )
+
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+qt_add_library(tst-qmltyperegistrar-enum-foreign STATIC enum.cpp)
+qt_autogen_tools_initial_setup(tst-qmltyperegistrar-enum-foreign)
+qt_enable_autogen_tool(tst-qmltyperegistrar-enum-foreign "moc" ON)
+target_link_libraries(tst-qmltyperegistrar-enum-foreign PRIVATE Qt::QmlIntegration)
+
+qt_add_library(tst-qmltyperegistrar-enum STATIC)
+qt_autogen_tools_initial_setup(tst-qmltyperegistrar-enum)
+qt_enable_autogen_tool(tst-qmltyperegistrar-enum "moc" ON)
+target_link_libraries(tst-qmltyperegistrar-enum PRIVATE Qt::Qml tst-qmltyperegistrar-enum-foreign)
+
+qt_add_qml_module(tst-qmltyperegistrar-enum URI TstEnum OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/TstEnum)
+qt_autogen_tools_initial_setup(tst-qmltyperegistrar-enumplugin)
+qt_generate_foreign_qml_types(tst-qmltyperegistrar-enum-foreign tst-qmltyperegistrar-enum)

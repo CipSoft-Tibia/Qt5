@@ -4,9 +4,9 @@
 
 #include "media/filters/mac/audio_toolbox_audio_encoder.h"
 
+#include "base/apple/osstatus_logging.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/mac/mac_logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/task/single_thread_task_runner.h"
 #include "media/base/audio_buffer.h"
@@ -278,6 +278,22 @@ bool AudioToolboxAudioEncoder::CreateEncoder(
     }
   }
 
+  if (options.bitrate_mode) {
+    const bool use_vbr =
+        *options.bitrate_mode == AudioEncoder::BitrateMode::kVariable;
+
+    UInt32 bitrate_mode = use_vbr ? kAudioCodecBitRateControlMode_Variable
+                                  : kAudioCodecBitRateControlMode_Constant;
+
+    result = AudioConverterSetProperty(encoder_,
+                                       kAudioCodecPropertyBitRateControlMode,
+                                       sizeof(bitrate_mode), &bitrate_mode);
+    if (result != noErr) {
+      OSSTATUS_DLOG(ERROR, result) << "Failed to set encoder bitrate mode";
+      return false;
+    }
+  }
+
   // AudioConverter requires we provided a suitably sized output for the encoded
   // buffer, but won't tell us the size before we request it... so we need to
   // ask it what the maximum possible size is to allocate our output buffers.
@@ -375,8 +391,7 @@ void AudioToolboxAudioEncoder::DoEncode(AudioBus* input_bus) {
       return;
     }
 
-    std::unique_ptr<uint8_t[]> packet_buffer(
-        new uint8_t[temp_output_buf_.size()]);
+    auto packet_buffer = std::make_unique<uint8_t[]>(temp_output_buf_.size());
     std::memcpy(packet_buffer.get(), temp_output_buf_.data(),
                 temp_output_buf_.size());
 

@@ -138,6 +138,17 @@ void WebSettingsImpl::SetAutoplayPolicy(mojom::blink::AutoplayPolicy policy) {
       static_cast<blink::AutoplayPolicy::Type>(policy));
 }
 
+void WebSettingsImpl::SetRequireTransientActivationForGetDisplayMedia(
+    bool required) {
+  settings_->SetRequireTransientActivationForGetDisplayMedia(required);
+}
+
+void WebSettingsImpl::SetRequireTransientActivationForShowFileOrDirectoryPicker(
+    bool required) {
+  settings_->SetRequireTransientActivationForShowFileOrDirectoryPicker(
+      required);
+}
+
 void WebSettingsImpl::SetAutoZoomFocusedEditableToLegibleScale(
     bool auto_zoom_focused_editable_to_legible_scale) {
   auto_zoom_focused_editable_to_legible_scale_ =
@@ -152,6 +163,11 @@ void WebSettingsImpl::SetAccessibilityFontScaleFactor(float font_scale_factor) {
   settings_->SetAccessibilityFontScaleFactor(font_scale_factor);
 }
 
+void WebSettingsImpl::SetAccessibilityTextSizeContrastFactor(
+    int text_size_contrast_factor) {
+  settings_->SetAccessibilityTextSizeContrastFactor(text_size_contrast_factor);
+}
+
 void WebSettingsImpl::SetAccessibilityAlwaysShowFocus(bool always_show_focus) {
   settings_->SetAccessibilityAlwaysShowFocus(always_show_focus);
 }
@@ -162,6 +178,10 @@ void WebSettingsImpl::SetAccessibilityPasswordValuesEnabled(bool enabled) {
 
 void WebSettingsImpl::SetInlineTextBoxAccessibilityEnabled(bool enabled) {
   settings_->SetInlineTextBoxAccessibilityEnabled(enabled);
+}
+
+void WebSettingsImpl::SetAccessibilityFontWeightAdjustment(int size) {
+  settings_->SetAccessibilityFontWeightAdjustment(size);
 }
 
 void WebSettingsImpl::SetDeviceScaleAdjustment(float device_scale_adjustment) {
@@ -269,6 +289,11 @@ void WebSettingsImpl::SetAvailableHoverTypes(int types) {
 
 void WebSettingsImpl::SetPrimaryHoverType(mojom::blink::HoverType type) {
   dev_tools_emulator_->SetPrimaryHoverType(type);
+}
+
+void WebSettingsImpl::SetOutputDeviceUpdateAbilityType(
+    mojom::blink::OutputDeviceUpdateAbilityType type) {
+  dev_tools_emulator_->SetOutputDeviceUpdateAbilityType(type);
 }
 
 void WebSettingsImpl::SetPreferHiddenVolumeControls(bool enabled) {
@@ -412,10 +437,6 @@ void WebSettingsImpl::SetAllowGeolocationOnInsecureOrigins(bool allow) {
   settings_->SetAllowGeolocationOnInsecureOrigins(allow);
 }
 
-void WebSettingsImpl::SetThreadedScrollingEnabled(bool enabled) {
-  settings_->SetThreadedScrollingEnabled(enabled);
-}
-
 void WebSettingsImpl::SetTouchDragDropEnabled(bool enabled) {
   settings_->SetTouchDragDropEnabled(enabled);
 }
@@ -481,8 +502,8 @@ void WebSettingsImpl::SetAntialiasedClips2dCanvasEnabled(bool enabled) {
   settings_->SetAntialiasedClips2dCanvasEnabled(enabled);
 }
 
-void WebSettingsImpl::SetPreferCompositingToLCDTextEnabled(bool enabled) {
-  dev_tools_emulator_->SetPreferCompositingToLCDTextEnabled(enabled);
+void WebSettingsImpl::SetLCDTextPreference(LCDTextPreference preference) {
+  dev_tools_emulator_->SetLCDTextPreference(preference);
 }
 
 void WebSettingsImpl::SetHideDownloadUI(bool hide) {
@@ -554,6 +575,14 @@ void WebSettingsImpl::SetPrefersReducedMotion(bool enabled) {
   settings_->SetPrefersReducedMotion(enabled);
 }
 
+void WebSettingsImpl::SetPrefersReducedTransparency(bool enabled) {
+  settings_->SetPrefersReducedTransparency(enabled);
+}
+
+void WebSettingsImpl::SetInvertedColors(bool enabled) {
+  settings_->SetInvertedColors(enabled);
+}
+
 bool WebSettingsImpl::ViewportEnabled() const {
   return settings_->GetViewportEnabled();
 }
@@ -621,10 +650,6 @@ void WebSettingsImpl::SetCaretBrowsingEnabled(bool enabled) {
 
 void WebSettingsImpl::SetCookieEnabled(bool enabled) {
   dev_tools_emulator_->SetCookieEnabled(enabled);
-}
-
-void WebSettingsImpl::SetNavigateOnDragDrop(bool enabled) {
-  settings_->SetNavigateOnDragDrop(enabled);
 }
 
 void WebSettingsImpl::SetAllowCustomScrollbarInMainFrame(bool enabled) {

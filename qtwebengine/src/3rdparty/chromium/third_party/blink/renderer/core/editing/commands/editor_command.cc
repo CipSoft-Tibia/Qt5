@@ -69,11 +69,14 @@
 #include "third_party/blink/renderer/core/html/html_br_element.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/input/event_handler.h"
+#include "third_party/blink/renderer/core/input/keyboard_shortcut_recorder.h"
+#include "third_party/blink/renderer/core/layout/layout_text.h"
 #include "third_party/blink/renderer/core/page/chrome_client.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/scroll/scrollbar.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 
@@ -516,6 +519,10 @@ static bool ExecuteDeleteToBeginningOfLine(LocalFrame& frame,
                                            Event*,
                                            EditorCommandSource,
                                            const String&) {
+#if BUILDFLAG(IS_ANDROID)
+  RecordKeyboardShortcutForAndroid(KeyboardShortcut::kDeleteLine);
+#endif  // BUILDFLAG(IS_ANDROID)
+
   DeleteWithDirection(frame, DeleteDirection::kBackward,
                       TextGranularity::kLineBoundary, true, false);
   return true;
@@ -1208,11 +1215,21 @@ static bool EnabledSelectAll(LocalFrame& frame,
     if (!root->hasChildren())
       return false;
 
-    // When the editable contains a BR only, it appears as an empty line, in
-    // which case allowing select-all confuses users.
-    if (root->firstChild() == root->lastChild() &&
-        IsA<HTMLBRElement>(root->firstChild()))
-      return false;
+    // When the editable appears as an empty line without any visible content,
+    // allowing select-all confuses users.
+    if (root->firstChild() == root->lastChild()) {
+      if (IsA<HTMLBRElement>(root->firstChild())) {
+        return false;
+      }
+      if (RuntimeEnabledFeatures::DisableSelectAllForEmptyTextEnabled()) {
+        if (Text* text = DynamicTo<Text>(root->firstChild())) {
+          LayoutText* layout_text = text->GetLayoutObject();
+          if (!layout_text || !layout_text->HasNonCollapsedText()) {
+            return false;
+          }
+        }
+      }
+    }
 
     // TODO(amaralp): Return false if already fully selected.
   }
@@ -1811,6 +1828,10 @@ static const EditorInternalCommand* InternalCommand(
        ValueStateOrNull, kNotTextInsertion, CanNotExecuteWhenDisabled},
       {EditingCommandType::kAlignCenter, ExecuteJustifyCenter,
        SupportedFromMenuOrKeyBinding, EnabledInRichlyEditableText, StateNone,
+       ValueStateOrNull, kNotTextInsertion, CanNotExecuteWhenDisabled},
+      {EditingCommandType::kPasteFromImageURL,
+       ClipboardCommands::ExecutePasteFromImageURL,
+       SupportedFromMenuOrKeyBinding, EnabledInEditableText, StateNone,
        ValueStateOrNull, kNotTextInsertion, CanNotExecuteWhenDisabled},
   };
   // Handles all commands except EditingCommandType::Invalid.

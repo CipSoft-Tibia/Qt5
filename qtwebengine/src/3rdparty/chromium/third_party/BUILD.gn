@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/buildflag_header.gni")
 import("//build/config/features.gni")
 import("//build/config/freetype/freetype.gni")
 import("//third_party/harfbuzz-ng/harfbuzz.gni")
@@ -59,6 +60,11 @@ group("jpeg") {
   } else {
     public_deps = [ "//third_party/libjpeg:libjpeg" ]
   }
+}
+
+buildflag_header("freetype_buildflags") {
+  header = "freetype_buildflags.h"
+  flags = [ "USE_SYSTEM_FREETYPE=$use_system_freetype" ]
 }
 
 # This is a meta target that forwards include paths only to the system's

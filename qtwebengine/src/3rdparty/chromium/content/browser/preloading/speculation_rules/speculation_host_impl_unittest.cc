@@ -7,7 +7,9 @@
 #include "base/memory/raw_ptr.h"
 #include "base/test/bind.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/unguessable_token.h"
 #include "content/browser/preloading/preloading_decider.h"
+#include "content/browser/preloading/prerender/prerender_host_registry.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/common/content_client.h"
 #include "content/public/test/prerender_test_util.h"
@@ -43,6 +45,7 @@ class SpeculationHostImplTest : public RenderViewHostImplTestHarness {
   void TearDown() override {
     web_contents_.reset();
     browser_context_.reset();
+    mojo::SetDefaultProcessErrorHandler(base::NullCallback());
     RenderViewHostImplTestHarness::TearDown();
   }
 
@@ -204,9 +207,7 @@ class TestSpeculationHostDelegate : public SpeculationHostDelegate {
 
   // SpeculationRulesDelegate implementation.
   void ProcessCandidates(
-      std::vector<blink::mojom::SpeculationCandidatePtr>& candidates,
-      base::WeakPtr<SpeculationHostDevToolsObserver> /*devtools_observer*/)
-      override {
+      std::vector<blink::mojom::SpeculationCandidatePtr>& candidates) override {
     candidates.clear();
   }
 };

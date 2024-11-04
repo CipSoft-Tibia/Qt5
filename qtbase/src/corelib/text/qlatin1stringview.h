@@ -182,6 +182,8 @@ public:
     }
 
     using value_type = const char;
+    using pointer = value_type*;
+    using const_pointer = pointer;
     using reference = value_type&;
     using const_reference = reference;
     using iterator = value_type*;
@@ -223,20 +225,20 @@ public:
     }
 
     [[nodiscard]] constexpr QLatin1StringView sliced(qsizetype pos) const
-    { verify(pos); return {m_data + pos, m_size - pos}; }
+    { verify(pos, 0); return {m_data + pos, m_size - pos}; }
     [[nodiscard]] constexpr QLatin1StringView sliced(qsizetype pos, qsizetype n) const
     { verify(pos, n); return {m_data + pos, n}; }
     [[nodiscard]] constexpr QLatin1StringView first(qsizetype n) const
-    { verify(n); return {m_data, n}; }
+    { verify(0, n); return sliced(0, n); }
     [[nodiscard]] constexpr QLatin1StringView last(qsizetype n) const
-    { verify(n); return {m_data + size() - n, n}; }
+    { verify(0, n); return sliced(size() - n, n); }
     [[nodiscard]] constexpr QLatin1StringView chopped(qsizetype n) const
-    { verify(n); return {m_data, size() - n}; }
+    { verify(0, n); return sliced(0, size() - n); }
 
     constexpr void chop(qsizetype n)
-    { verify(n); m_size -= n; }
+    { verify(0, n); m_size -= n; }
     constexpr void truncate(qsizetype n)
-    { verify(n); m_size = n; }
+    { verify(0, n); m_size = n; }
 
     [[nodiscard]] QLatin1StringView trimmed() const noexcept { return QtPrivate::trimmed(*this); }
 
@@ -321,7 +323,8 @@ public:
 #endif // !defined(QT_NO_CAST_FROM_ASCII) && !defined(QT_RESTRICTED_CAST_FROM_ASCII)
 
 private:
-    Q_ALWAYS_INLINE constexpr void verify(qsizetype pos, qsizetype n = 0) const
+    Q_ALWAYS_INLINE constexpr void verify([[maybe_unused]] qsizetype pos,
+                                          [[maybe_unused]] qsizetype n = 1) const
     {
         Q_ASSERT(pos >= 0);
         Q_ASSERT(pos <= size());

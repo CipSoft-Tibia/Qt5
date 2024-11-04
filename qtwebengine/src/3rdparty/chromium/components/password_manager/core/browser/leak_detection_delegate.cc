@@ -7,7 +7,7 @@
 #include "build/build_config.h"
 #include "components/autofill/core/common/save_password_progress_logger.h"
 #include "components/password_manager/core/browser/browser_save_password_progress_logger.h"
-#include "components/password_manager/core/browser/form_parsing/form_parser.h"
+#include "components/password_manager/core/browser/form_parsing/form_data_parser.h"
 #include "components/password_manager/core/browser/leak_detection/leak_detection_check.h"
 #include "components/password_manager/core/browser/leak_detection/leak_detection_check_factory_impl.h"
 #include "components/password_manager/core/browser/leak_detection_delegate_helper.h"
@@ -42,8 +42,9 @@ LeakDetectionDelegate::LeakDetectionDelegate(PasswordManagerClient* client)
 
 LeakDetectionDelegate::~LeakDetectionDelegate() = default;
 
-void LeakDetectionDelegate::StartLeakCheck(const PasswordForm& credentials) {
-  if (client_->IsIncognito())
+void LeakDetectionDelegate::StartLeakCheck(LeakDetectionInitiator initiator,
+                                           const PasswordForm& credentials) {
+  if (client_->IsOffTheRecord())
     return;
 
   if (!CanStartLeakCheck(*client_->GetPrefs(), client_))
@@ -61,7 +62,7 @@ void LeakDetectionDelegate::StartLeakCheck(const PasswordForm& credentials) {
   helper_.reset();
   if (leak_check_) {
     is_leaked_timer_ = std::make_unique<base::ElapsedTimer>();
-    leak_check_->Start(credentials.url, credentials.username_value,
+    leak_check_->Start(initiator, credentials.url, credentials.username_value,
                        credentials.password_value);
   }
 }
@@ -111,6 +112,7 @@ void LeakDetectionDelegate::OnShowLeakDetectionNotification(
     case SyncState::kNotSyncing:
       break;
     case SyncState::kAccountPasswordsActiveNormalEncryption:
+    case SyncState::kAccountPasswordsActiveWithCustomPassphrase:
       is_syncing = IsSyncing((in_stores & PasswordForm::Store::kAccountStore) ==
                              PasswordForm::Store::kAccountStore);
       break;
@@ -123,10 +125,6 @@ void LeakDetectionDelegate::OnShowLeakDetectionNotification(
   CredentialLeakType leak_type =
       CreateLeakType(IsSaved(in_stores != PasswordForm::Store::kNotSet),
                      is_reused, is_syncing);
-  base::UmaHistogramBoolean("PasswordManager.LeakDetection.IsPasswordSaved",
-                            IsPasswordSaved(leak_type));
-  base::UmaHistogramBoolean("PasswordManager.LeakDetection.IsPasswordReused",
-                            IsPasswordUsedOnOtherSites(leak_type));
   client_->NotifyUserCredentialsWereLeaked(leak_type, url, username);
 }
 

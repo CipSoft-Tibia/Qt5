@@ -1,15 +1,18 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cast/common/public/cast_socket.h"
 
+#include <ostream>
+
 #include "cast/common/channel/message_framer.h"
+#include "cast/common/channel/message_util.h"
 #include "cast/common/channel/proto/cast_channel.pb.h"
+#include "platform/base/span.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 using ::cast::channel::CastMessage;
 using message_serialization::DeserializeResult;
@@ -30,6 +33,7 @@ CastSocket::~CastSocket() {
 }
 
 Error CastSocket::Send(const CastMessage& message) {
+  OSP_DVLOG << __func__ << ": sending a message. " << ToString(message);
   if (state_ == State::kError) {
     return Error::Code::kSocketClosedFailure;
   }
@@ -79,10 +83,15 @@ void CastSocket::OnRead(TlsConnection* connection, std::vector<uint8_t> block) {
   do {
     ErrorOr<DeserializeResult> message_or_error =
         message_serialization::TryDeserialize(
-            absl::Span<uint8_t>(&read_buffer_[0], read_buffer_.size()));
+            ByteBuffer(&read_buffer_[0], read_buffer_.size()));
     if (!message_or_error) {
+      OSP_DLOG_ERROR << __func__ << ": failed to deserialize a message. "
+                     << message_or_error.error().ToString();
       return;
     }
+    OSP_DVLOG << __func__ << ": read a message. "
+              << ToString(message_or_error.value().message);
+
     read_buffer_.erase(read_buffer_.begin(),
                        read_buffer_.begin() + message_or_error.value().length);
     client_->OnMessage(this, std::move(message_or_error.value().message));
@@ -91,5 +100,4 @@ void CastSocket::OnRead(TlsConnection* connection, std::vector<uint8_t> block) {
 
 int CastSocket::g_next_socket_id_ = 1;
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

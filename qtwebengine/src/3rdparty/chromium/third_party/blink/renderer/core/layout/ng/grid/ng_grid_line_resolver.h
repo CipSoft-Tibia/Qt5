@@ -10,6 +10,7 @@
 #include "third_party/blink/renderer/core/style/grid_area.h"
 #include "third_party/blink/renderer/core/style/grid_enums.h"
 #include "third_party/blink/renderer/core/style/named_grid_lines_map.h"
+#include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/wtf_size_t.h"
 
@@ -39,7 +40,9 @@ class NGGridLineResolver {
   // should be used exclusively by subgrids to differentiate such scenario.
   explicit NGGridLineResolver(const ComputedStyle& grid_style,
                               const NGGridLineResolver& parent_line_resolver,
-                              GridArea subgrid_area);
+                              GridArea subgrid_area,
+                              wtf_size_t column_auto_repetitions,
+                              wtf_size_t row_auto_repetitions);
 
   bool operator==(const NGGridLineResolver& other) const;
 
@@ -72,6 +75,9 @@ class NGGridLineResolver {
       GridTrackSizingDirection track_direction) const;
 
   const NamedGridLinesMap& ExplicitNamedLinesMap(
+      GridTrackSizingDirection track_direction) const;
+
+  const NamedGridLinesMap& AutoRepeatLineNamesMap(
       GridTrackSizingDirection track_direction) const;
 
   const blink::ComputedGridTrackList& ComputedGridTrackList(
@@ -125,7 +131,9 @@ class NGGridLineResolver {
 
   bool IsSubgridded(GridTrackSizingDirection track_direction) const;
 
-  scoped_refptr<const ComputedStyle> style_;
+  // This doesn't create a cycle as ComputeStyle doesn't have any references to
+  // layout-time objects.
+  Persistent<const ComputedStyle> style_;
 
   wtf_size_t column_auto_repetitions_{1};
   wtf_size_t row_auto_repetitions_{1};

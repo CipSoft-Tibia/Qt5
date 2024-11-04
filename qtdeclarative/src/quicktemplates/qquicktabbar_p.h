@@ -17,6 +17,8 @@
 
 #include <QtQuickTemplates2/private/qquickcontainer_p.h>
 
+QT_REQUIRE_CONFIG(quicktemplates2_container);
+
 QT_BEGIN_NAMESPACE
 
 class QQuickTabBarPrivate;
@@ -96,7 +98,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickTabBar)
 
 #endif // QQUICKTABBAR_P_H

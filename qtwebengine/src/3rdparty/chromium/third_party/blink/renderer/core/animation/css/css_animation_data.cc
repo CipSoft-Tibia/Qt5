@@ -5,10 +5,11 @@
 #include "third_party/blink/renderer/core/animation/css/css_animation_data.h"
 
 #include "third_party/blink/renderer/core/animation/timing.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 
 namespace blink {
 
-CSSAnimationData::CSSAnimationData() {
+CSSAnimationData::CSSAnimationData() : CSSTimingData(InitialDuration()) {
   name_list_.push_back(InitialName());
   timeline_list_.push_back(InitialTimeline());
   iteration_count_list_.push_back(InitialIterationCount());
@@ -21,6 +22,13 @@ CSSAnimationData::CSSAnimationData() {
 }
 
 CSSAnimationData::CSSAnimationData(const CSSAnimationData& other) = default;
+
+absl::optional<double> CSSAnimationData::InitialDuration() {
+  if (RuntimeEnabledFeatures::ScrollTimelineEnabled()) {
+    return absl::nullopt;
+  }
+  return 0;
+}
 
 const AtomicString& CSSAnimationData::InitialName() {
   DEFINE_STATIC_LOCAL(const AtomicString, name, ("none"));
@@ -40,6 +48,8 @@ bool CSSAnimationData::AnimationsMatchForStyleRecalc(
          iteration_count_list_ == other.iteration_count_list_ &&
          direction_list_ == other.direction_list_ &&
          fill_mode_list_ == other.fill_mode_list_ &&
+         range_start_list_ == other.range_start_list_ &&
+         range_end_list_ == other.range_end_list_ &&
          TimingMatchForStyleRecalc(other);
 }
 

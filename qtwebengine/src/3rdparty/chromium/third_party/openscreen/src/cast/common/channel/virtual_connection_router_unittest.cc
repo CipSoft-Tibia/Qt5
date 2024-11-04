@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,8 +15,7 @@
 #include "cast/common/public/cast_socket.h"
 #include "gtest/gtest.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 static_assert(::cast::channel::CastMessage_ProtocolVersion_CASTV2_1_0 ==
@@ -433,5 +432,4 @@ TEST_F(VirtualConnectionRouterTest, HandlesConnectionMessagesAsSpecialCase) {
   EXPECT_EQ(kConnectionNamespace, message.namespace_());
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

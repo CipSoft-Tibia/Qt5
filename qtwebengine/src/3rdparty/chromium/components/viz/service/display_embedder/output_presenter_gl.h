@@ -36,8 +36,9 @@ class VIZ_SERVICE_EXPORT OutputPresenterGL : public OutputPresenter {
 
   // OutputPresenter implementation:
   void InitializeCapabilities(OutputSurface::Capabilities* capabilities) final;
-  bool Reshape(const SkSurfaceCharacterization& characterization,
+  bool Reshape(const SkImageInfo& image_info,
                const gfx::ColorSpace& color_space,
+               int sample_count,
                float device_scale_factor,
                gfx::OverlayTransform transform) final;
   std::vector<std::unique_ptr<Image>> AllocateImages(
@@ -46,16 +47,9 @@ class VIZ_SERVICE_EXPORT OutputPresenterGL : public OutputPresenter {
       size_t num_images) final;
   std::unique_ptr<Image> AllocateSingleImage(gfx::ColorSpace color_space,
                                              gfx::Size image_size) final;
-  void SwapBuffers(SwapCompletionCallback completion_callback,
-                   BufferPresentedCallback presentation_callback,
-                   gfx::FrameData data) final;
-  void PostSubBuffer(const gfx::Rect& rect,
-                     SwapCompletionCallback completion_callback,
-                     BufferPresentedCallback presentation_callback,
-                     gfx::FrameData data) final;
-  void CommitOverlayPlanes(SwapCompletionCallback completion_callback,
-                           BufferPresentedCallback presentation_callback,
-                           gfx::FrameData data) final;
+  void Present(SwapCompletionCallback completion_callback,
+               BufferPresentedCallback presentation_callback,
+               gfx::FrameData data) final;
   void SchedulePrimaryPlane(
       const OverlayProcessorInterface::OutputSurfaceOverlayPlane& plane,
       Image* image,
@@ -64,8 +58,6 @@ class VIZ_SERVICE_EXPORT OutputPresenterGL : public OutputPresenter {
       const OutputPresenter::OverlayPlaneCandidate& overlay_plane_candidate,
       ScopedOverlayAccess* access,
       std::unique_ptr<gfx::GpuFence> acquire_fence) final;
-  bool SupportsGpuVSync() const final;
-  void SetGpuVSyncEnabled(bool enabled) final;
   void SetVSyncDisplayID(int64_t display_id) final;
 #if BUILDFLAG(IS_APPLE)
   void SetCALayerErrorCode(gfx::CALayerResult ca_layer_error_code) final;
@@ -74,9 +66,8 @@ class VIZ_SERVICE_EXPORT OutputPresenterGL : public OutputPresenter {
  private:
   scoped_refptr<gl::Presenter> presenter_;
   raw_ptr<SkiaOutputSurfaceDependency> dependency_;
-  const bool supports_async_swap_;
 
-  ResourceFormat image_format_ = RGBA_8888;
+  SharedImageFormat image_format_ = SinglePlaneFormat::kRGBA_8888;
 
   // Shared Image factories
   const raw_ptr<gpu::SharedImageFactory> shared_image_factory_;

@@ -17,7 +17,9 @@
 
 #include <private/qqmladaptormodelenginedata_p.h>
 #include <private/qqmldelegatemodel_p_p.h>
+
 #include <private/qobject_p.h>
+#include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -53,7 +55,7 @@ Q_SIGNALS:
     void modelDataChanged();
 };
 
-class VDMObjectDelegateDataType
+class VDMObjectDelegateDataType final
     : public QQmlRefCounted<VDMObjectDelegateDataType>,
       public QQmlAdaptorModel::Accessors
 {

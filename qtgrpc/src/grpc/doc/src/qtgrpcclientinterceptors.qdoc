@@ -1,0 +1,110 @@
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+/*!
+\page qtgrpc-client-interceptors.html
+\title Qt GRPC Client Interceptors
+
+\brief Using QGrpcClientInterceptor and QGrpcClientInterceptorManager in Qt GRPC
+
+\section1 Introduction
+Qt GRPC provides the functionality to use Qt GRPC interceptors for customizing
+the behavior of Qt GRPC calls and streams. The QGrpcClientInterceptor
+class serves as the base for creating custom interceptors,
+while QGrpcClientInterceptorManager manages the registration and execution of these interceptors.
+
+\section1 Implementing a custom interceptor
+
+To implement a custom interceptor, you need to subclass QGrpcClientInterceptor
+and override the desired interception methods.
+
+These methods are specific to the type of Qt GRPC operation:
+\list
+    \li QGrpcClientInterceptor::interceptCall() - For unary calls.
+    \li QGrpcClientInterceptor::interceptServerStream() - For server streaming calls.
+    \li QGrpcClientInterceptor::interceptClientStream() - For client streaming calls.
+    \li QGrpcClientInterceptor::interceptBidirStream() - For bidirectional streaming calls.
+\endlist
+
+Here's an example of implementing a custom interceptor:
+
+\code
+class MyCustomInterceptor : public QGrpcClientInterceptor
+{
+protected:
+    void interceptCall(std::shared_ptr<QGrpcChannelOperation> operation,
+                                                  std::shared_ptr<QGrpcCallReply> response,
+                                                  QGrpcInterceptorContinuation<QGrpcCalReply> &continuation)
+    {
+        // Interception logic here.
+
+        // Call continuation() delegate if you wish to continue interception chain
+        continuation(response, operation);
+    }
+};
+\endcode
+
+By default, QGrpcClientInterceptor methods call continuation() delegate without logic.
+
+\section2 The continuation() delegate
+The number of times a continuation is invoked hinges on the exact requirements of the application.
+For instance, consider a retry interceptor; in scenarios where additional attempts are warranted,
+the continuation might be called repeatedly.
+Conversely, when intercepting the responses, you may choose to invoke the continuation
+before your own logic.
+On the other hand, certain interceptors, such as those focused on authentication or caching,
+may find no need to call the continuation at all if it is determined that
+the final Qt GRPC call is unnecessary.
+
+\section1 Registering Interceptors
+
+To incorporate interceptors into your Qt GRPC workflow, utilize the QGrpcClientInterceptorManager.
+This manager allows for the systematic registration and orchestration of interceptors.
+You can add individual interceptors using the registerInterceptor() method,
+while multiple interceptors can be registered at once via the registerInterceptors() method.
+
+\section2 Interceptor chain order of execution
+After registration, interceptors are placed at the beginning of the chain.
+It's important to note that during execution, interceptors are processed in reverse order.
+For example, let's consider a scenario where three
+interceptors (InterceptorA, InterceptorB, and InterceptorC) are registered in sequence:
+
+\code
+QGrpcClientInterceptorManager manager;
+auto InterceptorA = std::make_shared<MyCustomInterceptor>();
+auto InterceptorB = std::make_shared<MyCustomInterceptor>();
+auto InterceptorC = std::make_shared<MyCustomInterceptor>();
+
+manager.registerInterceptor(InterceptorA);
+manager.registerInterceptors({InterceptorB, InterceptorC});
+\endcode
+
+In this case, the interceptor chain for a Qt GRPC call will be as follows:
+
+\badcode
+InterceptorB -> InterceptorC -> InterceptorA -> Qt GRPC operation
+\endcode
+
+\section1 Running the interceptor chain
+The interceptor chain is triggered by QAbstractGrpcChannel every time a call or stream is initiated.
+This channel wraps the Qt GRPC call and passes it through the interceptor chain.
+The interceptors in the chain process the call in accordance with their specific logic.
+Ultimately, the Qt GRPC call is invoked at the end of the interceptor chain,
+ensuring that it undergoes all necessary processing before reaching its destination.
+
+\section1 Attach the QGrpcClientInterceptorManager to the channel
+To add a QGrpcClientInterceptorManager to the channel,
+you can use the QAbstractGrpcChannel::addInterceptorManager() method.
+This method takes a QGrpcClientInterceptorManager object as an argument.
+The provided manager will then be associated with the channel,
+allowing it to manage the interceptors for incoming and outgoing Qt GRPC calls and streams.
+
+\section1 QGrpcClientInterceptor Examples
+    \list
+        \li \l{QGrpcClientInterceptor logging example}
+        \li \l{QGrpcClientInterceptor caching example}
+    \endlist
+
+\sa{QGrpcClientInterceptor}
+\sa{QGrpcClientInterceptorManager}
+*/

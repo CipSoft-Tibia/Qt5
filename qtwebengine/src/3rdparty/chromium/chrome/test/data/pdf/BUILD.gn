@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//chrome/browser/resources/pdf/pdf.gni")
+import("//components/services/screen_ai/buildflags/features.gni")
 import("//pdf/features.gni")
 import("//tools/typescript/ts_library.gni")
 import("//ui/webui/resources/tools/generate_grd.gni")
@@ -12,6 +12,7 @@ assert(enable_pdf, "enable_pdf check failed")
 ts_library("build_ts") {
   root_dir = "."
   out_dir = "$target_gen_dir/tsc"
+  tsconfig_base = "../../../../tools/typescript/tsconfig_base_polymer.json"
   path_mappings = [
     "chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/*|" +
         rebase_path("$root_gen_dir/chrome/browser/resources/pdf/tsc/*",
@@ -42,6 +43,8 @@ ts_library("build_ts") {
     "test_util.ts",
     "title_test.ts",
     "touch_handling_test.ts",
+    "viewer_attachment_bar_test.ts",
+    "viewer_attachment_test.ts",
     "viewer_password_dialog_test.ts",
     "viewer_pdf_sidenav_test.ts",
     "viewer_properties_dialog_test.ts",
@@ -62,15 +65,28 @@ ts_library("build_ts") {
     ]
   }
 
+  if (enable_screen_ai_service) {
+    in_files += [ "pdf_ocr_toolbar_test.ts" ]
+  }
+
   if (is_chromeos_ash) {
     in_files += [ "printing_icon_test.ts" ]
   }
 
-  definitions =
-      ts_definitions + [ "//tools/typescript/definitions/chrome_test.d.ts" ]
+  definitions = [
+    "//tools/typescript/definitions/chrome_test.d.ts",
+    "//tools/typescript/definitions/metrics_private.d.ts",
+    "//tools/typescript/definitions/mime_handler_private.d.ts",
+    "//tools/typescript/definitions/pending.d.ts",
+  ]
+  if (enable_ink) {
+    definitions += [ "//chrome/browser/resources/pdf/ink/drawing_canvas.d.ts" ]
+  }
+
   deps = [
     "../webui:build_ts",
     "//chrome/browser/resources/pdf:build_ts",
+    "//third_party/polymer/v3_0:library",
     "//ui/webui/resources/js:build_ts",
   ]
 }
@@ -81,6 +97,6 @@ generate_grd("build_grdp") {
 
   deps = [ ":build_ts" ]
   manifest_files =
-      filter_include(get_target_outputs(":build_ts"), [ "*.manifest" ])
+      filter_include(get_target_outputs(":build_ts"), [ "*_manifest.json" ])
   resource_path_prefix = "pdf"
 }

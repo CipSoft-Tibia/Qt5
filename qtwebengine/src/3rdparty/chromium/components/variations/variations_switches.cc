@@ -70,7 +70,7 @@ const char kVariationsOverrideCountry[] = "variations-override-country";
 // Specifies the location of a seed file for Local State's seed to be
 // populated from. The seed file must be in json format with the keys
 // |kVariationsCompressedSeed| and |kVariationsSeedSignature|.
-const char kVariationsTestSeedPath[] = "variations-test-seed-path";
+const char kVariationsTestSeedJsonPath[] = "variations-test-seed-path";
 
 // Specifies a custom URL for the server which reports variation data to the
 // client. Specifying this switch enables the Variations service on
@@ -90,6 +90,11 @@ const char kVariationsSeedFetchInterval[] = "variations-seed-fetch-interval";
 // path on Android.
 const char kEnableFinchSeedDeltaCompression[] =
     "enable-finch-seed-delta-compression";
+
+// Accept an empty signature when loading a variations seed. This is for
+// testing purposes.
+const char kAcceptEmptySeedSignatureForTesting[] =
+    "accept-empty-variations-seed-signature";
 
 }  // namespace switches
 }  // namespace variations

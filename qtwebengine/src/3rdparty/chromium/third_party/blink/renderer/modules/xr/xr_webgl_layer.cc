@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <utility>
 
-#include "base/cxx17_backports.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/trace_event/trace_event.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
@@ -117,8 +116,8 @@ XRWebGLLayer* XRWebGLLayer::Create(XRSession* session,
     // small to see or unreasonably large.
     // TODO(bajones): Would be best to have the max value communicated from the
     // service rather than limited to the native res.
-    framebuffer_scale = base::clamp(initializer->framebufferScaleFactor(),
-                                    kFramebufferMinScale, max_scale);
+    framebuffer_scale = std::clamp(initializer->framebufferScaleFactor(),
+                                   kFramebufferMinScale, max_scale);
   }
 
   gfx::SizeF framebuffers_size = session->RecommendedFramebufferSize();
@@ -245,9 +244,12 @@ double XRWebGLLayer::getNativeFramebufferScaleFactor(XRSession* session) {
 void XRWebGLLayer::UpdateViewports() {
   uint32_t framebuffer_width = framebufferWidth();
   uint32_t framebuffer_height = framebufferHeight();
-  // Framebuffer width and height are assumed to be nonzero.
-  DCHECK_NE(framebuffer_width, 0U);
-  DCHECK_NE(framebuffer_height, 0U);
+  if (framebuffer_width == 0U || framebuffer_height == 0U) {
+    LOG_IF(ERROR, !webgl_context_->isContextLost())
+        << __func__ << " Received width=" << framebuffer_width
+        << " height=" << framebuffer_height << " without having lost context";
+    return;
+  }
 
   viewports_dirty_ = false;
 

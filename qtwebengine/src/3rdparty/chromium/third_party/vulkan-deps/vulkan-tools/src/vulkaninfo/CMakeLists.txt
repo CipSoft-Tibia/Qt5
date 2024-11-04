@@ -61,6 +61,8 @@ if (NOT WIN32)
     target_link_libraries(vulkaninfo ${CMAKE_DL_LIBS})
 endif()
 
+target_compile_definitions(vulkaninfo PRIVATE -DVK_ENABLE_BETA_EXTENSIONS)
+
 if(UNIX AND NOT APPLE) # i.e. Linux
     option(BUILD_WSI_XCB_SUPPORT "Build XCB WSI support" ON)
     option(BUILD_WSI_XLIB_SUPPORT "Build Xlib WSI support" ON)
@@ -93,6 +95,11 @@ if(UNIX AND NOT APPLE) # i.e. Linux
         target_link_libraries(vulkaninfo PkgConfig::DirectFB)
         target_compile_definitions(vulkaninfo PRIVATE -DVK_USE_PLATFORM_DIRECTFB_EXT -DVK_NO_PROTOTYPES)
     endif()
+
+    if (ENABLE_ADDRESS_SANITIZER)
+        target_compile_options(vulkaninfo PUBLIC -fsanitize=address)
+        target_link_options(vulkaninfo PUBLIC -fsanitize=address)
+    endif ()
 endif()
 
 if(APPLE)
@@ -113,25 +120,6 @@ if(WIN32)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
     endif()
 
-    # Use static MSVCRT libraries
-    foreach(configuration
-            in
-            CMAKE_C_FLAGS_DEBUG
-            CMAKE_C_FLAGS_MINSIZEREL
-            CMAKE_C_FLAGS_RELEASE
-            CMAKE_C_FLAGS_RELWITHDEBINFO
-            CMAKE_CXX_FLAGS_DEBUG
-            CMAKE_CXX_FLAGS_MINSIZEREL
-            CMAKE_CXX_FLAGS_RELEASE
-            CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-        if(${configuration} MATCHES "/MD")
-            string(REGEX
-                   REPLACE "/MD"
-                           "/MT"
-                           ${configuration}
-                           "${${configuration}}")
-        endif()
-    endforeach()
 elseif(APPLE)
     add_definitions(-DVK_USE_PLATFORM_MACOS_MVK -DVK_USE_PLATFORM_METAL_EXT)
 endif()

@@ -50,24 +50,24 @@ Q_DECLARE_JNI_TYPE(ParcelableArray, "[Landroid/os/Parcelable;")
 Q_DECLARE_JNI_TYPE(ParcelUuidArray, "[Landroid/os/ParcelUuid;")
 Q_DECLARE_JNI_TYPE(StringArray, "[Ljava/lang/String;")
 
-Q_DECLARE_JNI_TYPE(BluetoothManager, "Landroid/bluetooth/BluetoothManager;")
-Q_DECLARE_JNI_TYPE(AdvertiseData, "Landroid/bluetooth/le/AdvertiseData;")
-Q_DECLARE_JNI_TYPE(AdvertiseSettings, "Landroid/bluetooth/le/AdvertiseSettings;")
-Q_DECLARE_JNI_TYPE(InputStream, "Ljava/io/InputStream;")
-Q_DECLARE_JNI_TYPE(OutputStream, "Ljava/io/OutputStream;")
-Q_DECLARE_JNI_TYPE(BluetoothSocket, "Landroid/bluetooth/BluetoothSocket;")
-Q_DECLARE_JNI_TYPE(BroadcastReceiver, "Landroid/content/BroadcastReceiver;")
-Q_DECLARE_JNI_TYPE(BluetoothClass, "Landroid/bluetooth/BluetoothClass;")
-Q_DECLARE_JNI_TYPE(Parcelable, "Landroid/os/Parcelable;")
-Q_DECLARE_JNI_TYPE(Intent, "Landroid/content/Intent;")
-Q_DECLARE_JNI_TYPE(Bundle, "Landroid/os/Bundle;")
-Q_DECLARE_JNI_TYPE(List, "Ljava/util/List;")
+Q_DECLARE_JNI_CLASS(BluetoothManager, "android/bluetooth/BluetoothManager")
+Q_DECLARE_JNI_CLASS(AdvertiseData, "android/bluetooth/le/AdvertiseData")
+Q_DECLARE_JNI_CLASS(AdvertiseSettings, "android/bluetooth/le/AdvertiseSettings")
+Q_DECLARE_JNI_CLASS(InputStream, "java/io/InputStream")
+Q_DECLARE_JNI_CLASS(OutputStream, "java/io/OutputStream")
+Q_DECLARE_JNI_CLASS(BluetoothSocket, "android/bluetooth/BluetoothSocket")
+Q_DECLARE_JNI_CLASS(BroadcastReceiver, "android/content/BroadcastReceiver")
+Q_DECLARE_JNI_CLASS(BluetoothClass, "android/bluetooth/BluetoothClass")
+Q_DECLARE_JNI_CLASS(Parcelable, "android/os/Parcelable")
+Q_DECLARE_JNI_CLASS(Intent, "android/content/Intent")
+Q_DECLARE_JNI_CLASS(Bundle, "android/os/Bundle")
+Q_DECLARE_JNI_CLASS(List, "java/util/List")
 
 // QLowEnergyHandle is a quint16, ensure it is interpreted as jint
 template<>
-constexpr auto QtJniTypes::typeSignature<QLowEnergyHandle>()
+constexpr auto QtJniTypes::Traits<QLowEnergyHandle>::signature()
 {
-    return QtJniTypes::String("I");
+    return QtJniTypes::Traits<jint>::signature();
 }
 
 enum JavaNames {
@@ -90,46 +90,46 @@ enum JavaNames {
     ExtraUuid
 };
 
-QJniObject valueFromStaticFieldCache(const char *key, const char *className, const char *fieldName);
+QString valueFromStaticFieldCache(const char *key, const char *className, const char *fieldName);
 
 
 template<typename Klass, JavaNames Field>
-QJniObject valueForStaticField()
+QString valueForStaticField()
 {
-    constexpr auto className = QtJniTypes::className<Klass>();
+    constexpr auto className = QtJniTypes::Traits<Klass>::className();
     constexpr auto fieldName = []() -> auto {
         if constexpr (Field == JavaNames::ActionAclConnected)
-            return QtJniTypes::String("ACTION_ACL_CONNECTED");
+            return QtJniTypes::CTString("ACTION_ACL_CONNECTED");
         else if constexpr (Field == ActionAclDisconnected)
-            return QtJniTypes::String("ACTION_ACL_DISCONNECTED");
+            return QtJniTypes::CTString("ACTION_ACL_DISCONNECTED");
         else if constexpr (Field == ActionBondStateChanged)
-            return QtJniTypes::String("ACTION_BOND_STATE_CHANGED");
+            return QtJniTypes::CTString("ACTION_BOND_STATE_CHANGED");
         else if constexpr (Field == ActionDiscoveryStarted)
-            return QtJniTypes::String("ACTION_DISCOVERY_STARTED");
+            return QtJniTypes::CTString("ACTION_DISCOVERY_STARTED");
         else if constexpr (Field == ActionDiscoveryFinished)
-            return QtJniTypes::String("ACTION_DISCOVERY_FINISHED");
+            return QtJniTypes::CTString("ACTION_DISCOVERY_FINISHED");
         else if constexpr (Field == ActionFound)
-            return QtJniTypes::String("ACTION_FOUND");
+            return QtJniTypes::CTString("ACTION_FOUND");
         else if constexpr (Field == ActionScanModeChanged)
-            return QtJniTypes::String("ACTION_SCAN_MODE_CHANGED");
+            return QtJniTypes::CTString("ACTION_SCAN_MODE_CHANGED");
         else if constexpr (Field == ActionUuid)
-            return QtJniTypes::String("ACTION_UUID");
+            return QtJniTypes::CTString("ACTION_UUID");
         else if constexpr (Field == ExtraBondState)
-            return QtJniTypes::String("EXTRA_BOND_STATE");
+            return QtJniTypes::CTString("EXTRA_BOND_STATE");
         else if constexpr (Field == ExtraDevice)
-            return QtJniTypes::String("EXTRA_DEVICE");
+            return QtJniTypes::CTString("EXTRA_DEVICE");
         else if constexpr (Field == ExtraPairingKey)
-            return QtJniTypes::String("EXTRA_PAIRING_KEY");
+            return QtJniTypes::CTString("EXTRA_PAIRING_KEY");
         else if constexpr (Field == ExtraPairingVariant)
-            return QtJniTypes::String("EXTRA_PAIRING_VARIANT");
+            return QtJniTypes::CTString("EXTRA_PAIRING_VARIANT");
         else if constexpr (Field == ExtraRssi)
-            return QtJniTypes::String("EXTRA_RSSI");
+            return QtJniTypes::CTString("EXTRA_RSSI");
         else if constexpr (Field == ExtraScanMode)
-            return QtJniTypes::String("EXTRA_SCAN_MODE");
+            return QtJniTypes::CTString("EXTRA_SCAN_MODE");
         else if constexpr (Field == ExtraUuid)
-            return QtJniTypes::String("EXTRA_UUID");
+            return QtJniTypes::CTString("EXTRA_UUID");
         else
-            QtJniTypes::staticAssertTypeMismatch();
+            static_assert(QtPrivate::value_dependent_false<Field>());
     }();
 
     return valueFromStaticFieldCache(className + fieldName, className.data(), fieldName.data());

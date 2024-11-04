@@ -5,14 +5,15 @@
 #include "net/der/parse_values.h"
 
 #include <tuple>
+#include <vector>
 
-#include "base/check_op.h"
 #include "base/notreached.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversion_utils.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/sys_byteorder.h"
 #include "base/third_party/icu/icu_utf.h"
+#include "third_party/boringssl/src/include/openssl/base.h"
 #include "third_party/boringssl/src/include/openssl/bytestring.h"
 
 namespace net::der {
@@ -74,13 +75,16 @@ bool ValidateGeneralizedTime(const GeneralizedTime& time) {
     return false;
   if (time.day < 1)
     return false;
-  if (time.hours < 0 || time.hours > 23)
+  if (time.hours > 23) {
     return false;
-  if (time.minutes < 0 || time.minutes > 59)
+  }
+  if (time.minutes > 59) {
     return false;
+  }
   // Leap seconds are allowed.
-  if (time.seconds < 0 || time.seconds > 60)
+  if (time.seconds > 60) {
     return false;
+  }
 
   // validate upper bound for day of month
   switch (time.month) {
@@ -112,8 +116,7 @@ bool ValidateGeneralizedTime(const GeneralizedTime& time) {
       }
       break;
     default:
-      NOTREACHED();
-      return false;
+      NOTREACHED_NORETURN();
   }
   return true;
 }
@@ -205,12 +208,11 @@ bool ParseUint8(const Input& in, uint8_t* out) {
 
 BitString::BitString(const Input& bytes, uint8_t unused_bits)
     : bytes_(bytes), unused_bits_(unused_bits) {
-  DCHECK_LT(unused_bits, 8);
-  DCHECK(unused_bits == 0 || bytes.Length() != 0);
+  BSSL_CHECK(unused_bits < 8);
+  BSSL_CHECK(unused_bits == 0 || bytes.Length() != 0);
   // The unused bits must be zero.
-  DCHECK(bytes.Length() == 0 ||
-         (bytes.UnsafeData()[bytes.Length() - 1] & ((1u << unused_bits) - 1)) ==
-             0);
+  BSSL_CHECK(bytes.Length() == 0 ||
+             (bytes[bytes.Length() - 1] & ((1u << unused_bits) - 1)) == 0);
 }
 
 bool BitString::AssertsBit(size_t bit_index) const {
@@ -230,7 +232,7 @@ bool BitString::AssertsBit(size_t bit_index) const {
   // BIT STRING parsing already guarantees that unused bits in a byte are zero
   // (otherwise it wouldn't be valid DER). Therefore it isn't necessary to check
   // |unused_bits_|
-  uint8_t byte = bytes_.UnsafeData()[byte_index];
+  uint8_t byte = bytes_[byte_index];
   return 0 != (byte & (1 << bit_index_in_byte));
 }
 
@@ -260,7 +262,7 @@ absl::optional<BitString> ParseBitString(const Input& in) {
     // and the initial octet shall be zero.
     if (bytes.Length() == 0)
       return absl::nullopt;
-    uint8_t last_byte = bytes.UnsafeData()[bytes.Length() - 1];
+    uint8_t last_byte = bytes[bytes.Length() - 1];
 
     // From ITU-T X.690, section 11.2.1 (applies to CER and DER, but not BER):
     //
@@ -342,7 +344,7 @@ bool ParseGeneralizedTime(const Input& in, GeneralizedTime* value) {
 }
 
 bool ParseIA5String(Input in, std::string* out) {
-  for (char c : in.AsStringPiece()) {
+  for (char c : in.AsStringView()) {
     if (static_cast<uint8_t>(c) > 127)
       return false;
   }
@@ -357,7 +359,7 @@ bool ParseVisibleString(Input in, std::string* out) {
   // Also ITU-T X.691 says it much more clearly:
   // "for VisibleString [the range] is 32 to 126 ... For VisibleString .. all
   // the values in the range are present."
-  for (char c : in.AsStringPiece()) {
+  for (char c : in.AsStringView()) {
     if (static_cast<uint8_t>(c) < 32 || static_cast<uint8_t>(c) > 126)
       return false;
   }
@@ -366,7 +368,7 @@ bool ParseVisibleString(Input in, std::string* out) {
 }
 
 bool ParsePrintableString(Input in, std::string* out) {
-  for (char c : in.AsStringPiece()) {
+  for (char c : in.AsStringView()) {
     if (!(base::IsAsciiAlpha(c) || c == ' ' || (c >= '\'' && c <= ':') ||
           c == '=' || c == '?')) {
       return false;
@@ -381,12 +383,13 @@ bool ParseTeletexStringAsLatin1(Input in, std::string* out) {
   // Convert from Latin-1 to UTF-8.
   size_t utf8_length = in.Length();
   for (size_t i = 0; i < in.Length(); i++) {
-    if (in.UnsafeData()[i] > 0x7f)
+    if (in[i] > 0x7f) {
       utf8_length++;
+    }
   }
   out->reserve(utf8_length);
   for (size_t i = 0; i < in.Length(); i++) {
-    uint8_t u = in.UnsafeData()[i];
+    uint8_t u = in[i];
     if (u <= 0x7f) {
       out->push_back(u);
     } else {
@@ -394,7 +397,7 @@ bool ParseTeletexStringAsLatin1(Input in, std::string* out) {
       out->push_back(0x80 | (u & 0x3f));
     }
   }
-  DCHECK_EQ(utf8_length, out->size());
+  BSSL_CHECK(utf8_length == out->size());
   return true;
 }
 

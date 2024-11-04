@@ -8,6 +8,8 @@
 #include <QtGui/qsyntaxhighlighter.h>
 #include <QtQuick/qquicktextdocument.h>
 
+#include <QtCore/qpointer.h>
+
 class SyntaxHighlighter : public QSyntaxHighlighter
 {
     Q_OBJECT

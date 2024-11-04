@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 
 #include "cast/common/channel/proto/cast_channel.pb.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class CastSocket;
 class VirtualConnectionRouter;
@@ -23,7 +22,6 @@ class CastMessageHandler {
                          ::cast::channel::CastMessage message) = 0;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_CHANNEL_CAST_MESSAGE_HANDLER_H_

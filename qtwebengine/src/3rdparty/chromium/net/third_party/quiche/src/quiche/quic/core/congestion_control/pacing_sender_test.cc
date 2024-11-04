@@ -60,13 +60,13 @@ class PacingSenderTest : public QuicTest {
     EXPECT_CALL(*mock_sender_, BandwidthEstimate())
         .WillRepeatedly(Return(bandwidth));
     if (burst_size == 0) {
-      EXPECT_CALL(*mock_sender_, OnCongestionEvent(_, _, _, _, _));
+      EXPECT_CALL(*mock_sender_, OnCongestionEvent(_, _, _, _, _, _, _));
       LostPacketVector lost_packets;
       lost_packets.push_back(
           LostPacket(QuicPacketNumber(1), kMaxOutgoingPacketSize));
       AckedPacketVector empty;
       pacing_sender_->OnCongestionEvent(true, 1234, clock_.Now(), empty,
-                                        lost_packets);
+                                        lost_packets, 0, 0);
     } else if (burst_size != kInitialBurstPackets) {
       QUIC_LOG(FATAL) << "Unsupported burst_size " << burst_size
                       << " specificied, only 0 and " << kInitialBurstPackets
@@ -84,11 +84,13 @@ class PacingSenderTest : public QuicTest {
           .WillOnce(Return(true));
       // Verify that the packet can be sent immediately.
       EXPECT_EQ(zero_time_,
-                pacing_sender_->TimeUntilSend(clock_.Now(), prior_in_flight));
+                pacing_sender_->TimeUntilSend(clock_.Now(), prior_in_flight))
+          << "Next packet to send is " << packet_number_;
     }
 
     // Actually send the packet.
-    if (prior_in_flight == 0) {
+    if (prior_in_flight == 0 &&
+        !GetQuicReloadableFlag(quic_pacing_remove_non_initial_burst)) {
       EXPECT_CALL(*mock_sender_, InRecovery()).WillOnce(Return(in_recovery));
     }
     EXPECT_CALL(*mock_sender_,
@@ -126,11 +128,11 @@ class PacingSenderTest : public QuicTest {
 
   void UpdateRtt() {
     EXPECT_CALL(*mock_sender_,
-                OnCongestionEvent(true, kBytesInFlight, _, _, _));
+                OnCongestionEvent(true, kBytesInFlight, _, _, _, _, _));
     AckedPacketVector empty_acked;
     LostPacketVector empty_lost;
     pacing_sender_->OnCongestionEvent(true, kBytesInFlight, clock_.Now(),
-                                      empty_acked, empty_lost);
+                                      empty_acked, empty_lost, 0, 0);
   }
 
   void OnApplicationLimited() { pacing_sender_->OnApplicationLimited(); }
@@ -236,8 +238,17 @@ TEST_F(PacingSenderTest, InitialBurst) {
   CheckPacketIsDelayed(QuicTime::Delta::FromMilliseconds(2));
 
   clock_.AdvanceTime(QuicTime::Delta::FromMilliseconds(5));
-  CheckPacketIsSentImmediately();
 
+  if (GetQuicReloadableFlag(quic_pacing_remove_non_initial_burst)) {
+    // Can send some packets immediately to make up for 5ms of lost time.
+    for (int i = 0; i < 6; ++i) {
+      CheckPacketIsSentImmediately();
+    }
+    CheckPacketIsDelayed(QuicTime::Delta::FromMilliseconds(3));
+    return;
+  }
+
+  CheckPacketIsSentImmediately();
   // Next time TimeUntilSend is called with no bytes in flight, pacing should
   // allow a packet to be sent, and when it's sent, the tokens are refilled.
   CheckPacketIsSentImmediately(HAS_RETRANSMITTABLE_DATA, 0, false, 10);
@@ -270,6 +281,16 @@ TEST_F(PacingSenderTest, InitialBurstNoRttMeasurement) {
   CheckPacketIsDelayed(QuicTime::Delta::FromMilliseconds(2));
 
   clock_.AdvanceTime(QuicTime::Delta::FromMilliseconds(5));
+
+  if (GetQuicReloadableFlag(quic_pacing_remove_non_initial_burst)) {
+    // Can send some packets immediately to make up for 5ms of lost time.
+    for (int i = 0; i < 6; ++i) {
+      CheckPacketIsSentImmediately();
+    }
+    CheckPacketIsDelayed(QuicTime::Delta::FromMilliseconds(3));
+    return;
+  }
+
   CheckPacketIsSentImmediately();
 
   // Next time TimeUntilSend is called with no bytes in flight, the tokens
@@ -308,6 +329,16 @@ TEST_F(PacingSenderTest, FastSending) {
   CheckPacketIsDelayed(QuicTime::Delta::FromMicroseconds(2000));
 
   clock_.AdvanceTime(QuicTime::Delta::FromMilliseconds(5));
+
+  if (GetQuicReloadableFlag(quic_pacing_remove_non_initial_burst)) {
+    // Can send some packets immediately to make up for 5ms of lost time.
+    for (int i = 0; i < 10; ++i) {
+      CheckPacketIsSentImmediately();
+    }
+    CheckPacketIsDelayed(QuicTime::Delta::FromMilliseconds(2));
+    return;
+  }
+
   CheckPacketIsSentImmediately();
 
   // Next time TimeUntilSend is called with no bytes in flight, the tokens
@@ -340,9 +371,9 @@ TEST_F(PacingSenderTest, NoBurstEnteringRecovery) {
       LostPacket(QuicPacketNumber(1), kMaxOutgoingPacketSize));
   AckedPacketVector empty_acked;
   EXPECT_CALL(*mock_sender_, OnCongestionEvent(true, kMaxOutgoingPacketSize, _,
-                                               testing::IsEmpty(), _));
+                                               testing::IsEmpty(), _, _, _));
   pacing_sender_->OnCongestionEvent(true, kMaxOutgoingPacketSize, clock_.Now(),
-                                    empty_acked, lost_packets);
+                                    empty_acked, lost_packets, 0, 0);
   // One packet is sent immediately, because of 1ms pacing granularity.
   CheckPacketIsSentImmediately();
   // Ensure packets are immediately paced.

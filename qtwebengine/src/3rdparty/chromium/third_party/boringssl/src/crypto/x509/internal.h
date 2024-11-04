@@ -64,6 +64,7 @@
 #include <openssl/x509.h>
 
 #include "../asn1/internal.h"
+#include "../internal.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -274,7 +275,6 @@ struct x509_lookup_method_st {
 // function is then called to actually check the cert chain.
 struct x509_store_st {
   // The following is a cache of trusted certs
-  int cache;                    // if true, stash any hits
   STACK_OF(X509_OBJECT) *objs;  // Cache of all objects
   CRYPTO_MUTEX objs_lock;
 
@@ -404,7 +404,8 @@ int x509_digest_verify_init(EVP_MD_CTX *ctx, const X509_ALGOR *sigalg,
 // Path-building functions.
 
 // X509_policy_check checks certificate policies in |certs|. |user_policies| is
-// the user-initial-policy-set. |flags| is a set of |X509_V_FLAG_*| values to
+// the user-initial-policy-set. If |user_policies| is NULL or empty, it is
+// interpreted as anyPolicy. |flags| is a set of |X509_V_FLAG_*| values to
 // apply. It returns |X509_V_OK| on success and |X509_V_ERR_*| on error. It
 // additionally sets |*out_current_cert| to the certificate where the error
 // occurred. If the function succeeded, or the error applies to the entire

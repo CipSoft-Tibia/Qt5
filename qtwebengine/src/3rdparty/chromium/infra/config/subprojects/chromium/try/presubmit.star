@@ -42,7 +42,8 @@ def presubmit_builder(*, name, tryjob, **kwargs):
     """
     if tryjob:
         tryjob_args = {a: getattr(tryjob, a) for a in dir(tryjob)}
-        tryjob_args["disable_reuse"] = True
+        if tryjob_args.get("disable_reuse") == None:
+            tryjob_args["disable_reuse"] = True
         tryjob_args["add_default_filters"] = False
         tryjob = try_.job(**tryjob_args)
     return try_.builder(name = name, tryjob = tryjob, **kwargs)
@@ -124,9 +125,40 @@ presubmit_builder(
 )
 
 presubmit_builder(
+    name = "targets-config-verifier",
+    description_html = "checks that target configs specified in starlark match those specified in //testing/buildbot",
+    executable = "recipe:chromium/targets_config_verifier",
+    properties = {
+        "builder_config_directory": "infra/config/generated/builders",
+    },
+    # TODO(crbug.com/1420012) Once the recipe is working, actually add this to
+    # the CQ
+    # tryjob = try_.job(
+    #     location_filters = ["infra/config/generated/builders/tests/.*"],
+    # ),
+    tryjob = None,
+)
+
+presubmit_builder(
     name = "chromium_presubmit",
     branch_selector = branches.selector.ALL_BRANCHES,
     executable = "recipe:presubmit",
+    execution_timeout = 40 * time.minute,
+    properties = {
+        "$depot_tools/presubmit": {
+            "runhooks": True,
+            "timeout_s": 480,
+        },
+        "repo_name": "chromium",
+    },
+    tryjob = try_.job(),
+)
+
+presubmit_builder(
+    name = "win-presubmit",
+    executable = "recipe:presubmit",
+    builderless = True,
+    os = os.WINDOWS_DEFAULT,
     execution_timeout = 40 * time.minute,
     properties = {
         "$depot_tools/presubmit": {

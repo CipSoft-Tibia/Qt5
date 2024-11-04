@@ -7,6 +7,9 @@ import("//testing/libfuzzer/fuzzer_test.gni")
 import("//testing/test.gni")
 import("features.gni")
 
+import("//build/config/android/jni.gni")
+import("//build/config/cronet/config.gni")
+
 if (is_android || is_robolectric) {
   import("//build/config/android/rules.gni")
 }
@@ -103,10 +106,11 @@ component("url") {
 
 if (is_android || is_robolectric) {
   generate_jni("url_jni_headers") {
-    sources = [
-      "android/java/src/org/chromium/url/IDNStringUtil.java",
-      "android/java/src/org/chromium/url/Origin.java",
-    ]
+    sources = [ "android/java/src/org/chromium/url/IDNStringUtil.java" ]
+  }
+
+  generate_jni("origin_jni_headers") {
+    sources = [ "android/java/src/org/chromium/url/Origin.java" ]
   }
 
   generate_jni("gurl_jni_headers") {
@@ -141,8 +145,8 @@ if (is_android || is_robolectric) {
 
     deps = [
       ":gurl_android",
+      ":origin_jni_headers",
       ":url",
-      ":url_jni_headers",
       "//base",
     ]
   }
@@ -153,8 +157,11 @@ if (is_android) {
     sources = [ "android/java/src/org/chromium/url/IDNStringUtil.java" ]
     deps = [ "//base:jni_java" ]
   }
+}
 
+if (is_android && !is_cronet_build) {
   android_library("gurl_java") {
+    srcjar_deps = [ ":gurl_jni_headers" ]
     sources = [
       "android/java/src/org/chromium/url/GURL.java",
       "android/java/src/org/chromium/url/Parsed.java",
@@ -168,10 +175,10 @@ if (is_android) {
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//url/mojom:url_mojom_gurl_java",
     ]
-    annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
   }
 
   android_library("origin_java") {
+    srcjar_deps = [ ":origin_jni_headers" ]
     sources = [ "android/java/src/org/chromium/url/Origin.java" ]
     deps = [
       ":gurl_java",
@@ -181,7 +188,6 @@ if (is_android) {
       "//mojo/public/mojom/base:base_java",
       "//url/mojom:url_mojom_origin_java",
     ]
-    annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
   }
 }
 
@@ -249,7 +255,7 @@ test("url_unittests") {
     deps += [ "//third_party/icu:icuuc" ]
   }
 
-  if (!is_ios) {
+  if (!is_ios && !is_cronet_build) {
     sources += [
       "mojom/scheme_host_port_mojom_traits_unittest.cc",
       "mojom/url_gurl_mojom_traits_unittest.cc",
@@ -288,7 +294,7 @@ fuzzer_test("gurl_fuzzer") {
   dict = "gurl_fuzzer.dict"
 }
 
-if (is_android) {
+if (is_android && !is_cronet_build) {
   source_set("android_test_helper") {
     testonly = true
     sources = [
@@ -306,7 +312,8 @@ if (is_android) {
 
   android_library("android_test_helper_java") {
     testonly = true
-    annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
+
+    srcjar_deps = [ ":j_test_jni_headers" ]
     sources = [
       "android/javatests/src/org/chromium/url/GURLJavaTestHelper.java",
       "android/javatests/src/org/chromium/url/OriginJavaTestHelper.java",
@@ -327,21 +334,10 @@ if (is_android) {
     deps = [ ":gurl_java" ]
   }
 
-  # Unlike gurl_junit_test_support targets depending on gurl_junit_shadows must
-  # bypass platform checks.
-  robolectric_library("gurl_junit_shadows") {
-    sources = [ "android/test/java/src/org/chromium/url/ShadowGURL.java" ]
-    deps = [
-      ":gurl_java",
-      ":gurl_junit_test_support",
-    ]
-  }
-
   android_library("url_java_unit_tests") {
     testonly = true
     sources = [
       "android/javatests/src/org/chromium/url/GURLJavaTest.java",
-      "android/javatests/src/org/chromium/url/JUnitTestGURLsTest.java",
       "android/javatests/src/org/chromium/url/OriginJavaTest.java",
     ]
     deps = [
@@ -354,8 +350,6 @@ if (is_android) {
       "//base:jni_java",
       "//content/public/test/android:content_java_test_support",
       "//mojo/public/mojom/base:base_java",
-      "//third_party/android_support_test_runner:rules_java",
-      "//third_party/android_support_test_runner:runner_java",
       "//third_party/androidx:androidx_core_core_java",
       "//third_party/androidx:androidx_test_runner_java",
       "//third_party/junit",
@@ -363,7 +357,6 @@ if (is_android) {
       "//url/mojom:url_mojom_gurl_java",
       "//url/mojom:url_mojom_origin_java",
     ]
-    annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
   }
 
   # See https://bugs.chromium.org/p/chromium/issues/detail?id=908819 for why we
@@ -375,32 +368,24 @@ if (is_android) {
       "android/javatests/src/org/chromium/url/OriginJavaTestHelper.java",
     ]
   }
-
-  robolectric_library("gurl_junit_tests") {
-    sources = [ "android/junit/src/org/chromium/url/ShadowGURLTest.java" ]
-    deps = [
-      ":gurl_java",
-      ":gurl_junit_shadows",
-      ":gurl_junit_test_support",
-      "//base:base_java_test_support",
-      "//base:base_junit_test_support",
-      "//base/test:test_support_java",
-      "//third_party/junit",
-    ]
-  }
 }
 
-if (is_robolectric) {
-  # Use this in robolectric_binary() targets if you just need GURL and //base
-  # functionality. Otherwise, define a custom shared_library().
-  shared_library("libgurl_robolectric") {
+# Use this in robolectric_binary() targets if you just need GURL and //base
+# functionality. Otherwise, define a custom shared_library().
+if (!is_cronet_build && target_os == "android") {
+  shared_library_with_jni("libgurl_robolectric") {
+    testonly = true
+    enable_target = is_robolectric
     sources = [ "android/robolectric_test_main.cc" ]
     deps = [
       "//base",
+      "//url",
       "//url:gurl_android",
     ]
 
     # Make jni.h available.
     configs += [ "//third_party/jdk" ]
+
+    java_targets = [ "//chrome/android:chrome_junit_tests" ]
   }
 }

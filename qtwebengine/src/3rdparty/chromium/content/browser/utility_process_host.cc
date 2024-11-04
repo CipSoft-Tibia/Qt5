@@ -9,10 +9,12 @@
 
 #include "base/base_switches.h"
 #include "base/command_line.h"
+#include "base/containers/span.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/i18n/base_i18n_switches.h"
+#include "base/logging.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/threading/thread.h"
@@ -29,6 +31,7 @@
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/common/content_client.h"
+#include "content/public/common/content_descriptor_keys.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/process_type.h"
@@ -49,18 +52,62 @@
 #endif
 
 #if BUILDFLAG(IS_MAC)
-#include "components/os_crypt/os_crypt_switches.h"
+#include "components/os_crypt/sync/os_crypt_switches.h"
 #endif
 
 #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
 #include "content/browser/v8_snapshot_files.h"
 #endif
 
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+#include "base/files/file_util.h"
+#include "base/files/scoped_file.h"
+#include "base/pickle.h"
+#endif
+
 #if BUILDFLAG(IS_WIN)
 #include "media/capture/capture_switches.h"
 #endif
 
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
+#include "base/task/sequenced_task_runner.h"
+#include "components/viz/host/gpu_client.h"
+#include "media/capture/capture_switches.h"
+#include "services/video_capture/public/mojom/video_capture_service.mojom.h"
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
+
 namespace content {
+
+namespace {
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+base::ScopedFD PassNetworkContextParentDirs(
+    std::vector<base::FilePath> network_context_parent_dirs) {
+  base::Pickle pickle;
+  for (const base::FilePath& dir : network_context_parent_dirs) {
+    pickle.WriteString(dir.value());
+  }
+
+  base::ScopedFD read_fd;
+  base::ScopedFD write_fd;
+  if (!base::CreatePipe(&read_fd, &write_fd)) {
+    PLOG(ERROR) << "Failed to create thepipe necessary to properly sandbox the "
+                   "network service.";
+    return base::ScopedFD();
+  }
+  if (!base::WriteFileDescriptor(
+          write_fd.get(),
+          base::make_span(reinterpret_cast<const uint8_t*>(pickle.data()),
+                          pickle.size()))) {
+    PLOG(ERROR) << "Failed to write to the pipe which is necessary to properly "
+                   "sandbox the network service.";
+    return base::ScopedFD();
+  }
+
+  return read_fd;
+}
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+}  // namespace
 
 UtilityMainThreadFactoryFunction g_utility_main_thread_factory = nullptr;
 
@@ -82,6 +129,9 @@ UtilityProcessHost::UtilityProcessHost(std::unique_ptr<Client> client)
       started_(false),
       name_(u"utility process"),
       file_data_(std::make_unique<ChildProcessLauncherFileData>()),
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
+      gpu_client_(nullptr, base::OnTaskRunnerDeleter(nullptr)),
+#endif
       client_(std::move(client)) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   process_ = std::make_unique<BrowserChildProcessHostImpl>(
@@ -150,6 +200,16 @@ void UtilityProcessHost::SetExtraCommandLineSwitches(
     std::vector<std::string> switches) {
   extra_switches_ = std::move(switches);
 }
+
+#if BUILDFLAG(IS_WIN)
+void UtilityProcessHost::SetPreloadLibraries(
+    const std::vector<base::FilePath>& preloads) {
+  preload_libraries_ = preloads;
+}
+void UtilityProcessHost::SetPinUser32() {
+  pin_user32_ = true;
+}
+#endif  // BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
 void UtilityProcessHost::AddFileToPreload(
@@ -251,8 +311,7 @@ bool UtilityProcessHost::StartProcess() {
       network::switches::kHostResolverRules,
       network::switches::kIgnoreCertificateErrorsSPKIList,
       network::switches::kIgnoreUrlFetcherCertRequests,
-      network::switches::kLogNetLog,
-      network::switches::kNetLogCaptureMode,
+      network::switches::kTestThirdPartyCookiePhaseout,
       sandbox::policy::switches::kNoSandbox,
 #if BUILDFLAG(IS_LINUX) && !BUILDFLAG(IS_CHROMEOS)
       switches::kDisableDevShmUsage,
@@ -292,6 +351,7 @@ bool UtilityProcessHost::StartProcess() {
       // These flags are used by the audio service:
       switches::kAudioBufferSize,
       switches::kAudioServiceQuitTimeoutMs,
+      switches::kDisableAudioInput,
       switches::kDisableAudioOutput,
       switches::kFailAudioStreamCreation,
       switches::kMuteAudio,
@@ -325,9 +385,12 @@ bool UtilityProcessHost::StartProcess() {
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
       switches::kEnableResourcesFileSharing,
 #endif
+#if BUILDFLAG(USE_CHROMEOS_MEDIA_ACCELERATION)
+      switches::kChromeOSVideoDecoderTaskRunner,
+      switches::kHardwareVideoDecodeFrameRate,
+#endif
     };
-    cmd_line->CopySwitchesFrom(browser_command_line, kSwitchNames,
-                               std::size(kSwitchNames));
+    cmd_line->CopySwitchesFrom(browser_command_line, kSwitchNames);
 
     network_session_configurator::CopyNetworkSwitches(browser_command_line,
                                                       cmd_line.get());
@@ -358,15 +421,47 @@ bool UtilityProcessHost::StartProcess() {
     file_data_->files_to_preload.merge(GetV8SnapshotFilesToPreload());
 #endif  // BUILDFLAG(IS_POSIX)
 
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+    // The network service should have access to the parent directories
+    // necessary for its usage.
+    if (sandbox_type_ == sandbox::mojom::Sandbox::kNetwork) {
+      std::vector<base::FilePath> network_context_parent_dirs =
+          GetContentClient()->browser()->GetNetworkContextsParentDirectory();
+      file_data_->files_to_preload[kNetworkContextParentDirsDescriptor] =
+          PassNetworkContextParentDirs(std::move(network_context_parent_dirs));
+    }
+#endif  // BUILDFLAG(IS_LINUX)
+
+#if BUILDFLAG(IS_LINUX)
+    // Pass `kVideoCaptureUseGpuMemoryBuffer` flag to video capture service only
+    // when the video capture use GPU memory buffer enabled and NV12 GPU memory
+    // buffer supported.
+    if (metrics_name_ == video_capture::mojom::VideoCaptureService::Name_) {
+      if (switches::IsVideoCaptureUseGpuMemoryBufferEnabled() &&
+          GpuDataManagerImpl::GetInstance()->IsGpuMemoryBufferNV12Supported()) {
+        cmd_line->AppendSwitch(switches::kVideoCaptureUseGpuMemoryBuffer);
+      }
+    }
+#endif  // BUILDFLAG(IS_LINUX)
+
     std::unique_ptr<UtilitySandboxedProcessLauncherDelegate> delegate =
         std::make_unique<UtilitySandboxedProcessLauncherDelegate>(
             sandbox_type_, env_, *cmd_line);
+
+#if BUILDFLAG(IS_WIN)
+    if (!preload_libraries_.empty()) {
+      delegate->SetPreloadLibraries(preload_libraries_);
+    }
+    if (pin_user32_) {
+      delegate->SetPinUser32();
+    }
+#endif  // BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(USE_ZYGOTE)
     if (zygote_for_testing_.has_value()) {
       delegate->SetZygote(zygote_for_testing_.value());
     }
-#endif
+#endif  // BUILDFLAG(USE_ZYGOTE)
 
     process_->LaunchWithFileData(std::move(delegate), std::move(cmd_line),
                                  std::move(file_data_), true);

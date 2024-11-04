@@ -112,7 +112,7 @@ struct AnchorMatrix : public OT::Layout::GPOS_impl::AnchorMatrix
       auto& child = c.graph.vertices_[child_idx];
       child.remove_parent (this_index);
 
-      o.real_links.remove (i);
+      o.real_links.remove_unordered (i);
       num_links--;
       i--;
     }
@@ -319,7 +319,8 @@ struct MarkBasePosFormat1 : public OT::Layout::GPOS_impl::MarkBasePosFormat1_2<S
     hb_vector_t<class_info_t> class_to_info;
 
     unsigned class_count= classCount;
-    class_to_info.resize (class_count);
+    if (!class_to_info.resize (class_count))
+      return hb_vector_t<class_info_t>();
 
     auto mark_array = c.graph.as_table<MarkArray> (this_index, &markArray);
     if (!mark_array) return hb_vector_t<class_info_t> ();
@@ -327,6 +328,7 @@ struct MarkBasePosFormat1 : public OT::Layout::GPOS_impl::MarkBasePosFormat1_2<S
     for (unsigned mark = 0; mark < mark_count; mark++)
     {
       unsigned klass = (*mark_array.table)[mark].get_class ();
+      if (klass >= class_count) continue;
       class_to_info[klass].marks.add (mark);
     }
 
@@ -335,6 +337,7 @@ struct MarkBasePosFormat1 : public OT::Layout::GPOS_impl::MarkBasePosFormat1_2<S
       unsigned mark = (link.position - 2) /
                      OT::Layout::GPOS_impl::MarkRecord::static_size;
       unsigned klass = (*mark_array.table)[mark].get_class ();
+      if (klass >= class_count) continue;
       class_to_info[klass].child_indices.push (link.objidx);
     }
 
@@ -372,7 +375,7 @@ struct MarkBasePosFormat1 : public OT::Layout::GPOS_impl::MarkBasePosFormat1_2<S
     if (!mark_coverage) return false;
     hb_set_t marks = sc.marks_for (0, count);
     auto new_coverage =
-        + hb_zip (hb_range (), mark_coverage.table->iter ())
+        + hb_enumerate (mark_coverage.table->iter ())
         | hb_filter (marks, hb_first)
         | hb_map_retains_sorting (hb_second)
         ;
@@ -431,7 +434,7 @@ struct MarkBasePosFormat1 : public OT::Layout::GPOS_impl::MarkBasePosFormat1_2<S
     if (!mark_coverage) return false;
     hb_set_t marks = sc.marks_for (start, end);
     auto new_coverage =
-        + hb_zip (hb_range (), mark_coverage.table->iter ())
+        + hb_enumerate (mark_coverage.table->iter ())
         | hb_filter (marks, hb_first)
         | hb_map_retains_sorting (hb_second)
         ;

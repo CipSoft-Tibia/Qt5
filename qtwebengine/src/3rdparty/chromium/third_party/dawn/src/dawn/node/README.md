@@ -59,13 +59,16 @@ ninja dawn.node
 Now you can run CTS:
 
 ```sh
-./tools/run run-cts --dawn-node=<path-to-dawn.node> [WebGPU CTS query]
+./tools/run run-cts --bin=<path-build-dir> [WebGPU CTS query]
 ```
+
+Where `<path-build-dir>` is the output directory. \
+Note: `<path-build-dir>` can be omitted if your build directory sits at `<dawn>/out/active`, which is enforced if you use `<dawn>/tools/setup-build` (recommended).
 
 Or if you checked out your own CTS repo:
 
 ```sh
-./tools/run run-cts --dawn-node=<path-to-dawn.node> --cts=<path-to-cts> [WebGPU CTS query]
+./tools/run run-cts --bin=<path-build-dir> --cts=<path-to-cts> [WebGPU CTS query]
 ```
 
 If this fails with the error message `TypeError: expander is not a function or its return value is not iterable`, try appending `--build=false` to the start of the `run-cts` command line flags.
@@ -73,7 +76,7 @@ If this fails with the error message `TypeError: expander is not a function or i
 To test against SwiftShader instead of the default Vulkan device, prefix `./tools/run run-cts` with `VK_ICD_FILENAMES=<swiftshader-cmake-build>/Linux/vk_swiftshader_icd.json`. For example:
 
 ```sh
-VK_ICD_FILENAMES=<swiftshader-cmake-build>/Linux/vk_swiftshader_icd.json ./tools/run run-cts --dawn-node=<path-to-dawn.node> [WebGPU CTS query]
+VK_ICD_FILENAMES=<swiftshader-cmake-build>/Linux/vk_swiftshader_icd.json ./tools/run run-cts --bin=<path-build-dir> [WebGPU CTS query]
 ```
 
 The `--flag` parameter must be passed in multiple times, once for each flag begin set. Here are some common arguments:
@@ -87,7 +90,7 @@ The `--flag` parameter must be passed in multiple times, once for each flag begi
 For example, on Windows, to use the d3dcompiler_47.dll from a Chromium checkout, and to dump shader output, we could run the following using Git Bash:
 
 ```sh
-./tools/run run-cts --verbose --dawn-node=/c/src/dawn/build/Debug/dawn.node --cts=/c/src/webgpu-cts --flag=dlldir="C:\src\chromium\src\out\Release" --flag=enable-dawn-features=dump_shaders 'webgpu:shader,execution,builtin,abs:integer_builtin_functions,abs_unsigned:storageClass="storage";storageMode="read_write";containerType="vector";isAtomic=false;baseType="u32";type="vec2%3Cu32%3E"'
+./tools/run run-cts --verbose --bin=/c/src/dawn/out/active --cts=/c/src/webgpu-cts --flag=dlldir="C:\src\chromium\src\out\Release" --flag=enable-dawn-features=dump_shaders 'webgpu:shader,execution,builtin,abs:integer_builtin_functions,abs_unsigned:storageClass="storage";storageMode="read_write";containerType="vector";isAtomic=false;baseType="u32";type="vec2%3Cu32%3E"'
 ```
 
 Note that we pass `--verbose` above so that all test output, including the dumped shader, is written to stdout.
@@ -157,7 +160,7 @@ Open or create the `.vscode/launch.json` file, and add:
         "--",
         "placeholder-arg",
         "--gpu-provider",
-        "[path-to-dawn.node]", // REPLACE: [path-to-dawn.node]
+        "[path-to-cts.js]", // REPLACE: [path-to-cts.js]
         "[test-query]" // REPLACE: [test-query]
       ],
       "cwd": "[cts-root]" // REPLACE: [cts-root]
@@ -169,7 +172,7 @@ Open or create the `.vscode/launch.json` file, and add:
 Replacing:
 
 - `[cts-root]` with the path to the CTS root directory. If you are editing the `.vscode/launch.json` from within the CTS workspace, then you may use `${workspaceFolder}`.
-- `[path-to-dawn.node]` this the path to the `dawn.node` module built by the [build step](#Build)
+- `[cts.js]` this is the path to the `cts.js` file that should be copied to the output directory by the [build step](#build)
 - `test-query` with the test query string. Example: `webgpu:shader,execution,builtin,abs:*`
 
 ## Debugging dawn-node issues in gdb/lldb
@@ -182,7 +185,7 @@ cd <cts-root-dir>
     -e "require('./src/common/tools/setup-ts-in-node.js');require('./src/common/runtime/cmdline.ts');" \
     -- \
     placeholder-arg \
-    --gpu-provider [path to dawn.node] \
+    --gpu-provider [path to cts.js] \
     [test-query]
 ```
 
@@ -190,11 +193,7 @@ This command is then possible to run in your debugger of choice.
 
 ## Known issues
 
-- Many WebGPU CTS tests are currently known to fail
-- Dawn uses special token values for some parameters / fields. These are currently passed straight through to dawn from the JavaScript. discussions: [1](https://dawn-review.googlesource.com/c/dawn/+/64907/5/src/dawn/node/binding/Converter.cpp#167), [2](https://dawn-review.googlesource.com/c/dawn/+/64907/5/src/dawn/node/binding/Converter.cpp#928), [3](https://dawn-review.googlesource.com/c/dawn/+/64909/4/src/dawn/node/binding/GPUTexture.cpp#42)
-- Backend validation is currently always set to 'full' to aid in debugging. This can be extremely slow. [discussion](https://dawn-review.googlesource.com/c/dawn/+/64916/4/src/dawn/node/binding/GPU.cpp#25)
-- Attempting to call `new T` in JavaScript, where `T` is an IDL interface type, should result in a TypeError "Illegal constructor". [discussion](https://dawn-review.googlesource.com/c/dawn/+/64902/9/src/dawn/node/interop/WebGPU.cpp.tmpl#293)
-- `GPUDevice` currently maintains a list of "lost promises". This should return the same promise. [discussion](https://dawn-review.googlesource.com/c/dawn/+/64906/6/src/dawn/node/binding/GPUDevice.h#107)
+See https://bugs.chromium.org/p/dawn/issues/list?q=component%3ADawnNode&can=2 for tracked bugs, and `TODO`s in the code.
 
 ## Remaining work
 

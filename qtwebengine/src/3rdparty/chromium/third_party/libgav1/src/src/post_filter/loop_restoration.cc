@@ -79,7 +79,13 @@ void PostFilter::ApplyLoopRestorationForOneRow(
           bottom_border_stride = border_stride;
         }
       }
+#if LIBGAV1_MSAN
+      // The optimized loop filter may read past initialized values within the
+      // buffer.
+      RestorationBuffer restoration_buffer = {};
+#else
       RestorationBuffer restoration_buffer;
+#endif
       const LoopRestorationType type = restoration_info[unit_column].type;
       assert(type == kLoopRestorationTypeSgrProj ||
              type == kLoopRestorationTypeWiener);

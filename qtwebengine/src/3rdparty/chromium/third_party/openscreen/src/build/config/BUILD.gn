@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -76,6 +76,8 @@ config("compiler_cpu_abi") {
       ldflags += [ "-m64" ]
     }
   }
+
+  asmflags = cflags
 }
 
 config("no_exceptions") {
@@ -110,8 +112,8 @@ config("openscreen_code") {
     "-fno-strict-aliasing",  # See http://crbug.com/32204
   ]
 
-  cflags_cc = [ "-std=c++14" ]
-  cflags_objcc = [ "-std=c++14" ]
+  cflags_cc = [ "-std=c++17" ]
+  cflags_objcc = [ "-std=c++17" ]
 
   ldflags = [ "-Werror" ]
 

@@ -64,13 +64,13 @@ MaybeError ValidateRenderBundleEncoderDescriptor(DeviceBase* device,
                     "Sample count (%u) is not supported.", descriptor->sampleCount);
 
     uint32_t maxColorAttachments = device->GetLimits().v1.maxColorAttachments;
-    DAWN_INVALID_IF(descriptor->colorFormatsCount > maxColorAttachments,
+    DAWN_INVALID_IF(descriptor->colorFormatCount > maxColorAttachments,
                     "Color formats count (%u) exceeds maximum number of color attachements (%u).",
-                    descriptor->colorFormatsCount, maxColorAttachments);
+                    descriptor->colorFormatCount, maxColorAttachments);
 
     bool allColorFormatsUndefined = true;
     ColorAttachmentFormats colorAttachmentFormats;
-    for (uint32_t i = 0; i < descriptor->colorFormatsCount; ++i) {
+    for (uint32_t i = 0; i < descriptor->colorFormatCount; ++i) {
         wgpu::TextureFormat format = descriptor->colorFormats[i];
         if (format != wgpu::TextureFormat::Undefined) {
             DAWN_TRY_CONTEXT(ValidateColorAttachmentFormat(device, format),
@@ -108,8 +108,8 @@ RenderBundleEncoder::RenderBundleEncoder(DeviceBase* device,
     GetObjectTrackingList()->Track(this);
 }
 
-RenderBundleEncoder::RenderBundleEncoder(DeviceBase* device, ErrorTag errorTag)
-    : RenderEncoderBase(device, &mBundleEncodingContext, errorTag),
+RenderBundleEncoder::RenderBundleEncoder(DeviceBase* device, ErrorTag errorTag, const char* label)
+    : RenderEncoderBase(device, &mBundleEncodingContext, errorTag, label),
       mBundleEncodingContext(device, this) {}
 
 void RenderBundleEncoder::DestroyImpl() {
@@ -125,8 +125,8 @@ Ref<RenderBundleEncoder> RenderBundleEncoder::Create(
 }
 
 // static
-RenderBundleEncoder* RenderBundleEncoder::MakeError(DeviceBase* device) {
-    return new RenderBundleEncoder(device, ObjectBase::kError);
+RenderBundleEncoder* RenderBundleEncoder::MakeError(DeviceBase* device, const char* label) {
+    return new RenderBundleEncoder(device, ObjectBase::kError, label);
 }
 
 ObjectType RenderBundleEncoder::GetType() const {
@@ -142,7 +142,10 @@ RenderBundleBase* RenderBundleEncoder::APIFinish(const RenderBundleDescriptor* d
 
     if (GetDevice()->ConsumedError(FinishImpl(descriptor), &result, "calling %s.Finish(%s).", this,
                                    descriptor)) {
-        return RenderBundleBase::MakeError(GetDevice());
+        RenderBundleBase* errorRenderBundle =
+            RenderBundleBase::MakeError(GetDevice(), descriptor ? descriptor->label : nullptr);
+        errorRenderBundle->SetEncoderLabel(this->GetLabel());
+        return errorRenderBundle;
     }
 
     return result;

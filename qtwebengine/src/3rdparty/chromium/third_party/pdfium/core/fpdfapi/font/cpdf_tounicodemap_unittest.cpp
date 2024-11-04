@@ -8,7 +8,7 @@
 #include "core/fxcrt/retain_ptr.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
 TEST(cpdf_tounicodemap, StringToCode) {
   EXPECT_THAT(CPDF_ToUnicodeMap::StringToCode("<0001>"), testing::Optional(1u));
@@ -18,6 +18,14 @@ TEST(cpdf_tounicodemap, StringToCode) {
               testing::Optional(2802u));
   EXPECT_THAT(CPDF_ToUnicodeMap::StringToCode("<FFFFFFFF>"),
               testing::Optional(4294967295u));
+
+  // Whitespaces within the string are ignored.
+  EXPECT_THAT(CPDF_ToUnicodeMap::StringToCode("<00\n0\r1>"),
+              testing::Optional(1u));
+  EXPECT_THAT(CPDF_ToUnicodeMap::StringToCode("<c 2>"),
+              testing::Optional(194u));
+  EXPECT_THAT(CPDF_ToUnicodeMap::StringToCode("<A2\r\n>"),
+              testing::Optional(162u));
 
   // Integer overflow
   EXPECT_FALSE(CPDF_ToUnicodeMap::StringToCode("<100000000>").has_value());

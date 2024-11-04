@@ -57,9 +57,9 @@ static void tlog_ref(void *ctx, AVFrame *ref, int end)
         ff_tlog(ctx, " a:%d/%d s:%dx%d i:%c iskey:%d type:%c",
                 ref->sample_aspect_ratio.num, ref->sample_aspect_ratio.den,
                 ref->width, ref->height,
-                !ref->interlaced_frame     ? 'P' :         /* Progressive  */
-                ref->top_field_first ? 'T' : 'B',    /* Top / Bottom */
-                ref->key_frame,
+                !(ref->flags & AV_FRAME_FLAG_INTERLACED) ? 'P' : /* Progressive  */
+                (ref->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) ? 'T' : 'B', /* Top / Bottom */
+                !!(ref->flags & AV_FRAME_FLAG_KEY),
                 av_get_picture_type_char(ref->pict_type));
     }
     if (ref->nb_samples) {
@@ -157,6 +157,11 @@ int avfilter_link(AVFilterContext *src, unsigned srcpad,
     if (src->nb_outputs <= srcpad || dst->nb_inputs <= dstpad ||
         src->outputs[srcpad]      || dst->inputs[dstpad])
         return AVERROR(EINVAL);
+
+    if (!src->internal->initialized || !dst->internal->initialized) {
+        av_log(src, AV_LOG_ERROR, "Filters must be initialized before linking.\n");
+        return AVERROR(EINVAL);
+    }
 
     if (src->output_pads[srcpad].type != dst->input_pads[dstpad].type) {
         av_log(src, AV_LOG_ERROR,
@@ -482,7 +487,9 @@ static const char *const var_names[] = {
 enum {
     VAR_T,
     VAR_N,
+#if FF_API_FRAME_PKT
     VAR_POS,
+#endif
     VAR_W,
     VAR_H,
     VAR_VARS_NB
@@ -559,27 +566,6 @@ int avfilter_process_command(AVFilterContext *filter, const char *cmd, const cha
     }
     return AVERROR(ENOSYS);
 }
-
-#if FF_API_PAD_COUNT
-int avfilter_pad_count(const AVFilterPad *pads)
-{
-    const AVFilter *filter;
-    void *opaque = NULL;
-
-    if (!pads)
-        return 0;
-
-    while (filter = av_filter_iterate(&opaque)) {
-        if (pads == filter->inputs)
-            return filter->nb_inputs;
-        if (pads == filter->outputs)
-            return filter->nb_outputs;
-    }
-
-    av_assert0(!"AVFilterPad list not from a filter");
-    return AVERROR_BUG;
-}
-#endif
 
 unsigned avfilter_filter_pad_count(const AVFilter *filter, int is_output)
 {
@@ -797,8 +783,8 @@ int ff_filter_get_nb_threads(AVFilterContext *ctx)
     return ctx->graph->nb_threads;
 }
 
-static int process_options(AVFilterContext *ctx, AVDictionary **options,
-                           const char *args)
+int ff_filter_opt_parse(void *logctx, const AVClass *priv_class,
+                        AVDictionary **options, const char *args)
 {
     const AVOption *o = NULL;
     int ret;
@@ -812,8 +798,8 @@ static int process_options(AVFilterContext *ctx, AVDictionary **options,
     while (*args) {
         const char *shorthand = NULL;
 
-        if (ctx->filter->priv_class)
-            o = av_opt_next(ctx->priv, o);
+        if (priv_class)
+            o = av_opt_next(&priv_class, o);
         if (o) {
             if (o->type == AV_OPT_TYPE_CONST || o->offset == offset)
                 continue;
@@ -826,9 +812,9 @@ static int process_options(AVFilterContext *ctx, AVDictionary **options,
                                    &parsed_key, &value);
         if (ret < 0) {
             if (ret == AVERROR(EINVAL))
-                av_log(ctx, AV_LOG_ERROR, "No option name near '%s'\n", args);
+                av_log(logctx, AV_LOG_ERROR, "No option name near '%s'\n", args);
             else
-                av_log(ctx, AV_LOG_ERROR, "Unable to parse '%s': %s\n", args,
+                av_log(logctx, AV_LOG_ERROR, "Unable to parse '%s': %s\n", args,
                        av_err2str(ret));
             return ret;
         }
@@ -838,13 +824,13 @@ static int process_options(AVFilterContext *ctx, AVDictionary **options,
             key = parsed_key;
 
             /* discard all remaining shorthand */
-            if (ctx->filter->priv_class)
-                while ((o = av_opt_next(ctx->priv, o)));
+            if (priv_class)
+                while ((o = av_opt_next(&priv_class, o)));
         } else {
             key = shorthand;
         }
 
-        av_log(ctx, AV_LOG_DEBUG, "Setting '%s' to value '%s'\n", key, value);
+        av_log(logctx, AV_LOG_DEBUG, "Setting '%s' to value '%s'\n", key, value);
 
         av_dict_set(options, key, value, AV_DICT_MULTIKEY);
 
@@ -872,6 +858,11 @@ int avfilter_init_dict(AVFilterContext *ctx, AVDictionary **options)
 {
     int ret = 0;
 
+    if (ctx->internal->initialized) {
+        av_log(ctx, AV_LOG_ERROR, "Filter already initialized\n");
+        return AVERROR(EINVAL);
+    }
+
     ret = av_opt_set_dict2(ctx, options, AV_OPT_SEARCH_CHILDREN);
     if (ret < 0) {
         av_log(ctx, AV_LOG_ERROR, "Error applying generic filter options.\n");
@@ -898,6 +889,8 @@ int avfilter_init_dict(AVFilterContext *ctx, AVDictionary **options)
             return ret;
     }
 
+    ctx->internal->initialized = 1;
+
     return 0;
 }
 
@@ -908,7 +901,7 @@ int avfilter_init_str(AVFilterContext *filter, const char *args)
     int ret = 0;
 
     if (args && *args) {
-        ret = process_options(filter, &options, args);
+        ret = ff_filter_opt_parse(filter, filter->filter->priv_class, &options, args);
         if (ret < 0)
             goto fail;
     }
@@ -991,6 +984,8 @@ int ff_filter_frame(AVFilterLink *link, AVFrame *frame)
             av_assert1(frame->width               == link->w);
             av_assert1(frame->height               == link->h);
         }
+
+        frame->sample_aspect_ratio = link->sample_aspect_ratio;
     } else {
         if (frame->format != link->format) {
             av_log(link->dst, AV_LOG_ERROR, "Format change is not supported\n");
@@ -1004,6 +999,14 @@ int ff_filter_frame(AVFilterLink *link, AVFrame *frame)
             av_log(link->dst, AV_LOG_ERROR, "Sample rate change is not supported\n");
             goto error;
         }
+
+        frame->duration = av_rescale_q(frame->nb_samples, (AVRational){ 1, frame->sample_rate },
+                                       link->time_base);
+#if FF_API_PKT_DURATION
+FF_DISABLE_DEPRECATION_WARNINGS
+        frame->pkt_duration = frame->duration;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     }
 
     link->frame_blocked_in = link->frame_wanted_out = 0;
@@ -1473,7 +1476,11 @@ int ff_inlink_evaluate_timeline_at_frame(AVFilterLink *link, const AVFrame *fram
 {
     AVFilterContext *dstctx = link->dst;
     int64_t pts = frame->pts;
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
     int64_t pos = frame->pkt_pos;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     if (!dstctx->enable_str)
         return 1;
@@ -1482,7 +1489,9 @@ int ff_inlink_evaluate_timeline_at_frame(AVFilterLink *link, const AVFrame *fram
     dstctx->var_values[VAR_T] = pts == AV_NOPTS_VALUE ? NAN : pts * av_q2d(link->time_base);
     dstctx->var_values[VAR_W] = link->w;
     dstctx->var_values[VAR_H] = link->h;
+#if FF_API_FRAME_PKT
     dstctx->var_values[VAR_POS] = pos == -1 ? NAN : pos;
+#endif
 
     return fabs(av_expr_eval(dstctx->enable, dstctx->var_values, NULL)) >= 0.5;
 }

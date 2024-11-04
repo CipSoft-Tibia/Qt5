@@ -80,7 +80,7 @@ class SVGUseElement final : public SVGGraphicsElement,
 
   void SvgAttributeChanged(const SvgAttributeChangedParams&) override;
 
-  LayoutObject* CreateLayoutObject(const ComputedStyle&, LegacyLayout) override;
+  LayoutObject* CreateLayoutObject(const ComputedStyle&) override;
 
   void ScheduleShadowTreeRecreation();
   void CancelShadowTreeRecreation();
@@ -103,10 +103,16 @@ class SVGUseElement final : public SVGGraphicsElement,
   bool HasCycleUseReferencing(const ContainerNode& target_instance,
                               const SVGElement& new_target) const;
 
-  void DispatchPendingEvent(const AtomicString&);
+  void QueueOrDispatchPendingEvent(const AtomicString&);
   void NotifyFinished(Resource*) override;
   String DebugName() const override;
   void UpdateTargetReference();
+
+  SVGAnimatedPropertyBase* PropertyFromAttribute(
+      const QualifiedName& attribute_name) const override;
+  void SynchronizeAllSVGAttributes() const override;
+  void CollectExtraStyleForPresentationAttribute(
+      MutableCSSPropertyValueSet* style) override;
 
   Member<SVGResourceDocumentContent> document_content_;
 

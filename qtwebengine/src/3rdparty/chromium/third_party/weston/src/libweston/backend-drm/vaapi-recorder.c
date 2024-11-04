@@ -1018,7 +1018,7 @@ create_surface_from_fd(struct vaapi_recorder *r, int prime_fd,
 	va_attrib_extbuf.num_planes = 1;
 	va_attrib_extbuf.pitches[0] = stride;
 	va_attrib_extbuf.offsets[0] = 0;
-	va_attrib_extbuf.buffers = &buffer_fd;
+	va_attrib_extbuf.buffers = (uintptr_t *) &buffer_fd;
 	va_attrib_extbuf.num_buffers = 1;
 	va_attrib_extbuf.flags = 0;
 	va_attrib_extbuf.private_data = NULL;

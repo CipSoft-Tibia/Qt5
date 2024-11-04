@@ -36,6 +36,8 @@
 // share of L2, so 1M elements might still be in cache.
 #define SORT_100M 0
 
+#define SORT_BENCH_BASE_AND_PARTITION 0
+
 HWY_BEFORE_NAMESPACE();
 namespace hwy {
 // Defined within HWY_ONCE, used by BenchAllSort.
@@ -48,10 +50,13 @@ using detail::OrderAscending;
 using detail::OrderDescending;
 using detail::SharedTraits;
 
-#if VQSORT_ENABLED || HWY_IDE
+#if VQSORT_ENABLED
 using detail::OrderAscending128;
 using detail::OrderAscendingKV128;
 using detail::Traits128;
+#endif
+
+#if (VQSORT_ENABLED && SORT_BENCH_BASE_AND_PARTITION) || HWY_IDE
 
 template <class Traits>
 HWY_NOINLINE void BenchPartition() {
@@ -172,10 +177,7 @@ HWY_NOINLINE void BenchAllBase() {
   }
 }
 
-#else
-void BenchAllPartition() {}
-void BenchAllBase() {}
-#endif  // VQSORT_ENABLED
+#endif  // VQSORT_ENABLED && SORT_BENCH_BASE_AND_PARTITION
 
 std::vector<Algo> AlgoForBench() {
   return {
@@ -203,11 +205,12 @@ std::vector<Algo> AlgoForBench() {
 #if !SORT_100M
         // These are 10-20x slower, but that's OK for the default size when we
         // are not testing the parallel nor 100M modes.
-        Algo::kStd, Algo::kHeap,
+        Algo::kStd,
+    // Algo::kHeap,  // uncompetitive
 #endif
 
         Algo::kVQSort,  // only ~4x slower, but not required for Table 1a
-#endif
+#endif                  // !HAVE_PARALLEL_IPS4O
   };
 }
 
@@ -257,8 +260,9 @@ HWY_NOINLINE void BenchSort(size_t num_keys) {
 }
 
 HWY_NOINLINE void BenchAllSort() {
-  // Not interested in benchmark results for these targets
-  if (HWY_TARGET == HWY_SSSE3 || HWY_TARGET == HWY_SSE4) {
+  // Not interested in benchmark results for these targets. Note that SSE4 is
+  // numerically less than SSE2, hence it is the lower bound.
+  if (HWY_SSE4 <= HWY_TARGET && HWY_TARGET <= HWY_SSE2) {
     return;
   }
 
@@ -270,7 +274,7 @@ HWY_NOINLINE void BenchAllSort() {
 #if HAVE_PARALLEL_IPS4O || SORT_100M
          100 * M,
 #else
-        1 * M,
+        100 * K,
 #endif
        }) {
     BenchSort<TraitsLane<OrderAscending<float>>>(num_keys);
@@ -301,8 +305,10 @@ namespace hwy {
 int64_t first_sort_target = 0;  // none run yet
 namespace {
 HWY_BEFORE_TEST(BenchSort);
+#if SORT_BENCH_BASE_AND_PARTITION
 HWY_EXPORT_AND_TEST_P(BenchSort, BenchAllPartition);
 HWY_EXPORT_AND_TEST_P(BenchSort, BenchAllBase);
+#endif
 HWY_EXPORT_AND_TEST_P(BenchSort, BenchAllSort);
 }  // namespace
 }  // namespace hwy

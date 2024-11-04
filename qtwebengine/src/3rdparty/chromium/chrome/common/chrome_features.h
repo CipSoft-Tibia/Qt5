@@ -38,11 +38,6 @@ BASE_DECLARE_FEATURE(kAdaptiveScreenBrightnessLogging);
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kAppDeduplicationService);
-#endif
-
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kAppDeduplicationServiceFondue);
 #endif
 
@@ -59,6 +54,8 @@ COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kAppPreloadService);
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kAppShimRemoteCocoa);
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kAppShimNewCloseBehavior);
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kAppShimNotificationAttribution);
 #endif  // BUILDFLAG(IS_MAC)
 
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kAsyncDns);
@@ -75,6 +72,11 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kBackgroundModeAllowRestart);
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
+#if BUILDFLAG(IS_CHROMEOS)
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kQuickOfficeForceFileDownload);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kBorealis);
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
@@ -84,10 +86,11 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kBrowserAppInstanceTracking);
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kChangePictureVideoMode);
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
+COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kCcoTest1);
+#endif
 
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kClientStorageAccessContextAuditing);
+COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kChangePictureVideoMode);
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 COMPONENT_EXPORT(CHROME_FEATURES)
@@ -103,6 +106,8 @@ BASE_DECLARE_FEATURE(kCrostiniAnsibleInfrastructure);
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kCrostiniAnsibleSoftwareManagement);
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kCrostiniArcSideload);
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kCrosWebAppShortcutUiUpdate);
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kCryptohomeDistributedModel);
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kCryptohomeUserDataAuth);
@@ -163,10 +168,11 @@ extern const base::FeatureParam<OsIntegrationSubManagersStage>
     kOsIntegrationSubManagersStageParam;
 #endif
 
-COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kPWAsDefaultOfflinePage);
+#if BUILDFLAG(IS_CHROMEOS)
+BASE_DECLARE_FEATURE(kDesktopTaskManagerEndProcessDisabledForExtension);
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kDesktopPWAsAdditionalWindowingControls);
+COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kPWAsDefaultOfflinePage);
 
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kDesktopPWAsCacheDuringDefaultInstall);
@@ -187,6 +193,9 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kDesktopPWAsRunOnOsLogin);
 
 COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kDesktopPWAsPreventClose);
+
+COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kDesktopPWAsTabStripSettings);
 
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kDesktopPWAsWebBundles);
@@ -198,6 +207,8 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kKeepForceInstalledPreinstalledApps);
 COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<bool> kChromeAppsDeprecationHideLaunchAnyways;
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kDesktopPWAsLinkCapturing);
 #endif
 
 COMPONENT_EXPORT(CHROME_FEATURES)
@@ -233,6 +244,9 @@ BASE_DECLARE_FEATURE(kEnableWebHidOnExtensionServiceWorker);
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kEnableWebUsbOnExtensionServiceWorker);
 
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kExtendedSettingsDescriptions);
+
 #if !BUILDFLAG(IS_ANDROID)
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kExtensionDeferredIndividualSettings);
@@ -249,6 +263,9 @@ BASE_DECLARE_FEATURE(kExternalExtensionDefaultButtonControl);
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kFileTransferEnterpriseConnector);
+
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kFileTransferEnterpriseConnectorUI);
 #endif
 
 #if BUILDFLAG(ENABLE_PLUGINS)
@@ -259,6 +276,10 @@ BASE_DECLARE_FEATURE(kFlashDeprecationWarning);
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kFocusMode);
 
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kGeoLanguage);
+
+COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kPrivacyGuide3);
+
+COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kPrivacyGuidePreload);
 
 #if !BUILDFLAG(IS_ANDROID)
 COMPONENT_EXPORT(CHROME_FEATURES)
@@ -303,6 +324,27 @@ extern const base::FeatureParam<base::TimeDelta>
     kHappinessTrackingSurveysForDesktopWhatsNewTime;
 
 COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kHappinessTrackingSurveysForDesktopM1AdPrivacyPage);
+COMPONENT_EXPORT(CHROME_FEATURES)
+extern const base::FeatureParam<base::TimeDelta>
+    kHappinessTrackingSurveysForDesktopM1AdPrivacyPageTime;
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kHappinessTrackingSurveysForDesktopM1TopicsSubpage);
+COMPONENT_EXPORT(CHROME_FEATURES)
+extern const base::FeatureParam<base::TimeDelta>
+    kHappinessTrackingSurveysForDesktopM1TopicsSubpageTime;
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kHappinessTrackingSurveysForDesktopM1FledgeSubpage);
+COMPONENT_EXPORT(CHROME_FEATURES)
+extern const base::FeatureParam<base::TimeDelta>
+    kHappinessTrackingSurveysForDesktopM1FledgeSubpageTime;
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kHappinessTrackingSurveysForDesktopM1AdMeasurementSubpage);
+COMPONENT_EXPORT(CHROME_FEATURES)
+extern const base::FeatureParam<base::TimeDelta>
+    kHappinessTrackingSurveysForDesktopM1AdMeasurementSubpageTime;
+
+COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kHaTSDesktopDevToolsIssuesCOEP);
 
 COMPONENT_EXPORT(CHROME_FEATURES)
@@ -325,6 +367,12 @@ BASE_DECLARE_FEATURE(kHappinessTrackingSystem);
 
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kHappinessTrackingSystemBluetoothRevamp);
+
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kHappinessTrackingSystemBatteryLife);
+
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kHappinessTrackingSystemPeripherals);
 
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kHappinessTrackingSystemEnt);
@@ -372,16 +420,23 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kHappinessTrackingGeneralCamera);
 
 COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kHappinessTrackingPrivacyHubBaseline);
+BASE_DECLARE_FEATURE(kHappinessTrackingPrivacyHubPostLaunch);
 
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kHappinessTrackingOsSettingsSearch);
+
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kHappinessTrackingBorealisGames);
 #endif
 
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kHideWebAppOriginText);
 
-COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kHttpsOnlyMode);
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kHttpsFirstModeForAdvancedProtectionUsers);
-COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kHttpsFirstModeV2);
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kHttpsFirstModeV2ForEngagedSites);
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kHttpsFirstModeV2ForTypicallySecureUsers);
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kHttpsUpgrades);
 
 #if BUILDFLAG(IS_MAC)
@@ -409,6 +464,11 @@ BASE_DECLARE_FEATURE(kIncognitoDownloadsWarning);
 #endif
 
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kIncognitoNtpRevamp);
+
+#if BUILDFLAG(IS_CHROMEOS)
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kIsolatedWebAppAutomaticUpdates);
+#endif
 
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kIsolatedWebAppDevMode);
 
@@ -466,14 +526,6 @@ BASE_DECLARE_FEATURE(kShowHiddenNetworkToggle);
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kMetricsSettingsAndroid);
 #endif
 
-#if BUILDFLAG(IS_CHROMEOS)
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kMicrosoftOfficeWebAppExperiment);
-#endif
-
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kMigrateExternalPrefsToWebAppDB);
-
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kMoveWebApp);
 COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<std::string> kMoveWebAppUninstallStartUrlPrefix;
@@ -491,6 +543,11 @@ COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kSystemNotifications);
 
 #if BUILDFLAG(IS_MAC)
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kNewMacNotificationAPI);
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kNewFilesPolicyUX);
 #endif
 
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kNoReferrers);
@@ -513,6 +570,8 @@ BASE_DECLARE_FEATURE(kOobeMarketingDoubleOptInCountriesSupported);
 #if BUILDFLAG(IS_ANDROID)
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kOomIntervention);
 #endif
+
+COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kPageContentOptIn);
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 COMPONENT_EXPORT(CHROME_FEATURES)
@@ -538,14 +597,32 @@ COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kPluginVm);
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kPrerenderFallbackToPreconnect);
 
+#if BUILDFLAG(IS_CHROMEOS)
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kPrintPreviewSetupAssistance);
+#endif
+
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kPrivacyGuideAndroid);
+
+#if BUILDFLAG(IS_ANDROID)
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kPrivacyGuideAndroidPostMVP);
+#endif
+
+#if BUILDFLAG(IS_ANDROID)
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kPrivacyGuideAndroid3);
+#endif
+
+#if BUILDFLAG(IS_ANDROID)
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kPrivacyGuidePreloadAndroid);
+#endif
 
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kPushMessagingBackgroundMode);
 
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kPwaUpdateDialogForIcon);
-
-COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kPwaUpdateDialogForName);
 
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kQuietNotificationPrompts);
@@ -562,6 +639,9 @@ BASE_DECLARE_FEATURE(kRemoveSupervisedUsersOnStartup);
 
 #if !BUILDFLAG(IS_ANDROID)
 COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kSafetyCheckExtensions);
+
+COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kSafetyCheckNotificationPermissions);
 COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<int>
@@ -569,6 +649,12 @@ extern const base::FeatureParam<int>
 COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<int>
     kSafetyCheckNotificationPermissionsLowEnagementLimit;
+
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kSafetyHub);
+COMPONENT_EXPORT(CHROME_FEATURES)
+extern const base::FeatureParam<base::TimeDelta>
+    kBackgroundPasswordCheckInterval;
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
@@ -583,9 +669,6 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<base::TimeDelta> kSCTLogExpectedIngestionDelay;
 COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<base::TimeDelta> kSCTLogMaxIngestionRandomDelay;
-
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kSecurityKeyAttestationPrompt);
 
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kSitePerProcess);
 
@@ -604,6 +687,9 @@ COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kTPMFirmwareUpdate);
 #if !BUILDFLAG(IS_ANDROID)
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kSupportTool);
 
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kSupportToolCopyTokenButton);
+
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kSupportToolScreenshot);
 #endif
 
@@ -616,9 +702,10 @@ BASE_DECLARE_FEATURE(kThirdPartyModulesBlocking);
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kTreatUnsafeDownloadsAsActive);
 COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kBlockInsecureDownloads);
+BASE_DECLARE_FEATURE(kInsecureDownloadWarnings);
 
 // TrustSafetySentimentSurvey
+#if !BUILDFLAG(IS_ANDROID)
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kTrustSafetySentimentSurvey);
 COMPONENT_EXPORT(CHROME_FEATURES)
@@ -720,8 +807,10 @@ extern const base::FeatureParam<base::TimeDelta>
 COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<base::TimeDelta>
     kTrustSafetySentimentSurveyTransactionsPasswordManagerTime;
+#endif
 
 // TrustSafetySentimentSurveyV2
+#if !BUILDFLAG(IS_ANDROID)
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kTrustSafetySentimentSurveyV2);
 COMPONENT_EXPORT(CHROME_FEATURES)
@@ -770,6 +859,9 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<double>
     kTrustSafetySentimentSurveyV2PrivacySandbox4NoticeSettingsProbability;
 COMPONENT_EXPORT(CHROME_FEATURES)
+extern const base::FeatureParam<double>
+    kTrustSafetySentimentSurveyV2SafeBrowsingInterstitialProbability;
+COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<std::string>
     kTrustSafetySentimentSurveyV2BrowsingDataTriggerId;
 COMPONENT_EXPORT(CHROME_FEATURES)
@@ -800,12 +892,12 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<std::string>
     kTrustSafetySentimentSurveyV2PrivacySandbox4NoticeSettingsTriggerId;
 COMPONENT_EXPORT(CHROME_FEATURES)
+extern const base::FeatureParam<std::string>
+    kTrustSafetySentimentSurveyV2SafeBrowsingInterstitialTriggerId;
+COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<base::TimeDelta>
     kTrustSafetySentimentSurveyV2TrustedSurfaceTime;
-
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kUploadZippedSystemLogs);
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif
 
 #if BUILDFLAG(IS_MAC)
 COMPONENT_EXPORT(CHROME_FEATURES)
@@ -834,27 +926,38 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kVrBrowsingExperimentalRendering);
 #endif  // ENABLE_VR
 
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kWebAppFrameToolbarInBrowserView);
-
 #if !BUILDFLAG(IS_ANDROID)
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kWebAppDedupeInstallUrls);
+
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kWebAppManifestIconUpdating);
 
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kWebAppManifestImmediateUpdating);
+
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kWebAppSyncGeneratedIconBackgroundFix);
+
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kWebAppSyncGeneratedIconRetroactiveFix);
+
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kWebAppSyncGeneratedIconUpdateFix);
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kWebAppManifestPolicyAppIdentityUpdate);
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kWebAppsCrosapi);
-
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kChromeKioskEnableLacros);
 
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kWebKioskEnableLacros);
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kWebKioskEnableIwaApis);
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -866,8 +969,6 @@ BASE_DECLARE_FEATURE(kWebRtcRemoteEventLogGzipped);
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kWebShare);
 #endif
-
-COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kWebUIDarkMode);
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kUmaStorageDimensions);
@@ -887,72 +988,10 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 bool IsParentAccessCodeForOnlineLoginEnabled();
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
-// This flag is used for enabling Omnibox triggered prerendering and
-// blink::WebRuntimeFeatures::Prerender2RelatedFeatures that enables Prerender2
-// related web exposed features. This flag takes effect only when
-// blink::features::Prerender2 is enabled. See crbug.com/1166085 for more
-// details of Omnibox triggered prerendering.
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kOmniboxTriggerForPrerender2);
-
-// This flag controls whether to trigger prerendering when the default search
-// engine suggests to prerender a search result. It also enables
-// Prerender2-related features on the blink side. This flag takes effect only
-// when blink::features::Prerender2 is enabled.
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kSupportSearchSuggestionForPrerender2);
-enum class SearchSuggestionPrerenderImplementationType {
-  kUsePrefetch,
-  kIgnorePrefetch,
-};
-COMPONENT_EXPORT(CHROME_FEATURES)
-extern const base::FeatureParam<SearchSuggestionPrerenderImplementationType>
-    kSearchSuggestionPrerenderImplementationTypeParam;
-// Indicates whether to make search prefetch response shareable to prerender.
-// When allowing this, prerender can only copy the cache but cannot take over
-// the ownership.
-enum class SearchPreloadShareableCacheType {
-  kEnabled,
-  kDisabled,
-};
-
-COMPONENT_EXPORT(CHROME_FEATURES)
-extern const base::FeatureParam<SearchPreloadShareableCacheType>
-    kSearchPreloadShareableCacheTypeParam;
-
-// This is used to enable an experiment for modifying confidence cutoff of
-// prerender and preconnect for autocomplete action predictor.
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kAutocompleteActionPredictorConfidenceCutoff);
-
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kOmniboxTriggerForNoStatePrefetch);
-
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kSupportsRtcWakeOver24Hours);
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
-
-// This flag is used to toggle the reading of data from the web_app DB instead
-// of the ExternallyInstalledWebAppPrefs. Data will be written to both storages,
-// and this will be removed in the future once we move to using the web_app DB
-// completely.
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kUseWebAppDBInsteadOfExternalPrefs);
-
-// When enabled, use authentication through a browser tab, instead of
-// an app window.
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kWebAuthFlowInBrowserTab);
-enum class WebAuthFlowInBrowserTabMode {
-  // Auth flow is presented in a new tab attached to a new/existing browser.
-  kNewTab,
-  // Auth flow is presented in a browser popup window.
-  kPopupWindow
-};
-COMPONENT_EXPORT(CHROME_FEATURES)
-extern const base::FeatureParam<WebAuthFlowInBrowserTabMode>
-    kWebAuthFlowInBrowserTabMode;
 
 bool PrefServiceEnabled();
 

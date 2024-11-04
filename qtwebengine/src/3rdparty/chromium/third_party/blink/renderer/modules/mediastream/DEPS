@@ -12,6 +12,7 @@ include_rules = [
     "+base/threading/thread_task_runner_handle.h",
 
     # webmediaplayer_ms{_compositor}.cc includes.
+    "+base/containers/circular_deque.h",
     "+base/values.h",
     "+cc/layers/surface_layer.h",
     "+cc/layers/video_frame_provider_client_impl.h",
@@ -29,11 +30,11 @@ include_rules = [
     "+base/files/file.h",
     "+base/metrics/field_trial.h",
 
-    "+base/guid.h",
     "+base/token.h",
     "+base/sequence_checker.h",
     "+base/trace_event/trace_event.h",
     "+base/unguessable_token.h",
+    "+base/uuid.h",
     "+media/audio",
     "+media/base",
     "+media/capture",
@@ -60,7 +61,7 @@ include_rules = [
 
 specific_include_rules = {
     ".*test\.cc" : [
-        "+base/containers/circular_deque.h",
+        "+base/numerics/ranges.h",
         "+base/run_loop.h",
         "+cc/layers/layer.h",
         "+media/video/fake_gpu_memory_buffer.h",

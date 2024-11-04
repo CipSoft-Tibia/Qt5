@@ -13,7 +13,7 @@ TestCase {
     property simpleIntMessageExt intMsgExt;
     property emptyMessage emptyMsg;
 
-    function test_1init() {
+    function initTestCase() {
         noPackageMessageUser.testField.testFieldInt = 42
         noPackageExternal.testField.testFieldInt = 100
         intMsgExt.testFieldInt = -100
@@ -40,14 +40,14 @@ TestCase {
     function test_messageValuesTypes_data() {
         return [
                     // TestEnum
-                    { tag: "NoPackageMessage->testFieldInt is a number",
+                    { tag: "NoPackageMessage->testFieldInt is an object",
                         field: typeof noPackageMessageUser.testField.testFieldInt,
-                        answer: "number" },
-                    { tag: "NoPackageExternalMessage->testFieldInt is a number",
+                        answer: "object" },
+                    { tag: "NoPackageExternalMessage->testFieldInt is an object",
                         field: typeof noPackageExternal.testField.testFieldInt,
-                        answer: "number" },
-                    { tag: "SimpleIntMessageExt->testFieldInt is a number",
-                        field: typeof intMsgExt.testFieldInt, answer: "number" },
+                        answer: "object" },
+                    { tag: "SimpleIntMessageExt->testFieldInt is an object",
+                        field: typeof intMsgExt.testFieldInt, answer: "object" },
                     { tag: "EmptyMessage is an object",
                         field: typeof emptyMsg, answer: "object" },
                 ]
@@ -69,17 +69,17 @@ TestCase {
     }
 
     function test_messageValues(data) {
-         compare(data.field, data.answer)
+         verify(data.field == data.answer)
     }
 
     function test_messageValuesUpdate() {
         noPackageMessageUser.testField.testFieldInt = 43;
-        compare(noPackageMessageUser.testField.testFieldInt, 43,
+        verify(noPackageMessageUser.testField.testFieldInt == 43,
                 "noPackageExternalMessage message contains invalid value");
         noPackageExternal.testField.testFieldInt = -99
-        compare(noPackageExternal.testField.testFieldInt, -99,
+        verify(noPackageExternal.testField.testFieldInt == -99,
                 "noPackageExternal message contains invalid value");
         intMsgExt.testFieldInt = 0
-        compare(intMsgExt.testFieldInt, 0, "simpleIntMessageExt message contains invalid value");
+        verify(intMsgExt.testFieldInt == 0, "simpleIntMessageExt message contains invalid value");
     }
 }

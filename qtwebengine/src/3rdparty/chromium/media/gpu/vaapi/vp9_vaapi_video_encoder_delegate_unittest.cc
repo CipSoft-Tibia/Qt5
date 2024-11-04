@@ -4,13 +4,13 @@
 
 #include "media/gpu/vaapi/vp9_vaapi_video_encoder_delegate.h"
 
+#include <va/va.h>
+
+#include <algorithm>
 #include <memory>
 #include <numeric>
 #include <tuple>
 
-#include <va/va.h>
-
-#include "base/cxx17_backports.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
@@ -20,7 +20,6 @@
 #include "media/gpu/gpu_video_encode_accelerator_helpers.h"
 #include "media/gpu/vaapi/vaapi_common.h"
 #include "media/gpu/vaapi/vaapi_wrapper.h"
-#include "media/gpu/video_rate_control.h"
 #include "media/gpu/vp9_svc_layers.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -233,17 +232,16 @@ MATCHER_P2(MatchVABufferDescriptor, va_buffer_type, va_buffer_size, "") {
 
 class MockVaapiWrapper : public VaapiWrapper {
  public:
-  MockVaapiWrapper() : VaapiWrapper(kEncodeConstantQuantizationParameter) {}
+  MockVaapiWrapper()
+      : VaapiWrapper(VADisplayStateHandle(),
+                     kEncodeConstantQuantizationParameter) {}
   MOCK_METHOD1(SubmitBuffer_Locked, bool(const VABufferDescriptor&));
 
  protected:
   ~MockVaapiWrapper() override = default;
 };
 
-class MockVP9RateControl
-    : public VideoRateControl<libvpx::VP9RateControlRtcConfig,
-                              libvpx::VP9RateControlRTC,
-                              libvpx::VP9FrameParamsQpRTC> {
+class MockVP9RateControl : public VP9RateControlWrapper {
  public:
   MockVP9RateControl() = default;
   ~MockVP9RateControl() override = default;
@@ -251,7 +249,8 @@ class MockVP9RateControl
   MOCK_METHOD1(UpdateRateControl, void(const libvpx::VP9RateControlRtcConfig&));
   MOCK_CONST_METHOD0(GetLoopfilterLevel, int());
   MOCK_METHOD1(ComputeQP, int(const libvpx::VP9FrameParamsQpRTC&));
-  MOCK_METHOD1(PostEncodeUpdate, void(uint64_t));
+  MOCK_METHOD2(PostEncodeUpdate,
+               void(uint64_t, const libvpx::VP9FrameParamsQpRTC&));
 };
 }  // namespace
 
@@ -297,7 +296,7 @@ class VP9VaapiVideoEncoderDelegateTest
 
   std::unique_ptr<VP9VaapiVideoEncoderDelegate> encoder_;
   scoped_refptr<MockVaapiWrapper> mock_vaapi_wrapper_;
-  raw_ptr<MockVP9RateControl> mock_rate_ctrl_ = nullptr;
+  raw_ptr<MockVP9RateControl, DanglingUntriaged> mock_rate_ctrl_ = nullptr;
 };
 
 void VP9VaapiVideoEncoderDelegateTest::ResetEncoder() {
@@ -398,8 +397,9 @@ void VP9VaapiVideoEncoderDelegateTest::
 
   auto encode_job = CreateEncodeJob(is_keyframe, va_surface, picture);
 
-  FRAME_TYPE libvpx_frame_type =
-      is_keyframe ? FRAME_TYPE::KEY_FRAME : FRAME_TYPE::INTER_FRAME;
+  libvpx::RcFrameType libvpx_frame_type =
+      is_keyframe ? libvpx::RcFrameType::kKeyFrame
+                  : libvpx::RcFrameType::kInterFrame;
   constexpr int kDefaultQP = 34;
   EXPECT_CALL(
       *mock_rate_ctrl_,
@@ -427,9 +427,22 @@ void VP9VaapiVideoEncoderDelegateTest::
 
   constexpr size_t kDefaultEncodedFrameSize = 123456;
   // For BitrateControlUpdate sequence.
-  EXPECT_CALL(*mock_rate_ctrl_, PostEncodeUpdate(kDefaultEncodedFrameSize))
+  EXPECT_CALL(*mock_rate_ctrl_,
+              PostEncodeUpdate(
+                  kDefaultEncodedFrameSize,
+                  MatchFrameParam(libvpx_frame_type, expected_temporal_layer_id,
+                                  expected_spatial_layer_id)))
       .WillOnce(Return());
-  encoder_->BitrateControlUpdate(kDefaultEncodedFrameSize);
+  BitstreamBufferMetadata metadata;
+  metadata.payload_size_bytes = kDefaultEncodedFrameSize;
+  metadata.key_frame = is_keyframe;
+  metadata.qp = kDefaultQP;
+  if (encoder_->svc_layers_) {
+    metadata.vp9.emplace();
+    metadata.vp9->spatial_idx = expected_spatial_layer_id;
+    metadata.vp9->temporal_idx = expected_temporal_layer_id;
+  }
+  encoder_->BitrateControlUpdate(metadata);
 }
 
 void VP9VaapiVideoEncoderDelegateTest::UpdateRatesAndEncode(

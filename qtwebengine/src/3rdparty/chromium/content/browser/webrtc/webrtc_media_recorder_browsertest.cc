@@ -102,7 +102,9 @@ IN_PROC_BROWSER_TEST_F(WebRtcMediaRecorderTest, NoResumeWhenRecorderInactive) {
   MakeTypicalCall("testIllegalResumeThrowsDOMError();", kMediaRecorderHtmlFile);
 }
 
-#if BUILDFLAG(IS_MAC) && defined(ARCH_CPU_ARM64)
+// TODO(crbug.com/1432939): Seems the test is not working quite well on
+// android-12l-x64-dbg-tests.
+#if (BUILDFLAG(IS_MAC) && defined(ARCH_CPU_ARM64)) || BUILDFLAG(IS_ANDROID)
 // https://crbug.com/1222675
 #define MAYBE_ResumeAndDataAvailable DISABLED_ResumeAndDataAvailable
 #else
@@ -162,10 +164,6 @@ IN_PROC_BROWSER_TEST_P(WebRtcMediaRecorderTest, RecordWithTransparency) {
   MakeTypicalCall(base::StringPrintf("testRecordWithTransparency(\"%s\");",
                                      GetParam().mime_type.c_str()),
                   kMediaRecorderHtmlFile);
-}
-
-IN_PROC_BROWSER_TEST_F(WebRtcMediaRecorderTest, IllegalStopThrowsDOMError) {
-  MakeTypicalCall("testIllegalStopThrowsDOMError();", kMediaRecorderHtmlFile);
 }
 
 IN_PROC_BROWSER_TEST_F(WebRtcMediaRecorderTest,

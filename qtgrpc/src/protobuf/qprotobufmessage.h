@@ -7,7 +7,7 @@
 #include <QtProtobuf/qtprotobufglobal.h>
 #include <QtCore/qtconfigmacros.h>
 #include <QtCore/qtmetamacros.h>
-#include <QtCore/qmetatype.h>
+#include <QtCore/qmetaobject.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -33,6 +33,9 @@ public:
     Q_REQUIRED_RESULT
     Q_PROTOBUF_EXPORT static QProtobufMessagePointer constructByName(const QString &messageType);
 
+    Q_PROTOBUF_EXPORT QList<qint32> unknownFieldNumbers() const;
+    Q_PROTOBUF_EXPORT QList<QByteArray> unknownFieldData(qint32 field) const;
+
 protected:
     Q_PROTOBUF_EXPORT explicit QProtobufMessage(const QMetaObject *metaObject);
     Q_PROTOBUF_EXPORT ~QProtobufMessage();
@@ -55,12 +58,15 @@ protected:
                      QVariant &&value);
 
 private:
+    void detachPrivate(); // Call before editing the private!
+
     const QMetaObject *metaObject() const;
 
     friend class QProtobufSerializer;
     friend class QAbstractProtobufSerializer;
+    friend class QProtobufBaseSerializer;
     friend class QProtobufSerializerPrivate;
-    friend class QAbstractProtobufSerializer;
+    friend class QProtobufJsonSerializerPrivate;
     friend struct QProtobufMessageDeleter;
 
     QProtobufMessagePrivate *d_ptr;

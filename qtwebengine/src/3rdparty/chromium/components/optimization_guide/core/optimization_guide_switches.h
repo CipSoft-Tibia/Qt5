@@ -39,9 +39,9 @@ extern const char kModelValidate[];
 extern const char kPageContentAnnotationsLoggingEnabled[];
 extern const char kPageContentAnnotationsValidationStartupDelaySeconds[];
 extern const char kPageContentAnnotationsValidationBatchSizeOverride[];
-extern const char kPageContentAnnotationsValidationPageTopics[];
 extern const char kPageContentAnnotationsValidationPageEntities[];
 extern const char kPageContentAnnotationsValidationContentVisibility[];
+extern const char kPageContentAnnotationsValidationTextEmbedding[];
 extern const char kPageContentAnnotationsValidationWriteToFile[];
 
 // Returns whether the hint component should be processed.

@@ -8,7 +8,7 @@
 
 #if defined(Q_QDOC) || defined(Q_OS_ANDROID)
 #include <jni.h>
-#include <QtCore/qjnitypes.h>
+#include <QtCore/qjnitypes_impl.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -25,7 +25,7 @@ public:
     JNIEnv *jniEnv() const;
     jclass findClass(const char *className);
     template<typename Class>
-    jclass findClass() { return findClass(QtJniTypes::className<Class>().data()); }
+    jclass findClass() { return findClass(QtJniTypes::Traits<Class>::className().data()); }
     jmethodID findMethod(jclass clazz, const char *methodName, const char *signature);
     template<typename ...Args>
     jmethodID findMethod(jclass clazz, const char *methodName) {
@@ -64,6 +64,17 @@ public:
         return registerNativeMethods(clazz, std::data(methods), methods.size());
     }
 
+    template<typename Class
+#ifndef Q_QDOC
+             , std::enable_if_t<QtJniTypes::isObjectType<Class>(), bool> = true
+#endif
+    >
+    QT_TECH_PREVIEW_API
+    bool registerNativeMethods(std::initializer_list<JNINativeMethod> methods)
+    {
+        return registerNativeMethods(QtJniTypes::Traits<Class>::className().data(), methods);
+    }
+
 #if QT_DEPRECATED_SINCE(6, 2)
     // ### Qt 7: remove
     QT_DEPRECATED_VERSION_X_6_2("Use the overload with a const JNINativeMethod[] instead.")
@@ -77,6 +88,8 @@ public:
 
     bool checkAndClearExceptions(OutputMode outputMode = OutputMode::Verbose);
     static bool checkAndClearExceptions(JNIEnv *env, OutputMode outputMode = OutputMode::Verbose);
+
+    static JNIEnv *getJniEnv();
 
 private:
     Q_DISABLE_COPY_MOVE(QJniEnvironment)

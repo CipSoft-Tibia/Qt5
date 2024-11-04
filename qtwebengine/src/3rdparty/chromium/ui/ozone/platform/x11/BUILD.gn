@@ -4,7 +4,6 @@
 
 import("//build/config/chromeos/ui_mode.gni")
 import("//gpu/vulkan/features.gni")
-import("//media/gpu/args.gni")
 import("//ui/base/ui_features.gni")
 
 visibility = [ "//ui/ozone/*" ]
@@ -71,7 +70,6 @@ source_set("x11") {
     "//ui/base/ime",
     "//ui/base/x",
     "//ui/base/x:gl",
-    "//ui/display/fake",
     "//ui/events",
     "//ui/events:dom_keycode_converter",
     "//ui/events/devices",
@@ -83,6 +81,8 @@ source_set("x11") {
     "//ui/events/x",
     "//ui/gfx",
     "//ui/gfx/geometry",
+    "//ui/gfx/linux:gbm",
+    "//ui/gfx/linux:gpu_memory_buffer_support_x11",
     "//ui/gfx/x",
     "//ui/gl",
     "//ui/ozone:ozone_base",
@@ -99,12 +99,7 @@ source_set("x11") {
     ]
     deps += [ "//ui/linux:linux_ui" ]
   }
-  if (use_vaapi) {
-    deps += [
-      "//ui/gfx/linux:gbm",
-      "//ui/gfx/linux:gpu_memory_buffer_support_x11",
-    ]
-  }
+
   if (is_chromeos_ash) {
     deps += [ "//ui/base/ime/ash" ]
   } else {
@@ -175,7 +170,7 @@ source_set("x11_unittests") {
     "//ui/ozone/common",
   ]
 
-  if (!is_chromeos && !is_chromeos) {
+  if (!is_chromeos) {
     sources += [ "test/os_exchange_data_provider_x11_unittest.cc" ]
     deps += [ "//ui/base/clipboard:clipboard_types" ]
 
@@ -199,6 +194,7 @@ source_set("test_support") {
   ]
 
   deps = [
+    "//ui/aura:aura",
     "//ui/base/x",
     "//ui/base/x:test_support",
   ]

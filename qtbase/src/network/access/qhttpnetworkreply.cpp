@@ -72,7 +72,7 @@ QList<QPair<QByteArray, QByteArray> > QHttpNetworkReply::header() const
     return d_func()->parser.headers();
 }
 
-QByteArray QHttpNetworkReply::headerField(const QByteArray &name, const QByteArray &defaultValue) const
+QByteArray QHttpNetworkReply::headerField(QByteArrayView name, const QByteArray &defaultValue) const
 {
     return d_func()->headerField(name, defaultValue);
 }
@@ -89,7 +89,7 @@ void QHttpNetworkReply::appendHeaderField(const QByteArray &name, const QByteArr
     d->appendHeaderField(name, data);
 }
 
-void QHttpNetworkReply::parseHeader(const QByteArray &header)
+void QHttpNetworkReply::parseHeader(QByteArrayView header)
 {
     Q_D(QHttpNetworkReply);
     d->parseHeader(header);
@@ -368,7 +368,7 @@ void QHttpNetworkReplyPrivate::removeAutoDecompressHeader()
 {
     // The header "Content-Encoding  = gzip" is retained.
     // Content-Length is removed since the actual one sent by the server is for compressed data
-    QByteArray name("content-length");
+    constexpr auto name = QByteArrayView("content-length");
     QByteArray contentLength = parser.firstHeaderField(name);
     bool parseOk = false;
     qint64 value = contentLength.toLongLong(&parseOk);
@@ -376,22 +376,6 @@ void QHttpNetworkReplyPrivate::removeAutoDecompressHeader()
         removedContentLength = value;
         parser.removeHeaderField(name);
     }
-}
-
-bool QHttpNetworkReplyPrivate::findChallenge(bool forProxy, QByteArray &challenge) const
-{
-    challenge.clear();
-    // find out the type of authentication protocol requested.
-    QByteArray header = forProxy ? "proxy-authenticate" : "www-authenticate";
-    // pick the best protocol (has to match parsing in QAuthenticatorPrivate)
-    QList<QByteArray> challenges = headerFieldValues(header);
-    for (int i = 0; i<challenges.size(); i++) {
-        QByteArray line = challenges.at(i);
-        // todo use qstrincmp
-        if (!line.toLower().startsWith("negotiate"))
-            challenge = line;
-    }
-    return !challenge.isEmpty();
 }
 
 qint64 QHttpNetworkReplyPrivate::readStatus(QAbstractSocket *socket)
@@ -443,7 +427,7 @@ qint64 QHttpNetworkReplyPrivate::readStatus(QAbstractSocket *socket)
     return bytes;
 }
 
-bool QHttpNetworkReplyPrivate::parseStatus(const QByteArray &status)
+bool QHttpNetworkReplyPrivate::parseStatus(QByteArrayView status)
 {
     return parser.parseStatus(status);
 }
@@ -510,7 +494,7 @@ qint64 QHttpNetworkReplyPrivate::readHeader(QAbstractSocket *socket)
     return bytes;
 }
 
-void QHttpNetworkReplyPrivate::parseHeader(const QByteArray &header)
+void QHttpNetworkReplyPrivate::parseHeader(QByteArrayView header)
 {
     parser.parseHeaders(header);
 }
@@ -717,8 +701,8 @@ qint64 QHttpNetworkReplyPrivate::getChunkSize(QAbstractSocket *socket, qint64 *c
                 bytes += socket->read(crlf, 1); // read the \n
             bool ok = false;
             // ignore the chunk-extension
-            fragment = fragment.mid(0, fragment.indexOf(';')).trimmed();
-            *chunkSize = fragment.toLong(&ok, 16);
+            const auto fragmentView = QByteArrayView(fragment).mid(0, fragment.indexOf(';')).trimmed();
+            *chunkSize = fragmentView.toLong(&ok, 16);
             fragment.clear();
             break; // size done
         } else {

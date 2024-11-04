@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,7 @@
 
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 namespace {
 
 // Maximum number of octets allowed in a single domain name label.
@@ -80,13 +79,13 @@ DnsSdInstance::DnsSdInstance(std::string instance_id,
 
 DnsSdInstance::DnsSdInstance(const DnsSdInstance& other) = default;
 
-DnsSdInstance::DnsSdInstance(DnsSdInstance&& other) = default;
+DnsSdInstance::DnsSdInstance(DnsSdInstance&& other) noexcept = default;
 
 DnsSdInstance::~DnsSdInstance() = default;
 
 DnsSdInstance& DnsSdInstance::operator=(const DnsSdInstance& rhs) = default;
 
-DnsSdInstance& DnsSdInstance::operator=(DnsSdInstance&& rhs) = default;
+DnsSdInstance& DnsSdInstance::operator=(DnsSdInstance&& rhs) noexcept = default;
 
 // static
 bool IsInstanceValid(const std::string& instance) {
@@ -218,5 +217,4 @@ bool operator<(const DnsSdInstance& lhs, const DnsSdInstance& rhs) {
   return lhs.txt_ < rhs.txt_;
 }
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

@@ -15,6 +15,9 @@
 #include "quiche/quic/core/quic_default_clock.h"
 #include "quiche/quic/core/quic_default_connection_helper.h"
 #include "quiche/quic/core/quic_dispatcher.h"
+#include "quiche/quic/core/quic_types.h"
+#include "quiche/quic/core/quic_versions.h"
+#include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_mutex.h"
 #include "quiche/quic/platform/api/quic_socket_address.h"
 #include "quiche/quic/platform/api/quic_test.h"
@@ -37,17 +40,8 @@ using ::testing::ElementsAre;
 
 ParsedQuicVersionVector GetTestParams() {
   ParsedQuicVersionVector test_versions;
-
-  // TODO(b/113130636): Make QBONE work with TLS.
-  for (const auto& version : CurrentSupportedVersionsWithQuicCrypto()) {
-    // QBONE requires MESSAGE frames
-    if (!version.SupportsMessageFrames()) {
-      continue;
-    }
-    test_versions.push_back(version);
-  }
-
-  return test_versions;
+  SetQuicReloadableFlag(quic_disable_version_q046, false);
+  return CurrentSupportedVersionsWithQuicCrypto();
 }
 
 std::string TestPacketIn(const std::string& body) {
@@ -115,12 +109,13 @@ class QuicQboneDispatcher : public QuicDispatcher {
       QuicConnectionId id, const QuicSocketAddress& self_address,
       const QuicSocketAddress& peer_address, absl::string_view alpn,
       const ParsedQuicVersion& version,
-      const ParsedClientHello& /*parsed_chlo*/) override {
+      const ParsedClientHello& /*parsed_chlo*/,
+      ConnectionIdGeneratorInterface& connection_id_generator) override {
     QUICHE_CHECK_EQ(alpn, "qbone");
     QuicConnection* connection = new QuicConnection(
         id, self_address, peer_address, helper(), alarm_factory(), writer(),
         /* owns_writer= */ false, Perspective::IS_SERVER,
-        ParsedQuicVersionVector{version}, connection_id_generator());
+        ParsedQuicVersionVector{version}, connection_id_generator);
     // The connection owning wrapper owns the connection created.
     auto session = std::make_unique<ConnectionOwningQboneServerSession>(
         GetSupportedVersions(), connection, this, config(), crypto_config(),

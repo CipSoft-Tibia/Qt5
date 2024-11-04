@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -45,17 +45,17 @@ class TlsConnectionPosix : public TlsConnection {
  protected:
   friend class TlsConnectionFactoryPosix;
 
-  TlsConnectionPosix(IPEndpoint local_address, TaskRunner* task_runner);
-  TlsConnectionPosix(IPAddress::Version version, TaskRunner* task_runner);
+  TlsConnectionPosix(IPEndpoint local_address, TaskRunner& task_runner);
+  TlsConnectionPosix(IPAddress::Version version, TaskRunner& task_runner);
   TlsConnectionPosix(std::unique_ptr<StreamSocket> socket,
-                     TaskRunner* task_runner);
+                     TaskRunner& task_runner);
 
  private:
   // Called on any thread, to post a task to notify the Client that an |error|
   // has occurred.
   void DispatchError(Error error);
 
-  TaskRunner* const task_runner_;
+  TaskRunner& task_runner_;
   PlatformClientPosix* platform_client_ = nullptr;
 
   Client* client_ = nullptr;

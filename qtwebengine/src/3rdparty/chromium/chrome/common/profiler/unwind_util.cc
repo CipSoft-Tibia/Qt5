@@ -8,7 +8,6 @@
 #include <type_traits>
 #include <vector>
 
-#include "base/android/library_loader/anchor_functions.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
@@ -46,6 +45,7 @@
 
 #if ANDROID_ARM32_UNWINDING_SUPPORTED
 #include "base/android/apk_assets.h"
+#include "base/android/library_loader/anchor_functions.h"
 #include "base/files/memory_mapped_file.h"
 #include "base/profiler/chrome_unwinder_android.h"
 #endif  // ANDROID_ARM32_UNWINDING_SUPPORTED
@@ -56,6 +56,7 @@
 
 #if ANDROID_UNWINDING_SUPPORTED
 #include "chrome/android/modules/stack_unwinder/public/module.h"
+#include "chrome/common/profiler/native_unwinder_android_map_delegate_impl.h"
 
 extern "C" {
 // The address of |__executable_start| is the base address of the executable or
@@ -81,10 +82,10 @@ class ChromeUnwinderCreator {
 
     base::MemoryMappedFile::Region cfi_region;
     int fd = base::android::OpenApkAsset(kCfiFileName, kSplitName, &cfi_region);
-    DCHECK_GE(fd, 0);
+    CHECK_GE(fd, 0);
     bool mapped_file_ok =
         chrome_cfi_file_.Initialize(base::File(fd), cfi_region);
-    DCHECK(mapped_file_ok);
+    CHECK(mapped_file_ok);
   }
   ChromeUnwinderCreator(const ChromeUnwinderCreator&) = delete;
   ChromeUnwinderCreator& operator=(const ChromeUnwinderCreator&) = delete;
@@ -120,31 +121,11 @@ class ChromeUnwinderCreator {
 #endif                                   // ANDROID_ARM32_UNWINDING_SUPPORTED
 
 #if ANDROID_UNWINDING_SUPPORTED
-// Encapsulates the setup required to create the Android native unwinder.
-class NativeUnwinderCreator {
- public:
-  explicit NativeUnwinderCreator(stack_unwinder::Module* stack_unwinder_module)
-      : module_(stack_unwinder_module),
-        memory_regions_map_(module_->CreateMemoryRegionsMap()) {}
-  NativeUnwinderCreator(const NativeUnwinderCreator&) = delete;
-  NativeUnwinderCreator& operator=(const NativeUnwinderCreator&) = delete;
-
-  std::unique_ptr<base::Unwinder> Create() {
-    return module_->CreateNativeUnwinder(
-        memory_regions_map_.get(),
-        reinterpret_cast<uintptr_t>(&__executable_start));
-  }
-
- private:
-  const raw_ptr<stack_unwinder::Module> module_;
-  const std::unique_ptr<stack_unwinder::MemoryRegionsMap> memory_regions_map_;
-};
-
 std::vector<std::unique_ptr<base::Unwinder>> CreateCoreUnwinders(
     stack_unwinder::Module* const stack_unwinder_module) {
-  DCHECK_NE(getpid(), gettid());
+  CHECK_NE(getpid(), gettid());
 
-  static base::NoDestructor<NativeUnwinderCreator> native_unwinder_creator(
+  static base::NoDestructor<NativeUnwinderAndroidMapDelegateImpl> map_delegate(
       stack_unwinder_module);
   static std::conditional<
       std::is_trivially_destructible_v<ChromeUnwinderCreator>,
@@ -154,14 +135,15 @@ std::vector<std::unique_ptr<base::Unwinder>> CreateCoreUnwinders(
   // Note order matters: the more general unwinder must appear first in the
   // vector.
   std::vector<std::unique_ptr<base::Unwinder>> unwinders;
-  unwinders.push_back(native_unwinder_creator->Create());
+  unwinders.push_back(stack_unwinder_module->CreateNativeUnwinder(
+      map_delegate.get(), reinterpret_cast<uintptr_t>(&__executable_start)));
   unwinders.push_back(chrome_unwinder_creator->Create());
   return unwinders;
 }
 
 std::vector<std::unique_ptr<base::Unwinder>> CreateLibunwindstackUnwinders(
     stack_unwinder::Module* const stack_unwinder_module) {
-  DCHECK_NE(getpid(), gettid());
+  CHECK_NE(getpid(), gettid());
   std::vector<std::unique_ptr<base::Unwinder>> unwinders;
   unwinders.push_back(stack_unwinder_module->CreateLibunwindstackUnwinder());
   return unwinders;
@@ -254,7 +236,7 @@ bool AreUnwindPrerequisitesAvailable(
 
 #if ANDROID_UNWINDING_SUPPORTED
 stack_unwinder::Module* GetOrLoadModule() {
-  DCHECK(AreUnwindPrerequisitesAvailable(chrome::GetChannel()));
+  CHECK(AreUnwindPrerequisitesAvailable(chrome::GetChannel()));
   static base::NoDestructor<std::unique_ptr<stack_unwinder::Module>>
       stack_unwinder_module(stack_unwinder::Module::Load());
   return stack_unwinder_module.get()->get();

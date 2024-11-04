@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import { TargetFilterCallback } from '../api/Browser.js';
 import { CDPSession, Connection } from './Connection.js';
 import { EventEmitter } from './EventEmitter.js';
-import { Target } from './Target.js';
-import { TargetFilterCallback } from '../api/Browser.js';
+import { CDPTarget } from './Target.js';
 import { TargetInterceptor, TargetFactory, TargetManager } from './TargetManager.js';
 /**
  * ChromeTargetManager uses the CDP's auto-attach mechanism to intercept
@@ -27,10 +27,10 @@ import { TargetInterceptor, TargetFactory, TargetManager } from './TargetManager
  */
 export declare class ChromeTargetManager extends EventEmitter implements TargetManager {
     #private;
-    constructor(connection: Connection, targetFactory: TargetFactory, targetFilterCallback?: TargetFilterCallback);
+    constructor(connection: Connection, targetFactory: TargetFactory, targetFilterCallback?: TargetFilterCallback, waitForInitiallyDiscoveredTargets?: boolean, useTabTarget?: boolean);
     initialize(): Promise<void>;
     dispose(): void;
-    getAvailableTargets(): Map<string, Target>;
+    getAvailableTargets(): Map<string, CDPTarget>;
     addTargetInterceptor(session: CDPSession | Connection, interceptor: TargetInterceptor): void;
     removeTargetInterceptor(client: CDPSession | Connection, interceptor: TargetInterceptor): void;
 }

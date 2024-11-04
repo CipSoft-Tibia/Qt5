@@ -15,7 +15,6 @@
 
 class ArcAppListPrefs;
 class Profile;
-class SupervisedUserService;
 
 namespace content {
 class WebUI;
@@ -25,10 +24,6 @@ class WebUIDataSource;
 namespace signin {
 class IdentityManager;
 }  // namespace signin
-
-namespace syncer {
-class SyncService;
-}  // namespace syncer
 
 namespace ash {
 
@@ -93,8 +88,6 @@ class OsSettingsManager : public KeyedService {
       local_search_service::LocalSearchServiceProxy* local_search_service_proxy,
       multidevice_setup::MultiDeviceSetupClient* multidevice_setup_client,
       phonehub::PhoneHubManager* phone_hub_manager,
-      syncer::SyncService* sync_service,
-      SupervisedUserService* supervised_user_service,
       KerberosCredentialsManager* kerberos_credentials_manager,
       ArcAppListPrefs* arc_app_list_prefs,
       signin::IdentityManager* identity_manager,

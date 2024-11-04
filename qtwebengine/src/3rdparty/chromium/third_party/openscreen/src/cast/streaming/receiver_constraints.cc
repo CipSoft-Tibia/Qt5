@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,7 @@
 #include "util/osp_logging.h"
 #include "util/std_util.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 // Calculates whether any codecs present in |second| are not present in |first|.
@@ -205,5 +204,4 @@ bool ReceiverConstraints::IsSupersetOf(const ReceiverConstraints& other) const {
          HasLessRestrictiveLimits(audio_limits, other.audio_limits);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

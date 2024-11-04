@@ -9,7 +9,6 @@
 #include "qabstracteventdispatcher.h"
 #include "qandroideventdispatcher.h"
 #include "qandroidplatformaccessibility.h"
-#include "qandroidplatformbackingstore.h"
 #include "qandroidplatformclipboard.h"
 #include "qandroidplatformfontdatabase.h"
 #include "qandroidplatformforeignwindow.h"
@@ -29,6 +28,7 @@
 #include <QtGui/private/qeglpbuffer_p.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qoffscreensurface_p.h>
+#include <QtGui/private/qrhibackingstore_p.h>
 #include <qpa/qplatformoffscreensurface.h>
 #include <qpa/qplatformwindow.h>
 #include <qpa/qwindowsysteminterface.h>
@@ -54,21 +54,19 @@ Qt::ScreenOrientation QAndroidPlatformIntegration::m_orientation = Qt::PrimaryOr
 Qt::ScreenOrientation QAndroidPlatformIntegration::m_nativeOrientation = Qt::PrimaryOrientation;
 
 bool QAndroidPlatformIntegration::m_showPasswordEnabled = false;
-static bool m_running = false;
 
 Q_DECLARE_JNI_CLASS(QtNative, "org/qtproject/qt/android/QtNative")
+Q_DECLARE_JNI_CLASS(QtDisplayManager, "org/qtproject/qt/android/QtDisplayManager")
 Q_DECLARE_JNI_CLASS(Display, "android/view/Display")
 
-Q_DECLARE_JNI_TYPE(List, "Ljava/util/List;")
+Q_DECLARE_JNI_CLASS(List, "java/util/List")
 
 namespace {
 
 QAndroidPlatformScreen* createScreenForDisplayId(int displayId)
 {
-    const QJniObject display = QJniObject::callStaticObjectMethod<QtJniTypes::Display>(
-        QtJniTypes::className<QtJniTypes::QtNative>(),
-        "getDisplay",
-        displayId);
+    const QJniObject display = QtJniTypes::QtDisplayManager::callStaticMethod<QtJniTypes::Display>(
+            "getDisplay", QtAndroidPrivate::context(), displayId);
     if (!display.isValid())
         return nullptr;
     return new QAndroidPlatformScreen(display);
@@ -80,10 +78,14 @@ void *QAndroidPlatformNativeInterface::nativeResourceForIntegration(const QByteA
 {
     if (resource=="JavaVM")
         return QtAndroid::javaVM();
-    if (resource == "QtActivity")
-        return QtAndroid::activity();
-    if (resource == "QtService")
-        return QtAndroid::service();
+    if (resource == "QtActivity") {
+        extern Q_CORE_EXPORT jobject qt_androidActivity();
+        return qt_androidActivity();
+    }
+    if (resource == "QtService") {
+        extern Q_CORE_EXPORT jobject qt_androidService();
+        return qt_androidService();
+    }
     if (resource == "AndroidStyleData") {
         if (m_androidStyle) {
             if (m_androidStyle->m_styleData.isEmpty())
@@ -156,10 +158,6 @@ void QAndroidPlatformNativeInterface::customEvent(QEvent *event)
     api->accessibility()->setActive(QtAndroidAccessibility::isActive());
 #endif // QT_CONFIG(accessibility)
 
-    if (!m_running) {
-        m_running = true;
-        QtAndroid::notifyQtAndroidPluginRunning(m_running);
-    }
     api->flushPendingUpdates();
 }
 
@@ -183,12 +181,10 @@ QAndroidPlatformIntegration::QAndroidPlatformIntegration(const QStringList &para
     if (Q_UNLIKELY(!eglBindAPI(EGL_OPENGL_ES_API)))
         qFatal("Could not bind GL_ES API");
 
-    m_primaryDisplayId = QJniObject::getStaticField<jint>(
-        QtJniTypes::className<QtJniTypes::Display>(), "DEFAULT_DISPLAY");
-
-    const QJniObject nativeDisplaysList = QJniObject::callStaticObjectMethod<QtJniTypes::List>(
-                QtJniTypes::className<QtJniTypes::QtNative>(),
-                "getAvailableDisplays");
+    using namespace QtJniTypes;
+    m_primaryDisplayId = Display::getStaticField<jint>("DEFAULT_DISPLAY");
+    const QJniObject nativeDisplaysList = QtDisplayManager::callStaticMethod<List>(
+                "getAvailableDisplays", QtAndroidPrivate::context());
 
     const int numberOfAvailableDisplays = nativeDisplaysList.callMethod<jint>("size");
     for (int i = 0; i < numberOfAvailableDisplays; ++i) {
@@ -227,9 +223,9 @@ QAndroidPlatformIntegration::QAndroidPlatformIntegration(const QStringList &para
         m_accessibility = new QAndroidPlatformAccessibility();
 #endif // QT_CONFIG(accessibility)
 
-    QJniObject javaActivity(QtAndroid::activity());
+    QJniObject javaActivity = QtAndroidPrivate::activity();
     if (!javaActivity.isValid())
-        javaActivity = QtAndroid::service();
+        javaActivity = QtAndroidPrivate::service();
 
     if (javaActivity.isValid()) {
         QJniObject resources = javaActivity.callObjectMethod("getResources", "()Landroid/content/res/Resources;");
@@ -320,13 +316,16 @@ bool QAndroidPlatformIntegration::hasCapability(Capability cap) const
     switch (cap) {
         case ApplicationState: return true;
         case ThreadedPixmaps: return true;
-        case NativeWidgets: return QtAndroid::activity();
-        case OpenGL: return QtAndroid::activity();
-        case ForeignWindows: return QtAndroid::activity();
-        case ThreadedOpenGL: return !needsBasicRenderloopWorkaround() && QtAndroid::activity();
-        case RasterGLSurface: return QtAndroid::activity();
+        case NativeWidgets: return QtAndroidPrivate::activity().isValid();
+        case OpenGL: return QtAndroidPrivate::activity().isValid();
+        case ForeignWindows: return QtAndroidPrivate::activity().isValid();
+        case ThreadedOpenGL: return !needsBasicRenderloopWorkaround() && QtAndroidPrivate::activity().isValid();
+        case RasterGLSurface: return QtAndroidPrivate::activity().isValid();
         case TopStackedNativeChildWindows: return false;
         case MaximizeUsingFullscreenGeometry: return true;
+        // FIXME QTBUG-118849 - we do not implement grabWindow() anymore, calling it will return
+        // a null QPixmap also for raster windows - for OpenGL windows this was always true
+        case ScreenWindowGrabbing: return false;
         default:
             return QPlatformIntegration::hasCapability(cap);
     }
@@ -334,15 +333,15 @@ bool QAndroidPlatformIntegration::hasCapability(Capability cap) const
 
 QPlatformBackingStore *QAndroidPlatformIntegration::createPlatformBackingStore(QWindow *window) const
 {
-    if (!QtAndroid::activity())
+    if (!QtAndroidPrivate::activity().isValid())
         return nullptr;
 
-    return new QAndroidPlatformBackingStore(window);
+    return new QRhiBackingStore(window);
 }
 
 QPlatformOpenGLContext *QAndroidPlatformIntegration::createPlatformOpenGLContext(QOpenGLContext *context) const
 {
-    if (!QtAndroid::activity())
+    if (!QtAndroidPrivate::activity().isValid())
         return nullptr;
     QSurfaceFormat format(context->format());
     format.setAlphaBufferSize(8);
@@ -360,7 +359,7 @@ QOpenGLContext *QAndroidPlatformIntegration::createOpenGLContext(EGLContext cont
 
 QPlatformOffscreenSurface *QAndroidPlatformIntegration::createPlatformOffscreenSurface(QOffscreenSurface *surface) const
 {
-    if (!QtAndroid::activity())
+    if (!QtAndroidPrivate::activity().isValid())
         return nullptr;
 
     QSurfaceFormat format(surface->requestedFormat());
@@ -374,7 +373,7 @@ QPlatformOffscreenSurface *QAndroidPlatformIntegration::createPlatformOffscreenS
 
 QOffscreenSurface *QAndroidPlatformIntegration::createOffscreenSurface(ANativeWindow *nativeSurface) const
 {
-    if (!QtAndroid::activity() || !nativeSurface)
+    if (!QtAndroidPrivate::activity().isValid() || !nativeSurface)
         return nullptr;
 
     auto *surface = new QOffscreenSurface;
@@ -385,7 +384,7 @@ QOffscreenSurface *QAndroidPlatformIntegration::createOffscreenSurface(ANativeWi
 
 QPlatformWindow *QAndroidPlatformIntegration::createPlatformWindow(QWindow *window) const
 {
-    if (!QtAndroid::activity())
+    if (!QtAndroidPrivate::activity().isValid())
         return nullptr;
 
 #if QT_CONFIG(vulkan)

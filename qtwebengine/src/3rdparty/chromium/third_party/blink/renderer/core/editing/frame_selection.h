@@ -36,6 +36,7 @@
 #include "third_party/blink/renderer/core/editing/ephemeral_range.h"
 #include "third_party/blink/renderer/core/editing/forward.h"
 #include "third_party/blink/renderer/core/editing/set_selection_options.h"
+#include "third_party/blink/renderer/core/editing/visible_units.h"
 #include "third_party/blink/renderer/core/scroll/scroll_alignment.h"
 #include "third_party/blink/renderer/platform/geometry/layout_rect.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
@@ -45,7 +46,6 @@ namespace blink {
 
 class EffectPaintPropertyNode;
 class Element;
-class InlineTextBox;
 class LayoutBlock;
 class LayoutText;
 class LocalFrame;
@@ -315,8 +315,6 @@ class CORE_EXPORT FrameSelection final
       const NGInlineCursor& cursor) const;
   SelectionState ComputePaintingSelectionStateForCursor(
       const NGInlineCursorPosition& position) const;
-  SelectionState ComputeLayoutSelectionStateForInlineTextBox(
-      const InlineTextBox& text_box) const;
 
   void Trace(Visitor*) const override;
 
@@ -351,6 +349,10 @@ class CORE_EXPORT FrameSelection final
   // could not be made.
   EphemeralRange GetSelectionRangeAroundCaret(
       TextGranularity text_granularity) const;
+  EphemeralRange GetSelectionRangeAroundPosition(
+      TextGranularity text_granularity,
+      Position position,
+      WordSide word_side) const;
 
   Member<LocalFrame> frame_;
   const Member<LayoutSelection> layout_selection_;

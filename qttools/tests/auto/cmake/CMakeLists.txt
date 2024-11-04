@@ -64,5 +64,5 @@ if (TARGET Qt6::Widgets)
 endif()
 
 if(TARGET Qt6::lupdate)
-    _qt_internal_test_expect_pass(test_translation_api)
+    add_subdirectory(linguist)
 endif()

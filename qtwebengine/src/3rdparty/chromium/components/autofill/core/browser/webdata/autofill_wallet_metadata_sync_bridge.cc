@@ -299,8 +299,8 @@ bool UpdateServerMetadata(AutofillTable* table,
   }
 }
 
-bool IsSyncedWalletAddress(const AutofillProfile* profile) {
-  switch (profile->record_type()) {
+bool IsSyncedWalletAddress(const AutofillProfile& profile) {
+  switch (profile.record_type()) {
     case AutofillProfile::LOCAL_PROFILE:
       return false;
     case AutofillProfile::SERVER_PROFILE:
@@ -308,15 +308,15 @@ bool IsSyncedWalletAddress(const AutofillProfile* profile) {
   }
 }
 
-bool IsSyncedWalletCard(const CreditCard* card) {
-  switch (card->record_type()) {
-    case CreditCard::LOCAL_CARD:
+bool IsSyncedWalletCard(const CreditCard& card) {
+  switch (card.record_type()) {
+    case CreditCard::RecordType::kLocalCard:
       return false;
-    case CreditCard::MASKED_SERVER_CARD:
+    case CreditCard::RecordType::kMaskedServerCard:
       return true;
-    case CreditCard::FULL_SERVER_CARD:
+    case CreditCard::RecordType::kFullServerCard:
       return true;
-    case CreditCard::VIRTUAL_CARD:
+    case CreditCard::RecordType::kVirtualCard:
       return false;
   }
 }
@@ -373,11 +373,18 @@ AutofillWalletMetadataSyncBridge::CreateMetadataChangeList() {
 }
 
 absl::optional<syncer::ModelError>
-AutofillWalletMetadataSyncBridge::MergeSyncData(
+AutofillWalletMetadataSyncBridge::MergeFullSyncData(
     std::unique_ptr<syncer::MetadataChangeList> metadata_change_list,
     syncer::EntityChangeList entity_data) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   // First upload local entities that are not mentioned in |entity_data|.
+  // Because Wallet Metadata is deleted when Sync (for this data type) is turned
+  // off, there should usually not be any pre-existing local data here, but it
+  // can happen in some corner cases such as when PDM manages to change metadata
+  // during the initial sync procedure (e.g. the remote sync data was just
+  // downloaded, but first passed to the AUTOFILL_WALLET bridge, with the side
+  // effect of creating wallet metadata entries immediately before this function
+  // is invoked).
   UploadInitialLocalData(metadata_change_list.get(), entity_data);
 
   return MergeRemoteChanges(std::move(metadata_change_list),
@@ -385,7 +392,7 @@ AutofillWalletMetadataSyncBridge::MergeSyncData(
 }
 
 absl::optional<syncer::ModelError>
-AutofillWalletMetadataSyncBridge::ApplySyncChanges(
+AutofillWalletMetadataSyncBridge::ApplyIncrementalSyncChanges(
     std::unique_ptr<syncer::MetadataChangeList> metadata_change_list,
     syncer::EntityChangeList entity_data) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -424,33 +431,30 @@ std::string AutofillWalletMetadataSyncBridge::GetStorageKey(
       entity_data.specifics.wallet_metadata().id());
 }
 
-void AutofillWalletMetadataSyncBridge::ApplyStopSyncChanges(
+void AutofillWalletMetadataSyncBridge::ApplyDisableSyncChanges(
     std::unique_ptr<syncer::MetadataChangeList> delete_metadata_change_list) {
-  // If a metadata change list gets passed in, that means sync is actually
-  // disabled, so we want to delete the data as well (i.e. the wallet metadata
-  // entities).
-  if (delete_metadata_change_list) {
-    for (const auto& [storage_key, metadata] : cache_) {
-      TypeAndMetadataId parsed_storage_key =
-          ParseWalletMetadataStorageKey(storage_key);
-      RemoveServerMetadata(GetAutofillTable(), parsed_storage_key.type,
-                           parsed_storage_key.metadata_id);
-    }
-    cache_.clear();
-
-    // We do not notify the change to the UI because the data bridge will notify
-    // anyway and notifying on metadata deletion potentially before the data
-    // deletion is risky. This can cause another conversion of server addresses
-    // to local addresses as we lack the metadata (that it has been converted
-    // already).
-
-    // Commit the transaction to make sure the sync data (deleted here) and the
-    // sync metadata and the progress marker (deleted by the processor via
-    // |delete_metadata_change_list|) get wiped from the DB. This is especially
-    // important on Android where we cannot rely on committing transactions on
-    // shutdown).
-    web_data_backend_->CommitChanges();
+  // Sync is disabled so we want to delete the data as well (i.e. the wallet
+  // metadata entities).
+  for (const auto& [storage_key, metadata] : cache_) {
+    TypeAndMetadataId parsed_storage_key =
+        ParseWalletMetadataStorageKey(storage_key);
+    RemoveServerMetadata(GetAutofillTable(), parsed_storage_key.type,
+                         parsed_storage_key.metadata_id);
   }
+  cache_.clear();
+
+  // We do not notify the change to the UI because the data bridge will notify
+  // anyway and notifying on metadata deletion potentially before the data
+  // deletion is risky. This can cause another conversion of server addresses
+  // to local addresses as we lack the metadata (that it has been converted
+  // already).
+
+  // Commit the transaction to make sure the sync data (deleted here) and the
+  // sync metadata and the progress marker (deleted by the processor via
+  // |delete_metadata_change_list|) get wiped from the DB. This is especially
+  // important on Android where we cannot rely on committing transactions on
+  // shutdown).
+  web_data_backend_->CommitChanges();
 }
 
 void AutofillWalletMetadataSyncBridge::AutofillProfileChanged(
@@ -604,7 +608,8 @@ void AutofillWalletMetadataSyncBridge::UploadInitialLocalData(
   // Strip |local_keys_to_upload| of the keys of data provided by the server.
   for (const std::unique_ptr<EntityChange>& change : entity_data) {
     DCHECK_EQ(change->type(), EntityChange::ACTION_ADD)
-        << "Illegal change; can only be called during initial MergeSyncData()";
+        << "Illegal change; can only be called during initial "
+           "MergeFullSyncData()";
     local_keys_to_upload.erase(change->storage_key());
   }
   // Upload the remaining storage keys
@@ -720,9 +725,7 @@ void AutofillWalletMetadataSyncBridge::LocalMetadataChanged(
       return;
     case AutofillProfileChange::ADD:
     case AutofillProfileChange::UPDATE:
-      DCHECK(change.data_model());
-
-      AutofillMetadata new_entry = change.data_model()->GetMetadata();
+      AutofillMetadata new_entry = change.data_model().GetMetadata();
       auto it = cache_.find(storage_key);
       absl::optional<AutofillMetadata> existing_entry = absl::nullopt;
       if (it != cache_.end()) {

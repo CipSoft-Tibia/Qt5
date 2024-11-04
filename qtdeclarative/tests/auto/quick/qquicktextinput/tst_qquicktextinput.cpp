@@ -1,10 +1,12 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
 #include <qtest.h>
 #include <QtTest/QSignalSpy>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtQuickTestUtils/private/testhttpserver_p.h>
 #include <QtQuickTestUtils/private/viewtestutils_p.h>
+#include <QtQuickTestUtils/private/visualtestutils_p.h>
 #include <private/qinputmethod_p.h>
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcomponent.h>
@@ -212,7 +214,6 @@ private:
 #if QT_CONFIG(shortcut)
     void simulateKeys(QWindow *window, const QKeySequence &sequence);
 #endif
-    static bool hasWindowActivation();
 
     QQmlEngine engine;
     QStringList standard;
@@ -236,11 +237,6 @@ void tst_qquicktextinput::simulateKeys(QWindow *window, const QList<Key> &keys)
         else
             QTest::keyClick(window, keys.at(i).keyCombination.key(), modifiers);
     }
-}
-
-bool tst_qquicktextinput::hasWindowActivation()
-{
-    return (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation));
 }
 
 #if QT_CONFIG(shortcut)
@@ -1877,7 +1873,7 @@ void tst_qquicktextinput::maxLength()
     QVERIFY(textinputObject != nullptr);
     QVERIFY(textinputObject->text().isEmpty());
     QCOMPARE(textinputObject->maxLength(), 10);
-    foreach (const QString &str, standard) {
+    for (const QString &str : std::as_const(standard)) {
         QVERIFY(textinputObject->text().size() <= 10);
         textinputObject->setText(str);
         QVERIFY(textinputObject->text().size() <= 10);
@@ -7191,17 +7187,15 @@ void tst_qquicktextinput::touchscreenDoesNotSelect()
     QTest::touchEvent(&window, touchscreen.data()).press(0, QPoint(x2,y), &window);
     QTest::touchEvent(&window, touchscreen.data()).release(0, QPoint(x2,y), &window);
     QQuickTouchUtils::flush(&window);
-    QCOMPARE(textInputObject->selectedText().isEmpty(), !expectDefaultSelectByMouse);
-    if (expectDefaultSelectByMouse)
-        QCOMPARE(textInputObject->cursorPosition(), cursorPos);
-    else
-        QCOMPARE_NE(textInputObject->cursorPosition(), cursorPos);
+    QCOMPARE(textInputObject->selectedText().isEmpty(), true);
+    QCOMPARE_NE(textInputObject->cursorPosition(), cursorPos);
+    QVERIFY(textInputObject->selectedText().isEmpty());
 }
 
 void tst_qquicktextinput::touchscreenSetsFocusAndMovesCursor()
 {
-    if (!hasWindowActivation())
-        QSKIP("Window activation is not supported");
+    SKIP_IF_NO_WINDOW_ACTIVATION
+
     QQuickView window;
     QVERIFY(QQuickTest::showView(window, testFileUrl("twoInAColumn.qml")));
     window.requestActivate();

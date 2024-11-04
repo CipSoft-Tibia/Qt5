@@ -98,27 +98,23 @@ void HTMLScriptElement::ParseAttribute(
     // flag is set has an async content attribute added, the element's
     // |non-blocking| flag must be unset."
     loader_->HandleAsyncAttribute();
-  } else if (params.name == html_names::kFetchpriorityAttr &&
-             RuntimeEnabledFeatures::PriorityHintsEnabled(
-                 GetExecutionContext())) {
+  } else if (params.name == html_names::kFetchpriorityAttr) {
     // The only thing we need to do for the the fetchPriority attribute/Priority
     // Hints is count usage upon parsing. Processing the value happens when the
     // element loads.
     UseCounter::Count(GetDocument(), WebFeature::kPriorityHints);
-  } else if (params.name == html_names::kBlockingAttr &&
-             RuntimeEnabledFeatures::BlockingAttributeEnabled()) {
-    blocking_attribute_->DidUpdateAttributeValue(params.old_value,
+  } else if (params.name == html_names::kBlockingAttr) {
+    blocking_attribute_->OnAttributeValueChanged(params.old_value,
                                                  params.new_value);
-    blocking_attribute_->CountTokenUsage();
     if (GetDocument().GetRenderBlockingResourceManager() &&
         !IsPotentiallyRenderBlocking()) {
       GetDocument().GetRenderBlockingResourceManager()->RemovePendingScript(
           *this);
     }
   } else if (params.name == html_names::kAttributionsrcAttr) {
-    if (!params.new_value.empty() && GetDocument().GetFrame()) {
+    if (GetDocument().GetFrame()) {
       GetDocument().GetFrame()->GetAttributionSrcLoader()->Register(
-          GetDocument().CompleteURL(params.new_value), this);
+          params.new_value, /*element=*/this);
     }
   } else {
     HTMLElement::ParseAttribute(params);
@@ -158,7 +154,7 @@ void HTMLScriptElement::setText(const String& string) {
 }
 
 void HTMLScriptElement::setInnerTextForBinding(
-    const V8UnionStringTreatNullAsEmptyStringOrTrustedScript*
+    const V8UnionStringLegacyNullToEmptyStringOrTrustedScript*
         string_or_trusted_script,
     ExceptionState& exception_state) {
   const String& value = TrustedTypesCheckForScript(
@@ -299,8 +295,7 @@ bool HTMLScriptElement::AllowInlineScriptForCSP(
     const WTF::OrdinalNumber& context_line,
     const String& script_content) {
   // Support 'inline-speculation-rules' source.
-  // https://github.com/WICG/nav-speculation/blob/main/triggers.md#content-security-policy
-  // TODO(http://crbug.com/1382361): Standardize it officially.
+  // https://wicg.github.io/nav-speculation/speculation-rules.html#content-security-policy
   DCHECK(loader_);
   ContentSecurityPolicy::InlineType inline_type =
       loader_->GetScriptType() ==
@@ -337,6 +332,14 @@ void HTMLScriptElement::DispatchLoadEvent() {
 
 void HTMLScriptElement::DispatchErrorEvent() {
   DispatchEvent(*Event::Create(event_type_names::kError));
+}
+
+bool HTMLScriptElement::HasLoadEventHandler() {
+  return EventPath(*this).HasEventListenersInPath(event_type_names::kLoad);
+}
+
+bool HTMLScriptElement::HasErrorEventHandler() {
+  return EventPath(*this).HasEventListenersInPath(event_type_names::kError);
 }
 
 ScriptElementBase::Type HTMLScriptElement::GetScriptElementType() {

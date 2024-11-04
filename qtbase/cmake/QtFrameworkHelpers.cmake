@@ -37,6 +37,7 @@ macro(qt_find_apple_system_frameworks)
         qt_internal_find_apple_system_framework(FWContacts Contacts)
         qt_internal_find_apple_system_framework(FWEventKit EventKit)
         qt_internal_find_apple_system_framework(FWHealthKit HealthKit)
+        qt_internal_find_apple_system_framework(FWUniformTypeIdentifiers UniformTypeIdentifiers)
     endif()
 endmacro()
 
@@ -72,7 +73,7 @@ function(qt_copy_framework_headers target)
 
     set(options)
     set(oneValueArgs)
-    set(multiValueArgs PUBLIC PRIVATE QPA RHI)
+    set(multiValueArgs PUBLIC PRIVATE QPA RHI SSG)
     cmake_parse_arguments(arg "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
     qt_internal_get_framework_info(fw ${target})
@@ -81,6 +82,7 @@ function(qt_copy_framework_headers target)
     set(output_dir_PRIVATE "${output_dir}/${fw_private_module_header_dir}/private")
     set(output_dir_QPA "${output_dir}/${fw_private_module_header_dir}/qpa")
     set(output_dir_RHI "${output_dir}/${fw_private_module_header_dir}/rhi")
+    set(output_dir_SSG "${output_dir}/${fw_private_module_header_dir}/ssg")
 
     qt_internal_module_info(module "${target}")
 
@@ -88,7 +90,7 @@ function(qt_copy_framework_headers target)
     set(in_files "")
     set(out_dirs "")
     set(copy_commands "")
-    foreach(type IN ITEMS PUBLIC PRIVATE QPA RHI)
+    foreach(type IN ITEMS PUBLIC PRIVATE QPA RHI SSG)
         set(in_files_${type} "")
         set(fw_output_header_dir "${output_dir_${type}}")
         list(APPEND out_dirs "${fw_output_header_dir}")
@@ -115,18 +117,32 @@ function(qt_copy_framework_headers target)
         "${output_dir}/${fw_versioned_header_dir}"
     )
 
+    set(copy_fw_sync_headers_marker_file
+        "${CMAKE_CURRENT_BINARY_DIR}/${target}_fw_sync_headers_marker_file"
+    )
+
+    set(copy_fw_sync_headers_marker_file_command
+        "${CMAKE_COMMAND}" -E touch "${copy_fw_sync_headers_marker_file}"
+    )
+
     if(CMAKE_GENERATOR MATCHES "^Ninja")
         add_custom_command(
-            OUTPUT "${output_dir}/${fw_versioned_header_dir}"
+            OUTPUT
+                "${output_dir}/${fw_versioned_header_dir}"
+                "${copy_fw_sync_headers_marker_file}"
             DEPENDS ${target}_sync_headers
             COMMAND ${copy_fw_sync_headers_command}
+            COMMAND ${copy_fw_sync_headers_marker_file_command}
             VERBATIM
         )
         add_custom_target(${target}_copy_fw_sync_headers
             DEPENDS "${output_dir}/${fw_versioned_header_dir}")
     else()
         add_custom_target(${target}_copy_fw_sync_headers
-            COMMAND ${copy_fw_sync_headers_command})
+            COMMAND ${copy_fw_sync_headers_command}
+            COMMAND ${copy_fw_sync_headers_marker_file_command}
+            DEPENDS ${target}_sync_headers
+        )
     endif()
 
     if(out_files)

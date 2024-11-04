@@ -126,7 +126,6 @@ void bitfn(dav1d_prep_grain)(const Dav1dFilmGrainDSPContext *const dsp,
         generate_scaling(in->p.bpc, data->uv_points[1], data->num_uv_points[1], scaling[2]);
 
     // Copy over the non-modified planes
-    // TODO: eliminate in favor of per-plane refs
     assert(out->stride[0] == in->stride[0]);
     if (!data->num_y_points) {
         const ptrdiff_t stride = out->stride[0];

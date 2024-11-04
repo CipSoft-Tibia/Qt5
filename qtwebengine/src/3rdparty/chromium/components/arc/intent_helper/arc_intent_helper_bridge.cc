@@ -22,14 +22,12 @@
 #include "base/strings/string_util.h"
 #include "base/values.h"
 #include "components/arc/common/intent_helper/arc_intent_helper_package.h"
-#include "components/arc/intent_helper/arc_settings_app_delegate.h"
 #include "components/arc/intent_helper/control_camera_app_delegate.h"
 #include "components/arc/intent_helper/intent_constants.h"
 #include "components/arc/intent_helper/open_url_delegate.h"
 #include "components/url_formatter/url_fixer.h"
 #include "net/base/url_util.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "ui/base/layout.h"
 #include "url/url_constants.h"
 
 namespace arc {
@@ -43,7 +41,6 @@ constexpr const char* kArcSchemes[] = {url::kHttpScheme, url::kHttpsScheme,
 // is ChromeNewWindowClient in the browser.
 OpenUrlDelegate* g_open_url_delegate = nullptr;
 ControlCameraAppDelegate* g_control_camera_app_delegate = nullptr;
-std::unique_ptr<ArcSettingsAppDelegate> g_arc_settings_app_delegate = nullptr;
 
 // Singleton factory for ArcIntentHelperBridge.
 class ArcIntentHelperBridgeFactory
@@ -83,34 +80,6 @@ enum class ArcIntentHelperOpenType {
   WEB_APP = 6,
   kMaxValue = WEB_APP,
 };
-
-// Records Arc.IntentHelper.OpenType UMA histogram.
-void RecordOpenType(ArcIntentHelperOpenType type) {
-  UMA_HISTOGRAM_ENUMERATION("Arc.IntentHelper.OpenType", type);
-}
-
-// These values are persisted to logs. Entries should not be renumbered and
-// numeric values should never be reused.
-enum class OpenIntentAction {
-  kUnknown = 0,
-  kView = 1,
-  kSend = 2,
-  kSendMultiple = 3,
-  kMaxValue = kSendMultiple,
-};
-
-void RecordOpenAppIntentAction(const mojom::LaunchIntentPtr& intent) {
-  OpenIntentAction action = OpenIntentAction::kUnknown;
-  if (intent->action == kIntentActionView) {
-    action = OpenIntentAction::kView;
-  } else if (intent->action == kIntentActionSend) {
-    action = OpenIntentAction::kSend;
-  } else if (intent->action == kIntentActionSendMultiple) {
-    action = OpenIntentAction::kSendMultiple;
-  }
-
-  UMA_HISTOGRAM_ENUMERATION("Arc.IntentHelper.OpenAppWithIntentAction", action);
-}
 
 // Returns true if a Web App is allowed to be opened for the given URL.
 bool CanOpenWebAppForUrl(const GURL& url) {
@@ -162,12 +131,6 @@ void ArcIntentHelperBridge::SetControlCameraAppDelegate(
   g_control_camera_app_delegate = delegate;
 }
 
-// static
-void ArcIntentHelperBridge::SetArcSettingsAppDelegate(
-    std::unique_ptr<ArcSettingsAppDelegate> delegate) {
-  g_arc_settings_app_delegate = std::move(delegate);
-}
-
 void ArcIntentHelperBridge::SetDelegate(std::unique_ptr<Delegate> delegate) {
   delegate_ = std::move(delegate);
 }
@@ -211,13 +174,11 @@ void ArcIntentHelperBridge::OnIntentFiltersUpdated(
 
 void ArcIntentHelperBridge::OnOpenDownloads() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  RecordOpenType(ArcIntentHelperOpenType::DOWNLOADS);
   ash::NewWindowDelegate::GetInstance()->OpenDownloadsFolder();
 }
 
 void ArcIntentHelperBridge::OnOpenUrl(const std::string& url) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  RecordOpenType(ArcIntentHelperOpenType::URL);
   // Converts |url| to a fixed-up one and checks validity.
   const GURL gurl(url_formatter::FixupURL(url, /*desired_tld=*/std::string()));
   if (!gurl.is_valid())
@@ -231,7 +192,6 @@ void ArcIntentHelperBridge::OnOpenCustomTab(const std::string& url,
                                             int32_t task_id,
                                             OnOpenCustomTabCallback callback) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  RecordOpenType(ArcIntentHelperOpenType::CUSTOM_TAB);
   // Converts |url| to a fixed-up one and checks validity.
   const GURL gurl(url_formatter::FixupURL(url, /*desired_tld=*/std::string()));
   if (!gurl.is_valid() ||
@@ -244,7 +204,6 @@ void ArcIntentHelperBridge::OnOpenCustomTab(const std::string& url,
 
 void ArcIntentHelperBridge::OnOpenChromePage(mojom::ChromePage page) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  RecordOpenType(ArcIntentHelperOpenType::CHROME_PAGE);
 
   g_open_url_delegate->OpenChromePageFromArc(page);
 }
@@ -256,13 +215,11 @@ void ArcIntentHelperBridge::FactoryResetArc() {
 
 void ArcIntentHelperBridge::OpenWallpaperPicker() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  RecordOpenType(ArcIntentHelperOpenType::WALLPAPER_PICKER);
   ash::WallpaperController::Get()->OpenWallpaperPickerIfAllowed();
 }
 
 void ArcIntentHelperBridge::OpenVolumeControl() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  RecordOpenType(ArcIntentHelperOpenType::VOLUME_CONTROL);
   auto* audio = ArcAudioBridge::GetForBrowserContext(context_);
   DCHECK(audio);
   audio->ShowVolumeControls();
@@ -270,22 +227,12 @@ void ArcIntentHelperBridge::OpenVolumeControl() {
 
 void ArcIntentHelperBridge::OnOpenWebApp(const std::string& url) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  RecordOpenType(ArcIntentHelperOpenType::WEB_APP);
   // Converts |url| to a fixed-up one and checks validity.
   const GURL gurl(url_formatter::FixupURL(url, /*desired_tld=*/std::string()));
 
   // Web app launches should only be invoked on HTTPS URLs.
   if (CanOpenWebAppForUrl(gurl))
     g_open_url_delegate->OpenWebAppFromArc(gurl);
-}
-
-// TODO(b/200873831): Delete this anytime on 2022.
-void ArcIntentHelperBridge::RecordShareFilesMetricsDeprecated(
-    mojom::ShareFiles flag) {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  // Record metrics coming from ARC, these are related Share files feature
-  // stability.
-  LOG(ERROR) << "Arc.ShareFilesOnExit is deprecated, erasing incoming";
 }
 
 void ArcIntentHelperBridge::LaunchCameraApp(uint32_t intent_id,
@@ -364,9 +311,6 @@ void ArcIntentHelperBridge::OnOpenAppWithIntent(
     arc::mojom::LaunchIntentPtr intent) {
   // Web app launches should only be invoked on HTTPS URLs.
   if (CanOpenWebAppForUrl(start_url)) {
-    RecordOpenType(ArcIntentHelperOpenType::WEB_APP);
-    RecordOpenAppIntentAction(intent);
-
     g_open_url_delegate->OpenAppWithIntent(start_url, std::move(intent));
   }
 }
@@ -436,7 +380,7 @@ void ArcIntentHelperBridge::SendNewCaptureBroadcast(bool is_video,
         SendBroadcast);
   }
   if (!instance) {
-    LOG(ERROR) << "Failed to get instance for SendBroadcast().";
+    LOG(WARNING) << "Failed to get instance for SendBroadcast().";
     return;
   }
 
@@ -455,11 +399,11 @@ void ArcIntentHelperBridge::SendNewCaptureBroadcast(bool is_video,
 void ArcIntentHelperBridge::OnAndroidSettingChange(
     arc::mojom::AndroidSetting setting,
     bool is_enabled) {
-  if (!g_arc_settings_app_delegate) {
+  if (!delegate_) {
     LOG(ERROR) << "Unable to set value as ARC app delegate is null.";
     return;
   }
-  g_arc_settings_app_delegate->HandleUpdateAndroidSettings(setting, is_enabled);
+  delegate_->HandleUpdateAndroidSettings(setting, is_enabled);
 }
 
 // static

@@ -26,15 +26,15 @@ export class ReportingApiTreeElement extends ApplicationPanelTreeElement {
 
   constructor(storagePanel: ResourcesPanel) {
     super(storagePanel, i18nString(UIStrings.reportingApi), false);
-    const icon = UI.Icon.Icon.create('mediumicon-manifest', 'resource-tree-item');
+    const icon = UI.Icon.Icon.create('document', 'resource-tree-item');
     this.setLeadingIcons([icon]);
   }
 
-  get itemURL(): Platform.DevToolsPath.UrlString {
+  override get itemURL(): Platform.DevToolsPath.UrlString {
     return 'reportingApi://' as Platform.DevToolsPath.UrlString;
   }
 
-  onselect(selectedByUser?: boolean): boolean {
+  override onselect(selectedByUser?: boolean): boolean {
     super.onselect(selectedByUser);
     if (!this.view) {
       this.view = new ReportingApiView(new ApplicationComponents.EndpointsGrid.EndpointsGrid());

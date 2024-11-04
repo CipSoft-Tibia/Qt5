@@ -85,17 +85,16 @@ bool loader_check_icds_for_dev_ext_address(struct loader_instance *inst, const c
 // Look in the layers list of device extensions, which contain names of entry points. If funcName is present, return true
 // If not, call down the first layer's vkGetInstanceProcAddr to determine if any layers support the function
 bool loader_check_layer_list_for_dev_ext_address(struct loader_instance *inst, const char *funcName) {
-    struct loader_layer_properties *layer_prop_list = inst->expanded_activated_layer_list.list;
-
     // Iterate over the layers.
     for (uint32_t layer = 0; layer < inst->expanded_activated_layer_list.count; ++layer) {
         // Iterate over the extensions.
-        const struct loader_device_extension_list *const extensions = &(layer_prop_list[layer].device_extension_list);
+        const struct loader_device_extension_list *const extensions =
+            &(inst->expanded_activated_layer_list.list[layer]->device_extension_list);
         for (uint32_t extension = 0; extension < extensions->count; ++extension) {
             // Iterate over the entry points.
             const struct loader_dev_ext_props *const property = &(extensions->list[extension]);
-            for (uint32_t entry = 0; entry < property->entrypoint_count; ++entry) {
-                if (strcmp(property->entrypoints[entry], funcName) == 0) {
+            for (uint32_t entry = 0; entry < property->entrypoints.count; ++entry) {
+                if (strcmp(property->entrypoints.list[entry], funcName) == 0) {
                     return true;
                 }
             }
@@ -104,7 +103,7 @@ bool loader_check_layer_list_for_dev_ext_address(struct loader_instance *inst, c
     // If the function pointer doesn't appear in the layer manifest for intercepted device functions, look down the
     // vkGetInstanceProcAddr chain
     if (inst->expanded_activated_layer_list.count > 0) {
-        const struct loader_layer_functions *const functions = &(layer_prop_list[0].functions);
+        const struct loader_layer_functions *const functions = &(inst->expanded_activated_layer_list.list[0]->functions);
         if (NULL != functions->get_instance_proc_addr) {
             return NULL != functions->get_instance_proc_addr((VkInstance)inst->instance, funcName);
         }
@@ -165,7 +164,7 @@ void *loader_dev_ext_gpa_impl(struct loader_instance *inst, const char *funcName
         // failed to allocate memory, return NULL
         return NULL;
     }
-    strncpy(inst->dev_ext_disp_functions[inst->dev_ext_disp_function_count], funcName, funcName_len);
+    loader_strncpy(inst->dev_ext_disp_functions[inst->dev_ext_disp_function_count], funcName_len, funcName, funcName_len);
     // init any dev dispatch table entries as needed
     loader_init_dispatch_dev_ext_entry(inst, NULL, inst->dev_ext_disp_function_count, funcName);
     void *out_function = loader_get_dev_ext_trampoline(inst->dev_ext_disp_function_count);
@@ -199,13 +198,13 @@ bool loader_check_icds_for_phys_dev_ext_address(struct loader_instance *inst, co
 }
 
 bool loader_check_layer_list_for_phys_dev_ext_address(struct loader_instance *inst, const char *funcName) {
-    struct loader_layer_properties *layer_prop_list = inst->expanded_activated_layer_list.list;
     for (uint32_t layer = 0; layer < inst->expanded_activated_layer_list.count; layer++) {
+        struct loader_layer_properties *layer_prop_list = inst->expanded_activated_layer_list.list[layer];
         // Find the first layer in the call chain which supports vk_layerGetPhysicalDeviceProcAddr
         // and call that, returning whether it found a valid pointer for this function name.
         // We return if the topmost layer supports GPDPA since the layer should call down the chain for us.
-        if (layer_prop_list[layer].interface_version > 1) {
-            const struct loader_layer_functions *const functions = &(layer_prop_list[layer].functions);
+        if (layer_prop_list->interface_version > 1) {
+            const struct loader_layer_functions *const functions = &(layer_prop_list->functions);
             if (NULL != functions->get_physical_device_proc_addr) {
                 return NULL != functions->get_physical_device_proc_addr((VkInstance)inst->instance, funcName);
             }
@@ -277,12 +276,12 @@ void *loader_phys_dev_ext_gpa_impl(struct loader_instance *inst, const char *fun
             // failed to allocate memory, return NULL
             return NULL;
         }
-        strncpy(inst->phys_dev_ext_disp_functions[inst->phys_dev_ext_disp_function_count], funcName, funcName_len);
+        loader_strncpy(inst->phys_dev_ext_disp_functions[inst->phys_dev_ext_disp_function_count], funcName_len, funcName,
+                       funcName_len);
 
         new_function_index = inst->phys_dev_ext_disp_function_count;
         // increment the count so that the subsequent logic includes the newly added entry point when searching for functions
         inst->phys_dev_ext_disp_function_count++;
-        has_found = true;
     }
 
     // Setup the ICD function pointers
@@ -311,7 +310,7 @@ void *loader_phys_dev_ext_gpa_impl(struct loader_instance *inst, const char *fun
     // point. Only set the instance dispatch table to it if it isn't NULL.
     if (is_tramp) {
         for (uint32_t i = 0; i < inst->expanded_activated_layer_list.count; i++) {
-            struct loader_layer_properties *layer_prop = &inst->expanded_activated_layer_list.list[i];
+            struct loader_layer_properties *layer_prop = inst->expanded_activated_layer_list.list[i];
             if (layer_prop->interface_version > 1 && NULL != layer_prop->functions.get_physical_device_proc_addr) {
                 void *layer_ret_function =
                     (PFN_PhysDevExt)layer_prop->functions.get_physical_device_proc_addr(inst->instance, funcName);

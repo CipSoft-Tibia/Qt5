@@ -32,7 +32,8 @@ FileSystemAccessFileWriterImpl::FileSystemAccessFileWriterImpl(
     const BindingContext& context,
     const storage::FileSystemURL& url,
     const storage::FileSystemURL& swap_url,
-    scoped_refptr<FileSystemAccessWriteLockManager::WriteLock> lock,
+    scoped_refptr<FileSystemAccessLockManager::Lock> lock,
+    scoped_refptr<FileSystemAccessLockManager::Lock> swap_lock,
     const SharedHandleState& handle_state,
     mojo::PendingReceiver<blink::mojom::FileSystemAccessFileWriter> receiver,
     bool has_transient_user_activation,
@@ -42,13 +43,16 @@ FileSystemAccessFileWriterImpl::FileSystemAccessFileWriterImpl(
       receiver_(this, std::move(receiver)),
       swap_url_(swap_url),
       lock_(std::move(lock)),
+      swap_lock_(std::move(swap_lock)),
       quarantine_connection_callback_(
           std::move(quarantine_connection_callback)),
       has_transient_user_activation_(has_transient_user_activation),
       auto_close_(auto_close) {
-  DCHECK_EQ(swap_url.type(), url.type());
-  DCHECK_EQ(lock_->type(),
-            FileSystemAccessWriteLockManager::WriteLockType::kShared);
+  CHECK_EQ(swap_url.type(), url.type());
+  // TODO(https://crbug.com/1382215): Support exclusively-locked writers.
+  CHECK(!lock_->IsExclusive());
+  CHECK(swap_lock_->IsExclusive());
+
   receiver_.set_disconnect_handler(base::BindOnce(
       &FileSystemAccessFileWriterImpl::OnDisconnect, base::Unretained(this)));
 }
@@ -147,9 +151,10 @@ void FileSystemAccessFileWriterImpl::OnDisconnect() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   receiver_.reset();
 
-  if (is_close_pending())
+  if (is_close_pending()) {
     // Mojo connection lost while Close() in progress.
     return;
+  }
 
   if (auto_close_) {
     // Close the Writer. `this` is deleted via
@@ -250,8 +255,8 @@ void FileSystemAccessFileWriterImpl::CloseImpl(CloseCallback callback) {
           /*source_url=*/swap_url(),
           /*dest_url=*/url(),
           FileSystemOperation::CopyOrMoveOptionSet(
-              FileSystemOperation::CopyOrMoveOption::
-                  kPreserveDestinationPermissions),
+              {FileSystemOperation::CopyOrMoveOption::
+                   kPreserveDestinationPermissions}),
           std::move(quarantine_connection_callback_),
           has_transient_user_activation_);
   // Allows the unique pointer to be bound to the callback so the helper stays

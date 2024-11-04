@@ -8,6 +8,7 @@
 # to list the dependency's destination directory.
 
 use_relative_paths = True
+git_dependencies = 'SYNC'
 
 vars = {
   'boringssl_git': 'https://boringssl.googlesource.com',
@@ -32,6 +33,10 @@ vars = {
   # GN CIPD package version.
   'gn_version': 'git_revision:5e19d2fb166fbd4f6f32147fbb2f497091a54ad8',
   'clang_format_revision':    'e435ad79c17b1888b34df88d6a30a094936e3836',
+
+  # 'magic' text to tell depot_tools that git submodules should be accepted
+  # but parity with DEPS file is expected.
+  'SUBMODULE_MIGRATION': 'True'
 }
 
 deps = {
@@ -42,10 +47,10 @@ deps = {
   # https://chromium.googlesource.com/chromium/src/buildtools/+/refs/heads/main
   'buildtools': {
     'url': Var('chromium_git') + '/chromium/src/buildtools' +
-      '@' + '3c7e3f1b8b1e4c0b6ec693430379cea682de78d6',
+      '@' + 'a9a6f0c49d0e8fa0cda37337430b4736ab3dc944',
     'condition': 'not build_with_chromium',
   },
-  'buildtools/clang_format/script': {
+  'third_party/clang-format/script': {
     'url': Var('chromium_git') +
       '/external/github.com/llvm/llvm-project/clang/tools/clang-format.git' +
       '@' + Var('clang_format_revision'),
@@ -84,13 +89,6 @@ deps = {
     'condition': 'not build_with_chromium',
   },
 
-  'third_party/protobuf/src': {
-    'url': Var('chromium_git') +
-      '/external/github.com/protocolbuffers/protobuf.git' +
-      '@' + '909a0f36a10075c4b4bc70fdee2c7e32dd612a72', # version 3.17.3
-    'condition': 'not build_with_chromium',
-  },
-
   'third_party/libprotobuf-mutator/src': {
     'url': Var('chromium_git') +
       '/external/github.com/google/libprotobuf-mutator.git' +
@@ -124,17 +122,17 @@ deps = {
   # Note about updating BoringSSL: after changing this hash, run the update
   # script in BoringSSL's util folder for generating build files from the
   # <openscreen src-dir>/third_party/boringssl directory:
-  # python ./src/util/generate_build_files.py gn
+  # python3 ./src/util/generate_build_files.py --embed_test_data=false gn
   'third_party/boringssl/src': {
     'url' : Var('boringssl_git') + '/boringssl.git' +
-      '@' + 'f6bd54efbcafcf4625ce99b5f702dc4850b0ca50',
+      '@' + '8d19c850d4dbde4bd7ece463c3b3f3685571a779',
     'condition': 'not build_with_chromium',
   },
 
   # To roll forward, use quiche_revision from chromium/src/DEPS.
   'third_party/quiche/src': {
     'url': Var('quiche_git') + '/quiche.git' +
-      '@' + '7b58beaec1f65b8e074ddb81796e34f3d6d83cf3',
+      '@' + '1125f4e47606119f56c91018b71bc4ae9de3a6d8',  # 2023-09-11
     'condition': 'not build_with_chromium',
   },
 
@@ -168,7 +166,15 @@ deps = {
   'third_party/valijson/src': {
     'url': Var('github') + '/tristanpenman/valijson.git' +
       '@' + '78ac8a737df56b5334354efe104ea8f99e2a2f00', # Version 1.0
-    'condition': 'not build_with_chromium'
+    'condition': 'not build_with_chromium',
+  },
+
+  # Googleurl recommends living at head. This is a copy of Chrome's URL parsing
+  # library. It is meant to be used by QUICHE.
+  'third_party/googleurl/src': {
+    'url': Var('quiche_git') + '/googleurl.git' +
+      '@' + 'dfe8ef6164f8b4e3e9a9cbe8521bb81359918393',  #2023-08-01
+    'condition': 'not build_with_chromium',
   }
 }
 
@@ -221,10 +227,6 @@ hooks = [
   },
 ]
 
-recursedeps = [
-  'cast',
-]
-
 include_rules = [
   '+util',
   '+platform/api',
@@ -256,10 +258,7 @@ include_rules = [
   '+absl/strings/str_join.h',
   '+absl/strings/str_replace.h',
   '+absl/strings/str_split.h',
-  '+absl/strings/string_view.h',
   '+absl/strings/substitute.h',
-  '+absl/types/optional.h',
-  '+absl/types/span.h',
   '+absl/types/variant.h',
 
   # Similar to abseil, don't include boringssl using root path.  Instead,

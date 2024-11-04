@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
+import m from 'mithril';
 
-import {MeminfoCounters, VmstatCounters} from '../../common/protos';
+import {MeminfoCounters, VmstatCounters} from '../../core/protos';
 import {globals} from '../globals';
 import {
   Dropdown,

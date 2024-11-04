@@ -88,7 +88,7 @@ class LayerTreeHostReadbackPixelTest
   std::unique_ptr<TestLayerTreeFrameSink> CreateLayerTreeFrameSink(
       const viz::RendererSettings& renderer_settings,
       double refresh_rate,
-      scoped_refptr<viz::ContextProvider> compositor_context_provider,
+      scoped_refptr<viz::RasterContextProvider> compositor_context_provider,
       scoped_refptr<viz::RasterContextProvider> worker_context_provider)
       override {
     auto frame_sink = LayerTreePixelTest::CreateLayerTreeFrameSink(
@@ -162,9 +162,10 @@ class LayerTreeHostReadbackPixelTest
     ASSERT_EQ(result->destination(),
               viz::CopyOutputResult::Destination::kNativeTextures);
 
-    gpu::Mailbox mailbox = result->GetTextureResult()->planes[0].mailbox;
+    gpu::Mailbox mailbox =
+        result->GetTextureResult()->mailbox_holders[0].mailbox;
     gpu::SyncToken sync_token =
-        result->GetTextureResult()->planes[0].sync_token;
+        result->GetTextureResult()->mailbox_holders[0].sync_token;
     gfx::ColorSpace color_space = result->GetTextureResult()->color_space;
     EXPECT_EQ(result->GetTextureResult()->color_space, output_color_space_);
 
@@ -490,9 +491,10 @@ ReadbackTestConfig const kTestConfigs[] = {
     ReadbackTestConfig{viz::RendererType::kSkiaVk, TestReadBackType::kBitmap},
     ReadbackTestConfig{viz::RendererType::kSkiaVk, TestReadBackType::kTexture},
 #endif  // BUILDFLAG(ENABLE_VULKAN_BACKEND_TESTS)
-#if BUILDFLAG(ENABLE_DAWN_BACKEND_TESTS)
-    ReadbackTestConfig{viz::RendererType::kSkiaDawn, TestReadBackType::kBitmap},
-#endif  // BUILDFLAG(ENABLE_DAWN_BACKEND_TESTS)
+#if BUILDFLAG(ENABLE_SKIA_GRAPHITE_TESTS)
+    ReadbackTestConfig{viz::RendererType::kSkiaGraphite,
+                       TestReadBackType::kBitmap},
+#endif  // BUILDFLAG(ENABLE_SKIA_GRAPHITE_TESTS)
 };
 
 INSTANTIATE_TEST_SUITE_P(All,
@@ -596,7 +598,7 @@ class LayerTreeHostReadbackColorSpacePixelTest
   std::unique_ptr<TestLayerTreeFrameSink> CreateLayerTreeFrameSink(
       const viz::RendererSettings& renderer_settings,
       double refresh_rate,
-      scoped_refptr<viz::ContextProvider> compositor_context_provider,
+      scoped_refptr<viz::RasterContextProvider> compositor_context_provider,
       scoped_refptr<viz::RasterContextProvider> worker_context_provider)
       override {
     std::unique_ptr<TestLayerTreeFrameSink> frame_sink =

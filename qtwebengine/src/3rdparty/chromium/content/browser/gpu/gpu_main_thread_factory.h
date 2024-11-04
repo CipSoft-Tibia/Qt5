@@ -7,8 +7,6 @@
 
 #include "content/common/content_export.h"
 
-#include <memory>
-
 namespace base {
 class Thread;
 }
@@ -20,12 +18,7 @@ struct GpuPreferences;
 namespace content {
 class InProcessChildThreadParams;
 
-class CONTENT_EXPORT GpuThreadController {
-public:
-    virtual ~GpuThreadController() {}
-};
-
-typedef std::unique_ptr<GpuThreadController> (*GpuMainThreadFactoryFunction)(
+typedef base::Thread* (*GpuMainThreadFactoryFunction)(
     const InProcessChildThreadParams&,
     const gpu::GpuPreferences&);
 

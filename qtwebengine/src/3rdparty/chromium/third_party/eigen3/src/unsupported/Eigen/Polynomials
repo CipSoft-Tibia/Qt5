@@ -35,9 +35,11 @@
 	* at the start of your source file.
   */
 
+// IWYU pragma: begin_exports
 #include "src/Polynomials/PolynomialUtils.h"
 #include "src/Polynomials/Companion.h"
 #include "src/Polynomials/PolynomialSolver.h"
+// IWYU pragma: end_exports
 
 /**
 	\page polynomials Polynomials defines functions for dealing with polynomials

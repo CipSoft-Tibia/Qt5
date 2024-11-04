@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,13 +6,12 @@
 #define CAST_STREAMING_MESSAGE_FIELDS_H_
 
 #include <string>
+#include <string_view>
 
-#include "absl/strings/string_view.h"
 #include "cast/streaming/constants.h"
 #include "platform/base/error.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 /// NOTE: Constants here are all taken from the Cast V2: Mirroring Control
 /// Protocol specification.
@@ -47,12 +46,11 @@ constexpr char kStatusMessageBody[] = "status";
 
 // Conversion methods for codec message fields.
 const char* CodecToString(AudioCodec codec);
-ErrorOr<AudioCodec> StringToAudioCodec(absl::string_view name);
+ErrorOr<AudioCodec> StringToAudioCodec(std::string_view name);
 
 const char* CodecToString(VideoCodec codec);
-ErrorOr<VideoCodec> StringToVideoCodec(absl::string_view name);
+ErrorOr<VideoCodec> StringToVideoCodec(std::string_view name);
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_MESSAGE_FIELDS_H_

@@ -392,6 +392,8 @@ resizor_create(struct display *display)
 	resizor->window = window_create(display);
 	resizor->widget = window_frame_create(resizor->window, resizor);
 	window_set_title(resizor->window, "Wayland Resizor");
+	window_set_appid(resizor->window,
+			 "org.freedesktop.weston.wayland-resizor");
 	resizor->display = display;
 
 	window_set_key_handler(resizor->window, key_handler);

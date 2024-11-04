@@ -5,19 +5,23 @@
 #include "qsvgtinydocument_p.h"
 
 #include <QLoggingCategory>
+#include<QElapsedTimer>
+#include <QtGui/qimageiohandler.h>
 
 #include "qdebug.h"
 #include "qstack.h"
 
 #include <QtGui/private/qoutlinemapper_p.h>
 
+QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcSvgDraw);
+
+Q_LOGGING_CATEGORY(lcSvgTiming, "qt.svg.timing")
+
 #if !defined(QT_SVG_SIZE_LIMIT)
 #  define QT_SVG_SIZE_LIMIT QT_RASTER_COORD_LIMIT
 #endif
-
-QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(lcSvgDraw)
 
 QSvgNode::QSvgNode(QSvgNode *parent)
     : m_parent(parent),
@@ -29,6 +33,129 @@ QSvgNode::QSvgNode(QSvgNode *parent)
 QSvgNode::~QSvgNode()
 {
 
+}
+
+void QSvgNode::draw(QPainter *p, QSvgExtraStates &states)
+{
+#ifndef QT_NO_DEBUG
+    QElapsedTimer qtSvgTimer; qtSvgTimer.start();
+#endif
+
+    if (shouldDrawNode(p, states)) {
+        applyStyle(p, states);
+        QSvgNode *maskNode = this->hasMask() ? document()->namedNode(this->maskId()) : nullptr;
+        QSvgFilterContainer *filterNode = this->hasFilter() ? static_cast<QSvgFilterContainer*>(document()->namedNode(this->filterId()))
+                                                            : nullptr;
+        if (filterNode && filterNode->type() == QSvgNode::Filter && filterNode->supported()) {
+            QTransform xf = p->transform();
+            p->resetTransform();
+            QRectF localRect = bounds(p, states);
+            QRectF boundsRect = xf.mapRect(localRect);
+            p->setTransform(xf);
+            QImage proxy = drawIntoBuffer(p, states, boundsRect.toRect());
+            proxy = filterNode->applyFilter(this, proxy, p, localRect);
+
+            boundsRect = QRectF(proxy.offset(), proxy.size());
+            localRect = p->transform().inverted().mapRect(boundsRect);
+            if (maskNode && maskNode->type() == QSvgNode::Mask) {
+                QImage mask = static_cast<QSvgMask*>(maskNode)->createMask(p, states, localRect, &boundsRect);
+                applyMaskToBuffer(&proxy, mask);
+            }
+            applyBufferToCanvas(p, proxy);
+
+        } else if (maskNode && maskNode->type() == QSvgNode::Mask) {
+            QRectF boundsRect;
+            QImage mask = static_cast<QSvgMask*>(maskNode)->createMask(p, states, this, &boundsRect);
+            drawWithMask(p, states, mask, boundsRect.toRect());
+        } else {
+            if (separateFillStroke())
+                fillThenStroke(p, states);
+            else
+                drawCommand(p, states);
+        }
+        revertStyle(p, states);
+    }
+
+#ifndef QT_NO_DEBUG
+    if (Q_UNLIKELY(lcSvgTiming().isDebugEnabled()))
+        qCDebug(lcSvgTiming) << "Drawing" << typeName() << "took" << (qtSvgTimer.nsecsElapsed() / 1000000.0f) << "ms";
+#endif
+}
+
+void QSvgNode::fillThenStroke(QPainter *p, QSvgExtraStates &states)
+{
+    qreal oldOpacity = p->opacity();
+    if (p->brush().style() != Qt::NoBrush) {
+        QPen oldPen = p->pen();
+        p->setPen(Qt::NoPen);
+        p->setOpacity(oldOpacity * states.fillOpacity);
+
+        drawCommand(p, states);
+
+        p->setPen(oldPen);
+    }
+    if (p->pen() != Qt::NoPen && p->pen().brush() != Qt::NoBrush && p->pen().widthF() != 0) {
+        QBrush oldBrush = p->brush();
+        p->setOpacity(oldOpacity * states.strokeOpacity);
+        p->setBrush(Qt::NoBrush);
+
+        drawCommand(p, states);
+
+        p->setBrush(oldBrush);
+    }
+    p->setOpacity(oldOpacity);
+}
+
+void QSvgNode::drawWithMask(QPainter *p, QSvgExtraStates &states, const QImage &mask, const QRect &boundsRect)
+{
+    QImage proxy = drawIntoBuffer(p, states, boundsRect);
+    if (proxy.isNull())
+        return;
+    applyMaskToBuffer(&proxy, mask);
+
+    p->save();
+    p->resetTransform();
+    p->drawImage(boundsRect, proxy);
+    p->restore();
+}
+
+QImage QSvgNode::drawIntoBuffer(QPainter *p, QSvgExtraStates &states, const QRect &boundsRect)
+{
+    QImage proxy;
+    if (!QImageIOHandler::allocateImage(boundsRect.size(), QImage::Format_ARGB32_Premultiplied, &proxy)) {
+        qCWarning(lcSvgDraw) << "The requested buffer size is too big, ignoring";
+        return proxy;
+    }
+    proxy.setOffset(boundsRect.topLeft());
+    proxy.fill(Qt::transparent);
+    QPainter proxyPainter(&proxy);
+    proxyPainter.setPen(p->pen());
+    proxyPainter.setBrush(p->brush());
+    proxyPainter.setFont(p->font());
+    proxyPainter.translate(-boundsRect.topLeft());
+    proxyPainter.setTransform(p->transform(), true);
+    proxyPainter.setRenderHints(p->renderHints());
+    if (separateFillStroke())
+        fillThenStroke(&proxyPainter, states);
+    else
+        drawCommand(&proxyPainter, states);
+    return proxy;
+}
+
+void QSvgNode::applyMaskToBuffer(QImage *proxy, QImage mask) const
+{
+    QPainter proxyPainter(proxy);
+    proxyPainter.setCompositionMode(QPainter::CompositionMode_DestinationOut);
+    proxyPainter.resetTransform();
+    proxyPainter.drawImage(QRect(0, 0, mask.width(), mask.height()), mask);
+}
+
+void QSvgNode::applyBufferToCanvas(QPainter *p, QImage proxy) const
+{
+    QTransform xf = p->transform();
+    p->resetTransform();
+    p->drawImage(QRect(proxy.offset(), proxy.size()), proxy);
+    p->setTransform(xf);
 }
 
 bool QSvgNode::isDescendantOf(const QSvgNode *parent) const
@@ -74,6 +201,12 @@ void QSvgNode::appendStyleProperty(QSvgStyleProperty *prop, const QString &id)
         if (doc && !id.isEmpty())
             doc->addNamedStyle(id, m_style.gradient);
         break;
+    case QSvgStyleProperty::PATTERN:
+        m_style.pattern = static_cast<QSvgPatternStyle*>(prop);
+        doc = document();
+        if (doc && !id.isEmpty())
+            doc->addNamedStyle(id, m_style.pattern);
+        break;
     case QSvgStyleProperty::TRANSFORM:
         m_style.transform = static_cast<QSvgTransformStyle*>(prop);
         break;
@@ -101,9 +234,32 @@ void QSvgNode::applyStyle(QPainter *p, QSvgExtraStates &states) const
     m_style.apply(p, this, states);
 }
 
+/*!
+    \internal
+
+    Apply the styles of all parents to the painter and the states.
+    The styles are applied from the top level node to the current node.
+    This function can be used to set the correct style for a node
+    if it's draw function is triggered out of the ordinary draw context,
+    for example the mask node, that is cross-referenced.
+*/
+void QSvgNode::applyStyleRecursive(QPainter *p, QSvgExtraStates &states) const
+{
+    if (parent())
+        parent()->applyStyleRecursive(p, states);
+    applyStyle(p, states);
+}
+
 void QSvgNode::revertStyle(QPainter *p, QSvgExtraStates &states) const
 {
     m_style.revert(p, states);
+}
+
+void QSvgNode::revertStyleRecursive(QPainter *p, QSvgExtraStates &states) const
+{
+    revertStyle(p, states);
+    if (parent())
+        parent()->revertStyleRecursive(p, states);
 }
 
 QSvgStyleProperty * QSvgNode::styleProperty(QSvgStyleProperty::Type type) const
@@ -139,6 +295,10 @@ QSvgStyleProperty * QSvgNode::styleProperty(QSvgStyleProperty::Type type) const
             if (node->m_style.gradient)
                 return node->m_style.gradient;
             break;
+        case QSvgStyleProperty::PATTERN:
+            if (node->m_style.pattern)
+                return node->m_style.pattern;
+            break;
         case QSvgStyleProperty::TRANSFORM:
             if (node->m_style.transform)
                 return node->m_style.transform;
@@ -168,7 +328,7 @@ QSvgStyleProperty * QSvgNode::styleProperty(QSvgStyleProperty::Type type) const
     return 0;
 }
 
-QSvgFillStyleProperty * QSvgNode::styleProperty(const QString &id) const
+QSvgPaintStyleProperty * QSvgNode::styleProperty(const QString &id) const
 {
     QString rid = id;
     if (rid.startsWith(QLatin1Char('#')))
@@ -194,25 +354,16 @@ QRectF QSvgNode::transformedBounds() const
 
     QImage dummy(1, 1, QImage::Format_RGB32);
     QPainter p(&dummy);
+    initPainter(&p);
     QSvgExtraStates states;
 
-    QPen pen(Qt::NoBrush, 1, Qt::SolidLine, Qt::FlatCap, Qt::SvgMiterJoin);
-    pen.setMiterLimit(4);
-    p.setPen(pen);
-
-    QStack<QSvgNode*> parentApplyStack;
-    QSvgNode *parent = m_parent;
-    while (parent) {
-        parentApplyStack.push(parent);
-        parent = parent->parent();
-    }
-
-    for (int i = parentApplyStack.size() - 1; i >= 0; --i)
-        parentApplyStack[i]->applyStyle(&p, states);
-    
+    if (parent())
+        parent()->applyStyleRecursive(&p, states);
+    // ###TODO: If we reset the world transform we should not call this function transformedBounds
     p.setWorldTransform(QTransform());
-
     m_cachedBounds = transformedBounds(&p, states);
+    if (parent()) // always revert the style to not store old transformations
+        parent()->revertStyleRecursive(&p, states);
     return m_cachedBounds;
 }
 
@@ -220,12 +371,50 @@ QSvgTinyDocument * QSvgNode::document() const
 {
     QSvgTinyDocument *doc = nullptr;
     QSvgNode *node = const_cast<QSvgNode*>(this);
-    while (node && node->type() != QSvgNode::DOC) {
+    while (node && node->type() != QSvgNode::Doc) {
         node = node->parent();
     }
     doc = static_cast<QSvgTinyDocument*>(node);
 
     return doc;
+}
+
+QString QSvgNode::typeName() const
+{
+    switch (type()) {
+        case Doc: return QStringLiteral("svg");
+        case Group: return QStringLiteral("g");
+        case Defs: return QStringLiteral("defs");
+        case Switch: return QStringLiteral("switch");
+        case Animation: return QStringLiteral("animation");
+        case Circle: return QStringLiteral("circle");
+        case Ellipse: return QStringLiteral("ellipse");
+        case Image: return QStringLiteral("image");
+        case Line: return QStringLiteral("line");
+        case Path: return QStringLiteral("path");
+        case Polygon: return QStringLiteral("polygon");
+        case Polyline: return QStringLiteral("polyline");
+        case Rect: return QStringLiteral("rect");
+        case Text: return QStringLiteral("text");
+        case Textarea: return QStringLiteral("textarea");
+        case Tspan: return QStringLiteral("tspan");
+        case Use: return QStringLiteral("use");
+        case Video: return QStringLiteral("video");
+        case Mask: return QStringLiteral("mask");
+        case Symbol: return QStringLiteral("symbol");
+        case Marker: return QStringLiteral("marker");
+        case Pattern: return QStringLiteral("pattern");
+        case Filter: return QStringLiteral("filter");
+        case FeMerge: return QStringLiteral("feMerge");
+        case FeMergenode: return QStringLiteral("feMergeNode");
+        case FeColormatrix: return QStringLiteral("feColorMatrix");
+        case FeGaussianblur: return QStringLiteral("feGaussianBlur");
+        case FeOffset: return QStringLiteral("feOffset");
+        case FeComposite: return QStringLiteral("feComposite");
+        case FeFlood: return QStringLiteral("feFlood");
+        case FeUnsupported: return QStringLiteral("feUnsupported");
+    }
+    return QStringLiteral("unknown");
 }
 
 void QSvgNode::setRequiredFeatures(const QStringList &lst)
@@ -308,6 +497,98 @@ void QSvgNode::setXmlClass(const QString &str)
     m_class = str;
 }
 
+QString QSvgNode::maskId() const
+{
+    return m_maskId;
+}
+
+void QSvgNode::setMaskId(const QString &str)
+{
+    m_maskId = str;
+}
+
+bool QSvgNode::hasMask() const
+{
+    if (document()->options().testFlag(QtSvg::Tiny12FeaturesOnly))
+        return false;
+    return !m_maskId.isEmpty();
+}
+
+QString QSvgNode::filterId() const
+{
+    return m_filterId;
+}
+
+void QSvgNode::setFilterId(const QString &str)
+{
+    m_filterId = str;
+}
+
+bool QSvgNode::hasFilter() const
+{
+    if (document()->options().testFlag(QtSvg::Tiny12FeaturesOnly))
+        return false;
+    return !m_filterId.isEmpty();
+}
+
+QString QSvgNode::markerStartId() const
+{
+    return m_markerStartId;
+}
+
+void QSvgNode::setMarkerStartId(const QString &str)
+{
+    m_markerStartId = str;
+}
+
+bool QSvgNode::hasMarkerStart() const
+{
+    if (document()->options().testFlag(QtSvg::Tiny12FeaturesOnly))
+        return false;
+    return !m_markerStartId.isEmpty();
+}
+
+QString QSvgNode::markerMidId() const
+{
+    return m_markerMidId;
+}
+
+void QSvgNode::setMarkerMidId(const QString &str)
+{
+    m_markerMidId = str;
+}
+
+bool QSvgNode::hasMarkerMid() const
+{
+    if (document()->options().testFlag(QtSvg::Tiny12FeaturesOnly))
+        return false;
+    return !m_markerMidId.isEmpty();
+}
+
+QString QSvgNode::markerEndId() const
+{
+    return m_markerEndId;
+}
+
+void QSvgNode::setMarkerEndId(const QString &str)
+{
+    m_markerEndId = str;
+}
+
+bool QSvgNode::hasMarkerEnd() const
+{
+    if (document()->options().testFlag(QtSvg::Tiny12FeaturesOnly))
+        return false;
+    return !m_markerEndId.isEmpty();
+}
+
+bool QSvgNode::hasAnyMarker() const
+{
+    if (document()->options().testFlag(QtSvg::Tiny12FeaturesOnly))
+        return false;
+    return hasMarkerStart() || hasMarkerMid() || hasMarkerEnd();
+}
+
 void QSvgNode::setDisplayMode(DisplayMode mode)
 {
     m_displayMode = mode;
@@ -326,9 +607,28 @@ qreal QSvgNode::strokeWidth(QPainter *p)
     return pen.widthF();
 }
 
+void QSvgNode::initPainter(QPainter *p)
+{
+    QPen pen(Qt::NoBrush, 1, Qt::SolidLine, Qt::FlatCap, Qt::SvgMiterJoin);
+    pen.setMiterLimit(4);
+    p->setPen(pen);
+    p->setBrush(Qt::black);
+    p->setRenderHint(QPainter::Antialiasing);
+    p->setRenderHint(QPainter::SmoothPixmapTransform);
+    QFont font(p->font());
+    if (font.pointSize() < 0 && font.pixelSize() > 0) {
+        font.setPointSizeF(font.pixelSize() * 72.0 / p->device()->logicalDpiY());
+        p->setFont(font);
+    }
+}
+
 bool QSvgNode::shouldDrawNode(QPainter *p, QSvgExtraStates &states) const
 {
     static bool alwaysDraw = qEnvironmentVariableIntValue("QT_SVG_DISABLE_SIZE_LIMIT");
+
+    if (m_displayMode == DisplayMode::NoneMode)
+        return false;
+
     if (alwaysDraw)
         return true;
 

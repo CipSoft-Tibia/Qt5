@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,8 @@ namespace openscreen {
 
 // Parses a URL and stores its components separately.  If parsing is successful,
 // is_valid() will return true, otherwise no other members should be accessed.
-// This is a thin wrapper around //third_party/mozilla.  It does not handle
+// This is a thin wrapper around
+// //third_party/googleurl/src/url/third_party/mozilla.  It does not handle
 // file: or mailto: URLs.
 class Url {
  public:

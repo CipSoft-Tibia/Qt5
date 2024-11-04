@@ -96,23 +96,25 @@ class Q_QUICK_EXPORT QQuickItem : public QObject, public QQmlParserStatus
     Q_PRIVATE_PROPERTY(QQuickItem::d_func(), QQuickAnchorLine baseline READ baseline CONSTANT FINAL)
     Q_PROPERTY(qreal baselineOffset READ baselineOffset WRITE setBaselineOffset NOTIFY baselineOffsetChanged)
 
-    Q_PROPERTY(bool clip READ clip WRITE setClip NOTIFY clipChanged FINAL)
+    Q_PROPERTY(bool clip READ clip WRITE setClip NOTIFY clipChanged)
 
     Q_PROPERTY(bool focus READ hasFocus WRITE setFocus NOTIFY focusChanged FINAL)
     Q_PROPERTY(bool activeFocus READ hasActiveFocus NOTIFY activeFocusChanged FINAL)
     Q_PROPERTY(bool activeFocusOnTab READ activeFocusOnTab WRITE setActiveFocusOnTab NOTIFY activeFocusOnTabChanged FINAL REVISION(2, 1))
 
+    Q_PROPERTY(Qt::FocusPolicy focusPolicy READ focusPolicy WRITE setFocusPolicy NOTIFY focusPolicyChanged REVISION(6, 7))
+
     Q_PROPERTY(qreal rotation READ rotation WRITE setRotation NOTIFY rotationChanged)
     Q_PROPERTY(qreal scale READ scale WRITE setScale NOTIFY scaleChanged)
-    Q_PROPERTY(TransformOrigin transformOrigin READ transformOrigin WRITE setTransformOrigin NOTIFY transformOriginChanged FINAL)
-    Q_PROPERTY(QPointF transformOriginPoint READ transformOriginPoint FINAL)  // deprecated - see QTBUG-26423
+    Q_PROPERTY(TransformOrigin transformOrigin READ transformOrigin WRITE setTransformOrigin NOTIFY transformOriginChanged)
+    Q_PROPERTY(QPointF transformOriginPoint READ transformOriginPoint)  // deprecated - see QTBUG-26423
     Q_PROPERTY(QQmlListProperty<QQuickTransform> transform READ transform DESIGNABLE false FINAL)
 
-    Q_PROPERTY(bool smooth READ smooth WRITE setSmooth NOTIFY smoothChanged FINAL)
-    Q_PROPERTY(bool antialiasing READ antialiasing WRITE setAntialiasing NOTIFY antialiasingChanged RESET resetAntialiasing FINAL)
+    Q_PROPERTY(bool smooth READ smooth WRITE setSmooth NOTIFY smoothChanged)
+    Q_PROPERTY(bool antialiasing READ antialiasing WRITE setAntialiasing NOTIFY antialiasingChanged RESET resetAntialiasing)
     Q_PROPERTY(qreal implicitWidth READ implicitWidth WRITE setImplicitWidth NOTIFY implicitWidthChanged)
     Q_PROPERTY(qreal implicitHeight READ implicitHeight WRITE setImplicitHeight NOTIFY implicitHeightChanged)
-    Q_PROPERTY(QObject *containmentMask READ containmentMask WRITE setContainmentMask NOTIFY containmentMaskChanged REVISION(2, 11) FINAL)
+    Q_PROPERTY(QObject *containmentMask READ containmentMask WRITE setContainmentMask NOTIFY containmentMaskChanged REVISION(2, 11))
 
 #if QT_CONFIG(quick_shadereffect)
     Q_PRIVATE_PROPERTY(QQuickItem::d_func(), QQuickItemLayer *layer READ layer DESIGNABLE false CONSTANT FINAL)
@@ -270,6 +272,9 @@ public:
     bool isFocusScope() const;
     QQuickItem *scopedFocusItem() const;
 
+    Qt::FocusPolicy focusPolicy() const;
+    void setFocusPolicy(Qt::FocusPolicy policy);
+
     bool isAncestorOf(const QQuickItem *child) const;
 
     Qt::MouseButtons acceptedMouseButtons() const;
@@ -383,6 +388,7 @@ Q_SIGNALS:
     void stateChanged(const QString &);
     void focusChanged(bool);
     void activeFocusChanged(bool);
+    Q_REVISION(6, 7) void focusPolicyChanged(Qt::FocusPolicy);
     Q_REVISION(2, 1) void activeFocusOnTabChanged(bool);
     void parentChanged(QQuickItem *);
     void transformOriginChanged(TransformOrigin);
@@ -507,8 +513,5 @@ QDebug Q_QUICK_EXPORT operator<<(QDebug debug,
 #endif // QT_NO_DEBUG_STREAM
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickItem)
-QML_DECLARE_TYPE(QQuickTransform)
 
 #endif // QQUICKITEM_H

@@ -5,12 +5,16 @@
 
 #include <QtCore/qdatetime.h>
 #include <QtCore/qloggingcategory.h>
+#include <QtCore/qmutex.h>
 #include <QtCore/qregularexpression.h>
+#include <QtCore/qthread.h>
 
 #include <QtNetwork/qtcpserver.h>
 #include <QtNetwork/qtcpsocket.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::Literals::StringLiterals;
 
 Q_DECLARE_LOGGING_CATEGORY(QT_CANBUS_PLUGINS_VIRTUALCAN)
 
@@ -42,6 +46,13 @@ void VirtualCanServer::start(quint16 port)
     // If there is already a server object, return immediately
     if (m_server) {
         qCInfo(QT_CANBUS_PLUGINS_VIRTUALCAN, "Server [%p] is already running.", this);
+        return;
+    }
+
+    if (QThread::currentThread() != this->thread()) {
+        // This can happen if this methode is invoked a second time by a different thread
+        // than when it was invoked the first time, and the first time the QTcpServer
+        // couldn't listen because the TCP port was taken by a different process on the system
         return;
     }
 
@@ -131,6 +142,7 @@ void VirtualCanServer::readyRead()
 }
 
 Q_GLOBAL_STATIC(VirtualCanServer, g_server)
+static QBasicMutex g_serverMutex;
 
 VirtualCanBackend::VirtualCanBackend(const QString &interface, QObject *parent)
     : QCanBusDevice(parent)
@@ -172,8 +184,10 @@ bool VirtualCanBackend::open()
     const QHostAddress address = host.isEmpty() ? QHostAddress::LocalHost : QHostAddress(host);
     const quint16 port = static_cast<quint16>(m_url.port(ServerDefaultTcpPort));
 
-    if (address.isLoopback())
+    if (address.isLoopback()) {
+        const QMutexLocker locker(&g_serverMutex);
         g_server->start(port);
+    }
 
     m_clientSocket = new QTcpSocket(this);
     m_clientSocket->connectToHost(address, port, QIODevice::ReadWrite);
@@ -188,7 +202,7 @@ void VirtualCanBackend::close()
 {
     qCDebug(QT_CANBUS_PLUGINS_VIRTUALCAN, "Client [%p] sends disconnect to server.", this);
 
-    m_clientSocket->write("disconnect:can" + QByteArray::number(m_channel) + '\n');
+    m_clientSocket->write(QByteArray("disconnect:can"_ba + QByteArray::number(m_channel) + '\n'));
 }
 
 void VirtualCanBackend::setConfigurationParameter(ConfigurationKey key, const QVariant &value)
@@ -294,7 +308,7 @@ QCanBusDeviceInfo VirtualCanBackend::deviceInfo() const
 void VirtualCanBackend::clientConnected()
 {
     qCInfo(QT_CANBUS_PLUGINS_VIRTUALCAN, "Client [%p] socket connected.", this);
-    m_clientSocket->write("connect:can" + QByteArray::number(m_channel) + '\n');
+    m_clientSocket->write(QByteArray("connect:can"_ba + QByteArray::number(m_channel) + '\n'));
 
     setState(QCanBusDevice::ConnectedState);
 }
@@ -313,7 +327,7 @@ void VirtualCanBackend::clientReadyRead()
         qCDebug(QT_CANBUS_PLUGINS_VIRTUALCAN, "Client [%p] received: '%s'.",
                 this, answer.constData());
 
-        if (answer.startsWith("disconnect:can" + QByteArray::number(m_channel))) {
+        if (answer.startsWith(QByteArray("disconnect:can"_ba + QByteArray::number(m_channel)))) {
             m_clientSocket->disconnectFromHost();
             continue;
         }

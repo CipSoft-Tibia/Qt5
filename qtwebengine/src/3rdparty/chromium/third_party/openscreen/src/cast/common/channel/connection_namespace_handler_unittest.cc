@@ -1,10 +1,12 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cast/common/channel/connection_namespace_handler.h"
 
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -20,8 +22,7 @@
 #include "util/json/json_value.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 using ::testing::_;
@@ -45,7 +46,7 @@ class MockVirtualConnectionPolicy
 CastMessage MakeVersionedConnectMessage(
     const std::string& source_id,
     const std::string& destination_id,
-    absl::optional<CastMessage_ProtocolVersion> version,
+    std::optional<CastMessage_ProtocolVersion> version,
     std::vector<CastMessage_ProtocolVersion> version_list) {
   CastMessage connect_message = MakeConnectMessage(source_id, destination_id);
   Json::Value message(Json::ValueType::objectValue);
@@ -105,7 +106,7 @@ class ConnectionNamespaceHandlerTest : public ::testing::Test {
                                                        CastMessage message) {
           VerifyConnectionMessage(message, source_id, destination_id);
           Json::Value value = ParseConnectionMessage(message);
-          absl::optional<absl::string_view> type = MaybeGetString(
+          std::optional<std::string_view> type = MaybeGetString(
               value, JSON_EXPAND_FIND_CONSTANT_ARGS(kMessageKeyType));
           ASSERT_TRUE(type) << message.payload_utf8();
           EXPECT_EQ(type.value(), kMessageTypeClose) << message.payload_utf8();
@@ -116,19 +117,19 @@ class ConnectionNamespaceHandlerTest : public ::testing::Test {
       MockCastSocketClient* mock_client,
       const std::string& source_id,
       const std::string& destination_id,
-      absl::optional<CastMessage_ProtocolVersion> version = absl::nullopt) {
+      std::optional<CastMessage_ProtocolVersion> version = std::nullopt) {
     EXPECT_CALL(*mock_client, OnMessage(_, _))
         .WillOnce(Invoke([&source_id, &destination_id, version](
                              CastSocket* socket, CastMessage message) {
           VerifyConnectionMessage(message, source_id, destination_id);
           Json::Value value = ParseConnectionMessage(message);
-          absl::optional<absl::string_view> type = MaybeGetString(
+          std::optional<std::string_view> type = MaybeGetString(
               value, JSON_EXPAND_FIND_CONSTANT_ARGS(kMessageKeyType));
           ASSERT_TRUE(type) << message.payload_utf8();
           EXPECT_EQ(type.value(), kMessageTypeConnected)
               << message.payload_utf8();
           if (version) {
-            absl::optional<int> message_version = MaybeGetInt(
+            std::optional<int> message_version = MaybeGetInt(
                 value,
                 JSON_EXPAND_FIND_CONSTANT_ARGS(kMessageKeyProtocolVersion));
             ASSERT_TRUE(message_version) << message.payload_utf8();
@@ -224,5 +225,4 @@ TEST_F(ConnectionNamespaceHandlerTest, CloseUnknown) {
       VirtualConnection{receiver_id_, sender_id_, socket_->socket_id()}));
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

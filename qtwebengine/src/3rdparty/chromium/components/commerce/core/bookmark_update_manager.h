@@ -6,11 +6,14 @@
 #define COMPONENTS_COMMERCE_CORE_BOOKMARK_UPDATE_MANAGER_H_
 
 #include <memory>
+#include <queue>
+#include <vector>
 
 #include "base/cancelable_callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
+#include "base/uuid.h"
 #include "components/bookmarks/browser/bookmark_model.h"
 #include "components/commerce/core/shopping_service.h"
 #include "components/power_bookmarks/core/proto/power_bookmark_meta.pb.h"
@@ -47,9 +50,12 @@ class BookmarkUpdateManager {
   // Execute the logic that will update product bookmarks.
   void RunUpdate();
 
+  // Process the next list in |pending_update_batches_|.
+  void StartNextBatch();
+
   // Handle the response from the shopping service's on-demand API. This will
   // update the corresponding bookmark if there is new information.
-  void HandleOnDemandResponse(const int64_t bookmark_id,
+  void HandleOnDemandResponse(const base::Uuid& bookmark_uuid,
                               const GURL& url,
                               absl::optional<ProductInfo> info);
 
@@ -60,6 +66,19 @@ class BookmarkUpdateManager {
   // Keep track of the last updated time in memory in case there is a failure in
   // the pref service.
   base::Time last_update_time_;
+
+  // A queue of lists of bookmark IDs that need to be updated. This is needed
+  // because there is a hard limit to the number of items the backing update
+  // system (optimization guide) can handle at a time.
+  std::queue<std::vector<base::Uuid>> pending_update_batches_;
+
+  // The expected number of bookmark updates for the currently running batch and
+  // the number of updates received. The callback pushes updates one at a time,
+  // so we need to keep track of how many have been received here so we know
+  // when to start the next batch.
+  size_t expected_bookmark_updates_;
+  size_t received_bookmark_updates_;
+
   std::unique_ptr<base::CancelableOnceClosure> scheduled_task_;
 
   base::WeakPtrFactory<BookmarkUpdateManager> weak_ptr_factory_{this};

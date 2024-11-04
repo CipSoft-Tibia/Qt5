@@ -94,10 +94,10 @@ static int cpia_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     if (header[28] == NOT_COMPRESSED) {
         frame->pict_type = AV_PICTURE_TYPE_I;
-        frame->key_frame = 1;
+        frame->flags |= AV_FRAME_FLAG_KEY;
     } else {
         frame->pict_type = AV_PICTURE_TYPE_P;
-        frame->key_frame = 0;
+        frame->flags &= ~AV_FRAME_FLAG_KEY;
     }
 
     // Get buffer filled with previous frame
@@ -197,14 +197,6 @@ static av_cold int cpia_decode_init(AVCodecContext *avctx)
 
     // output pixel format
     avctx->pix_fmt = AV_PIX_FMT_YUV420P;
-
-    /* The default timebase set by the v4l2 demuxer leads to probing which is buggy.
-     * Set some reasonable time_base to skip this.
-     */
-    if (avctx->time_base.num == 1 && avctx->time_base.den == 1000000) {
-        avctx->time_base.num = 1;
-        avctx->time_base.den = 60;
-    }
 
     s->frame = av_frame_alloc();
     if (!s->frame)

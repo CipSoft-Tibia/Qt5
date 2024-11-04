@@ -17,6 +17,7 @@
 #include "third_party/blink/renderer/modules/webgpu/gpu.h"
 #include "third_party/blink/renderer/modules/webgpu/gpu_adapter_info.h"
 #include "third_party/blink/renderer/modules/webgpu/gpu_device.h"
+#include "third_party/blink/renderer/modules/webgpu/gpu_device_lost_info.h"
 #include "third_party/blink/renderer/modules/webgpu/gpu_supported_features.h"
 #include "third_party/blink/renderer/modules/webgpu/gpu_supported_limits.h"
 #include "third_party/blink/renderer/modules/webgpu/string_utils.h"
@@ -46,12 +47,24 @@ absl::optional<V8GPUFeatureName::Enum> ToV8FeatureNameEnum(WGPUFeatureName f) {
       return V8GPUFeatureName::Enum::kIndirectFirstInstance;
     case WGPUFeatureName_DepthClipControl:
       return V8GPUFeatureName::Enum::kDepthClipControl;
-    case WGPUFeatureName_DawnShaderFloat16:
-      return V8GPUFeatureName::Enum::kShaderFloat16;
     case WGPUFeatureName_RG11B10UfloatRenderable:
       return V8GPUFeatureName::Enum::kRg11B10UfloatRenderable;
     case WGPUFeatureName_BGRA8UnormStorage:
       return V8GPUFeatureName::Enum::kBgra8UnormStorage;
+    case WGPUFeatureName_ChromiumExperimentalDp4a:
+      return V8GPUFeatureName::Enum::kChromiumExperimentalDp4A;
+    case WGPUFeatureName_ChromiumExperimentalReadWriteStorageTexture:
+      return V8GPUFeatureName::Enum::
+          kChromiumExperimentalReadWriteStorageTexture;
+    case WGPUFeatureName_ChromiumExperimentalSubgroups:
+      return V8GPUFeatureName::Enum::kChromiumExperimentalSubgroups;
+    case WGPUFeatureName_ChromiumExperimentalSubgroupUniformControlFlow:
+      return V8GPUFeatureName::Enum::
+          kChromiumExperimentalSubgroupUniformControlFlow;
+    case WGPUFeatureName_ShaderF16:
+      return V8GPUFeatureName::Enum::kShaderF16;
+    case WGPUFeatureName_Float32Filterable:
+      return V8GPUFeatureName::Enum::kFloat32Filterable;
     default:
       return absl::nullopt;
   }
@@ -86,16 +99,14 @@ GPUSupportedFeatures* MakeFeatureNameSet(const DawnProcTable& procs,
 
 GPUAdapter::GPUAdapter(
     GPU* gpu,
-    const String& name,
     WGPUAdapter handle,
     scoped_refptr<DawnControlClientHolder> dawn_control_client)
-    : DawnObjectBase(dawn_control_client),
-      name_(name),
-      handle_(handle),
-      gpu_(gpu) {
+    : DawnObjectBase(dawn_control_client), handle_(handle), gpu_(gpu) {
   WGPUAdapterProperties properties = {};
   GetProcs().adapterGetProperties(handle_, &properties);
   is_fallback_adapter_ = properties.adapterType == WGPUAdapterType_CPU;
+  backend_type_ = properties.backendType;
+  is_compatibility_mode_ = properties.compatibilityMode;
 
   vendor_ = properties.vendorName;
   architecture_ = properties.architecture;
@@ -135,10 +146,6 @@ void GPUAdapter::AddConsoleWarning(ExecutionContext* execution_context,
   }
 }
 
-const String& GPUAdapter::name() const {
-  return name_;
-}
-
 GPUSupportedFeatures* GPUAdapter::features() const {
   return features_;
 }
@@ -147,9 +154,17 @@ bool GPUAdapter::isFallbackAdapter() const {
   return is_fallback_adapter_;
 }
 
+WGPUBackendType GPUAdapter::backendType() const {
+  return backend_type_;
+}
+
 bool GPUAdapter::SupportsMultiPlanarFormats() const {
   return GetProcs().adapterHasFeature(handle_,
                                       WGPUFeatureName_DawnMultiPlanarFormats);
+}
+
+bool GPUAdapter::isCompatibilityMode() const {
+  return is_compatibility_mode_;
 }
 
 void GPUAdapter::OnRequestDeviceCallback(ScriptState* script_state,
@@ -161,18 +176,33 @@ void GPUAdapter::OnRequestDeviceCallback(ScriptState* script_state,
   switch (status) {
     case WGPURequestDeviceStatus_Success: {
       DCHECK(dawn_device);
+
+      GPUDeviceLostInfo* device_lost_info = nullptr;
+      if (is_consumed_) {
+        // Immediately force the device to be lost.
+        // TODO: Ideally this should be handled in Dawn, which can return an
+        // error device.
+        device_lost_info = MakeGarbageCollected<GPUDeviceLostInfo>(
+            WGPUDeviceLostReason_Undefined,
+            StringFromASCIIAndUTF8(
+                "The adapter is invalid because it has already been used to "
+                "create a device. A lost device has been returned."));
+      }
+      is_consumed_ = true;
+
       ExecutionContext* execution_context =
           ExecutionContext::From(script_state);
-
       auto* device = MakeGarbageCollected<GPUDevice>(
           execution_context, GetDawnControlClient(), this, dawn_device,
-          descriptor);
-      if (is_invalid_) {
-        GetProcs().deviceForceLoss(
-            device->GetHandle(), WGPUDeviceLostReason_Undefined,
-            "Cannot request device on invalidated adapter.");
-        FlushNow();
+          descriptor, device_lost_info);
+
+      if (device_lost_info) {
+        // Ensure the Dawn device is marked as lost as well.
+        device->InjectError(
+            WGPUErrorType_DeviceLost,
+            "Device was marked as lost due to a stale adapter.");
       }
+
       resolver->Resolve(device);
 
       ukm::builders::ClientRenderingAPI(execution_context->UkmSourceID())
@@ -183,10 +213,26 @@ void GPUAdapter::OnRequestDeviceCallback(ScriptState* script_state,
 
     case WGPURequestDeviceStatus_Error:
     case WGPURequestDeviceStatus_Unknown:
-      DCHECK_EQ(dawn_device, nullptr);
-      resolver->Reject(MakeGarbageCollected<DOMException>(
-          DOMExceptionCode::kOperationError,
-          StringFromASCIIAndUTF8(error_message)));
+      if (dawn_device) {
+        // Immediately force the device to be lost.
+        auto* device_lost_info = MakeGarbageCollected<GPUDeviceLostInfo>(
+            WGPUDeviceLostReason_Undefined,
+            StringFromASCIIAndUTF8(error_message));
+        ExecutionContext* execution_context =
+            ExecutionContext::From(script_state);
+        auto* device = MakeGarbageCollected<GPUDevice>(
+            execution_context, GetDawnControlClient(), this, dawn_device,
+            descriptor, device_lost_info);
+        // Resolve with the lost device.
+        resolver->Resolve(device);
+      } else {
+        // If a device is not returned, that means that an error occurred while
+        // validating features or limits, and as a result the promise should be
+        // rejected with an OperationError.
+        resolver->Reject(MakeGarbageCollected<DOMException>(
+            DOMExceptionCode::kOperationError,
+            StringFromASCIIAndUTF8(error_message)));
+      }
       break;
     default:
       NOTREACHED();
@@ -233,7 +279,11 @@ ScriptPromise GPUAdapter::requestDevice(ScriptState* script_state,
     required_features.AppendRange(required_features_set.begin(),
                                   required_features_set.end());
     dawn_desc.requiredFeatures = required_features.data();
+#ifdef WGPU_BREAKING_CHANGE_COUNT_RENAME
+    dawn_desc.requiredFeatureCount = required_features.size();
+#else
     dawn_desc.requiredFeaturesCount = required_features.size();
+#endif
   }
 
   auto* callback = BindWGPUOnceCallback(

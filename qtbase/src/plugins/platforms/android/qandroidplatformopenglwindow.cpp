@@ -24,38 +24,17 @@ QT_BEGIN_NAMESPACE
 QAndroidPlatformOpenGLWindow::QAndroidPlatformOpenGLWindow(QWindow *window, EGLDisplay display)
     :QAndroidPlatformWindow(window), m_eglDisplay(display)
 {
+    if (window->surfaceType() == QSurface::RasterSurface)
+        window->setSurfaceType(QSurface::OpenGLSurface);
 }
 
 QAndroidPlatformOpenGLWindow::~QAndroidPlatformOpenGLWindow()
 {
     m_surfaceWaitCondition.wakeOne();
     lockSurface();
-    if (m_nativeSurfaceId != -1)
-        QtAndroid::destroySurface(m_nativeSurfaceId);
+    destroySurface();
     clearEgl();
     unlockSurface();
-}
-
-void QAndroidPlatformOpenGLWindow::repaint(const QRegion &region)
-{
-    // This is only for real raster top-level windows. Stop in all other cases.
-    if (window()->surfaceType() != QSurface::RasterSurface
-        || QAndroidPlatformWindow::parent())
-        return;
-
-    QRect currentGeometry = geometry();
-
-    QRect dirtyClient = region.boundingRect();
-    QRect dirtyRegion(currentGeometry.left() + dirtyClient.left(),
-                      currentGeometry.top() + dirtyClient.top(),
-                      dirtyClient.width(),
-                      dirtyClient.height());
-    QRect mOldGeometryLocal = m_oldGeometry;
-    m_oldGeometry = currentGeometry;
-    // If this is a move, redraw the previous location
-    if (mOldGeometryLocal != currentGeometry)
-        platformScreen()->setDirty(mOldGeometryLocal);
-    platformScreen()->setDirty(dirtyRegion);
 }
 
 void QAndroidPlatformOpenGLWindow::setGeometry(const QRect &rect)
@@ -66,8 +45,9 @@ void QAndroidPlatformOpenGLWindow::setGeometry(const QRect &rect)
     m_oldGeometry = geometry();
 
     QAndroidPlatformWindow::setGeometry(rect);
-    if (m_nativeSurfaceId != -1)
-        QtAndroid::setSurfaceGeometry(m_nativeSurfaceId, rect);
+
+
+    setNativeGeometry(rect);
 
     QRect availableGeometry = screen()->availableGeometry();
     if (rect.width() > 0
@@ -76,25 +56,23 @@ void QAndroidPlatformOpenGLWindow::setGeometry(const QRect &rect)
             && availableGeometry.height() > 0) {
         QWindowSystemInterface::handleExposeEvent(window(), QRect(QPoint(0, 0), rect.size()));
     }
-
-    if (rect.topLeft() != m_oldGeometry.topLeft())
-        repaint(QRegion(rect));
 }
 
 EGLSurface QAndroidPlatformOpenGLWindow::eglSurface(EGLConfig config)
 {
-    if (QAndroidEventDispatcherStopper::stopped() || QGuiApplication::applicationState() == Qt::ApplicationSuspended)
+    if (QAndroidEventDispatcherStopper::stopped() ||
+        QGuiApplication::applicationState() == Qt::ApplicationSuspended) {
         return m_eglSurface;
+    }
 
     QMutexLocker lock(&m_surfaceMutex);
 
-    if (m_nativeSurfaceId == -1) {
+    if (!m_surfaceCreated) {
         AndroidDeadlockProtector protector;
         if (!protector.acquire())
             return m_eglSurface;
 
-        const bool windowStaysOnTop = bool(window()->flags() & Qt::WindowStaysOnTopHint);
-        m_nativeSurfaceId = QtAndroid::createSurface(this, geometry(), windowStaysOnTop, 32);
+        createSurface();
         m_surfaceWaitCondition.wait(&m_surfaceMutex);
     }
 
@@ -109,7 +87,7 @@ EGLSurface QAndroidPlatformOpenGLWindow::eglSurface(EGLConfig config)
 bool QAndroidPlatformOpenGLWindow::checkNativeSurface(EGLConfig config)
 {
     QMutexLocker lock(&m_surfaceMutex);
-    if (m_nativeSurfaceId == -1 || !m_androidSurfaceObject.isValid())
+    if (!m_surfaceCreated || !m_androidSurfaceObject.isValid())
         return false; // makeCurrent is NOT needed.
 
     createEgl(config);
@@ -126,10 +104,7 @@ void QAndroidPlatformOpenGLWindow::applicationStateChanged(Qt::ApplicationState 
     QAndroidPlatformWindow::applicationStateChanged(state);
     if (state <=  Qt::ApplicationHidden) {
         lockSurface();
-        if (m_nativeSurfaceId != -1) {
-            QtAndroid::destroySurface(m_nativeSurfaceId);
-            m_nativeSurfaceId = -1;
-        }
+        destroySurface();
         clearEgl();
         unlockSurface();
     }
@@ -169,26 +144,6 @@ void QAndroidPlatformOpenGLWindow::clearEgl()
     if (m_nativeWindow) {
         ANativeWindow_release(m_nativeWindow);
         m_nativeWindow = 0;
-    }
-}
-
-void QAndroidPlatformOpenGLWindow::surfaceChanged(JNIEnv *jniEnv, jobject surface, int w, int h)
-{
-    Q_UNUSED(jniEnv);
-    Q_UNUSED(w);
-    Q_UNUSED(h);
-
-    lockSurface();
-    m_androidSurfaceObject = surface;
-    if (surface) // wait until we have a valid surface to draw into
-        m_surfaceWaitCondition.wakeOne();
-    unlockSurface();
-
-    if (surface) {
-        // repaint the window, when we have a valid surface
-        QRect availableGeometry = screen()->availableGeometry();
-        if (geometry().width() > 0 && geometry().height() > 0 && availableGeometry.width() > 0 && availableGeometry.height() > 0)
-            QWindowSystemInterface::handleExposeEvent(window(), QRegion(QRect(QPoint(), geometry().size())));
     }
 }
 

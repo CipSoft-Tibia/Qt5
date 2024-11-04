@@ -12,7 +12,17 @@
 #include "cc/test/skia_common.h"
 #include "cc/test/test_skcanvas.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkImage.h"
+#include "third_party/skia/include/core/SkImageInfo.h"
+#include "third_party/skia/include/core/SkMatrix.h"
+#include "third_party/skia/include/core/SkPixmap.h"
+#include "third_party/skia/include/core/SkRect.h"
+#include "third_party/skia/include/core/SkRefCnt.h"
+#include "third_party/skia/include/core/SkShader.h"
+#include "third_party/skia/include/core/SkSize.h"
 #include "third_party/skia/include/core/SkSurface.h"
+#include "third_party/skia/include/core/SkTileMode.h"
 
 namespace cc {
 namespace {
@@ -40,7 +50,7 @@ class MockImageProvider : public ImageProvider {
     SkBitmap bitmap;
     bitmap.allocN32Pixels(10, 10);
     bitmap.eraseColor(SK_ColorBLACK);
-    sk_sp<SkImage> image = SkImage::MakeFromBitmap(bitmap);
+    sk_sp<SkImage> image = SkImages::RasterFromBitmap(bitmap);
     return ScopedResult(DecodedDrawImage(image, nullptr, SkSize::MakeEmpty(),
                                          SkSize::Make(1.0f, 1.0f),
                                          draw_image.filter_quality(), true));
@@ -109,7 +119,7 @@ TEST(PaintShaderTest, DecodePaintRecord) {
 
   // The rasterization of the shader is internal to skia, so use a raster canvas
   // to verify that the decoded paint does not have the encoded image.
-  auto surface = SkSurface::MakeRaster(SkImageInfo::MakeN32Premul(100, 100));
+  auto surface = SkSurfaces::Raster(SkImageInfo::MakeN32Premul(100, 100));
   surface->getCanvas()->drawPaint(canvas.paint_);
 
   // Using the shader requests decode for images at the correct scale.

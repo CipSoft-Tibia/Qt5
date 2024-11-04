@@ -5,14 +5,17 @@
 #ifndef QFLOAT16_H
 #define QFLOAT16_H
 
+#include <QtCore/qcompare.h>
 #include <QtCore/qglobal.h>
 #include <QtCore/qhashfunctions.h>
 #include <QtCore/qmath.h>
 #include <QtCore/qnamespace.h>
+#include <QtCore/qtconfigmacros.h>
 #include <QtCore/qtypes.h>
 
 #include <limits>
 #include <string.h>
+#include <type_traits>
 
 #if defined(QT_COMPILER_SUPPORTS_F16C) && defined(__AVX2__) && !defined(__F16C__)
 // All processors that support AVX2 do support F16C too, so we could enable the
@@ -50,6 +53,19 @@ class qfloat16
         constexpr inline explicit Wrap(int value) : b16(quint16(value)) {}
     };
 
+#ifdef QT_SUPPORTS_INT128
+    template <typename T>
+    using IsIntegral = std::disjunction<std::is_integral<T>,
+                                        std::is_same<std::remove_const_t<T>, qint128>,
+                                        std::is_same<std::remove_const_t<T>, quint128>>;
+#else
+    template <typename T>
+    using IsIntegral = std::is_integral<T>;
+#endif
+    template <typename T>
+    using if_type_is_integral = std::enable_if_t<IsIntegral<std::remove_reference_t<T>>::value,
+                                                 bool>;
+
 public:
     using NativeType = QtPrivate::NativeFloat16Type;
 
@@ -78,6 +94,22 @@ public:
     qfloat16 copySign(qfloat16 sign) const noexcept
     { return qfloat16(Wrap((sign.b16 & 0x8000) | (b16 & 0x7fff))); }
     // Support for std::numeric_limits<qfloat16>
+
+#ifdef __STDCPP_FLOAT16_T__
+private:
+    using Bounds = std::numeric_limits<NativeType>;
+public:
+    static constexpr qfloat16 _limit_epsilon()    noexcept { return Bounds::epsilon(); }
+    static constexpr qfloat16 _limit_min()        noexcept { return Bounds::min(); }
+    static constexpr qfloat16 _limit_denorm_min() noexcept { return Bounds::denorm_min(); }
+    static constexpr qfloat16 _limit_max()        noexcept { return Bounds::max(); }
+    static constexpr qfloat16 _limit_lowest()     noexcept { return Bounds::lowest(); }
+    static constexpr qfloat16 _limit_infinity()   noexcept { return Bounds::infinity(); }
+    static constexpr qfloat16 _limit_quiet_NaN()  noexcept { return Bounds::quiet_NaN(); }
+#if QT_CONFIG(signaling_nan)
+    static constexpr qfloat16 _limit_signaling_NaN() noexcept { return Bounds::signaling_NaN(); }
+#endif
+#else
     static constexpr qfloat16 _limit_epsilon()    noexcept { return qfloat16(Wrap(0x1400)); }
     static constexpr qfloat16 _limit_min()        noexcept { return qfloat16(Wrap(0x400)); }
     static constexpr qfloat16 _limit_denorm_min() noexcept { return qfloat16(Wrap(1)); }
@@ -87,6 +119,7 @@ public:
     static constexpr qfloat16 _limit_quiet_NaN()  noexcept { return qfloat16(Wrap(0x7e00)); }
 #if QT_CONFIG(signaling_nan)
     static constexpr qfloat16 _limit_signaling_NaN() noexcept { return qfloat16(Wrap(0x7d00)); }
+#endif
 #endif
     inline constexpr bool isNormal() const noexcept
     { return (b16 & 0x7c00) && (b16 & 0x7c00) != 0x7c00; }
@@ -103,7 +136,13 @@ private:
         NativeType nf;
 #endif
     };
-    constexpr inline explicit qfloat16(Wrap nibble) noexcept : b16(nibble.b16) {}
+    constexpr inline explicit qfloat16(Wrap nibble) noexcept :
+#if QFLOAT16_IS_NATIVE && defined(__cpp_lib_bit_cast)
+        nf(std::bit_cast<NativeType>(nibble.b16))
+#else
+        b16(nibble.b16)
+#endif
+    {}
 
     Q_CORE_EXPORT static const quint32 mantissatable[];
     Q_CORE_EXPORT static const quint32 exponenttable[];
@@ -128,6 +167,9 @@ private:
 
     friend size_t qHash(qfloat16 key, size_t seed = 0) noexcept
     { return qHash(float(key), seed); } // 6.4 algorithm, so keep using it; ### Qt 7: fix QTBUG-116077
+
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_GCC("-Wfloat-conversion")
 
 #define QF16_MAKE_ARITH_OP_FP(FP, OP) \
     friend inline FP operator OP(qfloat16 lhs, FP rhs) noexcept { return static_cast<FP>(lhs) OP rhs; } \
@@ -164,44 +206,63 @@ private:
     QF16_MAKE_ARITH_OP_INT(/)
 #undef QF16_MAKE_ARITH_OP_INT
 
-QT_WARNING_PUSH
 QT_WARNING_DISABLE_FLOAT_COMPARE
 
-    friend inline bool operator>(qfloat16 a, qfloat16 b)  noexcept { return static_cast<NearestFloat>(a) >  static_cast<NearestFloat>(b); }
-    friend inline bool operator<(qfloat16 a, qfloat16 b)  noexcept { return static_cast<NearestFloat>(a) <  static_cast<NearestFloat>(b); }
-    friend inline bool operator>=(qfloat16 a, qfloat16 b) noexcept { return static_cast<NearestFloat>(a) >= static_cast<NearestFloat>(b); }
-    friend inline bool operator<=(qfloat16 a, qfloat16 b) noexcept { return static_cast<NearestFloat>(a) <= static_cast<NearestFloat>(b); }
-    friend inline bool operator==(qfloat16 a, qfloat16 b) noexcept { return static_cast<NearestFloat>(a) == static_cast<NearestFloat>(b); }
-    friend inline bool operator!=(qfloat16 a, qfloat16 b) noexcept { return static_cast<NearestFloat>(a) != static_cast<NearestFloat>(b); }
+#if QFLOAT16_IS_NATIVE
+#  define QF16_CONSTEXPR constexpr
+#  define QF16_PARTIALLY_ORDERED Q_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE
+#else
+#  define QF16_CONSTEXPR
+#  define QF16_PARTIALLY_ORDERED Q_DECLARE_PARTIALLY_ORDERED
+#endif
 
-#define QF16_MAKE_BOOL_OP_FP(FP, OP) \
-    friend inline bool operator OP(qfloat16 lhs, FP rhs) noexcept { return static_cast<FP>(lhs) OP rhs; } \
-    friend inline bool operator OP(FP lhs, qfloat16 rhs) noexcept { return lhs OP static_cast<FP>(rhs); }
-#define QF16_MAKE_BOOL_OP(FP) \
-    QF16_MAKE_BOOL_OP_FP(FP, <) \
-    QF16_MAKE_BOOL_OP_FP(FP, >) \
-    QF16_MAKE_BOOL_OP_FP(FP, >=) \
-    QF16_MAKE_BOOL_OP_FP(FP, <=) \
-    QF16_MAKE_BOOL_OP_FP(FP, ==) \
-    QF16_MAKE_BOOL_OP_FP(FP, !=)
+    friend QF16_CONSTEXPR bool comparesEqual(const qfloat16 &lhs, const qfloat16 &rhs) noexcept
+    { return static_cast<NearestFloat>(lhs) == static_cast<NearestFloat>(rhs); }
+    friend QF16_CONSTEXPR
+    Qt::partial_ordering compareThreeWay(const qfloat16 &lhs, const qfloat16 &rhs) noexcept
+    { return Qt::compareThreeWay(static_cast<NearestFloat>(lhs), static_cast<NearestFloat>(rhs)); }
+    QF16_PARTIALLY_ORDERED(qfloat16)
 
-    QF16_MAKE_BOOL_OP(long double)
-    QF16_MAKE_BOOL_OP(double)
-    QF16_MAKE_BOOL_OP(float)
-#undef QF16_MAKE_BOOL_OP
-#undef QF16_MAKE_BOOL_OP_FP
+#define QF16_MAKE_ORDER_OP_FP(FP) \
+    friend QF16_CONSTEXPR bool comparesEqual(const qfloat16 &lhs, FP rhs) noexcept \
+    { return static_cast<FP>(lhs) == rhs; } \
+    friend QF16_CONSTEXPR \
+    Qt::partial_ordering compareThreeWay(const qfloat16 &lhs, FP rhs) noexcept \
+    { return Qt::compareThreeWay(static_cast<FP>(lhs), rhs); } \
+    QF16_PARTIALLY_ORDERED(qfloat16, FP)
 
-#define QF16_MAKE_BOOL_OP_INT(OP) \
-    friend inline bool operator OP(qfloat16 a, int b) noexcept { return static_cast<NearestFloat>(a) OP static_cast<NearestFloat>(b); } \
-    friend inline bool operator OP(int a, qfloat16 b) noexcept { return static_cast<NearestFloat>(a) OP static_cast<NearestFloat>(b); }
+    QF16_MAKE_ORDER_OP_FP(long double)
+    QF16_MAKE_ORDER_OP_FP(double)
+    QF16_MAKE_ORDER_OP_FP(float)
+#if QFLOAT16_IS_NATIVE
+    QF16_MAKE_ORDER_OP_FP(qfloat16::NativeType)
+#endif
+#undef QF16_MAKE_ORDER_OP_FP
 
-    QF16_MAKE_BOOL_OP_INT(>)
-    QF16_MAKE_BOOL_OP_INT(<)
-    QF16_MAKE_BOOL_OP_INT(>=)
-    QF16_MAKE_BOOL_OP_INT(<=)
-    QF16_MAKE_BOOL_OP_INT(==)
-    QF16_MAKE_BOOL_OP_INT(!=)
-#undef QF16_MAKE_BOOL_OP_INT
+    template <typename T, if_type_is_integral<T> = true>
+    friend QF16_CONSTEXPR bool comparesEqual(const qfloat16 &lhs, T rhs) noexcept
+    { return static_cast<NearestFloat>(lhs) == static_cast<NearestFloat>(rhs); }
+    template <typename T, if_type_is_integral<T> = true>
+    friend QF16_CONSTEXPR Qt::partial_ordering compareThreeWay(const qfloat16 &lhs, T rhs) noexcept
+    { return Qt::compareThreeWay(static_cast<NearestFloat>(lhs), static_cast<NearestFloat>(rhs)); }
+
+    QF16_PARTIALLY_ORDERED(qfloat16, qint8)
+    QF16_PARTIALLY_ORDERED(qfloat16, quint8)
+    QF16_PARTIALLY_ORDERED(qfloat16, qint16)
+    QF16_PARTIALLY_ORDERED(qfloat16, quint16)
+    QF16_PARTIALLY_ORDERED(qfloat16, qint32)
+    QF16_PARTIALLY_ORDERED(qfloat16, quint32)
+    QF16_PARTIALLY_ORDERED(qfloat16, long)
+    QF16_PARTIALLY_ORDERED(qfloat16, unsigned long)
+    QF16_PARTIALLY_ORDERED(qfloat16, qint64)
+    QF16_PARTIALLY_ORDERED(qfloat16, quint64)
+#ifdef QT_SUPPORTS_INT128
+    QF16_PARTIALLY_ORDERED(qfloat16, qint128)
+    QF16_PARTIALLY_ORDERED(qfloat16, quint128)
+#endif
+
+#undef QF16_PARTIALLY_ORDERED
+#undef QF16_CONSTEXPR
 
 QT_WARNING_POP
 

@@ -26,14 +26,20 @@
 #include "config.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <string.h>
+#include <sys/mman.h>
 #include <sys/types.h>
 
 #include <libweston/libweston.h>
 #include "linux-dmabuf.h"
 #include "linux-dmabuf-unstable-v1-server-protocol.h"
+#include "shared/os-compatibility.h"
+#include "shared/helpers.h"
 #include "libweston-internal.h"
+#include "shared/weston-drm-fourcc.h"
 
 static void
 linux_dmabuf_buffer_destroy(struct linux_dmabuf_buffer *buffer)
@@ -116,8 +122,7 @@ params_add(struct wl_client *client,
 	if (wl_resource_get_version(params_resource) < ZWP_LINUX_DMABUF_V1_MODIFIER_SINCE_VERSION)
 		buffer->attributes.modifier[plane_idx] = DRM_FORMAT_MOD_INVALID;
 	else
-		buffer->attributes.modifier[plane_idx] = ((uint64_t)modifier_hi << 32) |
-							 modifier_lo;
+		buffer->attributes.modifier[plane_idx] = u64_from_u32s(modifier_hi, modifier_lo);
 
 	buffer->attributes.n_planes++;
 }
@@ -394,6 +399,542 @@ err_out:
 	wl_resource_post_no_memory(linux_dmabuf_resource);
 }
 
+/** Creates dma-buf feedback tranche
+ *
+ * The tranche is added to dma-buf feedback's tranche list
+ *
+ * @param dmabuf_feedback The dma-buf feedback object to which the tranche is added
+ * @param format_table The dma-buf feedback formats table
+ * @param target_device The target device of the new tranche
+ * @param flags The flags of the new tranche
+ * @param preference The preference of the new tranche
+ * @return The tranche created, or NULL on failure
+ */
+WL_EXPORT struct weston_dmabuf_feedback_tranche *
+weston_dmabuf_feedback_tranche_create(struct weston_dmabuf_feedback *dmabuf_feedback,
+				      struct weston_dmabuf_feedback_format_table *format_table,
+				      dev_t target_device, uint32_t flags,
+				      enum weston_dmabuf_feedback_tranche_preference preference)
+{
+	struct weston_dmabuf_feedback_tranche *tranche, *ptr;
+	struct wl_list *pos;
+
+	tranche = zalloc(sizeof(*tranche));
+	if (!tranche) {
+		weston_log("%s: out of memory\n", __func__);
+		return NULL;
+	}
+
+	tranche->active = true;
+	tranche->target_device = target_device;
+	tranche->flags = flags;
+	tranche->preference = preference;
+
+	/* Get the formats indices array */
+	if (flags == 0) {
+		if (wl_array_copy(&tranche->formats_indices,
+				  &format_table->renderer_formats_indices) < 0) {
+			weston_log("%s: out of memory\n", __func__);
+			goto err;
+		}
+	} else if (flags & ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SCANOUT) {
+		if (wl_array_copy(&tranche->formats_indices,
+				  &format_table->scanout_formats_indices) < 0) {
+			weston_log("%s: out of memory\n", __func__);
+			goto err;
+		}
+	} else {
+		weston_log("error: for now we just have renderer and scanout "
+			   "tranches, can't create other type of tranche\n");
+		goto err;
+	}
+
+	/* The list of tranches is ordered by preference.
+	 * Highest preference comes first. */
+	pos = &dmabuf_feedback->tranche_list;
+	wl_list_for_each(ptr, &dmabuf_feedback->tranche_list, link) {
+		pos = &ptr->link;
+		if (ptr->preference <= tranche->preference)
+			break;
+	}
+	wl_list_insert(pos->prev, &tranche->link);
+
+	return tranche;
+
+err:
+	free(tranche);
+	return NULL;
+}
+
+static void
+weston_dmabuf_feedback_tranche_destroy(struct weston_dmabuf_feedback_tranche *tranche)
+{
+	wl_array_release(&tranche->formats_indices);
+	wl_list_remove(&tranche->link);
+	free(tranche);
+}
+
+static int
+format_table_add_renderer_formats(struct weston_dmabuf_feedback_format_table *format_table,
+				  const struct weston_drm_format_array *renderer_formats)
+{
+	struct weston_drm_format *fmt;
+	unsigned int num_modifiers;
+	const uint64_t *modifiers;
+	uint16_t index, *index_ptr;
+	unsigned int size;
+	unsigned int i;
+
+	size = sizeof(index) *
+	       weston_drm_format_array_count_pairs(renderer_formats);
+
+	if (!wl_array_add(&format_table->renderer_formats_indices, size)) {
+		weston_log("%s: out of memory\n", __func__);
+		return -1;
+	}
+
+	index = 0;
+	wl_array_for_each(fmt, &renderer_formats->arr) {
+		modifiers = weston_drm_format_get_modifiers(fmt, &num_modifiers);
+		for (i = 0; i < num_modifiers; i++) {
+			format_table->data[index].format = fmt->format;
+			format_table->data[index].modifier = modifiers[i];
+			index++;
+		}
+	}
+
+	index = 0;
+	wl_array_for_each(index_ptr, &format_table->renderer_formats_indices)
+		*index_ptr = index++;
+
+	return 0;
+}
+
+/** Creates dma-buf feedback format table
+ *
+ * @param renderer_formats The formats that compose the table
+ * @return The dma-buf feedback format table, or NULL on failure
+ */
+WL_EXPORT struct weston_dmabuf_feedback_format_table *
+weston_dmabuf_feedback_format_table_create(const struct weston_drm_format_array *renderer_formats)
+{
+	struct weston_dmabuf_feedback_format_table *format_table;
+	int ret;
+
+	format_table = zalloc(sizeof(*format_table));
+	if (!format_table) {
+		weston_log("%s: out of memory\n", __func__);
+		return NULL;
+	}
+	wl_array_init(&format_table->renderer_formats_indices);
+	wl_array_init(&format_table->scanout_formats_indices);
+
+	/* Creates formats file table and mmap it */
+	format_table->size = weston_drm_format_array_count_pairs(renderer_formats) *
+			     sizeof(*format_table->data);
+	format_table->fd = os_create_anonymous_file(format_table->size);
+	if (format_table->fd < 0) {
+		weston_log("error: failed to create format table file: %s\n",
+			   strerror(errno));
+		goto err_fd;
+	}
+	format_table->data = mmap(NULL, format_table->size, PROT_READ | PROT_WRITE,
+				  MAP_SHARED, format_table->fd, 0);
+	if (format_table->data == MAP_FAILED) {
+		weston_log("error: mmap for format table failed: %s\n",
+			   strerror(errno));
+		goto err_mmap;
+	}
+
+	/* Add renderer formats to file table */
+	ret = format_table_add_renderer_formats(format_table, renderer_formats);
+	if (ret < 0)
+		goto err_formats;
+
+	return format_table;
+
+err_formats:
+	munmap(format_table->data, format_table->size);
+err_mmap:
+	close(format_table->fd);
+err_fd:
+	wl_array_release(&format_table->renderer_formats_indices);
+	free(format_table);
+	return NULL;
+}
+
+/** Destroys dma-buf feedback formats table
+ *
+ * @param format_table The dma-buf feedback format table to destroy
+ */
+WL_EXPORT void
+weston_dmabuf_feedback_format_table_destroy(struct weston_dmabuf_feedback_format_table *format_table)
+{
+	wl_array_release(&format_table->renderer_formats_indices);
+	wl_array_release(&format_table->scanout_formats_indices);
+
+	munmap(format_table->data, format_table->size);
+	close(format_table->fd);
+
+	free(format_table);
+}
+
+static int
+format_table_get_format_index(struct weston_dmabuf_feedback_format_table *format_table,
+			      uint32_t format, uint64_t modifier, uint16_t *index_out)
+{
+	uint16_t index;
+	unsigned int num_elements = format_table->size / sizeof(index);
+
+	for (index = 0; index < num_elements; index++) {
+		if (format_table->data[index].format == format &&
+		    format_table->data[index].modifier == modifier) {
+			*index_out = index;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
+/** Set scanout formats indices in the dma-buf feedback format table
+ *
+ * The table consists of the formats supported by the renderer. A dma-buf
+ * feedback scanout tranche consists of the union of the KMS plane's formats
+ * intersected with the renderer formats. With this function we compute the
+ * indices of these plane's formats in the table and save them in the
+ * table->scanout_formats_indices, allowing us to create scanout tranches.
+ *
+ * @param format_table The dma-buf feedback format table
+ * @param scanout_formats The scanout formats
+ * @return 0 on success, -1 on failure
+ */
+WL_EXPORT int
+weston_dmabuf_feedback_format_table_set_scanout_indices(struct weston_dmabuf_feedback_format_table *format_table,
+							const struct weston_drm_format_array *scanout_formats)
+{
+	struct weston_drm_format *fmt;
+	unsigned int num_modifiers;
+	const uint64_t *modifiers;
+	uint16_t index, *index_ptr;
+	unsigned int i;
+	int ret;
+
+	wl_array_for_each(fmt, &scanout_formats->arr) {
+		modifiers = weston_drm_format_get_modifiers(fmt, &num_modifiers);
+		for (i = 0; i < num_modifiers; i++) {
+			index_ptr =
+				wl_array_add(&format_table->scanout_formats_indices,
+					     sizeof(index));
+			if (!index_ptr)
+				goto err;
+
+			ret = format_table_get_format_index(format_table, fmt->format,
+							    modifiers[i], &index);
+			if (ret < 0)
+				goto err;
+
+			*index_ptr = index;
+		}
+	}
+
+	return 0;
+
+err:
+	wl_array_release(&format_table->scanout_formats_indices);
+	wl_array_init(&format_table->scanout_formats_indices);
+	return -1;
+}
+
+/** Creates dma-buf feedback object
+ *
+ * @param main_device The main device of the dma-buf feedback
+ * @return The dma-buf feedback object created, or NULL on failure
+ */
+WL_EXPORT struct weston_dmabuf_feedback *
+weston_dmabuf_feedback_create(dev_t main_device)
+{
+	struct weston_dmabuf_feedback *dmabuf_feedback;
+
+	dmabuf_feedback = zalloc(sizeof(*dmabuf_feedback));
+	if (!dmabuf_feedback) {
+		weston_log("%s: out of memory\n", __func__);
+		return NULL;
+	}
+
+	dmabuf_feedback->main_device = main_device;
+	wl_list_init(&dmabuf_feedback->tranche_list);
+	wl_list_init(&dmabuf_feedback->resource_list);
+
+	return dmabuf_feedback;
+}
+
+/** Destroy dma-buf feedback object
+ *
+ * @param dmabuf_feedback The dma-buf feedback object to destroy
+ */
+WL_EXPORT void
+weston_dmabuf_feedback_destroy(struct weston_dmabuf_feedback *dmabuf_feedback)
+{
+	struct weston_dmabuf_feedback_tranche *tranche, *tranche_tmp;
+	struct wl_resource *res, *res_tmp;
+
+	wl_list_for_each_safe(tranche, tranche_tmp, &dmabuf_feedback->tranche_list, link)
+		weston_dmabuf_feedback_tranche_destroy(tranche);
+
+	wl_resource_for_each_safe(res, res_tmp, &dmabuf_feedback->resource_list) {
+		wl_list_remove(wl_resource_get_link(res));
+		wl_list_init(wl_resource_get_link(res));
+		wl_resource_set_user_data(res, NULL);
+	}
+
+	free(dmabuf_feedback);
+}
+
+/** Find tranche in a dma-buf feedback object
+ *
+ * @param dmabuf_feedback The dma-buf feedback object where to look for
+ * @param target_device The target device of the tranche
+ * @param flags The flags of the tranche
+ * @param preference The preference of the tranche
+ * @return The tranche, or NULL if it was not found
+ */
+WL_EXPORT struct weston_dmabuf_feedback_tranche *
+weston_dmabuf_feedback_find_tranche(struct weston_dmabuf_feedback *dmabuf_feedback,
+				    dev_t target_device, uint32_t flags,
+				    enum weston_dmabuf_feedback_tranche_preference preference)
+{
+	struct weston_dmabuf_feedback_tranche *tranche;
+
+	wl_list_for_each(tranche, &dmabuf_feedback->tranche_list, link)
+		if (tranche->target_device == target_device &&
+		    tranche->flags == flags && tranche->preference == preference)
+			return tranche;
+
+	return NULL;
+}
+
+static void
+weston_dmabuf_feedback_send(struct weston_dmabuf_feedback *dmabuf_feedback,
+			    struct weston_dmabuf_feedback_format_table *format_table,
+			    struct wl_resource *res, bool advertise_format_table)
+{
+	struct weston_dmabuf_feedback_tranche *tranche;
+	struct wl_array device;
+	dev_t *dev;
+
+	/* main_device and target_device events need a dev_t as parameter,
+	 * but we can't use this directly to communicate with the Wayland
+	 * client. The solution is to use a wl_array, which is supported by
+	 * Wayland, and add the dev_t as an element of the array. */
+	wl_array_init(&device);
+	dev = wl_array_add(&device, sizeof(*dev));
+	if (!dev) {
+		wl_resource_post_no_memory(res);
+		return;
+	}
+
+	/* format_table event - In Weston, we never modify the dma-buf feedback
+	 * format table. So we have this flag in order to advertise the format
+	 * table only if the client has just subscribed to receive the events
+	 * for this feedback object. When we need to re-send the feedback events
+	 * for this client, the table event won't be sent. */
+	if (advertise_format_table)
+		zwp_linux_dmabuf_feedback_v1_send_format_table(res, format_table->fd,
+							       format_table->size);
+
+	/* main_device event */
+	*dev = dmabuf_feedback->main_device;
+	zwp_linux_dmabuf_feedback_v1_send_main_device(res, &device);
+
+	/* send events for each tranche */
+	wl_list_for_each(tranche, &dmabuf_feedback->tranche_list, link) {
+		if (!tranche->active)
+			continue;
+
+		/* tranche_target_device event */
+		*dev = tranche->target_device;
+		zwp_linux_dmabuf_feedback_v1_send_tranche_target_device(res, &device);
+
+		/* tranche_flags event */
+		zwp_linux_dmabuf_feedback_v1_send_tranche_flags(res, tranche->flags);
+
+		/* tranche_formats event */
+		zwp_linux_dmabuf_feedback_v1_send_tranche_formats(res, &tranche->formats_indices);
+
+		/* tranche_done_event */
+		zwp_linux_dmabuf_feedback_v1_send_tranche_done(res);
+	}
+
+	/* compositor_done_event */
+	zwp_linux_dmabuf_feedback_v1_send_done(res);
+
+	wl_array_release(&device);
+}
+
+/** Sends the feedback events for a dma-buf feedback object
+ *
+ * Given a dma-buf feedback object, this will send events to clients that are
+ * subscribed to it. This is useful for the per-surface dma-buf feedback, which
+ * is dynamic and can change throughout compositor's life. These changes results
+ * in the need to resend the feedback events to clients.
+ *
+ * @param dmabuf_feedback The weston_dmabuf_feedback object
+ * @param format_table The dma-buf feedback formats table
+ */
+WL_EXPORT void
+weston_dmabuf_feedback_send_all(struct weston_dmabuf_feedback *dmabuf_feedback,
+				struct weston_dmabuf_feedback_format_table *format_table)
+{
+	struct wl_resource *res;
+
+	assert(!wl_list_empty(&dmabuf_feedback->resource_list));
+	wl_resource_for_each(res, &dmabuf_feedback->resource_list)
+		weston_dmabuf_feedback_send(dmabuf_feedback,
+					    format_table, res, false);
+}
+
+static void
+dmabuf_feedback_resource_destroy(struct wl_resource *resource)
+{
+	struct weston_surface *surface =
+		wl_resource_get_user_data(resource);
+
+	wl_list_remove(wl_resource_get_link(resource));
+
+	if (surface &&
+	    wl_list_empty(&surface->dmabuf_feedback->resource_list)) {
+		weston_dmabuf_feedback_destroy(surface->dmabuf_feedback);
+		surface->dmabuf_feedback = NULL;
+	}
+}
+
+static void
+dmabuf_feedback_destroy(struct wl_client *client, struct wl_resource *resource)
+{
+	wl_resource_destroy(resource);
+}
+
+static const struct zwp_linux_dmabuf_feedback_v1_interface
+zwp_linux_dmabuf_feedback_implementation = {
+	dmabuf_feedback_destroy
+};
+
+static struct wl_resource *
+dmabuf_feedback_resource_create(struct wl_resource *dmabuf_resource,
+				struct wl_client *client, uint32_t dmabuf_feedback_id,
+				struct weston_surface *surface)
+{
+	struct wl_resource *dmabuf_feedback_res;
+	uint32_t version;
+
+	version = wl_resource_get_version(dmabuf_resource);
+
+	dmabuf_feedback_res =
+		wl_resource_create(client, &zwp_linux_dmabuf_feedback_v1_interface,
+				   version, dmabuf_feedback_id);
+	if (!dmabuf_feedback_res)
+		return NULL;
+
+	wl_list_init(wl_resource_get_link(dmabuf_feedback_res));
+	wl_resource_set_implementation(dmabuf_feedback_res,
+				       &zwp_linux_dmabuf_feedback_implementation,
+				       surface, dmabuf_feedback_resource_destroy);
+
+	return dmabuf_feedback_res;
+}
+
+static void
+linux_dmabuf_get_default_feedback(struct wl_client *client,
+				  struct wl_resource *dmabuf_resource,
+				  uint32_t dmabuf_feedback_id)
+{
+	struct weston_compositor *compositor =
+		wl_resource_get_user_data(dmabuf_resource);
+	struct wl_resource *dmabuf_feedback_resource;
+
+	dmabuf_feedback_resource =
+		dmabuf_feedback_resource_create(dmabuf_resource,
+						client, dmabuf_feedback_id,
+						NULL);
+	if (!dmabuf_feedback_resource) {
+		wl_resource_post_no_memory(dmabuf_resource);
+		return;
+	}
+
+	weston_dmabuf_feedback_send(compositor->default_dmabuf_feedback,
+				    compositor->dmabuf_feedback_format_table,
+				    dmabuf_feedback_resource, true);
+}
+
+static int
+create_surface_dmabuf_feedback(struct weston_compositor *ec,
+			       struct weston_surface *surface)
+{
+	struct weston_dmabuf_feedback_tranche *tranche;
+	dev_t main_device = ec->default_dmabuf_feedback->main_device;
+	uint32_t flags = 0;
+
+	surface->dmabuf_feedback = weston_dmabuf_feedback_create(main_device);
+	if (!surface->dmabuf_feedback)
+		return -1;
+
+	tranche = weston_dmabuf_feedback_tranche_create(surface->dmabuf_feedback,
+							ec->dmabuf_feedback_format_table,
+							main_device, flags,
+							RENDERER_PREF);
+	if (!tranche) {
+		weston_dmabuf_feedback_destroy(surface->dmabuf_feedback);
+		surface->dmabuf_feedback = NULL;
+		return -1;
+	}
+
+	return 0;
+}
+
+static void
+linux_dmabuf_get_per_surface_feedback(struct wl_client *client,
+				      struct wl_resource *dmabuf_resource,
+				      uint32_t dmabuf_feedback_id,
+				      struct wl_resource *surface_resource)
+{
+	struct weston_compositor *compositor =
+		wl_resource_get_user_data(dmabuf_resource);
+	struct weston_surface *surface =
+		wl_resource_get_user_data(surface_resource);
+	struct wl_resource *dmabuf_feedback_resource;
+	int ret;
+
+	dmabuf_feedback_resource =
+		dmabuf_feedback_resource_create(dmabuf_resource,
+						client, dmabuf_feedback_id,
+						surface);
+	if (!dmabuf_feedback_resource)
+		goto err;
+
+	if (!surface->dmabuf_feedback) {
+		ret = create_surface_dmabuf_feedback(compositor, surface);
+		if (ret < 0)
+			goto err_feedback;
+	}
+
+	/* Surface dma-buf feedback is dynamic and may need to be resent to
+	 * clients when they change. So we need to keep the resources list */
+	wl_list_insert(&surface->dmabuf_feedback->resource_list,
+		       wl_resource_get_link(dmabuf_feedback_resource));
+
+	weston_dmabuf_feedback_send(surface->dmabuf_feedback,
+				    surface->compositor->dmabuf_feedback_format_table,
+				    dmabuf_feedback_resource, true);
+	return;
+
+err_feedback:
+	wl_resource_set_user_data(dmabuf_feedback_resource, NULL);
+	wl_resource_destroy(dmabuf_feedback_resource);
+err:
+	wl_resource_post_no_memory(dmabuf_resource);
+}
+
 /** Get the linux_dmabuf_buffer from a wl_buffer resource
  *
  * If the given wl_buffer resource was created through the linux_dmabuf
@@ -468,7 +1009,9 @@ linux_dmabuf_buffer_get_user_data(struct linux_dmabuf_buffer *buffer)
 
 static const struct zwp_linux_dmabuf_v1_interface linux_dmabuf_implementation = {
 	linux_dmabuf_destroy,
-	linux_dmabuf_create_params
+	linux_dmabuf_create_params,
+	linux_dmabuf_get_default_feedback,
+	linux_dmabuf_get_per_surface_feedback
 };
 
 static void
@@ -476,12 +1019,12 @@ bind_linux_dmabuf(struct wl_client *client,
 		  void *data, uint32_t version, uint32_t id)
 {
 	struct weston_compositor *compositor = data;
+	const struct weston_drm_format_array *supported_formats;
 	struct wl_resource *resource;
-	int *formats = NULL;
-	uint64_t *modifiers = NULL;
-	int num_formats, num_modifiers;
-	uint64_t modifier_invalid = DRM_FORMAT_MOD_INVALID;
-	int i, j;
+	struct weston_drm_format *fmt;
+	const uint64_t *modifiers;
+	unsigned int num_modifiers;
+	unsigned int i;
 
 	resource = wl_resource_create(client, &zwp_linux_dmabuf_v1_interface,
 				      version, id);
@@ -493,43 +1036,34 @@ bind_linux_dmabuf(struct wl_client *client,
 	wl_resource_set_implementation(resource, &linux_dmabuf_implementation,
 				       compositor, NULL);
 
-	/*
-	 * Use EGL_EXT_image_dma_buf_import_modifiers to query and advertise
-	 * format/modifier codes.
-	 */
-	compositor->renderer->query_dmabuf_formats(compositor, &formats,
-						   &num_formats);
+	/* Advertise formats/modifiers. From version 4 onwards, we should not send
+	 * zwp_linux_dmabuf_v1_send_modifier and zwp_linux_dmabuf_v1_send_format
+	 * events, instead we must send the dma-buf feedback events. */
+	if (version >= 4)
+		return;
 
-	for (i = 0; i < num_formats; i++) {
-		compositor->renderer->query_dmabuf_modifiers(compositor,
-							     formats[i],
-							     &modifiers,
-							     &num_modifiers);
+	/* If we got here, it means that the renderer is able to import dma-buf
+	 * buffers, and so it must have get_supported_formats() set. */
+	assert(compositor->renderer->get_supported_formats != NULL);
+	supported_formats = compositor->renderer->get_supported_formats(compositor);
 
-		/* send DRM_FORMAT_MOD_INVALID token when no modifiers are supported
-		 * for this format */
-		if (num_modifiers == 0) {
-			num_modifiers = 1;
-			modifiers = &modifier_invalid;
-		}
-		for (j = 0; j < num_modifiers; j++) {
+	wl_array_for_each(fmt, &supported_formats->arr) {
+		modifiers = weston_drm_format_get_modifiers(fmt, &num_modifiers);
+		for (i = 0; i < num_modifiers; i++) {
 			if (version >= ZWP_LINUX_DMABUF_V1_MODIFIER_SINCE_VERSION) {
-				uint32_t modifier_lo = modifiers[j] & 0xFFFFFFFF;
-				uint32_t modifier_hi = modifiers[j] >> 32;
+				uint32_t modifier_lo = modifiers[i] & 0xFFFFFFFF;
+				uint32_t modifier_hi = modifiers[i] >> 32;
 				zwp_linux_dmabuf_v1_send_modifier(resource,
-								  formats[i],
+								  fmt->format,
 								  modifier_hi,
 								  modifier_lo);
-			} else if (modifiers[j] == DRM_FORMAT_MOD_LINEAR ||
-				   modifiers == &modifier_invalid) {
+			} else if (modifiers[i] == DRM_FORMAT_MOD_LINEAR ||
+				   modifiers[i] == DRM_FORMAT_MOD_INVALID) {
 				zwp_linux_dmabuf_v1_send_format(resource,
-								formats[i]);
+								fmt->format);
 			}
 		}
-		if (modifiers != &modifier_invalid)
-			free(modifiers);
 	}
-	free(formats);
 }
 
 /** Advertise linux_dmabuf support
@@ -546,9 +1080,16 @@ bind_linux_dmabuf(struct wl_client *client,
 WL_EXPORT int
 linux_dmabuf_setup(struct weston_compositor *compositor)
 {
+	int max_version;
+
+	/* If we were able to create the default dma-buf feedback for the
+	 * compositor, that means that we are able to advertise dma-buf feedback
+	 * events. In such case we support the version 4 of the protocol. */
+	max_version = compositor->default_dmabuf_feedback ? 4 : 3;
+
 	if (!wl_global_create(compositor->wl_display,
-			      &zwp_linux_dmabuf_v1_interface, 3,
-			      compositor, bind_linux_dmabuf))
+			      &zwp_linux_dmabuf_v1_interface,
+			      max_version, compositor, bind_linux_dmabuf))
 		return -1;
 
 	return 0;

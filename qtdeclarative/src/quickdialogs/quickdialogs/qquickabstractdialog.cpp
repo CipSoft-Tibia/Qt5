@@ -53,7 +53,14 @@ Q_LOGGING_CATEGORY(lcDialogs, "qt.quick.dialogs")
                          v                                  |
                  +-----------------+                        |
                  | m_handle valid? |--------------------->false
-                 +-----------------+
+                 +-----------------+                        ^
+                         |                                  |
+                         v                                  |
+                        true                                |
+                         |                                  |
+                 +-------------------+                      |
+                 | m_handle->show()? |------------------->false
+                 +-------------------+
                          |
                          v
                         true
@@ -261,7 +268,7 @@ void QQuickAbstractDialog::setVisible(bool visible)
 }
 
 /*!
-    \qmlproperty StandardCode QtQuick.Dialogs::Dialog::result
+    \qmlproperty int QtQuick.Dialogs::Dialog::result
 
     This property holds the result code.
 
@@ -272,12 +279,12 @@ void QQuickAbstractDialog::setVisible(bool visible)
     \note MessageDialog sets the result to the value of the clicked standard
           button instead of using the standard result codes.
 */
-QQuickAbstractDialog::StandardCode QQuickAbstractDialog::result() const
+int QQuickAbstractDialog::result() const
 {
     return m_result;
 }
 
-void QQuickAbstractDialog::setResult(StandardCode result)
+void QQuickAbstractDialog::setResult(int result)
 {
     if (m_result == result)
         return;
@@ -302,6 +309,23 @@ void QQuickAbstractDialog::open()
     onShow(m_handle.get());
 
     m_visible = m_handle->show(m_flags, m_modality, windowForOpen());
+    if (!m_visible && useNativeDialog()) {
+        // Fall back to non-native dialog
+        destroy();
+        if (!create(CreateOptions::DontTryNativeDialog))
+            return;
+
+        onShow(m_handle.get());
+        m_visible = m_handle->show(m_flags, m_modality, windowForOpen());
+
+        if (m_visible) {
+            // The conditions that caused the non-native fallback might have
+            // changed the next time open() is called, so we should try again
+            // with a native dialog when that happens.
+            QObject::connect(this, &QQuickAbstractDialog::visibleChanged,
+                m_handle.get(), [this]{ if (!isVisible()) destroy(); });
+        }
+    }
     if (m_visible) {
         m_result = Rejected; // in case an accepted dialog gets re-opened, then closed
         emit visibleChanged();
@@ -328,9 +352,9 @@ void QQuickAbstractDialog::close()
         m_parentWindow = nullptr;
     emit visibleChanged();
 
-    if (m_result == Accepted)
+    if (dialogCode() == Accepted)
         emit accepted();
-    else // if (m_result == Rejected)
+    else if (dialogCode() == Rejected)
         emit rejected();
 }
 
@@ -359,13 +383,13 @@ void QQuickAbstractDialog::reject()
 }
 
 /*!
-    \qmlmethod void QtQuick.Dialogs::Dialog::done(StandardCode result)
+    \qmlmethod void QtQuick.Dialogs::Dialog::done(int result)
 
     Closes the dialog and sets the \a result.
 
     \sa accept(), reject(), result
 */
-void QQuickAbstractDialog::done(StandardCode result)
+void QQuickAbstractDialog::done(int result)
 {
     setResult(result);
     close();
@@ -409,15 +433,15 @@ QPlatformTheme::DialogType toPlatformDialogType(QQuickDialogType quickDialogType
         ? QPlatformTheme::FileDialog : static_cast<QPlatformTheme::DialogType>(quickDialogType);
 }
 
-bool QQuickAbstractDialog::create()
+bool QQuickAbstractDialog::create(CreateOptions createOptions)
 {
     qCDebug(lcDialogs) << qmlTypeName(this) << "attempting to create dialog backend of type"
         << int(m_type) << "with parent window" << m_parentWindow;
     if (m_handle)
         return m_handle.get();
 
-    qCDebug(lcDialogs) << "- attempting to create a native dialog";
-    if (useNativeDialog()) {
+    if ((createOptions != CreateOptions::DontTryNativeDialog) && useNativeDialog()) {
+        qCDebug(lcDialogs) << "- attempting to create a native dialog";
         m_handle.reset(QGuiApplicationPrivate::platformTheme()->createPlatformDialogHelper(
             toPlatformDialogType(m_type)));
     }
@@ -482,6 +506,8 @@ void QQuickAbstractDialog::onHide(QPlatformDialogHelper *dialog)
 {
     Q_UNUSED(dialog);
 }
+
+int QQuickAbstractDialog::dialogCode() const { return m_result; }
 
 QQuickItem *QQuickAbstractDialog::findParentItem() const
 {

@@ -386,10 +386,9 @@ void QHttpPartPrivate::checkHeaderCreated() const
 {
     if (!headerCreated) {
         // copied from QHttpNetworkRequestPrivate::header() and adapted
-        QList<QPair<QByteArray, QByteArray> > fields = allRawHeaders();
-        QList<QPair<QByteArray, QByteArray> >::const_iterator it = fields.constBegin();
-        for (; it != fields.constEnd(); ++it)
-            header += it->first + ": " + it->second + "\r\n";
+        const auto fields = allRawHeaders();
+        for (const auto &[name, value] : fields)
+            header += name + ": " + value + "\r\n";
         header += "\r\n";
         headerCreated = true;
     }
@@ -406,6 +405,14 @@ QHttpMultiPartPrivate::QHttpMultiPartPrivate() : contentType(QHttpMultiPart::Mix
     // boundary must not be longer than 70 characters, see RFC 2046, section 5.1.1
     Q_ASSERT(boundary.size() <= 70);
 }
+
+QHttpMultiPartPrivate::~QHttpMultiPartPrivate()
+{
+    delete device;
+}
+
+QHttpMultiPartIODevice::~QHttpMultiPartIODevice()
+    = default;
 
 qint64 QHttpMultiPartIODevice::size() const
 {

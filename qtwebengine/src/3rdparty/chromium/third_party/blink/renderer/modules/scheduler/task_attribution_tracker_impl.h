@@ -5,6 +5,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_SCHEDULER_TASK_ATTRIBUTION_TRACKER_IMPL_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_SCHEDULER_TASK_ATTRIBUTION_TRACKER_IMPL_H_
 
+#include "base/containers/contains.h"
 #include "third_party/blink/public/common/scheduler/task_attribution_id.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
@@ -15,6 +16,8 @@
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
+class AbortSignal;
+class DOMTaskSignal;
 class ScriptWrappableTaskState;
 }  // namespace blink
 
@@ -48,6 +51,13 @@ class MODULES_EXPORT TaskAttributionTrackerImpl
       absl::optional<TaskAttributionId> parent_task_id,
       TaskScopeType type) override;
 
+  std::unique_ptr<TaskScope> CreateTaskScope(
+      ScriptState* script_state,
+      absl::optional<TaskAttributionId> parent_task_id,
+      TaskScopeType type,
+      AbortSignal* abort_source,
+      DOMTaskSignal* priority_source) override;
+
   // The vector size limits the amount of tasks we keep track of. Setting this
   // value too small can result in calls to `IsAncestor` returning an `Unknown`
   // ancestor status. If this happens a lot in realistic scenarios, we'd need to
@@ -61,7 +71,7 @@ class MODULES_EXPORT TaskAttributionTrackerImpl
   void TaskScopeCompleted(ScriptState*, TaskAttributionId);
 
   void RegisterObserver(TaskAttributionTracker::Observer* observer) override {
-    if (observers_.find(observer) == observers_.end()) {
+    if (!base::Contains(observers_, observer)) {
       observers_.insert(observer);
     }
   }

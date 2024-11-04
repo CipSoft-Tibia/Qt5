@@ -33,6 +33,8 @@
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/mojom/media/capture_handle_config.mojom.h"
+#include "third_party/blink/public/mojom/mediastream/media_devices.mojom.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -60,11 +62,11 @@ const size_t kNumAudioInputDevices = 2;
 const auto kIgnoreLogMessageCB = base::DoNothing();
 
 std::string salt = "fake_media_device_salt";
-MediaDeviceSaltAndOrigin GetSaltAndOrigin(int /* process_id */,
-                                          int /* frame_id */) {
-  return MediaDeviceSaltAndOrigin(salt, "fake_group_id_salt",
-                                  url::Origin::Create(GURL("https://test.com")),
-                                  /*has_focus=*/true, /*is_background=*/false);
+void GetSaltAndOrigin(GlobalRenderFrameHostId,
+                      MediaDeviceSaltAndOriginCallback callback) {
+  std::move(callback).Run(MediaDeviceSaltAndOrigin(
+      salt, url::Origin::Create(GURL("https://test.com")), "fake_group_id_salt",
+      /*has_focus=*/true, /*is_background=*/false));
 }
 
 // This class mocks the audio manager and overrides some methods to ensure that
@@ -232,6 +234,46 @@ void VerifyDeviceAndGroupID(
   }
 }
 
+class MockMediaDevicesDispatcherHost
+    : public blink::mojom::MediaDevicesDispatcherHost {
+  MOCK_METHOD(void,
+              EnumerateDevices,
+              (bool request_audio_input,
+               bool request_video_input,
+               bool request_audio_output,
+               bool request_video_input_capabilities,
+               bool request_audio_input_capabilities,
+               EnumerateDevicesCallback callback));
+  MOCK_METHOD(void,
+              GetVideoInputCapabilities,
+              (GetVideoInputCapabilitiesCallback callback));
+  MOCK_METHOD(void,
+              GetAllVideoInputDeviceFormats,
+              (const std::string& device_id,
+               GetAllVideoInputDeviceFormatsCallback callback));
+  MOCK_METHOD(void,
+              GetAvailableVideoInputDeviceFormats,
+              (const std::string& device_id,
+               GetAvailableVideoInputDeviceFormatsCallback callback));
+  MOCK_METHOD(void,
+              GetAudioInputCapabilities,
+              (GetAudioInputCapabilitiesCallback callback));
+  MOCK_METHOD(
+      void,
+      AddMediaDevicesListener,
+      (bool subscribe_audio_input,
+       bool subscribe_video_input,
+       bool subscribe_audio_output,
+       mojo::PendingRemote<blink::mojom::MediaDevicesListener> listener));
+  MOCK_METHOD(void,
+              SetCaptureHandleConfig,
+              (::blink::mojom::CaptureHandleConfigPtr config));
+#if !BUILDFLAG(IS_ANDROID)
+  MOCK_METHOD(void, CloseFocusWindowOfOpportunity, (const std::string& label));
+  MOCK_METHOD(void, ProduceCropId, (ProduceCropIdCallback callback));
+#endif
+};
+
 }  // namespace
 
 class MediaDevicesManagerTest : public ::testing::Test {
@@ -347,7 +389,7 @@ class MediaDevicesManagerTest : public ::testing::Test {
         base::BindRepeating(
             &MockMediaDevicesManagerClient::InputDevicesChangedUI,
             base::Unretained(&media_devices_manager_client_)));
-    media_devices_manager_->set_salt_and_origin_callback_for_testing(
+    media_devices_manager_->set_get_salt_and_origin_cb_for_testing(
         base::BindRepeating(&GetSaltAndOrigin));
     media_devices_manager_->SetPermissionChecker(
         std::make_unique<MediaDevicesPermissionChecker>(true));
@@ -377,7 +419,8 @@ class MediaDevicesManagerTest : public ::testing::Test {
 
   std::unique_ptr<MediaDevicesManager> media_devices_manager_;
   scoped_refptr<VideoCaptureManager> video_capture_manager_;
-  raw_ptr<MockVideoCaptureDeviceFactory> video_capture_device_factory_;
+  raw_ptr<MockVideoCaptureDeviceFactory, DanglingUntriaged>
+      video_capture_device_factory_;
   std::unique_ptr<MockAudioManager> audio_manager_;
   std::unique_ptr<media::AudioSystem> audio_system_;
   testing::StrictMock<MockMediaDevicesManagerClient>
@@ -1305,6 +1348,31 @@ TEST_F(MediaDevicesManagerTest, EnumerateVideoInputFailsOnce) {
   }
   ExpectVideoEnumerationHistogramReport(/*success_count=*/kNumCalls - 1,
                                         /*error_count=*/1);
+}
+
+TEST_F(MediaDevicesManagerTest, RegisterUnregisterDispatcherHosts) {
+  mojo::Remote<blink::mojom::MediaDevicesDispatcherHost> client1;
+  media_devices_manager_->RegisterDispatcherHost(
+      std::make_unique<MockMediaDevicesDispatcherHost>(),
+      client1.BindNewPipeAndPassReceiver());
+  EXPECT_EQ(media_devices_manager_->num_registered_dispatcher_hosts(), 1u);
+
+  mojo::Remote<blink::mojom::MediaDevicesDispatcherHost> client2;
+  media_devices_manager_->RegisterDispatcherHost(
+      std::make_unique<MockMediaDevicesDispatcherHost>(),
+      client2.BindNewPipeAndPassReceiver());
+  EXPECT_EQ(media_devices_manager_->num_registered_dispatcher_hosts(), 2u);
+
+  // Closing a pipe deregisters the corresponding dispatcher host.
+  client1.reset();
+  task_environment_.RunUntilIdle();
+  EXPECT_EQ(media_devices_manager_->num_registered_dispatcher_hosts(), 1u);
+
+  // Destroying the MediaDevicesManager disconnects the remaining pipe.
+  EXPECT_TRUE(client2.is_connected());
+  media_devices_manager_ = nullptr;
+  task_environment_.RunUntilIdle();
+  EXPECT_FALSE(client2.is_connected());
 }
 
 }  // namespace content

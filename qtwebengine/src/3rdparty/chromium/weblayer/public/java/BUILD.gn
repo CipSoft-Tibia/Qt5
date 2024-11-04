@@ -48,8 +48,6 @@ android_library("java") {
     "org/chromium/weblayer/CookieChangedCallback.java",
     "org/chromium/weblayer/CookieManager.java",
     "org/chromium/weblayer/CookieManagerDelegate.java",
-    "org/chromium/weblayer/CrashReporterCallback.java",
-    "org/chromium/weblayer/CrashReporterController.java",
     "org/chromium/weblayer/DarkModeStrategy.java",
     "org/chromium/weblayer/Download.java",
     "org/chromium/weblayer/DownloadCallback.java",
@@ -65,6 +63,7 @@ android_library("java") {
     "org/chromium/weblayer/FindInPageCallback.java",
     "org/chromium/weblayer/FindInPageController.java",
     "org/chromium/weblayer/FullscreenCallback.java",
+    "org/chromium/weblayer/FullscreenCallbackDelegate.java",
     "org/chromium/weblayer/GoogleAccountAccessTokenFetcher.java",
     "org/chromium/weblayer/GoogleAccountServiceType.java",
     "org/chromium/weblayer/GoogleAccountsCallback.java",
@@ -90,6 +89,7 @@ android_library("java") {
     "org/chromium/weblayer/PaymentDetailsUpdateServiceWrapper.java",
     "org/chromium/weblayer/PrerenderController.java",
     "org/chromium/weblayer/Profile.java",
+    "org/chromium/weblayer/ProfileManagerDelegate.java",
     "org/chromium/weblayer/RemoteFragmentEventHandler.java",
     "org/chromium/weblayer/RemoteMediaService.java",
     "org/chromium/weblayer/ScrollNotificationType.java",
@@ -118,10 +118,6 @@ android_library("java") {
     "org/chromium/weblayer/WebFragmentTabListDelegate.java",
     "org/chromium/weblayer/WebLayer.java",
     "org/chromium/weblayer/WebLayerFileProvider.java",
-    "org/chromium/weblayer/WebMessage.java",
-    "org/chromium/weblayer/WebMessageCallback.java",
-    "org/chromium/weblayer/WebMessageReplyProxy.java",
-    "org/chromium/weblayer/WebMessageReplyProxyProxy.java",
     "org/chromium/weblayer/WebViewCompatibilityHelper.java",
     _version_constants_java_file,
   ]
@@ -141,6 +137,9 @@ android_library("java") {
     "//third_party/androidx:androidx_lifecycle_lifecycle_viewmodel_java",
     "//weblayer/browser/java:base_module_interfaces_java",
     "//weblayer/browser/java:interfaces_java",
+
+    # TODO(rayankans): Figure out why this isn't being inherited from //weblayer/browser/java.
+    "$google_play_services_package:google_play_services_basement_java",
   ]
 
   proguard_configs = [ "proguard.flags" ]
@@ -190,10 +189,14 @@ android_aidl("webengine_aidl") {
   sources = [
     "org/chromium/webengine/interfaces/IBooleanCallback.aidl",
     "org/chromium/webengine/interfaces/ICookieManagerDelegate.aidl",
+    "org/chromium/webengine/interfaces/IFullscreenCallbackDelegate.aidl",
+    "org/chromium/webengine/interfaces/IFullscreenClient.aidl",
     "org/chromium/webengine/interfaces/INavigationObserverDelegate.aidl",
     "org/chromium/webengine/interfaces/INavigationParams.aidl",
     "org/chromium/webengine/interfaces/IPostMessageCallback.aidl",
+    "org/chromium/webengine/interfaces/IProfileManagerDelegate.aidl",
     "org/chromium/webengine/interfaces/IStringCallback.aidl",
+    "org/chromium/webengine/interfaces/IStringListCallback.aidl",
     "org/chromium/webengine/interfaces/ITabCallback.aidl",
     "org/chromium/webengine/interfaces/ITabListObserverDelegate.aidl",
     "org/chromium/webengine/interfaces/ITabManagerDelegate.aidl",
@@ -206,8 +209,6 @@ android_aidl("webengine_aidl") {
     "org/chromium/webengine/interfaces/IWebEngineParams.aidl",
     "org/chromium/webengine/interfaces/IWebFragmentEventsDelegate.aidl",
     "org/chromium/webengine/interfaces/IWebFragmentEventsDelegateClient.aidl",
-    "org/chromium/webengine/interfaces/IWebMessageCallback.aidl",
-    "org/chromium/webengine/interfaces/IWebMessageReplyProxy.aidl",
     "org/chromium/webengine/interfaces/IWebSandboxCallback.aidl",
     "org/chromium/webengine/interfaces/IWebSandboxService.aidl",
   ]
@@ -227,10 +228,14 @@ android_library("webengine_java") {
   sources = [
     "org/chromium/webengine/CookieManager.java",
     "org/chromium/webengine/ExceptionHelper.java",
+    "org/chromium/webengine/FullscreenCallback.java",
+    "org/chromium/webengine/FullscreenCallbackDelegate.java",
+    "org/chromium/webengine/FullscreenClient.java",
     "org/chromium/webengine/MessageEventListener.java",
     "org/chromium/webengine/Navigation.java",
     "org/chromium/webengine/NavigationObserver.java",
     "org/chromium/webengine/NavigationObserverDelegate.java",
+    "org/chromium/webengine/ProfileManager.java",
     "org/chromium/webengine/RestrictedAPIException.java",
     "org/chromium/webengine/Tab.java",
     "org/chromium/webengine/TabListObserver.java",
@@ -244,8 +249,6 @@ android_library("webengine_java") {
     "org/chromium/webengine/WebEngine.java",
     "org/chromium/webengine/WebEngineParams.java",
     "org/chromium/webengine/WebFragment.java",
-    "org/chromium/webengine/WebMessageCallback.java",
-    "org/chromium/webengine/WebMessageReplyProxy.java",
     "org/chromium/webengine/WebSandbox.java",
   ]
 

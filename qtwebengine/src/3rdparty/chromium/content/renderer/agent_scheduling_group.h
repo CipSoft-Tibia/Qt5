@@ -12,7 +12,6 @@
 #include "content/common/agent_scheduling_group.mojom.h"
 #include "content/common/associated_interfaces.mojom.h"
 #include "content/common/content_export.h"
-#include "content/common/shared_storage_worklet_service.mojom-forward.h"
 #include "content/public/common/content_features.h"
 #include "ipc/ipc.mojom.h"
 #include "ipc/ipc_listener.h"
@@ -25,6 +24,8 @@
 #include "third_party/blink/public/mojom/associated_interfaces/associated_interfaces.mojom.h"
 #include "third_party/blink/public/mojom/browser_interface_broker.mojom.h"
 #include "third_party/blink/public/mojom/frame/frame_replication_state.mojom-forward.h"
+#include "third_party/blink/public/mojom/shared_storage/shared_storage_worklet_service.mojom-forward.h"
+#include "third_party/blink/public/mojom/worker/worklet_global_scope_creation_params.mojom-forward.h"
 #include "third_party/blink/public/platform/scheduler/web_agent_group_scheduler.h"
 
 namespace IPC {
@@ -33,6 +34,7 @@ class SyncChannel;
 }  // namespace IPC
 
 namespace blink {
+class WebURL;
 class WebView;
 }  // namespace blink
 
@@ -79,7 +81,8 @@ class CONTENT_EXPORT AgentSchedulingGroup
 
   // Create a new WebView in this AgentSchedulingGroup.
   blink::WebView* CreateWebView(mojom::CreateViewParamsPtr params,
-                                bool was_created_by_renderer);
+                                bool was_created_by_renderer,
+                                const blink::WebURL& base_url);
 
  protected:
   // mojom::AgentSchedulingGroup:
@@ -101,9 +104,9 @@ class CONTENT_EXPORT AgentSchedulingGroup
   void CreateView(mojom::CreateViewParamsPtr params) override;
   void CreateFrame(mojom::CreateFrameParamsPtr params) override;
   void CreateSharedStorageWorkletService(
-      mojo::PendingReceiver<
-          shared_storage_worklet::mojom::SharedStorageWorkletService> receiver)
-      override;
+      mojo::PendingReceiver<blink::mojom::SharedStorageWorkletService> receiver,
+      blink::mojom::WorkletGlobalScopeCreationParamsPtr
+          global_scope_creation_params) override;
 
   // mojom::RouteProvider
   void GetRoute(

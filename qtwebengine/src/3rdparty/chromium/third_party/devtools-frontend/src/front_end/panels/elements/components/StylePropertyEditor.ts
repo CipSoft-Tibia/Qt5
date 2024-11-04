@@ -138,7 +138,7 @@ export class StylePropertyEditor extends HTMLElement {
     return html`<button title=${title} class=${classes} @click=${
         (): void => this.#onButtonClick(propertyName, propertyValue, selected)}>
        <${IconButton.Icon.Icon.litTagName} style=${transform} .data=${
-        {iconName: iconInfo.iconName, color: 'var(--icon-color)', width: '18px', height: '18px'} as
+        {iconName: iconInfo.iconName, color: 'var(--icon-color)', width: '20px', height: '20px'} as
         IconButton.Icon.IconWithName}></${IconButton.Icon.Icon.litTagName}>
     </button>`;
   }
@@ -157,9 +157,9 @@ export class StylePropertyEditor extends HTMLElement {
 }
 
 export class FlexboxEditor extends StylePropertyEditor {
-  protected readonly editableProperties: EditableProperty[] = FlexboxEditableProperties;
+  protected override readonly editableProperties: EditableProperty[] = FlexboxEditableProperties;
 
-  protected findIcon(query: string, computedProperties: Map<string, string>): IconInfo|null {
+  protected override findIcon(query: string, computedProperties: Map<string, string>): IconInfo|null {
     return findFlexContainerIcon(query, computedProperties);
   }
 }
@@ -174,9 +174,9 @@ declare global {
 }
 
 export class GridEditor extends StylePropertyEditor {
-  protected readonly editableProperties: EditableProperty[] = GridEditableProperties;
+  protected override readonly editableProperties: EditableProperty[] = GridEditableProperties;
 
-  protected findIcon(query: string, computedProperties: Map<string, string>): IconInfo|null {
+  protected override findIcon(query: string, computedProperties: Map<string, string>): IconInfo|null {
     return findGridContainerIcon(query, computedProperties);
   }
 }

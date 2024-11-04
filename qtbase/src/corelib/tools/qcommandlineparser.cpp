@@ -196,7 +196,8 @@ QStringList QCommandLineParserPrivate::aliases(const QString &optionName) const
     since the output is either discarded or not accessible.
 
     On Windows, QCommandLineParser uses message boxes to display usage information
-    and errors if no console window can be obtained.
+    and errors if no console window can be obtained. These message boxes can be omitted by setting
+    the \c QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES environment variable.
 
     For other platforms, it is recommended to display help texts and error messages
     using a QMessageBox. To preserve the formatting of the help text, rich text
@@ -508,7 +509,7 @@ QString QCommandLineParser::errorText() const
     if (!d->errorText.isEmpty())
         return d->errorText;
     if (d->unknownOptionNames.size() == 1)
-        return tr("Unknown option '%1'.").arg(d->unknownOptionNames.first());
+        return tr("Unknown option '%1'.").arg(d->unknownOptionNames.constFirst());
     if (d->unknownOptionNames.size() > 1)
         return tr("Unknown options: %1.").arg(d->unknownOptionNames.join(QStringLiteral(", ")));
     return QString();
@@ -674,7 +675,6 @@ bool QCommandLineParserPrivate::parse(const QStringList &args)
     needsParsing = false;
     bool error = false;
 
-    const QString     doubleDashString(QStringLiteral("--"));
     const QLatin1Char dashChar('-');
     const QLatin1Char assignChar('=');
 
@@ -698,7 +698,7 @@ bool QCommandLineParserPrivate::parse(const QStringList &args)
 
         if (forcePositional) {
             positionalArgumentList.append(argument);
-        } else if (argument.startsWith(doubleDashString)) {
+        } else if (argument.startsWith("--"_L1)) {
             if (argument.size() > 2) {
                 QString optionName = argument.mid(2).section(assignChar, 0, 0);
                 if (registerFoundOption(optionName)) {
@@ -821,7 +821,7 @@ bool QCommandLineParser::isSet(const QString &name) const
     that option is returned. If the option wasn't specified on the command line,
     the default value is returned.
 
-    An empty string is returned if the option does not take a value.
+    If the option does not take a value, a warning is printed, and an empty string is returned.
 
     \sa values(), QCommandLineOption::setDefaultValue(), QCommandLineOption::setDefaultValues()
  */
@@ -862,8 +862,14 @@ QStringList QCommandLineParser::values(const QString &optionName) const
     if (it != d->nameHash.cend()) {
         const qsizetype optionOffset = *it;
         QStringList values = d->optionValuesHash.value(optionOffset);
-        if (values.isEmpty())
-            values = d->commandLineOptionList.at(optionOffset).defaultValues();
+        if (values.isEmpty()) {
+            const auto &option = d->commandLineOptionList.at(optionOffset);
+            if (option.valueName().isEmpty()) {
+                qWarning("QCommandLineParser: option not expecting values: \"%ls\"",
+                         qUtf16Printable(optionName));
+            }
+            values = option.defaultValues();
+        }
         return values;
     }
 
@@ -1101,7 +1107,8 @@ QString QCommandLineParserPrivate::helpText(bool includeQtOptions) const
     QString text;
     QString usage;
     // executable name
-    usage += qApp ? QCoreApplication::arguments().constFirst() : QStringLiteral("<executable_name>");
+    usage += qApp ? QStringView(QCoreApplication::arguments().constFirst())
+                  : QStringView(u"<executable_name>");
     QList<QCommandLineOption> options = commandLineOptionList;
     if (includeQtOptions && qApp)
         qApp->d_func()->addQtOptions(&options);

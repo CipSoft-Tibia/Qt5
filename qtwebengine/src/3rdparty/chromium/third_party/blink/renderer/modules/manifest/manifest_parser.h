@@ -9,7 +9,9 @@
 
 #include "base/types/strong_alias.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 #include "third_party/blink/public/common/permissions_policy/permissions_policy.h"
+#include "third_party/blink/public/common/safe_url_pattern.h"
 #include "third_party/blink/public/mojom/manifest/manifest.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/manifest/manifest.mojom-blink.h"
 #include "third_party/blink/public/mojom/permissions_policy/permissions_policy.mojom-blink.h"
@@ -153,7 +155,7 @@ class MODULES_EXPORT ManifestParser {
   String ParseDescription(const JSONObject* object);
 
   // Parses the 'id' field of the manifest.
-  String ParseId(const JSONObject* object, const KURL& start_url);
+  KURL ParseId(const JSONObject* object, const KURL& start_url);
 
   // Parses the 'scope' field of the manifest, as defined in:
   // https://w3c.github.io/manifest/#scope-member. Returns the parsed KURL if
@@ -524,6 +526,12 @@ class MODULES_EXPORT ManifestParser {
 
   mojom::blink::TabStripMemberVisibility ParseTabStripMemberVisibility(
       const JSONValue* json_value);
+
+  // Parses the 'scope_patterns' field of the 'tab_strip.home_tab' field
+  // of the manifest.
+  Vector<SafeUrlPattern> ParseScopePatterns(const JSONObject* object);
+
+  String ParseVersion(const JSONObject* object);
 
   void AddErrorInfo(const String& error_msg,
                     bool critical = false,

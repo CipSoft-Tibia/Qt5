@@ -1,5 +1,5 @@
 # Copyright (C) 2023 The Qt Company Ltd.
-# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+# SPDX-License-Identifier: BSD-3-Clause
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
@@ -16,11 +16,11 @@ target_link_libraries(tst_volumetrictest PUBLIC
     Qt::Graphs
     )
 
-set_source_files_properties("cubeFilledFlat.obj"
+set_source_files_properties("cubeFilledFlat.mesh"
     PROPERTIES QT_RESOURCE_ALIAS "mesh"
     )
 set(volumetrictest_resource_files
-    "cubeFilledFlat.obj"
+    "cubeFilledFlat.mesh"
     "logo.png"
     "logo_no_padding.png"
     )

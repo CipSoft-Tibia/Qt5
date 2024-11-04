@@ -1,5 +1,5 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "helpdocsettings.h"
 #include "helpdocsettingswidget.h"
@@ -106,23 +106,23 @@ HelpDocSettingsWidget::HelpDocSettingsWidget(QWidget *parent)
     d->q_ptr = this;
     d->m_ui.setupUi(this);
 
-    connect(d->m_ui.docAddButton, &QAbstractButton::clicked,
+    connect(d->m_ui.docAddButton, &QAbstractButton::clicked, this,
             [this]() {
         Q_D(HelpDocSettingsWidget);
         d->addDocumentation();
     });
-    connect(d->m_ui.docRemoveButton, &QAbstractButton::clicked,
+    connect(d->m_ui.docRemoveButton, &QAbstractButton::clicked, this,
             [this]() {
         Q_D(HelpDocSettingsWidget);
         d->removeDocumentation();
     });
-    connect(d->m_ui.registeredDocsFilterLineEdit, &QLineEdit::textChanged,
+    connect(d->m_ui.registeredDocsFilterLineEdit, &QLineEdit::textChanged, this,
             [this](const QString &) {
         Q_D(HelpDocSettingsWidget);
         for (const auto item : d->m_namespaceToItem)
             d->applyDocListFilter(item);
     });
-    connect(d->m_ui.registeredDocsListWidget, &QListWidget::itemSelectionChanged,
+    connect(d->m_ui.registeredDocsListWidget, &QListWidget::itemSelectionChanged, this,
             [this]() {
         Q_D(HelpDocSettingsWidget);
         d->m_ui.docRemoveButton->setEnabled(

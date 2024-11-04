@@ -16,6 +16,7 @@
 #include "components/cast_streaming/browser/control/remoting/remoting_session_client.h"
 #include "components/cast_streaming/browser/control/renderer_controller_config.h"
 #include "components/cast_streaming/browser/frame/demuxer_stream_data_provider.h"
+#include "components/cast_streaming/browser/public/receiver_config.h"
 #include "components/cast_streaming/browser/public/receiver_session.h"
 #include "components/openscreen_platform/network_util.h"
 #include "components/openscreen_platform/task_runner.h"
@@ -25,6 +26,7 @@
 #include "mojo/public/cpp/system/data_pipe.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/openscreen/src/cast/streaming/receiver.h"
+#include "third_party/openscreen/src/cast/streaming/receiver_constraints.h"
 #include "third_party/openscreen/src/cast/streaming/receiver_session.h"
 
 namespace cast_streaming {
@@ -96,7 +98,7 @@ class CastStreamingSession {
   // surrounding this support.
   void Start(Client* client,
              absl::optional<RendererControllerConfig> renderer_controls,
-             std::unique_ptr<ReceiverSession::AVConstraints> av_constraints,
+             ReceiverConfig av_constraints,
              ReceiverSession::MessagePortProvider message_port_provider,
              scoped_refptr<base::SequencedTaskRunner> task_runner);
 
@@ -129,7 +131,7 @@ class CastStreamingSession {
     ReceiverSessionClient(
         CastStreamingSession::Client* client,
         absl::optional<RendererControllerConfig> renderer_controls,
-        std::unique_ptr<ReceiverSession::AVConstraints> av_constraints,
+        ReceiverConfig av_constraints,
         ReceiverSession::MessagePortProvider message_port_provider,
         scoped_refptr<base::SequencedTaskRunner> task_runner);
     ~ReceiverSessionClient() override;

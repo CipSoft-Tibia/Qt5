@@ -34,7 +34,6 @@ public:
     void eccentricityOuterChanged(int value);
     void resetValues();
     void setFilteredEnabled(bool enabled);
-    void setStaticEnabled(bool enabled);
     void setStarsVisible(bool enabled);
     void setDustVisible(bool enabled);
     void setH2Visible(bool enabled);

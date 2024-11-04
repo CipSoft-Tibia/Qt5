@@ -13,10 +13,11 @@
 
 #include "base/containers/flat_map.h"
 #include "base/time/time.h"
+#include "base/types/strong_alias.h"
 #include "components/autofill/core/common/form_data.h"
-#include "components/autofill/core/common/gaia_id_hash.h"
 #include "components/autofill/core/common/mojom/autofill_types.mojom-shared.h"
 #include "components/autofill/core/common/unique_ids.h"
+#include "components/signin/public/base/gaia_id_hash.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -25,13 +26,48 @@ namespace password_manager {
 // PasswordForm primary key which is used in the database.
 using FormPrimaryKey = base::StrongAlias<class FormPrimaryKeyTag, int>;
 
-// Pair of a value and the name of the element that contained this value.
-using ValueElementPair = std::pair<std::u16string, std::u16string>;
+// Represents a value, field renderer id, and the name of the element that
+// contained the value. Used to determine whether another element must be
+// selected as the right username or password field.
+struct AlternativeElement {
+  using Value =
+      base::StrongAlias<class AlternativeElementValueTag, std::u16string>;
+  using Name =
+      base::StrongAlias<class AlternativeElementNameTag, std::u16string>;
 
-// Vector of possible username values and corresponding field names.
-using ValueElementVector = std::vector<ValueElementPair>;
+  AlternativeElement(const Value& value,
+               autofill::FieldRendererId field_renderer_id,
+               const Name& name);
+  explicit AlternativeElement(const Value& value);
+  AlternativeElement(const AlternativeElement& rhs);
+  AlternativeElement(AlternativeElement&& rhs);
+  AlternativeElement& operator=(const AlternativeElement& rhs);
+  AlternativeElement& operator=(AlternativeElement&& rhs);
+  ~AlternativeElement();
+
+  bool operator==(const AlternativeElement&) const;
+  bool operator<(const AlternativeElement&) const;
+
+  // The value of the field.
+  std::u16string value;
+  // The renderer id of the field. May be not set if the value is
+  // not present in the submitted form.
+  autofill::FieldRendererId field_renderer_id;
+  // The name attribute of the field. May be empty if the value is
+  // not present in the submitted form.
+  std::u16string name;
+};
+
+#if defined(UNIT_TEST)
+std::ostream& operator<<(std::ostream& os, const AlternativeElement& form);
+#endif
+
+// Vector of possible username or password values and corresponding field data.
+using AlternativeElementVector = std::vector<AlternativeElement>;
 
 using IsMuted = base::StrongAlias<class IsMutedTag, bool>;
+using TriggerBackendNotification =
+    base::StrongAlias<class TriggerBackendNotificationTag, bool>;
 
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
@@ -50,7 +86,10 @@ enum class InsecureType {
 // Metadata for insecure credentials
 struct InsecurityMetadata {
   InsecurityMetadata();
-  InsecurityMetadata(base::Time create_time, IsMuted is_muted);
+  InsecurityMetadata(
+      base::Time create_time,
+      IsMuted is_muted,
+      TriggerBackendNotification trigger_notification_from_backend);
   InsecurityMetadata(const InsecurityMetadata& rhs);
   ~InsecurityMetadata();
 
@@ -58,6 +97,9 @@ struct InsecurityMetadata {
   base::Time create_time;
   // Whether the problem was explicitly muted by the user.
   IsMuted is_muted{false};
+  // Whether the backend should send a notification about the issue. True if
+  // the user hasn't already been notified (e.g. via a leak check prompt).
+  TriggerBackendNotification trigger_notification_from_backend{false};
 };
 
 bool operator==(const InsecurityMetadata& lhs, const InsecurityMetadata& rhs);
@@ -142,8 +184,9 @@ struct PasswordForm {
     kApi = 2,
     kManuallyAdded = 3,
     kImported = 4,
+    kReceivedViaSharing = 5,
     kMinValue = kFormSubmission,
-    kMaxValue = kImported,
+    kMaxValue = kReceivedViaSharing,
   };
 
   // Enum to keep track of what information has been sent to the server about
@@ -154,6 +197,23 @@ struct PasswordForm {
     kNegativeSignalSent,
     kMinValue = kNoSignalSent,
     kMaxValue = kNegativeSignalSent,
+  };
+
+  // Enum describing how PasswordForm was matched for a given FormDigest. This
+  // enum is a bitmask because each PasswordForm can be matched by multiple
+  // sources.
+  enum class MatchType {
+    // Default match type meaning signon_realm of a PasswordForm is identical to
+    // a requested URL.
+    kExact = 0,
+    // signon_realm of a PasswordForm is affiliated with a given URL.
+    // Affiliation information is provided by the affiliation service.
+    kAffiliated = 1 << 1,
+    // signon_realm of a PasswordForm has the same eTLD+1 as a given URL.
+    kPSL = 1 << 2,
+    // signon_realm of a PasswordForm is grouped with a given URL. Grouping
+    // information is provided by the affiliation service.
+    kGrouped = 1 << 3,
   };
 
   // The primary key of the password record in the logins database. This is only
@@ -237,17 +297,17 @@ struct PasswordForm {
   // has implemented some form of autofill.
   std::u16string username_value;
 
-  // This member is populated in cases where we there are multiple input
-  // elements that could possibly be the username. Used when our heuristics for
-  // determining the username are incorrect. Optional.
-  ValueElementVector all_possible_usernames;
+  // This member is populated in cases where we there are multiple possible
+  // username values. Used to populate a dropdown for possible usernames.
+  // Optional.
+  AlternativeElementVector all_alternative_usernames;
 
   // This member is populated in cases where we there are multiple possible
   // password values. Used in pending password state, to populate a dropdown
   // for possible passwords. Contains all possible passwords. Optional.
-  ValueElementVector all_possible_passwords;
+  AlternativeElementVector all_alternative_passwords;
 
-  // True if |all_possible_passwords| have autofilled value or its part.
+  // True if |all_alternative_passwords| have autofilled value or its part.
   bool form_has_autofilled_value = false;
 
   // The name of the input element corresponding to the current password.
@@ -268,10 +328,10 @@ struct PasswordForm {
   // When parsing an HTML form, this is typically empty.
   std::u16string password_value;
 
-  // The current encrypted password. Must be non-empty for PasswordForm
-  // instances retrieved from the password store or coming in a
-  // PasswordStoreChange that is not of type REMOVE.
-  std::string encrypted_password;
+  // The current keychain identifier where the password is stored password. Only
+  // non-empty on iOS for PasswordForm instances retrieved from the password
+  // store or coming in a PasswordStoreChange that is not of type REMOVE.
+  std::string keychain_identifier;
 
   // If the form was a sign-up or a change password form, the name of the input
   // element corresponding to the new password. Optional, and not persisted.
@@ -362,11 +422,9 @@ struct PasswordForm {
   // If true, this form was parsed using Autofill predictions.
   bool was_parsed_using_autofill_predictions = false;
 
-  // If true, this match was found using public suffix matching.
-  bool is_public_suffix_match = false;
-
-  // If true, this is a credential found using affiliation-based match.
-  bool is_affiliation_based_match = false;
+  // Only available when PasswordForm was requested though
+  // PasswordStoreInterface::GetLogins(), empty otherwise.
+  absl::optional<MatchType> match_type;
 
   // The type of the event that was taken as an indication that this form is
   // being or has already been submitted. This field is not persisted and filled
@@ -374,9 +432,9 @@ struct PasswordForm {
   autofill::mojom::SubmissionIndicatorEvent submission_event =
       autofill::mojom::SubmissionIndicatorEvent::NONE;
 
-  // True iff heuristics declined this form for normal saving or filling (e.g.
-  // only credit card fields were found). But this form can be saved or filled
-  // only with the fallback.
+  // True iff heuristics declined this form for normal saving, updating, or
+  // filling (e.g. only credit card fields were found). But this form can be
+  // saved or filled only with the fallback.
   bool only_for_fallback = false;
 
   // True iff the new password field was found with server hints or autocomplete
@@ -411,7 +469,7 @@ struct PasswordForm {
   // Vector of hashes of the gaia id for users who prefer not to move this
   // password form to their account. This list is used to suppress the move
   // prompt for those users.
-  std::vector<autofill::GaiaIdHash> moving_blocked_for_list;
+  std::vector<signin::GaiaIdHash> moving_blocked_for_list;
 
   // A mapping from the credential insecurity type (e.g. leaked, phished),
   // to its metadata (e.g. time it was discovered, whether alerts are muted).
@@ -425,18 +483,39 @@ struct PasswordForm {
   // with a syncing account AND it was associated with one in the past.
   std::string previously_associated_sync_account_email;
 
+  // Shared Password Metadata:
+  // For credentials that have been shared by another user, this field captures
+  // the sender email. It's empty for credentials that weren't received via
+  // password sharing feature.
+  std::u16string sender_email;
+  // Similar to `sender_email` but for the sender name.
+  std::u16string sender_name;
+  // The time when the password was received via sharing feature from another
+  // user.
+  base::Time date_received;
+  // Whether the user has been already notified that they received this password
+  // from another user via the password sharing feature.
+  bool sharing_notification_displayed = false;
+
   // Returns true if this form is considered to be a login form, i.e. it has
   // a username field, a password field and no new password field. It's based
   // on heuristics and may be inaccurate.
   bool IsLikelyLoginForm() const;
 
-  // Returns true if we consider this form to be a signup form. It's based on
-  // heuristics and may be inaccurate.
+  // Returns true if we consider this form to be a signup form, i.e. it has
+  // a username field, a new password field and no current password field. It's
+  // based on heuristics and may be inaccurate.
   bool IsLikelySignupForm() const;
 
-  // Returns true if we consider this form to be a change password form and not
-  // a signup form. It's based on heuristics and may be inaccurate.
+  // Returns true if we consider this form to be a change password form, i.e.
+  // it has a current password field and a new password field. It's based on
+  // heuristics and may be inaccurate.
   bool IsLikelyChangePasswordForm() const;
+
+  // Returns true if we consider this form to be a reset password form, i.e.
+  // it has a new password field and no current password field or username.
+  // It's based on heuristics and may be inaccurate.
+  bool IsLikelyResetPasswordForm() const;
 
   // Returns true if current password element is set.
   bool HasUsernameElement() const;
@@ -463,9 +542,9 @@ struct PasswordForm {
   // Returns true when |password_value| or |new_password_value| are non-empty.
   bool HasNonEmptyPasswordValue() const;
 
-  // Returns the value of the note with an empty `unique_display_name`,
-  // otherwise returns an nullopt.
-  absl::optional<std::u16string> GetNoteWithEmptyUniqueDisplayName() const;
+  // Returns the value of the note with an empty `unique_display_name`, returns
+  // an empty string if none exists.
+  std::u16string GetNoteWithEmptyUniqueDisplayName() const;
 
   // Updates the note with an empty `unique_display_name`.
   void SetNoteWithEmptyUniqueDisplayName(const std::u16string& new_note_value);
@@ -510,6 +589,23 @@ constexpr PasswordForm::Store operator|(PasswordForm::Store lhs,
                                         PasswordForm::Store rhs) {
   return static_cast<PasswordForm::Store>(static_cast<int>(lhs) |
                                           static_cast<int>(rhs));
+}
+
+constexpr PasswordForm::MatchType operator&(PasswordForm::MatchType lhs,
+                                            PasswordForm::MatchType rhs) {
+  return static_cast<PasswordForm::MatchType>(static_cast<int>(lhs) &
+                                              static_cast<int>(rhs));
+}
+
+constexpr PasswordForm::MatchType operator|(PasswordForm::MatchType lhs,
+                                            PasswordForm::MatchType rhs) {
+  return static_cast<PasswordForm::MatchType>(static_cast<int>(lhs) |
+                                              static_cast<int>(rhs));
+}
+
+constexpr void operator|=(absl::optional<PasswordForm::MatchType>& lhs,
+                          PasswordForm::MatchType rhs) {
+  lhs = lhs.has_value() ? (lhs.value() | rhs) : rhs;
 }
 
 }  // namespace password_manager

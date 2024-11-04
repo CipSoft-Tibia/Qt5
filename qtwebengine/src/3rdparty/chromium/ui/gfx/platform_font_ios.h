@@ -13,7 +13,7 @@ namespace gfx {
 class PlatformFontIOS : public PlatformFont {
  public:
   PlatformFontIOS();
-  explicit PlatformFontIOS(NativeFont native_font);
+  explicit PlatformFontIOS(CTFontRef ct_font);
   PlatformFontIOS(const std::string& font_name,
                   int font_size);
 #if BUILDFLAG(USE_BLINK)
@@ -41,7 +41,7 @@ class PlatformFontIOS : public PlatformFont {
   std::string GetActualFontName() const override;
   int GetFontSize() const override;
   const FontRenderParams& GetFontRenderParams() override;
-  NativeFont GetNativeFont() const override;
+  CTFontRef GetCTFont() const override;
   sk_sp<SkTypeface> GetNativeSkTypeface() const override;
 
  private:
@@ -49,7 +49,7 @@ class PlatformFontIOS : public PlatformFont {
                   int font_size,
                   int style,
                   Font::Weight weight);
-  ~PlatformFontIOS() override {}
+  ~PlatformFontIOS() override = default;
 
   // Initialize the object with the specified parameters.
   void InitWithNameSizeAndStyle(const std::string& font_name,
@@ -70,6 +70,9 @@ class PlatformFontIOS : public PlatformFont {
   int ascent_;
   int cap_height_;
   int average_width_;
+
+  // Details about how the font should be rendered.
+  FontRenderParams render_params_;
 };
 
 }  // namespace gfx

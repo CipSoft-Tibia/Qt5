@@ -10,6 +10,7 @@
 #include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/types/cxx23_to_underlying.h"
 #include "build/build_config.h"
 #include "build/chromecast_buildflags.h"
 #include "media/base/key_systems.h"
@@ -92,7 +93,7 @@ MediaMetricsProvider::~MediaMetricsProvider() {
   if (!media_info_->is_mse) {
     builder.SetURLScheme(static_cast<int64_t>(media_info_->url_scheme));
     if (container_name_)
-      builder.SetContainerName(*container_name_);
+      builder.SetContainerName(base::to_underlying(*container_name_));
   }
 
   if (time_to_metadata_ != kNoTimestamp)
@@ -160,11 +161,12 @@ void MediaMetricsProvider::ReportPipelineUMA() {
                                   PIPELINE_STATUS_MAX + 1);
   }
 
-  // Report whether video decoder fallback happened, but only if a video decoder
-  // was reported.
+  // Report whether video decoder fallback happened for each video codec, but
+  // only if a video decoder was reported.
   if (uma_info_.video_pipeline_info.decoder_type !=
       VideoDecoderType::kUnknown) {
-    base::UmaHistogramBoolean("Media.VideoDecoderFallback",
+    base::UmaHistogramBoolean("Media.VideoDecoderFallback." +
+                                  GetCodecNameForUMA(uma_info_.video_codec),
                               uma_info_.video_decoder_changed);
   }
 

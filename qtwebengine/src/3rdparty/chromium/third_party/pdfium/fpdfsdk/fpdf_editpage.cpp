@@ -34,10 +34,10 @@
 #include "core/fpdfdoc/cpdf_annot.h"
 #include "core/fpdfdoc/cpdf_annotlist.h"
 #include "core/fxcrt/fx_extension.h"
+#include "core/fxcrt/fx_memcpy_wrappers.h"
 #include "core/fxcrt/stl_util.h"
 #include "fpdfsdk/cpdfsdk_helpers.h"
 #include "public/fpdf_formfill.h"
-#include "third_party/base/cxx17_backports.h"
 #include "third_party/base/numerics/safe_conversions.h"
 
 #ifdef PDF_ENABLE_XFA
@@ -202,7 +202,7 @@ FPDF_EXPORT FPDF_PAGE FPDF_CALLCONV FPDFPage_New(FPDF_DOCUMENT document,
   if (!pDoc)
     return nullptr;
 
-  page_index = pdfium::clamp(page_index, 0, pDoc->GetPageCount());
+  page_index = std::clamp(page_index, 0, pDoc->GetPageCount());
   RetainPtr<CPDF_Dictionary> pPageDict(pDoc->CreateNewPage(page_index));
   if (!pPageDict)
     return nullptr;
@@ -967,7 +967,8 @@ FPDFPageObj_GetDashArray(FPDF_PAGEOBJECT page_object,
   if (dash_vector.size() > dash_count)
     return false;
 
-  memcpy(dash_array, dash_vector.data(), dash_vector.size() * sizeof(float));
+  FXSYS_memcpy(dash_array, dash_vector.data(),
+               dash_vector.size() * sizeof(float));
   return true;
 }
 

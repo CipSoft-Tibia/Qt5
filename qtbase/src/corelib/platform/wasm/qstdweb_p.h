@@ -18,6 +18,7 @@
 #include <private/qglobal_p.h>
 #include <QtCore/qglobal.h>
 #include "QtCore/qhash.h"
+#include "QtCore/qiodevice.h"
 
 #include <emscripten/val.h>
 
@@ -27,6 +28,11 @@
 #include <memory>
 #include <string>
 #include <utility>
+
+#if QT_CONFIG(thread)
+#include <emscripten/proxying.h>
+#include <emscripten/threading.h>
+#endif  // #if QT_CONFIG(thread)
 
 QT_BEGIN_NAMESPACE
 
@@ -53,7 +59,8 @@ namespace qstdweb {
         explicit ArrayBuffer(uint32_t size);
         explicit ArrayBuffer(const emscripten::val &arrayBuffer);
         uint32_t byteLength() const;
-        emscripten::val val();
+        ArrayBuffer slice(uint32_t begin, uint32_t end) const;
+        emscripten::val val() const;
 
     private:
         friend class Uint8Array;
@@ -63,10 +70,13 @@ namespace qstdweb {
     class Q_CORE_EXPORT Blob {
     public:
         explicit Blob(const emscripten::val &blob);
+        static Blob fromArrayBuffer(const ArrayBuffer &arrayBuffer);
         uint32_t size() const;
         static Blob copyFrom(const char *buffer, uint32_t size, std::string mimeType);
         static Blob copyFrom(const char *buffer, uint32_t size);
-        emscripten::val val();
+        Blob slice(uint32_t begin, uint32_t end) const;
+        ArrayBuffer arrayBuffer_sync() const;
+        emscripten::val val() const;
         std::string type() const;
 
     private:
@@ -78,6 +88,12 @@ namespace qstdweb {
     public:
         File() = default;
         explicit File(const emscripten::val &file);
+        ~File();
+
+        File(const File &other);
+        File(File &&other);
+        File &operator=(const File &other);
+        File &operator=(File &&other);
 
         Blob slice(uint64_t begin, uint64_t end) const;
         std::string name() const;
@@ -86,11 +102,34 @@ namespace qstdweb {
         void stream(uint32_t offset, uint32_t length, char *buffer,
                     std::function<void()> completed) const;
         void stream(char *buffer, std::function<void()> completed) const;
-        emscripten::val val();
+        emscripten::val val() const;
+        void fileUrlRegistration() const;
+        const QString &fileUrlPath() const { return m_urlPath; }
+        emscripten::val file() const { return m_file; }
 
     private:
         emscripten::val m_file = emscripten::val::undefined();
+        QString m_urlPath;
     };
+
+    class Q_CORE_EXPORT FileUrlRegistration
+    {
+    public:
+        explicit FileUrlRegistration(File file);
+        ~FileUrlRegistration();
+
+        FileUrlRegistration(const FileUrlRegistration &other) = delete;
+        FileUrlRegistration(FileUrlRegistration &&other);
+        FileUrlRegistration &operator=(const FileUrlRegistration &other) = delete;
+        FileUrlRegistration &operator=(FileUrlRegistration &&other);
+
+        const QString &path() const { return m_path; }
+
+    private:
+        QString m_path;
+    };
+
+    using FileUrlRegistrations = std::vector<std::unique_ptr<FileUrlRegistration>>;
 
     class Q_CORE_EXPORT FileList {
     public:
@@ -114,7 +153,7 @@ namespace qstdweb {
         void onLoad(const std::function<void(emscripten::val)> &onLoad);
         void onError(const std::function<void(emscripten::val)> &onError);
         void onAbort(const std::function<void(emscripten::val)> &onAbort);
-        emscripten::val val();
+        emscripten::val val() const;
 
     private:
         emscripten::val m_fileReader = emscripten::val::global("FileReader").new_();
@@ -135,6 +174,7 @@ namespace qstdweb {
         ArrayBuffer buffer() const;
         uint32_t length() const;
         void set(const Uint8Array &source);
+        Uint8Array subarray(uint32_t begin, uint32_t end);
 
         void copyTo(char *destination) const;
         QByteArray copyToQByteArray() const;
@@ -142,7 +182,7 @@ namespace qstdweb {
         static void copy(char *destination, const Uint8Array &source);
         static Uint8Array copyFrom(const char *buffer, uint32_t size);
         static Uint8Array copyFrom(const QByteArray &buffer);
-        emscripten::val val();
+        emscripten::val val() const;
 
     private:
         static emscripten::val heap_();
@@ -196,6 +236,46 @@ namespace qstdweb {
         void Q_CORE_EXPORT all(std::vector<emscripten::val> promises, PromiseCallbacks callbacks);
     };
 
+    template<class F>
+    decltype(auto) bindForever(F wrappedCallback)
+    {
+        return wrappedCallback;
+    }
+
+    class Q_CORE_EXPORT BlobIODevice: public QIODevice
+    {
+    public:
+        BlobIODevice(Blob blob);
+        bool open(QIODeviceBase::OpenMode mode) override;
+        bool isSequential() const override;
+        qint64 size() const override;
+        bool seek(qint64 pos) override;
+
+    protected:
+        qint64 readData(char *data, qint64 maxSize) override;
+        qint64 writeData(const char *, qint64) override;
+
+    private:
+        Blob m_blob;
+    };
+
+    class Uint8ArrayIODevice: public QIODevice
+    {
+    public:
+        Uint8ArrayIODevice(Uint8Array array);
+        bool open(QIODevice::OpenMode mode) override;
+        bool isSequential() const override;
+        qint64 size() const override;
+        bool seek(qint64 pos) override;
+
+    protected:
+        qint64 readData(char *data, qint64 maxSize) override;
+        qint64 writeData(const char *data, qint64 size) override;
+
+    private:
+        Uint8Array m_array;
+    };
+
     inline emscripten::val window()
     {
         static emscripten::val savedWindow = emscripten::val::global("window");
@@ -203,14 +283,50 @@ namespace qstdweb {
     }
 
     bool haveAsyncify();
+    bool haveJspi();
+    bool canBlockCallingThread();
 
     struct CancellationFlag
     {
     };
 
-    Q_CORE_EXPORT std::shared_ptr<CancellationFlag>
-    readDataTransfer(emscripten::val webObject, std::function<QVariant(QByteArray)> imageReader,
-                     std::function<void(std::unique_ptr<QMimeData>)> onDone);
+#if QT_CONFIG(thread)
+    template<class T>
+    T proxyCall(std::function<T()> task, emscripten::ProxyingQueue *queue)
+    {
+        T result;
+        queue->proxySync(emscripten_main_runtime_thread_id(),
+                         [task, result = &result]() { *result = task(); });
+        return result;
+    }
+
+    template<>
+    inline void proxyCall<void>(std::function<void()> task, emscripten::ProxyingQueue *queue)
+    {
+        queue->proxySync(emscripten_main_runtime_thread_id(), task);
+    }
+
+    template<class T>
+    T runTaskOnMainThread(std::function<T()> task, emscripten::ProxyingQueue *queue)
+    {
+        return emscripten_is_main_runtime_thread() ? task() : proxyCall<T>(std::move(task), queue);
+    }
+
+    template<class T>
+    T runTaskOnMainThread(std::function<T()> task)
+    {
+        emscripten::ProxyingQueue singleUseQueue;
+        return runTaskOnMainThread<T>(task, &singleUseQueue);
+    }
+
+#else
+    template<class T>
+    T runTaskOnMainThread(std::function<T()> task)
+    {
+        return task();
+    }
+#endif // QT_CONFIG(thread)
+
 }
 
 QT_END_NAMESPACE

@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import type * as SDK from '../../core/sdk/sdk.js';
+import * as TraceEngine from '../../models/trace/trace.js';
 
 import {RecordType, TimelineModelImpl} from './TimelineModel.js';
 
 export abstract class TimelineModelFilter {
-  abstract accept(_event: SDK.TracingModel.Event): boolean;
+  abstract accept(_event: TraceEngine.Legacy.CompatibleTraceEvent): boolean;
 }
 
 export class TimelineVisibleEventsFilter extends TimelineModelFilter {
@@ -17,19 +17,16 @@ export class TimelineVisibleEventsFilter extends TimelineModelFilter {
     this.visibleTypes = new Set(visibleTypes);
   }
 
-  accept(event: SDK.TracingModel.Event): boolean {
+  accept(event: TraceEngine.Legacy.CompatibleTraceEvent): boolean {
     return this.visibleTypes.has(TimelineVisibleEventsFilter.eventType(event));
   }
 
-  static eventType(event: SDK.TracingModel.Event): RecordType {
-    if (event.hasCategory(TimelineModelImpl.Category.Console)) {
+  static eventType(event: TraceEngine.Legacy.CompatibleTraceEvent): RecordType {
+    if (TraceEngine.Legacy.eventHasCategory(event, TimelineModelImpl.Category.Console)) {
       return RecordType.ConsoleTime;
     }
-    if (event.hasCategory(TimelineModelImpl.Category.UserTiming)) {
+    if (TraceEngine.Legacy.eventHasCategory(event, TimelineModelImpl.Category.UserTiming)) {
       return RecordType.UserTiming;
-    }
-    if (event.hasCategory(TimelineModelImpl.Category.LatencyInfo)) {
-      return RecordType.LatencyInfo;
     }
     return event.name as RecordType;
   }
@@ -42,7 +39,7 @@ export class TimelineInvisibleEventsFilter extends TimelineModelFilter {
     this.invisibleTypes = new Set(invisibleTypes);
   }
 
-  accept(event: SDK.TracingModel.Event): boolean {
+  accept(event: TraceEngine.Legacy.CompatibleTraceEvent): boolean {
     return !this.invisibleTypes.has(TimelineVisibleEventsFilter.eventType(event));
   }
 }
@@ -54,7 +51,7 @@ export class ExclusiveNameFilter extends TimelineModelFilter {
     this.excludeNames = new Set(excludeNames);
   }
 
-  accept(event: SDK.TracingModel.Event): boolean {
+  accept(event: TraceEngine.Legacy.CompatibleTraceEvent): boolean {
     return !this.excludeNames.has(event.name);
   }
 }

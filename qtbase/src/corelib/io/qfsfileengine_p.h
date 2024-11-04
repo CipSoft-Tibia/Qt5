@@ -76,8 +76,8 @@ public:
     QString fileName(FileName file) const override;
     uint ownerId(FileOwner) const override;
     QString owner(FileOwner) const override;
-    bool setFileTime(const QDateTime &newDate, FileTime time) override;
-    QDateTime fileTime(FileTime time) const override;
+    bool setFileTime(const QDateTime &newDate, QFile::FileTime time) override;
+    QDateTime fileTime(QFile::FileTime time) const override;
     void setFileName(const QString &file) override;
     int handle() const override;
 
@@ -150,6 +150,9 @@ public:
     bool nativeIsSequential() const;
 #ifndef Q_OS_WIN
     bool isSequentialFdFh() const;
+#endif
+#ifdef Q_OS_WIN
+    bool nativeRenameOverwrite(const QString &newName);
 #endif
 
     uchar *map(qint64 offset, qint64 size, QFile::MemoryMapFlags flags);

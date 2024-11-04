@@ -9,9 +9,12 @@
 #include "include/core/SkFont.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPath.h"
+#include "include/private/base/SkTArray.h"
 #include "tools/viewer/ClickHandlerSlide.h"
 
 #include <tuple>
+
+using namespace skia_private;
 
 // Math constants are not always defined.
 #ifndef M_PI
@@ -56,7 +59,7 @@ private:
     std::array<double, 4> fCubicY;
     double fMaxError;  // Max error (in pixels) between the cubic and the screen-space arc.
     double fTheta;  // Angle of the arc. This is only used for informational purposes.
-    SkTArray<SkString> fInfoStrings;
+    TArray<SkString> fInfoStrings;
 
     class Click;
 };

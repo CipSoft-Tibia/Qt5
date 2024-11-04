@@ -6,6 +6,7 @@
 #define QUICHE_QUIC_CORE_HTTP_QUIC_SPDY_CLIENT_STREAM_H_
 
 #include <cstddef>
+#include <list>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -45,6 +46,8 @@ class QUIC_EXPORT_PRIVATE QuicSpdyClientStream : public QuicSpdyStream {
   // QuicStream implementation called by the session when there's data for us.
   void OnBodyAvailable() override;
 
+  void OnFinRead() override;
+
   // Serializes the headers and body, sends it to the server, and
   // returns the number of bytes sent.
   size_t SendRequest(spdy::Http2HeaderBlock headers, absl::string_view body,
@@ -56,7 +59,7 @@ class QUIC_EXPORT_PRIVATE QuicSpdyClientStream : public QuicSpdyStream {
   // Returns whatever headers have been received for this stream.
   const spdy::Http2HeaderBlock& response_headers() { return response_headers_; }
 
-  const spdy::Http2HeaderBlock& preliminary_headers() {
+  const std::list<spdy::Http2HeaderBlock>& preliminary_headers() {
     return preliminary_headers_;
   }
 
@@ -66,12 +69,20 @@ class QUIC_EXPORT_PRIVATE QuicSpdyClientStream : public QuicSpdyStream {
 
   int response_code() const { return response_code_; }
 
+  QuicTime::Delta time_to_response_headers_received() const {
+    return time_to_response_headers_received_;
+  }
+
+  QuicTime::Delta time_to_response_complete() const {
+    return time_to_response_complete_;
+  }
+
   // While the server's SetPriority shouldn't be called externally, the creator
   // of client-side streams should be able to set the priority.
   using QuicSpdyStream::SetPriority;
 
  protected:
-  bool AreHeadersValid(const QuicHeaderList& header_list) const override;
+  bool ValidatedReceivedHeaders(const QuicHeaderList& header_list) override;
 
   // Called by OnInitialHeadersComplete to set response_header_. Returns false
   // on error.
@@ -96,11 +107,13 @@ class QUIC_EXPORT_PRIVATE QuicSpdyClientStream : public QuicSpdyStream {
 
   QuicSpdyClientSession* session_;
 
-  // These preliminary headers are used for the 100 Continue headers
-  // that may arrive before the response headers when the request has
-  // Expect: 100-continue.
-  bool has_preliminary_headers_;
-  spdy::Http2HeaderBlock preliminary_headers_;
+  // These preliminary headers are used for interim response headers that may
+  // arrive before the final response headers.
+  std::list<spdy::Http2HeaderBlock> preliminary_headers_;
+
+  QuicTime::Delta time_to_response_headers_received_ =
+      QuicTime::Delta::Infinite();
+  QuicTime::Delta time_to_response_complete_ = QuicTime::Delta::Infinite();
 };
 
 }  // namespace quic

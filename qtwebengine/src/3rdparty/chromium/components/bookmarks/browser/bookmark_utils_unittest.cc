@@ -10,13 +10,16 @@
 #include <utility>
 #include <vector>
 
+#include "base/scoped_observation.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/task_environment.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "components/bookmarks/browser/base_bookmark_model_observer.h"
+#include "components/bookmarks/browser/bookmark_client.h"
 #include "components/bookmarks/browser/bookmark_model.h"
+#include "components/bookmarks/browser/bookmark_model_observer.h"
 #include "components/bookmarks/browser/bookmark_node_data.h"
 #include "components/bookmarks/common/bookmark_metrics.h"
 #include "components/bookmarks/test/test_bookmark_client.h"
@@ -83,6 +86,26 @@ class BookmarkUtilsTest : public testing::Test,
   int grouped_changes_beginning_count_{0};
   int grouped_changes_ended_count_{0};
   base::HistogramTester histogram_;
+};
+
+// A bookmark client that suggests a save location for new nodes.
+class SuggestFolderClient : public TestBookmarkClient {
+ public:
+  SuggestFolderClient() = default;
+  SuggestFolderClient(const SuggestFolderClient&) = delete;
+  SuggestFolderClient& operator=(const SuggestFolderClient&) = delete;
+  ~SuggestFolderClient() override = default;
+
+  const BookmarkNode* GetSuggestedSaveLocation(const GURL& url) override {
+    return suggested_save_location_.get();
+  }
+
+  void SetSuggestedSaveLocation(const BookmarkNode* node) {
+    suggested_save_location_ = node;
+  }
+
+ private:
+  raw_ptr<const BookmarkNode> suggested_save_location_;
 };
 
 TEST_F(BookmarkUtilsTest, GetBookmarksMatchingPropertiesWordPhraseQuery) {
@@ -249,7 +272,7 @@ TEST_F(BookmarkUtilsTest, GetBookmarksMatchingPropertiesConjunction) {
 
 // Copy and paste is not yet supported on iOS. http://crbug.com/228147
 #if !BUILDFLAG(IS_IOS)
-TEST_F(BookmarkUtilsTest, DISABLED_PasteBookmarkFromURL) {
+TEST_F(BookmarkUtilsTest, PasteBookmarkFromURL) {
   std::unique_ptr<BookmarkModel> model(TestBookmarkClient::CreateModel());
   const std::u16string url_text = u"http://www.google.com/";
   const BookmarkNode* new_folder =
@@ -293,7 +316,8 @@ TEST_F(BookmarkUtilsTest, MAYBE_CopyPaste) {
   // Copy a node to the clipboard.
   std::vector<const BookmarkNode*> nodes;
   nodes.push_back(node);
-  CopyToClipboard(model.get(), nodes, false);
+  CopyToClipboard(model.get(), nodes, false,
+                  metrics::BookmarkEditSource::kOther);
 
   // And make sure we can paste a bookmark from the clipboard.
   EXPECT_TRUE(CanPasteFromClipboard(model.get(), model->bookmark_bar_node()));
@@ -310,7 +334,7 @@ TEST_F(BookmarkUtilsTest, MAYBE_CopyPaste) {
 
 // Test for updating title such that url and title pair are unique among the
 // children of parent.
-TEST_F(BookmarkUtilsTest, DISABLED_MakeTitleUnique) {
+TEST_F(BookmarkUtilsTest, MakeTitleUnique) {
   std::unique_ptr<BookmarkModel> model(TestBookmarkClient::CreateModel());
   const std::u16string url_text = u"http://www.google.com/";
   const std::u16string title_text = u"foobar";
@@ -326,7 +350,8 @@ TEST_F(BookmarkUtilsTest, DISABLED_MakeTitleUnique) {
   // Copy a node to the clipboard.
   std::vector<const BookmarkNode*> nodes;
   nodes.push_back(node);
-  CopyToClipboard(model.get(), nodes, false);
+  CopyToClipboard(model.get(), nodes, false,
+                  metrics::BookmarkEditSource::kOther);
 
   // Now we should be able to paste from the clipboard.
   EXPECT_TRUE(CanPasteFromClipboard(model.get(), bookmark_bar_node));
@@ -342,7 +367,7 @@ TEST_F(BookmarkUtilsTest, DISABLED_MakeTitleUnique) {
   EXPECT_EQ(u"foobar (1)", bookmark_bar_node->children()[1]->GetTitle());
 }
 
-TEST_F(BookmarkUtilsTest, DISABLED_CopyPasteMetaInfo) {
+TEST_F(BookmarkUtilsTest, CopyPasteMetaInfo) {
   std::unique_ptr<BookmarkModel> model(TestBookmarkClient::CreateModel());
   const BookmarkNode* node = model->AddURL(model->other_node(), 0, u"foo bar",
                                            GURL("http://www.google.com"));
@@ -352,7 +377,8 @@ TEST_F(BookmarkUtilsTest, DISABLED_CopyPasteMetaInfo) {
   // Copy a node to the clipboard.
   std::vector<const BookmarkNode*> nodes;
   nodes.push_back(node);
-  CopyToClipboard(model.get(), nodes, false);
+  CopyToClipboard(model.get(), nodes, false,
+                  metrics::BookmarkEditSource::kOther);
 
   // Paste node to a different folder.
   const BookmarkNode* folder =
@@ -384,7 +410,9 @@ TEST_F(BookmarkUtilsTest, DISABLED_CopyPasteMetaInfo) {
 #endif
 TEST_F(BookmarkUtilsTest, MAYBE_CutToClipboard) {
   std::unique_ptr<BookmarkModel> model(TestBookmarkClient::CreateModel());
-  model->AddObserver(this);
+  base::ScopedObservation<BookmarkModel, BookmarkModelObserver>
+      model_observation{this};
+  model_observation.Observe(model.get());
 
   std::u16string title(u"foo");
   GURL url("http://foo.com");
@@ -395,7 +423,8 @@ TEST_F(BookmarkUtilsTest, MAYBE_CutToClipboard) {
   std::vector<const BookmarkNode*> nodes;
   nodes.push_back(n1);
   nodes.push_back(n2);
-  CopyToClipboard(model.get(), nodes, true);
+  CopyToClipboard(model.get(), nodes, true,
+                  metrics::BookmarkEditSource::kOther);
 
   // Make sure the nodes were removed.
   EXPECT_EQ(0u, model->other_node()->children().size());
@@ -426,7 +455,8 @@ TEST_F(BookmarkUtilsTest, MAYBE_PasteNonEditableNodes) {
   // Copy a node to the clipboard.
   std::vector<const BookmarkNode*> nodes;
   nodes.push_back(node);
-  CopyToClipboard(model.get(), nodes, false);
+  CopyToClipboard(model.get(), nodes, false,
+                  metrics::BookmarkEditSource::kOther);
 
   // And make sure we can paste a bookmark from the clipboard.
   EXPECT_TRUE(CanPasteFromClipboard(model.get(), model->bookmark_bar_node()));
@@ -474,6 +504,28 @@ TEST_F(BookmarkUtilsTest, GetParentForNewNodes) {
   real_parent = GetParentForNewNodes(model->bookmark_bar_node(), nodes, &index);
   EXPECT_EQ(real_parent, model->bookmark_bar_node());
   EXPECT_EQ(2u, index);
+}
+
+// Ensures the BookmarkClient has the power to suggest the parent for new nodes.
+TEST_F(BookmarkUtilsTest, GetParentForNewNodes_ClientOverride) {
+  std::unique_ptr<SuggestFolderClient> client =
+      std::make_unique<SuggestFolderClient>();
+  SuggestFolderClient* client_ptr = client.get();
+  std::unique_ptr<BookmarkModel> model(
+      TestBookmarkClient::CreateModelWithClient(std::move(client)));
+
+  const BookmarkNode* folder_to_suggest =
+      model->AddFolder(model->bookmark_bar_node(), 0, u"Suggested");
+  const BookmarkNode* folder1 =
+      model->AddFolder(model->bookmark_bar_node(), 1, u"Folder 1");
+
+  ASSERT_EQ(folder1, GetParentForNewNodes(model.get(), GURL()));
+
+  client_ptr->SetSuggestedSaveLocation(folder_to_suggest);
+
+  ASSERT_EQ(folder_to_suggest, GetParentForNewNodes(model.get(), GURL()));
+
+  client_ptr = nullptr;
 }
 
 // Verifies that meta info is copied when nodes are cloned.

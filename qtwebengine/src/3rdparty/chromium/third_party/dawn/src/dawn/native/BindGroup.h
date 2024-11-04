@@ -44,17 +44,22 @@ struct BufferBinding {
 
 class BindGroupBase : public ApiObjectBase {
   public:
-    static BindGroupBase* MakeError(DeviceBase* device);
+    static BindGroupBase* MakeError(DeviceBase* device, const char* label);
 
     ObjectType GetType() const override;
 
-    BindGroupLayoutBase* GetLayout();
-    const BindGroupLayoutBase* GetLayout() const;
+    BindGroupLayoutBase* GetFrontendLayout();
+    const BindGroupLayoutBase* GetFrontendLayout() const;
+    BindGroupLayoutInternalBase* GetLayout();
+    const BindGroupLayoutInternalBase* GetLayout() const;
+
     BufferBinding GetBindingAsBufferBinding(BindingIndex bindingIndex);
     SamplerBase* GetBindingAsSampler(BindingIndex bindingIndex) const;
     TextureViewBase* GetBindingAsTextureView(BindingIndex bindingIndex);
     const ityp::span<uint32_t, uint64_t>& GetUnverifiedBufferSizes() const;
     const std::vector<Ref<ExternalTextureBase>>& GetBoundExternalTextures() const;
+
+    void ForEachUnverifiedBufferBindingIndex(std::function<void(BindingIndex, uint32_t)> fn) const;
 
   protected:
     // To save memory, the size of a bind group is dynamically determined and the bind group is
@@ -69,10 +74,12 @@ class BindGroupBase : public ApiObjectBase {
     // be first in the allocation. The binding data is stored after the Derived class.
     template <typename Derived>
     BindGroupBase(Derived* derived, DeviceBase* device, const BindGroupDescriptor* descriptor)
-        : BindGroupBase(device,
-                        descriptor,
-                        AlignPtr(reinterpret_cast<char*>(derived) + sizeof(Derived),
-                                 descriptor->layout->GetBindingDataAlignment())) {
+        : BindGroupBase(
+              device,
+              descriptor,
+              AlignPtr(
+                  reinterpret_cast<char*>(derived) + sizeof(Derived),
+                  descriptor->layout->GetInternalBindGroupLayout()->GetBindingDataAlignment())) {
         static_assert(std::is_base_of<BindGroupBase, Derived>::value);
     }
 
@@ -81,11 +88,11 @@ class BindGroupBase : public ApiObjectBase {
     ~BindGroupBase() override;
 
   private:
-    BindGroupBase(DeviceBase* device, ObjectBase::ErrorTag tag);
+    BindGroupBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label);
     void DeleteThis() override;
 
     Ref<BindGroupLayoutBase> mLayout;
-    BindGroupLayoutBase::BindingDataPointers mBindingData;
+    BindGroupLayoutInternalBase::BindingDataPointers mBindingData;
 
     // TODO(dawn:1293): Store external textures in
     // BindGroupLayoutBase::BindingDataPointers::bindings

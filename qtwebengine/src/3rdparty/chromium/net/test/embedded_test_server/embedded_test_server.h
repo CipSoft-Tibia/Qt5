@@ -24,6 +24,7 @@
 #include "net/base/host_port_pair.h"
 #include "net/base/ip_endpoint.h"
 #include "net/cert/ocsp_revocation_status.h"
+#include "net/cert/pki/parse_certificate.h"
 #include "net/cert/test_root_certs.h"
 #include "net/cert/x509_certificate.h"
 #include "net/socket/ssl_server_socket.h"
@@ -68,7 +69,7 @@ class EmbeddedTestServerHandle {
   friend class EmbeddedTestServer;
 
   explicit EmbeddedTestServerHandle(EmbeddedTestServer* test_server);
-  EmbeddedTestServer* test_server_ = nullptr;
+  raw_ptr<EmbeddedTestServer> test_server_ = nullptr;
 };
 
 // Class providing an HTTP server for testing purpose. This is a basic server
@@ -307,6 +308,9 @@ class EmbeddedTestServer {
 
     // A list of IP addresses to include in the leaf subjectAltName extension.
     std::vector<net::IPAddress> ip_addresses;
+
+    // A list of key usages to include in the leaf keyUsage extension.
+    std::vector<KeyUsageBit> key_usages;
   };
 
   typedef base::RepeatingCallback<std::unique_ptr<HttpResponse>(

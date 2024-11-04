@@ -16,7 +16,6 @@
 //
 
 #include "qrhi_p.h"
-#include <rhi/qshaderdescription.h>
 #include <QWindow>
 #include <QBitArray>
 
@@ -29,6 +28,15 @@
 #include <dcomp.h>
 
 #include "D3D12MemAlloc.h"
+
+// ID3D12Device2 and ID3D12GraphicsCommandList1 and types and enums introduced
+// with those are hard requirements now. These should be declared in any
+// moderately recent d3d12.h, but if it is an SDK from before Windows 10
+// version 1703 then these types could be missing. In the absence of other
+// options, handle this by skipping all the code and making QRhi::create() fail
+// in such builds.
+#ifdef __ID3D12Device2_INTERFACE_DEFINED__
+#define QRHI_D3D12_AVAILABLE
 
 QT_BEGIN_NAMESPACE
 
@@ -108,6 +116,18 @@ struct QD3D12CpuDescriptorPool
     quint32 descriptorByteSize;
     QVector<HeapWithMap> heaps;
     const char *debugName;
+};
+
+struct QD3D12QueryHeap
+{
+    bool isValid() const { return heap && capacity; }
+    bool create(ID3D12Device *device,
+                quint32 queryCount,
+                D3D12_QUERY_HEAP_TYPE heapType);
+    void destroy();
+
+    ID3D12QueryHeap *heap = nullptr;
+    quint32 capacity = 0;
 };
 
 struct QD3D12StagingArea
@@ -667,6 +687,7 @@ struct QD3D12Buffer : public QRhiBuffer
     };
     QVarLengthArray<HostWrite, 16> pendingHostWrites[QD3D12_FRAMES_IN_FLIGHT];
     friend class QRhiD3D12;
+    friend struct QD3D12CommandBuffer;
 };
 
 struct QD3D12RenderBuffer : public QRhiRenderBuffer
@@ -714,6 +735,7 @@ struct QD3D12Texture : public QRhiTexture
     DXGI_SAMPLE_DESC sampleDesc;
     uint generation = 0;
     friend class QRhiD3D12;
+    friend struct QD3D12CommandBuffer;
 };
 
 struct QD3D12Sampler : public QRhiSampler
@@ -847,9 +869,11 @@ struct QD3D12ShaderResourceBindings : public QRhiShaderResourceBindings
                            QD3D12ShaderResourceVisitor::StorageOp op,
                            int shaderRegister);
 
-    QVarLengthArray<QRhiShaderResourceBinding, 8> sortedBindings;
     bool hasDynamicOffset = false;
     uint generation = 0;
+
+    friend class QRhiD3D12;
+    friend struct QD3D12ShaderResourceVisitor;
 };
 
 struct QD3D12GraphicsPipeline : public QRhiGraphicsPipeline
@@ -863,6 +887,7 @@ struct QD3D12GraphicsPipeline : public QRhiGraphicsPipeline
     QD3D12ObjectHandle rootSigHandle;
     std::array<QD3D12ShaderStageData, 5> stageData;
     D3D12_PRIMITIVE_TOPOLOGY topology;
+    UINT viewInstanceMask = 0;
     uint generation = 0;
     friend class QRhiD3D12;
 };
@@ -889,7 +914,7 @@ struct QD3D12CommandBuffer : public QRhiCommandBuffer
 
     const QRhiNativeHandles *nativeHandles();
 
-    ID3D12GraphicsCommandList *cmdList = nullptr; // not owned
+    ID3D12GraphicsCommandList1 *cmdList = nullptr; // not owned
     QRhiD3D12CommandBufferNativeHandles nativeHandlesStruct;
 
     enum PassType {
@@ -921,9 +946,11 @@ struct QD3D12CommandBuffer : public QRhiCommandBuffer
         currentVertexOffsets = {};
     }
 
+    // per-frame
     PassType recordingPass;
     QRhiRenderTarget *currentTarget;
 
+    // per-pass
     QD3D12GraphicsPipeline *currentGraphicsPipeline;
     QD3D12ComputePipeline *currentComputePipeline;
     uint currentPipelineGeneration;
@@ -935,6 +962,38 @@ struct QD3D12CommandBuffer : public QRhiCommandBuffer
     DXGI_FORMAT currentIndexFormat;
     std::array<QD3D12ObjectHandle, D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> currentVertexBuffers;
     std::array<quint32, D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> currentVertexOffsets;
+
+    // global
+    double lastGpuTime = 0;
+
+    // per-setShaderResources
+    struct VisitorData {
+        QVarLengthArray<QPair<QD3D12ObjectHandle, quint32>, 4> cbufs[6];
+        QVarLengthArray<QD3D12Descriptor, 8> srvs[6];
+        QVarLengthArray<QD3D12Descriptor, 8> samplers[6];
+        QVarLengthArray<QPair<QD3D12ObjectHandle, D3D12_UNORDERED_ACCESS_VIEW_DESC>, 4> uavs[6];
+    } visitorData;
+
+    void visitUniformBuffer(QD3D12Stage s,
+                            const QRhiShaderResourceBinding::Data::UniformBufferData &d,
+                            int shaderRegister,
+                            int binding,
+                            int dynamicOffsetCount,
+                            const QRhiCommandBuffer::DynamicOffset *dynamicOffsets);
+    void visitTexture(QD3D12Stage s,
+                      const QRhiShaderResourceBinding::TextureAndSampler &d,
+                      int shaderRegister);
+    void visitSampler(QD3D12Stage s,
+                      const QRhiShaderResourceBinding::TextureAndSampler &d,
+                      int shaderRegister);
+    void visitStorageBuffer(QD3D12Stage s,
+                            const QRhiShaderResourceBinding::Data::StorageBufferData &d,
+                            QD3D12ShaderResourceVisitor::StorageOp op,
+                            int shaderRegister);
+    void visitStorageImage(QD3D12Stage s,
+                           const QRhiShaderResourceBinding::Data::StorageImageData &d,
+                           QD3D12ShaderResourceVisitor::StorageOp op,
+                           int shaderRegister);
 };
 
 struct QD3D12SwapChain : public QRhiSwapChain
@@ -945,6 +1004,7 @@ struct QD3D12SwapChain : public QRhiSwapChain
 
     QRhiCommandBuffer *currentFrameCommandBuffer() override;
     QRhiRenderTarget *currentFrameRenderTarget() override;
+    QRhiRenderTarget *currentFrameRenderTarget(StereoTargetBuffer targetBuffer) override;
 
     QSize surfacePixelSize() override;
     bool isFormatSupported(Format f) override;
@@ -964,6 +1024,7 @@ struct QD3D12SwapChain : public QRhiSwapChain
     QSize pixelSize;
     UINT swapInterval = 1;
     UINT swapChainFlags = 0;
+    BOOL stereo = false;
     DXGI_FORMAT colorFormat;
     DXGI_FORMAT srgbAdjustedColorFormat;
     DXGI_COLOR_SPACE_TYPE hdrColorSpace;
@@ -972,22 +1033,31 @@ struct QD3D12SwapChain : public QRhiSwapChain
     static const UINT BUFFER_COUNT = 3;
     QD3D12ObjectHandle colorBuffers[BUFFER_COUNT];
     QD3D12Descriptor rtvs[BUFFER_COUNT];
+    QD3D12Descriptor rtvsRight[BUFFER_COUNT];
     DXGI_SAMPLE_DESC sampleDesc;
     QD3D12ObjectHandle msaaBuffers[BUFFER_COUNT];
     QD3D12Descriptor msaaRtvs[BUFFER_COUNT];
     QD3D12RenderBuffer *ds = nullptr;
     UINT currentBackBufferIndex = 0;
     QD3D12SwapChainRenderTarget rtWrapper;
+    QD3D12SwapChainRenderTarget rtWrapperRight;
     QD3D12CommandBuffer cbWrapper;
 
     struct FrameResources {
         ID3D12Fence *fence = nullptr;
         HANDLE fenceEvent = nullptr;
         UINT64 fenceCounter = 0;
-        ID3D12GraphicsCommandList *cmdList = nullptr;
+        ID3D12GraphicsCommandList1 *cmdList = nullptr;
     } frameRes[QD3D12_FRAMES_IN_FLIGHT];
 
     int currentFrameSlot = 0; // index in frameRes
+};
+
+template<typename T, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type>
+struct alignas(void*) QD3D12PipelineStateSubObject
+{
+    D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type = Type;
+    T object = {};
 };
 
 class QRhiD3D12 : public QRhiImplementation
@@ -1111,7 +1181,7 @@ public:
     void waitGpu();
     DXGI_SAMPLE_DESC effectiveSampleDesc(int sampleCount, DXGI_FORMAT format) const;
     bool ensureDirectCompositionDevice();
-    bool startCommandListForCurrentFrameSlot(ID3D12GraphicsCommandList **cmdList);
+    bool startCommandListForCurrentFrameSlot(ID3D12GraphicsCommandList1 **cmdList);
     void enqueueResourceUpdates(QD3D12CommandBuffer *cbD, QRhiResourceUpdateBatch *resourceUpdates);
     void finishActiveReadbacks(bool forced = false);
     bool ensureShaderVisibleDescriptorHeapCapacity(QD3D12ShaderVisibleDescriptorHeap *h,
@@ -1122,7 +1192,7 @@ public:
     void bindShaderVisibleHeaps(QD3D12CommandBuffer *cbD);
 
     bool debugLayer = false;
-    ID3D12Device *dev = nullptr;
+    ID3D12Device2 *dev = nullptr;
     D3D_FEATURE_LEVEL minimumFeatureLevel = D3D_FEATURE_LEVEL(0);
     LUID adapterLuid = {};
     bool importedDevice = false;
@@ -1152,6 +1222,9 @@ public:
     QD3D12MipmapGenerator mipmapGen;
     QD3D12StagingArea smallStagingAreas[QD3D12_FRAMES_IN_FLIGHT];
     QD3D12ShaderVisibleDescriptorHeap shaderVisibleCbvSrvUavHeap;
+    UINT64 timestampTicksPerSecond = 0;
+    QD3D12QueryHeap timestampQueryHeap;
+    QD3D12StagingArea timestampReadbackArea;
     IDCompositionDevice *dcompDevice = nullptr;
     QD3D12SwapChain *currentSwapChain = nullptr;
     QSet<QD3D12SwapChain *> swapchains;
@@ -1160,35 +1233,13 @@ public:
     bool offscreenActive = false;
     QD3D12CommandBuffer *offscreenCb[QD3D12_FRAMES_IN_FLIGHT] = {};
 
-    struct VisitorData {
-        QVarLengthArray<QPair<QD3D12ObjectHandle, quint32>, 4> cbufs[6];
-        QVarLengthArray<QD3D12Descriptor, 8> srvs[6];
-        QVarLengthArray<QD3D12Descriptor, 8> samplers[6];
-        QVarLengthArray<QPair<QD3D12ObjectHandle, D3D12_UNORDERED_ACCESS_VIEW_DESC>, 4> uavs[6];
-    } visitorData;
-
-    void visitUniformBuffer(QD3D12Stage s,
-                            const QRhiShaderResourceBinding::Data::UniformBufferData &d,
-                            int shaderRegister,
-                            int binding,
-                            int dynamicOffsetCount,
-                            const QRhiCommandBuffer::DynamicOffset *dynamicOffsets);
-    void visitTexture(QD3D12Stage s,
-                      const QRhiShaderResourceBinding::TextureAndSampler &d,
-                      int shaderRegister);
-    void visitSampler(QD3D12Stage s,
-                      const QRhiShaderResourceBinding::TextureAndSampler &d,
-                      int shaderRegister);
-    void visitStorageBuffer(QD3D12Stage s,
-                            const QRhiShaderResourceBinding::Data::StorageBufferData &d,
-                            QD3D12ShaderResourceVisitor::StorageOp op,
-                            int shaderRegister);
-    void visitStorageImage(QD3D12Stage s,
-                           const QRhiShaderResourceBinding::Data::StorageImageData &d,
-                           QD3D12ShaderResourceVisitor::StorageOp op,
-                           int shaderRegister);
+    struct {
+        bool multiView = false;
+    } caps;
 };
 
 QT_END_NAMESPACE
+
+#endif // __ID3D12Device2_INTERFACE_DEFINED__
 
 #endif

@@ -9,6 +9,7 @@
 #include "third_party/blink/renderer/core/layout/ng/ng_layout_algorithm.h"
 
 #include "third_party/blink/renderer/core/layout/flexible_box_algorithm.h"
+#include "third_party/blink/renderer/core/layout/ng/flex/ng_flex_break_token_data.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_box_fragment_builder.h"
 
 namespace blink {
@@ -66,12 +67,13 @@ class CORE_EXPORT NGFlexLayoutAlgorithm
   bool IsColumnContainerMainSizeDefinite() const;
   bool IsContainerCrossSizeDefinite() const;
 
+  enum class Phase { kLayout, kRowIntrinsicSize, kColumnWrapIntrinsicSize };
   NGConstraintSpace BuildSpaceForIntrinsicInlineSize(
       const NGBlockNode& flex_item) const;
   NGConstraintSpace BuildSpaceForFlexBasis(const NGBlockNode& flex_item) const;
   NGConstraintSpace BuildSpaceForIntrinsicBlockSize(
       const NGBlockNode& flex_item,
-      absl::optional<LayoutUnit> override_inline_size = absl::nullopt) const;
+      absl::optional<LayoutUnit> override_inline_size) const;
   // |line_cross_size_for_stretch| should only be set when running the final
   // layout pass for stretch, when the line cross size is definite.
   // |block_offset_for_fragmentation| should only be set when running the final
@@ -84,7 +86,6 @@ class CORE_EXPORT NGFlexLayoutAlgorithm
       absl::optional<LayoutUnit> block_offset_for_fragmentation = absl::nullopt,
       bool min_block_size_should_encompass_intrinsic_size = false) const;
 
-  enum class Phase { kLayout, kRowIntrinsicSize, kColumnWrapIntrinsicSize };
   void ConstructAndAppendFlexItems(
       Phase phase,
       HeapVector<Member<LayoutBox>>* oof_children = nullptr);
@@ -96,7 +97,7 @@ class CORE_EXPORT NGFlexLayoutAlgorithm
   NGLayoutResult::EStatus GiveItemsFinalPositionAndSizeForFragmentation(
       HeapVector<NGFlexLine>* flex_line_outputs,
       Vector<EBreakBetween>* row_break_between_outputs,
-      bool* broke_before_row);
+      NGFlexBreakTokenData::NGFlexBreakBeforeRow* break_before_row);
   NGLayoutResult::EStatus PropagateFlexItemInfo(FlexItem* flex_item,
                                                 wtf_size_t flex_line_idx,
                                                 LogicalOffset offset,
@@ -113,12 +114,8 @@ class CORE_EXPORT NGFlexLayoutAlgorithm
 
   void AdjustButtonBaseline(LayoutUnit final_content_cross_size);
 
-  MinMaxSizesResult ComputeMinMaxSizeOfRowContainer();
+  MinMaxSizesResult ComputeMinMaxSizeOfRowContainerV3();
   MinMaxSizesResult ComputeMinMaxSizeOfMultilineColumnContainer();
-  // This implements 9.9.3. Flex Item Intrinsic Size Contributions, from
-  // https://drafts.csswg.org/css-flexbox/#intrinsic-item-contributions.
-  MinMaxSizesResult ComputeItemContributions(const NGConstraintSpace& space,
-                                             const FlexItem& item) const;
 
   // Return the amount of block space available in the current fragmentainer
   // for the node being laid out by this algorithm.
@@ -137,10 +134,12 @@ class CORE_EXPORT NGFlexLayoutAlgorithm
   // a layout result, so when breaking before a row, we will insert a
   // fragmentainer break before the first child in a row. |child| should be
   // those associated with the first child in the row. |row|,
-  // |row_break_between|, |row_index|, |has_container_separation| and
-  // |is_first_for_row| are specific to the row itself. See
+  // |row_block_offset|, |row_break_between|, |row_index|,
+  // |has_container_separation| and |is_first_for_row| are specific to the row
+  // itself. See
   // |::blink::BreakBeforeChildIfNeeded()| for more documentation.
   NGBreakStatus BreakBeforeRowIfNeeded(const NGFlexLine& row,
+                                       LayoutUnit row_block_offset,
                                        EBreakBetween row_break_between,
                                        wtf_size_t row_index,
                                        NGLayoutInputNode child,

@@ -5,17 +5,20 @@
 #ifndef CONTENT_BROWSER_PRELOADING_PRERENDER_PRERENDER_NEW_TAB_HANDLE_H_
 #define CONTENT_BROWSER_PRELOADING_PRERENDER_PRERENDER_NEW_TAB_HANDLE_H_
 
+#include <memory>
+
 #include "content/browser/preloading/prerender/prerender_attributes.h"
-#include "content/browser/preloading/prerender/prerender_metrics.h"
-#include "content/browser/web_contents/web_contents_impl.h"
-#include "content/common/frame.mojom.h"
-#include "content/public/browser/browser_context.h"
+#include "content/common/frame.mojom-forward.h"
+#include "content/public/browser/prerender_web_contents_delegate.h"
 #include "content/public/browser/render_frame_host.h"
 
 namespace content {
 
+class BrowserContext;
+class PrerenderCancellationReason;
 class PrerenderHost;
 class PrerenderHostRegistry;
+class WebContentsImpl;
 
 // PrerenderNewTabHandle creates a new WebContentsImpl instance, starts
 // prerendering on that, and keeps the instance until the prerendered page is
@@ -54,6 +57,9 @@ class PrerenderNewTabHandle {
   // Returns PrerenderHost that `web_contents_` is hosting.
   PrerenderHost* GetPrerenderHostForTesting();
 
+  // Returns PrerenderTriggerType.
+  PrerenderTriggerType trigger_type() const { return attributes_.trigger_type; }
+
  private:
   PrerenderHostRegistry& GetPrerenderHostRegistry();
 
@@ -75,8 +81,7 @@ class PrerenderNewTabHandle {
   // for `web_contents_`. This is because WebContentsDelegate can be specific to
   // a tab, and `web_contents_` will be placed in a different tab from the
   // initiator's tab.
-  class WebContentsDelegateImpl;
-  std::unique_ptr<WebContentsDelegateImpl> web_contents_delegate_;
+  std::unique_ptr<PrerenderWebContentsDelegate> web_contents_delegate_;
 
   int prerender_host_id_ = RenderFrameHost::kNoFrameTreeNodeId;
 };

@@ -14,6 +14,7 @@
 #include "base/json/json_reader.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/path_service.h"
 #include "base/process/process_handle.h"
 #include "base/profiler/module_cache.h"
 #include "base/run_loop.h"
@@ -22,9 +23,13 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_tokenizer.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/test/bind.h"
+#include "base/test/gmock_callback_support.h"
+#include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
-#include "base/test/test_timeouts.h"
+#include "base/test/test_proto_loader.h"
 #include "base/test/trace_event_analyzer.h"
+#include "base/threading/thread_restrictions.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "components/tracing/common/trace_startup_config.h"
@@ -38,6 +43,7 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/test/back_forward_cache_util.h"
+#include "content/public/test/background_tracing_test_support.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/content_browser_test.h"
 #include "content/public/test/content_browser_test_utils.h"
@@ -124,6 +130,8 @@ using base::trace_event::TraceLog;
 namespace content {
 namespace {
 
+using testing::_;
+
 class TestStartupPreferenceManagerImpl
     : public BackgroundStartupTracingObserver::PreferenceManager {
  public:
@@ -136,21 +144,6 @@ class TestStartupPreferenceManagerImpl
  private:
   bool enabled_ = false;
 };
-
-// Wait until |condition| returns true.
-void WaitForCondition(base::RepeatingCallback<bool()> condition,
-                      const std::string& description) {
-  const base::TimeDelta kTimeout = base::Seconds(30);
-  const base::TimeTicks start_time = base::TimeTicks::Now();
-  while (!condition.Run() && (base::TimeTicks::Now() - start_time < kTimeout)) {
-    base::RunLoop run_loop;
-    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
-        FROM_HERE, run_loop.QuitClosure(), TestTimeouts::tiny_timeout());
-    run_loop.Run();
-  }
-  ASSERT_TRUE(condition.Run())
-      << "Timeout waiting for condition: " << description;
-}
 
 // An helper class that observes tracing states transition and allows
 // synchronisation with tests. The class adds itself as a tracelog
@@ -199,73 +192,58 @@ class TestTraceLogHelper : public TraceLog::EnabledStateObserver {
   base::RunLoop wait_for_stop_tracing_;
 };
 
-// An helper class that observes background tracing states transition and
-// allows synchronisation with tests. The class adds itself as a backgrond
-// tracing enabled state observer. It provides methods to wait for a given
-// state.
+// A helper class that observes background tracing states transition, receives
+// uploaded trace and allows synchronisation with tests. The class adds itself
+// as a background tracing enabled state observer. It provides methods to wait
+// for a given state.
 //
 // Usage:
 //   TestBackgroundTracingHelper background_tracing_helper;
 //   [... set a background tracing scenario ...]
-//   background_tracing_helper.WaitForScenarioActivated();
 //   [... trigger an event ...]
-//   background_tracing_helper->WaitForTracingEnabled();
+//   background_tracing_helper->WaitForTraceStarted();
+//   background_tracing_helper->ExpectOnScenarioIdle("scenario_name");
 //   [... abort ...]
-//   background_tracing_helper->WaitForScenarioAborted();
+//   background_tracing_helper->WaitForScenarioIdle();
 class TestBackgroundTracingHelper
-    : public BackgroundTracingManagerImpl::EnabledStateObserver {
+    : public BackgroundTracingManager::EnabledStateTestObserver,
+      public perfetto::trace_processor::json::OutputWriter {
  public:
   TestBackgroundTracingHelper() {
-    BackgroundTracingManagerImpl::GetInstance().AddEnabledStateObserver(this);
+    BackgroundTracingManagerImpl::GetInstance()
+        .AddEnabledStateObserverForTesting(this);
   }
 
   ~TestBackgroundTracingHelper() override {
-    BackgroundTracingManagerImpl::GetInstance().RemoveEnabledStateObserver(
-        this);
-    EXPECT_FALSE(is_scenario_active_);
+    BackgroundTracingManagerImpl::GetInstance()
+        .RemoveEnabledStateObserverForTesting(this);
   }
 
-  void OnScenarioActivated(const BackgroundTracingConfigImpl* config) override {
-    is_scenario_active_ = true;
-    wait_for_scenario_activated_.Quit();
+  MOCK_METHOD(void,
+              OnScenarioActive,
+              (const std::string& scenario_name),
+              (override));
+  MOCK_METHOD(void,
+              OnScenarioIdle,
+              (const std::string& scenario_name),
+              (override));
+  void OnTraceStarted() override { wait_for_trace_started_.Quit(); }
+  void OnTraceReceived(const std::string& proto_content) override {
+    ProcessTraceContent(proto_content);
   }
 
-  void OnScenarioAborted() override {
-    is_scenario_active_ = false;
-    wait_for_scenario_aborted_.Quit();
+  void ExpectOnScenarioActive(const std::string& scenario_name) {
+    EXPECT_CALL(*this, OnScenarioActive(scenario_name)).Times(1);
   }
-
-  void OnTracingEnabled() override { wait_for_tracing_enabled_.Quit(); }
-
-  void WaitForScenarioActivated() { wait_for_scenario_activated_.Run(); }
-  void WaitForScenarioAborted() { wait_for_scenario_aborted_.Run(); }
-  void WaitForTracingEnabled() { wait_for_tracing_enabled_.Run(); }
-
- private:
-  bool is_scenario_active_ = false;
-  base::RunLoop wait_for_scenario_activated_;
-  base::RunLoop wait_for_scenario_aborted_;
-  base::RunLoop wait_for_tracing_enabled_;
-};
-
-// An helper class that receives uploaded trace. It allows synchronisation with
-// tests.
-//
-// Usage:
-//   TestTraceReceiverHelper trace_receiver_helper;
-//   [... do tracing stuff ...]
-//   trace_receiver_helper.WaitForTraceReceived();
-class TestTraceReceiverHelper
-    : public perfetto::trace_processor::json::OutputWriter {
- public:
-  TestTraceReceiverHelper() {}
-
-  BackgroundTracingManager::ReceiveCallback get_receive_callback() {
-    return base::BindRepeating(&TestTraceReceiverHelper::Upload,
-                               base::Unretained(this));
+  void ExpectOnScenarioIdle(const std::string& scenario_name) {
+    EXPECT_CALL(*this, OnScenarioIdle(scenario_name))
+        .WillOnce(
+            base::test::RunOnceClosure(wait_for_scenario_idle_.QuitClosure()));
   }
-
+  void WaitForScenarioIdle() { wait_for_scenario_idle_.Run(); }
+  void WaitForTraceStarted() { wait_for_trace_started_.Run(); }
   void WaitForTraceReceived() { wait_for_trace_received_.Run(); }
+
   bool trace_received() const { return trace_received_; }
   const std::string& json_file_contents() const { return json_file_contents_; }
   const std::string& proto_file_contents() const {
@@ -275,22 +253,20 @@ class TestTraceReceiverHelper
     return json_file_contents_.find(text) != std::string::npos;
   }
 
-  void Upload(
-      std::unique_ptr<std::string> file_contents,
-      BackgroundTracingManager::FinishedProcessingCallback done_callback) {
-    EXPECT_TRUE(file_contents);
+ private:
+  void ProcessTraceContent(const std::string& file_contents) {
     EXPECT_FALSE(trace_received_);
     trace_received_ = true;
-    proto_file_contents_ = *file_contents;
+    proto_file_contents_ = file_contents;
 
     std::unique_ptr<perfetto::trace_processor::TraceProcessorStorage>
         trace_processor =
             perfetto::trace_processor::TraceProcessorStorage::CreateInstance(
                 perfetto::trace_processor::Config());
 
-    size_t data_length = file_contents->length();
+    size_t data_length = proto_file_contents_.length();
     std::unique_ptr<uint8_t[]> data(new uint8_t[data_length]);
-    memcpy(data.get(), file_contents->data(), data_length);
+    memcpy(data.get(), proto_file_contents_.data(), data_length);
 
     auto parse_status = trace_processor->Parse(std::move(data), data_length);
     ASSERT_TRUE(parse_status.ok()) << parse_status.message();
@@ -304,10 +280,6 @@ class TestTraceReceiverHelper
         perfetto::trace_processor::json::LabelFilterPredicate());
     ASSERT_TRUE(export_status.ok()) << export_status.message();
 
-    // Post the callbacks.
-    content::GetUIThreadTaskRunner({})->PostTask(
-        FROM_HERE, base::BindOnce(std::move(done_callback), true));
-
     content::GetUIThreadTaskRunner({})->PostTask(
         FROM_HERE, wait_for_trace_received_.QuitWhenIdleClosure());
   }
@@ -319,67 +291,30 @@ class TestTraceReceiverHelper
     return perfetto::trace_processor::util::OkStatus();
   }
 
- private:
+  base::RunLoop wait_for_scenario_idle_;
+  base::RunLoop wait_for_trace_started_;
   base::RunLoop wait_for_trace_received_;
+
   bool trace_received_ = false;
   std::string proto_file_contents_;
   std::string json_file_contents_;
 };
 
-// An helper class that receives multiple traces through the same callback.
-class TestMultipleTraceReceiverHelper {
- public:
-  BackgroundTracingManager::ReceiveCallback get_receive_callback() {
-    return base::BindRepeating(&TestMultipleTraceReceiverHelper::Upload,
-                               base::Unretained(this));
-  }
-
-  void WaitForTraceReceived(size_t offset) {
-    trace_receivers_[offset].WaitForTraceReceived();
-  }
-
-  bool trace_received(size_t offset) {
-    return trace_receivers_[offset].trace_received();
-  }
-
-  void Upload(
-      std::unique_ptr<std::string> file_contents,
-      BackgroundTracingManager::FinishedProcessingCallback done_callback) {
-    trace_receivers_[current_receiver_offset_].Upload(std::move(file_contents),
-                                                      std::move(done_callback));
-    current_receiver_offset_++;
-  }
-
- private:
-  std::map<size_t, TestTraceReceiverHelper> trace_receivers_;
-  int current_receiver_offset_ = 0;
-};
-
-// An helper class accepts a slow-report trigger callback.
-//
-// Usage:
-//   TestTriggerHelper test_trigger_helper;
-//    BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-//        handle, trigger_helper.receive_closure(true));
-//   test_trigger_helper.WaitForTriggerReceived();
-class TestTriggerHelper {
- public:
-  BackgroundTracingManager::StartedFinalizingCallback receive_closure(
-      bool expected) {
-    return base::BindOnce(&TestTriggerHelper::OnTriggerReceive,
-                          base::Unretained(this), expected);
-  }
-
-  void WaitForTriggerReceived() { wait_for_trigger_received_.Run(); }
-
- private:
-  void OnTriggerReceive(bool expected, bool value) {
-    EXPECT_EQ(expected, value);
-    wait_for_trigger_received_.QuitWhenIdle();
-  }
-
-  base::RunLoop wait_for_trigger_received_;
-};
+perfetto::protos::gen::ChromeFieldTracingConfig ParseFieldTracingConfigFromText(
+    const std::string& proto_text) {
+  base::ScopedAllowBlockingForTesting allow_blocking;
+  base::TestProtoLoader config_loader(
+      base::PathService::CheckedGet(base::DIR_GEN_TEST_DATA_ROOT)
+          .Append(
+              FILE_PATH_LITERAL("third_party/perfetto/protos/perfetto/"
+                                "config/chrome/scenario_config.descriptor")),
+      "perfetto.protos.ChromeFieldTracingConfig");
+  std::string serialized_message;
+  config_loader.ParseFromText(proto_text, serialized_message);
+  perfetto::protos::gen::ChromeFieldTracingConfig destination;
+  destination.ParseFromString(serialized_message);
+  return destination;
+}
 
 }  // namespace
 
@@ -406,7 +341,7 @@ class BackgroundTracingManagerBrowserTest : public ContentBrowserTest {
 
   void PreRunTestOnMainThread() override {
     BackgroundTracingManagerImpl::GetInstance()
-        .InvalidateTriggerHandlesForTesting();
+        .InvalidateTriggersCallbackForTesting();
 
     ContentBrowserTest::PreRunTestOnMainThread();
   }
@@ -499,108 +434,236 @@ std::unique_ptr<BackgroundTracingConfig> CreateSystemConfig() {
   return config;
 }
 
-// This tests that the endpoint receives the final trace data.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
-                       ReceiveTraceFinalContentsOnTrigger) {
+                       StartUploadScenario) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
+  constexpr const char kScenarioConfig[] = R"pb(
+    scenarios: {
+      scenario_name: "test_scenario"
+      start_rules: {
+        name: "start_trigger"
+        manual_trigger_name: "start_trigger"
+      }
+      upload_rules: {
+        name: "upload_trigger"
+        manual_trigger_name: "upload_trigger"
+      }
+      trace_config: {
+        data_sources: { config: { name: "org.chromium.trace_metadata" } }
+      }
+    }
+  )pb";
+  BackgroundTracingManager::GetInstance().InitializeScenarios(
+      ParseFieldTracingConfigFromText(kScenarioConfig), base::NullCallback(),
+      BackgroundTracingManager::NO_DATA_FILTERING);
 
-  std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
+  background_tracing_helper.ExpectOnScenarioActive("test_scenario");
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("start_trigger"));
+  background_tracing_helper.WaitForTraceStarted();
 
-  BackgroundTracingManager::TriggerHandle handle =
-      BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
+  background_tracing_helper.ExpectOnScenarioIdle("test_scenario");
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("upload_trigger"));
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
-
-  background_tracing_helper.WaitForTracingEnabled();
-
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
-
-  trace_receiver_helper.WaitForTraceReceived();
-  BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
-
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  background_tracing_helper.WaitForTraceReceived();
+  EXPECT_TRUE(background_tracing_helper.trace_received());
 }
 
-// This tests triggering more than once still only gathers once.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
-                       CallTriggersMoreThanOnceOnlyGatherOnce) {
+                       StartInvalidScenario) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
+  constexpr const char kScenarioConfig[] = R"pb(
+    scenarios: {
+      scenario_name: "test_scenario"
+      start_rules: {
+        name: "start_trigger"
+        manual_trigger_name: "start_trigger"
+      }
+      trace_config: {
+        data_sources: { config: { name: "Invalid" target_buffer: 1 } }
+      }
+    }
+  )pb";
+  BackgroundTracingManager::GetInstance().InitializeScenarios(
+      ParseFieldTracingConfigFromText(kScenarioConfig), base::NullCallback(),
+      BackgroundTracingManager::NO_DATA_FILTERING);
 
-  std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
+  background_tracing_helper.ExpectOnScenarioActive("test_scenario");
+  background_tracing_helper.ExpectOnScenarioIdle("test_scenario");
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("start_trigger"));
 
-  content::BackgroundTracingManager::TriggerHandle handle =
-      content::BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
-
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
-
-  background_tracing_helper.WaitForTracingEnabled();
-
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(false));
-
-  trace_receiver_helper.WaitForTraceReceived();
-  BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
-
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  background_tracing_helper.WaitForScenarioIdle();
 }
 
 // This tests that non-allowlisted args get stripped if required.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        NotAllowlistedArgsStripped) {
-  TestTraceReceiverHelper trace_receiver_helper;
   TestBackgroundTracingHelper background_tracing_helper;
 
-  std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
-
-  content::BackgroundTracingManager::TriggerHandle handle =
-      content::BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
-
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::ANONYMIZE_DATA));
-  background_tracing_helper.WaitForTracingEnabled();
+  constexpr const char kScenarioConfig[] = R"pb(
+    scenarios: {
+      scenario_name: "test_scenario"
+      start_rules: {
+        name: "start_trigger"
+        manual_trigger_name: "start_trigger"
+      }
+      upload_rules: {
+        name: "upload_trigger"
+        manual_trigger_name: "upload_trigger"
+      }
+      trace_config: {
+        data_sources: {
+          config: {
+            name: "track_event"
+            track_event_config: {
+              disabled_categories: [ "*" ],
+              enabled_categories: [ "toplevel", "startup" ]
+            }
+          }
+        }
+      }
+    }
+  )pb";
+  BackgroundTracingManager::GetInstance().InitializeScenarios(
+      ParseFieldTracingConfigFromText(kScenarioConfig), base::NullCallback(),
+      BackgroundTracingManager::ANONYMIZE_DATA);
+  background_tracing_helper.ExpectOnScenarioActive("test_scenario");
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("start_trigger"));
+  background_tracing_helper.WaitForTraceStarted();
 
   {
     TRACE_EVENT1("toplevel", "ThreadPool_RunTask", "src_file", "abc");
     TRACE_EVENT1("startup", "TestNotAllowlist", "test_not_allowlist", "abc");
   }
 
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
-  trigger_helper.WaitForTriggerReceived();
+  background_tracing_helper.ExpectOnScenarioIdle("test_scenario");
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("upload_trigger"));
+  background_tracing_helper.WaitForScenarioIdle();
 
-  trace_receiver_helper.WaitForTraceReceived();
-  BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
-
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
-  EXPECT_TRUE(trace_receiver_helper.TraceHasMatchingString("{"));
-  EXPECT_TRUE(trace_receiver_helper.TraceHasMatchingString("src_file"));
+  background_tracing_helper.WaitForTraceReceived();
+  EXPECT_TRUE(background_tracing_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.TraceHasMatchingString("{"));
+  EXPECT_TRUE(background_tracing_helper.TraceHasMatchingString("src_file"));
   EXPECT_FALSE(
-      trace_receiver_helper.TraceHasMatchingString("test_not_allowlist"));
+      background_tracing_helper.TraceHasMatchingString("test_not_allowlist"));
+}
+
+IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
+                       StartOtherScenario) {
+  TestBackgroundTracingHelper observer;
+  constexpr const char kScenarioConfig[] = R"pb(
+    scenarios: {
+      scenario_name: "test_scenario"
+      start_rules: {
+        name: "start_trigger"
+        manual_trigger_name: "start_trigger"
+      }
+      stop_rules: { name: "stop_trigger" manual_trigger_name: "stop_trigger" }
+      trace_config: {
+        data_sources: { config: { name: "org.chromium.trace_metadata" } }
+      }
+    }
+    scenarios: {
+      scenario_name: "other_scenario"
+      start_rules: {
+        name: "start_trigger"
+        manual_trigger_name: "other_start_trigger"
+      }
+      trace_config: {
+        data_sources: { config: { name: "org.chromium.trace_metadata" } }
+      }
+    }
+  )pb";
+  BackgroundTracingManager::GetInstance().InitializeScenarios(
+      ParseFieldTracingConfigFromText(kScenarioConfig), base::NullCallback(),
+      BackgroundTracingManager::NO_DATA_FILTERING);
+
+  observer.ExpectOnScenarioActive("test_scenario");
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("start_trigger"));
+
+  EXPECT_FALSE(BackgroundTracingManager::EmitNamedTrigger("other_scenario"));
+
+  observer.ExpectOnScenarioIdle("test_scenario");
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("stop_trigger"));
+  observer.WaitForScenarioIdle();
+
+  observer.ExpectOnScenarioActive("other_scenario");
+  EXPECT_TRUE(
+      BackgroundTracingManager::EmitNamedTrigger("other_start_trigger"));
+}
+
+// This tests that the endpoint receives the final trace data.
+IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
+                       ReceiveTraceFinalContentsOnTrigger) {
+  TestBackgroundTracingHelper background_tracing_helper;
+
+  std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
+
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
+  background_tracing_helper.WaitForTraceStarted();
+
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
+  background_tracing_helper.WaitForTraceReceived();
+
+  background_tracing_helper.ExpectOnScenarioIdle("");
+  BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
+  background_tracing_helper.WaitForScenarioIdle();
+
+  EXPECT_TRUE(background_tracing_helper.trace_received());
+}
+
+// This tests triggering more than once still only gathers once.
+IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
+                       CallTriggersMoreThanOnceOnlyGatherOnce) {
+  TestBackgroundTracingHelper background_tracing_helper;
+
+  std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
+
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
+
+  background_tracing_helper.WaitForTraceStarted();
+
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
+  EXPECT_FALSE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
+
+  background_tracing_helper.WaitForTraceReceived();
+  background_tracing_helper.ExpectOnScenarioIdle("");
+  BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
+  background_tracing_helper.WaitForScenarioIdle();
+
+  EXPECT_TRUE(background_tracing_helper.trace_received());
+}
+
+// This tests that non-allowlisted args get stripped if required.
+IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
+                       LegacyNotAllowlistedArgsStripped) {
+  TestBackgroundTracingHelper background_tracing_helper;
+
+  std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
+
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::ANONYMIZE_DATA));
+  background_tracing_helper.WaitForTraceStarted();
+
+  {
+    TRACE_EVENT1("toplevel", "ThreadPool_RunTask", "src_file", "abc");
+    TRACE_EVENT1("startup", "TestNotAllowlist", "test_not_allowlist", "abc");
+  }
+
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
+
+  background_tracing_helper.WaitForTraceReceived();
+  background_tracing_helper.ExpectOnScenarioIdle("");
+  BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
+  background_tracing_helper.WaitForScenarioIdle();
+
+  EXPECT_TRUE(background_tracing_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.TraceHasMatchingString("{"));
+  EXPECT_TRUE(background_tracing_helper.TraceHasMatchingString("src_file"));
+  EXPECT_FALSE(
+      background_tracing_helper.TraceHasMatchingString("test_not_allowlist"));
 }
 
 // Regression test for https://crbug.com/1405341.
@@ -611,7 +674,6 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
   ASSERT_TRUE(embedded_test_server()->Start());
 
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   std::unique_ptr<BackgroundTracingConfig> config =
       BackgroundTracingConfigImpl::FromDict(base::JSONReader::Read(R"JSON(
@@ -629,21 +691,12 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                                                 .value()
                                                 .TakeDict());
 
-  BackgroundTracingManager::TriggerHandle handle =
-      BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "content_test");
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  background_tracing_helper.WaitForTraceStarted();
 
-  background_tracing_helper.WaitForTracingEnabled();
-
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("content_test"));
 
   EXPECT_TRUE(NavigateToURL(
       shell(), embedded_test_server()->GetURL("a.com", "/title1.html")));
@@ -666,16 +719,17 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
   EXPECT_TRUE(NavigateToURL(shell(), cross_site_url));
   delete_frame.WaitUntilDeleted();
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
 }
 
 // Tests that events emitted by the browser process immediately after the
 // SetActiveScenarioWithReceiveCallback call does get included in the trace,
-// without waiting for the full WaitForTracingEnabled() callback (background
+// without waiting for the full WaitForTraceStarted() callback (background
 // tracing will directly enable the TraceLog so we get events prior to waiting
 // for the whole IPC sequence to enable tracing coming back from the tracing
 // service). Temporarily disabled startup tracing on Android to be able to
@@ -691,71 +745,59 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
 #endif
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        MAYBE_EarlyTraceEventsInTrace) {
-  TestTraceReceiverHelper trace_receiver_helper;
   TestBackgroundTracingHelper background_tracing_helper;
 
   std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
 
-  content::BackgroundTracingManager::TriggerHandle handle =
-      content::BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
-
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::ANONYMIZE_DATA));
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::ANONYMIZE_DATA));
 
   { TRACE_EVENT0("benchmark", "TestEarlyEvent"); }
 
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
-  trigger_helper.WaitForTriggerReceived();
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
-  EXPECT_TRUE(trace_receiver_helper.TraceHasMatchingString("{"));
-  EXPECT_TRUE(trace_receiver_helper.TraceHasMatchingString("TestEarlyEvent"));
+  EXPECT_TRUE(background_tracing_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.TraceHasMatchingString("{"));
+  EXPECT_TRUE(
+      background_tracing_helper.TraceHasMatchingString("TestEarlyEvent"));
 }
 
 // This tests that browser metadata gets included in the trace.
+// TODO(crbug.com/1413115): Re-enable this test on TSAN builds.
+#if BUILDFLAG(IS_LINUX) && defined(THREAD_SANITIZER)
+#define MAYBE_TraceMetadataInTrace DISABLED_TraceMetadataInTrace
+#else
+#define MAYBE_TraceMetadataInTrace TraceMetadataInTrace
+#endif
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
-                       TraceMetadataInTrace) {
+                       MAYBE_TraceMetadataInTrace) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
 
-  content::BackgroundTracingManager::TriggerHandle handle =
-      content::BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  background_tracing_helper.WaitForTraceStarted();
 
-  background_tracing_helper.WaitForTracingEnabled();
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
 
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
-
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
-  EXPECT_TRUE(trace_receiver_helper.TraceHasMatchingString("cpu-brand"));
-  EXPECT_TRUE(trace_receiver_helper.TraceHasMatchingString("network-type"));
-  EXPECT_TRUE(trace_receiver_helper.TraceHasMatchingString("user-agent"));
+  EXPECT_TRUE(background_tracing_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.TraceHasMatchingString("cpu-brand"));
+  EXPECT_TRUE(background_tracing_helper.TraceHasMatchingString("network-type"));
+  EXPECT_TRUE(background_tracing_helper.TraceHasMatchingString("user-agent"));
 }
 
 // Flaky on android, linux, and windows: https://crbug.com/639706 and
@@ -767,43 +809,32 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        DISABLED_CrashWhenSubprocessWithoutArgumentFilter) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
 
-  content::BackgroundTracingManager::TriggerHandle handle =
-      content::BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
-
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::ANONYMIZE_DATA));
-
-  background_tracing_helper.WaitForScenarioActivated();
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::ANONYMIZE_DATA));
 
   EXPECT_TRUE(NavigateToURL(shell(), GetTestUrl("", "about:blank")));
 
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
   // We should *not* receive anything at all from the renderer,
   // the process should've crashed rather than letting that happen.
-  EXPECT_FALSE(trace_receiver_helper.TraceHasMatchingString("CrRendererMain"));
+  EXPECT_FALSE(
+      background_tracing_helper.TraceHasMatchingString("CrRendererMain"));
 }
 
 // This tests multiple triggers still only gathers once.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        CallMultipleTriggersOnlyGatherOnce) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "PREEMPTIVE_TRACING_MODE");
@@ -830,30 +861,20 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       BackgroundTracingConfigImpl::FromDict(std::move(dict)));
   EXPECT_TRUE(config);
 
-  BackgroundTracingManager::TriggerHandle handle1 =
-      BackgroundTracingManager::GetInstance().RegisterTriggerType("test1");
-  BackgroundTracingManager::TriggerHandle handle2 =
-      BackgroundTracingManager::GetInstance().RegisterTriggerType("test2");
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  background_tracing_helper.WaitForTraceStarted();
 
-  background_tracing_helper.WaitForTracingEnabled();
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("test1"));
+  EXPECT_FALSE(BackgroundTracingManager::EmitNamedTrigger("test2"));
 
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle1, trigger_helper.receive_closure(true));
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle2, trigger_helper.receive_closure(false));
-
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
 }
 
 // This tests that delayed histogram triggers work as expected
@@ -861,7 +882,6 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        CallPreemptiveTriggerWithDelay) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "PREEMPTIVE_TRACING_MODE");
@@ -886,13 +906,10 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
   EXPECT_TRUE(config);
 
   base::RunLoop rule_triggered_runloop;
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   BackgroundTracingManagerImpl::GetInstance()
       .GetActiveScenarioForTesting()
@@ -914,25 +931,19 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       .GetActiveScenarioForTesting()
       ->FireTimerForTesting();
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
 
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
 }
 
 // This tests that you can't trigger without a scenario set.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        CannotTriggerWithoutScenarioSet) {
-  content::BackgroundTracingManager::TriggerHandle handle =
-      content::BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
-
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(false));
-  trigger_helper.WaitForTriggerReceived();
+  EXPECT_FALSE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
 }
 
 // This tests that no trace is triggered with a handle that isn't specified
@@ -940,72 +951,53 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        DoesNotTriggerWithWrongHandle) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
 
-  content::BackgroundTracingManager::TriggerHandle handle =
-      content::BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "does_not_exist");
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  background_tracing_helper.WaitForTraceStarted();
 
-  background_tracing_helper.WaitForTracingEnabled();
-
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(false));
+  EXPECT_FALSE(BackgroundTracingManager::EmitNamedTrigger("does_not_exist"));
 
   // Abort the scenario.
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_FALSE(trace_receiver_helper.trace_received());
+  EXPECT_FALSE(background_tracing_helper.trace_received());
 }
 
 // This tests that no trace is triggered with an invalid handle.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        DoesNotTriggerWithInvalidHandle) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
 
-  content::BackgroundTracingManager::TriggerHandle handle =
-      BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
   BackgroundTracingManagerImpl::GetInstance()
-      .InvalidateTriggerHandlesForTesting();
+      .InvalidateTriggersCallbackForTesting();
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  background_tracing_helper.WaitForTraceStarted();
 
-  background_tracing_helper.WaitForTracingEnabled();
-
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(false));
+  EXPECT_FALSE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
 
   // Abort the scenario.
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_FALSE(trace_receiver_helper.trace_received());
+  EXPECT_FALSE(background_tracing_helper.trace_received());
 }
 
 // This tests that no preemptive trace is triggered with 0 chance set.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        PreemptiveNotTriggerWithZeroChance) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "PREEMPTIVE_TRACING_MODE");
@@ -1026,34 +1018,25 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       BackgroundTracingConfigImpl::FromDict(std::move(dict)));
   EXPECT_TRUE(config);
 
-  content::BackgroundTracingManager::TriggerHandle handle =
-      content::BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  background_tracing_helper.WaitForTraceStarted();
 
-  background_tracing_helper.WaitForTracingEnabled();
-
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(false));
+  EXPECT_FALSE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
 
   // Abort the scenario.
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_FALSE(trace_receiver_helper.trace_received());
+  EXPECT_FALSE(background_tracing_helper.trace_received());
 }
 
 // This tests that no reactive trace is triggered with 0 chance set.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        ReactiveNotTriggerWithZeroChance) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "REACTIVE_TRACING_MODE");
@@ -1075,33 +1058,23 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       BackgroundTracingConfigImpl::FromDict(std::move(dict)));
   EXPECT_TRUE(config);
 
-  content::BackgroundTracingManager::TriggerHandle handle =
-      content::BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
-
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(false));
-  trigger_helper.WaitForTriggerReceived();
+  EXPECT_FALSE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
 
   // Abort the scenario.
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_FALSE(trace_receiver_helper.trace_received());
+  EXPECT_FALSE(background_tracing_helper.trace_received());
 }
 
 // This tests that histogram triggers for preemptive mode configs.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        ReceiveTraceSucceedsOnHigherHistogramSample) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "PREEMPTIVE_TRACING_MODE");
@@ -1124,37 +1097,35 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       BackgroundTracingConfigImpl::FromDict(std::move(dict)));
   EXPECT_TRUE(config);
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   // Our reference value is "1", so a value of "2" should trigger a trace.
   LOCAL_HISTOGRAM_COUNTS("fake", 2);
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
 
   absl::optional<base::Value> trace_json =
-      base::JSONReader::Read(trace_receiver_helper.json_file_contents());
+      base::JSONReader::Read(background_tracing_helper.json_file_contents());
   ASSERT_TRUE(trace_json);
-  auto* metadata_json = trace_json->FindDictKey("metadata");
+  ASSERT_TRUE(trace_json->is_dict());
+  auto* metadata_json = trace_json->GetDict().FindDict("metadata");
   ASSERT_TRUE(metadata_json);
 
-  const std::string* trace_config =
-      metadata_json->FindStringKey("trace-config");
+  const std::string* trace_config = metadata_json->FindString("trace-config");
   ASSERT_TRUE(trace_config);
   EXPECT_NE(trace_config->find("record-continuously"), trace_config->npos)
       << *trace_config;
 
   EXPECT_TRUE(BackgroundTracingManager::GetInstance().HasActiveScenario());
 
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 }
 
 // TODO(crbug.com/1227164): Test is flaky on Linux and Windows.
@@ -1166,7 +1137,6 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        MAYBE_CustomConfig) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "PREEMPTIVE_TRACING_MODE");
@@ -1194,31 +1164,29 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       BackgroundTracingConfigImpl::FromDict(std::move(dict)));
   EXPECT_TRUE(config);
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   // Our reference value is "1", so a value of "2" should trigger a trace.
   LOCAL_HISTOGRAM_COUNTS("fake", 2);
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
 
   absl::optional<base::Value> trace_json =
-      base::JSONReader::Read(trace_receiver_helper.json_file_contents());
+      base::JSONReader::Read(background_tracing_helper.json_file_contents());
   ASSERT_TRUE(trace_json);
-  auto* metadata_json = trace_json->FindDictKey("metadata");
+  ASSERT_TRUE(trace_json->is_dict());
+  auto* metadata_json = trace_json->GetDict().FindDict("metadata");
   ASSERT_TRUE(metadata_json);
 
-  const std::string* trace_config =
-      metadata_json->FindStringKey("trace-config");
+  const std::string* trace_config = metadata_json->FindString("trace-config");
   ASSERT_TRUE(trace_config);
   EXPECT_NE(trace_config->find("record-until-full"), trace_config->npos)
       << *trace_config;
@@ -1247,7 +1215,6 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       wait_for_sample.QuitClosure());
 
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "PREEMPTIVE_TRACING_MODE");
@@ -1268,34 +1235,26 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       BackgroundTracingConfigImpl::FromDict(std::move(dict)));
   EXPECT_TRUE(config);
 
-  content::BackgroundTracingManager::TriggerHandle handle =
-      content::BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::ANONYMIZE_DATA));
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::ANONYMIZE_DATA));
-
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   wait_for_sample.Run();
 
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
 
   trace_analyzer::TraceEventVector events;
   std::unique_ptr<trace_analyzer::TraceAnalyzer> analyzer(
       trace_analyzer::TraceAnalyzer::Create(
-          trace_receiver_helper.json_file_contents()));
+          background_tracing_helper.json_file_contents()));
   ASSERT_TRUE(analyzer);
 
   base::ModuleCache module_cache;
@@ -1343,7 +1302,6 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        ReceiveReactiveTraceSucceedsOnHigherHistogramSample) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "REACTIVE_TRACING_MODE");
@@ -1366,31 +1324,26 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       BackgroundTracingConfigImpl::FromDict(std::move(dict)));
   EXPECT_TRUE(config);
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
-
-  background_tracing_helper.WaitForScenarioActivated();
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
   // Our reference value is "1", so a value of "2" should trigger a trace.
   LOCAL_HISTOGRAM_COUNTS("fake", 2);
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
 
   // Abort the scenario.
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
 }
 
 // This tests that histogram values < reference value don't trigger.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        ReceiveTraceFailsOnLowerHistogramSample) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "PREEMPTIVE_TRACING_MODE");
@@ -1413,30 +1366,27 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       BackgroundTracingConfigImpl::FromDict(std::move(dict)));
   EXPECT_TRUE(config);
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   // This should fail to trigger a trace since the sample value < the
   // the reference value above.
   LOCAL_HISTOGRAM_COUNTS("fake", 0);
 
   // Abort the scenario.
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_FALSE(trace_receiver_helper.trace_received());
+  EXPECT_FALSE(background_tracing_helper.trace_received());
 }
 
 // This tests that histogram values > upper reference value don't trigger.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        ReceiveTraceFailsOnHigherHistogramSample) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "PREEMPTIVE_TRACING_MODE");
@@ -1460,30 +1410,27 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       BackgroundTracingConfigImpl::FromDict(std::move(dict)));
   EXPECT_TRUE(config);
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   // This should fail to trigger a trace since the sample value > the
   // the upper reference value above.
   LOCAL_HISTOGRAM_COUNTS("fake", 4);
 
   // Abort the scenario.
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_FALSE(trace_receiver_helper.trace_received());
+  EXPECT_FALSE(background_tracing_helper.trace_received());
 }
 
 // This tests that histogram values = upper reference value will trigger.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        ReceiveTraceSucceedsOnUpperReferenceValue) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "PREEMPTIVE_TRACING_MODE");
@@ -1507,29 +1454,26 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       BackgroundTracingConfigImpl::FromDict(std::move(dict)));
   EXPECT_TRUE(config);
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   LOCAL_HISTOGRAM_COUNTS("fake", 3);
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
   // Abort the scenario.
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
 }
 
 // This tests that histogram values = lower reference value will trigger.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        ReceiveTraceSucceedsOnLowerReferenceValue) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "PREEMPTIVE_TRACING_MODE");
@@ -1553,29 +1497,26 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       BackgroundTracingConfigImpl::FromDict(std::move(dict)));
   EXPECT_TRUE(config);
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   LOCAL_HISTOGRAM_COUNTS("fake", 1);
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
   // Abort the scenario.
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
 }
 
 // This tests that we can trigger for a single enum value.
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        ReceiveReactiveTraceSucceedsOnSingleEnumValue) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   base::Value::Dict dict;
   dict.Set("mode", "PREEMPTIVE_TRACING_MODE");
@@ -1599,22 +1540,20 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       BackgroundTracingConfigImpl::FromDict(std::move(dict)));
   EXPECT_TRUE(config);
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   LOCAL_HISTOGRAM_COUNTS("fake", 1);
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
   // Abort the scenario.
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
 }
 
 // This tests that invalid preemptive mode configs will fail.
@@ -1645,39 +1584,29 @@ IN_PROC_BROWSER_TEST_F(
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        ReactiveTimeoutTermination) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   std::unique_ptr<BackgroundTracingConfig> config = CreateReactiveConfig();
 
-  BackgroundTracingManager::TriggerHandle handle =
-      BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "reactive_test");
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
-
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("reactive_test"));
 
   BackgroundTracingManagerImpl::GetInstance()
       .GetActiveScenarioForTesting()
       ->FireTimerForTesting();
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
 }
 
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
                        SetupStartupTracing) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   std::unique_ptr<TestStartupPreferenceManagerImpl> preferences_moved(
       new TestStartupPreferenceManagerImpl);
@@ -1692,7 +1621,6 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
     base::Value::Dict rules_dict;
     rules_dict.Set("rule", "MONITOR_AND_DUMP_WHEN_TRIGGER_NAMED");
     rules_dict.Set("trigger_name", "startup");
-    rules_dict.Set("stop_tracing_on_repeated_reactive", false);
     rules_dict.Set("trigger_delay", 600);
     rules_list.Append(std::move(rules_dict));
   }
@@ -1701,13 +1629,8 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
   std::unique_ptr<BackgroundTracingConfig> config(
       BackgroundTracingConfigImpl::ReactiveFromDict(dict));
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
-
-  background_tracing_helper.WaitForScenarioActivated();
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
   // Since we specified a delay in the scenario, we should still be tracing
   // at this point.
@@ -1716,16 +1639,23 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
   EXPECT_TRUE(preferences->GetBackgroundStartupTracingEnabled());
 
   // Abort the scenario.
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_FALSE(trace_receiver_helper.trace_received());
+  EXPECT_FALSE(background_tracing_helper.trace_received());
 }
 
-IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest, RunStartupTracing) {
+// TODO(crbug.com/1444519): Re-enable this test once fixed
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CASTOS)
+#define MAYBE_RunStartupTracing DISABLED_RunStartupTracing
+#else
+#define MAYBE_RunStartupTracing RunStartupTracing
+#endif
+IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
+                       MAYBE_RunStartupTracing) {
   TestTraceLogHelper tracelog_helper;
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   std::unique_ptr<TestStartupPreferenceManagerImpl> preferences_moved(
       new TestStartupPreferenceManagerImpl);
@@ -1740,7 +1670,6 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest, RunStartupTracing) {
     base::Value::Dict rules_dict;
     rules_dict.Set("rule", "MONITOR_AND_DUMP_WHEN_TRIGGER_NAMED");
     rules_dict.Set("trigger_name", "foo");
-    rules_dict.Set("stop_tracing_on_repeated_reactive", false);
     rules_dict.Set("trigger_delay", 10);
     rules_list.Append(std::move(rules_dict));
   }
@@ -1751,14 +1680,11 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest, RunStartupTracing) {
   std::unique_ptr<BackgroundTracingConfig> config(
       BackgroundTracingConfigImpl::ReactiveFromDict(dict));
 
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::ANONYMIZE_DATA));
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::ANONYMIZE_DATA));
 
   tracelog_helper.WaitForStartTracing();
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   EXPECT_TRUE(BackgroundTracingManagerImpl::GetInstance()
                   .GetActiveScenarioForTesting()
@@ -1774,32 +1700,31 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest, RunStartupTracing) {
       .GetActiveScenarioForTesting()
       ->FireTimerForTesting();
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
-  EXPECT_TRUE(trace_receiver_helper.trace_received());
+  EXPECT_TRUE(background_tracing_helper.trace_received());
   EXPECT_FALSE(preferences->GetBackgroundStartupTracingEnabled());
 }
 
 namespace {
 
-class ProtoBackgroundTracingTest : public DevToolsProtocolTest {
-};
+class ProtoBackgroundTracingTest : public DevToolsProtocolTest {};
 
 }  // namespace
 
 IN_PROC_BROWSER_TEST_F(ProtoBackgroundTracingTest,
                        DevtoolsInterruptsBackgroundTracing) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
 
   EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
       std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   NavigateToURLBlockUntilNavigationsComplete(shell(), GURL("about:blank"), 1);
   Attach();
@@ -1807,8 +1732,9 @@ IN_PROC_BROWSER_TEST_F(ProtoBackgroundTracingTest,
   const base::Value::Dict* start_tracing_result =
       SendCommandSync("Tracing.start");
   ASSERT_TRUE(start_tracing_result);
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 }
 
 IN_PROC_BROWSER_TEST_F(ProtoBackgroundTracingTest, ProtoTraceReceived) {
@@ -1816,14 +1742,10 @@ IN_PROC_BROWSER_TEST_F(ProtoBackgroundTracingTest, ProtoTraceReceived) {
 
   std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
 
-  BackgroundTracingManager::TriggerHandle handle =
-      BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
-
   EXPECT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
       std::move(config), BackgroundTracingManager::ANONYMIZE_DATA));
 
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   // Add track event with blocked args.
   TRACE_EVENT_INSTANT("log", "LogMessage", [&](perfetto::EventContext ctx) {
@@ -1833,21 +1755,16 @@ IN_PROC_BROWSER_TEST_F(ProtoBackgroundTracingTest, ProtoTraceReceived) {
 
   NavigateToURLBlockUntilNavigationsComplete(shell(), GURL("about:blank"), 1);
 
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
-
-  WaitForCondition(
-      base::BindRepeating([]() {
-        return BackgroundTracingManager::GetInstance().HasTraceToUpload();
-      }),
-      "trace received");
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
+  background_tracing_helper.WaitForTraceReceived();
+  EXPECT_TRUE(BackgroundTracingManager::GetInstance().HasTraceToUpload());
 
   std::string trace_data =
       BackgroundTracingManager::GetInstance().GetLatestTraceToUpload();
 
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
   tracing::PrivacyFilteringCheck checker;
   checker.CheckProtoForUnexpectedFields(trace_data);
@@ -1862,24 +1779,27 @@ IN_PROC_BROWSER_TEST_F(ProtoBackgroundTracingTest, ProtoTraceReceived) {
 
 IN_PROC_BROWSER_TEST_F(ProtoBackgroundTracingTest, ReceiveCallback) {
   TestBackgroundTracingHelper background_tracing_helper;
-  TestTraceReceiverHelper trace_receiver_helper;
 
   std::unique_ptr<BackgroundTracingConfig> config = CreatePreemptiveConfig();
-
-  BackgroundTracingManager::TriggerHandle handle =
-      BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "preemptive_test");
 
   // If a ReceiveCallback is given, it should be triggered instead of
   // SetTraceToUpload. (In production this is used to implement the
   // kBackgroundTracingOutputFile parameter, not to upload traces.)
-  EXPECT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::ANONYMIZE_DATA));
+  std::string received_trace_data;
+  EXPECT_TRUE(
+      BackgroundTracingManager::GetInstance()
+          .SetActiveScenarioWithReceiveCallback(
+              std::move(config),
+              base::BindLambdaForTesting(
+                  [&](std::string proto_content,
+                      BackgroundTracingManager::FinishedProcessingCallback
+                          callback) {
+                    received_trace_data = std::move(proto_content);
+                    std::move(callback).Run(true);
+                  }),
+              BackgroundTracingManager::ANONYMIZE_DATA));
 
-  background_tracing_helper.WaitForTracingEnabled();
+  background_tracing_helper.WaitForTraceStarted();
 
   // Add track event with blocked args.
   TRACE_EVENT_INSTANT("log", "LogMessage", [&](perfetto::EventContext ctx) {
@@ -1889,17 +1809,17 @@ IN_PROC_BROWSER_TEST_F(ProtoBackgroundTracingTest, ReceiveCallback) {
 
   NavigateToURLBlockUntilNavigationsComplete(shell(), GURL("about:blank"), 1);
 
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("preemptive_test"));
 
-  trace_receiver_helper.WaitForTraceReceived();
+  background_tracing_helper.WaitForTraceReceived();
   EXPECT_FALSE(BackgroundTracingManager::GetInstance().HasTraceToUpload());
-  ASSERT_TRUE(trace_receiver_helper.trace_received());
-  std::string trace_data = trace_receiver_helper.proto_file_contents();
+  ASSERT_TRUE(background_tracing_helper.trace_received());
+  std::string trace_data = background_tracing_helper.proto_file_contents();
+  EXPECT_EQ(received_trace_data, trace_data);
 
+  background_tracing_helper.ExpectOnScenarioIdle("");
   BackgroundTracingManager::GetInstance().AbortScenarioForTesting();
-  background_tracing_helper.WaitForScenarioAborted();
+  background_tracing_helper.WaitForScenarioIdle();
 
   tracing::PrivacyFilteringCheck checker;
   checker.CheckProtoForUnexpectedFields(trace_data);
@@ -1949,21 +1869,10 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
 
   // ************* Setup & Run SYSTEM background scenario ******************
 
-  // "system_test" is a NamedTriggerRule in CreateSystemConfig().
-  BackgroundTracingManager::TriggerHandle handle =
-      BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "system_test");
-
-  // trace_receiver_helper's function will not be called for SYSTEM background
-  // trace.
-  TestTraceReceiverHelper trace_receiver_helper;
   std::unique_ptr<BackgroundTracingConfig> config = CreateSystemConfig();
   ASSERT_TRUE(config);
-  ASSERT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
+  ASSERT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
 
   // Actually send the trigger into the system.
   base::RunLoop rule_triggered_runloop;
@@ -1971,9 +1880,8 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
       .GetActiveScenarioForTesting()
       ->SetRuleTriggeredCallbackForTesting(
           rule_triggered_runloop.QuitClosure());
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
+  // "system_test" is a NamedTriggerRule in CreateSystemConfig().
+  EXPECT_TRUE(BackgroundTracingManager::EmitNamedTrigger("system_test"));
   rule_triggered_runloop.Run();
 
   // ************ Wait and verify packets received & clean up ************
@@ -2019,30 +1927,13 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
 
   // ************* Setup & Run SYSTEM background scenario ******************
 
-  // "system_test" is a NamedTriggerRule in CreateSystemConfig().
-  BackgroundTracingManager::TriggerHandle handle =
-      BackgroundTracingManager::GetInstance().RegisterTriggerType(
-          "system_test_with_rule_id");
-  // trace_receiver_helper's function will not be called for SYSTEM background
-  // trace.
-  TestTraceReceiverHelper trace_receiver_helper;
   std::unique_ptr<BackgroundTracingConfig> config = CreateSystemConfig();
   ASSERT_TRUE(config);
-  ASSERT_TRUE(BackgroundTracingManager::GetInstance()
-                  .SetActiveScenarioWithReceiveCallback(
-                      std::move(config),
-                      trace_receiver_helper.get_receive_callback(),
-                      BackgroundTracingManager::NO_DATA_FILTERING));
-  // Actually send the trigger into the system.
-  base::RunLoop rule_triggered_runloop;
-  BackgroundTracingManagerImpl::GetInstance()
-      .GetActiveScenarioForTesting()
-      ->SetRuleTriggeredCallbackForTesting(
-          rule_triggered_runloop.QuitClosure());
-  TestTriggerHelper trigger_helper;
-  BackgroundTracingManager::GetInstance().TriggerNamedEvent(
-      handle, trigger_helper.receive_closure(true));
-  rule_triggered_runloop.Run();
+  ASSERT_TRUE(BackgroundTracingManager::GetInstance().SetActiveScenario(
+      std::move(config), BackgroundTracingManager::NO_DATA_FILTERING));
+  // "system_test" is a NamedTriggerRule in CreateSystemConfig().
+  EXPECT_TRUE(
+      BackgroundTracingManager::EmitNamedTrigger("system_test_with_rule_id"));
 
   // ************ Wait and verify packets received & clean up ************
   system_consumer->WaitForAllDataSourcesStopped();

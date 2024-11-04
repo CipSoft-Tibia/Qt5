@@ -1,5 +1,5 @@
 // Copyright (C) 2017 Juan José Casafranca.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QQuickItem>
 #include <QQuickView>
@@ -23,14 +23,13 @@ int main(int argc, char* argv[])
     Qt3DCore::QBuffer *buffer = rootObject->findChild<Qt3DCore::QBuffer*>("buffer");
 
     QObject::connect(buffer, &Qt3DCore::QBuffer::dataChanged,
-                     [=](const QByteArray &bytes) {
-        //I know I'm receiving int data
-        const uint *data = reinterpret_cast<const uint*>(bytes.data());
-        qDebug() << "Data received";
-        for (uint i = 0; i < 1024; ++i)
-            qDebug() << data[i];
-    }
-    );
+                     &app, [=](const QByteArray &bytes) {
+                         // I know I'm receiving int data
+                         const uint *data = reinterpret_cast<const uint *>(bytes.data());
+                         qDebug() << "Data received";
+                         for (uint i = 0; i < 1024; ++i)
+                             qDebug() << data[i];
+                     });
 
     view.show();
 

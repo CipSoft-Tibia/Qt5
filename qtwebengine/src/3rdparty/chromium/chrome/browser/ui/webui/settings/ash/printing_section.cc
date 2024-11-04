@@ -5,10 +5,10 @@
 #include "chrome/browser/ui/webui/settings/ash/printing_section.h"
 
 #include "ash/constants/ash_features.h"
+#include "ash/webui/settings/public/constants/routes.mojom-forward.h"
 #include "base/no_destructor.h"
+#include "chrome/browser/ui/webui/ash/settings/search/search_tag_registry.h"
 #include "chrome/browser/ui/webui/settings/ash/cups_printers_handler.h"
-#include "chrome/browser/ui/webui/settings/ash/search/search_tag_registry.h"
-#include "chrome/browser/ui/webui/settings/chromeos/constants/routes.mojom-forward.h"
 #include "chrome/browser/ui/webui/webui_util.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/url_constants.h"
@@ -63,9 +63,12 @@ const std::vector<SearchConcept>& GetSavedPrintersSearchConcepts() {
 }
 
 const std::vector<SearchConcept>& GetPrintingManagementSearchConcepts() {
+  const char* url_path = ash::features::IsOsSettingsRevampWayfindingEnabled()
+                             ? mojom::kPrintingDetailsSubpagePath
+                             : mojom::kPrintingSectionPath;
   static const base::NoDestructor<std::vector<SearchConcept>> tags({
       {IDS_OS_SETTINGS_TAG_PRINT_MANAGEMENT,
-       mojom::kPrintingSectionPath,
+       url_path,
        mojom::SearchResultIcon::kPrinter,
        mojom::SearchResultDefaultRank::kMedium,
        mojom::SearchResultType::kSetting,
@@ -114,21 +117,27 @@ PrintingSection::~PrintingSection() {
 }
 
 void PrintingSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
-  static constexpr webui::LocalizedString kLocalizedStrings[] = {
+  const bool kIsRevampEnabled =
+      ash::features::IsOsSettingsRevampWayfindingEnabled();
+
+  webui::LocalizedString kLocalizedStrings[] = {
       {"printingPageTitle", IDS_SETTINGS_PRINT_AND_SCAN},
-      {"cupsPrintersTitle", IDS_SETTINGS_PRINTING_CUPS_PRINTERS},
+      {"cupsPrintTitle", kIsRevampEnabled
+                             ? IDS_OS_SETTINGS_REVAMP_PRINTING_CUPS_PRINT_TITLE
+                             : IDS_SETTINGS_PRINTING_CUPS_PRINTERS},
+      {"cupsPrintDescription",
+       IDS_OS_SETTINGS_REVAMP_PRINTING_CUPS_PRINT_DESCRIPTION},
       {"cupsPrintersLearnMoreLabel",
        IDS_SETTINGS_PRINTING_CUPS_PRINTERS_LEARN_MORE_LABEL},
       {"addCupsPrinter", IDS_SETTINGS_PRINTING_CUPS_PRINTERS_ADD_PRINTER},
+      {"addCupsPrinterManually",
+       IDS_SETTINGS_PRINTING_CUPS_PRINTERS_ADD_PRINTER_MANUALLY},
       {"editPrinter", IDS_SETTINGS_PRINTING_CUPS_PRINTERS_EDIT},
       {"viewPrinter", IDS_SETTINGS_PRINTING_CUPS_PRINTERS_VIEW},
       {"removePrinter", IDS_SETTINGS_PRINTING_CUPS_PRINTERS_REMOVE},
       {"cupsPrintersViewPpd", IDS_SETTINGS_PRINTING_CUPS_PRINTERS_VIEW_PPD},
       {"setupPrinter", IDS_SETTINGS_PRINTING_CUPS_PRINTER_SETUP_BUTTON},
-      {"setupPrinterAria",
-       IDS_SETTINGS_PRINTING_CUPS_PRINTER_SETUP_BUTTON_ARIA},
       {"savePrinter", IDS_SETTINGS_PRINTING_CUPS_PRINTER_SAVE_BUTTON},
-      {"savePrinterAria", IDS_SETTINGS_PRINTING_CUPS_PRINTER_SAVE_BUTTON_ARIA},
       {"searchLabel", IDS_SETTINGS_PRINTING_CUPS_SEARCH_LABEL},
       {"noSearchResults", IDS_SEARCH_NO_RESULTS},
       {"printJobsTitle",
@@ -142,12 +151,18 @@ void PrintingSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
       {"printerModel", IDS_SETTINGS_PRINTING_CUPS_PRINTER_DETAILS_MODEL},
       {"printerQueue", IDS_SETTINGS_PRINTING_CUPS_PRINTER_DETAILS_QUEUE},
       {"savedPrintersTitle", IDS_SETTINGS_PRINTING_CUPS_SAVED_PRINTERS_TITLE},
+      {"savedPrintersSubtext",
+       IDS_SETTINGS_PRINTING_CUPS_SAVED_PRINTERS_SUBTEXT},
       {"savedPrintersCountMany",
        IDS_SETTINGS_PRINTING_CUPS_PRINTERS_SAVED_PRINTERS_COUNT_MANY},
       {"savedPrintersCountOne",
        IDS_SETTINGS_PRINTING_CUPS_PRINTERS_SAVED_PRINTERS_COUNT_ONE},
       {"savedPrintersCountNone",
        IDS_SETTINGS_PRINTING_CUPS_PRINTERS_SAVED_PRINTERS_COUNT_NONE},
+      {"noSavedPrinters", IDS_SETTINGS_PRINTING_CUPS_NO_SAVED_PRINTERS},
+      {"helpSectionTitle", IDS_SETTINGS_PRINTING_CUPS_HELP_SECTION_TITLE},
+      {"helpSectionDescription",
+       IDS_SETTINGS_PRINTING_CUPS_HELP_SECTION_DESCRIPTION},
       {"showMorePrinters", IDS_SETTINGS_PRINTING_CUPS_SHOW_MORE},
       {"addPrintersNearbyTitle",
        IDS_SETTINGS_PRINTING_CUPS_ADD_PRINTERS_NEARBY_TITLE},
@@ -155,6 +170,10 @@ void PrintingSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_PRINTING_CUPS_ADD_PRINTERS_MANUALLY_TITLE},
       {"manufacturerAndModelDialogTitle",
        IDS_SETTINGS_PRINTING_CUPS_SELECT_MANUFACTURER_AND_MODEL_TITLE},
+      {"availablePrintersReadyTitle",
+       IDS_SETTINGS_PRINTING_CUPS_PRINTERS_AVAILABLE_PRINTERS_READY},
+      {"availablePrintersReadySubtext",
+       IDS_SETTINGS_PRINTING_CUPS_PRINTERS_AVAILABLE_PRINTERS_READY_SUBTEXT},
       {"nearbyPrintersListTitle",
        IDS_SETTINGS_PRINTING_CUPS_PRINTERS_AVAILABLE_PRINTERS},
       {"nearbyPrintersCountMany",
@@ -273,6 +292,31 @@ void PrintingSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_PRINTING_CUPS_PRINT_SERVER_CONNECTION_ERROR},
       {"printServerConfigurationErrorMessage",
        IDS_SETTINGS_PRINTING_CUPS_PRINT_SERVER_REACHABLE_BUT_CANNOT_ADD},
+      {"printerStatusDeviceError",
+       IDS_SETTINGS_PRINTING_PRINTER_STATUS_DEVICE_ERROR},
+      {"printerStatusDoorOpen", IDS_SETTINGS_PRINTING_PRINTER_STATUS_DOOR_OPEN},
+      {"printerStatusLowOnInk",
+       IDS_SETTINGS_PRINTING_PRINTER_STATUS_LOW_ON_INK},
+      {"printerStatusLowOnPaper",
+       IDS_SETTINGS_PRINTING_PRINTER_STATUS_LOW_ON_PAPER},
+      {"printerStatusOutOfInk",
+       IDS_SETTINGS_PRINTING_PRINTER_STATUS_OUT_OF_INK},
+      {"printerStatusOutOfPaper",
+       IDS_SETTINGS_PRINTING_PRINTER_STATUS_OUT_OF_PAPER},
+      {"printerStatusOutputAlmostFull",
+       IDS_SETTINGS_PRINTING_PRINTER_STATUS_OUPUT_ALMOST_FULL},
+      {"printerStatusOutputFull",
+       IDS_SETTINGS_PRINTING_PRINTER_STATUS_OUPUT_FULL},
+      {"printerStatusPaperJam", IDS_SETTINGS_PRINTING_PRINTER_STATUS_PAPER_JAM},
+      {"printerStatusPaused", IDS_SETTINGS_PRINTING_PRINTER_STATUS_PAUSED},
+      {"printerStatusPrinterQueueFull",
+       IDS_SETTINGS_PRINTING_PRINTER_STATUS_PRINTER_QUEUE_FULL},
+      {"printerStatusPrinterUnreachable",
+       IDS_SETTINGS_PRINTING_PRINTER_STATUS_PRINTER_UNREACHABLE},
+      {"printerStatusStopped", IDS_SETTINGS_PRINTING_PRINTER_STATUS_STOPPED},
+      {"printerStatusTrayMissing",
+       IDS_SETTINGS_PRINTING_PRINTER_STATUS_TRAY_MISSING},
+      {"printerEntryAriaLabel", IDS_SETTINGS_PRINTING_PRINTER_ENTRY_ARIA_LABEL},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
 
@@ -281,7 +325,12 @@ void PrintingSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
   html_source->AddString(
       "printingCUPSPrintPpdLearnMoreUrl",
       GetHelpUrlWithBoard(chrome::kCupsPrintPPDLearnMoreURL));
-  html_source->AddBoolean("isViewPpdEnabled", features::IsViewPpdEnabled());
+  html_source->AddBoolean("isPrinterSettingsRevampEnabled",
+                          features::IsPrinterSettingsRevampEnabled());
+  html_source->AddBoolean("isPrinterSettingsPrinterStatusEnabled",
+                          features::IsPrinterSettingsPrinterStatusEnabled());
+  html_source->AddBoolean("isPrintPreviewDiscoveredPrintersEnabled",
+                          features::IsPrintPreviewDiscoveredPrintersEnabled());
 }
 
 void PrintingSection::AddHandlers(content::WebUI* web_ui) {
@@ -301,7 +350,7 @@ mojom::SearchResultIcon PrintingSection::GetSectionIcon() const {
   return mojom::SearchResultIcon::kPrinter;
 }
 
-std::string PrintingSection::GetSectionPath() const {
+const char* PrintingSection::GetSectionPath() const {
   return mojom::kPrintingSectionPath;
 }
 

@@ -98,6 +98,8 @@ class TestVariationsServiceClient : public VariationsServiceClient {
     return true;
   }
   bool IsEnterprise() override { return false; }
+  void RemoveGoogleGroupsFromPrefsForDeletedProfiles(
+      PrefService* local_state) override {}
 
   void set_restrict_parameter(const std::string& value) {
     restrict_parameter_ = value;
@@ -879,9 +881,8 @@ TEST_F(VariationsServiceTest, OverrideStoredPermanentCountry) {
     // Is the pref expected to be updated or not.
     const bool has_updated;
   } test_cases[] = {
-      {kPrefUs, "ca", kPrefCa, true},
-      {kPrefUs, "us", kPrefUs, false},
-      {kPrefUs, "", "", true},
+      {kPrefUs, "ca", kPrefCa, true},  {kPrefUs, "CA", kPrefCa, true},
+      {kPrefUs, "us", kPrefUs, false}, {kPrefUs, "", "", true},
       {"", "ca", kPrefCa, true},
   };
 

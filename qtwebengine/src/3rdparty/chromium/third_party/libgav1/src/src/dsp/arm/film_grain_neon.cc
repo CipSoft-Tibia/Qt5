@@ -682,26 +682,14 @@ inline int16x8_t Clip3(const int16x8_t value, const int16x8_t low,
 
 template <int bitdepth, typename Pixel>
 inline int16x8_t GetScalingFactors(const int16_t scaling_lut[],
-                                   const Pixel* source) {
+                                   const Pixel* source,
+                                   const int valid_range = 8) {
   int16_t start_vals[8];
   static_assert(bitdepth <= kBitdepth10,
                 "NEON Film Grain is not yet implemented for 12bpp.");
 #if LIBGAV1_MSAN
-  memset(start_vals, 0, sizeof(start_vals));
+  if (valid_range < 8) memset(start_vals, 0, sizeof(start_vals));
 #endif
-  for (int i = 0; i < 8; ++i) {
-    assert(source[i] < (kScalingLookupTableSize << (bitdepth - kBitdepth8)));
-    start_vals[i] = scaling_lut[source[i]];
-  }
-  return vld1q_s16(start_vals);
-}
-
-template <int bitdepth, typename Pixel>
-inline int16x8_t GetScalingFactors(const int16_t scaling_lut[],
-                                   const Pixel* source, const int valid_range) {
-  int16_t start_vals[8];
-  static_assert(bitdepth <= kBitdepth10,
-                "NEON Film Grain is not yet implemented for 12bpp.");
   for (int i = 0; i < valid_range; ++i) {
     assert(source[i] < (kScalingLookupTableSize << (bitdepth - kBitdepth8)));
     start_vals[i] = scaling_lut[source[i]];

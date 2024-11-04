@@ -8,6 +8,12 @@
 namespace permissions {
 namespace features {
 
+// Enables or disables whether pages with pending permission requests will
+// go into back/forward cache.
+BASE_FEATURE(kBackForwardCacheUnblockPermissionRequest,
+             "BackForwardCacheUnblockPermissionRequest",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 // Enables or disables whether permission prompts are automatically blocked
 // after the user has explicitly dismissed them too many times.
 BASE_FEATURE(kBlockPromptsIfDismissedOften,
@@ -35,32 +41,40 @@ BASE_FEATURE(kBlockRepeatedNotificationPermissionPrompts,
 
 BASE_FEATURE(kConfirmationChip,
              "ConfirmationChip",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kChipLocationBarIconOverride,
              "ChipLocationIconOverride",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kPermissionElement,
+             "PermissionElement",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kNotificationInteractionHistory,
              "NotificationInteractionHistory",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-BASE_FEATURE(kOneTimeGeolocationPermission,
-             "OneTimeGeolocationPermission",
+BASE_FEATURE(kOneTimePermission,
+             "OneTimePermission",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+#if BUILDFLAG(IS_ANDROID)
+// Not supported on Android.
+BASE_FEATURE(kPermissionChip,
+             "PermissionChip",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kPermissionQuietChip,
+             "PermissionQuietChip",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#else
 
 // Enables an experimental permission prompt that uses a chip in the location
 // bar.
 BASE_FEATURE(kPermissionChip,
              "PermissionChip",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-#if BUILDFLAG(IS_ANDROID)
-// Not supported on Android.
-BASE_FEATURE(kPermissionQuietChip,
-             "PermissionQuietChip",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-#else
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables a less prominent permission prompt that uses a chip in the location
 // bar. Requires chrome://flags/#quiet-notification-prompts to be enabled.
@@ -69,18 +83,11 @@ BASE_FEATURE(kPermissionQuietChip,
              base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_ANDROID)
 
-BASE_FEATURE(kPermissionChipAutoDismiss,
-             "PermissionChipAutoDismiss",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 // Enables a faster permission request finalization if it is displayed as a
 // quiet chip.
 BASE_FEATURE(kFailFastQuietChip,
              "FailFastQuietChip",
              base::FEATURE_ENABLED_BY_DEFAULT);
-
-const base::FeatureParam<int> kPermissionChipAutoDismissDelay{
-    &kPermissionChipAutoDismiss, "delay_ms", 6000};
 
 // When enabled, use the value of the `service_url` FeatureParam as the url
 // for the Web Permission Predictions Service.
@@ -94,6 +101,10 @@ BASE_FEATURE(kPermissionOnDeviceNotificationPredictions,
 
 BASE_FEATURE(kPermissionOnDeviceGeolocationPredictions,
              "PermissionOnDeviceGeolocationPredictions",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kPermissionDedicatedCpssSetting,
+             "PermissionDedicatedCpssSettings",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 #if BUILDFLAG(IS_ANDROID)
@@ -129,7 +140,19 @@ BASE_FEATURE(kRecordPermissionExpirationTimestamps,
              "RecordPermissionExpirationTimestamps",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+// Kill switch for the mitigation for https://crbug.com/1462709
+BASE_FEATURE(kMitigateUnpartitionedWebviewPermissions,
+             "MitigateUnpartitionedWebviewPermissions",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 #endif  // BUILDFLAG(IS_ANDROID)
+
+// When enabled, permission grants for Storage Access API will be enabled.
+// This includes enabling prompts, a new settings page and page info and
+// omnibox integration.
+BASE_FEATURE(kPermissionStorageAccessAPI,
+             "PermissionStorageAccessAPI",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // When enabled "window-management" may be used as an alias for
 // "window-placement". Additionally, reverse mappings (i.e. enum to string) will
@@ -138,13 +161,20 @@ BASE_FEATURE(kWindowManagementPermissionAlias,
              "WindowManagementPermissionAlias",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+// Enables disallowing MIDI permission by default.
+BASE_FEATURE(kBlockMidiByDefault,
+             "BlockMidiByDefault",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 }  // namespace features
 namespace feature_params {
 
-const base::FeatureParam<bool> kOkButtonBehavesAsAllowAlways(
-    &permissions::features::kOneTimeGeolocationPermission,
-    "OkButtonBehavesAsAllowAlways",
-    true);
+const base::FeatureParam<bool> kUseStrongerPromptLanguage{
+    &features::kOneTimePermission, "use_stronger_prompt_language", false};
+
+const base::FeatureParam<base::TimeDelta> kOneTimePermissionTimeout{
+    &features::kOneTimePermission, "one_time_permission_timeout",
+    base::Minutes(5)};
 
 const base::FeatureParam<std::string> kPermissionPredictionServiceUrlOverride{
     &permissions::features::kPermissionPredictionServiceUseUrlOverride,
@@ -164,9 +194,27 @@ const base::FeatureParam<double>
 
 #if !BUILDFLAG(IS_ANDROID)
 // Specifies the `trigger_id` of the HaTS survey to trigger immediately after
-// the user has interacted with a permission prompt.
+// the user has interacted with a permission prompt. Multiple values can be
+// configured by providing a comma separated list. If this is done, a
+// corresponding probability_vector and request_type_filter of equal length must
+// be configured. If this is done, each trigger_id applies to the request type
+// at the corresponding position in the request_type_filter and has probability
+// of probability p * hats_p of triggering, where p is the probability at the
+// corresponding position in the probability_vector and hats_p is the
+// probability configured for the HaTS survey.
 const base::FeatureParam<std::string> kPermissionsPromptSurveyTriggerId{
     &permissions::features::kPermissionsPromptSurvey, "trigger_id", ""};
+
+// If multiple trigger ids are configured, the trigger id at position p only
+// triggers for the request type at position p of the request type filter,
+// and calls the HaTS service with the probability at position p in the
+// probability vector. The HaTS service also has a feature parameter called
+// probability. The probability vector is a secondary probability to
+// distribute surveys among the multiple triggers, while the HaTS service
+// probability is the probability of triggering overall.
+const base::FeatureParam<std::string> kProbabilityVector{
+    &permissions::features::kPermissionsPromptSurvey, "probability_vector",
+    "1.0"};
 
 // Specifies the type of permission request for which the prompt HaTS
 // survey is triggered (as long as other filters are also satisfied). Valid
@@ -247,6 +295,16 @@ const base::FeatureParam<base::TimeDelta>
         &permissions::features::kPermissionsPromptSurvey,
         "ignored_prompts_maximum_age", base::Minutes(10)};
 
+// We count the number of one time permission prompt impressions that a user has
+// seen. This parameter specifies the buckets to which a user needs to belong to
+// in order for a HaTS survey to be triggered. Multiple values can be configured
+// by providing a comma separated list. Valid values are the return values of
+// `PermissionUtil::GetOneTimePromptsDecidedBucketString`. An empty value will
+// result in all buckets matching (no filtering).
+const base::FeatureParam<std::string>
+    kPermissionPromptSurveyOneTimePromptsDecidedBucket{
+        &permissions::features::kPermissionsPromptSurvey,
+        "one_time_prompts_decided_bucket", ""};
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 }  // namespace feature_params

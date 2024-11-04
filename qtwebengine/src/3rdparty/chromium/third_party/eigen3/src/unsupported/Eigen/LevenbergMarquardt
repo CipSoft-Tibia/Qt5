@@ -33,16 +33,16 @@
 
 #include "../../Eigen/src/Core/util/DisableStupidWarnings.h"
 
+// IWYU pragma: begin_exports
 #ifndef EIGEN_PARSED_BY_DOXYGEN
-
 #include "src/LevenbergMarquardt/LMqrsolv.h"
 #include "src/LevenbergMarquardt/LMcovar.h"
 #include "src/LevenbergMarquardt/LMpar.h"
-
 #endif
 
 #include "src/LevenbergMarquardt/LevenbergMarquardt.h"
 #include "src/LevenbergMarquardt/LMonestep.h"
+// IWYU pragma: end_exports
 
 #include "../../Eigen/src/Core/util/ReenableStupidWarnings.h"
 

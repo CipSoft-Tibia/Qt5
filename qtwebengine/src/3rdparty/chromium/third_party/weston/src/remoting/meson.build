@@ -29,5 +29,4 @@ if get_option('remoting')
 		install_dir: dir_module_libweston
 	)
 	env_modmap += 'remoting-plugin.so=@0@;'.format(plugin_remoting.full_path())
-	install_headers('remoting-plugin.h', subdir: dir_include_libweston_install)
 endif

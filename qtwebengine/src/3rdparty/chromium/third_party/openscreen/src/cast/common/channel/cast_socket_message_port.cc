@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@
 #include "cast/common/channel/proto/cast_channel.pb.h"
 #include "cast/common/channel/virtual_connection.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 CastSocketMessagePort::CastSocketMessagePort(VirtualConnectionRouter* router)
     : router_(router) {}
@@ -97,9 +96,13 @@ void CastSocketMessagePort::OnMessage(VirtualConnectionRouter* router,
     return;
   }
 
+  if (message.payload_type() != ::cast::channel::CastMessage::STRING) {
+    OSP_DLOG_WARN << __func__ << ": received an unsupported binary message.";
+    return;
+  }
+
   client_->OnMessage(message.source_id(), message.namespace_(),
-                     message.payload_utf8());
+                     GetPayload(message));
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

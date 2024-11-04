@@ -38,7 +38,7 @@ TEST(QuicVersionsTest, KnownAndValid) {
   EXPECT_TRUE(ParsedQuicVersionIsValid(reserved.handshake_protocol,
                                        reserved.transport_version));
   // Check that invalid combinations are not valid.
-  EXPECT_FALSE(ParsedQuicVersionIsValid(PROTOCOL_TLS1_3, QUIC_VERSION_43));
+  EXPECT_FALSE(ParsedQuicVersionIsValid(PROTOCOL_TLS1_3, QUIC_VERSION_46));
   EXPECT_FALSE(ParsedQuicVersionIsValid(PROTOCOL_QUIC_CRYPTO,
                                         QUIC_VERSION_IETF_DRAFT_29));
   // Check that deprecated versions are not valid.
@@ -51,31 +51,29 @@ TEST(QuicVersionsTest, KnownAndValid) {
 }
 
 TEST(QuicVersionsTest, Features) {
-  ParsedQuicVersion parsed_version_q043 = ParsedQuicVersion::Q043();
+  ParsedQuicVersion parsed_version_q046 = ParsedQuicVersion::Q046();
   ParsedQuicVersion parsed_version_draft_29 = ParsedQuicVersion::Draft29();
 
-  EXPECT_TRUE(parsed_version_q043.IsKnown());
-  EXPECT_FALSE(parsed_version_q043.KnowsWhichDecrypterToUse());
-  EXPECT_FALSE(parsed_version_q043.UsesInitialObfuscators());
-  EXPECT_FALSE(parsed_version_q043.AllowsLowFlowControlLimits());
-  EXPECT_FALSE(parsed_version_q043.HasHeaderProtection());
-  EXPECT_FALSE(parsed_version_q043.SupportsRetry());
+  EXPECT_TRUE(parsed_version_q046.IsKnown());
+  EXPECT_FALSE(parsed_version_q046.KnowsWhichDecrypterToUse());
+  EXPECT_FALSE(parsed_version_q046.UsesInitialObfuscators());
+  EXPECT_FALSE(parsed_version_q046.AllowsLowFlowControlLimits());
+  EXPECT_FALSE(parsed_version_q046.HasHeaderProtection());
+  EXPECT_FALSE(parsed_version_q046.SupportsRetry());
   EXPECT_FALSE(
-      parsed_version_q043.SendsVariableLengthPacketNumberInLongHeader());
-  EXPECT_FALSE(parsed_version_q043.AllowsVariableLengthConnectionIds());
-  EXPECT_FALSE(parsed_version_q043.SupportsClientConnectionIds());
-  EXPECT_FALSE(parsed_version_q043.HasLengthPrefixedConnectionIds());
-  EXPECT_FALSE(parsed_version_q043.SupportsAntiAmplificationLimit());
-  EXPECT_FALSE(parsed_version_q043.CanSendCoalescedPackets());
-  EXPECT_TRUE(parsed_version_q043.SupportsGoogleAltSvcFormat());
-  EXPECT_FALSE(parsed_version_q043.HasIetfInvariantHeader());
-  EXPECT_FALSE(parsed_version_q043.SupportsMessageFrames());
-  EXPECT_FALSE(parsed_version_q043.UsesHttp3());
-  EXPECT_FALSE(parsed_version_q043.HasLongHeaderLengths());
-  EXPECT_FALSE(parsed_version_q043.UsesCryptoFrames());
-  EXPECT_FALSE(parsed_version_q043.HasIetfQuicFrames());
-  EXPECT_FALSE(parsed_version_q043.UsesTls());
-  EXPECT_TRUE(parsed_version_q043.UsesQuicCrypto());
+      parsed_version_q046.SendsVariableLengthPacketNumberInLongHeader());
+  EXPECT_FALSE(parsed_version_q046.AllowsVariableLengthConnectionIds());
+  EXPECT_FALSE(parsed_version_q046.SupportsClientConnectionIds());
+  EXPECT_FALSE(parsed_version_q046.HasLengthPrefixedConnectionIds());
+  EXPECT_FALSE(parsed_version_q046.SupportsAntiAmplificationLimit());
+  EXPECT_FALSE(parsed_version_q046.CanSendCoalescedPackets());
+  EXPECT_TRUE(parsed_version_q046.SupportsGoogleAltSvcFormat());
+  EXPECT_FALSE(parsed_version_q046.UsesHttp3());
+  EXPECT_FALSE(parsed_version_q046.HasLongHeaderLengths());
+  EXPECT_FALSE(parsed_version_q046.UsesCryptoFrames());
+  EXPECT_FALSE(parsed_version_q046.HasIetfQuicFrames());
+  EXPECT_FALSE(parsed_version_q046.UsesTls());
+  EXPECT_TRUE(parsed_version_q046.UsesQuicCrypto());
 
   EXPECT_TRUE(parsed_version_draft_29.IsKnown());
   EXPECT_TRUE(parsed_version_draft_29.KnowsWhichDecrypterToUse());
@@ -91,8 +89,6 @@ TEST(QuicVersionsTest, Features) {
   EXPECT_TRUE(parsed_version_draft_29.SupportsAntiAmplificationLimit());
   EXPECT_TRUE(parsed_version_draft_29.CanSendCoalescedPackets());
   EXPECT_FALSE(parsed_version_draft_29.SupportsGoogleAltSvcFormat());
-  EXPECT_TRUE(parsed_version_draft_29.HasIetfInvariantHeader());
-  EXPECT_TRUE(parsed_version_draft_29.SupportsMessageFrames());
   EXPECT_TRUE(parsed_version_draft_29.UsesHttp3());
   EXPECT_TRUE(parsed_version_draft_29.HasLongHeaderLengths());
   EXPECT_TRUE(parsed_version_draft_29.UsesCryptoFrames());
@@ -102,10 +98,8 @@ TEST(QuicVersionsTest, Features) {
 }
 
 TEST(QuicVersionsTest, ParseQuicVersionLabel) {
-  static_assert(SupportedVersions().size() == 6u,
+  static_assert(SupportedVersions().size() == 5u,
                 "Supported versions out of sync");
-  EXPECT_EQ(ParsedQuicVersion::Q043(),
-            ParseQuicVersionLabel(MakeVersionLabel('Q', '0', '4', '3')));
   EXPECT_EQ(ParsedQuicVersion::Q046(),
             ParseQuicVersionLabel(MakeVersionLabel('Q', '0', '4', '6')));
   EXPECT_EQ(ParsedQuicVersion::Q050(),
@@ -114,9 +108,9 @@ TEST(QuicVersionsTest, ParseQuicVersionLabel) {
             ParseQuicVersionLabel(MakeVersionLabel(0xff, 0x00, 0x00, 0x1d)));
   EXPECT_EQ(ParsedQuicVersion::RFCv1(),
             ParseQuicVersionLabel(MakeVersionLabel(0x00, 0x00, 0x00, 0x01)));
-  EXPECT_EQ(ParsedQuicVersion::V2Draft08(),
+  EXPECT_EQ(ParsedQuicVersion::RFCv2(),
             ParseQuicVersionLabel(MakeVersionLabel(0x6b, 0x33, 0x43, 0xcf)));
-  EXPECT_EQ((ParsedQuicVersionVector{ParsedQuicVersion::V2Draft08(),
+  EXPECT_EQ((ParsedQuicVersionVector{ParsedQuicVersion::RFCv2(),
                                      ParsedQuicVersion::RFCv1(),
                                      ParsedQuicVersion::Draft29()}),
             ParseQuicVersionLabelVector(QuicVersionLabelVector{
@@ -131,9 +125,8 @@ TEST(QuicVersionsTest, ParseQuicVersionLabel) {
 }
 
 TEST(QuicVersionsTest, ParseQuicVersionString) {
-  static_assert(SupportedVersions().size() == 6u,
+  static_assert(SupportedVersions().size() == 5u,
                 "Supported versions out of sync");
-  EXPECT_EQ(ParsedQuicVersion::Q043(), ParseQuicVersionString("Q043"));
   EXPECT_EQ(ParsedQuicVersion::Q046(),
             ParseQuicVersionString("QUIC_VERSION_46"));
   EXPECT_EQ(ParsedQuicVersion::Q046(), ParseQuicVersionString("46"));
@@ -224,15 +217,13 @@ TEST(QuicVersionsTest, ParseQuicVersionVectorString) {
 // CreateQuicVersionLabel() uses MakeVersionLabel() internally,
 // in case it has a bug.
 TEST(QuicVersionsTest, CreateQuicVersionLabel) {
-  static_assert(SupportedVersions().size() == 6u,
+  static_assert(SupportedVersions().size() == 5u,
                 "Supported versions out of sync");
-  EXPECT_EQ(0x51303433u, CreateQuicVersionLabel(ParsedQuicVersion::Q043()));
   EXPECT_EQ(0x51303436u, CreateQuicVersionLabel(ParsedQuicVersion::Q046()));
   EXPECT_EQ(0x51303530u, CreateQuicVersionLabel(ParsedQuicVersion::Q050()));
   EXPECT_EQ(0xff00001du, CreateQuicVersionLabel(ParsedQuicVersion::Draft29()));
   EXPECT_EQ(0x00000001u, CreateQuicVersionLabel(ParsedQuicVersion::RFCv1()));
-  EXPECT_EQ(0x6b3343cfu,
-            CreateQuicVersionLabel(ParsedQuicVersion::V2Draft08()));
+  EXPECT_EQ(0x6b3343cfu, CreateQuicVersionLabel(ParsedQuicVersion::RFCv2()));
 
   // Make sure the negotiation reserved version is in the IETF reserved space.
   EXPECT_EQ(
@@ -247,10 +238,8 @@ TEST(QuicVersionsTest, CreateQuicVersionLabel) {
 }
 
 TEST(QuicVersionsTest, QuicVersionLabelToString) {
-  static_assert(SupportedVersions().size() == 6u,
+  static_assert(SupportedVersions().size() == 5u,
                 "Supported versions out of sync");
-  EXPECT_EQ("Q043", QuicVersionLabelToString(
-                        CreateQuicVersionLabel(ParsedQuicVersion::Q043())));
   EXPECT_EQ("Q046", QuicVersionLabelToString(
                         CreateQuicVersionLabel(ParsedQuicVersion::Q046())));
   EXPECT_EQ("Q050", QuicVersionLabelToString(
@@ -260,7 +249,7 @@ TEST(QuicVersionsTest, QuicVersionLabelToString) {
   EXPECT_EQ("00000001", QuicVersionLabelToString(CreateQuicVersionLabel(
                             ParsedQuicVersion::RFCv1())));
   EXPECT_EQ("6b3343cf", QuicVersionLabelToString(CreateQuicVersionLabel(
-                            ParsedQuicVersion::V2Draft08())));
+                            ParsedQuicVersion::RFCv2())));
 
   QuicVersionLabelVector version_labels = {
       MakeVersionLabel('Q', '0', '3', '5'),
@@ -285,17 +274,16 @@ TEST(QuicVersionsTest, QuicVersionLabelToString) {
 }
 
 TEST(QuicVersionsTest, ParseQuicVersionLabelString) {
-  static_assert(SupportedVersions().size() == 6u,
+  static_assert(SupportedVersions().size() == 5u,
                 "Supported versions out of sync");
   // Explicitly test known QUIC version label strings.
-  EXPECT_EQ(ParsedQuicVersion::Q043(), ParseQuicVersionLabelString("Q043"));
   EXPECT_EQ(ParsedQuicVersion::Q046(), ParseQuicVersionLabelString("Q046"));
   EXPECT_EQ(ParsedQuicVersion::Q050(), ParseQuicVersionLabelString("Q050"));
   EXPECT_EQ(ParsedQuicVersion::Draft29(),
             ParseQuicVersionLabelString("ff00001d"));
   EXPECT_EQ(ParsedQuicVersion::RFCv1(),
             ParseQuicVersionLabelString("00000001"));
-  EXPECT_EQ(ParsedQuicVersion::V2Draft08(),
+  EXPECT_EQ(ParsedQuicVersion::RFCv2(),
             ParseQuicVersionLabelString("6b3343cf"));
 
   // Sanity check that a variety of other serialization formats are ignored.
@@ -318,21 +306,21 @@ TEST(QuicVersionsTest, QuicVersionToString) {
   EXPECT_EQ("QUIC_VERSION_UNSUPPORTED",
             QuicVersionToString(QUIC_VERSION_UNSUPPORTED));
 
-  QuicTransportVersion single_version[] = {QUIC_VERSION_43};
+  QuicTransportVersion single_version[] = {QUIC_VERSION_46};
   QuicTransportVersionVector versions_vector;
   for (size_t i = 0; i < ABSL_ARRAYSIZE(single_version); ++i) {
     versions_vector.push_back(single_version[i]);
   }
-  EXPECT_EQ("QUIC_VERSION_43",
+  EXPECT_EQ("QUIC_VERSION_46",
             QuicTransportVersionVectorToString(versions_vector));
 
   QuicTransportVersion multiple_versions[] = {QUIC_VERSION_UNSUPPORTED,
-                                              QUIC_VERSION_43};
+                                              QUIC_VERSION_46};
   versions_vector.clear();
   for (size_t i = 0; i < ABSL_ARRAYSIZE(multiple_versions); ++i) {
     versions_vector.push_back(multiple_versions[i]);
   }
-  EXPECT_EQ("QUIC_VERSION_UNSUPPORTED,QUIC_VERSION_43",
+  EXPECT_EQ("QUIC_VERSION_UNSUPPORTED,QUIC_VERSION_46",
             QuicTransportVersionVectorToString(versions_vector));
 
   // Make sure that all supported versions are present in QuicVersionToString.
@@ -343,26 +331,24 @@ TEST(QuicVersionsTest, QuicVersionToString) {
 
   std::ostringstream os;
   os << versions_vector;
-  EXPECT_EQ("QUIC_VERSION_UNSUPPORTED,QUIC_VERSION_43", os.str());
+  EXPECT_EQ("QUIC_VERSION_UNSUPPORTED,QUIC_VERSION_46", os.str());
 }
 
 TEST(QuicVersionsTest, ParsedQuicVersionToString) {
   EXPECT_EQ("0", ParsedQuicVersionToString(ParsedQuicVersion::Unsupported()));
-  EXPECT_EQ("Q043", ParsedQuicVersionToString(ParsedQuicVersion::Q043()));
   EXPECT_EQ("Q046", ParsedQuicVersionToString(ParsedQuicVersion::Q046()));
   EXPECT_EQ("Q050", ParsedQuicVersionToString(ParsedQuicVersion::Q050()));
   EXPECT_EQ("draft29", ParsedQuicVersionToString(ParsedQuicVersion::Draft29()));
   EXPECT_EQ("RFCv1", ParsedQuicVersionToString(ParsedQuicVersion::RFCv1()));
-  EXPECT_EQ("V2Draft08",
-            ParsedQuicVersionToString(ParsedQuicVersion::V2Draft08()));
+  EXPECT_EQ("RFCv2", ParsedQuicVersionToString(ParsedQuicVersion::RFCv2()));
 
-  ParsedQuicVersionVector versions_vector = {ParsedQuicVersion::Q043()};
-  EXPECT_EQ("Q043", ParsedQuicVersionVectorToString(versions_vector));
+  ParsedQuicVersionVector versions_vector = {ParsedQuicVersion::Q046()};
+  EXPECT_EQ("Q046", ParsedQuicVersionVectorToString(versions_vector));
 
   versions_vector = {ParsedQuicVersion::Unsupported(),
-                     ParsedQuicVersion::Q043()};
-  EXPECT_EQ("0,Q043", ParsedQuicVersionVectorToString(versions_vector));
-  EXPECT_EQ("0:Q043", ParsedQuicVersionVectorToString(versions_vector, ":",
+                     ParsedQuicVersion::Q046()};
+  EXPECT_EQ("0,Q046", ParsedQuicVersionVectorToString(versions_vector));
+  EXPECT_EQ("0:Q046", ParsedQuicVersionVectorToString(versions_vector, ":",
                                                       versions_vector.size()));
   EXPECT_EQ("0|...", ParsedQuicVersionVectorToString(versions_vector, "|", 0));
 
@@ -374,7 +360,7 @@ TEST(QuicVersionsTest, ParsedQuicVersionToString) {
 
   std::ostringstream os;
   os << versions_vector;
-  EXPECT_EQ("0,Q043", os.str());
+  EXPECT_EQ("0,Q046", os.str());
 }
 
 TEST(QuicVersionsTest, FilterSupportedVersionsAllVersions) {
@@ -421,25 +407,23 @@ TEST(QuicVersionsTest, LookUpParsedVersionByIndex) {
 // yet a typo was made in doing the #defines and it was caught
 // only in some test far removed from here... Better safe than sorry.
 TEST(QuicVersionsTest, CheckTransportVersionNumbersForTypos) {
-  static_assert(SupportedVersions().size() == 6u,
+  static_assert(SupportedVersions().size() == 5u,
                 "Supported versions out of sync");
-  EXPECT_EQ(QUIC_VERSION_43, 43);
   EXPECT_EQ(QUIC_VERSION_46, 46);
   EXPECT_EQ(QUIC_VERSION_50, 50);
   EXPECT_EQ(QUIC_VERSION_IETF_DRAFT_29, 73);
   EXPECT_EQ(QUIC_VERSION_IETF_RFC_V1, 80);
-  EXPECT_EQ(QUIC_VERSION_IETF_2_DRAFT_08, 82);
+  EXPECT_EQ(QUIC_VERSION_IETF_RFC_V2, 82);
 }
 
 TEST(QuicVersionsTest, AlpnForVersion) {
-  static_assert(SupportedVersions().size() == 6u,
+  static_assert(SupportedVersions().size() == 5u,
                 "Supported versions out of sync");
-  EXPECT_EQ("h3-Q043", AlpnForVersion(ParsedQuicVersion::Q043()));
   EXPECT_EQ("h3-Q046", AlpnForVersion(ParsedQuicVersion::Q046()));
   EXPECT_EQ("h3-Q050", AlpnForVersion(ParsedQuicVersion::Q050()));
   EXPECT_EQ("h3-29", AlpnForVersion(ParsedQuicVersion::Draft29()));
   EXPECT_EQ("h3", AlpnForVersion(ParsedQuicVersion::RFCv1()));
-  EXPECT_EQ("h3", AlpnForVersion(ParsedQuicVersion::V2Draft08()));
+  EXPECT_EQ("h3", AlpnForVersion(ParsedQuicVersion::RFCv2()));
 }
 
 TEST(QuicVersionsTest, QuicVersionEnabling) {
@@ -490,7 +474,7 @@ TEST(QuicVersionsTest, SupportedVersionsAllDistinct) {
                 CreateQuicVersionLabel(version2))
           << version1 << " " << version2;
       // The one pair where ALPNs are the same.
-      if ((version1 != ParsedQuicVersion::V2Draft08()) &&
+      if ((version1 != ParsedQuicVersion::RFCv2()) &&
           (version2 != ParsedQuicVersion::RFCv1())) {
         EXPECT_NE(AlpnForVersion(version1), AlpnForVersion(version2))
             << version1 << " " << version2;

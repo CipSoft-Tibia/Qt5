@@ -14,9 +14,13 @@
 
 #include "connections/implementation/client_proxy.h"
 
+#include <cstdint>
 #include <cstdio>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "protobuf-matchers/protocol-buffer-matchers.h"
@@ -28,16 +32,26 @@
 #include "absl/types/span.h"
 #include "connections/listeners.h"
 #include "connections/strategy.h"
+#include "connections/v3/bandwidth_info.h"
+#include "connections/v3/connection_listening_options.h"
+#include "connections/v3/connections_device_provider.h"
 #include "internal/analytics/event_logger.h"
+#include "internal/interop/device_provider.h"
 #include "internal/platform/byte_array.h"
+#include "internal/platform/count_down_latch.h"
 #include "internal/platform/feature_flags.h"
 #include "internal/platform/medium_environment.h"
+#include "proto/connections_enums.pb.h"
 
 namespace nearby {
 namespace connections {
 namespace {
 
+using ::location::nearby::analytics::proto::ConnectionsLog;
 using ::location::nearby::connections::OsInfo;
+using ::location::nearby::proto::connections::CLIENT_SESSION;
+using ::location::nearby::proto::connections::START_CLIENT_SESSION;
+using ::location::nearby::proto::connections::STOP_CLIENT_SESSION;
 using ::testing::MockFunction;
 using ::testing::StrictMock;
 
@@ -54,7 +68,47 @@ class FakeEventLogger : public ::nearby::analytics::EventLogger {
  public:
   explicit FakeEventLogger() = default;
 
-  void Log(const ::google::protobuf::MessageLite& message) override {}
+  void Log(const ::google::protobuf::MessageLite& message) override {
+    ConnectionsLog log;
+    log.CheckTypeAndMergeFrom(message);
+    MutexLock lock(&mutex_);
+    logs_.push_back(std::move(log));
+  }
+
+  int GetCompleteClientSessionCount() {
+    MutexLock lock(&mutex_);
+    bool has_start_client_session = false;
+    bool has_client_session = false;
+    int session_count = 0;
+    // We expect series of START_CLIENT_SESSION, CLIENT_SESSION and
+    // STOP_CLIENT_SESSION events, possibly interleaved with other events.
+    for (const auto& log : logs_) {
+      if (log.event_type() == START_CLIENT_SESSION) {
+        EXPECT_FALSE(has_start_client_session);
+        EXPECT_FALSE(has_client_session);
+        has_start_client_session = true;
+      } else if (log.event_type() == CLIENT_SESSION) {
+        EXPECT_TRUE(has_start_client_session);
+        EXPECT_FALSE(has_client_session);
+        has_client_session = true;
+      } else if (log.event_type() == STOP_CLIENT_SESSION) {
+        EXPECT_TRUE(has_start_client_session);
+        EXPECT_TRUE(has_client_session);
+        has_start_client_session = false;
+        has_client_session = false;
+        ++session_count;
+      }
+    }
+    return session_count;
+  }
+
+  Mutex mutex_;
+  std::vector<ConnectionsLog> logs_;
+};
+
+class MockDeviceProvider : public nearby::NearbyDeviceProvider {
+ public:
+  MOCK_METHOD((const NearbyDevice*), GetLocalDevice, (), (override));
 };
 
 class ClientProxyTest : public ::testing::TestWithParam<FeatureFlags::Flags> {
@@ -83,9 +137,9 @@ class ClientProxyTest : public ::testing::TestWithParam<FeatureFlags::Flags> {
   };
   struct MockPayloadListener {
     StrictMock<
-        MockFunction<void(const std::string& endpoint_id, Payload payload)>>
+        MockFunction<void(absl::string_view endpoint_id, Payload payload)>>
         payload_cb;
-    StrictMock<MockFunction<void(const std::string& endpoint_id,
+    StrictMock<MockFunction<void(absl::string_view endpoint_id,
                                  const PayloadProgressInfo& info)>>
         payload_progress_cb;
   };
@@ -134,6 +188,23 @@ class ClientProxyTest : public ::testing::TestWithParam<FeatureFlags::Flags> {
     EXPECT_TRUE(client->HasPendingConnectionToEndpoint(endpoint.id));
   }
 
+  Endpoint StartListeningForIncomingConnections(
+      ClientProxy* client, v3::ConnectionListener listener,
+      v3::ConnectionListeningOptions options = {}) {
+    Endpoint endpoint{
+        .info = ByteArray{"advertising endpoint name"},
+        .id = client->GetLocalEndpointId(),
+    };
+    client->StartedListeningForIncomingConnections(
+        service_id_, strategy_, std::move(listener), options);
+    return endpoint;
+  }
+
+  void StopListeningForIncomingConnections(ClientProxy* client) {
+    client->StoppedListeningForIncomingConnections();
+    EXPECT_FALSE(client->IsListeningForIncomingConnections());
+  }
+
   Endpoint StartDiscovery(ClientProxy* client, DiscoveryListener listener) {
     Endpoint endpoint{
         .info = ByteArray{"discovery endpoint name"},
@@ -176,7 +247,13 @@ class ClientProxyTest : public ::testing::TestWithParam<FeatureFlags::Flags> {
                                           const Endpoint& endpoint) {
     EXPECT_TRUE(client->HasPendingConnectionToEndpoint(endpoint.id));
     EXPECT_FALSE(client->HasLocalEndpointResponded(endpoint.id));
-    client->LocalEndpointAcceptedConnection(endpoint.id, payload_listener_);
+    client->LocalEndpointAcceptedConnection(
+        endpoint.id,
+        {
+            .payload_cb = mock_discovery_payload_.payload_cb.AsStdFunction(),
+            .payload_progress_cb =
+                mock_discovery_payload_.payload_progress_cb.AsStdFunction(),
+        });
     EXPECT_TRUE(client->HasLocalEndpointResponded(endpoint.id));
     EXPECT_TRUE(client->LocalConnectionIsAccepted(endpoint.id));
   }
@@ -290,16 +367,12 @@ class ClientProxyTest : public ::testing::TestWithParam<FeatureFlags::Flags> {
       .endpoint_found_cb = mock_discovery_.endpoint_found_cb.AsStdFunction(),
       .endpoint_lost_cb = mock_discovery_.endpoint_lost_cb.AsStdFunction(),
   };
-  PayloadListener payload_listener_{
-      .payload_cb = mock_discovery_payload_.payload_cb.AsStdFunction(),
-      .payload_progress_cb =
-          mock_discovery_payload_.payload_progress_cb.AsStdFunction(),
-  };
   ConnectionOptions connection_options_;
   AdvertisingOptions advertising_options_;
   DiscoveryOptions discovery_options_;
 };
 
+// Regression test for b/279962714.
 TEST_P(ClientProxyTest, CanCancelEndpoint) {
   FeatureFlags::Flags feature_flags = GetParam();
   MediumEnvironment::Instance().SetFeatureFlags(feature_flags);
@@ -310,8 +383,15 @@ TEST_P(ClientProxyTest, CanCancelEndpoint) {
   OnDiscoveryEndpointFound(&client2_, advertising_endpoint);
   OnDiscoveryConnectionInitiated(&client2_, advertising_endpoint);
 
+  // `CancellationFlag` pointers are passed to other classes in Nearby
+  // Connections, and by using the pointers directly, we test their
+  // consumption of `CancellationFlag` pointers.
+  CancellationFlag* cancellation_flag =
+      client2_.GetCancellationFlag(advertising_endpoint.id);
+
   EXPECT_FALSE(
       client2_.GetCancellationFlag(advertising_endpoint.id)->Cancelled());
+  EXPECT_FALSE(cancellation_flag->Cancelled());
 
   client2_.CancelEndpoint(advertising_endpoint.id);
 
@@ -319,13 +399,16 @@ TEST_P(ClientProxyTest, CanCancelEndpoint) {
   if (!feature_flags.enable_cancellation_flag) {
     EXPECT_FALSE(
         client2_.GetCancellationFlag(advertising_endpoint.id)->Cancelled());
+    EXPECT_FALSE(cancellation_flag->Cancelled());
   } else {
     // The Cancelled is always true as the default flag being returned.
     EXPECT_TRUE(
         client2_.GetCancellationFlag(advertising_endpoint.id)->Cancelled());
+    EXPECT_TRUE(cancellation_flag->Cancelled());
   }
 }
 
+// Regression test for b/279962714.
 TEST_P(ClientProxyTest, CanCancelAllEndpoints) {
   FeatureFlags::Flags feature_flags = GetParam();
   MediumEnvironment::Instance().SetFeatureFlags(feature_flags);
@@ -336,8 +419,15 @@ TEST_P(ClientProxyTest, CanCancelAllEndpoints) {
   OnDiscoveryEndpointFound(&client2_, advertising_endpoint);
   OnDiscoveryConnectionInitiated(&client2_, advertising_endpoint);
 
+  // `CancellationFlag` pointers are passed to other classes in Nearby
+  // Connections, and by using the pointers directly, we test their
+  // consumption of `CancellationFlag` pointers.
+  CancellationFlag* cancellation_flag =
+      client2_.GetCancellationFlag(advertising_endpoint.id);
+
   EXPECT_FALSE(
       client2_.GetCancellationFlag(advertising_endpoint.id)->Cancelled());
+  EXPECT_FALSE(cancellation_flag->Cancelled());
 
   client2_.CancelAllEndpoints();
 
@@ -345,10 +435,12 @@ TEST_P(ClientProxyTest, CanCancelAllEndpoints) {
   if (!feature_flags.enable_cancellation_flag) {
     EXPECT_FALSE(
         client2_.GetCancellationFlag(advertising_endpoint.id)->Cancelled());
+    EXPECT_FALSE(cancellation_flag->Cancelled());
   } else {
     // The Cancelled is always true as the default flag being returned.
     EXPECT_TRUE(
         client2_.GetCancellationFlag(advertising_endpoint.id)->Cancelled());
+    EXPECT_TRUE(cancellation_flag->Cancelled());
   }
 }
 
@@ -411,10 +503,10 @@ TEST_F(ClientProxyTest, DumpString) {
       "Nearby Connections State\n"
       "  Client ID: %d\n"
       "  Local Endpoint ID: %s\n"
-      "  High Visibility Mode: 0\n"
-      "  Is Advertising: 0\n"
+      "  High Visibility Mode: false\n"
+      "  Is Advertising: false\n"
+      "  Is Discovering: false\n"
       "  Advertising Service ID: \n"
-      "  Is Discovering: 0\n"
       "  Discovery Service ID: \n"
       "  Connections: \n"
       "  Discovered endpoint IDs: \n",
@@ -424,6 +516,16 @@ TEST_F(ClientProxyTest, DumpString) {
 }
 
 TEST_F(ClientProxyTest, GeneratedEndpointIdIsUnique) {
+  EXPECT_NE(client1_.GetLocalEndpointId(), client2_.GetLocalEndpointId());
+}
+
+TEST_F(ClientProxyTest, GeneratedEndpointIdIsUniqueWithDeviceProvider) {
+  client1_.RegisterConnectionsDeviceProvider(
+      std::make_unique<v3::ConnectionsDeviceProvider>(
+          v3::ConnectionsDeviceProvider("", {})));
+  client2_.RegisterConnectionsDeviceProvider(
+      std::make_unique<v3::ConnectionsDeviceProvider>(
+          v3::ConnectionsDeviceProvider("", {})));
   EXPECT_NE(client1_.GetLocalEndpointId(), client2_.GetLocalEndpointId());
 }
 
@@ -742,11 +844,11 @@ TEST_F(ClientProxyTest, NotLogSessionForStoppedAdvertisingWithConnection) {
       advertising_endpoint.id));           // Connections are available
   EXPECT_FALSE(client1_.IsDiscovering());  // No Discovery
   EXPECT_TRUE(client1_.IsAdvertising());   // Advertising
-  EXPECT_FALSE(client1_.GetAnalyticsRecorder().IsSessionLogged());
 
   // After
   StopAdvertising(&client1_);  // No Advertising
-  EXPECT_FALSE(client1_.GetAnalyticsRecorder().IsSessionLogged());
+  client1_.GetAnalyticsRecorder().Sync();
+  EXPECT_EQ(event_logger1_.GetCompleteClientSessionCount(), 0);
 }
 
 TEST_F(ClientProxyTest,
@@ -759,11 +861,13 @@ TEST_F(ClientProxyTest,
       advertising_endpoint.id));           // No Connections
   EXPECT_FALSE(client1_.IsDiscovering());  // No Discovery
   EXPECT_TRUE(client1_.IsAdvertising());   // Advertising
-  EXPECT_FALSE(client1_.GetAnalyticsRecorder().IsSessionLogged());
+  client1_.GetAnalyticsRecorder().Sync();
+  EXPECT_EQ(event_logger1_.GetCompleteClientSessionCount(), 0);
 
   // After
   StopAdvertising(&client1_);
-  EXPECT_TRUE(client1_.GetAnalyticsRecorder().IsSessionLogged());
+  client1_.GetAnalyticsRecorder().Sync();
+  EXPECT_GT(event_logger1_.GetCompleteClientSessionCount(), 0);
 }
 
 TEST_F(ClientProxyTest, NotLogSessionForStoppedDiscoveryWithConnection) {
@@ -778,11 +882,11 @@ TEST_F(ClientProxyTest, NotLogSessionForStoppedDiscoveryWithConnection) {
       &client2_, advertising_endpoint);    // Connections are available
   EXPECT_FALSE(client2_.IsAdvertising());  // No Advertising
   EXPECT_TRUE(client2_.IsDiscovering());   // Discovering
-  EXPECT_FALSE(client2_.GetAnalyticsRecorder().IsSessionLogged());
 
   // After
   StopDiscovery(&client2_);
-  EXPECT_FALSE(client2_.GetAnalyticsRecorder().IsSessionLogged());
+  client2_.GetAnalyticsRecorder().Sync();
+  EXPECT_EQ(event_logger2_.GetCompleteClientSessionCount(), 0);
 }
 
 TEST_F(ClientProxyTest,
@@ -800,7 +904,8 @@ TEST_F(ClientProxyTest,
 
   // After
   StopDiscovery(&client2_);
-  EXPECT_TRUE(client2_.GetAnalyticsRecorder().IsSessionLogged());
+  client2_.GetAnalyticsRecorder().Sync();
+  EXPECT_GT(event_logger2_.GetCompleteClientSessionCount(), 0);
 }
 
 TEST_F(ClientProxyTest, LogSessionOnDisconnectedWithOneConnection) {
@@ -818,7 +923,8 @@ TEST_F(ClientProxyTest, LogSessionOnDisconnectedWithOneConnection) {
 
   // After
   OnDiscoveryConnectionDisconnected(&client2_, advertising_endpoint);
-  EXPECT_TRUE(client2_.GetAnalyticsRecorder().IsSessionLogged());
+  client2_.GetAnalyticsRecorder().Sync();
+  EXPECT_GT(event_logger2_.GetCompleteClientSessionCount(), 0);
 }
 
 TEST_F(ClientProxyTest,
@@ -834,7 +940,8 @@ TEST_F(ClientProxyTest,
 
   // After
   client2_.OnDisconnected(advertising_endpoint.id, /*notify=*/false);
-  EXPECT_FALSE(client2_.GetAnalyticsRecorder().IsSessionLogged());
+  client2_.GetAnalyticsRecorder().Sync();
+  EXPECT_EQ(event_logger2_.GetCompleteClientSessionCount(), 0);
 }
 
 TEST_F(ClientProxyTest, NotLogSessionOnDisconnectedWhenMoreThanOneConnection) {
@@ -861,7 +968,8 @@ TEST_F(ClientProxyTest, NotLogSessionOnDisconnectedWhenMoreThanOneConnection) {
 
   // After
   client2_.OnDisconnected(advertising_endpoint_1.id, /*notify=*/false);
-  EXPECT_FALSE(client2_.GetAnalyticsRecorder().IsSessionLogged());
+  client2_.GetAnalyticsRecorder().Sync();
+  EXPECT_EQ(event_logger2_.GetCompleteClientSessionCount(), 0);
 }
 
 TEST_F(ClientProxyTest,
@@ -880,7 +988,8 @@ TEST_F(ClientProxyTest,
 
   // After
   OnDiscoveryConnectionDisconnected(&client2_, advertising_endpoint);
-  EXPECT_FALSE(client2_.GetAnalyticsRecorder().IsSessionLogged());
+  client2_.GetAnalyticsRecorder().Sync();
+  EXPECT_EQ(event_logger2_.GetCompleteClientSessionCount(), 0);
 }
 
 TEST_F(ClientProxyTest, LogSessionForResetClientProxy) {
@@ -890,13 +999,18 @@ TEST_F(ClientProxyTest, LogSessionForResetClientProxy) {
   OnDiscoveryEndpointFound(&client2_, advertising_endpoint);
   OnDiscoveryConnectionInitiated(&client2_, advertising_endpoint);
 
-  EXPECT_FALSE(client1_.GetAnalyticsRecorder().IsSessionLogged());
+  client1_.GetAnalyticsRecorder().Sync();
+  EXPECT_EQ(event_logger1_.GetCompleteClientSessionCount(), 0);
   client1_.Reset();
-  EXPECT_TRUE(client1_.GetAnalyticsRecorder().IsSessionLogged());
+  client1_.GetAnalyticsRecorder().Sync();
+  // TODO(b/290936886): Why are there more than one complete sessions?
+  EXPECT_GT(event_logger1_.GetCompleteClientSessionCount(), 0);
 
-  EXPECT_FALSE(client2_.GetAnalyticsRecorder().IsSessionLogged());
+  client2_.GetAnalyticsRecorder().Sync();
+  EXPECT_EQ(event_logger2_.GetCompleteClientSessionCount(), 0);
   client2_.Reset();
-  EXPECT_TRUE(client2_.GetAnalyticsRecorder().IsSessionLogged());
+  client2_.GetAnalyticsRecorder().Sync();
+  EXPECT_GT(event_logger2_.GetCompleteClientSessionCount(), 0);
 }
 
 TEST_F(ClientProxyTest, GetLocalInfoCorrect) {
@@ -910,6 +1024,9 @@ TEST_F(ClientProxyTest, GetRemoteInfoNullWithoutConnections) {
       StartAdvertising(&client1_, advertising_connection_listener_);
 
   EXPECT_FALSE(client1_.GetRemoteOsInfo(advertising_endpoint.id).has_value());
+  EXPECT_FALSE(
+      client1_.GetRemoteSafeToDisconnectVersion(advertising_endpoint.id)
+          .has_value());
 }
 
 TEST_F(ClientProxyTest, SetRemoteInfoCorrect) {
@@ -919,11 +1036,149 @@ TEST_F(ClientProxyTest, SetRemoteInfoCorrect) {
 
   OsInfo os_info;
   os_info.set_type(OsInfo::ANDROID);
+  std::int32_t nearby_connections_version = 2;
   client1_.SetRemoteOsInfo(advertising_endpoint.id, os_info);
+  client1_.SetRemoteSafeToDisconnectVersion(advertising_endpoint.id,
+                                             nearby_connections_version);
 
   ASSERT_TRUE(client1_.GetRemoteOsInfo(advertising_endpoint.id).has_value());
   EXPECT_EQ(client1_.GetRemoteOsInfo(advertising_endpoint.id).value().type(),
             OsInfo::ANDROID);
+  EXPECT_EQ(client1_.GetRemoteSafeToDisconnectVersion(advertising_endpoint.id),
+            nearby_connections_version);
+}
+
+// Test ClientProxy::AddCancellationFlag, where if a flag is already in the map,
+// uncancel it. This addresses the case when users use NS to share/receive a
+// file, then cancel in the middle because the wrong file was selected, and then
+// re-do right after. Without the ability to uncancel a flag in
+// `AddCancelationFlag`, the second share/receive process will
+// be seen as cancelled with cancellation flags enabled. However this tests that
+// it will uncancel the flag which is added in RequestConnection and
+// OnConnectionInitiated in the NS flow, and allow another attempt with the
+// same endpoint.
+TEST_F(ClientProxyTest, UncancelCancellationFlags) {
+  // Enable cancellation flags.
+  MediumEnvironment::Instance().SetFeatureFlags(kTestCases[0]);
+  Endpoint advertising_endpoint =
+      StartAdvertising(&client1_, advertising_connection_listener_);
+
+  // Add a cancellation flag to the client proxy.
+  client1_.AddCancellationFlag(advertising_endpoint.id);
+  auto flag = client1_.GetCancellationFlag(advertising_endpoint.id);
+  EXPECT_FALSE(flag->Cancelled());
+  EXPECT_FALSE(
+      client1_.GetCancellationFlag(advertising_endpoint.id)->Cancelled());
+
+  // Cancel the flag.
+  flag->Cancel();
+  EXPECT_TRUE(flag->Cancelled());
+  EXPECT_TRUE(
+      client1_.GetCancellationFlag(advertising_endpoint.id)->Cancelled());
+
+  // On subsequent calls to add a new cancellation flag, expect an the flag to
+  // be uncancelled.
+  client1_.AddCancellationFlag(advertising_endpoint.id);
+  flag = client1_.GetCancellationFlag(advertising_endpoint.id);
+  EXPECT_FALSE(flag->Cancelled());
+  EXPECT_FALSE(
+      client1_.GetCancellationFlag(advertising_endpoint.id)->Cancelled());
+}
+
+TEST_F(ClientProxyTest, GetLocalDeviceWorksWithoutDeviceProvider) {
+  auto device = client1_.GetLocalDevice();
+  EXPECT_NE(device, nullptr);
+  EXPECT_EQ(device->GetEndpointId().length(), 4);
+  EXPECT_NE(client1_.GetLocalDeviceProvider(), nullptr);
+}
+
+TEST_F(ClientProxyTest, GetLocalDeviceWorksWithDeviceProvider) {
+  MockDeviceProvider provider;
+  client1_.RegisterDeviceProvider(&provider);
+  ASSERT_NE(client1_.GetLocalDeviceProvider(), nullptr);
+  EXPECT_CALL(
+      *(down_cast<MockDeviceProvider*>(client1_.GetLocalDeviceProvider())),
+      GetLocalDevice);
+  client1_.GetLocalDevice();
+}
+
+TEST_F(ClientProxyTest, TestGetSetLocalEndpointInfo) {
+  client1_.UpdateLocalEndpointInfo("endpoint_info");
+  EXPECT_EQ(client1_.GetLocalEndpointInfo(), "endpoint_info");
+}
+
+TEST_F(ClientProxyTest, TestGetIncomingConnectionListener) {
+  CountDownLatch result_latch(2);
+  CountDownLatch bwu_latch(1);
+  CountDownLatch disconnect_latch(1);
+  CountDownLatch init_latch(1);
+  client1_.StartedListeningForIncomingConnections(
+      service_id_, Strategy::kP2pCluster,
+      {
+          .initiated_cb =
+              [&init_latch](const NearbyDevice&,
+                            const v3::InitialConnectionInfo&) {
+                init_latch.CountDown();
+              },
+          .result_cb = [&result_latch](
+                           const NearbyDevice&,
+                           v3::ConnectionResult) { result_latch.CountDown(); },
+          .disconnected_cb =
+              [&disconnect_latch](const NearbyDevice&) {
+                disconnect_latch.CountDown();
+              },
+          .bandwidth_changed_cb =
+              [&bwu_latch](const NearbyDevice&, v3::BandwidthInfo) {
+                bwu_latch.CountDown();
+              },
+      },
+      {});
+  auto listener = client1_.GetAdvertisingOrIncomingConnectionListener();
+  listener.accepted_cb("endpoint-id");
+  listener.initiated_cb("endpoint-id", {.is_incoming_connection = false});
+  listener.disconnected_cb("endpoint-id");
+  listener.rejected_cb("endpoint-id", {Status::Value::kConnectionRejected});
+  listener.bandwidth_changed_cb("endpoint-id", Medium::WIFI_LAN);
+  EXPECT_TRUE(result_latch.Await().Ok());
+  EXPECT_TRUE(init_latch.Await().Ok());
+  EXPECT_TRUE(bwu_latch.Await().Ok());
+  EXPECT_TRUE(disconnect_latch.Await().Ok());
+}
+
+TEST_F(ClientProxyTest, EnforceTopologyWhenRequestedAdvertising) {
+  EXPECT_FALSE(client1_.ShouldEnforceTopologyConstraints());
+  StartAdvertising(&client1_, advertising_connection_listener_,
+                   {.enforce_topology_constraints = true});
+  EXPECT_TRUE(client1_.ShouldEnforceTopologyConstraints());
+}
+
+TEST_F(ClientProxyTest, EnforceTopologyWhenRequestedListeningWithStrategy) {
+  EXPECT_FALSE(client1_.ShouldEnforceTopologyConstraints());
+  StartListeningForIncomingConnections(&client1_, {},
+                                       {.strategy = Strategy::kP2pCluster,
+                                        .enforce_topology_constraints = true});
+  EXPECT_TRUE(client1_.ShouldEnforceTopologyConstraints());
+}
+
+TEST_F(ClientProxyTest, DontEnforceTopologyWhenRequestedWithNoStrategy) {
+  EXPECT_FALSE(client1_.ShouldEnforceTopologyConstraints());
+  StartListeningForIncomingConnections(&client1_, {},
+                                       {.strategy = Strategy::kNone});
+  EXPECT_TRUE(client1_.ShouldEnforceTopologyConstraints());
+}
+
+TEST_F(ClientProxyTest, TestAutoBwuWhenAdvertisingWithAutoBwu) {
+  EXPECT_FALSE(client1_.AutoUpgradeBandwidth());
+  StartAdvertising(&client1_, advertising_connection_listener_,
+                   {.auto_upgrade_bandwidth = true});
+  EXPECT_TRUE(client1_.AutoUpgradeBandwidth());
+}
+
+TEST_F(ClientProxyTest, TestAutoBwuWhenListeningWithAutoBwu) {
+  EXPECT_FALSE(client1_.AutoUpgradeBandwidth());
+  StartListeningForIncomingConnections(&client1_, {},
+                                       {.auto_upgrade_bandwidth = true});
+  EXPECT_TRUE(client1_.AutoUpgradeBandwidth());
 }
 
 }  // namespace

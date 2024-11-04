@@ -25,8 +25,13 @@
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "content/public/test/browser_test.h"
 #include "extensions/browser/process_manager.h"
+#include "extensions/common/extension_features.h"
 #include "extensions/test/extension_background_page_waiter.h"
 #include "extensions/test/result_catcher.h"
+
+#if BUILDFLAG(IS_WIN)
+#include <windows.h>
+#endif
 
 namespace extensions {
 namespace {
@@ -60,6 +65,59 @@ IN_PROC_BROWSER_TEST_F(NativeMessagingApiTestBase, UserLevelSendNativeMessage) {
   ASSERT_NO_FATAL_FAILURE(test_host_.RegisterTestHost(kUserLevel));
   ASSERT_TRUE(RunExtensionTest("native_messaging_send_native_message"));
 }
+
+#if BUILDFLAG(IS_WIN)
+// On Windows, a new codepath is used to directly launch .EXE-based Native
+// Hosts. This codepath allows launching of Native Hosts even when cmd.exe is
+// disabled or misconfigured.
+class NativeMessagingLaunchExeTest : public NativeMessagingApiTestBase,
+                                     public testing::WithParamInterface<bool> {
+ public:
+  NativeMessagingLaunchExeTest() {
+    feature_list_.InitWithFeatureState(
+        extensions_features::kLaunchWindowsNativeHostsDirectly,
+        IsDirectLaunchEnabled());
+  }
+
+  bool IsDirectLaunchEnabled() const { return GetParam(); }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+INSTANTIATE_TEST_SUITE_P(NativeMessagingLaunchExe,
+                         NativeMessagingLaunchExeTest,
+                         testing::Bool());
+
+IN_PROC_BROWSER_TEST_P(NativeMessagingLaunchExeTest,
+                       UserLevelSendNativeMessageWinExe) {
+  ASSERT_NO_FATAL_FAILURE(test_host_.RegisterTestExeHost(
+      "native_messaging_test_echo_host.exe", /*user_level=*/true));
+
+  ASSERT(RunExtensionTest("native_messaging_send_native_message_exe"));
+}
+
+// The Host's filename deliberately contains the character '&' which causes the
+// Host to fail to launch if cmd.exe is used as an intermediary between the
+// extension and the host executable, unless extra quotes are used.
+// crbug.com/335558
+IN_PROC_BROWSER_TEST_P(NativeMessagingLaunchExeTest,
+                       SendNativeMessageWinExeAmpersand) {
+  ASSERT_NO_FATAL_FAILURE(test_host_.RegisterTestExeHost(
+      "native_messaging_test_echo_&_host.exe", /*user_level=*/false));
+
+  ASSERT(RunExtensionTest("native_messaging_send_native_message_exe"));
+}
+
+// Make sure that a filename with a space is supported.
+IN_PROC_BROWSER_TEST_P(NativeMessagingLaunchExeTest,
+                       SendNativeMessageWinExeSpace) {
+  ASSERT_NO_FATAL_FAILURE(test_host_.RegisterTestExeHost(
+      "native_messaging_test_echo_ _host.exe", /*user_level=*/false));
+
+  ASSERT(RunExtensionTest("native_messaging_send_native_message_exe"));
+}
+#endif
 
 class NativeMessagingApiTest : public NativeMessagingApiTestBase,
                                public testing::WithParamInterface<ContextType> {
@@ -163,7 +221,7 @@ IN_PROC_BROWSER_TEST_F(NativeMessagingLaunchApiTest, MAYBE_Success) {
 
   StartupBrowserCreator::ProcessCommandLineAlreadyRunning(
       CreateNativeMessagingConnectCommandLine("test-connect-id"), {},
-      {profile()->GetPath(), StartupProfileMode::kBrowserWindow});
+      {profile()->GetPath(), StartupProfileModeReason::kAppRequested});
 
   EXPECT_TRUE(
       g_browser_process->background_mode_manager()->IsBackgroundModeActive());
@@ -203,7 +261,7 @@ IN_PROC_BROWSER_TEST_F(NativeMessagingLaunchApiTest, UnsupportedByNativeHost) {
 
   StartupBrowserCreator::ProcessCommandLineAlreadyRunning(
       command_line, {},
-      {profile()->GetPath(), StartupProfileMode::kBrowserWindow});
+      {profile()->GetPath(), StartupProfileModeReason::kAppRequested});
 
   if (!catcher.GetNextResult()) {
     FAIL() << catcher.message();
@@ -272,7 +330,7 @@ IN_PROC_BROWSER_TEST_F(NativeMessagingLaunchApiTest, Error) {
       base::Seconds(2));
   StartupBrowserCreator::ProcessCommandLineAlreadyRunning(
       CreateNativeMessagingConnectCommandLine("test-connect-id"), {},
-      {profile()->GetPath(), StartupProfileMode::kBrowserWindow});
+      {profile()->GetPath(), StartupProfileModeReason::kAppRequested});
   ASSERT_TRUE(KeepAliveRegistry::GetInstance()->IsOriginRegistered(
       KeepAliveOrigin::NATIVE_MESSAGING_HOST_ERROR_REPORT));
 
@@ -294,7 +352,7 @@ IN_PROC_BROWSER_TEST_F(NativeMessagingLaunchApiTest, InvalidConnectId) {
 
   StartupBrowserCreator::ProcessCommandLineAlreadyRunning(
       CreateNativeMessagingConnectCommandLine("\"connect id!\""), {},
-      {profile()->GetPath(), StartupProfileMode::kBrowserWindow});
+      {profile()->GetPath(), StartupProfileModeReason::kAppRequested});
   ASSERT_TRUE(KeepAliveRegistry::GetInstance()->IsOriginRegistered(
       KeepAliveOrigin::NATIVE_MESSAGING_HOST_ERROR_REPORT));
 
@@ -316,7 +374,7 @@ IN_PROC_BROWSER_TEST_F(NativeMessagingLaunchApiTest, TooLongConnectId) {
 
   StartupBrowserCreator::ProcessCommandLineAlreadyRunning(
       CreateNativeMessagingConnectCommandLine(std::string(21, 'a')), {},
-      {profile()->GetPath(), StartupProfileMode::kBrowserWindow});
+      {profile()->GetPath(), StartupProfileModeReason::kAppRequested});
   ASSERT_TRUE(KeepAliveRegistry::GetInstance()->IsOriginRegistered(
       KeepAliveOrigin::NATIVE_MESSAGING_HOST_ERROR_REPORT));
 
@@ -338,7 +396,7 @@ IN_PROC_BROWSER_TEST_F(NativeMessagingLaunchApiTest, InvalidExtensionId) {
 
   StartupBrowserCreator::ProcessCommandLineAlreadyRunning(
       CreateNativeMessagingConnectCommandLine("test-connect-id", "abcd"), {},
-      {profile()->GetPath(), StartupProfileMode::kBrowserWindow});
+      {profile()->GetPath(), StartupProfileModeReason::kAppRequested});
   ASSERT_TRUE(KeepAliveRegistry::GetInstance()->IsOriginRegistered(
       KeepAliveOrigin::NATIVE_MESSAGING_HOST_ERROR_REPORT));
 

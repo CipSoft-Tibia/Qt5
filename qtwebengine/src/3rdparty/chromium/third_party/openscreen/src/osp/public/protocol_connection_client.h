@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,8 +16,7 @@
 #include "platform/base/ip_address.h"
 #include "platform/base/macros.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 // Embedder's view of the network service that initiates OSP connections to OSP
 // receivers.
@@ -44,9 +43,9 @@ class ProtocolConnectionClient {
    public:
     ConnectRequest();
     ConnectRequest(ProtocolConnectionClient* parent, uint64_t request_id);
-    ConnectRequest(ConnectRequest&& other);
+    ConnectRequest(ConnectRequest&& other) noexcept;
     ~ConnectRequest();
-    ConnectRequest& operator=(ConnectRequest&& other);
+    ConnectRequest& operator=(ConnectRequest&& other) noexcept;
 
     explicit operator bool() const { return request_id_; }
 
@@ -118,7 +117,6 @@ class ProtocolConnectionClient {
 std::ostream& operator<<(std::ostream& os,
                          ProtocolConnectionClient::State state);
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_PUBLIC_PROTOCOL_CONNECTION_CLIENT_H_

@@ -8,10 +8,6 @@
 
 QT_BEGIN_NAMESPACE
 
-#ifdef USE_LEXEM_STORE
-Symbol::LexemStore Symbol::lexemStore;
-#endif
-
 static const char *error_msg = nullptr;
 
 /*! \internal
@@ -73,9 +69,14 @@ void Parser::error(const char *msg)
     exit(EXIT_FAILURE);
 }
 
+void Parser::warning(const Symbol &sym, QByteArrayView msg)
+{
+    if (displayWarnings)
+        printMsg("warning: %s\n", msg, sym);
+}
+
 void Parser::warning(const char *msg) {
-    if (displayWarnings && msg)
-        printMsg("warning: %s\n", msg, index > 0 ? symbol() : Symbol{});
+    warning(index > 0 ? symbol() : Symbol{}, msg);
 }
 
 void Parser::note(const char *msg) {

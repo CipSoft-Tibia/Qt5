@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,14 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "cast/common/public/certificate_types.h"
 #include "cast/common/public/parsed_certificate.h"
 #include "platform/base/error.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // This class represents a set of certificates that form a root trust set.  The
 // only operation on this set is to check whether a given set of certificates
@@ -27,7 +26,7 @@ class TrustStore {
   using CertificatePathResult = std::vector<std::unique_ptr<ParsedCertificate>>;
 
   static std::unique_ptr<TrustStore> CreateInstanceFromPemFile(
-      absl::string_view file_path);
+      std::string_view file_path);
 
   static std::unique_ptr<TrustStore> CreateInstanceForTest(
       const std::vector<uint8_t>& trust_anchor_der);
@@ -72,7 +71,6 @@ class CastCRLTrustStore {
   static std::unique_ptr<TrustStore> Create();
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_PUBLIC_TRUST_STORE_H_

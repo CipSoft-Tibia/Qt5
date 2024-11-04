@@ -13,6 +13,7 @@
 #include "components/sync/base/storage_type.h"
 #include "components/sync/model/model_error.h"
 #include "components/sync/model/model_type_sync_bridge.h"
+#include "components/sync/model/wipe_model_upon_sync_disabled_behavior.h"
 
 namespace base {
 class Clock;
@@ -33,6 +34,8 @@ class ReadingListSyncBridge : public syncer::ModelTypeSyncBridge {
  public:
   ReadingListSyncBridge(
       syncer::StorageType storage_type,
+      syncer::WipeModelUponSyncDisabledBehavior
+          wipe_model_upon_sync_disabled_behavior,
       base::Clock* clock,
       std::unique_ptr<syncer::ModelTypeChangeProcessor> change_processor);
 
@@ -52,6 +55,17 @@ class ReadingListSyncBridge : public syncer::ModelTypeSyncBridge {
   void DidRemoveEntry(const ReadingListEntry& entry,
                       syncer::MetadataChangeList* metadata_change_list);
 
+  // Exposes whether the underlying ModelTypeChangeProcessor is tracking
+  // metadata. This means sync is enabled and the initial download of data is
+  // completed, which implies that the relevant ReadingListModel already
+  // reflects remote data. Note however that this doesn't mean reading list
+  // entries are actively sync-ing at the moment, for example sync could be
+  // paused due to an auth error.
+  bool IsTrackingMetadata() const;
+
+  // Returns the StorageType, as passed to the constructor.
+  syncer::StorageType GetStorageTypeForUma() const;
+
   // Creates an object used to communicate changes in the sync metadata to the
   // model type store.
   std::unique_ptr<syncer::MetadataChangeList> CreateMetadataChangeList()
@@ -70,7 +84,7 @@ class ReadingListSyncBridge : public syncer::ModelTypeSyncBridge {
   // atomically, should save the metadata after the data changes, so that this
   // merge will be re-driven by sync if is not completely saved during the
   // current run.
-  absl::optional<syncer::ModelError> MergeSyncData(
+  absl::optional<syncer::ModelError> MergeFullSyncData(
       std::unique_ptr<syncer::MetadataChangeList> metadata_change_list,
       syncer::EntityChangeList entity_changes) override;
 
@@ -79,7 +93,7 @@ class ReadingListSyncBridge : public syncer::ModelTypeSyncBridge {
   // |metadata_change_list| in case when some of the data changes are filtered
   // out, or even be empty in case when a commit confirmation is processed and
   // only the metadata needs to persisted.
-  absl::optional<syncer::ModelError> ApplySyncChanges(
+  absl::optional<syncer::ModelError> ApplyIncrementalSyncChanges(
       std::unique_ptr<syncer::MetadataChangeList> metadata_change_list,
       syncer::EntityChangeList entity_changes) override;
 
@@ -139,17 +153,22 @@ class ReadingListSyncBridge : public syncer::ModelTypeSyncBridge {
   // should be.
   std::string GetStorageKey(const syncer::EntityData& entity_data) override;
 
-  // Invoked when sync is paused or permanently stopped.
-  void ApplyStopSyncChanges(std::unique_ptr<syncer::MetadataChangeList>
-                                delete_metadata_change_list) override;
+  // Invoked when sync is permanently stopped.
+  void ApplyDisableSyncChanges(std::unique_ptr<syncer::MetadataChangeList>
+                                   delete_metadata_change_list) override;
+
+  bool IsEntityDataValid(const syncer::EntityData& entity_data) const override;
 
  private:
   void AddEntryToBatch(syncer::MutableDataBatch* batch,
                        const ReadingListEntry& entry);
 
-  const syncer::StorageType storage_type_;
+  const syncer::StorageType storage_type_for_uma_;
   const raw_ptr<base::Clock> clock_;
   raw_ptr<ReadingListModelImpl> model_ = nullptr;
+  syncer::WipeModelUponSyncDisabledBehavior
+      wipe_model_upon_sync_disabled_behavior_ =
+          syncer::WipeModelUponSyncDisabledBehavior::kNever;
 
   SEQUENCE_CHECKER(sequence_checker_);
 };

@@ -13,6 +13,12 @@
 
 namespace extensions {
 
+// When enabled, abortOnLoadForNonInteractive and timeoutMsForNonInteractive
+// arguments to launchWebAuthFlow will be used to allow the loaded auth page to
+// wait before failing with an 'interaction required' error. This allows JS to
+// run and redirects to happen after page load.
+BASE_DECLARE_FEATURE(kNonInteractiveTimeoutForWebAuthFlow);
+
 class IdentityLaunchWebAuthFlowFunction : public ExtensionFunction,
                                           public WebAuthFlow::Delegate {
  public:
@@ -30,17 +36,24 @@ class IdentityLaunchWebAuthFlowFunction : public ExtensionFunction,
     kInteractionRequired = 3,
     kPageLoadFailure = 4,
     kUnexpectedError = 5,
-    kMaxValue = kUnexpectedError,
+    kPageLoadTimedOut = 6,
+    kCannotCreateWindow = 7,
+    kInvalidURLScheme = 8,
+    kMaxValue = kInvalidURLScheme,
   };
 
   IdentityLaunchWebAuthFlowFunction();
 
   // Tests may override extension_id.
-  void InitFinalRedirectURLPrefixForTest(const std::string& extension_id);
+  void InitFinalRedirectURLDomainsForTest(const std::string& extension_id);
+
+  WebAuthFlow* GetWebAuthFlowForTesting();
 
  private:
+  // ExtensionFunction:
   ~IdentityLaunchWebAuthFlowFunction() override;
   ResponseAction Run() override;
+  bool ShouldKeepWorkerAliveIndefinitely() override;
 
   // WebAuthFlow::Delegate implementation.
   void OnAuthFlowFailure(WebAuthFlow::Failure failure) override;
@@ -48,10 +61,11 @@ class IdentityLaunchWebAuthFlowFunction : public ExtensionFunction,
   void OnAuthFlowTitleChange(const std::string& title) override {}
 
   // Helper to initialize final URL prefix.
-  void InitFinalRedirectURLPrefix(const std::string& extension_id);
+  void InitFinalRedirectURLDomains(const std::string& extension_id,
+                                   const base::Value::List* redirect_urls);
 
   std::unique_ptr<WebAuthFlow> auth_flow_;
-  GURL final_url_prefix_;
+  std::vector<GURL> final_url_domains_;
 };
 
 }  // namespace extensions

@@ -172,6 +172,7 @@ TEST_F(DecoderTest, APIFlowForNonFrameParallelMode) {
   // Signal end of stream (method 1). This should ensure that all the references
   // are released.
   status = decoder_->SignalEOS();
+  EXPECT_EQ(status, kStatusOk);
 
   // libgav1 should have released all the reference frames now.
   EXPECT_EQ(frames_in_use_, 0);
@@ -302,6 +303,7 @@ TEST_F(DecoderTest, NonFrameParallelModeInvalidFrameAfterEOS) {
 
   // Signal end of stream.
   status = decoder_->SignalEOS();
+  EXPECT_EQ(status, kStatusOk);
 
   // libgav1 should have released all the reference frames now.
   EXPECT_EQ(frames_in_use_, 0);
@@ -372,6 +374,7 @@ TEST_F(DecoderTest, MetadataObu) {
   EXPECT_EQ(buffer_private_data_, buffer->buffer_private_data);
 
   status = decoder_->SignalEOS();
+  EXPECT_EQ(status, kStatusOk);
   EXPECT_EQ(frames_in_use_, 0);
 }
 

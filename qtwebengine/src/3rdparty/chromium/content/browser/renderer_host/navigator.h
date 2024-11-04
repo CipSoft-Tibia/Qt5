@@ -105,8 +105,9 @@ class CONTENT_EXPORT Navigator {
   // FrameNavigationEntry can't be found or the navigation fails.
   bool StartHistoryNavigationInNewSubframe(
       RenderFrameHostImpl* render_frame_host,
-      mojo::PendingAssociatedRemote<mojom::NavigationClient>*
-          navigation_client);
+      mojo::PendingAssociatedRemote<mojom::NavigationClient>* navigation_client,
+      blink::LocalFrameToken initiator_frame_token,
+      int initiator_process_id);
 
   // Navigation requests -------------------------------------------------------
 
@@ -146,7 +147,7 @@ class CONTENT_EXPORT Navigator {
       const blink::LocalFrameToken* initiator_frame_token,
       int initiator_process_id,
       const url::Origin& initiator_origin,
-      const GURL& initiator_base_url,
+      const absl::optional<GURL>& initiator_base_url,
       SiteInstance* source_site_instance,
       const Referrer& referrer,
       ui::PageTransition page_transition,
@@ -166,7 +167,9 @@ class CONTENT_EXPORT Navigator {
       bool is_embedder_initiated_fenced_frame_navigation = false,
       bool is_unfenced_top_navigation = false,
       bool force_new_browsing_instance = false,
-      bool is_container_initiated = false);
+      bool is_container_initiated = false,
+      absl::optional<std::u16string> embedder_shared_storage_context =
+          absl::nullopt);
 
   // Called after BeforeUnloadCompleted callback is invoked from the renderer.
   // If |frame_tree_node| has a NavigationRequest waiting for the renderer
@@ -186,6 +189,7 @@ class CONTENT_EXPORT Navigator {
       mojo::PendingAssociatedRemote<mojom::NavigationClient> navigation_client,
       scoped_refptr<PrefetchedSignedExchangeCache>
           prefetched_signed_exchange_cache,
+      int initiator_process_id,
       mojo::PendingReceiver<mojom::NavigationRendererCancellationListener>
           renderer_cancellation_listener);
 

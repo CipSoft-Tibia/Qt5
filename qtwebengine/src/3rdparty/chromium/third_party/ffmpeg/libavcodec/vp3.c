@@ -2353,6 +2353,8 @@ static av_cold int vp3_decode_init(AVCodecContext *avctx)
     s->avctx  = avctx;
     s->width  = FFALIGN(avctx->coded_width, 16);
     s->height = FFALIGN(avctx->coded_height, 16);
+    if (s->width < 18)
+        return AVERROR_PATCHWELCOME;
     if (avctx->codec_id != AV_CODEC_ID_THEORA)
         avctx->pix_fmt = AV_PIX_FMT_YUV420P;
     avctx->chroma_sample_location = AVCHROMA_LOC_CENTER;
@@ -2654,8 +2656,8 @@ static int vp3_decode_frame(AVCodecContext *avctx, AVFrame *frame,
         s->qps[i] = -1;
 
     if (s->avctx->debug & FF_DEBUG_PICT_INFO)
-        av_log(s->avctx, AV_LOG_INFO, " VP3 %sframe #%d: Q index = %d\n",
-               s->keyframe ? "key" : "", avctx->frame_number + 1, s->qps[0]);
+        av_log(s->avctx, AV_LOG_INFO, " VP3 %sframe #%"PRId64": Q index = %d\n",
+               s->keyframe ? "key" : "", avctx->frame_num + 1, s->qps[0]);
 
     s->skip_loop_filter = !s->filter_limit_values[s->qps[0]] ||
                           avctx->skip_loop_filter >= (s->keyframe ? AVDISCARD_ALL
@@ -2675,7 +2677,10 @@ static int vp3_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
     s->current_frame.f->pict_type = s->keyframe ? AV_PICTURE_TYPE_I
                                                 : AV_PICTURE_TYPE_P;
-    s->current_frame.f->key_frame = s->keyframe;
+    if (s->keyframe)
+        s->current_frame.f->flags |= AV_FRAME_FLAG_KEY;
+    else
+        s->current_frame.f->flags &= ~AV_FRAME_FLAG_KEY;
     if ((ret = ff_thread_get_ext_buffer(avctx, &s->current_frame,
                                         AV_GET_BUFFER_FLAG_REF)) < 0)
         goto error;
@@ -2701,7 +2706,7 @@ static int vp3_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                 }
 #endif
                 s->version = version;
-                if (avctx->frame_number == 0)
+                if (avctx->frame_num == 0)
                     av_log(s->avctx, AV_LOG_DEBUG,
                            "VP version: %d\n", s->version);
             }
@@ -2919,7 +2924,9 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
     /* sanity check */
     if (av_image_check_size(visible_width, visible_height, 0, avctx) < 0 ||
         visible_width  + offset_x > s->width ||
-        visible_height + offset_y > s->height) {
+        visible_height + offset_y > s->height ||
+        visible_width < 18
+    ) {
         av_log(avctx, AV_LOG_ERROR,
                "Invalid frame dimensions - w:%d h:%d x:%d y:%d (%dx%d).\n",
                visible_width, visible_height, offset_x, offset_y,
@@ -2965,6 +2972,8 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
     } else
         avctx->pix_fmt = AV_PIX_FMT_YUV420P;
 
+    if (s->width < 18)
+        return AVERROR_PATCHWELCOME;
     ret = ff_set_dimensions(avctx, s->width, s->height);
     if (ret < 0)
         return ret;

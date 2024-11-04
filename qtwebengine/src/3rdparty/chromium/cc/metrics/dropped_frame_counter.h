@@ -83,8 +83,9 @@ class CC_EXPORT DroppedFrameCounter {
   void SetSortedFrameCallback(SortedFrameCallback callback);
 
   typedef base::RingBuffer<FrameState, 180> RingBufferType;
-  RingBufferType::Iterator begin() const { return ring_buffer_.Begin(); }
-  RingBufferType::Iterator end() const { return ring_buffer_.End(); }
+  RingBufferType::Iterator Begin() const { return ring_buffer_.Begin(); }
+  // `End()` points to the last `FrameState`, not past it.
+  RingBufferType::Iterator End() const { return ring_buffer_.End(); }
 
   void AddGoodFrame();
   void AddPartialFrame();
@@ -93,7 +94,7 @@ class CC_EXPORT DroppedFrameCounter {
   void ReportFramesForUI();
   void ReportFramesOnEveryFrameForUI();
 
-  void OnBeginFrame(const viz::BeginFrameArgs& args, bool is_scroll_active);
+  void OnBeginFrame(const viz::BeginFrameArgs& args);
   void OnEndFrame(const viz::BeginFrameArgs& args, const FrameInfo& frame_info);
   void SetUkmSmoothnessDestination(UkmSmoothnessDataShared* smoothness_data);
   void OnFcpReceived();
@@ -207,16 +208,6 @@ class CC_EXPORT DroppedFrameCounter {
     double max_window = 0;
     double p95_window = 0;
   } last_reported_metrics_;
-
-  struct ScrollStartInfo {
-    // The timestamp of when the scroll started.
-    base::TimeTicks timestamp;
-
-    // The vsync corresponding to the scroll-start.
-    viz::BeginFrameId frame_id;
-  };
-  absl::optional<ScrollStartInfo> scroll_start_;
-  std::map<viz::BeginFrameId, ScrollStartInfo> scroll_start_per_frame_;
 
   absl::optional<SortedFrameCallback> sorted_frame_callback_;
 

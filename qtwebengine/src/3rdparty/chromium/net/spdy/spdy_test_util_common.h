@@ -21,7 +21,7 @@
 #include "net/base/proxy_server.h"
 #include "net/base/request_priority.h"
 #include "net/base/test_completion_callback.h"
-#include "net/cert/cert_verifier.h"
+#include "net/cert/mock_cert_verifier.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/http/http_auth_handler_factory.h"
 #include "net/http/http_network_session.h"
@@ -180,7 +180,7 @@ struct SpdySessionDependencies {
   std::unique_ptr<MockHostResolverBase> host_resolver;
   // For using a HostResolver not derived from MockHostResolverBase.
   std::unique_ptr<HostResolver> alternate_host_resolver;
-  std::unique_ptr<CertVerifier> cert_verifier;
+  std::unique_ptr<MockCertVerifier> cert_verifier;
   std::unique_ptr<TransportSecurityState> transport_security_state;
   std::unique_ptr<CTPolicyEnforcer> ct_policy_enforcer;
   std::unique_ptr<ProxyResolutionService> proxy_resolution_service;
@@ -354,34 +354,11 @@ class SpdyTestUtil {
       RequestPriority priority,
       const HostPortPair& host_port_pair);
 
-  // Constructs a PUSH_PROMISE frame and a HEADERS frame on the pushed stream.
-  // |extra_headers| are the extra header-value pairs, which typically
-  // will vary the most between calls.
-  // Returns a spdy::SpdySerializedFrame object with the two frames
-  // concatenated.
-  spdy::SpdySerializedFrame ConstructSpdyPush(const char* const extra_headers[],
-                                              int extra_header_count,
-                                              int stream_id,
-                                              int associated_stream_id,
-                                              const char* url);
-  spdy::SpdySerializedFrame ConstructSpdyPush(const char* const extra_headers[],
-                                              int extra_header_count,
-                                              int stream_id,
-                                              int associated_stream_id,
-                                              const char* url,
-                                              const char* status,
-                                              const char* location);
-
   // Constructs a PUSH_PROMISE frame.
   spdy::SpdySerializedFrame ConstructSpdyPushPromise(
       spdy::SpdyStreamId associated_stream_id,
       spdy::SpdyStreamId stream_id,
       spdy::Http2HeaderBlock headers);
-
-  spdy::SpdySerializedFrame ConstructSpdyPushHeaders(
-      int stream_id,
-      const char* const extra_headers[],
-      int extra_header_count);
 
   // Constructs a HEADERS frame with the request header compression context with
   // END_STREAM flag set to |fin|.
@@ -499,22 +476,6 @@ namespace test {
 
 // Returns a SHA1 HashValue in which each byte has the value |label|.
 HashValue GetTestHashValue(uint8_t label);
-
-// A test implementation of ServerPushDelegate that caches all the pushed
-// request and provides a interface to cancel the push given url.
-class TestServerPushDelegate : public ServerPushDelegate {
- public:
-  TestServerPushDelegate();
-  ~TestServerPushDelegate() override;
-
-  void OnPush(std::unique_ptr<ServerPushHelper> push_helper,
-              const NetLogWithSource& session_net_log) override;
-
-  bool CancelPush(GURL url);
-
- private:
-  std::map<GURL, std::unique_ptr<ServerPushHelper>> push_helpers;
-};
 
 }  // namespace test
 }  // namespace net

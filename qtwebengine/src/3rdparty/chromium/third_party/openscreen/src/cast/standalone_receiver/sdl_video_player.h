@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@
 #include "cast/standalone_receiver/sdl_player_base.h"
 #include "cast/streaming/constants.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Consumes frames from a Receiver, decodes them, and renders them to a
 // SDL_Renderer.
@@ -20,7 +19,7 @@ class SDLVideoPlayer final : public SDLPlayerBase {
   // |error_callback| is run only if a fatal error occurs, at which point the
   // player has halted and set |error_status()|.
   SDLVideoPlayer(ClockNowFunctionPtr now_function,
-                 TaskRunner* task_runner,
+                 TaskRunner& task_runner,
                  Receiver* receiver,
                  VideoCodec codec_name,
                  SDL_Renderer* renderer,
@@ -54,7 +53,6 @@ class SDLVideoPlayer final : public SDLPlayerBase {
   SDLTextureUniquePtr texture_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STANDALONE_RECEIVER_SDL_VIDEO_PLAYER_H_

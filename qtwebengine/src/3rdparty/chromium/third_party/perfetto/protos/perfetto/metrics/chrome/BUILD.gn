@@ -23,7 +23,6 @@ perfetto_proto_library("@TYPE@") {
   sources = [
     "all_chrome_metrics.proto",
     "args_class_names.proto",
-    "blink_gc_metric.proto",
     "dropped_frames.proto",
     "frame_times.proto",
     "histogram_hashes.proto",
@@ -32,6 +31,8 @@ perfetto_proto_library("@TYPE@") {
     "performance_mark_hashes.proto",
     "reported_by_page.proto",
     "scroll_jank.proto",
+    "scroll_jank_v2.proto",
+    "scroll_jank_v3.proto",
     "slice_names.proto",
     "test_chrome_metric.proto",
     "touch_jank.proto",

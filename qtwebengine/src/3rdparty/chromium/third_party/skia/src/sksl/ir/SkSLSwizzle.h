@@ -10,9 +10,9 @@
 
 #include "include/core/SkTypes.h"
 #include "include/private/SkSLDefines.h"
-#include "include/private/SkSLIRNode.h"
-#include "include/sksl/SkSLPosition.h"
+#include "src/sksl/SkSLPosition.h"
 #include "src/sksl/ir/SkSLExpression.h"
+#include "src/sksl/ir/SkSLIRNode.h"
 #include "src/sksl/ir/SkSLType.h"
 
 #include <cstdint>
@@ -29,7 +29,8 @@ enum class OperatorPrecedence : uint8_t;
 /**
  * Represents a vector swizzle operation such as 'float3(1, 2, 3).zyx'.
  */
-struct Swizzle final : public Expression {
+class Swizzle final : public Expression {
+public:
     inline static constexpr Kind kIRNodeKind = Kind::kSwizzle;
 
     Swizzle(const Context& context, Position pos, std::unique_ptr<Expression> base,
@@ -81,6 +82,9 @@ struct Swizzle final : public Expression {
     }
 
     std::string description(OperatorPrecedence) const override;
+
+    // Converts an array of swizzle components into a string.
+    static std::string MaskString(const ComponentArray& inComponents);
 
 private:
     Swizzle(Position pos, const Type* type, std::unique_ptr<Expression> base,

@@ -12,7 +12,6 @@
 #include "ui/gl/gl_context.h"
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/gl_implementation_wrapper.h"
-#include "ui/gl/gl_surface_glx.h"
 #include "ui/gl/gl_version_info.h"
 
 namespace gl {
@@ -145,10 +144,6 @@ void SetDisabledExtensionsGLX(const std::string& disabled_extensions) {
   DCHECK(g_current_glx_context);
   DCHECK(GLContext::TotalGLContexts() == 0);
   g_current_glx_context->SetDisabledExtensions(disabled_extensions);
-}
-
-bool InitializeExtensionSettingsOneOffGLX() {
-  return GLSurfaceGLX::InitializeExtensionSettingsOneOff();
 }
 
 }  // namespace gl

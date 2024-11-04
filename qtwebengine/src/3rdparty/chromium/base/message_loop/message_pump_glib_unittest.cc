@@ -6,6 +6,7 @@
 
 #include <glib.h>
 #include <math.h>
+#include "build/build_config.h"
 
 #include <algorithm>
 #include <vector>
@@ -27,6 +28,7 @@
 #include "base/task/single_thread_task_executor.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
+#include "base/test/trace_event_analyzer.h"
 #include "base/threading/thread.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -139,15 +141,26 @@ class EventInjector {
     return TRUE;
   }
 
+  static void Finalize(GSource* source) {
+    // Since the Source object memory is managed by glib, Source implicit
+    // destructor is never called, and thus Source's raw_ptr never release its
+    // internal reference on the pump pointer. This leads to adding pressure to
+    // the BackupRefPtr quarantine.
+    static_cast<Source*>(source)->injector = nullptr;
+  }
+
   raw_ptr<Source> source_;
   std::vector<Event> events_;
   int processed_events_;
   static GSourceFuncs SourceFuncs;
 };
 
-GSourceFuncs EventInjector::SourceFuncs = {EventInjector::Prepare,
-                                           EventInjector::Check,
-                                           EventInjector::Dispatch, nullptr};
+GSourceFuncs EventInjector::SourceFuncs = {
+    EventInjector::Prepare,
+    EventInjector::Check,
+    EventInjector::Dispatch,
+    EventInjector::Finalize,
+};
 
 void IncrementInt(int *value) {
   ++*value;
@@ -540,6 +553,67 @@ TEST_F(MessagePumpGLibTest, TestGtkLoop) {
   run_loop.Run();
 }
 
+namespace {
+
+class NestedEventAnalyzer {
+ public:
+  NestedEventAnalyzer() {
+    trace_analyzer::Start(TRACE_DISABLED_BY_DEFAULT("base"));
+  }
+
+  size_t CountEvents() {
+    std::unique_ptr<trace_analyzer::TraceAnalyzer> analyzer =
+        trace_analyzer::Stop();
+    trace_analyzer::TraceEventVector events;
+    return analyzer->FindEvents(trace_analyzer::Query::EventName() ==
+                                    trace_analyzer::Query::String("Nested"),
+                                &events);
+  }
+};
+
+}  // namespace
+
+TEST_F(MessagePumpGLibTest, TestNativeNestedLoopWithoutDoWork) {
+  // Tests that nesting is triggered correctly if a message loop is run
+  // from a native event (gtk event) outside of a work item (not in a posted
+  // task).
+
+  RunLoop run_loop;
+  NestedEventAnalyzer analyzer;
+
+  base::CurrentThread::Get()->EnableMessagePumpTimeKeeperMetrics(
+      "GlibMainLoopTest");
+
+  scoped_refptr<GLibLoopRunner> runner = base::MakeRefCounted<GLibLoopRunner>();
+  injector()->AddEvent(
+      0,
+      BindOnce(
+          [](EventInjector* injector, scoped_refptr<GLibLoopRunner> runner,
+             OnceClosure done) {
+            CurrentThread::ScopedAllowApplicationTasksInNativeNestedLoop allow;
+            runner->RunLoop();
+          },
+          Unretained(injector()), runner, run_loop.QuitClosure()));
+
+  injector()->AddDummyEvent(0);
+  injector()->AddDummyEvent(0);
+  injector()->AddDummyEvent(0);
+
+  SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE, BindOnce(&GLibLoopRunner::Quit, runner), Milliseconds(40));
+
+  SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE, run_loop.QuitClosure(), Milliseconds(40));
+
+  run_loop.Run();
+
+  // It would be expected that there be one single event, but it seems like this
+  // is counting the Begin/End of the Nested trace event. Each of the two events
+  // found are of duration 0 with distinct timestamps. It has also been
+  // confirmed that nesting occurs only once.
+  CHECK_EQ(analyzer.CountEvents(), 2ul);
+}
+
 // Tests for WatchFileDescriptor API
 class MessagePumpGLibFdWatchTest : public testing::Test {
  protected:
@@ -579,6 +653,7 @@ class MessagePumpGLibFdWatchTest : public testing::Test {
   }
 
   int pipefds_[2];
+  static constexpr char null_byte_ = 0;
 
  private:
   Thread io_thread_;
@@ -751,11 +826,10 @@ TEST_F(MessagePumpGLibFdWatchTest, QuitWatcher) {
                             controller, &delegate);
 
   // Make the IO thread wait for |event| before writing to pipefds[1].
-  const char buf = 0;
   WaitableEvent event;
   auto watcher = std::make_unique<WaitableEventWatcher>();
   WaitableEventWatcher::EventCallback write_fd_task =
-      BindOnce(&WriteFDWrapper, pipefds_[1], &buf, 1);
+      BindOnce(&WriteFDWrapper, pipefds_[1], &null_byte_, 1);
   io_runner()->PostTask(
       FROM_HERE, BindOnce(IgnoreResult(&WaitableEventWatcher::StartWatching),
                           Unretained(watcher.get()), &event,

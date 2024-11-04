@@ -22,8 +22,8 @@
 #include <vector>
 #include <memory>
 #include "state_tracker/base_node.h"
-#include "hash_util.h"
-#include "hash_vk_types.h"
+#include "utils/hash_util.h"
+#include "utils/hash_vk_types.h"
 #include "state_tracker/state_tracker.h"
 
 // Fwd declarations -- including descriptor_set.h creates an ugly include loop
@@ -64,6 +64,8 @@ struct PipelineLayoutCompatDef {
 using PipelineLayoutCompatDict = hash_util::Dictionary<PipelineLayoutCompatDef, hash_util::HasHashMember<PipelineLayoutCompatDef>>;
 using PipelineLayoutCompatId = PipelineLayoutCompatDict::Id;
 
+PushConstantRangesId GetCanonicalId(uint32_t pushConstantRangeCount, const VkPushConstantRange *pPushConstantRanges);
+
 // Store layouts and pushconstants for PipelineLayout
 class PIPELINE_LAYOUT_STATE : public BASE_NODE {
   public:
@@ -94,3 +96,7 @@ class PIPELINE_LAYOUT_STATE : public BASE_NODE {
 
     VkPipelineLayoutCreateFlags CreateFlags() const { return create_flags; }
 };
+
+std::vector<PipelineLayoutCompatId> GetCompatForSet(
+    const std::vector<std::shared_ptr<cvdescriptorset::DescriptorSetLayout const>> &set_layouts,
+    const PushConstantRangesId &push_constant_ranges);

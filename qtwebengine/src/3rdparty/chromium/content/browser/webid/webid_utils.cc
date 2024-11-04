@@ -5,6 +5,7 @@
 #include "content/browser/webid/webid_utils.h"
 
 #include "base/strings/stringprintf.h"
+#include "content/browser/runtime_feature_state/runtime_feature_state_document_data.h"
 #include "content/browser/webid/fedcm_metrics.h"
 #include "content/browser/webid/flags.h"
 #include "content/public/browser/browser_context.h"
@@ -52,37 +53,40 @@ absl::optional<std::string> ComputeConsoleMessageForHttpResponseCode(
       endpoint_name, http_response_code);
 }
 
-bool IsEndpointUrlValid(const GURL& identity_provider_config_url,
-                        const GURL& endpoint_url) {
+bool IsEndpointSameOrigin(const GURL& identity_provider_config_url,
+                          const GURL& endpoint_url) {
   return url::Origin::Create(identity_provider_config_url)
       .IsSameOriginWith(endpoint_url);
 }
 
 bool ShouldFailAccountsEndpointRequestBecauseNotSignedInWithIdp(
+    RenderFrameHost& host,
     const GURL& identity_provider_config_url,
     FederatedIdentityPermissionContextDelegate* permission_delegate) {
-  if (GetFedCmIdpSigninStatusMode() == FedCmIdpSigninStatusMode::DISABLED) {
+  const url::Origin idp_origin =
+      url::Origin::Create(identity_provider_config_url);
+  if (webid::GetIdpSigninStatusMode(host, idp_origin) ==
+      FedCmIdpSigninStatusMode::DISABLED) {
     return false;
   }
 
-  const url::Origin idp_origin =
-      url::Origin::Create(identity_provider_config_url);
   const absl::optional<bool> idp_signin_status =
       permission_delegate->GetIdpSigninStatus(idp_origin);
   return !idp_signin_status.value_or(true);
 }
 
 void UpdateIdpSigninStatusForAccountsEndpointResponse(
+    RenderFrameHost& host,
     const GURL& identity_provider_config_url,
     IdpNetworkRequestManager::FetchStatus fetch_status,
     bool does_idp_have_failing_signin_status,
     FederatedIdentityPermissionContextDelegate* permission_delegate,
     FedCmMetrics* metrics) {
-  if (GetFedCmIdpSigninStatusMode() == FedCmIdpSigninStatusMode::DISABLED) {
+  url::Origin idp_origin = url::Origin::Create(identity_provider_config_url);
+  if (webid::GetIdpSigninStatusMode(host, idp_origin) ==
+      FedCmIdpSigninStatusMode::DISABLED) {
     return;
   }
-
-  url::Origin idp_origin = url::Origin::Create(identity_provider_config_url);
 
   // Record metrics on effect of IDP sign-in status API.
   const absl::optional<bool> idp_signin_status =
@@ -102,6 +106,7 @@ void UpdateIdpSigninStatusForAccountsEndpointResponse(
       permission_delegate->SetIdpSigninStatus(idp_origin, true);
     }
   } else {
+    RecordIdpSignOutNetError(fetch_status.response_code);
     // Ensures that we only fetch accounts unconditionally once.
     permission_delegate->SetIdpSigninStatus(idp_origin, false);
   }
@@ -134,6 +139,11 @@ std::string GetConsoleErrorMessageFromResult(
     case FederatedAuthRequestResult::kErrorFetchingWellKnownListEmpty: {
       return "Provider's FedCM well-known file has no config URLs.";
     }
+    case FederatedAuthRequestResult::
+        kErrorFetchingWellKnownInvalidContentType: {
+      return "Provider's FedCM well-known content type must be a JSON content "
+             "type.";
+    }
     case FederatedAuthRequestResult::kErrorConfigNotInWellKnown: {
       return "Provider's FedCM config file not listed in its well-known file.";
     }
@@ -150,6 +160,10 @@ std::string GetConsoleErrorMessageFromResult(
     case FederatedAuthRequestResult::kErrorFetchingConfigInvalidResponse: {
       return "Provider's FedCM config file is invalid.";
     }
+    case FederatedAuthRequestResult::kErrorFetchingConfigInvalidContentType: {
+      return "Provider's FedCM config file content type must be a JSON content "
+             "type.";
+    }
     case FederatedAuthRequestResult::kErrorFetchingClientMetadataHttpNotFound: {
       return "The provider's client metadata endpoint cannot be found.";
     }
@@ -160,6 +174,11 @@ std::string GetConsoleErrorMessageFromResult(
     case FederatedAuthRequestResult::
         kErrorFetchingClientMetadataInvalidResponse: {
       return "Provider's client metadata is invalid.";
+    }
+    case FederatedAuthRequestResult::
+        kErrorFetchingClientMetadataInvalidContentType: {
+      return "Provider's client metadata content type must be a JSON content "
+             "type.";
     }
     case FederatedAuthRequestResult::kErrorFetchingAccountsHttpNotFound: {
       return "The provider's accounts list endpoint cannot be found.";
@@ -176,6 +195,10 @@ std::string GetConsoleErrorMessageFromResult(
     case FederatedAuthRequestResult::kErrorFetchingAccountsListEmpty: {
       return "Provider's accounts list is empty.";
     }
+    case FederatedAuthRequestResult::kErrorFetchingAccountsInvalidContentType: {
+      return "Provider's accounts list endpoint content type must be a JSON "
+             "content type.";
+    }
     case FederatedAuthRequestResult::kErrorFetchingIdTokenHttpNotFound: {
       return "The provider's id token endpoint cannot be found.";
     }
@@ -186,11 +209,29 @@ std::string GetConsoleErrorMessageFromResult(
     case FederatedAuthRequestResult::kErrorFetchingIdTokenInvalidResponse: {
       return "Provider's token is invalid.";
     }
+    case FederatedAuthRequestResult::kErrorFetchingIdTokenInvalidContentType: {
+      return "Provider's token endpoint content type must be a JSON content "
+             "type.";
+    }
     case FederatedAuthRequestResult::kErrorCanceled: {
       return "The request has been aborted.";
     }
     case FederatedAuthRequestResult::kErrorRpPageNotVisible: {
       return "RP page is not visible.";
+    }
+    case FederatedAuthRequestResult::kErrorSilentMediationFailure: {
+      return "Silent mediation was requested, but the conditions to achieve it "
+             "were not met.";
+    }
+    case FederatedAuthRequestResult::kErrorThirdPartyCookiesBlocked: {
+      return "Third party cookies are blocked. Right now the Chromium "
+             "implementation of FedCM API requires third party cookies and "
+             "this restriction will be removed soon. In the interim, to test "
+             "FedCM without third-party cookies, enable the "
+             "#fedcm-without-third-party-cookies flag.";
+    }
+    case FederatedAuthRequestResult::kErrorRelyingPartyOriginIsOpaque: {
+      return "FedCM is not supported on an opaque origin.";
     }
     case FederatedAuthRequestResult::kError: {
       return "Error retrieving a token.";
@@ -202,6 +243,28 @@ std::string GetConsoleErrorMessageFromResult(
       return "";
     }
   }
+}
+
+FedCmIdpSigninStatusMode GetIdpSigninStatusMode(RenderFrameHost& host,
+                                                const url::Origin& idp_origin) {
+  RuntimeFeatureStateDocumentData* rfs_document_data =
+      RuntimeFeatureStateDocumentData::GetForCurrentDocument(&host);
+  // Should not be null as this gets initialized when the host gets created.
+  DCHECK(rfs_document_data);
+  std::vector<url::Origin> third_party_origins = {idp_origin};
+  // This includes origin trials.
+  bool runtime_enabled =
+      rfs_document_data->runtime_feature_state_read_context()
+          .IsFedCmIdpSigninStatusEnabled() ||
+      rfs_document_data->runtime_feature_state_read_context()
+          .IsFedCmIdpSigninStatusEnabledForThirdParty(
+              host.GetLastCommittedOrigin(), third_party_origins);
+
+  FedCmIdpSigninStatusMode flag_mode = GetFedCmIdpSigninStatusFlag();
+  if (flag_mode == FedCmIdpSigninStatusMode::METRICS_ONLY && runtime_enabled) {
+    return FedCmIdpSigninStatusMode::ENABLED;
+  }
+  return flag_mode;
 }
 
 }  // namespace content::webid

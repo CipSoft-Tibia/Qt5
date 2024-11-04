@@ -27,7 +27,7 @@ class CORE_EXPORT DOMArrayBufferBase : public ScriptWrappable {
 
   size_t ByteLength() const { return contents_.DataLength(); }
 
-  bool IsDetached() const { return is_detached_; }
+  virtual bool IsDetached() const { return is_detached_; }
 
   void Detach() { is_detached_ = true; }
 

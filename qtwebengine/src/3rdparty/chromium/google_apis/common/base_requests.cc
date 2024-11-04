@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "base/functional/bind.h"
@@ -22,6 +23,7 @@
 #include "google_apis/common/task_util.h"
 #include "google_apis/credentials_mode.h"
 #include "net/base/load_flags.h"
+#include "net/http/http_request_headers.h"
 #include "net/http/http_util.h"
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
@@ -74,11 +76,12 @@ absl::optional<std::string> MapJsonErrorToReason(
 
     // Returns the reason of the first error.
     if (const base::Value::List* errors = error->FindList(kErrorErrorsKey)) {
-      const base::Value& first_error = (*errors)[0];
-      if (first_error.is_dict()) {
-        const std::string* reason = first_error.FindStringKey(kErrorReasonKey);
-        if (reason)
+      const base::Value::Dict* first_error = errors->front().GetIfDict();
+      if (first_error) {
+        const std::string* reason = first_error->FindString(kErrorReasonKey);
+        if (reason) {
           return *reason;
+        }
       }
     }
   }
@@ -104,6 +107,21 @@ std::unique_ptr<base::Value> ParseJson(const std::string& json) {
     return nullptr;
   }
   return base::Value::ToUniquePtrValue(std::move(*parsed_json));
+}
+
+std::string HttpRequestMethodToString(HttpRequestMethod method) {
+  switch (method) {
+    case HttpRequestMethod::kGet:
+      return net::HttpRequestHeaders::kGetMethod;
+    case HttpRequestMethod::kPost:
+      return net::HttpRequestHeaders::kPostMethod;
+    case HttpRequestMethod::kPut:
+      return net::HttpRequestHeaders::kPutMethod;
+    case HttpRequestMethod::kPatch:
+      return net::HttpRequestHeaders::kPatchMethod;
+    case HttpRequestMethod::kDelete:
+      return net::HttpRequestHeaders::kDeleteMethod;
+  }
 }
 
 UrlFetchRequestBase::UrlFetchRequestBase(
@@ -173,7 +191,7 @@ void UrlFetchRequestBase::StartAfterPrepare(
 
   auto request = std::make_unique<network::ResourceRequest>();
   request->url = url;
-  request->method = GetRequestType();
+  request->method = HttpRequestMethodToString(GetRequestType());
   request->load_flags = net::LOAD_DISABLE_CACHE;
   request->credentials_mode = GetOmitCredentialsModeForGaiaRequests();
 
@@ -333,8 +351,7 @@ void UrlFetchRequestBase::OnDataReceived(base::StringPiece string_piece,
     return;
   }
 
-  download_data_->response_body.append(string_piece.data(),
-                                       string_piece.size());
+  download_data_->response_body.append(string_piece);
   std::move(resume).Run();
 }
 
@@ -393,8 +410,8 @@ void UrlFetchRequestBase::OnRetry(base::OnceClosure start_retry) {
   NOTREACHED();
 }
 
-std::string UrlFetchRequestBase::GetRequestType() const {
-  return "GET";
+HttpRequestMethod UrlFetchRequestBase::GetRequestType() const {
+  return HttpRequestMethod::kGet;
 }
 
 std::vector<std::string> UrlFetchRequestBase::GetExtraRequestHeaders() const {

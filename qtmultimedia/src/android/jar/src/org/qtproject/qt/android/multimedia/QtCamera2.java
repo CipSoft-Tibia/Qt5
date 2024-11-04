@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 package org.qtproject.qt.android.multimedia;
 
-import org.qtproject.qt.android.multimedia.QtVideoDeviceManager;
-import org.qtproject.qt.android.multimedia.QtExifDataHandler;
-
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
@@ -20,14 +17,11 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.TotalCaptureResult;
 import android.media.Image;
 import android.media.ImageReader;
-import android.graphics.ImageFormat;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
+import android.util.Range;
 import android.view.Surface;
-import android.media.MediaCodec;
-import android.media.MediaCodecInfo;
-import android.media.MediaFormat;
 import java.lang.Thread;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,11 +51,12 @@ public class QtCamera2 {
     private int mState = STATE_PREVIEW;
     private Object mStartMutex = new Object();
     private boolean mIsStarted = false;
-    private static int MaxNumberFrames = 10;
+    private static int MaxNumberFrames = 12;
     private int mFlashMode = CaptureRequest.CONTROL_AE_MODE_ON;
     private int mTorchMode = CameraMetadata.FLASH_MODE_OFF;
     private int mAFMode = CaptureRequest.CONTROL_AF_MODE_OFF;
-    private Rect mZoom = null;
+    private float mZoomFactor = 1.0f;
+    private Range<Integer> mFpsRange = null;
     private QtExifDataHandler mExifDataHandler = null;
 
     native void onCameraOpened(String cameraId);
@@ -261,7 +256,14 @@ public class QtCamera2 {
         }
     };
 
-    public boolean addImageReader(int width, int height, int format) {
+
+    public void prepareCamera(int width, int height, int format, int minFps, int maxFps) {
+
+        addImageReader(width, height, format);
+        setFrameRate(minFps, maxFps);
+    }
+
+    private void addImageReader(int width, int height, int format) {
 
         if (mImageReader != null)
             removeSurface(mImageReader.getSurface());
@@ -276,8 +278,14 @@ public class QtCamera2 {
         mCapturedPhotoReader = ImageReader.newInstance(width, height, format, MaxNumberFrames);
         mCapturedPhotoReader.setOnImageAvailableListener(mOnPhotoAvailableListener, mBackgroundHandler);
         addSurface(mCapturedPhotoReader.getSurface());
+    }
 
-        return true;
+    private void setFrameRate(int minFrameRate, int maxFrameRate) {
+
+        if (minFrameRate <= 0 || maxFrameRate <= 0)
+            mFpsRange = null;
+        else
+            mFpsRange = new Range<>(minFrameRate, maxFrameRate);
     }
 
     public boolean addSurface(Surface surface) {
@@ -333,9 +341,10 @@ public class QtCamera2 {
                 mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
                 mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, mAFMode);
                 mPreviewRequestBuilder.set(CaptureRequest.CONTROL_CAPTURE_INTENT, CameraMetadata.CONTROL_CAPTURE_INTENT_VIDEO_RECORD);
-                if (mZoom != null)
-                    mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, mZoom);
-
+                if (mZoomFactor != 1.0f)
+                    updateZoom(mPreviewRequestBuilder);
+                if (mFpsRange != null)
+                    mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, mFpsRange);
                 mPreviewRequest = mPreviewRequestBuilder.build();
                 mCaptureSession.setRepeatingRequest(mPreviewRequest, mCaptureCallback, mBackgroundHandler);
                 mIsStarted = true;
@@ -374,8 +383,8 @@ public class QtCamera2 {
                    mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             captureBuilder.addTarget(mCapturedPhotoReader.getSurface());
             captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, mFlashMode);
-            if (mZoom != null)
-                captureBuilder.set(CaptureRequest.SCALER_CROP_REGION, mZoom);
+            if (mZoomFactor != 1.0f)
+                updateZoom(captureBuilder);
 
             CameraCaptureSession.CaptureCallback captureCallback
                         = new CameraCaptureSession.CaptureCallback() {
@@ -428,21 +437,38 @@ public class QtCamera2 {
             Log.e("QtCamera2", "No Exif data that could be saved to " + path);
     }
 
+    private Rect getScalerCropRegion()
+    {
+        Rect activePixels = mVideoDeviceManager.getActiveArraySize(mCameraId);
+        float zoomRatio = 1.0f;
+        if (mZoomFactor != 0.0f)
+            zoomRatio = 1.0f/mZoomFactor;
+        int croppedWidth = activePixels.width() - (int)(activePixels.width() * zoomRatio);
+        int croppedHeight = activePixels.height() - (int)(activePixels.height() * zoomRatio);
+        return new Rect(croppedWidth/2, croppedHeight/2, activePixels.width() - croppedWidth/2,
+                             activePixels.height() - croppedHeight/2);
+    }
+
+    private void updateZoom(CaptureRequest.Builder requBuilder)
+    {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) {
+            requBuilder.set(CaptureRequest.SCALER_CROP_REGION, getScalerCropRegion());
+        } else {
+            requBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, mZoomFactor);
+        }
+    }
+
     public void zoomTo(float factor)
     {
         synchronized (mStartMutex) {
+            mZoomFactor = factor;
+
             if (!mIsStarted) {
                 Log.w("QtCamera2", "Cannot set zoom on invalid camera");
                 return;
             }
 
-            Rect activePixels = mVideoDeviceManager.getActiveArraySize(mCameraId);
-            float zoomRatio = 1/factor;
-            int croppedWidth = activePixels.width() - (int)(activePixels.width() * zoomRatio);
-            int croppedHeight = activePixels.height() - (int)(activePixels.height() * zoomRatio);
-            mZoom = new Rect(croppedWidth/2, croppedHeight/2, activePixels.width() - croppedWidth/2,
-                                 activePixels.height() - croppedHeight/2);
-            mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, mZoom);
+            updateZoom(mPreviewRequestBuilder);
             mPreviewRequest = mPreviewRequestBuilder.build();
 
             try {

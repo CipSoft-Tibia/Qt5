@@ -34,6 +34,7 @@
 #include "test/testsupport/file_utils.h"
 #include "test/testsupport/frame_writer.h"
 #include "test/testsupport/test_artifacts.h"
+#include "test/video_test_constants.h"
 
 ABSL_FLAG(bool,
           save_worst_frame,
@@ -59,7 +60,7 @@ constexpr int kKeepAliveIntervalIterations =
     kKeepAliveInterval.ms() / kProbingInterval.ms();
 
 bool IsFlexfec(int payload_type) {
-  return payload_type == test::CallTest::kFlexfecPayloadType;
+  return payload_type == test::VideoTestConstants::kFlexfecPayloadType;
 }
 
 }  // namespace
@@ -271,15 +272,14 @@ void VideoAnalyzer::PostEncodeOnFrame(size_t stream_id, uint32_t timestamp) {
   }
 }
 
-bool VideoAnalyzer::SendRtp(const uint8_t* packet,
-                            size_t length,
+bool VideoAnalyzer::SendRtp(rtc::ArrayView<const uint8_t> packet,
                             const PacketOptions& options) {
   RtpPacket rtp_packet;
-  rtp_packet.Parse(packet, length);
+  rtp_packet.Parse(packet);
 
   int64_t current_time = clock_->CurrentNtpInMilliseconds();
 
-  bool result = transport_->SendRtp(packet, length, options);
+  bool result = transport_->SendRtp(packet, options);
   {
     MutexLock lock(&lock_);
     if (rtp_timestamp_delta_ == 0 && rtp_packet.Ssrc() == ssrc_to_analyze_) {
@@ -305,8 +305,8 @@ bool VideoAnalyzer::SendRtp(const uint8_t* packet,
   return result;
 }
 
-bool VideoAnalyzer::SendRtcp(const uint8_t* packet, size_t length) {
-  return transport_->SendRtcp(packet, length);
+bool VideoAnalyzer::SendRtcp(rtc::ArrayView<const uint8_t> packet) {
+  return transport_->SendRtcp(packet);
 }
 
 void VideoAnalyzer::OnFrame(const VideoFrame& video_frame) {
@@ -437,7 +437,7 @@ double VideoAnalyzer::GetCpuUsagePercent() {
 
 bool VideoAnalyzer::IsInSelectedSpatialAndTemporalLayer(
     const RtpPacket& rtp_packet) {
-  if (rtp_packet.PayloadType() == test::CallTest::kPayloadTypeVP8) {
+  if (rtp_packet.PayloadType() == test::VideoTestConstants::kPayloadTypeVP8) {
     auto parsed_payload = vp8_depacketizer_->Parse(rtp_packet.PayloadBuffer());
     RTC_DCHECK(parsed_payload);
     const auto& vp8_header = absl::get<RTPVideoHeaderVP8>(
@@ -447,7 +447,7 @@ bool VideoAnalyzer::IsInSelectedSpatialAndTemporalLayer(
            temporal_idx <= selected_tl_;
   }
 
-  if (rtp_packet.PayloadType() == test::CallTest::kPayloadTypeVP9) {
+  if (rtp_packet.PayloadType() == test::VideoTestConstants::kPayloadTypeVP9) {
     auto parsed_payload = vp9_depacketizer_->Parse(rtp_packet.PayloadBuffer());
     RTC_DCHECK(parsed_payload);
     const auto& vp9_header = absl::get<RTPVideoHeaderVP9>(

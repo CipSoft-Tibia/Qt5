@@ -24,70 +24,130 @@ namespace quic {
 // Static streams come first, in the order they were registered with
 // QuicWriteBlockedList.  They are followed by non-static streams, ordered by
 // priority.
-class QUIC_EXPORT_PRIVATE QuicWriteBlockedList {
+class QUICHE_EXPORT QuicWriteBlockedListInterface {
  public:
-  explicit QuicWriteBlockedList();
-  QuicWriteBlockedList(const QuicWriteBlockedList&) = delete;
-  QuicWriteBlockedList& operator=(const QuicWriteBlockedList&) = delete;
-  ~QuicWriteBlockedList() = default;
+  virtual ~QuicWriteBlockedListInterface() = default;
 
-  bool HasWriteBlockedDataStreams() const {
-    return priority_write_scheduler_.HasReadyStreams();
-  }
-
+  virtual bool HasWriteBlockedDataStreams() const = 0;
+  virtual size_t NumBlockedSpecialStreams() const = 0;
+  virtual size_t NumBlockedStreams() const = 0;
   bool HasWriteBlockedSpecialStream() const {
-    return static_stream_collection_.num_blocked() > 0;
+    return NumBlockedSpecialStreams() > 0;
   }
 
-  size_t NumBlockedSpecialStreams() const {
-    return static_stream_collection_.num_blocked();
-  }
+  // Returns true if there is another stream with higher priority in the queue.
+  virtual bool ShouldYield(QuicStreamId id) const = 0;
 
-  size_t NumBlockedStreams() const {
-    return NumBlockedSpecialStreams() +
-           priority_write_scheduler_.NumReadyStreams();
-  }
-
-  bool ShouldYield(QuicStreamId id) const;
-
-  QuicStreamPriority GetPriorityofStream(QuicStreamId id) const {
-    return priority_write_scheduler_.GetStreamPriority(id);
-  }
+  // Returns the priority of the specified stream.
+  virtual QuicStreamPriority GetPriorityOfStream(QuicStreamId id) const = 0;
 
   // Pops the highest priority stream, special casing static streams. Latches
   // the most recently popped data stream for batch writing purposes.
-  QuicStreamId PopFront();
+  virtual QuicStreamId PopFront() = 0;
 
   // Register a stream with given priority.
   // `priority` is ignored for static streams.
-  void RegisterStream(QuicStreamId stream_id, bool is_static_stream,
-                      const QuicStreamPriority& priority);
+  virtual void RegisterStream(QuicStreamId stream_id, bool is_static_stream,
+                              const QuicStreamPriority& priority) = 0;
 
   // Unregister a stream.  `stream_id` must be registered, either as a static
   // stream or as a non-static stream.
-  void UnregisterStream(QuicStreamId stream_id);
+  virtual void UnregisterStream(QuicStreamId stream_id) = 0;
 
   // Updates the stored priority of a stream.  Must not be called for static
   // streams.
-  void UpdateStreamPriority(QuicStreamId stream_id,
-                            const QuicStreamPriority& new_priority);
+  virtual void UpdateStreamPriority(QuicStreamId stream_id,
+                                    const QuicStreamPriority& new_priority) = 0;
 
-  void UpdateBytesForStream(QuicStreamId stream_id, size_t bytes);
+  // TODO(b/147306124): Remove when deprecating
+  // reloadable_flag_quic_disable_batch_write.
+  virtual void UpdateBytesForStream(QuicStreamId stream_id, size_t bytes) = 0;
 
   // Pushes a stream to the back of the list for its priority level *unless* it
   // is latched for doing batched writes in which case it goes to the front of
   // the list for its priority level.
   // Static streams are special cased to always resume first.
   // Stream must already be registered.
-  void AddStream(QuicStreamId stream_id);
+  virtual void AddStream(QuicStreamId stream_id) = 0;
 
   // Returns true if stream with |stream_id| is write blocked.
-  bool IsStreamBlocked(QuicStreamId stream_id) const;
+  virtual bool IsStreamBlocked(QuicStreamId stream_id) const = 0;
+};
+
+// Default implementation of QuicWriteBlockedListInterface.
+class QUIC_EXPORT_PRIVATE QuicWriteBlockedList
+    : public QuicWriteBlockedListInterface {
+ public:
+  explicit QuicWriteBlockedList();
+  QuicWriteBlockedList(const QuicWriteBlockedList&) = delete;
+  QuicWriteBlockedList& operator=(const QuicWriteBlockedList&) = delete;
+
+  bool HasWriteBlockedDataStreams() const override {
+    return priority_write_scheduler_.HasReadyStreams();
+  }
+
+  size_t NumBlockedSpecialStreams() const override {
+    return static_stream_collection_.num_blocked();
+  }
+
+  size_t NumBlockedStreams() const override {
+    return NumBlockedSpecialStreams() +
+           priority_write_scheduler_.NumReadyStreams();
+  }
+
+  bool ShouldYield(QuicStreamId id) const override;
+
+  QuicStreamPriority GetPriorityOfStream(QuicStreamId id) const override {
+    return QuicStreamPriority(priority_write_scheduler_.GetStreamPriority(id));
+  }
+
+  // Pops the highest priority stream, special casing static streams. Latches
+  // the most recently popped data stream for batch writing purposes.
+  QuicStreamId PopFront() override;
+
+  // Register a stream with given priority.
+  // `priority` is ignored for static streams.
+  void RegisterStream(QuicStreamId stream_id, bool is_static_stream,
+                      const QuicStreamPriority& priority) override;
+
+  // Unregister a stream.  `stream_id` must be registered, either as a static
+  // stream or as a non-static stream.
+  void UnregisterStream(QuicStreamId stream_id) override;
+
+  // Updates the stored priority of a stream.  Must not be called for static
+  // streams.
+  void UpdateStreamPriority(QuicStreamId stream_id,
+                            const QuicStreamPriority& new_priority) override;
+
+  // TODO(b/147306124): Remove when deprecating
+  // reloadable_flag_quic_disable_batch_write.
+  void UpdateBytesForStream(QuicStreamId stream_id, size_t bytes) override;
+
+  // Pushes a stream to the back of the list for its priority level *unless* it
+  // is latched for doing batched writes in which case it goes to the front of
+  // the list for its priority level.
+  // Static streams are special cased to always resume first.
+  // Stream must already be registered.
+  void AddStream(QuicStreamId stream_id) override;
+
+  // Returns true if stream with |stream_id| is write blocked.
+  bool IsStreamBlocked(QuicStreamId stream_id) const override;
 
  private:
-  http2::PriorityWriteScheduler<QuicStreamId, QuicStreamPriority,
-                                QuicStreamPriorityToInt,
-                                IntToQuicStreamPriority>
+  struct QUICHE_EXPORT HttpStreamPriorityToInt {
+    int operator()(const HttpStreamPriority& priority) {
+      return priority.urgency;
+    }
+  };
+
+  struct QUICHE_EXPORT IntToHttpStreamPriority {
+    HttpStreamPriority operator()(int urgency) {
+      return HttpStreamPriority{urgency};
+    }
+  };
+  http2::PriorityWriteScheduler<QuicStreamId, HttpStreamPriority,
+                                HttpStreamPriorityToInt,
+                                IntToHttpStreamPriority>
       priority_write_scheduler_;
 
   // If performing batch writes, this will be the stream ID of the stream doing
@@ -98,8 +158,10 @@ class QUIC_EXPORT_PRIVATE QuicWriteBlockedList {
   // Set to kBatchWriteSize when we set a new batch_write_stream_id_ for a given
   // priority.  This is decremented with each write the stream does until it is
   // done with its batch write.
+  // TODO(b/147306124): Remove when deprecating
+  // reloadable_flag_quic_disable_batch_write.
   size_t bytes_left_for_batch_write_[spdy::kV3LowestPriority + 1];
-  // Tracks the last priority popped for UpdateBytesForStream.
+  // Tracks the last priority popped for UpdateBytesForStream() and AddStream().
   spdy::SpdyPriority last_priority_popped_;
 
   // A StaticStreamCollection is a vector of <QuicStreamId, bool> pairs plus a
@@ -146,6 +208,11 @@ class QUIC_EXPORT_PRIVATE QuicWriteBlockedList {
   };
 
   StaticStreamCollection static_stream_collection_;
+
+  // Latched value of reloadable_flag_quic_priority_respect_incremental.
+  const bool respect_incremental_;
+  // Latched value of reloadable_flag_quic_disable_batch_write.
+  const bool disable_batch_write_;
 };
 
 }  // namespace quic

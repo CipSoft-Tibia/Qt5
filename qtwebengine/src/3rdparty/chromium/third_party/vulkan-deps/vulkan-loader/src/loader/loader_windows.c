@@ -27,7 +27,7 @@
  *
  */
 // Windows only header file, guard it so that accidental inclusion doesn't cause unknown header include errors
-#ifdef _WIN32
+#if defined(_WIN32)
 
 // This needs to be defined first, or else we'll get redefinitions on NTSTATUS values
 #define UMDF_USING_NTSTATUS
@@ -45,13 +45,13 @@
 #include <devpkey.h>
 #include <winternl.h>
 #include <strsafe.h>
-#ifdef __MINGW32__
+#if defined(__MINGW32__)
 #undef strcpy  // fix error with redfined strcpy when building with MinGW-w64
 #endif
 #include <dxgi1_6.h>
 #include "adapters.h"
 
-#ifndef __MINGW32__
+#if !defined(__MINGW32__)
 // not yet available with MinGW-w64 stable
 #include <appmodel.h>
 #endif
@@ -61,7 +61,10 @@
 #endif
 
 typedef HRESULT(APIENTRY *PFN_CreateDXGIFactory1)(REFIID riid, void **ppFactory);
-static PFN_CreateDXGIFactory1 fpCreateDXGIFactory1;
+PFN_CreateDXGIFactory1 fpCreateDXGIFactory1;
+
+// Empty function just so windows_initialization can find the current module location
+void function_for_finding_the_current_module(void) {}
 
 void windows_initialization(void) {
     char dll_location[MAX_PATH];
@@ -69,7 +72,7 @@ void windows_initialization(void) {
 
     // Get a module handle to a static function inside of this source
     if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                          (LPCSTR)&loader_debug_init, &module_handle) != 0 &&
+                          (LPCSTR)&function_for_finding_the_current_module, &module_handle) != 0 &&
         GetModuleFileName(module_handle, dll_location, sizeof(dll_location)) != 0) {
         loader_log(NULL, VULKAN_LOADER_INFO_BIT, 0, "Using Vulkan Loader %s", dll_location);
     }
@@ -82,7 +85,8 @@ void windows_initialization(void) {
     GetSystemDirectoryW(systemPath, MAX_PATH);
     StringCchCatW(systemPath, MAX_PATH, L"\\dxgi.dll");
     HMODULE dxgi_module = LoadLibraryW(systemPath);
-    fpCreateDXGIFactory1 = dxgi_module == NULL ? NULL : (PFN_CreateDXGIFactory1)GetProcAddress(dxgi_module, "CreateDXGIFactory1");
+    fpCreateDXGIFactory1 =
+        dxgi_module == NULL ? NULL : (PFN_CreateDXGIFactory1)(void *)GetProcAddress(dxgi_module, "CreateDXGIFactory1");
 
 #if !defined(NDEBUG)
     _set_error_mode(_OUT_TO_STDERR);
@@ -92,6 +96,7 @@ void windows_initialization(void) {
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, LPVOID reserved) {
+    (void)hinst;
     switch (reason) {
         case DLL_PROCESS_ATTACH:
             loader_initialize();
@@ -227,9 +232,9 @@ out:
 
 VkResult windows_get_device_registry_files(const struct loader_instance *inst, uint32_t log_target_flag, char **reg_data,
                                            PDWORD reg_data_size, LPCSTR value_name) {
-    static const wchar_t *softwareComponentGUID = L"{5c4c3332-344d-483c-8739-259e934c9cc8}";
-    static const wchar_t *displayGUID = L"{4d36e968-e325-11ce-bfc1-08002be10318}";
-#ifdef CM_GETIDLIST_FILTER_PRESENT
+    const wchar_t *softwareComponentGUID = L"{5c4c3332-344d-483c-8739-259e934c9cc8}";
+    const wchar_t *displayGUID = L"{4d36e968-e325-11ce-bfc1-08002be10318}";
+#if defined(CM_GETIDLIST_FILTER_PRESENT)
     const ULONG flags = CM_GETIDLIST_FILTER_CLASS | CM_GETIDLIST_FILTER_PRESENT;
 #else
     const ULONG flags = 0x300;
@@ -348,7 +353,7 @@ VkResult windows_get_registry_files(const struct loader_instance *inst, char *lo
                                     PDWORD reg_data_size) {
     // This list contains all of the allowed ICDs. This allows us to verify that a device is actually present from the vendor
     // specified. This does disallow other vendors, but any new driver should use the device-specific registries anyway.
-    static const struct {
+    const struct {
         const char *filename;
         unsigned int vendor_id;
     } known_drivers[] = {
@@ -553,7 +558,8 @@ VkResult windows_get_registry_files(const struct loader_instance *inst, char *lo
     }
 
     if (!found && result != VK_ERROR_OUT_OF_HOST_MEMORY) {
-        loader_log(inst, log_target_flag, 0, "Found no registry files in %s", location);
+        loader_log(inst, log_target_flag, 0, "Found no registry files in %s\\%s",
+                   (hive == DEFAULT_VK_REGISTRY_HIVE) ? DEFAULT_VK_REGISTRY_HIVE_STR : SECONDARY_VK_REGISTRY_HIVE_STR, location);
         result = VK_ERROR_INCOMPATIBLE_DRIVER;
     }
 
@@ -581,9 +587,10 @@ VkResult windows_read_manifest_from_d3d_adapters(const struct loader_instance *i
         goto out;
     }
 
-    PFN_LoaderEnumAdapters2 fpLoaderEnumAdapters2 = (PFN_LoaderEnumAdapters2)GetProcAddress(gdi32_dll, "D3DKMTEnumAdapters2");
+    PFN_LoaderEnumAdapters2 fpLoaderEnumAdapters2 =
+        (PFN_LoaderEnumAdapters2)(void *)GetProcAddress(gdi32_dll, "D3DKMTEnumAdapters2");
     PFN_LoaderQueryAdapterInfo fpLoaderQueryAdapterInfo =
-        (PFN_LoaderQueryAdapterInfo)GetProcAddress(gdi32_dll, "D3DKMTQueryAdapterInfo");
+        (PFN_LoaderQueryAdapterInfo)(void *)GetProcAddress(gdi32_dll, "D3DKMTQueryAdapterInfo");
     if (fpLoaderEnumAdapters2 == NULL || fpLoaderQueryAdapterInfo == NULL) {
         result = VK_ERROR_INCOMPATIBLE_DRIVER;
         goto out;
@@ -615,7 +622,8 @@ VkResult windows_read_manifest_from_d3d_adapters(const struct loader_instance *i
             .value_type = REG_MULTI_SZ,
             .physical_adapter_index = 0,
         };
-        wcsncpy(filename_info.value_name, value_name, sizeof(filename_info.value_name) / sizeof(WCHAR));
+        size_t value_name_size = wcslen(value_name);
+        wcsncpy_s(filename_info.value_name, MAX_PATH, value_name, value_name_size);
         LoaderQueryAdapterInfo query_info;
         query_info.handle = adapters.adapters[i].handle;
         query_info.type = LOADER_QUERY_TYPE_REGISTRY;
@@ -698,17 +706,19 @@ out:
 // Look for data files in the registry.
 VkResult windows_read_data_files_in_registry(const struct loader_instance *inst, enum loader_data_files_type data_file_type,
                                              bool warn_if_not_present, char *registry_location,
-                                             struct loader_data_files *out_files) {
+                                             struct loader_string_list *out_files) {
     VkResult vk_result = VK_SUCCESS;
     char *search_path = NULL;
     uint32_t log_target_flag = 0;
 
     if (data_file_type == LOADER_DATA_FILE_MANIFEST_DRIVER) {
         log_target_flag = VULKAN_LOADER_DRIVER_BIT;
-        loader_log(inst, log_target_flag, 0, "Checking for Driver Manifest files in Registry at %s", registry_location);
+        loader_log(inst, log_target_flag, 0, "Checking for Driver Manifest files in Registry at %s\\%s",
+                   DEFAULT_VK_REGISTRY_HIVE_STR, registry_location);
     } else {
         log_target_flag = VULKAN_LOADER_LAYER_BIT;
-        loader_log(inst, log_target_flag, 0, "Checking for Layer Manifest files in Registry at %s", registry_location);
+        loader_log(inst, log_target_flag, 0, "Checking for Layer Manifest files in Registry at %s\\%s",
+                   DEFAULT_VK_REGISTRY_HIVE_STR, registry_location);
     }
 
     // These calls look at the PNP/Device section of the registry.
@@ -993,13 +1003,13 @@ char *windows_get_app_package_manifest_path(const struct loader_instance *inst) 
     // These functions are only available on Windows 8 and above, load them dynamically for compatibility with Windows 7
     typedef LONG(WINAPI * PFN_GetPackagesByPackageFamily)(PCWSTR, UINT32 *, PWSTR *, UINT32 *, WCHAR *);
     PFN_GetPackagesByPackageFamily fpGetPackagesByPackageFamily =
-        (PFN_GetPackagesByPackageFamily)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "GetPackagesByPackageFamily");
+        (PFN_GetPackagesByPackageFamily)(void *)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "GetPackagesByPackageFamily");
     if (!fpGetPackagesByPackageFamily) {
         return NULL;
     }
     typedef LONG(WINAPI * PFN_GetPackagePathByFullName)(PCWSTR, UINT32 *, PWSTR);
     PFN_GetPackagePathByFullName fpGetPackagePathByFullName =
-        (PFN_GetPackagePathByFullName)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "GetPackagePathByFullName");
+        (PFN_GetPackagePathByFullName)(void *)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "GetPackagePathByFullName");
     if (!fpGetPackagePathByFullName) {
         return NULL;
     }
@@ -1063,4 +1073,99 @@ cleanup:
     loader_instance_heap_free(inst, packages);
     return ret;
 }
+
+VkResult get_settings_path_if_exists_in_registry_key(const struct loader_instance *inst, char **out_path, HKEY key) {
+    VkResult result = VK_ERROR_INITIALIZATION_FAILED;
+
+    char name[MAX_STRING_SIZE] = {0};
+    DWORD name_size = sizeof(name);
+
+    *out_path = NULL;
+
+    LONG rtn_value = ERROR_SUCCESS;
+    for (DWORD idx = 0; rtn_value == ERROR_SUCCESS; idx++) {
+        DWORD value = 0;
+        DWORD value_size = sizeof(value);
+        rtn_value = RegEnumValue(key, idx, name, &name_size, NULL, NULL, (LPBYTE)&value, &value_size);
+
+        if (ERROR_SUCCESS != rtn_value) {
+            break;
+        }
+
+        uint32_t start_of_path_filename = 0;
+        for (uint32_t last_char = name_size; last_char > 0; last_char--) {
+            if (name[last_char] == '\\') {
+                start_of_path_filename = last_char + 1;
+                break;
+            }
+        }
+
+        // Make sure the path exists first
+        if (*out_path && !loader_platform_file_exists(name)) {
+            return VK_ERROR_INITIALIZATION_FAILED;
+        }
+
+        if (strcmp(VK_LOADER_SETTINGS_FILENAME, &(name[start_of_path_filename])) == 0) {
+            *out_path = loader_instance_heap_calloc(inst, name_size + 1, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
+            if (*out_path == NULL) {
+                return VK_ERROR_OUT_OF_HOST_MEMORY;
+            }
+            loader_strncpy(*out_path, name_size + 1, name, name_size);
+            (*out_path)[name_size] = '\0';
+            result = VK_SUCCESS;
+            break;
+        }
+    }
+
+    return result;
+}
+
+VkResult windows_get_loader_settings_file_path(const struct loader_instance *inst, char **out_path) {
+    VkResult result = VK_SUCCESS;
+    DWORD access_flags = KEY_QUERY_VALUE;
+    HKEY key = NULL;
+
+    *out_path = NULL;
+
+    // if we are running with admin privileges, only check HKEY_LOCAL_MACHINE.
+    // Otherwise check HKEY_CURRENT_USER, and if nothing is there, look in HKEY_LOCAL_MACHINE
+
+    if (is_high_integrity()) {
+        LONG rtn_value = RegOpenKeyEx(HKEY_LOCAL_MACHINE, VK_SETTINGS_INFO_REGISTRY_LOC, 0, access_flags, &key);
+        if (ERROR_SUCCESS != rtn_value) {
+            result = VK_ERROR_FEATURE_NOT_PRESENT;
+            goto out;
+        }
+        result = get_settings_path_if_exists_in_registry_key(inst, out_path, key);
+    } else {
+        LONG rtn_value = RegOpenKeyEx(HKEY_CURRENT_USER, VK_SETTINGS_INFO_REGISTRY_LOC, 0, access_flags, &key);
+        if (ERROR_SUCCESS == rtn_value) {
+            result = get_settings_path_if_exists_in_registry_key(inst, out_path, key);
+            RegCloseKey(key);
+            // Either we got OOM and *must* exit or we successfully found the settings file and can exit
+            if (result == VK_ERROR_OUT_OF_HOST_MEMORY || result == VK_SUCCESS) {
+                goto out;
+            }
+        }
+
+        rtn_value = RegOpenKeyEx(HKEY_LOCAL_MACHINE, VK_SETTINGS_INFO_REGISTRY_LOC, 0, access_flags, &key);
+        if (ERROR_SUCCESS != rtn_value) {
+            result = VK_ERROR_FEATURE_NOT_PRESENT;
+            goto out;
+        }
+
+        result = get_settings_path_if_exists_in_registry_key(inst, out_path, key);
+        if (result == VK_ERROR_OUT_OF_HOST_MEMORY) {
+            goto out;
+        }
+    }
+
+out:
+    if (NULL != key) {
+        RegCloseKey(key);
+    }
+
+    return result;
+}
+
 #endif  // _WIN32

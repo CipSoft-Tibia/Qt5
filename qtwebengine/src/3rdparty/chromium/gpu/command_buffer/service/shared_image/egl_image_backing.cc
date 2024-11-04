@@ -7,6 +7,7 @@
 #include "base/memory/raw_ptr.h"
 #include "gpu/command_buffer/service/gl_utils.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_gl_utils.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
 #include "gpu/command_buffer/service/shared_image/skia_gl_image_representation.h"
 #include "gpu/command_buffer/service/texture_manager.h"
@@ -44,11 +45,12 @@ class EGLImageBacking::TextureHolder : public base::RefCounted<TextureHolder> {
   friend class base::RefCounted<TextureHolder>;
 
   ~TextureHolder() {
-    if (texture_)
-      texture_->RemoveLightweightRef(!context_lost_);
+    if (texture_) {
+      texture_.ExtractAsDangling()->RemoveLightweightRef(!context_lost_);
+    }
   }
 
-  const raw_ptr<gles2::Texture, DanglingUntriaged> texture_ = nullptr;
+  raw_ptr<gles2::Texture> texture_ = nullptr;
   const scoped_refptr<gles2::TexturePassthrough> texture_passthrough_;
   bool context_lost_ = false;
 };
@@ -265,7 +267,8 @@ EGLImageBacking::ProduceGLTexturePassthrough(SharedImageManager* manager,
       manager, tracker);
 }
 
-std::unique_ptr<SkiaImageRepresentation> EGLImageBacking::ProduceSkia(
+std::unique_ptr<SkiaGaneshImageRepresentation>
+EGLImageBacking::ProduceSkiaGanesh(
     SharedImageManager* manager,
     MemoryTypeTracker* tracker,
     scoped_refptr<SharedContextState> context_state) {
@@ -289,11 +292,11 @@ std::unique_ptr<SkiaImageRepresentation> EGLImageBacking::ProduceSkia(
 std::unique_ptr<DawnImageRepresentation> EGLImageBacking::ProduceDawn(
     SharedImageManager* manager,
     MemoryTypeTracker* tracker,
-    WGPUDevice device,
-    WGPUBackendType backend_type,
-    std::vector<WGPUTextureFormat> view_formats) {
+    const wgpu::Device& device,
+    wgpu::BackendType backend_type,
+    std::vector<wgpu::TextureFormat> view_formats) {
 #if BUILDFLAG(USE_DAWN) && BUILDFLAG(DAWN_ENABLE_BACKEND_OPENGLES)
-  if (backend_type == WGPUBackendType_OpenGLES) {
+  if (backend_type == wgpu::BackendType::OpenGLES) {
     std::unique_ptr<GLTextureImageRepresentationBase> gl_representation;
     if (use_passthrough_) {
       gl_representation = ProduceGLTexturePassthrough(manager, tracker);
@@ -307,7 +310,7 @@ std::unique_ptr<DawnImageRepresentation> EGLImageBacking::ProduceDawn(
     }
     return std::make_unique<DawnEGLImageRepresentation>(
         std::move(gl_representation), egl_image, manager, this, tracker,
-        device);
+        device.Get());
   }
 #endif  // BUILDFLAG(USE_DAWN) && BUILDFLAG(DAWN_ENABLE_BACKEND_OPENGLES)
   return nullptr;

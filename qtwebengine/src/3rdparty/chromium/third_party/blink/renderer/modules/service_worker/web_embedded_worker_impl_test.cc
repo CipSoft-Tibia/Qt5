@@ -108,7 +108,8 @@ class FakeURLLoaderFactory final : public URLLoaderFactory {
       scoped_refptr<base::SingleThreadTaskRunner>,
       scoped_refptr<base::SingleThreadTaskRunner>,
       mojo::PendingRemote<mojom::blink::KeepAliveHandle>,
-      BackForwardCacheLoaderHelper*) override {
+      BackForwardCacheLoaderHelper*,
+      Vector<std::unique_ptr<URLLoaderThrottle>> throttles) override {
     return std::make_unique<FakeURLLoader>();
   }
 };
@@ -129,6 +130,11 @@ class FakeWebServiceWorkerFetchContext final
     return nullptr;
   }
   void WillSendRequest(WebURLRequest&) override {}
+  WebVector<std::unique_ptr<URLLoaderThrottle>> CreateThrottles(
+      const WebURLRequest& request) override {
+    return {};
+  }
+
   mojom::ControllerServiceWorkerMode GetControllerServiceWorkerMode()
       const override {
     return mojom::ControllerServiceWorkerMode::kNoController;
@@ -214,7 +220,8 @@ class MockServiceWorkerContextClient final
             service_worker_object.InitWithNewEndpointAndPassReceiver()),
         mojom::blink::FetchHandlerExistence::EXISTS,
         /*reporting_observer_receiver=*/mojo::NullReceiver(),
-        /*ancestor_frame_type=*/mojom::blink::AncestorFrameType::kNormalFrame);
+        /*ancestor_frame_type=*/mojom::blink::AncestorFrameType::kNormalFrame,
+        blink::BlinkStorageKey());
 
     // To make the other side callable.
     host_receiver.EnableUnassociatedUsage();

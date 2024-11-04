@@ -11,6 +11,7 @@
 // Do not include anything from src/compiler here!
 #include "src/common/globals.h"
 #include "src/objects/code.h"
+#include "src/zone/zone-containers.h"
 
 namespace v8 {
 namespace internal {
@@ -20,14 +21,13 @@ class OptimizedCompilationInfo;
 class TurbofanCompilationJob;
 class ProfileDataFromFile;
 class RegisterConfiguration;
+struct WasmInliningPosition;
 
 namespace wasm {
-class AssemblerBufferCache;
 struct CompilationEnv;
 struct FunctionBody;
 struct WasmCompilationResult;
-struct WasmModule;
-class WireBytesStorage;
+class WasmFeatures;
 }  // namespace wasm
 
 namespace compiler {
@@ -38,10 +38,16 @@ class InstructionSequence;
 class JSGraph;
 class JSHeapBroker;
 class MachineGraph;
-class NodeOriginTable;
 class Schedule;
 class SourcePositionTable;
-struct WasmLoopInfo;
+struct WasmCompilationData;
+
+struct InstructionRangesAsJSON {
+  const InstructionSequence* sequence;
+  const ZoneVector<std::pair<int, int>>* instr_origins;
+};
+
+std::ostream& operator<<(std::ostream& out, const InstructionRangesAsJSON& s);
 
 class Pipeline : public AllStatic {
  public:
@@ -52,14 +58,14 @@ class Pipeline : public AllStatic {
                     BytecodeOffset osr_offset = BytecodeOffset::None());
 
   // Run the pipeline for the WebAssembly compilation info.
+  // Note: We pass a pointer to {detected} as it might get mutated while
+  // inlining.
   static void GenerateCodeForWasmFunction(
       OptimizedCompilationInfo* info, wasm::CompilationEnv* env,
-      const wasm::WireBytesStorage* wire_bytes_storage, MachineGraph* mcgraph,
-      CallDescriptor* call_descriptor, SourcePositionTable* source_positions,
-      NodeOriginTable* node_origins, wasm::FunctionBody function_body,
-      const wasm::WasmModule* module, int function_index,
-      std::vector<compiler::WasmLoopInfo>* loop_infos,
-      wasm::AssemblerBufferCache* buffer_cache);
+      WasmCompilationData& compilation_data, MachineGraph* mcgraph,
+      CallDescriptor* call_descriptor,
+      ZoneVector<WasmInliningPosition>* inlining_positions,
+      wasm::WasmFeatures* detected);
 
   // Run the pipeline on a machine graph and generate code.
   static wasm::WasmCompilationResult GenerateCodeForWasmNativeStub(
@@ -67,12 +73,17 @@ class Pipeline : public AllStatic {
       const char* debug_name, const AssemblerOptions& assembler_options,
       SourcePositionTable* source_positions = nullptr);
 
+  static bool GenerateWasmCodeFromTurboshaftGraph(
+      OptimizedCompilationInfo* info, wasm::CompilationEnv* env,
+      WasmCompilationData& compilation_data, MachineGraph* mcgraph,
+      const wasm::FunctionBody& body, wasm::WasmFeatures* detected,
+      CallDescriptor* call_descriptor);
+
   // Returns a new compilation job for a wasm heap stub.
   static std::unique_ptr<TurbofanCompilationJob> NewWasmHeapStubCompilationJob(
       Isolate* isolate, CallDescriptor* call_descriptor,
       std::unique_ptr<Zone> zone, Graph* graph, CodeKind kind,
-      std::unique_ptr<char[]> debug_name, const AssemblerOptions& options,
-      SourcePositionTable* source_positions = nullptr);
+      std::unique_ptr<char[]> debug_name, const AssemblerOptions& options);
 
   // Run the pipeline on a machine graph and generate code.
   static MaybeHandle<Code> GenerateCodeForCodeStub(
@@ -85,12 +96,9 @@ class Pipeline : public AllStatic {
   // The following methods are for testing purposes only. Avoid production use.
   // ---------------------------------------------------------------------------
 
-  // Run the pipeline on JavaScript bytecode and generate code.  If requested,
-  // hands out the heap broker on success, transferring its ownership to the
-  // caller.
+  // Run the pipeline on JavaScript bytecode and generate code.
   V8_EXPORT_PRIVATE static MaybeHandle<Code> GenerateCodeForTesting(
-      OptimizedCompilationInfo* info, Isolate* isolate,
-      std::unique_ptr<JSHeapBroker>* out_broker = nullptr);
+      OptimizedCompilationInfo* info, Isolate* isolate);
 
   // Run the pipeline on a machine graph and generate code. If {schedule} is
   // {nullptr}, then compute a new schedule for code generation.

@@ -69,6 +69,9 @@ public:
     void setNumericalPrecisionPolicy(QSql::NumericalPrecisionPolicy precisionPolicy);
     QSql::NumericalPrecisionPolicy numericalPrecisionPolicy() const;
 
+    void setPositionalBindingEnabled(bool enable);
+    bool isPositionalBindingEnabled() const;
+
     bool seek(int i, bool relative = false);
     bool next();
     bool previous();

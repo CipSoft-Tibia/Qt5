@@ -28,14 +28,21 @@ import {
   JavaHprofConfig,
   MeminfoCounters,
   NativeContinuousDumpConfig,
+  NetworkPacketTraceConfig,
+  PerfEventConfig,
   ProcessStatsConfig,
   SysStatsConfig,
   TraceConfig,
   TrackEventConfig,
   VmstatCounters,
-} from '../protos';
+} from '../../core/protos';
+import {perfetto} from '../../gen/protos';
 
 import {TargetInfo} from './recording_interfaces_v2';
+
+import Timebase = perfetto.protos.PerfEvents.Timebase;
+import CallstackSampling = perfetto.protos.PerfEventConfig.CallstackSampling;
+import Scope = perfetto.protos.PerfEventConfig.Scope;
 
 export interface ConfigProtoEncoded {
   configProtoText?: string;
@@ -76,11 +83,18 @@ export class RecordingConfigUtils {
   }
 }
 
+function enableSchedBlockedReason(androidApiLevel?: number): boolean {
+  return androidApiLevel !== undefined && androidApiLevel >= 31;
+}
+
+function enableCompactSched(androidApiLevel?: number): boolean {
+  return androidApiLevel !== undefined && androidApiLevel >= 31;
+}
+
 export function genTraceConfig(
     uiCfg: RecordConfig, targetInfo: TargetInfo): TraceConfig {
-  const androidApiLevel = (targetInfo.targetType === 'ANDROID') ?
-      targetInfo.androidApiLevel :
-      undefined;
+  const isAndroid = targetInfo.targetType === 'ANDROID';
+  const androidApiLevel = isAndroid ? targetInfo.androidApiLevel : undefined;
   const protoCfg = new TraceConfig();
   protoCfg.durationMs = uiCfg.durationMs;
 
@@ -95,8 +109,8 @@ export function genTraceConfig(
 
   protoCfg.buffers.push(new BufferConfig());
   protoCfg.buffers.push(new BufferConfig());
-  protoCfg.buffers[1].sizeKb = slowBufSizeKb;
   protoCfg.buffers[0].sizeKb = fastBufSizeKb;
+  protoCfg.buffers[1].sizeKb = slowBufSizeKb;
 
   if (uiCfg.mode === 'STOP_WHEN_FULL') {
     protoCfg.buffers[0].fillPolicy = BufferConfig.FillPolicy.DISCARD;
@@ -130,11 +144,19 @@ export function genTraceConfig(
   let procThreadAssociationFtrace = false;
   let trackInitialOomScore = false;
 
+  if (isAndroid) {
+    const ds = new TraceConfig.DataSource();
+    ds.config = new DataSourceConfig();
+    ds.config.targetBuffer = 1;
+    ds.config.name = 'android.packages_list';
+    protoCfg.dataSources.push(ds);
+  }
+
   if (uiCfg.cpuSched) {
     procThreadAssociationPolling = true;
     procThreadAssociationFtrace = true;
     uiCfg.ftrace = true;
-    if (androidApiLevel && androidApiLevel >= 31) {
+    if (enableSchedBlockedReason(androidApiLevel)) {
       uiCfg.symbolizeKsyms = true;
     }
     ftraceEvents.add('sched/sched_switch');
@@ -368,6 +390,25 @@ export function genTraceConfig(
     }
   }
 
+  if (uiCfg.androidNetworkTracing) {
+    if (targetInfo.targetType !== 'CHROME') {
+      const net = new TraceConfig.DataSource();
+      net.config = new DataSourceConfig();
+      net.config.name = 'android.network_packets';
+      net.config.networkPacketTraceConfig = new NetworkPacketTraceConfig();
+      net.config.networkPacketTraceConfig.pollMs =
+          uiCfg.androidNetworkTracingPollMs;
+      protoCfg.dataSources.push(net);
+
+      // Record package info so that Perfetto can display the package name for
+      // network packet events based on the event uid.
+      const pkg = new TraceConfig.DataSource();
+      pkg.config = new DataSourceConfig();
+      pkg.config.name = 'android.packages_list';
+      protoCfg.dataSources.push(pkg);
+    }
+  }
+
   if (uiCfg.chromeLogs) {
     chromeCategories.add('log');
   }
@@ -422,6 +463,39 @@ export function genTraceConfig(
     chromeCategories.add('netlog');
     chromeCategories.add('navigation');
     chromeCategories.add('browser');
+  }
+
+  // linux.perf stack sampling
+  if (uiCfg.tracePerf) {
+    const ds = new TraceConfig.DataSource();
+    ds.config = new DataSourceConfig();
+    ds.config.name = 'linux.perf';
+
+    const perfEventConfig = new PerfEventConfig();
+    perfEventConfig.timebase = new Timebase();
+    perfEventConfig.timebase.frequency = uiCfg.timebaseFrequency;
+    // TODO: The timestampClock needs to be changed to MONOTONIC once we start
+    // offering a choice of counter to record on through the recording UI, as
+    // not all clocks are compatible with hardware counters).
+    perfEventConfig.timebase.timestampClock =
+        perfetto.protos.PerfEvents.PerfClock.PERF_CLOCK_BOOTTIME;
+
+    const callstackSampling = new CallstackSampling();
+    if (uiCfg.targetCmdLine.length > 0) {
+      const scope = new Scope();
+      for (const cmdLine of uiCfg.targetCmdLine) {
+        if (cmdLine == '') {
+          continue;
+        }
+        scope.targetCmdline?.push(cmdLine.trim());
+      }
+      callstackSampling.scope = scope;
+    }
+
+    perfEventConfig.callstackSampling = callstackSampling;
+
+    ds.config.perfEventConfig = perfEventConfig;
+    protoCfg.dataSources.push(ds);
   }
 
   if (chromeCategories.size !== 0) {
@@ -598,7 +672,7 @@ export function genTraceConfig(
     ds.config.ftraceConfig.atraceCategories = Array.from(atraceCats);
     ds.config.ftraceConfig.atraceApps = Array.from(atraceApps);
 
-    if (androidApiLevel && androidApiLevel >= 31) {
+    if (enableCompactSched(androidApiLevel)) {
       const compact = new FtraceConfig.CompactSchedConfig();
       compact.enabled = true;
       ds.config.ftraceConfig.compactSched = compact;
@@ -624,7 +698,7 @@ function toPbtxt(configBuffer: Uint8Array): string {
     return value.startsWith('MEMINFO_') || value.startsWith('VMSTAT_') ||
         value.startsWith('STAT_') || value.startsWith('LID_') ||
         value.startsWith('BATTERY_COUNTER_') || value === 'DISCARD' ||
-        value === 'RING_BUFFER';
+        value === 'RING_BUFFER' || value.startsWith('PERF_CLOCK_');
   }
   // Since javascript doesn't have 64 bit numbers when converting protos to
   // json the proto library encodes them as strings. This is lossy since
@@ -638,6 +712,7 @@ function toPbtxt(configBuffer: Uint8Array): string {
       'samplingIntervalBytes',
       'shmemSizeBytes',
       'pid',
+      'frequency',
     ].includes(key);
   }
   function* message(msg: {}, indent: number): IterableIterator<string> {

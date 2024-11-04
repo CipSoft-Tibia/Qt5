@@ -4,8 +4,50 @@
 
 module ash.mojom;
 
+import "ash/public/mojom/accelerator_actions.mojom";
+import "ash/public/mojom/accelerator_keys.mojom";
 import "mojo/public/mojom/base/time.mojom";
-import "ui/chromeos/events/mojom/modifier_key.mojom";
+import "ui/events/ash/mojom/modifier_key.mojom";
+import "ui/events/ash/mojom/simulate_right_click_modifier.mojom";
+import "ui/events/ash/mojom/six_pack_shortcut_modifier.mojom";
+
+// The current status of the enterprise policy for the stated setting.
+enum PolicyStatus {
+  kManaged,
+  kRecommended
+};
+
+// Contains each of the 6-pack keys as well as which shortcut modifier each key
+// maps to. Each key defaults to the `kSearch` modifier to avoid Alt-based
+// issues (e.g. Any application that tries to use Alt+Down is broken on
+// ChromeOS).
+struct SixPackKeyInfo {
+  ui.mojom.SixPackShortcutModifier home = kSearch;
+  ui.mojom.SixPackShortcutModifier page_up = kSearch;
+  ui.mojom.SixPackShortcutModifier page_down = kSearch;
+  ui.mojom.SixPackShortcutModifier del = kSearch;
+  ui.mojom.SixPackShortcutModifier insert = kSearch;
+  ui.mojom.SixPackShortcutModifier end = kSearch;
+};
+
+// Represents an enterprise policy that has a status via `PolicyStatus` and a
+// boolean value.
+struct InputDeviceSettingsPolicy {
+  PolicyStatus policy_status;
+  bool value;
+};
+
+// Represents the current set of keyboard enterprise policies. All members are
+// optional. When null, there is no enterprise policy set for the given setting.
+struct KeyboardPolicies {
+  InputDeviceSettingsPolicy? top_row_are_fkeys_policy;
+};
+
+// Represents the current set of mouse enterprise policies. All members are
+// optional. When null, there is no enterprise policy set for the given setting.
+struct MousePolicies {
+  InputDeviceSettingsPolicy? swap_right_policy;
+};
 
 // MetaKey denotes all the possible options deducable from the users external or
 // internal keyboard. Used to show the correct key to the user in the settings
@@ -44,15 +86,15 @@ struct KeyboardSettings {
   map<ui.mojom.ModifierKey, ui.mojom.ModifierKey> modifier_remappings;
   bool top_row_are_fkeys;
   bool suppress_meta_fkey_rewrites;
-  bool auto_repeat_enabled;
-  mojo_base.mojom.TimeDelta auto_repeat_delay;
-  mojo_base.mojom.TimeDelta auto_repeat_interval;
+  SixPackKeyInfo? six_pack_key_remappings;
 };
 
 // Contains all information needed to display, apply, and update mouse
 // settings.
 struct Mouse {
   string name;
+  // Used to display different names and settings in the settings app.
+  bool is_external;
   // Unique identifier for the mouse which is assigned by ozone when it is
   // connected and is reassigned when disconnected and reconnected to the
   // system. These ids can be rarely reused for multiple devices if the original
@@ -79,12 +121,16 @@ struct MouseSettings {
   uint8 scroll_sensitivity;
   // Toggles whether scroll acceleration is enabled.
   bool scroll_acceleration;
+  // Store all the button remappings.
+  array<ButtonRemapping> button_remappings;
 };
 
 // Contains all information needed to display, apply, and update touchpad
 // settings.
 struct Touchpad {
   string name;
+  // Used to display different names and settings in the settings app.
+  bool is_external;
   // Unique identifier for the touchpad which is assigned by ozone when it is
   // connected and is reassigned when disconnected and reconnected to the
   // system. These ids can be rarely reused for multiple devices if the original
@@ -94,6 +140,8 @@ struct Touchpad {
   // "vendor_id:product_id" where the ids are 16-bit hex in lowercase.
   // Example: 5022:18d1.
   string device_key;
+  // Whether the touchpad is haptic or not.
+  bool is_haptic;
   TouchpadSettings settings;
 };
 
@@ -119,13 +167,16 @@ struct TouchpadSettings {
   uint8 haptic_sensitivity;
   // Toggles whether haptic feedback is enabled for the touchpad at all.
   bool haptic_enabled;
+  // The modifier used to simulate right-click with keyboard and touchpad.
+  ui.mojom.SimulateRightClickModifier simulate_right_click;
 };
 
 // Contains all information needed to display, apply, and update pointing stick
 // settings.
-// TODO(michaelcheco): add `settings` to `mojom::PointingStick` struct.
 struct PointingStick {
   string name;
+  // Used to display different names and settings in the settings app.
+  bool is_external;
   // Unique identifier for the pointing stick which is assigned by ozone when
   // it is connected and is reassigned when disconnected and reconnected to the
   // system. These ids can be rarely reused for multiple devices if the original
@@ -146,4 +197,75 @@ struct PointingStickSettings {
   uint8 sensitivity;
   // Controls whether acceleration is enabled.
   bool acceleration_enabled;
+};
+
+// Contains all information needed to display, apply, and update stylus
+// settings.
+// TODO(wangdanny): add `settings` and other missing fields to
+// `mojom::Stylus` struct.
+struct Stylus {
+};
+
+// Contains all information needed to display, apply, and update graphics
+// tablet settings.
+struct GraphicsTablet {
+  // Key used to lookup device settings in prefs in the format
+  // "vendor_id:product_id" where the ids are 16-bit hex in lowercase.
+  // Example: 5022:18d1.
+  string device_key;
+  // Unique identifier for the graphics tablet which is assigned by ozone when
+  // it is connected and is reassigned when disconnected and reconnected to the
+  // system. These ids can be rarely reused for multiple devices if the original
+  // device holding the id had been disconnected.
+  uint32 id;
+  GraphicsTabletSettings settings;
+};
+
+// Contains all existing graphics tablet settings available for use.
+struct GraphicsTabletSettings {
+  // Stores all the tablet button remappings.
+  array<ButtonRemapping> tablet_button_remappings;
+  // Stores all the pen button remappings.
+  array<ButtonRemapping> pen_button_remappings;
+};
+
+// Contains all information needed to apply remappings from a button to
+// either an action or key event and display it within the settings app.
+struct ButtonRemapping {
+  // Human-readable label of the button remapping which user can rename.
+  string name;
+  Button button;
+  RemappingAction? remapping_action;
+};
+
+// Represents the remapping action which can be either a key event or action.
+union RemappingAction {
+  ash.mojom.AcceleratorAction action;
+  KeyEvent key_event;
+};
+
+// Represents the key event the button remaps to.
+struct KeyEvent {
+  ash.mojom.VKey vkey;
+  uint32 dom_code;
+  uint32 dom_key;
+  uint32 modifiers;
+};
+
+// Represents the button to remap which can be either a virtual key or
+// customizable button.
+union Button {
+  ash.mojom.VKey vkey;
+  CustomizableButton customizable_button;
+};
+
+// Contains the valid set of customizable buttons on the mouse.
+enum CustomizableButton {
+  kLeft = 0,
+  kRight = 1,
+  kMiddle = 2,
+  kForward = 3,
+  kBack = 4,
+  kExtra = 5,
+  kSide = 6,
 };

@@ -22,6 +22,7 @@
 #include "third_party/blink/renderer/core/trustedtypes/trusted_types_util.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_data_view.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
+#include "third_party/blink/renderer/platform/bindings/bigint.h"
 #include "third_party/blink/renderer/platform/bindings/exception_messages.h"
 #include "third_party/blink/renderer/platform/heap/heap_traits.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
@@ -133,6 +134,17 @@ struct CORE_EXPORT NativeValueTraits<IDLOptional<IDLBoolean>>
                           v8::Local<v8::Value> value,
                           ExceptionState& exception_state) {
     return ToBoolean(isolate, value, exception_state);
+  }
+};
+
+// bigint
+template <>
+struct CORE_EXPORT NativeValueTraits<IDLBigint>
+    : public NativeValueTraitsBase<IDLBigint> {
+  static BigInt NativeValue(v8::Isolate* isolate,
+                            v8::Local<v8::Value> value,
+                            ExceptionState& exception_state) {
+    return ToBigInt(isolate, value, exception_state);
   }
 };
 
@@ -356,7 +368,7 @@ struct NativeValueTraits<IDLStringBase<mode>>
       if (value->IsNullOrUndefined())
         return bindings::NativeValueTraitsStringAdapter();
     }
-    if (mode == bindings::IDLStringConvMode::kTreatNullAsEmptyString) {
+    if (mode == bindings::IDLStringConvMode::kLegacyNullToEmptyString) {
       if (value->IsNull())
         return bindings::NativeValueTraitsStringAdapter(g_empty_string);
     }
@@ -448,7 +460,7 @@ struct NativeValueTraits<IDLStringStringContextTrustedHTMLBase<mode>>
                             ExceptionState& exception_state,
                             ExecutionContext* execution_context) {
     if (TrustedHTML* trusted_html =
-            V8TrustedHTML::ToImplWithTypeCheck(isolate, value)) {
+            V8TrustedHTML::ToWrappable(isolate, value)) {
       return trusted_html->toString();
     }
 
@@ -484,7 +496,7 @@ struct NativeValueTraits<IDLStringStringContextTrustedScriptBase<mode>>
                             ExceptionState& exception_state,
                             ExecutionContext* execution_context) {
     if (TrustedScript* trusted_script =
-            V8TrustedScript::ToImplWithTypeCheck(isolate, value)) {
+            V8TrustedScript::ToWrappable(isolate, value)) {
       return trusted_script->toString();
     }
 
@@ -521,7 +533,7 @@ struct NativeValueTraits<IDLUSVStringStringContextTrustedScriptURLBase<mode>>
                             ExceptionState& exception_state,
                             ExecutionContext* execution_context) {
     if (TrustedScriptURL* trusted_script_url =
-            V8TrustedScriptURL::ToImplWithTypeCheck(isolate, value)) {
+            V8TrustedScriptURL::ToWrappable(isolate, value)) {
       return trusted_script_url->toString();
     }
 
@@ -1289,7 +1301,8 @@ struct NativeValueTraits<IDLRecord<K, V>>
       if (seen_keys.Contains(typed_key)) {
         // "4.2.4. If typedKey is already a key in result, set its value to
         //         typedValue.
-        //         Note: This can happen when O is a proxy object."
+        //         Note: This can happen when K is USVString and key contains
+        //         unpaired surrogates."
         const uint32_t pos = seen_keys.at(typed_key);
         result[pos].second = std::move(typed_value);
       } else {

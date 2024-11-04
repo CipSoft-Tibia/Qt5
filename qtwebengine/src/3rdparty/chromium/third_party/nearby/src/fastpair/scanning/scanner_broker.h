@@ -15,6 +15,8 @@
 #ifndef THIRD_PARTY_NEARBY_FASTPAIR_SCANNING_SCANNER_BROKER_H_
 #define THIRD_PARTY_NEARBY_FASTPAIR_SCANNING_SCANNER_BROKER_H_
 
+#include <memory>
+
 #include "fastpair/common/fast_pair_device.h"
 #include "fastpair/common/protocol.h"
 
@@ -32,8 +34,14 @@ class ScannerBroker {
    public:
     virtual ~Observer() = default;
 
-    virtual void OnDeviceFound(const FastPairDevice& device) = 0;
-    virtual void OnDeviceLost(const FastPairDevice& device) = 0;
+    virtual void OnDeviceFound(FastPairDevice& device) = 0;
+    virtual void OnDeviceLost(FastPairDevice& device) = 0;
+  };
+
+  // Represents scanning session. Must be destroyed before ScannerBroker.
+  class ScanningSession {
+   public:
+    virtual ~ScanningSession() = default;
   };
 
   virtual ~ScannerBroker() = default;
@@ -41,8 +49,7 @@ class ScannerBroker {
   virtual void AddObserver(Observer* observer) = 0;
   virtual void RemoveObserver(Observer* observer) = 0;
 
-  virtual void StartScanning(Protocol protocol) = 0;
-  virtual void StopScanning(Protocol protocol) = 0;
+  virtual std::unique_ptr<ScanningSession> StartScanning(Protocol protocol) = 0;
 };
 
 }  // namespace fastpair

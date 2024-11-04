@@ -41,17 +41,16 @@ import * as SDK from '../../core/sdk/sdk.js';
 import * as Protocol from '../../generated/protocol.js';
 import * as Bindings from '../../models/bindings/bindings.js';
 import * as HAR from '../../models/har/har.js';
-import * as IssuesManager from '../../models/issues_manager/issues_manager.js';
 import * as Logs from '../../models/logs/logs.js';
 import * as Persistence from '../../models/persistence/persistence.js';
 import * as TextUtils from '../../models/text_utils/text_utils.js';
 import * as NetworkForward from '../../panels/network/forward/forward.js';
 import * as Sources from '../../panels/sources/sources.js';
+import * as Coordinator from '../../ui/components/render_coordinator/render_coordinator.js';
 import * as DataGrid from '../../ui/legacy/components/data_grid/data_grid.js';
 import * as PerfUI from '../../ui/legacy/components/perf_ui/perf_ui.js';
 import * as Components from '../../ui/legacy/components/utils/utils.js';
 import * as UI from '../../ui/legacy/legacy.js';
-import * as ThemeSupport from '../../ui/legacy/theme_support/theme_support.js';
 
 import networkLogViewStyles from './networkLogView.css.js';
 
@@ -89,29 +88,38 @@ const UIStrings = {
   /**
    *@description Data urlfilter ui element title in Network Log View of the Network panel
    */
-  hidesDataAndBlobUrls: 'Hides data: and blob: URLs',
+  hidesDataAndBlobUrls: 'Hide \'data:\' and \'blob:\' URLs',
+  /**
+   * @description Label for a filter in the Network panel
+   */
+  chromeExtensions: 'Hide extension URLs',
+  /**
+   * @description Tooltip for a filter in the Network panel
+   */
+  hideChromeExtension: 'Hide \'chrome-extension://\' URLs',
   /**
    *@description Aria accessible name in Network Log View of the Network panel
    */
   resourceTypesToInclude: 'Resource types to include',
   /**
-   *@description Label for a filter in the Network panel
+   *@description Label for a checkbox in the Network panel. When checked, only requests with
+   *             blocked response cookies are shown.
    */
-  hasBlockedCookies: 'Has blocked cookies',
+  hasBlockedCookies: 'Blocked response cookies',
   /**
    *@description Tooltip for a checkbox in the Network panel. The response to a network request may include a
    *             cookie (https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies). Such response cookies can
    *             be malformed or otherwise invalid and the browser may choose to ignore or not accept invalid cookies.
    */
-  onlyShowRequestsWithBlocked: 'Only show requests with blocked response cookies',
+  onlyShowRequestsWithBlockedCookies: 'Show only the requests with blocked response cookies',
   /**
    *@description Label for a filter in the Network panel
    */
-  blockedRequests: 'Blocked Requests',
+  blockedRequests: 'Blocked requests',
   /**
    *@description Tooltip for a filter in the Network panel
    */
-  onlyShowBlockedRequests: 'Only show blocked requests',
+  onlyShowBlockedRequests: 'Show only blocked requests',
   /**
    *@description Label for a filter in the Network panel
    */
@@ -119,7 +127,7 @@ const UIStrings = {
   /**
    *@description Tooltip for a filter in the Network panel
    */
-  onlyShowThirdPartyRequests: 'Shows only requests with origin different from page origin',
+  onlyShowThirdPartyRequests: 'Show only requests with origin different from page origin',
   /**
    *@description Text that appears when user drag and drop something (for example, a file) in Network Log View of the Network panel
    */
@@ -370,11 +378,14 @@ const enum FetchStyle {
   NodeJs = 1,
 }
 
+const coordinator = Coordinator.RenderCoordinator.RenderCoordinator.instance();
+
 export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, typeof UI.Widget.VBox>(UI.Widget.VBox)
     implements SDK.TargetManager.SDKModelObserver<SDK.NetworkManager.NetworkManager>, NetworkLogViewInterface {
   private readonly networkInvertFilterSetting: Common.Settings.Setting<boolean>;
   private readonly networkHideDataURLSetting: Common.Settings.Setting<boolean>;
-  private readonly networkShowIssuesOnlySetting: Common.Settings.Setting<boolean>;
+  private readonly networkHideChromeExtensions: Common.Settings.Setting<boolean>;
+  private readonly networkShowBlockedCookiesOnlySetting: Common.Settings.Setting<boolean>;
   private readonly networkOnlyBlockedRequestsSetting: Common.Settings.Setting<boolean>;
   private readonly networkOnlyThirdPartySetting: Common.Settings.Setting<boolean>;
   private readonly networkResourceTypeFiltersSetting: Common.Settings.Setting<{[key: string]: boolean}>;
@@ -393,7 +404,6 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
   private timeFilter: Filter|null;
   private hoveredNodeInternal: NetworkNode|null;
   private recordingHint: Element|null;
-  private refreshRequestId: number|null;
   private highlightedNode: NetworkRequestNode|null;
   private readonly linkifierInternal: Components.Linkifier.Linkifier;
   private recording: boolean;
@@ -405,13 +415,14 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
   private readonly invertFilterUI: UI.FilterBar.CheckboxFilterUI;
   private readonly dataURLFilterUI: UI.FilterBar.CheckboxFilterUI;
   private resourceCategoryFilterUI: UI.FilterBar.NamedBitSetFilterUI;
-  private readonly onlyIssuesFilterUI: UI.FilterBar.CheckboxFilterUI;
+  private readonly onlyBlockedResponseCookiesFilterUI: UI.FilterBar.CheckboxFilterUI;
   private readonly onlyBlockedRequestsUI: UI.FilterBar.CheckboxFilterUI;
   private readonly onlyThirdPartyFilterUI: UI.FilterBar.CheckboxFilterUI;
+  private readonly hideChromeExtensionsUI: UI.FilterBar.CheckboxFilterUI;
   private readonly filterParser: TextUtils.TextUtils.FilterParser;
   private readonly suggestionBuilder: UI.FilterSuggestionBuilder.FilterSuggestionBuilder;
   private dataGrid: DataGrid.SortableDataGrid.SortableDataGrid<NetworkNode>;
-  private readonly summaryToolbar: UI.Toolbar.Toolbar;
+  private readonly summaryToolbarInternal: UI.Toolbar.Toolbar;
   private readonly filterBar: UI.FilterBar.FilterBar;
   private readonly textFilterSetting: Common.Settings.Setting<string>;
 
@@ -426,8 +437,10 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
 
     this.networkInvertFilterSetting = Common.Settings.Settings.instance().createSetting('networkInvertFilter', false);
     this.networkHideDataURLSetting = Common.Settings.Settings.instance().createSetting('networkHideDataURL', false);
-    this.networkShowIssuesOnlySetting =
-        Common.Settings.Settings.instance().createSetting('networkShowIssuesOnly', false);
+    this.networkHideChromeExtensions =
+        Common.Settings.Settings.instance().createSetting('networkHideChromeExtensions', false);
+    this.networkShowBlockedCookiesOnlySetting =
+        Common.Settings.Settings.instance().createSetting('networkShowBlockedCookiesOnlySetting', false);
     this.networkOnlyBlockedRequestsSetting =
         Common.Settings.Settings.instance().createSetting('networkOnlyBlockedRequests', false);
     this.networkOnlyThirdPartySetting =
@@ -464,7 +477,6 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     this.timeFilter = null;
     this.hoveredNodeInternal = null;
     this.recordingHint = null;
-    this.refreshRequestId = null;
     this.highlightedNode = null;
 
     this.linkifierInternal = new Components.Linkifier.Linkifier();
@@ -497,6 +509,13 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     UI.Tooltip.Tooltip.install(this.dataURLFilterUI.element(), i18nString(UIStrings.hidesDataAndBlobUrls));
     filterBar.addFilter(this.dataURLFilterUI);
 
+    this.hideChromeExtensionsUI = new UI.FilterBar.CheckboxFilterUI(
+        'chrome-extension', i18nString(UIStrings.chromeExtensions), true, this.networkHideChromeExtensions);
+    this.hideChromeExtensionsUI.addEventListener(
+        UI.FilterBar.FilterUIEvents.FilterChanged, this.filterChanged.bind(this), this);
+    UI.Tooltip.Tooltip.install(this.hideChromeExtensionsUI.element(), i18nString(UIStrings.hideChromeExtension));
+    filterBar.addFilter(this.hideChromeExtensionsUI);
+
     const filterItems =
         Object.values(Common.ResourceType.resourceCategories)
             .map(
@@ -504,18 +523,19 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
                     ({name: category.title(), label: (): string => category.shortTitle(), title: category.title()}));
     this.resourceCategoryFilterUI =
         new UI.FilterBar.NamedBitSetFilterUI(filterItems, this.networkResourceTypeFiltersSetting);
-    UI.ARIAUtils.setAccessibleName(
-        this.resourceCategoryFilterUI.element(), i18nString(UIStrings.resourceTypesToInclude));
+    UI.ARIAUtils.setLabel(this.resourceCategoryFilterUI.element(), i18nString(UIStrings.resourceTypesToInclude));
     this.resourceCategoryFilterUI.addEventListener(
         UI.FilterBar.FilterUIEvents.FilterChanged, this.filterChanged.bind(this), this);
     filterBar.addFilter(this.resourceCategoryFilterUI);
 
-    this.onlyIssuesFilterUI = new UI.FilterBar.CheckboxFilterUI(
-        'only-show-issues', i18nString(UIStrings.hasBlockedCookies), true, this.networkShowIssuesOnlySetting);
-    this.onlyIssuesFilterUI.addEventListener(
+    this.onlyBlockedResponseCookiesFilterUI = new UI.FilterBar.CheckboxFilterUI(
+        'only-show-blocked-cookies', i18nString(UIStrings.hasBlockedCookies), true,
+        this.networkShowBlockedCookiesOnlySetting);
+    this.onlyBlockedResponseCookiesFilterUI.addEventListener(
         UI.FilterBar.FilterUIEvents.FilterChanged, this.filterChanged.bind(this), this);
-    UI.Tooltip.Tooltip.install(this.onlyIssuesFilterUI.element(), i18nString(UIStrings.onlyShowRequestsWithBlocked));
-    filterBar.addFilter(this.onlyIssuesFilterUI);
+    UI.Tooltip.Tooltip.install(
+        this.onlyBlockedResponseCookiesFilterUI.element(), i18nString(UIStrings.onlyShowRequestsWithBlockedCookies));
+    filterBar.addFilter(this.onlyBlockedResponseCookiesFilterUI);
 
     this.onlyBlockedRequestsUI = new UI.FilterBar.CheckboxFilterUI(
         'only-show-blocked-requests', i18nString(UIStrings.blockedRequests), true,
@@ -543,8 +563,8 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     filterBar.filterButton().addEventListener(
         UI.Toolbar.ToolbarButton.Events.Click, this.dataGrid.scheduleUpdate.bind(this.dataGrid, true /* isFromUser */));
 
-    this.summaryToolbar = new UI.Toolbar.Toolbar('network-summary-bar', this.element);
-    this.summaryToolbar.element.setAttribute('role', 'status');
+    this.summaryToolbarInternal = new UI.Toolbar.Toolbar('network-summary-bar', this.element);
+    this.summaryToolbarInternal.element.setAttribute('role', 'status');
 
     new UI.DropTarget.DropTarget(
         this.element, [UI.DropTarget.Type.File], i18nString(UIStrings.dropHarFilesHere), this.handleDrop.bind(this));
@@ -553,11 +573,13 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
         .moduleSetting('networkColorCodeResourceTypes')
         .addChangeListener(this.invalidateAllItems.bind(this, false), this);
 
-    SDK.TargetManager.TargetManager.instance().observeModels(SDK.NetworkManager.NetworkManager, this);
+    SDK.TargetManager.TargetManager.instance().observeModels(SDK.NetworkManager.NetworkManager, this, {scoped: true});
     Logs.NetworkLog.NetworkLog.instance().addEventListener(
         Logs.NetworkLog.Events.RequestAdded, this.onRequestUpdated, this);
     Logs.NetworkLog.NetworkLog.instance().addEventListener(
         Logs.NetworkLog.Events.RequestUpdated, this.onRequestUpdated, this);
+    Logs.NetworkLog.NetworkLog.instance().addEventListener(
+        Logs.NetworkLog.Events.RequestRemoved, this.onRequestRemoved, this);
     Logs.NetworkLog.NetworkLog.instance().addEventListener(Logs.NetworkLog.Events.Reset, this.reset, this);
 
     this.updateGroupByFrame();
@@ -719,6 +741,30 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     return (String(request.statusCode)) === value;
   }
 
+  private static hasOverridesFilter(value: string, request: SDK.NetworkRequest.NetworkRequest): boolean {
+    if (!value) {
+      return false;
+    }
+
+    if (value === overrideFilter.no) {
+      return request.overrideTypes.length === 0;
+    }
+
+    if (value === overrideFilter.yes) {
+      return request.overrideTypes.length > 0;
+    }
+
+    if (value === overrideFilter.content) {
+      return request.overrideTypes.includes('content');
+    }
+
+    if (value === overrideFilter.headers) {
+      return request.overrideTypes.includes('headers');
+    }
+
+    return request.overrideTypes.join(',').includes(value);
+  }
+
   static getHTTPRequestsFilter(request: SDK.NetworkRequest.NetworkRequest): boolean {
     return request.parsedURL.isValid && (request.scheme in HTTPSchemas);
   }
@@ -829,27 +875,43 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     return this.columnsInternal;
   }
 
+  summaryToolbar(): UI.Toolbar.Toolbar {
+    return this.summaryToolbarInternal;
+  }
+
   modelAdded(networkManager: SDK.NetworkManager.NetworkManager): void {
     // TODO(allada) Remove dependency on networkManager and instead use NetworkLog and PageLoad for needed data.
-    if (networkManager.target().parentTarget()?.type() === SDK.Target.Type.Frame) {
+    const target = networkManager.target();
+    if (target.outermostTarget() !== target) {
       return;
     }
-    const resourceTreeModel = networkManager.target().model(SDK.ResourceTreeModel.ResourceTreeModel);
+    const resourceTreeModel = target.model(SDK.ResourceTreeModel.ResourceTreeModel);
     if (resourceTreeModel) {
       resourceTreeModel.addEventListener(SDK.ResourceTreeModel.Events.Load, this.loadEventFired, this);
       resourceTreeModel.addEventListener(
           SDK.ResourceTreeModel.Events.DOMContentLoaded, this.domContentLoadedEventFired, this);
     }
+    for (const request of Logs.NetworkLog.NetworkLog.instance().requests()) {
+      if (this.isInScope(request)) {
+        this.refreshRequest(request);
+      }
+    }
   }
 
   modelRemoved(networkManager: SDK.NetworkManager.NetworkManager): void {
-    if (networkManager.target().parentTarget()?.type() !== SDK.Target.Type.Frame) {
-      const resourceTreeModel = networkManager.target().model(SDK.ResourceTreeModel.ResourceTreeModel);
-      if (resourceTreeModel) {
-        resourceTreeModel.removeEventListener(SDK.ResourceTreeModel.Events.Load, this.loadEventFired, this);
-        resourceTreeModel.removeEventListener(
-            SDK.ResourceTreeModel.Events.DOMContentLoaded, this.domContentLoadedEventFired, this);
-      }
+    const target = networkManager.target();
+    if (target.outermostTarget() !== target) {
+      return;
+    }
+    const resourceTreeModel = target.model(SDK.ResourceTreeModel.ResourceTreeModel);
+    if (resourceTreeModel) {
+      resourceTreeModel.removeEventListener(SDK.ResourceTreeModel.Events.Load, this.loadEventFired, this);
+      resourceTreeModel.removeEventListener(
+          SDK.ResourceTreeModel.Events.DOMContentLoaded, this.domContentLoadedEventFired, this);
+    }
+    const preserveLog = Common.Settings.Settings.instance().moduleSetting('network_log.preserve-log').get();
+    if (!preserveLog) {
+      this.reset();
     }
   }
 
@@ -885,6 +947,10 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     this.suggestionBuilder.addItem(NetworkForward.UIFilter.FilterType.LargerThan, '10k');
     this.suggestionBuilder.addItem(NetworkForward.UIFilter.FilterType.LargerThan, '1M');
     this.textFilterUI.setSuggestionProvider(this.suggestionBuilder.completions.bind(this.suggestionBuilder));
+    this.suggestionBuilder.addItem(NetworkForward.UIFilter.FilterType.HasOverrides, overrideFilter.yes);
+    this.suggestionBuilder.addItem(NetworkForward.UIFilter.FilterType.HasOverrides, overrideFilter.no);
+    this.suggestionBuilder.addItem(NetworkForward.UIFilter.FilterType.HasOverrides, overrideFilter.content);
+    this.suggestionBuilder.addItem(NetworkForward.UIFilter.FilterType.HasOverrides, overrideFilter.headers);
   }
 
   private filterChanged(): void {
@@ -945,10 +1011,10 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
 
   private setHidden(value: boolean): void {
     this.columnsInternal.setHidden(value);
-    UI.ARIAUtils.setHidden(this.summaryToolbar.element, value);
+    UI.ARIAUtils.setHidden(this.summaryToolbarInternal.element, value);
   }
 
-  elementsToRestoreScrollPositionsFor(): Element[] {
+  override elementsToRestoreScrollPositionsFor(): Element[] {
     if (!this.dataGrid)  // Not initialized yet.
     {
       return [];
@@ -1064,7 +1130,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
       // inspected url.
       if (networkManager && request.url() === networkManager.target().inspectedURL() &&
           request.resourceType() === Common.ResourceType.resourceTypes.Document &&
-          !networkManager.target().parentTarget()) {
+          networkManager.target().parentTarget()?.type() !== SDK.Target.Type.Frame) {
         baseTime = request.startTime;
       }
       if (request.endTime > maxTime) {
@@ -1077,24 +1143,24 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
       return;
     }
 
-    this.summaryToolbar.removeToolbarItems();
+    this.summaryToolbarInternal.removeToolbarItems();
     const appendChunk = (chunk: string, title?: string): HTMLDivElement => {
       const toolbarText = new UI.Toolbar.ToolbarText(chunk);
       toolbarText.setTitle(title ? title : chunk);
-      this.summaryToolbar.appendToolbarItem(toolbarText);
+      this.summaryToolbarInternal.appendToolbarItem(toolbarText);
       return toolbarText.element as HTMLDivElement;
     };
 
     if (selectedNodeNumber !== nodeCount) {
       appendChunk(i18nString(UIStrings.sSRequests, {PH1: selectedNodeNumber, PH2: nodeCount}));
-      this.summaryToolbar.appendSeparator();
+      this.summaryToolbarInternal.appendSeparator();
       appendChunk(
           i18nString(UIStrings.sSTransferred, {
             PH1: Platform.NumberUtilities.bytesToString(selectedTransferSize),
             PH2: Platform.NumberUtilities.bytesToString(transferSize),
           }),
           i18nString(UIStrings.sBSBTransferredOverNetwork, {PH1: selectedTransferSize, PH2: transferSize}));
-      this.summaryToolbar.appendSeparator();
+      this.summaryToolbarInternal.appendSeparator();
       appendChunk(
           i18nString(UIStrings.sSResources, {
             PH1: Platform.NumberUtilities.bytesToString(selectedResourceSize),
@@ -1103,31 +1169,31 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
           i18nString(UIStrings.sBSBResourcesLoadedByThePage, {PH1: selectedResourceSize, PH2: resourceSize}));
     } else {
       appendChunk(i18nString(UIStrings.sRequests, {PH1: nodeCount}));
-      this.summaryToolbar.appendSeparator();
+      this.summaryToolbarInternal.appendSeparator();
       appendChunk(
           i18nString(UIStrings.sTransferred, {PH1: Platform.NumberUtilities.bytesToString(transferSize)}),
           i18nString(UIStrings.sBTransferredOverNetwork, {PH1: transferSize}));
-      this.summaryToolbar.appendSeparator();
+      this.summaryToolbarInternal.appendSeparator();
       appendChunk(
           i18nString(UIStrings.sResources, {PH1: Platform.NumberUtilities.bytesToString(resourceSize)}),
           i18nString(UIStrings.sBResourcesLoadedByThePage, {PH1: resourceSize}));
     }
 
     if (baseTime !== -1 && maxTime !== -1) {
-      this.summaryToolbar.appendSeparator();
+      this.summaryToolbarInternal.appendSeparator();
       appendChunk(i18nString(UIStrings.finishS, {PH1: i18n.TimeUtilities.secondsToString(maxTime - baseTime)}));
       if (this.mainRequestDOMContentLoadedTime !== -1 && this.mainRequestDOMContentLoadedTime > baseTime) {
-        this.summaryToolbar.appendSeparator();
+        this.summaryToolbarInternal.appendSeparator();
         const domContentLoadedText = i18nString(
             UIStrings.domcontentloadedS,
             {PH1: i18n.TimeUtilities.secondsToString(this.mainRequestDOMContentLoadedTime - baseTime)});
-        appendChunk(domContentLoadedText).style.color = NetworkLogView.getDCLEventColor();
+        appendChunk(domContentLoadedText).style.color = `var(${NetworkLogView.getDCLEventColor()})`;
       }
       if (this.mainRequestLoadTime !== -1) {
-        this.summaryToolbar.appendSeparator();
+        this.summaryToolbarInternal.appendSeparator();
         const loadText =
             i18nString(UIStrings.loadS, {PH1: i18n.TimeUtilities.secondsToString(this.mainRequestLoadTime - baseTime)});
-        appendChunk(loadText).style.color = NetworkLogView.getLoadEventColor();
+        appendChunk(loadText).style.color = `var(${NetworkLogView.getLoadEventColor()})`;
       }
     }
   }
@@ -1139,8 +1205,8 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
 
     this.needsRefresh = true;
 
-    if (this.isShowing() && !this.refreshRequestId) {
-      this.refreshRequestId = this.element.window().requestAnimationFrame(this.refresh.bind(this));
+    if (this.isShowing()) {
+      void coordinator.write('NetworkLogView.render', this.refresh.bind(this));
     }
   }
 
@@ -1163,7 +1229,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
   }
 
   private invalidateAllItems(deferUpdate?: boolean): void {
-    this.staleRequests = new Set(Logs.NetworkLog.NetworkLog.instance().requests());
+    this.staleRequests = new Set(Logs.NetworkLog.NetworkLog.instance().requests().filter(this.isInScope));
     if (deferUpdate) {
       this.scheduleRefresh();
     } else {
@@ -1224,17 +1290,17 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     }
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     this.refreshIfNeeded();
     this.registerCSSFiles([networkLogViewStyles]);
     this.columnsInternal.wasShown();
   }
 
-  willHide(): void {
+  override willHide(): void {
     this.columnsInternal.willHide();
   }
 
-  onResize(): void {
+  override onResize(): void {
     this.rowHeightInternal = this.computeRowHeight();
   }
 
@@ -1275,13 +1341,24 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     this.columnsInternal.scheduleRefresh();
   }
 
+  private removeNodeAndMaybeAncestors(node: NetworkRequestNode): void {
+    let parent: NetworkNode|
+        (DataGrid.DataGrid.DataGridNode<DataGrid.ViewportDataGrid.ViewportDataGridNode<
+             DataGrid.SortableDataGrid.SortableDataGridNode<NetworkNode>>>|
+         null) = node.parent;
+    if (!parent) {
+      return;
+    }
+    parent.removeChild(node);
+    while (parent && !parent.hasChildren() && parent.dataGrid && parent.dataGrid.rootNode() !== parent) {
+      const grandparent = (parent.parent as NetworkNode);
+      grandparent.removeChild(parent);
+      parent = grandparent;
+    }
+  }
+
   private refresh(): void {
     this.needsRefresh = false;
-
-    if (this.refreshRequestId) {
-      this.element.window().cancelAnimationFrame(this.refreshRequestId);
-      this.refreshRequestId = null;
-    }
 
     this.removeAllNodeHighlights();
 
@@ -1331,19 +1408,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
       }
       const removeFromParent = node.parent && (isFilteredOut || node.parent !== newParent);
       if (removeFromParent) {
-        let parent: NetworkNode|
-            (DataGrid.DataGrid.DataGridNode<DataGrid.ViewportDataGrid.ViewportDataGridNode<
-                 DataGrid.SortableDataGrid.SortableDataGridNode<NetworkNode>>>|
-             null) = node.parent;
-        if (!parent) {
-          continue;
-        }
-        parent.removeChild(node);
-        while (parent && !parent.hasChildren() && parent.dataGrid && parent.dataGrid.rootNode() !== parent) {
-          const grandparent = (parent.parent as NetworkNode);
-          grandparent.removeChild(parent);
-          parent = grandparent;
-        }
+        this.removeNodeAndMaybeAncestors(node);
       }
 
       if (!newParent || isFilteredOut) {
@@ -1420,8 +1485,9 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
   setTextFilterValue(filterString: string): void {
     this.textFilterUI.setValue(filterString);
     this.dataURLFilterUI.setChecked(false);
-    this.onlyIssuesFilterUI.setChecked(false);
+    this.onlyBlockedResponseCookiesFilterUI.setChecked(false);
     this.onlyBlockedRequestsUI.setChecked(false);
+    this.hideChromeExtensionsUI.setChecked(false);
     this.resourceCategoryFilterUI.reset();
   }
 
@@ -1436,9 +1502,25 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     return node;
   }
 
+  private isInScope(request: SDK.NetworkRequest.NetworkRequest): boolean {
+    const networkManager = SDK.NetworkManager.NetworkManager.forRequest(request);
+    return !networkManager || SDK.TargetManager.TargetManager.instance().isInScope(networkManager);
+  }
+
   private onRequestUpdated(event: Common.EventTarget.EventTargetEvent<SDK.NetworkRequest.NetworkRequest>): void {
     const request = event.data;
-    this.refreshRequest(request);
+    if (this.isInScope(request)) {
+      this.refreshRequest(request);
+    }
+  }
+
+  private onRequestRemoved(event: Common.EventTarget.EventTargetEvent<SDK.NetworkRequest.NetworkRequest>): void {
+    const request = event.data;
+    this.staleRequests.delete(request);
+    const node = networkRequestToNode.get(request);
+    if (node) {
+      this.removeNodeAndMaybeAncestors(node);
+    }
   }
 
   private refreshRequest(request: SDK.NetworkRequest.NetworkRequest): void {
@@ -1595,7 +1677,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
 
     contextMenu.saveSection().appendItem(i18nString(UIStrings.saveAllAsHarWithContent), this.exportAll.bind(this));
     if (Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.HEADER_OVERRIDES)) {
-      contextMenu.saveSection().appendItem(
+      contextMenu.overrideSection().appendItem(
           i18nString(UIStrings.overrideHeaders), this.#handleCreateResponseHeaderOverrideClick.bind(this, request));
     }
 
@@ -1694,7 +1776,7 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
   }
 
   async exportAll(): Promise<void> {
-    const mainTarget = SDK.TargetManager.TargetManager.instance().mainFrameTarget();
+    const mainTarget = SDK.TargetManager.TargetManager.instance().scopeTarget();
     if (!mainTarget) {
       return;
     }
@@ -1759,14 +1841,16 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
     if (this.dataURLFilterUI.checked() && (request.parsedURL.isDataURL() || request.parsedURL.isBlobURL())) {
       return false;
     }
-    if (this.onlyIssuesFilterUI.checked() &&
-        !IssuesManager.RelatedIssue.hasIssueOfCategory(request, IssuesManager.Issue.IssueCategory.Cookie)) {
+    if (this.onlyBlockedResponseCookiesFilterUI.checked() && !request.blockedResponseCookies().length) {
       return false;
     }
     if (this.onlyBlockedRequestsUI.checked() && !request.wasBlocked() && !request.corsErrorStatus()) {
       return false;
     }
     if (this.onlyThirdPartyFilterUI.checked() && request.isSameSite()) {
+      return false;
+    }
+    if (this.hideChromeExtensionsUI.checked() && request.scheme === 'chrome-extension') {
       return false;
     }
     for (let i = 0; i < this.filters.length; ++i) {
@@ -1885,6 +1969,9 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
 
       case NetworkForward.UIFilter.FilterType.StatusCode:
         return NetworkLogView.statusCodeFilter.bind(null, value);
+
+      case NetworkForward.UIFilter.FilterType.HasOverrides:
+        return NetworkLogView.hasOverridesFilter.bind(null, value);
 
       case NetworkForward.UIFilter.FilterType.ResourceType:
         return NetworkLogView.resourceTypeFilter.bind(null, value);
@@ -2317,11 +2404,11 @@ export class NetworkLogView extends Common.ObjectWrapper.eventMixin<EventTypes, 
   }
 
   static getDCLEventColor(): string {
-    return ThemeSupport.ThemeSupport.instance().getComputedValue('--color-syntax-3');
+    return '--color-syntax-3';
   }
 
   static getLoadEventColor(): string {
-    return ThemeSupport.ThemeSupport.instance().getComputedValue('--color-syntax-1');
+    return '--color-syntax-1';
   }
 }
 
@@ -2357,5 +2444,12 @@ export interface GroupLookupInterface {
   groupNodeForRequest(request: SDK.NetworkRequest.NetworkRequest): NetworkGroupNode|null;
   reset(): void;
 }
+
+export const overrideFilter = {
+  yes: 'yes',
+  no: 'no',
+  content: 'content',
+  headers: 'headers',
+};
 
 export type Filter = (request: SDK.NetworkRequest.NetworkRequest) => boolean;

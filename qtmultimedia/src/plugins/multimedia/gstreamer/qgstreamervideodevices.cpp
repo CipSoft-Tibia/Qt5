@@ -2,47 +2,35 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgstreamervideodevices_p.h"
-#include "qmediadevices.h"
-#include "private/qcameradevice_p.h"
+#include <QtMultimedia/qmediadevices.h>
+#include <QtMultimedia/private/qcameradevice_p.h>
 
-#include "qgstutils_p.h"
-#include "qglist_helper_p.h"
+#include <common/qgst_p.h>
+#include <common/qgstutils_p.h>
+#include <common/qglist_helper_p.h>
+
+#if QT_CONFIG(linux_v4l)
+#  include <linux/videodev2.h>
+#  include <errno.h>
+#endif
 
 QT_BEGIN_NAMESPACE
-
-static gboolean deviceMonitorCallback(GstBus *, GstMessage *message, gpointer m)
-{
-    auto *manager = static_cast<QGstreamerVideoDevices *>(m);
-    QGstDeviceHandle device;
-
-    switch (GST_MESSAGE_TYPE(message)) {
-    case GST_MESSAGE_DEVICE_ADDED:
-        gst_message_parse_device_added(message, &device);
-        manager->addDevice(std::move(device));
-        break;
-    case GST_MESSAGE_DEVICE_REMOVED:
-        gst_message_parse_device_removed(message, &device);
-        manager->removeDevice(std::move(device));
-        break;
-    default:
-        break;
-    }
-
-    return G_SOURCE_CONTINUE;
-}
 
 QGstreamerVideoDevices::QGstreamerVideoDevices(QPlatformMediaIntegration *integration)
     : QPlatformVideoDevices(integration),
       m_deviceMonitor{
           gst_device_monitor_new(),
+      },
+      m_bus{
+          QGstBusHandle{
+                  gst_device_monitor_get_bus(m_deviceMonitor.get()),
+                  QGstBusHandle::HasRef,
+          },
       }
 {
     gst_device_monitor_add_filter(m_deviceMonitor.get(), "Video/Source", nullptr);
 
-    QGstBusHandle bus{
-        gst_device_monitor_get_bus(m_deviceMonitor.get()),
-    };
-    gst_bus_add_watch(bus.get(), deviceMonitorCallback, this);
+    m_bus.installMessageFilter(this);
     gst_device_monitor_start(m_deviceMonitor.get());
 
     GList *devices = gst_device_monitor_get_devices(m_deviceMonitor.get());
@@ -75,11 +63,13 @@ QList<QCameraDevice> QGstreamerVideoDevices::videoDevices() const
         info->description = desc.toQString();
         info->id = device.id;
 
-        if (QGstStructure properties = gst_device_get_properties(device.gstDevice.get());
-            !properties.isNull()) {
-            auto def = properties["is-default"].toBool();
+        QUniqueGstStructureHandle properties{
+            gst_device_get_properties(device.gstDevice.get()),
+        };
+        if (properties) {
+            QGstStructureView view{ properties };
+            auto def = view["is-default"].toBool();
             info->isDefault = def && *def;
-            properties.free();
         }
 
         if (info->isDefault)
@@ -120,6 +110,32 @@ void QGstreamerVideoDevices::addDevice(QGstDeviceHandle device)
 {
     Q_ASSERT(gst_device_has_classes(device.get(), "Video/Source"));
 
+#if QT_CONFIG(linux_v4l)
+    QUniqueGstStructureHandle structureHandle{
+        gst_device_get_properties(device.get()),
+    };
+
+    const auto *p = QGstStructureView(structureHandle.get())["device.path"].toString();
+    if (p) {
+        QFileDescriptorHandle fd{
+            qt_safe_open(p, O_RDONLY),
+        };
+        int index;
+        if (::ioctl(fd.get(), VIDIOC_G_INPUT, &index) < 0) {
+            switch (errno) {
+            case ENOTTY: // no video inputs
+            case EINVAL: // ioctl is not supported. E.g. the Broadcom Image Signal Processor
+                         // available on Raspberry Pi
+                return;
+
+            default:
+                qWarning() << "ioctl failed: VIDIOC_G_INPUT" << qt_error_string(errno) << p;
+                return;
+            }
+        }
+    }
+#endif
+
     auto it = std::find_if(m_videoSources.begin(), m_videoSources.end(),
                            [&](const QGstRecordDevice &a) { return a.gstDevice == device; });
 
@@ -143,6 +159,26 @@ void QGstreamerVideoDevices::removeDevice(QGstDeviceHandle device)
         m_videoSources.erase(it);
         emit videoInputsChanged();
     }
+}
+
+bool QGstreamerVideoDevices::processBusMessage(const QGstreamerMessage &message)
+{
+    QGstDeviceHandle device;
+
+    switch (message.type()) {
+    case GST_MESSAGE_DEVICE_ADDED:
+        gst_message_parse_device_added(message.message(), &device);
+        addDevice(std::move(device));
+        break;
+    case GST_MESSAGE_DEVICE_REMOVED:
+        gst_message_parse_device_removed(message.message(), &device);
+        removeDevice(std::move(device));
+        break;
+    default:
+        break;
+    }
+
+    return false;
 }
 
 GstDevice *QGstreamerVideoDevices::videoDevice(const QByteArray &id) const

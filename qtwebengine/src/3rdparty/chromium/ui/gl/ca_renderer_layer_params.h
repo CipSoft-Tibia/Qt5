@@ -42,10 +42,10 @@ struct GL_EXPORT CARendererLayerParams {
                         SkColor4f background_color,
                         unsigned edge_aa_mask,
                         float opacity,
-                        unsigned filter,
-                        gfx::HDRMode hdr_mode,
-                        absl::optional<gfx::HDRMetadata> hdr_metadata,
-                        gfx::ProtectedVideoType protected_video_type);
+                        bool nearest_neighbor_filter,
+                        const gfx::HDRMetadata& hdr_metadata,
+                        gfx::ProtectedVideoType protected_video_type,
+                        bool is_render_pass_draw_quad);
   CARendererLayerParams(const CARendererLayerParams& other);
   ~CARendererLayerParams();
 
@@ -61,10 +61,10 @@ struct GL_EXPORT CARendererLayerParams {
   SkColor4f background_color;
   unsigned edge_aa_mask;
   float opacity;
-  unsigned filter;
-  const gfx::HDRMode hdr_mode;
-  absl::optional<gfx::HDRMetadata> hdr_metadata;
+  bool nearest_neighbor_filter;
+  gfx::HDRMetadata hdr_metadata;
   gfx::ProtectedVideoType protected_video_type;
+  bool is_render_pass_draw_quad;
 };
 
 }  // namespace ui

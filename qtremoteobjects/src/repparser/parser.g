@@ -7,9 +7,9 @@
 
 %token_prefix Token_
 %token semicolon "[semicolon];"
-%token class "[class]class[ \\t]+(?<name>[A-Za-z_][A-Za-z0-9_]+)[ \\t]*"
-%token pod "[pod]POD[ \\t]*(?<name>[A-Za-z_][A-Za-z0-9_]+)[ \\t]*\\((?<types>[^\\)]*)\\);?[ \\t]*"
-%token pod2 "[pod2]POD[ \\t]*(?<name>[A-Za-z_][A-Za-z0-9_]+)[ \\t]*"
+%token class "[class]class[ \\t]+(?:(?<attribute>[A-Za-z_][A-Za-z0-9_]*)[ \\t]+)?(?<name>[A-Za-z_][A-Za-z0-9_]+)[ \\t]*"
+%token pod "[pod]POD[ \\t]*(?:(?<attribute>[A-Za-z_][A-Za-z0-9_]*)[ \\t]+)?(?<name>[A-Za-z_][A-Za-z0-9_]+)[ \\t]*\\((?<types>[^\\)]*)\\);?[ \\t]*"
+%token pod2 "[pod2]POD[ \\t]*(?:(?<attribute>[A-Za-z_][A-Za-z0-9_]*)[ \\t]+)?(?<name>[A-Za-z_][A-Za-z0-9_]+)[ \\t]*"
 %token flag "[flag][ \\t]*FLAG[ \t]*\\([ \t]*(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]+(?<enum>[A-Za-z_][A-Za-z0-9_]*)[ \t]*\\)[ \t]*"
 %token enum "[enum][ \\t]*ENUM[ \t]+(?:(?<class>class[ \t]+))?(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]*(?::[ \t]*(?<type>[a-zA-Z0-9 _:]*[a-zA-Z0-9_])[ \t]*)?"
 %token prop "[prop][ \\t]*PROP[ \\t]*\\((?<args>[^\\)]+)\\);?[ \\t]*"
@@ -63,6 +63,7 @@ struct SignedType
     virtual QString typeName() const;
     virtual void signature_impl(const AST &ast, QCryptographicHash &checksum) = 0;
     QString name;
+    QString compilerAttribute;
 };
 
 /// A property of a Class declaration
@@ -251,6 +252,8 @@ struct AST
     QList<ASTFlag> flags;
     QList<QString> enumUses;
     QStringList preprocessorDirectives;
+    QStringList headerLines;
+    QStringList footerLines;
     QHash<QString, QByteArray> typeSignatures;
     QByteArray typeData(const QString &type, const QString &className) const;
     QByteArray functionsData(const QList<ASTFunction> &functions, const QString &className) const;
@@ -873,7 +876,13 @@ PreprocessorDirective: preprocessor_directive;
 /.
     case $rule_number:
     {
-        m_ast.preprocessorDirectives.append(captured().value(QStringLiteral("preprocessor_directive")));
+        const QString line = captured().value(QStringLiteral("preprocessor_directive"));
+        if (line.startsWith(QStringLiteral("#HEADER")))
+            m_ast.headerLines.append(line.sliced(8));
+        else if (line.startsWith(QStringLiteral("#FOOTER")))
+            m_ast.footerLines.append(line.sliced(8));
+        else
+            m_ast.preprocessorDirectives.append(captured().value(QStringLiteral("preprocessor_directive")));
     }
     break;
 ./
@@ -884,6 +893,7 @@ Pod: pod;
     {
         POD pod;
         pod.name = captured().value(QStringLiteral("name")).trimmed();
+        pod.compilerAttribute = captured().value(QStringLiteral("attribute")).trimmed();
 
         const QString argString = captured().value(QLatin1String("types")).trimmed();
         if (argString.isEmpty()) {
@@ -1301,10 +1311,12 @@ ClassStart: class;
 /.
     case $rule_number:
     {
+        const QString attribute = captured().value(QLatin1String("attribute"));
         const QString name = captured().value(QLatin1String("name"));
 
         // new Class declaration
         m_astClass = ASTClass(name);
+        m_astClass.compilerAttribute = attribute;
     }
     break;
 ./
@@ -1320,6 +1332,7 @@ PodStart: pod2 Newlines;
         // new POD declaration
         m_astPod = POD();
         m_astPod.name = captured().value(QLatin1String("name")).trimmed();
+        m_astPod.compilerAttribute = captured().value(QLatin1String("attribute"));
         m_argString.clear();
     }
     break;

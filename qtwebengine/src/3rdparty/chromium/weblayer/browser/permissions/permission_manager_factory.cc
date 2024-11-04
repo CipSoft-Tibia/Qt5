@@ -66,12 +66,12 @@ permissions::PermissionManager::PermissionContextMap CreatePermissionContexts(
       std::make_unique<WebLayerCameraPanTiltZoomPermissionContextDelegate>();
   delegates.geolocation_permission_context_delegate =
       std::make_unique<GeolocationPermissionContextDelegate>();
-#if BUILDFLAG(IS_MAC)
-  // TODO(crbug.com/1200933): macOS uses GeolocationPermissionContextMac which
-  // requires a GeolocationManager for construction. In Chrome this object is
-  // owned by the BrowserProcess. An equivalent object will need to be created
-  // in WebLayer and passed into the PermissionContextDelegates here before it
-  // supports macOS.
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS)
+  // TODO(crbug.com/1200933): macOS and ChromeOS uses
+  // GeolocationPermissionContextSystem which requires a GeolocationManager for
+  // construction. In Chrome this object is owned by the BrowserProcess. An
+  // equivalent object will need to be created in WebLayer and passed into the
+  // PermissionContextDelegates here before it supports macOS.
   NOTREACHED();
 #endif  // BUILDFLAG(IS_MAC)
   delegates.media_stream_device_enumerator = GetMediaStreamDeviceEnumerator();
@@ -80,8 +80,9 @@ permissions::PermissionManager::PermissionContextMap CreatePermissionContexts(
 
   // Create default permission contexts initially.
   permissions::PermissionManager::PermissionContextMap permission_contexts =
-      embedder_support::CreateDefaultPermissionContexts(browser_context,
-                                                        std::move(delegates));
+      embedder_support::CreateDefaultPermissionContexts(
+          browser_context,
+          /*is_regular_profile=*/false, std::move(delegates));
 
   // Add additional WebLayer specific permission contexts. Please add a comment
   // when adding new contexts here explaining why it can't be shared with other
@@ -158,10 +159,11 @@ PermissionManagerFactory::PermissionManagerFactory()
 
 PermissionManagerFactory::~PermissionManagerFactory() = default;
 
-KeyedService* PermissionManagerFactory::BuildServiceInstanceFor(
+std::unique_ptr<KeyedService>
+PermissionManagerFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
-  return new permissions::PermissionManager(context,
-                                            CreatePermissionContexts(context));
+  return std::make_unique<permissions::PermissionManager>(
+      context, CreatePermissionContexts(context));
 }
 
 content::BrowserContext* PermissionManagerFactory::GetBrowserContextToUse(

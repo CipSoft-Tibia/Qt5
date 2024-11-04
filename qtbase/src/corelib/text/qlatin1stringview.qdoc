@@ -1,7 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
 // Copyright (C) 2019 Mail.ru Group.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*! \class QLatin1StringView
     \inmodule QtCore
@@ -100,6 +100,14 @@
     \note In version prior to Qt 6, this was an alias for \c{int},
     restricting the amount of data that could be held in a QLatin1StringView
     on 64-bit architectures.
+*/
+
+/*!
+    \typedef QLatin1StringView::pointer
+    \typedef QLatin1StringView::const_pointer
+    \since 6.7
+
+    Alias for \c{value_type *}. Provided for compatibility with the STL.
 */
 
 /*!
@@ -758,8 +766,10 @@
     Returns a Latin-1 string view that points to \a n characters of this
     string view, starting at position \a pos.
 
+//! [UB-sliced-index-length]
     \note The behavior is undefined when \a pos < 0, \a n < 0,
     or \c{pos + n > size()}.
+//! [UB-sliced-index-length]
 
     \sa first(), last(), chopped(), chop(), truncate()
 */
@@ -771,7 +781,9 @@
     Returns a Latin-1 string view starting at position \a pos in this
     string view, and extending to its end.
 
+//! [UB-sliced-index-only]
     \note The behavior is undefined when \a pos < 0 or \a pos > size().
+//! [UB-sliced-index-only]
 
     \sa first(), last(), chopped(), chop(), truncate()
 */

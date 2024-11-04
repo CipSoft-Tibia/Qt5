@@ -7,6 +7,9 @@ set -ex
 # Remove update notifications and packagekit running in the background
 sudo yum -y remove PackageKit gnome-software
 
+# CI: All platforms should have up-to-date packages when new provision is made
+sudo yum -y update
+
 installPackages=()
 installPackages+=(git)
 installPackages+=(zlib-devel)
@@ -26,6 +29,7 @@ installPackages+=(ninja-build)
 installPackages+=(pcre2-devel)
 installPackages+=(double-conversion-devel)
 installPackages+=(zstd)
+installPackages+=(libzstd-devel)
 # EGL support
 # mesa-libEGL-devel need to use older version than 22.1.5-2.el9 which cause Xorg to crash
 installPackages+=(mesa-libEGL-devel-21.3.4-2.el9)
@@ -77,7 +81,7 @@ installPackages+=(python3-html5lib)
 installPackages+=(mesa-libgbm-devel-21.3.4-2.el9)
 installPackages+=(libstdc++-static)
 # For Android builds
-installPackages+=(java-11-openjdk-devel-11.0.19.0.7)
+installPackages+=(java-17-openjdk-devel-17.0.9.0.9)
 # For receiving shasum
 installPackages+=(perl-Digest-SHA)
 # INTEGRITY requirements
@@ -133,6 +137,9 @@ installPackages+=(make)
 installPackages+=(open-vm-tools)
 # nfs-utils is needed to make mount work with ci-files01
 installPackages+=(nfs-utils)
+# cifs-utils, for mounting smb drive
+installPackages+=(keyutils)
+installPackages+=(cifs-utils)
 
 
 sudo yum -y install "${installPackages[@]}"
@@ -144,6 +151,10 @@ sudo dnf install 'perl(English)' -y
 # We shouldn't use yum to install virtualenv. The one found from package repo is not
 # working, but we can use installed pip
 sudo pip3 install --upgrade pip
+# Configure pip
+sudo pip config --user set global.index https://ci-files01-hki.ci.qt.io/input/python_module_cache
+sudo pip config --user set global.extra-index-url https://pypi.org/simple/
+
 sudo pip3 install virtualenv wheel
 # Just make sure we have virtualenv to run with python3.8 -m virtualenv
 sudo python -m pip install virtualenv wheel

@@ -7,6 +7,12 @@
 ## tst_qqmlapplicationengine Test:
 #####################################################################
 
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(tst_qqmlapplicationengine LANGUAGES CXX)
+    find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
+endif()
+
 # Collect test data
 file(GLOB_RECURSE test_data_glob
     RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
@@ -57,5 +63,12 @@ qt_internal_extend_target(tst_qqmlapplicationengine CONDITION NOT ANDROID AND NO
     DEFINES
         QT_QMLTEST_DATADIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
 )
+
 add_subdirectory(testapp)
 add_subdirectory(androidassets)
+add_dependencies(tst_qqmlapplicationengine testapp)
+
+add_subdirectory(loadFromModuleTranslationsQmlType)
+add_subdirectory(loadFromModuleTranslationsCppType)
+add_dependencies(tst_qqmlapplicationengine i18nLoadFromModuleQmlType)
+add_dependencies(tst_qqmlapplicationengine i18nLoadFromModuleCppType)

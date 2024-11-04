@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include <string>
+#include <string_view>
 
 #include "base/strings/string_piece.h"
 #include "base/strings/utf_string_conversions.h"
@@ -517,7 +518,7 @@ TYPED_TEST(CommonStringPieceTest, CheckCustom) {
   std::basic_string<TypeParam> s1(TestFixture::as_string("123"));
   s1 += static_cast<TypeParam>('\0');
   s1 += TestFixture::as_string("456");
-  BasicStringPiece<TypeParam> b(s1);
+  [[maybe_unused]] BasicStringPiece<TypeParam> b(s1);
   BasicStringPiece<TypeParam> e;
   std::basic_string<TypeParam> s2;
 
@@ -564,7 +565,7 @@ TEST(StringPieceTest, CheckCustom) {
   std::string s1("123");
   s1 += '\0';
   s1 += "456";
-  StringPiece b(s1);
+  [[maybe_unused]] StringPiece b(s1);
   StringPiece e;
   std::string s2;
 
@@ -683,6 +684,7 @@ TEST(StringPieceTest, ConstexprCtor) {
   }
 }
 
+#if defined(_LIBCPP_ENABLE_ASSERTIONS)
 TEST(StringPieceTest, OutOfBoundsDeath) {
   {
     constexpr StringPiece piece;
@@ -724,6 +726,7 @@ TEST(StringPieceTest, InvalidLengthDeath) {
   int length = -1;
   ASSERT_DEATH_IF_SUPPORTED({ StringPiece piece("hello", length); }, "");
 }
+#endif  // defined(_LIBCPP_ENABLE_ASSERTIONS)
 
 TEST(StringPieceTest, ConstexprData) {
   {
@@ -891,6 +894,21 @@ TEST(StringPieceTest, Find) {
   static_assert(foobar.find_last_not_of('a', 4) == 3, "");
   static_assert(foobar.find_last_not_of("ox", 2, 2) == 0, "");
   static_assert(foobar.find_last_not_of("ox", 2) == 0, "");
+}
+
+// Test that `base::StringPiece` and `std::string_view` are interoperable.
+TEST(StringPieceTest, StringPieceToStringView) {
+  constexpr StringPiece kPiece = "foo";
+  constexpr std::string_view kView = kPiece;
+  static_assert(kPiece.data() == kView.data());
+  static_assert(kPiece.size() == kView.size());
+}
+
+TEST(StringPieceTest, StringViewToStringPiece) {
+  constexpr std::string_view kView = "bar";
+  constexpr StringPiece kPiece = kView;
+  static_assert(kView.data() == kPiece.data());
+  static_assert(kView.size() == kPiece.size());
 }
 
 }  // namespace base

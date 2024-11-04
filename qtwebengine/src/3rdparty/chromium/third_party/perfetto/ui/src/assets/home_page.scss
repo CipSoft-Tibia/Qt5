@@ -12,35 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+@import "widgets/theme";
+
 .home-page {
-  text-align: center;
-  align-items: center;
   display: grid;
+  align-items: stretch;
+  justify-items: center;
   grid-template-columns: 1fr;
-  grid-template-rows: 2em 1fr 60px;
-  grid-template-areas: "." "center" "footer";
+  grid-template-rows: 1fr 60px;
+  grid-template-areas: "center" "footer";
 
   .home-page-center {
     grid-area: center;
 
+
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    align-items: center;
+
     .logo {
-      width: var(--track-shell-width);
+      height: 1em;
+      margin-right: 1rem;
     }
 
     .home-page-title {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
       font-size: 60px;
       margin: 25px;
       text-align: center;
-      font-family: "Raleway", sans-serif;
-      font-weight: 100;
+      font-family: $pf-font;
       color: #333;
     }
 
     .channel-select {
-      font-family: "Roboto", sans-serif;
-      font-size: 1.2rem;
-      font-weight: 200;
-      margin-top: 3em;
+      font-family: $pf-font;
       --chan-width: 100px;
       --chan-num: 2;
 
@@ -65,11 +74,12 @@
       }
 
       fieldset {
-        margin: 30px auto 10px auto;
+        text-align: center;
+        margin: 1rem auto;
         padding: 0;
         position: relative;
         background-color: hsl(218, 8%, 30%);
-        border-radius: 3px;
+        border-radius: $pf-border-radius;
         box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4);
         border: 0;
         width: calc(var(--chan-width) * var(--chan-num));
@@ -88,9 +98,7 @@
         z-index: 2;
         text-transform: uppercase;
         font-size: 16px;
-        font-family: "Raleway";
-        font-weight: 400;
-        letter-spacing: 0.3px;
+        font-family: $pf-font;
       }
 
       .highlight {
@@ -106,7 +114,7 @@
         left: 0;
         z-index: 1;
         border-radius: inherit;
-        @include transition();
+        @include transition(0.2s);
       }
 
       .home-page-reload {
@@ -114,20 +122,52 @@
         opacity: 0;
         color: #da4534;
         font-weight: 400;
-        @include transition();
+        @include transition(0.2s);
         &.show {
           opacity: 1;
         }
       }
     } // .channel-select
+
+    .home-page-hints {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: $pf-font;
+
+      .pf-hotkey {
+        display: inline-flex;
+        vertical-align: middle;
+      }
+
+      ul {
+        margin: 0;
+        padding: 0;
+
+        li {
+          padding-top: 0.5rem;
+        }
+      }
+
+      .tagline {
+        font-style: italic;
+        color: red;
+      }
+
+      img {
+        display: block;
+        object-fit: contain;
+        max-width: 30vw;
+      }
+    }
   } // .home-page-center
 
   .privacy {
     grid-area: footer;
+    align-self: center;
     text-decoration: none;
-    font-family: "Roboto", sans-serif;
-    font-weight: 200;
+    font-family: $pf-font;
     color: #333;
-    font-size: 15px;
   }
 } // .home-page

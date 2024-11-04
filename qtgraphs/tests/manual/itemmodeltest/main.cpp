@@ -8,7 +8,6 @@
 #include <QtGraphs/qitemmodelsurfacedataproxy.h>
 #include <QtGraphs/qvalue3daxis.h>
 #include <QtGraphs/q3dscene.h>
-#include <QtGraphs/q3dcamera.h>
 #include <QtGraphs/qbar3dseries.h>
 #include <QtGraphs/q3dtheme.h>
 
@@ -208,8 +207,8 @@ void GraphDataGenerator::changeSelectedButtonClicked()
 {
     // Change all selected cells to a random value 1-10
     QVariant value = QVariant::fromValue(QRandomGenerator::global()->bounded(10.0) + 1);
-    QList<QTableWidgetItem *> selectedItems = m_tableWidget->selectedItems();
-    foreach (QTableWidgetItem *item, selectedItems) {
+    const auto selectedItems = m_tableWidget->selectedItems();
+    for (const auto &item : selectedItems) {
         QString oldData = item->data(Qt::DisplayRole).toString();
         item->setData(Qt::DisplayRole,
                       oldData.left(5)
@@ -277,12 +276,12 @@ int main(int argc, char **argv)
     surfaceProxy->setZPosRoleReplace(QStringLiteral("\\1"));
     QBar3DSeries *barSeries = new QBar3DSeries(barProxy);
     QSurface3DSeries *surfaceSeries = new QSurface3DSeries(surfaceProxy);
-    barSeries->setMesh(QAbstract3DSeries::MeshPyramid);
+    barSeries->setMesh(QAbstract3DSeries::Mesh::Pyramid);
     barGraph->addSeries(barSeries);
     surfaceGraph->addSeries(surfaceSeries);
 
-    barGraph->scene()->activeCamera()->setCameraPreset(Q3DCamera::CameraPresetBehind);
-    surfaceGraph->scene()->activeCamera()->setCameraPreset(Q3DCamera::CameraPresetFront);
+    barGraph->setCameraPreset(QAbstract3DGraph::CameraPreset::Behind);
+    surfaceGraph->setCameraPreset(QAbstract3DGraph::CameraPreset::Front);
 
     GraphDataGenerator generator(barGraph, surfaceGraph, tableWidget);
     QObject::connect(barSeries, &QBar3DSeries::selectedBarChanged, &generator,

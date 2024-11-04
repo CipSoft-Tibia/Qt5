@@ -106,7 +106,7 @@ export class EventListenersWidget extends UI.ThrottledWidget.ThrottledWidget imp
     this.eventListenersView = new EventListeners.EventListenersView.EventListenersView(this.update.bind(this));
     this.eventListenersView.show(this.element);
 
-    const refreshButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.refresh), 'largeicon-refresh');
+    const refreshButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.refresh), 'refresh');
     refreshButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.update.bind(this));
     this.toolbarItemsInternal.push(refreshButton);
     this.toolbarItemsInternal.push(new UI.Toolbar.ToolbarSettingCheckbox(
@@ -144,7 +144,7 @@ export class EventListenersWidget extends UI.ThrottledWidget.ThrottledWidget imp
     return eventListenersWidgetInstance;
   }
 
-  doUpdate(): Promise<void> {
+  override doUpdate(): Promise<void> {
     if (this.lastRequestedNode) {
       this.lastRequestedNode.domModel().runtimeModel().releaseObjectGroup(objectGroupName);
       delete this.lastRequestedNode;
@@ -209,11 +209,6 @@ export class EventListenersWidget extends UI.ThrottledWidget.ThrottledWidget imp
               silent: true,
               returnByValue: false,
               generatePreview: false,
-              throwOnSideEffect: undefined,
-              timeout: undefined,
-              disableBreaks: undefined,
-              replMode: undefined,
-              allowUnsafeEvalBlockedByCSP: undefined,
             },
             /* userGesture */ false,
             /* awaitPromise */ false)

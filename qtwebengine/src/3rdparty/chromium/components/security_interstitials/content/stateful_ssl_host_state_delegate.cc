@@ -25,6 +25,7 @@
 #include "base/time/time.h"
 #include "base/values.h"
 #include "build/build_config.h"
+#include "components/content_settings/core/browser/content_settings_pref_provider.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/pref_registry/pref_registry_syncable.h"
@@ -197,6 +198,7 @@ StatefulSSLHostStateDelegate::StatefulSSLHostStateDelegate(
           host_content_settings_map,
           clock_.get(),
           base::Seconds(kDeltaDefaultExpirationInSeconds)),
+      https_only_mode_enforcelist_(host_content_settings_map_, clock_.get()),
       recurrent_interstitial_threshold_for_testing(-1),
       recurrent_interstitial_mode_for_testing(NOT_SET),
       recurrent_interstitial_reset_time_for_testing(-1) {}
@@ -266,6 +268,13 @@ void StatefulSSLHostStateDelegate::Clear(
       pattern_filter);
   https_only_mode_allowlist_.Clear(base::Time(), base::Time::Max(),
                                    pattern_filter);
+
+  // This might not be necessary since the engagement score of a site will be
+  // cleared and the site will be removed from the enforcelist. However, there
+  // could be a period between clearing and navigating where the enforcelist
+  // would still be persisted on disk etc, so clear it explicitly.
+  https_only_mode_enforcelist_.Clear(base::Time(), base::Time::Max(),
+                                     pattern_filter);
 }
 
 content::SSLHostStateDelegate::CertJudgment
@@ -365,6 +374,34 @@ bool StatefulSSLHostStateDelegate::IsHttpAllowedForHost(
                                                          is_nondefault_storage);
 }
 
+void StatefulSSLHostStateDelegate::SetHttpsEnforcementForHost(
+    const std::string& host,
+    bool enforced,
+    content::StoragePartition* storage_partition) {
+  bool is_nondefault_storage =
+      !storage_partition ||
+      storage_partition != browser_context_->GetDefaultStoragePartition();
+  if (enforced) {
+    https_only_mode_enforcelist_.EnforceForHost(host, is_nondefault_storage);
+  } else {
+    https_only_mode_enforcelist_.UnenforceForHost(host, is_nondefault_storage);
+  }
+}
+
+bool StatefulSSLHostStateDelegate::IsHttpsEnforcedForHost(
+    const std::string& host,
+    content::StoragePartition* storage_partition) {
+  bool is_nondefault_storage =
+      !storage_partition ||
+      storage_partition != browser_context_->GetDefaultStoragePartition();
+  return https_only_mode_enforcelist_.IsEnforcedForHost(host,
+                                                        is_nondefault_storage);
+}
+
+void StatefulSSLHostStateDelegate::ClearHttpsOnlyModeAllowlist() {
+  https_only_mode_allowlist_.ClearAllowlist(base::Time(), base::Time::Max());
+}
+
 void StatefulSSLHostStateDelegate::RevokeUserAllowExceptions(
     const std::string& host) {
   GURL url = GetSecureGURLForHost(host);
@@ -375,6 +412,7 @@ void StatefulSSLHostStateDelegate::RevokeUserAllowExceptions(
   allowed_certs_for_non_default_storage_partitions_.erase(host);
 
   https_only_mode_allowlist_.RevokeUserAllowExceptions(host);
+  https_only_mode_enforcelist_.RevokeEnforcements(host);
 }
 
 bool StatefulSSLHostStateDelegate::HasAllowException(
@@ -382,6 +420,35 @@ bool StatefulSSLHostStateDelegate::HasAllowException(
     content::StoragePartition* storage_partition) {
   return HasCertAllowException(host, storage_partition) ||
          IsHttpAllowedForHost(host, storage_partition);
+}
+
+bool StatefulSSLHostStateDelegate::HasAllowExceptionForAnyHost(
+    content::StoragePartition* storage_partition) {
+  return HasCertAllowExceptionForAnyHost(storage_partition) ||
+         IsHttpAllowedForAnyHost(storage_partition);
+}
+
+bool StatefulSSLHostStateDelegate::HasCertAllowExceptionForAnyHost(
+    content::StoragePartition* storage_partition) {
+  if (!storage_partition ||
+      storage_partition != browser_context_->GetDefaultStoragePartition()) {
+    return !allowed_certs_for_non_default_storage_partitions_.empty();
+  }
+
+  ContentSettingsForOneType content_settings_list =
+      host_content_settings_map_->GetSettingsForOneType(
+          ContentSettingsType::SSL_CERT_DECISIONS);
+  return !content_settings_list.empty();
+}
+
+bool StatefulSSLHostStateDelegate::IsHttpAllowedForAnyHost(
+    content::StoragePartition* storage_partition) {
+  bool is_nondefault_storage =
+      !storage_partition ||
+      storage_partition != browser_context_->GetDefaultStoragePartition();
+
+  return https_only_mode_allowlist_.IsHttpAllowedForAnyHost(
+      is_nondefault_storage);
 }
 
 // TODO(jww): This will revoke all of the decisions in the browser context.
@@ -461,8 +528,14 @@ void StatefulSSLHostStateDelegate::ResetRecurrentErrorCountForTesting() {
 
 void StatefulSSLHostStateDelegate::SetClockForTesting(
     std::unique_ptr<base::Clock> clock) {
+  // Pointers to the existing Clock object must be reset before swapping the
+  // underlying Clock object, otherwise they are dangling (briefly).
+  https_only_mode_allowlist_.SetClockForTesting(nullptr);    // IN-TEST
+  https_only_mode_enforcelist_.SetClockForTesting(nullptr);  // IN-TEST
+
   clock_ = std::move(clock);
-  https_only_mode_allowlist_.SetClockForTesting(clock_.get());
+  https_only_mode_allowlist_.SetClockForTesting(clock_.get());    // IN-TEST
+  https_only_mode_enforcelist_.SetClockForTesting(clock_.get());  // IN-TEST
 }
 
 void StatefulSSLHostStateDelegate::SetRecurrentInterstitialThresholdForTesting(
@@ -524,7 +597,7 @@ bool StatefulSSLHostStateDelegate::HasCertAllowException(
   if (!value.is_dict())
     return false;
 
-  for (const auto pair : value.DictItems()) {
+  for (const auto pair : value.GetDict()) {
     if (!pair.second.is_int())
       continue;
 

@@ -24,6 +24,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "build/build_config.h"
+#include "components/permissions/features.h"
 #include "content/browser/bad_message.h"
 #include "content/browser/isolated_origin_util.h"
 #include "content/browser/process_lock.h"
@@ -33,6 +34,7 @@
 #include "content/browser/url_info.h"
 #include "content/browser/webui/url_data_manager_backend.h"
 #include "content/common/content_navigation_policy.h"
+#include "content/common/features.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_or_resource_context.h"
 #include "content/public/browser/browser_thread.h"
@@ -335,12 +337,21 @@ ChildProcessSecurityPolicyImpl::OriginAgentClusterOptInEntry::
 // information.
 class ChildProcessSecurityPolicyImpl::SecurityState {
  public:
+  typedef std::map<BrowsingInstanceId, OriginAgentClusterIsolationState>
+      BrowsingInstanceInfoMap;
+
   explicit SecurityState(BrowserContext* browser_context)
       : enabled_bindings_(0),
         can_read_raw_cookies_(false),
+        can_send_midi_(false),
         can_send_midi_sysex_(false),
         browser_context_(browser_context),
-        resource_context_(browser_context->GetResourceContext()) {}
+        resource_context_(browser_context->GetResourceContext()) {
+    if (!base::FeatureList::IsEnabled(
+            permissions::features::kBlockMidiByDefault)) {
+      can_send_midi_ = true;
+    }
+  }
 
   SecurityState(const SecurityState&) = delete;
   SecurityState& operator=(const SecurityState&) = delete;
@@ -445,7 +456,10 @@ class ChildProcessSecurityPolicyImpl::SecurityState {
     can_read_raw_cookies_ = false;
   }
 
+  void GrantPermissionForMidi() { can_send_midi_ = true; }
+
   void GrantPermissionForMidiSysEx() {
+    can_send_midi_ = true;
     can_send_midi_sysex_ = true;
   }
 
@@ -524,14 +538,14 @@ class ChildProcessSecurityPolicyImpl::SecurityState {
   }
 
   void SetProcessLock(const ProcessLock& lock_to_set,
-                      BrowsingInstanceId browsing_instance_id,
+                      const IsolationContext& context,
                       bool is_process_used) {
     CHECK(!lock_to_set.is_invalid());
     CHECK(!process_lock_.is_locked_to_site());
     CHECK_NE(SiteInstanceImpl::GetDefaultSiteURL(), lock_to_set.lock_url());
 
     if (process_lock_.is_invalid()) {
-      DCHECK(browsing_instance_ids_.empty());
+      DCHECK(browsing_instance_info_map_.empty());
       CHECK(lock_to_set.allows_any_site() || lock_to_set.is_locked_to_site());
     } else {
       // Verify that we are not trying to update the lock with different
@@ -558,29 +572,31 @@ class ChildProcessSecurityPolicyImpl::SecurityState {
     }
 
     process_lock_ = lock_to_set;
-    AddBrowsingInstanceId(browsing_instance_id);
+    AddBrowsingInstanceInfo(context);
   }
 
-  void AddBrowsingInstanceId(
-      BrowsingInstanceId new_browsing_instance_id_to_include) {
-    DCHECK(!new_browsing_instance_id_to_include.is_null());
-    // Since std::set is ordered, just insert it.
-    browsing_instance_ids_.insert(new_browsing_instance_id_to_include);
+  void AddBrowsingInstanceInfo(const IsolationContext& context) {
+    DCHECK(!context.browsing_instance_id().is_null());
+    browsing_instance_info_map_.insert(
+        {context.browsing_instance_id(), context.default_isolation_state()});
 
     // Track the maximum number of BrowsingInstances in the process in case
     // we need to remove delayed cleanup and let the set grow unbounded.
-    if (browsing_instance_ids_.size() > max_browsing_instance_count_)
-      max_browsing_instance_count_ = browsing_instance_ids_.size();
+    // Also track the default isolation state for this BrowsingInstance for
+    // future access checks, since the global default can change over time.
+    if (browsing_instance_info_map_.size() > max_browsing_instance_count_) {
+      max_browsing_instance_count_ = browsing_instance_info_map_.size();
+    }
   }
 
   const ProcessLock& process_lock() const { return process_lock_; }
 
-  const std::set<BrowsingInstanceId>& browsing_instance_ids() {
-    return browsing_instance_ids_;
+  const BrowsingInstanceInfoMap& browsing_instance_info() {
+    return browsing_instance_info_map_;
   }
 
   void ClearBrowsingInstanceId(const BrowsingInstanceId& id) {
-    browsing_instance_ids_.erase(id);
+    browsing_instance_info_map_.erase(id);
   }
 
   bool has_web_ui_bindings() const {
@@ -591,7 +607,25 @@ class ChildProcessSecurityPolicyImpl::SecurityState {
     return can_read_raw_cookies_;
   }
 
-  bool can_send_midi_sysex() const {
+  bool CanSendMidi() const {
+    if (base::FeatureList::IsEnabled(
+            permissions::features::kBlockMidiByDefault)) {
+      // Ensure the flags are in a consistent state: we can only send SysEx
+      // messages if we can also send non-SysEx messages
+      CHECK(can_send_midi_ || !can_send_midi_sysex_);
+      return can_send_midi_;
+    } else {
+      return true;
+    }
+  }
+
+  bool CanSendMidiSysEx() const {
+    if (base::FeatureList::IsEnabled(
+            permissions::features::kBlockMidiByDefault)) {
+      // Ensure the flags are in a consistent state: we can only send SysEx
+      // messages if we can also send non-SysEx messages
+      CHECK(can_send_midi_ || !can_send_midi_sysex_);
+    }
     return can_send_midi_sysex_;
   }
 
@@ -655,13 +689,16 @@ class ChildProcessSecurityPolicyImpl::SecurityState {
 
   bool can_read_raw_cookies_;
 
+  bool can_send_midi_;
+
   bool can_send_midi_sysex_;
 
   ProcessLock process_lock_;
 
-  // A sorted set containing the IDs of all BrowsingInstances with documents in
-  // this process. Empty when |process_lock_| is invalid, or if all
-  // BrowsingInstances in the SecurityState have been destroyed.
+  // A map containing the IDs of all BrowsingInstances with documents in this
+  // process, along with their default isolation states. Empty when
+  // |process_lock_| is invalid, or if all BrowsingInstances in the
+  // SecurityState have been destroyed.
   //
   // After a process is locked, it might be reused by navigations from frames
   // in other BrowsingInstances, e.g., when we're over process limit and when
@@ -672,7 +709,7 @@ class ChildProcessSecurityPolicyImpl::SecurityState {
   // the process ID and need to compute the expected origin lock, which
   // requires knowing the set of applicable isolated origins in each respective
   // BrowsingInstance.
-  std::set<BrowsingInstanceId> browsing_instance_ids_;
+  BrowsingInstanceInfoMap browsing_instance_info_map_;
 
   // The maximum number of BrowsingInstances that have been in this
   // SecurityState's RenderProcessHost, for metrics.
@@ -682,7 +719,7 @@ class ChildProcessSecurityPolicyImpl::SecurityState {
   FileSystemMap filesystem_permissions_;
 
   raw_ptr<BrowserContext> browser_context_;
-  raw_ptr<ResourceContext, DanglingUntriaged> resource_context_;
+  raw_ptr<ResourceContext, AcrossTasksDanglingUntriaged> resource_context_;
 };
 
 // IsolatedOriginEntry implementation.
@@ -819,12 +856,14 @@ void ChildProcessSecurityPolicyImpl::AddForTesting(
     int child_id,
     BrowserContext* browser_context) {
   Add(child_id, browser_context);
-  LockProcess(IsolationContext(BrowsingInstanceId(1), browser_context,
-                               /*is_guest=*/false, /*is_fenced=*/false),
-              child_id, /*is_process_used=*/false,
-              ProcessLock::CreateAllowAnySite(
-                  StoragePartitionConfig::CreateDefault(browser_context),
-                  WebExposedIsolationInfo::CreateNonIsolated()));
+  LockProcess(
+      IsolationContext(BrowsingInstanceId(1), browser_context,
+                       /*is_guest=*/false, /*is_fenced=*/false,
+                       OriginAgentClusterIsolationState::CreateNonIsolated()),
+      child_id, /*is_process_used=*/false,
+      ProcessLock::CreateAllowAnySite(
+          StoragePartitionConfig::CreateDefault(browser_context),
+          WebExposedIsolationInfo::CreateNonIsolated()));
 }
 
 void ChildProcessSecurityPolicyImpl::Remove(int child_id) {
@@ -895,6 +934,14 @@ bool ChildProcessSecurityPolicyImpl::IsPseudoScheme(
   base::AutoLock lock(lock_);
 
   return base::Contains(pseudo_schemes_, scheme);
+}
+
+void ChildProcessSecurityPolicyImpl::ClearRegisteredSchemeForTesting(
+    const std::string& scheme) {
+  base::AutoLock lock(lock_);
+  schemes_okay_to_request_in_any_process_.erase(scheme);
+  schemes_okay_to_commit_in_any_process_.erase(scheme);
+  pseudo_schemes_.erase(scheme);
 }
 
 void ChildProcessSecurityPolicyImpl::GrantCommitURL(int child_id,
@@ -1042,6 +1089,21 @@ void ChildProcessSecurityPolicyImpl::GrantCopyIntoFileSystem(
 void ChildProcessSecurityPolicyImpl::GrantDeleteFromFileSystem(
     int child_id, const std::string& filesystem_id) {
   GrantPermissionsForFileSystem(child_id, filesystem_id, DELETE_FILE_GRANT);
+}
+
+void ChildProcessSecurityPolicyImpl::GrantSendMidiMessage(int child_id) {
+  if (base::FeatureList::IsEnabled(
+          permissions::features::kBlockMidiByDefault)) {
+    base::AutoLock lock(lock_);
+
+    auto state = security_state_.find(child_id);
+    if (state == security_state_.end()) {
+      return;
+    }
+
+    state->second->GrantPermissionForMidi();
+  }
+  return;
 }
 
 void ChildProcessSecurityPolicyImpl::GrantSendMidiSysExMessage(int child_id) {
@@ -1317,19 +1379,14 @@ bool ChildProcessSecurityPolicyImpl::CanReadRequestBody(
 }
 
 bool ChildProcessSecurityPolicyImpl::CanReadRequestBody(
-    SiteInstance* site_instance,
+    RenderProcessHost* process,
     const scoped_refptr<network::ResourceRequestBody>& body) {
-  DCHECK(site_instance);
+  CHECK(process);
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
-  int child_id = site_instance->GetProcess()->GetID();
-
-  StoragePartition* storage_partition =
-      site_instance->GetBrowserContext()->GetStoragePartition(site_instance);
-  const storage::FileSystemContext* file_system_context =
-      storage_partition->GetFileSystemContext();
-
-  return CanReadRequestBody(child_id, file_system_context, body);
+  return CanReadRequestBody(
+      process->GetID(), process->GetStoragePartition()->GetFileSystemContext(),
+      body);
 }
 
 bool ChildProcessSecurityPolicyImpl::CanCreateReadWriteFile(
@@ -1519,7 +1576,7 @@ size_t ChildProcessSecurityPolicyImpl::BrowsingInstanceIdCountForTesting(
   base::AutoLock lock(lock_);
   SecurityState* security_state = GetSecurityState(child_id);
   if (security_state)
-    return security_state->browsing_instance_ids().size();
+    return security_state->browsing_instance_info().size();
   return 0;
 }
 
@@ -1663,7 +1720,7 @@ bool ChildProcessSecurityPolicyImpl::CanAccessDataForMaybeOpaqueOrigin(
       // inaccessible from a site-locked process).  When the BrowsingInstances
       // do not agree, the check might be slightly weaker (as the least common
       // denominator), but the differences must never violate the ProcessLock.
-      if (security_state->browsing_instance_ids().empty()) {
+      if (security_state->browsing_instance_info().empty()) {
         // If no BrowsingInstances are found, then the some of the state we need
         // to perform an accurate check is unexpectedly missing, because there
         // should always be a BrowsingInstance for such requests, even from
@@ -1714,8 +1771,10 @@ bool ChildProcessSecurityPolicyImpl::CanAccessDataForMaybeOpaqueOrigin(
         // This will fall through to the call to
         // LogCanAccessDataForOriginCrashKeys below, then return false.
       }
-      for (auto browsing_instance_id :
-           security_state->browsing_instance_ids()) {
+      for (auto browsing_instance_info_entry :
+           security_state->browsing_instance_info()) {
+        auto& browsing_instance_id = browsing_instance_info_entry.first;
+        auto& default_isolation_state = browsing_instance_info_entry.second;
         // In the case of multiple BrowsingInstances in the SecurityState, note
         // that failure reasons will only be reported if none of the
         // BrowsingInstances allow access. In that event, |failure_reason|
@@ -1735,7 +1794,8 @@ bool ChildProcessSecurityPolicyImpl::CanAccessDataForMaybeOpaqueOrigin(
         // StoragePartition).
         IsolationContext isolation_context(
             browsing_instance_id, browser_or_resource_context,
-            actual_process_lock.is_guest(), actual_process_lock.is_fenced());
+            actual_process_lock.is_guest(), actual_process_lock.is_fenced(),
+            default_isolation_state);
 
         // NOTE: If we're on the IO thread, the call to
         // ProcessLock::Create() below will return a ProcessLock with
@@ -1843,19 +1903,22 @@ bool ChildProcessSecurityPolicyImpl::CanAccessDataForMaybeOpaqueOrigin(
         } else {
           // Citadel-style enforcement - an unlocked process should not be
           // able to access data from origins that require a lock.
-#if !BUILDFLAG(IS_ANDROID)
-          // TODO(lukasza): https://crbug.com/566091: Once remote NTP is
-          // capable of embedding OOPIFs, start enforcing citadel-style checks
-          // on desktop platforms.
-          // TODO(lukasza): https://crbug.com/614463: Enforce isolation within
-          // GuestView (once OOPIFs are supported within GuestView).
-          return true;
-#else
-          // TODO(acolwell, lukasza): https://crbug.com/764958: Make it
-          // possible to call ShouldLockProcessToSite (and GetSiteForURL?) on
-          // the IO thread.
-          if (BrowserThread::CurrentlyOn(BrowserThread::IO))
+
+          // Allow the corresponding base::Feature to turn off enforcement.
+          if (!base::FeatureList::IsEnabled(kSiteIsolationCitadelEnforcement)) {
             return true;
+          }
+
+          // Skip these checks on the IO thread, since we can't use
+          // RenderProcessHost or ShouldLockProcessToSite() there.
+          //
+          // TODO(crbug.com/764958): Remove this once this is reachable only on
+          // the UI thread.
+          if (!ShouldRestrictCanAccessDataForOriginToUIThread() &&
+              BrowserThread::CurrentlyOn(BrowserThread::IO)) {
+            return true;
+          }
+
           DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
           // TODO(lukasza): Consider making the checks below IO-thread-friendly,
@@ -1884,8 +1947,11 @@ bool ChildProcessSecurityPolicyImpl::CanAccessDataForMaybeOpaqueOrigin(
           // origins that do not require a locked process.
           if (!site_info.ShouldLockProcessToSite(isolation_context))
             return true;
+
           failure_reason += " citadel_enforcement ";
-#endif
+          if (url_is_precursor_of_opaque_origin) {
+            failure_reason += "for_precursor ";
+          }
         }
       }
     }
@@ -1924,7 +1990,7 @@ void ChildProcessSecurityPolicyImpl::IncludeIsolationContext(
   base::AutoLock lock(lock_);
   auto* state = GetSecurityState(child_id);
   DCHECK(state);
-  state->AddBrowsingInstanceId(isolation_context.browsing_instance_id());
+  state->AddBrowsingInstanceInfo(isolation_context);
 }
 
 void ChildProcessSecurityPolicyImpl::LockProcess(
@@ -1939,8 +2005,7 @@ void ChildProcessSecurityPolicyImpl::LockProcess(
   base::AutoLock lock(lock_);
   auto state = security_state_.find(child_id);
   DCHECK(state != security_state_.end());
-  state->second->SetProcessLock(process_lock, context.browsing_instance_id(),
-                                is_process_used);
+  state->second->SetProcessLock(process_lock, context, is_process_used);
 }
 
 void ChildProcessSecurityPolicyImpl::LockProcessForTesting(
@@ -1991,6 +2056,17 @@ void ChildProcessSecurityPolicyImpl::RegisterFileSystemPermissionPolicy(
   file_system_policy_map_[type] = policy;
 }
 
+bool ChildProcessSecurityPolicyImpl::CanSendMidiMessage(int child_id) {
+  base::AutoLock lock(lock_);
+
+  auto state = security_state_.find(child_id);
+  if (state == security_state_.end()) {
+    return false;
+  }
+
+  return state->second->CanSendMidi();
+}
+
 bool ChildProcessSecurityPolicyImpl::CanSendMidiSysExMessage(int child_id) {
   base::AutoLock lock(lock_);
 
@@ -1998,7 +2074,7 @@ bool ChildProcessSecurityPolicyImpl::CanSendMidiSysExMessage(int child_id) {
   if (state == security_state_.end())
     return false;
 
-  return state->second->can_send_midi_sysex();
+  return state->second->CanSendMidiSysEx();
 }
 
 void ChildProcessSecurityPolicyImpl::AddFutureIsolatedOrigins(
@@ -2007,11 +2083,9 @@ void ChildProcessSecurityPolicyImpl::AddFutureIsolatedOrigins(
     BrowserContext* browser_context) {
   std::vector<IsolatedOriginPattern> patterns;
   patterns.reserve(origins_to_add.size());
-  std::transform(origins_to_add.cbegin(), origins_to_add.cend(),
-                 std::back_inserter(patterns),
-                 [](const url::Origin& o) -> IsolatedOriginPattern {
-                   return IsolatedOriginPattern(o);
-                 });
+  base::ranges::transform(
+      origins_to_add, std::back_inserter(patterns),
+      [](const url::Origin& o) { return IsolatedOriginPattern(o); });
   AddFutureIsolatedOrigins(patterns, source, browser_context);
 }
 
@@ -2174,9 +2248,10 @@ bool ChildProcessSecurityPolicyImpl::IsGloballyIsolatedOriginForTesting(
     const url::Origin& origin) {
   BrowserOrResourceContext no_browser_context;
   BrowsingInstanceId null_browsing_instance_id;
-  IsolationContext isolation_context(null_browsing_instance_id,
-                                     no_browser_context, /*is_guest=*/false,
-                                     /*is_fenced=*/false);
+  IsolationContext isolation_context(
+      null_browsing_instance_id, no_browser_context, /*is_guest=*/false,
+      /*is_fenced=*/false,
+      OriginAgentClusterIsolationState::CreateNonIsolated());
   return IsIsolatedOrigin(isolation_context, origin, false);
 }
 
@@ -2427,6 +2502,14 @@ ChildProcessSecurityPolicyImpl::LookupOriginIsolationState(
   return nullptr;
 }
 
+OriginAgentClusterIsolationState*
+ChildProcessSecurityPolicyImpl::LookupOriginIsolationStateForTesting(
+    const BrowsingInstanceId& browsing_instance_id,
+    const url::Origin& origin) {
+  base::AutoLock lock(origins_isolation_opt_in_lock_);
+  return LookupOriginIsolationState(browsing_instance_id, origin);
+}
+
 void ChildProcessSecurityPolicyImpl::AddDefaultIsolatedOriginIfNeeded(
     const IsolationContext& isolation_context,
     const url::Origin& origin,
@@ -2465,13 +2548,15 @@ void ChildProcessSecurityPolicyImpl::AddDefaultIsolatedOriginIfNeeded(
   // walks (when the origin won't be in this list yet), but it matters during
   // frame removal (when we don't want to add an opted-in origin to the
   // list as non-isolated when its frame is removed).
-  if (LookupOriginIsolationState(browsing_instance_id, origin))
+  if (LookupOriginIsolationState(browsing_instance_id, origin)) {
     return;
+  }
 
   // Since there was no prior record for this BrowsingInstance, track that this
-  // origin should use the default isolation model.
+  // origin should use the default isolation model in use by the
+  // BrowsingInstance.
   origin_isolation_by_browsing_instance_[browsing_instance_id].emplace_back(
-      OriginAgentClusterIsolationState::CreateForDefaultIsolation(), origin);
+      isolation_context.default_isolation_state(), origin);
 }
 
 void ChildProcessSecurityPolicyImpl::
@@ -2584,9 +2669,15 @@ void ChildProcessSecurityPolicyImpl::AddOriginIsolationStateForBrowsingInstance(
     const url::Origin& origin,
     bool is_origin_agent_cluster,
     bool requires_origin_keyed_process) {
-  DCHECK(is_origin_agent_cluster ||
-         base::FeatureList::IsEnabled(
-             blink::features::kOriginAgentClusterDefaultEnabled));
+  // This can only be called from the UI thread, as it reads state that's only
+  // available (and is only safe to be retrieved) on the UI thread, such as
+  // BrowsingInstance IDs.
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  DCHECK(
+      is_origin_agent_cluster ||
+      SiteIsolationPolicy::AreOriginAgentClustersEnabledByDefault(
+          isolation_context.browser_or_resource_context().ToBrowserContext()));
+
   // We ought to have validated the origin prior to getting here.  If the
   // origin isn't valid at this point, something has gone wrong.
   CHECK((is_origin_agent_cluster &&
@@ -2596,11 +2687,6 @@ void ChildProcessSecurityPolicyImpl::AddOriginIsolationStateForBrowsingInstance(
         // OriginAgentClusterInsecureEnabledBrowserTest.DocumentDomain_Disabled.
         IsolatedOriginUtil::IsValidOriginForOptOutIsolation(origin))
       << "Trying to isolate invalid origin: " << origin;
-
-  // This can only be called from the UI thread, as it reads state that's only
-  // available (and is only safe to be retrieved) on the UI thread, such as
-  // BrowsingInstance IDs.
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
   BrowsingInstanceId browsing_instance_id(
       isolation_context.browsing_instance_id());

@@ -478,7 +478,21 @@ typedef void (*xnn_f32_dwconv_multipass_ukernel_fn)(
 
 // DWCONV: DepthWise CONVolution multi-pass with Min+Max activation
 
-typedef void (*xnn_f32_dwconv_multipass_minmax_ukernel_fn)(
+typedef void (*xnn_f16_dwconv_minmax_multipass_ukernel_fn)(
+    size_t channels,
+    size_t output_width,
+    const void** input,
+    const void* weights,
+    void* output,
+    intptr_t input_stride,
+    size_t output_increment,
+    size_t input_offset,
+    const void* zero,
+    size_t kernel_size,
+    void* buffer,
+    const union xnn_f16_minmax_params* params);
+
+typedef void (*xnn_f32_dwconv_minmax_multipass_ukernel_fn)(
     size_t channels,
     size_t output_width,
     const float** input,
@@ -491,6 +505,48 @@ typedef void (*xnn_f32_dwconv_multipass_minmax_ukernel_fn)(
     size_t kernel_size,
     float* buffer,
     const union xnn_f32_minmax_params* params);
+
+typedef void (*xnn_qs8_dwconv_minmax_multipass_ukernel_fn)(
+    size_t channels,
+    size_t output_width,
+    const int8_t** input,
+    const void* weights,
+    int8_t* output,
+    intptr_t input_stride,
+    size_t output_increment,
+    size_t input_offset,
+    const int8_t* zero,
+    size_t kernel_size,
+    int32_t* buffer,
+    const union xnn_qs8_conv_minmax_params* params);
+
+typedef void (*xnn_qu8_dwconv_minmax_multipass_ukernel_fn)(
+    size_t channels,
+    size_t output_width,
+    const uint8_t** input,
+    const void* weights,
+    uint8_t* output,
+    intptr_t input_stride,
+    size_t output_increment,
+    size_t input_offset,
+    const uint8_t* zero,
+    size_t kernel_size,
+    int32_t* buffer,
+    const union xnn_qu8_conv_minmax_params* params);
+
+typedef void (*xnn_qc8_dwconv_minmax_multipass_ukernel_fn)(
+    size_t channels,
+    size_t output_width,
+    const int8_t** input,
+    const void* weights,
+    int8_t* output,
+    intptr_t input_stride,
+    size_t output_increment,
+    size_t input_offset,
+    const int8_t* zero,
+    size_t kernel_size,
+    int32_t* buffer,
+    const union xnn_qc8_conv_minmax_params* params);
 
 // VMULCADDC: Vector MULtiply-by-Constant, ADD-Constant
 
@@ -1084,6 +1140,85 @@ typedef void (*xnn_transposev_ukernel_fn)(
     size_t block_width,
     size_t block_height);
 
+// PACKB: PACK B (bias) for GEMM matrix multiplication
+
+typedef void (*xnn_packb_gemm_ukernel_fn)(
+    size_t groups,
+    size_t channels,
+    const void* bias,
+    void* packed_weights,
+    size_t channel_tile_stride,
+    size_t channel_subtile_stride,
+    const void* params);
+
+typedef void (*xnn_x32_packb_gemm_ukernel_fn)(
+    size_t groups,
+    size_t channels,
+    const uint32_t* bias,
+    uint32_t* packed_weights,
+    size_t channel_tile_stride,
+    size_t channel_subtile_stride,
+    const union xnn_x32_packb_params* params);
+
+// ZEROB: ZERO B (bias) for GEMM matrix multiplication
+
+typedef void (*xnn_zerob_gemm_ukernel_fn)(
+    size_t groups,
+    size_t channels,
+    void* packed_weights,
+    size_t channel_tile_stride,
+    size_t channel_subtile_stride,
+    const void* params);
+
+typedef void (*xnn_x32_zerob_gemm_ukernel_fn)(
+    size_t groups,
+    size_t channels,
+    uint32_t* packed_weights,
+    size_t channel_tile_stride,
+    size_t channel_subtile_stride,
+    const union xnn_x32_packb_params* params);
+
+// PACKW: PACK W (weights) for GEMM matrix multiplication
+
+typedef void (*xnn_packw_gemm_goi_ukernel_fn)(
+    size_t g,
+    size_t nc,
+    size_t kc,
+    size_t nr,
+    size_t kr,
+    size_t sr,
+    const void* k,
+    const void* b,
+    void* packed_weights,
+    size_t extra_bytes,
+    const void* params);
+
+typedef void (*xnn_x16_packw_gemm_goi_ukernel_fn)(
+    size_t g,
+    size_t nc,
+    size_t kc,
+    size_t nr,
+    size_t kr,
+    size_t sr,
+    const uint16_t* k,
+    const uint16_t* b,
+    uint16_t* packed_weights,
+    size_t extra_bytes,
+    const void* params);
+
+typedef void (*xnn_x32_packw_gemm_goi_ukernel_fn)(
+    size_t g,
+    size_t nc,
+    size_t kc,
+    size_t nr,
+    size_t kr,
+    size_t sr,
+    const uint32_t* k,
+    const uint32_t* b,
+    uint32_t* packed_weights,
+    size_t extra_bytes,
+    const void* params);
+
 // PACKX: PACK X (input) tensor for pre-packed matrix multiplication
 
 typedef void (*xnn_packx_ukernel_fn)(
@@ -1256,6 +1391,12 @@ typedef void (*xnn_qs8_f32_vcvt_ukernel_fn)(
     float* output,
     const union xnn_qs8_f32_cvt_params* params);
 
+typedef void (*xnn_qs16_qs8_vcvt_ukernel_fn)(
+    size_t batch,
+    const int16_t* input,
+    int8_t* output,
+    const union xnn_qs16_qs8_cvt_params* params);
+
 typedef void (*xnn_qu8_vcvt_ukernel_fn)(
     size_t batch,
     const uint8_t* input,
@@ -1407,6 +1548,20 @@ typedef void (*xnn_u64_u32_vsqrtshift_ukernel_fn)(
     const uint64_t* input,
     uint32_t* output,
     uint32_t shift);
+
+// VTANH: Vector TANH elementwise
+
+typedef void (*xnn_f16_vtanh_ukernel_fn)(
+    size_t batch,
+    const void* input,
+    void* output,
+    const union xnn_f16_tanh_params* params);
+
+typedef void (*xnn_f32_vtanh_ukernel_fn)(
+    size_t batch,
+    const float* input,
+    float* output,
+    const union xnn_f32_tanh_params* params);
 
 // LUT: vector LookUp Table elementwise
 
@@ -1852,6 +2007,11 @@ typedef size_t (*xnn_init_qs8_f32_cvt_params_fn)(
   float scale,
   int8_t zero_point);
 
+typedef size_t (*xnn_init_qs16_qs8_cvt_params_fn)(
+  union xnn_qs16_qs8_cvt_params params[XNN_MIN_ELEMENTS(1)],
+  float input_output_scale,
+  int8_t zero_point);
+
 typedef size_t (*xnn_init_qu8_cvt_params_fn)(
   union xnn_qu8_cvt_params params[XNN_MIN_ELEMENTS(1)],
   float input_output_scale,
@@ -2080,10 +2240,19 @@ typedef size_t (*xnn_init_f16_sqrt_params_fn)(
 typedef size_t (*xnn_init_f32_sqrt_params_fn)(
   union xnn_f32_sqrt_params params[XNN_MIN_ELEMENTS(1)]);
 
+typedef size_t (*xnn_init_f16_tanh_params_fn)(
+  union xnn_f16_tanh_params params[XNN_MIN_ELEMENTS(1)]);
+
+typedef size_t (*xnn_init_f32_tanh_params_fn)(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)]);
+
 typedef void (*xnn_init_qc8_scale_params_fn)(
   size_t channels,
   size_t channels_tile,
+  size_t channels_subtile,
   size_t stride,
+  size_t substride,
+  size_t stride_offset,
   const float scale[XNN_MIN_ELEMENTS(1)],
   void* packed_w);
 

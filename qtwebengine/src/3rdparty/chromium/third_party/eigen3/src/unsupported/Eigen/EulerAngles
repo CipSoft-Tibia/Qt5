@@ -35,8 +35,10 @@ namespace Eigen {
 
 }
 
+// IWYU pragma: begin_exports
 #include "src/EulerAngles/EulerSystem.h"
 #include "src/EulerAngles/EulerAngles.h"
+// IWYU pragma: end_exports
 
 #include "../../Eigen/src/Core/util/ReenableStupidWarnings.h"
 

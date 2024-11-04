@@ -6,7 +6,6 @@
 
 #include "base/android/build_info.h"
 #include "base/android/jni_string.h"
-#include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
 #include "media/base/android/media_jni_headers/VideoAcceleratorUtil_jni.h"
 
@@ -21,11 +20,9 @@ const std::vector<MediaCodecEncoderInfo>& GetEncoderInfoCache() {
     auto java_profiles =
         Java_VideoAcceleratorUtil_getSupportedEncoderProfiles(env);
 
-    constexpr char kHasMediaCodecEncoderInfo[] =
-        "Media.Android.MediaCodecInfo.HasEncoderInfo";
     std::vector<MediaCodecEncoderInfo> cpp_infos;
     if (!java_profiles) {
-      base::UmaHistogramBoolean(kHasMediaCodecEncoderInfo, false);
+      // Per histograms this happens ~0% of the time, so no need for fallback.
       return cpp_infos;
     }
 
@@ -65,7 +62,6 @@ const std::vector<MediaCodecEncoderInfo>& GetEncoderInfoCache() {
         [](const MediaCodecEncoderInfo& a, const MediaCodecEncoderInfo& b) {
           return a.profile.profile < b.profile.profile;
         });
-    base::UmaHistogramBoolean(kHasMediaCodecEncoderInfo, !cpp_infos.empty());
     return cpp_infos;
   }());
   return *infos;
@@ -77,37 +73,18 @@ const std::vector<MediaCodecDecoderInfo>& GetDecoderInfoCache() {
     CHECK(env);
     auto java_profiles =
         Java_VideoAcceleratorUtil_getSupportedDecoderProfiles(env);
-    constexpr char kHasMediaCodecDecoderInfo[] =
-        "Media.Android.MediaCodecInfo.HasDecoderInfo";
-    if (!java_profiles) {
-      // TODO(crbug.com/1413887): Can we remove default profiles?
-      base::UmaHistogramBoolean(kHasMediaCodecDecoderInfo, false);
-
-      LOG(ERROR)
-          << "Unable to retreive MediaCodecInfo, assuming default support.";
-
-      // Since we don't bundle a software decoder for H.264, H.265, to avoid
-      // breaking all video unnecessarily, inject what is likely supported.
-      constexpr auto kDefaultSize = gfx::Size(4096, 4096);
-      constexpr auto kSoftwareCodec = true;
-      constexpr auto kHardwareCodec = false;
-      return std::vector<MediaCodecDecoderInfo>({
-          {H264PROFILE_BASELINE, gfx::Size(), kDefaultSize, kHardwareCodec},
-          {H264PROFILE_MAIN, gfx::Size(), kDefaultSize, kHardwareCodec},
-          {H264PROFILE_HIGH, gfx::Size(), kDefaultSize, kHardwareCodec},
-          {HEVCPROFILE_MAIN, gfx::Size(), kDefaultSize, kHardwareCodec},
-
-          // Report codecs as software where we have a bundled decoder.
-          {VP8PROFILE_ANY, gfx::Size(), kDefaultSize, kSoftwareCodec},
-          {VP9PROFILE_PROFILE0, gfx::Size(), kDefaultSize, kSoftwareCodec},
-      });
-    }
 
     std::vector<MediaCodecDecoderInfo> cpp_infos;
+    if (!java_profiles) {
+      // Per histograms this happens ~0% of the time, so no need for fallback.
+      return cpp_infos;
+    }
+
     for (auto java_profile : java_profiles.ReadElements<jobject>()) {
       MediaCodecDecoderInfo info;
       info.profile = static_cast<VideoCodecProfile>(
           Java_SupportedProfileAdapter_getProfile(env, java_profile));
+      info.level = Java_SupportedProfileAdapter_getLevel(env, java_profile);
       info.coded_size_min = gfx::Size(
           Java_SupportedProfileAdapter_getMinWidth(env, java_profile),
           Java_SupportedProfileAdapter_getMinHeight(env, java_profile));
@@ -116,6 +93,22 @@ const std::vector<MediaCodecDecoderInfo>& GetDecoderInfoCache() {
           Java_SupportedProfileAdapter_getMaxHeight(env, java_profile));
       info.is_software_codec =
           Java_SupportedProfileAdapter_isSoftwareCodec(env, java_profile);
+      bool supports_secure_playback =
+          Java_SupportedProfileAdapter_supportsSecurePlayback(env,
+                                                              java_profile);
+      bool requires_secure_playback =
+          Java_SupportedProfileAdapter_requiresSecurePlayback(env,
+                                                              java_profile);
+      // If the decoder requires secure playback, it must support secure
+      // playback.
+      DCHECK(!requires_secure_playback || supports_secure_playback);
+      info.secure_codec_capability =
+          requires_secure_playback
+              ? SecureCodecCapability::kEncrypted
+              : (supports_secure_playback ? SecureCodecCapability::kAny
+                                          : SecureCodecCapability::kClear);
+      info.name = base::android::ConvertJavaStringToUTF8(
+          Java_SupportedProfileAdapter_getName(env, java_profile));
       cpp_infos.push_back(info);
     }
     std::sort(
@@ -123,8 +116,6 @@ const std::vector<MediaCodecDecoderInfo>& GetDecoderInfoCache() {
         [](const MediaCodecDecoderInfo& a, const MediaCodecDecoderInfo& b) {
           return a.profile < b.profile;
         });
-
-    base::UmaHistogramBoolean(kHasMediaCodecDecoderInfo, !cpp_infos.empty());
     return cpp_infos;
   }());
   return *infos;

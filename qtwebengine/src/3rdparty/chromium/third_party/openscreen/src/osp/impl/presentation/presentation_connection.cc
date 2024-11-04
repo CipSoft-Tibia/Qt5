@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 #include <memory>
 #include <ostream>
 
-#include "absl/strings/string_view.h"
 #include "osp/impl/presentation/presentation_common.h"
 #include "osp/msgs/osp_messages.h"
 #include "osp/public/network_service_manager.h"
@@ -20,8 +19,7 @@
 
 // TODO(crbug.com/openscreen/27): Address TODOs in this file
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 namespace {
 
@@ -101,7 +99,7 @@ void Connection::OnTerminated() {
   delegate_->OnTerminated();
 }
 
-Error Connection::SendString(absl::string_view message) {
+Error Connection::SendString(std::string_view message) {
   if (state_ != State::kConnected)
     return Error::Code::kNoActiveConnection;
 
@@ -290,5 +288,4 @@ Connection* ConnectionManager::GetConnection(uint64_t connection_id) {
   return nullptr;
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

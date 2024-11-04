@@ -1,14 +1,16 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include <QtGui>
 #include <QtDebug>
-#include <QDeclarativeComponent>
+#include <QQmlComponent>
 
 //! [1]
-    void statusChanged(QDeclarativeComponent::Status status) {
-        if (status == QDeclarativeComponent::Error) {
-            foreach (const QDeclarativeError &error, component->errors()) {
+    void statusChanged(QQmlComponent::Status status) {
+        if (status == QQmlComponent::Error) {
+            for (const QQmlError &error: std::as_const(component->errors())) {
                 const QByteArray file = error.url().toEncoded();
                 QMessageLogger(file.constData(), error.line(), 0).debug() << error.description();
             }

@@ -69,6 +69,20 @@ MediaQueryEvaluatorTestCase g_screen_test_cases[] = {
     {"all and (grid: 0)", true},
     {"(resolution: 2dppx)", true},
     {"(resolution: 1dppx)", false},
+    {"(resolution: calc(2x))", true},
+    {"(resolution: calc(1x))", false},
+    {"(resolution: calc(1x + 1x))", true},
+    {"(resolution: calc(1x + 0x))", false},
+    {"(resolution: calc(1x + 96dpi))", true},
+    {"(resolution: calc(0x + 37.79532dpcm))", false},
+    {"(resolution: calc(3x - 1x))", true},
+    {"(resolution: calc(3x - 2x))", false},
+    {"(resolution: calc(3x - 96dpi))", true},
+    {"(resolution: calc(2x - 37.79532dpcm))", false},
+    {"(resolution: calc(1x * 2))", true},
+    {"(resolution: calc(0.5x * 2))", false},
+    {"(resolution: calc(4x / 2))", true},
+    {"(resolution: calc(2x / 2))", false},
     {"(orientation: portrait)", true},
     {"(orientation: landscape)", false},
     {"(orientation: url(portrait))", false},
@@ -183,8 +197,33 @@ MediaQueryEvaluatorTestCase g_float_non_friendly_viewport_test_cases[] = {
 
 MediaQueryEvaluatorTestCase g_print_test_cases[] = {
     {"print and (min-resolution: 1dppx)", true},
+    {"print and (min-resolution: calc(100dpi - 4dpi))", true},
     {"print and (min-resolution: 118dpcm)", true},
     {"print and (min-resolution: 119dpcm)", false},
+    {nullptr, false}  // Do not remove the terminator line.
+};
+
+// Tests when the output device is print.
+MediaQueryEvaluatorTestCase g_update_with_print_device_test_cases[] = {
+    {"(update)", false},       {"(update: none)", true},
+    {"(update: slow)", false}, {"(update: fast)", false},
+    {"update: fast", false},   {"(update: ?)", false},
+    {nullptr, false}  // Do not remove the terminator line.
+};
+
+// Tests when the output device is slow.
+MediaQueryEvaluatorTestCase g_update_with_slow_device_test_cases[] = {
+    {"(update)", true},       {"(update: none)", false},
+    {"(update: slow)", true}, {"(update: fast)", false},
+    {"update: fast", false},  {"(update: ?)", false},
+    {nullptr, false}  // Do not remove the terminator line.
+};
+
+// Tests when the output device is slow.
+MediaQueryEvaluatorTestCase g_update_with_fast_device_test_cases[] = {
+    {"(update)", true},        {"(update: none)", false},
+    {"(update: slow)", false}, {"(update: fast)", true},
+    {"update: fast", false},   {"(update: ?)", false},
     {nullptr, false}  // Do not remove the terminator line.
 };
 
@@ -233,6 +272,21 @@ MediaQueryEvaluatorTestCase g_preferscontrast_custom_cases[] = {
     {"(prefers-contrast: less)", false},
     {"(prefers-contrast: no-preference)", false},
     {"(prefers-contrast: custom)", true},
+    {nullptr, false}  // Do not remove the terminator line.
+};
+
+MediaQueryEvaluatorTestCase g_prefersreducedtransparency_nopreference_cases[] =
+    {
+        {"(prefers-reduced-transparency)", false},
+        {"(prefers-reduced-transparency: reduce)", false},
+        {"(prefers-reduced-transparency: no-preference)", true},
+        {nullptr, false}  // Do not remove the terminator line.
+};
+
+MediaQueryEvaluatorTestCase g_prefersreducedtransparency_reduce_cases[] = {
+    {"(prefers-reduced-transparency)", true},
+    {"(prefers-reduced-transparency: reduce)", true},
+    {"(prefers-reduced-transparency: no-preference)", false},
     {nullptr, false}  // Do not remove the terminator line.
 };
 
@@ -375,6 +429,44 @@ MediaQueryEvaluatorTestCase g_overflow_with_scrollable_device_test_cases[] = {
     {nullptr, false}  // Do not remove the terminator line.
 };
 
+MediaQueryEvaluatorTestCase g_invertedcolors_none_cases[] = {
+    {"(inverted-colors)", false},
+    {"(inverted-colors: inverted)", false},
+    {"(inverted-colors: none)", true},
+    {nullptr, false}  // Do not remove the terminator line.
+};
+
+MediaQueryEvaluatorTestCase g_invertedcolors_inverted_cases[] = {
+    {"(inverted-colors)", true},
+    {"(inverted-colors: inverted)", true},
+    {"(inverted-colors: none)", false},
+    {nullptr, false}  // Do not remove the terminator line.
+};
+
+MediaQueryEvaluatorTestCase g_scripting_none_cases[] = {
+    {"(scripting)", false},
+    {"(scripting: none)", true},
+    {"(scripting: initial-only)", false},
+    {"(scripting: enabled)", false},
+    {nullptr, false}  // Do not remove the terminator line.
+};
+
+MediaQueryEvaluatorTestCase g_scripting_initial_only_cases[] = {
+    {"(scripting)", false},
+    {"(scripting: none)", false},
+    {"(scripting: initial-only)", true},
+    {"(scripting: enabled)", false},
+    {nullptr, false}  // Do not remove the terminator line.
+};
+
+MediaQueryEvaluatorTestCase g_scripting_enabled_cases[] = {
+    {"(scripting)", true},
+    {"(scripting: none)", false},
+    {"(scripting: initial-only)", false},
+    {"(scripting: enabled)", true},
+    {nullptr, false}  // Do not remove the terminator line.
+};
+
 void TestMQEvaluator(MediaQueryEvaluatorTestCase* test_cases,
                      const MediaQueryEvaluator& media_query_evaluator,
                      CSSParserMode mode) {
@@ -383,10 +475,13 @@ void TestMQEvaluator(MediaQueryEvaluatorTestCase* test_cases,
     if (String(test_cases[i].input).empty()) {
       query_set = MediaQuerySet::Create();
     } else {
+      StringView str(test_cases[i].input);
+      CSSTokenizer tokenizer(StringView(test_cases[i].input));
+      auto [tokens, offsets] = tokenizer.TokenizeToEOFWithOffsets();
       query_set = MediaQueryParser::ParseMediaQuerySetInMode(
-          CSSParserTokenRange(
-              CSSTokenizer(test_cases[i].input).TokenizeToEOF()),
-          mode, nullptr);
+          CSSParserTokenRange(tokens),
+          CSSParserTokenOffsets(tokens, std::move(offsets), str), mode,
+          nullptr);
     }
     EXPECT_EQ(test_cases[i].output, media_query_evaluator.Eval(*query_set))
         << "Query: " << test_cases[i].input;
@@ -409,6 +504,8 @@ TEST(MediaQueryEvaluatorTest, Cached) {
   data.monochrome_bits_per_component = 0;
   data.primary_pointer_type = mojom::blink::PointerType::kPointerFineType;
   data.primary_hover_type = mojom::blink::HoverType::kHoverHoverType;
+  data.output_device_update_ability_type =
+      mojom::blink::OutputDeviceUpdateAbilityType::kFastType;
   data.three_d_enabled = true;
   data.media_type = media_type_names::kScreen;
   data.strict_mode = true;
@@ -429,6 +526,36 @@ TEST(MediaQueryEvaluatorTest, Cached) {
     MediaQueryEvaluator media_query_evaluator(media_values);
     TestMQEvaluator(g_print_test_cases, media_query_evaluator);
     data.media_type = media_type_names::kScreen;
+  }
+
+  // Update values with print device.
+  {
+    data.media_type = media_type_names::kPrint;
+    auto* media_values = MakeGarbageCollected<MediaValuesCached>(data);
+    MediaQueryEvaluator media_query_evaluator(media_values);
+    TestMQEvaluator(g_update_with_print_device_test_cases,
+                    media_query_evaluator);
+    data.media_type = media_type_names::kScreen;
+  }
+
+  // Update values with slow device.
+  {
+    data.output_device_update_ability_type =
+        mojom::blink::OutputDeviceUpdateAbilityType::kSlowType;
+    auto* media_values = MakeGarbageCollected<MediaValuesCached>(data);
+    MediaQueryEvaluator media_query_evaluator(media_values);
+    TestMQEvaluator(g_update_with_slow_device_test_cases,
+                    media_query_evaluator);
+  }
+
+  // Update values with fast device.
+  {
+    data.output_device_update_ability_type =
+        mojom::blink::OutputDeviceUpdateAbilityType::kFastType;
+    auto* media_values = MakeGarbageCollected<MediaValuesCached>(data);
+    MediaQueryEvaluator media_query_evaluator(media_values);
+    TestMQEvaluator(g_update_with_fast_device_test_cases,
+                    media_query_evaluator);
   }
 
   // Monochrome values.
@@ -469,10 +596,15 @@ TEST(MediaQueryEvaluatorTest, Dynamic) {
   TestMQEvaluator(g_viewport_test_cases, media_query_evaluator);
   TestMQEvaluator(g_overflow_with_scrollable_device_test_cases,
                   media_query_evaluator);
+  TestMQEvaluator(g_update_with_fast_device_test_cases, media_query_evaluator);
+  page_holder->GetFrame().GetSettings()->SetOutputDeviceUpdateAbilityType(
+      mojom::blink::OutputDeviceUpdateAbilityType::kSlowType);
+  TestMQEvaluator(g_update_with_slow_device_test_cases, media_query_evaluator);
   page_holder->GetFrameView().SetMediaType(media_type_names::kPrint);
   TestMQEvaluator(g_print_test_cases, media_query_evaluator);
   TestMQEvaluator(g_overflow_with_print_device_test_cases,
                   media_query_evaluator);
+  TestMQEvaluator(g_update_with_print_device_test_cases, media_query_evaluator);
 }
 
 TEST(MediaQueryEvaluatorTest, DynamicNoView) {
@@ -568,8 +700,30 @@ TEST(MediaQueryEvaluatorTest, CachedPrefersContrast) {
   }
 }
 
+TEST(MediaQueryEvaluatorTest, CachedPrefersReducedTransparency) {
+  MediaValuesCached::MediaValuesCachedData data;
+
+  // Prefers-reduced-transparency - no-preference.
+  {
+    data.prefers_reduced_transparency = false;
+    MediaValues* media_values = MakeGarbageCollected<MediaValuesCached>(data);
+    MediaQueryEvaluator media_query_evaluator(media_values);
+    TestMQEvaluator(g_prefersreducedtransparency_nopreference_cases,
+                    media_query_evaluator);
+  }
+
+  // Prefers-reduced-transparency - reduce.
+  {
+    data.prefers_reduced_transparency = true;
+    MediaValues* media_values = MakeGarbageCollected<MediaValuesCached>(data);
+    MediaQueryEvaluator media_query_evaluator(media_values);
+    TestMQEvaluator(g_prefersreducedtransparency_reduce_cases,
+                    media_query_evaluator);
+  }
+}
+
 TEST(MediaQueryEvaluatorTest, CachedViewportSegments) {
-  ScopedCSSFoldablesForTest scoped_feature(true);
+  ScopedViewportSegmentsForTest scoped_feature(true);
 
   MediaValuesCached::MediaValuesCachedData data;
   {
@@ -719,6 +873,54 @@ TEST(MediaQueryEvaluatorTest, CachedDynamicRange) {
         false};
     TestMQEvaluator(g_video_dynamic_range_feature_disabled_cases,
                     media_query_evaluator);
+  }
+}
+
+TEST(MediaQueryEvaluatorTest, CachedInvertedColors) {
+  MediaValuesCached::MediaValuesCachedData data;
+
+  // inverted-colors - none
+  {
+    data.inverted_colors = false;
+    MediaValues* media_values = MakeGarbageCollected<MediaValuesCached>(data);
+    MediaQueryEvaluator media_query_evaluator(media_values);
+    TestMQEvaluator(g_invertedcolors_none_cases, media_query_evaluator);
+  }
+
+  // inverted-colors - inverted
+  {
+    data.inverted_colors = true;
+    MediaValues* media_values = MakeGarbageCollected<MediaValuesCached>(data);
+    MediaQueryEvaluator media_query_evaluator(media_values);
+    TestMQEvaluator(g_invertedcolors_inverted_cases, media_query_evaluator);
+  }
+}
+
+TEST(MediaQueryEvaluatorTest, CachedScripting) {
+  MediaValuesCached::MediaValuesCachedData data;
+
+  // scripting - none
+  {
+    data.scripting = Scripting::kNone;
+    MediaValues* media_values = MakeGarbageCollected<MediaValuesCached>(data);
+    MediaQueryEvaluator media_query_evaluator(media_values);
+    TestMQEvaluator(g_scripting_none_cases, media_query_evaluator);
+  }
+
+  // scripting - initial-only
+  {
+    data.scripting = Scripting::kInitialOnly;
+    MediaValues* media_values = MakeGarbageCollected<MediaValuesCached>(data);
+    MediaQueryEvaluator media_query_evaluator(media_values);
+    TestMQEvaluator(g_scripting_initial_only_cases, media_query_evaluator);
+  }
+
+  // scripting - enabled
+  {
+    data.scripting = Scripting::kEnabled;
+    MediaValues* media_values = MakeGarbageCollected<MediaValuesCached>(data);
+    MediaQueryEvaluator media_query_evaluator(media_values);
+    TestMQEvaluator(g_scripting_enabled_cases, media_query_evaluator);
   }
 }
 
@@ -1225,6 +1427,33 @@ TEST_F(MediaQueryEvaluatorIdentifiabilityTest,
 }
 
 TEST_F(MediaQueryEvaluatorIdentifiabilityTest,
+       MediaFeatureIdentifiableSurfacePrefersReducedTransparency) {
+  GetDocument().body()->setInnerHTML(R"HTML(
+    <style>
+      @media (prefers-reduced-transparency: reduce) {
+        div { color: green }
+      }
+    </style>
+    <div id="green"></div>
+    <span></span>
+  )HTML");
+
+  UpdateAllLifecyclePhases();
+  EXPECT_TRUE(GetDocument().WasMediaFeatureEvaluated(static_cast<int>(
+      IdentifiableSurface::MediaFeatureName::kPrefersReducedTransparency)));
+  EXPECT_EQ(collector()->entries().size(), 1u);
+
+  auto& entry = collector()->entries().front();
+  EXPECT_EQ(entry.metrics.size(), 1u);
+  EXPECT_EQ(entry.metrics.begin()->surface,
+            IdentifiableSurface::FromTypeAndToken(
+                IdentifiableSurface::Type::kMediaFeature,
+                IdentifiableToken(IdentifiableSurface::MediaFeatureName::
+                                      kPrefersReducedTransparency)));
+  EXPECT_EQ(entry.metrics.begin()->value, IdentifiableToken(false));
+}
+
+TEST_F(MediaQueryEvaluatorIdentifiabilityTest,
        MediaFeatureIdentifiableSurfaceOrientation) {
   GetDocument().body()->setInnerHTML(R"HTML(
     <style>
@@ -1406,6 +1635,60 @@ TEST_F(MediaQueryEvaluatorIdentifiabilityTest,
                 IdentifiableSurface::Type::kMediaFeature,
                 IdentifiableToken(
                     IdentifiableSurface::MediaFeatureName::kResolution)));
+}
+
+TEST_F(MediaQueryEvaluatorIdentifiabilityTest,
+       MediaFeatureIdentifiableSurfaceInvertedColors) {
+  GetDocument().body()->setInnerHTML(R"HTML(
+    <style>
+      @media (inverted-colors: inverted) {
+        div { color: green }
+      }
+    </style>
+    <div id="green"></div>
+    <span></span>
+  )HTML");
+
+  UpdateAllLifecyclePhases();
+  EXPECT_TRUE(GetDocument().WasMediaFeatureEvaluated(static_cast<int>(
+      IdentifiableSurface::MediaFeatureName::kInvertedColors)));
+  EXPECT_EQ(collector()->entries().size(), 1u);
+
+  auto& entry = collector()->entries().front();
+  EXPECT_EQ(entry.metrics.size(), 1u);
+  EXPECT_EQ(entry.metrics.begin()->surface,
+            IdentifiableSurface::FromTypeAndToken(
+                IdentifiableSurface::Type::kMediaFeature,
+                IdentifiableToken(
+                    IdentifiableSurface::MediaFeatureName::kInvertedColors)));
+  EXPECT_EQ(entry.metrics.begin()->value, IdentifiableToken(false));
+}
+
+TEST_F(MediaQueryEvaluatorIdentifiabilityTest,
+       MediaFeatureIdentifiableSurfaceScripting) {
+  GetDocument().body()->setInnerHTML(R"HTML(
+    <style>
+      @media (scripting: enabled) {
+        div { color: green }
+      }
+    </style>
+    <div id="green"></div>
+    <span></span>
+  )HTML");
+
+  UpdateAllLifecyclePhases();
+  EXPECT_TRUE(GetDocument().WasMediaFeatureEvaluated(
+      static_cast<int>(IdentifiableSurface::MediaFeatureName::kScripting)));
+  EXPECT_EQ(collector()->entries().size(), 1u);
+
+  auto& entry = collector()->entries().front();
+  EXPECT_EQ(entry.metrics.size(), 1u);
+  EXPECT_EQ(entry.metrics.begin()->surface,
+            IdentifiableSurface::FromTypeAndToken(
+                IdentifiableSurface::Type::kMediaFeature,
+                IdentifiableToken(
+                    IdentifiableSurface::MediaFeatureName::kScripting)));
+  EXPECT_EQ(entry.metrics.begin()->value, IdentifiableToken(Scripting::kNone));
 }
 
 }  // namespace blink

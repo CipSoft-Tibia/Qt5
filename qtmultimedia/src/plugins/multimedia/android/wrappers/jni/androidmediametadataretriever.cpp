@@ -124,7 +124,8 @@ bool AndroidMediaMetadataRetriever::setDataSource(const QUrl &url)
         auto methodId = env->GetMethodID(m_metadataRetriever.objectClass(), "setDataSource",
                                          "(Landroid/content/Context;Landroid/net/Uri;)V");
         env->CallVoidMethod(m_metadataRetriever.object(), methodId,
-                            QNativeInterface::QAndroidApplication::context(), uri.object());
+                            QNativeInterface::QAndroidApplication::context().object(),
+                            uri.object());
         if (env.checkAndClearExceptions())
             return false;
     }

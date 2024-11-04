@@ -22,14 +22,13 @@
 #include "components/autofill/core/browser/data_model/autofill_metadata.h"
 #include "components/autofill/core/browser/data_model/autofill_profile.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
-#include "components/autofill/core/browser/geo/country_names.h"
 #include "components/autofill/core/browser/test_autofill_clock.h"
 #include "components/autofill/core/browser/webdata/autofill_sync_bridge_test_util.h"
 #include "components/autofill/core/browser/webdata/autofill_sync_bridge_util.h"
 #include "components/autofill/core/browser/webdata/autofill_table.h"
 #include "components/autofill/core/browser/webdata/mock_autofill_webdata_backend.h"
 #include "components/autofill/core/common/autofill_constants.h"
-#include "components/os_crypt/os_crypt_mocker.h"
+#include "components/os_crypt/sync/os_crypt_mocker.h"
 #include "components/sync/base/client_tag_hash.h"
 #include "components/sync/engine/data_type_activation_response.h"
 #include "components/sync/model/client_tag_based_model_type_processor.h"
@@ -39,6 +38,7 @@
 #include "components/sync/protocol/entity_metadata.pb.h"
 #include "components/sync/protocol/entity_specifics.pb.h"
 #include "components/sync/protocol/model_type_state.pb.h"
+#include "components/sync/test/mock_commit_queue.h"
 #include "components/sync/test/mock_model_type_change_processor.h"
 #include "components/webdata/common/web_database.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -88,8 +88,6 @@ const char kCard1SyncTag[] = "card-Y2FyZDHvv74=";
 
 const char kLocalAddr1ServerId[] = "e171e3ed-858a-4dd5-9bf3-8517f14ba5fc";
 const char kLocalAddr2ServerId[] = "fa232b9a-f248-4e5a-8d76-d46f821c0c5f";
-
-const char kLocaleString[] = "en-US";
 
 const char kDefaultCacheGuid[] = "CacheGuid";
 
@@ -198,7 +196,7 @@ AutofillProfile CreateLocalProfileWithDetails(size_t use_count,
 CreditCard CreateLocalCreditCardWithDetails(size_t use_count,
                                             int64_t use_date) {
   CreditCard card;
-  DCHECK_EQ(card.record_type(), CreditCard::LOCAL_CARD);
+  DCHECK_EQ(card.record_type(), CreditCard::RecordType::kLocalCard);
   card.set_use_count(use_count);
   card.set_use_date(UseDateFromProtoValue(use_date));
   return card;
@@ -298,7 +296,6 @@ class AutofillWalletMetadataSyncBridgeTest : public testing::Test {
   void SetUp() override {
     // Fix a time for implicitly constructed use_dates in AutofillProfile.
     test_clock_.SetNow(kDefaultTime);
-    CountryNames::SetLocaleString(kLocaleString);
     ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
     db_.AddTable(&table_);
     db_.Init(temp_dir_.GetPath().AppendASCII("SyncTestWebDatabase"));
@@ -315,7 +312,11 @@ class AutofillWalletMetadataSyncBridgeTest : public testing::Test {
 
   void ResetBridge(bool initial_sync_done = true) {
     sync_pb::ModelTypeState model_type_state;
-    model_type_state.set_initial_sync_done(initial_sync_done);
+    model_type_state.set_initial_sync_state(
+        initial_sync_done
+            ? sync_pb::ModelTypeState_InitialSyncState_INITIAL_SYNC_DONE
+            : sync_pb::
+                  ModelTypeState_InitialSyncState_INITIAL_SYNC_STATE_UNSPECIFIED);
     model_type_state.mutable_progress_marker()->set_data_type_id(
         GetSpecificsFieldNumberFromModelType(syncer::AUTOFILL_WALLET_METADATA));
     model_type_state.set_cache_guid(kDefaultCacheGuid);
@@ -325,11 +326,9 @@ class AutofillWalletMetadataSyncBridgeTest : public testing::Test {
         mock_processor_.CreateForwardingProcessor(), &backend_);
   }
 
-  void StopSyncing() {
+  void StopSyncingAndClearMetadata() {
     real_processor_->OnSyncStopping(syncer::CLEAR_METADATA);
   }
-
-  void Shutdown() { real_processor_->OnSyncStopping(syncer::KEEP_METADATA); }
 
   void StartSyncing(
       const std::vector<WalletMetadataSpecifics>& remote_data = {}) {
@@ -345,6 +344,11 @@ class AutofillWalletMetadataSyncBridgeTest : public testing::Test {
             }));
     loop.Run();
 
+    // ClientTagBasedModelTypeProcessor requires connecting before other
+    // interactions with the worker happen.
+    real_processor_->ConnectSync(
+        std::make_unique<testing::NiceMock<syncer::MockCommitQueue>>());
+
     ReceiveUpdates(remote_data);
   }
 
@@ -354,7 +358,8 @@ class AutofillWalletMetadataSyncBridgeTest : public testing::Test {
     ++response_version;
     // After this update initial sync is for sure done.
     sync_pb::ModelTypeState state;
-    state.set_initial_sync_done(true);
+    state.set_initial_sync_state(
+        sync_pb::ModelTypeState_InitialSyncState_INITIAL_SYNC_DONE);
 
     syncer::UpdateResponseDataList updates;
     for (const WalletMetadataSpecifics& specifics : remote_data) {
@@ -371,7 +376,8 @@ class AutofillWalletMetadataSyncBridgeTest : public testing::Test {
     ++response_version;
     // After this update initial sync is for sure done.
     sync_pb::ModelTypeState state;
-    state.set_initial_sync_done(true);
+    state.set_initial_sync_state(
+        sync_pb::ModelTypeState_InitialSyncState_INITIAL_SYNC_DONE);
 
     syncer::UpdateResponseDataList updates;
     for (const WalletMetadataSpecifics& specifics : remote_tombstones) {
@@ -603,7 +609,7 @@ TEST_F(AutofillWalletMetadataSyncBridgeTest, GetData_ShouldReturnCompleteData) {
 }
 
 TEST_F(AutofillWalletMetadataSyncBridgeTest,
-       ApplyStopSyncChanges_ShouldWipeLocalDataWhenSyncStopped) {
+       ApplyDisableSyncChanges_ShouldWipeLocalDataWhenSyncStopped) {
   // Perform initial sync to create sync data & metadata.
   ResetBridge(/*initial_sync_done=*/false);
   WalletMetadataSpecifics profile =
@@ -618,32 +624,9 @@ TEST_F(AutofillWalletMetadataSyncBridgeTest,
   // data bridge will do that).
   EXPECT_CALL(*backend(), CommitChanges());
   EXPECT_CALL(*backend(), NotifyOfMultipleAutofillChanges()).Times(0);
-  StopSyncing();
+  StopSyncingAndClearMetadata();
 
   EXPECT_THAT(GetAllLocalDataInclRestart(), IsEmpty());
-}
-
-TEST_F(AutofillWalletMetadataSyncBridgeTest,
-       ApplyStopSyncChanges_ShouldKeepLocalDataOnShutdown) {
-  // Perform initial sync to create sync data & metadata.
-  ResetBridge(/*initial_sync_done=*/false);
-  WalletMetadataSpecifics profile =
-      CreateWalletMetadataSpecificsForAddressWithDetails(
-          kAddr1SpecificsId, /*use_count=*/10, /*use_date=*/20);
-  WalletMetadataSpecifics card =
-      CreateWalletMetadataSpecificsForCardWithDetails(
-          kCard1SpecificsId, /*use_count=*/30, /*use_date=*/40);
-  StartSyncing({profile, card});
-
-  // Now simulate shutting down the browser. This should not touch any of the
-  // data and thus also not notify the backend.
-  EXPECT_CALL(*backend(), CommitChanges()).Times(0);
-  EXPECT_CALL(*backend(), NotifyOfMultipleAutofillChanges()).Times(0);
-  Shutdown();
-
-  EXPECT_THAT(
-      GetAllLocalDataInclRestart(),
-      UnorderedElementsAre(EqualsSpecifics(profile), EqualsSpecifics(card)));
 }
 
 // Verify that lower values of metadata are not sent to the sync server when
@@ -668,9 +651,9 @@ TEST_F(AutofillWalletMetadataSyncBridgeTest,
 
   bridge()->AutofillProfileChanged(
       AutofillProfileChange(AutofillProfileChange::UPDATE,
-                            updated_profile.server_id(), &updated_profile));
+                            updated_profile.server_id(), updated_profile));
   bridge()->CreditCardChanged(CreditCardChange(
-      CreditCardChange::UPDATE, updated_card.server_id(), &updated_card));
+      CreditCardChange::UPDATE, updated_card.server_id(), updated_card));
 
   // Check that also the local metadata did not get updated.
   EXPECT_THAT(
@@ -706,9 +689,9 @@ TEST_F(AutofillWalletMetadataSyncBridgeTest,
 
   bridge()->AutofillProfileChanged(
       AutofillProfileChange(AutofillProfileChange::ADD,
-                            updated_profile.server_id(), &updated_profile));
+                            updated_profile.server_id(), updated_profile));
   bridge()->CreditCardChanged(CreditCardChange(
-      CreditCardChange::ADD, updated_card.server_id(), &updated_card));
+      CreditCardChange::ADD, updated_card.server_id(), updated_card));
 
   // Check that also the local metadata did not get updated.
   EXPECT_THAT(
@@ -753,9 +736,9 @@ TEST_F(AutofillWalletMetadataSyncBridgeTest,
 
   bridge()->AutofillProfileChanged(
       AutofillProfileChange(AutofillProfileChange::UPDATE,
-                            updated_profile.server_id(), &updated_profile));
+                            updated_profile.server_id(), updated_profile));
   bridge()->CreditCardChanged(CreditCardChange(
-      CreditCardChange::UPDATE, updated_card.server_id(), &updated_card));
+      CreditCardChange::UPDATE, updated_card.server_id(), updated_card));
 
   // Check that the local metadata got update as well.
   EXPECT_THAT(GetAllLocalDataInclRestart(),
@@ -789,9 +772,9 @@ TEST_F(AutofillWalletMetadataSyncBridgeTest,
   EXPECT_CALL(*backend(), NotifyOfMultipleAutofillChanges()).Times(0);
 
   bridge()->AutofillProfileChanged(AutofillProfileChange(
-      AutofillProfileChange::ADD, new_profile.server_id(), &new_profile));
+      AutofillProfileChange::ADD, new_profile.server_id(), new_profile));
   bridge()->CreditCardChanged(
-      CreditCardChange(CreditCardChange::ADD, new_card.server_id(), &new_card));
+      CreditCardChange(CreditCardChange::ADD, new_card.server_id(), new_card));
 
   // Check that the new metadata got created as well.
   EXPECT_THAT(GetAllLocalDataInclRestart(),
@@ -826,9 +809,9 @@ TEST_F(AutofillWalletMetadataSyncBridgeTest, SendNewDataToServerOnLocalUpdate) {
   EXPECT_CALL(*backend(), NotifyOfMultipleAutofillChanges()).Times(0);
 
   bridge()->AutofillProfileChanged(AutofillProfileChange(
-      AutofillProfileChange::UPDATE, new_profile.server_id(), &new_profile));
-  bridge()->CreditCardChanged(CreditCardChange(
-      CreditCardChange::UPDATE, new_card.server_id(), &new_card));
+      AutofillProfileChange::UPDATE, new_profile.server_id(), new_profile));
+  bridge()->CreditCardChanged(CreditCardChange(CreditCardChange::UPDATE,
+                                               new_card.server_id(), new_card));
 
   // Check that the new metadata got created as well.
   EXPECT_THAT(GetAllLocalDataInclRestart(),
@@ -855,9 +838,9 @@ TEST_F(AutofillWalletMetadataSyncBridgeTest,
 
   bridge()->AutofillProfileChanged(
       AutofillProfileChange(AutofillProfileChange::REMOVE,
-                            existing_profile.server_id(), &existing_profile));
+                            existing_profile.server_id(), existing_profile));
   bridge()->CreditCardChanged(CreditCardChange(
-      CreditCardChange::REMOVE, existing_card.server_id(), &existing_card));
+      CreditCardChange::REMOVE, existing_card.server_id(), existing_card));
 
   // Check that there is no metadata anymore.
   EXPECT_THAT(GetAllLocalDataInclRestart(), IsEmpty());
@@ -885,9 +868,9 @@ TEST_F(AutofillWalletMetadataSyncBridgeTest,
 
   bridge()->AutofillProfileChanged(
       AutofillProfileChange(AutofillProfileChange::REMOVE,
-                            existing_profile.server_id(), &existing_profile));
+                            existing_profile.server_id(), existing_profile));
   bridge()->CreditCardChanged(CreditCardChange(
-      CreditCardChange::REMOVE, existing_card.server_id(), &existing_card));
+      CreditCardChange::REMOVE, existing_card.server_id(), existing_card));
 
   // Check that there is also no metadata at the end.
   EXPECT_THAT(GetAllLocalDataInclRestart(), IsEmpty());
@@ -913,7 +896,7 @@ TEST_F(AutofillWalletMetadataSyncBridgeTest, DoNotPropagateNonSyncAddresses) {
   existing_profile.set_use_date(UseDateFromProtoValue(21));
   bridge()->AutofillProfileChanged(
       AutofillProfileChange(AutofillProfileChange::UPDATE,
-                            existing_profile.guid(), &existing_profile));
+                            existing_profile.guid(), existing_profile));
 
   // Check that there is also no metadata at the end.
   EXPECT_THAT(GetAllLocalDataInclRestart(), IsEmpty());
@@ -942,7 +925,7 @@ TEST_F(AutofillWalletMetadataSyncBridgeTest, DoNotPropagateNonSyncCards) {
   existing_card.set_use_count(31);
   existing_card.set_use_date(UseDateFromProtoValue(41));
   bridge()->CreditCardChanged(CreditCardChange(
-      AutofillProfileChange::UPDATE, existing_card.guid(), &existing_card));
+      AutofillProfileChange::UPDATE, existing_card.guid(), existing_card));
 
   // Check that there is also no metadata at the end.
   EXPECT_THAT(GetAllLocalDataInclRestart(), IsEmpty());

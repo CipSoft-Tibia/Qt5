@@ -57,14 +57,18 @@ ol.tree-outline {
   display: none;
 }
 
+.title-container > .save-link:focus-visible {
+  outline-width: unset;
+}
+
 li.selected .title-container > .save-link {
   display: block;
   cursor: pointer;
 }
 
 li .icon {
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
   margin-top: 1px;
   margin-right: 3px;
   flex: none;
@@ -75,7 +79,9 @@ li .icon {
 }
 
 li.wait .spinner::before {
-  margin: 4px;
+  --dimension: 20px;
+
+  margin: 0;
 }
 
 li.wait.small .spinner::before {
@@ -143,17 +149,15 @@ li.small .subtitle {
   visibility: hidden;
 }
 /* Heap profiles and CPU profiles */
-
-.heap-snapshot-sidebar-tree-item .icon {
-  content: var(--image-file-profileIcon);
-}
-
+.heap-snapshot-sidebar-tree-item .icon,
 .profile-sidebar-tree-item .icon {
-  content: var(--image-file-profileIcon);
+  -webkit-mask-image: var(--image-file-heap-snapshot);
+  background: var(--icon-default);
 }
 
 .profile-group-sidebar-tree-item .icon {
-  content: var(--image-file-profileGroupIcon);
+  -webkit-mask-image: var(--image-file-heap-snapshots);
+  background: var(--icon-default);
 }
 
 li.small .icon {
@@ -165,12 +169,19 @@ li.wait .icon {
   content: none;
 }
 
+.heap-snapshot-sidebar-tree-item.wait .icon {
+  -webkit-mask-image: unset;
+  background-color: inherit;
+}
+
 .heap-snapshot-sidebar-tree-item.small .icon {
-  content: var(--image-file-profileSmallIcon);
+  -webkit-mask-image: var(--image-file-heap-snapshots);
+  background: var(--icon-default);
 }
 
 .profile-sidebar-tree-item.small .icon {
-  content: var(--image-file-profileSmallIcon);
+  -webkit-mask-image: var(--image-file-heap-snapshots);
+  background: var(--icon-default);
 }
 
 @media (forced-colors: active) {

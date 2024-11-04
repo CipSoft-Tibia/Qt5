@@ -55,9 +55,11 @@ bool ConsecutiveSimilarFieldType(ServerFieldType current_type,
 // Sectionable fields are all the fields that are in a non-default section.
 // Generally, only focusable fields are assigned a section. As an exception,
 // unfocusable <select> elements get a section, as hidden <select> elements are
-// common in custom select elements.
+// common in custom select elements. To confine the impact of hidden <select>
+// elements, this exception only applies if their type is actually autofillable.
 bool IsSectionable(const AutofillField& field) {
-  return field.IsFocusable() || field.form_control_type == "select-one";
+  return field.IsFocusable() ||
+         (field.IsSelectElement() && field.IsFieldFillable());
 }
 
 // Assign all credit card fields without a valid autocomplete attribute section
@@ -114,52 +116,62 @@ void ExpandSections(base::span<const std::unique_ptr<AutofillField>> fields) {
     auto end = base::ranges::find_if(it + 1, fields.end(), HasSection);
     if (end != fields.end() && (*it)->section == (*end)->section) {
       for (auto& field : base::make_span(it + 1, end)) {
-        if (IsSectionable(*field))
+        if (IsSectionable(*field)) {
           field->section = (*it)->section;
+        }
       }
     }
     it = end;
   }
 }
 
-bool ShouldStartNewSection(const ServerFieldTypeSet& seen_types,
-                           const AutofillField& current_field,
-                           const AutofillField& previous_field) {
+bool BelongsToCurrentSection(const ServerFieldTypeSet& seen_types,
+                             const AutofillField& current_field,
+                             const AutofillField& previous_field) {
   if (current_field.section)
-    return features::kAutofillSectioningModeCreateGaps.Get();
+    return !features::kAutofillSectioningModeCreateGaps.Get();
 
   const ServerFieldType current_type = current_field.Type().GetStorableType();
   if (current_type == UNKNOWN_TYPE)
-    return false;
+    return true;
 
   // Generally, adjacent fields of the same or very similar type belong in the
   // same logical section.
   if (ConsecutiveSimilarFieldType(current_type,
                                   previous_field.Type().GetStorableType())) {
-    return false;
+    return true;
   }
 
   // There are many phone number field types and their classification is
   // generally a little bit off. Furthermore, forms often ask for multiple phone
   // numbers, e.g. both a daytime and evening phone number.
-  if (AutofillType(current_type).group() == FieldTypeGroup::kPhoneHome)
-    return false;
+  if (AutofillType(current_type).group() == FieldTypeGroup::kPhone) {
+    return true;
+  }
 
-  return HaveSeenSimilarType(current_type, seen_types);
+  return !HaveSeenSimilarType(current_type, seen_types);
 }
 
-// Finds the first sectionable field that doesn't have a section assigned.
+// Finds the first focusable field that doesn't have a section assigned.
+//
+// We look for a focusable, rather than sectionable, field because starting a
+// section too early may also lead to finishing the section too early. In
+// particular, if a hidden section is followed by an identical visible section
+// and these sections contain a <select>, then the first (invisible) <select>
+// would start a section and the equivalent, visible <select> would erroneously
+// finish the section due to the repeated type.
 base::span<const std::unique_ptr<AutofillField>>::iterator
 FindBeginOfNextSection(
     base::span<const std::unique_ptr<AutofillField>>::iterator begin,
     base::span<const std::unique_ptr<AutofillField>>::iterator end) {
-  while (begin != end && ((*begin)->section || !IsSectionable(**begin)))
+  while (begin != end && ((*begin)->section || !(*begin)->IsFocusable())) {
     begin++;
+  }
   return begin;
 }
 
 // Finds the longest prefix of [begin, end) that belongs to the same section,
-// according to `ShouldStartNewSection()`.
+// according to `BelongsToCurrentSection()`.
 base::span<const std::unique_ptr<AutofillField>>::iterator FindEndOfNextSection(
     base::span<const std::unique_ptr<AutofillField>>::iterator begin,
     base::span<const std::unique_ptr<AutofillField>>::iterator end) {
@@ -171,8 +183,10 @@ base::span<const std::unique_ptr<AutofillField>>::iterator FindEndOfNextSection(
     const AutofillField& field = **it;
     if (!IsSectionable(field))
       continue;
-    if (prev_field && ShouldStartNewSection(seen_types, field, *prev_field))
+    if (prev_field &&
+        !BelongsToCurrentSection(seen_types, field, *prev_field)) {
       return it;
+    }
     if (!field.section) {
       seen_types.insert(field.Type().GetStorableType());
       prev_field = &field;
@@ -193,8 +207,9 @@ void AssignSections(base::span<const std::unique_ptr<AutofillField>> fields) {
   if (!features::kAutofillSectioningModeIgnoreAutocomplete.Get())
     AssignAutocompleteSections(fields);
   AssignCreditCardSections(fields, frame_token_ids);
-  if (features::kAutofillSectioningModeExpand.Get())
+  if (features::kAutofillSectioningModeExpand.Get()) {
     ExpandSections(fields);
+  }
 
   auto begin = fields.begin();
   while (begin != fields.end()) {
@@ -212,8 +227,12 @@ void LogSectioningMetrics(
     AutofillMetrics::FormInteractionsUkmLogger* form_interactions_ukm_logger) {
   // UMA:
   base::flat_map<Section, size_t> fields_per_section;
-  for (auto& field : fields)
+  for (auto& field : fields) {
+    if (!IsSectionable(*field) || !field->IsFieldFillable()) {
+      continue;
+    }
     ++fields_per_section[field->section];
+  }
   AutofillMetrics::LogSectioningMetrics(fields_per_section);
   // UKM:
   if (form_interactions_ukm_logger) {
@@ -229,6 +248,9 @@ uint32_t ComputeSectioningSignature(
   std::stringstream signature;
   base::flat_map<Section, size_t> section_ids;
   for (auto& field : fields) {
+    if (!IsSectionable(*field) || !field->IsFieldFillable()) {
+      continue;
+    }
     size_t section_id =
         section_ids.emplace(field->section, section_ids.size()).first->second;
     signature << section_id;

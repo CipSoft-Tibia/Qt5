@@ -19,7 +19,6 @@
 
 namespace dawn::native::d3d12 {
 
-class Adapter;
 class BindGroup;
 class BindGroupLayout;
 class Buffer;
@@ -27,6 +26,7 @@ class CommandBuffer;
 class ComputePipeline;
 class Device;
 class Heap;
+class PhysicalDevice;
 class PipelineCache;
 class PipelineLayout;
 class QuerySet;
@@ -34,18 +34,20 @@ class Queue;
 class RenderPipeline;
 class Sampler;
 class ShaderModule;
+class SharedFence;
+class SharedTextureMemory;
 class SwapChain;
 class Texture;
 class TextureView;
 
 struct D3D12BackendTraits {
-    using AdapterType = Adapter;
     using BindGroupType = BindGroup;
     using BindGroupLayoutType = BindGroupLayout;
     using BufferType = Buffer;
     using CommandBufferType = CommandBuffer;
     using ComputePipelineType = ComputePipeline;
     using DeviceType = Device;
+    using PhysicalDeviceType = PhysicalDevice;
     using PipelineCacheType = PipelineCache;
     using PipelineLayoutType = PipelineLayout;
     using QuerySetType = QuerySet;
@@ -54,6 +56,8 @@ struct D3D12BackendTraits {
     using ResourceHeapType = Heap;
     using SamplerType = Sampler;
     using ShaderModuleType = ShaderModule;
+    using SharedFenceType = SharedFence;
+    using SharedTextureMemoryType = SharedTextureMemory;
     using SwapChainType = SwapChain;
     using TextureType = Texture;
     using TextureViewType = TextureView;

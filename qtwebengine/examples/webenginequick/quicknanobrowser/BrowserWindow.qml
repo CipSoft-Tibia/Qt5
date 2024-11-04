@@ -520,6 +520,7 @@ ApplicationWindow {
                 settings.touchIconsEnabled: appSettings.touchIconsEnabled
                 settings.webRTCPublicInterfacesOnly: appSettings.webRTCPublicInterfacesOnly
                 settings.pdfViewerEnabled: appSettings.pdfViewerEnabled
+                settings.screenCaptureEnabled: true
 
                 onCertificateError: function(error) {
                     error.defer();
@@ -564,6 +565,11 @@ ApplicationWindow {
                     request.accept();
                 }
 
+                onDesktopMediaRequested: function(request) {
+                    // select the primary screen
+                    request.selectScreen(request.screensModel.index(0, 0));
+                }
+
                 onRenderProcessTerminated: function(terminationStatus, exitCode) {
                     var status = "";
                     switch (terminationStatus) {
@@ -606,6 +612,9 @@ ApplicationWindow {
                     featurePermissionDialog.securityOrigin = securityOrigin;
                     featurePermissionDialog.feature = feature;
                     featurePermissionDialog.visible = true;
+                }
+                onWebAuthUxRequested: function(request) {
+                    webAuthDialog.init(request);
                 }
 
                 Timer {
@@ -757,6 +766,11 @@ ApplicationWindow {
         id: downloadView
         visible: false
         anchors.fill: parent
+    }
+
+    WebAuthDialog {
+        id: webAuthDialog
+        visible: false
     }
 
     function onDownloadRequested(download) {

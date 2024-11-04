@@ -31,6 +31,13 @@ void QPhysXStaticBody::sync(float deltaTime, QHash<QQuick3DNode *, QMatrix4x4> &
     // For performance we only update static objects if they have been moved
     if (!QPhysicsUtils::fuzzyEquals(poseNew, poseOld))
         actor->setGlobalPose(poseNew);
+
+    const bool disabledPrevious = actor->getActorFlags() & physx::PxActorFlag::eDISABLE_SIMULATION;
+    const bool disabled = !staticBody->simulationEnabled();
+    if (disabled != disabledPrevious) {
+        actor->setActorFlag(physx::PxActorFlag::eDISABLE_SIMULATION, disabled);
+    }
+
     QPhysXActorBody::sync(deltaTime, transformCache);
 }
 

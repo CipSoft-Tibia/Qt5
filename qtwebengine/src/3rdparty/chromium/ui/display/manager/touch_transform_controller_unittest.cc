@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "base/memory/raw_ptr.h"
 #include "base/strings/string_number_conversions.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/display/manager/default_touch_transform_setter.h"
@@ -143,8 +144,7 @@ class TouchTransformControllerTest : public testing::Test {
   ManagedDisplayInfo CreateDisplayInfo(int64_t id,
                                        const ui::TouchscreenDevice& device,
                                        const gfx::Rect& bounds) {
-    ManagedDisplayInfo info(id, std::string(), false);
-    info.SetBounds(bounds);
+    ManagedDisplayInfo info = display::CreateDisplayInfo(id, bounds);
 
     // Create a default mode.
     ManagedDisplayInfo::ManagedDisplayModeList default_modes(
@@ -161,7 +161,7 @@ class TouchTransformControllerTest : public testing::Test {
  private:
   std::unique_ptr<DisplayManager> display_manager_;
   std::unique_ptr<TouchTransformController> touch_transform_controller_;
-  TouchDeviceManager* touch_device_manager_;
+  raw_ptr<TouchDeviceManager, ExperimentalAsh> touch_device_manager_;
 };
 
 TEST_F(TouchTransformControllerTest, MirrorModeLetterboxing) {
@@ -445,12 +445,12 @@ TEST_F(TouchTransformControllerTest, ExtendedMode) {
 
 TEST_F(TouchTransformControllerTest, TouchRadiusScale) {
   ui::TouchscreenDevice touch_device =
-      CreateTouchscreenDevice(5, gfx::Size(1001, 1001));
+      CreateTouchscreenDevice(5, gfx::Size(100001, 100001));
   ManagedDisplayInfo display =
       CreateDisplayInfo(1, touch_device, gfx::Rect(0, 0, 2560, 1600));
 
-  // Default touchscreen position range is 1001x1001;
-  EXPECT_EQ(sqrt((2560.0 * 1600.0) / (1001.0 * 1001.0)),
+  // Default touchscreen position range is 100001x100001;
+  EXPECT_EQ(sqrt((2560.0 * 1600.0) / (100001.0 * 100001.0)),
             GetTouchResolutionScale(display, touch_device));
 }
 

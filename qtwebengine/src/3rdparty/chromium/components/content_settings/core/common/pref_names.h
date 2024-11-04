@@ -14,6 +14,7 @@ namespace prefs {
 // names.
 
 extern const char kCookieControlsMode[];
+extern const char kBlockTruncatedCookies[];
 
 extern const char kContentSettingsVersion[];
 extern const char kContentSettingsWindowLastTabIndex[];
@@ -39,13 +40,15 @@ extern const char kManagedDefaultJavaScriptJitSetting[];
 extern const char kManagedDefaultWebHidGuardSetting[];
 extern const char kManagedDefaultWindowManagementSetting[];
 extern const char kManagedDefaultLocalFontsSetting[];
+extern const char kManagedDefaultThirdPartyStoragePartitioningSetting[];
+extern const char kManagedDefaultMidi[];
 
 extern const char kManagedClipboardAllowedForUrls[];
 extern const char kManagedClipboardBlockedForUrls[];
 extern const char kManagedCookiesAllowedForUrls[];
 extern const char kManagedCookiesBlockedForUrls[];
 extern const char kManagedCookiesSessionOnlyForUrls[];
-extern const char kManagedGetDisplayMediaSetSelectAllScreensAllowedForUrls[];
+extern const char kManagedAccessToGetAllScreensMediaInSessionAllowedForUrls[];
 extern const char kManagedImagesAllowedForUrls[];
 extern const char kManagedImagesBlockedForUrls[];
 extern const char kManagedInsecureContentAllowedForUrls[];
@@ -78,15 +81,25 @@ extern const char kManagedWindowManagementAllowedForUrls[];
 extern const char kManagedWindowManagementBlockedForUrls[];
 extern const char kManagedLocalFontsAllowedForUrls[];
 extern const char kManagedLocalFontsBlockedForUrls[];
+extern const char kManagedThirdPartyStoragePartitioningBlockedForOrigins[];
+extern const char kManagedMidiAllowedForUrls[];
+extern const char kManagedMidiBlockedForUrls[];
 
 extern const char kEnableQuietNotificationPermissionUi[];
+extern const char kEnableQuietGeolocationPermissionUi[];
+extern const char kDidMigrateAdaptiveNotifiationQuietingToCPSS[];
+extern const char kEnableNotificationCPSS[];
+extern const char kEnableGeolocationCPSS[];
 extern const char kQuietNotificationPermissionUiEnablingMethod[];
 extern const char kQuietNotificationPermissionUiDisabledTime[];
+
+extern const char kInContextCookieControlsOpened[];
 
 #if BUILDFLAG(IS_ANDROID)
 extern const char kNotificationsVibrateEnabled[];
 extern const char kDesktopSitePeripheralSettingEnabled[];
 extern const char kDesktopSiteDisplaySettingEnabled[];
+extern const char kDesktopSiteWindowSettingEnabled[];
 #endif
 
 }  // namespace prefs

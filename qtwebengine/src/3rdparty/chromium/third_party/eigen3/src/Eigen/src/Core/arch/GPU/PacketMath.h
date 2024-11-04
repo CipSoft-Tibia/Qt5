@@ -46,7 +46,6 @@ template<> struct packet_traits<float> : default_packet_traits
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size=4,
-    HasHalfPacket = 0,
 
     HasDiv  = 1,
     HasSin  = 0,
@@ -82,7 +81,6 @@ template<> struct packet_traits<double> : default_packet_traits
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size=2,
-    HasHalfPacket = 0,
 
     HasDiv  = 1,
     HasLog  = 1,
@@ -379,7 +377,7 @@ template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void pstoreu<double>(double* to
 template<>
 EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float4 ploadt_ro<float4, Aligned>(const float* from) {
 #if defined(EIGEN_GPU_HAS_LDG)
-  return __ldg((const float4*)from);
+  return __ldg(reinterpret_cast<const float4*>(from));
 #else
   return make_float4(from[0], from[1], from[2], from[3]);
 #endif
@@ -387,7 +385,7 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float4 ploadt_ro<float4, Aligned>(const fl
 template<>
 EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE double2 ploadt_ro<double2, Aligned>(const double* from) {
 #if defined(EIGEN_GPU_HAS_LDG)
-  return __ldg((const double2*)from);
+  return __ldg(reinterpret_cast<const double2*>(from));
 #else
   return make_double2(from[0], from[1]);
 #endif
@@ -534,7 +532,6 @@ template<> struct packet_traits<Eigen::half> : default_packet_traits
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size=8,
-    HasHalfPacket = 0,
     HasAdd    = 1,
     HasSub    = 1,
     HasMul    = 1,

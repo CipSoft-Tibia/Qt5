@@ -9,7 +9,6 @@
 #include "base/values.h"
 #include "chrome/common/extensions/sync_helper.h"
 #include "extensions/common/extension.h"
-#include "extensions/common/features/simple_feature.h"
 #include "extensions/common/manifest.h"
 #include "extensions/common/manifest_constants.h"
 #include "extensions/common/manifest_handlers/app_display_info.h"
@@ -37,14 +36,14 @@ class ExtensionSyncTypeTest : public testing::Test {
       mojom::ManifestLocation location,
       const base::FilePath& extension_path,
       int creation_flags) {
-    base::Value::Dict source;
-    source.Set(keys::kName, "PossiblySyncableExtension");
-    source.Set(keys::kVersion, "0.0.0.0");
-    source.Set(keys::kManifestVersion, 2);
+    auto source = base::Value::Dict()
+                      .Set(keys::kName, "PossiblySyncableExtension")
+                      .Set(keys::kVersion, "0.0.0.0")
+                      .Set(keys::kManifestVersion, 2);
     if (type == APP && launch_url.is_empty())
       source.Set(keys::kApp, "true");
     if (type == THEME)
-      source.Set(keys::kTheme, base::Value(base::Value::Type::DICT));
+      source.Set(keys::kTheme, base::Value::Dict());
     if (!update_url.is_empty()) {
       source.Set(keys::kUpdateURL, update_url.spec());
     }
@@ -147,9 +146,9 @@ TEST_F(ExtensionSyncTypeTest, OnlyDisplayAppsInLauncher) {
 }
 
 TEST_F(ExtensionSyncTypeTest, DisplayInXManifestProperties) {
-  base::Value::Dict manifest;
-  manifest.Set(keys::kName, "TestComponentApp");
-  manifest.Set(keys::kVersion, "0.0.0.0");
+  auto manifest = base::Value::Dict()
+                      .Set(keys::kName, "TestComponentApp")
+                      .Set(keys::kVersion, "0.0.0.0");
   manifest.SetByDottedPath(keys::kPlatformAppBackgroundPage, std::string());
 
   // Default to true.
@@ -210,16 +209,6 @@ TEST_F(ExtensionSyncTypeTest, DontSyncDefault) {
       EXTENSION, GURL(), GURL(), mojom::ManifestLocation::kInternal,
       base::FilePath(), Extension::WAS_INSTALLED_BY_DEFAULT));
   EXPECT_FALSE(sync_helper::IsSyncable(extension_default.get()));
-}
-
-TEST_F(ExtensionSyncTypeTest, DontSyncExtensionInDoNotSyncList) {
-  scoped_refptr<Extension> extension(MakeSyncTestExtension(
-      EXTENSION, GURL(), GURL(), mojom::ManifestLocation::kInternal,
-      base::FilePath(), Extension::NO_FLAGS));
-  EXPECT_TRUE(extension->is_extension());
-  EXPECT_TRUE(sync_helper::IsSyncable(extension.get()));
-  SimpleFeature::ScopedThreadUnsafeAllowlistForTest allowlist(extension->id());
-  EXPECT_FALSE(sync_helper::IsSyncable(extension.get()));
 }
 
 }  // namespace extensions

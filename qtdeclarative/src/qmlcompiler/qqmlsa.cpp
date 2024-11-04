@@ -237,11 +237,6 @@ QQmlSA::Element Binding::objectType() const
     return QQmlJSScope::createQQmlSAElement(BindingPrivate::binding(*this).objectType());
 }
 
-Element QQmlSA::Binding::literalType(const QQmlJSTypeResolver *resolver) const
-{
-    return QQmlJSScope::createQQmlSAElement(BindingPrivate::binding(*this).literalType(resolver));
-}
-
 bool Binding::hasUndefinedScriptValue() const
 {
     const auto &jsBinding = BindingPrivate::binding(*this);
@@ -434,6 +429,24 @@ bool PropertyPrivate::isValid() const
     return m_property.isValid();
 }
 
+/*!
+   Returns whether this property is readonly. Properties defined in QML are readonly when their
+   definition has the 'readonly' keyword. Properties defined in C++ are readonly when they do not
+   have a WRITE accessor function.
+ */
+bool PropertyPrivate::isReadonly() const
+{
+    return !m_property.isWritable();
+}
+
+/*!
+    Returns the type that this property was defined with.
+ */
+QQmlSA::Element PropertyPrivate::type() const
+{
+    return QQmlJSScope::createQQmlSAElement(m_property.type());
+}
+
 QQmlJSMetaProperty PropertyPrivate::property(const QQmlSA::Property &property)
 {
     return property.d_func()->m_property;
@@ -500,6 +513,19 @@ bool Property::isValid() const
     Q_D(const Property);
     return d->isValid();
 }
+
+bool Property::isReadonly() const
+{
+    Q_D(const Property);
+    return d->isReadonly();
+}
+
+QQmlSA::Element Property::type() const
+{
+    Q_D(const Property);
+    return d->type();
+}
+
 
 bool Property::operatorEqualsImpl(const Property &lhs, const Property &rhs)
 {
@@ -613,6 +639,15 @@ bool QQmlSA::Element::isComposite() const
 bool Element::hasProperty(const QString &propertyName) const
 {
     return QQmlJSScope::scope(*this)->hasProperty(propertyName);
+}
+
+/*!
+    Returns whether this Element defines a property with the name \a propertyName
+    which is not defined on its base or extension objects.
+ */
+bool Element::hasOwnProperty(const QString &propertyName) const
+{
+    return QQmlJSScope::scope(*this)->hasOwnProperty(propertyName);
 }
 
 /*!
@@ -758,22 +793,6 @@ QQmlSA::Binding::Bindings BindingsPrivate::createBindings(
     QQmlSA::Binding::Bindings bindings;
     bindings.d_func()->m_bindings = std::move(saBindings);
     return bindings;
-}
-
-/*!
-    Returns an iterator to the beginning of this Element's children.
- */
-QQmlJS::ConstPtrWrapperIterator Element::childScopesBegin() const
-{
-    return QQmlJSScope::scope(*this)->childScopesBegin();
-}
-
-/*!
-    Returns an iterator to the end of this Element's children.
- */
-QQmlJS::ConstPtrWrapperIterator Element::childScopesEnd() const
-{
-    return QQmlJSScope::scope(*this)->childScopesEnd();
 }
 
 Element::operator bool() const
@@ -960,7 +979,9 @@ Element GenericPass::resolveAttached(QAnyStringView moduleName, QAnyStringView t
 Element GenericPass::resolveLiteralType(const QQmlSA::Binding &binding)
 {
     Q_D(const GenericPass);
-    return binding.literalType(PassManagerPrivate::resolver(*d->m_manager));
+
+    return QQmlJSScope::createQQmlSAElement(BindingPrivate::binding(binding).literalType(
+            PassManagerPrivate::resolver(*d->m_manager)));
 }
 
 /*!
@@ -1005,15 +1026,9 @@ QString GenericPass::sourceCode(QQmlSA::SourceLocation location)
     \brief Can analyze an element and its children with static analysis passes.
  */
 
-/*!
-    Constructs a pass manager given an import \a visitor and a type \a resolver.
- */
-QQmlSA::PassManager::PassManager(QQmlJSImportVisitor *visitor, QQmlJSTypeResolver *resolver)
-    : d_ptr{ new PassManagerPrivate{ this, visitor, resolver } }
-{
-}
-
-PassManager::~PassManager() = default; // explicitly defaulted out-of-line for PIMPL
+// explicitly defaulted out-of-line for PIMPL
+PassManager::PassManager() = default;
+PassManager::~PassManager() = default;
 
 /*!
     Registers a static analysis \a pass to be run on all elements.
@@ -1159,6 +1174,16 @@ void PassManager::analyze(const Element &root)
     d->analyze(root);
 }
 
+static QQmlJS::ConstPtrWrapperIterator childScopesBegin(const Element &element)
+{
+    return QQmlJSScope::scope(element)->childScopesBegin();
+}
+
+static QQmlJS::ConstPtrWrapperIterator childScopesEnd(const Element &element)
+{
+    return QQmlJSScope::scope(element)->childScopesEnd();
+}
+
 void PassManagerPrivate::analyze(const Element &root)
 {
     QList<Element> runStack;
@@ -1170,7 +1195,7 @@ void PassManagerPrivate::analyze(const Element &root)
             if (elementPass->shouldRun(element))
                 elementPass->run(element);
 
-        for (auto it = element.childScopesBegin(); it != element.childScopesEnd(); ++it) {
+        for (auto it = childScopesBegin(element), end = childScopesEnd(element); it != end; ++it) {
             if ((*it)->scopeType() == QQmlSA::ScopeType::QMLScope)
                 runStack.push_back(QQmlJSScope::createQQmlSAElement(*it));
         }

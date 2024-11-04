@@ -25,7 +25,7 @@ TestCase {
     property NestedFieldMessages1.nestedFieldMessage fieldMsg1;
     property NestedFieldMessages1.nestedMessage simpleMsg1;
 
-    function test_1initialization() {
+    function initTestCase() {
         simpleMsg.testFieldInt = 100
         fieldMsg.nested = simpleMsg
         messageLevel2.testFieldInt = 200

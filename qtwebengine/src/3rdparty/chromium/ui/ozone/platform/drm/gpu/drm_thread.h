@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "base/files/file.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/threading/thread.h"
 #include "mojo/public/cpp/bindings/associated_receiver_set.h"
@@ -23,6 +24,7 @@
 #include "ui/ozone/platform/drm/gpu/drm_device_generator.h"
 #include "ui/ozone/platform/drm/mojom/device_cursor.mojom.h"
 #include "ui/ozone/platform/drm/mojom/drm_device.mojom.h"
+#include "ui/ozone/public/drm_modifiers_filter.h"
 #include "ui/ozone/public/hardware_capabilities.h"
 #include "ui/ozone/public/overlay_surface_candidate.h"
 #include "ui/ozone/public/swap_completion_callback.h"
@@ -140,6 +142,10 @@ class DrmThread : public base::Thread,
 
   void IsDeviceAtomic(gfx::AcceleratedWidget widget, bool* is_atomic);
 
+  // Sets a filter that the DRM thread can invoke to filter out modifiers
+  // incompatible with use in GPU main and Viz threads.
+  void SetDrmModifiersFilter(std::unique_ptr<DrmModifiersFilter> filter);
+
   // ozone::mojom::DrmDevice
   void CreateWindow(gfx::AcceleratedWidget widget,
                     const gfx::Rect& initial_bounds) override;
@@ -190,7 +196,7 @@ class DrmThread : public base::Thread,
   // ozone::mojom::DeviceCursor
   void SetCursor(gfx::AcceleratedWidget widget,
                  const std::vector<SkBitmap>& bitmaps,
-                 const gfx::Point& location,
+                 const absl::optional<gfx::Point>& location,
                  base::TimeDelta frame_delay) override;
   void MoveCursor(gfx::AcceleratedWidget widget,
                   const gfx::Point& location) override;
@@ -202,7 +208,7 @@ class DrmThread : public base::Thread,
  private:
   struct TaskInfo {
     base::OnceClosure task;
-    base::WaitableEvent* done;
+    raw_ptr<base::WaitableEvent, ExperimentalAsh> done;
 
     TaskInfo(base::OnceClosure task, base::WaitableEvent* done);
     TaskInfo(TaskInfo&& other);

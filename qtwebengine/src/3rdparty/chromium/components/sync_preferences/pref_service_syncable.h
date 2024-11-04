@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "base/functional/callback_forward.h"
+#include "base/functional/callback_helpers.h"
 #include "base/observer_list.h"
 #include "build/chromeos_buildflags.h"
 #include "components/pref_registry/pref_registry_syncable.h"
@@ -22,10 +23,12 @@ class PrefValueStore;
 
 namespace syncer {
 class SyncableService;
+class SyncService;
 }
 
 namespace sync_preferences {
 
+class DualLayerUserPrefStore;
 class PrefModelAssociatorClient;
 class PrefServiceSyncableObserver;
 class SyncedPrefObserver;
@@ -42,6 +45,21 @@ class PrefServiceSyncable : public PrefService,
       std::unique_ptr<PrefNotifierImpl> pref_notifier,
       std::unique_ptr<PrefValueStore> pref_value_store,
       scoped_refptr<PersistentPrefStore> user_prefs,
+      scoped_refptr<PersistentPrefStore> standalone_browser_prefs,
+      scoped_refptr<user_prefs::PrefRegistrySyncable> pref_registry,
+      const PrefModelAssociatorClient* pref_model_associator_client,
+      base::RepeatingCallback<void(PersistentPrefStore::PrefReadError)>
+          read_error_callback,
+      bool async);
+
+  // Note: This must be called iff EnablePreferencesAccountStorage feature is
+  // enabled.
+  // Note: Can be done using templates instead of overload but chosen not to for
+  // more clarity.
+  PrefServiceSyncable(
+      std::unique_ptr<PrefNotifierImpl> pref_notifier,
+      std::unique_ptr<PrefValueStore> pref_value_store,
+      scoped_refptr<DualLayerUserPrefStore> dual_layer_user_prefs,
       scoped_refptr<PersistentPrefStore> standalone_browser_prefs,
       scoped_refptr<user_prefs::PrefRegistrySyncable> pref_registry,
       const PrefModelAssociatorClient* pref_model_associator_client,
@@ -98,17 +116,22 @@ class PrefServiceSyncable : public PrefService,
   void RemoveSyncedPrefObserver(const std::string& name,
                                 SyncedPrefObserver* observer);
 
+  void OnSyncServiceInitialized(syncer::SyncService* sync_service);
+
  private:
+  void ConnectAssociatorsAndRegisterPreferences();
+
   void AddRegisteredSyncablePreference(const std::string& path, uint32_t flags);
 
   // PrefServiceForAssociator:
   base::Value::Type GetRegisteredPrefType(
       const std::string& pref_name) const override;
   void OnIsSyncingChanged() override;
+  uint32_t GetWriteFlags(const std::string& pref_name) const override;
 
   // Whether CreateIncognitoPrefService() has been called to create a
   // "forked" PrefService.
-  bool pref_service_forked_;
+  bool pref_service_forked_ = false;
 
   PrefModelAssociator pref_sync_associator_;
   PrefModelAssociator priority_pref_sync_associator_;
@@ -122,6 +145,10 @@ class PrefServiceSyncable : public PrefService,
   const scoped_refptr<user_prefs::PrefRegistrySyncable> pref_registry_;
 
   base::ObserverList<PrefServiceSyncableObserver>::Unchecked observer_list_;
+
+  // DualLayerUserPrefStore instance passed to the associators. This is non-null
+  // iff EnablePreferencesAccountStorage feature is enabled.
+  scoped_refptr<DualLayerUserPrefStore> dual_layer_user_prefs_;
 };
 
 }  // namespace sync_preferences

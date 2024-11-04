@@ -40,10 +40,10 @@ import {XWidget} from './XWidget.js';
 export class WidgetElement extends HTMLDivElement {
   // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
   // eslint-disable-next-line @typescript-eslint/naming-convention, rulesdir/no_underscored_properties
-  __widget!: Widget|null;
+  override __widget!: Widget|null;
   // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
   // eslint-disable-next-line @typescript-eslint/naming-convention, rulesdir/no_underscored_properties
-  __widgetCounter!: number|null;
+  override __widgetCounter!: number|null;
   constructor() {
     super();
   }
@@ -255,6 +255,9 @@ export class Widget {
   onLayout(): void {
   }
 
+  onDetach(): void {
+  }
+
   async ownerViewDisposed(): Promise<void> {
   }
 
@@ -366,6 +369,7 @@ export class Widget {
       // Force legal removal
       Widget.decrementWidgetCounter(parentElement, this.element);
       DOMExtension.DOMExtension.originalRemoveChild.call(parentElement, this.element);
+      this.onDetach();
     } else {
       this.element.classList.add('hidden');
     }
@@ -627,7 +631,7 @@ export class VBox extends Widget {
     this.contentElement.classList.add('vbox');
   }
 
-  calculateConstraints(): Constraints {
+  override calculateConstraints(): Constraints {
     let constraints: Constraints = new Constraints();
 
     function updateForChild(this: Widget): void {
@@ -647,7 +651,7 @@ export class HBox extends Widget {
     this.contentElement.classList.add('hbox');
   }
 
-  calculateConstraints(): Constraints {
+  override calculateConstraints(): Constraints {
     let constraints: Constraints = new Constraints();
 
     function updateForChild(this: Widget): void {
@@ -668,7 +672,7 @@ export class VBoxWithResizeCallback extends VBox {
     this.resizeCallback = resizeCallback;
   }
 
-  onResize(): void {
+  override onResize(): void {
     this.resizeCallback();
   }
 }

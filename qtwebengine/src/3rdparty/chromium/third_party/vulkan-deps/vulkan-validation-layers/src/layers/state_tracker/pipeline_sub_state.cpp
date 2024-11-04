@@ -16,11 +16,15 @@
  */
 
 #include "state_tracker/pipeline_sub_state.h"
+#include "state_tracker/pipeline_state.h"
 
-#include "state_tracker/state_tracker.h"
+VkPipelineLayoutCreateFlags PipelineSubState::PipelineLayoutCreateFlags() const {
+    const auto layout_state = parent.PipelineLayoutState();
+    return (layout_state) ? layout_state->CreateFlags() : static_cast<VkPipelineLayoutCreateFlags>(0);
+}
 
 VertexInputState::VertexInputState(const PIPELINE_STATE &p, const safe_VkGraphicsPipelineCreateInfo &create_info)
-    : parent(p), input_state(create_info.pVertexInputState), input_assembly_state(create_info.pInputAssemblyState) {
+    : PipelineSubState(p), input_state(create_info.pVertexInputState), input_assembly_state(create_info.pInputAssemblyState) {
     if (create_info.pVertexInputState) {
         const auto *vici = create_info.pVertexInputState;
         if (vici->vertexBindingDescriptionCount) {
@@ -52,14 +56,14 @@ VertexInputState::VertexInputState(const PIPELINE_STATE &p, const safe_VkGraphic
     }
 }
 
-PreRasterState::PreRasterState(const PIPELINE_STATE &p, const ValidationStateTracker &dev_data,
+PreRasterState::PreRasterState(const PIPELINE_STATE &p, const ValidationStateTracker &state_data,
                                const safe_VkGraphicsPipelineCreateInfo &create_info, std::shared_ptr<const RENDER_PASS_STATE> rp)
-    : parent(p), rp_state(rp), subpass(create_info.subpass) {
-    pipeline_layout = dev_data.Get<PIPELINE_LAYOUT_STATE>(create_info.layout);
+    : PipelineSubState(p), rp_state(rp), subpass(create_info.subpass) {
+    pipeline_layout = state_data.Get<PIPELINE_LAYOUT_STATE>(create_info.layout);
 
     viewport_state = create_info.pViewportState;
 
-    rp_state = dev_data.Get<RENDER_PASS_STATE>(create_info.renderPass);
+    rp_state = state_data.Get<RENDER_PASS_STATE>(create_info.renderPass);
 
     raster_state = create_info.pRasterizationState;
 
@@ -68,14 +72,24 @@ PreRasterState::PreRasterState(const PIPELINE_STATE &p, const ValidationStateTra
     for (uint32_t i = 0; i < create_info.stageCount; ++i) {
         // TODO might need to filter out more than just fragment shaders here
         if (create_info.pStages[i].stage != VK_SHADER_STAGE_FRAGMENT_BIT) {
-            auto module_state = dev_data.Get<SHADER_MODULE_STATE>(create_info.pStages[i].module);
+            auto module_state = state_data.Get<SHADER_MODULE_STATE>(create_info.pStages[i].module);
             if (!module_state) {
                 // If module is null and there is a VkShaderModuleCreateInfo in the pNext chain of the stage info, then this
                 // module is part of a library and the state must be created
                 const auto shader_ci = LvlFindInChain<VkShaderModuleCreateInfo>(create_info.pStages[i].pNext);
                 if (shader_ci) {
-                    const uint32_t unique_shader_id = 0;  // TODO GPU-AV rework required to get this value properly
-                    module_state = dev_data.CreateShaderModuleState(*shader_ci, unique_shader_id);
+                    // don't need to worry about GroupDecoration in GPL
+                    auto spirv_module = std::make_shared<SPIRV_MODULE_STATE>(shader_ci->codeSize, shader_ci->pCode);
+                    module_state = std::make_shared<SHADER_MODULE_STATE>(VK_NULL_HANDLE, spirv_module, 0);
+                }
+            }
+
+            // Check if a shader module identifier is used to reference the shader module.
+            if (!module_state) {
+                if (const auto shader_stage_id =
+                        LvlFindInChain<VkPipelineShaderStageModuleIdentifierCreateInfoEXT>(create_info.pStages[i].pNext);
+                    shader_stage_id) {
+                    module_state = state_data.GetShaderModuleStateFromIdentifier(*shader_stage_id);
                 }
             }
 
@@ -161,8 +175,18 @@ void SetFragmentShaderInfoPrivate(FragmentShaderState &fs_state, const Validatio
                 // module is part of a library and the state must be created
                 const auto shader_ci = LvlFindInChain<VkShaderModuleCreateInfo>(create_info.pStages[i].pNext);
                 if (shader_ci) {
-                    const uint32_t unique_shader_id = 0;  // TODO GPU-AV rework required to get this value properly
-                    module_state = state_data.CreateShaderModuleState(*shader_ci, unique_shader_id);
+                    // don't need to worry about GroupDecoration in GPL
+                    auto spirv_module = std::make_shared<SPIRV_MODULE_STATE>(shader_ci->codeSize, shader_ci->pCode);
+                    module_state = std::make_shared<SHADER_MODULE_STATE>(VK_NULL_HANDLE, spirv_module, 0);
+                }
+            }
+
+            // Check if a shader module identifier is used to reference the shader module.
+            if (!module_state) {
+                if (const auto shader_stage_id =
+                        LvlFindInChain<VkPipelineShaderStageModuleIdentifierCreateInfoEXT>(create_info.pStages[i].pNext);
+                    shader_stage_id) {
+                    module_state = state_data.GetShaderModuleStateFromIdentifier(*shader_stage_id);
                 }
             }
 
@@ -188,10 +212,10 @@ void FragmentShaderState::SetFragmentShaderInfo(FragmentShaderState &fs_state, c
 
 FragmentShaderState::FragmentShaderState(const PIPELINE_STATE &p, const ValidationStateTracker &dev_data,
                                          std::shared_ptr<const RENDER_PASS_STATE> rp, uint32_t subp, VkPipelineLayout layout)
-    : parent(p), rp_state(rp), subpass(subp), pipeline_layout(dev_data.Get<PIPELINE_LAYOUT_STATE>(layout)) {}
+    : PipelineSubState(p), rp_state(rp), subpass(subp), pipeline_layout(dev_data.Get<PIPELINE_LAYOUT_STATE>(layout)) {}
 
 FragmentOutputState::FragmentOutputState(const PIPELINE_STATE &p, std::shared_ptr<const RENDER_PASS_STATE> rp, uint32_t sp)
-    : parent(p), rp_state(rp), subpass(sp) {}
+    : PipelineSubState(p), rp_state(rp), subpass(sp) {}
 
 // static
 bool FragmentOutputState::IsBlendConstantsEnabled(const AttachmentVector &attachments) {

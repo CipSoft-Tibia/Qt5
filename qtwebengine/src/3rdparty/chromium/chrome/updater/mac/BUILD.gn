@@ -9,6 +9,7 @@ import("//build/config/python.gni")
 import("//build/symlink.gni")
 import("//build/util/process_version.gni")
 import("//chrome/updater/branding.gni")
+import("//chrome/updater/mac/signing/signing_sources.gni")
 import("//chrome/updater/zip.gni")
 import("//chrome/version.gni")
 
@@ -34,6 +35,13 @@ tweak_info_plist("updater_plist") {
   info_plist = "Info.plist"
 }
 
+mac_info_plist("launcher_plist") {
+  info_plist = "Info.plist"
+  executable_name = "launcher"
+  extra_substitutions =
+      [ "MAC_BUNDLE_IDENTIFIER=$mac_updater_bundle_identifier" ]
+}
+
 mac_app_bundle("updater_bundle") {
   info_plist_target = ":updater_plist"
   output_name = updater_product_full_name
@@ -52,7 +60,7 @@ mac_app_bundle("updater_bundle") {
     "//chrome/updater:constants_prod",
   ]
   public_deps = [
-    ":ksadmin_copy",
+    ":ksadmin",
     ":ksadmin_link",
   ]
 }
@@ -77,10 +85,7 @@ mac_app_bundle("updater_bundle_test") {
   if (is_asan) {
     deps += [ ":keystone_agent_bundle_resource_executable_test_asan_dylib" ]
   }
-  public_deps = [
-    ":ksadmin_test_copy",
-    ":ksadmin_test_link",
-  ]
+  public_deps = [ ":ksadmin_test_copy" ]
 }
 
 source_set("privileged_helper_sources") {
@@ -254,11 +259,11 @@ executable("launcher") {
   ]
 
   deps = [
+    ":launcher_plist",
     ":launcher_sources",
-    ":updater_plist",
   ]
 
-  inputs = [ "$target_gen_dir/updater_plist_tweaked.plist" ]
+  inputs = [ "$target_gen_dir/launcher_plist.plist" ]
 
   ldflags = [
     "-sectcreate",
@@ -283,8 +288,8 @@ executable("launcher_test") {
   sources = [ "launcher_constants_test.c" ]
 
   deps = [
+    ":launcher_plist",
     ":launcher_sources",
-    ":updater_plist",
   ]
 
   frameworks = [
@@ -292,7 +297,7 @@ executable("launcher_test") {
     "Security.framework",
   ]
 
-  inputs = [ "$target_gen_dir/updater_plist_tweaked.plist" ]
+  inputs = [ "$target_gen_dir/launcher_plist.plist" ]
 
   ldflags = [
     "-sectcreate",
@@ -334,7 +339,7 @@ source_set("ksadmin_lib") {
 }
 
 executable("ksadmin") {
-  output_name = "ksadmin"
+  output_dir = "$root_out_dir/${updater_product_full_name}.app/Contents/Helpers/$keystone_app_name.bundle/Contents/Helpers"
   sources = [ "keystone/ksadmin_main.cc" ]
 
   deps = [
@@ -351,14 +356,7 @@ executable("ksadmin") {
   }
 }
 
-copy("ksadmin_copy") {
-  sources = [ "$root_out_dir/ksadmin" ]
-  outputs = [ "$root_out_dir/${updater_product_full_name}.app/Contents/Helpers/$keystone_app_name.bundle/Contents/Helpers/ksadmin" ]
-  deps = [ ":ksadmin" ]
-}
-
 executable("ksadmin_test") {
-  output_name = "ksadmin_test"
   sources = [ "keystone/ksadmin_main.cc" ]
 
   deps = [
@@ -409,12 +407,6 @@ symlink("ksadmin_link") {
   source = "$root_out_dir/${updater_product_full_name}.app/Contents/Helpers/$keystone_app_name.bundle/Contents/Helpers/ksadmin"
   output = "$root_out_dir/${updater_product_full_name}.app/Contents/Helpers/$keystone_app_name.bundle/Contents/MacOS/ksadmin"
   deps = [ ":ksadmin" ]
-}
-
-symlink("ksadmin_test_link") {
-  source = "$root_out_dir/${updater_product_full_name}_test.app/Contents/Helpers/$keystone_app_name.bundle/Contents/Helpers/ksadmin"
-  output = "$root_out_dir/${updater_product_full_name}_test.app/Contents/Helpers/$keystone_app_name.bundle/Contents/MacOS/ksadmin"
-  deps = [ ":ksadmin_test" ]
 }
 
 mac_app_bundle("keystone_agent_bundle") {
@@ -558,6 +550,7 @@ if (!is_component_build && enable_dsyms) {
                              get_label_info(dump_syms, "name"),
                          root_build_dir),
              "-m",
+             "-d",
              "-g",
              rebase_path(
                  "$root_out_dir/{{source_file_part}}.dSYM/Contents/Resources/DWARF/{{source_file_part}}",
@@ -574,8 +567,10 @@ if (!is_component_build && enable_dsyms) {
     outputs = [ _output ]
     args = [ rebase_path(_output, root_out_dir) ] +
            rebase_path([
+                         "$root_out_dir/$updater_product_full_name.dSYM",
                          "$root_out_dir/ksadmin.dSYM",
                          "$root_out_dir/ksinstall.dSYM",
+                         "$root_out_dir/launcher.dSYM",
                        ],
                        root_out_dir)
   }
@@ -601,30 +596,21 @@ artifact_zip("updater_zip") {
     "$root_build_dir/${updater_product_full_name}_test.app/Contents/Helpers/$keystone_app_name.bundle/Contents/MacOS/$keystone_app_name",
     "$root_build_dir/${updater_product_full_name}_test.app/Contents/Helpers/$keystone_app_name.bundle/Contents/Helpers/ksinstall",
     "$root_build_dir/${updater_product_full_name}_test.app/Contents/Helpers/$keystone_app_name.bundle/Contents/Helpers/ksadmin",
-    "$root_build_dir/${updater_product_full_name}_test.app/Contents/Helpers/$keystone_app_name.bundle/Contents/MacOS/ksadmin",
     "$root_build_dir/${updater_product_full_name}_test.app/Contents/Helpers/$keystone_app_name.bundle/Contents/Resources/${keystone_app_name}Agent.app/Contents/MacOS/${keystone_app_name}Agent",
     "$root_build_dir/${updater_product_full_name}_test.app/Contents/Helpers/$keystone_app_name.bundle/Contents/Resources/${keystone_app_name}Agent.app/Contents/Info.plist",
     "$root_build_dir/${updater_product_full_name}_test.app/Contents/Helpers/$keystone_app_name.bundle/Contents/Info.plist",
     "$root_build_dir/${updater_product_full_name}_test.app/Contents/Helpers/launcher",
     "$root_build_dir/${updater_product_full_name}_test.app/Contents/PkgInfo",
-    "$root_build_dir/Updater Packaging/signing/signing.py",
-    "$root_build_dir/Updater Packaging/signing/config.py",
-    "$root_build_dir/Updater Packaging/signing/modification.py",
-    "$root_build_dir/Updater Packaging/signing/notarize.py",
-    "$root_build_dir/Updater Packaging/signing/pkg-dmg",
-    "$root_build_dir/Updater Packaging/signing/__init__.py",
-    "$root_build_dir/Updater Packaging/signing/model.py",
-    "$root_build_dir/Updater Packaging/signing/unbranded_config.py",
-    "$root_build_dir/Updater Packaging/signing/pipeline.py",
-    "$root_build_dir/Updater Packaging/signing/parts.py",
-    "$root_build_dir/Updater Packaging/signing/config_factory.py",
-    "$root_build_dir/Updater Packaging/signing/build_props_config.py",
-    "$root_build_dir/Updater Packaging/signing/commands.py",
     "$root_build_dir/Updater Packaging/sign_updater.py",
+    "$root_build_dir/Updater Packaging/signing/build_props_config.py",
+    "$root_build_dir/Updater Packaging/signing/pkg-dmg",
     "$root_build_dir/chrome/updater/.install",
     "$root_build_dir/UpdaterSetup",
     "$root_build_dir/qualification_app",
   ]
+  inputs += rebase_path(get_path_info(updater_signing_sources, "file"),
+                        "",
+                        "$root_build_dir/Updater Packaging/signing")
   deps = [
     ":updater_bundle",
     ":updater_bundle_test",

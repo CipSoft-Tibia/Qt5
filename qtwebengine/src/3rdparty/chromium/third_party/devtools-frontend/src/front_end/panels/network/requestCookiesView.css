@@ -8,7 +8,7 @@
   overflow: auto;
   padding: 12px;
   height: 100%;
-  background-color: var(--color-background);
+  background-color: var(--sys-color-cdt-base-container);
 }
 
 .request-cookies-view .request-cookies-title {
@@ -20,7 +20,7 @@
 
 .request-cookies-view .cookie-line {
   margin-top: 6px;
-  display: inline-block;
+  display: flex;
 }
 
 .request-cookies-view .cookies-panel-item {

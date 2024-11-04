@@ -22,6 +22,9 @@
 
 QT_BEGIN_NAMESPACE
 
+class QQmlToolingSettings;
+class QCommandLineParser;
+
 namespace QQmlJS {
 
 using LoggerWarningId = QQmlSA::LoggerWarningId;
@@ -95,11 +98,19 @@ private:
     QString m_name;
     QString m_settingsName;
     QString m_description;
-    QtMsgType m_level;
+    QtMsgType m_level = QtDebugMsg;
     bool m_ignored = false;
     bool m_isDefault = false; // Whether or not the category can be disabled
     bool m_changed = false;
 };
+
+namespace LoggingUtils {
+Q_QMLCOMPILER_EXPORT void updateLogLevels(QList<LoggerCategory> &categories,
+                                          const QQmlToolingSettings &settings,
+                                          QCommandLineParser *parser);
+
+Q_QMLCOMPILER_EXPORT QString levelToString(const QQmlJS::LoggerCategory &category);
+} // namespace LoggingUtils
 
 } // namespace QQmlJS
 

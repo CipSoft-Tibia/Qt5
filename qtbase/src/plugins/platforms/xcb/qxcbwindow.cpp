@@ -135,6 +135,7 @@ void QXcbWindow::setImageFormatForVisual(const xcb_visualtype_t *visual)
     case 16:
         qWarning("Using RGB16 fallback, if this works your X11 server is reporting a bad screen format.");
         m_imageFormat = QImage::Format_RGB16;
+        break;
     default:
         break;
     }
@@ -521,6 +522,10 @@ QXcbForeignWindow::QXcbForeignWindow(QWindow *window, WId nativeHandle)
         QRect nativeGeometry(geometry->x, geometry->y, geometry->width, geometry->height);
         QPlatformWindow::setGeometry(nativeGeometry);
     }
+
+    // And reparent, if we have a parent already
+    if (QPlatformWindow::parent())
+        setParent(QPlatformWindow::parent());
 }
 
 QXcbForeignWindow::~QXcbForeignWindow()
@@ -568,8 +573,6 @@ void QXcbWindow::destroy()
 
 void QXcbWindow::setGeometry(const QRect &rect)
 {
-    setWindowState(Qt::WindowNoState);
-
     QPlatformWindow::setGeometry(rect);
 
     propagateSizeHints();
@@ -856,7 +859,7 @@ void QXcbWindow::doFocusIn()
         return;
     QWindow *w = static_cast<QWindowPrivate *>(QObjectPrivate::get(window()))->eventReceiver();
     connection()->setFocusWindow(w);
-    QWindowSystemInterface::handleWindowActivated(w, Qt::ActiveWindowFocusReason);
+    QWindowSystemInterface::handleFocusWindowChanged(w, Qt::ActiveWindowFocusReason);
 }
 
 void QXcbWindow::doFocusOut()
@@ -1322,6 +1325,7 @@ void QXcbWindow::setParent(const QPlatformWindow *parent)
         m_embedded = false;
     }
     xcb_reparent_window(xcb_connection(), xcb_window(), xcb_parent_id, topLeft.x(), topLeft.y());
+    connection()->sync();
 }
 
 void QXcbWindow::setWindowTitle(const QString &title)
@@ -1345,6 +1349,7 @@ void QXcbWindow::setWindowIconText(const QString &title)
 void QXcbWindow::setWindowIcon(const QIcon &icon)
 {
     QList<quint32> icon_data;
+    const uint32_t sizeLimit = xcb_get_maximum_request_length(xcb_connection());
     if (!icon.isNull()) {
         QList<QSize> availableSizes = icon.availableSizes();
         if (availableSizes.isEmpty()) {
@@ -1360,7 +1365,12 @@ void QXcbWindow::setWindowIcon(const QIcon &icon)
             if (!pixmap.isNull()) {
                 QImage image = pixmap.toImage().convertToFormat(QImage::Format_ARGB32);
                 int pos = icon_data.size();
-                icon_data.resize(pos + 2 + image.width()*image.height());
+                int newSize = pos + 2 + image.width()*image.height();
+                // In the absence of the BIG-REQUESTS extension, or with too big DPR,
+                // the size of icon data is too big for the xcb request very easily.
+                if (quint64(newSize) > quint64(sizeLimit))
+                    break;
+                icon_data.resize(newSize);
                 icon_data[pos++] = image.width();
                 icon_data[pos++] = image.height();
                 memcpy(icon_data.data() + pos, image.bits(), image.width()*image.height()*4);
@@ -1370,10 +1380,10 @@ void QXcbWindow::setWindowIcon(const QIcon &icon)
 
     if (!icon_data.isEmpty()) {
         // Ignore icon exceeding maximum xcb request length
-        if (quint64(icon_data.size()) > quint64(xcb_get_maximum_request_length(xcb_connection()))) {
+        if (quint64(icon_data.size()) > quint64(sizeLimit)) {
             qWarning() << "Ignoring window icon" << icon_data.size()
                        << "exceeds maximum xcb request length"
-                       << xcb_get_maximum_request_length(xcb_connection());
+                       << sizeLimit;
             return;
         }
         xcb_change_property(xcb_connection(),
@@ -1474,6 +1484,11 @@ void QXcbWindow::requestActivateWindow()
 
     updateNetWmUserTime(connection()->time());
     QWindow *focusWindow = QGuiApplication::focusWindow();
+    xcb_window_t current = XCB_NONE;
+    if (focusWindow) {
+        if (QPlatformWindow *pw = focusWindow->handle())
+            current = pw->winId();
+    }
 
     if (window()->isTopLevel()
         && !(window()->flags() & Qt::X11BypassWindowManagerHint)
@@ -1488,7 +1503,7 @@ void QXcbWindow::requestActivateWindow()
         event.type = atom(QXcbAtom::Atom_NET_ACTIVE_WINDOW);
         event.data.data32[0] = 1;
         event.data.data32[1] = connection()->time();
-        event.data.data32[2] = focusWindow ? focusWindow->winId() : XCB_NONE;
+        event.data.data32[2] = current;
         event.data.data32[3] = 0;
         event.data.data32[4] = 0;
 
@@ -1962,8 +1977,10 @@ void QXcbWindow::handleButtonReleaseEvent(int event_x, int event_y, int root_x, 
         return;
     }
 
-    if (connection()->buttonState() == Qt::NoButton)
+    if (connection()->buttonState() == Qt::NoButton) {
         connection()->setMousePressWindow(nullptr);
+        m_ignorePressedWindowOnMouseLeave = false;
+    }
 
     handleMouseEvent(timestamp, local, global, modifiers, type, source);
 }
@@ -1981,11 +1998,6 @@ static inline bool doCheckUnGrabAncestor(QXcbConnection *conn)
         return mouseButtonsPressed || conn->hasXInput2();
     }
     return true;
-}
-
-static bool windowContainsGlobalPoint(QXcbWindow *window, int x, int y)
-{
-    return window ? window->geometry().contains(window->mapFromGlobal(QPoint(x, y))) : false;
 }
 
 static bool ignoreLeaveEvent(quint8 mode, quint8 detail, QXcbConnection *conn)
@@ -2011,11 +2023,16 @@ void QXcbWindow::handleEnterNotifyEvent(int event_x, int event_y, int root_x, in
 {
     connection()->setTime(timestamp);
 
-    if (ignoreEnterEvent(mode, detail, connection()) || connection()->mousePressWindow())
+    if (ignoreEnterEvent(mode, detail, connection())
+        || (connection()->mousePressWindow() && !m_ignorePressedWindowOnMouseLeave)) {
         return;
+    }
 
     // Updates scroll valuators, as user might have done some scrolling outside our X client.
     connection()->xi2UpdateScrollingDevices();
+
+    if (mode == XCB_NOTIFY_MODE_UNGRAB && connection()->queryMouseButtons() != Qt::NoButton)
+        m_ignorePressedWindowOnMouseLeave = true;
 
     const QPoint global = QPoint(root_x, root_y);
     const QPoint local(event_x, event_y);
@@ -2029,7 +2046,7 @@ void QXcbWindow::handleLeaveNotifyEvent(int root_x, int root_y,
 
     QXcbWindow *mousePressWindow = connection()->mousePressWindow();
     if (ignoreLeaveEvent(mode, detail, connection())
-        || (mousePressWindow && windowContainsGlobalPoint(mousePressWindow, root_x, root_y))) {
+        || (mousePressWindow && !m_ignorePressedWindowOnMouseLeave)) {
         return;
     }
 
@@ -2049,7 +2066,7 @@ void QXcbWindow::handleLeaveNotifyEvent(int root_x, int root_y,
         QWindowSystemInterface::handleEnterLeaveEvent(enterWindow->window(), window(), local, global);
     } else {
         QWindowSystemInterface::handleLeaveEvent(window());
-        if (!windowContainsGlobalPoint(this, root_x, root_y))
+        if (m_ignorePressedWindowOnMouseLeave)
             connection()->setMousePressWindow(nullptr);
     }
 
@@ -2496,15 +2513,15 @@ void QXcbWindow::sendXEmbedMessage(xcb_window_t window, quint32 message,
     xcb_send_event(xcb_connection(), false, window, XCB_EVENT_MASK_NO_EVENT, (const char *)&event);
 }
 
-static bool activeWindowChangeQueued(const QWindow *window)
+static bool focusWindowChangeQueued(const QWindow *window)
 {
     /* Check from window system event queue if the next queued activation
      * targets a window other than @window.
      */
-    QWindowSystemInterfacePrivate::ActivatedWindowEvent *systemEvent =
-        static_cast<QWindowSystemInterfacePrivate::ActivatedWindowEvent *>
-        (QWindowSystemInterfacePrivate::peekWindowSystemEvent(QWindowSystemInterfacePrivate::ActivatedWindow));
-    return systemEvent && systemEvent->activated != window;
+    QWindowSystemInterfacePrivate::FocusWindowEvent *systemEvent =
+        static_cast<QWindowSystemInterfacePrivate::FocusWindowEvent *>
+        (QWindowSystemInterfacePrivate::peekWindowSystemEvent(QWindowSystemInterfacePrivate::FocusWindow));
+    return systemEvent && systemEvent->focused != window;
 }
 
 void QXcbWindow::handleXEmbedMessage(const xcb_client_message_event_t *event)
@@ -2534,13 +2551,13 @@ void QXcbWindow::handleXEmbedMessage(const xcb_client_message_event_t *event)
             break;
         }
         connection()->setFocusWindow(window());
-        QWindowSystemInterface::handleWindowActivated(window(), reason);
+        QWindowSystemInterface::handleFocusWindowChanged(window(), reason);
         break;
     case XEMBED_FOCUS_OUT:
         if (window() == QGuiApplication::focusWindow()
-            && !activeWindowChangeQueued(window())) {
+            && !focusWindowChangeQueued(window())) {
             connection()->setFocusWindow(nullptr);
-            QWindowSystemInterface::handleWindowActivated(nullptr);
+            QWindowSystemInterface::handleFocusWindowChanged(nullptr);
         }
         break;
     }

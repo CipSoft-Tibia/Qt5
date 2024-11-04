@@ -32,6 +32,7 @@
 
 #include "third_party/blink/renderer/core/css/css_selector.h"
 #include "third_party/blink/renderer/core/css/style_rule.h"
+#include "third_party/blink/renderer/core/css/style_scope.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/flat_tree_traversal.h"
 
@@ -52,20 +53,18 @@ inline bool IsExcludedAttribute(const AtomicString& name) {
 inline void CollectElementIdentifierHashes(
     const Element& element,
     Vector<unsigned, 4>& identifier_hashes) {
-  identifier_hashes.push_back(
-      element.LocalNameForSelectorMatching().Impl()->ExistingHash() *
-      kTagNameSalt);
+  identifier_hashes.push_back(element.LocalNameForSelectorMatching().Hash() *
+                              kTagNameSalt);
   if (element.HasID()) {
-    identifier_hashes.push_back(
-        element.IdForStyleResolution().Impl()->ExistingHash() * kIdSalt);
+    identifier_hashes.push_back(element.IdForStyleResolution().Hash() *
+                                kIdSalt);
   }
 
   if (element.IsStyledElement() && element.HasClass()) {
     const SpaceSplitString& class_names = element.ClassNames();
     wtf_size_t count = class_names.size();
     for (wtf_size_t i = 0; i < count; ++i) {
-      identifier_hashes.push_back(class_names[i].Impl()->ExistingHash() *
-                                  kClassSalt);
+      identifier_hashes.push_back(class_names[i].Hash() * kClassSalt);
     }
   }
   AttributeCollection attributes = element.AttributesWithoutUpdate();
@@ -76,36 +75,37 @@ inline void CollectElementIdentifierHashes(
     }
     auto lower = attribute_name.IsLowerASCII() ? attribute_name
                                                : attribute_name.LowerASCII();
-    identifier_hashes.push_back(lower.Impl()->ExistingHash() * kAttributeSalt);
+    identifier_hashes.push_back(lower.Hash() * kAttributeSalt);
   }
 }
 
 void CollectDescendantCompoundSelectorIdentifierHashes(
     const CSSSelector* selector,
     CSSSelector::RelationType relation,
+    const StyleScope* style_scope,
     unsigned*& hash,
     unsigned* end);
 
 inline void CollectDescendantSelectorIdentifierHashes(
     const CSSSelector& selector,
+    const StyleScope* style_scope,
     unsigned*& hash,
     unsigned* end) {
   switch (selector.Match()) {
     case CSSSelector::kId:
       if (!selector.Value().empty()) {
-        (*hash++) = selector.Value().Impl()->ExistingHash() * kIdSalt;
+        (*hash++) = selector.Value().Hash() * kIdSalt;
       }
       break;
     case CSSSelector::kClass:
       if (!selector.Value().empty()) {
-        (*hash++) = selector.Value().Impl()->ExistingHash() * kClassSalt;
+        (*hash++) = selector.Value().Hash() * kClassSalt;
       }
       break;
     case CSSSelector::kTag:
       if (selector.TagQName().LocalName() !=
           CSSSelector::UniversalSelectorAtom()) {
-        (*hash++) = selector.TagQName().LocalName().Impl()->ExistingHash() *
-                    kTagNameSalt;
+        (*hash++) = selector.TagQName().LocalName().Hash() * kTagNameSalt;
       }
       break;
     case CSSSelector::kAttributeExact:
@@ -122,7 +122,7 @@ inline void CollectDescendantSelectorIdentifierHashes(
       auto lower_name = attribute_name.IsLowerASCII()
                             ? attribute_name
                             : attribute_name.LowerASCII();
-      (*hash++) = lower_name.Impl()->ExistingHash() * kAttributeSalt;
+      (*hash++) = lower_name.Hash() * kAttributeSalt;
     } break;
     case CSSSelector::kPseudoClass:
       switch (selector.GetPseudoType()) {
@@ -135,10 +135,22 @@ inline void CollectDescendantSelectorIdentifierHashes(
           if (selector_list &&
               CSSSelectorList::Next(*selector_list) == nullptr) {
             CollectDescendantCompoundSelectorIdentifierHashes(
-                selector_list, CSSSelector::kDescendant, hash, end);
+                selector_list, CSSSelector::kDescendant, style_scope, hash,
+                end);
           }
           break;
         }
+        case CSSSelector::kPseudoScope:
+          if (style_scope) {
+            const CSSSelector* selector_list = style_scope->From();
+            if (selector_list &&
+                CSSSelectorList::Next(*selector_list) == nullptr) {
+              CollectDescendantCompoundSelectorIdentifierHashes(
+                  selector_list, CSSSelector::kDescendant,
+                  style_scope->Parent(), hash, end);
+            }
+          }
+          break;
         default:
           break;
       }
@@ -151,17 +163,20 @@ inline void CollectDescendantSelectorIdentifierHashes(
 void CollectDescendantCompoundSelectorIdentifierHashes(
     const CSSSelector* selector,
     CSSSelector::RelationType relation,
+    const StyleScope* style_scope,
     unsigned*& hash,
     unsigned* end) {
   // Skip the rightmost compound. It is handled quickly by the rule hashes.
   bool skip_over_subselectors = true;
   for (const CSSSelector* current = selector; current;
-       current = current->TagHistory()) {
+       current = current->NextSimpleSelector()) {
     // Only collect identifiers that match ancestors.
     switch (relation) {
       case CSSSelector::kSubSelector:
+      case CSSSelector::kScopeActivation:
         if (!skip_over_subselectors) {
-          CollectDescendantSelectorIdentifierHashes(*current, hash, end);
+          CollectDescendantSelectorIdentifierHashes(*current, style_scope, hash,
+                                                    end);
         }
         break;
       case CSSSelector::kDirectAdjacent:
@@ -174,7 +189,8 @@ void CollectDescendantCompoundSelectorIdentifierHashes(
       case CSSSelector::kUAShadow:
       case CSSSelector::kShadowPart:
         skip_over_subselectors = false;
-        CollectDescendantSelectorIdentifierHashes(*current, hash, end);
+        CollectDescendantSelectorIdentifierHashes(*current, style_scope, hash,
+                                                  end);
         break;
       case CSSSelector::kRelativeDescendant:
       case CSSSelector::kRelativeChild:
@@ -258,13 +274,15 @@ void SelectorFilter::PopParent(Element& parent) {
 
 void SelectorFilter::CollectIdentifierHashes(
     const CSSSelector& selector,
+    const StyleScope* style_scope,
     unsigned* identifier_hashes,
     unsigned maximum_identifier_count) {
   unsigned* hash = identifier_hashes;
   unsigned* end = identifier_hashes + maximum_identifier_count;
 
   CollectDescendantCompoundSelectorIdentifierHashes(
-      selector.TagHistory(), selector.Relation(), hash, end);
+      selector.NextSimpleSelector(), selector.Relation(), style_scope, hash,
+      end);
   if (hash != end) {
     *hash = 0;
   }

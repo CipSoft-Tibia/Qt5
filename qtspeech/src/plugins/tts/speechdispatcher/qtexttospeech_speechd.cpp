@@ -1,11 +1,12 @@
 // Copyright (C) 2015 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 #include "qtexttospeech_speechd.h"
 
 #include <QtCore/QDebug>
 #include <QtCore/QCoreApplication>
+#include <QtCore/QLoggingCategory>
 
 #include <libspeechd.h>
 
@@ -14,6 +15,8 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+Q_LOGGING_CATEGORY(lcSpeechTtsSpeechd, "qt.speech.tts.speechd")
 
 typedef QList<QTextToSpeechEngineSpeechd*> QTextToSpeechSpeechDispatcherBackendList;
 Q_GLOBAL_STATIC(QTextToSpeechSpeechDispatcherBackendList, backends)
@@ -385,7 +388,7 @@ QList<QVoice> QTextToSpeechEngineSpeechd::availableVoices() const
 // (history functions are just stubs)
 void speech_finished_callback(size_t msg_id, size_t client_id, SPDNotificationType state)
 {
-    qDebug() << "Message from speech dispatcher" << msg_id << client_id;
+    qCDebug(lcSpeechTtsSpeechd) << "Message from speech dispatcher" << msg_id << client_id;
     for (QTextToSpeechEngineSpeechd *backend : std::as_const(*backends))
         backend->spdStateChanged(state);
 }

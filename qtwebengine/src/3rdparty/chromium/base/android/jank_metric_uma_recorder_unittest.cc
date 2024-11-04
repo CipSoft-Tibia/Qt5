@@ -1,4 +1,4 @@
-// Copyright 2021 The Chromium Authors
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,8 +19,7 @@
 
 using ::testing::ElementsAre;
 
-namespace base {
-namespace android {
+namespace base::android {
 namespace {
 
 jlongArray GenerateJavaLongArray(JNIEnv* env,
@@ -31,11 +30,6 @@ jlongArray GenerateJavaLongArray(JNIEnv* env,
 
   return java_long_array.Release();
 }
-
-const int64_t kTimestampsNs[] = {
-    100'000'000, 116'000'000, 132'000'000, 148'000'000,
-    164'000'000, 180'000'000, 196'000'000, 212'000'000,
-};
 
 // Durations are received in nanoseconds, but are recorded to UMA in
 // milliseconds.
@@ -51,15 +45,20 @@ const int64_t kDurations[] = {
 };
 const size_t kDurationsLen = std::size(kDurations);
 
-static_assert(std::size(kDurations) == std::size(kTimestampsNs),
-              "Length of timestamps and durations should be equal.");
+jbooleanArray GenerateJavaBooleanArray(JNIEnv* env,
+                                       const bool bool_array[],
+                                       const size_t array_length) {
+  ScopedJavaLocalRef<jbooleanArray> java_bool_array =
+      ToJavaBooleanArray(env, bool_array, array_length);
 
-// Jank bursts are calculated based on durations.
-const int64_t kJankBursts[] = {
-    100'000'000,  // 100ms
-    20'000'000,   // 20ms
+  return java_bool_array.Release();
+}
+
+const bool kJankStatus[] = {
+    false, false, true, false, true, false, false, false,
 };
-const size_t kJankBurstsLen = std::size(kJankBursts);
+
+const size_t kJankStatusLen = kDurationsLen;
 
 }  // namespace
 
@@ -68,39 +67,27 @@ TEST(JankMetricUMARecorder, TestUMARecording) {
 
   JNIEnv* env = AttachCurrentThread();
 
-  jstring java_scenario_name =
-      ConvertUTF8ToJavaString(env, "PeriodicReporting").Release();
-  jlongArray java_timestamps =
-      GenerateJavaLongArray(env, kTimestampsNs, kDurationsLen);
   jlongArray java_durations =
       GenerateJavaLongArray(env, kDurations, kDurationsLen);
-  jlongArray java_jank_bursts =
-      GenerateJavaLongArray(env, kJankBursts, kJankBurstsLen);
+
+  jbooleanArray java_jank_status =
+      GenerateJavaBooleanArray(env, kJankStatus, kJankStatusLen);
 
   RecordJankMetrics(
       env,
-      /* java_scenario_name= */
-      base::android::JavaParamRef<jstring>(env, java_scenario_name),
-      /* java_timestamps_ns= */
-      base::android::JavaParamRef<jlongArray>(env, java_timestamps),
       /* java_durations_ns= */
       base::android::JavaParamRef<jlongArray>(env, java_durations),
-      /* java_jank_bursts_ns=*/
-      base::android::JavaParamRef<jlongArray>(env, java_jank_bursts),
-      /* java_missed_frames = */ 2);
+      /* java_jank_status = */
+      base::android::JavaParamRef<jbooleanArray>(env, java_jank_status),
+      /* java_reporting_interval_start_time = */ 0,
+      /* java_reporting_interval_duration = */ 1000);
 
-  EXPECT_THAT(histogram_tester.GetAllSamples(
-                  "Android.Jank.FrameDuration.PeriodicReporting"),
+  EXPECT_THAT(histogram_tester.GetAllSamples("Android.Jank.FrameDuration"),
               ElementsAre(Bucket(1, 3), Bucket(2, 1), Bucket(10, 1),
                           Bucket(20, 1), Bucket(29, 1), Bucket(57, 1)));
 
-  EXPECT_THAT(histogram_tester.GetAllSamples(
-                  "Android.Jank.JankBursts.PeriodicReporting"),
-              ElementsAre(Bucket(20, 1), Bucket(96, 1)));
-
-  histogram_tester.ExpectUniqueSample(
-      "Android.Jank.MissedFrames.PeriodicReporting", 2, 1);
+  EXPECT_THAT(histogram_tester.GetAllSamples("Android.Jank.FrameJankStatus"),
+              ElementsAre(Bucket(0, 2), Bucket(1, 6)));
 }
 
-}  // namespace android
-}  // namespace base
+}  // namespace base::android

@@ -1,10 +1,8 @@
 # Copyright (C) 2022 The Qt Company Ltd.
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.16)
 project(trollprint LANGUAGES CXX)
-
-set(CMAKE_AUTOMOC ON)
 
 if(NOT DEFINED INSTALL_EXAMPLESDIR)
     set(INSTALL_EXAMPLESDIR "examples")
@@ -16,6 +14,8 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 
 find_package(Qt6 REQUIRED COMPONENTS LinguistTools)
 
+qt_standard_project_setup(I18N_TRANSLATED_LANGUAGES pt)
+
 qt_add_executable(trollprint
     main.cpp
     mainwindow.cpp mainwindow.h
@@ -23,7 +23,6 @@ qt_add_executable(trollprint
 )
 
 qt6_add_translations(trollprint
-    TS_FILES trollprint_pt.ts
     QM_FILES_OUTPUT_VARIABLE qm_files)
 install(FILES ${qm_files} DESTINATION ${INSTALL_EXAMPLEDIR})
 

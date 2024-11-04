@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,19 +10,18 @@
 
 #include "cast/common/public/certificate_types.h"
 #include "platform/base/error.h"
+#include "platform/base/span.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 bool VerifySignedData(const EVP_MD* digest,
                       EVP_PKEY* public_key,
-                      const ConstDataSpan& data,
-                      const ConstDataSpan& signature);
+                      const ByteView& data,
+                      const ByteView& signature);
 
 ErrorOr<DateTime> GetNotBeforeTime(X509* cert);
 ErrorOr<DateTime> GetNotAfterTime(X509* cert);
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_CERTIFICATE_BORINGSSL_UTIL_H_

@@ -121,7 +121,7 @@ class FuchsiaVideoDecoder::OutputMailbox {
     mailbox_ =
         raster_context_provider_->SharedImageInterface()->CreateSharedImage(
             gmb.get(), nullptr, color_space, kTopLeft_GrSurfaceOrigin,
-            kPremul_SkAlphaType, usage);
+            kPremul_SkAlphaType, usage, "FuchsiaVideoDecoder");
     create_sync_token_ = raster_context_provider_->SharedImageInterface()
                              ->GenVerifiedSyncToken();
   }
@@ -229,9 +229,7 @@ FuchsiaVideoDecoder::FuchsiaVideoDecoder(
     bool allow_overlays)
     : raster_context_provider_(raster_context_provider),
       media_codec_provider_(media_codec_provider),
-      use_overlays_for_video_(allow_overlays &&
-                              base::CommandLine::ForCurrentProcess()->HasSwitch(
-                                  switches::kUseOverlaysForVideo)),
+      use_overlays_for_video_(allow_overlays),
       sysmem_allocator_("CrFuchsiaVideoDecoder"),
       client_native_pixmap_factory_(
           ui::CreateClientNativePixmapFactoryOzone()) {
@@ -655,8 +653,9 @@ void FuchsiaVideoDecoder::OnStreamProcessorOutputPacket(
   // luma (see fxbug.dev/13677). Assume they are cosited with luma. YCbCr info
   // here must match the values passed for the same buffer in
   // ui::SysmemBufferCollection::CreateVkImage() (see
-  // ui/ozone/platform/scenic/sysmem_buffer_collection.cc). |format_features|
-  // are resolved later in the GPU process before this info is passed to Skia.
+  // ui/ozone/platform/flatland/flatland_sysmem_buffer_collection.cc).
+  // |format_features| are resolved later in the GPU process before this info is
+  // passed to Skia.
   frame->set_ycbcr_info(gpu::VulkanYCbCrInfo(
       vk_format, /*external_format=*/0, ycbcr_conversion,
       VK_SAMPLER_YCBCR_RANGE_ITU_NARROW, VK_CHROMA_LOCATION_COSITED_EVEN,

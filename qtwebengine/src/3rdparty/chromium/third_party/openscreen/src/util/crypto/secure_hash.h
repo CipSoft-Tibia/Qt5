@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,9 +23,9 @@ class SecureHash {
  public:
   explicit SecureHash(const EVP_MD* type);
   SecureHash(const SecureHash& other);
-  SecureHash(SecureHash&& other);
+  SecureHash(SecureHash&& other) noexcept;
   SecureHash& operator=(const SecureHash& other);
-  SecureHash& operator=(SecureHash&& other);
+  SecureHash& operator=(SecureHash&& other) noexcept;
 
   ~SecureHash();
 

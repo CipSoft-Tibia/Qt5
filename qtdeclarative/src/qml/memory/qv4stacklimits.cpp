@@ -31,6 +31,8 @@
 #  include <unistd.h>
 #elif defined(Q_OS_INTEGRITY)
 #  include <INTEGRITY.h>
+#elif defined(Q_OS_VXWORKS)
+#  include <taskLib.h>
 #elif defined(Q_OS_WASM)
 #  include <emscripten/stack.h>
 #endif
@@ -147,12 +149,19 @@ StackProperties stackProperties()
 static_assert(Q_STACK_GROWTH_DIRECTION < 0);
 StackProperties stackProperties()
 {
+    // MinGW complains about out of bounds array access in compiler headers
+    QT_WARNING_PUSH
+    QT_WARNING_DISABLE_GCC("-Warray-bounds")
+
     // Get the stack base.
 #  ifdef _WIN64
     PNT_TIB64 pTib = reinterpret_cast<PNT_TIB64>(NtCurrentTeb());
 #  else
     PNT_TIB pTib = reinterpret_cast<PNT_TIB>(NtCurrentTeb());
 #  endif
+
+    QT_WARNING_POP
+
     quint8 *stackBase = reinterpret_cast<quint8 *>(pTib->StackBase);
 
     // Get the stack limit. tib->StackLimit is the size of the
@@ -224,6 +233,15 @@ StackProperties stackProperties()
     const uintptr_t end = emscripten_stack_get_end();
     const size_t size = base - end;
     return createStackProperties(reinterpret_cast<void *>(base), size);
+}
+
+#elif defined(Q_OS_VXWORKS)
+
+StackProperties stackProperties()
+{
+    TASK_DESC taskDescription;
+    taskInfoGet(taskIdSelf(), &taskDescription);
+    return createStackProperties(taskDescription.td_pStackBase, taskDescription.td_stackSize);
 }
 
 #else

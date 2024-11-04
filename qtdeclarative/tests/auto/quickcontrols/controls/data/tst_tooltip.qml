@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtQuick
 import QtTest
@@ -37,9 +37,11 @@ TestCase {
         target: ToolTip.toolTip
     }
 
-    function test_defaults() {
+    function init() {
         failOnWarning(/.?/)
+    }
 
+    function test_defaults() {
         let control = createTemporaryObject(toolTip, testCase)
         verify(control)
     }
@@ -477,8 +479,6 @@ TestCase {
 
     // QTBUG-75483
     function test_initiallyVisible() {
-        failOnWarning(/.?/) //"QML ToolTip: cannot find any window to open popup in" in particularly
-
         let item = createTemporaryObject(initiallyVisibleComponent, testCase)
         verify(item)
         verify(item.ToolTip.visible)

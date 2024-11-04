@@ -32,8 +32,7 @@ void CloseCore(Core *pCore) {
   if (pCore == nullptr) {
     return;
   }
-  pCore->StopAllEndpoints(
-      {.result_cb = std::function<void(Status)>{[](Status) {}}});
+  pCore->StopAllEndpoints([](Status) {});
   delete pCore;
 }
 
@@ -80,14 +79,14 @@ void StartAdvertising(Core *pCore, const char *service_id,
     advertising_options.strategy = connections::Strategy::kP2pStar;
 
   pCore->StartAdvertising(service_id, advertising_options, crInfo,
-                          *callback.GetImpl());
+                          std::move(*callback.GetImpl()));
 }
 
 void StopAdvertising(connections::Core *pCore, ResultCallbackW callback) {
   if (pCore == nullptr) {
     return;
   }
-  pCore->StopAdvertising(*callback.GetImpl());
+  pCore->StopAdvertising(std::move(*callback.GetImpl()));
 }
 
 void StartDiscovery(connections::Core *pCore, const char *service_id,
@@ -113,10 +112,6 @@ void StartDiscovery(connections::Core *pCore, const char *service_id,
       discovery_options_w.auto_upgrade_bandwidth;
   discovery_options.enforce_topology_constraints =
       discovery_options_w.enforce_topology_constraints;
-  discovery_options.keep_alive_interval_millis =
-      discovery_options_w.keep_alive_interval_millis;
-  discovery_options.keep_alive_timeout_millis =
-      discovery_options_w.keep_alive_timeout_millis;
   discovery_options.is_out_of_band_connection =
       discovery_options_w.is_out_of_band_connection;
   if (discovery_options_w.fast_advertisement_service_uuid) {
@@ -138,7 +133,7 @@ void StopDiscovery(connections::Core *pCore, ResultCallbackW callback) {
   if (pCore == nullptr) {
     return;
   }
-  pCore->StopDiscovery(*callback.GetImpl());
+  pCore->StopDiscovery(std::move(*callback.GetImpl()));
 }
 
 void InjectEndpoint(connections::Core *pCore, char *service_id,
@@ -157,7 +152,7 @@ void InjectEndpoint(connections::Core *pCore, char *service_id,
       metadata.remote_bluetooth_mac_address_size};
 
   pCore->InjectEndpoint(service_id, outOfBandConnectionMetadata,
-                        *callback.GetImpl());
+                        std::move(*callback.GetImpl()));
 }
 
 void RequestConnection(connections::Core *pCore, const char *endpoint_id,
@@ -207,7 +202,7 @@ void RequestConnection(connections::Core *pCore, const char *endpoint_id,
     connection_options.strategy = connections::Strategy::kP2pStar;
 
   pCore->RequestConnection(endpoint_id, connectionRequestInfo,
-                           connection_options, *callback.GetImpl());
+                           connection_options, std::move(*callback.GetImpl()));
 }
 
 void AcceptConnection(connections::Core *pCore, const char *endpoint_id,
@@ -217,7 +212,8 @@ void AcceptConnection(connections::Core *pCore, const char *endpoint_id,
   }
   connections::PayloadListener payload_listener =
       std::move(*listener.GetImpl());
-  pCore->AcceptConnection(endpoint_id, payload_listener, *callback.GetImpl());
+  pCore->AcceptConnection(endpoint_id, std::move(payload_listener),
+                          std::move(*callback.GetImpl()));
 }
 
 void RejectConnection(connections::Core *pCore, const char *endpoint_id,
@@ -225,7 +221,7 @@ void RejectConnection(connections::Core *pCore, const char *endpoint_id,
   if (pCore == nullptr) {
     return;
   }
-  pCore->RejectConnection(endpoint_id, *callback.GetImpl());
+  pCore->RejectConnection(endpoint_id, std::move(*callback.GetImpl()));
 }
 
 void SendPayload(connections::Core *pCore,
@@ -238,7 +234,8 @@ void SendPayload(connections::Core *pCore,
   }
   std::string payloadData = std::string(*endpoint_ids);
   absl::Span<const std::string> span{&payloadData, 1};
-  pCore->SendPayload(span, std::move(*payloadw.GetImpl()), *callback.GetImpl());
+  pCore->SendPayload(span, std::move(*payloadw.GetImpl()),
+                     std::move(*callback.GetImpl()));
 }
 
 void CancelPayload(connections::Core *pCore, std::int64_t payload_id,
@@ -246,7 +243,7 @@ void CancelPayload(connections::Core *pCore, std::int64_t payload_id,
   if (pCore == nullptr) {
     return;
   }
-  pCore->CancelPayload(payload_id, *callback.GetImpl());
+  pCore->CancelPayload(payload_id, std::move(*callback.GetImpl()));
 }
 
 void DisconnectFromEndpoint(connections::Core *pCore, const char *endpoint_id,
@@ -254,14 +251,14 @@ void DisconnectFromEndpoint(connections::Core *pCore, const char *endpoint_id,
   if (pCore == nullptr) {
     return;
   }
-  pCore->DisconnectFromEndpoint(endpoint_id, *callback.GetImpl());
+  pCore->DisconnectFromEndpoint(endpoint_id, std::move(*callback.GetImpl()));
 }
 
 void StopAllEndpoints(connections::Core *pCore, ResultCallbackW callback) {
   if (pCore == nullptr) {
     return;
   }
-  pCore->StopAllEndpoints(*callback.GetImpl());
+  pCore->StopAllEndpoints(std::move(*callback.GetImpl()));
 }
 
 void InitiateBandwidthUpgrade(connections::Core *pCore, char *endpoint_id,
@@ -269,7 +266,7 @@ void InitiateBandwidthUpgrade(connections::Core *pCore, char *endpoint_id,
   if (pCore == nullptr) {
     return;
   }
-  pCore->InitiateBandwidthUpgrade(endpoint_id, *callback.GetImpl());
+  pCore->InitiateBandwidthUpgrade(endpoint_id, std::move(*callback.GetImpl()));
 }
 
 const char *GetLocalEndpointId(connections::Core *pCore) {

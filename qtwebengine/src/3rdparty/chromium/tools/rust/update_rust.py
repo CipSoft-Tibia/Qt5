@@ -16,21 +16,33 @@ import os
 import re
 import shutil
 import sys
-import tempfile
+import time
 import urllib
 
 from pathlib import Path
 
 # Add Clang scripts to path so we can import them later (if running within a
 # Chromium checkout.)
+# Note: Imports cannot be done until after the --print-rust-revision flag
+# has been processed, since that needs to work when running this script
+# in isolation.
 sys.path.append(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'clang',
                  'scripts'))
 
 # These fields are written by //tools/clang/scripts/upload_revision.py, and
 # should not be changed manually.
-RUST_REVISION = '6e0115778b0aedc90b59e035476c38e1b8c5c29b'
-RUST_SUB_REVISION = 1
+#
+# In the case that a Rust roll fails and you want to roll Clang alone, reset
+# this back to its previous value _AND_ set `OVERRIDE_CLANG_REVISION` below
+# to the `CLANG_REVISION` that was in place before the roll.
+RUST_REVISION = '006a26c0b546abc0fbef59a773639582b641e500'
+RUST_SUB_REVISION = 12
+
+# If not None, this overrides the `CLANG_REVISION` in
+# //tools/clang/scripts/update.py in order to download a Rust toolchain that
+# was built against a different LLVM than the latest Clang package.
+OVERRIDE_CLANG_REVISION = None
 
 # Trunk on 2022-10-15.
 #
@@ -43,61 +55,29 @@ RUST_SUB_REVISION = 1
 CRUBIT_REVISION = 'f5cbdf4b54b0e6b9f63a4464a2c901c82e0f0209'
 CRUBIT_SUB_REVISION = 1
 
-# TODO(crbug.com/1401042): Set this back to None once Clang rolls block on Rust
-# building. Until Clang rolls block on Rust, they frequently roll without a Rust
-# compiler, which causes developer machines/bots to 404 in gclient sync.
-#
-# If not None, use a Rust package built with an older LLVM version than
-# specified in tools/clang/scripts/update.py. This is a fallback for when an
-# LLVM update breaks the Rust build.
-#
-# This should almost always be None. When a breakage happens the fallback should
-# be temporary. Once fixed, the applicable revision(s) above should be updated
-# and FALLBACK_REVISION should be reset to None.
-#
-# Rust builds (for Linux) that worked are found at:
-# https://commondatastorage.googleapis.com/chromium-browser-clang/index.html?path=Linux_x64/rust-toolchain-
-# The latest builds are prefixed with a date, such as `20230101-1`.
-#
-# TODO(lukasza): Include CRUBIT_REVISION and CRUBIT_SUB_REVISION once we
-# include Crubit binaries in the generated package.  See also a TODO comment
-# in BuildCrubit in package_rust.py.
-FALLBACK_REVISION = '6e0115778b0aedc90b59e035476c38e1b8c5c29b-1-llvmorg-17-init-2082-g6d4a674a-1'
-
 # Hash of src/stage0.json, which itself contains the stage0 toolchain hashes.
 # We trust the Rust build system checks, but to ensure it is not tampered with
 # itself check the hash.
-STAGE0_JSON_SHA256 = 'b45d1f388bfe54887d5776937e05a135ec819b6d2190b8794bb87bd7072e5553'
+STAGE0_JSON_SHA256 = 'f7ff08ff3c1e51189e26a578e31dc06574ab75b855ebef5c5ec184cfc7ae4b46'
 
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 CHROMIUM_DIR = os.path.abspath(os.path.join(THIS_DIR, '..', '..'))
 THIRD_PARTY_DIR = os.path.join(CHROMIUM_DIR, 'third_party')
 RUST_TOOLCHAIN_OUT_DIR = os.path.join(THIRD_PARTY_DIR, 'rust-toolchain')
-VERSION_STAMP_PATH = os.path.join(RUST_TOOLCHAIN_OUT_DIR, 'VERSION')
+# Path to the VERSION file stored in the archive.
+VERSION_SRC_PATH = os.path.join(RUST_TOOLCHAIN_OUT_DIR, 'VERSION')
+VERSION_STAMP_PATH = os.path.join(RUST_TOOLCHAIN_OUT_DIR, 'INSTALLED_VERSION')
 
 
-# Package version built in build_rust.py, which is always built against the
-# current Clang. Typically Clang and Rust revisions are both updated together
-# and this picks the Clang that has just been built.
-def GetPackageVersionForBuild():
-    from update import (CLANG_REVISION, CLANG_SUB_REVISION)
-    return (f'{RUST_REVISION}-{RUST_SUB_REVISION}'
-            f'-{CLANG_REVISION}-{CLANG_SUB_REVISION}')
-
-
-# Package version for download. Ideally this is the latest Clang+Rust roll,
-# which was built successfully and is returned from GetPackageVersionForBuild().
-# However at this time Clang rolls even if Rust fails to build, so we have Rust
-# pinned to the last known successful build with FALLBACK_REVISION. This should
-# go away once we block Clang rolls on Rust also being built.
-def GetDownloadPackageVersion():
-    return FALLBACK_REVISION \
-        if FALLBACK_REVISION else GetPackageVersionForBuild()
+def GetRustClangRevision():
+    from update import CLANG_REVISION
+    c = OVERRIDE_CLANG_REVISION if OVERRIDE_CLANG_REVISION else CLANG_REVISION
+    return (f'{RUST_REVISION}-{RUST_SUB_REVISION}' f'-{c}')
 
 
 # Get the version of the toolchain package we already have.
 def GetStampVersion():
-    if os.path.exists(RUST_TOOLCHAIN_OUT_DIR):
+    if os.path.exists(VERSION_STAMP_PATH):
         with open(VERSION_STAMP_PATH) as version_file:
             existing_stamp = version_file.readline().rstrip()
         version_re = re.compile(r'rustc [0-9.]+ [0-9a-f]+ \((.+?) chromium\)')
@@ -127,11 +107,21 @@ def main():
         return 0
 
     if args.print_package_version:
-        print(GetDownloadPackageVersion())
+        stamp_version = GetStampVersion()
+        if stamp_version != GetRustClangRevision():
+            print(f'The expected Rust version is {GetRustClangRevision()} '
+                  f'but the actual version is {stamp_version}')
+            print('Did you run "gclient sync"?')
+            return 1
+        print(stamp_version)
         return 0
 
     from update import (DownloadAndUnpack, GetDefaultHostOs,
                         GetPlatformUrlPrefix)
+
+    platform_prefix = GetPlatformUrlPrefix(GetDefaultHostOs())
+
+    version = GetRustClangRevision()
 
     # Exit early if the existing package is up-to-date. Note that we cannot
     # simply call DownloadAndUnpack() every time: aside from unnecessarily
@@ -139,27 +129,24 @@ def main():
     # versions of the same rustlibs. build/rust/std/find_std_rlibs.py chokes in
     # this case.
     if os.path.exists(RUST_TOOLCHAIN_OUT_DIR):
-        if GetDownloadPackageVersion() == GetStampVersion():
+        if version == GetStampVersion():
             return 0
 
     if os.path.exists(RUST_TOOLCHAIN_OUT_DIR):
         shutil.rmtree(RUST_TOOLCHAIN_OUT_DIR)
 
     try:
-        platform_prefix = GetPlatformUrlPrefix(GetDefaultHostOs())
-        version = GetDownloadPackageVersion()
-        url = f'{platform_prefix}rust-toolchain-{version}.tgz'
+        url = f'{platform_prefix}rust-toolchain-{version}.tar.xz'
         DownloadAndUnpack(url, THIRD_PARTY_DIR)
+        # The archive contains a VERSION file. Copy it to INSTALLED_VERSION as
+        # the very last step in case the unpack fails after writing VERSION.
+        shutil.copyfile(VERSION_SRC_PATH, VERSION_STAMP_PATH)
     except urllib.error.HTTPError as e:
-        # Fail softly for now. This can happen if a Rust package was not
-        # produced, e.g. if the Rust build failed upon a Clang update, or if a
-        # Rust roll and a Clang roll raced against each other.
-        #
-        # TODO(https://crbug.com/1245714): Reconsider how to handle this.
-        print(f'warning: could not download Rust package')
+        print(f'error: Failed to download Rust package')
+        return 1
 
     # Ensure the newly extracted package has the correct version.
-    assert GetDownloadPackageVersion() == GetStampVersion()
+    assert version == GetStampVersion()
 
 
 if __name__ == '__main__':

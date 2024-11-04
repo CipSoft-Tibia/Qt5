@@ -215,6 +215,8 @@ std::string GetSigninStatusDescription(
   if (!identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
     return "Not Signed In";
   } else if (identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSync)) {
+    // TODO(crbug.com/1462978): Delete when ConsentLevel::kSync is deleted from
+    // the codebase. See ConsentLevel::kSync documentation for details.
     return "Signed In, Consented for Sync";
   } else {
     return "Signed In, Not Consented for Sync";
@@ -693,6 +695,12 @@ base::Value::Dict AboutSigninInternals::SigninStatus::ToValue(
 
     AddSectionEntry(basic_info, "Account Reconcilor State",
                     ToString(account_reconcilor->GetState()));
+
+    // At this moment, it is mainly used to debug the state of
+    // `AccountReconcilor`. It will be refreshed automatically when
+    // `AccountReconcilor`'s state changes.
+    AddSectionEntry(basic_info, "Network calls delayed",
+                    signin_client->AreNetworkCallsDelayed() ? "True" : "False");
 
     AddSection(signin_info, std::move(basic_info), "Basic Information");
   }

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,7 @@
 #include "util/osp_logging.h"
 #include "util/stringprintf.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 ReceiverPacketRouter::ReceiverPacketRouter(Environment* environment)
     : environment_(environment) {
@@ -46,7 +45,7 @@ void ReceiverPacketRouter::OnReceiverDestroyed(Ssrc sender_ssrc) {
   }
 }
 
-void ReceiverPacketRouter::SendRtcpPacket(absl::Span<const uint8_t> packet) {
+void ReceiverPacketRouter::SendRtcpPacket(ByteView packet) {
   OSP_DCHECK(InspectPacketForRouting(packet).first == ApparentPacketType::RTCP);
 
   // Do not proceed until the remote endpoint is known. See OnReceivedPacket().
@@ -54,7 +53,8 @@ void ReceiverPacketRouter::SendRtcpPacket(absl::Span<const uint8_t> packet) {
     return;
   }
 
-  environment_->SendPacket(ByteView(packet.data(), packet.size()));
+  environment_->SendPacket(ByteView(packet.data(), packet.size()),
+                           PacketMetadata{});
 }
 
 void ReceiverPacketRouter::OnReceivedPacket(const IPEndpoint& source,
@@ -99,5 +99,4 @@ void ReceiverPacketRouter::OnReceivedPacket(const IPEndpoint& source,
   }
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

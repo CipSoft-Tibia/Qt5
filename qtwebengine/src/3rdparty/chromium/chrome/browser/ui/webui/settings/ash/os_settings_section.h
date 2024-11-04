@@ -8,13 +8,14 @@
 #include <string>
 #include <vector>
 
+#include "ash/webui/settings/public/constants/routes.mojom.h"
+#include "ash/webui/settings/public/constants/setting.mojom.h"
 #include "base/containers/span.h"
 #include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/values.h"
-#include "chrome/browser/ui/webui/settings/ash/search/search.mojom.h"
-#include "chrome/browser/ui/webui/settings/ash/search/search_concept.h"
-#include "chrome/browser/ui/webui/settings/chromeos/constants/routes.mojom.h"
-#include "chrome/browser/ui/webui/settings/chromeos/constants/setting.mojom.h"
+#include "chrome/browser/ui/webui/ash/settings/search/mojom/search.mojom.h"
+#include "chrome/browser/ui/webui/ash/settings/search/search_concept.h"
 
 class Profile;
 
@@ -119,8 +120,9 @@ class OsSettingsSection {
   // Provides the icon for this section.
   virtual mojom::SearchResultIcon GetSectionIcon() const = 0;
 
-  // Provides the path for this section.
-  virtual std::string GetSectionPath() const = 0;
+  // Provides the path for this section. Must return a string constant defined
+  // in `routes.mojom`.
+  virtual const char* GetSectionPath() const = 0;
 
   // Logs metrics for the updated |setting| with optional |value|. Returns
   // whether the setting change was logged.
@@ -179,8 +181,10 @@ class OsSettingsSection {
                                            OsSettingsIdentifier id,
                                            const std::string& url_to_modify);
 
-  Profile* profile_;
-  SearchTagRegistry* search_tag_registry_;
+  const raw_ptr<Profile, DanglingUntriaged | ExperimentalAsh> profile_ =
+      nullptr;
+  const raw_ptr<SearchTagRegistry, ExperimentalAsh> search_tag_registry_ =
+      nullptr;
 };
 
 }  // namespace ash::settings

@@ -17,18 +17,28 @@
   }
 
   /**
-   * Maintain a larger width if at any point had secondary matches and they can
-   * currently be shown.
+   * Maintain a larger width if the secondary side can be shown and was at any
+   * point available to be shown.
    */
-  :host([can-show-secondary-matches][had-secondary-matches]) {
-    --cr-realbox-width: calc(var(--cr-realbox-min-width) * 1.5);
+  :host([can-show-secondary-side][had-secondary-side]),
+  :host([can-show-secondary-side][width-behavior_='wide']) {
+    --cr-realbox-width: 746px;
+  }
+
+  :host([can-show-secondary-side][width-behavior_='revert']:not(
+      [dropdown-is-visible])) {
+    --cr-realbox-width: var(--cr-realbox-min-width);
+  }
+
+  :host([is-tall_]) {
+    --cr-realbox-height: 48px;
   }
 
   /**
-   * Show the secondary side if currently having secondary matches and they can
-   * currently be shown.
+   * Show the secondary side if it can be shown and is currently available to be
+   * shown.
    */
-  :host([can-show-secondary-matches][has-secondary-matches]) {
+  :host([can-show-secondary-side][has-secondary-side]) {
     --cr-realbox-secondary-side-display: block;
   }
 
@@ -46,7 +56,7 @@
     }
   }
 
-  :host([matches-are-visible]) {
+  :host([dropdown-is-visible]) {
     box-shadow: none;
   }
 
@@ -54,12 +64,12 @@
     box-shadow: none;
   }
 
-  :host([match-searchbox]:not([matches-are-visible]):hover) {
+  :host([match-searchbox]:not([dropdown-is-visible]):hover) {
     border: 1px solid transparent;
     box-shadow: var(--cr-realbox-shadow);
   }
 
-  :host([match-searchbox]:not([is-dark]):not([matches-are-visible]):not(:hover)) {
+  :host([match-searchbox]:not([is-dark]):not([dropdown-is-visible]):not(:hover)) {
     border: 1px solid var(--color-realbox-border);
   }
 
@@ -111,7 +121,7 @@
   }
 
   input:focus,
-  :host([matches-are-visible]) input {
+  :host([dropdown-is-visible]) input {
     background-color: var(--color-realbox-results-background);
   }
 
@@ -206,11 +216,12 @@
     on-keydown="onInputWrapperKeydown_">
   <input id="input" type="search" autocomplete="off" spellcheck="false"
       aria-live="[[inputAriaLive_]]" role="combobox"
-      aria-expanded="[[matchesAreVisible]]" aria-controls="matches"
+      aria-expanded="[[dropdownIsVisible]]" aria-controls="matches"
       placeholder="$i18n{searchBoxHint}" on-copy="onInputCutCopy_"
-      on-cut="onInputCutCopy_" on-focus="onInputFocus_" on-input="onInputInput_"
-      on-keydown="onInputKeydown_" on-keyup="onInputKeyup_"
-      on-mousedown="onInputMouseDown_" on-paste="onInputPaste_">
+      on-cut="onInputCutCopy_" on-focus="onInputFocus_"
+      on-input="onInputInput_" on-keydown="onInputKeydown_"
+      on-keyup="onInputKeyup_" on-mousedown="onInputMouseDown_"
+      on-paste="onInputPaste_">
   <cr-realbox-icon id="icon" match="[[selectedMatch_]]"
       default-icon="[[realboxIcon_]]" in-searchbox>
   </cr-realbox-icon>
@@ -224,11 +235,11 @@
   </template>
   <cr-realbox-dropdown id="matches" role="listbox" result="[[result_]]"
       selected-match-index="{{selectedMatchIndex_}}"
-      can-show-secondary-matches="[[canShowSecondaryMatches]]"
-      had-secondary-matches="{{hadSecondaryMatches}}"
-      has-secondary-matches="{{hasSecondaryMatches}}"
-      on-result-repaint="onResultRepaint_" on-match-focusin="onMatchFocusin_"
-      on-match-click="onMatchClick_" on-match-remove="onMatchRemove_"
-      on-header-focusin="onHeaderFocusin_" hidden$="[[!matchesAreVisible]]">
+      can-show-secondary-side="[[canShowSecondarySide]]"
+      had-secondary-side="{{hadSecondarySide}}"
+      has-secondary-side="{{hasSecondarySide}}"
+      on-match-focusin="onMatchFocusin_"
+      on-match-remove="onMatchRemove_" on-header-focusin="onHeaderFocusin_"
+      hidden$="[[!dropdownIsVisible]]">
   </cr-realbox-dropdown>
 </div>

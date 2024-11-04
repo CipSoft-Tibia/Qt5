@@ -375,7 +375,7 @@ struct FrameDetails {
 #endif
 };
 
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) && defined(_WIN64) ||            \
+#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_WIN) && defined(_WIN64) ||          \
     ANDROID_ARM64_UNWINDING_SUPPORTED || ANDROID_CFI_UNWINDING_SUPPORTED || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX)
 // Returns whether stack sampling is supported on the current platform.
@@ -539,7 +539,7 @@ void TracingSamplerProfiler::TracingProfileBuilder::WriteSampleToTrace(
         trace_packet->set_streaming_profile_packet();
     streaming_profile_packet->add_callstack_iid(callstack_id);
 
-    int32_t current_process_priority = base::Process::Current().GetPriority();
+    int32_t current_process_priority = base::Process::Current().GetOSPriority();
     if (current_process_priority != 0) {
       streaming_profile_packet->set_process_priority(current_process_priority);
     }
@@ -795,6 +795,7 @@ void TracingSamplerProfiler::DeleteOnChildThreadForTesting() {
 // static
 void TracingSamplerProfiler::ResetDataSourceForTesting() {
   TracingSamplerProfilerDataSource::Get()->ResetForTesting();
+  RegisterDataSource();
 }
 
 // static
@@ -806,7 +807,7 @@ void TracingSamplerProfiler::RegisterDataSource() {
 
 // static
 bool TracingSamplerProfiler::IsStackUnwindingSupportedForTesting() {
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) && defined(_WIN64) ||            \
+#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_WIN) && defined(_WIN64) ||          \
     ANDROID_ARM64_UNWINDING_SUPPORTED || ANDROID_CFI_UNWINDING_SUPPORTED || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX)
   return IsStackSamplingSupported();

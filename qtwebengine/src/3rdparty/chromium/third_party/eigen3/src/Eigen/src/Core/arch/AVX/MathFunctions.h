@@ -20,99 +20,8 @@ namespace Eigen {
 
 namespace internal {
 
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet8f
-psin<Packet8f>(const Packet8f& _x) {
-  return psin_float(_x);
-}
-
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet8f
-pcos<Packet8f>(const Packet8f& _x) {
-  return pcos_float(_x);
-}
-
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet8f
-pasin<Packet8f>(const Packet8f& _x) {
-  return pasin_float(_x);
-}
-
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet8f
-pacos<Packet8f>(const Packet8f& _x) {
-  return pacos_float(_x);
-}
-
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet8f
-patan<Packet8f>(const Packet8f& _x) {
-  return patan_float(_x);
-}
-
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet4d
-patan<Packet4d>(const Packet4d& _x) {
-  return patan_double(_x);
-}
-
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet8f
-plog<Packet8f>(const Packet8f& _x) {
-  return plog_float(_x);
-}
-
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet4d
-plog<Packet4d>(const Packet4d& _x) {
-  return plog_double(_x);
-}
-
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet8f
-plog2<Packet8f>(const Packet8f& _x) {
-  return plog2_float(_x);
-}
-
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet4d
-plog2<Packet4d>(const Packet4d& _x) {
-  return plog2_double(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet8f plog1p<Packet8f>(const Packet8f& _x) {
-  return generic_plog1p(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet8f pexpm1<Packet8f>(const Packet8f& _x) {
-  return generic_expm1(_x);
-}
-
-// Exponential function. Works by writing "x = m*log(2) + r" where
-// "m = floor(x/log(2)+1/2)" and "r" is the remainder. The result is then
-// "exp(x) = 2^m*exp(r)" where exp(r) is in the range [-1,1).
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet8f
-pexp<Packet8f>(const Packet8f& _x) {
-  return pexp_float(_x);
-}
-
-// Hyperbolic Tangent function.
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet8f
-ptanh<Packet8f>(const Packet8f& _x) {
-  return internal::generic_fast_tanh_float(_x);
-}
-
-// Exponential function for doubles.
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet4d
-pexp<Packet4d>(const Packet4d& _x) {
-  return pexp_double(_x);
-}
-
+EIGEN_INSTANTIATE_GENERIC_MATH_FUNCS_FLOAT(Packet8f)
+EIGEN_INSTANTIATE_GENERIC_MATH_FUNCS_DOUBLE(Packet4d)
 
 // Notice that for newer processors, it is counterproductive to use Newton
 // iteration for square root. In particular, Skylake and Zen2 processors
@@ -147,19 +56,6 @@ template<> EIGEN_STRONG_INLINE Packet8f preciprocal<Packet8f>(const Packet8f& a)
 
 #endif
 
-
-F16_PACKET_FUNCTION(Packet8f, Packet8h, psin)
-F16_PACKET_FUNCTION(Packet8f, Packet8h, pcos)
-F16_PACKET_FUNCTION(Packet8f, Packet8h, plog)
-F16_PACKET_FUNCTION(Packet8f, Packet8h, plog2)
-F16_PACKET_FUNCTION(Packet8f, Packet8h, plog1p)
-F16_PACKET_FUNCTION(Packet8f, Packet8h, pexpm1)
-F16_PACKET_FUNCTION(Packet8f, Packet8h, pexp)
-F16_PACKET_FUNCTION(Packet8f, Packet8h, ptanh)
-F16_PACKET_FUNCTION(Packet8f, Packet8h, psqrt)
-F16_PACKET_FUNCTION(Packet8f, Packet8h, prsqrt)
-F16_PACKET_FUNCTION(Packet8f, Packet8h, preciprocal)
-
 template <>
 EIGEN_STRONG_INLINE Packet8h pfrexp(const Packet8h& a, Packet8h& exponent) {
   Packet8f fexponent;
@@ -173,18 +69,6 @@ EIGEN_STRONG_INLINE Packet8h pldexp(const Packet8h& a, const Packet8h& exponent)
   return float2half(pldexp<Packet8f>(half2float(a), half2float(exponent)));
 }
 
-BF16_PACKET_FUNCTION(Packet8f, Packet8bf, psin)
-BF16_PACKET_FUNCTION(Packet8f, Packet8bf, pcos)
-BF16_PACKET_FUNCTION(Packet8f, Packet8bf, plog)
-BF16_PACKET_FUNCTION(Packet8f, Packet8bf, plog2)
-BF16_PACKET_FUNCTION(Packet8f, Packet8bf, plog1p)
-BF16_PACKET_FUNCTION(Packet8f, Packet8bf, pexpm1)
-BF16_PACKET_FUNCTION(Packet8f, Packet8bf, pexp)
-BF16_PACKET_FUNCTION(Packet8f, Packet8bf, ptanh)
-BF16_PACKET_FUNCTION(Packet8f, Packet8bf, psqrt)
-BF16_PACKET_FUNCTION(Packet8f, Packet8bf, prsqrt)
-BF16_PACKET_FUNCTION(Packet8f, Packet8bf, preciprocal)
-
 template <>
 EIGEN_STRONG_INLINE Packet8bf pfrexp(const Packet8bf& a, Packet8bf& exponent) {
   Packet8f fexponent;
@@ -197,6 +81,30 @@ template <>
 EIGEN_STRONG_INLINE Packet8bf pldexp(const Packet8bf& a, const Packet8bf& exponent) {
   return F32ToBf16(pldexp<Packet8f>(Bf16ToF32(a), Bf16ToF32(exponent)));
 }
+
+BF16_PACKET_FUNCTION(Packet8f, Packet8bf, pcos)
+BF16_PACKET_FUNCTION(Packet8f, Packet8bf, pexp)
+BF16_PACKET_FUNCTION(Packet8f, Packet8bf, pexpm1)
+BF16_PACKET_FUNCTION(Packet8f, Packet8bf, plog)
+BF16_PACKET_FUNCTION(Packet8f, Packet8bf, plog1p)
+BF16_PACKET_FUNCTION(Packet8f, Packet8bf, plog2)
+BF16_PACKET_FUNCTION(Packet8f, Packet8bf, preciprocal)
+BF16_PACKET_FUNCTION(Packet8f, Packet8bf, prsqrt)
+BF16_PACKET_FUNCTION(Packet8f, Packet8bf, psin)
+BF16_PACKET_FUNCTION(Packet8f, Packet8bf, psqrt)
+BF16_PACKET_FUNCTION(Packet8f, Packet8bf, ptanh)
+F16_PACKET_FUNCTION(Packet8f, Packet8h, pcos)
+F16_PACKET_FUNCTION(Packet8f, Packet8h, pexp)
+F16_PACKET_FUNCTION(Packet8f, Packet8h, pexpm1)
+F16_PACKET_FUNCTION(Packet8f, Packet8h, plog)
+F16_PACKET_FUNCTION(Packet8f, Packet8h, plog1p)
+F16_PACKET_FUNCTION(Packet8f, Packet8h, plog2)
+F16_PACKET_FUNCTION(Packet8f, Packet8h, preciprocal)
+F16_PACKET_FUNCTION(Packet8f, Packet8h, prsqrt)
+F16_PACKET_FUNCTION(Packet8f, Packet8h, psin)
+F16_PACKET_FUNCTION(Packet8f, Packet8h, psqrt)
+F16_PACKET_FUNCTION(Packet8f, Packet8h, ptanh)
+
 
 }  // end namespace internal
 

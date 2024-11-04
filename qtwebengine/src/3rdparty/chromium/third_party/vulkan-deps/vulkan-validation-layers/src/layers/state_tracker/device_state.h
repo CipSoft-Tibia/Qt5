@@ -18,7 +18,8 @@
  */
 #pragma once
 #include "state_tracker/base_node.h"
-#include "layer_chassis_dispatch.h"
+#include "generated/layer_chassis_dispatch.h"
+#include "generated/vk_safe_struct.h"
 #include <vector>
 
 struct DeviceFeatures {
@@ -45,11 +46,11 @@ struct DeviceFeatures {
     VkPhysicalDeviceDedicatedAllocationImageAliasingFeaturesNV dedicated_allocation_image_aliasing_features;
     VkPhysicalDevicePerformanceQueryFeaturesKHR performance_query_features;
     VkPhysicalDeviceCoherentMemoryFeaturesAMD device_coherent_memory_features;
-    VkPhysicalDeviceYcbcrImageArraysFeaturesEXT ycbcr_image_array_features;
     VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features;
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR ray_tracing_pipeline_features;
     VkPhysicalDeviceAccelerationStructureFeaturesKHR ray_tracing_acceleration_structure_features;
     VkPhysicalDeviceRobustness2FeaturesEXT robustness2_features;
+    VkPhysicalDevicePipelineRobustnessFeaturesEXT pipeline_robustness_features;
     VkPhysicalDeviceFragmentDensityMapFeaturesEXT fragment_density_map_features;
     VkPhysicalDeviceFragmentDensityMap2FeaturesEXT fragment_density_map2_features;
     VkPhysicalDeviceFragmentDensityMapOffsetFeaturesQCOM fragment_density_map_offset_features;
@@ -94,10 +95,23 @@ struct DeviceFeatures {
     VkPhysicalDeviceMultisampledRenderToSingleSampledFeaturesEXT multisampled_render_to_single_sampled_features;
     VkPhysicalDeviceShaderModuleIdentifierFeaturesEXT shader_module_identifier_features;
     VkPhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT attachment_feedback_loop_layout_features;
+    VkPhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT attachment_feedback_loop_dynamic_features;
     VkPhysicalDevicePipelineProtectedAccessFeaturesEXT pipeline_protected_access_features;
+    VkPhysicalDeviceImageProcessingFeaturesQCOM image_processing_features;
     VkPhysicalDeviceLinearColorAttachmentFeaturesNV linear_color_attachment_features;
     VkPhysicalDeviceShaderCoreBuiltinsFeaturesARM shader_core_builtins_features;
     VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT pipeline_library_group_handles_features;
+    VkPhysicalDeviceImageSlicedViewOf3DFeaturesEXT sliced_3d_features;
+    VkPhysicalDeviceShaderObjectFeaturesEXT shader_object_features;
+    VkPhysicalDeviceRayTracingPositionFetchFeaturesKHR ray_tracing_position_fetch_features;
+    VkPhysicalDeviceShaderTileImageFeaturesEXT shader_tile_image_features;
+    VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT dynamic_rendering_unused_attachments_features;
+    VkPhysicalDeviceDepthBiasControlFeaturesEXT depth_bias_control_features;
+    VkPhysicalDeviceCooperativeMatrixFeaturesKHR cooperative_matrix_features_khr;
+    VkPhysicalDeviceMaintenance5FeaturesKHR maintenance5_features;
+    VkPhysicalDeviceHostImageCopyFeaturesEXT host_image_copy_features;
+    VkPhysicalDeviceRepresentativeFragmentTestFeaturesNV representative_fragment_test_features_nv;
+    VkPhysicalDeviceCoverageReductionModeFeaturesNV coverage_reduction_mode_features_nv;
     // If a new feature is added here that involves a SPIR-V capability add also in spirv_validation_generator.py
     // This is known by checking the table in the spec or if the struct is in a <spirvcapability> in vk.xml
 };
@@ -109,9 +123,9 @@ class QUEUE_FAMILY_PERF_COUNTERS {
 
 class SURFACELESS_QUERY_STATE {
   public:
-    std::vector<VkSurfaceFormatKHR> formats;
+    std::vector<safe_VkSurfaceFormat2KHR> formats;
     std::vector<VkPresentModeKHR> present_modes;
-    VkSurfaceCapabilitiesKHR capabilities;
+    safe_VkSurfaceCapabilities2KHR capabilities;
 };
 
 class PHYSICAL_DEVICE_STATE : public BASE_NODE {

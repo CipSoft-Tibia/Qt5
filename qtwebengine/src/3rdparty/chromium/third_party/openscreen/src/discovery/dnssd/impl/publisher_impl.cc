@@ -1,15 +1,15 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "discovery/dnssd/impl/publisher_impl.h"
 
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "discovery/common/reporting_client.h"
 #include "discovery/dnssd/impl/conversion_layer.h"
 #include "discovery/dnssd/impl/instance_key.h"
@@ -19,8 +19,7 @@
 #include "platform/base/error.h"
 #include "util/trace_logging.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 namespace {
 
 DnsSdInstanceEndpoint CreateEndpoint(
@@ -83,7 +82,7 @@ int EraseInstancesWithServiceId(std::map<DnsSdInstance, T>* instances,
 
 PublisherImpl::PublisherImpl(MdnsService* publisher,
                              ReportingClient* reporting_client,
-                             TaskRunner* task_runner,
+                             TaskRunner& task_runner,
                              const NetworkInterfaceConfig* network_config)
     : mdns_publisher_(publisher),
       reporting_client_(reporting_client),
@@ -91,13 +90,12 @@ PublisherImpl::PublisherImpl(MdnsService* publisher,
       network_config_(network_config) {
   OSP_DCHECK(mdns_publisher_);
   OSP_DCHECK(reporting_client_);
-  OSP_DCHECK(task_runner_);
 }
 
 PublisherImpl::~PublisherImpl() = default;
 
 Error PublisherImpl::Register(const DnsSdInstance& instance, Client* client) {
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
   OSP_DCHECK(client != nullptr);
 
   if (published_instances_.find(instance) != published_instances_.end()) {
@@ -118,7 +116,7 @@ Error PublisherImpl::Register(const DnsSdInstance& instance, Client* client) {
 }
 
 Error PublisherImpl::UpdateRegistration(const DnsSdInstance& instance) {
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
 
   // Check if the instance is still pending publication.
   auto it = FindKey(&pending_instances_, InstanceKey(instance));
@@ -143,7 +141,7 @@ Error PublisherImpl::UpdateRegistration(const DnsSdInstance& instance) {
 
 Error PublisherImpl::UpdatePublishedRegistration(
     const DnsSdInstance& instance) {
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
 
   auto published_instance_it =
       FindKey(&published_instances_, InstanceKey(instance));
@@ -165,7 +163,7 @@ Error PublisherImpl::UpdatePublishedRegistration(
   // instance of each DnsType, so use that here to simplify this step. First in
   // each pair is the old instances, second is the new instance.
   std::map<DnsType,
-           std::pair<absl::optional<MdnsRecord>, absl::optional<MdnsRecord>>>
+           std::pair<std::optional<MdnsRecord>, std::optional<MdnsRecord>>>
       changed_records;
   const std::vector<MdnsRecord> old_records =
       GetDnsRecords(published_instance_it->second);
@@ -175,7 +173,7 @@ Error PublisherImpl::UpdatePublishedRegistration(
   for (size_t i = 0; i < old_records.size(); i++) {
     const auto key = old_records[i].dns_type();
     OSP_DCHECK(changed_records.find(key) == changed_records.end());
-    auto value = std::make_pair(std::move(old_records[i]), absl::nullopt);
+    auto value = std::make_pair(std::move(old_records[i]), std::nullopt);
     changed_records.emplace(key, std::move(value));
   }
 
@@ -184,8 +182,8 @@ Error PublisherImpl::UpdatePublishedRegistration(
     const auto key = new_records[i].dns_type();
     auto find_it = changed_records.find(key);
     if (find_it == changed_records.end()) {
-      std::pair<absl::optional<MdnsRecord>, absl::optional<MdnsRecord>> value(
-          absl::nullopt, std::move(new_records[i]));
+      std::pair<std::optional<MdnsRecord>, std::optional<MdnsRecord>> value(
+          std::nullopt, std::move(new_records[i]));
       changed_records.emplace(key, std::move(value));
     } else {
       find_it->second.second = std::move(new_records[i]);
@@ -195,16 +193,16 @@ Error PublisherImpl::UpdatePublishedRegistration(
   // Apply changes called out in |changed_records|.
   Error total_result = Error::None();
   for (const auto& pair : changed_records) {
-    OSP_DCHECK(pair.second.first != absl::nullopt ||
-               pair.second.second != absl::nullopt);
-    if (pair.second.first == absl::nullopt) {
+    OSP_DCHECK(pair.second.first != std::nullopt ||
+               pair.second.second != std::nullopt);
+    if (pair.second.first == std::nullopt) {
       TRACE_SCOPED(TraceCategory::kDiscovery, "mdns.RegisterRecord");
       auto error = mdns_publisher_->RegisterRecord(pair.second.second.value());
       TRACE_SET_RESULT(error);
       if (!error.ok()) {
         total_result = error;
       }
-    } else if (pair.second.second == absl::nullopt) {
+    } else if (pair.second.second == std::nullopt) {
       TRACE_SCOPED(TraceCategory::kDiscovery, "mdns.UnregisterRecord");
       auto error = mdns_publisher_->UnregisterRecord(pair.second.first.value());
       TRACE_SET_RESULT(error);
@@ -230,7 +228,7 @@ Error PublisherImpl::UpdatePublishedRegistration(
 }
 
 ErrorOr<int> PublisherImpl::DeregisterAll(const std::string& service) {
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
 
   OSP_DVLOG << "Deregistering all instances";
 
@@ -266,7 +264,7 @@ ErrorOr<int> PublisherImpl::DeregisterAll(const std::string& service) {
 void PublisherImpl::OnDomainFound(const DomainName& requested_name,
                                   const DomainName& confirmed_name) {
   TRACE_DEFAULT_SCOPED(TraceCategory::kDiscovery);
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
 
   OSP_DVLOG << "Domain successfully claimed: '" << confirmed_name
             << "' based on requested name: '" << requested_name << "'";
@@ -307,5 +305,4 @@ void PublisherImpl::OnDomainFound(const DomainName& requested_name,
   client->OnEndpointClaimed(pair.first->first, pair.first->second);
 }
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

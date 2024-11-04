@@ -23,15 +23,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\background.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\box.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\context.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\css_length.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -164,20 +155,65 @@
     <ClCompile Include="src\gumbo\vector.c">
       <Filter>Source Files\gumbo</Filter>
     </ClCompile>
-    <ClCompile Include="src\el_li.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\num_cvt.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\strtod.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\render_block.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render_block_context.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render_flex.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render_image.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render_inline_context.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render_item.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\render_table.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\line_box.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\css_properties.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\css_borders.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\document_container.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\string_id.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\tstring_view.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\codepoint.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\formatting_context.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\url.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\url_path.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\litehtml\attributes.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="include\litehtml\background.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -185,9 +221,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\litehtml\box.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\litehtml\context.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\litehtml\css_length.h">
@@ -361,10 +394,16 @@
     <ClInclude Include="src\gumbo\include\gumbo\vector.h">
       <Filter>Header Files\gumbo</Filter>
     </ClInclude>
-    <ClInclude Include="include\litehtml\el_li.h">
+    <ClInclude Include="include\litehtml\num_cvt.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\litehtml\num_cvt.h">
+    <ClInclude Include="include\litehtml\master_css.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\litehtml\document_container.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\litehtml\string_id.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

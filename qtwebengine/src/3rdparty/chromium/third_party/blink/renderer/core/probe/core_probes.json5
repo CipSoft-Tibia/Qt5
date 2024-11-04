@@ -25,6 +25,27 @@
         "ExecuteScript",
       ]
     },
+    LCPScriptObserver: {
+      include_path: "third_party/blink/renderer/core/lcp_critical_path_predictor",
+      probes: [
+        "CallFunction",
+        "ExecuteScript",
+      ]
+    },
+    AnimationFrameTimingMonitor: {
+      include_path: "third_party/blink/renderer/core/frame",
+      probes: [
+        "DidFinishSyncXHR",
+        "DidRunJavaScriptDialog",
+        "ExecuteScript",
+        "InvokeCallback",
+        "InvokeEventHandler",
+        "RecalculateStyle",
+        "UpdateLayout",
+        "CompileAndRunScript",
+        "WillHandlePromise",
+      ]
+    },
     InspectorIssueReporter: {
       probes: [
         "DidFailLoading",
@@ -47,6 +68,7 @@
       probes: [
         "ActiveStyleSheetsUpdated",
         "DidMutateStyleSheet",
+        "GetTextPosition",
         "DocumentDetached",
         "FontsUpdated",
         "ForcePseudoState",
@@ -86,6 +108,7 @@
         "BreakableLocation",
         "CharacterDataModified",
         "DidCreateCanvasContext",
+        "DidCreateOffscreenCanvasContext",
         "DidFireWebGLError",
         "DidFireWebGLErrorOrWarning",
         "DidFireWebGLWarning",
@@ -188,7 +211,7 @@
       probes: [
         "ApplyCompilationModeOverride",
         "DidChangeViewport",
-        "DidClearDocumentOfWindowObject",
+        "DidCreateMainWorldContext",
         "DidNavigateWithinDocument",
         "WillCommitLoad",
         "DidRestoreFromBackForwardCache",
@@ -202,7 +225,6 @@
         "FrameDetachedFromParent",
         "FrameRequestedNavigation",
         "FrameScheduledNavigation",
-        "FrameStartedLoading",
         "FrameStoppedLoading",
         "LifecycleEvent",
         "LoadEventFired",
@@ -247,6 +269,7 @@
       probes: [
         "DidAddSpeculationRuleSet",
         "DidRemoveSpeculationRuleSet",
+        "SpeculationCandidatesUpdated",
       ]
     },
     InspectorTraceEvents: {

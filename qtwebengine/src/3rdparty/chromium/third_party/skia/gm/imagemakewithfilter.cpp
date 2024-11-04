@@ -25,13 +25,18 @@
 #include "include/core/SkString.h"
 #include "include/core/SkSurface.h"
 #include "include/core/SkTypes.h"
-
 #include "include/effects/SkImageFilters.h"
-
-#include "include/gpu/GrDirectContext.h"
-
 #include "tools/Resources.h"
 #include "tools/ToolUtils.h"
+
+#if defined(SK_GANESH)
+#include "include/gpu/GrDirectContext.h"
+#include "include/gpu/ganesh/SkImageGanesh.h"
+#endif
+
+#if defined(SK_GRAPHITE)
+#include "include/gpu/graphite/Image.h"
+#endif
 
 #include <utility>
 
@@ -87,19 +92,22 @@ static sk_sp<SkImageFilter> erode_factory(sk_sp<SkImage> auxImage, const SkIRect
 }
 
 static sk_sp<SkImageFilter> displacement_factory(sk_sp<SkImage> auxImage, const SkIRect* cropRect) {
-    sk_sp<SkImageFilter> displacement = SkImageFilters::Image(std::move(auxImage));
+    sk_sp<SkImageFilter> displacement = SkImageFilters::Image(std::move(auxImage),
+                                                              SkFilterMode::kLinear);
     return SkImageFilters::DisplacementMap(SkColorChannel::kR, SkColorChannel::kG, 40.f,
                                            std::move(displacement), nullptr, cropRect);
 }
 
 static sk_sp<SkImageFilter> arithmetic_factory(sk_sp<SkImage> auxImage, const SkIRect* cropRect) {
-    sk_sp<SkImageFilter> background = SkImageFilters::Image(std::move(auxImage));
+    sk_sp<SkImageFilter> background = SkImageFilters::Image(std::move(auxImage),
+                                                            SkFilterMode::kLinear);
     return SkImageFilters::Arithmetic(0.0f, .6f, 1.f, 0.f, false, std::move(background),
                                       nullptr, cropRect);
 }
 
 static sk_sp<SkImageFilter> blend_factory(sk_sp<SkImage> auxImage, const SkIRect* cropRect) {
-    sk_sp<SkImageFilter> background = SkImageFilters::Image(std::move(auxImage));
+    sk_sp<SkImageFilter> background = SkImageFilters::Image(std::move(auxImage),
+                                                            SkFilterMode::kLinear);
     return SkImageFilters::Blend(
             SkBlendMode::kModulate, std::move(background), nullptr, cropRect);
 }
@@ -121,15 +129,6 @@ static sk_sp<SkImageFilter> matrix_factory(sk_sp<SkImage> auxImage, const SkIRec
 
     // This doesn't support a cropRect
     return SkImageFilters::MatrixTransform(matrix, SkSamplingOptions(SkFilterMode::kLinear), nullptr);
-}
-
-static sk_sp<SkImageFilter> alpha_threshold_factory(sk_sp<SkImage> auxImage,
-                                                    const SkIRect* cropRect) {
-    // Centered cross with higher opacity
-    SkRegion region(SkIRect::MakeLTRB(30, 45, 70, 55));
-    region.op(SkIRect::MakeLTRB(45, 30, 55, 70), SkRegion::kUnion_Op);
-
-    return SkImageFilters::AlphaThreshold(region, 1.f, .2f, nullptr, cropRect);
 }
 
 static sk_sp<SkImageFilter> lighting_factory(sk_sp<SkImage> auxImage, const SkIRect* cropRect) {
@@ -194,7 +193,7 @@ public:
             , fAuxImage(nullptr) {}
 
 protected:
-    SkString onShortName() override {
+    SkString getName() const override {
         SkString name = SkString("imagemakewithfilter");
 
         if (fFilterWithCropRect) {
@@ -206,11 +205,11 @@ protected:
         return name;
     }
 
-    SkISize onISize() override { return SkISize::Make(1980, 860); }
+    SkISize getISize() override { return SkISize::Make(1840, 860); }
 
     void onOnceBeforeDraw() override {
         SkImageInfo info = SkImageInfo::MakeN32(100, 100, kUnpremul_SkAlphaType);
-        auto surface = SkSurface::MakeRaster(info, nullptr);
+        auto surface = SkSurfaces::Raster(info, nullptr);
 
         sk_sp<SkImage> colorImage = GetResourceAsImage("images/mandrill_128.png");
         // Resize to 100x100
@@ -237,7 +236,6 @@ protected:
             blend_factory,
             convolution_factory,
             matrix_factory,
-            alpha_threshold_factory,
             lighting_factory,
             tile_factory
         };
@@ -250,10 +248,9 @@ protected:
             "Erode",
             "Displacement",
             "Arithmetic",
-            "Xfer Mode", // "blend"
+            "Blend",
             "Convolution",
             "Matrix Xform",
-            "Alpha Threshold",
             "Lighting",
             "Tile"
         };
@@ -375,9 +372,23 @@ private:
             SkIRect outSubset;
             SkIPoint offset;
 
-            auto rContext = canvas->recordingContext();
-            result = mainImage->makeWithFilter(rContext, filter.get(), subset, clip,
-                                               &outSubset, &offset);
+#if defined(SK_GANESH)
+            if (auto rContext = canvas->recordingContext()) {
+                result = SkImages::MakeWithFilter(rContext, mainImage, filter.get(),
+                                                  subset, clip, &outSubset, &offset);
+            } else
+#endif
+#if defined(SK_GRAPHITE)
+            if (auto recorder = canvas->recorder()){
+                result = SkImages::MakeWithFilter(recorder, mainImage, filter.get(),
+                                                  subset, clip, &outSubset, &offset);
+            } else
+#endif
+            {
+                result = SkImages::MakeWithFilter(mainImage, filter.get(),
+                                                  subset, clip, &outSubset, &offset);
+            }
+
             if (!result) {
                 return;
             }

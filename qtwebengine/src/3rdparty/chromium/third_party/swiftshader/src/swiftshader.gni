@@ -47,6 +47,14 @@ configs_to_add += [
 
 template("swiftshader_source_set") {
   source_set(target_name) {
+    if (is_apple) {
+      # If a "build with ARC" config is present, remove it.
+      if (filter_include(configs, [ "//build/config/compiler:enable_arc" ]) !=
+          []) {
+        configs_to_delete += [ "//build/config/compiler:enable_arc" ]
+      }
+    }
+
     configs -= configs_to_delete
     configs += configs_to_add
     forward_variables_from(invoker, "*", [ "configs" ])

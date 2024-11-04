@@ -79,6 +79,7 @@ QDBusAbstractInterfacePrivate::QDBusAbstractInterfacePrivate(const QString &serv
       lastError(checkIfValid(serv, p, iface, isDynamic, (connectionPrivate() &&
                                                          connectionPrivate()->mode == QDBusConnectionPrivate::PeerMode))),
       timeout(-1),
+      interactiveAuthorizationAllowed(false),
       isValid(!lastError.isValid())
 {
     if (!isValid)
@@ -222,7 +223,6 @@ void QDBusAbstractInterfacePrivate::_q_serviceOwnerChanged(const QString &name,
                                                            const QString &newOwner)
 {
     Q_UNUSED(oldOwner);
-    Q_UNUSED(name);
     //qDebug() << "QDBusAbstractInterfacePrivate serviceOwnerChanged" << name << oldOwner << newOwner;
     Q_ASSERT(name == service);
     currentOwner = newOwner;
@@ -398,6 +398,43 @@ int QDBusAbstractInterface::timeout() const
 }
 
 /*!
+    Configures whether, for asynchronous calls, the caller
+    is prepared to wait for interactive authorization.
+
+    If \a enable is set to \c true, the D-Bus messages generated for
+    asynchronous calls via this interface will set the
+    \c ALLOW_INTERACTIVE_AUTHORIZATION flag.
+
+    This flag is only useful when unprivileged code calls a more privileged
+    method call, and an authorization framework is deployed that allows
+    possibly interactive authorization.
+
+    The default is \c false.
+
+    \since 6.7
+    \sa QDBusMessage::setInteractiveAuthorizationAllowed()
+*/
+void QDBusAbstractInterface::setInteractiveAuthorizationAllowed(bool enable)
+{
+    d_func()->interactiveAuthorizationAllowed = enable;
+}
+
+/*!
+    Returns whether, for asynchronous calls, the caller
+    is prepared to wait for interactive authorization.
+
+    The default is \c false.
+
+    \since 6.7
+    \sa setInteractiveAuthorizationAllowed(),
+        QDBusMessage::setInteractiveAuthorizationAllowed()
+*/
+bool QDBusAbstractInterface::isInteractiveAuthorizationAllowed() const
+{
+    return d_func()->interactiveAuthorizationAllowed;
+}
+
+/*!
     Places a call to the remote method specified by \a method on this interface, using \a args as
     arguments. This function returns the message that was received as a reply, which can be a normal
     QDBusMessage::ReplyMessage (indicating success) or QDBusMessage::ErrorMessage (if the call
@@ -476,6 +513,9 @@ QDBusMessage QDBusAbstractInterface::callWithArgumentList(QDBus::CallMode mode,
 
     Normally, you should place calls using asyncCall().
 
+    \note Method calls to objects registered by the application itself are never
+    asynchronous due to implementation limitations.
+
     \threadsafe
 */
 QDBusPendingCall QDBusAbstractInterface::asyncCallWithArgumentList(const QString& method,
@@ -489,6 +529,8 @@ QDBusPendingCall QDBusAbstractInterface::asyncCallWithArgumentList(const QString
     QDBusMessage msg = QDBusMessage::createMethodCall(service(), path(), interface(), method);
     QDBusMessagePrivate::setParametersValidated(msg, true);
     msg.setArguments(args);
+    if (d->interactiveAuthorizationAllowed)
+        msg.setInteractiveAuthorizationAllowed(true);
     return d->connection.asyncCall(msg, d->timeout);
 }
 
@@ -509,6 +551,9 @@ QDBusPendingCall QDBusAbstractInterface::asyncCallWithArgumentList(const QString
     by the function call. Optionally, it may have a QDBusMessage
     parameter as its last or only parameter.  The \a errorMethod must
     have a QDBusError as its only parameter.
+
+    \note Method calls to objects registered by the application itself are never
+    asynchronous due to implementation limitations.
 
     \since 4.3
     \sa QDBusError, QDBusMessage
@@ -738,6 +783,9 @@ void QDBusAbstractInterface::internalPropSet(const char *propname, const QVarian
     See call() for the same example in blocking (synchronous) calls.
 
     \note Before Qt 5.14, this function accepted a maximum of just eight (8) arguments.
+
+    \note Method calls to local \c{QDBusServer}'s are never asynchronous
+    due to implementation limitations.
 
     \sa asyncCallWithArgumentList()
 */

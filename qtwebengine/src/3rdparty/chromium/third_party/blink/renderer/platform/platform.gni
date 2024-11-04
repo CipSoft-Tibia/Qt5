@@ -7,7 +7,6 @@ import("//third_party/blink/renderer/config.gni")
 import("//build/config/jumbo.gni")
 
 platform_config_add = [
-  "//build/config/compiler:wexit_time_destructors",
   "//third_party/blink/renderer:config",
   "//third_party/blink/renderer:inside_blink",
   "//third_party/blink/renderer:non_test_config",

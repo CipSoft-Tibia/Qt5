@@ -1,6 +1,6 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \class QMap
@@ -390,7 +390,7 @@
     use that entails can be avoided by iterating from \l keyBegin() to
     \l keyEnd().
 
-    \sa QMultiMap::uniqueKeys(), values(), key()
+    \sa values(), key()
 */
 
 /*! \fn template <class Key, class T> QList<Key> QMap<Key, T>::keys(const T &value) const
@@ -730,7 +730,7 @@
     If there is already an item with the key \a key, that item's value
     is replaced with \a value.
 
-    \sa QMultiMap::insert()
+    Returns an iterator pointing to the new/updated element.
 */
 
 /*! \fn template <class Key, class T> QMap<Key, T>::iterator QMap<Key, T>::insert(const_iterator pos, const Key &key, const T &value)
@@ -756,7 +756,7 @@
     \b {Note:} Be careful with the hint. Providing an iterator from an older shared instance might
     crash but there is also a risk that it will silently corrupt both the map and the \a pos map.
 
-    \sa QMultiMap::insert()
+    Returns an iterator pointing to the new/updated element.
 */
 
 /*! \fn template <class Key, class T> void QMap<Key, T>::insert(const QMap<Key, T> &map)
@@ -766,8 +766,6 @@
 
     If a key is common to both maps, its value will be replaced with
     the value stored in \a map.
-
-    \sa QMultiMap::insert()
 */
 
 /*! \fn template <class Key, class T> void QMap<Key, T>::insert(QMap<Key, T> &&map)
@@ -820,14 +818,14 @@
 */
 
 /*!
-  \fn template <class Key, class T> QPair<typename QMap<Key, T>::iterator, typename QMap<Key, T>::iterator> QMap<Key, T>::equal_range(const Key &key)
+  \fn template <class Key, class T> std::pair<typename QMap<Key, T>::iterator, typename QMap<Key, T>::iterator> QMap<Key, T>::equal_range(const Key &key)
 
   Returns a pair of iterators delimiting the range of values \c{[first, second)}, that
   are stored under \a key.
 */
 
 /*!
-    \fn template <class Key, class T> QPair<typename QMap<Key, T>::const_iterator, typename QMap<Key, T>::const_iterator> QMap<Key, T>::equal_range(const Key &key) const
+    \fn template <class Key, class T> std::pair<typename QMap<Key, T>::const_iterator, typename QMap<Key, T>::const_iterator> QMap<Key, T>::equal_range(const Key &key) const
     \overload
     \since 5.6
 */

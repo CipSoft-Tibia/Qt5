@@ -1783,9 +1783,9 @@ QList<uint> QStringRef::toUcs4() const
 */
 QStringRef QStringRef::trimmed() const
 {
-    const QChar *begin = cbegin();
-    const QChar *end = cend();
-    QStringAlgorithms<const QStringRef>::trimmed_helper_positions(begin, end);
+    auto trimmed = QStringView(*this).trimmed();
+    auto begin = trimmed.cbegin();
+    auto end = trimmed.cend();
     if (begin == cbegin() && end == cend())
         return *this;
     int position = m_position + (begin - cbegin());

@@ -236,8 +236,11 @@ QT_BEGIN_NAMESPACE
 class Q_CORE_EXPORT AppleUnifiedLogger
 {
 public:
-    static bool messageHandler(QtMsgType msgType, const QMessageLogContext &context, const QString &message,
-        const QString &subsystem = QString());
+    static bool messageHandler(QtMsgType msgType, const QMessageLogContext &context,
+                               const QString &message)
+    { return messageHandler(msgType, context, message, QString()); }
+    static bool messageHandler(QtMsgType msgType, const QMessageLogContext &context,
+                               const QString &message, const QString &subsystem);
     static bool preventsStderrLogging();
 private:
     static os_log_type_t logTypeForMessageType(QtMsgType msgType);
@@ -433,7 +436,7 @@ public:
 
 private:
     QMacVersion() = default;
-    using VersionTuple = QPair<QOperatingSystemVersion, QOperatingSystemVersion>;
+    using VersionTuple = std::pair<QOperatingSystemVersion, QOperatingSystemVersion>;
     static VersionTuple versionsForImage(const mach_header *machHeader);
     static VersionTuple applicationVersion();
     static VersionTuple libraryVersion();

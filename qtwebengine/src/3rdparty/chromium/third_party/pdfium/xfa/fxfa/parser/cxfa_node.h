@@ -17,11 +17,12 @@
 #include "core/fxcrt/mask.h"
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/unowned_ptr.h"
+#include "core/fxcrt/unowned_ptr_exclusion.h"
 #include "core/fxcrt/widestring.h"
 #include "core/fxge/dib/fx_dib.h"
 #include "fxjs/gc/gced_tree_node_mixin.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 #include "v8/include/cppgc/member.h"
 #include "v8/include/cppgc/visitor.h"
 #include "xfa/fxfa/cxfa_ffwidget_type.h"
@@ -108,7 +109,7 @@ class CXFA_Node : public CXFA_Object, public GCedTreeNodeMixin<CXFA_Node> {
   struct AttributeData {
     XFA_Attribute attribute;
     XFA_AttributeType type;
-    void* default_value;
+    UNOWNED_PTR_EXCLUSION void* default_value;  // POD type.
   };
 
   // Node is created from cppgc heap.

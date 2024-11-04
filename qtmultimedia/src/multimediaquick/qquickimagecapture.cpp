@@ -56,7 +56,7 @@ QT_BEGIN_NAMESPACE
 QQuickImageCapture::QQuickImageCapture(QObject *parent)
     : QImageCapture(parent)
 {
-    connect(this, SIGNAL(imageCaptured(int,QImage)), this, SLOT(_q_imageCaptured(int,QImage)));
+    connect(this, &QImageCapture::imageCaptured, this, &QQuickImageCapture::_q_imageCaptured);
 }
 
 QQuickImageCapture::~QQuickImageCapture() = default;
@@ -140,9 +140,9 @@ void QQuickImageCapture::saveToFile(const QUrl &location) const
 
 void QQuickImageCapture::_q_imageCaptured(int id, const QImage &preview)
 {
-    QString previewId = QString::fromLatin1("preview_%1").arg(id);
+    QString previewId = QStringLiteral("preview_%1").arg(id);
     QQuickImagePreviewProvider::registerPreview(previewId, preview);
-    m_capturedImagePath = QString::fromLatin1("image://camera/%2").arg(previewId);
+    m_capturedImagePath = QStringLiteral("image://camera/%2").arg(previewId);
     m_lastImage = preview;
     emit previewChanged();
 }
@@ -158,7 +158,7 @@ void QQuickImageCapture::_q_imageCaptured(int id, const QImage &preview)
 /*!
     \qmlsignal QtMultimedia::ImageCapture::imageCaptured(requestId, preview)
 
-    This signal is emitted when an image with requested \a id has been captured
+    This signal is emitted when an image with requested id \a requestId has been captured
     but not yet saved to the filesystem.  The \a preview
     parameter is the captured image.
 

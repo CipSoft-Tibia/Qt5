@@ -102,14 +102,16 @@ class HarfBuzzShaperTest : public FontTestBase {
   void SelectDevanagariFont() {
     FontFamily devanagari_family;
     // Windows 10
-    devanagari_family.SetFamily("Nirmala UI", FontFamily::Type::kFamilyName);
+    devanagari_family.SetFamily(AtomicString("Nirmala UI"),
+                                FontFamily::Type::kFamilyName);
     // Windows 7
-    devanagari_family.AppendFamily("Mangal", FontFamily::Type::kFamilyName);
+    devanagari_family.AppendFamily(AtomicString("Mangal"),
+                                   FontFamily::Type::kFamilyName);
     // Linux
-    devanagari_family.AppendFamily("Lohit Devanagari",
+    devanagari_family.AppendFamily(AtomicString("Lohit Devanagari"),
                                    FontFamily::Type::kFamilyName);
     // Mac
-    devanagari_family.AppendFamily("ITF Devanagari",
+    devanagari_family.AppendFamily(AtomicString("ITF Devanagari"),
                                    FontFamily::Type::kFamilyName);
 
     font_description_.SetFamily(devanagari_family);
@@ -119,13 +121,13 @@ class HarfBuzzShaperTest : public FontTestBase {
   Font CreateAhem(float size) {
     FontDescription::VariantLigatures ligatures;
     return blink::test::CreateTestFont(
-        "Ahem", blink::test::PlatformTestDataPath("Ahem.woff"), size,
-        &ligatures);
+        AtomicString("Ahem"), blink::test::PlatformTestDataPath("Ahem.woff"),
+        size, &ligatures);
   }
 
   Font CreateNotoColorEmoji() {
     return blink::test::CreateTestFont(
-        "NotoColorEmoji",
+        AtomicString("NotoColorEmoji"),
         blink::test::BlinkRootDir() +
             "/web_tests/third_party/NotoColorEmoji/NotoColorEmoji.ttf",
         12);
@@ -1378,7 +1380,7 @@ TEST_F(HarfBuzzShaperTest, SafeToBreakLatinCommonLigatures) {
 
   // MEgalopolis Extra has a lot of ligatures which this test relies on.
   Font testFont = blink::test::CreateTestFont(
-      "MEgalopolis",
+      AtomicString("MEgalopolis"),
       blink::test::PlatformTestDataPath(
           "third_party/MEgalopolis/MEgalopolisExtra.woff"),
       16, &ligatures);
@@ -1418,7 +1420,7 @@ TEST_F(HarfBuzzShaperTest, SafeToBreakPreviousLatinCommonLigatures) {
 
   // MEgalopolis Extra has a lot of ligatures which this test relies on.
   Font testFont = blink::test::CreateTestFont(
-      "MEgalopolis",
+      AtomicString("MEgalopolis"),
       blink::test::PlatformTestDataPath(
           "third_party/MEgalopolis/MEgalopolisExtra.woff"),
       16, &ligatures);
@@ -1459,7 +1461,7 @@ TEST_F(HarfBuzzShaperTest, SafeToBreakLatinDiscretionaryLigatures) {
 
   // MEgalopolis Extra has a lot of ligatures which this test relies on.
   Font testFont = blink::test::CreateTestFont(
-      "MEgalopolis",
+      AtomicString("MEgalopolis"),
       blink::test::PlatformTestDataPath(
           "third_party/MEgalopolis/MEgalopolisExtra.woff"),
       16, &ligatures);
@@ -1769,8 +1771,15 @@ TEST_F(HarfBuzzShaperTest,
   }
 }
 
+#if BUILDFLAG(IS_ANDROID)
+#define MAYBE_ShapeHorizontalWithSubpixelPositionWithoutKerningIsNotRounded \
+  DISABLED_ShapeHorizontalWithSubpixelPositionWithoutKerningIsNotRounded
+#else
+#define MAYBE_ShapeHorizontalWithSubpixelPositionWithoutKerningIsNotRounded \
+  ShapeHorizontalWithSubpixelPositionWithoutKerningIsNotRounded
+#endif
 TEST_F(HarfBuzzShaperTest,
-       ShapeHorizontalWithSubpixelPositionWithoutKerningIsNotRounded) {
+       MAYBE_ShapeHorizontalWithSubpixelPositionWithoutKerningIsNotRounded) {
   ScopedSubpixelOverride subpixel_override(true);
 
   String string(u"NOID");
@@ -1793,12 +1802,28 @@ TEST_F(HarfBuzzShaperTest,
        ShapeHorizontalWithoutSubpixelPositionWithKerningIsRounded) {
   ScopedSubpixelOverride subpixel_override(false);
 
+  // The verification whether a particular shaping routine is performing
+  // kerning can be flaky when subpixel if OFF - see KerningIsHappening().
+  // For instance, if the position of a character is say `7.55` with subpixel
+  // ON, it gets rounded to `8` with subpixel position OFF, and the comparison
+  // in KerningIsHappening() fails, although kerning is effectively happening.
+  //
+  // Hence, this test leverages the uses of a particular font (Arial) where the
+  // result is reliable cross platform (linux, mac, ios, etc).
+  //
+  // [1] RoundHarfBuzzPosition() @harfbuzz_shaper.cc
+  FontDescription font_description(font_description_);
+  FontFamily family;
+  family.SetFamily(font_family_names::kArial, FontFamily::Type::kFamilyName);
+  font_description.SetFamily(family);
+  Font font = Font(font_description);
+
   String string(u"AVOID");
   TextDirection direction = TextDirection::kLtr;
-  ASSERT_TRUE(KerningIsHappening(font_description_, direction, string));
+  ASSERT_TRUE(KerningIsHappening(font_description, direction, string));
 
   HarfBuzzShaper shaper(string);
-  scoped_refptr<ShapeResult> result = shaper.Shape(&font_, direction);
+  scoped_refptr<ShapeResult> result = shaper.Shape(&font, direction);
 
   for (unsigned i = 0; i < string.length(); i++) {
     float position = result->PositionForOffset(i);
@@ -1881,8 +1906,9 @@ TEST_F(HarfBuzzShaperTest, ShapeVerticalWithSubpixelPositionIsRounded) {
 #endif
 TEST_F(HarfBuzzShaperTest, MAYBE_EmojiPercentage) {
 #if BUILDFLAG(IS_MAC)
-  if (base::mac::IsAtLeastOS11())
+  if (base::mac::MacOSMajorVersion() >= 11) {
     GTEST_SKIP() << "Broken on macOS >= 11: https://crbug.com/1194323";
+  }
 #endif
 #if BUILDFLAG(IS_WIN)
   if (base::win::OSInfo::GetInstance()->version() >=
@@ -1978,7 +2004,7 @@ TEST_F(HarfBuzzShaperTest, UnorderedClusterIndex) {
   // fallback, but it helps keeping the whole string in a run (i.e., shapes
   // surrounding characters with the same font.)
   FontFamily family;
-  family.SetFamily("Geneva", FontFamily::Type::kFamilyName);
+  family.SetFamily(AtomicString("Geneva"), FontFamily::Type::kFamilyName);
   font_description_.SetFamily(family);
   font_ = Font(font_description_);
 

@@ -17,15 +17,20 @@
 #include "qelapsedtimer.h"
 #include "qscopedvaluerollback.h"
 #include <private/qdialog_p.h>
+
+#include <QtCore/qpointer.h>
+
 #include <limits.h>
+
+using namespace std::chrono_literals;
 
 QT_BEGIN_NAMESPACE
 
 // If the operation is expected to take this long (as predicted by
 // progress time), show the progress dialog.
-static const int defaultShowTime = 4000;
+static constexpr auto defaultShowTime = 4000ms;
 // Wait at least this long before attempting to make a prediction.
-static const int minWaitTime = 50;
+static constexpr auto minWaitTime = 50ms;
 
 class QProgressDialogPrivate : public QDialogPrivate
 {
@@ -52,7 +57,7 @@ public:
     QPointer<QObject> receiverToDisconnectOnClose;
     QElapsedTimer starttime;
     QByteArray memberToDisconnectOnClose;
-    int showTime = defaultShowTime;
+    std::chrono::milliseconds showTime = defaultShowTime;
     bool processingEvents = false;
     bool shownOnce = false;
     bool autoClose = true;
@@ -625,23 +630,22 @@ void QProgressDialog::setValue(int progress)
             return;
         } else {
             d->setValueCalled = true;
-            bool need_show;
-            int elapsed = d->starttime.elapsed();
+            bool need_show = false;
+            using namespace std::chrono;
+            nanoseconds elapsed = d->starttime.durationElapsed();
             if (elapsed >= d->showTime) {
                 need_show = true;
             } else {
                 if (elapsed > minWaitTime) {
-                    int estimate;
-                    int totalSteps = maximum() - minimum();
-                    int myprogress = progress - minimum();
-                    if (myprogress == 0) myprogress = 1;
-                    if ((totalSteps - myprogress) >= INT_MAX / elapsed)
-                        estimate = (totalSteps - myprogress) / myprogress * elapsed;
+                    const int totalSteps = maximum() - minimum();
+                    const int myprogress = std::max(progress - minimum(), 1);
+                    const int remainingSteps = totalSteps - myprogress;
+                    nanoseconds estimate;
+                    if (remainingSteps >= INT_MAX / elapsed.count())
+                        estimate = (remainingSteps / myprogress) * elapsed;
                     else
-                        estimate = elapsed * (totalSteps - myprogress) / myprogress;
+                        estimate = (elapsed * remainingSteps) / myprogress;
                     need_show = estimate >= d->showTime;
-                } else {
-                    need_show = false;
                 }
             }
             if (need_show) {
@@ -717,17 +721,18 @@ void QProgressDialog::changeEvent(QEvent *ev)
 void QProgressDialog::setMinimumDuration(int ms)
 {
     Q_D(QProgressDialog);
-    d->showTime = ms;
+    std::chrono::milliseconds msecs{ms};
+    d->showTime = msecs;
     if (d->bar->value() == d->bar->minimum()) {
         d->forceTimer->stop();
-        d->forceTimer->start(ms);
+        d->forceTimer->start(msecs);
     }
 }
 
 int QProgressDialog::minimumDuration() const
 {
     Q_D(const QProgressDialog);
-    return d->showTime;
+    return int(d->showTime.count());
 }
 
 

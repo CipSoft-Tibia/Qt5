@@ -30,5 +30,5 @@
 int
 main(int argc, char *argv[])
 {
-	return wet_main(argc, argv);
+	return wet_main(argc, argv, NULL);
 }

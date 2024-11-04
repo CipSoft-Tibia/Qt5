@@ -15,22 +15,27 @@
 #ifndef THIRD_PARTY_NEARBY_FASTPAIR_CRYPTO_FAST_PAIR_MESSAGE_TYPE_H_
 #define THIRD_PARTY_NEARBY_FASTPAIR_CRYPTO_FAST_PAIR_MESSAGE_TYPE_H_
 
+#include <ostream>
+
 namespace nearby {
 namespace fastpair {
 
 // Type values for Fast Pair messages.
 enum class FastPairMessageType {
-  // Key-based Pairing Request.
-  kKeyBasedPairingRequest,
-  // Key-based Pairing Response.
-  kKeyBasedPairingResponse,
-  // Seeker's passkey.
-  kSeekersPasskey,
-  // Provider's passkey.
-  kProvidersPasskey,
   // Unknown message type.
-  kUnknown,
+  kUnknown = 0,
+  // Key-based Pairing Request.
+  kKeyBasedPairingRequest = 1,
+  // Key-based Pairing Response.
+  kKeyBasedPairingResponse = 2,
+  // Seeker's passkey.
+  kSeekersPasskey = 3,
+  // Provider's passkey.
+  kProvidersPasskey = 4,
 };
+
+std::ostream& operator<<(std::ostream& stream,
+                         FastPairMessageType message_type);
 
 }  // namespace fastpair
 }  // namespace nearby

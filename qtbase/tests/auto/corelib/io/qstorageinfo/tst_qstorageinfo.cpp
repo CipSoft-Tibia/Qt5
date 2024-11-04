@@ -1,14 +1,27 @@
 // Copyright (C) 2014 Ivan Komissarov <ABBAPOH@gmail.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
+#include <QSet>
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <QTemporaryFile>
+#include "private/qemulationdetector_p.h"
 
 #include <stdarg.h>
 
+#ifdef Q_OS_WIN
+#  include <io.h>       // _get_osfhandle
+#  include <windows.h>
+#else
+#  include <unistd.h>
+#endif
+
 #include "../../../../manual/qstorageinfo/printvolumes.cpp"
+
+#ifdef Q_OS_LINUX
+#  include "../../../../../src/corelib/io/qstorageinfo_linux_p.h"
+#endif
 
 class tst_QStorageInfo : public QObject
 {
@@ -20,9 +33,16 @@ private slots:
     void operatorNotEqual();
     void root();
     void currentStorage();
+    void storageList_data();
     void storageList();
-    void tempFile();
-    void caching();
+    void freeSpaceUpdate();
+
+#if defined(Q_OS_LINUX) && defined(QT_BUILD_INTERNAL)
+    void testParseMountInfo_data();
+    void testParseMountInfo();
+    void testParseMountInfo_filtered_data();
+    void testParseMountInfo_filtered();
+#endif
 };
 
 void tst_QStorageInfo::defaultValues()
@@ -133,8 +153,11 @@ void tst_QStorageInfo::currentStorage()
     QCOMPARE_GE(storage.bytesAvailable(), 0);
 }
 
-void tst_QStorageInfo::storageList()
+void tst_QStorageInfo::storageList_data()
 {
+    if (QTestPrivate::isRunningArmOnX86())
+        QSKIP("QEMU appears not to emulate the system calls correctly.");
+
     QStorageInfo root = QStorageInfo::root();
 
     QList<QStorageInfo> volumes = QStorageInfo::mountedVolumes();
@@ -144,9 +167,26 @@ void tst_QStorageInfo::storageList()
     volumes.removeOne(root);
     QVERIFY(!volumes.contains(root));
 
-    foreach (const QStorageInfo &storage, volumes) {
+    if (volumes.isEmpty())
+        QSKIP("Only the root volume was mounted on this system");
+
+    QTest::addColumn<QStorageInfo>("storage");
+    QSet<QString> seenRoots;
+    for (const QStorageInfo &storage : std::as_const(volumes)) {
         if (!storage.isReady())
             continue;
+        QString rootPath = storage.rootPath();
+        if (seenRoots.contains(rootPath))
+            qInfo() << rootPath << "is mounted over; QStorageInfo may be unpredictable";
+        else
+            QTest::newRow(qUtf8Printable(rootPath)) << storage;
+        seenRoots.insert(rootPath);
+    }
+}
+
+void tst_QStorageInfo::storageList()
+{
+        QFETCH(QStorageInfo, storage);
 
         QVERIFY(storage.isValid());
         QVERIFY(!storage.isRoot());
@@ -154,89 +194,265 @@ void tst_QStorageInfo::storageList()
         QVERIFY(!storage.device().isEmpty());
         QVERIFY(!storage.fileSystemType().isEmpty());
 #endif
-    }
+
+        QStorageInfo other(storage.rootPath());
+        QVERIFY(other.isValid());
+        QCOMPARE(other.rootPath(), storage.rootPath());
+        QCOMPARE(other.device(), storage.device());
+        QCOMPARE(other.subvolume(), storage.subvolume());
+        QCOMPARE(other.fileSystemType(), storage.fileSystemType());
+        QCOMPARE(other.name(), storage.name());
+        QCOMPARE(other.displayName(), storage.displayName());
+
+        QCOMPARE(other.bytesTotal(), storage.bytesTotal());
+        QCOMPARE(other.blockSize(), storage.blockSize());
+        // not comparing free space because it may have changed
+
+        QCOMPARE(other.isRoot(), storage.isRoot());
+        QCOMPARE(other.isReadOnly(), storage.isReadOnly());
+        QCOMPARE(other.isReady(), storage.isReady());
 }
 
-static bool checkFilesystemGoodForWriting(QTemporaryFile &file, QStorageInfo &storage)
+static QString suitableDirectoryForWriting()
 {
+    std::initializer_list<const char *> inadvisableFs = {
 #ifdef Q_OS_LINUX
-    auto reconstructAt = [](auto *where, auto &&... how) {
-        // it's very difficult to convince QTemporaryFile to change the path...
-        std::destroy_at(where);
-        q20::construct_at(where, std::forward<decltype(how)>(how)...);
-    };
-    if (storage.fileSystemType() == "btrfs") {
-        // let's see if we can find another, writable FS
-        QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-        if (!runtimeDir.isEmpty()) {
-            reconstructAt(&file, runtimeDir + "/XXXXXX");
-            if (file.open()) {
-                storage.setPath(file.fileName());
-                if (storage.fileSystemType() != "btrfs")
-                    return true;
-            }
-        }
-        QTest::qSkip("btrfs does not synchronously update free space; this test would fail",
-                     __FILE__, __LINE__);
-        return false;
-    }
-#else
-    Q_UNUSED(file);
-    Q_UNUSED(storage);
+        // See comment below. If we can get a tmpfs, let's try it.
+        "btrfs",
+        "xfs",
 #endif
-    return true;
-}
+    };
 
-void tst_QStorageInfo::tempFile()
-{
-    QTemporaryFile file;
-    QVERIFY2(file.open(), qPrintable(file.errorString()));
-
-    QStorageInfo storage1(file.fileName());
-    if (!checkFilesystemGoodForWriting(file, storage1))
-        return;
-
-    qint64 free = storage1.bytesFree();
-    QCOMPARE_NE(free, -1);
-
-    file.write(QByteArray(1024*1024, '1'));
-    file.flush();
-    file.close();
-
-    QStorageInfo storage2(file.fileName());
-    if (free == storage2.bytesFree() && storage2.fileSystemType() == "apfs") {
-        QEXPECT_FAIL("", "This test is likely to fail on APFS", Continue);
+    QString tempDir = QDir::tempPath();
+    QString fsType = QStorageInfo(tempDir).fileSystemType();
+    if (std::find(std::begin(inadvisableFs), std::end(inadvisableFs), fsType)
+            != std::end(inadvisableFs)) {
+        // the RuntimeLocation on Linux is almost always a tmpfs
+        QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+        if (!runtimeDir.isEmpty())
+            return runtimeDir;
     }
 
-    QCOMPARE_NE(free, storage2.bytesFree());
+    return tempDir;
 }
 
-void tst_QStorageInfo::caching()
+void tst_QStorageInfo::freeSpaceUpdate()
 {
-    QTemporaryFile file;
+    // Some filesystems don't update the free space unless we ask that the OS
+    // flush its buffers to disk and even then the update may not be entirely
+    // synchronous. So we always ask the OS to flush them and we may keep
+    // trying to write until the free space changes (with a maximum so we don't
+    // exhaust and cause other problems).
+    //
+    // In the past, we had this issue with APFS (Apple systems), BTRFS and XFS
+    // (Linux). Current testing is that APFS and XFS always succeed after the
+    // first block is written and BTRFS almost always by the second block.
+
+    auto flushAndSync = [](QFile &file) {
+        file.flush();
+
+#ifdef Q_OS_WIN
+        FlushFileBuffers(HANDLE(_get_osfhandle(file.handle())));
+#elif _POSIX_VERSION >= 200112L
+        fsync(file.handle());
+# ifndef Q_OS_VXWORKS
+        sync();
+# endif // Q_OS_VXWORKS
+#endif
+    };
+
+    QTemporaryFile file(suitableDirectoryForWriting() + "/tst_qstorageinfo.XXXXXX");
     QVERIFY2(file.open(), qPrintable(file.errorString()));
 
     QStorageInfo storage1(file.fileName());
-    if (!checkFilesystemGoodForWriting(file, storage1))
-        return;
+    qInfo() << "Testing on" << storage1;
 
     qint64 free = storage1.bytesFree();
     QStorageInfo storage2(storage1);
     QCOMPARE(free, storage2.bytesFree());
     QCOMPARE_NE(free, -1);
 
-    file.write(QByteArray(1024*1024, '\0'));
-    file.flush();
+    // let's see if we can make it change
+    QByteArray block(1024 * 1024 / 2, '\0');
 
+    // let's try and keep to less than ~10% of the free disk space
+    int maxIterations = 25;
+    if (free < 256 * block.size())
+        maxIterations = free / 10 / block.size();
+    if (maxIterations == 0)
+        QSKIP("Not enough free disk space to continue");
+
+    file.write(block);
+    flushAndSync(file);
+    for (int i = 0; i < maxIterations; ++i) {
+        QStorageInfo storage3(file.fileName());
+        qint64 nowFree = storage3.bytesFree();
+        if (nowFree != free)
+            break;
+
+        // grow some more
+        file.write(block);
+        flushAndSync(file);
+    }
+    // qDebug() << "Needed to grow" << file.fileName() << "to" << file.size();
+
+    QCOMPARE(storage1, storage2);
     QCOMPARE(free, storage1.bytesFree());
     QCOMPARE(free, storage2.bytesFree());
     storage2.refresh();
     QCOMPARE(storage1, storage2);
-    if (free == storage2.bytesFree() && storage2.fileSystemType() == "apfs") {
-        QEXPECT_FAIL("", "This test is likely to fail on APFS", Continue);
-    }
     QCOMPARE_NE(free, storage2.bytesFree());
 }
+
+#if defined(Q_OS_LINUX) && defined(QT_BUILD_INTERNAL)
+void tst_QStorageInfo::testParseMountInfo_data()
+{
+    QTest::addColumn<QByteArray>("line");
+    QTest::addColumn<MountInfo>("expected");
+
+    QTest::newRow("tmpfs")
+        << "17 25 0:18 / /dev rw,nosuid,relatime shared:2 - tmpfs tmpfs rw,seclabel,mode=755\n"_ba
+        << MountInfo{"/dev", "tmpfs", "tmpfs", "", makedev(0, 18), 17};
+    QTest::newRow("proc")
+        << "23 66 0:21 / /proc rw,nosuid,nodev,noexec,relatime shared:12 - proc proc rw\n"_ba
+        << MountInfo{"/proc", "proc", "proc", "", makedev(0, 21), 23};
+
+    // E.g. on Android
+    QTest::newRow("rootfs")
+        << "618 618 0:1 / / ro,relatime master:1 - rootfs rootfs ro,seclabel\n"_ba
+        << MountInfo{"/", "rootfs", "rootfs", "", makedev(0, 1), 618};
+
+    QTest::newRow("ext4")
+        << "47 66 8:3 / /home rw,relatime shared:50 - ext4 /dev/sda3 rw,stripe=32736\n"_ba
+        << MountInfo{"/home", "ext4", "/dev/sda3", "", makedev(8, 3), 47};
+
+    QTest::newRow("empty-optional-field")
+        << "23 25 0:22 / /apex rw,nosuid,nodev,noexec,relatime - tmpfs tmpfs rw,seclabel,mode=755\n"_ba
+        << MountInfo{"/apex", "tmpfs", "tmpfs", "", makedev(0, 22), 23};
+
+    QTest::newRow("one-optional-field")
+        << "47 66 8:3 / /home rw,relatime shared:50 - ext4 /dev/sda3 rw,stripe=32736\n"_ba
+        << MountInfo{"/home", "ext4", "/dev/sda3", "", makedev(8, 3), 47};
+
+    QTest::newRow("multiple-optional-fields")
+        << "47 66 8:3 / /home rw,relatime shared:142 master:111 - ext4 /dev/sda3 rw,stripe=32736\n"_ba
+        << MountInfo{"/home", "ext4", "/dev/sda3", "", makedev(8, 3), 47};
+
+    QTest::newRow("mountdir-with-utf8")
+        << "129 66 8:51 / /mnt/lab\xC3\xA9l rw,relatime shared:234 - ext4 /dev/sdd3 rw\n"_ba
+        << MountInfo{"/mnt/labél", "ext4", "/dev/sdd3", "", makedev(8, 51), 129};
+
+    QTest::newRow("mountdir-with-space")
+        << "129 66 8:51 / /mnt/labe\\040l rw,relatime shared:234 - ext4 /dev/sdd3 rw\n"_ba
+        << MountInfo{"/mnt/labe l", "ext4", "/dev/sdd3", "", makedev(8, 51), 129};
+
+    QTest::newRow("mountdir-with-tab")
+        << "129 66 8:51 / /mnt/labe\\011l rw,relatime shared:234 - ext4 /dev/sdd3 rw\n"_ba
+        << MountInfo{"/mnt/labe\tl", "ext4", "/dev/sdd3", "", makedev(8, 51), 129};
+
+    QTest::newRow("mountdir-with-backslash")
+        << "129 66 8:51 / /mnt/labe\\134l rw,relatime shared:234 - ext4 /dev/sdd3 rw\n"_ba
+        << MountInfo{"/mnt/labe\\l", "ext4", "/dev/sdd3", "", makedev(8, 51), 129};
+
+    QTest::newRow("mountdir-with-newline")
+        << "129 66 8:51 / /mnt/labe\\012l rw,relatime shared:234 - ext4 /dev/sdd3 rw\n"_ba
+        << MountInfo{"/mnt/labe\nl", "ext4", "/dev/sdd3", "", makedev(8, 51), 129};
+
+    QTest::newRow("btrfs-subvol")
+        << "775 503 0:49 /foo/bar / rw,relatime shared:142 master:111 - btrfs "
+           "/dev/mapper/vg0-stuff rw,ssd,discard,space_cache,subvolid=272,subvol=/foo/bar\n"_ba
+        << MountInfo{"/", "btrfs", "/dev/mapper/vg0-stuff", "/foo/bar", makedev(0, 49), 775};
+
+    QTest::newRow("bind-mount")
+        << "59 47 8:17 /rpmbuild /home/user/rpmbuild rw,relatime shared:48 - ext4 /dev/sdb1 rw\n"_ba
+        << MountInfo{"/home/user/rpmbuild", "ext4", "/dev/sdb1", "/rpmbuild", makedev(8, 17), 59};
+
+    QTest::newRow("space-dash-space")
+        << "47 66 8:3 / /home\\040-\\040dir rw,relatime shared:50 - ext4 /dev/sda3 rw,stripe=32736\n"_ba
+        << MountInfo{"/home - dir", "ext4", "/dev/sda3", "", makedev(8, 3), 47};
+
+    QTest::newRow("btrfs-mount-bind-file")
+        << "1799 1778 0:49 "
+            "/var_lib_docker/containers/81fde0fec3dd3d99765c3f7fd9cf1ab121b6ffcfd05d5d7ff434db933fe9d795/resolv.conf "
+            "/etc/resolv.conf rw,relatime - btrfs /dev/mapper/vg0-stuff "
+            "rw,ssd,discard,space_cache,subvolid=1773,subvol=/var_lib_docker\n"_ba
+        << MountInfo{"/etc/resolv.conf", "btrfs", "/dev/mapper/vg0-stuff",
+                     "/var_lib_docker/containers/81fde0fec3dd3d99765c3f7fd9cf1ab121b6ffcfd05d5d7ff434db933fe9d795/resolv.conf",
+                     makedev(0, 49), 1799};
+
+    QTest::newRow("very-long-line-QTBUG-77059")
+        << "727 26 0:52 / "
+           "/var/lib/docker/overlay2/f3fbad5eedef71145f00729f0826ea8c44defcfec8c92c58aee0aa2c5ea3fa3a/merged "
+           "rw,relatime shared:399 - overlay overlay "
+           "rw,lowerdir=/var/lib/docker/overlay2/l/PUP2PIY4EQLAOEDQOZ56BHVE53:"
+           "/var/lib/docker/overlay2/l/6IIID3C6J3SUXZEA3GJXKQSTLD:"
+           "/var/lib/docker/overlay2/l/PA6N6URNR7XDBBGGOSFWSFQ2CG:"
+           "/var/lib/docker/overlay2/l/5EOMBTZNCPOCE4LM3I4JCTNSTT:"
+           "/var/lib/docker/overlay2/l/DAMINQ46P3LKX2GDDDIWQKDIWC:"
+           "/var/lib/docker/overlay2/l/DHR3N57AEH4OG5QER5XJW2LXIN:"
+           "/var/lib/docker/overlay2/l/NW26KA7QPRS2KSVQI77QJWLMHW,"
+           "upperdir=/var/lib/docker/overlay2/f3fbad5eedef71145f00729f0826ea8c44defcfec8c92c58aee0aa2c5ea3fa3a/diff,"
+           "workdir=/var/lib/docker/overlay2/f3fbad5eedef71145f00729f0826ea8c44defcfec8c92c58aee0aa2c5ea3fa3a/work,"
+           "index=off,xino=off\n"_ba
+        << MountInfo{"/var/lib/docker/overlay2/f3fbad5eedef71145f00729f0826ea8c44defcfec8c92c58aee0aa2c5ea3fa3a/merged",
+                     "overlay", "overlay", "", makedev(0, 52), 727};
+
+    QTest::newRow("sshfs-src-device-not-start-with-slash")
+        << "128 92 0:64 / /mnt-point rw,nosuid,nodev,relatime shared:234 - "
+           "fuse.sshfs admin@192.168.1.2:/storage/emulated/0 rw,user_id=1000,group_id=1000\n"_ba
+        << MountInfo{"/mnt-point", "fuse.sshfs",
+                     "admin@192.168.1.2:/storage/emulated/0", "", makedev(0, 64), 128};
+}
+
+void tst_QStorageInfo::testParseMountInfo()
+{
+    QFETCH(QByteArray, line);
+    QFETCH(MountInfo, expected);
+
+    const std::vector<MountInfo> result = doParseMountInfo(line);
+    QVERIFY(!result.empty());
+    const MountInfo &a = result.front();
+    QCOMPARE(a.mountPoint, expected.mountPoint);
+    QCOMPARE(a.fsType, expected.fsType);
+    QCOMPARE(a.device, expected.device);
+    QCOMPARE(a.fsRoot, expected.fsRoot);
+    QCOMPARE(a.stDev, expected.stDev);
+    QCOMPARE(a.mntid, expected.mntid);
+}
+
+void tst_QStorageInfo::testParseMountInfo_filtered_data()
+{
+    QTest::addColumn<QByteArray>("line");
+
+    QTest::newRow("proc")
+        << "23 66 0:21 / /proc rw,nosuid,nodev,noexec,relatime shared:12 - proc proc rw\n"_ba;
+
+    QTest::newRow("sys")
+        << "24 66 0:22 / /sys rw,nosuid,nodev,noexec,relatime shared:2 - sysfs sysfs rw\n"_ba;
+    QTest::newRow("sys-kernel")
+        << "26 24 0:6 / /sys/kernel/security rw,nosuid,nodev,noexec,relatime "
+           "shared:3 - securityfs securityfs rw\n"_ba;
+
+    QTest::newRow("dev")
+        << "25 66 0:5 / /dev rw,nosuid shared:8 - devtmpfs devtmpfs "
+           "rw,size=4096k,nr_inodes=8213017,mode=755,inode64\n"_ba;
+    QTest::newRow("dev-shm")
+            << "27 25 0:23 / /dev/shm rw,nosuid,nodev shared:9 - tmpfs tmpfs rw,inode64\n"_ba;
+
+    QTest::newRow("var-run")
+        << "46 28 0:25 / /var/run rw,nosuid,nodev,noexec,relatime shared:1 - "
+           "tmpfs tmpfs rw,size=32768k,mode=755,inode64\n"_ba;
+    QTest::newRow("var-lock")
+        << "46 28 0:25 / /var/lock rw,nosuid,nodev,noexec,relatime shared:1 - "
+           "tmpfs tmpfs rw,size=32768k,mode=755,inode64\n"_ba;
+}
+void tst_QStorageInfo::testParseMountInfo_filtered()
+{
+    QFETCH(QByteArray, line);
+    QVERIFY(doParseMountInfo(line, FilterMountInfo::Filtered).empty());
+}
+
+#endif // Q_OS_LINUX
 
 QTEST_MAIN(tst_QStorageInfo)
 

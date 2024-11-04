@@ -15,9 +15,9 @@
 
 #include "state_tracker/shader_instruction.h"
 #include "state_tracker/shader_module.h"
-#include "spirv_grammar_helper.h"
+#include "generated/spirv_grammar_helper.h"
 
-Instruction::Instruction(std::vector<uint32_t>::const_iterator it) : result_id_(0), type_id_(0) {
+Instruction::Instruction(std::vector<uint32_t>::const_iterator it) {
     words_.emplace_back(*it++);
     words_.reserve(Length());
     for (uint32_t i = 1; i < Length(); i++) {
@@ -26,12 +26,12 @@ Instruction::Instruction(std::vector<uint32_t>::const_iterator it) : result_id_(
 
     const bool has_result = OpcodeHasResult(Opcode());
     if (OpcodeHasType(Opcode())) {
-        type_id_ = 1;
+        type_id_index_ = 1;
         if (has_result) {
-            result_id_ = 2;
+            result_id_index_ = 2;
         }
     } else if (has_result) {
-        result_id_ = 1;
+        result_id_index_ = 1;
     }
 }
 
@@ -99,7 +99,7 @@ uint32_t Instruction::GetBitWidth() const {
     return bit_width;
 }
 
-AtomicInstructionInfo Instruction::GetAtomicInfo(const SHADER_MODULE_STATE& module_state) const {
+AtomicInstructionInfo Instruction::GetAtomicInfo(const SPIRV_MODULE_STATE& module_state) const {
     AtomicInstructionInfo info;
 
     // All atomics have a pointer referenced
@@ -127,4 +127,15 @@ spv::BuiltIn Instruction::GetBuiltIn() const {
         assert(false);  // non valid Opcode
         return spv::BuiltInMax;
     }
+}
+
+bool Instruction::IsArray() const { return (Opcode() == spv::OpTypeArray || Opcode() == spv::OpTypeRuntimeArray); }
+
+spv::Dim Instruction::FindImageDim() const { return (Opcode() == spv::OpTypeImage) ? (spv::Dim(Word(3))) : spv::DimMax; }
+
+bool Instruction::IsImageArray() const { return (Opcode() == spv::OpTypeImage) && (Word(5) != 0); }
+
+bool Instruction::IsImageMultisampled() const {
+    // spirv-val makes sure that the MS operand is only non-zero when possible to be Multisampled
+    return (Opcode() == spv::OpTypeImage) && (Word(6) != 0);
 }

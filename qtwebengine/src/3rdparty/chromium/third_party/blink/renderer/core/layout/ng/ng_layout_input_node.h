@@ -103,7 +103,7 @@ class CORE_EXPORT NGLayoutInputNode {
   bool IsFlexibleBox() const {
     return IsBlock() && box_->IsFlexibleBoxIncludingNG();
   }
-  bool IsGrid() const { return IsBlock() && box_->IsLayoutGridIncludingNG(); }
+  bool IsGrid() const { return IsBlock() && box_->IsLayoutNGGrid(); }
   bool ShouldBeConsideredAsReplaced() const {
     return box_->ShouldBeConsideredAsReplaced();
   }
@@ -118,13 +118,11 @@ class CORE_EXPORT NGLayoutInputNode {
     DCHECK(IsListMarker());
     return To<LayoutNGOutsideListMarker>(box_.Get())->NeedsOccupyWholeLine();
   }
-  bool IsButton() const { return IsBlock() && box_->IsLayoutNGButton(); }
-  bool IsFieldsetContainer() const {
-    return IsBlock() && box_->IsLayoutNGFieldset();
-  }
+  bool IsButton() const { return IsBlock() && box_->IsButton(); }
+  bool IsFieldsetContainer() const { return IsBlock() && box_->IsFieldset(); }
   bool IsInitialLetterBox() const { return box_->IsInitialLetterBox(); }
   bool IsMedia() const { return box_->IsMedia(); }
-  bool IsRubyRun() const { return IsBlock() && box_->IsRubyRun(); }
+  bool IsRubyColumn() const { return IsBlock() && box_->IsRubyColumn(); }
   bool IsRubyText() const { return box_->IsRubyText(); }
 
   // Return true if this is the legend child of a fieldset that gets special
@@ -139,7 +137,6 @@ class CORE_EXPORT NGLayoutInputNode {
   bool IsSvgText() const;
   bool IsTable() const { return IsBlock() && box_->IsTable(); }
   bool IsTextCombine() const { return box_->IsLayoutNGTextCombine(); }
-  bool IsNGTable() const { return IsTable() && box_->IsLayoutNGObject(); }
 
   bool IsTableCaption() const { return IsBlock() && box_->IsTableCaption(); }
   bool IsTableSection() const { return IsBlock() && box_->IsTableSection(); }
@@ -162,10 +159,10 @@ class CORE_EXPORT NGLayoutInputNode {
 
   wtf_size_t TableCellRowspan() const;
 
-  bool IsTextArea() const { return box_->IsTextAreaIncludingNG(); }
-  bool IsTextControl() const { return box_->IsTextControlIncludingNG(); }
+  bool IsTextArea() const { return box_->IsTextArea(); }
+  bool IsTextControl() const { return box_->IsTextControl(); }
   bool IsTextControlPlaceholder() const;
-  bool IsTextField() const { return box_->IsTextFieldIncludingNG(); }
+  bool IsTextField() const { return box_->IsTextField(); }
 
   bool IsMathRoot() const { return box_->IsMathMLRoot(); }
   bool IsMathML() const { return box_->IsMathML(); }
@@ -186,7 +183,7 @@ class CORE_EXPORT NGLayoutInputNode {
     // Lines are always monolithic. We cannot block-fragment inside them.
     if (IsInline())
       return true;
-    return box_->GetNGPaginationBreakability() == LayoutBox::kForbidBreaks;
+    return box_->IsMonolithic();
   }
 
   AtomicString PageName() const {

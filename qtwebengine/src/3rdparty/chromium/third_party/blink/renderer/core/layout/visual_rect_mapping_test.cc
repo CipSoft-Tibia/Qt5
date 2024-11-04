@@ -4,6 +4,7 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/renderer/core/layout/layout_embedded_content.h"
+#include "third_party/blink/renderer/core/layout/layout_text.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/page/page_animator.h"
 #include "third_party/blink/renderer/core/paint/paint_layer.h"
@@ -12,6 +13,7 @@
 #include "third_party/blink/renderer/core/testing/core_unit_test_helper.h"
 #include "third_party/blink/renderer/platform/graphics/paint/geometry_mapper.h"
 #include "third_party/blink/renderer/platform/testing/paint_test_configurations.h"
+#include "ui/gfx/geometry/rect_conversions.h"
 
 namespace blink {
 
@@ -336,7 +338,7 @@ TEST_P(VisualRectMappingTest, LayoutViewSubpixelRounding) {
   auto* frame_container =
       To<LayoutBlock>(GetLayoutObjectByElementId("frameContainer"));
   LayoutObject* target =
-      ChildDocument().getElementById("target")->GetLayoutObject();
+      ChildDocument().getElementById(AtomicString("target"))->GetLayoutObject();
   PhysicalRect rect(0, 0, 100, 100);
   EXPECT_TRUE(target->MapToVisualRectInAncestorSpace(frame_container, rect));
   // When passing from the iframe to the parent frame, the rect of (0.5, 0, 100,
@@ -377,7 +379,7 @@ TEST_P(VisualRectMappingTest, LayoutViewDisplayNone) {
   EXPECT_TRUE(frame_div->MapToVisualRectInAncestorSpace(frame_container, rect));
   EXPECT_EQ(rect, PhysicalRect(4, 13, 20, 37));
 
-  Element* frame_element = GetDocument().getElementById("frame");
+  Element* frame_element = GetDocument().getElementById(AtomicString("frame"));
   frame_element->SetInlineStyleProperty(CSSPropertyID::kDisplay, "none");
   UpdateAllLifecyclePhasesForTest();
 
@@ -684,8 +686,7 @@ TEST_P(VisualRectMappingTest, ContainerAndTargetDifferentFlippedWritingMode) {
 
 TEST_P(VisualRectMappingTest,
        DifferentPaintInvalidaitionContainerForAbsolutePosition) {
-  GetDocument().GetFrame()->GetSettings()->SetPreferCompositingToLCDTextEnabled(
-      true);
+  SetPreferCompositingToLCDText(true);
 
   SetBodyInnerHTML(R"HTML(
     <div id='stacking-context' style='opacity: 0.9; background: blue;
@@ -725,8 +726,7 @@ TEST_P(VisualRectMappingTest,
 
 TEST_P(VisualRectMappingTest,
        ContainerOfAbsoluteAbovePaintInvalidationContainer) {
-  GetDocument().GetFrame()->GetSettings()->SetPreferCompositingToLCDTextEnabled(
-      true);
+  SetPreferCompositingToLCDText(true);
 
   SetBodyInnerHTML(
       "<div id='container' style='position: absolute; top: 88px; left: 99px'>"
@@ -1122,8 +1122,7 @@ TEST_P(VisualRectMappingTest, PerspectivePlusScroll) {
 
 TEST_P(VisualRectMappingTest, FixedContentsInIframe) {
   GetDocument().SetBaseURLOverride(KURL("http://test.com"));
-  GetDocument().GetFrame()->GetSettings()->SetPreferCompositingToLCDTextEnabled(
-      true);
+  SetPreferCompositingToLCDText(true);
   SetBodyInnerHTML(R"HTML(
     <style> * { margin:0; } </style>
     <iframe src='http://test.com' width='500' height='500' frameBorder='0'>
@@ -1138,7 +1137,8 @@ TEST_P(VisualRectMappingTest, FixedContentsInIframe) {
   )HTML");
 
   UpdateAllLifecyclePhasesForTest();
-  auto* fixed = ChildDocument().getElementById("fixed")->GetLayoutObject();
+  auto* fixed =
+      ChildDocument().getElementById(AtomicString("fixed"))->GetLayoutObject();
   auto* root_view = fixed->View();
   while (root_view->GetFrame()->OwnerLayoutObject())
     root_view = root_view->GetFrame()->OwnerLayoutObject()->View();
@@ -1160,8 +1160,7 @@ TEST_P(VisualRectMappingTest, FixedContentsInIframe) {
 
 TEST_P(VisualRectMappingTest, FixedContentsWithScrollOffset) {
   GetDocument().SetBaseURLOverride(KURL("http://test.com"));
-  GetDocument().GetFrame()->GetSettings()->SetPreferCompositingToLCDTextEnabled(
-      true);
+  SetPreferCompositingToLCDText(true);
   SetBodyInnerHTML(R"HTML(
     <style>body { margin:0; } ::-webkit-scrollbar { display:none; }</style>
     <div id='space' style='height:10px;'></div>
@@ -1174,7 +1173,8 @@ TEST_P(VisualRectMappingTest, FixedContentsWithScrollOffset) {
   )HTML");
 
   auto* ancestor = GetLayoutBoxByElementId("ancestor");
-  auto* fixed = GetDocument().getElementById("fixed")->GetLayoutObject();
+  auto* fixed =
+      GetDocument().getElementById(AtomicString("fixed"))->GetLayoutObject();
 
   CheckMapToVisualRectInAncestorSpace(PhysicalRect(0, 0, 400, 300),
                                       PhysicalRect(0, -10, 400, 300), fixed,
@@ -1192,8 +1192,7 @@ TEST_P(VisualRectMappingTest, FixedContentsWithScrollOffset) {
 }
 
 TEST_P(VisualRectMappingTest, FixedContentsUnderViewWithScrollOffset) {
-  GetDocument().GetFrame()->GetSettings()->SetPreferCompositingToLCDTextEnabled(
-      true);
+  SetPreferCompositingToLCDText(true);
   SetBodyInnerHTML(R"HTML(
     <style>body { margin:0; } ::-webkit-scrollbar { display:none; }</style>
     <div id='fixed' style='
@@ -1202,7 +1201,8 @@ TEST_P(VisualRectMappingTest, FixedContentsUnderViewWithScrollOffset) {
     <div id='forcescroll' style='height:1000px;'></div>
   )HTML");
 
-  auto* fixed = GetDocument().getElementById("fixed")->GetLayoutObject();
+  auto* fixed =
+      GetDocument().getElementById(AtomicString("fixed"))->GetLayoutObject();
 
   CheckMapToVisualRectInAncestorSpace(
       PhysicalRect(0, 0, 400, 300), PhysicalRect(0, 0, 400, 300), fixed,
@@ -1289,7 +1289,7 @@ TEST_P(VisualRectMappingTest, PerspectiveWithAnonymousTable) {
   EXPECT_EQ(gfx::Rect(1, -1, 8, 12), ToEnclosingRect(rect));
 }
 
-TEST_P(VisualRectMappingTest, AnchorScroll) {
+TEST_P(VisualRectMappingTest, AnchorPositionScroll) {
   ScopedCSSAnchorPositioningForTest enabled_scope(true);
 
   GetDocument().SetBaseURLOverride(KURL("http://test.com"));
@@ -1323,7 +1323,7 @@ TEST_P(VisualRectMappingTest, AnchorScroll) {
         bottom: anchor(--anchor top);
         width: 50px;
         height: 50px;
-        anchor-scroll: --anchor;
+        anchor-default: --anchor;
       }
     </style>
     <div id=cb>
@@ -1345,7 +1345,7 @@ TEST_P(VisualRectMappingTest, AnchorScroll) {
       GetScrollableArea(To<LayoutBlock>(GetLayoutBoxByElementId("scroller")));
   scrollable_area->ScrollToAbsolutePosition(gfx::PointF(400, 0));
 
-  // Simulates a frame to update anchor-scroll snapshots.
+  // Simulates a frame to update snapshotted scroll offset.
   GetPage().Animator().ServiceScriptedAnimations(
       GetAnimationClock().CurrentTime() + base::Milliseconds(100));
   UpdateAllLifecyclePhasesForTest();

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -52,7 +52,7 @@ bool TlsWriteBuffer::Push(const void* data, size_t len) {
   return true;
 }
 
-absl::Span<const uint8_t> TlsWriteBuffer::GetReadableRegion() {
+ByteView TlsWriteBuffer::GetReadableRegion() {
   const size_t current_read_bytes =
       bytes_read_so_far_.load(std::memory_order_relaxed);
   const size_t currently_written_bytes =
@@ -66,7 +66,7 @@ absl::Span<const uint8_t> TlsWriteBuffer::GetReadableRegion() {
   const size_t avail = currently_written_bytes - current_read_bytes;
   const size_t begin = current_read_bytes % kBufferSizeBytes;
   const size_t end = std::min(begin + avail, kBufferSizeBytes);
-  return absl::Span<const uint8_t>(&buffer_[begin], end - begin);
+  return ByteView(&buffer_[begin], end - begin);
 }
 
 void TlsWriteBuffer::Consume(size_t byte_count) {

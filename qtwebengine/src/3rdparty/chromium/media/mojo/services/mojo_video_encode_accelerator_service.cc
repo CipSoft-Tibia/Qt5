@@ -123,8 +123,8 @@ void MojoVideoEncodeAcceleratorService::Initialize(
   }
 
   encoder_ = std::move(create_vea_callback_)
-                 .Run(config, this, *gpu_preferences_, gpu_workarounds_,
-                      *gpu_device_, media_log_->Clone());
+                 .Run(config, this, gpu_preferences_, gpu_workarounds_,
+                      gpu_device_, media_log_->Clone());
   if (!encoder_) {
     MEDIA_LOG(ERROR, media_log_.get())
         << __func__ << " Error creating or initializing VEA";
@@ -138,13 +138,13 @@ void MojoVideoEncodeAcceleratorService::Initialize(
 
 void MojoVideoEncodeAcceleratorService::Encode(
     const scoped_refptr<VideoFrame>& frame,
-    bool force_keyframe,
+    const media::VideoEncoder::EncodeOptions& options,
     EncodeCallback callback) {
   DVLOG(2) << __func__ << " tstamp=" << frame->timestamp();
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   TRACE_EVENT2("media", "MojoVideoEncodeAcceleratorService::Encode",
-               "timestamp", frame->timestamp().InMilliseconds(), "keyframe",
-               force_keyframe);
+               "timestamp", frame->timestamp().InMicroseconds(), "keyframe",
+               options.key_frame);
   if (!encoder_) {
     DLOG(ERROR) << __func__ << " Failed to encode, the encoder is invalid";
     std::move(callback).Run();
@@ -153,22 +153,22 @@ void MojoVideoEncodeAcceleratorService::Encode(
 
   if (frame->coded_size() != input_coded_size_ &&
       frame->storage_type() != media::VideoFrame::STORAGE_GPU_MEMORY_BUFFER) {
-    DLOG(ERROR) << __func__ << " wrong input coded size, expected "
-                << input_coded_size_.ToString() << ", got "
-                << frame->coded_size().ToString();
-    NotifyError(::media::VideoEncodeAccelerator::kInvalidArgumentError);
+    NotifyErrorStatus({EncoderStatus::Codes::kInvalidInputFrame,
+                       "wrong input coded size, expected " +
+                           input_coded_size_.ToString() + ", got " +
+                           frame->coded_size().ToString()});
     std::move(callback).Run();
     return;
   }
 
   if (MediaTraceIsEnabled()) {
-    timestamps_.Put(frame->timestamp().InMilliseconds(),
+    timestamps_.Put(frame->timestamp().InMicroseconds(),
                     base::TimeTicks::Now());
   }
 
   frame->AddDestructionObserver(
       base::BindPostTaskToCurrentDefault(std::move(callback)));
-  encoder_->Encode(frame, force_keyframe);
+  encoder_->Encode(frame, options);
 }
 
 void MojoVideoEncodeAcceleratorService::UseOutputBitstreamBuffer(
@@ -182,23 +182,26 @@ void MojoVideoEncodeAcceleratorService::UseOutputBitstreamBuffer(
   if (!encoder_)
     return;
   if (!region.IsValid()) {
-    DLOG(ERROR) << __func__ << " invalid |region|.";
-    NotifyError(::media::VideoEncodeAccelerator::kInvalidArgumentError);
+    NotifyErrorStatus({EncoderStatus::Codes::kInvalidOutputBuffer,
+                       "invalid shared memory region"});
     return;
   }
   if (bitstream_buffer_id < 0) {
-    DLOG(ERROR) << __func__ << " bitstream_buffer_id=" << bitstream_buffer_id
-                << " must be >= 0";
-    NotifyError(::media::VideoEncodeAccelerator::kInvalidArgumentError);
+    NotifyErrorStatus(
+        {EncoderStatus::Codes::kInvalidOutputBuffer,
+         "bitstream_buffer_id=" + base::NumberToString(bitstream_buffer_id) +
+             " must be >= 0"});
     return;
   }
 
   auto memory_size = region.GetSize();
   if (memory_size < output_buffer_size_) {
-    DLOG(ERROR) << __func__ << " bitstream_buffer_id=" << bitstream_buffer_id
-                << " has a size of " << memory_size
-                << "B, different from expected " << output_buffer_size_ << "B";
-    NotifyError(::media::VideoEncodeAccelerator::kInvalidArgumentError);
+    NotifyErrorStatus(
+        {EncoderStatus::Codes::kInvalidOutputBuffer,
+         "bitstream_buffer_id=" + base::NumberToString(bitstream_buffer_id) +
+             " has a size of " + base::NumberToString(memory_size) +
+             "B, different from expected " +
+             base::NumberToString(output_buffer_size_) + "B"});
     return;
   }
 
@@ -302,23 +305,20 @@ void MojoVideoEncodeAcceleratorService::BitstreamBufferReady(
            << ", payload_size=" << metadata.payload_size_bytes
            << "B,  key_frame=" << metadata.key_frame;
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  TRACE_EVENT1("media",
+  TRACE_EVENT2("media",
                "MojoVideoEncodeAcceleratorService::BitstreamBufferReady",
+               "timestamp", metadata.timestamp.InMicroseconds(),
                "bitstream_buffer_id", bitstream_buffer_id);
-  if (MediaTraceIsEnabled() &&
-      ((!metadata.vp9 && !metadata.av1) ||
-       (metadata.vp9 && metadata.vp9->end_of_picture) ||
-       (metadata.av1 && metadata.av1->end_of_picture))) {
-    const auto timestamp_it =
-        timestamps_.Peek(metadata.timestamp.InMilliseconds());
+  if (MediaTraceIsEnabled() && metadata.end_of_picture()) {
+    int64_t timestamp = metadata.timestamp.InMicroseconds();
+    const auto timestamp_it = timestamps_.Peek(timestamp);
     if (timestamp_it != timestamps_.end()) {
-      const int64_t timestamp = metadata.timestamp.InMilliseconds();
       TRACE_EVENT_NESTABLE_ASYNC_BEGIN_WITH_TIMESTAMP0(
-          "media", "MojoVEAServicee::EncodingFrameDuration",
-          TRACE_ID_LOCAL(this), timestamp_it->second);
+          "media", "MojoVEAService::EncodingFrameDuration", timestamp,
+          timestamp_it->second);
       TRACE_EVENT_NESTABLE_ASYNC_END_WITH_TIMESTAMP1(
-          "media", "MojoVEAServicee::EncodingFrameDuration",
-          TRACE_ID_LOCAL(this), base::TimeTicks::Now(), "timestamp", timestamp);
+          "media", "MojoVEAService::EncodingFrameDuration", timestamp,
+          base::TimeTicks::Now(), "timestamp", timestamp);
     }
   }
 
@@ -328,14 +328,17 @@ void MojoVideoEncodeAcceleratorService::BitstreamBufferReady(
   vea_client_->BitstreamBufferReady(bitstream_buffer_id, metadata);
 }
 
-void MojoVideoEncodeAcceleratorService::NotifyError(
-    ::media::VideoEncodeAccelerator::Error error) {
+void MojoVideoEncodeAcceleratorService::NotifyErrorStatus(
+    const EncoderStatus& status) {
   DVLOG(1) << __func__;
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  CHECK(!status.is_ok());
   if (!vea_client_)
     return;
-
-  vea_client_->NotifyError(error);
+  LOG(ERROR) << "Call NotifyErrorStatus(): code="
+             << static_cast<int>(status.code())
+             << ", message=" << status.message();
+  vea_client_->NotifyErrorStatus(status);
 }
 
 void MojoVideoEncodeAcceleratorService::NotifyEncoderInfoChange(

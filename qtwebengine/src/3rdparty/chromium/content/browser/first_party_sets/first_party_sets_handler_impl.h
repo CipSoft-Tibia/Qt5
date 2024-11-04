@@ -110,7 +110,6 @@ class CONTENT_EXPORT FirstPartySetsHandlerImpl : public FirstPartySetsHandler {
   void ComputeFirstPartySetMetadata(
       const net::SchemefulSite& site,
       const net::SchemefulSite* top_frame_site,
-      const std::set<net::SchemefulSite>& party_context,
       const net::FirstPartySetsContextConfig& config,
       base::OnceCallback<void(net::FirstPartySetMetadata)> callback) override;
 
@@ -149,6 +148,9 @@ class CONTENT_EXPORT FirstPartySetsHandlerImpl : public FirstPartySetsHandler {
   // database under `user_data_dir`. Must be called exactly once.
   void SetDatabase(const base::FilePath& user_data_dir);
 
+  // Enqueues a task to be performed once initialization is complete.
+  void EnqueuePendingTask(base::OnceClosure run_task);
+
   // Invokes any pending queries.
   void InvokePendingQueries();
 
@@ -172,14 +174,15 @@ class CONTENT_EXPORT FirstPartySetsHandlerImpl : public FirstPartySetsHandler {
   void ComputeFirstPartySetMetadataInternal(
       const net::SchemefulSite& site,
       const absl::optional<net::SchemefulSite>& top_frame_site,
-      const std::set<net::SchemefulSite>& party_context,
       const net::FirstPartySetsContextConfig& config,
+      const base::ElapsedTimer& timer,
       base::OnceCallback<void(net::FirstPartySetMetadata)> callback) const;
 
   // Parses the policy and computes the config that represents the changes
   // needed to apply `policy` to `global_sets_`.
   net::FirstPartySetsContextConfig GetContextConfigForPolicyInternal(
-      const base::Value::Dict& policy) const;
+      const base::Value::Dict& policy,
+      const absl::optional<base::ElapsedTimer>& timer) const;
 
   void OnGetSitesToClear(
       base::RepeatingCallback<BrowserContext*()> browser_context_getter,
@@ -221,8 +224,10 @@ class CONTENT_EXPORT FirstPartySetsHandlerImpl : public FirstPartySetsHandler {
   std::unique_ptr<FirstPartySetsLoader> sets_loader_
       GUARDED_BY_CONTEXT(sequence_checker_);
 
-  // Timer starting when the instance is constructed. Used for metrics.
-  base::ElapsedTimer construction_timer_ GUARDED_BY_CONTEXT(sequence_checker_);
+  // Timer starting when the first async task was enqueued, if any. Used for
+  // metrics.
+  absl::optional<base::ElapsedTimer> first_async_task_timer_
+      GUARDED_BY_CONTEXT(sequence_checker_);
 
   // Access the underlying DB on a database sequence to make sure none of DB
   // operations that support blocking are called directly on the main thread.

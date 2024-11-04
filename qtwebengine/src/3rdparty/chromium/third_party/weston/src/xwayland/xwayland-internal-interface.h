@@ -31,6 +31,7 @@ struct weston_desktop_xwayland_surface;
 
 struct weston_xwayland_client_interface {
 	void (*send_configure)(struct weston_surface *surface, int32_t width, int32_t height);
+	void (*send_close)(struct weston_surface *surface);
 };
 
 struct weston_desktop_xwayland_interface {
@@ -58,7 +59,11 @@ struct weston_desktop_xwayland_interface {
 				    int32_t x, int32_t y,
 				    int32_t width, int32_t height);
 	void (*set_maximized)(struct weston_desktop_xwayland_surface *shsurf);
+	void (*set_minimized)(struct weston_desktop_xwayland_surface *shsurf);
 	void (*set_pid)(struct weston_desktop_xwayland_surface *shsurf, pid_t pid);
+	void (*get_position)(struct weston_desktop_xwayland_surface *surface,
+			     int32_t *x, int32_t *y);
+
 };
 
 #endif

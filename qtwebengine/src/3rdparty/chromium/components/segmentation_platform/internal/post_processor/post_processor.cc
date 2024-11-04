@@ -8,14 +8,33 @@
 
 #include "base/check_op.h"
 #include "base/notreached.h"
+#include "components/segmentation_platform/public/result.h"
 
 namespace segmentation_platform {
 
 namespace {
+
+// UMA constants for various types of classifier outputs.
+constexpr int kInvalidResult = -2;
+constexpr int kNoWinningLabel = -1;
+constexpr int kUnderflowBinIndex = -1;
+
 bool IsValidResult(proto::PredictionResult prediction_result) {
   return (prediction_result.result_size() > 0 &&
           prediction_result.has_output_config());
 }
+
+bool IsScoreBelowMultiClassThreshold(
+    const proto::Predictor::MultiClassClassifier& multi_class_classifier,
+    const float class_score,
+    const int class_index) {
+  if (multi_class_classifier.class_thresholds_size() > 0) {
+    return class_score < multi_class_classifier.class_thresholds(class_index);
+  } else {
+    return class_score < multi_class_classifier.threshold();
+  }
+}
+
 }  // namespace
 
 std::vector<std::string> PostProcessor::GetClassifierResults(
@@ -58,26 +77,35 @@ std::vector<std::string> PostProcessor::GetMultiClassClassifierResults(
     const {
   DCHECK_EQ(static_cast<int>(model_scores.size()),
             multi_class_classifier.class_labels_size());
+  CHECK(!(multi_class_classifier.has_threshold() &&
+          multi_class_classifier.class_thresholds_size() > 0))
+      << "threshold and class_thresholds can't be both set at the same time";
+
+  if (multi_class_classifier.class_thresholds_size() > 0) {
+    CHECK_EQ(static_cast<int>(model_scores.size()),
+             multi_class_classifier.class_thresholds_size());
+  }
 
   std::vector<std::pair<std::string, float>> labeled_results;
   for (int index = 0; index < static_cast<int>(model_scores.size()); index++) {
-    labeled_results.emplace_back(multi_class_classifier.class_labels(index),
-                                 model_scores[index]);
+    if (!IsScoreBelowMultiClassThreshold(multi_class_classifier,
+                                         model_scores[index], index)) {
+      labeled_results.emplace_back(multi_class_classifier.class_labels(index),
+                                   model_scores[index]);
+    }
   }
   // Sort the labels in descending order of score.
-  std::sort(labeled_results.begin(), labeled_results.end(),
-            [](const std::pair<std::string, float>& a,
-               const std::pair<std::string, float>& b) {
-              return a.second > b.second;
-            });
-  float threshold = multi_class_classifier.threshold();
-  int top_k_outputs = multi_class_classifier.top_k_outputs();
+  std::stable_sort(labeled_results.begin(), labeled_results.end(),
+                   [](const std::pair<std::string, float>& a,
+                      const std::pair<std::string, float>& b) {
+                     return a.second > b.second;
+                  });
+  int elements_to_return =
+      std::min(multi_class_classifier.top_k_outputs(),
+               static_cast<int64_t>(labeled_results.size()));
 
   std::vector<std::string> top_k_output_labels;
-  for (int index = 0; index < top_k_outputs; index++) {
-    if (labeled_results[index].second < threshold) {
-      break;
-    }
+  for (int index = 0; index < elements_to_return; index++) {
     top_k_output_labels.emplace_back(labeled_results[index].first);
   }
   return top_k_output_labels;
@@ -112,6 +140,57 @@ ClassificationResult PostProcessor::GetPostProcessedClassificationResult(
   return classification_result;
 }
 
+int PostProcessor::GetIndexOfTopLabel(
+    const proto::PredictionResult& prediction_result) {
+  if (!IsValidResult(prediction_result)) {
+    return kInvalidResult;
+  }
+
+  std::vector<std::string> result_labels =
+      GetClassifierResults(prediction_result);
+  if (result_labels.empty()) {
+    return kNoWinningLabel;
+  }
+
+  std::string top_label = result_labels[0];
+  auto predictor = prediction_result.output_config().predictor();
+
+  switch (predictor.PredictorType_case()) {
+    case proto::Predictor::kBinaryClassifier: {
+      bool bool_result =
+          (top_label == predictor.binary_classifier().positive_label());
+      return static_cast<int>(bool_result);
+    }
+    case proto::Predictor::kMultiClassClassifier: {
+      auto multi_class_classifier = predictor.multi_class_classifier();
+      for (int i = 0; i < multi_class_classifier.class_labels_size(); i++) {
+        if (top_label == multi_class_classifier.class_labels(i)) {
+          return i;
+        }
+      }
+      NOTREACHED();
+      return kInvalidResult;
+    }
+    case proto::Predictor::kBinnedClassifier: {
+      auto binned_classifier = predictor.binned_classifier();
+      if (top_label == binned_classifier.underflow_label()) {
+        return kUnderflowBinIndex;
+      }
+
+      for (int i = 0; i < binned_classifier.bins_size(); i++) {
+        if (top_label == binned_classifier.bins(i).label()) {
+          return i;
+        }
+      }
+      NOTREACHED();
+      return kInvalidResult;
+    }
+    default:
+      NOTREACHED();
+      return kInvalidResult;
+  }
+}
+
 base::TimeDelta PostProcessor::GetTTLForPredictedResult(
     const proto::PredictionResult& prediction_result) {
   std::vector<std::string> ordered_labels;
@@ -124,12 +203,29 @@ base::TimeDelta PostProcessor::GetTTLForPredictedResult(
     auto default_ttl = predicted_result_ttl.default_ttl();
     auto time_unit = predicted_result_ttl.time_unit();
 
+    if (ordered_labels.empty()) {
+      return default_ttl * metadata_utils::ConvertToTimeDelta(time_unit);
+    }
     const auto iter = top_label_to_ttl_map.find(ordered_labels[0]);
     int64_t ttl_to_use =
         iter == top_label_to_ttl_map.end() ? default_ttl : iter->second;
     return ttl_to_use * metadata_utils::ConvertToTimeDelta(time_unit);
   }
   return base::TimeDelta();
+}
+
+RawResult PostProcessor::GetRawResult(
+    const proto::PredictionResult& prediction_result,
+    PredictionStatus status) {
+  if (status != PredictionStatus::kSucceeded) {
+    return RawResult(status);
+  }
+  if (!IsValidResult(prediction_result)) {
+    return RawResult(PredictionStatus::kFailed);
+  }
+  RawResult result(status);
+  result.result = prediction_result;
+  return result;
 }
 
 }  // namespace segmentation_platform

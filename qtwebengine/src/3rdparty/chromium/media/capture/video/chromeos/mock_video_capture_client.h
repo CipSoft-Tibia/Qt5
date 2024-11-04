@@ -54,13 +54,13 @@ class MockVideoCaptureClient : public VideoCaptureDevice::Client {
                                    int clockwise_rotation,
                                    base::TimeTicks reference_time,
                                    base::TimeDelta timestamp,
-                                   int frame_feedback_id = 0) override;
+                                   int frame_feedback_id) override;
   void OnIncomingCapturedExternalBuffer(
       CapturedExternalVideoBuffer buffer,
       std::vector<CapturedExternalVideoBuffer> scaled_buffers,
       base::TimeTicks reference_time,
       base::TimeDelta timestamp,
-      gfx::Rect visible_rect) override;
+      const gfx::Rect& visible_rect) override;
   // Trampoline methods to workaround GMOCK problems with std::unique_ptr<>.
   ReserveResult ReserveOutputBuffer(const gfx::Size& dimensions,
                                     VideoPixelFormat format,

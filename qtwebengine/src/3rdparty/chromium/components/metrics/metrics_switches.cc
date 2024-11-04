@@ -5,6 +5,7 @@
 #include "components/metrics/metrics_switches.h"
 
 #include "base/check.h"
+#include "base/command_line.h"
 
 namespace metrics {
 namespace switches {
@@ -20,6 +21,11 @@ const char kExportUmaLogsToFile[] = "export-uma-logs-to-file";
 // Forces metrics reporting to be enabled. Should not be used for tests as it
 // will send data to servers.
 const char kForceEnableMetricsReporting[] = "force-enable-metrics-reporting";
+
+// Forces MSBB setting to be on for UKM recording. Should only be used in
+// automated testing browser sessions in which it is infeasible or impractical
+// to toggle the setting manually.
+const char kForceMsbbSettingOnForUkm[] = "force-msbb-setting-on-for-ukm";
 
 // Enables the recording of metrics reports but disables reporting. In contrast
 // to kForceEnableMetricsReporting, this executes all the code that a normal
@@ -62,14 +68,20 @@ bool IsMetricsReportingForceEnabled() {
       switches::kForceEnableMetricsReporting);
 }
 
+bool IsMsbbSettingForcedOnForUkm() {
+  return base::CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kForceMsbbSettingOnForUkm);
+}
+
 void EnableMetricsRecordingOnlyForTesting(base::CommandLine* command_line) {
-  DCHECK(command_line != nullptr);
+  CHECK(command_line);
   if (!command_line->HasSwitch(switches::kMetricsRecordingOnly))
     command_line->AppendSwitch(switches::kMetricsRecordingOnly);
 }
 
-void ForceEnableMetricsReportingForTesting(base::CommandLine* command_line) {
-  DCHECK(command_line != nullptr);
+void ForceEnableMetricsReportingForTesting() {
+  auto* command_line = base::CommandLine::ForCurrentProcess();
+  CHECK(command_line);
   if (!command_line->HasSwitch(switches::kForceEnableMetricsReporting))
     command_line->AppendSwitch(switches::kForceEnableMetricsReporting);
 }

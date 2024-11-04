@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include <QtCharts/qpieslice.h>
 #include <QtCharts/qpieseries.h>
 #include <QtWidgets/qgraphicssceneevent.h>
@@ -127,7 +129,8 @@ void PieChartItem::updateLayout()
     m_holeSize *= m_series->holeSize();
 
     // set layouts for existing slice items
-    foreach (QPieSlice *slice, m_series->slices()) {
+    const auto slices = m_series->slices();
+    for (QPieSlice *slice : slices) {
         PieSliceItem *sliceItem = m_sliceItems.value(slice);
         if (sliceItem) {
             const PieSliceData sliceData = updateSliceGeometry(slice);

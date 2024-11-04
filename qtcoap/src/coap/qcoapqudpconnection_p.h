@@ -9,6 +9,8 @@
 #include <private/qcoapconnection_p.h>
 
 #include <QtNetwork/qudpsocket.h>
+
+#include <QtCore/qpointer.h>
 #include <QtCore/qqueue.h>
 
 //

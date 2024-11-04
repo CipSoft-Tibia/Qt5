@@ -1,5 +1,5 @@
 // Copyright (C) 2023 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <conformance.qpb.h>
 #include <test_messages_proto3.qpb.h>
@@ -9,6 +9,7 @@
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QSocketNotifier>
+#include <QtProtobuf/QProtobufJsonSerializer>
 #include <QtProtobuf/QProtobufSerializer>
 
 class ConformaceServer : public QObject
@@ -20,7 +21,9 @@ public:
     QByteArray runTest(const QByteArray &reqData);
 
 private:
-    QProtobufSerializer m_serializer;
+    QProtobufSerializer m_protoSerializer;
+    QProtobufJsonSerializer m_jsonSerializer;
+
     std::unique_ptr<QSocketNotifier> m_stdinNotifier;
 };
 
@@ -69,42 +72,62 @@ void ConformaceServer::readStdin(int, QSocketNotifier::Type)
 
 QByteArray ConformaceServer::runTest(const QByteArray &reqData)
 {
+
     conformance::ConformanceRequest request;
-    request.deserialize(&m_serializer, reqData);
+    request.deserialize(&m_protoSerializer, reqData);
 
     conformance::ConformanceResponse response;
 
-    if (request.requestedOutputFormat() != conformance::WireFormatGadget::PROTOBUF) {
+    if (request.requestedOutputFormat() != conformance::WireFormatGadget::PROTOBUF
+        && request.requestedOutputFormat() != conformance::WireFormatGadget::JSON) {
         response.setSkipped(
                 QString("Unsupported response format %1").arg(request.requestedOutputFormat()));
-        return response.serialize(&m_serializer);
+        return response.serialize(&m_protoSerializer);
     }
 
-    if (conformance::ConformanceRequest::PayloadFields::ProtobufPayload != request.payloadField()) {
+    if (conformance::ConformanceRequest::PayloadFields::ProtobufPayload != request.payloadField()
+        && conformance::ConformanceRequest::PayloadFields::JsonPayload != request.payloadField()) {
         response.setSkipped(QString("Unsuported payload type %1").arg(int(request.payloadField())));
-        return response.serialize(&m_serializer);
+        return response.serialize(&m_protoSerializer);
     }
+
+    bool isProtoInput = conformance::ConformanceRequest::PayloadFields::ProtobufPayload
+        == request.payloadField();
+    bool isProtoOutput = request.requestedOutputFormat() == conformance::WireFormatGadget::PROTOBUF;
+
+    QAbstractProtobufSerializer *activeSerializer = isProtoOutput
+        ? static_cast<QAbstractProtobufSerializer *>(&m_protoSerializer)
+        : static_cast<QAbstractProtobufSerializer *>(&m_jsonSerializer);
+    QAbstractProtobufSerializer *activeDeserializer = isProtoInput
+        ? static_cast<QAbstractProtobufSerializer *>(&m_protoSerializer)
+        : static_cast<QAbstractProtobufSerializer *>(&m_jsonSerializer);
 
     auto msg = QProtobufMessage::constructByName(request.messageType());
     if (!msg) {
         response.setSkipped(QString("Unknown message %1").arg(request.messageType()));
-        return response.serialize(&m_serializer);
+        return response.serialize(&m_protoSerializer);
     }
 
     if (request.messageType() == "conformance.FailureSet") {
         conformance::FailureSet failures;
-        response.setProtobufPayload(failures.serialize(&m_serializer));
-        return response.serialize(&m_serializer);
+        response.setProtobufPayload(failures.serialize(&m_protoSerializer));
+        return response.serialize(&m_protoSerializer);
+    }
+    QByteArray payload = isProtoInput ? request.protobufPayload() : request.jsonPayload().toUtf8();
+
+    if (!activeDeserializer->deserializeRawMessage(msg.get(), payload)
+        || activeDeserializer->deserializationError() != QAbstractProtobufSerializer::NoError) {
+        response.setParseError(activeDeserializer->deserializationErrorString());
+        return response.serialize(&m_protoSerializer);
     }
 
-    if (!m_serializer.deserializeRawMessage(msg.get(), request.protobufPayload())
-        || m_serializer.deserializationError() != QAbstractProtobufSerializer::NoError) {
-        response.setParseError(m_serializer.deserializationErrorString());
-        return response.serialize(&m_serializer);
+    QByteArray result = activeSerializer->serializeRawMessage(msg.get());
+    if (isProtoOutput)
+        response.setProtobufPayload(result);
+    else {
+        response.setJsonPayload(QString::fromUtf8(result));
     }
-
-    response.setProtobufPayload(m_serializer.serializeRawMessage(msg.get()));
-    return response.serialize(&m_serializer);
+    return response.serialize(&m_protoSerializer);
 }
 
 int main(int argc, char *argv[])

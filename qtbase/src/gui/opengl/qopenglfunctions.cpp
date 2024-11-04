@@ -348,6 +348,10 @@ static int qt_gl_resolve_extensions()
         extensions |= QOpenGLExtensions::StandardDerivatives;
     if (extensionMatcher.match("GL_ARB_half_float_vertex"))
         extensions |= QOpenGLExtensions::HalfFloatVertex;
+    if (extensionMatcher.match("GL_OVR_multiview"))
+        extensions |= QOpenGLExtensions::MultiView;
+    if (extensionMatcher.match("GL_OVR_multiview2"))
+        extensions |= QOpenGLExtensions::MultiViewExtended;
 
     if (ctx->isOpenGLES()) {
         if (format.majorVersion() >= 2)
@@ -361,6 +365,7 @@ static int qt_gl_resolve_extensions()
                 | QOpenGLExtensions::FramebufferBlit
                 | QOpenGLExtensions::FramebufferMultisample
                 | QOpenGLExtensions::Sized8Formats
+                | QOpenGLExtensions::DiscardFramebuffer
                 | QOpenGLExtensions::StandardDerivatives
                 | QOpenGLExtensions::ETC2TextureCompression
                 | QOpenGLExtensions::HalfFloatVertex;
@@ -445,6 +450,9 @@ static int qt_gl_resolve_extensions()
 
         if (format.version() >= qMakePair(3, 3))
             extensions |= QOpenGLExtensions::TextureSwizzle;
+
+        if (format.version() >= qMakePair(4, 3) || extensionMatcher.match("GL_ARB_invalidate_subdata"))
+            extensions |= QOpenGLExtensions::DiscardFramebuffer;
 
         if (extensionMatcher.match("GL_ARB_map_buffer_range"))
             extensions |= QOpenGLExtensions::MapBufferRange;
@@ -5047,7 +5055,23 @@ QOpenGLExtensionsPrivate::QOpenGLExtensionsPrivate(QOpenGLContext *ctx)
     MapBuffer = RESOLVE(MapBuffer);
     GetBufferSubData = RESOLVE(GetBufferSubData);
     DiscardFramebuffer = RESOLVE(DiscardFramebuffer);
- }
+}
+
+void QOpenGLExtensions::discardFramebuffer(GLenum target, GLsizei numAttachments, const GLenum *attachments)
+{
+    Q_D(QOpenGLExtensions);
+    Q_ASSERT(QOpenGLExtensions::isInitialized(d));
+    Q_ASSERT(d->f.InvalidateFramebuffer || d->DiscardFramebuffer);
+
+    // On GLES >= 3 we prefer glInvalidateFramebuffer, even if the
+    // discard extension is present
+    if (d->f.InvalidateFramebuffer)
+        d->f.InvalidateFramebuffer(target, numAttachments, attachments);
+    else
+        d->DiscardFramebuffer(target, numAttachments, attachments);
+
+    Q_OPENGL_FUNCTIONS_DEBUG
+}
 
 void QOpenGLExtensions::flushShared()
 {

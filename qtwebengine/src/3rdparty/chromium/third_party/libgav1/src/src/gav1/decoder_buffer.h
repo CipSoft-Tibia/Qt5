@@ -115,20 +115,30 @@ typedef enum Libgav1ColorRange {
   kLibgav1ColorRangeFull     // YUV/RGB [0..255]
 } Libgav1ColorRange;
 
+// Section 6.7.3.
 typedef struct Libgav1ObuMetadataHdrCll {  // NOLINT
   uint16_t max_cll;                        // Maximum content light level.
   uint16_t max_fall;                       // Maximum frame-average light level.
 } Libgav1ObuMetadataHdrCll;
 
+// Section 6.7.4.
 typedef struct Libgav1ObuMetadataHdrMdcv {  // NOLINT
+  // 0.16 fixed-point X/Y chromaticity coordinate as defined by CIE 1931 in
+  // R/G/B order.
   uint16_t primary_chromaticity_x[3];
   uint16_t primary_chromaticity_y[3];
+  // 0.16 fixed-point X/Y chromaticity coordinate as defined by CIE 1931.
   uint16_t white_point_chromaticity_x;
   uint16_t white_point_chromaticity_y;
+  // 24.8 fixed-point maximum luminance, represented in candelas per square
+  // meter.
   uint32_t luminance_max;
+  // 18.14 fixed-point minimum luminance, represented in candelas per square
+  // meter.
   uint32_t luminance_min;
 } Libgav1ObuMetadataHdrMdcv;
 
+// Section 6.7.2.
 typedef struct Libgav1ObuMetadataItutT35 {  // NOLINT
   uint8_t country_code;
   uint8_t country_code_extension_byte;  // Valid if country_code is 0xFF.

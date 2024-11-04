@@ -20,18 +20,14 @@ public:
     explicit QGrpcHttp2Channel(const QGrpcChannelOptions &options);
     ~QGrpcHttp2Channel() override;
 
-    QGrpcStatus call(QLatin1StringView method, QLatin1StringView service, QByteArrayView args,
-                     QByteArray &ret,
-                     const QGrpcCallOptions &options = QGrpcCallOptions()) override;
-    std::shared_ptr<QGrpcCallReply> call(
-            QLatin1StringView method, QLatin1StringView service, QByteArrayView args,
-            const QGrpcCallOptions &options = QGrpcCallOptions()) override;
-    std::shared_ptr<QGrpcStream> startStream(
-            QLatin1StringView method, QLatin1StringView service, QByteArrayView arg,
-            const QGrpcCallOptions &options = QGrpcCallOptions()) override;
-    std::shared_ptr<QAbstractProtobufSerializer> serializer() const override;
-
 private:
+    void call(std::shared_ptr<QGrpcChannelOperation> channelOperation) override;
+    void startServerStream(std::shared_ptr<QGrpcChannelOperation> channelOperation) override;
+    void startClientStream(std::shared_ptr<QGrpcChannelOperation> channelOperation) override;
+    void startBidirStream(std::shared_ptr<QGrpcChannelOperation> channelOperation) override;
+
+    [[nodiscard]] std::shared_ptr<QAbstractProtobufSerializer> serializer() const noexcept override;
+
     Q_DISABLE_COPY_MOVE(QGrpcHttp2Channel)
 
     std::unique_ptr<QGrpcHttp2ChannelPrivate> dPtr;

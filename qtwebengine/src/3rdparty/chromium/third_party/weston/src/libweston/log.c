@@ -34,6 +34,7 @@
 
 #include <wayland-util.h>
 
+#include "shared/timespec-util.h"
 #include <libweston/libweston.h>
 #include "weston-log-internal.h"
 
@@ -71,8 +72,8 @@ static log_func_t log_continue_handler = default_log_handler;
 static int
 default_log_handler(const char *fmt, va_list ap)
 {
-        fprintf(stderr, "weston_log_set_handler() must be called before using of weston_log().\n");
-        abort();
+	fprintf(stderr, "weston_log_set_handler() must be called before using of weston_log().\n");
+	abort();
 }
 
 /** Install the log handler
@@ -127,6 +128,103 @@ weston_log(const char *fmt, ...)
 	va_end(argp);
 
 	return l;
+}
+
+/** weston logger with throttling
+ *
+ * Throttled logger that will suppress a message after a fixed number of
+ * prints, and optionally reset the counter reset_ms miliseconds after
+ * the first message in a burst.
+ *
+ * On the first new message printed with this pacer after the timeout
+ * expires, a count of suppressed messages will also be printed.
+ *
+ * Note that the "initialized" member of struct weston_log_pacer must be
+ * set to 0 before first call.
+ *
+ * \param pacer The pacer instance
+ * \param max_burst Number of messages to allow before throttling - must
+ * not be zero.
+ * \param reset_ms Duration from burst start before the count is reset, or
+ * zero to never reset.
+ * \param fmt The format string
+ *
+ * \ingroup wlog
+ */
+WL_EXPORT void
+weston_log_paced(struct weston_log_pacer *pacer,
+		 unsigned int max_burst,
+		 unsigned int reset_ms,
+		 const char *fmt, ...)
+{
+	va_list argp;
+	struct timespec now;
+	int64_t since_burst_start;
+	int64_t suppressed = 0;
+
+	assert(max_burst != 0);
+
+	/* If CLOCK_MONOTONIC fails we silently give up on ever
+	 * reseting the timer. */
+	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+		now.tv_sec = 0;
+		now.tv_nsec = 0;
+		pacer->burst_start = now;
+	}
+
+	if (!pacer->initialized) {
+		pacer->initialized = true;
+		pacer->burst_start = now;
+		pacer->max_burst = max_burst;
+		pacer->reset_ms = reset_ms;
+	} else {
+		assert(pacer->max_burst == max_burst);
+		assert(pacer->reset_ms == reset_ms);
+	}
+	since_burst_start = timespec_sub_to_msec(&now, &pacer->burst_start);
+
+	if (pacer->reset_ms && since_burst_start > pacer->reset_ms) {
+		if (pacer->event_count > pacer->max_burst) {
+			suppressed = pacer->event_count -
+				     pacer->max_burst;
+		}
+		pacer->event_count = 0;
+	}
+
+	if (pacer->event_count == 0) {
+		pacer->burst_start = now;
+		since_burst_start = 0;
+	}
+
+	pacer->event_count++;
+	if (pacer->event_count > pacer->max_burst)
+		return;
+
+	va_start(argp, fmt);
+	weston_vlog(fmt, argp);
+	va_end(argp);
+
+	if (suppressed) {
+		weston_log_continue(STAMP_SPACE "Warning: %" PRId64 " similar "
+				    "messages previously suppressed\n",
+				    suppressed);
+	}
+
+	/* If we're not going to throttle next time, return immediately,
+	 * otherwise print a little more information */
+	if (pacer->event_count != pacer->max_burst)
+		return;
+
+	if (pacer->reset_ms) {
+		int64_t next_reset = pacer->reset_ms - since_burst_start;
+
+		weston_log_continue(STAMP_SPACE "Warning: the above message "
+				    "will be suppresssed for the next %"
+				    PRId64 " ms.\n", next_reset);
+	} else {
+		weston_log_continue(STAMP_SPACE "Warning: the above message "
+				    "will not be printed again.\n");
+	}
 }
 
 /** weston_vlog_continue calls log_continue_handler

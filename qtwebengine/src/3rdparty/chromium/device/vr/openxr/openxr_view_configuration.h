@@ -7,6 +7,7 @@
 
 #include <vector>
 
+#include "base/memory/raw_ptr_exclusion.h"
 #include "third_party/openxr/src/include/openxr/openxr.h"
 #include "ui/gfx/geometry/rect.h"
 
@@ -49,6 +50,8 @@ class OpenXrViewConfiguration {
 
   const std::vector<XrCompositionLayerProjectionView>& ProjectionViews() const;
   XrCompositionLayerProjectionView& GetProjectionView(uint32_t view_index);
+
+  bool CanEnableAntiAliasing() const;
 
  private:
   XrViewConfigurationType type_ = XR_VIEW_CONFIGURATION_TYPE_MAX_ENUM;
@@ -106,7 +109,9 @@ class OpenXrLayers {
   // support a single projection layer. XrCompositionLayerBaseHeader* is needed
   // because xrEndFrame expects an array containing pointers of all the layers.
   XrCompositionLayerProjection primary_projection_layer_;
-  XrCompositionLayerBaseHeader* primary_composition_layer_ =
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #addr-of
+  RAW_PTR_EXCLUSION XrCompositionLayerBaseHeader* primary_composition_layer_ =
       reinterpret_cast<XrCompositionLayerBaseHeader*>(
           &primary_projection_layer_);
 
@@ -115,7 +120,10 @@ class OpenXrLayers {
   // layer for a specific view configuration.
   std::vector<XrCompositionLayerProjection> secondary_projection_layers_;
   // Pointers to the corresponding layer in secondary_projection_layers_.
-  std::vector<XrCompositionLayerBaseHeader*> secondary_composition_layers_;
+  // This field is not vector<raw_ptr<...>> due to interaction with third_party
+  // api.
+  RAW_PTR_EXCLUSION std::vector<XrCompositionLayerBaseHeader*>
+      secondary_composition_layers_;
 
   // The secondary view configuration layer info containing the data above,
   // which is passed to xrEndFrame.

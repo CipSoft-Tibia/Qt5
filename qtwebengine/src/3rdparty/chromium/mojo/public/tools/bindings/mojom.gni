@@ -17,6 +17,7 @@ import("//build/config/chrome_build.gni")
 import("//build/config/chromecast_build.gni")
 import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
+import("//build/config/jumbo.gni")
 import("//build/config/nacl/config.gni")
 import("//build/toolchain/kythe.gni")
 import("//components/nacl/features.gni")
@@ -121,6 +122,9 @@ mojom_generator_sources =
       "$mojom_generator_root/generators/mojom_ts_generator.py",
       "$mojom_generator_root/generators/mojom_webui_js_bridge_generator.py",
       "$mojom_generator_script",
+      "//build/action_helpers.py",
+      "//build/gn_helpers.py",
+      "//build/zip_helpers.py",
     ]
 
 if (enable_scrambled_message_ids) {
@@ -261,12 +265,16 @@ if (enable_scrambled_message_ids) {
 #       |cpp_only| is set to true, it overrides this to prevent generation of
 #       Java bindings.
 #
-#   enable_fuzzing (optional)
+#   enable_js_fuzzing (optional)
+#       Enables generation of javascript fuzzing sources for the target if the
+#       global build arg |enable_mojom_fuzzer| is also set to |true|.
+#       Defaults to |true|. If JS fuzzing generation is enabled for a target,
+#       the target will always generate JS bindings even if |cpp_only| is set to
+#       |true|. See note above.
+#
+#   enable_mojolpm_fuzzing (optional)
 #       Enables generation of fuzzing sources for the target if the global build
-#       arg |enable_mojom_fuzzer| is also set to |true|. Defaults to |true|. If
-#       fuzzing generation is enabled for a target, the target will always
-#       generate JS bindings even if |cpp_only| is set to |true|. See note
-#       above.
+#       arg |enable_mojom_fuzzer| is also set to |true|. Defaults to |true|.
 #
 #   support_lazy_serialization (optional)
 #       If set to |true|, generated C++ bindings will effectively prefer to
@@ -430,21 +438,40 @@ if (enable_scrambled_message_ids) {
 #             should be mapped in generated bindings. This is a string like
 #             "::base::Value" or "std::vector<::base::Value>".
 #
+#         copyable_pass_by_value (optional)
+#             A boolean value (default false) which effectively indicates
+#             whether the C++ type is very cheap to copy. If so, generated
+#             bindings will pass by value but not use std::move() at call sites.
+#
+#         default_constructible (optional)
+#             A boolean value (default true) which indicates whether the C++
+#             type is default constructible. If a C++ type is not default
+#             constructible (e.g. the implementor of the type prefers not to
+#             publicly expose a default constructor that creates an object in an
+#             invalid state), Mojo will instead construct C++ type with an
+#             argument of the type `mojo::DefaultConstruct::Tag` (essentially a
+#             passkey-like type specifically for this use case).
+#
+#         force_serialize (optional)
+#             A boolean value (default false) which disables lazy serialization
+#             of the typemapped type if lazy serialization is enabled for the
+#             mojom target applying this typemap.
+#
 #         forward_declaration (optional)
 #             A forward declaration of the C++ type, which bindings that don't
 #             need the full type definition can use to reduce the size of
 #             the generated code. This is a string like
 #             "namespace base { class Value; }".
 #
+#         hashable (optional)
+#             A boolean value (default false) indicating whether the C++ type is
+#             hashable. Set to true if true AND needed (i.e. you need to use the
+#             type as the key of a mojom map).
+#
 #         move_only (optional)
 #             A boolean value (default false) which indicates whether the C++
 #             type is move-only. If true, generated bindings will pass the type
 #             by value and use std::move() at call sites.
-#
-#         copyable_pass_by_value (optional)
-#             A boolean value (default false) which effectively indicates
-#             whether the C++ type is very cheap to copy. If so, generated
-#             bindings will pass by value but not use std::move() at call sites.
 #
 #         nullable_is_same_type (optional)
 #             A boolean value (default false) which indicates that the C++ type
@@ -454,16 +481,6 @@ if (enable_scrambled_message_ids) {
 #             When false, nullable fields are represented by wrapping the C++
 #             type with absl::optional, and null values are simply
 #             absl::nullopt.
-#
-#         hashable (optional)
-#             A boolean value (default false) indicating whether the C++ type is
-#             hashable. Set to true if true AND needed (i.e. you need to use the
-#             type as the key of a mojom map).
-#
-#         force_serialize (optional)
-#             A boolean value (default false) which disables lazy serialization
-#             of the typemapped type if lazy serialization is enabled for the
-#             mojom target applying this typemap.
 #
 # Additional typemap scope parameters:
 #
@@ -666,9 +683,14 @@ template("mojom") {
   }
   write_file(build_metadata_filename, build_metadata, "json")
 
-  generate_fuzzing =
-      (!defined(invoker.enable_fuzzing) || invoker.enable_fuzzing) &&
+  generate_js_fuzzing =
+      (!defined(invoker.enable_js_fuzzing) || invoker.enable_js_fuzzing) &&
       enable_mojom_fuzzer && (!defined(invoker.testonly) || !invoker.testonly)
+
+  generate_mojolpm_fuzzing =
+      (!defined(invoker.enable_mojolpm_fuzzing) ||
+       invoker.enable_mojolpm_fuzzing) && enable_mojom_fuzzer &&
+      (!defined(invoker.testonly) || !invoker.testonly)
 
   parser_target_name = "${target_name}__parser"
   parser_deps = []
@@ -700,18 +722,17 @@ template("mojom") {
         "is_chromeos",
         "is_chromeos_ash",
       ]
+    } else if (is_chromeos_lacros) {
+      enabled_features += [
+        "is_chromeos",
+        "is_chromeos_lacros",
+      ]
     } else if (is_fuchsia) {
       enabled_features += [ "is_fuchsia" ]
     } else if (is_ios) {
       enabled_features += [ "is_ios" ]
-    } else if (is_linux || is_chromeos_lacros) {
+    } else if (is_linux) {
       enabled_features += [ "is_linux" ]
-      if (is_chromeos_lacros) {
-        enabled_features += [
-          "is_chromeos",
-          "is_chromeos_lacros",
-        ]
-      }
     } else if (is_mac) {
       enabled_features += [ "is_mac" ]
     } else if (is_win) {
@@ -982,10 +1003,11 @@ template("mojom") {
   }
 
   shared_cpp_sources_target_name = "${target_name}_shared_cpp_sources"
-  source_set(shared_cpp_sources_target_name) {
+  jumbo_source_set(shared_cpp_sources_target_name) {
     if (defined(invoker.testonly)) {
       testonly = invoker.testonly
     }
+    configs += [ "//build/config/compiler:wexit_time_destructors" ]
     deps = []
     public_deps = []
     if (output_file_base_paths != []) {
@@ -1035,7 +1057,7 @@ template("mojom") {
     }
   }
 
-  if (generate_fuzzing) {
+  if (generate_mojolpm_fuzzing) {
     # This block generates the proto files used for the MojoLPM fuzzer,
     # and the corresponding proto targets that will be linked in the fuzzer
     # targets. These are independent of the typemappings, and can be done
@@ -1168,6 +1190,13 @@ template("mojom") {
   } else {
     enabled_configurations = [ default_variant ]
   }
+
+  if (defined(invoker.disable_jumbo) && invoker.disable_jumbo) {
+    disable_jumbo = true
+  } else {
+    disable_jumbo = false
+  }
+
   foreach(bindings_configuration, enabled_configurations) {
     cpp_only = false
     if (defined(invoker.cpp_only)) {
@@ -1256,39 +1285,6 @@ template("mojom") {
             "${bindings_configuration.component_macro_suffix}_IMPL" ]
     }
 
-    export_args = []
-    export_args_overridden = false
-    if (defined(bindings_configuration.for_blink) &&
-        bindings_configuration.for_blink) {
-      if (defined(invoker.export_class_attribute_blink)) {
-        export_args_overridden = true
-        export_args += [
-          "--export_attribute",
-          invoker.export_class_attribute_blink,
-          "--export_header",
-          invoker.export_header_blink,
-        ]
-      }
-    } else if (defined(invoker.export_class_attribute)) {
-      export_args_overridden = true
-      export_args += [
-        "--export_attribute",
-        invoker.export_class_attribute,
-        "--export_header",
-        invoker.export_header,
-      ]
-    }
-
-    if (!export_args_overridden && defined(invoker.component_macro_prefix)) {
-      export_args += [
-        "--export_attribute",
-        "COMPONENT_EXPORT(${invoker.component_macro_prefix}" +
-            "${bindings_configuration.component_macro_suffix})",
-        "--export_header",
-        "base/component_export.h",
-      ]
-    }
-
     generate_java = false
     if (!cpp_only && defined(invoker.generate_java)) {
       generate_java = invoker.generate_java
@@ -1297,6 +1293,38 @@ template("mojom") {
     type_mappings_path =
         "$target_gen_dir/${target_name}${variant_suffix}__type_mappings"
     if (sources_list != []) {
+      export_args = []
+      export_args_overridden = false
+      if (defined(bindings_configuration.for_blink) &&
+          bindings_configuration.for_blink) {
+        if (defined(invoker.export_class_attribute_blink)) {
+          export_args_overridden = true
+          export_args += [
+            "--export_attribute",
+            invoker.export_class_attribute_blink,
+            "--export_header",
+            invoker.export_header_blink,
+          ]
+        }
+      } else if (defined(invoker.export_class_attribute)) {
+        export_args_overridden = true
+        export_args += [
+          "--export_attribute",
+          invoker.export_class_attribute,
+          "--export_header",
+          invoker.export_header,
+        ]
+      }
+      if (!export_args_overridden && defined(invoker.component_macro_prefix)) {
+        export_args += [
+          "--export_attribute",
+          "COMPONENT_EXPORT(${invoker.component_macro_prefix}" +
+              "${bindings_configuration.component_macro_suffix})",
+          "--export_header",
+          "base/component_export.h",
+        ]
+      }
+
       generator_cpp_output_suffixes = []
       variant_dash_suffix = ""
       if (defined(variant)) {
@@ -1323,7 +1351,8 @@ template("mojom") {
               "$root_gen_dir/mojo/public/tools/bindings/cpp_templates.zip",
               type_mappings_path,
             ]
-        if (generate_fuzzing && !defined(bindings_configuration.variant)) {
+        if (generate_mojolpm_fuzzing &&
+            !defined(bindings_configuration.variant)) {
           sources += [
             "$root_gen_dir/mojo/public/tools/bindings/mojolpm_templates.zip",
           ]
@@ -1355,7 +1384,8 @@ template("mojom") {
             "$root_gen_dir/${base_path}${variant_dash_suffix}.cc",
             "$root_gen_dir/${base_path}${variant_dash_suffix}.h",
           ]
-          if (generate_fuzzing && !defined(bindings_configuration.variant)) {
+          if (generate_mojolpm_fuzzing &&
+              !defined(bindings_configuration.variant)) {
             outputs += [
               "$root_gen_dir/${base_path}${variant_dash_suffix}-mojolpm.cc",
               "$root_gen_dir/${base_path}${variant_dash_suffix}-mojolpm.h",
@@ -1372,7 +1402,8 @@ template("mojom") {
           "-g",
         ]
 
-        if (generate_fuzzing && !defined(bindings_configuration.variant)) {
+        if (generate_mojolpm_fuzzing &&
+            !defined(bindings_configuration.variant)) {
           args += [ "c++,mojolpm" ]
         } else {
           args += [ "c++" ]
@@ -1534,6 +1565,9 @@ template("mojom") {
     } else {
       sources_target_type = "source_set"
     }
+    if (!disable_jumbo) {
+      sources_target_type = "jumbo_" + sources_target_type
+    }
 
     output_target_name = "${target_name}${variant_suffix}"
     if (proxy_target != "") {
@@ -1561,6 +1595,7 @@ template("mojom") {
         testonly = invoker.testonly
       }
       defines = export_defines
+      configs += [ "//build/config/compiler:wexit_time_destructors" ]
       configs -= minus_configs
       configs += extra_configs
       if (output_file_base_paths != []) {
@@ -1650,14 +1685,14 @@ template("mojom") {
       }
     }
 
-    if (generate_fuzzing && !defined(variant)) {
+    if (generate_mojolpm_fuzzing && !defined(variant)) {
       # This block contains the C++ targets for the MojoLPM fuzzer, we need to
       # do this here so that we can use the typemap configuration for the
       # empty-variant Mojo target.
 
       mojolpm_target_name = "${target_name}_mojolpm"
       mojolpm_generator_target_name = "${target_name}__generator"
-      source_set(mojolpm_target_name) {
+      jumbo_source_set(mojolpm_target_name) {
         # There are still a few missing header dependencies between mojo targets
         # with typemaps and the dependencies of their typemap headers. It would
         # be good to enable include checking for these in the future though.
@@ -1863,7 +1898,7 @@ template("mojom") {
       }
 
       cpp_target_name = target_name
-      source_set("${target_name}_webui_js_bridge_impl") {
+      jumbo_source_set("${target_name}_webui_js_bridge_impl") {
         if (defined(invoker.testonly)) {
           testonly = invoker.testonly
         }
@@ -1875,6 +1910,7 @@ template("mojom") {
             "$root_gen_dir/${base_path}-webui-js-bridge-impl.h",
           ]
         }
+        configs += [ "//build/config/compiler:wexit_time_destructors" ]
         deps = [
           ":$cpp_target_name",
           ":$generator_webui_js_bridge_impl_target_name",
@@ -1902,8 +1938,8 @@ template("mojom") {
   # targets when generate_legacy_js_bindings is true. This option is provided
   # since the legacy bindings are needed by Blink tests and non-Chromium users,
   # which are not expected to migrate to modules or TypeScript.
-  if (generate_legacy_js &&
-      (generate_fuzzing || !defined(invoker.cpp_only) || !invoker.cpp_only)) {
+  if (generate_legacy_js && (generate_js_fuzzing ||
+                             !defined(invoker.cpp_only) || !invoker.cpp_only)) {
     if (sources_list != []) {
       generator_js_target_name = "${target_name}_js__generator"
 
@@ -1957,7 +1993,7 @@ template("mojom") {
           args += message_scrambling_args
         }
 
-        if (generate_fuzzing) {
+        if (generate_js_fuzzing) {
           args += [ "--generate_fuzzing" ]
         }
       }
@@ -2084,8 +2120,8 @@ template("mojom") {
       }
     }
   }
-  if ((generate_fuzzing || !defined(invoker.cpp_only) || !invoker.cpp_only) &&
-      use_typescript_for_target) {
+  if ((generate_js_fuzzing || !defined(invoker.cpp_only) ||
+       !invoker.cpp_only) && use_typescript_for_target) {
     if (sources_list != []) {
       source_filelist = []
       foreach(source, sources_list) {

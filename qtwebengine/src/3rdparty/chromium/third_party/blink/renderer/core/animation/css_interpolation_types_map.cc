@@ -14,10 +14,14 @@
 #include "third_party/blink/renderer/core/animation/css_border_image_length_box_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_clip_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_color_interpolation_type.h"
+#include "third_party/blink/renderer/core/animation/css_content_visibility_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_custom_length_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_custom_list_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_default_interpolation_type.h"
+#include "third_party/blink/renderer/core/animation/css_display_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_filter_list_interpolation_type.h"
+#include "third_party/blink/renderer/core/animation/css_font_palette_interpolation_type.h"
+#include "third_party/blink/renderer/core/animation/css_font_size_adjust_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_font_size_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_font_stretch_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_font_style_interpolation_type.h"
@@ -33,6 +37,7 @@
 #include "third_party/blink/renderer/core/animation/css_length_pair_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_number_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_offset_rotate_interpolation_type.h"
+#include "third_party/blink/renderer/core/animation/css_overlay_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_paint_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_path_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/css_percentage_interpolation_type.h"
@@ -211,7 +216,6 @@ const InterpolationTypes& CSSInterpolationTypesMap::Get(
       case CSSPropertyID::kFlexShrink:
       case CSSPropertyID::kFillOpacity:
       case CSSPropertyID::kFloodOpacity:
-      case CSSPropertyID::kFontSizeAdjust:
       case CSSPropertyID::kOpacity:
       case CSSPropertyID::kOrder:
       case CSSPropertyID::kOrphans:
@@ -232,6 +236,11 @@ const InterpolationTypes& CSSInterpolationTypesMap::Get(
             std::make_unique<CSSLengthInterpolationType>(used_property));
         applicable_types->push_back(
             std::make_unique<CSSNumberInterpolationType>(used_property));
+        break;
+      case CSSPropertyID::kPopoverShowDelay:
+      case CSSPropertyID::kPopoverHideDelay:
+        applicable_types->push_back(
+            std::make_unique<CSSTimeInterpolationType>(used_property));
         break;
       case CSSPropertyID::kAccentColor:
       case CSSPropertyID::kBackgroundColor:
@@ -258,6 +267,8 @@ const InterpolationTypes& CSSInterpolationTypesMap::Get(
             std::make_unique<CSSPaintInterpolationType>(used_property));
         break;
       case CSSPropertyID::kOffsetPath:
+        applicable_types->push_back(
+            std::make_unique<CSSBasicShapeInterpolationType>(used_property));
         applicable_types->push_back(
             std::make_unique<CSSRayInterpolationType>(used_property));
         [[fallthrough]];
@@ -301,6 +312,12 @@ const InterpolationTypes& CSSInterpolationTypesMap::Get(
         applicable_types->push_back(
             std::make_unique<CSSFontVariationSettingsInterpolationType>(
                 used_property));
+        break;
+      case blink::CSSPropertyID::kFontPalette:
+        if (RuntimeEnabledFeatures::FontPaletteAnimationEnabled()) {
+          applicable_types->push_back(
+              std::make_unique<CSSFontPaletteInterpolationType>(used_property));
+        }
         break;
       case CSSPropertyID::kVisibility:
         applicable_types->push_back(
@@ -366,6 +383,11 @@ const InterpolationTypes& CSSInterpolationTypesMap::Get(
         applicable_types->push_back(
             std::make_unique<CSSFontSizeInterpolationType>(used_property));
         break;
+      case CSSPropertyID::kFontSizeAdjust:
+        applicable_types->push_back(
+            std::make_unique<CSSFontSizeAdjustInterpolationType>(
+                used_property));
+        break;
       case CSSPropertyID::kTextIndent:
         applicable_types->push_back(
             std::make_unique<CSSTextIndentInterpolationType>(used_property));
@@ -404,6 +426,22 @@ const InterpolationTypes& CSSInterpolationTypesMap::Get(
       case CSSPropertyID::kObjectViewBox:
         applicable_types->push_back(
             std::make_unique<CSSBasicShapeInterpolationType>(used_property));
+        break;
+      case CSSPropertyID::kDisplay:
+        DCHECK(RuntimeEnabledFeatures::CSSDisplayAnimationEnabled());
+        applicable_types->push_back(
+            std::make_unique<CSSDisplayInterpolationType>(used_property));
+        break;
+      case CSSPropertyID::kContentVisibility:
+        DCHECK(RuntimeEnabledFeatures::CSSDisplayAnimationEnabled());
+        applicable_types->push_back(
+            std::make_unique<CSSContentVisibilityInterpolationType>(
+                used_property));
+        break;
+      case CSSPropertyID::kOverlay:
+        DCHECK(RuntimeEnabledFeatures::CSSTopLayerForTransitionsEnabled());
+        applicable_types->push_back(
+            std::make_unique<CSSOverlayInterpolationType>(used_property));
         break;
       default:
         DCHECK(!css_property.IsInterpolable());

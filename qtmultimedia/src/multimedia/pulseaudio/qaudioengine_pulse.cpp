@@ -62,34 +62,36 @@ static bool updateDevicesMap(QReadWriteLock &lock, QByteArray defaultDeviceId,
 
 static void serverInfoCallback(pa_context *context, const pa_server_info *info, void *userdata)
 {
+    using namespace Qt::Literals;
+    using namespace QPulseAudioInternal;
+
     if (!info) {
-        qWarning() << QString::fromLatin1("Failed to get server information: %s").arg(QString::fromUtf8(pa_strerror(pa_context_errno(context))));
+        qWarning() << "Failed to get server information:" << currentError(context);
         return;
     }
 
-#ifdef DEBUG_PULSE
-    char ss[PA_SAMPLE_SPEC_SNPRINT_MAX], cm[PA_CHANNEL_MAP_SNPRINT_MAX];
+    if (Q_UNLIKELY(qLcPulseAudioEngine().isEnabled(QtDebugMsg))) {
+        char ss[PA_SAMPLE_SPEC_SNPRINT_MAX], cm[PA_CHANNEL_MAP_SNPRINT_MAX];
 
-    pa_sample_spec_snprint(ss, sizeof(ss), &info->sample_spec);
-    pa_channel_map_snprint(cm, sizeof(cm), &info->channel_map);
+        pa_sample_spec_snprint(ss, sizeof(ss), &info->sample_spec);
+        pa_channel_map_snprint(cm, sizeof(cm), &info->channel_map);
 
-    qDebug() << QString("User name: %1\n"
-             "Host Name: %2\n"
-             "Server Name: %3\n"
-             "Server Version: %4\n"
-             "Default Sample Specification: %5\n"
-             "Default Channel Map: %6\n"
-             "Default Sink: %7\n"
-             "Default Source: %8\n").arg(
-           info->user_name,
-           info->host_name,
-           info->server_name,
-           info->server_version,
-           ss,
-           cm,
-           info->default_sink_name,
-           info->default_source_name);
-#endif
+        qCDebug(qLcPulseAudioEngine)
+                << QStringLiteral("User name: %1\n"
+                                  "Host Name: %2\n"
+                                  "Server Name: %3\n"
+                                  "Server Version: %4\n"
+                                  "Default Sample Specification: %5\n"
+                                  "Default Channel Map: %6\n"
+                                  "Default Sink: %7\n"
+                                  "Default Source: %8\n")
+                           .arg(QString::fromUtf8(info->user_name),
+                                QString::fromUtf8(info->host_name),
+                                QString::fromUtf8(info->server_name),
+                                QLatin1StringView(info->server_version), QLatin1StringView(ss),
+                                QLatin1StringView(cm), QString::fromUtf8(info->default_sink_name),
+                                QString::fromUtf8(info->default_source_name));
+    }
 
     QPulseAudioEngine *pulseEngine = static_cast<QPulseAudioEngine*>(userdata);
 
@@ -125,10 +127,13 @@ static void serverInfoCallback(pa_context *context, const pa_server_info *info, 
 
 static void sinkInfoCallback(pa_context *context, const pa_sink_info *info, int isLast, void *userdata)
 {
-    QPulseAudioEngine *pulseEngine = static_cast<QPulseAudioEngine*>(userdata);
+    using namespace Qt::Literals;
+    using namespace QPulseAudioInternal;
+
+    QPulseAudioEngine *pulseEngine = static_cast<QPulseAudioEngine *>(userdata);
 
     if (isLast < 0) {
-        qWarning() << QString::fromLatin1("Failed to get sink information: %s").arg(QString::fromUtf8(pa_strerror(pa_context_errno(context))));
+        qWarning() << "Failed to get sink information:" << currentError(context);
         return;
     }
 
@@ -139,22 +144,22 @@ static void sinkInfoCallback(pa_context *context, const pa_sink_info *info, int 
 
     Q_ASSERT(info);
 
-#ifdef DEBUG_PULSE
-    static const QMap<pa_sink_state, QString> stateMap{
-        { PA_SINK_INVALID_STATE, "n/a" }, { PA_SINK_RUNNING, "RUNNING" },
-        { PA_SINK_IDLE, "IDLE" },         { PA_SINK_SUSPENDED, "SUSPENDED" },
-        { PA_SINK_UNLINKED, "UNLINKED" },
-    };
+    if (Q_UNLIKELY(qLcPulseAudioEngine().isEnabled(QtDebugMsg))) {
+        static const QMap<pa_sink_state, QString> stateMap{
+            { PA_SINK_INVALID_STATE, u"n/a"_s }, { PA_SINK_RUNNING, u"RUNNING"_s },
+            { PA_SINK_IDLE, u"IDLE"_s },         { PA_SINK_SUSPENDED, u"SUSPENDED"_s },
+            { PA_SINK_UNLINKED, u"UNLINKED"_s },
+        };
 
-    qDebug() << QString("Sink #%1\n"
-             "\tState: %2\n"
-             "\tName: %3\n"
-             "\tDescription: %4\n"
-            ).arg(QString::number(info->index),
-                  stateMap.value(info->state),
-                  info->name,
-                  info->description);
-#endif
+        qCDebug(qLcPulseAudioEngine)
+                << QStringLiteral("Sink #%1\n"
+                                  "\tState: %2\n"
+                                  "\tName: %3\n"
+                                  "\tDescription: %4\n")
+                           .arg(QString::number(info->index), stateMap.value(info->state),
+                                QString::fromUtf8(info->name),
+                                QString::fromUtf8(info->description));
+    }
 
     if (updateDevicesMap(pulseEngine->m_sinkLock, pulseEngine->m_defaultSink, pulseEngine->m_sinks,
                          QAudioDevice::Output, *info))
@@ -163,6 +168,8 @@ static void sinkInfoCallback(pa_context *context, const pa_sink_info *info, int 
 
 static void sourceInfoCallback(pa_context *context, const pa_source_info *info, int isLast, void *userdata)
 {
+    using namespace Qt::Literals;
+
     Q_UNUSED(context);
     QPulseAudioEngine *pulseEngine = static_cast<QPulseAudioEngine*>(userdata);
 
@@ -173,22 +180,22 @@ static void sourceInfoCallback(pa_context *context, const pa_source_info *info, 
 
     Q_ASSERT(info);
 
-#ifdef DEBUG_PULSE
-    static const QMap<pa_source_state, QString> stateMap{ { PA_SOURCE_INVALID_STATE, "n/a" },
-                                                          { PA_SOURCE_RUNNING, "RUNNING" },
-                                                          { PA_SOURCE_IDLE, "IDLE" },
-                                                          { PA_SOURCE_SUSPENDED, "SUSPENDED" },
-                                                          { PA_SOURCE_UNLINKED, "UNLINKED" } };
+    if (Q_UNLIKELY(qLcPulseAudioEngine().isEnabled(QtDebugMsg))) {
+        static const QMap<pa_source_state, QString> stateMap{
+            { PA_SOURCE_INVALID_STATE, u"n/a"_s }, { PA_SOURCE_RUNNING, u"RUNNING"_s },
+            { PA_SOURCE_IDLE, u"IDLE"_s },         { PA_SOURCE_SUSPENDED, u"SUSPENDED"_s },
+            { PA_SOURCE_UNLINKED, u"UNLINKED"_s },
+        };
 
-    qDebug() << QString("Source #%1\n"
-         "\tState: %2\n"
-         "\tName: %3\n"
-         "\tDescription: %4\n"
-        ).arg(QString::number(info->index),
-              stateMap.value(info->state),
-              info->name,
-              info->description);
-#endif
+        qCDebug(qLcPulseAudioEngine)
+                << QStringLiteral("Source #%1\n"
+                                  "\tState: %2\n"
+                                  "\tName: %3\n"
+                                  "\tDescription: %4\n")
+                           .arg(QString::number(info->index), stateMap.value(info->state),
+                                QString::fromUtf8(info->name),
+                                QString::fromUtf8(info->description));
+    }
 
     // skip monitor channels
     if (info->monitor_of_sink != PA_INVALID_INDEX)
@@ -213,21 +220,21 @@ static void event_cb(pa_context* context, pa_subscription_event_type_t t, uint32
         case PA_SUBSCRIPTION_EVENT_SERVER: {
             PAOperationUPtr op(pa_context_get_server_info(context, serverInfoCallback, userdata));
             if (!op)
-                qWarning("PulseAudioService: failed to get server info");
+                qWarning() << "PulseAudioService: failed to get server info";
             break;
         }
         case PA_SUBSCRIPTION_EVENT_SINK: {
             PAOperationUPtr op(
                     pa_context_get_sink_info_by_index(context, index, sinkInfoCallback, userdata));
             if (!op)
-                qWarning("PulseAudioService: failed to get sink info");
+                qWarning() << "PulseAudioService: failed to get sink info";
             break;
         }
         case PA_SUBSCRIPTION_EVENT_SOURCE: {
             PAOperationUPtr op(pa_context_get_source_info_by_index(context, index,
                                                                    sourceInfoCallback, userdata));
             if (!op)
-                qWarning("PulseAudioService: failed to get source info");
+                qWarning() << "PulseAudioService: failed to get source info";
             break;
         }
         default:
@@ -258,9 +265,10 @@ static void event_cb(pa_context* context, pa_subscription_event_type_t t, uint32
 static void contextStateCallbackInit(pa_context *context, void *userdata)
 {
     Q_UNUSED(context);
-#ifdef DEBUG_PULSE
-    qDebug() << QPulseAudioInternal::stateToQString(pa_context_get_state(context));
-#endif
+
+    if (Q_UNLIKELY(qLcPulseAudioEngine().isEnabled(QtDebugMsg)))
+        qCDebug(qLcPulseAudioEngine) << pa_context_get_state(context);
+
     QPulseAudioEngine *pulseEngine = reinterpret_cast<QPulseAudioEngine*>(userdata);
     pa_threaded_mainloop_signal(pulseEngine->mainloop(), 0);
 }
@@ -270,9 +278,8 @@ static void contextStateCallback(pa_context *c, void *userdata)
     QPulseAudioEngine *self = reinterpret_cast<QPulseAudioEngine*>(userdata);
     pa_context_state_t state = pa_context_get_state(c);
 
-#ifdef DEBUG_PULSE
-    qDebug() << QPulseAudioInternal::stateToQString(state);
-#endif
+    if (Q_UNLIKELY(qLcPulseAudioEngine().isEnabled(QtDebugMsg)))
+        qCDebug(qLcPulseAudioEngine) << state;
 
     if (state == PA_CONTEXT_FAILED)
         QMetaObject::invokeMethod(self, "onContextFailed", Qt::QueuedConnection);
@@ -297,17 +304,20 @@ QPulseAudioEngine::~QPulseAudioEngine()
 
 void QPulseAudioEngine::prepare()
 {
+    using namespace QPulseAudioInternal;
     bool keepGoing = true;
     bool ok = true;
 
     m_mainLoop = pa_threaded_mainloop_new();
     if (m_mainLoop == nullptr) {
-        qWarning("PulseAudioService: unable to create pulseaudio mainloop");
+        qWarning() << "PulseAudioService: unable to create pulseaudio mainloop";
         return;
     }
 
+    pa_threaded_mainloop_set_name(m_mainLoop, "QPulseAudioEngi"); // thread names are limited to 15 chars on linux
+
     if (pa_threaded_mainloop_start(m_mainLoop) != 0) {
-        qWarning("PulseAudioService: unable to start pulseaudio mainloop");
+        qWarning() << "PulseAudioService: unable to start pulseaudio mainloop";
         pa_threaded_mainloop_free(m_mainLoop);
         m_mainLoop = nullptr;
         return;
@@ -329,7 +339,7 @@ void QPulseAudioEngine::prepare()
     pa_proplist_free(proplist);
 
     if (m_context == nullptr) {
-        qWarning("PulseAudioService: Unable to create new pulseaudio context");
+        qWarning() << "PulseAudioService: Unable to create new pulseaudio context";
         pa_threaded_mainloop_unlock(m_mainLoop);
         pa_threaded_mainloop_free(m_mainLoop);
         m_mainLoop = nullptr;
@@ -339,8 +349,8 @@ void QPulseAudioEngine::prepare()
 
     pa_context_set_state_callback(m_context, contextStateCallbackInit, this);
 
-    if (pa_context_connect(m_context, nullptr, (pa_context_flags_t)0, nullptr) < 0) {
-        qWarning("PulseAudioService: pa_context_connect() failed");
+    if (pa_context_connect(m_context, nullptr, static_cast<pa_context_flags_t>(0), nullptr) < 0) {
+        qWarning() << "PulseAudioService: pa_context_connect() failed";
         pa_context_unref(m_context);
         pa_threaded_mainloop_unlock(m_mainLoop);
         pa_threaded_mainloop_free(m_mainLoop);
@@ -359,9 +369,7 @@ void QPulseAudioEngine::prepare()
                 break;
 
             case PA_CONTEXT_READY:
-#ifdef DEBUG_PULSE
-                qDebug("Connection established.");
-#endif
+                qCDebug(qLcPulseAudioEngine) << "Connection established.";
                 keepGoing = false;
                 break;
 
@@ -373,8 +381,8 @@ void QPulseAudioEngine::prepare()
 
             case PA_CONTEXT_FAILED:
             default:
-                qCritical() << QString::fromLatin1("PulseAudioService: Connection failure: %1")
-                                .arg(QString::fromUtf8(pa_strerror(pa_context_errno(m_context))));
+                qCritical() << "PulseAudioService: Connection failure:"
+                            << currentError(m_context);
                 keepGoing = false;
                 ok = false;
         }
@@ -393,7 +401,7 @@ void QPulseAudioEngine::prepare()
                                        | PA_SUBSCRIPTION_MASK_SERVER),
                 nullptr, nullptr));
         if (!op)
-            qWarning("PulseAudioService: failed to subscribe to context notifications");
+            qWarning() << "PulseAudioService: failed to subscribe to context notifications";
     } else {
         pa_context_unref(m_context);
         m_context = nullptr;
@@ -417,9 +425,13 @@ void QPulseAudioEngine::release()
         return;
 
     if (m_context) {
+        lock();
+
         pa_context_disconnect(m_context);
         pa_context_unref(m_context);
         m_context = nullptr;
+
+        unlock();
     }
 
     if (m_mainLoop) {
@@ -441,7 +453,7 @@ void QPulseAudioEngine::updateDevices()
         while (pa_operation_get_state(operation.get()) == PA_OPERATION_RUNNING)
             pa_threaded_mainloop_wait(m_mainLoop);
     } else {
-        qWarning("PulseAudioService: failed to get server info");
+        qWarning() << "PulseAudioService: failed to get server info";
     }
 
     // Get output devices
@@ -450,7 +462,7 @@ void QPulseAudioEngine::updateDevices()
         while (pa_operation_get_state(operation.get()) == PA_OPERATION_RUNNING)
             pa_threaded_mainloop_wait(m_mainLoop);
     } else {
-        qWarning("PulseAudioService: failed to get sink info");
+        qWarning() << "PulseAudioService: failed to get sink info";
     }
 
     // Get input devices
@@ -459,7 +471,7 @@ void QPulseAudioEngine::updateDevices()
         while (pa_operation_get_state(operation.get()) == PA_OPERATION_RUNNING)
             pa_threaded_mainloop_wait(m_mainLoop);
     } else {
-        qWarning("PulseAudioService: failed to get source info");
+        qWarning() << "PulseAudioService: failed to get source info";
     }
 }
 
@@ -471,7 +483,7 @@ void QPulseAudioEngine::onContextFailed()
     release();
 
     // Try to reconnect later
-    QTimer::singleShot(3000, this, SLOT(prepare()));
+    QTimer::singleShot(3000, this, &QPulseAudioEngine::prepare);
 }
 
 QPulseAudioEngine *QPulseAudioEngine::instance()

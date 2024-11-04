@@ -13,11 +13,9 @@
 
 #include "base/files/file_path.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/no_destructor.h"
 #include "base/strings/string_util.h"
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "ui/accessibility/accessibility_features.h"
-#include "ui/accessibility/accessibility_switches.h"
 #include "ui/accessibility/platform/ax_platform_node_win.h"
 #include "ui/gfx/animation/animation.h"
 #include "ui/gfx/win/singleton_hwnd_observer.h"
@@ -48,7 +46,12 @@ class WindowsAccessibilityEnabler
         ui::AXMode::kNativeAPIs);
   }
 
-  void OnIAccessible2Used() override {
+  void OnBasicIAccessible2Used() override {
+    BrowserAccessibilityStateImpl::GetInstance()->AddAccessibilityModeFlags(
+        ui::AXMode::kNativeAPIs);
+  }
+
+  void OnAdvancedIAccessible2Used() override {
     // When IAccessible2 APIs have been used elsewhere in the codebase,
     // enable basic web accessibility support. (Full screen reader support is
     // detected later when specific more advanced APIs are accessed.)
@@ -108,7 +111,7 @@ class WindowsAccessibilityEnabler
   }
 
   void AddAXModeForUIA(ui::AXMode mode) {
-    DCHECK(::switches::IsExperimentalAccessibilityPlatformUIAEnabled());
+    DCHECK(::features::IsUiaProviderEnabled());
 
     // Firing a UIA event can cause UIA to call back into our APIs, don't
     // consider this to be usage.
@@ -151,7 +154,6 @@ void OnWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
 class BrowserAccessibilityStateImplWin : public BrowserAccessibilityStateImpl {
  public:
   BrowserAccessibilityStateImplWin();
-  ~BrowserAccessibilityStateImplWin() override {}
 
  protected:
   void UpdateHistogramsOnOtherThread() override;
@@ -264,15 +266,10 @@ void BrowserAccessibilityStateImplWin::UpdateUniqueUserHistograms() {
   UMA_HISTOGRAM_BOOLEAN("Accessibility.WinZoomText.EveryReport", g_zoomtext);
 }
 
-//
-// BrowserAccessibilityStateImpl::GetInstance implementation that constructs
-// this class instead of the base class.
-//
-
 // static
-BrowserAccessibilityStateImpl* BrowserAccessibilityStateImpl::GetInstance() {
-  static base::NoDestructor<BrowserAccessibilityStateImplWin> instance;
-  return &*instance;
+std::unique_ptr<BrowserAccessibilityStateImpl>
+BrowserAccessibilityStateImpl::Create() {
+  return std::make_unique<BrowserAccessibilityStateImplWin>();
 }
 
 }  // namespace content

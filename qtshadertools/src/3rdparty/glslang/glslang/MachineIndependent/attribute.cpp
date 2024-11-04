@@ -34,8 +34,6 @@
 // POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef GLSLANG_WEB
-
 #include "attribute.h"
 #include "../Include/intermediate.h"
 #include "ParseHelper.h"
@@ -369,5 +367,3 @@ void TParseContext::handleFunctionAttributes(const TSourceLoc& loc, const TAttri
 
 } // end namespace glslang
 } // namespace QtShaderTools
-
-#endif // GLSLANG_WEB

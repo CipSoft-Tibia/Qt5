@@ -13,9 +13,17 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
+DROP TABLE IF EXISTS vsync_missed_callback;
+CREATE PERFETTO TABLE vsync_missed_callback AS
+SELECT CAST(STR_SPLIT(name, 'Callback#', 1) AS INTEGER) AS vsync,
+       MAX(name GLOB '*SF*') as sf_callback_missed,
+       MAX(name GLOB '*HWUI*') as hwui_callback_missed
+FROM slice
+WHERE name GLOB '*FT#Missed*Callback*'
+GROUP BY vsync;
 
 DROP TABLE IF EXISTS android_jank_cuj_frame_timeline;
-CREATE TABLE android_jank_cuj_frame_timeline AS
+CREATE PERFETTO TABLE android_jank_cuj_frame_timeline AS
 WITH actual_timeline_with_vsync AS (
   SELECT
     *,
@@ -30,9 +38,13 @@ SELECT
   MAX(jank_type GLOB '*App Deadline Missed*') AS app_missed,
   -- We use MAX to check if at least one of the layers jank_type matches the pattern
   MAX(
-    jank_type GLOB '*SurfaceFlinger*'
+    jank_type GLOB '*SurfaceFlinger CPU Deadline Missed*'
+    OR jank_type GLOB '*SurfaceFlinger GPU Deadline Missed*'
+    OR jank_type GLOB '*SurfaceFlinger Scheduling*'
     OR jank_type GLOB '*Prediction Error*'
     OR jank_type GLOB '*Display HAL*') AS sf_missed,
+  IFNULL(MAX(sf_callback_missed), 0) AS sf_callback_missed,
+  IFNULL(MAX(hwui_callback_missed), 0) AS hwui_callback_missed,
   -- We use MIN to check if ALL layers finished on time
   MIN(on_time_finish) AS on_time_finish,
   MAX(timeline.ts + timeline.dur) AS ts_end_actual,
@@ -41,7 +53,10 @@ SELECT
   -- for a given vsync but using MAX here in case this changes in the future.
   -- In case expected timeline is missing, as a fallback we use the typical frame deadline
   -- for 60Hz.
-  COALESCE(MAX(expected.dur), 16600000) AS dur_expected
+  COALESCE(MAX(expected.dur), 16600000) AS dur_expected,
+  COUNT(DISTINCT timeline.layer_name) as number_of_layers_for_frame,
+  -- we use MAX to get at least one of the frame's layer names
+  MAX(timeline.layer_name) as frame_layer_name
 FROM android_jank_cuj_vsync_boundary boundary
 JOIN actual_timeline_with_vsync timeline
   ON boundary.upid = timeline.upid
@@ -49,14 +64,31 @@ JOIN actual_timeline_with_vsync timeline
     AND vsync <= vsync_max
 LEFT JOIN expected_frame_timeline_slice expected
   ON expected.upid = timeline.upid AND expected.name = timeline.name
+LEFT JOIN vsync_missed_callback missed_callback USING(vsync)
+WHERE
+  boundary.layer_id IS NULL
+  OR (
+    timeline.layer_name GLOB '*#*'
+    AND boundary.layer_id
+      = CAST(STR_SPLIT(timeline.layer_name, '#', 1) AS INTEGER))
 GROUP BY cuj_id, vsync;
 
+DROP TABLE IF EXISTS android_jank_cuj_layer_name;
+CREATE PERFETTO TABLE android_jank_cuj_layer_name AS
+SELECT
+    cuj_id,
+    MAX(frame_layer_name) as layer_name
+FROM android_jank_cuj_frame_timeline timeline
+GROUP BY cuj_id
+-- Return only cujs where the max number of layers for all frames in the whole cuj equals 1,
+-- this is to infer the layer name if the cuj marker for layer id is not present
+HAVING MAX(number_of_layers_for_frame) = 1;
 
 -- Matches slices and boundaries to compute estimated frame boundaries across
 -- all threads. Joins with the actual timeline to figure out which frames missed
 -- the deadline and whether the app process or SF are at fault.
 DROP TABLE IF EXISTS android_jank_cuj_frame;
-CREATE TABLE android_jank_cuj_frame AS
+CREATE PERFETTO TABLE android_jank_cuj_frame AS
 WITH frame_base AS (
   SELECT
     cuj_id,
@@ -78,6 +110,8 @@ SELECT
   frame_base.*,
   app_missed,
   sf_missed,
+  sf_callback_missed,
+  hwui_callback_missed,
   on_time_finish,
   ts_end_actual - ts AS dur,
   ts_end_actual - ts_do_frame_start AS dur_unadjusted,
@@ -90,7 +124,7 @@ JOIN android_jank_cuj_frame_timeline USING (cuj_id, vsync);
 -- The computation is somewhat simpler as most of SF work happens within the duration of
 -- the commit/composite slices on the main thread.
 DROP TABLE IF EXISTS android_jank_cuj_sf_frame;
-CREATE TABLE android_jank_cuj_sf_frame AS
+CREATE PERFETTO TABLE android_jank_cuj_sf_frame AS
 SELECT
   cuj_id,
   ROW_NUMBER() OVER (PARTITION BY cuj_id ORDER BY vsync ASC) AS frame_number,

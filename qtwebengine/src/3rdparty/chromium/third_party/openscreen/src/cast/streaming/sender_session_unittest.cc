@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,8 +26,7 @@ using ::testing::NiceMock;
 using ::testing::Return;
 using ::testing::StrictMock;
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 constexpr char kMalformedAnswerMessage[] = R"({
@@ -183,7 +182,7 @@ class SenderSessionTest : public ::testing::Test {
 
   std::unique_ptr<MockEnvironment> MakeEnvironment() {
     auto environment = std::make_unique<NiceMock<MockEnvironment>>(
-        &FakeClock::now, &task_runner_);
+        &FakeClock::now, task_runner_);
     ON_CALL(*environment, GetBoundLocalEndpoint())
         .WillByDefault(
             Return(IPEndpoint{IPAddress::Parse("127.0.0.1").value(), 12345}));
@@ -407,6 +406,29 @@ TEST_F(SenderSessionTest, HandlesValidAnswer) {
   message_port_->ReceiveMessage(answer);
 }
 
+TEST_F(SenderSessionTest, HandlesStreamTypes) {
+  NegotiateMirroringWithValidConfigs();
+  std::string answer = ConstructAnswerFromOffer(CastMode::kMirroring);
+
+  // Valid and successful negotiations should result in senders that are
+  // configured with the proper StreamType.
+  ON_CALL(client_, OnNegotiated(session_.get(), _, _))
+      .WillByDefault(
+          Invoke([&](const SenderSession* sender_session,
+                     SenderSession::ConfiguredSenders senders,
+                     capture_recommendations::Recommendations recommendations) {
+            StreamType audio_stream_type =
+                senders.audio_sender->config().stream_type;
+            StreamType video_stream_type =
+                senders.video_sender->config().stream_type;
+
+            EXPECT_EQ(audio_stream_type, StreamType::kAudio);
+            EXPECT_EQ(video_stream_type, StreamType::kVideo);
+          }));
+  EXPECT_CALL(client_, OnNegotiated(session_.get(), _, _));
+  message_port_->ReceiveMessage(answer);
+}
+
 TEST_F(SenderSessionTest, HandlesInvalidNamespace) {
   NegotiateMirroringWithValidConfigs();
   std::string answer = ConstructAnswerFromOffer(CastMode::kMirroring);
@@ -617,5 +639,4 @@ TEST_F(SenderSessionTest, SuccessfulGetCapabilitiesRequest) {
   EXPECT_THAT(capabilities.video, testing::ElementsAre(VideoCapability::kVp8));
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

@@ -6,26 +6,29 @@
 import os
 
 import common
+import pngdiffer
 
 
 class Suppressor:
 
-  def __init__(self, finder, features, js_disabled, xfa_disabled):
+  def __init__(self, finder, features, js_disabled, xfa_disabled,
+               rendering_option):
     self.has_v8 = not js_disabled and 'V8' in features
     self.has_xfa = not js_disabled and not xfa_disabled and 'XFA' in features
-    self.has_skia = 'SKIA' in features
+    self.rendering_option = rendering_option
     self.suppression_set = self._LoadSuppressedSet('SUPPRESSIONS', finder)
     self.image_suppression_set = self._LoadSuppressedSet(
         'SUPPRESSIONS_IMAGE_DIFF', finder)
+    self.exact_matching_suppression_set = self._LoadSuppressedSet(
+        'SUPPRESSIONS_EXACT_MATCHING', finder)
 
   def _LoadSuppressedSet(self, suppressions_filename, finder):
     v8_option = "v8" if self.has_v8 else "nov8"
     xfa_option = "xfa" if self.has_xfa else "noxfa"
-    rendering_option = "skia" if self.has_skia else "agg"
     with open(os.path.join(finder.TestingDir(), suppressions_filename)) as f:
       return set(
-          self._FilterSuppressions(common.os_name(), v8_option,
-                                   xfa_option, rendering_option,
+          self._FilterSuppressions(common.os_name(), v8_option, xfa_option,
+                                   self.rendering_option,
                                    self._ExtractSuppressions(f)))
 
   def _ExtractSuppressions(self, f):
@@ -70,3 +73,9 @@ class Suppressor:
       print("%s image diff comparison is suppressed" % input_filename)
       return True
     return False
+
+  def GetImageMatchingAlgorithm(self, input_filename):
+    if input_filename in self.exact_matching_suppression_set:
+      print(f"{input_filename} image diff comparison is fuzzy")
+      return pngdiffer.FUZZY_MATCHING
+    return pngdiffer.EXACT_MATCHING

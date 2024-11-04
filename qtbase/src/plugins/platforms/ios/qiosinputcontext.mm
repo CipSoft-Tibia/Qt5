@@ -18,6 +18,8 @@
 #include <QGuiApplication>
 #include <QtGui/private/qwindow_p.h>
 
+#include <QtCore/qpointer.h>
+
 // -------------------------------------------------------------------------
 
 static QUIView *focusView()
@@ -174,7 +176,11 @@ static QUIView *focusView()
 {
     [super touchesBegan:touches withEvent:event];
 
-    Q_ASSERT(m_context->isInputPanelVisible());
+    if (!m_context->isInputPanelVisible()) {
+        qImDebug("keyboard was hidden by sliding it down, disabling hide-keyboard gesture");
+        self.enabled = NO;
+        return;
+    }
 
     if ([touches count] != 1)
         self.state = UIGestureRecognizerStateFailed;

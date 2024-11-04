@@ -27,9 +27,11 @@
 #include <remote-shell-unstable-v1-server-protocol.h>
 #include <remote-shell-unstable-v2-server-protocol.h>
 #include <secure-output-unstable-v1-server-protocol.h>
+#include <single-pixel-buffer-v1-server-protocol.h>
 #include <stylus-tools-unstable-v1-server-protocol.h>
 #include <stylus-unstable-v2-server-protocol.h>
 #include <surface-augmenter-server-protocol.h>
+#include <sys/socket.h>
 #include <text-input-extension-unstable-v1-server-protocol.h>
 #include <text-input-unstable-v1-server-protocol.h>
 #include <touchpad-haptics-unstable-v1-server-protocol.h>
@@ -40,7 +42,6 @@
 #include <xdg-decoration-unstable-v1-server-protocol.h>
 #include <xdg-output-unstable-v1-server-protocol.h>
 #include <xdg-shell-server-protocol.h>
-#include <xdg-shell-unstable-v6-server-protocol.h>
 
 #include <linux-dmabuf-unstable-v1-server-protocol.h>
 #include <memory>
@@ -58,6 +59,7 @@
 #include "build/build_config.h"
 #include "components/exo/display.h"
 #include "components/exo/security_delegate.h"
+#include "components/exo/wayland/client_tracker.h"
 #include "components/exo/wayland/content_type.h"
 #include "components/exo/wayland/overlay_prioritizer.h"
 #include "components/exo/wayland/serial_tracker.h"
@@ -66,7 +68,6 @@
 #include "components/exo/wayland/wayland_display_output.h"
 #include "components/exo/wayland/wayland_dmabuf_feedback_manager.h"
 #include "components/exo/wayland/wayland_watcher.h"
-#include "components/exo/wayland/weston_test.h"
 #include "components/exo/wayland/wl_compositor.h"
 #include "components/exo/wayland/wl_data_device_manager.h"
 #include "components/exo/wayland/wl_output.h"
@@ -75,8 +76,10 @@
 #include "components/exo/wayland/wl_shm.h"
 #include "components/exo/wayland/wl_subcompositor.h"
 #include "components/exo/wayland/wp_presentation.h"
+#include "components/exo/wayland/wp_single_pixel_buffer.h"
 #include "components/exo/wayland/wp_viewporter.h"
 #include "components/exo/wayland/xdg_shell.h"
+#include "components/exo/wayland/zaura_output_manager.h"
 #include "components/exo/wayland/zaura_shell.h"
 #include "components/exo/wayland/zcr_alpha_compositing.h"
 #include "components/exo/wayland/zcr_color_manager.h"
@@ -105,7 +108,6 @@
 #include "components/exo/wayland/zwp_text_input_manager.h"
 #include "components/exo/wayland/zxdg_decoration_manager.h"
 #include "components/exo/wayland/zxdg_output_manager.h"
-#include "components/exo/wayland/zxdg_shell.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
 #include "ui/ozone/public/ozone_platform.h"
@@ -129,9 +131,13 @@ const base::FilePath::CharType kSocketName[] = FILE_PATH_LITERAL("wayland-0");
 // Group used for wayland socket.
 const char kWaylandSocketGroup[] = "wayland";
 
-// Directory name where all custom wayland sockets will live.
-constexpr base::FilePath::CharType kCustomServerDir[] =
-    FILE_PATH_LITERAL("wayland");
+// Number of clients that can be waiting for accept() before we start refusing
+// connections. This is *NOT* the maximum number of clients, just pending ones
+// (see `man 2 listen`).
+constexpr int kMaxPendingConnections = 128;
+
+// Callback used to find a Server instance for a given wl_display.
+Server::ServerGetter g_server_getter;
 
 bool IsDrmAtomicAvailable() {
 #if BUILDFLAG(IS_OZONE)
@@ -149,88 +155,68 @@ void wayland_log(const char* fmt, va_list argp) {
   LOG(WARNING) << "libwayland: " << base::StringPrintV(fmt, argp);
 }
 
-// Custom wayland sockets are stored at:
-//
-//              /<sibling>/wayland/<context>/<unique>/<socket>
-//
-// where:
-//  - "sibling" is a sibling of the $XDG_RUNTIME_DIR
-//  - "context" is a directory to be bind-mounted into whatever namespace needs
-//    access to the wayland server.
-//  - "unique" is a directory created to prevent collisions of servers in the
-//    same context.
-//  - "socket" is the name of the wayland socket, usually "wayland-0"
-// This is documented in go/secure-exo-ids. Returns "true" if |out_temp_dir| was
-// successfully initialized.
-bool InitServerDirectory(const SecurityDelegate& security_delegate,
-                         base::ScopedTempDir& out_temp_dir) {
-  char* xdg_dir_str = getenv("XDG_RUNTIME_DIR");
-  if (!xdg_dir_str) {
-    LOG(ERROR) << "XDG_RUNTIME_DIR is not set.";
-    return false;
+int GetTextInputExtensionV1Version() {
+  if (base::FeatureList::IsEnabled(
+          ash::features::kExoExtendedConfirmComposition) &&
+      base::FeatureList::IsEnabled(ash::features::kExoSurroundingTextOffset)) {
+    // set_surrounding_text_offset_utf16 + new surrounding_text_support
+    // strategy enabled once at version 10 was reverted (crbug.com/1451324).
+    // Unfortunately, we have to disable confirm-composition in version 11
+    // together, because of wayland's versioning system.
+    //
+    // Now, the new API to fix the issue is introduced in version 12.
+    // We cannot enable confirm-composition only, because it will be hitting
+    // the same issue at version 10. Thus, we'll set version 12 (including
+    // all fixes + confirm-composition), or 9 (before everything).
+
+    // If GIF support is also enabled, we need version 13.
+    if (base::FeatureList::IsEnabled(
+            ash::features::kImeSystemEmojiPickerGIFSupport)) {
+      return 13;
+    }
+
+    return 12;
   }
-  std::string security_context = security_delegate.GetSecurityContext();
-  if (security_context.empty()) {
-    LOG(ERROR) << "Providing an empty security context is an error.";
-    return false;
-  }
-  base::FilePath parent_path = base::FilePath(xdg_dir_str)
-                                   .DirName()
-                                   .Append(kCustomServerDir)
-                                   .Append(security_context);
-  if (!out_temp_dir.CreateUniqueTempDirUnderPath(parent_path)) {
-    LOG(ERROR) << "Unable to create runtime directory under " << parent_path;
-    return false;
-  }
-  if (!base::SetPosixFilePermissions(out_temp_dir.GetPath(), 0755)) {
-    LOG(ERROR) << "Could not set permissions for directory "
-               << out_temp_dir.GetPath()
-               << ", deleted=" << out_temp_dir.Delete();
-    return false;
-  }
-  return true;
+
+  return 9;
 }
 
 }  // namespace
 
-bool Server::Open(bool default_path) {
+bool Server::Open() {
   std::string socket_name = kSocketName;
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-  if (command_line->HasSwitch(switches::kWaylandServerSocket))
+  if (command_line->HasSwitch(switches::kWaylandServerSocket)) {
     socket_name =
         command_line->GetSwitchValueASCII(switches::kWaylandServerSocket);
-
-  if (default_path) {
-    char* runtime_dir_str = getenv("XDG_RUNTIME_DIR");
-    if (!runtime_dir_str) {
-      LOG(ERROR) << "XDG_RUNTIME_DIR not set in the environment";
-      return false;
-    }
-    socket_path_ = base::FilePath(runtime_dir_str).Append(socket_name);
-  } else {
-    if (!InitServerDirectory(*security_delegate_, socket_dir_)) {
-      return false;
-    }
-    socket_path_ = socket_dir_.GetPath().Append(socket_name);
   }
-  if (!socket_path_.IsAbsolute()) {
+
+  char* runtime_dir_str = getenv("XDG_RUNTIME_DIR");
+  if (!runtime_dir_str) {
+    LOG(ERROR) << "XDG_RUNTIME_DIR not set in the environment";
+    return false;
+  }
+  base::FilePath socket_path =
+      base::FilePath(runtime_dir_str).Append(socket_name);
+
+  if (!socket_path.IsAbsolute()) {
     LOG(ERROR) << "Unable to create a wayland server. The provided path must "
                   "be absolute, got: "
-               << socket_path_;
+               << socket_path;
     return false;
   }
 
   // On debugging chromeos-chrome on linux platform,
   // try to ensure the directory if missing.
   if (!base::SysInfo::IsRunningOnChromeOS()) {
-    base::FilePath runtime_dir = socket_path_.DirName();
+    base::FilePath runtime_dir = socket_path.DirName();
     CHECK(base::DirectoryExists(runtime_dir) ||
           base::CreateDirectory(runtime_dir))
         << "Failed to create " << runtime_dir;
   }
 
-  if (!AddSocket(socket_path_.MaybeAsASCII().c_str())) {
-    LOG(ERROR) << "Failed to add socket: " << socket_path_;
+  if (!AddSocket(socket_path.MaybeAsASCII().c_str())) {
+    LOG(ERROR) << "Failed to add socket: " << socket_path;
     return false;
   }
 
@@ -244,7 +230,7 @@ bool Server::Open(bool default_path) {
     return false;
   }
   if (wayland_group_res) {
-    if (HANDLE_EINTR(chown(socket_path_.MaybeAsASCII().c_str(), -1,
+    if (HANDLE_EINTR(chown(socket_path.MaybeAsASCII().c_str(), -1,
                            wayland_group.gr_gid)) < 0) {
       PLOG(ERROR) << "chown";
       return false;
@@ -253,10 +239,27 @@ bool Server::Open(bool default_path) {
     LOG(WARNING) << "Group '" << kWaylandSocketGroup << "' not found";
   }
 
-  if (!base::SetPosixFilePermissions(socket_path_, 0660)) {
-    PLOG(ERROR) << "Could not set permissions: " << socket_path_.value();
+  if (!base::SetPosixFilePermissions(socket_path, 0660)) {
+    PLOG(ERROR) << "Could not set permissions: " << socket_path.value();
     return false;
   }
+  return true;
+}
+
+bool Server::OpenFd(base::ScopedFD fd) {
+  if (listen(fd.get(), kMaxPendingConnections) != 0) {
+    PLOG(ERROR) << "listen";
+    return false;
+  }
+
+  if (wl_display_add_socket_fd(wl_display_.get(), fd.get()) != 0) {
+    PLOG(ERROR) << "Failed to add socket " << fd.get() << " to wl_display";
+    return false;
+  }
+
+  // wl_display will only close() a socket that it successfully added, so is is
+  // only safe to release() at this point
+  std::ignore = fd.release();
   return true;
 }
 
@@ -270,10 +273,13 @@ Server::Server(Display* display,
 
   wl_display_.reset(wl_display_create());
   SetSecurityDelegate(wl_display_.get(), security_delegate_.get());
+
+  client_tracker_ = std::make_unique<ClientTracker>(wl_display_.get());
 }
 
 void Server::Initialize() {
   serial_tracker_ = std::make_unique<SerialTracker>(wl_display_.get());
+  rotation_serial_tracker_ = std::make_unique<SerialTracker>(wl_display_.get());
   wl_global_create(wl_display_.get(), &wl_compositor_interface,
                    kWlCompositorVersion, this, bind_compositor);
   wl_global_create(wl_display_.get(), &wl_shm_interface, 1, display_, bind_shm);
@@ -284,10 +290,19 @@ void Server::Initialize() {
                      wayland_feedback_manager_->GetVersionSupportedByPlatform(),
                      wayland_feedback_manager_.get(), bind_linux_dmabuf);
   }
+
+  // aura_output_manager needs to be registered before the wl_output globals to
+  // ensure clients can bind to the aura_output_manager before any wl_outputs.
+  // This is necessary to ensure aura_output_manager can send relevant output
+  // events immediately after an output is bound to the client and before the
+  // data in these events might be needed by the client.
+  wl_global_create(wl_display_.get(), &zaura_output_manager_interface,
+                   kZAuraOutputManagerVersion, this, bind_aura_output_manager);
   wl_global_create(wl_display_.get(), &wl_subcompositor_interface, 1, display_,
                    bind_subcompositor);
-  for (const auto& display : display::Screen::GetScreen()->GetAllDisplays())
+  for (const auto& display : display::Screen::GetScreen()->GetAllDisplays()) {
     OnDisplayAdded(display);
+  }
   wl_global_create(wl_display_.get(), &zcr_vsync_feedback_v1_interface, 1,
                    display_, bind_vsync_feedback);
 
@@ -299,6 +314,9 @@ void Server::Initialize() {
 
   wl_global_create(wl_display_.get(), &surface_augmenter_interface,
                    kSurfaceAugmenterVersion, display_, bind_surface_augmenter);
+  wl_global_create(
+      wl_display_.get(), &wp_single_pixel_buffer_manager_v1_interface,
+      kSinglePixelBufferVersion, display_, bind_single_pixel_buffer);
   wl_global_create(wl_display_.get(), &overlay_prioritizer_interface, 1,
                    display_, bind_overlay_prioritizer);
   wl_global_create(wl_display_.get(), &wp_viewporter_interface, 1, display_,
@@ -375,7 +393,6 @@ void Server::Initialize() {
   wl_global_create(wl_display_.get(), &zwp_idle_inhibit_manager_v1_interface, 1,
                    display_, bind_zwp_idle_inhibit_manager);
 
-  weston_test_holder_ = std::make_unique<WestonTest>(this);
   ui_controls_holder_ = std::make_unique<UiControls>(this);
 
   zcr_keyboard_extension_data_ =
@@ -394,17 +411,13 @@ void Server::Initialize() {
 
   zcr_text_input_extension_data_ =
       std::make_unique<WaylandTextInputExtension>();
-  wl_global_create(wl_display_.get(), &zcr_text_input_extension_v1_interface, 7,
+  wl_global_create(wl_display_.get(), &zcr_text_input_extension_v1_interface,
+                   GetTextInputExtensionV1Version(),
                    zcr_text_input_extension_data_.get(),
                    bind_text_input_extension);
 
-  zxdg_shell_data_ =
-      std::make_unique<WaylandZxdgShell>(display_, serial_tracker_.get());
-  wl_global_create(wl_display_.get(), &zxdg_shell_v6_interface, 1,
-                   zxdg_shell_data_.get(), bind_zxdg_shell_v6);
-
-  xdg_shell_data_ =
-      std::make_unique<WaylandXdgShell>(display_, serial_tracker_.get());
+  xdg_shell_data_ = std::make_unique<WaylandXdgShell>(
+      display_, serial_tracker_.get(), rotation_serial_tracker_.get());
   wl_global_create(wl_display_.get(), &xdg_wm_base_interface, 3,
                    xdg_shell_data_.get(), bind_xdg_shell);
 
@@ -415,9 +428,10 @@ void Server::Initialize() {
 void Server::Finalize(StartCallback callback, bool success) {
   // At this point, server creation was successful, so we should instantiate the
   // watcher.
-  if (success)
+  if (success) {
     wayland_watcher_ = std::make_unique<wayland::WaylandWatcher>(this);
-  std::move(callback).Run(success, socket_path_);
+  }
+  std::move(callback).Run(success);
 }
 
 Server::~Server() {
@@ -442,40 +456,31 @@ std::unique_ptr<Server> Server::Create(
   return server;
 }
 
-// static
-void Server::DestroyAsync(std::unique_ptr<Server> server) {
-  // We must delete the actual server on the same thread as it was created on,
-  // so we defer deleting its temporary directory by moving it out of the server
-  // first and deleting it on a blocking thread.
-  base::ScopedTempDir socket_dir = std::move(server->socket_dir_);
-  server.reset();
-  base::ThreadPool::PostTask(
-      FROM_HERE, base::MayBlock(),
-      base::BindOnce(
-          [](base::ScopedTempDir socket_dir) {
-            if (socket_dir.IsValid() && !socket_dir.Delete()) {
-              LOG(ERROR) << "Failed to remove server directory: "
-                         << socket_dir.GetPath();
-            }
-          },
-          std::move(socket_dir)));
+// static.
+Server* Server::GetServerForDisplay(wl_display* display) {
+  return g_server_getter ? g_server_getter.Run(display) : nullptr;
 }
 
-void Server::StartAsync(StartCallback callback) {
-  base::ThreadPool::PostTaskAndReplyWithResult(
-      FROM_HERE, base::MayBlock(),
-      base::BindOnce(&Server::Open, base::Unretained(this),
-                     /*default_path=*/false),
-      base::BindOnce(&Server::Finalize, base::Unretained(this),
-                     std::move(callback)));
+// static.
+void Server::SetServerGetter(Server::ServerGetter server_getter) {
+  CHECK(!server_getter || !g_server_getter);
+  g_server_getter = std::move(server_getter);
 }
 
 void Server::StartWithDefaultPath(StartCallback callback) {
-  if (!Open(/*default_path=*/true)) {
-    std::move(callback).Run(/*success=*/false, socket_path_);
+  if (!Open()) {
+    std::move(callback).Run(/*success=*/false);
     return;
   }
   Finalize(std::move(callback), /*success=*/true);
+}
+
+void Server::StartWithFdAsync(base::ScopedFD fd, StartCallback callback) {
+  base::ThreadPool::PostTaskAndReplyWithResult(
+      FROM_HERE, base::MayBlock(),
+      base::BindOnce(&Server::OpenFd, base::Unretained(this), std::move(fd)),
+      base::BindOnce(&Server::Finalize, base::Unretained(this),
+                     std::move(callback)));
 }
 
 bool Server::AddSocket(const std::string& name) {
@@ -519,9 +524,14 @@ void Server::OnDisplayRemoved(const display::Display& old_display) {
 wl_resource* Server::GetOutputResource(wl_client* client, int64_t display_id) {
   DCHECK_NE(display_id, display::kInvalidDisplayId);
   auto iter = outputs_.find(display_id);
-  if (iter == outputs_.end())
+  if (iter == outputs_.end()) {
     return nullptr;
+  }
   return iter->second.get()->GetOutputResourceForClient(client);
+}
+
+bool Server::IsClientDestroyed(wl_client* client) const {
+  return client_tracker_->IsClientDestroyed(client);
 }
 
 void Server::AddWaylandOutput(int64_t id,

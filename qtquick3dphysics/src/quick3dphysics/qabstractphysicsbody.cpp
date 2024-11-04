@@ -25,6 +25,11 @@ QT_BEGIN_NAMESPACE
     This property defines how the body behaves when it collides with or slides against other bodies in the simulation.
 */
 
+/*!
+    \qmlproperty bool PhysicsBody::simulationEnabled
+    This property defines if the body will partake in the physical simulation.
+*/
+
 QAbstractPhysicsBody::QAbstractPhysicsBody()
 {
     m_physicsMaterial = new QPhysicsMaterial(this);
@@ -41,6 +46,19 @@ void QAbstractPhysicsBody::setPhysicsMaterial(QPhysicsMaterial *newPhysicsMateri
         return;
     m_physicsMaterial = newPhysicsMaterial;
     emit physicsMaterialChanged();
+}
+
+bool QAbstractPhysicsBody::simulationEnabled() const
+{
+    return m_simulationEnabled;
+}
+
+void QAbstractPhysicsBody::setSimulationEnabled(bool newSimulationEnabled)
+{
+    if (m_simulationEnabled == newSimulationEnabled)
+        return;
+    m_simulationEnabled = newSimulationEnabled;
+    emit simulationEnabledChanged();
 }
 
 QT_END_NAMESPACE

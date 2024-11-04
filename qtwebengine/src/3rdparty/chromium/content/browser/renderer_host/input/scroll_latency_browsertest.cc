@@ -9,6 +9,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/test/test_trace_processor.h"
 #include "build/build_config.h"
 #include "cc/base/switches.h"
 #include "content/browser/renderer_host/input/synthetic_gesture.h"
@@ -107,9 +108,6 @@ class ScrollLatencyBrowserTest : public ContentBrowserTest {
  protected:
   void SetUpCommandLine(base::CommandLine* command_line) override {
     ContentBrowserTest::SetUpCommandLine(command_line);
-    if (disable_threaded_scrolling_) {
-      command_line->AppendSwitch(::blink::switches::kDisableThreadedScrolling);
-    }
     // Set the scroll animation duration to a large number so that
     // we ensure secondary GestureScrollUpdates update the animation
     // instead of starting a new one.
@@ -203,7 +201,6 @@ class ScrollLatencyBrowserTest : public ContentBrowserTest {
   }
 
   std::unique_ptr<base::RunLoop> run_loop_;
-  bool disable_threaded_scrolling_ = false;
 
  protected:
   base::HistogramTester histogram_tester_;
@@ -212,7 +209,8 @@ class ScrollLatencyBrowserTest : public ContentBrowserTest {
 
 // Disabled due to flakiness https://crbug.com/1163246.
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || \
-    BUILDFLAG(IS_ANDROID)
+    BUILDFLAG(IS_ANDROID) ||                                         \
+    (BUILDFLAG(IS_CHROMEOS) && defined(ADDRESS_SANITIZER))
 #define MAYBE_MultipleWheelScroll DISABLED_MultipleWheelScroll
 #else
 #define MAYBE_MultipleWheelScroll MultipleWheelScroll
@@ -221,19 +219,6 @@ class ScrollLatencyBrowserTest : public ContentBrowserTest {
 // Perform a smooth wheel scroll, and verify that our end-to-end wheel latency
 // metrics are recorded. See crbug.com/599910 for details.
 IN_PROC_BROWSER_TEST_F(ScrollLatencyBrowserTest, MAYBE_MultipleWheelScroll) {
-  LoadURL();
-  RunMultipleWheelScroll();
-}
-
-// Disabled due to flakiness https://crbug.com/1163246 and https://crbug.com/1349901
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_MAC)
-#define MAYBE_MultipleWheelScrollOnMain DISABLED_MultipleWheelScrollOnMain
-#else
-#define MAYBE_MultipleWheelScrollOnMain MultipleWheelScrollOnMain
-#endif
-IN_PROC_BROWSER_TEST_F(ScrollLatencyBrowserTest,
-                       MAYBE_MultipleWheelScrollOnMain) {
-  disable_threaded_scrolling_ = true;
   LoadURL();
   RunMultipleWheelScroll();
 }
@@ -282,6 +267,39 @@ IN_PROC_BROWSER_TEST_F(ScrollLatencyBrowserTest,
       0, "EventLatency.GestureScrollUpdate.TotalLatency"));
 }
 
+#if BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
+// A basic smoke test verifying that key scroll-related events are recorded
+// during scrolling. This test performs a simple scroll and expects to see three
+// EventLatency events with the correct types.
+IN_PROC_BROWSER_TEST_F(ScrollLatencyBrowserTest, ScrollingEventLatencyTrace) {
+  LoadURL();
+  base::test::TestTraceProcessor ttp;
+  ttp.StartTrace("input.scrolling");
+  DoSmoothWheelScroll(gfx::Vector2d(0, 100));
+  while (!VerifyRecordedSamplesForHistogram(
+      1, "EventLatency.GestureScrollUpdate.TotalLatency2")) {
+    GiveItSomeTime();
+    FetchHistogramsFromChildProcesses();
+  }
+  absl::Status status = ttp.StopAndParseTrace();
+  ASSERT_TRUE(status.ok()) << status.message();
+  std::string query =
+      R"(
+      SELECT EXTRACT_ARG(arg_set_id, 'event_latency.event_type') AS type
+      FROM slice
+      WHERE name = 'EventLatency'
+      )";
+  auto result = ttp.RunQuery(query);
+  ASSERT_TRUE(result.has_value()) << result.error();
+  EXPECT_THAT(result.value(),
+              ::testing::ElementsAre(
+                  std::vector<std::string>{"type"},
+                  std::vector<std::string>{"GESTURE_SCROLL_BEGIN"},
+                  std::vector<std::string>{"FIRST_GESTURE_SCROLL_UPDATE"},
+                  std::vector<std::string>{"GESTURE_SCROLL_UPDATE"}));
+}
+#endif  // BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
+
 class ScrollLatencyScrollbarBrowserTest : public ScrollLatencyBrowserTest {
  public:
   ScrollLatencyScrollbarBrowserTest() = default;
@@ -293,13 +311,8 @@ class ScrollLatencyScrollbarBrowserTest : public ScrollLatencyBrowserTest {
     // The following features need to be disabled:
     // - kOverlayScrollbar since overlay scrollbars are not hit-testable (thus
     // input is not routed to scrollbars).
-    // - kCompositorThreadedScrollbarScrolling since this feature is already
-    // tested by ScrollLatencyCompositedScrollbarBrowserTest. Hence, this
-    // current test can be used exclusively to test the main thread scrollbar
-    // path.
     scoped_feature_list_.InitWithFeaturesAndParameters(
-        {}, {features::kOverlayScrollbar,
-             features::kCompositorThreadedScrollbarScrolling});
+        {}, {features::kOverlayScrollbar});
   }
 
   ~ScrollLatencyScrollbarBrowserTest() override = default;
@@ -369,37 +382,17 @@ class ScrollLatencyScrollbarBrowserTest : public ScrollLatencyBrowserTest {
 #endif  // !BUILDFLAG(IS_ANDROID)
   }
 
-  virtual bool DoesScrollbarScrollOnMainThread() const { return true; }
-
-  base::test::ScopedFeatureList scoped_feature_list_;
-};
-
-class ScrollLatencyCompositedScrollbarBrowserTest
-    : public ScrollLatencyScrollbarBrowserTest {
- public:
-  ScrollLatencyCompositedScrollbarBrowserTest() {}
-
-  void SetUpCommandLine(base::CommandLine* command_line) override {
-    ScrollLatencyScrollbarBrowserTest::SetUpCommandLine(command_line);
-    scoped_feature_list_.InitAndEnableFeature(
-        features::kCompositorThreadedScrollbarScrolling);
-  }
-
-  ~ScrollLatencyCompositedScrollbarBrowserTest() override {}
-
- protected:
-  bool DoesScrollbarScrollOnMainThread() const override { return false; }
-
   base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 // Crashes on Mac ASAN.  https://crbug.com/1188553
-#if BUILDFLAG(IS_MAC)
+// TODO(crbug.com/1188553): Flaky on Linux Wayland CI/CQ builders.
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 #define MAYBE_ScrollbarThumbDragLatency DISABLED_ScrollbarThumbDragLatency
 #else
 #define MAYBE_ScrollbarThumbDragLatency ScrollbarThumbDragLatency
 #endif
-IN_PROC_BROWSER_TEST_F(ScrollLatencyCompositedScrollbarBrowserTest,
+IN_PROC_BROWSER_TEST_F(ScrollLatencyScrollbarBrowserTest,
                        MAYBE_ScrollbarThumbDragLatency) {
   LoadURL();
 

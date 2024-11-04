@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,7 @@
 
 #include <algorithm>
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 PacketReceiveStatsTracker::PacketReceiveStatsTracker(int rtp_timebase)
     : rtp_timebase_(rtp_timebase) {}
@@ -75,5 +74,4 @@ void PacketReceiveStatsTracker::PopulateNextReport(RtcpReportBlock* report) {
   report->jitter = RtpTimeDelta::FromDuration(jitter_, rtp_timebase_);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

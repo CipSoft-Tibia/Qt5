@@ -1,6 +1,7 @@
 //
 // Copyright (C) 2016-2018 Google, Inc.
 // Copyright (C) 2016 LunarG, Inc.
+// Copyright (C) 2023 Mobica Limited.
 //
 // All rights reserved.
 //
@@ -41,7 +42,6 @@
 #include "hlslOpMap.h"
 #include "hlslTokenStream.h"
 
-namespace QtShaderTools {
 namespace glslang {
 
     class TFunctionDeclarator;
@@ -73,11 +73,12 @@ namespace glslang {
         bool acceptSamplerState();
         bool acceptFullySpecifiedType(TType&, const TAttributes&);
         bool acceptFullySpecifiedType(TType&, TIntermNode*& nodeList, const TAttributes&, bool forbidDeclarators = false);
-        bool acceptQualifier(TQualifier&);
+        bool acceptPreQualifier(TQualifier&);
+        bool acceptPostQualifier(TQualifier&);
         bool acceptLayoutQualifierList(TQualifier&);
         bool acceptType(TType&);
         bool acceptType(TType&, TIntermNode*& nodeList);
-        bool acceptTemplateVecMatBasicType(TBasicType&);
+        bool acceptTemplateVecMatBasicType(TBasicType&, TPrecisionQualifier&);
         bool acceptVectorTemplateType(TType&);
         bool acceptMatrixTemplateType(TType&);
         bool acceptTessellationDeclType(TBuiltInVariable&);
@@ -139,6 +140,5 @@ namespace glslang {
     };
 
 } // end namespace glslang
-} // end namespace QtShaderTools
 
 #endif // HLSLGRAMMAR_H_

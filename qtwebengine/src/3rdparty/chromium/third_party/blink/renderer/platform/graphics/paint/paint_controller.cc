@@ -74,15 +74,15 @@ void PaintController::EnsureChunk() {
 void PaintController::RecordHitTestData(const DisplayItemClient& client,
                                         const gfx::Rect& rect,
                                         TouchAction touch_action,
-                                        bool blocking_wheel) {
+                                        bool blocking_wheel,
+                                        cc::HitTestOpaqueness opaqueness) {
   if (rect.IsEmpty())
     return;
   PaintChunk::Id id(client.Id(), DisplayItem::kHitTest, current_fragment_);
   CheckNewChunkId(id);
   ValidateNewChunkClient(client);
   if (paint_chunker_.AddHitTestDataToCurrentChunk(
-          id, client, rect, touch_action, blocking_wheel)) {
-    RecordDebugInfo(client);
+          id, client, rect, touch_action, blocking_wheel, opaqueness)) {
     CheckNewChunk();
   }
 }
@@ -115,9 +115,10 @@ void PaintController::RecordScrollHitTestData(
 
 void PaintController::RecordSelection(
     absl::optional<PaintedSelectionBound> start,
-    absl::optional<PaintedSelectionBound> end) {
+    absl::optional<PaintedSelectionBound> end,
+    String debug_info) {
   DCHECK(start.has_value() || end.has_value());
-  paint_chunker_.AddSelectionToCurrentChunk(start, end);
+  paint_chunker_.AddSelectionToCurrentChunk(start, end, debug_info);
 }
 
 bool PaintController::UseCachedItemIfPossible(const DisplayItemClient& client,
@@ -742,6 +743,17 @@ void PaintController::CommitNewDisplayItems() {
   num_indexed_items_ = 0;
   num_sequential_matches_ = 0;
   num_out_of_order_matches_ = 0;
+
+  if (VLOG_IS_ON(1)) {
+    VLOG(1) << "PaintController::CommitNewDisplayItems() completed";
+    if (VLOG_IS_ON(3)) {
+      ShowDebugDataWithPaintRecords();
+    } else if (VLOG_IS_ON(2)) {
+      ShowDebugData();
+    } else if (VLOG_IS_ON(1)) {
+      ShowCompactDebugData();
+    }
+  }
 #endif
 }
 
@@ -781,18 +793,6 @@ void PaintController::FinishCycle() {
 
   for (auto& chunk : current_paint_artifact_->PaintChunks())
     chunk.client_is_just_created = false;
-
-#if DCHECK_IS_ON()
-  if (VLOG_IS_ON(1)) {
-    VLOG(1) << "PaintController::FinishCycle() completed";
-    if (VLOG_IS_ON(3))
-      ShowDebugDataWithPaintRecords();
-    else if (VLOG_IS_ON(2))
-      ShowDebugData();
-    else if (VLOG_IS_ON(1))
-      ShowCompactDebugData();
-  }
-#endif
 }
 
 size_t PaintController::ApproximateUnsharedMemoryUsage() const {

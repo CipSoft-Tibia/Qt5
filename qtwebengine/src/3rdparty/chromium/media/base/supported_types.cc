@@ -34,28 +34,38 @@
 #include "media/base/android/media_codec_util.h"  // nogncheck
 #endif
 
+#if BUILDFLAG(IS_WIN)
+#include "base/win/windows_version.h"
+#endif
+
 namespace media {
 
 namespace {
 
+template <typename T>
 class SupplementalProfileCache {
  public:
-  void UpdateCache(const base::flat_set<media::VideoCodecProfile>& profiles) {
+  void UpdateCache(const base::flat_set<T>& profiles) {
     base::AutoLock lock(profiles_lock_);
     profiles_ = profiles;
   }
-  bool IsProfileSupported(media::VideoCodecProfile profile) {
+  bool IsProfileSupported(T profile) {
     base::AutoLock lock(profiles_lock_);
     return profiles_.find(profile) != profiles_.end();
   }
 
  private:
   base::Lock profiles_lock_;
-  base::flat_set<media::VideoCodecProfile> profiles_ GUARDED_BY(profiles_lock_);
+  base::flat_set<T> profiles_ GUARDED_BY(profiles_lock_);
 };
 
-SupplementalProfileCache* GetSupplementalProfileCache() {
-  static base::NoDestructor<SupplementalProfileCache> cache;
+SupplementalProfileCache<VideoCodecProfile>* GetSupplementalProfileCache() {
+  static base::NoDestructor<SupplementalProfileCache<VideoCodecProfile>> cache;
+  return cache.get();
+}
+
+SupplementalProfileCache<AudioType>* GetSupplementalAudioTypeCache() {
+  static base::NoDestructor<SupplementalProfileCache<AudioType>> cache;
   return cache.get();
 }
 
@@ -220,6 +230,11 @@ bool IsHevcProfileSupported(const VideoType& type) {
     return true;
   }
 #endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  if (!base::FeatureList::IsEnabled(kPlatformHEVCDecoderSupport)) {
+    return false;
+  }
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
   return GetSupplementalProfileCache()->IsProfileSupported(type.profile);
 #else
   return true;
@@ -291,9 +306,19 @@ bool IsAACSupported(const AudioType& type) {
   return base::android::BuildInfo::GetInstance()->sdk_int() >=
          base::android::SDK_VERSION_P;
 #elif BUILDFLAG(IS_MAC)
-  if (__builtin_available(macOS 10.15, *))
-    return true;
+  return true;
+#elif BUILDFLAG(IS_WIN)
+  return base::win::GetVersion() >= base::win::Version::WIN11_22H2;
+#else
   return false;
+#endif
+}
+
+bool IsDolbyVisionProfileSupported(const VideoType& type) {
+#if BUILDFLAG(ENABLE_PLATFORM_HEVC) &&               \
+    BUILDFLAG(PLATFORM_HAS_OPTIONAL_HEVC_SUPPORT) && \
+    BUILDFLAG(ENABLE_PLATFORM_DOLBY_VISION)
+  return GetSupplementalProfileCache()->IsProfileSupported(type.profile);
 #else
   return false;
 #endif
@@ -337,10 +362,11 @@ bool IsDefaultSupportedVideoType(const VideoType& type) {
       return IsHevcProfileSupported(type);
     case VideoCodec::kMPEG4:
       return IsMPEG4Supported();
+    case VideoCodec::kDolbyVision:
+      return IsDolbyVisionProfileSupported(type);
     case VideoCodec::kUnknown:
     case VideoCodec::kVC1:
     case VideoCodec::kMPEG2:
-    case VideoCodec::kDolbyVision:
       return false;
   }
 }
@@ -370,9 +396,7 @@ bool IsDefaultSupportedAudioType(const AudioType& type) {
     case AudioCodec::kAMR_NB:
     case AudioCodec::kAMR_WB:
     case AudioCodec::kGSM_MS:
-    case AudioCodec::kEAC3:
     case AudioCodec::kALAC:
-    case AudioCodec::kAC3:
     case AudioCodec::kMpegHAudio:
     case AudioCodec::kUnknown:
       return false;
@@ -380,6 +404,13 @@ bool IsDefaultSupportedAudioType(const AudioType& type) {
     case AudioCodec::kDTSXP2:
     case AudioCodec::kDTSE:
 #if BUILDFLAG(ENABLE_PLATFORM_DTS_AUDIO)
+      return true;
+#else
+      return false;
+#endif
+    case AudioCodec::kAC3:
+    case AudioCodec::kEAC3:
+#if BUILDFLAG(ENABLE_PLATFORM_AC3_EAC3_AUDIO)
       return true;
 #else
       return false;
@@ -412,6 +443,10 @@ bool IsBuiltInVideoCodec(VideoCodec codec) {
 void UpdateDefaultSupportedVideoProfiles(
     const base::flat_set<media::VideoCodecProfile>& profiles) {
   GetSupplementalProfileCache()->UpdateCache(profiles);
+}
+
+void UpdateDefaultSupportedAudioTypes(const base::flat_set<AudioType>& types) {
+  GetSupplementalAudioTypeCache()->UpdateCache(types);
 }
 
 }  // namespace media

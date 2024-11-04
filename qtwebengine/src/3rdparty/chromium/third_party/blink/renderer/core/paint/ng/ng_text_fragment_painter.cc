@@ -12,24 +12,23 @@
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/layout/geometry/logical_rect.h"
 #include "third_party/blink/renderer/core/layout/layout_counter.h"
-#include "third_party/blink/renderer/core/layout/layout_ruby_run.h"
-#include "third_party/blink/renderer/core/layout/layout_ruby_text.h"
+#include "third_party/blink/renderer/core/layout/layout_ruby_column.h"
 #include "third_party/blink/renderer/core/layout/list_marker.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/layout_ng_text_combine.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_cursor.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_offset_mapping.h"
+#include "third_party/blink/renderer/core/layout/ng/layout_ng_ruby_text.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_physical_box_fragment.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_text_decoration_offset.h"
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_inline_text.h"
 #include "third_party/blink/renderer/core/mobile_metrics/mobile_friendliness_checker.h"
+#include "third_party/blink/renderer/core/paint/box_model_object_painter.h"
 #include "third_party/blink/renderer/core/paint/document_marker_painter.h"
-#include "third_party/blink/renderer/core/paint/highlight_painting_utils.h"
-#include "third_party/blink/renderer/core/paint/inline_text_box_painter.h"
-#include "third_party/blink/renderer/core/paint/list_marker_painter.h"
 #include "third_party/blink/renderer/core/paint/ng/ng_highlight_painter.h"
 #include "third_party/blink/renderer/core/paint/ng/ng_inline_paint_context.h"
 #include "third_party/blink/renderer/core/paint/ng/ng_text_decoration_painter.h"
 #include "third_party/blink/renderer/core/paint/ng/ng_text_painter.h"
+#include "third_party/blink/renderer/core/paint/object_painter.h"
 #include "third_party/blink/renderer/core/paint/paint_auto_dark_mode.h"
 #include "third_party/blink/renderer/core/paint/paint_info.h"
 #include "third_party/blink/renderer/core/paint/selection_bounds_recorder.h"
@@ -37,7 +36,6 @@
 #include "third_party/blink/renderer/core/style/applied_text_decoration.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/core/svg/svg_element.h"
-#include "third_party/blink/renderer/core/svg/svg_length_context.h"
 #include "third_party/blink/renderer/platform/fonts/character_range.h"
 #include "third_party/blink/renderer/platform/graphics/dom_node_id.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_context_state_saver.h"
@@ -125,9 +123,10 @@ bool ShouldPaintEmphasisMark(const ComputedStyle& style,
   if (!containing_block || !containing_block->IsRubyBase())
     return true;
   const LayoutObject* parent = containing_block->Parent();
-  if (!parent || !parent->IsRubyRun())
+  if (!parent || !parent->IsRubyColumn()) {
     return true;
-  const LayoutRubyText* ruby_text = To<LayoutRubyRun>(parent)->RubyText();
+  }
+  const auto* ruby_text = To<LayoutRubyColumn>(parent)->RubyText();
   if (!ruby_text)
     return true;
   if (!NGInlineCursor(*ruby_text))
@@ -139,6 +138,63 @@ bool ShouldPaintEmphasisMark(const ComputedStyle& style,
   return ruby_logical_side != style.GetTextEmphasisLineLogicalSide();
 }
 
+enum class DisclosureOrientation { kLeft, kRight, kUp, kDown };
+
+DisclosureOrientation GetDisclosureOrientation(const ComputedStyle& style,
+                                               bool is_open) {
+  // TODO(layout-dev): Sideways-lr and sideways-rl are not yet supported.
+  const auto mode = style.GetWritingMode();
+  DCHECK_NE(mode, WritingMode::kSidewaysRl);
+  DCHECK_NE(mode, WritingMode::kSidewaysLr);
+
+  if (is_open) {
+    if (blink::IsHorizontalWritingMode(mode)) {
+      return DisclosureOrientation::kDown;
+    }
+    return IsFlippedBlocksWritingMode(mode) ? DisclosureOrientation::kLeft
+                                            : DisclosureOrientation::kRight;
+  }
+  if (blink::IsHorizontalWritingMode(mode)) {
+    return style.IsLeftToRightDirection() ? DisclosureOrientation::kRight
+                                          : DisclosureOrientation::kLeft;
+  }
+  return style.IsLeftToRightDirection() ? DisclosureOrientation::kDown
+                                        : DisclosureOrientation::kUp;
+}
+
+Path CreatePath(const gfx::PointF* path) {
+  Path result;
+  result.MoveTo(gfx::PointF(path[0].x(), path[0].y()));
+  for (int i = 1; i < 4; ++i) {
+    result.AddLineTo(gfx::PointF(path[i].x(), path[i].y()));
+  }
+  return result;
+}
+
+Path GetCanonicalDisclosurePath(const ComputedStyle& style, bool is_open) {
+  constexpr gfx::PointF kLeftPoints[4] = {
+      {1.0f, 0.0f}, {0.14f, 0.5f}, {1.0f, 1.0f}, {1.0f, 0.0f}};
+  constexpr gfx::PointF kRightPoints[4] = {
+      {0.0f, 0.0f}, {0.86f, 0.5f}, {0.0f, 1.0f}, {0.0f, 0.0f}};
+  constexpr gfx::PointF kUpPoints[4] = {
+      {0.0f, 0.93f}, {0.5f, 0.07f}, {1.0f, 0.93f}, {0.0f, 0.93f}};
+  constexpr gfx::PointF kDownPoints[4] = {
+      {0.0f, 0.07f}, {0.5f, 0.93f}, {1.0f, 0.07f}, {0.0f, 0.07f}};
+
+  switch (GetDisclosureOrientation(style, is_open)) {
+    case DisclosureOrientation::kLeft:
+      return CreatePath(kLeftPoints);
+    case DisclosureOrientation::kRight:
+      return CreatePath(kRightPoints);
+    case DisclosureOrientation::kUp:
+      return CreatePath(kUpPoints);
+    case DisclosureOrientation::kDown:
+      return CreatePath(kDownPoints);
+  }
+
+  return Path();
+}
+
 }  // namespace
 
 void NGTextFragmentPainter::PaintSymbol(const LayoutObject* layout_object,
@@ -146,15 +202,53 @@ void NGTextFragmentPainter::PaintSymbol(const LayoutObject* layout_object,
                                         const PhysicalSize box_size,
                                         const PaintInfo& paint_info,
                                         const PhysicalOffset& paint_offset) {
-  PhysicalRect marker_rect(ListMarker::RelativeSymbolMarkerRect(
-      style, LayoutCounter::ListStyle(layout_object, style), box_size.width));
+  const AtomicString& type = LayoutCounter::ListStyle(layout_object, style);
+  PhysicalRect marker_rect(
+      ListMarker::RelativeSymbolMarkerRect(style, type, box_size.width));
   marker_rect.Move(paint_offset);
-  ListMarkerPainter::PaintSymbol(paint_info, layout_object, style,
-                                 marker_rect.ToLayoutRect());
+
+  DCHECK(layout_object);
+#if DCHECK_IS_ON()
+  if (layout_object->IsCounter()) {
+    DCHECK(To<LayoutCounter>(layout_object)->IsDirectionalSymbolMarker());
+  } else {
+    DCHECK(style.ListStyleType());
+    DCHECK(style.ListStyleType()->IsCounterStyle());
+  }
+#endif
+  GraphicsContext& context = paint_info.context;
+  Color color(layout_object->ResolveColor(GetCSSPropertyColor()));
+  if (BoxModelObjectPainter::ShouldForceWhiteBackgroundForPrintEconomy(
+          layout_object->GetDocument(), style)) {
+    color = TextPainterBase::TextColorForWhiteBackground(color);
+  }
+  // Apply the color to the list marker text.
+  context.SetFillColor(color);
+  context.SetStrokeColor(color);
+  context.SetStrokeStyle(kSolidStroke);
+  context.SetStrokeThickness(1.0f);
+  const gfx::Rect snapped_rect = ToPixelSnappedRect(marker_rect);
+  AutoDarkMode auto_dark_mode(
+      PaintAutoDarkMode(style, DarkModeFilter::ElementRole::kListSymbol));
+  if (type == keywords::kDisc) {
+    context.FillEllipse(gfx::RectF(snapped_rect), auto_dark_mode);
+  } else if (type == keywords::kCircle) {
+    context.StrokeEllipse(gfx::RectF(snapped_rect), auto_dark_mode);
+  } else if (type == keywords::kSquare) {
+    context.FillRect(snapped_rect, color, auto_dark_mode);
+  } else if (type == keywords::kDisclosureOpen ||
+             type == keywords::kDisclosureClosed) {
+    Path path =
+        GetCanonicalDisclosurePath(style, type == keywords::kDisclosureOpen);
+    path.Transform(AffineTransform::MakeScaleNonUniform(marker_rect.Width(),
+                                                        marker_rect.Height()));
+    path.Translate(gfx::Vector2dF(marker_rect.X(), marker_rect.Y()));
+    context.FillPath(path, auto_dark_mode);
+  } else {
+    NOTREACHED();
+  }
 }
 
-// This is copied from InlineTextBoxPainter::PaintSelection() but lacks of
-// ltr, expanding new line wrap or so which uses InlineTextBox functions.
 void NGTextFragmentPainter::Paint(const PaintInfo& paint_info,
                                   const PhysicalOffset& paint_offset) {
   const auto& text_item = *cursor_.CurrentItem();
@@ -187,6 +281,13 @@ void NGTextFragmentPainter::Paint(const PaintInfo& paint_info,
   if (UNLIKELY(text_combine))
     LayoutNGTextCombine::AssertStyleIsValid(style);
 #endif
+
+  ObjectPainter object_painter(*layout_object);
+  if (object_painter.ShouldRecordSpecialHitTestData(paint_info)) {
+    object_painter.RecordHitTestData(paint_info,
+                                     ToPixelSnappedRect(physical_box),
+                                     *text_item.GetDisplayItemClient());
+  }
 
   // Determine whether or not we’ll need a writing-mode rotation, but don’t
   // actually rotate until we reach the steps that need it.
@@ -282,21 +383,6 @@ void NGTextFragmentPainter::Paint(const PaintInfo& paint_info,
   }
 
   if (UNLIKELY(text_item.IsSymbolMarker())) {
-    if (!IsA<LayoutCounter>(layout_object)) {
-      // The NGInlineItem of marker might be Split(). To avoid calling
-      // PaintSymbol multiple times, only call it the first time. For an
-      // outside marker, this is when StartOffset is 0. But for an inside
-      // marker, the first StartOffset can be greater due to leading bidi
-      // control characters like U+202A/U+202B, U+202D/U+202E, U+2066/U+2067
-      // or U+2068.
-      DCHECK_LT(fragment_paint_info.from, fragment_paint_info.text.length());
-      for (unsigned i = 0; i < fragment_paint_info.from; ++i) {
-        if (!Character::IsBidiControl(
-                fragment_paint_info.text.CodepointAt(i))) {
-          return;
-        }
-      }
-    }
     PaintSymbol(layout_object, style, physical_box.size, paint_info,
                 physical_box.offset);
     return;
@@ -340,8 +426,8 @@ void NGTextFragmentPainter::Paint(const PaintInfo& paint_info,
                                              rotated_box, selection);
   NGHighlightPainter highlight_painter(
       fragment_paint_info, text_painter, decoration_painter, paint_info,
-      cursor_, *cursor_.CurrentItem(), rotation, rotated_box,
-      physical_box.offset, style, text_style, selection, is_printing);
+      cursor_, *cursor_.CurrentItem(), rotation, physical_box.offset, style,
+      text_style, selection, is_printing);
   if (paint_info.phase == PaintPhase::kForeground) {
     if (auto* mf_checker = MobileFriendlinessChecker::From(document)) {
       if (auto* text = DynamicTo<LayoutText>(*layout_object)) {

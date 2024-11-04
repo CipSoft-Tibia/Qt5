@@ -12,7 +12,9 @@ mojom("mojom") {
     "cros_healthd.mojom",
     "cros_healthd_diagnostics.mojom",
     "cros_healthd_events.mojom",
+    "cros_healthd_exception.mojom",
     "cros_healthd_probe.mojom",
+    "cros_healthd_routines.mojom",
     "nullable_primitives.mojom",
     "wilco_ec.mojom",
   ]

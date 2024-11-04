@@ -1,16 +1,9 @@
 // This file is generated from a similarly-named Perl script in the BoringSSL
 // source tree. Do not edit by hand.
 
-#if defined(__has_feature)
-#if __has_feature(memory_sanitizer) && !defined(OPENSSL_NO_ASM)
-#define OPENSSL_NO_ASM
-#endif
-#endif
+#include <openssl/asm_base.h>
 
-#if defined(__x86_64__) && !defined(OPENSSL_NO_ASM) && defined(__ELF__)
-#if defined(BORINGSSL_PREFIX)
-#include <boringssl_prefix_symbols_asm.h>
-#endif
+#if !defined(OPENSSL_NO_ASM) && defined(OPENSSL_X86_64) && defined(__ELF__)
 .text	
 
 
@@ -812,6 +805,7 @@ _vpaes_schedule_mangle:
 .align	16
 vpaes_set_encrypt_key:
 .cfi_startproc	
+_CET_ENDBR
 #ifdef BORINGSSL_DISPATCH_TEST
 .extern	BORINGSSL_function_hit
 .hidden BORINGSSL_function_hit
@@ -837,6 +831,7 @@ vpaes_set_encrypt_key:
 .align	16
 vpaes_set_decrypt_key:
 .cfi_startproc	
+_CET_ENDBR
 	movl	%esi,%eax
 	shrl	$5,%eax
 	addl	$5,%eax
@@ -861,6 +856,7 @@ vpaes_set_decrypt_key:
 .align	16
 vpaes_encrypt:
 .cfi_startproc	
+_CET_ENDBR
 #ifdef BORINGSSL_DISPATCH_TEST
 .extern	BORINGSSL_function_hit
 .hidden BORINGSSL_function_hit
@@ -880,6 +876,7 @@ vpaes_encrypt:
 .align	16
 vpaes_decrypt:
 .cfi_startproc	
+_CET_ENDBR
 	movdqu	(%rdi),%xmm0
 	call	_vpaes_preheat
 	call	_vpaes_decrypt_core
@@ -893,6 +890,7 @@ vpaes_decrypt:
 .align	16
 vpaes_cbc_encrypt:
 .cfi_startproc	
+_CET_ENDBR
 	xchgq	%rcx,%rdx
 	subq	$16,%rcx
 	jc	.Lcbc_abort
@@ -936,6 +934,7 @@ vpaes_cbc_encrypt:
 .align	16
 vpaes_ctr32_encrypt_blocks:
 .cfi_startproc	
+_CET_ENDBR
 
 	xchgq	%rcx,%rdx
 	testq	%rcx,%rcx
@@ -1020,6 +1019,7 @@ _vpaes_preheat:
 
 
 .type	_vpaes_consts,@object
+.section	.rodata
 .align	64
 _vpaes_consts:
 .Lk_inv:
@@ -1129,8 +1129,5 @@ _vpaes_consts:
 .byte	86,101,99,116,111,114,32,80,101,114,109,117,116,97,116,105,111,110,32,65,69,83,32,102,111,114,32,120,56,54,95,54,52,47,83,83,83,69,51,44,32,77,105,107,101,32,72,97,109,98,117,114,103,32,40,83,116,97,110,102,111,114,100,32,85,110,105,118,101,114,115,105,116,121,41,0
 .align	64
 .size	_vpaes_consts,.-_vpaes_consts
-#endif
-#if defined(__ELF__)
-// See https://www.airs.com/blog/archives/518.
-.section .note.GNU-stack,"",%progbits
+.text	
 #endif

@@ -78,7 +78,8 @@ class ConsentAuditorImplTest : public testing::Test {
   // Fake account ID for testing.
   const CoreAccountId kAccountId;
 
-  ConsentAuditorImplTest() : kAccountId("testing_account_id") {}
+  ConsentAuditorImplTest()
+      : kAccountId(CoreAccountId::FromGaiaId("testing_account_id")) {}
 
   void SetUp() override {
     CreateConsentAuditorImpl(std::make_unique<FakeConsentSyncBridge>());
@@ -99,7 +100,8 @@ class ConsentAuditorImplTest : public testing::Test {
  private:
   // Test helpers.
   base::SimpleTestClock test_clock_;
-  raw_ptr<FakeConsentSyncBridge> consent_sync_bridge_ = nullptr;
+  raw_ptr<FakeConsentSyncBridge, DanglingUntriaged> consent_sync_bridge_ =
+      nullptr;
 
   // Test object to be tested.
   std::unique_ptr<ConsentAuditorImpl> consent_auditor_;

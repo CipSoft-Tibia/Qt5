@@ -5,8 +5,9 @@
 #ifndef COMPONENTS_PASSWORD_MANAGER_CORE_COMMON_PASSWORD_MANAGER_FEATURES_H_
 #define COMPONENTS_PASSWORD_MANAGER_CORE_COMMON_PASSWORD_MANAGER_FEATURES_H_
 
-// This file defines all the base::FeatureList features for the Password Manager
-// module.
+// DON'T ADD NEW FEATURES here.
+// If the feature belongs logically to the browser process, put it into
+// components/password_manager/core/browser/features/password_features.h.
 
 #include "base/feature_list.h"
 #include "base/metrics/field_trial_params.h"
@@ -21,130 +22,93 @@ namespace password_manager::features {
 
 // All features in alphabetical order. The features should be documented
 // alongside the definition of their values in the .cc file.
-
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-BASE_DECLARE_FEATURE(kBiometricAuthenticationForFilling);
-#endif
-#if BUILDFLAG(IS_MAC)
-BASE_DECLARE_FEATURE(kBiometricAuthenticationInSettings);
-#endif
-BASE_DECLARE_FEATURE(kBiometricTouchToFill);
 BASE_DECLARE_FEATURE(kEnableOverwritingPlaceholderUsernames);
-BASE_DECLARE_FEATURE(kEnablePasswordsAccountStorage);
-BASE_DECLARE_FEATURE(kEnablePasswordGenerationForClearTextFields);
-BASE_DECLARE_FEATURE(kEnablePasswordManagerWithinFencedFrame);
-BASE_DECLARE_FEATURE(kFillingAcrossAffiliatedWebsites);
-BASE_DECLARE_FEATURE(kFillOnAccountSelect);
+
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 BASE_DECLARE_FEATURE(kForceInitialSyncWhenDecryptionFails);
 #endif
-BASE_DECLARE_FEATURE(kInferConfirmationPasswordField);
+BASE_DECLARE_FEATURE(kForgotPasswordFormSupport);
 #if BUILDFLAG(IS_IOS)
 BASE_DECLARE_FEATURE(kIOSPasswordUISplit);
-BASE_DECLARE_FEATURE(kIOSPasswordManagerCrossOriginIframeSupport);
 BASE_DECLARE_FEATURE(kIOSPasswordCheckup);
-BASE_DECLARE_FEATURE(kIOSShowPasswordStorageInSaveInfobar);
+BASE_DECLARE_FEATURE(kIOSPasswordBottomSheet);
+BASE_DECLARE_FEATURE(kIOSPasswordSettingsBulkUploadLocalPasswords);
 #endif  // IS_IOS
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)  // Desktop
-BASE_DECLARE_FEATURE(kMemoryMapWeaknessCheckDictionaries);
-#endif
-BASE_DECLARE_FEATURE(kNewRegexForOtpFields);
-BASE_DECLARE_FEATURE(kPasswordViewPageInSettings);
+BASE_DECLARE_FEATURE(kPasswordIssuesInSpecificsMetadata);
 BASE_DECLARE_FEATURE(kSendPasswords);
-BASE_DECLARE_FEATURE(kLeakDetectionUnauthenticated);
 BASE_DECLARE_FEATURE(kPasswordChangeWellKnown);
-BASE_DECLARE_FEATURE(kPasswordImport);
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)  // Desktop
-BASE_DECLARE_FEATURE(kPasswordManagerRedesign);
-#endif
 BASE_DECLARE_FEATURE(kPasswordReuseDetectionEnabled);
-BASE_DECLARE_FEATURE(kPasswordsGrouping);
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)  // Desktop
+BASE_DECLARE_FEATURE(kPasswordGenerationExperiment);
+#endif
 BASE_DECLARE_FEATURE(kPasswordsImportM2);
-#endif
-BASE_DECLARE_FEATURE(kPasswordStrengthIndicator);
 BASE_DECLARE_FEATURE(kRecoverFromNeverSaveAndroid);
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)  // Desktop
-BASE_DECLARE_FEATURE(kRevampedPasswordManagementBubble);
-#endif
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-BASE_DECLARE_FEATURE(kSkipUndecryptablePasswords);
-#endif
+
 #if BUILDFLAG(IS_ANDROID)
+BASE_DECLARE_FEATURE(kPasskeyManagementUsingAccountSettingsAndroid);
 BASE_DECLARE_FEATURE(kPasswordEditDialogWithDetails);
-BASE_DECLARE_FEATURE(kShowUPMErrorNotification);
-BASE_DECLARE_FEATURE(kUnifiedCredentialManagerDryRun);
+BASE_DECLARE_FEATURE(kPasswordGenerationBottomSheet);
+BASE_DECLARE_FEATURE(kPasswordSuggestionBottomSheetV2);
 BASE_DECLARE_FEATURE(kUnifiedPasswordManagerAndroid);
-BASE_DECLARE_FEATURE(kUnifiedPasswordManagerErrorMessages);
+BASE_DECLARE_FEATURE(kUnifiedPasswordManagerLocalPasswordsAndroid);
+BASE_DECLARE_FEATURE(kUnifiedPasswordManagerLocalPasswordsMigrationWarning);
 BASE_DECLARE_FEATURE(kUnifiedPasswordManagerSyncUsingAndroidBackendOnly);
-BASE_DECLARE_FEATURE(kUnifiedPasswordManagerReenrollment);
 BASE_DECLARE_FEATURE(kUnifiedPasswordManagerAndroidBranding);
-BASE_DECLARE_FEATURE(kExploratorySaveUpdatePasswordStrings);
+BASE_DECLARE_FEATURE(kPasswordsInCredMan);
 #endif
 BASE_DECLARE_FEATURE(kUsernameFirstFlowFallbackCrowdsourcing);
-BASE_DECLARE_FEATURE(kPasswordGenerationPreviewOnHover);
+BASE_DECLARE_FEATURE(kUsernameFirstFlowHonorAutocomplete);
+BASE_DECLARE_FEATURE(kUsernameFirstFlowWithIntermediateValues);
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)  // Desktop
+BASE_DECLARE_FEATURE(kPasswordManagerPasskeys);
+#endif
 
 // All features parameters are in alphabetical order.
 
-// If true, then password strength indicator will display a minimized state for
-// passwords with more than 5 characters as long as they are weak. Otherwise,
-// the full dropdown will be displayed as long as the password is weak.
-constexpr base::FeatureParam<bool>
-    kPasswordStrengthIndicatorWithMinimizedState = {
-        &kPasswordStrengthIndicator, "strength_indicator_minimized", false};
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)  // Desktop
+// This enum supports enabling specific arms of the
+// `kPasswordGenerationExperiment` (go/strong-passwords-desktop).
+// Keep the order consistent with
+// `kPasswordGenerationExperimentVariationOption` below and with
+// `kPasswordGenerationExperimentVariations` in about_flags.cc.
+enum class PasswordGenerationVariation {
+  // Adjusts the language focusing on recommendation and security messaging.
+  kTrustedAdvice = 1,
+  // Adjusts the language making the suggestion softer and more guiding.
+  kSafetyFirst = 2,
+  // Adjusts the language adding a more persuasive and reassuring tone.
+  kTrySomethingNew = 3,
+  // Adjusts the language focusing on the convenience of use.
+  kConvenience = 4,
+  // Adjusts the language of the help text pointing out the benefits.
+  kCrossDevice = 5,
+  // Adds a row for switching to editing the suggested password directly.
+  kEditPassword = 6,
+  // Adds chunking generated passwords into smaller readable parts.
+  kChunkPassword = 7,
+};
+
+inline constexpr base::FeatureParam<PasswordGenerationVariation>::Option
+    kPasswordGenerationExperimentVariationOption[] = {
+        {PasswordGenerationVariation::kTrustedAdvice, "trusted_advice"},
+        {PasswordGenerationVariation::kSafetyFirst, "safety_first"},
+        {PasswordGenerationVariation::kTrySomethingNew, "try_something_new"},
+        {PasswordGenerationVariation::kConvenience, "convenience"},
+        {PasswordGenerationVariation::kCrossDevice, "cross_device"},
+        {PasswordGenerationVariation::kEditPassword, "edit_password"},
+        {PasswordGenerationVariation::kChunkPassword, "chunk_password"},
+};
+
+inline constexpr base::FeatureParam<PasswordGenerationVariation>
+    kPasswordGenerationExperimentVariationParam{
+        &kPasswordGenerationExperiment, "password_generation_variation",
+        PasswordGenerationVariation::kTrustedAdvice,
+        &kPasswordGenerationExperimentVariationOption};
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
 #if BUILDFLAG(IS_ANDROID)
-extern const base::FeatureParam<int> kMigrationVersion;
 
-// Current version of the GMS Core API errors lists. Users save this value on
-// eviction due to error and will only be re-enrolled to the experiment if the
-// configured version is greater than the saved one.
-constexpr base::FeatureParam<int> kGmsApiErrorListVersion = {
-    &kUnifiedPasswordManagerAndroid, "api_error_list_version", 1};
-
-// Current list of the GMS Core API error codes that should be ignored and not
-// result in user eviction.
-// Errors to ignore: AUTH_ERROR_RESOLVABLE, AUTH_ERROR_UNRESOLVABLE
-constexpr base::FeatureParam<std::string> kIgnoredGmsApiErrors = {
-    &kUnifiedPasswordManagerAndroid, "ignored_api_errors", "11005,11006"};
-
-// Current list of the GMS Core API error codes considered retriable.
-// User could still be evicted if retries do not resolve the error.
-// Retriable errors: NETWORK_ERROR, API_NOT_CONNECTED,
-// CONNECTION_SUSPENDED_DURING_CALL, RECONNECTION_TIMED_OUT,
-// BACKEND_GENERIC
-constexpr base::FeatureParam<std::string> kRetriableGmsApiErrors = {
-    &kUnifiedPasswordManagerAndroid, "retriable_api_errors",
-    "7,17,20,22,11009"};
-
-// Enables fallback to the Chrome built-in backend if the operation executed on
-// the GMS Core backend returns with error. Errors listed in the
-// |kIgnoredGmsApiErrors| will not fallback and will be directly returned to the
-// caller to be addressed in a specific way.
-
-// Fallback on AddLogin and UpdateLogin operations. This is default behaviour
-// since M103.
-constexpr base::FeatureParam<bool> kFallbackOnModifyingOperations = {
-    &kUnifiedPasswordManagerAndroid, "fallback_on_modifying_operations", true};
-
-// Fallback on RemoveLogin* operations.
-constexpr base::FeatureParam<bool> kFallbackOnRemoveOperations = {
-    &kUnifiedPasswordManagerAndroid, "fallback_on_remove_operations", false};
-
-// Fallback on FillMatchingLogins which is needed to perform autofill and could
-// affect user experience.
-constexpr base::FeatureParam<bool> kFallbackOnUserAffectingReadOperations = {
-    &kUnifiedPasswordManagerAndroid,
-    "fallback_on_user_affecting_read_operations", false};
-
-// Fallback on GetAllLogins* and GetAutofillableLogins operations which are
-// needed for certain features (e.g. PhishGuard) but do not affect the core
-// experience.
-constexpr base::FeatureParam<bool> kFallbackOnNonUserAffectingReadOperations = {
-    &kUnifiedPasswordManagerAndroid,
-    "fallback_on_non_user_affecting_read_operations", false};
-
-constexpr base::FeatureParam<UpmExperimentVariation>::Option
+inline constexpr base::FeatureParam<UpmExperimentVariation>::Option
     kUpmExperimentVariationOption[] = {
         {UpmExperimentVariation::kEnableForSyncingUsers, "0"},
         {UpmExperimentVariation::kShadowSyncingUsers, "1"},
@@ -152,18 +116,20 @@ constexpr base::FeatureParam<UpmExperimentVariation>::Option
         {UpmExperimentVariation::kEnableForAllUsers, "3"},
 };
 
-constexpr base::FeatureParam<UpmExperimentVariation>
+inline constexpr base::FeatureParam<UpmExperimentVariation>
     kUpmExperimentVariationParam{&kUnifiedPasswordManagerAndroid, "stage",
                                  UpmExperimentVariation::kEnableForSyncingUsers,
                                  &kUpmExperimentVariationOption};
 
-extern const base::FeatureParam<int> kMaxUPMReenrollments;
-extern const base::FeatureParam<int> kMaxUPMReenrollmentAttempts;
-
-extern const base::FeatureParam<bool> kIgnoreAuthErrorMessageTimeouts;
-extern const base::FeatureParam<int> kMaxShownUPMErrorsBeforeEviction;
-
 extern const base::FeatureParam<int> kSaveUpdatePromptSyncingStringVersion;
+
+// Whether to ignore the 1 month timeout in between migration warning prompts.
+// Used for manual testing.
+inline constexpr base::FeatureParam<bool> kIgnoreMigrationWarningTimeout = {
+    &kUnifiedPasswordManagerLocalPasswordsMigrationWarning,
+    "ignore_migration_warning_timeout", false};
+
+extern const base::FeatureParam<int> kLocalPasswordMigrationWarningPrefsVersion;
 #endif
 
 // Field trial and corresponding parameters.
@@ -197,11 +163,16 @@ bool UsesUnifiedPasswordManagerBranding();
 // that requires migrating existing credentials. Independent of
 // whether only non-syncable data needs to be migrated or full credentials.
 bool RequiresMigrationForUnifiedPasswordManager();
-
-// Returns true if the unified password manager feature is active and in a stage
-// that uses the unified storage for passwords that remain local on the device.
-bool ManagesLocalPasswordsInUnifiedPasswordManager();
 #endif  // IS_ANDROID
+
+#if BUILDFLAG(IS_IOS)
+// Returns true if the Password Checkup feature flag is enabled.
+bool IsPasswordCheckupEnabled();
+
+// Helper function returning the status of
+// `kIOSPasswordSettingsBulkUploadLocalPasswords`.
+bool IsBulkUploadLocalPasswordsEnabled();
+#endif  // IS_IOS
 
 }  // namespace password_manager::features
 

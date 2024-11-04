@@ -38,10 +38,12 @@ class ScrollableArea;
 
 class CORE_EXPORT LayoutCustomScrollbarPart final : public LayoutReplaced {
  public:
-  static LayoutCustomScrollbarPart* CreateAnonymous(Document*,
-                                                    ScrollableArea*,
-                                                    CustomScrollbar* = nullptr,
-                                                    ScrollbarPart = kNoPart);
+  static LayoutCustomScrollbarPart* CreateAnonymous(
+      Document*,
+      ScrollableArea*,
+      CustomScrollbar* = nullptr,
+      ScrollbarPart = kNoPart,
+      bool suppress_use_counters = false);
 
   void Trace(Visitor*) const override;
 
@@ -71,9 +73,9 @@ class CORE_EXPORT LayoutCustomScrollbarPart final : public LayoutReplaced {
   // Update the overridden location and size.
   void SetOverriddenFrameRect(const LayoutRect& rect);
   // Rerturn the overridden location set by SetOverriddenFrameRect();
-  LayoutPoint Location() const override;
+  LayoutPoint LocationInternal() const override;
   // Rerturn the overridden size set by SetOverriddenFrameRect();
-  LayoutSize Size() const override;
+  PhysicalSize Size() const override;
 
   LayoutUnit MarginTop() const override;
   LayoutUnit MarginBottom() const override;
@@ -90,7 +92,10 @@ class CORE_EXPORT LayoutCustomScrollbarPart final : public LayoutReplaced {
     return scrollable_area_;
   }
 
-  LayoutCustomScrollbarPart(ScrollableArea*, CustomScrollbar*, ScrollbarPart);
+  LayoutCustomScrollbarPart(ScrollableArea*,
+                            CustomScrollbar*,
+                            ScrollbarPart,
+                            bool suppress_use_counters);
 
  private:
   void UpdateFromStyle() override;
@@ -139,9 +144,7 @@ class CORE_EXPORT LayoutCustomScrollbarPart final : public LayoutReplaced {
 
   void RecordPercentLengthStats() const;
 
-  int ComputeSize(SizeType size_type,
-                  const Length& length,
-                  int container_size) const;
+  int ComputeSize(const Length& length, int container_size) const;
   int ComputeWidth(int container_width) const;
   int ComputeHeight(int container_height) const;
 
@@ -149,6 +152,7 @@ class CORE_EXPORT LayoutCustomScrollbarPart final : public LayoutReplaced {
   Member<CustomScrollbar> scrollbar_;
   LayoutRect overridden_rect_;
   ScrollbarPart part_;
+  bool suppress_use_counters_ = false;
 };
 
 template <>

@@ -27,14 +27,18 @@ module ax.mojom;
 
 // Keep these values in sync with AXEventType in
 // tools/metrics/histograms/enums.xml.
-// Next version: 1
-// Next value: 59
+// Next version: 2
+// Next value: 60
 [Extensible, Stable, Uuid="686e661e-f8c7-4214-8713-1f66d95d3ffa"]
 enum Event {
   [Default]kNone = 0,
   kActiveDescendantChanged = 1,
   kAlert = 2,
-  kAriaAttributeChanged = 3,   // Implicit
+  // TODO(crbug.com/1464633) Fully remove kAriaAttributeChangedDeprecated
+  // starting in 122, because although it was removed in 118, it is still
+  // present in earlier versions of LaCros. We can remove the enum as long as
+  // the ordinal value 3 is still skipped.
+  kAriaAttributeChangedDeprecated = 3,  // Deprecated: Do not use.
   kAutocorrectionOccured = 4,  // Unknown: http://crbug.com/392498
   kBlur = 5,                   // Remove: http://crbug.com/392502
   kCheckedStateChanged = 6,    // Implicit
@@ -559,8 +563,8 @@ enum Mutation {
   kSubtreeUpdateEnd,
 };
 
-// Next version: 3
-// Next value: 35
+// Next version: 4
+// Next value: 36
 [Extensible, Stable, Uuid="e5a4cd0c-3152-4427-93d5-35ff7d0f1ae8"]
 enum StringAttribute {
   [Default]kNone = 0,
@@ -593,6 +597,7 @@ enum StringAttribute {
   kKeyShortcuts = 19,
   // Only present when different from parent.
   kLanguage = 20,
+  [MinVersion=3] kLinkTarget = 35,  // E.g. "self", "blank", "top".
   [MinVersion=1] kLongClickLabel = 32, // Only for ARC
   kName = 21,
   kLiveRelevant = 22,
@@ -669,7 +674,9 @@ enum IntAttribute {
 
   // Relationships between this element and other elements.
   kActivedescendantId = 31,
-  kErrormessageId = 32,
+  // Obsolete, as aria-errormessage supports multiple IDREFs in
+  // WAI-ARIA 1.3.
+  kErrormessageIdDeprecated = 32,
   kInPageLinkTargetId = 33,
   kMemberOfId = 34,
   kNextOnLineId = 35,
@@ -793,8 +800,8 @@ enum FloatAttribute {
 //
 // Finally, note that different tree sources can use all three states for a
 // given attribute, while another tree source only uses two.
-// Next value: 22
-// Next Version: 2
+// Next value: 23
+// Next Version: 3
 [Extensible, Stable, Uuid="ed1f1b8c-c89c-483f-9840-ca3b10042e81"]
 enum BoolAttribute {
   [Default]kNone = 0,
@@ -864,17 +871,19 @@ enum BoolAttribute {
   // True if the node has any ARIA attributes set.
   kHasAriaAttribute = 19,
 
-  // This element allows touches to be passed through when a screen reader
-  // is in touch exploration mode, e.g. a virtual keyboard normally
-  // behaves this way.
-  kTouchPassthrough = 20,
+  // OBSOLETE - Do no use.
+  OBSOLETE_kTouchPassthrough = 20,
 
   // A hint to clients that the node is long clickable.
   [MinVersion=1] kLongClickable = 21,
+
+  // Android does not provide nodes that are not on screen.
+  // We need to distinguish containers that are like this.
+  [MinVersion=2] kHasHiddenOffscreenNodes,
 };
 
-// Next version: 4
-// Next value: 21
+// Next version: 6
+// Next value: 27
 [Extensible, Stable, Uuid="6d1f823f-28a9-4263-bc4a-69fb19a4ef46"]
 enum IntListAttribute {
   [Default]kNone = 0,
@@ -889,6 +898,7 @@ enum IntListAttribute {
   kControlsIds = 2,
   kDetailsIds = 3,
   kDescribedbyIds = 4,
+  [MinVersion=5] kErrormessageIds = 26,
   kFlowtoIds = 5,
   kLabelledbyIds = 6,
   kRadioGroupIds = 7,
@@ -933,6 +943,17 @@ enum IntListAttribute {
   // items. Developer can expose those actions as custom actions. Currently
   // custom actions are used only in Android window.
   kCustomActionIds = 15,
+
+  // These are used for serializing operations on text fields.
+  // They all correspond, in the sense that each position on the list
+  // correspond to that same position on all other lists, meaning they are
+  // are generated from the same individual operation, whether it was an
+  // insertion or a deletion.
+  [MinVersion=4] kTextOperationStartAnchorIds = 21,
+  [MinVersion=4] kTextOperationStartOffsets = 22,
+  [MinVersion=4] kTextOperationEndAnchorIds = 23,
+  [MinVersion=4] kTextOperationEndOffsets = 24,
+  [MinVersion=4] kTextOperations = 25,
 };
 
 // Next value: 2
@@ -1176,6 +1197,7 @@ enum IsPopup {
   kNone = 0,
   kManual,
   kAuto,
+  kHint,
 };
 
 enum InvalidState {
@@ -1251,6 +1273,10 @@ enum NameFrom {
 
   // The name comes from the value attribute, such as in a button element.
   kValue,
+
+  // The name comes from a tooltip-style popover (aka hint popover), where the
+  // contents could be distilled to a plain text string.
+  kPopoverAttribute,
 };
 
 // The source of the accessible description. Used by some screen readers
@@ -1300,7 +1326,7 @@ enum DescriptionFrom {
   kTitle,
 
   // The description comes from a non-tooltip popover, e.g. the
-  // |popovertoggletarget| attribute pointing to `popover=auto`.
+  // |popovertarget| attribute pointing to a `popover=auto`.
   kPopoverAttribute,
 };
 

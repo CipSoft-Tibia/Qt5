@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,9 +11,9 @@
 
 #include <chrono>
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "platform/api/time.h"
 #include "platform/base/error.h"
 #include "util/crypto/rsa_private_key.h"
@@ -29,7 +29,7 @@ bssl::UniquePtr<EVP_PKEY> GenerateRsaKeyPair(int key_bits = 2048);
 // be self-signed.  |make_ca| determines whether additional extensions are added
 // to make it a valid certificate authority cert.
 ErrorOr<bssl::UniquePtr<X509>> CreateSelfSignedX509Certificate(
-    absl::string_view name,
+    std::string_view name,
     std::chrono::seconds duration,
     const EVP_PKEY& key_pair,
     std::chrono::seconds time_since_unix_epoch = GetWallTimeSinceUnixEpoch(),

@@ -63,7 +63,6 @@ component("quiche") {
     "overrides/quiche_platform_impl/quiche_mutex_impl.h",
     "overrides/quiche_platform_impl/quiche_reference_counted_impl.h",
     "overrides/quiche_platform_impl/quiche_server_stats_impl.h",
-    "overrides/quiche_platform_impl/quiche_thread_local_impl.h",
     "overrides/quiche_platform_impl/quiche_time_utils_impl.cc",
     "overrides/quiche_platform_impl/quiche_time_utils_impl.h",
     "overrides/quiche_platform_impl/quiche_url_utils_impl.cc",
@@ -93,7 +92,6 @@ component("quiche") {
     "src/quiche/common/platform/api/quiche_stack_trace.h",
     "src/quiche/common/platform/api/quiche_testvalue.h",
     "src/quiche/common/platform/api/quiche_thread.h",
-    "src/quiche/common/platform/api/quiche_thread_local.h",
     "src/quiche/common/platform/api/quiche_time_utils.h",
     "src/quiche/common/platform/api/quiche_url_utils.h",
     "src/quiche/common/platform/default/quiche_platform_impl/quiche_flags_impl.cc",
@@ -531,7 +529,6 @@ component("quiche") {
     "src/quiche/quic/core/quic_blocked_writer_interface.h",
     "src/quiche/quic/core/quic_chaos_protector.cc",
     "src/quiche/quic/core/quic_chaos_protector.h",
-    "src/quiche/quic/core/quic_clock.cc",
     "src/quiche/quic/core/quic_clock.h",
     "src/quiche/quic/core/quic_coalesced_packet.cc",
     "src/quiche/quic/core/quic_coalesced_packet.h",
@@ -715,11 +712,13 @@ component("quiche") {
     "src/quiche/spdy/core/spdy_simple_arena.cc",
     "src/quiche/spdy/core/spdy_simple_arena.h",
     "src/quiche/spdy/core/zero_copy_output_buffer.h",
+    "src/quiche/web_transport/complete_buffer_visitor.cc",
+    "src/quiche/web_transport/complete_buffer_visitor.h",
     "src/quiche/web_transport/web_transport.h",
   ]
 
   configs += [ ":quiche_internal_config" ]
-  public_configs = [ ":quiche_config" ]
+  all_dependent_configs = [ ":quiche_config" ]
 
   deps = [
     "//net:uri_template",
@@ -794,16 +793,21 @@ if (build_epoll_based_tools) {
       "src/quiche/quic/core/io/quic_default_event_loop.h",
       "src/quiche/quic/core/io/quic_poll_event_loop.cc",
       "src/quiche/quic/core/io/quic_poll_event_loop.h",
+      "src/quiche/quic/core/io/socket.cc",
       "src/quiche/quic/core/io/socket.h",
-      "src/quiche/quic/core/io/socket_posix.cc",
+      "src/quiche/quic/core/io/socket_internal.h",
+      "src/quiche/quic/core/io/socket_posix.inc",
+      "src/quiche/quic/core/io/socket_win.inc",
       "src/quiche/quic/core/quic_default_clock.cc",
       "src/quiche/quic/core/quic_default_clock.h",
       "src/quiche/quic/core/quic_default_packet_writer.cc",
       "src/quiche/quic/core/quic_default_packet_writer.h",
       "src/quiche/quic/core/quic_packet_reader.cc",
       "src/quiche/quic/core/quic_packet_reader.h",
+      "src/quiche/quic/core/quic_udp_socket.cc",
       "src/quiche/quic/core/quic_udp_socket.h",
-      "src/quiche/quic/core/quic_udp_socket_posix.cc",
+      "src/quiche/quic/core/quic_udp_socket_posix.inc",
+      "src/quiche/quic/core/quic_udp_socket_win.inc",
       "src/quiche/quic/masque/masque_client.cc",
       "src/quiche/quic/masque/masque_client.h",
       "src/quiche/quic/masque/masque_client_session.cc",
@@ -835,6 +839,7 @@ if (build_epoll_based_tools) {
       "src/quiche/quic/tools/quic_name_lookup.h",
       "src/quiche/quic/tools/quic_server.cc",
       "src/quiche/quic/tools/quic_server.h",
+      "src/quiche/quic/tools/web_transport_test_server.cc",
     ]
 
     configs += [ ":quiche_internal_config" ]
@@ -1223,6 +1228,8 @@ static_library("quiche_tool_support") {
     "src/quiche/quic/core/tls_chlo_extractor.cc",
     "src/quiche/quic/core/tls_chlo_extractor.h",
     "src/quiche/quic/platform/api/quic_default_proof_providers.h",
+    "src/quiche/quic/tools/devious_baton.cc",
+    "src/quiche/quic/tools/devious_baton.h",
     "src/quiche/quic/tools/fake_proof_verifier.h",
     "src/quiche/quic/tools/quic_backend_response.cc",
     "src/quiche/quic/tools/quic_backend_response.h",
@@ -1383,6 +1390,10 @@ bundle_data("test_data") {
   visibility = [ ":quiche_tests" ]
   testonly = true
   sources = [
+    "src/quiche/common/anonymous_tokens/testdata/strong_rsa_modulus2048_example.binarypb",
+    "src/quiche/common/anonymous_tokens/testdata/strong_rsa_modulus2048_example_2.binarypb",
+    "src/quiche/common/anonymous_tokens/testdata/strong_rsa_modulus3072_example.binarypb",
+    "src/quiche/common/anonymous_tokens/testdata/strong_rsa_modulus4096_example.binarypb",
     "src/quiche/common/platform/api/testdir/README.md",
     "src/quiche/common/platform/api/testdir/a/b/c/d/e",
     "src/quiche/common/platform/api/testdir/a/subdir/testfile",
@@ -1397,6 +1408,15 @@ source_set("quiche_tests") {
   testonly = true
   sources = [
     "src/quiche/binary_http/binary_http_message_test.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/client/anonymous_tokens_rsa_bssa_client_test.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/anonymous_tokens_pb_openssl_converters_test.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/at_crypto_utils_test.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_blind_signer_test.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_blinder_test.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_ssa_pss_verifier_test.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/shared/proto_utils_test.cc",
+    "src/quiche/blind_sign_auth/blind_sign_auth_test.cc",
+    "src/quiche/blind_sign_auth/cached_blind_sign_auth_test.cc",
     "src/quiche/common/capsule_test.cc",
     "src/quiche/common/platform/api/quiche_file_utils_test.cc",
     "src/quiche/common/platform/api/quiche_hostname_utils_test.cc",
@@ -1640,12 +1660,17 @@ source_set("quiche_tests") {
     "src/quiche/spdy/core/spdy_simple_arena_test.cc",
   ]
 
-  data = [ "src/quiche/common/platform/api/testdir/" ]
+  data = [
+    "src/quiche/common/platform/api/testdir/",
+    "src/quiche/common/anonymous_tokens/testdata/",
+  ]
 
   configs += [ ":quiche_internal_config" ]
   public_configs = [ ":quiche_config" ]
 
   deps = [
+    ":blind_sign_auth",
+    ":blind_sign_auth_test_support",
     "//net",
     "//net:quic_test_tools",
     "//net:simple_quic_tools",
@@ -1746,5 +1771,116 @@ fuzzer_test("net_qpack_round_trip_fuzzer") {
     "//net:net_fuzzer_test_support",
     "//net:quic_test_tools",
     "//net:test_support",
+  ]
+}
+
+component("blind_sign_auth") {
+  visibility = [
+    ":blind_sign_auth_test_support",
+    ":quiche_tests",
+    "//chrome/browser:browser",
+    "//chrome/test:*",
+  ]
+
+  sources = [
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/client/anonymous_tokens_rsa_bssa_client.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/client/anonymous_tokens_rsa_bssa_client.h",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/anonymous_tokens_pb_openssl_converters.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/anonymous_tokens_pb_openssl_converters.h",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/blind_signer.h",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/blinder.h",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/constants.h",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/crypto_utils.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/crypto_utils.h",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_blind_signer.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_blind_signer.h",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_blinder.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_blinder.h",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_ssa_pss_verifier.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_ssa_pss_verifier.h",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/crypto/verifier.h",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/shared/proto_utils.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/shared/proto_utils.h",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/shared/status_utils.h",
+    "src/quiche/blind_sign_auth/blind_sign_auth.cc",
+    "src/quiche/blind_sign_auth/blind_sign_auth.h",
+    "src/quiche/blind_sign_auth/blind_sign_auth_interface.h",
+    "src/quiche/blind_sign_auth/blind_sign_http_interface.h",
+    "src/quiche/blind_sign_auth/blind_sign_http_response.h",
+    "src/quiche/blind_sign_auth/cached_blind_sign_auth.cc",
+    "src/quiche/blind_sign_auth/cached_blind_sign_auth.h",
+  ]
+  configs += [ ":quiche_internal_config" ]
+  public_configs = [ ":quiche_config" ]
+
+  deps = [
+    ":quiche",
+    "//base",
+    "//third_party/abseil-cpp:absl",
+    "//third_party/boringssl",
+    "//url",
+  ]
+
+  public_deps = [ ":blind_sign_auth_proto" ]
+
+  defines = [ "IS_QUICHE_IMPL" ]
+}
+
+proto_library("blind_sign_auth_proto") {
+  visibility = [
+    ":blind_sign_auth",
+    ":blind_sign_auth_test_support",
+    ":quiche",
+    ":quiche_tests",
+  ]
+
+  sources = [
+    "src/quiche/blind_sign_auth/anonymous_tokens/proto/anonymous_tokens.proto",
+    "src/quiche/blind_sign_auth/proto/any.proto",
+    "src/quiche/blind_sign_auth/proto/attestation.proto",
+    "src/quiche/blind_sign_auth/proto/auth_and_sign.proto",
+    "src/quiche/blind_sign_auth/proto/get_initial_data.proto",
+    "src/quiche/blind_sign_auth/proto/key_services.proto",
+    "src/quiche/blind_sign_auth/proto/public_metadata.proto",
+    "src/quiche/blind_sign_auth/proto/spend_token_data.proto",
+    "src/quiche/blind_sign_auth/proto/timestamp.proto",
+  ]
+  cc_generator_options = "lite=true,dllexport_decl=COMPONENT_EXPORT(QUICHE):"
+  cc_include = "base/component_export.h"
+  component_build_force_source_set = true
+
+  proto_in_dir = "src"
+
+  deps = [ "//base" ]
+
+  defines = [ "IS_QUICHE_IMPL" ]
+
+  extra_configs = [ "//build/config/compiler:wexit_time_destructors" ]
+}
+
+static_library("blind_sign_auth_test_support") {
+  visibility = [ ":quiche_tests" ]
+  testonly = true
+  sources = [
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/testing/proto_utils.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/testing/proto_utils.h",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/testing/utils.cc",
+    "src/quiche/blind_sign_auth/anonymous_tokens/cpp/testing/utils.h",
+    "src/quiche/blind_sign_auth/test_tools/mock_blind_sign_auth_interface.h",
+    "src/quiche/blind_sign_auth/test_tools/mock_blind_sign_http_interface.h",
+  ]
+  configs += [ ":quiche_internal_config" ]
+  public_configs = [ ":quiche_config" ]
+
+  deps = [
+    ":blind_sign_auth",
+    ":quiche",
+    ":quiche_test_support",
+    ":quiche_tool_support",
+    "//base",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//third_party/abseil-cpp:absl",
+    "//third_party/boringssl",
   ]
 }

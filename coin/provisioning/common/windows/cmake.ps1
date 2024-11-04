@@ -8,7 +8,7 @@ $version = "3.27.7"
 
 $zip = Get-DownloadLocation ("cmake-" + $version + "-windows-i386.zip")
 $officialurl = "https://cmake.org/files/v" + $majorminorversion + "/cmake-" + $version + "-windows-i386.zip"
-$cachedurl = "\\ci-files01-hki.intra.qt.io\provisioning\cmake\cmake-" + $version + "-windows-i386.zip"
+$cachedurl = "\\ci-files01-hki.ci.qt.io\provisioning\cmake\cmake-" + $version + "-windows-i386.zip"
 
 Write-Host "Removing old cmake"
 Remove "C:\CMake"

@@ -29,7 +29,9 @@ enum PlatformFlag {
     ClangMsvc    = 0x00400,
     ClangMinGW   = 0x00800,
     // Platforms
-    WindowsDesktopMsvc = WindowsBased + IntelBased + Msvc,
+    WindowsDesktopMsvc = WindowsBased + Msvc,
+    WindowsDesktopMsvcIntel = WindowsDesktopMsvc + IntelBased,
+    WindowsDesktopMsvcArm = WindowsDesktopMsvc + ArmBased,
     WindowsDesktopMinGW = WindowsBased + IntelBased + MinGW,
     WindowsDesktopClangMsvc = WindowsBased + IntelBased + ClangMsvc,
     WindowsDesktopClangMinGW = WindowsBased + IntelBased + ClangMinGW,
@@ -66,7 +68,7 @@ inline std::wostream &operator<<(std::wostream &str, const QString &s)
 // Container class for JSON output
 class JsonOutput
 {
-    using SourceTargetMapping = QPair<QString, QString>;
+    using SourceTargetMapping = std::pair<QString, QString>;
     using SourceTargetMappings = QList<SourceTargetMapping>;
 
 public:
@@ -185,6 +187,7 @@ inline QStringList findDependentLibraries(const QString &executableFileName, QSt
 }
 
 QString findD3dCompiler(Platform platform, const QString &qtBinDir, unsigned wordSize);
+QStringList findDxc(Platform platform, const QString &qtBinDir, unsigned wordSize);
 
 bool patchQtCore(const QString &path, QString *errorMessage);
 

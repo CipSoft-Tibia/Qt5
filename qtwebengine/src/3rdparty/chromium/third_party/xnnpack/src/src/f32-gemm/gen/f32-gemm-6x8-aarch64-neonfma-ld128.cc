@@ -128,24 +128,44 @@ void Generator::generate(size_t max_mr, size_t nc_mod_nr, size_t kc, const jit_g
   ldp(q20, q21, mem[x5], 32);
   if (max_mr > 1) {
     mov(v22.v16b(), v20.v16b());
+  }
+  prfm(kPLDL1KEEP, mem[x5, 0]); // Prefetch B
+  if (max_mr > 1) {
     mov(v23.v16b(), v21.v16b());
   }
+  prfm(kPLDL1KEEP, mem[x5, 64]);
   if (max_mr > 2) {
     mov(v24.v16b(), v20.v16b());
+  }
+  prfm(kPLDL1KEEP, mem[x5, 128]);
+  if (max_mr > 2) {
     mov(v25.v16b(), v21.v16b());
   }
+  prfm(kPLDL1KEEP, mem[x5, 192]);
   if (max_mr > 3) {
     mov(v26.v16b(), v20.v16b());
+  }
+  prfm(kPLDL1KEEP, mem[x3]); // Prefetch A
+  if (max_mr > 3) {
     mov(v27.v16b(), v21.v16b());
   }
+  prfm(kPLDL1KEEP, mem[x9]);
   if (max_mr > 4) {
     mov(v28.v16b(), v20.v16b());
+  }
+  prfm(kPLDL1KEEP, mem[x10]);
+  if (max_mr > 4) {
     mov(v29.v16b(), v21.v16b());
   }
+  prfm(kPLDL1KEEP, mem[x11]);
   if (max_mr > 5) {
     mov(v30.v16b(), v20.v16b());
+  }
+  prfm(kPLDL1KEEP, mem[x12]);
+  if (max_mr > 5) {
     mov(v31.v16b(), v21.v16b());
   }
+  prfm(kPLDL1KEEP, mem[x4]);
 
   // Is there at least 4 floats (16 bytes)?
   subs(x0, x2, 16); // k = kc - 16
@@ -633,6 +653,9 @@ void Generator::perform_post_operations(
   size_t num_post_operations,
   const xnn_post_operation* post_operations)
 {
+  if (num_post_operations == 0) {
+    return;
+  }
   for (size_t i = 0; i < num_post_operations; i++) {
     switch (post_operations[i].op_type) {
       case xnn_post_operation_type_hardswish: {

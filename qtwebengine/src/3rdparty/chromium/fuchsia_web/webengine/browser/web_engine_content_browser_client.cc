@@ -52,6 +52,32 @@
 
 namespace {
 
+constexpr net::NetworkTrafficAnnotationTag kProxyConfigTrafficAnnotation =
+    net::DefineNetworkTrafficAnnotation("webview_proxy_config", R"(
+      semantics {
+        sender: "Proxy configuration via a command line flag"
+        description:
+          "Used to fetch HTTP/HTTPS/SOCKS5/PAC proxy configuration when "
+          "proxy is configured by the --proxy-server command line flag. "
+          "When proxy implies automatic configuration, it can send network "
+          "requests in the scope of this annotation."
+        trigger:
+          "Whenever a network request is made when the system proxy settings "
+          "are used, and they indicate to use a proxy server."
+        data:
+          "Proxy configuration."
+        destination: OTHER
+        destination_other: "The proxy server specified in the configuration."
+      }
+      policy {
+        cookies_allowed: NO
+        setting:
+          "This request cannot be disabled in settings. However it will never "
+          "be made if user does not run with the '--proxy-server' switch."
+        policy_exception_justification:
+          "Not implemented, behaviour only available behind a switch."
+      })");
+
 class DevToolsManagerDelegate final : public content::DevToolsManagerDelegate {
  public:
   explicit DevToolsManagerDelegate(WebEngineBrowserMainParts* main_parts)
@@ -71,7 +97,10 @@ class DevToolsManagerDelegate final : public content::DevToolsManagerDelegate {
     std::vector<content::BrowserContext*> contexts = GetBrowserContexts();
     return contexts.empty() ? nullptr : contexts.front();
   }
-  content::DevToolsAgentHost::List RemoteDebuggingTargets() override {
+  content::DevToolsAgentHost::List RemoteDebuggingTargets(
+      DevToolsManagerDelegate::TargetType target_type) override {
+    LOG_IF(WARNING, target_type != DevToolsManagerDelegate::kFrame)
+        << "Ignoring unsupported remote target type: " << target_type;
     return main_parts_->devtools_controller()->RemoteDebuggingTargets();
   }
 
@@ -92,7 +121,6 @@ static constexpr char const* kRendererSwitchesToCopy[] = {
     switches::kEnableCastStreamingReceiver,
     switches::kEnableProtectedVideoBuffers,
     switches::kForceProtectedVideoOutputBuffers,
-    switches::kUseOverlaysForVideo,
     switches::kMinVideoDecoderOutputBufferSize,
 
 // TODO(crbug/1013412): Delete these two switches when fixed.
@@ -144,7 +172,7 @@ WebEngineContentBrowserClient::CreateDevToolsManagerDelegate() {
 }
 
 std::string WebEngineContentBrowserClient::GetProduct() {
-  return version_info::GetProductNameAndVersionForUserAgent();
+  return std::string(version_info::GetProductNameAndVersionForUserAgent());
 }
 
 std::string WebEngineContentBrowserClient::GetUserAgent() {
@@ -235,16 +263,14 @@ void WebEngineContentBrowserClient::AppendExtraCommandLineSwitches(
       *base::CommandLine::ForCurrentProcess();
 
   command_line->CopySwitchesFrom(browser_command_line,
-                                 kAllProcessSwitchesToCopy,
-                                 std::size(kAllProcessSwitchesToCopy));
+                                 kAllProcessSwitchesToCopy);
 
   std::string process_type =
       command_line->GetSwitchValueASCII(switches::kProcessType);
 
   if (process_type == switches::kRendererProcess) {
     command_line->CopySwitchesFrom(browser_command_line,
-                                   kRendererSwitchesToCopy,
-                                   std::size(kRendererSwitchesToCopy));
+                                   kRendererSwitchesToCopy);
   } else if (process_type == switches::kUtilityProcess) {
     // Although only the Network process needs
     // kUnsafelyTreatInsecureOriginAsSecureSwitchToCopy, differentiating utility
@@ -252,8 +278,7 @@ void WebEngineContentBrowserClient::AppendExtraCommandLineSwitches(
     // switch to all Utility processes so do the same here.
     // Do not add other switches here.
     command_line->CopySwitchesFrom(
-        browser_command_line, kUnsafelyTreatInsecureOriginAsSecureSwitchToCopy,
-        std::size(kUnsafelyTreatInsecureOriginAsSecureSwitchToCopy));
+        browser_command_line, kUnsafelyTreatInsecureOriginAsSecureSwitchToCopy);
   }
 }
 
@@ -271,6 +296,7 @@ std::string WebEngineContentBrowserClient::GetAcceptLangs(
 }
 
 base::OnceClosure WebEngineContentBrowserClient::SelectClientCertificate(
+    content::BrowserContext* browser_context,
     content::WebContents* web_contents,
     net::SSLCertRequestInfo* cert_request_info,
     net::ClientCertIdentityList client_certs,
@@ -323,7 +349,7 @@ WebEngineContentBrowserClient::CreateURLLoaderThrottles(
   std::vector<std::unique_ptr<blink::URLLoaderThrottle>> throttles;
   auto* frame_impl = FrameImpl::FromWebContents(wc_getter.Run());
   DCHECK(frame_impl);
-  const auto& rules =
+  auto rules =
       frame_impl->url_request_rewrite_rules_manager()->GetCachedRules();
   if (rules) {
     throttles.emplace_back(std::make_unique<url_rewrite::URLLoaderThrottle>(
@@ -339,6 +365,23 @@ void WebEngineContentBrowserClient::ConfigureNetworkContextParams(
     network::mojom::NetworkContextParams* network_context_params,
     cert_verifier::mojom::CertVerifierCreationParams*
         cert_verifier_creation_params) {
+  const base::CommandLine& command_line =
+      *base::CommandLine::ForCurrentProcess();
+  std::string proxy = command_line.GetSwitchValueASCII(switches::kProxyServer);
+  if (!proxy.empty()) {
+    net::ProxyConfig proxy_config;
+    proxy_config.proxy_rules().ParseFromString(proxy);
+    std::string bypass_list =
+        command_line.GetSwitchValueASCII(switches::kProxyBypassList);
+    if (!bypass_list.empty()) {
+      proxy_config.proxy_rules().bypass_rules.ParseFromString(bypass_list);
+    }
+
+    network_context_params->initial_proxy_config =
+        net::ProxyConfigWithAnnotation(proxy_config,
+                                       kProxyConfigTrafficAnnotation);
+  }
+
   network_context_params->user_agent = GetUserAgent();
   network_context_params->accept_language =
       net::HttpUtil::GenerateAcceptLanguageHeader(GetAcceptLangs(context));

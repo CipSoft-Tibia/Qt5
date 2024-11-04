@@ -110,7 +110,7 @@ ServerSharedBitmapManager::~ServerSharedBitmapManager() {
 
 std::unique_ptr<SharedBitmap> ServerSharedBitmapManager::GetSharedBitmapFromId(
     const gfx::Size& size,
-    ResourceFormat format,
+    SharedImageFormat format,
     const SharedBitmapId& id) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   auto it = handle_map_.find(id);

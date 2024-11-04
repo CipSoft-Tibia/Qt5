@@ -21,14 +21,13 @@
 #include "core/fxcrt/fx_extension.h"
 #include "core/fxcrt/fx_stream.h"
 #include "third_party/base/check.h"
-#include "third_party/base/notreached.h"
 
 // Indexed by 8-bit character code, contains either:
 //   'W' - for whitespace: NUL, TAB, CR, LF, FF, SPACE, 0x80, 0xff
 //   'N' - for numeric: 0123456789+-.
 //   'D' - for delimiter: %()/<>[]{}
 //   'R' - otherwise.
-const char PDF_CharType[256] = {
+const char kPDFCharTypes[256] = {
     // NUL  SOH  STX  ETX  EOT  ENQ  ACK  BEL  BS   HT   LF   VT   FF   CR   SO
     // SI
     'W', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'W', 'W', 'R', 'W', 'W', 'R',
@@ -253,9 +252,6 @@ std::ostream& operator<<(std::ostream& buf, const CPDF_Object* pObj) {
       buf << "\r\nendstream";
       break;
     }
-    default:
-      NOTREACHED();
-      break;
   }
   return buf;
 }

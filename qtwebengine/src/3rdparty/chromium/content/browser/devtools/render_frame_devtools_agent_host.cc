@@ -28,6 +28,7 @@
 #include "content/browser/devtools/protocol/device_access_handler.h"
 #include "content/browser/devtools/protocol/dom_handler.h"
 #include "content/browser/devtools/protocol/emulation_handler.h"
+#include "content/browser/devtools/protocol/fedcm_handler.h"
 #include "content/browser/devtools/protocol/fetch_handler.h"
 #include "content/browser/devtools/protocol/handler_helpers.h"
 #include "content/browser/devtools/protocol/input_handler.h"
@@ -38,6 +39,7 @@
 #include "content/browser/devtools/protocol/network_handler.h"
 #include "content/browser/devtools/protocol/overlay_handler.h"
 #include "content/browser/devtools/protocol/page_handler.h"
+#include "content/browser/devtools/protocol/preload_handler.h"
 #include "content/browser/devtools/protocol/protocol.h"
 #include "content/browser/devtools/protocol/schema_handler.h"
 #include "content/browser/devtools/protocol/security_handler.h"
@@ -46,6 +48,7 @@
 #include "content/browser/devtools/protocol/system_info_handler.h"
 #include "content/browser/devtools/protocol/target_handler.h"
 #include "content/browser/devtools/protocol/tracing_handler.h"
+#include "content/browser/devtools/web_contents_devtools_agent_host.h"
 #include "content/browser/fenced_frame/fenced_frame.h"
 #include "content/browser/renderer_host/navigation_request.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
@@ -88,6 +91,8 @@ using RenderFrameDevToolsMap =
     std::map<FrameTreeNode*, RenderFrameDevToolsAgentHost*>;
 base::LazyInstance<RenderFrameDevToolsMap>::Leaky g_agent_host_instances =
     LAZY_INSTANCE_INITIALIZER;
+
+static bool g_was_ever_attached_to_any_frame = false;
 
 RenderFrameDevToolsAgentHost* FindAgentHost(FrameTreeNode* frame_tree_node) {
   if (!g_agent_host_instances.IsCreated())
@@ -186,7 +191,19 @@ bool DevToolsAgentHost::HasFor(WebContents* web_contents) {
 }
 
 // static
+bool RenderFrameDevToolsAgentHost::WasEverAttachedToAnyFrame() {
+  return g_was_ever_attached_to_any_frame;
+}
+
+// static
 bool DevToolsAgentHost::IsDebuggerAttached(WebContents* web_contents) {
+  return RenderFrameDevToolsAgentHost::IsDebuggerAttached(web_contents) ||
+         WebContentsDevToolsAgentHost::IsDebuggerAttached(web_contents);
+}
+
+// static
+bool RenderFrameDevToolsAgentHost::IsDebuggerAttached(
+    WebContents* web_contents) {
   FrameTreeNode* node =
       static_cast<WebContentsImpl*>(web_contents)->GetPrimaryFrameTree().root();
   RenderFrameDevToolsAgentHost* host = node ? FindAgentHost(node) : nullptr;
@@ -206,8 +223,6 @@ void RenderFrameDevToolsAgentHost::AddAllAgentHosts(
           FrameTreeNode* node = FrameTreeNode::From(render_frame_host);
           if (!ShouldCreateDevToolsForNode(node))
             return;
-          if (!render_frame_host->IsRenderFrameLive())
-            return;
           result->push_back(RenderFrameDevToolsAgentHost::GetOrCreateFor(node));
         });
   }
@@ -217,7 +232,8 @@ void RenderFrameDevToolsAgentHost::AddAllAgentHosts(
 void RenderFrameDevToolsAgentHost::AttachToWebContents(
     WebContents* web_contents) {
   if (ShouldForceCreation()) {
-    // Force agent host.
+    // Force agent hosts.
+    DevToolsAgentHost::GetOrCreateForTab(web_contents);
     DevToolsAgentHost::GetOrCreateFor(web_contents);
   }
 }
@@ -253,6 +269,10 @@ RenderFrameDevToolsAgentHost::RenderFrameDevToolsAgentHost(
     : DevToolsAgentHostImpl(frame_host->devtools_frame_token().ToString()),
       auto_attacher_(std::make_unique<FrameAutoAttacher>(GetRendererChannel())),
       frame_tree_node_(nullptr) {
+  g_was_ever_attached_to_any_frame = true;
+  AddRef();  // Balanced in DestroyOnRenderFrameGone.
+  auto* wc = WebContentsImpl::FromRenderFrameHostImpl(frame_host);
+  WebContentsObserver::Observe(wc);
   SetFrameTreeNode(frame_tree_node);
   ChangeFrameHostAndObservedProcess(frame_host);
   render_frame_alive_ = frame_host_ && frame_host_->IsRenderFrameLive();
@@ -263,7 +283,6 @@ RenderFrameDevToolsAgentHost::RenderFrameDevToolsAgentHost(
     WebContents* web_contents = WebContents::FromRenderFrameHost(frame_host);
     render_frame_crashed_ = web_contents && web_contents->IsCrashed();
   }
-  AddRef();  // Balanced in DestroyOnRenderFrameGone.
   NotifyCreated();
 }
 
@@ -273,16 +292,14 @@ void RenderFrameDevToolsAgentHost::SetFrameTreeNode(
     g_agent_host_instances.Get().erase(frame_tree_node_);
   frame_tree_node_ = frame_tree_node;
   if (frame_tree_node_) {
+    DCHECK(web_contents() ==
+           WebContentsImpl::FromFrameTreeNode(frame_tree_node));
     // TODO(dgozman): with ConnectWebContents/DisconnectWebContents,
     // we may get two agent hosts for the same FrameTreeNode.
     // That is definitely a bug, and we should fix that, and DCHECK
     // here that there is no other agent host.
     g_agent_host_instances.Get()[frame_tree_node] = this;
   }
-  auto* wc = frame_tree_node_
-                 ? WebContentsImpl::FromFrameTreeNode(frame_tree_node_)
-                 : nullptr;
-  WebContentsObserver::Observe(wc);
 }
 
 BrowserContext* RenderFrameDevToolsAgentHost::GetBrowserContext() {
@@ -296,8 +313,9 @@ WebContents* RenderFrameDevToolsAgentHost::GetWebContents() {
 
 bool RenderFrameDevToolsAgentHost::AttachSession(DevToolsSession* session,
                                                  bool acquire_wake_lock) {
-  if (!ShouldAllowSession(session))
+  if (!ShouldAllowSession(frame_host_, session)) {
     return false;
+  }
 
   if (frame_tree_node_ && !frame_tree_node_->parent() &&
       frame_tree_node_->is_on_initial_empty_document()) {
@@ -363,6 +381,7 @@ bool RenderFrameDevToolsAgentHost::AttachSession(DevToolsSession* session,
       DevToolsSession::Mode::kDoesNotSupportTabTarget) {
     target_handler->DisableAutoAttachOfPortals();
   }
+  session->CreateAndAddHandler<protocol::PreloadHandler>();
   session->CreateAndAddHandler<protocol::PageHandler>(
       emulation_handler, browser_handler,
       session->GetClient()->AllowUnsafeOperations(),
@@ -371,9 +390,13 @@ bool RenderFrameDevToolsAgentHost::AttachSession(DevToolsSession* session,
       session->GetClient()->MayReadLocalFiles());
   session->CreateAndAddHandler<protocol::SecurityHandler>();
   if (!frame_tree_node_ || !frame_tree_node_->parent()) {
-    session->CreateAndAddHandler<protocol::TracingHandler>(GetIOContext());
+    DevToolsSession* root_session = session->GetRootSession();
+    CHECK(root_session);
+    session->CreateAndAddHandler<protocol::TracingHandler>(this, GetIOContext(),
+                                                           root_session);
   }
   session->CreateAndAddHandler<protocol::LogHandler>();
+  session->CreateAndAddHandler<protocol::FedCmHandler>();
 #if !BUILDFLAG(IS_ANDROID)
   session->CreateAndAddHandler<protocol::WebAuthnHandler>();
 #endif  // !BUILDFLAG(IS_ANDROID)
@@ -419,6 +442,12 @@ void RenderFrameDevToolsAgentHost::InspectElement(RenderFrameHost* frame_host,
   host->GetRendererChannel()->InspectElement(point);
 }
 
+void RenderFrameDevToolsAgentHost::GetUniqueFormControlId(
+    int node_id,
+    GetUniqueFormControlIdCallback callback) {
+  GetRendererChannel()->GetUniqueFormControlId(node_id, std::move(callback));
+}
+
 RenderFrameDevToolsAgentHost::~RenderFrameDevToolsAgentHost() {
   SetFrameTreeNode(nullptr);
   ChangeFrameHostAndObservedProcess(nullptr);
@@ -426,6 +455,9 @@ RenderFrameDevToolsAgentHost::~RenderFrameDevToolsAgentHost() {
 
 void RenderFrameDevToolsAgentHost::ReadyToCommitNavigation(
     NavigationHandle* navigation_handle) {
+  if (!frame_tree_node_) {
+    return;
+  }
   NavigationRequest* request = NavigationRequest::From(navigation_handle);
   for (auto* tracing : protocol::TracingHandler::ForAgentHost(this))
     tracing->ReadyToCommitNavigation(request);
@@ -496,8 +528,9 @@ void RenderFrameDevToolsAgentHost::UpdateFrameHost(
 
   std::vector<DevToolsSession*> restricted_sessions;
   for (DevToolsSession* session : sessions()) {
-    if (!ShouldAllowSession(session))
+    if (!ShouldAllowSession(frame_host_, session)) {
       restricted_sessions.push_back(session);
+    }
   }
   scoped_refptr<RenderFrameDevToolsAgentHost> protect;
   if (!restricted_sessions.empty()) {
@@ -534,7 +567,8 @@ void RenderFrameDevToolsAgentHost::RenderFrameHostChanged(
 void RenderFrameDevToolsAgentHost::FrameDeleted(int frame_tree_node_id) {
   for (auto* tracing : protocol::TracingHandler::ForAgentHost(this))
     tracing->FrameDeleted(frame_tree_node_id);
-  if (frame_tree_node_id == frame_tree_node_->frame_tree_node_id()) {
+  if (frame_tree_node_ &&
+      frame_tree_node_id == frame_tree_node_->frame_tree_node_id()) {
     DestroyOnRenderFrameGone();
     // |this| may be deleted at this point.
   }
@@ -542,8 +576,14 @@ void RenderFrameDevToolsAgentHost::FrameDeleted(int frame_tree_node_id) {
 
 void RenderFrameDevToolsAgentHost::RenderFrameDeleted(RenderFrameHost* rfh) {
   if (rfh == frame_host_) {
-    render_frame_alive_ = false;
-    UpdateRendererChannel(IsAttached());
+    if (frame_tree_node_) {
+      render_frame_alive_ = false;
+      UpdateRendererChannel(IsAttached());
+    } else {
+      // We're already detached from FTN, so this must be a cached
+      // instance going away.
+      DestroyOnRenderFrameGone();
+    }
   }
 }
 
@@ -553,6 +593,7 @@ void RenderFrameDevToolsAgentHost::DestroyOnRenderFrameGone() {
     retain_this = ForceDetachAllSessionsImpl();
     UpdateRawHeadersAccess(frame_host_);
   }
+  WebContentsObserver::Observe(nullptr);
   ChangeFrameHostAndObservedProcess(nullptr);
   UpdateRendererChannel(IsAttached());
   SetFrameTreeNode(nullptr);
@@ -583,8 +624,12 @@ void RenderFrameDevToolsAgentHost::ChangeFrameHostAndObservedProcess(
   if (frame_host_)
     frame_host_->GetProcess()->RemoveObserver(this);
   frame_host_ = frame_host;
-  if (frame_host_)
+  if (frame_host_) {
+    DCHECK(WebContentsImpl::FromRenderFrameHostImpl(frame_host_) ==
+           web_contents());
     frame_host_->GetProcess()->AddObserver(this);
+    ProcessHostChanged();
+  }
 }
 
 void RenderFrameDevToolsAgentHost::UpdateFrameAlive() {
@@ -664,6 +709,7 @@ void RenderFrameDevToolsAgentHost::DidCreateFencedFrame(
 }
 
 void RenderFrameDevToolsAgentHost::DisconnectWebContents() {
+  WebContentsObserver::Observe(nullptr);
   navigation_requests_.clear();
   SetFrameTreeNode(nullptr);
   // UpdateFrameHost may destruct |this|.
@@ -677,6 +723,7 @@ void RenderFrameDevToolsAgentHost::ConnectWebContents(WebContents* wc) {
   RenderFrameHostImpl* host =
       static_cast<RenderFrameHostImpl*>(wc->GetPrimaryMainFrame());
   DCHECK(host);
+  WebContentsObserver::Observe(wc);
   SetFrameTreeNode(host->frame_tree_node());
   UpdateFrameHost(host);
   // UpdateFrameHost may destruct |this|.
@@ -856,6 +903,7 @@ constexpr char kSubtypePrerender[] = "prerender";
 constexpr char kSubtypeFenced[] = "fenced";
 
 }  // namespace
+
 std::string RenderFrameDevToolsAgentHost::GetSubtype() {
   if (!frame_tree_node_)
     return kSubtypeDisconnected;
@@ -877,22 +925,28 @@ std::string RenderFrameDevToolsAgentHost::GetSubtype() {
   }
 }
 
+RenderProcessHost* RenderFrameDevToolsAgentHost::GetProcessHost() {
+  return frame_host_ ? frame_host_->GetProcess() : nullptr;
+}
+
 bool RenderFrameDevToolsAgentHost::IsChildFrame() {
   return frame_tree_node_ && frame_tree_node_->parent();
 }
 
 bool RenderFrameDevToolsAgentHost::ShouldAllowSession(
+    RenderFrameHost* frame_host,
     DevToolsSession* session) {
   // There's not much we can say if there's not host yet, but we'll
   // check again when host is updated.
-  if (!frame_host_)
+  if (!frame_host) {
     return true;
+  }
   DevToolsManager* manager = DevToolsManager::GetInstance();
   if (manager->delegate() &&
-      !manager->delegate()->AllowInspectingRenderFrameHost(frame_host_)) {
+      !manager->delegate()->AllowInspectingRenderFrameHost(frame_host)) {
     return false;
   }
-  return session->GetClient()->MayAttachToRenderFrameHost(frame_host_);
+  return session->GetClient()->MayAttachToRenderFrameHost(frame_host);
 }
 
 void RenderFrameDevToolsAgentHost::UpdateResourceLoaderFactories() {
@@ -934,6 +988,29 @@ RenderFrameDevToolsAgentHost::cross_origin_opener_policy(
   }
   RenderFrameHostImpl* rfhi = frame_tree_node->current_frame_host();
   return rfhi->cross_origin_opener_policy();
+}
+
+absl::optional<std::vector<network::mojom::ContentSecurityPolicyHeader>>
+RenderFrameDevToolsAgentHost::content_security_policy(const std::string& id) {
+  FrameTreeNode* frame_tree_node =
+      protocol::FrameTreeNodeFromDevToolsFrameToken(
+          frame_host_->frame_tree_node(), id);
+  if (!frame_tree_node) {
+    return absl::nullopt;
+  }
+  RenderFrameHostImpl* rfhi = frame_tree_node->current_frame_host();
+  const PolicyContainerPolicies& policies =
+      rfhi->policy_container_host()->policies();
+  if (policies.content_security_policies.empty()) {
+    return absl::nullopt;
+  } else {
+    std::vector<network::mojom::ContentSecurityPolicyHeader> csp_headers;
+    for (const auto& content_security_policy :
+         policies.content_security_policies) {
+      csp_headers.push_back(*content_security_policy->header);
+    }
+    return csp_headers;
+  }
 }
 
 bool RenderFrameDevToolsAgentHost::HasSessionsWithoutTabTargetSupport() const {

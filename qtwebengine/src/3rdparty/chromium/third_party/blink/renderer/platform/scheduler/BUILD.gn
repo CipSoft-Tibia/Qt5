@@ -131,7 +131,6 @@ blink_platform_sources("scheduler") {
     "public/main_thread.h",
     "public/main_thread_scheduler.h",
     "public/non_main_thread.h",
-    "public/page_lifecycle_state.h",
     "public/page_scheduler.h",
     "public/post_cancellable_task.h",
     "public/post_cross_thread_task.h",
@@ -145,6 +144,7 @@ blink_platform_sources("scheduler") {
     "public/thread_type.h",
     "public/virtual_time_controller.h",
     "public/web_scheduling_priority.h",
+    "public/web_scheduling_queue_type.h",
     "public/web_scheduling_task_queue.h",
     "public/widget_scheduler.h",
     "public/worker_pool.h",
@@ -165,8 +165,6 @@ blink_platform_sources("scheduler") {
     "worker/non_main_thread_task_queue.h",
     "worker/non_main_thread_web_scheduling_task_queue_impl.cc",
     "worker/non_main_thread_web_scheduling_task_queue_impl.h",
-    "worker/worker_metrics_helper.cc",
-    "worker/worker_metrics_helper.h",
     "worker/worker_scheduler_impl.cc",
     "worker/worker_scheduler_impl.h",
     "worker/worker_scheduler_proxy.cc",
@@ -178,8 +176,6 @@ blink_platform_sources("scheduler") {
   deps = [
     "//base",
     "//cc",
-    "//components/power_scheduler",
-    "//components/scheduling_metrics",
     "//device/base/synchronization",
     "//services/metrics/public/cpp:ukm_builders",
     "//services/metrics/public/mojom",
@@ -212,6 +208,8 @@ jumbo_source_set("test_support") {
     "test/recording_task_time_observer.h",
     "test/renderer_scheduler_test_support.cc",
     "test/web_fake_thread_scheduler.cc",
+    "test/web_scheduling_test_helper.cc",
+    "test/web_scheduling_test_helper.h",
   ]
 
   deps = [
@@ -237,7 +235,6 @@ jumbo_source_set("unit_tests") {
     "common/blink_scheduler_single_thread_task_runner_unittest.cc",
     "common/cooperative_scheduling_manager_unittest.cc",
     "common/idle_helper_unittest.cc",
-    "common/metrics_helper_unittest.cc",
     "common/post_cancellable_task_unittest.cc",
     "common/process_time_override_coordinator_unittest.cc",
     "common/scheduler_helper_unittest.cc",

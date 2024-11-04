@@ -15,8 +15,18 @@
 #include "third_party/blink/renderer/platform/scheduler/public/scheduling_lifecycle_state.h"
 #include "third_party/blink/renderer/platform/scheduler/public/scheduling_policy.h"
 #include "third_party/blink/renderer/platform/scheduler/public/web_scheduling_priority.h"
+#include "third_party/blink/renderer/platform/scheduler/public/web_scheduling_queue_type.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
+
+namespace {
+
+// Maximum number of back/forward cache blocking details to send to the browser.
+// As long as this is a small number, we don't have to worry about the cost of
+// linear searches of the vector.
+constexpr size_t kMaxNumberOfBackForwardCacheBlockingDetails = 10;
+
+}  // namespace
 
 namespace blink {
 class FrameScheduler;
@@ -90,25 +100,60 @@ class PLATFORM_EXPORT FrameOrWorkerScheduler {
     base::WeakPtr<FrameOrWorkerScheduler> scheduler_;
   };
 
-  using BFCacheBlockingFeatureAndLocations =
-      WTF::Vector<FeatureAndJSLocationBlockingBFCache>;
+  // A struct to wrap a vector of `FeatureAndJSLocationBlockingBFCache`.
+  struct BFCacheBlockingFeatureAndLocations {
+    void MaybeAdd(FeatureAndJSLocationBlockingBFCache details) {
+      // Only add `details` when the same one does not exist already in the
+      // `details_list` and when the size of the `details_list` is less than
+      // `kMaxNumberOfBackForwardCacheBlockingDetails` to avoid sending a big
+      // mojo message.
+      if (details_list.Find(details) == kNotFound &&
+          details_list.size() < kMaxNumberOfBackForwardCacheBlockingDetails) {
+        details_list.push_back(details);
+      }
+    }
+    void Erase(FeatureAndJSLocationBlockingBFCache details) {
+      wtf_size_t index = details_list.Find(details);
+      // Because we avoid duplicates and set a limit, the details might not be
+      // found.
+      if (index != kNotFound) {
+        details_list.EraseAt(index);
+      }
+    }
+    void Clear() { details_list.clear(); }
+    bool operator==(BFCacheBlockingFeatureAndLocations& other) {
+      return details_list == other.details_list;
+    }
+
+    WTF::Vector<FeatureAndJSLocationBlockingBFCache> details_list;
+  };
 
   class PLATFORM_EXPORT Delegate {
    public:
     using BFCacheBlockingFeatureAndLocations =
         FrameOrWorkerScheduler::BFCacheBlockingFeatureAndLocations;
+
+    struct BlockingDetails {
+      const BFCacheBlockingFeatureAndLocations&
+          non_sticky_features_and_js_locations;
+      const BFCacheBlockingFeatureAndLocations&
+          sticky_features_and_js_locations;
+      BlockingDetails(BFCacheBlockingFeatureAndLocations& non_sticky,
+                      BFCacheBlockingFeatureAndLocations& sticky)
+          : non_sticky_features_and_js_locations(non_sticky),
+            sticky_features_and_js_locations(sticky) {}
+    };
     virtual ~Delegate() = default;
 
     // Notifies that the list of active blocking features for this worker has
     // changed when a blocking feature and its JS location are registered or
     // removed.
-    // TODO(crbug.com/1366675): Remove features_mask
-    virtual void UpdateBackForwardCacheDisablingFeatures(
-        uint64_t features_mask,
-        const BFCacheBlockingFeatureAndLocations&
-            non_sticky_features_and_js_locations,
-        const BFCacheBlockingFeatureAndLocations&
-            sticky_features_and_js_locations) = 0;
+    virtual void UpdateBackForwardCacheDisablingFeatures(BlockingDetails) = 0;
+
+    base::WeakPtr<Delegate> AsWeakPtr() {
+      return weak_ptr_factory_.GetWeakPtr();
+    }
+    base::WeakPtrFactory<Delegate> weak_ptr_factory_{this};
   };
 
   virtual ~FrameOrWorkerScheduler();
@@ -154,7 +199,10 @@ class PLATFORM_EXPORT FrameOrWorkerScheduler {
       ObserverType,
       OnLifecycleStateChangedCallback);
 
+  // Creates a new task queue for use with the web-exposed scheduling API with
+  // the given priority and type. See https://wicg.github.io/scheduling-apis.
   virtual std::unique_ptr<WebSchedulingTaskQueue> CreateWebSchedulingTaskQueue(
+      WebSchedulingQueueType,
       WebSchedulingPriority) = 0;
 
   virtual FrameScheduler* ToFrameScheduler() { return nullptr; }

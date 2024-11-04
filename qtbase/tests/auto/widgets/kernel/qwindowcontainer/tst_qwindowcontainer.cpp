@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -57,6 +57,8 @@ private slots:
     void testDockWidget();
     void testNativeContainerParent();
     void testPlatformSurfaceEvent();
+    void embedWidgetWindow();
+    void parentDestroyed();
     void cleanup();
 
 private:
@@ -408,6 +410,69 @@ void tst_QWindowContainer::testPlatformSurfaceEvent()
 
     QCOMPARE(window.data(), nullptr);
     QVERIFY(ok);
+}
+
+void tst_QWindowContainer::embedWidgetWindow()
+{
+    {
+        QWidget parent;
+        QWidget *widget = new QWidget;
+        widget->show();
+        QVERIFY(QTest::qWaitForWindowExposed(widget));
+        QVERIFY(widget->windowHandle());
+        QPointer<QWindow> widgetWindow = widget->windowHandle();
+        auto *container = QWidget::createWindowContainer(widgetWindow, &parent);
+        QCOMPARE(container, widget);
+        QCOMPARE(widget->parent(), &parent);
+        delete widget;
+        QTRY_VERIFY(widgetWindow.isNull());
+    }
+
+    QPointer<QWidget> widget = new QWidget;
+    QPointer<QWindow> widgetWindow;
+    {
+        QWidget parent;
+        widget->show();
+        QVERIFY(QTest::qWaitForWindowExposed(widget));
+        QVERIFY(widget->windowHandle());
+        widgetWindow = widget->windowHandle();
+        auto *container = QWidget::createWindowContainer(widgetWindow, &parent);
+        QCOMPARE(container, widget);
+        QCOMPARE(widget->parent(), &parent);
+    }
+    QTRY_VERIFY(widget.isNull());
+    QTRY_VERIFY(widgetWindow.isNull());
+
+}
+
+class CreateDestroyWidget : public QWidget
+{
+public:
+    void create() { QWidget::create(); }
+    void destroy() { QWidget::destroy(); }
+};
+
+void tst_QWindowContainer::parentDestroyed()
+{
+    CreateDestroyWidget topLevel;
+    topLevel.setAttribute(Qt::WA_NativeWindow);
+    QVERIFY(topLevel.windowHandle());
+
+    QPointer<QWindow> window = new QWindow;
+    QWidget *container = QWidget::createWindowContainer(window.get());
+    container->setParent(&topLevel);
+    topLevel.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
+    QCOMPARE(window->parent(), topLevel.windowHandle());
+
+    // Destroying the widget should not wipe out the contained QWindow
+    topLevel.destroy();
+    QVERIFY(window);
+
+    // Recreating the top level should once again reparent the contained window
+    topLevel.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
+    QCOMPARE(window->parent(), topLevel.windowHandle());
 }
 
 QTEST_MAIN(tst_QWindowContainer)

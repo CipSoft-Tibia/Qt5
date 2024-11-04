@@ -29,6 +29,7 @@
  */
 
 import * as Common from '../../core/common/common.js';
+import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
 import * as Extensions from '../../models/extensions/extensions.js';
@@ -38,7 +39,9 @@ import * as Workspace from '../../models/workspace/workspace.js';
 import type * as CodeMirror from '../../third_party/codemirror.next/codemirror.next.js';
 import * as SourceFrame from '../../ui/legacy/components/source_frame/source_frame.js';
 import * as UI from '../../ui/legacy/legacy.js';
+import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as Snippets from '../snippets/snippets.js';
+import * as Bindings from '../../models/bindings/bindings.js';
 
 import {SourcesView} from './SourcesView.js';
 import {UISourceCodeFrame} from './UISourceCodeFrame.js';
@@ -80,6 +83,7 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
   private currentFileInternal!: Workspace.UISourceCode.UISourceCode|null;
   private currentView!: UI.Widget.Widget|null;
   private scrollTimer?: number;
+  private reentrantShow: boolean;
   constructor(
       delegate: TabbedEditorContainerDelegate, setting: Common.Settings.Setting<SerializedHistoryItem[]>,
       placeholderElement: Element, focusedPlaceholderElement?: Element) {
@@ -111,6 +115,7 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
     this.history = History.fromObject(this.previouslyViewedFilesSetting.get());
     this.uriToUISourceCode = new Map();
     this.idToUISourceCode = new Map();
+    this.reentrantShow = false;
   }
 
   private onBindingCreated(event: Common.EventTarget.EventTargetEvent<Persistence.Persistence.PersistenceBinding>):
@@ -199,7 +204,18 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
         frame?.currentUISourceCode() === uiSourceCode) {
       Common.EventTarget.fireEvent('source-file-loaded', uiSourceCode.displayName(true));
     } else {
-      this.innerShowFile(this.canonicalUISourceCode(uiSourceCode), true);
+      if (uiSourceCode.project().type() === Workspace.Workspace.projectTypes.Debugger) {
+        const script = Bindings.DefaultScriptMapping.DefaultScriptMapping.scriptForUISourceCode(uiSourceCode);
+        if (script && script.isInlineScript() && !script.hasSourceURL) {
+          if (script.isModule) {
+            Host.userMetrics.vmInlineScriptContentShown(Host.UserMetrics.VMInlineScriptType.MODULE_SCRIPT);
+          } else {
+            Host.userMetrics.vmInlineScriptContentShown(Host.UserMetrics.VMInlineScriptType.CLASSIC_SCRIPT);
+          }
+        }
+      }
+
+      this.innerShowFile(uiSourceCode, true);
     }
   }
 
@@ -284,6 +300,10 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
   }
 
   private innerShowFile(uiSourceCode: Workspace.UISourceCode.UISourceCode, userGesture?: boolean): void {
+    if (this.reentrantShow) {
+      return;
+    }
+    const canonicalSourceCode = this.canonicalUISourceCode(uiSourceCode);
     const binding = Persistence.Persistence.PersistenceImpl.instance().binding(uiSourceCode);
     uiSourceCode = binding ? binding.fileSystem : uiSourceCode;
     if (this.currentFileInternal === uiSourceCode) {
@@ -293,9 +313,17 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
     this.removeViewListeners();
     this.currentFileInternal = uiSourceCode;
 
-    const tabId = this.tabIds.get(uiSourceCode) || this.appendFileTab(uiSourceCode, userGesture);
+    try {
+      // Selecting the tab may cause showFile to be called again, but with the canonical source code,
+      // which is not what we want, so we prevent reentrant calls.
+      this.reentrantShow = true;
+      const tabId = this.tabIds.get(canonicalSourceCode) || this.appendFileTab(canonicalSourceCode, userGesture);
 
-    this.tabbedPane.selectTab(tabId, userGesture);
+      this.tabbedPane.selectTab(tabId, userGesture);
+    } finally {
+      this.reentrantShow = false;
+    }
+
     if (userGesture) {
       this.editorSelectedByUserAction();
     }
@@ -303,6 +331,17 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
     const previousView = this.currentView;
     this.currentView = this.visibleView;
     this.addViewListeners();
+
+    if (this.currentView instanceof UISourceCodeFrame && this.currentView.uiSourceCode() !== uiSourceCode) {
+      // We are showing a different UISourceCode in the same tab (because it has the same URL). This
+      // commonly happens when switching between workers or iframes containing the same code, and while the
+      // contents are usually identical they may not be and it is important to show users when they aren't.
+      this.delegate.recycleUISourceCodeFrame(this.currentView, uiSourceCode);
+      if (uiSourceCode.project().type() !== Workspace.Workspace.projectTypes.FileSystem) {
+        // Disable editing, because it may confuse users that only one of the copies of this code changes.
+        uiSourceCode.disableEdit();
+      }
+    }
 
     const eventData = {
       currentFile: this.currentFileInternal,
@@ -396,7 +435,7 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
       uiSourceCode.disableEdit();
     }
 
-    if (this.currentFileInternal === uiSourceCode) {
+    if (this.currentFileInternal?.canononicalScriptId() === uiSourceCode.canononicalScriptId()) {
       return;
     }
 
@@ -508,7 +547,8 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
   }
 
   private addLoadErrorIcon(tabId: string): void {
-    const icon = UI.Icon.Icon.create('smallicon-error');
+    const icon = new IconButton.Icon.Icon();
+    icon.data = {iconName: 'cross-circle-filled', color: 'var(--icon-error)', width: '14px', height: '14px'};
     UI.Tooltip.Tooltip.install(icon, i18nString(UIStrings.unableToLoadThisContent));
     if (this.tabbedPane.tabView(tabId)) {
       this.tabbedPane.setTabIcon(tabId, icon);
@@ -534,7 +574,8 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
   private tabClosed(event: Common.EventTarget.EventTargetEvent<UI.TabbedPane.EventData>): void {
     const {tabId, isUserGesture} = event.data;
     const uiSourceCode = this.files.get(tabId);
-    if (this.currentFileInternal === uiSourceCode) {
+    if (this.currentFileInternal &&
+        this.currentFileInternal.canononicalScriptId() === uiSourceCode?.canononicalScriptId()) {
       this.removeViewListeners();
       this.currentView = null;
       this.currentFileInternal = null;
@@ -586,12 +627,14 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
       const title = this.titleForFile(uiSourceCode);
       const tooltip = this.tooltipForFile(uiSourceCode);
       this.tabbedPane.changeTabTitle(tabId, title, tooltip);
-      let icon: UI.Icon.Icon|(UI.Icon.Icon | null)|null = null;
+      let icon: IconButton.Icon.Icon|UI.Icon.Icon|null = null;
       if (uiSourceCode.loadError()) {
-        icon = UI.Icon.Icon.create('smallicon-error');
+        icon = new IconButton.Icon.Icon();
+        icon.data = {iconName: 'cross-circle-filled', color: 'var(--icon-error)', width: '14px', height: '14px'};
         UI.Tooltip.Tooltip.install(icon, i18nString(UIStrings.unableToLoadThisContent));
       } else if (Persistence.Persistence.PersistenceImpl.instance().hasUnsavedCommittedChanges(uiSourceCode)) {
-        icon = UI.Icon.Icon.create('smallicon-warning');
+        icon = new IconButton.Icon.Icon();
+        icon.data = {iconName: 'warning-filled', color: 'var(--icon-warning)', width: '14px', height: '14px'};
         UI.Tooltip.Tooltip.install(icon, i18nString(UIStrings.changesToThisFileWereNotSavedTo));
       } else {
         icon = Persistence.PersistenceUtils.PersistenceUtils.iconForUISourceCode(uiSourceCode);

@@ -16,7 +16,6 @@
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_base.h"
-#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/histogram_samples.h"
 #include "base/metrics/histogram_snapshot_manager.h"
@@ -36,6 +35,7 @@
 #include "components/metrics/metrics_pref_names.h"
 #include "components/metrics/metrics_provider.h"
 #include "components/metrics/metrics_service_client.h"
+#include "components/network_time/network_time_tracker.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
 #include "components/variations/hashing.h"
@@ -86,6 +86,14 @@ static int64_t ToMonotonicSeconds(base::TimeTicks time_ticks) {
   return (time_ticks - base::TimeTicks()).InSeconds();
 }
 
+// Helper function to get, and increment, the next metrics log record id.
+// This value is cached in local state.
+int GetNextRecordId(PrefService* local_state) {
+  const int value = local_state->GetInteger(prefs::kMetricsLogRecordId) + 1;
+  local_state->SetInteger(prefs::kMetricsLogRecordId, value);
+  return value;
+}
+
 // Populates |time| with information about the current time and, if
 // |record_time_zone| is true, the time zone.
 void RecordCurrentTime(
@@ -95,10 +103,18 @@ void RecordCurrentTime(
     metrics::ChromeUserMetricsExtension::RealLocalTime* time) {
   // Record the current time and the clock used to determine the time.
   base::Time now;
-  // TODO(http://crbug.com/1257449): Enable network time on Android.
-  now = clock->Now();
-  time->set_time_source(
-      metrics::ChromeUserMetricsExtension::RealLocalTime::CLIENT_CLOCK);
+  if (network_time_tracker != nullptr &&
+      network_time_tracker->GetNetworkTime(&now, nullptr) ==
+          network_time::NetworkTimeTracker::NETWORK_TIME_AVAILABLE) {
+    // |network_time_tracker| can be null in certain settings such as WebView
+    // (which doesn't run a NetworkTimeTracker) and tests.
+    time->set_time_source(
+        metrics::ChromeUserMetricsExtension::RealLocalTime::NETWORK_TIME_CLOCK);
+  } else {
+    now = clock->Now();
+    time->set_time_source(
+        metrics::ChromeUserMetricsExtension::RealLocalTime::CLIENT_CLOCK);
+  }
   time->set_time_sec(now.ToTimeT());
 
   if (record_time_zone) {
@@ -161,6 +177,7 @@ metrics::SystemProfileProto::OS::XdgCurrentDesktop ToProtoCurrentDesktop(
     case base::nix::DesktopEnvironment::DESKTOP_ENVIRONMENT_KDE3:
     case base::nix::DesktopEnvironment::DESKTOP_ENVIRONMENT_KDE4:
     case base::nix::DesktopEnvironment::DESKTOP_ENVIRONMENT_KDE5:
+    case base::nix::DesktopEnvironment::DESKTOP_ENVIRONMENT_KDE6:
       return metrics::SystemProfileProto::OS::KDE;
     case base::nix::DesktopEnvironment::DESKTOP_ENVIRONMENT_PANTHEON:
       return metrics::SystemProfileProto::OS::PANTHEON;
@@ -238,6 +255,7 @@ MetricsLog::MetricsLog(const std::string& client_id,
   SystemProfileProto* system_profile = uma_proto()->mutable_system_profile();
   // Record the unhashed the client_id to system profile. This is used to
   // simulate field trial assignments for the client.
+  DCHECK_EQ(client_id.size(), 36ull);
   system_profile->set_client_uuid(client_id);
   RecordCoreSystemProfile(client_, system_profile);
 }
@@ -247,6 +265,7 @@ MetricsLog::~MetricsLog() = default;
 // static
 void MetricsLog::RegisterPrefs(PrefRegistrySimple* registry) {
   EnvironmentRecorder::RegisterPrefs(registry);
+  registry->RegisterIntegerPref(prefs::kMetricsLogRecordId, 0);
 }
 
 // static
@@ -277,6 +296,11 @@ int64_t MetricsLog::GetCurrentTime() {
   return ToMonotonicSeconds(base::TimeTicks::Now());
 }
 
+void MetricsLog::AssignRecordId(PrefService* local_state) {
+  DCHECK(!uma_proto_.has_record_id());
+  uma_proto_.set_record_id(GetNextRecordId(local_state));
+}
+
 void MetricsLog::RecordUserAction(const std::string& key,
                                   base::TimeTicks action_time) {
   DCHECK(!closed_);
@@ -284,7 +308,7 @@ void MetricsLog::RecordUserAction(const std::string& key,
   UserActionEventProto* user_action = uma_proto_.add_user_action_event();
   user_action->set_name_hash(Hash(key));
   user_action->set_time_sec(ToMonotonicSeconds(action_time));
-  base::UmaHistogramBoolean("UMA.UserActionsCount", true);
+  UMA_HISTOGRAM_BOOLEAN("UMA.UserActionsCount", true);
 }
 
 // static
@@ -521,12 +545,25 @@ bool MetricsLog::LoadSavedEnvironmentFromPrefs(PrefService* local_state) {
   return recorder.LoadEnvironmentFromPrefs(system_profile);
 }
 
-void MetricsLog::FinalizeLog(bool truncate_events,
-                             const std::string& current_app_version,
-                             std::string* encoded_log) {
+metrics::ChromeUserMetricsExtension::RealLocalTime
+MetricsLog::GetCurrentClockTime(bool record_time_zone) {
+  CHECK_EQ(log_type_, MetricsLog::ONGOING_LOG);
+  metrics::ChromeUserMetricsExtension::RealLocalTime time;
+  RecordCurrentTime(clock_, network_clock_, record_time_zone, &time);
+  return time;
+}
+
+void MetricsLog::FinalizeLog(
+    bool truncate_events,
+    const std::string& current_app_version,
+    absl::optional<ChromeUserMetricsExtension::RealLocalTime> close_time,
+    std::string* encoded_log) {
   if (truncate_events)
     TruncateEvents();
   RecordLogWrittenByAppVersionIfNeeded(current_app_version);
+  if (close_time.has_value()) {
+    *uma_proto_.mutable_time_log_closed() = std::move(close_time.value());
+  }
   CloseLog();
 
   uma_proto_.SerializeToString(encoded_log);
@@ -534,11 +571,15 @@ void MetricsLog::FinalizeLog(bool truncate_events,
 
 void MetricsLog::CloseLog() {
   DCHECK(!closed_);
-  if (log_type_ == MetricsLog::ONGOING_LOG) {
-    RecordCurrentTime(clock_, network_clock_,
-                      /*record_time_zone=*/true,
-                      uma_proto_.mutable_time_log_closed());
-  }
+
+  // Ongoing logs (and only ongoing logs) should have a closed timestamp. Other
+  // types of logs (initial stability and independent) contain metrics from
+  // previous sessions, so do not add timestamps as they would not accurately
+  // represent the time at which those metrics were emitted.
+  CHECK(log_type_ == MetricsLog::ONGOING_LOG
+            ? uma_proto_.has_time_log_closed()
+            : !uma_proto_.has_time_log_closed());
+
   closed_ = true;
 }
 
@@ -562,7 +603,7 @@ void MetricsLog::TruncateEvents() {
       // enum that is generated from actions.xml in our processing pipelines.
       // Instead, a histogram description will also be produced in our
       // pipelines.
-      base::UmaHistogramSparse(
+      UMA_HISTOGRAM_SPARSE(
           "UMA.TruncatedEvents.UserAction.Type",
           // Truncate the unsigned 64-bit hash to 31 bits, to make it a suitable
           // histogram sample.

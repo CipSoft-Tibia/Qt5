@@ -26,9 +26,11 @@ if(CMAKE_VERSION VERSION_LESS 3.21.0)
   endif()
 endif()
 
-set(CMAKE_CXX_STANDARD 14 CACHE STRING "Default C++ standard")
-set(CMAKE_CXX_STANDARD_REQUIRED ON CACHE BOOL "Require C++ standard")
-set(CMAKE_CXX_EXTENSIONS OFF CACHE BOOL "Allow C++ extensions")
+if(PROJECT_IS_TOP_LEVEL)
+  set(CMAKE_CXX_STANDARD 14 CACHE STRING "Default C++ standard")
+  set(CMAKE_CXX_STANDARD_REQUIRED ON CACHE BOOL "Require C++ standard")
+  set(CMAKE_CXX_EXTENSIONS OFF CACHE BOOL "Allow C++ extensions")
+endif()
 
 # guard against in-source builds
 
@@ -97,6 +99,20 @@ macro(ei_add_cxx_compiler_flag FLAG)
   endif()
 endmacro()
 
+function(ei_maybe_separate_arguments variable mode args)
+  # Use separate_arguments if the input is a single string containing a space.
+  # Otherwise, if it is already a list or doesn't have a space, just propagate
+  # the original value.  This is to better support multi-argument lists.
+  list(LENGTH args list_length)
+  if (${list_length} EQUAL 1)
+    string(FIND "${args}" " " has_space)
+    if (${has_space} GREATER -1)
+      separate_arguments(args ${mode} "${args}")
+    endif()
+  endif()
+  set(${variable} ${args} PARENT_SCOPE)
+endfunction(ei_maybe_separate_arguments)
+
 # Determine if we should build shared libraries on this platform.
 get_cmake_property(EIGEN_BUILD_SHARED_LIBS TARGET_SUPPORTS_SHARED_LIBS)
 
@@ -109,8 +125,11 @@ find_package(StandardMathLibrary)
 
 set(EIGEN_TEST_CUSTOM_LINKER_FLAGS  "" CACHE STRING "Additional linker flags when linking unit tests.")
 set(EIGEN_TEST_CUSTOM_CXX_FLAGS     "" CACHE STRING "Additional compiler flags when compiling unit tests.")
-# convert space separated argument into CMake lists for downstream consumption
-separate_arguments(EIGEN_TEST_CUSTOM_CXX_FLAGS NATIVE_COMMAND ${EIGEN_TEST_CUSTOM_CXX_FLAGS})
+
+# Convert space-separated arguments into CMake lists for downstream consumption.
+ei_maybe_separate_arguments(EIGEN_TEST_CUSTOM_LINKER_FLAGS NATIVE_COMMAND "${EIGEN_TEST_CUSTOM_LINKER_FLAGS}")
+ei_maybe_separate_arguments(EIGEN_TEST_CUSTOM_CXX_FLAGS NATIVE_COMMAND "${EIGEN_TEST_CUSTOM_CXX_FLAGS}")
+
 
 set(EIGEN_STANDARD_LIBRARIES_TO_LINK_TO "")
 
@@ -477,6 +496,59 @@ if(EIGEN_BUILD_DOC)
   add_subdirectory(doc EXCLUDE_FROM_ALL)
 endif()
 
+# add SYCL
+option(EIGEN_TEST_SYCL "Add Sycl support." OFF)
+if(EIGEN_TEST_SYCL)
+  option(EIGEN_SYCL_DPCPP "Use the DPCPP Sycl implementation (DPCPP is default SYCL-Compiler)." ON)
+  option(EIGEN_SYCL_TRISYCL "Use the triSYCL Sycl implementation." OFF)
+  option(EIGEN_SYCL_ComputeCpp "Use the ComputeCPP Sycl implementation." OFF)
+
+  # Building options
+  # https://developer.codeplay.com/products/computecpp/ce/2.11.0/guides/eigen-overview/options-for-building-eigen-sycl
+  option(EIGEN_SYCL_USE_DEFAULT_SELECTOR "Use sycl default selector to select the preferred device." OFF)
+  option(EIGEN_SYCL_NO_LOCAL_MEM "Build for devices without dedicated shared memory." OFF)
+  option(EIGEN_SYCL_LOCAL_MEM "Allow the use of local memory (enabled by default)." ON)
+  option(EIGEN_SYCL_LOCAL_THREAD_DIM0 "Set work group size for dimension 0." 16)
+  option(EIGEN_SYCL_LOCAL_THREAD_DIM1 "Set work group size for dimension 1." 16)
+  option(EIGEN_SYCL_ASYNC_EXECUTION "Allow asynchronous execution (enabled by default)." ON)
+  option(EIGEN_SYCL_DISABLE_SKINNY "Disable optimization for tall/skinny matrices." OFF)
+  option(EIGEN_SYCL_DISABLE_DOUBLE_BUFFER "Disable double buffer." OFF)
+  option(EIGEN_SYCL_DISABLE_SCALAR "Disable scalar contraction." OFF)
+  option(EIGEN_SYCL_DISABLE_GEMV "Disable GEMV and create a single kernel to calculate contraction instead." OFF)
+
+  set(EIGEN_SYCL ON)
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations -Wno-shorten-64-to-32 -Wno-cast-align")
+  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-deprecated-copy-with-user-provided-copy -Wno-unused-variable")
+  set (CMAKE_MODULE_PATH "${CMAKE_ROOT}/Modules" "cmake/Modules/" "${CMAKE_MODULE_PATH}")
+  find_package(Threads REQUIRED)
+  if(EIGEN_SYCL_TRISYCL)
+    message(STATUS "Using triSYCL")
+    include(FindTriSYCL)
+  elseif(EIGEN_SYCL_ComputeCpp)
+    message(STATUS "Using ComputeCPP SYCL")
+    include(FindComputeCpp)
+    set(COMPUTECPP_DRIVER_DEFAULT_VALUE OFF)
+    if (NOT MSVC)
+      set(COMPUTECPP_DRIVER_DEFAULT_VALUE ON)
+    endif()
+    option(COMPUTECPP_USE_COMPILER_DRIVER
+            "Use ComputeCpp driver instead of a 2 steps compilation"
+            ${COMPUTECPP_DRIVER_DEFAULT_VALUE}
+            )
+  else() #Default SYCL compiler is DPCPP (EIGEN_SYCL_DPCPP)
+    set(DPCPP_SYCL_TARGET "spir64" CACHE STRING "Default target for Intel CPU/GPU")
+    message(STATUS "Using DPCPP")
+    find_package(DPCPP)
+    add_definitions(-DSYCL_COMPILER_IS_DPCPP)
+  endif(EIGEN_SYCL_TRISYCL)
+  if(EIGEN_DONT_VECTORIZE_SYCL)
+    message(STATUS "Disabling SYCL vectorization in tests/examples")
+    # When disabling SYCL vectorization, also disable Eigen default vectorization
+    add_definitions(-DEIGEN_DONT_VECTORIZE=1)
+    add_definitions(-DEIGEN_DONT_VECTORIZE_SYCL=1)
+  endif()
+endif()
 
 cmake_dependent_option(BUILD_TESTING "Enable creation of tests." ON "PROJECT_IS_TOP_LEVEL" OFF)
 option(EIGEN_BUILD_TESTING "Enable creation of Eigen tests." ${BUILD_TESTING})
@@ -501,45 +573,6 @@ if(EIGEN_LEAVE_TEST_IN_ALL_TARGET)
 else()
   add_subdirectory(blas EXCLUDE_FROM_ALL)
   add_subdirectory(lapack EXCLUDE_FROM_ALL)
-endif()
-
-# add SYCL
-option(EIGEN_TEST_SYCL "Add Sycl support." OFF)
-if(EIGEN_TEST_SYCL)
-  option(EIGEN_SYCL_DPCPP "Use the DPCPP Sycl implementation (DPCPP is default SYCL-Compiler)." ON)
-  option(EIGEN_SYCL_TRISYCL "Use the triSYCL Sycl implementation." OFF)
-  option(EIGEN_SYCL_ComputeCpp "Use the DPCPP Sycl implementation." OFF)
-  set(CMAKE_CXX_STANDARD 17)
-  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations -Wno-shorten-64-to-32 -Wno-cast-align") 
-  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-deprecated-copy-with-user-provided-copy -Wno-unused-variable")
-  set (CMAKE_MODULE_PATH "${CMAKE_ROOT}/Modules" "cmake/Modules/" "${CMAKE_MODULE_PATH}")
-  find_package(Threads REQUIRED)
-  if(EIGEN_SYCL_TRISYCL)
-    message(STATUS "Using triSYCL")
-    include(FindTriSYCL)
-  elseif(EIGEN_SYCL_ComputeCpp)
-    message(STATUS "Using ComputeCPP SYCL")
-    include(FindComputeCpp)
-    set(COMPUTECPP_DRIVER_DEFAULT_VALUE OFF)
-    if (NOT MSVC)
-      set(COMPUTECPP_DRIVER_DEFAULT_VALUE ON)
-    endif()
-    option(COMPUTECPP_USE_COMPILER_DRIVER
-      "Use ComputeCpp driver instead of a 2 steps compilation"
-      ${COMPUTECPP_DRIVER_DEFAULT_VALUE}
-    )
-  else() #Default SYCL compiler is DPCPP (EIGEN_SYCL_DPCPP)
-    set(DPCPP_SYCL_TARGET "spir64" CACHE STRING "Defualt target for Intel CPU/GPU")
-    message(STATUS "Using DPCPP")
-    find_package(DPCPP)
-    add_definitions(-DSYCL_COMPILER_IS_DPCPP)
-  endif(EIGEN_SYCL_TRISYCL)
-  if(EIGEN_DONT_VECTORIZE_SYCL)
-    message(STATUS "Disabling SYCL vectorization in tests/examples")
-    # When disabling SYCL vectorization, also disable Eigen default vectorization
-    add_definitions(-DEIGEN_DONT_VECTORIZE=1)
-    add_definitions(-DEIGEN_DONT_VECTORIZE_SYCL=1)
-  endif()
 endif()
 
 add_subdirectory(unsupported)

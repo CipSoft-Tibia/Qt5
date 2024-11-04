@@ -31,11 +31,12 @@
 import * as Common from '../../../../core/common/common.js';
 import * as i18n from '../../../../core/i18n/i18n.js';
 import * as Platform from '../../../../core/platform/platform.js';
+import * as TraceEngine from '../../../../models/trace/trace.js';
 import * as UI from '../../legacy.js';
 import * as ThemeSupport from '../../theme_support/theme_support.js';
 
-import {TimelineGrid, type Calculator} from './TimelineGrid.js';
 import overviewGridStyles from './overviewGrid.css.legacy.js';
+import {type Calculator, TimelineGrid} from './TimelineGrid.js';
 
 const UIStrings = {
   /**
@@ -149,7 +150,7 @@ export class Window extends Common.ObjectWrapper.ObjectWrapper<EventTypes> {
     UI.ARIAUtils.markAsGroup(this.parentElement);
     this.calculator = calculator;
 
-    UI.ARIAUtils.setAccessibleName(this.parentElement, i18nString(UIStrings.overviewGridWindow));
+    UI.ARIAUtils.setLabel(this.parentElement, i18nString(UIStrings.overviewGridWindow));
 
     UI.UIUtils.installDragHandle(
         this.parentElement, this.startWindowSelectorDragging.bind(this), this.windowSelectorDragging.bind(this),
@@ -173,12 +174,12 @@ export class Window extends Common.ObjectWrapper.ObjectWrapper<EventTypes> {
         this.rightResizeElement, this.resizerElementStartDragging.bind(this),
         this.rightResizeElementDragging.bind(this), null, 'ew-resize');
 
-    UI.ARIAUtils.setAccessibleName(this.leftResizeElement, i18nString(UIStrings.leftResizer));
+    UI.ARIAUtils.setLabel(this.leftResizeElement, i18nString(UIStrings.leftResizer));
     UI.ARIAUtils.markAsSlider(this.leftResizeElement);
     const leftKeyDown = (event: Event): void => this.handleKeyboardResizing(event, false);
     this.leftResizeElement.addEventListener('keydown', leftKeyDown);
 
-    UI.ARIAUtils.setAccessibleName(this.rightResizeElement, i18nString(UIStrings.rightResizer));
+    UI.ARIAUtils.setLabel(this.rightResizeElement, i18nString(UIStrings.rightResizer));
     UI.ARIAUtils.markAsSlider(this.rightResizeElement);
 
     const rightKeyDown = (event: Event): void => this.handleKeyboardResizing(event, true);
@@ -393,8 +394,10 @@ export class Window extends Common.ObjectWrapper.ObjectWrapper<EventTypes> {
     if (!this.calculator) {
       return;
     }
-    const startValue = this.calculator.formatValue(this.getRawSliderValue(/* leftSlider */ true));
-    const endValue = this.calculator.formatValue(this.getRawSliderValue(/* leftSlider */ false));
+    const startValue = this.calculator.formatValue(
+        TraceEngine.Types.Timing.MilliSeconds(this.getRawSliderValue(/* leftSlider */ true)));
+    const endValue = this.calculator.formatValue(
+        TraceEngine.Types.Timing.MilliSeconds(this.getRawSliderValue(/* leftSlider */ false)));
     UI.ARIAUtils.setAriaValueText(this.leftResizeElement, String(startValue));
     UI.ARIAUtils.setAriaValueText(this.rightResizeElement, String(endValue));
   }

@@ -13,8 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.flatbuffers.kotlin.benchmark
+@file:OptIn(ExperimentalUnsignedTypes::class)
 
+package com.google.flatbuffers.kotlin.benchmark
 import com.google.flatbuffers.ArrayReadWriteBuf
 import com.google.flatbuffers.FlexBuffers
 import com.google.flatbuffers.FlexBuffersBuilder.BUILDER_FLAG_SHARE_ALL
@@ -35,7 +36,7 @@ import java.util.concurrent.TimeUnit
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @Measurement(iterations = 20, time = 1, timeUnit = TimeUnit.NANOSECONDS)
-class FlexBuffersBenchmark {
+open class FlexBuffersBenchmark {
 
   var initialCapacity = 1024
   var value: Double = 0.0
@@ -49,7 +50,7 @@ class FlexBuffersBenchmark {
   }
 
   @Benchmark
-  fun mapKotlin(blackhole: Blackhole) {
+  open fun mapKotlin(blackhole: Blackhole) {
     val kBuilder = FlexBuffersBuilder(initialCapacity, FlexBuffersBuilder.SHARE_KEYS_AND_STRINGS)
     kBuilder.putMap {
       this["hello"] = "world"
@@ -72,7 +73,7 @@ class FlexBuffersBenchmark {
   }
 
   @Benchmark
-  fun mapJava(blackhole: Blackhole) {
+  open fun mapJava(blackhole: Blackhole) {
     val jBuilder = com.google.flatbuffers.FlexBuffersBuilder(ArrayReadWriteBuf(initialCapacity), BUILDER_FLAG_SHARE_ALL)
     val startMap = jBuilder.startMap()
     jBuilder.putString("hello", "world")
@@ -102,7 +103,7 @@ class FlexBuffersBenchmark {
   }
 
   @Benchmark
-  fun intArrayKotlin(blackhole: Blackhole) {
+  open fun intArrayKotlin(blackhole: Blackhole) {
     val kBuilder = FlexBuffersBuilder(initialCapacity, FlexBuffersBuilder.SHARE_KEYS_AND_STRINGS)
     kBuilder.put(bigIntArray)
     val root = getRoot(kBuilder.finish())
@@ -110,7 +111,7 @@ class FlexBuffersBenchmark {
   }
 
   @Benchmark
-  fun intArrayJava(blackhole: Blackhole) {
+  open fun intArrayJava(blackhole: Blackhole) {
     val jBuilder = com.google.flatbuffers.FlexBuffersBuilder(ArrayReadWriteBuf(initialCapacity), BUILDER_FLAG_SHARE_ALL)
     val v = jBuilder.startVector()
     bigIntArray.forEach { jBuilder.putInt(it) }
@@ -126,7 +127,7 @@ class FlexBuffersBenchmark {
   }
 
   @Benchmark
-  fun stringArrayKotlin(blackhole: Blackhole) {
+  open fun stringArrayKotlin(blackhole: Blackhole) {
     val kBuilder = FlexBuffersBuilder(initialCapacity, FlexBuffersBuilder.SHARE_KEYS_AND_STRINGS)
     kBuilder.putVector { stringValue.forEach { kBuilder.put(it) } }
     kBuilder.finish()
@@ -136,7 +137,7 @@ class FlexBuffersBenchmark {
   }
 
   @Benchmark
-  fun stringArrayJava(blackhole: Blackhole) {
+  open fun stringArrayJava(blackhole: Blackhole) {
     val jBuilder = com.google.flatbuffers.FlexBuffersBuilder(ArrayReadWriteBuf(initialCapacity), BUILDER_FLAG_SHARE_ALL)
     val v = jBuilder.startVector()
     stringValue.forEach { jBuilder.putString(it) }
@@ -148,7 +149,7 @@ class FlexBuffersBenchmark {
   }
 
   @Benchmark
-  fun stringMapKotlin(blackhole: Blackhole) {
+  open fun stringMapKotlin(blackhole: Blackhole) {
     val kBuilder = FlexBuffersBuilder(initialCapacity, FlexBuffersBuilder.SHARE_KEYS_AND_STRINGS)
     val pos = kBuilder.startMap()
     for (i in stringKey.indices) {
@@ -165,7 +166,7 @@ class FlexBuffersBenchmark {
   }
 
   @Benchmark
-  fun stringMapBytIndexKotlin(blackhole: Blackhole) {
+  open fun stringMapBytIndexKotlin(blackhole: Blackhole) {
     val kBuilder = FlexBuffersBuilder(initialCapacity, FlexBuffersBuilder.SHARE_KEYS_AND_STRINGS)
     val pos = kBuilder.startMap()
     for (i in stringKey.indices) {
@@ -180,7 +181,7 @@ class FlexBuffersBenchmark {
   }
 
   @Benchmark
-  fun stringMapJava(blackhole: Blackhole) {
+  open fun stringMapJava(blackhole: Blackhole) {
     val jBuilder = com.google.flatbuffers.FlexBuffersBuilder(ArrayReadWriteBuf(initialCapacity), BUILDER_FLAG_SHARE_ALL)
     val v = jBuilder.startMap()
     for (i in stringKey.indices) {

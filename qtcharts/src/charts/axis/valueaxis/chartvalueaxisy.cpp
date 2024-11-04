@@ -132,9 +132,9 @@ QSizeF ChartValueAxisY::sizeHint(Qt::SizeHint which, const QSizeF &constraint) c
 
     QSizeF sh;
     QSizeF base = VerticalAxis::sizeHint(which, constraint);
-    QStringList ticksList = createValueLabels(min(), max(), m_axis->tickCount(),
-                                              m_axis->tickInterval(), m_axis->tickAnchor(),
-                                              m_axis->tickType(), m_axis->labelFormat());
+    const QStringList ticksList =
+            createValueLabels(min(), max(), m_axis->tickCount(), m_axis->tickInterval(),
+                              m_axis->tickAnchor(), m_axis->tickType(), m_axis->labelFormat());
     qreal width = 0;
     // Height of vertical axis sizeHint indicates the maximum distance labels can extend past
     // first and last ticks. Base height is irrelevant.
@@ -159,7 +159,7 @@ QSizeF ChartValueAxisY::sizeHint(Qt::SizeHint which, const QSizeF &constraint) c
         if (labelsVisible()) {
             qreal labelWidth = 0.0;
             qreal firstHeight = -1.0;
-            foreach (const QString& s, ticksList) {
+            for (const QString &s : ticksList) {
                 QRectF rect = ChartPresenter::textBoundingRect(axis()->labelsFont(), s, axis()->labelsAngle());
                 labelWidth = qMax(rect.width(), labelWidth);
                 height = rect.height();

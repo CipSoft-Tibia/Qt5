@@ -11,7 +11,8 @@
 
 #include "base/functional/bind.h"
 #include "base/run_loop.h"
-#include "base/strings/stringprintf.h"
+#include "base/strings/strcat.h"
+#include "base/values.h"
 #include "chrome/test/base/testing_profile.h"
 #include "components/version_info/channel.h"
 #include "components/version_info/version_info.h"
@@ -26,7 +27,6 @@
 #include "extensions/common/features/feature.h"
 #include "extensions/common/features/feature_channel.h"
 #include "extensions/common/features/feature_provider.h"
-#include "extensions/common/value_builder.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace {
@@ -109,11 +109,10 @@ TEST_F(RulesRegistryServiceTest, TestConstructionAndMultiThreading) {
   base::RunLoop().RunUntilIdle();
 
   // Test extension uninstalling.
-  base::Value::Dict manifest = DictionaryBuilder()
+  base::Value::Dict manifest = base::Value::Dict()
                                    .Set("name", "Extension")
                                    .Set("version", "1.0")
-                                   .Set("manifest_version", 2)
-                                   .Build();
+                                   .Set("manifest_version", 2);
   scoped_refptr<const Extension> extension =
       ExtensionBuilder()
           .SetManifest(std::move(manifest))
@@ -144,9 +143,9 @@ TEST_F(RulesRegistryServiceTest, DefaultRulesRegistryRegistered) {
   };
 
   for (const auto& test_case : test_cases) {
-    SCOPED_TRACE(base::StringPrintf(
-        "Testing Channel %s",
-        version_info::GetChannelString(test_case.channel).c_str()));
+    SCOPED_TRACE(
+        base::StrCat({"Testing Channel ",
+                      version_info::GetChannelString(test_case.channel)}));
     ScopedCurrentChannel scoped_channel(test_case.channel);
 
     ASSERT_EQ(test_case.expect_api_enabled,

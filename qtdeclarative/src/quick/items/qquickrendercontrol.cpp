@@ -613,8 +613,12 @@ QRhi *QQuickRenderControl::rhi() const
     applications may also want to query it, for example to issue resource
     updates (for example, a texture readback).
 
-    The command buffer is only valid for use between beginFrame() and
-    endFrame().
+    The returned command buffer reference should only be used between
+    beginFrame() and endFrame(). There are specific exceptions, for example
+    calling
+    \l{QRhiCommandBuffer::lastCompletedGpuTime()}{lastCompletedGpuTime()} on
+    the command buffer right after endFrame(), but before the next
+    beginFrame(), is valid.
 
     \note This function is not applicable and returns null when using the
     \c software adaptation of Qt Quick.
@@ -747,7 +751,8 @@ void QQuickRenderControl::endFrame()
     }
 
     d->rhi->endOffscreenFrame();
-    d->cb = nullptr;
+    // do not null out d->cb; this allows calling lastCompletedGpuTime() for example
+
     d->frameStatus = QQuickRenderControlPrivate::NotRecordingFrame;
 
     emit d->window->afterFrameEnd();

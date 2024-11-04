@@ -34,6 +34,7 @@
 #include "third_party/blink/renderer/platform/graphics/paint/paint_controller.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_record.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_record_builder.h"
+#include "third_party/blink/renderer/platform/graphics/pattern.h"
 #include "third_party/blink/renderer/platform/graphics/skia/skia_utils.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "ui/gfx/geometry/skia_conversions.h"
@@ -137,10 +138,9 @@ std::unique_ptr<PatternData> LayoutSVGResourcePattern::BuildPatternData(
     return pattern_data;
 
   // Compute tile metrics.
-  gfx::RectF tile_bounds = SVGLengthContext::ResolveRectangle(
-      GetElement(), attributes.PatternUnits(), object_bounding_box,
-      *attributes.X(), *attributes.Y(), *attributes.Width(),
-      *attributes.Height());
+  gfx::RectF tile_bounds = ResolveRectangle(
+      attributes.PatternUnits(), object_bounding_box, *attributes.X(),
+      *attributes.Y(), *attributes.Width(), *attributes.Height());
   if (tile_bounds.IsEmpty())
     return pattern_data;
 

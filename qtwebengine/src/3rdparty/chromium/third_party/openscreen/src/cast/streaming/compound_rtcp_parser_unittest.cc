@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,19 +12,22 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "platform/api/time.h"
+#include "platform/base/trivial_clock_traits.h"
 #include "util/chrono_helpers.h"
 
 using testing::_;
+using testing::Invoke;
 using testing::Mock;
 using testing::SaveArg;
 using testing::StrictMock;
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 constexpr Ssrc kSenderSsrc{1};
 constexpr Ssrc kReceiverSsrc{2};
+
+}  // namespace
 
 class CompoundRtcpParserTest : public testing::Test {
  public:
@@ -39,10 +42,8 @@ class CompoundRtcpParserTest : public testing::Test {
 };
 
 TEST_F(CompoundRtcpParserTest, ProcessesEmptyPacket) {
-  const uint8_t kEmpty[0] = {};
   // Expect NO calls to mock client.
-  EXPECT_TRUE(
-      parser()->Parse(absl::Span<const uint8_t>(kEmpty, 0), FrameId::first()));
+  EXPECT_TRUE(parser()->Parse(ByteView(), FrameId::first()));
 }
 
 TEST_F(CompoundRtcpParserTest, ReturnsErrorForGarbage) {
@@ -145,6 +146,166 @@ TEST_F(CompoundRtcpParserTest, ParsesPictureLossIndicatorMessage) {
   EXPECT_TRUE(parser()->Parse(kPictureLossIndicatorPacketWithWrongSenderSsrc,
                               FrameId::first()));
   Mock::VerifyAndClearExpectations(client());
+}
+
+TEST_F(CompoundRtcpParserTest, OnCastReceiverFrameLogMessages_ValidPacket) {
+  // clang-format off
+  const uint8_t kFrameLogPacket[] = {
+      0b10000000 | 2,          // Version=2, Padding=no, Subtype=ReceiverLog.
+      204,                     // RTCP Packet type of application defined.
+      0x00, 0x05,              // Length of remainder of packet in 32-bit words.
+      0x00, 0x00, 0x00, 0x02,  // Receiver SSRC.
+       'C',  'A',  'S',  'T',  // Name.
+      0x01, 0x02, 0x03, 0x04,  // Truncated RTP timestamp.
+      0x00,                    // Number of events (minus one).
+            0x10, 0x20, 0x30,  // Event timestamp.
+      0x1E, 0x15,              // Event one: packet ID.
+                  0xE1, 0xF9,  // Event one: type (packet received), timestamp.
+  };
+  // clang-format on
+
+  std::vector<RtcpReceiverFrameLogMessage> messages;
+  EXPECT_CALL(*(client()), OnCastReceiverFrameLogMessages(_))
+      .WillOnce(SaveArg<0>(&messages));
+  EXPECT_TRUE(parser()->Parse(kFrameLogPacket, FrameId::first()));
+
+  ASSERT_EQ(1u, messages.size());
+  EXPECT_EQ(RtpTimeTicks(16909060), messages[0].rtp_timestamp);
+
+  // NOTE: at least one event is required.
+  EXPECT_EQ(1u, messages[0].messages.size());
+
+  const RtcpReceiverEventLogMessage& log = messages[0].messages[0];
+  EXPECT_EQ(StatisticsEventType::kPacketReceived, log.type);
+  EXPECT_EQ(session()->start_time() + microseconds{1057321000}, log.timestamp);
+  EXPECT_EQ(milliseconds{}, log.delay);
+  EXPECT_EQ(FramePacketId{7701}, log.packet_id);
+}
+
+TEST_F(CompoundRtcpParserTest,
+       OnCastReceiverFrameLogMessages_MultiplePopulatedPackets) {
+  // clang-format off
+  const uint8_t kFrameLogPopulatedPacket[] = {
+      0b10000000 | 2,          // Version=2, Padding=no, Subtype=ReceiverLog.
+      204,                     // RTCP Packet type of application defined.
+      0x00, 0x0A,              // Length of remainder of packet in 32-bit words.
+      0x00, 0x00, 0x00, 0x02,  // Receiver SSRC.
+       'C',  'A',  'S',  'T',  // Name.
+      0x01, 0x02, 0x03, 0x04,  // Truncated RTP timestamp.
+      0x02,                    // Number of events (minus one).
+            0x10, 0x20, 0x30,  // Event timestamp.
+      0x01, 0x12,              // Event one: packet ID.
+                  0x93, 0x14,  // Event one: type (invalid), timestamp.
+      0x01, 0x15,              // Event two: packet ID.
+                  0xE1, 0x19,  // Event two: type (packet received), timestamp.
+      0x02, 0x17,              // Event three: delay delta
+                  0xC2, 0x27,  // Event three: type (frame playout), timestamp.
+      0x02, 0x02, 0x03, 0x04,  // Second message!!!! Truncated RTP timestamp.
+      0x00,                    // Number of events (minus one).
+            0x40, 0x20, 0x30,  // Event timestamp.
+      0x1E, 0x15,              // Event one: packet ID.
+                  0xE1, 0xF9,  // Event one: type (packet received), timestamp.
+  };
+  // clang-format on
+
+  std::vector<RtcpReceiverFrameLogMessage> messages;
+  EXPECT_CALL(*(client()), OnCastReceiverFrameLogMessages(_))
+      .WillOnce(SaveArg<0>(&messages));
+  EXPECT_TRUE(parser()->Parse(kFrameLogPopulatedPacket, FrameId::first()));
+
+  ASSERT_EQ(2u, messages.size());
+
+  // Valid the first message contents.
+  const RtcpReceiverFrameLogMessage& first_message = messages[0];
+  EXPECT_EQ(RtpTimeTicks(16909060), first_message.rtp_timestamp);
+  ASSERT_EQ(2u, first_message.messages.size());
+
+  // Note: the first log message is removed due to it being an invalid type.
+  const RtcpReceiverEventLogMessage& second_log = first_message.messages[0];
+  EXPECT_EQ(StatisticsEventType::kPacketReceived, second_log.type);
+  EXPECT_EQ(session()->start_time() + microseconds{1057097000},
+            second_log.timestamp);
+  EXPECT_EQ(milliseconds{}, second_log.delay);
+  EXPECT_EQ(FramePacketId{277}, second_log.packet_id);
+
+  const RtcpReceiverEventLogMessage& third_log = first_message.messages[1];
+  EXPECT_EQ(StatisticsEventType::kFramePlayedOut, third_log.type);
+  EXPECT_EQ(session()->start_time() + microseconds{1057367000},
+            third_log.timestamp);
+  EXPECT_EQ(milliseconds{535}, third_log.delay);
+  EXPECT_EQ(FramePacketId{}, third_log.packet_id);
+
+  // Validate the second message contents.
+  const RtcpReceiverFrameLogMessage& second_message = messages[1];
+  EXPECT_EQ(RtpTimeTicks(33686276), second_message.rtp_timestamp);
+  ASSERT_EQ(1u, second_message.messages.size());
+
+  const RtcpReceiverEventLogMessage& second_first_log =
+      second_message.messages[0];
+  EXPECT_EQ(StatisticsEventType::kPacketReceived, second_first_log.type);
+  EXPECT_EQ(session()->start_time() + microseconds{4203049000},
+            second_first_log.timestamp);
+  EXPECT_EQ(milliseconds{}, second_first_log.delay);
+  EXPECT_EQ(FramePacketId{7701}, second_first_log.packet_id);
+}
+
+TEST_F(CompoundRtcpParserTest, OnCastReceiverFrameLogMessages_WrongName) {
+  // clang-format off
+  const uint8_t kPacketWithWrongName[] = {
+      0b10000000 | 2,          // Version=2, Padding=no, Subtype=ReceiverLog.
+      204,                     // RTCP Packet type of application defined.
+      0x00, 0x05,              // Length of remainder of packet in 32-bit words.
+      0x00, 0x00, 0x00, 0x02,  // Receiver SSRC.
+       'T',  'I',  'M',  'E',  // Name.
+      0x01, 0x02, 0x03, 0x04,  // Truncated RTP timestamp.
+      0x00,                    // Number of events (minus one).
+            0x10, 0x20, 0x30,  // Event timestamp.
+      0x01, 0x12,              // Event one: packet ID.
+                  0x93, 0x14,  // Event one: type (invalid), timestamp.
+  };
+  // clang-format on
+
+  // Shouldn't call the client, shouldn't throw an error.
+  EXPECT_TRUE(parser()->Parse(kPacketWithWrongName, FrameId::first()));
+}
+
+TEST_F(CompoundRtcpParserTest, OnCastReceiverFrameLogMessages_InvalidSsrc) {
+  // clang-format off
+  const uint8_t kPacketWithInvalidSsrc[] = {
+      0b10000000 | 2,          // Version=2, Padding=no, Subtype=ReceiverLog.
+      204,                     // RTCP Packet type of application defined.
+      0x00, 0x05,              // Length of remainder of packet in 32-bit words.
+      0x00, 0x00, 0x00, 0x09,  // Receiver SSRC.
+       'C',  'A',  'S',  'T',  // Name.
+      0x01, 0x02, 0x03, 0x04,  // Truncated RTP timestamp.
+      0x00,                    // Number of events (minus one).
+            0x10, 0x20, 0x30,  // Event timestamp.
+      0x01, 0x12,              // Event one: packet ID.
+                  0x93, 0x14,  // Event one: type (invalid), timestamp.
+  };
+  // clang-format on
+
+  // Shouldn't call the client, shouldn't throw an error.
+  EXPECT_TRUE(parser()->Parse(kPacketWithInvalidSsrc, FrameId::first()));
+}
+
+TEST_F(CompoundRtcpParserTest,
+       OnCastReceiverFrameLogMessages_InvalidPacketSize) {
+  // clang-format off
+  const uint8_t kPacketWithInvalidPacketSize[] = {
+      0b10000000 | 2,          // Version=2, Padding=no, Subtype=ReceiverLog.
+      204,                     // RTCP Packet type of application defined.
+      0x00, 0x02,              // Length of remainder of packet in 32-bit words.
+      0x00, 0x00, 0x00, 0x02,  // Receiver SSRC.
+       'C',  'A',  'S',  'T',  // Name.
+      0x01, 0x02, 0x03, 0x04,  // Truncated RTP timestamp.
+      0x00,                    // Number of events (minus one).
+            0x10, 0x20, 0x30,  // Event timestamp.
+  };
+  // clang-format on
+
+  // Should throw an error--the packet is malformed.
+  EXPECT_FALSE(parser()->Parse(kPacketWithInvalidPacketSize, FrameId::first()));
 }
 
 // Tests that RTCP packets containing chronologically-old data are ignored. This
@@ -403,6 +564,4 @@ TEST_F(CompoundRtcpParserTest, ParsesFeedbackWithAcks) {
   Mock::VerifyAndClearExpectations(client());
 }
 
-}  // namespace
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

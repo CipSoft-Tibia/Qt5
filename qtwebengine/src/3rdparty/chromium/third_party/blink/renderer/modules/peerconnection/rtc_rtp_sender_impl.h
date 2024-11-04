@@ -122,7 +122,8 @@ class MODULES_EXPORT RTCRtpSenderImpl : public blink::RTCRtpSenderPlatform {
   static uintptr_t getId(const webrtc::RtpSenderInterface* webrtc_sender);
 
   RTCRtpSenderImpl(
-      scoped_refptr<webrtc::PeerConnectionInterface> native_peer_connection,
+      rtc::scoped_refptr<webrtc::PeerConnectionInterface>
+          native_peer_connection,
       scoped_refptr<blink::WebRtcMediaStreamTrackAdapterMap> track_map,
       RtpSenderState state,
       bool encoded_insertable_streams);
@@ -147,9 +148,7 @@ class MODULES_EXPORT RTCRtpSenderImpl : public blink::RTCRtpSenderPlatform {
   void SetParameters(Vector<webrtc::RtpEncodingParameters>,
                      absl::optional<webrtc::DegradationPreference>,
                      blink::RTCVoidRequest*) override;
-  void GetStats(RTCStatsReportCallback,
-                const Vector<webrtc::NonStandardGroupId>&,
-                bool is_track_stats_deprecation_trial_enabled) override;
+  void GetStats(RTCStatsReportCallback) override;
   void SetStreams(const Vector<String>& stream_ids) override;
   RTCEncodedAudioStreamTransformer* GetEncodedAudioStreamTransformer()
       const override;

@@ -1,10 +1,12 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtQuick3DRuntimeRender/private/qssgrenderer_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendereffect_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrenderlayer_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendercommands_p.h>
-#include <QtQuick3DRuntimeRender/private/qssgrendercontextcore_p.h>
+#include "../qssgrendercontextcore.h"
+#include "../rendererimpl/qssglayerrenderdata_p.h"
 
 #include <QtGui/QVector2D>
 #include <QtGui/QVector3D>
@@ -116,7 +118,7 @@ void QSSGRenderEffect::finalizeShaders(const QSSGRenderLayer &layer, QSSGRenderC
             // so qt_tonemap() in the shader will not alter the color.
             const QSSGRenderLayer::TonemapMode tonemapMode = layer.tonemapMode;
             shaderPathKey.append(':' + QByteArray::number(int(tonemapMode)));
-            QSSGRenderer::setTonemapFeatures(features, tonemapMode);
+            QSSGLayerRenderData::setTonemapFeatures(features, tonemapMode);
         }
 
         // Now that the final shaderPathKey is known, store the source and

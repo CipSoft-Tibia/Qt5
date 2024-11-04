@@ -9,29 +9,34 @@
 
 #include <algorithm>
 
+#include "include/gpu/graphite/ContextOptions.h"
 #include "include/gpu/graphite/TextureInfo.h"
+#include "src/gpu/dawn/DawnUtilsPriv.h"
 #include "src/gpu/graphite/AttachmentTypes.h"
 #include "src/gpu/graphite/ComputePipelineDesc.h"
 #include "src/gpu/graphite/GraphicsPipelineDesc.h"
 #include "src/gpu/graphite/GraphiteResourceKey.h"
 #include "src/gpu/graphite/UniformManager.h"
-#include "src/gpu/graphite/dawn/DawnUtilsPriv.h"
+#include "src/gpu/graphite/dawn/DawnGraphiteUtilsPriv.h"
 #include "src/sksl/SkSLUtil.h"
 
 namespace {
 
 // These are all the valid wgpu::TextureFormat that we currently support in Skia.
-// They are roughly ordered from most frequently used to least to improve look
-// up times in arrays.
+// They are roughly ordered from most frequently used to least to improve lookup times in arrays.
 static constexpr wgpu::TextureFormat kFormats[] = {
     wgpu::TextureFormat::RGBA8Unorm,
     wgpu::TextureFormat::R8Unorm,
     wgpu::TextureFormat::BGRA8Unorm,
     wgpu::TextureFormat::RGBA16Float,
+    wgpu::TextureFormat::R16Float,
+    wgpu::TextureFormat::RG8Unorm,
+    wgpu::TextureFormat::RGB10A2Unorm,
+    wgpu::TextureFormat::RG16Float,
 
     wgpu::TextureFormat::Stencil8,
     wgpu::TextureFormat::Depth32Float,
-    wgpu::TextureFormat::Depth32FloatStencil8,
+    wgpu::TextureFormat::Depth24PlusStencil8,
 
     wgpu::TextureFormat::Undefined,
 };
@@ -42,13 +47,17 @@ namespace skgpu::graphite {
 
 DawnCaps::DawnCaps(const wgpu::Device& device, const ContextOptions& options)
     : Caps() {
-    this->initCaps(device);
+    this->initCaps(device, options);
     this->initShaderCaps();
     this->initFormatTable(device);
     this->finishInitialization(options);
 }
 
 DawnCaps::~DawnCaps() = default;
+
+uint32_t DawnCaps::channelMask(const TextureInfo& info) const {
+    return skgpu::DawnFormatChannels(info.dawnTextureSpec().fFormat);
+}
 
 bool DawnCaps::onIsTexturable(const TextureInfo& info) const {
     if (!(info.dawnTextureSpec().fUsage & wgpu::TextureUsage::TextureBinding)) {
@@ -65,6 +74,14 @@ bool DawnCaps::isTexturable(wgpu::TextureFormat format) const {
 bool DawnCaps::isRenderable(const TextureInfo& info) const {
     return info.dawnTextureSpec().fUsage & wgpu::TextureUsage::RenderAttachment &&
     this->isRenderable(info.dawnTextureSpec().fFormat, info.numSamples());
+}
+
+bool DawnCaps::isStorage(const TextureInfo& info) const {
+    if (!(info.dawnTextureSpec().fUsage & wgpu::TextureUsage::StorageBinding)) {
+        return false;
+    }
+    const FormatInfo& formatInfo = this->getFormatInfo(info.dawnTextureSpec().fFormat);
+    return info.numSamples() == 1 && SkToBool(FormatInfo::kStorage_Flag & formatInfo.fFlags);
 }
 
 uint32_t DawnCaps::maxRenderTargetSampleCount(wgpu::TextureFormat format) const {
@@ -96,7 +113,6 @@ TextureInfo DawnCaps::getDefaultSampledTextureInfo(SkColorType colorType,
 
     wgpu::TextureFormat format = this->getFormatFromColorType(colorType);
     if (format == wgpu::TextureFormat::Undefined) {
-        SkDebugf("colorType=%d is not supported\n", static_cast<int>(colorType));
         return {};
     }
 
@@ -109,15 +125,38 @@ TextureInfo DawnCaps::getDefaultSampledTextureInfo(SkColorType colorType,
     return info;
 }
 
+TextureInfo DawnCaps::getTextureInfoForSampledCopy(const TextureInfo& textureInfo,
+                                                   Mipmapped mipmapped) const {
+    DawnTextureInfo info;
+    if (!textureInfo.getDawnTextureInfo(&info)) {
+        return {};
+    }
+
+    info.fSampleCount = 1;
+    info.fMipmapped = mipmapped;
+    info.fUsage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst |
+                  wgpu::TextureUsage::CopySrc;
+
+    return info;
+}
+
 TextureInfo DawnCaps::getDefaultMSAATextureInfo(const TextureInfo& singleSampledInfo,
                                                 Discardable discardable) const {
+    if (fDefaultMSAASamples <= 1) {
+        return {};
+    }
     const DawnTextureSpec& singleSpec = singleSampledInfo.dawnTextureSpec();
 
     DawnTextureInfo info;
-    info.fSampleCount = this->defaultMSAASamples();
+    info.fSampleCount = fDefaultMSAASamples;
     info.fMipmapped   = Mipmapped::kNo;
     info.fFormat      = singleSpec.fFormat;
     info.fUsage       = wgpu::TextureUsage::RenderAttachment;
+
+    if (fTransientAttachmentSupport && discardable == Discardable::kYes) {
+        info.fUsage |= wgpu::TextureUsage::TransientAttachment;
+    }
+
     return info;
 }
 
@@ -130,6 +169,31 @@ TextureInfo DawnCaps::getDefaultDepthStencilTextureInfo(
     info.fMipmapped   = Mipmapped::kNo;
     info.fFormat      = DawnDepthStencilFlagsToFormat(depthStencilType);
     info.fUsage       = wgpu::TextureUsage::RenderAttachment;
+
+    if (fTransientAttachmentSupport) {
+        info.fUsage |= wgpu::TextureUsage::TransientAttachment;
+    }
+
+    return info;
+}
+
+TextureInfo DawnCaps::getDefaultStorageTextureInfo(SkColorType colorType) const {
+    // Storage textures are currently always sampleable from a shader.
+    wgpu::TextureUsage usage = wgpu::TextureUsage::StorageBinding |
+                               wgpu::TextureUsage::TextureBinding |
+                               wgpu::TextureUsage::CopySrc;
+    wgpu::TextureFormat format = this->getFormatFromColorType(colorType);
+    if (format == wgpu::TextureFormat::Undefined) {
+        SkDebugf("colorType=%d is not supported\n", static_cast<int>(colorType));
+        return {};
+    }
+
+    DawnTextureInfo info;
+    info.fSampleCount = 1;
+    info.fMipmapped = Mipmapped::kNo;
+    info.fFormat = format;
+    info.fUsage = usage;
+
     return info;
 }
 
@@ -149,7 +213,6 @@ const Caps::ColorTypeInfo* DawnCaps::getColorTypeInfo(SkColorType colorType,
         }
     }
 
-    SkASSERT(false);
     return nullptr;
 }
 
@@ -184,7 +247,7 @@ SkColorType DawnCaps::supportedReadPixelsColorType(SkColorType srcColorType,
     return kUnknown_SkColorType;
 }
 
-void DawnCaps::initCaps(const wgpu::Device& device) {
+void DawnCaps::initCaps(const wgpu::Device& device, const ContextOptions& options) {
     wgpu::SupportedLimits limits;
     if (!device.GetLimits(&limits)) {
         SkASSERT(false);
@@ -199,7 +262,9 @@ void DawnCaps::initCaps(const wgpu::Device& device) {
     fTextureDataRowBytesAlignment = 256;
 
     fResourceBindingReqs.fUniformBufferLayout = Layout::kStd140;
-    fResourceBindingReqs.fStorageBufferLayout = Layout::kStd430;
+    // TODO(skia:14639): We cannot use std430 layout for SSBOs until SkSL gracefully handles
+    // implicit array stride.
+    fResourceBindingReqs.fStorageBufferLayout = Layout::kStd140;
     fResourceBindingReqs.fSeparateTextureAndSamplerBinding = true;
 
     // TODO: support storage buffer
@@ -208,8 +273,16 @@ void DawnCaps::initCaps(const wgpu::Device& device) {
 
     fDrawBufferCanBeMapped = false;
 
+    fComputeSupport = true;
+
     // TODO: support clamp to border.
     fClampToBorderSupport = false;
+
+    fMSAARenderToSingleSampledSupport =
+            device.HasFeature(wgpu::FeatureName::MSAARenderToSingleSampled);
+
+    fTransientAttachmentSupport = device.HasFeature(wgpu::FeatureName::TransientAttachments);
+    fEnableWGSL = options.fEnableWGSL;
 }
 
 void DawnCaps::initShaderCaps() {
@@ -218,6 +291,9 @@ void DawnCaps::initShaderCaps() {
     // WGSL does not support infinities regardless of hardware support. There are discussions around
     // enabling it using an extension in the future.
     shaderCaps->fInfinitySupport = false;
+
+    // WGSL supports shader derivatives in the fragment shader
+    shaderCaps->fShaderDerivativeSupport = true;
 }
 
 void DawnCaps::initFormatTable(const wgpu::Device& device) {
@@ -244,7 +320,7 @@ void DawnCaps::initFormatTable(const wgpu::Device& device) {
         }
     }
 
-
+    // TODO(crbug.com/dawn/1856): Support storage binding for compute shader in Dawn.
     // Format: R8Unorm
     {
         info = &fFormatTable[GetFormatIndex(wgpu::TextureFormat::R8Unorm)];
@@ -279,7 +355,7 @@ void DawnCaps::initFormatTable(const wgpu::Device& device) {
     {
         info = &fFormatTable[GetFormatIndex(wgpu::TextureFormat::BGRA8Unorm)];
         info->fFlags = FormatInfo::kAllFlags;
-        info->fColorTypeInfoCount = 1;
+        info->fColorTypeInfoCount = 2;
         info->fColorTypeInfos.reset(new ColorTypeInfo[info->fColorTypeInfoCount]());
         int ctIdx = 0;
         // Format: BGRA8Unorm, Surface: kBGRA_8888
@@ -287,6 +363,12 @@ void DawnCaps::initFormatTable(const wgpu::Device& device) {
             auto& ctInfo = info->fColorTypeInfos[ctIdx++];
             ctInfo.fColorType = kBGRA_8888_SkColorType;
             ctInfo.fFlags = ColorTypeInfo::kUploadData_Flag | ColorTypeInfo::kRenderable_Flag;
+        }
+        // Format: BGRA8Unorm, Surface: kRGB_888x
+        {
+            auto& ctInfo = info->fColorTypeInfos[ctIdx++];
+            ctInfo.fColorType = kRGB_888x_SkColorType;
+            ctInfo.fFlags = ColorTypeInfo::kUploadData_Flag;
         }
     }
 
@@ -301,6 +383,69 @@ void DawnCaps::initFormatTable(const wgpu::Device& device) {
         {
             auto& ctInfo = info->fColorTypeInfos[ctIdx++];
             ctInfo.fColorType = kRGBA_F16_SkColorType;
+            ctInfo.fFlags = ColorTypeInfo::kUploadData_Flag | ColorTypeInfo::kRenderable_Flag;
+        }
+    }
+
+    // Format: R16Float
+    {
+        info = &fFormatTable[GetFormatIndex(wgpu::TextureFormat::R16Float)];
+        info->fFlags = FormatInfo::kAllFlags;
+        info->fColorTypeInfoCount = 1;
+        info->fColorTypeInfos.reset(new ColorTypeInfo[info->fColorTypeInfoCount]());
+        int ctIdx = 0;
+        // Format: R16Float, Surface: kA16_float
+        {
+            auto& ctInfo = info->fColorTypeInfos[ctIdx++];
+            ctInfo.fColorType = kA16_float_SkColorType;
+            ctInfo.fFlags = ColorTypeInfo::kUploadData_Flag | ColorTypeInfo::kRenderable_Flag;
+            ctInfo.fReadSwizzle = skgpu::Swizzle("000r");
+            ctInfo.fWriteSwizzle = skgpu::Swizzle("a000");
+        }
+    }
+
+    // TODO(crbug.com/dawn/1856): Support storage binding for compute shader in Dawn.
+    // Format: RG8Unorm
+    {
+        info = &fFormatTable[GetFormatIndex(wgpu::TextureFormat::RG8Unorm)];
+        info->fFlags = FormatInfo::kAllFlags;
+        info->fColorTypeInfoCount = 1;
+        info->fColorTypeInfos.reset(new ColorTypeInfo[info->fColorTypeInfoCount]());
+        int ctIdx = 0;
+        // Format: RG8Unorm, Surface: kR8G8_unorm
+        {
+            auto& ctInfo = info->fColorTypeInfos[ctIdx++];
+            ctInfo.fColorType = kR8G8_unorm_SkColorType;
+            ctInfo.fFlags = ColorTypeInfo::kUploadData_Flag | ColorTypeInfo::kRenderable_Flag;
+        }
+    }
+
+    // Format: RGB10A2Unorm
+    {
+        info = &fFormatTable[GetFormatIndex(wgpu::TextureFormat::RGB10A2Unorm)];
+        info->fFlags = FormatInfo::kAllFlags;
+        info->fColorTypeInfoCount = 1;
+        info->fColorTypeInfos.reset(new ColorTypeInfo[info->fColorTypeInfoCount]());
+        int ctIdx = 0;
+        // Format: RGB10A2Unorm, Surface: kRGBA_1010102
+        {
+            auto& ctInfo = info->fColorTypeInfos[ctIdx++];
+            ctInfo.fColorType = kRGBA_1010102_SkColorType;
+            ctInfo.fFlags = ColorTypeInfo::kUploadData_Flag | ColorTypeInfo::kRenderable_Flag;
+        }
+    }
+
+    // Format: RG16Float
+    {
+        info = &fFormatTable[GetFormatIndex(wgpu::TextureFormat::RG16Float)];
+        info->fFlags = FormatInfo::kAllFlags;
+        info->fColorTypeInfoCount = 1;
+        info->fColorTypeInfos.reset(new ColorTypeInfo[info->fColorTypeInfoCount]());
+        int ctIdx = 0;
+        // Format: RG16Float, Surface: kR16G16_float
+        {
+            auto& ctInfo = info->fColorTypeInfos[ctIdx++];
+            ctInfo.fColorType = kR16G16_float_SkColorType;
             ctInfo.fFlags = ColorTypeInfo::kUploadData_Flag | ColorTypeInfo::kRenderable_Flag;
         }
     }
@@ -323,9 +468,9 @@ void DawnCaps::initFormatTable(const wgpu::Device& device) {
         info->fColorTypeInfoCount = 0;
     }
 
-    // Format: Depth32Float_Stencil8
+    // Format: Depth24PlusStencil8
     {
-        info = &fFormatTable[GetFormatIndex(wgpu::TextureFormat::Depth32FloatStencil8)];
+        info = &fFormatTable[GetFormatIndex(wgpu::TextureFormat::Depth24PlusStencil8)];
         info->fFlags = FormatInfo::kMSAA_Flag;
         info->fColorTypeInfoCount = 0;
     }
@@ -347,11 +492,16 @@ void DawnCaps::initFormatTable(const wgpu::Device& device) {
 
     this->setColorType(kAlpha_8_SkColorType,          { wgpu::TextureFormat::R8Unorm });
     this->setColorType(kRGBA_8888_SkColorType,        { wgpu::TextureFormat::RGBA8Unorm });
-    this->setColorType(kRGB_888x_SkColorType,         { wgpu::TextureFormat::RGBA8Unorm });
+    this->setColorType(kRGB_888x_SkColorType,
+                       {wgpu::TextureFormat::RGBA8Unorm, wgpu::TextureFormat::BGRA8Unorm});
     this->setColorType(kBGRA_8888_SkColorType,        { wgpu::TextureFormat::BGRA8Unorm });
     this->setColorType(kGray_8_SkColorType,           { wgpu::TextureFormat::R8Unorm });
     this->setColorType(kR8_unorm_SkColorType,         { wgpu::TextureFormat::R8Unorm });
     this->setColorType(kRGBA_F16_SkColorType,         { wgpu::TextureFormat::RGBA16Float });
+    this->setColorType(kA16_float_SkColorType,        { wgpu::TextureFormat::R16Float });
+    this->setColorType(kR8G8_unorm_SkColorType,       { wgpu::TextureFormat::RG8Unorm });
+    this->setColorType(kRGBA_1010102_SkColorType,     { wgpu::TextureFormat::RGB10A2Unorm });
+    this->setColorType(kR16G16_float_SkColorType,     { wgpu::TextureFormat::RG16Float });
 }
 
 // static
@@ -361,7 +511,7 @@ size_t DawnCaps::GetFormatIndex(wgpu::TextureFormat format) {
             return i;
         }
         if (kFormats[i] == wgpu::TextureFormat::Undefined) {
-            SkDEBUGFAILF("Not supported wgpu::TextureFormat: %d\n", format);
+            SkDEBUGFAILF("Unsupported wgpu::TextureFormat: %d\n", static_cast<int>(format));
             return i;
         }
     }
@@ -420,8 +570,8 @@ UniqueKey DawnCaps::makeGraphicsPipelineKey(const GraphicsPipelineDesc& pipeline
     UniqueKey pipelineKey;
     {
         static const skgpu::UniqueKey::Domain kGraphicsPipelineDomain = UniqueKey::GenerateDomain();
-        // 4 uint32_t's (render step id, paint id, uint64 RenderPass desc)
-        UniqueKey::Builder builder(&pipelineKey, kGraphicsPipelineDomain, 4, "GraphicsPipeline");
+        // 5 uint32_t's (render step id, paint id, uint64 RenderPass desc, uint16 write swizzle)
+        UniqueKey::Builder builder(&pipelineKey, kGraphicsPipelineDomain, 5, "GraphicsPipeline");
         // add GraphicsPipelineDesc key
         builder[0] = pipelineDesc.renderStepID();
         builder[1] = pipelineDesc.paintParamsID().asUInt();
@@ -430,6 +580,7 @@ UniqueKey DawnCaps::makeGraphicsPipelineKey(const GraphicsPipelineDesc& pipeline
         uint64_t renderPassKey = this->getRenderPassDescKey(renderPassDesc);
         builder[2] = renderPassKey & 0xFFFFFFFF;
         builder[3] = (renderPassKey >> 32) & 0xFFFFFFFF;
+        builder[4] = renderPassDesc.fWriteSwizzle.asKey();
         builder.finish();
     }
 
@@ -437,8 +588,20 @@ UniqueKey DawnCaps::makeGraphicsPipelineKey(const GraphicsPipelineDesc& pipeline
 }
 
 UniqueKey DawnCaps::makeComputePipelineKey(const ComputePipelineDesc& pipelineDesc) const {
-    SkASSERT(false);
-    return {};
+    UniqueKey pipelineKey;
+    {
+        static const skgpu::UniqueKey::Domain kComputePipelineDomain = UniqueKey::GenerateDomain();
+        // The key is made up of a single uint32_t corresponding to the compute step ID.
+        UniqueKey::Builder builder(&pipelineKey, kComputePipelineDomain, 1, "ComputePipeline");
+        builder[0] = pipelineDesc.computeStep()->uniqueID();
+
+        // TODO(b/240615224): The local work group size should factor into the key here since it is
+        // specified in the shader text on Dawn/SPIR-V. This is not a problem right now since
+        // ComputeSteps don't vary their workgroup size dynamically.
+
+        builder.finish();
+    }
+    return pipelineKey;
 }
 
 void DawnCaps::buildKeyForTexture(SkISize dimensions,
@@ -460,9 +623,9 @@ void DawnCaps::buildKeyForTexture(SkISize dimensions,
 
     // Confirm all the below parts of the key can fit in a single uint32_t. The sum of the shift
     // amounts in the asserts must be less than or equal to 32.
-    SkASSERT(samplesKey                             < (1u << 3));
-    SkASSERT(static_cast<uint32_t>(isMipped)        < (1u << 1));
-    SkASSERT(static_cast<uint32_t>(dawnSpec.fUsage) < (1u << 5));
+    SkASSERT(samplesKey                             < (1u << 3));  // sample key is first 3 bits
+    SkASSERT(static_cast<uint32_t>(isMipped)        < (1u << 1));  // isMapped is 4th bit
+    SkASSERT(static_cast<uint32_t>(dawnSpec.fUsage) < (1u << 28)); // usage is remaining 28 bits
 
     // We need two uint32_ts for dimensions, 1 for format, and 1 for the rest of the key;
     static int kNum32DataCnt = 2 + 1 + 1;

@@ -405,7 +405,8 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
                      CONFIG_HEVC_NVDEC_HWACCEL + \
                      CONFIG_HEVC_VAAPI_HWACCEL + \
                      CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL + \
-                     CONFIG_HEVC_VDPAU_HWACCEL)
+                     CONFIG_HEVC_VDPAU_HWACCEL + \
+                     CONFIG_HEVC_VULKAN_HWACCEL)
     enum AVPixelFormat pix_fmts[HWACCEL_MAX + 2], *fmt = pix_fmts;
 
     switch (sps->pix_fmt) {
@@ -430,6 +431,9 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 #if CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL
         *fmt++ = AV_PIX_FMT_VIDEOTOOLBOX;
 #endif
+#if CONFIG_HEVC_VULKAN_HWACCEL
+        *fmt++ = AV_PIX_FMT_VULKAN;
+#endif
         break;
     case AV_PIX_FMT_YUV420P10:
 #if CONFIG_HEVC_DXVA2_HWACCEL
@@ -444,6 +448,9 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 #endif
 #if CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL
         *fmt++ = AV_PIX_FMT_VIDEOTOOLBOX;
+#endif
+#if CONFIG_HEVC_VULKAN_HWACCEL
+        *fmt++ = AV_PIX_FMT_VULKAN;
 #endif
 #if CONFIG_HEVC_VDPAU_HWACCEL
         *fmt++ = AV_PIX_FMT_VDPAU;
@@ -465,6 +472,9 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 #if CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL
         *fmt++ = AV_PIX_FMT_VIDEOTOOLBOX;
 #endif
+#if CONFIG_HEVC_VULKAN_HWACCEL
+        *fmt++ = AV_PIX_FMT_VULKAN;
+#endif
         break;
     case AV_PIX_FMT_YUV422P:
     case AV_PIX_FMT_YUV422P10LE:
@@ -474,11 +484,15 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 #if CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL
         *fmt++ = AV_PIX_FMT_VIDEOTOOLBOX;
 #endif
+#if CONFIG_HEVC_VULKAN_HWACCEL
+        *fmt++ = AV_PIX_FMT_VULKAN;
+#endif
         break;
     case AV_PIX_FMT_YUV444P10:
 #if CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL
         *fmt++ = AV_PIX_FMT_VIDEOTOOLBOX;
 #endif
+    /* NOTE: fallthrough */
     case AV_PIX_FMT_YUV420P12:
     case AV_PIX_FMT_YUV444P12:
 #if CONFIG_HEVC_VAAPI_HWACCEL
@@ -487,6 +501,9 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 #if CONFIG_HEVC_VDPAU_HWACCEL
         *fmt++ = AV_PIX_FMT_VDPAU;
 #endif
+#if CONFIG_HEVC_VULKAN_HWACCEL
+        *fmt++ = AV_PIX_FMT_VULKAN;
+#endif
 #if CONFIG_HEVC_NVDEC_HWACCEL
         *fmt++ = AV_PIX_FMT_CUDA;
 #endif
@@ -494,6 +511,9 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
     case AV_PIX_FMT_YUV422P12:
 #if CONFIG_HEVC_VAAPI_HWACCEL
        *fmt++ = AV_PIX_FMT_VAAPI;
+#endif
+#if CONFIG_HEVC_VULKAN_HWACCEL
+        *fmt++ = AV_PIX_FMT_VULKAN;
 #endif
         break;
     }
@@ -668,7 +688,8 @@ static int hls_slice_header(HEVCContext *s)
                    sh->slice_type);
             return AVERROR_INVALIDDATA;
         }
-        if (IS_IRAP(s) && sh->slice_type != HEVC_SLICE_I) {
+        if (IS_IRAP(s) && sh->slice_type != HEVC_SLICE_I &&
+            !s->ps.pps->pps_curr_pic_ref_enabled_flag) {
             av_log(s->avctx, AV_LOG_ERROR, "Inter slices in an IRAP frame.\n");
             return AVERROR_INVALIDDATA;
         }
@@ -731,8 +752,13 @@ static int hls_slice_header(HEVCContext *s)
             else
                 sh->slice_temporal_mvp_enabled_flag = 0;
         } else {
-            s->sh.short_term_rps = NULL;
-            s->poc               = 0;
+            s->poc                              = 0;
+            sh->pic_order_cnt_lsb               = 0;
+            sh->short_term_ref_pic_set_sps_flag = 0;
+            sh->short_term_ref_pic_set_size     = 0;
+            sh->short_term_rps                  = NULL;
+            sh->long_term_ref_pic_set_size      = 0;
+            sh->slice_temporal_mvp_enabled_flag = 0;
         }
 
         /* 8.3.1 */
@@ -767,11 +793,11 @@ static int hls_slice_header(HEVCContext *s)
                 sh->nb_refs[L1] = s->ps.pps->num_ref_idx_l1_default_active;
 
             if (get_bits1(gb)) { // num_ref_idx_active_override_flag
-                sh->nb_refs[L0] = get_ue_golomb_long(gb) + 1;
+                sh->nb_refs[L0] = get_ue_golomb_31(gb) + 1;
                 if (sh->slice_type == HEVC_SLICE_B)
-                    sh->nb_refs[L1] = get_ue_golomb_long(gb) + 1;
+                    sh->nb_refs[L1] = get_ue_golomb_31(gb) + 1;
             }
-            if (sh->nb_refs[L0] > HEVC_MAX_REFS || sh->nb_refs[L1] > HEVC_MAX_REFS) {
+            if (sh->nb_refs[L0] >= HEVC_MAX_REFS || sh->nb_refs[L1] >= HEVC_MAX_REFS) {
                 av_log(s->avctx, AV_LOG_ERROR, "Too many refs: %d/%d.\n",
                        sh->nb_refs[L0], sh->nb_refs[L1]);
                 return AVERROR_INVALIDDATA;
@@ -839,6 +865,14 @@ static int hls_slice_header(HEVCContext *s)
                        sh->max_num_merge_cand);
                 return AVERROR_INVALIDDATA;
             }
+
+            // Syntax in 7.3.6.1
+            if (s->ps.sps->motion_vector_resolution_control_idc == 2)
+                sh->use_integer_mv_flag = get_bits1(gb);
+            else
+                // Inferred to be equal to motion_vector_resolution_control_idc if not present
+                sh->use_integer_mv_flag = s->ps.sps->motion_vector_resolution_control_idc;
+
         }
 
         sh->slice_qp_delta = get_se_golomb(gb);
@@ -854,6 +888,12 @@ static int hls_slice_header(HEVCContext *s)
         } else {
             sh->slice_cb_qp_offset = 0;
             sh->slice_cr_qp_offset = 0;
+        }
+
+        if (s->ps.pps->pps_slice_act_qp_offsets_present_flag) {
+            sh->slice_act_y_qp_offset  = get_se_golomb(gb);
+            sh->slice_act_cb_qp_offset = get_se_golomb(gb);
+            sh->slice_act_cr_qp_offset = get_se_golomb(gb);
         }
 
         if (s->ps.pps->chroma_qp_offset_list_enabled_flag)
@@ -1920,13 +1960,13 @@ static void hls_prediction_unit(HEVCLocalContext *lc, int x0, int y0,
 
     if (current_mv.pred_flag & PF_L0) {
         ref0 = refPicList[0].ref[current_mv.ref_idx[0]];
-        if (!ref0)
+        if (!ref0 || !ref0->frame->data[0])
             return;
         hevc_await_progress(s, ref0, &current_mv.mv[0], y0, nPbH);
     }
     if (current_mv.pred_flag & PF_L1) {
         ref1 = refPicList[1].ref[current_mv.ref_idx[1]];
-        if (!ref1)
+        if (!ref1 || !ref1->frame->data[0])
             return;
         hevc_await_progress(s, ref1, &current_mv.mv[1], y0, nPbH);
     }
@@ -2477,7 +2517,7 @@ static void hls_decode_neighbour(HEVCLocalContext *lc, int x_ctb, int y_ctb,
     lc->ctb_up_left_flag = ((x_ctb > 0) && (y_ctb > 0)  && (ctb_addr_in_slice-1 >= s->ps.sps->ctb_width) && (s->ps.pps->tile_id[ctb_addr_ts] == s->ps.pps->tile_id[s->ps.pps->ctb_addr_rs_to_ts[ctb_addr_rs-1 - s->ps.sps->ctb_width]]));
 }
 
-static int hls_decode_entry(AVCodecContext *avctxt, void *isFilterThread)
+static int hls_decode_entry(AVCodecContext *avctxt, void *arg)
 {
     HEVCContext *s  = avctxt->priv_data;
     HEVCLocalContext *const lc = s->HEVClc;
@@ -2541,14 +2581,10 @@ static int hls_decode_entry(AVCodecContext *avctxt, void *isFilterThread)
 
 static int hls_slice_data(HEVCContext *s)
 {
-    int arg[2];
-    int ret[2];
+    int ret = 0;
 
-    arg[0] = 0;
-    arg[1] = 1;
-
-    s->avctx->execute(s->avctx, hls_decode_entry, arg, ret , 1, sizeof(int));
-    return ret[0];
+    s->avctx->execute(s->avctx, hls_decode_entry, NULL, &ret , 1, 0);
+    return ret;
 }
 static int hls_decode_entry_wpp(AVCodecContext *avctxt, void *hevc_lclist,
                                 int job, int self_id)
@@ -2894,7 +2930,10 @@ static int hevc_frame_start(HEVCContext *s)
         goto fail;
     }
 
-    s->ref->frame->key_frame = IS_IRAP(s);
+    if (IS_IRAP(s))
+        s->ref->frame->flags |= AV_FRAME_FLAG_KEY;
+    else
+        s->ref->frame->flags &= ~AV_FRAME_FLAG_KEY;
 
     s->ref->needs_fg = s->sei.common.film_grain_characteristics.present &&
         !(s->avctx->export_side_data & AV_CODEC_EXPORT_DATA_FILM_GRAIN) &&
@@ -3109,6 +3148,13 @@ static int decode_nal_unit(HEVCContext *s, const H2645NAL *nal)
             if (ret < 0)
                 goto fail;
         } else {
+            if (s->avctx->profile == FF_PROFILE_HEVC_SCC) {
+                av_log(s->avctx, AV_LOG_ERROR,
+                       "SCC profile is not yet implemented in hevc native decoder.\n");
+                ret = AVERROR_PATCHWELCOME;
+                goto fail;
+            }
+
             if (s->threads_number > 1 && s->sh.num_entry_point_offsets > 0)
                 ctb_addr_ts = hls_slice_data_wpp(s, nal);
             else
@@ -3681,6 +3727,9 @@ static void hevc_decode_flush(AVCodecContext *avctx)
     av_buffer_unref(&s->rpu_buf);
     s->max_ra = INT_MAX;
     s->eos = 1;
+
+    if (avctx->hwaccel && avctx->hwaccel->flush)
+        avctx->hwaccel->flush(avctx);
 }
 
 #define OFFSET(x) offsetof(HEVCContext, x)
@@ -3739,6 +3788,9 @@ const FFCodec ff_hevc_decoder = {
 #endif
 #if CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL
                                HWACCEL_VIDEOTOOLBOX(hevc),
+#endif
+#if CONFIG_HEVC_VULKAN_HWACCEL
+                               HWACCEL_VULKAN(hevc),
 #endif
                                NULL
                            },

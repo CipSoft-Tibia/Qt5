@@ -9,9 +9,12 @@
 #include <string>
 
 #include "base/functional/callback.h"
+#include "base/logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
 #include "device/bluetooth/bluetooth_export.h"
 
 namespace base {
@@ -35,6 +38,7 @@ class FlossGattManagerClient;
 class FlossLEScanClient;
 class FlossLoggingClient;
 class FlossManagerClient;
+class FlossBluetoothTelephonyClient;
 class FlossSocketManager;
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -50,6 +54,70 @@ class FlossAdminClient;
 // doesn't make sense to share a common implementation between the two.
 class DEVICE_BLUETOOTH_EXPORT FlossDBusManager {
  public:
+  class ClientInitializer {
+   public:
+    ClientInitializer(base::OnceClosure on_ready, int client_count);
+    ~ClientInitializer();
+
+    static std::unique_ptr<ClientInitializer> CreateWithTimeout(
+        base::OnceClosure on_ready,
+        int client_count,
+        base::TimeDelta timeout) {
+      std::unique_ptr<ClientInitializer> self =
+          std::make_unique<ClientInitializer>(std::move(on_ready),
+                                              client_count);
+      self->ScheduleTimeout(timeout);
+
+      return self;
+    }
+
+    // Grab closure to indicate client is ready and decrement expected closure
+    // count.
+    base::OnceClosure CreateReadyClosure() {
+      DCHECK(expected_closure_count_ > 0);
+
+      --expected_closure_count_;
+      return base::BindOnce(&ClientInitializer::OnReady,
+                            weak_ptr_factory_.GetWeakPtr());
+    }
+
+    void OnReady() {
+      DCHECK(pending_client_ready_ > 0);
+
+      pending_client_ready_--;
+      if (pending_client_ready_ == 0 && on_ready_) {
+        DCHECK(expected_closure_count_ == 0);
+        std::move(on_ready_).Run();
+      }
+    }
+
+    void OnTimeout() {
+      if (pending_client_ready_ > 0) {
+        LOG(WARNING) << "ClientInitializer timed out with pending clients="
+                     << pending_client_ready_;
+      }
+
+      if (on_ready_) {
+        std::move(on_ready_).Run();
+      }
+    }
+
+   private:
+    void ScheduleTimeout(base::TimeDelta timeout) {
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+          FROM_HERE,
+          base::BindOnce(&ClientInitializer::OnTimeout,
+                         weak_ptr_factory_.GetWeakPtr()),
+          timeout);
+    }
+
+    int expected_closure_count_;
+    int pending_client_ready_;
+    base::OnceClosure on_ready_;
+
+    base::WeakPtrFactory<ClientInitializer> weak_ptr_factory_{this};
+  };
+
   // Initializes the global instance with a real client. Must be called before
   // any calls to Get(). We explicitly initialize and shutdown the global object
   // rather than making it a Singleton to ensure clean startup and shutdown.
@@ -97,8 +165,9 @@ class DEVICE_BLUETOOTH_EXPORT FlossDBusManager {
   bool IsObjectManagerSupported() const { return object_manager_supported_; }
 
   // Shuts down the existing adapter clients and initializes a new set for the
-  // given adapter.
-  void SwitchAdapter(int adapter);
+  // given adapter. When the new adapter clients are ready, calls the |on_ready|
+  // callback.
+  void SwitchAdapter(int adapter, base::OnceClosure on_ready);
 
   // Checks whether an adapter is currently enabled and being used.
   bool HasActiveAdapter() const;
@@ -118,6 +187,7 @@ class DEVICE_BLUETOOTH_EXPORT FlossDBusManager {
   FlossLEScanClient* GetLEScanClient();
   FlossLoggingClient* GetLoggingClient();
   FlossManagerClient* GetManagerClient();
+  FlossBluetoothTelephonyClient* GetBluetoothTelephonyClient();
   FlossSocketManager* GetSocketManager();
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -141,8 +211,9 @@ class DEVICE_BLUETOOTH_EXPORT FlossDBusManager {
   void InitializeManagerClient();
 
   // Initializes all currently stored DBusClients with the system bus and
-  // performs additional setup for a specific adapter.
-  void InitializeAdapterClients(int adapter);
+  // performs additional setup for a specific adapter. Once all clients are
+  // ready, calls the |on_ready| callback.
+  void InitializeAdapterClients(int adapter, base::OnceClosure on_ready);
 
   // System bus instance (owned by FlossDBusThreadManager).
   raw_ptr<dbus::Bus> bus_;
@@ -162,6 +233,9 @@ class DEVICE_BLUETOOTH_EXPORT FlossDBusManager {
   // Currently active Bluetooth adapter
   int active_adapter_ = kInvalidAdapter;
 
+  // Callback for when adapter clients are ready after init.
+  std::unique_ptr<ClientInitializer> client_on_ready_;
+
   base::WeakPtrFactory<FlossDBusManager> weak_ptr_factory_{this};
 };
 
@@ -176,6 +250,8 @@ class DEVICE_BLUETOOTH_EXPORT FlossDBusManagerSetter {
   void SetFlossLEScanClient(std::unique_ptr<FlossLEScanClient> client);
   void SetFlossLoggingClient(std::unique_ptr<FlossLoggingClient> client);
   void SetFlossManagerClient(std::unique_ptr<FlossManagerClient> client);
+  void SetFlossBluetoothTelephonyClient(
+      std::unique_ptr<FlossBluetoothTelephonyClient> client);
   void SetFlossSocketManager(std::unique_ptr<FlossSocketManager> manager);
 #if BUILDFLAG(IS_CHROMEOS)
   void SetFlossAdminClient(std::unique_ptr<FlossAdminClient> client);
@@ -247,6 +323,10 @@ class DEVICE_BLUETOOTH_EXPORT FlossClientBundle {
     return battery_manager_client_.get();
   }
 
+  FlossBluetoothTelephonyClient* bluetooth_telephony_client() {
+    return bluetooth_telephony_client_.get();
+  }
+
  private:
   friend FlossDBusManagerSetter;
   friend FlossDBusManager;
@@ -262,6 +342,7 @@ class DEVICE_BLUETOOTH_EXPORT FlossClientBundle {
   std::unique_ptr<FlossLoggingClient> logging_client_;
   std::unique_ptr<FlossAdvertiserClient> advertiser_client_;
   std::unique_ptr<FlossBatteryManagerClient> battery_manager_client_;
+  std::unique_ptr<FlossBluetoothTelephonyClient> bluetooth_telephony_client_;
 #if BUILDFLAG(IS_CHROMEOS)
   std::unique_ptr<FlossAdminClient> admin_client_;
 #endif  // BUILDFLAG(IS_CHROMEOS)

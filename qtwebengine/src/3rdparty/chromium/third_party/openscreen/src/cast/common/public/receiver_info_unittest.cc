@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 constexpr NetworkInterfaceIndex kNetworkInterface = 0;
@@ -179,5 +178,4 @@ TEST(ReceiverInfoTests, ParseReceiverInfoFromRealTXT) {
   EXPECT_EQ(info.friendly_name, "⚡ Yurovision® ULTRA™");
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

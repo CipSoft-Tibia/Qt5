@@ -390,12 +390,13 @@ struct FilmGrainParams {
   uint8_t point_v_value[10];
   uint8_t point_v_scaling[10];
 
-  uint8_t chroma_scaling;              // [8, 11].
-  uint8_t auto_regression_coeff_lag;   // [0, 3].
-  int8_t auto_regression_coeff_y[24];  // [-128, 127]
-  int8_t auto_regression_coeff_u[25];  // [-128, 127]
-  int8_t auto_regression_coeff_v[25];  // [-128, 127]
-  // Shift value: auto regression coeffs range
+  uint8_t chroma_scaling;             // grain_scaling_minus_8 + 8: [8, 11].
+  uint8_t auto_regression_coeff_lag;  // ar_coeff_lag: [0, 3].
+  // ar_coeffs_{y,u,v}_plus_128 - 128: [-128, 127].
+  int8_t auto_regression_coeff_y[24];
+  int8_t auto_regression_coeff_u[25];
+  int8_t auto_regression_coeff_v[25];
+  // Shift value: ar_coeff_shift_minus_6 + 6, auto regression coeffs range:
   // 6: [-2, 2)
   // 7: [-1, 1)
   // 8: [-0.5, 0.5)
@@ -405,16 +406,12 @@ struct FilmGrainParams {
   uint16_t grain_seed;
   int reference_index;
   int grain_scale_shift;
-  // These multipliers are encoded as nonnegative values by adding 128 first.
-  // The 128 is subtracted during parsing.
-  int8_t u_multiplier;       // [-128, 127]
-  int8_t u_luma_multiplier;  // [-128, 127]
-  // These offsets are encoded as nonnegative values by adding 256 first. The
-  // 256 is subtracted during parsing.
-  int16_t u_offset;          // [-256, 255]
-  int8_t v_multiplier;       // [-128, 127]
-  int8_t v_luma_multiplier;  // [-128, 127]
-  int16_t v_offset;          // [-256, 255]
+  int8_t u_multiplier;       // cb_mult - 128:      [-128, 127].
+  int8_t u_luma_multiplier;  // cb_luma_mult - 128: [-128, 127].
+  int16_t u_offset;          // cb_offset - 256:    [-256, 255].
+  int8_t v_multiplier;       // cr_mult - 128:      [-128, 127].
+  int8_t v_luma_multiplier;  // cr_luma_mult - 128: [-128, 127].
+  int16_t v_offset;          // cr_offset - 256:    [-256, 255].
 };
 
 struct ObuFrameHeader {

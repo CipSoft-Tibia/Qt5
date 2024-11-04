@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,7 @@
 #include "util/integer_division.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -49,9 +48,9 @@ RtpPacketizer::RtpPacketizer(RtpPayloadType payload_type,
 
 RtpPacketizer::~RtpPacketizer() = default;
 
-absl::Span<uint8_t> RtpPacketizer::GeneratePacket(const EncryptedFrame& frame,
-                                                  FramePacketId packet_id,
-                                                  absl::Span<uint8_t> buffer) {
+ByteBuffer RtpPacketizer::GeneratePacket(const EncryptedFrame& frame,
+                                         FramePacketId packet_id,
+                                         ByteBuffer buffer) {
   OSP_CHECK_GE(static_cast<int>(buffer.size()), max_packet_size_);
 
   const int num_packets = ComputeNumberOfPackets(frame);
@@ -78,15 +77,15 @@ absl::Span<uint8_t> RtpPacketizer::GeneratePacket(const EncryptedFrame& frame,
   }
   packet_size += data_chunk_size;
   OSP_DCHECK_LE(packet_size, max_packet_size_);
-  const absl::Span<uint8_t> packet(buffer.data(), packet_size);
+  const ByteBuffer packet(buffer.data(), packet_size);
 
   // RTP Header.
-  AppendField<uint8_t>(kRtpRequiredFirstByte, &buffer);
+  AppendField<uint8_t>(kRtpRequiredFirstByte, buffer);
   AppendField<uint8_t>(
-      (is_last_packet ? kRtpMarkerBitMask : 0) | payload_type_7bits_, &buffer);
-  AppendField<uint16_t>(sequence_number_++, &buffer);
-  AppendField<uint32_t>(frame.rtp_timestamp.lower_32_bits(), &buffer);
-  AppendField<uint32_t>(sender_ssrc_, &buffer);
+      (is_last_packet ? kRtpMarkerBitMask : 0) | payload_type_7bits_, buffer);
+  AppendField<uint16_t>(sequence_number_++, buffer);
+  AppendField<uint32_t>(frame.rtp_timestamp.lower_32_bits(), buffer);
+  AppendField<uint32_t>(sender_ssrc_, buffer);
 
   // Cast Header.
   AppendField<uint8_t>(
@@ -95,19 +94,19 @@ absl::Span<uint8_t> RtpPacketizer::GeneratePacket(const EncryptedFrame& frame,
            : 0) |
           kRtpHasReferenceFrameIdBitMask |
           (include_adaptive_latency_change ? 1 : 0),
-      &buffer);
-  AppendField<uint8_t>(frame.frame_id.lower_8_bits(), &buffer);
-  AppendField<uint16_t>(packet_id, &buffer);
-  AppendField<uint16_t>(num_packets - 1, &buffer);
-  AppendField<uint8_t>(frame.referenced_frame_id.lower_8_bits(), &buffer);
+      buffer);
+  AppendField<uint8_t>(frame.frame_id.lower_8_bits(), buffer);
+  AppendField<uint16_t>(packet_id, buffer);
+  AppendField<uint16_t>(num_packets - 1, buffer);
+  AppendField<uint8_t>(frame.referenced_frame_id.lower_8_bits(), buffer);
 
   // Extension of Cast Header for Adaptive Latency change.
   if (include_adaptive_latency_change) {
     AppendField<uint16_t>(
         (kAdaptiveLatencyRtpExtensionType << kNumExtensionDataSizeFieldBits) |
             sizeof(uint16_t),
-        &buffer);
-    AppendField<uint16_t>(frame.new_playout_delay.count(), &buffer);
+        buffer);
+    AppendField<uint16_t>(frame.new_playout_delay.count(), buffer);
   }
 
   // Sanity-check the pointer math, to ensure the packet is being entirely
@@ -115,7 +114,8 @@ absl::Span<uint8_t> RtpPacketizer::GeneratePacket(const EncryptedFrame& frame,
   OSP_DCHECK_EQ(buffer.data() + data_chunk_size, packet.end());
 
   // Copy the encrypted payload data into the packet.
-  memcpy(buffer.data(), frame.data.data() + data_chunk_start, data_chunk_size);
+  auto data_chunk = frame.data.subspan(data_chunk_start, data_chunk_size);
+  std::copy(data_chunk.begin(), data_chunk.end(), buffer.data());
 
   return packet;
 }
@@ -134,5 +134,4 @@ int RtpPacketizer::ComputeNumberOfPackets(const EncryptedFrame& frame) const {
   return num_packets <= int{kMaxAllowedFramePacketId} ? num_packets : -1;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

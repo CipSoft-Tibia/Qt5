@@ -8,9 +8,6 @@
 #include <QtCore/qvariant.h>
 #include <QtCore/qcontainerfwd.h>
 
-// for testing:
-class tst_QSqlQuery;
-
 QT_BEGIN_NAMESPACE
 
 
@@ -26,8 +23,6 @@ class Q_SQL_EXPORT QSqlResult
     Q_DECLARE_PRIVATE(QSqlResult)
     friend class QSqlQuery;
     friend class QSqlTableModelPrivate;
-    // for testing:
-    friend class ::tst_QSqlQuery;
 
 public:
     virtual ~QSqlResult();
@@ -102,6 +97,8 @@ protected:
     virtual void detachFromResultSet();
     virtual void setNumericalPrecisionPolicy(QSql::NumericalPrecisionPolicy policy);
     QSql::NumericalPrecisionPolicy numericalPrecisionPolicy() const;
+    void setPositionalBindingEnabled(bool enable);
+    bool isPositionalBindingEnabled() const;
     virtual bool nextResult();
     void resetBindCount(); // HACK
 

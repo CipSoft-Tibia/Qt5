@@ -174,6 +174,7 @@ public:
 #if defined(Q_OS_UNIX) || defined(Q_QDOC)
     std::function<void(void)> childProcessModifier() const;
     void setChildProcessModifier(const std::function<void(void)> &modifier);
+    Q_NORETURN void failChildProcessModifier(const char *description, int error = 0) noexcept;
 
     enum class UnixProcessFlag : quint32 {
         ResetSignalHandlers                 = 0x0001, // like POSIX_SPAWN_SETSIGDEF
@@ -181,6 +182,9 @@ public:
         // some room if we want to add IgnoreSigHup or so
         CloseFileDescriptors                = 0x0010,
         UseVFork                            = 0x0020, // like POSIX_SPAWN_USEVFORK
+        CreateNewSession                    = 0x0040, // like POSIX_SPAWN_SETSID
+        DisconnectControllingTerminal       = 0x0080,
+        ResetIds                            = 0x0100, // like POSIX_SPAWN_RESETIDS
     };
     Q_DECLARE_FLAGS(UnixProcessFlags, UnixProcessFlag)
     struct UnixProcessParameters

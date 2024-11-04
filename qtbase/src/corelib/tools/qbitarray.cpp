@@ -133,14 +133,12 @@ static void adjust_head_and_tail(char *data, qsizetype storageSize, qsizetype lo
     initialized with \a value, which defaults to false (0).
 */
 QBitArray::QBitArray(qsizetype size, bool value)
-    : d(allocation_size(size), Qt::Uninitialized)
+    : d(allocation_size(size), value ? 0xFF : 0x00)
 {
     Q_ASSERT_X(size >= 0, "QBitArray::QBitArray", "Size must be greater than or equal to 0.");
     if (size <= 0)
         return;
 
-    uchar *c = reinterpret_cast<uchar *>(d.data());
-    memset(c + 1, value ? 0xff : 0, d.size() - 1);
     adjust_head_and_tail(d.data(), d.size(), size);
 }
 
@@ -205,14 +203,11 @@ qsizetype QBitArray::count(bool on) const
 */
 void QBitArray::resize(qsizetype size)
 {
-    if (!size) {
+    Q_ASSERT_X(size >= 0, "QBitArray::resize", "Size must be greater than or equal to 0.");
+    if (size <= 0) {
         d.resize(0);
     } else {
-        qsizetype s = d.size();
-        d.resize(allocation_size(size));
-        uchar *c = reinterpret_cast<uchar *>(d.data());
-        if (d.size() > s)
-            memset(c + s, 0, d.size() - s);
+        d.resize(allocation_size(size), 0x00);
         adjust_head_and_tail(d.data(), d.size(), size);
     }
 }
@@ -309,8 +304,9 @@ void QBitArray::fill(bool value, qsizetype begin, qsizetype end)
  */
 QBitArray QBitArray::fromBits(const char *data, qsizetype size)
 {
+    Q_ASSERT_X(size >= 0, "QBitArray::fromBits", "Size must be greater than or equal to 0.");
     QBitArray result;
-    if (size == 0)
+    if (size <= 0)
         return result;
 
     auto &d = result.d;
@@ -515,7 +511,134 @@ quint32 QBitArray::toUInt32(QSysInfo::Endian endianness, bool *ok) const noexcep
     \sa operator==()
 */
 
+// Returns a new QBitArray that has the same size as the bigger of \a a1 and
+// \a a2, but whose contents are uninitialized.
+static QBitArray sizedForOverwrite(const QBitArray &a1, const QBitArray &a2)
+{
+    QBitArray result;
+    const QByteArrayData &d1 = a1.data_ptr();
+    const QByteArrayData &d2 = a2.data_ptr();
+    qsizetype n1 = d1.size;
+    qsizetype n2 = d2.size;
+    qsizetype n = qMax(n1, n2);
+
+    QByteArrayData bytes(n, n);
+
+    // initialize the count of bits in the last byte (see construction note)
+    // and the QByteArray null termination (some of our algorithms read it)
+    if (n1 > n2) {
+        *bytes.ptr = *d1.ptr;
+        bytes.ptr[n1] = 0;
+    } else if (n2 > n1) {
+        *bytes.ptr = *d2.ptr;
+        bytes.ptr[n2] = 0;
+    } else if (n1) {    // n1 == n2
+        *bytes.ptr = qMin(*d1.ptr, *d2.ptr);
+        bytes.ptr[n1] = 0;
+    }
+
+    result.data_ptr() = std::move(bytes);
+    return result;
+}
+
+template <typename BitwiseOp> static Q_NEVER_INLINE
+QBitArray &performBitwiseOperationHelper(QBitArray &out, const QBitArray &a1,
+                                         const QBitArray &a2, BitwiseOp op)
+{
+    const QByteArrayData &d1 = a1.data_ptr();
+    const QByteArrayData &d2 = a2.data_ptr();
+
+    // Sizes in bytes (including the initial bit difference counter)
+    qsizetype n1 = d1.size;
+    qsizetype n2 = d2.size;
+    Q_ASSERT(out.data_ptr().size == qMax(n1, n2));
+    Q_ASSERT(out.data_ptr().size == 0 || !out.data_ptr().needsDetach());
+
+    // Bypass QByteArray's emptiness verification; we won't dereference
+    // these pointers if their size is zero.
+    auto dst = reinterpret_cast<uchar *>(out.data_ptr().data());
+    auto p1 = reinterpret_cast<const uchar *>(d1.data());
+    auto p2 = reinterpret_cast<const uchar *>(d2.data());
+
+    // Main: perform the operation in the range where both arrays have data
+    if (n1 < n2) {
+        std::swap(n1, n2);
+        std::swap(p1, p2);
+    }
+    for (qsizetype i = 1; i < n2; ++i)
+        dst[i] = op(p1[i], p2[i]);
+
+    // Tail: operate as if both arrays had the same data by padding zeroes to
+    // the end of the shorter of the two (for std::bit_or and std::bit_xor, this is
+    // a memmove; for std::bit_and, it's memset to 0).
+    for (qsizetype i = qMax(n2, qsizetype(1)); i < n1; ++i)
+        dst[i] = op(p1[i], uchar(0));
+
+    return out;
+}
+
+template <typename BitwiseOp> static Q_NEVER_INLINE
+QBitArray &performBitwiseOperationInCopy(QBitArray &self, const QBitArray &other, BitwiseOp op)
+{
+    QBitArray tmp(std::move(self));
+    self = sizedForOverwrite(tmp, other);
+    return performBitwiseOperationHelper(self, tmp, other, op);
+}
+
+template <typename BitwiseOp> static Q_NEVER_INLINE
+QBitArray &performBitwiseOperationInPlace(QBitArray &self, const QBitArray &other, BitwiseOp op)
+{
+    if (self.size() < other.size())
+        self.resize(other.size());
+    return performBitwiseOperationHelper(self, self, other, op);
+}
+
+template <typename BitwiseOp> static
+QBitArray &performBitwiseOperation(QBitArray &self, const QBitArray &other, BitwiseOp op)
+{
+    if (self.data_ptr().needsDetach())
+        return performBitwiseOperationInCopy(self, other, op);
+    return performBitwiseOperationInPlace(self, other, op);
+}
+
+// SCARY helper
+enum { InCopy, InPlace };
+static auto prepareForBitwiseOperation(QBitArray &self, QBitArray &other)
+{
+    QByteArrayData &d1 = self.data_ptr();
+    QByteArrayData &d2 = other.data_ptr();
+    bool detached1 = !d1.needsDetach();
+    bool detached2 = !d2.needsDetach();
+    if (!detached1 && !detached2)
+        return InCopy;
+
+    // at least one of the two is detached, we'll reuse its buffer
+    bool swap = false;
+    if (detached1 && detached2) {
+        // both are detached, so choose the larger of the two
+        swap = d1.allocatedCapacity() < d2.allocatedCapacity();
+    } else if (detached2) {
+        // we can re-use other's buffer but not self's, so swap the two
+        swap = true;
+    }
+    if (swap)
+        self.swap(other);
+    return InPlace;
+}
+
+template <typename BitwiseOp> static
+QBitArray &performBitwiseOperation(QBitArray &self, QBitArray &other, BitwiseOp op)
+{
+    auto choice = prepareForBitwiseOperation(self, other);
+    if (choice == InCopy)
+        return performBitwiseOperationInCopy(self, other, std::move(op));
+    return performBitwiseOperationInPlace(self, other, std::move(op));
+}
+
 /*!
+    \fn QBitArray &QBitArray::operator&=(const QBitArray &other)
+    \fn QBitArray &QBitArray::operator&=(QBitArray &&other)
+
     Performs the AND operation between all bits in this bit array and
     \a other. Assigns the result to this bit array, and returns a
     reference to it.
@@ -530,21 +653,20 @@ quint32 QBitArray::toUInt32(QSysInfo::Endian endianness, bool *ok) const noexcep
     \sa operator&(), operator|=(), operator^=(), operator~()
 */
 
+QBitArray &QBitArray::operator&=(QBitArray &&other)
+{
+    return performBitwiseOperation(*this, other, std::bit_and<uchar>());
+}
+
 QBitArray &QBitArray::operator&=(const QBitArray &other)
 {
-    resize(qMax(size(), other.size()));
-    uchar *a1 = reinterpret_cast<uchar *>(d.data()) + 1;
-    const uchar *a2 = reinterpret_cast<const uchar *>(other.d.constData()) + 1;
-    qsizetype n = other.d.size() - 1;
-    qsizetype p = d.size() - 1 - n;
-    while (n-- > 0)
-        *a1++ &= *a2++;
-    while (p-- > 0)
-        *a1++ = 0;
-    return *this;
+    return performBitwiseOperation(*this, other, std::bit_and<uchar>());
 }
 
 /*!
+    \fn QBitArray &QBitArray::operator|=(const QBitArray &other)
+    \fn QBitArray &QBitArray::operator|=(QBitArray &&other)
+
     Performs the OR operation between all bits in this bit array and
     \a other. Assigns the result to this bit array, and returns a
     reference to it.
@@ -559,18 +681,20 @@ QBitArray &QBitArray::operator&=(const QBitArray &other)
     \sa operator|(), operator&=(), operator^=(), operator~()
 */
 
+QBitArray &QBitArray::operator|=(QBitArray &&other)
+{
+    return performBitwiseOperation(*this, other, std::bit_or<uchar>());
+}
+
 QBitArray &QBitArray::operator|=(const QBitArray &other)
 {
-    resize(qMax(size(), other.size()));
-    uchar *a1 = reinterpret_cast<uchar *>(d.data()) + 1;
-    const uchar *a2 = reinterpret_cast<const uchar *>(other.d.constData()) + 1;
-    qsizetype n = other.d.size() - 1;
-    while (n-- > 0)
-        *a1++ |= *a2++;
-    return *this;
+    return performBitwiseOperation(*this, other, std::bit_or<uchar>());
 }
 
 /*!
+    \fn QBitArray &QBitArray::operator^=(const QBitArray &other)
+    \fn QBitArray &QBitArray::operator^=(QBitArray &&other)
+
     Performs the XOR operation between all bits in this bit array and
     \a other. Assigns the result to this bit array, and returns a
     reference to it.
@@ -585,20 +709,20 @@ QBitArray &QBitArray::operator|=(const QBitArray &other)
     \sa operator^(), operator&=(), operator|=(), operator~()
 */
 
+QBitArray &QBitArray::operator^=(QBitArray &&other)
+{
+    return performBitwiseOperation(*this, other, std::bit_xor<uchar>());
+}
+
 QBitArray &QBitArray::operator^=(const QBitArray &other)
 {
-    resize(qMax(size(), other.size()));
-    uchar *a1 = reinterpret_cast<uchar *>(d.data()) + 1;
-    const uchar *a2 = reinterpret_cast<const uchar *>(other.d.constData()) + 1;
-    qsizetype n = other.d.size() - 1;
-    while (n-- > 0)
-        *a1++ ^= *a2++;
-    return *this;
+    return performBitwiseOperation(*this, other, std::bit_xor<uchar>());
 }
 
 /*!
-    Returns a bit array that contains the inverted bits of this bit
-    array.
+    \fn QBitArray QBitArray::operator~(QBitArray a)
+    Returns a bit array that contains the inverted bits of the bit
+    array \a a.
 
     Example:
     \snippet code/src_corelib_tools_qbitarray.cpp 11
@@ -606,24 +730,42 @@ QBitArray &QBitArray::operator^=(const QBitArray &other)
     \sa operator&(), operator|(), operator^()
 */
 
-QBitArray QBitArray::operator~() const
+Q_NEVER_INLINE QBitArray QBitArray::inverted_inplace() &&
 {
-    qsizetype sz = size();
-    QBitArray a(sz);
-    const uchar *a1 = reinterpret_cast<const uchar *>(d.constData()) + 1;
-    uchar *a2 = reinterpret_cast<uchar *>(a.d.data()) + 1;
-    qsizetype n = d.size() - 1;
+    qsizetype n = d.size();
+    uchar *dst = reinterpret_cast<uchar *>(data_ptr().data());
+    const uchar *src = dst;
+    QBitArray result([&] {
+        if (d.isDetached() || n == 0)
+            return std::move(d.data_ptr());     // invert in-place
 
-    while (n-- > 0)
-        *a2++ = ~*a1++;
+        QByteArrayData tmp(n, n);
+        dst = reinterpret_cast<uchar *>(tmp.data());
+        return tmp;
+    }());
 
-    if (sz && sz % 8)
-        *(a2 - 1) &= (1 << (sz % 8)) - 1;
-    return a;
+    uchar bitdiff = 8;
+    if (n)
+        bitdiff = dst[0] = src[0];      // copy the count of bits in the last byte
+
+    for (qsizetype i = 1; i < n; ++i)
+        dst[i] = ~src[i];
+
+    if (int tailCount = 16 - bitdiff; tailCount != 8) {
+        // zero the bits beyond our size in the last byte
+        Q_ASSERT(n > 1);
+        uchar tailMask = (1U << tailCount) - 1;
+        dst[n - 1] &= tailMask;
+    }
+
+    return result;
 }
 
 /*!
-    \relates QBitArray
+    \fn QBitArray QBitArray::operator&(const QBitArray &a1, const QBitArray &a2)
+    \fn QBitArray QBitArray::operator&(QBitArray &&a1, const QBitArray &a2)
+    \fn QBitArray QBitArray::operator&(const QBitArray &a1, QBitArray &&a2)
+    \fn QBitArray QBitArray::operator&(QBitArray &&a1, QBitArray &&a2)
 
     Returns a bit array that is the AND of the bit arrays \a a1 and \a
     a2.
@@ -640,13 +782,16 @@ QBitArray QBitArray::operator~() const
 
 QBitArray operator&(const QBitArray &a1, const QBitArray &a2)
 {
-    QBitArray tmp = a1;
-    tmp &= a2;
+    QBitArray tmp = sizedForOverwrite(a1, a2);
+    performBitwiseOperationHelper(tmp, a1, a2, std::bit_and<uchar>());
     return tmp;
 }
 
 /*!
-    \relates QBitArray
+    \fn QBitArray QBitArray::operator|(const QBitArray &a1, const QBitArray &a2)
+    \fn QBitArray QBitArray::operator|(QBitArray &&a1, const QBitArray &a2)
+    \fn QBitArray QBitArray::operator|(const QBitArray &a1, QBitArray &&a2)
+    \fn QBitArray QBitArray::operator|(QBitArray &&a1, QBitArray &&a2)
 
     Returns a bit array that is the OR of the bit arrays \a a1 and \a
     a2.
@@ -663,13 +808,16 @@ QBitArray operator&(const QBitArray &a1, const QBitArray &a2)
 
 QBitArray operator|(const QBitArray &a1, const QBitArray &a2)
 {
-    QBitArray tmp = a1;
-    tmp |= a2;
+    QBitArray tmp = sizedForOverwrite(a1, a2);
+    performBitwiseOperationHelper(tmp, a1, a2, std::bit_or<uchar>());
     return tmp;
 }
 
 /*!
-    \relates QBitArray
+    \fn QBitArray QBitArray::operator^(const QBitArray &a1, const QBitArray &a2)
+    \fn QBitArray QBitArray::operator^(QBitArray &&a1, const QBitArray &a2)
+    \fn QBitArray QBitArray::operator^(const QBitArray &a1, QBitArray &&a2)
+    \fn QBitArray QBitArray::operator^(QBitArray &&a1, QBitArray &&a2)
 
     Returns a bit array that is the XOR of the bit arrays \a a1 and \a
     a2.
@@ -686,8 +834,8 @@ QBitArray operator|(const QBitArray &a1, const QBitArray &a2)
 
 QBitArray operator^(const QBitArray &a1, const QBitArray &a2)
 {
-    QBitArray tmp = a1;
-    tmp ^= a2;
+    QBitArray tmp = sizedForOverwrite(a1, a2);
+    performBitwiseOperationHelper(tmp, a1, a2, std::bit_xor<uchar>());
     return tmp;
 }
 
@@ -750,7 +898,7 @@ QDataStream &operator<<(QDataStream &out, const QBitArray &ba)
     const qsizetype len = ba.size();
     if (out.version() < QDataStream::Qt_6_0) {
         if (Q_UNLIKELY(len > qsizetype{(std::numeric_limits<qint32>::max)()})) {
-            out.setStatus(QDataStream::WriteFailed); // ### SizeLimitExceeded
+            out.setStatus(QDataStream::Status::SizeLimitExceeded);
             return out;
         }
         out << quint32(len);
@@ -786,7 +934,7 @@ QDataStream &operator>>(QDataStream &in, QBitArray &ba)
         quint64 tmp;
         in >> tmp;
         if (Q_UNLIKELY(tmp > quint64((std::numeric_limits<qsizetype>::max)()))) {
-            in.setStatus(QDataStream::ReadCorruptData); // ### SizeLimitExeeded
+            in.setStatus(QDataStream::Status::SizeLimitExceeded);
             return in;
         }
         len = tmp;

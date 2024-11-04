@@ -35,6 +35,8 @@ class CORE_EXPORT CSSNumericLiteralValue : public CSSPrimitiveValue {
       case UnitType::kChs:
       case UnitType::kIcs:
       case UnitType::kLhs:
+      case UnitType::kCaps:
+      case UnitType::kRcaps:
       case UnitType::kRexs:
       case UnitType::kRchs:
       case UnitType::kRics:
@@ -69,7 +71,9 @@ class CORE_EXPORT CSSNumericLiteralValue : public CSSPrimitiveValue {
   double ComputeSeconds() const;
   double ComputeDegrees() const;
   double ComputeDotsPerPixel() const;
+  double ComputeInCanonicalUnit() const;
 
+  int ComputeInteger() const;
   double ComputeLengthPx(const CSSLengthResolver&) const;
   bool AccumulateLengthArray(CSSLengthArray& length_array,
                              double multiplier) const;
@@ -78,10 +82,13 @@ class CORE_EXPORT CSSNumericLiteralValue : public CSSPrimitiveValue {
   String CustomCSSText() const;
   bool Equals(const CSSNumericLiteralValue& other) const;
 
+  UnitType CanonicalUnit() const;
+  CSSNumericLiteralValue* CreateCanonicalUnitValue() const;
+
   void TraceAfterDispatch(blink::Visitor* visitor) const;
 
  private:
-  double num_;
+  const double num_;
 };
 
 template <>

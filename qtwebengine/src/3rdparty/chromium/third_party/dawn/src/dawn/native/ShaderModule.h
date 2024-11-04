@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "dawn/common/Constants.h"
+#include "dawn/common/ContentLessObjectCacheable.h"
 #include "dawn/common/ityp_array.h"
 #include "dawn/native/BindingInfo.h"
 #include "dawn/native/CachedObject.h"
@@ -38,18 +39,18 @@
 #include "dawn/native/PerStage.h"
 #include "dawn/native/VertexFormat.h"
 #include "dawn/native/dawn_platform.h"
-#include "tint/override_id.h"
+#include "tint/tint.h"
 
 namespace tint {
 
 class Program;
 
-namespace transform {
+namespace ast::transform {
 class DataMap;
 class Manager;
 class Transform;
 class VertexPulling;
-}  // namespace transform
+}  // namespace ast::transform
 
 }  // namespace tint
 
@@ -118,10 +119,10 @@ ResultOrError<Extent3D> ValidateComputeStageWorkgroupSize(
 
 RequiredBufferSizes ComputeRequiredBufferSizesForLayout(const EntryPointMetadata& entryPoint,
                                                         const PipelineLayoutBase* layout);
-ResultOrError<tint::Program> RunTransforms(tint::transform::Transform* transform,
+ResultOrError<tint::Program> RunTransforms(tint::ast::transform::Manager* transformManager,
                                            const tint::Program* program,
-                                           const tint::transform::DataMap& inputs,
-                                           tint::transform::DataMap* outputs,
+                                           const tint::ast::transform::DataMap& inputs,
+                                           tint::ast::transform::DataMap* outputs,
                                            OwnedCompilationMessages* messages);
 
 // Mirrors wgpu::SamplerBindingLayout but instead stores a single boolean
@@ -194,7 +195,7 @@ struct EntryPointMetadata {
 
     // An array to record the basic types (float, int and uint) of the fragment shader outputs.
     struct FragmentOutputVariableInfo {
-        wgpu::TextureComponentType baseType;
+        TextureComponentType baseType;
         uint8_t componentCount;
     };
     ityp::array<ColorAttachmentIndex, FragmentOutputVariableInfo, kMaxColorAttachments>
@@ -221,7 +222,7 @@ struct EntryPointMetadata {
 
         // Match tint::inspector::Override::Type
         // Bool is defined as a macro on linux X11 and cannot compile
-        enum class Type { Boolean, Float32, Uint32, Int32 } type;
+        enum class Type { Boolean, Float32, Uint32, Int32, Float16 } type;
 
         // If the constant doesn't not have an initializer in the shader
         // Then it is required for the pipeline stage to have a constant record to initialize a
@@ -250,7 +251,9 @@ struct EntryPointMetadata {
     bool usesSampleMaskOutput = false;
 };
 
-class ShaderModuleBase : public ApiObjectBase, public CachedObject {
+class ShaderModuleBase : public ApiObjectBase,
+                         public CachedObject,
+                         public ContentLessObjectCacheable<ShaderModuleBase> {
   public:
     ShaderModuleBase(DeviceBase* device,
                      const ShaderModuleDescriptor* descriptor,
@@ -258,7 +261,7 @@ class ShaderModuleBase : public ApiObjectBase, public CachedObject {
     ShaderModuleBase(DeviceBase* device, const ShaderModuleDescriptor* descriptor);
     ~ShaderModuleBase() override;
 
-    static Ref<ShaderModuleBase> MakeError(DeviceBase* device);
+    static Ref<ShaderModuleBase> MakeError(DeviceBase* device, const char* label);
 
     ObjectType GetType() const override;
 
@@ -292,7 +295,7 @@ class ShaderModuleBase : public ApiObjectBase, public CachedObject {
                               OwnedCompilationMessages* compilationMessages);
 
   private:
-    ShaderModuleBase(DeviceBase* device, ObjectBase::ErrorTag tag);
+    ShaderModuleBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label);
 
     // The original data in the descriptor for caching.
     enum class Type { Undefined, Spirv, Wgsl };

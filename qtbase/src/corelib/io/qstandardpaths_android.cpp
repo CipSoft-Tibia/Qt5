@@ -13,7 +13,7 @@
 QT_BEGIN_NAMESPACE
 
 Q_DECLARE_JNI_CLASS(Environment, "android/os/Environment");
-Q_DECLARE_JNI_TYPE(File, "Ljava/io/File;");
+Q_DECLARE_JNI_CLASS(File, "java/io/File");
 
 using namespace QNativeInterface;
 using namespace Qt::StringLiterals;
@@ -195,6 +195,9 @@ QString QStandardPaths::writableLocation(StandardLocation type)
     case QStandardPaths::ConfigLocation:
     case QStandardPaths::AppConfigLocation:
         return getFilesDir() + testDir() + "/settings"_L1;
+    case QStandardPaths::StateLocation:
+    case QStandardPaths::GenericStateLocation:
+        return getFilesDir() + testDir() + "/state"_L1;
     case QStandardPaths::GenericDataLocation:
     {
         return QAndroidApplication::sdkVersion() >= 30 ?

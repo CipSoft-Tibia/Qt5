@@ -6,6 +6,7 @@
 
 #include "base/functional/function_ref.h"
 #include "base/test/values_test_util.h"
+#include "base/time/time.h"
 #include "base/types/expected.h"
 #include "base/values.h"
 #include "components/attribution_reporting/filters.h"
@@ -44,12 +45,14 @@ TEST(EventTriggerDataTest, FromJSON) {
       {
           "trigger_data_wrong_type",
           R"json({"trigger_data":123})json",
-          EventTriggerData(),
+          base::unexpected(
+              TriggerRegistrationError::kEventTriggerDataValueInvalid),
       },
       {
           "trigger_data_invalid",
           R"json({"trigger_data":"-5"})json",
-          EventTriggerData(),
+          base::unexpected(
+              TriggerRegistrationError::kEventTriggerDataValueInvalid),
       },
       {
           "priority_valid",
@@ -60,12 +63,14 @@ TEST(EventTriggerDataTest, FromJSON) {
       {
           "priority_wrong_type",
           R"json({"priority":123})json",
-          EventTriggerData(),
+          base::unexpected(
+              TriggerRegistrationError::kEventPriorityValueInvalid),
       },
       {
           "priority_invalid",
           R"json({"priority":"abc"})json",
-          EventTriggerData(),
+          base::unexpected(
+              TriggerRegistrationError::kEventPriorityValueInvalid),
       },
       {
           "dedup_key_valid",
@@ -76,18 +81,21 @@ TEST(EventTriggerDataTest, FromJSON) {
       {
           "dedup_key_wrong_type",
           R"json({"deduplication_key":123})json",
-          EventTriggerData(),
+          base::unexpected(
+              TriggerRegistrationError::kEventDedupKeyValueInvalid),
       },
       {
           "dedup_key_invalid",
           R"json({"deduplication_key":"abc"})json",
-          EventTriggerData(),
+          base::unexpected(
+              TriggerRegistrationError::kEventDedupKeyValueInvalid),
       },
       {
           "filters_valid",
-          R"json({"filters":{"a":["b"]}})json",
+          R"json({"filters":{"a":["b"], "_lookback_window": 1}})json",
           EventTriggerDataWith([](EventTriggerData& data) {
-            data.filters.positive = *Filters::Create({{"a", {"b"}}});
+            data.filters.positive = {*FilterConfig::Create(
+                {{"a", {"b"}}}, /*lookback_window=*/base::Seconds(1))};
           }),
       },
       {
@@ -97,9 +105,10 @@ TEST(EventTriggerDataTest, FromJSON) {
       },
       {
           "not_filters_valid",
-          R"json({"not_filters":{"a":["b"]}})json",
+          R"json({"not_filters":{"a":["b"], "_lookback_window": 1}})json",
           EventTriggerDataWith([](EventTriggerData& data) {
-            data.filters.negative = *Filters::Create({{"a", {"b"}}});
+            data.filters.negative = {*FilterConfig::Create(
+                {{{"a", {"b"}}}}, /*lookback_window=*/base::Seconds(1))};
           }),
       },
       {
@@ -133,14 +142,16 @@ TEST(EventTriggerDataTest, ToJson) {
               /*data=*/1,
               /*priority=*/-2,
               /*dedup_key=*/3,
-              FilterPair{.positive = *Filters::Create({{"a", {}}}),
-                         .negative = *Filters::Create({{"b", {}}})}),
+              FilterPair(
+                  /*positive=*/{*FilterConfig::Create(
+                      {{"a", {}}}, /*lookback_window=*/base::Seconds(2))},
+                  /*negative=*/{*FilterConfig::Create({{"b", {}}})})),
           R"json({
             "trigger_data": "1",
             "priority": "-2",
             "deduplication_key": "3",
-            "filters": {"a": []},
-            "not_filters": {"b": []}
+            "filters": [{"a": [], "_lookback_window": 2 }],
+            "not_filters": [{"b": []}]
           })json",
       },
   };

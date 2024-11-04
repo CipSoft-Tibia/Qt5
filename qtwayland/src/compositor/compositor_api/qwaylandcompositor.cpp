@@ -63,9 +63,7 @@ QT_BEGIN_NAMESPACE
 Q_LOGGING_CATEGORY(qLcWaylandCompositor, "qt.waylandcompositor")
 Q_LOGGING_CATEGORY(qLcWaylandCompositorHardwareIntegration, "qt.waylandcompositor.hardwareintegration")
 Q_LOGGING_CATEGORY(qLcWaylandCompositorInputMethods, "qt.waylandcompositor.inputmethods")
-#if QT_WAYLAND_TEXT_INPUT_V4_WIP
 Q_LOGGING_CATEGORY(qLcWaylandCompositorTextInput, "qt.waylandcompositor.textinput")
-#endif // QT_WAYLAND_TEXT_INPUT_V4_WIP
 
 namespace QtWayland {
 
@@ -172,6 +170,8 @@ void QWaylandCompositorPrivate::init()
         const int socketArg = arguments.indexOf(QLatin1String("--wayland-socket-name"));
         if (socketArg != -1 && socketArg + 1 < arguments.size())
             socket_name = arguments.at(socketArg + 1).toLocal8Bit();
+        if (socket_name.isEmpty())
+            socket_name = qgetenv("WAYLAND_DISPLAY");
     }
     wl_compositor::init(display, 4);
     wl_subcompositor::init(display, 1);

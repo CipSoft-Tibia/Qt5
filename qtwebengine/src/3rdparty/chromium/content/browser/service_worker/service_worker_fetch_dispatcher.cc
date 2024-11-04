@@ -36,6 +36,7 @@
 #include "content/public/browser/global_request_id.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/common/content_client.h"
+#include "content/public/common/content_features.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
@@ -54,6 +55,12 @@
 namespace content {
 
 namespace {
+
+// TODO(crbug.com/1446228): When this is enabled, the browser will schedule
+// ServiceWorkerFetchDispatcher::ResponseCallback in a high priority task queue.
+BASE_FEATURE(kServiceWorkerFetchResponseCallbackUseHighPriority,
+             "ServiceWorkerFetchResponseCallbackUseHighPriority",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 void NotifyNavigationPreloadRequestSent(const network::ResourceRequest& request,
                                         const std::pair<int, int>& worker_id,
@@ -341,7 +348,9 @@ void CreateNetworkFactoryForNavigationPreload(
       ukm::SourceIdObj::FromInt64(
           frame_tree_node.navigation_request()->GetNextPageUkmSourceId()),
       &receiver, &header_client, &bypass_redirect_checks_unused,
-      /*disable_secure_dns=*/nullptr, /*factory_override=*/nullptr);
+      /*disable_secure_dns=*/nullptr, /*factory_override=*/nullptr,
+      content::GetUIThreadTaskRunner(
+          {content::BrowserTaskType::kNavigationNetworkResponse}));
 
   // Make the network factory.
   NavigationURLLoaderImpl::CreateURLLoaderFactoryWithHeaderClient(
@@ -361,7 +370,14 @@ class ServiceWorkerFetchDispatcher::ResponseCallback
           receiver,
       base::WeakPtr<ServiceWorkerFetchDispatcher> fetch_dispatcher,
       ServiceWorkerVersion* version)
-      : receiver_(this, std::move(receiver)),
+      : receiver_(
+            this,
+            std::move(receiver),
+            (base::FeatureList::IsEnabled(
+                 kServiceWorkerFetchResponseCallbackUseHighPriority)
+                 ? GetUIThreadTaskRunner(
+                       {BrowserTaskType::kServiceWorkerStorageControlResponse})
+                 : base::SequencedTaskRunner::GetCurrentDefault())),
         fetch_dispatcher_(fetch_dispatcher),
         version_(version) {
     receiver_.set_disconnect_handler(base::BindOnce(
@@ -649,6 +665,14 @@ void ServiceWorkerFetchDispatcher::DispatchFetchEvent() {
   params->preload_url_loader_client_receiver =
       std::move(preload_url_loader_client_receiver_);
   params->is_offline_capability_check = is_offline_capability_check_;
+  if (race_network_request_token_) {
+    params->request->service_worker_race_network_request_token =
+        race_network_request_token_;
+  }
+  if (race_network_request_loader_factory_) {
+    params->race_network_request_loader_factory =
+        std::move(race_network_request_loader_factory_);
+  }
 
   // |endpoint()| is owned by |version_|. So it is safe to pass the
   // unretained raw pointer of |version_| to OnFetchEventFinished callback.
@@ -780,20 +804,8 @@ bool ServiceWorkerFetchDispatcher::MaybeStartNavigationPreload(
       version_->navigation_preload_state().header);
 
   // Create the network factory.
-  scoped_refptr<network::SharedURLLoaderFactory> factory;
-  mojo::PendingRemote<network::mojom::URLLoaderFactory> network_factory;
-
-  // TODO(asamidoi): Require the caller to pass in a FrameTreeNode directly, or
-  // figure out why it's OK for it to be null.
-  auto* frame_tree_node = FrameTreeNode::GloballyFindByID(frame_tree_node_id);
-  auto* storage_partition = context_wrapper->storage_partition();
-  if (frame_tree_node && storage_partition) {
-    CreateNetworkFactoryForNavigationPreload(
-        *frame_tree_node, *storage_partition,
-        network_factory.InitWithNewPipeAndPassReceiver());
-  }
-  factory = base::MakeRefCounted<network::WrapperSharedURLLoaderFactory>(
-      std::move(network_factory));
+  scoped_refptr<network::SharedURLLoaderFactory> factory =
+      CreateNetworkURLLoaderFactory(context_wrapper, frame_tree_node_id);
 
   // Create the DelegatingURLLoaderClient, which becomes the
   // URLLoaderClient for the navigation preload network request.
@@ -851,6 +863,24 @@ bool ServiceWorkerFetchDispatcher::IsEventDispatched() const {
 }
 
 // static
+scoped_refptr<network::SharedURLLoaderFactory>
+ServiceWorkerFetchDispatcher::CreateNetworkURLLoaderFactory(
+    scoped_refptr<ServiceWorkerContextWrapper> context_wrapper,
+    int frame_tree_node_id) {
+  mojo::PendingRemote<network::mojom::URLLoaderFactory> network_factory;
+  // TODO(crbug.com/1424235): Require the caller to pass in a FrameTreeNode
+  // directly, or figure out why it's OK for it to be null.
+  auto* frame_tree_node = FrameTreeNode::GloballyFindByID(frame_tree_node_id);
+  auto* storage_partition = context_wrapper->storage_partition();
+  if (frame_tree_node && storage_partition) {
+    CreateNetworkFactoryForNavigationPreload(
+        *frame_tree_node, *storage_partition,
+        network_factory.InitWithNewPipeAndPassReceiver());
+  }
+  return base::MakeRefCounted<network::WrapperSharedURLLoaderFactory>(
+      std::move(network_factory));
+}
+
 void ServiceWorkerFetchDispatcher::OnFetchEventFinished(
     base::WeakPtr<ServiceWorkerFetchDispatcher> fetch_dispatcher,
     ServiceWorkerVersion* version,

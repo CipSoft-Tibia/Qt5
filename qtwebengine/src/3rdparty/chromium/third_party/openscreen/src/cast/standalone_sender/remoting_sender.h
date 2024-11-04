@@ -1,4 +1,4 @@
-// Copyright 2021 The Chromium Authors. All rights reserved.
+// Copyright 2021 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@
 #include "cast/streaming/constants.h"
 #include "cast/streaming/rpc_messenger.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // This class behaves like a pared-down version of Chrome's StreamProvider (see
 // https://source.chromium.org/chromium/chromium/src/+/main:media/remoting/stream_provider.h
@@ -69,7 +68,6 @@ class RemotingSender {
   RpcMessenger::Handle receiver_handle_ = RpcMessenger::kInvalidHandle;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STANDALONE_SENDER_REMOTING_SENDER_H_

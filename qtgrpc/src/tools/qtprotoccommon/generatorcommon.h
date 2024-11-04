@@ -8,6 +8,7 @@
 #include <google/protobuf/io/printer.h>
 
 #include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <functional>
@@ -47,7 +48,8 @@ struct common {
     }
 
     static std::string getFullNamespace(std::string_view fullDescriptorName,
-                                        std::string_view separator);
+                                        std::string_view separator,
+                                        bool extraScope);
     template<typename T>
     static std::string getFullNamespace(const T *type, std::string_view separator)
     {
@@ -68,7 +70,8 @@ struct common {
         }
 
         return getFullNamespace(type->file()->package() + nestingNamespaces + '.' + type->name(),
-                                separator);
+                                separator,
+                                common::isExtraNamespacedFile(std::string(type->file()->name())));
     }
 
     template<typename T>
@@ -87,6 +90,8 @@ struct common {
         std::string suffix;
         if constexpr (std::is_same<T, Descriptor>::value)
             suffix = !isMap(type) ? CommonTemplates::QtProtobufNestedNamespace() : "";
+        else if constexpr (std::is_same<T, EnumDescriptor>::value)
+            suffix = CommonTemplates::QtProtobufNestedNamespace();
 
         const Descriptor *containingType = type->containing_type();
         std::string nestingNamespaces;
@@ -121,12 +126,16 @@ struct common {
     static MethodMap produceMethodMap(const MethodDescriptor *method, const std::string &scope);
     static TypeMap produceServiceTypeMap(const ServiceDescriptor *service, const Descriptor *scope);
     static TypeMap produceClientTypeMap(const ServiceDescriptor *service, const Descriptor *scope);
+    static TypeMap produceQmlClientTypeMap(const ServiceDescriptor *service,
+                                           const Descriptor *scope);
     static std::string qualifiedCppName(const std::string &name);
     static std::string qualifiedQmlName(const std::string &name);
     static bool isOneofField(const FieldDescriptor *field);
+    static bool isOptionalField(const FieldDescriptor *field);
     static bool isLocalEnum(const EnumDescriptor *type, const google::protobuf::Descriptor *scope);
     static EnumVisibility enumVisibility(const EnumDescriptor *type, const Descriptor *scope);
     static bool hasQmlAlias(const FieldDescriptor *field);
+    static bool hasNestedTypes(const Descriptor *type);
     static bool isQtType(const FieldDescriptor *field);
     static bool isOverridden(const FieldDescriptor *field);
     static bool isPureMessage(const FieldDescriptor *field);
@@ -149,6 +158,12 @@ struct common {
     static const Descriptor *findHighestMessage(const Descriptor *message);
 
     static std::string collectFieldFlags(const google::protobuf::FieldDescriptor *field);
+
+    static bool isExtraNamespacedFile(const std::string &file);
+    static void setExtraNamespacedFiles(const std::set<std::string> &files);
+
+private:
+    static std::set<std::string> m_extraNamespacedFiles;
 };
 } // namespace qtprotoccommon
 

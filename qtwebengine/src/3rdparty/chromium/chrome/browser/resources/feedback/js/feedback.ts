@@ -1,8 +1,11 @@
 // Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+import '../../strings.m.js';
 
+import {ColorChangeUpdater} from 'chrome://resources/cr_components/color_change_listener/colors_css_updater.js';
 import {assert} from 'chrome://resources/js/assert_ts.js';
+import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {$, getRequiredElement} from 'chrome://resources/js/util_ts.js';
 
 import {FEEDBACK_LANDING_PAGE, FEEDBACK_LANDING_PAGE_TECHSTOP, FEEDBACK_LEGAL_HELP_URL, FEEDBACK_PRIVACY_POLICY_URL, FEEDBACK_TERM_OF_SERVICE_URL, openUrlInAppWindow} from './feedback_util.js';
@@ -37,7 +40,7 @@ let feedbackInfo: chrome.feedbackPrivate.FeedbackInfo = {
 
 
 class FeedbackHelper {
-  getSystemInformation(): Promise<chrome.feedbackPrivate.SystemInformation[]> {
+  getSystemInformation(): Promise<chrome.feedbackPrivate.LogsMapEntry[]> {
     return new Promise(
         resolve => chrome.feedbackPrivate.getSystemInformation(resolve));
   }
@@ -101,7 +104,7 @@ class FeedbackHelper {
   }
 
   showAutofillMetadataInfo() {
-    chrome.send('showAutofillMetadataInfo');
+    chrome.send('showAutofillMetadataInfo', [feedbackInfo.autofillMetadata]);
   }
 }
 
@@ -154,6 +157,63 @@ const cellularRegEx: RegExp = buildWordMatcher([
   'SIM',  'eSIM',  'mmWave',  'mobile',   'APN',      'IMEI',
   'IMSI', 'eUICC', 'carrier', 'T.Mobile', 'TMO',      'Verizon',
   'VZW',  'AT&T',  'MVNO',    'pin.lock', 'cellular',
+]);
+
+/**
+ * Regular expression to check for display-related keywords.
+ */
+const displayRegEx = buildWordMatcher([
+  'display',
+  'displayport',
+  'hdmi',
+  'monitor',
+  'panel',
+  'screen',
+]);
+
+/**
+ * Regular expression to check for USB-related keywords.
+ */
+const usbRegEx = buildWordMatcher([
+  'USB',
+  'USB-C',
+  'Type-C',
+  'TypeC',
+  'USBC',
+  'USBTypeC',
+  'USBPD',
+  'hub',
+  'charger',
+  'dock',
+]);
+
+/**
+ * Regular expression to check for thunderbolt-related keywords.
+ */
+const thunderboltRegEx = buildWordMatcher([
+  'Thunderbolt',
+  'Thunderbolt3',
+  'Thunderbolt4',
+  'TBT',
+  'TBT3',
+  'TBT4',
+  'TB3',
+  'TB4',
+]);
+
+/**
+ * Regular expression to check for Audio-related keywords.
+ */
+ const audioRegEx = buildWordMatcher([
+  'audio',
+  'sound',
+  'mic',
+  'speaker',
+  'headphone',
+  'headset',
+  'recording',
+  'volume',
+  'earbud',
 ]);
 
 /**
@@ -324,6 +384,20 @@ function checkForShowQuestionnaire(inputEvent: Event) {
 
   if (cellularRegEx.test(matchedText)) {
     toAppend.push(...domainQuestions['cellular']);
+  }
+
+  if (displayRegEx.test(matchedText)) {
+    toAppend.push(...domainQuestions['display']);
+  }
+
+  if (audioRegEx.test(matchedText)) {
+    toAppend.push(...domainQuestions['audio']);
+  }
+
+  if (thunderboltRegEx.test(matchedText)) {
+    toAppend.push(...domainQuestions['thunderbolt']);
+  } else if (usbRegEx.test(matchedText)) {
+    toAppend.push(...domainQuestions['usb']);
   }
 
   if (toAppend.length === 0) {
@@ -632,6 +706,8 @@ function initialize() {
 
       // Now we can unhide the user email section:
       getRequiredElement('user-email').hidden = false;
+      // Only show email consent checkbox when an email address exists.
+      getRequiredElement('consent-container').hidden = false;
     });
 
     // An extension called us with an attached file.
@@ -767,6 +843,11 @@ function initialize() {
       feedbackInfo = JSON.parse(dialogArgs);
     }
     applyData(feedbackInfo);
+
+    if (loadTimeData.getBoolean('isJellyEnabledForOsFeedback')) {
+      document.body.classList.add('jelly-enabled');
+      ColorChangeUpdater.forDocument().start();
+    }
 
     Object.assign(window, {feedbackInfo, feedbackHelper});
 

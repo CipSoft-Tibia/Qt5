@@ -14,7 +14,7 @@ def CheckChange(input_api, output_api, on_commit):
   results = []
   testing_env = dict(input_api.environ)
   testing_path = pathlib.Path(input_api.PresubmitLocalPath())
-  crossbench_test_path = testing_path / "tests"
+  crossbench_test_path = testing_path / "tests" / "crossbench"
   testing_env["PYTHONPATH"] = input_api.os_path.pathsep.join(
       map(str, [testing_path, crossbench_test_path]))
   # ---------------------------------------------------------------------------
@@ -54,11 +54,11 @@ def CheckChange(input_api, output_api, on_commit):
     dirs_to_check = [crossbench_test_path]
     files_to_check = [r".*test_cli\.py$"]
   for dir_to_check in dirs_to_check:
-    # CBB tests run end-to-end tests and require custom setup.
-    if dir_to_check.name == "cbb":
-      continue
     # Skip potentially empty dirs
     if dir_to_check.name == "__pycache__":
+      continue
+    # End-to-end tests require custom setup and are not suited for presubmits.
+    if "end2end" in dir_to_check.parts:
       continue
     tests += input_api.canned_checks.GetUnitTestsInDirectory(
         input_api,
@@ -76,7 +76,7 @@ def CheckChange(input_api, output_api, on_commit):
             name="pytype",
             cmd=[
                 input_api.python3_executable, "-m", "pytype", "--keep-going",
-                "--jobs=auto",
+                "--jobs=auto", "--overriding-parameter-count-checks",
                 str(testing_path / "crossbench"),
                 str(testing_path / "tests")
             ],

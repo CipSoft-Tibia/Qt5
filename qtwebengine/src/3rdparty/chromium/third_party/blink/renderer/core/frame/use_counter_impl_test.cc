@@ -327,8 +327,8 @@ TEST_F(UseCounterImplTest, CSSFlexibleBoxInline) {
 }
 
 TEST_F(UseCounterImplTest, CSSFlexibleBoxButton) {
-  // LayoutButton is a subclass of LayoutFlexibleBox, however we don't want it
-  // to be counted as usage of flexboxes as it's an implementation detail.
+  // LayoutNGButton is a subclass of LayoutNGFlexibleBox, however we don't want
+  // it to be counted as usage of flexboxes as it's an implementation detail.
   auto dummy_page_holder =
       std::make_unique<DummyPageHolder>(gfx::Size(800, 600));
   Page::InsertOrdinaryPageForTesting(&dummy_page_holder->GetPage());
@@ -454,7 +454,7 @@ TEST_F(UseCounterImplTest, CSSSelectorHostContextInLiveProfile) {
     </div>
   )HTML");
 
-  Element* host = document.getElementById("host");
+  Element* host = document.getElementById(AtomicString("host"));
   ASSERT_TRUE(host);
   ShadowRoot& shadow_root =
       host->AttachShadowRootInternal(ShadowRootType::kOpen);
@@ -487,7 +487,7 @@ TEST_F(UseCounterImplTest, CSSSelectorHostContextInSnapshotProfile) {
     </div>
   )HTML");
 
-  Element* host = document.getElementById("host");
+  Element* host = document.getElementById(AtomicString("host"));
   ASSERT_TRUE(host);
   ShadowRoot& shadow_root =
       host->AttachShadowRootInternal(ShadowRootType::kOpen);
@@ -498,7 +498,8 @@ TEST_F(UseCounterImplTest, CSSSelectorHostContextInSnapshotProfile) {
   UpdateAllLifecyclePhases(document);
   EXPECT_FALSE(document.IsUseCounted(feature));
 
-  Element* span = shadow_root.QuerySelector(":host-context(#parent) span");
+  Element* span =
+      shadow_root.QuerySelector(AtomicString(":host-context(#parent) span"));
   EXPECT_TRUE(span);
   EXPECT_TRUE(document.IsUseCounted(feature));
 }

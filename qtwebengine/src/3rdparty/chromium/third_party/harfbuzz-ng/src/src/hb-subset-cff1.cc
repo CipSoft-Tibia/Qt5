@@ -39,12 +39,20 @@
 
 using namespace CFF;
 
-struct remap_sid_t : hb_inc_bimap_t
+struct remap_sid_t : hb_map_t
 {
   unsigned int add (unsigned int sid)
   {
     if ((sid != CFF_UNDEF_SID) && !is_std_std (sid))
-      return offset_sid (hb_inc_bimap_t::add (unoffset_sid (sid)));
+    {
+      sid = unoffset_sid (sid);
+      unsigned v = next;
+      if (set (sid, v, false))
+        next++;
+      else
+        v = get (sid); // already exists
+      return offset_sid (v);
+    }
     else
       return sid;
   }
@@ -62,6 +70,7 @@ struct remap_sid_t : hb_inc_bimap_t
   static bool is_std_std (unsigned int sid) { return sid < num_std_strings; }
   static unsigned int offset_sid (unsigned int sid) { return sid + num_std_strings; }
   static unsigned int unoffset_sid (unsigned int sid) { return sid - num_std_strings; }
+  unsigned next = 0;
 };
 
 struct cff1_sub_table_info_t : cff_sub_table_info_t
@@ -167,9 +176,10 @@ struct cff1_top_dict_op_serializer_t : cff_top_dict_op_serializer_t<cff1_top_dic
 	   * for supplement, the original byte string is copied along with the op code */
 	  op_str_t supp_op;
 	  supp_op.op = op;
-	  if ( unlikely (!(opstr.str.length >= opstr.last_arg_offset + 3)))
+	  if ( unlikely (!(opstr.length >= opstr.last_arg_offset + 3)))
 	    return_trace (false);
-	  supp_op.str = hb_ubytes_t (&opstr.str + opstr.last_arg_offset, opstr.str.length - opstr.last_arg_offset);
+	  supp_op.ptr = opstr.ptr + opstr.last_arg_offset;
+	  supp_op.length = opstr.length - opstr.last_arg_offset;
 	  return_trace (UnsizedByteStr::serialize_int2 (c, mod.nameSIDs[name_dict_values_t::registry]) &&
 			UnsizedByteStr::serialize_int2 (c, mod.nameSIDs[name_dict_values_t::ordering]) &&
 			copy_opstr (c, supp_op));
@@ -233,7 +243,7 @@ struct cff1_cs_opset_flatten_t : cff1_cs_opset_t<cff1_cs_opset_flatten_t, flatte
   {
     str_encoder_t  encoder (param.flatStr);
     for (unsigned int i = env.arg_start; i < env.argStack.get_count (); i++)
-      encoder.encode_num (env.eval_arg (i));
+      encoder.encode_num_cs (env.eval_arg (i));
     SUPER::flush_args (env, param);
   }
 
@@ -247,7 +257,7 @@ struct cff1_cs_opset_flatten_t : cff1_cs_opset_t<cff1_cs_opset_flatten_t, flatte
   {
     assert (env.has_width);
     str_encoder_t  encoder (param.flatStr);
-    encoder.encode_num (env.width);
+    encoder.encode_num_cs (env.width);
   }
 
   static void flush_hintmask (op_code_t op, cff1_cs_interp_env_t &env, flatten_param_t& param)
@@ -334,6 +344,36 @@ struct cff1_cs_opset_subr_subset_t : cff1_cs_opset_t<cff1_cs_opset_subr_subset_t
   typedef cff1_cs_opset_t<cff1_cs_opset_subr_subset_t, subr_subset_param_t> SUPER;
 };
 
+struct cff1_private_dict_op_serializer_t : op_serializer_t
+{
+  cff1_private_dict_op_serializer_t (bool desubroutinize_, bool drop_hints_)
+    : desubroutinize (desubroutinize_), drop_hints (drop_hints_) {}
+
+  bool serialize (hb_serialize_context_t *c,
+		  const op_str_t &opstr,
+		  objidx_t subrs_link) const
+  {
+    TRACE_SERIALIZE (this);
+
+    if (drop_hints && dict_opset_t::is_hint_op (opstr.op))
+      return_trace (true);
+
+    if (opstr.op == OpCode_Subrs)
+    {
+      if (desubroutinize || !subrs_link)
+	return_trace (true);
+      else
+	return_trace (FontDict::serialize_link2_op (c, opstr.op, subrs_link));
+    }
+
+    return_trace (copy_opstr (c, opstr));
+  }
+
+  protected:
+  const bool desubroutinize;
+  const bool drop_hints;
+};
+
 struct cff1_subr_subsetter_t : subr_subsetter_t<cff1_subr_subsetter_t, CFF1Subrs, const OT::cff1::accelerator_subset_t, cff1_cs_interp_env_t, cff1_cs_opset_subr_subset_t, OpCode_endchar>
 {
   cff1_subr_subsetter_t (const OT::cff1::accelerator_subset_t &acc_, const hb_subset_plan_t *plan_)
@@ -371,7 +411,7 @@ struct cff_subset_plan {
   {
     const Encoding *encoding = acc.encoding;
     unsigned int  size0, size1;
-    hb_codepoint_t  code, last_code = CFF_UNDEF_CODE;
+    unsigned code, last_code = CFF_UNDEF_CODE - 1;
     hb_vector_t<hb_codepoint_t> supp_codes;
 
     if (unlikely (!subset_enc_code_ranges.resize (0)))
@@ -382,24 +422,33 @@ struct cff_subset_plan {
 
     supp_codes.init ();
 
+    code_pair_t glyph_to_sid_cache {0, HB_CODEPOINT_INVALID};
     subset_enc_num_codes = plan->num_output_glyphs () - 1;
     unsigned int glyph;
-    for (glyph = 1; glyph < plan->num_output_glyphs (); glyph++)
+    auto it = hb_iter (plan->new_to_old_gid_list);
+    if (it->first == 0) it++;
+    auto _ = *it;
+    for (glyph = 1; glyph < num_glyphs; glyph++)
     {
-      hb_codepoint_t  old_glyph;
-      if (!plan->old_gid_for_new_gid (glyph, &old_glyph))
+      hb_codepoint_t old_glyph;
+      if (glyph == _.first)
       {
-	/* Retain the code for the old missing glyph ID */
+	old_glyph = _.second;
+	_ = *++it;
+      }
+      else
+      {
+	/* Retain the SID for the old missing glyph ID */
 	old_glyph = glyph;
       }
-      code = acc.glyph_to_code (old_glyph);
+      code = acc.glyph_to_code (old_glyph, &glyph_to_sid_cache);
       if (code == CFF_UNDEF_CODE)
       {
 	subset_enc_num_codes = glyph - 1;
 	break;
       }
 
-      if ((last_code == CFF_UNDEF_CODE) || (code != last_code + 1))
+      if (code != last_code + 1)
       {
 	code_pair_t pair = { code, glyph };
 	subset_enc_code_ranges.push (pair);
@@ -408,7 +457,7 @@ struct cff_subset_plan {
 
       if (encoding != &Null (Encoding))
       {
-	hb_codepoint_t  sid = acc.glyph_to_sid (old_glyph);
+	hb_codepoint_t  sid = acc.glyph_to_sid (old_glyph, &glyph_to_sid_cache);
 	encoding->get_supplement_codes (sid, supp_codes);
 	for (unsigned int i = 0; i < supp_codes.length; i++)
 	{
@@ -434,7 +483,7 @@ struct cff_subset_plan {
   void plan_subset_charset (const OT::cff1::accelerator_subset_t &acc, hb_subset_plan_t *plan)
   {
     unsigned int  size0, size_ranges;
-    hb_codepoint_t  sid, last_sid = CFF_UNDEF_CODE;
+    unsigned last_sid = CFF_UNDEF_CODE - 1;
 
     if (unlikely (!subset_charset_ranges.resize (0)))
     {
@@ -442,24 +491,46 @@ struct cff_subset_plan {
       return;
     }
 
-    bool use_glyph_to_sid_map = plan->num_output_glyphs () > plan->source->get_num_glyphs () / 8.;
-    hb_map_t *glyph_to_sid_map = use_glyph_to_sid_map ? acc.create_glyph_to_sid_map () : nullptr;
+    hb_vector_t<uint16_t> *glyph_to_sid_map = (plan->accelerator && plan->accelerator->cff_accelerator) ?
+					       plan->accelerator->cff_accelerator->glyph_to_sid_map :
+					       nullptr;
+    bool created_map = false;
+    if (!glyph_to_sid_map &&
+	((plan->accelerator && plan->accelerator->cff_accelerator)))
+    {
+      created_map = true;
+      glyph_to_sid_map = acc.create_glyph_to_sid_map ();
+    }
+
+    code_pair_t glyph_to_sid_cache {0, HB_CODEPOINT_INVALID};
 
     unsigned int glyph;
-    for (glyph = 1; glyph < plan->num_output_glyphs (); glyph++)
+    unsigned num_glyphs = plan->num_output_glyphs ();
+    auto it = hb_iter (plan->new_to_old_gid_list);
+    if (it->first == 0) it++;
+    auto _ = *it;
+    bool not_is_cid = !acc.is_CID ();
+    if (not_is_cid)
+      sidmap.resize (num_glyphs);
+    for (glyph = 1; glyph < num_glyphs; glyph++)
     {
-      hb_codepoint_t  old_glyph;
-      if (!plan->old_gid_for_new_gid (glyph, &old_glyph))
+      hb_codepoint_t old_glyph;
+      if (glyph == _.first)
+      {
+	old_glyph = _.second;
+	_ = *++it;
+      }
+      else
       {
 	/* Retain the SID for the old missing glyph ID */
 	old_glyph = glyph;
       }
-      sid = glyph_to_sid_map ? glyph_to_sid_map->get (old_glyph) : acc.glyph_to_sid (old_glyph);
+      unsigned sid = glyph_to_sid_map ? glyph_to_sid_map->arrayZ[old_glyph] : acc.glyph_to_sid (old_glyph, &glyph_to_sid_cache);
 
-      if (!acc.is_CID ())
+      if (not_is_cid)
 	sid = sidmap.add (sid);
 
-      if ((last_sid == CFF_UNDEF_CODE) || (sid != last_sid + 1))
+      if (sid != last_sid + 1)
       {
 	code_pair_t pair = { sid, glyph };
 	subset_charset_ranges.push (pair);
@@ -467,16 +538,23 @@ struct cff_subset_plan {
       last_sid = sid;
     }
 
-    if (glyph_to_sid_map)
-      hb_map_destroy (glyph_to_sid_map);
+    if (created_map)
+    {
+      if (!(plan->accelerator && plan->accelerator->cff_accelerator) ||
+	  !plan->accelerator->cff_accelerator->glyph_to_sid_map.cmpexch (nullptr, glyph_to_sid_map))
+      {
+	glyph_to_sid_map->~hb_vector_t ();
+	hb_free (glyph_to_sid_map);
+      }
+    }
 
     bool two_byte = subset_charset_ranges.complete (glyph);
 
-    size0 = Charset0::min_size + HBUINT16::static_size * (plan->num_output_glyphs () - 1);
+    size0 = Charset0::get_size (plan->num_output_glyphs ());
     if (!two_byte)
-      size_ranges = Charset1::min_size + Charset1_Range::static_size * subset_charset_ranges.length;
+      size_ranges = Charset1::get_size_for_ranges (subset_charset_ranges.length);
     else
-      size_ranges = Charset2::min_size + Charset2_Range::static_size * subset_charset_ranges.length;
+      size_ranges = Charset2::get_size_for_ranges (subset_charset_ranges.length);
 
     if (size0 < size_ranges)
       subset_charset_format = 0;
@@ -520,19 +598,18 @@ struct cff_subset_plan {
     drop_hints = plan->flags & HB_SUBSET_FLAGS_NO_HINTING;
     desubroutinize = plan->flags & HB_SUBSET_FLAGS_DESUBROUTINIZE;
 
-    /* check whether the subset renumbers any glyph IDs */
-    gid_renum = false;
-    for (hb_codepoint_t new_glyph = 0; new_glyph < plan->num_output_glyphs (); new_glyph++)
-    {
-      if (!plan->old_gid_for_new_gid(new_glyph, &old_glyph))
-	continue;
-      if (new_glyph != old_glyph) {
-	gid_renum = true;
-	break;
+    subset_charset = !acc.is_predef_charset ();
+    if (!subset_charset)
+      /* check whether the subset renumbers any glyph IDs */
+      for (const auto &_ : plan->new_to_old_gid_list)
+      {
+	if (_.first != _.second)
+	{
+	  subset_charset = true;
+	  break;
+	}
       }
-    }
 
-    subset_charset = gid_renum || !acc.is_predef_charset ();
     subset_encoding = !acc.is_CID() && !acc.is_predef_encoding ();
 
     /* top dict INDEX */
@@ -692,10 +769,8 @@ static bool _serialize_cff1 (hb_serialize_context_t *c,
       objidx_t	subrs_link = 0;
       if (plan.subset_localsubrs[i].length > 0)
       {
-	CFF1Subrs *dest = c->start_embed <CFF1Subrs> ();
-	if (unlikely (!dest)) return false;
-	c->push ();
-	if (likely (dest && dest->serialize (c, plan.subset_localsubrs[i])))
+	auto *dest = c->push <CFF1Subrs> ();
+	if (likely (dest->serialize (c, plan.subset_localsubrs[i])))
 	  subrs_link = c->pop_pack ();
 	else
 	{
@@ -704,10 +779,8 @@ static bool _serialize_cff1 (hb_serialize_context_t *c,
 	}
       }
 
-      PrivateDict *pd = c->start_embed<PrivateDict> ();
-      if (unlikely (!pd)) return false;
-      c->push ();
-      cff_private_dict_op_serializer_t privSzr (plan.desubroutinize, plan.drop_hints);
+      auto *pd = c->push<PrivateDict> ();
+      cff1_private_dict_op_serializer_t privSzr (plan.desubroutinize, plan.drop_hints);
       /* N.B. local subrs immediately follows its corresponding private dict. i.e., subr offset == private dict size */
       if (likely (pd->serialize (c, acc.privateDicts[i], privSzr, subrs_link)))
       {
@@ -728,11 +801,15 @@ static bool _serialize_cff1 (hb_serialize_context_t *c,
 
   /* CharStrings */
   {
-    CFF1CharStrings  *cs = c->start_embed<CFF1CharStrings> ();
-    if (unlikely (!cs)) return false;
-    c->push ();
+    c->push<CFF1CharStrings> ();
+
+    unsigned total_size = CFF1CharStrings::total_size (plan.subset_charstrings);
+    if (unlikely (!c->start_zerocopy (total_size)))
+       return false;
+
+    auto *cs = c->start_embed<CFF1CharStrings> ();
     if (likely (cs->serialize (c, plan.subset_charstrings)))
-      plan.info.char_strings_link = c->pop_pack ();
+      plan.info.char_strings_link = c->pop_pack (false);
     else
     {
       c->pop_discard ();
@@ -743,9 +820,7 @@ static bool _serialize_cff1 (hb_serialize_context_t *c,
   /* FDArray (FD Index) */
   if (acc.fdArray != &Null (CFF1FDArray))
   {
-    CFF1FDArray *fda = c->start_embed<CFF1FDArray> ();
-    if (unlikely (!fda)) return false;
-    c->push ();
+    auto *fda = c->push<CFF1FDArray> ();
     cff1_font_dict_op_serializer_t  fontSzr;
     auto it = + hb_zip (+ hb_iter (plan.fontdicts_mod), + hb_iter (plan.fontdicts_mod));
     if (likely (fda->serialize (c, it, fontSzr)))
@@ -775,9 +850,7 @@ static bool _serialize_cff1 (hb_serialize_context_t *c,
   /* Charset */
   if (plan.subset_charset)
   {
-    Charset *dest = c->start_embed<Charset> ();
-    if (unlikely (!dest)) return false;
-    c->push ();
+    auto *dest = c->push<Charset> ();
     if (likely (dest->serialize (c,
 				 plan.subset_charset_format,
 				 plan.num_glyphs,
@@ -793,9 +866,7 @@ static bool _serialize_cff1 (hb_serialize_context_t *c,
   /* Encoding */
   if (plan.subset_encoding)
   {
-    Encoding *dest = c->start_embed<Encoding> ();
-    if (unlikely (!dest)) return false;
-    c->push ();
+    auto *dest = c->push<Encoding> ();
     if (likely (dest->serialize (c,
 				 plan.subset_enc_format,
 				 plan.subset_enc_num_codes,
@@ -811,11 +882,9 @@ static bool _serialize_cff1 (hb_serialize_context_t *c,
 
   /* global subrs */
   {
-    c->push ();
-    CFF1Subrs *dest = c->start_embed <CFF1Subrs> ();
-    if (unlikely (!dest)) return false;
+    auto *dest = c->push <CFF1Subrs> ();
     if (likely (dest->serialize (c, plan.subset_globalsubrs)))
-      c->pop_pack ();
+      c->pop_pack (false);
     else
     {
       c->pop_discard ();
@@ -825,9 +894,7 @@ static bool _serialize_cff1 (hb_serialize_context_t *c,
 
   /* String INDEX */
   {
-    CFF1StringIndex *dest = c->start_embed<CFF1StringIndex> ();
-    if (unlikely (!dest)) return false;
-    c->push ();
+    auto *dest = c->push<CFF1StringIndex> ();
     if (likely (dest->serialize (c, *acc.stringIndex, plan.sidmap)))
       c->pop_pack ();
     else
@@ -848,14 +915,12 @@ static bool _serialize_cff1 (hb_serialize_context_t *c,
   cff->offSize = 4; /* unused? */
 
   /* name INDEX */
-  if (unlikely (!(*acc.nameIndex).copy (c))) return false;
+  if (unlikely (!c->embed (*acc.nameIndex))) return false;
 
   /* top dict INDEX */
   {
     /* serialize singleton TopDict */
-    TopDict *top = c->start_embed<TopDict> ();
-    if (!top) return false;
-    c->push ();
+    auto *top = c->push<TopDict> ();
     cff1_top_dict_op_serializer_t topSzr;
     unsigned top_size = 0;
     top_dict_modifiers_t  modifier (plan.info, plan.topDictModSIDs);
@@ -870,8 +935,7 @@ static bool _serialize_cff1 (hb_serialize_context_t *c,
       return false;
     }
     /* serialize INDEX header for above */
-    CFF1Index *dest = c->start_embed<CFF1Index> ();
-    if (!dest) return false;
+    auto *dest = c->start_embed<CFF1Index> ();
     return dest->serialize_header (c, hb_iter (hb_array_t<unsigned> (&top_size, 1)));
   }
 }

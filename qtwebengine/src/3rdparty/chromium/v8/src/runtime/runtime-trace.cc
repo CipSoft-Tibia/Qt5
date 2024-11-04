@@ -44,10 +44,10 @@ void PrintRegisterRange(UnoptimizedFrame* frame, std::ostream& os,
                         interpreter::Register first_reg, int range) {
   for (int reg_index = first_reg.index(); reg_index < first_reg.index() + range;
        reg_index++) {
-    Object reg_object = frame->ReadInterpreterRegister(reg_index);
+    Tagged<Object> reg_object = frame->ReadInterpreterRegister(reg_index);
     os << "      [ " << std::setw(reg_field_width)
        << interpreter::Register(reg_index).ToString() << arrow_direction;
-    reg_object.ShortPrint(os);
+    ShortPrint(reg_object, os);
     os << " ]" << std::endl;
   }
 }
@@ -69,9 +69,10 @@ void PrintRegisters(UnoptimizedFrame* frame, std::ostream& os, bool is_input,
 
   // Print accumulator.
   if ((is_input && interpreter::Bytecodes::ReadsAccumulator(bytecode)) ||
-      (!is_input && interpreter::Bytecodes::WritesAccumulator(bytecode))) {
+      (!is_input &&
+       interpreter::Bytecodes::WritesOrClobbersAccumulator(bytecode))) {
     os << "      [ " << kAccumulator << kArrowDirection;
-    accumulator->ShortPrint(os);
+    ShortPrint(*accumulator, os);
     os << " ]" << std::endl;
   }
 
@@ -209,13 +210,13 @@ RUNTIME_FUNCTION(Runtime_TraceUpdateFeedback) {
   int slot = args.smi_value_at(1);
   auto reason = String::cast(args[2]);
 
-  int slot_count = function->feedback_vector().metadata().slot_count();
+  int slot_count = function->feedback_vector()->metadata()->slot_count();
 
   StdoutStream os;
   os << "[Feedback slot " << slot << "/" << slot_count << " in ";
-  function->shared().ShortPrint(os);
+  ShortPrint(function->shared(), os);
   os << " updated to ";
-  function->feedback_vector().FeedbackSlotPrint(os, FeedbackSlot(slot));
+  function->feedback_vector()->FeedbackSlotPrint(os, FeedbackSlot(slot));
   os << " - ";
 
   StringCharacterStream stream(reason);

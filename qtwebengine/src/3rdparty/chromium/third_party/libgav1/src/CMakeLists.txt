@@ -144,7 +144,7 @@ else()
         " examples & tests and libgav1 when LIBGAV1_THREADPOOL_USE_STD_MUTEX is"
         " not defined. To continue, download the Abseil repository to"
         " third_party/abseil-cpp:\n  git \\\n    -C ${libgav1_root} \\\n"
-        "    clone \\\n"
+        "    clone -b 20220623.0 --depth 1 \\\n"
         "    https://github.com/abseil/abseil-cpp.git third_party/abseil-cpp")
   endif()
 endif()

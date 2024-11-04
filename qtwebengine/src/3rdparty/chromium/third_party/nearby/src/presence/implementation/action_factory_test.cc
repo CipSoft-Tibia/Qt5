@@ -31,11 +31,11 @@ namespace {
 using ::testing::ElementsAre;
 
 constexpr uint32_t kActiveUnlockBitMask = 1 << 23;
-constexpr uint32_t kFastPairBitMask = 1 << 14;
+constexpr uint32_t kFastPairBitMask = 1 << 17;
 
 TEST(ActionFactory, CreateActiveUnlockAction) {
   std::vector<DataElement> data_elements;
-  data_elements.emplace_back(DataElement(ActionBit::kActiveUnlockAction));
+  data_elements.emplace_back(ActionBit::kActiveUnlockAction);
 
   Action action = ActionFactory::CreateAction(data_elements);
 
@@ -44,10 +44,10 @@ TEST(ActionFactory, CreateActiveUnlockAction) {
 
 TEST(ActionFactory, CreateActiveIgnoresUnsupportedActions) {
   std::vector<DataElement> data_elements;
-  data_elements.emplace_back(DataElement(ActionBit::kActiveUnlockAction));
+  data_elements.emplace_back(ActionBit::kActiveUnlockAction);
   // The action is 32 bit, so the valid range is [0-31]
-  data_elements.emplace_back(DataElement(ActionBit(-1)));
-  data_elements.emplace_back(DataElement(ActionBit(32)));
+  data_elements.emplace_back(ActionBit(-1));
+  data_elements.emplace_back(ActionBit(32));
   Action action = ActionFactory::CreateAction(data_elements);
 
   EXPECT_EQ(action.action, kActiveUnlockBitMask);
@@ -71,7 +71,7 @@ TEST(ActionFactory, CreateContextTimestampAndFastPair) {
   std::vector<DataElement> data_elements;
   data_elements.emplace_back(DataElement::kContextTimestampFieldType,
                              kTimestamp);
-  data_elements.emplace_back(DataElement(ActionBit::kFastPairAction));
+  data_elements.emplace_back(ActionBit::kFastPairSassAction);
 
   Action action = ActionFactory::CreateAction(data_elements);
 
@@ -99,7 +99,7 @@ TEST(ActionFactory, DecodeContextTimestampAndFastPair) {
       data_elements,
       ElementsAre(DataElement(DataElement::kContextTimestampFieldType,
                               absl::HexStringToBytes("0B")),
-                  DataElement(DataElement(ActionBit::kFastPairAction))));
+                  DataElement(DataElement(ActionBit::kFastPairSassAction))));
 }
 
 }  // namespace

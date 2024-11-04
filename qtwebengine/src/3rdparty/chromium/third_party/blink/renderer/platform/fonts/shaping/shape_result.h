@@ -62,6 +62,7 @@ template <typename TextContainerType>
 class PLATFORM_EXPORT ShapeResultSpacing;
 class TextRun;
 class ShapeResultView;
+struct TabSize;
 
 enum class AdjustMidCluster {
   // Adjust the middle of a grapheme cluster to the logical end boundary.
@@ -76,6 +77,12 @@ struct ShapeResultCharacterData {
   // Set for the logical first character of a cluster.
   unsigned is_cluster_base : 1;
   unsigned safe_to_break_before : 1;
+};
+
+// A space should be appended after `offset` with the width of `spacing`.
+struct OffsetWithSpacing {
+  wtf_size_t offset;
+  float spacing;
 };
 
 // There are two options for how OffsetForPosition behaves:
@@ -128,11 +135,6 @@ class PLATFORM_EXPORT ShapeResult : public RefCounted<ShapeResult> {
     return base::AdoptRef(new ShapeResult(other));
   }
   static scoped_refptr<ShapeResult> CreateForTabulationCharacters(
-      const Font*,
-      const TextRun&,
-      float position_offset,
-      unsigned length);
-  static scoped_refptr<ShapeResult> CreateForTabulationCharacters(
       const Font* font,
       TextDirection direction,
       const TabSize& tab_size,
@@ -163,6 +165,7 @@ class PLATFORM_EXPORT ShapeResult : public RefCounted<ShapeResult> {
   unsigned NumCharacters() const { return num_characters_; }
   unsigned NumGlyphs() const { return num_glyphs_; }
   const SimpleFontData* PrimaryFont() const { return primary_font_.get(); }
+  bool HasFallbackFonts() const;
 
   // TODO(eae): Remove start_x and return value once ShapeResultBuffer has been
   // removed.
@@ -172,7 +175,6 @@ class PLATFORM_EXPORT ShapeResult : public RefCounted<ShapeResult> {
   // The character start/end index of a range shape result.
   unsigned StartIndex() const { return start_index_; }
   unsigned EndIndex() const { return start_index_ + num_characters_; }
-  void FallbackFonts(HashSet<const SimpleFontData*>*) const;
   TextDirection Direction() const {
     return static_cast<TextDirection>(direction_);
   }
@@ -272,6 +274,16 @@ class PLATFORM_EXPORT ShapeResult : public RefCounted<ShapeResult> {
   void ApplySpacing(ShapeResultSpacing<String>&, int text_start_offset = 0);
   scoped_refptr<ShapeResult> ApplySpacingToCopy(ShapeResultSpacing<TextRun>&,
                                          const TextRun&) const;
+
+  // Adds spacing between ideograph character and non-ideograph character for
+  // the property of text-autospace.
+  // If `has_spacing_added_to_adjacent_char` is true, it means we append spacing
+  // to the previous glyph, in this case, the first glyph in this result should
+  // be unsafe to break before, because the previous is no longer adjacent to
+  // this one.
+  void ApplyTextAutoSpacing(
+      bool has_spacing_added_to_adjacent_char,
+      const Vector<OffsetWithSpacing, 16>& offsets_with_spacing);
 
   // Append a copy of a range within an existing result to another result.
   //
@@ -540,6 +552,14 @@ class PLATFORM_EXPORT ShapeResult : public RefCounted<ShapeResult> {
                          GlyphCallback,
                          void* context,
                          const RunInfo& run) const;
+
+  // Internal implementation of `ApplyTextAutoSpacing`. The iterator can be
+  // Vector::iterator or Vector::reverse_iterator, depending on the text
+  // direction.
+  template <class Iterator>
+  void ApplyTextAutoSpacingCore(bool has_spacing_added_to_adjacent_glyph,
+                                Iterator offset_begin,
+                                Iterator offset_end);
 };
 
 PLATFORM_EXPORT std::ostream& operator<<(std::ostream&, const ShapeResult&);

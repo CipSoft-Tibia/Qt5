@@ -167,12 +167,25 @@ ResultExpr RestrictCloneToThreadsAndEPERMFork() {
 ResultExpr RestrictPrctl() {
   // Will need to add seccomp compositing in the future. PR_SET_PTRACER is
   // used by breakpad but not needed anymore.
-  const Arg<int> option(0);
+  const Arg<int> option(0), arg(1);
   return Switch(option)
       .Cases({PR_GET_NAME, PR_SET_NAME, PR_GET_DUMPABLE, PR_SET_DUMPABLE
 #if BUILDFLAG(IS_ANDROID)
-              , PR_SET_VMA, PR_SET_PTRACER, PR_SET_TIMERSLACK
-              , PR_GET_NO_NEW_PRIVS, PR_PAC_RESET_KEYS
+              , PR_SET_PTRACER, PR_SET_TIMERSLACK
+              , PR_GET_NO_NEW_PRIVS
+#if defined(ARCH_CPU_ARM64)
+                ,
+                PR_PAC_RESET_KEYS
+                // PR_GET_TAGGED_ADDR_CTRL is used by debuggerd to report
+                // whether memory tagging is active.
+                ,
+                PR_GET_TAGGED_ADDR_CTRL
+                // PR_PAC_GET_ENABLED_KEYS is used by debuggerd to report
+                // whether pointer authentication is enabled and which keys (A
+                // or B) are active.
+                ,
+                PR_PAC_GET_ENABLED_KEYS
+#endif
 
 // Enable PR_SET_TIMERSLACK_PID, an Android custom prctl which is used in:
 // https://android.googlesource.com/platform/system/core/+/lollipop-release/libcutils/sched_policy.c.
@@ -203,6 +216,8 @@ ResultExpr RestrictPrctl() {
 #endif  // BUILDFLAG(IS_ANDROID)
               },
              Allow())
+      .Cases({PR_SET_VMA},
+             If(arg == PR_SET_VMA_ANON_NAME, Allow()).Else(CrashSIGSYSPrctl()))
       .Default(
           If(option == PR_SET_PTRACER, Error(EPERM)).Else(CrashSIGSYSPrctl()));
 }
@@ -214,14 +229,17 @@ ResultExpr RestrictIoctl() {
 }
 
 ResultExpr RestrictMmapFlags() {
-  // The flags you see are actually the allowed ones, and the variable is a
-  // "denied" mask because of the negation operator.
-  // Significantly, we don't permit MAP_HUGETLB, or the newer flags such as
-  // MAP_POPULATE.
+#if BUILDFLAG(IS_ANDROID) && defined(__x86_64__)
+  const uint64_t kArchSpecificAllowedMask = MAP_32BIT;
+#else
+  const uint64_t kArchSpecificAllowedMask = 0;
+#endif
+  // The flags MAP_HUGETLB and MAP_POPULATE are specifically not permitted.
   // TODO(davidung), remove MAP_DENYWRITE with updated Tegra libraries.
   const uint64_t kAllowedMask = MAP_SHARED | MAP_PRIVATE | MAP_ANONYMOUS |
                                 MAP_STACK | MAP_NORESERVE | MAP_FIXED |
-                                MAP_DENYWRITE | MAP_LOCKED;
+                                MAP_DENYWRITE | MAP_LOCKED |
+                                kArchSpecificAllowedMask;
   const Arg<int> flags(3);
   return If((flags & ~kAllowedMask) == 0, Allow()).Else(CrashSIGSYS());
 }

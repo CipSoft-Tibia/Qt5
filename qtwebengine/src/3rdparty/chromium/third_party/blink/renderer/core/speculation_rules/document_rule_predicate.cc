@@ -9,13 +9,17 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_url_pattern_init.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser.h"
 #include "third_party/blink/renderer/core/css/style_rule.h"
+#include "third_party/blink/renderer/core/display_lock/display_lock_utilities.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/html/html_anchor_element.h"
+#include "third_party/blink/renderer/core/speculation_rules/speculation_rules_features.h"
 #include "third_party/blink/renderer/core/url_pattern/url_pattern.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 #include "third_party/blink/renderer/platform/heap/member.h"
+#include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/json/json_values.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
@@ -171,8 +175,9 @@ class Negation : public DocumentRulePredicate {
 // https://wicg.github.io/nav-speculation/speculation-rules.html#document-rule-url-pattern-predicate
 class URLPatternPredicate : public DocumentRulePredicate {
  public:
-  explicit URLPatternPredicate(HeapVector<Member<URLPattern>> patterns)
-      : patterns_(std::move(patterns)) {}
+  explicit URLPatternPredicate(HeapVector<Member<URLPattern>> patterns,
+                               ExecutionContext* execution_context)
+      : patterns_(std::move(patterns)), execution_context_(execution_context) {}
   ~URLPatternPredicate() override = default;
 
   bool Matches(const HTMLAnchorElement& el) const override {
@@ -181,10 +186,12 @@ class URLPatternPredicate : public DocumentRulePredicate {
     // For each pattern of predicate’s patterns:
     for (const auto& pattern : patterns_) {
       // Match given pattern and href. If the result is not null, return true.
-      if (pattern->test(/*script_state=*/nullptr,
-                        MakeGarbageCollected<V8URLPatternInput>(href),
-                        ASSERT_NO_EXCEPTION))
+      if (pattern->test(
+              ToScriptState(execution_context_, DOMWrapperWorld::MainWorld()),
+              MakeGarbageCollected<V8URLPatternInput>(href),
+              ASSERT_NO_EXCEPTION)) {
         return true;
+      }
     }
     return false;
   }
@@ -211,11 +218,13 @@ class URLPatternPredicate : public DocumentRulePredicate {
 
   void Trace(Visitor* visitor) const override {
     visitor->Trace(patterns_);
+    visitor->Trace(execution_context_);
     DocumentRulePredicate::Trace(visitor);
   }
 
  private:
   HeapVector<Member<URLPattern>> patterns_;
+  Member<ExecutionContext> execution_context_;
 };
 
 // Represents a document rule CSS selector predicate:
@@ -229,9 +238,7 @@ class CSSSelectorPredicate : public DocumentRulePredicate {
     DCHECK(!link.GetDocument().NeedsLayoutTreeUpdate());
     const ComputedStyle* computed_style = link.GetComputedStyle();
     DCHECK(computed_style);
-    // TODO(crbug.com/1371522): If the link has a display-locked ancestor,
-    // it will have a ComputedStyle with a stale list of matched selectors
-    // (styling is skipped but the old ComputedStyle is still kept).
+    DCHECK(!DisplayLockUtilities::LockedAncestorPreventingStyle(link));
     const Persistent<HeapHashSet<WeakMember<StyleRule>>>& matched_selectors =
         computed_style->DocumentRulesSelectors();
     if (!matched_selectors) {
@@ -393,7 +400,7 @@ String GetPredicateType(JSONObject* input, String* out_error) {
 DocumentRulePredicate* DocumentRulePredicate::Parse(
     JSONObject* input,
     const KURL& ruleset_base_url,
-    const ExecutionContext* execution_context,
+    ExecutionContext* execution_context,
     ExceptionState& exception_state,
     String* out_error) {
   // If input is not a map, then return null.
@@ -565,13 +572,14 @@ DocumentRulePredicate* DocumentRulePredicate::Parse(
       patterns.push_back(pattern);
     }
     // Return a document rule URL pattern predicate whose patterns is patterns.
-    return MakeGarbageCollected<URLPatternPredicate>(std::move(patterns));
+    return MakeGarbageCollected<URLPatternPredicate>(std::move(patterns),
+                                                     execution_context);
   }
 
   // If predicateType is "selector_matches"
   if (predicate_type == "selector_matches" && input->size() == 1) {
-    const bool selector_matches_enabled = RuntimeEnabledFeatures::
-        SpeculationRulesDocumentRulesSelectorMatchesEnabled(execution_context);
+    const bool selector_matches_enabled =
+        speculation_rules::SelectorMatchesEnabled(execution_context);
     if (!selector_matches_enabled) {
       SetParseErrorMessage(out_error,
                            "\"selector_matches\" is currently unsupported.");
@@ -609,8 +617,10 @@ DocumentRulePredicate* DocumentRulePredicate::Parse(
 
       // Parse a selector from rawSelector. If the result is failure, then
       // return null. Otherwise, let selector be the result.
-      base::span<CSSSelector> selector_vector = CSSParser::ParseSelector(
-          css_parser_context, nullptr, nullptr, raw_selector_string, arena);
+      base::span<CSSSelector> selector_vector =
+          CSSParser::ParseSelector(css_parser_context, CSSNestingType::kNone,
+                                   /*parent_rule_for_nesting=*/nullptr, nullptr,
+                                   raw_selector_string, arena);
       if (selector_vector.empty()) {
         SetParseErrorMessage(
             out_error, String::Format("\"%s\" is not a valid selector.",
@@ -622,6 +632,8 @@ DocumentRulePredicate* DocumentRulePredicate::Parse(
       // Append selector to selectors.
       selectors.push_back(std::move(selector));
     }
+    UseCounter::Count(execution_context,
+                      WebFeature::kSpeculationRulesSelectorMatches);
     return MakeGarbageCollected<CSSSelectorPredicate>(std::move(selectors));
   }
 

@@ -20,6 +20,10 @@
 
 #include "qtquick3dassetutilsglobal_p.h"
 
+#include <QtCore/qpointer.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qmimetype.h>
+
 QT_BEGIN_NAMESPACE
 
 class Q_QUICK3DASSETUTILS_EXPORT QQuick3DRuntimeLoader : public QQuick3DNode
@@ -34,6 +38,8 @@ class Q_QUICK3DASSETUTILS_EXPORT QQuick3DRuntimeLoader : public QQuick3DNode
     Q_PROPERTY(QString errorString READ errorString NOTIFY errorStringChanged)
     Q_PROPERTY(QQuick3DBounds3 bounds READ bounds NOTIFY boundsChanged)
     Q_PROPERTY(QQuick3DInstancing *instancing READ instancing WRITE setInstancing NOTIFY instancingChanged)
+    Q_PROPERTY(QStringList supportedExtensions READ supportedExtensions CONSTANT REVISION(6, 7))
+    Q_PROPERTY(QList<QMimeType> supportedMimeTypes READ supportedMimeTypes CONSTANT REVISION(6, 7))
 
 public:
     explicit QQuick3DRuntimeLoader(QQuick3DNode *parent = nullptr);
@@ -41,6 +47,8 @@ public:
     QUrl source() const;
     void setSource(const QUrl &newSource);
     void componentComplete() override;
+    Q_REVISION(6, 7) static QStringList supportedExtensions();
+    Q_REVISION(6, 7) static QList<QMimeType> supportedMimeTypes();
 
     enum class Status { Empty, Success, Error };
     Q_ENUM(Status)

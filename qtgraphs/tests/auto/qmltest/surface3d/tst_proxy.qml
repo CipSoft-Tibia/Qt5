@@ -24,7 +24,7 @@ Item {
         columnRolePattern: /^.*-(\d\d)$/
         columnRoleReplace: "\\1"
         itemModel: ListModel { objectName: "model1" }
-        multiMatchBehavior: ItemModelSurfaceDataProxy.MMBAverage
+        multiMatchBehavior: ItemModelSurfaceDataProxy.MultiMatchBehavior.Average
         rowCategories: ["rowcat1", "rowcat2"]
         rowRole: "row"
         rowRolePattern: /^(\d\d\d\d).*$/
@@ -55,7 +55,7 @@ Item {
             verify(initial.columnRolePattern)
             compare(initial.columnRoleReplace, "")
             verify(!initial.itemModel)
-            compare(initial.multiMatchBehavior, ItemModelSurfaceDataProxy.MMBLast)
+            compare(initial.multiMatchBehavior, ItemModelSurfaceDataProxy.MultiMatchBehavior.Last)
             compare(initial.rowCategories, [])
             compare(initial.rowRole, "")
             verify(initial.rowRolePattern)
@@ -75,7 +75,7 @@ Item {
             compare(initial.rowCount, 0)
             verify(!initial.series)
 
-            compare(initial.type, AbstractDataProxy.DataTypeSurface)
+            compare(initial.type, AbstractDataProxy.DataType.Surface)
         }
     }
 
@@ -92,7 +92,7 @@ Item {
             compare(initialized.columnRolePattern, /^.*-(\d\d)$/)
             compare(initialized.columnRoleReplace, "\\1")
             compare(initialized.itemModel.objectName, "model1")
-            compare(initialized.multiMatchBehavior, ItemModelSurfaceDataProxy.MMBAverage)
+            compare(initialized.multiMatchBehavior, ItemModelSurfaceDataProxy.MultiMatchBehavior.Average)
             compare(initialized.rowCategories.length, 2)
             compare(initialized.rowCategories[0], "rowcat1")
             compare(initialized.rowCategories[1], "rowcat2")
@@ -127,7 +127,7 @@ Item {
             change.columnRolePattern = /^.*-(\d\d)$/
             change.columnRoleReplace = "\\1"
             change.itemModel = model1
-            change.multiMatchBehavior = ItemModelSurfaceDataProxy.MMBAverage
+            change.multiMatchBehavior = ItemModelSurfaceDataProxy.MultiMatchBehavior.Average
             change.rowCategories = ["rowcat1", "rowcat2"]
             change.rowRole = "row"
             change.rowRolePattern = /^(\d\d\d\d).*$/
@@ -155,7 +155,7 @@ Item {
             compare(change.columnRolePattern, /^.*-(\d\d)$/)
             compare(change.columnRoleReplace, "\\1")
             compare(change.itemModel.objectName, "model1")
-            compare(change.multiMatchBehavior, ItemModelSurfaceDataProxy.MMBAverage)
+            compare(change.multiMatchBehavior, ItemModelSurfaceDataProxy.MultiMatchBehavior.Average)
             compare(change.rowCategories.length, 2)
             compare(change.rowCategories[0], "rowcat1")
             compare(change.rowCategories[1], "rowcat2")
@@ -178,72 +178,71 @@ Item {
         }
     }
 
-//    TODO: Needs either redoing, or fixing the code; see QTBUG-110000 & QTBUG-110001
-//    TestCase {
-//        name: "ItemModelSurfaceDataProxy MultiMatchBehaviour"
+    TestCase {
+        name: "ItemModelSurfaceDataProxy MultiMatchBehaviour"
 
-//        Surface3D {
-//            id: surface1
-//            Surface3DSeries {
-//                ItemModelSurfaceDataProxy {
-//                    id: surfaceProxy
-//                    itemModel: ListModel {
-//                        ListElement{ coords: "0,0"; data: "5"; }
-//                        ListElement{ coords: "0,0"; data: "15"; }
-//                        ListElement{ coords: "0,1"; data: "5"; }
-//                        ListElement{ coords: "0,1"; data: "15"; }
-//                        ListElement{ coords: "1,0"; data: "5"; }
-//                        ListElement{ coords: "1,0"; data: "15"; }
-//                        ListElement{ coords: "1,1"; data: "0"; }
-//                    }
-//                    rowRole: "coords"
-//                    columnRole: "coords"
-//                    yPosRole: "data"
-//                    rowRolePattern: /(\d),\d/
-//                    columnRolePattern: /(\d),(\d)/
-//                    rowRoleReplace: "\\1"
-//                    columnRoleReplace: "\\2"
-//                }
-//            }
-//        }
+        Surface3D {
+            id: surface1
+            Surface3DSeries {
+                ItemModelSurfaceDataProxy {
+                    id: surfaceProxy
+                    itemModel: ListModel {
+                        ListElement{ coords: "0,0"; data: "5"; }
+                        ListElement{ coords: "0,0"; data: "15"; }
+                        ListElement{ coords: "0,1"; data: "5"; }
+                        ListElement{ coords: "0,1"; data: "15"; }
+                        ListElement{ coords: "1,0"; data: "5"; }
+                        ListElement{ coords: "1,0"; data: "15"; }
+                        ListElement{ coords: "1,1"; data: "0"; }
+                    }
+                    rowRole: "coords"
+                    columnRole: "coords"
+                    yPosRole: "data"
+                    rowRolePattern: /(\d),\d/
+                    columnRolePattern: /(\d),(\d)/
+                    rowRoleReplace: "\\1"
+                    columnRoleReplace: "\\2"
+                }
+            }
+        }
 
-//        function test_0_async_dummy() {
-//        }
+        function test_0_async_dummy() {
+        }
 
-//        function test_1_test_multimatch() {
-//            compare(surface1.axisY.max, 15)
-//        }
+        function test_1_test_multimatch() {
+            compare(surface1.axisY.max, 15)
+        }
 
-//        function test_2_multimatch() {
-//            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MMBFirst
-//        }
+        function test_2_multimatch() {
+            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MultiMatchBehavior.First
+        }
 
-//        function test_3_test_multimatch() {
-//            compare(surface1.axisY.max, 5)
-//        }
+        function test_3_test_multimatch() {
+            compare(surface1.axisY.max, 5)
+        }
 
-//        function test_4_multimatch() {
-//            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MMBLast
-//        }
+        function test_4_multimatch() {
+            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MultiMatchBehavior.Last
+        }
 
-//        function test_5_test_multimatch() {
-//            compare(surface1.axisY.max, 15)
-//        }
+        function test_5_test_multimatch() {
+            compare(surface1.axisY.max, 15)
+        }
 
-//        function test_6_multimatch() {
-//            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MMBAverage
-//        }
+        function test_6_multimatch() {
+            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MultiMatchBehavior.Average
+        }
 
-//        function test_7_test_multimatch() {
-//            compare(surface1.axisY.max, 10)
-//        }
+        function test_7_test_multimatch() {
+            compare(surface1.axisY.max, 10)
+        }
 
-//        function test_8_multimatch() {
-//            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MMBCumulativeY
-//        }
+        function test_8_multimatch() {
+            surfaceProxy.multiMatchBehavior = ItemModelSurfaceDataProxy.MultiMatchBehavior.CumulativeY
+        }
 
-//        function test_9_test_multimatch() {
-//            compare(surface1.axisY.max, 20)
-//        }
-//    }
+        function test_9_test_multimatch() {
+            compare(surface1.axisY.max, 20)
+        }
+    }
 }

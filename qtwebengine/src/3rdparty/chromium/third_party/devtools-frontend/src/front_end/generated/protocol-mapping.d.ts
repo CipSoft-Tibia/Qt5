@@ -402,20 +402,6 @@ export namespace ProtocolMapping {
      * when bfcache navigation fails.
      */
     'Page.backForwardCacheNotUsed': [Protocol.Page.BackForwardCacheNotUsedEvent];
-    /**
-     * Fired when a prerender attempt is completed.
-     */
-    'Page.prerenderAttemptCompleted': [Protocol.Page.PrerenderAttemptCompletedEvent];
-    /**
-     * TODO(crbug/1384419): Create a dedicated domain for preloading.
-     * Fired when a prefetch attempt is updated.
-     */
-    'Page.prefetchStatusUpdated': [Protocol.Page.PrefetchStatusUpdatedEvent];
-    /**
-     * TODO(crbug/1384419): Create a dedicated domain for preloading.
-     * Fired when a prerender attempt is updated.
-     */
-    'Page.prerenderStatusUpdated': [Protocol.Page.PrerenderStatusUpdatedEvent];
     'Page.loadEventFired': [Protocol.Page.LoadEventFiredEvent];
     /**
      * Fired when same-document navigation happens, e.g. due to history API usage or anchor navigation.
@@ -490,6 +476,13 @@ export namespace ProtocolMapping {
      * The following parameters are included in all events.
      */
     'Storage.sharedStorageAccessed': [Protocol.Storage.SharedStorageAccessedEvent];
+    'Storage.storageBucketCreatedOrUpdated': [Protocol.Storage.StorageBucketCreatedOrUpdatedEvent];
+    'Storage.storageBucketDeleted': [Protocol.Storage.StorageBucketDeletedEvent];
+    /**
+     * TODO(crbug.com/1458532): Add other Attribution Reporting events, e.g.
+     * trigger registration.
+     */
+    'Storage.attributionReportingSourceRegistered': [Protocol.Storage.AttributionReportingSourceRegisteredEvent];
     /**
      * Issued when attached to target because of auto-attach or `attachToTarget` command.
      */
@@ -543,6 +536,11 @@ export namespace ProtocolMapping {
      * The stage of the request can be determined by presence of responseErrorReason
      * and responseStatusCode -- the request is at the response stage if either
      * of these fields is present and in the request stage otherwise.
+     * Redirect responses and subsequent requests are reported similarly to regular
+     * responses and requests. Redirect responses may be distinguished by the value
+     * of `responseStatusCode` (which is one of 301, 302, 303, 307, 308) along with
+     * presence of the `location` header. Requests resulting from a redirect will
+     * have `redirectedRequestId` field set.
      */
     'Fetch.requestPaused': [Protocol.Fetch.RequestPausedEvent];
     /**
@@ -644,6 +642,27 @@ export namespace ProtocolMapping {
      */
     'Preload.ruleSetUpdated': [Protocol.Preload.RuleSetUpdatedEvent];
     'Preload.ruleSetRemoved': [Protocol.Preload.RuleSetRemovedEvent];
+    /**
+     * Fired when a prerender attempt is completed.
+     */
+    'Preload.prerenderAttemptCompleted': [Protocol.Preload.PrerenderAttemptCompletedEvent];
+    /**
+     * Fired when a preload enabled state is updated.
+     */
+    'Preload.preloadEnabledStateUpdated': [Protocol.Preload.PreloadEnabledStateUpdatedEvent];
+    /**
+     * Fired when a prefetch attempt is updated.
+     */
+    'Preload.prefetchStatusUpdated': [Protocol.Preload.PrefetchStatusUpdatedEvent];
+    /**
+     * Fired when a prerender attempt is updated.
+     */
+    'Preload.prerenderStatusUpdated': [Protocol.Preload.PrerenderStatusUpdatedEvent];
+    /**
+     * Send a list of sources for all preloading attempts in a document.
+     */
+    'Preload.preloadingAttemptSourcesUpdated': [Protocol.Preload.PreloadingAttemptSourcesUpdatedEvent];
+    'FedCm.dialogShown': [Protocol.FedCm.DialogShownEvent];
     /**
      * Fired when breakpoint is resolved to an actual script and location.
      */
@@ -892,6 +911,29 @@ export namespace ProtocolMapping {
       returnType: void;
     };
     /**
+     * Runs the form issues check for the target page. Found issues are reported
+     * using Audits.issueAdded event.
+     */
+    'Audits.checkFormsIssues': {
+      paramsType: [];
+      returnType: Protocol.Audits.CheckFormsIssuesResponse;
+    };
+    /**
+     * Trigger autofill on a form identified by the fieldId.
+     * If the field and related form cannot be autofilled, returns an error.
+     */
+    'Autofill.trigger': {
+      paramsType: [Protocol.Autofill.TriggerRequest];
+      returnType: void;
+    };
+    /**
+     * Set addresses so that developers can verify their forms implementation.
+     */
+    'Autofill.setAddresses': {
+      paramsType: [Protocol.Autofill.SetAddressesRequest];
+      returnType: void;
+    };
+    /**
      * Enables event updates for the service.
      */
     'BackgroundService.startObserving': {
@@ -1037,6 +1079,14 @@ export namespace ProtocolMapping {
      */
     'Browser.executeBrowserCommand': {
       paramsType: [Protocol.Browser.ExecuteBrowserCommandRequest];
+      returnType: void;
+    };
+    /**
+     * Allows a site to use privacy sandbox features that require enrollment
+     * without the site actually being enrolled. Only supported on page targets.
+     */
+    'Browser.addPrivacySandboxEnrollmentOverride': {
+      paramsType: [Protocol.Browser.AddPrivacySandboxEnrollmentOverrideRequest];
       returnType: void;
     };
     /**
@@ -2238,6 +2288,13 @@ export namespace ProtocolMapping {
       returnType: void;
     };
     /**
+     * Cancels any active dragging in the page.
+     */
+    'Input.cancelDragging': {
+      paramsType: [];
+      returnType: void;
+    };
+    /**
      * Emulates touch event from the mouse event parameters.
      */
     'Input.emulateTouchFromMouseEvent': {
@@ -3323,6 +3380,19 @@ export namespace ProtocolMapping {
       returnType: void;
     };
     /**
+     * Enable/disable prerendering manually.
+     *
+     * This command is a short-term solution for https://crbug.com/1440085.
+     * See https://docs.google.com/document/d/12HVmFxYj5Jc-eJr5OmWsa2bqTJsbgGLKI6ZIyx0_wpA
+     * for more details.
+     *
+     * TODO(https://crbug.com/1440085): Remove this once Puppeteer supports tab targets.
+     */
+    'Page.setPrerenderingAllowed': {
+      paramsType: [Protocol.Page.SetPrerenderingAllowedRequest];
+      returnType: void;
+    };
+    /**
      * Disable collecting and reporting metrics.
      */
     'Performance.disable': {
@@ -3640,6 +3710,41 @@ export namespace ProtocolMapping {
       returnType: void;
     };
     /**
+     * Set tracking for a storage key's buckets.
+     */
+    'Storage.setStorageBucketTracking': {
+      paramsType: [Protocol.Storage.SetStorageBucketTrackingRequest];
+      returnType: void;
+    };
+    /**
+     * Deletes the Storage Bucket with the given storage key and bucket name.
+     */
+    'Storage.deleteStorageBucket': {
+      paramsType: [Protocol.Storage.DeleteStorageBucketRequest];
+      returnType: void;
+    };
+    /**
+     * Deletes state for sites identified as potential bounce trackers, immediately.
+     */
+    'Storage.runBounceTrackingMitigations': {
+      paramsType: [];
+      returnType: Protocol.Storage.RunBounceTrackingMitigationsResponse;
+    };
+    /**
+     * https://wicg.github.io/attribution-reporting-api/
+     */
+    'Storage.setAttributionReportingLocalTestingMode': {
+      paramsType: [Protocol.Storage.SetAttributionReportingLocalTestingModeRequest];
+      returnType: void;
+    };
+    /**
+     * Enables/disables issuing of Attribution Reporting events.
+     */
+    'Storage.setAttributionReportingTracking': {
+      paramsType: [Protocol.Storage.SetAttributionReportingTrackingRequest];
+      returnType: void;
+    };
+    /**
      * Returns information about the system.
      */
     'SystemInfo.getInfo': {
@@ -3908,6 +4013,10 @@ export namespace ProtocolMapping {
      * takeResponseBodyForInterceptionAsStream. Calling other methods that
      * affect the request or disabling fetch domain before body is received
      * results in an undefined behavior.
+     * Note that the response body is not available for redirects. Requests
+     * paused in the _redirect received_ state may be differentiated by
+     * `responseCode` and presence of `location` response header, see
+     * comments to `requestPaused` for details.
      */
     'Fetch.getResponseBody': {
       paramsType: [Protocol.Fetch.GetResponseBodyRequest];
@@ -4085,6 +4194,30 @@ export namespace ProtocolMapping {
       returnType: void;
     };
     'Preload.disable': {
+      paramsType: [];
+      returnType: void;
+    };
+    'FedCm.enable': {
+      paramsType: [Protocol.FedCm.EnableRequest?];
+      returnType: void;
+    };
+    'FedCm.disable': {
+      paramsType: [];
+      returnType: void;
+    };
+    'FedCm.selectAccount': {
+      paramsType: [Protocol.FedCm.SelectAccountRequest];
+      returnType: void;
+    };
+    'FedCm.dismissDialog': {
+      paramsType: [Protocol.FedCm.DismissDialogRequest];
+      returnType: void;
+    };
+    /**
+     * Resets the cooldown time, if any, to allow the next FedCM call to show
+     * a dialog even if one was recently dismissed by the user.
+     */
+    'FedCm.resetCooldown': {
       paramsType: [];
       returnType: void;
     };

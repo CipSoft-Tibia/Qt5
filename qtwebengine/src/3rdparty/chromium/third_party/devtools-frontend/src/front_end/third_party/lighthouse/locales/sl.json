@@ -1,6 +1,6 @@
 {
   "core/audits/accessibility/accesskeys.js | description": {
-    "message": "Tipke za dostop uporabnikom omogočajo hiter izbor dela strani. Za ustrezno pomikanje mora biti vsaka tipka za dostop drugačna. [Preberite več o tipkah za dostop](https://dequeuniversity.com/rules/axe/4.6/accesskeys)."
+    "message": "Tipke za dostop uporabnikom omogočajo hiter izbor dela strani. Za ustrezno pomikanje mora biti vsaka tipka za dostop drugačna. [Preberite več o tipkah za dostop](https://dequeuniversity.com/rules/axe/4.7/accesskeys)."
   },
   "core/audits/accessibility/accesskeys.js | failureTitle": {
     "message": "Vrednosti `[accesskey]` niso enolične"
@@ -9,7 +9,7 @@
     "message": "Vrednosti `[accesskey]` so enolične"
   },
   "core/audits/accessibility/aria-allowed-attr.js | description": {
-    "message": "Vsak element ARIA `role` podpira določen podniz atributov `aria-*`. Če se ne ujemajo, so atributi `aria-*` razveljavljeni. [Preberite, kako povežete atribute ARIA z njihovimi vlogami](https://dequeuniversity.com/rules/axe/4.6/aria-allowed-attr)."
+    "message": "Vsak element ARIA `role` podpira določen podniz atributov `aria-*`. Če se ne ujemajo, so atributi `aria-*` razveljavljeni. [Preberite, kako povežete atribute ARIA z njihovimi vlogami](https://dequeuniversity.com/rules/axe/4.7/aria-allowed-attr)."
   },
   "core/audits/accessibility/aria-allowed-attr.js | failureTitle": {
     "message": "Atributi `[aria-*]` se ne ujemajo z vlogami"
@@ -17,8 +17,17 @@
   "core/audits/accessibility/aria-allowed-attr.js | title": {
     "message": "Atributi `[aria-*]` se ujemajo s svojimi vlogami"
   },
+  "core/audits/accessibility/aria-allowed-role.js | description": {
+    "message": "ARIA `role`s enable assistive technologies to know the role of each element on the web page. If the `role` values are misspelled, not existing ARIA `role` values, or abstract roles, then the purpose of the element will not be communicated to users of assistive technologies. [Learn more about ARIA roles](https://dequeuniversity.com/rules/axe/4.7/aria-allowed-roles)."
+  },
+  "core/audits/accessibility/aria-allowed-role.js | failureTitle": {
+    "message": "Values assigned to `role=\"\"` are not valid ARIA roles."
+  },
+  "core/audits/accessibility/aria-allowed-role.js | title": {
+    "message": "Values assigned to `role=\"\"` are valid ARIA roles."
+  },
   "core/audits/accessibility/aria-command-name.js | description": {
-    "message": "Če element nima dostopnega imena, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite, kako izboljšate dostop do elementov ukaza](https://dequeuniversity.com/rules/axe/4.6/aria-command-name)."
+    "message": "Če element nima dostopnega imena, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite, kako izboljšate dostop do elementov ukaza](https://dequeuniversity.com/rules/axe/4.7/aria-command-name)."
   },
   "core/audits/accessibility/aria-command-name.js | failureTitle": {
     "message": "Elementi `button`, `link` in `menuitem` nimajo dostopnih imen."
@@ -26,8 +35,17 @@
   "core/audits/accessibility/aria-command-name.js | title": {
     "message": "Elementi `button`, `link` in `menuitem` imajo dostopna imena."
   },
+  "core/audits/accessibility/aria-dialog-name.js | description": {
+    "message": "Elementi pogovornih oken ARIA brez imen za osebe s posebnimi potrebami lahko uporabnikom bralnikov zaslona preprečijo spoznati namen teh elementov. [Preberite, kako lahko naredite pogovorna okna ARIA dostopnejša za osebe s posebnimi potrebami](https://dequeuniversity.com/rules/axe/4.7/aria-dialog-name)."
+  },
+  "core/audits/accessibility/aria-dialog-name.js | failureTitle": {
+    "message": "Elementi z vlogo `role=\"dialog\"` ali `role=\"alertdialog\"` nimajo imen za osebe s posebnimi potrebami."
+  },
+  "core/audits/accessibility/aria-dialog-name.js | title": {
+    "message": "Elementi z vlogo `role=\"dialog\"` ali `role=\"alertdialog\"` imajo imena za osebe s posebnimi potrebami."
+  },
   "core/audits/accessibility/aria-hidden-body.js | description": {
-    "message": "Podporne tehnologije, kot so bralniki zaslona, delujejo nedosledno, če je atribut `aria-hidden=\"true\"` nastavljen na dokument `<body>`. [Preberite, kako `aria-hidden` vpliva na telo dokumenta](https://dequeuniversity.com/rules/axe/4.6/aria-hidden-body)."
+    "message": "Podporne tehnologije, kot so bralniki zaslona, delujejo nedosledno, če je atribut `aria-hidden=\"true\"` nastavljen na dokument `<body>`. [Preberite, kako `aria-hidden` vpliva na telo dokumenta](https://dequeuniversity.com/rules/axe/4.7/aria-hidden-body)."
   },
   "core/audits/accessibility/aria-hidden-body.js | failureTitle": {
     "message": "Atribut `[aria-hidden=\"true\"]` je nastavljen na dokumentu `<body>`"
@@ -36,7 +54,7 @@
     "message": "Atribut `[aria-hidden=\"true\"]` ni nastavljen na dokumentu `<body>`"
   },
   "core/audits/accessibility/aria-hidden-focus.js | description": {
-    "message": "Podrejeni elementi elementa `[aria-hidden=\"true\"]`, ki jih je mogoče izbrati, preprečujejo, da bi bili tisti interaktivni elementi na voljo uporabnikom podpornih tehnologij, kot so bralniki zaslona. [Preberite, kako `aria-hidden` vpliva na elemente, ki jih je mogoče izbrati](https://dequeuniversity.com/rules/axe/4.6/aria-hidden-focus)."
+    "message": "Podrejeni elementi elementa `[aria-hidden=\"true\"]`, ki jih je mogoče izbrati, preprečujejo, da bi bili tisti interaktivni elementi na voljo uporabnikom podpornih tehnologij, kot so bralniki zaslona. [Preberite, kako `aria-hidden` vpliva na elemente, ki jih je mogoče izbrati](https://dequeuniversity.com/rules/axe/4.7/aria-hidden-focus)."
   },
   "core/audits/accessibility/aria-hidden-focus.js | failureTitle": {
     "message": "Elementi `[aria-hidden=\"true\"]` vsebujejo podrejene elemente, ki jih je mogoče izbrati"
@@ -45,7 +63,7 @@
     "message": "Toliko elementov ne vsebuje podrejenih elementov, ki jih je mogoče izbrati: `[aria-hidden=\"true\"]`"
   },
   "core/audits/accessibility/aria-input-field-name.js | description": {
-    "message": "Če vnosno polje nima dostopnega imena, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite več o oznakah polj za vnos](https://dequeuniversity.com/rules/axe/4.6/aria-input-field-name)."
+    "message": "Če vnosno polje nima dostopnega imena, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite več o oznakah polj za vnos](https://dequeuniversity.com/rules/axe/4.7/aria-input-field-name)."
   },
   "core/audits/accessibility/aria-input-field-name.js | failureTitle": {
     "message": "Vnosna polja ARIA nimajo dostopnih imen"
@@ -54,7 +72,7 @@
     "message": "Vnosna polja ARIA imajo dostopna imena"
   },
   "core/audits/accessibility/aria-meter-name.js | description": {
-    "message": "Če element za merjenje nima imena za osebe s posebnimi potrebami, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite, kako poimenujete elemente `meter`](https://dequeuniversity.com/rules/axe/4.6/aria-meter-name)."
+    "message": "Če element za merjenje nima imena za osebe s posebnimi potrebami, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite, kako poimenujete elemente `meter`](https://dequeuniversity.com/rules/axe/4.7/aria-meter-name)."
   },
   "core/audits/accessibility/aria-meter-name.js | failureTitle": {
     "message": "Elementi ARIA `meter` nimajo dostopnih imen."
@@ -63,7 +81,7 @@
     "message": "Elementi ARIA `meter` imajo dostopna imena."
   },
   "core/audits/accessibility/aria-progressbar-name.js | description": {
-    "message": "Če element `progressbar` nima dostopnega imena, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite, kako označite elemente `progressbar`](https://dequeuniversity.com/rules/axe/4.6/aria-progressbar-name)."
+    "message": "Če element `progressbar` nima dostopnega imena, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite, kako označite elemente `progressbar`](https://dequeuniversity.com/rules/axe/4.7/aria-progressbar-name)."
   },
   "core/audits/accessibility/aria-progressbar-name.js | failureTitle": {
     "message": "Elementi ARIA `progressbar` nimajo dostopnih imen."
@@ -72,7 +90,7 @@
     "message": "Elementi ARIA `progressbar` imajo dostopna imena."
   },
   "core/audits/accessibility/aria-required-attr.js | description": {
-    "message": "Nekatere vloge ARIA imajo zahtevane atribute, ki opišejo stanje elementa bralnikom zaslona. [Preberite več o vlogah in zahtevanih atributih](https://dequeuniversity.com/rules/axe/4.6/aria-required-attr)."
+    "message": "Nekatere vloge ARIA imajo zahtevane atribute, ki opišejo stanje elementa bralnikom zaslona. [Preberite več o vlogah in zahtevanih atributih](https://dequeuniversity.com/rules/axe/4.7/aria-required-attr)."
   },
   "core/audits/accessibility/aria-required-attr.js | failureTitle": {
     "message": "Vloge `[role]` nimajo vseh zahtevanih atributov `[aria-*]`"
@@ -81,7 +99,7 @@
     "message": "Vloge `[role]` imajo vse zahtevane atribute `[aria-*]`"
   },
   "core/audits/accessibility/aria-required-children.js | description": {
-    "message": "Nekatere nadrejene vloge ARIA morajo zaradi ustreznega izvajanja funkcij za ljudi s posebnimi potrebami vsebovati določene podrejene vloge. [Preberite več o vlogah in zahtevanih podrejenih elementih](https://dequeuniversity.com/rules/axe/4.6/aria-required-children)."
+    "message": "Nekatere nadrejene vloge ARIA morajo zaradi ustreznega izvajanja funkcij za ljudi s posebnimi potrebami vsebovati določene podrejene vloge. [Preberite več o vlogah in zahtevanih podrejenih elementih](https://dequeuniversity.com/rules/axe/4.7/aria-required-children)."
   },
   "core/audits/accessibility/aria-required-children.js | failureTitle": {
     "message": "Elementi z vlogo ARIA `[role]`, ki zahtevajo, da podrejeni elementi vsebujejo določeno vlogo `[role]`, ne vsebujejo nekaterih ali vseh teh zahtevanih podrejenih elementov."
@@ -90,7 +108,7 @@
     "message": "Elementi z vlogo ARIA `[role]`, ki zahtevajo, da podrejeni elementi vsebujejo določeno vlogo `[role]`, vsebujejo vse zahtevane podrejene elemente."
   },
   "core/audits/accessibility/aria-required-parent.js | description": {
-    "message": "Nekatere podrejene vloge ARIA morajo biti zaradi ustreznega izvajanja funkcij za ljudi s posebnimi potrebami vsebovane v določenih nadrejenih vlogah. [Preberite več o vlogah ARIA in zahtevanih nadrejenih elementih](https://dequeuniversity.com/rules/axe/4.6/aria-required-parent)."
+    "message": "Nekatere podrejene vloge ARIA morajo biti zaradi ustreznega izvajanja funkcij za ljudi s posebnimi potrebami vsebovane v določenih nadrejenih vlogah. [Preberite več o vlogah ARIA in zahtevanih nadrejenih elementih](https://dequeuniversity.com/rules/axe/4.7/aria-required-parent)."
   },
   "core/audits/accessibility/aria-required-parent.js | failureTitle": {
     "message": "Vloge `[role]` niso vsebovane v zahtevanem nadrejenem elementu"
@@ -99,7 +117,7 @@
     "message": "Vloge `[role]` so vsebovane v zahtevanem nadrejenem elementu"
   },
   "core/audits/accessibility/aria-roles.js | description": {
-    "message": "Vloge ARIA morajo imeti veljavne vrednosti, če želite, da bodo izvajale želene funkcije za ljudi s posebnimi potrebami. [Preberite več o veljavnih vlogah ARIA](https://dequeuniversity.com/rules/axe/4.6/aria-roles)."
+    "message": "Vloge ARIA morajo imeti veljavne vrednosti, če želite, da bodo izvajale želene funkcije za ljudi s posebnimi potrebami. [Preberite več o veljavnih vlogah ARIA](https://dequeuniversity.com/rules/axe/4.7/aria-roles)."
   },
   "core/audits/accessibility/aria-roles.js | failureTitle": {
     "message": "Vrednosti `[role]` niso veljavne"
@@ -107,8 +125,17 @@
   "core/audits/accessibility/aria-roles.js | title": {
     "message": "Vrednosti `[role]` so veljavne"
   },
+  "core/audits/accessibility/aria-text.js | description": {
+    "message": "Če okoli besedilnega vozlišča, ki ga delijo oznake, dodate element `role=text`, funkciji VoiceOver omogočite, da ga obravnava kot eno besedno zvezo, vendar podrejeni elementi elementa, ki jih je mogoče izbrati, ne bodo najavljeni. [Preberite več o atributu `role=text`](https://dequeuniversity.com/rules/axe/4.7/aria-text)."
+  },
+  "core/audits/accessibility/aria-text.js | failureTitle": {
+    "message": "Elementi z atributom `role=text` imajo podrejene elemente, ki jih je mogoče izbrati."
+  },
+  "core/audits/accessibility/aria-text.js | title": {
+    "message": "Elementi z atributom `role=text` nimajo podrejenih elementov, ki jih je mogoče izbrati."
+  },
   "core/audits/accessibility/aria-toggle-field-name.js | description": {
-    "message": "Če preklopno polje nima dostopnega imena, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite več o preklopnih poljih](https://dequeuniversity.com/rules/axe/4.6/aria-toggle-field-name)."
+    "message": "Če preklopno polje nima dostopnega imena, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite več o preklopnih poljih](https://dequeuniversity.com/rules/axe/4.7/aria-toggle-field-name)."
   },
   "core/audits/accessibility/aria-toggle-field-name.js | failureTitle": {
     "message": "Preklopna polja ARIA nimajo dostopnih imen"
@@ -117,7 +144,7 @@
     "message": "Preklopna polja ARIA imajo dostopna imena"
   },
   "core/audits/accessibility/aria-tooltip-name.js | description": {
-    "message": "Če element z opisom orodja nima imena za osebe s posebnimi potrebami, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite, kako poimenujete elemente `tooltip`](https://dequeuniversity.com/rules/axe/4.6/aria-tooltip-name)."
+    "message": "Če element z opisom orodja nima imena za osebe s posebnimi potrebami, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite, kako poimenujete elemente `tooltip`](https://dequeuniversity.com/rules/axe/4.7/aria-tooltip-name)."
   },
   "core/audits/accessibility/aria-tooltip-name.js | failureTitle": {
     "message": "Elementi ARIA `tooltip` nimajo dostopnih imen."
@@ -126,7 +153,7 @@
     "message": "Elementi ARIA `tooltip` imajo dostopna imena."
   },
   "core/audits/accessibility/aria-treeitem-name.js | description": {
-    "message": "Če element `treeitem` nima dostopnega imena, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite več o označevanju elementov `treeitem`](https://dequeuniversity.com/rules/axe/4.6/aria-treeitem-name)."
+    "message": "Če element `treeitem` nima dostopnega imena, ga bralniki zaslona predstavijo z generičnim imenom, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite več o označevanju elementov `treeitem`](https://dequeuniversity.com/rules/axe/4.7/aria-treeitem-name)."
   },
   "core/audits/accessibility/aria-treeitem-name.js | failureTitle": {
     "message": "Elementi ARIA `treeitem` nimajo dostopnih imen."
@@ -135,7 +162,7 @@
     "message": "Elementi ARIA `treeitem` imajo dostopna imena."
   },
   "core/audits/accessibility/aria-valid-attr-value.js | description": {
-    "message": "Pomožne tehnologije, kot so bralniki zaslona, ne morejo tolmačiti atributov ARIA z neveljavnimi vrednostmi. [Preberite več o veljavnih vrednostih za atribute ARIA](https://dequeuniversity.com/rules/axe/4.6/aria-valid-attr-value)."
+    "message": "Pomožne tehnologije, kot so bralniki zaslona, ne morejo tolmačiti atributov ARIA z neveljavnimi vrednostmi. [Preberite več o veljavnih vrednostih za atribute ARIA](https://dequeuniversity.com/rules/axe/4.7/aria-valid-attr-value)."
   },
   "core/audits/accessibility/aria-valid-attr-value.js | failureTitle": {
     "message": "Atributi `[aria-*]` nimajo veljavnih vrednosti"
@@ -144,7 +171,7 @@
     "message": "Atributi `[aria-*]` imajo veljavne vrednosti"
   },
   "core/audits/accessibility/aria-valid-attr.js | description": {
-    "message": "Pomožne tehnologije, kot so bralniki zaslona, ne morejo tolmačiti atributov ARIA z neveljavnimi imeni. [Preberite več o veljavnih atributih ARIA](https://dequeuniversity.com/rules/axe/4.6/aria-valid-attr)."
+    "message": "Pomožne tehnologije, kot so bralniki zaslona, ne morejo tolmačiti atributov ARIA z neveljavnimi imeni. [Preberite več o veljavnih atributih ARIA](https://dequeuniversity.com/rules/axe/4.7/aria-valid-attr)."
   },
   "core/audits/accessibility/aria-valid-attr.js | failureTitle": {
     "message": "Atributi `[aria-*]` so neveljavni ali napačno črkovani"
@@ -156,7 +183,7 @@
     "message": "Neuspešni elementi"
   },
   "core/audits/accessibility/button-name.js | description": {
-    "message": "Če gumb nima dostopnega imena, ga bralniki zaslona predstavijo kot »gumb«, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite, kako poskrbite, da bodo gumbi dostopnejši](https://dequeuniversity.com/rules/axe/4.6/button-name)."
+    "message": "Če gumb nima dostopnega imena, ga bralniki zaslona predstavijo kot »gumb«, s čimer je neuporaben za uporabnike, ki se zanašajo na bralnike zaslona. [Preberite, kako poskrbite, da bodo gumbi dostopnejši](https://dequeuniversity.com/rules/axe/4.7/button-name)."
   },
   "core/audits/accessibility/button-name.js | failureTitle": {
     "message": "Gumbi nimajo dostopnega imena"
@@ -165,7 +192,7 @@
     "message": "Gumbi imajo dostopna imena"
   },
   "core/audits/accessibility/bypass.js | description": {
-    "message": "Če dodate načine, s katerimi je mogoče zaobiti ponavljajočo se vsebino, uporabnikom s tipkovnico omogočite učinkovitejše pomikanje po strani. [Preberite več o obvodih blokad](https://dequeuniversity.com/rules/axe/4.6/bypass)."
+    "message": "Če dodate načine, s katerimi je mogoče zaobiti ponavljajočo se vsebino, uporabnikom s tipkovnico omogočite učinkovitejše pomikanje po strani. [Preberite več o obvodih blokad](https://dequeuniversity.com/rules/axe/4.7/bypass)."
   },
   "core/audits/accessibility/bypass.js | failureTitle": {
     "message": "Stran ne vsebuje naslova, povezave za preskok ali območja z mejnikom"
@@ -174,7 +201,7 @@
     "message": "Stran vsebuje naslov, povezavo za preskok ali območje z mejnikom"
   },
   "core/audits/accessibility/color-contrast.js | description": {
-    "message": "Besedilo z nizkim kontrastom številni uporabniki težko preberejo ali ga sploh ne morejo prebrati. [Preberite, kako zagotovite zadostni barvni kontrast](https://dequeuniversity.com/rules/axe/4.6/color-contrast)."
+    "message": "Besedilo z nizkim kontrastom številni uporabniki težko preberejo ali ga sploh ne morejo prebrati. [Preberite, kako zagotovite zadostni barvni kontrast](https://dequeuniversity.com/rules/axe/4.7/color-contrast)."
   },
   "core/audits/accessibility/color-contrast.js | failureTitle": {
     "message": "Barve ozadja in ospredja nimajo zadostnega kontrastnega razmerja."
@@ -183,7 +210,7 @@
     "message": "Barve ozadja in ospredja imajo zadostno kontrastno razmerje"
   },
   "core/audits/accessibility/definition-list.js | description": {
-    "message": "Če seznami opredelitev niso ustrezno označeni, lahko bralniki zaslona izgovorijo nejasno ali netočno vsebino. [Preberite, kako pravilno strukturirate sezname definicij](https://dequeuniversity.com/rules/axe/4.6/definition-list)."
+    "message": "Če seznami opredelitev niso ustrezno označeni, lahko bralniki zaslona izgovorijo nejasno ali netočno vsebino. [Preberite, kako pravilno strukturirate sezname definicij](https://dequeuniversity.com/rules/axe/4.7/definition-list)."
   },
   "core/audits/accessibility/definition-list.js | failureTitle": {
     "message": "Elementi `<dl>` ne vsebujejo samo ustrezno razvrščenih skupin `<dt>` in `<dd>` ter elementov `<script>`, `<template>` ali `<div>`."
@@ -192,7 +219,7 @@
     "message": "Elementi `<dl>` vsebujejo samo ustrezno razvrščene skupine `<dt>` in `<dd>` ter elemente `<script>`, `<template>` ali `<div>`."
   },
   "core/audits/accessibility/dlitem.js | description": {
-    "message": "Elementi seznamov opredelitev (`<dt>` in `<dd>`) morajo biti zaradi zagotavljanja, da jih lahko bralniki zaslona ustrezno predstavijo, oviti z nadrejenim elementom `<dl>`. [Preberite, kako pravilno strukturirate sezname definicij](https://dequeuniversity.com/rules/axe/4.6/dlitem)."
+    "message": "Elementi seznamov opredelitev (`<dt>` in `<dd>`) morajo biti zaradi zagotavljanja, da jih lahko bralniki zaslona ustrezno predstavijo, oviti z nadrejenim elementom `<dl>`. [Preberite, kako pravilno strukturirate sezname definicij](https://dequeuniversity.com/rules/axe/4.7/dlitem)."
   },
   "core/audits/accessibility/dlitem.js | failureTitle": {
     "message": "Elementi seznamov opredelitev niso oviti z elementi `<dl>`"
@@ -201,7 +228,7 @@
     "message": "Elementi seznamov opredelitev so oviti z elementi `<dl>`"
   },
   "core/audits/accessibility/document-title.js | description": {
-    "message": "Naslov uporabnikom bralnikov zaslona zagotavlja pregled strani, uporabniki iskalnikov pa se nanašajo nanj pri določanju, ali je stran pomembna za njihovo iskanje. [Preberite več o naslovih dokumentov](https://dequeuniversity.com/rules/axe/4.6/document-title)."
+    "message": "Naslov uporabnikom bralnikov zaslona zagotavlja pregled strani, uporabniki iskalnikov pa se nanašajo nanj pri določanju, ali je stran pomembna za njihovo iskanje. [Preberite več o naslovih dokumentov](https://dequeuniversity.com/rules/axe/4.7/document-title)."
   },
   "core/audits/accessibility/document-title.js | failureTitle": {
     "message": "Dokument nima elementa `<title>`"
@@ -210,7 +237,7 @@
     "message": "Dokument ima element `<title>`"
   },
   "core/audits/accessibility/duplicate-id-active.js | description": {
-    "message": "Vsi elementi, ki jih je mogoče izbrati, morajo imeti enoličen atribut `id`, s čimer se zagotovi, da so vidni podpornim tehnologijam. [Preberite, kako odpravite težave s podvojenimi elementi`id`](https://dequeuniversity.com/rules/axe/4.6/duplicate-id-active)"
+    "message": "Vsi elementi, ki jih je mogoče izbrati, morajo imeti enoličen atribut `id`, s čimer se zagotovi, da so vidni podpornim tehnologijam. [Preberite, kako odpravite težave s podvojenimi elementi`id`](https://dequeuniversity.com/rules/axe/4.7/duplicate-id-active)"
   },
   "core/audits/accessibility/duplicate-id-active.js | failureTitle": {
     "message": "Toliko atributov aktivnih elementov, ki jih je mogoče izbrati, ni enoličnih: `[id]`"
@@ -219,7 +246,7 @@
     "message": "Toliko atributov aktivnih elementov, ki jih je mogoče izbrati, je enoličnih: `[id]`"
   },
   "core/audits/accessibility/duplicate-id-aria.js | description": {
-    "message": "Vrednost ID-ja ARIA mora biti enolična, če želite preprečiti, da bi podporne tehnologije spregledale druge primerke. [Preberite, kako odpravite podvojene ID-je ARIA](https://dequeuniversity.com/rules/axe/4.6/duplicate-id-aria)."
+    "message": "Vrednost ID-ja ARIA mora biti enolična, če želite preprečiti, da bi podporne tehnologije spregledale druge primerke. [Preberite, kako odpravite podvojene ID-je ARIA](https://dequeuniversity.com/rules/axe/4.7/duplicate-id-aria)."
   },
   "core/audits/accessibility/duplicate-id-aria.js | failureTitle": {
     "message": "ID-ji ARIA niso enolični"
@@ -227,8 +254,17 @@
   "core/audits/accessibility/duplicate-id-aria.js | title": {
     "message": "ID-ji ARIA so enolični"
   },
+  "core/audits/accessibility/empty-heading.js | description": {
+    "message": "Naslov brez vsebine ali z besedilom, ki ni prilagojeno osebam s posebnimi potrebami, uporabnikom bralnikov zaslona preprečuje dostop do informacij v strukturi strani. [Preberite več o naslovih](https://dequeuniversity.com/rules/axe/4.7/empty-heading)."
+  },
+  "core/audits/accessibility/empty-heading.js | failureTitle": {
+    "message": "Elementi naslova so brez vsebine."
+  },
+  "core/audits/accessibility/empty-heading.js | title": {
+    "message": "Vsi elementi naslova imajo vsebino."
+  },
   "core/audits/accessibility/form-field-multiple-labels.js | description": {
-    "message": "Polja v obrazcih z več oznakami lahko podporne tehnologije, kot so bralniki zaslona, ki uporabljajo prvo, zadnjo ali vse oznake, najavijo tako, da zbegajo uporabnike. [Preberite, kako uporabljate oznake obrazca](https://dequeuniversity.com/rules/axe/4.6/form-field-multiple-labels)."
+    "message": "Polja v obrazcih z več oznakami lahko podporne tehnologije, kot so bralniki zaslona, ki uporabljajo prvo, zadnjo ali vse oznake, najavijo tako, da zbegajo uporabnike. [Preberite, kako uporabljate oznake obrazca](https://dequeuniversity.com/rules/axe/4.7/form-field-multiple-labels)."
   },
   "core/audits/accessibility/form-field-multiple-labels.js | failureTitle": {
     "message": "Polja v obrazcih imajo več oznak"
@@ -237,7 +273,7 @@
     "message": "Ni polj v obrazcih z več oznakami"
   },
   "core/audits/accessibility/frame-title.js | description": {
-    "message": "Uporabniki bralnikov zaslona se zanašajo, da jim vsebino okvirjev opišejo naslovi okvirjev. [Preberite več o naslovih okvirjev](https://dequeuniversity.com/rules/axe/4.6/frame-title)."
+    "message": "Uporabniki bralnikov zaslona se zanašajo, da jim vsebino okvirjev opišejo naslovi okvirjev. [Preberite več o naslovih okvirjev](https://dequeuniversity.com/rules/axe/4.7/frame-title)."
   },
   "core/audits/accessibility/frame-title.js | failureTitle": {
     "message": "Elementi `<frame>` ali `<iframe>` nimajo naslova"
@@ -246,7 +282,7 @@
     "message": "Elementi `<frame>` ali `<iframe>` imajo naslov"
   },
   "core/audits/accessibility/heading-order.js | description": {
-    "message": "Ustrezno razvrščeni naslovi, ki ne preskakujejo stopenj, posredujejo semantično strukturo strani, da jo je z uporabo podpornih tehnologij laže razumeti in se pomikati po njej. [Preberite več o vrstnem redu naslovov](https://dequeuniversity.com/rules/axe/4.6/heading-order)."
+    "message": "Ustrezno razvrščeni naslovi, ki ne preskakujejo stopenj, posredujejo semantično strukturo strani, da jo je z uporabo podpornih tehnologij laže razumeti in se pomikati po njej. [Preberite več o vrstnem redu naslovov](https://dequeuniversity.com/rules/axe/4.7/heading-order)."
   },
   "core/audits/accessibility/heading-order.js | failureTitle": {
     "message": "Elementi naslovov niso v zaporedno padajočem vrstnem redu"
@@ -255,7 +291,7 @@
     "message": "Elementi naslovov se pojavljajo v zaporedno padajočem vrstnem redu"
   },
   "core/audits/accessibility/html-has-lang.js | description": {
-    "message": "Če stran ne določi atributa `lang`, bralnik zaslona predvideva, da je stran v privzetem jeziku, ki ga je uporabnik izbral pri nastavljanju bralnika zaslona. Če stran ni v privzetem jeziku, bralnik zaslona morda ne bo pravilno predstavil besedila na strani. [Preberite več o atributu `lang`](https://dequeuniversity.com/rules/axe/4.6/html-has-lang)."
+    "message": "Če stran ne določi atributa `lang`, bralnik zaslona predvideva, da je stran v privzetem jeziku, ki ga je uporabnik izbral pri nastavljanju bralnika zaslona. Če stran ni v privzetem jeziku, bralnik zaslona morda ne bo pravilno predstavil besedila na strani. [Preberite več o atributu `lang`](https://dequeuniversity.com/rules/axe/4.7/html-has-lang)."
   },
   "core/audits/accessibility/html-has-lang.js | failureTitle": {
     "message": "Element `<html>` nima atributa `[lang]`"
@@ -264,7 +300,7 @@
     "message": "Element `<html>` ima atribut `[lang]`"
   },
   "core/audits/accessibility/html-lang-valid.js | description": {
-    "message": "Če določite veljaven [jezik BCP 47](https://www.w3.org/International/questions/qa-choosing-language-tags#question), pomagate bralnikom zaslona ustrezno predstaviti besedilo [Preberite več o uporabi atributa `lang`](https://dequeuniversity.com/rules/axe/4.6/html-lang-valid)."
+    "message": "Če določite veljaven [jezik BCP 47](https://www.w3.org/International/questions/qa-choosing-language-tags#question), pomagate bralnikom zaslona ustrezno predstaviti besedilo [Preberite več o uporabi atributa `lang`](https://dequeuniversity.com/rules/axe/4.7/html-lang-valid)."
   },
   "core/audits/accessibility/html-lang-valid.js | failureTitle": {
     "message": "Element `<html>` nima veljavne vrednosti za atribut `[lang]`."
@@ -272,8 +308,26 @@
   "core/audits/accessibility/html-lang-valid.js | title": {
     "message": "Element `<html>` ima veljavno vrednost za svoj atribut `[lang]`"
   },
+  "core/audits/accessibility/html-xml-lang-mismatch.js | description": {
+    "message": "Če spletna stran nima določenega doslednega jezika, bralnik zaslona morda ne bo pravilno predstavil besedila na strani. [Preberite več o atributu `lang`](https://dequeuniversity.com/rules/axe/4.7/html-xml-lang-mismatch)."
+  },
+  "core/audits/accessibility/html-xml-lang-mismatch.js | failureTitle": {
+    "message": "Element `<html>` nima atributa `[xml:lang]` z istim osnovnim jezikom kot atribut `[lang]`."
+  },
+  "core/audits/accessibility/html-xml-lang-mismatch.js | title": {
+    "message": "Element `<html>` ima atribut `[xml:lang]` z istim osnovnim jezikom kot atribut `[lang]`."
+  },
+  "core/audits/accessibility/identical-links-same-purpose.js | description": {
+    "message": "Povezave z istim ciljem morajo imeti isti opis, da bodo uporabniki lažje razumeli namen povezave in se odločili, ali jo bodo uporabili. [Preberite več o enakih povezavah](https://dequeuniversity.com/rules/axe/4.7/identical-links-same-purpose)."
+  },
+  "core/audits/accessibility/identical-links-same-purpose.js | failureTitle": {
+    "message": "Enake povezave nimajo istega namena."
+  },
+  "core/audits/accessibility/identical-links-same-purpose.js | title": {
+    "message": "Enake povezave imajo isti namen."
+  },
   "core/audits/accessibility/image-alt.js | description": {
-    "message": "Informativni elementi naj imajo kratko, opisno nadomestno besedilo. Okrasne elemente je mogoče prezreti s praznim nadomestnim atributom. [Preberite več o atributu `alt`](https://dequeuniversity.com/rules/axe/4.6/image-alt)."
+    "message": "Informativni elementi naj imajo kratko, opisno nadomestno besedilo. Okrasne elemente je mogoče prezreti s praznim nadomestnim atributom. [Preberite več o atributu `alt`](https://dequeuniversity.com/rules/axe/4.7/image-alt)."
   },
   "core/audits/accessibility/image-alt.js | failureTitle": {
     "message": "Elementi slik nimajo atributov `[alt]`"
@@ -281,8 +335,26 @@
   "core/audits/accessibility/image-alt.js | title": {
     "message": "Elementi slik imajo atribute `[alt]`"
   },
+  "core/audits/accessibility/image-redundant-alt.js | description": {
+    "message": "Informative elements should aim for short, descriptive alternative text. Alternative text that is exactly the same as the text adjacent to the link or image is potentially confusing for screen reader users, because the text will be read twice. [Learn more about the `alt` attribute](https://dequeuniversity.com/rules/axe/4.7/image-redundant-alt)."
+  },
+  "core/audits/accessibility/image-redundant-alt.js | failureTitle": {
+    "message": "Image elements have `[alt]` attributes that are redundant text."
+  },
+  "core/audits/accessibility/image-redundant-alt.js | title": {
+    "message": "Image elements do not have `[alt]` attributes that are redundant text."
+  },
+  "core/audits/accessibility/input-button-name.js | description": {
+    "message": "Če gumbom za vnos dodate prepoznavno in dostopno besedilo, bodo uporabniki bralnikov zaslona morda bolje razumeli namen gumba za vnos. [Preberite več o gumbih za vnos](https://dequeuniversity.com/rules/axe/4.7/input-button-name)."
+  },
+  "core/audits/accessibility/input-button-name.js | failureTitle": {
+    "message": "Gumbi za vnos nimajo prepoznavnega besedila."
+  },
+  "core/audits/accessibility/input-button-name.js | title": {
+    "message": "Gumbi za vnos imajo prepoznavno besedilo."
+  },
   "core/audits/accessibility/input-image-alt.js | description": {
-    "message": "Če se kot gumb `<input>` uporablja slika, lahko z navajanjem nadomestnega besedila uporabnikom bralnikov zaslona pomagate razumeti namen gumba. [Preberite več o vnosu nadomestnega besedila slike](https://dequeuniversity.com/rules/axe/4.6/input-image-alt)."
+    "message": "Če se kot gumb `<input>` uporablja slika, lahko z navajanjem nadomestnega besedila uporabnikom bralnikov zaslona pomagate razumeti namen gumba. [Preberite več o vnosu nadomestnega besedila slike](https://dequeuniversity.com/rules/axe/4.7/input-image-alt)."
   },
   "core/audits/accessibility/input-image-alt.js | failureTitle": {
     "message": "Elementi `<input type=\"image\">` nimajo besedila `[alt]`"
@@ -290,8 +362,17 @@
   "core/audits/accessibility/input-image-alt.js | title": {
     "message": "Elementi `<input type=\"image\">` imajo besedilo `[alt]`"
   },
+  "core/audits/accessibility/label-content-name-mismatch.js | description": {
+    "message": "Visible text labels that do not match the accessible name can result in a confusing experience for screen reader users. [Learn more about accessible names](https://dequeuniversity.com/rules/axe/4.7/label-content-name-mismatch)."
+  },
+  "core/audits/accessibility/label-content-name-mismatch.js | failureTitle": {
+    "message": "Elements with visible text labels do not have matching accessible names."
+  },
+  "core/audits/accessibility/label-content-name-mismatch.js | title": {
+    "message": "Elements with visible text labels have matching accessible names."
+  },
   "core/audits/accessibility/label.js | description": {
-    "message": "Oznake zagotavljajo, da pomožne tehnologije, na primer bralniki zaslona, ustrezno predstavijo kontrolnike za obrazce. [Preberite več o oznakah elementov obrazca](https://dequeuniversity.com/rules/axe/4.6/label)."
+    "message": "Oznake zagotavljajo, da pomožne tehnologije, na primer bralniki zaslona, ustrezno predstavijo kontrolnike za obrazce. [Preberite več o oznakah elementov obrazca](https://dequeuniversity.com/rules/axe/4.7/label)."
   },
   "core/audits/accessibility/label.js | failureTitle": {
     "message": "Elementi obrazcev nimajo povezanih oznak"
@@ -299,8 +380,26 @@
   "core/audits/accessibility/label.js | title": {
     "message": "Elementi obrazcev imajo povezane oznake"
   },
+  "core/audits/accessibility/landmark-one-main.js | description": {
+    "message": "Eden glavnih identifikatorjev območja na strani pomaga uporabnikom bralnikov zaslona pri premikanju po spletni strani. [Preberite več o glavnih identifikatorjih območja](https://dequeuniversity.com/rules/axe/4.7/landmark-one-main)."
+  },
+  "core/audits/accessibility/landmark-one-main.js | failureTitle": {
+    "message": "Dokument nima glavnega identifikatorja območja."
+  },
+  "core/audits/accessibility/landmark-one-main.js | title": {
+    "message": "Dokument ima glavni identifikator območja na strani."
+  },
+  "core/audits/accessibility/link-in-text-block.js | description": {
+    "message": "Besedilo z nizkim kontrastom številni uporabniki težko preberejo ali ga sploh ne morejo prebrati. Razločno besedilo povezave izboljša izkušnjo slabovidnim uporabnikom. [Preberite, kako poskrbite, da bodo povezave razločne](https://dequeuniversity.com/rules/axe/4.7/link-in-text-block)."
+  },
+  "core/audits/accessibility/link-in-text-block.js | failureTitle": {
+    "message": "Razločevanje povezav terja uporabo barv."
+  },
+  "core/audits/accessibility/link-in-text-block.js | title": {
+    "message": "Povezave je mogoče razločiti brez uporabe barv."
+  },
   "core/audits/accessibility/link-name.js | description": {
-    "message": "Besedilo za povezavo (in nadomestno besedilo za slike, kadar so uporabljene kot povezave), ki je prepoznavno in edinstveno ter ga je mogoče izbrati, uporabnikom bralnikov zaslona zagotavlja boljšo izkušnjo pomikanja. [Preberite, kako poskrbite, da bodo povezave dostopne](https://dequeuniversity.com/rules/axe/4.6/link-name)."
+    "message": "Besedilo za povezavo (in nadomestno besedilo za slike, kadar so uporabljene kot povezave), ki je prepoznavno in edinstveno ter ga je mogoče izbrati, uporabnikom bralnikov zaslona zagotavlja boljšo izkušnjo pomikanja. [Preberite, kako poskrbite, da bodo povezave dostopne](https://dequeuniversity.com/rules/axe/4.7/link-name)."
   },
   "core/audits/accessibility/link-name.js | failureTitle": {
     "message": "Povezave nimajo prepoznavnega imena"
@@ -309,7 +408,7 @@
     "message": "Povezave imajo prepoznavno ime"
   },
   "core/audits/accessibility/list.js | description": {
-    "message": "Bralniki zaslona predstavljajo sezname na poseben način. Če želite doprinesti h kakovostnejši izgovorjavi bralnikov zaslona, poskrbite za ustrezno strukturo seznamov. [Preberite več o ustrezni strukturi seznamov](https://dequeuniversity.com/rules/axe/4.6/list)."
+    "message": "Bralniki zaslona predstavljajo sezname na poseben način. Če želite doprinesti h kakovostnejši izgovorjavi bralnikov zaslona, poskrbite za ustrezno strukturo seznamov. [Preberite več o ustrezni strukturi seznamov](https://dequeuniversity.com/rules/axe/4.7/list)."
   },
   "core/audits/accessibility/list.js | failureTitle": {
     "message": "Seznami ne vsebujejo samo elementov `<li>` in elementov, ki podpirajo skripte (`<script>` in `<template>`)."
@@ -318,7 +417,7 @@
     "message": "Seznami vsebujejo samo elemente `<li>` in elemente, ki podpirajo skripte (`<script>` in `<template>`)."
   },
   "core/audits/accessibility/listitem.js | description": {
-    "message": "Bralniki zaslona zahtevajo, da so elementi seznamov (`<li>`) vsebovani v nadrejenih elementih `<ul>`, `<ol>` ali `<menu>`, da jih lahko ustrezno predstavijo. [Preberite več o ustrezni strukturi seznamov](https://dequeuniversity.com/rules/axe/4.6/listitem)."
+    "message": "Bralniki zaslona zahtevajo, da so elementi seznamov (`<li>`) vsebovani v nadrejenih elementih `<ul>`, `<ol>` ali `<menu>`, da jih lahko ustrezno predstavijo. [Preberite več o ustrezni strukturi seznamov](https://dequeuniversity.com/rules/axe/4.7/listitem)."
   },
   "core/audits/accessibility/listitem.js | failureTitle": {
     "message": "Elementi seznamov (`<li>`) niso vsebovani v nadrejenih elementih `<ul>`, `<ol>` ali `<menu>`."
@@ -327,7 +426,7 @@
     "message": "Elementi seznamov (`<li>`) so vsebovani v nadrejenih elementih `<ul>`, `<ol>` ali `<menu>`."
   },
   "core/audits/accessibility/meta-refresh.js | description": {
-    "message": "Uporabniki ne pričakujejo samodejne osvežitve strani. Če se to zgodi, se izbira pomakne nazaj na vrh strani. To lahko privede do zoprne ali zavajajoče izkušnje. [Preberite več o metaoznaki za osvežitev](https://dequeuniversity.com/rules/axe/4.6/meta-refresh)."
+    "message": "Uporabniki ne pričakujejo samodejne osvežitve strani. Če se to zgodi, se izbira pomakne nazaj na vrh strani. To lahko privede do zoprne ali zavajajoče izkušnje. [Preberite več o metaoznaki za osvežitev](https://dequeuniversity.com/rules/axe/4.7/meta-refresh)."
   },
   "core/audits/accessibility/meta-refresh.js | failureTitle": {
     "message": "Dokument uporablja `<meta http-equiv=\"refresh\">`"
@@ -336,7 +435,7 @@
     "message": "Dokument ne uporablja `<meta http-equiv=\"refresh\">`"
   },
   "core/audits/accessibility/meta-viewport.js | description": {
-    "message": "Onemogočanje povečave/pomanjšave je težavno za slabovidne uporabnike, ki se zanašajo na povečavo zaslona, da lahko ustrezno vidijo vsebino spletne strani. [Preberite več o metaoznaki viewport](https://dequeuniversity.com/rules/axe/4.6/meta-viewport)."
+    "message": "Onemogočanje povečave/pomanjšave je težavno za slabovidne uporabnike, ki se zanašajo na povečavo zaslona, da lahko ustrezno vidijo vsebino spletne strani. [Preberite več o metaoznaki viewport](https://dequeuniversity.com/rules/axe/4.7/meta-viewport)."
   },
   "core/audits/accessibility/meta-viewport.js | failureTitle": {
     "message": "Lastnosti prilagajanja velikosti `[user-scalable=\"no\"]` se uporabljajo v elementu `<meta name=\"viewport\">` ali pa je atribut `[maximum-scale]` manjši od 5."
@@ -345,7 +444,7 @@
     "message": "Lastnosti prilagajanja velikosti `[user-scalable=\"no\"]` se ne uporabljajo v elementu `<meta name=\"viewport\">` in atribut `[maximum-scale]` ni manjši od 5."
   },
   "core/audits/accessibility/object-alt.js | description": {
-    "message": "Bralniki zaslona ne morejo prevesti vsebine, ki ni besedilna. Če elementom `<object>` dodate nadomestno besedilo, bralnikom zaslona pomagate prenesti pomen uporabnikom. [Preberite več o nadomestnem besedilu za elemente `object`](https://dequeuniversity.com/rules/axe/4.6/object-alt)."
+    "message": "Bralniki zaslona ne morejo prevesti vsebine, ki ni besedilna. Če elementom `<object>` dodate nadomestno besedilo, bralnikom zaslona pomagate prenesti pomen uporabnikom. [Preberite več o nadomestnem besedilu za elemente `object`](https://dequeuniversity.com/rules/axe/4.7/object-alt)."
   },
   "core/audits/accessibility/object-alt.js | failureTitle": {
     "message": "Elementi `<object>` nimajo nadomestnega besedila"
@@ -353,8 +452,26 @@
   "core/audits/accessibility/object-alt.js | title": {
     "message": "Elementi `<object>` imajo nadomestno besedilo"
   },
+  "core/audits/accessibility/select-name.js | description": {
+    "message": "Elementi obrazcev brez učinkovitih oznak lahko uporabnikom bralnikov zaslona povzročijo neprijetne izkušnje. [Preberite več o elementu `select`](https://dequeuniversity.com/rules/axe/4.7/select-name)."
+  },
+  "core/audits/accessibility/select-name.js | failureTitle": {
+    "message": "Določeni elementi nimajo povezanih elementov oznak."
+  },
+  "core/audits/accessibility/select-name.js | title": {
+    "message": "Določeni elementi imajo povezane elemente oznak."
+  },
+  "core/audits/accessibility/skip-link.js | description": {
+    "message": "Including a skip link can help users skip to the main content to save time. [Learn more about skip links](https://dequeuniversity.com/rules/axe/4.7/skip-link)."
+  },
+  "core/audits/accessibility/skip-link.js | failureTitle": {
+    "message": "Skip links are not focusable."
+  },
+  "core/audits/accessibility/skip-link.js | title": {
+    "message": "Skip links are focusable."
+  },
   "core/audits/accessibility/tabindex.js | description": {
-    "message": "Vrednost, večja od 0, kaže na izrecno razporeditev pomikanja. Čeprav je načeloma veljavna, pogosto vodi v zoprne izkušnje za uporabnike, ki se zanašajo na pomožne tehnologije. [Preberite več o atributu `tabindex`](https://dequeuniversity.com/rules/axe/4.6/tabindex)."
+    "message": "Vrednost, večja od 0, kaže na izrecno razporeditev pomikanja. Čeprav je načeloma veljavna, pogosto vodi v zoprne izkušnje za uporabnike, ki se zanašajo na pomožne tehnologije. [Preberite več o atributu `tabindex`](https://dequeuniversity.com/rules/axe/4.7/tabindex)."
   },
   "core/audits/accessibility/tabindex.js | failureTitle": {
     "message": "Nekateri elementi imajo vrednost za `[tabindex]` večjo od 0"
@@ -362,8 +479,44 @@
   "core/audits/accessibility/tabindex.js | title": {
     "message": "Noben element nima večje vrednosti za `[tabindex]` od 0"
   },
+  "core/audits/accessibility/table-duplicate-name.js | description": {
+    "message": "The summary attribute should describe the table structure, while `<caption>` should have the onscreen title. Accurate table mark-up helps users of screen readers. [Learn more about summary and caption](https://dequeuniversity.com/rules/axe/4.7/table-duplicate-name)."
+  },
+  "core/audits/accessibility/table-duplicate-name.js | failureTitle": {
+    "message": "Tables have the same content in the summary attribute and `<caption>.`"
+  },
+  "core/audits/accessibility/table-duplicate-name.js | title": {
+    "message": "Tables have different content in the summary attribute and `<caption>`."
+  },
+  "core/audits/accessibility/table-fake-caption.js | description": {
+    "message": "Bralniki zaslona imajo funkcije za preprostejše pomikanje po tabelah. Če zagotovite, da tabele namesto celic z atributom `[colspan]` uporabljajo dejanski element napisov, lahko izboljšate izkušnjo za uporabnike bralnikov zaslona. [Več o napisih](https://dequeuniversity.com/rules/axe/4.7/table-fake-caption)."
+  },
+  "core/audits/accessibility/table-fake-caption.js | failureTitle": {
+    "message": "Tabele namesto celic z atributom `[colspan]` za navajanje napisa ne uporabljajo tega: `<caption>`."
+  },
+  "core/audits/accessibility/table-fake-caption.js | title": {
+    "message": "Tabele namesto celic z atributom `[colspan]` za navajanje napisa uporabljajo to: `<caption>`."
+  },
+  "core/audits/accessibility/target-size.js | description": {
+    "message": "Touch targets with sufficient size and spacing help users who may have difficulty targeting small controls to activate the targets. [Learn more about touch targets](https://dequeuniversity.com/rules/axe/4.7/target-size)."
+  },
+  "core/audits/accessibility/target-size.js | failureTitle": {
+    "message": "Ciljna območja dotika nimajo zadostne velikosti ali razmika."
+  },
+  "core/audits/accessibility/target-size.js | title": {
+    "message": "Ciljna območja dotika imajo zadostno velikost in razmik."
+  },
+  "core/audits/accessibility/td-has-header.js | description": {
+    "message": "Bralniki zaslona imajo funkcije za preprostejše pomikanje po tabelah. Če zagotovite, da imajo elementi `<td>` v veliki tabeli (3 ali več celic v širino in višino) povezano glavo tabele, lahko izboljšate izkušnjo za uporabnike bralnikov zaslona. [Preberite več o glavah tabel](https://dequeuniversity.com/rules/axe/4.7/td-has-header)."
+  },
+  "core/audits/accessibility/td-has-header.js | failureTitle": {
+    "message": "Elementi `<td>` v veliki tabeli `<table>` nimajo glav tabele."
+  },
+  "core/audits/accessibility/td-has-header.js | title": {
+    "message": "Elementi `<td>` v veliki tabeli `<table>` imajo enega ali več glav tabel."
+  },
   "core/audits/accessibility/td-headers-attr.js | description": {
-    "message": "Bralniki zaslona imajo funkcije za preprostejše pomikanje po razpredelnicah. Če zagotovite, da se celice `<td>`, ki uporabljajo atribut `[headers]`, nanašajo samo na druge celice v isti razpredelnici, lahko izboljšate izkušnjo za uporabnike bralnikov zaslona. [Preberite več o atributu `headers`](https://dequeuniversity.com/rules/axe/4.6/td-headers-attr)."
+    "message": "Bralniki zaslona imajo funkcije za preprostejše pomikanje po razpredelnicah. Če zagotovite, da se celice `<td>`, ki uporabljajo atribut `[headers]`, nanašajo samo na druge celice v isti razpredelnici, lahko izboljšate izkušnjo za uporabnike bralnikov zaslona. [Preberite več o atributu `headers`](https://dequeuniversity.com/rules/axe/4.7/td-headers-attr)."
   },
   "core/audits/accessibility/td-headers-attr.js | failureTitle": {
     "message": "Celice v elementu `<table>`, ki uporabljajo atribut `[headers]`, se nanašajo na element `id`, ki ga ni mogoče najti v isti razpredelnici."
@@ -372,7 +525,7 @@
     "message": "Celice v elementu `<table>`, ki uporabljajo atribut `[headers]`, se nanašajo na celice razpredelnice v isti razpredelnici."
   },
   "core/audits/accessibility/th-has-data-cells.js | description": {
-    "message": "Bralniki zaslona imajo funkcije za preprostejše pomikanje po razpredelnicah. Če zagotovite, da se glave razpredelnic vedno nanašajo na določen nabor celic, lahko izboljšate izkušnjo za uporabnike bralnikov zaslona. [Preberite več o glavah tabel](https://dequeuniversity.com/rules/axe/4.6/th-has-data-cells)."
+    "message": "Bralniki zaslona imajo funkcije za preprostejše pomikanje po razpredelnicah. Če zagotovite, da se glave razpredelnic vedno nanašajo na določen nabor celic, lahko izboljšate izkušnjo za uporabnike bralnikov zaslona. [Preberite več o glavah tabel](https://dequeuniversity.com/rules/axe/4.7/th-has-data-cells)."
   },
   "core/audits/accessibility/th-has-data-cells.js | failureTitle": {
     "message": "Elementi `<th>` in elementi z glavami `[role=\"columnheader\"/\"rowheader\"]` nimajo podatkovnih celic, ki jih opisujejo."
@@ -381,7 +534,7 @@
     "message": "Elementi `<th>` in elementi z glavami `[role=\"columnheader\"/\"rowheader\"]` imajo podatkovne celice, ki jih opisujejo."
   },
   "core/audits/accessibility/valid-lang.js | description": {
-    "message": "Če za elemente določite veljaven [jezik BCP 47](https://www.w3.org/International/questions/qa-choosing-language-tags#question), pomagate zagotoviti, da bralnik zaslona pravilno izgovori besedilo. [Preberite več o uporabi atributa `lang`](https://dequeuniversity.com/rules/axe/4.6/valid-lang)."
+    "message": "Če za elemente določite veljaven [jezik BCP 47](https://www.w3.org/International/questions/qa-choosing-language-tags#question), pomagate zagotoviti, da bralnik zaslona pravilno izgovori besedilo. [Preberite več o uporabi atributa `lang`](https://dequeuniversity.com/rules/axe/4.7/valid-lang)."
   },
   "core/audits/accessibility/valid-lang.js | failureTitle": {
     "message": "Atributi `[lang]` nimajo veljavne vrednosti"
@@ -390,7 +543,7 @@
     "message": "Atributi `[lang]` imajo veljavno vrednost"
   },
   "core/audits/accessibility/video-caption.js | description": {
-    "message": "Če ima videoposnetek dodan podnapis, lahko gluhi in slušno prizadeti uporabniki preprosteje dostopajo do informacij, ki jih podaja. [Preberite več o podnapisih v videoposnetkih](https://dequeuniversity.com/rules/axe/4.6/video-caption)."
+    "message": "Če ima videoposnetek dodan podnapis, lahko gluhi in slušno prizadeti uporabniki preprosteje dostopajo do informacij, ki jih podaja. [Preberite več o podnapisih v videoposnetkih](https://dequeuniversity.com/rules/axe/4.7/video-caption)."
   },
   "core/audits/accessibility/video-caption.js | failureTitle": {
     "message": "Elementi `<video>` ne vsebujejo elementa `<track>` z opisom `[kind=\"captions\"]`."
@@ -765,13 +918,13 @@
     "message": "Ne zahteva dovoljenja za obvestila pri nalaganju strani"
   },
   "core/audits/dobetterweb/paste-preventing-inputs.js | description": {
-    "message": "Preventing input pasting is a UX anti-pattern, and undermines good security policy. [Learn more about user-friendly input fields](https://developer.chrome.com/docs/lighthouse/best-practices/paste-preventing-inputs/)."
+    "message": "Preprečevanje lepljenja vnosov je slaba praksa za uporabniško izkušnjo in z blokiranjem upraviteljev gesel slabi varnost.[Preberite več o uporabniku prijaznih poljih za vnos](https://developer.chrome.com/docs/lighthouse/best-practices/paste-preventing-inputs/)."
   },
   "core/audits/dobetterweb/paste-preventing-inputs.js | failureTitle": {
-    "message": "Prevents users from pasting into input fields"
+    "message": "Uporabnikom preprečuje lepljenje v polja za vnos"
   },
   "core/audits/dobetterweb/paste-preventing-inputs.js | title": {
-    "message": "Allows users to paste into input fields"
+    "message": "Uporabnikom omogoča lepljenje v polja za vnos"
   },
   "core/audits/dobetterweb/uses-http2.js | columnProtocol": {
     "message": "Protokol"
@@ -902,9 +1055,6 @@
   "core/audits/installable-manifest.js | no-manifest": {
     "message": "Stran nima URL-ja manifesta <link>"
   },
-  "core/audits/installable-manifest.js | no-matching-service-worker": {
-    "message": "Noben ujemajoči proces storitve ni zaznan. Morda boste morali znova naložiti stran oziroma preveriti, ali obseg procesa storitve za trenutno stran zajema obseg in začetni URL manifesta."
-  },
   "core/audits/installable-manifest.js | no-url-for-service-worker": {
     "message": "Procesa storitve ni mogoče preveriti brez polja »start_url« v manifestu"
   },
@@ -933,7 +1083,7 @@
     "message": "Vrednost »prefer_related_applications« je podprta samo v Chromu Beta in stabilnih različicah Chroma v sistemu Android."
   },
   "core/audits/installable-manifest.js | protocol-timeout": {
-    "message": "Lighthouse ni uspel zaznati procesa storitve. Poskusite z novejšo različico Chroma."
+    "message": "Lighthouse could not determine if the page is installable. Please try with a newer version of Chrome."
   },
   "core/audits/installable-manifest.js | scheme-not-supported-for-webapk": {
     "message": "Shema URL-ja v manifestu ({scheme}) ni podprta v sistemu Android."
@@ -980,8 +1130,29 @@
   "core/audits/is-on-https.js | warning": {
     "message": "Dovoljeno z opozorilom"
   },
+  "core/audits/largest-contentful-paint-element.js | columnPercentOfLCP": {
+    "message": "% LCP-ja"
+  },
+  "core/audits/largest-contentful-paint-element.js | columnPhase": {
+    "message": "Faza"
+  },
+  "core/audits/largest-contentful-paint-element.js | columnTiming": {
+    "message": "Čas"
+  },
   "core/audits/largest-contentful-paint-element.js | description": {
     "message": "To je največji vsebinski element, izrisan znotraj vidnega območja. [Preberite več o elementu največjega vsebinskega izrisa](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-largest-contentful-paint/)."
+  },
+  "core/audits/largest-contentful-paint-element.js | itemLoadDelay": {
+    "message": "Zakasnitev nalaganja"
+  },
+  "core/audits/largest-contentful-paint-element.js | itemLoadTime": {
+    "message": "Čas nalaganja"
+  },
+  "core/audits/largest-contentful-paint-element.js | itemRenderDelay": {
+    "message": "Zakasnitev upodabljanja"
+  },
+  "core/audits/largest-contentful-paint-element.js | itemTTFB": {
+    "message": "TTFB"
   },
   "core/audits/largest-contentful-paint-element.js | title": {
     "message": "Element največjega vsebinskega izrisa"
@@ -1055,14 +1226,14 @@
   "core/audits/metrics/cumulative-layout-shift.js | description": {
     "message": "Kumulativna sprememba postavitve meri premikanje vidnih elementov znotraj vidnega območja. [Preberite več o meritvi »Kumulativna sprememba postavitve«](https://web.dev/cls/)."
   },
-  "core/audits/metrics/experimental-interaction-to-next-paint.js | description": {
-    "message": "Interakcija do naslednjega izrisa meri odzivnost strani, kako dolgo traja, da se stran vidno odzove na vnos uporabnika. [Preberite več o meritvi interakcije do naslednjega izrisa](https://web.dev/inp/)."
-  },
   "core/audits/metrics/first-contentful-paint.js | description": {
     "message": "Prvi vsebinski izris označuje čas, ko je izrisano prvo besedilo oziroma je izrisana prva slika. [Preberite več o meritvi prvega vsebinskega izrisa](https://developer.chrome.com/docs/lighthouse/performance/first-contentful-paint/)."
   },
   "core/audits/metrics/first-meaningful-paint.js | description": {
     "message": "Prvo smiselno barvanje meri, kdaj je vidna glavna vsebina strani. [Preberite več o meritvi prvega smiselnega izrisa](https://developer.chrome.com/docs/lighthouse/performance/first-meaningful-paint/)."
+  },
+  "core/audits/metrics/interaction-to-next-paint.js | description": {
+    "message": "Interakcija do naslednjega izrisa meri odzivnost strani, kako dolgo traja, da se stran vidno odzove na vnos uporabnika. [Preberite več o meritvi interakcije do naslednjega izrisa](https://web.dev/inp/)."
   },
   "core/audits/metrics/interactive.js | description": {
     "message": "Čas do interaktivnosti je čas, potreben, da stran postane povsem interaktivna. [Preberite več o meritvi »Čas do interaktivnosti«](https://developer.chrome.com/docs/lighthouse/performance/interactive/)."
@@ -1156,15 +1327,6 @@
   },
   "core/audits/redirects.js | title": {
     "message": "Izogibajte se preusmeritvam na več strani"
-  },
-  "core/audits/resource-summary.js | description": {
-    "message": "Če želite nastaviti proračune za količino in velikost sredstev strani, dodajte datoteko budget.json. [Preberite več o proračunih za uspešnost](https://web.dev/use-lighthouse-for-performance-budgets/)."
-  },
-  "core/audits/resource-summary.js | displayValue": {
-    "message": "{requestCount,plural, =1{1 zahteva • {byteCount, number, bytes} KiB}one{# zahteva • {byteCount, number, bytes} KiB}two{# zahtevi • {byteCount, number, bytes} KiB}few{# zahteve • {byteCount, number, bytes} KiB}other{# zahtev • {byteCount, number, bytes} KiB}}"
-  },
-  "core/audits/resource-summary.js | title": {
-    "message": "Število zahtev naj bo majhno in prenosi naj ne bodo preveliki"
   },
   "core/audits/seo/canonical.js | description": {
     "message": "Kanonične povezave predlagajo, kateri URL naj bo prikazan v rezultatih iskanja. [Preberite več o kanoničnih povezavah](https://developer.chrome.com/docs/lighthouse/seo/canonical/)."
@@ -1323,7 +1485,7 @@
     "message": "Datoteka robots.txt je veljavna"
   },
   "core/audits/seo/tap-targets.js | description": {
-    "message": "Interaktivni elementi, kot so gumbi in povezave, morajo biti dovolj veliki (48 x 48 slikovnih pik) in okoli njih mora biti dovolj prostora, da se jih je mogoče dotakniti, ne da bi se pri tem dotaknili drugih elementov. [Preberite več o ciljih dotikov](https://developer.chrome.com/docs/lighthouse/seo/tap-targets/)."
+    "message": "Interaktivni elementi, kot so gumbi in povezave, morajo biti dovolj veliki (48 x 48 slikovnih pik) mora biti okoli njih dovolj prostora, da se jih je mogoče dotakniti, ne da bi se pri tem dotaknili drugih elementov. [Preberite več o ciljih dotikov](https://developer.chrome.com/docs/lighthouse/seo/tap-targets/)."
   },
   "core/audits/seo/tap-targets.js | displayValue": {
     "message": "{decimalProportion, number, percent} ciljev dotika primerne velikosti"
@@ -1354,27 +1516,6 @@
   },
   "core/audits/server-response-time.js | title": {
     "message": "Začetni odzivni čas strežnika je bil kratek"
-  },
-  "core/audits/service-worker.js | description": {
-    "message": "Proces storitve je tehnologija, ki aplikaciji omogoča uporabo številnih funkcij moderne spletne aplikacije, na primer delovanje brez povezave, dodajanje na začetni zaslon in potisna obvestila. [Preberite več o procesih storitve](https://developer.chrome.com/docs/lighthouse/pwa/service-worker/)."
-  },
-  "core/audits/service-worker.js | explanationBadManifest": {
-    "message": "To stran nadzira proces storitve, vendar ni bilo mogoče najti ničesar od tega: `start_url`, ker ni bilo mogoče razčleniti manifesta kot veljavne datoteke JSON"
-  },
-  "core/audits/service-worker.js | explanationBadStartUrl": {
-    "message": "To stran nadzira proces storitve, vendar `start_url` ({startUrl}) ni v obsegu procesa storitve ({scopeUrl})"
-  },
-  "core/audits/service-worker.js | explanationNoManifest": {
-    "message": "To stran nadzira proces storitve, vendar ni bilo mogoče najti ničesar od tega: `start_url`, ker niso bili preneseni manifesti."
-  },
-  "core/audits/service-worker.js | explanationOutOfScope": {
-    "message": "Ta izvor ima enega ali več procesov storitve, vendar stran ({pageUrl}) ni v obsegu."
-  },
-  "core/audits/service-worker.js | failureTitle": {
-    "message": "Ne registrira procesa storitve, ki nadzira stran in to: `start_url`"
-  },
-  "core/audits/service-worker.js | title": {
-    "message": "Registrira proces storitve, ki nadzira stran in to: `start_url`"
   },
   "core/audits/splash-screen.js | description": {
     "message": "S tematskim pozdravnim zaslonom zagotovite visokokakovostno izkušnjo, ko uporabniki zaženejo aplikacijo z začetnih zaslonov. [Preberite več o pozdravnih zaslonih](https://developer.chrome.com/docs/lighthouse/pwa/splash-screen/)."
@@ -1497,7 +1638,7 @@
     "message": "URL zemljevida"
   },
   "core/audits/valid-source-maps.js | description": {
-    "message": "Zemljevidi izvorne kode prevedejo pomanjšano kodo v izvirno izvorno kodo. To je razvijalcem v pomoč pri odpravljanju napak v različici za splošno razpoložljivost. Lighthouse lahko zagotovi tudi dodatne vpoglede. Če želite izkoristiti te prednosti, razmislite o uvedbi zemljevidov izvorne kode. [Preberite več o zemljevidih izvorne kode](https://developers.google.com/web/tools/chrome-devtools/javascript/source-maps)."
+    "message": "Zemljevidi izvorne kode prevedejo pomanjšano kodo v izvirno izvorno kodo. To je razvijalcem v pomoč pri odpravljanju napak v različici za splošno razpoložljivost. Lighthouse lahko zagotovi tudi dodatne vpoglede. Če želite izkoristiti te prednosti, razmislite o uvedbi zemljevidov izvorne kode. [Preberite več o zemljevidih izvorne kode](https://developer.chrome.com/docs/devtools/javascript/source-maps/)."
   },
   "core/audits/valid-source-maps.js | failureTitle": {
     "message": "Manjkajoči zemljevidi izvorne kode za veliko lastno knjižnico JavaScript"
@@ -1566,7 +1707,7 @@
     "message": "Najboljši postopki"
   },
   "core/config/default-config.js | a11yCategoryDescription": {
-    "message": "Ta preverjanja izpostavijo priložnosti za [izboljšanje dostopnosti vaše spletne aplikacije](https://developer.chrome.com/docs/lighthouse/accessibility/). Samodejno je mogoče ugotoviti samo podnabor morebitnih težav z dostopnostjo, zato spodbujamo ročno preverjanje."
+    "message": "These checks highlight opportunities to [improve the accessibility of your web app](https://developer.chrome.com/docs/lighthouse/accessibility/). Automatic detection can only detect a subset of issues and does not guarantee the accessibility of your web app, so [manual testing](https://web.dev/how-to-review/) is also encouraged."
   },
   "core/config/default-config.js | a11yCategoryManualDescription": {
     "message": "Ti elementi se nanašajo na področja, ki jih ne more obdelati samodejno orodje za preizkušanje. Več o tem lahko preberete v našem vodniku o [izvedbi pregleda dostopnosti](https://web.dev/how-to-review/)."
@@ -1715,6 +1856,9 @@
   "core/gather/driver/storage.js | warningOriginDataTimeout": {
     "message": "Časovna omejitev za brisanje izvornih podatkov je potekla. Poskusite znova pregledati to stran in prijavite napako, če težave ne odpravite."
   },
+  "core/gather/gatherers/link-elements.js | headerParseWarning": {
+    "message": "Napaka pri razčlenjevanju glave `link` ({error}): `{header}`"
+  },
   "core/lib/bf-cache-strings.js | HTTPMethodNotGET": {
     "message": "Samo strani, naložene z zahtevo GET, so primerne za predpomnilnik za hitro obnovitev strani."
   },
@@ -1726,6 +1870,9 @@
   },
   "core/lib/bf-cache-strings.js | appBanner": {
     "message": "Strani, ki so zahtevale AppBanner, trenutno niso primerne za predpomnilnik za hitro obnovitev strani."
+  },
+  "core/lib/bf-cache-strings.js | authorizationHeader": {
+    "message": "Predpomnilnik za hitro obnovitev strani je onemogočen zaradi zahteve za ohranjanje povezave."
   },
   "core/lib/bf-cache-strings.js | backForwardCacheDisabled": {
     "message": "Predpomnilnik za hitro obnovitev strani je onemogočen z zastavicami. Če ga želite lokalno omogočiti v tej napravi, obiščite chrome://flags/#back-forward-cache."
@@ -1792,6 +1939,9 @@
   },
   "core/lib/bf-cache-strings.js | contentWebUSB": {
     "message": "Strani, ki uporabljajo WebUSB API, niso primerne za predpomnilnik za hitro obnovitev strani."
+  },
+  "core/lib/bf-cache-strings.js | cookieDisabled": {
+    "message": "Predpomnilnik za hitro obnovitev strani je onemogočen, ker so piškotki onemogočeni na strani, ki uporablja to: `Cache-Control: no-store`."
   },
   "core/lib/bf-cache-strings.js | dedicatedWorkerOrWorklet": {
     "message": "Strani, ki uporabljajo namenski proces ali delovni proces, trenutno niso primerne za predpomnilnik za hitro obnovitev strani."
@@ -1868,14 +2018,17 @@
   "core/lib/bf-cache-strings.js | indexedDBConnection": {
     "message": "Strani, ki imajo odprto povezavo IndexedDB, trenutno niso primerne za predpomnilnik za hitro obnovitev strani."
   },
+  "core/lib/bf-cache-strings.js | indexedDBEvent": {
+    "message": "Predpomnilnik za hitro obnovitev strani je onemogočen zaradi dogodka »IndexedDB«."
+  },
   "core/lib/bf-cache-strings.js | ineligibleAPI": {
     "message": "Uporabljeni so bili neprimerni API-ji."
   },
   "core/lib/bf-cache-strings.js | injectedJavascript": {
-    "message": "Strani, v katere razširitve vstavijo JavaScript, trenutno niso primerne za predpomnilnik za hitro obnovitev strani."
+    "message": "Strani, v katere razširitve vstavijo `JavaScript`, trenutno niso primerne za predpomnilnik za hitro obnovitev strani."
   },
   "core/lib/bf-cache-strings.js | injectedStyleSheet": {
-    "message": "Strani, v katere razširitve vstavijo StyleSheet, trenutno niso primerne za predpomnilnik za hitro obnovitev strani."
+    "message": "Strani, v katere razširitve vstavijo `StyleSheet`, trenutno niso primerne za predpomnilnik za hitro obnovitev strani."
   },
   "core/lib/bf-cache-strings.js | internalError": {
     "message": "Notranja napaka."
@@ -2114,154 +2267,190 @@
   "core/lib/csp-evaluator.js | unsafeInlineFallback": {
     "message": "Razmislite o dodajanju elementa »unsafe-inline« (brskalniki, ki podpirajo žetone/zgoščene vrednosti, ga prezrejo) zaradi povratne združljivosti s starejšimi brskalniki."
   },
-  "core/lib/deprecations-strings.js | authorizationCoveredByWildcard": {
-    "message": "Pri avtorizaciji ne bo mogoče uporabiti nadomestnega znaka (*) pri obdelavi CORS `Access-Control-Allow-Headers`."
-  },
-  "core/lib/deprecations-strings.js | canRequestURLHTTPContainingNewline": {
-    "message": "Zahteve za sredstva, katerih URL-ji so vsebovali odstranjene znake za presledke »`(n|r|t)`« in znake »manj kot« (»`<`«), so blokirane. Odstranite prelome vrstic in kodirajte znake »manj kot« z mest, kot so vrednosti atributov elementov, da bi lahko naložili ta sredstva."
-  },
-  "core/lib/deprecations-strings.js | chromeLoadTimesConnectionInfo": {
-    "message": "Možnost »`chrome.loadTimes()`« je zastarela, zato namesto nje uporabite standardizirani API: Čas krmarjenja 2."
-  },
-  "core/lib/deprecations-strings.js | chromeLoadTimesFirstPaintAfterLoadTime": {
-    "message": "Možnost »`chrome.loadTimes()`« je zastarela, zato namesto nje uporabite standardizirani API: Čas upodabljanja."
-  },
-  "core/lib/deprecations-strings.js | chromeLoadTimesWasAlternateProtocolAvailable": {
-    "message": "Možnost »`chrome.loadTimes()`« je zastarela, zato namesto nje uporabite standardizirani API: »`nextHopProtocol`« v Času krmarjenja 2."
-  },
-  "core/lib/deprecations-strings.js | cookieWithTruncatingChar": {
-    "message": "Piškotki, ki vsebujejo znak »`(0|r|n)`«, bodo zavrnjeni in ne prirezani."
-  },
-  "core/lib/deprecations-strings.js | crossOriginAccessBasedOnDocumentDomain": {
-    "message": "Opustitev pravilnika, ki predpisuje isti izvor, z nastavitvijo možnosti »`document.domain`« je zastarela in bo privzeto onemogočena. To opozorilo o zastarelosti je za dostop iz več izvorov, ki je bil omogočen z nastavitvijo možnosti »`document.domain`«."
-  },
-  "core/lib/deprecations-strings.js | crossOriginWindowApi": {
-    "message": "Sprožanje »{PH1}« iz elementov iframe iz več izvorov je zastarelo in bo v prihodnosti odstranjeno."
-  },
-  "core/lib/deprecations-strings.js | cssSelectorInternalMediaControlsOverlayCastButton": {
-    "message": "Atribut »`disableRemotePlayback`« uporabite za onemogočanje privzete integracije za predvajanje namesto izbirnika »`-internal-media-controls-overlay-cast-button`«."
-  },
-  "core/lib/deprecations-strings.js | deprecatedWithReplacement": {
-    "message": "Možnost »{PH1}« je zastarela. Namesto tega uporabite »{PH2}«."
-  },
-  "core/lib/deprecations-strings.js | deprecationExample": {
-    "message": "To je primer prevedenega sporočila o težavi zaradi zastarelosti."
-  },
-  "core/lib/deprecations-strings.js | documentDomainSettingWithoutOriginAgentClusterHeader": {
-    "message": "Opustitev pravilnika, ki predpisuje isti izvor, z nastavitvijo možnosti »`document.domain`« je zastarela in bo privzeto onemogočena. Če želite še naprej uporabljati to funkcijo, onemogočite gruče posrednikov, ki uporabljajo ključ izvora, tako da pošljete glavo »`Origin-Agent-Cluster: ?0`« skupaj z odgovorom HTTP za dokumente in okvire. Več podrobnosti: https://developer.chrome.com/blog/immutable-document-domain/."
-  },
-  "core/lib/deprecations-strings.js | eventPath": {
-    "message": "Možnost »`Event.path`« je zastarela in bo odstranjena. Namesto tega uporabite »`Event.composedPath()`«."
-  },
-  "core/lib/deprecations-strings.js | expectCTHeader": {
-    "message": "Glava možnosti »`Expect-CT`« je zastarela in bo odstranjena. Chrome zahteva preglednost potrdila za vsa javna zaupanja vredna potrdila, izdana po 30. aprilu 2018."
-  },
-  "core/lib/deprecations-strings.js | feature": {
+  "core/lib/deprecation-description.js | feature": {
     "message": "Več informacij je na voljo na strani s stanjem funkcij."
   },
-  "core/lib/deprecations-strings.js | geolocationInsecureOrigin": {
-    "message": "»`getCurrentPosition()`« in »`watchPosition()`« ne delujeta več z izvori, ki niso varni. Če želite uporabiti to funkcijo, razmislite o tem, da bi za aplikacijo uporabili varen izvor, kot je HTTPS. Več podrobnosti: https://goo.gle/chrome-insecure-origins."
-  },
-  "core/lib/deprecations-strings.js | geolocationInsecureOriginDeprecatedNotRemoved": {
-    "message": "Možnosti »`getCurrentPosition()`« in »`watchPosition()`« sta označeni kot zastareli za izvore, ki niso varni. Če želite uporabiti to funkcijo, razmislite o tem, da bi za aplikacijo uporabili varen izvor, kot je HTTPS. Več podrobnosti: https://goo.gle/chrome-insecure-origins."
-  },
-  "core/lib/deprecations-strings.js | getUserMediaInsecureOrigin": {
-    "message": "»`getUserMedia()`« ne deluje več z izvori, ki niso varni. Če želite uporabiti to funkcijo, razmislite o tem, da bi za aplikacijo uporabili varen izvor, kot je HTTPS. Več podrobnosti: https://goo.gle/chrome-insecure-origins."
-  },
-  "core/lib/deprecations-strings.js | hostCandidateAttributeGetter": {
-    "message": "Možnost »`RTCPeerConnectionIceErrorEvent.hostCandidate`« je zastarela. Namesto nje uporabite »`RTCPeerConnectionIceErrorEvent.address`« ali »`RTCPeerConnectionIceErrorEvent.port`«."
-  },
-  "core/lib/deprecations-strings.js | identityInCanMakePaymentEvent": {
-    "message": "Izvor trgovca in arbitrarni podatki iz dogodka procesa storitve `canmakepayment` so zastareli in bodo odstranjeni: `topOrigin`, `paymentRequestOrigin`, `methodData`, `modifiers`."
-  },
-  "core/lib/deprecations-strings.js | insecurePrivateNetworkSubresourceRequest": {
-    "message": "Spletno mesto je zahtevalo podsredstvo iz omrežja, do katerega je lahko dostopalo samo zaradi uporabnikovega prednostnega omrežnega položaja. Te zahteve razkrivajo naprave in strežnike, ki niso javni, v internetu, s čimer se poveča nevarnost za napad s poneverbo zahteve med spletnimi mesti (CSRF) in/ali puščanje podatkov. Za zmanjšanje teh nevarnosti Chrome označi zahteve podsredstvom, ki niso javna, kot zastarele, pri sprožanju iz kontekstov, ki niso varni, in jih bo začel blokirati."
-  },
-  "core/lib/deprecations-strings.js | localCSSFileExtensionRejected": {
-    "message": "Slogov CSS ni mogoče naložiti iz URL-jev za »`file:`«, razen če se končajo s datotečno pripono `.css`."
-  },
-  "core/lib/deprecations-strings.js | mediaSourceAbortRemove": {
-    "message": "Uporaba možnosti »`SourceBuffer.abort()`« za prekinitev asinhrone odstranitve obsega za »`remove()`« je zastarela zaradi spremembe specifikacije. Podpora bo v prihodnosti odstranjena. Namesto tega raje poslušajte dogodek `updateend`. Možnost »`abort()`« je namenjena samo za prekinitev asinhronega dodajanja predstavnosti ali ponastavitev stanja razčlenjevalnika."
-  },
-  "core/lib/deprecations-strings.js | mediaSourceDurationTruncatingBuffered": {
-    "message": "Nastavitev možnosti »`MediaSource.duration`« pod najvišji časovni žig predstavitve katerih koli medpomnjenih kodiranih okvirov je zastarela zaradi spremembe specifikacije. Podpora za implicitno odstranitev prirezanih medpomnjenih predstavnosti bo v prihodnosti odstranjena. Namesto tega izvedite eksplicitno možnost »`remove(newDuration, oldDuration)`« na vseh »`sourceBuffers`«, kjer je `newDuration < oldDuration`."
-  },
-  "core/lib/deprecations-strings.js | milestone": {
+  "core/lib/deprecation-description.js | milestone": {
     "message": "Ta sprememba bo začela veljati z mejnikom {milestone}."
   },
-  "core/lib/deprecations-strings.js | noSysexWebMIDIWithoutPermission": {
-    "message": "Spletni MIDI bo zahteval dovoljenje za uporabo, tudi če sysex ni določen v »`MIDIOptions`«."
-  },
-  "core/lib/deprecations-strings.js | notificationInsecureOrigin": {
-    "message": "Obvestilnega API-ja ni več dovoljeno uporabljati iz izvorov, ki niso varni. Razmislite o tem, da bi za aplikacijo uporabili varen izvor, kot je HTTPS. Več podrobnosti: https://goo.gle/chrome-insecure-origins."
-  },
-  "core/lib/deprecations-strings.js | notificationPermissionRequestedIframe": {
-    "message": "Dovoljenja za obvestilni API ni več mogoče zahtevati iz elementa iframe iz več izvorov. Razmislite o tem, da bi namesto tega zahtevali dovoljenje od okvira na visoki ravni ali odprli novo okno."
-  },
-  "core/lib/deprecations-strings.js | obsoleteWebRtcCipherSuite": {
-    "message": "Vaš partner poskuša pri pogajanju uporabiti zastarelo različico (D)TLS. Obrnite se na partnerja, da to popravi."
-  },
-  "core/lib/deprecations-strings.js | openWebDatabaseInsecureContext": {
-    "message": "WebSQL je v kontekstih, ki niso varni, zastarel in bo kmalu odstranjen. Uporabite spletno shrambo ali indeksirano zbirko podatkov."
-  },
-  "core/lib/deprecations-strings.js | overflowVisibleOnReplacedElement": {
-    "message": "Če določite lastnost `overflow: visible` za oznake slik, videooznake in oznake platna, se lahko zaradi tega zgodi, da bodo vizualno vsebino ustvarjale zunaj mej elementa. Oglejte si https://github.com/WICG/shared-element-transitions/blob/main/debugging_overflow_on_images.md."
-  },
-  "core/lib/deprecations-strings.js | paymentInstruments": {
-    "message": "Možnost »`paymentManager.instruments`« je zastarela. Za rutine za obravnavo plačil raje uporabite namestitve »just-in-time«."
-  },
-  "core/lib/deprecations-strings.js | paymentRequestCSPViolation": {
-    "message": "Klic API-ja `PaymentRequest` je zaobšel direktivo `connect-src` pravilnika o varnosti vsebine. To zaobidenje je zastarelo. Dodajte identifikator plačilnega sredstva iz API-ja `PaymentRequest` (v polju `supportedMethods`) v direktivo `connect-src` pravilnika o varnosti vsebine."
-  },
-  "core/lib/deprecations-strings.js | persistentQuotaType": {
-    "message": "Možnost »`StorageType.persistent`« je zastarela. Namesto tega uporabite standardizirano `navigator.storage`."
-  },
-  "core/lib/deprecations-strings.js | pictureSourceSrc": {
-    "message": "Element »`<source src>`« z nadrejenim elementom »`<picture>`« je neveljaven in torej prezrt. Namesto tega uporabite »`<source srcset>`«."
-  },
-  "core/lib/deprecations-strings.js | prefixedStorageInfo": {
-    "message": "Možnost »`window.webkitStorageInfo`« je zastarela. Namesto tega uporabite standardizirano `navigator.storage`."
-  },
-  "core/lib/deprecations-strings.js | requestedSubresourceWithEmbeddedCredentials": {
-    "message": "Zahteve za podsredstva, katerih URL-ji vsebujejo vdelane poverilnice (npr. »`https://user:pass@host/`«), so blokirane."
-  },
-  "core/lib/deprecations-strings.js | rtcConstraintEnableDtlsSrtpFalse": {
-    "message": "Omejitev »`DtlsSrtpKeyAgreement`« je odstranjena. Navedli ste vrednost »`false`« za to omejitev, kar se razlaga kot poskus uporabe odstranjene metode »`SDES key negotiation`«. Ta funkcija je odstranjena. Namesto nje uporabite storitev, ki podpira »`DTLS key negotiation`«."
-  },
-  "core/lib/deprecations-strings.js | rtcConstraintEnableDtlsSrtpTrue": {
-    "message": "Omejitev »`DtlsSrtpKeyAgreement`« je odstranjena. Za to omejitev ste navedli vrednost »`true`«, kar ni imelo nobenega vpliva, lahko pa to omejitev odstranite zaradi jasnosti."
-  },
-  "core/lib/deprecations-strings.js | rtcPeerConnectionComplexPlanBSdpUsingDefaultSdpSemantics": {
-    "message": "Zaznan je »`Complex Plan B SDP`«. Dialekt elementa »`Session Description Protocol`« ni več podprt. Namesto tega uporabite »`Unified Plan SDP`«."
-  },
-  "core/lib/deprecations-strings.js | rtcPeerConnectionSdpSemanticsPlanB": {
-    "message": "»`Plan B SDP semantics`«, ki se uporablja pri sestavljanju »`RTCPeerConnection`« z »`{sdpSemantics:plan-b}`«, je starejša nestandardna različica »`Session Description Protocol`«, ki je trajno odstranjena s spletne platforme. Še vedno je na voljo pri sestavljanju »`IS_FUCHSIA`«, vendar jo nameravamo čim prej izbrisati. Ne zanašajte se več nanjo. Za stanje glejte: https://crbug.com/1302249."
-  },
-  "core/lib/deprecations-strings.js | rtcpMuxPolicyNegotiate": {
-    "message": "Možnost »`rtcpMuxPolicy`« je zastarela in bo odstranjena."
-  },
-  "core/lib/deprecations-strings.js | sharedArrayBufferConstructedWithoutIsolation": {
-    "message": "Za »`SharedArrayBuffer`« bo potrebno izoliranje od drugih izvorov. Več podrobnosti: https://developer.chrome.com/blog/enabling-shared-array-buffer/."
-  },
-  "core/lib/deprecations-strings.js | textToSpeech_DisallowedByAutoplay": {
-    "message": "Možnost »`speechSynthesis.speak()`« brez aktiviranja uporabnika je zastarela in bo odstranjena."
-  },
-  "core/lib/deprecations-strings.js | title": {
+  "core/lib/deprecation-description.js | title": {
     "message": "Uporabljena je bila zastarela funkcija"
   },
-  "core/lib/deprecations-strings.js | v8SharedArrayBufferConstructedInExtensionWithoutIsolation": {
+  "core/lib/deprecations-strings.js | AuthorizationCoveredByWildcard": {
+    "message": "Pri avtorizaciji ne bo mogoče uporabiti nadomestnega znaka (*) pri obdelavi CORS `Access-Control-Allow-Headers`."
+  },
+  "core/lib/deprecations-strings.js | CSSSelectorInternalMediaControlsOverlayCastButton": {
+    "message": "Atribut »`disableRemotePlayback`« uporabite za onemogočanje privzete integracije za predvajanje namesto izbirnika »`-internal-media-controls-overlay-cast-button`«."
+  },
+  "core/lib/deprecations-strings.js | CanRequestURLHTTPContainingNewline": {
+    "message": "Zahteve za sredstva, katerih URL-ji so vsebovali odstranjene znake za presledke »`(n|r|t)`« in znake »manj kot« (»`<`«), so blokirane. Odstranite prelome vrstic in kodirajte znake »manj kot« z mest, kot so vrednosti atributov elementov, da bi lahko naložili ta sredstva."
+  },
+  "core/lib/deprecations-strings.js | ChromeLoadTimesConnectionInfo": {
+    "message": "Možnost »`chrome.loadTimes()`« je zastarela, zato namesto nje uporabite standardizirani API: Čas krmarjenja 2."
+  },
+  "core/lib/deprecations-strings.js | ChromeLoadTimesFirstPaintAfterLoadTime": {
+    "message": "Možnost »`chrome.loadTimes()`« je zastarela, zato namesto nje uporabite standardizirani API: Čas upodabljanja."
+  },
+  "core/lib/deprecations-strings.js | ChromeLoadTimesWasAlternateProtocolAvailable": {
+    "message": "Možnost »`chrome.loadTimes()`« je zastarela, zato namesto nje uporabite standardizirani API: »`nextHopProtocol`« v Času krmarjenja 2."
+  },
+  "core/lib/deprecations-strings.js | CookieWithTruncatingChar": {
+    "message": "Piškotki, ki vsebujejo znak »`(0|r|n)`«, bodo zavrnjeni in ne prirezani."
+  },
+  "core/lib/deprecations-strings.js | CrossOriginAccessBasedOnDocumentDomain": {
+    "message": "Opustitev pravilnika, ki predpisuje isti izvor, z nastavitvijo možnosti »`document.domain`« je zastarela in bo privzeto onemogočena. To opozorilo o zastarelosti je za dostop iz več izvorov, ki je bil omogočen z nastavitvijo možnosti »`document.domain`«."
+  },
+  "core/lib/deprecations-strings.js | CrossOriginWindowAlert": {
+    "message": "Sprožanje »window.alert« iz elementov iframe iz več izvorov je zastarelo in bo v prihodnosti odstranjeno."
+  },
+  "core/lib/deprecations-strings.js | CrossOriginWindowConfirm": {
+    "message": "Sprožanje »window.confirm« iz elementov iframe iz več izvorov je zastarelo in bo v prihodnosti odstranjeno."
+  },
+  "core/lib/deprecations-strings.js | DOMMutationEvents": {
+    "message": "Dogodki mutacij DOM, vključno s temi: `DOMSubtreeModified`, `DOMNodeInserted`, `DOMNodeRemoved`, `DOMNodeRemovedFromDocument`, `DOMNodeInsertedIntoDocument` in `DOMCharacterDataModified`, so zastareli (https://w3c.github.io/uievents/#legacy-event-types) in bodo odstranjeni. Namesto tega uporabite »`MutationObserver`«."
+  },
+  "core/lib/deprecations-strings.js | DataUrlInSvgUse": {
+    "message": "Podpora za podatke: URL-ji v elementu <use> SVG so zastareli in bodo v prihodnosti odstranjeni."
+  },
+  "core/lib/deprecations-strings.js | DocumentDomainSettingWithoutOriginAgentClusterHeader": {
+    "message": "Opustitev pravilnika, ki predpisuje isti izvor, z nastavitvijo možnosti »`document.domain`« je zastarela in bo privzeto onemogočena. Če želite še naprej uporabljati to funkcijo, onemogočite gruče posrednikov, ki uporabljajo ključ izvora, tako da pošljete glavo »`Origin-Agent-Cluster: ?0`« skupaj z odgovorom HTTP za dokumente in okvire. Več podrobnosti: https://developer.chrome.com/blog/immutable-document-domain/."
+  },
+  "core/lib/deprecations-strings.js | ExpectCTHeader": {
+    "message": "Glava možnosti »`Expect-CT`« je zastarela in bo odstranjena. Chrome zahteva preglednost potrdila za vsa javna zaupanja vredna potrdila, izdana po 30. aprilu 2018."
+  },
+  "core/lib/deprecations-strings.js | GeolocationInsecureOrigin": {
+    "message": "»`getCurrentPosition()`« in »`watchPosition()`« ne delujeta več z izvori, ki niso varni. Če želite uporabiti to funkcijo, razmislite o tem, da bi za aplikacijo uporabili varen izvor, kot je HTTPS. Več podrobnosti: https://goo.gle/chrome-insecure-origins."
+  },
+  "core/lib/deprecations-strings.js | GeolocationInsecureOriginDeprecatedNotRemoved": {
+    "message": "Možnosti »`getCurrentPosition()`« in »`watchPosition()`« sta označeni kot zastareli za izvore, ki niso varni. Če želite uporabiti to funkcijo, razmislite o tem, da bi za aplikacijo uporabili varen izvor, kot je HTTPS. Več podrobnosti: https://goo.gle/chrome-insecure-origins."
+  },
+  "core/lib/deprecations-strings.js | GetUserMediaInsecureOrigin": {
+    "message": "»`getUserMedia()`« ne deluje več z izvori, ki niso varni. Če želite uporabiti to funkcijo, razmislite o tem, da bi za aplikacijo uporabili varen izvor, kot je HTTPS. Več podrobnosti: https://goo.gle/chrome-insecure-origins."
+  },
+  "core/lib/deprecations-strings.js | HostCandidateAttributeGetter": {
+    "message": "Možnost »`RTCPeerConnectionIceErrorEvent.hostCandidate`« je zastarela. Namesto nje uporabite »`RTCPeerConnectionIceErrorEvent.address`« ali »`RTCPeerConnectionIceErrorEvent.port`«."
+  },
+  "core/lib/deprecations-strings.js | IdentityInCanMakePaymentEvent": {
+    "message": "Izvor trgovca in arbitrarni podatki iz dogodka procesa storitve `canmakepayment` so zastareli in bodo odstranjeni: `topOrigin`, `paymentRequestOrigin`, `methodData`, `modifiers`."
+  },
+  "core/lib/deprecations-strings.js | InsecurePrivateNetworkSubresourceRequest": {
+    "message": "Spletno mesto je zahtevalo podsredstvo iz omrežja, do katerega je lahko dostopalo samo zaradi uporabnikovega prednostnega omrežnega položaja. Te zahteve razkrivajo naprave in strežnike, ki niso javni, v internetu, s čimer se poveča nevarnost za napad s poneverbo zahteve med spletnimi mesti (CSRF) in/ali puščanje podatkov. Za zmanjšanje teh nevarnosti Chrome označi zahteve podsredstvom, ki niso javna, kot zastarele, pri sprožanju iz kontekstov, ki niso varni, in jih bo začel blokirati."
+  },
+  "core/lib/deprecations-strings.js | InterestGroupDailyUpdateUrl": {
+    "message": "Polje `dailyUpdateUrl` v strukturi `InterestGroups`, posredovano sem: `joinAdInterestGroup()`, je bilo preimenovano v `updateUrl`, da natančneje odraža svoje delovanje."
+  },
+  "core/lib/deprecations-strings.js | LocalCSSFileExtensionRejected": {
+    "message": "Slogov CSS ni mogoče naložiti iz URL-jev za »`file:`«, razen če se končajo s datotečno pripono `.css`."
+  },
+  "core/lib/deprecations-strings.js | MediaSourceAbortRemove": {
+    "message": "Uporaba možnosti »`SourceBuffer.abort()`« za prekinitev asinhrone odstranitve obsega za »`remove()`« je zastarela zaradi spremembe specifikacije. Podpora bo v prihodnosti odstranjena. Namesto tega raje poslušajte dogodek `updateend`. Možnost »`abort()`« je namenjena samo za prekinitev asinhronega dodajanja predstavnosti ali ponastavitev stanja razčlenjevalnika."
+  },
+  "core/lib/deprecations-strings.js | MediaSourceDurationTruncatingBuffered": {
+    "message": "Nastavitev možnosti »`MediaSource.duration`« pod najvišji časovni žig predstavitve katerih koli medpomnjenih kodiranih okvirov je zastarela zaradi spremembe specifikacije. Podpora za implicitno odstranitev prirezanih medpomnjenih predstavnosti bo v prihodnosti odstranjena. Namesto tega izvedite eksplicitno možnost »`remove(newDuration, oldDuration)`« na vseh »`sourceBuffers`«, kjer je `newDuration < oldDuration`."
+  },
+  "core/lib/deprecations-strings.js | NoSysexWebMIDIWithoutPermission": {
+    "message": "Spletni MIDI bo zahteval dovoljenje za uporabo, tudi če sysex ni določen v »`MIDIOptions`«."
+  },
+  "core/lib/deprecations-strings.js | NonStandardDeclarativeShadowDOM": {
+    "message": "Starejši, nestandardizirani atribut `shadowroot` je zastarel in v različici M119 *ne bo več deloval*. Uporabite novi, standardizirani atribut `shadowrootmode`."
+  },
+  "core/lib/deprecations-strings.js | NotificationInsecureOrigin": {
+    "message": "Obvestilnega API-ja ni več dovoljeno uporabljati iz izvorov, ki niso varni. Razmislite o tem, da bi za aplikacijo uporabili varen izvor, kot je HTTPS. Več podrobnosti: https://goo.gle/chrome-insecure-origins."
+  },
+  "core/lib/deprecations-strings.js | NotificationPermissionRequestedIframe": {
+    "message": "Dovoljenja za obvestilni API ni več mogoče zahtevati iz elementa iframe iz več izvorov. Razmislite o tem, da bi namesto tega zahtevali dovoljenje od okvira na visoki ravni ali odprli novo okno."
+  },
+  "core/lib/deprecations-strings.js | ObsoleteCreateImageBitmapImageOrientationNone": {
+    "message": "Možnost »`imageOrientation: 'none'`« v elementu »createImageBitmap« je zastarela. Namesto tega uporabite element »createImageBitmap« z možnostjo \\{imageOrientation: 'from-image'\\}."
+  },
+  "core/lib/deprecations-strings.js | ObsoleteWebRtcCipherSuite": {
+    "message": "Vaš partner poskuša pri pogajanju uporabiti zastarelo različico (D)TLS. Obrnite se na partnerja, da to popravi."
+  },
+  "core/lib/deprecations-strings.js | OverflowVisibleOnReplacedElement": {
+    "message": "Če določite lastnost `overflow: visible` za oznake slik, videooznake in oznake platna, se lahko zaradi tega zgodi, da bodo vizualno vsebino ustvarjale zunaj mej elementa. Oglejte si https://github.com/WICG/shared-element-transitions/blob/main/debugging_overflow_on_images.md."
+  },
+  "core/lib/deprecations-strings.js | PaymentInstruments": {
+    "message": "Možnost »`paymentManager.instruments`« je zastarela. Za rutine za obravnavo plačil raje uporabite namestitve »just-in-time«."
+  },
+  "core/lib/deprecations-strings.js | PaymentRequestCSPViolation": {
+    "message": "Klic API-ja `PaymentRequest` je zaobšel direktivo `connect-src` pravilnika o varnosti vsebine. To zaobidenje je zastarelo. Dodajte identifikator plačilnega sredstva iz API-ja `PaymentRequest` (v polju `supportedMethods`) v direktivo `connect-src` pravilnika o varnosti vsebine."
+  },
+  "core/lib/deprecations-strings.js | PersistentQuotaType": {
+    "message": "Možnost »`StorageType.persistent`« je zastarela. Namesto tega uporabite standardizirano `navigator.storage`."
+  },
+  "core/lib/deprecations-strings.js | PictureSourceSrc": {
+    "message": "Element »`<source src>`« z nadrejenim elementom »`<picture>`« je neveljaven in torej prezrt. Namesto tega uporabite »`<source srcset>`«."
+  },
+  "core/lib/deprecations-strings.js | PrefixedCancelAnimationFrame": {
+    "message": "Metoda webkitCancelAnimationFrame je samo za določenega ponudnika. Uporabite standardno metodo cancelAnimationFrame."
+  },
+  "core/lib/deprecations-strings.js | PrefixedRequestAnimationFrame": {
+    "message": "Metoda webkitRequestAnimationFrame je samo za določenega ponudnika. Uporabite standardno metodo requestAnimationFrame."
+  },
+  "core/lib/deprecations-strings.js | PrefixedVideoDisplayingFullscreen": {
+    "message": "API HTMLVideoElement.webkitDisplayingFullscreen je zastarel. Uporabite »Document.fullscreenElement«."
+  },
+  "core/lib/deprecations-strings.js | PrefixedVideoEnterFullScreen": {
+    "message": "API HTMLVideoElement.webkitEnterFullScreen() je zastarel. Uporabite »Element.requestFullscreen()«."
+  },
+  "core/lib/deprecations-strings.js | PrefixedVideoEnterFullscreen": {
+    "message": "API HTMLVideoElement.webkitEnterFullscreen() je zastarel. Uporabite »Element.requestFullscreen()«."
+  },
+  "core/lib/deprecations-strings.js | PrefixedVideoExitFullScreen": {
+    "message": "API HTMLVideoElement.webkitExitFullScreen() je zastarel. Uporabite »Document.exitFullscreen()«."
+  },
+  "core/lib/deprecations-strings.js | PrefixedVideoExitFullscreen": {
+    "message": "API HTMLVideoElement.webkitExitFullscreen() je zastarel. Uporabite »Document.exitFullscreen()«."
+  },
+  "core/lib/deprecations-strings.js | PrefixedVideoSupportsFullscreen": {
+    "message": "API HTMLVideoElement.webkitSupportsFullscreen je zastarel. Uporabite »Document.fullscreenEnabled«."
+  },
+  "core/lib/deprecations-strings.js | PrivacySandboxExtensionsAPI": {
+    "message": "API `chrome.privacy.websites.privacySandboxEnabled` bo označen kot zastarel, vendar bo do izdaje različice M113 aktiven zaradi povratne združljivosti. Namesto tega API-ja uporabite `chrome.privacy.websites.topicsEnabled`, `chrome.privacy.websites.fledgeEnabled` in `chrome.privacy.websites.adMeasurementEnabled`. Glejte https://developer.chrome.com/docs/extensions/reference/privacy/#property-websites-privacySandboxEnabled."
+  },
+  "core/lib/deprecations-strings.js | RTCConstraintEnableDtlsSrtpFalse": {
+    "message": "Omejitev »`DtlsSrtpKeyAgreement`« je odstranjena. Navedli ste vrednost »`false`« za to omejitev, kar se razlaga kot poskus uporabe odstranjene metode »`SDES key negotiation`«. Ta funkcija je odstranjena. Namesto nje uporabite storitev, ki podpira »`DTLS key negotiation`«."
+  },
+  "core/lib/deprecations-strings.js | RTCConstraintEnableDtlsSrtpTrue": {
+    "message": "Omejitev »`DtlsSrtpKeyAgreement`« je odstranjena. Za to omejitev ste navedli vrednost »`true`«, kar ni imelo nobenega vpliva, lahko pa to omejitev odstranite zaradi jasnosti."
+  },
+  "core/lib/deprecations-strings.js | RTCPeerConnectionGetStatsLegacyNonCompliant": {
+    "message": "Metoda getStats(), ki temelji na povratnih klicih, je zastarela in bo odstranjena. Uporabite metodo getStats(), ki je skladna s tehničnimi podatki."
+  },
+  "core/lib/deprecations-strings.js | RangeExpand": {
+    "message": "Obseg Range.expand() je zastarel. Uporabite »Selection.modify()«."
+  },
+  "core/lib/deprecations-strings.js | RequestedSubresourceWithEmbeddedCredentials": {
+    "message": "Zahteve za podsredstva, katerih URL-ji vsebujejo vdelane poverilnice (npr. »`https://user:pass@host/`«), so blokirane."
+  },
+  "core/lib/deprecations-strings.js | RtcpMuxPolicyNegotiate": {
+    "message": "Možnost »`rtcpMuxPolicy`« je zastarela in bo odstranjena."
+  },
+  "core/lib/deprecations-strings.js | SharedArrayBufferConstructedWithoutIsolation": {
+    "message": "Za »`SharedArrayBuffer`« bo potrebno izoliranje od drugih izvorov. Več podrobnosti: https://developer.chrome.com/blog/enabling-shared-array-buffer/."
+  },
+  "core/lib/deprecations-strings.js | TextToSpeech_DisallowedByAutoplay": {
+    "message": "Možnost »`speechSynthesis.speak()`« brez aktiviranja uporabnika je zastarela in bo odstranjena."
+  },
+  "core/lib/deprecations-strings.js | V8SharedArrayBufferConstructedInExtensionWithoutIsolation": {
     "message": "Razširitve, ki želijo še naprej uporabljati »`SharedArrayBuffer`«, morajo omogočiti izoliranje od drugih izvorov. Glejte: https://developer.chrome.com/docs/extensions/mv3/cross-origin-isolation/."
   },
-  "core/lib/deprecations-strings.js | vendorSpecificApi": {
-    "message": "Možnost »{PH1}« je samo za določenega od dobavitelja. Namesto tega uporabite standardni {PH2}."
+  "core/lib/deprecations-strings.js | WebSQL": {
+    "message": "Spletni SQL je zastarel. Uporabite SQLite WebAssembly ali programski vmesnik Indexed Database."
   },
-  "core/lib/deprecations-strings.js | xhrJSONEncodingDetection": {
+  "core/lib/deprecations-strings.js | WindowPlacementPermissionDescriptorUsed": {
+    "message": "Deskriptor dovoljenja `window-placement` je zastarel. Uporabite pravilnik o dovoljenjih `window-management`. Dodatna pomoč je na voljo na https://bit.ly/window-placement-rename."
+  },
+  "core/lib/deprecations-strings.js | WindowPlacementPermissionPolicyParsed": {
+    "message": "Pravilnik o dovoljenjih `window-placement` je zastarel. Uporabite pravilnik o dovoljenjih `window-management`. Dodatna pomoč je na voljo na https://bit.ly/window-placement-rename."
+  },
+  "core/lib/deprecations-strings.js | XHRJSONEncodingDetection": {
     "message": "JSON odgovora v »`XMLHttpRequest`« ne podpira standarda UTF-16."
   },
-  "core/lib/deprecations-strings.js | xmlHttpRequestSynchronousInNonWorkerOutsideBeforeUnload": {
+  "core/lib/deprecations-strings.js | XMLHttpRequestSynchronousInNonWorkerOutsideBeforeUnload": {
     "message": "Sinhrona možnost »`XMLHttpRequest`« na glavni niti je zastarela, ker slabo vpliva na izkušnjo končnega uporabnika. Dodatna pomoč: https://xhr.spec.whatwg.org/."
   },
-  "core/lib/deprecations-strings.js | xrSupportsSession": {
+  "core/lib/deprecations-strings.js | XRSupportsSession": {
     "message": "Možnost »`supportsSession()`« je zastarela. Uporabite »`isSessionSupported()`« in namesto tega preverite razrešeno logično vrednost."
   },
   "core/lib/i18n/i18n.js | columnBlockingTime": {
@@ -2664,7 +2853,7 @@
     "message": "Namestite [modul sistema Drupal](https://www.drupal.org/project/project_module?f%5B0%5D=&f%5B1%5D=&f%5B2%5D=im_vid_3%3A67&f%5B3%5D=&f%5B4%5D=sm_field_project_type%3Afull&f%5B5%5D=&f%5B6%5D=&text=%22lazy+load%22&solrsort=iss_project_release_usage+desc&op=Search), ki lahko uporablja odloženo nalaganje slik. Taki moduli omogočajo odlog nalaganja slik, ki niso na zaslonu, za večjo učinkovitost delovanja."
   },
   "node_modules/lighthouse-stack-packs/packs/drupal.js | render-blocking-resources": {
-    "message": "Razmislite o uporabi modula za vstavljanje kritičnega CSS-ja in JavaScripta ali potencialno asinhrono nalaganje elementov prek JavaScripta, kot je modul [Napredno združevanje za CSS/JS](https://www.drupal.org/project/advagg). Upoštevajte, da lahko optimizacije, ki jih ponuja ta modul, pokvarijo delovanje vašega spletnega mesta, zato boste verjetno morali spremeniti kodo."
+    "message": "Consider using a module to inline critical CSS and JavaScript, and use the defer attribute for non-critical CSS or JavaScript."
   },
   "node_modules/lighthouse-stack-packs/packs/drupal.js | server-response-time": {
     "message": "Teme, moduli in strežniške specifikacije prispevajo k odzivnemu času strežnika. Razmislite o tem, da bi poiskali bolj optimizirano temo, skrbno izbrali optimizacijski modul in/ali nadgradili strežnik. Vaši gostiteljski strežniki bi morali izkoriščati predpomnjenje operativne kode, predpomnjenje pomnilnika za skrajšanje časa poizvedbe v zbirki podatkov (denimo programsko opremo Redis ali Memcached) ter tudi optimizirano logiko aplikacij za hitrejšo pripravo strani."
@@ -2673,10 +2862,10 @@
     "message": "Razmislite o uporabi [slogov odzivnih slik](https://www.drupal.org/docs/8/mobile-guide/responsive-images-in-drupal-8) za zmanjšanje velikosti slik, naloženih na strani. Če za prikaz več vsebinskih elementov na strani uporabljate funkcijo Pogledi, razmislite o razdelitvi na več strani, da omejite število vsebinskih elementov, prikazanih na določeni strani."
   },
   "node_modules/lighthouse-stack-packs/packs/drupal.js | unminified-css": {
-    "message": "Preverite, ali ste omogočili možnost »Združevanje datotek CSS« na strani »Skrbništvo » Konfiguracija » Razvoj«. V [dodatnih modulih](https://www.drupal.org/project/project_module?f%5B0%5D=&f%5B1%5D=&f%5B2%5D=im_vid_3%3A123&f%5B3%5D=&f%5B4%5D=sm_field_project_type%3Afull&f%5B5%5D=&f%5B6%5D=&text=css+aggregation&solrsort=iss_project_release_usage+desc&op=Search) lahko konfigurirate tudi naprednejše možnosti združevanja ter tako s sestavljanjem, pomanjševanjem in stiskanjem slogov za CSS pospešite svoje spletno mesto."
+    "message": "Ensure you have enabled \"Aggregate CSS files\" in the \"Administration » Configuration » Development\" page.  Ensure your Drupal site is running at least Drupal 10.1 for improved asset aggregation support."
   },
   "node_modules/lighthouse-stack-packs/packs/drupal.js | unminified-javascript": {
-    "message": "Preverite, ali ste omogočili možnost »Združevanje datotek JavaScript« na strani »Skrbništvo » Konfiguracija » Razvoj«. V [dodatnih modulih](https://www.drupal.org/project/project_module?f%5B0%5D=&f%5B1%5D=&f%5B2%5D=im_vid_3%3A123&f%5B3%5D=&f%5B4%5D=sm_field_project_type%3Afull&f%5B5%5D=&f%5B6%5D=&text=javascript+aggregation&solrsort=iss_project_release_usage+desc&op=Search) lahko konfigurirate tudi naprednejše možnosti združevanja ter tako s sestavljanjem, pomanjševanjem in stiskanjem elementov JavaScript pospešite svoje spletno mesto."
+    "message": "Ensure you have enabled \"Aggregate JavaScript files\" in the \"Administration » Configuration » Development\" page.  Ensure your Drupal site is running at least Drupal 10.1 for improved asset aggregation support."
   },
   "node_modules/lighthouse-stack-packs/packs/drupal.js | unused-css-rules": {
     "message": "Razmislite o tem, da bi odstranili neuporabljena pravila za CSS in potrebne knjižnice sistema Drupal priložili samo ustrezni strani ali komponenti na strani. Za podrobnosti si oglejte [povezavo do dokumentacije za Drupal](https://www.drupal.org/docs/8/creating-custom-modules/adding-stylesheets-css-and-javascript-js-to-a-drupal-8-module#library). Če želite ugotoviti, katere priložene knjižnice dodajo zunanji CSS, poskušajte z orodji Chrome DevTools izvesti [preizkus pokritosti kode](https://developers.google.com/web/updates/2017/04/devtools-release-notes#coverage). Ustrezno temo/modul lahko ugotovite na podlagi URL-ja datoteke s slogi, ko je združevanje za CSS onemogočeno na vašem spletnem mestu sistema Drupal. Bodite pozorni na teme/module, ki imajo na seznamu mnogo datotek s slogi, ki imajo v pokritosti kode veliko rdeče obarvanega območja. Datoteka s slogi naj bo v čakalni vrsti teme/modula samo, če je dejansko uporabljena na strani."
@@ -2734,6 +2923,33 @@
   },
   "node_modules/lighthouse-stack-packs/packs/ezoic.js | uses-responsive-images": {
     "message": "Uporabite [Ezoic Leap](https://pubdash.ezoic.com/speed) in omogočite, da `Resize Images` spremeni velikost slik tako, da ustrezajo napravi, ter tako zmanjša velikosti paketov koristne vsebine."
+  },
+  "node_modules/lighthouse-stack-packs/packs/gatsby.js | modern-image-formats": {
+    "message": "Za samodejno optimizacijo oblike zapisa slike uporabite komponento `gatsby-plugin-image` namesto `<img>`. [Več o tem](https://www.gatsbyjs.com/docs/how-to/images-and-media/using-gatsby-plugin-image)."
+  },
+  "node_modules/lighthouse-stack-packs/packs/gatsby.js | offscreen-images": {
+    "message": "Za samodejno odloženo nalaganje slik uporabite komponento `gatsby-plugin-image` namesto `<img>`. [Več o tem](https://www.gatsbyjs.com/docs/how-to/images-and-media/using-gatsby-plugin-image)."
+  },
+  "node_modules/lighthouse-stack-packs/packs/gatsby.js | prioritize-lcp-image": {
+    "message": "Uporabite komponento `gatsby-plugin-image` in nastavite lastnost `loading` na `eager`. [Več o tem](https://www.gatsbyjs.com/docs/reference/built-in-components/gatsby-plugin-image#shared-props)."
+  },
+  "node_modules/lighthouse-stack-packs/packs/gatsby.js | render-blocking-resources": {
+    "message": "S komponento `Gatsby Script API` odložite nalaganje manj pomembnih skriptov drugih ponudnikov. [Več o tem](https://www.gatsbyjs.com/docs/reference/built-in-components/gatsby-script/)."
+  },
+  "node_modules/lighthouse-stack-packs/packs/gatsby.js | unused-css-rules": {
+    "message": "Uporabite vtičnik `PurgeCSS` `Gatsby`, če želite iz datotek s slogi odstraniti neuporabljena pravila. [Več o tem](https://purgecss.com/plugins/gatsby.html)."
+  },
+  "node_modules/lighthouse-stack-packs/packs/gatsby.js | unused-javascript": {
+    "message": "Uporabite `Webpack Bundle Analyzer` za zaznavanje neuporabljene kode JavaScript. [Več o tem](https://www.gatsbyjs.com/plugins/gatsby-plugin-webpack-bundle-analyser-v2/)"
+  },
+  "node_modules/lighthouse-stack-packs/packs/gatsby.js | uses-long-cache-ttl": {
+    "message": "Konfigurirajte predpomnjenje za nespremenljive elemente. [Več o tem](https://www.gatsbyjs.com/docs/how-to/previews-deploys-hosting/caching/)."
+  },
+  "node_modules/lighthouse-stack-packs/packs/gatsby.js | uses-optimized-images": {
+    "message": "Za prilagoditev kakovosti slike uporabite komponento `gatsby-plugin-image` namesto `<img>`. [Več o tem](https://www.gatsbyjs.com/docs/how-to/images-and-media/using-gatsby-plugin-image)."
+  },
+  "node_modules/lighthouse-stack-packs/packs/gatsby.js | uses-responsive-images": {
+    "message": "Uporabite komponento `gatsby-plugin-image` za nastavitev ustreznega nabora `sizes`. [Več o tem](https://www.gatsbyjs.com/docs/how-to/images-and-media/using-gatsby-plugin-image)."
   },
   "node_modules/lighthouse-stack-packs/packs/joomla.js | efficient-animated-content": {
     "message": "Razmislite o tem, da bi GIF naložili v storitev, prek katere bo na voljo za vdelavo kot videoposnetek v obliki HTML5."
@@ -2849,6 +3065,48 @@
   "node_modules/lighthouse-stack-packs/packs/next.js | uses-text-compression": {
     "message": "Omogočite stiskanje v strežniku Next.js. [Več o tem](https://nextjs.org/docs/api-reference/next.config.js/compression)."
   },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | dom-size": {
+    "message": "Contact your account manager to enable [`HTML Lazy Load`](https://support.nitropack.io/hc/en-us/articles/17144942904337). Configuring it will prioritize and optimize your page rendering performance."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | font-display": {
+    "message": "Use the [`Override Font Rendering Behavior`](https://support.nitropack.io/hc/en-us/articles/16547358865041) option in NitroPack to set a desired value for the CSS font-display rule."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | modern-image-formats": {
+    "message": "Use [`Image Optimization`](https://support.nitropack.io/hc/en-us/articles/16547237162513) to automatically convert your images to WebP."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | offscreen-images": {
+    "message": "Defer offscreen images by enabling [`Automatic Image Lazy Loading`](https://support.nitropack.io/hc/en-us/articles/12457493524369-NitroPack-Lazy-Loading-Feature-for-Images)."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | render-blocking-resources": {
+    "message": "Enable [`Remove render-blocking resources`](https://support.nitropack.io/hc/en-us/articles/13820893500049-How-to-Deal-with-Render-Blocking-Resources-in-NitroPack) in NitroPack for faster initial load times."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | server-response-time": {
+    "message": "Improve server response time and optimize perceived performance by activating [`Instant Load`](https://support.nitropack.io/hc/en-us/articles/16547340617361)."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | unminified-css": {
+    "message": "Enable [`Minify resources`](https://support.nitropack.io/hc/en-us/articles/360061059394-Minify-Resources) in your Caching settings to reduce the size of your CSS, HTML, and JavaScript files for faster load times."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | unminified-javascript": {
+    "message": "Enable [`Minify resources`](https://support.nitropack.io/hc/en-us/articles/360061059394-Minify-Resources) in your Caching settings to reduce the size of your JS, HTML, and CSS files for faster load times."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | unused-css-rules": {
+    "message": "Enable [`Reduce Unused CSS`](https://support.nitropack.io/hc/en-us/articles/360020418457-Reduce-Unused-CSS) to remove CSS rules that are not applicable to this page."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | unused-javascript": {
+    "message": "Configure [`Delayed Scripts`](https://support.nitropack.io/hc/en-us/articles/1500002600942-Delayed-Scripts) in NitroPack to delay loading of scripts until they are needed."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | uses-long-cache-ttl": {
+    "message": "Go to the [`Improve Server Response Time`](https://support.nitropack.io/hc/en-us/articles/1500002321821-Improve-Server-Response-Time) feature in the `Caching` menu and adjust your page cache expiration time to improve loading times and user experience."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | uses-optimized-images": {
+    "message": "Automatically compress, optimize, and convert your images into WebP by enabling the [`Image Optimization`](https://support.nitropack.io/hc/en-us/articles/14177271695121-How-to-serve-images-in-next-gen-formats-using-NitroPack) setting."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | uses-responsive-images": {
+    "message": "Enable [`Adaptive Image Sizing`](https://support.nitropack.io/hc/en-us/articles/10123833029905-How-to-Enable-Adaptive-Image-Sizing-For-Your-Site) to preemptively optimize your images and make them match the dimensions of the containers they’re displayed in across all devices."
+  },
+  "node_modules/lighthouse-stack-packs/packs/nitropack.js | uses-text-compression": {
+    "message": "Use [`Gzip compression`](https://support.nitropack.io/hc/en-us/articles/13229297479313-Enabling-GZIP-compression) in NitroPack to reduce the size of the files that are sent to the browser."
+  },
   "node_modules/lighthouse-stack-packs/packs/nuxt.js | modern-image-formats": {
     "message": "Uporabite komponento `nuxt/image` in nastavite `format=\"webp\"`. [Več o tem](https://image.nuxtjs.org/components/nuxt-img#format)."
   },
@@ -2929,6 +3187,21 @@
   },
   "node_modules/lighthouse-stack-packs/packs/react.js | user-timings": {
     "message": "Uporabite React DevTools Profiler, ki uporablja API za Profiler API, za merjenje učinkovitosti delovanja upodabljanja komponent. [Več o tem](https://reactjs.org/blog/2018/09/10/introducing-the-react-profiler.html)"
+  },
+  "node_modules/lighthouse-stack-packs/packs/wix.js | efficient-animated-content": {
+    "message": "Postavite videoposnetke v to: `VideoBoxes`, prilagodite jih s tem: `Video Masks`, lahko pa tudi dodate to: `Transparent Videos`. [Več o tem](https://support.wix.com/en/article/wix-video-about-wix-video)."
+  },
+  "node_modules/lighthouse-stack-packs/packs/wix.js | modern-image-formats": {
+    "message": "Naložite slike s storitvijo `Wix Media Manager`, s čimer boste zagotovili, da bodo samodejno prikazane v obliki WebP. Poiščite [več načinov za optimizacijo](https://support.wix.com/en/article/site-performance-optimizing-your-media) predstavnosti spletnega mesta."
+  },
+  "node_modules/lighthouse-stack-packs/packs/wix.js | render-blocking-resources": {
+    "message": "Ko [dodajate kodo neodvisnega ponudnika](https://support.wix.com/en/article/site-performance-using-third-party-code-on-your-site) na zavihku `Custom Code` nadzorne plošče spletnega mesta, poskrbite, da je odložena ali naložena na koncu telesa kode. Če je mogoče, uporabite [integracije](https://support.wix.com/en/article/about-marketing-integrations) storitve Wix, da na spletnem mestu vdelate trženjska orodja. "
+  },
+  "node_modules/lighthouse-stack-packs/packs/wix.js | server-response-time": {
+    "message": "Platforma Wix uporablja omrežja za prenos vsebine in predpomnjenje za čim hitrejše prikazovanje odgovorov večini obiskovalcev. Razmislite o [ročnem omogočanju predpomnjenja](https://support.wix.com/en/article/site-performance-caching-pages-to-optimize-loading-speed) za spletno mesto, zlasti če uporabljate storitev `Velo`."
+  },
+  "node_modules/lighthouse-stack-packs/packs/wix.js | unused-javascript": {
+    "message": "Na zavihku `Custom Code` nadzorne plošče spletnega mesta preglejte vse kode neodvisnih ponudnikov, ki ste jih dodali na spletnem mestu, in obdržite samo storitve, ki so nujne za delovanje spletnega mesta. [Več informacij](https://support.wix.com/en/article/site-performance-removing-unused-javascript)."
   },
   "node_modules/lighthouse-stack-packs/packs/wordpress.js | efficient-animated-content": {
     "message": "Razmislite o tem, da bi GIF naložili v storitev, prek katere bo na voljo za vdelavo kot videoposnetek v obliki HTML5."
@@ -3035,6 +3308,9 @@
   "report/renderer/report-utils.js | dropdownSaveJSON": {
     "message": "Shrani kot JSON"
   },
+  "report/renderer/report-utils.js | dropdownViewUnthrottledTrace": {
+    "message": "View Unthrottled Trace"
+  },
   "report/renderer/report-utils.js | dropdownViewer": {
     "message": "Odpri v pregledovalniku"
   },
@@ -3046,6 +3322,9 @@
   },
   "report/renderer/report-utils.js | expandView": {
     "message": "Razširi pogled"
+  },
+  "report/renderer/report-utils.js | firstPartyChipLabel": {
+    "message": "Prva oseba"
   },
   "report/renderer/report-utils.js | footerIssue": {
     "message": "Prijavi težavo"
@@ -3064,6 +3343,9 @@
   },
   "report/renderer/report-utils.js | notApplicableAuditsGroupTitle": {
     "message": "Se ne uporablja"
+  },
+  "report/renderer/report-utils.js | openInANewTabTooltip": {
+    "message": "Odpre se na novem zavihku"
   },
   "report/renderer/report-utils.js | opportunityResourceColumnLabel": {
     "message": "Priložnost"
@@ -3084,7 +3366,7 @@
     "message": "Emulirano namizje"
   },
   "report/renderer/report-utils.js | runtimeMobileEmulation": {
-    "message": "Emulated Moto G Power"
+    "message": "Emuliranje naprave Moto G Power."
   },
   "report/renderer/report-utils.js | runtimeNoEmulation": {
     "message": "Brez emulacije"
@@ -3143,11 +3425,11 @@
   "report/renderer/report-utils.js | toplevelWarningsMessage": {
     "message": "Na to izvedbo storitve Lighthouse so vplivale težave:"
   },
+  "report/renderer/report-utils.js | unattributable": {
+    "message": "Nedodeljivo"
+  },
   "report/renderer/report-utils.js | varianceDisclaimer": {
     "message": "Vrednosti so ocenjene in lahko odstopajo. [Rezultat uspešnosti se izračuna](https://developer.chrome.com/docs/lighthouse/performance/performance-scoring/) neposredno iz teh meritev."
-  },
-  "report/renderer/report-utils.js | viewOriginalTraceLabel": {
-    "message": "Ogled izvirne sledi"
   },
   "report/renderer/report-utils.js | viewTraceLabel": {
     "message": "Ogled sledi"

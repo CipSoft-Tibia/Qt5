@@ -11,35 +11,40 @@ import "."
 Item {
     id: mainview
     width: 1280
-    height: 720
+    height: 820
 
     property var customTheme: customSurfaceTheme
 
-    ColorGradient {
+    Gradient {
         id: customGradient
-        ColorGradientStop { position: 0.0; color: "red" }
-        ColorGradientStop { position: 1.0; color: "green" }
+        GradientStop { id: redstop; position: 0.0; color: "red" }
+        GradientStop { id: greenstop; position: 1.0; color: "green" }
     }
 
-    ColorGradient {
+    Gradient {
         id: singleGradient
-        ColorGradientStop { position: 0.0; color: "white" }
-        ColorGradientStop { position: 1.0; color: "yellow" }
+        GradientStop { position: 0.0; color: "white" }
+        GradientStop { position: 1.0; color: "yellow" }
     }
 
-    ColorGradient {
+    Gradient {
         id: multiGradient
-        ColorGradientStop { position: 0.0; color: "white" }
-        ColorGradientStop { position: 1.0; color: "blue" }
+        GradientStop { position: 0.0; color: "white" }
+        GradientStop { position: 1.0; color: "blue" }
+    }
+
+    Color {
+        id: barColor
+        color: "blue"
     }
 
     Theme3D {
         id: customSurfaceTheme
-        type: Theme3D.ThemeUserDefined
-        colorStyle: Theme3D.ColorStyleObjectGradient
+        type: Theme3D.Theme.UserDefined
+        colorStyle: Theme3D.ColorStyle.ObjectGradient
         backgroundColor: "gray"
         gridLineColor: "lightGray"
-        multiHighlightColor: "blue"
+        multiHighlightColor: "orange"
         singleHighlightColor: "yellow"
         multiHighlightGradient: multiGradient
         singleHighlightGradient: singleGradient
@@ -47,11 +52,12 @@ Item {
 
     Theme3D {
         id: customBarsTheme
-        type: Theme3D.ThemeUserDefined
-        colorStyle: Theme3D.ColorStyleObjectGradient
+        type: Theme3D.Theme.UserDefined
+        colorStyle: Theme3D.ColorStyle.ObjectGradient
+        baseColors: [barColor]
         backgroundColor: "gray"
         gridLineColor: "lightGray"
-        multiHighlightColor: "blue"
+        multiHighlightColor: "orange"
         singleHighlightColor: "yellow"
         multiHighlightGradient: multiGradient
         singleHighlightGradient: singleGradient
@@ -67,9 +73,9 @@ Item {
             id: surface
             anchors.fill: graphView
             theme: customSurfaceTheme
-            shadowQuality: AbstractGraph3D.ShadowQualityNone
+            shadowQuality: AbstractGraph3D.ShadowQuality.None
             selectionMode: AbstractGraph3D.SelectionNone
-            scene.activeCamera.cameraPreset: Camera3D.CameraPresetIsometricLeft
+            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeft
             msaaSamples: 8
             aspectRatio: 3.0
             visible: !barsVisible.checked
@@ -91,9 +97,9 @@ Item {
             id: bars
             anchors.fill: graphView
             theme: customBarsTheme
-            shadowQuality: AbstractGraph3D.ShadowQualityNone
+            shadowQuality: AbstractGraph3D.ShadowQuality.None
             selectionMode: AbstractGraph3D.SelectionItemAndRow
-            scene.activeCamera.cameraPreset: Camera3D.CameraPresetIsometricLeft
+            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeft
             msaaSamples: 8
             aspectRatio: 3.0
             visible: barsVisible.checked
@@ -101,7 +107,6 @@ Item {
             Bar3DSeries {
                 id: barsSeries
                 baseGradient: customGradient
-                baseColor: "white"
                 ItemModelBarDataProxy {
                     id: barProxy
                     itemModel: ListModel {
@@ -170,19 +175,6 @@ Item {
         }
 
         Label {
-            text: "Highlight Light Strength"
-            color: "gray"
-            enabled: barsVisible.checked
-        }
-        Slider {
-            from: 0.0
-            to: 10.0
-            value: customTheme.highlightLightStrength
-            enabled: barsVisible.checked
-            onValueChanged: customTheme.highlightLightStrength = value
-        }
-
-        Label {
             text: "Light Strength"
             color: "gray"
         }
@@ -194,36 +186,40 @@ Item {
         }
 
         Label {
-            text: "Light Color; Red"
+            text: testgradientchange.checked ? "Gradient Color, Red" : "Light Color; Red"
             color: "gray"
         }
         Slider {
             from: 0.0
             to: 1.0
-            value: customTheme.lightColor.r
-            onValueChanged: customTheme.lightColor.r = value
+            value: testgradientchange.checked ? 1.0 : customTheme.lightColor.r
+            onValueChanged: testgradientchange.checked ? (redstop.color.r = value)
+                                                       : (customTheme.lightColor.r = value)
         }
 
         Label {
-            text: "Light Color; Green"
+            text: testgradientchange.checked ? "Gradient Color, Green" : "Light Color; Green"
             color: "gray"
         }
         Slider {
             from: 0.0
             to: 1.0
-            value: customTheme.lightColor.g
-            onValueChanged: customTheme.lightColor.g = value
+            value: testgradientchange.checked ? 0.5 : customTheme.lightColor.g
+            onValueChanged: testgradientchange.checked ? (greenstop.color.g = value)
+                                                       : (customTheme.lightColor.g = value)
         }
 
         Label {
-            text: "Light Color; Blue"
+            text: testgradientchange.checked ? "Bar Color, Blue" : "Light Color; Blue"
             color: "gray"
         }
         Slider {
             from: 0.0
             to: 1.0
-            value: customTheme.lightColor.b
-            onValueChanged: customTheme.lightColor.b = value
+            value: testgradientchange.checked ? barColor.color.b
+                                              : customTheme.lightColor.b
+            onValueChanged: testgradientchange.checked ? barColor.color.b  = value
+                                                       : customTheme.lightColor.b = value
         }
 
         Label {
@@ -231,12 +227,12 @@ Item {
             color: "gray"
         }
         CheckBox {
-            checked: (customTheme.colorStyle === Theme3D.ColorStyleUniform)
+            checked: (customTheme.colorStyle === Theme3D.ColorStyle.Uniform)
             onCheckedChanged: {
                 if (checked)
-                    customTheme.colorStyle = Theme3D.ColorStyleUniform
+                    customTheme.colorStyle = Theme3D.ColorStyle.Uniform
                 else
-                    customTheme.colorStyle = Theme3D.ColorStyleObjectGradient
+                    customTheme.colorStyle = Theme3D.ColorStyle.ObjectGradient
             }
         }
 
@@ -294,5 +290,15 @@ Item {
                 customTheme.labelBorderEnabled = checked
             }
         }
+
+        Label {
+            text: "Test Theme Color/Gradient Change"
+            color: "gray"
+        }
+        CheckBox {
+            id: testgradientchange
+            checked: false
+        }
+
     }
 }

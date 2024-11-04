@@ -76,6 +76,8 @@ namespace hwy {
 #define HWY_STATIC_DISPATCH(FUNC_NAME) N_WASM_EMU256::FUNC_NAME
 #elif HWY_STATIC_TARGET == HWY_WASM
 #define HWY_STATIC_DISPATCH(FUNC_NAME) N_WASM::FUNC_NAME
+#elif HWY_STATIC_TARGET == HWY_NEON_WITHOUT_AES
+#define HWY_STATIC_DISPATCH(FUNC_NAME) N_NEON_WITHOUT_AES::FUNC_NAME
 #elif HWY_STATIC_TARGET == HWY_NEON
 #define HWY_STATIC_DISPATCH(FUNC_NAME) N_NEON::FUNC_NAME
 #elif HWY_STATIC_TARGET == HWY_SVE
@@ -88,6 +90,12 @@ namespace hwy {
 #define HWY_STATIC_DISPATCH(FUNC_NAME) N_SVE2_128::FUNC_NAME
 #elif HWY_STATIC_TARGET == HWY_PPC8
 #define HWY_STATIC_DISPATCH(FUNC_NAME) N_PPC8::FUNC_NAME
+#elif HWY_STATIC_TARGET == HWY_PPC9
+#define HWY_STATIC_DISPATCH(FUNC_NAME) N_PPC9::FUNC_NAME
+#elif HWY_STATIC_TARGET == HWY_PPC10
+#define HWY_STATIC_DISPATCH(FUNC_NAME) N_PPC10::FUNC_NAME
+#elif HWY_STATIC_TARGET == HWY_SSE2
+#define HWY_STATIC_DISPATCH(FUNC_NAME) N_SSE2::FUNC_NAME
 #elif HWY_STATIC_TARGET == HWY_SSSE3
 #define HWY_STATIC_DISPATCH(FUNC_NAME) N_SSSE3::FUNC_NAME
 #elif HWY_STATIC_TARGET == HWY_SSE4
@@ -98,6 +106,8 @@ namespace hwy {
 #define HWY_STATIC_DISPATCH(FUNC_NAME) N_AVX3::FUNC_NAME
 #elif HWY_STATIC_TARGET == HWY_AVX3_DL
 #define HWY_STATIC_DISPATCH(FUNC_NAME) N_AVX3_DL::FUNC_NAME
+#elif HWY_STATIC_TARGET == HWY_AVX3_ZEN4
+#define HWY_STATIC_DISPATCH(FUNC_NAME) N_AVX3_ZEN4::FUNC_NAME
 #endif
 
 // HWY_CHOOSE_*(FUNC_NAME) expands to the function pointer for that target or
@@ -128,6 +138,12 @@ namespace hwy {
 #define HWY_CHOOSE_RVV(FUNC_NAME) &N_RVV::FUNC_NAME
 #else
 #define HWY_CHOOSE_RVV(FUNC_NAME) nullptr
+#endif
+
+#if HWY_TARGETS & HWY_NEON_WITHOUT_AES
+#define HWY_CHOOSE_NEON_WITHOUT_AES(FUNC_NAME) &N_NEON_WITHOUT_AES::FUNC_NAME
+#else
+#define HWY_CHOOSE_NEON_WITHOUT_AES(FUNC_NAME) nullptr
 #endif
 
 #if HWY_TARGETS & HWY_NEON
@@ -161,9 +177,27 @@ namespace hwy {
 #endif
 
 #if HWY_TARGETS & HWY_PPC8
-#define HWY_CHOOSE_PCC8(FUNC_NAME) &N_PPC8::FUNC_NAME
+#define HWY_CHOOSE_PPC8(FUNC_NAME) &N_PPC8::FUNC_NAME
 #else
 #define HWY_CHOOSE_PPC8(FUNC_NAME) nullptr
+#endif
+
+#if HWY_TARGETS & HWY_PPC9
+#define HWY_CHOOSE_PPC9(FUNC_NAME) &N_PPC9::FUNC_NAME
+#else
+#define HWY_CHOOSE_PPC9(FUNC_NAME) nullptr
+#endif
+
+#if HWY_TARGETS & HWY_PPC10
+#define HWY_CHOOSE_PPC10(FUNC_NAME) &N_PPC10::FUNC_NAME
+#else
+#define HWY_CHOOSE_PPC10(FUNC_NAME) nullptr
+#endif
+
+#if HWY_TARGETS & HWY_SSE2
+#define HWY_CHOOSE_SSE2(FUNC_NAME) &N_SSE2::FUNC_NAME
+#else
+#define HWY_CHOOSE_SSE2(FUNC_NAME) nullptr
 #endif
 
 #if HWY_TARGETS & HWY_SSSE3
@@ -194,6 +228,12 @@ namespace hwy {
 #define HWY_CHOOSE_AVX3_DL(FUNC_NAME) &N_AVX3_DL::FUNC_NAME
 #else
 #define HWY_CHOOSE_AVX3_DL(FUNC_NAME) nullptr
+#endif
+
+#if HWY_TARGETS & HWY_AVX3_ZEN4
+#define HWY_CHOOSE_AVX3_ZEN4(FUNC_NAME) &N_AVX3_ZEN4::FUNC_NAME
+#else
+#define HWY_CHOOSE_AVX3_ZEN4(FUNC_NAME) nullptr
 #endif
 
 // MSVC 2017 workaround: the non-type template parameter to ChooseAndCall
@@ -346,15 +386,18 @@ FunctionCache<RetType, Args...> DeduceFunctionCache(RetType (*)(Args...)) {
 #endif
 
 // These define ops inside namespace hwy::HWY_NAMESPACE.
-#if HWY_TARGET == HWY_SSSE3 || HWY_TARGET == HWY_SSE4
+#if HWY_TARGET == HWY_SSE2 || HWY_TARGET == HWY_SSSE3 || \
+    HWY_TARGET == HWY_SSE4
 #include "hwy/ops/x86_128-inl.h"
 #elif HWY_TARGET == HWY_AVX2
 #include "hwy/ops/x86_256-inl.h"
-#elif HWY_TARGET == HWY_AVX3 || HWY_TARGET == HWY_AVX3_DL
+#elif HWY_TARGET == HWY_AVX3 || HWY_TARGET == HWY_AVX3_DL || \
+    HWY_TARGET == HWY_AVX3_ZEN4
 #include "hwy/ops/x86_512-inl.h"
-#elif HWY_TARGET == HWY_PPC8
-#error "PPC is not yet supported"
-#elif HWY_TARGET == HWY_NEON
+#elif HWY_TARGET == HWY_PPC8 || HWY_TARGET == HWY_PPC9 || \
+    HWY_TARGET == HWY_PPC10
+#include "hwy/ops/ppc_vsx-inl.h"
+#elif HWY_TARGET == HWY_NEON || HWY_TARGET == HWY_NEON_WITHOUT_AES
 #include "hwy/ops/arm_neon-inl.h"
 #elif HWY_TARGET == HWY_SVE || HWY_TARGET == HWY_SVE2 || \
     HWY_TARGET == HWY_SVE_256 || HWY_TARGET == HWY_SVE2_128

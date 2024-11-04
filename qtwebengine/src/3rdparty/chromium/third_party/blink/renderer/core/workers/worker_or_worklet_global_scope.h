@@ -48,7 +48,7 @@ class WorkerReportingProxy;
 class WorkerThread;
 
 class CORE_EXPORT WorkerOrWorkletGlobalScope
-    : public EventTargetWithInlineData,
+    : public EventTarget,
       public ExecutionContext,
       public scheduler::WorkerScheduler::Delegate,
       public BackForwardCacheLoaderHelperImpl::Delegate {
@@ -64,7 +64,8 @@ class CORE_EXPORT WorkerOrWorkletGlobalScope
       WorkerClients*,
       std::unique_ptr<WebContentSettingsClient>,
       scoped_refptr<WebWorkerFetchContext>,
-      WorkerReportingProxy&);
+      WorkerReportingProxy&,
+      bool is_worker_loaded_from_data_url);
   ~WorkerOrWorkletGlobalScope() override;
 
   // EventTarget
@@ -88,11 +89,7 @@ class CORE_EXPORT WorkerOrWorkletGlobalScope
 
   // scheduler::WorkerScheduler::Delegate
   void UpdateBackForwardCacheDisablingFeatures(
-      uint64_t features_mask,
-      const BFCacheBlockingFeatureAndLocations&
-          non_sticky_features_and_js_locations,
-      const BFCacheBlockingFeatureAndLocations&
-          sticky_features_and_js_locations) override {}
+      BlockingDetails details) override {}
 
   // BackForwardCacheLoaderHelperImpl::Delegate
   void EvictFromBackForwardCache(
@@ -197,6 +194,18 @@ class CORE_EXPORT WorkerOrWorkletGlobalScope
 
   // Returns the current list of user preferred languages.
   String GetAcceptLanguages() const;
+
+  // Called when a console message is recorded via the console API. This
+  // will invoke `WorkerReportingProxy::ReportConsoleMessage()`.
+  virtual void OnConsoleApiMessage(mojom::ConsoleMessageLevel level,
+                                   const String& message,
+                                   SourceLocation* location);
+
+  // Called when BestEffortServiceWorker(crbug.com/1420517) is enabled.
+  virtual absl::optional<
+      mojo::PendingRemote<network::mojom::blink::URLLoaderFactory>>
+  FindRaceNetworkRequestURLLoaderFactory(
+      const base::UnguessableToken& token) = 0;
 
  protected:
   // Sets outside's CSP used for off-main-thread top-level worker script

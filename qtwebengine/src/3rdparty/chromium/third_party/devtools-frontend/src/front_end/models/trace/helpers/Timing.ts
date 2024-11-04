@@ -5,6 +5,8 @@
 import * as Platform from '../../../core/platform/platform.js';
 import * as Types from '../types/types.js';
 
+import {getNavigationForTraceEvent} from './Trace.js';
+
 export const millisecondsToMicroseconds = (value: Types.Timing.MilliSeconds): Types.Timing.MicroSeconds =>
     Types.Timing.MicroSeconds(value * 1000);
 
@@ -16,6 +18,9 @@ export const secondsToMicroseconds = (value: Types.Timing.Seconds): Types.Timing
 
 export const microSecondsToMilliseconds = (value: Types.Timing.MicroSeconds): Types.Timing.MilliSeconds =>
     Types.Timing.MilliSeconds(value / 1000);
+
+export const microSecondsToSeconds = (value: Types.Timing.MicroSeconds): Types.Timing.Seconds =>
+    Types.Timing.Seconds(value / 1000 / 1000);
 
 export function detectBestTimeUnit(timeInMicroseconds: Types.Timing.MicroSeconds): Types.Timing.TimeUnit {
   if (timeInMicroseconds < 1000) {
@@ -112,4 +117,77 @@ export function formatMicrosecondsTime(
       return `${minuteFormatter.format(Number(mins.value))} ${secondFormatter.format(seconds)}`;
     }
   }
+}
+
+export function timeStampForEventAdjustedByClosestNavigation(
+    event: Types.TraceEvents.TraceEventData,
+    traceBounds: Types.Timing.TraceWindow,
+    navigationsByNavigationId: Map<string, Types.TraceEvents.TraceEventNavigationStart>,
+    navigationsByFrameId: Map<string, Types.TraceEvents.TraceEventNavigationStart[]>,
+    ): Types.Timing.MicroSeconds {
+  let eventTimeStamp = event.ts - traceBounds.min;
+  if (event.args?.data?.navigationId) {
+    const navigationForEvent = navigationsByNavigationId.get(event.args.data.navigationId);
+    if (navigationForEvent) {
+      eventTimeStamp = event.ts - navigationForEvent.ts;
+    }
+  } else if (event.args?.data?.frame) {
+    const navigationForEvent = getNavigationForTraceEvent(event, event.args.data.frame, navigationsByFrameId);
+    if (navigationForEvent) {
+      eventTimeStamp = event.ts - navigationForEvent.ts;
+    }
+  }
+  return Types.Timing.MicroSeconds(eventTimeStamp);
+}
+
+export interface EventTimingsData<
+  ValueType extends Types.Timing.MicroSeconds|Types.Timing.MilliSeconds|Types.Timing.Seconds,
+> {
+  startTime: ValueType;
+  endTime: ValueType;
+  duration: ValueType;
+  selfTime: ValueType;
+}
+
+export function eventTimingsMicroSeconds(event: Types.TraceEvents.TraceEventData):
+    EventTimingsData<Types.Timing.MicroSeconds> {
+  return {
+    startTime: event.ts,
+    endTime: Types.Timing.MicroSeconds(event.ts + (event.dur || Types.Timing.MicroSeconds(0))),
+    duration: Types.Timing.MicroSeconds(event.dur || 0),
+    // TODO(crbug.com/1434599): Implement selfTime calculation for events
+    // from the new engine.
+    selfTime: Types.Timing.MicroSeconds(event.dur || 0),
+  };
+}
+export function eventTimingsMilliSeconds(event: Types.TraceEvents.TraceEventData):
+    EventTimingsData<Types.Timing.MilliSeconds> {
+  const microTimes = eventTimingsMicroSeconds(event);
+  return {
+    startTime: microSecondsToMilliseconds(microTimes.startTime),
+    endTime: microSecondsToMilliseconds(microTimes.endTime),
+    duration: microSecondsToMilliseconds(microTimes.duration),
+    selfTime: microSecondsToMilliseconds(microTimes.selfTime),
+  };
+}
+export function eventTimingsSeconds(event: Types.TraceEvents.TraceEventData): EventTimingsData<Types.Timing.Seconds> {
+  const microTimes = eventTimingsMicroSeconds(event);
+  return {
+    startTime: microSecondsToSeconds(microTimes.startTime),
+    endTime: microSecondsToSeconds(microTimes.endTime),
+    duration: microSecondsToSeconds(microTimes.duration),
+    selfTime: microSecondsToSeconds(microTimes.selfTime),
+  };
+}
+
+export function traceBoundsMilliseconds(bounds: Types.Timing.TraceWindow): {
+  min: Types.Timing.MilliSeconds,
+  max: Types.Timing.MilliSeconds,
+  range: Types.Timing.MilliSeconds,
+} {
+  return {
+    min: microSecondsToMilliseconds(bounds.min),
+    max: microSecondsToMilliseconds(bounds.max),
+    range: microSecondsToMilliseconds(bounds.range),
+  };
 }

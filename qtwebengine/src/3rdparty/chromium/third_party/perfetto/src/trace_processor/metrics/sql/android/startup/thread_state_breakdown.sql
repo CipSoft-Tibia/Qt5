@@ -14,7 +14,7 @@
 -- limitations under the License.
 --
 
-SELECT IMPORT('android.startup.startups');
+INCLUDE PERFETTO MODULE android.startup.startups;
 
 DROP VIEW IF EXISTS thread_state_extended;
 CREATE VIEW thread_state_extended AS
@@ -35,11 +35,13 @@ USING SPAN_JOIN(
 
 -- Materialized to avoid repeatedly span joining per each thread state.
 DROP TABLE IF EXISTS launch_thread_state_io_wait_dur_sum;
-CREATE TABLE launch_thread_state_io_wait_dur_sum AS
+CREATE PERFETTO TABLE launch_thread_state_io_wait_dur_sum AS
 SELECT startup_id, state, is_main_thread, thread_name, io_wait, SUM(dur) AS dur
 FROM launch_threads_by_thread_state l
+JOIN android_startup_processes p USING (startup_id)
 WHERE
-  is_main_thread
+  -- If it is a main thread, only add it if it is the lauching thread.
+  (is_main_thread AND p.startup_type NOT NULL)
   -- Allowlist specific threads which need this. Do not add to this list
   -- without careful consideration as every thread added here can cause
   -- memory usage to balloon.
@@ -56,51 +58,35 @@ GROUP BY 1, 2, 3, 4;
 
 -- Given a launch id and thread state value, returns the aggregate sum
 -- of time spent in that state by the main thread of the process being started up.
-SELECT CREATE_FUNCTION(
-  'MAIN_THREAD_TIME_FOR_LAUNCH_AND_STATE(startup_id INT, state STRING)',
-  'INT',
-  '
-    SELECT SUM(dur)
-    FROM launch_thread_state_dur_sum l
-    WHERE l.startup_id = $startup_id AND state GLOB $state AND is_main_thread;
-  '
-);
+CREATE PERFETTO FUNCTION main_thread_time_for_launch_and_state(startup_id INT, state STRING)
+RETURNS INT AS
+SELECT SUM(dur)
+FROM launch_thread_state_dur_sum l
+WHERE l.startup_id = $startup_id AND state GLOB $state AND is_main_thread;
 
 -- Given a launch id, returns the aggregate sum of time spent in runnable state
 -- by the main thread of the process being started up.
-SELECT CREATE_FUNCTION(
-  'MAIN_THREAD_TIME_FOR_LAUNCH_IN_RUNNABLE_STATE(startup_id INT)',
-  'INT',
-  '
-    SELECT IFNULL(MAIN_THREAD_TIME_FOR_LAUNCH_AND_STATE($startup_id, "R"), 0)
-      + IFNULL(MAIN_THREAD_TIME_FOR_LAUNCH_AND_STATE($startup_id, "R+"), 0);
-  '
-);
+CREATE PERFETTO FUNCTION main_thread_time_for_launch_in_runnable_state(startup_id INT)
+RETURNS INT AS
+SELECT IFNULL(main_thread_time_for_launch_and_state($startup_id, "R"), 0)
+      + IFNULL(main_thread_time_for_launch_and_state($startup_id, "R+"), 0);
 
 -- Given a launch id, thread state  and io_wait value, returns the aggregate sum
 -- of time spent in that state by the main thread of the process being started up.
-SELECT CREATE_FUNCTION(
-  'MAIN_THREAD_TIME_FOR_LAUNCH_STATE_AND_IO_WAIT(startup_id INT, state STRING, io_wait BOOL)',
-  'INT',
-  '
-    SELECT SUM(dur)
-    FROM launch_thread_state_io_wait_dur_sum l
-    WHERE l.startup_id = $startup_id AND state GLOB $state
-      AND is_main_thread AND l.io_wait = $io_wait;
-  '
-);
+CREATE PERFETTO FUNCTION main_thread_time_for_launch_state_and_io_wait(startup_id INT, state STRING, io_wait BOOL)
+RETURNS INT AS
+SELECT SUM(dur)
+FROM launch_thread_state_io_wait_dur_sum l
+WHERE l.startup_id = $startup_id AND state GLOB $state
+  AND is_main_thread AND l.io_wait = $io_wait;
 
 
 -- Given a launch id, thread state value and name of a thread, returns the aggregate sum
 -- of time spent in that state by that thread. Note: only threads of the processes
 -- being started are considered by this function - if a thread from a different name
 -- happens to match the name passed, it will *not* be included.
-SELECT CREATE_FUNCTION(
-  'THREAD_TIME_FOR_LAUNCH_STATE_AND_THREAD(startup_id INT, state STRING, thread_name STRING)',
-  'INT',
-  '
-    SELECT SUM(dur)
-    FROM launch_thread_state_dur_sum l
-    WHERE l.startup_id = $startup_id AND state GLOB $state AND thread_name = $thread_name;
-  '
-);
+CREATE PERFETTO FUNCTION thread_time_for_launch_state_and_thread(startup_id INT, state STRING, thread_name STRING)
+RETURNS INT AS
+SELECT SUM(dur)
+FROM launch_thread_state_dur_sum l
+WHERE l.startup_id = $startup_id AND state GLOB $state AND thread_name = $thread_name;

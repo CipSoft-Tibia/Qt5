@@ -46,6 +46,15 @@ AX_BASE_EXPORT BASE_DECLARE_FEATURE(kEnableAccessibilityTreeForViews);
 // directly.
 AX_BASE_EXPORT bool IsAccessibilityTreeForViewsEnabled();
 
+AX_BASE_EXPORT BASE_DECLARE_FEATURE(kEnableAccessibilityRestrictiveIA2AXModes);
+
+// Returns true if the more restrictive approach that only enables the web
+// content related AXModes on an IA2 query when the data is being queried on an
+// web content node.
+//
+// TODO(1441211): Remove flag once the change has been confirmed safe.
+AX_BASE_EXPORT bool IsAccessibilityRestrictiveIA2AXModesEnabled();
+
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityFocusHighlight);
 
 // Returns true if the accessibility focus highlight feature is enabled,
@@ -82,32 +91,29 @@ AX_BASE_EXPORT BASE_DECLARE_FEATURE(kSelectiveUIAEnablement);
 // the accessibility system.
 AX_BASE_EXPORT bool IsSelectiveUIAEnablementEnabled();
 
+AX_BASE_EXPORT BASE_DECLARE_FEATURE(kUiaProvider);
+
+// Returns true if the browser's UIA provider should be used when requested by
+// an a11y client.
+AX_BASE_EXPORT bool IsUiaProviderEnabled();
 #endif  // BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 AX_BASE_EXPORT bool IsDictationOfflineAvailable();
 
-// Enables accessibility Dictation with the pumpkin semantic parser.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(
-    kExperimentalAccessibilityDictationWithPumpkin);
+    kExperimentalAccessibilityChromeVoxOobeDialogImprovements);
 
-// Returns true if Dictation with context checking is enabled.
 AX_BASE_EXPORT bool
-IsExperimentalAccessibilityDictationContextCheckingEnabled();
+IsExperimentalAccessibilityChromeVoxOobeDialogImprovementsEnabled();
 
 // Enables Context Checking with the accessibility Dictation feature.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(
     kExperimentalAccessibilityDictationContextChecking);
 
-// Returns true if dictation with pumpkin is enabled.
-AX_BASE_EXPORT bool IsExperimentalAccessibilityDictationWithPumpkinEnabled();
-
-// Enables more commands with the accessibility Dictation feature.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(
-    kExperimentalAccessibilityDictationMoreCommands);
-
-// Returns true if Dictation with more commands is enabled.
-AX_BASE_EXPORT bool IsExperimentalAccessibilityDictationMoreCommandsEnabled();
+// Returns true if Dictation with context checking is enabled.
+AX_BASE_EXPORT bool
+IsExperimentalAccessibilityDictationContextCheckingEnabled();
 
 // Enables downloading Google TTS voices using Language Packs.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(
@@ -117,14 +123,6 @@ AX_BASE_EXPORT BASE_DECLARE_FEATURE(
 // enabled.
 AX_BASE_EXPORT bool IsExperimentalAccessibilityGoogleTtsLanguagePacksEnabled();
 
-// Enables Select-to-Speak voice switching.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(
-    kExperimentalAccessibilitySelectToSpeakVoiceSwitching);
-
-// Returns true if the Select-to-Speak voice switching feature is enabled.
-AX_BASE_EXPORT bool
-IsExperimentalAccessibilitySelectToSpeakVoiceSwitchingEnabled();
-
 // Enables the experimental color enhancements settings.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(
     kExperimentalAccessibilityColorEnhancementSettings);
@@ -133,13 +131,6 @@ AX_BASE_EXPORT BASE_DECLARE_FEATURE(
 AX_BASE_EXPORT bool
 AreExperimentalAccessibilityColorEnhancementSettingsEnabled();
 
-// Enables Select-to-Speak settings page migration from extension options page
-// to Chrome OS settings page.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilitySelectToSpeakPageMigration);
-
-// Returns true if Select-to-Speak settings page migration enabled.
-AX_BASE_EXPORT bool IsAccessibilitySelectToSpeakPageMigrationEnabled();
-
 // Enables ChromeVox settings page migration from extension options page to
 // Chrome OS settings page.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityChromeVoxPageMigration);
@@ -147,18 +138,18 @@ AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityChromeVoxPageMigration);
 // Returns true if ChromeVox settings page migration is enabled.
 AX_BASE_EXPORT bool IsAccessibilityChromeVoxPageMigrationEnabled();
 
+// Enables Dictation keyboard improvements.
+AX_BASE_EXPORT BASE_DECLARE_FEATURE(
+    kAccessibilityDictationKeyboardImprovements);
+
+// Returns true if Dictation keyboard improvements are enabled.
+AX_BASE_EXPORT bool IsAccessibilityDictationKeyboardImprovementsEnabled();
+
 // Enables AccessibilitySelectToSpeakPrefsMigration.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilitySelectToSpeakPrefsMigration);
 
 // Returns true if AccessibilitySelectToSpeakPrefsMigration enabled.
 AX_BASE_EXPORT bool IsAccessibilitySelectToSpeakPrefsMigrationEnabled();
-
-// Enables AccessibilitySelectToSpeakContextMenuOption.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(
-    kAccessibilitySelectToSpeakContextMenuOption);
-
-// Returns true if AccessibilitySelectToSpeakContextMenuOption is enabled.
-AX_BASE_EXPORT bool IsAccessibilitySelectToSpeakContextMenuOptionEnabled();
 
 // Enables AccessibilitySelectToSpeakHoverTextImprovements.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(
@@ -174,6 +165,16 @@ AX_BASE_EXPORT BASE_DECLARE_FEATURE(
 // Returns true if kAccessibilityAcceleratorNotificationsTimeout is enabled.
 AX_BASE_EXPORT bool IsAccessibilityAcceleratorNotificationsTimeoutEnabled();
 
+// Enables the experimental GameFace integration.
+AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityGameFaceIntegration);
+
+// Returns true if the GameFace integration is enabled.
+AX_BASE_EXPORT bool IsAccessibilityGameFaceIntegrationEnabled();
+
+// A feature that makes PDFs displayed in the ChromeOS Media App (AKA Backlight)
+// accessible by performing OCR on the images for each page.
+AX_BASE_EXPORT BASE_DECLARE_FEATURE(kBacklightOcr);
+AX_BASE_EXPORT bool IsBacklightOcrEnabled();
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 // Enables Get Image Descriptions to augment existing images labels,
@@ -209,23 +210,12 @@ AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAblateSendPendingAccessibilityEvents);
 AX_BASE_EXPORT bool IsAblateSendPendingAccessibilityEventsEnabled();
 
 #if BUILDFLAG(IS_ANDROID)
-// Compute the AXMode based on AccessibilityServiceInfo. If disabled,
-// the AXMode is either entirely on or entirely off.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kComputeAXMode);
+// Enable filtered AXModes based on running services. If disabled, then AXModes
+// will not be available to be set.
+AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityPerformanceFiltering);
 
-// Returns true if the IChromeAccessible COM API is enabled.
-AX_BASE_EXPORT bool IsComputeAXModeEnabled();
-
-// Enable form controls AXMode based on running services. If disabled,
-// then form controls AXMode will not be available to be set.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityFormControlsMode);
-
-// Returns true if the form controls AXMode is enabled.
-AX_BASE_EXPORT bool IsAccessibilityFormControlsAXModeEnabled();
-
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kOptimizeAccessibilityUiThreadWork);
-
-bool IsOptimizeAccessibilityUiThreadWorkEnabled();
+// Returns true if AXMode filtering for performance is enabled.
+AX_BASE_EXPORT bool IsAccessibilityPerformanceFilteringEnabled();
 
 #endif  // BUILDFLAG(IS_ANDROID)
 
@@ -242,12 +232,18 @@ AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingWithScreen2x);
 // distills web pages using an ML model.
 AX_BASE_EXPORT bool IsReadAnythingWithScreen2xEnabled();
 
-// Returns true if Screen AI Service is needed as either
-// ScreenAIVisualAnnotations or ReadAnythingWithScreen2x are enabled.
-AX_BASE_EXPORT bool IsScreenAIServiceNeeded();
-
 // If enabled, ScreenAI library writes some debug data in /tmp.
 AX_BASE_EXPORT bool IsScreenAIDebugModeEnabled();
+
+AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingWebUIToolbar);
+
+// If enabled, use the WebUI toolbar in Read Anything.
+AX_BASE_EXPORT bool IsReadAnythingWebUIToolbarEnabled();
+
+AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingReadAloud);
+
+// If enabled, show the Read Aloud feature in Read Anything.
+AX_BASE_EXPORT bool IsReadAnythingReadAloudEnabled();
 
 // Enables a feature whereby inaccessible (i.e. untagged) PDFs are made
 // accessible using an optical character recognition service. Due to the size of

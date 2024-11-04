@@ -20,9 +20,9 @@
 #include <stdint.h>
 
 #include <deque>
+#include <optional>
 
 #include "perfetto/base/logging.h"
-#include "perfetto/ext/base/optional.h"
 #include "src/trace_processor/containers/row_map.h"
 
 namespace perfetto {
@@ -67,15 +67,14 @@ class NullableVector {
   // Creates a dense nullable vector
   static NullableVector<T> Dense() { return NullableVector<T>(Mode::kDense); }
 
-  // Returns the optional value at |idx| or base::nullopt if the value is null.
-  base::Optional<T> Get(uint32_t idx) const {
+  // Returns the optional value at |idx| or std::nullopt if the value is null.
+  std::optional<T> Get(uint32_t idx) const {
     bool contains = valid_.IsSet(idx);
-    if (mode_ == Mode::kDense) {
-      return contains ? base::make_optional(data_[idx]) : base::nullopt;
-    } else {
-      return contains ? base::make_optional(data_[valid_.CountSetBits(idx)])
-                      : base::nullopt;
-    }
+    if (mode_ == Mode::kDense)
+      return contains ? std::make_optional(data_[idx]) : std::nullopt;
+
+    return contains ? std::make_optional(data_[valid_.CountSetBits(idx)])
+                    : std::nullopt;
   }
 
   // Adds the given value to the NullableVector.
@@ -85,7 +84,7 @@ class NullableVector {
   }
 
   // Adds the given optional value to the NullableVector.
-  void Append(base::Optional<T> val) {
+  void Append(std::optional<T> val) {
     if (val) {
       Append(*val);
     } else {
@@ -123,6 +122,9 @@ class NullableVector {
 
   // Returns whether data in this NullableVector is stored densely.
   bool IsDense() const { return mode_ == Mode::kDense; }
+
+  const std::vector<T>& non_null_vector() const { return data_; }
+  const BitVector& non_null_bit_vector() const { return valid_; }
 
  private:
   explicit NullableVector(Mode mode) : mode_(mode) {}

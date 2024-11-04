@@ -5,7 +5,7 @@
 #ifndef GPU_COMMAND_BUFFER_SERVICE_SHARED_IMAGE_SHARED_IMAGE_BACKING_H_
 #define GPU_COMMAND_BUFFER_SERVICE_SHARED_IMAGE_SHARED_IMAGE_BACKING_H_
 
-#include <dawn/webgpu.h>
+#include <dawn/webgpu_cpp.h>
 
 #include <memory>
 
@@ -17,7 +17,6 @@
 #include "base/trace_event/memory_allocator_dump.h"
 #include "base/trace_event/memory_allocator_dump_guid.h"
 #include "build/build_config.h"
-#include "components/viz/common/resources/resource_format.h"
 #include "components/viz/common/resources/shared_image_format.h"
 #include "gpu/command_buffer/common/mailbox.h"
 #include "gpu/gpu_gles2_export.h"
@@ -28,6 +27,7 @@
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
+#include "ui/gfx/gpu_memory_buffer.h"
 #include "ui/gfx/native_pixmap.h"
 
 #if BUILDFLAG(IS_WIN)
@@ -51,6 +51,8 @@ class SharedImageManager;
 class SharedImageRepresentation;
 class GLTextureImageRepresentation;
 class GLTexturePassthroughImageRepresentation;
+class SkiaGaneshImageRepresentation;
+class SkiaGraphiteImageRepresentation;
 class SkiaImageRepresentation;
 class DawnImageRepresentation;
 class LegacyOverlayImageRepresentation;
@@ -73,7 +75,7 @@ enum class SharedImageBackingType {
   kEGLImage = 3,
   kAHardwareBuffer = 4,
   kAngleVulkan = 5,
-  kGLImage = 6,
+  // kGLImage = 6, // no longer used after GLImage removal
   kGLTexture = 7,
   kOzone = 8,
   kRawDraw = 9,
@@ -85,7 +87,8 @@ enum class SharedImageBackingType {
   kIOSurface = 15,
   kDCompSurface = 16,
   kDXGISwapChain = 17,
-  kMaxValue = kDXGISwapChain
+  kWrappedGraphiteTexture = 18,
+  kMaxValue = kWrappedGraphiteTexture
 };
 
 #if BUILDFLAG(IS_WIN)
@@ -100,15 +103,17 @@ using VideoDecodeDevice = void*;
 // SharedImageRepresentation.
 class GPU_GLES2_EXPORT SharedImageBacking {
  public:
-  SharedImageBacking(const Mailbox& mailbox,
-                     viz::SharedImageFormat format,
-                     const gfx::Size& size,
-                     const gfx::ColorSpace& color_space,
-                     GrSurfaceOrigin surface_origin,
-                     SkAlphaType alpha_type,
-                     uint32_t usage,
-                     size_t estimated_size,
-                     bool is_thread_safe);
+  SharedImageBacking(
+      const Mailbox& mailbox,
+      viz::SharedImageFormat format,
+      const gfx::Size& size,
+      const gfx::ColorSpace& color_space,
+      GrSurfaceOrigin surface_origin,
+      SkAlphaType alpha_type,
+      uint32_t usage,
+      size_t estimated_size,
+      bool is_thread_safe,
+      absl::optional<gfx::BufferUsage> buffer_usage = absl::nullopt);
 
   virtual ~SharedImageBacking();
 
@@ -121,11 +126,13 @@ class GPU_GLES2_EXPORT SharedImageBacking {
   const Mailbox& mailbox() const { return mailbox_; }
   bool is_thread_safe() const { return !!lock_; }
   bool is_ref_counted() const { return is_ref_counted_; }
+  gfx::BufferUsage buffer_usage() const { return buffer_usage_.value(); }
 
   void OnContextLost();
 
-  // Creates SkImageInfo matching backing size, format, alpha and color space.
-  SkImageInfo AsSkImageInfo() const;
+  // Creates SkImageInfo matching backing size, format, alpha and color space
+  // for the specified `plane_index`.
+  SkImageInfo AsSkImageInfo(int plane_index = 0) const;
 
   // Disables reference counting for backing. No references should be added,
   // either before or after this is called.
@@ -164,7 +171,7 @@ class GPU_GLES2_EXPORT SharedImageBacking {
   // Marks the provided rect as cleared.
   virtual void SetClearedRect(const gfx::Rect& cleared_rect) = 0;
 
-  // Indicate that the image is purgable. When an image is purgeable, its
+  // Indicate that the image is purgeable. When an image is purgeable, its
   // contents may be discarded at any time. Before the image can be used again,
   // it must be set to be not-purgeable. This is intended to be lighter-weight
   // than allocating and freeing the image. See investigation in
@@ -194,6 +201,13 @@ class GPU_GLES2_EXPORT SharedImageBacking {
 
   virtual void MarkForDestruction() {}
 
+  // Called when secondary reference is added to the SharedImage. Used by
+  // CompoundImageBacking to make sure it can create necessary backings after
+  // original ref (and potentially SharedImageFactory) is gone.
+  // TODO(vasilyt): We need a better way to make it work for
+  // multithreading/multigpu support
+  virtual void OnAddSecondaryReference() {}
+
   // Produces a MemoryAllocatorDump with `dump_name` and creates a shared
   // ownership edge to `client_guid`. Subclasses can extend this function to
   // add additional ownership edges linked to `client_guid` but they must call
@@ -219,6 +233,9 @@ class GPU_GLES2_EXPORT SharedImageBacking {
   // the SharedImage is not backed by a NativePixmap.
   virtual scoped_refptr<gfx::NativePixmap> GetNativePixmap();
 
+  // Returns the GpuMemoryBufferHandle if present.
+  virtual gfx::GpuMemoryBufferHandle GetGpuMemoryBufferHandle();
+
   // Helper to determine if the entire SharedImage is cleared.
   bool IsCleared() const { return ClearedRect() == gfx::Rect(size()); }
 
@@ -230,26 +247,34 @@ class GPU_GLES2_EXPORT SharedImageBacking {
   friend class SharedImageManager;
   friend class CompoundImageBacking;
 
-  // Memory dump importance values for shared ownership edges.
-  static constexpr int kNonOwningEdgeImportance = 0;
-  static constexpr int kOwningEdgeImportance = 2;
-
   virtual std::unique_ptr<GLTextureImageRepresentation> ProduceGLTexture(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker);
   virtual std::unique_ptr<GLTexturePassthroughImageRepresentation>
   ProduceGLTexturePassthrough(SharedImageManager* manager,
                               MemoryTypeTracker* tracker);
-  virtual std::unique_ptr<SkiaImageRepresentation> ProduceSkia(
+  std::unique_ptr<SkiaImageRepresentation> ProduceSkia(
+      SharedImageManager* manager,
+      MemoryTypeTracker* tracker,
+      scoped_refptr<SharedContextState> context_state);
+  // Returns a SkiaGaneshImageRepresentation created using the Skia Ganesh
+  // backend.
+  virtual std::unique_ptr<SkiaGaneshImageRepresentation> ProduceSkiaGanesh(
+      SharedImageManager* manager,
+      MemoryTypeTracker* tracker,
+      scoped_refptr<SharedContextState> context_state);
+  // Returns a SkiaGraphiteImageRepresentation created using the Skia Graphite
+  // backend.
+  virtual std::unique_ptr<SkiaGraphiteImageRepresentation> ProduceSkiaGraphite(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker,
       scoped_refptr<SharedContextState> context_state);
   virtual std::unique_ptr<DawnImageRepresentation> ProduceDawn(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker,
-      WGPUDevice device,
-      WGPUBackendType backend_type,
-      std::vector<WGPUTextureFormat> view_formats);
+      const wgpu::Device& device,
+      wgpu::BackendType backend_type,
+      std::vector<wgpu::TextureFormat> view_formats);
   virtual std::unique_ptr<OverlayImageRepresentation> ProduceOverlay(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker);
@@ -339,6 +364,9 @@ class GPU_GLES2_EXPORT SharedImageBacking {
   const uint32_t usage_;
   size_t estimated_size_ GUARDED_BY(lock_);
 
+  // Note that this will be eventually removed and merged into SharedImageUsage.
+  const absl::optional<gfx::BufferUsage> buffer_usage_;
+
   bool is_ref_counted_ = true;
 
   raw_ptr<SharedImageFactory> factory_ = nullptr;
@@ -364,15 +392,17 @@ class GPU_GLES2_EXPORT SharedImageBacking {
 class GPU_GLES2_EXPORT ClearTrackingSharedImageBacking
     : public SharedImageBacking {
  public:
-  ClearTrackingSharedImageBacking(const Mailbox& mailbox,
-                                  viz::SharedImageFormat format,
-                                  const gfx::Size& size,
-                                  const gfx::ColorSpace& color_space,
-                                  GrSurfaceOrigin surface_origin,
-                                  SkAlphaType alpha_type,
-                                  uint32_t usage,
-                                  size_t estimated_size,
-                                  bool is_thread_safe);
+  ClearTrackingSharedImageBacking(
+      const Mailbox& mailbox,
+      viz::SharedImageFormat format,
+      const gfx::Size& size,
+      const gfx::ColorSpace& color_space,
+      GrSurfaceOrigin surface_origin,
+      SkAlphaType alpha_type,
+      uint32_t usage,
+      size_t estimated_size,
+      bool is_thread_safe,
+      absl::optional<gfx::BufferUsage> buffer_usage = absl::nullopt);
 
   gfx::Rect ClearedRect() const override;
   void SetClearedRect(const gfx::Rect& cleared_rect) override;

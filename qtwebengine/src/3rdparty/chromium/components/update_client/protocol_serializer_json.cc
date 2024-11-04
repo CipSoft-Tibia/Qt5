@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/check.h"
 #include "base/json/json_writer.h"
 #include "base/values.h"
 #include "build/branding_buildflags.h"
@@ -23,7 +24,7 @@ std::string ProtocolSerializerJSON::Serialize(
   request_node.Set("protocol", request.protocol_version);
   request_node.Set("ismachine", request.is_machine);
   request_node.Set("dedup", "cr");
-  request_node.Set("acceptformat", "crx3");
+  request_node.Set("acceptformat", "crx3,puff");
   if (!request.additional_attributes.empty()) {
     for (const auto& attr : request.additional_attributes)
       request_node.Set(attr.first, attr.second);
@@ -200,7 +201,7 @@ std::string ProtocolSerializerJSON::Serialize(
     if (app.events) {
       base::Value::List event_nodes;
       for (const auto& event : *app.events) {
-        DCHECK(!event.empty());
+        CHECK(!event.empty());
         event_nodes.Append(event.Clone());
       }
       app_node.Set("event", std::move(event_nodes));

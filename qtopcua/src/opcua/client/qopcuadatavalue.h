@@ -25,8 +25,14 @@ public:
     QDateTime serverTimestamp() const;
     void setServerTimestamp(const QDateTime &serverTimestamp);
 
+    quint16 serverPicoseconds() const;
+    void setServerPicoseconds(quint16 serverPicoseconds);
+
     QDateTime sourceTimestamp() const;
     void setSourceTimestamp(const QDateTime &sourceTimestamp);
+
+    quint16 sourcePicoseconds() const;
+    void setSourcePicoseconds(quint16 sourcePicoseconds);
 
     QOpcUa::UaStatusCode statusCode() const;
     void setStatusCode(QOpcUa::UaStatusCode statusCode);
@@ -34,8 +40,19 @@ public:
     QVariant value() const;
     void setValue(const QVariant &value);
 
+    operator QVariant() const;
+
 private:
     QExplicitlySharedDataPointer<QOpcUaDataValueData> data;
+
+    friend Q_OPCUA_EXPORT bool comparesEqual(const QOpcUaDataValue &lhs,
+                                             const QOpcUaDataValue &rhs) noexcept;
+    friend bool operator==(const QOpcUaDataValue &lhs, const QOpcUaDataValue &rhs) noexcept
+    { return comparesEqual(lhs, rhs); }
+    friend bool operator!=(const QOpcUaDataValue &lhs, const QOpcUaDataValue &rhs) noexcept
+    {
+        return !(lhs == rhs);
+    }
 };
 
 Q_DECLARE_SHARED(QOpcUaDataValue)

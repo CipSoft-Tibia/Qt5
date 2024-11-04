@@ -131,7 +131,7 @@ static bool IsTableBodyContextTag(HTMLTag tag) {
 class HTMLTreeBuilder::CharacterTokenBuffer {
  public:
   explicit CharacterTokenBuffer(AtomicHTMLToken* token)
-      : characters_(token->Characters().Impl()),
+      : characters_(token->Characters()),
         current_(0),
         end_(token->Characters().length()) {
     DCHECK(!IsEmpty());
@@ -146,8 +146,9 @@ class HTMLTreeBuilder::CharacterTokenBuffer {
 
   void SkipAtMostOneLeadingNewline() {
     DCHECK(!IsEmpty());
-    if ((*characters_)[current_] == '\n')
+    if (characters_[current_] == '\n') {
       ++current_;
+    }
   }
 
   void SkipLeadingWhitespace() { SkipLeading<IsHTMLSpace<UChar>>(); }
@@ -164,9 +165,9 @@ class HTMLTreeBuilder::CharacterTokenBuffer {
 
     // First, check the first character to identify whether the string looks
     // common (i.e. "\n<space>*").
-    const UChar first = (*characters_)[current_];
+    const UChar first = characters_[current_];
     if (!IsHTMLSpace(first)) {
-      return {StringView(characters_.get(), start, 0),
+      return {StringView(characters_, start, 0),
               WhitespaceMode::kNotAllWhitespace};
     }
     if (first != '\n') {
@@ -176,7 +177,7 @@ class HTMLTreeBuilder::CharacterTokenBuffer {
     // Then, check the rest.
     ++current_;
     for (; current_ != end_; ++current_) {
-      const UChar ch = (*characters_)[current_];
+      const UChar ch = characters_[current_];
       if (LIKELY(ch == ' ')) {
         continue;
       } else if (IsHTMLSpecialWhitespace(ch)) {
@@ -186,8 +187,7 @@ class HTMLTreeBuilder::CharacterTokenBuffer {
       }
     }
 
-    return {StringView(characters_.get(), start, current_ - start),
-            whitespace_mode};
+    return {StringView(characters_, start, current_ - start), whitespace_mode};
   }
 
   void SkipLeadingNonWhitespace() { SkipLeading<IsNotHTMLSpace<UChar>>(); }
@@ -198,11 +198,11 @@ class HTMLTreeBuilder::CharacterTokenBuffer {
     DCHECK(!IsEmpty());
     unsigned start = current_;
     current_ = end_;
-    return StringView(characters_.get(), start, end_ - start);
+    return StringView(characters_, start, end_ - start);
   }
 
   void GiveRemainingTo(StringBuilder& recipient) {
-    WTF::VisitCharacters(*characters_, [&](const auto* chars, unsigned length) {
+    WTF::VisitCharacters(characters_, [&](const auto* chars, unsigned length) {
       recipient.Append(chars + current_, end_ - current_);
     });
     current_ = end_;
@@ -221,7 +221,7 @@ class HTMLTreeBuilder::CharacterTokenBuffer {
     WhitespaceMode whitespace_mode = WhitespaceMode::kNewlineThenWhitespace;
     unsigned length = 0;
     for (unsigned i = start; i < end_; ++i) {
-      const UChar ch = (*characters_)[i];
+      const UChar ch = characters_[i];
       if (length == 0) {
         if (ch == '\n') {
           ++length;
@@ -245,7 +245,7 @@ class HTMLTreeBuilder::CharacterTokenBuffer {
       return {String(), WhitespaceMode::kNotAllWhitespace};
     }
     if (length == start - end_) {  // It's all whitespace.
-      return {String(characters_->Substring(start, start - end_)),
+      return {String(characters_.Substring(start, start - end_)),
               whitespace_mode};
     }
 
@@ -253,7 +253,7 @@ class HTMLTreeBuilder::CharacterTokenBuffer {
     StringBuffer<LChar> result(length);
     unsigned j = 0;
     for (unsigned i = start; i < end_; ++i) {
-      UChar c = (*characters_)[i];
+      UChar c = characters_[i];
       if (c == ' ' || IsHTMLSpecialWhitespace(c)) {
         result[j++] = static_cast<LChar>(c);
       }
@@ -266,13 +266,13 @@ class HTMLTreeBuilder::CharacterTokenBuffer {
   template <bool characterPredicate(UChar)>
   void SkipLeading() {
     DCHECK(!IsEmpty());
-    while (characterPredicate((*characters_)[current_])) {
+    while (characterPredicate(characters_[current_])) {
       if (++current_ == end_)
         return;
     }
   }
 
-  scoped_refptr<StringImpl> characters_;
+  String characters_;
   unsigned current_;
   unsigned end_;
 };
@@ -281,8 +281,14 @@ HTMLTreeBuilder::HTMLTreeBuilder(HTMLDocumentParser* parser,
                                  Document& document,
                                  ParserContentPolicy parser_content_policy,
                                  const HTMLParserOptions& options,
-                                 bool include_shadow_roots)
-    : tree_(parser->ReentryPermit(), document, parser_content_policy),
+                                 bool include_shadow_roots,
+                                 DocumentFragment* for_fragment,
+                                 Element* fragment_context_element)
+    : tree_(parser->ReentryPermit(),
+            document,
+            parser_content_policy,
+            for_fragment,
+            fragment_context_element),
       insertion_mode_(kInitialMode),
       original_insertion_mode_(kInitialMode),
       should_skip_leading_newline_(false),
@@ -291,7 +297,18 @@ HTMLTreeBuilder::HTMLTreeBuilder(HTMLDocumentParser* parser,
       parser_(parser),
       script_to_process_start_position_(UninitializedPositionValue1()),
       options_(options) {}
-
+HTMLTreeBuilder::HTMLTreeBuilder(HTMLDocumentParser* parser,
+                                 Document& document,
+                                 ParserContentPolicy parser_content_policy,
+                                 const HTMLParserOptions& options,
+                                 bool include_shadow_roots)
+    : HTMLTreeBuilder(parser,
+                      document,
+                      parser_content_policy,
+                      options,
+                      include_shadow_roots,
+                      nullptr,
+                      nullptr) {}
 HTMLTreeBuilder::HTMLTreeBuilder(HTMLDocumentParser* parser,
                                  DocumentFragment* fragment,
                                  Element* context_element,
@@ -302,10 +319,10 @@ HTMLTreeBuilder::HTMLTreeBuilder(HTMLDocumentParser* parser,
                       fragment->GetDocument(),
                       parser_content_policy,
                       options,
-                      include_shadow_roots) {
+                      include_shadow_roots,
+                      fragment,
+                      context_element) {
   DCHECK(IsMainThread());
-  DCHECK(context_element);
-  tree_.InitFragmentParsing(fragment, context_element);
   fragment_context_.Init(fragment, context_element);
 
   // Steps 4.2-4.6 of the HTML5 Fragment Case parsing algorithm:
@@ -521,7 +538,7 @@ void MapLoweredLocalNameToName(PrefixedNameToQualifiedNameMap* map,
 }
 
 void AddManualLocalName(PrefixedNameToQualifiedNameMap* map, const char* name) {
-  const QualifiedName item(g_null_atom, name, g_null_atom);
+  const QualifiedName item{AtomicString(name)};
   const blink::QualifiedName* const names = &item;
   MapLoweredLocalNameToName<QualifiedName>(map, &names, 1);
 }
@@ -613,8 +630,9 @@ void AdjustForeignAttributes(AtomicHTMLToken* token) {
                        xml_names::kAttrsCount);
 
     map->insert(WTF::g_xmlns_atom, xmlns_names::kXmlnsAttr);
-    map->insert("xmlns:xlink", QualifiedName(g_xmlns_atom, g_xlink_atom,
-                                             xmlns_names::kNamespaceURI));
+    map->insert(
+        AtomicString("xmlns:xlink"),
+        QualifiedName(g_xmlns_atom, g_xlink_atom, xmlns_names::kNamespaceURI));
   }
 
   for (unsigned i = 0; i < token->Attributes().size(); ++i) {
@@ -705,6 +723,7 @@ void HTMLTreeBuilder::ProcessStartTagForInBody(AtomicHTMLToken* token) {
     case HTMLTag::kNav:
     case HTMLTag::kOl:
     case HTMLTag::kP:
+    case HTMLTag::kSearch:
     case HTMLTag::kSection:
     case HTMLTag::kSummary:
     case HTMLTag::kUl:
@@ -960,6 +979,12 @@ void HTMLTreeBuilder::ProcessStartTagForInBody(AtomicHTMLToken* token) {
         tree_.InsertForeignElement(token, svg_names::kNamespaceURI);
       } else {
         tree_.ReconstructTheActiveFormattingElements();
+        if (RuntimeEnabledFeatures::
+                FlushParserBeforeCreatingCustomElementsEnabled()) {
+          // Flush before creating custom elements. NOTE: Flush() can cause any
+          // queued tasks to execute, possibly re-entering the parser.
+          tree_.Flush();
+        }
         tree_.InsertHTMLElement(token);
       }
       break;
@@ -986,11 +1011,8 @@ DeclarativeShadowRootType DeclarativeShadowRootTypeFromToken(
   // crbug.com/1396384 tracks the eventual removal of the old behavior.
   Attribute* type_attribute_streaming =
       token->GetAttributeItem(html_names::kShadowrootmodeAttr);
-  bool streaming =
-      type_attribute_streaming &&
-      RuntimeEnabledFeatures::StreamingDeclarativeShadowDOMEnabled();
   String shadow_mode;
-  if (streaming) {
+  if (type_attribute_streaming) {
     shadow_mode = type_attribute_streaming->Value();
   } else {
     Attribute* type_attribute_non_streaming =
@@ -998,19 +1020,33 @@ DeclarativeShadowRootType DeclarativeShadowRootTypeFromToken(
     if (!type_attribute_non_streaming) {
       return DeclarativeShadowRootType::kNone;
     }
+    if (!RuntimeEnabledFeatures::
+            DeprecatedNonStreamingDeclarativeShadowDOMEnabled()) {
+      document.AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
+          mojom::blink::ConsoleMessageSource::kDeprecation,
+          mojom::blink::ConsoleMessageLevel::kError,
+          "Found an old-style declarative `shadowroot` attribute on a "
+          "template, but that style was deprecated and has been removed. "
+          "Please use the `shadowrootmode` attribute instead. Please see "
+          "https://chromestatus.com/feature/6239658726391808."));
+      return DeclarativeShadowRootType::kNone;
+    }
     shadow_mode = type_attribute_non_streaming->Value();
   }
 
   if (include_shadow_roots) {
     if (EqualIgnoringASCIICase(shadow_mode, "open")) {
-      return streaming ? DeclarativeShadowRootType::kStreamingOpen
-                       : DeclarativeShadowRootType::kOpen;
+      return type_attribute_streaming
+                 ? DeclarativeShadowRootType::kStreamingOpen
+                 : DeclarativeShadowRootType::kOpen;
     } else if (EqualIgnoringASCIICase(shadow_mode, "closed")) {
-      return streaming ? DeclarativeShadowRootType::kStreamingClosed
-                       : DeclarativeShadowRootType::kClosed;
+      return type_attribute_streaming
+                 ? DeclarativeShadowRootType::kStreamingClosed
+                 : DeclarativeShadowRootType::kClosed;
     }
   }
-  String attribute_in_use = streaming ? "shadowrootmode" : "shadowroot";
+  String attribute_in_use =
+      type_attribute_streaming ? "shadowrootmode" : "shadowroot";
   if (!include_shadow_roots) {
     document.AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
         mojom::blink::ConsoleMessageSource::kOther,
@@ -1063,37 +1099,45 @@ bool HTMLTreeBuilder::ProcessTemplateEndTag(AtomicHTMLToken* token) {
     DCHECK(template_stack_item->IsElementNode());
     HTMLTemplateElement* template_element =
         DynamicTo<HTMLTemplateElement>(template_stack_item->GetElement());
-    // 9. If the start tag for the declarative template element did not have an
-    // attribute with the name "shadowroot" whose value was an ASCII
-    // case-insensitive match for the strings "open" or "closed", then stop this
-    // algorithm.
+    DocumentFragment* template_content = nullptr;
     if (template_element->IsDeclarativeShadowRoot()) {
-      if (shadow_host_stack_item->GetNode() ==
-          tree_.OpenElements()->RootNode()) {
-        // 10. If the adjusted current node is the topmost element in the stack
-        // of open elements, then stop this algorithm.
-        template_element->SetDeclarativeShadowRootType(
-            DeclarativeShadowRootType::kNone);
-      } else {
-        DCHECK(shadow_host_stack_item);
-        DCHECK(shadow_host_stack_item->IsElementNode());
-        if (template_element->IsNonStreamingDeclarativeShadowRoot()) {
-          auto focus_delegation = template_stack_item->GetAttributeItem(
-                                      html_names::kShadowrootdelegatesfocusAttr)
-                                      ? FocusDelegation::kDelegateFocus
-                                      : FocusDelegation::kNone;
-          // TODO(crbug.com/1063157): Add an attribute for imperative slot
-          // assignment.
-          auto slot_assignment_mode = SlotAssignmentMode::kNamed;
-          shadow_host_stack_item->GetElement()->AttachDeclarativeShadowRoot(
-              template_element,
-              template_element->GetDeclarativeShadowRootType() ==
-                      DeclarativeShadowRootType::kOpen
-                  ? ShadowRootType::kOpen
-                  : ShadowRootType::kClosed,
-              focus_delegation, slot_assignment_mode);
+      if (RuntimeEnabledFeatures::
+              DeprecatedNonStreamingDeclarativeShadowDOMEnabled()) {
+        if (shadow_host_stack_item->GetNode() ==
+            tree_.OpenElements()->RootNode()) {
+          // 10. If the adjusted current node is the topmost element in the
+          // stack of open elements, then stop this algorithm.
+          template_element->SetDeclarativeShadowRootType(
+              DeclarativeShadowRootType::kNone);
+        } else {
+          DCHECK(shadow_host_stack_item);
+          DCHECK(shadow_host_stack_item->IsElementNode());
+          if (template_element->IsNonStreamingDeclarativeShadowRoot()) {
+            template_content = template_element->DeclarativeShadowContent();
+            auto focus_delegation =
+                template_stack_item->GetAttributeItem(
+                    html_names::kShadowrootdelegatesfocusAttr)
+                    ? FocusDelegation::kDelegateFocus
+                    : FocusDelegation::kNone;
+            // TODO(crbug.com/1063157): Add an attribute for imperative slot
+            // assignment.
+            auto slot_assignment_mode = SlotAssignmentMode::kNamed;
+            shadow_host_stack_item->GetElement()
+                ->AttachDeprecatedNonStreamingDeclarativeShadowRoot(
+                    *template_element,
+                    template_element->GetDeclarativeShadowRootType() ==
+                            DeclarativeShadowRootType::kOpen
+                        ? ShadowRootType::kOpen
+                        : ShadowRootType::kClosed,
+                    focus_delegation, slot_assignment_mode);
+          }
         }
       }
+    } else {
+      template_content = template_element->content();
+    }
+    if (template_content) {
+      tree_.FinishedTemplateElement(template_content);
     }
   }
   return true;
@@ -1989,6 +2033,7 @@ void HTMLTreeBuilder::ProcessEndTagForInBody(AtomicHTMLToken* token) {
     case HTMLTag::kNav:
     case HTMLTag::kOl:
     case HTMLTag::kPre:
+    case HTMLTag::kSearch:
     case HTMLTag::kSection:
     case HTMLTag::kSummary:
     case HTMLTag::kUl:

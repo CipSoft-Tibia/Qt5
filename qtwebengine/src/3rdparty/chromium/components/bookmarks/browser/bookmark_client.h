@@ -13,14 +13,11 @@
 #include "base/functional/callback_forward.h"
 #include "base/task/cancelable_task_tracker.h"
 #include "components/bookmarks/browser/bookmark_node.h"
+#include "components/bookmarks/common/bookmark_metrics.h"
 #include "components/favicon_base/favicon_callback.h"
 #include "components/keyed_service/core/keyed_service.h"
 
 class GURL;
-
-namespace base {
-struct UserMetricsAction;
-}
 
 namespace bookmarks {
 
@@ -41,10 +38,16 @@ class BookmarkClient {
   // been typed by the user in the Omnibox.
   using UrlTypedCountMap = std::unordered_map<const GURL*, int>;
 
-  virtual ~BookmarkClient() {}
+  virtual ~BookmarkClient() = default;
 
   // Called during initialization of BookmarkModel.
   virtual void Init(BookmarkModel* model);
+
+  // Gets a bookmark folder that the provided URL can be saved to. If nullptr is
+  // returned, the bookmark is saved to the default location (usually this is
+  // the last modified folder). This affords features the option to override the
+  // default folder if relevant for the URL.
+  virtual const BookmarkNode* GetSuggestedSaveLocation(const GURL& url);
 
   // Requests a favicon from the history cache for the web page at |page_url|
   // for icon type favicon_base::IconType::kFavicon. |callback| is run when the
@@ -69,13 +72,12 @@ class BookmarkClient {
   // to always be visible or to only show them when not empty.
   virtual bool IsPermanentNodeVisibleWhenEmpty(BookmarkNode::Type type) = 0;
 
-  // Wrapper around RecordAction defined in base/metrics/user_metrics.h
-  // that ensure that the action is posted from the correct thread.
-  virtual void RecordAction(const base::UserMetricsAction& action) = 0;
-
   // Returns a task that will be used to load a managed root node. This task
   // will be invoked in the Profile's IO task runner.
   virtual LoadManagedNodeCallback GetLoadManagedNodeCallback() = 0;
+
+  // Returns the current storage state to be added as suffix to metrics.
+  virtual metrics::StorageStateForUma GetStorageStateForUma() = 0;
 
   // Returns true if the |permanent_node| can have its title updated.
   virtual bool CanSetPermanentNodeTitle(const BookmarkNode* permanent_node) = 0;
@@ -101,6 +103,14 @@ class BookmarkClient {
   virtual void DecodeBookmarkSyncMetadata(
       const std::string& metadata_str,
       const base::RepeatingClosure& schedule_save_closure) = 0;
+
+  // Similar to BookmarkModelObserver::BookmarkNodeRemoved(), but transfers
+  // ownership of BookmarkNode, which allows undoing the operation.
+  virtual void OnBookmarkNodeRemovedUndoable(
+      BookmarkModel* model,
+      const BookmarkNode* parent,
+      size_t index,
+      std::unique_ptr<BookmarkNode> node) = 0;
 };
 
 }  // namespace bookmarks

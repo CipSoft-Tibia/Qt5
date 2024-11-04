@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -59,7 +59,6 @@ class UdpSocketReaderPosix : public SocketHandleWaiter::Subscriber {
                 bool disable_locking_for_testing = false);
 
   // The set of all sockets that are being read from
-  // TODO(rwkeane): Change to std::vector<UdpSocketPosix*>
   std::vector<UdpSocketPosix*> sockets_;
 
   // Mutex to protect against concurrent modification of socket info.

@@ -209,6 +209,7 @@ static const AV1LevelSpec av1_level_defs[SEQ_LEVELS] = {
     .high_cr = 4.0,
     .max_tiles = 128,
     .max_tile_cols = 16 },
+#if CONFIG_CWG_C013
   { .level = SEQ_LEVEL_7_0,
     .max_picture_size = 142606336,
     .max_h_size = 32768,
@@ -313,6 +314,16 @@ static const AV1LevelSpec av1_level_defs[SEQ_LEVELS] = {
     .high_cr = 4.0,
     .max_tiles = 512,
     .max_tile_cols = 64 },
+#else   // !CONFIG_CWG_C013
+  UNDEFINED_LEVEL,
+  UNDEFINED_LEVEL,
+  UNDEFINED_LEVEL,
+  UNDEFINED_LEVEL,
+  UNDEFINED_LEVEL,
+  UNDEFINED_LEVEL,
+  UNDEFINED_LEVEL,
+  UNDEFINED_LEVEL,
+#endif  // CONFIG_CWG_C013
 };
 
 typedef enum {
@@ -511,9 +522,10 @@ static double get_presentation_time(const DECODER_MODEL *const decoder_model,
 }
 
 #define MAX_TIME 1e16
-double time_next_buffer_is_free(int num_decoded_frame, int decoder_buffer_delay,
-                                const FRAME_BUFFER *frame_buffer_pool,
-                                double current_time) {
+static double time_next_buffer_is_free(int num_decoded_frame,
+                                       int decoder_buffer_delay,
+                                       const FRAME_BUFFER *frame_buffer_pool,
+                                       double current_time) {
   if (num_decoded_frame == 0) {
     return (double)decoder_buffer_delay / 90000.0;
   }
@@ -1016,9 +1028,13 @@ static TARGET_LEVEL_FAIL_ID check_level_constraints(
       break;
     }
 
+#if CONFIG_CWG_C013
     const int max_tile_size = (level >= SEQ_LEVEL_7_0 && level <= SEQ_LEVEL_8_3)
                                   ? MAX_TILE_AREA_LEVEL_7_AND_ABOVE
                                   : MAX_TILE_AREA;
+#else
+    const int max_tile_size = MAX_TILE_AREA;
+#endif
     if (level_stats->max_tile_size > max_tile_size) {
       fail_id = TILE_TOO_LARGE;
       break;
@@ -1228,7 +1244,8 @@ static void scan_past_frames(const FrameWindowBuffer *const buffer,
       AOMMAX(level_spec->max_decode_rate, decoded_samples);
   level_spec->max_tile_rate = AOMMAX(level_spec->max_tile_rate, tiles);
   level_stats->max_bitrate =
-      AOMMAX(level_stats->max_bitrate, (int)encoded_size_in_bytes * 8);
+      AOMMAX(level_stats->max_bitrate,
+             (int)AOMMIN(encoded_size_in_bytes * 8, (size_t)INT_MAX));
 }
 
 void av1_update_level_info(AV1_COMP *cpi, size_t size, int64_t ts_start,

@@ -15,7 +15,7 @@
 #include "dawn/native/stream/Stream.h"
 
 #include "dawn/native/TintUtils.h"
-#include "tint/writer/array_length_from_uniform_options.h"
+#include "tint/tint.h"
 
 namespace dawn::native {
 
@@ -32,8 +32,8 @@ void StreamInTintObject(const OBJECT& object, stream::Sink* sink) {
 template <>
 void stream::Stream<tint::Program>::Write(stream::Sink* sink, const tint::Program& p) {
 #if TINT_BUILD_WGSL_WRITER
-    tint::writer::wgsl::Options options{};
-    StreamIn(sink, tint::writer::wgsl::Generate(&p, options).wgsl);
+    tint::wgsl::writer::Options options{};
+    StreamIn(sink, tint::wgsl::writer::Generate(&p, options)->wgsl);
 #else
     // TODO(crbug.com/dawn/1481): We shouldn't need to write back to WGSL if we have a CacheKey
     // built from the initial shader module input. Then, we would never need to parse the program
@@ -44,32 +44,48 @@ void stream::Stream<tint::Program>::Write(stream::Sink* sink, const tint::Progra
 
 // static
 template <>
-void stream::Stream<tint::sem::BindingPoint>::Write(stream::Sink* sink,
-                                                    const tint::sem::BindingPoint& point) {
+void stream::Stream<tint::BindingPoint>::Write(stream::Sink* sink,
+                                               const tint::BindingPoint& point) {
     StreamInTintObject(point, sink);
 }
 
 // static
 template <>
-void stream::Stream<tint::transform::MultiplanarExternalTexture::BindingPoints>::Write(
+MaybeError stream::Stream<tint::BindingPoint>::Read(Source* s, tint::BindingPoint* point) {
+    DAWN_TRY(StreamOut(s, &point->group));
+    DAWN_TRY(StreamOut(s, &point->binding));
+    return {};
+}
+
+// static
+template <>
+void stream::Stream<tint::ExternalTextureOptions::BindingPoints>::Write(
     stream::Sink* sink,
-    const tint::transform::MultiplanarExternalTexture::BindingPoints& points) {
+    const tint::ExternalTextureOptions::BindingPoints& point) {
+    StreamInTintObject(point, sink);
+}
+
+// static
+template <>
+void stream::Stream<tint::ExternalTextureOptions>::Write(
+    stream::Sink* sink,
+    const tint::ExternalTextureOptions& points) {
     StreamInTintObject(points, sink);
 }
 
 // static
 template <>
-void stream::Stream<tint::transform::VertexPulling::Config>::Write(
+void stream::Stream<tint::ast::transform::VertexPulling::Config>::Write(
     stream::Sink* sink,
-    const tint::transform::VertexPulling::Config& cfg) {
+    const tint::ast::transform::VertexPulling::Config& cfg) {
     StreamInTintObject(cfg, sink);
 }
 
 // static
 template <>
-void stream::Stream<tint::transform::SubstituteOverride::Config>::Write(
+void stream::Stream<tint::ast::transform::SubstituteOverride::Config>::Write(
     stream::Sink* sink,
-    const tint::transform::SubstituteOverride::Config& cfg) {
+    const tint::ast::transform::SubstituteOverride::Config& cfg) {
     StreamInTintObject(cfg, sink);
 }
 
@@ -81,25 +97,41 @@ void stream::Stream<tint::OverrideId>::Write(stream::Sink* sink, const tint::Ove
 
 // static
 template <>
-void stream::Stream<tint::transform::VertexBufferLayoutDescriptor>::Write(
+void stream::Stream<tint::ast::transform::VertexBufferLayoutDescriptor>::Write(
     stream::Sink* sink,
-    const tint::transform::VertexBufferLayoutDescriptor& layout) {
+    const tint::ast::transform::VertexBufferLayoutDescriptor& layout) {
     StreamInTintObject(layout, sink);
 }
 
 // static
 template <>
-void stream::Stream<tint::transform::VertexAttributeDescriptor>::Write(
+void stream::Stream<tint::ast::transform::VertexAttributeDescriptor>::Write(
     stream::Sink* sink,
-    const tint::transform::VertexAttributeDescriptor& attrib) {
+    const tint::ast::transform::VertexAttributeDescriptor& attrib) {
     StreamInTintObject(attrib, sink);
 }
 
 // static
 template <>
-void stream::Stream<tint::writer::ArrayLengthFromUniformOptions>::Write(
+void stream::Stream<tint::ArrayLengthFromUniformOptions>::Write(
     stream::Sink* sink,
-    const tint::writer::ArrayLengthFromUniformOptions& options) {
+    const tint::ArrayLengthFromUniformOptions& options) {
+    StreamInTintObject(options, sink);
+}
+
+// static
+template <>
+void stream::Stream<tint::TextureBuiltinsFromUniformOptions>::Write(
+    stream::Sink* sink,
+    const tint::TextureBuiltinsFromUniformOptions& options) {
+    StreamInTintObject(options, sink);
+}
+
+// static
+template <>
+void stream::Stream<tint::BindingRemapperOptions>::Write(
+    stream::Sink* sink,
+    const tint::BindingRemapperOptions& options) {
     StreamInTintObject(options, sink);
 }
 

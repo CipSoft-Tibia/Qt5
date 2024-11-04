@@ -9,6 +9,7 @@
 #include "base/memory/ptr_util.h"
 #include "base/task/thread_pool.h"
 #include "build/build_config.h"
+#include "cc/raster/categorized_worker_pool.h"
 #include "mojo/public/cpp/bindings/binder_map.h"
 #include "third_party/blink/public/mojom/dom_storage/session_storage_namespace.mojom-blink.h"
 #include "third_party/blink/public/mojom/filesystem/file_system.mojom-blink.h"
@@ -21,7 +22,6 @@
 #include "third_party/blink/renderer/core/css/background_color_paint_image_generator.h"
 #include "third_party/blink/renderer/core/css/clip_path_paint_image_generator.h"
 #include "third_party/blink/renderer/core/css/css_paint_image_generator.h"
-#include "third_party/blink/renderer/core/dom/context_features_client_impl.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/editing/suggestion/text_suggestion_backend_impl.h"
 #include "third_party/blink/renderer/core/event_type_names.h"
@@ -55,7 +55,6 @@
 #include "third_party/blink/renderer/modules/document_metadata/document_metadata_server.h"
 #include "third_party/blink/renderer/modules/document_picture_in_picture/picture_in_picture_controller_impl.h"
 #include "third_party/blink/renderer/modules/encryptedmedia/html_media_element_encrypted_media.h"
-#include "third_party/blink/renderer/modules/encryptedmedia/media_keys_controller.h"
 #include "third_party/blink/renderer/modules/event_interface_modules_names.h"
 #include "third_party/blink/renderer/modules/event_modules_factory.h"
 #include "third_party/blink/renderer/modules/event_target_modules_names.h"
@@ -103,7 +102,7 @@
 #include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
-#include "third_party/blink/renderer/platform/widget/compositing/categorized_worker_pool.h"
+#include "third_party/blink/renderer/platform/widget/compositing/blink_categorized_worker_pool_delegate.h"
 #include "third_party/blink/renderer/platform/widget/frame_widget.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
@@ -343,7 +342,8 @@ std::unique_ptr<WebMediaPlayer> ModulesInitializer::CreateWebMediaPlayer(
       frame_widget->GetLayerTreeSettings(),
       base::FeatureList::IsEnabled(kBlinkMediaPlayerUsesBaseThreadPool)
           ? base::ThreadPool::CreateTaskRunner(base::TaskTraits{})
-          : CategorizedWorkerPool::GetOrCreate()));
+          : cc::CategorizedWorkerPool::GetOrCreate(
+                &BlinkCategorizedWorkerPoolDelegate::Get())));
 }
 
 WebRemotePlaybackClient* ModulesInitializer::CreateWebRemotePlaybackClient(
@@ -354,11 +354,7 @@ WebRemotePlaybackClient* ModulesInitializer::CreateWebRemotePlaybackClient(
 void ModulesInitializer::ProvideModulesToPage(
     Page& page,
     const SessionStorageNamespaceId& namespace_id) const {
-  MediaKeysController::ProvideMediaKeysTo(page);
-  ::blink::ProvideContextFeaturesTo(
-      page, std::make_unique<ContextFeaturesClientImpl>());
-  ::blink::ProvideDatabaseClientTo(page,
-                                   MakeGarbageCollected<DatabaseClient>());
+  page.ProvideSupplement(MakeGarbageCollected<DatabaseClient>(page));
   StorageNamespace::ProvideSessionStorageNamespaceTo(page, namespace_id);
   AudioGraphTracer::ProvideAudioGraphTracerTo(page);
 #if BUILDFLAG(IS_ANDROID)

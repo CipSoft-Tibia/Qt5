@@ -37,18 +37,9 @@ class LayoutNGMixin : public Base {
                    const PhysicalOffset& accumulated_offset,
                    HitTestPhase) override;
   RecalcLayoutOverflowResult RecalcLayoutOverflow() override;
-  RecalcLayoutOverflowResult RecalcChildLayoutOverflow() override;
   void RecalcVisualOverflow() override;
 
   bool IsLayoutNGObject() const final;
-
- protected:
-  MinMaxSizes ComputeIntrinsicLogicalWidths() const override;
-  NGConstraintSpace ConstraintSpaceForMinMaxSizes() const;
-
-  void UpdateOutOfFlowBlockLayout();
-  const NGLayoutResult* UpdateInFlowBlockLayout();
-  void UpdateMargins();
 };
 
 }  // namespace blink

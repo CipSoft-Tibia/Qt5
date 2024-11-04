@@ -4,13 +4,13 @@
 
 #include "components/component_updater/component_updater_service.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "base/cxx17_backports.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
@@ -77,6 +77,12 @@ class MockUpdateClient : public UpdateClient {
                              Callback callback));
   MOCK_METHOD5(Update,
                void(const std::vector<std::string>& ids,
+                    CrxDataCallback crx_data_callback,
+                    CrxStateChangeCallback crx_state_change_callback,
+                    bool is_foreground,
+                    Callback callback));
+  MOCK_METHOD5(CheckForUpdate,
+               void(const std::string& ids,
                     CrxDataCallback crx_data_callback,
                     CrxStateChangeCallback crx_state_change_callback,
                     bool is_foreground,
@@ -184,10 +190,10 @@ class ComponentUpdaterTest : public testing::Test {
       std::make_unique<TestingPrefServiceSimple>();
   scoped_refptr<TestConfigurator> config_ =
       base::MakeRefCounted<TestConfigurator>(pref_.get());
-  raw_ptr<MockUpdateScheduler> scheduler_;
   scoped_refptr<MockUpdateClient> update_client_ =
       base::MakeRefCounted<MockUpdateClient>();
   std::unique_ptr<ComponentUpdateService> component_updater_;
+  raw_ptr<MockUpdateScheduler> scheduler_;
 };
 
 class OnDemandTester {
@@ -237,7 +243,6 @@ ComponentUpdaterTest::ComponentUpdaterTest() {
 
 ComponentUpdaterTest::~ComponentUpdaterTest() {
   EXPECT_CALL(update_client(), RemoveObserver(_)).Times(1);
-  component_updater_.reset();
 }
 
 void ComponentUpdaterTest::RunThreads() {

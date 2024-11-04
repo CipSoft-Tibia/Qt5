@@ -7,6 +7,10 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/pdf_test_environment.h"
 
+#if defined(PDF_USE_PARTITION_ALLOC)
+#include "testing/allocator_shim_config.h"
+#endif
+
 #ifdef PDF_ENABLE_V8
 #include "testing/v8_test_environment.h"
 #ifdef PDF_ENABLE_XFA
@@ -17,6 +21,10 @@
 // Can't use gtest-provided main since we need to initialize partition
 // alloc before invoking any test, and add test environments.
 int main(int argc, char** argv) {
+#if defined(PDF_USE_PARTITION_ALLOC)
+  pdfium::ConfigurePartitionAllocShimPartitionForTest();
+#endif  // defined(PDF_USE_PARTITION_ALLOC)
+
   FX_InitializeMemoryAllocators();
 
   // PDF test environment will be deleted by gtest.

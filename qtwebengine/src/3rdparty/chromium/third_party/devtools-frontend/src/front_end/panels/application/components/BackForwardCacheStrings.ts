@@ -515,13 +515,41 @@ const UIStrings = {
    */
   keepaliveRequest: 'Back/forward cache is disabled due to a keepalive request.',
   /**
-   *  @description Empty string to roll protocol.
+   *  @description Description text for not restored reason JsNetworkRequestReceivedCacheControlNoStoreResource.
    */
-  authorizationHeader: 'Back/forward cache is disabled due to a keepalive request.',
+  jsNetworkRequestReceivedCacheControlNoStoreResource:
+      'Back/forward cache is disabled because some JavaScript network request received resource with `Cache-Control: no-store` header.',
   /**
    *  @description Description text for not restored reason IndexedDBEvent.
    */
   indexedDBEvent: 'Back/forward cache is disabled due to an IndexedDB event.',
+  /**
+   * @description Description text for not restored reason CookieDisabled.
+   */
+  cookieDisabled:
+      'Back/forward cache is disabled because cookies are disabled on a page that uses `Cache-Control: no-store`.',
+  /**
+   * @description Description text for not restored reason WebRTCSticky.
+   */
+  webRTCSticky: 'Back/forward cache is disabled because WebRTC has been used.',
+  /**
+   * @description Description text for not restored reason WebTransportSticky.
+   */
+  webTransportSticky: 'Back/forward cache is disabled because WebTransport has been used.',
+  /**
+   * @description Description text for not restored reason WebSocketSticky.
+   */
+  webSocketSticky: 'Back/forward cache is disabled because WebSocket has been used.',
+  // TODO(leimy): Added in https://chromium-review.googlesource.com/c/chromium/src/+/4625807. Fill the below correctly.
+  /**
+   * @description Undefined.
+   */
+  HTTPAuthRequired: 'Undefined',
+  // TODO(kprokopenko, leimy): Please provide meaningful description.
+  /**
+   * @description Undefined.
+   */
+  CookieFlushed: 'Undefined',
 };
 
 const str_ = i18n.i18n.registerUIStrings('panels/application/components/BackForwardCacheStrings.ts', UIStrings);
@@ -661,6 +689,13 @@ export const NotRestoredReasonDescription = {
   'ErrorDocument': {name: i18nLazyString(UIStrings.errorDocument)},
   'FencedFramesEmbedder': {name: i18nLazyString(UIStrings.fencedFramesEmbedder)},
   'KeepaliveRequest': {name: i18nLazyString(UIStrings.keepaliveRequest)},
-  'AuthorizationHeader': {name: i18nLazyString(UIStrings.authorizationHeader)},
+  'JsNetworkRequestReceivedCacheControlNoStoreResource':
+      {name: i18nLazyString(UIStrings.jsNetworkRequestReceivedCacheControlNoStoreResource)},
   'IndexedDBEvent': {name: i18nLazyString(UIStrings.indexedDBEvent)},
+  'CookieDisabled': {name: i18nLazyString(UIStrings.cookieDisabled)},
+  'WebRTCSticky': {name: i18nLazyString(UIStrings.webRTCSticky)},
+  'WebTransportSticky': {name: i18nLazyString(UIStrings.webTransportSticky)},
+  'WebSocketSticky': {name: i18nLazyString(UIStrings.webSocketSticky)},
+  'HTTPAuthRequired': {name: i18nLazyString(UIStrings.HTTPAuthRequired)},
+  'CookieFlushed': {name: i18nLazyString(UIStrings.CookieFlushed)},
 };

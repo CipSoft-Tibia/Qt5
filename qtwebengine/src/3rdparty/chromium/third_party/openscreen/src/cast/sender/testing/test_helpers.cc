@@ -1,8 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cast/sender/testing/test_helpers.h"
+
+#include <optional>
+#include <string_view>
+#include <utility>
 
 #include "cast/common/channel/message_util.h"
 #include "cast/receiver/channel/message_util.h"
@@ -12,8 +16,7 @@
 #include "util/json/json_value.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 using ::cast::channel::CastMessage;
 
@@ -42,13 +45,13 @@ void VerifyAppAvailabilityRequest(const CastMessage& message,
   ASSERT_TRUE(maybe_value);
   Json::Value& value = maybe_value.value();
 
-  absl::optional<absl::string_view> maybe_type =
+  std::optional<std::string_view> maybe_type =
       MaybeGetString(value, JSON_EXPAND_FIND_CONSTANT_ARGS(kMessageKeyType));
   ASSERT_TRUE(maybe_type);
   EXPECT_EQ(maybe_type.value(),
             CastMessageTypeToString(CastMessageType::kGetAppAvailability));
 
-  absl::optional<int> maybe_id =
+  std::optional<int> maybe_id =
       MaybeGetInt(value, JSON_EXPAND_FIND_CONSTANT_ARGS(kMessageKeyRequestId));
   ASSERT_TRUE(maybe_id);
   *request_id_out = maybe_id.value();
@@ -59,7 +62,7 @@ void VerifyAppAvailabilityRequest(const CastMessage& message,
   ASSERT_TRUE(maybe_app_ids->isArray());
   ASSERT_EQ(maybe_app_ids->size(), 1u);
   Json::Value app_id_value = maybe_app_ids->get(0u, Json::Value(""));
-  absl::optional<absl::string_view> maybe_app_id = MaybeGetString(app_id_value);
+  std::optional<std::string_view> maybe_app_id = MaybeGetString(app_id_value);
   ASSERT_TRUE(maybe_app_id);
   *app_id_out =
       std::string(maybe_app_id.value().begin(), maybe_app_id.value().end());
@@ -83,5 +86,4 @@ CastMessage CreateAppUnavailableResponseChecked(int request_id,
   return std::move(message.value());
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

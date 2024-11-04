@@ -93,7 +93,6 @@ class IndexedViewImpl;
   *  - std::vector<int>
   *  - std::valarray<int>
   *  - std::array<int>
-  *  - Plain C arrays: int[N]
   *  - Eigen::ArrayXi
   *  - decltype(ArrayXi::LinSpaced(...))
   *  - Any view/expressions of the previous types

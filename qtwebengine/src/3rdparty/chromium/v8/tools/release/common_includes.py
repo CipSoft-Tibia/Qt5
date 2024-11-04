@@ -30,14 +30,12 @@ import argparse
 import datetime
 from distutils.version import LooseVersion
 import glob
-import imp
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-import textwrap
 import time
 import urllib
 
@@ -131,7 +129,7 @@ def NormalizeVersionTags(version_tags):
   # Remove tags/ prefix because of packed refs.
   for current_tag in version_tags:
     version_tag = SanitizeVersionTag(current_tag)
-    if version_tag != None:
+    if version_tag is not None:
       normalized_version_tags.append(version_tag)
 
   return normalized_version_tags
@@ -533,22 +531,13 @@ class Step(GitRecipesMixin):
       self.WaitForResolvingConflicts(patch_file)
 
   def GetVersionTag(self, revision):
-    tag = self.Git("describe --tags %s" % revision).strip()
-    return SanitizeVersionTag(tag)
+    tags = self.Git(f"tag --points-at {revision}").strip().split('\n')
+    for tag in tags:
+      sanitized_tag = SanitizeVersionTag(tag)
+      if sanitized_tag:
+        return sanitized_tag
 
-  def GetRecentReleases(self, max_age):
-    # Make sure tags are fetched.
-    self.Git("fetch origin +refs/tags/*:refs/tags/*")
-
-    # Current timestamp.
-    time_now = int(self._side_effect_handler.GetUTCStamp())
-
-    # List every tag from a given period.
-    revisions = self.Git("rev-list --max-age=%d --tags" %
-                         int(time_now - max_age)).strip()
-
-    # Filter out revisions who's tag is off by one or more commits.
-    return list(filter(self.GetVersionTag, revisions.splitlines()))
+    return None
 
   def GetLatestVersion(self):
     # Use cached version if available.

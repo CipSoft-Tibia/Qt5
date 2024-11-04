@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,8 +16,7 @@
 #include "platform/api/time.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 // This method asks the singleton NetworkServiceManager
 // to create a new protocol connection for the given endpoint.
@@ -44,7 +43,6 @@ class PresentationID {
   ErrorOr<std::string> id_;
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_IMPL_PRESENTATION_PRESENTATION_COMMON_H_

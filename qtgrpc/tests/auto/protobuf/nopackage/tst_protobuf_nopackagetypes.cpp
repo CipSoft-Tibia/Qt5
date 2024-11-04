@@ -1,6 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2022 Alexey Edelev <semlanik@gmail.com>, Viktor Kopp <vifactor@gmail.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "nopackage.qpb.h"
 #include "nopackageexternal.qpb.h"
@@ -38,7 +38,7 @@ void QtProtobufNoPackageTypesGenerationTest::NoPackageSimpleIntMessageTest()
     QCOMPARE(test.property(propertyName).value<QtProtobuf::int32>(), 1);
     QCOMPARE(test.testFieldInt(), 1);
 
-    QCOMPARE(::SimpleIntMessage::TestFieldIntProtoFieldNumber, 1);
+    QCOMPARE(int(::SimpleIntMessage::QtProtobufFieldEnum::TestFieldIntProtoFieldNumber), 1);
     QCOMPARE(test.propertyOrdering.getMessageFullName(), "SimpleIntMessage");
 }
 

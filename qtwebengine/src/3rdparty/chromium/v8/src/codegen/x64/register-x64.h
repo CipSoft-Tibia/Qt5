@@ -41,7 +41,7 @@ namespace internal {
   V(r12)                                        \
   V(r15)
 
-#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#ifdef V8_COMPRESS_POINTERS
 #define MAYBE_ALLOCATABLE_GENERAL_REGISTERS(V)
 #else
 #define MAYBE_ALLOCATABLE_GENERAL_REGISTERS(V) V(r14)
@@ -87,6 +87,13 @@ class TaggedRegister {
 ASSERT_TRIVIALLY_COPYABLE(Register);
 static_assert(sizeof(Register) <= sizeof(int),
               "Register can efficiently be passed by value");
+
+// Assign |source| value to |no_reg| and return the |source|'s previous value.
+inline Register ReassignRegister(Register& source) {
+  Register result = source;
+  source = Register::no_reg();
+  return result;
+}
 
 #define DECLARE_REGISTER(R) \
   constexpr Register R = Register::from_code(kRegCode_##R);
@@ -287,14 +294,13 @@ constexpr Register kWasmInstanceRegister = rsi;
 // function calling convention.
 constexpr Register kScratchRegister = r10;
 constexpr XMMRegister kScratchDoubleReg = xmm15;
+constexpr YMMRegister kScratchSimd256Reg = ymm15;
 constexpr Register kRootRegister = r13;  // callee save
-#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#ifdef V8_COMPRESS_POINTERS
 constexpr Register kPtrComprCageBaseRegister = r14;  // callee save
 #else
-constexpr Register kPtrComprCageBaseRegister = kRootRegister;
+constexpr Register kPtrComprCageBaseRegister = no_reg;
 #endif
-
-constexpr Register kOffHeapTrampolineRegister = kScratchRegister;
 
 constexpr DoubleRegister kFPReturnRegister0 = xmm0;
 

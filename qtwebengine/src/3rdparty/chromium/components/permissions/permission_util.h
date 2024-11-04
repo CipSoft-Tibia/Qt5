@@ -46,6 +46,12 @@ enum class PermissionAction {
   NUM,
 };
 
+enum PermissionPromptViewID {
+  VIEW_ID_PERMISSION_PROMPT_NONE = 0,
+  VIEW_ID_PERMISSION_PROMPT_EXTRA_TEXT,
+  VIEW_ID_PERMISSION_PROMPT_LINK,
+};
+
 // A utility class for permissions.
 class PermissionUtil {
  public:
@@ -119,11 +125,6 @@ class PermissionUtil {
   // versa.
   static blink::mojom::PermissionStatus ContentSettingToPermissionStatus(
       ContentSetting setting);
-
-  static content::PermissionResult ToContentPermissionResult(
-      PermissionResult result);
-
-  static PermissionResult ToPermissionResult(content::PermissionResult result);
 
   // If an iframed document/worker inherits a different StoragePartition from
   // its embedder than it would use if it were a main frame, we should block

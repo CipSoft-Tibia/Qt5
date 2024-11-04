@@ -1,7 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include "backend_environment.h"
 #include <QtQuickTest/quicktest.h>
 #include <QObject>
 #include <QProcess>
@@ -55,7 +54,7 @@ public slots:
 
         QString host = envOrDefault("OPCUA_HOST", defaultHost.toString());
         QString port = envOrDefault("OPCUA_PORT", QString::number(defaultPort));
-        const auto discoveryEndpoint = QStringLiteral("opc.tcp://%1:%2").arg(host).arg(port);
+        const auto discoveryEndpoint = QStringLiteral("opc.tcp://%1:%2").arg(host, port);
 
         QSignalSpy endpointSpy(client, &QOpcUaClient::endpointsRequestFinished);
         client->requestEndpoints(discoveryEndpoint);
@@ -87,7 +86,6 @@ public:
 
 public slots:
     void applicationAvailable() {
-        updateEnvironment();
 
         if (qEnvironmentVariableIsEmpty("OPCUA_HOST") && qEnvironmentVariableIsEmpty("OPCUA_PORT")) {
             m_testServerPath = qApp->applicationDirPath()
@@ -130,12 +128,30 @@ public slots:
             //m_serverProcess.setProcessChannelMode(QProcess::ForwardedChannels);
             m_serverProcess.start(m_testServerPath);
             QVERIFY2(m_serverProcess.waitForStarted(), qPrintable(m_serverProcess.errorString()));
-            // Let the server come up
-            QTest::qSleep(2000);
+
+            QTest::qSleep(100);
+            socket.connectToHost(defaultHost, defaultPort);
+            if (!socket.waitForConnected(5000))
+            {
+                bool success = false;
+                for (int i = 0; i < 50; ++i) {
+                    QTest::qSleep(100);
+                    socket.connectToHost(defaultHost, defaultPort);
+                    if (socket.waitForConnected(5000)) {
+                        success = true;
+                        break;
+                    }
+                }
+
+                if (!success)
+                    QFAIL("Server does not run");
+            }
+
+            socket.disconnectFromHost();
         }
         const QString host = envOrDefault("OPCUA_HOST", defaultHost.toString());
         const QString port = envOrDefault("OPCUA_PORT", QString::number(defaultPort));
-        m_opcuaDiscoveryUrl = QString::fromLatin1("opc.tcp://%1:%2").arg(host).arg(port);
+        m_opcuaDiscoveryUrl = QString::fromLatin1("opc.tcp://%1:%2").arg(host, port);
     }
     void qmlEngineAvailable(QQmlEngine *engine) {
         bool value = false;

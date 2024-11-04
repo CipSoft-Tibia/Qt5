@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtMultimedia/private/qplatformmediaplugin_p.h>
 #include "qmockintegration.h"
@@ -41,7 +41,7 @@ public:
         : QPlatformVideoDevices(pmi)
     {
         QCameraDevicePrivate *info = new QCameraDevicePrivate;
-        info->description = QString::fromUtf8("defaultCamera");
+        info->description = QStringLiteral("defaultCamera");
         info->id = "default";
         info->isDefault = true;
         auto *f = new QCameraFormatPrivate{
@@ -54,7 +54,7 @@ public:
         info->videoFormats << f->create();
         m_cameraDevices.append(info->create());
         info = new QCameraDevicePrivate;
-        info->description = QString::fromUtf8("frontCamera");
+        info->description = QStringLiteral("frontCamera");
         info->id = "front";
         info->isDefault = false;
         info->position = QCameraDevice::FrontFace;
@@ -68,7 +68,7 @@ public:
         info->videoFormats << f->create();
         m_cameraDevices.append(info->create());
         info = new QCameraDevicePrivate;
-        info->description = QString::fromUtf8("backCamera");
+        info->description = QStringLiteral("backCamera");
         info->id = "back";
         info->isDefault = false;
         info->position = QCameraDevice::BackFace;
@@ -96,7 +96,7 @@ private:
     QList<QCameraDevice> m_cameraDevices;
 };
 
-QMockIntegration::QMockIntegration() = default;
+QMockIntegration::QMockIntegration() : QPlatformMediaIntegration(QLatin1String("mock")) { }
 QMockIntegration::~QMockIntegration() = default;
 
 QPlatformVideoDevices *QMockIntegration::createVideoDevices()

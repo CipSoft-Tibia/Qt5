@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -207,7 +207,7 @@ void tst_QSslCertificate::createTestRows()
 {
     QTest::addColumn<QString>("absFilePath");
     QTest::addColumn<QSsl::EncodingFormat>("format");
-    foreach (CertInfo certInfo, certInfoList) {
+    for (const CertInfo &certInfo : std::as_const(certInfoList)) {
         QTest::newRow(certInfo.fileInfo.fileName().toLatin1())
             << certInfo.fileInfo.absoluteFilePath() << certInfo.format;
     }
@@ -338,7 +338,7 @@ void tst_QSslCertificate::digest_data()
     QTest::addColumn<QSsl::EncodingFormat>("format");
     QTest::addColumn<QString>("absFilePath_digest_md5");
     QTest::addColumn<QString>("absFilePath_digest_sha1");
-    foreach (CertInfo certInfo, certInfoList) {
+    for (const CertInfo &certInfo : std::as_const(certInfoList)) {
         QString certName = certInfo.fileInfo.fileName();
         QTest::newRow(certName.toLatin1())
             << certInfo.fileInfo.absoluteFilePath()
@@ -391,7 +391,7 @@ void tst_QSslCertificate::subjectAlternativeNames_data()
     QTest::addColumn<QSsl::EncodingFormat>("format");
     QTest::addColumn<QString>("subjAltNameFilePath");
 
-    foreach (CertInfo certInfo, certInfoList) {
+    for (const CertInfo &certInfo : std::as_const(certInfoList)) {
         QString certName = certInfo.fileInfo.fileName();
         if (subjAltNameMap.contains(certName))
             QTest::newRow(certName.toLatin1())
@@ -529,7 +529,7 @@ void tst_QSslCertificate::publicKey_data()
     QTest::addColumn<QSsl::EncodingFormat>("format");
     QTest::addColumn<QString>("pubkeyFilePath");
 
-    foreach (CertInfo certInfo, certInfoList) {
+    for (const CertInfo &certInfo : std::as_const(certInfoList)) {
         QString certName = certInfo.fileInfo.fileName();
         if (pubkeyMap.contains(certName))
             QTest::newRow(certName.toLatin1())
@@ -1082,7 +1082,7 @@ void tst_QSslCertificate::verify()
     toVerify = QSslCertificate::fromPath(testDataDir + "verify-certs/test-addons-mozilla-org-cert.pem", QSsl::Pem, QSslCertificate::PatternSyntax::FixedString);
     errors = QSslCertificate::verify(toVerify);
     bool foundBlack = false;
-    foreach (const QSslError &error, errors) {
+    for (const QSslError &error : std::as_const(errors)) {
         if (error.error() == QSslError::CertificateBlacklisted) {
             foundBlack = true;
             break;
@@ -1128,9 +1128,8 @@ QString tst_QSslCertificate::toString(const QList<QSslError>& errors)
 {
     QStringList errorStrings;
 
-    foreach (const QSslError& error, errors) {
+    for (const QSslError &error : errors)
         errorStrings.append(QLatin1Char('"') + error.errorString() + QLatin1Char('"'));
-    }
 
     return QLatin1String("[ ") + errorStrings.join(QLatin1String(", ")) + QLatin1String(" ]");
 }

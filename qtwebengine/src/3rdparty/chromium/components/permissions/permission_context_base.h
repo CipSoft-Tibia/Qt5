@@ -12,12 +12,14 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "components/content_settings/core/browser/content_settings_observer.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/permissions/permission_request.h"
-#include "components/permissions/permission_result.h"
+#include "components/permissions/permission_request_data.h"
+#include "content/public/browser/permission_result.h"
 #include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom-forward.h"
 
 class GURL;
@@ -41,6 +43,10 @@ class Observer : public base::CheckedObserver {
       const ContentSettingsPattern& secondary_pattern,
       ContentSettingsTypeSet content_type_set) = 0;
 };
+
+// A one time grant will never last longer than this value.
+static constexpr base::TimeDelta kOneTimePermissionMaximumLifetime =
+    base::Hours(16);
 
 using BrowserPermissionCallback = base::OnceCallback<void(ContentSetting)>;
 
@@ -85,15 +91,13 @@ class PermissionContextBase : public content_settings::Observer {
 
   // |callback| is called upon resolution of the request, but not if a prompt
   // is shown and ignored.
-  virtual void RequestPermission(const PermissionRequestID& id,
-                                 const GURL& requesting_frame,
-                                 bool user_gesture,
+  virtual void RequestPermission(PermissionRequestData request_data,
                                  BrowserPermissionCallback callback);
 
   // Returns whether the permission has been granted, denied etc.
   // |render_frame_host| may be nullptr if the call is coming from a context
   // other than a specific frame.
-  PermissionResult GetPermissionStatus(
+  content::PermissionResult GetPermissionStatus(
       content::RenderFrameHost* render_frame_host,
       const GURL& requesting_origin,
       const GURL& embedding_origin) const;
@@ -105,8 +109,8 @@ class PermissionContextBase : public content_settings::Observer {
   // Update |result| with any modifications based on the device state. For
   // example, if |result| is ALLOW but Chrome does not have the relevant
   // permission at the device level, but will prompt the user, return ASK.
-  virtual PermissionResult UpdatePermissionStatusWithDeviceStatus(
-      PermissionResult result,
+  virtual content::PermissionResult UpdatePermissionStatusWithDeviceStatus(
+      content::PermissionResult result,
       const GURL& requesting_origin,
       const GURL& embedding_origin) const;
 
@@ -122,6 +126,10 @@ class PermissionContextBase : public content_settings::Observer {
   void AddObserver(permissions::Observer* permission_observer);
   void RemoveObserver(permissions::Observer* permission_observer);
 
+  ContentSettingsType content_settings_type() const {
+    return content_settings_type_;
+  }
+
  protected:
   virtual ContentSetting GetPermissionStatusInternal(
       content::RenderFrameHost* render_frame_host,
@@ -130,10 +138,7 @@ class PermissionContextBase : public content_settings::Observer {
 
   // Called if generic checks (existing content setting, embargo, etc.) fail to
   // resolve a permission request. The default implementation prompts the user.
-  virtual void DecidePermission(const PermissionRequestID& id,
-                                const GURL& requesting_origin,
-                                const GURL& embedding_origin,
-                                bool user_gesture,
+  virtual void DecidePermission(PermissionRequestData request_data,
                                 BrowserPermissionCallback callback);
 
   // Updates stored content setting if persist is set, updates tab indicators
@@ -184,16 +189,10 @@ class PermissionContextBase : public content_settings::Observer {
   // Implementors can override this method to use a different PermissionRequest
   // implementation.
   virtual std::unique_ptr<PermissionRequest> CreatePermissionRequest(
-      const GURL& request_origin,
-      ContentSettingsType content_settings_type,
-      bool has_gesture,
       content::WebContents* web_contents,
+      PermissionRequestData request_data,
       PermissionRequest::PermissionDecidedCallback permission_decided_callback,
       base::OnceClosure delete_callback) const;
-
-  ContentSettingsType content_settings_type() const {
-    return content_settings_type_;
-  }
 
   base::ObserverList<permissions::Observer> permission_observers_;
 

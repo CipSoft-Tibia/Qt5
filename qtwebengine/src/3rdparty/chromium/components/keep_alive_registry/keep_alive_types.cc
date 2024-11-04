@@ -36,6 +36,8 @@ std::ostream& operator<<(std::ostream& out, const KeepAliveOrigin& origin) {
       return out << "LOGIN_DISPLAY_HOST_WEBUI";
     case KeepAliveOrigin::PIN_MIGRATION:
       return out << "PIN_MIGRATION";
+    case KeepAliveOrigin::DRIVEFS_NATIVE_MESSAGE_HOST_LACROS:
+      return out << "DRIVEFS_NATIVE_MESSAGE_HOST_LACROS";
     case KeepAliveOrigin::REMOTE_DEBUGGING:
       return out << "REMOTE_DEBUGGING";
     case KeepAliveOrigin::DEVTOOLS_WINDOW:
@@ -80,6 +82,10 @@ std::ostream& operator<<(std::ostream& out, const KeepAliveOrigin& origin) {
       return out << "APP_GET_INFO";
     case KeepAliveOrigin::WEB_APP_LAUNCH:
       return out << "WEB_APP_LAUNCH";
+    case KeepAliveOrigin::ISOLATED_WEB_APP_INSTALL:
+      return out << "ISOLATED_WEB_APP_INSTALL";
+    case KeepAliveOrigin::ISOLATED_WEB_APP_UPDATE:
+      return out << "ISOLATED_WEB_APP_UPDATE";
     case KeepAliveOrigin::SESSION_DATA_DELETER:
       return out << "SESSION_DATA_DELETER";
   }

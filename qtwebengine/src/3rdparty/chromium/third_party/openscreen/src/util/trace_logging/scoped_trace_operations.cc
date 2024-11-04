@@ -1,18 +1,16 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "util/trace_logging/scoped_trace_operations.h"
 
-#include "absl/types/optional.h"
 #include "platform/api/trace_logging_platform.h"
 #include "platform/base/trace_logging_activation.h"
 #include "util/osp_logging.h"
 
 #if defined(ENABLE_TRACE_LOGGING)
 
-namespace openscreen {
-namespace internal {
+namespace openscreen::internal {
 
 // static
 bool ScopedTraceOperation::TraceAsyncEnd(const uint32_t line,
@@ -134,7 +132,6 @@ AsynchronousTraceLogger::~AsynchronousTraceLogger() {
 
 TraceIdSetter::~TraceIdSetter() = default;
 
-}  // namespace internal
-}  // namespace openscreen
+}  // namespace openscreen::internal
 
 #endif  // defined(ENABLE_TRACE_LOGGING)

@@ -25,6 +25,7 @@
 #include "base/trace_event/memory_dump_provider.h"
 #include "build/build_config.h"
 #include "components/viz/common/gpu/context_cache_controller.h"
+#include "components/viz/common/resources/shared_image_format_utils.h"
 #include "gpu/command_buffer/client/gles2_cmd_helper.h"
 #include "gpu/command_buffer/client/gles2_trace_implementation.h"
 #include "gpu/command_buffer/client/gpu_switches.h"
@@ -44,7 +45,6 @@
 #include "gpu/ipc/client/gpu_channel_host.h"
 #include "gpu/skia_bindings/gles2_implementation_with_grcontext_support.h"
 #include "gpu/skia_bindings/grcontext_for_gles2_interface.h"
-#include "gpu/skia_bindings/grcontext_for_webgpu_interface.h"
 #include "services/viz/public/cpp/gpu/command_buffer_metrics.h"
 #include "skia/buildflags.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -58,7 +58,6 @@ namespace viz {
 
 ContextProviderCommandBuffer::ContextProviderCommandBuffer(
     scoped_refptr<gpu::GpuChannelHost> channel,
-    gpu::GpuMemoryBufferManager* gpu_memory_buffer_manager,
     int32_t stream_id,
     gpu::SchedulingPriority stream_priority,
     gpu::SurfaceHandle surface_handle,
@@ -81,7 +80,6 @@ ContextProviderCommandBuffer::ContextProviderCommandBuffer(
       attributes_(attributes),
       context_type_(type),
       channel_(std::move(channel)),
-      gpu_memory_buffer_manager_(gpu_memory_buffer_manager),
       impl_(nullptr),
       buffer_mapper_(buffer_mapper) {
   DCHECK(main_thread_checker_.CalledOnValidThread());
@@ -109,15 +107,6 @@ ContextProviderCommandBuffer::GetCommandBufferProxy() {
   return command_buffer_.get();
 }
 
-uint32_t ContextProviderCommandBuffer::GetCopyTextureInternalFormat() {
-  if (attributes_.alpha_size > 0)
-    return GL_RGBA;
-  DCHECK_NE(attributes_.red_size, 0);
-  DCHECK_NE(attributes_.green_size, 0);
-  DCHECK_NE(attributes_.blue_size, 0);
-  return GL_RGB;
-}
-
 void ContextProviderCommandBuffer::AddRef() const {
   base::RefCountedThreadSafe<ContextProviderCommandBuffer>::AddRef();
 }
@@ -129,11 +118,23 @@ void ContextProviderCommandBuffer::Release() const {
 gpu::ContextResult ContextProviderCommandBuffer::BindToCurrentSequence() {
   // This is called on the thread the context will be used.
   DCHECK(context_sequence_checker_.CalledOnValidSequence());
+  CHECK(channel_);
 
   if (bind_tried_)
     return bind_result_;
 
   bind_tried_ = true;
+
+  // This is for no swiftshader and no software rasterization.
+  // Return kFatalFailure to indicate no retry is necessary. Should update
+  // Renderer Thread Impl or Blink so it won't keep retrying
+  // BindToCurrentSequence.
+  if (channel_->gpu_info().gl_implementation_parts.gl ==
+      gl::kGLImplementationDisabled) {
+    bind_result_ = gpu::ContextResult::kFatalFailure;
+    return bind_result_;
+  }
+
   // Any early-out should set this to a failure code and return it.
   bind_result_ = gpu::ContextResult::kSuccess;
 
@@ -143,8 +144,7 @@ gpu::ContextResult ContextProviderCommandBuffer::BindToCurrentSequence() {
   // This command buffer is a client-side proxy to the command buffer in the
   // GPU process.
   command_buffer_ = std::make_unique<gpu::CommandBufferProxyImpl>(
-      channel_, gpu_memory_buffer_manager_, stream_id_, task_runner,
-      buffer_mapper_);
+      channel_, stream_id_, task_runner, buffer_mapper_);
   bind_result_ = command_buffer_->Initialize(
       surface_handle_, /*shared_command_buffer=*/nullptr, stream_priority_,
       attributes_, active_url_);
@@ -394,19 +394,22 @@ gpu::ContextSupport* ContextProviderCommandBuffer::ContextSupport() {
 class GrDirectContext* ContextProviderCommandBuffer::GrContext() {
   DCHECK(bind_tried_);
   DCHECK_EQ(bind_result_, gpu::ContextResult::kSuccess);
-  if (!support_grcontext_ || !ContextSupport()->HasGrContextSupport())
+  if (!support_grcontext_ || !ContextSupport()->HasGrContextSupport()) {
     return nullptr;
+  }
   CheckValidSequenceOrLockAcquired();
 
-  if (gr_context_)
+  if (gr_context_) {
     return gr_context_->get();
-#if BUILDFLAG(SKIA_USE_DAWN)
-  else if (webgpu_gr_context_)
-    return webgpu_gr_context_->get();
-#endif
+  }
 
-  if (attributes_.enable_oop_rasterization)
+  if (attributes_.enable_oop_rasterization) {
     return nullptr;
+  }
+
+  if (attributes_.context_type == gpu::CONTEXT_TYPE_WEBGPU) {
+    return nullptr;
+  }
 
   // TODO(vmiura): crbug.com/793508 Disable access to GrContext if
   // enable_gles2_interface is disabled, after removing any dependencies on
@@ -417,23 +420,12 @@ class GrDirectContext* ContextProviderCommandBuffer::GrContext() {
   gpu::DetermineGrCacheLimitsFromAvailableMemory(
       &max_resource_cache_bytes, &max_glyph_cache_texture_bytes);
 
-  if (attributes_.context_type == gpu::CONTEXT_TYPE_WEBGPU) {
-#if BUILDFLAG(SKIA_USE_DAWN)
-    webgpu_gr_context_ =
-        std::make_unique<skia_bindings::GrContextForWebGPUInterface>(
-            webgpu_interface_.get(), ContextSupport(), ContextCapabilities(),
-            max_resource_cache_bytes, max_glyph_cache_texture_bytes);
-    cache_controller_->SetGrContext(webgpu_gr_context_->get());
-    return webgpu_gr_context_->get();
-#else
-    return nullptr;
-#endif
-  }
   gpu::gles2::GLES2Interface* gl_interface;
-  if (trace_impl_)
+  if (trace_impl_) {
     gl_interface = trace_impl_.get();
-  else
+  } else {
     gl_interface = gles2_impl_.get();
+  }
 
   gr_context_ = std::make_unique<skia_bindings::GrContextForGLES2Interface>(
       gl_interface, ContextSupport(), ContextCapabilities(),
@@ -442,8 +434,9 @@ class GrDirectContext* ContextProviderCommandBuffer::GrContext() {
 
   // If GlContext is already lost, also abandon the new GrContext.
   if (gr_context_->get() &&
-      gles2_impl_->GetGraphicsResetStatusKHR() != GL_NO_ERROR)
+      gles2_impl_->GetGraphicsResetStatusKHR() != GL_NO_ERROR) {
     gr_context_->get()->abandonContext();
+  }
 
   return gr_context_->get();
 }
@@ -519,6 +512,12 @@ void ContextProviderCommandBuffer::AddObserver(ContextLostObserver* obs) {
 void ContextProviderCommandBuffer::RemoveObserver(ContextLostObserver* obs) {
   CheckValidSequenceOrLockAcquired();
   observers_.RemoveObserver(obs);
+}
+
+unsigned int ContextProviderCommandBuffer::GetGrGLTextureFormat(
+    SharedImageFormat format) const {
+  return SharedImageFormatRestrictedSinglePlaneUtils::ToGLTextureStorageFormat(
+      format, ContextCapabilities().angle_rgbx_internal_format);
 }
 
 gpu::webgpu::WebGPUInterface* ContextProviderCommandBuffer::WebGPUInterface() {

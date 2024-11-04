@@ -22,9 +22,8 @@
 #include "core/fxge/calculate_pitch.h"
 #include "third_party/base/check.h"
 #include "third_party/base/check_op.h"
-#include "third_party/base/cxx17_backports.h"
+#include "third_party/base/containers/span.h"
 #include "third_party/base/numerics/safe_conversions.h"
-#include "third_party/base/span.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "core/fxcrt/span_util.h"
@@ -127,7 +126,7 @@ void FaxG4FindB1B2(pdfium::span<const uint8_t> ref_buf,
 
 void FaxFillBits(uint8_t* dest_buf, int columns, int startpos, int endpos) {
   startpos = std::max(startpos, 0);
-  endpos = pdfium::clamp(endpos, 0, columns);
+  endpos = std::clamp(endpos, 0, columns);
   if (startpos >= endpos)
     return;
 
@@ -586,7 +585,7 @@ uint32_t FaxDecoder::GetSrcOffset() {
 
 void FaxDecoder::InvertBuffer() {
   DCHECK_EQ(m_Pitch, m_ScanlineBuf.size());
-  DCHECK_EQ(m_Pitch % 4, 0);
+  DCHECK_EQ(m_Pitch % 4, 0u);
   uint32_t* data = reinterpret_cast<uint32_t*>(m_ScanlineBuf.data());
   for (size_t i = 0; i < m_ScanlineBuf.size() / 4; ++i)
     data[i] = ~data[i];

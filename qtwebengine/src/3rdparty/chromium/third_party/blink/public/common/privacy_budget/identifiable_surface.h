@@ -260,6 +260,12 @@ class IdentifiableSurface {
     // sampled in the browser.
     kFontFamilyAvailable = 38,
 
+    // Represents determining that a local font exists or does not, based on a
+    // name lookup that is allowed to match either a unique name or a family
+    // name. This occurs when a font-family CSS rule doesn't match any
+    // @font-face rule. Input is the lookup name. Output is a bool.
+    kLocalFontExistenceByUniqueOrFamilyName = 39,
+
     // We can use values up to and including |kMax|.
     kMax = (1 << kTypeBits) - 1
   };
@@ -346,8 +352,11 @@ class IdentifiableSurface {
     kHorizontalViewportSegments = 23,
     kVerticalViewportSegments = 24,
     kAspectRatioNormalized = 25,
+    kPrefersReducedTransparency = 26,
+    kInvertedColors = 27,
+    kScripting = 28,
     // We can use enum values up to and including 63, see static_assert below.
-    kMax = kAspectRatioNormalized
+    kMax = kScripting
   };
   static_assert(static_cast<int>(MediaFeatureName::kMax) < 64,
                 "MediaFeatureName only allows values < 64 since we use it in "

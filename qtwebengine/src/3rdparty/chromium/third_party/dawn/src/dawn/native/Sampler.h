@@ -15,6 +15,7 @@
 #ifndef SRC_DAWN_NATIVE_SAMPLER_H_
 #define SRC_DAWN_NATIVE_SAMPLER_H_
 
+#include "dawn/common/ContentLessObjectCacheable.h"
 #include "dawn/native/CachedObject.h"
 #include "dawn/native/Error.h"
 #include "dawn/native/Forward.h"
@@ -28,7 +29,9 @@ class DeviceBase;
 
 MaybeError ValidateSamplerDescriptor(DeviceBase* device, const SamplerDescriptor* descriptor);
 
-class SamplerBase : public ApiObjectBase, public CachedObject {
+class SamplerBase : public ApiObjectBase,
+                    public CachedObject,
+                    public ContentLessObjectCacheable<SamplerBase> {
   public:
     SamplerBase(DeviceBase* device,
                 const SamplerDescriptor* descriptor,
@@ -36,7 +39,7 @@ class SamplerBase : public ApiObjectBase, public CachedObject {
     SamplerBase(DeviceBase* device, const SamplerDescriptor* descriptor);
     ~SamplerBase() override;
 
-    static SamplerBase* MakeError(DeviceBase* device);
+    static SamplerBase* MakeError(DeviceBase* device, const char* label);
 
     ObjectType GetType() const override;
 
@@ -56,7 +59,7 @@ class SamplerBase : public ApiObjectBase, public CachedObject {
     void DestroyImpl() override;
 
   private:
-    SamplerBase(DeviceBase* device, ObjectBase::ErrorTag tag);
+    SamplerBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label);
 
     // TODO(cwallez@chromium.org): Store a crypto hash of the items instead?
     wgpu::AddressMode mAddressModeU;
@@ -64,7 +67,7 @@ class SamplerBase : public ApiObjectBase, public CachedObject {
     wgpu::AddressMode mAddressModeW;
     wgpu::FilterMode mMagFilter;
     wgpu::FilterMode mMinFilter;
-    wgpu::FilterMode mMipmapFilter;
+    wgpu::MipmapFilterMode mMipmapFilter;
     float mLodMinClamp;
     float mLodMaxClamp;
     wgpu::CompareFunction mCompareFunction;

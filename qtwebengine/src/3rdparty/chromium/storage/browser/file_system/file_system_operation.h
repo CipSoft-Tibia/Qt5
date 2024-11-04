@@ -33,6 +33,29 @@ class FileSystemURL;
 class FileWriterDelegate;
 class ShareableFileReference;
 
+// Operation type called by FileSystemOperationRunner.
+enum class OperationType {
+  kNone,
+  kCreateFile,
+  kCreateDirectory,
+  kCreateSnapshotFile,
+  kCopy,
+  kCopyInForeignFile,
+  kMove,
+  kDirectoryExists,
+  kFileExists,
+  kGetMetadata,
+  kReadDirectory,
+  kRemove,
+  kWrite,
+  kTruncate,
+  kTouchFile,
+  kOpenFile,
+  kCloseFile,
+  kGetLocalPath,
+  kCancel,
+};
+
 // The interface class for FileSystemOperation implementations.
 //
 // This interface defines file system operations required to implement
@@ -58,6 +81,7 @@ class FileSystemOperation {
  public:
   COMPONENT_EXPORT(STORAGE_BROWSER)
   static std::unique_ptr<FileSystemOperation> Create(
+      OperationType type,
       const FileSystemURL& url,
       FileSystemContext* file_system_context,
       std::unique_ptr<FileSystemOperationContext> operation_context);
@@ -356,7 +380,7 @@ class FileSystemOperation {
   // the metadata of the file itself (as well as GetMetadata does),
   // while in remote filesystem case the backend may want to download the file
   // into a temporary snapshot file and return the metadata of the
-  // temporary file.  Or if the implementaiton already has the local cache
+  // temporary file.  Or if the implementation already has the local cache
   // data for |path| it can simply return the path to the cache.
   virtual void CreateSnapshotFile(const FileSystemURL& path,
                                   SnapshotFileCallback callback) = 0;
@@ -448,29 +472,6 @@ class FileSystemOperation {
       base::FilePath* platform_path) = 0;
 
  protected:
-  // Used only for internal assertions.
-  enum OperationType {
-    kOperationNone,
-    kOperationCreateFile,
-    kOperationCreateDirectory,
-    kOperationCreateSnapshotFile,
-    kOperationCopy,
-    kOperationCopyInForeignFile,
-    kOperationMove,
-    kOperationDirectoryExists,
-    kOperationFileExists,
-    kOperationGetMetadata,
-    kOperationReadDirectory,
-    kOperationRemove,
-    kOperationWrite,
-    kOperationTruncate,
-    kOperationTouchFile,
-    kOperationOpenFile,
-    kOperationCloseFile,
-    kOperationGetLocalPath,
-    kOperationCancel,
-  };
-
   FileSystemOperation() = default;
 
   // Allows subclasses to call the FileSystemOperationImpl constructor.

@@ -145,7 +145,7 @@ disable=abstract-method,
         useless-object-inheritance,
         useless-suppression,
         using-cmp-argument,
-        wrong-import-order,
+        # wrong-import-order,
         xrange-builtin,
         zip-builtin-not-iterating,
 
@@ -426,6 +426,6 @@ valid-metaclass-classmethod-first-arg=mcs
 
 # Exceptions that will emit a warning when being caught. Defaults to
 # "Exception"
-overgeneral-exceptions=StandardError,
-                       Exception,
-                       BaseException
+overgeneral-exceptions=builtins.StandardError,
+                       builtins.Exception,
+                       builtins.BaseException

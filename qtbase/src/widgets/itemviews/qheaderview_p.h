@@ -16,6 +16,7 @@
 //
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
+#include "qheaderview.h"
 #include "private/qabstractitemview_p.h"
 
 #include "QtCore/qbitarray.h"
@@ -23,6 +24,8 @@
 #if QT_CONFIG(label)
 #include "QtWidgets/qlabel.h"
 #endif
+
+#include <array>
 
 QT_REQUIRE_CONFIG(itemviews);
 
@@ -85,13 +88,17 @@ public:
     void updateSectionIndicator(int section, int position);
     void updateHiddenSections(int logicalFirst, int logicalLast);
     void resizeSections(QHeaderView::ResizeMode globalMode, bool useGlobalMode = false);
-    void _q_sectionsRemoved(const QModelIndex &,int,int);
-    void _q_sectionsAboutToBeMoved(const QModelIndex &sourceParent, int logicalStart, int logicalEnd, const QModelIndex &destinationParent, int logicalDestination);
-    void _q_sectionsMoved(const QModelIndex &sourceParent, int logicalStart, int logicalEnd, const QModelIndex &destinationParent, int logicalDestination);
-    void _q_sectionsAboutToBeChanged(const QList<QPersistentModelIndex> &parents = QList<QPersistentModelIndex>(),
-                                     QAbstractItemModel::LayoutChangeHint hint = QAbstractItemModel::NoLayoutChangeHint);
-    void _q_sectionsChanged(const QList<QPersistentModelIndex> &parents = QList<QPersistentModelIndex>(),
-                            QAbstractItemModel::LayoutChangeHint hint = QAbstractItemModel::NoLayoutChangeHint);
+    void sectionsRemoved(const QModelIndex &,int,int);
+    void sectionsAboutToBeMoved(const QModelIndex &sourceParent, int logicalStart,
+                                int logicalEnd, const QModelIndex &destinationParent,
+                                int logicalDestination);
+    void sectionsMoved(const QModelIndex &sourceParent, int logicalStart,
+                       int logicalEnd, const QModelIndex &destinationParent,
+                       int logicalDestination);
+    void sectionsAboutToBeChanged(const QList<QPersistentModelIndex> &parents = QList<QPersistentModelIndex>(),
+                                  QAbstractItemModel::LayoutChangeHint hint = QAbstractItemModel::NoLayoutChangeHint);
+    void sectionsChanged(const QList<QPersistentModelIndex> &parents = QList<QPersistentModelIndex>(),
+                         QAbstractItemModel::LayoutChangeHint hint = QAbstractItemModel::NoLayoutChangeHint);
 
     bool isSectionSelected(int section) const;
     bool isFirstVisibleSection(int section) const;
@@ -212,6 +219,12 @@ public:
         }
     }
 
+    inline void disconnectModel()
+    {
+        for (const QMetaObject::Connection &connection : modelConnections)
+            QObject::disconnect(connection);
+    }
+
     void clear();
     void flipSortIndicator(int section);
     Qt::SortOrder defaultSortOrderForSection(int section) const;
@@ -304,6 +317,7 @@ public:
         SectionItem section;
     };
     QList<LayoutChangeItem> layoutChangePersistentSections;
+    std::array<QMetaObject::Connection, 8> modelConnections;
 
     void createSectionItems(int start, int end, int sectionSize, QHeaderView::ResizeMode mode);
     void removeSectionsFromSectionItems(int start, int end);

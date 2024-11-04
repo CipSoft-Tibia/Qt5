@@ -66,8 +66,6 @@ struct BLINK_COMMON_EXPORT
       const blink::FencedFrame::SharedStorageBudgetMetadata& input);
   static bool top_navigated(
       const blink::FencedFrame::SharedStorageBudgetMetadata& input);
-  static bool report_event_called(
-      const blink::FencedFrame::SharedStorageBudgetMetadata& input);
 
   static bool Read(blink::mojom::SharedStorageBudgetMetadataDataView data,
                    blink::FencedFrame::SharedStorageBudgetMetadata* out_data);
@@ -245,6 +243,12 @@ struct BLINK_COMMON_EXPORT
     return config.mode_;
   }
 
+  static const std::vector<blink::mojom::PermissionsPolicyFeature>&
+  effective_enabled_permissions(
+      const blink::FencedFrame::RedactedFencedFrameConfig& config) {
+    return config.effective_enabled_permissions_;
+  }
+
   static bool Read(blink::mojom::FencedFrameConfigDataView data,
                    blink::FencedFrame::RedactedFencedFrameConfig* out_config);
 };
@@ -291,6 +295,12 @@ struct BLINK_COMMON_EXPORT
   static const blink::FencedFrame::DeprecatedFencedFrameMode& mode(
       const blink::FencedFrame::RedactedFencedFrameProperties& properties) {
     return properties.mode_;
+  }
+
+  static const std::vector<blink::mojom::PermissionsPolicyFeature>&
+  effective_enabled_permissions(
+      const blink::FencedFrame::RedactedFencedFrameProperties& properties) {
+    return properties.effective_enabled_permissions_;
   }
 
   static bool Read(

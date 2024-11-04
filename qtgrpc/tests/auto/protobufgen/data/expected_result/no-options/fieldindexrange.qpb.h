@@ -20,12 +20,28 @@
 namespace qtprotobufnamespace::tests {
 class FieldIndexTest1Message;
 using FieldIndexTest1MessageRepeated = QList<FieldIndexTest1Message>;
+namespace FieldIndexTest1Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace FieldIndexTest1Message_QtProtobufNested
+
 class FieldIndexTest2Message;
 using FieldIndexTest2MessageRepeated = QList<FieldIndexTest2Message>;
+namespace FieldIndexTest2Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace FieldIndexTest2Message_QtProtobufNested
+
 class FieldIndexTest3Message;
 using FieldIndexTest3MessageRepeated = QList<FieldIndexTest3Message>;
+namespace FieldIndexTest3Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace FieldIndexTest3Message_QtProtobufNested
+
 class FieldIndexTest4Message;
 using FieldIndexTest4MessageRepeated = QList<FieldIndexTest4Message>;
+namespace FieldIndexTest4Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace FieldIndexTest4Message_QtProtobufNested
+
 
 class FieldIndexTest1Message_QtProtobufData;
 class FieldIndexTest1Message : public QProtobufMessage
@@ -36,11 +52,7 @@ class FieldIndexTest1Message : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::sint32 testField READ testField WRITE setTestField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldProtoFieldNumber = 31,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = FieldIndexTest1Message_QtProtobufNested::QtProtobufFieldEnum;
     FieldIndexTest1Message();
     ~FieldIndexTest1Message();
     FieldIndexTest1Message(const FieldIndexTest1Message &other);
@@ -57,6 +69,15 @@ public:
 private:
     QExplicitlySharedDataPointer<FieldIndexTest1Message_QtProtobufData> dptr;
 };
+namespace FieldIndexTest1Message_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestFieldProtoFieldNumber = 31,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace FieldIndexTest1Message_QtProtobufNested
 
 class FieldIndexTest2Message_QtProtobufData;
 class FieldIndexTest2Message : public QProtobufMessage
@@ -67,11 +88,7 @@ class FieldIndexTest2Message : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::sint32 testField READ testField WRITE setTestField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldProtoFieldNumber = 8191,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = FieldIndexTest2Message_QtProtobufNested::QtProtobufFieldEnum;
     FieldIndexTest2Message();
     ~FieldIndexTest2Message();
     FieldIndexTest2Message(const FieldIndexTest2Message &other);
@@ -88,6 +105,15 @@ public:
 private:
     QExplicitlySharedDataPointer<FieldIndexTest2Message_QtProtobufData> dptr;
 };
+namespace FieldIndexTest2Message_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestFieldProtoFieldNumber = 8191,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace FieldIndexTest2Message_QtProtobufNested
 
 class FieldIndexTest3Message_QtProtobufData;
 class FieldIndexTest3Message : public QProtobufMessage
@@ -98,11 +124,7 @@ class FieldIndexTest3Message : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::sint32 testField READ testField WRITE setTestField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldProtoFieldNumber = 2097151,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = FieldIndexTest3Message_QtProtobufNested::QtProtobufFieldEnum;
     FieldIndexTest3Message();
     ~FieldIndexTest3Message();
     FieldIndexTest3Message(const FieldIndexTest3Message &other);
@@ -119,6 +141,15 @@ public:
 private:
     QExplicitlySharedDataPointer<FieldIndexTest3Message_QtProtobufData> dptr;
 };
+namespace FieldIndexTest3Message_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestFieldProtoFieldNumber = 2097151,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace FieldIndexTest3Message_QtProtobufNested
 
 class FieldIndexTest4Message_QtProtobufData;
 class FieldIndexTest4Message : public QProtobufMessage
@@ -129,11 +160,7 @@ class FieldIndexTest4Message : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::sint32 testField READ testField WRITE setTestField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldProtoFieldNumber = 536870911,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = FieldIndexTest4Message_QtProtobufNested::QtProtobufFieldEnum;
     FieldIndexTest4Message();
     ~FieldIndexTest4Message();
     FieldIndexTest4Message(const FieldIndexTest4Message &other);
@@ -150,6 +177,15 @@ public:
 private:
     QExplicitlySharedDataPointer<FieldIndexTest4Message_QtProtobufData> dptr;
 };
+namespace FieldIndexTest4Message_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestFieldProtoFieldNumber = 536870911,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace FieldIndexTest4Message_QtProtobufNested
 } // namespace qtprotobufnamespace::tests
 
 Q_DECLARE_METATYPE(qtprotobufnamespace::tests::FieldIndexTest1Message)

@@ -165,8 +165,9 @@
     },
 
     {
-      name: "preferCompositingToLCDTextEnabled",
-      initial: false,
+      name: "LCDTextPreference",
+      type: "LCDTextPreference",
+      initial: "LCDTextPreference::kStronglyPreferred",
       invalidate: ["AcceleratedCompositing"],
     },
 
@@ -238,15 +239,6 @@
     {
       name: "scrollAnimatorEnabled",
       initial: true,
-    },
-
-    // Used to disable threaded, compositor scrolling for testing purposes.
-    // crbug.com/410974 tracks removal once alternative solutions for selective
-    // main thread scrolling are supported.
-    {
-      name: "threadedScrollingEnabled",
-      initial: true,
-      invalidate: ["Style", "ViewportPaintProperties"],
     },
 
     // Used in web tests for gesture tap highlights. Makes the highlights square
@@ -487,6 +479,20 @@
       type: "double",
     },
 
+    // Font weight adjustment for accessibility, set at OS-level.
+    {
+      name: "accessibilityFontWeightAdjustment",
+      initial: "0",
+      type: "int",
+    },
+
+    // Text size contrast factor for accessibility, applied as part of page zoom.
+    {
+      name: "accessibilityTextSizeContrastFactor",
+      initial: "0",
+      type: "int",
+    },
+
     // Only used by web tests and inspector emulation.
     {
       name: "mediaTypeOverride",
@@ -564,6 +570,7 @@
     {
       name: "scriptEnabled",
       initial: false,
+      invalidate: ["MediaQuery"],
     },
 
     {
@@ -658,6 +665,17 @@
       initial: "mojom::blink::HoverType::kHoverNone",
       invalidate: ["MediaQuery"],
       type: "mojom::blink::HoverType",
+    },
+
+    // The ability of the output device to modify the appearance of content once
+    // it has been rendered:
+    // kSlowType: E-ink screens or severely under-powered devices.
+    // kFastType: Computer screens.
+    {
+      name: "outputDeviceUpdateAbilityType",
+      initial: "mojom::blink::OutputDeviceUpdateAbilityType::kFastType",
+      invalidate: ["MediaQuery"],
+      type: "mojom::blink::OutputDeviceUpdateAbilityType",
     },
 
     // If true, the value in password fields is exposed to assistive technologies.
@@ -872,6 +890,21 @@
       initial: "AutoplayPolicy::Type::kNoUserGestureRequired",
     },
 
+    // `getDisplayMedia()`'s transient activation requirement can be bypassed via
+    // `ScreenCaptureWithoutGestureAllowedForOrigins` policy.
+    {
+      name: "requireTransientActivationForGetDisplayMedia",
+      initial: true,
+    },
+
+    // `show{OpenFile|SaveFile|Directory}Picker()`'s transient activation
+    // requirement can be bypassed via
+    // `FileOrDirectoryPickerWithoutGestureAllowedForOrigins` policy.
+    {
+      name: "requireTransientActivationForShowFileOrDirectoryPicker",
+      initial: true,
+    },
+
     //
     // Dark mode
     //
@@ -992,6 +1025,22 @@
       initial: false,
       invalidate: ["MediaQuery"],
     },
+
+    // Preferred transparency-reduction setting from the OS/application passed to the
+    // renderer for evaluating the prefers-reduced-transparency media query.
+    {
+      name: "prefersReducedTransparency",
+      initial: false,
+      invalidate: ["MediaQuery"],
+    },
+
+    // inverted-colors setting from the OS/application passed to the
+    // renderer for evaluating the inverted-colors media query.
+    {
+      name: "invertedColors",
+      initial: false,
+      invalidate: ["MediaQuery"],
+    },
     {
       name: "DontSendKeyEventsToJavascript",
       initial: false,
@@ -1065,7 +1114,7 @@
       // page would have to be reduced smaller to make the widest line fit, we
       // just clip instead.
       name: "printingMaximumShrinkFactor",
-      initial: 2,
+      initial: 1.5,
       type: "float",
     },
   ],

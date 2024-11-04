@@ -13,6 +13,7 @@
 #include "base/memory/ref_counted.h"
 #include "cc/animation/animation_export.h"
 #include "cc/base/protected_sequence_synchronizer.h"
+#include "cc/paint/element_id.h"
 
 namespace base {
 class TimeTicks;
@@ -63,7 +64,8 @@ class CC_ANIMATION_EXPORT AnimationTimeline
   }
   bool TickTimeLinkedAnimations(
       const std::vector<scoped_refptr<Animation>>& ticking_animations,
-      base::TimeTicks monotonic_time);
+      base::TimeTicks monotonic_time,
+      bool tick_finished);
   virtual bool TickScrollLinkedAnimations(
       const std::vector<scoped_refptr<Animation>>& ticking_animations,
       const ScrollTree& scroll_tree,
@@ -80,6 +82,7 @@ class CC_ANIMATION_EXPORT AnimationTimeline
   }
 
   virtual bool IsScrollTimeline() const;
+  virtual bool IsLinkedToScroller(ElementId scroller) const;
 
   // ProtectedSequenceSynchronizer implementation
   bool IsOwnerThread() const override;

@@ -30,6 +30,7 @@
 #include <assert.h>
 #include <time.h>
 #include <stdbool.h>
+#include <shared/helpers.h>
 
 #define NSEC_PER_SEC 1000000000
 
@@ -216,7 +217,7 @@ static inline void
 timespec_from_proto(struct timespec *a, uint32_t tv_sec_hi,
                     uint32_t tv_sec_lo, uint32_t tv_nsec)
 {
-	a->tv_sec = ((uint64_t)tv_sec_hi << 32) + tv_sec_lo;
+	a->tv_sec = u64_from_u32s(tv_sec_hi, tv_sec_lo);
 	a->tv_nsec = tv_nsec;
 }
 

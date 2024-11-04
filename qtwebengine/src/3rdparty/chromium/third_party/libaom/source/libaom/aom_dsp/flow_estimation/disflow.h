@@ -68,7 +68,7 @@ extern "C" {
 #define DISFLOW_STEP_SIZE_THRESOLD (1. / 8.)
 
 // Max number of iterations if warp convergence is not found
-#define DISFLOW_MAX_ITR 10
+#define DISFLOW_MAX_ITR 4
 
 // Internal precision of cubic interpolation filters
 // The limiting factor here is that:
@@ -89,11 +89,11 @@ typedef struct {
   int stride;
 } FlowField;
 
-int av1_compute_global_motion_disflow(TransformationType type,
-                                      YV12_BUFFER_CONFIG *src,
-                                      YV12_BUFFER_CONFIG *ref, int bit_depth,
-                                      MotionModel *motion_models,
-                                      int num_motion_models);
+bool av1_compute_global_motion_disflow(TransformationType type,
+                                       YV12_BUFFER_CONFIG *src,
+                                       YV12_BUFFER_CONFIG *ref, int bit_depth,
+                                       MotionModel *motion_models,
+                                       int num_motion_models);
 
 #ifdef __cplusplus
 }

@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qglobal.h>
 
@@ -59,6 +59,8 @@
 #include "private/qhostinfo_p.h"
 
 #include "../../../network-settings.h"
+
+using namespace Qt::StringLiterals;
 
 QT_FORWARD_DECLARE_CLASS(QTcpSocket)
 class SocketPair;
@@ -492,7 +494,8 @@ void tst_QTcpSocket::bind_data()
         if (!netinterface.isValid())
             continue;
 
-        foreach (const QNetworkAddressEntry &entry, netinterface.addressEntries()) {
+        const auto entries = netinterface.addressEntries();
+        for (const QNetworkAddressEntry &entry : entries) {
             if (entry.ip().isInSubnet(QHostAddress::parseSubnet("fe80::/10"))
                 || entry.ip().isInSubnet(QHostAddress::parseSubnet("169.254/16")))
                 continue; // link-local bind will fail, at least on Linux, so skip it.
@@ -522,12 +525,12 @@ void tst_QTcpSocket::bind_data()
     // these ranges are guaranteed to be reserved for 'documentation purposes',
     // and thus, should be unused in the real world. Not that I'm assuming the
     // world is full of competent administrators, or anything.
-    QStringList knownBad;
-    knownBad << "198.51.100.1";
-    knownBad << "2001:0DB8::1";
-    foreach (const QString &badAddress, knownBad) {
+    const QString knownBad[] = {
+        u"198.51.100.1"_s,
+        u"2001:0DB8::1"_s
+    };
+    for (const QString &badAddress : knownBad)
         QTest::addRow("%s:0", badAddress.toLatin1().constData()) << badAddress << 0 << false << QString();
-    }
 
     // try to bind to a privileged ports
     // we should fail if we're not root (unless the ports are in use!)

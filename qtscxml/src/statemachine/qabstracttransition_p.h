@@ -18,6 +18,7 @@
 #include <private/qobject_p.h>
 
 #include <QtCore/qlist.h>
+#include <QtCore/qpointer.h>
 #include <QtCore/qsharedpointer.h>
 
 QT_REQUIRE_CONFIG(statemachine);

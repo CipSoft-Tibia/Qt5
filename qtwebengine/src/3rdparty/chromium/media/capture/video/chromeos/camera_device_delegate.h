@@ -9,12 +9,14 @@
 #include <queue>
 
 #include "base/containers/flat_map.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/task/single_thread_task_runner.h"
 #include "media/capture/video/chromeos/camera_device_context.h"
 #include "media/capture/video/chromeos/camera_hal_dispatcher_impl.h"
 #include "media/capture/video/chromeos/capture_metadata_dispatcher.h"
 #include "media/capture/video/chromeos/mojom/camera3.mojom.h"
+#include "media/capture/video/chromeos/mojom/camera_app.mojom.h"
 #include "media/capture/video/chromeos/mojom/camera_common.mojom.h"
 #include "media/capture/video/chromeos/mojom/effects_pipeline.mojom.h"
 #include "media/capture/video/video_capture_device.h"
@@ -33,10 +35,9 @@ class RequestManager;
 enum class StreamType : uint64_t {
   kPreviewOutput = 0,
   kJpegOutput = 1,
-  kYUVInput = 2,
-  kYUVOutput = 3,
-  kRecordingOutput = 4,
-  kUnknown = 5,
+  kPortraitJpegOutput = 2,
+  kRecordingOutput = 3,
+  kUnknown = 4,
 };
 
 // A map to know that each StreamType belongs to which ClientType.
@@ -45,9 +46,23 @@ constexpr std::array<ClientType, static_cast<int>(StreamType::kUnknown)>
     kStreamClientTypeMap = {
         ClientType::kPreviewClient,  // kPreviewOutput
         ClientType::kPreviewClient,  // kJpegOutput
-        ClientType::kPreviewClient,  // kYUVInput
-        ClientType::kPreviewClient,  // kYUVOutput
+        ClientType::kPreviewClient,  // kPortraitJpegOutput
         ClientType::kVideoClient,    // kRecordingOutput
+};
+
+using TakePhotoCallback =
+    base::OnceCallback<void(int32_t, media::mojom::BlobPtr)>;
+using TakePhotoCallbackMap = base::flat_map<StreamType, TakePhotoCallback>;
+
+struct PortraitModeCallbacks {
+ public:
+  PortraitModeCallbacks();
+  PortraitModeCallbacks(PortraitModeCallbacks&& other);
+  PortraitModeCallbacks& operator=(PortraitModeCallbacks&& other);
+  ~PortraitModeCallbacks();
+
+  TakePhotoCallback normal_photo_callback;
+  TakePhotoCallback portrait_photo_callback;
 };
 
 // The metadata might be large so clone a whole metadata might be relatively
@@ -72,9 +87,6 @@ struct ResultMetadata {
   absl::optional<int32_t> zoom;
   absl::optional<gfx::Rect> scaler_crop_region;
 };
-
-// Returns true if the given stream type is an input stream.
-bool IsInputStream(StreamType stream_type);
 
 StreamType StreamIdToStreamType(uint64_t stream_id);
 
@@ -159,7 +171,9 @@ class CAPTURE_EXPORT CameraDeviceDelegate final
   // Returns true if the reconfigure process is triggered.
   bool MaybeReconfigureForPhotoStream(mojom::PhotoSettingsPtr settings);
 
-  void TakePhotoImpl();
+  // Do portrait mode request if |effect| equals to PORTRAIT_MODE, otherwise do
+  // a normal capture request.
+  void TakePhotoImpl(cros::mojom::Effect effect);
 
   // Mojo connection error handler.
   void OnMojoConnectionError();
@@ -198,26 +212,20 @@ class CAPTURE_EXPORT CameraDeviceDelegate final
       int32_t result,
       cros::mojom::Camera3StreamConfigurationPtr updated_config);
 
-  // Checks metadata in |static_metadata_| to ensure field
-  // request.availableCapabilities contains YUV reprocessing and field
-  // scaler.availableInputOutputFormatsMap contains YUV => BLOB mapping.
-  // If above checks both pass, fill the max yuv width and height in
-  // |max_width| and |max_height| and return true if both width and height are
-  // positive numbers. Return false otherwise.
-  bool IsYUVReprocessingSupported(int* max_width, int* max_height);
-
   // ConstructDefaultRequestSettings asks the camera HAL for the default request
   // settings of the stream in |stream_context_|.
-  // OnConstructedDefaultRequestSettings sets the request settings in
-  // |streams_context_|.  If there's no error
+  void ConstructDefaultRequestSettings(StreamType stream_type);
   // OnConstructedDefaultPreviewRequestSettings calls StartPreview to start the
   // video capture loop.
-  // OnConstructDefaultStillCaptureRequestSettings triggers
-  // |stream_buffer_manager_| to request a still capture.
-  void ConstructDefaultRequestSettings(StreamType stream_type);
   void OnConstructedDefaultPreviewRequestSettings(
       cros::mojom::CameraMetadataPtr settings);
+  // OnConstructDefaultStillCaptureRequestSettings triggers
+  // |request_manager_| to request a still capture.
   void OnConstructedDefaultStillCaptureRequestSettings(
+      cros::mojom::CameraMetadataPtr settings);
+  // OnConstructedDefaultPortraitModeRequestSettings triggers
+  // |request_manager_| to request portrait mode still captures.
+  void OnConstructedDefaultPortraitModeRequestSettings(
       cros::mojom::CameraMetadataPtr settings);
 
   gfx::Size GetBlobResolution(absl::optional<gfx::Size> new_blob_resolution);
@@ -269,14 +277,16 @@ class CAPTURE_EXPORT CameraDeviceDelegate final
   // Current configured resolution of BLOB stream.
   gfx::Size current_blob_resolution_;
 
-  CameraHalDelegate* camera_hal_delegate_;
+  raw_ptr<CameraHalDelegate, ExperimentalAsh> camera_hal_delegate_;
 
   // Map client type to video capture parameter.
   base::flat_map<ClientType, VideoCaptureParams> chrome_capture_params_;
 
-  CameraDeviceContext* device_context_;
+  raw_ptr<CameraDeviceContext, ExperimentalAsh> device_context_;
 
   std::queue<VideoCaptureDevice::TakePhotoCallback> take_photo_callbacks_;
+
+  absl::optional<PortraitModeCallbacks> take_portrait_photo_callbacks_;
 
   std::unique_ptr<RequestManager> request_manager_;
 
@@ -314,6 +324,9 @@ class CAPTURE_EXPORT CameraDeviceDelegate final
   bool is_set_sharpness_;
   bool is_set_tilt_;
   bool is_set_zoom_;
+
+  // Whether |this| is added to camera effect observer list.
+  bool camera_effect_observer_added_;
 
   std::vector<base::OnceClosure> get_photo_state_queue_;
   bool use_digital_zoom_;

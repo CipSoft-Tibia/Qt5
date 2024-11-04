@@ -457,6 +457,24 @@ struct StructTraits<autofill::mojom::FormFieldDataPredictionsDataView,
     return r.section;
   }
 
+  static size_t rank(const autofill::FormFieldDataPredictions& r) {
+    return r.rank;
+  }
+
+  static size_t rank_in_signature_group(
+      const autofill::FormFieldDataPredictions& r) {
+    return r.rank_in_signature_group;
+  }
+
+  static size_t rank_in_host_form(const autofill::FormFieldDataPredictions& r) {
+    return r.rank_in_host_form;
+  }
+
+  static size_t rank_in_host_form_signature_group(
+      const autofill::FormFieldDataPredictions& r) {
+    return r.rank_in_host_form_signature_group;
+  }
+
   static bool Read(autofill::mojom::FormFieldDataPredictionsDataView data,
                    autofill::FormFieldDataPredictions* out);
 };
@@ -485,14 +503,14 @@ struct StructTraits<autofill::mojom::FormDataPredictionsDataView,
 template <>
 struct StructTraits<autofill::mojom::PasswordAndMetadataDataView,
                     autofill::PasswordAndMetadata> {
-  static const std::u16string& username(
+  static const std::u16string& username_value(
       const autofill::PasswordAndMetadata& r) {
-    return r.username;
+    return r.username_value;
   }
 
-  static const std::u16string& password(
+  static const std::u16string& password_value(
       const autofill::PasswordAndMetadata& r) {
-    return r.password;
+    return r.password_value;
   }
 
   static const std::string& realm(const autofill::PasswordAndMetadata& r) {
@@ -587,11 +605,6 @@ struct StructTraits<autofill::mojom::PasswordGenerationUIDataDataView,
     return r.generation_element;
   }
 
-  static const std::u16string& user_typed_password(
-      const autofill::password_generation::PasswordGenerationUIData& r) {
-    return r.user_typed_password;
-  }
-
   static autofill::FieldRendererId generation_element_id(
       const autofill::password_generation::PasswordGenerationUIData& r) {
     return r.generation_element_id;
@@ -642,29 +655,6 @@ struct StructTraits<autofill::mojom::ParsingResultDataView,
 
   static bool Read(autofill::mojom::ParsingResultDataView data,
                    autofill::ParsingResult* out);
-};
-
-template <>
-struct StructTraits<autofill::mojom::AutoselectFirstSuggestionDataView,
-                    autofill::AutoselectFirstSuggestion> {
-  static bool autoselect_first_suggestion(
-      autofill::AutoselectFirstSuggestion r) {
-    return r.value();
-  }
-
-  static bool Read(autofill::mojom::AutoselectFirstSuggestionDataView data,
-                   autofill::AutoselectFirstSuggestion* out);
-};
-
-template <>
-struct StructTraits<autofill::mojom::FormElementWasClickedDataView,
-                    autofill::FormElementWasClicked> {
-  static bool form_element_was_clicked(autofill::FormElementWasClicked r) {
-    return r.value();
-  }
-
-  static bool Read(autofill::mojom::FormElementWasClickedDataView data,
-                   autofill::FormElementWasClicked* out);
 };
 
 }  // namespace mojo

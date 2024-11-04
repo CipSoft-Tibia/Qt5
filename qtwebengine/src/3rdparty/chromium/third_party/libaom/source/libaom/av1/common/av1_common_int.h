@@ -1617,18 +1617,6 @@ static INLINE void av1_zero_left_context(MACROBLOCKD *const xd) {
          sizeof(xd->left_txfm_context_buffer));
 }
 
-// Disable array-bounds checks as the TX_SIZE enum contains values larger than
-// TX_SIZES_ALL (TX_INVALID) which make extending the array as a workaround
-// infeasible. The assert is enough for static analysis and this or other tools
-// asan, valgrind would catch oob access at runtime.
-#if defined(__GNUC__) && __GNUC__ >= 4
-#pragma GCC diagnostic ignored "-Warray-bounds"
-#endif
-
-#if defined(__GNUC__) && __GNUC__ >= 4
-#pragma GCC diagnostic warning "-Warray-bounds"
-#endif
-
 static INLINE void set_txfm_ctx(TXFM_CONTEXT *txfm_ctx, uint8_t txs, int len) {
   int i;
   for (i = 0; i < len; ++i) txfm_ctx[i] = txs;
@@ -1875,7 +1863,14 @@ static INLINE int is_valid_seq_level_idx(AV1_LEVEL seq_level_idx) {
           // The following levels are currently undefined.
           seq_level_idx != SEQ_LEVEL_2_2 && seq_level_idx != SEQ_LEVEL_2_3 &&
           seq_level_idx != SEQ_LEVEL_3_2 && seq_level_idx != SEQ_LEVEL_3_3 &&
-          seq_level_idx != SEQ_LEVEL_4_2 && seq_level_idx != SEQ_LEVEL_4_3);
+          seq_level_idx != SEQ_LEVEL_4_2 && seq_level_idx != SEQ_LEVEL_4_3
+#if !CONFIG_CWG_C013
+          && seq_level_idx != SEQ_LEVEL_7_0 && seq_level_idx != SEQ_LEVEL_7_1 &&
+          seq_level_idx != SEQ_LEVEL_7_2 && seq_level_idx != SEQ_LEVEL_7_3 &&
+          seq_level_idx != SEQ_LEVEL_8_0 && seq_level_idx != SEQ_LEVEL_8_1 &&
+          seq_level_idx != SEQ_LEVEL_8_2 && seq_level_idx != SEQ_LEVEL_8_3
+#endif
+         );
 }
 
 /*!\endcond */

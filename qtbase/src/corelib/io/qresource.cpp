@@ -65,6 +65,7 @@ RCC_FEATURE_SYMBOL(Zstd)
 
 #undef RCC_FEATURE_SYMBOL
 
+namespace {
 class QStringSplitter
 {
 public:
@@ -159,15 +160,18 @@ static QString cleanPath(const QString &_path)
         path.remove(0, 1);
     return path;
 }
+} // unnamed namespace
 
 Q_DECLARE_TYPEINFO(QResourceRoot, Q_RELOCATABLE_TYPE);
 
 typedef QList<QResourceRoot*> ResourceList;
+namespace {
 struct QResourceGlobalData
 {
     QRecursiveMutex resourceMutex;
     ResourceList resourceList;
 };
+}
 Q_GLOBAL_STATIC(QResourceGlobalData, resourceGlobalData)
 
 static inline QRecursiveMutex &resourceMutex()
@@ -1031,8 +1035,8 @@ Q_CORE_EXPORT bool qUnregisterResourceData(int version, const unsigned char *tre
     return false;
 }
 
+namespace {
 // run time resource creation
-
 class QDynamicBufferResourceRoot : public QResourceRoot
 {
     QString root;
@@ -1131,6 +1135,7 @@ public:
 
     bool registerSelf(const QString &f);
 };
+} // unnamed namespace
 
 #ifndef MAP_FILE
 #  define MAP_FILE 0
@@ -1349,6 +1354,7 @@ private:
     uchar *map(qint64 offset, qint64 size, QFile::MemoryMapFlags flags);
     bool unmap(uchar *ptr);
     void uncompress() const;
+    void mapUncompressed();
     qint64 offset;
     QResource resource;
     mutable QByteArray uncompressed;
@@ -1523,10 +1529,10 @@ uint QResourceFileEngine::ownerId(FileOwner) const
     return nobodyID;
 }
 
-QDateTime QResourceFileEngine::fileTime(FileTime time) const
+QDateTime QResourceFileEngine::fileTime(QFile::FileTime time) const
 {
     Q_D(const QResourceFileEngine);
-    if (time == ModificationTime)
+    if (time == QFile::FileModificationTime)
         return d->resource.lastModified();
     return QDateTime();
 }
@@ -1572,7 +1578,9 @@ bool QResourceFileEngine::supportsExtension(Extension extension) const
 uchar *QResourceFileEnginePrivate::map(qint64 offset, qint64 size, QFile::MemoryMapFlags flags)
 {
     Q_Q(QResourceFileEngine);
-    Q_UNUSED(flags);
+    Q_ASSERT_X(resource.compressionAlgorithm() == QResource::NoCompression
+               || !uncompressed.isNull(), "QFile::map()",
+               "open() should have uncompressed compressed resources");
 
     qint64 max = resource.uncompressedSize();
     qint64 end;
@@ -1582,11 +1590,15 @@ uchar *QResourceFileEnginePrivate::map(qint64 offset, qint64 size, QFile::Memory
         return nullptr;
     }
 
-    const uchar *address = resource.data();
-    if (resource.compressionAlgorithm() != QResource::NoCompression) {
-        uncompress();
-        if (uncompressed.isNull())
-            return nullptr;
+    const uchar *address = reinterpret_cast<const uchar *>(uncompressed.constBegin());
+    if (!uncompressed.isNull())
+        return const_cast<uchar *>(address) + offset;
+
+    // resource was not compressed
+    address = resource.data();
+    if (flags & QFile::MapPrivateOption) {
+        // We need to provide read-write memory
+        mapUncompressed();
         address = reinterpret_cast<const uchar *>(uncompressed.constData());
     }
 
@@ -1605,6 +1617,15 @@ void QResourceFileEnginePrivate::uncompress() const
             || !uncompressed.isEmpty() || resource.size() == 0)
         return;     // nothing to do
     uncompressed = resource.uncompressedData();
+}
+
+void QResourceFileEnginePrivate::mapUncompressed()
+{
+    Q_ASSERT(resource.compressionAlgorithm() == QResource::NoCompression);
+    if (!uncompressed.isNull())
+        return;     // nothing to do
+    uncompressed = resource.uncompressedData();
+    uncompressed.detach();
 }
 
 #endif // !defined(QT_BOOTSTRAPPED)

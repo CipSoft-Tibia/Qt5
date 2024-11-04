@@ -1,5 +1,5 @@
 // Copyright (C) 2012 David Faure <faure@kde.org>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QSaveFile>
@@ -10,7 +10,7 @@
 #include <qdir.h>
 #include <qset.h>
 
-#if defined(Q_OS_UNIX) && !defined(Q_OS_VXWORKS)
+#if defined(Q_OS_UNIX)
 #include <unistd.h> // for geteuid
 #endif
 
@@ -120,7 +120,7 @@ void tst_QSaveFile::retryTransactionalWrite()
     // root can open the read-only file for writing...
     if (geteuid() == 0)
         QSKIP("This test does not work as the root user");
-#endif
+#endif //Q_OS_UNIX
     QTemporaryDir dir;
     QVERIFY2(dir.isValid(), qPrintable(dir.errorString()));
 

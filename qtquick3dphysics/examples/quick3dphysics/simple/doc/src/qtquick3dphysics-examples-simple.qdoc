@@ -5,7 +5,7 @@
     \example simple
     \ingroup quick3dphysics-examples
     \title Qt Quick 3D Physics - Simple Example
-    \examplecategory {Data Visualization & 3D}
+    \examplecategory {3D}
     \brief Demonstrates setting up a simple physics scene.
     \image simple-example.jpg
 

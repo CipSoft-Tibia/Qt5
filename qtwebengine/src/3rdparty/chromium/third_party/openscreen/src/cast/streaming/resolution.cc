@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,7 @@
 #include "util/json/json_helpers.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -118,5 +117,4 @@ bool Dimensions::IsSupersetOf(const Dimensions& other) const {
   return ToResolution().IsSupersetOf(other.ToResolution());
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

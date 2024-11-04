@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="hu_HU">
+    <extra-po-header-language>hu</extra-po-header-language>
+    <extra-po-header-language_team>Hungarian &lt;kde-l10n-hu@kde.org&gt;</extra-po-header-language_team>
+    <extra-po-header-last_translator>Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header-last_translator>
+    <extra-po-header-po_revision_date>2024-02-07 21:54+0100</extra-po-header-po_revision_date>
+    <extra-po-header-project_id_version></extra-po-header-project_id_version>
+    <extra-po-header-x_generator>Lokalize 23.08.4</extra-po-header-x_generator>
+    <extra-po-header_comment># SPDX-FileCopyrightText: 2024 Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header_comment>
+    <extra-po-headers>MIME-Version,Content-Type,Content-Transfer-Encoding,Plural-Forms,X-Language,X-Qt-Contexts,Last-Translator,PO-Revision-Date,Project-Id-Version,Language-Team,Language,X-Generator</extra-po-headers>
 <context>
     <name>MFPlayerSession</name>
     <message>
@@ -106,6 +114,10 @@
     <message>
         <source>Media session state error.</source>
         <translation>Média-munkamenet állapothiba.</translation>
+    </message>
+    <message>
+        <source>Invalid stream data.</source>
+        <translation>Érvénytelen adatfolyamadatok.</translation>
     </message>
     <message>
         <source>Media session serious error.</source>
@@ -441,13 +453,6 @@
     </message>
 </context>
 <context>
-    <name>QV4L2Camera</name>
-    <message>
-        <source>Camera is in use.</source>
-        <translation>A kamera használatban van.</translation>
-    </message>
-</context>
-<context>
     <name>QGstreamerAudioDecoder</name>
     <message>
         <source>Cannot play stream of type: &lt;unknown&gt;</source>
@@ -528,6 +533,13 @@
     <message>
         <source>Recording error</source>
         <translation>Rögzítési hiba</translation>
+    </message>
+</context>
+<context>
+    <name>QV4L2Camera</name>
+    <message>
+        <source>Camera is in use.</source>
+        <translation type="vanished">A kamera használatban van.</translation>
     </message>
 </context>
 </TS>

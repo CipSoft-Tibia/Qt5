@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,9 +12,9 @@
 
 #include "cast/common/public/certificate_types.h"
 #include "platform/base/error.h"
+#include "platform/base/span.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 enum class DigestAlgorithm {
   kSha1,
@@ -63,10 +63,10 @@ class ParsedCertificate {
   // SHA256 hash) and should be sized accordingly, but has no alignment
   // restriction.  Returns true if the signature was correct.
   virtual bool VerifySignedData(DigestAlgorithm algorithm,
-                                const ConstDataSpan& data,
-                                const ConstDataSpan& signature) const = 0;
+                                const ByteView& data,
+                                const ByteView& signature) const = 0;
 
-  virtual bool HasPolicyOid(const ConstDataSpan& oid) const = 0;
+  virtual bool HasPolicyOid(const ByteView& oid) const = 0;
 
   // Set not-before and not-after times for testing (currently fuzzing).  The
   // time values should be in seconds since the Unix epoch.
@@ -74,7 +74,6 @@ class ParsedCertificate {
   virtual void SetNotAfterTimeForTesting(time_t not_after) = 0;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_PUBLIC_PARSED_CERTIFICATE_H_

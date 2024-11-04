@@ -16,6 +16,11 @@ build_webui("build") {
 
   non_web_component_files = [ "web_app_internals.ts" ]
 
+  if (is_chromeos_lacros) {
+    static_files += [ "experimental_isolation.html" ]
+    non_web_component_files += [ "experimental_isolation.ts" ]
+  }
+
   mojo_files_deps = [
     "//chrome/browser/ui/webui/web_app_internals:mojo_bindings_ts__generator",
   ]
@@ -23,7 +28,6 @@ build_webui("build") {
 
   ts_deps = [
     "//ui/webui/resources/js:build_ts",
-    "//ui/webui/resources/mojo:library",
+    "//ui/webui/resources/mojo:build_ts",
   ]
-  ts_use_local_config = false
 }

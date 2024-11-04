@@ -10,6 +10,7 @@
 #include <private/qmetaobject_p.h>
 #include <private/qmetaobjectbuilder_p.h>
 #include <private/qqmlpropertycachemethodarguments_p.h>
+#include <private/qqmlsignalnames_p.h>
 
 #include <private/qv4value_p.h>
 
@@ -53,17 +54,13 @@ QQmlPropertyData::flagsForProperty(const QMetaProperty &p)
     const QMetaType metaType = p.metaType();
     int propType = metaType.id();
     if (p.isEnumType()) {
-        flags.type = QQmlPropertyData::Flags::EnumType;
+        flags.setType(QQmlPropertyData::Flags::EnumType);
     } else if (metaType.flags() & QMetaType::PointerToQObject) {
-        flags.type = QQmlPropertyData::Flags::QObjectDerivedType;
+        flags.setType(QQmlPropertyData::Flags::QObjectDerivedType);
     } else if (propType == QMetaType::QVariant) {
-        flags.type = QQmlPropertyData::Flags::QVariantType;
-    } else if (propType < static_cast<int>(QMetaType::User)) {
-        // nothing to do
-    } else if (propType == qMetaTypeId<QJSValue>()) {
-        flags.type = QQmlPropertyData::Flags::QJSValueType;
+        flags.setType(QQmlPropertyData::Flags::QVariantType);
     } else if (metaType.flags() & QMetaType::IsQmlList) {
-        flags.type = QQmlPropertyData::Flags::QListType;
+        flags.setType(QQmlPropertyData::Flags::QListType);
     }
 
     return flags;
@@ -83,8 +80,7 @@ void QQmlPropertyData::load(const QMetaProperty &p)
 void QQmlPropertyData::load(const QMetaMethod &m)
 {
     setCoreIndex(m.methodIndex());
-    setArguments(nullptr);
-    m_flags.type = Flags::FunctionType;
+    m_flags.setType(Flags::FunctionType);
 
     // We need to set the constructor, signal, constant, arguments, V4Function, cloned flags.
     // These are specific to methods and change with each method.
@@ -266,8 +262,7 @@ void QQmlPropertyCache::appendSignal(const QString &name, QQmlPropertyData::Flag
     int signalHandlerIndex = signalHandlerIndexCache.size();
     signalHandlerIndexCache.append(handler);
 
-    QString handlerName = QLatin1String("on") + name;
-    handlerName[2] = handlerName.at(2).toUpper();
+    const QString handlerName = QQmlSignalNames::signalNameToHandlerName(name);
 
     setNamedProperty(name, methodIndex + methodOffset(), methodIndexCache.data() + methodIndex);
     setNamedProperty(handlerName, signalHandlerIndex + signalOffset(),
@@ -369,6 +364,18 @@ QQmlPropertyCache::copyAndAppend(const QMetaObject *metaObject,
     return rv;
 }
 
+static QHashedString signalNameToHandlerName(const QHashedString &methodName)
+{
+    return QQmlSignalNames::signalNameToHandlerName(methodName);
+}
+
+static QHashedString signalNameToHandlerName(const QHashedCStringRef &methodName)
+{
+    return QQmlSignalNames::signalNameToHandlerName(
+            QLatin1StringView{ methodName.constData(), methodName.length() });
+}
+
+
 void QQmlPropertyCache::append(const QMetaObject *metaObject,
                                QTypeRevision typeVersion,
                                QQmlPropertyData::Flags propertyFlags,
@@ -457,49 +464,29 @@ void QQmlPropertyCache::append(const QMetaObject *metaObject,
 
         QQmlPropertyData *old = nullptr;
 
-        if (utf8) {
-            QHashedString methodName(QString::fromUtf8(rawName, cptr - rawName));
+        const auto doSetNamedProperty = [&](const auto &methodName) {
             if (StringCache::mapped_type *it = stringCache.value(methodName)) {
                 if (handleOverride(methodName, data, (old = it->second)) == InvalidOverride)
-                    continue;
+                    return;
             }
+
             setNamedProperty(methodName, ii, data);
 
             if (data->isSignal()) {
-                QHashedString on(QLatin1String("on") % methodName.at(0).toUpper() % QStringView{methodName}.mid(1));
-                setNamedProperty(on, ii, sigdata);
+
+                // TODO: Remove this once we can. Signals should not be overridable.
+                if (!utf8)
+                    data->m_flags.setIsOverridableSignal(true);
+
+                setNamedProperty(signalNameToHandlerName(methodName), ii, sigdata);
                 ++signalHandlerIndex;
             }
-        } else {
-            QHashedCStringRef methodName(rawName, cptr - rawName);
-            if (StringCache::mapped_type *it = stringCache.value(methodName)) {
-                if (handleOverride(methodName, data, (old = it->second)) == InvalidOverride)
-                    continue;
-            }
-            setNamedProperty(methodName, ii, data);
+        };
 
-            if (data->isSignal()) {
-                int length = methodName.length();
-
-                QVarLengthArray<char, 128> str(length+3);
-                str[0] = 'o';
-                str[1] = 'n';
-                str[2] = QtMiscUtils::toAsciiUpper(rawName[0]);
-                if (length > 1)
-                    memcpy(&str[3], &rawName[1], length - 1);
-                str[length + 2] = '\0';
-
-                QHashedString on(QString::fromLatin1(str.data()));
-                setNamedProperty(on, ii, data);
-                ++signalHandlerIndex;
-            }
-        }
-
-        if (old) {
-            // We only overload methods in the same class, exactly like C++
-            if (old->isFunction() && old->coreIndex() >= methodOffset)
-                data->m_flags.setIsOverload(true);
-        }
+        if (utf8)
+            doSetNamedProperty(QHashedString(QString::fromUtf8(rawName, cptr - rawName)));
+        else
+            doSetNamedProperty(QHashedCStringRef(rawName, cptr - rawName));
     }
 
     int propCount = metaObject->propertyCount();

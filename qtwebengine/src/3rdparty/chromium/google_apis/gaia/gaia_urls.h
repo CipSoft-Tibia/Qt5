@@ -35,7 +35,7 @@ class COMPONENT_EXPORT(GOOGLE_APIS) GaiaUrls {
   const GURL& secure_google_url() const;
   const url::Origin& gaia_origin() const;
   GURL gaia_url() const;
-  const GURL& embedded_setup_chromeos_url(unsigned version) const;
+  const GURL& embedded_setup_chromeos_url() const;
   const GURL& embedded_setup_chromeos_kid_signup_url() const;
   const GURL& embedded_setup_chromeos_kid_signin_url() const;
   const GURL& embedded_setup_windows_url() const;
@@ -60,6 +60,12 @@ class COMPONENT_EXPORT(GOOGLE_APIS) GaiaUrls {
   const GURL& oauth2_token_info_url() const;
   const GURL& oauth2_revoke_url() const;
   const GURL& reauth_api_url() const;
+  const GURL& rotate_bound_cookies_url() const;
+  const GURL& classroom_api_origin_url() const;
+  const GURL& tasks_api_origin_url() const;
+
+  // URL to a blank page on the Gaia domain.
+  const GURL& blank_page_url() const;
 
   // The base URL for communicating with the google api server.
   const GURL& google_apis_origin_url() const;
@@ -82,8 +88,10 @@ class COMPONENT_EXPORT(GOOGLE_APIS) GaiaUrls {
   GURL google_apis_origin_url_;
   GURL oauth_account_manager_origin_url_;
   GURL account_capabilities_origin_url_;
+  GURL classroom_api_origin_url_;
+  GURL tasks_api_origin_url_;
 
-  GURL embedded_setup_chromeos_url_v2_;
+  GURL embedded_setup_chromeos_url_;
   GURL embedded_setup_chromeos_kid_signup_url_;
   GURL embedded_setup_chromeos_kid_signin_url_;
   GURL embedded_setup_windows_url_;
@@ -92,7 +100,7 @@ class COMPONENT_EXPORT(GOOGLE_APIS) GaiaUrls {
   GURL signin_chrome_sync_keys_retrieval_url_;
   GURL signin_chrome_sync_keys_recoverability_degraded_url_;
   GURL service_logout_url_;
-  GURL continue_url_for_logout_;
+  GURL blank_page_url_;
   GURL merge_session_url_;
   GURL oauth_multilogin_url_;
   GURL oauth_user_info_url_;
@@ -113,6 +121,7 @@ class COMPONENT_EXPORT(GOOGLE_APIS) GaiaUrls {
   GURL oauth2_revoke_url_;
 
   GURL reauth_api_url_;
+  GURL rotate_bound_cookies_url_;
 };
 
 #endif  // GOOGLE_APIS_GAIA_GAIA_URLS_H_

@@ -14,9 +14,8 @@
 #include "qwasmwindow.h"
 #include "qwasmbackingstore.h"
 #include "qwasmfontdatabase.h"
-#if defined(Q_OS_UNIX)
-#include <QtGui/private/qgenericunixeventdispatcher_p.h>
-#endif
+#include "qwasmdrag.h"
+
 #include <qpa/qplatformwindow.h>
 #include <QtGui/qscreen.h>
 #include <qpa/qwindowsysteminterface.h>
@@ -121,14 +120,14 @@ QWasmIntegration::QWasmIntegration()
 
     // install browser window resize handler
     emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE,
-                                   [](int, const EmscriptenUiEvent *, void *) -> int {
+                                   [](int, const EmscriptenUiEvent *, void *) -> EM_BOOL {
                                        // This resize event is called when the HTML window is
                                        // resized. Depending on the page layout the elements might
                                        // also have been resized, so we update the Qt screen sizes
                                        // (and canvas render sizes).
                                        if (QWasmIntegration *integration = QWasmIntegration::get())
                                            integration->resizeAllScreens();
-                                       return 0;
+                                       return EM_FALSE;
                                    });
 
     // install visualViewport resize handler which picks up size and scale change on mobile.
@@ -137,7 +136,7 @@ QWasmIntegration::QWasmIntegration()
         visualViewport.call<void>("addEventListener", val("resize"),
                                   val::module_property("qtResizeAllScreens"));
     }
-    m_drag = std::make_unique<QSimpleDrag>();
+    m_drag = std::make_unique<QWasmDrag>();
 }
 
 QWasmIntegration::~QWasmIntegration()
@@ -152,8 +151,6 @@ QWasmIntegration::~QWasmIntegration()
 
     delete m_fontDb;
     delete m_desktopServices;
-    if (m_platformInputContext)
-        delete m_platformInputContext;
 #if QT_CONFIG(accessibility)
     delete m_accessibility;
 #endif
@@ -210,14 +207,14 @@ QPlatformOpenGLContext *QWasmIntegration::createPlatformOpenGLContext(QOpenGLCon
 
 void QWasmIntegration::initialize()
 {
-    if (qgetenv("QT_IM_MODULE").isEmpty() && touchPoints < 1)
-        return;
-
-    QString icStr = QPlatformInputContextFactory::requested();
-    if (!icStr.isNull())
-        m_inputContext.reset(QPlatformInputContextFactory::create(icStr));
-    else
+    auto icStrs = QPlatformInputContextFactory::requested();
+    if (!icStrs.isEmpty()) {
+        m_inputContext.reset(QPlatformInputContextFactory::create(icStrs));
+        m_wasmInputContext = nullptr;
+    } else {
         m_inputContext.reset(new QWasmInputContext());
+        m_wasmInputContext = static_cast<QWasmInputContext *>(m_inputContext.data());
+    }
 }
 
 QPlatformInputContext *QWasmIntegration::inputContext() const

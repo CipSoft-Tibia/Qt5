@@ -1,11 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef PLATFORM_IMPL_UDP_SOCKET_POSIX_H_
 #define PLATFORM_IMPL_UDP_SOCKET_POSIX_H_
 
-#include "absl/types/optional.h"
 #include "platform/api/udp_socket.h"
 #include "platform/base/macros.h"
 #include "platform/impl/platform_client_posix.h"
@@ -23,7 +22,7 @@ class UdpSocketPosix : public UdpSocket {
  public:
   // Creates a new UdpSocketPosix. The provided client and task_runner must
   // exist for the duration of this socket's lifetime.
-  UdpSocketPosix(TaskRunner* task_runner,
+  UdpSocketPosix(TaskRunner& task_runner,
                  Client* client,
                  SocketHandle handle,
                  const IPEndpoint& local_endpoint,
@@ -64,7 +63,7 @@ class UdpSocketPosix : public UdpSocket {
   void Close();
 
   // Task runner to use for queuing |client_| callbacks.
-  TaskRunner* const task_runner_;
+  TaskRunner& task_runner_;
 
   // Client to use for callbacks. This can be nullptr if the user does not want
   // any callbacks (for example, in the send-only case).

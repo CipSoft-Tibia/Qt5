@@ -213,10 +213,28 @@ class V8_EXPORT V8InspectorSession {
   virtual void releaseObjectGroup(StringView) = 0;
   virtual void triggerPreciseCoverageDeltaUpdate(StringView occasion) = 0;
 
+  struct V8_EXPORT EvaluateResult {
+    enum class ResultType {
+      kNotRun,
+      kSuccess,
+      kException,
+    };
+
+    ResultType type;
+    v8::Local<v8::Value> value;
+  };
+  // Evalaute 'expression' in the provided context. Does the same as
+  // Runtime#evaluate under-the-hood but exposed on the C++ side.
+  virtual EvaluateResult evaluate(v8::Local<v8::Context> context,
+                                  StringView expression,
+                                  bool includeCommandLineAPI = false) = 0;
+
   // Prepare for shutdown (disables debugger pausing, etc.).
   virtual void stop() = 0;
 };
 
+// Deprecated.
+// TODO(crbug.com/1420968): remove.
 class V8_EXPORT WebDriverValue {
  public:
   explicit WebDriverValue(std::unique_ptr<StringBuffer> type,
@@ -224,6 +242,27 @@ class V8_EXPORT WebDriverValue {
       : type(std::move(type)), value(value) {}
   std::unique_ptr<StringBuffer> type;
   v8::MaybeLocal<v8::Value> value;
+};
+
+struct V8_EXPORT DeepSerializedValue {
+  explicit DeepSerializedValue(std::unique_ptr<StringBuffer> type,
+                               v8::MaybeLocal<v8::Value> value = {})
+      : type(std::move(type)), value(value) {}
+  std::unique_ptr<StringBuffer> type;
+  v8::MaybeLocal<v8::Value> value;
+};
+
+struct V8_EXPORT DeepSerializationResult {
+  explicit DeepSerializationResult(
+      std::unique_ptr<DeepSerializedValue> serializedValue)
+      : serializedValue(std::move(serializedValue)), isSuccess(true) {}
+  explicit DeepSerializationResult(std::unique_ptr<StringBuffer> errorMessage)
+      : errorMessage(std::move(errorMessage)), isSuccess(false) {}
+
+  // Use std::variant when available.
+  std::unique_ptr<DeepSerializedValue> serializedValue;
+  std::unique_ptr<StringBuffer> errorMessage;
+  bool isSuccess;
 };
 
 class V8_EXPORT V8InspectorClient {
@@ -243,8 +282,15 @@ class V8_EXPORT V8InspectorClient {
   virtual void beginUserGesture() {}
   virtual void endUserGesture() {}
 
+  // Deprecated. Use `deepSerialize` instead.
+  // TODO(crbug.com/1420968): remove.
   virtual std::unique_ptr<WebDriverValue> serializeToWebDriverValue(
-      v8::Local<v8::Value> v8_value, int max_depth) {
+      v8::Local<v8::Value> v8Value, int maxDepth) {
+    return nullptr;
+  }
+  virtual std::unique_ptr<DeepSerializationResult> deepSerialize(
+      v8::Local<v8::Value> v8Value, int maxDepth,
+      v8::Local<v8::Object> additionalParameters) {
     return nullptr;
   }
   virtual std::unique_ptr<StringBuffer> valueSubtype(v8::Local<v8::Value>) {

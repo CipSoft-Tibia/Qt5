@@ -2,6 +2,7 @@
 # about the component whose constants you're changing.
 vapier@chromium.org
 ejcaruso@chromium.org
+hidehiko@chromium.org
 
 # Rust owners.
 per-file Cargo.* = file:src/OWNERS

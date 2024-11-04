@@ -35,9 +35,7 @@
 #include "src/utils/utils.h"
 #include "src/wasm/wasm-external-refs.h"
 
-namespace v8 {
-namespace internal {
-namespace wasm {
+namespace v8::internal::wasm {
 
 using base::ReadUnalignedValue;
 using base::WriteUnalignedValue;
@@ -459,8 +457,9 @@ class V8_NODISCARD ThreadNotInWasmScope {
 #endif
 };
 
-inline byte* EffectiveAddress(WasmInstanceObject instance, uintptr_t index) {
-  return instance.memory_start() + index;
+inline uint8_t* EffectiveAddress(WasmInstanceObject instance,
+                                 uint32_t mem_index, uintptr_t index) {
+  return instance->memory_base(mem_index) + index;
 }
 
 template <typename V>
@@ -478,22 +477,24 @@ int32_t memory_init_wrapper(Address data) {
   ThreadNotInWasmScope thread_not_in_wasm_scope;
   DisallowGarbageCollection no_gc;
   size_t offset = 0;
-  Object raw_instance = ReadAndIncrementOffset<Object>(data, &offset);
-  WasmInstanceObject instance = WasmInstanceObject::cast(raw_instance);
+  WasmInstanceObject instance =
+      WasmInstanceObject::cast(ReadAndIncrementOffset<Object>(data, &offset));
+  uint32_t mem_index = ReadAndIncrementOffset<uint32_t>(data, &offset);
   uintptr_t dst = ReadAndIncrementOffset<uintptr_t>(data, &offset);
   uint32_t src = ReadAndIncrementOffset<uint32_t>(data, &offset);
   uint32_t seg_index = ReadAndIncrementOffset<uint32_t>(data, &offset);
   uint32_t size = ReadAndIncrementOffset<uint32_t>(data, &offset);
 
-  uint64_t mem_size = instance.memory_size();
+  uint64_t mem_size = instance->memory_size(mem_index);
   if (!base::IsInBounds<uint64_t>(dst, size, mem_size)) return kOutOfBounds2;
 
-  uint32_t seg_size = instance.data_segment_sizes().get(seg_index);
+  uint32_t seg_size = instance->data_segment_sizes()->get(seg_index);
   if (!base::IsInBounds<uint32_t>(src, size, seg_size)) return kOutOfBounds2;
 
-  byte* seg_start =
-      reinterpret_cast<byte*>(instance.data_segment_starts().get(seg_index));
-  std::memcpy(EffectiveAddress(instance, dst), seg_start + src, size);
+  uint8_t* seg_start = reinterpret_cast<uint8_t*>(
+      instance->data_segment_starts()->get(seg_index));
+  std::memcpy(EffectiveAddress(instance, mem_index, dst), seg_start + src,
+              size);
   return kSuccess2;
 }
 
@@ -501,19 +502,22 @@ int32_t memory_copy_wrapper(Address data) {
   ThreadNotInWasmScope thread_not_in_wasm_scope;
   DisallowGarbageCollection no_gc;
   size_t offset = 0;
-  Object raw_instance = ReadAndIncrementOffset<Object>(data, &offset);
-  WasmInstanceObject instance = WasmInstanceObject::cast(raw_instance);
+  WasmInstanceObject instance =
+      WasmInstanceObject::cast(ReadAndIncrementOffset<Object>(data, &offset));
+  uint32_t dst_mem_index = ReadAndIncrementOffset<uint32_t>(data, &offset);
+  uint32_t src_mem_index = ReadAndIncrementOffset<uint32_t>(data, &offset);
   uintptr_t dst = ReadAndIncrementOffset<uintptr_t>(data, &offset);
   uintptr_t src = ReadAndIncrementOffset<uintptr_t>(data, &offset);
   uintptr_t size = ReadAndIncrementOffset<uintptr_t>(data, &offset);
 
-  uint64_t mem_size = instance.memory_size();
-  if (!base::IsInBounds<uint64_t>(dst, size, mem_size)) return kOutOfBounds2;
-  if (!base::IsInBounds<uint64_t>(src, size, mem_size)) return kOutOfBounds2;
+  uint64_t dst_mem_size = instance->memory_size(dst_mem_index);
+  uint64_t src_mem_size = instance->memory_size(src_mem_index);
+  if (!base::IsInBounds<uint64_t>(dst, size, dst_mem_size)) return kOutOfBounds2;
+  if (!base::IsInBounds<uint64_t>(src, size, src_mem_size)) return kOutOfBounds2;
 
   // Use std::memmove, because the ranges can overlap.
-  std::memmove(EffectiveAddress(instance, dst), EffectiveAddress(instance, src),
-               size);
+  std::memmove(EffectiveAddress(instance, dst_mem_index, dst),
+               EffectiveAddress(instance, src_mem_index, src), size);
   return kSuccess2;
 }
 
@@ -522,17 +526,18 @@ int32_t memory_fill_wrapper(Address data) {
   DisallowGarbageCollection no_gc;
 
   size_t offset = 0;
-  Object raw_instance = ReadAndIncrementOffset<Object>(data, &offset);
-  WasmInstanceObject instance = WasmInstanceObject::cast(raw_instance);
+  WasmInstanceObject instance =
+      WasmInstanceObject::cast(ReadAndIncrementOffset<Object>(data, &offset));
+  uint32_t mem_index = ReadAndIncrementOffset<uint32_t>(data, &offset);
   uintptr_t dst = ReadAndIncrementOffset<uintptr_t>(data, &offset);
   uint8_t value =
       static_cast<uint8_t>(ReadAndIncrementOffset<uint32_t>(data, &offset));
   uintptr_t size = ReadAndIncrementOffset<uintptr_t>(data, &offset);
 
-  uint64_t mem_size = instance.memory_size();
+  uint64_t mem_size = instance->memory_size(mem_index);
   if (!base::IsInBounds<uint64_t>(dst, size, mem_size)) return kOutOfBounds2;
 
-  std::memset(EffectiveAddress(instance, dst), value, size);
+  std::memset(EffectiveAddress(instance, mem_index, dst), value, size);
   return kSuccess2;
 }
 
@@ -561,13 +566,13 @@ void array_copy_wrapper(Address raw_instance, Address raw_dst_array,
       dst_array.ptr() == src_array.ptr() &&
       (dst_index < src_index ? dst_index + length > src_index
                              : src_index + length > dst_index);
-  wasm::ValueType element_type = src_array.type()->element_type();
+  wasm::ValueType element_type = src_array->type()->element_type();
   if (element_type.is_reference()) {
     WasmInstanceObject instance =
         WasmInstanceObject::cast(Object(raw_instance));
-    Isolate* isolate = Isolate::FromRootAddress(instance.isolate_root());
-    ObjectSlot dst_slot = dst_array.ElementSlot(dst_index);
-    ObjectSlot src_slot = src_array.ElementSlot(src_index);
+    Isolate* isolate = instance->GetIsolate();
+    ObjectSlot dst_slot = dst_array->ElementSlot(dst_index);
+    ObjectSlot src_slot = src_array->ElementSlot(src_index);
     if (overlapping_ranges) {
       isolate->heap()->MoveRange(dst_array, dst_slot, src_slot, length,
                                  UPDATE_WRITE_BARRIER);
@@ -588,16 +593,16 @@ void array_copy_wrapper(Address raw_instance, Address raw_dst_array,
   }
 }
 
-void array_fill_with_number_or_null_wrapper(Address raw_array, uint32_t length,
-                                            uint32_t raw_type,
-                                            Address initial_value_addr) {
+void array_fill_wrapper(Address raw_array, uint32_t index, uint32_t length,
+                        uint32_t emit_write_barrier, uint32_t raw_type,
+                        Address initial_value_addr) {
   ThreadNotInWasmScope thread_not_in_wasm_scope;
   DisallowGarbageCollection no_gc;
   ValueType type = ValueType::FromRawBitField(raw_type);
   int8_t* initial_element_address = reinterpret_cast<int8_t*>(
-      ArrayElementAddress(raw_array, 0, type.value_kind_size()));
+      ArrayElementAddress(raw_array, index, type.value_kind_size()));
   int64_t initial_value = *reinterpret_cast<int64_t*>(initial_value_addr);
-  int bytes_to_set = length * type.value_kind_size();
+  const int bytes_to_set = length * type.value_kind_size();
 
   // If the initial value is zero, we memset the array.
   if (type.is_numeric() && initial_value == 0) {
@@ -606,7 +611,7 @@ void array_fill_with_number_or_null_wrapper(Address raw_array, uint32_t length,
   }
 
   // We implement the general case by setting the first 8 bytes manually, then
-  // filling the rest by exponentially growing {memmove}s.
+  // filling the rest by exponentially growing {memcpy}s.
 
   DCHECK_GE(static_cast<size_t>(bytes_to_set), sizeof(int64_t));
 
@@ -636,6 +641,7 @@ void array_fill_with_number_or_null_wrapper(Address raw_array, uint32_t length,
       break;
     }
     case kRefNull:
+    case kRef:
       if constexpr (kTaggedSize == 4) {
         int32_t* base = reinterpret_cast<int32_t*>(initial_element_address);
         base[0] = base[1] = static_cast<int32_t>(initial_value);
@@ -645,7 +651,6 @@ void array_fill_with_number_or_null_wrapper(Address raw_array, uint32_t length,
       break;
     case kS128:
     case kRtt:
-    case kRef:
     case kVoid:
     case kBottom:
       UNREACHABLE();
@@ -663,23 +668,72 @@ void array_fill_with_number_or_null_wrapper(Address raw_array, uint32_t length,
     std::memcpy(initial_element_address + bytes_already_set,
                 initial_element_address, bytes_to_set - bytes_already_set);
   }
-}
 
-static WasmTrapCallbackForTesting wasm_trap_callback_for_testing = nullptr;
-
-void set_trap_callback_for_testing(WasmTrapCallbackForTesting callback) {
-  wasm_trap_callback_for_testing = callback;
-}
-
-void call_trap_callback_for_testing() {
-  if (wasm_trap_callback_for_testing) {
-    wasm_trap_callback_for_testing();
+  if (emit_write_barrier) {
+    DCHECK(type.is_reference());
+    WasmArray array = WasmArray::cast(Object(raw_array));
+    Isolate* isolate = array->GetIsolate();
+    ObjectSlot start(reinterpret_cast<Address>(initial_element_address));
+    ObjectSlot end(
+        reinterpret_cast<Address>(initial_element_address + bytes_to_set));
+    isolate->heap()->WriteBarrierForRange(array, start, end);
   }
 }
 
-}  // namespace wasm
-}  // namespace internal
-}  // namespace v8
+double flat_string_to_f64(Address string_address) {
+  String s = String::cast(Object(string_address));
+  return FlatStringToDouble(s, ALLOW_TRAILING_JUNK,
+                            std::numeric_limits<double>::quiet_NaN());
+}
+
+void sync_stack_limit(Isolate* isolate) {
+  CHECK(v8_flags.experimental_wasm_stack_switching);
+  DisallowGarbageCollection no_gc;
+
+  isolate->SyncStackLimit();
+}
+
+intptr_t switch_to_the_central_stack(Isolate* isolate, uintptr_t current_sp) {
+  CHECK(v8_flags.experimental_wasm_stack_switching);
+
+  ThreadLocalTop* thread_local_top = isolate->thread_local_top();
+  StackGuard* stack_guard = isolate->stack_guard();
+
+  CHECK_EQ(thread_local_top->secondary_stack_sp_, 0);
+  CHECK_EQ(thread_local_top->secondary_stack_limit_, 0);
+
+  auto secondary_stack_limit = stack_guard->real_jslimit();
+
+  stack_guard->SetStackLimitForStackSwitching(
+      thread_local_top->central_stack_limit_);
+
+  thread_local_top->secondary_stack_limit_ = secondary_stack_limit;
+  thread_local_top->secondary_stack_sp_ = current_sp;
+  thread_local_top->is_on_central_stack_flag_ = true;
+
+  auto counter = isolate->wasm_switch_to_the_central_stack_counter();
+  isolate->set_wasm_switch_to_the_central_stack_counter(counter + 1);
+
+  return thread_local_top->central_stack_sp_;
+}
+
+void switch_from_the_central_stack(Isolate* isolate) {
+  CHECK(v8_flags.experimental_wasm_stack_switching);
+
+  ThreadLocalTop* thread_local_top = isolate->thread_local_top();
+  CHECK_NE(thread_local_top->secondary_stack_sp_, 0);
+  CHECK_NE(thread_local_top->secondary_stack_limit_, 0);
+
+  auto secondary_stack_limit = thread_local_top->secondary_stack_limit_;
+  thread_local_top->secondary_stack_limit_ = 0;
+  thread_local_top->secondary_stack_sp_ = 0;
+  thread_local_top->is_on_central_stack_flag_ = false;
+
+  StackGuard* stack_guard = isolate->stack_guard();
+  stack_guard->SetStackLimitForStackSwitching(secondary_stack_limit);
+}
+
+}  // namespace v8::internal::wasm
 
 #undef V8_WITH_SANITIZER
 #undef RESET_THREAD_IN_WASM_FLAG_FOR_ASAN_ON_WINDOWS

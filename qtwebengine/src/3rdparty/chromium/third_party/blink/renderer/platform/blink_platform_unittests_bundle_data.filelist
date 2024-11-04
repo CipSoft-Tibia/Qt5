@@ -7,6 +7,8 @@
 ../../web_tests/external/wpt/css/css-fonts/resources/COLR-palettes-test-font.ttf
 ../../web_tests/external/wpt/fonts/AD.woff
 ../../web_tests/external/wpt/fonts/Ahem.ttf
+../../web_tests/external/wpt/fonts/CanvasTest-ascent256.ttf
+../../web_tests/external/wpt/fonts/CanvasTest-descent0.ttf
 ../../web_tests/external/wpt/fonts/CanvasTest.ttf
 ../../web_tests/external/wpt/fonts/GentiumPlus-R.woff
 ../../web_tests/external/wpt/fonts/Revalia.woff
@@ -144,10 +146,20 @@
 ../../web_tests/images/resources/avif/alpha-mask-limited-range-10bpc.avif
 ../../web_tests/images/resources/avif/alpha-mask-limited-range-12bpc.avif
 ../../web_tests/images/resources/avif/alpha-mask-limited-range-8bpc.avif
+../../web_tests/images/resources/avif/bee.avif
+../../web_tests/images/resources/avif/blue-and-magenta-crop-invalid.avif
+../../web_tests/images/resources/avif/blue-and-magenta-crop.avif
 ../../web_tests/images/resources/avif/dice_444_10b_grid4x3.avif
 ../../web_tests/images/resources/avif/gracehopper_422_12b_grid2x4.avif
 ../../web_tests/images/resources/avif/gray1024x704.avif
 ../../web_tests/images/resources/avif/green-no-alpha-ispe.avif
+../../web_tests/images/resources/avif/kodim03.avif
+../../web_tests/images/resources/avif/peach.avif
+../../web_tests/images/resources/avif/peach_13000000.avif
+../../web_tests/images/resources/avif/peach_13000002.avif
+../../web_tests/images/resources/avif/peach_900000.avif
+../../web_tests/images/resources/avif/red-and-purple-and-blue.avif
+../../web_tests/images/resources/avif/red-and-purple-crop.avif
 ../../web_tests/images/resources/avif/red-at-12-oclock-with-color-profile-10bpc.avif
 ../../web_tests/images/resources/avif/red-at-12-oclock-with-color-profile-12bpc.avif
 ../../web_tests/images/resources/avif/red-at-12-oclock-with-color-profile-8bpc.avif
@@ -185,8 +197,11 @@
 ../../web_tests/images/resources/avif/red-with-profile-12bpc.avif
 ../../web_tests/images/resources/avif/red-with-profile-8bpc.avif
 ../../web_tests/images/resources/avif/red.png
+../../web_tests/images/resources/avif/silver-400-matrix-0.avif
+../../web_tests/images/resources/avif/silver-400-matrix-6.avif
 ../../web_tests/images/resources/avif/silver-full-range-srgb-420-8bpc.avif
 ../../web_tests/images/resources/avif/silver.png
+../../web_tests/images/resources/avif/small-with-gainmap.avif
 ../../web_tests/images/resources/avif/star-animated-10bpc-with-alpha.avif
 ../../web_tests/images/resources/avif/star-animated-10bpc.avif
 ../../web_tests/images/resources/avif/star-animated-12bpc-with-alpha.avif
@@ -199,6 +214,7 @@
 ../../web_tests/images/resources/bad-png.png
 ../../web_tests/images/resources/bad.ico
 ../../web_tests/images/resources/base-test-resources/success.png
+../../web_tests/images/resources/bee.jpg
 ../../web_tests/images/resources/blue-10.png
 ../../web_tests/images/resources/blue-100.png
 ../../web_tests/images/resources/blue-wheel-srgb-color-profile.jpg
@@ -214,6 +230,7 @@
 ../../web_tests/images/resources/cHRM_color_spin.png
 ../../web_tests/images/resources/cat.jpg
 ../../web_tests/images/resources/cicp_pq.png
+../../web_tests/images/resources/circle-trns-before-plte.png
 ../../web_tests/images/resources/cmyk-jpeg.jpg
 ../../web_tests/images/resources/color-checker-adobe-color-profile.png
 ../../web_tests/images/resources/color-checker-munsell-chart.js
@@ -256,6 +273,7 @@
 ../../web_tests/images/resources/flip.webp
 ../../web_tests/images/resources/flowchart.jpg
 ../../web_tests/images/resources/full2loop.gif
+../../web_tests/images/resources/gainmap-trattore0.jpg
 ../../web_tests/images/resources/gif-loop-count.gif
 ../../web_tests/images/resources/gif-loop-count.png
 ../../web_tests/images/resources/gracehopper.bmp
@@ -267,6 +285,7 @@
 ../../web_tests/images/resources/green-256x256.jpg
 ../../web_tests/images/resources/green-circle.svg
 ../../web_tests/images/resources/green-half-stripe.png
+../../web_tests/images/resources/green-truncated.jpg
 ../../web_tests/images/resources/green.jpg
 ../../web_tests/images/resources/green.png
 ../../web_tests/images/resources/green_rectangle.pdf
@@ -301,6 +320,10 @@
 ../../web_tests/images/resources/oval.png
 ../../web_tests/images/resources/palatted-color-png-gamma-one-color-profile.png
 ../../web_tests/images/resources/pdf_test_landscape.pdf
+../../web_tests/images/resources/peach.jpg
+../../web_tests/images/resources/peach_13000000.jpg
+../../web_tests/images/resources/peach_13000002.jpg
+../../web_tests/images/resources/peach_900000.jpg
 ../../web_tests/images/resources/pixel-crack-image-background-webkit-transform-scale.png
 ../../web_tests/images/resources/pixelated-hdpi.png
 ../../web_tests/images/resources/png-16bit/2x2_16bit_AdobeRGB_opaque.png
@@ -414,6 +437,7 @@
 ../../web_tests/images/resources/ycbcr-progressive-003.jpg
 ../../web_tests/images/resources/ycbcr-with-cmyk-color-profile.jpg
 ../../web_tests/images/resources/ycbcr-with-no-color-profile.jpg
+../../web_tests/third_party/AdobeVF/AdobeVFPrototype.otf
 ../../web_tests/third_party/Amstelvar/Amstelvar.ttf
 ../../web_tests/third_party/DroidSans/DroidSans.ttf.subset-U002E-U0041-42.ttf
 ../../web_tests/third_party/FruityGirl/FruityGirl.ttf
@@ -423,10 +447,14 @@
 ../../web_tests/third_party/NotoColorEmoji/NotoColorEmoji.ttf
 ../../web_tests/third_party/NotoMono-hintedLocalizedFamilyName/NotoMono-Regular.subset.ttf
 ../../web_tests/third_party/NotoSans/NotoSansDevanagari-Regular-uni091D.ttf
+../../web_tests/third_party/NotoSansCJK/NotoSansCJKjp-Regular-subset.otf
 ../../web_tests/third_party/NotoSansSymbol/NotoSansSymbols-Regular-u1d49e,1f1ef.ttf
 ../../web_tests/third_party/Scheherazade/Scheherazade-Bold.ttf
 ../../web_tests/third_party/Scheherazade/Scheherazade-Regular.ttf
 ../../web_tests/third_party/Tinos/tinos-bold.ttf
+../../web_tests/third_party/adobe-fonts/CSSFWOrientationTest.otf
+../../web_tests/third_party/adobe-fonts/CSSHWOrientationTest.otf
+../../web_tests/third_party/gsubtest/gsubtest-lookup3.otf
 image-decoders/testing/bad-code.gif
 image-decoders/testing/bad-initial-code.gif
 image-decoders/testing/broken.gif
@@ -490,6 +518,7 @@ testing/data/gracehopper.bmp
 testing/data/green-red-blue-yellow-animated.gif
 testing/data/green.jpg
 testing/data/green.png
+testing/data/happy_dog.avif
 testing/data/icc-v2-gbr.jpg
 testing/data/original-cat-420-629x473.jpg
 testing/data/palatted-color-png-gamma-one-color-profile.png

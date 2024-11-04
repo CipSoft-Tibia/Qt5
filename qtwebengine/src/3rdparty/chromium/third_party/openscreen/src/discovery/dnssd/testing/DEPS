@@ -3,5 +3,5 @@
 include_rules = [
   '+discovery/dnssd/public',
   '+discovery/dnssd/impl',
-  '+discovery/mdns',
+  '+discovery/mdns/public',
 ]

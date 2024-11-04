@@ -8,15 +8,16 @@ generate_jni("subresource_filter_jni_headers") {
   sources = [
     "java/src/org/chromium/components/subresource_filter/AdsBlockedDialog.java",
     "java/src/org/chromium/components/subresource_filter/AdsBlockedInfoBar.java",
-    "java/src/org/chromium/components/subresource_filter/SubresourceFilterFeatureList.java",
+    "java/src/org/chromium/components/subresource_filter/SubresourceFilterFeatureMap.java",
   ]
 }
 
 android_library("java") {
+  srcjar_deps = [ ":subresource_filter_jni_headers" ]
   sources = [
     "java/src/org/chromium/components/subresource_filter/AdsBlockedDialog.java",
     "java/src/org/chromium/components/subresource_filter/AdsBlockedInfoBar.java",
-    "java/src/org/chromium/components/subresource_filter/SubresourceFilterFeatureList.java",
+    "java/src/org/chromium/components/subresource_filter/SubresourceFilterFeatureMap.java",
   ]
   deps = [
     ":java_resources",
@@ -30,17 +31,20 @@ android_library("java") {
     "//third_party/androidx:androidx_appcompat_appcompat_java",
     "//ui/android:ui_no_recycler_view_java",
   ]
-  annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
+
   resources_package = "org.chromium.components.subresource_filter"
 }
 
 robolectric_library("junit") {
+  resources_package = "org.chromium.components.subresource_filter"
   sources = [ "java/src/org/chromium/components/subresource_filter/AdsBlockedDialogTest.java" ]
 
   deps = [
     ":java",
+    ":java_resources",
     "//base:base_java_test_support",
     "//base:base_junit_test_support",
+    "//base:jni_java",
     "//third_party/androidx:androidx_test_core_java",
     "//third_party/junit",
     "//third_party/mockito:mockito_java",
@@ -52,7 +56,7 @@ source_set("android") {
   sources = [
     "ads_blocked_dialog.cc",
     "ads_blocked_dialog.h",
-    "subresource_filter_feature_list.cc",
+    "subresource_filter_feature_map.cc",
   ]
   deps = [
     ":subresource_filter_jni_headers",

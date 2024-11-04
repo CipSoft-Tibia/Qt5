@@ -114,15 +114,12 @@ std::unique_ptr<TestAudioDeviceModule::Capturer> CreateAudioCapturer(
     return TestAudioDeviceModule::CreatePulsedNoiseCapturer(
         kGeneratedAudioMaxAmplitude, kDefaultSamplingFrequencyInHz);
   }
-
-  switch (audio_config->mode) {
-    case AudioConfig::Mode::kGenerated:
-      return TestAudioDeviceModule::CreatePulsedNoiseCapturer(
-          kGeneratedAudioMaxAmplitude, audio_config->sampling_frequency_in_hz);
-    case AudioConfig::Mode::kFile:
-      RTC_DCHECK(audio_config->input_file_name);
-      return TestAudioDeviceModule::CreateWavFileReader(
-          audio_config->input_file_name.value(), /*repeat=*/true);
+  if (audio_config->input_file_name) {
+    return TestAudioDeviceModule::CreateWavFileReader(
+        *audio_config->input_file_name, /*repeat=*/true);
+  } else {
+    return TestAudioDeviceModule::CreatePulsedNoiseCapturer(
+        kGeneratedAudioMaxAmplitude, audio_config->sampling_frequency_in_hz);
   }
 }
 
@@ -264,9 +261,9 @@ PeerConnectionDependencies CreatePCDependencies(
 
   pc_deps.allocator = std::move(port_allocator);
 
-  if (pc_dependencies->async_resolver_factory != nullptr) {
-    pc_deps.async_resolver_factory =
-        std::move(pc_dependencies->async_resolver_factory);
+  if (pc_dependencies->async_dns_resolver_factory != nullptr) {
+    pc_deps.async_dns_resolver_factory =
+        std::move(pc_dependencies->async_dns_resolver_factory);
   }
   if (pc_dependencies->cert_generator != nullptr) {
     pc_deps.cert_generator = std::move(pc_dependencies->cert_generator);

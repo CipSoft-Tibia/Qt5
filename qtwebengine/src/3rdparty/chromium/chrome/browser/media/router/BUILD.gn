@@ -99,24 +99,30 @@ static_library("router") {
 
       "discovery:discovery",
       "//chrome/browser:browser_process",
+      "//chrome/browser/media/router/discovery/access_code:access_code_cast_feature",
       "//chrome/browser/profiles:profile",
+      "//components/access_code_cast/common:metrics",
       "//components/embedder_support:browser_util",
       "//components/mirroring/mojom:service",
       "//components/ukm/content:content",
       "//components/version_info:version_info",
+      "//media/cast:common",
       "//media/remoting:remoting_device_capability",
       "//mojo/public/cpp/bindings",
       "//services/metrics/public/cpp:ukm_builders",
       "//third_party/openscreen/src/cast/common/channel/proto:channel_proto",
     ]
 
-    public_deps += [ "//components/media_router/common/mojom:logger" ]
+    public_deps += [
+      "//components/media_router/common/mojom:debugger",
+      "//components/media_router/common/mojom:logger",
+    ]
 
     sources += [
+      "mojo/media_router_debugger_impl.cc",
+      "mojo/media_router_debugger_impl.h",
       "mojo/media_router_desktop.cc",
       "mojo/media_router_desktop.h",
-      "mojo/media_router_mojo_impl.cc",
-      "mojo/media_router_mojo_impl.h",
       "mojo/media_router_mojo_metrics.cc",
       "mojo/media_router_mojo_metrics.h",
       "mojo/media_sink_service_status.cc",
@@ -300,7 +306,8 @@ source_set("unittests") {
       "discovery/media_sink_discovery_metrics_unittest.cc",
       "logger_list_unittest.cc",
       "media_router_feature_unittest.cc",
-      "mojo/media_router_mojo_impl_unittest.cc",
+      "mojo/media_router_debugger_impl_unittest.cc",
+      "mojo/media_router_desktop_unittest.cc",
       "mojo/media_sink_service_status_unittest.cc",
       "providers/cast/app_activity_unittest.cc",
       "providers/cast/cast_activity_manager_unittest.cc",
@@ -318,6 +325,10 @@ source_set("unittests") {
       "providers/cast/mirroring_activity_unittest.cc",
       "providers/cast/mock_app_activity.cc",
       "providers/cast/mock_app_activity.h",
+      "providers/cast/mock_mirroring_activity.cc",
+      "providers/cast/mock_mirroring_activity.h",
+      "providers/cast/mock_mirroring_service_host.cc",
+      "providers/cast/mock_mirroring_service_host.h",
       "providers/cast/test_util.cc",
       "providers/cast/test_util.h",
       "providers/dial/dial_activity_manager_unittest.cc",
@@ -338,6 +349,17 @@ source_set("unittests") {
       "//services/preferences/public/cpp:cpp",
       "//third_party/openscreen/src/cast/common:public",
     ]
+
+    if (is_chromeos_lacros) {
+      deps += [
+        "//chromeos/crosapi/mojom",
+        "//chromeos/lacros:lacros",
+      ]
+    } else {
+      sources += [
+        "discovery/access_code/access_code_cast_pref_updater_impl_unittest.cc",
+      ]
+    }
   }
 
   if (enable_openscreen_protocol) {

@@ -114,6 +114,10 @@ const char kErrorInvalidParameter[] =
     "org.chromium.Hermes.Error.InvalidParameter";
 const char kErrorMalformedResponse[] =
     "org.chromium.Hermes.Error.MalformedResponse";
+const char kErrorUnexpectedModemManagerState[] =
+    "org.chromium.Hermes.Error.UnexpectedModemManagerState";
+const char kErrorModemMessageProcessing[] =
+    "org.chromium.Hermes.Error.ModemMessageProcessing";
 const char kErrorNeedConfirmationCode[] =
     "org.chromium.Hermes.Error.NeedConfirmationCode";
 const char kErrorNoResponse[] = "org.chromium.Hermes.Error.NoResponse";

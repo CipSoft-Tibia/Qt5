@@ -74,6 +74,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -91,6 +92,7 @@
 #include "base/strings/string_piece.h"
 #include "base/synchronization/lock.h"
 #include "base/types/pass_key.h"
+#include "build/blink_buildflags.h"
 #include "build/build_config.h"
 
 namespace base {
@@ -99,6 +101,7 @@ namespace test {
 class ScopedFeatureList;
 }  // namespace test
 
+class CompareActiveGroupToFieldTrialMatcher;
 class FieldTrialList;
 struct LaunchOptions;
 
@@ -143,8 +146,8 @@ class BASE_EXPORT FieldTrial : public RefCounted<FieldTrial> {
   // FieldTrial object. Does not use StringPiece to avoid conversions back to
   // std::string.
   struct BASE_EXPORT PickleState {
-    raw_ptr<const std::string, DanglingUntriaged> trial_name = nullptr;
-    raw_ptr<const std::string, DanglingUntriaged> group_name = nullptr;
+    raw_ptr<const std::string> trial_name = nullptr;
+    raw_ptr<const std::string> group_name = nullptr;
     bool activated = false;
 
     PickleState();
@@ -263,6 +266,12 @@ class BASE_EXPORT FieldTrial : public RefCounted<FieldTrial> {
                                                StringPiece default_group_name,
                                                double entropy_value);
 
+  // Whether this field trial is low anonymity or not (see
+  // |FieldTrialListIncludingLowAnonymity|).
+  // TODO(crbug.com/1431156): remove this once all call sites have been properly
+  // migrated to use an appropriate observer.
+  bool is_low_anonymity() { return is_low_anonymity_; }
+
  private:
   // Allow tests to access our innards for testing purposes.
   FRIEND_TEST_ALL_PREFIXES(FieldTrialTest, Registration);
@@ -290,6 +299,10 @@ class BASE_EXPORT FieldTrial : public RefCounted<FieldTrial> {
   FRIEND_TEST_ALL_PREFIXES(FieldTrialListTest, ClearParamsFromSharedMemory);
   FRIEND_TEST_ALL_PREFIXES(FieldTrialListTest,
                            TestGetRandomizedFieldTrialCount);
+  FRIEND_TEST_ALL_PREFIXES(FieldTrialTest, SetLowAnonymity);
+
+  // MATCHER(CompareActiveGroupToFieldTrialMatcher, "")
+  friend class base::CompareActiveGroupToFieldTrialMatcher;
 
   friend class base::FieldTrialList;
 
@@ -307,7 +320,8 @@ class BASE_EXPORT FieldTrial : public RefCounted<FieldTrial> {
   FieldTrial(StringPiece trial_name,
              Probability total_probability,
              StringPiece default_group_name,
-             double entropy_value);
+             double entropy_value,
+             bool is_low_anonymity);
 
   virtual ~FieldTrial();
 
@@ -384,6 +398,10 @@ class BASE_EXPORT FieldTrial : public RefCounted<FieldTrial> {
   // Denotes whether benchmarking is enabled. In this case, field trials all
   // revert to the default group.
   static bool enable_benchmarking_;
+
+  // Whether this field trial is potentially low anonymity (eg. only a small
+  // set of users are included).
+  const bool is_low_anonymity_ = false;
 };
 
 //------------------------------------------------------------------------------
@@ -436,6 +454,11 @@ class BASE_EXPORT FieldTrialList {
   // * SHA1 and NormalizedMurmurHash providers will use a non-zero value as a
   //   salt _instead_ of using the trial name.
   //
+  // Some field trials may be targeted in such way that a relatively small
+  // number of users are in a particular experiment group. Such trials should
+  // have |is_low_anonymity| set to true, and their visitbility is restricted
+  // to specific callers only, via |FieldTrialListIncludingLowAnonymity|.
+  //
   // This static method can be used to get a startup-randomized FieldTrial or a
   // previously created forced FieldTrial.
   static FieldTrial* FactoryGetFieldTrial(
@@ -443,7 +466,8 @@ class BASE_EXPORT FieldTrialList {
       FieldTrial::Probability total_probability,
       StringPiece default_group_name,
       const FieldTrial::EntropyProvider& entropy_provider,
-      uint32_t randomization_seed = 0);
+      uint32_t randomization_seed = 0,
+      bool is_low_anonymity = false);
 
   // The Find() method can be used to test to see if a named trial was already
   // registered, or to retrieve a pointer to it from the global map.
@@ -486,21 +510,19 @@ class BASE_EXPORT FieldTrialList {
   // called) with a snapshot of all registered FieldTrials for which the group
   // has been chosen and externally observed (via |group()|) and which have
   // not been disabled.
+  //
+  // This does not return low anonymity field trials. Callers who need access to
+  // low anonymity field trials should use
+  // |FieldTrialListIncludingLowAnonymity.GetActiveFieldTrialGroups()|.
   static void GetActiveFieldTrialGroups(
       FieldTrial::ActiveGroups* active_groups);
 
-  // Returns the field trials that are marked active in |trials_string|.
-  static void GetActiveFieldTrialGroupsFromString(
-      const std::string& trials_string,
-      FieldTrial::ActiveGroups* active_groups);
-
-  // Returns the field trials that were active when the process was
-  // created. Either parses the field trial string or the shared memory
-  // holding field trial information.
-  // Must be called only after a call to CreateTrialsFromCommandLine().
-  static void GetInitiallyActiveFieldTrials(
-      const CommandLine& command_line,
-      FieldTrial::ActiveGroups* active_groups);
+  // Returns the names of field trials that are active in the parent process.
+  // If this process is not a child process with inherited field trials passed
+  // to it through PopulateLaunchOptionsWithFieldTrialState(), an empty set will
+  // be returned.
+  // Must be called only after a call to CreateTrialsInChildProcess().
+  static std::set<std::string> GetActiveTrialsOfParentProcess();
 
   // Use a state string (re: AllStatesToString()) to augment the current list of
   // field trials to include the supplied trials, and using a 100% probability
@@ -512,39 +534,40 @@ class BASE_EXPORT FieldTrialList {
   // if they are prefixed with |kActivationMarker|.
   static bool CreateTrialsFromString(const std::string& trials_string);
 
-  // Achieves the same thing as CreateTrialsFromString, except wraps the logic
-  // by taking in the trials from the command line, either via shared memory
-  // handle or command line argument.
-  // On non-Mac POSIX platforms, we simply get the trials from opening |fd_key|
-  // if using shared memory. The argument is needed here since //base can't
-  // depend on //content. |fd_key| is unused on other platforms.
-  // On other platforms, we expect the |cmd_line| switch for kFieldTrialHandle
-  // to contain the shared memory handle that contains the field trial
-  // allocator.
-  static void CreateTrialsFromCommandLine(const CommandLine& cmd_line,
-                                          uint32_t fd_key);
+  // Creates trials in a child process from a command line that was produced
+  // via PopulateLaunchOptionsWithFieldTrialState() in the parent process.
+  // Trials are retrieved from a shared memory segment that has been shared with
+  // the child process.
+  //
+  // `fd_key` is used on non-Mac POSIX platforms to access the shared memory
+  // segment and ignored on other platforms. The argument is needed here since
+  // //base can't depend on //content. On other platforms, we expect the
+  // `cmd_line` switch for kFieldTrialHandle to contain the shared memory handle
+  // that contains the field trial allocator.
+  static void CreateTrialsInChildProcess(const CommandLine& cmd_line,
+                                         uint32_t fd_key);
 
-  // Creates base::Feature overrides from the command line by first trying to
-  // use shared memory and then falling back to the command line if it fails.
-  static void CreateFeaturesFromCommandLine(const CommandLine& command_line,
-                                            FeatureList* feature_list);
+  // Creates base::Feature overrides in a child process using shared memory.
+  // Requires CreateTrialsInChildProcess() to have been called first which
+  // initializes access to the shared memory segment.
+  static void ApplyFeatureOverridesInChildProcess(FeatureList* feature_list);
 
-#if !BUILDFLAG(IS_IOS)
+#if BUILDFLAG(USE_BLINK)
   // Populates |command_line| and |launch_options| with the handles and command
   // line arguments necessary for a child process to inherit the shared-memory
   // object containing the FieldTrial configuration.
   static void PopulateLaunchOptionsWithFieldTrialState(
       CommandLine* command_line,
       LaunchOptions* launch_options);
-#endif  // !BUILDFLAG(IS_IOS)
+#endif  // !BUILDFLAG(USE_BLINK)
 
-#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_NACL)
+#if BUILDFLAG(USE_BLINK) && BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_APPLE)
   // On POSIX, we also need to explicitly pass down this file descriptor that
   // should be shared with the child process. Returns -1 if it was not
-  // initialized properly. The current process remains the onwer of the passed
+  // initialized properly. The current process remains the owner of the passed
   // descriptor.
   static int GetFieldTrialDescriptor();
-#endif  // BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_NACL)
+#endif  // BUILDFLAG(USE_BLINK) && BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_APPLE)
 
   static ReadOnlySharedMemoryRegion DuplicateFieldTrialSharedMemoryForTesting();
 
@@ -554,18 +577,30 @@ class BASE_EXPORT FieldTrialList {
   // randomly selected state in a browser process into this non-browser process.
   // It returns NULL if there is a FieldTrial that is already registered with
   // the same |name| but has different finalized group string (|group_name|).
-  static FieldTrial* CreateFieldTrial(StringPiece name, StringPiece group_name);
+  //
+  // Visibility of field trials with |is_low_anonymity| set to true is
+  // restricted to specific callers only, see
+  // |FieldTrialListIncludingLowAnonymity|.
+  static FieldTrial* CreateFieldTrial(StringPiece name,
+                                      StringPiece group_name,
+                                      bool is_low_anonymity = false);
 
   // Add an observer to be notified when a field trial is irrevocably committed
   // to being part of some specific field_group (and hence the group_name is
   // also finalized for that field_trial). Returns false and does nothing if
   // there is no FieldTrialList singleton. The observer can be notified on any
   // sequence; it must be thread-safe.
+  //
+  // Low anonymity field trials are not notified to this observer. Callers
+  // who need to be notified of low anonymity field trials should use
+  // |FieldTrialListIncludingLowAnonymity.AddObserver()|.
   static bool AddObserver(Observer* observer);
 
   // Remove an observer. This cannot be invoked concurrently with
   // FieldTrial::group() (typically, this means that no other thread should be
   // running when this is invoked).
+  //
+  // Removes observers added via the |AddObserver()| method of this class.
   static void RemoveObserver(Observer* observer);
 
   // Notify all observers that a group has been finalized for |field_trial|.
@@ -646,7 +681,11 @@ class BASE_EXPORT FieldTrialList {
   friend int SerializeSharedMemoryRegionMetadata();
   FRIEND_TEST_ALL_PREFIXES(FieldTrialListTest, CheckReadOnlySharedMemoryRegion);
 
-#if !BUILDFLAG(IS_NACL) && !BUILDFLAG(IS_IOS)
+  // Required so that |FieldTrialListIncludingLowAnonymity| can expose APIs from
+  // this class to its friends.
+  friend class FieldTrialListIncludingLowAnonymity;
+
+#if BUILDFLAG(USE_BLINK)
   // Serialization is used to pass information about the shared memory handle
   // to child processes. This is achieved by passing a stringified reference to
   // the relevant OS resources to the child process.
@@ -678,7 +717,7 @@ class BASE_EXPORT FieldTrialList {
   // down to the child process for the shared memory region.
   static bool CreateTrialsFromSwitchValue(const std::string& switch_value,
                                           uint32_t fd_key);
-#endif  // !BUILDFLAG(IS_NACL) && !BUILDFLAG(IS_IOS)
+#endif  // BUILDFLAG(USE_BLINK)
 
   // Takes an unmapped ReadOnlySharedMemoryRegion, maps it with the correct size
   // and creates field trials via CreateTrialsFromSharedMemoryMapping(). Returns
@@ -730,9 +769,32 @@ class BASE_EXPORT FieldTrialList {
   static bool CreateTrialsFromFieldTrialStatesInternal(
       const std::vector<FieldTrial::State>& entries);
 
+  // The same as |GetActiveFieldTrialGroups| but also gives access to low
+  // anonymity field trials.
+  // Restricted to specifically allowed friends - access via
+  // |FieldTrialListIncludingLowAnonymity::GetActiveFieldTrialGroups|.
+  static void GetActiveFieldTrialGroupsInternal(
+      FieldTrial::ActiveGroups* active_groups,
+      bool include_low_anonymity);
+
+  // The same as |AddObserver| but is notified for low anonymity field trials
+  // too.
+  // Restricted to specifically allowed friends - access via
+  // |FieldTrialListIncludingLowAnonymity::AddObserver|.
+  static bool AddObserverInternal(Observer* observer,
+                                  bool include_low_anonymity);
+
+  // The same as |RemoveObserver| but is notified for low anonymity field trials
+  // too.
+  // Restricted to specifically allowed friends - access via
+  // |FieldTrialListIncludingLowAnonymity::RemoveObserver|.
+  static void RemoveObserverInternal(Observer* observer,
+                                     bool include_low_anonymity);
+
   static FieldTrialList* global_;  // The singleton of this class.
 
   // Lock for access to |registered_|, |observers_|,
+  // |observers_including_low_anonymity_|,
   // |count_of_manually_created_field_trials_|.
   Lock lock_;
   RegistrationMap registered_ GUARDED_BY(lock_);
@@ -741,7 +803,12 @@ class BASE_EXPORT FieldTrialList {
   size_t num_registered_randomized_trials_ GUARDED_BY(lock_) = 0;
 
   // List of observers to be notified when a group is selected for a FieldTrial.
+  // Excludes low anonymity field trials.
   std::vector<Observer*> observers_ GUARDED_BY(lock_);
+
+  // List of observers to be notified when a group is selected for a FieldTrial.
+  // Includes low anonymity field trials.
+  std::vector<Observer*> observers_including_low_anonymity_ GUARDED_BY(lock_);
 
   // Counts the ongoing calls to
   // FieldTrialList::NotifyFieldTrialGroupSelection(). Used to ensure that
@@ -758,8 +825,8 @@ class BASE_EXPORT FieldTrialList {
   // because it's needed from multiple methods.
   ReadOnlySharedMemoryRegion readonly_allocator_region_;
 
-  // Tracks whether CreateTrialsFromCommandLine() has been called.
-  bool create_trials_from_command_line_called_ = false;
+  // Tracks whether CreateTrialsInChildProcess() has been called.
+  bool create_trials_in_child_process_called_ = false;
 };
 
 }  // namespace base

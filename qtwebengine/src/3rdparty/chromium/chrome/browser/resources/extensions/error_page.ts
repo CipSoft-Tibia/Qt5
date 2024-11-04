@@ -14,7 +14,6 @@ import 'chrome://resources/polymer/v3_0/paper-styles/color.js';
 import './code_section.js';
 import './shared_style.css.js';
 
-import {CrContainerShadowMixin} from 'chrome://resources/cr_elements/cr_container_shadow_mixin.js';
 import {assert, assertNotReached} from 'chrome://resources/js/assert_ts.js';
 import {FocusOutlineManager} from 'chrome://resources/js/focus_outline_manager.js';
 import {focusWithoutInk} from 'chrome://resources/js/focus_without_ink.js';
@@ -75,9 +74,7 @@ export interface ExtensionsErrorPageElement {
   };
 }
 
-const ExtensionsErrorPageElementBase = CrContainerShadowMixin(PolymerElement);
-
-export class ExtensionsErrorPageElement extends ExtensionsErrorPageElementBase {
+export class ExtensionsErrorPageElement extends PolymerElement {
   static get is() {
     return 'extensions-error-page';
   }
@@ -168,11 +165,11 @@ export class ExtensionsErrorPageElement extends ExtensionsErrorPageElementBase {
     }
   }
 
-  private onCloseButtonTap_() {
+  private onCloseButtonClick_() {
     navigation.navigateTo({page: Page.LIST});
   }
 
-  private onClearAllTap_() {
+  private onClearAllClick_() {
     const ids = this.entries_.map(entry => entry.id);
     this.delegate.deleteErrors(this.data.id, ids);
   }
@@ -198,7 +195,7 @@ export class ExtensionsErrorPageElement extends ExtensionsErrorPageElementBase {
     if (!this.inDevMode) {
       // Wait until next render cycle in case error page is loading.
       setTimeout(() => {
-        this.onCloseButtonTap_();
+        this.onCloseButtonClick_();
       }, 0);
     }
   }
@@ -307,7 +304,7 @@ export class ExtensionsErrorPageElement extends ExtensionsErrorPageElementBase {
         .then(code => this.code_ = code);
   }
 
-  private onStackFrameTap_(
+  private onStackFrameClick_(
       e: DomRepeatEvent<chrome.developerPrivate.StackFrame>) {
     const frame = e.model.item;
     this.updateSelected_(frame);

@@ -28,14 +28,18 @@ generate_css("css_files") {
 
 devtools_module("inline_editor") {
   sources = [
+    "AnimationTimingModel.ts",
+    "AnimationTimingUI.ts",
     "BezierEditor.ts",
     "BezierUI.ts",
     "CSSAngle.ts",
     "CSSAngleEditor.ts",
     "CSSAngleSwatch.ts",
     "CSSAngleUtils.ts",
+    "CSSAnimationModel.ts",
     "CSSLength.ts",
     "CSSLengthUtils.ts",
+    "CSSLinearEasingModel.ts",
     "CSSShadowEditor.ts",
     "CSSShadowModel.ts",
     "ColorMixModel.ts",

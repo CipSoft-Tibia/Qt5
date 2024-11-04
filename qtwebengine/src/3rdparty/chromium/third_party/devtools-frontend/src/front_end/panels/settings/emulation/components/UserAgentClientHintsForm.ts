@@ -67,16 +67,16 @@ const UIStrings = {
    */
   addBrand: 'Add Brand',
   /**
-   * @description Tooltip for delete icon for deleting browser brand in brands section.
+   * @description Tooltip and aria label for delete icon for deleting browser brand from brands user agent section.
    * Brands here relate to different browser brands/vendors like Google Chrome, Microsoft Edge etc.
    */
-  deleteTooltip: 'Delete',
+  brandUserAgentDelete: 'Delete brand from user agent section',
   /**
-   * @description Aria label for delete icon for deleting browser brand in brands section.
+   * @description Tooltip and aria label for delete icon for deleting user agent from brands full version list.
    * Brands here relate to different browser brands/vendors like Google Chrome, Microsoft Edge etc.
-   * @example {index} PH1
    */
-  brandDeleteAriaLabel: 'Delete {PH1}',
+  brandFullVersionListDelete: 'Delete brand from full version list',
+
   /**
    * @description Label for full browser version input field.
    */
@@ -130,10 +130,10 @@ const UIStrings = {
    */
   notRepresentable: 'Not representable as structured headers string.',
   /**
-   * @description Aria label for information link in user agent client hints form.
+   * @description Hover text for info icon which explains user agent client hints.
    */
   userAgentClientHintsInfo:
-      'User agent client hints are an alternative to the user agent string that identify the browser and the device in a more structured way with better privacy accounting. Click the button to learn more.',
+      'User agent client hints are an alternative to the user agent string that identify the browser and the device in a more structured way with better privacy accounting.',
   /**
    * @description Success message when brand row is successfully added in client hints form.
    * Brands here relate to different browser brands/vendors like Google Chrome, Microsoft Edge etc.
@@ -144,6 +144,10 @@ const UIStrings = {
    * Brands here relate to different browser brands/vendors like Google Chrome, Microsoft Edge etc.
    */
   deletedBrand: 'Deleted brand row',
+  /**
+   *@description Text that is usually a hyperlink to more documentation
+   */
+  learnMore: 'Learn more',
 };
 const str_ = i18n.i18n.registerUIStrings('panels/settings/emulation/components/UserAgentClientHintsForm.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -576,17 +580,14 @@ export class UserAgentClientHintsForm extends HTMLElement {
           />
           <${IconButton.Icon.Icon.litTagName}
             .data=${
-          {color: 'var(--client-hints-form-icon-color)', iconName: 'trash_bin_icon', width: '10px', height: '14px'} as
-          IconButton.Icon.IconData}
-            title=${i18nString(UIStrings.deleteTooltip)}
+          {color: 'var(--icon-default)', iconName: 'bin', width: '16px', height: '16px'} as IconButton.Icon.IconData}
+            title=${i18nString(UIStrings.brandUserAgentDelete)}
             class="delete-icon"
             tabindex="0"
             role="button"
             @click=${handleDeleteClick}
             @keypress=${handleKeyPress}
-            aria-label=${i18nString(UIStrings.brandDeleteAriaLabel, {
-        PH1: index + 1,
-      })}
+            aria-label=${i18nString(UIStrings.brandUserAgentDelete)}
           >
           </${IconButton.Icon.Icon.litTagName}>
         </div>
@@ -606,8 +607,7 @@ export class UserAgentClientHintsForm extends HTMLElement {
       >
         <${IconButton.Icon.Icon.litTagName}
           aria-hidden="true"
-          .data=${
-        {color: 'var(--client-hints-form-icon-color)', iconName: 'add-icon', width: '10px'} as IconButton.Icon.IconData}
+          .data=${{color: 'var(--icon-default)', iconName: 'plus', width: '16px'} as IconButton.Icon.IconData}
         >
         </${IconButton.Icon.Icon.litTagName}>
         ${i18nString(UIStrings.addBrand)}
@@ -669,17 +669,14 @@ export class UserAgentClientHintsForm extends HTMLElement {
           />
           <${IconButton.Icon.Icon.litTagName}
             .data=${
-          {color: 'var(--client-hints-form-icon-color)', iconName: 'trash_bin_icon', width: '10px', height: '14px'} as
-          IconButton.Icon.IconData}
-            title=${i18nString(UIStrings.deleteTooltip)}
+          {color: 'var(--icon-default)', iconName: 'bin', width: '16px', height: '16px'} as IconButton.Icon.IconData}
+            title=${i18nString(UIStrings.brandFullVersionListDelete)}
             class="delete-icon"
             tabindex="0"
             role="button"
             @click=${handleDeleteClick}
             @keypress=${handleKeyPress}
-            aria-label=${i18nString(UIStrings.brandDeleteAriaLabel, {
-        PH1: index + 1,
-      })}
+            aria-label=${i18nString(UIStrings.brandFullVersionListDelete)}
           >
           </${IconButton.Icon.Icon.litTagName}>
         </div>
@@ -699,8 +696,7 @@ export class UserAgentClientHintsForm extends HTMLElement {
       >
         <${IconButton.Icon.Icon.litTagName}
           aria-hidden="true"
-          .data=${
-        {color: 'var(--client-hints-form-icon-color)', iconName: 'add-icon', width: '10px'} as IconButton.Icon.IconData}
+          .data=${{color: 'var(--icon-default)', iconName: 'plus', width: '16px'} as IconButton.Icon.IconData}
         >
         </${IconButton.Icon.Icon.litTagName}>
         ${i18nString(UIStrings.addBrand)}
@@ -720,6 +716,7 @@ export class UserAgentClientHintsForm extends HTMLElement {
         i18nString(UIStrings.architecture), i18nString(UIStrings.architecturePlaceholder), architecture,
         'architecture');
     const deviceModelSection = this.#renderDeviceModelSection();
+    // clang-format off
     const submitButton = this.#showSubmitButton ? LitHtml.html`
       <${Buttons.Button.Button.litTagName}
         .variant=${Buttons.Button.Variant.SECONDARY}
@@ -727,8 +724,10 @@ export class UserAgentClientHintsForm extends HTMLElement {
       >
         ${i18nString(UIStrings.update)}
       </${Buttons.Button.Button.litTagName}>
-    ` :
-                                                  LitHtml.html``;
+    ` : LitHtml.nothing;
+    // clang-format on
+
+    // clang-format off
     const output = LitHtml.html`
       <section class="root">
         <div
@@ -744,27 +743,32 @@ export class UserAgentClientHintsForm extends HTMLElement {
           aria-label=${i18nString(UIStrings.title)}
         >
           <${IconButton.Icon.Icon.litTagName}
-            class=${this.#isFormOpened ? '' : 'rotate-icon'}
-            .data=${
-        {color: 'var(--client-hints-form-icon-color)', iconName: 'chromeSelect', width: '20px'} as
-        IconButton.Icon.IconData}
-          >
-          </${IconButton.Icon.Icon.litTagName}>
+            class=${this.#isFormOpened ? 'rotate-icon' : ''}
+            .data=${{
+              color: 'var(--icon-default)',
+              iconName: 'triangle-right',
+              width: '14px',
+            } as IconButton.Icon.IconData}
+          ></${IconButton.Icon.Icon.litTagName}>
           ${i18nString(UIStrings.title)}
+          <${IconButton.Icon.Icon.litTagName}
+            .data=${{
+              color: 'var(--icon-default)',
+              iconName: 'info',
+              width: '16px',
+            } as IconButton.Icon.IconData}
+            title=${i18nString(UIStrings.userAgentClientHintsInfo)}
+            class='info-icon',
+          ></${IconButton.Icon.Icon.litTagName}>
           <x-link
            tabindex="0"
            href="https://web.dev/user-agent-client-hints/"
            target="_blank"
-           class="info-link"
+           class="link"
            @keypress=${this.#handleLinkPress}
            aria-label=${i18nString(UIStrings.userAgentClientHintsInfo)}
           >
-            <${IconButton.Icon.Icon.litTagName}
-              .data=${
-        {color: 'var(--client-hints-form-icon-color)', iconName: 'ic_info_black_18dp', width: '14px'} as
-        IconButton.Icon.IconData}
-            >
-            </${IconButton.Icon.Icon.litTagName}>
+            ${i18nString(UIStrings.learnMore)}
           </x-link>
         </div>
         <form
@@ -783,9 +787,8 @@ export class UserAgentClientHintsForm extends HTMLElement {
         <div aria-live="polite" aria-label=${this.#useragentModifiedAriaMessage}></div>
       </section>
     `;
-    // clang-format off
-    LitHtml.render(output, this.#shadow, {host: this});
     // clang-format on
+    LitHtml.render(output, this.#shadow, {host: this});
   }
 
   validate = (): UI.ListWidget.ValidatorResult => {

@@ -25,6 +25,8 @@ add_library(dawn_node_binding STATIC
     "GPU.h"
     "GPUAdapter.cpp"
     "GPUAdapter.h"
+    "GPUAdapterInfo.cpp"
+    "GPUAdapterInfo.h"
     "GPUBindGroup.cpp"
     "GPUBindGroup.h"
     "GPUBindGroupLayout.cpp"
@@ -67,6 +69,10 @@ add_library(dawn_node_binding STATIC
     "GPUTexture.h"
     "GPUTextureView.cpp"
     "GPUTextureView.h"
+    "Split.cpp"
+    "Split.h"
+    "TogglesLoader.cpp"
+    "TogglesLoader.h"
 )
 common_compile_options(dawn_node_binding)
 

@@ -16,8 +16,8 @@
 #include "chrome/test/base/in_process_browser_test.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/network_service_instance.h"
+#include "content/public/browser/network_service_util.h"
 #include "content/public/browser/storage_partition.h"
-#include "content/public/common/network_service_util.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -150,6 +150,10 @@ IN_PROC_BROWSER_TEST_F(NetworkConnectionTrackerBrowserTest,
 // binds to the restarted network service.
 IN_PROC_BROWSER_TEST_F(NetworkConnectionTrackerBrowserTest,
                        SimulateNetworkServiceCrash) {
+  // NetworkService on ChromeOS doesn't yet have a NetworkChangeManager
+  // implementation. OSX uses a separate binary for service processes and
+  // browser test fixture doesn't have NetworkServiceTest mojo code.
+#if !BUILDFLAG(IS_CHROMEOS_ASH) && !BUILDFLAG(IS_MAC)
   // Out-of-process network service is not enabled, so network service's crash
   // and restart aren't applicable.
   if (!content::IsOutOfProcessNetworkService())
@@ -215,4 +219,5 @@ IN_PROC_BROWSER_TEST_F(NetworkConnectionTrackerBrowserTest,
   base::RunLoop().RunUntilIdle();
 
   EXPECT_EQ(2u, network_connection_observer.num_notifications());
+#endif
 }

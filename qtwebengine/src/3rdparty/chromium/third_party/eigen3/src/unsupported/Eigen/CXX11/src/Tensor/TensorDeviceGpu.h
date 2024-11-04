@@ -378,7 +378,7 @@ struct GpuDevice {
     return stream_->deviceProperties().maxThreadsPerMultiProcessor;
   }
   EIGEN_STRONG_INLINE int sharedMemPerBlock() const {
-    return stream_->deviceProperties().sharedMemPerBlock;
+    return static_cast<int>(stream_->deviceProperties().sharedMemPerBlock);
   }
   EIGEN_STRONG_INLINE int majorDeviceVersion() const {
     return stream_->deviceProperties().major;

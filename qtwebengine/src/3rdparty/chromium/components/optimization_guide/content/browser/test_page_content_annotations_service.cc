@@ -55,6 +55,12 @@ TestPageContentAnnotationsService::~TestPageContentAnnotationsService() {
     base::SequencedTaskRunner::GetCurrentDefault()->DeleteSoon(
         FROM_HERE, std::move(test_history_service_));
   }
+
+  // Delete the model provider on the next message pump so that PCAService's
+  // ModelHandlers have a chance to be deleted first and remove their
+  // observations first.
+  base::SequencedTaskRunner::GetCurrentDefault()->DeleteSoon(
+      FROM_HERE, std::move(test_model_provider_));
 }
 
 TestPageContentAnnotationsService::TestPageContentAnnotationsService(
@@ -69,6 +75,7 @@ TestPageContentAnnotationsService::TestPageContentAnnotationsService(
                                     /*database_provider=*/nullptr,
                                     /*database_dir=*/base::FilePath(),
                                     /*optimization_guide_logger=*/nullptr,
+                                    /*optimization_guide_decider=*/nullptr,
                                     /*background_task_runner=*/nullptr) {}
 
 }  // namespace optimization_guide

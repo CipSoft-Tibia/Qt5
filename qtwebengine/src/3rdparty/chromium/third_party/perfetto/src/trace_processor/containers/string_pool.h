@@ -21,11 +21,11 @@
 #include <stdint.h>
 
 #include <limits>
+#include <optional>
 #include <vector>
 
 #include "perfetto/ext/base/flat_hash_map.h"
 #include "perfetto/ext/base/hash.h"
-#include "perfetto/ext/base/optional.h"
 #include "perfetto/ext/base/paged_memory.h"
 #include "perfetto/protozero/proto_utils.h"
 #include "src/trace_processor/containers/null_term_string_view.h"
@@ -132,7 +132,7 @@ class StringPool {
     return *id;
   }
 
-  base::Optional<Id> GetId(base::StringView str) const {
+  std::optional<Id> GetId(base::StringView str) const {
     if (str.data() == nullptr)
       return Id::Null();
 
@@ -142,7 +142,7 @@ class StringPool {
       PERFETTO_DCHECK(Get(*id) == str);
       return *id;
     }
-    return base::nullopt;
+    return std::nullopt;
   }
 
   NullTermStringView Get(Id id) const {
@@ -156,6 +156,14 @@ class StringPool {
   Iterator CreateIterator() const { return Iterator(this); }
 
   size_t size() const { return string_index_.size(); }
+
+  // Maximum Id of a small (not large) string in the string pool.
+  StringPool::Id MaxSmallStringId() const {
+    return Id::BlockString(blocks_.size() - 1, blocks_.back().pos());
+  }
+
+  // Returns whether there is at least one large string in a string pool
+  bool HasLargeString() const { return !large_strings_.empty(); }
 
  private:
   using StringHash = uint64_t;

@@ -25,8 +25,7 @@ feature to UseCounter, simply:
 + Usage can be measured via:
     * MeasureAs=\<enum value\> in the feature's IDL definition; Or
     * blink::UseCounter::Count() for blink side features; Or
-    * page_load_metrics::MetricsWebContentsObserver::RecordFeatureUsage()
-      for browser side features.
+    * content::ContentBrowserClient::LogWebFeatureForCurrentPage() for browser side features.
 
 Example:
 ```c++
@@ -55,7 +54,7 @@ OR
 ```c++
   MyBrowserSideFunction() {
     ...
-    page_load_metrics::MetricsWebContentObserver::RecordFeatureUsage(
+    GetContentClient()->browser()->LogWebFeatureForCurrentPage(
       render_frame_host, blink::mojom::WebFeature::kMyFeature);
     ...
   }
@@ -179,7 +178,5 @@ day on [UMA Usage dashboard](https://goto.google.com/uma-usecounter-peruser).
 
 ## Analyze UseCounter UKM Data
 For privacy concerns, UKM data is available for Google employees only.
-
-### UKM Dashboard
-UKM dashboard is accessible to Google employees only. Please see [this internal
-wiki](https://goto.google.com/usecounter-ukm-wiki) for details.
+Please see [this internal
+documentation](https://goto.google.com/ukm-blink-usecounter) for details.

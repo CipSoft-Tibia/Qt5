@@ -1,0 +1,306 @@
+// Copyright (C) 2024 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+/*!
+\page qtgrpc-service-client-methods.html
+\title Client Methods of the Qt GRPC Service
+
+gRPC lets you define four kinds of service methods:
+\list
+    \li Unary call, where the client sends a single request to
+    the server and gets a single response back:
+    \badcode
+        rpc PingPong (Ping) returns (Pong);
+    \endcode
+    \li Server stream, where the client sends a single request to
+    the server and gets one or more responses back:
+    \badcode
+        rpc PingSeveralPong (Ping) returns (stream Pong);
+    \endcode
+    \li Client stream, where the client sends one or more
+    requests to the server and gets a single response back:
+    \badcode
+        rpc SeveralPingPong (stream Ping) returns (Pong);
+    \endcode
+    \li Bidirectional stream, where the client sends one or more
+    requests to the server and gets one or more responses back:
+    \badcode
+        rpc SeveralPingSeveralPong (stream Ping) returns (stream Pong);
+    \endcode
+    Note that the number of responses might not be aligned with the number of
+    requests, nor the request and response sequence. This is controlled by
+    the application business logic.
+\endlist
+
+gRPC communication always starts at the client side and ends at the server side.
+The client initiates the communication by sending the first message to the
+server. The server ends the communication of any type by replying with the
+\l{QGrpcStatus::StatusCode}{status code}.
+
+To use the Qt GRPC C++ API, start with defining the \c pingpong.proto schema for
+your project:
+\badcode
+    syntax = "proto3";
+
+    package ping.pong;
+
+    message Ping {
+        uint64 time = 1;
+        sint32 num = 2;
+    }
+
+    message Pong {
+        uint64 time = 1;
+        sint32 num = 2;
+    }
+
+    service PingPongService {
+        // Unary call
+        rpc PingPong (Ping) returns (Pong);
+
+        // Server stream
+        rpc PingSeveralPong (Ping) returns (stream Pong);
+
+        // Client stream
+        rpc SeveralPingPong (stream Ping) returns (Pong);
+
+        // Bidirectional stream
+        rpc SeveralPingSeveralPong (stream Ping) returns (stream Pong);
+    }
+\endcode
+
+Generate the C++ client code using the above schema and the
+\l{CMake Commands in Qt6 GRPC}{Qt GRPC CMake API}:
+\badcode
+    find_package(Qt6 COMPONENTS Protobuf Grpc)
+
+    qt_add_executable(pingpong ...)
+
+    qt_add_protobuf(pingpong PROTO_FILES pingpong.proto)
+    qt_add_grpc(pingpong CLIENT PROTO_FILES pingpong.proto)
+\endcode
+
+Both the generated protobuf messages and the client gRPC code will be added to
+the \c pingpong CMake target.
+
+\section1 Using unary calls in Qt GRPC
+
+Let's start with the simplest communication scenario - a unary gRPC call. In
+this RPC type, the client sends a single request message and receives a single
+response message from the server. The communication ends once the server sends a
+status code.
+
+For unary calls, the \l {The qtgrpcgen Tool} {qtgrpcgen tool} generates
+two alternative asynchronous methods:
+\code
+    namespace ping::pong {
+    namespace PingPongService {
+
+    class Client : public QAbstractGrpcClient {
+        Q_OBJECT
+    public:
+        std::shared_ptr<QGrpcCallReply> PingPong(const ping::pong::Ping &arg,
+                                                const QGrpcCallOptions &options = {});
+        Q_INVOKABLE void PingPong(const ping::pong::Ping &arg, const QObject *context,
+                                const std::function<void(std::shared_ptr<QGrpcCallReply>)> &callback,
+                                const QGrpcCallOptions &options = {});
+        ...
+    };
+    } // namespace PingPongService
+    } // namespace ping::pong
+\endcode
+
+\section2 Call reply handling using QGrpcCallReply
+The first variant returns the \l QGrpcCallReply gRPC operation.
+\l QGrpcCallReply reads the message received from the server and gets the
+notifications about errors or the end of call.
+
+After creating \c{PingPongService::Client} and attaching \l QGrpcHttp2Channel to
+it, call the \c PingPong method:
+\code
+    qint64 requestTime = QDateTime::currentMSecsSinceEpoch();
+    ping::pong::Ping request;
+    request.setTime(requestTime);
+
+    auto reply = cl.PingPong(request,{});
+    QObject::connect(reply.get(), &QGrpcCallReply::finished, reply.get(),
+                     [requestTime, replyPtr = reply.get()]() {
+                         auto response = replyPtr->read<ping::pong::Pong>();
+                         qDebug() << "Ping-Pong time difference" << response.time() - requestTime;
+                     });
+
+    QObject::connect(reply.get(), &QGrpcCallReply::errorOccurred, stream.get()
+                     [](const QGrpcStatus &status) {
+                         qDebug() << "Error occurred: " << status.code() << status.message();
+                     });
+\endcode
+
+After the server responds to the request, the \l{QGrpcCallReply::finished}
+signal is emitted. The \c reply object contains the raw response data received
+from the server and can be deserialized to the \c ping::pong::Pong protobuf
+message using the \l{QGrpcCallReply::read} method.
+
+If the server does not respond or the request caused an error in the server, the
+\l{QGrpcCallReply::errorOccurred} signal is emitted with the corresponding
+\l{QGrpcStatus}{status code}. If the server answered with the
+\l{QGrpcStatus::Ok} code, the \c{QGrpcCallReply::errorOccurred}
+signal is not emitted.
+
+\section2 Call reply handling using callbacks
+The overloaded function is similar to the one that returns the
+\l QGrpcCallReply, but instead of returning the reply, the function passes it as
+an argument to the callback function that is used in the call:
+\code
+    ...
+    cl.PingPong(request, &a, [requestTime](std::shared_ptr<QGrpcCallReply> reply) {
+        auto response = reply->read<ping::pong::Pong>();
+        qDebug() << "Ping and Pong time difference" << response.time() - requestTime;
+    });
+\endcode
+This variant makes a connection to the \l{QGrpcCallReply::finished} signal
+implicitly, but you cannot cancel the call using the \l{QGrpcOperation::cancel}
+function, and to get information about error occurred you need to subscribe to
+the common \l{QAbstractGrpcClient::errorOccurred} signal.
+
+\section1 Using the server streams in Qt GRPC
+
+Server streams extend the unary call scenario and allow the server to respond
+multiple times to the client request. The communication ends once the server
+sends a status code.
+
+For server streams, the \l {The qtgrpcgen Tool} {qtgrpcgen tool} generates
+the method that returns the pointer to \l QGrpcServerStream:
+
+\code
+    std::shared_ptr<QGrpcServerStream> streamPingSeveralPong(const ping::pong::Ping &arg,
+                                                             const QGrpcCallOptions &options = {});
+\endcode
+
+\l QGrpcServerStream is similar to \l QGrpcCallReply, but it emits the
+\l QGrpcServerStream::messageReceived when the server response is received.
+
+\code
+    QObject::connect(stream.get(), &QGrpcServerStream::messageReceived, stream.get(),
+                     [streamPtr = stream.get(), requestTime]() {
+                         auto response = streamPtr->read<ping::pong::Pong>();
+                         qDebug() << "Ping-Pong next response time difference"
+                                  << response.time() - requestTime;
+                     });
+
+    QObject::connect(stream.get(), &QGrpcServerStream::errorOccurred, stream.get()
+                     [](const QGrpcStatus &status) {
+                         qDebug() << "Error occurred: " << status.code() << status.message();
+                     });
+
+    QObject::connect(stream.get(), &QGrpcServerStream::finished, stream.get(),
+                     []{
+                         qDebug() << "Bye";
+                     });
+\endcode
+
+\note \l QGrpcServerStream overrides the internal buffer when receiving a new
+message from the server. After the server
+\l{QGrpcServerStream::finished}{finished} the communication, you can read only
+the last message received from the server.
+
+\section1 Using the client streams in Qt GRPC
+
+Client streams extend the unary call scenario and allow the client to send
+multiple requests. The server responds only once before ending the
+communication.
+
+For server streams, the \l {The qtgrpcgen Tool} {qtgrpcgen tool} generates
+the method that returns the pointer to \l{QGrpcClientStream}:
+
+\code
+    std::shared_ptr<QGrpcClientStream> streamSeveralPingPong(const ping::pong::Ping &arg,
+                                                             const QGrpcCallOptions &options = {});
+\endcode
+
+To send multiple requests to the server, use the
+\l {QGrpcClientStream::sendMessage} method:
+\code
+    auto stream = cl.streamSeveralPingPong(request);
+
+    QTimer timer;
+    QObject::connect(&timer, &QTimer::timeout, stream.get(),
+                     [streamPtr = stream.get()](){
+                         ping::pong::Ping request;
+                         request.setTime(QDateTime::currentMSecsSinceEpoch());
+                         streamPtr->sendMessage(request);
+                     });
+
+    QObject::connect(stream.get(), &QGrpcServerStream::finished, stream.get(),
+                     [streamPtr = stream.get(), &timer]{
+                         auto response = streamPtr->read<ping::pong::Pong>();
+                         qDebug() << "Slowest Ping time: " << response.time();
+                         timer.stop();
+                     });
+
+    QObject::connect(stream.get(), &QGrpcServerStream::errorOccurred, stream.get()
+                     [&timer](const QGrpcStatus &status){
+                         qDebug() << "Error occurred: " << status.code() << status.message();
+                         timer.stop();
+                     });
+
+    timer.start(1000);
+    return a.exec();
+\endcode
+
+After the server receives enough \c Ping requests from the client, it responds
+with \c Pong, which contains the slowest \c Ping time.
+
+\section1 Using the bidirectional streams in Qt GRPC
+
+Bidirectional streams combine the functionality of server and client streams.
+The generated method returns the pointer to \l QGrpcBidirStream, which provides
+the API from both server and client streams:
+\code
+    std::shared_ptr<QGrpcBidirStream> streamSeveralPingSeveralPong(const ping::pong::Ping &arg,
+                                                                   const QGrpcCallOptions &options = {});
+\endcode
+
+Use the bidirectional streams to organize the two-sided communication without
+breaking the connection session:
+\code
+    auto stream = cl.streamSeveralPingSeveralPong(request);
+
+    qint64 maxPingPongTime = 0;
+    QTimer timer;
+    QObject::connect(&timer, &QTimer::timeout, stream.get(),
+                     [streamPtr = stream.get(), &requestTime](){
+                         requestTime = QDateTime::currentMSecsSinceEpoch();
+                         ping::pong::Ping request;
+                         request.setTime(requestTime);
+                         streamPtr->sendMessage(request);
+                     });
+
+    QObject::connect(stream.get(), &QGrpcBidirStream::messageReceived, stream.get(),
+                     [streamPtr = stream.get(), &timer, &maxPingPongTime, &requestTime]{
+                         auto response = streamPtr->read<ping::pong::Pong>();
+                         maxPingPongTime = std::max(maxPingPongTime, response.time() - requestTime);
+                     });
+
+    QObject::connect(stream.get(), &QGrpcBidirStream::finished, stream.get(),
+                     [streamPtr = stream.get(), &timer, &maxPingPongTime]{
+                         qDebug() << "Maximum Ping-Pong time: " << maxPingPongTime;
+                         timer.stop();
+                     });
+
+    QObject::connect(stream.get(), &QGrpcBidirStream::errorOccurred, stream.get(),
+                     [&timer](const QGrpcStatus &status){
+                         qDebug() << "Error occurred: " << status.code() << status.message();
+                         timer.stop();
+                     });
+
+    timer.start(1000);
+\endcode
+
+Every time the client sends the \c Ping requests, the server responds with the
+\c Pong message. The maximum Ping-Pong time is evaluated until the server ends
+the communication by sending a status code to the client.
+
+\note \l QGrpcBidirStream overrides the internal buffer when receiving a new
+message from the server. After server \l{QGrpcBidirStream::finished}{finished}
+the communication,  you can read only the last message received from the server.
+*/

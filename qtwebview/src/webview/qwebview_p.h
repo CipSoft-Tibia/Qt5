@@ -23,6 +23,8 @@
 #include <QtCore/qvariant.h>
 #include <QtGui/qimage.h>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 class QWebViewLoadRequestPrivate;

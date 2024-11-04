@@ -14,6 +14,7 @@
 #include <private/qqmlopenmetaobject_p.h>
 
 #include <QtCore/qloggingcategory.h>
+#include <QtCore/qpointer.h>
 
 //
 //  W A R N I N G
@@ -37,7 +38,7 @@ typedef QQmlListCompositor Compositor;
 class QQmlDelegateModelAttachedMetaObject;
 class QQmlAbstractDelegateComponent;
 
-class Q_QMLMODELS_PRIVATE_EXPORT QQmlDelegateModelItemMetaType
+class Q_QMLMODELS_PRIVATE_EXPORT QQmlDelegateModelItemMetaType final
     : public QQmlRefCounted<QQmlDelegateModelItemMetaType>
 {
 public:
@@ -333,6 +334,7 @@ public:
     QQmlReusableDelegateModelItemsPool m_reusableItemsPool;
     QList<QQDMIncubationTask *> m_finishedIncubating;
     QList<QByteArray> m_watchedRoles;
+    QHash<int, QByteArray> m_roleNamesBeforeReset;
 
     QString m_filterGroup;
 
@@ -346,6 +348,7 @@ public:
     bool m_transaction : 1;
     bool m_incubatorCleanupScheduled : 1;
     bool m_waitingToFetchMore : 1;
+    bool m_maybeResetRoleNames : 1;
 
     union {
         struct {
@@ -425,7 +428,7 @@ public:
     QList<QQmlPartsModel *> models;
 };
 
-class QQmlDelegateModelAttachedMetaObject
+class QQmlDelegateModelAttachedMetaObject final
     : public QAbstractDynamicMetaObject,
       public QQmlRefCounted<QQmlDelegateModelAttachedMetaObject>
 {

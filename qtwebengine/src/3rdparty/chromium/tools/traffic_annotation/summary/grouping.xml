@@ -25,15 +25,10 @@ after discussions on the right group.
       <annotation id="customtabs_parallel_request"/>
       <annotation id="download_bitmap"/>
       <annotation id="download_manager_service_retry"/>
-      <annotation id="explore_sites"/>
-      <annotation id="family_info"/>
-      <annotation id="kids_chrome_management_client_classify_url"/>
       <annotation id="minidump_uploader_android"/>
       <annotation id="oma_download_handler_android"/>
       <annotation id="partner_bookmarks_reader_get_favicon"/>
       <annotation id="permission_request_creator"/>
-      <annotation id="publish_note_request"/>
-      <annotation id="pull_template_request"/>
       <annotation id="rlz"/>
       <annotation id="webapk_create"/>
       <annotation id="webapk_create_for_service"/>
@@ -43,6 +38,7 @@ after discussions on the right group.
     <sender name="Feed Library">
       <annotation id="interest_feedv2_send"/>
       <annotation id="interest_feedv2_image_send"/>
+      <annotation id="interest_feedv2_resource_send"/>
     </sender>
     <sender name="Phone as a Security Key">
       <annotation id="cablev2_websocket_from_client"/>
@@ -77,7 +73,6 @@ after discussions on the right group.
       <annotation id="remote_apps_image_downloader"/>
       <annotation id="remote_command_screenshot"/>
       <annotation id="smb_netbios_name_query"/>
-      <annotation id="supervised_users_denylist"/>
       <annotation id="tachyon_ice_config_fetcher"/>
       <annotation id="terms_of_service_fetch"/>
       <annotation id="timezone_lookup"/>
@@ -95,7 +90,6 @@ after discussions on the right group.
     </sender>
     <sender name="ChromeOS Recovery">
       <annotation id="cros_recovery_image_download"/>
-      <annotation id="download_recovery_component"/>
     </sender>
     <sender name="ChromeOS Printers Manager">
       <annotation id="printing_oauth2_first_token_request"/>
@@ -116,10 +110,6 @@ after discussions on the right group.
   </group>
   <group name="Unsorted" hidden="true">
     <sender name="Unsorted Sender">
-      <annotation id="auction_downloader"/>
-      <annotation id="auction_report_sender"/>
-      <annotation id="interest_group_update_fetcher"/>
-      <annotation id="interest_group_well_known_fetcher"/>
       <annotation id="shared_storage_worklet_module_script_downloader"/>
       <annotation id="proxy_config_windows_resolver"/>
       <annotation id="remoting_directory_delete_host"/>
@@ -167,7 +157,6 @@ after discussions on the right group.
       <annotation id="password_requirements_spec_fetch"/>
       <annotation id="payment_manifest_downloader"/>
       <annotation id="proxy_config_settings"/>
-      <annotation id="video_tutorial_fetcher"/>
       <annotation id="qr_code_save"/>
       <annotation id="desktop_screenshot_save"/>
       <annotation id="safe_browsing_cache_collector"/>
@@ -212,7 +201,6 @@ after discussions on the right group.
       <annotation id="reporting"/>
       <annotation id="socket_bio_adapter"/>
       <annotation id="spdy_session_control"/>
-      <annotation id="spdy_push_stream"/>
       <annotation id="websocket_basic_stream"/>
       <annotation id="websocket_stream"/>
       <annotation id="notification_client"/>
@@ -231,14 +219,12 @@ after discussions on the right group.
       <annotation id="device_trust_key_rotation"/>
     </sender>
     <sender name="Recently Added">
-      <annotation id="share_preview_image_fetch"/>
       <annotation id="fast_pair_image_decoder"/>
       <annotation id="drivefs_http_client"/>
       <annotation id="pending_beacon_api"/>
       <annotation id="download_bubble_retry_download"/>
       <annotation id="quick_answers_loader"/>
       <annotation id="chrome_search_suggest_service"/>
-      <annotation id="coupon_persisted_tab_data"/>
       <annotation id="chrome_commerce_subscriptions_create"/>
       <annotation id="chrome_commerce_subscriptions_delete"/>
       <annotation id="chrome_commerce_subscriptions_get"/>
@@ -257,6 +243,8 @@ after discussions on the right group.
       <annotation id="nearby_share_update_device"/>
       <annotation id="nearby_share_contacts"/>
       <annotation id="nearby_share_list_public_certificates"/>
+      <annotation id="nearby_presence_update_device"/>
+      <annotation id="nearby_presence_list_public_certificates"/>
       <annotation id="managed_acccount_signin_restrictions_secure_connect_chromeos"/>
       <annotation id="fenced_frame_reporting_beacon"/>
       <annotation id="ntp_custom_background"/>
@@ -285,6 +273,29 @@ after discussions on the right group.
       <annotation id="network_portal_detector"/>
       <annotation id="android_feedback_connectivity_checker"/>
       <annotation id="printer_config_fetch"/>
+      <annotation id="projector_xhr_loader_allow_cookie"/>
+      <annotation id="chrome_support_tool_file_upload"/>
+      <annotation id="service_worker_race_network_request"/>
+      <annotation id="glanceables_tasks_integration"/>
+      <annotation id="bookmarks_image_fetcher"/>
+      <annotation id="screensaver_image_downloader"/>
+      <annotation id="back_navigation_cache_query"/>
+      <annotation id="cws_info_service"/>
+      <annotation id="promise_app_service"/>
+      <annotation id="unified_state_determination_kill_switch"/>
+      <annotation id="crash_file_uploader"/>
+      <annotation id="glanceables_classroom_integration"/>
+      <annotation id="promise_app_service_download_icon"/>
+      <annotation id="ip_protection_service_get_token"/>
+      <annotation id="supervised_user_request_blocked_site_permission"/>
+      <annotation id="password_sharing_recipients"/>
+      <annotation id="page_insights"/>
+      <annotation id="ntp_image_url_verification"/>
+      <annotation id="passkey_enclave_client"/>
+      <annotation id="iwa_update_discovery_update_manifest"/>
+      <annotation id="iwa_update_discovery_web_bundle"/>
+      <annotation id="almanac_launcher_app"/>
+      <annotation id="ip_protection_service_get_proxy_config"/>
     </sender>
   </group>
   <group name="Admin Features" hidden="true">
@@ -303,7 +314,6 @@ after discussions on the right group.
   <group name="Apps and Content" hidden="true">
     <sender name="Chrome Cleanup">
       <annotation id="chrome_cleaner"/>
-      <annotation id="chrome_cleanup_report"/>
     </sender>
     <sender name="Extension and App Management">
       <annotation id="chrome_apps_socket_api"/>
@@ -329,7 +339,9 @@ after discussions on the right group.
   <group name="Child-protection and Safe Browsing Features" hidden="true">
     <sender name="Safe Browsing">
       <annotation id="client_download_request"/>
-      <annotation id="kids_chrome_management_list_family_members"/>
+      <annotation id="kids_chrome_management_client_classify_url"/>
+      <annotation id="supervised_user_classify_url"/>
+      <annotation id="supervised_user_list_family_members"/>
       <annotation id="password_protection_request"/>
       <annotation id="permission_predictions"/>
       <annotation id="safe_browsing_certificate_error_reporting"/>
@@ -338,15 +350,16 @@ after discussions on the right group.
       <annotation id="safe_browsing_extension_telemetry"/>
       <annotation id="safe_browsing_feedback"/>
       <annotation id="safe_browsing_incident"/>
+      <annotation id="safe_browsing_ohttp_key_fetch"/>
       <annotation id="safe_browsing_v4_get_hash"/>
       <annotation id="safe_browsing_v4_update"/>
       <annotation id="safe_browsing_binary_upload_app"/>
       <annotation id="safe_browsing_binary_upload_connector"/>
       <annotation id="safe_browsing_realtime_url_lookup"/>
-      <annotation id="safe_browsing_hashprefix_realtime_lookup"/>
+      <annotation id="safe_browsing_hashprefix_realtime_lookup_direct"/>
+      <annotation id="safe_browsing_hashprefix_realtime_lookup_ohttp"/>
       <annotation id="sct_auditing"/>
       <annotation id="sct_auditing_hashdance"/>
-      <annotation id="unwanted_software_report"/>
       <annotation id="ppapi_download_request"/>
       <annotation id="tailored_security_service"/>
     </sender>
@@ -359,11 +372,19 @@ after discussions on the right group.
       <annotation id="aggregation_service_helper_keys"/>
       <annotation id="aggregation_service_report"/>
     </sender>
+    <sender name="Protected Audiences">
+      <annotation id="auction_downloader"/>
+      <annotation id="auction_report_sender"/>
+      <annotation id="bidding_and_auction_server_key_fetch"/>
+      <annotation id="interest_group_update_fetcher"/>
+      <annotation id="interest_group_well_known_fetcher"/>
+    </sender>
   </group>
   <group name="Identity and Security" hidden="true">
     <sender name="Accounts, Identity, and Authentication">
       <annotation id="accounts_image_fetcher"/>
       <annotation id="affiliation_lookup_by_hash"/>
+      <annotation id="device_bound_session_register"/>
       <annotation id="device_management_service"/>
       <annotation id="lookup_single_password_leak"/>
     </sender>
@@ -377,6 +398,7 @@ after discussions on the right group.
       <annotation id="gaia_auth_log_out"/>
       <annotation id="gaia_auth_merge_sessions"/>
       <annotation id="gaia_auth_revoke_token"/>
+      <annotation id="gaia_auth_rotate_bound_cookies"/>
       <annotation id="gaia_auth_multilogin"/>
       <annotation id="gaia_cookie_manager_external_cc_result"/>
       <annotation id="gaia_create_reauth_proof_token_for_parent"/>
@@ -459,9 +481,7 @@ after discussions on the right group.
       <annotation id="contextual_search_thumbnail"/>
     </sender>
     <sender name="Prefetch">
-      <annotation id="navigation_predictor_srp_prefetch"/>
       <annotation id="predictive_prefetch"/>
-      <annotation id="prefetch_proxy_probe"/>
       <annotation id="speculation_rules_prefetch"/>
       <annotation id="speculation_rules_prefetch_probe"/>
     </sender>
@@ -501,17 +521,11 @@ after discussions on the right group.
       <annotation id="signed_in_profile_avatar"/>
     </sender>
     <sender name="Favicon">
-      <annotation id="content_suggestion_get_favicon"/>
       <annotation id="icon_catcher_get_large_icon"/>
       <annotation id="favicon_fetcher_get_favicon"/>
     </sender>
     <sender name="Images">
       <annotation id="image_annotation"/>
-    </sender>
-    <sender name="Prefetch">
-      <annotation id="offline_prefetch"/>
-      <annotation id="prefetch_download"/>
-      <annotation id="prefetch_visuals"/>
     </sender>
     <sender name="Early Hints">
       <annotation id="early_hints_preload"/>
@@ -522,11 +536,9 @@ after discussions on the right group.
       <annotation id="backdrop_collection_names_download"/>
       <annotation id="backdrop_next_image_download"/>
       <annotation id="drive_service"/>
-      <annotation id="ntp_snippets_fetch"/>
       <annotation id="nux_ntp_background_preview"/>
       <annotation id="photos_service"/>
       <annotation id="popular_sites_fetch"/>
-      <annotation id="remote_suggestions_provider"/>
       <annotation id="promo_service"/>
       <annotation id="recipes_service"/>
       <annotation id="chrome_cart_discounts_lookup"/>

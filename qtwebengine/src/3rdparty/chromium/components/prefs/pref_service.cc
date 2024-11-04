@@ -40,18 +40,6 @@
 
 namespace {
 
-// Returns the WriteablePrefStore::PrefWriteFlags for the pref with the given
-// |path|.
-uint32_t GetWriteFlags(const PrefService::Preference* pref) {
-  uint32_t write_flags = WriteablePrefStore::DEFAULT_PREF_WRITE_FLAGS;
-
-  if (!pref)
-    return write_flags;
-
-  if (pref->registration_flags() & PrefRegistry::LOSSY_PREF)
-    write_flags |= WriteablePrefStore::LOSSY_PREF_WRITE_FLAG;
-  return write_flags;
-}
 
 }  // namespace
 
@@ -254,6 +242,22 @@ base::Value::Dict PrefService::GetPreferenceValues(
   return out;
 }
 
+std::vector<PrefService::PreferenceValueAndStore>
+PrefService::GetPreferencesValueAndStore() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  std::vector<PreferenceValueAndStore> result;
+  for (const auto& it : *pref_registry_) {
+    auto* preference = FindPreference(it.first);
+    CHECK(preference);
+    PreferenceValueAndStore pref_data{
+        it.first, preference->GetValue()->Clone(),
+        pref_value_store_->ControllingPrefStoreForPref(it.first)};
+    result.emplace_back(std::move(pref_data));
+  }
+  return result;
+}
+
 const PrefService::Preference* PrefService::FindPreference(
     const std::string& pref_name) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -439,7 +443,7 @@ void PrefService::SetDouble(const std::string& path, double value) {
   SetUserPrefValue(path, base::Value(value));
 }
 
-void PrefService::SetString(const std::string& path, const std::string& value) {
+void PrefService::SetString(const std::string& path, base::StringPiece value) {
   SetUserPrefValue(path, base::Value(value));
 }
 
@@ -698,3 +702,17 @@ void PrefService::RemoveStandaloneBrowserPref(const std::string& path) {
       path, WriteablePrefStore::DEFAULT_PREF_WRITE_FLAGS);
 }
 #endif
+
+// static
+uint32_t PrefService::GetWriteFlags(const PrefService::Preference* pref) {
+  uint32_t write_flags = WriteablePrefStore::DEFAULT_PREF_WRITE_FLAGS;
+
+  if (!pref) {
+    return write_flags;
+  }
+
+  if (pref->registration_flags() & PrefRegistry::LOSSY_PREF) {
+    write_flags |= WriteablePrefStore::LOSSY_PREF_WRITE_FLAG;
+  }
+  return write_flags;
+}

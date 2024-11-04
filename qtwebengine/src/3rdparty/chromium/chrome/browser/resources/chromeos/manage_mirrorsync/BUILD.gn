@@ -56,7 +56,10 @@ ts_library("build_ts") {
   ]
   composite = true
   enable_source_maps = true
-  deps = [ "//ui/webui/resources/mojo:library" ]
+  deps = [
+    "//third_party/polymer/v3_0:library",
+    "//ui/webui/resources/mojo:build_ts",
+  ]
 }
 
 resources_grd_file = "$target_gen_dir/resources.grd"
@@ -72,7 +75,7 @@ generate_grd("build_grd") {
     "images/expand_arrow.svg",
   ]
   manifest_files =
-      filter_include(get_target_outputs(":build_ts"), [ "*.manifest" ])
+      filter_include(get_target_outputs(":build_ts"), [ "*_manifest.json" ])
 
   grd_prefix = "manage_mirrorsync"
   out_grd = resources_grd_file

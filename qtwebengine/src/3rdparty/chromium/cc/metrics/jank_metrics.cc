@@ -36,7 +36,7 @@ constexpr bool IsValidJankThreadType(
          type == FrameInfo::SmoothEffectDrivingThread::kMain;
 }
 
-const char* GetJankThreadTypeName(FrameInfo::SmoothEffectDrivingThread type) {
+const char* GetJankThreadTypeNameJM(FrameInfo::SmoothEffectDrivingThread type) {
   DCHECK(IsValidJankThreadType(type));
 
   switch (type) {
@@ -231,7 +231,7 @@ void JankMetrics::AddPresentedFrame(
       TRACE_EVENT_NESTABLE_ASYNC_BEGIN_WITH_TIMESTAMP1(
           "cc,benchmark", "Jank", TRACE_ID_LOCAL(this),
           last_presentation_timestamp_, "thread-type",
-          GetJankThreadTypeName(effective_thread_));
+          GetJankThreadTypeNameJM(effective_thread_));
       TRACE_EVENT_NESTABLE_ASYNC_END_WITH_TIMESTAMP1(
           "cc,benchmark", "Jank", TRACE_ID_LOCAL(this),
           current_presentation_timestamp, "tracker-type",
@@ -249,7 +249,7 @@ void JankMetrics::ReportJankMetrics(int frames_expected) {
 
   int jank_percent = static_cast<int>(100 * jank_count_ / frames_expected);
 
-  const char* jank_thread_name = GetJankThreadTypeName(effective_thread_);
+  const char* jank_thread_name = GetJankThreadTypeNameJM(effective_thread_);
 
   STATIC_HISTOGRAM_POINTER_GROUP(
       GetJankHistogramName(tracker_type_, jank_thread_name),

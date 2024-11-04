@@ -174,8 +174,7 @@ void InspectorTraceEvents::DidFinishLoading(uint64_t identifier,
                                             DocumentLoader* loader,
                                             base::TimeTicks finish_time,
                                             int64_t encoded_data_length,
-                                            int64_t decoded_body_length,
-                                            bool should_report_corb_blocking) {
+                                            int64_t decoded_body_length) {
   DEVTOOLS_TIMELINE_TRACE_EVENT_INSTANT(
       "ResourceFinish", inspector_resource_finish_event::Data, loader,
       identifier, finish_time, false, encoded_data_length, decoded_body_length);
@@ -250,7 +249,8 @@ void InspectorTraceEvents::PaintTiming(Document* document,
                                        double timestamp) {
   TRACE_EVENT_MARK_WITH_TIMESTAMP2("loading,rail,devtools.timeline", name,
                                    trace_event::ToTraceTimestamp(timestamp),
-                                   "frame", ToTraceValue(document->GetFrame()),
+                                   "frame",
+                                   GetFrameIdForTracing(document->GetFrame()),
                                    "data", [&](perfetto::TracedValue context) {
                                      GetNavigationTracingData(
                                          std::move(context), document);
@@ -259,7 +259,8 @@ void InspectorTraceEvents::PaintTiming(Document* document,
 
 void InspectorTraceEvents::FrameStartedLoading(LocalFrame* frame) {
   TRACE_EVENT_INSTANT1("devtools.timeline", "FrameStartedLoading",
-                       TRACE_EVENT_SCOPE_THREAD, "frame", ToTraceValue(frame));
+                       TRACE_EVENT_SCOPE_THREAD, "frame",
+                       GetFrameIdForTracing(frame));
 }
 
 namespace {
@@ -322,6 +323,8 @@ const char* PseudoTypeToString(CSSSelector::PseudoType pseudo_type) {
     DEFINE_STRING_MAPPING(PseudoRequired)
     DEFINE_STRING_MAPPING(PseudoReadOnly)
     DEFINE_STRING_MAPPING(PseudoReadWrite)
+    DEFINE_STRING_MAPPING(PseudoUserInvalid)
+    DEFINE_STRING_MAPPING(PseudoUserValid)
     DEFINE_STRING_MAPPING(PseudoValid)
     DEFINE_STRING_MAPPING(PseudoInvalid)
     DEFINE_STRING_MAPPING(PseudoIndeterminate)
@@ -367,6 +370,7 @@ const char* PseudoTypeToString(CSSSelector::PseudoType pseudo_type) {
     DEFINE_STRING_MAPPING(PseudoInRange)
     DEFINE_STRING_MAPPING(PseudoOutOfRange)
     DEFINE_STRING_MAPPING(PseudoToggle)
+    DEFINE_STRING_MAPPING(PseudoTrue)
     DEFINE_STRING_MAPPING(PseudoWebKitCustomElement)
     DEFINE_STRING_MAPPING(PseudoBlinkInternalElement)
     DEFINE_STRING_MAPPING(PseudoCue)
@@ -384,6 +388,9 @@ const char* PseudoTypeToString(CSSSelector::PseudoType pseudo_type) {
     DEFINE_STRING_MAPPING(PseudoMultiSelectFocus)
     DEFINE_STRING_MAPPING(PseudoOpen)
     DEFINE_STRING_MAPPING(PseudoClosed)
+    DEFINE_STRING_MAPPING(PseudoDialogInTopLayer)
+    DEFINE_STRING_MAPPING(PseudoPopoverInTopLayer)
+    DEFINE_STRING_MAPPING(PseudoPopoverOpen)
     DEFINE_STRING_MAPPING(PseudoHostHasAppearance)
     DEFINE_STRING_MAPPING(PseudoVideoPersistent)
     DEFINE_STRING_MAPPING(PseudoVideoPersistentAncestor)
@@ -401,9 +408,10 @@ const char* PseudoTypeToString(CSSSelector::PseudoType pseudo_type) {
     DEFINE_STRING_MAPPING(PseudoViewTransitionImagePair);
     DEFINE_STRING_MAPPING(PseudoViewTransitionNew);
     DEFINE_STRING_MAPPING(PseudoViewTransitionOld);
+    DEFINE_STRING_MAPPING(PseudoDetailsContent)
+    DEFINE_STRING_MAPPING(PseudoDetailsSummary)
     DEFINE_STRING_MAPPING(PseudoParent);
-    DEFINE_STRING_MAPPING(PseudoParentUnparsed)
-    DEFINE_STRING_MAPPING(PseudoInitial)
+    DEFINE_STRING_MAPPING(PseudoUnparsed)
 #undef DEFINE_STRING_MAPPING
   }
 
@@ -735,6 +743,7 @@ const char kStyleChange[] = "Style changed";
 const char kDomChanged[] = "DOM changed";
 const char kTextChanged[] = "Text changed";
 const char kPrintingChanged[] = "Printing changed";
+const char kPaintPreview[] = "Enter/exit paint preview";
 const char kAttributeChanged[] = "Attribute changed";
 const char kColumnsChanged[] = "Attribute changed";
 const char kChildAnonymousBlockChanged[] = "Child anonymous block changed";
@@ -746,7 +755,6 @@ const char kListValueChange[] = "List value change";
 const char kListStyleTypeChange[] = "List style type change";
 const char kCounterStyleChange[] = "Counter style change";
 const char kImageChanged[] = "Image changed";
-const char kLineBoxesChanged[] = "Line boxes changed";
 const char kSliderValueChanged[] = "Slider value changed";
 const char kAncestorMarginCollapsing[] = "Ancestor margin collapsing";
 const char kFieldsetChanged[] = "Fieldset changed";
@@ -906,6 +914,8 @@ void RecordTiming(perfetto::TracedValue context,
            timing.CalculateMillisecondDelta(timing.WorkerReady()));
   dict.Add("sendStart", timing.CalculateMillisecondDelta(timing.SendStart()));
   dict.Add("sendEnd", timing.CalculateMillisecondDelta(timing.SendEnd()));
+  dict.Add("receiveHeadersStart",
+           timing.CalculateMillisecondDelta(timing.ReceiveHeadersStart()));
   dict.Add("receiveHeadersEnd",
            timing.CalculateMillisecondDelta(timing.ReceiveHeadersEnd()));
   dict.Add("pushStart", timing.PushStart().since_origin().InSecondsF());
@@ -1234,8 +1244,9 @@ void inspector_deserialize_script_event::Data(perfetto::TracedValue context,
 
 inspector_compile_script_event::V8ConsumeCacheResult::V8ConsumeCacheResult(
     int cache_size,
-    bool rejected)
-    : cache_size(cache_size), rejected(rejected) {}
+    bool rejected,
+    bool full)
+    : cache_size(cache_size), rejected(rejected), full(full) {}
 
 void inspector_compile_script_event::Data(
     perfetto::TracedValue context,
@@ -1251,6 +1262,7 @@ void inspector_compile_script_event::Data(
   if (consume_cache_result) {
     dict.Add("consumedCacheSize", consume_cache_result->cache_size);
     dict.Add("cacheRejected", consume_cache_result->rejected);
+    dict.Add("cacheKind", consume_cache_result->full ? "full" : "normal");
   }
   if (eager) {
     // Eager compilation is rare so only add this key when it's set.

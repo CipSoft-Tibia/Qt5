@@ -40,7 +40,7 @@ class CommandEncoder final : public ApiObjectBase {
   public:
     static Ref<CommandEncoder> Create(DeviceBase* device,
                                       const CommandEncoderDescriptor* descriptor);
-    static CommandEncoder* MakeError(DeviceBase* device);
+    static CommandEncoder* MakeError(DeviceBase* device, const char* label);
 
     ObjectType GetType() const override;
 
@@ -59,6 +59,11 @@ class CommandEncoder final : public ApiObjectBase {
                                BufferBase* destination,
                                uint64_t destinationOffset,
                                uint64_t size);
+    void InternalCopyBufferToBufferWithAllocatedSize(BufferBase* source,
+                                                     uint64_t sourceOffset,
+                                                     BufferBase* destination,
+                                                     uint64_t destinationOffset,
+                                                     uint64_t size);
     void APICopyBufferToTexture(const ImageCopyBuffer* source,
                                 const ImageCopyTexture* destination,
                                 const Extent3D* copySize);
@@ -68,9 +73,6 @@ class CommandEncoder final : public ApiObjectBase {
     void APICopyTextureToTexture(const ImageCopyTexture* source,
                                  const ImageCopyTexture* destination,
                                  const Extent3D* copySize);
-    void APICopyTextureToTextureInternal(const ImageCopyTexture* source,
-                                         const ImageCopyTexture* destination,
-                                         const Extent3D* copySize);
     void APIClearBuffer(BufferBase* destination, uint64_t destinationOffset, uint64_t size);
 
     void APIInjectValidationError(const char* message);
@@ -115,11 +117,11 @@ class CommandEncoder final : public ApiObjectBase {
         UsageValidationMode mUsageValidationMode;
     };
 
-    InternalUsageScope MakeInternalUsageScope();
+    [[nodiscard]] InternalUsageScope MakeInternalUsageScope();
 
   private:
     CommandEncoder(DeviceBase* device, const CommandEncoderDescriptor* descriptor);
-    CommandEncoder(DeviceBase* device, ObjectBase::ErrorTag tag);
+    CommandEncoder(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label);
 
     void DestroyImpl() override;
 
@@ -128,14 +130,6 @@ class CommandEncoder final : public ApiObjectBase {
         RenderPassResourceUsageTracker* usageTracker,
         BeginRenderPassCmd* cmd,
         std::function<void()> passEndCallback = nullptr);
-
-    // Helper to be able to implement both APICopyTextureToTexture and
-    // APICopyTextureToTextureInternal. The only difference between both
-    // copies, is that the Internal one will also check internal usage.
-    template <bool Internal>
-    void APICopyTextureToTextureHelper(const ImageCopyTexture* source,
-                                       const ImageCopyTexture* destination,
-                                       const Extent3D* copySize);
 
     MaybeError ValidateFinish() const;
 

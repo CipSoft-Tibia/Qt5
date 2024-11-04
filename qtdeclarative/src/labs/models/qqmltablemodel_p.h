@@ -81,6 +81,10 @@ Q_SIGNALS:
     void rowCountChanged();
     void rowsChanged();
 
+protected:
+    void classBegin() override;
+    void componentComplete() override;
+
 private:
     class ColumnRoleMetadata
     {
@@ -122,9 +126,6 @@ private:
 
     void doInsert(int rowIndex, const QVariant &row);
 
-    void classBegin() override;
-    void componentComplete() override;
-
     bool componentCompleted = false;
     QVariantList mRows;
     QList<QQmlTableModelColumn *> mColumns;
@@ -138,7 +139,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQmlTableModel)
 
 #endif // QQMLTABLEMODEL_P_H

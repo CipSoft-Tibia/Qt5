@@ -27,6 +27,7 @@
 //   default-initialized.
 // - callbacks may be initialized with lambdas; lambda definitions are concize.
 
+#include "absl/functional/any_invocable.h"
 #include "connections/connection_options.h"
 #include "connections/payload.h"
 #include "connections/status.h"
@@ -41,12 +42,9 @@ namespace connections {
 // This is not the same as completion of the associated process,
 // which may have many states, and multiple async jobs, and be still ongoing.
 // Progress on the overall process is reported by the associated listener.
-struct ResultCallback {
-  // Callback to access the status of the operation when available.
-  // status - result of job execution;
-  //   Status::kSuccess, if successful; anything else indicates failure.
-  std::function<void(Status)> result_cb = [](Status) {};
-};
+// status - result of job execution;
+//   Status::kSuccess, if successful; anything else indicates failure.
+using ResultCallback = absl::AnyInvocable<void(Status)>;
 
 struct ConnectionResponseInfo {
   std::string GetAuthenticationDigits() {
@@ -170,8 +168,8 @@ struct PayloadListener {
   // endpoint_id - The identifier for the remote endpoint that sent the
   //               payload.
   // payload     - The Payload object received.
-  std::function<void(const std::string& endpoint_id, Payload payload)>
-      payload_cb = [](const std::string&, Payload) {};
+  absl::AnyInvocable<void(absl::string_view endpoint_id, Payload payload) const>
+      payload_cb = [](absl::string_view, Payload) {};
 
   // Called with progress information about an active Payload transfer, either
   // incoming or outgoing.
@@ -180,10 +178,10 @@ struct PayloadListener {
   //               receiving this payload.
   // info -  The PayloadProgressInfo structure describing the status of
   //         the transfer.
-  std::function<void(const std::string& endpoint_id,
-                     const PayloadProgressInfo& info)>
+  absl::AnyInvocable<void(absl::string_view endpoint_id,
+                          const PayloadProgressInfo& info)>
       payload_progress_cb =
-          [](const std::string&, const PayloadProgressInfo&) {};
+          [](absl::string_view, const PayloadProgressInfo&) {};
 };
 
 }  // namespace connections

@@ -23,27 +23,19 @@ namespace autofill {
 
 class FormFieldTest
     : public FormFieldTestBase,
-      public ::testing::TestWithParam<std::tuple<
-          PatternProviderFeatureState,
-          /* features::kAutofillMin3FieldTypesForLocalHeuristics */ bool>> {
+      public ::testing::TestWithParam<PatternProviderFeatureState> {
  public:
-  FormFieldTest();
+  FormFieldTest() : FormFieldTestBase(GetParam()) {}
   FormFieldTest(const FormFieldTest&) = delete;
   FormFieldTest& operator=(const FormFieldTest&) = delete;
-
-  const PatternProviderFeatureState& pattern_provider_feature_state() const {
-    return std::get<0>(GetParam());
-  }
-  bool require_min_3_field_types_for_local_heuristics() const {
-    return std::get<1>(GetParam());
-  }
 
  protected:
   // Parses all added fields using `ParseFormFields`.
   // Returns the number of fields parsed.
-  int ParseFormFields() {
-    FormField::ParseFormFields(list_, LanguageCode(""),
-                               /*is_form_tag=*/true, GetActivePatternSource(),
+  int ParseFormFields(GeoIpCountryCode client_country = GeoIpCountryCode("")) {
+    FormField::ParseFormFields(list_, client_country, LanguageCode(""),
+                               /*is_form_tag=*/true,
+                               GetActivePatternSource().value(),
                                field_candidates_map_,
                                /*log_manager=*/nullptr);
     return field_candidates_map_.size();
@@ -52,8 +44,16 @@ class FormFieldTest
   // Like `ParseFormFields()`, but using `ParseSingleFieldForms()` instead.
   int ParseSingleFieldForms() {
     FormField::ParseSingleFieldForms(
-        list_, LanguageCode(""),
-        /*is_form_tag=*/true, GetActivePatternSource(), field_candidates_map_);
+        list_, GeoIpCountryCode(""), LanguageCode(""),
+        /*is_form_tag=*/true, GetActivePatternSource().value(),
+        field_candidates_map_);
+    return field_candidates_map_.size();
+  }
+
+  int ParseStandaloneCVCFields() {
+    FormField::ParseStandaloneCVCFields(list_, LanguageCode(""),
+                                        GetActivePatternSource().value(),
+                                        field_candidates_map_);
     return field_candidates_map_.size();
   }
 
@@ -68,22 +68,10 @@ class FormFieldTest
   base::test::ScopedFeatureList scoped_feature_list_;
 };
 
-FormFieldTest::FormFieldTest()
-    : FormFieldTestBase(pattern_provider_feature_state()) {
-  if (require_min_3_field_types_for_local_heuristics()) {
-    scoped_feature_list_.InitAndEnableFeature(
-        features::kAutofillMin3FieldTypesForLocalHeuristics);
-  } else {
-    scoped_feature_list_.InitAndDisableFeature(
-        features::kAutofillMin3FieldTypesForLocalHeuristics);
-  }
-}
-
 INSTANTIATE_TEST_SUITE_P(
     FormFieldTest,
     FormFieldTest,
-    ::testing::Combine(::testing::ValuesIn(PatternProviderFeatureState::All()),
-                       ::testing::Values(true, false)));
+    ::testing::ValuesIn(PatternProviderFeatureState::All()));
 
 struct MatchTestCase {
   std::u16string label;
@@ -228,9 +216,6 @@ TEST_P(FormFieldTest, ParseFormFieldsForSingleFieldPromoCode) {
 
 // Test that `ParseSingleFieldForms` parses single field IBAN.
 TEST_P(FormFieldTest, ParseSingleFieldFormsIban) {
-  base::test::ScopedFeatureList scoped_feature;
-  scoped_feature.InitAndEnableFeature(features::kAutofillParseIBANFields);
-
   // Parse single field IBAN.
   AddTextFormFieldData("", "IBAN", IBAN_VALUE);
   EXPECT_EQ(1, ParseSingleFieldForms());
@@ -241,6 +226,16 @@ TEST_P(FormFieldTest, ParseSingleFieldFormsIban) {
   // part of the expectations in `TestClassificationExpectations()`.
   AddTextFormFieldData("", "Address line 1", UNKNOWN_TYPE);
   EXPECT_EQ(1, ParseSingleFieldForms());
+  TestClassificationExpectations();
+}
+
+// Test that `ParseStandaloneCvcField` parses standalone CVC fields.
+TEST_P(FormFieldTest, ParseStandaloneCVCFields) {
+  base::test::ScopedFeatureList scoped_feature(
+      features::kAutofillParseVcnCardOnFileStandaloneCvcFields);
+
+  AddTextFormFieldData("", "CVC", CREDIT_CARD_STANDALONE_VERIFICATION_CODE);
+  EXPECT_EQ(1, ParseStandaloneCVCFields());
   TestClassificationExpectations();
 }
 
@@ -297,8 +292,9 @@ TEST_P(ParseInAnyOrderTest, ParseInAnyOrder) {
 
   // Construct n parsers from `testcase.field_matches_parser`.
   AutofillScanner scanner(fields);
-  std::vector<AutofillField*> matched_fields(n);
-  std::vector<std::pair<AutofillField**, base::RepeatingCallback<bool()>>>
+  std::vector<raw_ptr<AutofillField>> matched_fields(n);
+  std::vector<
+      std::pair<raw_ptr<AutofillField>*, base::RepeatingCallback<bool()>>>
       fields_and_parsers;
   for (size_t i = 0; i < n; i++) {
     fields_and_parsers.emplace_back(
@@ -335,21 +331,30 @@ TEST_P(FormFieldTest, ParseFormRequires3DistinctFieldTypes) {
   AddTextFormFieldData("name_via", "Via...", NAME_FULL);
   AddTextFormFieldData("name_notVia", "Not via...", NAME_FULL);
 
-  // Ensure that the parser does not return anything if
-  // features::kAutofillMin3FieldTypesForLocalHeuristics is enabled because it
-  // found only 1 field type.
-  if (require_min_3_field_types_for_local_heuristics()) {
-    EXPECT_EQ(0, ParseFormFields());
-  } else {
-    EXPECT_EQ(4, ParseFormFields());
-    TestClassificationExpectations();
-  }
+  // Ensure that the parser does not return anything because it found only 1
+  // field type.
+  EXPECT_EQ(0, ParseFormFields());
 
   // Add two more fields and ensure that the parser now returns all fields even
   // in the presence of features::kAutofillMin3FieldTypesForLocalHeuristics.
   AddTextFormFieldData("", "Address line 1", ADDRESS_HOME_LINE1);
   AddTextFormFieldData("", "Address line 2", ADDRESS_HOME_LINE2);
   EXPECT_EQ(6, ParseFormFields());
+  TestClassificationExpectations();
+}
+
+TEST_P(FormFieldTest, ParseStandaloneZipDisabledForUS) {
+  base::test::ScopedFeatureList enabled{
+      features::kAutofillEnableZipOnlyAddressForms};
+  AddTextFormFieldData("zip", "ZIP", ADDRESS_HOME_ZIP);
+  EXPECT_EQ(0, ParseFormFields(GeoIpCountryCode("US")));
+}
+
+TEST_P(FormFieldTest, ParseStandaloneZipEnabledForBR) {
+  base::test::ScopedFeatureList enabled{
+      features::kAutofillEnableZipOnlyAddressForms};
+  AddTextFormFieldData("cep", "CEP", ADDRESS_HOME_ZIP);
+  EXPECT_EQ(1, ParseFormFields(GeoIpCountryCode("BR")));
   TestClassificationExpectations();
 }
 

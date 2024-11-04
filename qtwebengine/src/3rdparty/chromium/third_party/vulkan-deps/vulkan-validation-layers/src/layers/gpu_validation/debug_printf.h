@@ -17,7 +17,8 @@
 
 #pragma once
 
-#include "gpu_validation/gpu_utils.h"
+#include "gpu_validation/gpu_state_tracker.h"
+#include "gpu_validation/gpu_error_message.h"
 class DebugPrintf;
 
 struct DPFDeviceMemoryBlock {
@@ -73,9 +74,9 @@ class CommandBuffer : public gpu_utils_state::CommandBuffer {
   private:
     void ResetCBState();
 };
-};  // namespace debug_printf_state
+}  // namespace debug_printf_state
 
-VALSTATETRACK_DERIVED_STATE_OBJECT(VkCommandBuffer, debug_printf_state::CommandBuffer, CMD_BUFFER_STATE);
+VALSTATETRACK_DERIVED_STATE_OBJECT(VkCommandBuffer, debug_printf_state::CommandBuffer, CMD_BUFFER_STATE)
 
 class DebugPrintf : public GpuAssistedBase {
   public:
@@ -92,6 +93,9 @@ class DebugPrintf : public GpuAssistedBase {
     void PreCallRecordCreateShaderModule(VkDevice device, const VkShaderModuleCreateInfo* pCreateInfo,
                                          const VkAllocationCallbacks* pAllocator, VkShaderModule* pShaderModule,
                                          void* csm_state_data) override;
+    void PreCallRecordCreateShadersEXT(VkDevice device, uint32_t createInfoCount, const VkShaderCreateInfoEXT* pCreateInfos,
+                                       const VkAllocationCallbacks* pAllocator, VkShaderEXT* pShaders,
+                                       void* csm_state_data) override;
     std::vector<DPFSubstring> ParseFormatString(const std::string& format_string);
     std::string FindFormatString(vvl::span<const uint32_t> pgm, uint32_t string_id);
     void AnalyzeAndGenerateMessages(VkCommandBuffer command_buffer, VkQueue queue, DPFBufferInfo& buffer_info,

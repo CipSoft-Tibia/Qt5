@@ -125,9 +125,8 @@ Here is an [example change](https://android-review.googlesource.com/c/platform/e
 2. Register the table with the trace processor in the constructor for the [TraceProcessorImpl class](/src/trace_processor/trace_processor_impl.cc).
 3. If also implementing ingestion of events into the table:
   1. Modify the appropriate parser class in [src/trace_processor/importers](/src/trace_processor/importers) and add the code to add rows to the newly added table.
-  2. Add a new diff test for the added parsing code and table using
-  `tools/add_tp_diff_test.py`.
-  3. Run the newly added test with `tools/diff_test_trace_processor.py <path to trace processor binary>`.
+  2. Add a new diff test for the added parsing code and table.
+  3. Run the newly added test with `tools/diff_test_trace_processor.py <path to trace processor shell binary>`.
 4. Upload and land your change as normal.
 
 ## Adding new derived events
@@ -170,3 +169,22 @@ The schema of the `<metric name>_event` table/view is as follows:
 * There is no way to tie newly added events back to the source events in the
   trace which were used to generate them. This is not currently a priority but
   something we may add in the future.
+
+
+## Update `TRACE_PROCESSOR_CURRENT_API_VERSION`
+
+Generally you do not have to worry about version skew between the UI
+and the `trace_processor` since they are built together at the same
+commit. However version skew can occur when using the `--httpd` mode
+which allows a native `trace_processor` instance to be used with the UI.
+
+A common case is when the UI is more recent than `trace_processor`
+and depends on a new table definition. With older versions of
+`trace_processor` in `--httpd` mode the UI crashes attempting to query
+a non-existant table. To avoid this we use a version number. If the
+version number `trace_processor` reports is older than the one the UI
+was built with we prompt the user to update.
+
+1. Go to `protos/perfetto/trace_processor/trace_processor.proto`
+2. Increment `TRACE_PROCESSOR_CURRENT_API_VERSION`
+3. Add a comment explaining what has changed.

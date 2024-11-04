@@ -1,9 +1,19 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest>
 
+#include <ssg/qssgrendercontextcore.h>
+
+#include <QtQuick3DRuntimeRender/private/qssgrhicustommaterialsystem_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgdebugdrawsystem_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrendershadercodegenerator_p.h>
+
 #include <QtQuick3DRuntimeRender/private/qssgrenderer_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrendercamera_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrenderpickresult_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrenderbuffermanager_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrendermodel_p.h>
 
 class picking : public QObject
 {
@@ -21,15 +31,19 @@ private Q_SLOTS:
     void bench_picking1in1kMiss();
 
 private:
-    std::unique_ptr<QSSGRhiContext> renderContext;
-    std::unique_ptr<QSSGBufferManager> bufferManager;
+    std::unique_ptr<QSSGRenderContextInterface> renderCtx;
 
     void benchImpl(int count, bool hit);
 };
 
 picking::picking()
-    : renderContext(new QSSGRhiContext)
-    , bufferManager(new QSSGBufferManager)
+    : renderCtx(std::make_unique<QSSGRenderContextInterface>(std::make_unique<QSSGBufferManager>()
+                                                             , std::make_unique<QSSGRenderer>()
+                                                             , nullptr
+                                                             , nullptr
+                                                             , nullptr
+                                                             , nullptr
+                                                             , std::make_unique<QSSGRhiContext>(QRhi::create(QRhi::Implementation::Null, nullptr))))
 {
 }
 
@@ -61,7 +75,7 @@ void picking::bench_picking1in1kMiss()
 void picking::benchImpl(int count, bool hit)
 {
     Q_ASSERT(count > 0 && count <= 1000);
-    QSSGRenderer renderer;
+    const auto &bufferManager = renderCtx->bufferManager();
     QVector2D viewportDim(400.0f, 400.0f);
     QSSGRenderLayer dummyLayer;
     QMatrix4x4 globalTransform;
@@ -98,7 +112,7 @@ void picking::benchImpl(int count, bool hit)
     QSSGRenderPickResult res;
     QSSGRenderRay ray = hit ? QSSGRenderRay{ { 0.0f, 0.0f, -100.0f }, { 0.0f, 0.0f, 1.0f } } : QSSGRenderRay{ { 0.0f, 0.0f, -100.0f }, { 1.0f, 0.0f, 0.0f } };
     QBENCHMARK {
-        res = renderer.syncPick(dummyLayer, *bufferManager, ray);
+        res = QSSGRendererPrivate::syncPick(*renderCtx, dummyLayer, ray);
     }
     QVERIFY(res.m_hitObject != nullptr);
 }

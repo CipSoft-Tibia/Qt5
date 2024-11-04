@@ -59,11 +59,6 @@ import org.chromium.components.media_router.TestMediaRouterClient;
         shadows = {ShadowMediaRouter.class, ShadowCastContext.class, ShadowLooper.class,
                 ShadowCastMediaSource.class})
 public class CafMediaRouteProviderTest {
-    private static final String SUPPORTED_SOURCE = "cast:DEADBEEF";
-
-    private static final String SUPPORTED_AUTOJOIN_SOURCE = "cast:DEADBEEF"
-            + "?clientId=12345&autoJoinPolicy=" + CastMediaSource.AUTOJOIN_TAB_AND_ORIGIN_SCOPED;
-
     private Context mContext;
     private CafMediaRouteProvider mProvider;
     private MediaRouterTestHelper mMediaRouterHelper;
@@ -146,7 +141,7 @@ public class CafMediaRouteProviderTest {
         assertEquals(mProvider.mRoutes.size(), 1);
         MediaRoute route = (MediaRoute) (mProvider.mRoutes.values().toArray()[0]);
         assertEquals(route.sinkId, "sink-id");
-        assertEquals(route.sourceId, "source-id-1");
+        assertEquals(route.getSourceId(), "source-id-1");
         assertEquals(route.presentationId, "presentation-id-1");
 
         // No source.

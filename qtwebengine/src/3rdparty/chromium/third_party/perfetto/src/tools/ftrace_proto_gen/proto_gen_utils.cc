@@ -32,12 +32,7 @@ namespace perfetto {
 namespace {
 
 std::string RunClangFmt(const std::string& input) {
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_MAC)
-  const std::string platform = "mac";
-#else
-  const std::string platform = "linux64";
-#endif
-  base::Subprocess clang_fmt({"buildtools/" + platform + "/clang-format"});
+  base::Subprocess clang_fmt({"third_party/clang-format/clang-format"});
   clang_fmt.args.stdout_mode = base::Subprocess::OutputMode::kBuffer;
   clang_fmt.args.stderr_mode = base::Subprocess::OutputMode::kInherit;
   clang_fmt.args.input = input;
@@ -219,6 +214,11 @@ ProtoType InferProtoType(const FtraceEvent::Field& field) {
       StartsWith(field.type_and_name, "i_ino ") ||
       StartsWith(field.type_and_name, "dev_t ")) {
     return ProtoType::Numeric(64, /* is_signed= */ false);
+  }
+
+  // Bools should always uint32 even if they are signed.
+  if (StartsWith(field.type_and_name, "bool ")) {
+    return ProtoType::Numeric(32, /* is_signed= */ false);
   }
 
   // Fixed size array for syscall args. Similar to ino_t choose the largest

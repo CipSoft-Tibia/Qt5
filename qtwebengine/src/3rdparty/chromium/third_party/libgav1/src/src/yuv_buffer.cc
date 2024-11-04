@@ -197,45 +197,58 @@ bool YuvBuffer::Realloc(int bitdepth, bool is_monochrome, int width, int height,
   assert(!is_monochrome || buffer_[kPlaneV] == nullptr);
 
 #if LIBGAV1_MSAN
-  const int pixel_size = (bitdepth == 8) ? sizeof(uint8_t) : sizeof(uint16_t);
-  int width_in_bytes = width * pixel_size;
+  InitializeFrameBorders();
+#endif
+
+  return true;
+}
+
+#if LIBGAV1_MSAN
+void YuvBuffer::InitializeFrameBorders() {
+  const int pixel_size = (bitdepth_ == 8) ? sizeof(uint8_t) : sizeof(uint16_t);
+  const int y_width_in_bytes = y_width_ * pixel_size;
   // The optimized loop restoration code will overread the visible frame buffer
   // into the right border. The optimized cfl subsambler uses the right border
   // as well. Initialize the right border and padding to prevent msan warnings.
-  int right_border_size_in_bytes = right_border * pixel_size;
+  const int y_right_border_size_in_bytes = right_border_[kPlaneY] * pixel_size;
   // Calculate the padding bytes for the buffer. Note: The stride of the buffer
   // is always a multiple of 16. (see yuv_buffer.h)
-  const int right_padding_in_bytes =
-      stride_[kPlaneY] - (pixel_size * (width + left_border + right_border));
-  const int padded_right_border_size =
-      right_border_size_in_bytes + right_padding_in_bytes;
-  constexpr uint8_t right_val = 0x55;
-  uint8_t* rb = buffer_[kPlaneY] + width_in_bytes;
-  for (int i = 0; i < height + bottom_border; ++i) {
-    memset(rb, right_val, padded_right_border_size);
+  const int y_right_padding_in_bytes =
+      stride_[kPlaneY] - (pixel_size * (y_width_ + left_border_[kPlaneY] +
+                                        right_border_[kPlaneY]));
+  const int y_padded_right_border_size =
+      y_right_border_size_in_bytes + y_right_padding_in_bytes;
+  constexpr uint8_t kRightValue = 0x55;
+  uint8_t* rb = buffer_[kPlaneY] + y_width_in_bytes;
+  for (int i = 0; i < y_height_ + bottom_border_[kPlaneY]; ++i) {
+    memset(rb, kRightValue, y_padded_right_border_size);
     rb += stride_[kPlaneY];
   }
-  if (!is_monochrome) {
-    int uv_width_in_bytes = uv_width * pixel_size;
-    int uv_right_border_size_in_bytes = uv_right_border * pixel_size;
+
+  if (!is_monochrome_) {
+    const int uv_width_in_bytes = uv_width_ * pixel_size;
+    const int uv_right_border_size_in_bytes =
+        right_border_[kPlaneU] * pixel_size;
+    assert(right_border_[kPlaneU] == right_border_[kPlaneV]);
     const int u_right_padding_in_bytes =
-        stride_[kPlaneU] -
-        (pixel_size * (uv_width + uv_left_border + uv_right_border));
+        stride_[kPlaneU] - (pixel_size * (uv_width_ + left_border_[kPlaneU] +
+                                          right_border_[kPlaneU]));
     const int u_padded_right_border_size =
         uv_right_border_size_in_bytes + u_right_padding_in_bytes;
     rb = buffer_[kPlaneU] + uv_width_in_bytes;
-    for (int i = 0; i < uv_height; ++i) {
-      memset(rb, right_val, u_padded_right_border_size);
+    for (int i = 0; i < uv_height_; ++i) {
+      memset(rb, kRightValue, u_padded_right_border_size);
       rb += stride_[kPlaneU];
     }
     const int v_right_padding_in_bytes =
         stride_[kPlaneV] -
-        ((uv_width + uv_left_border + uv_right_border) * pixel_size);
+        ((uv_width_ + left_border_[kPlaneV] + right_border_[kPlaneV]) *
+         pixel_size);
     const int v_padded_right_border_size =
         uv_right_border_size_in_bytes + v_right_padding_in_bytes;
     rb = buffer_[kPlaneV] + uv_width_in_bytes;
-    for (int i = 0; i < uv_height; ++i) {
-      memset(rb, right_val, v_padded_right_border_size);
+    for (int i = 0; i < uv_height_; ++i) {
+      memset(rb, kRightValue, v_padded_right_border_size);
       rb += stride_[kPlaneV];
     }
   }
@@ -244,13 +257,11 @@ bool YuvBuffer::Realloc(int bitdepth, bool is_monochrome, int width, int height,
   // block) into the uninitialized visible area. The cfl subsampler can overread
   // into the bottom border as well. Initialize the both to quiet msan warnings.
   uint8_t* y_visible = buffer_[kPlaneY];
-  for (int i = 0; i < height + bottom_border; ++i) {
-    memset(y_visible, right_val, width_in_bytes);
+  for (int i = 0; i < y_height_ + bottom_border_[kPlaneY]; ++i) {
+    memset(y_visible, kRightValue, y_width_in_bytes);
     y_visible += stride_[kPlaneY];
   }
-#endif
-
-  return true;
 }
+#endif  // LIBGAV1_MSAN
 
 }  // namespace libgav1

@@ -110,6 +110,10 @@ class COMPONENT_EXPORT(PLATFORM_WINDOW) PlatformWindowDelegate {
     // Scale to raster the window at.
     float raster_scale = 1.0;
 
+    // Returns true if updating from the given State |old| to this state
+    // should produce a frame.
+    bool ProducesFrameOnUpdateFrom(const State& old) const;
+
     std::string ToString() const;
   };
 
@@ -142,7 +146,19 @@ class COMPONENT_EXPORT(PLATFORM_WINDOW) PlatformWindowDelegate {
   // Sets the immersive mode for the window. This will only have an effect on
   // ChromeOS platforms.
   virtual void OnImmersiveModeChanged(bool immersive) {}
+
+  // Lets the window know that ChromeOS overview mode has changed.
+  virtual void OnOverviewModeChanged(bool in_overview) {}
 #endif
+
+  enum RotateDirection {
+    kForward,
+    kBackward,
+  };
+  // Rotates the focus within the window. The method will return true if there
+  // are more views left after rotation and false otherwise. Reset will restart
+  // the focus and focus on the first view for the given direction.
+  virtual bool OnRotateFocus(RotateDirection direction, bool reset);
 
   virtual void OnLostCapture() = 0;
 
@@ -161,6 +177,9 @@ class COMPONENT_EXPORT(PLATFORM_WINDOW) PlatformWindowDelegate {
   // Requests size constraints for the PlatformWindow in DIP.
   virtual absl::optional<gfx::Size> GetMinimumSizeForWindow();
   virtual absl::optional<gfx::Size> GetMaximumSizeForWindow();
+
+  virtual bool CanMaximize();
+  virtual bool CanFullscreen();
 
   // Returns a mask to be used to clip the window for the size of
   // |WindowTreeHost::GetBoundsInPixels|.
@@ -192,7 +211,10 @@ class COMPONENT_EXPORT(PLATFORM_WINDOW) PlatformWindowDelegate {
   // new LocalSurfaceId for the window tree of this platform window. It returns
   // the new parent ID. Calling code can compare this value with the
   // gfx::FrameData::seq value to see when viz has produced a frame at or after
-  // the (conceptually) inserted sequence point.
+  // the (conceptually) inserted sequence point. OnStateUpdate may return -1 if
+  // the state update does not require a new frame to be considered
+  // synchronized. For example, this can happen if the old and new states are
+  // the same, or it only changes the origin of the bounds.
   virtual int64_t OnStateUpdate(const State& old, const State& latest);
 
   // Returns optional information for owned windows that require anchor for

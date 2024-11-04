@@ -18,11 +18,11 @@ import { HTTPRequest } from './HTTPRequest.js';
 /**
  * @internal
  */
-export type QueuedEventGroup = {
+export interface QueuedEventGroup {
     responseReceivedEvent: Protocol.Network.ResponseReceivedEvent;
     loadingFinishedEvent?: Protocol.Network.LoadingFinishedEvent;
     loadingFailedEvent?: Protocol.Network.LoadingFailedEvent;
-};
+}
 /**
  * @internal
  */
@@ -30,10 +30,10 @@ export type FetchRequestId = string;
 /**
  * @internal
  */
-export type RedirectInfo = {
+export interface RedirectInfo {
     event: Protocol.Network.RequestWillBeSentEvent;
     fetchRequestId?: FetchRequestId;
-};
+}
 /**
  * @internal
  */
@@ -50,7 +50,7 @@ export declare class NetworkEventManager {
     private queuedRedirectInfo;
     queueRedirectInfo(fetchRequestId: FetchRequestId, redirectInfo: RedirectInfo): void;
     takeQueuedRedirectInfo(fetchRequestId: FetchRequestId): RedirectInfo | undefined;
-    numRequestsInProgress(): number;
+    inFlightRequestsCount(): number;
     storeRequestWillBeSent(networkRequestId: NetworkRequestId, event: Protocol.Network.RequestWillBeSentEvent): void;
     getRequestWillBeSent(networkRequestId: NetworkRequestId): Protocol.Network.RequestWillBeSentEvent | undefined;
     forgetRequestWillBeSent(networkRequestId: NetworkRequestId): void;

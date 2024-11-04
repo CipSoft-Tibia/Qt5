@@ -21,14 +21,34 @@
 namespace qtproto::tests {
 class AnyMessage;
 using AnyMessageRepeated = QList<AnyMessage>;
+namespace AnyMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace AnyMessage_QtProtobufNested
+
 class RepeatedAnyMessage;
 using RepeatedAnyMessageRepeated = QList<RepeatedAnyMessage>;
+namespace RepeatedAnyMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedAnyMessage_QtProtobufNested
+
 class TwoAnyMessage;
 using TwoAnyMessageRepeated = QList<TwoAnyMessage>;
+namespace TwoAnyMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace TwoAnyMessage_QtProtobufNested
+
 class Example;
 using ExampleRepeated = QList<Example>;
+namespace Example_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace Example_QtProtobufNested
+
 class SimpleMessage;
 using SimpleMessageRepeated = QList<SimpleMessage>;
+namespace SimpleMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleMessage_QtProtobufNested
+
 
 class AnyMessage_QtProtobufData;
 class AnyMessage : public QProtobufMessage
@@ -39,11 +59,7 @@ class AnyMessage : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::Any field READ field WRITE setField SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        FieldProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = AnyMessage_QtProtobufNested::QtProtobufFieldEnum;
     AnyMessage();
     ~AnyMessage();
     AnyMessage(const AnyMessage &other);
@@ -60,6 +76,15 @@ public:
 private:
     QExplicitlySharedDataPointer<AnyMessage_QtProtobufData> dptr;
 };
+namespace AnyMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    FieldProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace AnyMessage_QtProtobufNested
 
 class RepeatedAnyMessage_QtProtobufData;
 class RepeatedAnyMessage : public QProtobufMessage
@@ -70,11 +95,7 @@ class RepeatedAnyMessage : public QProtobufMessage
     Q_PROPERTY(QList<QtProtobuf::Any> anysData READ anys WRITE setAnys SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        AnysProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedAnyMessage_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedAnyMessage();
     ~RepeatedAnyMessage();
     RepeatedAnyMessage(const RepeatedAnyMessage &other);
@@ -92,6 +113,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedAnyMessage_QtProtobufData> dptr;
 };
+namespace RepeatedAnyMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    AnysProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedAnyMessage_QtProtobufNested
 
 class TwoAnyMessage_QtProtobufData;
 class TwoAnyMessage : public QProtobufMessage
@@ -103,12 +133,7 @@ class TwoAnyMessage : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::Any two READ two WRITE setTwo SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        OneProtoFieldNumber = 1,
-        TwoProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = TwoAnyMessage_QtProtobufNested::QtProtobufFieldEnum;
     TwoAnyMessage();
     ~TwoAnyMessage();
     TwoAnyMessage(const TwoAnyMessage &other);
@@ -128,6 +153,16 @@ public:
 private:
     QExplicitlySharedDataPointer<TwoAnyMessage_QtProtobufData> dptr;
 };
+namespace TwoAnyMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    OneProtoFieldNumber = 1,
+    TwoProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace TwoAnyMessage_QtProtobufNested
 
 class Example_QtProtobufData;
 class Example : public QProtobufMessage
@@ -142,15 +177,7 @@ class Example : public QProtobufMessage
     Q_PROPERTY(QString str2 READ str2 WRITE setStr2 SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        StrProtoFieldNumber = 1,
-        IProtoFieldNumber = 2,
-        JProtoFieldNumber = 3,
-        HProtoFieldNumber = 4,
-        Str2ProtoFieldNumber = 5,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = Example_QtProtobufNested::QtProtobufFieldEnum;
     Example();
     ~Example();
     Example(const Example &other);
@@ -179,6 +206,19 @@ public:
 private:
     QExplicitlySharedDataPointer<Example_QtProtobufData> dptr;
 };
+namespace Example_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    StrProtoFieldNumber = 1,
+    IProtoFieldNumber = 2,
+    JProtoFieldNumber = 3,
+    HProtoFieldNumber = 4,
+    Str2ProtoFieldNumber = 5,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace Example_QtProtobufNested
 
 class SimpleMessage_QtProtobufData;
 class SimpleMessage : public QProtobufMessage
@@ -189,11 +229,7 @@ class SimpleMessage : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::int32 i READ i WRITE setI SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        IProtoFieldNumber = 500000,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleMessage_QtProtobufNested::QtProtobufFieldEnum;
     SimpleMessage();
     ~SimpleMessage();
     SimpleMessage(const SimpleMessage &other);
@@ -210,6 +246,15 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleMessage_QtProtobufData> dptr;
 };
+namespace SimpleMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    IProtoFieldNumber = 500000,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleMessage_QtProtobufNested
 } // namespace qtproto::tests
 
 Q_DECLARE_METATYPE(qtproto::tests::AnyMessage)

@@ -136,7 +136,7 @@ const unsigned int LinearAccessBit = 0x10;
   * Means the expression has a coeffRef() method, i.e. is writable as its individual coefficients are directly addressable.
   * This rules out read-only expressions.
   *
-  * Note that DirectAccessBit and LvalueBit are mutually orthogonal, as there are examples of expression having one but note
+  * Note that DirectAccessBit and LvalueBit are mutually orthogonal, as there are examples of expression having one but not
   * the other:
   *   \li writable expressions that don't have a very simple memory layout as a strided array, have LvalueBit but not DirectAccessBit
   *   \li Map-to-const expressions, for example Map<const Matrix>, have DirectAccessBit but not LvalueBit
@@ -480,6 +480,7 @@ namespace Architecture
     NEON = 0x4,
     MSA = 0x5,
     SVE = 0x6,
+    HVX = 0x7,
 #if defined EIGEN_VECTORIZE_SSE
     Target = SSE
 #elif defined EIGEN_VECTORIZE_ALTIVEC
@@ -492,6 +493,8 @@ namespace Architecture
     Target = SVE
 #elif defined EIGEN_VECTORIZE_MSA
     Target = MSA
+#elif defined EIGEN_VECTORIZE_HVX
+    Target = HVX
 #else
     Target = Generic
 #endif

@@ -29,6 +29,14 @@
 
 namespace ui {
 
+namespace {
+
+// The minimum version for `augmented_surface_set_rounded_corners_clip_bounds`
+// with a local coordinates bounds.
+constexpr uint32_t kRoundedClipBoundsInLocalSurfaceCoordinatesSinceVersion = 9;
+
+}  // namespace
+
 WaylandBufferManagerGpu::WaylandBufferManagerGpu()
     : WaylandBufferManagerGpu(base::FilePath()) {}
 
@@ -76,7 +84,9 @@ void WaylandBufferManagerGpu::Initialize(
     bool supports_dma_buf,
     bool supports_viewporter,
     bool supports_acquire_fence,
-    uint32_t supported_surface_augmentor_version) {
+    bool supports_overlays,
+    uint32_t supported_surface_augmentor_version,
+    bool supports_single_pixel_buffer) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(gpu_sequence_checker_);
 
   // See the comment in the constructor.
@@ -87,6 +97,7 @@ void WaylandBufferManagerGpu::Initialize(
   supports_viewporter_ = supports_viewporter;
   supports_acquire_fence_ = supports_acquire_fence;
   supports_dmabuf_ = supports_dma_buf;
+  supports_overlays_ = supports_overlays;
 
   supports_non_backed_solid_color_buffers_ =
       supported_surface_augmentor_version >=
@@ -99,16 +110,25 @@ void WaylandBufferManagerGpu::Initialize(
       AUGMENTED_SURFACE_SET_BACKGROUND_COLOR_SINCE_VERSION;
   supports_clip_rect_ = supported_surface_augmentor_version >=
                         AUGMENTED_SUB_SURFACE_SET_CLIP_RECT_SINCE_VERSION;
+  supports_affine_transform_ =
+      supported_surface_augmentor_version >=
+      AUGMENTED_SUB_SURFACE_SET_TRANSFORM_SINCE_VERSION;
+  supports_out_of_window_clip_rect_ =
+      supported_surface_augmentor_version >=
+      kRoundedClipBoundsInLocalSurfaceCoordinatesSinceVersion;
 
+  supports_single_pixel_buffer_ = supports_single_pixel_buffer;
   BindHostInterface(std::move(remote_host));
 
   ProcessPendingTasks();
 }
 
-void WaylandBufferManagerGpu::OnSubmission(gfx::AcceleratedWidget widget,
-                                           uint32_t buffer_id,
-                                           gfx::SwapResult swap_result,
-                                           gfx::GpuFenceHandle release_fence) {
+void WaylandBufferManagerGpu::OnSubmission(
+    gfx::AcceleratedWidget widget,
+    uint32_t frame_id,
+    gfx::SwapResult swap_result,
+    gfx::GpuFenceHandle release_fence,
+    const std::vector<wl::WaylandPresentationInfo>& presentation_infos) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(gpu_sequence_checker_);
 
   DCHECK_LE(commit_thread_runners_.count(widget), 1u);
@@ -118,21 +138,21 @@ void WaylandBufferManagerGpu::OnSubmission(gfx::AcceleratedWidget widget,
     return;
 
   if (it->second->BelongsToCurrentThread()) {
-    SubmitSwapResultOnOriginThread(widget, buffer_id, swap_result,
-                                   std::move(release_fence));
+    HandleSubmissionOnOriginThread(widget, frame_id, swap_result,
+                                   std::move(release_fence),
+                                   presentation_infos);
   } else {
     it->second->PostTask(
         FROM_HERE,
-        base::BindOnce(&WaylandBufferManagerGpu::SubmitSwapResultOnOriginThread,
-                       base::Unretained(this), widget, buffer_id, swap_result,
-                       std::move(release_fence)));
+        base::BindOnce(&WaylandBufferManagerGpu::HandleSubmissionOnOriginThread,
+                       base::Unretained(this), widget, frame_id, swap_result,
+                       std::move(release_fence), presentation_infos));
   }
 }
 
 void WaylandBufferManagerGpu::OnPresentation(
     gfx::AcceleratedWidget widget,
-    uint32_t buffer_id,
-    const gfx::PresentationFeedback& feedback) {
+    const std::vector<wl::WaylandPresentationInfo>& presentation_infos) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(gpu_sequence_checker_);
 
   DCHECK_LE(commit_thread_runners_.count(widget), 1u);
@@ -142,13 +162,13 @@ void WaylandBufferManagerGpu::OnPresentation(
     return;
 
   if (it->second->BelongsToCurrentThread()) {
-    SubmitPresentationOnOriginThread(widget, buffer_id, feedback);
+    HandlePresentationOnOriginThread(widget, presentation_infos);
   } else {
     it->second->PostTask(
         FROM_HERE,
         base::BindOnce(
-            &WaylandBufferManagerGpu::SubmitPresentationOnOriginThread,
-            base::Unretained(this), widget, buffer_id, feedback));
+            &WaylandBufferManagerGpu::HandlePresentationOnOriginThread,
+            base::Unretained(this), widget, presentation_infos));
   }
 }
 
@@ -257,6 +277,24 @@ void WaylandBufferManagerGpu::CreateSolidColorBuffer(SkColor4f color,
   RunOrQueueTask(std::move(task));
 }
 
+void WaylandBufferManagerGpu::CreateSinglePixelBuffer(SkColor4f color,
+                                                      uint32_t buf_id) {
+  DCHECK(gpu_thread_runner_);
+  if (!gpu_thread_runner_->BelongsToCurrentThread()) {
+    // Do the mojo call on the GpuMainThread.
+    gpu_thread_runner_->PostTask(
+        FROM_HERE,
+        base::BindOnce(&WaylandBufferManagerGpu::CreateSinglePixelBuffer,
+                       base::Unretained(this), color, buf_id));
+    return;
+  }
+
+  base::OnceClosure task =
+      base::BindOnce(&WaylandBufferManagerGpu::CreateSinglePixelBufferTask,
+                     base::Unretained(this), color, buf_id);
+  RunOrQueueTask(std::move(task));
+}
+
 void WaylandBufferManagerGpu::CommitBuffer(gfx::AcceleratedWidget widget,
                                            uint32_t frame_id,
                                            uint32_t buffer_id,
@@ -349,15 +387,17 @@ void WaylandBufferManagerGpu::AddBindingWaylandBufferManagerGpu(
   receiver_set_.Add(this, std::move(receiver));
 }
 
-const std::vector<uint64_t>&
+const std::vector<uint64_t>
 WaylandBufferManagerGpu::GetModifiersForBufferFormat(
     gfx::BufferFormat buffer_format) const {
   auto it = supported_buffer_formats_with_modifiers_.find(buffer_format);
   if (it != supported_buffer_formats_with_modifiers_.end()) {
+    if (drm_modifiers_filter_) {
+      return drm_modifiers_filter_->Filter(buffer_format, it->second);
+    }
     return it->second;
   }
-  static std::vector<uint64_t> dummy;
-  return dummy;
+  return {};
 }
 
 uint32_t WaylandBufferManagerGpu::AllocateBufferID() {
@@ -405,28 +445,37 @@ void WaylandBufferManagerGpu::ForgetTaskRunnerForWidgetOnIOThread(
   commit_thread_runners_.erase(widget);
 }
 
-void WaylandBufferManagerGpu::SubmitSwapResultOnOriginThread(
+void WaylandBufferManagerGpu::HandleSubmissionOnOriginThread(
     gfx::AcceleratedWidget widget,
     uint32_t frame_id,
     gfx::SwapResult swap_result,
-    gfx::GpuFenceHandle release_fence) {
+    gfx::GpuFenceHandle release_fence,
+    const std::vector<wl::WaylandPresentationInfo>& presentation_infos) {
   DCHECK_NE(widget, gfx::kNullAcceleratedWidget);
   auto* surface = GetSurface(widget);
   // The surface might be destroyed by the time the swap result is provided.
   if (surface)
     surface->OnSubmission(frame_id, swap_result, std::move(release_fence));
+
+  HandlePresentationOnOriginThread(widget, presentation_infos);
 }
 
-void WaylandBufferManagerGpu::SubmitPresentationOnOriginThread(
+void WaylandBufferManagerGpu::HandlePresentationOnOriginThread(
     gfx::AcceleratedWidget widget,
-    uint32_t frame_id,
-    const gfx::PresentationFeedback& feedback) {
+    const std::vector<wl::WaylandPresentationInfo>& presentation_infos) {
   DCHECK_NE(widget, gfx::kNullAcceleratedWidget);
+
   auto* surface = GetSurface(widget);
   // The surface might be destroyed by the time the presentation feedback is
   // provided.
-  if (surface)
-    surface->OnPresentation(frame_id, feedback);
+  if (!surface) {
+    return;
+  }
+
+  for (const auto& presentation_info : presentation_infos) {
+    surface->OnPresentation(presentation_info.frame_id,
+                            presentation_info.feedback);
+  }
 }
 
 #if defined(WAYLAND_GBM)
@@ -507,6 +556,14 @@ void WaylandBufferManagerGpu::CreateSolidColorBufferTask(SkColor4f color,
   DCHECK(remote_host_);
 
   remote_host_->CreateSolidColorBuffer(size, color, buf_id);
+}
+
+void WaylandBufferManagerGpu::CreateSinglePixelBufferTask(SkColor4f color,
+                                                          uint32_t buf_id) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(gpu_sequence_checker_);
+  DCHECK(remote_host_);
+
+  remote_host_->CreateSinglePixelBuffer(color, buf_id);
 }
 
 void WaylandBufferManagerGpu::CommitOverlaysTask(

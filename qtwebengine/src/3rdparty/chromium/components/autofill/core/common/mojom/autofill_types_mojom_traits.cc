@@ -315,6 +315,11 @@ bool StructTraits<autofill::mojom::FormFieldDataPredictionsDataView,
     return false;
   if (!data.ReadSection(&out->section))
     return false;
+  out->rank = data.rank();
+  out->rank_in_signature_group = data.rank_in_signature_group();
+  out->rank_in_host_form = data.rank_in_host_form();
+  out->rank_in_host_form_signature_group =
+      data.rank_in_host_form_signature_group();
 
   return true;
 }
@@ -339,10 +344,12 @@ bool StructTraits<autofill::mojom::PasswordAndMetadataDataView,
                   autofill::PasswordAndMetadata>::
     Read(autofill::mojom::PasswordAndMetadataDataView data,
          autofill::PasswordAndMetadata* out) {
-  if (!data.ReadUsername(&out->username))
+  if (!data.ReadUsernameValue(&out->username_value)) {
     return false;
-  if (!data.ReadPassword(&out->password))
+  }
+  if (!data.ReadPasswordValue(&out->password_value)) {
     return false;
+  }
   if (!data.ReadRealm(&out->realm))
     return false;
 
@@ -396,7 +403,6 @@ bool StructTraits<autofill::mojom::PasswordGenerationUIDataDataView,
 
   return data.ReadGenerationElementId(&out->generation_element_id) &&
          data.ReadGenerationElement(&out->generation_element) &&
-         data.ReadUserTypedPassword(&out->user_typed_password) &&
          data.ReadTextDirection(&out->text_direction) &&
          data.ReadFormData(&out->form_data);
 }
@@ -409,23 +415,6 @@ bool StructTraits<
          data.ReadPasswordRendererId(&out->password_renderer_id) &&
          data.ReadNewPasswordRendererId(&out->new_password_renderer_id) &&
          data.ReadConfirmPasswordRendererId(&out->confirm_password_renderer_id);
-}
-
-bool StructTraits<autofill::mojom::AutoselectFirstSuggestionDataView,
-                  autofill::AutoselectFirstSuggestion>::
-    Read(autofill::mojom::AutoselectFirstSuggestionDataView data,
-         autofill::AutoselectFirstSuggestion* out) {
-  *out =
-      autofill::AutoselectFirstSuggestion(data.autoselect_first_suggestion());
-  return true;
-}
-
-bool StructTraits<autofill::mojom::FormElementWasClickedDataView,
-                  autofill::FormElementWasClicked>::
-    Read(autofill::mojom::FormElementWasClickedDataView data,
-         autofill::FormElementWasClicked* out) {
-  *out = autofill::FormElementWasClicked(data.form_element_was_clicked());
-  return true;
 }
 
 }  // namespace mojo

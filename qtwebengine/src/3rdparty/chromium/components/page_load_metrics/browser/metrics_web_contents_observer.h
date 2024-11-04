@@ -151,8 +151,9 @@ class MetricsWebContentsObserver
       mojom::FrameRenderDataUpdatePtr render_data,
       mojom::CpuTimingPtr cpu_timing,
       mojom::InputTimingPtr input_timing_delta,
-      mojom::SubresourceLoadMetricsPtr subresource_load_metrics,
-      uint32_t soft_navigation_count);
+      const absl::optional<blink::SubresourceLoadMetrics>&
+          subresource_load_metrics,
+      mojom::SoftNavigationMetricsPtr);
 
   // Informs the observers of the currently committed primary page load that
   // it's likely that prefetch will occur in this WebContents. This should
@@ -166,6 +167,9 @@ class MetricsWebContentsObserver
 
   // Called when a `SharedStorageWorkletHost` is created for `rfh`.
   void OnSharedStorageWorkletHostCreated(content::RenderFrameHost* rfh);
+
+  // Returns the time this MetricsWebContentsObserver was created.
+  base::TimeTicks GetCreated();
 
  protected:
   // Protected rather than private so that derived test classes can call
@@ -214,8 +218,9 @@ class MetricsWebContentsObserver
       mojom::FrameRenderDataUpdatePtr render_data,
       mojom::CpuTimingPtr cpu_timing,
       mojom::InputTimingPtr input_timing,
-      const mojom::SubresourceLoadMetricsPtr subresource_load_metrics,
-      uint32_t soft_navigation_count) override;
+      const absl::optional<blink::SubresourceLoadMetrics>&
+          subresource_load_metrics,
+      mojom::SoftNavigationMetricsPtr soft_navigation_metrics) override;
 
   void SetUpSharedMemoryForSmoothness(
       base::ReadOnlySharedMemoryRegion shared_memory) override;
@@ -356,6 +361,8 @@ class MetricsWebContentsObserver
       page_load_metrics_receivers_;
 
   bool web_contents_will_soon_be_destroyed_ = false;
+
+  base::TimeTicks created_;
 
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 };

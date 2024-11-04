@@ -12,12 +12,11 @@ swift_source_set("spotlight_debugger_swift") {
   ]
   deps = [
     "//ios/chrome/app/spotlight",
-    "//ios/chrome/browser/ui/icons:symbols",
+    "//ios/chrome/browser/shared/ui/symbols",
   ]
 }
 
 source_set("spotlight_debugger") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "spotlight_debugger_coordinator.h",
     "spotlight_debugger_coordinator.mm",
@@ -28,14 +27,14 @@ source_set("spotlight_debugger") {
     ":spotlight_debugger_swift",
     "//ios/chrome/app/spotlight",
     "//ios/chrome/app/strings",
-    "//ios/chrome/browser/main:public",
-    "//ios/chrome/browser/ui/commands",
-    "//ios/chrome/browser/ui/coordinators:chrome_coordinators",
-    "//ios/chrome/browser/ui/elements",
-    "//ios/chrome/browser/ui/icons:symbols",
-    "//ios/chrome/browser/ui/table_view",
-    "//ios/chrome/browser/ui/table_view:utils",
-    "//ios/chrome/browser/ui/util",
+    "//ios/chrome/browser/shared/coordinator/chrome_coordinator",
+    "//ios/chrome/browser/shared/model/browser",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/shared/ui/elements",
+    "//ios/chrome/browser/shared/ui/symbols",
+    "//ios/chrome/browser/shared/ui/table_view",
+    "//ios/chrome/browser/shared/ui/table_view:utils",
+    "//ios/chrome/browser/shared/ui/util",
     "//ios/chrome/common/ui/colors",
     "//ios/chrome/common/ui/elements",
     "//ios/chrome/common/ui/table_view:cells_constants",

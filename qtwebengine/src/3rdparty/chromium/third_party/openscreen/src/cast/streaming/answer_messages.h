@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,19 +10,18 @@
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "cast/streaming/resolution.h"
 #include "cast/streaming/ssrc.h"
 #include "json/value.h"
 #include "platform/base/error.h"
 #include "util/simple_fraction.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // For each of the below classes, though a number of methods are shared, the use
 // of a shared base class has intentionally been avoided. This is to improve
@@ -44,7 +43,7 @@ struct AudioConstraints {
   int max_channels = 0;
   int min_bit_rate = 0;  // optional
   int max_bit_rate = 0;
-  absl::optional<std::chrono::milliseconds> max_delay = {};
+  std::optional<std::chrono::milliseconds> max_delay = {};
 };
 
 struct VideoConstraints {
@@ -52,12 +51,12 @@ struct VideoConstraints {
   Json::Value ToJson() const;
   bool IsValid() const;
 
-  absl::optional<double> max_pixels_per_second = {};
-  absl::optional<Dimensions> min_resolution = {};
+  std::optional<double> max_pixels_per_second = {};
+  std::optional<Dimensions> min_resolution = {};
   Dimensions max_dimensions = {};
   int min_bit_rate = 0;  // optional
   int max_bit_rate = 0;
-  absl::optional<std::chrono::milliseconds> max_delay = {};
+  std::optional<std::chrono::milliseconds> max_delay = {};
 };
 
 struct Constraints {
@@ -93,9 +92,9 @@ struct DisplayDescription {
 
   // May exceed, be the same, or less than those mentioned in the
   // video constraints.
-  absl::optional<Dimensions> dimensions;
-  absl::optional<AspectRatio> aspect_ratio = {};
-  absl::optional<AspectRatioConstraint> aspect_ratio_constraint = {};
+  std::optional<Dimensions> dimensions;
+  std::optional<AspectRatio> aspect_ratio = {};
+  std::optional<AspectRatioConstraint> aspect_ratio_constraint = {};
 };
 
 struct Answer {
@@ -109,8 +108,8 @@ struct Answer {
 
   // Constraints and display descriptions are optional fields, and maybe null in
   // the valid case.
-  absl::optional<Constraints> constraints;
-  absl::optional<DisplayDescription> display;
+  std::optional<Constraints> constraints;
+  std::optional<DisplayDescription> display;
   std::vector<int> receiver_rtcp_event_log;
   std::vector<int> receiver_rtcp_dscp;
 
@@ -118,7 +117,6 @@ struct Answer {
   std::vector<std::string> rtp_extensions = {};
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_ANSWER_MESSAGES_H_

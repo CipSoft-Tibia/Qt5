@@ -28,6 +28,12 @@
 #include <QtNetwork/qsslconfiguration.h>
 #include <QtNetwork/qsslkey.h>
 
+#if QT_CONFIG(localserver)
+#include <qrandom.h>
+#include <QtNetwork/qlocalserver.h>
+#include <QtNetwork/qlocalsocket.h>
+#endif
+
 #include <array>
 
 #if QT_CONFIG(ssl)
@@ -172,6 +178,10 @@ private slots:
     void missingHandler();
     void pipelinedFutureRequests();
     void multipleResponses();
+
+#if QT_CONFIG(localserver)
+    void localSocket();
+#endif
 
 private:
     void checkReply(QNetworkReply *reply, const QString &response);
@@ -378,6 +388,17 @@ void tst_QHttpServer::initTestCase()
     });
 #endif
 
+#if QT_CONFIG(localserver)
+    const auto serverName =
+            QStringLiteral("testserver") + QString::number(qApp->applicationPid());
+
+    std::unique_ptr<QLocalServer> localServer = std::make_unique<QLocalServer>();
+    if (localServer->listen(serverName))
+        httpserver.bind(localServer.release());
+    else
+        qCritical("Local Socket server listen failed");
+#endif
+
     quint16 port = httpserver.listen();
     if (!port)
         qCritical("Http server listen failed");
@@ -403,8 +424,7 @@ void tst_QHttpServer::initTestCase()
     };
 
     connect(&networkAccessManager, &QNetworkAccessManager::sslErrors,
-            [expectedSslErrors](QNetworkReply *reply,
-                                const QList<QSslError> &errors) {
+            this, [expectedSslErrors](QNetworkReply *reply, const QList<QSslError> &errors) {
         for (const auto &error: errors) {
             if (!expectedSslErrors.contains(error))
                 qCritical() << "Got unexpected ssl error:" << error << error.certificate();
@@ -1096,6 +1116,33 @@ void tst_QHttpServer::multipleResponses()
     QCOMPARE(reply->header(QNetworkRequest::ContentTypeHeader), "text/plain");
     QCOMPARE(reply->readAll(), "done");
 }
+
+#if QT_CONFIG(localserver)
+void tst_QHttpServer::localSocket()
+{
+    QVERIFY(!httpserver.localServers().isEmpty());
+
+    for (const auto &localServer : httpserver.localServers()) {
+        QLocalSocket socket;
+        socket.connectToServer(localServer->fullServerName());
+        QVERIFY(socket.waitForConnected(1));
+
+        qApp->processEvents();
+
+        socket.write("GET /test HTTP/1.1\r\n"
+                     "Host: local\r\n"
+                     "User-Agent: curl/7.88.1\r\n"
+                     "Accept: */*\r\n\r\n");
+
+        const QByteArray expectedResult =
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 8\r\n\r\ntest msg";
+
+        // We need to call process events a couple of times for the write/read to go through
+        QTRY_COMPARE_GE(socket.bytesAvailable(), expectedResult.size());
+        QCOMPARE(socket.readAll(), expectedResult);
+    }
+}
+#endif
 
 QT_END_NAMESPACE
 

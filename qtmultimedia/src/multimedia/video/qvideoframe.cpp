@@ -5,6 +5,7 @@
 
 #include "qvideoframe_p.h"
 #include "qvideotexturehelper_p.h"
+#include "qmultimediautils_p.h"
 #include "qmemoryvideobuffer_p.h"
 #include "qvideoframeconverter_p.h"
 #include "qpainter.h"
@@ -75,7 +76,7 @@ QVideoFrame::QVideoFrame()
 QVideoFrame::QVideoFrame(QAbstractVideoBuffer *buffer, const QVideoFrameFormat &format)
     : d(new QVideoFramePrivate(format))
 {
-    d->buffer = buffer;
+    d->buffer.reset(buffer);
 }
 
 /*!
@@ -83,7 +84,7 @@ QVideoFrame::QVideoFrame(QAbstractVideoBuffer *buffer, const QVideoFrameFormat &
 */
 QAbstractVideoBuffer *QVideoFrame::videoBuffer() const
 {
-    return d ? d->buffer : nullptr;
+    return d ? d->buffer.get() : nullptr;
 }
 
 /*!
@@ -101,7 +102,7 @@ QVideoFrame::QVideoFrame(const QVideoFrameFormat &format)
 
         // Check the memory was successfully allocated.
         if (!data.isEmpty())
-            d->buffer = new QMemoryVideoBuffer(data, textureDescription->strideForWidth(format.frameWidth()));
+            d->buffer = std::make_unique<QMemoryVideoBuffer>(data, textureDescription->strideForWidth(format.frameWidth()));
     }
 }
 
@@ -236,7 +237,7 @@ int QVideoFrame::height() const
 
 bool QVideoFrame::isMapped() const
 {
-    return d && d->buffer && d->buffer->mapMode() != QVideoFrame::NotMapped;
+    return d && d->mapMode != QVideoFrame::NotMapped;
 }
 
 /*!
@@ -255,7 +256,7 @@ bool QVideoFrame::isMapped() const
 */
 bool QVideoFrame::isWritable() const
 {
-    return d && d->buffer && (d->buffer->mapMode() & QVideoFrame::WriteOnly);
+    return d && (d->mapMode & QVideoFrame::WriteOnly);
 }
 
 /*!
@@ -271,7 +272,7 @@ bool QVideoFrame::isWritable() const
 */
 bool QVideoFrame::isReadable() const
 {
-    return d && d->buffer && (d->buffer->mapMode() & QVideoFrame::ReadOnly);
+    return d && (d->mapMode & QVideoFrame::ReadOnly);
 }
 
 /*!
@@ -281,7 +282,7 @@ bool QVideoFrame::isReadable() const
 */
 QVideoFrame::MapMode QVideoFrame::mapMode() const
 {
-    return (d && d->buffer) ? d->buffer->mapMode() : QVideoFrame::NotMapped;
+    return d ? d->mapMode : QVideoFrame::NotMapped;
 }
 
 /*!
@@ -326,8 +327,7 @@ bool QVideoFrame::map(QVideoFrame::MapMode mode)
 
     if (d->mappedCount > 0) {
         //it's allowed to map the video frame multiple times in read only mode
-        if (d->buffer->mapMode() == QVideoFrame::ReadOnly
-                && mode == QVideoFrame::ReadOnly) {
+        if (d->mapMode == QVideoFrame::ReadOnly && mode == QVideoFrame::ReadOnly) {
             d->mappedCount++;
             return true;
         }
@@ -343,6 +343,8 @@ bool QVideoFrame::map(QVideoFrame::MapMode mode)
     d->mapData = d->buffer->map(mode);
     if (d->mapData.nPlanes == 0)
         return false;
+
+    d->mapMode = mode;
 
     if (d->mapData.nPlanes == 1) {
         auto pixelFmt = d->format.pixelFormat();
@@ -426,6 +428,15 @@ bool QVideoFrame::map(QVideoFrame::MapMode mode)
     }
 
     d->mappedCount++;
+
+    // unlock mapMutex to avoid potential deadlock imageMutex <--> mapMutex
+    lock.unlock();
+
+    if ((mode & QVideoFrame::WriteOnly) != 0) {
+        QMutexLocker lock(&d->imageMutex);
+        d->image = {};
+    }
+
     return true;
 }
 
@@ -455,6 +466,7 @@ void QVideoFrame::unmap()
 
     if (d->mappedCount == 0) {
         d->mapData = {};
+        d->mapMode = QVideoFrame::NotMapped;
         d->buffer->unmap();
     }
 }
@@ -592,8 +604,10 @@ void QVideoFrame::setEndTime(qint64 time)
     d->endTime = time;
 }
 
+#if QT_DEPRECATED_SINCE(6, 7)
 /*!
     \enum QVideoFrame::RotationAngle
+    \deprecated [6.7] Use QtVideo::Rotation instead.
 
     The angle of the clockwise rotation that should be applied to a video
     frame before displaying.
@@ -605,29 +619,47 @@ void QVideoFrame::setEndTime(qint64 time)
 */
 
 /*!
+    \fn void QVideoFrame::setRotationAngle(RotationAngle)
+    \deprecated [6.7] Use \c QVideoFrame::setRotation instead.
+
     Sets the \a angle the frame should be rotated clockwise before displaying.
 */
-void QVideoFrame::setRotationAngle(QVideoFrame::RotationAngle angle)
+
+/*!
+    \fn QVideoFrame::RotationAngle QVideoFrame::rotationAngle() const
+    \deprecated [6.7] Use \c QVideoFrame::rotation instead.
+
+    Returns the angle the frame should be rotated clockwise before displaying.
+*/
+
+#endif
+
+
+/*!
+    Sets the \a angle the frame should be rotated clockwise before displaying.
+*/
+void QVideoFrame::setRotation(QtVideo::Rotation angle)
 {
     if (d)
-        d->rotation = QtVideo::Rotation(angle);
+        d->rotation = angle;
 }
 
 /*!
     Returns the angle the frame should be rotated clockwise before displaying.
  */
-QVideoFrame::RotationAngle QVideoFrame::rotationAngle() const
+QtVideo::Rotation QVideoFrame::rotation() const
 {
-    return QVideoFrame::RotationAngle(d ? d->rotation : QtVideo::Rotation::None);
+    return QtVideo::Rotation(d ? d->rotation : QtVideo::Rotation::None);
 }
 
 /*!
-    Sets the \a mirrored flag for the frame.
+    Sets the \a mirrored flag for the frame and
+    sets the flag to the underlying \l surfaceFormat.
 */
 void QVideoFrame::setMirrored(bool mirrored)
 {
     if (d)
-        d->mirrored = mirrored;
+        d->format.setMirrored(mirrored);
 }
 
 /*!
@@ -635,7 +667,7 @@ void QVideoFrame::setMirrored(bool mirrored)
 */
 bool QVideoFrame::mirrored() const
 {
-    return d && d->mirrored;
+    return d && d->format.isMirrored();
 }
 
 /*!
@@ -647,10 +679,12 @@ QImage QVideoFrame::toImage() const
     if (!isValid())
         return {};
 
-    std::call_once(d->imageOnceFlag, [this]() {
+    QMutexLocker lock(&d->imageMutex);
+
+    if (d->image.isNull()) {
         const bool mirrorY = surfaceFormat().scanLineDirection() != QVideoFrameFormat::TopToBottom;
-        d->image = qImageFromVideoFrame(*this, QtVideo::Rotation(rotationAngle()), mirrored(), mirrorY);
-    });
+        d->image = qImageFromVideoFrame(*this, rotation(), mirrored(), mirrorY);
+    }
 
     return d->image;
 }
@@ -689,9 +723,7 @@ void QVideoFrame::paint(QPainter *painter, const QRectF &rect, const PaintOption
     }
 
     QRectF targetRect = rect;
-    QSizeF size = this->size();
-    if (qToUnderlying(rotationAngle()) % 180)
-        size.transpose();
+    QSizeF size = qRotatedFrameSize(*this);
 
     size.scale(targetRect.size(), options.aspectRatioMode);
 
@@ -767,12 +799,12 @@ static QString qFormatTimeStamps(qint64 start, qint64 end)
 
     if (onlyOne) {
         if (start > 0)
-            return QString::fromLatin1("@%1:%2:%3.%4")
+            return QStringLiteral("@%1:%2:%3.%4")
                     .arg(start, 1, 10, QLatin1Char('0'))
                     .arg(s_minutes, 2, 10, QLatin1Char('0'))
                     .arg(s_seconds, 2, 10, QLatin1Char('0'))
                     .arg(s_millis, 2, 10, QLatin1Char('0'));
-        return QString::fromLatin1("@%1:%2.%3")
+        return QStringLiteral("@%1:%2.%3")
                 .arg(s_minutes, 2, 10, QLatin1Char('0'))
                 .arg(s_seconds, 2, 10, QLatin1Char('0'))
                 .arg(s_millis, 2, 10, QLatin1Char('0'));
@@ -781,12 +813,12 @@ static QString qFormatTimeStamps(qint64 start, qint64 end)
     if (end == -1) {
         // Similar to start-start, except it means keep displaying it?
         if (start > 0)
-            return QString::fromLatin1("%1:%2:%3.%4 - forever")
+            return QStringLiteral("%1:%2:%3.%4 - forever")
                     .arg(start, 1, 10, QLatin1Char('0'))
                     .arg(s_minutes, 2, 10, QLatin1Char('0'))
                     .arg(s_seconds, 2, 10, QLatin1Char('0'))
                     .arg(s_millis, 2, 10, QLatin1Char('0'));
-        return QString::fromLatin1("%1:%2.%3 - forever")
+        return QStringLiteral("%1:%2.%3 - forever")
                 .arg(s_minutes, 2, 10, QLatin1Char('0'))
                 .arg(s_seconds, 2, 10, QLatin1Char('0'))
                 .arg(s_millis, 2, 10, QLatin1Char('0'));
@@ -800,7 +832,7 @@ static QString qFormatTimeStamps(qint64 start, qint64 end)
     end /= 60;
 
     if (start > 0 || end > 0)
-        return QString::fromLatin1("%1:%2:%3.%4 - %5:%6:%7.%8")
+        return QStringLiteral("%1:%2:%3.%4 - %5:%6:%7.%8")
                 .arg(start, 1, 10, QLatin1Char('0'))
                 .arg(s_minutes, 2, 10, QLatin1Char('0'))
                 .arg(s_seconds, 2, 10, QLatin1Char('0'))
@@ -809,7 +841,7 @@ static QString qFormatTimeStamps(qint64 start, qint64 end)
                 .arg(e_minutes, 2, 10, QLatin1Char('0'))
                 .arg(e_seconds, 2, 10, QLatin1Char('0'))
                 .arg(e_millis, 2, 10, QLatin1Char('0'));
-    return QString::fromLatin1("%1:%2.%3 - %4:%5.%6")
+    return QStringLiteral("%1:%2.%3 - %4:%5.%6")
             .arg(s_minutes, 2, 10, QLatin1Char('0'))
             .arg(s_seconds, 2, 10, QLatin1Char('0'))
             .arg(s_millis, 2, 10, QLatin1Char('0'))

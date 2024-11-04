@@ -69,6 +69,7 @@
 #include "third_party/skia/src/utils/SkMultiPictureDocument.h"
 #include "ui/events/base_event_utils.h"
 #include "ui/gfx/ca_layer_result.h"
+#include "ui/gfx/geometry/size_f.h"
 #include "v8/include/v8-context.h"
 #include "v8/include/v8-exception.h"
 #include "v8/include/v8-function.h"
@@ -130,7 +131,6 @@ class GpuBenchmarkingContext {
 using blink::GpuBenchmarkingContext;
 using blink::WebImageCache;
 using blink::WebLocalFrame;
-using blink::WebPrivatePtr;
 using blink::WebView;
 
 namespace content {
@@ -281,7 +281,7 @@ void RunCallbackHelper(CallbackAndContext* callback_and_context,
 }
 
 void OnMicroBenchmarkCompleted(CallbackAndContext* callback_and_context,
-                               base::Value result) {
+                               base::Value::Dict result) {
   RunCallbackHelper(callback_and_context,
                     absl::optional<base::Value>(std::move(result)));
 }
@@ -291,7 +291,7 @@ void OnSwapCompletedWithCoreAnimationErrorCode(
     CallbackAndContext* callback_and_context,
     gfx::CALayerResult error_code) {
   RunCallbackHelper(callback_and_context,
-                    absl::optional<base::Value>((base::Value(error_code))));
+                    absl::optional<base::Value>(base::Value(error_code)));
 }
 #endif
 
@@ -511,7 +511,7 @@ static void PrintDocument(blink::WebLocalFrame* frame, SkDocument* doc) {
   const float kMarginLeft = 29.0f;   // 0.40 inch
   const int kContentWidth = 555;     // 7.71 inch
   const int kContentHeight = 735;    // 10.21 inch
-  blink::WebPrintParams params(gfx::Size(kContentWidth, kContentHeight));
+  blink::WebPrintParams params(gfx::SizeF(kContentWidth, kContentHeight));
   params.printer_dpi = 300;
   uint32_t page_count = frame->PrintBegin(params, blink::WebNode());
   for (uint32_t i = 0; i < page_count; ++i) {
@@ -519,13 +519,6 @@ static void PrintDocument(blink::WebLocalFrame* frame, SkDocument* doc) {
     cc::SkiaPaintCanvas canvas(sk_canvas);
     cc::PaintCanvasAutoRestore auto_restore(&canvas, true);
     canvas.translate(kMarginLeft, kMarginTop);
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
-    float page_shrink = frame->GetPrintPageShrink(i);
-    DCHECK_GT(page_shrink, 0);
-    canvas.scale(page_shrink, page_shrink);
-#endif
-
     frame->PrintPage(i, &canvas);
   }
   frame->PrintEnd();
@@ -612,7 +605,7 @@ void GpuBenchmarking::Install(base::WeakPtr<RenderFrameImpl> frame) {
 GpuBenchmarking::GpuBenchmarking(base::WeakPtr<RenderFrameImpl> frame)
     : render_frame_(std::move(frame)) {}
 
-GpuBenchmarking::~GpuBenchmarking() {}
+GpuBenchmarking::~GpuBenchmarking() = default;
 
 void GpuBenchmarking::EnsureRemoteInterface() {
   if (!input_injector_) {
@@ -1283,19 +1276,17 @@ bool GpuBenchmarking::PointerActionSequence(gin::Arguments* args) {
       new CallbackAndContext(args->isolate(), callback,
                              context.web_frame()->MainWorldScriptContext());
   EnsureRemoteInterface();
-  if (actions_parser.gesture_params().GetGestureType() ==
+  if (actions_parser.parsed_gesture_type() ==
       SyntheticGestureParams::SMOOTH_SCROLL_GESTURE) {
     input_injector_->QueueSyntheticSmoothScroll(
-        static_cast<const SyntheticSmoothScrollGestureParams&>(
-            actions_parser.gesture_params()),
+        actions_parser.smooth_scroll_params(),
         base::BindOnce(&OnSyntheticGestureCompleted,
                        base::RetainedRef(callback_and_context)));
   } else {
-    DCHECK(actions_parser.gesture_params().GetGestureType() ==
-           SyntheticGestureParams::POINTER_ACTION_LIST);
+    CHECK_EQ(actions_parser.parsed_gesture_type(),
+             SyntheticGestureParams::POINTER_ACTION_LIST);
     input_injector_->QueueSyntheticPointerAction(
-        static_cast<const SyntheticPointerActionListParams&>(
-            actions_parser.gesture_params()),
+        actions_parser.pointer_action_params(),
         base::BindOnce(&OnSyntheticGestureCompleted,
                        base::RetainedRef(callback_and_context)));
   }
@@ -1326,9 +1317,12 @@ int GpuBenchmarking::RunMicroBenchmark(gin::Arguments* args) {
   std::unique_ptr<base::Value> value =
       V8ValueConverter::Create()->FromV8Value(arguments, v8_context);
   DCHECK(value);
+  if (!value->is_dict()) {
+    return 0;
+  }
 
   return context.layer_tree_host()->ScheduleMicroBenchmark(
-      name, base::Value::FromUniquePtrValue(std::move(value)),
+      name, std::move(*value).TakeDict(),
       base::BindOnce(&OnMicroBenchmarkCompleted,
                      base::RetainedRef(callback_and_context)));
 }
@@ -1343,9 +1337,12 @@ bool GpuBenchmarking::SendMessageToMicroBenchmark(
   std::unique_ptr<base::Value> value =
       V8ValueConverter::Create()->FromV8Value(message, v8_context);
   DCHECK(value);
+  if (!value->is_dict()) {
+    return false;
+  }
 
   return context.layer_tree_host()->SendMessageToMicroBenchmark(
-      id, base::Value::FromUniquePtrValue(std::move(value)));
+      id, std::move(*value).TakeDict());
 }
 
 bool GpuBenchmarking::HasGpuChannel() {
@@ -1448,7 +1445,7 @@ bool GpuBenchmarking::AddSwapCompletionEventListener(gin::Arguments* args) {
 
   auto callback_and_context = base::MakeRefCounted<CallbackAndContext>(
       args->isolate(), callback, context.web_frame()->MainWorldScriptContext());
-  context.web_frame()->FrameWidget()->NotifyPresentationTime(base::BindOnce(
+  context.frame_widget()->NotifyPresentationTime(base::BindOnce(
       &OnSwapCompletedHelper, base::RetainedRef(callback_and_context)));
   // Request a begin frame explicitly, as the test-api expects a 'swap' to
   // happen for the above queued swap promise even if there is no actual update.
@@ -1465,7 +1462,7 @@ int GpuBenchmarking::AddCoreAnimationStatusEventListener(gin::Arguments* args) {
 
   auto callback_and_context = base::MakeRefCounted<CallbackAndContext>(
       args->isolate(), callback, context.web_frame()->MainWorldScriptContext());
-  context.web_frame()->FrameWidget()->NotifyCoreAnimationErrorCode(
+  context.frame_widget()->NotifyCoreAnimationErrorCode(
       base::BindOnce(&OnSwapCompletedWithCoreAnimationErrorCode,
                      base::RetainedRef(callback_and_context)));
   // Request a begin frame explicitly, as the test-api expects a 'swap' to

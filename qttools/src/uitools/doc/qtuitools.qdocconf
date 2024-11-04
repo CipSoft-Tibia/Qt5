@@ -41,5 +41,3 @@ navigation.cppclassespage = "Qt UI Tools C++ Classes"
 
 # Highlighted example for Desktop category
 manifestmeta.highlighted.names = "QtUiTools/Text Finder"
-
-warninglimit = 0

@@ -20,11 +20,12 @@ import os
 import subprocess
 import sys
 import tempfile
+from binascii import unhexlify
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
 
-from google.protobuf import text_format
-from python.generators.diff_tests.testing import TestCase, TestType
+from google.protobuf import text_format, message_factory, descriptor_pool
+from python.generators.diff_tests.testing import TestCase, TestType, BinaryProto
 from python.generators.diff_tests.utils import (
     ColorFormatter, create_message_factory, get_env, get_trace_descriptor_path,
     read_all_tests, serialize_python_trace, serialize_textproto_trace)
@@ -148,6 +149,40 @@ class TestCaseRunner:
   trace_processor_path: str
   trace_descriptor_path: str
   colors: ColorFormatter
+  override_sql_module_paths: List[str]
+
+  def __output_to_text_proto(self, actual: str, out: BinaryProto) -> str:
+    """Deserializes a binary proto and returns its text representation.
+
+  Args:
+    actual: (string) HEX encoded serialized proto message
+    message_type: (string) Message type
+
+  Returns:
+    Text proto
+  """
+    try:
+      raw_data = unhexlify(actual.splitlines()[-1][1:-1])
+      out_path = os.path.dirname(self.trace_processor_path)
+      descriptor_paths = [
+          f.path
+          for f in os.scandir(
+              os.path.join(ROOT_DIR, out_path, 'gen', 'protos', 'perfetto',
+                           'trace_processor'))
+          if f.is_file() and os.path.splitext(f.name)[1] == '.descriptor'
+      ]
+      descriptor_paths.append(
+          os.path.join(ROOT_DIR, out_path, 'gen', 'protos', 'third_party',
+                       'pprof', 'profile.descriptor'))
+      proto = create_message_factory(descriptor_paths, out.message_type)()
+      proto.ParseFromString(raw_data)
+      try:
+        return out.post_processing(proto)
+      except:
+        return '<Proto post processing failed>'
+      return text_format.MessageToString(proto)
+    except:
+      return '<Invalid input for proto deserializaiton>'
 
   def __run_metrics_test(self, trace_path: str,
                          metrics_message_factory) -> TestResult:
@@ -173,6 +208,8 @@ class TestCaseRunner:
         tmp_perf_file.name,
         trace_path,
     ]
+    for sql_module_path in self.override_sql_module_paths:
+      cmd += ['--override-sql-module', sql_module_path]
     tp = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -205,7 +242,7 @@ class TestCaseRunner:
                       stderr.decode('utf8'), tp.returncode, perf_lines)
 
   # Run a query based Diff Test.
-  def __run_query_test(self, trace_path: str) -> TestResult:
+  def __run_query_test(self, trace_path: str, keep_query: bool) -> TestResult:
     # Fetch expected text.
     if self.test.expected_path:
       with open(self.test.expected_path, 'r') as expected_file:
@@ -233,6 +270,8 @@ class TestCaseRunner:
         tmp_perf_file.name,
         trace_path,
     ]
+    for sql_module_path in self.override_sql_module_paths:
+      cmd += ['--override-sql-module', sql_module_path]
     tp = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -240,15 +279,18 @@ class TestCaseRunner:
         env=get_env(ROOT_DIR))
     (stdout, stderr) = tp.communicate()
 
-    if not self.test.blueprint.is_query_file():
+    if not self.test.blueprint.is_query_file() and not keep_query:
       tmp_query_file.close()
       os.remove(tmp_query_file.name)
     perf_lines = [line.decode('utf8') for line in tmp_perf_file.readlines()]
     tmp_perf_file.close()
     os.remove(tmp_perf_file.name)
 
-    return TestResult(self.test,
-                      trace_path, cmd, expected, stdout.decode('utf8'),
+    actual = stdout.decode('utf8')
+    if self.test.blueprint.is_out_binaryproto():
+      actual = self.__output_to_text_proto(actual, self.test.blueprint.out)
+
+    return TestResult(self.test, trace_path, cmd, expected, actual,
                       stderr.decode('utf8'), tp.returncode, perf_lines)
 
   def __run(self, metrics_descriptor_paths: List[str],
@@ -293,7 +335,7 @@ class TestCaseRunner:
     str = f"{self.colors.yellow('[ RUN      ]')} {self.test.name}\n"
 
     if self.test.type == TestType.QUERY:
-      result = self.__run_query_test(trace_path)
+      result = self.__run_query_test(trace_path, keep_input)
     elif self.test.type == TestType.METRIC:
       result = self.__run_metrics_test(
           trace_path,
@@ -311,7 +353,8 @@ class TestCaseRunner:
 
     def write_cmdlines():
       res = ""
-      if not gen_trace_file:
+      if self.test.trace_path and (self.test.trace_path.endswith('.textproto')
+                                   or self.test.trace_path.endswith('.py')):
         res += 'Command to generate trace:\n'
         res += 'tools/serialize_test_trace.py '
         res += '--descriptor {} {} > {}\n'.format(
@@ -343,18 +386,18 @@ class TestCaseRunner:
 
   # Run a TestCase.
   def execute(self, extension_descriptor_paths: List[str],
-              metrics_descriptor: str, keep_input: bool,
+              metrics_descriptor_paths: List[str], keep_input: bool,
               rebase: bool) -> Tuple[str, str, TestResult]:
-    if metrics_descriptor:
-      metrics_descriptor_paths = [metrics_descriptor]
-    else:
+    if not metrics_descriptor_paths:
       out_path = os.path.dirname(self.trace_processor_path)
       metrics_protos_path = os.path.join(out_path, 'gen', 'protos', 'perfetto',
                                          'metrics')
       metrics_descriptor_paths = [
           os.path.join(metrics_protos_path, 'metrics.descriptor'),
           os.path.join(metrics_protos_path, 'chrome',
-                       'all_chrome_metrics.descriptor')
+                       'all_chrome_metrics.descriptor'),
+          os.path.join(metrics_protos_path, 'webview',
+                       'all_webview_metrics.descriptor')
       ]
     result_str = ""
 
@@ -376,8 +419,9 @@ class DiffTestsRunner:
   test_runners: List[TestCaseRunner]
 
   def __init__(self, name_filter: str, trace_processor_path: str,
-               trace_descriptor: str, no_colors: bool):
-    self.tests = read_all_tests(name_filter, ROOT_DIR)
+               trace_descriptor: str, no_colors: bool,
+               override_sql_module_paths: List[str], test_dir: str):
+    self.tests = read_all_tests(name_filter, test_dir)
     self.trace_processor_path = trace_processor_path
 
     out_path = os.path.dirname(self.trace_processor_path)
@@ -388,26 +432,21 @@ class DiffTestsRunner:
     for test in self.tests:
       self.test_runners.append(
           TestCaseRunner(test, self.trace_processor_path,
-                         self.trace_descriptor_path, color_formatter))
+                         self.trace_descriptor_path, color_formatter,
+                         override_sql_module_paths))
 
-  def run_all_tests(self, metrics_descriptor: str, keep_input: bool,
-                    rebase: bool) -> TestResults:
+  def run_all_tests(self, metrics_descriptor_paths: List[str],
+                    chrome_extensions: str, test_extensions: str,
+                    keep_input: bool, rebase: bool) -> TestResults:
     perf_results = []
     failures = []
     rebased = []
     test_run_start = datetime.datetime.now()
 
-    out_path = os.path.dirname(self.trace_processor_path)
-    chrome_extensions = os.path.join(out_path, 'gen', 'protos', 'third_party',
-                                     'chromium',
-                                     'chrome_track_event.descriptor')
-    test_extensions = os.path.join(out_path, 'gen', 'protos', 'perfetto',
-                                   'trace', 'test_extensions.descriptor')
-
     with concurrent.futures.ProcessPoolExecutor() as e:
       fut = [
           e.submit(test.execute, [chrome_extensions, test_extensions],
-                   metrics_descriptor, keep_input, rebase)
+                   metrics_descriptor_paths, keep_input, rebase)
           for test in self.test_runners
       ]
       for res in concurrent.futures.as_completed(fut):

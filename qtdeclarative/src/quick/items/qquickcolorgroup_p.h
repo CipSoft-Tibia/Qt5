@@ -22,6 +22,8 @@
 
 #include <QtQml/qqml.h>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 class QQuickPalette;
@@ -202,7 +204,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickColorGroup)
 
 #endif // QQUICKCOLORGROUP_H

@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #define QT_STATICPLUGIN
 #include <QtWidgets/qstyleplugin.h>
@@ -94,7 +94,9 @@ private slots:
     void libraryPaths_qt_plugin_path_2();
 #endif
 
+#ifdef QT_BUILD_INTERNAL
     void sendPostedEvents();
+#endif  // ifdef QT_BUILD_INTERNAL
 
     void thread();
     void desktopSettingsAware();
@@ -173,8 +175,9 @@ void tst_QApplication::sendEventsOnProcessEvents()
         QVERIFY(f.open(QIODevice::ReadOnly));
 
         QByteArray libs = f.readAll();
-        if (libs.contains("libqgtk3.") || libs.contains("libqgtk3TestInfix."))
+        if (libs.contains("libqgtk3.") || libs.contains("libqgtk3TestInfix.")) {
             QEXPECT_FAIL("", "Fails if qgtk3 (Glib) is loaded, see QTBUG-87137", Abort);
+        }
     }
 #endif
 
@@ -1140,6 +1143,7 @@ void tst_QApplication::libraryPaths_qt_plugin_path_2()
 }
 #endif
 
+#ifdef QT_BUILD_INTERNAL
 class SendPostedEventsTester : public QObject
 {
     Q_OBJECT
@@ -1161,7 +1165,7 @@ void SendPostedEventsTester::doTest()
     QPointer<SendPostedEventsTester> p = this;
     QApplication::postEvent(this, new QEvent(QEvent::User));
     // DeferredDelete should not be delivered until returning from this function
-    QApplication::postEvent(this, new QDeferredDeleteEvent());
+    deleteLater();
 
     QEventLoop eventLoop;
     QMetaObject::invokeMethod(&eventLoop, "quit", Qt::QueuedConnection);
@@ -1185,6 +1189,7 @@ void tst_QApplication::sendPostedEvents()
     (void) QCoreApplication::exec();
     QVERIFY(p.isNull());
 }
+#endif
 
 void tst_QApplication::thread()
 {
@@ -1329,9 +1334,6 @@ void DeleteLaterWidget::checkDeleteLater()
 
 void tst_QApplication::testDeleteLater()
 {
-#ifdef Q_OS_MAC
-    QSKIP("This test fails and then hangs on OS X, see QTBUG-24318");
-#endif
     int argc = 0;
     QApplication app(argc, nullptr);
     connect(&app, &QGuiApplication::lastWindowClosed, &app, &QCoreApplication::quit);
@@ -2573,7 +2575,13 @@ public:
         : QWidget(parent), showAgain(showAgain)
     {
         QTimer::singleShot(0, this, &ShowCloseShowWidget::doClose);
-        QTimer::singleShot(500, this, [] () { QCoreApplication::exit(1); });
+        int timeout = 500;
+#ifdef Q_OS_ANDROID
+        // On Android, CI Android emulator is not running HW accelerated graphics and can be slow,
+        // use a longer timeout to avoid flaky failures
+        timeout = 1000;
+#endif
+        QTimer::singleShot(timeout, this, [] () { QCoreApplication::exit(1); });
     }
 
 private slots:

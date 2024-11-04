@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qrasterwindow.h>
 #include <qpa/qwindowsysteminterface.h>
@@ -7,6 +7,7 @@
 #include <qpa/qplatformwindow.h>
 #include <private/qguiapplication_p.h>
 #include <private/qhighdpiscaling_p.h>
+#include <private/qwindow_p.h>
 #include <QtGui/QPainter>
 
 #include <QTest>
@@ -21,6 +22,12 @@
 #endif
 
 Q_LOGGING_CATEGORY(lcTests, "qt.gui.tests")
+
+static bool isPlatformEglFS()
+{
+    static const bool isEglFS = !QGuiApplication::platformName().compare(QLatin1String("eglfs"), Qt::CaseInsensitive);
+    return isEglFS;
+}
 
 class tst_QWindow: public QObject
 {
@@ -37,8 +44,9 @@ private slots:
     void resizeEventAfterResize();
     void exposeEventOnShrink_QTBUG54040();
     void mapGlobal();
-    void positioning_data();
     void positioning();
+    void framePositioning();
+    void framePositioning_data();
     void positioningDuringMinimized();
     void childWindowPositioning_data();
     void childWindowPositioning();
@@ -95,6 +103,8 @@ private slots:
     void enterLeaveOnWindowShowHide();
 #endif
     void windowExposedAfterReparent();
+    void childEvents();
+    void parentEvents();
 
 private:
     QPoint m_availableTopLeft;
@@ -112,6 +122,10 @@ static bool isPlatformWayland()
 
 void tst_QWindow::initTestCase()
 {
+#ifdef Q_OS_ANDROID
+    if (QNativeInterface::QAndroidApplication::sdkVersion() == 33)
+        QSKIP("Is flaky on Android 13 / RHEL 8.6 and 8.8 (QTQAINFRA-5606)");
+#endif
     // Size of reference window, 200 for < 2000, scale up for larger screens
     // to avoid Windows warnings about minimum size for decorated windows.
     int width = 200;
@@ -469,11 +483,16 @@ void tst_QWindow::resizeEventAfterResize()
     // Make sure we get a resizeEvent after calling resize
     window.resize(m_testWindowSize);
 
+    if (isPlatformEglFS())
+        QEXPECT_FAIL("", "eglfs windows are fullscreen by default.", Continue);
+
     QTRY_COMPARE(window.received(QEvent::Resize), 2);
 }
 
 void tst_QWindow::exposeEventOnShrink_QTBUG54040()
 {
+    if (isPlatformEglFS())
+        QSKIP("", "eglfs windows are fullscreen by default.", Continue);
     Window window;
     window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.setTitle(QTest::currentTestFunction());
@@ -492,17 +511,6 @@ void tst_QWindow::exposeEventOnShrink_QTBUG54040()
     exposeCount = window.received(QEvent::Expose);
     window.resize(window.width() - 5, window.height() - 5);
     QTRY_VERIFY(window.received(QEvent::Expose) > exposeCount);
-}
-
-void tst_QWindow::positioning_data()
-{
-    QTest::addColumn<Qt::WindowFlags>("windowflags");
-
-    QTest::newRow("default") << (Qt::Window | Qt::WindowTitleHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint | Qt::WindowFullscreenButtonHint);
-
-#ifdef Q_OS_MACOS
-    QTest::newRow("fake") << (Qt::Window | Qt::WindowTitleHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint);
-#endif
 }
 
 // Compare a window position that may go through scaling in the platform plugin with fuzz.
@@ -554,8 +562,7 @@ void tst_QWindow::positioning()
     // events, so set the width to suitably large value to avoid those.
     const QRect geometry(m_availableTopLeft + QPoint(80, 80), m_testWindowSize);
 
-    QFETCH(Qt::WindowFlags, windowflags);
-    Window window(windowflags);
+    Window window;
     window.setGeometry(QRect(m_availableTopLeft + QPoint(20, 20), m_testWindowSize));
     window.setFramePosition(m_availableTopLeft + QPoint(40, 40)); // Move window around before show, size must not change.
     QCOMPARE(window.geometry().size(), m_testWindowSize);
@@ -589,39 +596,64 @@ void tst_QWindow::positioning()
     QTRY_COMPARE(originalPos, window.position());
     QTRY_COMPARE(originalFramePos, window.framePosition());
     QTRY_COMPARE(originalMargins, window.frameMargins());
+}
 
-    // if our positioning is actually fully respected by the window manager
-    // test whether it correctly handles frame positioning as well
-    if (originalPos == geometry.topLeft() && (originalMargins.top() != 0 || originalMargins.left() != 0)) {
-        const QScreen *screen = window.screen();
-        const QRect availableGeometry = screen->availableGeometry();
-        const QPoint framePos = availableGeometry.center();
+void tst_QWindow::framePositioning_data()
+{
+    QTest::addColumn<bool>("showBeforePositioning");
 
-        window.reset();
-        const QPoint oldFramePos = window.framePosition();
-        window.setFramePosition(framePos);
+    QTest::newRow("before show") << false;
+    QTest::newRow("after show") << true;
+}
 
-        QTRY_VERIFY(window.received(QEvent::Move));
-        const int fuzz = int(QHighDpiScaling::factor(&window));
-        if (!qFuzzyCompareWindowPosition(window.framePosition(), framePos, fuzz)) {
-            qDebug() << "About to fail auto-test. Here is some additional information:";
-            qDebug() << "window.framePosition() == " << window.framePosition();
-            qDebug() << "old frame position == " << oldFramePos;
-            qDebug() << "We received " << window.received(QEvent::Move) << " move events";
-            qDebug() << "frame positions after each move event:" << window.m_framePositionsOnMove;
-        }
-        QTRY_VERIFY2(qFuzzyCompareWindowPosition(window.framePosition(), framePos, fuzz),
-                     qPrintable(msgPointMismatch(window.framePosition(), framePos)));
+void tst_QWindow::framePositioning()
+{
+    QFETCH(bool, showBeforePositioning);
+
+    Window window;
+    const QScreen *screen = window.screen();
+    const QRect availableGeometry = screen->availableGeometry();
+    const QPoint screenCenter = availableGeometry.center();
+
+    const QPoint oldFramePos = window.framePosition();
+    QMargins originalMargins;
+
+    if (showBeforePositioning) {
+        window.showNormal();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        originalMargins = window.frameMargins();
+        window.setFramePosition(screenCenter);
+    } else {
+        window.setFramePosition(screenCenter);
+        window.showNormal();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+    }
+
+    QTRY_VERIFY(window.received(QEvent::Move));
+    const int fuzz = int(QHighDpiScaling::factor(&window));
+    if (!qFuzzyCompareWindowPosition(window.framePosition(), screenCenter, fuzz)) {
+        qDebug() << "About to fail auto-test. Here is some additional information:";
+        qDebug() << "window.framePosition() == " << window.framePosition();
+        qDebug() << "old frame position == " << oldFramePos;
+        qDebug() << "We received " << window.received(QEvent::Move) << " move events";
+        qDebug() << "frame positions after each move event:" << window.m_framePositionsOnMove;
+    }
+    QTRY_VERIFY2(qFuzzyCompareWindowPosition(window.framePosition(), screenCenter, fuzz),
+                 qPrintable(msgPointMismatch(window.framePosition(), screenCenter)));
+
+    if (showBeforePositioning) {
+        // Repositioning should not affect existing margins
         QTRY_COMPARE(originalMargins, window.frameMargins());
         QCOMPARE(window.position(), window.framePosition() + QPoint(originalMargins.left(), originalMargins.top()));
-
-        // and back to regular positioning
-
-        window.reset();
-        window.setPosition(originalPos);
-        QTRY_VERIFY(window.received(QEvent::Move));
-        QTRY_COMPARE(originalPos, window.position());
     }
+
+    // Check that regular positioning still works
+
+    const QPoint screenCenterAdjusted = screenCenter + QPoint(50, 50);
+    window.reset();
+    window.setPosition(screenCenterAdjusted);
+    QTRY_VERIFY(window.received(QEvent::Move));
+    QTRY_COMPARE(screenCenterAdjusted, window.position());
 }
 
 void tst_QWindow::positioningDuringMinimized()
@@ -656,6 +688,8 @@ void tst_QWindow::childWindowPositioning_data()
 
 void tst_QWindow::childWindowPositioning()
 {
+    if (isPlatformEglFS())
+        QSKIP("eglfs does not support child windows.");
     const QPoint topLeftOrigin(0, 0);
 
     ColoredWindow topLevelWindowFirst(Qt::green);
@@ -2127,6 +2161,10 @@ void tst_QWindow::initialSize()
     w.setTitle(QLatin1String(QTest::currentTestFunction()));
     w.setWidth(m_testWindowSize.width());
     w.showNormal();
+
+    if (isPlatformEglFS())
+        QEXPECT_FAIL("", "eglfs windows are fullscreen by default.", Continue);
+
     QTRY_COMPARE(w.width(), m_testWindowSize.width());
     QTRY_VERIFY(w.height() > 0);
     }
@@ -2138,6 +2176,8 @@ void tst_QWindow::initialSize()
     w.showNormal();
 
     const QSize expectedSize = testSize;
+    if (isPlatformEglFS())
+        QEXPECT_FAIL("", "eglfs windows are fullscreen by default.", Continue);
     QTRY_COMPARE(w.size(), expectedSize);
     }
 }
@@ -2313,6 +2353,10 @@ void tst_QWindow::modalWindowPosition()
     window.setModality(Qt::WindowModal);
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    if (isPlatformEglFS())
+        QEXPECT_FAIL("", "eglfs windows are fullscreen by default.", Continue);
+
     QCOMPARE(window.geometry(), origGeo);
 }
 
@@ -2340,6 +2384,9 @@ void tst_QWindow::modalWindowEnterEventOnHide_QTBUG35109()
 
     if (isPlatformOffscreenOrMinimal())
         QSKIP("Can't test window focusing on offscreen/minimal");
+
+    if (isPlatformEglFS())
+        QSKIP("QCursor::setPos() is not supported on this platform");
 
     const QPoint center = QGuiApplication::primaryScreen()->availableGeometry().center();
 
@@ -2521,6 +2568,8 @@ void tst_QWindow::spuriousMouseMove()
         QSKIP("No enter events sent");
     if (platformName == QLatin1String("wayland"))
         QSKIP("Setting mouse cursor position is not possible on Wayland");
+    if (isPlatformEglFS())
+        QSKIP("QCursor::setPos() is not supported on this platform");
     const QRect screenGeometry = QGuiApplication::primaryScreen()->geometry();
     const QPoint center = screenGeometry.center();
     QCursor::setPos(center);
@@ -2835,11 +2884,11 @@ void tst_QWindow::stateChangeSignal()
           "On other operating systems, the signal may be emitted twice.");
 #endif
     QWindow w;
-    Q_ASSUME(connect (&w, &QWindow::windowStateChanged, [](Qt::WindowState s){qCDebug(lcTests) << "State change to" << s;}));
+    Q_ASSERT(connect (&w, &QWindow::windowStateChanged, [](Qt::WindowState s){qCDebug(lcTests) << "State change to" << s;}));
     QSignalSpy spy(&w, SIGNAL(windowStateChanged(Qt::WindowState)));
     unsigned short signalCount = 0;
     QList<Qt::WindowState> effectiveStates;
-    Q_ASSUME(connect(&w, &QWindow::windowStateChanged, [&effectiveStates](Qt::WindowState state)
+    Q_ASSERT(connect(&w, &QWindow::windowStateChanged, [&effectiveStates](Qt::WindowState state)
             { effectiveStates.append(state); }));
     // Part 1:
     // => test signal emission on programmatic state changes
@@ -2942,6 +2991,9 @@ void tst_QWindow::enterLeaveOnWindowShowHide()
     if (isPlatformWayland())
         QSKIP("Can't set cursor position and qWaitForWindowActive on Wayland");
 
+    if (isPlatformEglFS())
+        QSKIP("QCursor::setPos() is not supported on this platform");
+
     QFETCH(Qt::WindowType, windowType);
 
     class Window : public QWindow
@@ -3021,6 +3073,165 @@ void tst_QWindow::windowExposedAfterReparent()
     child.setParent(&parent);
     QCoreApplication::processEvents();
     QVERIFY(QTest::qWaitForWindowExposed(&child));
+}
+
+struct ParentWindow : public QWindow
+{
+    bool event(QEvent *event) override
+    {
+        [&]() -> void {
+            if (event->type() == QEvent::ChildWindowAdded
+             || event->type() == QEvent::ChildWindowRemoved) {
+                // We should not receive child events after the window has been destructed
+                QVERIFY(this->isWindowType());
+
+                auto *parentWindow = this;
+                auto *childEvent = static_cast<QChildWindowEvent*>(event);
+                auto *childWindow = childEvent->child();
+
+                if (event->type() == QEvent::ChildWindowAdded) {
+                    QVERIFY(childWindow->parent());
+                    QVERIFY(parentWindow->isAncestorOf(childWindow));
+                    if (childWindow->handle())
+                        QVERIFY(childWindow->handle()->parent() == parentWindow->handle());
+
+                } else {
+                    QVERIFY(!childWindow->parent());
+                    QVERIFY(!parentWindow->isAncestorOf(childWindow));
+                    if (childWindow->handle())
+                        QVERIFY(childWindow->handle()->parent() != parentWindow->handle());
+                }
+            }
+        }();
+
+        return QWindow::event(event);
+    }
+};
+
+void tst_QWindow::childEvents()
+{
+    ParentWindow parent;
+
+    {
+        // ChildAdded via constructor
+        QWindow constructorChild(&parent);
+        if (QTest::currentTestFailed()) return;
+        // ChildRemoved via destructor
+    }
+
+    if (QTest::currentTestFailed()) return;
+
+    // ChildAdded and ChildRemoved via setParent
+    QWindow child;
+    child.setParent(&parent);
+    if (QTest::currentTestFailed()) return;
+    child.setParent(nullptr);
+    if (QTest::currentTestFailed()) return;
+
+    parent.create();
+    child.create();
+
+    // ChildAdded and ChildRemoved after creation
+    child.setParent(&parent);
+    if (QTest::currentTestFailed()) return;
+    child.setParent(nullptr);
+    if (QTest::currentTestFailed()) return;
+}
+
+struct ChildWindowPrivate;
+struct ChildWindow : public QWindow
+{
+    ChildWindow(QWindow *parent = nullptr);
+};
+
+struct ChildWindowPrivate : public QWindowPrivate
+{
+    ChildWindowPrivate() : QWindowPrivate()
+    {
+        receiveParentEvents = true;
+    }
+};
+
+ChildWindow::ChildWindow(QWindow *parent)
+    : QWindow(*new ChildWindowPrivate, parent)
+{}
+
+struct ParentEventTester : public QObject
+{
+    bool eventFilter(QObject *object, QEvent *event) override
+    {
+        [&]() -> void {
+            if (event->type() == QEvent::ParentWindowAboutToChange
+             || event->type() == QEvent::ParentWindowChange) {
+                // We should not receive parent events after the window has been destructed
+                QVERIFY(object->isWindowType());
+                auto *window = static_cast<QWindow*>(object);
+
+                if (event->type() == QEvent::ParentWindowAboutToChange) {
+                    QVERIFY(window->parent() != nextExpectedParent);
+                    if (window->handle()) {
+                        QVERIFY(window->handle()->parent() !=
+                            (nextExpectedParent ? nextExpectedParent->handle() : nullptr));
+                    }
+                } else {
+                    QVERIFY(window->parent() == nextExpectedParent);
+                    if (window->handle()) {
+                        QVERIFY(window->handle()->parent() ==
+                            (nextExpectedParent ? nextExpectedParent->handle() : nullptr));
+                    }
+                }
+            }
+        }();
+
+        return QObject::eventFilter(object, event);
+    }
+
+    QWindow *nextExpectedParent = nullptr;
+};
+
+
+
+void tst_QWindow::parentEvents()
+{
+    QWindow parent;
+
+    {
+        ParentEventTester tester;
+
+        {
+            // We can't hook in early enough to get the parent change during
+            // QObject construction.
+            ChildWindow child(&parent);
+
+            // But we can observe the one during destruction
+            child.installEventFilter(&tester);
+            tester.nextExpectedParent = nullptr;
+        }
+    }
+    if (QTest::currentTestFailed()) return;
+
+    ParentEventTester tester;
+    ChildWindow child;
+    child.installEventFilter(&tester);
+
+    tester.nextExpectedParent = &parent;
+    child.setParent(&parent);
+    if (QTest::currentTestFailed()) return;
+
+    tester.nextExpectedParent = nullptr;
+    child.setParent(nullptr);
+    if (QTest::currentTestFailed()) return;
+
+    parent.create();
+    child.create();
+
+    tester.nextExpectedParent = &parent;
+    child.setParent(&parent);
+    if (QTest::currentTestFailed()) return;
+
+    tester.nextExpectedParent = nullptr;
+    child.setParent(nullptr);
+    if (QTest::currentTestFailed()) return;
 }
 
 #include <tst_qwindow.moc>

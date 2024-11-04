@@ -36,7 +36,7 @@ namespace {{native_namespace}} {
         {% for method in c_methods(type) %}
             {% set suffix = as_MethodSuffix(type.name, method.name) %}
 
-            {{as_cType(method.return_type.name)}} Native{{suffix}}(
+            {{as_cReturnType(method.return_type)}} Native{{suffix}}(
                 {{-as_cType(type.name)}} cSelf
                 {%- for arg in method.arguments -%}
                     , {{as_annotated_cType(arg)}}
@@ -55,6 +55,17 @@ namespace {{native_namespace}} {
                         auto {{varName}}_ = {{as_varName(arg.name)}};
                     {% endif %}
                 {%- endfor-%}
+
+                {% if method.autolock %}
+                    {% if type.name.get() != "device" %}
+                        auto device = self->GetDevice();
+                    {% else %}
+                        auto device = self;
+                    {% endif %}
+                    auto deviceLock(device->GetScopedLock());
+                {% else %}
+                    // This method is specified to not use AutoLock in json script.
+                {% endif %}
 
                 {% if method.return_type.name.canonical_case() != "void" %}
                     auto result =
@@ -164,16 +175,27 @@ namespace {{native_namespace}} {
         return result;
     }
 
-    static {{Prefix}}ProcTable gProcTable = {
+
+    template <typename... MemberPtrPairs>
+    constexpr {{Prefix}}ProcTable MakeProcTable(int, MemberPtrPairs... pairs) {
+        {{Prefix}}ProcTable procs = {};
+        ([&](auto& pair){
+            procs.*(pair.first) = pair.second;
+        }(pairs), ...);
+        return procs;
+    }
+
+    static {{Prefix}}ProcTable gProcTable = MakeProcTable(
+        /* unused */ 0
         {% for function in by_category["function"] %}
-            Native{{as_cppType(function.name)}},
+            , std::make_pair(&{{Prefix}}ProcTable::{{as_varName(function.name)}}, Native{{as_cppType(function.name)}})
         {% endfor %}
         {% for type in by_category["object"] %}
             {% for method in c_methods(type) %}
-                Native{{as_MethodSuffix(type.name, method.name)}},
+                , std::make_pair(&{{Prefix}}ProcTable::{{as_varName(type.name, method.name)}}, Native{{as_MethodSuffix(type.name, method.name)}})
             {% endfor %}
         {% endfor %}
-    };
+    );
 
     const {{Prefix}}ProcTable& GetProcsAutogen() {
         return gProcTable;

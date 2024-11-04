@@ -4,49 +4,48 @@
 cmake_minimum_required(VERSION 3.16)
 project(colorpaletteclient LANGUAGES CXX)
 
-if(NOT DEFINED INSTALL_EXAMPLESDIR)
-    set(INSTALL_EXAMPLESDIR "examples")
-endif()
-
-set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/demos/${PROJECT_NAME}")
-
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick)
-qt_standard_project_setup(REQUIRES 6.5)
+qt_standard_project_setup(REQUIRES 6.6)
 
 qt_add_executable(colorpaletteclient
     main.cpp
 )
-
-set(icon_files)
-foreach(icon IN ITEMS add delete edit file_upload login logout refresh)
-    foreach(scale IN ITEMS "" "@2" "@3" "@4")
-        message("icons/colorpaletteclient/20x20${scale}/${icon}.png")
-        list(APPEND icon_files "icons/colorpaletteclient/20x20${scale}/${icon}.png")
-    endforeach()
-endforeach()
 
 set_target_properties(colorpaletteclient PROPERTIES
     WIN32_EXECUTABLE TRUE
     MACOSX_BUNDLE TRUE
 )
 
-qt_add_resources(colorpaletteclient "theme" FILES
-    ${icon_files}
-    icons/colorpaletteclient/index.theme
-)
+add_subdirectory(QtExampleStyle)
 
 qt_add_qml_module(colorpaletteclient
     URI ColorPalette
-    VERSION 1.0
     QML_FILES
-        MainWindow.qml
+        ColorPalette/Main.qml
+        ColorPalette/ServerSelection.qml
+        ColorPalette/ColorView.qml
+        ColorPalette/ColorDialogEditor.qml
+        ColorPalette/ColorDialogDelete.qml
+        ColorPalette/UserMenu.qml
     SOURCES
         abstractresource.h
-        util.h util.cpp
         basiclogin.h basiclogin.cpp
         restservice.h restservice.cpp
         paginatedresource.h paginatedresource.cpp
-        restaccessmanager.h restaccessmanager.cpp
+    RESOURCES
+        icons/qt.png
+        icons/testserver.png
+        icons/userMask.svg
+        icons/close.svg
+        icons/delete.svg
+        icons/dots.svg
+        icons/edit.svg
+        icons/login.svg
+        icons/logout.svg
+        icons/ok.svg
+        icons/update.svg
+        icons/user.svg
+        icons/plus.svg
 )
 
 target_link_libraries(colorpaletteclient PRIVATE
@@ -57,7 +56,16 @@ target_link_libraries(colorpaletteclient PRIVATE
 )
 
 install(TARGETS colorpaletteclient
-    RUNTIME DESTINATION "${INSTALL_EXAMPLEDIR}"
-    BUNDLE DESTINATION "${INSTALL_EXAMPLEDIR}"
-    LIBRARY DESTINATION "${INSTALL_EXAMPLEDIR}"
+    BUNDLE  DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+
+qt_generate_deploy_qml_app_script(
+    TARGET colorpaletteclient
+    OUTPUT_SCRIPT deploy_script
+    MACOS_BUNDLE_POST_BUILD
+    NO_UNSUPPORTED_PLATFORM_ERROR
+    DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM
+)
+install(SCRIPT ${deploy_script})

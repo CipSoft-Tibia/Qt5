@@ -6,11 +6,11 @@
 #include "base/files/scoped_temp_dir.h"
 #include "base/test/scoped_feature_list.h"
 #include "content/browser/file_system_access/features.h"
-#include "content/browser/file_system_access/file_system_chooser_test_helpers.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/content_browser_test.h"
 #include "content/public/test/content_browser_test_utils.h"
+#include "content/public/test/file_system_chooser_test_helpers.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -45,7 +45,9 @@ class FileSystemAccessFileHandleImplBrowserTest : public ContentBrowserTest {
     EXPECT_TRUE(base::CreateTemporaryFileInDir(directory_path, &result));
     EXPECT_TRUE(base::WriteFile(result, contents));
 
-    ui::SelectFileDialog::SetFactory(new FakeSelectFileDialogFactory({result}));
+    ui::SelectFileDialog::SetFactory(
+        std::make_unique<FakeSelectFileDialogFactory>(
+            std::vector<base::FilePath>{result}));
     EXPECT_TRUE(NavigateToURL(shell(), test_url_));
     EXPECT_EQ(result.BaseName().AsUTF8Unsafe(),
               EvalJs(shell(),
@@ -61,7 +63,9 @@ class FileSystemAccessFileHandleImplBrowserTest : public ContentBrowserTest {
     EXPECT_TRUE(base::CreateTemporaryDirInDir(
         directory_path, FILE_PATH_LITERAL("test"), &result));
 
-    ui::SelectFileDialog::SetFactory(new FakeSelectFileDialogFactory({result}));
+    ui::SelectFileDialog::SetFactory(
+        std::make_unique<FakeSelectFileDialogFactory>(
+            std::vector<base::FilePath>{result}));
     EXPECT_TRUE(NavigateToURL(shell(), test_url_));
     EXPECT_EQ(result.BaseName().AsUTF8Unsafe(),
               EvalJs(shell(),
@@ -160,7 +164,8 @@ IN_PROC_BROWSER_TEST_F(FileSystemAccessFileHandleGetUniqueIdBrowserTest,
   }
 
   ui::SelectFileDialog::SetFactory(
-      new FakeSelectFileDialogFactory({file_path}));
+      std::make_unique<FakeSelectFileDialogFactory>(
+          std::vector<base::FilePath>{file_path}));
   EXPECT_TRUE(NavigateToURL(shell(), test_url_));
   EXPECT_EQ(file_path.BaseName().AsUTF8Unsafe(),
             EvalJs(shell(),

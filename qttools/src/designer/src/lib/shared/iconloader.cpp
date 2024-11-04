@@ -4,6 +4,7 @@
 #include "iconloader_p.h"
 
 #include <QtCore/qfile.h>
+#include <QtCore/qoperatingsystemversion.h>
 #include <QtGui/qicon.h>
 #include <QtGui/qpixmap.h>
 
@@ -13,7 +14,16 @@ using namespace Qt::StringLiterals;
 
 namespace qdesigner_internal {
 
-QDESIGNER_SHARED_EXPORT QIcon createIconSet(const QString &name)
+QDESIGNER_SHARED_EXPORT QIcon createIconSet(QIcon::ThemeIcon themeIcon,
+                                            QLatin1StringView name)
+{
+    return QOperatingSystemVersion::currentType() != QOperatingSystemVersion::MacOS
+           && QIcon::hasThemeIcon(themeIcon)
+        ? QIcon::fromTheme(themeIcon) : createIconSet(name);
+}
+
+template <class StringView>
+static inline QIcon createIconSetHelper(StringView name)
 {
     constexpr QLatin1StringView prefixes[] = {
         ":/qt-project.org/formeditor/images/"_L1,
@@ -31,7 +41,17 @@ QDESIGNER_SHARED_EXPORT QIcon createIconSet(const QString &name)
             return QIcon(f);
     }
 
-    return QIcon();
+    return {};
+}
+
+QDESIGNER_SHARED_EXPORT QIcon createIconSet(QStringView name)
+{
+    return createIconSetHelper(name);
+}
+
+QDESIGNER_SHARED_EXPORT QIcon createIconSet(QLatin1StringView name)
+{
+    return createIconSetHelper(name);
 }
 
 QDESIGNER_SHARED_EXPORT QIcon emptyIcon()

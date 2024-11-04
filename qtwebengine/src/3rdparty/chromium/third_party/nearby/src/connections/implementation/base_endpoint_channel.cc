@@ -49,36 +49,13 @@ ByteArray IntToBytes(std::int32_t value) {
   int_bytes[0] = static_cast<char>((value >> 24) & 0x0FF);
   int_bytes[1] = static_cast<char>((value >> 16) & 0x0FF);
   int_bytes[2] = static_cast<char>((value >> 8) & 0x0FF);
-  int_bytes[3] = static_cast<char>((value)&0x0FF);
+  int_bytes[3] = static_cast<char>((value) & 0x0FF);
 
   return ByteArray(int_bytes, sizeof(int_bytes));
 }
 
-ExceptionOr<ByteArray> ReadExactly(InputStream* reader, std::int64_t size) {
-  ByteArray buffer(size);
-  std::int64_t current_pos = 0;
-
-  while (current_pos < size) {
-    ExceptionOr<ByteArray> read_bytes = reader->Read(size - current_pos);
-    if (!read_bytes.ok()) {
-      return read_bytes;
-    }
-    ByteArray result = read_bytes.result();
-
-    if (result.Empty()) {
-      NEARBY_LOGS(WARNING) << __func__ << ": Empty result when reading bytes.";
-      return ExceptionOr<ByteArray>(Exception::kIo);
-    }
-
-    buffer.CopyAt(current_pos, result);
-    current_pos += result.size();
-  }
-
-  return ExceptionOr<ByteArray>(std::move(buffer));
-}
-
 ExceptionOr<std::int32_t> ReadInt(InputStream* reader) {
-  ExceptionOr<ByteArray> read_bytes = ReadExactly(reader, sizeof(std::int32_t));
+  ExceptionOr<ByteArray> read_bytes = reader->ReadExactly(sizeof(std::int32_t));
   if (!read_bytes.ok()) {
     return ExceptionOr<std::int32_t>(read_bytes.exception());
   }
@@ -147,7 +124,7 @@ ExceptionOr<ByteArray> BaseEndpointChannel::Read(
       return ExceptionOr<ByteArray>(Exception::kIo);
     }
 
-    ExceptionOr<ByteArray> read_bytes = ReadExactly(reader_, read_int.result());
+    ExceptionOr<ByteArray> read_bytes = reader_->ReadExactly(read_int.result());
     if (!read_bytes.ok()) {
       return read_bytes;
     }
@@ -288,6 +265,11 @@ void BaseEndpointChannel::Close() {
   {
     // In case channel is paused, resume it first thing.
     MutexLock lock(&is_paused_mutex_);
+    if (is_closed_) {
+      NEARBY_LOGS(VERBOSE) << "EndpointChannel already closed";
+      return;
+    }
+    is_closed_ = true;
     UnblockPausedWriter();
   }
   CloseIo();
@@ -371,6 +353,24 @@ void BaseEndpointChannel::DisableEncryption() {
   crypto_context_.reset();
 }
 
+bool BaseEndpointChannel::IsEncrypted() {
+  MutexLock crypto_lock(&crypto_mutex_);
+  return IsEncryptionEnabledLocked();
+}
+
+ExceptionOr<ByteArray> BaseEndpointChannel::TryDecrypt(const ByteArray& data) {
+  MutexLock crypto_lock(&crypto_mutex_);
+  if (!IsEncryptionEnabledLocked()) {
+    return Exception::kFailed;
+  }
+  std::unique_ptr<std::string> decrypted_data =
+      crypto_context_->DecodeMessageFromPeer(data.string_data());
+  if (decrypted_data) {
+    return ExceptionOr<ByteArray>(ByteArray(std::move(*decrypted_data)));
+  }
+  return Exception::kExecution;
+}
+
 bool BaseEndpointChannel::IsPaused() const {
   MutexLock lock(&is_paused_mutex_);
   return is_paused_;
@@ -436,6 +436,13 @@ void BaseEndpointChannel::UnblockPausedWriter() {
   // https://docs.oracle.com/javase/tutorial/essential/concurrency/guardmeth.html
   is_paused_ = false;
   is_paused_cond_.Notify();
+}
+
+std::unique_ptr<std::string> BaseEndpointChannel::EncodeMessageForTests(
+    absl::string_view data) {
+  MutexLock lock(&crypto_mutex_);
+  DCHECK(IsEncryptionEnabledLocked());
+  return crypto_context_->EncodeMessageToPeer(std::string(data));
 }
 
 }  // namespace connections

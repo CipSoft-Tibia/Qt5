@@ -20,9 +20,12 @@
 #include "dawn/common/GPUInfo.h"
 #include "dawn/common/Log.h"
 #include "dawn/common/SystemUtils.h"
-#include "dawn/native/ChainUtils_autogen.h"
+#include "dawn/native/CallbackTaskManager.h"
+#include "dawn/native/ChainUtils.h"
+#include "dawn/native/Device.h"
 #include "dawn/native/ErrorData.h"
 #include "dawn/native/Surface.h"
+#include "dawn/native/Toggles.h"
 #include "dawn/native/ValidationUtils_autogen.h"
 #include "dawn/platform/DawnPlatform.h"
 
@@ -31,8 +34,18 @@
 #include "dawn/native/VulkanBackend.h"
 #endif  // defined(DAWN_ENABLE_BACKEND_VULKAN)
 
+#if defined(DAWN_ENABLE_BACKEND_D3D11) || defined(DAWN_ENABLE_BACKEND_D3D12)
+#include "dawn/native/D3DBackend.h"
+#include "dawn/native/d3d/BackendD3D.h"
+#include "dawn/native/d3d/D3DError.h"
+#endif  // defined(DAWN_ENABLE_BACKEND_D3D11) || defined(DAWN_ENABLE_BACKEND_D3D12)
+
+#if defined(DAWN_ENABLE_BACKEND_OPENGL)
+#include "dawn/native/OpenGLBackend.h"
+#endif  // defined(DAWN_ENABLE_BACKEND_OPENGL)
+
 #if defined(DAWN_USE_X11)
-#include "dawn/native/XlibXcbFunctions.h"
+#include "dawn/native/X11Functions.h"
 #endif  // defined(DAWN_USE_X11)
 
 #include <optional>
@@ -41,6 +54,11 @@ namespace dawn::native {
 
 // Forward definitions of each backend's "Connect" function that creates new BackendConnection.
 // Conditionally compiled declarations are used to avoid using static constructors instead.
+#if defined(DAWN_ENABLE_BACKEND_D3D11)
+namespace d3d11 {
+BackendConnection* Connect(InstanceBase* instance);
+}
+#endif  // defined(DAWN_ENABLE_BACKEND_D3D11)
 #if defined(DAWN_ENABLE_BACKEND_D3D12)
 namespace d3d12 {
 BackendConnection* Connect(InstanceBase* instance);
@@ -69,30 +87,6 @@ BackendConnection* Connect(InstanceBase* instance);
 
 namespace {
 
-BackendsBitset GetEnabledBackends() {
-    BackendsBitset enabledBackends;
-#if defined(DAWN_ENABLE_BACKEND_NULL)
-    enabledBackends.set(wgpu::BackendType::Null);
-#endif  // defined(DAWN_ENABLE_BACKEND_NULL)
-#if defined(DAWN_ENABLE_BACKEND_D3D12)
-    enabledBackends.set(wgpu::BackendType::D3D12);
-#endif  // defined(DAWN_ENABLE_BACKEND_D3D12)
-#if defined(DAWN_ENABLE_BACKEND_METAL)
-    enabledBackends.set(wgpu::BackendType::Metal);
-#endif  // defined(DAWN_ENABLE_BACKEND_METAL)
-#if defined(DAWN_ENABLE_BACKEND_VULKAN)
-    enabledBackends.set(wgpu::BackendType::Vulkan);
-#endif  // defined(DAWN_ENABLE_BACKEND_VULKAN)
-#if defined(DAWN_ENABLE_BACKEND_DESKTOP_GL)
-    enabledBackends.set(wgpu::BackendType::OpenGL);
-#endif  // defined(DAWN_ENABLE_BACKEND_DESKTOP_GL)
-#if defined(DAWN_ENABLE_BACKEND_OPENGLES)
-    enabledBackends.set(wgpu::BackendType::OpenGLES);
-#endif  // defined(DAWN_ENABLE_BACKEND_OPENGLES)
-
-    return enabledBackends;
-}
-
 dawn::platform::CachingInterface* GetCachingInterface(dawn::platform::Platform* platform) {
     if (platform != nullptr) {
         return platform->GetCachingInterface();
@@ -110,35 +104,53 @@ InstanceBase* APICreateInstance(const InstanceDescriptor* descriptor) {
 
 // static
 Ref<InstanceBase> InstanceBase::Create(const InstanceDescriptor* descriptor) {
-    Ref<InstanceBase> instance = AcquireRef(new InstanceBase);
     static constexpr InstanceDescriptor kDefaultDesc = {};
     if (descriptor == nullptr) {
         descriptor = &kDefaultDesc;
     }
+
+    const DawnTogglesDescriptor* instanceTogglesDesc = nullptr;
+    FindInChain(descriptor->nextInChain, &instanceTogglesDesc);
+
+    // Set up the instance toggle state from toggles descriptor
+    TogglesState instanceToggles =
+        TogglesState::CreateFromTogglesDescriptor(instanceTogglesDesc, ToggleStage::Instance);
+    // By default disable the AllowUnsafeAPIs instance toggle, it will be inherited to adapters
+    // and devices created by this instance if not overriden.
+    instanceToggles.Default(Toggle::AllowUnsafeAPIs, false);
+
+    Ref<InstanceBase> instance = AcquireRef(new InstanceBase(instanceToggles));
     if (instance->ConsumedError(instance->Initialize(descriptor))) {
         return nullptr;
     }
     return instance;
 }
 
-InstanceBase::InstanceBase() = default;
+InstanceBase::InstanceBase(const TogglesState& instanceToggles) : mToggles(instanceToggles) {}
 
 InstanceBase::~InstanceBase() = default;
 
 void InstanceBase::WillDropLastExternalRef() {
     // InstanceBase uses RefCountedWithExternalCount to break refcycles.
     //
-    // InstanceBase holds Refs to AdapterBases it has discovered, which hold Refs back to the
-    // InstanceBase.
+    // InstanceBase holds backends which hold Refs to PhysicalDeviceBases discovered, which hold
+    // Refs back to the InstanceBase.
     // In order to break this cycle and prevent leaks, when the application drops the last external
     // ref and WillDropLastExternalRef is called, the instance clears out any member refs to
-    // adapters that hold back-refs to the instance - thus breaking any reference cycles.
-    mAdapters.clear();
+    // physical devices that hold back-refs to the instance - thus breaking any reference cycles.
+    mDeprecatedPhysicalDevices.clear();
+    for (auto& backend : mBackends) {
+        if (backend != nullptr) {
+            backend->ClearPhysicalDevices();
+        }
+    }
 }
 
 // TODO(crbug.com/dawn/832): make the platform an initialization parameter of the instance.
 MaybeError InstanceBase::Initialize(const InstanceDescriptor* descriptor) {
-    DAWN_TRY(ValidateSingleSType(descriptor->nextInChain, wgpu::SType::DawnInstanceDescriptor));
+    DAWN_TRY(ValidateSTypes(descriptor->nextInChain, {{wgpu::SType::DawnInstanceDescriptor},
+                                                      {wgpu::SType::DawnTogglesDescriptor}}));
+
     const DawnInstanceDescriptor* dawnDesc = nullptr;
     FindInChain(descriptor->nextInChain, &dawnDesc);
     if (dawnDesc != nullptr) {
@@ -156,9 +168,11 @@ MaybeError InstanceBase::Initialize(const InstanceDescriptor* descriptor) {
     }
     mRuntimeSearchPaths.push_back("");
 
+    mCallbackTaskManager = AcquireRef(new CallbackTaskManager());
+
     // Initialize the platform to the default for now.
     mDefaultPlatform = std::make_unique<dawn::platform::Platform>();
-    SetPlatform(mDefaultPlatform.get());
+    SetPlatform(dawnDesc != nullptr ? dawnDesc->platform : mDefaultPlatform.get());
 
     return {};
 }
@@ -170,140 +184,139 @@ void InstanceBase::APIRequestAdapter(const RequestAdapterOptions* options,
     if (options == nullptr) {
         options = &kDefaultOptions;
     }
-    auto result = RequestAdapterInternal(options);
-    if (result.IsError()) {
-        auto err = result.AcquireError();
-        std::string msg = err->GetFormattedMessage();
-        // TODO(crbug.com/dawn/1122): Call callbacks only on wgpuInstanceProcessEvents
-        callback(WGPURequestAdapterStatus_Error, nullptr, msg.c_str(), userdata);
+    auto adapters = EnumerateAdapters(options);
+    if (adapters.empty()) {
+        callback(WGPURequestAdapterStatus_Unavailable, nullptr, "No supported adapters.", userdata);
     } else {
-        Ref<AdapterBase> adapter = result.AcquireSuccess();
-        // TODO(crbug.com/dawn/1122): Call callbacks only on wgpuInstanceProcessEvents
-        callback(WGPURequestAdapterStatus_Success, ToAPI(adapter.Detach()), nullptr, userdata);
+        callback(WGPURequestAdapterStatus_Success, ToAPI(adapters[0].Detach()), nullptr, userdata);
     }
 }
 
-ResultOrError<Ref<AdapterBase>> InstanceBase::RequestAdapterInternal(
-    const RequestAdapterOptions* options) {
-    ASSERT(options != nullptr);
-    if (options->forceFallbackAdapter) {
-#if defined(DAWN_ENABLE_BACKEND_VULKAN)
-        if (GetEnabledBackends()[wgpu::BackendType::Vulkan]) {
-            dawn_native::vulkan::AdapterDiscoveryOptions vulkanOptions;
-            vulkanOptions.forceSwiftShader = true;
-
-            MaybeError result = DiscoverAdaptersInternal(&vulkanOptions);
-            if (result.IsError()) {
-                dawn::WarningLog() << absl::StrFormat(
-                    "Skipping Vulkan Swiftshader adapter because initialization failed: %s",
-                    result.AcquireError()->GetFormattedMessage());
-                return Ref<AdapterBase>(nullptr);
-            }
-        }
-#else
-        return Ref<AdapterBase>(nullptr);
-#endif  // defined(DAWN_ENABLE_BACKEND_VULKAN)
-    } else {
-        DiscoverDefaultAdapters();
-    }
-
-    wgpu::AdapterType preferredType;
-    switch (options->powerPreference) {
-        case wgpu::PowerPreference::LowPower:
-            preferredType = wgpu::AdapterType::IntegratedGPU;
-            break;
-        case wgpu::PowerPreference::Undefined:
-        case wgpu::PowerPreference::HighPerformance:
-            preferredType = wgpu::AdapterType::DiscreteGPU;
-            break;
-    }
-
-    std::optional<size_t> discreteGPUAdapterIndex;
-    std::optional<size_t> integratedGPUAdapterIndex;
-    std::optional<size_t> cpuAdapterIndex;
-    std::optional<size_t> unknownAdapterIndex;
-
-    for (size_t i = 0; i < mAdapters.size(); ++i) {
-        AdapterProperties properties;
-        mAdapters[i]->APIGetProperties(&properties);
-
-        if (options->forceFallbackAdapter) {
-            if (!gpu_info::IsGoogleSwiftshader(properties.vendorID, properties.deviceID)) {
-                continue;
-            }
-            return mAdapters[i];
-        }
-        if (properties.adapterType == preferredType) {
-            return mAdapters[i];
-        }
-        switch (properties.adapterType) {
-            case wgpu::AdapterType::DiscreteGPU:
-                discreteGPUAdapterIndex = i;
-                break;
-            case wgpu::AdapterType::IntegratedGPU:
-                integratedGPUAdapterIndex = i;
-                break;
-            case wgpu::AdapterType::CPU:
-                cpuAdapterIndex = i;
-                break;
-            case wgpu::AdapterType::Unknown:
-                unknownAdapterIndex = i;
-                break;
-        }
-    }
-
-    // For now, we always prefer the discrete GPU
-    if (discreteGPUAdapterIndex) {
-        return mAdapters[*discreteGPUAdapterIndex];
-    }
-    if (integratedGPUAdapterIndex) {
-        return mAdapters[*integratedGPUAdapterIndex];
-    }
-    if (cpuAdapterIndex) {
-        return mAdapters[*cpuAdapterIndex];
-    }
-    if (unknownAdapterIndex) {
-        return mAdapters[*unknownAdapterIndex];
-    }
-
-    return Ref<AdapterBase>(nullptr);
-}
-
-void InstanceBase::DiscoverDefaultAdapters() {
-    for (wgpu::BackendType b : IterateBitSet(GetEnabledBackends())) {
-        EnsureBackendConnection(b);
-    }
-
-    if (mDiscoveredDefaultAdapters) {
+void InstanceBase::DiscoverDefaultPhysicalDevices() {
+    dawn::WarningLog() << "DiscoverDefaultPhysicalDevices is deprecated. Call EnumerateAdapters or "
+                          "RequestAdapter instead.";
+    if (mDeprecatedDiscoveredDefaultPhysicalDevices) {
         return;
     }
+    mDeprecatedDiscoveredDefaultPhysicalDevices = true;
 
-    // Query and merge all default adapters for all backends
-    for (std::unique_ptr<BackendConnection>& backend : mBackends) {
-        std::vector<Ref<AdapterBase>> backendAdapters = backend->DiscoverDefaultAdapters();
-
-        for (Ref<AdapterBase>& adapter : backendAdapters) {
-            ASSERT(adapter->GetBackendType() == backend->GetType());
-            ASSERT(adapter->GetInstance() == this);
-            mAdapters.push_back(std::move(adapter));
-        }
-    }
-
-    mDiscoveredDefaultAdapters = true;
+    // Discover in compat mode so that all physical devices are found. All Core physical devices can
+    // also support compat.
+    RequestAdapterOptions defaultOptions = {};
+    defaultOptions.compatibilityMode = true;
+    DeprecatedDiscoverPhysicalDevices(&defaultOptions);
 }
 
-// This is just a wrapper around the real logic that uses Error.h error handling.
-bool InstanceBase::DiscoverAdapters(const AdapterDiscoveryOptionsBase* options) {
-    MaybeError result = DiscoverAdaptersInternal(options);
+bool InstanceBase::DiscoverPhysicalDevices(
+    const PhysicalDeviceDiscoveryOptionsBase* deprecatedOptions) {
+    dawn::WarningLog() << "DiscoverPhysicalDevices is deprecated. Call EnumerateAdapters or "
+                          "RequestAdapter instead.";
+    // Transform the deprecated options to RequestAdapterOptions.
+    RequestAdapterOptions adapterOptions = {};
+    adapterOptions.backendType = wgpu::BackendType(deprecatedOptions->backendType);
 
-    if (result.IsError()) {
-        dawn::WarningLog() << absl::StrFormat(
-            "Skipping %s adapter because initialization failed: %s", FromAPI(options->backendType),
-            result.AcquireError()->GetFormattedMessage());
-        return false;
+#if defined(DAWN_ENABLE_BACKEND_D3D11) || defined(DAWN_ENABLE_BACKEND_D3D12)
+    d3d::RequestAdapterOptionsLUID adapterOptionsLUID = {};
+#endif  // defined(DAWN_ENABLE_BACKEND_D3D11) || defined(DAWN_ENABLE_BACKEND_D3D12)
+
+#if defined(DAWN_ENABLE_BACKEND_OPENGL)
+    opengl::RequestAdapterOptionsGetGLProc glGetProcOptions = {};
+#endif  // defined(DAWN_ENABLE_BACKEND_OPENGL)
+
+    switch (adapterOptions.backendType) {
+#if defined(DAWN_ENABLE_BACKEND_D3D11) || defined(DAWN_ENABLE_BACKEND_D3D12)
+        case wgpu::BackendType::D3D11:
+        case wgpu::BackendType::D3D12: {
+            if (IDXGIAdapter* dxgiAdapter =
+                    static_cast<const d3d::PhysicalDeviceDiscoveryOptions*>(deprecatedOptions)
+                        ->dxgiAdapter.Get()) {
+                DXGI_ADAPTER_DESC desc;
+                if (ConsumedErrorAndWarnOnce(
+                        CheckHRESULT(dxgiAdapter->GetDesc(&desc), "IDXGIAdapter::GetDesc"))) {
+                    return false;
+                }
+                adapterOptionsLUID.adapterLUID = desc.AdapterLuid;
+                adapterOptions.nextInChain = &adapterOptionsLUID;
+            }
+            break;
+        }
+#endif  // defined(DAWN_ENABLE_BACKEND_D3D11) || defined(DAWN_ENABLE_BACKEND_D3D12)
+
+#if defined(DAWN_ENABLE_BACKEND_OPENGL)
+        case wgpu::BackendType::OpenGL:
+        case wgpu::BackendType::OpenGLES:
+            glGetProcOptions.getProc =
+                static_cast<const opengl::PhysicalDeviceDiscoveryOptions*>(deprecatedOptions)
+                    ->getProc;
+            adapterOptions.nextInChain = &glGetProcOptions;
+            break;
+#endif  // defined(DAWN_ENABLE_BACKEND_OPENGL)
+
+#if defined(DAWN_ENABLE_BACKEND_VULKAN)
+        case wgpu::BackendType::Vulkan:
+            adapterOptions.forceFallbackAdapter =
+                static_cast<const vulkan::PhysicalDeviceDiscoveryOptions*>(deprecatedOptions)
+                    ->forceSwiftShader;
+            break;
+#endif  // defined(DAWN_ENABLE_BACKEND_VULKAN)
+
+        default:
+            break;
     }
-
+    DeprecatedDiscoverPhysicalDevices(&adapterOptions);
     return true;
+}
+
+void InstanceBase::DeprecatedDiscoverPhysicalDevices(const RequestAdapterOptions* options) {
+    for (auto physicalDevice : EnumeratePhysicalDevices(options)) {
+        // Keep mDeprecatedPhysicalDevices current with discovered physical devices,
+        // while avoiding duplicates. There shouldn't be many so an O(n^2) loop is OK.
+        bool found = false;
+        for (const auto& other : mDeprecatedPhysicalDevices) {
+            if (other.Get() == physicalDevice.Get()) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            mDeprecatedPhysicalDevices.push_back(physicalDevice);
+        }
+    }
+}
+
+Ref<AdapterBase> InstanceBase::CreateAdapter(Ref<PhysicalDeviceBase> physicalDevice,
+                                             FeatureLevel featureLevel,
+                                             const DawnTogglesDescriptor* requiredAdapterToggles,
+                                             wgpu::PowerPreference powerPreference) const {
+    // Set up toggles state for default adapter from given toggles descriptor and inherit from
+    // instance toggles.
+    TogglesState adapterToggles =
+        TogglesState::CreateFromTogglesDescriptor(requiredAdapterToggles, ToggleStage::Adapter);
+    adapterToggles.InheritFrom(mToggles);
+    // Set up forced and default adapter toggles for selected physical device.
+    physicalDevice->SetupBackendAdapterToggles(&adapterToggles);
+
+    return AcquireRef(
+        new AdapterBase(std::move(physicalDevice), featureLevel, adapterToggles, powerPreference));
+}
+
+std::vector<Ref<AdapterBase>> InstanceBase::GetAdapters() const {
+    std::vector<Ref<AdapterBase>> adapters;
+    for (const auto& physicalDevice : mDeprecatedPhysicalDevices) {
+        for (FeatureLevel featureLevel : {FeatureLevel::Compatibility, FeatureLevel::Core}) {
+            if (physicalDevice->SupportsFeatureLevel(featureLevel)) {
+                // GetAdapters is deprecated, just set up default toggles state. Use
+                // EnumerateAdapters instead.
+                adapters.push_back(CreateAdapter(physicalDevice, featureLevel, nullptr,
+                                                 wgpu::PowerPreference::Undefined));
+            }
+        }
+    }
+    return adapters;
+}
+
+const TogglesState& InstanceBase::GetTogglesState() const {
+    return mToggles;
 }
 
 const ToggleInfo* InstanceBase::GetToggleInfo(const char* toggleName) {
@@ -315,23 +328,55 @@ Toggle InstanceBase::ToggleNameToEnum(const char* toggleName) {
 }
 
 const FeatureInfo* InstanceBase::GetFeatureInfo(wgpu::FeatureName feature) {
-    return mFeaturesInfo.GetFeatureInfo(feature);
+    Feature f = FromAPI(feature);
+    if (f == Feature::InvalidEnum) {
+        return nullptr;
+    }
+    return &kFeatureNameAndInfoList[f];
 }
 
-const std::vector<Ref<AdapterBase>>& InstanceBase::GetAdapters() const {
-    return mAdapters;
+std::vector<Ref<AdapterBase>> InstanceBase::EnumerateAdapters(
+    const RequestAdapterOptions* options) {
+    if (options == nullptr) {
+        // Default path that returns all WebGPU core adapters on the system with default toggles.
+        RequestAdapterOptions defaultOptions = {};
+        return EnumerateAdapters(&defaultOptions);
+    }
+
+    const DawnTogglesDescriptor* togglesDesc = nullptr;
+    FindInChain(options->nextInChain, &togglesDesc);
+
+    FeatureLevel featureLevel =
+        options->compatibilityMode ? FeatureLevel::Compatibility : FeatureLevel::Core;
+    std::vector<Ref<AdapterBase>> adapters;
+    for (const auto& physicalDevice : EnumeratePhysicalDevices(options)) {
+        ASSERT(physicalDevice->SupportsFeatureLevel(featureLevel));
+        adapters.push_back(
+            CreateAdapter(physicalDevice, featureLevel, togglesDesc, options->powerPreference));
+    }
+    return SortAdapters(std::move(adapters), options);
 }
 
-void InstanceBase::EnsureBackendConnection(wgpu::BackendType backendType) {
-    if (mBackendsConnected[backendType]) {
-        return;
+size_t InstanceBase::GetPhysicalDeviceCountForTesting() const {
+    size_t count = mDeprecatedPhysicalDevices.size();
+    for (auto& backend : mBackends) {
+        if (backend != nullptr) {
+            count += backend->GetPhysicalDeviceCountForTesting();
+        }
+    }
+    return count;
+}
+
+BackendConnection* InstanceBase::GetBackendConnection(wgpu::BackendType backendType) {
+    if (mBackendsTried[backendType]) {
+        return mBackends[backendType].get();
     }
 
     auto Register = [this](BackendConnection* connection, wgpu::BackendType expectedType) {
         if (connection != nullptr) {
             ASSERT(connection->GetType() == expectedType);
             ASSERT(connection->GetInstance() == this);
-            mBackends.push_back(std::unique_ptr<BackendConnection>(connection));
+            mBackends[connection->GetType()] = std::unique_ptr<BackendConnection>(connection);
         }
     };
 
@@ -341,6 +386,12 @@ void InstanceBase::EnsureBackendConnection(wgpu::BackendType backendType) {
             Register(null::Connect(this), wgpu::BackendType::Null);
             break;
 #endif  // defined(DAWN_ENABLE_BACKEND_NULL)
+
+#if defined(DAWN_ENABLE_BACKEND_D3D11)
+        case wgpu::BackendType::D3D11:
+            Register(d3d11::Connect(this), wgpu::BackendType::D3D11);
+            break;
+#endif  // defined(DAWN_ENABLE_BACKEND_D3D11)
 
 #if defined(DAWN_ENABLE_BACKEND_D3D12)
         case wgpu::BackendType::D3D12:
@@ -374,41 +425,39 @@ void InstanceBase::EnsureBackendConnection(wgpu::BackendType backendType) {
 #endif  // defined(DAWN_ENABLE_BACKEND_OPENGLES)
 
         default:
-            UNREACHABLE();
+            break;
     }
 
-    mBackendsConnected.set(backendType);
+    mBackendsTried.set(backendType);
+    return mBackends[backendType].get();
 }
 
-MaybeError InstanceBase::DiscoverAdaptersInternal(const AdapterDiscoveryOptionsBase* options) {
-    wgpu::BackendType backendType = static_cast<wgpu::BackendType>(options->backendType);
-    DAWN_TRY(ValidateBackendType(backendType));
+std::vector<Ref<PhysicalDeviceBase>> InstanceBase::EnumeratePhysicalDevices(
+    const RequestAdapterOptions* options) {
+    ASSERT(options);
 
-    if (!GetEnabledBackends()[backendType]) {
-        return DAWN_VALIDATION_ERROR("%s not supported.", backendType);
+    BackendsBitset backendsToFind;
+    if (options->backendType != wgpu::BackendType::Undefined) {
+        backendsToFind = {};
+        if (!ConsumedErrorAndWarnOnce(ValidateBackendType(options->backendType))) {
+            backendsToFind.set(options->backendType);
+        }
+    } else {
+        backendsToFind.set();
     }
 
-    EnsureBackendConnection(backendType);
+    std::vector<Ref<PhysicalDeviceBase>> discoveredPhysicalDevices;
+    for (wgpu::BackendType b : IterateBitSet(backendsToFind)) {
+        BackendConnection* backend = GetBackendConnection(b);
 
-    bool foundBackend = false;
-    for (std::unique_ptr<BackendConnection>& backend : mBackends) {
-        if (backend->GetType() != backendType) {
-            continue;
-        }
-        foundBackend = true;
-
-        std::vector<Ref<AdapterBase>> newAdapters;
-        DAWN_TRY_ASSIGN(newAdapters, backend->DiscoverAdapters(options));
-
-        for (Ref<AdapterBase>& adapter : newAdapters) {
-            ASSERT(adapter->GetBackendType() == backend->GetType());
-            ASSERT(adapter->GetInstance() == this);
-            mAdapters.push_back(std::move(adapter));
+        if (backend != nullptr) {
+            std::vector<Ref<PhysicalDeviceBase>> physicalDevices =
+                mBackends[b]->DiscoverPhysicalDevices(options);
+            discoveredPhysicalDevices.insert(discoveredPhysicalDevices.end(),
+                                             physicalDevices.begin(), physicalDevices.end());
         }
     }
-
-    DAWN_INVALID_IF(!foundBackend, "%s not available.", backendType);
-    return {};
+    return discoveredPhysicalDevices;
 }
 
 bool InstanceBase::ConsumedError(MaybeError maybeError) {
@@ -417,6 +466,17 @@ bool InstanceBase::ConsumedError(MaybeError maybeError) {
         return true;
     }
     return false;
+}
+
+bool InstanceBase::ConsumedErrorAndWarnOnce(MaybeError maybeErr) {
+    if (!maybeErr.IsError()) {
+        return false;
+    }
+    std::string message = maybeErr.AcquireError()->GetFormattedMessage();
+    if (warningMessages.insert(message).second) {
+        dawn::WarningLog() << message;
+    }
+    return true;
 }
 
 bool InstanceBase::IsBackendValidationEnabled() const {
@@ -472,19 +532,45 @@ BlobCache* InstanceBase::GetBlobCache(bool enabled) {
 }
 
 uint64_t InstanceBase::GetDeviceCountForTesting() const {
-    return mDeviceCountForTesting.load();
+    std::lock_guard<std::mutex> lg(mDevicesListMutex);
+    return mDevicesList.size();
 }
 
-void InstanceBase::IncrementDeviceCountForTesting() {
-    mDeviceCountForTesting++;
+void InstanceBase::AddDevice(DeviceBase* device) {
+    std::lock_guard<std::mutex> lg(mDevicesListMutex);
+    mDevicesList.insert(device);
 }
 
-void InstanceBase::DecrementDeviceCountForTesting() {
-    mDeviceCountForTesting--;
+void InstanceBase::RemoveDevice(DeviceBase* device) {
+    std::lock_guard<std::mutex> lg(mDevicesListMutex);
+    mDevicesList.erase(device);
+}
+
+bool InstanceBase::APIProcessEvents() {
+    std::vector<Ref<DeviceBase>> devices;
+    {
+        std::lock_guard<std::mutex> lg(mDevicesListMutex);
+        for (auto device : mDevicesList) {
+            devices.push_back(device);
+        }
+    }
+
+    bool hasMoreEvents = false;
+    for (auto device : devices) {
+        hasMoreEvents = device->APITick() || hasMoreEvents;
+    }
+
+    mCallbackTaskManager->Flush();
+
+    return hasMoreEvents || !mCallbackTaskManager->IsEmpty();
 }
 
 const std::vector<std::string>& InstanceBase::GetRuntimeSearchPaths() const {
     return mRuntimeSearchPaths;
+}
+
+const Ref<CallbackTaskManager>& InstanceBase::GetCallbackTaskManager() const {
+    return mCallbackTaskManager;
 }
 
 void InstanceBase::ConsumeError(std::unique_ptr<ErrorData> error) {
@@ -492,12 +578,12 @@ void InstanceBase::ConsumeError(std::unique_ptr<ErrorData> error) {
     dawn::ErrorLog() << error->GetFormattedMessage();
 }
 
-const XlibXcbFunctions* InstanceBase::GetOrCreateXlibXcbFunctions() {
+const X11Functions* InstanceBase::GetOrLoadX11Functions() {
 #if defined(DAWN_USE_X11)
-    if (mXlibXcbFunctions == nullptr) {
-        mXlibXcbFunctions = std::make_unique<XlibXcbFunctions>();
+    if (mX11Functions == nullptr) {
+        mX11Functions = std::make_unique<X11Functions>();
     }
-    return mXlibXcbFunctions.get();
+    return mX11Functions.get();
 #else
     UNREACHABLE();
 #endif  // defined(DAWN_USE_X11)

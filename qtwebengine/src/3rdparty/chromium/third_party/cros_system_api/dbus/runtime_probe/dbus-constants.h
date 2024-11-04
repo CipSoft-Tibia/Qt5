@@ -14,9 +14,6 @@ const char kRuntimeProbeServiceName[] = "org.chromium.RuntimeProbe";
 const char kProbeCategoriesMethod[] = "ProbeCategories";
 const char kGetKnownComponentsMethod[] = "GetKnownComponents";
 
-// Constants
-const auto kTypeWireless = "wireless";
-
 }  // namespace runtime_probe
 
 #endif  // SYSTEM_API_DBUS_RUNTIME_PROBE_DBUS_CONSTANTS_H_

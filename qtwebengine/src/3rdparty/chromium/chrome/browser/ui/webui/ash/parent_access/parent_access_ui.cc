@@ -8,6 +8,8 @@
 #include <string>
 #include <utility>
 
+#include "ash/constants/ash_features.h"
+#include "ash/webui/common/trusted_types_util.h"
 #include "base/strings/stringprintf.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
@@ -24,6 +26,7 @@
 #include "content/public/browser/web_ui_data_source.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "services/network/public/mojom/content_security_policy.mojom.h"
+#include "ui/webui/color_change_listener/color_change_handler.h"
 
 namespace ash {
 
@@ -57,6 +60,12 @@ void ParentAccessUI::BindInterface(
       std::move(receiver), identity_manager, ParentAccessDialog::GetInstance());
 }
 
+void ParentAccessUI::BindInterface(
+    mojo::PendingReceiver<color_change_listener::mojom::PageHandler> receiver) {
+  color_provider_handler_ = std::make_unique<ui::ColorChangeHandler>(
+      web_ui()->GetWebContents(), std::move(receiver));
+}
+
 parent_access_ui::mojom::ParentAccessUIHandler*
 ParentAccessUI::GetHandlerForTest() {
   return mojo_api_handler_.get();
@@ -65,16 +74,16 @@ ParentAccessUI::GetHandlerForTest() {
 void ParentAccessUI::SetUpResources() {
   content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
       Profile::FromWebUI(web_ui()), chrome::kChromeUIParentAccessHost);
+  ash::EnableTrustedTypesCSP(source);
 
-  // The Polymer JS bundle requires this at the moment because it sets innerHTML
-  // on an element, which violates the Trusted Types CSP.
-  source->DisableTrustedTypesCSP();
   source->EnableReplaceI18nInJS();
 
   // Forward data to the WebUI.
   source->AddResourcePath("parent_access_controller.js",
                           IDR_PARENT_ACCESS_CONTROLLER_JS);
   source->AddResourcePath("parent_access_app.js", IDR_PARENT_ACCESS_APP_JS);
+  source->AddResourcePath("parent_access_template.js",
+                          IDR_PARENT_ACCESS_TEMPLATE_JS);
   source->AddResourcePath("parent_access_ui.js", IDR_PARENT_ACCESS_UI_JS);
   source->AddResourcePath("parent_access_ui_handler.js",
                           IDR_PARENT_ACCESS_UI_HANDLER_JS);
@@ -83,14 +92,26 @@ void ParentAccessUI::SetUpResources() {
                           IDR_LOCAL_WEB_APPROVALS_AFTER_JS);
   source->AddResourcePath("flows/extension_approvals_disabled.js",
                           IDR_EXTENSION_APPROVALS_DISABLED_JS);
+  source->AddResourcePath("flows/extension_approvals_before.js",
+                          IDR_EXTENSION_APPROVALS_BEFORE_JS);
+  source->AddResourcePath("flows/extension_approvals_after.js",
+                          IDR_EXTENSION_APPROVALS_AFTER_JS);
+  source->AddResourcePath("flows/extension_permission.js",
+                          IDR_EXTENSION_APPROVALS_EXTENSION_PERMISSION_JS);
+  source->AddResourcePath("flows/extension_approvals_template.js",
+                          IDR_EXTENSION_APPROVALS_TEMPLATE_JS);
   source->AddResourcePath("parent_access_before.js",
                           IDR_PARENT_ACCESS_BEFORE_JS);
   source->AddResourcePath("parent_access_disabled.js",
                           IDR_PARENT_ACCESS_DISABLED_JS);
+  source->AddResourcePath("parent_access_error.js", IDR_PARENT_ACCESS_ERROR_JS);
+  source->AddResourcePath("parent_access_offline.js",
+                          IDR_PARENT_ACCESS_OFFLINE_JS);
   source->AddResourcePath("parent_access_ui.mojom-webui.js",
                           IDR_PARENT_ACCESS_UI_MOJOM_WEBUI_JS);
   source->AddResourcePath("webview_manager.js",
                           IDR_PARENT_ACCESS_WEBVIEW_MANAGER_JS);
+  source->AddResourcePath("utils.js", IDR_PARENT_ACCESS_UTILS_JS);
   source->AddResourcePath("parent_access_screen.js",
                           IDR_PARENT_ACCESS_SCREEN_JS);
   source->AddResourcePaths(
@@ -101,10 +122,13 @@ void ParentAccessUI::SetUpResources() {
                           IDR_PARENT_ACCESS_REQUEST_APPROVAL_DARK_SVG);
 
   source->UseStringsJs();
+  source->AddBoolean("isParentAccessJellyEnabled",
+                     features::IsParentAccessJellyEnabled());
   source->SetDefaultResource(IDR_PARENT_ACCESS_HTML);
 
   static constexpr webui::LocalizedString kLocalizedStrings[] = {
       {"pageTitle", IDS_PARENT_ACCESS_PAGE_TITLE},
+      {"closeButtonTitle", IDS_PARENT_ACCESS_CLOSE_BUTTON_TITLE},
       {"approveButtonText", IDS_PARENT_ACCESS_AFTER_APPROVE_BUTTON},
       {"denyButtonText", IDS_PARENT_ACCESS_AFTER_DENY_BUTTON},
       {"askInPersonButtonText", IDS_PARENT_ACCESS_ASK_IN_PERSON_BUTTON},
@@ -124,7 +148,20 @@ void ParentAccessUI::SetUpResources() {
       {"extensionApprovalsDisabledTitle",
        IDS_PARENT_ACCESS_EXTENSION_APPROVALS_DISABLED_TITLE},
       {"extensionApprovalsDisabledSubtitle",
-       IDS_PARENT_ACCESS_EXTENSION_APPROVALS_DISABLED_SUBTITLE}};
+       IDS_PARENT_ACCESS_EXTENSION_APPROVALS_DISABLED_SUBTITLE},
+      {"extensionApprovalsBeforeTitle",
+       IDS_PARENT_ACCESS_EXTENSION_APPROVALS_BEFORE_TITLE},
+      {"extensionApprovalsBeforeSubtitle",
+       IDS_PARENT_ACCESS_EXTENSION_APPROVALS_BEFORE_SUBTITLE},
+      {"extensionApprovalsAfterTitle",
+       IDS_PARENT_ACCESS_EXTENSION_APPROVALS_AFTER_TITLE},
+      {"extensionApprovalsPermissionsHeader",
+       IDS_PARENT_ACCESS_EXTENSION_PERMISSIONS_HEADER},
+      {"extensionApprovalsShowDetailsButton",
+       IDS_PARENT_ACCESS_EXTENSION_PERMISSION_SHOW_DETAILS},
+      {"extensionApprovalsHideDetailsButton",
+       IDS_PARENT_ACCESS_EXTENSION_PERMISSION_HIDE_DETAILS}};
+
   source->AddLocalizedStrings(kLocalizedStrings);
 
   // Enables use of test_loader.html

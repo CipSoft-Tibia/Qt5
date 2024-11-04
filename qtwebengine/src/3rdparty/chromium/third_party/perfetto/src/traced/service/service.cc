@@ -43,6 +43,10 @@
 #include <sys/system_properties.h>
 #endif
 
+#if PERFETTO_BUILDFLAG(PERFETTO_ZLIB)
+#include "src/tracing/core/zlib_compressor.h"
+#endif
+
 namespace perfetto {
 namespace {
 #if defined(PERFETTO_SET_SOCKET_PERMISSIONS)
@@ -158,7 +162,11 @@ int PERFETTO_EXPORT_ENTRYPOINT ServiceMain(int argc, char** argv) {
 
   base::UnixTaskRunner task_runner;
   std::unique_ptr<ServiceIPCHost> svc;
-  svc = ServiceIPCHost::CreateInstance(&task_runner);
+  TracingService::InitOpts init_opts = {};
+#if PERFETTO_BUILDFLAG(PERFETTO_ZLIB)
+  init_opts.compressor_fn = &ZlibCompressFn;
+#endif
+  svc = ServiceIPCHost::CreateInstance(&task_runner, init_opts);
 
   // When built as part of the Android tree, the two socket are created and
   // bound by init and their fd number is passed in two env variables.
@@ -176,14 +184,19 @@ int PERFETTO_EXPORT_ENTRYPOINT ServiceMain(int argc, char** argv) {
     started = svc->Start(std::move(producer_fd), std::move(consumer_fd));
 #endif
   } else {
-    remove(GetProducerSocket());
+    auto producer_sockets = TokenizeProducerSockets(GetProducerSocket());
+    for (const auto& producer_socket : producer_sockets) {
+      remove(producer_socket.c_str());
+    }
     remove(GetConsumerSocket());
-    started = svc->Start(GetProducerSocket(), GetConsumerSocket());
+    started = svc->Start(producer_sockets, GetConsumerSocket());
 
     if (!producer_socket_group.empty()) {
 #if defined(PERFETTO_SET_SOCKET_PERMISSIONS)
-      SetSocketPermissions(GetProducerSocket(), producer_socket_group,
-                           producer_socket_mode);
+      for (const auto& producer_socket : producer_sockets) {
+        SetSocketPermissions(producer_socket, producer_socket_group,
+                             producer_socket_mode);
+      }
       SetSocketPermissions(GetConsumerSocket(), consumer_socket_group,
                            consumer_socket_mode);
 #else

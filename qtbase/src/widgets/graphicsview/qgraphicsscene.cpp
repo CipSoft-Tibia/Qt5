@@ -216,6 +216,8 @@
 #include <private/qgesturemanager_p.h>
 #include <private/qpathclipper_p.h>
 
+#include <QtCore/qpointer.h>
+
 // #define GESTURE_DEBUG
 #ifndef GESTURE_DEBUG
 # define DEBUG if (0) qDebug
@@ -1004,7 +1006,7 @@ void QGraphicsScenePrivate::ungrabMouse(QGraphicsItem *item, bool itemIsDying)
 void QGraphicsScenePrivate::clearMouseGrabber()
 {
     if (!mouseGrabberItems.isEmpty())
-        mouseGrabberItems.first()->ungrabMouse();
+        mouseGrabberItems.constFirst()->ungrabMouse();
     lastMouseGrabberItem = nullptr;
 }
 
@@ -3251,6 +3253,7 @@ bool QGraphicsScene::event(QEvent *event)
         // ### this should only be cleared if we received a new mouse move event,
         // which relies on us fixing the replay mechanism in QGraphicsView.
         d->cachedItemsUnderMouse.clear();
+        break;
     default:
         break;
     }

@@ -19,6 +19,8 @@
 
 #if defined(_WIN32)
 #include <winsock2.h>
+#else
+#include <sys/socket.h>
 #endif  // defined(_WIN32)
 
 namespace quic {
@@ -26,9 +28,11 @@ namespace quic {
 #if defined(_WIN32)
 using SocketFd = SOCKET;
 inline constexpr SocketFd kInvalidSocketFd = INVALID_SOCKET;
+inline constexpr int kSocketErrorMsgSize = WSAEMSGSIZE;
 #else
 using SocketFd = int;
 inline constexpr SocketFd kInvalidSocketFd = -1;
+inline constexpr int kSocketErrorMsgSize = EMSGSIZE;
 #endif
 
 // Low-level platform-agnostic socket operations. Closely follows the behavior

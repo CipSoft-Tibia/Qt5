@@ -37,29 +37,41 @@ AbstractViewer *ViewerFactory::viewer(QFile *file) const
     Q_ASSERT(file);
 
     const QFileInfo info(*file);
-    QMimeDatabase db;
-    const auto mimeType = db.mimeTypeForFile(info);
 
-    AbstractViewer *viewer = ViewerFactory::viewer(mimeType);
+    // Find via extension
+    AbstractViewer *viewer = ViewerFactory::viewer(info.suffix());
+
+    // Find via mime type
     if (!viewer) {
-        qWarning() << "Mime type" << mimeType.name() << "not supported.";
-        return nullptr;
+        QMimeDatabase db;
+        const auto mimeType = db.mimeTypeForFile(info);
+        viewer = ViewerFactory::viewer(mimeType);
+        if (!viewer) {
+            qWarning() << "Mime type" << mimeType.name() << "not supported.";
+            return nullptr;
+        }
     }
 
+    Q_ASSERT(viewer);
     viewer->init(file, m_displayWidget, m_mainWindow);
     return viewer;
 }
 
+//! [loader]
 void ViewerFactory::loadViewerPlugins()
 {
     if (!m_viewers.isEmpty())
         return;
+//! [loader]
 
+//! [static]
     // Load static plugins
     const QObjectList &staticPlugins = QPluginLoader::staticInstances();
     for (auto *plugin : staticPlugins)
         addViewer(plugin);
+//! [static]
 
+//! [shared]
     // Load shared plugins
     QDir pluginsDir = QDir(QApplication::applicationDirPath());
 
@@ -84,6 +96,7 @@ void ViewerFactory::loadViewerPlugins()
 #endif
     }
 }
+//! [shared]
 
 void ViewerFactory::unload()
 {
@@ -163,6 +176,16 @@ AbstractViewer *ViewerFactory::viewer(const QMimeType &mimeType) const
     return viewer;
 }
 
+AbstractViewer *ViewerFactory::viewer(const QString &extension) const
+{
+    const ViewerList &viewerList = viewers();
+    for (AbstractViewer *viewer : viewerList) {
+        if (viewer->supportedExtensions().contains(extension))
+            return viewer;
+    }
+    return nullptr;
+}
+
 AbstractViewer *ViewerFactory::defaultViewer() const
 {
     switch (m_defaultPolicy) {
@@ -183,7 +206,13 @@ QStringList ViewerFactory::supportedMimeTypes() const
         return mimeTypes;
 
     const ViewerList &viewerList = viewers();
-    for (auto viewer : viewerList)
+    for (auto viewer : viewerList) {
         mimeTypes.append(viewer->supportedMimeTypes());
+        const QStringList &extensions = viewer->supportedExtensions();
+        if (extensions.isEmpty())
+            continue;
+        mimeTypes << (QObject::tr("Plus extensions: %1").arg(extensions.join(","_L1)));
+    }
+
     return mimeTypes;
 }

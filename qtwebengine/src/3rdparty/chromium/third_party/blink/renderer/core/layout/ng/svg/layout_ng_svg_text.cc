@@ -8,19 +8,37 @@
 
 #include "third_party/blink/renderer/core/editing/position_with_affinity.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_fragment_item.h"
+#include "third_party/blink/renderer/core/layout/ng/ng_block_node.h"
+#include "third_party/blink/renderer/core/layout/ng/ng_constraint_space_builder.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_physical_box_fragment.h"
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_inline_text.h"
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_resource_container.h"
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_root.h"
 #include "third_party/blink/renderer/core/layout/svg/svg_layout_support.h"
 #include "third_party/blink/renderer/core/layout/svg/svg_resources.h"
+#include "third_party/blink/renderer/core/layout/svg/transform_helper.h"
 #include "third_party/blink/renderer/core/layout/svg/transformed_hit_test_location.h"
+#include "third_party/blink/renderer/core/paint/clip_path_clipper.h"
 #include "third_party/blink/renderer/core/paint/paint_info.h"
 #include "third_party/blink/renderer/core/paint/scoped_svg_paint_state.h"
 #include "third_party/blink/renderer/core/paint/svg_model_object_painter.h"
 #include "third_party/blink/renderer/core/svg/svg_text_element.h"
 
 namespace blink {
+
+namespace {
+
+const LayoutNGSVGText* FindTextRoot(const LayoutObject* start) {
+  DCHECK(start);
+  for (; start; start = start->Parent()) {
+    if (const auto* ng_text = DynamicTo<LayoutNGSVGText>(start)) {
+      return ng_text;
+    }
+  }
+  return nullptr;
+}
+
+}  // namespace
 
 LayoutNGSVGText::LayoutNGSVGText(Element* element)
     : LayoutNGBlockFlowMixin<LayoutSVGBlock>(element),
@@ -36,6 +54,16 @@ void LayoutNGSVGText::StyleDidChange(StyleDifference diff,
     diff.SetNeedsFullLayout();
   LayoutNGBlockFlowMixin<LayoutSVGBlock>::StyleDidChange(diff, old_style);
   SVGResources::UpdatePaints(*this, old_style, StyleRef());
+
+  if (old_style) {
+    const ComputedStyle& style = StyleRef();
+    if (transform_uses_reference_box_ && !needs_transform_update_) {
+      if (TransformHelper::CheckReferenceBoxDependencies(*old_style, style)) {
+        SetNeedsTransformUpdate();
+        SetNeedsPaintPropertyUpdate();
+      }
+    }
+  }
 }
 
 void LayoutNGSVGText::WillBeDestroyed() {
@@ -186,7 +214,7 @@ void LayoutNGSVGText::Paint(const PaintInfo& paint_info) const {
   }
 }
 
-void LayoutNGSVGText::UpdateBlockLayout(bool relayout_children) {
+void LayoutNGSVGText::UpdateLayout() {
   NOT_DESTROYED();
 
   // If the root layout size changed (eg. window size changes), or the screen
@@ -201,23 +229,40 @@ void LayoutNGSVGText::UpdateBlockLayout(bool relayout_children) {
     // should be fine. We update the transform again after computing
     // the bounding box below, and after that we clear the
     // |needs_transform_update_| flag.
-    if (needs_transform_update_) {
-      local_transform_ =
-          GetElement()->CalculateTransform(SVGElement::kIncludeMotionTransform);
-    }
-
+    UpdateTransformBeforeLayout();
     UpdateFont();
     SetNeedsCollectInlines(true);
     needs_text_metrics_update_ = false;
   }
 
-  gfx::RectF old_boundaries = ObjectBoundingBox();
+  const gfx::RectF old_boundaries = ObjectBoundingBox();
 
-  UpdateNGBlockLayout();
+  const ComputedStyle& style = StyleRef();
+  NGConstraintSpaceBuilder builder(
+      style.GetWritingMode(), style.GetWritingDirection(),
+      /* is_new_fc */ true, /* adjust_inline_size_if_needed */ false);
+  builder.SetAvailableSize(LogicalSize());
+  NGBlockNode(this).Layout(builder.ToConstraintSpace());
+
   needs_update_bounding_box_ = true;
 
-  gfx::RectF boundaries = ObjectBoundingBox();
+  const gfx::RectF boundaries = ObjectBoundingBox();
   const bool bounds_changed = old_boundaries != boundaries;
+  bool update_parent_boundaries = false;
+  if (bounds_changed) {
+    update_parent_boundaries = true;
+  }
+  if (UpdateAfterSvgLayout(bounds_changed)) {
+    update_parent_boundaries = true;
+  }
+
+  // If our bounds changed, notify the parents.
+  if (update_parent_boundaries) {
+    SetNeedsBoundariesUpdate();
+  }
+}
+
+bool LayoutNGSVGText::UpdateAfterSvgLayout(bool bounds_changed) {
   if (bounds_changed) {
     // Invalidate all resources of this client if our reference box changed.
     SVGResourceInvalidator resource_invalidator(*this);
@@ -225,11 +270,8 @@ void LayoutNGSVGText::UpdateBlockLayout(bool relayout_children) {
     resource_invalidator.InvalidatePaints();
   }
 
-  // If our bounds changed, notify the parents.
-  if (UpdateTransformAfterLayout(bounds_changed) || bounds_changed)
-    SetNeedsBoundariesUpdate();
-
   UpdateTransformAffectsVectorEffect();
+  return UpdateTransformAfterLayout(bounds_changed);
 }
 
 bool LayoutNGSVGText::IsObjectBoundingBoxValid() const {
@@ -266,9 +308,15 @@ gfx::RectF LayoutNGSVGText::ObjectBoundingBox() const {
 gfx::RectF LayoutNGSVGText::StrokeBoundingBox() const {
   NOT_DESTROYED();
   gfx::RectF box = ObjectBoundingBox();
-  if (box.IsEmpty())
+  if (box.IsEmpty()) {
     return gfx::RectF();
+  }
   return SVGLayoutSupport::ExtendTextBBoxWithStroke(*this, box);
+}
+
+gfx::RectF LayoutNGSVGText::DecoratedBoundingBox() const {
+  NOT_DESTROYED();
+  return StrokeBoundingBox();
 }
 
 gfx::RectF LayoutNGSVGText::VisualRectInLocalSVGCoordinates() const {
@@ -283,12 +331,13 @@ gfx::RectF LayoutNGSVGText::VisualRectInLocalSVGCoordinates() const {
 void LayoutNGSVGText::AbsoluteQuads(Vector<gfx::QuadF>& quads,
                                     MapCoordinatesFlags mode) const {
   NOT_DESTROYED();
-  quads.push_back(LocalToAbsoluteQuad(gfx::QuadF(StrokeBoundingBox()), mode));
+  quads.push_back(
+      LocalToAbsoluteQuad(gfx::QuadF(DecoratedBoundingBox()), mode));
 }
 
 gfx::RectF LayoutNGSVGText::LocalBoundingBoxRectForAccessibility() const {
   NOT_DESTROYED();
-  return StrokeBoundingBox();
+  return DecoratedBoundingBox();
 }
 
 bool LayoutNGSVGText::NodeAtPoint(HitTestResult& result,
@@ -300,9 +349,9 @@ bool LayoutNGSVGText::NodeAtPoint(HitTestResult& result,
   if (!local_location)
     return false;
 
-  if (!SVGLayoutSupport::IntersectsClipPath(*this, ObjectBoundingBox(),
-                                            *local_location))
+  if (HasClipPath() && !ClipPathClipper::HitTest(*this, *local_location)) {
     return false;
+  }
 
   return LayoutNGBlockFlowMixin<LayoutSVGBlock>::NodeAtPoint(
       result, *local_location, accumulated_offset, phase);
@@ -349,6 +398,25 @@ void LayoutNGSVGText::SetNeedsTextMetricsUpdate() {
 bool LayoutNGSVGText::NeedsTextMetricsUpdate() const {
   NOT_DESTROYED();
   return needs_text_metrics_update_;
+}
+
+LayoutNGSVGText* LayoutNGSVGText::LocateLayoutSVGTextAncestor(
+    LayoutObject* start) {
+  return const_cast<LayoutNGSVGText*>(FindTextRoot(start));
+}
+
+const LayoutNGSVGText* LayoutNGSVGText::LocateLayoutSVGTextAncestor(
+    const LayoutObject* start) {
+  return FindTextRoot(start);
+}
+
+// static
+void LayoutNGSVGText::NotifySubtreeStructureChanged(
+    LayoutObject* object,
+    LayoutInvalidationReasonForTracing reason) {
+  if (auto* ng_text = LocateLayoutSVGTextAncestor(object)) {
+    ng_text->SubtreeStructureChanged(reason);
+  }
 }
 
 }  // namespace blink

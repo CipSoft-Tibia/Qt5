@@ -646,10 +646,13 @@ static int dvvideo_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     }
 
     s->frame            = frame;
-    frame->key_frame    = 1;
+    frame->flags |= AV_FRAME_FLAG_KEY;
     frame->pict_type    = AV_PICTURE_TYPE_I;
     avctx->pix_fmt      = s->sys->pix_fmt;
     avctx->framerate    = av_inv_q(s->sys->time_base);
+    avctx->bit_rate     = av_rescale_q(s->sys->frame_size,
+                                       (AVRational) { 8, 1 },
+                                       s->sys->time_base);
 
     ret = ff_set_dimensions(avctx, s->sys->width, s->sys->height);
     if (ret < 0)
@@ -670,14 +673,14 @@ static int dvvideo_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     /* Determine the codec's field order from the packet */
     if ( *vsc_pack == DV_VIDEO_CONTROL ) {
         if (avctx->height == 720) {
-            frame->interlaced_frame = 0;
-            frame->top_field_first = 0;
+            frame->flags &= ~AV_FRAME_FLAG_INTERLACED;
+            frame->flags &= ~AV_FRAME_FLAG_TOP_FIELD_FIRST;
         } else if (avctx->height == 1080) {
-            frame->interlaced_frame = 1;
-            frame->top_field_first = (vsc_pack[3] & 0x40) == 0x40;
+            frame->flags |= AV_FRAME_FLAG_INTERLACED;
+            frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST * ((vsc_pack[3] & 0x40) == 0x40);
         } else {
-            frame->interlaced_frame = (vsc_pack[3] & 0x10) == 0x10;
-            frame->top_field_first = !(vsc_pack[3] & 0x40);
+            frame->flags |= AV_FRAME_FLAG_INTERLACED * ((vsc_pack[3] & 0x10) == 0x10);
+            frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST * !(vsc_pack[3] & 0x40);
         }
     }
 

@@ -9,6 +9,7 @@
 #include "include/core/SkImage.h"
 #include "include/core/SkShader.h"
 #include "include/core/SkString.h"
+#include "include/private/base/SkTArray.h"
 #include "include/utils/SkCamera.h"
 #include "src/effects/SkEmbossMaskFilter.h"
 #include "tools/DecodeFile.h"
@@ -16,9 +17,11 @@
 #include "tools/timer/TimeUtils.h"
 #include "tools/viewer/Slide.h"
 
+using namespace skia_private;
+
 namespace {
 class CameraSlide : public Slide {
-    SkTArray<sk_sp<SkShader>> fShaders;
+    TArray<sk_sp<SkShader>> fShaders;
     int fShaderIndex = 0;
     bool fFrontFace = false;
     SkScalar fRX = 0;

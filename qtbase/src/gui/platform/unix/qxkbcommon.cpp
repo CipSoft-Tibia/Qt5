@@ -17,8 +17,6 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcXkbcommon, "qt.xkbcommon")
-
 static int keysymToQtKey_internal(xkb_keysym_t keysym, Qt::KeyboardModifiers modifiers,
                                   xkb_state *state, xkb_keycode_t code,
                                   bool superAsMeta, bool hyperAsMeta);
@@ -601,10 +599,24 @@ static const Qt::KeyboardModifiers ModsTbl[] = {
     Qt::NoModifier                                              // Fall-back to raw Key_*, for non-latin1 kb layouts
 };
 
+/*
+    Compatibility until all sub modules have transitioned to new API below
+*/
 QList<int> QXkbCommon::possibleKeys(xkb_state *state, const QKeyEvent *event,
                                     bool superAsMeta, bool hyperAsMeta)
 {
     QList<int> result;
+    auto keyCombinations = possibleKeyCombinations(state, event, superAsMeta, hyperAsMeta);
+    for (auto keyCombination : keyCombinations)
+        result << keyCombination.toCombined();
+
+    return result;
+}
+
+QList<QKeyCombination> QXkbCommon::possibleKeyCombinations(xkb_state *state, const QKeyEvent *event,
+                                    bool superAsMeta, bool hyperAsMeta)
+{
+    QList<QKeyCombination> result;
     quint32 keycode = event->nativeScanCode();
     if (!keycode)
         return result;
@@ -618,7 +630,7 @@ QList<int> QXkbCommon::possibleKeys(xkb_state *state, const QKeyEvent *event,
     ScopedXKBState scopedXkbQueryState(xkb_state_new(keymap));
     xkb_state *queryState = scopedXkbQueryState.get();
     if (!queryState) {
-        qCWarning(lcXkbcommon) << Q_FUNC_INFO << "failed to compile xkb keymap";
+        qCWarning(lcQpaKeyMapper) << Q_FUNC_INFO << "failed to compile xkb keymap";
         return result;
     }
     // get kb state from the master state and update the temporary state
@@ -644,7 +656,7 @@ QList<int> QXkbCommon::possibleKeys(xkb_state *state, const QKeyEvent *event,
 
     int baseQtKey = keysymToQtKey_internal(sym, modifiers, queryState, keycode, superAsMeta, hyperAsMeta);
     if (baseQtKey)
-        result += (baseQtKey + int(modifiers));
+        result += QKeyCombination::fromCombined(baseQtKey + int(modifiers));
 
     xkb_mod_index_t shiftMod = xkb_keymap_mod_get_index(keymap, "Shift");
     xkb_mod_index_t altMod = xkb_keymap_mod_get_index(keymap, "Alt");
@@ -690,8 +702,9 @@ QList<int> QXkbCommon::possibleKeys(xkb_state *state, const QKeyEvent *event,
             // catch only more specific shortcuts, i.e. Ctrl+Shift+= also generates Ctrl++ and +,
             // but Ctrl++ is more specific than +, so we should skip the last one
             bool ambiguous = false;
-            for (int shortcut : std::as_const(result)) {
-                if (int(shortcut & ~Qt::KeyboardModifierMask) == qtKey && (shortcut & mods) == mods) {
+            for (auto keyCombination : std::as_const(result)) {
+                if (keyCombination.key() == qtKey
+                    && (keyCombination.keyboardModifiers() & mods) == mods) {
                     ambiguous = true;
                     break;
                 }
@@ -699,7 +712,7 @@ QList<int> QXkbCommon::possibleKeys(xkb_state *state, const QKeyEvent *event,
             if (ambiguous)
                 continue;
 
-            result += (qtKey + int(mods));
+            result += QKeyCombination::fromCombined(qtKey + int(mods));
         }
     }
 
@@ -731,7 +744,7 @@ void QXkbCommon::verifyHasLatinLayout(xkb_keymap *keymap)
     // selected layouts is irrelevant. Properly functioning desktop environments
     // handle this behind the scenes, even if no latin key based layout has been
     // explicitly listed in the selected layouts.
-    qCDebug(lcXkbcommon, "no keyboard layouts with latin keys present");
+    qCDebug(lcQpaKeyMapper, "no keyboard layouts with latin keys present");
 }
 
 xkb_keysym_t QXkbCommon::lookupLatinKeysym(xkb_state *state, xkb_keycode_t keycode)
@@ -805,7 +818,7 @@ void QXkbCommon::setXkbContext(QPlatformInputContext *inputContext, struct xkb_c
         QMetaMethod method = inputContext->metaObject()->method(methodIndex);
         Q_ASSERT(method.isValid());
         if (!method.isValid())
-            qCWarning(lcXkbcommon) << normalizedSignature << "not found on" << inputContextClassName;
+            qCWarning(lcQpaKeyMapper) << normalizedSignature << "not found on" << inputContextClassName;
         return method;
     }();
 

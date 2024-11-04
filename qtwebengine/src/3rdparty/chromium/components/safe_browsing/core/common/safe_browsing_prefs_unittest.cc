@@ -34,6 +34,14 @@ class SafeBrowsingPrefsTest : public ::testing::Test {
     prefs_.registry()->RegisterBooleanPref(
         prefs::kSafeBrowsingExtendedReportingOptInAllowed, true);
     prefs_.registry()->RegisterListPref(prefs::kSafeBrowsingAllowlistDomains);
+    prefs_.registry()->RegisterBooleanPref(
+        prefs::kRealTimeDownloadProtectionRequestAllowedByPolicy, true);
+    prefs_.registry()->RegisterBooleanPref(
+        prefs::kSafeBrowsingCsdPhishingProtectionAllowedByPolicy, true);
+    prefs_.registry()->RegisterBooleanPref(
+        prefs::kSafeBrowsingExtensionProtectionAllowedByPolicy, true);
+    prefs_.registry()->RegisterBooleanPref(
+        prefs::kHashPrefixRealTimeChecksAllowedByPolicy, true);
   }
 
   void ResetPrefs(bool scout_reporting) {
@@ -54,6 +62,47 @@ class SafeBrowsingPrefsTest : public ::testing::Test {
   }
   TestingPrefServiceSimple prefs_;
 };
+
+TEST_F(SafeBrowsingPrefsTest,
+       TailoredSecuritySyncFlowLastRunTimeIsInitialized) {
+  TestingPrefServiceSimple prefs;
+  RegisterProfilePrefs(prefs.registry());
+  EXPECT_EQ(prefs.GetTime(prefs::kTailoredSecuritySyncFlowLastRunTime),
+            base::Time());
+}
+
+TEST_F(SafeBrowsingPrefsTest,
+       TailoredSecuritySyncLastUserInteractionStateIsInitialized) {
+  TestingPrefServiceSimple prefs;
+  RegisterProfilePrefs(prefs.registry());
+  EXPECT_EQ(
+      prefs.GetValue(prefs::kTailoredSecuritySyncFlowLastUserInteractionState),
+      TailoredSecurityRetryState::UNSET);
+}
+
+TEST_F(SafeBrowsingPrefsTest,
+       TailoredSecurityNextSyncFlowTimestampIsInitialized) {
+  TestingPrefServiceSimple prefs;
+  RegisterProfilePrefs(prefs.registry());
+  EXPECT_EQ(prefs.GetTime(prefs::kTailoredSecurityNextSyncFlowTimestamp),
+            base::Time());
+}
+
+TEST_F(SafeBrowsingPrefsTest, TailoredSecuritySyncFlowRetryStateIsInitialized) {
+  TestingPrefServiceSimple prefs;
+  RegisterProfilePrefs(prefs.registry());
+  EXPECT_EQ(prefs.GetValue(prefs::kTailoredSecuritySyncFlowRetryState),
+            TailoredSecurityRetryState::UNSET);
+}
+
+TEST_F(SafeBrowsingPrefsTest,
+       TailoredSecuritySyncUserObservedOutcomeUnsetTimestampIsInitialized) {
+  TestingPrefServiceSimple prefs;
+  RegisterProfilePrefs(prefs.registry());
+  EXPECT_EQ(prefs.GetTime(
+                prefs::kTailoredSecuritySyncFlowObservedOutcomeUnsetTimestamp),
+            base::Time());
+}
 
 TEST_F(SafeBrowsingPrefsTest, GetSafeBrowsingExtendedReportingLevel) {
   // By Default, extended reporting is off.
@@ -113,6 +162,23 @@ TEST_F(SafeBrowsingPrefsTest, EnhancedProtection) {
   }
 }
 
+TEST_F(SafeBrowsingPrefsTest, InitializesEsbProtegoPingWithTokenLastLogTime) {
+  TestingPrefServiceSimple prefs;
+  safe_browsing::RegisterProfilePrefs(prefs.registry());
+  EXPECT_EQ(
+      prefs.GetTime(prefs::kSafeBrowsingEsbProtegoPingWithTokenLastLogTime),
+      base::Time());
+}
+
+TEST_F(SafeBrowsingPrefsTest,
+       InitializesEsbProtegoPingWithoutTokenLastLogTime) {
+  TestingPrefServiceSimple prefs;
+  safe_browsing::RegisterProfilePrefs(prefs.registry());
+  EXPECT_EQ(
+      prefs.GetTime(prefs::kSafeBrowsingEsbProtegoPingWithoutTokenLastLogTime),
+      base::Time());
+}
+
 TEST_F(SafeBrowsingPrefsTest, IsExtendedReportingPolicyManaged) {
   // This test checks that manipulating SBEROptInAllowed and the management
   // state of SBER behaves as expected. Below, we describe what should happen
@@ -162,5 +228,34 @@ TEST_F(SafeBrowsingPrefsTest, VerifyIsURLAllowlistedByPolicy) {
 
   GURL not_allowlisted_url("https://www.bar.com");
   EXPECT_FALSE(IsURLAllowlistedByPolicy(not_allowlisted_url, prefs_));
+}
+
+TEST_F(SafeBrowsingPrefsTest,
+       VerifyIsRealTimeDownloadProtectionRequestAllowed) {
+  // Confirm default state.
+  EXPECT_TRUE(IsRealTimeDownloadProtectionRequestAllowed(prefs_));
+  prefs_.SetBoolean(prefs::kRealTimeDownloadProtectionRequestAllowedByPolicy,
+                    false);
+  EXPECT_FALSE(IsRealTimeDownloadProtectionRequestAllowed(prefs_));
+}
+
+TEST_F(SafeBrowsingPrefsTest, VerifyIsCsdPhishingProtectionAllowed) {
+  EXPECT_TRUE(IsCsdPhishingProtectionAllowed(prefs_));
+  prefs_.SetBoolean(prefs::kSafeBrowsingCsdPhishingProtectionAllowedByPolicy,
+                    false);
+  EXPECT_FALSE(IsCsdPhishingProtectionAllowed(prefs_));
+}
+
+TEST_F(SafeBrowsingPrefsTest, VerifySafeBrowsingExtensionProtectionAllowed) {
+  EXPECT_TRUE(IsSafeBrowsingExtensionProtectionAllowed(prefs_));
+  prefs_.SetBoolean(prefs::kSafeBrowsingExtensionProtectionAllowedByPolicy,
+                    false);
+  EXPECT_FALSE(IsSafeBrowsingExtensionProtectionAllowed(prefs_));
+}
+
+TEST_F(SafeBrowsingPrefsTest, VerifyHashPrefixRealTimeChecksAllowedByPolicy) {
+  EXPECT_TRUE(AreHashPrefixRealTimeLookupsAllowedByPolicy(prefs_));
+  prefs_.SetBoolean(prefs::kHashPrefixRealTimeChecksAllowedByPolicy, false);
+  EXPECT_FALSE(AreHashPrefixRealTimeLookupsAllowedByPolicy(prefs_));
 }
 }  // namespace safe_browsing

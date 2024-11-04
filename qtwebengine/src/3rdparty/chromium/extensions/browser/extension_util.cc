@@ -5,6 +5,7 @@
 #include "extensions/browser/extension_util.h"
 
 #include "base/barrier_closure.h"
+#include "base/command_line.h"
 #include "base/no_destructor.h"
 #include "build/chromeos_buildflags.h"
 #include "components/crx_file/id_util.h"
@@ -24,7 +25,10 @@
 #include "extensions/common/manifest_handlers/incognito_info.h"
 #include "extensions/common/manifest_handlers/shared_module_info.h"
 #include "extensions/common/permissions/permissions_data.h"
+#include "extensions/common/switches.h"
+#include "extensions/grit/extensions_browser_resources.h"
 #include "mojo/public/cpp/bindings/clone_traits.h"
+#include "ui/base/resource/resource_bundle.h"
 #include "url/gurl.h"
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
@@ -83,6 +87,13 @@ bool CanCrossIncognito(const Extension* extension,
   CHECK(extension);
   return IsIncognitoEnabled(extension->id(), context) &&
          !IncognitoInfo::IsSplitMode(extension);
+}
+
+bool AllowFileAccess(const ExtensionId& extension_id,
+                     content::BrowserContext* context) {
+  return base::CommandLine::ForCurrentProcess()->HasSwitch(
+             switches::kDisableExtensionsFileAccessCheck) ||
+         ExtensionPrefs::Get(context)->AllowFileAccess(extension_id);
 }
 
 const std::string& GetPartitionDomainForExtension(const Extension* extension) {
@@ -203,10 +214,8 @@ bool CanWithholdPermissionsFromExtension(const ExtensionId& extension_id,
          !PermissionsData::CanExecuteScriptEverywhere(extension_id, location);
 }
 
-// The below functionality maps a context to a unique id by increasing a static
-// counter.
 int GetBrowserContextId(content::BrowserContext* context) {
-  using ContextIdMap = std::map<content::BrowserContext*, int>;
+  using ContextIdMap = std::map<std::string, int>;
 
   static int next_id = 0;
   static base::NoDestructor<ContextIdMap> context_map;
@@ -214,17 +223,15 @@ int GetBrowserContextId(content::BrowserContext* context) {
   // we need to get the original context to make sure we take the right context.
   content::BrowserContext* original_context =
       ExtensionsBrowserClient::Get()->GetOriginalContext(context);
-  auto iter = context_map->find(original_context);
+  const std::string& context_id = original_context->UniqueId();
+  auto iter = context_map->find(context_id);
   if (iter == context_map->end()) {
-    iter =
-        context_map->insert(std::make_pair(original_context, next_id++)).first;
+    iter = context_map->insert(std::make_pair(context_id, next_id++)).first;
   }
   DCHECK(iter->second != kUnspecifiedContextId);
   return iter->second;
 }
 
-// Returns whether the |extension| should be loaded in the given
-// |browser_context|.
 bool IsExtensionVisibleToContext(const Extension& extension,
                                  content::BrowserContext* browser_context) {
   // Renderers don't need to know about themes.
@@ -240,7 +247,6 @@ bool IsExtensionVisibleToContext(const Extension& extension,
          IsIncognitoEnabled(extension.id(), browser_context);
 }
 
-// Initializes file scheme access if the extension has such permission.
 void InitializeFileSchemeAccessForExtension(
     int render_process_id,
     const std::string& extension_id,
@@ -252,6 +258,16 @@ void InitializeFileSchemeAccessForExtension(
     content::ChildProcessSecurityPolicy::GetInstance()->GrantRequestScheme(
         render_process_id, url::kFileScheme);
   }
+}
+
+const gfx::ImageSkia& GetDefaultAppIcon() {
+  return *ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(
+      IDR_APP_DEFAULT_ICON);
+}
+
+const gfx::ImageSkia& GetDefaultExtensionIcon() {
+  return *ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(
+      IDR_EXTENSION_DEFAULT_ICON);
 }
 
 ExtensionId GetExtensionIdForSiteInstance(
@@ -296,6 +312,14 @@ bool CanRendererHostExtensionOrigin(int render_process_id,
       Extension::CreateOriginFromExtensionId(extension_id);
   auto* policy = content::ChildProcessSecurityPolicy::GetInstance();
   return policy->CanAccessDataForOrigin(render_process_id, extension_origin);
+}
+
+bool IsChromeApp(const std::string& extension_id,
+                 content::BrowserContext* context) {
+  const Extension* extension =
+      ExtensionRegistry::Get(context)->enabled_extensions().GetByID(
+          extension_id);
+  return extension->is_platform_app();
 }
 
 bool IsAppLaunchable(const std::string& extension_id,

@@ -267,7 +267,7 @@ class ComboboxTest : public ViewsTestBase {
   UniqueWidgetPtr widget_;
 
   // |combobox_| will be allocated InitCombobox() and then owned by |widget_|.
-  raw_ptr<TestCombobox> combobox_ = nullptr;
+  raw_ptr<TestCombobox, AcrossTasksDanglingUntriaged> combobox_ = nullptr;
   std::unique_ptr<ComboboxTestApi> test_api_;
 
   // Combobox does not take ownership of the model, hence it needs to be scoped.
@@ -701,8 +701,7 @@ TEST_F(ComboboxTest, ConsumingPressKeyEvents) {
 // between indices of different label lengths.
 TEST_F(ComboboxTest, ContentSizeUpdateOnSetSelectedIndex) {
   const gfx::FontList& font_list =
-      style::GetFont(Combobox::kDefaultComboboxTextContext,
-                     Combobox::kDefaultComboboxTextStyle);
+      style::GetFont(Combobox::kContext, Combobox::kStyle);
   InitCombobox(nullptr);
   combobox_->SetSizeToLargestLabel(false);
   test_api_->PerformActionAt(1);

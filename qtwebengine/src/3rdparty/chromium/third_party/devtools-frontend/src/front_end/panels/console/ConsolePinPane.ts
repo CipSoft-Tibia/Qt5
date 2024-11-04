@@ -70,12 +70,12 @@ export class ConsolePinPane extends UI.ThrottledWidget.ThrottledWidget {
     }
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([consolePinPaneStyles, objectValueStyles]);
   }
 
-  willHide(): void {
+  override willHide(): void {
     for (const pin of this.pins) {
       pin.setHovered(false);
     }
@@ -149,7 +149,7 @@ export class ConsolePinPane extends UI.ThrottledWidget.ThrottledWidget {
     return null;
   }
 
-  async doUpdate(): Promise<void> {
+  override async doUpdate(): Promise<void> {
     if (!this.pins.size || !this.isShowing()) {
       return;
     }
@@ -178,7 +178,6 @@ export class ConsolePin {
 
   constructor(expression: string, private readonly pinPane: ConsolePinPane, private readonly focusOut: () => void) {
     this.deletePinIcon = document.createElement('div', {is: 'dt-close-button'}) as UI.UIUtils.DevToolsCloseButton;
-    this.deletePinIcon.gray = true;
     this.deletePinIcon.classList.add('close-button');
     this.deletePinIcon.setTabbable(true);
     if (expression.length) {
@@ -328,10 +327,9 @@ export class ConsolePin {
     const throwOnSideEffect = isEditing && text !== this.committedExpression;
     const timeout = throwOnSideEffect ? 250 : undefined;
     const executionContext = UI.Context.Context.instance().flavor(SDK.RuntimeModel.ExecutionContext);
-    const preprocessedExpression = ObjectUI.JavaScriptREPL.JavaScriptREPL.wrapObjectLiteral(text);
     const {preview, result} = await ObjectUI.JavaScriptREPL.JavaScriptREPL.evaluateAndBuildPreview(
-        preprocessedExpression, throwOnSideEffect, true /* replMode */, timeout, !isEditing /* allowErrors */,
-        'console', true /* awaitPromise */, true /* silent */);
+        text, throwOnSideEffect, true /* replMode */, timeout, !isEditing /* allowErrors */, 'console',
+        true /* awaitPromise */, true /* silent */);
     if (this.lastResult && this.lastExecutionContext) {
       this.lastExecutionContext.runtimeModel.releaseEvaluationResult(this.lastResult);
     }

@@ -8,6 +8,7 @@
 #include "base/notreached.h"
 #include "base/types/pass_key.h"
 #include "third_party/blink/public/common/fenced_frame/redacted_fenced_frame_config.h"
+#include "third_party/blink/renderer/bindings/core/v8/serialization/v8_script_value_serializer.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_html_fenced_frame_element.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_opaqueproperty_unsignedlong.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_opaqueproperty_usvstring.h"
@@ -44,20 +45,44 @@ class CORE_EXPORT FencedFrameConfig final : public ScriptWrappable {
   // Whereas the enums in FencedFrameURLMapping specify whether information
   // should be redacted when it is communicated to different entities
   // (renderers).
-  enum class AttributeVisibility {
+  enum class AttributeVisibility : uint32_t {
     kTransparent,
     kOpaque,
     kNull,
+
+    kLast = kNull,
   };
 
   // Create an inner config with a given url, the url will be transparent.
   static FencedFrameConfig* Create(const String& url);
+
+  static FencedFrameConfig* Create(const KURL url,
+                                   uint32_t width,
+                                   uint32_t height,
+                                   const String& shared_storage_context,
+                                   absl::optional<KURL> urn_uuid,
+                                   absl::optional<gfx::Size> container_size,
+                                   absl::optional<gfx::Size> content_size,
+                                   AttributeVisibility url_visibility,
+                                   AttributeVisibility size_visibility,
+                                   bool freeze_initial_size);
 
   static FencedFrameConfig* From(
       const FencedFrame::RedactedFencedFrameConfig& config);
 
   // Construct an inner config with a given url, the url will be transparent.
   explicit FencedFrameConfig(const String& url);
+
+  explicit FencedFrameConfig(const KURL url,
+                             uint32_t width,
+                             uint32_t height,
+                             const String& shared_storage_context,
+                             absl::optional<KURL> urn_uuid,
+                             absl::optional<gfx::Size> container_size,
+                             absl::optional<gfx::Size> content_size,
+                             AttributeVisibility url_visibility,
+                             AttributeVisibility size_visibility,
+                             bool freeze_initial_size);
 
   // Construct an inner config given a redacted fenced frame config
   explicit FencedFrameConfig(
@@ -69,6 +94,12 @@ class CORE_EXPORT FencedFrameConfig final : public ScriptWrappable {
   V8UnionOpaquePropertyOrUSVString* url() const;
   V8UnionOpaquePropertyOrUnsignedLong* width() const;
   V8UnionOpaquePropertyOrUnsignedLong* height() const;
+
+  void setSharedStorageContext(const String& contextString);
+
+  // Unlike `setSharedStorageContext()`, `GetSharedStorageContext()` is not
+  // web-exposed.
+  String GetSharedStorageContext() const;
 
   // Get attribute's value ignoring visibility.
   template <Attribute attr>
@@ -87,14 +118,33 @@ class CORE_EXPORT FencedFrameConfig final : public ScriptWrappable {
     return urn_uuid_;
   }
 
+  absl::optional<KURL> urn_uuid(base::PassKey<V8ScriptValueSerializer>) {
+    return urn_uuid_;
+  }
+
   // Temporary accessor for `deprecatedURNToURL` and `deprecatedReplaceInURN`.
   // TODO(crbug.com/1347953): Remove when those functions are removed.
   absl::optional<KURL> urn_uuid(base::PassKey<NavigatorAuction>) {
     return urn_uuid_;
   }
 
+  absl::optional<gfx::Size> container_size(
+      base::PassKey<HTMLFencedFrameElement>) {
+    return container_size_;
+  }
+
+  absl::optional<gfx::Size> container_size(
+      base::PassKey<V8ScriptValueSerializer>) {
+    return container_size_;
+  }
+
   absl::optional<gfx::Size> content_size(
       base::PassKey<HTMLFencedFrameElement>) {
+    return content_size_;
+  }
+
+  absl::optional<gfx::Size> content_size(
+      base::PassKey<V8ScriptValueSerializer>) {
     return content_size_;
   }
 
@@ -103,10 +153,25 @@ class CORE_EXPORT FencedFrameConfig final : public ScriptWrappable {
     return deprecated_should_freeze_initial_size_;
   }
 
+  bool deprecated_should_freeze_initial_size(
+      base::PassKey<V8ScriptValueSerializer>) {
+    return deprecated_should_freeze_initial_size_;
+  }
+
+  // Get attribute's visibility.
+  template <Attribute attr>
+  AttributeVisibility GetAttributeVisibility(
+      base::PassKey<V8ScriptValueSerializer>) const {
+    return GetAttributeVisibility<attr>();
+  }
+
  private:
   KURL url_;
   uint32_t width_;
   uint32_t height_;
+
+  // `shared_storage_context_` can be set, but has no web-exposed getter here.
+  String shared_storage_context_;
 
   AttributeVisibility url_attribute_visibility_ = AttributeVisibility::kNull;
   AttributeVisibility size_attribute_visibility_ = AttributeVisibility::kNull;
@@ -168,6 +233,11 @@ class CORE_EXPORT FencedFrameConfig final : public ScriptWrappable {
   // URL. This value is never exposed to the web platform.
   absl::optional<KURL> urn_uuid_;
 
+  // The intended size for the fenced frame. If <fencedframe> doesn't have a
+  // specified size, this will override the default size. If it does have a
+  // specified size, this will do nothing.
+  absl::optional<gfx::Size> container_size_;
+
   // `content_size` and `deprecated_should_freeze_initial_size` temporarily need
   // to be treated differently than other fields, because for implementation
   // convenience the fenced frame size is frozen by the embedder. In the long
@@ -183,6 +253,25 @@ class CORE_EXPORT FencedFrameConfig final : public ScriptWrappable {
   // navigation time to an allowlist, then freeze it) for backwards
   // compatibility.
   bool deprecated_should_freeze_initial_size_ = false;
+
+  static_assert(__LINE__ == 257, R"(
+If adding or modifying a field in FencedFrameConfig, be sure to also make
+the field serializable. To do that:
+
+- Add your new field as a parameter to the large FencedFrameConfig constructor.
+- Add your new field as a parameter to FencedFrameConfig::Create.
+- Modify the FencedFrameConfig case in V8ScriptValueSerializer::WriteDOMObject
+  to serialize your new field.
+- Modify the kFencedFrameConfigTag case in
+  V8ScriptValueDeserializer::ReadDOMObject to deserialize the new field.
+- Modify the V8ScriptValueSerializerTest.RoundTripFencedFrameConfig test to
+  check that your new field is deserialized/serialized properly.
+)");
+
+  FRIEND_TEST_ALL_PREFIXES(V8ScriptValueSerializerTest,
+                           RoundTripFencedFrameConfig);
+  FRIEND_TEST_ALL_PREFIXES(V8ScriptValueSerializerTest,
+                           RoundTripFencedFrameConfigNullValues);
 };
 
 template <>

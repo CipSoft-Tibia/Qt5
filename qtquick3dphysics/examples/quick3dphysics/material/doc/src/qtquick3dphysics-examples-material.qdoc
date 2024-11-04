@@ -5,7 +5,7 @@
     \example material
     \ingroup quick3dphysics-examples
     \title Qt Quick 3D Physics - Material Example
-    \examplecategory {Data Visualization & 3D}
+    \examplecategory {3D}
     \brief Demonstrates using physical materials.
     \image material-example.jpg
 

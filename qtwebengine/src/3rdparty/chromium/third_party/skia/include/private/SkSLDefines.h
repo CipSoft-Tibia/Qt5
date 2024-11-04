@@ -21,17 +21,17 @@ namespace SkSL {
 class Expression;
 class Statement;
 
-using ComponentArray = SkSTArray<4, int8_t>; // for Swizzles
+using ComponentArray = skia_private::STArray<4, int8_t>; // for Swizzles
 
-class ExpressionArray : public SkSTArray<2, std::unique_ptr<Expression>> {
+class ExpressionArray : public skia_private::STArray<2, std::unique_ptr<Expression>> {
 public:
-    using SkSTArray::SkSTArray;
+    using STArray::STArray;
 
     /** Returns a new ExpressionArray containing a clone of every element. */
     ExpressionArray clone() const;
 };
 
-using StatementArray = SkSTArray<2, std::unique_ptr<Statement>>;
+using StatementArray = skia_private::STArray<2, std::unique_ptr<Statement>>;
 
 // Functions larger than this (measured in IR nodes) will not be inlined. This growth factor
 // accounts for the number of calls being inlined--i.e., a function called five times (that is, with
@@ -44,9 +44,7 @@ static constexpr int kDefaultInlineThreshold = 50;
 // amounts of time or space.
 static constexpr int kVariableSlotLimit = 100000;
 
-// The SwizzleComponent namespace is used both by the SkSL::Swizzle expression, and the DSL swizzle.
-// This namespace is injected into SkSL::dsl so that `using namespace SkSL::dsl` enables DSL code
-// like `Swizzle(var, X, Y, ONE)` to compile without any extra qualifications.
+// The SwizzleComponent namespace is used by the SkSL::Swizzle expression.
 namespace SwizzleComponent {
 
 enum Type : int8_t {

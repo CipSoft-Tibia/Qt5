@@ -6,7 +6,7 @@
 
 #include <QtQuick3DRuntimeRender/private/qssgrenderer_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrenderlight_p.h>
-#include <QtQuick3DRuntimeRender/private/qssgrendercontextcore_p.h>
+#include "../qssgrendercontextcore.h"
 #include <QtQuick3DRuntimeRender/private/qssgrendershadercache_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendershaderlibrarymanager_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendershadercodegenerator_p.h>
@@ -184,7 +184,6 @@ void QSSGMaterialVertexPipeline::beginVertexGeneration(const QSSGShaderDefaultMa
             if (materialAdapter->usesCustomSkinning()) {
                 vertexShader.addInclude("skinanim.glsllib");
                 vertexShader.addUniform("qt_boneTexture", "sampler2D");
-                m_hasSkinning = false;
             }
 
             if (materialAdapter->usesCustomMorphing()) {
@@ -321,7 +320,8 @@ void QSSGMaterialVertexPipeline::beginVertexGeneration(const QSSGShaderDefaultMa
         if (m_hasMorphing && !hasCustomVertexShader)
             vertexShader.append("    qt_vertPosition.xyz = qt_getTargetPosition(qt_vertPosition.xyz);");
 
-        if (m_hasSkinning) {
+        m_needsSkinning = m_hasSkinning && !materialAdapter->usesCustomSkinning();
+        if (m_needsSkinning) {
             vertexShader.append("    mat4 skinMat = mat4(1);");
             vertexShader.append("    if (qt_vertWeights != vec4(0.0)) {");
             vertexShader.append("        skinMat = qt_getSkinMatrix(qt_vertJoints, qt_vertWeights);");
@@ -411,7 +411,7 @@ void QSSGMaterialVertexPipeline::doGenerateVarTangent(const QSSGShaderDefaultMat
 {
     if (m_hasMorphing)
         vertex() << "    qt_vertTangent = qt_getTargetTangent(qt_vertTangent);\n";
-    if (m_hasSkinning) {
+    if (m_needsSkinning) {
         vertex() << "    if (qt_vertWeights != vec4(0.0))\n"
                  << "       qt_vertTangent = (skinMat * vec4(qt_vertTangent, 0.0)).xyz;\n";
 
@@ -431,7 +431,7 @@ void QSSGMaterialVertexPipeline::doGenerateVarBinormal(const QSSGShaderDefaultMa
 {
     if (m_hasMorphing)
         vertex() << "    qt_vertBinormal = qt_getTargetBinormal(qt_vertBinormal);\n";
-    if (m_hasSkinning) {
+    if (m_needsSkinning) {
         vertex() << "    if (qt_vertWeights != vec4(0.0))\n"
                  << "       qt_vertBinormal = (skinMat * vec4(qt_vertBinormal, 0.0)).xyz;\n";
     }

@@ -8,6 +8,7 @@
 #include "include/android/SkAndroidFrameworkUtils.h"
 #include "include/core/SkCanvas.h"
 #include "include/utils/SkPaintFilterCanvas.h"
+#include "src/base/SkTLazy.h"
 #include "src/core/SkDevice.h"
 #include "src/image/SkSurface_Base.h"
 #include "src/shaders/SkShaderBase.h"
@@ -16,7 +17,7 @@
 
 #include <log/log.h>
 
-#if SK_SUPPORT_GPU
+#if defined(SK_GANESH)
 bool SkAndroidFrameworkUtils::clipWithStencil(SkCanvas* canvas) {
     return canvas->baseDevice()->android_utils_clipWithStencil();
 }

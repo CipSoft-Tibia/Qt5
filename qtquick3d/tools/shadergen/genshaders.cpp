@@ -1,5 +1,5 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "genshaders.h"
 
@@ -25,6 +25,8 @@
 #include <private/qssglayerrenderdata_p.h>
 
 #include <QtQuick3DRuntimeRender/private/qssgrhieffectsystem_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrhicustommaterialsystem_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgdebugdrawsystem_p.h>
 
 #include <rhi/qshaderbaker.h>
 
@@ -57,7 +59,8 @@ GenShaders::GenShaders()
     rhi->beginOffscreenFrame(&cb);
 
     std::unique_ptr<QSSGRhiContext> rhiContext = std::make_unique<QSSGRhiContext>(rhi);
-    rhiContext->setCommandBuffer(cb);
+    QSSGRhiContextPrivate *rhiCtxD = QSSGRhiContextPrivate::get(rhiContext.get());
+    rhiCtxD->setCommandBuffer(cb);
 
     renderContext = std::make_shared<QSSGRenderContextInterface>(std::make_unique<QSSGBufferManager>(),
                                                                  std::make_unique<QSSGRenderer>(),
@@ -92,7 +95,7 @@ bool GenShaders::process(const MaterialParser::SceneData &sceneData,
     const QString outputFolder = outDir.canonicalPath() + QDir::separator() + resourceFolderRelative;
 
     QSSGRenderLayer layer;
-    renderContext->setViewport(QRect(QPoint(), QSize(888,666)));
+    renderContext->renderer()->setViewport(QRect(QPoint(), QSize(888,666)));
     const auto &renderer = renderContext->renderer();
     QSSGLayerRenderData layerData(layer, *renderer);
 
@@ -201,17 +204,20 @@ bool GenShaders::process(const MaterialParser::SceneData &sceneData,
 
         const auto &features = layerData.getShaderFeatures();
 
-        auto &materialPropertis = layerData.renderer->defaultMaterialShaderKeyProperties();
+        const auto &propertyTable = layerData.getDefaultMaterialPropertyTable();
+
+        const auto &opaqueObjects = layerData.getSortedOpaqueRenderableObjects(*layerData.camera);
+        const auto &transparentObjects = layerData.getSortedTransparentRenderableObjects(*layerData.camera);
 
         QSSGRenderableObject *renderable = nullptr;
-        if (!layerData.opaqueObjects.isEmpty())
-            renderable = layerData.opaqueObjects.at(0).obj;
-        else if (!layerData.transparentObjects.isEmpty())
-            renderable = layerData.transparentObjects.at(0).obj;
+        if (!opaqueObjects.isEmpty())
+            renderable = opaqueObjects[0].obj;
+        else if (!transparentObjects.isEmpty())
+            renderable = transparentObjects[0].obj;
 
         auto generateShader = [&](const QSSGShaderFeatures &features) {
             if ((renderable->type == QSSGSubsetRenderable::Type::DefaultMaterialMeshSubset)) {
-                auto shaderPipeline = QSSGRenderer::generateRhiShaderPipelineImpl(*static_cast<QSSGSubsetRenderable *>(renderable), *shaderLibraryManager, *shaderCache, *shaderProgramGenerator, materialPropertis, features, shaderString);
+                auto shaderPipeline = QSSGRendererPrivate::generateRhiShaderPipelineImpl(*static_cast<QSSGSubsetRenderable *>(renderable), *shaderLibraryManager, *shaderCache, *shaderProgramGenerator, propertyTable, features, shaderString);
                 if (shaderPipeline != nullptr) {
                     const auto qsbcFeatureList = QQsbCollection::toFeatureSet(features);
                     const QByteArray qsbcKey = QQsbCollection::EntryDesc::generateSha(shaderString, qsbcFeatureList);
@@ -233,6 +239,7 @@ bool GenShaders::process(const MaterialParser::SceneData &sceneData,
                 auto shaderPipeline = cms->shadersForCustomMaterial(&pipelineState,
                                                                     material,
                                                                     cmr,
+                                                                    propertyTable,
                                                                     features);
 
                 if (shaderPipeline) {

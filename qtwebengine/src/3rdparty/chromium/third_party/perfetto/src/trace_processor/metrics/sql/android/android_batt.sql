@@ -13,14 +13,15 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
-SELECT IMPORT('android.battery');
+INCLUDE PERFETTO MODULE android.battery;
+INCLUDE PERFETTO MODULE android.battery_stats;
 
 DROP VIEW IF EXISTS battery_view;
 CREATE VIEW battery_view AS
 SELECT * FROM android_battery_charge;
 
 DROP TABLE IF EXISTS android_batt_wakelocks_merged;
-CREATE TABLE android_batt_wakelocks_merged AS
+CREATE PERFETTO TABLE android_batt_wakelocks_merged AS
 SELECT
   MIN(ts) AS ts,
   MAX(ts_end) AS ts_end
@@ -49,8 +50,16 @@ FROM (
 )
 GROUP BY group_id;
 
+DROP VIEW IF EXISTS suspend_slice_from_minimal;
+CREATE VIEW suspend_slice_from_minimal AS
+SELECT ts, dur
+FROM track t JOIN slice s ON s.track_id = t.id
+WHERE t.name = 'Suspend/Resume Minimal';
+
 DROP TABLE IF EXISTS suspend_slice_;
-CREATE TABLE suspend_slice_ AS
+CREATE PERFETTO TABLE suspend_slice_ AS
+SELECT ts, dur FROM suspend_slice_from_minimal
+UNION ALL
 SELECT
   ts,
   dur
@@ -62,19 +71,30 @@ JOIN
 WHERE
   track.name = 'Suspend/Resume Latency'
   AND (slice.name = 'syscore_resume(0)' OR slice.name = 'timekeeping_freeze(0)')
-  AND dur != -1;
+  AND dur != -1
+  AND NOT EXISTS(SELECT * FROM suspend_slice_from_minimal);
 
-SELECT RUN_METRIC('android/global_counter_span_view_merged.sql',
+DROP VIEW suspend_slice_from_minimal;
+
+SELECT RUN_METRIC('android/counter_span_view_merged.sql',
   'table_name', 'screen_state',
   'counter_name', 'ScreenState');
 
-SELECT RUN_METRIC('android/process_counter_span_view.sql',
+SELECT RUN_METRIC('android/counter_span_view_merged.sql',
   'table_name', 'doze_light_state',
   'counter_name', 'DozeLightState');
 
-SELECT RUN_METRIC('android/process_counter_span_view.sql',
+SELECT RUN_METRIC('android/counter_span_view_merged.sql',
   'table_name', 'doze_deep_state',
   'counter_name', 'DozeDeepState');
+
+SELECT RUN_METRIC('android/counter_span_view_merged.sql',
+  'table_name', 'battery_status',
+  'counter_name', 'BatteryStatus');
+
+SELECT RUN_METRIC('android/counter_span_view_merged.sql',
+  'table_name', 'plug_type',
+  'counter_name', 'PlugType');
 
 DROP TABLE IF EXISTS screen_state_span_with_suspend;
 CREATE VIRTUAL TABLE screen_state_span_with_suspend
@@ -134,7 +154,55 @@ SELECT ts,
        END AS slice_name,
        'Doze deep state' AS track_name,
        'slice' AS track_type
-FROM doze_deep_state_span;
+FROM doze_deep_state_span
+UNION ALL
+SELECT ts,
+       dur,
+       CASE battery_status_val
+       -- 0 and 1 are both unknown
+       WHEN 2 THEN 'Charging'
+       WHEN 3 THEN 'Discharging'
+       -- special case when charger is present but battery isn't charging
+       WHEN 4 THEN 'Not charging'
+       WHEN 5 THEN 'Full'
+       ELSE 'unknown'
+       END AS slice_name,
+       'Charging state' AS track_name,
+       'slice' AS track_type
+FROM battery_status_span
+UNION ALL
+SELECT ts,
+       dur,
+       CASE plug_type_val
+       WHEN 0 THEN 'None'
+       WHEN 1 THEN 'AC'
+       WHEN 2 THEN 'USB'
+       WHEN 4 THEN 'Wireless'
+       WHEN 8 THEN 'Dock'
+       ELSE 'unknown'
+       END AS slice_name,
+       'Plug type' AS track_name,
+       'slice' AS track_type
+FROM plug_type_span
+UNION ALL
+SELECT *
+FROM (
+  SELECT ts,
+         dur,
+         value_name AS slice_name,
+         CASE track_name
+         WHEN 'battery_stats.mobile_radio' THEN 'Cellular interface'
+         WHEN 'battery_stats.data_conn' THEN 'Cellular connection'
+         WHEN 'battery_stats.phone_signal_strength' THEN 'Cellular strength'
+         WHEN 'battery_stats.wifi_radio' THEN 'WiFi interface'
+         WHEN 'battery_stats.wifi_suppl' THEN 'Wifi supplicant state'
+         WHEN 'battery_stats.wifi_signal_strength' THEN 'WiFi strength'
+         ELSE NULL
+         END AS track_name,
+         'slice' AS track_type
+  FROM android_battery_stats_state
+)
+WHERE track_name IS NOT NULL;
 
 DROP VIEW IF EXISTS android_batt_output;
 CREATE VIEW android_batt_output AS

@@ -32,9 +32,18 @@ This repository contains the source code necessary to build the following compon
 The `install` target installs the following files under the directory
 indicated by *install_dir*:
 
-- *install_dir*`/bin` : The vulkaninfo, vkcube and vkcubepp executables
-- *install_dir*`/lib` : The mock ICD library and JSON (Windows) (If INSTALL_ICD=ON)
-- *install_dir*`/share/vulkan/icd.d` : mock ICD JSON (Linux/MacOS) (If INSTALL_ICD=ON)
+- *install_dir*`/bin` : The `vulkaninfo`, `vkcube` and `vkcubepp` executables
+
+`MockICD` if `INSTALL_ICD` is configured:
+
+For Unix operating systems:
+
+- *install_dir*`/bin` : The Mock ICD
+- *install_dir*`/share/vulkan/icd.d` : Mock ICD JSON
+
+For WIN32:
+
+- *install_dir*`/bin` : The Mock ICD and JSON
 
 ## Repository Set-Up
 
@@ -193,63 +202,26 @@ be specified to customize the build. Some of the options are binary on/off
 options, while others take a string as input. The following is a table of all
 on/off options currently supported by this repository:
 
-| Option | Platform | Default | Description |
-| ------ | -------- | ------- | ----------- |
-| BUILD_CUBE | All | `ON` | Controls whether or not the vkcube demo is built. |
-| BUILD_VULKANINFO | All | `ON` | Controls whether or not the vulkaninfo utility is built. |
-| BUILD_ICD | All | `ON` | Controls whether or not the mock ICD is built. |
-| INSTALL_ICD | All | `OFF` | Controls whether or not the mock ICD is installed as part of the install target. |
-| BUILD_WSI_XCB_SUPPORT | Linux | `ON` | Build the components with XCB support. |
-| BUILD_WSI_XLIB_SUPPORT | Linux | `ON` | Build the components with Xlib support. |
-| BUILD_WSI_WAYLAND_SUPPORT | Linux | `ON` | Build the components with Wayland support. |
-| BUILD_WSI_DIRECTFB_SUPPORT | Linux | `OFF` | Build the components with DirectFB support. |
+| Option                     | Platform | Default | Description                                                                      |
+| -------------------------- | -------- | ------- | -------------------------------------------------------------------------------- |
+| BUILD_TESTS                | All      | `OFF`   | Controls whether the tests are built.                                            |
+| BUILD_CUBE                 | All      | `ON`    | Controls whether or not the vkcube demo is built.                                |
+| BUILD_VULKANINFO           | All      | `ON`    | Controls whether or not the vulkaninfo utility is built.                         |
+| BUILD_ICD                  | All      | `ON`    | Controls whether or not the mock ICD is built.                                   |
+| INSTALL_ICD                | All      | `OFF`   | Controls whether or not the mock ICD is installed as part of the install target. |
+| BUILD_WSI_XCB_SUPPORT      | Linux    | `ON`    | Build the components with XCB support.                                           |
+| BUILD_WSI_XLIB_SUPPORT     | Linux    | `ON`    | Build the components with Xlib support.                                          |
+| BUILD_WSI_WAYLAND_SUPPORT  | Linux    | `ON`    | Build the components with Wayland support.                                       |
+| BUILD_WSI_DIRECTFB_SUPPORT | Linux    | `OFF`   | Build the components with DirectFB support.                                      |
 
 The following is a table of all string options currently supported by this repository:
 
-| Option | Platform | Default | Description |
-| ------ | -------- | ------- | ----------- |
-| VULKANINFO_BUILD_DLL_VERSIONINFO | Windows | `""` | Set the Windows specific version information for Vulkaninfo. Format is "major.minor.patch.build". |
+| Option                           | Platform | Default | Description                                                                                       |
+| -------------------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------- |
+| VULKANINFO_BUILD_DLL_VERSIONINFO | Windows  | `""`    | Set the Windows specific version information for Vulkaninfo. Format is "major.minor.patch.build". |
 
 These variables should be set using the `-D` option when invoking CMake to
 generate the native platform files.
-
-### CCACHE
-
-There are 2 methods to enable CCACHE:
-
-1.) Set environment variables
-
-```bash
-# Requires CMake 3.17 (https://cmake.org/cmake/help/latest/envvar/CMAKE_LANG_COMPILER_LAUNCHER.html)
-export CMAKE_CXX_COMPILER_LAUNCHER=/usr/bin/ccache
-export CMAKE_C_COMPILER_LAUNCHER=/usr/bin/ccache
-```
-
-2.) Pass in cache variables
-
-```
-cmake ... -D CMAKE_CXX_COMPILER_LAUNCHER=/usr/bin/ccache -D CMAKE_C_COMPILER_LAUNCHER=/usr/bin/ccache
-```
-
-### EXPORT_COMPILE_COMMANDS
-
-There are 2 methods to enable exporting compile commands:
-
-1.) Set environment variables
-
-```bash
-# Requires CMake 3.17 (https://cmake.org/cmake/help/latest/envvar/CMAKE_EXPORT_COMPILE_COMMANDS.html)
-export CMAKE_EXPORT_COMPILE_COMMANDS=ON
-```
-
-2.) Pass in cache variables
-
-```
-cmake ... -D CMAKE_EXPORT_COMPILE_COMMANDS=ON
-```
-
-NOTE: Modern tools will generally enable exporting compile commands for you (e.g. VSCode).
-Also `CMAKE_EXPORT_COMPILE_COMMANDS` is implemented only by Makefile and Ninja generators. For other generators, this option is ignored.
 
 ## Building On Windows
 
@@ -379,7 +351,7 @@ have installed. Generator strings that correspond to versions of Visual Studio
 include:
 
 | Build Platform               | 64-bit Generator              | 32-bit Generator        |
-|------------------------------|-------------------------------|-------------------------|
+| ---------------------------- | ----------------------------- | ----------------------- |
 | Microsoft Visual Studio 2013 | "Visual Studio 12 2013 Win64" | "Visual Studio 12 2013" |
 | Microsoft Visual Studio 2015 | "Visual Studio 14 2015 Win64" | "Visual Studio 14 2015" |
 | Microsoft Visual Studio 2017 | "Visual Studio 15 2017 Win64" | "Visual Studio 15 2017" |

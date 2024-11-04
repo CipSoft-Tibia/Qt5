@@ -58,6 +58,7 @@ class CreditCardOtpAuthenticator : public OtpUnmaskDelegate {
     }
     Result result = kUnknown;
     raw_ptr<const CreditCard> card;
+    // TODO(crbug.com/1475052): Remove CVC.
     std::u16string cvc;
   };
 
@@ -118,9 +119,9 @@ class CreditCardOtpAuthenticator : public OtpUnmaskDelegate {
   // Reset the authenticator to initial states.
   virtual void Reset();
 
- private:
-  friend class CreditCardOtpAuthenticatorTest;
+  std::string ContextTokenForTesting() const { return context_token_; }
 
+ private:
   // Display the OTP dialog UI.
   // Once user confirms the OTP, we wil invoke |OnUnmaskPromptAccepted(otp)|.
   // If user asks for a new OTP code, we will invoke

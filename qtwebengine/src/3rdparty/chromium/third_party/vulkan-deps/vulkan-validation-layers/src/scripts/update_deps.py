@@ -3,6 +3,7 @@
 # Copyright 2017 The Glslang Authors. All rights reserved.
 # Copyright (c) 2018-2023 Valve Corporation
 # Copyright (c) 2018-2023 LunarG, Inc.
+# Copyright (c) 2023-2023 RasterGrid Kft.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,11 +31,6 @@ This program is intended to assist a developer of this repository
 this home repository depend on.  It also checks out each dependent
 repository at a "known-good" commit in order to provide stability in
 the dependent repositories.
-
-Python Compatibility
---------------------
-
-This program can be used with Python 2.7 and Python 3.
 
 Known-Good JSON Database
 ------------------------
@@ -116,6 +112,10 @@ examples of all of these elements.
 
 The name of the dependent repository.  This field can be referenced
 by the "deps.repo_name" structure to record a dependency.
+
+- api
+
+The name of the API the dependency is specific to (e.g. "vulkan").
 
 - url
 
@@ -220,6 +220,7 @@ Legal options include:
 "windows"
 "linux"
 "darwin"
+"android"
 
 Builds on all platforms by default.
 
@@ -232,8 +233,6 @@ supported.  However, the "top" directory specified with the "--dir"
 option can be a relative or absolute path.
 
 """
-
-from __future__ import print_function
 
 import argparse
 import json
@@ -264,7 +263,7 @@ DEVNULL = open(os.devnull, 'wb')
 def on_rm_error( func, path, exc_info):
     """Error handler for recursively removing a directory. The
     shutil.rmtree function can fail on Windows due to read-only files.
-    This handler will change the permissions for tha file and continue.
+    This handler will change the permissions for the file and continue.
     """
     os.chmod( path, stat.S_IWRITE )
     os.unlink( path )
@@ -335,6 +334,7 @@ class GoodRepo(object):
         self.build_step = json['build_step'] if ('build_step' in json) else 'build'
         self.build_platforms = json['build_platforms'] if ('build_platforms' in json) else []
         self.optional = set(json.get('optional', []))
+        self.api = json['api'] if ('api' in json) else None
         # Absolute paths for a repo's directories
         dir_top = os.path.abspath(args.dir)
         self.repo_dir = os.path.join(dir_top, self.sub_dir)
@@ -342,9 +342,16 @@ class GoodRepo(object):
             self.build_dir = os.path.join(dir_top, self.build_dir)
         if self.install_dir:
             self.install_dir = os.path.join(dir_top, self.install_dir)
-	    # Check if platform is one to build on
+
+        # By default the target platform is the host platform.
+        target_platform = platform.system().lower()
+        # However, we need to account for cross-compiling.
+        for cmake_var in self._args.cmake_var:
+            if "android.toolchain.cmake" in cmake_var:
+                target_platform = 'android'
+
         self.on_build_platform = False
-        if self.build_platforms == [] or platform.system().lower() in self.build_platforms:
+        if self.build_platforms == [] or target_platform in self.build_platforms:
             self.on_build_platform = True
 
     def Clone(self, retries=10, retry_seconds=60):
@@ -425,9 +432,11 @@ class GoodRepo(object):
     def CMakeConfig(self, repos):
         """Build CMake command for the configuration phase and execute it"""
         if self._args.do_clean_build:
-            shutil.rmtree(self.build_dir)
+            if os.path.isdir(self.build_dir):
+                shutil.rmtree(self.build_dir, onerror=on_rm_error)
         if self._args.do_clean_install:
-            shutil.rmtree(self.install_dir)
+            if os.path.isdir(self.install_dir):
+                shutil.rmtree(self.install_dir, onerror=on_rm_error)
 
         # Create and change to build directory
         make_or_exist_dirs(self.build_dir)
@@ -457,10 +466,8 @@ class GoodRepo(object):
         for option in self.cmake_options:
             cmake_cmd.append(escape(option.format(**self.__dict__)))
 
-        # Set build config for single-configuration generators
-        if platform.system() == 'Linux' or platform.system() == 'Darwin':
-            cmake_cmd.append('-DCMAKE_BUILD_TYPE={config}'.format(
-                config=CONFIG_MAP[self._args.config]))
+        # Set build config for single-configuration generators (this is a no-op on multi-config generators)
+        cmake_cmd.append(f'-D CMAKE_BUILD_TYPE={CONFIG_MAP[self._args.config]}')
 
         # Use the CMake -A option to select the platform architecture
         # without needing a Visual Studio generator.
@@ -581,6 +588,10 @@ def CreateHelper(args, repos, filename):
     install_names = GetInstallNames(args)
     with open(filename, 'w') as helper_file:
         for repo in repos:
+            # If the repo has an API tag and that does not match
+            # the target API then skip it
+            if repo.api is not None and repo.api != args.api:
+                continue
             if install_names and repo.name in install_names and repo.on_build_platform:
                 helper_file.write('set({var} "{dir}" CACHE STRING "" FORCE)\n'
                                   .format(
@@ -657,6 +668,12 @@ def main():
         help="Set build files configuration",
         default='debug')
     parser.add_argument(
+        '--api',
+        dest='api',
+        default='vulkan',
+        choices=['vulkan'],
+        help="Target API")
+    parser.add_argument(
         '--generator',
         dest='generator',
         help="Set the CMake generator",
@@ -687,6 +704,11 @@ def main():
 
     print('Starting builds in {d}'.format(d=abs_top_dir))
     for repo in repos:
+        # If the repo has an API tag and that does not match
+        # the target API then skip it
+        if repo.api is not None and repo.api != args.api:
+            continue
+
         # If the repo has a platform whitelist, skip the repo
         # unless we are building on a whitelisted platform.
         if not repo.on_build_platform:
@@ -727,7 +749,7 @@ def main():
         if len(repo.ci_only):
             do_build = False
             for env in repo.ci_only:
-                if not env in os.environ:
+                if env not in os.environ:
                     continue
                 if os.environ[env].lower() == 'true':
                     do_build = True

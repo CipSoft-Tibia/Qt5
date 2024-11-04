@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -75,6 +76,16 @@ public class MessageAnimationCoordinatorUnitTest {
 
         @Override
         public boolean isPendingShow() {
+            return false;
+        }
+
+        @Override
+        public boolean isDestroyed() {
+            return false;
+        }
+
+        @Override
+        public boolean isSwitchingScope() {
             return false;
         }
     });
@@ -235,12 +246,16 @@ public class MessageAnimationCoordinatorUnitTest {
                         .expectIntRecord("Android.Messages.Stacking",
                                 MessagesMetrics.StackingAnimationType.SHOW_ALL)
                         .expectIntRecord("Android.Messages.Stacking.InsertAtFront", 1)
-                        .expectIntRecord("Android.Messages.Stacking.InsertAtBack", 2)
+                        .expectIntRecord("Android.Messages.Stacking.Hiding", 1)
+                        .expectIntRecord("Android.Messages.Stacking.InsertAtBack",
+                                MessageIdentifier.COUNT - 1)
+                        .expectIntRecord(
+                                "Android.Messages.Stacking.Hidden", MessageIdentifier.COUNT - 1)
                         .build();
         MessageState m1 = buildMessageState();
         setMessageIdentifier(m1, 1);
         MessageState m2 = buildMessageState();
-        setMessageIdentifier(m2, 2);
+        setMessageIdentifier(m2, MessageIdentifier.COUNT - 1);
         mAnimationCoordinator.updateWithStacking(Arrays.asList(m1, m2), false, () -> {});
 
         verify(m1.handler).show(Position.INVISIBLE, Position.FRONT);
@@ -275,6 +290,8 @@ public class MessageAnimationCoordinatorUnitTest {
                                 MessagesMetrics.StackingAnimationType.REMOVE_FRONT_AND_SHOW_BACK)
                         .expectIntRecord("Android.Messages.Stacking.RemoveFront", 1)
                         .expectIntRecord("Android.Messages.Stacking.PushToFront", 2)
+                        .expectNoRecords("Android.Messages.Stacking.Hidden")
+                        .expectNoRecords("Android.Messages.Stacking.Hiding")
                         .build();
         // Hide the front one so that the back one is brought to front.
         mAnimationCoordinator.updateWithStacking(Arrays.asList(m2, null), false, () -> {});
@@ -317,6 +334,8 @@ public class MessageAnimationCoordinatorUnitTest {
                                        .expectIntRecord("Android.Messages.Stacking",
                                                MessagesMetrics.StackingAnimationType.SHOW_BACK_ONLY)
                                        .expectIntRecord("Android.Messages.Stacking.InsertAtBack", 3)
+                                       .expectIntRecord("Android.Messages.Stacking.Hiding", 2)
+                                       .expectIntRecord("Android.Messages.Stacking.Hidden", 3)
                                        .build();
         mAnimationCoordinator.updateWithStacking(Arrays.asList(m2, m3), false, () -> {});
         verify(m3.handler).show(Position.FRONT, Position.BACK);
@@ -345,6 +364,8 @@ public class MessageAnimationCoordinatorUnitTest {
                         .expectIntRecord("Android.Messages.Stacking",
                                 MessagesMetrics.StackingAnimationType.REMOVE_BACK_ONLY)
                         .expectIntRecord("Android.Messages.Stacking.RemoveBack", 2)
+                        .expectNoRecords("Android.Messages.Stacking.Hidden")
+                        .expectNoRecords("Android.Messages.Stacking.Hiding")
                         .build();
         mAnimationCoordinator.updateWithStacking(Arrays.asList(m1, null), false, () -> {});
         inOrder.verify(m1.handler, never()).hide(anyInt(), anyInt(), anyBoolean());
@@ -353,6 +374,39 @@ public class MessageAnimationCoordinatorUnitTest {
         var currentMessages = mAnimationCoordinator.getCurrentDisplayedMessages();
         Assert.assertArrayEquals(new MessageState[] {m1, null}, currentMessages.toArray());
         histogramWatcher.assertExpected();
+    }
+
+    /**
+     * Test replacing back message.
+     * [m1, m2] -> [m1, m3]
+     */
+    @Test
+    @SmallTest
+    public void testReplacingBack() {
+        MessageState m1 = buildMessageState();
+        setMessageIdentifier(m1, 1);
+        MessageState m2 = buildMessageState();
+        setMessageIdentifier(m2, 2);
+        MessageState m3 = buildMessageState();
+        setMessageIdentifier(m3, 3);
+
+        mAnimationCoordinator.updateWithStacking(Arrays.asList(m1, m2), false, () -> {});
+        InOrder inOrder = Mockito.inOrder(m1.handler, m2.handler);
+        inOrder.verify(m1.handler).show(Position.INVISIBLE, Position.FRONT);
+        inOrder.verify(m2.handler).show(Position.FRONT, Position.BACK);
+
+        // When transiting from [m1, m2] -> [m1, m3], finish this into two steps:
+        // [m1, m2] -> [m1, null] -> [m1, m3]
+        mAnimationCoordinator.updateWithStacking(Arrays.asList(m1, m3), false, () -> {});
+        verify(m2.handler).hide(eq(Position.BACK), eq(Position.FRONT), anyBoolean());
+        verify(m3.handler, never()).show(anyInt(), anyInt());
+        var currentMessages = mAnimationCoordinator.getCurrentDisplayedMessages();
+        Assert.assertArrayEquals(new MessageState[] {m1, null}, currentMessages.toArray());
+
+        mAnimationCoordinator.updateWithStacking(Arrays.asList(m1, m3), false, () -> {});
+        verify(m3.handler).show(Position.FRONT, Position.BACK);
+        currentMessages = mAnimationCoordinator.getCurrentDisplayedMessages();
+        Assert.assertArrayEquals(new MessageState[] {m1, m3}, currentMessages.toArray());
     }
 
     // Test pushing front message to back.
@@ -372,6 +426,8 @@ public class MessageAnimationCoordinatorUnitTest {
 
         var histogramWatcher =
                 HistogramWatcher.newBuilder()
+                        .expectIntRecord("Android.Messages.Stacking.Hiding", 2)
+                        .expectIntRecord("Android.Messages.Stacking.Hidden", 1)
                         .expectIntRecord("Android.Messages.Stacking",
                                 MessagesMetrics.StackingAnimationType.INSERT_AT_FRONT)
                         .expectIntRecord("Android.Messages.Stacking.PushToBack", 1)
@@ -445,6 +501,16 @@ public class MessageAnimationCoordinatorUnitTest {
             public boolean isPendingShow() {
                 return false;
             }
+
+            @Override
+            public boolean isDestroyed() {
+                return false;
+            }
+
+            @Override
+            public boolean isSwitchingScope() {
+                return false;
+            }
         });
         var currentMessages = mAnimationCoordinator.getCurrentDisplayedMessages();
         Assert.assertArrayEquals(new MessageState[] {null, null}, currentMessages.toArray());
@@ -454,6 +520,8 @@ public class MessageAnimationCoordinatorUnitTest {
                                 MessagesMetrics.StackingAnimationType.SHOW_ALL)
                         .expectIntRecord("Android.Messages.Stacking.InsertAtFront", 1)
                         .expectIntRecord("Android.Messages.Stacking.InsertAtBack", 2)
+                        .expectIntRecord("Android.Messages.Stacking.Hiding", 1)
+                        .expectIntRecord("Android.Messages.Stacking.Hidden", 2)
                         .build();
         MessageState m1 = buildMessageState();
         setMessageIdentifier(m1, 1);
@@ -484,6 +552,8 @@ public class MessageAnimationCoordinatorUnitTest {
                 HistogramWatcher.newBuilder()
                         .expectIntRecord("Android.Messages.Stacking",
                                 MessagesMetrics.StackingAnimationType.SHOW_ALL)
+                        .expectIntRecord("Android.Messages.Stacking.Hiding", 1)
+                        .expectIntRecord("Android.Messages.Stacking.Hidden", 2)
                         .expectIntRecord("Android.Messages.Stacking.InsertAtFront", 1)
                         .expectIntRecord("Android.Messages.Stacking.InsertAtBack", 2)
                         .build();
@@ -688,6 +758,35 @@ public class MessageAnimationCoordinatorUnitTest {
 
         var currentMessages = mAnimationCoordinator.getCurrentDisplayedMessages();
         Assert.assertArrayEquals(new MessageState[] {m1, null}, currentMessages.toArray());
+    }
+
+    @Test
+    @SmallTest
+    public void testCurrentMessagesUpdateWhileWaitingForDelegateBeReady() {
+        when(mQueueDelegate.isReadyForShowing()).thenReturn(false);
+        doNothing().when(mQueueDelegate).onRequestShowing(any());
+        MessageState m1 = buildMessageState();
+        setMessageIdentifier(m1, 1);
+        mAnimationCoordinator.updateWithStacking(Arrays.asList(m1, null), false, () -> {});
+        verify(mQueueDelegate).onRequestShowing(any());
+        // Queue is updated while queue is still waiting the queue to be ready.
+        mAnimationCoordinator.updateWithStacking(Arrays.asList(null, null), true, () -> {});
+
+        // Queue becomes resumed again and the delegate is ready for showing.
+        when(mQueueDelegate.isReadyForShowing()).thenReturn(true);
+        mAnimationCoordinator.updateWithStacking(Arrays.asList(null, null), false, () -> {});
+        verify(mQueueDelegate).onFinishHiding();
+    }
+
+    @Test
+    @SmallTest
+    public void testUpdateAfterLifecycleDestroyed() {
+        when(mQueueDelegate.isReadyForShowing()).thenReturn(false);
+        when(mQueueDelegate.isDestroyed()).thenReturn(true);
+        MessageState m1 = buildMessageState();
+        setMessageIdentifier(m1, 1);
+        mAnimationCoordinator.updateWithStacking(Arrays.asList(m1, null), false, () -> {});
+        verify(mQueueDelegate, never()).onRequestShowing(any());
     }
 
     private void setMessageIdentifier(MessageState message, int messageIdentifier) {

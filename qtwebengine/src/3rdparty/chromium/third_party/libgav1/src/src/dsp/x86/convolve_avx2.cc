@@ -27,6 +27,7 @@
 #include "src/dsp/dsp.h"
 #include "src/dsp/x86/common_avx2.h"
 #include "src/utils/common.h"
+#include "src/utils/compiler_attributes.h"
 #include "src/utils/constants.h"
 
 namespace libgav1 {
@@ -607,6 +608,10 @@ void Convolve2D_AVX2(const void* LIBGAV1_RESTRICT const reference,
   alignas(32) uint16_t
       intermediate_result[kMaxSuperBlockSizeInPixels *
                           (kMaxSuperBlockSizeInPixels + kSubPixelTaps - 1)];
+#if LIBGAV1_MSAN
+  // Quiet msan warnings. Set with random non-zero value to aid in debugging.
+  memset(intermediate_result, 0x33, sizeof(intermediate_result));
+#endif
   const int intermediate_height = height + vertical_taps - 1;
 
   const ptrdiff_t src_stride = reference_stride;
@@ -1374,6 +1379,10 @@ void ConvolveCompound2D_AVX2(
   alignas(32) uint16_t
       intermediate_result[kMaxSuperBlockSizeInPixels *
                           (kMaxSuperBlockSizeInPixels + kSubPixelTaps - 1)];
+#if LIBGAV1_MSAN
+  // Quiet msan warnings. Set with random non-zero value to aid in debugging.
+  memset(intermediate_result, 0x33, sizeof(intermediate_result));
+#endif
   const int intermediate_height = height + vertical_taps - 1;
 
   const ptrdiff_t src_stride = reference_stride;

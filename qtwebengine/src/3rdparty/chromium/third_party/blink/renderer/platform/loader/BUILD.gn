@@ -21,8 +21,6 @@ blink_platform_sources("loader") {
   sources = [
     "allowed_by_nosniff.cc",
     "allowed_by_nosniff.h",
-    "attribution_header_constants.cc",
-    "attribution_header_constants.h",
     "child_url_loader_factory_bundle.cc",
     "cors/cors.cc",
     "cors/cors.h",
@@ -136,6 +134,7 @@ blink_platform_sources("loader") {
     "fetch/url_loader/navigation_body_loader.h",
     "fetch/url_loader/request_conversion.cc",
     "fetch/url_loader/request_conversion.h",
+    "fetch/url_loader/resource_request_client.h",
     "fetch/url_loader/resource_request_sender.cc",
     "fetch/url_loader/resource_request_sender.h",
     "fetch/url_loader/sync_load_context.cc",
@@ -152,8 +151,6 @@ blink_platform_sources("loader") {
     "fetch/url_loader/worker_main_script_loader.h",
     "fetch/url_loader/worker_main_script_loader_client.h",
     "fetch/worker_resource_timing_notifier.h",
-    "frame_request_blocker.cc",
-    "frame_request_blocker.h",
     "internet_disconnected_url_loader.cc",
     "internet_disconnected_url_loader.h",
     "link_header.cc",
@@ -174,6 +171,8 @@ blink_platform_sources("loader") {
           ":make_platform_loader_generated_fetch_initiator_type_names")
   sources +=
       get_target_outputs(":make_platform_loader_generated_delivery_type_names")
+
+  jumbo_excluded_sources = [  "fetch/url_loader/sync_load_context.cc" ]
 
   deps = [
     ":make_platform_loader_generated_delivery_type_names",

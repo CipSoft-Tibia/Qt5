@@ -16,6 +16,7 @@ qt_internal_add_module(JsonRpcPrivate
         qtypedjson_p.h qtypedjson.cpp
     DEFINES
         QT_BUILD_JSONRPC_LIB
+        QT_NO_CONTEXTLESS_CONNECT
     PUBLIC_LIBRARIES
         Qt::Core
 )

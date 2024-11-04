@@ -5,11 +5,6 @@
 import("//build/buildflag_header.gni")
 import("//build/config/rust.gni")
 
-buildflag_header("rust_buildflags") {
-  header = "rust_buildflags.h"
-  flags = [ "TOOLCHAIN_HAS_RUST=$toolchain_has_rust" ]
-}
-
 if (toolchain_has_rust) {
   config("edition_2021") {
     rustflags = [ "--edition=2021" ]
@@ -33,23 +28,21 @@ if (toolchain_has_rust) {
 
     defines = [ "RUST_CXX_NO_EXCEPTIONS" ]
 
-    if (is_win) {
-      defines += [ "CXX_RS_EXPORT=__declspec(dllexport)" ]
+    # We cannot depend on base/base_export.h because base depends on us.
+    if (is_component_build) {
+      if (is_win) {
+        defines += [ "CXX_RS_EXPORT=__declspec(dllexport)" ]
+      } else {
+        defines += [ "CXX_RS_EXPORT=__attribute__((visibility(\"default\")))" ]
+      }
     } else {
-      defines += [ "CXX_RS_EXPORT=__attribute__((visibility(\"default\")))" ]
+      defines += [ "CXX_RS_EXPORT=" ]
     }
 
     # Depending on the C++ bindings side of cxx then requires also depending
     # on the Rust bindings, since one calls the other. And the Rust bindings
     # require the Rust standard library.
-    # Normally the Rust stdlib is brought in as a dependency by depending
-    # on any first-party Rust target. But in this case, it's conceivable
-    # that pure-C++ targets will not depend on any 1p Rust code so we'll add
-    # the Rust stdlib explicitly.
-    deps = [
-      ":cxx_rustdeps",
-      "//build/rust/std",
-    ]
+    deps = [ ":cxx_rustdeps" ]
   }
 
   # The required dependencies for cxx-generated bindings, that must be included
@@ -76,4 +69,19 @@ config("proc_macro_extern") {
     "--extern",
     "proc_macro",
   ]
+}
+
+# Forbids unsafe code in crates with this config.
+config("forbid_unsafe") {
+  rustflags = [ "-Funsafe_code" ]
+}
+
+config("panic_immediate_abort") {
+  visibility = [ "//build/rust/std/rules:*" ]
+  if (is_official_build) {
+    rustflags = [
+      "--cfg",
+      "feature=\"panic_immediate_abort\"",
+    ]
+  }
 }

@@ -75,7 +75,13 @@ NGConstraintSpace CreateCaptionConstraintSpace(
   builder.SetPercentageResolutionSize(available_size);
   builder.SetInlineAutoBehavior(NGAutoBehavior::kStretchImplicit);
 
-  if (block_offset) {
+  // If a block-offset is specified, it means that table captions are laid out
+  // as part of normal table child layout (rather than in initial table
+  // block-size calculation). That is normally only necessary if block
+  // fragmentation is enabled, but may also occur if block fragmentation *was*
+  // enabled for previous fragments, but is disabled for this fragment, because
+  // of overflow clipping.
+  if (block_offset && table_constraint_space.HasBlockFragmentation()) {
     SetupSpaceBuilderForFragmentation(table_constraint_space, caption,
                                       *block_offset, &builder,
                                       /* is_new_fc */ true, false);
@@ -99,8 +105,8 @@ NGTableLayoutAlgorithm::CaptionResult LayoutCaption(
   if (layout_result->Status() == NGLayoutResult::kSuccess) {
     NGFragment fragment(table_constraint_space.GetWritingDirection(),
                         layout_result->PhysicalFragment());
-    ResolveInlineMargins(caption.Style(), table_style, table_inline_size,
-                         fragment.InlineSize(), &margins);
+    ResolveInlineAutoMargins(caption.Style(), table_style, table_inline_size,
+                             fragment.InlineSize(), &margins);
   } else {
     DCHECK(caption_constraint_space.HasBlockFragmentation());
     DCHECK_EQ(layout_result->Status(),
@@ -128,12 +134,14 @@ NGBoxStrut ComputeCaptionMargins(
 }
 
 void ComputeCaptionFragments(
-    const NGConstraintSpace& table_constraint_space,
+    const NGBoxFragmentBuilder& table_builder,
     const ComputedStyle& table_style,
     const NGTableGroupedChildren& grouped_children,
-    const LayoutUnit table_inline_size,
     HeapVector<NGTableLayoutAlgorithm::CaptionResult>* captions,
     LayoutUnit& captions_block_size) {
+  const NGConstraintSpace& table_constraint_space =
+      table_builder.ConstraintSpace();
+  const LayoutUnit table_inline_size = table_builder.InlineSize();
   const LogicalSize available_size = {table_inline_size, kIndefiniteSize};
   for (NGBlockNode caption : grouped_children.captions) {
     NGBoxStrut margins = ComputeCaptionMargins(table_constraint_space, caption,
@@ -151,8 +159,9 @@ void ComputeCaptionFragments(
     // per table node (and e.g. store the table data in the break tokens).
     absl::optional<NGDisableSideEffectsScope> disable_side_effects;
     if ((!captions && !caption.GetLayoutBox()->NeedsLayout()) ||
-        table_constraint_space.HasBlockFragmentation())
+        InvolvedInBlockFragmentation(table_builder)) {
       disable_side_effects.emplace();
+    }
 
     NGTableLayoutAlgorithm::CaptionResult caption_result =
         LayoutCaption(table_constraint_space, table_style, table_inline_size,
@@ -370,10 +379,16 @@ class ColumnGeometriesBuilder {
     LayoutUnit column_inline_size = column_locations[end_column_index].offset +
                                     column_locations[end_column_index].size -
                                     column_locations[start_column_index].offset;
-    col.GetLayoutBox()->SetLogicalWidth(column_inline_size);
-    // Table column block-size is only set when at the last table box fragment.
-    if (table_column_block_size != kIndefiniteSize)
-      col.GetLayoutBox()->SetLogicalHeight(table_column_block_size);
+
+    if (!RuntimeEnabledFeatures::LayoutNGNoCopyBackEnabled()) {
+      col.GetLayoutBox()->SetLogicalWidth(column_inline_size);
+      // Table column block-size is only set when at the last table box
+      // fragment.
+      if (table_column_block_size != kIndefiniteSize) {
+        col.GetLayoutBox()->SetLogicalHeight(table_column_block_size);
+      }
+    }
+
     column_geometries.emplace_back(start_column_index, span,
                                    column_locations[start_column_index].offset -
                                        column_locations[0].offset,
@@ -393,10 +408,16 @@ class ColumnGeometriesBuilder {
     LayoutUnit colgroup_size = column_locations[last_column_index].offset +
                                column_locations[last_column_index].size -
                                column_locations[start_column_index].offset;
-    colgroup.GetLayoutBox()->SetLogicalWidth(colgroup_size);
-    // Table column block-size is only set when at the last table box fragment.
-    if (table_column_block_size != kIndefiniteSize)
-      colgroup.GetLayoutBox()->SetLogicalHeight(table_column_block_size);
+
+    if (!RuntimeEnabledFeatures::LayoutNGNoCopyBackEnabled()) {
+      colgroup.GetLayoutBox()->SetLogicalWidth(colgroup_size);
+      // Table column block-size is only set when at the last table box
+      // fragment.
+      if (table_column_block_size != kIndefiniteSize) {
+        colgroup.GetLayoutBox()->SetLogicalHeight(table_column_block_size);
+      }
+    }
+
     column_geometries.emplace_back(start_column_index, span,
                                    column_locations[start_column_index].offset -
                                        column_locations[0].offset,
@@ -430,6 +451,15 @@ class ColumnGeometriesBuilder {
                   return b.start_column >= a.start_column;
                 }
               });
+
+    if (RuntimeEnabledFeatures::LayoutNGNoCopyBackEnabled()) {
+      wtf_size_t column_idx = 0;
+      for (const auto& col : column_geometries) {
+        To<LayoutNGTableColumn>(col.node.GetLayoutBox())
+            ->SetColumnIndex(column_idx);
+        column_idx++;
+      }
+    }
   }
 
   ColumnGeometriesBuilder(const Vector<NGTableColumnLocation>& column_locations,
@@ -503,7 +533,7 @@ LayoutUnit NGTableLayoutAlgorithm::ComputeTableInlineSize(
 
   const LogicalSize border_spacing = table.Style().TableBorderSpacing();
   NGTableGroupedChildren grouped_children(table);
-  scoped_refptr<const NGTableBorders> table_borders = table.GetTableBorders();
+  const NGTableBorders* table_borders = table.GetTableBorders();
 
   // Compute min/max inline constraints.
   const scoped_refptr<const NGTableTypes::Columns> column_constraints =
@@ -543,16 +573,11 @@ LayoutUnit NGTableLayoutAlgorithm::ComputeTableInlineSize(
                   caption_constraint.min_size);
 }
 
-LayoutUnit NGTableLayoutAlgorithm::ComputeCaptionBlockSize(
-    const NGTableNode& node,
-    const NGConstraintSpace& space,
-    const LayoutUnit table_inline_size) {
-  NGTableGroupedChildren grouped_children(node);
+LayoutUnit NGTableLayoutAlgorithm::ComputeCaptionBlockSize() {
+  NGTableGroupedChildren grouped_children(Node());
   LayoutUnit captions_block_size;
-
-  ComputeCaptionFragments(space, node.Style(), grouped_children,
-                          table_inline_size, /* captions */ nullptr,
-                          captions_block_size);
+  ComputeCaptionFragments(container_builder_, Node().Style(), grouped_children,
+                          /* captions */ nullptr, captions_block_size);
   return captions_block_size;
 }
 
@@ -560,9 +585,8 @@ const NGLayoutResult* NGTableLayoutAlgorithm::Layout() {
   const bool is_fixed_layout = Style().IsFixedTableLayout();
   const LogicalSize border_spacing = Style().TableBorderSpacing();
   NGTableGroupedChildren grouped_children(Node());
-  const scoped_refptr<const NGTableBorders> table_borders =
-      Node().GetTableBorders();
-  DCHECK(table_borders.get());
+  const NGTableBorders* table_borders = Node().GetTableBorders();
+  DCHECK(table_borders);
   const NGBoxStrut border_padding = container_builder_.BorderPadding();
 
   // Algorithm:
@@ -616,9 +640,8 @@ const NGLayoutResult* NGTableLayoutAlgorithm::Layout() {
   // block-size given to the table-grid.
   HeapVector<CaptionResult> captions;
   LayoutUnit captions_block_size;
-  ComputeCaptionFragments(ConstraintSpace(), Style(), grouped_children,
-                          container_builder_.InlineSize(), &captions,
-                          captions_block_size);
+  ComputeCaptionFragments(container_builder_, Style(), grouped_children,
+                          &captions, captions_block_size);
 
   NGTableTypes::Rows rows;
   NGTableTypes::CellBlockConstraints cell_block_constraints;
@@ -691,10 +714,8 @@ MinMaxSizesResult NGTableLayoutAlgorithm::ComputeMinMaxSizes(
     text_autosizer.emplace(To<LayoutNGTable>(Node().GetLayoutBox()));
 
   const LogicalSize border_spacing = Style().TableBorderSpacing();
-  NGTableGroupedChildren grouped_children(Node());
-  const scoped_refptr<const NGTableBorders> table_borders =
-      Node().GetTableBorders();
   const NGBoxStrut border_padding = container_builder_.BorderPadding();
+  NGTableGroupedChildren grouped_children(Node());
 
   const scoped_refptr<const NGTableTypes::Columns> column_constraints =
       Node().GetColumnConstraints(grouped_children, border_padding);
@@ -917,9 +938,11 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
   // subsequent fragment.
   LayoutUnit border_spacing_before_first_section = border_spacing.block_size;
 
+  LayoutUnit monolithic_overflow;
   bool is_past_table_box = false;
   if (BreakToken()) {
     previously_consumed_block_size = BreakToken()->ConsumedBlockSize();
+    monolithic_overflow = BreakToken()->MonolithicOverflow();
     incoming_table_break_data =
         DynamicTo<NGTableBreakTokenData>(BreakToken()->TokenData());
     if (incoming_table_break_data) {
@@ -958,13 +981,12 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
   auto AddCaptionResult = [&](const CaptionResult& caption,
                               LayoutUnit* block_offset) -> void {
     NGBlockNode node = caption.node;
-    node.StoreMargins(
-        caption.margins.ConvertToPhysical(table_writing_direction));
 
     *block_offset += caption.margins.block_start;
     container_builder_.AddResult(
         *caption.layout_result,
-        LogicalOffset(caption.margins.inline_start, *block_offset));
+        LogicalOffset(caption.margins.inline_start, *block_offset),
+        caption.margins);
 
     *block_offset += NGFragment(table_writing_direction,
                                 caption.layout_result->PhysicalFragment())
@@ -976,7 +998,8 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
   // size. We can re-use these results now, unless we're in block fragmentation.
   // In that case we need to lay them out again now, so that they fragment and
   // resume properly.
-  const bool relayout_captions = ConstraintSpace().HasBlockFragmentation();
+  const bool relayout_captions =
+      InvolvedInBlockFragmentation(container_builder_);
 
   // Add all the top captions.
   if (!relayout_captions) {
@@ -1143,6 +1166,15 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
     }
   }
 
+  bool has_entered_non_repeated_section = false;
+  if (monolithic_overflow) {
+    // If the page was overflowed by monolithic content (inside the table) on a
+    // previous page, it has to mean that we've already entered a non-repeated
+    // section, since those are the only ones that can cause fragmentation
+    // overflow.
+    has_entered_non_repeated_section = true;
+  }
+
   LayoutUnit grid_block_size_inflation;
   LayoutUnit repeated_header_block_size;
   bool broke_inside = false;
@@ -1174,9 +1206,15 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
     const NGLayoutResult* child_result;
     absl::optional<LayoutUnit> offset_before_repeated_header;
     LayoutUnit child_inline_offset;
-    LayoutUnit child_block_end_margin;  // Captions allow margins.
+
+    // Captions allow margins.
+    LayoutUnit child_block_start_margin;
+    LayoutUnit child_block_end_margin;
+
     absl::optional<TableBoxExtent> new_table_box_extent;
     bool is_repeated_section = false;
+    bool has_overlapping_repeated_header = false;
+
     if (child.IsTableCaption()) {
       if (!relayout_captions)
         continue;
@@ -1210,12 +1248,12 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
       NGBoxStrut margins = ComputeCaptionMargins(
           ConstraintSpace(), child, container_builder_.InlineSize(),
           child_break_token);
-      child_block_offset += margins.block_start;
+      child_block_start_margin = margins.block_start;
       child_block_end_margin = margins.block_end;
 
-      NGConstraintSpace child_space =
-          CreateCaptionConstraintSpace(ConstraintSpace(), Style(), child,
-                                       available_size, child_block_offset);
+      NGConstraintSpace child_space = CreateCaptionConstraintSpace(
+          ConstraintSpace(), Style(), child, available_size,
+          child_block_offset + child_block_start_margin);
       CaptionResult caption = LayoutCaption(
           ConstraintSpace(), Style(), container_builder_.InlineSize(),
           child_space, child, margins, child_break_token, early_break_in_child);
@@ -1263,6 +1301,18 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
           // block-size, AND fragmentainer block-offset, when laying out
           // non-repeated content (i.e. regular sections).
           offset_before_repeated_header.emplace(child_block_offset);
+
+          if (monolithic_overflow) {
+            // There's monolithic content from previous pages in the way, but we
+            // still want to place the table header at the block-start. In
+            // addition to this (probably) making sense, our implementation
+            // requires it. Once we have decided to repeat a table section, we
+            // need to be consistent about it. Take the header "out of flow",
+            // and just restore the block-offset back to
+            // offset_before_repeated_header afterwards.
+            child_block_offset = -monolithic_overflow;
+            has_overlapping_repeated_header = true;
+          }
 
           // A header will share its collapsed border with the block-start of
           // the table. However when repeated it will draw the whole border
@@ -1333,8 +1383,8 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
     if (ConstraintSpace().HasBlockFragmentation() &&
         (!child_break_token || !is_repeated_section)) {
       LayoutUnit fragmentainer_block_offset =
-          ConstraintSpace().FragmentainerOffset() + child_block_offset -
-          repeated_header_block_size;
+          ConstraintSpace().FragmentainerOffset() + child_block_start_margin +
+          child_block_offset - repeated_header_block_size;
       NGBreakStatus break_status = BreakBeforeChildIfNeeded(
           ConstraintSpace(), child, *child_result, fragmentainer_block_offset,
           has_container_separation, &container_builder_);
@@ -1351,6 +1401,9 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
         To<NGPhysicalBoxFragment>(child_result->PhysicalFragment());
     NGBoxFragment fragment(table_writing_direction, physical_fragment);
     if (child.IsTableSection()) {
+      if (!is_repeated_section) {
+        has_entered_non_repeated_section = true;
+      }
       if (!first_baseline) {
         if (const auto& section_first_baseline = fragment.FirstBaseline())
           first_baseline = child_block_offset + *section_first_baseline;
@@ -1359,6 +1412,7 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
         last_baseline = child_block_offset + *section_last_baseline;
     }
 
+    child_block_offset += child_block_start_margin;
     container_builder_.AddResult(
         *child_result, LogicalOffset(child_inline_offset, child_block_offset));
     child_block_offset += fragment.BlockSize() + child_block_end_margin;
@@ -1368,6 +1422,14 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
         repeated_header_block_size = child_block_offset -
                                      *offset_before_repeated_header +
                                      border_spacing.block_size;
+
+        if (has_overlapping_repeated_header) {
+          // The header was taken "out of flow" and placed on top of monolithic
+          // content. Now make sure that the offset is past the monolithic
+          // overflow again (AND past the header).
+          child_block_offset =
+              std::max(child_block_offset, *offset_before_repeated_header);
+        }
       }
 
       if (new_table_box_extent) {
@@ -1429,7 +1491,25 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
     }
     DCHECK_EQ(entry.GetNode(), grouped_children.footer);
 
-    LogicalOffset offset(section_inline_offset, child_block_offset);
+    // The only case where we should allow a break before a repeatable section
+    // is when we haven't processed a non-repeated section yet (a regular TBODY,
+    // for instance). In all other cases we should make sure that the footer
+    // fits, by forcefully making room for it, if necessary. This may be
+    // necessary when there's monolithic content that overflows the current
+    // page. We'll then place the repeated footer on top of any overflowing
+    // monolithic content, at the bottom of the page. Our implementation
+    // requires that once we've started repeating a section, it needs to be
+    // present in *every* subsequent table fragment that contains parts of the
+    // table box (i.e. non-captions).
+    LayoutUnit adjusted_child_block_offset = child_block_offset;
+    if (has_entered_non_repeated_section) {
+      adjusted_child_block_offset =
+          std::min(adjusted_child_block_offset,
+                   UnclampedFragmentainerSpaceLeft(ConstraintSpace()) -
+                       repeated_footer_block_size);
+    }
+
+    LogicalOffset offset(section_inline_offset, adjusted_child_block_offset);
     NGConstraintSpace child_space = CreateSectionConstraintSpace(
         grouped_children.footer, offset.block_offset, entry.GetSectionIndex(),
         /* reserved_space */ LayoutUnit(), kMayRepeatAgain);
@@ -1544,7 +1624,7 @@ const NGLayoutResult* NGTableLayoutAlgorithm::GenerateFragment(
   }
   container_builder_.SetFragmentsTotalBlockSize(block_size);
 
-  if (RuntimeEnabledFeatures::MathMLCoreEnabled() && Node().GetDOMNode() &&
+  if (Node().GetDOMNode() &&
       Node().GetDOMNode()->HasTagName(mathml_names::kMtableTag)) {
     container_builder_.SetBaselines(
         MathTableBaseline(Style(), child_block_offset));

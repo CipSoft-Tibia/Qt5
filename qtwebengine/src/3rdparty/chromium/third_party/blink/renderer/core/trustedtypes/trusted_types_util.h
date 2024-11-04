@@ -18,7 +18,7 @@ class QualifiedName;
 class ScriptValue;
 class ScriptState;
 class V8UnionStringOrTrustedScript;
-class V8UnionStringTreatNullAsEmptyStringOrTrustedScript;
+class V8UnionStringLegacyNullToEmptyStringOrTrustedScript;
 
 enum class SpecificTrustedType {
   kNone,
@@ -39,7 +39,7 @@ TrustedTypesCheckForScript(const V8UnionStringOrTrustedScript* value,
                            const ExecutionContext* execution_context,
                            ExceptionState& exception_state);
 [[nodiscard]] CORE_EXPORT String TrustedTypesCheckForScript(
-    const V8UnionStringTreatNullAsEmptyStringOrTrustedScript* value,
+    const V8UnionStringLegacyNullToEmptyStringOrTrustedScript* value,
     const ExecutionContext* execution_context,
     ExceptionState& exception_state);
 
@@ -106,7 +106,7 @@ bool IsTrustedTypesEventHandlerAttribute(const QualifiedName&);
 // If an error occurs, this will return a null-String.
 //
 // Spec:
-// https://w3c.github.io/webappsec-trusted-types/dist/spec/#check-templatedness-algorithm
+// https://w3c.github.io/trusted-types/dist/spec/#check-templatedness-algorithm
 String GetTrustedTypesLiteral(const ScriptValue&, ScriptState*);
 
 }  // namespace blink

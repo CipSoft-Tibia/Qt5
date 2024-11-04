@@ -5,6 +5,7 @@
 #include "ui/ozone/platform/wayland/test/test_zaura_shell.h"
 
 #include "base/notreached.h"
+#include "ui/ozone/platform/wayland/test/mock_xdg_surface.h"
 #include "ui/ozone/platform/wayland/test/server_object.h"
 #include "ui/ozone/platform/wayland/test/test_output.h"
 #include "ui/ozone/platform/wayland/test/test_zaura_output.h"
@@ -16,7 +17,7 @@ namespace wl {
 
 namespace {
 
-constexpr uint32_t kZAuraShellVersion = 44;
+constexpr uint32_t kZAuraShellVersion = 58;
 constexpr uint32_t kZAuraOutputVersion = 44;
 
 void GetAuraSurface(wl_client* client,
@@ -50,9 +51,13 @@ void GetAuraToplevelForXdgToplevel(wl_client* client,
                                    wl_resource* resource,
                                    uint32_t id,
                                    wl_resource* toplevel) {
-  CreateResourceWithImpl<TestZAuraToplevel>(client, &zaura_toplevel_interface,
-                                            kZAuraShellVersion,
-                                            &kTestZAuraToplevelImpl, id);
+  wl_resource* zaura_toplevel_resource =
+      CreateResourceWithImpl<TestZAuraToplevel>(
+          client, &zaura_toplevel_interface, kZAuraShellVersion,
+          &kTestZAuraToplevelImpl, id);
+  auto* xdg_toplevel = GetUserDataAs<MockXdgTopLevel>(toplevel);
+  xdg_toplevel->set_zaura_toplevel(
+      GetUserDataAs<TestZAuraToplevel>(zaura_toplevel_resource));
 }
 
 void GetAuraPopupForXdgPopup(wl_client* client,
@@ -82,13 +87,32 @@ TestZAuraShell::TestZAuraShell()
 
 TestZAuraShell::~TestZAuraShell() = default;
 
+void TestZAuraShell::SetCompositorVersion(const std::string& version_string) {
+  if (version_string == compositor_version_string_) {
+    return;
+  }
+  compositor_version_string_ = version_string;
+  MaybeSendCompositorVersion();
+}
+
 void TestZAuraShell::SetBugFixes(std::vector<uint32_t> bug_fixes) {
   bug_fixes_ = std::move(bug_fixes);
   MaybeSendBugFixes();
 }
 
 void TestZAuraShell::OnBind() {
+  MaybeSendCompositorVersion();
   MaybeSendBugFixes();
+}
+
+void TestZAuraShell::MaybeSendCompositorVersion() {
+  if (resource() &&
+      wl_resource_get_version(resource()) >=
+          ZAURA_SHELL_COMPOSITOR_VERSION_SINCE_VERSION &&
+      !compositor_version_string_.empty()) {
+    zaura_shell_send_compositor_version(resource(),
+                                        compositor_version_string_.c_str());
+  }
 }
 
 void TestZAuraShell::MaybeSendBugFixes() {

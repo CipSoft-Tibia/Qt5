@@ -10,7 +10,6 @@ QtObject {
     }
 
     property ObjectWithColor border: ObjectWithColor {
-        id: border
         objectName: root.objectName
         color: root.trueBorderColor
         varvar: root.trueBorderVarvar
@@ -18,9 +17,9 @@ QtObject {
 
     readonly property rect readonlyRect: ({x: 12, y: 13, width: 14, height: 15})
 
-    property alias borderObjectName: border.objectName
-    property alias borderColor: border.color
-    property alias borderVarvar: border.varvar
+    property alias borderObjectName: root.border.objectName
+    property alias borderColor: root.border.color
+    property alias borderVarvar: root.border.varvar
     property alias readonlyRectX: root.readonlyRect.x
 
     property string trueBorderColor: "green"

@@ -11,6 +11,7 @@
 #include "base/system/sys_info.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
+#include "chrome/browser/ash/crosapi/browser_util.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_platform_part.h"
 #include "chrome/browser/ui/chrome_pages.h"
@@ -39,12 +40,8 @@
 #include "chrome/browser/nearby_sharing/common/nearby_share_features.h"
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-#include "chromeos/startup/browser_params_proxy.h"
-#endif
-
 #if BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/ui/webui/settings/chromeos/constants/routes.mojom.h"
+#include "ash/webui/settings/public/constants/routes.mojom.h"
 #endif
 
 namespace settings {
@@ -60,25 +57,6 @@ std::u16string GetHelpUrlWithBoard(const std::string& original_url) {
 }
 
 }  // namespace
-#endif
-
-// Lacros side-by-side warning should be shown as long as both Lacros and Ash
-// browsers enabled.
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-bool ShouldShowLacrosSideBySideWarningInAsh() {
-  return base::FeatureList::IsEnabled(
-             syncer::kSyncSettingsShowLacrosSideBySideWarning) &&
-         crosapi::browser_util::IsAshWebBrowserEnabled() &&
-         crosapi::browser_util::IsLacrosEnabled();
-}
-#endif
-
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-bool ShouldShowLacrosSideBySideWarningInLacros() {
-  return base::FeatureList::IsEnabled(
-             syncer::kSyncSettingsShowLacrosSideBySideWarning) &&
-         !chromeos::BrowserParamsProxy::Get()->StandaloneBrowserIsOnlyBrowser();
-}
 #endif
 
 void AddCaptionSubpageStrings(content::WebUIDataSource* html_source) {
@@ -114,65 +92,67 @@ void AddCaptionSubpageStrings(content::WebUIDataSource* html_source) {
       {"captionsColorCyan", IDS_SETTINGS_CAPTIONS_COLOR_CYAN},
       {"captionsColorMagenta", IDS_SETTINGS_CAPTIONS_COLOR_MAGENTA},
       {"captionsDefaultSetting", IDS_SETTINGS_CAPTIONS_DEFAULT_SETTING},
+      {"captionsLanguage", IDS_SETTINGS_CAPTIONS_LANGUAGE},
+      {"captionsManageLanguagesTitle",
+       IDS_SETTINGS_CAPTIONS_MANAGE_LANGUAGES_TITLE},
+      {"captionsManageLanguagesSubtitle",
+       IDS_SETTINGS_CAPTIONS_MANAGE_LANGUAGES_SUBTITLE},
+      {"captionsLiveTranslateTargetLanguage",
+       IDS_SETTINGS_CAPTIONS_LIVE_TRANSLATE_TARGET_LANGUAGE},
+      {"removeLanguageAriaLabel",
+       IDS_SETTINGS_CAPTIONS_REMOVE_LANGUAGE_ARIA_LABEL},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
 
   AddLiveCaptionSectionStrings(html_source);
 }
 
+// Live Caption subtitle depends on whether multi-language is supported, and on
+// Ash also depends on whether system-wide live caption is enabled.
+int GetLiveCaptionSubtitle(const bool multi_language) {
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  if (!ash::features::IsSystemLiveCaptionEnabled()) {
+    return multi_language
+               ? IDS_SETTINGS_CAPTIONS_ENABLE_LIVE_CAPTION_SUBTITLE_BROWSER_ONLY
+               : IDS_SETTINGS_CAPTIONS_ENABLE_LIVE_CAPTION_SUBTITLE_BROWSER_ONLY_ENGLISH_ONLY;
+  }
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+  return multi_language
+             ? IDS_SETTINGS_CAPTIONS_ENABLE_LIVE_CAPTION_SUBTITLE
+             : IDS_SETTINGS_CAPTIONS_ENABLE_LIVE_CAPTION_SUBTITLE_ENGLISH_ONLY;
+}
+
 void AddLiveCaptionSectionStrings(content::WebUIDataSource* html_source) {
   html_source->AddLocalizedString(
       "captionsEnableLiveCaptionTitle",
       IDS_SETTINGS_CAPTIONS_ENABLE_LIVE_CAPTION_TITLE);
+  html_source->AddLocalizedString(
+      "captionsEnableLiveTranslateTitle",
+      IDS_SETTINGS_CAPTIONS_ENABLE_LIVE_TRANSLATE_TITLE);
+  html_source->AddLocalizedString(
+      "captionsEnableLiveTranslateSubtitle",
+      IDS_SETTINGS_CAPTIONS_ENABLE_LIVE_TRANSLATE_SUBTITLE);
+  html_source->AddLocalizedString(
+      "captionsMaskOffensiveWordsTitle",
+      IDS_SETTINGS_CAPTIONS_MASK_OFFENSIVE_WORDS_TITLE);
 
   const bool liveCaptionMultiLanguageEnabled =
       base::FeatureList::IsEnabled(media::kLiveCaptionMultiLanguage);
+
+  const bool liveTranslateEnabled =
+      base::FeatureList::IsEnabled(media::kLiveTranslate);
+
   const int live_caption_subtitle_message =
-      liveCaptionMultiLanguageEnabled
-          ? IDS_SETTINGS_CAPTIONS_ENABLE_LIVE_CAPTION_SUBTITLE
-          : IDS_SETTINGS_CAPTIONS_ENABLE_LIVE_CAPTION_SUBTITLE_ENGLISH_ONLY;
+      GetLiveCaptionSubtitle(liveCaptionMultiLanguageEnabled);
+
   html_source->AddLocalizedString("captionsEnableLiveCaptionSubtitle",
                                   live_caption_subtitle_message);
-
-  absl::optional<speech::SodaLanguagePackComponentConfig> englishConfig =
-      speech::GetLanguageComponentConfig(speech::LanguageCode::kEnUs);
-  html_source->AddString("sodaLanguageCodeEnglish",
-                         englishConfig->language_name);
-  html_source->AddLocalizedString("sodaLanguageDisplayNameEnglish",
-                                  englishConfig->display_name);
-  absl::optional<speech::SodaLanguagePackComponentConfig> frenchConfig =
-      speech::GetLanguageComponentConfig(speech::LanguageCode::kFrFr);
-  html_source->AddString("sodaLanguageCodeFrench", frenchConfig->language_name);
-  html_source->AddLocalizedString("sodaLanguageDisplayNameFrench",
-                                  frenchConfig->display_name);
-  absl::optional<speech::SodaLanguagePackComponentConfig> germanConfig =
-      speech::GetLanguageComponentConfig(speech::LanguageCode::kDeDe);
-  html_source->AddString("sodaLanguageCodeGerman", germanConfig->language_name);
-  html_source->AddLocalizedString("sodaLanguageDisplayNameGerman",
-                                  germanConfig->display_name);
-  absl::optional<speech::SodaLanguagePackComponentConfig> italianConfig =
-      speech::GetLanguageComponentConfig(speech::LanguageCode::kItIt);
-  html_source->AddString("sodaLanguageCodeItalian",
-                         italianConfig->language_name);
-  html_source->AddLocalizedString("sodaLanguageDisplayNameItalian",
-                                  italianConfig->display_name);
-  absl::optional<speech::SodaLanguagePackComponentConfig> japaneseConfig =
-      speech::GetLanguageComponentConfig(speech::LanguageCode::kJaJp);
-  html_source->AddString("sodaLanguageCodeJapanese",
-                         japaneseConfig->language_name);
-  html_source->AddLocalizedString("sodaLanguageDisplayNameJapanese",
-                                  japaneseConfig->display_name);
-  absl::optional<speech::SodaLanguagePackComponentConfig> spanishConfig =
-      speech::GetLanguageComponentConfig(speech::LanguageCode::kEsEs);
-  html_source->AddString("sodaLanguageCodeSpanish",
-                         spanishConfig->language_name);
-  html_source->AddLocalizedString("sodaLanguageDisplayNameSpanish",
-                                  spanishConfig->display_name);
-
   html_source->AddBoolean("enableLiveCaption",
                           captions::IsLiveCaptionFeatureSupported());
   html_source->AddBoolean("enableLiveCaptionMultiLanguage",
                           liveCaptionMultiLanguageEnabled);
+
+  html_source->AddBoolean("enableLiveTranslate", liveTranslateEnabled);
 }
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -208,21 +188,31 @@ void AddSharedSyncPageStrings(content::WebUIDataSource* html_source) {
     {"sync", IDS_SETTINGS_SYNC},
     {"manageSyncedDataTitle",
      IDS_SETTINGS_NEW_MANAGE_SYNCED_DATA_TITLE_UNIFIED_CONSENT},
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+    {"manageSyncedDataSubtitle",
+     IDS_SETTINGS_NEW_MANAGE_SYNCED_DATA_SUBTITLE_UNIFIED_CONSENT},
+#endif
+    {"manageBrowserSyncedDataTitle",
+     IDS_SETTINGS_NEW_MANAGE_BROWSER_SYNCED_DATA_TITLE},
+    {"syncAdvancedDevicePageTitle",
+     IDS_SETTINGS_NEW_SYNC_ADVANCED_DEVICE_PAGE_TITLE},
+    {"syncAdvancedBrowserPageTitle",
+     IDS_SETTINGS_NEW_SYNC_ADVANCED_BROWSER_PAGE_TITLE},
     {"enterPassphraseLabel", IDS_SYNC_ENTER_PASSPHRASE_BODY},
     {"enterPassphraseLabelWithDate", IDS_SYNC_ENTER_PASSPHRASE_BODY_WITH_DATE},
     {"existingPassphraseLabelWithDate",
      IDS_SYNC_FULL_ENCRYPTION_BODY_CUSTOM_WITH_DATE},
     {"existingPassphraseLabel", IDS_SYNC_FULL_ENCRYPTION_BODY_CUSTOM},
-  // Settings warning for Lacros side-by-side mode.
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-    {"syncSettingsLacrosSideBySideWarning",
-     IDS_SYNC_SETTINGS_SIDE_BY_SIDE_WARNING_ASH},
-#elif BUILDFLAG(IS_CHROMEOS_LACROS)
-    {"syncSettingsLacrosSideBySideWarning",
-     IDS_SYNC_SETTINGS_SIDE_BY_SIDE_WARNING_LACROS},
-#endif
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
+
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  if (base::FeatureList::IsEnabled(syncer::kSyncChromeOSAppsToggleSharing)) {
+    html_source->AddLocalizedString(
+        "manageSyncedDataSubtitle",
+        IDS_SETTINGS_NEW_MANAGE_SYNCED_DATA_SUBTITLE_UNIFIED_CONSENT);
+  }
+#endif
 
   std::string sync_dashboard_url =
       google_util::AppendGoogleLocaleParam(
@@ -255,11 +245,14 @@ void AddSharedSyncPageStrings(content::WebUIDataSource* html_source) {
           base::ASCIIToUTF16(chrome::kSyncEncryptionHelpURL)));
 #endif
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-  html_source->AddBoolean("shouldShowLacrosSideBySideWarning",
-                          ShouldShowLacrosSideBySideWarningInAsh());
+  html_source->AddBoolean(
+      "showSyncSettingsRevamp",
+      base::FeatureList::IsEnabled(syncer::kSyncChromeOSAppsToggleSharing) &&
+          crosapi::browser_util::IsLacrosEnabled());
 #elif BUILDFLAG(IS_CHROMEOS_LACROS)
-  html_source->AddBoolean("shouldShowLacrosSideBySideWarning",
-                          ShouldShowLacrosSideBySideWarningInLacros());
+  html_source->AddBoolean(
+      "showSyncSettingsRevamp",
+      base::FeatureList::IsEnabled(syncer::kSyncChromeOSAppsToggleSharing));
 #endif
 
   html_source->AddString("syncErrorsHelpUrl", chrome::kSyncErrorsHelpURL);

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,13 +12,12 @@
 
 #include "cast/common/public/cast_socket.h"
 #include "cast/common/public/parsed_certificate.h"
-#include "platform/api/serial_delete_ptr.h"
 #include "platform/api/task_runner.h"
 #include "platform/api/tls_connection_factory.h"
 #include "platform/base/ip_address.h"
+#include "util/serial_delete_ptr.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class AuthContext;
 class TrustStore;
@@ -47,9 +46,9 @@ class SenderSocketFactory final : public TlsConnectionFactory::Client,
 
   // |client| and |task_runner| must outlive |this|.  If no trust stores are
   // passed, the default production certificates are used.
-  SenderSocketFactory(Client* client, TaskRunner* task_runner);
+  SenderSocketFactory(Client* client, TaskRunner& task_runner);
   SenderSocketFactory(Client* client,
-                      TaskRunner* task_runner,
+                      TaskRunner& task_runner,
                       std::unique_ptr<TrustStore> cast_trust_store,
                       std::unique_ptr<TrustStore> crl_trust_store);
   ~SenderSocketFactory();
@@ -107,7 +106,7 @@ class SenderSocketFactory final : public TlsConnectionFactory::Client,
                  ::cast::channel::CastMessage message) override;
 
   Client* const client_;
-  TaskRunner* const task_runner_;
+  TaskRunner& task_runner_;
   TlsConnectionFactory* factory_ = nullptr;
   std::vector<PendingConnection> pending_connections_;
   std::vector<std::unique_ptr<PendingAuth>> pending_auth_;
@@ -117,7 +116,6 @@ class SenderSocketFactory final : public TlsConnectionFactory::Client,
   std::unique_ptr<TrustStore> crl_trust_store_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_SENDER_PUBLIC_SENDER_SOCKET_FACTORY_H_

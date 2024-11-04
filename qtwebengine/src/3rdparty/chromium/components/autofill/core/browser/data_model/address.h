@@ -38,10 +38,7 @@ class Address : public FormGroup {
   // Derives all missing tokens in the structured representation of the address
   // either parsing missing tokens from their assigned parent or by formatting
   // them from their assigned children.
-  bool FinalizeAfterImport(bool profile_is_verified);
-
-  // Convenience wrapper to invoke finalization for unverified profiles.
-  bool FinalizeAfterImport() { return FinalizeAfterImport(false); }
+  bool FinalizeAfterImport();
 
   // For structured addresses, merges |newer| into |this|. For some values
   // within the structured address tree the more recently used profile gets
@@ -59,7 +56,7 @@ class Address : public FormGroup {
   bool IsStructuredAddressMergeable(const Address& newer) const;
 
   // Returns a constant reference to |structured_address_|.
-  const AddressNode& GetStructuredAddress() const;
+  const AddressComponent& GetStructuredAddress() const;
 
  private:
   // FormGroup:
@@ -77,7 +74,7 @@ class Address : public FormGroup {
 
   // This data structure holds the address information if the structured address
   // feature is enabled.
-  AddressNode structured_address_;
+  std::unique_ptr<AddressComponent> structured_address_;
 };
 
 }  // namespace autofill

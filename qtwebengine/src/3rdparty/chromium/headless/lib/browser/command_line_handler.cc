@@ -41,7 +41,6 @@ void HandleDeterministicModeSwitch(base::CommandLine& command_line) {
 
   // Renderer flags
   command_line.AppendSwitch(cc::switches::kDisableThreadedAnimation);
-  command_line.AppendSwitch(blink::switches::kDisableThreadedScrolling);
   command_line.AppendSwitch(cc::switches::kDisableCheckerImaging);
 }
 
@@ -177,6 +176,11 @@ bool HandleCommandLineSwitches(base::CommandLine& command_line,
     if (net::HttpUtil::IsValidHeaderValue(user_agent)) {
       builder.SetUserAgent(user_agent);
     }
+  }
+
+  if (command_line.HasSwitch(switches::kAcceptLang)) {
+    builder.SetAcceptLanguage(
+        command_line.GetSwitchValueASCII(switches::kAcceptLang));
   }
 
   if (command_line.HasSwitch(switches::kFontRenderHinting)) {

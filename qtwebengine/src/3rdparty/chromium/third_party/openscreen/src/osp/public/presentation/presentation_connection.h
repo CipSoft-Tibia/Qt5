@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,11 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "osp/public/message_demuxer.h"
 #include "platform/api/time.h"
 #include "platform/base/error.h"
@@ -20,8 +20,7 @@
 #include "platform/base/macros.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 class ProtocolConnection;
 
@@ -73,13 +72,13 @@ class Connection {
     virtual void OnDiscarded() = 0;
 
     // Closed because of an error.
-    virtual void OnError(const absl::string_view message) = 0;
+    virtual void OnError(const std::string_view message) = 0;
 
     // Terminated through a different connection.
     virtual void OnTerminated() = 0;
 
     // A UTF-8 string message was received.
-    virtual void OnStringMessage(const absl::string_view message) = 0;
+    virtual void OnStringMessage(const std::string_view message) = 0;
 
     // A binary message was received.
     virtual void OnBinaryMessage(const std::vector<uint8_t>& data) = 0;
@@ -141,7 +140,7 @@ class Connection {
   }
 
   // Sends a UTF-8 string message.
-  Error SendString(absl::string_view message);
+  Error SendString(std::string_view message);
 
   // Sends a binary message.
   Error SendBinary(std::vector<uint8_t>&& data);
@@ -178,8 +177,8 @@ class Connection {
   State state_ = State::kConnecting;
   Delegate* delegate_;
   ParentDelegate* parent_delegate_;
-  absl::optional<uint64_t> connection_id_;
-  absl::optional<uint64_t> endpoint_id_;
+  std::optional<uint64_t> connection_id_;
+  std::optional<uint64_t> endpoint_id_;
   std::unique_ptr<ProtocolConnection> protocol_connection_;
 
   OSP_DISALLOW_COPY_AND_ASSIGN(Connection);
@@ -215,7 +214,6 @@ class ConnectionManager final : public MessageDemuxer::MessageCallback {
   OSP_DISALLOW_COPY_AND_ASSIGN(ConnectionManager);
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_PUBLIC_PRESENTATION_PRESENTATION_CONNECTION_H_

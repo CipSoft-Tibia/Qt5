@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,16 +6,15 @@
 #define CAST_STREAMING_COMPOUND_RTCP_PARSER_H_
 
 #include <chrono>
+#include <optional>
 #include <vector>
 
-#include "absl/types/optional.h"
-#include "absl/types/span.h"
 #include "cast/streaming/frame_id.h"
 #include "cast/streaming/rtcp_common.h"
 #include "cast/streaming/rtp_defines.h"
+#include "platform/base/span.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class RtcpSession;
 
@@ -44,6 +43,10 @@ class CompoundRtcpParser {
 
     // Called when a Receiver Report with a Report Block has been parsed.
     virtual void OnReceiverReport(const RtcpReportBlock& receiver_report);
+
+    // Called when a group of Cast Receiver frame log messages has been parsed.
+    virtual void OnCastReceiverFrameLogMessages(
+        std::vector<RtcpReceiverFrameLogMessage> messages);
 
     // Called when the Receiver has encountered an unrecoverable error in
     // decoding the data. The Sender should provide a key frame as soon as
@@ -87,26 +90,32 @@ class CompoundRtcpParser {
   // |max_feedback_frame_id| is the maximum-valued FrameId that could possibly
   // be ACKnowledged by the Receiver, if there is Cast Feedback in the |packet|.
   // This is needed for expanding truncated frame IDs correctly.
-  bool Parse(absl::Span<const uint8_t> packet, FrameId max_feedback_frame_id);
+  bool Parse(ByteView packet, FrameId max_feedback_frame_id);
 
  private:
   // These return true if the input was well-formed, and false if it was
   // invalid/corrupt. The true/false value does NOT indicate whether the data
   // contained within was ignored. Output arguments are only modified if the
   // input contained the relevant field(s).
-  bool ParseReceiverReport(absl::Span<const uint8_t> in,
+  bool ParseReceiverReport(ByteView in,
                            int num_report_blocks,
-                           absl::optional<RtcpReportBlock>* receiver_report);
-  bool ParseFeedback(absl::Span<const uint8_t> in,
+                           std::optional<RtcpReportBlock>& receiver_report);
+  bool ParseApplicationDefined(
+      RtcpSubtype subtype,
+      ByteView in,
+      std::vector<RtcpReceiverFrameLogMessage>& messages);
+  bool ParseFrameLogMessages(
+      ByteView in,
+      std::vector<RtcpReceiverFrameLogMessage>& messages);
+  bool ParseFeedback(ByteView in,
                      FrameId max_feedback_frame_id,
                      FrameId* checkpoint_frame_id,
                      std::chrono::milliseconds* target_playout_delay,
                      std::vector<FrameId>* received_frames,
-                     std::vector<PacketNack>* packet_nacks);
-  bool ParseExtendedReports(absl::Span<const uint8_t> in,
-                            Clock::time_point* receiver_reference_time);
-  bool ParsePictureLossIndicator(absl::Span<const uint8_t> in,
-                                 bool* picture_loss_indicator);
+                     std::vector<PacketNack>& packet_nacks);
+  bool ParseExtendedReports(ByteView in,
+                            Clock::time_point& receiver_reference_time);
+  bool ParsePictureLossIndicator(ByteView in, bool& picture_loss_indicator);
 
   RtcpSession* const session_;
   Client* const client_;
@@ -115,9 +124,11 @@ class CompoundRtcpParser {
   // and uses this to ignore stale RTCP packets that arrived out-of-order and/or
   // late from the network.
   Clock::time_point latest_receiver_timestamp_;
+
+  // Tracks the last parsed RTP timestamp seen from any Cast receiver frame log.
+  RtpTimeTicks latest_frame_log_rtp_timestamp_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_COMPOUND_RTCP_PARSER_H_

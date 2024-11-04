@@ -16,6 +16,8 @@ list(APPEND testdata_resource_files ${test_data_glob})
 qt_internal_add_test(tst_qmediaplayerbackend
     SOURCES
         ../shared/mediafileselector.h
+        ../shared/mediabackendutils.h
+        ../shared/testvideosink.h
         mediaplayerstate.h
         fake.h
         fixture.h
@@ -28,21 +30,10 @@ qt_internal_add_test(tst_qmediaplayerbackend
         Qt::Qml
         Qt::Quick
         Qt::QuickPrivate
-    TESTDATA ${testdata_resource_files}
-)
-
-qt_internal_add_resource(tst_qmediaplayerbackend "testdata"
-    PREFIX
-        "/"
-    FILES
+    BUILTIN_TESTDATA
+    TESTDATA
         ${testdata_resource_files}
         "LazyLoad.qml"
-)
-
-## Scopes:
-#####################################################################
-
-qt_internal_extend_target(tst_qmediaplayerbackend CONDITION boot2qt
-    DEFINES
-        SKIP_OGV_TEST
+    INCLUDE_DIRECTORIES
+        ../shared/
 )

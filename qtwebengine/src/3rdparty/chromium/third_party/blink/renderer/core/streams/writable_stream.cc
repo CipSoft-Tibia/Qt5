@@ -10,6 +10,7 @@
 #include "third_party/blink/renderer/core/dom/abort_signal.h"
 #include "third_party/blink/renderer/core/streams/count_queuing_strategy.h"
 #include "third_party/blink/renderer/core/streams/miscellaneous_operations.h"
+#include "third_party/blink/renderer/core/streams/pipe_options.h"
 #include "third_party/blink/renderer/core/streams/promise_handler.h"
 #include "third_party/blink/renderer/core/streams/readable_stream.h"
 #include "third_party/blink/renderer/core/streams/readable_stream_transferring_optimizer.h"
@@ -273,9 +274,8 @@ void WritableStream::Serialize(ScriptState* script_state,
 
   // 7. Let promise be ! ReadableStreamPipeTo(readable, value, false, false,
   //    false).
-  auto promise = ReadableStream::PipeTo(
-      script_state, readable, this,
-      MakeGarbageCollected<ReadableStream::PipeOptions>());
+  auto promise = ReadableStream::PipeTo(script_state, readable, this,
+                                        MakeGarbageCollected<PipeOptions>());
 
   // 8. Set promise.[[PromiseIsHandled]] to true.
   promise.MarkAsHandled();
@@ -338,10 +338,9 @@ v8::Local<v8::Promise> WritableStream::Abort(ScriptState* script_state,
     return PromiseResolveWithUndefined(script_state);
   }
 
-  //  2. Signal abort on stream.[[controller]].[[signal]] with reason.
+  //  2. Signal abort on stream.[[controller]].[[abortController]] with reason.
   auto* isolate = script_state->GetIsolate();
-  stream->Controller()->signal()->SignalAbort(script_state,
-                                              ScriptValue(isolate, reason));
+  stream->Controller()->Abort(script_state, ScriptValue(isolate, reason));
 
   //  3. Let state be stream.[[state]].
   const auto state = stream->state_;

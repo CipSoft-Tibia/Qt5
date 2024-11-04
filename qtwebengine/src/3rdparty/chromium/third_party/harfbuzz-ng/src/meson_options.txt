@@ -21,6 +21,8 @@ option('directwrite', type: 'feature', value: 'disabled',
   description: 'Enable DirectWrite shaper backend on Windows (experimental)')
 option('coretext', type: 'feature', value: 'disabled',
   description: 'Enable CoreText shaper backend on macOS')
+option('wasm', type: 'feature', value: 'disabled',
+  description: 'Enable WebAssembly shaper backend (experimental)')
 
 # Common feature options
 option('tests', type: 'feature', value: 'enabled', yield: true,
@@ -29,6 +31,10 @@ option('introspection', type: 'feature', value: 'auto', yield: true,
   description: 'Generate gobject-introspection bindings (.gir/.typelib files)')
 option('docs', type: 'feature', value: 'auto', yield: true,
   description: 'Generate documentation with gtk-doc')
+option('doc_tests', type: 'boolean', value: false,
+  description: 'Run gtkdoc-check tests')
+option('utilities', type: 'feature', value: 'enabled', yield: true,
+  description: 'Build harfbuzz utils')
 
 option('benchmark', type: 'feature', value: 'disabled',
   description: 'Enable benchmark tests')

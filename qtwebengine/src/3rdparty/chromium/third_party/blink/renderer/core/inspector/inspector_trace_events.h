@@ -38,8 +38,6 @@ class QuadF;
 
 namespace v8 {
 class Function;
-template <typename T>
-class Local;
 }  // namespace v8
 
 namespace WTF {
@@ -121,8 +119,7 @@ class CORE_EXPORT InspectorTraceEvents
                         DocumentLoader*,
                         base::TimeTicks monotonic_finish_time,
                         int64_t encoded_data_length,
-                        int64_t decoded_body_length,
-                        bool should_report_corb_blocking);
+                        int64_t decoded_body_length);
   void DidFailLoading(
       CoreProbeSink* sink,
       uint64_t identifier,
@@ -270,6 +267,7 @@ extern const char kStyleChange[];
 extern const char kDomChanged[];
 extern const char kTextChanged[];
 extern const char kPrintingChanged[];
+extern const char kPaintPreview[];
 extern const char kAttributeChanged[];
 extern const char kColumnsChanged[];
 extern const char kChildAnonymousBlockChanged[];
@@ -281,7 +279,6 @@ extern const char kListValueChange[];
 extern const char kListStyleTypeChange[];
 extern const char kCounterStyleChange[];
 extern const char kImageChanged[];
-extern const char kLineBoxesChanged[];
 extern const char kSliderValueChanged[];
 extern const char kAncestorMarginCollapsing[];
 extern const char kFieldsetChanged[];
@@ -380,18 +377,20 @@ void Data(perfetto::TracedValue context, DocumentLoader*, uint64_t identifier);
 }
 
 namespace inspector_timer_install_event {
-void Data(perfetto::TracedValue context,
-          ExecutionContext*,
-          int timer_id,
-          base::TimeDelta timeout,
-          bool single_shot);
+CORE_EXPORT void Data(perfetto::TracedValue context,
+                      ExecutionContext*,
+                      int timer_id,
+                      base::TimeDelta timeout,
+                      bool single_shot);
 }
 
 namespace inspector_timer_remove_event {
+CORE_EXPORT
 void Data(perfetto::TracedValue context, ExecutionContext*, int timer_id);
 }
 
 namespace inspector_timer_fire_event {
+CORE_EXPORT
 void Data(perfetto::TracedValue context, ExecutionContext*, int timer_id);
 }
 
@@ -504,9 +503,10 @@ void Data(perfetto::TracedValue context,
 namespace inspector_compile_script_event {
 
 struct V8ConsumeCacheResult {
-  V8ConsumeCacheResult(int cache_size, bool rejected);
+  V8ConsumeCacheResult(int cache_size, bool rejected, bool full);
   int cache_size;
   bool rejected;
+  bool full;
 };
 
 void Data(perfetto::TracedValue context,

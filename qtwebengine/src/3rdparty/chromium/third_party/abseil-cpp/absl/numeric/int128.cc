@@ -202,6 +202,10 @@ std::string Uint128ToFormattedString(uint128 v, std::ios_base::fmtflags flags) {
 
 }  // namespace
 
+std::string uint128::ToString() const {
+  return Uint128ToFormattedString(*this, std::ios_base::dec);
+}
+
 std::ostream& operator<<(std::ostream& os, uint128 v) {
   std::ios_base::fmtflags flags = os.flags();
   std::string rep = Uint128ToFormattedString(v, flags);
@@ -216,9 +220,9 @@ std::ostream& operator<<(std::ostream& os, uint128 v) {
     } else if (adjustfield == std::ios::internal &&
                (flags & std::ios::showbase) &&
                (flags & std::ios::basefield) == std::ios::hex && v != 0) {
-      rep.insert(2, count, os.fill());
+      rep.insert(size_t{2}, count, os.fill());
     } else {
-      rep.insert(0, count, os.fill());
+      rep.insert(size_t{0}, count, os.fill());
     }
   }
 
@@ -285,6 +289,14 @@ int128 operator%(int128 lhs, int128 rhs) {
 }
 #endif  // ABSL_HAVE_INTRINSIC_INT128
 
+std::string int128::ToString() const {
+  std::string rep;
+  if (Int128High64(*this) < 0) rep = "-";
+  rep.append(Uint128ToFormattedString(UnsignedAbsoluteValue(*this),
+                                      std::ios_base::dec));
+  return rep;
+}
+
 std::ostream& operator<<(std::ostream& os, int128 v) {
   std::ios_base::fmtflags flags = os.flags();
   std::string rep;
@@ -314,16 +326,16 @@ std::ostream& operator<<(std::ostream& os, int128 v) {
         break;
       case std::ios::internal:
         if (print_as_decimal && (rep[0] == '+' || rep[0] == '-')) {
-          rep.insert(1, count, os.fill());
+          rep.insert(size_t{1}, count, os.fill());
         } else if ((flags & std::ios::basefield) == std::ios::hex &&
                    (flags & std::ios::showbase) && v != 0) {
-          rep.insert(2, count, os.fill());
+          rep.insert(size_t{2}, count, os.fill());
         } else {
-          rep.insert(0, count, os.fill());
+          rep.insert(size_t{0}, count, os.fill());
         }
         break;
       default:  // std::ios::right
-        rep.insert(0, count, os.fill());
+        rep.insert(size_t{0}, count, os.fill());
         break;
     }
   }

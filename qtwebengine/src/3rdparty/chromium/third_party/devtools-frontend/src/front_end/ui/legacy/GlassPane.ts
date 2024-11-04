@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import * as Platform from '../../core/platform/platform.js';
+
 import * as Utils from './utils/utils.js';
 
 import {type Size} from './Geometry.js';
@@ -26,6 +27,7 @@ export class GlassPane {
   private anchorBehavior: AnchorBehavior;
   private sizeBehavior: SizeBehavior;
   private marginBehavior: MarginBehavior;
+  #ignoreLeftMargin: boolean = false;
 
   constructor() {
     this.widgetInternal = new Widget(true);
@@ -112,6 +114,10 @@ export class GlassPane {
     this.arrowElement.classList.toggle('hidden', behavior !== MarginBehavior.Arrow);
   }
 
+  setIgnoreLeftMargin(ignore: boolean): void {
+    this.#ignoreLeftMargin = ignore;
+  }
+
   show(document: Document): void {
     if (this.isShowing()) {
       return;
@@ -119,6 +125,7 @@ export class GlassPane {
     // TODO(crbug.com/1006759): Extract the magic number
     // Deliberately starts with 3000 to hide other z-indexed elements below.
     this.element.style.zIndex = `${3000 + 1000 * _panes.size}`;
+    this.element.setAttribute('data-devtools-glass-pane', '');
     document.body.addEventListener('mousedown', this.onMouseDownBound, true);
     document.body.addEventListener('pointerdown', this.onMouseDownBound, true);
     this.widgetInternal.show(document.body);
@@ -236,7 +243,12 @@ export class GlassPane {
           arrowY = anchorBox.y + anchorBox.height + gutterSize;
         }
 
-        positionX = Math.max(gutterSize, Math.min(anchorBox.x, containerWidth - width - gutterSize));
+        const naturalPositionX = Math.min(anchorBox.x, containerWidth - width - gutterSize);
+        positionX = Math.max(gutterSize, naturalPositionX);
+        if (this.#ignoreLeftMargin && gutterSize > naturalPositionX) {
+          positionX = 0;
+        }
+
         if (!enoughHeight) {
           positionX = Math.min(positionX + arrowSize, containerWidth - width - gutterSize);
         } else if (showArrow && positionX - arrowSize >= gutterSize) {

@@ -5,8 +5,8 @@
 #include <utility>
 
 #include "components/autofill/core/common/password_generation_util.h"
-#include "components/autofill/core/common/unique_ids.h"
-#include "components/device_reauth/biometric_authenticator.h"
+#include "components/device_reauth/device_authenticator.h"
+#include "components/password_manager/core/browser/field_info_manager.h"
 #include "components/password_manager/core/browser/http_auth_manager.h"
 #include "components/password_manager/core/browser/password_form_manager_for_ui.h"
 #include "components/password_manager/core/browser/password_manager_client.h"
@@ -24,10 +24,6 @@ bool PasswordManagerClient::IsFillingEnabled(const GURL& url) const {
   return true;
 }
 
-bool PasswordManagerClient::IsFillingFallbackEnabled(const GURL& url) const {
-  return true;
-}
-
 bool PasswordManagerClient::IsAutoSignInEnabled() const {
   return false;
 }
@@ -37,15 +33,14 @@ void PasswordManagerClient::ShowPasswordManagerErrorMessage(
     ErrorMessageFlowType flow_type,
     password_manager::PasswordStoreBackendErrorType error_type) {}
 
-void PasswordManagerClient::ShowTouchToFill(
+void PasswordManagerClient::ShowKeyboardReplacingSurface(
     PasswordManagerDriver* driver,
-    autofill::mojom::SubmissionReadinessState submission_readiness) {}
-
-void PasswordManagerClient::OnPasswordSelected(const std::u16string& text) {}
+    const SubmissionReadinessParams& submission_readiness_params,
+    bool is_webauthn_form) {}
 #endif
 
-scoped_refptr<device_reauth::BiometricAuthenticator>
-PasswordManagerClient::GetBiometricAuthenticator() {
+scoped_refptr<device_reauth::DeviceAuthenticator>
+PasswordManagerClient::GetDeviceAuthenticator() {
   return nullptr;
 }
 
@@ -94,7 +89,7 @@ net::CertStatus PasswordManagerClient::GetMainFrameCertStatus() const {
 
 void PasswordManagerClient::PromptUserToEnableAutosignin() {}
 
-bool PasswordManagerClient::IsIncognito() const {
+bool PasswordManagerClient::IsOffTheRecord() const {
   return false;
 }
 
@@ -159,6 +154,11 @@ favicon::FaviconService* PasswordManagerClient::GetFaviconService() {
   return nullptr;
 }
 
+password_manager::FieldInfoManager* PasswordManagerClient::GetFieldInfoManager()
+    const {
+  return nullptr;
+}
+
 network::mojom::NetworkContext* PasswordManagerClient::GetNetworkContext()
     const {
   return nullptr;
@@ -169,6 +169,14 @@ PasswordManagerClient::GetWebAuthnCredentialsDelegateForDriver(
     PasswordManagerDriver* driver) {
   return nullptr;
 }
+
+#if BUILDFLAG(IS_ANDROID)
+webauthn::WebAuthnCredManDelegate*
+PasswordManagerClient::GetWebAuthnCredManDelegateForDriver(
+    PasswordManagerDriver* driver) {
+  return nullptr;
+}
+#endif  // BUILDFLAG(IS_ANDROID)
 
 version_info::Channel PasswordManagerClient::GetChannel() const {
   return version_info::Channel::UNKNOWN;

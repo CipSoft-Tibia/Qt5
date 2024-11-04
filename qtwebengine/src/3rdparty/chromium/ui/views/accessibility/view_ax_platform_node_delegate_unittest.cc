@@ -200,9 +200,9 @@ class ViewAXPlatformNodeDelegateTest : public ViewsTestBase {
   const int DEFAULT_VIEW_ID = 0;
   const int NON_DEFAULT_VIEW_ID = 1;
 
-  raw_ptr<Widget> widget_ = nullptr;
-  raw_ptr<Button> button_ = nullptr;
-  raw_ptr<Label> label_ = nullptr;
+  raw_ptr<Widget, AcrossTasksDanglingUntriaged> widget_ = nullptr;
+  raw_ptr<Button, AcrossTasksDanglingUntriaged> button_ = nullptr;
+  raw_ptr<Label, AcrossTasksDanglingUntriaged> label_ = nullptr;
   ScopedAXModeSetter ax_mode_setter_;
 };
 
@@ -240,7 +240,8 @@ class ViewAXPlatformNodeDelegateTableTest
 
  private:
   std::unique_ptr<TestTableModel> model_;
-  raw_ptr<TableView> table_ = nullptr;  // Owned by parent.
+  raw_ptr<TableView, AcrossTasksDanglingUntriaged> table_ =
+      nullptr;  // Owned by parent.
 };
 
 class ViewAXPlatformNodeDelegateMenuTest
@@ -297,9 +298,10 @@ class ViewAXPlatformNodeDelegateMenuTest
 
  private:
   // Owned by runner_.
-  raw_ptr<views::TestMenuItemView> menu_ = nullptr;
+  raw_ptr<views::TestMenuItemView, AcrossTasksDanglingUntriaged> menu_ =
+      nullptr;
 
-  raw_ptr<SubmenuView> submenu_ = nullptr;
+  raw_ptr<SubmenuView, AcrossTasksDanglingUntriaged> submenu_ = nullptr;
   std::unique_ptr<TestMenuDelegate> menu_delegate_;
   std::unique_ptr<MenuRunner> runner_;
   UniqueWidgetPtr owner_;
@@ -408,11 +410,8 @@ TEST_F(ViewAXPlatformNodeDelegateTest, GetAuthorUniqueIdNonDefault) {
 
 TEST_F(ViewAXPlatformNodeDelegateTest, OverrideNameAndDescription) {
   // Initially the button has no name and no description.
-  // TODO(accessibility): If nothing has set the name, should the NameFrom
-  // be kNone or kUninitialized instead of kAttribute?
   EXPECT_EQ(button_accessibility()->GetName(), "");
-  EXPECT_EQ(button_accessibility()->GetNameFrom(),
-            ax::mojom::NameFrom::kAttribute);
+  EXPECT_EQ(button_accessibility()->GetNameFrom(), ax::mojom::NameFrom::kNone);
   EXPECT_EQ(button_accessibility()->GetDescription(), "");
   EXPECT_EQ(button_accessibility()->GetDescriptionFrom(),
             ax::mojom::DescriptionFrom::kNone);
@@ -496,13 +495,6 @@ TEST_F(ViewAXPlatformNodeDelegateTest, OverrideNameAndDescription) {
   EXPECT_EQ(button_accessibility()->GetName(), "Label's Name");
   EXPECT_EQ(button_accessibility()->GetNameFrom(),
             ax::mojom::NameFrom::kRelatedElement);
-
-  // Set the label's View as the description source of the accessible button.
-  // This should also remove the previously-set description.
-  button_accessibility()->OverrideDescribedBy(label_);
-  EXPECT_EQ(button_accessibility()->GetDescription(), "Label's Name");
-  EXPECT_EQ(button_accessibility()->GetDescriptionFrom(),
-            ax::mojom::DescriptionFrom::kRelatedElement);
 
   // Setting the labelledby View to itself should trigger a DCHECK.
   EXPECT_DCHECK_DEATH_WITH(button_accessibility()->OverrideLabelledBy(button_),

@@ -1,4 +1,4 @@
-// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
@@ -35,13 +35,17 @@
         \li \c x86_64
         \li GCC as provided by Canonical, GCC 11.x
         \li
+    \row \li Debian 11.6 on ARM
+        \li \c arm64
+        \li GCC 10
+        \li Technology Preview
 \endtable
 //! [linux]
 
 \section2 \l{Qt for macOS}{\macos}
 //! [macos]
 \table 80%
-    \header \li Target Platform \li Architecture \li Build Environment
+    \header \li Target Platform \li Architecture \li Build Environment \li Notes
     \row \li \macos 11, 12, 13, 14
         \li \c x86_64, \c x86_64h, and \c arm64
         \li Xcode 14 (\macos 13 SDK), Xcode 15 (\macos 14 SDK)
@@ -51,7 +55,7 @@
 \section2 \l{Qt for Windows}{Windows}
 //! [windows]
 \table 80%
-    \header \li Operating System \li Architecture \li Compiler
+    \header \li Operating System \li Architecture \li Compiler \li Notes
     \row \li Windows 10 (1809 or later)
         \li \c x86_64
         \li MSVC 2022, MSVC 2019, MinGW 11.2
@@ -81,16 +85,23 @@
 
 The following configurations are supported in this Qt release:
 \table 80%
-    \header \li Distribution \li Architecture \li Compiler \li Notes
-    \row \li Android 8.0 to Android 13 (API level 26 to API 33)
-        \li \c armeabi-v7a, \c x86, \c arm64-v8, and \c x86_64
-        \li Clang 14.0.6 (NDK r25b) as provided by Google
-        \li For JDK versions see \l{Java Development Kit (JDK)}
+    \header \li Distribution \li Architecture \li Compiler \li JDK \li Gradle \li Package
+    \row
+        \li Android \AndroidMinVer (API \AndroidMinApiVer) \b {to}
+        \AndroidMaxVer (API \AndroidMaxApiVer)
+        \li \AndroidAbis
+        \li \NdkCompilerVer (NDK \NdkVer or \NdkFullVer)
+        \li JDK \JdkVer
+        \li Gradle \GradleVer and AGP \AGPVer
+        \li Multi-ABI \c{APK}s and \c{AAB}s
 \endtable
- \note It's recommended that Qt user apps use the same NDK r25b version
- used for building these official Qt for Android libraries. An NDK version
- more recent than r23b is required if building a project results in an error
- of missing the symbols for \c __emutls_get_address.
+
+\note Multi-ABI builds are available only when using CMake. For more information,
+see \l{QT_ANDROID_ABIS}{CMake Android Multi-ABIs}.
+
+\note It's recommended that Qt apps use the same NDK \NdkVer version
+used for building these official Qt for Android libraries to avoid missing
+symbol errors.
 
 //! [android]
 
@@ -131,14 +142,14 @@ combinations.
 \table
     \header \li{4,1} Tier 1: Reference Targets
     \header \li Vendor \li Board \li OS / Other \li Provided By
-    \row \li Intel \li NUC 10 \li Yocto 4.2 \li \l{Boot to Qt}
-    \row \li NVIDIA \li Jetson AGX Xavier Development Kit \li Yocto 4.2 \li \l{Boot to Qt}
-    \row \li NXP \li i.MX 8QuadMax MEK \li Yocto 4.2 \li \l{Boot to Qt}
+    \row \li Intel \li NUC \li Yocto 4.3 \li \l{Boot to Qt}
+    \row \li NVIDIA \li Jetson AGX Xavier Developer Kit \li Yocto 4.3 \li \l{Boot to Qt}
+    \row \li NXP \li i.MX 8QuadMax MEK \li Yocto 4.3 \li \l{Boot to Qt}
     \row \li NXP \li i.MX 8QuadMax MEK \li QNX 7.1 \li \l{Qt for QNX}
-    \row \li NXP \li i.MX 93 11x11 LPDDR4X EVK \li Yocto 4.2 \li \l{Boot to Qt}
+    \row \li NXP \li i.MX 93 11x11 LPDDR4X EVK \li Yocto 4.3 \li \l{Boot to Qt}
     \row \li Qualcomm \li SA8155P \li AAOS 10-12 \li \l{Qt for Android Automotive}
     \row \li Qualcomm \li SA8155P \li INTEGRITY 19.03 \li \l{Qt for INTEGRITY}
-    \row \li Raspberry Pi \li Raspberry Pi 4 64-bit \li Yocto 4.2 \li \l{Boot to Qt}
+    \row \li Raspberry Pi \li Raspberry Pi 4 64-bit \li Yocto 4.3 \li \l{Boot to Qt}
     \row \li Toradex \li Apalis iMX6 \li Yocto 4.0 \li \l{Boot to Qt}
 \endtable
 
@@ -154,14 +165,14 @@ combinations.
 \table
     \header \li{4,1} Tier 2: Verified Targets
     \header \li Vendor \li Board \li OS / Other \li Provided By
-    \row \li NVIDIA \li Jetson AGX Orin Development Kit \li Debian 12 \li \l{Enterprise Qt Debian Packages}
-    \row \li NXP \li i.MX 8MQuad EVK \li Yocto 4.2 \li \l{Boot to Qt}
-    \row \li NXP \li i.MX 8M Mini LPDDR4 EVK \li Yocto 4.2 \li \l{Boot to Qt}
-    \row \li NXP \li i.MX 8M Nano DDR4 EVK \li Yocto 4.2 \li \l{Boot to Qt}
-    \row \li NXP \li i.MX 8M Plus LPDDR4 EVK \li Yocto 4.2 \li \l{Boot to Qt}
+    \row \li NVIDIA \li Jetson AGX Orin Developer Kit \li Debian 12 \li \l{Enterprise Qt Debian Packages}
+    \row \li NXP \li i.MX 8MQuad EVK \li Yocto 4.3 \li \l{Boot to Qt}
+    \row \li NXP \li i.MX 8M Mini LPDDR4 EVK \li Yocto 4.3 \li \l{Boot to Qt}
+    \row \li NXP \li i.MX 8M Nano LPDDR4 EVK \li Yocto 4.3 \li \l{Boot to Qt}
+    \row \li NXP \li i.MX 8M Plus LPDDR4 EVK \li Yocto 4.3 \li \l{Boot to Qt}
     \row \li ST \li STM32MP15 Discovery \li Yocto 4.0 \li \l{Boot to Qt}
     \row \li ST \li STM32MP15 Evaluation \li Yocto 4.0 \li \l{Boot to Qt}
-    \row \li TI \li AM62x \li Yocto 4.2 \li \l{Boot to Qt}
+    \row \li TI \li SK-AM62 \li Yocto 4.3 \li \l{Boot to Qt}
     \row \li Toradex \li Colibri iMX6 ULL \li Yocto 4.0 \li \l{Boot to Qt}
 \endtable
 
@@ -177,7 +188,11 @@ combinations.
 \table
     \header \li{4,1} Tier 3: Other Targets
     \header \li Vendor \li Board \li OS / Other \li Provided By
-    \row \li NXP \li i.MX 8QuadXPlus MEK \li Yocto 4.2 \li \l{Boot to Qt}
+    \row \li Amazon \li AWS EC2 ARM64 \li Yocto 4.3 \li \l{Boot to Qt}
+    \row \li NVIDIA \li Jetson AGX Orin Developer Kit \li Yocto 4.3 \li \l{Boot to Qt}
+    \row \li NXP \li i.MX 8QuadXPlus MEK \li Yocto 4.3 \li \l{Boot to Qt}
+    \row \li Qualcomm \li Robotics RB5 Development Kit \li Yocto 4.3 \li \l{Boot to Qt}
+    \row \li TI \li SK-AM69 \li Yocto 4.3 \li \l{Boot to Qt}
     \row \li Toradex \li Apalis iMX8 \li Yocto 4.0 \li \l{Boot to Qt}
 \endtable
 
@@ -187,8 +202,8 @@ See \l{Qt Support Terms and Conditions} for more information.
 //! [tier_support]
 \section2 Android Automotive OS
 
-The \l{Qt for Android Automotive} solution is based on \l{Qt for Android},
-supporting Android 10 and 11, with the Android Automotive car API bindings.
+\l{Qt for Android Automotive}, based on \l{Qt for Android}, extends support
+for Android Automotive OS features on version \AAOSVer.
 
 \section2 webOS OSE
 
@@ -219,6 +234,10 @@ documentation.
     \li
     \li
     \li \l{Qt for MCUs}
+    \row \li VxWorks
+    \li \c armv7 (i.mx6), \c x86_64 (Intel SkyLake)
+    \li
+    \li \l{Qt for VxWorks}
     \row \li Bare metal
     \li
     \li
@@ -235,15 +254,15 @@ documentation.
     \header \li Host Platform \li Architecture \li Compiler \li Browsers
     \row \li macOS
         \li \c wasm32
-        \li Emscripten 3.1.37
+        \li Emscripten 3.1.50
         \li Safari, Chrome, Firefox
     \row \li Windows
         \li \c wasm32
-        \li Emscripten 3.1.37
+        \li Emscripten 3.1.50
         \li Edge, Chrome, Firefox
     \row \li Linux
         \li \c wasm32
-        \li Emscripten 3.1.37
+        \li Emscripten 3.1.50
         \li Chrome, Firefox
 \endtable
 

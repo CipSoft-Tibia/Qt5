@@ -22,14 +22,11 @@ namespace {
 
 // A small-ish size that it should probably be able to get most manifests in
 // a single chunk. Chosen somewhat arbitrarily otherwise.
-constexpr size_t kDefaultReadSize = 0xFFFF;
+constexpr size_t kDefaultReadSize = 1024 * 16;
 
 }  // namespace
 
-class HlsDemuxer;
-
-// Interface which can provide HlsDemuxer with data, respecting byterange
-// boundaries.
+// Interface which can provide data, respecting byterange boundaries.
 class MEDIA_EXPORT HlsDataSource {
  public:
   enum class ReadStatusCodes : StatusCodeType {
@@ -45,7 +42,7 @@ class MEDIA_EXPORT HlsDataSource {
   using ReadStatus = TypedStatus<ReadStatusTraits>;
   using ReadCb = base::OnceCallback<void(ReadStatus::Or<size_t>)>;
 
-  explicit HlsDataSource(absl::optional<uint64_t> size) : size_(size) {}
+  explicit HlsDataSource(absl::optional<size_t> size) : size_(size) {}
   virtual ~HlsDataSource();
 
   // Issues a read to the underlying data source, writing the results to
@@ -72,19 +69,12 @@ class MEDIA_EXPORT HlsDataSource {
   const absl::optional<size_t> size_;
 };
 
-// Interface which can provide the HlsDemuxer with data sources, given a URI and
-// an optional byterange. This interface should be used via
-// `base::SequenceBound` to proxy requests across the media thread and the main
-// thread.
+// Interface which can provide data sources, given a URI and an optional
+// byterange. This interface should be used via `base::SequenceBound` to proxy
+// requests across the media thread and the main thread.
 class MEDIA_EXPORT HlsDataSourceProvider {
  public:
   virtual ~HlsDataSourceProvider();
-
-  // Sets the owning HlsDemuxer for this HlsDataSourceProvider.
-  // This may only be called once.
-  virtual void SetOwner(HlsDemuxer*) = 0;
-
-  // API allowing an HlsDemuxer to make requests for external data.
   using RequestCb = base::OnceCallback<void(std::unique_ptr<HlsDataSource>)>;
   virtual void RequestDataSource(GURL uri,
                                  absl::optional<hls::types::ByteRange> range,

@@ -31,6 +31,7 @@ namespace dawn::native::metal {
 class CommandRecordingContext;
 class Device;
 struct MTLSharedEventAndSignalValue;
+class SharedTextureMemory;
 
 MTLPixelFormat MetalPixelFormat(const DeviceBase* device, wgpu::TextureFormat format);
 MaybeError ValidateIOSurfaceCanBeWrapped(const DeviceBase* device,
@@ -45,11 +46,14 @@ class Texture final : public TextureBase {
         const ExternalImageDescriptor* descriptor,
         IOSurfaceRef ioSurface,
         std::vector<MTLSharedEventAndSignalValue> waitEvents);
+    static ResultOrError<Ref<Texture>> CreateFromSharedTextureMemory(
+        SharedTextureMemory* memory,
+        const TextureDescriptor* descriptor);
     static Ref<Texture> CreateWrapping(Device* device,
                                        const TextureDescriptor* descriptor,
                                        NSPRef<id<MTLTexture>> wrapped);
 
-    Texture(DeviceBase* device, const TextureDescriptor* descriptor, TextureState state);
+    Texture(DeviceBase* device, const TextureDescriptor* descriptor);
 
     id<MTLTexture> GetMTLTexture() const;
     IOSurfaceRef GetIOSurface();
@@ -58,8 +62,8 @@ class Texture final : public TextureBase {
     bool ShouldKeepInitialized() const;
 
     MTLBlitOption ComputeMTLBlitOption(Aspect aspect) const;
-    void EnsureSubresourceContentInitialized(CommandRecordingContext* commandContext,
-                                             const SubresourceRange& range);
+    MaybeError EnsureSubresourceContentInitialized(CommandRecordingContext* commandContext,
+                                                   const SubresourceRange& range);
 
     void SynchronizeTextureBeforeUse(CommandRecordingContext* commandContext);
     void IOSurfaceEndAccess(ExternalImageIOSurfaceEndAccessDescriptor* descriptor);
@@ -78,6 +82,7 @@ class Texture final : public TextureBase {
     void InitializeAsWrapping(const TextureDescriptor* descriptor, NSPRef<id<MTLTexture>> wrapped);
 
     void DestroyImpl() override;
+    void SetLabelImpl() override;
 
     MaybeError ClearTexture(CommandRecordingContext* commandContext,
                             const SubresourceRange& range,
@@ -108,6 +113,7 @@ class TextureView final : public TextureViewBase {
     using TextureViewBase::TextureViewBase;
     MaybeError Initialize(const TextureViewDescriptor* descriptor);
     void DestroyImpl() override;
+    void SetLabelImpl() override;
 
     NSPRef<id<MTLTexture>> mMtlTextureView;
 };

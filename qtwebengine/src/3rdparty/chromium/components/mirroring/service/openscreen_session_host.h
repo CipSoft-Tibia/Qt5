@@ -6,6 +6,7 @@
 #define COMPONENTS_MIRRORING_SERVICE_OPENSCREEN_SESSION_HOST_H_
 
 #include "base/component_export.h"
+#include "base/gtest_prod_util.h"
 #include "base/logging.h"
 #include "base/memory/weak_ptr.h"
 #include "base/task/single_thread_task_runner.h"
@@ -18,6 +19,7 @@
 #include "components/mirroring/service/mirror_settings.h"
 #include "components/mirroring/service/openscreen_message_port.h"
 #include "components/mirroring/service/openscreen_rpc_dispatcher.h"
+#include "components/mirroring/service/openscreen_stats_client.h"
 #include "components/mirroring/service/rtp_stream.h"
 #include "components/openscreen_platform/event_trace_logging_platform.h"
 #include "components/openscreen_platform/task_runner.h"
@@ -131,6 +133,9 @@ class COMPONENT_EXPORT(MIRRORING_SERVICE) OpenscreenSessionHost final
   // Callback by media::cast::VideoSender to set a new target playout delay.
   void SetTargetPlayoutDelay(base::TimeDelta playout_delay);
 
+  base::Value::Dict GetMirroringStats() const;
+  void SetSenderStatsForTest(const openscreen::cast::SenderStats& test_stats);
+
  private:
   friend class OpenscreenSessionHostTest;
   FRIEND_TEST_ALL_PREFIXES(OpenscreenSessionHostTest, ChangeTargetPlayoutDelay);
@@ -184,7 +189,7 @@ class COMPONENT_EXPORT(MIRRORING_SERVICE) OpenscreenSessionHost final
   void ProcessFeedback(const media::VideoCaptureFeedback& feedback);
 
   // Called by OpenscreenFrameSender to determine bitrate.
-  int GetSuggestedVideoBitrate() const;
+  int GetSuggestedVideoBitrate(int min_bitrate, int max_bitrate) const;
 
   // Called periodically to update the `bandwidth_estimate_`.
   void UpdateBandwidthEstimate();
@@ -311,11 +316,15 @@ class COMPONENT_EXPORT(MIRRORING_SERVICE) OpenscreenSessionHost final
 
   // Used to periodically update the currently used bandwidth estimate.
   base::RepeatingTimer bandwidth_update_timer_;
-  int bandwidth_estimate_ = 0;
+
   // Used to override getting the bandwidth from the session. Setting to a
-  // positive  value causes the session's bandwidth estimation to not be called.
-  int forced_bandwidth_estimate_ = 0;
-  int bandwidth_being_utilized_ = kDefaultBitrate;
+  // positive value causes the session's bandwidth estimation to not be called.
+  int forced_bandwidth_estimate_for_testing_ = 0;
+
+  // The portion of the bandwidth estimate that is currently available for use.
+  // Note that the actual bandwidth will be effectively capped at the sum of the
+  // current video and audio bitrates.
+  int usable_bandwidth_ = kDefaultBitrate;
 
   // Indicate whether we're in the middle of switching tab sources.
   bool switching_tab_source_ = false;
@@ -326,6 +335,10 @@ class COMPONENT_EXPORT(MIRRORING_SERVICE) OpenscreenSessionHost final
   // Records the time when the streaming session is started and `media_remoter_`
   // is initialized.
   absl::optional<base::Time> remote_playback_start_time_;
+
+  // An optional stats client for fetching quality statistics from an Openscreen
+  // casting session.
+  std::unique_ptr<OpenscreenStatsClient> stats_client_;
 
   // Used in callbacks executed on task runners, such as by RtpStream.
   // TODO(https://crbug.com/1363503): determine if weak pointers can be removed.

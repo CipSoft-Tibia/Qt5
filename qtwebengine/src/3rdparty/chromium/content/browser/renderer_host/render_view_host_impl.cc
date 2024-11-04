@@ -33,6 +33,7 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "cc/base/switches.h"
+#include "components/viz/common/features.h"
 #include "content/browser/bad_message.h"
 #include "content/browser/child_process_security_policy_impl.h"
 #include "content/browser/dom_storage/session_storage_namespace_impl.h"
@@ -64,7 +65,6 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/context_menu_params.h"
-#include "content/public/browser/native_web_keyboard_event.h"
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/notification_types.h"
@@ -76,6 +76,7 @@
 #include "content/public/common/content_constants.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
+#include "content/public/common/input/native_web_keyboard_event.h"
 #include "content/public/common/result_codes.h"
 #include "content/public/common/url_constants.h"
 #include "content/public/common/url_utils.h"
@@ -84,6 +85,7 @@
 #include "net/base/url_util.h"
 #include "services/network/public/cpp/features.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/page/browsing_context_group_info.h"
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
 #include "third_party/perfetto/include/perfetto/tracing/traced_value.h"
 #include "third_party/skia/include/core/SkBitmap.h"
@@ -184,6 +186,27 @@ class PerProcessRenderViewHostSet : public base::SupportsUserData::Data {
 
 const int PerProcessRenderViewHostSet::kUserDataKey;
 
+// Finds all viz::SurfaceIds within `node_range` and adds them to `out_ids`.
+void CollectSurfaceIdsForEvictionForFrameTreeNodeRange(
+    FrameTree::NodeRange& node_range,
+    std::vector<viz::SurfaceId>& out_ids) {
+  for (FrameTreeNode* node : node_range) {
+    if (!node->current_frame_host()->is_local_root()) {
+      continue;
+    }
+    RenderWidgetHostViewBase* view = static_cast<RenderWidgetHostViewBase*>(
+        node->current_frame_host()->GetView());
+    if (!view) {
+      continue;
+    }
+    viz::SurfaceId id = view->GetCurrentSurfaceId();
+    if (id.is_valid()) {
+      out_ids.push_back(id);
+    }
+    view->set_is_evicted();
+  }
+}
+
 }  // namespace
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -251,7 +274,13 @@ void RenderViewHostImpl::GetPlatformSpecificPrefs(
   prefs->arrow_bitmap_width_horizontal_scroll_bar_in_dips =
       display::win::ScreenWin::GetSystemMetricsInDIP(SM_CXHSCROLL);
 #elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
-  prefs->system_font_family_name = gfx::Font().GetFontName();
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  if (command_line->HasSwitch(switches::kSystemFontFamily)) {
+    prefs->system_font_family_name =
+        command_line->GetSwitchValueASCII(switches::kSystemFontFamily);
+  } else {
+    prefs->system_font_family_name = gfx::Font().GetFontName();
+  }
 #elif BUILDFLAG(IS_FUCHSIA)
   // Make Blink's "focus ring" invisible. The focus ring is a hairline border
   // that's rendered around clickable targets.
@@ -286,7 +315,7 @@ RenderViewHostImpl::RenderViewHostImpl(
     : render_widget_host_(std::move(widget)),
       delegate_(delegate),
       render_view_host_map_id_(frame_tree->GetRenderViewHostMapId(group)),
-      site_instance_group_(group->GetSafeRef()),
+      site_instance_group_(group->GetWeakPtrToAllowDangling()),
       storage_partition_config_(storage_partition_config),
       routing_id_(routing_id),
       main_frame_routing_id_(main_frame_routing_id),
@@ -475,7 +504,7 @@ bool RenderViewHostImpl::CreateRenderView(
     if (is_speculative_ &&
         frame_tree_node->current_frame_host()->IsRenderFrameLive() &&
         frame_tree_node->current_frame_host()->GetSiteInstance()->group() ==
-            &*site_instance_group_) {
+            site_instance_group_.get()) {
       // The speculative RenderViewHost has the same SiteInstanceGroup as the
       // current RenderFrameHost. This means when the speculative
       // RenderFrameHost commits, it must do a local RenderFrame swap with the
@@ -522,7 +551,7 @@ bool RenderViewHostImpl::CreateRenderView(
     params->type = mojom::ViewWidgetType::kFencedFrame;
 
     params->fenced_frame_mode =
-        frame_tree_->root()->GetFencedFrameMode().value();
+        frame_tree_->root()->GetDeprecatedFencedFrameMode();
   } else if (is_portal) {
     DCHECK(!is_guest_view);
     params->type = mojom::ViewWidgetType::kPortal;
@@ -531,6 +560,20 @@ bool RenderViewHostImpl::CreateRenderView(
   } else {
     params->type = mojom::ViewWidgetType::kTopLevel;
   }
+
+  // Send the current page's browsing context group to the renderer. It is
+  // guaranteed to be consistent for the entire FrameTree, main frame and
+  // subframes. For this reason we simply use the main frame's browsing context
+  // group. Note that we cannot use this RenderViewHost's site_instance_group(),
+  // which may not match in a popup case. For example, if A opens a
+  // cross-browsing-context-group popup to B, the RenderViewHost for the opener
+  // in B's process should have A's BrowsingContextGroupInfo, which is the
+  // current page in the opener.
+  params->browsing_context_group_info = blink::BrowsingContextGroupInfo(
+      frame_tree_->GetMainFrame()->GetSiteInstance()->browsing_instance_token(),
+      frame_tree_->GetMainFrame()
+          ->GetSiteInstance()
+          ->coop_related_group_token());
 
   // RenderViewHostImpl is reused after a crash, so reset any endpoint that
   // might be a leftover from a crash.
@@ -639,37 +682,21 @@ void RenderViewHostImpl::SetIsFrozen(bool frozen) {
 }
 
 void RenderViewHostImpl::OnBackForwardCacheTimeout() {
-  // TODO(yuzus): Implement a method to get a list of RenderFrameHosts
-  // associated with |this|, instead of iterating through all the
-  // RenderFrameHosts in bfcache.
-  const auto& entries =
-      frame_tree_->controller().GetBackForwardCache().GetEntries();
-  for (auto& entry : entries) {
-    for (const auto& rvh : entry->render_view_hosts()) {
-      if (&*rvh == this) {
-        RenderFrameHostImpl* rfh = entry->render_frame_host();
-        rfh->EvictFromBackForwardCacheWithReason(
-            BackForwardCacheMetrics::NotRestoredReason::kTimeoutPuttingInCache);
-        break;
-      }
-    }
+  auto entries = frame_tree_->controller()
+                     .GetBackForwardCache()
+                     .GetEntriesForRenderViewHostImpl(this);
+  for (auto* entry : entries) {
+    entry->render_frame_host()->EvictFromBackForwardCacheWithReason(
+        BackForwardCacheMetrics::NotRestoredReason::kTimeoutPuttingInCache);
   }
 }
 
 void RenderViewHostImpl::MaybeEvictFromBackForwardCache() {
-  // TODO(yuzus): Implement a method to get a list of RenderFrameHosts
-  // associated with |this|, instead of iterating through all the
-  // RenderFrameHosts in bfcache.
-  const auto& entries =
-      frame_tree_->controller().GetBackForwardCache().GetEntries();
-  for (auto& entry : entries) {
-    for (const auto& rvh : entry->render_view_hosts()) {
-      if (&*rvh == this) {
-        RenderFrameHostImpl* rfh = entry->render_frame_host();
-        rfh->MaybeEvictFromBackForwardCache();
-        break;
-      }
-    }
+  auto entries = frame_tree_->controller()
+                     .GetBackForwardCache()
+                     .GetEntriesForRenderViewHostImpl(this);
+  for (auto* entry : entries) {
+    entry->render_frame_host()->MaybeEvictFromBackForwardCache();
   }
 }
 
@@ -716,21 +743,15 @@ void RenderViewHostImpl::RenderViewCreated(
 }
 
 RenderFrameHostImpl* RenderViewHostImpl::GetMainRenderFrameHost() {
-  // If the RenderViewHost is active, it should always have a main frame
-  // RenderFrameHostImpl. If it is inactive, it could've been created for a
-  // speculative main frame navigation, in which case it will transition to
-  // active once that navigation commits. In this case, return the speculative
-  // main frame RenderFrameHostImpl, as that's expected by certain code paths,
-  // such as RenderViewHostImpl::SetUIProperty().  If there's no speculative
-  // main frame navigation, return nullptr.
-  //
-  // TODO(alexmos, creis): Migrate these code paths to use RenderFrameHost APIs
-  // and remove this fallback.  See https://crbug.com/763548.
-  if (is_active()) {
-    return RenderFrameHostImpl::FromID(GetProcess()->GetID(),
-                                       main_frame_routing_id_);
+  // Only active RenderViewHosts have a main frame RenderFrameHostImpl.
+  // Inactive RenderViewHosts would have a main frame RenderFrameProxyHost
+  // instead.
+  if (!is_active()) {
+    return nullptr;
   }
-  return frame_tree_->root()->render_manager()->speculative_frame_host();
+
+  return RenderFrameHostImpl::FromID(GetProcess()->GetID(),
+                                     main_frame_routing_id_);
 }
 
 void RenderViewHostImpl::ZoomToFindInPageRect(const gfx::Rect& rect_to_zoom) {
@@ -843,8 +864,12 @@ bool RenderViewHostImpl::ShouldContributePriorityToProcess() {
 }
 
 void RenderViewHostImpl::SendWebPreferencesToRenderer() {
-  if (auto& broadcast = GetAssociatedPageBroadcast())
+  if (auto& broadcast = GetAssociatedPageBroadcast()) {
+    if (!will_send_web_preferences_callback_for_testing_.is_null()) {
+      will_send_web_preferences_callback_for_testing_.Run();
+    }
     broadcast->UpdateWebPreferences(delegate_->GetOrCreateWebPreferences());
+  }
 }
 
 void RenderViewHostImpl::SendRendererPreferencesToRenderer(
@@ -883,37 +908,63 @@ void RenderViewHostImpl::RenderViewReady() {
 }
 
 std::vector<viz::SurfaceId> RenderViewHostImpl::CollectSurfaceIdsForEviction() {
-  if (!is_active())
-    return {};
-  RenderFrameHostImpl* rfh = GetMainRenderFrameHost();
-  if (!rfh || !rfh->IsActive())
-    return {};
-
-  FrameTreeNode* root = rfh->frame_tree_node();
-  FrameTree& tree = root->frame_tree();
-
-  // Inner tree nodes are used for several purposes, e.g. fenced frames,
-  // <webview>, portals and PDF. These may have a compositor surface as well, in
-  // which case we need to explore not the outer node only, but the inner ones
-  // as well.
-  FrameTree::NodeRange node_range =
-      base::FeatureList::IsEnabled(
-          features::kInnerFrameCompositorSurfaceEviction)
-          ? tree.NodesIncludingInnerTreeNodes()
-          : tree.SubtreeNodes(root);
-
   std::vector<viz::SurfaceId> ids;
-  for (FrameTreeNode* node : node_range) {
-    if (!node->current_frame_host()->is_local_root())
-      continue;
-    RenderWidgetHostViewBase* view = static_cast<RenderWidgetHostViewBase*>(
-        node->current_frame_host()->GetView());
-    if (!view)
-      continue;
-    viz::SurfaceId id = view->GetCurrentSurfaceId();
-    if (id.is_valid())
-      ids.push_back(id);
-    view->set_is_evicted();
+  if (is_active()) {
+    RenderFrameHostImpl* rfh = GetMainRenderFrameHost();
+    if (!rfh || !rfh->IsActive()) {
+      return {};
+    }
+
+    FrameTreeNode* root = rfh->frame_tree_node();
+    FrameTree& tree = root->frame_tree();
+
+    // Inner tree nodes are used for several purposes, e.g. fenced frames,
+    // <webview>, portals and PDF. These may have a compositor surface as well,
+    // in which case we need to explore not the outer node only, but the inner
+    // ones as well.
+    FrameTree::NodeRange node_range =
+        base::FeatureList::IsEnabled(
+            features::kInnerFrameCompositorSurfaceEviction)
+            ? tree.NodesIncludingInnerTreeNodes()
+            : tree.SubtreeNodes(root);
+    CollectSurfaceIdsForEvictionForFrameTreeNodeRange(node_range, ids);
+  } else if (is_in_back_forward_cache_ &&
+             base::FeatureList::IsEnabled(features::kEvictSubtree)) {
+    // `FrameTree::SubtreeAndInnerTreeNodes` starts with the children of `rfh`
+    // so we need to add our current viz::SurfaceId to ensure it is evicted.
+    if (render_widget_host_) {
+      auto* view = render_widget_host_->GetView();
+      if (view) {
+        if (view->GetCurrentSurfaceId().is_valid()) {
+          ids.push_back(view->GetCurrentSurfaceId());
+          view->set_is_evicted();
+        }
+      }
+    }
+
+    auto entries = frame_tree_->controller()
+                       .GetBackForwardCache()
+                       .GetEntriesForRenderViewHostImpl(this);
+    for (auto* entry : entries) {
+      auto* rfh = entry->render_frame_host();
+      if (!rfh) {
+        continue;
+      }
+      // While `is_in_back_forward_cache_` there is no `main_frame_routing_id_`
+      // so there is no `GetMainRenderFrameHost`. Furthermore the root of the
+      // `FrameTree` is now associated to the foreground
+      // `RenderWidgetHostView*`. Due to this `NodesIncludingInnerTreeNodes`
+      // does not find the children nodes associated with the BFCache entry.
+      //
+      // Instead we build a `FrameTree::NodeRange` that starts with the children
+      // of `rfh`. This will also be equivalent to
+      // `should_descend_into_inner_trees=true`. Thus finding all the compositor
+      // surfaces in the BFCache.
+      FrameTree::NodeRange node_range = FrameTree::SubtreeAndInnerTreeNodes(
+          rfh,
+          /*include_delegate_nodes_for_inner_frame_trees=*/true);
+      CollectSurfaceIdsForEvictionForFrameTreeNodeRange(node_range, ids);
+    }
   }
 
   return ids;
@@ -931,6 +982,11 @@ void RenderViewHostImpl::SetWillEnterBackForwardCacheCallbackForTesting(
 void RenderViewHostImpl::SetWillSendRendererPreferencesCallbackForTesting(
     const WillSendRendererPreferencesCallbackForTesting& callback) {
   will_send_renderer_preferences_callback_for_testing_ = callback;
+}
+
+void RenderViewHostImpl::SetWillSendWebPreferencesCallbackForTesting(
+    const WillSendWebPreferencesCallbackForTesting& callback) {
+  will_send_web_preferences_callback_for_testing_ = callback;
 }
 
 void RenderViewHostImpl::WriteIntoTrace(

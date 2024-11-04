@@ -287,11 +287,10 @@ bool PreflightResult::HasAuthorizationCoveredByWildcard(
          !headers_.contains(kAuthorization);
 }
 
-base::Value PreflightResult::NetLogParams() const {
-  base::Value dict(base::Value::Type::DICT);
-  dict.SetStringKey("access-control-allow-methods", JoinSet(methods_));
-  dict.SetStringKey("access-control-allow-headers", JoinSet(headers_));
-  return dict;
+base::Value::Dict PreflightResult::NetLogParams() const {
+  return base::Value::Dict()
+      .Set("access-control-allow-methods", JoinSet(methods_))
+      .Set("access-control-allow-headers", JoinSet(headers_));
 }
 
 }  // namespace network::cors

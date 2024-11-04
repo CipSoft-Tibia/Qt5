@@ -22,6 +22,7 @@
 #include "third_party/blink/public/common/frame/frame_policy.h"
 #include "third_party/blink/public/common/frame/view_transition_state.h"
 #include "third_party/blink/public/common/navigation/impression.h"
+#include "third_party/blink/public/common/page/browsing_context_group_info.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/common/tokens/tokens.h"
 #include "third_party/blink/public/mojom/blob/blob_url_store.mojom-shared.h"
@@ -195,6 +196,11 @@ struct BLINK_EXPORT WebNavigationInfo {
   // src. Only container-initiated navigation report resource timing to the
   // parent.
   bool is_container_initiated = false;
+
+  // True if the initiator requested that the tab become fullscreen
+  // after navigation (e.g. the initial navigation of a fullscreen popup).
+  // See: https://chromestatus.com/feature/6002307972464640
+  bool is_fullscreen_requested = false;
 };
 
 // This structure holds all information provided by the embedder that is
@@ -276,14 +282,11 @@ struct BLINK_EXPORT WebNavigationParams {
   // a failed navigation.
   WebURL pre_redirect_url_for_failed_navigations;
 
-  // If `url` is about:srcdoc, this is the default base URL to use for the new
-  // document. It corresponds to the initiator's base URL snapshotted when the
-  // navigation started.
-  // Note: this value is only used when the NewBaseUrlInheritanceBehavior
-  // feature is enabled in the embedder.
-  // TODO(wjmaclean): Revisit the naming here when we expand to sending base
-  // URLs for about:blank.
-  WebURL fallback_srcdoc_base_url;
+  // If `url` is about:srcdoc or about:blank, this is the default base URL to
+  // use for the new document. It corresponds to the initiator's base URL
+  // snapshotted when the navigation started. Note: this value is only used when
+  // the NewBaseUrlInheritanceBehavior feature is enabled in the embedder.
+  WebURL fallback_base_url;
 
   // The net error code for failed navigation. Must be non-zero when
   // |unreachable_url| is non-null.
@@ -316,6 +319,9 @@ struct BLINK_EXPORT WebNavigationParams {
     // TODO(dgozman): we only use this response for navigation timings.
     // Perhaps, we can just get rid of it.
     WebURLResponse redirect_response;
+    // When navigation is restarted due to a Critical-CH header this stores the
+    // time at which the the restart was initiated.
+    base::TimeTicks critical_ch_restart_time;
   };
   // Redirects which happened while fetching the main resource.
   // TODO(dgozman): we are only interested in the final values instead of
@@ -460,6 +466,10 @@ struct BLINK_EXPORT WebNavigationParams {
   // (BrowsingInstances).
   bool is_cross_site_cross_browsing_context_group = false;
 
+  // Whether the new document should start with sticky user activation, because
+  // the previously committed document did, and the navigation was same-site.
+  bool should_have_sticky_user_activation = false;
+
   // Blink's copy of the policy container containing security policies to be
   // enforced on the document created by this navigation.
   std::unique_ptr<WebPolicyContainer> policy_container;
@@ -487,14 +497,9 @@ struct BLINK_EXPORT WebNavigationParams {
   // Null, otherwise.
   absl::optional<WebVector<WebURL>> ad_auction_components;
 
-  // This boolean flag indicates whether there is associated reporting metadata
-  // with the fenced frame.
-  // https://github.com/WICG/turtledove/blob/main/Fenced_Frames_Ads_Reporting.md
-  bool has_fenced_frame_reporting = false;
-
   // Whether the current context would be allowed to create an opaque-ads
   //  frame (based on the browser-side calculations). See
-  // HTMLFencedFrameElement::canLoadOpaqueURL for usage and
+  // NavigatorAuction::canLoadAdAuctionFencedFrame for usage and
   // ::blink::mojom::CommitNavigationParams::ancestor_or_self_has_cspee for
   // where the value is coming from.
   bool ancestor_or_self_has_cspee = false;
@@ -537,7 +542,15 @@ struct BLINK_EXPORT WebNavigationParams {
       modified_runtime_features;
 
   // Whether the document should be loaded with the has_storage_access bit set.
-  bool has_storage_access = false;
+  bool load_with_storage_access = false;
+
+  // Indicates which browsing context group this frame belongs to. This starts
+  // as nullopt and is only set when we commit a main frame in another browsing
+  // context group. Same browsing context group navigations never set this
+  // because no update is required. Subframes navigations never set this,
+  // because they cannot change browsing context group.
+  absl::optional<BrowsingContextGroupInfo> browsing_context_group_info =
+      absl::nullopt;
 };
 
 }  // namespace blink

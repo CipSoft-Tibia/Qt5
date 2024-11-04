@@ -12,7 +12,6 @@
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
-#include "base/strings/abseil_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "net/base/io_buffer.h"
 #include "net/base/net_errors.h"
@@ -261,8 +260,9 @@ int QuicChromiumClientStream::Handle::WriteStreamData(
   if (!stream_)
     return net_error_;
 
-  if (stream_->WriteStreamData(base::StringPieceToStringView(data), fin))
+  if (stream_->WriteStreamData(data, fin)) {
     return HandleIOComplete(OK);
+  }
 
   SetCallback(std::move(callback), &write_callback_);
   return ERR_IO_PENDING;
@@ -380,13 +380,6 @@ bool QuicChromiumClientStream::Handle::IsFirstStream() const {
   if (!stream_)
     return is_first_stream_;
   return stream_->IsFirstStream();
-}
-
-void QuicChromiumClientStream::Handle::OnPromiseHeaderList(
-    quic::QuicStreamId promised_id,
-    size_t frame_len,
-    const quic::QuicHeaderList& header_list) {
-  stream_->OnPromiseHeaderList(promised_id, frame_len, header_list);
 }
 
 bool QuicChromiumClientStream::Handle::can_migrate_to_cellular_network() {
@@ -553,24 +546,6 @@ void QuicChromiumClientStream::OnTrailingHeadersComplete(
     // The handle will be notified of the headers via a posted task.
     NotifyHandleOfTrailingHeadersAvailableLater();
   }
-}
-
-void QuicChromiumClientStream::OnPromiseHeaderList(
-    quic::QuicStreamId promised_id,
-    size_t frame_len,
-    const quic::QuicHeaderList& header_list) {
-  spdy::Http2HeaderBlock promise_headers;
-  int64_t content_length = -1;
-  if (!quic::SpdyUtils::CopyAndValidateHeaders(header_list, &content_length,
-                                               &promise_headers)) {
-    DLOG(ERROR) << "Failed to parse header list: " << header_list.DebugString();
-    ConsumeHeaderList();
-    Reset(quic::QUIC_BAD_APPLICATION_PAYLOAD);
-    return;
-  }
-  ConsumeHeaderList();
-
-  session_->HandlePromised(id(), promised_id, promise_headers);
 }
 
 void QuicChromiumClientStream::OnBodyAvailable() {

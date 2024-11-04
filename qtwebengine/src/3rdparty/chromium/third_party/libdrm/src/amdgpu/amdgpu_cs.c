@@ -56,9 +56,21 @@ drm_public int amdgpu_cs_ctx_create2(amdgpu_device_handle dev,
 	union drm_amdgpu_ctx args;
 	int i, j, k;
 	int r;
+	char *override_priority;
 
 	if (!dev || !context)
 		return -EINVAL;
+
+	override_priority = getenv("AMD_PRIORITY");
+	if (override_priority) {
+		/* The priority is a signed integer. The variable type is
+		 * wrong. If parsing fails, priority is unchanged.
+		 */
+		if (sscanf(override_priority, "%i", &priority) == 1) {
+			printf("amdgpu: context priority changed to %i\n",
+			       priority);
+		}
+	}
 
 	gpu_context = calloc(1, sizeof(struct amdgpu_context));
 	if (!gpu_context)

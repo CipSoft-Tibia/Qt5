@@ -1,6 +1,8 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include <QtCharts/QLegend>
 #include <private/qlegend_p.h>
 #include <QtCharts/QAbstractSeries>
@@ -358,7 +360,8 @@ void QLegend::setFont(const QFont &font)
         // Hide items to avoid flickering
         d_ptr->items()->setVisible(false);
         d_ptr->m_font = font;
-        foreach (QLegendMarker *marker, d_ptr->markers()) {
+        const auto markers = d_ptr->markers();
+        for (QLegendMarker *marker : markers) {
             marker->setFont(d_ptr->m_font);
         }
         layout()->invalidate();
@@ -392,7 +395,8 @@ void QLegend::setLabelBrush(const QBrush &brush)
 {
     if (d_ptr->m_labelBrush != brush) {
         d_ptr->m_labelBrush = brush;
-        foreach (QLegendMarker *marker, d_ptr->markers()) {
+        const auto markers = d_ptr->markers();
+        for (QLegendMarker *marker : markers) {
             marker->setLabelBrush(d_ptr->m_labelBrush);
             // Note: The pen of the marker rectangle could be exposed in the public QLegend API
             // instead of mapping it from label brush color

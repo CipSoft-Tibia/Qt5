@@ -16,14 +16,14 @@
 #include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_codepage_forward.h"
 #include "core/fxcrt/fx_coordinates.h"
-#include "core/fxcrt/fx_memory_wrappers.h"
 #include "core/fxcrt/retain_ptr.h"
+#include "core/fxcrt/unowned_ptr_exclusion.h"
 #include "core/fxge/cfx_face.h"
 #include "core/fxge/freetype/fx_freetype.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
 #include "core/fxge/fx_font.h"
 #endif
 
@@ -128,8 +128,6 @@ class CFX_Font {
   absl::optional<FX_RECT> GetBBox() const;
 
   bool IsEmbedded() const { return m_bEmbedded; }
-  void AllocSubData(size_t size);
-  uint8_t* GetSubData() const { return m_pSubData.get(); }
   FontType GetFontType() const { return m_FontType; }
   void SetFontType(FontType type) { m_FontType = type; }
   uint64_t GetObjectTag() const { return m_ObjectTag; }
@@ -137,8 +135,9 @@ class CFX_Font {
   void AdjustMMParams(int glyph_index, int dest_width, int weight) const;
   std::unique_ptr<CFX_Path> LoadGlyphPathImpl(uint32_t glyph_index,
                                               int dest_width) const;
+  int GetGlyphWidthImpl(uint32_t glyph_index, int dest_width, int weight) const;
 
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
   CFX_TypeFace* GetDeviceCache() const;
   bool IsSubstFontBold() const;
 #endif
@@ -165,7 +164,6 @@ class CFX_Font {
   mutable RetainPtr<CFX_Face> m_Face;
   mutable RetainPtr<CFX_GlyphCache> m_GlyphCache;
   std::unique_ptr<CFX_SubstFont> m_pSubstFont;
-  std::unique_ptr<uint8_t, FxFreeDeleter> m_pSubData;
   DataVector<uint8_t> m_FontDataAllocation;
   pdfium::span<uint8_t> m_FontData;
   FontType m_FontType = FontType::kUnknown;
@@ -173,7 +171,7 @@ class CFX_Font {
   bool m_bEmbedded = false;
   bool m_bVertical = false;
 #if BUILDFLAG(IS_APPLE)
-  void* m_pPlatformFont = nullptr;
+  UNOWNED_PTR_EXCLUSION void* m_pPlatformFont = nullptr;
 #endif
 };
 

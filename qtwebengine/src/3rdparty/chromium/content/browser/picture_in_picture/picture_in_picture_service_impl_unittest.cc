@@ -132,7 +132,6 @@ class PictureInPictureMediaPlayerReceiver : public media::mojom::MediaPlayer {
   void RequestSeekBackward(base::TimeDelta seek_time) override {}
   void RequestSeekTo(base::TimeDelta seek_time) override {}
   void RequestEnterPictureInPicture() override {}
-  void RequestExitPictureInPicture() override {}
   void RequestMute(bool mute) override {}
   void SetVolumeMultiplier(double multiplier) override {}
   void SetPersistentState(bool persistent) override {}
@@ -181,7 +180,7 @@ class PictureInPictureServiceImplTest : public RenderViewHostImplTestHarness {
   PictureInPictureTestBrowserClient browser_client_;
   PictureInPictureDelegate delegate_;
   // Will be deleted when the frame is destroyed.
-  raw_ptr<PictureInPictureServiceImpl> service_impl_;
+  raw_ptr<PictureInPictureServiceImpl, DanglingUntriaged> service_impl_;
   // Required to pass a valid PendingRemote to StartSession() in the tests.
   PictureInPictureMediaPlayerReceiver media_player_receiver_;
 };

@@ -16,12 +16,12 @@
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
+class AuthenticationExtensionsClientInputs;
 class AuthenticationExtensionsDevicePublicKeyInputs;
 class AuthenticationExtensionsPRFInputs;
 class AuthenticationExtensionsPRFValues;
 class AuthenticatorSelectionCriteria;
 class CableAuthenticationData;
-class CableRegistrationData;
 class Credential;
 class IdentityCredentialLogoutRPsRequest;
 class IdentityProviderConfig;
@@ -177,17 +177,19 @@ struct TypeConverter<blink::mojom::blink::CableAuthenticationPtr,
 };
 
 template <>
-struct TypeConverter<blink::mojom::blink::CableRegistrationPtr,
-                     blink::CableRegistrationData> {
-  static blink::mojom::blink::CableRegistrationPtr Convert(
-      const blink::CableRegistrationData&);
+struct MODULES_EXPORT
+    TypeConverter<blink::mojom::blink::PublicKeyCredentialRequestOptionsPtr,
+                  blink::PublicKeyCredentialRequestOptions> {
+  static blink::mojom::blink::PublicKeyCredentialRequestOptionsPtr Convert(
+      const blink::PublicKeyCredentialRequestOptions&);
 };
 
 template <>
-struct TypeConverter<blink::mojom::blink::PublicKeyCredentialRequestOptionsPtr,
-                     blink::PublicKeyCredentialRequestOptions> {
-  static blink::mojom::blink::PublicKeyCredentialRequestOptionsPtr Convert(
-      const blink::PublicKeyCredentialRequestOptions&);
+struct MODULES_EXPORT
+    TypeConverter<blink::mojom::blink::AuthenticationExtensionsClientInputsPtr,
+                  blink::AuthenticationExtensionsClientInputs> {
+  static blink::mojom::blink::AuthenticationExtensionsClientInputsPtr Convert(
+      const blink::AuthenticationExtensionsClientInputs&);
 };
 
 template <>
@@ -201,6 +203,13 @@ template <>
 struct TypeConverter<blink::mojom::blink::IdentityProviderConfigPtr,
                      blink::IdentityProviderConfig> {
   static blink::mojom::blink::IdentityProviderConfigPtr Convert(
+      const blink::IdentityProviderConfig&);
+};
+
+template <>
+struct TypeConverter<blink::mojom::blink::IdentityProviderPtr,
+                     blink::IdentityProviderConfig> {
+  static blink::mojom::blink::IdentityProviderPtr Convert(
       const blink::IdentityProviderConfig&);
 };
 

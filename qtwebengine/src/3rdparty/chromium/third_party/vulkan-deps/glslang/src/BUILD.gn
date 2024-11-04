@@ -124,6 +124,7 @@ template("glslang_sources_common") {
       "SPIRV/GLSL.ext.KHR.h",
       "SPIRV/GLSL.ext.NV.h",
       "SPIRV/GLSL.ext.ARM.h",
+      "SPIRV/GLSL.ext.QCOM.h",
       "SPIRV/GLSL.std.450.h",
       "SPIRV/GlslangToSpv.cpp",
       "SPIRV/GlslangToSpv.h",
@@ -299,7 +300,7 @@ glslang_sources_common("glslang_sources") {
 
 source_set("glslang_default_resource_limits_sources") {
   sources = [
-    "StandAlone/ResourceLimits.cpp",
+    "glslang/ResourceLimits/ResourceLimits.cpp",
     "glslang/Public/ResourceLimits.h",
     "glslang/Include/ResourceLimits.h",
   ]

@@ -45,7 +45,9 @@ class CORE_EXPORT ContainerSelector {
   bool operator==(const ContainerSelector& o) const {
     return (name_ == o.name_) && (physical_axes_ == o.physical_axes_) &&
            (logical_axes_ == o.logical_axes_) &&
-           (has_style_query_ == o.has_style_query_);
+           (has_style_query_ == o.has_style_query_) &&
+           (has_sticky_query_ == o.has_sticky_query_) &&
+           (has_snap_query_ == o.has_snap_query_);
   }
   bool operator!=(const ContainerSelector& o) const { return !(*this == o); }
 
@@ -63,6 +65,12 @@ class CORE_EXPORT ContainerSelector {
   }
 
   bool SelectsStyleContainers() const { return has_style_query_; }
+  bool SelectsStickyContainers() const { return has_sticky_query_; }
+  bool SelectsSnapContainers() const { return has_snap_query_; }
+  bool SelectsStateContainers() const {
+    return SelectsStickyContainers() || SelectsSnapContainers();
+  }
+  bool HasUnknownFeature() const { return has_unknown_feature_; }
 
   PhysicalAxes GetPhysicalAxes() const { return physical_axes_; }
   LogicalAxes GetLogicalAxes() const { return logical_axes_; }
@@ -72,6 +80,60 @@ class CORE_EXPORT ContainerSelector {
   PhysicalAxes physical_axes_{kPhysicalAxisNone};
   LogicalAxes logical_axes_{kLogicalAxisNone};
   bool has_style_query_{false};
+  bool has_sticky_query_{false};
+  bool has_snap_query_{false};
+  bool has_unknown_feature_{false};
+};
+
+class ScopedContainerSelector
+    : public GarbageCollected<ScopedContainerSelector> {
+ public:
+  ScopedContainerSelector(ContainerSelector selector,
+                          const TreeScope* tree_scope)
+      : selector_(selector), tree_scope_(tree_scope) {}
+
+  unsigned GetHash() const {
+    unsigned hash = selector_.GetHash();
+    WTF::AddIntToHash(hash, WTF::GetHash(tree_scope_.Get()));
+    return hash;
+  }
+
+  bool operator==(const ScopedContainerSelector& other) const {
+    return selector_ == other.selector_ && tree_scope_ == other.tree_scope_;
+  }
+
+  void Trace(Visitor* visitor) const;
+
+ private:
+  ContainerSelector selector_;
+  WeakMember<const TreeScope> tree_scope_;
+};
+
+struct ScopedContainerSelectorHashTraits
+    : WTF::MemberHashTraits<ScopedContainerSelector> {
+  static unsigned GetHash(
+      const Member<ScopedContainerSelector>& scoped_selector) {
+    return scoped_selector->GetHash();
+  }
+  static bool Equal(const Member<ScopedContainerSelector>& a,
+                    const Member<ScopedContainerSelector>& b) {
+    return *a == *b;
+  }
+  static constexpr bool kSafeToCompareToEmptyOrDeleted = false;
+};
+
+// Helper needed to allow calling Find() with a ScopedContainerSelector instead
+// of Member<ScopedContainerSelector>
+struct ScopedContainerSelectorHashTranslator {
+  STATIC_ONLY(ScopedContainerSelectorHashTranslator);
+
+  static unsigned GetHash(const ScopedContainerSelector& selector) {
+    return selector.GetHash();
+  }
+  static bool Equal(const Member<ScopedContainerSelector>& a,
+                    const ScopedContainerSelector& b) {
+    return a && *a == b;
+  }
 };
 
 }  // namespace blink
@@ -93,7 +155,9 @@ struct HashTraits<blink::ContainerSelector>
 
 namespace blink {
 
-using ContainerSelectorCache = HeapHashMap<ContainerSelector, Member<Element>>;
+using ContainerSelectorCache = HeapHashMap<Member<ScopedContainerSelector>,
+                                           Member<Element>,
+                                           ScopedContainerSelectorHashTraits>;
 
 }  // namespace blink
 

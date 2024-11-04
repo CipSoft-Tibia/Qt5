@@ -7,7 +7,6 @@
 
 #include "base/test/bind.h"
 #include "chrome/browser/extensions/extension_apitest.h"
-#include "chrome/browser/extensions/extension_function_test_utils.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/ui/browser.h"
@@ -19,8 +18,10 @@
 #include "content/public/test/browser_test_utils.h"
 #include "content/public/test/prerender_test_util.h"
 #include "content/public/test/test_navigation_observer.h"
+#include "extensions/browser/api_test_utils.h"
 #include "extensions/browser/background_script_executor.h"
 #include "extensions/browser/disable_reason.h"
+#include "extensions/common/extension_features.h"
 #include "extensions/common/features/feature_channel.h"
 #include "extensions/common/utils/content_script_utils.h"
 #include "extensions/test/extension_test_message_listener.h"
@@ -260,12 +261,12 @@ IN_PROC_BROWSER_TEST_F(ScriptingAPITest, ExecuteScriptBeforeInitialCommit) {
     // extension function manually rather than calling it in JS.
     int tab_id = ExtensionTabUtil::GetTabId(web_contents);
     std::string args = base::StringPrintf(kArgTemplate, tab_id);
-    std::unique_ptr<base::Value> result(
-        extension_function_test_utils::RunFunctionAndReturnSingleResult(
-            execute_script_function.get(), args, browser()));
+    absl::optional<base::Value> result =
+        api_test_utils::RunFunctionAndReturnSingleResult(
+            execute_script_function.get(), args, profile());
 
     // Now we check the function call returned what we expected in the result.
-    ASSERT_TRUE(result.get());
+    ASSERT_TRUE(result);
     base::Value::List& result_list = result->GetList();
     ASSERT_EQ(1u, result_list.size());
     const std::string* result_returned =
@@ -311,8 +312,8 @@ IN_PROC_BROWSER_TEST_F(ScriptingAPITest, ExecuteScriptBeforeInitialCommit) {
     // extension function manually rather than calling it in JS.
     int tab_id = ExtensionTabUtil::GetTabId(web_contents);
     std::string args = base::StringPrintf(kArgTemplate, tab_id);
-    std::string error(extension_function_test_utils::RunFunctionAndReturnError(
-        execute_script_function.get(), args, browser()));
+    std::string error(api_test_utils::RunFunctionAndReturnError(
+        execute_script_function.get(), args, profile()));
 
     // We should have gotten back an error that the page could not be accessed.
     // The URL for the pending navigation will be included because the extension
@@ -548,6 +549,32 @@ class ScriptingAPIPrerenderingTest : public ScriptingAPITest {
 #endif  // BUILDFLAG(IS_MAC)
 IN_PROC_BROWSER_TEST_F(ScriptingAPIPrerenderingTest, MAYBE_Basic) {
   ASSERT_TRUE(RunExtensionTest("scripting/prerendering")) << message_;
+}
+
+class ScriptingAndUserScriptsAPITest : public ScriptingAPITest {
+ public:
+  ScriptingAndUserScriptsAPITest() {
+    scoped_feature_list_.InitAndEnableFeature(
+        extensions_features::kApiUserScripts);
+  }
+  ScriptingAndUserScriptsAPITest(const ScriptingAndUserScriptsAPITest&) =
+      delete;
+  ScriptingAndUserScriptsAPITest& operator=(
+      const ScriptingAndUserScriptsAPITest&) = delete;
+  ~ScriptingAndUserScriptsAPITest() override = default;
+
+ private:
+  // The userScripts API is currently behind a channel and feature restriction.
+  // TODO(crbug.com/1472902): Remove channel override when user scripts API goes
+  // to stable.
+  ScopedCurrentChannel current_channel_override_{
+      version_info::Channel::UNKNOWN};
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(ScriptingAndUserScriptsAPITest,
+                       ScriptingAPIDoesNotAffectUserScripts) {
+  ASSERT_TRUE(RunExtensionTest("scripting/dynamic_user_scripts")) << message_;
 }
 
 }  // namespace extensions

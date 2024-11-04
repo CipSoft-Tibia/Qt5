@@ -167,8 +167,7 @@ class PERFETTO_EXPORT_COMPONENT DataSourceType {
   InstancesIterator BeginIteration(
       uint32_t cached_instances,
       DataSourceThreadLocalState* tls_state,
-      typename TracePointTraits::TracePointData trace_point_data)
-      PERFETTO_ALWAYS_INLINE {
+      typename TracePointTraits::TracePointData trace_point_data) {
     InstancesIterator it{};
     it.cached_instances = cached_instances;
     FirstActiveInstance<TracePointTraits>(&it, tls_state, trace_point_data);
@@ -183,10 +182,10 @@ class PERFETTO_EXPORT_COMPONENT DataSourceType {
   // `TracePointTraits` and `trace_point_data` are customization point for
   // getting the active instances bitmap.
   template <typename TracePointTraits>
-  void NextIteration(InstancesIterator* iterator,
-                     DataSourceThreadLocalState* tls_state,
-                     typename TracePointTraits::TracePointData trace_point_data)
-      PERFETTO_ALWAYS_INLINE {
+  void NextIteration(
+      InstancesIterator* iterator,
+      DataSourceThreadLocalState* tls_state,
+      typename TracePointTraits::TracePointData trace_point_data) {
     iterator->i++;
     FirstActiveInstance<TracePointTraits>(iterator, tls_state,
                                           trace_point_data);
@@ -286,15 +285,13 @@ class PERFETTO_EXPORT_COMPONENT DataSourceType {
   // per data-source *instance*.
   template <typename DataSourceTraits>
   DataSourceThreadLocalState* GetOrCreateDataSourceTLS() {
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_IOS)
-    PERFETTO_FATAL("Data source TLS not supported on iOS, see b/158814068");
-#endif
     auto* tracing_impl = TracingMuxer::Get();
     TracingTLS* root_tls = tracing_impl->GetOrCreateTracingTLS();
     DataSourceThreadLocalState* ds_tls =
         DataSourceTraits::GetDataSourceTLS(&state_, root_tls);
     // We keep re-initializing as the initialization is idempotent and not worth
-    // the code for extra checks.
+    // the code for extra checks. Also, ds_tls->static_state might point to
+    // another data source if ResetForTesting() has been used.
     ds_tls->static_state = &state_;
     assert(!ds_tls->root_tls || ds_tls->root_tls == root_tls);
     ds_tls->root_tls = root_tls;

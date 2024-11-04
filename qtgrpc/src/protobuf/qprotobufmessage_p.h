@@ -32,9 +32,23 @@ class QMetaProperty;
 class QProtobufMessagePrivate
 {
 public:
+    QProtobufMessagePrivate() = default;
+    QProtobufMessagePrivate(const QProtobufMessagePrivate &other)
+        : unknownEntries(other.unknownEntries),
+          metaObject(other.metaObject),
+          ref(1)
+    {
+    }
+    QProtobufMessagePrivate(QProtobufMessagePrivate &&other) = delete;
+    QProtobufMessagePrivate &operator=(const QProtobufMessagePrivate &other) = delete;
+    QProtobufMessagePrivate &operator=(QProtobufMessagePrivate &&other) = delete;
+    ~QProtobufMessagePrivate() = default;
+
     // QHash of form <field index, data>.
     QHash<qint32, QByteArrayList> unknownEntries;
     const QMetaObject *metaObject = nullptr;
+
+    QAtomicInt ref = {1};
 
     int getPropertyIndex(QAnyStringView propertyName) const;
     void storeUnknownEntry(QByteArrayView entry, int fieldNumber);

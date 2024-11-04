@@ -9,13 +9,14 @@
 #include "base/compiler_specific.h"
 #include "base/containers/span.h"
 #include "base/functional/callback.h"
-#include "components/viz/common/resources/resource_format.h"
 #include "gpu/command_buffer/client/interface_base.h"
 #include "gpu/command_buffer/common/raster_cmd_enums.h"
 #include "gpu/command_buffer/common/sync_token.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "third_party/skia/include/core/SkImageInfo.h"
+#include "third_party/skia/include/core/SkPixmap.h"
 #include "third_party/skia/include/core/SkYUVAInfo.h"
+#include "third_party/skia/include/core/SkYUVAPixmaps.h"
 #include "third_party/skia/include/gpu/GrTypes.h"
 
 namespace cc {
@@ -61,13 +62,25 @@ class RasterInterface : public InterfaceBase {
                                GLboolean unpack_flip_y,
                                GLboolean unpack_premultiply_alpha) = 0;
 
+  // Asynchronously writes pixels from caller-owned memory inside
+  // |src_sk_pixmap| into |dest_mailbox| for given |plane_index|. |plane_index|
+  // applies to multiplanar textures in mailboxes, for example YUV images
+  // produced by the VideoDecoder. |plane_index| as 0 should be passed for known
+  // single-plane textures.
   virtual void WritePixels(const gpu::Mailbox& dest_mailbox,
                            int dst_x_offset,
                            int dst_y_offset,
+                           int dst_plane_index,
                            GLenum texture_target,
-                           GLuint row_bytes,
-                           const SkImageInfo& src_info,
-                           const void* src_pixels) = 0;
+                           const SkPixmap& src_sk_pixmap) = 0;
+
+  // Asynchronously writes YUV pixels from caller-owned memory inside
+  // |src_yuv_pixmaps| into |dest_mailbox| for all planes. Should be used only
+  // with YUV source images.
+  // NOTE: This does not perform color space conversions and just uploads
+  // pixesl. For color space conversions (if needed), perform a CopySharedImage.
+  virtual void WritePixelsYUV(const gpu::Mailbox& dest_mailbox,
+                              const SkYUVAPixmaps& src_yuv_pixmap) = 0;
 
   // Copy `yuva_plane_mailboxes` to `dest_mailbox`. The color space for the
   // source of the copy is split into `planes_yuv_color_space` which converts
@@ -178,7 +191,7 @@ class RasterInterface : public InterfaceBase {
   // applies to multiplanar textures in mailboxes, for example YUV images
   // produced by the VideoDecoder. |plane_index| as 0 should be passed for known
   // single-plane textures.
-  virtual void ReadbackImagePixels(const gpu::Mailbox& source_mailbox,
+  virtual bool ReadbackImagePixels(const gpu::Mailbox& source_mailbox,
                                    const SkImageInfo& dst_info,
                                    GLuint dst_row_bytes,
                                    int src_x,

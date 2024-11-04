@@ -14,6 +14,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_media_position_state.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_media_session_action_details.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_media_session_action_handler.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_media_session_picture_in_picture_action_details.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_media_session_seek_to_action_details.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
@@ -21,7 +22,7 @@
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/modules/mediasession/media_metadata.h"
 #include "third_party/blink/renderer/modules/mediasession/media_metadata_sanitizer.h"
-#include "third_party/blink/renderer/modules/mediasession/type_converters.h"
+#include "third_party/blink/renderer/modules/mediasession/media_session_type_converters.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
@@ -55,6 +56,8 @@ const AtomicString& MojomActionToActionName(MediaSessionAction action) {
                       ("previousslide"));
   DEFINE_STATIC_LOCAL(const AtomicString, next_slide_action_name,
                       ("nextslide"));
+  DEFINE_STATIC_LOCAL(const AtomicString, enter_picture_in_picture_action_name,
+                      ("enterpictureinpicture"));
 
   switch (action) {
     case MediaSessionAction::kPlay:
@@ -85,6 +88,8 @@ const AtomicString& MojomActionToActionName(MediaSessionAction action) {
       return previous_slide_action_name;
     case MediaSessionAction::kNextSlide:
       return next_slide_action_name;
+    case MediaSessionAction::kEnterPictureInPicture:
+      return enter_picture_in_picture_action_name;
     default:
       NOTREACHED();
   }
@@ -121,6 +126,9 @@ absl::optional<MediaSessionAction> ActionNameToMojomAction(
     return MediaSessionAction::kPreviousSlide;
   if ("nextslide" == action_name)
     return MediaSessionAction::kNextSlide;
+  if ("enterpictureinpicture" == action_name) {
+    return MediaSessionAction::kEnterPictureInPicture;
+  }
 
   NOTREACHED();
   return absl::nullopt;
@@ -172,6 +180,7 @@ MediaSession::MediaSession(Navigator& navigator)
     : Supplement<Navigator>(navigator),
       clock_(base::DefaultTickClock::GetInstance()),
       playback_state_(mojom::blink::MediaSessionPlaybackState::NONE),
+      service_(navigator.GetExecutionContext()),
       client_receiver_(this, navigator.DomWindow()) {}
 
 void MediaSession::setPlaybackState(const String& playback_state) {
@@ -242,6 +251,16 @@ void MediaSession::setActionHandler(const String& action,
     }
   }
 
+  if (!RuntimeEnabledFeatures::MediaSessionEnterPictureInPictureEnabled()) {
+    if ("enterpictureinpicture" == action) {
+      exception_state.ThrowTypeError(
+          "The provided value 'enterpictureinpicture'"
+          " is not a valid enum "
+          "value of type MediaSessionAction.");
+      return;
+    }
+  }
+
   if (handler) {
     auto add_result = action_handlers_.Set(action, handler);
 
@@ -301,11 +320,11 @@ void MediaSession::setPositionState(MediaPositionState* position_state,
     return;
   }
 
-  // The playback rate cannot be less than or equal to zero.
+  // The playback rate cannot be equal to zero.
   if (position_state->hasPlaybackRate() &&
-      position_state->playbackRate() <= 0) {
+      position_state->playbackRate() == 0) {
     exception_state.ThrowTypeError(
-        "The provided playbackRate cannot be less than or equal to zero.");
+        "The provided playbackRate cannot be equal to zero.");
     return;
   }
 
@@ -406,19 +425,20 @@ void MediaSession::RecalculatePositionState(bool was_set) {
 }
 
 mojom::blink::MediaSessionService* MediaSession::GetService() {
-  if (service_)
+  if (service_) {
     return service_.get();
+  }
   LocalDOMWindow* window = GetSupplementable()->DomWindow();
-  if (!window)
+  if (!window) {
     return nullptr;
+  }
 
   // See https://bit.ly/2S0zRAS for task types.
   auto task_runner = window->GetTaskRunner(TaskType::kMiscPlatformAPI);
   window->GetBrowserInterfaceBroker().GetInterface(
-      service_.BindNewPipeAndPassReceiver());
+      service_.BindNewPipeAndPassReceiver(task_runner));
   if (service_.get())
     service_->SetClient(client_receiver_.BindNewPipeAndPassRemote(task_runner));
-
   return service_.get();
 }
 
@@ -450,6 +470,7 @@ void MediaSession::Trace(Visitor* visitor) const {
   visitor->Trace(client_receiver_);
   visitor->Trace(metadata_);
   visitor->Trace(action_handlers_);
+  visitor->Trace(service_);
   ScriptWrappable::Trace(visitor);
   Supplement<Navigator>::Trace(visitor);
 }

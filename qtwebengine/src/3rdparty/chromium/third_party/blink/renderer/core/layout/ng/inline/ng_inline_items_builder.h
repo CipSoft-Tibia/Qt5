@@ -150,7 +150,7 @@ class NGInlineItemsBuilderTemplate {
   void ClearNeedsLayout(LayoutObject*);
   void UpdateShouldCreateBoxFragment(LayoutInline*);
 
-  // In public to modify VectorTraits<BidiContext> in WTF namespace.
+  // The following structs are public to modify VectorTraits in WTF namespace.
   struct BidiContext {
     DISALLOW_NEW();
 
@@ -160,6 +160,22 @@ class NGInlineItemsBuilderTemplate {
     Member<LayoutObject> node;
     UChar enter;
     UChar exit;
+  };
+
+  // Keep track of inline boxes to compute ShouldCreateBoxFragment.
+  struct BoxInfo {
+    DISALLOW_NEW();
+
+    Member<const ComputedStyle> style;
+    unsigned item_index;
+    bool should_create_box_fragment;
+    FontHeight text_metrics;
+
+    void Trace(Visitor* visitor) const { visitor->Trace(style); }
+
+    BoxInfo(unsigned item_index, const NGInlineItem& item);
+    bool ShouldCreateBoxFragmentForChild(const BoxInfo& child) const;
+    void SetShouldCreateBoxFragment(HeapVector<NGInlineItem>* items);
   };
 
  private:
@@ -174,31 +190,20 @@ class NGInlineItemsBuilderTemplate {
   // white space is collapsed.
   OffsetMappingBuilder mapping_builder_;
 
-  // Keep track of inline boxes to compute ShouldCreateBoxFragment.
-  struct BoxInfo {
-    DISALLOW_NEW();
-
-    const ComputedStyle& style;
-    unsigned item_index;
-    bool should_create_box_fragment;
-    FontHeight text_metrics;
-
-    BoxInfo(unsigned item_index, const NGInlineItem& item);
-    bool ShouldCreateBoxFragmentForChild(const BoxInfo& child) const;
-    void SetShouldCreateBoxFragment(HeapVector<NGInlineItem>* items);
-  };
-  Vector<BoxInfo> boxes_;
-
+  HeapVector<BoxInfo> boxes_;
   HeapVector<BidiContext> bidi_context_;
 
   const SvgTextChunkOffsets* text_chunk_offsets_;
 
   const bool is_text_combine_;
   bool has_bidi_controls_ = false;
+  bool has_floats_ = false;
   bool has_initial_letter_box_ = false;
   bool has_ruby_ = false;
   bool is_block_level_ = true;
   bool has_unicode_bidi_plain_text_ = false;
+  bool is_bisect_line_break_disabled_ = false;
+  bool is_score_line_break_disabled_ = false;
 
   // Append a character.
   // Currently this function is for adding control characters such as
@@ -221,6 +226,9 @@ class NGInlineItemsBuilderTemplate {
   bool AppendTextChunks(const String& string, LayoutText& layout_text);
   void ExitAndEnterSvgTextChunk(LayoutText& layout_text);
   void EnterSvgTextChunk(const ComputedStyle* style);
+
+  void DidAppendTextReusing(const NGInlineItem& item);
+  void DidAppendForcedBreak();
 
   void RemoveTrailingCollapsibleSpaceIfExists();
   void RemoveTrailingCollapsibleSpace(NGInlineItem*);
@@ -292,5 +300,9 @@ WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(
     blink::NGInlineItemsBuilder::BidiContext)
 WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(
     blink::NGInlineItemsBuilderForOffsetMapping::BidiContext)
+WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(
+    blink::NGInlineItemsBuilder::BoxInfo)
+WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(
+    blink::NGInlineItemsBuilderForOffsetMapping::BoxInfo)
 
 #endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_INLINE_NG_INLINE_ITEMS_BUILDER_H_

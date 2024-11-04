@@ -141,10 +141,6 @@ export class ExperimentsSupport {
     return result;
   }
 
-  enabledExperiments(): Experiment[] {
-    return this.#experiments.filter(experiment => experiment.isEnabled());
-  }
-
   private setExperimentsSetting(value: Object): void {
     if (!self.localStorage) {
       return;
@@ -292,7 +288,6 @@ export enum ExperimentName {
   CSS_OVERVIEW = 'cssOverview',
   LIVE_HEAP_PROFILE = 'liveHeapProfile',
   DEVELOPER_RESOURCES_VIEW = 'developerResourcesView',
-  TIMELINE_REPLAY_EVENT = 'timelineReplayEvent',
   CSP_VIOLATIONS_VIEW = 'cspViolationsView',
   WASM_DWARF_DEBUGGING = 'wasmDWARFDebugging',
   ALL = '*',
@@ -304,14 +299,20 @@ export enum ExperimentName {
   HEADER_OVERRIDES = 'headerOverrides',
   EYEDROPPER_COLOR_PICKER = 'eyedropperColorPicker',
   INSTRUMENTATION_BREAKPOINTS = 'instrumentationBreakpoints',
-  CSS_AUTHORING_HINTS = 'cssAuthoringHints',
   AUTHORED_DEPLOYED_GROUPING = 'authoredDeployedGrouping',
   IMPORTANT_DOM_PROPERTIES = 'importantDOMProperties',
   JUST_MY_CODE = 'justMyCode',
-  BREAKPOINT_VIEW = 'breakpointView',
   PRELOADING_STATUS_PANEL = 'preloadingStatusPanel',
   DISABLE_COLOR_FORMAT_SETTING = 'disableColorFormatSetting',
   TIMELINE_AS_CONSOLE_PROFILE_RESULT_PANEL = 'timelineAsConsoleProfileResultPanel',
+  OUTERMOST_TARGET_SELECTOR = 'outermostTargetSelector',
+  JS_PROFILER_TEMP_ENABLE = 'jsProfilerTemporarilyEnable',
+  HIGHLIGHT_ERRORS_ELEMENTS_PANEL = 'highlightErrorsElementsPanel',
+  SET_ALL_BREAKPOINTS_EAGERLY = 'setAllBreakpointsEagerly',
+  SELF_XSS_WARNING = 'selfXssWarning',
+  USE_SOURCE_MAP_SCOPES = 'useSourceMapScopes',
+  STORAGE_BUCKETS_TREE = 'storageBucketsTree',
+  DELETE_OVERRIDES_TEMP_ENABLE = 'deleteOverridesTemporarilyEnable',
 }
 
 // TODO(crbug.com/1167717): Make this a const enum again

@@ -175,7 +175,7 @@ export class FontEditor extends Common.ObjectWrapper.eventMixin<EventTypes, type
         /** hasUnits= */ true);
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     this.registerCSSFiles([fontEditorStyles]);
   }
 
@@ -308,7 +308,7 @@ export class FontEditor extends Common.ObjectWrapper.eventMixin<EventTypes, type
         label = i18nString(UIStrings.fallbackS, {PH1: i});
       }
       fontSelectorObject.label.textContent = label;
-      UI.ARIAUtils.setAccessibleName(fontSelectorObject.input, label);
+      UI.ARIAUtils.setLabel(fontSelectorObject.input, label);
       fontSelectorObject.deleteButton.setTitle(i18nString(UIStrings.deleteS, {PH1: label}));
       fontSelectorObject.index = i;
     }
@@ -345,8 +345,7 @@ export class FontEditor extends Common.ObjectWrapper.eventMixin<EventTypes, type
     field.appendChild(selectInput);
 
     const deleteToolbar = new UI.Toolbar.Toolbar('', field);
-    const deleteButton =
-        new UI.Toolbar.ToolbarButton(i18nString(UIStrings.deleteS, {PH1: label}), 'largeicon-trash-bin');
+    const deleteButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.deleteS, {PH1: label}), 'bin');
     deleteToolbar.appendToolbarItem(deleteButton);
     const fontSelectorObject = {label: selectLabel, input: selectInput, deleteButton, index};
     deleteButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, () => {
@@ -593,7 +592,7 @@ class FontPropertyInputs {
       }
     });
     field.appendChild(slider);
-    UI.ARIAUtils.setAccessibleName(slider.sliderElement, i18nString(UIStrings.sSliderInput, {PH1: this.propertyName}));
+    UI.ARIAUtils.setLabel(slider.sliderElement, i18nString(UIStrings.sSliderInput, {PH1: this.propertyName}));
     return slider;
   }
 
@@ -611,7 +610,7 @@ class FontPropertyInputs {
     textBoxInput.step = 'any';
     textBoxInput.addEventListener('input', this.onTextBoxInput.bind(this), false);
     field.appendChild(textBoxInput);
-    UI.ARIAUtils.setAccessibleName(textBoxInput, i18nString(UIStrings.sTextInput, {PH1: this.propertyName}));
+    UI.ARIAUtils.setLabel(textBoxInput, i18nString(UIStrings.sTextInput, {PH1: this.propertyName}));
     return textBoxInput;
   }
 
@@ -641,7 +640,7 @@ class FontPropertyInputs {
       }
     }, false);
     field.appendChild(unitInput);
-    UI.ARIAUtils.setAccessibleName(unitInput, i18nString(UIStrings.sUnitInput, {PH1: this.propertyName}));
+    UI.ARIAUtils.setLabel(unitInput, i18nString(UIStrings.sUnitInput, {PH1: this.propertyName}));
 
     return unitInput;
   }
@@ -736,7 +735,7 @@ class FontPropertyInputs {
   private createTypeToggle(field: Element): void {
     const displaySwitcher = field.createChild('div', 'spectrum-switcher') as HTMLDivElement;
     const icon = new IconButton.Icon.Icon();
-    icon.data = {iconName: 'switcherIcon', color: 'var(--color-text-primary)', width: '16px', height: '16px'};
+    icon.data = {iconName: 'fold-more', color: 'var(--icon-default)', width: '16px', height: '16px'};
     displaySwitcher.appendChild(icon);
     UI.UIUtils.setTitle(displaySwitcher, i18nString(UIStrings.sToggleInputType, {PH1: this.propertyName}));
     displaySwitcher.tabIndex = 0;

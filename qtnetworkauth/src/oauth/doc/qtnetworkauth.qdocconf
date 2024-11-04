@@ -22,14 +22,14 @@ qhp.QtNetworkAuth.subprojects.classes.sortPages = true
 
 tagfile                 = qtnetworkauth.tags
 
-depends                 += qtcore qtnetwork qtdoc qtcmake
+depends                 += qtcore qtnetwork qtdoc qtcmake qtgui
 
 headerdirs  += ..
 sourcedirs  += ..
 #imagedirs  += images
 
 examplesinstallpath     = oauth
-exampledirs += ../../../examples/oauth
+exampledirs += ../../../examples/oauth snippets
 
 #manifestmeta.highlighted.names = "QtNetworkAuth/Twitter Timeline Example"
 

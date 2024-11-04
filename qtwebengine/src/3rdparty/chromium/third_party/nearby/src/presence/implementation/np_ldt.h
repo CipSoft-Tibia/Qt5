@@ -32,8 +32,15 @@ extern "C" {
 // Individual encrypt/decrypt API, useful when creating advertisements or when
 // decrypting advertisements from a known origin
 
-// Handle for accessing the rust ldt implementation apis
-typedef uint64_t NpLdtHandle;
+// The allocated handle to use for encryption
+typedef struct {
+  uint64_t handle;
+} NpLdtEncryptHandle;
+
+// The allocated handle to use for decryption
+typedef struct {
+  uint64_t handle;
+} NpLdtDecryptHandle;
 
 // Key material from the Nearby Presence credential from which keys will be
 // derived.
@@ -46,41 +53,8 @@ typedef struct {
 } NpMetadataKeyHmac;
 
 typedef struct {
-  uint8_t bytes[16];
-} NpLdtAes128Key;
-
-typedef struct {
-  uint8_t bytes[16];
-} NpLdtAesBlock;
-
-typedef struct {
   uint8_t bytes[2];
 } NpLdtSalt;
-
-// Handle for accessing the AES implementation provided by caller
-typedef void* NpLdtAesCipherHandle;
-
-// Create an AES cipher from a key, returning a handle (or 0 on error)
-typedef NpLdtAesCipherHandle (*NpLdtAesCreateCipher)(NpLdtAes128Key key);
-// Release resources for the cipher, returning 0 on success.
-typedef int32_t (*NpLdtAesCloseCipher)(NpLdtAesCipherHandle handle);
-// Encrypt the block in place with the cipher corresponding to the handle
-typedef void (*NpLdtAesEncrypt)(NpLdtAesCipherHandle handle,
-                                NpLdtAesBlock* block);
-// Decrypt the block in place with the cipher corresponding to the handle
-typedef void (*NpLdtAesDecrypt)(NpLdtAesCipherHandle handle,
-                                NpLdtAesBlock* block);
-
-// Functions for creating, destroying, and using AES ciphers.
-//
-// Users on platforms with optimized AES implementations available may use this
-// to have LDT use their preferred AES.
-typedef struct {
-  NpLdtAesCreateCipher create_cipher;
-  NpLdtAesCloseCipher close_cipher;
-  NpLdtAesEncrypt encrypt;
-  NpLdtAesDecrypt decrypt;
-} NpLdtAesConfig;
 
 // Possible result codes returned from the LDT NP API's
 typedef enum {
@@ -93,21 +67,34 @@ typedef enum {
   NP_LDT_ERROR_MAC_MISMATCH = -2,
 } NP_LDT_RESULT;
 
-// Allocate an LDT-XTS-AES128 cipher using the "swap" mix function.
+// Allocate an LDT-XTS-AES128 Decryption cipher using the "swap" mix function.
 //
-// `aes_config` defines the AES impl that will be used.
+// `key_seed` is the key material from the Nearby Presence credential from which
+// the LDT key will be derived.
+// 'hmac_tag' is the hmac auth tag calculated on the metadata key used to verify
+// decryption was successful
+//
+// Returns 0 on error, or a non-zero handle on success.
+NpLdtDecryptHandle NpLdtDecryptCreate(NpLdtKeySeed key_seed,
+                                      NpMetadataKeyHmac hmac_tag);
+
+// Allocate an LDT-XTS-AES128 Encryption cipher using the "swap" mix function.
+//
 // `key_seed` is the key material from the Nearby Presence credential from which
 // the LDT key will be derived.
 //
 // Returns 0 on error, or a non-zero handle on success.
-NpLdtHandle NpLdtCreate(NpLdtAesConfig aes_config, NpLdtKeySeed key_seed,
-                        NpMetadataKeyHmac known_hmac);
+NpLdtEncryptHandle NpLdtEncryptCreate(NpLdtKeySeed key_seed);
 
-// Release resources for an NpLdtHandle allocated by
-// `np_ldt_create_xts_aes_128`.
+// Release allocated resources for an NpLdtEncryptHandle
 //
 // Returns 0 on success or an NP_LDT_RESULT error code on failure
-NP_LDT_RESULT NpLdtClose(NpLdtHandle handle);
+NP_LDT_RESULT NpLdtEncryptClose(NpLdtEncryptHandle handle);
+
+// Release allocated resources for an NpLdtDecryptHandle
+//
+// Returns 0 on success or an NP_LDT_RESULT error code on failure
+NP_LDT_RESULT NpLdtDecryptClose(NpLdtDecryptHandle handle);
 
 // Encrypt a 16-31 byte buffer in-place.
 //
@@ -118,7 +105,7 @@ NP_LDT_RESULT NpLdtClose(NpLdtHandle handle);
 //
 // Returns 0 on success, in which case `buffer` will now contain ciphertext.
 // Returns an NP_LDT_RESULT error code on failure
-NP_LDT_RESULT NpLdtEncrypt(NpLdtHandle handle, uint8_t* buffer,
+NP_LDT_RESULT NpLdtEncrypt(NpLdtEncryptHandle handle, uint8_t* buffer,
                            size_t buffer_len, NpLdtSalt salt);
 
 // Decrypt a 16-31 byte buffer in-place.
@@ -131,7 +118,7 @@ NP_LDT_RESULT NpLdtEncrypt(NpLdtHandle handle, uint8_t* buffer,
 //
 // Returns 0 on success, in which case `buffer` will now contain plaintext.
 // Returns an NP_LDT_RESULT error code on failure
-NP_LDT_RESULT NpLdtDecryptAndVerify(NpLdtHandle handle, uint8_t* buffer,
+NP_LDT_RESULT NpLdtDecryptAndVerify(NpLdtDecryptHandle handle, uint8_t* buffer,
                                     size_t buffer_len, NpLdtSalt salt);
 
 #ifdef __cplusplus

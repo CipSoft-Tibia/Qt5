@@ -97,17 +97,14 @@ tr.exportTo('tr.metrics.v8', function() {
     'v8:gc:cycle:young:mark',
     'v8:gc:cycle:young:weak',
     'v8:gc:cycle:young:sweep',
-    'v8:gc:cycle:young:compact',
     'v8:gc:cycle:main_thread:young',
     'v8:gc:cycle:main_thread:young:mark',
     'v8:gc:cycle:main_thread:young:weak',
     'v8:gc:cycle:main_thread:young:sweep',
-    'v8:gc:cycle:main_thread:young:compact',
     'v8:gc:cycle:main_thread:young:atomic',
     'v8:gc:cycle:main_thread:young:atomic:mark',
     'v8:gc:cycle:main_thread:young:atomic:weak',
     'v8:gc:cycle:main_thread:young:atomic:sweep',
-    'v8:gc:cycle:main_thread:young:atomic:compact',
     'v8:gc:cycle:main_thread:young:incremental',
     'v8:gc:cycle:main_thread:young:incremental:mark',
     'v8:gc:cycle:main_thread:young:incremental:sweep',
@@ -115,7 +112,6 @@ tr.exportTo('tr.metrics.v8', function() {
     'v8:gc:event:main_thread:young:atomic:mark',
     'v8:gc:event:main_thread:young:atomic:weak',
     'v8:gc:event:main_thread:young:atomic:sweep',
-    'v8:gc:event:main_thread:young:atomic:compact',
     'v8:gc:event:main_thread:young:incremental',
     'v8:gc:event:main_thread:young:incremental:mark',
     'v8:gc:event:main_thread:young:incremental:sweep',
@@ -166,12 +162,6 @@ tr.exportTo('tr.metrics.v8', function() {
     'V8.GC_MINOR_MC_INCREMENTAL_START',
   ];
 
-  const V8_YOUNG_COMPACT_EVENTS = [
-    'V8.GC_MINOR_MC_BACKGROUND_EVACUATE_COPY',
-    'V8.GC_MINOR_MC_BACKGROUND_EVACUATE_UPDATE_POINTERS',
-    'V8.GC_MINOR_MC_EVACUATE',
-  ];
-
   const V8_YOUNG_SWEEP_EVENTS = [
     'V8.GC_MINOR_MC_BACKGROUND_SWEEPING',
     'V8.GC_MINOR_MC_SWEEP',
@@ -186,32 +176,16 @@ tr.exportTo('tr.metrics.v8', function() {
   ];
 
   const CPP_GC_FULL_MARK_EVENTS = [
-    'BlinkGC.AtomicPauseMarkEpilogue',
-    'BlinkGC.AtomicPauseMarkPrologue',
-    'BlinkGC.AtomicPauseMarkRoots',
-    'BlinkGC.AtomicPauseMarkTransitiveClosure',
-    'BlinkGC.ConcurrentMarkingStep',
-    'BlinkGC.IncrementalMarkingStartMarking',
-    'BlinkGC.IncrementalMarkingStep',
-    'BlinkGC.MarkBailOutObjects',
-    'BlinkGC.MarkFlushEphemeronPairs',
-    'BlinkGC.MarkFlushV8References',
-    'BlinkGC.UnifiedMarkingStep',
     'CppGC.AtomicMark',
     'CppGC.IncrementalMark',
     'CppGC.ConcurrentMark',
   ];
 
   const CPP_GC_FULL_COMPACT_EVENTS = [
-    'BlinkGC.AtomicPauseSweepAndCompact',
     'CppGC.AtomicCompact',
   ];
 
   const CPP_GC_FULL_SWEEP_EVENTS = [
-    'BlinkGC.CompleteSweep',
-    'BlinkGC.ConcurrentSweepingStep',
-    'BlinkGC.LazySweepInIdle',
-    'BlinkGC.LazySweepOnAllocation',
     'CppGC.AtomicSweep',
     'CppGC.IncrementalSweep',
     'CppGC.ConcurrentSweep',
@@ -219,7 +193,6 @@ tr.exportTo('tr.metrics.v8', function() {
   ];
 
   const CPP_GC_FULL_WEAK_EVENTS = [
-    'BlinkGC.MarkWeakProcessing',
     'CppGC.AtomicWeak',
   ];
 
@@ -346,19 +319,8 @@ tr.exportTo('tr.metrics.v8', function() {
       contribute_to: 'young:incremental:mark',
     },
     {
-      events: V8_YOUNG_COMPACT_EVENTS,
-      inside: V8_YOUNG_ATOMIC_EVENTS,
-      contribute_to: 'young:atomic:compact',
-    },
-    {
-      events: V8_YOUNG_COMPACT_EVENTS,
-      outside: V8_YOUNG_ATOMIC_EVENTS,
-      contribute_to: 'young:compact',
-    },
-    {
       events: V8_YOUNG_SWEEP_EVENTS,
       inside: V8_YOUNG_ATOMIC_EVENTS,
-      outside: V8_YOUNG_COMPACT_EVENTS,
       contribute_to: 'young:atomic:sweep',
     },
     {
@@ -368,7 +330,7 @@ tr.exportTo('tr.metrics.v8', function() {
     },
     {
       events: V8_YOUNG_SWEEP_EVENTS,
-      outside: V8_YOUNG_ATOMIC_EVENTS.concat(V8_YOUNG_COMPACT_EVENTS),
+      outside: V8_YOUNG_ATOMIC_EVENTS,
       contribute_to: 'young:incremental:sweep',
     },
   ];
@@ -636,7 +598,7 @@ tr.exportTo('tr.metrics.v8', function() {
     const mainThreads = ([rendererHelper.mainThread]
         .concat(rendererHelper.dedicatedWorkerThreads)
         .concat(rendererHelper.serviceWorkerThreads));
-    const backgroundThreads = rendererHelper.foregroundWorkerThreads;
+    const backgroundThreads = rendererHelper.foregroundWorkerThreads.concat(rendererHelper.utilityWorkerThreads);
     const threadTypes = new Map();
     for (const thread of mainThreads) {
       threadTypes.set(thread.tid, ThreadType.MAIN);

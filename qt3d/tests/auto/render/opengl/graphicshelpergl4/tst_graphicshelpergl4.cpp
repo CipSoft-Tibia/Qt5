@@ -1,5 +1,5 @@
 // Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QTest>
 #include <Qt3DRender/qrendertargetoutput.h>
@@ -1088,21 +1088,21 @@ private Q_SLOTS:
         QVERIFY(status == GL_FRAMEBUFFER_COMPLETE);
 
         // WHEN
+        GLint enumValue = 0;
         GLenum bufferEnum = GL_COLOR_ATTACHMENT4;
         m_func->glDrawBuffers(1, &bufferEnum);
 
         // THEN
-        GLint enumValue = -1;
         m_func->glGetIntegerv(GL_DRAW_BUFFER0, &enumValue);
         QCOMPARE(enumValue, GL_COLOR_ATTACHMENT4);
 
         // WHEN
-        GLint newBufferEnum = 2;
+        GLenum newBufferEnum = GL_COLOR_ATTACHMENT0 + 2;
         m_glHelper.drawBuffers(1, &newBufferEnum);
 
         // THEN
         m_func->glGetIntegerv(GL_DRAW_BUFFER0, &enumValue);
-        QCOMPARE(enumValue, GL_COLOR_ATTACHMENT0 + newBufferEnum);
+        QCOMPARE(enumValue, newBufferEnum);
 
         // WHEN
         newBufferEnum = 0;
@@ -1110,7 +1110,7 @@ private Q_SLOTS:
 
         // THEN
         m_func->glGetIntegerv(GL_DRAW_BUFFER0, &enumValue);
-        QCOMPARE(enumValue, GL_COLOR_ATTACHMENT0 + newBufferEnum);
+        QCOMPARE(enumValue, GL_NONE);
 
         // Restore
         m_func->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);

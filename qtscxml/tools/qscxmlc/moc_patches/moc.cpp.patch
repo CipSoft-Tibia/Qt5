@@ -1,5 +1,5 @@
---- .upstream/moc.cpp	2023-08-11 10:37:23.940392525 +0200
-+++ moc.cpp	2023-08-21 11:21:53.873272207 +0200
+--- .upstream/moc.cpp	2024-02-01 11:08:00.055494626 +0100
++++ moc.cpp	2024-02-05 14:06:04.258179059 +0100
 @@ -12,14 +12,15 @@
  #include <QtCore/qdir.h>
  #include <QtCore/qjsondocument.h>
@@ -7,9 +7,9 @@
 -// for normalizeTypeInternal
 -#include <private/qmetaobject_moc_p.h>
 -#include <private/qduplicatetracker_p.h>
-+// -- QScxml
++// -- QtScxml
 +#include <QtCore/qjsonobject.h>
-+// -- QScxml
++// -- QtScxml
  
  QT_BEGIN_NAMESPACE
  
@@ -19,11 +19,11 @@
  // only moc needs this function
  static QByteArray normalizeType(const QByteArray &ba)
  {
-@@ -1953,6 +1954,7 @@
+@@ -1997,6 +1998,7 @@
          }
      }
  }
-+#endif // -- QScxml
++#endif // -- QtScxml
  
  QJsonObject ClassDef::toJson() const
  {

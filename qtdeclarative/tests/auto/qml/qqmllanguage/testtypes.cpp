@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
 #include "testtypes.h"
 
 #include <private/qv4qmlcontext_p.h>
@@ -54,6 +55,8 @@ void registerTypes()
     qmlRegisterCustomType<MyCustomParserType>("Test", 1, 0, "MyCustomParserWithEnumType", new EnumSupportingCustomParser);
 
     qmlRegisterTypeNotAvailable("Test",1,0,"UnavailableType", "UnavailableType is unavailable for testing");
+
+    qmlRegisterTypesAndRevisions<DerivedFromUnexposedBase>("Test", 1);
 
     qmlRegisterType<MyQmlObject>("Test.Version",1,0,"MyQmlObject");
     qmlRegisterType<MyTypeObject>("Test.Version",1,0,"MyTypeObject");
@@ -166,6 +169,12 @@ void registerTypes()
     qmlRegisterTypesAndRevisions<ByteArrayReceiver>("Test", 1);
 
     qmlRegisterTypesAndRevisions<Counter>("Test", 1);
+
+    qmlRegisterTypesAndRevisions<Singleton>("EnumScopeTest", 1);
+    qmlRegisterTypesAndRevisions<NonSingleton>("EnumScopeTest", 1);
+    qmlRegisterTypesAndRevisions<EnumProviderSingletonQml>("EnumScopeTest", 1);
+
+    qmlRegisterTypesAndRevisions<NestedVectors>("Test", 1);
 }
 
 QVariant myCustomVariantTypeConverter(const QString &data)
@@ -188,7 +197,7 @@ void CustomBinding::componentComplete()
 {
     Q_ASSERT(m_target);
 
-    foreach (const QV4::CompiledData::Binding *binding, bindings) {
+    for (const QV4::CompiledData::Binding *binding : std::as_const(bindings)) {
         QString name = compilationUnit->stringAt(binding->propertyNameIndex);
 
         int bindingId = binding->value.compiledScriptIndex;
@@ -266,3 +275,19 @@ UncreatableSingleton *UncreatableSingleton::instance()
     static UncreatableSingleton instance;
     return &instance;
 }
+
+QT_BEGIN_NAMESPACE
+const QMetaObject *QtPrivate::MetaObjectForType<FakeDynamicObject *, void>::metaObjectFunction(const QMetaTypeInterface *)
+{
+    static auto ptr = []{
+        QMetaObjectBuilder builder(&FakeDynamicObject::staticMetaObject);
+        builder.setFlags(DynamicMetaObject);
+        auto mo = builder.toMetaObject();
+        QObject::connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, [mo]() {
+            delete mo;
+        });
+        return mo;
+    }();
+    return ptr;
+}
+QT_END_NAMESPACE

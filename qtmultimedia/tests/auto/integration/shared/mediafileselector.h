@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef MEDIAFILESELECTOR_H
 #define MEDIAFILESELECTOR_H
@@ -28,7 +28,7 @@ using MaybeUrl = QMaybe<QUrl, QString>;
 class MediaFileSelector
 {
 public:
-    quint32 failedSelectionsCount() const { return m_failedSelectionsCount; }
+    int failedSelectionsCount() const { return m_failedSelectionsCount; }
 
     QString dumpErrors() const
     {
@@ -92,6 +92,9 @@ private:
 
     static MaybeUrl selectMediaFile(QString media)
     {
+        if (qEnvironmentVariableIsSet("QTEST_SKIP_MEDIA_VALIDATION"))
+            return QUrl(media);
+
         using namespace Qt::StringLiterals;
 
         QAudioOutput audioOutput;
@@ -104,10 +107,19 @@ private:
         player.play();
 
         const auto waitingFinished = QTest::qWaitFor([&]() {
-            const auto status = player.mediaStatus();
-            return status == QMediaPlayer::BufferedMedia || status == QMediaPlayer::EndOfMedia
-                    || status == QMediaPlayer::InvalidMedia
-                    || player.error() != QMediaPlayer::NoError;
+            if (player.error() != QMediaPlayer::NoError)
+                return true;
+
+            switch (player.mediaStatus()) {
+            case QMediaPlayer::BufferingMedia:
+            case QMediaPlayer::BufferedMedia:
+            case QMediaPlayer::EndOfMedia:
+            case QMediaPlayer::InvalidMedia:
+                return true;
+
+            default:
+                return false;
+            }
         });
 
         auto enumValueToString = [](auto enumValue) {
@@ -156,7 +168,7 @@ private:
     std::unordered_map<QString, std::unique_ptr<QTemporaryFile>> m_nativeFiles;
 #endif
     std::unordered_map<QString, QString> m_mediaToErrors;
-    quint32 m_failedSelectionsCount = 0;
+    int m_failedSelectionsCount = 0;
 };
 
 QT_END_NAMESPACE

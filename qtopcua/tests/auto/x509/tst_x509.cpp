@@ -1,5 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtOpcUa/QOpcUaProvider>
 #include <QtOpcUa/QOpcUaKeyPair>
@@ -18,7 +18,7 @@
 #define defineDataMethod(name) void name()\
 {\
     QTest::addColumn<QString>("backend");\
-    for (auto backend : m_backends) {\
+    for (const auto &backend : m_backends) {\
         const QString rowName = QStringLiteral("%1").arg(backend); \
         QTest::newRow(rowName.toLatin1().constData()) << backend ; \
     }\
@@ -90,8 +90,6 @@ void Tst_QOpcUaSecurity::initTestCase()
 
 void Tst_QOpcUaSecurity::keyPairs()
 {
-    QFETCH(QString, backend);
-
     QOpcUaKeyPair key;
     QOpcUaKeyPair loadedKey;
     QByteArray byteArray;
@@ -158,8 +156,6 @@ void Tst_QOpcUaSecurity::keyPairs()
 
 void Tst_QOpcUaSecurity::certificateSigningRequest()
 {
-    QFETCH(QString, backend);
-
     QOpcUaKeyPair key;
 
     // Generate key
@@ -223,6 +219,8 @@ void Tst_QOpcUaSecurity::certificateSigningRequest()
     const auto textCert = QString::fromUtf8(textifyCertificate(certData));
     qDebug().noquote() << textCert;
     qDebug().noquote() << asn1dump(certData);
+    if (textCert.isEmpty())
+        QEXPECT_FAIL("", "Textified cert is empty, is the openssl executable in your PATH?", Abort);
     QVERIFY(textCert.contains(QStringLiteral("Digital Signature, Non Repudiation, Key Encipherment, Data Encipherment, Key Agreement, Certificate Sign, CRL Sign, Encipher Only, Decipher Only")));
     QVERIFY(textCert.contains(QStringLiteral("TLS Web Server Authentication, TLS Web Client Authentication, Code Signing, E-mail Protection")));
 }

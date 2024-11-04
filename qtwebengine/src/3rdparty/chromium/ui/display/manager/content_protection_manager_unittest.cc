@@ -5,11 +5,12 @@
 #include "ui/display/manager/content_protection_manager.h"
 
 #include "base/containers/flat_map.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "ui/display/fake/fake_display_snapshot.h"
 #include "ui/display/manager/test/action_logger_util.h"
+#include "ui/display/manager/test/fake_display_snapshot.h"
 #include "ui/display/manager/test/test_display_layout_manager.h"
 #include "ui/display/manager/test/test_native_display_delegate.h"
 
@@ -44,7 +45,7 @@ class TestObserver : public ContentProtectionManager::Observer {
     security_changes_.emplace(display_id, secure);
   }
 
-  ContentProtectionManager* const manager_;
+  const raw_ptr<ContentProtectionManager, ExperimentalAsh> manager_;
   SecurityChanges security_changes_;
 };
 

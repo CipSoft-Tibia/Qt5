@@ -9,6 +9,7 @@
 #include "quiche/quic/core/quic_packets.h"
 #include "quiche/quic/core/quic_sent_packet_manager.h"
 #include "quiche/quic/test_tools/quic_unacked_packet_map_peer.h"
+#include "quiche/common/platform/api/quiche_logging.h"
 
 namespace quic {
 namespace test {
@@ -111,6 +112,13 @@ void QuicSentPacketManagerPeer::SetUsingPacing(
 }
 
 // static
+PacingSender* QuicSentPacketManagerPeer::GetPacingSender(
+    QuicSentPacketManager* sent_packet_manager) {
+  QUICHE_DCHECK(UsingPacing(sent_packet_manager));
+  return &sent_packet_manager->pacing_sender_;
+}
+
+// static
 bool QuicSentPacketManagerPeer::HasRetransmittableFrames(
     QuicSentPacketManager* sent_packet_manager, uint64_t packet_number) {
   return sent_packet_manager->unacked_packets_.HasRetransmittableFrames(
@@ -174,6 +182,24 @@ bool QuicSentPacketManagerPeer::UsePacketThresholdForRuntPackets(
 int QuicSentPacketManagerPeer::GetNumPtosForPathDegrading(
     QuicSentPacketManager* sent_packet_manager) {
   return sent_packet_manager->num_ptos_for_path_degrading_;
+}
+
+// static
+QuicEcnCounts* QuicSentPacketManagerPeer::GetPeerEcnCounts(
+    QuicSentPacketManager* sent_packet_manager, PacketNumberSpace space) {
+  return &(sent_packet_manager->peer_ack_ecn_counts_[space]);
+}
+
+// static
+QuicPacketCount QuicSentPacketManagerPeer::GetEct0Sent(
+    QuicSentPacketManager* sent_packet_manager, PacketNumberSpace space) {
+  return sent_packet_manager->ect0_packets_sent_[space];
+}
+
+// static
+QuicPacketCount QuicSentPacketManagerPeer::GetEct1Sent(
+    QuicSentPacketManager* sent_packet_manager, PacketNumberSpace space) {
+  return sent_packet_manager->ect1_packets_sent_[space];
 }
 
 }  // namespace test

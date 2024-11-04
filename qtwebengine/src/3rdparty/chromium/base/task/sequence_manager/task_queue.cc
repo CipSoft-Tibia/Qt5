@@ -8,6 +8,7 @@
 
 #include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
+#include "base/memory/weak_ptr.h"
 #include "base/task/sequence_manager/associated_thread_id.h"
 #include "base/task/sequence_manager/sequence_manager_impl.h"
 #include "base/task/sequence_manager/task_queue_impl.h"
@@ -20,121 +21,39 @@
 namespace base {
 namespace sequence_manager {
 
-namespace {
-
-class NullTaskRunner final : public SingleThreadTaskRunner {
- public:
-  NullTaskRunner() {}
-
-  bool PostDelayedTask(const Location& location,
-                       OnceClosure callback,
-                       TimeDelta delay) override {
-    return false;
-  }
-
-  bool PostNonNestableDelayedTask(const Location& location,
-                                  OnceClosure callback,
-                                  TimeDelta delay) override {
-    return false;
-  }
-
-  bool RunsTasksInCurrentSequence() const override {
-    return thread_checker_.CalledOnValidThread();
-  }
-
- private:
-  // Ref-counted
-  ~NullTaskRunner() override = default;
-
-  ThreadCheckerImpl thread_checker_;
-};
-
-// TODO(kraynov): Move NullTaskRunner from //base/test to //base.
-scoped_refptr<SingleThreadTaskRunner> CreateNullTaskRunner() {
-  return MakeRefCounted<NullTaskRunner>();
-}
-
-}  // namespace
-
 TaskQueue::QueueEnabledVoter::QueueEnabledVoter(
-    scoped_refptr<TaskQueue> task_queue)
-    : task_queue_(std::move(task_queue)), enabled_(true) {
-  task_queue_->AddQueueEnabledVoter(enabled_);
+    WeakPtr<internal::TaskQueueImpl> task_queue)
+    : task_queue_(std::move(task_queue)) {
+  task_queue_->AddQueueEnabledVoter(enabled_, *this);
 }
 
 TaskQueue::QueueEnabledVoter::~QueueEnabledVoter() {
-  task_queue_->RemoveQueueEnabledVoter(enabled_);
+  if (task_queue_) {
+    task_queue_->RemoveQueueEnabledVoter(enabled_, *this);
+  }
 }
 
 void TaskQueue::QueueEnabledVoter::SetVoteToEnable(bool enabled) {
-  if (enabled == enabled_)
+  if (enabled == enabled_) {
     return;
+  }
   enabled_ = enabled;
-  task_queue_->OnQueueEnabledVoteChanged(enabled_);
-}
-
-void TaskQueue::AddQueueEnabledVoter(bool voter_is_enabled) {
-  DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  ++voter_count_;
-  if (voter_is_enabled)
-    ++enabled_voter_count_;
-}
-
-void TaskQueue::RemoveQueueEnabledVoter(bool voter_is_enabled) {
-  DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return;
-
-  bool was_enabled = AreAllQueueEnabledVotersEnabled();
-  if (voter_is_enabled) {
-    --enabled_voter_count_;
-    DCHECK_GE(enabled_voter_count_, 0);
+  if (task_queue_) {
+    task_queue_->OnQueueEnabledVoteChanged(enabled_);
   }
-
-  --voter_count_;
-  DCHECK_GE(voter_count_, 0);
-
-  bool is_enabled = AreAllQueueEnabledVotersEnabled();
-  if (was_enabled != is_enabled)
-    impl_->SetQueueEnabled(is_enabled);
-}
-
-bool TaskQueue::AreAllQueueEnabledVotersEnabled() const {
-  return enabled_voter_count_ == voter_count_;
-}
-
-void TaskQueue::OnQueueEnabledVoteChanged(bool enabled) {
-  DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  bool was_enabled = AreAllQueueEnabledVotersEnabled();
-  if (enabled) {
-    ++enabled_voter_count_;
-    DCHECK_LE(enabled_voter_count_, voter_count_);
-  } else {
-    --enabled_voter_count_;
-    DCHECK_GE(enabled_voter_count_, 0);
-  }
-
-  bool is_enabled = AreAllQueueEnabledVotersEnabled();
-  if (was_enabled != is_enabled)
-    impl_->SetQueueEnabled(is_enabled);
 }
 
 TaskQueue::TaskQueue(std::unique_ptr<internal::TaskQueueImpl> impl,
                      const TaskQueue::Spec& spec)
     : impl_(std::move(impl)),
-      sequence_manager_(impl_ ? impl_->GetSequenceManagerWeakPtr() : nullptr),
-      associated_thread_((impl_ && impl_->sequence_manager())
+      sequence_manager_(impl_->GetSequenceManagerWeakPtr()),
+      associated_thread_((impl_->sequence_manager())
                              ? impl_->sequence_manager()->associated_thread()
                              : MakeRefCounted<internal::AssociatedThreadId>()),
-      default_task_runner_(impl_ ? impl_->CreateTaskRunner(kTaskTypeNone)
-                                 : CreateNullTaskRunner()),
-      name_(impl_ ? impl_->GetProtoName() : QueueName::UNKNOWN_TQ) {}
+      default_task_runner_(impl_->CreateTaskRunner(kTaskTypeNone)),
+      name_(impl_->GetProtoName()) {}
 
 TaskQueue::~TaskQueue() {
-  ShutdownTaskQueueGracefully();
-}
-
-void TaskQueue::ShutdownTaskQueueGracefully() {
   // scoped_refptr guarantees us that this object isn't used.
   if (!impl_)
     return;
@@ -143,9 +62,7 @@ void TaskQueue::ShutdownTaskQueueGracefully() {
 
   // If we've not been unregistered then this must occur on the main thread.
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  impl_->ResetThrottler();
-  if (auto* sequence_manager = impl_->sequence_manager())
-    sequence_manager->ShutdownTaskQueueGracefully(TakeTaskQueueImpl());
+  ShutdownTaskQueue();
 }
 
 TaskQueue::TaskTiming::TaskTiming(bool has_wall_time, bool has_thread_time)
@@ -175,8 +92,11 @@ void TaskQueue::TaskTiming::RecordTaskEnd(LazyNow* now) {
 
 void TaskQueue::ShutdownTaskQueue() {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
+  // TODO(crbug.com/1413795): Fix that some task queues get shut down more than
+  // once.
+  if (!impl_) {
     return;
+  }
   if (!sequence_manager_) {
     TakeTaskQueueImpl().reset();
     return;
@@ -189,65 +109,56 @@ scoped_refptr<SingleThreadTaskRunner> TaskQueue::CreateTaskRunner(
   // We only need to lock if we're not on the main thread.
   base::internal::CheckedAutoLockMaybe lock(IsOnMainThread() ? &impl_lock_
                                                              : nullptr);
-  if (!impl_)
-    return CreateNullTaskRunner();
+  DCHECK(impl_);
   return impl_->CreateTaskRunner(task_type);
 }
 
 std::unique_ptr<TaskQueue::QueueEnabledVoter>
 TaskQueue::CreateQueueEnabledVoter() {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return nullptr;
-  return WrapUnique(new QueueEnabledVoter(this));
+  DCHECK(impl_);
+  return impl_->CreateQueueEnabledVoter();
 }
 
 bool TaskQueue::IsQueueEnabled() const {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return false;
+  DCHECK(impl_);
   return impl_->IsQueueEnabled();
 }
 
 bool TaskQueue::IsEmpty() const {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return true;
+  DCHECK(impl_);
   return impl_->IsEmpty();
 }
 
 size_t TaskQueue::GetNumberOfPendingTasks() const {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return 0;
+  DCHECK(impl_);
   return impl_->GetNumberOfPendingTasks();
 }
 
 bool TaskQueue::HasTaskToRunImmediatelyOrReadyDelayedTask() const {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return false;
+  DCHECK(impl_);
   return impl_->HasTaskToRunImmediatelyOrReadyDelayedTask();
 }
 
 absl::optional<WakeUp> TaskQueue::GetNextDesiredWakeUp() {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return absl::nullopt;
+  DCHECK(impl_);
   return impl_->GetNextDesiredWakeUp();
 }
 
 void TaskQueue::UpdateWakeUp(LazyNow* lazy_now) {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return;
+  DCHECK(impl_);
   impl_->UpdateWakeUp(lazy_now);
 }
 
 void TaskQueue::SetQueuePriority(TaskQueue::QueuePriority priority) {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return;
+  DCHECK(impl_);
   impl_->SetQueuePriority(priority);
 }
 
@@ -255,31 +166,25 @@ TaskQueue::QueuePriority TaskQueue::GetQueuePriority() const {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
   // TODO(crbug.com/1413795): change this to DCHECK(impl_) since task queues
   // should not be used after shutdown.
-  if (!impl_) {
-    DCHECK(sequence_manager_);
-    return sequence_manager_->settings().priority_settings.default_priority();
-  }
+  DCHECK(impl_);
   return impl_->GetQueuePriority();
 }
 
 void TaskQueue::AddTaskObserver(TaskObserver* task_observer) {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return;
+  DCHECK(impl_);
   impl_->AddTaskObserver(task_observer);
 }
 
 void TaskQueue::RemoveTaskObserver(TaskObserver* task_observer) {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return;
+  DCHECK(impl_);
   impl_->RemoveTaskObserver(task_observer);
 }
 
 void TaskQueue::InsertFence(InsertFencePosition position) {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return;
+  DCHECK(impl_);
   impl_->InsertFence(position);
 }
 
@@ -289,22 +194,19 @@ void TaskQueue::InsertFenceAt(TimeTicks time) {
 
 void TaskQueue::RemoveFence() {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return;
+  DCHECK(impl_);
   impl_->RemoveFence();
 }
 
 bool TaskQueue::HasActiveFence() {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return false;
+  DCHECK(impl_);
   return impl_->HasActiveFence();
 }
 
 bool TaskQueue::BlockedByFence() const {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return false;
+  DCHECK(impl_);
   return impl_->BlockedByFence();
 }
 
@@ -319,9 +221,7 @@ void TaskQueue::WriteIntoTrace(perfetto::TracedValue context) const {
 
 void TaskQueue::SetThrottler(Throttler* throttler) {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return;
-
+  DCHECK(impl_);
   // |throttler| is guaranteed to outlive TaskQueue and TaskQueueImpl lifecycle
   // is controlled by |this|.
   impl_->SetThrottler(throttler);
@@ -329,8 +229,7 @@ void TaskQueue::SetThrottler(Throttler* throttler) {
 
 void TaskQueue::ResetThrottler() {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return;
+  DCHECK(impl_);
   impl_->ResetThrottler();
 }
 
@@ -350,36 +249,41 @@ std::unique_ptr<internal::TaskQueueImpl> TaskQueue::TakeTaskQueueImpl() {
 
 void TaskQueue::SetOnTaskStartedHandler(OnTaskStartedHandler handler) {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return;
-
+  DCHECK(impl_);
   impl_->SetOnTaskStartedHandler(std::move(handler));
 }
 
 void TaskQueue::SetOnTaskCompletedHandler(OnTaskCompletedHandler handler) {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return;
-
+  DCHECK(impl_);
   impl_->SetOnTaskCompletedHandler(std::move(handler));
 }
 
 std::unique_ptr<TaskQueue::OnTaskPostedCallbackHandle>
 TaskQueue::AddOnTaskPostedHandler(OnTaskPostedHandler handler) {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return nullptr;
-
+  DCHECK(impl_);
   return impl_->AddOnTaskPostedHandler(std::move(handler));
 }
 
 void TaskQueue::SetTaskExecutionTraceLogger(TaskExecutionTraceLogger logger) {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
-  if (!impl_)
-    return;
-
+  DCHECK(impl_);
   impl_->SetTaskExecutionTraceLogger(std::move(logger));
 }
+
+TaskQueue::Handle::Handle(std::unique_ptr<TaskQueue> task_queue)
+    : task_queue_(std::move(task_queue)) {}
+
+TaskQueue::Handle::Handle() = default;
+
+// TODO(crbug.com/1143007): Once TaskQueueImpl inherits from task queue, pass
+// `task_queue` to sequence manager.
+TaskQueue::Handle::~Handle() = default;
+
+TaskQueue::Handle::Handle(TaskQueue::Handle&& other) = default;
+
+TaskQueue::Handle& TaskQueue::Handle::operator=(TaskQueue::Handle&&) = default;
 
 }  // namespace sequence_manager
 }  // namespace base

@@ -75,6 +75,13 @@ struct COMPONENT_EXPORT(NETWORK_CPP_BASE) URLLoaderCompletionStatus {
   // Optional CORS error details.
   absl::optional<CorsErrorStatus> cors_error_status;
 
+  // Information about any preflight request sent for Private Network Access
+  // as part of this load, that was not previously reported in
+  // `URLResponseHead`.
+  mojom::PrivateNetworkAccessPreflightResult
+      private_network_access_preflight_result =
+          mojom::PrivateNetworkAccessPreflightResult::kNone;
+
   // Optional Trust Tokens (https://github.com/wicg/trust-token-api) error
   // details.
   //
@@ -107,9 +114,6 @@ struct COMPONENT_EXPORT(NETWORK_CPP_BASE) URLLoaderCompletionStatus {
 
   // Whether the initiator of this request should be collapsed.
   bool should_collapse_initiator = false;
-
-  // Whether a pervasive payload is requested.
-  bool pervasive_payload_requested = false;
 
   // Write a representation of this struct into a trace.
   void WriteIntoTrace(perfetto::TracedValue context) const;

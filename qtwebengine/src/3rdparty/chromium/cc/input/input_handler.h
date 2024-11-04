@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
 #include "base/time/time.h"
@@ -207,33 +208,16 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
   InputHandler& operator=(const InputHandler&) = delete;
 
   struct ScrollStatus {
-    ScrollStatus() = default;
-    ScrollStatus(ScrollThread thread, uint32_t main_thread_scrolling_reasons)
-        : thread(thread),
-          main_thread_scrolling_reasons(main_thread_scrolling_reasons) {}
-    ScrollStatus(ScrollThread thread,
-                 uint32_t main_thread_scrolling_reasons,
-                 bool needs_main_thread_hit_test)
-        : thread(thread),
-          main_thread_scrolling_reasons(main_thread_scrolling_reasons),
-          needs_main_thread_hit_test(needs_main_thread_hit_test) {}
     ScrollThread thread = ScrollThread::SCROLL_ON_IMPL_THREAD;
-    // TODO(crbug.com/1155663): Make sure to set main_thread_scrolling_reasons
-    // only when ScrollStatus.thread is set to
-    // InputHander::ScrollThread::SCROLL_ON_MAIN_THREAD
+    // This should be set to nonzero iff `thread` is SCROLL_ON_MAIN_THREAD.
     uint32_t main_thread_scrolling_reasons =
         MainThreadScrollingReason::kNotScrollingOnMain;
-    // TODO(crbug.com/1155758): This is a temporary workaround for GuestViews
-    // as they create viewport nodes and want to bubble scroll if the
-    // viewport cannot scroll in the given delta directions. There should be
-    // a parameter to ThreadInputHandler to specify whether unused delta is
-    // consumed by the viewport or bubbles to the parent.
-    bool viewport_cannot_scroll = false;
 
-    // Used only in scroll unification. Tells the caller that the input handler
-    // detected a case where it cannot reliably target a scroll node and needs
-    // the main thread to perform a hit test.
-    bool needs_main_thread_hit_test = false;
+    // Used only in scroll unification. If nonzero, it tells the caller that
+    // the input handler detected a case where it cannot reliably target a
+    // scroll node and needs the main thread to perform a hit test.
+    uint32_t main_thread_hit_test_reasons =
+        MainThreadScrollingReason::kNotScrollingOnMain;
 
     // Used only in scroll unification. A nonzero value means we have performed
     // the scroll (i.e. updated the offset in the scroll tree) on the compositor
@@ -243,7 +227,15 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
     // from the MainThreadScrollingReason enum. (Unification avoids setting
     // main_thread_scrolling_reasons, to keep that field consistent with
     // semantics of ScrollThread::SCROLL_ON_IMPL_THREAD.)
-    uint32_t main_thread_repaint_reasons = 0;
+    uint32_t main_thread_repaint_reasons =
+        MainThreadScrollingReason::kNotScrollingOnMain;
+
+    // TODO(crbug.com/1155758): This is a temporary workaround for GuestViews
+    // as they create viewport nodes and want to bubble scroll if the
+    // viewport cannot scroll in the given delta directions. There should be
+    // a parameter to ThreadInputHandler to specify whether unused delta is
+    // consumed by the viewport or bubbles to the parent.
+    bool viewport_cannot_scroll = false;
   };
 
   enum class TouchStartOrMoveEventListenerType {
@@ -401,6 +393,7 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
   // the active scroll sequence.
   // Returns false if their is no position to snap to.
   virtual bool GetSnapFlingInfoAndSetAnimatingSnapTarget(
+      const gfx::Vector2dF& current_delta,
       const gfx::Vector2dF& natural_displacement_in_viewport,
       gfx::PointF* initial_offset,
       gfx::PointF* target_offset);
@@ -425,6 +418,8 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
                                           BrowserControlsState current,
                                           bool animate);
 
+  virtual void SetIsHandlingTouchSequence(bool is_handling_touch_sequence);
+
   bool CanConsumeDelta(const ScrollState& scroll_state,
                        const ScrollNode& scroll_node);
   // Returns the amount of delta that can be applied to scroll_node, taking
@@ -445,6 +440,8 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
       const ScrollNode& scroll_node,
       const gfx::Vector2dF& scroll_delta,
       ui::ScrollGranularity granularity);
+
+  bool CurrentScrollNeedsFrameAlignment() const;
 
   // Used to set the pinch gesture active state when the pinch gesture is
   // handled on another layer tree. In a page with OOPIFs, only the main
@@ -493,19 +490,16 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
   void SetPrefersReducedMotion(bool prefers_reduced_motion) override;
   bool IsCurrentlyScrolling() const override;
   ActivelyScrollingType GetActivelyScrollingType() const override;
+  bool IsHandlingTouchSequence() const override;
   bool IsCurrentScrollMainRepainted() const override;
 
  private:
-  FRIEND_TEST_ALL_PREFIXES(ScrollUnifiedLayerTreeHostImplTest,
+  FRIEND_TEST_ALL_PREFIXES(LayerTreeHostImplTest,
                            AbortAnimatedScrollBeforeStartingAutoscroll);
-  FRIEND_TEST_ALL_PREFIXES(ScrollUnifiedLayerTreeHostImplTest,
-                           AnimatedScrollYielding);
-  FRIEND_TEST_ALL_PREFIXES(ScrollUnifiedLayerTreeHostImplTest,
-                           AutoscrollOnDeletedScrollbar);
-  FRIEND_TEST_ALL_PREFIXES(ScrollUnifiedLayerTreeHostImplTest,
-                           ThumbDragAfterJumpClick);
-  FRIEND_TEST_ALL_PREFIXES(ScrollUnifiedLayerTreeHostImplTest,
-                           ScrollOnLargeThumb);
+  FRIEND_TEST_ALL_PREFIXES(LayerTreeHostImplTest, AnimatedScrollYielding);
+  FRIEND_TEST_ALL_PREFIXES(LayerTreeHostImplTest, AutoscrollOnDeletedScrollbar);
+  FRIEND_TEST_ALL_PREFIXES(LayerTreeHostImplTest, ThumbDragAfterJumpClick);
+  FRIEND_TEST_ALL_PREFIXES(LayerTreeHostImplTest, ScrollOnLargeThumb);
   FRIEND_TEST_ALL_PREFIXES(LayerTreeHostImplTest, AutoscrollTaskAbort);
 
   // This method gets the scroll offset for a regular scroller, or the combined
@@ -576,14 +570,24 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
   // scroll position to a snap point. Otherwise returns false.
   bool SnapAtScrollEnd(SnapReason reason);
 
-  // |layer| is returned from a regular hit test, and
-  // |first_scrolling_layer_or_drawn_scrollbar| is returned from a hit test
-  // performed only on scrollers and scrollbars. Initial scroll hit testing can
-  // be unreliable if the latter is not the direct scroll ancestor of the
-  // former. In this case, we will fall back to main thread scrolling because
-  // the compositor thread doesn't know which layer to scroll. This happens when
-  // a layer covers a scroller that doesn't scroll the former, or a scroller is
-  // masked by a mask layer for mask image, clip-path, rounded border, etc.
+  // `layer` is returned from a regular hit test, and
+  // `first_scrolling_layer_or_drawn_scrollbar` is returned from a hit test
+  // performed only on scrollers and scrollbars.
+  // - If the latter is the direct scroll ancestor of `layer`, this function
+  //   returns true;
+  // - Otherwise, which scroller to scroll depends on the hit test opaqueness
+  //   of `layer`:
+  //   - If `layer` is opaque to hit test, then we should scroll `layer`'s
+  //     direct scroll ancestor.
+  //   - Otherwise the initial scroll hit testing is unreliable and this
+  //     function returns false. Then we will fall back to main thread
+  //     scrolling because the compositor thread doesn't know which layer to
+  //     scroll.
+  //   This happens when a layer covers a scroller that doesn't scroll the
+  //   former, or a scroller is masked by a mask layer for mask image,
+  //   clip-path, rounded border, etc.
+  // If this function returns true, `out_node_to_scroll` is set to the scroll
+  // node to scroll.
   //
   // Note, position: fixed layers use the inner viewport as their ScrollNode
   // (since they don't scroll with the outer viewport), however, scrolls from
@@ -593,7 +597,8 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
   // this method must use the same scroll chaining logic we use in ApplyScroll.
   bool IsInitialScrollHitTestReliable(
       const LayerImpl* layer,
-      const LayerImpl* first_scrolling_layer_or_drawn_scrollbar) const;
+      const LayerImpl* first_scrolling_layer_or_drawn_scrollbar,
+      ScrollNode*& out_node_to_scroll) const;
 
   // Similar to above but includes complicated logic to determine whether the
   // ScrollNode is able to be scrolled on the compositor or requires main
@@ -640,6 +645,8 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
   struct ScrollHitTestResult {
     raw_ptr<ScrollNode> scroll_node;
     bool hit_test_successful;
+    uint32_t main_thread_hit_test_reasons =
+        MainThreadScrollingReason::kNotScrollingOnMain;
   };
   ScrollHitTestResult HitTestScrollNode(
       const gfx::PointF& device_viewport_point) const;
@@ -681,6 +688,8 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
     return scrollbar_controller_.get();
   }
 
+  absl::optional<gfx::PointF> ConstrainFling(gfx::PointF original);
+
   // The input handler is owned by the delegate so their lifetimes are tied
   // together.
   const raw_ref<CompositorDelegateForInput> compositor_delegate_;
@@ -717,6 +726,16 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
   // node's snap target.
   TargetSnapAreaElementIds scroll_animating_snap_target_ids_;
 
+  enum SnapFlingState {
+    kNoFling,
+    kNativeFling,
+    kConstrainedNativeFling,
+    kSnapFling
+  };
+  SnapFlingState snap_fling_state_ = kNoFling;
+  absl::optional<gfx::RangeF> fling_snap_constrain_x_;
+  absl::optional<gfx::RangeF> fling_snap_constrain_y_;
+
   // A set of elements that scroll-snapped to a new target since the last
   // begin main frame. The snap target ids of these elements will be sent to
   // the main thread in the next begin main frame.
@@ -752,6 +771,10 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
   // controls consume all the delta.
   bool delta_consumed_for_scroll_gesture_ = false;
 
+  // True if any of the non-zero deltas in a begin/update/end sequence was
+  // applied to the layout viewport.
+  bool outer_viewport_consumed_delta_ = false;
+
   // TODO(bokan): Mac doesn't yet have smooth scrolling for wheel; however, to
   // allow consistency in tests we use this bit to override that decision.
   // https://crbug.com/574283.
@@ -779,6 +802,8 @@ class CC_EXPORT InputHandler : public InputDelegateForCompositor {
   bool has_scrolled_by_scrollbar_ = false;
 
   bool prefers_reduced_motion_ = false;
+
+  bool is_handling_touch_sequence_ = false;
 
   // Must be the last member to ensure this is destroyed first in the
   // destruction order and invalidates all weak pointers.

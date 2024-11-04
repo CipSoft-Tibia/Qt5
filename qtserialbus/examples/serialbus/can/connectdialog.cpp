@@ -37,7 +37,7 @@ ConnectDialog::ConnectDialog(QWidget *parent) :
             this, &ConnectDialog::pluginChanged);
     connect(m_ui->interfaceListBox, &QComboBox::currentTextChanged,
             this, &ConnectDialog::interfaceChanged);
-    connect(m_ui->ringBufferBox, &QCheckBox::stateChanged, [this](int state){
+    connect(m_ui->ringBufferBox, &QCheckBox::stateChanged, this, [this](int state){
             m_ui->ringBufferLimitBox->setEnabled(state == Qt::CheckState::Checked);
     });
 
@@ -264,7 +264,7 @@ void ConnectDialog::updateSettings()
 
         // process data bitrate
         const int dataBitrate = m_ui->dataBitrateBox->bitRate();
-        if (dataBitrate > 0) {
+        if (dataBitrate > 0 && m_ui->canFdBox->currentData().toBool()) {
             const ConfigurationItem item(QCanBusDevice::DataBitRateKey, QVariant(dataBitrate));
             m_currentSettings.configurations.append(item);
         }

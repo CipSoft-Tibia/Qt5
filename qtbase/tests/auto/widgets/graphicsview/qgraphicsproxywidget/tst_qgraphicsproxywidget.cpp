@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -784,6 +784,9 @@ void tst_QGraphicsProxyWidget::focusOutEvent()
 
 void tst_QGraphicsProxyWidget::focusProxy_QTBUG_51856()
 {
+#ifdef ANDROID
+    QSKIP("This test leads to failures on subsequent test cases, QTBUG-119574");
+#endif
     // QSpinBox has an internal QLineEdit; this QLineEdit has the spinbox
     // as its focus proxy.
     struct FocusedSpinBox : QSpinBox
@@ -3889,6 +3892,7 @@ void tst_QGraphicsProxyWidget::touchEventPropagation()
                 break;
             }
             case QEvent::MouseButtonPress:
+            case QEvent::MouseButtonDblClick:
                 mousePressReceiver = qobject_cast<QWidget*>(receiver);
                 break;
             default:

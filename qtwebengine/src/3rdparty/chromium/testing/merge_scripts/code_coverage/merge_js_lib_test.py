@@ -5,13 +5,13 @@
 
 import base64
 import json
-import mock
 import os
 import shutil
 import tempfile
 import unittest
 
 import merge_js_lib as merger
+from parameterized import parameterized
 
 
 class MergeJSLibTest(unittest.TestCase):
@@ -124,6 +124,39 @@ class MergeJSLibTest(unittest.TestCase):
         finally:
             shutil.rmtree(scripts_dir)
 
+    def test_trailing_curly_brace_stripped(self):
+        test_script_file = """{
+  "text":"test\\ncontents\\n0",
+  "url":"//a/b/c/1.js",
+  "sourceMapURL":"data:application/json;base64,eyJzb3VyY2VzIjogWyJhL2IvYy8xLmpzIl0sICJzb3VyY2VSb290IjogIiJ9"
+}}"""
+
+        scripts_dir = None
+
+        try:
+            scripts_dir = tempfile.mkdtemp()
+            file_path = os.path.join(scripts_dir, '0.js.json')
+            with open(file_path, 'w') as f:
+                f.write(test_script_file)
+            expected_files = [
+                file_path,
+                os.path.join(scripts_dir, 'parsed_scripts', 'a', 'b', 'c',
+                             '1.js'),
+                os.path.join(scripts_dir, 'parsed_scripts',
+                             'parsed_scripts.json')
+            ]
+
+            merger.write_parsed_scripts(scripts_dir, source_dir='')
+            actual_files = []
+
+            for root, _, files in os.walk(scripts_dir):
+                for file_name in files:
+                    actual_files.append(os.path.join(root, file_name))
+
+            self.assertCountEqual(expected_files, actual_files)
+        finally:
+            shutil.rmtree(scripts_dir)
+
     def test_non_data_urls_are_ignored(self):
         test_script_file = """{
 "text": "test\\ncontents",
@@ -164,7 +197,14 @@ class MergeJSLibTest(unittest.TestCase):
 // found in the LICENSE file.
 
 import './iframe.js';
-export const add = (a, b) => a + b;
+
+/*
+ * function comment should be excluded.
+ */
+export const add = (a, b) => a + b; // should not be excluded
+
+/* should be excluded */
+
 """
 
         test_istanbul_file = """{
@@ -177,7 +217,14 @@ export const add = (a, b) => a + b;
     "3":{"start":{"line":3,"column":0},"end":{"line":3,"column":29}},
     "4":{"start":{"line":4,"column":0},"end":{"line":4,"column":0}},
     "5":{"start":{"line":5,"column":0},"end":{"line":5,"column":21}},
-    "6":{"start":{"line":6,"column":0},"end":{"line":6,"column":35}}
+    "6":{"start":{"line":6,"column":0},"end":{"line":6,"column":0}},
+    "7":{"start":{"line":7,"column":0},"end":{"line":7,"column":2}},
+    "8":{"start":{"line":8,"column":0},"end":{"line":8,"column":39}},
+    "9":{"start":{"line":9,"column":0},"end":{"line":9,"column":3}},
+    "10":{"start":{"line":10,"column":0},"end":{"line":10,"column":61}},
+    "11":{"start":{"line":11,"column":0},"end":{"line":11,"column":0}},
+    "12":{"start":{"line":12,"column":0},"end":{"line":12,"column":24}},
+    "13":{"start":{"line":13,"column":0},"end":{"line":13,"column":0}}
   },
   "s":{
     "1": 1,
@@ -185,7 +232,14 @@ export const add = (a, b) => a + b;
     "3": 1,
     "4": 1,
     "5": 1,
-    "6": 1
+    "6": 1,
+    "7": 1,
+    "8": 1,
+    "9": 1,
+    "10": 1,
+    "11": 1,
+    "12": 1,
+    "13": 1
   }
 }
         }"""
@@ -195,19 +249,19 @@ export const add = (a, b) => a + b;
                 "path": "%s",
                 "all": false,
                 "statementMap": {
-                    "6": {
+                    "10": {
                         "start": {
-                            "line": 6,
+                            "line": 10,
                             "column": 0
                         },
                         "end": {
-                            "line": 6,
-                            "column": 35
+                            "line": 10,
+                            "column": 61
                         }
                     }
                 },
                 "s": {
-                    "6": 1
+                    "10": 1
                 }
             }
         }"""
@@ -280,6 +334,18 @@ export const add = (a, b) => a + b;
 
         finally:
             shutil.rmtree(test_dir)
+
+    @parameterized.expand([
+        ('// test', True),
+        ('/* test', True),
+        ('*/ test', True),
+        (' * test', True),
+        ('import test', True),
+        (' x = 5 /* comment */', False),
+        ('x = 5', False),
+    ])
+    def test_should_exclude(self, line, exclude):
+        self.assertEqual(merger.should_exclude(line), exclude)
 
 
 if __name__ == '__main__':

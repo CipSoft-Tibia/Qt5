@@ -15,30 +15,30 @@
 #ifndef INCLUDE_DAWN_NATIVE_OPENGLBACKEND_H_
 #define INCLUDE_DAWN_NATIVE_OPENGLBACKEND_H_
 
-typedef void* EGLImage;
+using EGLDisplay = void*;
+using EGLImage = void*;
+using GLuint = unsigned int;
 
-#include "dawn/dawn_wsi.h"
 #include "dawn/native/DawnNative.h"
+#include "dawn/webgpu_cpp_chained_struct.h"
 
 namespace dawn::native::opengl {
 
-struct DAWN_NATIVE_EXPORT AdapterDiscoveryOptions : public AdapterDiscoveryOptionsBase {
-    explicit AdapterDiscoveryOptions(WGPUBackendType type);
+// Can be chained in WGPURequestAdapterOptions
+struct DAWN_NATIVE_EXPORT RequestAdapterOptionsGetGLProc : wgpu::ChainedStruct {
+    RequestAdapterOptionsGetGLProc();
 
     void* (*getProc)(const char*);
+    EGLDisplay display;
 };
 
-// TODO(crbug.com/dawn/810): This struct can be removed once Chrome is no longer using it.
-struct DAWN_NATIVE_EXPORT AdapterDiscoveryOptionsES : public AdapterDiscoveryOptions {
-    AdapterDiscoveryOptionsES();
-};
+struct DAWN_NATIVE_EXPORT PhysicalDeviceDiscoveryOptions
+    : public PhysicalDeviceDiscoveryOptionsBase {
+    explicit PhysicalDeviceDiscoveryOptions(WGPUBackendType type);
 
-using PresentCallback = void (*)(void*);
-DAWN_NATIVE_EXPORT DawnSwapChainImplementation CreateNativeSwapChainImpl(WGPUDevice device,
-                                                                         PresentCallback present,
-                                                                         void* presentUserdata);
-DAWN_NATIVE_EXPORT WGPUTextureFormat
-GetNativeSwapChainPreferredFormat(const DawnSwapChainImplementation* swapChain);
+    void* (*getProc)(const char*);
+    EGLDisplay display;
+};
 
 struct DAWN_NATIVE_EXPORT ExternalImageDescriptorEGLImage : ExternalImageDescriptor {
   public:
@@ -49,6 +49,16 @@ struct DAWN_NATIVE_EXPORT ExternalImageDescriptorEGLImage : ExternalImageDescrip
 
 DAWN_NATIVE_EXPORT WGPUTexture
 WrapExternalEGLImage(WGPUDevice device, const ExternalImageDescriptorEGLImage* descriptor);
+
+struct DAWN_NATIVE_EXPORT ExternalImageDescriptorGLTexture : ExternalImageDescriptor {
+  public:
+    ExternalImageDescriptorGLTexture();
+
+    GLuint texture;
+};
+
+DAWN_NATIVE_EXPORT WGPUTexture
+WrapExternalGLTexture(WGPUDevice device, const ExternalImageDescriptorGLTexture* descriptor);
 
 }  // namespace dawn::native::opengl
 

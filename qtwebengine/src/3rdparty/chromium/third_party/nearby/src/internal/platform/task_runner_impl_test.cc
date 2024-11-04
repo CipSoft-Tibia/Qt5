@@ -21,12 +21,17 @@
 #include "gtest/gtest.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
+#include "internal/platform/count_down_latch.h"
 
 namespace nearby {
 namespace {
 
-TEST(TaskRunnerImpl, PostTask) {
-  TaskRunnerImpl task_runner{1};
+constexpr uint32_t kNumThreads[] = {1, 10};
+
+class BaseTaskRunnerImplTest : public ::testing::TestWithParam<uint32_t> {};
+
+TEST_P(BaseTaskRunnerImplTest, PostTask) {
+  TaskRunnerImpl task_runner{GetParam()};
   absl::Notification notification;
   bool called = false;
 
@@ -38,7 +43,7 @@ TEST(TaskRunnerImpl, PostTask) {
   EXPECT_TRUE(called);
 }
 
-TEST(TaskRunnerImpl, PostSequenceTasks) {
+TEST_F(BaseTaskRunnerImplTest, PostSequenceTasks) {
   TaskRunnerImpl task_runner{1};
   std::vector<std::string> completed_tasks;
   absl::Notification notification;
@@ -66,97 +71,70 @@ TEST(TaskRunnerImpl, PostSequenceTasks) {
   EXPECT_EQ(completed_tasks[1], "task2");
 }
 
-TEST(TaskRunnerImpl, DISABLED_PostDelayedTask) {
-  TaskRunnerImpl task_runner{1};
-  std::vector<std::string> completed_tasks;
-  absl::Notification notification;
+TEST_P(BaseTaskRunnerImplTest, PostDelayedTask) {
+  TaskRunnerImpl task_runner{GetParam()};
+  std::atomic_bool first_task_started = false;
+  CountDownLatch latch(2);
 
   // Run the first task
-  task_runner.PostDelayedTask(absl::Milliseconds(50),
-                              [&completed_tasks, &notification]() {
-                                completed_tasks.push_back("task1");
-                                if (completed_tasks.size() == 2) {
-                                  notification.Notify();
-                                }
-                              });
-
-  // Run the second task
-  task_runner.PostTask([&completed_tasks, &notification]() {
-    completed_tasks.push_back("task2");
-    if (completed_tasks.size() == 2) {
-      notification.Notify();
-    }
+  task_runner.PostDelayedTask(absl::Milliseconds(50), [&]() {
+    first_task_started = true;
+    latch.CountDown();
   });
 
-  notification.WaitForNotificationWithTimeout(absl::Milliseconds(200));
-  ASSERT_EQ(completed_tasks.size(), 2u);
-  EXPECT_EQ(completed_tasks[0], "task2");
-  EXPECT_EQ(completed_tasks[1], "task1");
+  // Run the second task
+  task_runner.PostTask([&]() {
+    EXPECT_FALSE(first_task_started);
+    latch.CountDown();
+  });
+
+  latch.Await();
 }
 
-TEST(TaskRunnerImpl, DISABLED_PostTwoDelayedTask) {
-  TaskRunnerImpl task_runner{1};
-  std::vector<std::string> completed_tasks;
-  absl::Notification notification;
+TEST_P(BaseTaskRunnerImplTest, PostTwoDelayedTasks) {
+  TaskRunnerImpl task_runner{GetParam()};
+  std::atomic_bool first_task_started = false;
+  CountDownLatch latch(2);
 
   // Run the first task
-  task_runner.PostDelayedTask(absl::Milliseconds(100),
-                              [&completed_tasks, &notification]() {
-                                completed_tasks.push_back("task1");
-                                if (completed_tasks.size() == 2) {
-                                  notification.Notify();
-                                }
-                              });
+  task_runner.PostDelayedTask(absl::Milliseconds(500), [&]() {
+    first_task_started = true;
+    latch.CountDown();
+  });
 
   // Run the second task
-  task_runner.PostDelayedTask(absl::Milliseconds(50),
-                              [&completed_tasks, &notification]() {
-                                completed_tasks.push_back("task2");
-                                if (completed_tasks.size() == 2) {
-                                  notification.Notify();
-                                }
-                              });
+  task_runner.PostDelayedTask(absl::Milliseconds(1), [&]() {
+    EXPECT_FALSE(first_task_started);
+    latch.CountDown();
+  });
 
-  notification.WaitForNotificationWithTimeout(absl::Milliseconds(150));
-  ASSERT_EQ(completed_tasks.size(), 2u);
-  EXPECT_EQ(completed_tasks[0], "task2");
-  EXPECT_EQ(completed_tasks[1], "task1");
-
-  absl::Notification notification2;
-  task_runner.PostDelayedTask(absl::Milliseconds(100),
-                              [&completed_tasks, &notification2]() {
-                                completed_tasks.push_back("task3");
-                                notification2.Notify();
-                              });
-  notification2.WaitForNotificationWithTimeout(absl::Milliseconds(150));
-  ASSERT_EQ(completed_tasks.size(), 3u);
-  EXPECT_EQ(completed_tasks[2], "task3");
+  latch.Await();
 }
 
-TEST(TaskRunnerImpl, PostTasksOnRunnerWithMultipleThreads) {
-  TaskRunnerImpl task_runner{10};
-  std::atomic_int count = 0;
-  absl::Notification notification;
+TEST_P(BaseTaskRunnerImplTest, PostMultipleTasks) {
+  TaskRunnerImpl task_runner(GetParam());
+  constexpr int kNumTasks = 10;
+  CountDownLatch latch(kNumTasks);
 
-  for (int i = 0; i < 10; i++) {
-    task_runner.PostTask([&count, &notification]() {
-      absl::SleepFor(absl::Milliseconds(100));
-      count++;
-      if (count == 10) {
-        notification.Notify();
-      }
+  for (int i = 0; i < kNumTasks; i++) {
+    task_runner.PostTask([&]() {
+      absl::SleepFor(absl::Milliseconds(10));
+      latch.CountDown();
     });
   }
 
-  notification.WaitForNotificationWithTimeout(absl::Milliseconds(190));
-  EXPECT_EQ(count, 10);
+  EXPECT_TRUE(latch.Await());
 }
 
-TEST(TaskRunnerImpl, PostEmptyTask) {
-  TaskRunnerImpl task_runner{1};
+TEST_P(BaseTaskRunnerImplTest, PostEmptyTask) {
+  TaskRunnerImpl task_runner{GetParam()};
   EXPECT_TRUE(task_runner.PostTask(nullptr));
   EXPECT_TRUE(task_runner.PostDelayedTask(absl::Milliseconds(100), nullptr));
 }
+
+INSTANTIATE_TEST_SUITE_P(ParameterizedBasePcpHandlerTest,
+                         BaseTaskRunnerImplTest,
+                         ::testing::ValuesIn(kNumThreads));
 
 }  // namespace
 }  // namespace nearby

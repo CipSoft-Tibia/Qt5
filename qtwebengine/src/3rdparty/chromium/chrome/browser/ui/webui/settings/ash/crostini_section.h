@@ -5,6 +5,7 @@
 #ifndef CHROME_BROWSER_UI_WEBUI_SETTINGS_ASH_CROSTINI_SECTION_H_
 #define CHROME_BROWSER_UI_WEBUI_SETTINGS_ASH_CROSTINI_SECTION_H_
 
+#include "base/memory/raw_ptr.h"
 #include "base/values.h"
 #include "chrome/browser/ui/webui/settings/ash/os_settings_section.h"
 #include "components/prefs/pref_change_registrar.h"
@@ -27,17 +28,21 @@ class CrostiniSection : public OsSettingsSection {
                   PrefService* pref_service);
   ~CrostiniSection() override;
 
- private:
   // OsSettingsSection:
   void AddLoadTimeData(content::WebUIDataSource* html_source) override;
   void AddHandlers(content::WebUI* web_ui) override;
   int GetSectionNameMessageId() const override;
   chromeos::settings::mojom::Section GetSection() const override;
   mojom::SearchResultIcon GetSectionIcon() const override;
-  std::string GetSectionPath() const override;
+  const char* GetSectionPath() const override;
   bool LogMetric(chromeos::settings::mojom::Setting setting,
                  base::Value& value) const override;
   void RegisterHierarchy(HierarchyGenerator* generator) const override;
+
+ private:
+  friend class CrostiniSectionTest;
+
+  static bool ShouldShowBruschetta(Profile* profile);
 
   bool IsExportImportAllowed() const;
   bool IsContainerUpgradeAllowed() const;
@@ -46,9 +51,9 @@ class CrostiniSection : public OsSettingsSection {
 
   void UpdateSearchTags();
 
-  PrefService* pref_service_;
+  raw_ptr<PrefService, ExperimentalAsh> pref_service_;
   PrefChangeRegistrar pref_change_registrar_;
-  Profile* const profile_;
+  const raw_ptr<Profile, ExperimentalAsh> profile_;
 };
 
 }  // namespace ash::settings

@@ -874,7 +874,7 @@ namespace physx
 		Vec3V points1In0[3];
 		FloatV points1In0TValue[3];
 
-		bool points1In0Penetration[3];
+		bool points1In0Penetration[3] = { false, false, false};
 		
 		//Transform all the verts from vertex space to shape space
 		map0->populateVerts(inds0, referencePolygon.mNbVerts, polyData0.mVerts, points0In0);

@@ -347,34 +347,12 @@
 
 /// \internal EIGEN_HAS_ARM64_FP16 set to 1 if the architecture provides an IEEE
 /// compliant Arm fp16 type
-#if EIGEN_ARCH_ARM64
+#if EIGEN_ARCH_ARM_OR_ARM64
   #ifndef EIGEN_HAS_ARM64_FP16
     #if defined(__ARM_FP16_FORMAT_IEEE)
       #define EIGEN_HAS_ARM64_FP16 1
     #else
       #define EIGEN_HAS_ARM64_FP16 0
-    #endif
-  #endif
-#endif
-
-/// \internal EIGEN_HAS_ARM64_FP16_VECTOR_ARITHMETIC set to 1 if the architecture
-/// supports Neon vector intrinsics for fp16.
-#if EIGEN_ARCH_ARM64
-  #ifndef EIGEN_HAS_ARM64_FP16_VECTOR_ARITHMETIC
-    #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
-      #define EIGEN_HAS_ARM64_FP16_VECTOR_ARITHMETIC 1
-    #else
-      #define EIGEN_HAS_ARM64_FP16_VECTOR_ARITHMETIC 0
-    #endif
-  #endif
-#endif
-
-/// \internal EIGEN_HAS_ARM64_FP16_SCALAR_ARITHMETIC set to 1 if the architecture
-/// supports Neon scalar intrinsics for fp16.
-#if EIGEN_ARCH_ARM64
-  #ifndef EIGEN_HAS_ARM64_FP16_SCALAR_ARITHMETIC
-    #if defined(__ARM_FEATURE_FP16_SCALAR_ARITHMETIC)
-      #define EIGEN_HAS_ARM64_FP16_SCALAR_ARITHMETIC 1
     #endif
   #endif
 #endif
@@ -531,12 +509,12 @@
   #error "NVCC as the target platform for HIPCC is currently not supported."
 #endif
 
-#if defined(__CUDACC__) && !defined(EIGEN_NO_CUDA)
+#if defined(__CUDACC__) && !defined(EIGEN_NO_CUDA) && !defined(__SYCL_DEVICE_ONLY__)
   // Means the compiler is either nvcc or clang with CUDA enabled
   #define EIGEN_CUDACC __CUDACC__
 #endif
 
-#if defined(__CUDA_ARCH__) && !defined(EIGEN_NO_CUDA)
+#if defined(__CUDA_ARCH__) && !defined(EIGEN_NO_CUDA) && !defined(__SYCL_DEVICE_ONLY__)
   // Means we are generating code for the device
   #define EIGEN_CUDA_ARCH __CUDA_ARCH__
 #endif
@@ -548,7 +526,7 @@
   #define EIGEN_CUDA_SDK_VER 0
 #endif
 
-#if defined(__HIPCC__) && !defined(EIGEN_NO_HIP)
+#if defined(__HIPCC__) && !defined(EIGEN_NO_HIP) && !defined(__SYCL_DEVICE_ONLY__)
   // Means the compiler is HIPCC (analogous to EIGEN_CUDACC, but for HIP)
   #define EIGEN_HIPCC __HIPCC__
 
@@ -557,7 +535,7 @@
   // ++ host_defines.h which contains the defines for the __host__ and __device__ macros
   #include <hip/hip_runtime.h>
 
-  #if defined(__HIP_DEVICE_COMPILE__)
+  #if defined(__HIP_DEVICE_COMPILE__) && !defined(__SYCL_DEVICE_ONLY__)
     // analogous to EIGEN_CUDA_ARCH, but for HIP
     #define EIGEN_HIP_DEVICE_COMPILE __HIP_DEVICE_COMPILE__
   #endif
@@ -635,6 +613,32 @@
 // For cases where the tweak is specific to CUDA, the code should be guarded with
 //      #if defined(EIGEN_CUDA_ARCH)
 //
+#endif
+
+/// \internal EIGEN_HAS_ARM64_FP16_VECTOR_ARITHMETIC set to 1 if the architecture
+/// supports Neon vector intrinsics for fp16.
+#if EIGEN_ARCH_ARM_OR_ARM64
+  #ifndef EIGEN_HAS_ARM64_FP16_VECTOR_ARITHMETIC
+    // Clang only supports FP16 on aarch64, and not all intrinsics are available
+    // on A32 anyways even in GCC (e.g. vdiv_f16, vsqrt_f16).
+    #if EIGEN_ARCH_ARM64 && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && !defined(EIGEN_GPU_COMPILE_PHASE)
+      #define EIGEN_HAS_ARM64_FP16_VECTOR_ARITHMETIC 1
+    #else
+      #define EIGEN_HAS_ARM64_FP16_VECTOR_ARITHMETIC 0
+    #endif
+  #endif
+#endif
+
+/// \internal EIGEN_HAS_ARM64_FP16_SCALAR_ARITHMETIC set to 1 if the architecture
+/// supports Neon scalar intrinsics for fp16.
+#if EIGEN_ARCH_ARM_OR_ARM64
+  #ifndef EIGEN_HAS_ARM64_FP16_SCALAR_ARITHMETIC
+    // Clang only supports FP16 on aarch64, and not all intrinsics are available
+    // on A32 anyways, even in GCC (e.g. vceqh_f16).
+    #if EIGEN_ARCH_ARM64 && defined(__ARM_FEATURE_FP16_SCALAR_ARITHMETIC) && !defined(EIGEN_GPU_COMPILE_PHASE)
+      #define EIGEN_HAS_ARM64_FP16_SCALAR_ARITHMETIC 1
+    #endif
+  #endif
 #endif
 
 #if defined(EIGEN_USE_SYCL) && defined(__SYCL_DEVICE_ONLY__)

@@ -53,7 +53,6 @@ class PickRequestTask : public Task {
                   OfflinerPolicy* policy,
                   RequestPickedCallback picked_callback,
                   RequestNotPickedCallback not_picked_callback,
-                  RequestCountCallback request_count_callback,
                   DeviceConditions device_conditions,
                   const std::set<int64_t>& disabled_requests,
                   base::circular_deque<int64_t>* prioritized_requests);
@@ -101,10 +100,9 @@ class PickRequestTask : public Task {
 
   // Member variables, all pointers are not owned here.
   raw_ptr<RequestQueueStore> store_;
-  raw_ptr<OfflinerPolicy> policy_;
+  raw_ptr<OfflinerPolicy, DanglingUntriaged> policy_;
   RequestPickedCallback picked_callback_;
   RequestNotPickedCallback not_picked_callback_;
-  RequestCountCallback request_count_callback_;
   DeviceConditions device_conditions_;
   const raw_ref<const std::set<int64_t>> disabled_requests_;
   // TODO(harringtond): This object is owned by the caller, and mutating it

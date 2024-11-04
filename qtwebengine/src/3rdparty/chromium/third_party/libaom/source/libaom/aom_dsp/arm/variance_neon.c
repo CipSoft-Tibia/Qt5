@@ -11,153 +11,12 @@
 
 #include <arm_neon.h>
 
-#include "config/aom_dsp_rtcd.h"
-#include "config/aom_config.h"
+#include "aom/aom_integer.h"
 #include "aom_dsp/arm/mem_neon.h"
 #include "aom_dsp/arm/sum_neon.h"
-#include "aom/aom_integer.h"
 #include "aom_ports/mem.h"
-
-#if defined(__ARM_FEATURE_DOTPROD)
-
-static INLINE void variance_4xh_neon(const uint8_t *src, int src_stride,
-                                     const uint8_t *ref, int ref_stride, int h,
-                                     uint32_t *sse, int *sum) {
-  uint32x4_t src_sum = vdupq_n_u32(0);
-  uint32x4_t ref_sum = vdupq_n_u32(0);
-  uint32x4_t sse_u32 = vdupq_n_u32(0);
-
-  int i = h;
-  do {
-    uint8x16_t s = load_unaligned_u8q(src, src_stride);
-    uint8x16_t r = load_unaligned_u8q(ref, ref_stride);
-
-    src_sum = vdotq_u32(src_sum, s, vdupq_n_u8(1));
-    ref_sum = vdotq_u32(ref_sum, r, vdupq_n_u8(1));
-
-    uint8x16_t abs_diff = vabdq_u8(s, r);
-    sse_u32 = vdotq_u32(sse_u32, abs_diff, abs_diff);
-
-    src += 4 * src_stride;
-    ref += 4 * ref_stride;
-    i -= 4;
-  } while (i != 0);
-
-  int32x4_t sum_diff =
-      vsubq_s32(vreinterpretq_s32_u32(src_sum), vreinterpretq_s32_u32(ref_sum));
-  *sum = horizontal_add_s32x4(sum_diff);
-  *sse = horizontal_add_u32x4(sse_u32);
-}
-
-static INLINE void variance_8xh_neon(const uint8_t *src, int src_stride,
-                                     const uint8_t *ref, int ref_stride, int h,
-                                     uint32_t *sse, int *sum) {
-  uint32x4_t src_sum = vdupq_n_u32(0);
-  uint32x4_t ref_sum = vdupq_n_u32(0);
-  uint32x4_t sse_u32 = vdupq_n_u32(0);
-
-  int i = h;
-  do {
-    uint8x16_t s = vcombine_u8(vld1_u8(src), vld1_u8(src + src_stride));
-    uint8x16_t r = vcombine_u8(vld1_u8(ref), vld1_u8(ref + ref_stride));
-
-    src_sum = vdotq_u32(src_sum, s, vdupq_n_u8(1));
-    ref_sum = vdotq_u32(ref_sum, r, vdupq_n_u8(1));
-
-    uint8x16_t abs_diff = vabdq_u8(s, r);
-    sse_u32 = vdotq_u32(sse_u32, abs_diff, abs_diff);
-
-    src += 2 * src_stride;
-    ref += 2 * ref_stride;
-    i -= 2;
-  } while (i != 0);
-
-  int32x4_t sum_diff =
-      vsubq_s32(vreinterpretq_s32_u32(src_sum), vreinterpretq_s32_u32(ref_sum));
-  *sum = horizontal_add_s32x4(sum_diff);
-  *sse = horizontal_add_u32x4(sse_u32);
-}
-
-static INLINE void variance_16xh_neon(const uint8_t *src, int src_stride,
-                                      const uint8_t *ref, int ref_stride, int h,
-                                      uint32_t *sse, int *sum) {
-  uint32x4_t src_sum = vdupq_n_u32(0);
-  uint32x4_t ref_sum = vdupq_n_u32(0);
-  uint32x4_t sse_u32 = vdupq_n_u32(0);
-
-  int i = h;
-  do {
-    uint8x16_t s = vld1q_u8(src);
-    uint8x16_t r = vld1q_u8(ref);
-
-    src_sum = vdotq_u32(src_sum, s, vdupq_n_u8(1));
-    ref_sum = vdotq_u32(ref_sum, r, vdupq_n_u8(1));
-
-    uint8x16_t abs_diff = vabdq_u8(s, r);
-    sse_u32 = vdotq_u32(sse_u32, abs_diff, abs_diff);
-
-    src += src_stride;
-    ref += ref_stride;
-  } while (--i != 0);
-
-  int32x4_t sum_diff =
-      vsubq_s32(vreinterpretq_s32_u32(src_sum), vreinterpretq_s32_u32(ref_sum));
-  *sum = horizontal_add_s32x4(sum_diff);
-  *sse = horizontal_add_u32x4(sse_u32);
-}
-
-static INLINE void variance_large_neon(const uint8_t *src, int src_stride,
-                                       const uint8_t *ref, int ref_stride,
-                                       int w, int h, uint32_t *sse, int *sum) {
-  uint32x4_t src_sum = vdupq_n_u32(0);
-  uint32x4_t ref_sum = vdupq_n_u32(0);
-  uint32x4_t sse_u32 = vdupq_n_u32(0);
-
-  int i = h;
-  do {
-    int j = 0;
-    do {
-      uint8x16_t s = vld1q_u8(src + j);
-      uint8x16_t r = vld1q_u8(ref + j);
-
-      src_sum = vdotq_u32(src_sum, s, vdupq_n_u8(1));
-      ref_sum = vdotq_u32(ref_sum, r, vdupq_n_u8(1));
-
-      uint8x16_t abs_diff = vabdq_u8(s, r);
-      sse_u32 = vdotq_u32(sse_u32, abs_diff, abs_diff);
-
-      j += 16;
-    } while (j < w);
-
-    src += src_stride;
-    ref += ref_stride;
-  } while (--i != 0);
-
-  int32x4_t sum_diff =
-      vsubq_s32(vreinterpretq_s32_u32(src_sum), vreinterpretq_s32_u32(ref_sum));
-  *sum = horizontal_add_s32x4(sum_diff);
-  *sse = horizontal_add_u32x4(sse_u32);
-}
-
-static INLINE void variance_32xh_neon(const uint8_t *src, int src_stride,
-                                      const uint8_t *ref, int ref_stride, int h,
-                                      uint32_t *sse, int *sum) {
-  variance_large_neon(src, src_stride, ref, ref_stride, 32, h, sse, sum);
-}
-
-static INLINE void variance_64xh_neon(const uint8_t *src, int src_stride,
-                                      const uint8_t *ref, int ref_stride, int h,
-                                      uint32_t *sse, int *sum) {
-  variance_large_neon(src, src_stride, ref, ref_stride, 64, h, sse, sum);
-}
-
-static INLINE void variance_128xh_neon(const uint8_t *src, int src_stride,
-                                       const uint8_t *ref, int ref_stride,
-                                       int h, uint32_t *sse, int *sum) {
-  variance_large_neon(src, src_stride, ref, ref_stride, 128, h, sse, sum);
-}
-
-#else  // !defined(__ARM_FEATURE_DOTPROD)
+#include "config/aom_config.h"
+#include "config/aom_dsp_rtcd.h"
 
 static INLINE void variance_4xh_neon(const uint8_t *src, int src_stride,
                                      const uint8_t *ref, int ref_stride, int h,
@@ -333,8 +192,6 @@ static INLINE void variance_128xh_neon(const uint8_t *src, int src_stride,
   variance_large_neon(src, src_stride, ref, ref_stride, 128, h, 16, sse, sum);
 }
 
-#endif  // defined(__ARM_FEATURE_DOTPROD)
-
 #define VARIANCE_WXH_NEON(w, h, shift)                                        \
   unsigned int aom_variance##w##x##h##_neon(                                  \
       const uint8_t *src, int src_stride, const uint8_t *ref, int ref_stride, \
@@ -374,17 +231,6 @@ VARIANCE_WXH_NEON(128, 128, 14)
 
 #undef VARIANCE_WXH_NEON
 
-void aom_get8x8var_neon(const uint8_t *src, int src_stride, const uint8_t *ref,
-                        int ref_stride, unsigned int *sse, int *sum) {
-  variance_8xh_neon(src, src_stride, ref, ref_stride, 8, sse, sum);
-}
-
-void aom_get16x16var_neon(const uint8_t *src, int src_stride,
-                          const uint8_t *ref, int ref_stride, unsigned int *sse,
-                          int *sum) {
-  variance_16xh_neon(src, src_stride, ref, ref_stride, 16, sse, sum);
-}
-
 // TODO(yunqingwang): Perform variance of two/four 8x8 blocks similar to that of
 // AVX2. Also, implement the NEON for variance computation present in this
 // function.
@@ -393,7 +239,7 @@ void aom_get_var_sse_sum_8x8_quad_neon(const uint8_t *src, int src_stride,
                                        uint32_t *sse8x8, int *sum8x8,
                                        unsigned int *tot_sse, int *tot_sum,
                                        uint32_t *var8x8) {
-  // Loop over 4 8x8 blocks. Process one 8x32 block.
+  // Loop over four 8x8 blocks. Process one 8x32 block.
   for (int k = 0; k < 4; k++) {
     variance_8xh_neon(src + (k * 8), src_stride, ref + (k * 8), ref_stride, 8,
                       &sse8x8[k], &sum8x8[k]);
@@ -401,8 +247,9 @@ void aom_get_var_sse_sum_8x8_quad_neon(const uint8_t *src, int src_stride,
 
   *tot_sse += sse8x8[0] + sse8x8[1] + sse8x8[2] + sse8x8[3];
   *tot_sum += sum8x8[0] + sum8x8[1] + sum8x8[2] + sum8x8[3];
-  for (int i = 0; i < 4; i++)
+  for (int i = 0; i < 4; i++) {
     var8x8[i] = sse8x8[i] - (uint32_t)(((int64_t)sum8x8[i] * sum8x8[i]) >> 6);
+  }
 }
 
 void aom_get_var_sse_sum_16x16_dual_neon(const uint8_t *src, int src_stride,
@@ -411,7 +258,7 @@ void aom_get_var_sse_sum_16x16_dual_neon(const uint8_t *src, int src_stride,
                                          unsigned int *tot_sse, int *tot_sum,
                                          uint32_t *var16x16) {
   int sum16x16[2] = { 0 };
-  // Loop over 2 16x16 blocks. Process one 16x32 block.
+  // Loop over two 16x16 blocks. Process one 16x32 block.
   for (int k = 0; k < 2; k++) {
     variance_16xh_neon(src + (k * 16), src_stride, ref + (k * 16), ref_stride,
                        16, &sse16x16[k], &sum16x16[k]);
@@ -419,76 +266,11 @@ void aom_get_var_sse_sum_16x16_dual_neon(const uint8_t *src, int src_stride,
 
   *tot_sse += sse16x16[0] + sse16x16[1];
   *tot_sum += sum16x16[0] + sum16x16[1];
-  for (int i = 0; i < 2; i++)
+  for (int i = 0; i < 2; i++) {
     var16x16[i] =
         sse16x16[i] - (uint32_t)(((int64_t)sum16x16[i] * sum16x16[i]) >> 8);
+  }
 }
-
-#if defined(__ARM_FEATURE_DOTPROD)
-
-static INLINE unsigned int mse8xh_neon(const uint8_t *src, int src_stride,
-                                       const uint8_t *ref, int ref_stride,
-                                       unsigned int *sse, int h) {
-  uint32x4_t sse_u32 = vdupq_n_u32(0);
-
-  int i = h;
-  do {
-    uint8x16_t s = vcombine_u8(vld1_u8(src), vld1_u8(src + src_stride));
-    uint8x16_t r = vcombine_u8(vld1_u8(ref), vld1_u8(ref + ref_stride));
-
-    uint8x16_t abs_diff = vabdq_u8(s, r);
-
-    sse_u32 = vdotq_u32(sse_u32, abs_diff, abs_diff);
-
-    src += 2 * src_stride;
-    ref += 2 * ref_stride;
-    i -= 2;
-  } while (i != 0);
-
-  *sse = horizontal_add_u32x4(sse_u32);
-  return horizontal_add_u32x4(sse_u32);
-}
-
-static INLINE unsigned int mse16xh_neon(const uint8_t *src, int src_stride,
-                                        const uint8_t *ref, int ref_stride,
-                                        unsigned int *sse, int h) {
-  uint32x4_t sse_u32[2] = { vdupq_n_u32(0), vdupq_n_u32(0) };
-
-  int i = h;
-  do {
-    uint8x16_t s0 = vld1q_u8(src);
-    uint8x16_t s1 = vld1q_u8(src + src_stride);
-    uint8x16_t r0 = vld1q_u8(ref);
-    uint8x16_t r1 = vld1q_u8(ref + ref_stride);
-
-    uint8x16_t abs_diff0 = vabdq_u8(s0, r0);
-    uint8x16_t abs_diff1 = vabdq_u8(s1, r1);
-
-    sse_u32[0] = vdotq_u32(sse_u32[0], abs_diff0, abs_diff0);
-    sse_u32[1] = vdotq_u32(sse_u32[1], abs_diff1, abs_diff1);
-
-    src += 2 * src_stride;
-    ref += 2 * ref_stride;
-    i -= 2;
-  } while (i != 0);
-
-  *sse = horizontal_add_u32x4(vaddq_u32(sse_u32[0], sse_u32[1]));
-  return horizontal_add_u32x4(vaddq_u32(sse_u32[0], sse_u32[1]));
-}
-
-unsigned int aom_get4x4sse_cs_neon(const uint8_t *src, int src_stride,
-                                   const uint8_t *ref, int ref_stride) {
-  uint8x16_t s = load_unaligned_u8q(src, src_stride);
-  uint8x16_t r = load_unaligned_u8q(ref, ref_stride);
-
-  uint8x16_t abs_diff = vabdq_u8(s, r);
-
-  uint32x4_t sse = vdotq_u32(vdupq_n_u32(0), abs_diff, abs_diff);
-
-  return horizontal_add_u32x4(sse);
-}
-
-#else  // !defined(__ARM_FEATURE_DOTPROD)
 
 static INLINE unsigned int mse8xh_neon(const uint8_t *src, int src_stride,
                                        const uint8_t *ref, int ref_stride,
@@ -586,42 +368,6 @@ static INLINE unsigned int mse16xh_neon(const uint8_t *src, int src_stride,
   *sse = horizontal_add_u32x4(vreinterpretq_u32_s32(sse_s32[0]));
   return horizontal_add_u32x4(vreinterpretq_u32_s32(sse_s32[0]));
 }
-
-unsigned int aom_get4x4sse_cs_neon(const uint8_t *src, int src_stride,
-                                   const uint8_t *ref, int ref_stride) {
-  uint8x8_t s[4], r[4];
-  int16x4_t diff[4];
-  int32x4_t sse;
-
-  s[0] = vld1_u8(src);
-  src += src_stride;
-  r[0] = vld1_u8(ref);
-  ref += ref_stride;
-  s[1] = vld1_u8(src);
-  src += src_stride;
-  r[1] = vld1_u8(ref);
-  ref += ref_stride;
-  s[2] = vld1_u8(src);
-  src += src_stride;
-  r[2] = vld1_u8(ref);
-  ref += ref_stride;
-  s[3] = vld1_u8(src);
-  r[3] = vld1_u8(ref);
-
-  diff[0] = vget_low_s16(vreinterpretq_s16_u16(vsubl_u8(s[0], r[0])));
-  diff[1] = vget_low_s16(vreinterpretq_s16_u16(vsubl_u8(s[1], r[1])));
-  diff[2] = vget_low_s16(vreinterpretq_s16_u16(vsubl_u8(s[2], r[2])));
-  diff[3] = vget_low_s16(vreinterpretq_s16_u16(vsubl_u8(s[3], r[3])));
-
-  sse = vmull_s16(diff[0], diff[0]);
-  sse = vmlal_s16(sse, diff[1], diff[1]);
-  sse = vmlal_s16(sse, diff[2], diff[2]);
-  sse = vmlal_s16(sse, diff[3], diff[3]);
-
-  return horizontal_add_u32x4(vreinterpretq_u32_s32(sse));
-}
-
-#endif  // defined(__ARM_FEATURE_DOTPROD)
 
 #define MSE_WXH_NEON(w, h)                                                 \
   unsigned int aom_mse##w##x##h##_neon(const uint8_t *src, int src_stride, \
@@ -732,4 +478,17 @@ uint64_t aom_mse_wxh_16bit_neon(uint8_t *dst, int dstride, uint16_t *src,
     case 8: return mse_8xh_16bit_neon(dst, dstride, src, sstride, h);
     default: assert(0 && "unsupported width"); return -1;
   }
+}
+
+uint32_t aom_get_mb_ss_neon(const int16_t *a) {
+  int32x4_t sse[2] = { vdupq_n_s32(0), vdupq_n_s32(0) };
+
+  for (int i = 0; i < 256; i = i + 8) {
+    int16x8_t a_s16 = vld1q_s16(a + i);
+
+    sse[0] = vmlal_s16(sse[0], vget_low_s16(a_s16), vget_low_s16(a_s16));
+    sse[1] = vmlal_s16(sse[1], vget_high_s16(a_s16), vget_high_s16(a_s16));
+  }
+
+  return horizontal_add_s32x4(vaddq_s32(sse[0], sse[1]));
 }

@@ -9,10 +9,12 @@
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_prescient_networking.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_idle_request_options.h"
 #include "third_party/blink/renderer/core/css/media_list.h"
 #include "third_party/blink/renderer/core/css/media_query_evaluator.h"
 #include "third_party/blink/renderer/core/css/parser/sizes_attribute_parser.h"
 #include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/dom/scripted_idle_task_controller.h"
 #include "third_party/blink/renderer/core/frame/frame_console.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
@@ -35,6 +37,7 @@
 #include "third_party/blink/renderer/core/loader/resource/css_style_sheet_resource.h"
 #include "third_party/blink/renderer/core/loader/resource/font_resource.h"
 #include "third_party/blink/renderer/core/loader/resource/image_resource.h"
+#include "third_party/blink/renderer/core/loader/resource/link_dictionary_resource.h"
 #include "third_party/blink/renderer/core/loader/resource/link_prefetch_resource.h"
 #include "third_party/blink/renderer/core/loader/resource/script_resource.h"
 #include "third_party/blink/renderer/core/loader/subresource_integrity_helper.h"
@@ -50,10 +53,40 @@
 #include "third_party/blink/renderer/platform/loader/link_header.h"
 #include "third_party/blink/renderer/platform/loader/subresource_integrity.h"
 #include "third_party/blink/renderer/platform/network/mime/mime_type_registry.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 
 namespace blink {
 
 namespace {
+
+class LoadDictionaryWhenIdleTask final : public IdleTask {
+ public:
+  LoadDictionaryWhenIdleTask(FetchParameters fetch_params,
+                             ResourceFetcher* fetcher,
+                             PendingLinkPreload* pending_preload)
+      : fetch_params_(std::move(fetch_params)),
+        resource_fetcher_(fetcher),
+        pending_preload_(pending_preload) {}
+
+  void Trace(Visitor* visitor) const override {
+    visitor->Trace(resource_fetcher_);
+    visitor->Trace(pending_preload_);
+    IdleTask::Trace(visitor);
+  }
+
+ private:
+  void invoke(IdleDeadline* deadline) override {
+    Resource* resource =
+        LinkDictionaryResource::Fetch(fetch_params_, resource_fetcher_);
+    if (pending_preload_) {
+      pending_preload_->AddResource(resource);
+    }
+  }
+
+  FetchParameters fetch_params_;
+  Member<ResourceFetcher> resource_fetcher_;
+  Member<PendingLinkPreload> pending_preload_;
+};
 
 void SendMessageToConsoleForPossiblyNullDocument(
     ConsoleMessage* console_message,
@@ -144,6 +177,67 @@ bool IsValidButUnsupportedAsAttribute(const String& as) {
          as == "embed" || as == "manifest" || as == "object" ||
          as == "paintworklet" || as == "report" || as == "sharedworker" ||
          as == "video" || as == "worker" || as == "xslt";
+}
+
+bool IsNetworkHintAllowed(PreloadHelper::LoadLinksFromHeaderMode mode) {
+  switch (mode) {
+    case PreloadHelper::LoadLinksFromHeaderMode::kDocumentBeforeCommit:
+      return true;
+    case PreloadHelper::LoadLinksFromHeaderMode::
+        kDocumentAfterCommitWithoutViewport:
+      return false;
+    case PreloadHelper::LoadLinksFromHeaderMode::
+        kDocumentAfterCommitWithViewport:
+      return false;
+    case PreloadHelper::LoadLinksFromHeaderMode::kDocumentAfterLoadCompleted:
+      return false;
+    case PreloadHelper::LoadLinksFromHeaderMode::kSubresourceFromMemoryCache:
+      return true;
+    case PreloadHelper::LoadLinksFromHeaderMode::kSubresourceNotFromMemoryCache:
+      return true;
+  }
+}
+
+bool IsResourceLoadAllowed(PreloadHelper::LoadLinksFromHeaderMode mode,
+                           bool is_viewport_dependent) {
+  switch (mode) {
+    case PreloadHelper::LoadLinksFromHeaderMode::kDocumentBeforeCommit:
+      return false;
+    case PreloadHelper::LoadLinksFromHeaderMode::
+        kDocumentAfterCommitWithoutViewport:
+      return !is_viewport_dependent;
+    case PreloadHelper::LoadLinksFromHeaderMode::
+        kDocumentAfterCommitWithViewport:
+      return is_viewport_dependent;
+    case PreloadHelper::LoadLinksFromHeaderMode::kDocumentAfterLoadCompleted:
+      return false;
+    case PreloadHelper::LoadLinksFromHeaderMode::kSubresourceFromMemoryCache:
+      return false;
+    case PreloadHelper::LoadLinksFromHeaderMode::kSubresourceNotFromMemoryCache:
+      return true;
+  }
+}
+
+bool IsDictionaryLoadAllowed(PreloadHelper::LoadLinksFromHeaderMode mode) {
+  // Document header can trigger dictionary load after the page load completes.
+  // Subresources header can trigger dictionary load if it is not from the
+  // memory cache.
+  switch (mode) {
+    case PreloadHelper::LoadLinksFromHeaderMode::kDocumentBeforeCommit:
+      return false;
+    case PreloadHelper::LoadLinksFromHeaderMode::
+        kDocumentAfterCommitWithoutViewport:
+      return false;
+    case PreloadHelper::LoadLinksFromHeaderMode::
+        kDocumentAfterCommitWithViewport:
+      return false;
+    case PreloadHelper::LoadLinksFromHeaderMode::kDocumentAfterLoadCompleted:
+      return true;
+    case PreloadHelper::LoadLinksFromHeaderMode::kSubresourceFromMemoryCache:
+      return false;
+    case PreloadHelper::LoadLinksFromHeaderMode::kSubresourceNotFromMemoryCache:
+      return true;
+  }
 }
 
 }  // namespace
@@ -650,8 +744,7 @@ void PreloadHelper::LoadLinksFromHeader(
     const KURL& base_url,
     LocalFrame& frame,
     Document* document,
-    CanLoadResources can_load_resources,
-    MediaPreloadPolicy media_policy,
+    LoadLinksFromHeaderMode mode,
     const ViewportDescription* viewport_description,
     std::unique_ptr<AlternateSignedExchangeResourceInfo>
         alternate_resource_info,
@@ -660,13 +753,17 @@ void PreloadHelper::LoadLinksFromHeader(
     return;
   LinkHeaderSet header_set(header_value);
   for (auto& header : header_set) {
-    if (!header.Valid() || header.Url().empty() || header.Rel().empty())
+    if (!header.Valid() || header.Url().empty() || header.Rel().empty()) {
       continue;
-
-    if (media_policy == kOnlyLoadMedia && !header.IsViewportDependent())
+    }
+    bool is_network_hint_allowed = IsNetworkHintAllowed(mode);
+    bool is_resource_load_allowed =
+        IsResourceLoadAllowed(mode, header.IsViewportDependent());
+    bool is_dictionary_load_allowed = IsDictionaryLoadAllowed(mode);
+    if (!is_network_hint_allowed && !is_resource_load_allowed &&
+        !is_dictionary_load_allowed) {
       continue;
-    if (media_policy == kOnlyLoadNonMedia && header.IsViewportDependent())
-      continue;
+    }
 
     LinkLoadParameters params(header, base_url);
     bool change_rel_to_prefetch = false;
@@ -727,35 +824,85 @@ void PreloadHelper::LoadLinksFromHeader(
       }
     }
 
-    if (change_rel_to_prefetch)
+    if (change_rel_to_prefetch) {
       params.rel = LinkRelAttribute("prefetch");
+    }
 
     // Sanity check to avoid re-entrancy here.
-    if (params.href == base_url)
+    if (params.href == base_url) {
       continue;
-    if (can_load_resources != kOnlyLoadResources) {
+    }
+    if (is_network_hint_allowed) {
       DnsPrefetchIfNeeded(params, document, &frame, kLinkCalledFromHeader);
 
       PreconnectIfNeeded(params, document, &frame, kLinkCalledFromHeader);
     }
-    if (can_load_resources != kDoNotLoadResources) {
+    if (is_resource_load_allowed || is_dictionary_load_allowed) {
       DCHECK(document);
       PendingLinkPreload* pending_preload =
           MakeGarbageCollected<PendingLinkPreload>(*document,
                                                    nullptr /* LinkLoader */);
       document->AddPendingLinkHeaderPreload(*pending_preload);
-      PreloadIfNeeded(params, *document, base_url, kLinkCalledFromHeader,
-                      viewport_description, kNotParserInserted,
-                      pending_preload);
-      PrefetchIfNeeded(params, *document, pending_preload);
-      ModulePreloadIfNeeded(params, *document, viewport_description,
-                            pending_preload);
+      if (is_resource_load_allowed) {
+        PreloadIfNeeded(params, *document, base_url, kLinkCalledFromHeader,
+                        viewport_description, kNotParserInserted,
+                        pending_preload);
+        PrefetchIfNeeded(params, *document, pending_preload);
+        ModulePreloadIfNeeded(params, *document, viewport_description,
+                              pending_preload);
+      }
+      if (is_dictionary_load_allowed) {
+        FetchDictionaryIfNeeded(params, *document, pending_preload);
+      }
     }
     if (params.rel.IsServiceWorker()) {
       UseCounter::Count(document, WebFeature::kLinkHeaderServiceWorker);
     }
     // TODO(yoav): Add more supported headers as needed.
   }
+}
+
+// TODO(crbug.com/1413922):
+// Always load the resource after the full document load completes
+void PreloadHelper::FetchDictionaryIfNeeded(
+    const LinkLoadParameters& params,
+    Document& document,
+    PendingLinkPreload* pending_preload) {
+  if (!CompressionDictionaryTransportFullyEnabled(
+          document.GetExecutionContext())) {
+    return;
+  }
+
+  if (!document.Loader() || document.Loader()->Archive()) {
+    return;
+  }
+
+  if (!params.rel.IsDictionary() || !params.href.IsValid() ||
+      !document.GetFrame()) {
+    return;
+  }
+
+  DVLOG(1) << "PreloadHelper::FetchDictionaryIfNeeded "
+           << params.href.GetString().Utf8();
+  ResourceRequest resource_request(params.href);
+
+  resource_request.SetReferrerString(Referrer::NoReferrer());
+  resource_request.SetCredentialsMode(network::mojom::CredentialsMode::kOmit);
+  resource_request.SetReferrerPolicy(network::mojom::ReferrerPolicy::kNever);
+  resource_request.SetMode(network::mojom::RequestMode::kCors);
+  resource_request.SetRequestDestination(
+      network::mojom::RequestDestination::kDictionary);
+
+  ResourceLoaderOptions options(
+      document.GetExecutionContext()->GetCurrentWorld());
+  options.initiator_info.name = fetch_initiator_type_names::kLink;
+
+  FetchParameters link_fetch_params(std::move(resource_request), options);
+  IdleRequestOptions* idle_options = IdleRequestOptions::Create();
+  document.RequestIdleCallback(
+      MakeGarbageCollected<LoadDictionaryWhenIdleTask>(
+          std::move(link_fetch_params), document.Fetcher(), pending_preload),
+      idle_options);
 }
 
 Resource* PreloadHelper::StartPreload(ResourceType type,
@@ -783,6 +930,7 @@ Resource* PreloadHelper::StartPreload(ResourceType type,
         document.GetRenderBlockingResourceManager()
             ->EnsureStartFontPreloadMaxBlockingTimer();
       }
+      document.CountUse(mojom::blink::WebFeature::kLinkRelPreloadAsFont);
       break;
     case ResourceType::kAudio:
     case ResourceType::kVideo:

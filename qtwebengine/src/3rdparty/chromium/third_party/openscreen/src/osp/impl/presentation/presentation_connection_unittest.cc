@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 
 #include <memory>
 
-#include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "osp/impl/presentation/testing/mock_connection_delegate.h"
@@ -18,8 +17,7 @@
 #include "platform/test/fake_clock.h"
 #include "platform/test/fake_task_runner.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 using ::testing::_;
 using ::testing::Invoke;
@@ -57,23 +55,18 @@ class MockConnectRequest final
 
 class ConnectionTest : public ::testing::Test {
  public:
-  ConnectionTest() {
-    fake_clock_ = std::make_unique<FakeClock>(
-        Clock::time_point(std::chrono::milliseconds(1298424)));
-    task_runner_ = std::make_unique<FakeTaskRunner>(fake_clock_.get());
-    quic_bridge_ =
-        std::make_unique<FakeQuicBridge>(task_runner_.get(), FakeClock::now);
-    controller_connection_manager_ = std::make_unique<ConnectionManager>(
-        quic_bridge_->controller_demuxer.get());
-    receiver_connection_manager_ = std::make_unique<ConnectionManager>(
-        quic_bridge_->receiver_demuxer.get());
-  }
+  ConnectionTest()
+      : fake_clock_(Clock::time_point(std::chrono::milliseconds(1298424))),
+        task_runner_(&fake_clock_),
+        quic_bridge_(task_runner_, FakeClock::now),
+        controller_connection_manager_(quic_bridge_.controller_demuxer.get()),
+        receiver_connection_manager_(quic_bridge_.receiver_demuxer.get()) {}
 
  protected:
   void SetUp() override {
     NetworkServiceManager::Create(nullptr, nullptr,
-                                  std::move(quic_bridge_->quic_client),
-                                  std::move(quic_bridge_->quic_server));
+                                  std::move(quic_bridge_.quic_client),
+                                  std::move(quic_bridge_.quic_server));
   }
 
   void TearDown() override { NetworkServiceManager::Dispose(); }
@@ -88,11 +81,11 @@ class ConnectionTest : public ::testing::Test {
     return response;
   }
 
-  std::unique_ptr<FakeClock> fake_clock_;
-  std::unique_ptr<FakeTaskRunner> task_runner_;
-  std::unique_ptr<FakeQuicBridge> quic_bridge_;
-  std::unique_ptr<ConnectionManager> controller_connection_manager_;
-  std::unique_ptr<ConnectionManager> receiver_connection_manager_;
+  FakeClock fake_clock_;
+  FakeTaskRunner task_runner_;
+  FakeQuicBridge quic_bridge_;
+  ConnectionManager controller_connection_manager_;
+  ConnectionManager receiver_connection_manager_;
   NiceMock<MockParentDelegate> mock_controller_;
   NiceMock<MockParentDelegate> mock_receiver_;
 };
@@ -144,20 +137,20 @@ TEST_F(ConnectionTest, ConnectAndSend) {
   std::unique_ptr<ProtocolConnection> controller_stream;
   std::unique_ptr<ProtocolConnection> receiver_stream;
   NetworkServiceManager::Get()->GetProtocolConnectionClient()->Connect(
-      quic_bridge_->kReceiverEndpoint, &mock_connect_request);
+      quic_bridge_.kReceiverEndpoint, &mock_connect_request);
   EXPECT_CALL(mock_connect_request, OnConnectionOpenedMock(_, _))
       .WillOnce(Invoke([&controller_stream](uint64_t request_id,
                                             ProtocolConnection* stream) {
         controller_stream.reset(stream);
       }));
 
-  EXPECT_CALL(quic_bridge_->mock_server_observer, OnIncomingConnectionMock(_))
+  EXPECT_CALL(quic_bridge_.mock_server_observer, OnIncomingConnectionMock(_))
       .WillOnce(testing::WithArgs<0>(testing::Invoke(
           [&receiver_stream](std::unique_ptr<ProtocolConnection>& connection) {
             receiver_stream = std::move(connection);
           })));
 
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   ASSERT_TRUE(controller_stream);
   ASSERT_TRUE(receiver_stream);
 
@@ -169,8 +162,8 @@ TEST_F(ConnectionTest, ConnectAndSend) {
                          std::move(controller_stream));
   receiver.OnConnected(connection_id, controller_endpoint_id,
                        std::move(receiver_stream));
-  controller_connection_manager_->AddConnection(&controller);
-  receiver_connection_manager_->AddConnection(&receiver);
+  controller_connection_manager_.AddConnection(&controller);
+  receiver_connection_manager_.AddConnection(&receiver);
 
   EXPECT_EQ(Connection::State::kConnected, controller.state());
   EXPECT_EQ(Connection::State::kConnected, receiver.state());
@@ -183,18 +176,18 @@ TEST_F(ConnectionTest, ConnectAndSend) {
 
   std::string received;
   EXPECT_CALL(mock_receiver_delegate,
-              OnStringMessage(static_cast<absl::string_view>(expected_message)))
+              OnStringMessage(static_cast<std::string_view>(expected_message)))
       .WillOnce(Invoke(
-          [&received](absl::string_view s) { received = std::string(s); }));
-  quic_bridge_->RunTasksUntilIdle();
+          [&received](std::string_view s) { received = std::string(s); }));
+  quic_bridge_.RunTasksUntilIdle();
 
   std::string string_response = MakeEchoResponse(received);
   receiver.SendString(string_response);
 
   EXPECT_CALL(
       mock_controller_delegate,
-      OnStringMessage(static_cast<absl::string_view>(expected_response)));
-  quic_bridge_->RunTasksUntilIdle();
+      OnStringMessage(static_cast<std::string_view>(expected_response)));
+  quic_bridge_.RunTasksUntilIdle();
 
   std::vector<uint8_t> data{0, 3, 2, 4, 4, 6, 1};
   const std::vector<uint8_t> expected_data = data;
@@ -208,21 +201,20 @@ TEST_F(ConnectionTest, ConnectAndSend) {
       .WillOnce(Invoke([&received_data](std::vector<uint8_t> d) {
         received_data = std::move(d);
       }));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
   receiver.SendBinary(MakeEchoResponse(received_data));
   EXPECT_CALL(mock_controller_delegate,
               OnBinaryMessage(expected_response_data));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
   EXPECT_CALL(mock_controller_delegate, OnClosedByRemote());
   receiver.Close(Connection::CloseReason::kClosed);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   EXPECT_EQ(Connection::State::kClosed, controller.state());
   EXPECT_EQ(Connection::State::kClosed, receiver.state());
-  controller_connection_manager_->RemoveConnection(&controller);
-  receiver_connection_manager_->RemoveConnection(&receiver);
+  controller_connection_manager_.RemoveConnection(&controller);
+  receiver_connection_manager_.RemoveConnection(&receiver);
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

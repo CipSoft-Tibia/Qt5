@@ -60,7 +60,7 @@ class CORE_EXPORT ScriptElementBase : public GarbageCollectedMixin {
   // This implements https://dom.spec.whatwg.org/#concept-child-text-content
   virtual String ChildTextContent() = 0;
   // This supports
-  // https://w3c.github.io/webappsec-trusted-types/dist/spec/#prepare-script-url-and-text
+  // https://w3c.github.io/trusted-types/dist/spec/#prepare-script-url-and-text
   virtual String ScriptTextInternalSlot() const = 0;
   virtual bool HasSourceAttribute() const = 0;
   virtual bool HasAttributionsrcAttribute() const = 0;
@@ -102,6 +102,8 @@ class CORE_EXPORT ScriptElementBase : public GarbageCollectedMixin {
 
   virtual void DispatchLoadEvent() = 0;
   virtual void DispatchErrorEvent() = 0;
+  virtual bool HasLoadEventHandler() = 0;
+  virtual bool HasErrorEventHandler() = 0;
 
   virtual Type GetScriptElementType() = 0;
 

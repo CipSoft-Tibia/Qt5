@@ -9,7 +9,7 @@ set -ex
 targetFile="$HOME/vncpw.txt"
 
 # Fetch password
-curl --retry 5 --retry-delay 10 --retry-max-time 60 "http://ci-files01-hki.intra.qt.io/input/semisecure/vncpw.txt" -o "$targetFile"
+curl --retry 5 --retry-delay 10 --retry-max-time 60 "http://ci-files01-hki.ci.qt.io/input/semisecure/vncpw.txt" -o "$targetFile"
 shasum "$targetFile" |grep "a795fccaa8f277e62ec08e6056c544b8b63924a0"
 
 { VNCPassword=$(cat "$targetFile"); } 2> /dev/null
@@ -59,7 +59,7 @@ defaults write -g KeyRepeat -int 2
 
 set +x
 echo "Enable remote desktop sharing"
-sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvnclegacy -vnclegacy yes -clientopts -setvncpw -vncpw $VNCPassword -restart -agent -privs -all
+sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvnclegacy -vnclegacy yes -clientopts -setvncpw -vncpw "$VNCPassword" -restart -agent -privs -all
 set -x
 
 echo "Set Network Test Server address to $NTS_IP in /etc/hosts"

@@ -1,7 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-
 #include "qplatformdefs.h"
 
 #include "qwidgetrepaintmanager_p.h"
@@ -49,7 +48,7 @@ public:
     }
 
     bool isLocked() const {
-        foreach (bool v, m_locked) {
+        for (const auto &[_, v] : m_locked.asKeyValueRange()) {
             if (v)
                 return true;
         }
@@ -356,7 +355,11 @@ void QWidgetRepaintManager::sendUpdateRequest(QWidget *widget, UpdateTime update
 
     switch (updateTime) {
     case UpdateLater:
-        updateRequestSent = true;
+        // Prevent redundant update request events, unless it's a
+        // paint on screen widget, as these don't go through the
+        // normal backingstore sync machinery.
+        if (!widget->d_func()->shouldPaintOnScreen())
+            updateRequestSent = true;
         QCoreApplication::postEvent(widget, new QEvent(QEvent::UpdateRequest), Qt::LowEventPriority);
         break;
     case UpdateNow: {
@@ -707,7 +710,9 @@ void QWidgetRepaintManager::paintAndFlush()
 
     const QRect tlwRect = tlw->data->crect;
     if (!updatesDisabled && store->size() != tlwRect.size()) {
-        if (hasStaticContents() && !store->size().isEmpty() ) {
+        QPlatformIntegration *integration = QGuiApplicationPrivate::platformIntegration();
+        if (hasStaticContents() && !store->size().isEmpty()
+            && integration->hasCapability(QPlatformIntegration::BackingStoreStaticContents)) {
             // Repaint existing dirty area and newly visible area.
             const QRect clipRect(QPoint(0, 0), store->size());
             const QRegion staticRegion(staticContents(nullptr, clipRect));
@@ -1139,11 +1144,7 @@ void QWidgetRepaintManager::removeStaticWidget(QWidget *widget)
 
 bool QWidgetRepaintManager::hasStaticContents() const
 {
-#if defined(Q_OS_WIN)
     return !staticWidgets.isEmpty();
-#else
-    return !staticWidgets.isEmpty() && false;
-#endif
 }
 
 /*!

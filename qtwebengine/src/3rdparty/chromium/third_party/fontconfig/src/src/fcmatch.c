@@ -324,6 +324,7 @@ typedef enum _FcMatcherPriority {
     PRI1(FILE),
     PRI1(FONTFORMAT),
     PRI1(VARIABLE),
+    PRI1(NAMED_INSTANCE),
     PRI1(SCALABLE),
     PRI1(COLOR),
     PRI1(FOUNDRY),
@@ -1243,7 +1244,7 @@ FcFontSetSort (FcConfig	    *config FC_UNUSED,
 	 FcPatternGet (p, FC_LANG, nPatternLang, &patternLang) == FcResultMatch;
 	 nPatternLang++)
 	;
-	
+
     /* freed below */
     nodes = malloc (nnodes * sizeof (FcSortNode) +
 		    nnodes * sizeof (FcSortNode *) +
@@ -1309,7 +1310,7 @@ FcFontSetSort (FcConfig	    *config FC_UNUSED,
 	    for (i = 0; i < nPatternLang; i++)
 	    {
 		FcValue	    nodeLang;
-		
+
 		if (!patternLangSat[i] &&
 		    FcPatternGet (p, FC_LANG, i, &patternLang) == FcResultMatch &&
 		    FcPatternGet (nodeps[f]->pattern, FC_LANG, 0, &nodeLang) == FcResultMatch)

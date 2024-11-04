@@ -4,7 +4,6 @@
 
 #include "content/public/common/content_switch_dependent_feature_overrides.h"
 
-#include "content/common/private_aggregation_features.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "net/base/features.h"
@@ -73,9 +72,6 @@ GetSwitchDependentFeatureOverrides(const base::CommandLine& command_line) {
      std::cref(features::kBlockInsecurePrivateNetworkRequestsFromUnknown),
      base::FeatureList::OVERRIDE_ENABLE_FEATURE},
     {switches::kEnableExperimentalWebPlatformFeatures,
-     std::cref(features::kBlockInsecurePrivateNetworkRequestsForNavigations),
-     base::FeatureList::OVERRIDE_ENABLE_FEATURE},
-    {switches::kEnableExperimentalWebPlatformFeatures,
      std::cref(features::kPrivateNetworkAccessRespectPreflightResults),
      base::FeatureList::OVERRIDE_ENABLE_FEATURE},
     {switches::kEnableExperimentalWebPlatformFeatures,
@@ -105,6 +101,12 @@ GetSwitchDependentFeatureOverrides(const base::CommandLine& command_line) {
     {switches::kEnableExperimentalWebPlatformFeatures,
      std::cref(blink::features::kStorageAccessAPIForOriginExtension),
      base::FeatureList::OVERRIDE_ENABLE_FEATURE},
+    {switches::kEnableExperimentalWebPlatformFeatures,
+     std::cref(blink::features::kClientHintsFormFactor),
+     base::FeatureList::OVERRIDE_ENABLE_FEATURE},
+    {switches::kEnableExperimentalWebPlatformFeatures,
+     std::cref(blink::features::kClientHintsPrefersReducedTransparency),
+     base::FeatureList::OVERRIDE_ENABLE_FEATURE},
 
     // Overrides for --enable-experimental-cookie-features.
     {switches::kEnableExperimentalCookieFeatures,
@@ -118,6 +120,14 @@ GetSwitchDependentFeatureOverrides(const base::CommandLine& command_line) {
      base::FeatureList::OVERRIDE_ENABLE_FEATURE},
     {switches::kEnableExperimentalCookieFeatures,
      std::cref(net::features::kPartitionedCookies),
+     base::FeatureList::OVERRIDE_ENABLE_FEATURE},
+
+    // Test behavior for third-party cookie phaseout.
+    {network::switches::kTestThirdPartyCookiePhaseout,
+     std::cref(net::features::kForceThirdPartyCookieBlocking),
+     base::FeatureList::OVERRIDE_ENABLE_FEATURE},
+    {network::switches::kTestThirdPartyCookiePhaseout,
+     std::cref(net::features::kThirdPartyStoragePartitioning),
      base::FeatureList::OVERRIDE_ENABLE_FEATURE},
 
     // Overrides for --isolation-by-default.
@@ -134,11 +144,6 @@ GetSwitchDependentFeatureOverrides(const base::CommandLine& command_line) {
     // Overrides for headless
     {::switches::kHeadless, std::cref(blink::features::kPaintHolding),
      base::FeatureList::OVERRIDE_DISABLE_FEATURE},
-
-    // Override for --durable-client-hints-cache.
-    {switches::kDurableClientHintsCache,
-     std::cref(blink::features::kDurableClientHintsCache),
-     base::FeatureList::OVERRIDE_ENABLE_FEATURE},
 
     // Override for --reduce-user-agent-minor-version.
     {switches::kReduceUserAgentMinorVersion,
@@ -178,12 +183,19 @@ GetSwitchDependentFeatureOverrides(const base::CommandLine& command_line) {
      std::cref(blink::features::kConversionMeasurement),
      base::FeatureList::OVERRIDE_ENABLE_FEATURE},
     {switches::kEnablePrivacySandboxAdsApis,
+     std::cref(network::features::kAttributionReportingCrossAppWeb),
+     base::FeatureList::OVERRIDE_ENABLE_FEATURE},
+    {switches::kEnablePrivacySandboxAdsApis,
      std::cref(blink::features::kFencedFrames),
      base::FeatureList::OVERRIDE_ENABLE_FEATURE},
     {switches::kEnablePrivacySandboxAdsApis,
      std::cref(blink::features::kSharedStorageAPI),
      base::FeatureList::OVERRIDE_ENABLE_FEATURE},
-    {switches::kEnablePrivacySandboxAdsApis, std::cref(kPrivateAggregationApi),
+    {switches::kEnablePrivacySandboxAdsApis,
+     std::cref(blink::features::kPrivateAggregationApi),
+     base::FeatureList::OVERRIDE_ENABLE_FEATURE},
+    {switches::kEnablePrivacySandboxAdsApis,
+     std::cref(features::kAttributionFencedFrameReportingBeacon),
      base::FeatureList::OVERRIDE_ENABLE_FEATURE},
   };
 

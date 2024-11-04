@@ -5,9 +5,10 @@
 #include "ui/ozone/platform/drm/gpu/drm_display.h"
 
 #include <xf86drmMode.h>
+
+#include <algorithm>
 #include <memory>
 
-#include "base/cxx17_backports.h"
 #include "base/logging.h"
 #include "base/trace_event/trace_event.h"
 #include "build/chromeos_buildflags.h"
@@ -139,38 +140,42 @@ DrmDisplay::PrivacyScreenProperty::GetWritePrivacyScreenProperty() const {
   return privacy_screen_legacy_.get();
 }
 
-DrmDisplay::DrmDisplay(const scoped_refptr<DrmDevice>& drm)
-    : drm_(drm), current_color_space_(gfx::ColorSpace::CreateSRGB()) {}
+DrmDisplay::DrmDisplay(const scoped_refptr<DrmDevice>& drm,
+                       HardwareDisplayControllerInfo* info,
+                       const display::DisplaySnapshot& display_snapshot)
+    : display_id_(display_snapshot.display_id()),
+      base_connector_id_(display_snapshot.base_connector_id()),
+      drm_(drm),
+      crtc_(info->crtc()->crtc_id),
+      connector_(info->ReleaseConnector()) {
+  modes_ = GetDrmModeVector(connector_.get());
+  origin_ = display_snapshot.origin();
+  is_hdr_capable_ = display_snapshot.bits_per_channel() > 8 &&
+                    display_snapshot.color_space().IsHDR();
+  hdr_static_metadata_ = display_snapshot.hdr_static_metadata();
+  current_color_space_ = gfx::ColorSpace::CreateSRGB();
+  privacy_screen_property_ =
+      std::make_unique<PrivacyScreenProperty>(drm_, connector_.get());
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  is_hdr_capable_ =
+      is_hdr_capable_ &&
+      base::FeatureList::IsEnabled(display::features::kUseHDRTransferFunction);
+
+  if (is_hdr_capable_ &&
+      base::FeatureList::IsEnabled(
+          display::features::kEnableExternalDisplayHDR10Mode)) {
+    current_color_space_ = display_snapshot.color_space();
+    SetColorspaceProperty(display_snapshot.color_space());
+    SetHdrOutputMetadata(display_snapshot.color_space());
+  }
+#endif
+}
 
 DrmDisplay::~DrmDisplay() = default;
 
 uint32_t DrmDisplay::connector() const {
   DCHECK(connector_);
   return connector_->connector_id;
-}
-
-void DrmDisplay::Update(HardwareDisplayControllerInfo* info,
-                        const display::DisplaySnapshot* display_snapshot) {
-  // We take ownership of |info|'s connector because it will not be used again
-  // beyond this point. It is safe to assume that |connector_| is populated
-  // since it was obtained from GetDisplayInfosAndInvalidCrtcs(), which discards
-  // invalid (nullptr) connectors.
-  connector_ = info->ReleaseConnector();
-  DCHECK(connector_);
-
-  crtc_ = info->crtc()->crtc_id;
-  display_id_ = display_snapshot->display_id();
-  base_connector_id_ = display_snapshot->base_connector_id();
-  modes_ = GetDrmModeVector(connector_.get());
-  is_hdr_capable_ = display_snapshot->bits_per_channel() > 8 &&
-                    display_snapshot->color_space().IsHDR();
-  privacy_screen_property_ =
-      std::make_unique<PrivacyScreenProperty>(drm(), connector_.get());
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-  is_hdr_capable_ =
-      is_hdr_capable_ &&
-      base::FeatureList::IsEnabled(display::features::kUseHDRTransferFunction);
-#endif
 }
 
 bool DrmDisplay::SetHdcpKeyProp(const std::string& key) {
@@ -333,6 +338,116 @@ void DrmDisplay::SetGammaCorrection(
 
 bool DrmDisplay::SetPrivacyScreen(bool enabled) {
   return privacy_screen_property_->SetPrivacyScreenProperty(enabled);
+}
+
+gfx::HDRStaticMetadata::Eotf DrmDisplay::GetEotf(
+    const gfx::ColorSpace::TransferID transfer_id) {
+  if (!is_hdr_capable_) {
+    return gfx::HDRStaticMetadata::Eotf::kGammaSdrRange;
+  }
+
+  switch (transfer_id) {
+    case gfx::ColorSpace::TransferID::PQ:
+      return gfx::HDRStaticMetadata::Eotf::kPq;
+    case gfx::ColorSpace::TransferID::HLG:
+      return gfx::HDRStaticMetadata::Eotf::kHlg;
+    case gfx::ColorSpace::TransferID::SRGB_HDR:
+    case gfx::ColorSpace::TransferID::LINEAR_HDR:
+    case gfx::ColorSpace::TransferID::CUSTOM_HDR:
+    case gfx::ColorSpace::TransferID::PIECEWISE_HDR:
+    case gfx::ColorSpace::TransferID::SCRGB_LINEAR_80_NITS:
+      return gfx::HDRStaticMetadata::Eotf::kGammaHdrRange;
+    default:
+      NOTREACHED();
+      return gfx::HDRStaticMetadata::Eotf::kGammaSdrRange;
+  }
+}
+
+bool DrmDisplay::SetHdrOutputMetadata(const gfx::ColorSpace color_space) {
+  DCHECK(connector_);
+  DCHECK(hdr_static_metadata_.has_value());
+  DCHECK(color_space.IsValid());
+
+  drm_hdr_output_metadata* hdr_output_metadata =
+      static_cast<drm_hdr_output_metadata*>(
+          malloc(sizeof(drm_hdr_output_metadata)));
+  hdr_output_metadata->metadata_type = 0;
+  hdr_output_metadata->hdmi_metadata_type1.metadata_type = 0;
+
+  gfx::HDRStaticMetadata::Eotf eotf = GetEotf(color_space.GetTransferID());
+  DCHECK(hdr_static_metadata_->IsEotfSupported(eotf));
+  hdr_output_metadata->hdmi_metadata_type1.eotf = static_cast<uint8_t>(eotf);
+
+  hdr_output_metadata->hdmi_metadata_type1.max_cll = 0;
+  hdr_output_metadata->hdmi_metadata_type1.max_fall =
+      hdr_static_metadata_->max_avg;
+  // This value is coded as an unsigned 16-bit value in units of 1 cd/m2,
+  // where 0x0001 represents 1 cd/m2 and 0xFFFF represents 65535 cd/m2.
+  hdr_output_metadata->hdmi_metadata_type1.max_display_mastering_luminance =
+      hdr_static_metadata_->max;
+  // This value is coded as an unsigned 16-bit value in units of 0.0001 cd/m2,
+  // where 0x0001 represents 0.0001 cd/m2 and 0xFFFF represents 6.5535 cd/m2.
+  hdr_output_metadata->hdmi_metadata_type1.min_display_mastering_luminance =
+      hdr_static_metadata_->min * 10000.0;
+
+  SkColorSpacePrimaries primaries = color_space.GetPrimaries();
+  constexpr int kPrimariesFixedPoint = 50000;
+  hdr_output_metadata->hdmi_metadata_type1.display_primaries[0].x =
+      primaries.fRX * kPrimariesFixedPoint;
+  hdr_output_metadata->hdmi_metadata_type1.display_primaries[0].y =
+      primaries.fRY * kPrimariesFixedPoint;
+  hdr_output_metadata->hdmi_metadata_type1.display_primaries[1].x =
+      primaries.fGX * kPrimariesFixedPoint;
+  hdr_output_metadata->hdmi_metadata_type1.display_primaries[1].y =
+      primaries.fGY * kPrimariesFixedPoint;
+  hdr_output_metadata->hdmi_metadata_type1.display_primaries[2].x =
+      primaries.fBX * kPrimariesFixedPoint;
+  hdr_output_metadata->hdmi_metadata_type1.display_primaries[2].y =
+      primaries.fBY * kPrimariesFixedPoint;
+  hdr_output_metadata->hdmi_metadata_type1.white_point.x =
+      primaries.fWX * kPrimariesFixedPoint;
+  hdr_output_metadata->hdmi_metadata_type1.white_point.y =
+      primaries.fWY * kPrimariesFixedPoint;
+
+  ScopedDrmHdrOutputMetadataPtr hdr_output_metadata_blob(hdr_output_metadata);
+
+  ScopedDrmPropertyBlob hdr_output_metadata_property_blob =
+      drm_->CreatePropertyBlob(hdr_output_metadata_blob.get(),
+                               sizeof(drm_hdr_output_metadata));
+  ScopedDrmPropertyPtr hdr_output_metadata_property(
+      drm_->GetProperty(connector_.get(), kHdrOutputMetadata));
+  if (!hdr_output_metadata_property) {
+    PLOG(INFO) << "'" << kHdrOutputMetadata << "' property doesn't exist.";
+    return false;
+  }
+
+  if (!drm_->SetProperty(connector_->connector_id,
+                         hdr_output_metadata_property->prop_id,
+                         hdr_output_metadata_property_blob->id())) {
+    PLOG(INFO) << "Cannot set '" << kHdrOutputMetadata << "' property.";
+    return false;
+  }
+  return true;
+}
+
+bool DrmDisplay::SetColorspaceProperty(const gfx::ColorSpace color_space) {
+  DCHECK(connector_);
+  DCHECK(hdr_static_metadata_.has_value());
+  ScopedDrmPropertyPtr color_space_property(
+      drm_->GetProperty(connector_.get(), kColorSpace));
+  if (!color_space_property) {
+    PLOG(INFO) << "'" << kColorSpace << "' property doesn't exist.";
+    return false;
+  }
+  if (!drm_->SetProperty(
+          connector_->connector_id, color_space_property->prop_id,
+          GetEnumValueForName(*drm_, color_space_property->prop_id,
+                              GetNameForColorspace(color_space)))) {
+    PLOG(INFO) << "Cannot set '" << GetNameForColorspace(color_space)
+               << "' to 'Colorspace' property.";
+    return false;
+  }
+  return true;
 }
 
 void DrmDisplay::SetColorSpace(const gfx::ColorSpace& color_space) {

@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "debugutil_p.h"
 #include "qqmldebugprocess_p.h"
@@ -289,7 +289,7 @@ void tst_QQmlProfilerService::checkJsHeap()
     qint64 allocated = 0;
     qint64 used = 0;
     qint64 lastTimestamp = -1;
-    foreach (const QQmlProfilerEvent &message, m_client->jsHeapMessages) {
+    for (const QQmlProfilerEvent &message : std::as_const(m_client->jsHeapMessages)) {
         const auto amount = message.number<qint64>(0);
         const QQmlProfilerEventType &type = m_client->types.at(message.typeIndex());
         switch (type.detailType()) {
@@ -442,7 +442,7 @@ bool tst_QQmlProfilerService::verify(tst_QQmlProfilerService::MessageListType ty
         return true;
     } while (++position < target->size() && target->at(position).timestamp() == timestamp);
 
-    foreach (const QString &message, warnings)
+    for (const QString &message : std::as_const(warnings))
         qWarning() << message.toLocal8Bit().constData();
 
     return false;
@@ -582,7 +582,7 @@ void tst_QQmlProfilerService::scenegraphData()
     QCOMPARE(connectTo(true, "scenegraphTest.qml"), ConnectSuccess);
 
     while (!m_process->output().contains(QLatin1String("tick")))
-        QVERIFY(QQmlDebugTest::waitForSignal(m_process, SIGNAL(readyReadStandardOutput())));
+        QVERIFY(QQmlDebugTest::waitForSignal(m_process, SIGNAL(readyReadStandardOutput()), 30000));
     m_client->client->setRecording(false);
 
     checkTraceReceived();
@@ -596,7 +596,7 @@ void tst_QQmlProfilerService::scenegraphData()
     // interleaved. Also, events could carry the same time stamps and be sorted in an unexpected way
     // if the clocks are acting up.
     qint64 renderFrameTime = -1;
-    foreach (const QQmlProfilerEvent &msg, m_client->asynchronousMessages) {
+    for (const QQmlProfilerEvent &msg : std::as_const(m_client->asynchronousMessages)) {
         const QQmlProfilerEventType &type = m_client->types.at(msg.typeIndex());
         if (type.detailType() == SceneGraphRendererFrame) {
             renderFrameTime = msg.timestamp();

@@ -368,6 +368,7 @@ QQuickScrollBar::QQuickScrollBar(QQuickItem *parent)
     Q_D(QQuickScrollBar);
     d->decreaseVisual = new QQuickIndicatorButton(this);
     d->increaseVisual = new QQuickIndicatorButton(this);
+    d->setSizePolicy(QLayoutPolicy::Preferred, QLayoutPolicy::Fixed);
     setKeepMouseGrab(true);
     setAcceptedMouseButtons(Qt::LeftButton);
 #if QT_CONFIG(quicktemplates2_multitouch)
@@ -572,6 +573,11 @@ void QQuickScrollBar::setOrientation(Qt::Orientation orientation)
     if (d->orientation == orientation)
         return;
 
+    if (orientation == Qt::Horizontal)
+        d->setSizePolicy(QLayoutPolicy::Preferred, QLayoutPolicy::Fixed);
+    else
+        d->setSizePolicy(QLayoutPolicy::Fixed, QLayoutPolicy::Preferred);
+
     d->orientation = orientation;
     if (isComponentComplete())
         d->resizeContent();
@@ -750,6 +756,7 @@ void QQuickScrollBar::setMinimumSize(qreal minimumSize)
 /*!
     \since QtQuick.Controls 2.4 (Qt 5.11)
     \qmlproperty real QtQuick.Controls::ScrollBar::visualSize
+    \readonly
 
     This property holds the effective visual size of the scroll bar,
     which may be limited by the \l {minimumSize}{minimum size}.
@@ -765,6 +772,7 @@ qreal QQuickScrollBar::visualSize() const
 /*!
     \since QtQuick.Controls 2.4 (Qt 5.11)
     \qmlproperty real QtQuick.Controls::ScrollBar::visualPosition
+    \readonly
 
     This property holds the effective visual position of the scroll bar,
     which may be limited by the \l {minimumSize}{minimum size}.

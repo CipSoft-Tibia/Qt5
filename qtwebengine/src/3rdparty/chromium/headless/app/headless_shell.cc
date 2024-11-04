@@ -10,7 +10,6 @@
 #include "base/command_line.h"
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
-#include "base/i18n/rtl.h"
 #include "base/logging.h"
 #include "base/task/thread_pool.h"
 #include "build/branding_buildflags.h"
@@ -28,7 +27,7 @@
 #include "url/gurl.h"
 
 #if BUILDFLAG(IS_MAC)
-#include "components/os_crypt/os_crypt_switches.h"  // nogncheck
+#include "components/os_crypt/sync/os_crypt_switches.h"  // nogncheck
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -82,6 +81,9 @@ class HeadlessShell {
   void OnBrowserStart(HeadlessBrowser* browser);
 
  private:
+#if defined(HEADLESS_ENABLE_COMMANDS)
+  void OnProcessCommandsDone(HeadlessCommandHandler::Result result);
+#endif
   void ShutdownSoon();
   void Shutdown();
 
@@ -102,10 +104,6 @@ void HeadlessShell::OnBrowserStart(HeadlessBrowser* browser) {
 
   HeadlessBrowserContext::Builder context_builder =
       browser_->CreateBrowserContextBuilder();
-
-  // Retrieve the locale set by InitApplicationLocale() in
-  // headless_content_main_delegate.cc in a way that is free of side-effects.
-  context_builder.SetAcceptLanguage(base::i18n::GetConfiguredLocale());
 
   // Create browser  context and set it as the default. The default browser
   // context is used by the Target.createTarget() DevTools command when no other
@@ -160,9 +158,22 @@ void HeadlessShell::OnBrowserStart(HeadlessBrowser* browser) {
   HeadlessCommandHandler::ProcessCommands(
       HeadlessWebContentsImpl::From(web_contents)->web_contents(),
       std::move(target_url),
-      base::BindOnce(&HeadlessShell::ShutdownSoon, base::Unretained(this)));
+      base::BindOnce(&HeadlessShell::OnProcessCommandsDone,
+                     base::Unretained(this)));
 #endif
 }
+
+#if defined(HEADLESS_ENABLE_COMMANDS)
+void HeadlessShell::OnProcessCommandsDone(
+    HeadlessCommandHandler::Result result) {
+  if (result != HeadlessCommandHandler::Result::kSuccess) {
+    static_cast<HeadlessBrowserImpl*>(browser_)->ShutdownWithExitCode(
+        static_cast<int>(result));
+    return;
+  }
+  Shutdown();
+}
+#endif
 
 void HeadlessShell::ShutdownSoon() {
   browser_->BrowserMainThread()->PostTask(
@@ -171,7 +182,7 @@ void HeadlessShell::ShutdownSoon() {
 }
 
 void HeadlessShell::Shutdown() {
-  browser_->Shutdown();
+  browser_.ExtractAsDangling()->Shutdown();
 }
 
 void HeadlessChildMain(content::ContentMainParams params) {

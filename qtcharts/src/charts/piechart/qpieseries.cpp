@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include <QtCharts/QPieSeries>
 #include <private/qpieseries_p.h>
 #include <QtCharts/QPieSlice>
@@ -986,7 +988,8 @@ QList<QLegendMarker*> QPieSeriesPrivate::createLegendMarkers(QLegend* legend)
 {
     Q_Q(QPieSeries);
     QList<QLegendMarker*> markers;
-    foreach(QPieSlice* slice, q->slices()) {
+    const auto slices = q->slices();
+    for (QPieSlice *slice : slices) {
         QPieLegendMarker* marker = new QPieLegendMarker(q,slice,legend);
         markers << marker;
     }

@@ -1,6 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QTest>
 #include <QtTest/QTestEventLoop>
@@ -94,7 +93,8 @@ void tst_QNetworkProxyFactory::systemProxyForQuery_data()
     QTest::newRow("autobind-server") << (int)QNetworkProxyQuery::TcpServer << QUrl() << QString() << QString() << 0 << (int)QNetworkProxy::ListeningCapability;
     QTest::newRow("web-server") << (int)QNetworkProxyQuery::TcpServer << QUrl() << QString() << QString() << 80 << (int)QNetworkProxy::ListeningCapability;
     //windows: these should be bypassed  if "bypass proxy server for local addresses" is ticked
-    foreach (QHostAddress address, QNetworkInterface::allAddresses()) {
+    const auto addresses = QNetworkInterface::allAddresses();
+    for (const QHostAddress &address : addresses) {
         QTest::newRow(qPrintable(address.toString())) << (int)QNetworkProxyQuery::TcpSocket << QUrl() << QString() << address.toString() << 0 << 0;
     }
 
@@ -147,16 +147,15 @@ void tst_QNetworkProxyFactory::systemProxyForQuery() const
 
     QElapsedTimer sw;
     sw.start();
-    QList<QNetworkProxy> systemProxyList = QNetworkProxyFactory::systemProxyForQuery(query);
+    const QList<QNetworkProxy> systemProxyList = QNetworkProxyFactory::systemProxyForQuery(query);
     qDebug() << sw.elapsed() << "ms";
     QVERIFY(!systemProxyList.isEmpty());
 
     // for manual comparison with system
     qDebug() << systemProxyList;
 
-    foreach (const QNetworkProxy &proxy, systemProxyList) {
+    for (const QNetworkProxy &proxy : systemProxyList)
         QVERIFY((requiredCapabilities == 0) || (proxy.capabilities() & requiredCapabilities));
-    }
 }
 
 void tst_QNetworkProxyFactory::systemProxyForQuery_local()

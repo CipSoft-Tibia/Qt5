@@ -6,7 +6,6 @@
 
 #include <fuchsia/component/decl/cpp/fidl.h>
 #include <fuchsia/io/cpp/fidl.h>
-#include <fuchsia/sys/cpp/fidl.h>
 #include <lib/fit/function.h>
 #include <lib/sys/cpp/component_context.h>
 #include <lib/sys/cpp/outgoing_directory.h>
@@ -31,7 +30,9 @@
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
+#include "base/strings/string_util.h"
 #include "base/types/expected.h"
+#include "base/types/expected_macros.h"
 #include "components/fuchsia_component_support/serialize_arguments.h"
 #include "fuchsia_web/webengine/switches.h"
 #include "fuchsia_web/webinstance_host/web_instance_host_constants.h"
@@ -41,17 +42,32 @@ namespace {
 
 namespace fcdecl = ::fuchsia::component::decl;
 
-// Production URL for web hosting Component instances.
-// The URL cannot be obtained programmatically - see fxbug.dev/51490.
-constexpr char kWebInstanceComponentUrl[] =
-    "fuchsia-pkg://fuchsia.com/web_engine#meta/web_instance.cm";
-
-// Test-only URL for web hosting Component instances with WebUI resources.
-const char kWebInstanceWithWebUiComponentUrl[] =
-    "fuchsia-pkg://fuchsia.com/web_engine_with_webui#meta/web_instance.cm";
-
 // The name of the component collection hosting the instances.
 constexpr char kCollectionName[] = "web_instances";
+
+// Returns the default package URL for WebEngine.
+// It is possible that this is not the actual URL for the current package.
+// The package URL for the current component cannot be obtained programmatically
+// (see fxbug.dev/51490), and this should always work in production, which is
+// when this is needed.
+// TODO(crbug.com/1211174): Remove when a different mechanism is available.
+// TODO(crbug.com/1395054): Replace with constant once `with_webui` is removed.
+std::string GetAbsoluteWebEnginePackageUrl(bool with_webui) {
+  return base::StrCat({"fuchsia-pkg://fuchsia.com/",
+                       (with_webui ? "web_engine_with_webui" : "web_engine")});
+}
+
+// Returns the URL of the WebInstance component to be launched.
+// `with_webui` is a test-only feature for `web_engine_shell` that causes
+// `web_instance.cm` to be run from the `web_engine_with_webui` package rather
+// than the production `web_engine` package.
+std::string MakeWebInstanceComponentUrl(bool use_relative_url,
+                                        bool with_webui,
+                                        base::StringPiece component_name) {
+  return base::StrCat(
+      {(use_relative_url ? "" : GetAbsoluteWebEnginePackageUrl(with_webui)),
+       "#meta/", component_name});
+}
 
 // Returns the "/web_instances" dir from the component's outgoing directory,
 // creating it if necessary.
@@ -61,7 +77,7 @@ vfs::PseudoDir* GetWebInstancesCollectionDir(
 }
 
 // Returns an instance's name given its unique id.
-std::string InstanceNameFromId(const base::GUID& id) {
+std::string InstanceNameFromId(const base::Uuid& id) {
   return base::StrCat({kCollectionName, "_", id.AsLowercaseString()});
 }
 
@@ -82,10 +98,10 @@ void DestroyInstanceDirectory(vfs::PseudoDir* instances_dir,
 }
 
 struct Instance {
-  base::GUID id;
+  base::Uuid id;
   fuchsia::component::BinderPtr binder_ptr;
 
-  Instance(base::GUID id, fuchsia::component::BinderPtr binder_ptr)
+  Instance(base::Uuid id, fuchsia::component::BinderPtr binder_ptr)
       : id(std::move(id)), binder_ptr(std::move(binder_ptr)) {}
 };
 
@@ -104,6 +120,11 @@ class InstanceBuilder {
   // Offers the services named in `services` to the instance as dynamic
   // protocol offers.
   void AppendOffersForServices(const std::vector<std::string>& services);
+
+  // Serves `service_directory` to the instance as the 'svc' read-write
+  // directory.
+  void ServeServiceDirectory(
+      fidl::InterfaceHandle<fuchsia::io::Directory> service_directory);
 
   // Offers the read-only root-ssl-certificates directory from the parent.
   void ServeRootSslCertificates();
@@ -132,13 +153,16 @@ class InstanceBuilder {
       fidl::InterfaceRequest<fuchsia::web::Debug> debug_request);
 
   // Builds and returns the instance, or an error status value.
+  // `fuchsia.web/Debug` will be published in `outgoing_services_request` if
+  // `SetDebugRequest()` has been called.
   Instance Build(
-      fidl::InterfaceRequest<fuchsia::io::Directory> services_request);
+      base::StringPiece instance_component_url,
+      fidl::InterfaceRequest<fuchsia::io::Directory> outgoing_services_request);
 
  private:
   InstanceBuilder(sys::OutgoingDirectory& outgoing_directory,
                   fuchsia::component::Realm& realm,
-                  base::GUID id,
+                  base::Uuid id,
                   std::string name,
                   vfs::PseudoDir* instance_dir,
                   const base::CommandLine& launch_args);
@@ -183,12 +207,15 @@ class InstanceBuilder {
   // Returns the capability and directory name for `directory`.
   static base::StringPiece GetDirectoryName(OptionalDirectory directory);
 
-  // Serves `directory` as `offer` in the instance's subtree as a read-only or
-  // a read-write (if `writeable`) directory.
+  // Serves `fs_directory` as `directory`. `fs_directory` may be specific to
+  // this instance (e.g., persistent data storage) or required only in
+  // particular configurations (e.g., CDM data storage), to the instance. Most
+  // common read-only directories (e.g., "root-ssl-certificates") should instead
+  // be offered statically to the `web_instances` collection.
   void ServeOptionalDirectory(
       OptionalDirectory directory,
       std::unique_ptr<vfs::internal::Directory> fs_directory,
-      bool writeable);
+      fuchsia::io::Operations rights);
 
   // Offers the directory `directory` from `void`.
   void OfferOptionalDirectoryFromVoid(OptionalDirectory directory);
@@ -197,14 +224,11 @@ class InstanceBuilder {
   // read-only or a read-write (if `writeable`) directory.
   void ServeDirectory(base::StringPiece name,
                       std::unique_ptr<vfs::internal::Directory> fs_directory,
-                      bool writeable);
-
-  // Offers the read-only directory capability named `name` from the parent.
-  void OfferDirectoryFromParent(base::StringPiece name);
+                      fuchsia::io::Operations rights);
 
   const raw_ref<sys::OutgoingDirectory> outgoing_directory_;
   const raw_ref<fuchsia::component::Realm> realm_;
-  const base::GUID id_;
+  const base::Uuid id_;
   const std::string name_;
   raw_ptr<vfs::PseudoDir> instance_dir_;
   base::CommandLine args_;
@@ -222,7 +246,7 @@ InstanceBuilder::Create(sys::OutgoingDirectory& outgoing_directory,
                         fuchsia::component::Realm& realm,
                         const base::CommandLine& launch_args) {
   // Pick a unique identifier for the new instance.
-  base::GUID instance_id = base::GUID::GenerateRandomV4();
+  base::Uuid instance_id = base::Uuid::GenerateRandomV4();
   auto instance_name = InstanceNameFromId(instance_id);
 
   // Create a pseudo-directory to contain the various directory capabilities
@@ -240,14 +264,14 @@ InstanceBuilder::Create(sys::OutgoingDirectory& outgoing_directory,
     return base::unexpected(status);
   }
 
-  return base::ok(base::WrapUnique(new InstanceBuilder(
+  return base::WrapUnique(new InstanceBuilder(
       outgoing_directory, realm, std::move(instance_id),
-      std::move(instance_name), instance_dir_ptr, launch_args)));
+      std::move(instance_name), instance_dir_ptr, launch_args));
 }
 
 InstanceBuilder::InstanceBuilder(sys::OutgoingDirectory& outgoing_directory,
                                  fuchsia::component::Realm& realm,
-                                 base::GUID id,
+                                 base::Uuid id,
                                  std::string name,
                                  vfs::PseudoDir* instance_dir,
                                  const base::CommandLine& launch_args)
@@ -278,9 +302,13 @@ void InstanceBuilder::AppendOffersForServices(
   }
 }
 
-void InstanceBuilder::ServeRootSslCertificates() {
+void InstanceBuilder::ServeServiceDirectory(
+    fidl::InterfaceHandle<fuchsia::io::Directory> service_directory) {
   DCHECK(instance_dir_);
-  OfferDirectoryFromParent("root-ssl-certificates");
+  ServeDirectory(
+      "svc", std::make_unique<vfs::RemoteDir>(std::move(service_directory)),
+      fuchsia::io::Operations::CONNECT | fuchsia::io::Operations::ENUMERATE |
+          fuchsia::io::Operations::TRAVERSE);
 }
 
 void InstanceBuilder::ServeDataDirectory(
@@ -289,7 +317,7 @@ void InstanceBuilder::ServeDataDirectory(
   ServeOptionalDirectory(
       OptionalDirectory::kData,
       std::make_unique<vfs::RemoteDir>(std::move(data_directory)),
-      /*writeable=*/true);
+      fuchsia::io::RW_STAR_DIR);
 }
 
 zx_status_t InstanceBuilder::ServeContentDirectories(
@@ -310,8 +338,7 @@ zx_status_t InstanceBuilder::ServeContentDirectories(
   }
 
   ServeOptionalDirectory(OptionalDirectory::kContentDirectories,
-                         std::move(content_dirs),
-                         /*writeable=*/false);
+                         std::move(content_dirs), fuchsia::io::R_STAR_DIR);
   return ZX_OK;
 }
 
@@ -321,13 +348,13 @@ void InstanceBuilder::ServeCdmDataDirectory(
   ServeOptionalDirectory(
       OptionalDirectory::kCdmData,
       std::make_unique<vfs::RemoteDir>(std::move(cdm_data_directory)),
-      /*writeable=*/true);
+      fuchsia::io::RW_STAR_DIR);
 }
 
 void InstanceBuilder::ServeTmpDirectory(fuchsia::io::DirectoryHandle tmp_dir) {
   ServeOptionalDirectory(OptionalDirectory::kTmp,
                          std::make_unique<vfs::RemoteDir>(std::move(tmp_dir)),
-                         /*writeable=*/true);
+                         fuchsia::io::RW_STAR_DIR);
 }
 
 void InstanceBuilder::SetDebugRequest(
@@ -336,7 +363,8 @@ void InstanceBuilder::SetDebugRequest(
 }
 
 Instance InstanceBuilder::Build(
-    fidl::InterfaceRequest<fuchsia::io::Directory> services_request) {
+    base::StringPiece instance_component_url,
+    fidl::InterfaceRequest<fuchsia::io::Directory> outgoing_services_request) {
   ServeCommandLine();
 
   // Create dynamic offers from `void` for any optional directories
@@ -345,14 +373,7 @@ Instance InstanceBuilder::Build(
 
   fcdecl::Child child_decl;
   child_decl.set_name(name_);
-  // TODO(crbug.com/1010222): Make kWebInstanceComponentUrl a relative
-  // component URL and remove this workaround.
-  // TODO(crbug.com/1395054): Better yet, replace the with_webui component with
-  // direct routing of the resources from web_engine_shell.
-  child_decl.set_url(
-      base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kWithWebui)
-          ? kWebInstanceWithWebUiComponentUrl
-          : kWebInstanceComponentUrl);
+  child_decl.set_url(std::string(instance_component_url));
   child_decl.set_startup(fcdecl::StartupMode::LAZY);
 
   ::fuchsia::component::CreateChildArgs create_child_args;
@@ -383,7 +404,7 @@ Instance InstanceBuilder::Build(
   if (debug_request_) {
     instance_services.Connect(std::move(debug_request_));
   }
-  instance_services.CloneChannel(std::move(services_request));
+  instance_services.CloneChannel(std::move(outgoing_services_request));
 
   // Ownership of the child and `instance_dir_` are now passed to the caller.
   instance_dir_ = nullptr;
@@ -414,8 +435,7 @@ void InstanceBuilder::ServeCommandLine() {
   ZX_DCHECK(status == ZX_OK, status);
 
   ServeOptionalDirectory(OptionalDirectory::kCommandLineConfig,
-                         std::move(config_dir),
-                         /*writeable=*/false);
+                         std::move(config_dir), fuchsia::io::R_STAR_DIR);
 }
 
 void InstanceBuilder::OfferMissingDirectoriesFromVoid() {
@@ -447,13 +467,12 @@ base::StringPiece InstanceBuilder::GetDirectoryName(
 void InstanceBuilder::ServeOptionalDirectory(
     OptionalDirectory directory,
     std::unique_ptr<vfs::internal::Directory> fs_directory,
-    bool writeable) {
+    fuchsia::io::Operations rights) {
   DCHECK(instance_dir_);
   DCHECK(!is_directory_served(directory));
 
   set_directory_served(directory);
-  ServeDirectory(GetDirectoryName(directory), std::move(fs_directory),
-                 writeable);
+  ServeDirectory(GetDirectoryName(directory), std::move(fs_directory), rights);
 }
 
 void InstanceBuilder::OfferOptionalDirectoryFromVoid(
@@ -473,7 +492,7 @@ void InstanceBuilder::OfferOptionalDirectoryFromVoid(
 void InstanceBuilder::ServeDirectory(
     base::StringPiece name,
     std::unique_ptr<vfs::internal::Directory> fs_directory,
-    bool writeable) {
+    fuchsia::io::Operations rights) {
   DCHECK(instance_dir_);
   zx_status_t status =
       instance_dir_->AddEntry(std::string(name), std::move(fs_directory));
@@ -484,34 +503,10 @@ void InstanceBuilder::ServeDirectory(
                     .set_source(fcdecl::Ref::WithSelf({}))
                     .set_source_name(kCollectionName)
                     .set_target_name(std::string(name))
-                    .set_rights(writeable ? ::fuchsia::io::RW_STAR_DIR
-                                          : ::fuchsia::io::R_STAR_DIR)
+                    .set_rights(rights)
                     .set_subdir(base::StrCat({name_, "/", name}))
                     .set_dependency_type(fcdecl::DependencyType::STRONG)
                     .set_availability(fcdecl::Availability::REQUIRED))));
-}
-
-void InstanceBuilder::OfferDirectoryFromParent(base::StringPiece name) {
-  DCHECK(instance_dir_);
-  dynamic_offers_.push_back(fcdecl::Offer::WithDirectory(
-      std::move(fcdecl::OfferDirectory()
-                    .set_source(fcdecl::Ref::WithParent({}))
-                    .set_source_name(std::string(name))
-                    .set_target_name(std::string(name))
-                    .set_rights(::fuchsia::io::R_STAR_DIR)
-                    .set_dependency_type(fcdecl::DependencyType::STRONG)
-                    .set_availability(fcdecl::Availability::SAME_AS_TARGET))));
-}
-
-// Route `root-ssl-certificates` from parent if networking is requested.
-void HandleRootSslCertificates(InstanceBuilder& builder,
-                               fuchsia::web::CreateContextParams& params) {
-  if ((params.features() & fuchsia::web::ContextFeatureFlags::NETWORK) !=
-      fuchsia::web::ContextFeatureFlags::NETWORK) {
-    return;
-  }
-
-  builder.ServeRootSslCertificates();
 }
 
 void HandleCdmDataDirectoryParam(InstanceBuilder& builder,
@@ -569,51 +564,50 @@ bool HandleContentDirectoriesParam(InstanceBuilder& builder,
 
 }  // namespace
 
-WebInstanceHost::WebInstanceHost(sys::OutgoingDirectory& outgoing_directory)
-    : outgoing_directory_(outgoing_directory) {
-  // Ensure WebInstance is registered before launching it.
-  // TODO(crbug.com/1211174): Replace with a different mechanism when available.
-  RegisterWebInstanceProductData(kWebInstanceComponentUrl);
-}
+WebInstanceHost::WebInstanceHost(sys::OutgoingDirectory& outgoing_directory,
+                                 bool is_web_instance_component_in_same_package)
+    : outgoing_directory_(outgoing_directory),
+      is_web_instance_component_in_same_package_(
+          is_web_instance_component_in_same_package) {}
 
 WebInstanceHost::~WebInstanceHost() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   Uninitialize();
 }
 
-zx_status_t WebInstanceHost::CreateInstanceForContextWithCopiedArgs(
+zx_status_t WebInstanceHost::CreateInstanceForContextWithCopiedArgsAndUrl(
     fuchsia::web::CreateContextParams params,
-    fidl::InterfaceRequest<fuchsia::io::Directory> services_request,
-    base::CommandLine extra_args) {
+    fidl::InterfaceRequest<fuchsia::io::Directory> outgoing_services_request,
+    base::CommandLine extra_args,
+    base::StringPiece component_name,
+    std::vector<std::string> services_to_offer) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
   if (!is_initialized()) {
     Initialize();
   }
 
-  auto expected_builder = InstanceBuilder::Create(*outgoing_directory_, *realm_,
-                                                  std::move(extra_args));
-  if (!expected_builder.has_value()) {
-    return expected_builder.error();
-  }
-  auto& builder = expected_builder.value();
+  ASSIGN_OR_RETURN(auto builder,
+                   InstanceBuilder::Create(*outgoing_directory_, *realm_,
+                                           std::move(extra_args)));
 
   if (zx_status_t status = AppendLaunchArgs(params, builder->args());
       status != ZX_OK) {
     return status;
   }
 
-  // TODO(grt): What to do about `params.service_directory`? At the moment, we
-  // require that all of web_instance's required and optional protocols are
-  // routed from the embedding component's parent.
-
-  {
-    std::vector<std::string> services;
-    AppendDynamicServices(params.features(), params.has_playready_key_system(),
-                          services);
-    builder->AppendOffersForServices(services);
+  // Only one method of providing services should be used.
+  CHECK_NE(!services_to_offer.empty(), params.has_service_directory());
+  if (!services_to_offer.empty()) {
+    builder->AppendOffersForServices(services_to_offer);
+  } else {
+    builder->ServeServiceDirectory(
+        std::move(*params.mutable_service_directory()));
   }
 
-  HandleRootSslCertificates(*builder, params);
+  // The `config-data` directory is statically offered to all instances.
+  // The `root-ssl-certificates` directory is statically offered to all
+  // instances regardless of whether networking is requested.
 
   HandleCdmDataDirectoryParam(*builder, params);
 
@@ -638,7 +632,31 @@ zx_status_t WebInstanceHost::CreateInstanceForContextWithCopiedArgs(
     debug_proxy_.RegisterInstance(std::move(debug_handle));
   }
 
-  auto instance = builder->Build(std::move(services_request));
+  const bool with_webui =
+      base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kWithWebui);
+
+  auto component_url_to_launch = MakeWebInstanceComponentUrl(
+      is_web_instance_component_in_same_package_, with_webui, component_name);
+
+  auto component_url_to_register = component_url_to_launch;
+
+  if (is_web_instance_component_in_same_package_) {
+    // RegisterWebInstanceProductData() requires an absolute component URL, but
+    // the package URL for the current component cannot be obtained
+    // programmatically (see fxbug.dev/51490). Use the default absolute package
+    // URL for WebEngine; this should always work in production, which is
+    // when registration is needed.
+    // TODO(crbug.com/1211174): Remove when a different mechanism is available.
+    component_url_to_register =
+        MakeWebInstanceComponentUrl(false, with_webui, component_name);
+  }
+
+  // Ensure WebInstance is registered before launching it.
+  RegisterWebInstanceProductData(component_url_to_register);
+
+  auto instance = builder->Build(component_url_to_launch,
+                                 std::move(outgoing_services_request));
+
   // Monitor the instance's Binder to track its destruction.
   instance.binder_ptr.set_error_handler(
       [this, id = instance.id](zx_status_t status) {
@@ -689,7 +707,7 @@ void WebInstanceHost::OnRealmError(zx_status_t status) {
   Uninitialize();
 }
 
-void WebInstanceHost::OnComponentBinderClosed(const base::GUID& id,
+void WebInstanceHost::OnComponentBinderClosed(const base::Uuid& id,
                                               zx_status_t status) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
@@ -710,4 +728,55 @@ void WebInstanceHost::OnComponentBinderClosed(const base::GUID& id,
   if (instances_.empty()) {
     Uninitialize();
   }
+}
+
+WebInstanceHostWithServicesFromThisComponent::
+    WebInstanceHostWithServicesFromThisComponent(
+        sys::OutgoingDirectory& outgoing_directory,
+        bool is_web_instance_component_in_same_package)
+    : WebInstanceHost(outgoing_directory,
+                      is_web_instance_component_in_same_package) {}
+
+zx_status_t WebInstanceHostWithServicesFromThisComponent::
+    CreateInstanceForContextWithCopiedArgs(
+        fuchsia::web::CreateContextParams params,
+        fidl::InterfaceRequest<fuchsia::io::Directory>
+            outgoing_services_request,
+        const base::CommandLine& extra_args) {
+  // Services are offered from this Component, so they should not be provided.
+  CHECK(!params.has_service_directory());
+
+  std::vector<std::string> services;
+  const auto features = params.has_features()
+                            ? params.features()
+                            : fuchsia::web::ContextFeatureFlags();
+  AppendDynamicServices(features, params.has_playready_key_system(), services);
+
+  return CreateInstanceForContextWithCopiedArgsAndUrl(
+      std::move(params), std::move(outgoing_services_request), extra_args,
+      "web_instance.cm", services);
+}
+
+WebInstanceHostWithoutServices::WebInstanceHostWithoutServices(
+    sys::OutgoingDirectory& outgoing_directory,
+    bool is_web_instance_component_in_same_package)
+    : WebInstanceHost(outgoing_directory,
+                      is_web_instance_component_in_same_package) {}
+
+zx_status_t
+WebInstanceHostWithoutServices::CreateInstanceForContextWithCopiedArgs(
+    fuchsia::web::CreateContextParams params,
+    fidl::InterfaceRequest<fuchsia::io::Directory> outgoing_services_request,
+    const base::CommandLine& extra_args) {
+  // Services are not offered from this Component, so they must be provided.
+  CHECK(params.has_service_directory());
+
+  // Web UI resources are not supported with a service directory.
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kWithWebui)) {
+    return ZX_ERR_INVALID_ARGS;
+  }
+
+  return CreateInstanceForContextWithCopiedArgsAndUrl(
+      std::move(params), std::move(outgoing_services_request), extra_args,
+      "web_instance_with_svc_directory.cm", {});
 }

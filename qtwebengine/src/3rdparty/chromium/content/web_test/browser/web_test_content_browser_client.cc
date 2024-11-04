@@ -45,13 +45,14 @@
 #include "content/web_test/browser/fake_bluetooth_chooser_factory.h"
 #include "content/web_test/browser/fake_bluetooth_delegate.h"
 #include "content/web_test/browser/mojo_echo.h"
+#include "content/web_test/browser/mojo_optional_numerics_unittest.h"
 #include "content/web_test/browser/mojo_web_test_helper.h"
-#include "content/web_test/browser/web_test_attribution_manager.h"
 #include "content/web_test/browser/web_test_bluetooth_fake_adapter_setter_impl.h"
 #include "content/web_test/browser/web_test_browser_context.h"
 #include "content/web_test/browser/web_test_browser_main_parts.h"
 #include "content/web_test/browser/web_test_control_host.h"
 #include "content/web_test/browser/web_test_cookie_manager.h"
+#include "content/web_test/browser/web_test_fedcm_manager.h"
 #include "content/web_test/browser/web_test_origin_trial_throttle.h"
 #include "content/web_test/browser/web_test_permission_manager.h"
 #include "content/web_test/browser/web_test_storage_access_manager.h"
@@ -83,12 +84,12 @@
 #include "storage/browser/quota/quota_settings.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
-#include "third_party/blink/public/mojom/conversions/attribution_reporting_automation.mojom.h"
 #include "ui/base/ui_base_switches.h"
 #include "url/origin.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "base/strings/utf_string_conversions.h"
+#include "sandbox/policy/features.h"
 #include "sandbox/policy/mojom/sandbox.mojom.h"
 #include "sandbox/policy/win/sandbox_win.h"
 #include "sandbox/win/src/sandbox.h"
@@ -328,6 +329,12 @@ void WebTestContentBrowserClient::ExposeInterfacesToRenderer(
                          ui_task_runner);
   registry->AddInterface(base::BindRepeating(&MojoEcho::Bind), ui_task_runner);
   registry->AddInterface(
+      base::BindRepeating(&optional_numerics_unittest::Params::Bind),
+      ui_task_runner);
+  registry->AddInterface(
+      base::BindRepeating(&optional_numerics_unittest::ResponseParams::Bind),
+      ui_task_runner);
+  registry->AddInterface(
       base::BindRepeating(&WebTestBluetoothFakeAdapterSetterImpl::Create),
       ui_task_runner);
   registry->AddInterface(base::BindRepeating(&bluetooth::FakeBluetooth::Create),
@@ -359,6 +366,12 @@ void WebTestContentBrowserClient::ExposeInterfacesToRenderer(
       base::BindRepeating(&WebTestContentBrowserClient::BindWebTestControlHost,
                           base::Unretained(this),
                           render_process_host->GetID()));
+
+  registry->AddInterface(
+      base::BindRepeating(
+          &WebTestContentBrowserClient::BindNonAssociatedWebTestControlHost,
+          base::Unretained(this)),
+      ui_task_runner);
 }
 
 void WebTestContentBrowserClient::BindPermissionAutomation(
@@ -402,19 +415,16 @@ void WebTestContentBrowserClient::AppendExtraCommandLineSwitches(
   ShellContentBrowserClient::AppendExtraCommandLineSwitches(command_line,
                                                             child_process_id);
 
-  static const char* kForwardSwitches[] = {
-    // Switches from web_test_switches.h that are used in the renderer.
-    switches::kEnableAccelerated2DCanvas,
-    switches::kEnableFontAntialiasing,
-    switches::kAlwaysUseComplexText,
-    switches::kStableReleaseMode,
-#if BUILDFLAG(IS_WIN)
-    switches::kRegisterFontFiles,
-#endif
+  static const char* const kForwardSwitches[] = {
+      // Switches from web_test_switches.h that are used in the renderer.
+      switches::kEnableAccelerated2DCanvas,
+      switches::kEnableFontAntialiasing,
+      switches::kAlwaysUseComplexText,
+      switches::kStableReleaseMode,
   };
 
   command_line->CopySwitchesFrom(*base::CommandLine::ForCurrentProcess(),
-                                 kForwardSwitches, std::size(kForwardSwitches));
+                                 kForwardSwitches);
 }
 
 std::unique_ptr<BrowserMainParts>
@@ -534,10 +544,9 @@ void WebTestContentBrowserClient::RegisterBrowserInterfaceBindersForFrame(
   map->Add<blink::test::mojom::CookieManagerAutomation>(base::BindRepeating(
       &WebTestContentBrowserClient::BindCookieManagerAutomation,
       base::Unretained(this)));
-  map->Add<blink::test::mojom::AttributionReportingAutomation>(
-      base::BindRepeating(
-          &WebTestContentBrowserClient::BindAttributionReportingAutomation,
-          base::Unretained(this)));
+  map->Add<blink::test::mojom::FederatedAuthRequestAutomation>(
+      base::BindRepeating(&WebTestContentBrowserClient::BindFedCmAutomation,
+                          base::Unretained(this)));
 }
 
 bool WebTestContentBrowserClient::CanAcceptUntrustedExchangesIfNeeded() {
@@ -590,14 +599,12 @@ void WebTestContentBrowserClient::BindCookieManagerAutomation(
                        std::move(receiver));
 }
 
-void WebTestContentBrowserClient::BindAttributionReportingAutomation(
+void WebTestContentBrowserClient::BindFedCmAutomation(
     RenderFrameHost* render_frame_host,
-    mojo::PendingReceiver<blink::test::mojom::AttributionReportingAutomation>
+    mojo::PendingReceiver<blink::test::mojom::FederatedAuthRequestAutomation>
         receiver) {
-  attribution_reporting_receivers_.Add(
-      std::make_unique<WebTestAttributionManager>(
-          *GetWebTestBrowserContext()->GetDefaultStoragePartition()),
-      std::move(receiver));
+  fedcm_managers_.Add(std::make_unique<WebTestFedCmManager>(render_frame_host),
+                      std::move(receiver));
 }
 
 std::unique_ptr<LoginDelegate> WebTestContentBrowserClient::CreateLoginDelegate(
@@ -656,27 +663,19 @@ void WebTestContentBrowserClient::BindWebTestControlHost(
         render_process_id, std::move(receiver));
 }
 
+void WebTestContentBrowserClient::BindNonAssociatedWebTestControlHost(
+    mojo::PendingReceiver<mojom::NonAssociatedWebTestControlHost> receiver) {
+  if (WebTestControlHost::Get()) {
+    WebTestControlHost::Get()->BindNonAssociatedWebTestControlHost(
+        std::move(receiver));
+  }
+}
+
 #if BUILDFLAG(IS_WIN)
 bool WebTestContentBrowserClient::PreSpawnChild(
-    sandbox::TargetPolicy* policy,
+    sandbox::TargetConfig* config,
     sandbox::mojom::Sandbox sandbox_type,
     ChildSpawnFlags flags) {
-  if (sandbox_type == sandbox::mojom::Sandbox::kRenderer) {
-    if (policy->GetConfig()->IsConfigured())
-      return true;
-
-    // Add sideloaded font files for testing. See also DIR_WINDOWS_FONTS
-    // addition in |StartSandboxedProcess|.
-    std::vector<std::string> font_files = switches::GetSideloadFontFiles();
-    for (std::vector<std::string>::const_iterator i(font_files.begin());
-         i != font_files.end(); ++i) {
-      sandbox::ResultCode result = policy->GetConfig()->AddRule(
-          sandbox::SubSystem::kFiles, sandbox::Semantics::kFilesAllowReadonly,
-          base::UTF8ToWide(*i).c_str());
-      if (result != sandbox::SBOX_ALL_OK)
-        return false;
-    }
-  }
   return true;
 }
 #endif  // BUILDFLAG(IS_WIN)
@@ -691,6 +690,13 @@ bool WebTestContentBrowserClient::IsInterestGroupAPIAllowed(
     InterestGroupApiOperation operation,
     const url::Origin& top_frame_origin,
     const url::Origin& api_origin) {
+  return true;
+}
+
+bool WebTestContentBrowserClient::IsPrivacySandboxReportingDestinationAttested(
+    content::BrowserContext* browser_context,
+    const url::Origin& destination_origin,
+    content::PrivacySandboxInvokingAPI invoking_api) {
   return true;
 }
 

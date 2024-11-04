@@ -6,6 +6,7 @@ import("../../../third_party/typescript/typescript.gni")
 
 node_ts_library("issues") {
   sources = [
+    "bounce-tracking-issues_test.ts",
     "client-hint-issues_test.ts",
     "cookie-attribute-exceeds-max-size-issues_test.ts",
     "cookie-domain-attribute-non-ascii_test.ts",
@@ -24,14 +25,11 @@ node_ts_library("issues") {
     "issue-view-caching_test.ts",
     "issue-view-reparent_test.ts",
     "low-text-contrast-issues_test.ts",
-    "navigator-user-agent-issues_test.ts",
     "privacy-sandbox-extensions-api_test.ts",
     "quirks-mode-issues_test.ts",
     "quota-issues_test.ts",
     "report-only_test.ts",
     "sab-issues_test.ts",
-    "twa-issues_test.ts",
-    "wasm-co-issues_test.ts",
   ]
 
   deps = [

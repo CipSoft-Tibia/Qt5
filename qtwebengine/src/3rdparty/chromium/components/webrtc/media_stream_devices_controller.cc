@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "base/functional/bind.h"
+#include "base/ranges/algorithm.h"
 #include "build/build_config.h"
 #include "components/permissions/permission_util.h"
 #include "content/public/browser/browser_context.h"
@@ -161,7 +162,9 @@ void MediaStreamDevicesController::RequestPermissions(
   rfh->GetBrowserContext()
       ->GetPermissionController()
       ->RequestPermissionsFromCurrentDocument(
-          permission_types, rfh, request.user_gesture,
+          rfh,
+          content::PermissionRequestDescription(permission_types,
+                                                request.user_gesture),
           base::BindOnce(
               &MediaStreamDevicesController::PromptAnsweredGroupedRequest,
               std::move(controller)));
@@ -457,9 +460,9 @@ void MediaStreamDevicesController::PromptAnsweredGroupedRequest(
   }
 
   std::vector<ContentSetting> responses;
-  std::transform(permissions_status.begin(), permissions_status.end(),
-                 back_inserter(responses),
-                 permissions::PermissionUtil::PermissionStatusToContentSetting);
+  base::ranges::transform(
+      permissions_status, back_inserter(responses),
+      permissions::PermissionUtil::PermissionStatusToContentSetting);
 
   bool need_audio = ShouldRequestAudio();
   bool need_video = ShouldRequestVideo();

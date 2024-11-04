@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 source_set("credential_provider_promo") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "credential_provider_promo_coordinator.h",
     "credential_provider_promo_coordinator.mm",
@@ -19,28 +18,30 @@ source_set("credential_provider_promo") {
   deps = [
     ":credential_provider_promo_ui",
     "//base",
+    "//components/feature_engagement/public",
     "//components/prefs",
     "//ios/chrome/app/strings",
-    "//ios/chrome/browser/application_context",
-    "//ios/chrome/browser/browser_state",
     "//ios/chrome/browser/credential_provider_promo:features",
-    "//ios/chrome/browser/main:public",
-    "//ios/chrome/browser/prefs:pref_names",
+    "//ios/chrome/browser/feature_engagement",
     "//ios/chrome/browser/promos_manager",
+    "//ios/chrome/browser/promos_manager:factory",
     "//ios/chrome/browser/promos_manager:features",
     "//ios/chrome/browser/promos_manager:types",
-    "//ios/chrome/browser/ui/commands",
-    "//ios/chrome/browser/ui/coordinators:chrome_coordinators",
-    "//ios/chrome/browser/ui/main:observing_scene_agent",
+    "//ios/chrome/browser/shared/coordinator/chrome_coordinator",
+    "//ios/chrome/browser/shared/coordinator/scene:observing_scene_agent",
+    "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/browser",
+    "//ios/chrome/browser/shared/model/browser_state",
+    "//ios/chrome/browser/shared/model/prefs:pref_names",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/shared/ui/util",
     "//ios/chrome/browser/ui/promos_manager:promos",
-    "//ios/chrome/browser/ui/util",
     "//ios/public/provider/chrome/browser/branded_images:branded_images_api",
     "//ios/public/provider/chrome/browser/password_auto_fill:password_auto_fill_api",
   ]
 }
 
 source_set("credential_provider_promo_ui") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "credential_provider_promo_constants.h",
     "credential_provider_promo_consumer.h",
@@ -51,7 +52,7 @@ source_set("credential_provider_promo_ui") {
     "//base",
     "//components/password_manager/core/browser",
     "//ios/chrome/app/strings",
-    "//ios/chrome/browser/ui/commands",
+    "//ios/chrome/browser/shared/public/commands",
     "//ios/chrome/browser/ui/credential_provider_promo/resources:animation_files",
     "//ios/chrome/common/ui/colors",
     "//ios/chrome/common/ui/confirmation_alert",
@@ -69,8 +70,10 @@ source_set("credential_provider_promo_ui") {
 
 source_set("unit_tests") {
   testonly = true
-  sources = [ "credential_provider_promo_mediator_unittest.mm" ]
-  configs += [ "//build/config/compiler:enable_arc" ]
+  sources = [
+    "credential_provider_promo_coordinator_unittest.mm",
+    "credential_provider_promo_mediator_unittest.mm",
+  ]
   deps = [
     ":credential_provider_promo",
     ":credential_provider_promo_ui",
@@ -79,12 +82,16 @@ source_set("unit_tests") {
     "//components/prefs:test_support",
     "//ios/chrome/app/strings",
     "//ios/chrome/browser/credential_provider_promo:features",
-    "//ios/chrome/browser/prefs:pref_names",
     "//ios/chrome/browser/promos_manager",
     "//ios/chrome/browser/promos_manager:test_support",
-    "//ios/chrome/browser/ui/commands",
+    "//ios/chrome/browser/shared/model/browser/test:test_support",
+    "//ios/chrome/browser/shared/model/browser_state:test_support",
+    "//ios/chrome/browser/shared/model/prefs:pref_names",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/common/ui/confirmation_alert",
     "//ios/chrome/test:test_support",
     "//ios/public/provider/chrome/browser/branded_images:branded_images_api",
+    "//ios/web/public/test",
     "//testing/gtest",
     "//third_party/ocmock",
     "//ui/base",

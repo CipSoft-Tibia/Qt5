@@ -47,6 +47,3 @@ navigation.cppclassespage = "Qt HTTP Server C++ Classes"
 navigation.landingpage = "Qt HTTP Server"
 
 manifestmeta.highlighted.names = "QtHttpServer/Simple HTTP Server"
-
-# Fail the documentation build if there are more warnings than the limit
-warninglimit = 0

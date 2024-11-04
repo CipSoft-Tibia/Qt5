@@ -18,8 +18,8 @@
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "quiche/common/platform/api/quiche_export.h"
+#include "quiche/common/quiche_callbacks.h"
 #include "quiche/common/quiche_stream.h"
-#include "quiche/spdy/core/http2_header_block.h"
 
 namespace webtransport {
 
@@ -30,7 +30,7 @@ namespace webtransport {
 using StreamId = uint32_t;
 // Application-specific error code used for resetting either the read or the
 // write half of the stream.
-using StreamErrorCode = uint8_t;
+using StreamErrorCode = uint32_t;
 // Application-specific error code used for closing a WebTransport session.
 using SessionErrorCode = uint32_t;
 
@@ -136,7 +136,7 @@ class QUICHE_EXPORT SessionVisitor {
 
   // Notifies the visitor when the session is ready to exchange application
   // data.
-  virtual void OnSessionReady(const spdy::Http2HeaderBlock& headers) = 0;
+  virtual void OnSessionReady() = 0;
 
   // Notifies the visitor when the session has been closed.
   virtual void OnSessionClosed(SessionErrorCode error_code,
@@ -205,8 +205,7 @@ class QUICHE_EXPORT Session {
   //
   // IMPORTANT: See the class note regarding the lifetime of the returned stream
   // object.
-  // TODO(vasilvv): implement this in a follow-up CL.
-  // virtual Stream* GetStreamById(StreamId id) = 0;
+  virtual Stream* GetStreamById(StreamId id) = 0;
 
   virtual DatagramStatus SendOrQueueDatagram(absl::string_view datagram) = 0;
   // Returns a conservative estimate of the largest datagram size that the
@@ -215,6 +214,14 @@ class QUICHE_EXPORT Session {
   // Sets the largest duration that a datagram can spend in the queue before
   // being silently dropped.
   virtual void SetDatagramMaxTimeInQueue(absl::Duration max_time_in_queue) = 0;
+
+  // Sends a DRAIN_WEBTRANSPORT_SESSION capsule or an equivalent signal to the
+  // peer indicating that the session is draining.
+  virtual void NotifySessionDraining() = 0;
+  // Notifies that either the session itself (DRAIN_WEBTRANSPORT_SESSION
+  // capsule), or the underlying connection (HTTP GOAWAY) is being drained by
+  // the peer.
+  virtual void SetOnDraining(quiche::SingleUseCallback<void()> callback) = 0;
 };
 
 }  // namespace webtransport

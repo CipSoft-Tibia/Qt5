@@ -61,7 +61,7 @@ export class CSSOverviewPanel extends UI.Panel.Panel implements SDK.TargetManage
   }
 
   targetAdded(target: SDK.Target.Target): void {
-    if (target !== SDK.TargetManager.TargetManager.instance().mainFrameTarget()) {
+    if (target !== SDK.TargetManager.TargetManager.instance().primaryPageTarget()) {
       return;
     }
     this.#completedView.initializeModels(target);
@@ -202,7 +202,7 @@ export class CSSOverviewPanel extends UI.Panel.Panel implements SDK.TargetManage
   #overviewCompleted(): void {
     this.#renderOverviewCompletedView();
   }
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([cssOverviewStyles]);
   }

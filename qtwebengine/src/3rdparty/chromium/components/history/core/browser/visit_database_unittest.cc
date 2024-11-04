@@ -11,6 +11,7 @@
 #include "base/time/time.h"
 #include "components/history/core/browser/url_database.h"
 #include "components/history/core/browser/visit_database.h"
+#include "components/history/core/browser/visited_link_database.h"
 #include "sql/database.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -35,14 +36,16 @@ bool IsVisitInfoEqual(const VisitRow& a, const VisitRow& b) {
                                                      b.transition) &&
          a.originator_cache_guid == b.originator_cache_guid &&
          a.originator_visit_id == b.originator_visit_id &&
-         a.is_known_to_sync == b.is_known_to_sync;
+         a.is_known_to_sync == b.is_known_to_sync &&
+         a.consider_for_ntp_most_visited == b.consider_for_ntp_most_visited;
 }
 
 }  // namespace
 
 class VisitDatabaseTest : public PlatformTest,
                           public URLDatabase,
-                          public VisitDatabase {
+                          public VisitDatabase,
+                          public VisitedLinkDatabase {
  public:
   VisitDatabaseTest() {}
 
@@ -56,6 +59,7 @@ class VisitDatabaseTest : public PlatformTest,
     // Initialize the tables for this test.
     CreateURLTable(false);
     CreateMainURLIndex();
+    CreateVisitedLinkTable();
     InitVisitTable();
   }
   void TearDown() override {
@@ -87,6 +91,8 @@ TEST_F(VisitDatabaseTest, Add) {
   // Add third visit for a different page.
   VisitRow visit_info3(2, visit_info1.visit_time + base::Seconds(2), 0,
                        ui::PAGE_TRANSITION_LINK, 0, false, 0);
+  // Verify we can add a corresponding VisitedLinkID.
+  visit_info3.visited_link_id = 10000;
   EXPECT_TRUE(AddVisit(&visit_info3, SOURCE_BROWSED));
 
   // Query the first two.

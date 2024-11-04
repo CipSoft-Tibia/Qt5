@@ -13,6 +13,7 @@
 #endif
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qloggingcategory.h>
+#include <QtCore/qtimer.h>
 
 Q_LOGGING_CATEGORY(requestsLog, "wapp.requests")
 
@@ -267,6 +268,11 @@ AppModel::AppModel(QObject *parent) :
         emit cityChanged();
         requestWeatherByCity();
     }
+
+    QTimer *refreshTimer = new QTimer(this);
+    connect(refreshTimer, &QTimer::timeout, this, &AppModel::refreshWeather);
+    using namespace std::chrono;
+    refreshTimer->start(60s);
 }
 //! [1]
 

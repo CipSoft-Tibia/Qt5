@@ -47,7 +47,8 @@ class InitializationSubTask : public DatabaseTask {
     std::string unique_id;
 
     // The results to report.
-    raw_ptr<BackgroundFetchInitializationData> initialization_data;
+    raw_ptr<BackgroundFetchInitializationData, DanglingUntriaged>
+        initialization_data;
   };
 
   InitializationSubTask(DatabaseTaskHost* host,
@@ -525,14 +526,8 @@ void GetInitializationDataTask::FinishWithError(
     }
   }
 
-  ReportStorageError();
-
   std::move(callback_).Run(error, std::move(results));
   Finished();  // Destroys |this|.
-}
-
-std::string GetInitializationDataTask::HistogramName() const {
-  return "GetInitializationDataTask";
 }
 
 }  // namespace background_fetch

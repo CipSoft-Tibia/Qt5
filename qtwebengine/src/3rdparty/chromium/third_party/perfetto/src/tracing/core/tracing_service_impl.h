@@ -22,6 +22,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <set>
 #include <utility>
@@ -31,7 +32,6 @@
 #include "perfetto/base/status.h"
 #include "perfetto/base/time.h"
 #include "perfetto/ext/base/circular_queue.h"
-#include "perfetto/ext/base/optional.h"
 #include "perfetto/ext/base/periodic_task.h"
 #include "perfetto/ext/base/uuid.h"
 #include "perfetto/ext/base/weak_ptr.h"
@@ -87,8 +87,9 @@ class TracingServiceImpl : public TracingService {
                          // tracing_integration_test.cc and b/195065199
 
   // This is a rough threshold to determine how many bytes to read from the
-  // buffers on each iteration when writing into a file. Since filtering
-  // allocates memory, this limits the amount of memory allocated.
+  // buffers on each iteration when writing into a file. Since filtering and
+  // compression allocate memory, this effectively limits the amount of memory
+  // allocated.
   static constexpr size_t kWriteIntoFileChunkSize = 1024 * 1024ul;
 
   // The implementation behind the service endpoint exposed to each producer.
@@ -135,7 +136,9 @@ class TracingServiceImpl : public TracingService {
     void SetupDataSource(DataSourceInstanceID, const DataSourceConfig&);
     void StartDataSource(DataSourceInstanceID, const DataSourceConfig&);
     void StopDataSource(DataSourceInstanceID);
-    void Flush(FlushRequestID, const std::vector<DataSourceInstanceID>&);
+    void Flush(FlushRequestID,
+               const std::vector<DataSourceInstanceID>&,
+               FlushFlags);
     void OnFreeBuffers(const std::vector<BufferID>& target_buffers);
     void ClearIncrementalState(const std::vector<DataSourceInstanceID>&);
 
@@ -143,11 +146,11 @@ class TracingServiceImpl : public TracingService {
       return allowed_target_buffers_.count(buffer_id);
     }
 
-    base::Optional<BufferID> buffer_id_for_writer(WriterID writer_id) const {
+    std::optional<BufferID> buffer_id_for_writer(WriterID writer_id) const {
       const auto it = writers_.find(writer_id);
       if (it != writers_.end())
         return it->second;
-      return base::nullopt;
+      return std::nullopt;
     }
 
     uid_t uid() const { return uid_; }
@@ -209,6 +212,7 @@ class TracingServiceImpl : public TracingService {
     ~ConsumerEndpointImpl() override;
 
     void NotifyOnTracingDisabled(const std::string& error);
+    void NotifyCloneSnapshotTrigger();
 
     // TracingService::ConsumerEndpoint implementation.
     void EnableTracing(const TraceConfig&, base::ScopedFile) override;
@@ -217,7 +221,7 @@ class TracingServiceImpl : public TracingService {
     void DisableTracing() override;
     void ReadBuffers() override;
     void FreeBuffers() override;
-    void Flush(uint32_t timeout_ms, FlushCallback) override;
+    void Flush(uint32_t timeout_ms, FlushCallback, FlushFlags) override;
     void Detach(const std::string& key) override;
     void Attach(const std::string& key) override;
     void GetTraceStats() override;
@@ -264,7 +268,8 @@ class TracingServiceImpl : public TracingService {
   };
 
   explicit TracingServiceImpl(std::unique_ptr<SharedMemory::Factory>,
-                              base::TaskRunner*);
+                              base::TaskRunner*,
+                              InitOpts = {});
   ~TracingServiceImpl() override;
 
   // Called by ProducerEndpointImpl.
@@ -303,7 +308,8 @@ class TracingServiceImpl : public TracingService {
   void DisableTracing(TracingSessionID, bool disable_immediately = false);
   void Flush(TracingSessionID tsid,
              uint32_t timeout_ms,
-             ConsumerEndpoint::FlushCallback);
+             ConsumerEndpoint::FlushCallback,
+             FlushFlags);
   void FlushAndDisableTracing(TracingSessionID);
   void FlushAndCloneSession(ConsumerEndpointImpl*, TracingSessionID);
 
@@ -565,6 +571,9 @@ class TracingServiceImpl : public TracingService {
     // Whether we put the system info into the trace output yet.
     bool did_emit_system_info = false;
 
+    // Whether we should compress TracePackets after reading them.
+    bool compress_deflate = false;
+
     // The number of received triggers we've emitted into the trace output.
     size_t num_triggers_emitted_into_trace = 0;
 
@@ -632,11 +641,6 @@ class TracingServiceImpl : public TracingService {
     uint64_t max_file_size_bytes = 0;
     uint64_t bytes_written_into_file = 0;
 
-    // Set when using SaveTraceForBugreport(). This callback will be called
-    // when the tracing session ends and the data has been saved into the file.
-    std::function<void()> on_disable_callback_for_bugreport;
-    bool seized_for_bugreport = false;
-
     // Periodic task for snapshotting service events (e.g. clocks, sync markers
     // etc)
     base::PeriodicTask snapshot_periodic_task;
@@ -652,6 +656,7 @@ class TracingServiceImpl : public TracingService {
     uint64_t filter_input_bytes = 0;
     uint64_t filter_output_bytes = 0;
     uint64_t filter_errors = 0;
+    uint64_t filter_time_taken_ns = 0;
 
     // A randomly generated trace identifier. Note that this does NOT always
     // match the requested TraceConfig.trace_uuid_msb/lsb. Spcifically, it does
@@ -679,6 +684,10 @@ class TracingServiceImpl : public TracingService {
   // Returns a pointer to the |tracing_sessions_| entry or nullptr if the
   // session doesn't exists.
   TracingSession* GetTracingSession(TracingSessionID);
+
+  // Returns a pointer to the tracing session that has the highest
+  // TraceConfig.bugreport_score, if any, or nullptr.
+  TracingSession* FindTracingSessionWithMaxBugreportScore();
 
   // Returns a pointer to the |tracing_sessions_| entry, matching the given
   // uid and detach key, or nullptr if no such session exists.
@@ -708,12 +717,10 @@ class TracingServiceImpl : public TracingService {
   void EmitStats(TracingSession*, std::vector<TracePacket>*);
   TraceStats GetTraceStats(TracingSession*);
   void EmitLifecycleEvents(TracingSession*, std::vector<TracePacket>*);
-  void EmitSeizedForBugreportLifecycleEvent(std::vector<TracePacket>*);
   void MaybeEmitUuidAndTraceConfig(TracingSession*, std::vector<TracePacket>*);
   void MaybeEmitSystemInfo(TracingSession*, std::vector<TracePacket>*);
   void MaybeEmitReceivedTriggers(TracingSession*, std::vector<TracePacket>*);
   void MaybeNotifyAllDataSourcesStarted(TracingSession*);
-  bool MaybeSaveTraceForBugreport(std::function<void()> callback);
   void OnFlushTimeout(TracingSessionID, FlushRequestID);
   void OnDisableTracingTimeout(TracingSessionID);
   void DisableTracingNotifyConsumerAndFlushFile(TracingSession*);
@@ -726,7 +733,8 @@ class TracingServiceImpl : public TracingService {
   TraceBuffer* GetBufferByID(BufferID);
   base::Status DoCloneSession(ConsumerEndpointImpl*,
                               TracingSessionID,
-                              bool final_flush_outcome);
+                              bool final_flush_outcome,
+                              base::Uuid*);
 
   // Returns true if `*tracing_session` is waiting for a trigger that hasn't
   // happened.
@@ -746,6 +754,10 @@ class TracingServiceImpl : public TracingService {
   // change the number of `*packets`, only their content.
   void MaybeFilterPackets(TracingSession* tracing_session,
                           std::vector<TracePacket>* packets);
+
+  // If `*tracing_session` has compression enabled, compress `*packets`.
+  void MaybeCompressPackets(TracingSession* tracing_session,
+                            std::vector<TracePacket>* packets);
 
   // If `*tracing_session` is configured to write into a file, writes `packets`
   // into the file.
@@ -768,6 +780,7 @@ class TracingServiceImpl : public TracingService {
                                      TracingSessionID);
 
   base::TaskRunner* const task_runner_;
+  const InitOpts init_opts_;
   std::unique_ptr<SharedMemory::Factory> shm_factory_;
   ProducerID last_producer_id_ = 0;
   DataSourceInstanceID last_data_source_instance_id_ = 0;

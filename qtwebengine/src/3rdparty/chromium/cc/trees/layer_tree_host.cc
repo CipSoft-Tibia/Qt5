@@ -409,8 +409,6 @@ std::unique_ptr<CommitState> LayerTreeHost::WillCommit(
   client_->WillCommit(has_updates ? *result : *pending_commit_state());
   pending_commit_state()->source_frame_number++;
   commit_completion_event_ = std::move(completion);
-  pending_commit_state()->previous_surfaces_visual_update_duration =
-      base::TimeDelta();
   return result;
 }
 
@@ -647,19 +645,16 @@ ScopedPauseRendering::~ScopedPauseRendering() {
   LayerTreeHost* host = host_.get();
   if (host) {
     DCHECK_GT(host->pause_rendering_count_, 0u);
-    if (--host->pause_rendering_count_ == 0)
+    if (--host->pause_rendering_count_ == 0) {
+      host->SetNeedsCommit();
       host->proxy_->SetPauseRendering(false);
+    }
   }
 }
 
 std::unique_ptr<ScopedPauseRendering> LayerTreeHost::PauseRendering() {
   DCHECK(IsMainThread());
   return std::make_unique<ScopedPauseRendering>(this);
-}
-
-void LayerTreeHost::OnPauseRenderingChanged(bool paused) {
-  DCHECK(IsMainThread());
-  client_->OnPauseRenderingChanged(paused);
 }
 
 void LayerTreeHost::OnDeferMainFrameUpdatesChanged(bool defer_status) {
@@ -998,12 +993,17 @@ void LayerTreeHost::ApplyViewportChanges(
                                 ? commit_data.ongoing_scroll_animation
                                 : (commit_data.ongoing_scroll_animation &&
                                    commit_data.manipulation_info);
-  if (scroll_animation_.in_progress && !new_ongoing_scroll) {
-    scroll_animation_.in_progress = false;
-    if (!scroll_animation_.end_notification.is_null())
-      std::move(scroll_animation_.end_notification).Run();
-  } else {
-    scroll_animation_.in_progress = new_ongoing_scroll;
+  scroll_animation_.in_progress = new_ongoing_scroll;
+
+  // A pointer-down event on a scrollbar button triggers two scroll animations:
+  // one that starts immediately and ends after one scroll increment (typically
+  // 40px); and an autoscroll that starts after a 250ms delay and continues
+  // until pointer-up or until the end of the scroll node is reached.
+  // scroll_animation_.end_notification should wait for the first animation to
+  // finish, but it should *not* wait for the autoscroll to finish.
+  if (!scroll_animation_.end_notification.is_null() &&
+      (!scroll_animation_.in_progress || commit_data.is_auto_scrolling)) {
+    std::move(scroll_animation_.end_notification).Run();
   }
 
   if (inner_viewport_scroll_delta.IsZero() &&
@@ -1011,7 +1011,7 @@ void LayerTreeHost::ApplyViewportChanges(
       commit_data.elastic_overscroll_delta.IsZero() &&
       !commit_data.top_controls_delta && !commit_data.bottom_controls_delta &&
       !commit_data.browser_controls_constraint_changed &&
-      !commit_data.scroll_gesture_did_end &&
+      !commit_data.scroll_end_data.scroll_gesture_did_end &&
       commit_data.is_pinch_gesture_active ==
           is_pinch_gesture_active_from_impl_) {
     return;
@@ -1038,7 +1038,7 @@ void LayerTreeHost::ApplyViewportChanges(
        commit_data.page_scale_delta, commit_data.is_pinch_gesture_active,
        commit_data.top_controls_delta, commit_data.bottom_controls_delta,
        commit_data.browser_controls_constraint,
-       commit_data.scroll_gesture_did_end});
+       commit_data.scroll_end_data.scroll_gesture_did_end});
   SetNeedsUpdateLayers();
 }
 
@@ -1063,11 +1063,10 @@ void LayerTreeHost::UpdateScrollOffsetFromImpl(
       // animations, but that is not needed for an impl-side scroll.
 
       // Update the offset in the transform node.
-      DCHECK(scroll_node->transform_id != kInvalidPropertyNodeId);
       TransformTree& transform_tree =
           property_trees()->transform_tree_mutable();
       auto* transform_node = transform_tree.Node(scroll_node->transform_id);
-      if (transform_node->scroll_offset != new_offset) {
+      if (transform_node && transform_node->scroll_offset != new_offset) {
         transform_node->scroll_offset = new_offset;
         transform_node->needs_local_transform_update = true;
         transform_node->transform_changed = true;
@@ -1206,14 +1205,15 @@ void LayerTreeHost::AnimateLayers(base::TimeTicks monotonic_time) {
 
 int LayerTreeHost::ScheduleMicroBenchmark(
     const std::string& benchmark_name,
-    base::Value settings,
+    base::Value::Dict settings,
     MicroBenchmark::DoneCallback callback) {
   DCHECK(IsMainThread());
   return micro_benchmark_controller_.ScheduleRun(
       benchmark_name, std::move(settings), std::move(callback));
 }
 
-bool LayerTreeHost::SendMessageToMicroBenchmark(int id, base::Value message) {
+bool LayerTreeHost::SendMessageToMicroBenchmark(int id,
+                                                base::Value::Dict message) {
   DCHECK(IsMainThread());
   return micro_benchmark_controller_.SendMessage(id, std::move(message));
 }
@@ -1505,9 +1505,16 @@ void LayerTreeHost::SetDisplayColorSpaces(
     const gfx::DisplayColorSpaces& display_color_spaces) {
   if (pending_commit_state()->display_color_spaces == display_color_spaces)
     return;
+  bool only_hdr_changed = gfx::DisplayColorSpaces::EqualExceptForHdrParameters(
+      pending_commit_state()->display_color_spaces, display_color_spaces);
   pending_commit_state()->display_color_spaces = display_color_spaces;
-  for (auto* layer : *this)
-    layer->SetNeedsDisplay();
+
+  for (auto* layer : *this) {
+    if (!only_hdr_changed ||
+        layer->RequiresSetNeedsDisplayOnHdrHeadroomChange()) {
+      layer->SetNeedsDisplay();
+    }
+  }
 }
 
 void LayerTreeHost::UpdateViewportIsMobileOptimized(
@@ -1593,13 +1600,6 @@ void LayerTreeHost::SetLocalSurfaceIdFromParent(
   pending_commit_state()->local_surface_id_from_parent =
       local_surface_id_from_parent;
 
-  // When we are switching to a new viz::LocalSurfaceId add our current visual
-  // update duration to that of previous surfaces, and clear out the total. So
-  // that we can begin to track the updates for this new Surface.
-  pending_commit_state()->previous_surfaces_visual_update_duration +=
-      pending_commit_state()->visual_update_duration;
-  pending_commit_state()->visual_update_duration = base::TimeDelta();
-
   // If the parent sequence number has not advanced, then there is no need to
   // commit anything. This can occur when the child sequence number has
   // advanced. Which means that child has changed visual properites, and the
@@ -1657,8 +1657,10 @@ bool LayerTreeHost::PaintContent(const LayerList& update_layer_list) {
 }
 
 void LayerTreeHost::AddSurfaceRange(const viz::SurfaceRange& surface_range) {
-  if (++pending_commit_state()->surface_ranges[surface_range] == 1)
+  if (++pending_commit_state()->surface_ranges[surface_range] == 1) {
     pending_commit_state()->needs_surface_ranges_sync = true;
+    SetNeedsCommit();
+  }
 }
 
 void LayerTreeHost::RemoveSurfaceRange(const viz::SurfaceRange& surface_range) {
@@ -1669,6 +1671,7 @@ void LayerTreeHost::RemoveSurfaceRange(const viz::SurfaceRange& surface_range) {
   if (--iter->second <= 0) {
     pending_commit_state()->surface_ranges.erase(iter);
     pending_commit_state()->needs_surface_ranges_sync = true;
+    SetNeedsCommit();
   }
 }
 
@@ -2049,11 +2052,6 @@ LayerTreeHost::TakeViewTransitionCallbacksForTesting() {
 double LayerTreeHost::GetPercentDroppedFrames() const {
   DCHECK(IsMainThread());
   return proxy_->GetPercentDroppedFrames();
-}
-
-void LayerTreeHost::IncrementVisualUpdateDuration(
-    base::TimeDelta visual_update_duration) {
-  pending_commit_state()->visual_update_duration += visual_update_duration;
 }
 
 }  // namespace cc

@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "tst_qmltyperegistrar.h"
 #include <QtTest/qtest.h>
@@ -145,9 +145,9 @@ void tst_qmltyperegistrar::metaTypesRegistered()
 
     auto verifyMetaType = [](const char *name, const char *className) {
         const auto foundMetaType = QMetaType::fromName(name);
-        QVERIFY(foundMetaType.isValid());
+        QVERIFY2(foundMetaType.isValid(), name);
         QCOMPARE(foundMetaType.name(), name);
-        QVERIFY(foundMetaType.metaObject());
+        QVERIFY2(foundMetaType.metaObject(), name);
         QCOMPARE(foundMetaType.metaObject()->className(), className);
     };
 
@@ -356,6 +356,12 @@ void tst_qmltyperegistrar::addRemoveVersion()
     QCOMPARE(o->property("thing").toInt(), thingAccessible ? 24 : 0);
 }
 
+void tst_qmltyperegistrar::addInMinorVersion()
+{
+    QVERIFY(qmltypesData.contains("exports: [\"QmlTypeRegistrarTest/MinorVersioned 1.5\"]"));
+    QVERIFY(qmltypesData.contains("exports: [\"QmlTypeRegistrarTest/MinorVersioned 1.2\"]"));
+}
+
 #ifdef QT_QUICK_LIB
 void tst_qmltyperegistrar::foreignRevisionedProperty()
 {
@@ -398,23 +404,72 @@ void tst_qmltyperegistrar::duplicateExportWarnings()
     MetaTypesJsonProcessor processor(true);
     QVERIFY(processor.processTypes({ ":/duplicatedExports.json" }));
     processor.postProcessTypes();
-    QVector<QJsonObject> types = processor.types();
-    QVector<QJsonObject> typesforeign = processor.foreignTypes();
+    QVector<QCborMap> types = processor.types();
+    QVector<QCborMap> typesforeign = processor.foreignTypes();
     r.setTypes(types, typesforeign);
 
-    auto expectWarning = [](QString message) {
-        QTest::ignoreMessage(QtWarningMsg, qPrintable(message));
+    const auto expectWarning = [](const char *message) {
+        QTest::ignoreMessage(QtWarningMsg, message);
     };
-    expectWarning("Warning: ExportedQmlElement was registered multiple times by following Cpp "
-                  "classes:  ExportedQmlElement, ExportedQmlElement2 (added in 1.2), "
-                  "ExportedQmlElementDifferentVersion (added in 1.0) (removed in 1.7)");
-    expectWarning("Warning: SameNameSameExport was registered multiple times by following Cpp "
-                  "classes:  SameNameSameExport, SameNameSameExport2 (added in 1.2), "
-                  "SameNameSameExportDifferentVersion (added in 1.0)");
+    expectWarning("Warning: duplicatedExports.h:: ExportedQmlElement is registered multiple times "
+                  "by the following C++ classes: ExportedQmlElement, ExportedQmlElement2 "
+                  "(added in 1.2), ExportedQmlElementDifferentVersion (added in 1.0) "
+                  "(removed in 1.7)");
+    expectWarning("Warning: duplicatedExports.h:: SameNameSameExport is registered multiple times "
+                  "by the following C++ classes: SameNameSameExport, SameNameSameExport2 "
+                  "(added in 1.2), SameNameSameExportDifferentVersion (added in 1.0)");
 
     QString outputData;
     QTextStream output(&outputData, QIODeviceBase::ReadWrite);
-    r.write(output);
+    r.write(output, "tst_qmltyperegistrar_qmltyperegistrations.cpp");
+}
+
+void tst_qmltyperegistrar::consistencyWarnings()
+{
+    QmlTypeRegistrar r;
+    r.setModuleVersions(QTypeRevision::fromVersion(1, 1), {}, false);
+    QString moduleName = "tstmodule";
+    QString targetNamespace = "tstnamespace";
+    r.setModuleNameAndNamespace(moduleName, targetNamespace);
+
+    MetaTypesJsonProcessor processor(true);
+
+    QVERIFY(processor.processTypes({ ":/missingTypes.json" }));
+    processor.postProcessTypes();
+
+    const auto expectWarning = [](const char *message) {
+        QTest::ignoreMessage(QtWarningMsg, message);
+    };
+
+    expectWarning("Warning: tst_qmltyperegistrar.h:: NotQObject is used but cannot be found.");
+    expectWarning("Warning: tst_qmltyperegistrar.h:: NotQObject is used but cannot be found.");
+    expectWarning("Warning: tst_qmltyperegistrar.h:: Invisible is declared as foreign type, "
+                  "but cannot be found.");
+    expectWarning("Warning: tst_qmltyperegistrar.h:: NotQByteArray is used but cannot be found.");
+
+    processor.postProcessForeignTypes();
+
+    QVector<QCborMap> types = processor.types();
+    QVector<QCborMap> typesforeign = processor.foreignTypes();
+    r.setTypes(types, typesforeign);
+
+    QString outputData;
+    QTextStream output(&outputData, QIODeviceBase::ReadWrite);
+
+    expectWarning("Warning: tst_qmltyperegistrar.h:: AddedInLateVersion is trying to register "
+                  "property revisioned with future version 1.4 when module version is only 1.1");
+    expectWarning("Warning: tst_qmltyperegistrar.h:: ExcessiveVersion is trying to register "
+                  "property palette with future version 6.0 when module version is only 1.1");
+
+    r.write(output, "tst_qmltyperegistrar_qmltyperegistrations.cpp");
+
+    QTemporaryFile pluginTypes;
+    pluginTypes.open();
+
+    expectWarning("Warning: tst_qmltyperegistrar.h:: Refusing to generate non-lowercase name "
+                  "Invisible for unknown foreign type");
+
+    r.generatePluginTypes(pluginTypes.fileName());
 }
 
 void tst_qmltyperegistrar::clonedSignal()
@@ -536,13 +591,15 @@ void tst_qmltyperegistrar::uncreatable()
 #if QT_DEPRECATED_SINCE(6, 4)
     QTest::ignoreMessage(
                 QtWarningMsg,
-                "BadUncreatable is neither a QObject, nor default- and copy-constructible, "
-                "nor uncreatable. You should not use it as a QML type.");
+                "BadUncreatable is neither a default constructible QObject, nor a default- "
+                "and copy-constructible Q_GADGET, nor marked as uncreatable.\n"
+                "You should not use it as a QML type.");
     qmlRegisterTypesAndRevisions<BadUncreatable>("A", 1);
     QTest::ignoreMessage(
                 QtWarningMsg,
-                "BadUncreatableExtended is neither a QObject, nor default- and copy-constructible, "
-                "nor uncreatable. You should not use it as a QML type.");
+                "BadUncreatableExtended is neither a default constructible QObject, nor a default- "
+                "and copy-constructible Q_GADGET, nor marked as uncreatable.\n"
+                "You should not use it as a QML type.");
     qmlRegisterTypesAndRevisions<BadUncreatableExtended>("A", 1);
 #endif
 
@@ -611,6 +668,20 @@ void tst_qmltyperegistrar::constructibleValueType()
     })"));
 }
 
+void tst_qmltyperegistrar::structuredValueType()
+{
+    QVERIFY(qmltypesData.contains(
+    R"(Component {
+        file: "tst_qmltyperegistrar.h"
+        name: "Structured"
+        accessSemantics: "value"
+        exports: ["QmlTypeRegistrarTest/structured 1.0"]
+        isStructured: true
+        exportMetaObjectRevisions: [256]
+        Property { name: "i"; type: "int"; index: 0; isFinal: true }
+    })"));
+}
+
 void tst_qmltyperegistrar::anonymousAndUncreatable()
 {
     QVERIFY(qmltypesData.contains(
@@ -639,6 +710,41 @@ void tst_qmltyperegistrar::typedEnum()
         prototype: "QObject"
         exports: ["QmlTypeRegistrarTest/TypedEnum 1.0"]
         exportMetaObjectRevisions: [256]
+        Enum {
+            name: "UChar"
+            type: "quint8"
+            values: ["V0"]
+        }
+        Enum {
+            name: "Int8_T"
+            type: "qint8"
+            values: ["V1"]
+        }
+        Enum {
+            name: "UInt8_T"
+            type: "quint8"
+            values: ["V2"]
+        }
+        Enum {
+            name: "Int16_T"
+            type: "short"
+            values: ["V3"]
+        }
+        Enum {
+            name: "UInt16_T"
+            type: "ushort"
+            values: ["V4"]
+        }
+        Enum {
+            name: "Int32_T"
+            type: "int"
+            values: ["V5"]
+        }
+        Enum {
+            name: "UInt32_T"
+            type: "uint"
+            values: ["V6"]
+        }
         Enum {
             name: "S"
             type: "short"
@@ -780,6 +886,107 @@ void tst_qmltyperegistrar::foreignNamespaceFromGadget()
         QScopedPointer<QObject> o(c.create());
         QCOMPARE(o->objectName(), QStringLiteral("b1"));
     }
+}
+
+void tst_qmltyperegistrar::nameExplosion_data()
+{
+    QTest::addColumn<QByteArray>("qml");
+    QTest::addRow("Name1") << QByteArray("import QmlTypeRegistrarTest\nName1{}");
+    QTest::addRow("Name2") << QByteArray("import QmlTypeRegistrarTest\nName2{}");
+    QTest::addRow("NameExplosion") << QByteArray("import QmlTypeRegistrarTest\nNameExplosion{}");
+}
+
+void tst_qmltyperegistrar::nameExplosion()
+{
+    QVERIFY(qmltypesData.contains(R"(Component {
+        file: "tst_qmltyperegistrar.h"
+        name: "NameExplosion"
+        accessSemantics: "reference"
+        prototype: "QObject"
+        exports: [
+            "QmlTypeRegistrarTest/Name1 1.0",
+            "QmlTypeRegistrarTest/Name2 1.0",
+            "QmlTypeRegistrarTest/NameExplosion 1.0"
+        ]
+        exportMetaObjectRevisions: [256]
+    })"));
+
+    QFETCH(QByteArray, qml);
+
+    QQmlEngine engine;
+    QQmlComponent c(&engine);
+
+    c.setData(qml, QUrl());
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(!o.isNull());
+}
+
+void tst_qmltyperegistrar::javaScriptExtension()
+{
+    QVERIFY(qmltypesData.contains(R"(Component {
+        file: "tst_qmltyperegistrar.h"
+        name: "JavaScriptExtension"
+        accessSemantics: "reference"
+        prototype: "QObject"
+        extension: "SymbolPrototype"
+        extensionIsJavaScript: true
+        exports: ["QmlTypeRegistrarTest/JavaScriptExtension 1.0"]
+        exportMetaObjectRevisions: [256]
+    })"));
+}
+
+void tst_qmltyperegistrar::relatedAddedInVersion()
+{
+    QVERIFY(qmltypesData.contains(R"(Component {
+        file: "tst_qmltyperegistrar.h"
+        name: "AddedIn1_0"
+        accessSemantics: "reference"
+        prototype: "AddedIn1_5"
+        exports: [
+            "QmlTypeRegistrarTest/AddedIn1_0 1.0",
+            "QmlTypeRegistrarTest/AddedIn1_0 1.5"
+        ]
+        exportMetaObjectRevisions: [256, 261]
+    })"));
+}
+
+void tst_qmltyperegistrar::longNumberTypes()
+{
+    QVERIFY(qmltypesData.contains(R"(Component {
+        file: "tst_qmltyperegistrar.h"
+        name: "LongNumberTypes"
+        accessSemantics: "reference"
+        prototype: "QObject"
+        exports: ["QmlTypeRegistrarTest/LongNumberTypes 1.0"]
+        exportMetaObjectRevisions: [256]
+        Property { name: "a"; type: "qlonglong"; index: 0 }
+        Property { name: "b"; type: "qlonglong"; index: 1 }
+        Property { name: "c"; type: "qulonglong"; index: 2 }
+        Property { name: "d"; type: "qulonglong"; index: 3 }
+    })"));
+}
+
+void tst_qmltyperegistrar::enumList() {
+    QVERIFY(qmltypesData.contains(R"(Component {
+        file: "tst_qmltyperegistrar.h"
+        name: "QList<NetworkManager::NM>"
+        accessSemantics: "sequence"
+        valueType: "NetworkManager::NM"
+    })"));
+}
+
+void tst_qmltyperegistrar::constReturnType()
+{
+    QVERIFY(qmltypesData.contains(R"(Component {
+        file: "tst_qmltyperegistrar.h"
+        name: "ConstInvokable"
+        accessSemantics: "reference"
+        prototype: "QObject"
+        exports: ["QmlTypeRegistrarTest/ConstInvokable 1.0"]
+        exportMetaObjectRevisions: [256]
+        Method { name: "getObject"; type: "QObject"; isPointer: true; isConstant: true }
+    })"));
 }
 
 QTEST_MAIN(tst_qmltyperegistrar)

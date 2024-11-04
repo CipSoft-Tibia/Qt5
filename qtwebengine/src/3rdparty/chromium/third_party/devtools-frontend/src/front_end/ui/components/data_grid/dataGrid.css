@@ -40,17 +40,33 @@ thead tr {
 }
 
 tbody tr {
-  background-color: var(--override-data-grid-row-background-color, --color-background);
+  background-color: var(--override-data-grid-row-background-color, --sys-color-surface);
+}
+
+tbody tr:nth-child(odd) {
+  background-color: var(--sys-color-surface1);
+}
+
+tbody tr:hover:not(.selected) {
+  background-color: var(--sys-color-state-hover-on-subtle);
 }
 
 tbody tr.selected {
-  background-color: var(--color-background-elevation-1);
+  background-color: var(--sys-color-neutral-container);
+}
+
+tbody tr.selected:focus-within {
+  background-color: var(--sys-color-tonal-container);
+}
+
+.wrapping-container.striped tr:nth-child(odd):not(.selected):not(.padding-row) {
+  background-color: var(--sys-color-surface1);
 }
 
 td,
 th {
   padding: 1px 4px;
-  border-left: 1px solid var(--color-details-hairline);
+  border-left: 1px solid var(--sys-color-divider);
   color: var(--color-text-primary);
   line-height: var(--table-row-height);
   height: var(--table-row-height);
@@ -64,20 +80,20 @@ th {
 th {
   font-weight: normal;
   text-align: left;
-  border-bottom: 1px solid var(--color-details-hairline);
+  border-bottom: 1px solid var(--sys-color-divider);
   position: sticky;
   top: 0;
   z-index: 2;
-  background-color: var(--color-background-elevation-1);
+  background-color: var(--sys-color-surface1);
 }
 
 td:focus,
 th:focus {
-  outline: var(--color-primary) auto 1px;
+  outline: var(--color-primary-old) auto 1px;
 }
 
 th:hover.sortable {
-  background: var(--color-background-elevation-0);
+  background-color: var(--sys-color-surface2);
 }
 
 .cell-resize-handle {

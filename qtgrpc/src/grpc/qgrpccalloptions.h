@@ -4,7 +4,7 @@
 #ifndef QGRPCALLOPTIONS_H
 #define QGRPCALLOPTIONS_H
 
-#include <QtCore/QUrl>
+#include <QtCore/qurl.h>
 #include <QtGrpc/qgrpcmetadata.h>
 #include <QtGrpc/qtgrpcglobal.h>
 
@@ -26,12 +26,10 @@ public:
     QGrpcCallOptions &operator=(const QGrpcCallOptions &other);
 
     QGrpcCallOptions &withDeadline(std::chrono::milliseconds deadline);
-    QGrpcCallOptions &withMaxRetryAttempts(qint64 maxRetryAttempts);
     QGrpcCallOptions &withMetadata(const QGrpcMetadata &metadata);
 
-    std::optional<std::chrono::milliseconds> deadline() const;
-    std::optional<qint64> maxRetryAttempts() const;
-    QGrpcMetadata metadata() const;
+    [[nodiscard]] std::optional<std::chrono::milliseconds> deadline() const noexcept;
+    [[nodiscard]] QGrpcMetadata metadata() const;
 
 private:
     std::unique_ptr<QGrpcCallOptionsPrivate> dPtr;

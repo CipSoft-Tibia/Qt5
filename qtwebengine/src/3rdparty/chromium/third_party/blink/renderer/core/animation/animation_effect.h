@@ -113,7 +113,7 @@ class CORE_EXPORT AnimationEffect : public ScriptWrappable {
     EnsureNormalizedTiming();
     return normalized_.value();
   }
-  void InvalidateNormalizedTiming() { normalized_.reset(); }
+  void InvalidateNormalizedTiming() const { normalized_.reset(); }
 
   void UpdateSpecifiedTiming(const Timing&);
   void SetIgnoreCssTimingProperties();
@@ -151,7 +151,6 @@ class CORE_EXPORT AnimationEffect : public ScriptWrappable {
   // it will (if necessary) recalculate timings and (if necessary) call
   // UpdateChildrenAndEffects.
   void UpdateInheritedTime(absl::optional<AnimationTimeDelta> inherited_time,
-                           bool at_progress_timeline_boundary,
                            bool is_idle,
                            double inherited_playback_rate,
                            TimingUpdateReason) const;
@@ -168,15 +167,7 @@ class CORE_EXPORT AnimationEffect : public ScriptWrappable {
   // In web-animations-1, auto is treated as "the value zero for the purpose of
   // timing model calculations and for the result of the duration member
   // returned from getComputedTiming()".
-  virtual AnimationTimeDelta IntrinsicIterationDuration() const {
-    return AnimationTimeDelta();
-  }
-
-  // Converts timeline offsets to start and end delays in time units based on
-  // the timeline duration. In the event that the timeline is not an instance
-  // of a view timeline, the delays are zero.
-  using TimeDelayPair = std::pair<AnimationTimeDelta, AnimationTimeDelta>;
-  TimeDelayPair ComputeEffectiveAnimationDelays() const;
+  virtual AnimationTimeDelta IntrinsicIterationDuration() const;
 
   virtual AnimationTimeDelta CalculateTimeToEffectChange(
       bool forwards,
@@ -196,7 +187,6 @@ class CORE_EXPORT AnimationEffect : public ScriptWrappable {
   mutable absl::optional<Timing::NormalizedTiming> normalized_;
   mutable bool needs_update_;
   mutable absl::optional<AnimationTimeDelta> last_update_time_;
-  mutable bool last_at_progress_timeline_boundary_ = false;
   mutable bool last_is_idle_ = false;
   AnimationTimeDelta cancel_time_;
   const Timing::CalculatedTiming& EnsureCalculated() const;

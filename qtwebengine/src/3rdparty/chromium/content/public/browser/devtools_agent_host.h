@@ -36,6 +36,7 @@ namespace content {
 
 class BrowserContext;
 class DevToolsExternalAgentProxyDelegate;
+class MojomDevToolsAgentHostDelegate;
 class DevToolsSocketFactory;
 class RenderFrameHost;
 class WebContents;
@@ -52,10 +53,16 @@ class CONTENT_EXPORT DevToolsAgentHost
   static const char kTypeDedicatedWorker[];
   static const char kTypeSharedWorker[];
   static const char kTypeServiceWorker[];
+  static const char kTypeSharedStorageWorklet[];
   static const char kTypeBrowser[];
   static const char kTypeGuest[];
   static const char kTypeOther[];
   static const char kTypeAuctionWorklet[];
+  static const char kTypeAssistiveTechnology[];
+  // File descriptor used by DevTools remote debugging pipe handler
+  // to read and write protocol messages.
+  static constexpr int kReadFD = 3;
+  static constexpr int kWriteFD = 4;
 
   // Latest DevTools protocol version supported.
   static std::string GetProtocolVersion();
@@ -74,6 +81,7 @@ class CONTENT_EXPORT DevToolsAgentHost
   // Similar to the above, but returns a DevToolsAgentHost representing 'tab'
   // target. Unlike the one for RenderFrame, this will remain the same through
   // all possible transitions of underlying frame trees.
+  static scoped_refptr<DevToolsAgentHost> GetForTab(WebContents* web_contents);
   static scoped_refptr<DevToolsAgentHost> GetOrCreateForTab(
       WebContents* web_contents);
 
@@ -94,6 +102,13 @@ class CONTENT_EXPORT DevToolsAgentHost
   static scoped_refptr<DevToolsAgentHost> Forward(
       const std::string& id,
       std::unique_ptr<DevToolsExternalAgentProxyDelegate> delegate);
+
+  // Creates DevToolsAgentHost that communicates to the target using mojom, and
+  // gets details from |delegate|. |delegate| ownership is passed to the created
+  // agent host.
+  static scoped_refptr<DevToolsAgentHost> CreateForMojomDelegate(
+      const std::string& id,
+      std::unique_ptr<MojomDevToolsAgentHostDelegate> delegate);
 
   using CreateServerSocketCallback =
       base::RepeatingCallback<std::unique_ptr<net::ServerSocket>(std::string*)>;
@@ -167,6 +182,12 @@ class CONTENT_EXPORT DevToolsAgentHost
   // Starts inspecting element at position (|x|, |y|) in the frame
   // represented by |frame_host|.
   virtual void InspectElement(RenderFrameHost* frame_host, int x, int y) = 0;
+
+  using GetUniqueFormControlIdCallback = base::OnceCallback<void(uint64_t)>;
+  // Resolves a backendNodeId to a form control ID.
+  virtual void GetUniqueFormControlId(
+      int node_id,
+      GetUniqueFormControlIdCallback callback) = 0;
 
   // Returns the unique id of the agent.
   virtual std::string GetId() = 0;

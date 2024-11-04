@@ -128,6 +128,7 @@ public:
 protected:
     HWND parentHwnd() const { return GetAncestor(handle(), GA_PARENT); }
     bool isTopLevel_sys() const;
+    inline bool hasMaximumSize() const;
     QRect frameGeometry_sys() const;
     QRect geometry_sys() const;
     void setGeometry_sys(const QRect &rect) const;
@@ -346,6 +347,8 @@ public:
     void setSavedDpi(int dpi) { m_savedDpi = dpi; }
     int savedDpi() const { return m_savedDpi; }
     qreal dpiRelativeScale(const UINT dpi) const;
+
+    bool isFrameless() const { return m_data.flags.testFlag(Qt::FramelessWindowHint); }
 
 private:
     inline void show_sys() const;

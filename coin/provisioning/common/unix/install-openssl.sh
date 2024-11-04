@@ -13,7 +13,7 @@ source "${BASH_SOURCE%/*}/../unix/DownloadURL.sh"
 source "${BASH_SOURCE%/*}/../unix/SetEnvVar.sh"
 version="3.0.7"
 officialUrl="https://www.openssl.org/source/openssl-$version.tar.gz"
-cachedUrl="http://ci-files01-hki.intra.qt.io/input/openssl/openssl-$version.tar.gz"
+cachedUrl="http://ci-files01-hki.ci.qt.io/input/openssl/openssl-$version.tar.gz"
 targetFile="/tmp/openssl-$version.tar.gz"
 sha="f20736d6aae36bcbfa9aba0d358c71601833bf27"
 opensslHome="${HOME}/openssl-${version}"
@@ -39,8 +39,7 @@ if [[ "$os" == "linux" ]]; then
     else
         SetEnvVar "LD_LIBRARY_PATH" "\"$opensslHome/lib64:$LD_LIBRARY_PATH\""
     fi
-
-elif [ "$os" == "macos" -o "$os" == "macos-universal" ]; then
+elif [ "$os" == "macos" ] || [ "$os" == "macos-universal" ]; then
     # Below target location has been hard coded into Coin.
     # QTQAINFRA-1195
     echo "prefix=$prefix"
@@ -50,13 +49,13 @@ elif [ "$os" == "macos" -o "$os" == "macos-universal" ]; then
     openssl_install_dir="$prefix/openssl-$version"
     opensslTargetLocation="$prefix/opt/openssl"
 
-    commonFlags="no-tests shared no-ssl3-method enable-ec_nistp_64_gcc_128 -Wa,--noexecstack"
+    commonFlags=(no-tests shared no-ssl3-method enable-ec_nistp_64_gcc_128 "-Wa,--noexecstack")
 
     export MACOSX_DEPLOYMENT_TARGET=11
 
     opensslBuild="${opensslHome}-build"
     opensslDestdir="${opensslHome}-destdir"
-    mkdir -p $opensslBuild
+    mkdir -p "$opensslBuild"
 
     if [ "$os" == "macos-universal" ]; then
         archs="x86_64 arm64"
@@ -65,10 +64,10 @@ elif [ "$os" == "macos" -o "$os" == "macos-universal" ]; then
     fi
 
     for arch in $archs; do
-        cd $opensslBuild
+        cd "$opensslBuild"
         echo "Configuring OpenSSL for $arch"
-        mkdir -p $arch && cd $arch
-        $opensslSource/Configure --prefix=$openssl_install_dir $commonFlags darwin64-$arch-cc
+        mkdir -p "$arch" && cd "$arch"
+        "$opensslSource/Configure" --prefix="$openssl_install_dir" "${commonFlags[@]}" "darwin64-$arch-cc"
 
         echo "Building OpenSSL for $arch in $PWD"
         make >> /tmp/openssl_make.log 2>&1
@@ -80,19 +79,19 @@ elif [ "$os" == "macos" -o "$os" == "macos-universal" ]; then
             destdir=""
         fi
         # shellcheck disable=SC2024
-        sudo make install_sw install_ssldirs DESTDIR=$destdir >> /tmp/openssl_make_install.log 2>&1
+        sudo make install_sw install_ssldirs DESTDIR="$destdir" >> /tmp/openssl_make_install.log 2>&1
     done
 
     if [ "$os" == "macos-universal" ]; then
         echo "Making universal OpenSSL package"
         # shellcheck disable=SC2024
         sudo rm -Rf "$openssl_install_dir"
-        sudo ${SCRIPT_DIR}/../macos/makeuniversal.sh "$opensslDestdir/x86_64" $opensslDestdir/arm64
+        sudo "${SCRIPT_DIR}/../macos/makeuniversal.sh" "$opensslDestdir/x86_64" "$opensslDestdir/arm64"
     fi
 
     path=$(echo "$opensslTargetLocation" | sed -E 's/(.*)\/.*$/\1/')
     sudo mkdir -p "$path"
-    sudo ln -s $openssl_install_dir $opensslTargetLocation
+    sudo ln -s "$openssl_install_dir" "$opensslTargetLocation"
 
     SetEnvVar "PATH" "\"$opensslTargetLocation/bin:\$PATH\""
     SetEnvVar "MANPATH" "\"$opensslTargetLocation/share/man:\$MANPATH\""
@@ -101,8 +100,8 @@ elif [ "$os" == "macos" -o "$os" == "macos-universal" ]; then
     SetEnvVar "OPENSSL_INCLUDE" "\"$openssl_install_dir/include\""
     SetEnvVar "OPENSSL_LIB" "\"$openssl_install_dir/lib\""
 
-    security find-certificate -a -p /Library/Keychains/System.keychain | sudo tee -a $opensslTargetLocation/ssl/cert.pem > /dev/null
-    security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain | sudo tee -a $opensslTargetLocation/ssl/cert.pem > /dev/null
+    security find-certificate -a -p /Library/Keychains/System.keychain | sudo tee -a "$opensslTargetLocation/ssl/cert.pem" > /dev/null
+    security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain | sudo tee -a "$opensslTargetLocation/ssl/cert.pem" > /dev/null
 fi
 
 

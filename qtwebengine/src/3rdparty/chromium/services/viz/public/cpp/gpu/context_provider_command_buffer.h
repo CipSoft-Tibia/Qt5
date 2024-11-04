@@ -56,7 +56,6 @@ class WebGPUInterface;
 
 namespace skia_bindings {
 class GrContextForGLES2Interface;
-class GrContextForWebGPUInterface;
 }
 
 namespace viz {
@@ -71,7 +70,6 @@ class ContextProviderCommandBuffer
  public:
   ContextProviderCommandBuffer(
       scoped_refptr<gpu::GpuChannelHost> channel,
-      gpu::GpuMemoryBufferManager* gpu_memory_buffer_manager,
       int32_t stream_id,
       gpu::SchedulingPriority stream_priority,
       gpu::SurfaceHandle surface_handle,
@@ -86,9 +84,6 @@ class ContextProviderCommandBuffer
 
   // Virtual for testing.
   virtual gpu::CommandBufferProxyImpl* GetCommandBufferProxy();
-  // Gives the GL internal format that should be used for calling CopyTexImage2D
-  // on the default framebuffer.
-  uint32_t GetCopyTextureInternalFormat();
 
   // ContextProvider / RasterContextProvider implementation.
   void AddRef() const override;
@@ -105,6 +100,7 @@ class ContextProviderCommandBuffer
   const gpu::GpuFeatureInfo& GetGpuFeatureInfo() const override;
   void AddObserver(ContextLostObserver* obs) override;
   void RemoveObserver(ContextLostObserver* obs) override;
+  unsigned int GetGrGLTextureFormat(SharedImageFormat format) const override;
 
   gpu::webgpu::WebGPUInterface* WebGPUInterface();
 
@@ -153,8 +149,6 @@ class ContextProviderCommandBuffer
   const command_buffer_metrics::ContextType context_type_;
 
   scoped_refptr<gpu::GpuChannelHost> channel_;
-  raw_ptr<gpu::GpuMemoryBufferManager, DanglingUntriaged>
-      gpu_memory_buffer_manager_;
   scoped_refptr<base::SequencedTaskRunner> default_task_runner_;
 
   // |shared_image_interface_| must be torn down after |command_buffer_| to
@@ -200,10 +194,7 @@ class ContextProviderCommandBuffer
   //////////////////////////////////////////////////////////////////////////////
 
   std::unique_ptr<skia_bindings::GrContextForGLES2Interface> gr_context_;
-#if BUILDFLAG(SKIA_USE_DAWN)
-  std::unique_ptr<skia_bindings::GrContextForWebGPUInterface>
-      webgpu_gr_context_;
-#endif
+
   std::unique_ptr<ContextCacheController> cache_controller_;
 
   base::ObserverList<ContextLostObserver>::Unchecked observers_;

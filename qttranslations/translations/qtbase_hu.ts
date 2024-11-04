@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="hu_HU">
+    <extra-po-header-language>hu</extra-po-header-language>
+    <extra-po-header-language_team>Hungarian &lt;kde-l10n-hu@kde.org&gt;</extra-po-header-language_team>
+    <extra-po-header-last_translator>Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header-last_translator>
+    <extra-po-header-po_revision_date>2024-02-07 22:24+0100</extra-po-header-po_revision_date>
+    <extra-po-header-project_id_version></extra-po-header-project_id_version>
+    <extra-po-header-x_generator>Lokalize 23.08.4</extra-po-header-x_generator>
+    <extra-po-header_comment># SPDX-FileCopyrightText: 2024 Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header_comment>
+    <extra-po-headers>MIME-Version,Content-Type,Content-Transfer-Encoding,Plural-Forms,X-Language,X-Qt-Contexts,Last-Translator,PO-Revision-Date,Project-Id-Version,Language-Team,Language,X-Generator</extra-po-headers>
 <context>
     <name>CloseButton</name>
     <message>
@@ -1809,6 +1817,10 @@ Mindenképp törölni szeretné?</translation>
     <message>
         <source>&apos;%1&apos; is not a valid ELF object (%2)</source>
         <translation>A(z) „%1” nem érvényes ELF objektum (%2)</translation>
+    </message>
+    <message>
+        <source>unimplemented: PN_XNUM program headers</source>
+        <translation>nem megvalósított: PN_XNUM programfejlécek</translation>
     </message>
     <message>
         <source>program header table extends past the end of the file</source>
@@ -6573,6 +6585,10 @@ Role of an accessible object</extracomment>
         <translation>Gyorsítótár</translation>
     </message>
     <message>
+        <source>State</source>
+        <translation>Állapot</translation>
+    </message>
+    <message>
         <source>Shared Data</source>
         <translation>Megosztott adatok</translation>
     </message>
@@ -6591,6 +6607,10 @@ Role of an accessible object</extracomment>
     <message>
         <source>Shared Cache</source>
         <translation>Megosztott gyorsítótár</translation>
+    </message>
+    <message>
+        <source>Shared State</source>
+        <translation>Megosztott állapot</translation>
     </message>
     <message>
         <source>Download</source>

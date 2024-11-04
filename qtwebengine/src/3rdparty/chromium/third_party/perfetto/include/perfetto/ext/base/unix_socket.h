@@ -22,6 +22,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "perfetto/base/build_config.h"
 #include "perfetto/base/export.h"
@@ -59,9 +60,9 @@ class TaskRunner;
 
 // Use arbitrarily high values to avoid that some code accidentally ends up
 // assuming that these enum values match the sysroot's SOCK_xxx defines rather
-// than using GetSockType() / GetSockFamily().
+// than using MkSockType() / MkSockFamily().
 enum class SockType { kStream = 100, kDgram, kSeqPacket };
-enum class SockFamily { kUnix = 200, kInet, kInet6 };
+enum class SockFamily { kUnspec = 0, kUnix = 200, kInet, kInet6, kVsock };
 
 // Controls the getsockopt(SO_PEERCRED) behavior, which allows to obtain the
 // peer credentials.
@@ -80,6 +81,23 @@ enum class SockPeerCredMode {
   kDefault = kReadOnConnect,
 #endif
 };
+
+// Returns the socket family from the full addres that perfetto uses.
+// Addr can be:
+// - /path/to/socket : for linked AF_UNIX sockets.
+// - @abstract_name  : for abstract AF_UNIX sockets.
+// - 1.2.3.4:8080    : for Inet sockets.
+// - [::1]:8080      : for Inet6 sockets.
+// - vsock://-1:3000 : for VM sockets.
+SockFamily GetSockFamily(const char* addr);
+
+// Returns whether inter-process shared memory is supported for the socket.
+inline bool SockShmemSupported(SockFamily sock_family) {
+  return sock_family == SockFamily::kUnix;
+}
+inline bool SockShmemSupported(const char* addr) {
+  return SockShmemSupported(GetSockFamily(addr));
+}
 
 // UnixSocketRaw is a basic wrapper around sockets. It exposes wrapper
 // methods that take care of most common pitfalls (e.g., marking fd as
@@ -117,6 +135,7 @@ class UnixSocketRaw {
   void SetBlocking(bool);
   void DcheckIsBlocking(bool expected) const;  // No-op on release and Win.
   void SetRetainOnExec(bool retain);
+  std::string GetSockAddr() const;
   SockType type() const { return type_; }
   SockFamily family() const { return family_; }
   SocketHandle fd() const { return *fd_; }
@@ -322,6 +341,9 @@ class PERFETTO_EXPORT_COMPONENT UnixSocket {
   void SetRxTimeout(uint32_t timeout_ms) {
     PERFETTO_CHECK(sock_raw_.SetRxTimeout(timeout_ms));
   }
+
+  std::string GetSockAddr() const { return sock_raw_.GetSockAddr(); }
+
   // Returns true is the message was queued, false if there was no space in the
   // output buffer, in which case the client should retry or give up.
   // If any other error happens the socket will be shutdown and
@@ -361,6 +383,7 @@ class PERFETTO_EXPORT_COMPONENT UnixSocket {
   bool is_connected() const { return state_ == State::kConnected; }
   bool is_listening() const { return state_ == State::kListening; }
   SocketHandle fd() const { return sock_raw_.fd(); }
+  SockFamily family() const { return sock_raw_.family(); }
 
   // User ID of the peer, as returned by the kernel. If the client disconnects
   // and the socket goes into the kDisconnected state, it retains the uid of

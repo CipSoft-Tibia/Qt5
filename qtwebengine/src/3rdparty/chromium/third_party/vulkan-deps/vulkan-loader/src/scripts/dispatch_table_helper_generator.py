@@ -103,7 +103,7 @@ class DispatchTableHelperOutputGenerator(OutputGenerator):
                 write(s, file=self.outFile)
         # File Comment
         file_comment = '// *** THIS FILE IS GENERATED - DO NOT EDIT ***\n'
-        file_comment += '// See dispatch_helper_generator.py for modifications\n'
+        file_comment += '// See dispatch_table_helper_generator.py for modifications\n'
         write(file_comment, file=self.outFile)
         # Copyright Notice
         copyright =  '/*\n'
@@ -132,7 +132,7 @@ class DispatchTableHelperOutputGenerator(OutputGenerator):
         preamble += '#include <vulkan/vulkan.h>\n'
         preamble += '#include <vulkan/vk_layer.h>\n'
         preamble += '#include <string.h>\n'
-        preamble += '#include "vk_layer_dispatch_table.h"\n'
+        preamble += '#include "loader/generated/vk_layer_dispatch_table.h"\n'
 
         write(copyright, file=self.outFile)
         write(preamble, file=self.outFile)
@@ -183,27 +183,6 @@ class DispatchTableHelperOutputGenerator(OutputGenerator):
             return
         if handle_type != 'VkInstance' and handle_type != 'VkPhysicalDevice' and name != 'vkGetInstanceProcAddr':
             self.device_dispatch_list.append((name, self.featureExtraProtect))
-            if "VK_VERSION" not in self.featureName and self.extension_type == 'device':
-                self.device_extension_list.append(name)
-                # Build up stub function
-                decl = self.makeCDecls(cmdinfo.elem)[1]
-                return_type = cmdinfo.elem.find('proto/type').text
-                return_statement = ""  # default type is void, so no return type
-                try:
-                    return_statement = 'return ' + return_type_table[return_type] + ';'
-                except KeyError:
-                    if return_type != "void":
-                        raise AssertionError("return_type_table does not contain all possible types. Add an entry for `" + return_type + "`.")
-                decl = decl.split('*PFN_vk')[1]
-                decl = decl.replace(')(', '(')
-                decl = 'static VKAPI_ATTR ' + return_type + ' VKAPI_CALL Stub' + decl
-                func_body = ' { ' + return_statement + ' }'
-                decl = decl.replace (';', func_body)
-                if self.featureExtraProtect is not None:
-                    self.dev_ext_stub_list.append('#ifdef %s' % self.featureExtraProtect)
-                self.dev_ext_stub_list.append(decl)
-                if self.featureExtraProtect is not None:
-                    self.dev_ext_stub_list.append('#endif // %s' % self.featureExtraProtect)
         else:
             self.instance_dispatch_list.append((name, self.featureExtraProtect))
         return
@@ -240,7 +219,7 @@ class DispatchTableHelperOutputGenerator(OutputGenerator):
             base_name = item[0][2:]
 
             if item[1] is not None:
-                table += '#ifdef %s\n' % item[1]
+                table += '#if defined(%s)\n' % item[1]
 
             # If we're looking for the proc we are passing in, just point the table to it.  This fixes the issue where
             # a layer overrides the function name for the loader.
@@ -250,9 +229,6 @@ class DispatchTableHelperOutputGenerator(OutputGenerator):
                 table += '    table->GetInstanceProcAddr = gpa;\n'
             else:
                 table += '    table->%s = (PFN_%s) gpa(%s, "%s");\n' % (base_name, item[0], table_type, item[0])
-            if item[0] in self.device_extension_list:
-                stub_check = '    if (table->%s == nullptr) { table->%s = (PFN_%s)Stub%s; }\n' % (base_name, base_name, item[0], base_name)
-                table += stub_check
             if item[1] is not None:
                 table += '#endif // %s\n' % item[1]
 

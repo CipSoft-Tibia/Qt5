@@ -10,6 +10,7 @@
 #include "libANGLE/renderer/vulkan/vk_utils.h"
 
 #include "libANGLE/Context.h"
+#include "libANGLE/Display.h"
 #include "libANGLE/renderer/vulkan/BufferVk.h"
 #include "libANGLE/renderer/vulkan/ContextVk.h"
 #include "libANGLE/renderer/vulkan/DisplayVk.h"
@@ -20,11 +21,13 @@
 
 namespace angle
 {
-egl::Error ToEGL(Result result, rx::DisplayVk *displayVk, EGLint errorCode)
+egl::Error ToEGL(Result result, EGLint errorCode)
 {
     if (result != angle::Result::Continue)
     {
-        return displayVk->getEGLError(errorCode);
+        egl::Error error = std::move(*egl::Display::GetCurrentThreadErrorScratchSpace());
+        error.setCode(errorCode);
+        return error;
     }
     else
     {
@@ -105,23 +108,38 @@ angle::Result FindAndAllocateCompatibleMemory(vk::Context *context,
     RendererVk *renderer = context->getRenderer();
     renderer->getMemoryAllocationTracker()->setPendingMemoryAlloc(
         memoryAllocationType, allocInfo.allocationSize, *memoryTypeIndexOut);
-    ANGLE_VK_TRY(context, deviceMemoryOut->allocate(device, allocInfo));
+
+    // If the initial allocation fails, it is possible to retry the allocation after cleaning the
+    // garbage.
+    VkResult result;
+    bool anyBatchCleaned             = false;
+    uint32_t batchesWaitedAndCleaned = 0;
+
+    do
+    {
+        result = deviceMemoryOut->allocate(device, allocInfo);
+        if (result != VK_SUCCESS)
+        {
+            ANGLE_TRY(renderer->finishOneCommandBatchAndCleanup(context, &anyBatchCleaned));
+
+            if (anyBatchCleaned)
+            {
+                batchesWaitedAndCleaned++;
+            }
+        }
+    } while (result != VK_SUCCESS && anyBatchCleaned);
+
+    if (batchesWaitedAndCleaned > 0)
+    {
+        INFO() << "Initial allocation failed. Waited for " << batchesWaitedAndCleaned
+               << " commands to finish and free garbage | Allocation result: "
+               << ((result == VK_SUCCESS) ? "SUCCESS" : "FAIL");
+    }
+
+    ANGLE_VK_CHECK(context, result == VK_SUCCESS, result);
 
     renderer->onMemoryAlloc(memoryAllocationType, allocInfo.allocationSize, *memoryTypeIndexOut,
                             deviceMemoryOut->getHandle());
-
-    // Wipe memory to an invalid value when the 'allocateNonZeroMemory' feature is enabled. The
-    // invalid values ensures our testing doesn't assume zero-initialized memory.
-    if (renderer->getFeatures().allocateNonZeroMemory.enabled)
-    {
-        if ((*memoryPropertyFlagsOut & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
-        {
-            // Can map the memory.
-            ANGLE_TRY(vk::InitMappableDeviceMemory(context, deviceMemoryOut,
-                                                   memoryRequirements.size, kNonZeroInitValue,
-                                                   *memoryPropertyFlagsOut));
-        }
-    }
 
     return angle::Result::Continue;
 }
@@ -233,41 +251,6 @@ const char *kVkValidationLayerNames[]           = {
     "VK_LAYER_LUNARG_object_tracker", "VK_LAYER_LUNARG_core_validation",
     "VK_LAYER_GOOGLE_unique_objects"};
 
-bool HasValidationLayer(const std::vector<VkLayerProperties> &layerProps, const char *layerName)
-{
-    for (const auto &layerProp : layerProps)
-    {
-        if (std::string(layerProp.layerName) == layerName)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-bool HasKhronosValidationLayer(const std::vector<VkLayerProperties> &layerProps)
-{
-    return HasValidationLayer(layerProps, kVkKhronosValidationLayerName);
-}
-
-bool HasStandardValidationLayer(const std::vector<VkLayerProperties> &layerProps)
-{
-    return HasValidationLayer(layerProps, kVkStandardValidationLayerName);
-}
-
-bool HasValidationLayers(const std::vector<VkLayerProperties> &layerProps)
-{
-    for (const char *layerName : kVkValidationLayerNames)
-    {
-        if (!HasValidationLayer(layerProps, layerName))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
 }  // anonymous namespace
 
 const char *VulkanResultString(VkResult result)
@@ -343,23 +326,35 @@ bool GetAvailableValidationLayers(const std::vector<VkLayerProperties> &layerPro
                                   bool mustHaveLayers,
                                   VulkanLayerVector *enabledLayerNames)
 {
-    // Favor unified Khronos layer, but fallback to standard validation
-    if (HasKhronosValidationLayer(layerProps))
+
+    ASSERT(enabledLayerNames);
+    for (const auto &layerProp : layerProps)
     {
-        enabledLayerNames->push_back(kVkKhronosValidationLayerName);
-    }
-    else if (HasStandardValidationLayer(layerProps))
-    {
-        enabledLayerNames->push_back(kVkStandardValidationLayerName);
-    }
-    else if (HasValidationLayers(layerProps))
-    {
-        for (const char *layerName : kVkValidationLayerNames)
+        std::string layerPropLayerName = std::string(layerProp.layerName);
+
+        // Favor unified Khronos layer, but fallback to standard validation
+        if (layerPropLayerName == kVkKhronosValidationLayerName)
         {
-            enabledLayerNames->push_back(layerName);
+            enabledLayerNames->push_back(kVkKhronosValidationLayerName);
+            continue;
+        }
+        else if (layerPropLayerName == kVkStandardValidationLayerName)
+        {
+            enabledLayerNames->push_back(kVkStandardValidationLayerName);
+            continue;
+        }
+
+        for (const char *validationLayerName : kVkValidationLayerNames)
+        {
+            if (layerPropLayerName == validationLayerName)
+            {
+                enabledLayerNames->push_back(validationLayerName);
+                break;
+            }
         }
     }
-    else
+
+    if (enabledLayerNames->size() == 0)
     {
         // Generate an error if the layers were explicitly requested, warning otherwise.
         if (mustHaveLayers)
@@ -479,14 +474,11 @@ angle::Result MemoryProperties::findCompatibleMemoryIndex(
     }
 
     // We did not find a compatible memory type. When importing external memory, there may be
-    // additional restrictions on memoryType. Fallback to requesting device local memory.
+    // additional restrictions on memoryType. Find the first available memory type that Vulkan
+    // driver decides being compatible with external memory import.
     if (isExternalMemory)
     {
-        // The Vulkan spec says the following -
-        //     There must be at least one memory type with the VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-        //     bit set in its propertyFlags
-        if (FindCompatibleMemory(mMemoryProperties, memoryRequirements,
-                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, memoryPropertyFlagsOut,
+        if (FindCompatibleMemory(mMemoryProperties, memoryRequirements, 0, memoryPropertyFlagsOut,
                                  typeIndexOut))
         {
             return angle::Result::Continue;
@@ -578,33 +570,6 @@ angle::Result InitMappableAllocation(Context *context,
     }
 
     allocation->unmap(allocator);
-
-    return angle::Result::Continue;
-}
-
-angle::Result InitMappableDeviceMemory(Context *context,
-                                       DeviceMemory *deviceMemory,
-                                       VkDeviceSize size,
-                                       int value,
-                                       VkMemoryPropertyFlags memoryPropertyFlags)
-{
-    VkDevice device = context->getDevice();
-
-    uint8_t *mapPointer;
-    ANGLE_VK_TRY(context, deviceMemory->map(device, 0, VK_WHOLE_SIZE, 0, &mapPointer));
-    memset(mapPointer, value, static_cast<size_t>(size));
-
-    // if the memory type is not host coherent, we perform an explicit flush
-    if ((memoryPropertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0)
-    {
-        VkMappedMemoryRange mappedRange = {};
-        mappedRange.sType               = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-        mappedRange.memory              = deviceMemory->getHandle();
-        mappedRange.size                = VK_WHOLE_SIZE;
-        ANGLE_VK_TRY(context, vkFlushMappedMemoryRanges(device, 1, &mappedRange));
-    }
-
-    deviceMemory->unmap(device);
 
     return angle::Result::Continue;
 }
@@ -890,9 +855,7 @@ void ClearValuesArray::storeNoDepthStencil(uint32_t index, const VkClearValue &c
 
 gl::DrawBufferMask ClearValuesArray::getColorMask() const
 {
-    constexpr uint32_t kColorBuffersMask =
-        angle::BitMask<uint32_t>(gl::IMPLEMENTATION_MAX_DRAW_BUFFERS);
-    return gl::DrawBufferMask(mEnabled.bits() & kColorBuffersMask);
+    return gl::DrawBufferMask(mEnabled.bits() & kUnpackedColorBuffersMask);
 }
 
 // ResourceSerialFactory implementation.
@@ -1350,6 +1313,8 @@ VkSamplerAddressMode GetSamplerAddressMode(const GLenum wrap)
             return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
         case GL_CLAMP_TO_EDGE:
             return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        case GL_MIRROR_CLAMP_TO_EDGE_EXT:
+            return VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
         default:
             UNIMPLEMENTED();
             return VK_SAMPLER_ADDRESS_MODE_MAX_ENUM;
@@ -1396,6 +1361,22 @@ VkPrimitiveTopology GetPrimitiveTopology(gl::PrimitiveMode mode)
     }
 }
 
+VkPolygonMode GetPolygonMode(const gl::PolygonMode polygonMode)
+{
+    switch (polygonMode)
+    {
+        case gl::PolygonMode::Point:
+            return VK_POLYGON_MODE_POINT;
+        case gl::PolygonMode::Line:
+            return VK_POLYGON_MODE_LINE;
+        case gl::PolygonMode::Fill:
+            return VK_POLYGON_MODE_FILL;
+        default:
+            UNREACHABLE();
+            return VK_POLYGON_MODE_FILL;
+    }
+}
+
 VkCullModeFlagBits GetCullMode(const gl::RasterizerState &rasterState)
 {
     if (!rasterState.cullFace)
@@ -1432,8 +1413,17 @@ VkFrontFace GetFrontFace(GLenum frontFace, bool invertCullFace)
     }
 }
 
-VkSampleCountFlagBits GetSamples(GLint sampleCount)
+VkSampleCountFlagBits GetSamples(GLint sampleCount, bool limitSampleCountTo2)
 {
+    if (limitSampleCountTo2)
+    {
+        // Limiting samples to 2 allows multisampling to work while reducing
+        // how much graphics memory is required.  This makes ANGLE nonconformant
+        // (GLES 3.0+ requires 4 samples minimum) but gives low memory systems a
+        // better chance of running applications.
+        sampleCount = std::min(sampleCount, 2);
+    }
+
     switch (sampleCount)
     {
         case 0:
@@ -1717,6 +1707,20 @@ vk::LevelIndex GetLevelIndex(gl::LevelIndex levelGL, gl::LevelIndex baseLevel)
 {
     ASSERT(baseLevel <= levelGL);
     return vk::LevelIndex(levelGL.get() - baseLevel.get());
+}
+
+VkImageTiling GetTilingMode(gl::TilingMode tilingMode)
+{
+    switch (tilingMode)
+    {
+        case gl::TilingMode::Optimal:
+            return VK_IMAGE_TILING_OPTIMAL;
+        case gl::TilingMode::Linear:
+            return VK_IMAGE_TILING_LINEAR;
+        default:
+            UNREACHABLE();
+            return VK_IMAGE_TILING_OPTIMAL;
+    }
 }
 
 }  // namespace gl_vk

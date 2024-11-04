@@ -228,14 +228,6 @@ struct TensorEvaluator<const TensorAssignOp<LeftArgType, RightArgType>, Device>
     block.cleanup();
   }
 
-#ifdef EIGEN_USE_SYCL
-  // binding placeholder accessors to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_leftImpl.bind(cgh);
-    m_rightImpl.bind(cgh);
-  }
-#endif
-
   EIGEN_DEVICE_FUNC EvaluatorPointerType data() const { return m_leftImpl.data(); }
 
  private:

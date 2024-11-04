@@ -249,6 +249,16 @@ UDPSocketWin::UDPSocketWin(DatagramSocket::BindType bind_type,
   net_log_.BeginEventReferencingSource(NetLogEventType::SOCKET_ALIVE, source);
 }
 
+UDPSocketWin::UDPSocketWin(DatagramSocket::BindType bind_type,
+                           NetLogWithSource source_net_log)
+    : socket_(INVALID_SOCKET),
+      socket_options_(SOCKET_OPTION_MULTICAST_LOOP),
+      net_log_(source_net_log) {
+  EnsureWinsockInit();
+  net_log_.BeginEventReferencingSource(NetLogEventType::SOCKET_ALIVE,
+                                       net_log_.source());
+}
+
 UDPSocketWin::~UDPSocketWin() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   Close();
@@ -478,11 +488,8 @@ int UDPSocketWin::InternalConnect(const IPEndPoint& address) {
   DCHECK(!remote_address_.get());
 
   // Always do a random bind.
-  //
   // Ignore failures, which may happen if the socket was already bound.
-  // Microsoft's documentation claims this is a uint16, but experimentally, this
-  // fails if passed a 16-bit value.
-  std::uint32_t randomize_port_value = 1;
+  DWORD randomize_port_value = 1;
   setsockopt(socket_, SOL_SOCKET, SO_RANDOMIZE_PORT,
              reinterpret_cast<const char*>(&randomize_port_value),
              sizeof(randomize_port_value));
@@ -1186,6 +1193,14 @@ int UDPSocketWin::SetDiffServCodePoint(DiffServCodePoint dscp) {
     return dscp_manager_->PrepareForSend(*remote_address_.get());
 
   return OK;
+}
+
+int UDPSocketWin::SetIPv6Only(bool ipv6_only) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  if (is_connected()) {
+    return ERR_SOCKET_IS_CONNECTED;
+  }
+  return net::SetIPv6Only(socket_, ipv6_only);
 }
 
 void UDPSocketWin::DetachFromThread() {

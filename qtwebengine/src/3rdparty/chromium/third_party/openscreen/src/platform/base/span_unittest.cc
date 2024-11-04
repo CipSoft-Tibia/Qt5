@@ -10,7 +10,11 @@
 #include <utility>
 #include <vector>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+
+using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 
 namespace {
 
@@ -33,10 +37,7 @@ TEST(SpanTest, TestBasics) {
   ByteView googlePlex = ByteView(kSampleData, kSampleSize);
   EXPECT_EQ(googlePlex.data(), kSampleData);
   EXPECT_EQ(googlePlex.size(), kSampleSize);
-  EXPECT_FALSE(googlePlex.empty());
-
-  EXPECT_EQ(googlePlex[0], 'g');
-  EXPECT_EQ(googlePlex[9], 'x');
+  EXPECT_THAT(googlePlex, ElementsAreArray(kSampleData, kSampleSize));
 
   ByteView copyBytes = googlePlex;
   EXPECT_EQ(copyBytes.data(), googlePlex.data());
@@ -45,20 +46,39 @@ TEST(SpanTest, TestBasics) {
   ByteView firstBytes(googlePlex.first(4));
   EXPECT_EQ(firstBytes.data(), googlePlex.data());
   EXPECT_EQ(firstBytes.size(), size_t{4});
-  EXPECT_EQ(firstBytes[0], 'g');
-  EXPECT_EQ(firstBytes[3], 'g');
+  EXPECT_THAT(firstBytes, ElementsAre('g', 'o', 'o', 'g'));
 
   ByteView lastBytes(googlePlex.last(4));
   EXPECT_EQ(lastBytes.data(), googlePlex.data() + 6);
   EXPECT_EQ(lastBytes.size(), size_t{4});
-  EXPECT_EQ(lastBytes[0], 'p');
-  EXPECT_EQ(lastBytes[3], 'x');
+  EXPECT_THAT(lastBytes, ElementsAre('p', 'l', 'e', 'x'));
 
   ByteView middleBytes(googlePlex.subspan(2, 4));
   EXPECT_EQ(middleBytes.data(), googlePlex.data() + 2);
   EXPECT_EQ(middleBytes.size(), size_t{4});
-  EXPECT_EQ(middleBytes[0], 'o');
-  EXPECT_EQ(middleBytes[3], 'e');
+  EXPECT_THAT(middleBytes, ElementsAre('o', 'g', 'l', 'e'));
+
+  ByteView allBytes(googlePlex.subspan(0, kSampleSize));
+  EXPECT_EQ(allBytes.data(), googlePlex.data());
+  EXPECT_EQ(allBytes.size(), kSampleSize);
+  EXPECT_THAT(allBytes, ElementsAreArray(kSampleData, kSampleSize));
+
+  ByteView fromPointers(kSampleData, kSampleData + kSampleSize);
+  EXPECT_EQ(fromPointers.data(), kSampleData);
+  EXPECT_EQ(fromPointers.size(), kSampleSize);
+  EXPECT_THAT(fromPointers, ElementsAreArray(kSampleData, kSampleSize));
+
+  uint8_t kCStyleArray[] = {'f', 'o', 'o'};
+  const ByteView fromCStyleArray(kCStyleArray);
+  EXPECT_EQ(fromCStyleArray.data(), kCStyleArray);
+  EXPECT_EQ(fromCStyleArray.size(), 3u);
+  EXPECT_THAT(fromCStyleArray, ElementsAreArray(kCStyleArray));
+
+  std::array<uint8_t, 3> kStdArray = {'b', 'a', 'r'};
+  ByteView fromStdArray(kStdArray);
+  EXPECT_EQ(fromStdArray.data(), kStdArray.data());
+  EXPECT_EQ(fromStdArray.size(), kStdArray.size());
+  EXPECT_THAT(fromStdArray, ElementsAreArray(kStdArray));
 }
 
 TEST(SpanTest, TestIterators) {

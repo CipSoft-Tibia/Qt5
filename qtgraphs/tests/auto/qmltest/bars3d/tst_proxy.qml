@@ -24,7 +24,7 @@ Item {
         columnRolePattern: /^.*-(\d\d)$/
         columnRoleReplace: "\\1"
         itemModel: ListModel { objectName: "model1" }
-        multiMatchBehavior: ItemModelBarDataProxy.MMBAverage
+        multiMatchBehavior: ItemModelBarDataProxy.MultiMatchBehavior.Average
         rotationRole: "rot"
         rotationRolePattern: /-/
         rotationRoleReplace: "\\1"
@@ -55,7 +55,7 @@ Item {
             verify(initial.columnRolePattern)
             compare(initial.columnRoleReplace, "")
             verify(!initial.itemModel)
-            compare(initial.multiMatchBehavior, ItemModelBarDataProxy.MMBLast)
+            compare(initial.multiMatchBehavior, ItemModelBarDataProxy.MultiMatchBehavior.Last)
             compare(initial.rotationRole, "")
             verify(initial.rotationRolePattern)
             compare(initial.rotationRoleReplace, "")
@@ -73,7 +73,7 @@ Item {
             compare(initial.rowLabels.length, 0)
             verify(!initial.series)
 
-            compare(initial.type, AbstractDataProxy.DataTypeBar)
+            compare(initial.type, AbstractDataProxy.DataType.Bar)
         }
     }
 
@@ -90,7 +90,7 @@ Item {
             compare(initialized.columnRolePattern, /^.*-(\d\d)$/)
             compare(initialized.columnRoleReplace, "\\1")
             compare(initialized.itemModel.objectName, "model1")
-            compare(initialized.multiMatchBehavior, ItemModelBarDataProxy.MMBAverage)
+            compare(initialized.multiMatchBehavior, ItemModelBarDataProxy.MultiMatchBehavior.Average)
             compare(initialized.rotationRole, "rot")
             compare(initialized.rotationRolePattern, /-/)
             compare(initialized.rotationRoleReplace, "\\1")
@@ -123,7 +123,7 @@ Item {
             change.columnRolePattern = /^.*-(\d\d)$/
             change.columnRoleReplace = "\\1"
             change.itemModel = model1
-            change.multiMatchBehavior = ItemModelBarDataProxy.MMBAverage
+            change.multiMatchBehavior = ItemModelBarDataProxy.MultiMatchBehavior.Average
             change.rotationRole = "rot"
             change.rotationRolePattern = /-/
             change.rotationRoleReplace = "\\1"
@@ -151,7 +151,7 @@ Item {
             compare(change.columnRolePattern, /^.*-(\d\d)$/)
             compare(change.columnRoleReplace, "\\1")
             compare(change.itemModel.objectName, "model1")
-            compare(change.multiMatchBehavior, ItemModelBarDataProxy.MMBAverage)
+            compare(change.multiMatchBehavior, ItemModelBarDataProxy.MultiMatchBehavior.Average)
             compare(change.rotationRole, "rot")
             compare(change.rotationRolePattern, /-/)
             compare(change.rotationRoleReplace, "\\1")
@@ -172,68 +172,67 @@ Item {
         }
     }
 
-//    TODO: Needs either redoing, or fixing the code; see QTBUG-110000 & QTBUG-110001
-//    TestCase {
-//        name: "ItemModelBarDataProxy MultiMatchBehaviour"
+    TestCase {
+        name: "ItemModelBarDataProxy MultiMatchBehaviour"
 
-//        Bars3D {
-//            id: bars1
+        Bars3D {
+            id: bars1
 
-//            Bar3DSeries {
-//                ItemModelBarDataProxy {
-//                    id: barProxy
-//                    itemModel: ListModel {
-//                        ListElement{ coords: "0,0"; data: "5"; }
-//                        ListElement{ coords: "0,0"; data: "15"; }
-//                    }
-//                    rowRole: "coords"
-//                    columnRole: "coords"
-//                    valueRole: "data"
-//                    rowRolePattern: /(\d),\d/
-//                    columnRolePattern: /(\d),(\d)/
-//                    rowRoleReplace: "\\1"
-//                    columnRoleReplace: "\\2"
-//                }
-//            }
-//        }
+            Bar3DSeries {
+                ItemModelBarDataProxy {
+                    id: barProxy
+                    itemModel: ListModel {
+                        ListElement{ coords: "0,0"; data: "5"; }
+                        ListElement{ coords: "0,0"; data: "15"; }
+                    }
+                    rowRole: "coords"
+                    columnRole: "coords"
+                    valueRole: "data"
+                    rowRolePattern: /(\d),\d/
+                    columnRolePattern: /(\d),(\d)/
+                    rowRoleReplace: "\\1"
+                    columnRoleReplace: "\\2"
+                }
+            }
+        }
 
-//        function test_0_async_dummy() {
-//        }
+        function test_0_async_dummy() {
+        }
 
-//        function test_1_test_multimatch() {
-//            compare(bars1.valueAxis.max, 15)
-//        }
+        function test_1_test_multimatch() {
+            compare(bars1.valueAxis.max, 15)
+        }
 
-//        function test_2_multimatch() {
-//            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MMBFirst
-//        }
+        function test_2_multimatch() {
+            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MultiMatchBehavior.First
+        }
 
-//        function test_3_test_multimatch() {
-//            compare(bars1.valueAxis.max, 5)
-//        }
+        function test_3_test_multimatch() {
+            compare(bars1.valueAxis.max, 5)
+        }
 
-//        function test_4_multimatch() {
-//            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MMBLast
-//        }
+        function test_4_multimatch() {
+            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MultiMatchBehavior.Last
+        }
 
-//        function test_5_test_multimatch() {
-//            compare(bars1.valueAxis.max, 15)
-//        }
+        function test_5_test_multimatch() {
+            compare(bars1.valueAxis.max, 15)
+        }
 
-//        function test_6_multimatch() {
-//            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MMBAverage
-//        }
+        function test_6_multimatch() {
+            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MultiMatchBehavior.Average
+        }
 
-//        function test_7_test_multimatch() {
-//            compare(bars1.valueAxis.max, 10)
-//        }
+        function test_7_test_multimatch() {
+            compare(bars1.valueAxis.max, 10)
+        }
 
-//        function test_8_multimatch() {
-//            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MMBCumulative
-//        }
+        function test_8_multimatch() {
+            barProxy.multiMatchBehavior = ItemModelBarDataProxy.MultiMatchBehavior.Cumulative
+        }
 
-//        function test_9_test_multimatch() {
-//            compare(bars1.valueAxis.max, 20)
-//        }
-//    }
+        function test_9_test_multimatch() {
+            compare(bars1.valueAxis.max, 20)
+        }
+    }
 }

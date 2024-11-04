@@ -360,6 +360,9 @@ public:
     QPointer<QItemSelectionModel> selectionModel;
     QQuickTableView::SelectionBehavior selectionBehavior = QQuickTableView::SelectCells;
     QQuickTableView::SelectionMode selectionMode = QQuickTableView::ExtendedSelection;
+    QItemSelectionModel::SelectionFlag selectionFlag = QItemSelectionModel::NoUpdate;
+    std::function<void(CallBackFlag)> selectableCallbackFunction;
+    bool inSelectionModelUpdate = false;
 
     int assignedPositionViewAtRowAfterRebuild = 0;
     int assignedPositionViewAtColumnAfterRebuild = 0;
@@ -580,13 +583,15 @@ public:
 
     // QQuickSelectable
     QQuickItem *selectionPointerHandlerTarget() const override;
-    bool startSelection(const QPointF &pos) override;
+    bool startSelection(const QPointF &pos, Qt::KeyboardModifiers modifiers) override;
     void setSelectionStartPos(const QPointF &pos) override;
     void setSelectionEndPos(const QPointF &pos) override;
     void clearSelection() override;
     void normalizeSelection() override;
     QRectF selectionRectangle() const override;
     QSizeF scrollTowardsSelectionPoint(const QPointF &pos, const QSizeF &step) override;
+    void setCallback(std::function<void(CallBackFlag)> func) override;
+    void cancelSelectionTracking();
 
     QPoint clampedCellAtPos(const QPointF &pos) const;
     virtual void updateSelection(const QRect &oldSelection, const QRect &newSelection);

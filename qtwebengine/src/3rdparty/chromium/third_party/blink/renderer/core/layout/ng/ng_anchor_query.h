@@ -10,10 +10,10 @@
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/css/css_anchor_query_enums.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
 #include "third_party/blink/renderer/core/layout/geometry/writing_mode_converter.h"
 #include "third_party/blink/renderer/core/style/scoped_css_name.h"
-#include "third_party/blink/renderer/platform/geometry/anchor_query_enums.h"
 #include "third_party/blink/renderer/platform/geometry/length.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
@@ -26,7 +26,6 @@ class AnchorSpecifierValue;
 class LayoutObject;
 class NGLogicalAnchorQuery;
 class NGLogicalAnchorQueryMap;
-class NGPhysicalFragment;
 struct NGLogicalAnchorReference;
 
 using NGAnchorKey = absl::variant<const ScopedCSSName*, const LayoutObject*>;
@@ -156,8 +155,11 @@ struct CORE_EXPORT NGPhysicalAnchorReference
   void Trace(Visitor* visitor) const;
 
   PhysicalRect rect;
-  Member<const NGPhysicalFragment> fragment;
-  bool is_invalid = false;
+  Member<const LayoutObject> layout_object;
+  // A singly linked list in the reverse tree order. There can be at most one
+  // in-flow reference, which if exists must be at the end of the list.
+  Member<NGPhysicalAnchorReference> next;
+  bool is_out_of_flow = false;
 };
 
 class CORE_EXPORT NGPhysicalAnchorQuery
@@ -168,10 +170,10 @@ class CORE_EXPORT NGPhysicalAnchorQuery
   using Base = NGAnchorQueryBase<NGPhysicalAnchorReference>;
 
   const NGPhysicalAnchorReference* AnchorReference(
-      const NGAnchorKey&,
-      bool can_use_invalid_anchors) const;
-  const NGPhysicalFragment* Fragment(const NGAnchorKey&,
-                                     bool can_use_invalid_anchors) const;
+      const LayoutObject& query_object,
+      const NGAnchorKey&) const;
+  const LayoutObject* AnchorLayoutObject(const LayoutObject& query_object,
+                                         const NGAnchorKey&) const;
 
   void SetFromLogical(const NGLogicalAnchorQuery& logical_query,
                       const WritingModeConverter& converter);
@@ -179,21 +181,24 @@ class CORE_EXPORT NGPhysicalAnchorQuery
 
 struct CORE_EXPORT NGLogicalAnchorReference
     : public GarbageCollected<NGLogicalAnchorReference> {
-  NGLogicalAnchorReference(const NGPhysicalFragment& fragment,
+  NGLogicalAnchorReference(const LayoutObject& layout_object,
                            const LogicalRect& rect,
-                           bool is_invalid)
-      : rect(rect), fragment(&fragment), is_invalid(is_invalid) {}
+                           bool is_out_of_flow)
+      : rect(rect),
+        layout_object(&layout_object),
+        is_out_of_flow(is_out_of_flow) {}
 
-  // Insert |this| into the given singly linked list in the pre-order.
-  void InsertInPreOrderInto(Member<NGLogicalAnchorReference>* head_ptr);
+  // Insert |this| into the given singly linked list in the reverse tree order.
+  void InsertInReverseTreeOrderInto(Member<NGLogicalAnchorReference>* head_ptr);
 
   void Trace(Visitor* visitor) const;
 
   LogicalRect rect;
-  Member<const NGPhysicalFragment> fragment;
-  // A singly linked list in the order of the pre-order DFS.
+  Member<const LayoutObject> layout_object;
+  // A singly linked list in the reverse tree order. There can be at most one
+  // in-flow reference, which if exists must be at the end of the list.
   Member<NGLogicalAnchorReference> next;
-  bool is_invalid = false;
+  bool is_out_of_flow = false;
 };
 
 class CORE_EXPORT NGLogicalAnchorQuery
@@ -206,24 +211,20 @@ class CORE_EXPORT NGLogicalAnchorQuery
   static const NGLogicalAnchorQuery& Empty();
 
   const NGLogicalAnchorReference* AnchorReference(
-      const NGAnchorKey&,
-      bool can_use_invalid_anchor) const;
+      const LayoutObject& query_object,
+      const NGAnchorKey&) const;
 
   enum class SetOptions {
-    // A valid entry. The call order is in the tree order.
-    kValidInOrder,
-    // A valid entry but the call order may not be in the tree order.
-    kValidOutOfOrder,
-    // An invalid entry.
-    kInvalid,
+    // An in-flow entry.
+    kInFlow,
+    // An out-of-flow entry.
+    kOutOfFlow,
   };
   void Set(const NGAnchorKey&,
-           const NGPhysicalFragment& fragment,
+           const LayoutObject& layout_object,
            const LogicalRect& rect,
            SetOptions);
-  void Set(const NGAnchorKey&,
-           NGLogicalAnchorReference* reference,
-           bool maybe_out_of_order = false);
+  void Set(const NGAnchorKey&, NGLogicalAnchorReference* reference);
   void SetFromPhysical(const NGPhysicalAnchorQuery& physical_query,
                        const WritingModeConverter& converter,
                        const LogicalOffset& additional_offset,
@@ -233,7 +234,7 @@ class CORE_EXPORT NGLogicalAnchorQuery
   // the query is invalid (due to wrong axis).
   absl::optional<LayoutUnit> EvaluateAnchor(
       const NGLogicalAnchorReference& reference,
-      AnchorValue anchor_value,
+      CSSAnchorValue anchor_value,
       float percentage,
       LayoutUnit available_size,
       const WritingModeConverter& container_converter,
@@ -242,7 +243,7 @@ class CORE_EXPORT NGLogicalAnchorQuery
       bool is_y_axis,
       bool is_right_or_bottom) const;
   LayoutUnit EvaluateSize(const NGLogicalAnchorReference& reference,
-                          AnchorSizeValue anchor_size_value,
+                          CSSAnchorSizeValue anchor_size_value,
                           WritingMode container_writing_mode,
                           WritingMode self_writing_mode) const;
 };
@@ -255,41 +256,41 @@ class CORE_EXPORT NGAnchorEvaluatorImpl : public Length::AnchorEvaluator {
   // compute `HasAnchorFunctions()`.
   NGAnchorEvaluatorImpl() = default;
 
-  NGAnchorEvaluatorImpl(const NGLogicalAnchorQuery& anchor_query,
+  NGAnchorEvaluatorImpl(const LayoutObject& query_object,
+                        const NGLogicalAnchorQuery& anchor_query,
                         const ScopedCSSName* default_anchor_specifier,
                         const LayoutObject* implicit_anchor,
                         const WritingModeConverter& container_converter,
                         WritingDirectionMode self_writing_direction,
-                        const PhysicalOffset& offset_to_padding_box,
-                        bool is_in_top_layer)
-      : anchor_query_(&anchor_query),
+                        const PhysicalOffset& offset_to_padding_box)
+      : query_object_(&query_object),
+        anchor_query_(&anchor_query),
         default_anchor_specifier_(default_anchor_specifier),
         implicit_anchor_(implicit_anchor),
         container_converter_(container_converter),
         self_writing_direction_(self_writing_direction),
-        offset_to_padding_box_(offset_to_padding_box),
-        is_in_top_layer_(is_in_top_layer) {
+        offset_to_padding_box_(offset_to_padding_box) {
     DCHECK(anchor_query_);
   }
 
   // This constructor takes |NGLogicalAnchorQueryMap| and |containing_block|
   // instead of |NGLogicalAnchorQuery|.
-  NGAnchorEvaluatorImpl(const NGLogicalAnchorQueryMap& anchor_queries,
+  NGAnchorEvaluatorImpl(const LayoutObject& query_object,
+                        const NGLogicalAnchorQueryMap& anchor_queries,
                         const ScopedCSSName* default_anchor_specifier,
                         const LayoutObject* implicit_anchor,
                         const LayoutObject& containing_block,
                         const WritingModeConverter& container_converter,
                         WritingDirectionMode self_writing_direction,
-                        const PhysicalOffset& offset_to_padding_box,
-                        bool is_in_top_layer)
-      : anchor_queries_(&anchor_queries),
+                        const PhysicalOffset& offset_to_padding_box)
+      : query_object_(&query_object),
+        anchor_queries_(&anchor_queries),
         default_anchor_specifier_(default_anchor_specifier),
         implicit_anchor_(implicit_anchor),
         containing_block_(&containing_block),
         container_converter_(container_converter),
         self_writing_direction_(self_writing_direction),
-        offset_to_padding_box_(offset_to_padding_box),
-        is_in_top_layer_(is_in_top_layer) {
+        offset_to_padding_box_(offset_to_padding_box) {
     DCHECK(anchor_queries_);
     DCHECK(containing_block_);
   }
@@ -312,6 +313,10 @@ class CORE_EXPORT NGAnchorEvaluatorImpl : public Length::AnchorEvaluator {
   absl::optional<LayoutUnit> Evaluate(
       const CalculationExpressionNode&) const override;
 
+  // Finds the rect of the element referenced by the `position-fallback-bounds`
+  // property, or nullopt if there's no such element.
+  absl::optional<LogicalRect> GetAdditionalFallbackBoundsRect() const;
+
  private:
   const NGLogicalAnchorQuery* AnchorQuery() const;
   const NGLogicalAnchorReference* ResolveAnchorReference(
@@ -319,12 +324,13 @@ class CORE_EXPORT NGAnchorEvaluatorImpl : public Length::AnchorEvaluator {
 
   absl::optional<LayoutUnit> EvaluateAnchor(
       const AnchorSpecifierValue& anchor_specifier,
-      AnchorValue anchor_value,
+      CSSAnchorValue anchor_value,
       float percentage) const;
   absl::optional<LayoutUnit> EvaluateAnchorSize(
       const AnchorSpecifierValue& anchor_specifier,
-      AnchorSizeValue anchor_size_value) const;
+      CSSAnchorSizeValue anchor_size_value) const;
 
+  const LayoutObject* query_object_ = nullptr;
   mutable const NGLogicalAnchorQuery* anchor_query_ = nullptr;
   const NGLogicalAnchorQueryMap* anchor_queries_ = nullptr;
   const ScopedCSSName* default_anchor_specifier_ = nullptr;
@@ -338,7 +344,6 @@ class CORE_EXPORT NGAnchorEvaluatorImpl : public Length::AnchorEvaluator {
   LayoutUnit available_size_;
   bool is_y_axis_ = false;
   bool is_right_or_bottom_ = false;
-  bool is_in_top_layer_ = false;
   mutable bool has_anchor_functions_ = false;
 };
 

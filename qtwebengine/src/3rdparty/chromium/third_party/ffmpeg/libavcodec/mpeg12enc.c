@@ -249,7 +249,6 @@ static av_cold int encode_init(AVCodecContext *avctx)
         }
     }
 
-    mpeg12->drop_frame_timecode = mpeg12->drop_frame_timecode || !!(avctx->flags2 & AV_CODEC_FLAG2_DROP_FRAME_TIMECODE);
     if (mpeg12->drop_frame_timecode)
         mpeg12->tc.flags |= AV_TIMECODE_FLAG_DROPFRAME;
     if (mpeg12->drop_frame_timecode && mpeg12->frame_rate_index != 4) {
@@ -291,7 +290,7 @@ static void mpeg1_encode_sequence_header(MpegEncContext *s)
     AVRational aspect_ratio = s->avctx->sample_aspect_ratio;
     int aspect_ratio_info;
 
-    if (!s->current_picture.f->key_frame)
+    if (!(s->current_picture.f->flags & AV_FRAME_FLAG_KEY))
         return;
 
     if (aspect_ratio.num == 0 || aspect_ratio.den == 0)
@@ -420,10 +419,10 @@ static void mpeg1_encode_sequence_header(MpegEncContext *s)
     /* time code: we must convert from the real frame rate to a
      * fake MPEG frame rate in case of low frame rate */
     fps       = (framerate.num + framerate.den / 2) / framerate.den;
-    time_code = s->current_picture_ptr->f->coded_picture_number +
+    time_code = s->current_picture_ptr->coded_picture_number +
                 mpeg12->timecode_frame_start;
 
-    mpeg12->gop_picture_number = s->current_picture_ptr->f->coded_picture_number;
+    mpeg12->gop_picture_number = s->current_picture_ptr->coded_picture_number;
 
     av_assert0(mpeg12->drop_frame_timecode == !!(mpeg12->tc.flags & AV_TIMECODE_FLAG_DROPFRAME));
     if (mpeg12->drop_frame_timecode)
@@ -531,7 +530,7 @@ void ff_mpeg1_encode_picture_header(MpegEncContext *s)
         if (s->progressive_sequence)
             put_bits(&s->pb, 1, 0);             /* no repeat */
         else
-            put_bits(&s->pb, 1, s->current_picture_ptr->f->top_field_first);
+            put_bits(&s->pb, 1, !!(s->current_picture_ptr->f->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST));
         /* XXX: optimize the generation of this flag with entropy measures */
         s->frame_pred_frame_dct = s->progressive_sequence;
 

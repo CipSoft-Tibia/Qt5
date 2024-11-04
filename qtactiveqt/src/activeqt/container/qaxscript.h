@@ -141,16 +141,9 @@ public:
 Q_SIGNALS:
     void error(QAxScript *script, int code, const QString &description, int sourcePosition, const QString &sourceText);
 
-private Q_SLOTS:
-    void objectDestroyed(QObject *o);
-    void scriptError(int code, const QString &description, int sourcePosition, const QString &sourceText);
-
 private:
     friend class QAxScript;
     QAxScriptManagerPrivate *d;
-
-    void updateScript(QAxScript*);
-    QAxScript *scriptForFunction(QString &function) const;
 };
 
 

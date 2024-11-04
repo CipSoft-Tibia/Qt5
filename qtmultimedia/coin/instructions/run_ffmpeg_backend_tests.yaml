@@ -18,11 +18,11 @@ enable_if:
       env_var: TARGET_OSVERSION_COIN
       contains_value: android_any
     - condition: runtime
-      env_var: NON_QTBASE_CMAKE_ARGS
-      contains_value: "-DFFMPEG_DIR=/"
+      env_var: TARGET_OSVERSION_COIN
+      contains_value: windows
     - condition: runtime
       env_var: NON_QTBASE_CMAKE_ARGS
-      contains_value: "-DFFMPEG_DIR=C:"
+      contains_value: "-DFFMPEG_DIR=/"
 instructions:
   - type: EnvironmentVariable
     variableName: QT_MEDIA_BACKEND

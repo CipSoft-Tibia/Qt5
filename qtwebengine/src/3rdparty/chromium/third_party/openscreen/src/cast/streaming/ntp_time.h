@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,7 @@
 
 #include "platform/api/time.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // NTP timestamps are 64-bit timestamps that consist of two 32-bit parts: 1) The
 // number of seconds since 1 January 1900; and 2) The fraction of the second,
@@ -69,7 +68,6 @@ class NtpTimeConverter {
   const NtpSeconds since_ntp_epoch_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_NTP_TIME_H_

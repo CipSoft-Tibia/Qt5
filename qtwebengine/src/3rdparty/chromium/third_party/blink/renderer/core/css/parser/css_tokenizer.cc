@@ -36,6 +36,11 @@ CSSTokenizer::CSSTokenizer(const String& string, wtf_size_t offset)
   input_.Advance(offset);
 }
 
+CSSTokenizer::CSSTokenizer(StringView string, wtf_size_t offset)
+    : input_(string) {
+  input_.Advance(offset);
+}
+
 Vector<CSSParserToken, 32> CSSTokenizer::TokenizeToEOF() {
   Vector<CSSParserToken, 32> tokens;
   tokens.ReserveInitialCapacity((input_.length() - Offset()) /
@@ -52,6 +57,34 @@ Vector<CSSParserToken, 32> CSSTokenizer::TokenizeToEOF() {
   }
 }
 
+std::pair<Vector<CSSParserToken, 32>, Vector<wtf_size_t, 32>>
+CSSTokenizer::TokenizeToEOFWithOffsets() {
+  wtf_size_t estimated_tokens =
+      (input_.length() - Offset()) / kEstimatedCharactersPerToken;
+  Vector<CSSParserToken, 32> tokens;
+  tokens.ReserveInitialCapacity(estimated_tokens);
+  Vector<wtf_size_t, 32> offsets;
+  offsets.ReserveInitialCapacity(estimated_tokens + 1);
+
+  while (true) {
+    offsets.push_back(input_.Offset());
+    const CSSParserToken token =
+        NextToken</*SkipComments=*/true, /*StoreOffset=*/false>();
+    if (token.GetType() == kEOFToken) {
+      return {tokens, offsets};
+    } else {
+      tokens.push_back(token);
+    }
+  }
+}
+
+Vector<CSSParserToken, 32> CSSTokenizer::TokenizeToEOFWithUnicodeRanges() {
+  unicode_ranges_allowed_ = true;
+  Vector<CSSParserToken, 32> tokens = TokenizeToEOF();
+  unicode_ranges_allowed_ = false;
+  return tokens;
+}
+
 StringView CSSTokenizer::StringRangeAt(wtf_size_t start,
                                        wtf_size_t length) const {
   return input_.RangeAt(start, length);
@@ -63,6 +96,12 @@ CSSParserToken CSSTokenizer::TokenizeSingle() {
 
 CSSParserToken CSSTokenizer::TokenizeSingleWithComments() {
   return NextToken</*SkipComments=*/false, /*StoreOffset=*/true>();
+}
+
+void CSSTokenizer::PersistStrings(CSSTokenizer& destination) {
+  for (String& s : string_pool_) {
+    destination.string_pool_.push_back(std::move(s));
+  }
 }
 
 wtf_size_t CSSTokenizer::TokenCount() {
@@ -254,7 +293,7 @@ CSSParserToken CSSTokenizer::AsciiDigit(UChar cc) {
 }
 
 CSSParserToken CSSTokenizer::LetterU(UChar cc) {
-  if (input_.PeekWithoutReplacement(0) == '+' &&
+  if (unicode_ranges_allowed_ && input_.PeekWithoutReplacement(0) == '+' &&
       (IsASCIIHexDigit(input_.PeekWithoutReplacement(1)) ||
        input_.PeekWithoutReplacement(1) == '?')) {
     input_.Advance();

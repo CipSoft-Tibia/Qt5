@@ -181,7 +181,7 @@ constant.
 To enable UMA tracking, you need to make the following changes to the metrics
 configuration:
 
-1.  Add feature to the histogram variant `IPHFeatures` in:
+1.  Add feature to the histogram variant `IPHFeature` in:
     `//tools/metrics/histograms/metadata/feature_engagement/histograms.xml`.
     *   The variant name must match the `base::Feature` `name` member of your
         feature.
@@ -637,7 +637,7 @@ all described below:
         *   `0` Nothing should be stored.
         *   `1` |current_day| should be stored.
         *   `2+` |current_day| plus |N-1| more days should be stored.
-    *   The value should not exceed 10 years (3650 days).
+    *   The value should not exceed 10 years (3650 days, see `kMaxStoragePeriod`).
     *   Value client side data type: uint32_t
     *   Whenever a particular event is used by multiple features, the maximum
         value of all `storage` is used as the storage window.
@@ -874,6 +874,18 @@ a debug build of chrome with the following command line arguments:
 ```bash
 --vmodule=tracker_impl*=2,event_model_impl*=2,persistent_availability_store*=2,chrome_variations_configuration*=3
 ```
+
+## Automated External Testing (Tast)
+
+If you want to restrict the IPH that can show when launching Chrome as an
+external process as part of a test, use the `--propagate-iph-for-testing`
+switch:
+
+ * `chrome --propagate-iph-for-testing`
+   - disables all IPH
+ * `chrome --propagate-iph-for-testing=IPH_GoatTeleportationFeature,IPH_FlyingCowFeature`
+   - disables all IPH except for "IPH_GoatTeleportationFeature" and
+   "IPH_FlyingCowFeature".
 
 ## Development of `//components/feature_engagement`
 

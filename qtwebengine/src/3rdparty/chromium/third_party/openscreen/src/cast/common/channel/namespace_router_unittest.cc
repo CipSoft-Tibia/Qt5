@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 using ::cast::channel::CastMessage;
@@ -94,5 +93,4 @@ TEST_F(NamespaceRouterTest, RemoveHandler) {
   router_.OnMessage(&vc_router_, socket(), std::move(message2));
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

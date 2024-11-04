@@ -89,7 +89,7 @@ export class DatabaseTableView extends UI.View.SimpleView {
     this.visibleColumnsSetting =
         Common.Settings.Settings.instance().createSetting('databaseTableViewVisibleColumns', {});
 
-    this.refreshButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.refresh), 'largeicon-refresh');
+    this.refreshButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.refresh), 'refresh');
     this.refreshButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.refreshButtonClicked, this);
     this.visibleColumnsInput = new UI.Toolbar.ToolbarInput(i18nString(UIStrings.visibleColumns), '', 1);
     this.visibleColumnsInput.addEventListener(
@@ -98,11 +98,11 @@ export class DatabaseTableView extends UI.View.SimpleView {
     this.dataGrid = null;
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     this.update();
   }
 
-  async toolbarItems(): Promise<UI.Toolbar.ToolbarItem[]> {
+  override async toolbarItems(): Promise<UI.Toolbar.ToolbarItem[]> {
     return [this.refreshButton, this.visibleColumnsInput];
   }
 

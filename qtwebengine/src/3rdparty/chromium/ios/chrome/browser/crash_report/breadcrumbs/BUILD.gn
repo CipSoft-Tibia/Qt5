@@ -10,13 +10,14 @@ source_set("breadcrumbs") {
     "//components/breadcrumbs/core",
     "//components/infobars/core",
     "//components/keyed_service/ios",
-    "//ios/chrome/browser/browser_state",
     "//ios/chrome/browser/infobars",
-    "//ios/chrome/browser/main:public",
     "//ios/chrome/browser/overlays",
     "//ios/chrome/browser/overlays/public/web_content_area",
-    "//ios/chrome/browser/url:constants",
-    "//ios/chrome/browser/web_state_list",
+    "//ios/chrome/browser/shared/model/browser",
+    "//ios/chrome/browser/shared/model/browser_state",
+    "//ios/chrome/browser/shared/model/url",
+    "//ios/chrome/browser/shared/model/url:constants",
+    "//ios/chrome/browser/shared/model/web_state_list",
     "//ios/net",
     "//ios/web/public",
     "//ios/web/public/security",
@@ -30,8 +31,6 @@ source_set("breadcrumbs") {
     "breadcrumb_manager_tab_helper.h",
     "breadcrumb_manager_tab_helper.mm",
   ]
-
-  configs += [ "//build/config/compiler:enable_arc" ]
 }
 
 source_set("application_breadcrumbs_logger") {
@@ -39,8 +38,6 @@ source_set("application_breadcrumbs_logger") {
     "application_breadcrumbs_logger.h",
     "application_breadcrumbs_logger.mm",
   ]
-
-  configs += [ "//build/config/compiler:enable_arc" ]
 
   deps = [
     ":breadcrumbs",
@@ -53,27 +50,26 @@ source_set("application_breadcrumbs_logger") {
 }
 
 source_set("unit_tests") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
   deps = [
     ":application_breadcrumbs_logger",
     ":breadcrumbs",
     "//base/test:test_support",
     "//components/breadcrumbs/core",
-    "//ios/chrome/browser/browser_state:test_support",
     "//ios/chrome/browser/crash_report",
     "//ios/chrome/browser/download",
     "//ios/chrome/browser/infobars",
     "//ios/chrome/browser/infobars/test",
-    "//ios/chrome/browser/main:test_support",
     "//ios/chrome/browser/overlays",
     "//ios/chrome/browser/overlays/public/web_content_area",
     "//ios/chrome/browser/overlays/test",
-    "//ios/chrome/browser/ui/commands",
+    "//ios/chrome/browser/shared/model/browser/test:test_support",
+    "//ios/chrome/browser/shared/model/browser_state:test_support",
+    "//ios/chrome/browser/shared/model/url:constants",
+    "//ios/chrome/browser/shared/model/web_state_list",
+    "//ios/chrome/browser/shared/model/web_state_list/test:test_support",
+    "//ios/chrome/browser/shared/public/commands",
     "//ios/chrome/browser/ui/infobars/test",
-    "//ios/chrome/browser/url:constants",
-    "//ios/chrome/browser/web_state_list",
-    "//ios/chrome/browser/web_state_list:test_support",
     "//ios/chrome/test:test_support",
     "//ios/web/public/security",
     "//ios/web/public/test",

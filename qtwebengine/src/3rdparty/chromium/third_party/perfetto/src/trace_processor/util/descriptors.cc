@@ -40,13 +40,15 @@ FieldDescriptor CreateFieldFromDecoder(
       f_decoder.has_type()
           ? static_cast<uint32_t>(f_decoder.type())
           : static_cast<uint32_t>(FieldDescriptorProto::TYPE_MESSAGE);
+  protos::pbzero::FieldOptions::Decoder opt(f_decoder.options());
   return FieldDescriptor(
       base::StringView(f_decoder.name()).ToStdString(),
       static_cast<uint32_t>(f_decoder.number()), type, std::move(type_name),
-      f_decoder.label() == FieldDescriptorProto::LABEL_REPEATED, is_extension);
+      f_decoder.label() == FieldDescriptorProto::LABEL_REPEATED, opt.packed(),
+      is_extension);
 }
 
-base::Optional<uint32_t> DescriptorPool::ResolveShortType(
+std::optional<uint32_t> DescriptorPool::ResolveShortType(
     const std::string& parent_path,
     const std::string& short_type) {
   PERFETTO_DCHECK(!short_type.empty());
@@ -59,7 +61,7 @@ base::Optional<uint32_t> DescriptorPool::ResolveShortType(
     return opt_idx;
 
   if (parent_path.empty())
-    return base::nullopt;
+    return std::nullopt;
 
   auto parent_dot_idx = parent_path.rfind('.');
   auto parent_substr = parent_dot_idx == std::string::npos
@@ -95,7 +97,7 @@ util::Status DescriptorPool::AddExtensionField(
 util::Status DescriptorPool::AddNestedProtoDescriptors(
     const std::string& file_name,
     const std::string& package_name,
-    base::Optional<uint32_t> parent_idx,
+    std::optional<uint32_t> parent_idx,
     protozero::ConstBytes descriptor_proto,
     std::vector<ExtensionInfo>* extensions,
     bool merge_existing_messages) {
@@ -166,7 +168,7 @@ util::Status DescriptorPool::AddNestedProtoDescriptors(
 util::Status DescriptorPool::AddEnumProtoDescriptors(
     const std::string& file_name,
     const std::string& package_name,
-    base::Optional<uint32_t> parent_idx,
+    std::optional<uint32_t> parent_idx,
     protozero::ConstBytes descriptor_proto,
     bool merge_existing_messages) {
   protos::pbzero::EnumDescriptorProto::Decoder decoder(descriptor_proto);
@@ -186,7 +188,7 @@ util::Status DescriptorPool::AddEnumProtoDescriptors(
   if (!prev_idx.has_value()) {
     ProtoDescriptor proto_descriptor(file_name, package_name, full_name,
                                      ProtoDescriptor::Type::kEnum,
-                                     base::nullopt);
+                                     std::nullopt);
     prev_idx = AddProtoDescriptor(std::move(proto_descriptor));
   }
   ProtoDescriptor& proto_descriptor = descriptors_[*prev_idx];
@@ -226,13 +228,12 @@ util::Status DescriptorPool::AddFromFileDescriptorSet(
     std::string package = "." + base::StringView(file.package()).ToStdString();
     for (auto message_it = file.message_type(); message_it; ++message_it) {
       RETURN_IF_ERROR(AddNestedProtoDescriptors(
-          file_name, package, base::nullopt, *message_it, &extensions,
+          file_name, package, std::nullopt, *message_it, &extensions,
           merge_existing_messages));
     }
     for (auto enum_it = file.enum_type(); enum_it; ++enum_it) {
-      RETURN_IF_ERROR(AddEnumProtoDescriptors(file_name, package, base::nullopt,
-                                              *enum_it,
-                                              merge_existing_messages));
+      RETURN_IF_ERROR(AddEnumProtoDescriptors(
+          file_name, package, std::nullopt, *enum_it, merge_existing_messages));
     }
     for (auto ext_it = file.extension(); ext_it; ++ext_it) {
       extensions.emplace_back(package, *ext_it);
@@ -271,11 +272,11 @@ util::Status DescriptorPool::AddFromFileDescriptorSet(
   return util::OkStatus();
 }
 
-base::Optional<uint32_t> DescriptorPool::FindDescriptorIdx(
+std::optional<uint32_t> DescriptorPool::FindDescriptorIdx(
     const std::string& full_name) const {
   auto it = full_name_to_descriptor_index_.find(full_name);
   if (it == full_name_to_descriptor_index_.end()) {
-    return base::nullopt;
+    return std::nullopt;
   }
   return it->second;
 }
@@ -317,7 +318,7 @@ ProtoDescriptor::ProtoDescriptor(std::string file_name,
                                  std::string package_name,
                                  std::string full_name,
                                  Type type,
-                                 base::Optional<uint32_t> parent_id)
+                                 std::optional<uint32_t> parent_id)
     : file_name_(std::move(file_name)),
       package_name_(std::move(package_name)),
       full_name_(std::move(full_name)),
@@ -329,12 +330,14 @@ FieldDescriptor::FieldDescriptor(std::string name,
                                  uint32_t type,
                                  std::string raw_type_name,
                                  bool is_repeated,
+                                 bool is_packed,
                                  bool is_extension)
     : name_(std::move(name)),
       number_(number),
       type_(type),
       raw_type_name_(std::move(raw_type_name)),
       is_repeated_(is_repeated),
+      is_packed_(is_packed),
       is_extension_(is_extension) {}
 
 }  // namespace trace_processor

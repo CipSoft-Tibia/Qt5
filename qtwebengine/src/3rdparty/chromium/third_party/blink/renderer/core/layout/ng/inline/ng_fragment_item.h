@@ -13,7 +13,7 @@
 #include "third_party/blink/renderer/core/layout/geometry/logical_offset.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_line_box_fragment_builder.h"
-#include "third_party/blink/renderer/core/layout/ng/inline/ng_text_offset.h"
+#include "third_party/blink/renderer/core/layout/ng/inline/ng_text_offset_range.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_text_type.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_ink_overflow.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_view.h"
@@ -35,7 +35,7 @@ struct NGSvgFragmentData {
 
  public:
   scoped_refptr<const ShapeResultView> shape_result;
-  NGTextOffset text_offset;
+  NGTextOffsetRange text_offset;
   gfx::RectF rect;
   float length_adjust_scale;
   float angle;
@@ -57,7 +57,7 @@ class CORE_EXPORT NGFragmentItem final {
     scoped_refptr<const ShapeResultView> shape_result;
     // TODO(kojii): |text_offset| should match to the offset in |shape_result|.
     // Consider if we should remove them, or if keeping them is easier.
-    const NGTextOffset text_offset;
+    const NGTextOffsetRange text_offset;
   };
   // Represents text in SVG <text>.
   struct SvgTextItem {
@@ -98,7 +98,9 @@ class CORE_EXPORT NGFragmentItem final {
     wtf_size_t descendants_count;
   };
 
-  enum ItemType { kText, kSvgText, kGeneratedText, kLine, kBox };
+  // Type of the item. The invalid type is needed to support
+  // kCanClearUnusedSlotsWithMemset.
+  enum ItemType { kInvalid = 0, kText, kSvgText, kGeneratedText, kLine, kBox };
   enum TracedType { kNone, kLineItem, kBoxItem };
 
   NGFragmentItem() { }
@@ -412,10 +414,10 @@ class CORE_EXPORT NGFragmentItem final {
   }
 
   const ShapeResultView* TextShapeResult() const;
-  NGTextOffset TextOffset() const;
-  unsigned StartOffset() const { return TextOffset().start; }
-  unsigned EndOffset() const { return TextOffset().end; }
-  unsigned TextLength() const { return TextOffset().Length(); }
+  NGTextOffsetRange TextOffset() const;
+  wtf_size_t StartOffset() const { return TextOffset().start; }
+  wtf_size_t EndOffset() const { return TextOffset().end; }
+  wtf_size_t TextLength() const { return TextOffset().Length(); }
 
   // Layout-generated text has two offsets; one for its own generated string,
   // and the other for the container. |TextOffset| returns the former, while
@@ -530,7 +532,7 @@ class CORE_EXPORT NGFragmentItem final {
   // Create a text item.
   NGFragmentItem(const NGInlineItem& inline_item,
                  scoped_refptr<const ShapeResultView> shape_result,
-                 const NGTextOffset& text_offset,
+                 const NGTextOffsetRange& text_offset,
                  const PhysicalSize& size,
                  bool is_hidden_for_paint);
   // Create a generated text item.
@@ -627,7 +629,7 @@ inline bool NGFragmentItem::CanReuse() const {
   if (IsDirty())
     return false;
   if (const LayoutObject* layout_object = GetLayoutObject())
-    return !layout_object->SelfNeedsLayout();
+    return !layout_object->SelfNeedsFullLayout();
   return false;
 }
 
@@ -635,5 +637,7 @@ CORE_EXPORT std::ostream& operator<<(std::ostream&, const NGFragmentItem*);
 CORE_EXPORT std::ostream& operator<<(std::ostream&, const NGFragmentItem&);
 
 }  // namespace blink
+
+WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(blink::NGFragmentItem)
 
 #endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_INLINE_NG_FRAGMENT_ITEM_H_

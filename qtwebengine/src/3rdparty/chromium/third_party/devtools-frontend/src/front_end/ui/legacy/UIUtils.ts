@@ -37,6 +37,7 @@ import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
 import * as TextUtils from '../../models/text_utils/text_utils.js';
+import * as IconButton from '../components/icon_button/icon_button.js';
 
 import * as ARIAUtils from './ARIAUtils.js';
 import {Dialog} from './Dialog.js';
@@ -1103,7 +1104,7 @@ export function createInput(className?: string, type?: string): HTMLInputElement
 export function createSelect(name: string, options: string[]|Map<string, string[]>[]|Set<string>): HTMLSelectElement {
   const select = document.createElement('select');
   select.classList.add('chrome-select');
-  ARIAUtils.setAccessibleName(select, name);
+  ARIAUtils.setLabel(select, name);
   for (const option of options) {
     if (option instanceof Map) {
       for (const [key, value] of option) {
@@ -1143,10 +1144,19 @@ export function createRadioLabel(name: string, title: string, checked?: boolean)
   return element;
 }
 
-export function createIconLabel(title: string, iconClass: string): HTMLElement {
+export function createIconLabel(
+    options: {title?: string, iconName: string, color?: string, width?: '14px'|'20px', height?: '14px'|'20px'}):
+    DevToolsIconLabel {
   const element = (document.createElement('span', {is: 'dt-icon-label'}) as DevToolsIconLabel);
-  element.createChild('span').textContent = title;
-  element.type = iconClass;
+  if (options.title) {
+    element.createChild('span').textContent = options.title;
+  }
+  element.data = {
+    iconName: options.iconName,
+    color: options.color ?? 'var(--icon-default)',
+    width: options.width ?? '14px',
+    height: options.height ?? '14px',
+  };
   return element;
 }
 
@@ -1160,7 +1170,7 @@ export function createSlider(min: number, max: number, tabIndex: number): Elemen
 }
 
 export function setTitle(element: HTMLElement, title: string): void {
-  ARIAUtils.setAccessibleName(element, title);
+  ARIAUtils.setLabel(element, title);
   Tooltip.install(element, title);
 }
 
@@ -1191,7 +1201,7 @@ export class CheckboxLabel extends HTMLSpanElement {
     element.checkboxElement.checked = Boolean(checked);
     if (title !== undefined) {
       element.textElement.textContent = title;
-      ARIAUtils.setAccessibleName(element.checkboxElement, title);
+      element.checkboxElement.title = title;
       if (subtitle !== undefined) {
         element.textElement.createChild('div', 'dt-checkbox-subtitle').textContent = subtitle;
       }
@@ -1199,29 +1209,12 @@ export class CheckboxLabel extends HTMLSpanElement {
     return element;
   }
 
-  set backgroundColor(color: string) {
-    this.checkboxElement.classList.add('dt-checkbox-themed');
-    this.checkboxElement.style.backgroundColor = color;
-  }
-
-  set checkColor(color: string) {
-    this.checkboxElement.classList.add('dt-checkbox-themed');
-    const stylesheet = document.createElement('style');
-    stylesheet.textContent = 'input.dt-checkbox-themed:checked:after { background-color: ' + color + '}';
-    this.shadowRootInternal.appendChild(stylesheet);
-  }
-
-  set borderColor(color: string) {
-    this.checkboxElement.classList.add('dt-checkbox-themed');
-    this.checkboxElement.style.borderColor = color;
-  }
-
   private static lastId = 0;
   static constructorInternal: (() => Element)|null = null;
 }
 
 export class DevToolsIconLabel extends HTMLSpanElement {
-  private readonly iconElement: Icon;
+  readonly #icon: IconButton.Icon.Icon;
 
   constructor() {
     super();
@@ -1229,14 +1222,21 @@ export class DevToolsIconLabel extends HTMLSpanElement {
       cssFile: undefined,
       delegatesFocus: undefined,
     });
-    this.iconElement = Icon.create();
-    this.iconElement.style.setProperty('margin-right', '4px');
-    root.appendChild(this.iconElement);
+    this.#icon = new IconButton.Icon.Icon();
+    this.#icon.style.setProperty('margin-right', '4px');
+    root.appendChild(this.#icon);
     root.createChild('slot');
   }
 
-  set type(type: string) {
-    this.iconElement.setIconType(type);
+  set data(data: IconButton.Icon.IconData) {
+    this.#icon.data = data;
+    // TODO(crbug.com/1427397): Clean this up. This was necessary so `DevToolsIconLabel` can use Lit icon
+    //    while being backwards-compatible with the legacy Icon while working for both small and large icons.
+    if (data.height === '14px') {
+      this.#icon.style.setProperty('margin-bottom', '-2px');
+    } else if (data.height === '20px') {
+      this.#icon.style.setProperty('margin-bottom', '2px');
+    }
   }
 }
 
@@ -1315,36 +1315,20 @@ Utils.registerCustomElement('span', 'dt-small-bubble', DevToolsSmallBubble);
 
 export class DevToolsCloseButton extends HTMLDivElement {
   private buttonElement: HTMLElement;
-  private readonly hoverIcon: Icon;
-  private readonly activeIcon: Icon;
 
   constructor() {
     super();
     const root = Utils.createShadowRootWithCoreStyles(this, {cssFile: closeButtonStyles, delegatesFocus: undefined});
     this.buttonElement = (root.createChild('div', 'close-button') as HTMLElement);
     Tooltip.install(this.buttonElement, i18nString(UIStrings.close));
-    ARIAUtils.setAccessibleName(this.buttonElement, i18nString(UIStrings.close));
+    ARIAUtils.setLabel(this.buttonElement, i18nString(UIStrings.close));
     ARIAUtils.markAsButton(this.buttonElement);
-    const regularIcon = Icon.create('smallicon-cross', 'default-icon');
-    this.hoverIcon = Icon.create('mediumicon-red-cross-hover', 'hover-icon');
-    this.activeIcon = Icon.create('mediumicon-red-cross-active', 'active-icon');
+    const regularIcon = Icon.create('cross', 'default-icon');
     this.buttonElement.appendChild(regularIcon);
-    this.buttonElement.appendChild(this.hoverIcon);
-    this.buttonElement.appendChild(this.activeIcon);
-  }
-
-  set gray(gray: boolean) {
-    if (gray) {
-      this.hoverIcon.setIconType('mediumicon-gray-cross-hover');
-      this.activeIcon.setIconType('mediumicon-gray-cross-active');
-    } else {
-      this.hoverIcon.setIconType('mediumicon-red-cross-hover');
-      this.activeIcon.setIconType('mediumicon-red-cross-active');
-    }
   }
 
   setAccessibleName(name: string): void {
-    ARIAUtils.setAccessibleName(this.buttonElement, name);
+    ARIAUtils.setLabel(this.buttonElement, name);
   }
 
   setTabbable(tabbable: boolean): void {
@@ -1567,11 +1551,11 @@ export class MessageDialog {
 }
 
 export class ConfirmDialog {
-  static async show(message: string, where?: Element|Document): Promise<boolean> {
+  static async show(message: string, where?: Element|Document, options?: ConfirmDialogOptions): Promise<boolean> {
     const dialog = new Dialog();
     dialog.setSizeBehavior(SizeBehavior.MeasureContent);
     dialog.setDimmed(true);
-    ARIAUtils.setAccessibleName(dialog.contentElement, message);
+    ARIAUtils.setLabel(dialog.contentElement, message);
     const shadowRoot = Utils.createShadowRootWithCoreStyles(
         dialog.contentElement, {cssFile: confirmDialogStyles, delegatesFocus: undefined});
     const content = shadowRoot.createChild('div', 'widget');
@@ -1579,10 +1563,12 @@ export class ConfirmDialog {
     const buttonsBar = content.createChild('div', 'button');
     const result = await new Promise<boolean>(resolve => {
       const okButton = createTextButton(
-          /* text= */ i18nString(UIStrings.ok), /* clickHandler= */ () => resolve(true), /* className= */ '',
+          /* text= */ options?.okButtonLabel || i18nString(UIStrings.ok), /* clickHandler= */ () => resolve(true),
+          /* className= */ '',
           /* primary= */ true);
       buttonsBar.appendChild(okButton);
-      buttonsBar.appendChild(createTextButton(i18nString(UIStrings.cancel), () => resolve(false)));
+      buttonsBar.appendChild(
+          createTextButton(options?.cancelButtonLabel || i18nString(UIStrings.cancel), () => resolve(false)));
       dialog.setOutsideClickCallback(event => {
         event.consume();
         resolve(false);
@@ -1738,4 +1724,9 @@ export function getApplicableRegisteredRenderers(object: Object): RendererRegist
 export interface RendererRegistration {
   loadRenderer: () => Promise<Renderer>;
   contextTypes: () => Array<Function>;
+}
+
+export interface ConfirmDialogOptions {
+  okButtonLabel?: string;
+  cancelButtonLabel?: string;
 }

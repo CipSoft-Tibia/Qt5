@@ -14,21 +14,21 @@
 
 import {Protocol} from 'devtools-protocol';
 import {ProtocolProxyApi} from 'devtools-protocol/types/protocol-proxy-api';
-import * as rpc from 'noice-json-rpc';
+import {Client} from 'noice-json-rpc';
 
 import {base64Encode} from '../base/string_utils';
-import {
-  browserSupportsPerfettoConfig,
-  extractTraceConfig,
-  hasSystemDataSourceConfig,
-} from '../base/trace_config_utils';
-import {TraceConfig} from '../common/protos';
 import {
   ConsumerPortResponse,
   GetTraceStatsResponse,
   ReadBuffersResponse,
 } from '../controller/consumer_port_types';
 import {RpcConsumerPort} from '../controller/record_controller_interfaces';
+import {TraceConfig} from '../core/protos';
+import {
+  browserSupportsPerfettoConfig,
+  extractTraceConfig,
+  hasSystemDataSourceConfig,
+} from '../core/trace_config_utils';
 import {perfetto} from '../gen/protos';
 
 import {DevToolsSocket} from './devtools_socket';
@@ -58,7 +58,7 @@ export class ChromeTracingController extends RpcConsumerPort {
     this.uiPort = port;
     this.devtoolsSocket = new DevToolsSocket();
     this.devtoolsSocket.on('close', () => this.resetState());
-    const rpcClient = new rpc.Client(this.devtoolsSocket);
+    const rpcClient = new Client(this.devtoolsSocket);
     this.api = rpcClient.api();
     this.api.Tracing.on('tracingComplete', this.onTracingComplete.bind(this));
     this.api.Tracing.on('bufferUsage', this.onBufferUsage.bind(this));
@@ -178,7 +178,7 @@ export class ChromeTracingController extends RpcConsumerPort {
     };
     this.sendMessage(response);
     if (res.eof) return;
-    this.readBuffers(offset + res.data.length);
+    this.readBuffers(offset + chunk.length);
   }
 
   async disableTracing() {

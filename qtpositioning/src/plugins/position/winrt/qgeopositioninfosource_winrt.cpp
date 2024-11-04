@@ -9,9 +9,6 @@
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qmutex.h>
 #include <QtCore/qtimezone.h>
-#ifdef Q_OS_WINRT
-#include <QtCore/private/qeventdispatcher_winrt_p.h>
-#endif
 
 #include <functional>
 #include <windows.system.h>
@@ -35,15 +32,6 @@ Q_DECLARE_LOGGING_CATEGORY(lcPositioningWinRT)
 Q_DECLARE_METATYPE(QGeoPositionInfoSource::Error)
 
 QT_BEGIN_NAMESPACE
-
-#ifndef Q_OS_WINRT
-namespace QEventDispatcherWinRT {
-HRESULT runOnXamlThread(const std::function<HRESULT ()> &delegate, bool waitForRun = true)
-{
-    Q_UNUSED(waitForRun);
-    return delegate();
-}
-}
 
 static inline HRESULT await(const ComPtr<IAsyncOperation<GeolocationAccessStatus>> &asyncOp,
                             GeolocationAccessStatus *result)
@@ -73,7 +61,6 @@ static inline HRESULT await(const ComPtr<IAsyncOperation<GeolocationAccessStatus
 
     return asyncOp->GetResults(result);
 }
-#endif // !Q_OS_WINRT
 
 enum class InitializationState {
     Uninitialized,
@@ -135,7 +122,7 @@ int QGeoPositionInfoSourceWinRT::init()
         qWarning ("Location access failed.");
         return -1;
     }
-    HRESULT hr = QEventDispatcherWinRT::runOnXamlThread([this, d]() {
+    HRESULT hr = [this, d]() {
         HRESULT hr = RoActivateInstance(HString::MakeReference(RuntimeClass_Windows_Devices_Geolocation_Geolocator).Get(),
                                         &d->locator);
         RETURN_HR_IF_FAILED("Could not initialize native location services.");
@@ -151,7 +138,7 @@ int QGeoPositionInfoSourceWinRT::init()
         setUpdateInterval(d->updateInterval);
 
         return hr;
-    });
+    }();
     if (FAILED(hr)) {
         d->initState = InitializationState::Uninitialized;
         setError(QGeoPositionInfoSource::UnknownSourceError);
@@ -208,9 +195,9 @@ void QGeoPositionInfoSourceWinRT::setPreferredPositioningMethods(QGeoPositionInf
     PositionAccuracy acc = methods & PositioningMethod::SatellitePositioningMethods ?
                 PositionAccuracy::PositionAccuracy_High :
                 PositionAccuracy::PositionAccuracy_Default;
-    HRESULT hr = QEventDispatcherWinRT::runOnXamlThread([d, acc]() {
+    HRESULT hr = [d, acc]() {
         return d->locator->put_DesiredAccuracy(acc);
-    });
+    }();
     RETURN_VOID_IF_FAILED("Could not set positioning accuracy.");
 
     if (needsRestart)
@@ -229,7 +216,7 @@ void QGeoPositionInfoSourceWinRT::setUpdateInterval(int msec)
     // minimumUpdateInterval is initialized to the lowest possible update interval in init().
     // Passing 0 will cause an error on Windows 10.
     // See https://docs.microsoft.com/en-us/uwp/api/windows.devices.geolocation.geolocator.reportinterval
-    if (msec != 0 && msec < minimumUpdateInterval())
+    if (msec < minimumUpdateInterval())
         msec = minimumUpdateInterval();
 
     const bool needsRestart = d->positionToken.value != 0 || d->statusToken.value != 0;
@@ -309,7 +296,7 @@ bool QGeoPositionInfoSourceWinRT::startHandler()
         return false;
     }
 
-    HRESULT hr = QEventDispatcherWinRT::runOnXamlThread([this, d]() {
+    HRESULT hr = [this, d]() {
         HRESULT hr;
 
         // We need to call this at least once on Windows 10 Mobile.
@@ -329,7 +316,7 @@ bool QGeoPositionInfoSourceWinRT::startHandler()
                                              &d->statusToken);
         RETURN_HR_IF_FAILED("Could not add status handler");
         return hr;
-    });
+    }();
     if (FAILED(hr)) {
         setError(QGeoPositionInfoSource::UnknownSourceError);
         return false;
@@ -345,11 +332,8 @@ void QGeoPositionInfoSourceWinRT::stopHandler()
 
     if (!d->positionToken.value)
         return;
-    QEventDispatcherWinRT::runOnXamlThread([d]() {
-        d->locator->remove_PositionChanged(d->positionToken);
-        d->locator->remove_StatusChanged(d->statusToken);
-        return S_OK;
-    });
+    d->locator->remove_PositionChanged(d->positionToken);
+    d->locator->remove_StatusChanged(d->statusToken);
     d->positionToken.value = 0;
     d->statusToken.value = 0;
 }
@@ -372,8 +356,8 @@ void QGeoPositionInfoSourceWinRT::requestUpdate(int timeout)
     if (timeout == 0)
         timeout = 2*60*1000; // Maximum time for cold start (see Android)
 
-    startHandler();
-    d->singleUpdateTimer.start(timeout);
+    if (startHandler())
+        d->singleUpdateTimer.start(timeout);
 }
 
 void QGeoPositionInfoSourceWinRT::virtualPositionUpdate()
@@ -615,8 +599,7 @@ bool QGeoPositionInfoSourceWinRT::requestAccess() const
     GeolocationAccessStatus accessStatus;
 
     ComPtr<IAsyncOperation<GeolocationAccessStatus>> op;
-    HRESULT hr;
-    hr = QEventDispatcherWinRT::runOnXamlThread([&op, d]() {
+    HRESULT hr = [&op, d]() {
         HRESULT hr;
         if (!d->statics) {
             hr = RoGetActivationFactory(HString::MakeReference(RuntimeClass_Windows_Devices_Geolocation_Geolocator).Get(),
@@ -626,18 +609,13 @@ bool QGeoPositionInfoSourceWinRT::requestAccess() const
 
         hr = d->statics->RequestAccessAsync(&op);
         return hr;
-    });
+    }();
     if (FAILED(hr)) {
         qCDebug(lcPositioningWinRT) << __FUNCTION__ << "Requesting access from Xaml thread failed";
         return false;
     }
 
-    // We cannot wait inside the XamlThread as that would deadlock
-#ifdef Q_OS_WINRT
-    QWinRTFunctions::await(op, &accessStatus);
-#else
     await(op, &accessStatus);
-#endif
     return accessStatus == GeolocationAccessStatus_Allowed;
 }
 

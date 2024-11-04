@@ -300,22 +300,6 @@ void GraphicsContext::loadShader(Shader *shaderNode,
     shaderNode->requestCacheRebuild();
 }
 
-void GraphicsContext::activateDrawBuffers(const AttachmentPack &attachments)
-{
-    const std::vector<int> &activeDrawBuffers = attachments.getGlDrawBuffers();
-
-    if (m_glHelper->checkFrameBufferComplete()) {
-        if (activeDrawBuffers.size() > 1) {// We need MRT
-            if (m_glHelper->supportsFeature(GraphicsHelperInterface::MRT)) {
-                // Set up MRT, glDrawBuffers...
-                m_glHelper->drawBuffers(GLsizei(activeDrawBuffers.size()), activeDrawBuffers.data());
-            }
-        }
-    } else {
-        qWarning() << "FBO incomplete";
-    }
-}
-
 void GraphicsContext::rasterMode(GLenum faceMode, GLenum rasterMode)
 {
     m_glHelper->rasterMode(faceMode, rasterMode);
@@ -380,7 +364,7 @@ GraphicsHelperInterface *GraphicsContext::resolveHighestOpenGLFunctions()
             qCDebug(Backend) << "Qt3D: Enabling OpenGL debug logging";
             m_debugLogger.reset(new QOpenGLDebugLogger);
             if (m_debugLogger->initialize()) {
-                QObject::connect(m_debugLogger.data(), &QOpenGLDebugLogger::messageLogged, &logOpenGLDebugMessage);
+                QObject::connect(m_debugLogger.data(), &QOpenGLDebugLogger::messageLogged, m_debugLogger.data(), &logOpenGLDebugMessage);
                 const QString mode = QString::fromLocal8Bit(debugLoggingMode);
                 m_debugLogger->startLogging(mode.startsWith(QLatin1String("sync"), Qt::CaseInsensitive)
                                             ? QOpenGLDebugLogger::SynchronousLogging
@@ -726,7 +710,7 @@ void GraphicsContext::drawBuffer(GLenum mode)
     m_glHelper->drawBuffer(mode);
 }
 
-void GraphicsContext::drawBuffers(GLsizei n, const int *bufs)
+void GraphicsContext::drawBuffers(GLsizei n, const GLenum *bufs)
 {
     m_glHelper->drawBuffers(n, bufs);
 }

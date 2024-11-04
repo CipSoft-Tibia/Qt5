@@ -834,7 +834,9 @@ static int init_video_param(AVCodecContext *avctx, QSVEncContext *q)
         // for progressive video, the height should be aligned to 16 for
         // H.264.  For HEVC, depending on the version of MFX, it should be
         // either 32 or 16.  The lower number is better if possible.
-        q->height_align = avctx->codec_id == AV_CODEC_ID_HEVC ? 32 : 16;
+        // For AV1, it is 32
+        q->height_align = (avctx->codec_id == AV_CODEC_ID_HEVC ||
+                           avctx->codec_id == AV_CODEC_ID_AV1) ? 32 : 16;
     }
     q->param.mfx.FrameInfo.Height = FFALIGN(avctx->height, q->height_align);
 
@@ -1118,11 +1120,16 @@ static int init_video_param(AVCodecContext *avctx, QSVEncContext *q)
                 q->extco3.MaxFrameSizeI = q->max_frame_size_i;
             if (q->max_frame_size_p >= 0)
                 q->extco3.MaxFrameSizeP = q->max_frame_size_p;
+            if (sw_format == AV_PIX_FMT_BGRA &&
+                (q->profile == MFX_PROFILE_HEVC_REXT ||
+                q->profile == MFX_PROFILE_UNKNOWN))
+                q->extco3.TargetChromaFormatPlus1 = MFX_CHROMAFORMAT_YUV444 + 1;
 
             q->extco3.ScenarioInfo = q->scenario;
         } else if (avctx->codec_id == AV_CODEC_ID_AV1) {
             if (q->low_delay_brc >= 0)
                 q->extco3.LowDelayBRC = q->low_delay_brc ? MFX_CODINGOPTION_ON : MFX_CODINGOPTION_OFF;
+            q->old_low_delay_brc = q->low_delay_brc;
         }
 
         if (avctx->codec_id == AV_CODEC_ID_HEVC) {
@@ -1185,7 +1192,12 @@ static int init_video_param(AVCodecContext *avctx, QSVEncContext *q)
         q->extvsi.ColourDescriptionPresent = 1;
         q->extvsi.ColourPrimaries = avctx->color_primaries;
         q->extvsi.TransferCharacteristics = avctx->color_trc;
-        q->extvsi.MatrixCoefficients = avctx->colorspace;
+        if (avctx->colorspace == AVCOL_SPC_RGB)
+            // RGB will be converted to YUV, so RGB colorspace is not supported
+            q->extvsi.MatrixCoefficients = AVCOL_SPC_UNSPECIFIED;
+        else
+            q->extvsi.MatrixCoefficients = avctx->colorspace;
+
     }
 
     if ((avctx->codec_id != AV_CODEC_ID_VP9) && (q->extvsi.VideoFullRange || q->extvsi.ColourDescriptionPresent)) {
@@ -1600,7 +1612,7 @@ int ff_qsv_enc_init(AVCodecContext *avctx, QSVEncContext *q)
 
     q->param.AsyncDepth = q->async_depth;
 
-    q->async_fifo = av_fifo_alloc2(q->async_depth, sizeof(QSVPacket), 0);
+    q->async_fifo = av_fifo_alloc2(q->async_depth, sizeof(QSVPacket), AV_FIFO_FLAG_AUTO_GROW);
     if (!q->async_fifo)
         return AVERROR(ENOMEM);
 
@@ -1872,6 +1884,62 @@ static int qsvenc_fill_padding_area(AVFrame *frame, int new_w, int new_h)
     return 0;
 }
 
+/* frame width / height have been aligned with the alignment */
+static int qsvenc_get_continuous_buffer(AVFrame *frame)
+{
+    int total_size;
+
+    switch (frame->format) {
+    case AV_PIX_FMT_NV12:
+        frame->linesize[0] = frame->width;
+        frame->linesize[1] = frame->linesize[0];
+        total_size = frame->linesize[0] * frame->height + frame->linesize[1] * frame->height / 2;
+        break;
+
+    case AV_PIX_FMT_P010:
+    case AV_PIX_FMT_P012:
+        frame->linesize[0] = 2 * frame->width;
+        frame->linesize[1] = frame->linesize[0];
+        total_size = frame->linesize[0] * frame->height + frame->linesize[1] * frame->height / 2;
+        break;
+
+    case AV_PIX_FMT_YUYV422:
+        frame->linesize[0] = 2 * frame->width;
+        frame->linesize[1] = 0;
+        total_size = frame->linesize[0] * frame->height;
+        break;
+
+    case AV_PIX_FMT_Y210:
+    case AV_PIX_FMT_VUYX:
+    case AV_PIX_FMT_XV30:
+    case AV_PIX_FMT_BGRA:
+    case AV_PIX_FMT_X2RGB10:
+        frame->linesize[0] = 4 * frame->width;
+        frame->linesize[1] = 0;
+        total_size = frame->linesize[0] * frame->height;
+        break;
+
+    default:
+        // This should never be reached
+        av_assert0(0);
+        return AVERROR(EINVAL);
+    }
+
+    frame->buf[0] = av_buffer_alloc(total_size);
+    if (!frame->buf[0])
+        return AVERROR(ENOMEM);
+
+    frame->data[0] = frame->buf[0]->data;
+    frame->extended_data = frame->data;
+
+    if (frame->format == AV_PIX_FMT_NV12 ||
+        frame->format == AV_PIX_FMT_P010 ||
+        frame->format == AV_PIX_FMT_P012)
+        frame->data[1] = frame->data[0] + frame->linesize[0] * frame->height;
+
+    return 0;
+}
+
 static int submit_frame(QSVEncContext *q, const AVFrame *frame,
                         QSVFrame **new_frame)
 {
@@ -1899,8 +1967,9 @@ static int submit_frame(QSVEncContext *q, const AVFrame *frame,
     } else {
         /* make a copy if the input is not padded as libmfx requires */
         /* and to make allocation continious for data[0]/data[1] */
-         if ((frame->height & 31 || frame->linesize[0] & (q->width_align - 1)) ||
-            (frame->data[1] - frame->data[0] != frame->linesize[0] * FFALIGN(qf->frame->height, q->height_align))) {
+         if ((frame->height & (q->height_align - 1) || frame->linesize[0] & (q->width_align - 1)) ||
+            ((frame->format == AV_PIX_FMT_NV12 || frame->format == AV_PIX_FMT_P010 || frame->format == AV_PIX_FMT_P012) &&
+             (frame->data[1] - frame->data[0] != frame->linesize[0] * FFALIGN(qf->frame->height, q->height_align)))) {
             int tmp_w, tmp_h;
             qf->frame->height = tmp_h = FFALIGN(frame->height, q->height_align);
             qf->frame->width  = tmp_w = FFALIGN(frame->width, q->width_align);
@@ -1908,7 +1977,7 @@ static int submit_frame(QSVEncContext *q, const AVFrame *frame,
             qf->frame->format = frame->format;
 
             if (!qf->frame->data[0]) {
-                ret = av_frame_get_buffer(qf->frame, q->width_align);
+                ret = qsvenc_get_continuous_buffer(qf->frame);
                 if (ret < 0)
                     return ret;
             }
@@ -1937,8 +2006,8 @@ static int submit_frame(QSVEncContext *q, const AVFrame *frame,
         qf->surface.Info = q->param.mfx.FrameInfo;
 
         qf->surface.Info.PicStruct =
-            !frame->interlaced_frame ? MFX_PICSTRUCT_PROGRESSIVE :
-            frame->top_field_first   ? MFX_PICSTRUCT_FIELD_TFF :
+            !(frame->flags & AV_FRAME_FLAG_INTERLACED) ? MFX_PICSTRUCT_PROGRESSIVE :
+            (frame->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) ? MFX_PICSTRUCT_FIELD_TFF :
                                        MFX_PICSTRUCT_FIELD_BFF;
         if (frame->repeat_pict == 1)
             qf->surface.Info.PicStruct |= MFX_PICSTRUCT_FIELD_REPEATED;
@@ -2204,7 +2273,9 @@ static int update_low_delay_brc(AVCodecContext *avctx, QSVEncContext *q)
 {
     int updated = 0;
 
-    if (avctx->codec_id != AV_CODEC_ID_H264 && avctx->codec_id != AV_CODEC_ID_HEVC)
+    if (avctx->codec_id != AV_CODEC_ID_H264 &&
+        avctx->codec_id != AV_CODEC_ID_HEVC &&
+        avctx->codec_id != AV_CODEC_ID_AV1)
         return 0;
 
     UPDATE_PARAM(q->old_low_delay_brc, q->low_delay_brc);
@@ -2294,58 +2365,6 @@ static int update_pic_timing_sei(AVCodecContext *avctx, QSVEncContext *q)
            print_threestate(q->extco.PicTimingSEI));
 
     return updated;
-}
-
-static int update_parameters(AVCodecContext *avctx, QSVEncContext *q,
-                             const AVFrame *frame)
-{
-    int needReset = 0, ret = 0;
-
-    if (!frame || avctx->codec_id == AV_CODEC_ID_MJPEG)
-        return 0;
-
-    needReset = update_qp(avctx, q);
-    needReset |= update_max_frame_size(avctx, q);
-    needReset |= update_gop_size(avctx, q);
-    needReset |= update_rir(avctx, q);
-    needReset |= update_low_delay_brc(avctx, q);
-    needReset |= update_frame_rate(avctx, q);
-    needReset |= update_bitrate(avctx, q);
-    needReset |= update_pic_timing_sei(avctx, q);
-    ret = update_min_max_qp(avctx, q);
-    if (ret < 0)
-        return ret;
-    needReset |= ret;
-    if (!needReset)
-        return 0;
-
-    if (avctx->hwaccel_context) {
-        AVQSVContext *qsv = avctx->hwaccel_context;
-        int i, j;
-        q->param.ExtParam = q->extparam;
-        for (i = 0; i < qsv->nb_ext_buffers; i++)
-            q->param.ExtParam[i] = qsv->ext_buffers[i];
-        q->param.NumExtParam = qsv->nb_ext_buffers;
-
-        for (i = 0; i < q->nb_extparam_internal; i++) {
-            for (j = 0; j < qsv->nb_ext_buffers; j++) {
-                if (qsv->ext_buffers[j]->BufferId == q->extparam_internal[i]->BufferId)
-                    break;
-            }
-            if (j < qsv->nb_ext_buffers)
-                continue;
-            q->param.ExtParam[q->param.NumExtParam++] = q->extparam_internal[i];
-        }
-    } else {
-        q->param.ExtParam    = q->extparam_internal;
-        q->param.NumExtParam = q->nb_extparam_internal;
-    }
-    av_log(avctx, AV_LOG_DEBUG, "Parameter change, call msdk reset.\n");
-    ret = MFXVideoENCODE_Reset(q->session, &q->param);
-    if (ret < 0)
-        return ff_qsv_print_error(avctx, ret, "Error during resetting");
-
-    return 0;
 }
 
 static int encode_frame(AVCodecContext *avctx, QSVEncContext *q,
@@ -2438,17 +2457,19 @@ static int encode_frame(AVCodecContext *avctx, QSVEncContext *q,
 
     if (ret < 0) {
         ret = (ret == MFX_ERR_MORE_DATA) ?
-               0 : ff_qsv_print_error(avctx, ret, "Error during encoding");
+               AVERROR(EAGAIN) : ff_qsv_print_error(avctx, ret, "Error during encoding");
         goto free;
     }
 
-    if (ret == MFX_WRN_INCOMPATIBLE_VIDEO_PARAM && frame && frame->interlaced_frame)
+    if (ret == MFX_WRN_INCOMPATIBLE_VIDEO_PARAM && frame && (frame->flags & AV_FRAME_FLAG_INTERLACED))
         print_interlace_msg(avctx, q);
 
     ret = 0;
 
     if (*pkt.sync) {
-        av_fifo_write(q->async_fifo, &pkt, 1);
+        ret = av_fifo_write(q->async_fifo, &pkt, 1);
+        if (ret < 0)
+            goto free;
     } else {
 free:
         av_freep(&pkt.sync);
@@ -2466,6 +2487,66 @@ nomem:
     goto free;
 }
 
+static int update_parameters(AVCodecContext *avctx, QSVEncContext *q,
+                             const AVFrame *frame)
+{
+    int needReset = 0, ret = 0;
+
+    if (!frame || avctx->codec_id == AV_CODEC_ID_MJPEG)
+        return 0;
+
+    needReset = update_qp(avctx, q);
+    needReset |= update_max_frame_size(avctx, q);
+    needReset |= update_gop_size(avctx, q);
+    needReset |= update_rir(avctx, q);
+    needReset |= update_low_delay_brc(avctx, q);
+    needReset |= update_frame_rate(avctx, q);
+    needReset |= update_bitrate(avctx, q);
+    needReset |= update_pic_timing_sei(avctx, q);
+    ret = update_min_max_qp(avctx, q);
+    if (ret < 0)
+        return ret;
+    needReset |= ret;
+    if (!needReset)
+        return 0;
+
+    if (avctx->hwaccel_context) {
+        AVQSVContext *qsv = avctx->hwaccel_context;
+        int i, j;
+        q->param.ExtParam = q->extparam;
+        for (i = 0; i < qsv->nb_ext_buffers; i++)
+            q->param.ExtParam[i] = qsv->ext_buffers[i];
+        q->param.NumExtParam = qsv->nb_ext_buffers;
+
+        for (i = 0; i < q->nb_extparam_internal; i++) {
+            for (j = 0; j < qsv->nb_ext_buffers; j++) {
+                if (qsv->ext_buffers[j]->BufferId == q->extparam_internal[i]->BufferId)
+                    break;
+            }
+            if (j < qsv->nb_ext_buffers)
+                continue;
+            q->param.ExtParam[q->param.NumExtParam++] = q->extparam_internal[i];
+        }
+    } else {
+        q->param.ExtParam    = q->extparam_internal;
+        q->param.NumExtParam = q->nb_extparam_internal;
+    }
+
+    // Flush codec before reset configuration.
+    while (ret != AVERROR(EAGAIN)) {
+        ret = encode_frame(avctx, q, NULL);
+        if (ret < 0 && ret != AVERROR(EAGAIN))
+            return ret;
+    }
+
+    av_log(avctx, AV_LOG_DEBUG, "Parameter change, call msdk reset.\n");
+    ret = MFXVideoENCODE_Reset(q->session, &q->param);
+    if (ret < 0)
+        return ff_qsv_print_error(avctx, ret, "Error during resetting");
+
+    return 0;
+}
+
 int ff_qsv_encode(AVCodecContext *avctx, QSVEncContext *q,
                   AVPacket *pkt, const AVFrame *frame, int *got_packet)
 {
@@ -2476,7 +2557,7 @@ int ff_qsv_encode(AVCodecContext *avctx, QSVEncContext *q,
         return ret;
 
     ret = encode_frame(avctx, q, frame);
-    if (ret < 0)
+    if (ret < 0 && ret != AVERROR(EAGAIN))
         return ret;
 
     if ((av_fifo_can_read(q->async_fifo) >= q->async_depth) ||

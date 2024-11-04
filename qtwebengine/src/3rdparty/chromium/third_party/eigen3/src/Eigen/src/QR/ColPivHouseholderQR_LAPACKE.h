@@ -119,32 +119,29 @@ namespace Eigen {
       ColPivHouseholderQR_LAPACKE_impl<MatrixType>::init(rows, cols, m_hCoeffs, m_colsPermutation, m_isInitialized, \
                                                          m_usePrescribedThreshold); }                               \
 
-    #define COLPIVQR_LAPACKE(EIGTYPE)          \
-      COLPIVQR_LAPACKE_COMPUTEINPLACE(EIGTYPE) \
-      COLPIVQR_LAPACKE_INIT(EIGTYPE)           \
+    #define COLPIVQR_LAPACKE(EIGTYPE)               \
+      COLPIVQR_LAPACKE_COMPUTEINPLACE(EIGTYPE)      \
+      COLPIVQR_LAPACKE_INIT(EIGTYPE)                \
+      COLPIVQR_LAPACKE_COMPUTEINPLACE(Ref<EIGTYPE>) \
+      COLPIVQR_LAPACKE_INIT(Ref<EIGTYPE>)           \
 
-    typedef Matrix<float, Dynamic, Dynamic, RowMajor> MatrixXfR;
-    typedef Matrix<double, Dynamic, Dynamic, RowMajor> MatrixXdR;
-    typedef Matrix<scomplex, Dynamic, Dynamic, RowMajor> MatrixXcfR;
-    typedef Matrix<dcomplex, Dynamic, Dynamic, RowMajor> MatrixXcdR;
+    typedef Matrix<float,                 Dynamic, Dynamic, ColMajor> MatrixXfC;
+    typedef Matrix<double,                Dynamic, Dynamic, ColMajor> MatrixXdC;
+    typedef Matrix<std::complex<float>,   Dynamic, Dynamic, ColMajor> MatrixXcfC;
+    typedef Matrix<std::complex<double>,  Dynamic, Dynamic, ColMajor> MatrixXcdC;
+    typedef Matrix<float,                 Dynamic, Dynamic, RowMajor> MatrixXfR;
+    typedef Matrix<double,                Dynamic, Dynamic, RowMajor> MatrixXdR;
+    typedef Matrix<std::complex<float>,   Dynamic, Dynamic, RowMajor> MatrixXcfR;
+    typedef Matrix<std::complex<double>,  Dynamic, Dynamic, RowMajor> MatrixXcdR;
 
-    COLPIVQR_LAPACKE(MatrixXf)
-    COLPIVQR_LAPACKE(MatrixXd)
-    COLPIVQR_LAPACKE(MatrixXcf)
-    COLPIVQR_LAPACKE(MatrixXcd)
+    COLPIVQR_LAPACKE(MatrixXfC)
+    COLPIVQR_LAPACKE(MatrixXdC)
+    COLPIVQR_LAPACKE(MatrixXcfC)
+    COLPIVQR_LAPACKE(MatrixXcdC)
     COLPIVQR_LAPACKE(MatrixXfR)
     COLPIVQR_LAPACKE(MatrixXdR)
     COLPIVQR_LAPACKE(MatrixXcfR)
     COLPIVQR_LAPACKE(MatrixXcdR)
-
-    COLPIVQR_LAPACKE(Ref<MatrixXf>)
-    COLPIVQR_LAPACKE(Ref<MatrixXd>)
-    COLPIVQR_LAPACKE(Ref<MatrixXcf>)
-    COLPIVQR_LAPACKE(Ref<MatrixXcd>)
-    COLPIVQR_LAPACKE(Ref<MatrixXfR>)
-    COLPIVQR_LAPACKE(Ref<MatrixXdR>)
-    COLPIVQR_LAPACKE(Ref<MatrixXcfR>)
-    COLPIVQR_LAPACKE(Ref<MatrixXcdR>)
 
 #endif
 }  // end namespace Eigen

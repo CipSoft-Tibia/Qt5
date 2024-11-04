@@ -108,6 +108,7 @@ public:
 
 Q_SIGNALS:
     void geometryNodeDirty();
+    Q_REVISION(6, 7) void geometryChanged();
 
 protected:
     QSSGRenderGraphObject *updateSpatialNode(QSSGRenderGraphObject *node) override;

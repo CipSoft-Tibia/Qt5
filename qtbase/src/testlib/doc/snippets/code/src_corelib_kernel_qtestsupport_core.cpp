@@ -5,8 +5,9 @@
 // dummy class
 class MyObject
 {
-    public:
-        int isReady();
+public:
+    int isReady();
+    void startup() {}
 };
 
 // dummy function
@@ -18,9 +19,22 @@ int myNetworkServerNotResponding()
 int MyObject::isReady()
 {
 //! [1]
+    using namespace std::chrono_literals;
     int i = 0;
     while (myNetworkServerNotResponding() && i++ < 50)
-        QTest::qWait(250);
+        QTest::qWait(250ms);
 //! [1]
 return 1;
+}
+
+[[maybe_unused]] static bool startup()
+{
+//! [2]
+    MyObject obj;
+    obj.startup();
+    using namespace std::chrono_literals;
+    const bool result = QTest::qWaitFor([&obj]() { return obj.isReady(); },
+                                        QDeadlineTimer(3s));
+//! [2]
+    return result;
 }

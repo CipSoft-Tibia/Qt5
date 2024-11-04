@@ -17,8 +17,15 @@ class GrDirectContext;
 class SkImage;
 class SkColorFilter;
 class SkRuntimeEffect;
+struct SkGainmapInfo;
+
+namespace skgpu::graphite {
+class Recorder;
+}
 
 namespace gfx {
+
+class ColorTransform;
 
 class COLOR_SPACE_EXPORT ColorConversionSkFilterCache {
  public:
@@ -57,7 +64,23 @@ class COLOR_SPACE_EXPORT ColorConversionSkFilterCache {
                               float sdr_max_luminance_nits,
                               float dst_max_luminance_relative,
                               bool enable_tone_mapping,
-                              GrDirectContext* context);
+                              GrDirectContext* gr_context,
+                              skgpu::graphite::Recorder* graphite_recorder);
+
+  // Apply the gainmap in `gainmap_image` to `base_image`, using the parameters
+  // in `gainmap_info` and `dst_max_luminance_relative`, and return the
+  // resulting image.
+  // * If `context` is non-nullptr, then `base_image` and `gainmap_image` must
+  //   be texture-backed and on `context`, and the result will be texture backed
+  //   and on `context`.
+  // * If `context` is nullptr, then the arguments should be bitmaps, and the
+  //   result will be a bitmap.
+  sk_sp<SkImage> ApplyGainmap(sk_sp<SkImage> base_image,
+                              sk_sp<SkImage> gainmap_image,
+                              const SkGainmapInfo& gainmap_info,
+                              float dst_max_luminance_relative,
+                              GrDirectContext* gr_context,
+                              skgpu::graphite::Recorder* graphite_recorder);
 
  public:
   struct Key {
@@ -75,8 +98,19 @@ class COLOR_SPACE_EXPORT ColorConversionSkFilterCache {
     bool operator!=(const Key& other) const;
     bool operator<(const Key& other) const;
   };
+  struct Value {
+    Value();
+    Value(const Value&) = delete;
+    Value(Value&&);
+    Value& operator=(const Value&) = delete;
+    Value& operator=(Value&&);
+    ~Value();
 
-  base::flat_map<Key, sk_sp<SkRuntimeEffect>> cache_;
+    std::unique_ptr<ColorTransform> transform;
+    sk_sp<SkRuntimeEffect> effect;
+  };
+
+  base::flat_map<Key, Value> cache_;
 };
 
 }  // namespace gfx

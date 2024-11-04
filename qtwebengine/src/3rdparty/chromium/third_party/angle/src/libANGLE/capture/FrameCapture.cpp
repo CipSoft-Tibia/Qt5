@@ -25,10 +25,12 @@
 #include "common/string_utils.h"
 #include "common/system_utils.h"
 #include "gpu_info_util/SystemInfo.h"
+#include "image_util/storeimage.h"
 #include "libANGLE/Config.h"
 #include "libANGLE/Context.h"
 #include "libANGLE/Context.inl.h"
 #include "libANGLE/Display.h"
+#include "libANGLE/EGLSync.h"
 #include "libANGLE/Fence.h"
 #include "libANGLE/Framebuffer.h"
 #include "libANGLE/GLES1Renderer.h"
@@ -75,7 +77,6 @@ constexpr char kCompressionVarName[]    = "ANGLE_CAPTURE_COMPRESSION";
 constexpr char kSerializeStateVarName[] = "ANGLE_CAPTURE_SERIALIZE_STATE";
 constexpr char kValidationVarName[]     = "ANGLE_CAPTURE_VALIDATION";
 constexpr char kValidationExprVarName[] = "ANGLE_CAPTURE_VALIDATION_EXPR";
-constexpr char kTrimEnabledVarName[]    = "ANGLE_CAPTURE_TRIM_ENABLED";
 constexpr char kSourceExtVarName[]      = "ANGLE_CAPTURE_SOURCE_EXT";
 constexpr char kSourceSizeVarName[]     = "ANGLE_CAPTURE_SOURCE_SIZE";
 constexpr char kForceShadowVarName[]    = "ANGLE_CAPTURE_FORCE_SHADOW";
@@ -100,7 +101,6 @@ constexpr char kAndroidCaptureLabel[]   = "debug.angle.capture.label";
 constexpr char kAndroidCompression[]    = "debug.angle.capture.compression";
 constexpr char kAndroidValidation[]     = "debug.angle.capture.validation";
 constexpr char kAndroidValidationExpr[] = "debug.angle.capture.validation_expr";
-constexpr char kAndroidTrimEnabled[]    = "debug.angle.capture.trim_enabled";
 constexpr char kAndroidSourceExt[]      = "debug.angle.capture.source_ext";
 constexpr char kAndroidSourceSize[]     = "debug.angle.capture.source_size";
 constexpr char kAndroidForceShadow[]    = "debug.angle.capture.force_shadow";
@@ -251,10 +251,6 @@ std::ostream &operator<<(std::ostream &os, const FmtCapturePrefix &fmt)
     {
         os << "_shared";
     }
-    else if (fmt.contextId != kNoContextId)
-    {
-        os << "_context" << fmt.contextId;
-    }
 
     return os;
 }
@@ -263,6 +259,7 @@ enum class ReplayFunc
 {
     Replay,
     Setup,
+    SetupInactive,
     Reset,
 };
 
@@ -305,15 +302,11 @@ struct FmtReplayFunction
 
 std::ostream &operator<<(std::ostream &os, const FmtReplayFunction &fmt)
 {
-    os << "ReplayContext";
+    os << "Replay";
 
     if (fmt.contextId == kSharedContextId)
     {
         os << "Shared";
-    }
-    else
-    {
-        os << fmt.contextId;
     }
 
     os << "Frame" << fmt.frameIndex;
@@ -355,6 +348,50 @@ std::ostream &operator<<(std::ostream &os, const FmtSetupFunction &fmt)
         os << "Part" << fmt.partId;
     }
     os << fmt.usage;
+    return os;
+}
+
+struct FmtSetupInactiveFunction
+{
+    FmtSetupInactiveFunction(uint32_t partIdIn, gl::ContextID contextIdIn, FuncUsage usageIn)
+        : partId(partIdIn), contextId(contextIdIn), usage(usageIn)
+    {}
+
+    uint32_t partId;
+    gl::ContextID contextId;
+    FuncUsage usage;
+};
+
+std::ostream &operator<<(std::ostream &os, const FmtSetupInactiveFunction &fmt)
+{
+    if ((fmt.usage == FuncUsage::Call) && (fmt.partId == kNoPartId))
+    {
+        os << "if (gReplayResourceMode == angle::ReplayResourceMode::All)\n    {\n        ";
+    }
+    os << "SetupReplayContext";
+
+    if (fmt.contextId == kSharedContextId)
+    {
+        os << "Shared";
+    }
+    else
+    {
+        os << fmt.contextId;
+    }
+
+    os << "Inactive";
+
+    if (fmt.partId != kNoPartId)
+    {
+        os << "Part" << fmt.partId;
+    }
+
+    os << fmt.usage;
+
+    if ((fmt.usage == FuncUsage::Call) && (fmt.partId == kNoPartId))
+    {
+        os << ";\n    }";
+    }
     return os;
 }
 
@@ -421,6 +458,10 @@ std::ostream &operator<<(std::ostream &os, const FmtFunction &fmt)
 
         case ReplayFunc::Setup:
             os << FmtSetupFunction(fmt.partId, fmt.contextId, fmt.usage);
+            break;
+
+        case ReplayFunc::SetupInactive:
+            os << FmtSetupInactiveFunction(fmt.partId, fmt.contextId, fmt.usage);
             break;
 
         case ReplayFunc::Reset:
@@ -743,7 +784,7 @@ void WriteBinaryParamReplay(ReplayWriter &replayWriter,
 
     // Only inline strings (shaders) to simplify the C code.
     ParamType overrideType = param.type;
-    if (param.type == ParamType::TGLvoidConstPointer || param.type == ParamType::TvoidConstPointer)
+    if (param.type == ParamType::TvoidConstPointer)
     {
         overrideType = ParamType::TGLubyteConstPointer;
     }
@@ -1382,6 +1423,44 @@ void MaybeResetResources(gl::ContextID contextID,
             }
             break;
         }
+        case ResourceIDType::egl_Sync:
+        {
+            TrackedResource &trackedEGLSyncs =
+                resourceTracker->getTrackedResource(contextID, ResourceIDType::egl_Sync);
+            ResourceSet &newEGLSyncs         = trackedEGLSyncs.getNewResources();
+            ResourceSet &eglSyncsToDelete    = trackedEGLSyncs.getResourcesToDelete();
+            ResourceSet &eglSyncsToRegen     = trackedEGLSyncs.getResourcesToRegen();
+            ResourceCalls &eglSyncRegenCalls = trackedEGLSyncs.getResourceRegenCalls();
+
+            if (!newEGLSyncs.empty() || !eglSyncsToDelete.empty())
+            {
+                for (GLuint oldResource : eglSyncsToDelete)
+                {
+                    out << "    eglDestroySyncKHR(gEGLDisplay, gEGLSyncMap[" << oldResource
+                        << "]);\n";
+                }
+
+                for (GLuint newResource : newEGLSyncs)
+                {
+                    out << "    eglDestroySyncKHR(gEGLDisplay, gEGLSyncMap[" << newResource
+                        << "]);\n";
+                }
+            }
+
+            // If any of our starting EGLsyncs were deleted during the run, recreate them
+            for (GLuint id : eglSyncsToRegen)
+            {
+                // Emit their regen calls
+                for (CallCapture &call : eglSyncRegenCalls[id])
+                {
+                    out << "    ";
+                    WriteCppReplayForCall(call, replayWriter, out, header, binaryData,
+                                          maxResourceIDBufferSize);
+                    out << ";\n";
+                }
+            }
+            break;
+        }
         default:
             // TODO (http://anglebug.com/4599): Reset more resource types
             break;
@@ -1625,25 +1704,25 @@ void WriteCppReplayFunctionWithParts(const gl::ContextID contextID,
 
     for (const CallCapture &call : calls)
     {
-        if (!call.isActive)
+        // Process active calls for Setup and inactive calls for SetupInactive
+        if ((call.isActive && replayFunc != ReplayFunc::SetupInactive) ||
+            (!call.isActive && replayFunc == ReplayFunc::SetupInactive))
         {
-            // Don't write setup calls for inactive resources
-            continue;
-        }
+            out << "    ";
+            WriteCppReplayForCall(call, replayWriter, out, header, binaryData,
+                                  maxResourceIDBufferSize);
+            out << ";\n";
 
-        out << "    ";
-        WriteCppReplayForCall(call, replayWriter, out, header, binaryData, maxResourceIDBufferSize);
-        out << ";\n";
-
-        if (partCount > 0 && ++callCount % kFunctionSizeLimit == 0)
-        {
-            out << "}\n";
-            out << "\n";
-            out << "void "
-                << FmtFunction(replayFunc, contextID, FuncUsage::Definition, frameIndex,
-                               ++partCount)
-                << "\n";
-            out << "{\n";
+            if (partCount > 0 && ++callCount % kFunctionSizeLimit == 0)
+            {
+                out << "}\n";
+                out << "\n";
+                out << "void "
+                    << FmtFunction(replayFunc, contextID, FuncUsage::Definition, frameIndex,
+                                   ++partCount)
+                    << "\n";
+                out << "{\n";
+            }
         }
     }
     out << "}\n";
@@ -1734,6 +1813,7 @@ void WriteShareGroupCppSetupReplay(ReplayWriter &replayWriter,
                                    size_t *maxResourceIDBufferSize)
 {
     {
+
         std::stringstream include;
 
         include << "#include \"angle_trace_gl.h\"\n";
@@ -1759,6 +1839,18 @@ void WriteShareGroupCppSetupReplay(ReplayWriter &replayWriter,
                                         bodyStream, maxResourceIDBufferSize);
 
         replayWriter.addPrivateFunction(proto, headerStream, bodyStream);
+
+        protoStream.str("");
+        headerStream.str("");
+        bodyStream.str("");
+        protoStream << "void "
+                    << FmtSetupInactiveFunction(kNoPartId, kSharedContextId, FuncUsage::Prototype);
+        proto = protoStream.str();
+
+        WriteCppReplayFunctionWithParts(kSharedContextId, ReplayFunc::SetupInactive, replayWriter,
+                                        frameIndex, binaryData, setupCalls, headerStream,
+                                        bodyStream, maxResourceIDBufferSize);
+        replayWriter.addPrivateFunction(proto, headerStream, bodyStream);
     }
 
     {
@@ -1773,7 +1865,7 @@ void WriteShareGroupCppSetupReplay(ReplayWriter &replayWriter,
     replayWriter.saveSetupFile();
 }
 
-ProgramSources GetAttachedProgramSources(const gl::Program *program)
+ProgramSources GetAttachedProgramSources(const gl::Context *context, const gl::Program *program)
 {
     ProgramSources sources;
     for (gl::ShaderType shaderType : gl::AllShaderTypes())
@@ -1855,7 +1947,7 @@ void CaptureUpdateUniformLocations(const gl::Program *program, std::vector<CallC
         {
             const gl::LinkedUniform &uniform = uniforms[locationVar.index];
 
-            name = uniform.name;
+            name = program->getUniformNameByIndex(locationVar.index);
 
             if (uniform.isArray())
             {
@@ -1863,18 +1955,14 @@ void CaptureUpdateUniformLocations(const gl::Program *program, std::vector<CallC
                 {
                     // Non-sequential array uniform locations are not currently handled.
                     // In practice array locations shouldn't ever be non-sequential.
-                    ASSERT(uniform.location == -1 ||
-                           location == uniform.location + static_cast<int>(locationVar.arrayIndex));
+                    ASSERT(uniform.getLocation() == -1 ||
+                           location ==
+                               uniform.getLocation() + static_cast<int>(locationVar.arrayIndex));
                     continue;
                 }
 
-                if (uniform.isArrayOfArrays())
-                {
-                    UNIMPLEMENTED();
-                }
-
                 name  = gl::StripLastArrayIndex(name);
-                count = uniform.arraySizes[0];
+                count = uniform.getBasicTypeElementCount();
             }
         }
 
@@ -2255,8 +2343,9 @@ bool IsSharedObjectResource(ResourceIDType type)
         case ResourceIDType::Image:
         case ResourceIDType::Surface:
         case ResourceIDType::egl_Sync:
-            // Return false for all EGL object types.
-            return false;
+            // EGL types are associated with a display and not bound to a context
+            // For the way this function is used, we can treat them as shared.
+            return true;
 
         case ResourceIDType::EnumCount:
         default:
@@ -2473,28 +2562,22 @@ void CaptureUpdateUniformValues(const gl::State &replayState,
         CaptureUpdateCurrentProgram(callsOut->back(), 0, callsOut);
     }
 
-    const std::vector<gl::LinkedUniform> &uniforms = program->getState().getUniforms();
-
-    for (const gl::LinkedUniform &uniform : uniforms)
+    for (GLuint uniformIndex = 0; uniformIndex < static_cast<GLuint>(program->getUniforms().size());
+         uniformIndex++)
     {
-        std::string uniformName = uniform.name;
+        std::string uniformName          = program->getUniformNameByIndex(uniformIndex);
+        const gl::LinkedUniform &uniform = program->getUniformByIndex(uniformIndex);
 
         int uniformCount = 1;
         if (uniform.isArray())
         {
-            if (uniform.isArrayOfArrays())
-            {
-                UNIMPLEMENTED();
-                continue;
-            }
-
-            uniformCount = uniform.arraySizes[0];
+            uniformCount = uniform.getBasicTypeElementCount();
             uniformName  = gl::StripLastArrayIndex(uniformName);
         }
 
         gl::UniformLocation uniformLoc      = program->getUniformLocation(uniformName);
-        const gl::UniformTypeInfo *typeInfo = uniform.typeInfo;
-        int componentCount                  = typeInfo->componentCount;
+        const gl::UniformTypeInfo &typeInfo = gl::GetUniformTypeInfo(uniform.getType());
+        int componentCount                  = typeInfo.componentCount;
         int uniformSize                     = uniformCount * componentCount;
 
         // For arrayed uniforms, we'll need to increment a read location
@@ -2507,7 +2590,7 @@ void CaptureUpdateUniformValues(const gl::State &replayState,
         }
 
         // Image uniforms are special and cannot be set this way
-        if (typeInfo->isImageType)
+        if (typeInfo.isImageType)
         {
             continue;
         }
@@ -2519,7 +2602,7 @@ void CaptureUpdateUniformValues(const gl::State &replayState,
         CallVector defaultUniformCalls({callsOut, &resetCalls[uniformLoc]});
 
         // Samplers should be populated with GL_INT, regardless of return type
-        if (typeInfo->isSampler)
+        if (typeInfo.isSampler)
         {
             std::vector<GLint> uniformBuffer(uniformSize);
             for (int index = 0; index < uniformCount; index++, readLoc.value++)
@@ -2538,7 +2621,7 @@ void CaptureUpdateUniformValues(const gl::State &replayState,
             continue;
         }
 
-        switch (typeInfo->componentType)
+        switch (typeInfo.componentType)
         {
             case GL_FLOAT:
             {
@@ -2550,7 +2633,7 @@ void CaptureUpdateUniformValues(const gl::State &replayState,
                     resourceTracker->setDefaultUniformBaseLocation(program->id(), readLoc,
                                                                    uniformLoc);
                 }
-                switch (typeInfo->type)
+                switch (typeInfo.type)
                 {
                     // Note: All matrix uniforms are populated without transpose
                     case GL_FLOAT_MAT4x3:
@@ -3136,7 +3219,7 @@ void CaptureTextureContents(std::vector<CallCapture> *setupCalls,
         (index.getType() == gl::TextureType::_3D || index.getType() == gl::TextureType::_2DArray ||
          index.getType() == gl::TextureType::CubeMapArray);
 
-    if (format.compressed)
+    if (format.compressed || format.paletted)
     {
         if (is3D)
         {
@@ -3376,7 +3459,7 @@ void GenerateLinkedProgram(const gl::Context *context,
             varyingsStrings.push_back(varyingString.data());
         }
 
-        GLenum xfbMode = program->getState().getTransformFeedbackBufferMode();
+        GLenum xfbMode = program->getTransformFeedbackBufferMode();
         Capture(setupCalls, CaptureTransformFeedbackVaryings(replayState, true, id,
                                                              static_cast<GLint>(xfbVaryings.size()),
                                                              varyingsStrings.data(), xfbMode));
@@ -3384,7 +3467,7 @@ void GenerateLinkedProgram(const gl::Context *context,
 
     // Force the attributes to be bound the same way as in the existing program.
     // This can affect attributes that are optimized out in some implementations.
-    for (const sh::ShaderVariable &attrib : program->getState().getProgramInputs())
+    for (const gl::ProgramInput &attrib : program->getState().getProgramInputs())
     {
         if (gl::IsBuiltInName(attrib.name))
         {
@@ -3395,9 +3478,9 @@ void GenerateLinkedProgram(const gl::Context *context,
         // Separable programs may not have a VS, meaning it may not have attributes.
         if (program->getExecutable().hasLinkedShaderStage(gl::ShaderType::Vertex))
         {
-            ASSERT(attrib.location != -1);
+            ASSERT(attrib.getLocation() != -1);
             Capture(setupCalls, CaptureBindAttribLocation(replayState, true, id,
-                                                          static_cast<GLuint>(attrib.location),
+                                                          static_cast<GLuint>(attrib.getLocation()),
                                                           attrib.name.c_str()));
         }
     }
@@ -3547,6 +3630,28 @@ void CaptureFenceSyncResetCalls(const gl::Context *context,
     MaybeCaptureUpdateResourceIDs(context, resourceTracker, &fenceSyncRegenCalls[syncID]);
 }
 
+void CaptureEGLSyncResetCalls(const gl::Context *context,
+                              const gl::State &replayState,
+                              ResourceTracker *resourceTracker,
+                              egl::SyncID eglSyncID,
+                              EGLSync eglSyncObject,
+                              const egl::Sync *eglSync)
+{
+    // Track this as a starting resource that may need to be restored.
+    TrackedResource &trackedEGLSyncs =
+        resourceTracker->getTrackedResource(context->id(), ResourceIDType::egl_Sync);
+
+    // Track calls to regenerate a given buffer
+    ResourceCalls &eglSyncRegenCalls = trackedEGLSyncs.getResourceRegenCalls();
+
+    CallCapture createEGLSync =
+        CaptureCreateSyncKHR(nullptr, true, context->getDisplay(), eglSync->getType(),
+                             eglSync->getAttributeMap(), eglSyncObject);
+    CaptureCustomCreateEGLSync("CreateEGLSyncKHR", createEGLSync,
+                               eglSyncRegenCalls[eglSyncID.value]);
+    MaybeCaptureUpdateResourceIDs(context, resourceTracker, &eglSyncRegenCalls[eglSyncID.value]);
+}
+
 void CaptureBufferBindingResetCalls(const gl::State &replayState,
                                     ResourceTracker *resourceTracker,
                                     gl::BufferBinding binding,
@@ -3603,6 +3708,100 @@ void CaptureDefaultVertexAttribs(const gl::State &replayState,
                                                        defaultValue.Values.FloatValues));
         }
     }
+}
+
+void CompressPalettedTexture(angle::MemoryBuffer &data,
+                             angle::MemoryBuffer &tmp,
+                             const gl::InternalFormat &compressedFormat,
+                             const gl::Extents &extents)
+{
+    constexpr int uncompressedChannelCount = 4;
+
+    uint32_t indexBits = 0, redBlueBits = 0, greenBits = 0, alphaBits = 0;
+    switch (compressedFormat.internalFormat)
+    {
+        case GL_PALETTE4_RGB8_OES:
+            indexBits   = 4;
+            redBlueBits = 8;
+            greenBits   = 8;
+            alphaBits   = 0;
+            break;
+        case GL_PALETTE4_RGBA8_OES:
+            indexBits   = 4;
+            redBlueBits = 8;
+            greenBits   = 8;
+            alphaBits   = 8;
+            break;
+        case GL_PALETTE4_R5_G6_B5_OES:
+            indexBits   = 4;
+            redBlueBits = 5;
+            greenBits   = 6;
+            alphaBits   = 0;
+            break;
+        case GL_PALETTE4_RGBA4_OES:
+            indexBits   = 4;
+            redBlueBits = 4;
+            greenBits   = 4;
+            alphaBits   = 4;
+            break;
+        case GL_PALETTE4_RGB5_A1_OES:
+            indexBits   = 4;
+            redBlueBits = 5;
+            greenBits   = 5;
+            alphaBits   = 1;
+            break;
+        case GL_PALETTE8_RGB8_OES:
+            indexBits   = 8;
+            redBlueBits = 8;
+            greenBits   = 8;
+            alphaBits   = 0;
+            break;
+        case GL_PALETTE8_RGBA8_OES:
+            indexBits   = 8;
+            redBlueBits = 8;
+            greenBits   = 8;
+            alphaBits   = 8;
+            break;
+        case GL_PALETTE8_R5_G6_B5_OES:
+            indexBits   = 8;
+            redBlueBits = 5;
+            greenBits   = 6;
+            alphaBits   = 0;
+            break;
+        case GL_PALETTE8_RGBA4_OES:
+            indexBits   = 8;
+            redBlueBits = 4;
+            greenBits   = 4;
+            alphaBits   = 4;
+            break;
+        case GL_PALETTE8_RGB5_A1_OES:
+            indexBits   = 8;
+            redBlueBits = 5;
+            greenBits   = 5;
+            alphaBits   = 1;
+            break;
+
+        default:
+            UNREACHABLE();
+            break;
+    }
+
+    bool result = data.resize(
+        // Palette size
+        (1 << indexBits) * (2 * redBlueBits + greenBits + alphaBits) / 8 +
+        // Texels size
+        indexBits * extents.width * extents.height * extents.depth / 8);
+    ASSERT(result);
+
+    angle::StoreRGBA8ToPalettedImpl(
+        extents.width, extents.height, extents.depth, indexBits, redBlueBits, greenBits, alphaBits,
+        tmp.data(),
+        uncompressedChannelCount * extents.width,                   // inputRowPitch
+        uncompressedChannelCount * extents.width * extents.height,  // inputDepthPitch
+        data.data(),                                                // output
+        indexBits * extents.width / 8,                              // outputRowPitch
+        indexBits * extents.width * extents.height / 8              // outputDepthPitch
+    );
 }
 
 // Capture the setup of the state that's shared by all of the contexts in the share group
@@ -3728,7 +3927,7 @@ void CaptureShareGroupMidExecutionSetup(
     if (currentUnpackState.alignment != 1)
     {
         cap(CapturePixelStorei(replayState, true, GL_UNPACK_ALIGNMENT, 1));
-        replayState.setUnpackAlignment(1);
+        replayState.getMutablePrivateStateForCapture()->setUnpackAlignment(1);
     }
 
     // Capture Texture setup and data.
@@ -3961,7 +4160,24 @@ void CaptureShareGroupMidExecutionSetup(
                 gl::PixelPackState packState;
                 packState.alignment = 1;
 
-                if (format.compressed)
+                if (format.paletted)
+                {
+                    // Read back the uncompressed texture, then re-compress it
+                    // to store in the trace.
+
+                    angle::MemoryBuffer tmp;
+
+                    // The uncompressed format (R8G8B8A8) is 4 bytes per texel
+                    bool result = tmp.resize(4 * extents.width * extents.height * extents.depth);
+                    ASSERT(result);
+
+                    (void)texture->getTexImage(context, packState, nullptr, index.getTarget(),
+                                               index.getLevelIndex(), GL_RGBA, GL_UNSIGNED_BYTE,
+                                               tmp.data());
+
+                    CompressPalettedTexture(data, tmp, format, extents);
+                }
+                else if (format.compressed)
                 {
                     // Calculate the size needed to store the compressed level
                     GLuint sizeInBytes;
@@ -4345,11 +4561,34 @@ void CaptureShareGroupMidExecutionSetup(
         resourceTracker->getStartingFenceSyncs().insert(syncID);
     }
 
+    // Capture EGL Sync Objects
+    const egl::SyncMap eglSyncMap = context->getDisplay()->getSyncsForCapture();
+    for (const auto &eglSyncIter : eglSyncMap)
+    {
+        egl::SyncID eglSyncID    = {eglSyncIter.first};
+        const egl::Sync *eglSync = eglSyncIter.second;
+        EGLSync eglSyncObject    = gl::unsafe_int_to_pointer_cast<EGLSync>(eglSyncID.value);
+
+        if (!eglSync)
+        {
+            continue;
+        }
+        CallCapture createEGLSync =
+            CaptureCreateSync(nullptr, true, context->getDisplay(), eglSync->getType(),
+                              eglSync->getAttributeMap(), eglSyncObject);
+        CaptureCustomCreateEGLSync("CreateEGLSyncKHR", createEGLSync, *setupCalls);
+        CaptureEGLSyncResetCalls(context, replayState, resourceTracker, eglSyncID, eglSyncObject,
+                                 eglSync);
+        resourceTracker->getTrackedResource(context->id(), ResourceIDType::egl_Sync)
+            .getStartingResources()
+            .insert(eglSyncID.value);
+    }
+
     GLint contextUnpackAlignment = context->getState().getUnpackState().alignment;
     if (currentUnpackState.alignment != contextUnpackAlignment)
     {
         cap(CapturePixelStorei(replayState, true, GL_UNPACK_ALIGNMENT, contextUnpackAlignment));
-        replayState.setUnpackAlignment(contextUnpackAlignment);
+        replayState.getMutablePrivateStateForCapture()->setUnpackAlignment(contextUnpackAlignment);
     }
 }
 
@@ -4487,7 +4726,7 @@ void CaptureMidExecutionSetup(const gl::Context *context,
     if (currentUnpackState.alignment != 1)
     {
         cap(CapturePixelStorei(replayState, true, GL_UNPACK_ALIGNMENT, 1));
-        replayState.setUnpackAlignment(1);
+        replayState.getMutablePrivateStateForCapture()->setUnpackAlignment(1);
     }
 
     // Capture Texture setup and data.
@@ -4511,7 +4750,8 @@ void CaptureMidExecutionSetup(const gl::Context *context,
                 {
                     cap(CaptureActiveTexture(replayState, true,
                                              GL_TEXTURE0 + static_cast<GLenum>(bindingIndex)));
-                    replayState.setActiveSampler(static_cast<unsigned int>(bindingIndex));
+                    replayState.getMutablePrivateStateForCapture()->setActiveSampler(
+                        static_cast<unsigned int>(bindingIndex));
                 }
 
                 cap(CaptureBindTexture(replayState, true, textureType, apiTextureID));
@@ -4536,7 +4776,8 @@ void CaptureMidExecutionSetup(const gl::Context *context,
     {
         cap(CaptureActiveTexture(replayState, true,
                                  GL_TEXTURE0 + static_cast<GLenum>(apiState.getActiveSampler())));
-        replayState.setActiveSampler(apiState.getActiveSampler());
+        replayState.getMutablePrivateStateForCapture()->setActiveSampler(
+            apiState.getActiveSampler());
     }
 
     // Set Renderbuffer binding.
@@ -4924,6 +5165,26 @@ void CaptureMidExecutionSetup(const gl::Context *context,
         {
             cap(CaptureMatrixMode(replayState, true, currentMatrixMode));
         }
+
+        // Alpha Test state
+        const bool currentAlphaTestState = apiState.getEnableFeature(GL_ALPHA_TEST);
+        const bool defaultAlphaTestState = replayState.getEnableFeature(GL_ALPHA_TEST);
+
+        if (currentAlphaTestState != defaultAlphaTestState)
+        {
+            capCap(GL_ALPHA_TEST, currentAlphaTestState);
+        }
+
+        const gl::AlphaTestParameters currentAlphaTestParameters =
+            apiState.gles1().getAlphaTestParameters();
+        const gl::AlphaTestParameters defaultAlphaTestParameters =
+            replayState.gles1().getAlphaTestParameters();
+
+        if (currentAlphaTestParameters != defaultAlphaTestParameters)
+        {
+            cap(CaptureAlphaFunc(replayState, true, currentAlphaTestParameters.func,
+                                 currentAlphaTestParameters.ref));
+        }
     }
 
     // Rasterizer state. Missing ES 3.x features.
@@ -4942,6 +5203,34 @@ void CaptureMidExecutionSetup(const gl::Context *context,
     if (currentRasterState.frontFace != defaultRasterState.frontFace)
     {
         cap(CaptureFrontFace(replayState, true, currentRasterState.frontFace));
+    }
+
+    if (currentRasterState.polygonMode != defaultRasterState.polygonMode)
+    {
+        if (context->getExtensions().polygonModeNV)
+        {
+            cap(CapturePolygonModeNV(replayState, true, GL_FRONT_AND_BACK,
+                                     currentRasterState.polygonMode));
+        }
+        else if (context->getExtensions().polygonModeANGLE)
+        {
+            cap(CapturePolygonModeANGLE(replayState, true, GL_FRONT_AND_BACK,
+                                        currentRasterState.polygonMode));
+        }
+        else
+        {
+            UNREACHABLE();
+        }
+    }
+
+    if (currentRasterState.polygonOffsetPoint != defaultRasterState.polygonOffsetPoint)
+    {
+        capCap(GL_POLYGON_OFFSET_POINT_NV, currentRasterState.polygonOffsetPoint);
+    }
+
+    if (currentRasterState.polygonOffsetLine != defaultRasterState.polygonOffsetLine)
+    {
+        capCap(GL_POLYGON_OFFSET_LINE_NV, currentRasterState.polygonOffsetLine);
     }
 
     if (currentRasterState.polygonOffsetFill != defaultRasterState.polygonOffsetFill)
@@ -4964,6 +5253,11 @@ void CaptureMidExecutionSetup(const gl::Context *context,
                 replayState, true, currentRasterState.polygonOffsetFactor,
                 currentRasterState.polygonOffsetUnits, currentRasterState.polygonOffsetClamp));
         }
+    }
+
+    if (currentRasterState.depthClamp != defaultRasterState.depthClamp)
+    {
+        capCap(GL_DEPTH_CLAMP_EXT, currentRasterState.depthClamp);
     }
 
     // pointDrawMode/multiSample are only used in the D3D back-end right now.
@@ -5108,16 +5402,28 @@ void CaptureMidExecutionSetup(const gl::Context *context,
         currentBlendState.sourceBlendAlpha != defaultBlendState.sourceBlendAlpha ||
         currentBlendState.destBlendAlpha != defaultBlendState.destBlendAlpha)
     {
-        // BlendFunc could be used instead of BlendFuncSeparate in some cases but there's no
-        // advantage and it makes Reset more difficult as both functions affect the same state.
-        cap(CaptureBlendFuncSeparate(
-            replayState, true, currentBlendState.sourceBlendRGB, currentBlendState.destBlendRGB,
-            currentBlendState.sourceBlendAlpha, currentBlendState.destBlendAlpha));
-        Capture(&resetCalls[angle::EntryPoint::GLBlendFuncSeparate],
-                CaptureBlendFuncSeparate(replayState, true, currentBlendState.sourceBlendRGB,
-                                         currentBlendState.destBlendRGB,
-                                         currentBlendState.sourceBlendAlpha,
-                                         currentBlendState.destBlendAlpha));
+        if (context->isGLES1())
+        {
+            // Even though their states are tracked independently, in GLES1 blendAlpha
+            // and blendRGB cannot be set separately and are always equal
+            cap(CaptureBlendFunc(replayState, true, currentBlendState.sourceBlendRGB,
+                                 currentBlendState.destBlendRGB));
+            Capture(&resetCalls[angle::EntryPoint::GLBlendFunc],
+                    CaptureBlendFunc(replayState, true, currentBlendState.sourceBlendRGB,
+                                     currentBlendState.destBlendRGB));
+        }
+        else
+        {
+            // Always use BlendFuncSeparate for non-GLES1 as it covers all cases
+            cap(CaptureBlendFuncSeparate(
+                replayState, true, currentBlendState.sourceBlendRGB, currentBlendState.destBlendRGB,
+                currentBlendState.sourceBlendAlpha, currentBlendState.destBlendAlpha));
+            Capture(&resetCalls[angle::EntryPoint::GLBlendFuncSeparate],
+                    CaptureBlendFuncSeparate(replayState, true, currentBlendState.sourceBlendRGB,
+                                             currentBlendState.destBlendRGB,
+                                             currentBlendState.sourceBlendAlpha,
+                                             currentBlendState.destBlendAlpha));
+        }
     }
 
     if (currentBlendState.blendEquationRGB != defaultBlendState.blendEquationRGB ||
@@ -5255,6 +5561,13 @@ void CaptureMidExecutionSetup(const gl::Context *context,
         cap(CaptureDepthRangef(replayState, true, apiState.getNearPlane(), apiState.getFarPlane()));
     }
 
+    if (apiState.getClipOrigin() != gl::ClipOrigin::LowerLeft ||
+        apiState.getClipDepthMode() != gl::ClipDepthMode::NegativeOneToOne)
+    {
+        cap(CaptureClipControlEXT(replayState, true, apiState.getClipOrigin(),
+                                  apiState.getClipDepthMode()));
+    }
+
     if (apiState.isScissorTestEnabled())
     {
         capCap(GL_SCISSOR_TEST, apiState.isScissorTestEnabled());
@@ -5277,7 +5590,7 @@ void CaptureMidExecutionSetup(const gl::Context *context,
     if (currentUnpackState.alignment != contextUnpackAlignment)
     {
         cap(CapturePixelStorei(replayState, true, GL_UNPACK_ALIGNMENT, contextUnpackAlignment));
-        replayState.setUnpackAlignment(contextUnpackAlignment);
+        replayState.getMutablePrivateStateForCapture()->setUnpackAlignment(contextUnpackAlignment);
     }
 
     if (validationEnabled)
@@ -5350,6 +5663,11 @@ bool SkipCall(EntryPoint entryPoint)
         case EntryPoint::EGLQuerySurface:
             // Skip these calls because:
             // - Some EGL types and pointer parameters aren't yet implemented in EGL capture.
+            return true;
+
+        case EntryPoint::EGLPrepareSwapBuffersANGLE:
+            // Skip this call because:
+            // - eglPrepareSwapBuffersANGLE is automatically called by eglSwapBuffers
             return true;
 
         case EntryPoint::EGLSwapBuffers:
@@ -5524,13 +5842,6 @@ FrameCaptureShared::FrameCaptureShared()
     if (!mValidationExpression.empty())
     {
         INFO() << "Validation expression is " << kValidationExprVarName;
-    }
-
-    std::string trimEnabledFromEnv =
-        GetEnvironmentVarOrUnCachedAndroidProperty(kTrimEnabledVarName, kAndroidTrimEnabled);
-    if (trimEnabledFromEnv == "0")
-    {
-        mTrimEnabled = false;
     }
 
     // TODO: Remove. http://anglebug.com/7753
@@ -7099,7 +7410,7 @@ void FrameCaptureShared::maybeCapturePreCallUpdates(
             gl::ShaderProgramID shaderID =
                 call.params.getParam("shaderPacked", ParamType::TShaderProgramID, 0)
                     .value.ShaderProgramIDVal;
-            const gl::Shader *shader = context->getShader(shaderID);
+            const gl::Shader *shader = context->getShaderNoResolveCompile(shaderID);
             // Shaders compiled for ProgramBinary will not have a shader created
             if (shader)
             {
@@ -7116,9 +7427,9 @@ void FrameCaptureShared::maybeCapturePreCallUpdates(
                     .value.ShaderProgramIDVal;
             const gl::Program *program = context->getProgramResolveLink(programID);
             // Programs linked in support of ProgramBinary will not have attached shaders
-            if (program->getState().hasAttachedShader())
+            if (program->getState().hasAnyAttachedShader())
             {
-                setProgramSources(programID, GetAttachedProgramSources(program));
+                setProgramSources(programID, GetAttachedProgramSources(context, program));
             }
             break;
         }
@@ -7310,8 +7621,15 @@ void FrameCaptureShared::maybeCapturePreCallUpdates(
             }
             break;
         }
-
         case EntryPoint::GLBlendFunc:
+        {
+            if (isCaptureActive())
+            {
+                context->getFrameCapture()->getStateResetHelper().setEntryPointDirty(
+                    EntryPoint::GLBlendFunc);
+            }
+            break;
+        }
         case EntryPoint::GLBlendFuncSeparate:
         {
             if (isCaptureActive())
@@ -7373,6 +7691,33 @@ void FrameCaptureShared::maybeCapturePreCallUpdates(
         {
             CreateEGLImagePreCallUpdate<EGLint>(call, mResourceTracker, ParamType::TEGLintPointer,
                                                 egl::AttributeMap::CreateFromIntArray);
+            break;
+        }
+        case EntryPoint::EGLCreateSync:
+        case EntryPoint::EGLCreateSyncKHR:
+        {
+            egl::SyncID eglSyncID = call.params.getReturnValue().value.egl_SyncIDVal;
+            FrameCaptureShared *frameCaptureShared =
+                context->getShareGroup()->getFrameCaptureShared();
+            // If we're capturing, track which egl sync has been created
+            if (frameCaptureShared->isCaptureActive())
+            {
+                handleGennedResource(context, eglSyncID);
+            }
+            break;
+        }
+        case EntryPoint::EGLDestroySync:
+        case EntryPoint::EGLDestroySyncKHR:
+        {
+            egl::SyncID eglSyncID =
+                call.params.getParam("syncPacked", ParamType::Tegl_SyncID, 1).value.egl_SyncIDVal;
+            FrameCaptureShared *frameCaptureShared =
+                context->getShareGroup()->getFrameCaptureShared();
+            // If we're capturing, track which EGL sync has been deleted
+            if (frameCaptureShared->isCaptureActive())
+            {
+                handleDeletedResource(context, eglSyncID);
+            }
             break;
         }
         case EntryPoint::GLDispatchCompute:
@@ -7530,7 +7875,7 @@ void FrameCaptureShared::captureCall(gl::Context *context, CallCapture &&inCall,
         // If the context ID has changed, then we need to inject an eglMakeCurrent() call. Only do
         // this if there is more than 1 context in the share group to avoid unnecessary
         // eglMakeCurrent() calls.
-        size_t contextCount = context->getShareGroup()->getShareGroupContextCount();
+        size_t contextCount = context->getShareGroup()->getContexts().size();
         if (contextCount > 1 && mLastContextId != context->id())
         {
             // Inject the eglMakeCurrent() call. Ignore the display and surface.
@@ -7961,7 +8306,7 @@ void FrameCaptureShared::runMidExecutionCapture(gl::Context *mainContext)
 
     const gl::State &contextState = mainContext->getState();
     gl::State mainContextReplayState(
-        nullptr, nullptr, nullptr, nullptr, nullptr, contextState.getClientType(),
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, contextState.getClientType(),
         contextState.getClientVersion(), contextState.getProfileMask(), false, true, true, true,
         false, EGL_CONTEXT_PRIORITY_MEDIUM_IMG, contextState.hasRobustAccess(),
         contextState.hasProtectedContent());
@@ -7976,40 +8321,52 @@ void FrameCaptureShared::runMidExecutionCapture(gl::Context *mainContext)
     egl::Surface *draw    = mainContext->getCurrentDrawSurface();
     egl::Surface *read    = mainContext->getCurrentReadSurface();
 
-    for (gl::Context *shareContext : shareGroup->getContexts())
+    for (auto shareContext : shareGroup->getContexts())
     {
-        FrameCapture *frameCapture = shareContext->getFrameCapture();
+        FrameCapture *frameCapture = shareContext.second->getFrameCapture();
         ASSERT(frameCapture->getSetupCalls().empty());
 
-        if (shareContext->id() == mainContext->id())
+        if (shareContext.second->id() == mainContext->id())
         {
-            CaptureMidExecutionSetup(shareContext, &frameCapture->getSetupCalls(),
+            CaptureMidExecutionSetup(shareContext.second, &frameCapture->getSetupCalls(),
                                      frameCapture->getStateResetHelper().getResetCalls(),
                                      &mShareGroupSetupCalls, &mResourceIDToSetupCalls,
                                      &mResourceTracker, mainContextReplayState,
                                      mValidateSerializedState);
             scanSetupCalls(frameCapture->getSetupCalls());
+
+            std::stringstream protoStream;
+            std::stringstream headerStream;
+            std::stringstream bodyStream;
+
+            protoStream << "void "
+                        << FmtSetupFunction(kNoPartId, mainContext->id(), FuncUsage::Prototype);
+            std::string proto = protoStream.str();
+
+            WriteCppReplayFunctionWithParts(mainContext->id(), ReplayFunc::Setup, mReplayWriter, 1,
+                                            &mBinaryData, frameCapture->getSetupCalls(),
+                                            headerStream, bodyStream, &mResourceIDBufferSize);
+
+            mReplayWriter.addPrivateFunction(proto, headerStream, bodyStream);
         }
         else
         {
-            // Track that this context was created as shared context before MEC started
-            mActiveSecondaryContexts.insert(shareContext->id().value);
-
-            const gl::State &shareContextState = shareContext->getState();
+            const gl::State &shareContextState = shareContext.second->getState();
             gl::State auxContextReplayState(
-                nullptr, nullptr, nullptr, nullptr, nullptr, shareContextState.getClientType(),
-                shareContextState.getClientVersion(), shareContextState.getProfileMask(), false,
-                true, true, true, false, EGL_CONTEXT_PRIORITY_MEDIUM_IMG,
-                shareContextState.hasRobustAccess(), shareContextState.hasProtectedContent());
-            auxContextReplayState.initializeForCapture(shareContext);
+                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                shareContextState.getClientType(), shareContextState.getClientVersion(),
+                shareContextState.getProfileMask(), false, true, true, true, false,
+                EGL_CONTEXT_PRIORITY_MEDIUM_IMG, shareContextState.hasRobustAccess(),
+                shareContextState.hasProtectedContent());
+            auxContextReplayState.initializeForCapture(shareContext.second);
 
-            egl::Error error = shareContext->makeCurrent(display, draw, read);
+            egl::Error error = shareContext.second->makeCurrent(display, draw, read);
             if (error.isError())
             {
                 INFO() << "MEC unable to make secondary context current";
             }
 
-            CaptureMidExecutionSetup(shareContext, &frameCapture->getSetupCalls(),
+            CaptureMidExecutionSetup(shareContext.second, &frameCapture->getSetupCalls(),
                                      frameCapture->getStateResetHelper().getResetCalls(),
                                      &mShareGroupSetupCalls, &mResourceIDToSetupCalls,
                                      &mResourceTracker, auxContextReplayState,
@@ -8018,10 +8375,12 @@ void FrameCaptureShared::runMidExecutionCapture(gl::Context *mainContext)
             scanSetupCalls(frameCapture->getSetupCalls());
 
             WriteAuxiliaryContextCppSetupReplay(
-                mReplayWriter, mCompression, mOutDirectory, shareContext, mCaptureLabel, 1,
+                mReplayWriter, mCompression, mOutDirectory, shareContext.second, mCaptureLabel, 1,
                 frameCapture->getSetupCalls(), &mBinaryData, mSerializeStateEnabled, *this,
                 &mResourceIDBufferSize);
         }
+        // Track that this context was created before MEC started
+        mActiveContexts.insert(shareContext.first);
     }
 
     egl::Error error = mainContext->makeCurrent(display, draw, read);
@@ -8056,8 +8415,6 @@ void FrameCaptureShared::onEndFrame(gl::Context *context)
         }
     }
 
-    // Assume that the context performing the swap is the "main" context.
-    ASSERT(mWindowSurfaceContextID.value == 0 || mWindowSurfaceContextID == context->id());
     mWindowSurfaceContextID = context->id();
 
     // On Android, we can trigger a capture during the run
@@ -8227,7 +8584,9 @@ void StateResetHelper::setDefaultResetCalls(const gl::Context *context,
         }
         case angle::EntryPoint::GLBlendFunc:
         {
-            UNREACHABLE();  // GLBlendFuncSeparate is always used instead
+            Capture(&mResetCalls[angle::EntryPoint::GLBlendFunc],
+                    CaptureBlendFunc(context->getState(), true, kDefaultBlendState.sourceBlendRGB,
+                                     kDefaultBlendState.destBlendRGB));
             break;
         }
         case angle::EntryPoint::GLBlendFuncSeparate:
@@ -8308,7 +8667,7 @@ TrackedResource &ResourceTracker::getTrackedResource(gl::ContextID contextID, Re
 {
     if (IsSharedObjectResource(type))
     {
-        // No need to index with context if not shared
+        // No need to index with context if shared
         return mTrackedResourcesShared[static_cast<uint32_t>(type)];
     }
     else
@@ -8514,7 +8873,6 @@ void FrameCaptureShared::writeJSON(const gl::Context *context)
     json.addBool("IsBindGeneratesResourcesEnabled", glState.isBindGeneratesResourceEnabled());
     json.addBool("IsWebGLCompatibilityEnabled", glState.isWebGL());
     json.addBool("IsRobustResourceInitEnabled", glState.isRobustResourceInitEnabled());
-    json.addBool("IsTrimmingEnabled", mTrimEnabled);
     json.endGroup();
 
     {
@@ -8679,22 +9037,6 @@ void FrameCaptureShared::writeMainContextCppReplay(const gl::Context *context,
     if (frameIndex == 1)
     {
         {
-            std::stringstream protoStream;
-            std::stringstream headerStream;
-            std::stringstream bodyStream;
-
-            protoStream << "void "
-                        << FmtSetupFunction(kNoPartId, context->id(), FuncUsage::Prototype);
-            std::string proto = protoStream.str();
-
-            WriteCppReplayFunctionWithParts(context->id(), ReplayFunc::Setup, mReplayWriter,
-                                            frameIndex, &mBinaryData, setupCalls, headerStream,
-                                            bodyStream, &mResourceIDBufferSize);
-
-            mReplayWriter.addPrivateFunction(proto, headerStream, bodyStream);
-        }
-
-        {
             std::string proto = "void SetupReplay(void)";
 
             std::stringstream out;
@@ -8708,21 +9050,28 @@ void FrameCaptureShared::writeMainContextCppReplay(const gl::Context *context,
             {
                 out << "    " << FmtSetupFunction(kNoPartId, kSharedContextId, FuncUsage::Call)
                     << ";\n";
+                out << "    "
+                    << FmtSetupInactiveFunction(kNoPartId, kSharedContextId, FuncUsage::Call)
+                    << "\n";
+                // Make sure that the current context is mapped correctly
+                out << "    SetCurrentContextID(" << context->id() << ");\n";
             }
-
-            // Setup the presentation (this) context first.
-            out << "    " << FmtSetupFunction(kNoPartId, context->id(), FuncUsage::Call) << ";\n";
-            out << "\n";
 
             // Setup each of the auxiliary contexts.
             egl::ShareGroup *shareGroup            = context->getShareGroup();
-            const egl::ContextSet &shareContextSet = shareGroup->getContexts();
-            for (gl::Context *shareContext : shareContextSet)
+            const egl::ContextMap &shareContextMap = shareGroup->getContexts();
+            for (auto shareContext : shareContextMap)
             {
-                // Skip the presentation context, since that context was created by the test
-                // framework.
-                if (shareContext->id() == context->id())
+                if (shareContext.first == context->id().value)
                 {
+                    if (usesMidExecutionCapture())
+                    {
+                        // Setup the presentation (this) context first.
+                        out << "    " << FmtSetupFunction(kNoPartId, context->id(), FuncUsage::Call)
+                            << ";\n";
+                        out << "\n";
+                    }
+
                     continue;
                 }
 
@@ -8733,16 +9082,16 @@ void FrameCaptureShared::writeMainContextCppReplay(const gl::Context *context,
                 {
                     // Only call SetupReplayContext for secondary contexts that were current before
                     // MEC started
-                    if (mActiveSecondaryContexts.find(shareContext->id().value) !=
-                        mActiveSecondaryContexts.end())
+                    if (mActiveContexts.find(shareContext.first) != mActiveContexts.end())
                     {
                         // TODO(http://anglebug.com/5878): Support capture/replay of
                         // eglCreateContext() so this block can be moved into SetupReplayContextXX()
                         // by injecting them into the beginning of the setup call stream.
-                        out << "    CreateContext(" << shareContext->id() << ");\n";
+                        out << "    CreateContext(" << shareContext.first << ");\n";
 
                         out << "    "
-                            << FmtSetupFunction(kNoPartId, shareContext->id(), FuncUsage::Call)
+                            << FmtSetupFunction(kNoPartId, shareContext.second->id(),
+                                                FuncUsage::Call)
                             << ";\n";
                     }
                 }
@@ -8750,7 +9099,7 @@ void FrameCaptureShared::writeMainContextCppReplay(const gl::Context *context,
 
             // If there are other contexts that were initialized, we need to make the main context
             // current again.
-            if (shareContextSet.size() > 1)
+            if (shareContextMap.size() > 1)
             {
                 out << "\n";
                 out << "    eglMakeCurrent(NULL, NULL, NULL, gContextMap2[" << context->id()
@@ -8991,11 +9340,6 @@ void FrameCaptureShared::markResourceSetupCallsInactive(std::vector<CallCapture>
                                                         GLuint id,
                                                         gl::Range<size_t> range)
 {
-    if (!mTrimEnabled)
-    {
-        return;
-    }
-
     ASSERT(mResourceIDToSetupCalls[type].find(id) == mResourceIDToSetupCalls[type].end());
 
     // Mark all of the calls that were used to initialize this resource as INACTIVE
@@ -9169,9 +9513,6 @@ void ReplayWriter::setFilenamePattern(const std::string &pattern)
     if (mFilenamePattern != pattern)
     {
         mFilenamePattern = pattern;
-
-        // Reset the frame counter if the filename pattern changes.
-        mFrameIndex = 1;
     }
 }
 
@@ -9388,7 +9729,6 @@ void ReplayWriter::writeReplaySource(const std::string &filename)
     SaveFileHelper saveCpp(filename);
 
     saveCpp << mSourcePrologue << "\n";
-
     for (const std::string &header : mReplayHeaders)
     {
         saveCpp << header << "\n";

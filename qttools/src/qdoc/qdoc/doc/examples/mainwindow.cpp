@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QtWidgets>
 
@@ -106,7 +106,8 @@ void MainWindow::createActions()
     openAct->setShortcuts(QKeySequence::Open);
     connect(openAct, SIGNAL(triggered()), this, SLOT(open()));
 
-    foreach (const QByteArray &format, QImageWriter::supportedImageFormats()) {
+    const QByteArrayList formats = QImageWriter::supportedImageFormats();
+    for (const QByteArray &format : formats) {
         QString text = tr("%1...").arg(QString(format).toUpper());
 
         QAction *action = new QAction(text, this);
@@ -146,8 +147,7 @@ void MainWindow::createMenus()
 //! [15] //! [16]
 {
     saveAsMenu = new QMenu(tr("&Save As"), this);
-    foreach (QAction *action, saveAsActs)
-        saveAsMenu->addAction(action);
+    saveAsMenu->addActions(saveAsActs);
 
     fileMenu = new QMenu(tr("&File"), this);
     fileMenu->addAction(openAct);

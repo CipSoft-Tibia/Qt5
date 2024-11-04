@@ -4,22 +4,24 @@
 
 from __future__ import annotations
 
+import datetime as dt
+import time
+import logging
 import pathlib
 import threading
-import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
-from crossbench import helper
-from crossbench.probes import base
-from crossbench.probes.results import ProbeResult
+from crossbench.probes import probe
+from crossbench.probes.results import LocalProbeResult, ProbeResult
 
 if TYPE_CHECKING:
-  from crossbench.browsers.base import Browser
+  from crossbench.browsers.browser import Browser
   from crossbench.env import HostEnvironment
-  from crossbench.runner import Run
+  from crossbench import plt
+  from crossbench.runner.run import Run
 
 
-class SystemStatsProbe(base.Probe):
+class SystemStatsProbe(probe.Probe):
   """
   General-purpose probe to periodically collect system-wide CPU and memory
   stats on unix systems.
@@ -29,8 +31,8 @@ class SystemStatsProbe(base.Probe):
 
   _interval: float
 
-  def __init__(self, *args, interval: float = 1, **kwargs):
-    super().__init__(*args, **kwargs)
+  def __init__(self, interval: float = 0.1) -> None:
+    super().__init__()
     self._interval = interval
 
   @property
@@ -47,35 +49,65 @@ class SystemStatsProbe(base.Probe):
       env.handle_warning(f"Probe={self.NAME} cannot merge data over multiple "
                          f"repetitions={env.runner.repetitions}.")
 
-  @classmethod
-  def poll(cls, interval: float, path: pathlib.Path,
-           event: threading.Event) -> None:
-    while not event.is_set():
-      # TODO(cbruni): support remote platform
-      data = helper.platform.sh_stdout(*cls.CMD)
-      out_file = path / f"{time.time()}.txt"
+
+  def get_scope(self, run: Run) -> SystemStatsProbeScope:
+    return SystemStatsProbeScope(self, run)
+
+
+class SystemStatsProbeScope(probe.ProbeScope[SystemStatsProbe]):
+  _poller: CMDPoller
+
+  def setup(self, run: Run) -> None:
+    self.result_path.mkdir()
+
+  def start(self, run: Run) -> None:
+    self._poller = CMDPoller(self.browser_platform, self.probe.CMD,
+                             self.probe.interval, self.result_path)
+    self._poller.start()
+
+  def stop(self, run: Run) -> None:
+    self._poller.stop()
+
+  def tear_down(self, run: Run) -> ProbeResult:
+    return LocalProbeResult(file=(self.result_path,))
+
+
+class CMDPoller(threading.Thread):
+
+  def __init__(self, platform: plt.Platform, cmd: Sequence[str],
+               interval: float, path: pathlib.Path):
+    super().__init__()
+    self._platform = platform
+    self._cmd = cmd
+    self._path = path
+    if interval < 0.1:
+      raise ValueError("Poller interval should be more than 0.1s for accuracy, "
+                       f"but got {interval}s")
+    self._interval = interval
+    self._event = threading.Event()
+
+  def stop(self) -> None:
+    self._event.set()
+    self.join()
+
+  def run(self) -> None:
+    start_time = time.monotonic_ns()
+    while not self._event.is_set():
+      poll_start = dt.datetime.now()
+
+      data = self._platform.sh_stdout(*self._cmd)
+      datetime_str = poll_start.strftime("%Y-%m-%d_%H%M%S_%f")
+      out_file = self._path / f"{datetime_str}.txt"
       with out_file.open("w", encoding="utf-8") as f:
         f.write(data)
-      time.sleep(interval)
 
-  class Scope(base.Probe.Scope):
-    _event: threading.Event
-    _poller: threading.Thread
+      poll_end = dt.datetime.now()
+      diff = (poll_end - poll_start).total_seconds()
+      if diff > self._interval:
+        logging.warning("Poller command took longer than expected %fs: %s",
+                        self._interval, self._cmd)
 
-    def setup(self, run: Run) -> None:
-      self.results_file.mkdir()
-
-    def start(self, run: Run) -> None:
-      self._event = threading.Event()
-      assert self.browser_platform == helper.platform, (
-          "Remote platforms are not supported yet")
-      self._poller = threading.Thread(
-          target=SystemStatsProbe.poll,
-          args=(self.probe.interval, self.results_file, self._event))
-      self._poller.start()
-
-    def stop(self, run: Run) -> None:
-      self._event.set()
-
-    def tear_down(self, run: Run) -> ProbeResult:
-      return ProbeResult(file=(self.results_file,))
+      # Calculate wait_time against fixed start time to avoid drifting.
+      total_time = ((time.monotonic_ns() - start_time) / 10.0**9)
+      wait_time = self._interval - (total_time % self._interval)
+      self._event.wait(wait_time)

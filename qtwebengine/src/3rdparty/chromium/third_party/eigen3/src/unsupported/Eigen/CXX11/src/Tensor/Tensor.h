@@ -360,7 +360,7 @@ class Tensor : public TensorBase<Tensor<Scalar_, NumIndices_, Options_, IndexTyp
       int i;
       Index size = Index(1);
       for (i = 0; i < NumIndices; i++) {
-        internal::check_rows_cols_for_overflow<Dynamic>::run(size, dimensions[i]);
+        internal::check_rows_cols_for_overflow<Dynamic, Dynamic, Dynamic>::run(size, dimensions[i]);
         size *= dimensions[i];
       }
       #ifdef EIGEN_INITIALIZE_COEFFS

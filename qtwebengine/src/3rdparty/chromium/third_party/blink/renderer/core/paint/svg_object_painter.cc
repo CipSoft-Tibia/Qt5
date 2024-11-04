@@ -4,12 +4,11 @@
 
 #include "third_party/blink/renderer/core/paint/svg_object_painter.h"
 
-#include "third_party/blink/renderer/core/layout/layout_object.h"
+#include "cc/paint/color_filter.h"
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_resource_paint_server.h"
 #include "third_party/blink/renderer/core/layout/svg/svg_resources.h"
 #include "third_party/blink/renderer/core/paint/paint_auto_dark_mode.h"
 #include "third_party/blink/renderer/core/paint/paint_info.h"
-#include "third_party/skia/include/core/SkColorFilter.h"
 
 namespace blink {
 
@@ -18,14 +17,14 @@ namespace {
 void ApplyColorInterpolation(const ComputedStyle& style,
                              cc::PaintFlags& flags) {
   if (style.ColorInterpolation() == EColorInterpolation::kLinearrgb) {
-    flags.setColorFilter(SkColorFilters::SRGBToLinearGamma());
+    flags.setColorFilter(cc::ColorFilter::MakeSRGBToLinearGamma());
   }
 }
 
 }  // namespace
 
 void SVGObjectPainter::PaintResourceSubtree(GraphicsContext& context) {
-  DCHECK(!layout_object_.SelfNeedsLayout());
+  DCHECK(!layout_object_.SelfNeedsFullLayout());
 
   PaintInfo info(
       context, CullRect::Infinite(), PaintPhase::kForeground,
@@ -84,8 +83,9 @@ bool SVGObjectPainter::PreparePaint(
     const Longhand& property = apply_to_fill
                                    ? To<Longhand>(GetCSSPropertyFill())
                                    : To<Longhand>(GetCSSPropertyStroke());
-    const Color color = style.VisitedDependentColor(property);
-    flags.setColor(ScaleAlpha(color.Rgb(), alpha));
+    Color flag_color = style.VisitedDependentColor(property);
+    flag_color.SetAlpha(flag_color.Alpha() * alpha);
+    flags.setColor(flag_color.toSkColor4f());
     flags.setShader(nullptr);
     ApplyColorInterpolation(style, flags);
     return true;

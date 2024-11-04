@@ -18,11 +18,9 @@ namespace viz {
 
 const absl::optional<gfx::Rect>& GetOptionalDamageRectFromQuad(
     const DrawQuad* quad) {
-  if (quad->material == DrawQuad::Material::kTextureContent) {
-    auto* texture_quad = TextureDrawQuad::MaterialCast(quad);
+  if (auto* texture_quad = quad->DynamicCast<TextureDrawQuad>()) {
     return texture_quad->damage_rect;
-  } else if (quad->material == DrawQuad::Material::kYuvVideoContent) {
-    auto* yuv_video_quad = YUVVideoDrawQuad::MaterialCast(quad);
+  } else if (auto* yuv_video_quad = quad->DynamicCast<YUVVideoDrawQuad>()) {
     return yuv_video_quad->damage_rect;
   } else {
     static absl::optional<gfx::Rect> no_damage;
@@ -48,6 +46,16 @@ void AggregationPassData::Reset() {
   *this = AggregationPassData();
 }
 
+PersistentPassData::PersistentPassData() = default;
+PersistentPassData::PersistentPassData(PersistentPassData&& other) = default;
+PersistentPassData& PersistentPassData::operator=(PersistentPassData& other) =
+    default;
+PersistentPassData& PersistentPassData::operator=(
+    const PersistentPassData& other) = default;
+PersistentPassData& PersistentPassData::operator=(PersistentPassData&& other) =
+    default;
+PersistentPassData::~PersistentPassData() = default;
+
 ResolvedPassData::ResolvedPassData(FixedPassData fixed_data)
     : fixed_(std::move(fixed_data)) {}
 ResolvedPassData::~ResolvedPassData() = default;
@@ -55,13 +63,20 @@ ResolvedPassData::ResolvedPassData(ResolvedPassData&& other) = default;
 ResolvedPassData& ResolvedPassData::operator=(ResolvedPassData&& other) =
     default;
 
+void ResolvedPassData::CopyAndResetPersistentPassData() {
+  previous_persistent_data_ = current_persistent_data_;
+  current_persistent_data_ = PersistentPassData();
+}
+
 ResolvedFrameData::ResolvedFrameData(DisplayResourceProvider* resource_provider,
                                      Surface* surface,
-                                     uint64_t previous_frame_index)
+                                     uint64_t previous_frame_index,
+                                     AggregatedRenderPassId prev_root_pass_id)
     : resource_provider_(resource_provider),
       surface_id_(surface->surface_id()),
       surface_(surface),
-      previous_frame_index_(previous_frame_index) {
+      previous_frame_index_(previous_frame_index),
+      prev_root_pass_id_(prev_root_pass_id) {
   DCHECK(resource_provider_);
   DCHECK(surface_);
 
@@ -75,6 +90,10 @@ ResolvedFrameData::~ResolvedFrameData() {
 
 void ResolvedFrameData::SetFullDamageForNextAggregation() {
   previous_frame_index_ = kInvalidFrameIndex;
+}
+
+uint32_t ResolvedFrameData::GetClientNamespaceId() const {
+  return static_cast<uint32_t>(child_resource_id_);
 }
 
 void ResolvedFrameData::ForceReleaseResource() {
@@ -102,7 +121,8 @@ void ResolvedFrameData::UpdateForActiveFrame(
 
   // Will be repopulated based on active frame.
   render_pass_id_map_.clear();
-  resolved_passes_.clear();
+  std::vector<ResolvedPassData> previous_resolved_passes;
+  resolved_passes_.swap(previous_resolved_passes);
   render_pass_id_map_.reserve(num_render_pass);
   resolved_passes_.reserve(num_render_pass);
 
@@ -113,6 +133,7 @@ void ResolvedFrameData::UpdateForActiveFrame(
   // remapped display resource ids.
   for (size_t i = 0; i < num_render_pass; ++i) {
     auto& render_pass = render_passes[i];
+    const bool is_root = i == num_render_pass - 1;
 
     FixedPassData fixed;
 
@@ -120,10 +141,15 @@ void ResolvedFrameData::UpdateForActiveFrame(
 
     AggregatedRenderPassId& remapped_id = aggregated_id_map_[render_pass->id];
     if (remapped_id.is_null()) {
-      remapped_id = render_pass_id_generator.GenerateNextId();
+      if (is_root && !prev_root_pass_id_.is_null()) {
+        remapped_id = prev_root_pass_id_;
+      } else {
+        remapped_id = render_pass_id_generator.GenerateNextId();
+      }
     }
     fixed.remapped_id = remapped_id;
-    fixed.is_root = i == num_render_pass - 1;
+    fixed.is_root = is_root;
+    fixed.render_pass_id = render_pass->id;
 
     // Loop through the quads, remapping resource ids and storing them.
     auto& draw_quads = fixed.draw_quads;
@@ -141,12 +167,14 @@ void ResolvedFrameData::UpdateForActiveFrame(
         // that exists and is drawn before the current render pass.
         auto quad_render_pass_id =
             CompositorRenderPassDrawQuad::MaterialCast(quad)->render_pass_id;
-        if (!base::Contains(render_pass_id_map_, quad_render_pass_id)) {
+        auto iter = render_pass_id_map_.find(quad_render_pass_id);
+        if (iter == render_pass_id_map_.end()) {
           DLOG(ERROR) << "CompositorRenderPassDrawQuad with invalid id";
           SetInvalid();
           return;
         }
 
+        ++iter->second->fixed_.embed_count;
         fixed.prewalk_quads.push_back(quad);
       } else if (quad->material == DrawQuad::Material::kSurfaceContent) {
         fixed.prewalk_quads.push_back(quad);
@@ -164,6 +192,9 @@ void ResolvedFrameData::UpdateForActiveFrame(
         }
 
         referenced_resources.push_back(resource_id);
+
+        // Update `ResolvedQuadData::remapped_resources` to have the remapped
+        // display resource_id.
         resource_id = iter->second;
       }
     }
@@ -182,6 +213,10 @@ void ResolvedFrameData::UpdateForActiveFrame(
 
   frame_index_ = surface_->GetActiveFrameIndex();
   DCHECK_NE(frame_index_, 0u);
+
+  // Get persistent_data from the previous frame to the current frame.
+  MovePersistentPassDataFromPreviousFrame(previous_resolved_passes);
+  previous_resolved_passes.clear();
 
   // Clear id mappings that weren't used in this frame.
   base::EraseIf(aggregated_id_map_, [this](auto& entry) {
@@ -214,8 +249,10 @@ bool ResolvedFrameData::WasUsedInAggregation() const {
 
 void ResolvedFrameData::ResetAfterAggregation() {
   // Reset aggregation scoped data.
-  for (auto& resolved_pass : resolved_passes_)
+  for (auto& resolved_pass : resolved_passes_) {
     resolved_pass.aggregation().Reset();
+    resolved_pass.CopyAndResetPersistentPassData();
+  }
 
   previous_frame_index_ = frame_index_;
   used_in_aggregation_ = false;
@@ -251,39 +288,31 @@ const ResolvedPassData& ResolvedFrameData::GetRootRenderPassData() const {
   return resolved_passes_.back();
 }
 
-bool ResolvedFrameData::IsSameFrameAsLastAggregation() const {
+FrameDamageType ResolvedFrameData::GetFrameDamageType() const {
   DCHECK(valid_);
   DCHECK(used_in_aggregation_);
-  return previous_frame_index_ == frame_index_;
-}
 
-bool ResolvedFrameData::IsNextFrameSinceLastAggregation() const {
-  DCHECK(valid_);
-  DCHECK(used_in_aggregation_);
-  return previous_frame_index_ > kInvalidFrameIndex &&
-         frame_index_ == previous_frame_index_ + 1;
+  if (previous_frame_index_ == frame_index_) {
+    // This is the same frame as the one used last aggregation.
+    return FrameDamageType::kNone;
+  } else if (previous_frame_index_ > kInvalidFrameIndex &&
+             frame_index_ == previous_frame_index_ + 1) {
+    // This is the next frame after the one used last aggregation.
+    return FrameDamageType::kFrame;
+  }
+
+  return FrameDamageType::kFull;
 }
 
 gfx::Rect ResolvedFrameData::GetSurfaceDamage() const {
-  DCHECK(valid_);
-
-  // The |damage_rect| set in |SurfaceAnimationManager| is the |output_rect|.
-  // However, we dont use |damage_rect| because when we transition from
-  // interpolated frame we would end up using the |damage_rect| from the
-  // original non interpolated frame.
-  // TODO(vmpstr): This damage may be too large, but I think it's hard to figure
-  // out a small bounds on the damage given an animation that happens in
-  // SurfaceAnimationManager.
-  if (surface_->HasSurfaceAnimationDamage())
-    return GetOutputRect();
-
-  if (IsSameFrameAsLastAggregation()) {
-    return gfx::Rect();
-  } else if (IsNextFrameSinceLastAggregation()) {
-    return resolved_passes_.back().render_pass().damage_rect;
+  switch (GetFrameDamageType()) {
+    case FrameDamageType::kFull:
+      return GetOutputRect();
+    case FrameDamageType::kFrame:
+      return resolved_passes_.back().render_pass().damage_rect;
+    case FrameDamageType::kNone:
+      return gfx::Rect();
   }
-
-  return GetOutputRect();
 }
 
 const gfx::Rect& ResolvedFrameData::GetOutputRect() const {
@@ -295,6 +324,20 @@ void ResolvedFrameData::RegisterWithResourceProvider() {
   child_resource_id_ = resource_provider_->CreateChild(
       base::BindRepeating(&SurfaceClient::UnrefResources, surface_->client()),
       surface_id_);
+}
+
+void ResolvedFrameData::MovePersistentPassDataFromPreviousFrame(
+    const std::vector<ResolvedPassData>& previous_resolved_passes) {
+  for (const auto& previous_resolved_pass : previous_resolved_passes) {
+    auto render_pass_id = previous_resolved_pass.render_pass_id();
+    // iter to |current_persistent_data_|
+    auto iter = render_pass_id_map_.find(render_pass_id);
+
+    if (iter != render_pass_id_map_.end()) {
+      iter->second->previous_persistent_data() =
+          previous_resolved_pass.previous_persistent_data();
+    }
+  }
 }
 
 }  // namespace viz

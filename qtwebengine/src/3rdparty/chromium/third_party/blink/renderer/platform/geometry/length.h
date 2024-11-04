@@ -46,11 +46,18 @@ struct PixelsAndPercent {
 
 class CalculationExpressionNode;
 class CalculationValue;
+class Length;
+
+PLATFORM_EXPORT extern const Length& g_auto_length;
+PLATFORM_EXPORT extern const Length& g_none_length;
 
 class PLATFORM_EXPORT Length {
   DISALLOW_NEW();
 
  public:
+  // Initializes global instances.
+  static void Initialize();
+
   enum class ValueRange { kAll, kNonNegative };
 
   // FIXME: This enum makes it hard to tell in general what values may be
@@ -65,6 +72,7 @@ class PLATFORM_EXPORT Length {
     kFillAvailable,
     kFitContent,
     kCalculated,
+    kFlex,
     kExtendToZoom,
     kDeviceWidth,
     kDeviceHeight,
@@ -78,7 +86,7 @@ class PLATFORM_EXPORT Length {
     DCHECK_NE(t, kCalculated);
   }
 
-  Length(int v, Length::Type t) : value_(v), type_(t), round_to_int_(true) {
+  Length(int v, Length::Type t) : value_(v), type_(t) {
     DCHECK_NE(t, kCalculated);
   }
 
@@ -138,7 +146,7 @@ class PLATFORM_EXPORT Length {
     return Length(number, kFixed);
   }
   static Length Fixed() { return Length(kFixed); }
-  static Length Auto() { return Length(kAuto); }
+  static const Length& Auto() { return g_auto_length; }
   static Length FillAvailable() { return Length(kFillAvailable); }
   static Length MinContent() { return Length(kMinContent); }
   static Length MaxContent() { return Length(kMaxContent); }
@@ -146,13 +154,14 @@ class PLATFORM_EXPORT Length {
   static Length ExtendToZoom() { return Length(kExtendToZoom); }
   static Length DeviceWidth() { return Length(kDeviceWidth); }
   static Length DeviceHeight() { return Length(kDeviceHeight); }
-  static Length None() { return Length(kNone); }
+  static const Length& None() { return g_none_length; }
   static Length FitContent() { return Length(kFitContent); }
   static Length Content() { return Length(kContent); }
   template <typename NUMBER_TYPE>
   static Length Percent(NUMBER_TYPE number) {
     return Length(number, kPercent);
   }
+  static Length Flex(double value) { return Length(value, kFlex); }
 
   // FIXME: Make this private (if possible) or at least rename it
   // (http://crbug.com/432707).
@@ -238,11 +247,6 @@ class PLATFORM_EXPORT Length {
     return GetType() == kAuto || IsContentOrIntrinsic();
   }
 
-  // NOTE: This shouldn't be use in NG code.
-  bool IsContentOrIntrinsicOrFillAvailable() const {
-    return IsContentOrIntrinsic() || GetType() == kFillAvailable;
-  }
-
   bool IsSpecified() const {
     return GetType() == kFixed || GetType() == kPercent ||
            GetType() == kCalculated;
@@ -264,10 +268,12 @@ class PLATFORM_EXPORT Length {
     return GetType() == kPercent || GetType() == kCalculated ||
            GetType() == kFillAvailable;
   }
+  bool IsFlex() const { return GetType() == kFlex; }
   bool IsExtendToZoom() const { return GetType() == kExtendToZoom; }
   bool IsDeviceWidth() const { return GetType() == kDeviceWidth; }
   bool IsDeviceHeight() const { return GetType() == kDeviceHeight; }
   bool HasAnchorQueries() const;
+  bool HasAutoAnchorPositioning() const;
 
   Length Blend(const Length& from, double progress, ValueRange range) const {
     DCHECK(IsSpecified());
@@ -296,8 +302,6 @@ class PLATFORM_EXPORT Length {
     DCHECK(!IsCalculated());
     return value_;
   }
-
-  bool GetRoundToInt() const { return round_to_int_; }
 
   class PLATFORM_EXPORT AnchorEvaluator {
    public:
@@ -337,11 +341,6 @@ class PLATFORM_EXPORT Length {
   };
   bool quirk_ = false;
   unsigned char type_;
-
-  // This only affects BrokenLegacyMultiplyBy()
-  // (in table_layout_algorithm_fixed.cc), nothing else,
-  // so it can be removed when that legacy table code is removed.
-  bool round_to_int_ = false;
 };
 
 PLATFORM_EXPORT std::ostream& operator<<(std::ostream&, const Length&);

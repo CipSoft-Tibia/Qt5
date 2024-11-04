@@ -20,6 +20,7 @@
 #include <QtWidgets/qlabel.h>
 #include <QtWidgets/qmenu.h>
 #include <QtWidgets/qheaderview.h>
+#include <QtWidgets/qstyle.h>
 
 #include <QtGui/qaction.h>
 #if QT_CONFIG(clipboard)
@@ -67,6 +68,7 @@ PaletteEditor::PaletteEditor(QDesignerFormEditorInterface *core, QWidget *parent
             this, &PaletteEditor::detailsRadioClicked);
 
     ui.paletteView->setModel(m_paletteModel);
+    ui.previewGroupBox->setTitle(tr("Preview (%1)").arg(style()->objectName()));
     updatePreviewPalette();
     updateStyledButton();
     ui.paletteView->setModel(m_paletteModel);
@@ -626,7 +628,7 @@ RoleEditor::RoleEditor(QWidget *parent) :
 
     QToolButton *button = new QToolButton(this);
     button->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    button->setIcon(createIconSet(u"resetproperty.png"_s));
+    button->setIcon(createIconSet("resetproperty.png"_L1));
     button->setIconSize(QSize(8,8));
     button->setSizePolicy(QSizePolicy(QSizePolicy::Fixed, QSizePolicy::MinimumExpanding));
     layout->addWidget(button);

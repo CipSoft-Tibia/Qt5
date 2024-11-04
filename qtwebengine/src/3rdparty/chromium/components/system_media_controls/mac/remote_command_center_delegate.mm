@@ -8,12 +8,11 @@
 #include "components/system_media_controls/mac/remote_command_center_delegate_cocoa.h"
 #include "components/system_media_controls/system_media_controls_observer.h"
 
-namespace system_media_controls {
-namespace internal {
+namespace system_media_controls::internal {
 
 RemoteCommandCenterDelegate::RemoteCommandCenterDelegate() {
-  remote_command_center_delegate_cocoa_.reset(
-      [[RemoteCommandCenterDelegateCocoa alloc] initWithDelegate:this]);
+  remote_command_center_delegate_cocoa_ =
+      [[RemoteCommandCenterDelegateCocoa alloc] initWithDelegate:this];
 }
 
 RemoteCommandCenterDelegate::~RemoteCommandCenterDelegate() {
@@ -127,5 +126,4 @@ bool RemoteCommandCenterDelegate::ShouldSetCommandEnabled(Command command,
   return true;
 }
 
-}  // namespace internal
-}  // namespace system_media_controls
+}  // namespace system_media_controls::internal

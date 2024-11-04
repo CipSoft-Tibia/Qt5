@@ -18,6 +18,10 @@
 #include "base/memory/raw_ptr.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/time/tick_clock.h"
+#include "base/time/time.h"
+#include "base/trace_event/memory_dump_manager.h"
+#include "base/trace_event/memory_dump_provider.h"
 #include "cc/base/unique_notifier.h"
 #include "cc/paint/target_color_params.h"
 #include "cc/raster/raster_buffer_provider.h"
@@ -146,7 +150,8 @@ RasterTaskCompletionStatsAsValue(const RasterTaskCompletionStats& stats);
 // work for these tiles on the TaskGraph blocks starting decode work for
 // checker-imaged pre-decode tiles.
 
-class CC_EXPORT TileManager : CheckerImageTrackerClient {
+class CC_EXPORT TileManager : CheckerImageTrackerClient,
+                              public base::trace_event::MemoryDumpProvider {
  public:
   TileManager(TileManagerClient* client,
               base::SequencedTaskRunner* origin_task_runner,
@@ -186,7 +191,7 @@ class CC_EXPORT TileManager : CheckerImageTrackerClient {
 
   // This causes any completed raster work to finalize, so that tiles get up to
   // date draw information.
-  void CheckForCompletedTasks();
+  void PrepareToDraw();
 
   // Called when the required-for-activation/required-for-draw state of tiles
   // may have changed.
@@ -219,7 +224,7 @@ class CC_EXPORT TileManager : CheckerImageTrackerClient {
       ResourcePool::InUsePoolResource resource =
           resource_pool_->AcquireResource(
               tiles[i]->desired_texture_size(),
-              raster_buffer_provider_->GetResourceFormat(),
+              raster_buffer_provider_->GetFormat(),
               client_->GetTargetColorParams(gfx::ContentColorUsage::kSRGB)
                   .color_space);
       raster_buffer_provider_->AcquireBufferForRaster(
@@ -306,7 +311,7 @@ class CC_EXPORT TileManager : CheckerImageTrackerClient {
   std::unique_ptr<base::trace_event::ConvertableToTraceFormat>
   ActivationStateAsValue();
 
-  void ActivationStateAsValueInto(base::trace_event::TracedValue* state);
+  void ActivationStateAsValueInto(base::trace_event::TracedValue* state) const;
   int num_of_tiles_with_checker_images() const {
     return num_of_tiles_with_checker_images_;
   }
@@ -324,6 +329,13 @@ class CC_EXPORT TileManager : CheckerImageTrackerClient {
 
   void set_active_url(const GURL& url) { active_url_ = url; }
 
+  void SetOverridesForTesting(
+      scoped_refptr<base::TaskRunner> task_runner_for_testing,
+      const base::TickClock* clock);
+
+  bool OnMemoryDump(const base::trace_event::MemoryDumpArgs& args,
+                    base::trace_event::ProcessMemoryDump* pmd) override;
+
  protected:
   friend class Tile;
   // Must be called by tile during destruction.
@@ -337,7 +349,7 @@ class CC_EXPORT TileManager : CheckerImageTrackerClient {
     MemoryUsage(size_t memory_bytes, size_t resource_count);
 
     static MemoryUsage FromConfig(const gfx::Size& size,
-                                  viz::ResourceFormat format);
+                                  viz::SharedImageFormat format);
     static MemoryUsage FromTile(const Tile* tile);
 
     MemoryUsage& operator+=(const MemoryUsage& other);
@@ -381,6 +393,12 @@ class CC_EXPORT TileManager : CheckerImageTrackerClient {
   // Frees the resources of all occluded tiles.
   void FreeResourcesForOccludedTiles();
 
+  // If we haven't produced a frame in a while, drop the "nice to have" tiles.
+  void ScheduleReduceTileMemoryWhenIdle(base::TimeDelta time_since_last_active);
+  void ScheduleTrimPrepaintTiles();
+  void ReduceTileMemoryWhenIdle();
+  void TrimPrepaintTiles();
+
   void FreeResourcesForTile(Tile* tile);
   void FreeResourcesForTileAndNotifyClientIfTileWasReadyToDraw(Tile* tile);
   scoped_refptr<TileTask> CreateRasterTask(
@@ -405,7 +423,7 @@ class CC_EXPORT TileManager : CheckerImageTrackerClient {
   void MarkTilesOutOfMemory(
       std::unique_ptr<RasterTilePriorityQueue> queue) const;
 
-  viz::ResourceFormat DetermineResourceFormat(const Tile* tile) const;
+  viz::SharedImageFormat DetermineFormat(const Tile* tile) const;
 
   void DidFinishRunningTileTasksRequiredForActivation();
   void DidFinishRunningTileTasksRequiredForDraw();
@@ -434,14 +452,21 @@ class CC_EXPORT TileManager : CheckerImageTrackerClient {
 
   bool UsePartialRaster(int msaa_sample_count) const;
 
-  void FlushAndIssueSignals();
+  void CheckForCompletedTasksAndIssueSignals();
   void CheckPendingGpuWorkAndIssueSignals();
   void IssueSignals();
   void ScheduleCheckRasterFinishedQueries();
   void CheckRasterFinishedQueries();
 
   bool ShouldRasterOccludedTiles() const;
+  base::TimeTicks NowWithOverride() const;
+  base::TaskRunner* TaskRunnerWithOverride() const;
 
+ public:
+  static base::TimeDelta GetTrimPrepaintTilesDelay();
+  static constexpr base::TimeDelta kDelayBeforeTimeReclaim = base::Minutes(5);
+
+ private:
   raw_ptr<TileManagerClient, DanglingUntriaged> client_;
   raw_ptr<base::SequencedTaskRunner> task_runner_;
   raw_ptr<ResourcePool, DanglingUntriaged> resource_pool_;
@@ -496,6 +521,12 @@ class CC_EXPORT TileManager : CheckerImageTrackerClient {
   int num_of_tiles_with_checker_images_ = 0;
 
   GURL active_url_;
+
+  base::TimeTicks last_active_time_;
+  bool has_pending_idle_task_ = false;
+  bool has_pending_tile_trimming_task_ = false;
+  scoped_refptr<base::TaskRunner> task_runner_for_testing_ = nullptr;
+  raw_ptr<const base::TickClock> tick_clock_for_testing_ = nullptr;
 
   // The callback scheduled to poll whether the GPU side work for pending tiles
   // has completed.

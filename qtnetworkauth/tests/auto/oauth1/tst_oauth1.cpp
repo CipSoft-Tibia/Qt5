@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore>
 #include <QtTest>
@@ -72,7 +72,7 @@ public:
             QOAuth1 obj;
             Type expectedValue;
             QSignalSpy spy(&obj, signal);
-            connect(&obj, signal, [&](const Type &value) {
+            connect(&obj, signal, &obj, [&](const Type &value) {
                 QCOMPARE(expectedValue, value);
             });
             for (const auto &setter : setters) {
@@ -431,10 +431,10 @@ void tst_OAuth1::getToken()
     QVariantMap parameters {{ "c2&a3", "c2=a3" }};
     reply.reset(o1.requestTokenCredentials(requestType, url, token, parameters));
     QVERIFY(!reply.isNull());
-    connect(&o1, &QOAuth1::tokenChanged, [&tokenReceived](const QString &token){
+    connect(&o1, &QOAuth1::tokenChanged, this, [&tokenReceived](const QString &token){
         tokenReceived.first = token;
     });
-    connect(&o1, &QOAuth1::tokenSecretChanged, [&tokenReceived](const QString &tokenSecret) {
+    connect(&o1, &QOAuth1::tokenSecretChanged, this, [&tokenReceived](const QString &tokenSecret) {
         tokenReceived.second = tokenSecret;
     });
     QVERIFY(waitForFinish(reply) == Success);
@@ -652,7 +652,7 @@ void tst_OAuth1::grant()
         o1.setTokenCredentialsUrl(accessTokenUrl);
         QCOMPARE(spy.size(), 1);
     }
-    connect(&o1, &QAbstractOAuth::statusChanged, [&](QAbstractOAuth::Status status) {
+    connect(&o1, &QAbstractOAuth::statusChanged, this, [&](QAbstractOAuth::Status status) {
         if (status == QAbstractOAuth::Status::TemporaryCredentialsReceived) {
             if (!requestToken.isEmpty())
                 QCOMPARE(requestToken, o1.tokenCredentials().first);
@@ -764,7 +764,7 @@ void tst_OAuth1::authenticatedCalls()
     QVERIFY(!reply.isNull());
     QVERIFY(!reply->isFinished());
 
-    connect(&networkAccessManager, &QNetworkAccessManager::finished,
+    connect(&networkAccessManager, &QNetworkAccessManager::finished, this,
             [&](QNetworkReply *reply) {
         QByteArray data = reply->readAll();
         QUrlQuery query(QString::fromUtf8(data));
@@ -878,7 +878,7 @@ void tst_OAuth1::prepareRequestCalls()
     QVERIFY(!reply.isNull());
     QVERIFY(!reply->isFinished());
 
-    connect(&networkAccessManager, &QNetworkAccessManager::finished,
+    connect(&networkAccessManager, &QNetworkAccessManager::finished, this,
             [&](QNetworkReply *reply) {
         QByteArray data = reply->readAll();
         QUrlQuery query(QString::fromUtf8(data));
@@ -916,11 +916,12 @@ void tst_OAuth1::secondTemporaryToken()
     o1.setTokenCredentialsUrl(webServer.url(QStringLiteral("token")));
 
     StringPair tokenReceived;
-    connect(&o1, &QOAuth1::tokenChanged, [&tokenReceived](const QString &token) {
+    connect(&o1, &QOAuth1::tokenChanged, this, [&tokenReceived](const QString &token) {
         tokenReceived.first = token;
     });
     bool replyReceived = false;
-    connect(&o1, &QOAuth1::tokenSecretChanged, [&tokenReceived, &replyReceived](const QString &tokenSecret) {
+    connect(&o1, &QOAuth1::tokenSecretChanged,
+            this, [&tokenReceived, &replyReceived](const QString &tokenSecret) {
         tokenReceived.second = tokenSecret;
         replyReceived = true;
     });

@@ -25,9 +25,10 @@
 #ifndef _WESTON_VERTEX_CLIPPING_H
 #define _WESTON_VERTEX_CLIPPING_H
 
+#include <libweston/matrix.h>
+
 struct polygon8 {
-	float x[8];
-	float y[8];
+	struct weston_coord pos[8];
 	int n;
 };
 
@@ -42,10 +43,7 @@ struct clip_context {
 		float x2, y2;
 	} clip;
 
-	struct {
-		float *x;
-		float *y;
-	} vertices;
+	struct weston_coord *vertices;
 };
 
 float
@@ -54,13 +52,11 @@ float_difference(float a, float b);
 int
 clip_simple(struct clip_context *ctx,
 	    struct polygon8 *surf,
-	    float *ex,
-	    float *ey);
+	    struct weston_coord *e);
 
 int
 clip_transformed(struct clip_context *ctx,
 		 struct polygon8 *surf,
-		 float *ex,
-		 float *ey);\
+		 struct weston_coord *e);
 
 #endif

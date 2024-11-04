@@ -1,3 +1,6 @@
+# Copyright (C) 2024 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 @PACKAGE_INIT@
 
 cmake_minimum_required(VERSION @min_new_policy_version@...@max_new_policy_version@)
@@ -61,6 +64,8 @@ __qt_internal_prefix_paths_to_roots(_qt_additional_host_packages_root_paths
 if(NOT DEFINED QT_CMAKE_EXPORT_NAMESPACE)
     set(QT_CMAKE_EXPORT_NAMESPACE @QT_CMAKE_EXPORT_NAMESPACE@)
 endif()
+
+__qt_internal_collect_additional_module_paths()
 
 # Propagate sanitizer flags to both internal Qt builds and user projects.
 # Allow opt-out in case if downstream projects handle it in a different way.

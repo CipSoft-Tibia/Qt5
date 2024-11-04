@@ -128,6 +128,7 @@ source_set("sandbox_linux_unittests_sources") {
       "bpf_dsl/verifier.h",
       "integration_tests/bpf_dsl_seccomp_unittest.cc",
       "seccomp-bpf-helpers/baseline_policy_unittest.cc",
+      "seccomp-bpf-helpers/sigsys_handlers_unittest.cc",
       "seccomp-bpf-helpers/syscall_parameters_restrictions_unittests.cc",
       "seccomp-bpf/bpf_tests_unittest.cc",
       "seccomp-bpf/sandbox_bpf_unittest.cc",
@@ -199,7 +200,6 @@ test("sandbox_linux_unittests") {
     ":sandbox_linux_unittests_sources",
     "//sandbox/policy:tests",
   ]
-  data_deps = [ "//testing/buildbot/filters:sandbox_linux_unittests_filters" ]
   if (is_android) {
     use_raw_android_executable = true
   }

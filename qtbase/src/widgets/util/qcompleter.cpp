@@ -840,8 +840,8 @@ void QCompleterPrivate::setCurrentIndex(QModelIndex index, bool select)
 void QCompleterPrivate::_q_completionSelected(const QItemSelection& selection)
 {
     QModelIndex index;
-    if (!selection.indexes().isEmpty())
-        index = selection.indexes().first();
+    if (const auto indexes = selection.indexes(); !indexes.isEmpty())
+        index = indexes.first();
 
     _q_complete(index, true);
 }
@@ -1296,10 +1296,22 @@ bool QCompleter::eventFilter(QObject *o, QEvent *e)
 {
     Q_D(QCompleter);
 
-    if (d->eatFocusOut && o == d->widget && e->type() == QEvent::FocusOut) {
-        d->hiddenBecauseNoMatch = false;
-        if (d->popup && d->popup->isVisible())
-            return true;
+    if (o == d->widget) {
+        switch (e->type()) {
+        case QEvent::FocusOut:
+            if (d->eatFocusOut) {
+                d->hiddenBecauseNoMatch = false;
+                if (d->popup && d->popup->isVisible())
+                    return true;
+            }
+            break;
+        case QEvent::Hide:
+            if (d->popup)
+                d->popup->hide();
+            break;
+        default:
+            break;
+        }
     }
 
     if (o != d->popup)
@@ -1451,12 +1463,16 @@ bool QCompleter::eventFilter(QObject *o, QEvent *e)
         }
 #endif
         if (!d->popup->underMouse()) {
-            d->popup->hide();
+            if (!QGuiApplicationPrivate::maybeForwardEventToVirtualKeyboard(e))
+                d->popup->hide();
             return true;
         }
         }
         return false;
 
+    case QEvent::MouseButtonRelease:
+        QGuiApplicationPrivate::maybeForwardEventToVirtualKeyboard(e);
+        return true;
     case QEvent::InputMethod:
     case QEvent::ShortcutOverride:
         QCoreApplication::sendEvent(d->widget, e);

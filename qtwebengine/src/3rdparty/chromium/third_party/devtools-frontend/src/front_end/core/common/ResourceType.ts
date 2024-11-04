@@ -263,6 +263,31 @@ export class ResourceType {
     return mimeTypeByExtension.get(ext);
   }
 
+  static simplifyContentType(contentType: string): string {
+    const regex = new RegExp('^application(.*json$|\/json\+.*)');
+    return regex.test(contentType) ? 'application/json' : contentType;
+  }
+
+  /**
+   * Adds suffixes iff the mimeType is 'text/javascript' to denote whether the JS is minified or from
+   * a source map.
+   */
+  static mediaTypeForMetrics(mimeType: string, isFromSourceMap: boolean, isMinified: boolean): string {
+    if (mimeType !== 'text/javascript') {
+      return mimeType;
+    }
+
+    if (isFromSourceMap) {
+      // SourceMap has precedence as that is a known fact, whereas minification is a heuristic we
+      // apply to the JS content.
+      return 'text/javascript+sourcemapped';
+    }
+    if (isMinified) {
+      return 'text/javascript+minified';
+    }
+    return 'text/javascript+plain';
+  }
+
   name(): string {
     return this.#nameInternal;
   }
@@ -477,6 +502,7 @@ export const mimeTypeByExtension = new Map([
   ['json', 'application/json'],
   ['gyp', 'application/json'],
   ['gypi', 'application/json'],
+  ['map', 'application/json'],
 
   // C#
   ['cs', 'text/x-csharp'],

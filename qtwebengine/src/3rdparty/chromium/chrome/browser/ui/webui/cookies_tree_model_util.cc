@@ -178,7 +178,7 @@ CookiesTreeModelUtil::GetCookieTreeNodeDictionary(const CookieTreeNode& node) {
       if (quota_info.temporary_usage <= kNegligibleUsage)
         return absl::nullopt;
 
-      dict.Set(kKeyOrigin, quota_info.host);
+      dict.Set(kKeyOrigin, quota_info.storage_key.origin().host());
       dict.Set(kKeyTotalUsage, ui::FormatBytes(quota_info.temporary_usage));
       dict.Set(kKeyTemporaryUsage, ui::FormatBytes(quota_info.temporary_usage));
       break;
@@ -197,8 +197,8 @@ CookiesTreeModelUtil::GetCookieTreeNodeDictionary(const CookieTreeNode& node) {
     case CookieTreeNode::DetailedInfo::TYPE_SHARED_WORKER: {
       dict.Set(kKeyType, "shared_worker");
 
-      const browsing_data::SharedWorkerHelper::SharedWorkerInfo&
-          shared_worker_info = *node.GetDetailedInfo().shared_worker_info;
+      const browsing_data::SharedWorkerInfo& shared_worker_info =
+          *node.GetDetailedInfo().shared_worker_info;
 
       dict.Set(kKeyOrigin, shared_worker_info.worker.spec());
       dict.Set(kKeyName, shared_worker_info.name);
@@ -223,7 +223,7 @@ CookiesTreeModelUtil::GetCookieTreeNodeDictionary(const CookieTreeNode& node) {
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   const extensions::ExtensionSet* protecting_apps =
       node.GetModel()->ExtensionsProtectingNode(node);
-  if (protecting_apps && !protecting_apps->is_empty()) {
+  if (protecting_apps && !protecting_apps->empty()) {
     base::Value::List app_infos;
     for (const auto& app : *protecting_apps) {
       base::Value::Dict app_info;

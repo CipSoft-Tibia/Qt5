@@ -13,29 +13,27 @@ namespace ash {
 // Version of AppLaunchSplashScreenHandler used for tests.
 class FakeAppLaunchSplashScreenHandler : public AppLaunchSplashScreenView {
  public:
-  void SetDelegate(Delegate*) override {}
+  void SetDelegate(Delegate*) override;
   void Show(KioskAppManagerBase::App app_data) override;
   void Hide() override {}
   void UpdateAppLaunchState(AppLaunchState state) override;
   void ToggleNetworkConfig(bool) override {}
-  void ShowNetworkConfigureUI() override {}
+  void ShowNetworkConfigureUI(NetworkStateInformer::State state,
+                              const std::string& network_name) override {}
   void ShowErrorMessage(KioskAppLaunchError::Error error) override;
-  bool IsNetworkReady() override;
   void ContinueAppLaunch() override {}
-  void SetNetworkRequired() override;
 
   KioskAppLaunchError::Error GetErrorMessageType() const;
-  void SetNetworkReady(bool ready);
+  void FinishNetworkConfig();
   AppLaunchState GetAppLaunchState() const;
   bool IsNetworkRequired() const;
   KioskAppManagerBase::App last_app_data() const { return last_app_data_; }
 
  private:
+  raw_ptr<Delegate> delegate_ = nullptr;
   KioskAppLaunchError::Error error_message_type_ =
       KioskAppLaunchError::Error::kNone;
   KioskAppManagerBase::App last_app_data_;
-  bool network_ready_ = false;
-  bool network_required_ = false;
   AppLaunchState state_ = AppLaunchState::kPreparingProfile;
 };
 

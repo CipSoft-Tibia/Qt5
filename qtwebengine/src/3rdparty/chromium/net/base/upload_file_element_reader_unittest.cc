@@ -22,7 +22,7 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 #if BUILDFLAG(IS_APPLE)
-#include "base/mac/scoped_nsautorelease_pool.h"
+#include "base/apple/scoped_nsautorelease_pool.h"
 #endif
 
 using net::test::IsError;
@@ -45,9 +45,8 @@ class UploadFileElementReaderTest : public testing::TestWithParam<bool>,
 
     ASSERT_TRUE(
         base::CreateTemporaryFileInDir(temp_dir_.GetPath(), &temp_file_path_));
-    ASSERT_EQ(
-        static_cast<int>(bytes_.size()),
-        base::WriteFile(temp_file_path_, &bytes_[0], bytes_.size()));
+    ASSERT_TRUE(base::WriteFile(
+        temp_file_path_, base::StringPiece(bytes_.data(), bytes_.size())));
 
     reader_ =
         CreateReader(0, std::numeric_limits<uint64_t>::max(), base::Time());
@@ -97,7 +96,7 @@ class UploadFileElementReaderTest : public testing::TestWithParam<bool>,
 
 #if BUILDFLAG(IS_APPLE)
   // May be needed to avoid leaks on OSX.
-  base::mac::ScopedNSAutoreleasePool scoped_pool_;
+  base::apple::ScopedNSAutoreleasePool scoped_pool_;
 #endif
 
   std::vector<char> bytes_;

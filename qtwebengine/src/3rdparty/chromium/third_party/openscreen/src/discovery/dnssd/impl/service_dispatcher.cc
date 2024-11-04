@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,12 +10,11 @@
 #include "discovery/dnssd/impl/service_instance.h"
 #include "discovery/dnssd/public/dns_sd_instance.h"
 #include "discovery/mdns/public/mdns_service.h"
-#include "platform/api/serial_delete_ptr.h"
+#include "discovery/public/dns_sd_service_factory.h"
 #include "platform/api/task_runner.h"
 #include "util/trace_logging.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 namespace {
 
 void ForAllQueriers(
@@ -51,23 +50,22 @@ Error ForAllPublishers(
 }  // namespace
 
 // static
-SerialDeletePtr<DnsSdService> CreateDnsSdService(
-    TaskRunner* task_runner,
+std::unique_ptr<DnsSdService, TaskRunnerDeleter> CreateDnsSdService(
+    TaskRunner& task_runner,
     ReportingClient* reporting_client,
     const Config& config) {
-  return SerialDeletePtr<DnsSdService>(
-      task_runner,
-      new ServiceDispatcher(task_runner, reporting_client, config));
+  return std::unique_ptr<DnsSdService, TaskRunnerDeleter>(
+      new ServiceDispatcher(task_runner, reporting_client, config),
+      TaskRunnerDeleter(task_runner));
 }
 
-ServiceDispatcher::ServiceDispatcher(TaskRunner* task_runner,
+ServiceDispatcher::ServiceDispatcher(TaskRunner& task_runner,
                                      ReportingClient* reporting_client,
                                      const Config& config)
     : task_runner_(task_runner),
       publisher_(config.enable_publication ? this : nullptr),
       querier_(config.enable_querying ? this : nullptr) {
   OSP_DCHECK_GT(config.network_info.size(), 0);
-  OSP_DCHECK(task_runner);
 
   service_instances_.reserve(config.network_info.size());
   for (const auto& network_info : config.network_info) {
@@ -77,7 +75,7 @@ ServiceDispatcher::ServiceDispatcher(TaskRunner* task_runner,
 }
 
 ServiceDispatcher::~ServiceDispatcher() {
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
 }
 
 // DnsSdQuerier overrides.
@@ -150,5 +148,4 @@ ErrorOr<int> ServiceDispatcher::DeregisterAll(const std::string& service) {
   }
 }
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

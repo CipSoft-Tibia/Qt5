@@ -15,8 +15,6 @@
 #define EIGEN_ALTIVEC_USE_CUSTOM_PACK    1
 #endif
 
-#include "MatrixProductCommon.h"
-
 #if !defined(EIGEN_ALTIVEC_DISABLE_MMA)
 #define EIGEN_ALTIVEC_DISABLE_MMA 0
 #endif
@@ -44,6 +42,8 @@
 #endif
 
 #endif // EIGEN_ALTIVEC_MMA_SUPPORT
+
+#include "MatrixProductCommon.h"
 
 #if defined(EIGEN_ALTIVEC_MMA_ONLY) || defined(EIGEN_ALTIVEC_MMA_DYNAMIC_DISPATCH)
   #include "MatrixProductMMA.h"
@@ -841,7 +841,6 @@ struct dhs_pack<double, DataMapper, Packet2d, StorageOrder, PanelMode, false>
   }
 };
 
-#ifdef __MMA__
 // General template for lhs packing, bfloat16 specialization.
 template<typename DataMapper, int StorageOrder, bool PanelMode>
 struct dhs_pack<bfloat16, DataMapper, Packet8bf, StorageOrder, PanelMode, true>
@@ -900,42 +899,60 @@ struct dhs_pack<bfloat16, DataMapper, Packet8bf, StorageOrder, PanelMode, true>
           bload<DataMapper, Packet8bf, 8, StorageOrder, false, 8>(block1, lhs2, 0 * vectorSize, i);
           bload<DataMapper, Packet8bf, 8, StorageOrder, false, 8>(block2, lhs2, 1 * vectorSize, i);
 
-          Packet2ul v1[8], v2[8];
+          Packet4ui v1[8], v2[8];
 
-          v1[0] = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[0].m_val), reinterpret_cast<Packet4ui>(block1.packet[1].m_val)));
-          v1[1] = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[0].m_val), reinterpret_cast<Packet4ui>(block1.packet[1].m_val)));
-          v1[2] = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[2].m_val), reinterpret_cast<Packet4ui>(block1.packet[3].m_val)));
-          v1[3] = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[2].m_val), reinterpret_cast<Packet4ui>(block1.packet[3].m_val)));
-          v1[4] = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[4].m_val), reinterpret_cast<Packet4ui>(block1.packet[5].m_val)));
-          v1[5] = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[4].m_val), reinterpret_cast<Packet4ui>(block1.packet[5].m_val)));
-          v1[6] = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[6].m_val), reinterpret_cast<Packet4ui>(block1.packet[7].m_val)));
-          v1[7] = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[6].m_val), reinterpret_cast<Packet4ui>(block1.packet[7].m_val)));
-          v2[0] = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block2.packet[0].m_val), reinterpret_cast<Packet4ui>(block2.packet[1].m_val)));
-          v2[1] = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block2.packet[0].m_val), reinterpret_cast<Packet4ui>(block2.packet[1].m_val)));
-          v2[2] = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block2.packet[2].m_val), reinterpret_cast<Packet4ui>(block2.packet[3].m_val)));
-          v2[3] = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block2.packet[2].m_val), reinterpret_cast<Packet4ui>(block2.packet[3].m_val)));
-          v2[4] = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block2.packet[4].m_val), reinterpret_cast<Packet4ui>(block2.packet[5].m_val)));
-          v2[5] = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block2.packet[4].m_val), reinterpret_cast<Packet4ui>(block2.packet[5].m_val)));
-          v2[6] = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block2.packet[6].m_val), reinterpret_cast<Packet4ui>(block2.packet[7].m_val)));
-          v2[7] = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block2.packet[6].m_val), reinterpret_cast<Packet4ui>(block2.packet[7].m_val)));
+          v1[0] = vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[0].m_val), reinterpret_cast<Packet4ui>(block1.packet[1].m_val));
+          v1[1] = vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[0].m_val), reinterpret_cast<Packet4ui>(block1.packet[1].m_val));
+          v1[2] = vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[2].m_val), reinterpret_cast<Packet4ui>(block1.packet[3].m_val));
+          v1[3] = vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[2].m_val), reinterpret_cast<Packet4ui>(block1.packet[3].m_val));
+          v1[4] = vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[4].m_val), reinterpret_cast<Packet4ui>(block1.packet[5].m_val));
+          v1[5] = vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[4].m_val), reinterpret_cast<Packet4ui>(block1.packet[5].m_val));
+          v1[6] = vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[6].m_val), reinterpret_cast<Packet4ui>(block1.packet[7].m_val));
+          v1[7] = vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[6].m_val), reinterpret_cast<Packet4ui>(block1.packet[7].m_val));
+          v2[0] = vec_mergeh(reinterpret_cast<Packet4ui>(block2.packet[0].m_val), reinterpret_cast<Packet4ui>(block2.packet[1].m_val));
+          v2[1] = vec_mergel(reinterpret_cast<Packet4ui>(block2.packet[0].m_val), reinterpret_cast<Packet4ui>(block2.packet[1].m_val));
+          v2[2] = vec_mergeh(reinterpret_cast<Packet4ui>(block2.packet[2].m_val), reinterpret_cast<Packet4ui>(block2.packet[3].m_val));
+          v2[3] = vec_mergel(reinterpret_cast<Packet4ui>(block2.packet[2].m_val), reinterpret_cast<Packet4ui>(block2.packet[3].m_val));
+          v2[4] = vec_mergeh(reinterpret_cast<Packet4ui>(block2.packet[4].m_val), reinterpret_cast<Packet4ui>(block2.packet[5].m_val));
+          v2[5] = vec_mergel(reinterpret_cast<Packet4ui>(block2.packet[4].m_val), reinterpret_cast<Packet4ui>(block2.packet[5].m_val));
+          v2[6] = vec_mergeh(reinterpret_cast<Packet4ui>(block2.packet[6].m_val), reinterpret_cast<Packet4ui>(block2.packet[7].m_val));
+          v2[7] = vec_mergel(reinterpret_cast<Packet4ui>(block2.packet[6].m_val), reinterpret_cast<Packet4ui>(block2.packet[7].m_val));
 
-          block1.packet[0] = reinterpret_cast<Packet8us>(vec_mergeh(v1[0],v1[2]));
-          block1.packet[2] = reinterpret_cast<Packet8us>(vec_mergel(v1[0],v1[2]));
-          block1.packet[4] = reinterpret_cast<Packet8us>(vec_mergeh(v1[1],v1[3]));
-          block1.packet[6] = reinterpret_cast<Packet8us>(vec_mergel(v1[1],v1[3]));
-          block1.packet[1] = reinterpret_cast<Packet8us>(vec_mergeh(v1[4],v1[6]));
-          block1.packet[3] = reinterpret_cast<Packet8us>(vec_mergel(v1[4],v1[6]));
-          block1.packet[5] = reinterpret_cast<Packet8us>(vec_mergeh(v1[5],v1[7]));
-          block1.packet[7] = reinterpret_cast<Packet8us>(vec_mergel(v1[5],v1[7]));
-          block2.packet[0] = reinterpret_cast<Packet8us>(vec_mergeh(v2[0],v2[2]));
-          block2.packet[2] = reinterpret_cast<Packet8us>(vec_mergel(v2[0],v2[2]));
-          block2.packet[4] = reinterpret_cast<Packet8us>(vec_mergeh(v2[1],v2[3]));
-          block2.packet[6] = reinterpret_cast<Packet8us>(vec_mergel(v2[1],v2[3]));
-          block2.packet[1] = reinterpret_cast<Packet8us>(vec_mergeh(v2[4],v2[6]));
-          block2.packet[3] = reinterpret_cast<Packet8us>(vec_mergel(v2[4],v2[6]));
-          block2.packet[5] = reinterpret_cast<Packet8us>(vec_mergeh(v2[5],v2[7]));
-          block2.packet[7] = reinterpret_cast<Packet8us>(vec_mergel(v2[5],v2[7]));
-
+#ifdef EIGEN_VECTORIZE_VSX
+          block1.packet[0] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(v1[0]),reinterpret_cast<Packet2ul>(v1[2])));
+          block1.packet[2] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(v1[0]),reinterpret_cast<Packet2ul>(v1[2])));
+          block1.packet[4] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(v1[1]),reinterpret_cast<Packet2ul>(v1[3])));
+          block1.packet[6] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(v1[1]),reinterpret_cast<Packet2ul>(v1[3])));
+          block1.packet[1] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(v1[4]),reinterpret_cast<Packet2ul>(v1[6])));
+          block1.packet[3] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(v1[4]),reinterpret_cast<Packet2ul>(v1[6])));
+          block1.packet[5] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(v1[5]),reinterpret_cast<Packet2ul>(v1[7])));
+          block1.packet[7] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(v1[5]),reinterpret_cast<Packet2ul>(v1[7])));
+          block2.packet[0] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(v2[0]),reinterpret_cast<Packet2ul>(v2[2])));
+          block2.packet[2] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(v2[0]),reinterpret_cast<Packet2ul>(v2[2])));
+          block2.packet[4] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(v2[1]),reinterpret_cast<Packet2ul>(v2[3])));
+          block2.packet[6] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(v2[1]),reinterpret_cast<Packet2ul>(v2[3])));
+          block2.packet[1] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(v2[4]),reinterpret_cast<Packet2ul>(v2[6])));
+          block2.packet[3] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(v2[4]),reinterpret_cast<Packet2ul>(v2[6])));
+          block2.packet[5] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(v2[5]),reinterpret_cast<Packet2ul>(v2[7])));
+          block2.packet[7] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(v2[5]),reinterpret_cast<Packet2ul>(v2[7])));
+#else
+          block1.packet[0] = reinterpret_cast<Packet8us>(vec_perm(v1[0],v1[2],p16uc_TRANSPOSE64_HI));
+          block1.packet[2] = reinterpret_cast<Packet8us>(vec_perm(v1[0],v1[2],p16uc_TRANSPOSE64_LO));
+          block1.packet[4] = reinterpret_cast<Packet8us>(vec_perm(v1[1],v1[3],p16uc_TRANSPOSE64_HI));
+          block1.packet[6] = reinterpret_cast<Packet8us>(vec_perm(v1[1],v1[3],p16uc_TRANSPOSE64_LO));
+          block1.packet[1] = reinterpret_cast<Packet8us>(vec_perm(v1[4],v1[6],p16uc_TRANSPOSE64_HI));
+          block1.packet[3] = reinterpret_cast<Packet8us>(vec_perm(v1[4],v1[6],p16uc_TRANSPOSE64_LO));
+          block1.packet[5] = reinterpret_cast<Packet8us>(vec_perm(v1[5],v1[7],p16uc_TRANSPOSE64_HI));
+          block1.packet[7] = reinterpret_cast<Packet8us>(vec_perm(v1[5],v1[7],p16uc_TRANSPOSE64_LO));
+          block2.packet[0] = reinterpret_cast<Packet8us>(vec_perm(v2[0],v2[2],p16uc_TRANSPOSE64_HI));
+          block2.packet[2] = reinterpret_cast<Packet8us>(vec_perm(v2[0],v2[2],p16uc_TRANSPOSE64_LO));
+          block2.packet[4] = reinterpret_cast<Packet8us>(vec_perm(v2[1],v2[3],p16uc_TRANSPOSE64_HI));
+          block2.packet[6] = reinterpret_cast<Packet8us>(vec_perm(v2[1],v2[3],p16uc_TRANSPOSE64_LO));
+          block2.packet[1] = reinterpret_cast<Packet8us>(vec_perm(v2[4],v2[6],p16uc_TRANSPOSE64_HI));
+          block2.packet[3] = reinterpret_cast<Packet8us>(vec_perm(v2[4],v2[6],p16uc_TRANSPOSE64_LO));
+          block2.packet[5] = reinterpret_cast<Packet8us>(vec_perm(v2[5],v2[7],p16uc_TRANSPOSE64_HI));
+          block2.packet[7] = reinterpret_cast<Packet8us>(vec_perm(v2[5],v2[7],p16uc_TRANSPOSE64_LO));
+#endif
 
           for(Index M = 0; M < 8; M+=2) {
             pstore<bfloat16>(blockA + ri + (0 * vectorSize) + (2*vectorSize * M), block1.packet[M+0]);
@@ -1005,26 +1022,37 @@ struct dhs_pack<bfloat16, DataMapper, Packet8bf, StorageOrder, PanelMode, true>
 
           bload<DataMapper, Packet8bf, 8, StorageOrder, false, 8>(block1, lhs2, 0 * vectorSize, i);
 
-          Packet2ul v1[8];
+          Packet4ui v1[8];
 
           // This is transposing and interleaving data
-          v1[0] = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[0].m_val), reinterpret_cast<Packet4ui>(block1.packet[1].m_val)));
-          v1[1] = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[0].m_val), reinterpret_cast<Packet4ui>(block1.packet[1].m_val)));
-          v1[2] = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[2].m_val), reinterpret_cast<Packet4ui>(block1.packet[3].m_val)));
-          v1[3] = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[2].m_val), reinterpret_cast<Packet4ui>(block1.packet[3].m_val)));
-          v1[4] = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[4].m_val), reinterpret_cast<Packet4ui>(block1.packet[5].m_val)));
-          v1[5] = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[4].m_val), reinterpret_cast<Packet4ui>(block1.packet[5].m_val)));
-          v1[6] = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[6].m_val), reinterpret_cast<Packet4ui>(block1.packet[7].m_val)));
-          v1[7] = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[6].m_val), reinterpret_cast<Packet4ui>(block1.packet[7].m_val)));
+          v1[0] = vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[0].m_val), reinterpret_cast<Packet4ui>(block1.packet[1].m_val));
+          v1[1] = vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[0].m_val), reinterpret_cast<Packet4ui>(block1.packet[1].m_val));
+          v1[2] = vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[2].m_val), reinterpret_cast<Packet4ui>(block1.packet[3].m_val));
+          v1[3] = vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[2].m_val), reinterpret_cast<Packet4ui>(block1.packet[3].m_val));
+          v1[4] = vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[4].m_val), reinterpret_cast<Packet4ui>(block1.packet[5].m_val));
+          v1[5] = vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[4].m_val), reinterpret_cast<Packet4ui>(block1.packet[5].m_val));
+          v1[6] = vec_mergeh(reinterpret_cast<Packet4ui>(block1.packet[6].m_val), reinterpret_cast<Packet4ui>(block1.packet[7].m_val));
+          v1[7] = vec_mergel(reinterpret_cast<Packet4ui>(block1.packet[6].m_val), reinterpret_cast<Packet4ui>(block1.packet[7].m_val));
 
-          block1.packet[0] = reinterpret_cast<Packet8us>(vec_mergeh(v1[0],v1[2]));
-          block1.packet[2] = reinterpret_cast<Packet8us>(vec_mergel(v1[0],v1[2]));
-          block1.packet[4] = reinterpret_cast<Packet8us>(vec_mergeh(v1[1],v1[3]));
-          block1.packet[6] = reinterpret_cast<Packet8us>(vec_mergel(v1[1],v1[3]));
-          block1.packet[1] = reinterpret_cast<Packet8us>(vec_mergeh(v1[4],v1[6]));
-          block1.packet[3] = reinterpret_cast<Packet8us>(vec_mergel(v1[4],v1[6]));
-          block1.packet[5] = reinterpret_cast<Packet8us>(vec_mergeh(v1[5],v1[7]));
-          block1.packet[7] = reinterpret_cast<Packet8us>(vec_mergel(v1[5],v1[7]));
+#ifdef EIGEN_VECTORIZE_VSX
+          block1.packet[0] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(v1[0]),reinterpret_cast<Packet2ul>(v1[2])));
+          block1.packet[2] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(v1[0]),reinterpret_cast<Packet2ul>(v1[2])));
+          block1.packet[4] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(v1[1]),reinterpret_cast<Packet2ul>(v1[3])));
+          block1.packet[6] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(v1[1]),reinterpret_cast<Packet2ul>(v1[3])));
+          block1.packet[1] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(v1[4]),reinterpret_cast<Packet2ul>(v1[6])));
+          block1.packet[3] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(v1[4]),reinterpret_cast<Packet2ul>(v1[6])));
+          block1.packet[5] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(v1[5]),reinterpret_cast<Packet2ul>(v1[7])));
+          block1.packet[7] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(v1[5]),reinterpret_cast<Packet2ul>(v1[7])));
+#else
+          block1.packet[0] = reinterpret_cast<Packet8us>(vec_perm(v1[0],v1[2],p16uc_TRANSPOSE64_HI));
+          block1.packet[2] = reinterpret_cast<Packet8us>(vec_perm(v1[0],v1[2],p16uc_TRANSPOSE64_LO));
+          block1.packet[4] = reinterpret_cast<Packet8us>(vec_perm(v1[1],v1[3],p16uc_TRANSPOSE64_HI));
+          block1.packet[6] = reinterpret_cast<Packet8us>(vec_perm(v1[1],v1[3],p16uc_TRANSPOSE64_LO));
+          block1.packet[1] = reinterpret_cast<Packet8us>(vec_perm(v1[4],v1[6],p16uc_TRANSPOSE64_HI));
+          block1.packet[3] = reinterpret_cast<Packet8us>(vec_perm(v1[4],v1[6],p16uc_TRANSPOSE64_LO));
+          block1.packet[5] = reinterpret_cast<Packet8us>(vec_perm(v1[5],v1[7],p16uc_TRANSPOSE64_HI));
+          block1.packet[7] = reinterpret_cast<Packet8us>(vec_perm(v1[5],v1[7],p16uc_TRANSPOSE64_LO));
+#endif
 
           for(Index M = 0; M < 8; M++) {
             pstore<bfloat16>(blockA + ri + (vectorSize * M), block1.packet[M]);
@@ -1157,15 +1185,24 @@ struct dhs_pack<bfloat16, DataMapper, Packet8bf, StorageOrder, PanelMode, false>
 
           bload<DataMapper, Packet8bf, 4, StorageOrder, false, 4>(block, rhs2, i, 0);
 
-          Packet2ul t0, t1, t2, t3;
-          t0 = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block.packet[0].m_val), reinterpret_cast<Packet4ui>(block.packet[1].m_val)));
-          t1 = reinterpret_cast<Packet2ul>(vec_mergeh(reinterpret_cast<Packet4ui>(block.packet[2].m_val), reinterpret_cast<Packet4ui>(block.packet[3].m_val)));
-          t2 = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block.packet[0].m_val), reinterpret_cast<Packet4ui>(block.packet[1].m_val)));
-          t3 = reinterpret_cast<Packet2ul>(vec_mergel(reinterpret_cast<Packet4ui>(block.packet[2].m_val), reinterpret_cast<Packet4ui>(block.packet[3].m_val)));
-          block.packet[0] = reinterpret_cast<Packet8us>(vec_mergeh(t0, t1));
-          block.packet[1] = reinterpret_cast<Packet8us>(vec_mergel(t0, t1));
-          block.packet[2] = reinterpret_cast<Packet8us>(vec_mergeh(t2, t3));
-          block.packet[3] = reinterpret_cast<Packet8us>(vec_mergel(t2, t3));
+          Packet4ui t0, t1, t2, t3;
+
+          t0 = vec_mergeh(reinterpret_cast<Packet4ui>(block.packet[0].m_val), reinterpret_cast<Packet4ui>(block.packet[1].m_val));
+          t1 = vec_mergel(reinterpret_cast<Packet4ui>(block.packet[0].m_val), reinterpret_cast<Packet4ui>(block.packet[1].m_val));
+          t2 = vec_mergeh(reinterpret_cast<Packet4ui>(block.packet[2].m_val), reinterpret_cast<Packet4ui>(block.packet[3].m_val));
+          t3 = vec_mergel(reinterpret_cast<Packet4ui>(block.packet[2].m_val), reinterpret_cast<Packet4ui>(block.packet[3].m_val));
+
+#ifdef EIGEN_VECTORIZE_VSX
+          block.packet[0] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(t0),reinterpret_cast<Packet2ul>(t2)));
+          block.packet[1] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(t0),reinterpret_cast<Packet2ul>(t2)));
+          block.packet[2] = reinterpret_cast<Packet8us>(vec_mergeh(reinterpret_cast<Packet2ul>(t1),reinterpret_cast<Packet2ul>(t3)));
+          block.packet[3] = reinterpret_cast<Packet8us>(vec_mergel(reinterpret_cast<Packet2ul>(t1),reinterpret_cast<Packet2ul>(t3)));
+#else
+          block.packet[0] = reinterpret_cast<Packet8us>(vec_perm(t0,t2,p16uc_TRANSPOSE64_HI));
+          block.packet[1] = reinterpret_cast<Packet8us>(vec_perm(t0,t2,p16uc_TRANSPOSE64_LO));
+          block.packet[2] = reinterpret_cast<Packet8us>(vec_perm(t1,t3,p16uc_TRANSPOSE64_HI));
+          block.packet[3] = reinterpret_cast<Packet8us>(vec_perm(t1,t3,p16uc_TRANSPOSE64_LO));
+#endif
 
           storeBlock<bfloat16, Packet8bf, 4>(blockB + ri, block);
         } else {
@@ -1253,7 +1290,6 @@ struct dhs_pack<bfloat16, DataMapper, Packet8bf, StorageOrder, PanelMode, false>
     }
   }
 };
-#endif
 
 // General template for lhs complex packing, float64 specialization.
 template<typename DataMapper, typename Packet, typename PacketC, int StorageOrder, bool Conjugate, bool PanelMode>
@@ -2188,7 +2224,7 @@ EIGEN_ALWAYS_INLINE void gemm_cols(
   gemm_cols<Scalar, Packet, DataMapper, N, accCols>(res, blockA, blockB, depth, strideA, offsetA, strideB, offsetB, col, rows, remaining_rows, pAlpha, pMask);
 
 template<typename Scalar, typename Packet, typename DataMapper, const Index accCols>
-EIGEN_STRONG_INLINE void gemm_extra_cols(
+EIGEN_ALWAYS_INLINE void gemm_extra_cols(
   const DataMapper& res,
   const Scalar* blockA,
   const Scalar* blockB,
@@ -2622,7 +2658,7 @@ EIGEN_ALWAYS_INLINE void gemm_complex_cols(
   gemm_complex_cols<Scalar, Packet, Packetc, DataMapper, N, accCols, ConjugateLhs, ConjugateRhs, LhsIsReal, RhsIsReal>(res, blockA, blockB, depth, strideA, offsetA, strideB, offsetB, col, rows, remaining_rows, pAlphaReal, pAlphaImag, pMask);
 
 template<typename Scalar, typename Packet, typename Packetc, typename DataMapper, const Index accCols, bool ConjugateLhs, bool ConjugateRhs, bool LhsIsReal, bool RhsIsReal>
-EIGEN_STRONG_INLINE void gemm_complex_extra_cols(
+EIGEN_ALWAYS_INLINE void gemm_complex_extra_cols(
   const DataMapper& res,
   const Scalar* blockA,
   const Scalar* blockB,
@@ -2672,6 +2708,551 @@ EIGEN_STRONG_INLINE void gemm_complex(const DataMapper& res, const LhsScalar* bl
 #undef accColsC
 #undef advanceCols
 #undef advanceRows
+
+EIGEN_ALWAYS_INLINE bool supportsMMA()
+{
+#if defined(EIGEN_ALTIVEC_MMA_ONLY)
+  return true;
+#elif defined(EIGEN_ALTIVEC_MMA_DYNAMIC_DISPATCH) && defined(__BUILTIN_CPU_SUPPORTS__)
+  return __builtin_cpu_supports ("arch_3_1") && __builtin_cpu_supports ("mma");
+#else
+  return false;  // No dynamic dispatch for LLVM or older GCC
+#endif
+}
+
+EIGEN_ALWAYS_INLINE Packet4f loadAndMultiplyF32(Packet4f acc, const Packet4f pAlpha, float* result)
+{
+  Packet4f result_block = ploadu<Packet4f>(result);
+  return pmadd(acc, pAlpha, result_block);
+}
+
+template<bool lhsExtraRows>
+EIGEN_ALWAYS_INLINE void storeF32(float*& result, Packet4f result_block, Index rows, Index extra_rows)
+{
+  if (lhsExtraRows) {
+    pstoreu_partial(result, result_block, extra_rows);
+  } else {
+    pstoreu(result, result_block);
+  }
+  result += rows;
+}
+
+template<bool rhsExtraCols, bool lhsExtraRows>
+EIGEN_ALWAYS_INLINE void storeResults(Packet4f (&acc)[4], Index rows, const Packet4f pAlpha, float* result, Index extra_cols, Index extra_rows)
+{
+  Index x = 0;
+  if (rhsExtraCols) {
+    do{
+      Packet4f result_block = loadAndMultiplyF32(acc[x], pAlpha, result);
+      storeF32<lhsExtraRows>(result, result_block, rows, extra_rows);
+    } while (++x < extra_cols);
+  } else {
+    Packet4f result_block[4];
+    float *result2 = result;
+    do{
+      result_block[x] = loadAndMultiplyF32(acc[x], pAlpha, result);
+      result += rows;
+    } while (++x < 4);
+    x = 0;
+    do{
+      storeF32<lhsExtraRows>(result2, result_block[x], rows, extra_rows);
+    } while (++x < 4);
+  }
+}
+
+EIGEN_ALWAYS_INLINE Packet4f oneConvertBF16Hi(Packet8us data)
+{
+  Packet8us z = pset1<Packet8us>(0);
+#ifdef _BIG_ENDIAN
+  return reinterpret_cast<Packet4f>(vec_mergeh(data, z));
+#else
+  return reinterpret_cast<Packet4f>(vec_mergeh(z, data));
+#endif
+}
+
+EIGEN_ALWAYS_INLINE Packet4f oneConvertBF16Lo(Packet8us data)
+{
+  Packet8us z = pset1<Packet8us>(0);
+#ifdef _BIG_ENDIAN
+  return reinterpret_cast<Packet4f>(vec_mergel(data, z));
+#else
+  return reinterpret_cast<Packet4f>(vec_mergel(z, data));
+#endif
+}
+
+template<Index N, Index M>
+EIGEN_ALWAYS_INLINE void storeConvertTwoBF16(float* to, PacketBlock<Packet8bf,(N+7)/8>& block, Index extra = 0)
+{
+  if (N < 4) {
+    pstoreu_partial(to +  0, oneConvertBF16Hi(block.packet[0].m_val), extra);
+  } else if (N >= (M*8+4)) {
+    pstoreu(to + 0, oneConvertBF16Hi(block.packet[M].m_val));
+    if (N >= 8) {
+      pstoreu(to + 4, oneConvertBF16Lo(block.packet[M].m_val));
+    }
+  }
+}
+
+template<Index N>
+EIGEN_ALWAYS_INLINE void storeConvertBlockBF16(float* to, PacketBlock<Packet8bf,(N+7)/8>& block, Index extra)
+{
+  storeConvertTwoBF16<N, 0>(to + 0, block, extra);
+  if (N >= 16) {
+    storeConvertTwoBF16<N, 1>(to + 8, block);
+  }
+  if (N >= 32) {
+    storeConvertTwoBF16<N, 2>(to + 16, block);
+    storeConvertTwoBF16<N, 3>(to + 24, block);
+  }
+}
+
+template<bool non_unit_stride, Index delta>
+EIGEN_ALWAYS_INLINE Packet8bf loadBF16fromResult(bfloat16* src, Index resInc)
+{
+  if (non_unit_stride) {
+    return pgather<bfloat16, Packet8bf>(src + delta*resInc, resInc);
+  } else {
+    return ploadu<Packet8bf>(src + delta);
+  }
+}
+
+static Packet16uc p16uc_MERGE16_32_1 = {  0, 1, 16,17,  2, 3, 18,19,  0, 1, 16,17,  2, 3, 18,19 };
+static Packet16uc p16uc_MERGE16_32_2 = {  4, 5, 20,21,  6, 7, 22,23,  4, 5, 20,21,  6, 7, 22,23 };
+static Packet16uc p16uc_MERGE16_32_3 = {  8, 9, 24,25, 10,11, 26,27,  8, 9, 24,25, 10,11, 26,27 };
+static Packet16uc p16uc_MERGE16_32_4 = { 12,13, 28,29, 14,15, 30,31, 12,13, 28,29, 14,15, 30,31 };
+
+static Packet16uc p16uc_MERGE16_32_5 = { 0,1, 16,17, 16,17, 16,17, 0,1, 16,17, 16,17, 16,17 };
+static Packet16uc p16uc_MERGE16_32_6 = { 2,3, 18,19, 18,19, 18,19, 2,3, 18,19, 18,19, 18,19 };
+static Packet16uc p16uc_MERGE16_32_7 = { 4,5, 20,21, 20,21, 20,21, 4,5, 20,21, 20,21, 20,21 };
+static Packet16uc p16uc_MERGE16_32_8 = { 6,7, 22,23, 22,23, 22,23, 6,7, 22,23, 22,23, 22,23 };
+
+EIGEN_ALWAYS_INLINE Packet4f oneConvertBF16Perm(Packet8us data, Packet16uc mask)
+{
+  Packet8us z = pset1<Packet8us>(0);
+#ifdef _BIG_ENDIAN
+  return reinterpret_cast<Packet4f>(vec_perm(data, z, mask));
+#else
+  return reinterpret_cast<Packet4f>(vec_perm(z, data, mask));
+#endif
+}
+
+template<bool lhsExtraRows, bool odd, Index size>
+EIGEN_ALWAYS_INLINE void convertArrayPointerBF16toF32DupOne(float *result, Index rows, const bfloat16* src, Index extra_rows)
+{
+  Packet4f dup[4*4];
+  Packet8bf data[4];
+
+  for (Index i = 0; i < size; i++) {
+    data[i] = ploadu<Packet8bf>(src + rows*i);
+  }
+
+  for (Index i = 0, j = 0; i < size; i++, j += 4) {
+    dup[j+0] = oneConvertBF16Perm(data[i].m_val, odd ? p16uc_MERGE16_32_5 : p16uc_MERGE16_32_1);
+    dup[j+1] = oneConvertBF16Perm(data[i].m_val, odd ? p16uc_MERGE16_32_6 : p16uc_MERGE16_32_2);
+    dup[j+2] = oneConvertBF16Perm(data[i].m_val, odd ? p16uc_MERGE16_32_7 : p16uc_MERGE16_32_3);
+    dup[j+3] = oneConvertBF16Perm(data[i].m_val, odd ? p16uc_MERGE16_32_8 : p16uc_MERGE16_32_4);
+  }
+
+  for (Index j = 0; j < 4*size; j += 4) {
+    if (lhsExtraRows) {
+      Packet4f z = pset1<Packet4f>(float(0));
+      Index i = 0;
+      do {
+        pstoreu(result + (j+i)*4, dup[j+i]);
+      } while (++i < extra_rows);
+      do {
+        pstoreu(result + (j+i)*4, z);
+      } while (++i < 4);
+    } else {
+      for (Index i = 0; i < 4; i++) {
+        pstoreu(result + (j+i)*4, dup[j+i]);
+      }
+    }
+  }
+}
+
+template<bool lhsExtraRows>
+EIGEN_ALWAYS_INLINE void convertArrayPointerBF16toF32Dup(float *result, Index cols, Index rows, const bfloat16* src, Index delta, Index extra_rows)
+{
+  Index col = 0;
+  src += delta*2;
+  for(; col + 4*2 <= cols; col += 4*2, result += 4*4*4, src += 4*rows) {
+    convertArrayPointerBF16toF32DupOne<lhsExtraRows,false,4>(result, rows, src, extra_rows);
+  }
+  for(; col + 2 <= cols; col += 2, result += 4*4, src += rows) {
+    convertArrayPointerBF16toF32DupOne<lhsExtraRows,false,1>(result, rows, src, extra_rows);
+  }
+  if (cols & 1) {
+    convertArrayPointerBF16toF32DupOne<lhsExtraRows,true,1>(result, rows, src - delta, extra_rows);
+  }
+}
+
+template<const Index size, bool non_unit_stride>
+EIGEN_ALWAYS_INLINE void convertPointerBF16toF32(Index& i, float *result, Index rows, bfloat16*& src, Index resInc)
+{
+  constexpr Index extra = ((size < 4) ? 4 : size);
+  while (i + size <= rows) {
+    PacketBlock<Packet8bf,(size+7)/8> r32;
+    r32.packet[0] = loadBF16fromResult<non_unit_stride, 0>(src, resInc);
+    if (size >= 16) {
+      r32.packet[1] = loadBF16fromResult<non_unit_stride, 8>(src, resInc);
+    }
+    if (size >= 32) {
+      r32.packet[2] = loadBF16fromResult<non_unit_stride, 16>(src, resInc);
+      r32.packet[3] = loadBF16fromResult<non_unit_stride, 24>(src, resInc);
+    }
+    storeConvertBlockBF16<size>(result + i, r32, rows & 3);
+    i += extra; src += extra*resInc;
+    if (size != 32) break;
+  }
+}
+
+template<bool non_unit_stride>
+EIGEN_ALWAYS_INLINE void convertArrayPointerBF16toF32(float *result, Index cols, Index rows, bfloat16* src, Index resInc)
+{
+  for(Index col = 0; col < cols; col++, src += (rows*resInc), result += rows) {
+    Index i = 0;
+    bfloat16* src2 = src;
+    convertPointerBF16toF32<32, non_unit_stride>(i, result, rows, src2, resInc);
+    convertPointerBF16toF32<16, non_unit_stride>(i, result, rows, src2, resInc);
+    convertPointerBF16toF32<8,  non_unit_stride>(i, result, rows, src2, resInc);
+    convertPointerBF16toF32<4,  non_unit_stride>(i, result, rows, src2, resInc);
+    convertPointerBF16toF32<1,  non_unit_stride>(i, result, rows, src2, resInc);
+  }
+}
+
+template<Index num_acc, Index size = 4>
+EIGEN_ALWAYS_INLINE void zeroAccumulators(Packet4f (&acc)[num_acc][size])
+{
+  Packet4f z = pset1<Packet4f>(float(0));
+
+  for(Index k = 0; k < num_acc; k++) {
+    for(Index j = 0; j < size; j++) {
+      acc[k][j] = z;
+    }
+  }
+}
+
+template<Index num_acc>
+EIGEN_ALWAYS_INLINE void tranposeResults(Packet4f (&acc)[num_acc][4])
+{
+  for(Index i = 0; i < num_acc; i++) {
+    Packet4ui t0, t1, t2, t3;
+    t0 = vec_mergeh(reinterpret_cast<Packet4ui>(acc[i][0]), reinterpret_cast<Packet4ui>(acc[i][2]));
+    t1 = vec_mergel(reinterpret_cast<Packet4ui>(acc[i][0]), reinterpret_cast<Packet4ui>(acc[i][2]));
+    t2 = vec_mergeh(reinterpret_cast<Packet4ui>(acc[i][1]), reinterpret_cast<Packet4ui>(acc[i][3]));
+    t3 = vec_mergel(reinterpret_cast<Packet4ui>(acc[i][1]), reinterpret_cast<Packet4ui>(acc[i][3]));
+    acc[i][0] = reinterpret_cast<Packet4f>(vec_mergeh(t0, t2));
+    acc[i][1] = reinterpret_cast<Packet4f>(vec_mergel(t0, t2));
+    acc[i][2] = reinterpret_cast<Packet4f>(vec_mergeh(t1, t3));
+    acc[i][3] = reinterpret_cast<Packet4f>(vec_mergel(t1, t3));
+  }
+}
+
+template<Index num_acc>
+EIGEN_ALWAYS_INLINE void addResults(Packet4f (&acc)[num_acc][4])
+{
+  for(Index i = 0, j = 0; j < num_acc; i++, j += 2) {
+    for(Index x = 0, y = 0; x < 2; x++, y += 2) {
+      for(Index w = 0, z = 0; w < 2; w++, z += 2) {
+        acc[i][y+w] = acc[j+x][z+0] + acc[j+x][z+1];
+      }
+    }
+  }
+}
+
+template<Index num_acc, bool rhsExtraCols, bool lhsExtraRows, Index num_rhs>
+EIGEN_ALWAYS_INLINE void outputResultsVSX(Packet4f (&acc)[num_acc][4], Index rows, const Packet4f pAlpha, float* result, const Index extra_cols, Index extra_rows)
+{
+  tranposeResults<num_acc>(acc);
+  addResults<num_acc>(acc);
+
+  constexpr Index real_rhs = ((num_rhs / 2) - (rhsExtraCols ? 1 : 0));
+  Index k = 0;
+  for(Index i = 0; i < real_rhs; i++, result += 4*rows, k++){
+    storeResults<false, lhsExtraRows>(acc[k], rows, pAlpha, result, extra_cols, extra_rows);
+  }
+  if(rhsExtraCols) {
+    storeResults<rhsExtraCols, lhsExtraRows>(acc[k], rows, pAlpha, result, extra_cols, extra_rows);
+  }
+}
+
+template<bool zero>
+EIGEN_ALWAYS_INLINE void loadTwoRhsFloat32(const float* block, Index strideB, Index i, Packet4f& dhs0, Packet4f &dhs1)
+{
+  dhs0 = ploadu<Packet4f>(block + strideB*i + 0);
+  if (zero) {
+    Packet4f dhs2 = pset1<Packet4f>(float(0));
+    dhs1 = vec_mergel(dhs0, dhs2);
+    dhs0 = vec_mergeh(dhs0, dhs2);
+  } else {
+    dhs1 = ploadu<Packet4f>(block + strideB*i + 4);
+  }
+}
+
+template<Index num_acc, bool zero, bool rhsExtraCols, Index num_rhs>
+EIGEN_ALWAYS_INLINE void KLoop
+(
+  const float* indexA,
+  const float* indexB,
+  Packet4f (&acc)[num_acc][4],
+  Index strideB,
+  Index k,
+  Index offsetB,
+  Index extra_cols
+)
+{
+  constexpr Index num_lhs = 4;
+  Packet4f lhs[num_lhs], rhs[num_rhs];
+
+  constexpr Index real_rhs = (num_rhs - (rhsExtraCols ? 2 : 0));
+  for(Index i = 0; i < real_rhs; i += 2){
+    loadTwoRhsFloat32<zero>(indexB + k*4, strideB, i, rhs[i + 0], rhs[i + 1]);
+  }
+  if(rhsExtraCols) {
+    loadTwoRhsFloat32<zero>(indexB + k*extra_cols - offsetB, strideB, real_rhs, rhs[real_rhs + 0], rhs[real_rhs + 1]);
+  }
+
+  indexA += 2*k*4;
+  for(Index j = 0; j < num_lhs; j++) {
+    lhs[j] = ploadu<Packet4f>(indexA + j*4);
+  }
+
+  for(Index j = 0; j < num_rhs; j++) {
+    for(Index i = 0; i < num_lhs; i++) {
+      acc[j][i] = pmadd(rhs[j], lhs[i], acc[j][i]);
+    }
+  }
+}
+
+template<const Index num_acc, bool rhsExtraCols, bool lhsExtraRows>
+EIGEN_ALWAYS_INLINE void colVSXLoopBodyIter(Index depth, Index rows, const Packet4f pAlpha, const float* indexA, const float* indexB, Index strideB, Index offsetB, float* result, const Index extra_cols, const Index extra_rows)
+{
+  constexpr Index num_rhs = num_acc;
+
+  Packet4f acc[num_acc][4];
+
+  zeroAccumulators<num_acc>(acc);
+
+  Index k;
+  for(k = 0; k + 2 <= depth; k += 2){
+    KLoop<num_acc, false, rhsExtraCols, num_rhs>(indexA, indexB, acc, strideB, k, offsetB, extra_cols);
+  }
+  if(depth&1){
+    KLoop<num_acc, true, rhsExtraCols, num_rhs>(indexA, indexB, acc, strideB, k, offsetB, extra_cols);
+  }
+
+  outputResultsVSX<num_acc, rhsExtraCols, lhsExtraRows, num_rhs>(acc, rows, pAlpha, result, extra_cols, extra_rows);
+}
+
+// No more than 4 (uses 2X the accumulators or 8X the number of VSX registers)
+#define MAX_BFLOAT16_ACC_VSX   4
+
+template<const Index num_acc, bool rhsExtraCols, bool lhsExtraRows>
+void colVSXLoopBody(Index& col, Index depth, Index cols, Index rows, const Packet4f pAlpha, const float* indexA, const float* indexB, Index strideB, Index offsetB, float* result)
+{
+  constexpr Index step = (num_acc * 4); // each accumulator has 4 elements
+  const Index extra_cols = (rhsExtraCols) ? (cols & 3) : 0;
+  const Index extra_rows = (lhsExtraRows) ? (rows & 3) : 0;
+  constexpr bool multiIters = !rhsExtraCols && (num_acc == MAX_BFLOAT16_ACC_VSX);
+
+  do{
+    colVSXLoopBodyIter<num_acc*2, rhsExtraCols, lhsExtraRows>(depth, rows, pAlpha, indexA, indexB, strideB, offsetB, result, extra_cols, extra_rows);
+
+    indexB += strideB*(num_acc * 2);
+    result += rows*step;
+  } while(multiIters && (step <= cols - (col += step)));
+}
+
+template<const Index num_acc, bool rhsExtraCols, bool lhsExtraRows>
+EIGEN_ALWAYS_INLINE void colVSXLoopBodyExtraN(Index col, Index depth, Index cols, Index rows, const Packet4f pAlpha, const float* indexA, const float* blockB, Index strideB, Index offsetB, float* result)
+{
+  if (MAX_BFLOAT16_ACC_VSX > num_acc) {
+    colVSXLoopBody<num_acc + (rhsExtraCols ? 1 : 0), rhsExtraCols, lhsExtraRows>(col, depth, cols, rows, pAlpha, indexA, blockB, strideB, offsetB, result);
+  }
+}
+
+template<bool rhsExtraCols, bool lhsExtraRows>
+void colVSXLoopBodyExtra(Index col, Index depth, Index cols, Index rows, const Packet4f pAlpha, const float* indexA, const float* blockB, Index strideB, Index offsetB, float* result)
+{
+  switch ((cols - col) >> 2) {
+  case 3:
+    colVSXLoopBodyExtraN<3, rhsExtraCols, lhsExtraRows>(col, depth, cols, rows, pAlpha, indexA, blockB, strideB, offsetB, result);
+    break;
+  case 2:
+    colVSXLoopBodyExtraN<2, rhsExtraCols, lhsExtraRows>(col, depth, cols, rows, pAlpha, indexA, blockB, strideB, offsetB, result);
+    break;
+  case 1:
+    colVSXLoopBodyExtraN<1, rhsExtraCols, lhsExtraRows>(col, depth, cols, rows, pAlpha, indexA, blockB, strideB, offsetB, result);
+    break;
+  default:
+    if (rhsExtraCols) {
+      colVSXLoopBody<1, true, lhsExtraRows>(col, depth, cols, rows, pAlpha, indexA, blockB, strideB, offsetB, result);
+    }
+    break;
+  }
+}
+
+template<Index size, bool lhsExtraRows = false>
+EIGEN_ALWAYS_INLINE void colVSXLoops(Index depth, Index cols, Index rows, const Packet4f pAlpha, const bfloat16* indexA, const float* indexA2, const float* blockB2, Index strideA, Index strideB, Index offsetB, float* result2)
+{
+  Index delta_rows = 2*(lhsExtraRows ? (rows & 3) : size);
+  for (Index row = 0; row < size; row += 4) {
+    convertArrayPointerBF16toF32Dup<lhsExtraRows>(const_cast<float *>(indexA2), strideA, delta_rows, indexA, row, rows & 3);
+
+    const float *blockB = blockB2;
+    float *result = result2 + row;
+
+    Index col = 0;
+    if (cols >= (MAX_BFLOAT16_ACC_VSX * 4)) {
+      colVSXLoopBody<MAX_BFLOAT16_ACC_VSX, false, lhsExtraRows>(col, depth, cols, rows, pAlpha, indexA2, blockB, strideB, 0, result);
+      blockB += (strideB >> 1)*col;
+      result += rows*col;
+    }
+    if (cols & 3) {
+      colVSXLoopBodyExtra<true, lhsExtraRows>(col, depth, cols, rows, pAlpha, indexA2, blockB, strideB, offsetB, result);
+    } else {
+      colVSXLoopBodyExtra<false, lhsExtraRows>(col, depth, cols, rows, pAlpha, indexA2, blockB, strideB, 0, result);
+    }
+  }
+}
+
+template<Index size>
+EIGEN_ALWAYS_INLINE void calcVSXColLoops(const bfloat16*& indexA, const float* indexA2, Index& row, Index depth, Index cols, Index rows, const Packet4f pAlpha, const float* indexB, Index strideA, Index strideB, Index offsetA, Index offsetB, Index bigSuffix, float *result)
+{
+  if ((size == 16) || (rows & size)) {
+    indexA += size*offsetA;
+    colVSXLoops<size>(depth, cols, rows, pAlpha, indexA, indexA2, indexB, strideA, strideB, offsetB, result + row);
+    row += size;
+    indexA += bigSuffix*size/16;
+  }
+}
+
+template<const Index size, typename DataMapper>
+EIGEN_ALWAYS_INLINE void convertBF16toF32(Index& i, float *result, Index rows, const DataMapper& src)
+{
+  constexpr Index extra = ((size < 4) ? 4 : size);
+  while (i + size <= rows) {
+    PacketBlock<Packet8bf,(size+7)/8> r32;
+    r32.packet[0] = src.template loadPacket<Packet8bf>(i +  0);
+    if (size >= 16) {
+      r32.packet[1] = src.template loadPacket<Packet8bf>(i +  8);
+    }
+    if (size >= 32) {
+      r32.packet[2] = src.template loadPacket<Packet8bf>(i + 16);
+      r32.packet[3] = src.template loadPacket<Packet8bf>(i + 24);
+    }
+    storeConvertBlockBF16<size>(result + i, r32, rows & 3);
+    i += extra;
+    if (size != 32) break;
+  }
+}
+
+template<typename DataMapper>
+EIGEN_ALWAYS_INLINE void convertArrayBF16toF32(float *result, Index cols, Index rows, const DataMapper& src)
+{
+  typedef typename DataMapper::LinearMapper LinearMapper;
+  for(Index j = 0; j < cols; j++, result += rows){
+    const LinearMapper src2 = src.getLinearMapper(0, j);
+    Index i = 0;
+    convertBF16toF32<32, LinearMapper>(i, result, rows, src2);
+    convertBF16toF32<16, LinearMapper>(i, result, rows, src2);
+    convertBF16toF32<8,  LinearMapper>(i, result, rows, src2);
+    convertBF16toF32<4,  LinearMapper>(i, result, rows, src2);
+    convertBF16toF32<1,  LinearMapper>(i, result, rows, src2);
+  }
+}
+
+EIGEN_ALWAYS_INLINE Packet8bf convertF32toBF16VSX(const float *res)
+{
+  return F32ToBf16Both(ploadu<Packet4f>(res + 0), ploadu<Packet4f>(res + 4));
+}
+
+template<typename DataMapper, const Index size>
+EIGEN_ALWAYS_INLINE void convertArrayF32toBF16ColVSX(float *result, Index col, Index rows, const DataMapper& res)
+{
+  const DataMapper res2 = res.getSubMapper(0, col);
+  Index row;
+  float *result2 = result + col*rows;
+  for(row = 0; row + 8 <= rows; row += 8, result2 += 8){
+    // get and save block
+    PacketBlock<Packet8bf,size> block;
+    for(Index j = 0; j < size; j++){
+      block.packet[j] = convertF32toBF16VSX(result2 + j*rows);
+    }
+    res2.template storePacketBlock<Packet8bf,size>(row, 0, block);
+  }
+  // extra rows
+  if(row < rows){
+    for(Index j = 0; j < size; j++){
+      Packet8bf fp16 = convertF32toBF16VSX(result2 + j*rows);
+      res2.template storePacketPartial<Packet8bf>(row, j, fp16, rows & 7);
+    }
+  }
+}
+
+template<typename DataMapper>
+EIGEN_ALWAYS_INLINE void convertArrayF32toBF16VSX(float *result, Index cols, Index rows, const DataMapper& res)
+{
+  Index col;
+  for(col = 0; col + 4 <= cols; col += 4){
+    convertArrayF32toBF16ColVSX<DataMapper,4>(result, col, rows, res);
+  }
+  // extra cols
+  switch (cols - col) {
+  case 1:
+    convertArrayF32toBF16ColVSX<DataMapper,1>(result, col, rows, res);
+    break;
+  case 2:
+    convertArrayF32toBF16ColVSX<DataMapper,2>(result, col, rows, res);
+    break;
+  case 3:
+    convertArrayF32toBF16ColVSX<DataMapper,3>(result, col, rows, res);
+    break;
+  }
+}
+
+template<typename DataMapper>
+void gemmbfloat16(const DataMapper& res, const bfloat16* indexA, const bfloat16* indexB, Index rows, Index depth, Index cols, bfloat16 alpha, Index strideA, Index strideB, Index offsetA, Index offsetB)
+{
+  float falpha = Eigen::bfloat16_impl::bfloat16_to_float(alpha);
+  const Packet4f pAlpha = pset1<Packet4f>(falpha);
+
+  if( strideA == -1 ) strideA = depth;
+  if( strideB == -1 ) strideB = depth;
+
+  ei_declare_aligned_stack_constructed_variable(float, result, cols*rows, 0);
+  ei_declare_aligned_stack_constructed_variable(float, indexB2, strideB*cols, 0);
+  ei_declare_aligned_stack_constructed_variable(float, indexA2, ((strideA + 1) & -2)*4*2, 0);
+
+  convertArrayBF16toF32<DataMapper>(result, cols, rows, res);
+  convertArrayPointerBF16toF32(indexB2, cols, strideB, const_cast<bfloat16 *>(indexB));
+
+  Index bigSuffix = 2*8*(strideA-offsetA);
+  float* indexBF32 = indexB2 + 4*offsetB;
+  offsetB *= 3;
+  strideB *= 2;
+
+  Index row = 0;
+  // LHS (8x16) block
+  while(row + 16 <= rows){
+    calcVSXColLoops<16>(indexA, indexA2, row, depth, cols, rows, pAlpha, indexBF32, strideA, strideB, offsetA, offsetB, bigSuffix, result);
+  }
+  // LHS (8x8) block
+  calcVSXColLoops<8>(indexA, indexA2, row, depth, cols, rows, pAlpha, indexBF32, strideA, strideB, offsetA, offsetB, bigSuffix, result);
+  // LHS (8x4) block
+  calcVSXColLoops<4>(indexA, indexA2, row, depth, cols, rows, pAlpha, indexBF32, strideA, strideB, offsetA, offsetB, bigSuffix, result);
+  // extra rows
+  if(rows & 3){
+    // This index is the beginning of remaining block.
+    colVSXLoops<4, true>(depth, cols, rows, pAlpha, indexA, indexA2, indexBF32, strideA, strideB, offsetB, result + row);
+  }
+
+  // Convert back to bfloat16
+  convertArrayF32toBF16VSX<DataMapper>(result, cols, rows, res);
+}
+
+#undef MAX_BFLOAT16_ACC_VSX
 
 #include "MatrixVectorProduct.h"
 
@@ -2734,10 +3315,7 @@ void gemm_pack_rhs<double, Index, DataMapper, nr, RowMajor, Conjugate, PanelMode
   dhs_pack<double, DataMapper, Packet2d, RowMajor, PanelMode, false> pack;
   pack(blockB, rhs, depth, cols, stride, offset);
 }
-#endif
 
-#ifdef __MMA__
-#if EIGEN_ALTIVEC_USE_CUSTOM_PACK
 template<typename Index, typename DataMapper, int nr, bool Conjugate, bool PanelMode>
 struct gemm_pack_rhs<bfloat16, Index, DataMapper, nr, ColMajor, Conjugate, PanelMode>
 {
@@ -2794,7 +3372,6 @@ void gemm_pack_lhs<bfloat16, Index, DataMapper, Pack1, Pack2, Packet, RowMajor, 
   dhs_pack<bfloat16, DataMapper, Packet8bf, RowMajor, PanelMode, true> pack;
   pack(blockA, lhs, depth, rows, stride, offset);
 }
-#endif
 
 template<typename Index, typename DataMapper, int Pack1, int Pack2, typename Packet, bool Conjugate, bool PanelMode>
 struct gemm_pack_lhs<float, Index, DataMapper, Pack1, Pack2, Packet, RowMajor, Conjugate, PanelMode>
@@ -2986,21 +3563,12 @@ void gebp_kernel<float, float, Index, DataMapper, mr, nr, ConjugateLhs, Conjugat
   {
     const Index accRows = quad_traits<float>::rows;
     const Index accCols = quad_traits<float>::size;
-    void (*gemm_function)(const DataMapper&, const float*, const float*, Index, Index, Index, float, Index, Index, Index, Index);
-
-    #if defined(EIGEN_ALTIVEC_MMA_ONLY)
-      //generate with MMA only
-      gemm_function = &Eigen::internal::gemmMMA<float, Packet, RhsPacket, DataMapper, accRows, accCols>;
-    #elif defined(EIGEN_ALTIVEC_MMA_DYNAMIC_DISPATCH)
-      if (__builtin_cpu_supports ("arch_3_1") && __builtin_cpu_supports ("mma")){
-        gemm_function = &Eigen::internal::gemmMMA<float, Packet, RhsPacket, DataMapper, accRows, accCols>;
-      }
-      else{
-        gemm_function = &Eigen::internal::gemm<float, Packet, RhsPacket, DataMapper, accRows, accCols>;
-      }
-    #else
-      gemm_function = &Eigen::internal::gemm<float, Packet, RhsPacket, DataMapper, accRows, accCols>;
+    static void (*gemm_function)(const DataMapper&, const float*, const float*, Index, Index, Index, float, Index, Index, Index, Index) =
+    #ifdef EIGEN_MATRIX_PRODUCT_MMA_ALTIVEC_H
+      (supportsMMA()) ?
+        &Eigen::internal::gemmMMA<float, Packet, RhsPacket, DataMapper, accRows, accCols> :
     #endif
+        &Eigen::internal::gemm<float, Packet, RhsPacket, DataMapper, accRows, accCols>;
     gemm_function(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB, offsetA, offsetB);
   }
 
@@ -3024,22 +3592,13 @@ void gebp_kernel<std::complex<float>, std::complex<float>, Index, DataMapper, mr
   {
     const Index accRows = quad_traits<float>::rows;
     const Index accCols = quad_traits<float>::size;
-    void (*gemm_function)(const DataMapper&, const std::complex<float>*, const std::complex<float>*,
-          Index, Index, Index, std::complex<float>, Index, Index, Index, Index);
-
-    #if defined(EIGEN_ALTIVEC_MMA_ONLY)
-      //generate with MMA only
-      gemm_function = &Eigen::internal::gemm_complexMMA<std::complex<float>, std::complex<float>, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, false>;
-    #elif defined(EIGEN_ALTIVEC_MMA_DYNAMIC_DISPATCH)
-      if (__builtin_cpu_supports ("arch_3_1") && __builtin_cpu_supports ("mma")){
-        gemm_function = &Eigen::internal::gemm_complexMMA<std::complex<float>, std::complex<float>, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, false>;
-      }
-      else{
-        gemm_function = &Eigen::internal::gemm_complex<std::complex<float>, std::complex<float>, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, false>;
-      }
-    #else
-      gemm_function = &Eigen::internal::gemm_complex<std::complex<float>, std::complex<float>, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, false>;
+    static void (*gemm_function)(const DataMapper&, const std::complex<float>*, const std::complex<float>*,
+          Index, Index, Index, std::complex<float>, Index, Index, Index, Index) =
+    #ifdef EIGEN_MATRIX_PRODUCT_MMA_ALTIVEC_H
+      (supportsMMA()) ?
+        &Eigen::internal::gemm_complexMMA<std::complex<float>, std::complex<float>, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, false> :
     #endif
+        &Eigen::internal::gemm_complex<std::complex<float>, std::complex<float>, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, false>;
     gemm_function(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB, offsetA, offsetB);
   }
 
@@ -3063,21 +3622,13 @@ void gebp_kernel<float, std::complex<float>, Index, DataMapper, mr, nr, Conjugat
   {
     const Index accRows = quad_traits<float>::rows;
     const Index accCols = quad_traits<float>::size;
-    void (*gemm_function)(const DataMapper&, const float*, const std::complex<float>*,
-          Index, Index, Index, std::complex<float>, Index, Index, Index, Index);
-    #if defined(EIGEN_ALTIVEC_MMA_ONLY)
-      //generate with MMA only
-      gemm_function = &Eigen::internal::gemm_complexMMA<float, std::complex<float>, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, true, false>;
-    #elif defined(EIGEN_ALTIVEC_MMA_DYNAMIC_DISPATCH)
-      if (__builtin_cpu_supports ("arch_3_1") && __builtin_cpu_supports ("mma")){
-        gemm_function = &Eigen::internal::gemm_complexMMA<float, std::complex<float>, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, true, false>;
-      }
-      else{
-        gemm_function = &Eigen::internal::gemm_complex<float, std::complex<float>, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, true, false>;
-      }
-    #else
-      gemm_function = &Eigen::internal::gemm_complex<float, std::complex<float>, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, true, false>;
+    static void (*gemm_function)(const DataMapper&, const float*, const std::complex<float>*,
+          Index, Index, Index, std::complex<float>, Index, Index, Index, Index) =
+    #ifdef EIGEN_MATRIX_PRODUCT_MMA_ALTIVEC_H
+      (supportsMMA()) ?
+        &Eigen::internal::gemm_complexMMA<float, std::complex<float>, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, true, false> :
     #endif
+        &Eigen::internal::gemm_complex<float, std::complex<float>, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, true, false>;
     gemm_function(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB, offsetA, offsetB);
   }
 
@@ -3101,21 +3652,13 @@ void gebp_kernel<std::complex<float>, float, Index, DataMapper, mr, nr, Conjugat
   {
     const Index accRows = quad_traits<float>::rows;
     const Index accCols = quad_traits<float>::size;
-    void (*gemm_function)(const DataMapper&, const std::complex<float>*, const float*,
-          Index, Index, Index, std::complex<float>, Index, Index, Index, Index);
-    #if defined(EIGEN_ALTIVEC_MMA_ONLY)
-      //generate with MMA only
-      gemm_function = &Eigen::internal::gemm_complexMMA<std::complex<float>, float, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, true>;
-    #elif defined(EIGEN_ALTIVEC_MMA_DYNAMIC_DISPATCH)
-      if (__builtin_cpu_supports ("arch_3_1") && __builtin_cpu_supports ("mma")){
-        gemm_function = &Eigen::internal::gemm_complexMMA<std::complex<float>, float, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, true>;
-      }
-      else{
-        gemm_function = &Eigen::internal::gemm_complex<std::complex<float>, float, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, true>;
-      }
-    #else
-      gemm_function = &Eigen::internal::gemm_complex<std::complex<float>, float, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, true>;
+    static void (*gemm_function)(const DataMapper&, const std::complex<float>*, const float*,
+          Index, Index, Index, std::complex<float>, Index, Index, Index, Index) =
+    #ifdef EIGEN_MATRIX_PRODUCT_MMA_ALTIVEC_H
+      (supportsMMA()) ?
+        &Eigen::internal::gemm_complexMMA<std::complex<float>, float, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, true> :
     #endif
+        &Eigen::internal::gemm_complex<std::complex<float>, float, std::complex<float>, float, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, true>;
     gemm_function(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB, offsetA, offsetB);
   }
 
@@ -3138,21 +3681,12 @@ void gebp_kernel<double, double, Index, DataMapper, mr, nr, ConjugateLhs, Conjug
   {
     const Index accRows = quad_traits<double>::rows;
     const Index accCols = quad_traits<double>::size;
-    void (*gemm_function)(const DataMapper&, const double*, const double*, Index, Index, Index, double, Index, Index, Index, Index);
-
-    #if defined(EIGEN_ALTIVEC_MMA_ONLY)
-      //generate with MMA only
-      gemm_function = &Eigen::internal::gemmMMA<double, Packet, RhsPacket, DataMapper, accRows, accCols>;
-    #elif defined(EIGEN_ALTIVEC_MMA_DYNAMIC_DISPATCH)
-      if (__builtin_cpu_supports ("arch_3_1") && __builtin_cpu_supports ("mma")){
-        gemm_function = &Eigen::internal::gemmMMA<double, Packet, RhsPacket, DataMapper, accRows, accCols>;
-      }
-      else{
-        gemm_function = &Eigen::internal::gemm<double, Packet, RhsPacket, DataMapper, accRows, accCols>;
-      }
-    #else
-      gemm_function = &Eigen::internal::gemm<double, Packet, RhsPacket, DataMapper, accRows, accCols>;
+    static void (*gemm_function)(const DataMapper&, const double*, const double*, Index, Index, Index, double, Index, Index, Index, Index) =
+    #ifdef EIGEN_MATRIX_PRODUCT_MMA_ALTIVEC_H
+      (supportsMMA()) ?
+        &Eigen::internal::gemmMMA<double, Packet, RhsPacket, DataMapper, accRows, accCols> :
     #endif
+        &Eigen::internal::gemm<double, Packet, RhsPacket, DataMapper, accRows, accCols>;
     gemm_function(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB, offsetA, offsetB);
   }
 
@@ -3176,21 +3710,13 @@ void gebp_kernel<std::complex<double>, std::complex<double>, Index, DataMapper, 
   {
     const Index accRows = quad_traits<double>::rows;
     const Index accCols = quad_traits<double>::size;
-    void (*gemm_function)(const DataMapper&, const std::complex<double>*, const std::complex<double>*,
-          Index, Index, Index, std::complex<double>, Index, Index, Index, Index);
-    #if defined(EIGEN_ALTIVEC_MMA_ONLY)
-      //generate with MMA only
-      gemm_function = &Eigen::internal::gemm_complexMMA<std::complex<double>, std::complex<double>, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, false>;
-    #elif defined(EIGEN_ALTIVEC_MMA_DYNAMIC_DISPATCH)
-      if (__builtin_cpu_supports ("arch_3_1") && __builtin_cpu_supports ("mma")){
-        gemm_function = &Eigen::internal::gemm_complexMMA<std::complex<double>, std::complex<double>, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, false>;
-      }
-      else{
-        gemm_function = &Eigen::internal::gemm_complex<std::complex<double>, std::complex<double>, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, false>;
-      }
-    #else
-      gemm_function = &Eigen::internal::gemm_complex<std::complex<double>, std::complex<double>, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, false>;
+    static void (*gemm_function)(const DataMapper&, const std::complex<double>*, const std::complex<double>*,
+          Index, Index, Index, std::complex<double>, Index, Index, Index, Index) =
+    #ifdef EIGEN_MATRIX_PRODUCT_MMA_ALTIVEC_H
+      (supportsMMA()) ?
+        &Eigen::internal::gemm_complexMMA<std::complex<double>, std::complex<double>, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, false> :
     #endif
+        &Eigen::internal::gemm_complex<std::complex<double>, std::complex<double>, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, false>;
     gemm_function(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB, offsetA, offsetB);
   }
 
@@ -3214,21 +3740,13 @@ void gebp_kernel<std::complex<double>, double, Index, DataMapper, mr, nr, Conjug
   {
     const Index accRows = quad_traits<double>::rows;
     const Index accCols = quad_traits<double>::size;
-    void (*gemm_function)(const DataMapper&, const std::complex<double>*, const double*,
-          Index, Index, Index, std::complex<double>, Index, Index, Index, Index);
-    #if defined(EIGEN_ALTIVEC_MMA_ONLY)
-      //generate with MMA only
-      gemm_function = &Eigen::internal::gemm_complexMMA<std::complex<double>, double, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, true>;
-    #elif defined(EIGEN_ALTIVEC_MMA_DYNAMIC_DISPATCH)
-      if (__builtin_cpu_supports ("arch_3_1") && __builtin_cpu_supports ("mma")){
-        gemm_function = &Eigen::internal::gemm_complexMMA<std::complex<double>, double, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, true>;
-      }
-      else{
-        gemm_function = &Eigen::internal::gemm_complex<std::complex<double>, double, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, true>;
-      }
-    #else
-      gemm_function = &Eigen::internal::gemm_complex<std::complex<double>, double, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, true>;
+    static void (*gemm_function)(const DataMapper&, const std::complex<double>*, const double*,
+          Index, Index, Index, std::complex<double>, Index, Index, Index, Index) =
+    #ifdef EIGEN_MATRIX_PRODUCT_MMA_ALTIVEC_H
+      (supportsMMA()) ?
+        &Eigen::internal::gemm_complexMMA<std::complex<double>, double, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, true> :
     #endif
+        &Eigen::internal::gemm_complex<std::complex<double>, double, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, false, true>;
     gemm_function(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB, offsetA, offsetB);
   }
 
@@ -3252,25 +3770,16 @@ void gebp_kernel<double, std::complex<double>, Index, DataMapper, mr, nr, Conjug
   {
     const Index accRows = quad_traits<double>::rows;
     const Index accCols = quad_traits<double>::size;
-    void (*gemm_function)(const DataMapper&, const double*, const std::complex<double>*,
-          Index, Index, Index, std::complex<double>, Index, Index, Index, Index);
-    #if defined(EIGEN_ALTIVEC_MMA_ONLY)
-      //generate with MMA only
-      gemm_function = &Eigen::internal::gemm_complexMMA<double, std::complex<double>, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, true, false>;
-    #elif defined(EIGEN_ALTIVEC_MMA_DYNAMIC_DISPATCH)
-      if (__builtin_cpu_supports ("arch_3_1") && __builtin_cpu_supports ("mma")){
-        gemm_function = &Eigen::internal::gemm_complexMMA<double, std::complex<double>, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, true, false>;
-      }
-      else{
-        gemm_function = &Eigen::internal::gemm_complex<double, std::complex<double>, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, true, false>;
-      }
-    #else
-      gemm_function = &Eigen::internal::gemm_complex<double, std::complex<double>, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, true, false>;
+    static void (*gemm_function)(const DataMapper&, const double*, const std::complex<double>*,
+          Index, Index, Index, std::complex<double>, Index, Index, Index, Index) =
+    #ifdef EIGEN_MATRIX_PRODUCT_MMA_ALTIVEC_H
+      (supportsMMA()) ?
+        &Eigen::internal::gemm_complexMMA<double, std::complex<double>, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, true, false> :
     #endif
+        &Eigen::internal::gemm_complex<double, std::complex<double>, std::complex<double>, double, Packet, Packetc, RhsPacket, DataMapper, accRows, accCols, ConjugateLhs, ConjugateRhs, true, false>;
     gemm_function(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB, offsetA, offsetB);
   }
 
-#if defined(__MMA__)
 template<typename Index, typename DataMapper, int mr, int nr, bool ConjugateLhs, bool ConjugateRhs>
 struct gebp_kernel<bfloat16, bfloat16, Index, DataMapper, mr, nr, ConjugateLhs, ConjugateRhs>
 {
@@ -3288,12 +3797,14 @@ void gebp_kernel<bfloat16, bfloat16, Index, DataMapper, mr, nr, ConjugateLhs, Co
                Index rows, Index depth, Index cols, bfloat16 alpha,
                Index strideA, Index strideB, Index offsetA, Index offsetB)
   {
-    const Index accRows = quad_traits<bfloat16>::rows;
-    const Index accCols = quad_traits<bfloat16>::size;
-
-    Eigen::internal::gemmMMAbfloat16<Index, Packet, RhsPacket, DataMapper, accRows, accCols>(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB, offsetA, offsetB);
+    static void (*gemm_function)(const DataMapper&, const bfloat16*, const bfloat16*, Index, Index, Index, bfloat16, Index, Index, Index, Index) =
+    #ifdef EIGEN_MATRIX_PRODUCT_MMA_ALTIVEC_H
+      (supportsMMA()) ?
+        &Eigen::internal::gemmMMAbfloat16<DataMapper> :
+    #endif
+        &Eigen::internal::gemmbfloat16<DataMapper>;
+    gemm_function(res, blockA, blockB, rows, depth, cols, alpha, strideA, strideB, offsetA, offsetB);
   }
-#endif
 } // end namespace internal
 
 } // end namespace Eigen

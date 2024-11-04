@@ -159,6 +159,7 @@ cross compiling via the use of toolchain files included in the AV1 repository.
 The toolchain files available at the time of this writing are:
 
  - arm64-ios.cmake
+ - arm64-linux-clang.cmake
  - arm64-linux-gcc.cmake
  - arm64-mingw-gcc.cmake
  - armv7-ios.cmake
@@ -574,11 +575,18 @@ your account (Gmail credentials, for example). Next, follow the
 `Generate Password` Password link at the top of the page. You’ll be given
 instructions for creating a cookie to use with our Git repos.
 
+You must also have a Gerrit account associated with your Google account. To do
+this visit the [Gerrit review server](https://aomedia-review.googlesource.com)
+and click "Sign in" (top right).
+
 ### Contributor agreement {#contributor-agreement}
 
 You will be required to execute a
 [contributor agreement](http://aomedia.org/license) to ensure that the AOMedia
 Project has the right to distribute your changes.
+
+Note: If you are pushing changes on behalf of an Alliance for Open Media member
+organization this step is not necessary.
 
 ### Testing your code {#testing-your-code}
 

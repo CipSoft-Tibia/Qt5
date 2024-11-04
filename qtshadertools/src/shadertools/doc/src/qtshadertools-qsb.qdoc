@@ -15,11 +15,11 @@
 
     \badcode
 Usage: qsb [options] file
-Qt Shader Baker (using QShader from Qt 6.5.0)
+Qt Shader Baker (using QShader from Qt 6.7.0)
 
 Options:
   -?, -h, --help               Displays help on commandline options.
-  --help-all                   Displays help including Qt specific options.
+  --help-all                   Displays help, including generic Qt options.
   -v, --version                Displays version information.
   -b, --batchable              Also generates rewritten vertex shader for Qt
                                Quick scene graph batching.
@@ -31,6 +31,9 @@ Options:
                                versions to generate. F.ex. 50 is 5.0, 51 is 5.1.
   --msl <versions>             Comma separated list of Metal Shading Language
                                versions to generate. F.ex. 12 is 1.2, 20 is 2.0.
+  --qt6                        Equivalent to --glsl "100 es,120,150" --hlsl 50
+                               --msl 12. This set is commonly used with shaders
+                               for Qt Quick materials and effects.
   --msltess                    Indicates that a vertex shader is going to be
                                used in a pipeline with tessellation. Mandatory
                                for vertex shaders planned to be used with
@@ -48,10 +51,18 @@ Options:
                                Metal. If it does not match the tess.evaluation
                                stage, the generated MSL code will not function
                                as expected.
+  --view-count <num_views>     The number of views the vertex shader is used
+                               with. Relevant for GL_OVR_multiview. Ignored for
+                               non-vertex. num_views should be >= 2. Set only
+                               for vertex shaders that do rely on multiview.
   -g                           Generate full debug info for SPIR-V and DXBC
   -O                           Invoke spirv-opt (external tool) to optimize
                                SPIR-V for performance.
   -o, --output <filename>      Output file for the shader pack.
+  --qsbversion <version>       QSB version to use for the output file. By
+                               default the latest version is automatically used,
+                               use only to bake compatibility versions. F.ex. 64
+                               is Qt 6.4.
   -c, --fxc                    In combination with --hlsl invokes fxc to store
                                DXBC instead of HLSL.
   -t, --metallib               In combination with --msl builds a Metal library
@@ -156,7 +167,7 @@ Arguments:
     \badcode
 Stage: Fragment
 QSB_VERSION: 5
-Has 1 shaders: (unordered list)
+Has 1 shaders:
   Shader 0: SPIR-V 100 [Standard]
 
 Reflection info: {
@@ -229,7 +240,7 @@ Binary of 864 bytes
     \badcode
 Stage: Fragment
 QSB_VERSION: 5
-Has 6 shaders: (unordered list)
+Has 6 shaders:
   Shader 0: GLSL 120 [Standard]
   Shader 1: HLSL 50 [Standard]
   Shader 2: GLSL 100 es [Standard]
@@ -466,7 +477,7 @@ void main()
 \badcode
 Stage: Vertex
 QSB_VERSION: 5
-Has 4 shaders: (unordered list)
+Has 4 shaders:
   Shader 0: GLSL 330 [Standard]
   Shader 1: GLSL 330 [Batchable]
   Shader 2: SPIR-V 100 [Standard]
@@ -551,6 +562,101 @@ Reflection info: {
     stage, otherwise the generated MSL code will not function as expected.
 
     \endlist
+
+    \section1 Multiview
+
+    Take the following vertex shader. It is written as Vulkan-compatible GLSL,
+    enabling the \c{GL_EXT_multiview} extension to make using \c{gl_ViewIndex}
+    legal.
+
+\badcode
+#version 440
+#extension GL_EXT_multiview : require
+
+layout(location = 0) in vec4 pos;
+layout(std140, binding = 0) uniform buf
+{
+    mat4 mvp[2];
+};
+
+void main()
+{
+    gl_Position = mvp[gl_ViewIndex] * pos;
+}
+\endcode
+
+    \note In practice the #extension GL_EXT_multiview line will not be needed
+    in the source code passed to \c qsb, because passing the
+    \c{--view-count} argument described below automatically injects that line
+    into the shader source code before compiling to SPIR-V.
+
+    For Vulkan this works as-is, as long as Vulkan 1.1 is supported at runtime.
+    See
+    \l{https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_multiview.html}{VK_KHR_multiview}
+    for details.
+
+    To generate a HLSL vertex shader from the above for Direct 3D 12 (see
+    \l{https://microsoft.github.io/DirectX-Specs/d3d/ViewInstancing.html}{view
+    instancing} for details), the minimum shader model version is 6.1, meaning
+    \c qsb will fail when specifying e.g. \c{--hlsl 50}. Use at least \c{--hlsl
+    61} when processing a multiview vertex shader. Multiview is not supported
+    with Direct 3D 11.
+
+    For OpenGL, additional metadata is needed:
+
+    \list
+
+    \li \c{--view-count} - When transpiling above shader (after compiling to
+    SPIR-V) to OpenGL-compatible GLSL source code, it is not enough to map
+    \c{gl_ViewIndex} to \c{gl_ViewID_OVR}, but the number of views needs to be
+    declared in the shader as well. Passing a value of 2 to the \c{--view-count}
+    argument results in injecting a \c{layout(num_views = 2) in;} statement into
+    the generated GLSL source code, thus making it a valid (OpenGL) GLSL shader.
+    See
+    \l{https://registry.khronos.org/OpenGL/extensions/OVR/OVR_multiview.txt}{GL_OVR_multiview}
+    for details and note that the generated GLSL shaders also require
+    \l{https://registry.khronos.org/OpenGL/extensions/OVR/OVR_multiview2.txt}{GL_OVR_multiview2}
+    to be supported at runtime since that is what is going to be required by the
+    \c{#extension} directive in the generated shader source code.
+
+    \endlist
+
+    When targeting OpenGL (ES) with such a vertex shader, the generated GLSL
+    version (\c{--glsl}) must be at least \c 330 or \c{300 es}. The former is
+    not something that is enforced by \c qsb or QShaderBaker, but in practice
+    OpenGL implementations are known to reject such shaders if the GLSL version
+    is 150 or smaller. Hence it is recommended to pass \c{--glsl 330,300es}
+    when conditioning vertex shaders enabling GL_EXT_multiview.
+
+    Specifying \c{--view-count} automatically generates and injects a
+    preprocessor define:
+    \c{#define QSHADER_VIEW_COUNT n} where \c n is the number of views.
+    When the view count is not provided, the define is not set at all.
+    This allows writing code such as the following, and allows using the same
+    source file for all view count-specific variants of the shader.
+
+\badcode
+layout(std140, binding = 0) uniform buf {
+#if QSHADER_VIEW_COUNT >= 2
+    mat4 matrix[QSHADER_VIEW_COUNT];
+#else
+    mat4 matrix;
+#endif
+    float opacity;
+};
+\endcode
+
+    In addition, the \c{#extension GL_EXT_multiview : require} line is
+    generated automatically when a view count of 2 or greater is set. This
+    reduces the number of extra lines needed to be added for multiview support
+    in a vertex shader.
+
+    Setting the view count can be relevant with other types of shaders as well.
+    For example, when sharing a uniform buffer between the vertex and fragment
+    shader, and both shaders have to ensure the same buffer layout, it can be
+    useful to be able to write \c{#if QSHADER_VIEW_COUNT >= 2} in both source
+    files. That can be ensured by specifying \c{--view-count} for both when
+    invoking \c qsb.
 
     \section1 Working with GLSL Features Specific to OpenGL
 

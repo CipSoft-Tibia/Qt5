@@ -32,6 +32,7 @@
 #include "services/device/public/mojom/device_posture_provider.mojom-blink.h"
 #include "third_party/blink/public/common/css/forced_colors.h"
 #include "third_party/blink/public/common/css/navigation_controls.h"
+#include "third_party/blink/public/common/css/scripting.h"
 #include "third_party/blink/public/common/privacy_budget/identifiability_metric_builder.h"
 #include "third_party/blink/public/common/privacy_budget/identifiability_study_settings.h"
 #include "third_party/blink/public/common/privacy_budget/identifiable_surface.h"
@@ -48,6 +49,7 @@
 #include "third_party/blink/renderer/core/css/media_query.h"
 #include "third_party/blink/renderer/core/css/media_values.h"
 #include "third_party/blink/renderer/core/css/media_values_dynamic.h"
+#include "third_party/blink/renderer/core/css/parser/css_tokenizer.h"
 #include "third_party/blink/renderer/core/css/parser/css_variable_parser.h"
 #include "third_party/blink/renderer/core/css/properties/longhands/custom_property.h"
 #include "third_party/blink/renderer/core/css/resolver/media_query_result.h"
@@ -573,15 +575,12 @@ static bool EvalResolution(const MediaQueryExpValue& value,
     return !!actual_resolution;
   }
 
-  if (!value.IsNumeric()) {
-    return false;
-  }
-
-  if (value.Unit() == CSSPrimitiveValue::UnitType::kNumber) {
+  if (value.IsNumeric() &&
+      value.Unit() == CSSPrimitiveValue::UnitType::kNumber) {
     return CompareValue(actual_resolution, ClampTo<float>(value.Value()), op);
   }
 
-  if (!CSSPrimitiveValue::IsResolution(value.Unit())) {
+  if (!value.IsResolution()) {
     return false;
   }
 
@@ -618,7 +617,7 @@ static bool DevicePixelRatioMediaFeatureEval(const MediaQueryExpValue& value,
 static bool ResolutionMediaFeatureEval(const MediaQueryExpValue& value,
                                        MediaQueryOperator op,
                                        const MediaValues& media_values) {
-  return (!value.IsValid() || CSSPrimitiveValue::IsResolution(value.Unit())) &&
+  return (!value.IsValid() || value.IsResolution()) &&
          EvalResolution(value, op, media_values);
 }
 
@@ -1074,6 +1073,27 @@ static bool PrefersReducedDataMediaFeatureEval(
          media_values.PrefersReducedData();
 }
 
+static bool PrefersReducedTransparencyMediaFeatureEval(
+    const MediaQueryExpValue& value,
+    MediaQueryOperator,
+    const MediaValues& media_values) {
+  MaybeRecordMediaFeatureValue(
+      media_values,
+      IdentifiableSurface::MediaFeatureName::kPrefersReducedTransparency,
+      media_values.PrefersReducedTransparency());
+
+  if (!value.IsValid()) {
+    return media_values.PrefersReducedTransparency();
+  }
+
+  if (!value.IsId()) {
+    return false;
+  }
+
+  return (value.Id() == CSSValueID::kNoPreference) ^
+         media_values.PrefersReducedTransparency();
+}
+
 static bool AnyPointerMediaFeatureEval(const MediaQueryExpValue& value,
                                        MediaQueryOperator,
                                        const MediaValues& media_values) {
@@ -1406,6 +1426,134 @@ static bool DevicePostureMediaFeatureEval(const MediaQueryExpValue& value,
   }
 }
 
+static bool UpdateMediaFeatureEval(const MediaQueryExpValue& value,
+                                   MediaQueryOperator,
+                                   const MediaValues& media_values) {
+  bool can_update = !EqualIgnoringASCIICase(media_values.MediaType(),
+                                            media_type_names::kPrint);
+  // No value = boolean context:
+  // https://w3c.github.io/csswg-drafts/mediaqueries/#mq-boolean-context
+  if (!value.IsValid()) {
+    return can_update;
+  }
+  const auto& device_update_ability_type =
+      media_values.OutputDeviceUpdateAbilityType();
+  DCHECK(value.IsId());
+  switch (value.Id()) {
+    case CSSValueID::kNone:
+      return !can_update;
+    case CSSValueID::kSlow:
+      return can_update &&
+             device_update_ability_type ==
+                 mojom::blink::OutputDeviceUpdateAbilityType::kSlowType;
+    case CSSValueID::kFast:
+      return can_update &&
+             device_update_ability_type ==
+                 mojom::blink::OutputDeviceUpdateAbilityType::kFastType;
+    default:
+      NOTREACHED();
+      return false;
+  }
+}
+
+static bool StuckMediaFeatureEval(const MediaQueryExpValue& value,
+                                  MediaQueryOperator op,
+                                  const MediaValues& media_values) {
+  if (!value.IsValid()) {
+    return media_values.Stuck();
+  }
+
+  switch (value.Id()) {
+    case CSSValueID::kNone:
+      return media_values.StuckHorizontal() == ContainerStuckPhysical::kNo &&
+             media_values.StuckVertical() == ContainerStuckPhysical::kNo;
+    case CSSValueID::kTop:
+      return media_values.StuckVertical() == ContainerStuckPhysical::kTop;
+    case CSSValueID::kLeft:
+      return media_values.StuckHorizontal() == ContainerStuckPhysical::kLeft;
+    case CSSValueID::kBottom:
+      return media_values.StuckVertical() == ContainerStuckPhysical::kBottom;
+    case CSSValueID::kRight:
+      return media_values.StuckHorizontal() == ContainerStuckPhysical::kRight;
+    case CSSValueID::kInsetBlockStart:
+      return media_values.StuckBlock() == ContainerStuckLogical::kStart;
+    case CSSValueID::kInsetBlockEnd:
+      return media_values.StuckBlock() == ContainerStuckLogical::kEnd;
+    case CSSValueID::kInsetInlineStart:
+      return media_values.StuckInline() == ContainerStuckLogical::kStart;
+    case CSSValueID::kInsetInlineEnd:
+      return media_values.StuckInline() == ContainerStuckLogical::kEnd;
+    default:
+      NOTREACHED();
+      return false;
+  }
+}
+
+static bool SnappedMediaFeatureEval(const MediaQueryExpValue& value,
+                                    MediaQueryOperator op,
+                                    const MediaValues& media_values) {
+  if (!value.IsValid()) {
+    return media_values.Snapped();
+  }
+  switch (value.Id()) {
+    case CSSValueID::kNone:
+      return media_values.Snapped();
+    case CSSValueID::kBlock:
+      return media_values.SnappedBlock();
+    case CSSValueID::kInline:
+      return media_values.SnappedInline();
+    default:
+      NOTREACHED();
+      return false;
+  }
+}
+
+static bool InvertedColorsMediaFeatureEval(const MediaQueryExpValue& value,
+                                           MediaQueryOperator,
+                                           const MediaValues& media_values) {
+  MaybeRecordMediaFeatureValue(
+      media_values, IdentifiableSurface::MediaFeatureName::kInvertedColors,
+      media_values.InvertedColors());
+
+  if (!value.IsValid()) {
+    return media_values.InvertedColors();
+  }
+
+  if (!value.IsId()) {
+    return false;
+  }
+
+  return (value.Id() == CSSValueID::kNone) != media_values.InvertedColors();
+}
+
+static bool ScriptingMediaFeatureEval(const MediaQueryExpValue& value,
+                                      MediaQueryOperator,
+                                      const MediaValues& media_values) {
+  MaybeRecordMediaFeatureValue(
+      media_values, IdentifiableSurface::MediaFeatureName::kScripting,
+      media_values.GetScripting());
+
+  if (!value.IsValid()) {
+    return media_values.GetScripting() == Scripting::kEnabled;
+  }
+
+  if (!value.IsId()) {
+    return false;
+  }
+
+  switch (value.Id()) {
+    case CSSValueID::kNone:
+      return media_values.GetScripting() == Scripting::kNone;
+    case CSSValueID::kInitialOnly:
+      return media_values.GetScripting() == Scripting::kInitialOnly;
+    case CSSValueID::kEnabled:
+      return media_values.GetScripting() == Scripting::kEnabled;
+    default:
+      NOTREACHED();
+      return false;
+  }
+}
+
 static MediaQueryOperator ReverseOperator(MediaQueryOperator op) {
   switch (op) {
     case MediaQueryOperator::kNone:
@@ -1501,51 +1649,6 @@ KleeneValue MediaQueryEvaluator::EvalFeature(
   return result ? KleeneValue::kTrue : KleeneValue::kFalse;
 }
 
-namespace {
-
-void ConsumeWhitespace(base::span<CSSParserToken>::const_iterator& iterator,
-                       const base::span<CSSParserToken>::const_iterator& end) {
-  while (iterator != end && (*iterator).GetType() == kWhitespaceToken) {
-    iterator++;
-  }
-}
-
-void ConsumeWhitespaceReverse(
-    base::span<CSSParserToken>::const_iterator& iterator,
-    const base::span<CSSParserToken>::const_iterator& start) {
-  while (iterator != start && (*(iterator - 1)).GetType() == kWhitespaceToken) {
-    iterator--;
-  }
-}
-
-bool TokensEqualIgnoringLeadingAndTrailingSpaces(
-    const CSSVariableData* value1,
-    const CSSVariableData* value2) {
-  if (value1 == value2) {
-    return true;
-  }
-  if (!value1 || !value2) {
-    return false;
-  }
-
-  const base::span<CSSParserToken> tokens1 = value1->Tokens();
-  const base::span<CSSParserToken> tokens2 = value2->Tokens();
-
-  base::span<CSSParserToken>::const_iterator tokens1_start = tokens1.begin();
-  base::span<CSSParserToken>::const_iterator tokens1_end = tokens1.end();
-  base::span<CSSParserToken>::const_iterator tokens2_start = tokens2.begin();
-  base::span<CSSParserToken>::const_iterator tokens2_end = tokens2.end();
-
-  ConsumeWhitespace(tokens1_start, tokens1_end);
-  ConsumeWhitespaceReverse(tokens1_end, tokens1_start);
-  ConsumeWhitespace(tokens2_start, tokens2_end);
-  ConsumeWhitespaceReverse(tokens2_end, tokens2_start);
-
-  return std::equal(tokens1_start, tokens1_end, tokens2_start, tokens2_end);
-}
-
-}  // namespace
-
 KleeneValue MediaQueryEvaluator::EvalStyleFeature(
     const MediaQueryFeatureExpNode& feature,
     MediaQueryResultFlags* result_flags) const {
@@ -1557,18 +1660,18 @@ KleeneValue MediaQueryEvaluator::EvalStyleFeature(
 
   const MediaQueryExpBounds& bounds = feature.Bounds();
 
-  // Style features always have the form of "property(feature): value".
+  // Style features do not support the range syntax.
   DCHECK(!bounds.IsRange());
   DCHECK(bounds.right.op == MediaQueryOperator::kNone);
-  DCHECK(bounds.right.IsValid());
-  DCHECK(bounds.right.value.IsCSSValue());
 
   Element* container = media_values_->ContainerElement();
   DCHECK(container);
 
   AtomicString property_name(feature.Name());
-
-  const CSSValue& query_specified = bounds.right.value.GetCSSValue();
+  bool explicit_value = bounds.right.value.IsValid();
+  const CSSValue& query_specified = explicit_value
+                                        ? bounds.right.value.GetCSSValue()
+                                        : *CSSInitialValue::Create();
 
   if (query_specified.IsRevertValue() || query_specified.IsRevertLayerValue()) {
     return KleeneValue::kFalse;
@@ -1584,10 +1687,7 @@ KleeneValue MediaQueryEvaluator::EvalStyleFeature(
     CSSVariableData* computed =
         container->ComputedStyleRef().GetVariableData(property_name);
 
-    // TODO(crbug.com/1220144): Compare the two CSSVariableData using
-    // base::ValuesEquivalent when we correctly strip leading and trailing
-    // whitespaces for custom property values.
-    if (TokensEqualIgnoringLeadingAndTrailingSpaces(computed, query_computed)) {
+    if (base::ValuesEquivalent(computed, query_computed)) {
       return KleeneValue::kTrue;
     }
     return KleeneValue::kFalse;
@@ -1598,7 +1698,7 @@ KleeneValue MediaQueryEvaluator::EvalStyleFeature(
           .CSSValueFromComputedStyle(container->ComputedStyleRef(),
                                      nullptr /* layout_object */,
                                      false /* allow_visited_style */);
-  if (base::ValuesEquivalent(query_value, computed_value)) {
+  if (base::ValuesEquivalent(query_value, computed_value) == explicit_value) {
     return KleeneValue::kTrue;
   }
   return KleeneValue::kFalse;

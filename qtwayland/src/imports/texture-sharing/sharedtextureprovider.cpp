@@ -19,6 +19,7 @@
 #include <QOpenGLTexture>
 #include <QImageReader>
 
+#include <QtCore/qpointer.h>
 #include <QTimer>
 
 #include "texturesharingextension_p.h"
@@ -206,7 +207,7 @@ public:
     }
 
 
-public slots:
+public Q_SLOTS:
     void doResponse(const QString &key) {
         if (key != m_id)
             return; // not our buffer

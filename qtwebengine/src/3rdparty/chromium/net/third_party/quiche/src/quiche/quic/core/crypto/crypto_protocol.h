@@ -31,7 +31,7 @@ using ServerConfigID = std::string;
 // "QNZR", "B2HI", "H2PR", "FIFO", "LIFO", "RRWS", "QNSP", "B2CL", "CHSP",
 // "BPTE", "ACKD", "AKD2", "AKD4", "MAD1", "MAD4", "MAD5", "ACD0", "ACKQ",
 // "TLPR", "CCS\0", "PDP4", "NCHP", "NBPE", "2RTO", "3RTO", "4RTO", "6RTO",
-// "PDP1", "PDP2", "PDP3", "PDP5" "QLVE"
+// "PDP1", "PDP2", "PDP3", "PDP5", "QLVE", "RVCM"
 
 // clang-format off
 const QuicTag kCHLO = TAG('C', 'H', 'L', 'O');   // Client hello
@@ -279,11 +279,6 @@ const QuicTag kAPTO = TAG('A', 'P', 'T', 'O');   // Use 1.5 * initial RTT before
 
 const QuicTag kELDT = TAG('E', 'L', 'D', 'T');   // Enable Loss Detection Tuning
 
-// TODO(haoyuewang) Remove RVCM option once
-// --quic_remove_connection_migration_connection_option_v2 is deprecated.
-const QuicTag kRVCM = TAG('R', 'V', 'C', 'M');   // Validate the new address
-                                                 // upon client address change.
-
 const QuicTag kSPAD = TAG('S', 'P', 'A', 'D');   // Use server preferred address
 const QuicTag kSPA2 = TAG('S', 'P', 'A', '2');   // Start validating server
                                                  // preferred address once it is
@@ -436,6 +431,8 @@ const QuicTag kINVC = TAG('I', 'N', 'V', 'C');   // Send connection close for
                                                  // INVALID_VERSION
 
 const QuicTag kMPQC = TAG('M', 'P', 'Q', 'C');   // Multi-port QUIC connection
+const QuicTag kMPQM = TAG('M', 'P', 'Q', 'M');   // Enable multi-port QUIC
+                                                 // migration
 
 // Client Hints triggers.
 const QuicTag kGWCH = TAG('G', 'W', 'C', 'H');
@@ -465,6 +462,14 @@ const QuicTag kPAD  = TAG('P', 'A', 'D', '\0');  // Padding
 
 // Stats collection tags
 const QuicTag kEPID = TAG('E', 'P', 'I', 'D');  // Endpoint identifier.
+
+const QuicTag kMCS1 = TAG('M', 'C', 'S', '1');
+const QuicTag kMCS2 = TAG('M', 'C', 'S', '2');
+const QuicTag kMCS3 = TAG('M', 'C', 'S', '3');
+
+constexpr QuicTag kBSUS = TAG('B', 'S', 'U', 'S');  // Blocks server connection
+                                                    // until the SETTINGS frame
+                                                    // is received.
 
 // clang-format on
 

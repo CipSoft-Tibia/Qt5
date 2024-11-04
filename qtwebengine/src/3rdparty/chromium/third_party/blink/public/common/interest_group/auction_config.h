@@ -7,7 +7,6 @@
 
 #include <stdint.h>
 
-#include <cstdint>
 #include <limits>
 #include <string>
 #include <vector>
@@ -15,10 +14,15 @@
 #include "base/containers/flat_map.h"
 #include "base/time/time.h"
 #include "base/unguessable_token.h"
+#include "base/uuid.h"
+#include "mojo/public/cpp/base/big_buffer.h"
 #include "third_party/abseil-cpp/absl/numeric/int128.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 #include "third_party/blink/public/common/common_export.h"
+#include "third_party/blink/public/common/interest_group/ad_auction_currencies.h"
+#include "third_party/blink/public/common/interest_group/ad_display_size.h"
+#include "third_party/blink/public/common/interest_group/seller_capabilities.h"
 #include "third_party/blink/public/mojom/interest_group/interest_group_types.mojom-shared.h"
 #include "url/gurl.h"
 #include "url/origin.h"
@@ -104,7 +108,7 @@ struct BLINK_COMMON_EXPORT AuctionConfig {
 
    private:
     Tag tag_ = Tag::kValue;
-    Value value_;
+    Value value_ = {};
   };
 
   // Typemapped to blink::mojom::AuctionAdConfigMaybePromiseJson
@@ -135,6 +139,36 @@ struct BLINK_COMMON_EXPORT AuctionConfig {
 
   // Typemapped to blink::mojom::AuctionAdConfigMaybePromiseBuyerTimeouts
   using MaybePromiseBuyerTimeouts = MaybePromise<BuyerTimeouts>;
+
+  // Represents auction's expectations on which currency which buyer uses.
+  //
+  // Typemapped to blink::mojom::AuctionAdConfigBuyerCurrencies
+  struct BuyerCurrencies {
+    // Fallback value used for buyers not in `per_buyer_currencies`.
+    absl::optional<AdCurrency> all_buyers_currency;
+
+    // Currency expectations for buyer per their origin.
+    absl::optional<base::flat_map<url::Origin, AdCurrency>>
+        per_buyer_currencies;
+  };
+
+  // Typemapped to blink::mojom::AuctionAdConfigMaybePromiseBuyerCurrencies
+  using MaybePromiseBuyerCurrencies = MaybePromise<BuyerCurrencies>;
+
+  // Server response and the request ID (for server side auctions). If this
+  // field is present then this auction is assumed to have run on the server.
+  struct BLINK_COMMON_EXPORT ServerResponseConfig {
+    ServerResponseConfig();
+    ServerResponseConfig(const ServerResponseConfig&);
+    ServerResponseConfig(ServerResponseConfig&&);
+    ~ServerResponseConfig();
+
+    ServerResponseConfig& operator=(const ServerResponseConfig&);
+    ServerResponseConfig& operator=(ServerResponseConfig&&);
+
+    base::Uuid request_id;
+    bool got_response = false;
+  };
 
   // Subset of AuctionConfig that is not shared by all auctions that are
   // using the same SellerWorklet object (so it's "not shared" between
@@ -199,6 +233,13 @@ struct BLINK_COMMON_EXPORT AuctionConfig {
     // the buyer's generateBid() functions.
     MaybePromiseBuyerTimeouts buyer_cumulative_timeouts;
 
+    // Expectation of currency seller worklet in this auction will provide when
+    // modified bids or converting them for reporting.
+    absl::optional<AdCurrency> seller_currency;
+
+    // Expectation of currency for bids made by various participating buyers.
+    MaybePromiseBuyerCurrencies buyer_currencies;
+
     // Values restrict the number of bidding interest groups for a particular
     // buyer that can participate in an auction. Values must be greater than 0.
     base::flat_map<url::Origin, std::uint16_t> per_buyer_group_limits;
@@ -234,6 +275,26 @@ struct BLINK_COMMON_EXPORT AuctionConfig {
     absl::optional<base::flat_map<BuyerReportType, AuctionReportBuyersConfig>>
         auction_report_buyers;
 
+    // The set of seller capabilities that each interest group must declare in
+    // order to participate in the auction. Interest groups that don't declare
+    // all required seller capabilities will not participate in the auction.
+    SellerCapabilitiesType required_seller_capabilities;
+
+    // The requested ad creative size for the auction (strictly optional).
+    // If specified by the caller, it is surfaced during the auction through
+    // browser signals and stored after the auction in the winning fenced frame
+    // config as its container size.
+    absl::optional<blink::AdSize> requested_size;
+
+    // A unique identifier associated with this and only this invocation of
+    // runAdAuction. This must come from a prior call to createAuctionNonce.
+    // This is only required for auctions that provide additional bids, and each
+    // of those additional bids must use the same auction nonce to ensure that
+    // each of those additional bids was intended for this and only this
+    // auction. In multi-seller auctions, this field is only meaningful for the
+    // top-level auction config; it's ignored in component auction configs.
+    absl::optional<base::Uuid> auction_nonce;
+
     // Nested auctions whose results will also be fed to `seller`. Only the top
     // level auction config can have component auctions.
     std::vector<AuctionConfig> component_auctions;
@@ -262,8 +323,10 @@ struct BLINK_COMMON_EXPORT AuctionConfig {
   // Seller running the auction.
   url::Origin seller;
 
+  absl::optional<ServerResponseConfig> server_response;
+
   // Both URLS, if present, must be same-origin to `seller`.
-  GURL decision_logic_url;
+  absl::optional<GURL> decision_logic_url;
   absl::optional<GURL> trusted_scoring_signals_url;
 
   // Other parameters are grouped in a struct that is passed to SellerWorklets.
@@ -273,11 +336,28 @@ struct BLINK_COMMON_EXPORT AuctionConfig {
   // direct_from_seller_signals responses for the seller and buyers.
   MaybePromiseDirectFromSellerSignals direct_from_seller_signals;
 
+  // Like `direct_from_seller_signals`, but passed from the page via a different
+  // mechanism. `direct_from_seller_signals` searches for the contents of
+  // subresource bundles to find signals, whereas
+  // `expects_direct_from_signals_header_ad_slot` looks for the values of
+  // Ad-Auction-Signals response headers provided to fetch() requests with the
+  // {adAuctionHeaders: true} option made by frames on the page.
+  //
+  // The actual ad slot string is passed via
+  // ResolvedDirectFromSellerSignalsHeaderAdSlotPromise().
+  bool expects_direct_from_seller_signals_header_ad_slot = false;
+
   // Identifier for an experiment group, used when getting trusted
   // signals (and as part of AuctionConfig given to worklets).
   absl::optional<uint16_t> seller_experiment_group_id;
   absl::optional<uint16_t> all_buyer_experiment_group_id;
   base::flat_map<url::Origin, uint16_t> per_buyer_experiment_group_ids;
+
+  // This specifies whether additional_bids are expected --- if true, a
+  // ResolvedAdditionalBids() is expected to provide them. The provided value
+  // itself will be stored separately since we don't want to be copying it all
+  // over the place. Once received, this will be switched to false.
+  bool expects_additional_bids = false;
 };
 
 }  // namespace blink

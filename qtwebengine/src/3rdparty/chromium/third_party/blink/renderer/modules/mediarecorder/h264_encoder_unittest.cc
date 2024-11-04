@@ -11,9 +11,12 @@
 #include "base/task/thread_pool.h"
 #include "base/test/task_environment.h"
 #include "base/time/time.h"
+#include "media/base/mock_filters.h"
 #include "media/base/video_codecs.h"
+#include "media/base/video_encoder.h"
 #include "media/base/video_frame.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/platform/scheduler/test/renderer_scheduler_test_support.h"
 #include "third_party/blink/renderer/modules/mediarecorder/video_track_recorder.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread.h"
@@ -55,13 +58,19 @@ class H264EncoderFixture : public ::testing::Test {
         level_(level),
         bitrate_(bitrate),
         encoder_(
+            scheduler::GetSingleThreadTaskRunnerForTesting(),
             ConvertToBaseRepeatingCallback(
                 CrossThreadBindRepeating(&H264EncoderFixture::OnEncodedVideo,
                                          CrossThreadUnretained(this))),
             VideoTrackRecorder::CodecProfile(VideoTrackRecorder::CodecId::kH264,
                                              profile_,
                                              level_),
-            bitrate_) {}
+            bitrate_) {
+    auto metrics_provider =
+        std::make_unique<media::MockVideoEncoderMetricsProvider>();
+    mock_metrics_provider_ = metrics_provider.get();
+    encoder_.metrics_provider_ = std::move(metrics_provider);
+  }
 
   H264EncoderFixture(const H264EncoderFixture&) = delete;
   H264EncoderFixture& operator=(const H264EncoderFixture&) = delete;
@@ -69,6 +78,7 @@ class H264EncoderFixture : public ::testing::Test {
  protected:
   void EncodeFrame() {
     encoder_.StartFrameEncode(
+        CrossThreadBindRepeating(base::TimeTicks::Now),
         media::VideoFrame::CreateBlackFrame({kFrameWidth, kFrameHeight}),
         std::vector<scoped_refptr<media::VideoFrame>>(),
         base::TimeTicks::Now());
@@ -118,15 +128,18 @@ class H264EncoderFixture : public ::testing::Test {
             kELevelIdcToLevel.find(eLevelIdc)->value};
   }
 
-  void OnEncodedVideo(const media::Muxer::VideoParameters& params,
-                      std::string encoded_data,
-                      std::string encoded_alpha,
-                      base::TimeTicks capture_timestamp,
-                      bool is_key_frame) {}
+  void OnEncodedVideo(
+      const media::Muxer::VideoParameters& params,
+      std::string encoded_data,
+      std::string encoded_alpha,
+      absl::optional<media::VideoEncoder::CodecDescription> codec_description,
+      base::TimeTicks capture_timestamp,
+      bool is_key_frame) {}
 
   const absl::optional<media::VideoCodecProfile> profile_;
   const absl::optional<uint8_t> level_;
   const uint32_t bitrate_;
+  media::MockVideoEncoderMetricsProvider* mock_metrics_provider_;
   H264Encoder encoder_;
 };
 
@@ -146,6 +159,13 @@ class H264EncoderParameterTest
 TEST_P(H264EncoderParameterTest, CheckProfileLevel) {
   // The encoder will be initialized with specified parameters after encoded
   // first frame.
+  EXPECT_CALL(
+      *mock_metrics_provider_,
+      MockInitialize(GetParam().profile.value_or(media::H264PROFILE_BASELINE),
+                     gfx::Size(kFrameWidth, kFrameHeight),
+                     /*hardware_video_encoder=*/false,
+                     media::SVCScalabilityMode::kL1T1));
+  EXPECT_CALL(*mock_metrics_provider_, MockIncrementEncodedFrameCount());
   EncodeFrame();
 
   auto profileLevel = GetProfileLevelForTesting();

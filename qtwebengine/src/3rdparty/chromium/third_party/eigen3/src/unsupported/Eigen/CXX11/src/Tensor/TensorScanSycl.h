@@ -89,8 +89,8 @@ struct ScanKernelFunctor {
 
   LocalAccessor scratch;
   Evaluator dev_eval;
-  OutAccessor out_accessor;
-  OutAccessor temp_accessor;
+  OutAccessor out_ptr;
+  OutAccessor tmp_ptr;
   const ScanParameters<Index> scanParameters;
   Op accumulator;
   const bool inclusive;
@@ -100,8 +100,8 @@ struct ScanKernelFunctor {
                                                           const bool inclusive_)
       : scratch(scratch_),
         dev_eval(dev_eval_),
-        out_accessor(out_accessor_),
-        temp_accessor(temp_accessor_),
+        out_ptr(out_accessor_),
+        tmp_ptr(temp_accessor_),
         scanParameters(scanParameters_),
         accumulator(accumulator_),
         inclusive(inclusive_) {}
@@ -131,9 +131,7 @@ struct ScanKernelFunctor {
   first_step_inclusive_Operation(InclusiveOp) const {}
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(cl::sycl::nd_item<1> itemID) const {
-    auto out_ptr = out_accessor.get_pointer();
-    auto tmp_ptr = temp_accessor.get_pointer();
-    auto scratch_ptr = scratch.get_pointer().get();
+
 
     for (Index loop_offset = 0; loop_offset < scanParameters.loop_range; loop_offset++) {
       Index data_offset = (itemID.get_global_id(0) + (itemID.get_global_range(0) * loop_offset));
@@ -190,7 +188,7 @@ struct ScanKernelFunctor {
           }
           private_offset *= 2;
         }
-        scratch_ptr[2 * local_id + (packetIndex / PacketSize) + scratch_offset] =
+        scratch[2 * local_id + (packetIndex / PacketSize) + scratch_offset] =
             private_scan[PacketSize - 1 + packetIndex];
         private_scan[PacketSize - 1 + packetIndex] = accumulator.initialize();
         // traverse down tree & build scan
@@ -219,9 +217,9 @@ struct ScanKernelFunctor {
           Index ai = offset * (2 * local_id + 1) - 1 + scratch_offset;
           Index bi = offset * (2 * local_id + 2) - 1 + scratch_offset;
           CoeffReturnType accum = accumulator.initialize();
-          accumulator.reduce(scratch_ptr[ai], &accum);
-          accumulator.reduce(scratch_ptr[bi], &accum);
-          scratch_ptr[bi] = accumulator.finalize(accum);
+          accumulator.reduce(scratch[ai], &accum);
+          accumulator.reduce(scratch[bi], &accum);
+          scratch[bi] = accumulator.finalize(accum);
         }
         offset *= 2;
       }
@@ -234,10 +232,10 @@ struct ScanKernelFunctor {
                                     scanParameters.non_scan_size +
                                 group_id * (scanParameters.elements_per_group / scanParameters.elements_per_block) +
                                 block_id;
-          tmp_ptr[temp_id] = scratch_ptr[scratch_stride - 1 + scratch_offset];
+          tmp_ptr[temp_id] = scratch[scratch_stride - 1 + scratch_offset];
         }
         // clear the last element
-        scratch_ptr[scratch_stride - 1 + scratch_offset] = accumulator.initialize();
+        scratch[scratch_stride - 1 + scratch_offset] = accumulator.initialize();
       }
       // traverse down tree & build scan
       for (Index d = 1; d < scratch_stride; d *= 2) {
@@ -248,10 +246,10 @@ struct ScanKernelFunctor {
           Index ai = offset * (2 * local_id + 1) - 1 + scratch_offset;
           Index bi = offset * (2 * local_id + 2) - 1 + scratch_offset;
           CoeffReturnType accum = accumulator.initialize();
-          accumulator.reduce(scratch_ptr[ai], &accum);
-          accumulator.reduce(scratch_ptr[bi], &accum);
-          scratch_ptr[ai] = scratch_ptr[bi];
-          scratch_ptr[bi] = accumulator.finalize(accum);
+          accumulator.reduce(scratch[ai], &accum);
+          accumulator.reduce(scratch[bi], &accum);
+          scratch[ai] = scratch[bi];
+          scratch[bi] = accumulator.finalize(accum);
         }
       }
       // Synchronise
@@ -262,7 +260,7 @@ struct ScanKernelFunctor {
         EIGEN_UNROLL_LOOP
         for (Index i = 0; i < PacketSize; i++) {
           CoeffReturnType accum = private_scan[packetIndex + i];
-          accumulator.reduce(scratch_ptr[2 * local_id + (packetIndex / PacketSize) + scratch_offset], &accum);
+          accumulator.reduce(scratch[2 * local_id + (packetIndex / PacketSize) + scratch_offset], &accum);
           private_scan[packetIndex + i] = accumulator.finalize(accum);
         }
       }
@@ -294,22 +292,20 @@ struct ScanAdjustmentKernelFunctor {
   typedef cl::sycl::accessor<CoeffReturnType, 1, cl::sycl::access::mode::read_write, cl::sycl::access::target::local>
       LocalAccessor;
   static EIGEN_CONSTEXPR int PacketSize = ScanParameters<Index>::ScanPerThread / 2;
-  InAccessor in_accessor;
-  OutAccessor out_accessor;
+  InAccessor in_ptr;
+  OutAccessor out_ptr;
   const ScanParameters<Index> scanParameters;
   Op accumulator;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE ScanAdjustmentKernelFunctor(LocalAccessor, InAccessor in_accessor_,
                                                                     OutAccessor out_accessor_,
                                                                     const ScanParameters<Index> scanParameters_,
                                                                     Op accumulator_)
-      : in_accessor(in_accessor_),
-        out_accessor(out_accessor_),
+      : in_ptr(in_accessor_),
+        out_ptr(out_accessor_),
         scanParameters(scanParameters_),
         accumulator(accumulator_) {}
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(cl::sycl::nd_item<1> itemID) const {
-    auto in_ptr = in_accessor.get_pointer();
-    auto out_ptr = out_accessor.get_pointer();
 
     for (Index loop_offset = 0; loop_offset < scanParameters.loop_range; loop_offset++) {
       Index data_offset = (itemID.get_global_id(0) + (itemID.get_global_range(0) * loop_offset));
@@ -426,7 +422,7 @@ struct SYCLAdjustBlockOffset {
         AdjustFuctor;
     dev.template unary_kernel_launcher<CoeffReturnType, AdjustFuctor>(in_ptr, out_ptr, scan_info.get_thread_range(),
                                                                       scan_info.max_elements_per_block,
-                                                                      scan_info.get_scan_parameter(), accumulator);
+                                                                      scan_info.get_scan_parameter(), accumulator).wait();
   }
 };
 
@@ -449,7 +445,7 @@ struct ScanLauncher_impl {
     typedef ScanKernelFunctor<Input, CoeffReturnType, EvaluatorPointerType, Reducer, Index, stp> ScanFunctor;
     dev.template binary_kernel_launcher<CoeffReturnType, ScanFunctor>(
         in_ptr, out_ptr, tmp_global_accessor, scan_info.get_thread_range(), scratch_size,
-        scan_info.get_scan_parameter(), accumulator, inclusive);
+        scan_info.get_scan_parameter(), accumulator, inclusive).wait();
 
     if (scan_info.block_size > 1) {
       ScanLauncher_impl<CoeffReturnType, scan_step::second>::scan_block(

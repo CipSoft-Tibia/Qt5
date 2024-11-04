@@ -16,8 +16,14 @@
 
 #include <errno.h>
 
+#include <array>
+#include <cstddef>
+#include <sstream>
+#include <utility>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 
 namespace {
@@ -129,6 +135,29 @@ TEST(Status, ConstructorWithCodeMessage) {
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(absl::StatusCode::kInternal, status.code());
     EXPECT_EQ("message", status.message());
+  }
+}
+
+TEST(Status, StatusMessageCStringTest) {
+  {
+    absl::Status status = absl::OkStatus();
+    EXPECT_EQ(status.message(), "");
+    EXPECT_STREQ(absl::StatusMessageAsCStr(status), "");
+    EXPECT_EQ(status.message(), absl::StatusMessageAsCStr(status));
+    EXPECT_NE(absl::StatusMessageAsCStr(status), nullptr);
+  }
+  {
+    absl::Status status;
+    EXPECT_EQ(status.message(), "");
+    EXPECT_NE(absl::StatusMessageAsCStr(status), nullptr);
+    EXPECT_STREQ(absl::StatusMessageAsCStr(status), "");
+  }
+  {
+    absl::Status status(absl::StatusCode::kInternal, "message");
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(absl::StatusCode::kInternal, status.code());
+    EXPECT_EQ("message", status.message());
+    EXPECT_STREQ("message", absl::StatusMessageAsCStr(status));
   }
 }
 

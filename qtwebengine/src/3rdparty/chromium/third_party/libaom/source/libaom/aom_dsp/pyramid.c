@@ -249,50 +249,50 @@ static INLINE void fill_border(uint8_t *img_buf, const int width,
 }
 
 // Compute coarse to fine pyramids for a frame
-// This must only be called while holding frm_pyr->mutex
-static INLINE void fill_pyramid(const YV12_BUFFER_CONFIG *frm, int bit_depth,
-                                ImagePyramid *frm_pyr) {
-  int n_levels = frm_pyr->n_levels;
-  const int frm_width = frm->y_crop_width;
-  const int frm_height = frm->y_crop_height;
-  const int frm_stride = frm->y_stride;
-  assert((frm_width >> n_levels) >= 0);
-  assert((frm_height >> n_levels) >= 0);
+// This must only be called while holding frame_pyr->mutex
+static INLINE void fill_pyramid(const YV12_BUFFER_CONFIG *frame, int bit_depth,
+                                ImagePyramid *frame_pyr) {
+  int n_levels = frame_pyr->n_levels;
+  const int frame_width = frame->y_crop_width;
+  const int frame_height = frame->y_crop_height;
+  const int frame_stride = frame->y_stride;
+  assert((frame_width >> n_levels) >= 0);
+  assert((frame_height >> n_levels) >= 0);
 
-  PyramidLayer *first_layer = &frm_pyr->layers[0];
-  if (frm->flags & YV12_FLAG_HIGHBITDEPTH) {
+  PyramidLayer *first_layer = &frame_pyr->layers[0];
+  if (frame->flags & YV12_FLAG_HIGHBITDEPTH) {
     // For frames stored in a 16-bit buffer, we need to downconvert to 8 bits
-    assert(first_layer->width == frm_width);
-    assert(first_layer->height == frm_height);
+    assert(first_layer->width == frame_width);
+    assert(first_layer->height == frame_height);
 
-    uint16_t *frm_buffer = CONVERT_TO_SHORTPTR(frm->y_buffer);
+    uint16_t *frame_buffer = CONVERT_TO_SHORTPTR(frame->y_buffer);
     uint8_t *pyr_buffer = first_layer->buffer;
     int pyr_stride = first_layer->stride;
-    for (int y = 0; y < frm_height; y++) {
-      uint16_t *frm_row = frm_buffer + y * frm_stride;
+    for (int y = 0; y < frame_height; y++) {
+      uint16_t *frame_row = frame_buffer + y * frame_stride;
       uint8_t *pyr_row = pyr_buffer + y * pyr_stride;
-      for (int x = 0; x < frm_width; x++) {
-        pyr_row[x] = frm_row[x] >> (bit_depth - 8);
+      for (int x = 0; x < frame_width; x++) {
+        pyr_row[x] = frame_row[x] >> (bit_depth - 8);
       }
     }
 
-    fill_border(pyr_buffer, frm_width, frm_height, pyr_stride);
+    fill_border(pyr_buffer, frame_width, frame_height, pyr_stride);
   } else {
     // For frames stored in an 8-bit buffer, we need to configure the first
     // pyramid layer to point at the original image buffer
-    first_layer->buffer = frm->y_buffer;
-    first_layer->width = frm_width;
-    first_layer->height = frm_height;
-    first_layer->stride = frm_stride;
+    first_layer->buffer = frame->y_buffer;
+    first_layer->width = frame_width;
+    first_layer->height = frame_height;
+    first_layer->stride = frame_stride;
   }
 
   // Fill in the remaining levels through progressive downsampling
   for (int level = 1; level < n_levels; ++level) {
-    PyramidLayer *prev_layer = &frm_pyr->layers[level - 1];
+    PyramidLayer *prev_layer = &frame_pyr->layers[level - 1];
     uint8_t *prev_buffer = prev_layer->buffer;
     int prev_stride = prev_layer->stride;
 
-    PyramidLayer *this_layer = &frm_pyr->layers[level];
+    PyramidLayer *this_layer = &frame_pyr->layers[level];
     uint8_t *this_buffer = this_layer->buffer;
     int this_width = this_layer->width;
     int this_height = this_layer->height;
@@ -331,7 +331,7 @@ static INLINE void fill_pyramid(const YV12_BUFFER_CONFIG *frm, int bit_depth,
 //
 // However, if the input frame has a side of length < MIN_PYRAMID_SIZE,
 // we will still construct the top level.
-void aom_compute_pyramid(const YV12_BUFFER_CONFIG *frm, int bit_depth,
+void aom_compute_pyramid(const YV12_BUFFER_CONFIG *frame, int bit_depth,
                          ImagePyramid *pyr) {
   assert(pyr);
 
@@ -344,7 +344,7 @@ void aom_compute_pyramid(const YV12_BUFFER_CONFIG *frm, int bit_depth,
 #endif  // CONFIG_MULTITHREAD
 
   if (!pyr->valid) {
-    fill_pyramid(frm, bit_depth, pyr);
+    fill_pyramid(frame, bit_depth, pyr);
     pyr->valid = true;
   }
 

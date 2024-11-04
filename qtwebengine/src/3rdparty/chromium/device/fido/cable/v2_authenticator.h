@@ -14,6 +14,7 @@
 #include "base/functional/callback.h"
 #include "device/fido/cable/v2_constants.h"
 #include "device/fido/fido_constants.h"
+#include "device/fido/network_context_factory.h"
 #include "services/network/public/mojom/network_context.mojom-forward.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
@@ -138,9 +139,8 @@ std::unique_ptr<Transaction> TransactWithPlaintextTransport(
 // TransactFromQRCode starts a network-based transaction based on the decoded
 // contents of a QR code.
 std::unique_ptr<Transaction> TransactFromQRCode(
-    unsigned protocol_revision,
     std::unique_ptr<Platform> platform,
-    network::mojom::NetworkContext* network_context,
+    NetworkContextFactory network_context_factory,  
     base::span<const uint8_t, kRootSecretSize> root_secret,
     const std::string& authenticator_name,
     // TODO: name this constant.
@@ -148,10 +148,32 @@ std::unique_ptr<Transaction> TransactFromQRCode(
     base::span<const uint8_t, kP256X962Length> peer_identity,
     absl::optional<std::vector<uint8_t>> contact_id);
 
+// Deprecated, kept around while Android cable code is cleaned up. Use
+// TransactFromQRCode instead.
+std::unique_ptr<Transaction> TransactFromQRCodeDeprecated(
+    std::unique_ptr<Platform> platform,
+    network::mojom::NetworkContext* network_context,
+    base::span<const uint8_t, kRootSecretSize> root_secret,
+    const std::string& authenticator_name,
+    base::span<const uint8_t, 16> qr_secret,
+    base::span<const uint8_t, kP256X962Length> peer_identity,
+    std::optional<std::vector<uint8_t>> contact_id);
+
 // TransactFromFCM starts a network-based transaction based on the decoded
 // contents of a cloud message.
 std::unique_ptr<Transaction> TransactFromFCM(
-    unsigned protocol_revision,
+    std::unique_ptr<Platform> platform,
+    NetworkContextFactory network_context_factory,
+    base::span<const uint8_t, kRootSecretSize> root_secret,
+    std::array<uint8_t, kRoutingIdSize> routing_id,
+    base::span<const uint8_t, kTunnelIdSize> tunnel_id,
+    base::span<const uint8_t, kPairingIDSize> pairing_id,
+    base::span<const uint8_t, kClientNonceSize> client_nonce,
+    absl::optional<base::span<const uint8_t>> contact_id);
+
+// Deprecated, kept around while Android cable code is cleaned up. Use
+// TransactFromFCM instead.
+std::unique_ptr<Transaction> TransactFromFCMDeprecated(
     std::unique_ptr<Platform> platform,
     network::mojom::NetworkContext* network_context,
     base::span<const uint8_t, kRootSecretSize> root_secret,
@@ -159,7 +181,7 @@ std::unique_ptr<Transaction> TransactFromFCM(
     base::span<const uint8_t, kTunnelIdSize> tunnel_id,
     base::span<const uint8_t, kPairingIDSize> pairing_id,
     base::span<const uint8_t, kClientNonceSize> client_nonce,
-    absl::optional<base::span<const uint8_t>> contact_id);
+    std::optional<base::span<const uint8_t>> contact_id);
 
 }  // namespace authenticator
 }  // namespace cablev2

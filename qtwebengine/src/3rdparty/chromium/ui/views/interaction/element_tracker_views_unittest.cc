@@ -4,13 +4,13 @@
 
 #include "ui/views/interaction/element_tracker_views.h"
 
-#include <algorithm>
 #include <iterator>
 #include <memory>
 #include <utility>
 
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
+#include "base/ranges/algorithm.h"
 #include "base/test/bind.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -106,16 +106,16 @@ class ElementEventWatcher {
   const ElementEventType event_type_;
   ui::ElementTracker::Subscription subscription_;
   int event_count_ = 0;
-  raw_ptr<View> last_view_ = nullptr;
+  raw_ptr<View, DanglingUntriaged> last_view_ = nullptr;
 };
 
 ElementTrackerViews::ViewList ElementsToViews(
     ui::ElementTracker::ElementList elements) {
   ElementTrackerViews::ViewList result;
-  std::transform(elements.begin(), elements.end(), std::back_inserter(result),
-                 [](ui::TrackedElement* element) {
-                   return element->AsA<TrackedElementViews>()->view();
-                 });
+  base::ranges::transform(elements, std::back_inserter(result),
+                          [](ui::TrackedElement* element) {
+                            return element->AsA<TrackedElementViews>()->view();
+                          });
   return result;
 }
 
@@ -1404,6 +1404,73 @@ TEST_F(ElementTrackerTwoWidgetTest,
   views::test::InteractionTestUtilSimulatorViews::PressButton(button);
   EXPECT_EQ(2, watcher.event_count());
   EXPECT_EQ(2, watcher2.event_count());
+}
+
+// The following are variations on the "view's context changes when it moves
+// between widgets" test, but with an override context callback modifying
+// what context is returned for one or both widgets.
+
+TEST_F(ElementTrackerTwoWidgetTest, OverrideContextCallbackCollapsesContexts) {
+  const ui::ElementContext kContext{1};
+  ElementTrackerViews::SetContextOverrideCallback(
+      base::BindLambdaForTesting([kContext](Widget*) { return kContext; }));
+  ElementEventWatcher shown(kTestElementID, kContext, ElementEventType::kShown);
+  ElementEventWatcher hidden(kTestElementID, kContext,
+                             ElementEventType::kHidden);
+  auto* const view = widget_->SetContentsView(std::make_unique<View>());
+  auto* const view2 = widget2_->SetContentsView(std::make_unique<View>());
+  auto button_ptr = std::make_unique<LabelButton>();
+  button_ptr->SetProperty(kElementIdentifierKey, kTestElementID);
+  // Add to first widget.
+  auto* const button = view->AddChildView(std::move(button_ptr));
+  EXPECT_EQ(1, shown.event_count());
+  EXPECT_EQ(0, hidden.event_count());
+  // Move to second widget.
+  view2->AddChildView(button);
+  EXPECT_EQ(2, shown.event_count());
+  EXPECT_EQ(1, hidden.event_count());
+  // Destroy the second widget.
+  widget2_.reset();
+  EXPECT_EQ(2, shown.event_count());
+  EXPECT_EQ(2, hidden.event_count());
+}
+
+TEST_F(ElementTrackerTwoWidgetTest,
+       OverrideContextCallbackOverridesContextSelectively) {
+  const ui::ElementContext kContext{1};
+  ElementTrackerViews::SetContextOverrideCallback(
+      base::BindLambdaForTesting([this, kContext](Widget* widget) {
+        return widget == widget_.get() ? kContext : ui::ElementContext();
+      }));
+  ElementEventWatcher shown(kTestElementID, kContext, ElementEventType::kShown);
+  ElementEventWatcher hidden(kTestElementID, kContext,
+                             ElementEventType::kHidden);
+  ElementEventWatcher shown2(kTestElementID, context2(),
+                             ElementEventType::kShown);
+  ElementEventWatcher hidden2(kTestElementID, context2(),
+                              ElementEventType::kHidden);
+  auto* const view = widget_->SetContentsView(std::make_unique<View>());
+  auto* const view2 = widget2_->SetContentsView(std::make_unique<View>());
+  auto button_ptr = std::make_unique<LabelButton>();
+  button_ptr->SetProperty(kElementIdentifierKey, kTestElementID);
+  // Add to first widget.
+  auto* const button = view->AddChildView(std::move(button_ptr));
+  EXPECT_EQ(1, shown.event_count());
+  EXPECT_EQ(0, hidden.event_count());
+  EXPECT_EQ(0, shown2.event_count());
+  EXPECT_EQ(0, hidden2.event_count());
+  // Move to second widget.
+  view2->AddChildView(button);
+  EXPECT_EQ(1, shown.event_count());
+  EXPECT_EQ(1, hidden.event_count());
+  EXPECT_EQ(1, shown2.event_count());
+  EXPECT_EQ(0, hidden2.event_count());
+  // Destroy the second widget.
+  widget2_.reset();
+  EXPECT_EQ(1, shown.event_count());
+  EXPECT_EQ(1, hidden.event_count());
+  EXPECT_EQ(1, shown2.event_count());
+  EXPECT_EQ(1, hidden2.event_count());
 }
 
 }  // namespace views

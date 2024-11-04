@@ -1558,7 +1558,7 @@ void QGraphicsView::setRubberBandSelectionMode(Qt::ItemSelectionMode mode)
    is currently doing an itemselection with rubber band. When the user is not using the
    rubber band this functions returns (a null) QRectF().
 
-   Notice that part of this QRect can be outise the visual viewport. It can e.g
+   Notice that part of this QRect can be outside the visual viewport. It can e.g
    contain negative values.
 
    \sa rubberBandSelectionMode, rubberBandChanged()
@@ -2342,7 +2342,7 @@ QGraphicsItem *QGraphicsView::itemAt(const QPoint &pos) const
     if (!d->scene)
         return nullptr;
     const QList<QGraphicsItem *> itemsAtPos = items(pos);
-    return itemsAtPos.isEmpty() ? 0 : itemsAtPos.first();
+    return itemsAtPos.isEmpty() ? nullptr : itemsAtPos.first();
 }
 
 /*!

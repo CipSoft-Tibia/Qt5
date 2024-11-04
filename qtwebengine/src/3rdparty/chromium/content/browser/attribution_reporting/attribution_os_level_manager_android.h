@@ -8,17 +8,20 @@
 #include <jni.h>
 
 #include "base/android/jni_android.h"
+#include "base/android/scoped_java_ref.h"
 #include "base/containers/flat_map.h"
 #include "base/functional/callback_forward.h"
 #include "base/sequence_checker.h"
 #include "base/thread_annotations.h"
 #include "content/browser/attribution_reporting/attribution_os_level_manager.h"
+#include "content/common/content_export.h"
 
 namespace content {
 
 // This class is responsible for communicating with java code to handle
 // registering events received on the web with Android.
-class AttributionOsLevelManagerAndroid : public AttributionOsLevelManager {
+class CONTENT_EXPORT AttributionOsLevelManagerAndroid
+    : public AttributionOsLevelManager {
  public:
   AttributionOsLevelManagerAndroid();
   ~AttributionOsLevelManagerAndroid() override;
@@ -32,9 +35,9 @@ class AttributionOsLevelManagerAndroid : public AttributionOsLevelManager {
   AttributionOsLevelManagerAndroid& operator=(
       AttributionOsLevelManagerAndroid&&) = delete;
 
-  void RegisterAttributionSource(const GURL& registration_url,
-                                 const url::Origin& top_level_origin,
-                                 bool is_debug_key_allowed) override;
+  void Register(OsRegistration,
+                bool is_debug_key_allowed,
+                RegisterCallback) override;
 
   void ClearData(base::Time delete_begin,
                  base::Time delete_end,
@@ -44,14 +47,18 @@ class AttributionOsLevelManagerAndroid : public AttributionOsLevelManager {
                  bool delete_rate_limit_data,
                  base::OnceClosure done) override;
 
-  attribution_reporting::mojom::OsSupport GetOsSupport() override;
-
-  // This is exposed to JNI and therefore has to be public.
+  // These are exposed to JNI and therefore have to be public.
   void OnDataDeletionCompleted(JNIEnv* env, jint request_id);
+  void OnRegistrationCompleted(JNIEnv* env, jint request_id, bool success);
 
  private:
   base::flat_map<int, base::OnceClosure> pending_data_deletion_callbacks_
       GUARDED_BY_CONTEXT(sequence_checker_);
+
+  base::flat_map<int, base::OnceCallback<void(bool success)>>
+      pending_registration_callbacks_ GUARDED_BY_CONTEXT(sequence_checker_);
+
+  int next_callback_id_ GUARDED_BY_CONTEXT(sequence_checker_) = 0;
 
   base::android::ScopedJavaGlobalRef<jobject> jobj_
       GUARDED_BY_CONTEXT(sequence_checker_);

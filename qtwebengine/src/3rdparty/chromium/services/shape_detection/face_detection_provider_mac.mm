@@ -7,7 +7,6 @@
 #include <memory>
 #include <utility>
 
-#include "base/mac/mac_util.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "services/shape_detection/face_detection_impl_mac.h"

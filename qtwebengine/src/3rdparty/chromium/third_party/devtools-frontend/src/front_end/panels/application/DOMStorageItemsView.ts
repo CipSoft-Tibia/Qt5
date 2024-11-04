@@ -90,6 +90,9 @@ export class DOMStorageItemsView extends StorageItemsView {
     super(i18nString(UIStrings.domStorage), 'domStoragePanel');
 
     this.domStorage = domStorage;
+    if (domStorage.storageKey) {
+      this.setStorageKey(domStorage.storageKey);
+    }
 
     this.element.classList.add('storage-view', 'table');
 
@@ -138,6 +141,9 @@ export class DOMStorageItemsView extends StorageItemsView {
   setStorage(domStorage: DOMStorage): void {
     Common.EventTarget.removeEventListeners(this.eventListeners);
     this.domStorage = domStorage;
+    if (domStorage.storageKey) {
+      this.setStorageKey(domStorage.storageKey);
+    }
     this.eventListeners = [
       this.domStorage.addEventListener(DOMStorage.Events.DOMStorageItemsCleared, this.domStorageItemsCleared, this),
       this.domStorage.addEventListener(DOMStorage.Events.DOMStorageItemRemoved, this.domStorageItemRemoved, this),
@@ -206,16 +212,19 @@ export class DOMStorageItemsView extends StorageItemsView {
     const storageData = event.data;
     const childNode = this.dataGrid.rootNode().children.find(
         (child: DataGrid.DataGrid.DataGridNode<unknown>) => child.data.key === storageData.key);
-    if (!childNode || childNode.data.value === storageData.value) {
+    if (!childNode) {
       return;
     }
-
-    childNode.data.value = storageData.value;
-    childNode.refresh();
+    if (childNode.data.value !== storageData.value) {
+      childNode.data.value = storageData.value;
+      childNode.refresh();
+    }
     if (!childNode.selected) {
       return;
     }
-    void this.previewEntry(childNode);
+    if (this.previewValue !== storageData.value) {
+      void this.previewEntry(childNode);
+    }
     this.setCanDeleteSelected(true);
   }
 
@@ -251,7 +260,7 @@ export class DOMStorageItemsView extends StorageItemsView {
     UI.ARIAUtils.alert(i18nString(UIStrings.domStorageNumberEntries, {PH1: filteredList.length}));
   }
 
-  deleteSelectedItem(): void {
+  override deleteSelectedItem(): void {
     if (!this.dataGrid || !this.dataGrid.selectedNode) {
       return;
     }
@@ -259,11 +268,11 @@ export class DOMStorageItemsView extends StorageItemsView {
     this.deleteCallback(this.dataGrid.selectedNode);
   }
 
-  refreshItems(): void {
+  override refreshItems(): void {
     void this.domStorage.getItems().then(items => items && this.showDOMStorageItems(items));
   }
 
-  deleteAllItems(): void {
+  override deleteAllItems(): void {
     this.domStorage.clear();
     // explicitly clear the view because the event won't be fired when it has no items
     this.domStorageItemsCleared();

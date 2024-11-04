@@ -17,6 +17,7 @@
 
 #include "qsvgstyle_p.h"
 #include "qtsvgglobal_p.h"
+#include "qsvghelper_p.h"
 
 #include "QtCore/qstring.h"
 #include "QtCore/qhash.h"
@@ -31,25 +32,37 @@ class Q_SVG_PRIVATE_EXPORT QSvgNode
 public:
     enum Type
     {
-        DOC,
-        G,
-        DEFS,
-        SWITCH,
-        ANIMATION,
-        ARC,
-        CIRCLE,
-        ELLIPSE,
-        IMAGE,
-        LINE,
-        PATH,
-        POLYGON,
-        POLYLINE,
-        RECT,
-        TEXT,
-        TEXTAREA,
-        TSPAN,
-        USE,
-        VIDEO
+        Doc,
+        Group,
+        Defs,
+        Switch,
+        Animation,
+        Circle,
+        Ellipse,
+        Image,
+        Line,
+        Path,
+        Polygon,
+        Polyline,
+        Rect,
+        Text,
+        Textarea,
+        Tspan,
+        Use,
+        Video,
+        Mask,
+        Symbol,
+        Marker,
+        Pattern,
+        Filter,
+        FeMerge,
+        FeMergenode,
+        FeColormatrix,
+        FeGaussianblur,
+        FeOffset,
+        FeComposite,
+        FeFlood,
+        FeUnsupported
     };
     enum DisplayMode {
         InlineMode,
@@ -71,23 +84,34 @@ public:
         NoneMode,
         InheritMode
     };
+
 public:
     QSvgNode(QSvgNode *parent=0);
     virtual ~QSvgNode();
-    virtual void draw(QPainter *p, QSvgExtraStates &states) =0;
+    void draw(QPainter *p, QSvgExtraStates &states);
+    virtual bool separateFillStroke() const {return false;}
+    virtual void drawCommand(QPainter *p, QSvgExtraStates &states) = 0;
+    void fillThenStroke(QPainter *p, QSvgExtraStates &states);
+    QImage drawIntoBuffer(QPainter *p, QSvgExtraStates &states, const QRect &boundsRect);
+    void applyMaskToBuffer(QImage *proxy, QImage mask) const;
+    void drawWithMask(QPainter *p, QSvgExtraStates &states, const QImage &mask, const QRect &boundsRect);
+    void applyBufferToCanvas(QPainter *p, QImage proxy) const;
 
     QSvgNode *parent() const;
     bool isDescendantOf(const QSvgNode *parent) const;
 
     void appendStyleProperty(QSvgStyleProperty *prop, const QString &id);
     void applyStyle(QPainter *p, QSvgExtraStates &states) const;
+    void applyStyleRecursive(QPainter *p, QSvgExtraStates &states) const;
     void revertStyle(QPainter *p, QSvgExtraStates &states) const;
+    void revertStyleRecursive(QPainter *p, QSvgExtraStates &states) const;
     QSvgStyleProperty *styleProperty(QSvgStyleProperty::Type type) const;
-    QSvgFillStyleProperty *styleProperty(const QString &id) const;
+    QSvgPaintStyleProperty *styleProperty(const QString &id) const;
 
     QSvgTinyDocument *document() const;
 
-    virtual Type type() const =0;
+    virtual Type type() const = 0;
+    QString typeName() const;
     virtual QRectF fastBounds(QPainter *p, QSvgExtraStates &states) const;
     virtual QRectF bounds(QPainter *p, QSvgExtraStates &states) const;
     virtual QRectF transformedBounds(QPainter *p, QSvgExtraStates &states) const;
@@ -120,11 +144,36 @@ public:
     QString xmlClass() const;
     void setXmlClass(const QString &str);
 
-    bool shouldDrawNode(QPainter *p, QSvgExtraStates &states) const;
+    QString maskId() const;
+    void setMaskId(const QString &str);
+    bool hasMask() const;
+
+    QString filterId() const;
+    void setFilterId(const QString &str);
+    bool hasFilter() const;
+
+    QString markerStartId() const;
+    void setMarkerStartId(const QString &str);
+    bool hasMarkerStart() const;
+
+    QString markerMidId() const;
+    void setMarkerMidId(const QString &str);
+    bool hasMarkerMid() const;
+
+    QString markerEndId() const;
+    void setMarkerEndId(const QString &str);
+    bool hasMarkerEnd() const;
+
+    bool hasAnyMarker() const;
+
+    virtual bool shouldDrawNode(QPainter *p, QSvgExtraStates &states) const;
+    const QSvgStyle &style() const { return m_style; }
 protected:
     mutable QSvgStyle m_style;
 
     static qreal strokeWidth(QPainter *p);
+    static void initPainter(QPainter *p);
+
 private:
     QSvgNode   *m_parent;
 
@@ -138,6 +187,12 @@ private:
 
     QString m_id;
     QString m_class;
+    QString m_maskId;
+    QString m_filterId;
+    QString m_markerStartId;
+    QString m_markerMidId;
+    QString m_markerEndId;
+
 
     DisplayMode m_displayMode;
     mutable QRectF m_cachedBounds;

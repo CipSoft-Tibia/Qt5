@@ -7,6 +7,7 @@
 
 #include "third_party/blink/renderer/core/view_transition/view_transition_style_tracker.h"
 #include "third_party/blink/renderer/platform/geometry/layout_size.h"
+#include "third_party/blink/renderer/platform/graphics/graphics_types.h"
 #include "third_party/blink/renderer/platform/text/writing_mode.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
@@ -22,19 +23,16 @@ class ViewTransitionStyleBuilder {
 
   void AddUAStyle(const String& style);
 
-  void AddSelector(const String& name, const String& tag);
-  void AddPlusLighter(const String& tag);
+  enum class AnimationType { kOldOnly, kNewOnly, kBoth };
+  void AddAnimations(AnimationType type,
+                     const String& tag,
+                     const ContainerProperties& source_properties);
 
-  void AddAnimationAndBlending(const String& tag,
-                               const ContainerProperties& source_properties);
-
-  void AddIncomingObjectViewBox(const String& tag, const String& value);
-  void AddOutgoingObjectViewBox(const String& tag, const String& value);
-
-  void AddContainerStyles(const String& tag, const String& rules);
   void AddContainerStyles(const String& tag,
                           const ContainerProperties& properties,
-                          WritingMode writing_mode);
+                          WritingMode writing_mode,
+                          BlendMode blend_mode,
+                          ETextOrientation text_orientation);
 
   String Build();
 
@@ -42,11 +40,8 @@ class ViewTransitionStyleBuilder {
   // Adds the needed keyframes and returns the animation name to use.
   String AddKeyframes(const String& tag,
                       const ContainerProperties& source_properties);
-  void AddObjectViewBox(const String& selector,
-                        const String& tag,
-                        const String& value);
-
   void AddRules(const String& selector, const String& tag, const String& rules);
+  void AddSelector(const String& name, const String& tag);
 
   StringBuilder builder_;
 };

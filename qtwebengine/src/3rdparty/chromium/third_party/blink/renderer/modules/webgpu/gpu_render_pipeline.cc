@@ -10,7 +10,6 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_color_state_descriptor.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_color_target_state.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_depth_stencil_state.h"
-#include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_depth_stencil_state_descriptor.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_fragment_state.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_multisample_state.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_primitive_state.h"
@@ -31,13 +30,20 @@ namespace blink {
 
 namespace {
 
+const char kGPUBlendComponentPartiallySpecifiedMessage[] =
+    "fragment.targets[%u].blend.%s has a mix of explicit and defaulted "
+    "members, which is unusual. Did you mean to specify other members?";
+
 WGPUBlendComponent AsDawnType(const GPUBlendComponent* webgpu_desc) {
   DCHECK(webgpu_desc);
 
   WGPUBlendComponent dawn_desc = {};
-  dawn_desc.dstFactor = AsDawnEnum(webgpu_desc->dstFactor());
-  dawn_desc.srcFactor = AsDawnEnum(webgpu_desc->srcFactor());
-  dawn_desc.operation = AsDawnEnum(webgpu_desc->operation());
+  dawn_desc.dstFactor = AsDawnEnum(webgpu_desc->getDstFactorOr(
+      V8GPUBlendFactor(V8GPUBlendFactor::Enum::kZero)));
+  dawn_desc.srcFactor = AsDawnEnum(webgpu_desc->getSrcFactorOr(
+      V8GPUBlendFactor(V8GPUBlendFactor::Enum::kOne)));
+  dawn_desc.operation = AsDawnEnum(webgpu_desc->getOperationOr(
+      V8GPUBlendOperation(V8GPUBlendOperation::Enum::kAdd)));
 
   return dawn_desc;
 }
@@ -228,6 +234,18 @@ void GPUVertexStateAsWGPUVertexState(GPUDevice* device,
   }
 }
 
+bool IsGPUBlendComponentPartiallySpecified(
+    const GPUBlendComponent* webgpu_desc) {
+  DCHECK(webgpu_desc);
+  // GPUBlendComponent is considered partially specified when:
+  // - srcFactor is missing but operation or dstFactor is provided
+  // - dstFactor is missing but operation or srcFactor is provided
+  return ((!webgpu_desc->hasSrcFactor() &&
+           (webgpu_desc->hasDstFactor() || webgpu_desc->hasOperation())) ||
+          (!webgpu_desc->hasDstFactor() &&
+           (webgpu_desc->hasSrcFactor() || webgpu_desc->hasOperation())));
+}
+
 void GPUFragmentStateAsWGPUFragmentState(GPUDevice* device,
                                          const GPUFragmentState* descriptor,
                                          OwnedFragmentState* dawn_fragment,
@@ -245,8 +263,7 @@ void GPUFragmentStateAsWGPUFragmentState(GPUDevice* device,
   dawn_fragment->dawn_desc.entryPoint = dawn_fragment->entry_point.c_str();
 
   dawn_fragment->dawn_desc.targets = nullptr;
-  dawn_fragment->dawn_desc.targetCount =
-      static_cast<uint32_t>(descriptor->targets().size());
+  dawn_fragment->dawn_desc.targetCount = descriptor->targets().size();
   if (dawn_fragment->dawn_desc.targetCount > 0) {
     dawn_fragment->targets = AsDawnType(descriptor->targets());
     dawn_fragment->dawn_desc.targets = dawn_fragment->targets.get();
@@ -268,7 +285,16 @@ void GPUFragmentStateAsWGPUFragmentState(GPUDevice* device,
       return;
     }
     if (color_target->hasBlend()) {
-      dawn_fragment->blend_states[i] = AsDawnType(color_target->blend());
+      const GPUBlendState* blend_state = color_target->blend();
+      if (IsGPUBlendComponentPartiallySpecified(blend_state->color())) {
+        device->AddConsoleWarning(String::Format(
+            kGPUBlendComponentPartiallySpecifiedMessage, i, "color"));
+      }
+      if (IsGPUBlendComponentPartiallySpecified(blend_state->alpha())) {
+        device->AddConsoleWarning(String::Format(
+            kGPUBlendComponentPartiallySpecifiedMessage, i, "alpha"));
+      }
+      dawn_fragment->blend_states[i] = AsDawnType(blend_state);
       dawn_fragment->targets[i].blend = &dawn_fragment->blend_states[i];
     }
   }

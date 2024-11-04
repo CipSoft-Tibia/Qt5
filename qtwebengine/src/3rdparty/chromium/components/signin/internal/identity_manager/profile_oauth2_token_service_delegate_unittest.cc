@@ -50,8 +50,8 @@ TEST_F(ProfileOAuth2TokenServiceDelegateTest, InvalidateTokensForMultilogin) {
                              GoogleServiceAuthError::INVALID_GAIA_CREDENTIALS)))
       .Times(0);
 
-  const CoreAccountId account_id1("account_id1");
-  const CoreAccountId account_id2("account_id2");
+  const CoreAccountId account_id1 = CoreAccountId::FromGaiaId("account_id1");
+  const CoreAccountId account_id2 = CoreAccountId::FromGaiaId("account_id2");
 
   delegate_.UpdateCredentials(account_id1, "refresh_token1");
   delegate_.UpdateCredentials(account_id2, "refresh_token2");
@@ -64,6 +64,7 @@ TEST_F(ProfileOAuth2TokenServiceDelegateTest, InvalidateTokensForMultilogin) {
             GoogleServiceAuthError::NONE);
 }
 
+// Contains all non-deprecated Google service auth error states.
 const GoogleServiceAuthError::State table[] = {
     GoogleServiceAuthError::NONE,
     GoogleServiceAuthError::INVALID_GAIA_CREDENTIALS,
@@ -74,10 +75,11 @@ const GoogleServiceAuthError::State table[] = {
     GoogleServiceAuthError::UNEXPECTED_SERVICE_RESPONSE,
     GoogleServiceAuthError::SERVICE_ERROR,
     GoogleServiceAuthError::SCOPE_LIMITED_UNRECOVERABLE_ERROR,
+    GoogleServiceAuthError::CHALLENGE_RESPONSE_REQUIRED,
 };
 
 TEST_F(ProfileOAuth2TokenServiceDelegateTest, UpdateAuthError_PersistenErrors) {
-  const CoreAccountId account_id("account_id");
+  const CoreAccountId account_id = CoreAccountId::FromGaiaId("account_id");
   delegate_.UpdateCredentials(account_id, "refresh_token");
 
   static_assert(
@@ -101,7 +103,7 @@ TEST_F(ProfileOAuth2TokenServiceDelegateTest, UpdateAuthError_PersistenErrors) {
 }
 
 TEST_F(ProfileOAuth2TokenServiceDelegateTest, UpdateAuthError_TransientErrors) {
-  const CoreAccountId account_id("account_id");
+  const CoreAccountId account_id = CoreAccountId::FromGaiaId("account_id");
   delegate_.UpdateCredentials(account_id, "refresh_token");
 
   static_assert(
@@ -133,7 +135,7 @@ TEST_F(ProfileOAuth2TokenServiceDelegateTest, UpdateAuthError_TransientErrors) {
 
 TEST_F(ProfileOAuth2TokenServiceDelegateTest,
        UpdateAuthError_ScopePersistenErrors) {
-  const CoreAccountId account_id("account_id");
+  const CoreAccountId account_id = CoreAccountId::FromGaiaId("account_id");
   delegate_.UpdateCredentials(account_id, "refresh_token");
   GoogleServiceAuthError error(
       GoogleServiceAuthError::SCOPE_LIMITED_UNRECOVERABLE_ERROR);
@@ -153,7 +155,7 @@ TEST_F(ProfileOAuth2TokenServiceDelegateTest,
 
 TEST_F(ProfileOAuth2TokenServiceDelegateTest,
        UpdateAuthError_RefreshTokenNotAvailable) {
-  const CoreAccountId account_id("account_id");
+  const CoreAccountId account_id = CoreAccountId::FromGaiaId("account_id");
   EXPECT_FALSE(delegate_.RefreshTokenIsAvailable(account_id));
   EXPECT_CALL(observer_, OnAuthErrorChanged(::testing::_, ::testing::_))
       .Times(0);
@@ -168,7 +170,7 @@ TEST_F(ProfileOAuth2TokenServiceDelegateTest,
 }
 
 TEST_F(ProfileOAuth2TokenServiceDelegateTest, AuthErrorChanged) {
-  const CoreAccountId account_id("account_id");
+  const CoreAccountId account_id = CoreAccountId::FromGaiaId("account_id");
   delegate_.UpdateCredentials(account_id, "refresh_token");
 
   GoogleServiceAuthError error(

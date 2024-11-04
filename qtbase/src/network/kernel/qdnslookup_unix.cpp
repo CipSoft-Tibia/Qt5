@@ -183,14 +183,22 @@ void QDnsLookupRunnable::query(QDnsLookupReply *reply)
     auto attemptToSend = [&]() {
         std::memset(buffer.data(), 0, HFIXEDSZ);        // the header is enough
         int responseLength = res_nsend(&state, qbuffer.data(), queryLength, buffer.data(), buffer.size());
-        if (responseLength < 0) {
-            // network error of some sort
-            if (errno == ETIMEDOUT)
-                reply->makeTimeoutError();
-            else
-                reply->makeResolverSystemError();
-        }
-        return responseLength;
+        if (responseLength >= 0)
+            return responseLength;  // success
+
+        // libresolv uses ETIMEDOUT for resolver errors ("no answer")
+        if (errno == ECONNREFUSED)
+            reply->setError(QDnsLookup::ServerRefusedError, qt_error_string());
+        else if (errno != ETIMEDOUT)
+            reply->makeResolverSystemError();   // some other error
+
+        auto query = reinterpret_cast<HEADER *>(qbuffer.data());
+        auto header = reinterpret_cast<HEADER *>(buffer.data());
+        if (query->id == header->id && header->qr)
+            reply->makeDnsRcodeError(header->rcode);
+        else
+            reply->makeTimeoutError();      // must really be a timeout
+        return -1;
     };
 
     // strictly use UDP, we'll deal with truncated replies ourselves
@@ -265,7 +273,7 @@ void QDnsLookupRunnable::query(QDnsLookupReply *reply)
         expandHost(offset);
         if (status < 0)
             return;
-        if (offset + status + 4 >= responseLength)
+        if (offset + status + 4 > responseLength)
             header->qdcount = 0xffff;   // invalid reply below
         else
             offset += status + 4;
@@ -348,6 +356,8 @@ void QDnsLookupRunnable::query(QDnsLookupReply *reply)
                 return reply->makeInvalidReplyError(QDnsLookup::tr("Invalid mail exchange record"));
             reply->mailExchangeRecords.append(record);
         } else if (type == QDnsLookup::SRV) {
+            if (size < 7)
+                return reply->makeInvalidReplyError(QDnsLookup::tr("Invalid service record"));
             const quint16 priority = qFromBigEndian<quint16>(response + offset);
             const quint16 weight = qFromBigEndian<quint16>(response + offset + 2);
             const quint16 port = qFromBigEndian<quint16>(response + offset + 4);

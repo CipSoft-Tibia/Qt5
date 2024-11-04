@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #ifndef QT_NO_OPENGL
 
 #include "private/glwidget_p.h"
@@ -369,7 +371,8 @@ QXYSeries *GLWidget::chartSeries(const QXYSeries *cSeries)
 {
     QXYSeries *series = nullptr;
     if (cSeries) {
-        Q_FOREACH (QAbstractSeries *chartSeries, m_chart->series()) {
+        const auto allSeries = m_chart->series();
+        for (QAbstractSeries *chartSeries : allSeries) {
             if (cSeries == chartSeries) {
                 series = qobject_cast<QXYSeries *>(chartSeries);
                 break;

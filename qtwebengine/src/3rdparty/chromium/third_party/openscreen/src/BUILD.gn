@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -22,8 +22,9 @@ group("gn_all") {
     "platform",
     "third_party/abseil",
     "third_party/boringssl",
+    "third_party/googleurl",
     "third_party/jsoncpp",
-    "third_party/mozilla",
+    "third_party/quiche",
     "third_party/tinycbor",
     "tools/cddl($host_toolchain)",
     "util",
@@ -69,12 +70,10 @@ source_set("openscreen_unittests_all") {
     ]
   }
 
-  if (!is_mac) {
-    public_deps += [
-      "osp:unittests",
-      "osp/msgs:unittests",
-    ]
-  }
+  public_deps += [
+    "osp:unittests",
+    "osp/msgs:unittests",
+  ]
 }
 
 if (!build_with_chromium) {

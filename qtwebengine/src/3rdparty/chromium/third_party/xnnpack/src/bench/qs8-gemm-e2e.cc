@@ -18,11 +18,12 @@
 #include "models/models.h"
 
 #include <xnnpack.h>
+#include <xnnpack/config.h>
 #include <xnnpack/gemm.h>
 #include <xnnpack/igemm.h>
 #include <xnnpack/microfnptr.h>
 #include <xnnpack/microparams-init.h>
-#include <xnnpack/params.h>
+#include <xnnpack/pack.h>
 
 
 static void GEMMEnd2EndBenchmark(
@@ -44,18 +45,21 @@ static void GEMMEnd2EndBenchmark(
     return;
   }
 
+  struct xnn_gemm_config* gemm_config = xnn_init_qu8_gemm_config();
+  assert(gemm_config != nullptr);
+
   // Override microkernels chosen in xnn_initialize
-  // Note: do not directly assign to xnn_params.qs8.gemm because it breaks older gcc.
-  std::memset(&xnn_params.qs8.gemm, 0, sizeof(xnn_params.qs8.gemm));
-  xnn_params.qs8.gemm.minmax.gemm[mr-1] = xnn_init_hmp_gemm_ukernel(xnn_gemm_ukernel_fn(gemm));
-  xnn_params.qs8.gemm.minmax.igemm[mr-1] = xnn_init_hmp_igemm_ukernel(xnn_igemm_ukernel_fn(igemm));
-  xnn_params.qs8.gemm.minmax.gemm[0] = xnn_init_hmp_gemm_ukernel(xnn_gemm_ukernel_fn(gemm1));
-  xnn_params.qs8.gemm.minmax.igemm[0] = xnn_init_hmp_igemm_ukernel(xnn_igemm_ukernel_fn(igemm1));
-  xnn_params.qs8.gemm.init.qs8 = init_params;
-  xnn_params.qs8.gemm.mr = mr;
-  xnn_params.qs8.gemm.nr = nr;
-  xnn_params.qs8.gemm.log2_kr = log2_kr;
-  xnn_params.qs8.gemm.log2_sr = log2_sr;
+  std::memset(gemm_config, 0, sizeof(struct xnn_gemm_config));
+  gemm_config->minmax.gemm[mr-1] = xnn_init_hmp_gemm_ukernel(xnn_gemm_ukernel_fn(gemm));
+  gemm_config->minmax.igemm[mr-1] = xnn_init_hmp_igemm_ukernel(xnn_igemm_ukernel_fn(igemm));
+  gemm_config->minmax.gemm[0] = xnn_init_hmp_gemm_ukernel(xnn_gemm_ukernel_fn(gemm1));
+  gemm_config->minmax.igemm[0] = xnn_init_hmp_igemm_ukernel(xnn_igemm_ukernel_fn(igemm1));
+  gemm_config->init.qs8 = init_params;
+  gemm_config->mr = mr;
+  gemm_config->nr = nr;
+  gemm_config->log2_kr = log2_kr;
+  gemm_config->log2_sr = log2_sr;
+  gemm_config->pack_gemm_goi = (xnn_packw_gemm_goi_ukernel_fn) xnn_pack_qs8_gemm_goi_w;
 
   auto execution_plan = model_factory(nullptr);
   if (execution_plan.empty()) {
@@ -2863,6 +2867,45 @@ static void GEMMEnd2EndBenchmark(
   BENCHMARK_QS8_END2END(qs8_gemm_3x4c8__sse2_ld64);
   BENCHMARK_QS8_END2END(qs8_gemm_3x4c8__sse2_ld128);
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+
+#if XNN_ARCH_WASMRELAXEDSIMD
+  static void qs8_gemm_2x4c16__wasmsdot(benchmark::State& state, models::ExecutionPlanFactory model) {
+    GEMMEnd2EndBenchmark(state, model,
+      xnn_qs8_gemm_minmax_fp32_ukernel_2x4c16__wasmsdot,
+      xnn_qs8_igemm_minmax_fp32_ukernel_2x4c16__wasmsdot,
+      xnn_qs8_gemm_minmax_fp32_ukernel_1x4c16__wasmsdot,
+      xnn_qs8_igemm_minmax_fp32_ukernel_1x4c16__wasmsdot,
+      xnn_init_qs8_conv_minmax_fp32_wasmsimd_params,
+      2 /* mr */, 4 /* nr */, 4 /* log2_kr */, 0 /* log2_sr */,
+      benchmark::utils::CheckWAsmSDOT);
+  }
+  static void qs8_gemm_3x4c16__wasmsdot(benchmark::State& state, models::ExecutionPlanFactory model) {
+    GEMMEnd2EndBenchmark(state, model,
+      xnn_qs8_gemm_minmax_fp32_ukernel_3x4c16__wasmsdot,
+      xnn_qs8_igemm_minmax_fp32_ukernel_3x4c16__wasmsdot,
+      xnn_qs8_gemm_minmax_fp32_ukernel_1x4c16__wasmsdot,
+      xnn_qs8_igemm_minmax_fp32_ukernel_1x4c16__wasmsdot,
+      xnn_init_qs8_conv_minmax_fp32_wasmsimd_params,
+      3 /* mr */, 4 /* nr */, 4 /* log2_kr */, 0 /* log2_sr */,
+      benchmark::utils::CheckWAsmSDOT);
+  }
+  static void qs8_gemm_4x4c16__wasmsdot(benchmark::State& state, models::ExecutionPlanFactory model) {
+    GEMMEnd2EndBenchmark(state, model,
+      xnn_qs8_gemm_minmax_fp32_ukernel_4x4c16__wasmsdot,
+      xnn_qs8_igemm_minmax_fp32_ukernel_4x4c16__wasmsdot,
+      xnn_qs8_gemm_minmax_fp32_ukernel_1x4c16__wasmsdot,
+      xnn_qs8_igemm_minmax_fp32_ukernel_1x4c16__wasmsdot,
+      xnn_init_qs8_conv_minmax_fp32_wasmsimd_params,
+      4 /* mr */, 4 /* nr */, 4 /* log2_kr */, 0 /* log2_sr */,
+      benchmark::utils::CheckWAsmSDOT);
+  }
+
+  BENCHMARK_QS8_END2END(qs8_gemm_2x4c16__wasmsdot)
+  BENCHMARK_QS8_END2END(qs8_gemm_3x4c16__wasmsdot)
+  BENCHMARK_QS8_END2END(qs8_gemm_4x4c16__wasmsdot)
+#endif  // XNN_ARCH_WASMRELAXEDSIMD
+
 
 #if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
   static void qs8_gemm_2x4c2__wasmsimd_dot16x2_ld64(benchmark::State& state, models::ExecutionPlanFactory model) {

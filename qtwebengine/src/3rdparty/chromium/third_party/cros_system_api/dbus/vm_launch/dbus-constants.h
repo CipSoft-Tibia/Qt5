@@ -18,15 +18,6 @@ const char kVmLaunchServiceName[] = "org.chromium.VmLaunchService";
 const char kVmLaunchServicePath[] = "/org/chromium/VmLaunchService";
 const char kVmLaunchServiceInterface[] = "org.chromium.VmLaunchService";
 
-// As part of go/secure-exo-ids, each VM will use its own wayland server. When
-// the launch request originates from Chrome, this is handled already, but when
-// it originates from another system (vmc or concierge) we need to ask chrome
-// for the server.
-const char kVmLaunchServiceStartWaylandServerMethod[] = "StartWaylandServer";
-
-// Clean-up helper for the above method.
-const char kVmLaunchServiceStopWaylandServerMethod[] = "StopWaylandServer";
-
 // Provide a token that will be used to allow/disallow certain VMs from running.
 //
 // TODO(b/218403711): Remove this method.

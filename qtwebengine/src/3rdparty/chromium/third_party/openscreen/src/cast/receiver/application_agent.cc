@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,8 +15,7 @@
 #include "util/json/json_serialization.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 // Returns the first app ID for the given |app|, or the empty string if there is
@@ -29,7 +28,7 @@ std::string GetFirstAppId(ApplicationAgent::Application* app) {
 }  // namespace
 
 ApplicationAgent::ApplicationAgent(
-    TaskRunner* task_runner,
+    TaskRunner& task_runner,
     DeviceAuthNamespaceHandler::CredentialsProvider* credentials_provider)
     : task_runner_(task_runner),
       auth_handler_(credentials_provider),
@@ -39,7 +38,7 @@ ApplicationAgent::ApplicationAgent(
 }
 
 ApplicationAgent::~ApplicationAgent() {
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
 
   idle_screen_app_ = nullptr;  // Prevent re-launching the idle screen app.
   SwitchToApplication({}, {}, nullptr);
@@ -394,5 +393,4 @@ void ApplicationAgent::BroadcastReceiverStatus() {
 
 ApplicationAgent::Application::~Application() = default;
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

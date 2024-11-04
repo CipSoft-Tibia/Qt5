@@ -12,6 +12,7 @@
 #include "src/gpu/graphite/Buffer.h"
 #include "src/gpu/graphite/ComputePipeline.h"
 #include "src/gpu/graphite/GraphicsPipeline.h"
+#include "src/gpu/graphite/Log.h"
 #include "src/gpu/graphite/Sampler.h"
 #include "src/gpu/graphite/Texture.h"
 #include "src/gpu/graphite/TextureProxy.h"
@@ -59,7 +60,7 @@ bool CommandBuffer::addRenderPass(const RenderPassDesc& renderPassDesc,
                                   sk_sp<Texture> resolveTexture,
                                   sk_sp<Texture> depthStencilTexture,
                                   SkRect viewport,
-                                  const std::vector<std::unique_ptr<DrawPass>>& drawPasses) {
+                                  const DrawPassList& drawPasses) {
     fRenderPassSize = colorTexture->dimensions();
     if (!this->onAddRenderPass(renderPassDesc,
                                colorTexture.get(),
@@ -87,14 +88,10 @@ bool CommandBuffer::addRenderPass(const RenderPassDesc& renderPassDesc,
     return true;
 }
 
-bool CommandBuffer::addComputePass(const ComputePassDesc& computePassDesc,
-                                   sk_sp<ComputePipeline> pipeline,
-                                   const std::vector<ResourceBinding>& bindings) {
-    if (!this->onAddComputePass(computePassDesc, pipeline.get(), bindings)) {
+bool CommandBuffer::addComputePass(const DispatchGroupList& dispatchGroups) {
+    if (!this->onAddComputePass(dispatchGroups)) {
         return false;
     }
-
-    this->trackResource(std::move(pipeline));
 
     SkDEBUGCODE(fHasWork = true;)
 
@@ -164,11 +161,17 @@ bool CommandBuffer::copyBufferToTexture(const Buffer* buffer,
 bool CommandBuffer::copyTextureToTexture(sk_sp<Texture> src,
                                          SkIRect srcRect,
                                          sk_sp<Texture> dst,
-                                         SkIPoint dstPoint) {
+                                         SkIPoint dstPoint,
+                                         int mipLevel) {
     SkASSERT(src);
     SkASSERT(dst);
+    if (src->textureInfo().isProtected() == Protected::kYes &&
+        dst->textureInfo().isProtected() != Protected::kYes) {
+        SKGPU_LOG_E("Can't copy from protected memory to non-protected");
+        return false;
+    }
 
-    if (!this->onCopyTextureToTexture(src.get(), srcRect, dst.get(), dstPoint)) {
+    if (!this->onCopyTextureToTexture(src.get(), srcRect, dst.get(), dstPoint, mipLevel)) {
         return false;
     }
 
@@ -207,12 +210,5 @@ bool CommandBuffer::clearBuffer(const Buffer* buffer, size_t offset, size_t size
 
     return true;
 }
-
-#ifdef SK_ENABLE_PIET_GPU
-void CommandBuffer::renderPietScene(const skgpu::piet::Scene& scene, sk_sp<Texture> target) {
-    this->onRenderPietScene(scene, target.get());
-    this->trackResource(std::move(target));
-}
-#endif
 
 } // namespace skgpu::graphite

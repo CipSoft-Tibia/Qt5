@@ -16,6 +16,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "components/sync/model/data_type_activation_request.h"
 #include "components/sync/model/entity_change.h"
@@ -83,17 +84,17 @@ UserEventSyncBridge::CreateMetadataChangeList() {
   return WriteBatch::CreateMetadataChangeList();
 }
 
-absl::optional<ModelError> UserEventSyncBridge::MergeSyncData(
+absl::optional<ModelError> UserEventSyncBridge::MergeFullSyncData(
     std::unique_ptr<MetadataChangeList> metadata_change_list,
     EntityChangeList entity_data) {
   DCHECK(entity_data.empty());
   DCHECK(change_processor()->IsTrackingMetadata());
   DCHECK(!change_processor()->TrackedAccountId().empty());
-  return ApplySyncChanges(std::move(metadata_change_list),
-                          std::move(entity_data));
+  return ApplyIncrementalSyncChanges(std::move(metadata_change_list),
+                                     std::move(entity_data));
 }
 
-absl::optional<ModelError> UserEventSyncBridge::ApplySyncChanges(
+absl::optional<ModelError> UserEventSyncBridge::ApplyIncrementalSyncChanges(
     std::unique_ptr<MetadataChangeList> metadata_change_list,
     EntityChangeList entity_changes) {
   std::unique_ptr<WriteBatch> batch = store_->CreateWriteBatch();
@@ -105,9 +106,9 @@ absl::optional<ModelError> UserEventSyncBridge::ApplySyncChanges(
         GetEventTimeFromStorageKey(change->storage_key()));
   }
 
-  // Because we receive ApplySyncChanges with deletions when our commits are
-  // confirmed, this is the perfect time to cleanup our in flight objects which
-  // are no longer in flight.
+  // Because we receive ApplyIncrementalSyncChanges with deletions when our
+  // commits are confirmed, this is the perfect time to cleanup our in flight
+  // objects which are no longer in flight.
   base::EraseIf(in_flight_nav_linked_events_,
                 [&deleted_event_times](
                     const std::pair<int64_t, sync_pb::UserEventSpecifics> kv) {
@@ -144,12 +145,10 @@ std::string UserEventSyncBridge::GetStorageKey(const EntityData& entity_data) {
   return GetStorageKeyFromSpecifics(entity_data.specifics.user_event());
 }
 
-void UserEventSyncBridge::ApplyStopSyncChanges(
+void UserEventSyncBridge::ApplyDisableSyncChanges(
     std::unique_ptr<MetadataChangeList> delete_metadata_change_list) {
-  if (delete_metadata_change_list) {
-    store_->DeleteAllDataAndMetadata(base::BindOnce(
-        &UserEventSyncBridge::OnCommit, weak_ptr_factory_.GetWeakPtr()));
-  }
+  store_->DeleteAllDataAndMetadata(base::BindOnce(
+      &UserEventSyncBridge::OnCommit, weak_ptr_factory_.GetWeakPtr()));
 }
 
 void UserEventSyncBridge::RecordUserEvent(
@@ -225,6 +224,7 @@ void UserEventSyncBridge::OnStoreCreated(
 void UserEventSyncBridge::OnReadAllMetadata(
     const absl::optional<ModelError>& error,
     std::unique_ptr<MetadataBatch> metadata_batch) {
+  TRACE_EVENT0("sync", "syncer::UserEventSyncBridge::OnReadAllMetadata");
   if (error) {
     change_processor()->ReportError(*error);
   } else {

@@ -73,7 +73,7 @@ static int remap_opencl_load(AVFilterContext *avctx,
 {
     RemapOpenCLContext *ctx = avctx->priv;
     cl_int cle;
-    const char *source = ff_opencl_source_remap;
+    const char *source = ff_source_remap_cl;
     const char *kernel = kernels[ctx->interp];
     const AVPixFmtDescriptor *main_desc;
     int err, main_planes;
@@ -351,4 +351,5 @@ const AVFilter ff_vf_remap_opencl = {
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
     .priv_class    = &remap_opencl_class,
     .flags_internal  = FF_FILTER_FLAG_HWFRAME_AWARE,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

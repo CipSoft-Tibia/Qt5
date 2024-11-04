@@ -72,8 +72,8 @@ public:
     void setPlaying(bool playing);
 
 public Q_SLOTS:
-    void sampleReady();
-    void decoderError();
+    void sampleReady(QSample *);
+    void decoderError(QSample *);
     void stateChanged(QAudio::State);
 
 public:
@@ -103,8 +103,11 @@ QSoundEffectPrivate::QSoundEffectPrivate(QSoundEffect *q, const QAudioDevice &au
     QPlatformMediaIntegration::instance()->mediaDevices()->prepareAudio();
 }
 
-void QSoundEffectPrivate::sampleReady()
+void QSoundEffectPrivate::sampleReady(QSample *sample)
 {
+    if (sample && sample != m_sample.get())
+        return;
+
     if (m_status == QSoundEffect::Error)
         return;
 
@@ -114,6 +117,14 @@ void QSoundEffectPrivate::sampleReady()
     if (!m_audioSink) {
         const auto audioDevice =
                 m_audioDevice.isNull() ? QMediaDevices::defaultAudioOutput() : m_audioDevice;
+
+        if (audioDevice.isNull()) {
+            // We are likely on a virtual machine, for example in CI
+            qCCritical(qLcSoundEffect) << "Failed to play sound. No audio devices present.";
+            setStatus(QSoundEffect::Error);
+            return;
+        }
+
         const auto &sampleFormat = m_sample->format();
         const auto sampleChannelConfig =
                 sampleFormat.channelConfig() == QAudioFormat::ChannelConfigUnknown
@@ -141,6 +152,7 @@ void QSoundEffectPrivate::sampleReady()
             m_audioBuffer = QAudioBuffer(m_sample->data(), m_sample->format());
 
         m_audioSink.reset(new QAudioSink(audioDevice, m_audioBuffer.format()));
+
         connect(m_audioSink.get(), &QAudioSink::stateChanged, this, &QSoundEffectPrivate::stateChanged);
         if (!m_muted)
             m_audioSink->setVolume(m_volume);
@@ -156,8 +168,11 @@ void QSoundEffectPrivate::sampleReady()
     }
 }
 
-void QSoundEffectPrivate::decoderError()
+void QSoundEffectPrivate::decoderError(QSample *sample)
 {
+    if (sample && sample != m_sample.get())
+        return;
+
     qWarning("QSoundEffect(qaudio): Error decoding source %ls", qUtf16Printable(m_url.toString()));
     disconnect(m_sample.get(), &QSample::ready, this, &QSoundEffectPrivate::sampleReady);
     disconnect(m_sample.get(), &QSample::error, this, &QSoundEffectPrivate::decoderError);
@@ -412,8 +427,7 @@ void QSoundEffect::setSource(const QUrl &url)
             disconnect(d->m_sample.get(), &QSample::error, d, &QSoundEffectPrivate::decoderError);
             disconnect(d->m_sample.get(), &QSample::ready, d, &QSoundEffectPrivate::sampleReady);
         }
-        d->m_sample->release();
-        d->m_sample = nullptr;
+        d->m_sample.reset();
     }
 
     if (d->m_audioSink) {
@@ -428,10 +442,10 @@ void QSoundEffect::setSource(const QUrl &url)
 
     switch (d->m_sample->state()) {
     case QSample::Ready:
-        d->sampleReady();
+        d->sampleReady(d->m_sample.get());
         break;
     case QSample::Error:
-        d->decoderError();
+        d->decoderError(d->m_sample.get());
         break;
     default:
         break;
@@ -551,7 +565,7 @@ int QSoundEffect::loopsRemaining() const
 
     UI volume controls should usually be scaled non-linearly. For example, using a logarithmic scale
     will produce linear changes in perceived loudness, which is what a user would normally expect
-    from a volume control. See \l {QAudio::convertVolume()}{convertVolume()}
+    from a volume control. See \l {QtAudio::convertVolume()}{convertVolume()}
     for more details.
 */
 /*!
@@ -581,7 +595,7 @@ float QSoundEffect::volume() const
 
     UI volume controls should usually be scaled non-linearly. For example, using a logarithmic scale
     will produce linear changes in perceived loudness, which is what a user would normally expect
-    from a volume control. See QAudio::convertVolume() for more details.
+    from a volume control. See QtAudio::convertVolume() for more details.
  */
 void QSoundEffect::setVolume(float volume)
 {

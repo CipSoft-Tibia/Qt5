@@ -177,7 +177,7 @@ TEST_F(NGInlineLayoutAlgorithmTest, BreakToken) {
   NGBoxFragmentBuilder container_builder(
       block_flow, block_flow->Style(), constraint_space,
       block_flow->Style()->GetWritingDirection());
-  NGInlineChildLayoutContext context(inline_node, &container_builder);
+  NGSimpleInlineChildLayoutContext context(inline_node, &container_builder);
   const NGLayoutResult* layout_result =
       inline_node.Layout(constraint_space, nullptr, nullptr, &context);
   const auto& line1 = layout_result->PhysicalFragment();
@@ -364,12 +364,9 @@ TEST_F(NGInlineLayoutAlgorithmTest, ContainerBorderPadding) {
     </style>
     <div id=container>test</div>
   )HTML");
-  auto* block_flow =
-      To<LayoutBlockFlow>(GetLayoutObjectByElementId("container"));
-  NGBlockNode block_node(block_flow);
-  NGConstraintSpace space =
-      NGConstraintSpace::CreateFromLayoutObject(*block_flow);
-  const NGLayoutResult* layout_result = block_node.Layout(space);
+
+  const auto* layout_result =
+      GetLayoutBoxByElementId("container")->GetSingleCachedLayoutResult();
 
   EXPECT_TRUE(layout_result->BfcBlockOffset().has_value());
   EXPECT_EQ(0, *layout_result->BfcBlockOffset());
@@ -440,11 +437,17 @@ TEST_F(NGInlineLayoutAlgorithmTest, TextFloatsAroundFloatsBefore) {
       <span id="text">The quick brown fox jumps over the lazy dog</span>
     </div>
   )HTML");
-  // ** Run LayoutNG algorithm **
-  auto [html_fragment, space] = RunBlockLayoutAlgorithmForElement(
-      GetDocument().getElementsByTagName("html")->item(0));
+
+  const auto& html_fragment =
+      To<LayoutBox>(GetDocument()
+                        .getElementsByTagName(AtomicString("html"))
+                        ->item(0)
+                        ->GetLayoutObject())
+          ->GetSingleCachedLayoutResult()
+          ->PhysicalFragment();
+
   auto* body_fragment =
-      To<NGPhysicalBoxFragment>(html_fragment->Children()[0].get());
+      To<NGPhysicalBoxFragment>(html_fragment.Children()[0].get());
   auto* container_fragment =
       To<NGPhysicalBoxFragment>(body_fragment->Children()[0].get());
   Vector<PhysicalOffset> line_offsets;
@@ -504,11 +507,12 @@ TEST_F(NGInlineLayoutAlgorithmTest, TextFloatsAroundInlineFloatThatFitsOnLine) {
   // 30 == narrow-float's width.
   EXPECT_EQ(LayoutUnit(30), first_line_offset.left);
 
-  Element* span = GetDocument().getElementById("text");
+  Element* span = GetDocument().getElementById(AtomicString("text"));
   // 38 == narrow-float's width + body's margin.
   EXPECT_EQ(LayoutUnit(38), span->OffsetLeft());
 
-  Element* narrow_float = GetDocument().getElementById("narrow-float");
+  Element* narrow_float =
+      GetDocument().getElementById(AtomicString("narrow-float"));
   // 8 == body's margin.
   EXPECT_EQ(8, narrow_float->OffsetLeft());
   EXPECT_EQ(8, narrow_float->OffsetTop());
@@ -539,7 +543,8 @@ TEST_F(NGInlineLayoutAlgorithmTest,
     </div>
   )HTML");
 
-  Element* wide_float = GetDocument().getElementById("wide-float");
+  Element* wide_float =
+      GetDocument().getElementById(AtomicString("wide-float"));
   // 8 == body's margin.
   EXPECT_EQ(8, wide_float->OffsetLeft());
 }
@@ -573,11 +578,12 @@ TEST_F(NGInlineLayoutAlgorithmTest,
       </span>
     </div>
   )HTML");
-  Element* wide_float = GetDocument().getElementById("left-wide");
+  Element* wide_float = GetDocument().getElementById(AtomicString("left-wide"));
   // 8 == body's margin.
   EXPECT_EQ(8, wide_float->OffsetLeft());
 
-  Element* narrow_float = GetDocument().getElementById("left-narrow");
+  Element* narrow_float =
+      GetDocument().getElementById(AtomicString("left-narrow"));
   // 160 float-wide's width + 8 body's margin.
   EXPECT_EQ(160 + 8, narrow_float->OffsetLeft());
 
@@ -727,7 +733,7 @@ TEST_F(NGInlineLayoutAlgorithmTest, TextCombineFake) {
 }
 
 // http://crbug.com/1413969
-TEST_F(NGInlineLayoutAlgorithmTest, EmptyInitialLetter) {
+TEST_F(NGInlineLayoutAlgorithmTest, InitialLetterEmpty) {
   LoadAhem();
   InsertStyleElement(
       "body { font: 10px/15px Ahem; }"
@@ -736,6 +742,23 @@ TEST_F(NGInlineLayoutAlgorithmTest, EmptyInitialLetter) {
   const char* const expected = R"DUMP(
 {Line #descendants=2 LTR Standard} "0,0 0x15"
 {Box #descendants=1 AtomicInlineLTR Standard} "0,40 0x0"
+)DUMP";
+  EXPECT_EQ(expected, AsFragmentItemsString(*To<LayoutBlockFlow>(
+                          GetLayoutObjectByElementId("sample"))));
+}
+
+// http://crbug.com/1420168
+TEST_F(NGInlineLayoutAlgorithmTest, InitialLetterWithEmptyInline) {
+  GetDocument().SetCompatibilityMode(Document::kQuirksMode);
+  LoadAhem();
+  InsertStyleElement(
+      "body { font: 20px/24px Ahem; }"
+      "div::first-letter { initial-letter: 3; }");
+  SetBodyInnerHTML("<div id=sample>x<span></span></div>");
+  const char* const expected = R"DUMP(
+{Line #descendants=3 LTR Standard} "0,0 80x0"
+{Box #descendants=1 AtomicInlineLTR Standard} "0,2 80x80"
+{Box #descendants=1 Standard} "80,-16 0x20"
 )DUMP";
   EXPECT_EQ(expected, AsFragmentItemsString(*To<LayoutBlockFlow>(
                           GetLayoutObjectByElementId("sample"))));

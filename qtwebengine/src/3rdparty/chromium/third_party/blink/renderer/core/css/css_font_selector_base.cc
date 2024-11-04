@@ -6,9 +6,9 @@
 
 #include "build/build_config.h"
 #include "third_party/blink/renderer/core/css/css_segmented_font_face.h"
+#include "third_party/blink/renderer/core/frame/font_matching_metrics.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/platform/fonts/font_cache.h"
-#include "third_party/blink/renderer/platform/fonts/font_matching_metrics.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_copier.h"
@@ -109,16 +109,6 @@ void CSSFontSelectorBase::ReportLastResortFallbackFontLookup(
 void CSSFontSelectorBase::ReportNotDefGlyph() const {
   UseCounter::Count(GetUseCounter(),
                     WebFeature::kFontShapingNotDefGlyphObserved);
-}
-
-void CSSFontSelectorBase::ReportSystemFontFamily(
-    const AtomicString& font_family_name) {
-  GetFontMatchingMetrics()->ReportSystemFontFamily(font_family_name);
-}
-
-void CSSFontSelectorBase::ReportWebFontFamily(
-    const AtomicString& font_family_name) {
-  GetFontMatchingMetrics()->ReportWebFontFamily(font_family_name);
 }
 
 void CSSFontSelectorBase::WillUseFontData(

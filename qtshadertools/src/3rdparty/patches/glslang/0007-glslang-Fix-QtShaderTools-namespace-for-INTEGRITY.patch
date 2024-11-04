@@ -1,0 +1,954 @@
+diff --git a/src/3rdparty/glslang/glslang/GenericCodeGen/CodeGen.cpp b/src/3rdparty/glslang/glslang/GenericCodeGen/CodeGen.cpp
+index b3c7226..853539b 100644
+--- a/src/3rdparty/glslang/glslang/GenericCodeGen/CodeGen.cpp
++++ b/src/3rdparty/glslang/glslang/GenericCodeGen/CodeGen.cpp
+@@ -36,6 +36,7 @@
+ #include "../Include/ShHandle.h"
+ #include "../MachineIndependent/Versions.h"
+ 
++namespace QtShaderTools {
+ //
+ // Here is where real machine specific high-level data would be defined.
+ //
+@@ -74,3 +75,4 @@ bool TGenericCompiler::compile(TIntermNode* /*root*/, int /*version*/, EProfile
+ 
+     return haveValidObjectCode;
+ }
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/GenericCodeGen/Link.cpp b/src/3rdparty/glslang/glslang/GenericCodeGen/Link.cpp
+index 5e28405..e3690a9 100644
+--- a/src/3rdparty/glslang/glslang/GenericCodeGen/Link.cpp
++++ b/src/3rdparty/glslang/glslang/GenericCodeGen/Link.cpp
+@@ -39,6 +39,7 @@
+ #include "../Include/Common.h"
+ #include "../Include/ShHandle.h"
+ 
++namespace QtShaderTools {
+ //
+ // Actual link object, derived from the shader handle base classes.
+ //
+@@ -89,3 +90,5 @@ void DeleteBindingList(TShHandleBase* bindingList)
+ {
+     delete bindingList;
+ }
++
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/Include/InfoSink.h b/src/3rdparty/glslang/glslang/Include/InfoSink.h
+index 184e573..a9db4bc 100644
+--- a/src/3rdparty/glslang/glslang/Include/InfoSink.h
++++ b/src/3rdparty/glslang/glslang/Include/InfoSink.h
+@@ -135,12 +135,12 @@ protected:
+ };
+ 
+ } // end namespace glslang
+-} // namespace QtShaderTools
+ 
+ class TInfoSink {
+ public:
+     QtShaderTools::glslang::TInfoSinkBase info;
+     QtShaderTools::glslang::TInfoSinkBase debug;
+ };
++} // namespace QtShaderTools
+ 
+ #endif // _INFOSINK_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/Include/ShHandle.h b/src/3rdparty/glslang/glslang/Include/ShHandle.h
+index f39e843..edc9b18 100644
+--- a/src/3rdparty/glslang/glslang/Include/ShHandle.h
++++ b/src/3rdparty/glslang/glslang/Include/ShHandle.h
+@@ -47,6 +47,8 @@
+ #include "../MachineIndependent/Versions.h"
+ #include "InfoSink.h"
+ 
++namespace QtShaderTools {
++
+ class TCompiler;
+ class TLinker;
+ class TUniformMap;
+@@ -56,14 +58,14 @@ class TUniformMap;
+ //
+ class TShHandleBase {
+ public:
+-    TShHandleBase() { pool = new QtShaderTools::glslang::TPoolAllocator; }
++    TShHandleBase() { pool = new glslang::TPoolAllocator; }
+     virtual ~TShHandleBase() { delete pool; }
+     virtual TCompiler* getAsCompiler() { return nullptr; }
+     virtual TLinker* getAsLinker() { return nullptr; }
+     virtual TUniformMap* getAsUniformMap() { return nullptr; }
+-    virtual QtShaderTools::glslang::TPoolAllocator* getPool() const { return pool; }
++    virtual glslang::TPoolAllocator* getPool() const { return pool; }
+ private:
+-    QtShaderTools::glslang::TPoolAllocator* pool;
++    glslang::TPoolAllocator* pool;
+ };
+ 
+ //
+@@ -109,8 +111,8 @@ protected:
+ //
+ // Link operations are based on a list of compile results...
+ //
+-typedef QtShaderTools::glslang::TVector<TCompiler*> TCompilerList;
+-typedef QtShaderTools::glslang::TVector<TShHandleBase*> THandleList;
++typedef glslang::TVector<TCompiler*> TCompilerList;
++typedef glslang::TVector<TShHandleBase*> THandleList;
+ 
+ //
+ // The base class for the machine dependent linker to derive from
+@@ -173,4 +175,6 @@ void DeleteCompiler(TCompiler*);
+ 
+ void DeleteUniformMap(TUniformMap*);
+ 
++} //namespace QtShaderTools
++
+ #endif // _SHHANDLE_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/Include/intermediate.h b/src/3rdparty/glslang/glslang/Include/intermediate.h
+index f4a24a3..e9f8e6d 100644
+--- a/src/3rdparty/glslang/glslang/Include/intermediate.h
++++ b/src/3rdparty/glslang/glslang/Include/intermediate.h
+@@ -1124,7 +1124,6 @@ class TIntermSymbol;
+ class TIntermLoop;
+ 
+ } // end namespace glslang
+-} // namespace QtShaderTools
+ 
+ //
+ // Base class for the tree nodes
+@@ -1133,46 +1132,45 @@ class TIntermLoop;
+ //
+ class TIntermNode {
+ public:
+-    POOL_ALLOCATOR_NEW_DELETE(QtShaderTools::glslang::GetThreadPoolAllocator())
++    POOL_ALLOCATOR_NEW_DELETE(glslang::GetThreadPoolAllocator())
+ 
+     TIntermNode() { loc.init(); }
+-    virtual const QtShaderTools::glslang::TSourceLoc& getLoc() const { return loc; }
+-    virtual void setLoc(const QtShaderTools::glslang::TSourceLoc& l) { loc = l; }
+-    virtual void traverse(QtShaderTools::glslang::TIntermTraverser*) = 0;
+-    virtual       QtShaderTools::glslang::TIntermTyped*         getAsTyped()               { return nullptr; }
+-    virtual       QtShaderTools::glslang::TIntermOperator*      getAsOperator()            { return nullptr; }
+-    virtual       QtShaderTools::glslang::TIntermConstantUnion* getAsConstantUnion()       { return nullptr; }
+-    virtual       QtShaderTools::glslang::TIntermAggregate*     getAsAggregate()           { return nullptr; }
+-    virtual       QtShaderTools::glslang::TIntermUnary*         getAsUnaryNode()           { return nullptr; }
+-    virtual       QtShaderTools::glslang::TIntermBinary*        getAsBinaryNode()          { return nullptr; }
+-    virtual       QtShaderTools::glslang::TIntermSelection*     getAsSelectionNode()       { return nullptr; }
+-    virtual       QtShaderTools::glslang::TIntermSwitch*        getAsSwitchNode()          { return nullptr; }
+-    virtual       QtShaderTools::glslang::TIntermMethod*        getAsMethodNode()          { return nullptr; }
+-    virtual       QtShaderTools::glslang::TIntermSymbol*        getAsSymbolNode()          { return nullptr; }
+-    virtual       QtShaderTools::glslang::TIntermBranch*        getAsBranchNode()          { return nullptr; }
+-    virtual       QtShaderTools::glslang::TIntermLoop*          getAsLoopNode()            { return nullptr; }
+-
+-    virtual const QtShaderTools::glslang::TIntermTyped*         getAsTyped()         const { return nullptr; }
+-    virtual const QtShaderTools::glslang::TIntermOperator*      getAsOperator()      const { return nullptr; }
+-    virtual const QtShaderTools::glslang::TIntermConstantUnion* getAsConstantUnion() const { return nullptr; }
+-    virtual const QtShaderTools::glslang::TIntermAggregate*     getAsAggregate()     const { return nullptr; }
+-    virtual const QtShaderTools::glslang::TIntermUnary*         getAsUnaryNode()     const { return nullptr; }
+-    virtual const QtShaderTools::glslang::TIntermBinary*        getAsBinaryNode()    const { return nullptr; }
+-    virtual const QtShaderTools::glslang::TIntermSelection*     getAsSelectionNode() const { return nullptr; }
+-    virtual const QtShaderTools::glslang::TIntermSwitch*        getAsSwitchNode()    const { return nullptr; }
+-    virtual const QtShaderTools::glslang::TIntermMethod*        getAsMethodNode()    const { return nullptr; }
+-    virtual const QtShaderTools::glslang::TIntermSymbol*        getAsSymbolNode()    const { return nullptr; }
+-    virtual const QtShaderTools::glslang::TIntermBranch*        getAsBranchNode()    const { return nullptr; }
+-    virtual const QtShaderTools::glslang::TIntermLoop*          getAsLoopNode()      const { return nullptr; }
++    virtual const glslang::TSourceLoc& getLoc() const { return loc; }
++    virtual void setLoc(const glslang::TSourceLoc& l) { loc = l; }
++    virtual void traverse(glslang::TIntermTraverser*) = 0;
++    virtual       glslang::TIntermTyped*         getAsTyped()               { return nullptr; }
++    virtual       glslang::TIntermOperator*      getAsOperator()            { return nullptr; }
++    virtual       glslang::TIntermConstantUnion* getAsConstantUnion()       { return nullptr; }
++    virtual       glslang::TIntermAggregate*     getAsAggregate()           { return nullptr; }
++    virtual       glslang::TIntermUnary*         getAsUnaryNode()           { return nullptr; }
++    virtual       glslang::TIntermBinary*        getAsBinaryNode()          { return nullptr; }
++    virtual       glslang::TIntermSelection*     getAsSelectionNode()       { return nullptr; }
++    virtual       glslang::TIntermSwitch*        getAsSwitchNode()          { return nullptr; }
++    virtual       glslang::TIntermMethod*        getAsMethodNode()          { return nullptr; }
++    virtual       glslang::TIntermSymbol*        getAsSymbolNode()          { return nullptr; }
++    virtual       glslang::TIntermBranch*        getAsBranchNode()          { return nullptr; }
++    virtual       glslang::TIntermLoop*          getAsLoopNode()            { return nullptr; }
++
++    virtual const glslang::TIntermTyped*         getAsTyped()         const { return nullptr; }
++    virtual const glslang::TIntermOperator*      getAsOperator()      const { return nullptr; }
++    virtual const glslang::TIntermConstantUnion* getAsConstantUnion() const { return nullptr; }
++    virtual const glslang::TIntermAggregate*     getAsAggregate()     const { return nullptr; }
++    virtual const glslang::TIntermUnary*         getAsUnaryNode()     const { return nullptr; }
++    virtual const glslang::TIntermBinary*        getAsBinaryNode()    const { return nullptr; }
++    virtual const glslang::TIntermSelection*     getAsSelectionNode() const { return nullptr; }
++    virtual const glslang::TIntermSwitch*        getAsSwitchNode()    const { return nullptr; }
++    virtual const glslang::TIntermMethod*        getAsMethodNode()    const { return nullptr; }
++    virtual const glslang::TIntermSymbol*        getAsSymbolNode()    const { return nullptr; }
++    virtual const glslang::TIntermBranch*        getAsBranchNode()    const { return nullptr; }
++    virtual const glslang::TIntermLoop*          getAsLoopNode()      const { return nullptr; }
+     virtual ~TIntermNode() { }
+ 
+ protected:
+     TIntermNode(const TIntermNode&);
+     TIntermNode& operator=(const TIntermNode&);
+-    QtShaderTools::glslang::TSourceLoc loc;
++    glslang::TSourceLoc loc;
+ };
+ 
+-namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.cpp
+index c7e828a..81dbc11 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.cpp
+@@ -45,9 +45,10 @@
+ 
+ #include "preprocessor/PpContext.h"
+ 
+-extern int yyparse(QtShaderTools::glslang::TParseContext*);
+-
+ namespace QtShaderTools {
++
++extern int yyparse(glslang::TParseContext*);
++
+ namespace glslang {
+ 
+ TParseContext::TParseContext(TSymbolTable& symbolTable, TIntermediate& interm, bool parsingBuiltins,
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Scan.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/Scan.cpp
+index 8b3facd..73a8f38 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/Scan.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/Scan.cpp
+@@ -57,10 +57,10 @@
+ #include "preprocessor/PpContext.h"
+ #include "preprocessor/PpTokens.h"
+ 
++namespace QtShaderTools {
+ // Required to avoid missing prototype warnings for some compilers
+ int yylex(YYSTYPE*, QtShaderTools::glslang::TParseContext&);
+ 
+-namespace QtShaderTools {
+ namespace glslang {
+ 
+ // read past any white space
+@@ -288,12 +288,11 @@ protected:
+ };
+ 
+ } // end namespace glslang
+-} // namespace QtShaderTools
+ 
+ // This is the function the glslang parser (i.e., bison) calls to get its next token
+-int yylex(YYSTYPE* glslangTokenDesc, QtShaderTools::glslang::TParseContext& parseContext)
++int yylex(YYSTYPE* glslangTokenDesc, glslang::TParseContext& parseContext)
+ {
+-    QtShaderTools::glslang::TParserToken token(*glslangTokenDesc);
++    glslang::TParserToken token(*glslangTokenDesc);
+ 
+     return parseContext.getScanContext()->tokenize(parseContext.getPpContext(), token);
+ }
+@@ -330,7 +329,6 @@ std::unordered_set<const char*, str_hash, str_eq>* ReservedSet = nullptr;
+ 
+ }
+ 
+-namespace QtShaderTools {
+ namespace glslang {
+ 
+ void TScanContext::fillInKeywordMap()
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp
+index 0948777..7c70fa7 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp
+@@ -737,8 +737,9 @@ typedef enum yysymbol_kind_t yysymbol_kind_t;
+ #define parseContext (*pParseContext)
+ #define yyerror(context, msg) context->parserError(msg)
+ 
++namespace QtShaderTools {
+ extern int yylex(YYSTYPE*, TParseContext&);
+-
++} // QtShaderTools
+ 
+ #line 743 "MachineIndependent/glslang_tab.cpp"
+ 
+@@ -4543,7 +4544,7 @@ do {                                                                      \
+ 
+ static void
+ yy_symbol_value_print (FILE *yyo,
+-                       yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, QtShaderTools::glslang::TParseContext* pParseContext)
++                       yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, glslang::TParseContext* pParseContext)
+ {
+   FILE *yyoutput = yyo;
+   YY_USE (yyoutput);
+@@ -4562,7 +4563,7 @@ yy_symbol_value_print (FILE *yyo,
+ 
+ static void
+ yy_symbol_print (FILE *yyo,
+-                 yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, QtShaderTools::glslang::TParseContext* pParseContext)
++                 yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, glslang::TParseContext* pParseContext)
+ {
+   YYFPRINTF (yyo, "%s %s (",
+              yykind < YYNTOKENS ? "token" : "nterm", yysymbol_name (yykind));
+@@ -4601,7 +4602,7 @@ do {                                                            \
+ 
+ static void
+ yy_reduce_print (yy_state_t *yyssp, YYSTYPE *yyvsp,
+-                 int yyrule, QtShaderTools::glslang::TParseContext* pParseContext)
++                 int yyrule, glslang::TParseContext* pParseContext)
+ {
+   int yylno = yyrline[yyrule];
+   int yynrhs = yyr2[yyrule];
+@@ -4930,7 +4931,7 @@ yysyntax_error (YYPTRDIFF_T *yymsg_alloc, char **yymsg,
+ 
+ static void
+ yydestruct (const char *yymsg,
+-            yysymbol_kind_t yykind, YYSTYPE *yyvaluep, QtShaderTools::glslang::TParseContext* pParseContext)
++            yysymbol_kind_t yykind, YYSTYPE *yyvaluep, glslang::TParseContext* pParseContext)
+ {
+   YY_USE (yyvaluep);
+   YY_USE (pParseContext);
+@@ -4952,8 +4953,10 @@ yydestruct (const char *yymsg,
+ | yyparse.  |
+ `----------*/
+ 
++namespace QtShaderTools {
++
+ int
+-yyparse (QtShaderTools::glslang::TParseContext* pParseContext)
++yyparse (glslang::TParseContext* pParseContext)
+ {
+ /* Lookahead token kind.  */
+ int yychar;
+@@ -12641,6 +12644,7 @@ yyreturnlab:
+     YYSTACK_FREE (yymsg);
+   return yyresult;
+ }
++} // QtShaderTools
+ 
+ #line 4492 "MachineIndependent/glslang.y"
+ 
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h
+index c334bf1..7907797 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h
+@@ -523,6 +523,7 @@ extern int yydebug;
+   typedef enum yytokentype yytoken_kind_t;
+ #endif
+ 
++namespace QtShaderTools {
+ /* Value type.  */
+ #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
+ union YYSTYPE
+@@ -530,9 +531,9 @@ union YYSTYPE
+ #line 97 "MachineIndependent/glslang.y"
+ 
+     struct {
+-        QtShaderTools::glslang::TSourceLoc loc;
++        glslang::TSourceLoc loc;
+         union {
+-            QtShaderTools::glslang::TString *string;
++            glslang::TString *string;
+             int i;
+             unsigned int u;
+             long long i64;
+@@ -540,30 +541,30 @@ union YYSTYPE
+             bool b;
+             double d;
+         };
+-        QtShaderTools::glslang::TSymbol* symbol;
++        glslang::TSymbol* symbol;
+     } lex;
+     struct {
+-        QtShaderTools::glslang::TSourceLoc loc;
+-        QtShaderTools::glslang::TOperator op;
++        glslang::TSourceLoc loc;
++        glslang::TOperator op;
+         union {
+             TIntermNode* intermNode;
+-            QtShaderTools::glslang::TIntermNodePair nodePair;
+-            QtShaderTools::glslang::TIntermTyped* intermTypedNode;
+-            QtShaderTools::glslang::TAttributes* attributes;
+-            QtShaderTools::glslang::TSpirvRequirement* spirvReq;
+-            QtShaderTools::glslang::TSpirvInstruction* spirvInst;
+-            QtShaderTools::glslang::TSpirvTypeParameters* spirvTypeParams;
++            glslang::TIntermNodePair nodePair;
++            glslang::TIntermTyped* intermTypedNode;
++            glslang::TAttributes* attributes;
++            glslang::TSpirvRequirement* spirvReq;
++            glslang::TSpirvInstruction* spirvInst;
++            glslang::TSpirvTypeParameters* spirvTypeParams;
+         };
+         union {
+-            QtShaderTools::glslang::TPublicType type;
+-            QtShaderTools::glslang::TFunction* function;
+-            QtShaderTools::glslang::TParameter param;
+-            QtShaderTools::glslang::TTypeLoc typeLine;
+-            QtShaderTools::glslang::TTypeList* typeList;
+-            QtShaderTools::glslang::TArraySizes* arraySizes;
+-            QtShaderTools::glslang::TIdentifierList* identifierList;
++            glslang::TPublicType type;
++            glslang::TFunction* function;
++            glslang::TParameter param;
++            glslang::TTypeLoc typeLine;
++            glslang::TTypeList* typeList;
++            glslang::TArraySizes* arraySizes;
++            glslang::TIdentifierList* identifierList;
+         };
+-        QtShaderTools::glslang::TTypeParameters* typeParameters;
++        glslang::TTypeParameters* typeParameters;
+     } interm;
+ 
+ #line 567 "MachineIndependent/glslang_tab.cpp.h"
+@@ -578,6 +579,6 @@ typedef union YYSTYPE YYSTYPE;
+ 
+ 
+ int yyparse (QtShaderTools::glslang::TParseContext* pParseContext);
+-
++} // namespace QtShaderTools
+ 
+ #endif /* !YY_YY_MACHINEINDEPENDENT_GLSLANG_TAB_CPP_H_INCLUDED  */
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.h b/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.h
+index 6c99786..bc2d5e8 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.h
+@@ -44,9 +44,9 @@
+ // A reflection database and its interface, consistent with the OpenGL API reflection queries.
+ //
+ 
++namespace QtShaderTools {
+ class TInfoSink;
+ 
+-namespace QtShaderTools {
+ namespace glslang {
+ 
+ class TIntermediate;
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h b/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h
+index cc3deb5..5c75f6c 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h
+@@ -49,9 +49,9 @@
+ #include <set>
+ #include <array>
+ 
++namespace QtShaderTools {
+ class TInfoSink;
+ 
+-namespace QtShaderTools {
+ namespace glslang {
+ 
+ struct TMatrixSelector {
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp
+index 07cec37..03184e6 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp
+@@ -46,6 +46,7 @@
+ #include <unordered_set>
+ 
+ #include "localintermediate.h"
++namespace QtShaderTools {
+ namespace {
+ 
+ // Use a string to hold the access chain information, as in most cases the
+@@ -66,31 +67,31 @@ const char ObjectAccesschainDelimiter = '/';
+ 
+ // Mapping from Symbol IDs of symbol nodes, to their defining operation
+ // nodes.
+-typedef std::unordered_multimap<ObjectAccessChain, QtShaderTools::glslang::TIntermOperator*> NodeMapping;
++typedef std::unordered_multimap<ObjectAccessChain, glslang::TIntermOperator*> NodeMapping;
+ // Mapping from object nodes to their access chain info string.
+-typedef std::unordered_map<QtShaderTools::glslang::TIntermTyped*, ObjectAccessChain> AccessChainMapping;
++typedef std::unordered_map<glslang::TIntermTyped*, ObjectAccessChain> AccessChainMapping;
+ 
+ // Set of object IDs.
+ typedef std::unordered_set<ObjectAccessChain> ObjectAccesschainSet;
+ // Set of return branch nodes.
+-typedef std::unordered_set<QtShaderTools::glslang::TIntermBranch*> ReturnBranchNodeSet;
++typedef std::unordered_set<glslang::TIntermBranch*> ReturnBranchNodeSet;
+ 
+ // A helper function to tell whether a node is 'noContraction'. Returns true if
+ // the node has 'noContraction' qualifier, otherwise false.
+-bool isPreciseObjectNode(QtShaderTools::glslang::TIntermTyped* node)
++bool isPreciseObjectNode(glslang::TIntermTyped* node)
+ {
+     return node->getType().getQualifier().isNoContraction();
+ }
+ 
+ // Returns true if the opcode is a dereferencing one.
+-bool isDereferenceOperation(QtShaderTools::glslang::TOperator op)
++bool isDereferenceOperation(glslang::TOperator op)
+ {
+     switch (op) {
+-    case QtShaderTools::glslang::EOpIndexDirect:
+-    case QtShaderTools::glslang::EOpIndexDirectStruct:
+-    case QtShaderTools::glslang::EOpIndexIndirect:
+-    case QtShaderTools::glslang::EOpVectorSwizzle:
+-    case QtShaderTools::glslang::EOpMatrixSwizzle:
++    case glslang::EOpIndexDirect:
++    case glslang::EOpIndexDirectStruct:
++    case glslang::EOpIndexIndirect:
++    case glslang::EOpVectorSwizzle:
++    case glslang::EOpMatrixSwizzle:
+         return true;
+     default:
+         return false;
+@@ -98,29 +99,29 @@ bool isDereferenceOperation(QtShaderTools::glslang::TOperator op)
+ }
+ 
+ // Returns true if the opcode leads to an assignment operation.
+-bool isAssignOperation(QtShaderTools::glslang::TOperator op)
++bool isAssignOperation(glslang::TOperator op)
+ {
+     switch (op) {
+-    case QtShaderTools::glslang::EOpAssign:
+-    case QtShaderTools::glslang::EOpAddAssign:
+-    case QtShaderTools::glslang::EOpSubAssign:
+-    case QtShaderTools::glslang::EOpMulAssign:
+-    case QtShaderTools::glslang::EOpVectorTimesMatrixAssign:
+-    case QtShaderTools::glslang::EOpVectorTimesScalarAssign:
+-    case QtShaderTools::glslang::EOpMatrixTimesScalarAssign:
+-    case QtShaderTools::glslang::EOpMatrixTimesMatrixAssign:
+-    case QtShaderTools::glslang::EOpDivAssign:
+-    case QtShaderTools::glslang::EOpModAssign:
+-    case QtShaderTools::glslang::EOpAndAssign:
+-    case QtShaderTools::glslang::EOpLeftShiftAssign:
+-    case QtShaderTools::glslang::EOpRightShiftAssign:
+-    case QtShaderTools::glslang::EOpInclusiveOrAssign:
+-    case QtShaderTools::glslang::EOpExclusiveOrAssign:
+-
+-    case QtShaderTools::glslang::EOpPostIncrement:
+-    case QtShaderTools::glslang::EOpPostDecrement:
+-    case QtShaderTools::glslang::EOpPreIncrement:
+-    case QtShaderTools::glslang::EOpPreDecrement:
++    case glslang::EOpAssign:
++    case glslang::EOpAddAssign:
++    case glslang::EOpSubAssign:
++    case glslang::EOpMulAssign:
++    case glslang::EOpVectorTimesMatrixAssign:
++    case glslang::EOpVectorTimesScalarAssign:
++    case glslang::EOpMatrixTimesScalarAssign:
++    case glslang::EOpMatrixTimesMatrixAssign:
++    case glslang::EOpDivAssign:
++    case glslang::EOpModAssign:
++    case glslang::EOpAndAssign:
++    case glslang::EOpLeftShiftAssign:
++    case glslang::EOpRightShiftAssign:
++    case glslang::EOpInclusiveOrAssign:
++    case glslang::EOpExclusiveOrAssign:
++
++    case glslang::EOpPostIncrement:
++    case glslang::EOpPostDecrement:
++    case glslang::EOpPreIncrement:
++    case glslang::EOpPreDecrement:
+         return true;
+     default:
+         return false;
+@@ -129,7 +130,7 @@ bool isAssignOperation(QtShaderTools::glslang::TOperator op)
+ 
+ // A helper function to get the unsigned int from a given constant union node.
+ // Note the node should only hold a uint scalar.
+-unsigned getStructIndexFromConstantUnion(QtShaderTools::glslang::TIntermTyped* node)
++unsigned getStructIndexFromConstantUnion(glslang::TIntermTyped* node)
+ {
+     assert(node->getAsConstantUnion() && node->getAsConstantUnion()->isScalar());
+     unsigned struct_dereference_index = node->getAsConstantUnion()->getConstArray()[0].getUConst();
+@@ -137,7 +138,7 @@ unsigned getStructIndexFromConstantUnion(QtShaderTools::glslang::TIntermTyped* n
+ }
+ 
+ // A helper function to generate symbol_label.
+-ObjectAccessChain generateSymbolLabel(QtShaderTools::glslang::TIntermSymbol* node)
++ObjectAccessChain generateSymbolLabel(glslang::TIntermSymbol* node)
+ {
+     ObjectAccessChain symbol_id =
+         std::to_string(node->getId()) + "(" + node->getName().c_str() + ")";
+@@ -146,39 +147,39 @@ ObjectAccessChain generateSymbolLabel(QtShaderTools::glslang::TIntermSymbol* nod
+ 
+ // Returns true if the operation is an arithmetic operation and valid for
+ // the 'NoContraction' decoration.
+-bool isArithmeticOperation(QtShaderTools::glslang::TOperator op)
++bool isArithmeticOperation(glslang::TOperator op)
+ {
+     switch (op) {
+-    case QtShaderTools::glslang::EOpAddAssign:
+-    case QtShaderTools::glslang::EOpSubAssign:
+-    case QtShaderTools::glslang::EOpMulAssign:
+-    case QtShaderTools::glslang::EOpVectorTimesMatrixAssign:
+-    case QtShaderTools::glslang::EOpVectorTimesScalarAssign:
+-    case QtShaderTools::glslang::EOpMatrixTimesScalarAssign:
+-    case QtShaderTools::glslang::EOpMatrixTimesMatrixAssign:
+-    case QtShaderTools::glslang::EOpDivAssign:
+-    case QtShaderTools::glslang::EOpModAssign:
+-
+-    case QtShaderTools::glslang::EOpNegative:
+-
+-    case QtShaderTools::glslang::EOpAdd:
+-    case QtShaderTools::glslang::EOpSub:
+-    case QtShaderTools::glslang::EOpMul:
+-    case QtShaderTools::glslang::EOpDiv:
+-    case QtShaderTools::glslang::EOpMod:
+-
+-    case QtShaderTools::glslang::EOpVectorTimesScalar:
+-    case QtShaderTools::glslang::EOpVectorTimesMatrix:
+-    case QtShaderTools::glslang::EOpMatrixTimesVector:
+-    case QtShaderTools::glslang::EOpMatrixTimesScalar:
+-    case QtShaderTools::glslang::EOpMatrixTimesMatrix:
+-
+-    case QtShaderTools::glslang::EOpDot:
+-
+-    case QtShaderTools::glslang::EOpPostIncrement:
+-    case QtShaderTools::glslang::EOpPostDecrement:
+-    case QtShaderTools::glslang::EOpPreIncrement:
+-    case QtShaderTools::glslang::EOpPreDecrement:
++    case glslang::EOpAddAssign:
++    case glslang::EOpSubAssign:
++    case glslang::EOpMulAssign:
++    case glslang::EOpVectorTimesMatrixAssign:
++    case glslang::EOpVectorTimesScalarAssign:
++    case glslang::EOpMatrixTimesScalarAssign:
++    case glslang::EOpMatrixTimesMatrixAssign:
++    case glslang::EOpDivAssign:
++    case glslang::EOpModAssign:
++
++    case glslang::EOpNegative:
++
++    case glslang::EOpAdd:
++    case glslang::EOpSub:
++    case glslang::EOpMul:
++    case glslang::EOpDiv:
++    case glslang::EOpMod:
++
++    case glslang::EOpVectorTimesScalar:
++    case glslang::EOpVectorTimesMatrix:
++    case glslang::EOpMatrixTimesVector:
++    case glslang::EOpMatrixTimesScalar:
++    case glslang::EOpMatrixTimesMatrix:
++
++    case glslang::EOpDot:
++
++    case glslang::EOpPostIncrement:
++    case glslang::EOpPostDecrement:
++    case glslang::EOpPreIncrement:
++    case glslang::EOpPreDecrement:
+         return true;
+     default:
+         return false;
+@@ -231,18 +232,18 @@ ObjectAccessChain getSubAccessChainAfterPrefix(const ObjectAccessChain& chain,
+ //  1) A mapping from symbol nodes' IDs to their defining operation nodes.
+ //  2) A set of access chains of the initial precise object nodes.
+ //
+-class TSymbolDefinitionCollectingTraverser : public QtShaderTools::glslang::TIntermTraverser {
++class TSymbolDefinitionCollectingTraverser : public glslang::TIntermTraverser {
+ public:
+     TSymbolDefinitionCollectingTraverser(NodeMapping* symbol_definition_mapping,
+                                          AccessChainMapping* accesschain_mapping,
+                                          ObjectAccesschainSet* precise_objects,
+                                          ReturnBranchNodeSet* precise_return_nodes);
+ 
+-    bool visitUnary(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermUnary*) override;
+-    bool visitBinary(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermBinary*) override;
+-    void visitSymbol(QtShaderTools::glslang::TIntermSymbol*) override;
+-    bool visitAggregate(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermAggregate*) override;
+-    bool visitBranch(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermBranch*) override;
++    bool visitUnary(glslang::TVisit, glslang::TIntermUnary*) override;
++    bool visitBinary(glslang::TVisit, glslang::TIntermBinary*) override;
++    void visitSymbol(glslang::TIntermSymbol*) override;
++    bool visitAggregate(glslang::TVisit, glslang::TIntermAggregate*) override;
++    bool visitBranch(glslang::TVisit, glslang::TIntermBranch*) override;
+ 
+ protected:
+     TSymbolDefinitionCollectingTraverser& operator=(const TSymbolDefinitionCollectingTraverser&);
+@@ -265,13 +266,13 @@ protected:
+     // The pointer to the Function Definition node, so we can get the
+     // preciseness of the return expression from it when we traverse the
+     // return branch node.
+-    QtShaderTools::glslang::TIntermAggregate* current_function_definition_node_;
++    glslang::TIntermAggregate* current_function_definition_node_;
+ };
+ 
+ TSymbolDefinitionCollectingTraverser::TSymbolDefinitionCollectingTraverser(
+     NodeMapping* symbol_definition_mapping, AccessChainMapping* accesschain_mapping,
+     ObjectAccesschainSet* precise_objects,
+-    std::unordered_set<QtShaderTools::glslang::TIntermBranch*>* precise_return_nodes)
++    std::unordered_set<glslang::TIntermBranch*>* precise_return_nodes)
+     : TIntermTraverser(true, false, false), symbol_definition_mapping_(*symbol_definition_mapping),
+       precise_objects_(*precise_objects), precise_return_nodes_(*precise_return_nodes),
+       current_object_(), accesschain_mapping_(*accesschain_mapping),
+@@ -281,28 +282,28 @@ TSymbolDefinitionCollectingTraverser::TSymbolDefinitionCollectingTraverser(
+ // current node symbol ID, and record a mapping from this node to the current
+ // current_object_, which is the just obtained symbol
+ // ID.
+-void TSymbolDefinitionCollectingTraverser::visitSymbol(QtShaderTools::glslang::TIntermSymbol* node)
++void TSymbolDefinitionCollectingTraverser::visitSymbol(glslang::TIntermSymbol* node)
+ {
+     current_object_ = generateSymbolLabel(node);
+     accesschain_mapping_[node] = current_object_;
+ }
+ 
+ // Visits an aggregate node, traverses all of its children.
+-bool TSymbolDefinitionCollectingTraverser::visitAggregate(QtShaderTools::glslang::TVisit,
+-                                                          QtShaderTools::glslang::TIntermAggregate* node)
++bool TSymbolDefinitionCollectingTraverser::visitAggregate(glslang::TVisit,
++                                                          glslang::TIntermAggregate* node)
+ {
+     // This aggregate node might be a function definition node, in which case we need to
+     // cache this node, so we can get the preciseness information of the return value
+     // of this function later.
+-    StateSettingGuard<QtShaderTools::glslang::TIntermAggregate*> current_function_definition_node_setting_guard(
++    StateSettingGuard<glslang::TIntermAggregate*> current_function_definition_node_setting_guard(
+         &current_function_definition_node_);
+-    if (node->getOp() == QtShaderTools::glslang::EOpFunction) {
++    if (node->getOp() == glslang::EOpFunction) {
+         // This is function definition node, we need to cache this node so that we can
+         // get the preciseness of the return value later.
+         current_function_definition_node_setting_guard.setState(node);
+     }
+     // Traverse the items in the sequence.
+-    QtShaderTools::glslang::TIntermSequence& seq = node->getSequence();
++    glslang::TIntermSequence& seq = node->getSequence();
+     for (int i = 0; i < (int)seq.size(); ++i) {
+         current_object_.clear();
+         seq[i]->traverse(this);
+@@ -310,10 +311,10 @@ bool TSymbolDefinitionCollectingTraverser::visitAggregate(QtShaderTools::glslang
+     return false;
+ }
+ 
+-bool TSymbolDefinitionCollectingTraverser::visitBranch(QtShaderTools::glslang::TVisit,
+-                                                       QtShaderTools::glslang::TIntermBranch* node)
++bool TSymbolDefinitionCollectingTraverser::visitBranch(glslang::TVisit,
++                                                       glslang::TIntermBranch* node)
+ {
+-    if (node->getFlowOp() == QtShaderTools::glslang::EOpReturn && node->getExpression() &&
++    if (node->getFlowOp() == glslang::EOpReturn && node->getExpression() &&
+         current_function_definition_node_ &&
+         current_function_definition_node_->getType().getQualifier().noContraction) {
+         // This node is a return node with an expression, and its function has a
+@@ -326,8 +327,8 @@ bool TSymbolDefinitionCollectingTraverser::visitBranch(QtShaderTools::glslang::T
+ }
+ 
+ // Visits a unary node. This might be an implicit assignment like i++, i--. etc.
+-bool TSymbolDefinitionCollectingTraverser::visitUnary(QtShaderTools::glslang::TVisit /* visit */,
+-                                                      QtShaderTools::glslang::TIntermUnary* node)
++bool TSymbolDefinitionCollectingTraverser::visitUnary(glslang::TVisit /* visit */,
++                                                      glslang::TIntermUnary* node)
+ {
+     current_object_.clear();
+     node->getOperand()->traverse(this);
+@@ -356,8 +357,8 @@ bool TSymbolDefinitionCollectingTraverser::visitUnary(QtShaderTools::glslang::TV
+ 
+ // Visits a binary node and updates the mapping from symbol IDs to the definition
+ // nodes. Also collects the access chains for the initial precise objects.
+-bool TSymbolDefinitionCollectingTraverser::visitBinary(QtShaderTools::glslang::TVisit /* visit */,
+-                                                       QtShaderTools::glslang::TIntermBinary* node)
++bool TSymbolDefinitionCollectingTraverser::visitBinary(glslang::TVisit /* visit */,
++                                                       glslang::TIntermBinary* node)
+ {
+     // Traverses the left node to build the access chain info for the object.
+     current_object_.clear();
+@@ -391,7 +392,7 @@ bool TSymbolDefinitionCollectingTraverser::visitBinary(QtShaderTools::glslang::T
+         // The left node (parent node) is a struct type object. We need to
+         // record the access chain information of the current node into its
+         // object id.
+-        if (node->getOp() == QtShaderTools::glslang::EOpIndexDirectStruct) {
++        if (node->getOp() == glslang::EOpIndexDirectStruct) {
+             unsigned struct_dereference_index = getStructIndexFromConstantUnion(node->getRight());
+             current_object_.push_back(ObjectAccesschainDelimiter);
+             current_object_.append(std::to_string(struct_dereference_index));
+@@ -415,7 +416,7 @@ bool TSymbolDefinitionCollectingTraverser::visitBinary(QtShaderTools::glslang::T
+ // 3) a set of access chains of precise objects.
+ // 4) a set of return nodes with precise expressions.
+ std::tuple<NodeMapping, AccessChainMapping, ObjectAccesschainSet, ReturnBranchNodeSet>
+-getSymbolToDefinitionMappingAndPreciseSymbolIDs(const QtShaderTools::glslang::TIntermediate& intermediate)
++getSymbolToDefinitionMappingAndPreciseSymbolIDs(const glslang::TIntermediate& intermediate)
+ {
+     auto result_tuple = std::make_tuple(NodeMapping(), AccessChainMapping(), ObjectAccesschainSet(),
+                                         ReturnBranchNodeSet());
+@@ -451,7 +452,7 @@ getSymbolToDefinitionMappingAndPreciseSymbolIDs(const QtShaderTools::glslang::TI
+ //  the access chain of the given 'precise' object along with the traversal to
+ //  tell if the node to be defined is 'precise' or not.
+ //
+-class TNoContractionAssigneeCheckingTraverser : public QtShaderTools::glslang::TIntermTraverser {
++class TNoContractionAssigneeCheckingTraverser : public glslang::TIntermTraverser {
+ 
+     enum DecisionStatus {
+         // The object node to be assigned to may contain 'precise' objects and also not 'precise' objects.
+@@ -482,13 +483,13 @@ public:
+     //  assignee is 'precise'. Otherwise it shows the path to the nested
+     //  precise object.
+     std::tuple<bool, ObjectAccessChain>
+-    getPrecisenessAndRemainedAccessChain(QtShaderTools::glslang::TIntermOperator* node,
++    getPrecisenessAndRemainedAccessChain(glslang::TIntermOperator* node,
+                                          const ObjectAccessChain& precise_object)
+     {
+         assert(isAssignOperation(node->getOp()));
+         precise_object_ = &precise_object;
+         ObjectAccessChain assignee_object;
+-        if (QtShaderTools::glslang::TIntermBinary* BN = node->getAsBinaryNode()) {
++        if (glslang::TIntermBinary* BN = node->getAsBinaryNode()) {
+             // This is a binary assignment node, we need to check the
+             // preciseness of the left node.
+             assert(accesschain_mapping_.count(BN->getLeft()));
+@@ -506,7 +507,7 @@ public:
+             // of the assignee object with the given precise object.
+             assignee_object = accesschain_mapping_.at(BN->getLeft());
+ 
+-        } else if (QtShaderTools::glslang::TIntermUnary* UN = node->getAsUnaryNode()) {
++        } else if (glslang::TIntermUnary* UN = node->getAsUnaryNode()) {
+             // This is a unary assignment node, we need to check the
+             // preciseness of the operand node. For unary assignment node, the
+             // operand node should always be an object node.
+@@ -553,8 +554,8 @@ public:
+ protected:
+     TNoContractionAssigneeCheckingTraverser& operator=(const TNoContractionAssigneeCheckingTraverser&);
+ 
+-    bool visitBinary(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermBinary* node) override;
+-    void visitSymbol(QtShaderTools::glslang::TIntermSymbol* node) override;
++    bool visitBinary(glslang::TVisit, glslang::TIntermBinary* node) override;
++    void visitSymbol(glslang::TIntermSymbol* node) override;
+ 
+     // A map from object nodes to their access chain string (used as object ID).
+     const AccessChainMapping& accesschain_mapping_;
+@@ -568,8 +569,8 @@ protected:
+ // Visits a binary node. If the node is an object node, it must be a dereference
+ // node. In such cases, if the left node is 'precise', this node should also be
+ // 'precise'.
+-bool TNoContractionAssigneeCheckingTraverser::visitBinary(QtShaderTools::glslang::TVisit,
+-                                                          QtShaderTools::glslang::TIntermBinary* node)
++bool TNoContractionAssigneeCheckingTraverser::visitBinary(glslang::TVisit,
++                                                          glslang::TIntermBinary* node)
+ {
+     // Traverses the left so that we transfer the 'precise' from nesting object
+     // to its nested object.
+@@ -594,7 +595,7 @@ bool TNoContractionAssigneeCheckingTraverser::visitBinary(QtShaderTools::glslang
+ 
+ // Visits a symbol node, if the symbol node ID (its access chain string) matches
+ // with the given precise object, this node should be 'precise'.
+-void TNoContractionAssigneeCheckingTraverser::visitSymbol(QtShaderTools::glslang::TIntermSymbol* node)
++void TNoContractionAssigneeCheckingTraverser::visitSymbol(glslang::TIntermSymbol* node)
+ {
+     // A symbol node should always be an object node, and should have been added
+     // to the map from object nodes to their access chain strings.
+@@ -613,7 +614,7 @@ void TNoContractionAssigneeCheckingTraverser::visitSymbol(QtShaderTools::glslang
+ // 2) Find the object which should be marked as 'precise' in the right and
+ //    update the 'precise' object work list.
+ //
+-class TNoContractionPropagator : public QtShaderTools::glslang::TIntermTraverser {
++class TNoContractionPropagator : public glslang::TIntermTraverser {
+ public:
+     TNoContractionPropagator(ObjectAccesschainSet* precise_objects,
+                              const AccessChainMapping& accesschain_mapping)
+@@ -625,17 +626,17 @@ public:
+     // access chain record from the assignee node to a 'precise' object it
+     // contains.
+     void
+-    propagateNoContractionInOneExpression(QtShaderTools::glslang::TIntermTyped* defining_node,
++    propagateNoContractionInOneExpression(glslang::TIntermTyped* defining_node,
+                                           const ObjectAccessChain& assignee_remained_accesschain)
+     {
+         remained_accesschain_ = assignee_remained_accesschain;
+-        if (QtShaderTools::glslang::TIntermBinary* BN = defining_node->getAsBinaryNode()) {
++        if (glslang::TIntermBinary* BN = defining_node->getAsBinaryNode()) {
+             assert(isAssignOperation(BN->getOp()));
+             BN->getRight()->traverse(this);
+             if (isArithmeticOperation(BN->getOp())) {
+                 BN->getWritableType().getQualifier().noContraction = true;
+             }
+-        } else if (QtShaderTools::glslang::TIntermUnary* UN = defining_node->getAsUnaryNode()) {
++        } else if (glslang::TIntermUnary* UN = defining_node->getAsUnaryNode()) {
+             assert(isAssignOperation(UN->getOp()));
+             UN->getOperand()->traverse(this);
+             if (isArithmeticOperation(UN->getOp())) {
+@@ -645,10 +646,10 @@ public:
+     }
+ 
+     // Propagates 'precise' in a given precise return node.
+-    void propagateNoContractionInReturnNode(QtShaderTools::glslang::TIntermBranch* return_node)
++    void propagateNoContractionInReturnNode(glslang::TIntermBranch* return_node)
+     {
+         remained_accesschain_ = "";
+-        assert(return_node->getFlowOp() == QtShaderTools::glslang::EOpReturn && return_node->getExpression());
++        assert(return_node->getFlowOp() == glslang::EOpReturn && return_node->getExpression());
+         return_node->getExpression()->traverse(this);
+     }
+ 
+@@ -659,9 +660,9 @@ protected:
+     // case we need to find the 'precise' or 'precise' containing object node
+     // with the access chain record. In other cases, just need to traverse all
+     // the children nodes.
+-    bool visitAggregate(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermAggregate* node) override
++    bool visitAggregate(glslang::TVisit, glslang::TIntermAggregate* node) override
+     {
+-        if (!remained_accesschain_.empty() && node->getOp() == QtShaderTools::glslang::EOpConstructStruct) {
++        if (!remained_accesschain_.empty() && node->getOp() == glslang::EOpConstructStruct) {
+             // This is a struct initializer node, and the remained
+             // access chain is not empty, we need to refer to the
+             // assignee_remained_access_chain_ to find the nested
+@@ -673,7 +674,7 @@ protected:
+                 getFrontElement(remained_accesschain_);
+             unsigned precise_accesschain_index = (unsigned)strtoul(precise_accesschain_index_str.c_str(), nullptr, 10);
+             // Gets the node pointed by the access chain index extracted before.
+-            QtShaderTools::glslang::TIntermTyped* potential_precise_node =
++            glslang::TIntermTyped* potential_precise_node =
+                 node->getSequence()[precise_accesschain_index]->getAsTyped();
+             assert(potential_precise_node);
+             // Pop the front access chain index from the path, and visit the nested node.
+@@ -695,7 +696,7 @@ protected:
+     // an object node. If the binary node does not represent an object node, it should
+     // go on to traverse its children nodes and if it is an arithmetic operation node, this
+     // operation should be marked as 'noContraction'.
+-    bool visitBinary(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermBinary* node) override
++    bool visitBinary(glslang::TVisit, glslang::TIntermBinary* node) override
+     {
+         if (isDereferenceOperation(node->getOp())) {
+             // This binary node is an object node. Need to update the precise
+@@ -718,7 +719,7 @@ protected:
+             return false;
+         }
+         // If this is an arithmetic operation, marks this node as 'noContraction'.
+-        if (isArithmeticOperation(node->getOp()) && node->getBasicType() != QtShaderTools::glslang::EbtInt) {
++        if (isArithmeticOperation(node->getOp()) && node->getBasicType() != glslang::EbtInt) {
+             node->getWritableType().getQualifier().noContraction = true;
+         }
+         // As this node is not an object node, need to traverse the children nodes.
+@@ -727,7 +728,7 @@ protected:
+ 
+     // Visits a unary node. A unary node can not be an object node. If the operation
+     // is an arithmetic operation, need to mark this node as 'noContraction'.
+-    bool visitUnary(QtShaderTools::glslang::TVisit /* visit */, QtShaderTools::glslang::TIntermUnary* node) override
++    bool visitUnary(glslang::TVisit /* visit */, glslang::TIntermUnary* node) override
+     {
+         // If this is an arithmetic operation, marks this with 'noContraction'
+         if (isArithmeticOperation(node->getOp())) {
+@@ -741,7 +742,7 @@ protected:
+     // nodes to access chains.  As an object node, a symbol node can be either
+     // 'precise' or containing 'precise' objects according to unused
+     // access chain information we have when we visit this node.
+-    void visitSymbol(QtShaderTools::glslang::TIntermSymbol* node) override
++    void visitSymbol(glslang::TIntermSymbol* node) override
+     {
+         // Symbol nodes are object nodes and should always have an
+         // access chain collected before matches with it.
+@@ -779,10 +780,9 @@ protected:
+ };
+ }
+ 
+-namespace QtShaderTools {
+ namespace glslang {
+ 
+-void PropagateNoContraction(const QtShaderTools::glslang::TIntermediate& intermediate)
++void PropagateNoContraction(const glslang::TIntermediate& intermediate)
+ {
+     // First, traverses the AST, records symbols with their defining operations
+     // and collects the initial set of precise symbols (symbol nodes that marked
+@@ -825,7 +825,7 @@ void PropagateNoContraction(const QtShaderTools::glslang::TIntermediate& interme
+     // objects in the return expression should be added to the precise object
+     // access chain set.
+     while (!precise_return_nodes.empty()) {
+-        QtShaderTools::glslang::TIntermBranch* precise_return_node = *precise_return_nodes.begin();
++        glslang::TIntermBranch* precise_return_node = *precise_return_nodes.begin();
+         propagator.propagateNoContractionInReturnNode(precise_return_node);
+         precise_return_nodes.erase(precise_return_node);
+     }
+diff --git a/src/3rdparty/glslang/glslang/Public/ShaderLang.h b/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+index 7bb7bc9..fad2664 100755
+--- a/src/3rdparty/glslang/glslang/Public/ShaderLang.h
++++ b/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+@@ -399,10 +399,10 @@ GLSLANG_EXPORT int ShGetUniformLocation_Qt(const ShHandle uniformMap, const char
+ #include <string>
+ #include <utility>
+ 
++namespace QtShaderTools {
+ class TCompiler;
+ class TInfoSink;
+ 
+-namespace QtShaderTools {
+ namespace glslang {
+ 
+ struct Version {

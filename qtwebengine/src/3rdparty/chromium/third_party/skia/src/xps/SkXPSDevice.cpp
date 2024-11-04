@@ -24,9 +24,7 @@
 
 #include "include/core/SkColor.h"
 #include "include/core/SkData.h"
-#include "include/core/SkEncodedImageFormat.h"
 #include "include/core/SkImage.h"
-#include "include/core/SkImageEncoder.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPathEffect.h"
 #include "include/core/SkPathUtils.h"
@@ -35,13 +33,14 @@
 #include "include/core/SkSize.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkVertices.h"
+#include "include/encode/SkPngEncoder.h"
 #include "include/pathops/SkPathOps.h"
 #include "include/private/base/SkTDArray.h"
 #include "include/private/base/SkTo.h"
+#include "src/base/SkEndian.h"
 #include "src/base/SkTLazy.h"
 #include "src/base/SkUtils.h"
 #include "src/core/SkDraw.h"
-#include "src/core/SkEndian.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkImagePriv.h"
 #include "src/core/SkMaskFilterBase.h"
@@ -50,6 +49,7 @@
 #include "src/image/SkImage_Base.h"
 #include "src/sfnt/SkSFNTHeader.h"
 #include "src/sfnt/SkTTCFHeader.h"
+#include "src/shaders/SkColorShader.h"
 #include "src/shaders/SkShaderBase.h"
 #include "src/text/GlyphRun.h"
 #include "src/utils/SkClipStackUtils.h"
@@ -628,13 +628,13 @@ static XPS_TILE_MODE SkToXpsTileMode(SkTileMode tmx, SkTileMode tmy) {
 }
 
 HRESULT SkXPSDevice::createXpsImageBrush(
-        const SkBitmap& bitmap,
+        const SkPixmap& bitmap,
         const SkMatrix& localMatrix,
         const SkTileMode (&xy)[2],
         const SkAlpha alpha,
         IXpsOMTileBrush** xpsBrush) {
     SkDynamicMemoryWStream write;
-    if (!SkEncodeImage(&write, bitmap, SkEncodedImageFormat::kPNG, 100)) {
+    if (!SkPngEncoder::Encode(&write, bitmap, {})) {
         HRM(E_FAIL, "Unable to encode bitmap as png.");
     }
     SkTScopedComPtr<IStream> read;
@@ -977,22 +977,16 @@ HRESULT SkXPSDevice::createXpsBrush(const SkPaint& skPaint,
     }
 
     //Gradient shaders.
-    SkShaderBase::GradientInfo info;
-    SkShaderBase::GradientType gradientType = as_SB(shader)->asGradient(&info);
+    auto shaderBase = as_SB(shader);
 
-    if (gradientType == SkShaderBase::GradientType::kNone) {
-        //Nothing to see, move along.
-
-    } else if (gradientType == SkShaderBase::GradientType::kColor) {
-        SkASSERT(1 == info.fColorCount);
-        SkColor color;
-        info.fColors = &color;
-        as_SB(shader)->asGradient(&info);
+    if (shaderBase->type() == SkShaderBase::ShaderType::kColor) {
+        auto colorShader = static_cast<const SkColorShader*>(shader);
         SkAlpha alpha = skPaint.getAlpha();
-        HR(this->createXpsSolidColorBrush(color, alpha, brush));
+        HR(this->createXpsSolidColorBrush(colorShader->color(), alpha, brush));
         return S_OK;
-
-    } else {
+    } else if (shaderBase->type() == SkShaderBase::ShaderType::kGradientBase) {
+        SkShaderBase::GradientInfo info;
+        SkShaderBase::GradientType gradientType = shaderBase->asGradient(&info);
         if (info.fColorCount == 0) {
             const SkColor color = skPaint.getColor();
             HR(this->createXpsSolidColorBrush(color, 0xFF, brush));
@@ -1004,7 +998,7 @@ HRESULT SkXPSDevice::createXpsBrush(const SkPaint& skPaint,
         AutoTArray<SkScalar> colorOffsets(info.fColorCount);
         info.fColors = colors.get();
         info.fColorOffsets = colorOffsets.get();
-        as_SB(shader)->asGradient(&info, &localMatrix);
+        shaderBase->asGradient(&info, &localMatrix);
 
         if (1 == info.fColorCount) {
             SkColor color = info.fColors[0];
@@ -1056,7 +1050,8 @@ HRESULT SkXPSDevice::createXpsBrush(const SkPaint& skPaint,
         }
 
         SkTScopedComPtr<IXpsOMTileBrush> tileBrush;
-        HR(this->createXpsImageBrush(outTexture, outMatrix, xy, skPaint.getAlpha(), &tileBrush));
+        HR(this->createXpsImageBrush(outTexture.pixmap(), outMatrix, xy, skPaint.getAlpha(),
+                                     &tileBrush));
 
         HRM(tileBrush->QueryInterface<IXpsOMBrush>(brush), "QI failed.");
     } else {
@@ -1415,11 +1410,12 @@ HRESULT SkXPSDevice::applyMask(const SkMask& mask,
     xy[0] = (SkTileMode)3;
     xy[1] = (SkTileMode)3;
 
-    SkBitmap bm;
-    bm.installMaskPixels(mask);
+    SkASSERT(mask.fFormat == SkMask::kA8_Format);
+    SkPixmap pm(SkImageInfo::MakeA8(mask.fBounds.width(), mask.fBounds.height()),
+                mask.fImage, mask.fRowBytes);
 
     SkTScopedComPtr<IXpsOMTileBrush> maskBrush;
-    HR(this->createXpsImageBrush(bm, m, xy, 0xFF, &maskBrush));
+    HR(this->createXpsImageBrush(pm, m, xy, 0xFF, &maskBrush));
     HRM(shadedPath->SetOpacityMaskBrushLocal(maskBrush.get()),
         "Could not set mask.");
 
@@ -1583,25 +1579,25 @@ void SkXPSDevice::drawPath(const SkPath& platonicPath,
                                             ? SkStrokeRec::kFill_InitStyle
                                             : SkStrokeRec::kHairline_InitStyle;
         //[Pixel-path -> Mask]
-        SkMask rasteredMask;
+        SkMaskBuilder rasteredMask;
         if (SkDraw::DrawToMask(
                         *pixelPath,
                         clipIRect,
                         filter,  //just to compute how much to draw.
                         &matrix,
                         &rasteredMask,
-                        SkMask::kComputeBoundsAndRenderImage_CreateMode,
+                        SkMaskBuilder::kComputeBoundsAndRenderImage_CreateMode,
                         style)) {
 
-            SkAutoMaskFreeImage rasteredAmi(rasteredMask.fImage);
+            SkAutoMaskFreeImage rasteredAmi(rasteredMask.image());
             mask = &rasteredMask;
 
             //[Mask -> Mask]
-            SkMask filteredMask;
+            SkMaskBuilder filteredMask;
             if (as_MFB(filter)->filterMask(&filteredMask, rasteredMask, matrix, nullptr)) {
                 mask = &filteredMask;
             }
-            SkAutoMaskFreeImage filteredAmi(filteredMask.fImage);
+            SkAutoMaskFreeImage filteredAmi(filteredMask.image());
 
             //Draw mask.
             HRV(this->applyMask(*mask, ppuScale, shadedPath.get()));

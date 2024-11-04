@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="hu_HU">
+    <extra-po-header-language>hu</extra-po-header-language>
+    <extra-po-header-language_team>Hungarian &lt;kde-l10n-hu@kde.org&gt;</extra-po-header-language_team>
+    <extra-po-header-last_translator>Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header-last_translator>
+    <extra-po-header-po_revision_date>2024-02-07 21:53+0100</extra-po-header-po_revision_date>
+    <extra-po-header-project_id_version></extra-po-header-project_id_version>
+    <extra-po-header-x_generator>Lokalize 23.08.4</extra-po-header-x_generator>
+    <extra-po-header_comment># SPDX-FileCopyrightText: 2024 Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header_comment>
+    <extra-po-headers>MIME-Version,Content-Type,Content-Transfer-Encoding,Plural-Forms,X-Language,X-Qt-Contexts,Last-Translator,PO-Revision-Date,Project-Id-Version,Language-Team,Language,X-Generator</extra-po-headers>
 <context>
     <name>QDeclarativeGeoMap</name>
     <message>
@@ -478,10 +486,10 @@ Látogassa meg a következő oldalt: https://www.mapbox.com</translation>
         <translation>A(z) „%1” index kívül esik a tartományon</translation>
     </message>
     <message>
-        <source>Qt Location requires app_id and token parameters.
+        <source>Qt Location requires apiKey parameter.
 Please register at https://developer.here.com/ to get your personal application credentials.</source>
-        <translation>A Qt helymeghatározáshoz az app_id és a token paraméterek szükségesek.
-Regisztráljon a https://developer.here.com/ címen a személyes alkalmazás hitelesítési adatok beszerzéséhez.</translation>
+        <translation>A Qt helymeghatározáshoz apiKey paraméter szükséges.
+Kérjük, regisztráljon a https://developer.here.com/ címen, hogy megkapja a személyes alkalmazáshitelesítési adatait.</translation>
     </message>
     <message>
         <source>Saving places is not supported.</source>
@@ -514,6 +522,12 @@ Regisztráljon a https://developer.here.com/ címen a személyes alkalmazás hit
     <message>
         <source>The response from the service was not in a recognizable format.</source>
         <translation>A szolgáltatástól érkező válasz nem felismerhető formátumban volt.</translation>
+    </message>
+    <message>
+        <source>Qt Location requires app_id and token parameters.
+Please register at https://developer.here.com/ to get your personal application credentials.</source>
+        <translation type="vanished">A Qt helymeghatározáshoz az app_id és a token paraméterek szükségesek.
+Kérjük, regisztráljon a https://developer.here.com/ címen, hogy megkapja a személyes alkalmazáshitelesítési adatait.</translation>
     </message>
 </context>
 <context>

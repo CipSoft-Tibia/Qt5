@@ -155,8 +155,8 @@ std::unique_ptr<ClientControlledShellSurface>
 Display::CreateOrGetClientControlledShellSurface(
     Surface* surface,
     int container,
-    double default_device_scale_factor,
-    bool default_scale_cancellation) {
+    bool default_scale_cancellation,
+    bool supports_floated_state) {
   TRACE_EVENT2("exo", "Display::CreateRemoteShellSurface", "surface",
                surface->AsTracedValue(), "container", container);
 
@@ -187,12 +187,8 @@ Display::CreateOrGetClientControlledShellSurface(
                                      default_scale_cancellation);
   } else {
     shell_surface = std::make_unique<ClientControlledShellSurface>(
-        surface, can_minimize, container, default_scale_cancellation);
-  }
-
-  if (default_scale_cancellation) {
-    shell_surface->SetScale(default_device_scale_factor);
-    shell_surface->CommitPendingScale();
+        surface, can_minimize, container, default_scale_cancellation,
+        supports_floated_state);
   }
   return shell_surface;
 }
@@ -215,7 +211,6 @@ std::unique_ptr<NotificationSurface> Display::CreateNotificationSurface(
 
 std::unique_ptr<InputMethodSurface> Display::CreateInputMethodSurface(
     Surface* surface,
-    double default_device_scale_factor,
     bool default_scale_cancellation) {
   TRACE_EVENT1("exo", "Display::CreateInputMethodSurface", "surface",
                surface->AsTracedValue());
@@ -234,16 +229,11 @@ std::unique_ptr<InputMethodSurface> Display::CreateInputMethodSurface(
       std::make_unique<InputMethodSurface>(input_method_surface_manager_.get(),
                                            surface,
                                            default_scale_cancellation));
-  if (default_scale_cancellation) {
-    input_method_surface->SetScale(default_device_scale_factor);
-    input_method_surface->CommitPendingScale();
-  }
   return input_method_surface;
 }
 
 std::unique_ptr<ToastSurface> Display::CreateToastSurface(
     Surface* surface,
-    double default_device_scale_factor,
     bool default_scale_cancellation) {
   TRACE_EVENT1("exo", "Display::CreateToastSurface", "surface",
                surface->AsTracedValue());
@@ -260,10 +250,6 @@ std::unique_ptr<ToastSurface> Display::CreateToastSurface(
 
   std::unique_ptr<ToastSurface> toast_surface(std::make_unique<ToastSurface>(
       toast_surface_manager_.get(), surface, default_scale_cancellation));
-  if (default_scale_cancellation) {
-    toast_surface->SetScale(default_device_scale_factor);
-    toast_surface->CommitPendingScale();
-  }
   return toast_surface;
 }
 

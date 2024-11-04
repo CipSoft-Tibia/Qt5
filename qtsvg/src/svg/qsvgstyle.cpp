@@ -34,12 +34,12 @@ QSvgStyleProperty::~QSvgStyleProperty()
 {
 }
 
-void QSvgFillStyleProperty::apply(QPainter *, const QSvgNode *, QSvgExtraStates &)
+void QSvgPaintStyleProperty::apply(QPainter *, const QSvgNode *, QSvgExtraStates &)
 {
     Q_ASSERT(!"This should not be called!");
 }
 
-void QSvgFillStyleProperty::revert(QPainter *, QSvgExtraStates &)
+void QSvgPaintStyleProperty::revert(QPainter *, QSvgExtraStates &)
 {
     Q_ASSERT(!"This should not be called!");
 }
@@ -94,7 +94,7 @@ QSvgFillStyle::QSvgFillStyle()
     , m_oldFillRule(Qt::WindingFill)
     , m_fillOpacity(1.0)
     , m_oldFillOpacity(0)
-    , m_gradientResolved(1)
+    , m_paintStyleResolved(1)
     , m_fillRuleSet(0)
     , m_fillOpacitySet(0)
     , m_fillSet(0)
@@ -113,7 +113,7 @@ void QSvgFillStyle::setFillOpacity(qreal opacity)
     m_fillOpacity = opacity;
 }
 
-void QSvgFillStyle::setFillStyle(QSvgFillStyleProperty* style)
+void QSvgFillStyle::setFillStyle(QSvgPaintStyleProperty* style)
 {
     m_style = style;
     m_fillSet = 1;
@@ -126,7 +126,7 @@ void QSvgFillStyle::setBrush(QBrush brush)
     m_fillSet = 1;
 }
 
-void QSvgFillStyle::apply(QPainter *p, const QSvgNode *, QSvgExtraStates &states)
+void QSvgFillStyle::apply(QPainter *p, const QSvgNode *n, QSvgExtraStates &states)
 {
     m_oldFill = p->brush();
     m_oldFillRule = states.fillRule;
@@ -136,7 +136,7 @@ void QSvgFillStyle::apply(QPainter *p, const QSvgNode *, QSvgExtraStates &states
         states.fillRule = m_fillRule;
     if (m_fillSet) {
         if (m_style)
-            p->setBrush(m_style->brush(p, states));
+            p->setBrush(m_style->brush(p, n, states));
         else
             p->setBrush(m_fill);
     }
@@ -249,7 +249,7 @@ QSvgStrokeStyle::QSvgStrokeStyle()
     , m_strokeDashOffset(0)
     , m_oldStrokeDashOffset(0)
     , m_style(0)
-    , m_gradientResolved(1)
+    , m_paintStyleResolved(1)
     , m_vectorEffect(0)
     , m_oldVectorEffect(0)
     , m_strokeSet(0)
@@ -264,7 +264,7 @@ QSvgStrokeStyle::QSvgStrokeStyle()
 {
 }
 
-void QSvgStrokeStyle::apply(QPainter *p, const QSvgNode *, QSvgExtraStates &states)
+void QSvgStrokeStyle::apply(QPainter *p, const QSvgNode *n, QSvgExtraStates &states)
 {
     m_oldStroke = p->pen();
     m_oldStrokeOpacity = states.strokeOpacity;
@@ -289,7 +289,7 @@ void QSvgStrokeStyle::apply(QPainter *p, const QSvgNode *, QSvgExtraStates &stat
 
     if (m_strokeSet) {
         if (m_style)
-            pen.setBrush(m_style->brush(p, states));
+            pen.setBrush(m_style->brush(p, n, states));
         else
             pen.setBrush(m_stroke.brush());
     }
@@ -384,7 +384,7 @@ QSvgGradientStyle::QSvgGradientStyle(QGradient *grad)
 {
 }
 
-QBrush QSvgGradientStyle::brush(QPainter *, QSvgExtraStates &)
+QBrush QSvgGradientStyle::brush(QPainter *, const QSvgNode *, QSvgExtraStates &)
 {
     if (!m_link.isEmpty()) {
         resolveStops();
@@ -410,6 +410,20 @@ void QSvgGradientStyle::setTransform(const QTransform &transform)
     m_transform = transform;
 }
 
+QSvgPatternStyle::QSvgPatternStyle(QSvgPattern *pattern)
+    : m_pattern(pattern)
+{
+
+}
+
+QBrush QSvgPatternStyle::brush(QPainter *p, const QSvgNode *node, QSvgExtraStates &states)
+{
+    m_patternImage = m_pattern->patternImage(p, states, node);
+    QBrush b(m_patternImage);
+    b.setTransform(m_pattern->appliedTransform());
+    return b;
+}
+
 QSvgTransformStyle::QSvgTransformStyle(const QTransform &trans)
     : m_transform(trans)
 {
@@ -417,13 +431,13 @@ QSvgTransformStyle::QSvgTransformStyle(const QTransform &trans)
 
 void QSvgTransformStyle::apply(QPainter *p, const QSvgNode *, QSvgExtraStates &)
 {
-    m_oldWorldTransform = p->worldTransform();
+    m_oldWorldTransform.push(p->worldTransform());
     p->setWorldTransform(m_transform, true);
 }
 
 void QSvgTransformStyle::revert(QPainter *p, QSvgExtraStates &)
 {
-    p->setWorldTransform(m_oldWorldTransform, false /* don't combine */);
+    p->setWorldTransform(m_oldWorldTransform.pop(), false /* don't combine */);
 }
 
 QSvgStyleProperty::Type QSvgQualityStyle::type() const
@@ -459,6 +473,11 @@ QSvgStyleProperty::Type QSvgSolidColorStyle::type() const
 QSvgStyleProperty::Type QSvgGradientStyle::type() const
 {
     return GRADIENT;
+}
+
+QSvgStyleProperty::Type QSvgPatternStyle::type() const
+{
+    return PATTERN;
 }
 
 QSvgStyleProperty::Type QSvgTransformStyle::type() const

@@ -57,9 +57,6 @@ class QuicPacketPrinter : public QuicFramerVisitorInterface {
     return true;
   }
   void OnPacket() override { std::cerr << "OnPacket\n"; }
-  void OnPublicResetPacket(const QuicPublicResetPacket& /*packet*/) override {
-    std::cerr << "OnPublicResetPacket\n";
-  }
   void OnVersionNegotiationPacket(
       const QuicVersionNegotiationPacket& /*packet*/) override {
     std::cerr << "OnVersionNegotiationPacket\n";
@@ -128,11 +125,12 @@ class QuicPacketPrinter : public QuicFramerVisitorInterface {
               << timestamp.ToDebuggingValue() << ")";
     return true;
   }
-  void OnAckEcnCounts(const QuicEcnCounts& ecn_counts) override {
-    std::cerr << "OnAckEcnCounts: " << ecn_counts.ToString();
-  }
-  bool OnAckFrameEnd(QuicPacketNumber start) override {
+  bool OnAckFrameEnd(QuicPacketNumber start,
+                     const absl::optional<QuicEcnCounts>& ecn_counts) override {
     std::cerr << "OnAckFrameEnd, start: " << start;
+    if (ecn_counts.has_value()) {
+      std::cerr << "  ECN counts: " << ecn_counts->ToString();
+    }
     return true;
   }
   bool OnStopWaitingFrame(const QuicStopWaitingFrame& frame) override {

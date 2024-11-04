@@ -36,11 +36,11 @@
 #ifndef BASE_JSON_JSON_READER_H_
 #define BASE_JSON_JSON_READER_H_
 
-#include <memory>
 #include <string>
 
 #include "base/base_export.h"
 #include "base/json/json_common.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
 #include "base/types/expected.h"
 #include "base/values.h"
@@ -91,6 +91,11 @@ class BASE_EXPORT JSONReader {
     std::string message;
     int line = 0;
     int column = 0;
+
+    std::string ToString() const {
+      return "line " + base::NumberToString(line) + ", column " +
+             base::NumberToString(column) + ": " + message;
+    }
   };
 
   using Result = base::expected<Value, Error>;
@@ -107,12 +112,9 @@ class BASE_EXPORT JSONReader {
       int options = JSON_PARSE_CHROMIUM_EXTENSIONS,
       size_t max_depth = internal::kAbsoluteMaxDepth);
 
-  // Deprecated. Use the Read() method above.
-  // Reads and parses |json|, returning a Value.
-  // If |json| is not a properly formed JSON string, returns nullptr.
-  // Wrap this in base::FooValue::From() to check the Value is of type Foo and
-  // convert to a FooValue at the same time.
-  static std::unique_ptr<Value> ReadDeprecated(
+  // Reads and parses |json|, returning a Value::Dict.
+  // If |json| is not a properly formed JSON dict string, returns absl::nullopt.
+  static absl::optional<Value::Dict> ReadDict(
       StringPiece json,
       int options = JSON_PARSE_CHROMIUM_EXTENSIONS,
       size_t max_depth = internal::kAbsoluteMaxDepth);

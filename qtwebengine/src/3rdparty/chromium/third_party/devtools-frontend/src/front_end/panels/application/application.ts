@@ -6,6 +6,7 @@ import * as ApplicationPanelSidebar from './ApplicationPanelSidebar.js';
 import * as AppManifestView from './AppManifestView.js';
 import * as BackgroundServiceModel from './BackgroundServiceModel.js';
 import * as BackgroundServiceView from './BackgroundServiceView.js';
+import * as BounceTrackingMitigationsTreeElement from './BounceTrackingMitigationsTreeElement.js';
 import * as CookieItemsView from './CookieItemsView.js';
 import * as DatabaseModel from './DatabaseModel.js';
 import * as DatabaseQueryView from './DatabaseQueryView.js';
@@ -31,6 +32,7 @@ import * as SharedStorageItemsView from './SharedStorageItemsView.js';
 import * as SharedStorageListTreeElement from './SharedStorageListTreeElement.js';
 import * as SharedStorageModel from './SharedStorageModel.js';
 import * as SharedStorageTreeElement from './SharedStorageTreeElement.js';
+import * as StorageBucketsTreeElement from './StorageBucketsTreeElement.js';
 import * as StorageItemsView from './StorageItemsView.js';
 import * as StorageView from './StorageView.js';
 import * as TrustTokensTreeElement from './TrustTokensTreeElement.js';
@@ -40,6 +42,7 @@ export {
   AppManifestView,
   BackgroundServiceModel,
   BackgroundServiceView,
+  BounceTrackingMitigationsTreeElement,
   CookieItemsView,
   DatabaseModel,
   DatabaseQueryView,
@@ -65,6 +68,7 @@ export {
   SharedStorageListTreeElement,
   SharedStorageModel,
   SharedStorageTreeElement,
+  StorageBucketsTreeElement,
   StorageItemsView,
   StorageView,
   TrustTokensTreeElement,

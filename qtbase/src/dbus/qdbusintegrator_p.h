@@ -46,18 +46,34 @@ struct QDBusSlotCache
 {
     struct Data
     {
-        int flags;
         int slotIdx;
         QList<QMetaType> metaTypes;
 
         void swap(Data &other) noexcept
         {
-            qSwap(flags,     other.flags);
             qSwap(slotIdx,   other.slotIdx);
             qSwap(metaTypes, other.metaTypes);
         }
     };
-    typedef QMultiHash<QString, Data> Hash;
+
+    struct Key
+    {
+        QString memberWithSignature;
+        QDBusConnection::RegisterOptions flags;
+
+        friend bool operator==(const Key &lhs, const Key &rhs) noexcept
+        {
+            return lhs.memberWithSignature == rhs.memberWithSignature && lhs.flags == rhs.flags;
+        }
+
+        friend size_t qHash(const QDBusSlotCache::Key &key, size_t seed = 0) noexcept
+        {
+            return qHashMulti(seed, key.memberWithSignature, key.flags);
+        }
+    };
+
+    using Hash = QHash<Key, Data>;
+
     Hash hash;
 
     void swap(QDBusSlotCache &other) noexcept { qSwap(hash, other.hash); }
@@ -69,19 +85,14 @@ class QDBusCallDeliveryEvent: public QAbstractMetaCallEvent
 {
 public:
     QDBusCallDeliveryEvent(const QDBusConnection &c, int id, QObject *sender,
-                           const QDBusMessage &msg, const QList<QMetaType> &types, int f = 0)
-        : QAbstractMetaCallEvent(sender, -1),
-          connection(c),
-          message(msg),
-          metaTypes(types),
-          id(id),
-          flags(f)
+                           const QDBusMessage &msg, const QList<QMetaType> &types)
+        : QAbstractMetaCallEvent(sender, -1), connection(c), message(msg), metaTypes(types), id(id)
     {
     }
 
     void placeMetaCall(QObject *object) override
     {
-        QDBusConnectionPrivate::d(connection)->deliverCall(object, flags, message, metaTypes, id);
+        QDBusConnectionPrivate::d(connection)->deliverCall(object, message, metaTypes, id);
     }
 
 private:
@@ -89,7 +100,6 @@ private:
     QDBusMessage message;
     QList<QMetaType> metaTypes;
     int id;
-    int flags;
 };
 
 class QDBusActivateObjectEvent: public QAbstractMetaCallEvent
@@ -117,18 +127,15 @@ class QDBusSpyCallEvent : public QAbstractMetaCallEvent
 {
 public:
     typedef void (*Hook)(const QDBusMessage&);
-    QDBusSpyCallEvent(QDBusConnectionPrivate *cp, const QDBusConnection &c, const QDBusMessage &msg,
-                      const Hook *hooks, int count)
-        : QAbstractMetaCallEvent(cp, 0), conn(c), msg(msg), hooks(hooks), hookCount(count)
+    QDBusSpyCallEvent(QDBusConnectionPrivate *cp, const QDBusConnection &c, const QDBusMessage &msg)
+        : QAbstractMetaCallEvent(cp, 0), conn(c), msg(msg)
     {}
     ~QDBusSpyCallEvent() override;
     void placeMetaCall(QObject *) override;
-    static inline void invokeSpyHooks(const QDBusMessage &msg, const Hook *hooks, int hookCount);
+    static inline void invokeSpyHooks(const QDBusMessage &msg);
 
     QDBusConnection conn;   // keeps the refcount in QDBusConnectionPrivate up
     QDBusMessage msg;
-    const Hook *hooks;
-    int hookCount;
 };
 
 QT_END_NAMESPACE

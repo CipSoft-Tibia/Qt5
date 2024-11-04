@@ -4,6 +4,7 @@
 
 #include "media/gpu/windows/mf_audio_encoder.h"
 
+#include <codecapi.h>
 #include <mfapi.h>
 #include <mferror.h>
 #include <mfidl.h>
@@ -71,8 +72,6 @@ constexpr DWORD kStreamId = 0;
 // output frame. It only needs two frames to successfully flush.
 constexpr int kMinSamplesForOutput = kSamplesPerFrame * 3;
 constexpr int kMinSamplesForFlush = kSamplesPerFrame * 2;
-
-constexpr const wchar_t kMfPlatDllName[] = L"mfplat.dll";
 
 EncoderStatus::Codes ValidateInputOptions(const AudioEncoder::Options& options,
                                           ChannelLayout* channel_layout,
@@ -359,17 +358,6 @@ MFAudioEncoder::PendingData::PendingData(std::unique_ptr<AudioBus>&& audio_bus,
 MFAudioEncoder::PendingData::PendingData(PendingData&&) = default;
 MFAudioEncoder::PendingData::~PendingData() = default;
 
-// static
-bool MFAudioEncoder::PreSandboxInitialization() {
-  if (!LoadLibrary(kMfPlatDllName)) {
-    PLOG(ERROR) << "MFAudioEncoder fatal error: could not LoadLibrary: "
-                << kMfPlatDllName;
-    return false;
-  }
-
-  return true;
-}
-
 MFAudioEncoder::MFAudioEncoder(
     scoped_refptr<base::SequencedTaskRunner> task_runner)
     : task_runner_(std::move(task_runner)) {
@@ -412,6 +400,25 @@ void MFAudioEncoder::Initialize(const Options& options,
   if (FAILED(hr)) {
     std::move(done_cb).Run(EncoderStatus::Codes::kEncoderUnsupportedCodec);
     return;
+  }
+
+  if (options_.bitrate_mode.has_value() &&
+      options_.bitrate_mode.value() == AudioEncoder::BitrateMode::kVariable &&
+      options.codec == AudioCodec::kAAC) {
+    Microsoft::WRL::ComPtr<ICodecAPI> codec_api;
+    hr = mf_encoder_.As(&codec_api);
+
+    if (SUCCEEDED(hr) &&
+        codec_api->IsSupported(&CODECAPI_AVEncAACEnableVBR) == S_OK) {
+      VARIANT var;
+      var.vt = VT_UI4;
+      var.ulVal = TRUE;
+      hr = codec_api->SetValue(&CODECAPI_AVEncAACEnableVBR, &var);
+      if (FAILED(hr)) {
+        DVLOG(2) << "Configuring AAC encoder to VBR mode rejected. Fallback to "
+                    "CBR mode.";
+      }
+    }
   }
 
   // We skip getting the stream counts and IDs because encoders only have one

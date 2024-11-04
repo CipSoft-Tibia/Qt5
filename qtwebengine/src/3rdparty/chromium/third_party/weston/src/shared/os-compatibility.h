@@ -31,6 +31,9 @@
 #include <sys/types.h>
 
 int
+os_fd_clear_cloexec(int fd);
+
+int
 os_fd_set_cloexec(int fd);
 
 int

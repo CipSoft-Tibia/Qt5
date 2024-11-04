@@ -21,12 +21,20 @@ VK_DEFINE_HANDLE(VmaVirtualBlock)
 namespace vma
 {
 typedef VkFlags VirtualBlockCreateFlags;
+#if ANGLE_VMA_VERSION < 3000000
 typedef enum VirtualBlockCreateFlagBits
 {
-    GENERAL = 0x0000000,
+    GENERAL = 0x00000000,
     LINEAR  = 0x00000001,
     BUDDY   = 0x00000002
 } VirtualBlockCreateFlagBits;
+#else
+typedef enum VirtualBlockCreateFlagBits
+{
+    GENERAL = 0x00000000,
+    LINEAR  = 0x00000001,
+} VirtualBlockCreateFlagBits;
+#endif
 
 typedef struct StatInfo
 {
@@ -68,10 +76,20 @@ VkResult CreateBuffer(VmaAllocator allocator,
                       const VkBufferCreateInfo *pBufferCreateInfo,
                       VkMemoryPropertyFlags requiredFlags,
                       VkMemoryPropertyFlags preferredFlags,
-                      bool persistentlyMappedBuffers,
+                      bool persistentlyMapped,
                       uint32_t *pMemoryTypeIndexOut,
                       VkBuffer *pBuffer,
                       VmaAllocation *pAllocation);
+
+VkResult AllocateAndBindMemoryForImage(VmaAllocator allocator,
+                                       VkImage *pImage,
+                                       VkMemoryPropertyFlags requiredFlags,
+                                       VkMemoryPropertyFlags preferredFlags,
+                                       uint32_t memoryTypeBits,
+                                       bool allocateDedicatedMemory,
+                                       VmaAllocation *pAllocationOut,
+                                       uint32_t *pMemoryTypeIndexOut,
+                                       VkDeviceSize *sizeOut);
 
 VkResult FindMemoryTypeIndexForBufferInfo(VmaAllocator allocator,
                                           const VkBufferCreateInfo *pBufferCreateInfo,
@@ -79,6 +97,13 @@ VkResult FindMemoryTypeIndexForBufferInfo(VmaAllocator allocator,
                                           VkMemoryPropertyFlags preferredFlags,
                                           bool persistentlyMappedBuffers,
                                           uint32_t *pMemoryTypeIndexOut);
+
+VkResult FindMemoryTypeIndexForImageInfo(VmaAllocator allocator,
+                                         const VkImageCreateInfo *pImageCreateInfo,
+                                         VkMemoryPropertyFlags requiredFlags,
+                                         VkMemoryPropertyFlags preferredFlags,
+                                         bool allocateDedicatedMemory,
+                                         uint32_t *pMemoryTypeIndexOut);
 
 void GetMemoryTypeProperties(VmaAllocator allocator,
                              uint32_t memoryTypeIndex,

@@ -47,6 +47,7 @@ enum class PerfettoStatsdAtom {
   // they log the trigger name.
   kTracedTriggerStartTracing = 41,
   kTracedTriggerStopTracing = 42,
+  kTracedTriggerCloneSnapshot = 53,
 
   // Guardrails inside traced.
   kTracedEnableTracingExistingTraceSession = 18,
@@ -70,6 +71,7 @@ enum class PerfettoStatsdAtom {
   kTracedStartTracingInvalidSessionState = 36,
   kTracedEnableTracingInvalidFilter = 47,
   kTracedEnableTracingOobTargetBuffer = 48,
+  kTracedEnableTracingInvalidTriggerMode = 52,
 
   // Checkpoints inside perfetto_cmd after tracing has finished.
   kOnTracingDisabled = 4,

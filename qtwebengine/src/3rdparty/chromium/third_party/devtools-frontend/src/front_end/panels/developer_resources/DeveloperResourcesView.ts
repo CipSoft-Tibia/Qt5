@@ -19,14 +19,15 @@ const UIStrings = {
    * @description Tooltip for a checkbox in the toolbar of the developer resources view. The
    * inspected target is the webpage that DevTools is debugging/inspecting/attached to.
    */
-  loadHttpsDeveloperResources: 'Load `HTTP(S)` developer resources through the inspected target',
+  loadHttpsDeveloperResources:
+      'Load `HTTP(S)` developer resources through the website you inspect, not through DevTools',
   /**
    * @description Text for a checkbox in the toolbar of the developer resources view. The target is
    * the webpage that DevTools is debugging/inspecting/attached to. This setting makes it so
    * developer resources are requested from the webpage itself, and not from the DevTools
    * application.
    */
-  enableLoadingThroughTarget: 'Enable loading through target',
+  enableLoadingThroughTarget: 'Load through website',
   /**
    *@description Text for resources load status
    *@example {1} PH1
@@ -78,16 +79,17 @@ export class DeveloperResourcesView extends UI.ThrottledWidget.ThrottledWidget {
 
     this.loader = SDK.PageResourceLoader.PageResourceLoader.instance();
     this.loader.addEventListener(SDK.PageResourceLoader.Events.Update, this.update, this);
+    this.update();
   }
 
-  async doUpdate(): Promise<void> {
+  override async doUpdate(): Promise<void> {
     this.listView.reset();
-    this.listView.update(this.loader.getResourcesLoaded().values());
+    this.listView.update(this.loader.getScopedResourcesLoaded().values());
     this.updateStats();
   }
 
   private updateStats(): void {
-    const {loading, resources} = this.loader.getNumberOfResources();
+    const {loading, resources} = this.loader.getScopedNumberOfResources();
     if (loading > 0) {
       this.statusMessageElement.textContent =
           i18nString(UIStrings.resourcesCurrentlyLoading, {PH1: resources, PH2: loading});
@@ -112,7 +114,7 @@ export class DeveloperResourcesView extends UI.ThrottledWidget.ThrottledWidget {
     this.updateStats();
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([developerResourcesViewStyles]);
   }

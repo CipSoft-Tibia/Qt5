@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -153,11 +153,11 @@ class BigEndianBuffer {
     explicit Cursor(BigEndianBuffer* buffer)
         : buffer_(buffer), origin_(buffer_->current_) {}
     Cursor(const Cursor& other) = delete;
-    Cursor(Cursor&& other) = delete;
+    Cursor(Cursor&& other) noexcept = delete;
     ~Cursor() { buffer_->current_ = origin_; }
 
     Cursor& operator=(const Cursor& other) = delete;
-    Cursor& operator=(Cursor&& other) = delete;
+    Cursor& operator=(Cursor&& other) noexcept = delete;
 
     void Commit() { origin_ = buffer_->current_; }
 
@@ -195,6 +195,7 @@ class BigEndianBuffer {
   T* end_;
 };
 
+// TODO(mfoltz): Use ByteBuffer here instead of pointer-and-length.
 class BigEndianReader : public BigEndianBuffer<const uint8_t> {
  public:
   BigEndianReader(const uint8_t* buffer, size_t length);

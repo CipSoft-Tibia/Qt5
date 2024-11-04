@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -728,7 +728,7 @@ void tst_QStandardItemModel::data()
     const QMap<int, QVariant> itmData = m_model->itemData(m_model->index(0, 0));
     QCOMPARE(itmData.value(Qt::DisplayRole), QLatin1String("initialitem"));
     QCOMPARE(itmData.value(Qt::ToolTipRole), QLatin1String("tooltip"));
-    QVERIFY(!itmData.contains(Qt::UserRole - 1));
+    QVERIFY(!itmData.contains(Qt::UserRole - 1)); // Qt::UserRole - 1 is used to store flags
     QVERIFY(m_model->itemData(QModelIndex()).isEmpty());
 }
 

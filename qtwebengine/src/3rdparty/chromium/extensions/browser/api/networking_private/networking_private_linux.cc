@@ -290,7 +290,7 @@ void NetworkingPrivateLinux::SetProperties(const std::string& guid,
 }
 
 void NetworkingPrivateLinux::CreateNetwork(bool shared,
-                                           base::Value properties,
+                                           base::Value::Dict properties,
                                            StringCallback success_callback,
                                            FailureCallback failure_callback) {
   ReportNotSupported("CreateNetwork", std::move(failure_callback));
@@ -433,8 +433,10 @@ void NetworkingPrivateLinux::ConnectToNetwork(const std::string& guid,
   builder.AppendObjectPath(access_point_path);
 
   std::unique_ptr<dbus::Response> response(
-      network_manager_proxy_->CallMethodAndBlock(
-          &method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT));
+      network_manager_proxy_
+          ->CallMethodAndBlock(&method_call,
+                               dbus::ObjectProxy::TIMEOUT_USE_DEFAULT)
+          .value_or(nullptr));
   if (!response) {
     LOG(ERROR) << "Failed to add a new connection";
     *error = "Failed to connect.";
@@ -516,8 +518,11 @@ void NetworkingPrivateLinux::DisconnectFromNetwork(const std::string& guid,
   dbus::MethodCall method_call(
       networking_private::kNetworkManagerDeviceNamespace,
       networking_private::kNetworkManagerDisconnectMethod);
-  std::unique_ptr<dbus::Response> response(device_proxy->CallMethodAndBlock(
-      &method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT));
+  std::unique_ptr<dbus::Response> response(
+      device_proxy
+          ->CallMethodAndBlock(&method_call,
+                               dbus::ObjectProxy::TIMEOUT_USE_DEFAULT)
+          .value_or(nullptr));
 
   if (!response) {
     LOG(WARNING) << "Failed to disconnect network on device "
@@ -613,8 +618,8 @@ void NetworkingPrivateLinux::GetDeviceStateList(
   std::unique_ptr<DeviceStateList> device_state_list(new DeviceStateList);
   std::unique_ptr<api::networking_private::DeviceStateProperties> properties(
       new api::networking_private::DeviceStateProperties);
-  properties->type = api::networking_private::NETWORK_TYPE_WIFI;
-  properties->state = api::networking_private::DEVICE_STATE_TYPE_ENABLED;
+  properties->type = api::networking_private::NetworkType::kWiFi;
+  properties->state = api::networking_private::DeviceStateType::kEnabled;
   device_state_list->push_back(std::move(properties));
   std::move(callback).Run(std::move(device_state_list));
 }
@@ -677,8 +682,9 @@ void NetworkingPrivateLinux::SendNetworkListChangedEvent(
   GuidList guidsForEventCallback;
 
   for (const auto& network : network_list) {
-    if (!network.is_dict())
+    if (!network.is_dict()) {
       continue;
+    }
     if (const std::string* guid =
             network.GetDict().FindString(kAccessPointInfoGuid)) {
       guidsForEventCallback.push_back(*guid);
@@ -696,8 +702,10 @@ bool NetworkingPrivateLinux::GetNetworkDevices(
       networking_private::kNetworkManagerGetDevicesMethod);
 
   std::unique_ptr<dbus::Response> device_response(
-      network_manager_proxy_->CallMethodAndBlock(
-          &method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT));
+      network_manager_proxy_
+          ->CallMethodAndBlock(&method_call,
+                               dbus::ObjectProxy::TIMEOUT_USE_DEFAULT)
+          .value_or(nullptr));
 
   if (!device_response) {
     return false;
@@ -723,8 +731,11 @@ NetworkingPrivateLinux::DeviceType NetworkingPrivateLinux::GetDeviceType(
   builder.AppendString(networking_private::kNetworkManagerDeviceNamespace);
   builder.AppendString(networking_private::kNetworkManagerDeviceType);
 
-  std::unique_ptr<dbus::Response> response(device_proxy->CallMethodAndBlock(
-      &method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT));
+  std::unique_ptr<dbus::Response> response(
+      device_proxy
+          ->CallMethodAndBlock(&method_call,
+                               dbus::ObjectProxy::TIMEOUT_USE_DEFAULT)
+          .value_or(nullptr));
 
   if (!response) {
     LOG(ERROR) << "Failed to get the device type for device "
@@ -760,8 +771,9 @@ void NetworkingPrivateLinux::GetAllWiFiAccessPoints(bool configured_only,
 
     // Get the access points for each WiFi adapter. Other network types are
     // ignored.
-    if (device_type != NetworkingPrivateLinux::NM_DEVICE_TYPE_WIFI)
+    if (device_type != NetworkingPrivateLinux::NM_DEVICE_TYPE_WIFI) {
       continue;
+    }
 
     // Found a wlan adapter
     if (!AddAccessPointsFromDevice(device_path, network_map)) {
@@ -782,8 +794,10 @@ std::unique_ptr<dbus::Response> NetworkingPrivateLinux::GetAccessPointProperty(
   builder.AppendString(networking_private::kNetworkManagerAccessPointNamespace);
   builder.AppendString(property_name);
   std::unique_ptr<dbus::Response> response =
-      access_point_proxy->CallMethodAndBlock(
-          &method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT);
+      access_point_proxy
+          ->CallMethodAndBlock(&method_call,
+                               dbus::ObjectProxy::TIMEOUT_USE_DEFAULT)
+          .value_or(nullptr);
   if (!response) {
     LOG(ERROR) << "Failed to get property for " << property_name;
   }
@@ -913,8 +927,11 @@ bool NetworkingPrivateLinux::AddAccessPointsFromDevice(
   dbus::MethodCall method_call(
       networking_private::kNetworkManagerWirelessDeviceNamespace,
       networking_private::kNetworkManagerGetAccessPointsMethod);
-  std::unique_ptr<dbus::Response> response(device_proxy->CallMethodAndBlock(
-      &method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT));
+  std::unique_ptr<dbus::Response> response(
+      device_proxy
+          ->CallMethodAndBlock(&method_call,
+                               dbus::ObjectProxy::TIMEOUT_USE_DEFAULT)
+          .value_or(nullptr));
 
   if (!response) {
     LOG(WARNING) << "Failed to get access points data for "
@@ -1029,8 +1046,10 @@ bool NetworkingPrivateLinux::GetConnectedAccessPoint(
   builder.AppendString(networking_private::kNetworkManagerActiveConnections);
 
   std::unique_ptr<dbus::Response> response(
-      network_manager_proxy_->CallMethodAndBlock(
-          &method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT));
+      network_manager_proxy_
+          ->CallMethodAndBlock(&method_call,
+                               dbus::ObjectProxy::TIMEOUT_USE_DEFAULT)
+          .value_or(nullptr));
 
   if (!response) {
     LOG(WARNING) << "Failed to get a list of active connections";
@@ -1086,8 +1105,11 @@ bool NetworkingPrivateLinux::GetDeviceOfConnection(
       networking_private::kNetworkManagerActiveConnectionNamespace);
   builder.AppendString("Devices");
 
-  std::unique_ptr<dbus::Response> response(connection_proxy->CallMethodAndBlock(
-      &method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT));
+  std::unique_ptr<dbus::Response> response(
+      connection_proxy
+          ->CallMethodAndBlock(&method_call,
+                               dbus::ObjectProxy::TIMEOUT_USE_DEFAULT)
+          .value_or(nullptr));
 
   if (!response) {
     LOG(ERROR) << "Failed to get devices";
@@ -1134,8 +1156,11 @@ bool NetworkingPrivateLinux::GetAccessPointForConnection(
       networking_private::kNetworkManagerActiveConnectionNamespace);
   builder.AppendString(networking_private::kNetworkManagerSpecificObject);
 
-  std::unique_ptr<dbus::Response> response(connection_proxy->CallMethodAndBlock(
-      &method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT));
+  std::unique_ptr<dbus::Response> response(
+      connection_proxy
+          ->CallMethodAndBlock(&method_call,
+                               dbus::ObjectProxy::TIMEOUT_USE_DEFAULT)
+          .value_or(nullptr));
 
   if (!response) {
     LOG(WARNING) << "Failed to get access point from active connection";
@@ -1209,15 +1234,17 @@ bool NetworkingPrivateLinux::SetConnectionStateAndPostEvent(
 void NetworkingPrivateLinux::OnNetworksChangedEventOnUIThread(
     const GuidList& network_guids) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  for (auto& observer : network_events_observers_)
+  for (auto& observer : network_events_observers_) {
     observer.OnNetworksChangedEvent(network_guids);
+  }
 }
 
 void NetworkingPrivateLinux::OnNetworkListChangedEventOnUIThread(
     const GuidList& network_guids) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  for (auto& observer : network_events_observers_)
+  for (auto& observer : network_events_observers_) {
     observer.OnNetworkListChangedEvent(network_guids);
+  }
 }
 
 void NetworkingPrivateLinux::PostOnNetworksChangedToUIThread(

@@ -24,6 +24,9 @@ jumbo_static_library("performance_manager") {
     "decorators/process_hosted_content_types_aggregator.cc",
     "decorators/process_hosted_content_types_aggregator.h",
     "decorators/process_metrics_decorator.cc",
+    "decorators/process_priority_aggregator.cc",
+    "decorators/process_priority_aggregator.h",
+    "decorators/tab_page_decorator.cc",
     "embedder/binders.h",
     "embedder/graph_features.h",
     "embedder/performance_manager_lifetime.h",
@@ -68,6 +71,8 @@ jumbo_static_library("performance_manager") {
     "graph/graph_impl_util.h",
     "graph/graph_operations.cc",
     "graph/graph_registered.cc",
+    "graph/initializing_frame_node_observer.cc",
+    "graph/initializing_frame_node_observer.h",
     "graph/node.cc",
     "graph/node_attached_data.cc",
     "graph/node_attached_data.h",
@@ -75,12 +80,15 @@ jumbo_static_library("performance_manager") {
     "graph/node_base.cc",
     "graph/node_base.h",
     "graph/node_data_describer.cc",
+    "graph/node_data_describer_util.cc",
     "graph/node_type.h",
     "graph/page_node.cc",
     "graph/page_node_impl.cc",
     "graph/page_node_impl.h",
     "graph/page_node_impl_describer.cc",
     "graph/page_node_impl_describer.h",
+    "graph/policies/bfcache_policy.cc",
+    "graph/policies/bfcache_policy.h",
     "graph/policies/process_priority_policy.cc",
     "graph/policies/process_priority_policy.h",
     "graph/process_node.cc",
@@ -99,6 +107,7 @@ jumbo_static_library("performance_manager") {
     "graph/worker_node_impl_describer.h",
     "graph_features.cc",
     "metrics/metrics_collector.cc",
+    "metrics/tab_revisit_tracker.cc",
     "owned_objects.h",
     "performance_manager.cc",
     "performance_manager_feature_observer_client.cc",
@@ -119,6 +128,7 @@ jumbo_static_library("performance_manager") {
     "public/decorators/page_live_state_decorator.h",
     "public/decorators/page_load_tracker_decorator_helper.h",
     "public/decorators/process_metrics_decorator.h",
+    "public/decorators/tab_page_decorator.h",
     "public/execution_context/execution_context.h",
     "public/execution_context/execution_context_attached_data.h",
     "public/execution_context/execution_context_registry.h",
@@ -133,7 +143,6 @@ jumbo_static_library("performance_manager") {
     "public/graph/node_attached_data.h",
     "public/graph/node_data_describer.h",
     "public/graph/node_data_describer_registry.h",
-    "public/graph/node_data_describer_util.cc",
     "public/graph/node_data_describer_util.h",
     "public/graph/node_state.h",
     "public/graph/page_node.h",
@@ -141,8 +150,8 @@ jumbo_static_library("performance_manager") {
     "public/graph/process_node.h",
     "public/graph/system_node.h",
     "public/graph/worker_node.h",
-    "public/metrics/background_metrics_reporter.h",
     "public/metrics/metrics_collector.h",
+    "public/metrics/tab_revisit_tracker.h",
     "public/performance_manager.h",
     "public/performance_manager_main_thread_mechanism.h",
     "public/performance_manager_main_thread_observer.h",
@@ -152,6 +161,13 @@ jumbo_static_library("performance_manager") {
     "public/render_frame_host_proxy.h",
     "public/render_process_host_id.h",
     "public/render_process_host_proxy.h",
+    "public/resource_attribution/attribution_helpers.h",
+    "public/resource_attribution/frame_context_registry.h",
+    "public/resource_attribution/page_context_registry.h",
+    "public/resource_attribution/process_context_registry.h",
+    "public/resource_attribution/resource_contexts.h",
+    "public/resource_attribution/type_helpers.h",
+    "public/resource_attribution/worker_context_registry.h",
     "public/user_tuning/prefs.h",
     "public/v8_memory/v8_detailed_memory.h",
     "public/v8_memory/v8_detailed_memory_any_seq.h",
@@ -163,6 +179,15 @@ jumbo_static_library("performance_manager") {
     "render_process_host_proxy.cc",
     "render_process_user_data.cc",
     "render_process_user_data.h",
+    "resource_attribution/attribution_impl_helpers.h",
+    "resource_attribution/cpu_measurement_monitor.cc",
+    "resource_attribution/cpu_measurement_monitor.h",
+    "resource_attribution/frame_context_registry.cc",
+    "resource_attribution/page_context_registry.cc",
+    "resource_attribution/process_context_registry.cc",
+    "resource_attribution/resource_context_registry_storage.cc",
+    "resource_attribution/resource_context_registry_storage.h",
+    "resource_attribution/worker_context_registry.cc",
     "service_worker_client.cc",
     "service_worker_client.h",
     "service_worker_context_adapter.cc",
@@ -238,10 +263,6 @@ jumbo_static_library("performance_manager") {
       "public/decorators/site_data_recorder.h",
       "public/persistence/site_data/feature_usage.h",
       "public/persistence/site_data/site_data_reader.h",
-
-      # TODO(crbug.com/1225070): Consider using this policy on Android.
-      "graph/policies/bfcache_policy.cc",
-      "graph/policies/bfcache_policy.h",
     ]
     jumbo_excluded_sources = [ "decorators/site_data_recorder.cc" ]
 
@@ -276,6 +297,9 @@ source_set("unit_tests") {
     "decorators/page_live_state_decorator_unittest.cc",
     "decorators/page_load_tracker_decorator_unittest.cc",
     "decorators/process_hosted_content_types_aggregator_unittest.cc",
+    "decorators/process_metrics_decorator_unittest.cc",
+    "decorators/process_priority_aggregator_unittest.cc",
+    "decorators/tab_page_decorator_unittest.cc",
     "execution_context/execution_context_attached_data_unittest.cc",
     "execution_context/execution_context_registry_impl_unittest.cc",
     "execution_context_priority/ad_frame_voter_unittest.cc",
@@ -295,6 +319,7 @@ source_set("unit_tests") {
     "graph/graph_registered_unittest.cc",
     "graph/node_attached_data_unittest.cc",
     "graph/node_base_unittest.cc",
+    "graph/node_data_describer_util_unittest.cc",
     "graph/page_node_impl_unittest.cc",
     "graph/policies/process_priority_policy_unittest.cc",
     "graph/process_node_impl_unittest.cc",
@@ -303,6 +328,7 @@ source_set("unit_tests") {
     "graph/worker_node_impl_unittest.cc",
     "graph_features_unittest.cc",
     "metrics/metrics_collector_unittest.cc",
+    "metrics/tab_revisit_tracker_unittest.cc",
     "owned_objects_unittest.cc",
     "performance_manager_impl_unittest.cc",
     "performance_manager_registry_impl_unittest.cc",
@@ -310,6 +336,10 @@ source_set("unit_tests") {
     "performance_manager_unittest.cc",
     "registered_objects_unittest.cc",
     "render_process_host_id_unittest.cc",
+    "resource_attribution/cpu_measurement_monitor_unittest.cc",
+    "resource_attribution/resource_contexts_unittest.cc",
+    "test_support/mock_graphs_unittest.cc",
+    "user_tuning/prefs_unittest.cc",
     "v8_memory/v8_context_tracker_helpers_unittest.cc",
     "v8_memory/v8_context_tracker_internal_unittest.cc",
     "v8_memory/v8_context_tracker_unittest.cc",
@@ -337,6 +367,10 @@ source_set("unit_tests") {
     "//testing/gtest",
   ]
 
+  if (is_ios) {
+    deps += [ "//components/test:performance_manager_test_bundle_data" ]
+  }
+
   # The site data database isn't supported on Android.
   if (!is_android) {
     sources += [
@@ -350,8 +384,6 @@ source_set("unit_tests") {
       "persistence/site_data/site_data_impl_unittest.cc",
       "persistence/site_data/site_data_reader_unittest.cc",
       "persistence/site_data/site_data_writer_unittest.cc",
-      "persistence/site_data/unittest_utils.cc",
-      "persistence/site_data/unittest_utils.h",
 
       # TODO(crbug.com/1225070): Consider using this policy on Android.
       "graph/policies/bfcache_policy_unittest.cc",
@@ -377,6 +409,10 @@ source_set("browser_tests") {
     "performance_manager_browsertest.cc",
     "prerendering_browsertest.cc",
     "render_process_host_proxy_browsertest.cc",
+    "resource_attribution/frame_context_registry_browsertest.cc",
+    "resource_attribution/page_context_registry_browsertest.cc",
+    "resource_attribution/process_context_registry_browsertest.cc",
+    "resource_attribution/worker_context_registry_browsertest.cc",
     "v8_memory/v8_context_tracker_browsertest.cc",
   ]
 
@@ -392,4 +428,8 @@ source_set("browser_tests") {
     "//testing/gmock",
     "//testing/gtest",
   ]
+
+  if (is_ios) {
+    deps += [ "//components/test:performance_manager_test_bundle_data" ]
+  }
 }

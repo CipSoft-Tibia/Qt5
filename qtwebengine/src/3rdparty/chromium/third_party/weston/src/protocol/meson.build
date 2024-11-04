@@ -1,55 +1,65 @@
 dep_scanner = dependency('wayland-scanner', native: true)
-prog_scanner = find_program(dep_scanner.get_pkgconfig_variable('wayland_scanner'))
+prog_scanner = find_program(dep_scanner.get_variable(pkgconfig: 'wayland_scanner'))
 
-dep_wp = dependency('wayland-protocols', version: '>= 1.18')
-dir_wp_base = dep_wp.get_pkgconfig_variable('pkgdatadir')
+dep_wp = dependency('wayland-protocols', version: '>= 1.31',
+	fallback: ['wayland-protocols', 'wayland_protocols'])
+dir_wp_base = dep_wp.get_variable(pkgconfig: 'pkgdatadir', internal: 'pkgdatadir')
 
 install_data(
 	[
+		'weston-content-protection.xml',
 		'weston-debug.xml',
 		'weston-direct-display.xml',
+		'weston-output-capture.xml',
 	],
 	install_dir: join_paths(dir_data, dir_protocol_libweston)
 )
 
 generated_protocols = [
-	[ 'input-method', 'v1' ],
-	[ 'input-timestamps', 'v1' ],
+	[ 'fullscreen-shell', 'unstable', 'v1' ],
+	[ 'fractional-scale', 'staging', 'v1' ],
+	[ 'input-method', 'unstable', 'v1' ],
+	[ 'input-timestamps', 'unstable', 'v1' ],
 	[ 'ivi-application', 'internal' ],
 	[ 'ivi-hmi-controller', 'internal' ],
-	[ 'fullscreen-shell', 'v1' ],
-	[ 'linux-dmabuf', 'v1' ],
-	[ 'linux-explicit-synchronization', 'v1' ],
+	[ 'linux-dmabuf', 'unstable', 'v1' ],
+	[ 'linux-explicit-synchronization', 'unstable', 'v1' ],
 	[ 'presentation-time', 'stable' ],
-	[ 'pointer-constraints', 'v1' ],
-	[ 'relative-pointer', 'v1' ],
-	[ 'tablet', 'v2' ],
+	[ 'pointer-constraints', 'unstable', 'v1' ],
+	[ 'relative-pointer', 'unstable', 'v1' ],
+	[ 'single-pixel-buffer', 'staging', 'v1' ],
+	[ 'tablet', 'unstable', 'v2' ],
+	[ 'tearing-control', 'staging', 'v1' ],
 	[ 'text-cursor-position', 'internal' ],
-	[ 'text-input', 'v1' ],
+	[ 'text-input', 'unstable', 'v1' ],
 	[ 'viewporter', 'stable' ],
 	[ 'weston-debug', 'internal' ],
 	[ 'weston-desktop-shell', 'internal' ],
-	[ 'weston-screenshooter', 'internal' ],
+	[ 'weston-output-capture', 'internal' ],
 	[ 'weston-content-protection', 'internal' ],
 	[ 'weston-test', 'internal' ],
 	[ 'weston-touch-calibration', 'internal' ],
 	[ 'weston-direct-display', 'internal' ],
-	[ 'xdg-output', 'v1' ],
-	[ 'xdg-shell', 'v6' ],
+	[ 'xdg-output', 'unstable', 'v1' ],
+	[ 'xdg-shell', 'unstable', 'v6' ],
 	[ 'xdg-shell', 'stable' ],
+	[ 'xwayland-shell', 'staging', 'v1' ],
 ]
 
 foreach proto: generated_protocols
 	proto_name = proto[0]
 	if proto[1] == 'internal'
 		base_file = proto_name
-		xml_path = '@0@.xml'.format(proto_name)
+		xml_path = proto_name + '.xml'
 	elif proto[1] == 'stable'
 		base_file = proto_name
-		xml_path = '@0@/stable/@1@/@1@.xml'.format(dir_wp_base, base_file)
-	else
-		base_file = '@0@-unstable-@1@'.format(proto_name, proto[1])
-		xml_path = '@0@/unstable/@1@/@2@.xml'.format(dir_wp_base, proto_name, base_file)
+		xml_path = dir_wp_base / 'stable' / base_file / (base_file + '.xml')
+	elif proto[1] == 'unstable'
+		base_file = '@0@-unstable-@1@'.format(proto_name, proto[2])
+		xml_path = dir_wp_base / 'unstable' / proto_name / (base_file + '.xml')
+	elif proto[1] == 'staging'
+		base_file = '@0@-@1@'.format(proto_name, proto[2])
+		xml_path = dir_wp_base / 'staging' / proto_name / (base_file + '.xml')
 	endif
 
 	foreach output_type: [ 'client-header', 'server-header', 'private-code' ]

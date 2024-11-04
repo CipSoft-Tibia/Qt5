@@ -23,6 +23,7 @@
 #include "base/atomicops.h"
 #include "base/command_line.h"
 #include "base/containers/circular_deque.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
@@ -39,11 +40,13 @@
 #include "base/trace_event/process_memory_dump.h"
 #include "base/trace_event/trace_event.h"
 #include "base/unguessable_token.h"
+#include "gpu/command_buffer/common/context_creation_attribs.h"
 #include "gpu/command_buffer/common/mailbox.h"
 #include "gpu/command_buffer/service/mailbox_manager.h"
 #include "gpu/command_buffer/service/memory_tracking.h"
 #include "gpu/command_buffer/service/scheduler.h"
 #include "gpu/command_buffer/service/service_utils.h"
+#include "gpu/config/gpu_finch_features.h"
 #include "gpu/ipc/common/command_buffer_id.h"
 #include "gpu/ipc/common/gpu_channel.mojom.h"
 #include "gpu/ipc/service/gles2_command_buffer_stub.h"
@@ -162,6 +165,10 @@ class GPU_IPC_SERVICE_EXPORT GpuChannelMessageFilter
                            uint64_t decode_release_count) override;
   void FlushDeferredRequests(
       std::vector<mojom::DeferredRequestPtr> requests) override;
+
+  void GetGpuMemoryBufferHandleInfo(
+      const gpu::Mailbox& mailbox,
+      GetGpuMemoryBufferHandleInfoCallback callback) override;
 #if BUILDFLAG(IS_ANDROID)
   void CreateStreamTexture(
       int32_t stream_id,
@@ -299,6 +306,7 @@ SequenceId GpuChannelMessageFilter::GetSequenceId(int32_t route_id) const {
 
 void GpuChannelMessageFilter::FlushDeferredRequests(
     std::vector<mojom::DeferredRequestPtr> requests) {
+  TRACE_EVENT0("viz", PRETTY_FUNCTION);
   base::AutoLock auto_lock(gpu_channel_lock_);
   if (!gpu_channel_)
     return;
@@ -341,6 +349,49 @@ void GpuChannelMessageFilter::FlushDeferredRequests(
                        gpu_channel_->AsWeakPtr(), std::move(request->params)),
         std::move(request->sync_token_fences));
   }
+
+  // Threading: GpuChannelManager outlives gpu_channel_, so even though it is a
+  // main thread object, we don't have a lifetime issue. However we may be
+  // reading something stale here, but we don't synchronize anything here.
+  if (base::FeatureList::IsEnabled(features::kGpuCleanupInBackground) &&
+      gpu_channel_->gpu_channel_manager()->application_backgrounded()) {
+    // We expect to clean shared images, so put it on this sequence, to make
+    // sure that ordering is conserved, and we execute after.
+    auto it = route_sequences_.find(
+        static_cast<int32_t>(GpuChannelReservedRoutes::kSharedImageInterface));
+    tasks.emplace_back(it->second,
+                       base::BindOnce(&gpu::GpuChannel::PerformImmediateCleanup,
+                                      gpu_channel_->AsWeakPtr()),
+                       std::vector<::gpu::SyncToken>());
+  }
+
+  scheduler_->ScheduleTasks(std::move(tasks));
+}
+
+void GpuChannelMessageFilter::GetGpuMemoryBufferHandleInfo(
+    const gpu::Mailbox& mailbox,
+    GetGpuMemoryBufferHandleInfoCallback callback) {
+  TRACE_EVENT0("viz", PRETTY_FUNCTION);
+  base::AutoLock auto_lock(gpu_channel_lock_);
+  int32_t routing_id =
+      static_cast<int32_t>(GpuChannelReservedRoutes::kSharedImageInterface);
+  auto it = route_sequences_.find(routing_id);
+  if (it == route_sequences_.end()) {
+    LOG(ERROR) << "Invalid route id in flush list.";
+    std::move(callback).Run(gfx::GpuMemoryBufferHandle(),
+                            viz::SharedImageFormat(), gfx::Size(),
+                            gfx::BufferUsage::GPU_READ);
+    return;
+  }
+  std::vector<Scheduler::Task> tasks;
+  tasks.emplace_back(
+      it->second,
+      base::BindOnce(
+          &gpu::GpuChannel::GetGpuMemoryBufferHandleInfo,
+          gpu_channel_->AsWeakPtr(), mailbox,
+          base::BindPostTask(base::SingleThreadTaskRunner::GetCurrentDefault(),
+                             std::move(callback))),
+      std::vector<::gpu::SyncToken>());
   scheduler_->ScheduleTasks(std::move(tasks));
 }
 
@@ -603,6 +654,11 @@ void GpuChannel::Init(IPC::ChannelHandle channel_handle,
   channel_ = sync_channel_.get();
 }
 
+void GpuChannel::SetGpuExtraInfo(const gfx::GpuExtraInfo& gpu_extra_info) {
+  CHECK(shared_image_stub_);
+  shared_image_stub_->SetGpuExtraInfo(gpu_extra_info);
+}
+
 base::WeakPtr<GpuChannel> GpuChannel::AsWeakPtr() {
   return weak_factory_.GetWeakPtr();
 }
@@ -640,11 +696,12 @@ CommandBufferStub* GpuChannel::LookupCommandBuffer(int32_t route_id) {
   return it->second.get();
 }
 
-bool GpuChannel::HasActiveWebGLContext() const {
+bool GpuChannel::HasActiveStatefulContext() const {
   for (auto& kv : stubs_) {
     ContextType context_type = kv.second->context_type();
     if (context_type == CONTEXT_TYPE_WEBGL1 ||
-        context_type == CONTEXT_TYPE_WEBGL2) {
+        context_type == CONTEXT_TYPE_WEBGL2 ||
+        context_type == CONTEXT_TYPE_WEBGPU) {
       return true;
     }
   }
@@ -669,6 +726,7 @@ void GpuChannel::RemoveRoute(int32_t route_id) {
 
 void GpuChannel::ExecuteDeferredRequest(
     mojom::DeferredRequestParamsPtr params) {
+  TRACE_EVENT0("viz", PRETTY_FUNCTION);
   switch (params->which()) {
 #if BUILDFLAG(IS_ANDROID)
     case mojom::DeferredRequestParams::Tag::kDestroyStreamTexture:
@@ -710,6 +768,27 @@ void GpuChannel::ExecuteDeferredRequest(
           std::move(params->get_shared_image_request()));
       break;
   }
+}
+
+void GpuChannel::GetGpuMemoryBufferHandleInfo(
+    const gpu::Mailbox& mailbox,
+    mojom::GpuChannel::GetGpuMemoryBufferHandleInfoCallback callback) {
+  gfx::GpuMemoryBufferHandle handle;
+  viz::SharedImageFormat format;
+  gfx::Size size;
+  gfx::BufferUsage buffer_usage;
+  if (shared_image_stub_->GetGpuMemoryBufferHandleInfo(mailbox, handle, format,
+                                                       size, buffer_usage)) {
+    std::move(callback).Run(std::move(handle), format, size, buffer_usage);
+  } else {
+    std::move(callback).Run(gfx::GpuMemoryBufferHandle(),
+                            viz::SharedImageFormat(), gfx::Size(),
+                            gfx::BufferUsage::GPU_READ);
+  }
+}
+
+void GpuChannel::PerformImmediateCleanup() {
+  gpu_channel_manager()->PerformImmediateCleanup();
 }
 
 void GpuChannel::WaitForTokenInRange(

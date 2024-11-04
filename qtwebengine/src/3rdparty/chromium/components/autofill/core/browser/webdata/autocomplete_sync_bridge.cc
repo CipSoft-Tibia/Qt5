@@ -123,10 +123,11 @@ AutofillEntry CreateAutofillEntry(const AutofillSpecifics& autofill_specifics) {
                        Time::FromInternalValue(*date_last_used_iter));
 }
 
-// This is used to respond to ApplySyncChanges() and MergeSyncData(). Attempts
-// to lazily load local data, and then react to sync data by maintaining
-// internal state until flush calls are made, at which point the applicable
-// modification should be sent towards local and sync directions.
+// This is used to respond to ApplyIncrementalSyncChanges() and
+// MergeFullSyncData(). Attempts to lazily load local data, and then react to
+// sync data by maintaining internal state until flush calls are made, at which
+// point the applicable modification should be sent towards local and sync
+// directions.
 class SyncDifferenceTracker {
  public:
   explicit SyncDifferenceTracker(AutofillTable* table) : table_(table) {}
@@ -210,10 +211,11 @@ class SyncDifferenceTracker {
         return ModelError(FROM_HERE, "Failed reading from WebDatabase.");
       }
       for (const AutofillEntry& entry : unique_to_local_) {
-        // This should never be true because only ApplySyncChanges should be
-        // calling IncorporateRemoteDelete, while only MergeSyncData should be
-        // passing in true for |include_local_only|. If this requirement
-        // changes, this DCHECK can change to act as a filter.
+        // This should never be true because only ApplyIncrementalSyncChanges
+        // should be calling IncorporateRemoteDelete, while only
+        // MergeFullSyncData should be passing in true for |include_local_only|.
+        // If this requirement changes, this DCHECK can change to act as a
+        // filter.
         DCHECK(delete_from_local_.find(entry.key()) ==
                delete_from_local_.end());
         change_processor->Put(GetStorageKeyFromModel(entry.key()),
@@ -255,7 +257,7 @@ class SyncDifferenceTracker {
     return true;
   }
 
-  raw_ptr<AutofillTable> table_;
+  const raw_ptr<AutofillTable> table_;
 
   // This class attempts to lazily load data from |table_|. This field tracks
   // if that has happened or not yet. To facilitate this, the first usage of
@@ -313,22 +315,22 @@ AutocompleteSyncBridge::AutocompleteSyncBridge(
 }
 
 AutocompleteSyncBridge::~AutocompleteSyncBridge() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 }
 
 std::unique_ptr<MetadataChangeList>
 AutocompleteSyncBridge::CreateMetadataChangeList() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return std::make_unique<syncer::SyncMetadataStoreChangeList>(
       GetAutofillTable(), syncer::AUTOFILL,
       base::BindRepeating(&syncer::ModelTypeChangeProcessor::ReportError,
                           change_processor()->GetWeakPtr()));
 }
 
-optional<syncer::ModelError> AutocompleteSyncBridge::MergeSyncData(
+optional<syncer::ModelError> AutocompleteSyncBridge::MergeFullSyncData(
     std::unique_ptr<MetadataChangeList> metadata_change_list,
     EntityChangeList entity_data) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   SyncDifferenceTracker tracker(GetAutofillTable());
   for (const auto& change : entity_data) {
@@ -346,10 +348,10 @@ optional<syncer::ModelError> AutocompleteSyncBridge::MergeSyncData(
   return {};
 }
 
-optional<ModelError> AutocompleteSyncBridge::ApplySyncChanges(
+optional<ModelError> AutocompleteSyncBridge::ApplyIncrementalSyncChanges(
     std::unique_ptr<MetadataChangeList> metadata_change_list,
     EntityChangeList entity_changes) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   SyncDifferenceTracker tracker(GetAutofillTable());
   for (const std::unique_ptr<EntityChange>& change : entity_changes) {
@@ -373,7 +375,7 @@ optional<ModelError> AutocompleteSyncBridge::ApplySyncChanges(
 void AutocompleteSyncBridge::AutocompleteSyncBridge::GetData(
     StorageKeyList storage_keys,
     DataCallback callback) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   std::vector<AutofillEntry> entries;
   if (!GetAutofillTable()->GetAllAutofillEntries(&entries)) {
     change_processor()->ReportError(
@@ -394,7 +396,7 @@ void AutocompleteSyncBridge::AutocompleteSyncBridge::GetData(
 }
 
 void AutocompleteSyncBridge::GetAllDataForDebugging(DataCallback callback) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   std::vector<AutofillEntry> entries;
   if (!GetAutofillTable()->GetAllAutofillEntries(&entries)) {
@@ -505,7 +507,7 @@ std::string AutocompleteSyncBridge::GetStorageKey(
 
 void AutocompleteSyncBridge::AutofillEntriesChanged(
     const AutofillChangeList& changes) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   ActOnLocalChanges(changes);
 }
 

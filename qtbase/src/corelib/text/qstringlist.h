@@ -30,10 +30,25 @@ namespace QtPrivate {
     Q_CORE_EXPORT QString QStringList_join(const QStringList &list, QLatin1StringView sep);
     QStringList Q_CORE_EXPORT QStringList_filter(const QStringList *that, QStringView str,
                                                Qt::CaseSensitivity cs);
+    Q_CORE_EXPORT QStringList QStringList_filter(const QStringList &that, QLatin1StringView needle,
+                                                 Qt::CaseSensitivity cs);
+    Q_CORE_EXPORT QStringList QStringList_filter(const QStringList &that,
+                                                 const QStringMatcher &matcher);
+
     bool Q_CORE_EXPORT QStringList_contains(const QStringList *that, QStringView str, Qt::CaseSensitivity cs);
     bool Q_CORE_EXPORT QStringList_contains(const QStringList *that, QLatin1StringView str, Qt::CaseSensitivity cs);
     void Q_CORE_EXPORT QStringList_replaceInStrings(QStringList *that, QStringView before, QStringView after,
                                       Qt::CaseSensitivity cs);
+
+    qsizetype Q_CORE_EXPORT QStringList_indexOf(const QStringList &that, QStringView str,
+                                                qsizetype from, Qt::CaseSensitivity cs);
+    qsizetype Q_CORE_EXPORT QStringList_indexOf(const QStringList &that, QLatin1StringView str,
+                                                qsizetype from, Qt::CaseSensitivity cs);
+
+    Q_CORE_EXPORT qsizetype QStringList_lastIndexOf(const QStringList &that, QStringView str,
+                                                    qsizetype from, Qt::CaseSensitivity cs);
+    Q_CORE_EXPORT qsizetype QStringList_lastIndexOf(const QStringList &that, QLatin1StringView str,
+                                                    qsizetype from, Qt::CaseSensitivity cs);
 
 #if QT_CONFIG(regularexpression)
     void Q_CORE_EXPORT QStringList_replaceInStrings(QStringList *that, const QRegularExpression &rx, const QString &after);
@@ -78,6 +93,10 @@ public:
     inline QString join(QChar sep) const
     { return QtPrivate::QStringList_join(self(), &sep, 1); }
 
+    QStringList filter(const QStringMatcher &matcher) const
+    { return QtPrivate::QStringList_filter(*self(), matcher); }
+    QStringList filter(QLatin1StringView needle, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
+    { return QtPrivate::QStringList_filter(*self(), needle, cs); }
     inline QStringList filter(QStringView str, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
     { return QtPrivate::QStringList_filter(self(), str, cs); }
     inline QStringList &replaceInStrings(QStringView before, QStringView after, Qt::CaseSensitivity cs = Qt::CaseSensitive)
@@ -116,10 +135,26 @@ public:
 
     inline bool contains(const QString &str, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return QtPrivate::QStringList_contains(self(), str, cs); }
-    qsizetype indexOf(const QString &str, qsizetype from = 0) const noexcept
-    { return indexOf(QStringView(str), from); }
-    qsizetype lastIndexOf(const QString &str, qsizetype from = -1) const noexcept
-    { return lastIndexOf(QStringView(str), from); }
+
+    qsizetype indexOf(const QString &str, qsizetype from = 0,
+                      Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
+    { return indexOf(QStringView(str), from, cs); }
+    qsizetype indexOf(QStringView needle, qsizetype from = 0,
+                      Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
+    { return QtPrivate::QStringList_indexOf(*self(), needle, from, cs); }
+    qsizetype indexOf(QLatin1StringView needle, qsizetype from = 0,
+                      Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
+    { return QtPrivate::QStringList_indexOf(*self(), needle, from, cs); }
+
+    qsizetype lastIndexOf(const QString &str, qsizetype from = -1,
+                          Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
+    { return lastIndexOf(QStringView(str), from, cs); }
+    qsizetype lastIndexOf(QStringView str, qsizetype from = -1,
+                          Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
+    { return QtPrivate::QStringList_lastIndexOf(*self(), str, from, cs); }
+    qsizetype lastIndexOf(QLatin1StringView needle, qsizetype from = -1,
+                          Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
+    { return QtPrivate::QStringList_lastIndexOf(*self(), needle, from, cs); }
 
 #if QT_CONFIG(regularexpression)
     inline QStringList filter(const QRegularExpression &re) const

@@ -17,7 +17,9 @@
 #include "content/browser/renderer_host/back_forward_cache_impl.h"
 #include "content/browser/renderer_host/navigation_controller_impl.h"
 #include "content/browser/renderer_host/navigation_entry_impl.h"
+#include "content/browser/renderer_host/render_process_host_impl.h"
 #include "content/browser/web_contents/web_contents_impl.h"
+#include "content/public/browser/render_process_host.h"
 #include "content/public/browser/site_isolation_policy.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_client.h"
@@ -57,8 +59,11 @@ using IsolatedOriginSource = ChildProcessSecurityPolicy::IsolatedOriginSource;
           ? absl::make_optional(site_instance->GetSiteInfo().site_url())
           : absl::nullopt;
   frame_info->site_instance->is_guest = site_instance->IsGuest();
+  frame_info->site_instance->is_pdf = site_instance->IsPdf();
   frame_info->site_instance->is_sandbox_for_iframes =
       site_instance->GetSiteInfo().is_sandboxed();
+  frame_info->site_instance->site_instance_group_id =
+      site_instance->group() ? site_instance->group()->GetId().value() : 0;
 
   // If the SiteInstance has a non-default StoragePartition, include a basic
   // string representation of it.  Skip cases where the StoragePartition is
@@ -177,6 +182,18 @@ ProcessInternalsHandlerImpl::ProcessInternalsHandlerImpl(
     : browser_context_(browser_context), receiver_(this, std::move(receiver)) {}
 
 ProcessInternalsHandlerImpl::~ProcessInternalsHandlerImpl() = default;
+
+void ProcessInternalsHandlerImpl::GetProcessCountInfo(
+    GetProcessCountInfoCallback callback) {
+  ::mojom::ProcessCountInfoPtr info = ::mojom::ProcessCountInfo::New();
+  info->renderer_process_count_total = RenderProcessHostImpl::GetProcessCount();
+  info->renderer_process_count_for_limit =
+      RenderProcessHostImpl::GetProcessCountForLimit();
+  info->renderer_process_limit =
+      RenderProcessHost::GetMaxRendererProcessCount();
+
+  std::move(callback).Run(std::move(info));
+}
 
 void ProcessInternalsHandlerImpl::GetIsolationMode(
     GetIsolationModeCallback callback) {

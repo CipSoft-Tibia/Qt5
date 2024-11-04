@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,14 @@
 
 #include <stdint.h>
 
+#include <limits>
+
 #include "cast/streaming/expanded_value_base.h"
 #include "cast/streaming/rtcp_common.h"
 #include "cast/streaming/rtp_time.h"
 #include "platform/api/time.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Maintains statistics for RTP packet arrival timing, jitter, and loss rates;
 // and then uses these to compute and set the related fields in a RTCP Receiver
@@ -100,7 +101,6 @@ class PacketReceiveStatsTracker {
   Clock::duration jitter_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_PACKET_RECEIVE_STATS_TRACKER_H_

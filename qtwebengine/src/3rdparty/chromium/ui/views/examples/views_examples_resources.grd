@@ -87,6 +87,20 @@
         Combo Box 2
       </message>
 
+      <!-- designer example -->
+      <message translateable="false" name="IDS_DESIGNER_COMBOBOX_NAME">
+        Combo Box
+      </message>
+      <message translateable="false" name="IDS_DESIGNER_TEXTFIELD_NAME">
+        Textfield
+      </message>
+      <message translateable="false" name="IDS_DESIGNER_TOGGLEBUTTON_NAME">
+        ToggleButton
+      </message>
+      <message translateable="false" name="IDS_DESIGNER_IMAGEBUTTON_NAME">
+        ImageButton
+      </message>
+
       <!-- dialog example -->
       <message translateable="false" name="IDS_DIALOG_SELECT_LABEL">
         Dialog
@@ -410,6 +424,9 @@
       <message translateable="false" name="IDS_TEXTFIELD_READ_ONLY_PLACEHOLDER">
         read only
       </message>
+      <message translateable="false" name="IDS_TEXTFIELD_INVALID_PLACEHOLDER">
+        invalid
+      </message>
       <message translateable="false" name="IDS_TEXTFIELD_NAME_LABEL">
         Name:
       </message>
@@ -425,6 +442,7 @@
       <message translateable="false" name="IDS_TEXTFIELD_INVALID_LABEL">
         Invalid:
       </message>
+
       <message translateable="false" name="IDS_TEXTFIELD_RTL_LABEL">
         RTL:
       </message>
@@ -519,9 +537,20 @@
         Edit
       </message>
 
+      <!-- typography example -->
+      <message translateable="false" name="IDS_TYPOGRAPHY_SELECT_LABEL">
+        Typography
+      </message>
+      <message translateable="false" name="IDS_TYPOGRAPHY_HEADLINE_PLACEHOLDER_TEXT">
+        The quick brown fox jumps over the lazy dog
+      </message>
+      <message translateable="false" name="IDS_TYPOGRAPHY_BODY_PLACEHOLDER_TEXT">
+        The quick brown fox jumps over the lazy dog&#10;Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. 
+      </message>
+
       <!-- vector example -->
       <message translateable="false" name="IDS_VECTOR_FILE_SELECT_LABEL">
-        Enter a file to read
+        Enter a file or folder to read
       </message>
       <message translateable="false" name="IDS_VECTOR_RENDER_LABEL">
         Render

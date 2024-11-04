@@ -180,28 +180,17 @@ class CORE_EXPORT EventHandler final : public GarbageCollected<EventHandler> {
   GestureEventWithHitTestResults HitTestResultForGestureEvent(
       const WebGestureEvent&,
       HitTestRequest::HitTestRequestType);
-  // Handle the provided non-scroll gesture event. Should be called only on the
-  // inner frame.
-  WebInputEventResult HandleGestureEventInFrame(
-      const GestureEventWithHitTestResults&);
 
   // Handle the provided scroll gesture event, propagating down to child frames
   // as necessary.
   WebInputEventResult HandleGestureScrollEvent(const WebGestureEvent&);
   bool IsScrollbarHandlingGestures() const;
 
-  bool BestClickableNodeForHitTestResult(const HitTestLocation& location,
-                                         const HitTestResult&,
-                                         gfx::Point& target_point,
-                                         Node*& target_node);
-  bool BestContextMenuNodeForHitTestResult(const HitTestLocation& location,
-                                           const HitTestResult&,
-                                           gfx::Point& target_point,
-                                           Node*& target_node);
-  bool BestStylusWritableNodeForHitTestResult(const HitTestLocation& location,
-                                              const HitTestResult&,
-                                              gfx::Point& target_point,
-                                              Node*& target_node);
+  bool BestNodeForHitTestResult(TouchAdjustmentCandidateType candidate_type,
+                                const HitTestLocation& location,
+                                const HitTestResult&,
+                                gfx::Point& adjusted_point,
+                                Node*& adjusted_node);
   void CacheTouchAdjustmentResult(uint32_t, gfx::PointF);
 
   // Dispatch a context menu event. If |override_target_element| is provided,
@@ -263,6 +252,10 @@ class CORE_EXPORT EventHandler final : public GarbageCollected<EventHandler> {
 
   GestureManager& GetGestureManager() const { return *gesture_manager_; }
 
+  KeyboardEventManager& GetKeyboardEventManager() const {
+    return *keyboard_event_manager_;
+  }
+
   void AnimateSnapFling(base::TimeTicks monotonic_time);
 
   void RecomputeMouseHoverStateIfNeeded();
@@ -288,6 +281,10 @@ class CORE_EXPORT EventHandler final : public GarbageCollected<EventHandler> {
 
   Element* CurrentTouchDownElement();
 
+  void SetDownloadModifierTaskHandle(TaskHandle task_handle);
+
+  TaskHandle& GetDownloadModifierTaskHandle();
+
  private:
   WebInputEventResult HandleMouseMoveOrLeaveEvent(
       const WebMouseEvent&,
@@ -297,7 +294,7 @@ class CORE_EXPORT EventHandler final : public GarbageCollected<EventHandler> {
       HitTestLocation* hit_test_location = nullptr);
 
   // Updates the event, location and result to the adjusted target.
-  void ApplyTouchAdjustment(WebGestureEvent*, HitTestLocation&, HitTestResult*);
+  void ApplyTouchAdjustment(WebGestureEvent*, HitTestLocation&, HitTestResult&);
 
   void PerformHitTest(const HitTestLocation& location,
                       HitTestResult&,
@@ -306,11 +303,16 @@ class CORE_EXPORT EventHandler final : public GarbageCollected<EventHandler> {
   void UpdateGestureTargetNodeForMouseEvent(
       const GestureEventWithHitTestResults&);
 
+  // Handle the provided non-scroll gesture event. Should be called only on the
+  // inner frame.
+  WebInputEventResult HandleGestureEventInFrame(
+      const GestureEventWithHitTestResults&);
+
   bool ShouldApplyTouchAdjustment(const WebGestureEvent&) const;
   bool GestureCorrespondsToAdjustedTouch(const WebGestureEvent&);
   bool IsSelectingLink(const HitTestResult&);
   bool ShouldShowIBeamForNode(const Node*, const HitTestResult&);
-  bool ShouldShowResizeForNode(const Node*, const HitTestLocation&);
+  bool ShouldShowResizeForNode(const LayoutObject&, const HitTestLocation&);
   absl::optional<ui::Cursor> SelectCursor(const HitTestLocation& location,
                                           const HitTestResult&);
   absl::optional<ui::Cursor> SelectAutoCursor(const HitTestResult&,
@@ -324,6 +326,12 @@ class CORE_EXPORT EventHandler final : public GarbageCollected<EventHandler> {
   ScrollableArea* AssociatedScrollableArea(const PaintLayer*) const;
 
   Element* EffectiveMouseEventTargetElement(Element*);
+
+  // When a link is clicked with the alt-modifier it forces a download. However,
+  // a double-click with the alt-modifier should select the text of the link.
+  // The alt-click thus posts this task to perform the download,
+  // which can be canceled by a double-click being received.
+  TaskHandle download_modifier_task_handle_;
 
   // Dispatches ME after corresponding PE provided the PE has not been
   // canceled. The |mouse_event_type| arg must be one of {mousedown,
@@ -436,6 +444,13 @@ class CORE_EXPORT EventHandler final : public GarbageCollected<EventHandler> {
   // Stored the last touch type primary pointer down adjustment result.
   // This is used in gesture event hit test.
   TouchAdjustmentResult touch_adjustment_result_;
+
+  struct {
+    DOMNodeId mouse_down_target = kInvalidDOMNodeId;
+    DOMNodeId tap_target = kInvalidDOMNodeId;
+    base::TimeTicks mouse_down_time;
+    base::TimeTicks tap_time;
+  } discarded_events_;
 
   // ShouldShowIBeamForNode's unit tests:
   FRIEND_TEST_ALL_PREFIXES(EventHandlerTest, HitOnNothingDoesNotShowIBeam);

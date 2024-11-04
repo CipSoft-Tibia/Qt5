@@ -1,4 +1,4 @@
-// Copyright 2021 The Chromium Authors. All rights reserved.
+// Copyright 2021 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,7 @@
 #include "absl/strings/match.h"
 #include "util/std_util.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 // clang-format off
@@ -145,5 +144,4 @@ std::vector<std::string> GetCastStreamingAppIds() {
       {GetCastStreamingAudioVideoAppId(), GetCastStreamingAudioOnlyAppId()});
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

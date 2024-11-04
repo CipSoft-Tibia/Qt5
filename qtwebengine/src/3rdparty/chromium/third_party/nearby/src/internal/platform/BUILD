@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Placeholder: load py_test
+
 licenses(["notice"])
 
 cc_library(
@@ -43,15 +45,17 @@ cc_library(
         "wifi_credential.h",
     ],
     copts = ["-DCORE_ADAPTER_DLL"],
-    defines = ["NO_WEBRTC"],
     visibility = [
         "//connections:__subpackages__",
         "//fastpair:__subpackages__",
-        "//internal:__pkg__",
+        "//internal/auth:__subpackages__",
         "//internal/platform:__subpackages__",
         "//internal/platform/implementation:__subpackages__",
-        "//location/nearby/cpp/fastpair:__subpackages__",
+        "//internal/preferences:__subpackages__",
+        "//internal/weave:__subpackages__",
+        "//location/nearby/cpp:__subpackages__",
         "//presence:__subpackages__",
+        "//third_party/nearby/sharing:__subpackages__",
     ],
     deps = [
         "//proto:connections_enums_cc_proto",
@@ -69,16 +73,13 @@ cc_library(
     name = "util",
     srcs = [
         "base_input_stream.cc",
-        "base_pipe.cc",
         "byte_utils.cc",
     ],
     hdrs = [
         "base_input_stream.h",
         "base_mutex_lock.h",
-        "base_pipe.h",
         "byte_utils.h",
     ],
-    defines = ["NO_WEBRTC"],
     visibility = [
         "//connections:__subpackages__",
         "//internal/platform/implementation:__subpackages__",
@@ -92,31 +93,6 @@ cc_library(
 )
 
 cc_library(
-    name = "logging",
-    hdrs = [
-        "logging.h",
-    ],
-    copts = ["-DCORE_ADAPTER_DLL"],
-    defines = ["NO_WEBRTC"],
-    visibility = [
-        "//connections:__subpackages__",
-        "//fastpair:__subpackages__",
-        "//internal:__pkg__",
-        "//internal/crypto:__subpackages__",
-        "//internal/network:__subpackages__",
-        "//internal/platform:__subpackages__",
-        "//internal/proto/analytics:__subpackages__",
-        "//location/nearby/analytics/cpp:__subpackages__",
-        "//presence:__subpackages__",
-    ],
-    deps = [
-        "//internal/platform/implementation:platform",
-        "//internal/platform/implementation:types",
-        "@com_google_glog//:glog",
-    ],
-)
-
-cc_library(
     name = "cancellation_flag",
     srcs = [
         "cancellation_flag.cc",
@@ -125,7 +101,6 @@ cc_library(
         "cancellation_flag.h",
         "cancellation_flag_listener.h",
     ],
-    defines = ["NO_WEBRTC"],
     visibility = [
         "//connections/implementation:__subpackages__",
         "//internal/platform/implementation:__subpackages__",
@@ -143,6 +118,7 @@ cc_library(
     srcs = [
         "ble_connection_info.cc",
         "bluetooth_connection_info.cc",
+        "connection_info.cc",
         "wifi_lan_connection_info.cc",
     ],
     hdrs = [
@@ -151,17 +127,20 @@ cc_library(
         "connection_info.h",
         "wifi_lan_connection_info.h",
     ],
-    defines = ["NO_WEBRTC"],
     visibility = [
-        "//internal:__pkg__",
+        "//connections/implementation:__pkg__",
+        "//connections/v3:__pkg__",
+        "//internal/interop:__pkg__",
         "//presence:__subpackages__",
     ],
     deps = [
-        ":base",
-        ":logging",
+        ":types",
+        "//proto:connections_enums_cc_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -174,10 +153,9 @@ cc_library(
         "error_code_params.h",
         "error_code_recorder.h",
     ],
-    defines = ["NO_WEBRTC"],
     visibility = ["//connections/implementation:__subpackages__"],
     deps = [
-        ":logging",
+        ":types",
         "//proto:connections_enums_cc_proto",
         "//proto/errorcode:error_code_enums_cc_proto",
         "@com_google_absl//absl/functional:any_invocable",
@@ -192,7 +170,6 @@ cc_library(
     hdrs = [
         "uuid.h",
     ],
-    defines = ["NO_WEBRTC"],
     visibility = [
         "//connections/implementation:__subpackages__",
         "//fastpair:__subpackages__",
@@ -214,19 +191,20 @@ cc_library(
     hdrs = [
         "medium_environment.h",
     ],
-    defines = ["NO_WEBRTC"],
     visibility = [
         "//connections:__subpackages__",
         "//fastpair:__subpackages__",
         "//internal/platform/implementation:__subpackages__",
         "//presence:__subpackages__",
+        "//third_party/nearby/sharing:__subpackages__",
     ],
     deps = [
         ":base",
-        ":logging",
         ":types",
         ":uuid",
+        "//internal/base",
         "//internal/platform/implementation:comm",
+        "//internal/test",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
@@ -241,9 +219,9 @@ cc_test(
         "bluetooth_utils_test.cc",
         "byte_array_test.cc",
         "feature_flags_test.cc",
+        "input_stream_test.cc",
         "prng_test.cc",
     ],
-    defines = ["NO_WEBRTC"],
     deps = [
         ":base",
         ":test_util",
@@ -260,7 +238,6 @@ cc_test(
     srcs = [
         "byte_utils_test.cc",
     ],
-    defines = ["NO_WEBRTC"],
     deps = [
         ":base",
         ":util",
@@ -274,7 +251,6 @@ cc_test(
     srcs = [
         "cancellation_flag_test.cc",
     ],
-    defines = ["NO_WEBRTC"],
     deps = [
         ":base",
         ":cancellation_flag",
@@ -290,7 +266,6 @@ cc_test(
     srcs = [
         "error_code_recorder_test.cc",
     ],
-    defines = ["NO_WEBRTC"],
     deps = [
         ":error_code_recorder",
         ":test_util",
@@ -303,6 +278,7 @@ cc_test(
 cc_library(
     name = "types",
     srcs = [
+        "clock_impl.cc",
         "device_info_impl.cc",
         "monitored_runnable.cc",
         "pending_job_registry.cc",
@@ -317,6 +293,8 @@ cc_library(
         "cancelable.h",
         "cancelable_alarm.h",
         "cancellable_task.h",
+        "clock.h",
+        "clock_impl.h",
         "condition_variable.h",
         "count_down_latch.h",
         "crypto.h",
@@ -345,20 +323,35 @@ cc_library(
         "timer.h",
         "timer_impl.h",
     ],
-    defines = ["NO_WEBRTC"],
     visibility = [
         "//connections:__subpackages__",
         "//fastpair:__subpackages__",
+        "//internal/account:__subpackages__",
+        "//internal/auth:__subpackages__",
+        "//internal/auth/credential_store:__subpackages__",
+        "//internal/base:__subpackages__",
+        "//internal/data:__subpackages__",
+        "//internal/flags:__subpackages__",
+        "//internal/interop:__pkg__",
+        "//internal/network:__subpackages__",
+        "//internal/platform:__subpackages__",
+        "//internal/platform/implementation/g3:__pkg__",
         "//internal/platform/implementation/windows:__subpackages__",
-        "//location/nearby/cpp/fastpair:__subpackages__",
+        "//internal/preferences:__subpackages__",
+        "//internal/proto/analytics:__subpackages__",
+        "//internal/test:__subpackages__",
+        "//internal/weave:__subpackages__",
+        "//location/nearby/analytics/cpp:__subpackages__",
+        "//location/nearby/apps:__subpackages__",
+        "//location/nearby/cpp:__subpackages__",
         "//location/nearby/testing/nearby_native:__subpackages__",
         "//presence:__subpackages__",
+        "//third_party/nearby/sharing:__subpackages__",
     ],
     deps = [
         ":base",
-        ":logging",
         ":util",
-        "//internal/crypto",
+        "//internal/crypto_cros",
         "//internal/platform/implementation:platform",
         "//internal/platform/implementation:types",
         "@com_google_absl//absl/base:core_headers",
@@ -391,37 +384,39 @@ cc_library(
         "bluetooth_adapter.h",
         "bluetooth_classic.h",
         "credential_storage_impl.h",
+        "webrtc.h",
         "wifi.h",
         "wifi_direct.h",
         "wifi_hotspot.h",
         "wifi_lan.h",
         "wifi_utils.h",
     ],
-    copts = ["-DCORE_ADAPTER_DLL"] + select({
-        "@platforms//cpu:arm": [
-            "-DNO_WEBRTC",
-        ],
-        "//conditions:default": [],
-    }),
-    defines = ["NO_WEBRTC"],
+    copts = [
+        "-DCORE_ADAPTER_DLL",
+        "-DNO_WEBRTC",
+    ],
     visibility = [
         "//connections:__subpackages__",
         "//fastpair:__subpackages__",
         "//internal/platform/implementation:__subpackages__",
-        "//location/nearby/cpp/fastpair:__subpackages__",
+        "//internal/test:__subpackages__",
         "//presence:__subpackages__",
     ],
     deps = [
         ":base",
         ":cancellation_flag",
-        ":logging",
         ":types",
         ":uuid",
+        "//internal/base",
         "//internal/platform/implementation:comm",
         "//internal/platform/implementation:platform",
+        # TODO: Support WebRTC
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -442,6 +437,7 @@ cc_test(
         "borrowable_test.cc",
         "cancelable_alarm_test.cc",
         "condition_variable_test.cc",
+        "connection_info_test.cc",
         "count_down_latch_test.cc",
         "credential_storage_impl_test.cc",
         "crypto_test.cc",
@@ -464,24 +460,25 @@ cc_test(
         "wifi_utils_test.cc",
     ],
     copts = ["-DCORE_ADAPTER_DLL"],
-    defines = ["NO_WEBRTC"],
     shard_count = 16,
     deps = [
         ":base",
+        ":cancellation_flag",
         ":comm",
         ":connection_info",
-        ":logging",
         ":test_util",
         ":types",
         ":uuid",
         "//internal/platform/implementation:comm",
         "//internal/platform/implementation/g3",  # build_cleaner: keep
         "//internal/proto:credential_cc_proto",
+        "//proto:connections_enums_cc_proto",
         "@com_github_protobuf_matchers//protobuf-matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:variant",
         "@com_google_googletest//:gtest_main",
     ],
 )

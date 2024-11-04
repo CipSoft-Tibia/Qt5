@@ -17,6 +17,7 @@
 #include "cc/trees/layer_tree_host.h"
 #include "services/tracing/public/cpp/perfetto/flow_event_utils.h"
 #include "services/tracing/public/cpp/perfetto/macros.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/input/web_gesture_device.h"
 #include "third_party/blink/public/common/input/web_gesture_event.h"
 #include "third_party/blink/public/common/input/web_input_event_attribution.h"
@@ -26,6 +27,7 @@
 #include "third_party/blink/public/common/input/web_touch_event.h"
 #include "third_party/blink/public/mojom/input/input_event_result.mojom-shared.h"
 #include "third_party/blink/public/platform/scheduler/web_thread_scheduler.h"
+#include "third_party/blink/public/platform/web_input_event_result.h"
 #include "third_party/blink/renderer/platform/widget/input/ime_event_guard.h"
 #include "third_party/blink/renderer/platform/widget/widget_base.h"
 #include "third_party/blink/renderer/platform/widget/widget_base_client.h"
@@ -156,9 +158,12 @@ WebCoalescedInputEvent GetCoalescedWebPointerEventForTouch(
 }
 
 mojom::InputEventResultState GetAckResult(WebInputEventResult processed) {
-  return processed == WebInputEventResult::kNotHandled
-             ? mojom::InputEventResultState::kNotConsumed
-             : mojom::InputEventResultState::kConsumed;
+  if (processed == WebInputEventResult::kNotHandled) {
+    return base::FeatureList::IsEnabled(features::kFixGestureScrollQueuingBug)
+               ? mojom::InputEventResultState::kNotConsumedBlocking
+               : mojom::InputEventResultState::kNotConsumed;
+  }
+  return mojom::InputEventResultState::kConsumed;
 }
 
 bool IsGestureScrollWBIH(WebInputEvent::Type type) {
@@ -588,7 +593,7 @@ void WidgetBaseInputHandler::InjectGestureScrollEvent(
             injected_type, now, device, gfx::PointF(0, 0), delta, granularity);
     if (injected_type == WebInputEvent::Type::kGestureScrollBegin) {
       gesture_event->data.scroll_begin.scrollable_area_element_id =
-          scrollable_area_element_id.GetStableId();
+          scrollable_area_element_id.GetInternalValue();
     }
 
     std::unique_ptr<WebCoalescedInputEvent> web_scoped_gesture_event =
@@ -676,7 +681,7 @@ void WidgetBaseInputHandler::HandleInjectedScrollGestures(
 
     if (params.type == WebInputEvent::Type::kGestureScrollBegin) {
       gesture_event->data.scroll_begin.scrollable_area_element_id =
-          params.scrollable_area_element_id.GetStableId();
+          params.scrollable_area_element_id.GetInternalValue();
       last_injected_gesture_was_begin_ = true;
     } else {
       last_injected_gesture_was_begin_ = false;

@@ -34,7 +34,8 @@ void DCHECKTriggeringOutcomeTransitions(PreloadingTriggeringOutcome old_state,
             PreloadingTriggeringOutcome::kFailure,
             PreloadingTriggeringOutcome::kTriggeredButOutcomeUnknown,
             PreloadingTriggeringOutcome::kTriggeredButUpgradedToPrerender,
-            PreloadingTriggeringOutcome::kTriggeredButPending}},
+            PreloadingTriggeringOutcome::kTriggeredButPending,
+            PreloadingTriggeringOutcome::kNoOp}},
 
           {PreloadingTriggeringOutcome::kDuplicate, {}},
 
@@ -66,6 +67,8 @@ void DCHECKTriggeringOutcomeTransitions(PreloadingTriggeringOutcome old_state,
           {PreloadingTriggeringOutcome::kTriggeredButPending,
            {PreloadingTriggeringOutcome::kRunning,
             PreloadingTriggeringOutcome::kFailure}},
+
+          {PreloadingTriggeringOutcome::kNoOp, {}},
       }));
   DCHECK_STATE_TRANSITION(allowed_transitions,
                           /*old_state=*/old_state,
@@ -78,29 +81,31 @@ void DCHECKTriggeringOutcomeTransitions(PreloadingTriggeringOutcome old_state,
 void PreloadingAttemptImpl::SetEligibility(PreloadingEligibility eligibility) {
   // Ensure that eligiblity is only set once and that it's set before the
   // holdback status and the triggering outcome.
-  DCHECK_EQ(eligibility_, PreloadingEligibility::kUnspecified);
-  DCHECK_EQ(holdback_status_, PreloadingHoldbackStatus::kUnspecified);
-  DCHECK_EQ(triggering_outcome_, PreloadingTriggeringOutcome::kUnspecified);
-  DCHECK_NE(eligibility, PreloadingEligibility::kUnspecified);
+  CHECK_EQ(eligibility_, PreloadingEligibility::kUnspecified);
+  CHECK_EQ(holdback_status_, PreloadingHoldbackStatus::kUnspecified);
+  CHECK_EQ(triggering_outcome_, PreloadingTriggeringOutcome::kUnspecified);
+  CHECK_NE(eligibility, PreloadingEligibility::kUnspecified);
   eligibility_ = eligibility;
 }
 
-// TODO(crbug.com/1383267): remove this once we've switched to the
-// PreloadingConfig feature. The holdback status should be determined by the
-// preloading configuration only.
+// TODO(crbug.com/1464836): most call sites of this should be removed, as
+// PreloadingConfig should subsume most feature-specific holdbacks that exist
+// today. Some cases can remain as specific overrides of the PreloadingConfig
+// logic, e.g. if DevTools is open, or for features that are still launching and
+// thus have their own separate holdback feature while they ramp up.
 void PreloadingAttemptImpl::SetHoldbackStatus(
     PreloadingHoldbackStatus holdback_status) {
   // Ensure that the holdback status is only set once and that it's set for
   // eligible attempts and before the triggering outcome.
-  DCHECK_EQ(eligibility_, PreloadingEligibility::kEligible);
-  DCHECK_EQ(holdback_status_, PreloadingHoldbackStatus::kUnspecified);
-  DCHECK_EQ(triggering_outcome_, PreloadingTriggeringOutcome::kUnspecified);
-  DCHECK_NE(holdback_status, PreloadingHoldbackStatus::kUnspecified);
+  CHECK_EQ(eligibility_, PreloadingEligibility::kEligible);
+  CHECK_EQ(holdback_status_, PreloadingHoldbackStatus::kUnspecified);
+  CHECK_EQ(triggering_outcome_, PreloadingTriggeringOutcome::kUnspecified);
+  CHECK_NE(holdback_status, PreloadingHoldbackStatus::kUnspecified);
   holdback_status_ = holdback_status;
 }
 
 bool PreloadingAttemptImpl::ShouldHoldback() {
-  DCHECK_EQ(eligibility_, PreloadingEligibility::kEligible);
+  CHECK_EQ(eligibility_, PreloadingEligibility::kEligible);
   if (holdback_status_ != PreloadingHoldbackStatus::kUnspecified) {
     // The holdback status has already been determined, just use that value.
     return holdback_status_ == PreloadingHoldbackStatus::kHoldback;
@@ -120,8 +125,8 @@ void PreloadingAttemptImpl::SetTriggeringOutcome(
     PreloadingTriggeringOutcome triggering_outcome) {
   // Ensure that the triggering outcome is only set for eligible and
   // non-holdback attempts.
-  DCHECK_EQ(eligibility_, PreloadingEligibility::kEligible);
-  DCHECK_EQ(holdback_status_, PreloadingHoldbackStatus::kAllowed);
+  CHECK_EQ(eligibility_, PreloadingEligibility::kEligible);
+  CHECK_EQ(holdback_status_, PreloadingHoldbackStatus::kAllowed);
   // Check that we do the correct transition before setting
   // `triggering_outcome_`.
   DCHECKTriggeringOutcomeTransitions(/*old_state=*/triggering_outcome_,
@@ -136,9 +141,9 @@ void PreloadingAttemptImpl::SetTriggeringOutcome(
     // `PreloadingTriggeringOutcome::kTriggeredButOutcomeUnknown` is set for
     // those other features.
     case PreloadingTriggeringOutcome::kReady:
-      DCHECK(preloading_type_ == PreloadingType::kPrefetch ||
-             preloading_type_ == PreloadingType::kPrerender ||
-             preloading_type_ == PreloadingType::kNoStatePrefetch);
+      CHECK(preloading_type_ == PreloadingType::kPrefetch ||
+            preloading_type_ == PreloadingType::kPrerender ||
+            preloading_type_ == PreloadingType::kNoStatePrefetch);
       if (!ready_time_) {
         ready_time_ = elapsed_timer_.Elapsed();
       }
@@ -151,10 +156,10 @@ void PreloadingAttemptImpl::SetTriggeringOutcome(
 void PreloadingAttemptImpl::SetFailureReason(PreloadingFailureReason reason) {
   // Ensure that the failure reason is only set once and is only set for
   // eligible and non-holdback attempts.
-  DCHECK_EQ(eligibility_, PreloadingEligibility::kEligible);
-  DCHECK_EQ(holdback_status_, PreloadingHoldbackStatus::kAllowed);
-  DCHECK_EQ(failure_reason_, PreloadingFailureReason::kUnspecified);
-  DCHECK_NE(reason, PreloadingFailureReason::kUnspecified);
+  CHECK_EQ(eligibility_, PreloadingEligibility::kEligible);
+  CHECK_EQ(holdback_status_, PreloadingHoldbackStatus::kAllowed);
+  CHECK_EQ(failure_reason_, PreloadingFailureReason::kUnspecified);
+  CHECK_NE(reason, PreloadingFailureReason::kUnspecified);
 
   // It could be possible that the TriggeringOutcome is already kFailure, when
   // we try to set FailureReason after setting TriggeringOutcome to kFailure.
@@ -188,8 +193,15 @@ void PreloadingAttemptImpl::RecordPreloadingAttemptMetrics(
   // Ensure that when the `triggering_outcome_` is kSuccess, then the
   // accurate_triggering should be true.
   if (triggering_outcome_ == PreloadingTriggeringOutcome::kSuccess) {
-    DCHECK(is_accurate_triggering_)
-        << "TriggeringOutcome set to kSuccess without correct prediction\n";
+    // TODO(https://crbug.com/1431055): Fix PreloadingAttempt for Prefetching in
+    // a different WebContents. It is allowed to activate a prefetched result in
+    // another WebContents instance, and the WebContents that stores `this`
+    // instance does not have the opportunity to set the
+    // `is_accurate_triggering_` flag to true in this case.
+    if (preloading_type_ != PreloadingType::kPrefetch) {
+      CHECK(is_accurate_triggering_)
+          << "TriggeringOutcome set to kSuccess without correct prediction\n";
+    }
   }
 
   // Always record UMA, regardless of sampling.
@@ -197,9 +209,9 @@ void PreloadingAttemptImpl::RecordPreloadingAttemptMetrics(
 
   // Check if the preloading attempt is sampled in.
   // We prefer to use the UKM source ID of the triggering page for determining
-  // sampling, so that all preloading attempts for the same page are included
-  // (or not) together. If there is no source for the triggering page, fallback
-  // to the navigated-to page.
+  // sampling, so that all preloading attempts from a given (preloading_type,
+  // predictor) for the same page are included (or not) together. If there is
+  // no source for the triggering page, fallback to the navigated-to page.
   ukm::SourceId sampling_source = triggered_primary_page_source_id_;
   if (sampling_source == ukm::kInvalidSourceId) {
     sampling_source = navigated_page_source_id;
@@ -222,6 +234,11 @@ void PreloadingAttemptImpl::RecordPreloadingAttemptMetrics(
     return;
   }
 
+  // Turn sampling_likelihood into an int64_t for UKM logging. Multiply by one
+  // million to preserve accuracy.
+  int64_t sampling_likelihood_per_million =
+      static_cast<int64_t>(1'000'000 * sampling_likelihood);
+
   if (navigated_page_source_id != ukm::kInvalidSourceId) {
     ukm::builders::Preloading_Attempt builder(navigated_page_source_id);
     builder.SetPreloadingType(static_cast<int64_t>(preloading_type_))
@@ -230,7 +247,8 @@ void PreloadingAttemptImpl::RecordPreloadingAttemptMetrics(
         .SetHoldbackStatus(static_cast<int64_t>(holdback_status_))
         .SetTriggeringOutcome(static_cast<int64_t>(triggering_outcome_))
         .SetFailureReason(static_cast<int64_t>(failure_reason_))
-        .SetAccurateTriggering(is_accurate_triggering_);
+        .SetAccurateTriggering(is_accurate_triggering_)
+        .SetSamplingLikelihood(sampling_likelihood_per_million);
     if (time_to_next_navigation_) {
       builder.SetTimeToNextNavigation(ukm::GetExponentialBucketMinForCounts1000(
           time_to_next_navigation_->InMilliseconds()));
@@ -238,6 +256,9 @@ void PreloadingAttemptImpl::RecordPreloadingAttemptMetrics(
     if (ready_time_) {
       builder.SetReadyTime(ukm::GetExponentialBucketMinForCounts1000(
           ready_time_->InMilliseconds()));
+    }
+    if (eagerness_) {
+      builder.SetSpeculationEagerness(static_cast<int64_t>(eagerness_.value()));
     }
     builder.Record(ukm_recorder);
   }
@@ -251,7 +272,8 @@ void PreloadingAttemptImpl::RecordPreloadingAttemptMetrics(
         .SetHoldbackStatus(static_cast<int64_t>(holdback_status_))
         .SetTriggeringOutcome(static_cast<int64_t>(triggering_outcome_))
         .SetFailureReason(static_cast<int64_t>(failure_reason_))
-        .SetAccurateTriggering(is_accurate_triggering_);
+        .SetAccurateTriggering(is_accurate_triggering_)
+        .SetSamplingLikelihood(sampling_likelihood_per_million);
     if (time_to_next_navigation_) {
       builder.SetTimeToNextNavigation(ukm::GetExponentialBucketMinForCounts1000(
           time_to_next_navigation_->InMilliseconds()));
@@ -259,6 +281,9 @@ void PreloadingAttemptImpl::RecordPreloadingAttemptMetrics(
     if (ready_time_) {
       builder.SetReadyTime(ukm::GetExponentialBucketMinForCounts1000(
           ready_time_->InMilliseconds()));
+    }
+    if (eagerness_) {
+      builder.SetSpeculationEagerness(static_cast<int64_t>(eagerness_.value()));
     }
     builder.Record(ukm_recorder);
   }
@@ -277,7 +302,7 @@ void PreloadingAttemptImpl::RecordPreloadingAttemptUMA() {
 }
 
 void PreloadingAttemptImpl::SetIsAccurateTriggering(const GURL& navigated_url) {
-  DCHECK(url_match_predicate_);
+  CHECK(url_match_predicate_);
 
   // `PreloadingAttemptImpl::SetIsAccurateTriggering` is called during
   // `WCO::DidStartNavigation`.
@@ -288,6 +313,18 @@ void PreloadingAttemptImpl::SetIsAccurateTriggering(const GURL& navigated_url) {
   // Use the predicate to match the URLs as the matching logic varies for each
   // predictor.
   is_accurate_triggering_ |= url_match_predicate_.Run(navigated_url);
+}
+
+void PreloadingAttemptImpl::SetSpeculationEagerness(
+    blink::mojom::SpeculationEagerness eagerness) {
+  CHECK(predictor_type_.ukm_value() ==
+            content_preloading_predictor::kSpeculationRules.ukm_value() ||
+        predictor_type_.ukm_value() ==
+            content_preloading_predictor::kSpeculationRulesFromIsolatedWorld
+                .ukm_value())
+      << "predictor_type_: " << predictor_type_.name()
+      << " (ukm_value = " << predictor_type_.ukm_value() << ")";
+  eagerness_ = eagerness;
 }
 
 // Used for StateTransitions matching.
@@ -320,6 +357,9 @@ std::ostream& operator<<(std::ostream& os,
       break;
     case PreloadingTriggeringOutcome::kTriggeredButPending:
       os << "TriggeredButPending";
+      break;
+    case PreloadingTriggeringOutcome::kNoOp:
+      os << "NoOp";
       break;
   }
   return os;

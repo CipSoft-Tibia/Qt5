@@ -40,7 +40,7 @@ public:
         GeometryChange = 0x02,
         Enter = UserInputEvent | 0x03,
         Leave = UserInputEvent | 0x04,
-        ActivatedWindow = 0x05,
+        FocusWindow = 0x05,
         WindowStateChanged = 0x06,
         Mouse = UserInputEvent | 0x07,
         Wheel = UserInputEvent | 0x09,
@@ -125,12 +125,12 @@ public:
         QPointer<QWindow> leave;
     };
 
-    class ActivatedWindowEvent : public WindowSystemEvent {
+    class FocusWindowEvent : public WindowSystemEvent {
     public:
-        explicit ActivatedWindowEvent(QWindow *activatedWindow, Qt::FocusReason r)
-            : WindowSystemEvent(ActivatedWindow), activated(activatedWindow), reason(r)
+        explicit FocusWindowEvent(QWindow *focusedWindow, Qt::FocusReason r)
+            : WindowSystemEvent(FocusWindow), focused(focusedWindow), reason(r)
         { }
-        QPointer<QWindow> activated;
+        QPointer<QWindow> focused;
         Qt::FocusReason reason;
     };
 
@@ -224,9 +224,11 @@ public:
                    Qt::MouseButtons state, Qt::KeyboardModifiers mods,
                    Qt::MouseButton b, QEvent::Type type,
                    Qt::MouseEventSource src = Qt::MouseEventNotSynthesized, bool frame = false,
-                   const QPointingDevice *device = QPointingDevice::primaryPointingDevice())
+                   const QPointingDevice *device = QPointingDevice::primaryPointingDevice(),
+                   int evPtId = -1)
             : PointerEvent(w, time, Mouse, mods, device), localPos(local), globalPos(global),
-              buttons(state), source(src), nonClientArea(frame), button(b), buttonType(type) { }
+              buttons(state), source(src), nonClientArea(frame), button(b), buttonType(type),
+              eventPointId(evPtId) { }
 
         QPointF localPos;
         QPointF globalPos;
@@ -235,6 +237,7 @@ public:
         bool nonClientArea;
         Qt::MouseButton button;
         QEvent::Type buttonType;
+        int eventPointId; // from the original device if synth-mouse, otherwise -1
     };
 
     class WheelEvent : public PointerEvent {

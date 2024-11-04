@@ -22,6 +22,7 @@
 #include "dawn/native/Format.h"
 #include "dawn/native/ObjectBase.h"
 #include "dawn/native/PerStage.h"
+#include "dawn/native/ProgrammableEncoder.h"
 #include "dawn/native/ShaderModule.h"
 #include "dawn/native/Subresource.h"
 #include "dawn/native/Surface.h"
@@ -123,6 +124,33 @@ absl::FormatConvertResult<absl::FormatConversionCharSet::kString> AbslFormatConv
     return {true};
 }
 
+absl::FormatConvertResult<absl::FormatConversionCharSet::kString> AbslFormatConvert(
+    const ImageCopyTexture* value,
+    const absl::FormatConversionSpec& spec,
+    absl::FormatSink* s) {
+    if (value == nullptr) {
+        s->Append("[null]");
+        return {true};
+    }
+    s->Append(
+        absl::StrFormat("[ImageCopyTexture texture: %s, mipLevel: %u, origin: %s, aspect: %s]",
+                        value->texture, value->mipLevel, &value->origin, value->aspect));
+    return {true};
+}
+
+absl::FormatConvertResult<absl::FormatConversionCharSet::kString> AbslFormatConvert(
+    const TextureDataLayout* value,
+    const absl::FormatConversionSpec& spec,
+    absl::FormatSink* s) {
+    if (value == nullptr) {
+        s->Append("[null]");
+        return {true};
+    }
+    s->Append(absl::StrFormat("[TextureDataLayout offset:%u, bytesPerRow:%u, rowsPerImage:%u]",
+                              value->offset, value->bytesPerRow, value->rowsPerImage));
+    return {true};
+}
+
 //
 // Objects
 //
@@ -156,36 +184,7 @@ absl::FormatConvertResult<absl::FormatConversionCharSet::kString> AbslFormatConv
     if (value->IsError()) {
         s->Append("Invalid ");
     }
-    s->Append(ObjectTypeAsString(value->GetType()));
-    const std::string& label = value->GetLabel();
-    if (!label.empty()) {
-        s->Append(absl::StrFormat(" \"%s\"", label));
-    }
-    s->Append("]");
-    return {true};
-}
-
-absl::FormatConvertResult<absl::FormatConversionCharSet::kString> AbslFormatConvert(
-    const TextureViewBase* value,
-    const absl::FormatConversionSpec& spec,
-    absl::FormatSink* s) {
-    if (value == nullptr) {
-        s->Append("[null]");
-        return {true};
-    }
-    s->Append("[");
-    if (value->IsError()) {
-        s->Append("Invalid ");
-    }
-    s->Append(ObjectTypeAsString(value->GetType()));
-    const std::string& label = value->GetLabel();
-    if (!label.empty()) {
-        s->Append(absl::StrFormat(" \"%s\"", label));
-    }
-    const std::string& textureLabel = value->GetTexture()->GetLabel();
-    if (!textureLabel.empty()) {
-        s->Append(absl::StrFormat(" of Texture \"%s\"", textureLabel));
-    }
+    value->FormatLabel(s);
     s->Append("]");
     return {true};
 }
@@ -227,7 +226,14 @@ absl::FormatConvertResult<absl::FormatConversionCharSet::kString> AbslFormatConv
         s->Append(absl::StrFormat("depthStencilFormat: %s, ", value->GetDepthStencilFormat()));
     }
 
-    s->Append(absl::StrFormat("sampleCount: %u }", value->GetSampleCount()));
+    s->Append(absl::StrFormat("sampleCount: %u", value->GetSampleCount()));
+
+    if (value->GetDevice()->HasFeature(Feature::MSAARenderToSingleSampled)) {
+        s->Append(absl::StrFormat(", msaaRenderToSingleSampled: %d",
+                                  value->IsMSAARenderToSingleSampledEnabled()));
+    }
+
+    s->Append(" }");
 
     return {true};
 }
@@ -459,6 +465,24 @@ absl::FormatConvertResult<absl::FormatConversionCharSet::kString> AbslFormatConv
             break;
         case InterpolationSampling::Sample:
             s->Append("Sample");
+            break;
+    }
+    return {true};
+}
+
+absl::FormatConvertResult<absl::FormatConversionCharSet::kString> AbslFormatConvert(
+    TextureComponentType value,
+    const absl::FormatConversionSpec& spec,
+    absl::FormatSink* s) {
+    switch (value) {
+        case TextureComponentType::Float:
+            s->Append("Float");
+            break;
+        case TextureComponentType::Sint:
+            s->Append("Sint");
+            break;
+        case TextureComponentType::Uint:
+            s->Append("Uint");
             break;
     }
     return {true};

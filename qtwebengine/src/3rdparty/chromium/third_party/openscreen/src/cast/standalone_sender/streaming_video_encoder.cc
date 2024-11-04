@@ -1,4 +1,4 @@
-// Copyright 2021 The Chromium Authors. All rights reserved.
+// Copyright 2021 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,10 @@
 
 #include "util/chrono_helpers.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 StreamingVideoEncoder::StreamingVideoEncoder(const Parameters& params,
-                                             TaskRunner* task_runner,
+                                             TaskRunner& task_runner,
                                              std::unique_ptr<Sender> sender)
     : params_(params),
       main_task_runner_(task_runner),
@@ -24,7 +23,6 @@ StreamingVideoEncoder::StreamingVideoEncoder(const Parameters& params,
   OSP_DCHECK_LE(params_.max_quantizer, kMaxQuantizer);
   OSP_DCHECK_LT(0.0, params_.max_time_utilization);
   OSP_DCHECK_LE(params_.max_time_utilization, 1.0);
-  OSP_DCHECK(main_task_runner_);
   OSP_DCHECK(sender_);
 }
 
@@ -57,5 +55,4 @@ void StreamingVideoEncoder::UpdateSpeedSettingForNextFrame(const Stats& stats) {
   OSP_DCHECK(std::isfinite(ideal_speed_setting_));
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

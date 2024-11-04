@@ -10,6 +10,41 @@
     Metrics for the ChromeOS Fast Pair implementation.
   </summary>
 
+  <event name="DiscoveryNotificationShown">
+    <summary>
+      The user is shown a notification which can start the pairing process.
+    </summary>
+    <metric name="Protocol" type="int">
+      <summary>
+        The pairing protocol of the discovered device.
+      </summary>
+    </metric>
+    <metric name="FastPairVersion" type="int">
+      <summary>
+        The Fast Pair spec version the device implements.
+      </summary>
+    </metric>
+    <metric name="ModelId" type="int">
+      <summary>
+        The model ID of the discovered device.
+      </summary>
+    </metric>
+    <metric name="RSSI" type="int">
+      <summary>
+        The inquiry RSSI of the discovered device, recorded at the time of metrics
+        emission, with a range of -128 to 127. If inquiry RSSI is unknown,
+        we report -129.
+      </summary>
+    </metric>
+    <metric name="TxPower" type="int">
+      <summary>
+        The inquiry TxPower of the discovered device, recorded at the time of
+        metrics emission, with a range of -128 to 127. If inquiry TxPower is
+        unknown, we report -129.
+      </summary>
+    </metric>
+  </event>
+
   <event name="PairingStart">
     <summary>
       The starting of the pairing process.
@@ -27,6 +62,20 @@
     <metric name="ModelId" type="int">
       <summary>
         The model ID of the device being paired.
+      </summary>
+    </metric>
+    <metric name="RSSI" type="int">
+      <summary>
+        The inquiry RSSI of the pairing device, recorded at the time of metrics
+        emission, with a range of -128 to 127. If inquiry RSSI is unknown,
+        we report -129.
+      </summary>
+    </metric>
+    <metric name="TxPower" type="int">
+      <summary>
+        The inquiry TxPower of the pairing device, recorded at the time of metrics
+        emission, with a range of -128 to 127. If inquiry TxPower is
+        unknown, we report -129.
       </summary>
     </metric>
   </event>
@@ -48,6 +97,20 @@
     <metric name="ModelId" type="int">
       <summary>
         The model ID of the device being paired.
+      </summary>
+    </metric>
+    <metric name="RSSI" type="int">
+      <summary>
+        The inquiry RSSI of the paired device, recorded at the time of metrics
+        emission, with a range of -128 to 127. If inquiry RSSI is unknown,
+        we report -129.
+      </summary>
+    </metric>
+    <metric name="TxPower" type="int">
+      <summary>
+        The inquiry TxPower of the paired device, recorded at the time of metrics
+        emission, with a range of -128 to 127. If inquiry TxPower is
+        unknown, we report -129.
       </summary>
     </metric>
   </event>
@@ -608,6 +671,76 @@
         Name of the app that was launched. Names are UTF-16 string encoding.
       </summary>
     </metric>
+    <metric name="ResultCategory" type="int">
+      <summary>
+        Enum representing the category of app the result is. This enum should map to
+        ash::SearchResultType.
+      </summary>
+    </metric>
+  </event>
+
+  <event name="AppDiscovery.Browser.OmniboxInstallIconClicked">
+    <summary>
+      Event recorded when the PWA Install Icon is clicked.
+    </summary>
+    <metric name="IPHShown" type="int">
+      <summary>
+        Boolean if the IPH (In-product help) was shown when the icon was clicked.
+        1 if the IPH was shown 0 otherwise.
+      </summary>
+    </metric>
+  </event>
+
+  <event name="AppDiscovery.Browser.AppInstallDialogShown">
+    <summary>
+      Event recorded when the PWA confirmation dialog is shown.
+    </summary>
+    <metric name="AppId" type="raw-string">
+      <summary>
+        Identifier of the app for which the bubble view is shown.
+      </summary>
+    </metric>
+  </event>
+
+  <event name="AppDiscovery.Browser.AppInstallDialogResult">
+    <summary>
+      Event capturing the result of the app install dialog shown in the browser.
+      This event will be captured if the install is accepted or cancelled. If a
+      user switches to a different tab, this will result in a "cancel".
+    </summary>
+    <metric name="WebAppInstallStatus" type="int">
+      <summary>
+        1 if accepted. 0 if cancelled. The status is considered cancelled if the
+        bubble dialog is closed before an "Accept" status has been detected.
+      </summary>
+    </metric>
+    <metric name="AppId" type="raw-string">
+      <summary>
+        Identifier of the app for which the bubble view is shown.
+      </summary>
+    </metric>
+  </event>
+
+  <event name="AppDiscovery.Browser.ClickInstallAppFromMenu">
+    <summary>
+      Event recorded when a PWA is installed from the browser menu.
+    </summary>
+    <metric name="AppId" type="raw-string">
+      <summary>
+        Identifier of the app that is being installed.
+      </summary>
+    </metric>
+  </event>
+
+  <event name="AppDiscovery.Browser.CreateShortcut">
+    <summary>
+      Event recorded when a web app or PWA is installed by creating a shortcut.
+    </summary>
+    <metric name="AppId" type="raw-string">
+      <summary>
+        Identifier of the app that is being installed.
+      </summary>
+    </metric>
   </event>
 
   <event name="UserLogin">
@@ -615,6 +748,24 @@
       An event to signify a user is using the system.
     </summary>
 
+  </event>
+
+  <event name="UserLogout">
+    <summary>
+      An event to signify a user explicitly logged out of the system.
+    </summary>
+
+  </event>
+
+  <event name="SystemSuspended">
+    <summary>
+      An event to signify the system has gone to sleep.
+    </summary>
+    <metric name="Reason" type="int">
+      <summary>
+        The reason the system was suspended, maps to the SuspendImminent::Reason.
+      </summary>
+    </metric>
   </event>
 
   <event name="Test1">

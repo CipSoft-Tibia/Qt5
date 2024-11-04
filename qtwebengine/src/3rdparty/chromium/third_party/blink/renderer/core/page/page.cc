@@ -39,7 +39,6 @@
 #include "third_party/blink/renderer/core/editing/drag_caret.h"
 #include "third_party/blink/renderer/core/editing/markers/document_marker_controller.h"
 #include "third_party/blink/renderer/core/frame/browser_controls.h"
-#include "third_party/blink/renderer/core/frame/dom_timer.h"
 #include "third_party/blink/renderer/core/frame/event_handler_registry.h"
 #include "third_party/blink/renderer/core/frame/frame_console.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
@@ -73,6 +72,7 @@
 #include "third_party/blink/renderer/core/page/plugin_data.h"
 #include "third_party/blink/renderer/core/page/plugins_changed_observer.h"
 #include "third_party/blink/renderer/core/page/pointer_lock_controller.h"
+#include "third_party/blink/renderer/core/page/scoped_browsing_context_group_pauser.h"
 #include "third_party/blink/renderer/core/page/scoped_page_pauser.h"
 #include "third_party/blink/renderer/core/page/scrolling/overscroll_controller.h"
 #include "third_party/blink/renderer/core/page/scrolling/scrolling_coordinator.h"
@@ -147,17 +147,19 @@ HeapVector<Member<Page>> Page::RelatedPages() {
 
 Page* Page::CreateNonOrdinary(ChromeClient& chrome_client,
                               AgentGroupScheduler& agent_group_scheduler) {
-  return MakeGarbageCollected<Page>(base::PassKey<Page>(), chrome_client,
-                                    agent_group_scheduler,
-                                    /*is_ordinary=*/false);
+  return MakeGarbageCollected<Page>(
+      base::PassKey<Page>(), chrome_client, agent_group_scheduler,
+      BrowsingContextGroupInfo::CreateUnique(), /*is_ordinary=*/false);
 }
 
-Page* Page::CreateOrdinary(ChromeClient& chrome_client,
-                           Page* opener,
-                           AgentGroupScheduler& agent_group_scheduler) {
-  Page* page = MakeGarbageCollected<Page>(base::PassKey<Page>(), chrome_client,
-                                          agent_group_scheduler,
-                                          /*is_ordinary=*/true);
+Page* Page::CreateOrdinary(
+    ChromeClient& chrome_client,
+    Page* opener,
+    AgentGroupScheduler& agent_group_scheduler,
+    const BrowsingContextGroupInfo& browsing_context_group_info) {
+  Page* page = MakeGarbageCollected<Page>(
+      base::PassKey<Page>(), chrome_client, agent_group_scheduler,
+      browsing_context_group_info, /*is_ordinary=*/true);
 
   if (opener) {
     // Before: ... -> opener -> next -> ...
@@ -170,14 +172,25 @@ Page* Page::CreateOrdinary(ChromeClient& chrome_client,
   }
 
   OrdinaryPages().insert(page);
-  if (ScopedPagePauser::IsActive())
+
+  bool should_pause = false;
+  if (base::FeatureList::IsEnabled(
+          features::kPausePagesPerBrowsingContextGroup)) {
+    should_pause = ScopedBrowsingContextGroupPauser::IsActive(*page);
+  } else {
+    should_pause = ScopedPagePauser::IsActive();
+  }
+  if (should_pause) {
     page->SetPaused(true);
+  }
+
   return page;
 }
 
 Page::Page(base::PassKey<Page>,
            ChromeClient& chrome_client,
            AgentGroupScheduler& agent_group_scheduler,
+           const BrowsingContextGroupInfo& browsing_context_group_info,
            bool is_ordinary)
     : SettingsDelegate(std::make_unique<Settings>()),
       main_frame_(nullptr),
@@ -217,7 +230,11 @@ Page::Page(base::PassKey<Page>,
       next_related_page_(this),
       prev_related_page_(this),
       autoplay_flags_(0),
-      web_text_autosizer_page_info_({0, 0, 1.f}) {
+      web_text_autosizer_page_info_({0, 0, 1.f}),
+      v8_compile_hints_producer_(
+          MakeGarbageCollected<
+              v8_compile_hints::V8CrowdsourcedCompileHintsProducer>(this)),
+      browsing_context_group_info_(browsing_context_group_info) {
   DCHECK(!AllPages().Contains(this));
   AllPages().insert(this);
 
@@ -328,12 +345,6 @@ void Page::SetMainFrame(Frame* main_frame) {
   main_frame_ = main_frame;
 
   page_scheduler_->SetIsMainFrameLocal(main_frame->IsLocalFrame());
-}
-
-Frame* Page::TakePreviousMainFrameForLocalSwap() {
-  Frame* frame = previous_main_frame_for_local_swap_;
-  previous_main_frame_for_local_swap_ = nullptr;
-  return frame;
 }
 
 LocalFrame* Page::DeprecatedLocalMainFrame() const {
@@ -539,10 +550,9 @@ void Page::SetVisibilityState(
   if (is_initial_state)
     return;
 
-  page_visibility_observer_set_.ForEachObserver(
-      [](PageVisibilityObserver* observer) {
-        observer->PageVisibilityChanged();
-      });
+  for (auto observer : page_visibility_observer_set_) {
+    observer->PageVisibilityChanged();
+  }
 
   if (main_frame_) {
     if (lifecycle_state_->visibility ==
@@ -713,12 +723,10 @@ void Page::SettingsChanged(ChangeType change_type) {
       }
       break;
     case ChangeType::kAccessibilityState:
-      if (!MainFrame() || !MainFrame()->IsLocalFrame())
+      if (!MainFrame() || !MainFrame()->IsLocalFrame()) {
         break;
-      DeprecatedLocalMainFrame()
-          ->GetDocument()
-          ->AXObjectCacheOwner()
-          .ClearAXObjectCache();
+      }
+      DeprecatedLocalMainFrame()->GetDocument()->RefreshAccessibilityTree();
       break;
     case ChangeType::kViewportStyle: {
       auto* main_local_frame = DynamicTo<LocalFrame>(MainFrame());
@@ -886,7 +894,6 @@ void Page::DidCommitLoad(LocalFrame* frame) {
     // TODO(loonybear): Most of this doesn't appear to take into account that
     // each SVGImage gets it's own Page instance.
     GetDeprecation().ClearSuppression();
-    GetVisualViewport().SendUMAMetrics();
     // Need to reset visual viewport position here since before commit load we
     // would update the previous history item, Page::didCommitLoad is called
     // after a new history item is created in FrameLoader.
@@ -957,6 +964,7 @@ void Page::Trace(Visitor* visitor) const {
   visitor->Trace(next_related_page_);
   visitor->Trace(prev_related_page_);
   visitor->Trace(agent_group_scheduler_);
+  visitor->Trace(v8_compile_hints_producer_);
   Supplementable<Page>::Trace(visitor);
 }
 
@@ -1009,11 +1017,10 @@ void Page::WillBeDestroyed() {
     validation_message_client_->WillBeDestroyed();
   main_frame_ = nullptr;
 
-  page_visibility_observer_set_.ForEachObserver(
-      [](PageVisibilityObserver* observer) {
-        observer->ObserverSetWillBeCleared();
-      });
-  page_visibility_observer_set_.Clear();
+  for (auto observer : page_visibility_observer_set_) {
+    observer->ObserverSetWillBeCleared();
+  }
+  page_visibility_observer_set_.clear();
 
   page_scheduler_ = nullptr;
 }
@@ -1061,13 +1068,6 @@ bool Page::RequestBeginMainFrameNotExpected(bool new_state) {
   chrome_client_->RequestBeginMainFrameNotExpected(*DeprecatedLocalMainFrame(),
                                                    new_state);
   return true;
-}
-
-bool Page::LocalMainFrameNetworkIsAlmostIdle() const {
-  LocalFrame* frame = DynamicTo<LocalFrame>(MainFrame());
-  if (!frame)
-    return true;
-  return frame->GetIdlenessDetector()->NetworkIsAlmostIdle();
 }
 
 void Page::AddAutoplayFlags(int32_t value) {
@@ -1154,6 +1154,36 @@ void Page::UpdateLifecycle(LocalFrame& root,
   }
 }
 
+const base::UnguessableToken& Page::BrowsingContextGroupToken() {
+  return browsing_context_group_info_.browsing_context_group_token;
+}
+
+const base::UnguessableToken& Page::CoopRelatedGroupToken() {
+  return browsing_context_group_info_.coop_related_group_token;
+}
+
+void Page::UpdateBrowsingContextGroup(
+    const blink::BrowsingContextGroupInfo& browsing_context_group_info) {
+  if (browsing_context_group_info_ == browsing_context_group_info) {
+    return;
+  }
+
+  if (base::FeatureList::IsEnabled(
+          features::kPausePagesPerBrowsingContextGroup) &&
+      ScopedBrowsingContextGroupPauser::IsActive(*this)) {
+    CHECK(paused_);
+    SetPaused(false);
+  }
+
+  browsing_context_group_info_ = browsing_context_group_info;
+
+  if (base::FeatureList::IsEnabled(
+          features::kPausePagesPerBrowsingContextGroup) &&
+      ScopedBrowsingContextGroupPauser::IsActive(*this)) {
+    SetPaused(true);
+  }
+}
+
 template class CORE_TEMPLATE_EXPORT Supplement<Page>;
 
 const char InternalSettingsPageSupplementBase::kSupplementName[] =
@@ -1165,8 +1195,13 @@ void Page::PrepareForLeakDetection() {
   // depending on whether the garbage collector(s) are able to find the settings
   // object through the Page supplement. Prepares for leak detection by removing
   // all InternalSetting objects from Pages.
-  for (Page* page : OrdinaryPages())
+  for (Page* page : OrdinaryPages()) {
     page->RemoveSupplement<InternalSettingsPageSupplementBase>();
+
+    // V8CrowdsourcedCompileHintsProducer keeps v8::Script objects alive until
+    // the page becomes interactive. Give it a chance to clean up.
+    page->v8_compile_hints_producer_->ClearData();
+  }
 }
 
 // Ensure the 10 bits reserved for connected frame count in NodeRareData are

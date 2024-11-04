@@ -9,8 +9,21 @@
       "proprietary_codecs": true,
       "symbol_level": 1,
       "target_os": "android",
-      "use_dawn": true,
-      "use_goma": true
+      "use_remoteexec": true
+    }
+  },
+  "android-dawn-arm64-rel": {
+    "gn_args": {
+      "dcheck_always_on": true,
+      "debuggable_apks": false,
+      "ffmpeg_branding": "Chrome",
+      "is_component_build": false,
+      "is_debug": false,
+      "proprietary_codecs": true,
+      "symbol_level": 1,
+      "target_cpu": "arm64",
+      "target_os": "android",
+      "use_remoteexec": true
     }
   },
   "dawn-android-arm-deps-rel": {
@@ -23,19 +36,30 @@
       "proprietary_codecs": true,
       "symbol_level": 1,
       "target_os": "android",
-      "use_dawn": true,
-      "use_goma": true
+      "use_remoteexec": true
+    }
+  },
+  "dawn-android-arm64-deps-rel": {
+    "gn_args": {
+      "dcheck_always_on": true,
+      "debuggable_apks": false,
+      "ffmpeg_branding": "Chrome",
+      "is_component_build": false,
+      "is_debug": false,
+      "proprietary_codecs": true,
+      "symbol_level": 1,
+      "target_cpu": "arm64",
+      "target_os": "android",
+      "use_remoteexec": true
     }
   },
   "dawn-linux-x64-deps-rel": {
     "gn_args": {
-      "dawn_enable_desktop_gl": true,
       "dawn_enable_opengles": true,
       "dcheck_always_on": true,
       "is_component_build": false,
       "is_debug": false,
       "symbol_level": 1,
-      "use_dawn": true,
       "use_remoteexec": true
     }
   },
@@ -43,13 +67,20 @@
     "gn_args": {
       "dawn_enable_opengles": true,
       "dcheck_always_on": true,
-      "enable_backup_ref_ptr_support": false,
-      "enable_mte_checked_ptr_support": false,
       "is_component_build": false,
       "is_debug": false,
-      "symbol_level": 0,
-      "use_dawn": true,
-      "use_partition_alloc_as_malloc": false,
+      "symbol_level": 1,
+      "use_remoteexec": true
+    }
+  },
+  "dawn-try-linux-tsan-rel": {
+    "gn_args": {
+      "dawn_enable_opengles": true,
+      "dcheck_always_on": true,
+      "is_component_build": false,
+      "is_debug": false,
+      "is_tsan": true,
+      "symbol_level": 1,
       "use_remoteexec": true
     }
   },
@@ -57,38 +88,41 @@
     "gn_args": {
       "dawn_enable_opengles": true,
       "dcheck_always_on": true,
-      "enable_backup_ref_ptr_support": false,
-      "enable_mte_checked_ptr_support": false,
       "is_component_build": false,
       "is_debug": false,
-      "symbol_level": 0,
-      "use_dawn": true,
-      "use_goma": true,
-      "use_partition_alloc_as_malloc": false
+      "symbol_level": 1,
+      "use_remoteexec": true
+    }
+  },
+  "dawn-try-mac-arm64-rel": {
+    "gn_args": {
+      "dawn_enable_opengles": true,
+      "dcheck_always_on": true,
+      "is_component_build": false,
+      "is_debug": false,
+      "symbol_level": 1,
+      "target_cpu": "arm64",
+      "use_remoteexec": true
     }
   },
   "dawn-try-mac-intel-exp": {
     "gn_args": {
       "dawn_enable_opengles": true,
       "dcheck_always_on": true,
-      "enable_backup_ref_ptr_support": false,
-      "enable_mte_checked_ptr_support": false,
       "is_component_build": false,
       "is_debug": false,
-      "symbol_level": 0,
-      "use_dawn": true,
-      "use_goma": true,
-      "use_partition_alloc_as_malloc": false
+      "symbol_level": 1,
+      "use_remoteexec": true
     }
   },
   "dawn-try-win-x64-intel-exp": {
     "gn_args": {
       "dawn_enable_opengles": true,
+      "dawn_use_built_dxc": true,
       "dcheck_always_on": true,
       "is_component_build": false,
       "is_debug": false,
-      "symbol_level": 0,
-      "use_dawn": true,
+      "symbol_level": 1,
       "use_remoteexec": true
     }
   },
@@ -98,21 +132,32 @@
       "dcheck_always_on": true,
       "is_component_build": false,
       "is_debug": false,
-      "symbol_level": 0,
+      "symbol_level": 1,
       "target_cpu": "x86",
-      "use_dawn": true,
       "use_remoteexec": true
     }
   },
-  "dawn-try-win10-x64-asan-rel": {
+  "dawn-try-win10-x64-intel-asan": {
     "gn_args": {
       "dawn_enable_opengles": true,
+      "dawn_use_built_dxc": true,
       "dcheck_always_on": true,
       "is_asan": true,
       "is_component_build": false,
       "is_debug": false,
-      "symbol_level": 0,
-      "use_dawn": true,
+      "symbol_level": 1,
+      "use_remoteexec": true
+    }
+  },
+  "dawn-try-win10-x64-nvidia-asan": {
+    "gn_args": {
+      "dawn_enable_opengles": true,
+      "dawn_use_built_dxc": true,
+      "dcheck_always_on": true,
+      "is_asan": true,
+      "is_component_build": false,
+      "is_debug": false,
+      "symbol_level": 1,
       "use_remoteexec": true
     }
   },
@@ -122,20 +167,19 @@
       "dcheck_always_on": true,
       "is_component_build": false,
       "is_debug": false,
-      "symbol_level": 0,
+      "symbol_level": 1,
       "target_cpu": "x86",
-      "use_dawn": true,
       "use_remoteexec": true
     }
   },
   "dawn-win10-x64-deps-rel": {
     "gn_args": {
       "dawn_enable_opengles": true,
+      "dawn_use_built_dxc": true,
       "dcheck_always_on": true,
       "is_component_build": false,
       "is_debug": false,
-      "symbol_level": 0,
-      "use_dawn": true,
+      "symbol_level": 1,
       "use_remoteexec": true
     }
   },
@@ -145,21 +189,18 @@
       "dcheck_always_on": true,
       "is_component_build": false,
       "is_debug": false,
-      "symbol_level": 0,
+      "symbol_level": 1,
       "target_cpu": "x86",
-      "use_dawn": true,
       "use_remoteexec": true
     }
   },
   "linux-dawn-rel": {
     "gn_args": {
-      "dawn_enable_desktop_gl": true,
       "dawn_enable_opengles": true,
       "dcheck_always_on": true,
       "is_component_build": false,
       "is_debug": false,
       "symbol_level": 1,
-      "use_dawn": true,
       "use_remoteexec": true
     }
   },
@@ -167,24 +208,20 @@
     "gn_args": {
       "dawn_enable_opengles": true,
       "dcheck_always_on": true,
-      "enable_backup_ref_ptr_support": false,
-      "enable_mte_checked_ptr_support": false,
       "is_component_build": false,
       "is_debug": false,
-      "symbol_level": 0,
-      "use_dawn": true,
-      "use_goma": true,
-      "use_partition_alloc_as_malloc": false
+      "symbol_level": 1,
+      "use_remoteexec": true
     }
   },
   "win-dawn-rel": {
     "gn_args": {
       "dawn_enable_opengles": true,
+      "dawn_use_built_dxc": true,
       "dcheck_always_on": true,
       "is_component_build": false,
       "is_debug": false,
-      "symbol_level": 0,
-      "use_dawn": true,
+      "symbol_level": 1,
       "use_remoteexec": true
     }
   }

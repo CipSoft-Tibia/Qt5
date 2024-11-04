@@ -166,12 +166,12 @@ void QCoapProtocol::sendRequest(QPointer<QCoapReply> reply, QCoapConnection *con
         internalRequest->setTimeout(maximumTimeout());
     }
 
-    connect(internalRequest.data(), &QCoapInternalRequest::timeout,
+    connect(internalRequest.data(), &QCoapInternalRequest::timeout, this,
             [this](QCoapInternalRequest *request) {
                     Q_D(QCoapProtocol);
                     d->onRequestTimeout(request);
             });
-    connect(internalRequest.data(), &QCoapInternalRequest::maxTransmissionSpanReached,
+    connect(internalRequest.data(), &QCoapInternalRequest::maxTransmissionSpanReached, this,
             [this](QCoapInternalRequest *request) {
                     Q_D(QCoapProtocol);
                     d->onRequestMaxTransmissionSpanReached(request);

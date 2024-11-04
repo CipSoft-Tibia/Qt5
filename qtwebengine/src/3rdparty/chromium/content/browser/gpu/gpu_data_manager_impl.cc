@@ -221,16 +221,16 @@ bool GpuDataManagerImpl::VulkanRequested() const {
   return private_->VulkanRequested();
 }
 
-void GpuDataManagerImpl::PostCreateThreads() {
-  base::AutoLock auto_lock(lock_);
-  private_->PostCreateThreads();
-}
-
 void GpuDataManagerImpl::TerminateInfoCollectionGpuProcess() {
   base::AutoLock auto_lock(lock_);
   private_->TerminateInfoCollectionGpuProcess();
 }
-#endif
+#endif  // BUILDFLAG(IS_WIN)
+
+void GpuDataManagerImpl::PostCreateThreads() {
+  base::AutoLock auto_lock(lock_);
+  private_->PostCreateThreads();
+}
 
 void GpuDataManagerImpl::UpdateDawnInfo(
     const std::vector<std::string>& dawn_info_list) {
@@ -404,6 +404,17 @@ void GpuDataManagerImpl::OnDisplayMetricsChanged(
   base::AutoLock auto_lock(lock_);
   private_->OnDisplayMetricsChanged(display, changed_metrics);
 }
+
+#if BUILDFLAG(IS_LINUX)
+bool GpuDataManagerImpl::IsGpuMemoryBufferNV12Supported() {
+  base::AutoLock auto_lock(lock_);
+  return private_->IsGpuMemoryBufferNV12Supported();
+}
+void GpuDataManagerImpl::SetGpuMemoryBufferNV12Supported(bool supported) {
+  base::AutoLock auto_lock(lock_);
+  private_->SetGpuMemoryBufferNV12Supported(supported);
+}
+#endif  // BUILDFLAG(IS_LINUX)
 
 // static
 void GpuDataManagerImpl::BindReceiver(

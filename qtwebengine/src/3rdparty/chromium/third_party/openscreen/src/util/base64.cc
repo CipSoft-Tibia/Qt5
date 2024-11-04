@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,15 +14,14 @@
 #include "util/osp_logging.h"
 #include "util/std_util.h"
 
-namespace openscreen {
-namespace base64 {
+namespace openscreen::base64 {
 
-std::string Encode(absl::Span<const uint8_t> input) {
-  return Encode(absl::string_view(reinterpret_cast<const char*>(input.data()),
-                                  input.size()));
+std::string Encode(ByteView input) {
+  return Encode(std::string_view(reinterpret_cast<const char*>(input.data()),
+                                 input.size()));
 }
 
-std::string Encode(absl::string_view input) {
+std::string Encode(std::string_view input) {
   std::string out;
   out.resize(modp_b64_encode_len(input.size()));
 
@@ -37,7 +36,7 @@ std::string Encode(absl::string_view input) {
   return out;
 }
 
-bool Decode(absl::string_view input, std::vector<uint8_t>* output) {
+bool Decode(std::string_view input, std::vector<uint8_t>* output) {
   std::vector<uint8_t> out(modp_b64_decode_len(input.size()));
 
   const size_t output_size = modp_b64_decode(
@@ -52,5 +51,4 @@ bool Decode(absl::string_view input, std::vector<uint8_t>* output) {
   return true;
 }
 
-}  // namespace base64
-}  // namespace openscreen
+}  // namespace openscreen::base64

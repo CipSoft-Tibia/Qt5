@@ -6,10 +6,10 @@
 
 #include <stddef.h>
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
-#include "base/cxx17_backports.h"
 #include "base/memory/raw_ptr.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
@@ -140,7 +140,7 @@ class TableViewTestHelper {
   }
 
  private:
-  raw_ptr<TableView> table_;
+  raw_ptr<TableView, DanglingUntriaged> table_;
 };
 
 namespace {
@@ -251,7 +251,7 @@ void TestTableModel2::RemoveRows(size_t row, size_t length) {
   if (row <= rows_.size()) {
     rows_.erase(
         rows_.begin() + row,
-        rows_.begin() + base::clamp(row + length, size_t{0}, rows_.size()));
+        rows_.begin() + std::clamp(row + length, size_t{0}, rows_.size()));
   }
 
   if (observer_ && length > 0)
@@ -589,7 +589,7 @@ class TableViewTest : public ViewsTestBase,
   std::unique_ptr<TestTableModel2> model_;
 
   // Owned by |parent_|.
-  raw_ptr<TableView> table_ = nullptr;
+  raw_ptr<TableView, DanglingUntriaged> table_ = nullptr;
 
   std::unique_ptr<TableViewTestHelper> helper_;
 

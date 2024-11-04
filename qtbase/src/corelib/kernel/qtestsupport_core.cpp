@@ -5,15 +5,35 @@
 
 #include <thread>
 
+using namespace std::chrono_literals;
+
 QT_BEGIN_NAMESPACE
 
 /*!
-    Sleeps for \a ms milliseconds, blocking execution of the
-    test. qSleep() will not do any event processing and leave your test
-    unresponsive. Network communication might time out while
-    sleeping. Use \l {QTest::qWait()} to do non-blocking sleeping.
+    \overload
 
-    \a ms must be greater than 0.
+    Sleeps for \a ms milliseconds, blocking execution of the test.
+
+    Equivalent to calling:
+    \code
+    QTest::qSleep(std::chrono::milliseconds{ms});
+    \endcode
+*/
+void QTest::qSleep(int ms)
+{
+    QTest::qSleep(std::chrono::milliseconds{ms});
+}
+
+/*!
+    \since 6.7
+
+    Sleeps for \a msecs, blocking execution of the test.
+
+    This method will not do any event processing and will leave your test
+    unresponsive. Network communication might time out while sleeping.
+    Use \l {QTest::qWait()} to do non-blocking sleeping.
+
+    \a msecs must be greater than 0ms.
 
     \note Starting from Qt 6.7, this function is implemented using
     \c {std::this_thread::sleep_for}, so the accuracy of time spent depends
@@ -26,32 +46,58 @@ QT_BEGIN_NAMESPACE
 
     \sa {QTest::qWait()}
 */
-Q_CORE_EXPORT void QTest::qSleep(int ms)
+void QTest::qSleep(std::chrono::milliseconds msecs)
 {
-    Q_ASSERT(ms > 0);
-    std::this_thread::sleep_for(std::chrono::milliseconds{ms});
+    Q_ASSERT(msecs > 0ms);
+    std::this_thread::sleep_for(msecs);
 }
 
 /*! \fn template <typename Functor> bool QTest::qWaitFor(Functor predicate, int timeout)
 
+    \since 5.10
+    \overload
+
     Waits for \a timeout milliseconds or until the \a predicate returns true.
 
-    Returns \c true if the \a predicate returned true at any point, otherwise returns \c false.
+    This is equivalent to calling:
+    \code
+    qWaitFor(predicate, QDeadlineTimer(timeout));
+    \endcode
+*/
+
+/*! \fn template <typename Functor> bool QTest::qWaitFor(Functor predicate, QDeadlineTimer deadline)
+    \since 6.7
+
+    Waits until \a deadline has expired, or until \a predicate returns true, whichever
+    happens first.
+
+    Returns \c true if \a predicate returned true at any point, otherwise returns \c false.
 
     Example:
 
-    \snippet code/src_corelib_kernel_qtestsupport_core_snippet.cpp 0
+    \snippet code/src_corelib_kernel_qtestsupport_core.cpp 2
 
     The code above will wait for the object to become ready, for a
     maximum of three seconds.
-
-    \since 5.10
 */
 
+/*!
+    \overload
 
-/*! \fn void QTest::qWait(int ms)
+    Waits for \a msecs. Equivalent to calling:
+    \code
+    QTest::qWait(std::chrono::milliseconds{msecs});
+    \endcode
+*/
+Q_CORE_EXPORT void QTest::qWait(int msecs)
+{
+    qWait(std::chrono::milliseconds{msecs});
+}
 
-    Waits for \a ms milliseconds. While waiting, events will be processed and
+/*!
+    \since 6.7
+
+    Waits for \a msecs. While waiting, events will be processed and
     your test will stay responsive to user interface events or network communication.
 
     Example:
@@ -63,7 +109,7 @@ Q_CORE_EXPORT void QTest::qSleep(int ms)
 
     \sa QTest::qSleep(), QSignalSpy::wait()
 */
-Q_CORE_EXPORT void QTest::qWait(int ms)
+Q_CORE_EXPORT void QTest::qWait(std::chrono::milliseconds msecs)
 {
     // Ideally this method would be implemented in terms of qWaitFor(), with a
     // predicate that always returns false, but qWaitFor() uses the 1-arg overload
@@ -73,17 +119,24 @@ Q_CORE_EXPORT void QTest::qWait(int ms)
 
     Q_ASSERT(QCoreApplication::instance());
 
-    QDeadlineTimer timer(ms, Qt::PreciseTimer);
-    int remaining = ms;
+    using namespace std::chrono;
+
+    QDeadlineTimer deadline(msecs, Qt::PreciseTimer);
+
     do {
-        QCoreApplication::processEvents(QEventLoop::AllEvents, remaining);
+        QCoreApplication::processEvents(QEventLoop::AllEvents, deadline);
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-        remaining = timer.remainingTime();
-        if (remaining <= 0)
+
+        // If dealine is Forever, processEvents() has already looped forever
+        if (deadline.isForever())
             break;
-        QTest::qSleep(qMin(10, remaining));
-        remaining = timer.remainingTime();
-    } while (remaining > 0);
+
+        msecs = ceil<milliseconds>(deadline.remainingTimeAsDuration());
+        if (msecs == 0ms)
+            break;
+
+        QTest::qSleep(std::min(10ms, msecs));
+    } while (!deadline.hasExpired());
 }
 
 QT_END_NAMESPACE

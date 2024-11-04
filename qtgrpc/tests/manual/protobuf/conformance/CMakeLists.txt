@@ -35,17 +35,6 @@ file(DOWNLOAD
     TIMEOUT 10
 )
 
-# TODO: Avoid generating messages that depend on wellknowntypes. See QTBUG-112430 for details.
-execute_process(COMMAND ${patch} -i ${CMAKE_CURRENT_SOURCE_DIR}/wellknowntypes.patch
-    WORKING_DIRECTORY
-        ${CMAKE_CURRENT_BINARY_DIR}
-    RESULT_VARIABLE result
-)
-
-if(NOT result EQUAL 0)
-    message(FATAL_ERROR "Unable to patch ${CMAKE_CURRENT_BINARY_DIR}/test_messages_proto3.proto")
-endif()
-
 add_executable(tst_protobuf_conformance
     tst_protobuf_conformance.cpp
 )

@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtQuick
 import QtTest
@@ -304,7 +304,9 @@ TestCase {
         id: repeater
         Column {
             id: column
-            property ButtonGroup group: ButtonGroup { buttons: column.children }
+            property ButtonGroup group: ButtonGroup {
+                buttons: column.children.filter((child) => child !== r)
+            }
             property alias repeater: r
             Repeater {
                 id: r
@@ -392,7 +394,7 @@ TestCase {
         id: checkedButtonColumn
         Column {
             id: column
-            ButtonGroup { buttons: column.children }
+            ButtonGroup { buttons: column.children.filter((child) => child !== repeater) }
             Repeater {
                 id: repeater
                 delegate: Button {

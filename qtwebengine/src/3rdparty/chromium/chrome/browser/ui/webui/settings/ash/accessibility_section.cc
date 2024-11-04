@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "ash/color_enhancement/color_enhancement_controller.h"
 #include "ash/constants/ash_features.h"
 #include "ash/constants/ash_pref_names.h"
 #include "ash/public/cpp/accessibility_controller_enums.h"
@@ -20,9 +21,10 @@
 #include "chrome/browser/accessibility/accessibility_state_utils.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/speech/extension_api/tts_engine_extension_observer_chromeos.h"
+#include "chrome/browser/ui/webui/ash/settings/search/search_tag_registry.h"
 #include "chrome/browser/ui/webui/settings/accessibility_main_handler.h"
 #include "chrome/browser/ui/webui/settings/ash/accessibility_handler.h"
-#include "chrome/browser/ui/webui/settings/ash/search/search_tag_registry.h"
+#include "chrome/browser/ui/webui/settings/ash/pdf_ocr_handler.h"
 #include "chrome/browser/ui/webui/settings/ash/select_to_speak_handler.h"
 #include "chrome/browser/ui/webui/settings/ash/switch_access_handler.h"
 #include "chrome/browser/ui/webui/settings/ash/tts_handler.h"
@@ -42,13 +44,14 @@
 #include "ui/accessibility/accessibility_switches.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/webui/web_ui_util.h"
-#include "ui/chromeos/events/keyboard_layout_util.h"
+#include "ui/events/ash/keyboard_layout_util.h"
 
 namespace ash::settings {
 
 namespace mojom {
 using ::chromeos::settings::mojom::kAccessibilitySectionPath;
 using ::chromeos::settings::mojom::kAudioAndCaptionsSubpagePath;
+using ::chromeos::settings::mojom::kChromeVoxSubpagePath;
 using ::chromeos::settings::mojom::kCursorAndTouchpadSubpagePath;
 using ::chromeos::settings::mojom::kDisplayAndMagnificationSubpagePath;
 using ::chromeos::settings::mojom::kKeyboardAndTextInputSubpagePath;
@@ -84,7 +87,7 @@ const std::vector<SearchConcept>& GetA11ySearchConcepts() {
         IDS_OS_SETTINGS_TAG_A11Y_TEXT_TO_SPEECH_PAGE_ALT2,
         IDS_OS_SETTINGS_TAG_A11Y_TEXT_TO_SPEECH_PAGE_ALT3,
         IDS_OS_SETTINGS_TAG_A11Y_TEXT_TO_SPEECH_PAGE_ALT4,
-        SearchConcept::kAltTagEnd}},
+        IDS_OS_SETTINGS_TAG_A11Y_TEXT_TO_SPEECH_PAGE_ALT5}},
       {IDS_OS_SETTINGS_TAG_A11Y_DISPLAY_AND_MAGNIFICATION_PAGE,
        mojom::kDisplayAndMagnificationSubpagePath,
        mojom::SearchResultIcon::kA11y,
@@ -417,17 +420,29 @@ GetA11yFullscreenMagnifierFocusFollowingSearchConcepts() {
   return *tags;
 }
 
+const std::vector<SearchConcept>& GetA11yColorCorrectionSearchConcepts() {
+  static const base::NoDestructor<std::vector<SearchConcept>> tags({
+      {IDS_OS_SETTINGS_TAG_A11Y_COLOR_CORRECTION,
+       mojom::kDisplayAndMagnificationSubpagePath,
+       mojom::SearchResultIcon::kA11y,
+       mojom::SearchResultDefaultRank::kMedium,
+       mojom::SearchResultType::kSetting,
+       {.setting = mojom::Setting::kColorCorrectionEnabled},
+       {IDS_OS_SETTINGS_TAG_A11Y_COLOR_CORRECTION_ALT1,
+        IDS_OS_SETTINGS_TAG_A11Y_COLOR_CORRECTION_ALT2,
+        IDS_OS_SETTINGS_TAG_A11Y_COLOR_CORRECTION_ALT3,
+        IDS_OS_SETTINGS_TAG_A11Y_COLOR_CORRECTION_ALT4,
+        IDS_OS_SETTINGS_TAG_A11Y_COLOR_CORRECTION_ALT5}},
+  });
+  return *tags;
+}
+
 bool IsLiveCaptionEnabled() {
   return captions::IsLiveCaptionFeatureSupported();
 }
 
-bool IsAccessibilitySelectToSpeakPageMigrationEnabled() {
-  return ::features::IsAccessibilitySelectToSpeakPageMigrationEnabled();
-}
-
-bool IsExperimentalAccessibilitySelectToSpeakVoiceSwitchingEnabled() {
-  return ::features::
-      IsExperimentalAccessibilitySelectToSpeakVoiceSwitchingEnabled();
+bool IsAccessibilityChromeVoxPageMigrationEnabled() {
+  return ::features::IsAccessibilityChromeVoxPageMigrationEnabled();
 }
 
 bool AreExperimentalAccessibilityColorEnhancementSettingsEnabled() {
@@ -443,6 +458,17 @@ bool IsSwitchAccessTextAllowed() {
 bool AreTabletNavigationButtonsAllowed() {
   return features::IsHideShelfControlsInTabletModeEnabled() &&
          TabletMode::IsBoardTypeMarkedAsTabletCapable();
+}
+
+int GetDisplayAndMangificationLinkDescriptionResourceId() {
+  if (AreExperimentalAccessibilityColorEnhancementSettingsEnabled()) {
+    return IDS_SETTINGS_ACCESSIBILITY_DISPLAY_AND_MAGNIFICATION_LINK_NEW_DESCRIPTION;
+  }
+  return IDS_SETTINGS_ACCESSIBILITY_DISPLAY_AND_MAGNIFICATION_LINK_DESCRIPTION;
+}
+
+bool IsAccessibilityGameFaceIntegrationEnabled() {
+  return ::features::IsAccessibilityGameFaceIntegrationEnabled();
 }
 
 }  // namespace
@@ -496,7 +522,10 @@ AccessibilitySection::~AccessibilitySection() {
 
 void AccessibilitySection::AddLoadTimeData(
     content::WebUIDataSource* html_source) {
-  static constexpr webui::LocalizedString kLocalizedStrings[] = {
+  const bool kIsRevampEnabled =
+      ash::features::IsOsSettingsRevampWayfindingEnabled();
+
+  webui::LocalizedString kLocalizedStrings[] = {
       {"a11yExplanation", IDS_SETTINGS_ACCESSIBILITY_EXPLANATION},
       {"a11yPageTitle", IDS_SETTINGS_ACCESSIBILITY},
       {"a11yWebStore", IDS_SETTINGS_ACCESSIBILITY_WEB_STORE},
@@ -562,6 +591,92 @@ void AccessibilitySection::AddLoadTimeData(
       {"chromeVoxDescriptionOn", IDS_SETTINGS_CHROMEVOX_DESCRIPTION_ON},
       {"chromeVoxLabel", IDS_SETTINGS_CHROMEVOX_LABEL},
       {"chromeVoxOptionsLabel", IDS_SETTINGS_CHROMEVOX_OPTIONS_LABEL},
+      {"chromeVoxGeneralLabel", IDS_SETTINGS_CHROMEVOX_GENERAL_LABEL},
+      {"chromeVoxVoicesLabel", IDS_SETTINGS_CHROMEVOX_VOICES_LABEL},
+      {"chromeVoxBrailleLabel", IDS_SETTINGS_CHROMEVOX_BRAILLE_LABEL},
+      {"chromeVoxDeveloperOptionsLabel",
+       IDS_SETTINGS_CHROMEVOX_DEVELOPER_OPTIONS_LABEL},
+      {"chromeVoxUseVerboseMode", IDS_SETTINGS_CHROMEVOX_USE_VERBOSE_MODE},
+      {"chromeVoxAutoRead", IDS_SETTINGS_CHROMEVOX_AUTO_READ},
+      {"chromeVoxSpeakTextUnderMouse",
+       IDS_SETTINGS_CHROMEVOX_SPEAK_TEXT_UNDER_MOUSE},
+      {"chromeVoxUsePitchChanges", IDS_SETTINGS_CHROMEVOX_USE_PITCH_CHANGES},
+      {"chromeVoxAnnounceRichTextAttributes",
+       IDS_SETTINGS_CHROMEVOX_ANNOUNCE_RICH_TEXT_ATTRIBUTES},
+      {"chromeVoxCapitalStrategy", IDS_SETTINGS_CHROMEVOX_CAPITAL_STRATEGY},
+      {"chromeVoxAnnounceCapitals", IDS_SETTINGS_CHROMEVOX_ANNOUNCE_CAPITALS},
+      {"chromeVoxIncreasePitch", IDS_SETTINGS_CHROMEVOX_INCREASE_PITCH},
+      {"chromeVoxNumberReadingStyle",
+       IDS_SETTINGS_CHROMEVOX_NUMBER_READING_STYLE},
+      {"chromeVoxAsWords", IDS_SETTINGS_CHROMEVOX_NUMBER_READING_STYLE_WORDS},
+      {"chromeVoxAsDigits", IDS_SETTINGS_CHROMEVOX_NUMBER_READING_STYLE_DIGITS},
+      {"chromeVoxPunctuationEcho", IDS_SETTINGS_CHROMEVOX_PUNCTUATION_ECHO},
+      {"chromeVoxNone", IDS_SETTINGS_CHROMEVOX_PUNCTUATION_ECHO_NONE},
+      {"chromeVoxSome", IDS_SETTINGS_CHROMEVOX_PUNCTUATION_ECHO_SOME},
+      {"chromeVoxAll", IDS_SETTINGS_CHROMEVOX_PUNCTUATION_ECHO_ALL},
+      {"chromeVoxAnnounceDownloadNotifications",
+       IDS_SETTINGS_CHROMEVOX_ANNOUNCE_DOWNLOAD_NOTIFICATIONS},
+      {"chromeVoxSmartStickyMode", IDS_SETTINGS_CHROMEVOX_SMART_STICKY_MODE},
+      {"chromeVoxAudioStrategy", IDS_SETTINGS_CHROMEVOX_AUDIO_STRATEGY},
+      {"chromeVoxAudioNormal", IDS_SETTINGS_CHROMEVOX_AUDIO_NORMAL},
+      {"chromeVoxAudioDuck", IDS_SETTINGS_CHROMEVOX_AUDIO_DUCK},
+      {"chromeVoxAudioSuspend", IDS_SETTINGS_CHROMEVOX_AUDIO_SUSPEND},
+      {"chromeVoxVoice", IDS_SETTINGS_CHROMEVOX_VOICE},
+      {"chromeVoxSystemVoice", IDS_SETTINGS_CHROMEVOX_SYSTEM_VOICE},
+      {"chromeVoxLanguageSwitching", IDS_SETTINGS_CHROMEVOX_LANGUAGE_SWITCHING},
+      {"chromeVoxTtsSettingsLink", IDS_SETTINGS_CHROMEVOX_TTS_SETTINGS_LINK},
+      {"chromeVoxTtsSettingsDescription",
+       IDS_SETTINGS_CHROMEVOX_TTS_SETTINGS_DESCRIPTION},
+      {"chromeVoxBrailleWordWrap", IDS_SETTINGS_CHROMEVOX_BRAILLE_WORD_WRAP},
+      {"chromeVoxMenuBrailleCommands",
+       IDS_SETTINGS_CHROMEVOX_MENU_BRAILLE_COMMANDS},
+      {"chromeVoxBluetoothBrailleDisplayConnect",
+       IDS_SETTINGS_CHROMEVOX_BLUETOOTH_BRAILLE_DISPLAY_CONNECT},
+      {"chromeVoxBluetoothBrailleDisplayDisconnect",
+       IDS_SETTINGS_CHROMEVOX_BLUETOOTH_BRAILLE_DISPLAY_DISCONNECT},
+      {"chromeVoxBluetoothBrailleDisplayConnecting",
+       IDS_SETTINGS_CHROMEVOX_BLUETOOTH_BRAILLE_DISPLAY_CONNECTING},
+      {"chromeVoxBluetoothBrailleDisplayForget",
+       IDS_SETTINGS_CHROMEVOX_BLUETOOTH_BRAILLE_DISPLAY_FORGET},
+      {"chromeVoxBluetoothBrailleDisplayPincodeLabel",
+       IDS_SETTINGS_CHROMEVOX_BLUETOOTH_BRAILLE_DISPLAY_PINCODE_LABEL},
+      {"chromeVoxBluetoothBrailleDisplaySelectLabel",
+       IDS_SETTINGS_CHROMEVOX_BLUETOOTH_BRAILLE_DISPLAY_SELECT_LABEL},
+      {"chromeVoxVirtualBrailleDisplay",
+       IDS_SETTINGS_CHROMEVOX_VIRTUAL_BRAILLE_DISPLAY},
+      {"chromeVoxVirtualBrailleDisplayDetails",
+       IDS_SETTINGS_CHROMEVOX_VIRTUAL_BRAILLE_DISPLAY_DETAILS},
+      {"chromeVoxVirtualBrailleDisplayRows",
+       IDS_SETTINGS_CHROMEVOX_VIRTUAL_BRAILLE_DISPLAY_ROWS},
+      {"chromeVoxVirtualBrailleDisplayColumns",
+       IDS_SETTINGS_CHROMEVOX_VIRTUAL_BRAILLE_DISPLAY_COLUMNS},
+      {"chromeVoxVirtualBrailleDisplayStyleLabel",
+       IDS_SETTINGS_CHROMEVOX_VIRTUAL_BRAILLE_DISPLAY_STYLE_LABEL},
+      {"chromeVoxVirtualBrailleDisplayStyleInterleave",
+       IDS_SETTINGS_CHROMEVOX_VIRTUAL_BRAILLE_DISPLAY_STYLE_INTERLEAVE},
+      {"chromeVoxVirtualBrailleDisplayStyleSideBySide",
+       IDS_SETTINGS_CHROMEVOX_VIRTUAL_BRAILLE_DISPLAY_STYLE_SIDE_BY_SIDE},
+      {"chromeVoxEventLogLink", IDS_SETTINGS_CHROMEVOX_EVENT_LOG_LINK},
+      {"chromeVoxEventLogDescription",
+       IDS_SETTINGS_CHROMEVOX_EVENT_LOG_DESCRIPTION},
+      {"chromeVoxEnableSpeechLogging",
+       IDS_SETTINGS_CHROMEVOX_MENU_ENABLE_SPEECH_LOGGING},
+      {"chromeVoxEnableEarconLogging",
+       IDS_SETTINGS_CHROMEVOX_MENU_ENABLE_EARCON_LOGGING},
+      {"chromeVoxEnableBrailleLogging",
+       IDS_SETTINGS_CHROMEVOX_MENU_ENABLE_BRAILLE_LOGGING},
+      {"chromeVoxEnableEventStreamLogging",
+       IDS_SETTINGS_CHROMEVOX_MENU_ENABLE_EVENT_STREAM_LOGGING},
+      {"chromeVoxBrailleTableDescription",
+       IDS_SETTINGS_CHROMEVOX_BRAILLE_TABLE_DESCRIPTION},
+      {"chromeVoxBrailleTable6Dot", IDS_SETTINGS_CHROMEVOX_BRAILLE_TABLE_6_DOT},
+      {"chromeVoxBrailleTable8Dot", IDS_SETTINGS_CHROMEVOX_BRAILLE_TABLE_8_DOT},
+      {"chromeVoxBrailleTableNameWithGrade",
+       IDS_SETTINGS_CHROMEVOX_BRAILLE_TABLE_NAME_WITH_GRADE},
+      {"chromeVoxBrailleTableNameWithVariant",
+       IDS_SETTINGS_CHROMEVOX_BRAILLE_TABLE_NAME_WITH_VARIANT},
+      {"chromeVoxBrailleTableNameWithVariantAndGrade",
+       IDS_SETTINGS_CHROMEVOX_BRAILLE_TABLE_NAME_WITH_VARIANT_AND_GRADE},
       {"chromeVoxTutorialLabel", IDS_SETTINGS_CHROMEVOX_TUTORIAL_LABEL},
       {"clickOnStopDescription", IDS_SETTINGS_CLICK_ON_STOP_DESCRIPTION},
       {"clickOnStopLabel", IDS_SETTINGS_CLICK_ON_STOP_LABEL},
@@ -629,8 +744,6 @@ void AccessibilitySection::AddLoadTimeData(
        IDS_SETTINGS_ACCESSIBILITY_DICTATION_SUBTITLE_SODA_DOWNLOAD_ERROR},
       {"dictationLocaleSubLabelOffline",
        IDS_SETTINGS_ACCESSIBILITY_DICTATION_LOCALE_SUB_LABEL_OFFLINE},
-      {"displayAndMagnificationLinkDescription",
-       IDS_SETTINGS_ACCESSIBILITY_DISPLAY_AND_MAGNIFICATION_LINK_DESCRIPTION},
       {"displayAndMagnificationLinkTitle",
        IDS_SETTINGS_ACCESSIBILITY_DISPLAY_AND_MAGNIFICATION_LINK_TITLE},
       {"displayHeading", IDS_SETTINGS_ACCESSIBILITY_DISPLAY_HEADING},
@@ -646,10 +759,38 @@ void AccessibilitySection::AddLoadTimeData(
        IDS_SETTINGS_ACCESSIBILITY_FOCUS_HIGHLIGHT_DESCRIPTION},
       {"focusHighlightLabelSubtext",
        IDS_SETTINGS_ACCESSIBILITY_FOCUS_HIGHLIGHT_DESCRIPTION_SUBTEXT},
+      {"focusHighlightDisabledByChromevoxTooltip",
+       IDS_SETTINGS_FOCUS_HIGHLIGHT_DISABLED_BY_CHROMEVOX_TOOLTIP},
       {"greyscaleLabel", IDS_SETTINGS_GREYSCALE_LABEL},
       {"highContrastDescription", IDS_SETTINGS_HIGH_CONTRAST_DESCRIPTION},
       {"highContrastLabel", IDS_SETTINGS_HIGH_CONTRAST_LABEL},
-      {"hueRotationLabel", IDS_SETTINGS_HUE_ROTATION_LABEL},
+      {"protanomalyFilter", IDS_SETTINGS_PROTANOMALY_FILTER},
+      {"tritanomalyFilter", IDS_SETTINGS_TRITANOMALY_FILTER},
+      {"deuteranomalyFilter", IDS_SETTINGS_DEUTERANOMALY_FILTER},
+      {"colorFilteringLabel", IDS_SETTINGS_COLOR_FILTERING_LABEL},
+      {"colorFilteringDescription", IDS_SETTINGS_COLOR_FILTERING_DESCRIPTION},
+      {"colorFilteringPreviewInstructions",
+       IDS_SETTINGS_COLOR_FILTERING_PREVIEW_INSTRUCTIONS},
+      {"colorFilteringPreviewColorRed",
+       IDS_SETTINGS_COLOR_FILTERING_PREVIEW_COLOR_RED},
+      {"colorFilteringPreviewColorOrange",
+       IDS_SETTINGS_COLOR_FILTERING_PREVIEW_COLOR_ORANGE},
+      {"colorFilteringPreviewColorYellow",
+       IDS_SETTINGS_COLOR_FILTERING_PREVIEW_COLOR_YELLOW},
+      {"colorFilteringPreviewColorGreen",
+       IDS_SETTINGS_COLOR_FILTERING_PREVIEW_COLOR_GREEN},
+      {"colorFilteringPreviewColorCyan",
+       IDS_SETTINGS_COLOR_FILTERING_PREVIEW_COLOR_CYAN},
+      {"colorFilteringPreviewColorBlue",
+       IDS_SETTINGS_COLOR_FILTERING_PREVIEW_COLOR_BLUE},
+      {"colorFilteringPreviewColorPurple",
+       IDS_SETTINGS_COLOR_FILTERING_PREVIEW_COLOR_PURPLE},
+      {"colorFilteringPreviewColorGray",
+       IDS_SETTINGS_COLOR_FILTERING_PREVIEW_COLOR_GRAY},
+      {"colorVisionDeficiencyTypeLabel",
+       IDS_SETTINGS_COLOR_VISION_DEFICIENCY_TYPE_LABEL},
+      {"colorVisionFilterIntensityLabel",
+       IDS_SETTINGS_COLOR_VISION_FILTER_INTENSITY_LABEL},
       {"keyboardAndTextInputHeading",
        IDS_SETTINGS_ACCESSIBILITY_KEYBOARD_AND_TEXT_INPUT_HEADING},
       {"keyboardAndTextInputLinkDescription",
@@ -686,10 +827,13 @@ void AccessibilitySection::AddLoadTimeData(
       {"onScreenKeyboardLabel", IDS_SETTINGS_ON_SCREEN_KEYBOARD_LABEL},
       {"optionsInMenuDescription", IDS_SETTINGS_OPTIONS_IN_MENU_DESCRIPTION},
       {"optionsInMenuLabel", IDS_SETTINGS_OPTIONS_IN_MENU_LABEL},
+      {"pdfOcrDownloadCompleteLabel", IDS_SETTINGS_PDF_OCR_DOWNLOAD_COMPLETE},
+      {"pdfOcrDownloadErrorLabel", IDS_SETTINGS_PDF_OCR_DOWNLOAD_ERROR},
+      {"pdfOcrDownloadProgressLabel", IDS_SETTINGS_PDF_OCR_DOWNLOAD_PROGRESS},
+      {"pdfOcrDownloadingLabel", IDS_SETTINGS_PDF_OCR_DOWNLOADING},
       {"pdfOcrSubtitle", IDS_SETTINGS_PDF_OCR_SUBTITLE},
       {"pdfOcrTitle", IDS_SETTINGS_PDF_OCR_TITLE},
       {"percentage", IDS_SETTINGS_PERCENTAGE},
-      {"saturationLabel", IDS_SETTINGS_SATURATION_LABEL},
       {"screenMagnifierDescriptionOff",
        IDS_SETTINGS_SCREEN_MAGNIFIER_DESCRIPTION_OFF},
       {"screenMagnifierDescriptionOn",
@@ -783,12 +927,13 @@ void AccessibilitySection::AddLoadTimeData(
       {"selectToSpeakOptionsLabel",
        IDS_SETTINGS_ACCESSIBILITY_SELECT_TO_SPEAK_OPTIONS_LABEL},
       {"selectToSpeakTitle", IDS_SETTINGS_ACCESSIBILITY_SELECT_TO_SPEAK_TITLE},
-      {"sepiaLabel", IDS_SETTINGS_SEPIA_LABEL},
       {"settingsSliderRoleDescription",
        IDS_SETTINGS_SLIDER_MIN_MAX_ARIA_ROLE_DESCRIPTION},
       {"startupSoundLabel", IDS_SETTINGS_STARTUP_SOUND_LABEL},
       {"stickyKeysDescription", IDS_SETTINGS_STICKY_KEYS_DESCRIPTION},
       {"stickyKeysLabel", IDS_SETTINGS_STICKY_KEYS_LABEL},
+      {"stickyKeysDisabledByChromevoxTooltip",
+       IDS_SETTINGS_STICKY_KEYS_DISABLED_BY_CHROMEVOX_TOOLTIP},
       {"switchAccessActionAssignmentAddAssignmentIconLabel",
        IDS_SETTINGS_SWITCH_ACCESS_ACTION_ASSIGNMENT_ADD_ASSIGNMENT_ICON_LABEL},
       {"switchAccessActionAssignmentAssignedIconLabel",
@@ -908,7 +1053,11 @@ void AccessibilitySection::AddLoadTimeData(
        IDS_SETTINGS_A11Y_TABLET_MODE_SHELF_BUTTONS_DESCRIPTION},
       {"tabletModeShelfNavigationButtonsSettingLabel",
        IDS_SETTINGS_A11Y_TABLET_MODE_SHELF_BUTTONS_LABEL},
-      {"tapDraggingLabel", IDS_SETTINGS_TAP_DRAGGING_LABEL},
+      {"tapDraggingLabel", kIsRevampEnabled
+                               ? IDS_OS_SETTINGS_REVAMP_TAP_DRAGGING_LABEL
+                               : IDS_SETTINGS_TAP_DRAGGING_LABEL},
+      {"tapDraggingDescription",
+       IDS_OS_SETTINGS_REVAMP_TAP_DRAGGING_DESCRIPTION},
       {"textToSpeechEngines", IDS_SETTINGS_TEXT_TO_SPEECH_ENGINES},
       {"textToSpeechHeading",
        IDS_SETTINGS_ACCESSIBILITY_TEXT_TO_SPEECH_HEADING},
@@ -953,6 +1102,11 @@ void AccessibilitySection::AddLoadTimeData(
   html_source->AddString("selectToSpeakLearnMoreUrl",
                          chrome::kSelectToSpeakLearnMoreURL);
 
+  html_source->AddString(
+      "displayAndMagnificationLinkDescription",
+      l10n_util::GetStringUTF16(
+          GetDisplayAndMangificationLinkDescriptionResourceId()));
+
   html_source->AddBoolean(
       "showExperimentalAccessibilitySwitchAccessImprovedTextInput",
       IsSwitchAccessTextAllowed());
@@ -963,12 +1117,8 @@ void AccessibilitySection::AddLoadTimeData(
   html_source->AddString("tabletModeShelfNavigationButtonsLearnMoreUrl",
                          chrome::kTabletModeGesturesLearnMoreURL);
 
-  html_source->AddBoolean("isAccessibilitySelectToSpeakPageMigrationEnabled",
-                          IsAccessibilitySelectToSpeakPageMigrationEnabled());
-
-  html_source->AddBoolean(
-      "isExperimentalAccessibilitySelectToSpeakVoiceSwitchingEnabled",
-      IsExperimentalAccessibilitySelectToSpeakVoiceSwitchingEnabled());
+  html_source->AddBoolean("isAccessibilityChromeVoxPageMigrationEnabled",
+                          IsAccessibilityChromeVoxPageMigrationEnabled());
 
   html_source->AddBoolean(
       "areExperimentalAccessibilityColorEnhancementSettingsEnabled",
@@ -976,6 +1126,9 @@ void AccessibilitySection::AddLoadTimeData(
 
   html_source->AddBoolean("pdfOcrEnabled",
                           base::FeatureList::IsEnabled(::features::kPdfOcr));
+
+  html_source->AddBoolean("isAccessibilityGameFaceIntegrationEnabled",
+                          IsAccessibilityGameFaceIntegrationEnabled());
 
   ::settings::AddCaptionSubpageStrings(html_source);
 }
@@ -992,6 +1145,9 @@ void AccessibilitySection::AddHandlers(content::WebUI* web_ui) {
       std::make_unique<::settings::FontHandler>(profile()));
   web_ui->AddMessageHandler(
       std::make_unique<::settings::CaptionsHandler>(profile()->GetPrefs()));
+  if (base::FeatureList::IsEnabled(::features::kPdfOcr)) {
+    web_ui->AddMessageHandler(std::make_unique<::settings::PdfOcrHandler>());
+  }
 }
 
 int AccessibilitySection::GetSectionNameMessageId() const {
@@ -1006,9 +1162,10 @@ mojom::SearchResultIcon AccessibilitySection::GetSectionIcon() const {
   return mojom::SearchResultIcon::kA11y;
 }
 
-std::string AccessibilitySection::GetSectionPath() const {
+const char* AccessibilitySection::GetSectionPath() const {
   return mojom::kAccessibilitySectionPath;
 }
+
 bool AccessibilitySection::LogMetric(mojom::Setting setting,
                                      base::Value& value) const {
   // TODO(accessibility): Ensure to capture metrics for Switch Access's action
@@ -1024,6 +1181,21 @@ bool AccessibilitySection::LogMetric(mojom::Setting setting,
           "ChromeOS.Settings.Accessibility."
           "FullscreenMagnifierMouseFollowingMode",
           static_cast<MagnifierMouseFollowingMode>(value.GetInt()));
+      return true;
+    case mojom::Setting::kColorCorrectionEnabled:
+      base::UmaHistogramBoolean(
+          "ChromeOS.Settings.Accessibility.ColorCorrection.Enabled",
+          value.GetBool());
+      return true;
+    case mojom::Setting::kColorCorrectionFilterType:
+      base::UmaHistogramEnumeration(
+          "ChromeOS.Settings.Accessibility.ColorCorrection.FilterType",
+          static_cast<ColorVisionCorrectionType>(value.GetInt()));
+      return true;
+    case mojom::Setting::kColorCorrectionFilterAmount:
+      base::UmaHistogramPercentage(
+          "ChromeOS.Settings.Accessibility.ColorCorrection.FilterAmount",
+          value.GetInt());
       return true;
 
     default:
@@ -1049,21 +1221,26 @@ void AccessibilitySection::RegisterHierarchy(
       IDS_SETTINGS_ACCESSIBILITY_TEXT_TO_SPEECH_LINK_TITLE,
       mojom::Subpage::kTextToSpeechPage, mojom::SearchResultIcon::kA11y,
       mojom::SearchResultDefaultRank::kMedium, mojom::kTextToSpeechPagePath);
-  // Select to speak options page.
-  if (IsAccessibilitySelectToSpeakPageMigrationEnabled()) {
+  // ChromeVox settings page.
+  if (IsAccessibilityChromeVoxPageMigrationEnabled()) {
     generator->RegisterTopLevelSubpage(
-        IDS_SETTINGS_ACCESSIBILITY_SELECT_TO_SPEAK_LINK_TITLE,
-        mojom::Subpage::kSelectToSpeak, mojom::SearchResultIcon::kA11y,
-        mojom::SearchResultDefaultRank::kMedium,
-        mojom::kSelectToSpeakSubpagePath);
-    static constexpr mojom::Setting kSelectToSpeakSettings[] = {
-        mojom::Setting::kSelectToSpeakWordHighlight,
-        mojom::Setting::kSelectToSpeakBackgroundShading,
-        mojom::Setting::kSelectToSpeakNavigationControls,
-    };
-    RegisterNestedSettingBulk(mojom::Subpage::kSelectToSpeak,
-                              kSelectToSpeakSettings, generator);
+        IDS_SETTINGS_CHROMEVOX_OPTIONS_LABEL, mojom::Subpage::kChromeVox,
+        mojom::SearchResultIcon::kA11y, mojom::SearchResultDefaultRank::kMedium,
+        mojom::kChromeVoxSubpagePath);
   }
+  // Select to speak options page.
+  generator->RegisterTopLevelSubpage(
+      IDS_SETTINGS_ACCESSIBILITY_SELECT_TO_SPEAK_LINK_TITLE,
+      mojom::Subpage::kSelectToSpeak, mojom::SearchResultIcon::kA11y,
+      mojom::SearchResultDefaultRank::kMedium,
+      mojom::kSelectToSpeakSubpagePath);
+  static constexpr mojom::Setting kSelectToSpeakSettings[] = {
+      mojom::Setting::kSelectToSpeakWordHighlight,
+      mojom::Setting::kSelectToSpeakBackgroundShading,
+      mojom::Setting::kSelectToSpeakNavigationControls,
+  };
+  RegisterNestedSettingBulk(mojom::Subpage::kSelectToSpeak,
+                            kSelectToSpeakSettings, generator);
   // Display and magnification page.
   generator->RegisterTopLevelSubpage(
       IDS_SETTINGS_ACCESSIBILITY_DISPLAY_AND_MAGNIFICATION_LINK_TITLE,
@@ -1111,6 +1288,9 @@ void AccessibilitySection::RegisterHierarchy(
       mojom::Setting::kMonoAudio,
       mojom::Setting::kStartupSound,
       mojom::Setting::kEnableCursorColor,
+      mojom::Setting::kColorCorrectionEnabled,
+      mojom::Setting::kColorCorrectionFilterType,
+      mojom::Setting::kColorCorrectionFilterAmount,
   };
   RegisterNestedSettingBulk(mojom::Subpage::kManageAccessibility,
                             kManageAccessibilitySettings, generator);
@@ -1212,6 +1392,11 @@ void AccessibilitySection::UpdateSearchTags() {
   } else {
     updater.RemoveSearchTags(
         GetA11yFullscreenMagnifierFocusFollowingSearchConcepts());
+  }
+
+  if (::features::
+          AreExperimentalAccessibilityColorEnhancementSettingsEnabled()) {
+    updater.AddSearchTags(GetA11yColorCorrectionSearchConcepts());
   }
 
   if (!pref_service_->GetBoolean(prefs::kAccessibilitySwitchAccessEnabled)) {

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,7 @@
 #include "osp/public/message_demuxer.h"
 #include "osp/public/presentation/presentation_connection.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 enum class ResponseResult {
   kSuccess = 0,
@@ -61,9 +60,9 @@ class ReceiverDelegate {
 class Receiver final : public MessageDemuxer::MessageCallback,
                        public Connection::ParentDelegate {
  public:
-  // TODO(crbug.com/openscreen/31): Remove singletons in the embedder API and
-  // protocol implementation layers.
-  static Receiver* Get();
+  Receiver();
+  ~Receiver() override;
+
   void Init();
   void Deinit();
 
@@ -116,9 +115,6 @@ class Receiver final : public MessageDemuxer::MessageCallback,
     std::vector<Connection*> connections;
   };
 
-  Receiver();
-  ~Receiver() override;
-
   using QueuedResponseIterator = std::vector<QueuedResponse>::const_iterator;
 
   void DeleteQueuedResponse(const std::string& presentation_id,
@@ -147,7 +143,6 @@ class Receiver final : public MessageDemuxer::MessageCallback,
   uint64_t GetNextConnectionId();
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_PUBLIC_PRESENTATION_PRESENTATION_RECEIVER_H_

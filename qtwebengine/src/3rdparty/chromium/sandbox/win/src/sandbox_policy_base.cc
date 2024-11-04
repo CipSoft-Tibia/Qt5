@@ -9,7 +9,9 @@
 
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include "base/containers/span.h"
 #include "base/functional/callback.h"
 #include "base/logging.h"
 #include "base/win/access_control_list.h"
@@ -46,6 +48,14 @@ constexpr size_t kOneMemPage = 4096;
 // The IPC and Policy shared memory sizes.
 constexpr size_t kIPCMemSize = kOneMemPage * 2;
 constexpr size_t kPolMemSize = kOneMemPage * 6;
+
+// Offset of pShimData in ntdll!_PEB.
+#if defined(_WIN64)
+// This is the same on x64 and arm64.
+constexpr ptrdiff_t kShimDataOffset = 0x2d8;
+#else
+constexpr ptrdiff_t kShimDataOffset = 0x1e8;
+#endif
 
 // Helper function to allocate space (on the heap) for policy.
 sandbox::PolicyGlobal* MakeBrokerPolicyMemory() {
@@ -92,6 +102,30 @@ bool ReplacePackageSidInDacl(HANDLE token,
                            DACL_SECURITY_INFORMATION);
 }
 
+bool ApplyZeroAppShimToSuspendedProcess(HANDLE process) {
+  PROCESS_BASIC_INFORMATION proc_info{};
+  ULONG bytes_returned = 0;
+  NTSTATUS ret = GetNtExports()->QueryInformationProcess(
+      process, ProcessBasicInformation, &proc_info, sizeof(proc_info),
+      &bytes_returned);
+  if (!NT_SUCCESS(ret) || sizeof(proc_info) != bytes_returned) {
+    return false;
+  }
+
+  void* address = reinterpret_cast<void*>(
+      reinterpret_cast<uintptr_t>(proc_info.PebBaseAddress) + kShimDataOffset);
+  size_t zero = 0;
+  SIZE_T written;
+  if (!::WriteProcessMemory(process, const_cast<void*>(address), &zero,
+                            sizeof(zero), &written)) {
+    return false;
+  }
+  if (written != sizeof(zero)) {
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 SANDBOX_INTERCEPT IntegrityLevel g_shared_delayed_integrity_level =
@@ -114,12 +148,12 @@ ConfigBase::ConfigBase() noexcept
       delayed_mitigations_(0),
       add_restricting_random_sid_(false),
       lockdown_default_dacl_(false),
-      allow_no_sandbox_job_(false),
       is_csrss_connected_(true),
       memory_limit_(0),
       ui_exceptions_(0),
       desktop_(Desktop::kDefault),
       filter_environment_(false),
+      zero_appshim_(false),
       policy_maker_(nullptr),
       policy_(nullptr) {
 }
@@ -154,6 +188,16 @@ bool ConfigBase::Freeze() {
 PolicyGlobal* ConfigBase::policy() {
   DCHECK(configured_);
   return policy_;
+}
+
+absl::optional<base::span<const uint8_t>> ConfigBase::policy_span() {
+  if (policy_) {
+    // Note: this is not policy().data_size as that relates to internal data,
+    // not the entire allocated policy area.
+    return base::span<const uint8_t>(reinterpret_cast<uint8_t*>(policy_.get()),
+                                     kPolMemSize);
+  }
+  return absl::nullopt;
 }
 
 std::vector<std::wstring>& ConfigBase::blocklisted_dlls() {
@@ -382,9 +426,6 @@ TokenLevel ConfigBase::GetLockdownTokenLevel() const {
 }
 
 ResultCode ConfigBase::SetJobLevel(JobLevel job_level, uint32_t ui_exceptions) {
-  if (memory_limit_ && job_level == JobLevel::kNone) {
-    return SBOX_ERROR_BAD_PARAMS;
-  }
   job_level_ = job_level;
   ui_exceptions_ = ui_exceptions;
   return SBOX_ALL_OK;
@@ -396,14 +437,6 @@ JobLevel ConfigBase::GetJobLevel() const {
 
 void ConfigBase::SetJobMemoryLimit(size_t memory_limit) {
   memory_limit_ = memory_limit;
-}
-
-void ConfigBase::SetAllowNoSandboxJob() {
-  allow_no_sandbox_job_ = true;
-}
-
-bool ConfigBase::GetAllowNoSandboxJob() {
-  return allow_no_sandbox_job_;
 }
 
 ResultCode ConfigBase::AddKernelObjectToClose(const wchar_t* handle_type,
@@ -438,17 +471,26 @@ bool ConfigBase::GetEnvironmentFiltered() {
   return filter_environment_;
 }
 
+void ConfigBase::SetZeroAppShim() {
+  zero_appshim_ = true;
+}
+
 PolicyBase::PolicyBase(base::StringPiece tag)
     : tag_(tag),
       config_(),
       config_ptr_(nullptr),
       stdout_handle_(INVALID_HANDLE_VALUE),
       stderr_handle_(INVALID_HANDLE_VALUE),
+      delegate_data_(nullptr),
       job_() {
   dispatcher_ = std::make_unique<TopLevelDispatcher>(this);
 }
 
-PolicyBase::~PolicyBase() {}
+PolicyBase::~PolicyBase() {
+  // Ensure this is cleared before other members - this terminates the process
+  // if it hasn't already finished.
+  target_.reset();
+}
 
 TargetConfig* PolicyBase::GetConfig() {
   return config();
@@ -514,9 +556,6 @@ const base::HandlesToInheritVector& PolicyBase::GetHandlesBeingShared() {
 ResultCode PolicyBase::InitJob() {
   if (job_.IsValid())
     return SBOX_ERROR_BAD_PARAMS;
-
-  if (config()->GetJobLevel() == JobLevel::kNone)
-    return SBOX_ALL_OK;
 
   // Create the Windows job object.
   DWORD result = job_.Init(config()->GetJobLevel(), config()->ui_exceptions(),
@@ -612,6 +651,12 @@ ResultCode PolicyBase::ApplyToTarget(std::unique_ptr<TargetProcess> target) {
   // Policy rules are compiled when the underlying ConfigBase is frozen.
   DCHECK(config()->IsConfigured());
 
+  if (config()->zero_appshim()) {
+    if (!ApplyZeroAppShimToSuspendedProcess(target->Process())) {
+      return SBOX_ERROR_DISABLING_APPHELP;
+    }
+  }
+
   if (!ApplyProcessMitigationsToSuspendedProcess(
           target->Process(), config()->GetProcessMitigations())) {
     return SBOX_ERROR_APPLY_ASLR_MITIGATIONS;
@@ -628,8 +673,8 @@ ResultCode PolicyBase::ApplyToTarget(std::unique_ptr<TargetProcess> target) {
   DWORD win_error = ERROR_SUCCESS;
   // Initialize the sandbox infrastructure for the target.
   // TODO(wfh) do something with win_error code here.
-  ret = target->Init(dispatcher_.get(), config()->policy(), kIPCMemSize,
-                     kPolMemSize, &win_error);
+  ret = target->Init(dispatcher_.get(), config()->policy_span(),
+                     delegate_data_span(), kIPCMemSize, &win_error);
 
   if (ret != SBOX_ALL_OK)
     return ret;
@@ -666,18 +711,6 @@ ResultCode PolicyBase::ApplyToTarget(std::unique_ptr<TargetProcess> target) {
 
   target_ = std::move(target);
   return SBOX_ALL_OK;
-}
-
-// Can only be called if a job was associated with this policy.
-bool PolicyBase::OnJobEmpty() {
-  target_.reset();
-  return true;
-}
-
-bool PolicyBase::OnProcessFinished(DWORD process_id) {
-  if (target_->ProcessId() == process_id)
-    target_.reset();
-  return true;
 }
 
 EvalResult PolicyBase::EvalPolicy(IpcTag service,
@@ -748,6 +781,21 @@ bool PolicyBase::SetupHandleCloser(TargetProcess& target) {
   if (!handle_closer)
     return true;
   return handle_closer->InitializeTargetHandles(target);
+}
+
+absl::optional<base::span<const uint8_t>> PolicyBase::delegate_data_span() {
+  if (delegate_data_) {
+    return base::span<const uint8_t>(delegate_data_->data(), delegate_data_->data() + delegate_data_->size());
+  }
+  return absl::nullopt;
+}
+
+void PolicyBase::AddDelegateData(base::span<const uint8_t> data) {
+  CHECK(data.size() > 0u);
+  // Can only set this once - as there is only one region sent to the child.
+  CHECK(!delegate_data_);
+  delegate_data_ =
+      std::make_unique<std::vector<uint8_t>>(data.begin(), data.end());
 }
 
 }  // namespace sandbox

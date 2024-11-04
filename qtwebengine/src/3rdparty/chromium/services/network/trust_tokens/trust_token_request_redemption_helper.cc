@@ -27,10 +27,8 @@ namespace network {
 
 namespace {
 
-base::Value CreateLogValue(base::StringPiece outcome) {
-  base::Value ret(base::Value::Type::DICT);
-  ret.SetStringKey("outcome", outcome);
-  return ret;
+base::Value::Dict CreateLogValue(base::StringPiece outcome) {
+  return base::Value::Dict().Set("outcome", outcome);
 }
 
 // Define convenience aliases for the NetLogEventTypes for brevity.
@@ -141,7 +139,7 @@ void TrustTokenRequestRedemptionHelper::OnGotKeyCommitment(
   if (!commitment_result) {
     LogOutcome(net_log_, kBegin, "No keys for issuer");
     std::move(done).Run(absl::nullopt,
-                        mojom::TrustTokenOperationStatus::kFailedPrecondition);
+                        mojom::TrustTokenOperationStatus::kMissingIssuerKeys);
     return;
   }
 
@@ -208,7 +206,7 @@ void TrustTokenRequestRedemptionHelper::Finalize(
   net_log_.BeginEvent(
       net::NetLogEventType::TRUST_TOKEN_OPERATION_FINALIZE_REDEMPTION);
 
-  // 1. If the response has no Sec-Trust-Token header, return an error.
+  // 1. If the response has no Sec-Private-State-Token header, return an error.
   std::string header_value;
 
   // EnumerateHeader(|iter|=nullptr) asks for the first instance of the header,
@@ -222,8 +220,8 @@ void TrustTokenRequestRedemptionHelper::Finalize(
     return;
   }
 
-  // 2. Strip the Sec-Trust-Token header, from the response and pass the header,
-  // base64-decoded, to BoringSSL.
+  // 2. Strip the Sec-Private-State-Token header, from the response and pass the
+  // header to BoringSSL.
   response_headers.RemoveHeader(kTrustTokensSecTrustTokenHeader);
 
   absl::optional<std::string> maybe_redemption_record =

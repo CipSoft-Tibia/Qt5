@@ -8,11 +8,14 @@
 #include <string>
 
 #include "base/component_export.h"
+#include "base/containers/flat_set.h"
 #include "base/functional/callback.h"
 #include "base/time/time.h"
 #include "base/version.h"
 #include "components/variations/proto/study.pb.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
+
+class PrefService;
 
 namespace variations {
 
@@ -29,26 +32,10 @@ enum class RestrictionPolicy {
 };
 
 using IsEnterpriseFunction = base::OnceCallback<bool()>;
+using GoogleGroupsFunction = base::OnceCallback<base::flat_set<uint64_t>()>;
 
 // A container for all of the client state which is used for filtering studies.
 struct COMPONENT_EXPORT(VARIATIONS) ClientFilterableState {
-  static Study::Platform GetCurrentPlatform();
-
-  // base::Version used in {min,max}_os_version filtering.
-  static base::Version GetOSVersion();
-
-  explicit ClientFilterableState(IsEnterpriseFunction is_enterprise_function);
-
-  ClientFilterableState(const ClientFilterableState&) = delete;
-  ClientFilterableState& operator=(const ClientFilterableState&) = delete;
-
-  ~ClientFilterableState();
-
-  // Whether this is an enterprise client. Always false on android, iOS, and
-  // linux. Determined by VariationsServiceClient::IsEnterprise for windows,
-  // chromeOs, and mac.
-  bool IsEnterprise() const;
-
   // The system locale.
   std::string locale;
 
@@ -91,11 +78,45 @@ struct COMPONENT_EXPORT(VARIATIONS) ClientFilterableState {
   // The restriction applied to Chrome through the "ChromeVariations" policy.
   RestrictionPolicy policy_restriction = RestrictionPolicy::NO_RESTRICTIONS;
 
+  explicit ClientFilterableState(IsEnterpriseFunction is_enterprise_function,
+                                 GoogleGroupsFunction google_groups_function);
+
+  ClientFilterableState(const ClientFilterableState&) = delete;
+  ClientFilterableState& operator=(const ClientFilterableState&) = delete;
+
+  ~ClientFilterableState();
+
+  // Whether this is an enterprise client. Always false on Android, iOS, and
+  // Linux. Determined by VariationsServiceClient::IsEnterprise() for Windows,
+  // ChromeOS, and Mac.
+  bool IsEnterprise() const;
+
   // The list of Google groups that one of more signed-in syncing users are a
   // a member of.
   // Each value is the Gaia ID of the google group.
-  // TODO(b/264838828): populate this field.
-  std::set<uint64_t> google_groups;
+  base::flat_set<uint64_t> GoogleGroups() const;
+
+  static Study::Platform GetCurrentPlatform();
+
+  // base::Version used in {min,max}_os_version filtering.
+  static base::Version GetOSVersion();
+
+  // Returns the time to use when determining whether a client should
+  // participate in a study. The returned time is one of the following:
+  // (A) The server-provided timestamp of when the seed to be used was fetched.
+  // (B) The Chrome binary's build time.
+  // (C) A client-provided timestamp stored in prefs during the FRE on some
+  //     platforms (in ChromeFeatureListCreator::SetupInitialPrefs()).
+  //
+  // These are prioritized as follows:
+  // (1) The server-provided timestamp (A) is returned when it is available and
+  //     fresher than the binary build time.
+  // (2) The client-provided timestamp (C) is returned if it was written to
+  //     prefs, has not yet been overwritten by a server-provided timestamp,
+  //     and it is fresher than the binary build time.
+  // (3) Otherwise, the binary build time (B) is returned.
+  static base::Time GetTimeForStudyDateChecks(bool is_safe_seed,
+                                              PrefService* local_state);
 
  private:
   // Evaluating enterprise status negatively affects performance, so we only
@@ -103,6 +124,12 @@ struct COMPONENT_EXPORT(VARIATIONS) ClientFilterableState {
   // most once.
   mutable IsEnterpriseFunction is_enterprise_function_;
   mutable absl::optional<bool> is_enterprise_;
+
+  // Evaluating group memberships involves parsing data received from Chrome
+  // Sync server.  For safe rollout we do this only for studies that require
+  // inspecting group memberships (and for efficiency we do it only once.)
+  mutable GoogleGroupsFunction google_groups_function_;
+  mutable absl::optional<base::flat_set<uint64_t>> google_groups_;
 };
 
 }  // namespace variations

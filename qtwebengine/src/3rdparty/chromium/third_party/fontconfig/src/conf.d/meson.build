@@ -18,6 +18,7 @@ conf_files = [
   '11-lcdfilter-default.conf',
   '11-lcdfilter-legacy.conf',
   '11-lcdfilter-light.conf',
+  '11-lcdfilter-none.conf',
   '20-unhint-small-vera.conf',
   '25-unhint-nonlatin.conf',
   '30-metric-aliases.conf',

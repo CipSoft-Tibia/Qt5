@@ -316,8 +316,9 @@ cc_library(
     ],
 )
 
-cc_binary(
+cc_test(
     name = "list_targets",
+    size = "small",
     srcs = ["hwy/tests/list_targets.cc"],
     deps = [":hwy"],
 )
@@ -331,7 +332,8 @@ HWY_TESTS = [
     ("hwy/contrib/dot/", "dot_test"),
     ("hwy/contrib/image/", "image_test"),
     ("hwy/contrib/math/", "math_test"),
-    # contrib/sort has its own BUILD, we add it to GUITAR_TESTS.
+    # contrib/sort has its own BUILD, we also add sort_test to GUITAR_TESTS.
+    # To run bench_sort, specify --test=hwy/contrib/sort:bench_sort.
     ("hwy/examples/", "skeleton_test"),
     ("hwy/", "nanobenchmark_test"),
     ("hwy/", "aligned_allocator_test"),
@@ -347,6 +349,7 @@ HWY_TESTS = [
     ("hwy/tests/", "convert_test"),
     ("hwy/tests/", "crypto_test"),
     ("hwy/tests/", "demote_test"),
+    ("hwy/tests/", "expand_test"),
     ("hwy/tests/", "float_test"),
     ("hwy/tests/", "if_test"),
     ("hwy/tests/", "interleaved_test"),

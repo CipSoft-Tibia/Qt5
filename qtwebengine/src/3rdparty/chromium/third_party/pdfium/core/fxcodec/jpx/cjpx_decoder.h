@@ -12,7 +12,7 @@
 #include <memory>
 
 #include "core/fxcrt/unowned_ptr.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
 #if defined(USE_SYSTEM_LIBOPENJPEG2)
 #include <openjpeg.h>
@@ -39,7 +39,7 @@ class CJPX_Decoder {
   struct JpxImageInfo {
     uint32_t width;
     uint32_t height;
-    uint32_t components;
+    uint32_t channels;
     COLOR_SPACE colorspace;
   };
 
@@ -55,8 +55,21 @@ class CJPX_Decoder {
   JpxImageInfo GetInfo() const;
   bool StartDecode();
 
-  // |swap_rgb| can only be set for images with 3 or more components.
-  bool Decode(pdfium::span<uint8_t> dest_buf, uint32_t pitch, bool swap_rgb);
+  // `swap_rgb` can only be set when an image's color space type contains at
+  // least 3 color components. Note that this `component_count` is not
+  // equivalent to `JpxImageInfo::channels`. The JpxImageInfo channels can
+  // contain extra information for rendering the image besides the color
+  // component information. Therefore the `JpxImageInfo::channels` must be no
+  // less than the component count.
+  //
+  // Example: If a JPX image's color space type is OPJ_CLRSPC_SRGB, the
+  // component count for this color space is 3, and the channel count of its
+  // JpxImageInfo can be 4. This is because the extra channel might contain
+  // extra information, such as the transparency level of the image.
+  bool Decode(pdfium::span<uint8_t> dest_buf,
+              uint32_t pitch,
+              bool swap_rgb,
+              uint32_t component_count);
 
  private:
   // Use Create() to instantiate.

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,19 +7,19 @@
 
 #include <stdint.h>
 
+#include <optional>
 #include <tuple>
 #include <vector>
 
-#include "absl/types/optional.h"
-#include "absl/types/span.h"
 #include "cast/streaming/frame_id.h"
 #include "cast/streaming/ntp_time.h"
 #include "cast/streaming/rtp_defines.h"
 #include "cast/streaming/rtp_time.h"
 #include "cast/streaming/ssrc.h"
+#include "cast/streaming/statistics_defines.h"
+#include "platform/base/span.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 struct RtcpCommonHeader {
   RtcpCommonHeader();
@@ -44,12 +44,11 @@ struct RtcpCommonHeader {
 
   // Serializes this header into the first |kRtcpCommonHeaderSize| bytes of the
   // given |buffer| and adjusts |buffer| to point to the first byte after it.
-  void AppendFields(absl::Span<uint8_t>* buffer) const;
+  void AppendFields(ByteBuffer& buffer) const;
 
   // Parse from the 4-byte wire format in |buffer|. Returns nullopt if the data
   // is corrupt.
-  static absl::optional<RtcpCommonHeader> Parse(
-      absl::Span<const uint8_t> buffer);
+  static std::optional<RtcpCommonHeader> Parse(ByteView buffer);
 };
 
 // The middle 32-bits of the 64-bit NtpTimestamp field from the Sender Reports.
@@ -121,13 +120,14 @@ struct RtcpReportBlock {
   // Serializes this report block in the first |kRtcpReportBlockSize| bytes of
   // the given |buffer| and adjusts |buffer| to point to the first byte after
   // it.
-  void AppendFields(absl::Span<uint8_t>* buffer) const;
+  void AppendFields(ByteBuffer& buffer) const;
 
   // Scans the wire-format report blocks in |buffer|, searching for one with the
   // matching |ssrc| and, if found, returns the parse result. Returns nullopt if
   // the data is corrupt or no report block with the matching SSRC was found.
-  static absl::optional<RtcpReportBlock>
-  ParseOne(absl::Span<const uint8_t> buffer, int report_count, Ssrc ssrc);
+  static std::optional<RtcpReportBlock> ParseOne(ByteView buffer,
+                                                 int report_count,
+                                                 Ssrc ssrc);
 };
 
 struct RtcpSenderReport {
@@ -151,7 +151,7 @@ struct RtcpSenderReport {
 
   // The report block, if present. While the RTCP spec allows for zero or
   // multiple reports, Cast Streaming only uses zero or one.
-  absl::optional<RtcpReportBlock> report_block;
+  std::optional<RtcpReportBlock> report_block;
 };
 
 // A pair of IDs that refers to a specific missing packet within a frame. If
@@ -173,7 +173,31 @@ struct PacketNack {
   }
 };
 
-}  // namespace cast
-}  // namespace openscreen
+// Statistics events sent from the receiver over RTCP.
+struct RtcpReceiverEventLogMessage {
+  // The statistics event type, may be either a receiver side frame event or
+  // packet event.
+  StatisticsEventType type;
+
+  // The time at which this event occurred.
+  Clock::time_point timestamp;
+
+  // Only set for frame played out events.
+  // If this value is zero the frame is rendered on time.
+  // If this value is positive it means the frame is rendered late.
+  // If this value is negative it means the frame is rendered early.
+  Clock::duration delay;
+
+  // Only set for packet events.
+  // The ID of the packet associated with this event.
+  FramePacketId packet_id;
+};
+
+struct RtcpReceiverFrameLogMessage {
+  RtpTimeTicks rtp_timestamp;
+  std::vector<RtcpReceiverEventLogMessage> messages;
+};
+
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_RTCP_COMMON_H_

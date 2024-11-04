@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "viewtestutils_p.h"
 
@@ -394,7 +394,7 @@ void QQuickViewTestUtils::StressTestModel::updateModel()
     }
 }
 
-#if QT_CONFIG(quick_itemview)
+#if QT_CONFIG(quick_itemview) && defined(QT_BUILD_INTERNAL)
 bool QQuickViewTestUtils::testVisibleItems(const QQuickItemViewPrivate *priv, bool *nonUnique, FxViewItem **failItem, int *expectedIdx)
 {
     QHash<QQuickItem*, int> uniqueItems;

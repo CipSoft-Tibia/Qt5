@@ -108,6 +108,7 @@ template<typename MatrixType_> class SelfAdjointEigenSolver
       * This is a column vector with entries of type #RealScalar.
       * The length of the vector is the size of \p MatrixType_.
       */
+    typedef typename internal::plain_col_type<MatrixType, Scalar>::type VectorType;
     typedef typename internal::plain_col_type<MatrixType, RealScalar>::type RealVectorType;
     typedef Tridiagonalization<MatrixType> TridiagonalizationType;
     typedef typename TridiagonalizationType::SubDiagonalType SubDiagonalType;
@@ -125,6 +126,7 @@ template<typename MatrixType_> class SelfAdjointEigenSolver
     EIGEN_DEVICE_FUNC
     SelfAdjointEigenSolver()
         : m_eivec(),
+          m_workspace(),
           m_eivalues(),
           m_subdiag(),
           m_hcoeffs(),
@@ -148,6 +150,7 @@ template<typename MatrixType_> class SelfAdjointEigenSolver
     EIGEN_DEVICE_FUNC
     explicit SelfAdjointEigenSolver(Index size)
         : m_eivec(size, size),
+          m_workspace(size),
           m_eivalues(size),
           m_subdiag(size > 1 ? size - 1 : 1),
           m_hcoeffs(size > 1 ? size - 1 : 1),
@@ -174,6 +177,7 @@ template<typename MatrixType_> class SelfAdjointEigenSolver
     EIGEN_DEVICE_FUNC
     explicit SelfAdjointEigenSolver(const EigenBase<InputType>& matrix, int options = ComputeEigenvectors)
       : m_eivec(matrix.rows(), matrix.cols()),
+        m_workspace(matrix.cols()),
         m_eivalues(matrix.cols()),
         m_subdiag(matrix.rows() > 1 ? matrix.rows() - 1 : 1),
         m_hcoeffs(matrix.cols() > 1 ? matrix.cols() - 1 : 1),
@@ -377,6 +381,7 @@ template<typename MatrixType_> class SelfAdjointEigenSolver
     EIGEN_STATIC_ASSERT_NON_INTEGER(Scalar)
 
     EigenvectorsType m_eivec;
+    VectorType m_workspace;
     RealVectorType m_eivalues;
     typename TridiagonalizationType::SubDiagonalType m_subdiag;
     typename TridiagonalizationType::CoeffVectorType m_hcoeffs;
@@ -451,7 +456,7 @@ SelfAdjointEigenSolver<MatrixType>& SelfAdjointEigenSolver<MatrixType>
   mat.template triangularView<Lower>() /= scale;
   m_subdiag.resize(n-1);
   m_hcoeffs.resize(n-1);
-  internal::tridiagonalization_inplace(mat, diag, m_subdiag, m_hcoeffs, computeEigenvectors);
+  internal::tridiagonalization_inplace(mat, diag, m_subdiag, m_hcoeffs, m_workspace, computeEigenvectors);
 
   m_info = internal::computeFromTridiagonal_impl(diag, m_subdiag, m_maxIterations, computeEigenvectors, m_eivec);
   

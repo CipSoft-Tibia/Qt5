@@ -7,11 +7,14 @@
 
     "noEmitOnError": true,
 
-    "strict": true,
     "forceConsistentCasingInFileNames": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
+
+    "strict": true,
     "useUnknownInCatchVariables": false,
+    "noUnusedLocals": false,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
 
     "experimentalDecorators": true,
 

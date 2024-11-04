@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,13 +11,13 @@
 #include <memory>
 #include <vector>
 
+#include "cast/streaming/statistics_collector.h"
 #include "platform/api/time.h"
 #include "platform/api/udp_socket.h"
 #include "platform/base/ip_address.h"
 #include "platform/base/span.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Provides the common environment for operating system resources shared by
 // multiple components.
@@ -71,14 +71,14 @@ class Environment : public UdpSocket::Client {
   // |local_endpoint|. Default behavior if |local_endpoint| is omitted is to
   // bind to all available interfaces using IPv4.
   Environment(ClockNowFunctionPtr now_function,
-              TaskRunner* task_runner,
+              TaskRunner& task_runner,
               const IPEndpoint& local_endpoint = IPEndpoint::kAnyV4());
 
   ~Environment() override;
 
   ClockNowFunctionPtr now_function() const { return now_function_; }
   Clock::time_point now() const { return now_function_(); }
-  TaskRunner* task_runner() const { return task_runner_; }
+  TaskRunner& task_runner() const { return task_runner_; }
 
   // Returns the local endpoint the socket is bound to, or the zero IPEndpoint
   // if socket creation/binding failed.
@@ -102,6 +102,12 @@ class Environment : public UdpSocket::Client {
   // nullptr.
   void SetSocketSubscriber(SocketSubscriber* subscriber);
 
+  // Subscribe to frame and packet events. Callers can unsubscribe by passing
+  // nullptr. Note that if the collector is destroyed before the environment,
+  // callers MUST unsubscribe to avoid an access exception.
+  void SetStatisticsCollector(StatisticsCollector* subscriber);
+  StatisticsCollector* statistics_collector() { return statistics_collector_; }
+
   // Start/Resume delivery of incoming packets to the given |packet_consumer|.
   // Delivery will continue until DropIncomingPackets() is called.
   void ConsumeIncomingPackets(PacketConsumer* packet_consumer);
@@ -120,14 +126,7 @@ class Environment : public UdpSocket::Client {
   //
   // Note: This method is virtual to allow unit tests to intercept packets
   // before they actually head-out through the socket.
-  virtual void SendPacket(ByteView packet);
-
- protected:
-  Environment() : now_function_(nullptr), task_runner_(nullptr) {}
-
-  // Protected so that they can be set by the MockEnvironment for testing.
-  ClockNowFunctionPtr now_function_;
-  TaskRunner* task_runner_;
+  virtual void SendPacket(ByteView packet, PacketMetadata metadata);
 
  private:
   // UdpSocket::Client implementation.
@@ -135,6 +134,9 @@ class Environment : public UdpSocket::Client {
   void OnError(UdpSocket* socket, Error error) final;
   void OnSendError(UdpSocket* socket, Error error) final;
   void OnRead(UdpSocket* socket, ErrorOr<UdpPacket> packet_or_error) final;
+
+  ClockNowFunctionPtr now_function_;
+  TaskRunner& task_runner_;
 
   // The UDP socket bound to the local endpoint that was passed into the
   // constructor, or null if socket creation failed.
@@ -147,9 +149,9 @@ class Environment : public UdpSocket::Client {
   PacketConsumer* packet_consumer_ = nullptr;
   SocketState state_ = SocketState::kStarting;
   SocketSubscriber* socket_subscriber_ = nullptr;
+  StatisticsCollector* statistics_collector_ = nullptr;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_ENVIRONMENT_H_

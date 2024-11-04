@@ -9,17 +9,22 @@
 
 #include "base/memory/weak_ptr.h"
 #include "chrome/browser/history_clusters/history_clusters_metrics_logger.h"
-#include "components/image_service/mojom/image_service.mojom-forward.h"
+#include "components/page_image_service/mojom/page_image_service.mojom.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "ui/webui/mojo_bubble_web_ui_controller.h"
+#include "ui/webui/resources/cr_components/color_change_listener/color_change_listener.mojom.h"
 #include "ui/webui/resources/cr_components/history_clusters/history_clusters.mojom-forward.h"
+
+namespace ui {
+class ColorChangeHandler;
+}
 
 namespace history_clusters {
 class HistoryClustersHandler;
 }
 
-namespace image_service {
+namespace page_image_service {
 class ImageServiceHandler;
 }
 
@@ -32,12 +37,16 @@ class HistoryClustersSidePanelUI : public ui::MojoBubbleWebUIController,
       delete;
   ~HistoryClustersSidePanelUI() override;
 
+  void BindInterface(
+      mojo::PendingReceiver<color_change_listener::mojom::PageHandler>
+          pending_receiver);
+
   // Instantiates the implementor of the mojom::PageHandlerFactory mojo
   // interface passing the pending receiver that will be internally bound.
   void BindInterface(mojo::PendingReceiver<history_clusters::mojom::PageHandler>
                          pending_page_handler);
   void BindInterface(
-      mojo::PendingReceiver<image_service::mojom::ImageServiceHandler>
+      mojo::PendingReceiver<page_image_service::mojom::PageImageServiceHandler>
           pending_page_handler);
 
   // Gets a weak pointer to this object.
@@ -62,9 +71,11 @@ class HistoryClustersSidePanelUI : public ui::MojoBubbleWebUIController,
       content::NavigationHandle* navigation_handle) override;
 
  private:
+  std::unique_ptr<ui::ColorChangeHandler> color_provider_handler_;
   std::unique_ptr<history_clusters::HistoryClustersHandler>
       history_clusters_handler_;
-  std::unique_ptr<image_service::ImageServiceHandler> image_service_handler_;
+  std::unique_ptr<page_image_service::ImageServiceHandler>
+      image_service_handler_;
 
   // The initial state that we have to cache here until the page finishes its
   // navigation to the WebUI host.

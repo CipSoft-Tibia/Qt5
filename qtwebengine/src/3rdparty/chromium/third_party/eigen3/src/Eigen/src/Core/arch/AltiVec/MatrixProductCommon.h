@@ -5,7 +5,7 @@
 #define EIGEN_POWER_PREFETCH(p)
 #endif
 
-#ifdef _ARCH_PWR9
+#if defined(_ARCH_PWR9) || defined(EIGEN_ALTIVEC_MMA_DYNAMIC_DISPATCH)
 #define USE_PARTIAL_PACKETS
 #endif
 
@@ -30,8 +30,8 @@ EIGEN_ALWAYS_INLINE void gemm_extra_row(
   const Packet& pAlpha,
   const Packet& pMask);
 
-template<typename Scalar, typename Packet, typename DataMapper, const Index accCols, bool ConjugateLhs, bool ConjugateRhs, bool LhsIsReal, bool RhsIsReal>
-EIGEN_STRONG_INLINE void gemm_extra_cols(
+template<typename Scalar, typename Packet, typename DataMapper, const Index accCols>
+EIGEN_ALWAYS_INLINE void gemm_extra_cols(
   const DataMapper& res,
   const Scalar* blockA,
   const Scalar* blockB,
@@ -67,7 +67,7 @@ EIGEN_ALWAYS_INLINE void gemm_complex_extra_row(
   const Packet& pMask);
 
 template<typename Scalar, typename Packet, typename Packetc, typename DataMapper, const Index accCols, bool ConjugateLhs, bool ConjugateRhs, bool LhsIsReal, bool RhsIsReal>
-EIGEN_STRONG_INLINE void gemm_complex_extra_cols(
+EIGEN_ALWAYS_INLINE void gemm_complex_extra_cols(
   const DataMapper& res,
   const Scalar* blockA,
   const Scalar* blockB,
@@ -83,6 +83,27 @@ EIGEN_STRONG_INLINE void gemm_complex_extra_cols(
   const Packet& pAlphaReal,
   const Packet& pAlphaImag,
   const Packet& pMask);
+
+template<typename DataMapper>
+EIGEN_ALWAYS_INLINE void convertArrayBF16toF32(float *result, Index cols, Index rows, const DataMapper& src);
+
+template<const Index size, bool non_unit_stride, Index delta>
+EIGEN_ALWAYS_INLINE void storeBF16fromResult(bfloat16* dst, Packet8bf data, Index resInc, Index extra = 0);
+
+template<bool non_unit_stride = false>
+EIGEN_ALWAYS_INLINE void convertArrayPointerBF16toF32(float *result, Index cols, Index rows, bfloat16* src, Index resInc = 1);
+
+template<bool rhsExtraCols, bool lhsExtraRows>
+EIGEN_ALWAYS_INLINE void storeResults(Packet4f (&acc)[4], Index rows, const Packet4f pAlpha, float* result, Index extra_cols, Index extra_rows);
+
+template<Index num_acc, bool extraRows, Index size = 4>
+EIGEN_ALWAYS_INLINE void outputVecColResults(Packet4f (&acc)[num_acc][size], float *result, Packet4f pAlpha, Index extra_rows);
+
+template<Index num_acc, Index size = 4>
+EIGEN_ALWAYS_INLINE void outputVecResults(Packet4f (&acc)[num_acc][size], float *result, Packet4f pAlpha);
+
+template<typename RhsMapper, bool linear>
+EIGEN_ALWAYS_INLINE Packet8bf loadColData(RhsMapper& rhs, Index j);
 
 template<typename Packet>
 EIGEN_ALWAYS_INLINE Packet ploadLhs(const __UNPACK_TYPE__(Packet)* lhs);

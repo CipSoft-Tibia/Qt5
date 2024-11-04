@@ -97,6 +97,9 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) UsageTracker
   // recording.
   std::map<blink::StorageKey, int64_t> GetCachedStorageKeysUsage() const;
 
+  // Returns all cached usage organized by bucket. Used for eviction.
+  std::map<BucketLocator, int64_t> GetCachedBucketsUsage() const;
+
   // Checks if there are ongoing tasks to get usage. Used to prevent a
   // UsageTracker reset from happening before a task is complete.
   bool IsWorking() const {
@@ -119,9 +122,6 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) UsageTracker
   void DidGetBucketsForType(QuotaErrorOr<std::set<BucketInfo>> result);
   void DidGetBucketsForStorageKey(const blink::StorageKey& storage_key,
                                   QuotaErrorOr<std::set<BucketInfo>> result);
-  void DidGetBucketForUsage(QuotaClientType client_type,
-                            int64_t delta,
-                            QuotaErrorOr<BucketInfo> result);
 
   void AccumulateClientGlobalUsage(base::OnceClosure barrier_callback,
                                    AccumulateInfo* info,

@@ -13,7 +13,6 @@
 namespace blink {
 
 class FillLayer;
-class InlineFlowBox;
 class LayoutBoxModelObject;
 struct PaintInfo;
 struct PhysicalRect;
@@ -24,12 +23,11 @@ class BoxModelObjectPainter : public BoxPainterBase {
   STACK_ALLOCATED();
 
  public:
-  BoxModelObjectPainter(const LayoutBoxModelObject&,
-                        const InlineFlowBox* = nullptr);
+  explicit BoxModelObjectPainter(const LayoutBoxModelObject&);
 
  protected:
-  LayoutRectOutsets ComputeBorders() const override;
-  LayoutRectOutsets ComputePadding() const override;
+  NGPhysicalBoxStrut ComputeBorders() const override;
+  NGPhysicalBoxStrut ComputePadding() const override;
   BoxPainterBase::FillLayerInfo GetFillLayerInfo(
       const Color&,
       const FillLayer&,
@@ -39,7 +37,7 @@ class BoxModelObjectPainter : public BoxPainterBase {
   void PaintTextClipMask(const PaintInfo&,
                          const gfx::Rect& mask_rect,
                          const PhysicalOffset& paint_offset,
-                         bool object_has_multiple_boxes) override;
+                         bool object_has_multiple_boxes) override {}
   PhysicalRect AdjustRectForScrolledContent(
       const PaintInfo&,
       const BoxPainterBase::FillLayerInfo&,
@@ -47,7 +45,6 @@ class BoxModelObjectPainter : public BoxPainterBase {
 
  private:
   const LayoutBoxModelObject& box_model_;
-  const InlineFlowBox* flow_box_;
 };
 
 }  // namespace blink

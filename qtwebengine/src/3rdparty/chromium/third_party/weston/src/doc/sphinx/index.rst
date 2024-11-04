@@ -5,9 +5,11 @@ Welcome to Weston documentation!
    :maxdepth: 2
    :caption: Contents:
 
+   toc/running-weston.rst
    toc/libweston.rst
    toc/test-suite.rst
    toc/kiosk-shell.rst
+   toc/ivi-shell.rst
 
 Weston
 ------

@@ -82,6 +82,7 @@ config("extra_warnings") {
       "-Wno-poison-system-directories",
       "-Wno-reserved-id-macro",
       "-Wno-reserved-identifier",
+      "-Wno-shadow-uncaptured-local",
       "-Wno-unknown-sanitizers",
       "-Wno-unknown-warning-option",
       "-Wno-unsafe-buffer-usage",
@@ -93,6 +94,24 @@ config("extra_warnings") {
     # Use after free detection in GCC is still not good enough: it still fails
     # on very obvious false-positives in trace processor.
     cflags_cc += [ "-Wno-use-after-free" ]
+
+    # GCC 7's handling of uninitialized std::optional is flaky at best and
+    # causes many false positives.
+    # TODO(lalitm): remove this when we upgrade to a GCC version which is good
+    # enough to handle this.
+    cflags_cc += [ "-Wno-maybe-uninitialized" ]
+
+    # GCC's handling of detecting infinite recursion is flaky at best and
+    # causes some false positives.
+    # TODO(lalitm): remove this when we upgrade to a GCC version which is good
+    # enough to handle this.
+    cflags_cc += [ "-Wno-infinite-recursion" ]
+
+    # GCC's handling of detecting non null arguments is flaky at best and
+    # causes some false positives.
+    # TODO(lalitm): remove this when we upgrade to a GCC version which is good
+    # enough to handle this.
+    cflags_cc += [ "-Wno-nonnull" ]
   }
 }
 
@@ -239,6 +258,11 @@ config("default") {
       "-mfpu=neon",
       "-mthumb",
     ]
+  } else if (current_cpu == "riscv64") {
+    if (!is_clang) {
+      # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=104338
+      libs += [ "atomic" ]
+    }
   } else if (current_cpu == "x86") {
     asmflags += [ "-m32" ]
     cflags += [
@@ -265,6 +289,14 @@ config("default") {
         "-msse4.2",
       ]
     }
+  }
+
+  if (is_wasm) {
+    # As of writing (2023-06-12) WASM 128bit SIMD is supported on
+    # stable Chrome, Safari, and Firefox. See:
+    # - https://webassembly.org/roadmap/
+    # - https://emscripten.org/docs/porting/simd.html
+    cflags += [ "-msimd128" ]
   }
 
   if (is_linux) {

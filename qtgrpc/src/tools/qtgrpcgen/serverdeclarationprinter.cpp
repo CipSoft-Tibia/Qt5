@@ -46,7 +46,7 @@ void ServerDeclarationPrinter::printMethodsDeclaration(const char *methodTemplat
                                                        const char *methodAsync2Template)
 {
     Indent();
-    for (int i = 0; i < m_descriptor->method_count(); i++) {
+    for (int i = 0; i < m_descriptor->method_count(); ++i) {
         const MethodDescriptor *method = m_descriptor->method(i);
         std::map<std::string, std::string> parameters = common::produceMethodMap(
                 method, m_typeMap["classname"]);

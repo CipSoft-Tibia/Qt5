@@ -129,7 +129,9 @@ void ProducerIPCService::InitializeConnection(
     return;
   }
 
+  bool use_shmem_emulation = ipc::Service::use_shmem_emulation();
   bool using_producer_shmem =
+      !use_shmem_emulation &&
       producer->service_endpoint->IsShmemProvidedByProducer();
 
   producers_.emplace(ipc_client_id, std::move(producer));
@@ -139,6 +141,7 @@ void ProducerIPCService::InitializeConnection(
       ipc::AsyncResult<protos::gen::InitializeConnectionResponse>::Create();
   async_res->set_using_shmem_provided_by_producer(using_producer_shmem);
   async_res->set_direct_smb_patching_supported(true);
+  async_res->set_use_shmem_emulation(use_shmem_emulation);
   response.Resolve(std::move(async_res));
 }
 
@@ -503,7 +506,8 @@ void ProducerIPCService::RemoteProducer::SendSetupTracing() {
 void ProducerIPCService::RemoteProducer::Flush(
     FlushRequestID flush_request_id,
     const DataSourceInstanceID* data_source_ids,
-    size_t num_data_sources) {
+    size_t num_data_sources,
+    FlushFlags flush_flags) {
   if (!async_producer_commands.IsBound()) {
     PERFETTO_DLOG(
         "The Service tried to request a flush but the remote Producer has not "
@@ -515,6 +519,7 @@ void ProducerIPCService::RemoteProducer::Flush(
   for (size_t i = 0; i < num_data_sources; i++)
     cmd->mutable_flush()->add_data_source_ids(data_source_ids[i]);
   cmd->mutable_flush()->set_request_id(flush_request_id);
+  cmd->mutable_flush()->set_flags(flush_flags.flags());
   async_producer_commands.Resolve(std::move(cmd));
 }
 

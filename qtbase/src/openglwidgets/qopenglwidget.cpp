@@ -504,9 +504,8 @@ QT_BEGIN_NAMESPACE
     benefits on certain hardware architectures common in the mobile and
     embedded space when a framebuffer object is used as the rendering target.
     The framebuffer object is invalidated between frames with
-    glDiscardFramebufferEXT if supported or a glClear. Please see the
-    documentation of EXT_discard_framebuffer for more information:
-    https://www.khronos.org/registry/gles/extensions/EXT/EXT_discard_framebuffer.txt
+    glInvalidateFramebuffer (if supported), or, as fallbacks,
+    glDiscardFramebufferEXT (if supported) or a call to glClear.
 
     \value PartialUpdate The framebuffer objects color buffer and ancillary
     buffers are not invalidated between frames.
@@ -554,7 +553,13 @@ public:
     void initialize();
     void render();
 
-    void invalidateFbo();
+    static constexpr GLenum gl_color_attachment0 = 0x8CE0;  // GL_COLOR_ATTACHMENT0
+    static constexpr GLenum gl_depth_attachment = 0x8D00;   // GL_DEPTH_ATTACHMENT
+    static constexpr GLenum gl_stencil_attachment = 0x8D20; // GL_STENCIL_ATTACHMENT
+    static constexpr GLenum gl_depth_stencil_attachment = 0x821A; // GL_DEPTH_STENCIL_ATTACHMENT
+
+    void invalidateFboBeforePainting();
+    void invalidateFboAfterPainting();
 
     void destroyFbos();
 
@@ -850,9 +855,11 @@ void QOpenGLWidgetPrivate::initialize()
 
     context = new QOpenGLContext;
     context->setFormat(requestedFormat);
-    if (contextFromRhi) {
-        context->setShareContext(contextFromRhi);
-        context->setScreen(contextFromRhi->screen());
+
+    QOpenGLContext *shareContext = contextFromRhi ? contextFromRhi : qt_gl_global_share_context();
+    if (shareContext) {
+        context->setShareContext(shareContext);
+        context->setScreen(shareContext->screen());
     }
     if (Q_UNLIKELY(!context->create())) {
         qWarning("QOpenGLWidget: Failed to create context");
@@ -942,11 +949,11 @@ void QOpenGLWidgetPrivate::render()
     }
 
     if (updateBehavior == QOpenGLWidget::NoPartialUpdate && hasBeenComposed) {
-        invalidateFbo();
+        invalidateFboBeforePainting();
 
         if (stereo && fbos[QOpenGLWidget::RightBuffer]) {
             setCurrentTargetBuffer(QOpenGLWidget::RightBuffer);
-            invalidateFbo();
+            invalidateFboBeforePainting();
             setCurrentTargetBuffer(QOpenGLWidget::LeftBuffer);
         }
 
@@ -962,12 +969,21 @@ void QOpenGLWidgetPrivate::render()
 #endif
 
     QOpenGLContextPrivate::get(ctx)->defaultFboRedirect = fbos[currentTargetBuffer]->handle();
+
+    f->glUseProgram(0);
+    f->glBindBuffer(GL_ARRAY_BUFFER, 0);
+    f->glEnable(GL_BLEND);
+
     q->paintGL();
+    if (updateBehavior == QOpenGLWidget::NoPartialUpdate)
+        invalidateFboAfterPainting();
 
     if (stereo && fbos[QOpenGLWidget::RightBuffer]) {
         setCurrentTargetBuffer(QOpenGLWidget::RightBuffer);
         QOpenGLContextPrivate::get(ctx)->defaultFboRedirect = fbos[currentTargetBuffer]->handle();
         q->paintGL();
+        if (updateBehavior == QOpenGLWidget::NoPartialUpdate)
+            invalidateFboAfterPainting();
     }
     QOpenGLContextPrivate::get(ctx)->defaultFboRedirect = 0;
 
@@ -975,29 +991,40 @@ void QOpenGLWidgetPrivate::render()
     flushPending = true;
 }
 
-void QOpenGLWidgetPrivate::invalidateFbo()
+void QOpenGLWidgetPrivate::invalidateFboBeforePainting()
 {
     QOpenGLExtensions *f = static_cast<QOpenGLExtensions *>(QOpenGLContext::currentContext()->functions());
     if (f->hasOpenGLExtension(QOpenGLExtensions::DiscardFramebuffer)) {
-        const int gl_color_attachment0 = 0x8CE0;  // GL_COLOR_ATTACHMENT0
-        const int gl_depth_attachment = 0x8D00;   // GL_DEPTH_ATTACHMENT
-        const int gl_stencil_attachment = 0x8D20; // GL_STENCIL_ATTACHMENT
+        const GLenum attachments[] = {
+            gl_color_attachment0,
+            gl_depth_attachment,
+            gl_stencil_attachment,
 #ifdef Q_OS_WASM
-        // webgl does not allow separate depth and stencil attachments
-        // QTBUG-69913
-        const int gl_depth_stencil_attachment = 0x821A; // GL_DEPTH_STENCIL_ATTACHMENT
-
-        const GLenum attachments[] = {
-            gl_color_attachment0, gl_depth_attachment, gl_stencil_attachment, gl_depth_stencil_attachment
-        };
-#else
-        const GLenum attachments[] = {
-            gl_color_attachment0, gl_depth_attachment, gl_stencil_attachment
-        };
+            // webgl does not allow separate depth and stencil attachments
+            // QTBUG-69913
+            gl_depth_stencil_attachment
 #endif
-        f->glDiscardFramebufferEXT(GL_FRAMEBUFFER, sizeof attachments / sizeof *attachments, attachments);
+        };
+        f->discardFramebuffer(GL_FRAMEBUFFER, GLsizei(std::size(attachments)), attachments);
     } else {
         f->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    }
+}
+
+void QOpenGLWidgetPrivate::invalidateFboAfterPainting()
+{
+    QOpenGLExtensions *f = static_cast<QOpenGLExtensions *>(QOpenGLContext::currentContext()->functions());
+    if (f->hasOpenGLExtension(QOpenGLExtensions::DiscardFramebuffer)) {
+        const GLenum attachments[] = {
+            gl_depth_attachment,
+            gl_stencil_attachment,
+#ifdef Q_OS_WASM
+            // webgl does not allow separate depth and stencil attachments
+            // QTBUG-69913
+            gl_depth_stencil_attachment
+#endif
+        };
+        f->discardFramebuffer(GL_FRAMEBUFFER, GLsizei(std::size(attachments)), attachments);
     }
 }
 
@@ -1427,6 +1454,10 @@ void QOpenGLWidget::resizeGL(int w, int h)
   other state is set and no clearing or drawing is performed by the
   framework.
 
+  The default implementation performs a glClear(). Subclasses are not expected
+  to invoke the base class implementation and should perform clearing on their
+  own.
+
   \note To ensure portability, do not expect that state set in initializeGL()
   persists. Rather, set all necessary state, for example, by calling
   glEnable(), in paintGL(). This is because some platforms, such as WebAssembly
@@ -1446,6 +1477,9 @@ void QOpenGLWidget::resizeGL(int w, int h)
 */
 void QOpenGLWidget::paintGL()
 {
+    Q_D(QOpenGLWidget);
+    if (d->initialized)
+        d->context->functions()->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 }
 
 /*!

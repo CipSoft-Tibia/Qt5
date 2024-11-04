@@ -91,7 +91,10 @@ FakeFlossSocketManager::~FakeFlossSocketManager() = default;
 
 void FakeFlossSocketManager::Init(dbus::Bus* bus,
                                   const std::string& service_name,
-                                  const int adapter_index) {}
+                                  const int adapter_index,
+                                  base::OnceClosure on_ready) {
+  std::move(on_ready).Run();
+}
 
 void FakeFlossSocketManager::ListenUsingL2cap(
     const Security security_level,
@@ -100,6 +103,15 @@ void FakeFlossSocketManager::ListenUsingL2cap(
     ConnectionAccepted new_connection_cb) {
   std::move(callback).Run(
       base::unexpected(Error(kNotImplemented, "ListenUsingL2Cap")));
+}
+
+void FakeFlossSocketManager::ListenUsingL2capLe(
+    const Security security_level,
+    ResponseCallback<BtifStatus> callback,
+    ConnectionStateChanged ready_cb,
+    ConnectionAccepted new_connection_cb) {
+  std::move(callback).Run(
+      base::unexpected(Error(kNotImplemented, "ListenUsingL2CapLe")));
 }
 
 void FakeFlossSocketManager::ListenUsingRfcomm(
@@ -125,6 +137,14 @@ void FakeFlossSocketManager::ListenUsingRfcomm(
 }
 
 void FakeFlossSocketManager::ConnectUsingL2cap(
+    const FlossDeviceId& remote_device,
+    const int psm,
+    const Security security_level,
+    ConnectionCompleted callback) {
+  std::move(callback).Run(BtifStatus::kFail, /*socket=*/absl::nullopt);
+}
+
+void FakeFlossSocketManager::ConnectUsingL2capLe(
     const FlossDeviceId& remote_device,
     const int psm,
     const Security security_level,
@@ -179,9 +199,9 @@ void FakeFlossSocketManager::Close(const SocketId id,
     FlossListeningSocket socket;
     socket.id = id;
 
+    std::move(callback).Run(BtifStatus::kSuccess);
     state_changed.Run(ServerSocketState::kClosed, std::move(socket),
                       BtifStatus::kSuccess);
-    std::move(callback).Run(BtifStatus::kSuccess);
 
     listening_sockets_to_callbacks_.erase(found);
   } else {
@@ -200,8 +220,7 @@ void FakeFlossSocketManager::SendSocketReady(const SocketId id,
     socket.uuid = uuid;
 
     auto& [state_changed, accepted] = listening_sockets_to_callbacks_[id];
-    state_changed.Run(ServerSocketState::kReady, std::move(socket),
-                      BtifStatus::kSuccess);
+    state_changed.Run(ServerSocketState::kReady, std::move(socket), status);
   }
 }
 

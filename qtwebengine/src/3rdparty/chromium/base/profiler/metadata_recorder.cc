@@ -30,10 +30,8 @@ MetadataRecorder::ItemInternal::~ItemInternal() = default;
 
 MetadataRecorder::MetadataRecorder() {
   // Ensure that we have necessary atomic support.
-#ifndef TOOLKIT_QT
   DCHECK(items_[0].is_active.is_lock_free());
   DCHECK(items_[0].value.is_lock_free());
-#endif
 }
 
 MetadataRecorder::~MetadataRecorder() = default;

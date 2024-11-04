@@ -40,7 +40,6 @@ source_set("share") {
   if (is_android) {
     sources += [
       "bitmap_download_request.cc",
-      "crow_bridge.cc",
       "default_ranking_android.cc",
       "editor_screenshot_task.cc",
       "link_to_text_bridge.cc",
@@ -49,9 +48,7 @@ source_set("share") {
     ]
     deps += [
       ":jni_headers",
-      "//chrome/browser/share/android:jni_headers",
-      "//chrome/browser/share/core/crow:crow_configuration",
-      "//chrome/browser/share/proto:crow_proto",
+      "//chrome/android:chrome_jni_headers",
       "//components/history/core/browser:browser",
       "//components/ukm/content:content",
       "//ui/android",
@@ -62,16 +59,14 @@ source_set("share") {
 
 if (is_android) {
   android_library("java") {
+    srcjar_deps = [ ":jni_headers" ]
     sources = [
       "android/java/src/org/chromium/chrome/browser/share/ChromeShareExtras.java",
       "android/java/src/org/chromium/chrome/browser/share/ShareDelegate.java",
       "android/java/src/org/chromium/chrome/browser/share/ShareHistoryBridge.java",
       "android/java/src/org/chromium/chrome/browser/share/ShareRankingBridge.java",
-      "android/java/src/org/chromium/chrome/browser/share/crow/CrowButtonDelegate.java",
       "android/java/src/org/chromium/chrome/browser/share/share_sheet/ChromeOptionShareCallback.java",
     ]
-
-    annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
 
     deps = [
       ":jni_headers",

@@ -25,6 +25,7 @@
 #include "base/command_line.h"
 #include "base/logging.h"
 #include "base/memory/platform_shared_memory_region.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/shared_memory_mapper.h"
 #include "base/memory/unsafe_shared_memory_region.h"
 #include "base/posix/eintr_wrapper.h"
@@ -40,8 +41,11 @@
 #include "third_party/skia/include/core/SkSurface.h"
 #include "third_party/skia/include/gpu/GrBackendSurface.h"
 #include "third_party/skia/include/gpu/GrDirectContext.h"
+#include "third_party/skia/include/gpu/ganesh/SkSurfaceGanesh.h"
+#include "third_party/skia/include/gpu/ganesh/gl/GrGLBackendSurface.h"
 #include "third_party/skia/include/gpu/gl/GrGLAssembleInterface.h"
 #include "third_party/skia/include/gpu/gl/GrGLInterface.h"
+#include "third_party/skia/include/gpu/gl/GrGLTypes.h"
 #include "ui/gfx/geometry/size_conversions.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_enums.h"
@@ -566,7 +570,8 @@ bool ClientBase::Init(const InitParams& params) {
           CastToClientBase(data)->HandleScale(data, wl_output, factor);
         }};
 
-    wl_output_add_listener(globals_.output.get(), &kOutputListener, this);
+    wl_output_add_listener(globals_.outputs.back().get(), &kOutputListener,
+                           this);
   } else {
     for (size_t i = 0; i < params.num_buffers; ++i) {
       auto buffer =
@@ -619,65 +624,29 @@ bool ClientBase::Init(const InitParams& params) {
       wl_shell_surface_set_toplevel(shell_surface.get());
     }
   } else {
-    if (!globals_.xdg_wm_base) {
-      // use zxdg
-      if (!globals_.xdg_shell_v6) {
-        LOG(ERROR) << "Can't find xdg_shell or zxdg_shell_v6 interface";
-        return false;
-      }
-
-      zxdg_surface_.reset(zxdg_shell_v6_get_xdg_surface(
-          globals_.xdg_shell_v6.get(), surface_.get()));
-      if (!zxdg_surface_) {
-        LOG(ERROR) << "Can't get zxdg surface";
-        return false;
-      }
-      static const zxdg_surface_v6_listener zxdg_surface_v6_listener = {
-          [](void* data, struct zxdg_surface_v6* zxdg_surface_v6,
-             uint32_t layout_mode) {
-            zxdg_surface_v6_ack_configure(zxdg_surface_v6, layout_mode);
-          },
-      };
-      zxdg_surface_v6_add_listener(zxdg_surface_.get(),
-                                   &zxdg_surface_v6_listener, this);
-      zxdg_toplevel_.reset(zxdg_surface_v6_get_toplevel(zxdg_surface_.get()));
-      if (!zxdg_toplevel_) {
-        LOG(ERROR) << "Can't get zxdg toplevel";
-        return false;
-      }
-      static const zxdg_toplevel_v6_listener zxdg_toplevel_v6_listener = {
-          [](void* data, struct zxdg_toplevel_v6* zxdg_toplevel_v6,
-             int32_t width, int32_t height, struct wl_array* states) {},
-          [](void* data, struct zxdg_toplevel_v6* zxdg_toplevel_v6) {}};
-      zxdg_toplevel_v6_add_listener(zxdg_toplevel_.get(),
-                                    &zxdg_toplevel_v6_listener, this);
-    } else {
-      // use xdg
-      xdg_surface_.reset(xdg_wm_base_get_xdg_surface(globals_.xdg_wm_base.get(),
-                                                     surface_.get()));
-      if (!xdg_surface_) {
-        LOG(ERROR) << "Can't get xdg surface";
-        return false;
-      }
-      static const xdg_surface_listener xdg_surface_listener = {
-          [](void* data, struct xdg_surface* xdg_surface,
-             uint32_t layout_mode) {
-            xdg_surface_ack_configure(xdg_surface, layout_mode);
-          },
-      };
-      xdg_surface_add_listener(xdg_surface_.get(), &xdg_surface_listener, this);
-      xdg_toplevel_.reset(xdg_surface_get_toplevel(xdg_surface_.get()));
-      if (!xdg_toplevel_) {
-        LOG(ERROR) << "Can't get xdg toplevel";
-        return false;
-      }
-      static const xdg_toplevel_listener xdg_toplevel_listener = {
-          [](void* data, struct xdg_toplevel* xdg_toplevel, int32_t width,
-             int32_t height, struct wl_array* states) {},
-          [](void* data, struct xdg_toplevel* xdg_toplevel) {}};
-      xdg_toplevel_add_listener(xdg_toplevel_.get(), &xdg_toplevel_listener,
-                                this);
+    xdg_surface_.reset(xdg_wm_base_get_xdg_surface(globals_.xdg_wm_base.get(),
+                                                   surface_.get()));
+    if (!xdg_surface_) {
+      LOG(ERROR) << "Can't get xdg surface";
+      return false;
     }
+    static const xdg_surface_listener xdg_surface_listener = {
+        [](void* data, struct xdg_surface* xdg_surface, uint32_t layout_mode) {
+          xdg_surface_ack_configure(xdg_surface, layout_mode);
+        },
+    };
+    xdg_surface_add_listener(xdg_surface_.get(), &xdg_surface_listener, this);
+    xdg_toplevel_.reset(xdg_surface_get_toplevel(xdg_surface_.get()));
+    if (!xdg_toplevel_) {
+      LOG(ERROR) << "Can't get xdg toplevel";
+      return false;
+    }
+    static const xdg_toplevel_listener xdg_toplevel_listener = {
+        [](void* data, struct xdg_toplevel* xdg_toplevel, int32_t width,
+           int32_t height, struct wl_array* states) {},
+        [](void* data, struct xdg_toplevel* xdg_toplevel) {}};
+    xdg_toplevel_add_listener(xdg_toplevel_.get(), &xdg_toplevel_listener,
+                              this);
 
     if (fullscreen_) {
       LOG(ERROR) << "full screen not supported yet.";
@@ -957,7 +926,7 @@ std::unique_ptr<ClientBase::Buffer> ClientBase::CreateBuffer(
     }
 
     SkSurfaceProps props = skia::LegacyDisplayGlobals::GetSkSurfaceProps();
-    buffer->sk_surface = SkSurface::MakeRasterDirect(
+    buffer->sk_surface = SkSurfaces::WrapPixels(
         SkImageInfo::Make(size.width(), size.height(), kColorType,
                           kOpaque_SkAlphaType),
         mapped_data, stride, &props);
@@ -1058,9 +1027,9 @@ std::unique_ptr<ClientBase::Buffer> ClientBase::CreateDrmBuffer(
     texture_info.fID = buffer->texture->get();
     texture_info.fTarget = GL_TEXTURE_2D;
     texture_info.fFormat = kSizedInternalFormat;
-    GrBackendTexture backend_texture(size.width(), size.height(),
-                                     GrMipMapped::kNo, texture_info);
-    buffer->sk_surface = SkSurface::MakeFromBackendTexture(
+    auto backend_texture = GrBackendTextures::MakeGL(
+        size.width(), size.height(), skgpu::Mipmapped::kNo, texture_info);
+    buffer->sk_surface = SkSurfaces::WrapBackendTexture(
         gr_context_.get(), backend_texture, kTopLeft_GrSurfaceOrigin,
         /* sampleCnt */ 0, kColorType, /* colorSpace */ nullptr,
         /* props */ nullptr);
@@ -1075,7 +1044,7 @@ std::unique_ptr<ClientBase::Buffer> ClientBase::CreateDrmBuffer(
     typedef struct VkDmaBufImageCreateInfo_ {
       VkStructureType
           sType;  // Must be VK_STRUCTURE_TYPE_DMA_BUF_IMAGE_CREATE_INFO_INTEL
-      const void* pNext;  // Pointer to next structure.
+      raw_ptr<const void, ExperimentalAsh> pNext;  // Pointer to next structure.
       int fd;
       VkFormat format;
       VkExtent3D extent;  // Depth must be 1
@@ -1204,7 +1173,11 @@ void ClientBase::SetupAuraShellIfAvailable() {
       [](void* data, struct zaura_shell* zaura_shell,
          int32_t active_desk_index) {},
       [](void* data, struct zaura_shell* zaura_shell,
-         struct wl_surface* gained_active, struct wl_surface* lost_active) {}};
+         struct wl_surface* gained_active, struct wl_surface* lost_active) {},
+      [](void* data, struct zaura_shell* zaura_shell) {},
+      [](void* data, struct zaura_shell* zaura_shell) {},
+      [](void* data, struct zaura_shell* zaura_shell,
+         const char* compositor_version) {}};
   zaura_shell_add_listener(globals_.aura_shell.get(), &kAuraShellListener,
                            this);
 
@@ -1234,10 +1207,13 @@ void ClientBase::SetupAuraShellIfAvailable() {
          uint32_t display_id_lo) {},
   };
 
-  std::unique_ptr<zaura_output> aura_output(zaura_shell_get_aura_output(
-      globals_.aura_shell.get(), globals_.output.get()));
-  zaura_output_add_listener(aura_output.get(), &kAuraOutputListener, this);
-  globals_.aura_output = std::move(aura_output);
+  while (globals_.aura_outputs.size() < globals_.outputs.size()) {
+    size_t offset = globals_.aura_outputs.size();
+    std::unique_ptr<zaura_output> aura_output(zaura_shell_get_aura_output(
+        globals_.aura_shell.get(), globals_.outputs[offset].get()));
+    zaura_output_add_listener(aura_output.get(), &kAuraOutputListener, this);
+    globals_.aura_outputs.emplace_back(std::move(aura_output));
+  }
 }
 
 void ClientBase::SetupPointerStylus() {

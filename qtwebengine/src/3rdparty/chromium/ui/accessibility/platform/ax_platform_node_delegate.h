@@ -229,7 +229,7 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   // Get the index in the parent's list of unignored children. Returns `nullopt`
   // if an unignored parent is unavailable, e.g. if this node is at the root of
   // all accessibility trees.
-  virtual absl::optional<size_t> GetIndexInParent();
+  virtual absl::optional<size_t> GetIndexInParent() const;
 
   // Get the number of children of this node.
   //
@@ -246,26 +246,26 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   // returns only unignored children. All ignored nodes are recursively removed.
   // (An ignored node means that the node should not be exposed to platform
   // APIs: See `IsIgnored`.)
-  virtual gfx::NativeViewAccessible ChildAtIndex(size_t index);
+  virtual gfx::NativeViewAccessible ChildAtIndex(size_t index) const;
 
   // Returns true if this node is within a modal dialog.
   virtual bool HasModalDialog() const;
 
   // Gets the first unignored child of this node, or nullptr if no children
   // exist.
-  virtual gfx::NativeViewAccessible GetFirstChild();
+  virtual gfx::NativeViewAccessible GetFirstChild() const;
 
   // Gets the last unignored child of this node, or nullptr if no children
   // exist.
-  virtual gfx::NativeViewAccessible GetLastChild();
+  virtual gfx::NativeViewAccessible GetLastChild() const;
 
   // Gets the next unignored sibling of this node, or nullptr if no such node
   // exists.
-  virtual gfx::NativeViewAccessible GetNextSibling();
+  virtual gfx::NativeViewAccessible GetNextSibling() const;
 
   // Gets the previous sibling of this node, or nullptr if no such node
   // exists.
-  virtual gfx::NativeViewAccessible GetPreviousSibling();
+  virtual gfx::NativeViewAccessible GetPreviousSibling() const;
 
   // Returns true if an ancestor of this node (not including itself) is a
   // leaf node, meaning that this node is not actually exposed to any
@@ -334,8 +334,8 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   // If within a table, returns the node representing the table.
   virtual gfx::NativeViewAccessible GetTableAncestor() const;
 
-  virtual std::unique_ptr<ChildIterator> ChildrenBegin();
-  virtual std::unique_ptr<ChildIterator> ChildrenEnd();
+  virtual std::unique_ptr<ChildIterator> ChildrenBegin() const;
+  virtual std::unique_ptr<ChildIterator> ChildrenEnd() const;
 
   // Returns the accessible name for this node. This could either be derived
   // from visible text, such as the node's contents or an associated label, or
@@ -469,7 +469,8 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   // See `AXNode::HasVisibleCaretOrSelection`.
   virtual bool HasVisibleCaretOrSelection() const;
 
-  // Get another node from this same tree.
+  // Get a node in the platform AX tree given the ID of its
+  // corresponding node in the Blink AX tree.
   virtual AXPlatformNode* GetFromNodeID(int32_t id);
 
   // Get a node from a different tree using a tree ID and node ID.
@@ -493,14 +494,18 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   // Given an attribute which could be used to establish a reverse relationship
   // between this node and a set of other nodes (AKA the source nodes), return
   // the list of source nodes if any.
-  virtual std::set<AXPlatformNode*> GetSourceNodesForReverseRelations(
+  virtual std::vector<AXPlatformNode*> GetSourceNodesForReverseRelations(
       ax::mojom::IntAttribute attr);
 
   // Given an attribute which could be used to establish a reverse relationship
   // between this node and a set of other nodes (AKA the source nodes), return
   // the list of source nodes if any.
-  virtual std::set<AXPlatformNode*> GetSourceNodesForReverseRelations(
+  virtual std::vector<AXPlatformNode*> GetSourceNodesForReverseRelations(
       ax::mojom::IntListAttribute attr);
+
+  // Given a potential target, check if this node can point to `target` with a
+  // relation.
+  bool IsValidRelationTarget(AXPlatformNode* target) const;
 
   // Returns the string representation of the unique ID assigned by the author,
   // otherwise returns an empty string if none has been assigned. The author ID
@@ -611,6 +616,9 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   virtual std::u16string GetLocalizedStringForRoleDescription() const;
   virtual std::u16string GetStyleNameAttributeAsLocalizedString() const;
 
+  virtual void SetIsPrimaryWebContentsForWindow();
+  virtual bool IsPrimaryWebContentsForWindow() const;
+
   //
   // Testing.
   //
@@ -642,10 +650,10 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
 
   AXPlatformNodeDelegate* GetParentDelegate() const;
 
-  // Given a list of node ids, return the nodes in this delegate's tree to
-  // which they correspond.
-  std::set<ui::AXPlatformNode*> GetNodesForNodeIds(
-      const std::set<int32_t>& ids);
+  // Given a set of Blink node IDs, get their respective platform nodes and
+  // return only those that are valid targets for a relation.
+  std::vector<ui::AXPlatformNode*> GetNodesFromRelationIdSet(
+      const std::set<AXNodeID>& ids);
 
  private:
   // The underlying node. This could change during the lifetime of this object

@@ -15,7 +15,7 @@
 namespace crosapi {
 
 VideoCaptureDeviceFactoryAsh::VideoCaptureDeviceFactoryAsh(
-    raw_ptr<video_capture::DeviceFactory> device_factory)
+    video_capture::DeviceFactory* device_factory)
     : device_factory_(device_factory) {}
 
 VideoCaptureDeviceFactoryAsh::~VideoCaptureDeviceFactoryAsh() = default;
@@ -71,6 +71,7 @@ void VideoCaptureDeviceFactoryAsh::OnDeviceCreated(
 void VideoCaptureDeviceFactoryAsh::OnClientConnectionErrorOrClose(
     const std::string& device_id) {
   devices_.erase(device_id);
+  device_factory_->StopDevice(device_id);
 }
 
 }  // namespace crosapi

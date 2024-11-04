@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,11 +16,10 @@
 #include "util/osp_logging.h"
 #include "util/trace_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 SDLPlayerBase::SDLPlayerBase(ClockNowFunctionPtr now_function,
-                             TaskRunner* task_runner,
+                             TaskRunner& task_runner,
                              Receiver* receiver,
                              const std::string& codec_name,
                              std::function<void()> error_callback,
@@ -251,5 +250,4 @@ SDLPlayerBase::PendingFrame::PendingFrame(PendingFrame&&) noexcept = default;
 SDLPlayerBase::PendingFrame& SDLPlayerBase::PendingFrame::operator=(
     PendingFrame&&) noexcept = default;
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

@@ -18,12 +18,12 @@ import {getTemplate} from './cr_toolbar_search_field.html.js';
 export interface CrToolbarSearchFieldElement {
   $: {
     searchInput: HTMLInputElement,
+    searchTerm: HTMLElement,
     spinnerTemplate: DomIf,
   };
 }
 
 const CrToolbarSearchFieldElementBase = CrSearchFieldMixin(PolymerElement);
-
 
 export class CrToolbarSearchFieldElement extends
     CrToolbarSearchFieldElementBase {
@@ -85,7 +85,6 @@ export class CrToolbarSearchFieldElement extends
 
   override ready() {
     super.ready();
-
     this.addEventListener('click', e => this.showSearch_(e));
   }
 

@@ -13,15 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/stat.h>
-
 #include <cctype>
 #include <cinttypes>
 #include <functional>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -39,7 +40,6 @@
 #include "perfetto/ext/base/file_utils.h"
 #include "perfetto/ext/base/flat_hash_map.h"
 #include "perfetto/ext/base/getopt.h"
-#include "perfetto/ext/base/optional.h"
 #include "perfetto/ext/base/scoped_file.h"
 #include "perfetto/ext/base/string_splitter.h"
 #include "perfetto/ext/base/string_utils.h"
@@ -49,6 +49,7 @@
 #include "perfetto/trace_processor/read_trace.h"
 #include "perfetto/trace_processor/trace_processor.h"
 #include "src/trace_processor/metrics/all_chrome_metrics.descriptor.h"
+#include "src/trace_processor/metrics/all_webview_metrics.descriptor.h"
 #include "src/trace_processor/metrics/metrics.descriptor.h"
 #include "src/trace_processor/metrics/metrics.h"
 #include "src/trace_processor/read_trace_internal.h"
@@ -270,7 +271,7 @@ base::Status ExportTraceToDatabase(const std::string& output_name) {
 
   base::Status status = attach_it.Status();
   if (!status.ok())
-    return base::ErrStatus("SQLite error: %s", status.c_message());
+    return base::ErrStatus("%s", status.c_message());
 
   // Export real and virtual tables.
   auto tables_it = g_tp->ExecuteQuery(
@@ -288,11 +289,11 @@ base::Status ExportTraceToDatabase(const std::string& output_name) {
 
     status = export_it.Status();
     if (!status.ok())
-      return base::ErrStatus("SQLite error: %s", status.c_message());
+      return base::ErrStatus("%s", status.c_message());
   }
   status = tables_it.Status();
   if (!status.ok())
-    return base::ErrStatus("SQLite error: %s", status.c_message());
+    return base::ErrStatus("%s", status.c_message());
 
   // Export views.
   auto views_it =
@@ -312,18 +313,18 @@ base::Status ExportTraceToDatabase(const std::string& output_name) {
 
     status = export_it.Status();
     if (!status.ok())
-      return base::ErrStatus("SQLite error: %s", status.c_message());
+      return base::ErrStatus("%s", status.c_message());
   }
   status = views_it.Status();
   if (!status.ok())
-    return base::ErrStatus("SQLite error: %s", status.c_message());
+    return base::ErrStatus("%s", status.c_message());
 
   auto detach_it = g_tp->ExecuteQuery("DETACH DATABASE perfetto_export");
   bool detach_has_more = attach_it.Next();
   PERFETTO_DCHECK(!detach_has_more);
   status = detach_it.Status();
   return status.ok() ? base::OkStatus()
-                     : base::ErrStatus("SQLite error: %s", status.c_message());
+                     : base::ErrStatus("%s", status.c_message());
 }
 
 class ErrorPrinter : public google::protobuf::io::ErrorCollector {
@@ -396,66 +397,42 @@ enum OutputFormat {
 
 struct MetricNameAndPath {
   std::string name;
-  base::Optional<std::string> no_ext_path;
+  std::optional<std::string> no_ext_path;
 };
 
 base::Status RunMetrics(const std::vector<MetricNameAndPath>& metrics,
-                        OutputFormat format,
-                        const google::protobuf::DescriptorPool& pool) {
+                        OutputFormat format) {
   std::vector<std::string> metric_names(metrics.size());
   for (size_t i = 0; i < metrics.size(); ++i) {
     metric_names[i] = metrics[i].name;
   }
 
-  if (format == OutputFormat::kTextProto) {
-    std::string out;
-    base::Status status =
-        g_tp->ComputeMetricText(metric_names, TraceProcessor::kProtoText, &out);
-    if (!status.ok()) {
-      return base::ErrStatus("Error when computing metrics: %s",
-                             status.c_message());
-    }
-    out += '\n';
-    fwrite(out.c_str(), sizeof(char), out.size(), stdout);
-    return base::OkStatus();
-  }
-
-  std::vector<uint8_t> metric_result;
-  base::Status status = g_tp->ComputeMetric(metric_names, &metric_result);
-  if (!status.ok()) {
-    return base::ErrStatus("Error when computing metrics: %s",
-                           status.c_message());
-  }
-
   switch (format) {
-    case OutputFormat::kJson: {
-      // TODO(b/182165266): Handle this using ComputeMetricText.
-      google::protobuf::DynamicMessageFactory factory(&pool);
-      auto* descriptor =
-          pool.FindMessageTypeByName("perfetto.protos.TraceMetrics");
-      std::unique_ptr<google::protobuf::Message> metric_msg(
-          factory.GetPrototype(descriptor)->New());
-      metric_msg->ParseFromArray(metric_result.data(),
-                                 static_cast<int>(metric_result.size()));
-
-      // We need to instantiate field options from dynamic message factory
-      // because otherwise it cannot parse our custom extensions.
-      const google::protobuf::Message* field_options_prototype =
-          factory.GetPrototype(
-              pool.FindMessageTypeByName("google.protobuf.FieldOptions"));
-      auto out = proto_to_json::MessageToJsonWithAnnotations(
-          *metric_msg, field_options_prototype, 0);
-      fwrite(out.c_str(), sizeof(char), out.size(), stdout);
-      break;
-    }
-    case OutputFormat::kBinaryProto:
+    case OutputFormat::kBinaryProto: {
+      std::vector<uint8_t> metric_result;
+      RETURN_IF_ERROR(g_tp->ComputeMetric(metric_names, &metric_result));
       fwrite(metric_result.data(), sizeof(uint8_t), metric_result.size(),
              stdout);
       break;
+    }
+    case OutputFormat::kJson: {
+      std::string out;
+      RETURN_IF_ERROR(g_tp->ComputeMetricText(
+          metric_names, TraceProcessor::MetricResultFormat::kJson, &out));
+      out += '\n';
+      fwrite(out.c_str(), sizeof(char), out.size(), stdout);
+      break;
+    }
+    case OutputFormat::kTextProto: {
+      std::string out;
+      RETURN_IF_ERROR(g_tp->ComputeMetricText(
+          metric_names, TraceProcessor::MetricResultFormat::kProtoText, &out));
+      out += '\n';
+      fwrite(out.c_str(), sizeof(char), out.size(), stdout);
+      break;
+    }
     case OutputFormat::kNone:
       break;
-    case OutputFormat::kTextProto:
-      PERFETTO_FATAL("This case was already handled.");
   }
 
   return base::OkStatus();
@@ -516,7 +493,7 @@ void PrintQueryResultInteractively(Iterator* it,
 
   base::Status status = it->Status();
   if (!status.ok()) {
-    PERFETTO_ELOG("SQLite error: %s", status.c_message());
+    fprintf(stderr, "%s\n", status.c_message());
   }
   printf("\nQuery executed in %.3f ms\n\n",
          static_cast<double>((t_end - t_start).count()) / 1E6);
@@ -571,7 +548,7 @@ base::Status RunQueriesWithoutOutput(const std::string& sql_query) {
 
 base::Status RunQueriesAndPrintResult(const std::string& sql_query,
                                       FILE* output) {
-  PERFETTO_ILOG("Executing query: %s", sql_query.c_str());
+  PERFETTO_DLOG("Executing query: %s", sql_query.c_str());
   auto query_start = std::chrono::steady_clock::now();
 
   auto it = g_tp->ExecuteQuery(sql_query);
@@ -675,6 +652,8 @@ metatrace::MetatraceCategories ParseMetatraceCategories(std::string s) {
       result = static_cast<Cat>(result | Cat::FUNCTION);
     } else if (cur == "query") {
       result = static_cast<Cat>(result | Cat::QUERY);
+    } else if (cur == "db") {
+      result = static_cast<Cat>(result | Cat::DB);
     } else {
       PERFETTO_ELOG("Unknown metatrace category %s", cur.data());
       exit(1);
@@ -694,7 +673,7 @@ struct CommandLineOptions {
   std::string trace_file_path;
   std::string port_number;
   std::string override_stdlib_path;
-  std::string override_sql_module_path;
+  std::vector<std::string> override_sql_module_paths;
   std::vector<std::string> raw_metric_extensions;
   bool launch_shell = false;
   bool enable_httpd = false;
@@ -703,17 +682,18 @@ struct CommandLineOptions {
   std::string metatrace_path;
   size_t metatrace_buffer_capacity = 0;
   metatrace::MetatraceCategories metatrace_categories =
-      metatrace::MetatraceCategories::ALL;
+      metatrace::MetatraceCategories::TOPLEVEL;
   bool dev = false;
   bool no_ftrace_raw = false;
   bool analyze_trace_proto_content = false;
   bool crop_track_events = false;
+  std::vector<std::string> dev_flags;
 };
 
 void PrintUsage(char** argv) {
   PERFETTO_ELOG(R"(
 Interactive trace processor shell.
-Usage: %s [OPTIONS] trace_file.pb
+Usage: %s [FLAGS] trace_file.pb
 
 Options:
  -h, --help                           Prints this guide.
@@ -738,12 +718,8 @@ Options:
  -e, --export FILE                    Export the contents of trace processor
                                       into an SQLite database after running any
                                       metrics or queries specified.
- -m, --metatrace FILE                 Enables metatracing of trace processor
-                                      writing the resulting trace into FILE.
- --metatrace-buffer-capacity N        Sets metatrace event buffer to capture
-                                      last N events.
- --metatrace-categories CATEGORIES    A comma-separated list of metatrace
-                                      categories to enable.
+
+Feature flags:
  --full-sort                          Forces the trace processor into performing
                                       a full sort ignoring any windowing
                                       logic.
@@ -761,16 +737,18 @@ Options:
                                       *should not* be enabled on production
                                       builds. The features behind this flag can
                                       break at any time without any warning.
+ --dev-flag KEY=VALUE                 Set a development flag to the given value.
+                                      Does not have any affect unless --dev is
+                                      specified.
 
-Standard library: 
+Standard library:
  --add-sql-module MODULE_PATH         Files from the directory will be treated
                                       as a new SQL module and can be used for
                                       IMPORT. The name of the directory is the
                                       module name.
  --override-sql-module MODULE_PATH    Will override trace processor module with
                                       passed contents. The outer directory will
-                                      specify the module name. Only allowed when
-                                      --dev is specified.
+                                      specify the module name.
  --override-stdlib=[path_to_stdlib]   Will override trace_processor/stdlib with
                                       passed contents. The outer directory will
                                       be ignored. Only allowed when --dev is
@@ -793,7 +771,15 @@ Metrics:
                                       Loads metric proto and sql files from
                                       DISK_PATH/protos and DISK_PATH/sql
                                       respectively, and mounts them onto
-                                      VIRTUAL_PATH.)",
+                                      VIRTUAL_PATH.
+
+Metatracing:
+ -m, --metatrace FILE                 Enables metatracing of trace processor
+                                      writing the resulting trace into FILE.
+ --metatrace-buffer-capacity N        Sets metatrace event buffer to capture
+                                      last N events.
+ --metatrace-categories CATEGORIES    A comma-separated list of metatrace
+                                      categories to enable.)",
                 argv[0]);
 }
 
@@ -815,6 +801,7 @@ CommandLineOptions ParseCommandLineOptions(int argc, char** argv) {
     OPT_METATRACE_CATEGORIES,
     OPT_ANALYZE_TRACE_PROTO_CONTENT,
     OPT_CROP_TRACK_EVENTS,
+    OPT_DEV_FLAG,
   };
 
   static const option long_options[] = {
@@ -847,6 +834,7 @@ CommandLineOptions ParseCommandLineOptions(int argc, char** argv) {
       {"pre-metrics", required_argument, nullptr, OPT_PRE_METRICS},
       {"metrics-output", required_argument, nullptr, OPT_METRICS_OUTPUT},
       {"metric-extension", required_argument, nullptr, OPT_METRIC_EXTENSION},
+      {"dev-flag", required_argument, nullptr, OPT_DEV_FLAG},
       {nullptr, 0, nullptr, 0}};
 
   bool explicit_interactive = false;
@@ -956,7 +944,7 @@ CommandLineOptions ParseCommandLineOptions(int argc, char** argv) {
     }
 
     if (option == OPT_OVERRIDE_SQL_MODULE) {
-      command_line_options.override_sql_module_path = optarg;
+      command_line_options.override_sql_module_paths.push_back(optarg);
       continue;
     }
 
@@ -982,6 +970,11 @@ CommandLineOptions ParseCommandLineOptions(int argc, char** argv) {
 
     if (option == OPT_METRIC_EXTENSION) {
       command_line_options.raw_metric_extensions.push_back(optarg);
+      continue;
+    }
+
+    if (option == OPT_DEV_FLAG) {
+      command_line_options.dev_flags.push_back(optarg);
       continue;
     }
 
@@ -1015,10 +1008,11 @@ CommandLineOptions ParseCommandLineOptions(int argc, char** argv) {
   return command_line_options;
 }
 
-void ExtendPoolWithBinaryDescriptor(google::protobuf::DescriptorPool& pool,
-                                    const void* data,
-                                    int size,
-                                    std::vector<std::string>& skip_prefixes) {
+void ExtendPoolWithBinaryDescriptor(
+    google::protobuf::DescriptorPool& pool,
+    const void* data,
+    int size,
+    const std::vector<std::string>& skip_prefixes) {
   google::protobuf::FileDescriptorSet desc_set;
   PERFETTO_CHECK(desc_set.ParseFromArray(data, size));
   for (const auto& file_desc : desc_set.file()) {
@@ -1080,7 +1074,9 @@ base::Status LoadTrace(const std::string& trace_file_path, double* size_mb) {
 base::Status RunQueries(const std::string& query_file_path,
                         bool expect_output) {
   std::string queries;
-  base::ReadFile(query_file_path.c_str(), &queries);
+  if (!base::ReadFile(query_file_path.c_str(), &queries)) {
+    return base::ErrStatus("Unable to read file %s", query_file_path.c_str());
+  }
 
   base::Status status;
   if (expect_output) {
@@ -1089,8 +1085,7 @@ base::Status RunQueries(const std::string& query_file_path,
     status = RunQueriesWithoutOutput(queries);
   }
   if (!status.ok()) {
-    return base::ErrStatus("Encountered error while running queries: %s",
-                           status.c_message());
+    return base::ErrStatus("%s", status.c_message());
   }
   return base::OkStatus();
 }
@@ -1188,7 +1183,7 @@ base::Status IncludeSqlModule(std::string root, bool allow_override) {
       return base::ErrStatus("Cannot read file %s", filename.c_str());
 
     std::string import_key =
-        module_name + "." + sql_modules::GetImportKey(path);
+        module_name + "." + sql_modules::GetIncludeKey(path);
     modules.Insert(module_name, {})
         .first->push_back({import_key, file_contents});
   }
@@ -1224,7 +1219,7 @@ base::Status LoadOverridenStdlib(std::string root) {
     if (!base::ReadFile(filename, &file_contents)) {
       return base::ErrStatus("Cannot read file %s", filename.c_str());
     }
-    std::string import_key = sql_modules::GetImportKey(path);
+    std::string import_key = sql_modules::GetIncludeKey(path);
     std::string module = sql_modules::GetModuleName(import_key);
     modules.Insert(module, {}).first->push_back({import_key, file_contents});
   }
@@ -1236,7 +1231,8 @@ base::Status LoadOverridenStdlib(std::string root) {
 }
 
 base::Status LoadMetricExtensionProtos(const std::string& proto_root,
-                                       const std::string& mount_path) {
+                                       const std::string& mount_path,
+                                       google::protobuf::DescriptorPool& pool) {
   if (!base::FileExists(proto_root)) {
     return base::ErrStatus(
         "Directory %s does not exist. Metric extension directory must contain "
@@ -1261,6 +1257,11 @@ base::Status LoadMetricExtensionProtos(const std::string& proto_root,
       serialized_filedescset.data(),
       static_cast<int>(serialized_filedescset.size()));
 
+  // Extend the pool for any subsequent reflection-based operations
+  // (e.g. output json)
+  ExtendPoolWithBinaryDescriptor(
+      pool, serialized_filedescset.data(),
+      static_cast<int>(serialized_filedescset.size()), {});
   RETURN_IF_ERROR(g_tp->ExtendMetricsProto(serialized_filedescset.data(),
                                            serialized_filedescset.size()));
 
@@ -1292,7 +1293,8 @@ base::Status LoadMetricExtensionSql(const std::string& sql_root,
   return base::OkStatus();
 }
 
-base::Status LoadMetricExtension(const MetricExtension& extension) {
+base::Status LoadMetricExtension(const MetricExtension& extension,
+                                 google::protobuf::DescriptorPool& pool) {
   const std::string& disk_path = extension.disk_path();
   const std::string& virtual_path = extension.virtual_path();
 
@@ -1304,8 +1306,8 @@ base::Status LoadMetricExtension(const MetricExtension& extension) {
   // Note: Proto files must be loaded first, because we determine whether an SQL
   // file is a metric or not by checking if the name matches a field of the root
   // TraceMetrics proto.
-  RETURN_IF_ERROR(LoadMetricExtensionProtos(disk_path + "protos/",
-                                            kMetricProtoRoot + virtual_path));
+  RETURN_IF_ERROR(LoadMetricExtensionProtos(
+      disk_path + "protos/", kMetricProtoRoot + virtual_path, pool));
   RETURN_IF_ERROR(LoadMetricExtensionSql(disk_path + "sql/", virtual_path));
 
   return base::OkStatus();
@@ -1327,6 +1329,9 @@ base::Status PopulateDescriptorPool(
   ExtendPoolWithBinaryDescriptor(pool, kAllChromeMetricsDescriptor.data(),
                                  kAllChromeMetricsDescriptor.size(),
                                  skip_prefixes);
+  ExtendPoolWithBinaryDescriptor(pool, kAllWebviewMetricsDescriptor.data(),
+                                 kAllWebviewMetricsDescriptor.size(),
+                                 skip_prefixes);
   return base::OkStatus();
 }
 
@@ -1345,7 +1350,7 @@ base::Status LoadMetrics(const std::string& raw_metric_names,
     auto ext_idx = metric_or_path.rfind('.');
     if (ext_idx == std::string::npos) {
       name_and_path.emplace_back(
-          MetricNameAndPath{metric_or_path, base::nullopt});
+          MetricNameAndPath{metric_or_path, std::nullopt});
       continue;
     }
 
@@ -1453,7 +1458,7 @@ base::Status StartInteractiveShell(const InteractiveOptions& options) {
           PERFETTO_ELOG("%s", status.c_message());
         }
       } else if (strcmp(command, "width") == 0 && strlen(arg)) {
-        base::Optional<uint32_t> width = base::CStringToUInt32(arg);
+        std::optional<uint32_t> width = base::CStringToUInt32(arg);
         if (!width) {
           PERFETTO_ELOG("Invalid column width specified");
           continue;
@@ -1472,9 +1477,9 @@ base::Status StartInteractiveShell(const InteractiveOptions& options) {
         }
 
         base::Status status =
-            RunMetrics(options.metrics, options.metric_format, *options.pool);
+            RunMetrics(options.metrics, options.metric_format);
         if (!status.ok()) {
-          PERFETTO_ELOG("%s", status.c_message());
+          fprintf(stderr, "%s\n", status.c_message());
         }
       } else {
         PrintShellUsage();
@@ -1519,14 +1524,14 @@ base::Status MaybeUpdateSqlModules(const CommandLineOptions& options) {
                              status.c_message());
   }
 
-  if (!options.override_sql_module_path.empty()) {
-    if (!options.dev)
-      return base::ErrStatus("Overriding stdlib modules requires --dev flag");
-
-    auto status = IncludeSqlModule(options.override_sql_module_path, true);
-    if (!status.ok())
-      return base::ErrStatus("Couldn't override stdlib module: %s",
-                             status.c_message());
+  if (!options.override_sql_module_paths.empty()) {
+    for (const auto& override_sql_module_path :
+         options.override_sql_module_paths) {
+      auto status = IncludeSqlModule(override_sql_module_path, true);
+      if (!status.ok())
+        return base::ErrStatus("Couldn't override stdlib module: %s",
+                               status.c_message());
+    }
   }
 
   if (!options.sql_module_path.empty()) {
@@ -1561,6 +1566,14 @@ base::Status TraceProcessorMain(int argc, char** argv) {
 
   if (options.dev) {
     config.enable_dev_features = true;
+    for (const auto& flag_pair : options.dev_flags) {
+      auto kv = base::SplitString(flag_pair, "=");
+      if (kv.size() != 2) {
+        PERFETTO_ELOG("Ignoring unknown dev flag format %s", flag_pair.c_str());
+        continue;
+      }
+      config.dev_flags.emplace(kv[0], kv[1]);
+    }
   }
 
   std::unique_ptr<TraceProcessor> tp = TraceProcessor::CreateInstance(config);
@@ -1581,11 +1594,21 @@ base::Status TraceProcessorMain(int argc, char** argv) {
     tp->EnableMetatrace(metatrace_config);
   }
 
+  // Descriptor pool used for printing output as textproto. Building on top of
+  // generated pool so default protos in google.protobuf.descriptor.proto are
+  // available.
+  // For some insane reason, the descriptor pool is not movable so we need to
+  // create it here so we can create references and pass it everywhere.
+  google::protobuf::DescriptorPool pool(
+      google::protobuf::DescriptorPool::generated_pool());
+  RETURN_IF_ERROR(PopulateDescriptorPool(pool, metric_extensions));
+
   // We load all the metric extensions even when --run-metrics arg is not there,
   // because we want the metrics to be available in interactive mode or when
   // used in UI using httpd.
+  // Metric extensions are also used to populate the descriptor pool.
   for (const auto& extension : metric_extensions) {
-    RETURN_IF_ERROR(LoadMetricExtension(extension));
+    RETURN_IF_ERROR(LoadMetricExtension(extension, pool));
   }
 
   base::TimeNanos t_load{};
@@ -1612,15 +1635,6 @@ base::Status TraceProcessorMain(int argc, char** argv) {
     RETURN_IF_ERROR(RunQueries(options.pre_metrics_path, false));
   }
 
-  // Descriptor pool used for printing output as textproto. Building on top of
-  // generated pool so default protos in google.protobuf.descriptor.proto are
-  // available.
-  // For some insane reason, the descriptor pool is not movable so we need to
-  // create it here so we can create references and pass it everywhere.
-  google::protobuf::DescriptorPool pool(
-      google::protobuf::DescriptorPool::generated_pool());
-  RETURN_IF_ERROR(PopulateDescriptorPool(pool, metric_extensions));
-
   std::vector<MetricNameAndPath> metrics;
   if (!options.metric_names.empty()) {
     RETURN_IF_ERROR(LoadMetrics(options.metric_names, pool, metrics));
@@ -1628,7 +1642,7 @@ base::Status TraceProcessorMain(int argc, char** argv) {
 
   OutputFormat metric_format = ParseOutputFormat(options);
   if (!metrics.empty()) {
-    RETURN_IF_ERROR(RunMetrics(metrics, metric_format, pool));
+    RETURN_IF_ERROR(RunMetrics(metrics, metric_format));
   }
 
   if (!options.query_file_path.empty()) {
@@ -1688,7 +1702,7 @@ base::Status TraceProcessorMain(int argc, char** argv) {
 int main(int argc, char** argv) {
   auto status = perfetto::trace_processor::TraceProcessorMain(argc, argv);
   if (!status.ok()) {
-    PERFETTO_ELOG("%s", status.c_message());
+    fprintf(stderr, "%s\n", status.c_message());
     return 1;
   }
   return 0;

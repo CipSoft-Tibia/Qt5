@@ -21,7 +21,7 @@
 project(
   'libdrm',
   ['c'],
-  version : '2.4.114',
+  version : '2.4.115',
   license : 'MIT',
   meson_version : '>= 0.53',
   default_options : ['buildtype=debugoptimized', 'c_std=c11'],
@@ -40,11 +40,6 @@ with_freedreno_kgsl = get_option('freedreno-kgsl')
 with_install_tests = get_option('install-test-programs')
 with_tests = get_option('tests')
 
-if ['freebsd', 'dragonfly', 'netbsd'].contains(host_machine.system())
-  dep_pthread_stubs = dependency('pthread-stubs', version : '>= 0.4')
-else
-  dep_pthread_stubs = []
-endif
 dep_threads = dependency('threads')
 
 cc = meson.get_compiler('c')

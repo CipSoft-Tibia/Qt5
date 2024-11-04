@@ -39,6 +39,7 @@
 #include "build/build_config.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "net/http/structured_headers.h"
+#include "services/network/public/cpp/attribution_reporting_runtime_features.h"
 #include "services/network/public/cpp/client_hints.h"
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/mojom/web_client_hints_types.mojom-blink.h"
@@ -47,7 +48,6 @@
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/common/client_hints/client_hints.h"
 #include "third_party/blink/public/common/device_memory/approximated_device_memory.h"
-#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/public/mojom/loader/request_context_frame_type.mojom-blink.h"
 #include "third_party/blink/public/mojom/permissions_policy/permissions_policy.mojom-blink.h"
@@ -79,6 +79,7 @@
 #include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/core/inspector/inspector_audits_issue.h"
 #include "third_party/blink/renderer/core/inspector/inspector_trace_events.h"
+#include "third_party/blink/renderer/core/lcp_critical_path_predictor/lcp_critical_path_predictor.h"
 #include "third_party/blink/renderer/core/loader/back_forward_cache_loader_helper_impl.h"
 #include "third_party/blink/renderer/core/loader/document_loader.h"
 #include "third_party/blink/renderer/core/loader/frame_loader.h"
@@ -292,21 +293,6 @@ void FrameFetchContext::AddAdditionalRequestHeaders(ResourceRequest& request) {
 
   if (GetResourceFetcherProperties().IsDetached())
     return;
-
-  // TODO(crbug.com/1375791): Consider overriding Attribution-Reporting-Support
-  // header.
-  if (base::FeatureList::IsEnabled(
-          blink::features::kAttributionReportingCrossAppWeb) &&
-      !request.HttpHeaderField(http_names::kAttributionReportingEligible)
-           .IsNull() &&
-      request.HttpHeaderField(http_names::kAttributionReportingSupport)
-          .IsNull()) {
-    if (AttributionSrcLoader* attribution_src_loader =
-            GetFrame()->GetAttributionSrcLoader()) {
-      request.AddHttpHeaderField(http_names::kAttributionReportingSupport,
-                                 attribution_src_loader->GetSupportHeader());
-    }
-  }
 }
 
 // TODO(toyoshim, arthursonzogni): PlzNavigate doesn't use this function to set
@@ -351,31 +337,39 @@ void FrameFetchContext::PrepareRequest(
     request.SetTopFrameOrigin(GetTopFrameOrigin());
   }
 
-  const bool ua_reduced =
-      request.HttpHeaderField(
-          network::GetClientHintToNameMap()
-              .at(network::mojom::blink::WebClientHintsType::kUAReduced)
-              .c_str()) == "?1";
-  const bool ua_full =
-      request.HttpHeaderField(
-          network::GetClientHintToNameMap()
-              .at(network::mojom::blink::WebClientHintsType::kFullUserAgent)
-              .c_str()) == "?1";
-
-  String user_agent =
-      ua_full ? GetFullUserAgent()
-              : (ua_reduced ? GetReducedUserAgent() : GetUserAgent());
-  base::UmaHistogramBoolean("Blink.Fetch.ReducedUserAgent", ua_reduced);
-  request.SetHTTPUserAgent(AtomicString(user_agent));
+  request.SetHTTPUserAgent(AtomicString(GetUserAgent()));
 
   if (GetResourceFetcherProperties().IsDetached())
     return;
 
   request.SetUkmSourceId(document_->UkmSourceID());
-  request.SetHasStorageAccess(document_->HasStorageAccess());
+  request.SetHasStorageAccess(
+      document_->GetExecutionContext()->HasStorageAccess());
 
   if (document_loader_->ForceFetchCacheMode())
     request.SetCacheMode(*document_loader_->ForceFetchCacheMode());
+
+  if (const AttributionSrcLoader* attribution_src_loader =
+          GetFrame()->GetAttributionSrcLoader()) {
+    request.SetAttributionReportingSupport(
+        attribution_src_loader->GetSupport());
+    request.SetAttributionReportingRuntimeFeatures(
+        attribution_src_loader->GetRuntimeFeatures());
+  }
+
+  if (request.GetSharedStorageWritable()) {
+    auto* policy = GetPermissionsPolicy();
+    if (!policy ||
+        !request.IsFeatureEnabledForSubresourceRequestAssumingOptIn(
+            policy, mojom::blink::PermissionsPolicyFeature::kSharedStorage,
+            SecurityOrigin::Create(request.Url())->ToUrlOrigin())) {
+      request.SetSharedStorageWritable(false);
+    }
+  }
+
+  request.SetSharedDictionaryWriterEnabled(
+      RuntimeEnabledFeatures::CompressionDictionaryTransportEnabled(
+          GetExecutionContext()));
 
   GetLocalFrameClient()->DispatchWillSendRequest(request);
   FrameScheduler* frame_scheduler = GetFrame()->GetFrameScheduler();
@@ -429,7 +423,7 @@ void FrameFetchContext::ModifyRequestForCSP(ResourceRequest& resource_request) {
 }
 
 void FrameFetchContext::AddClientHintsIfNecessary(
-    const FetchParameters::ResourceWidth& resource_width,
+    const absl::optional<float> resource_width,
     ResourceRequest& request) {
   // If the feature is enabled, then client hints are allowed only on secure
   // URLs.
@@ -459,6 +453,7 @@ void FrameFetchContext::AddClientHintsIfNecessary(
   absl::optional<ClientHintImageInfo> image_info;
   absl::optional<WTF::AtomicString> prefers_color_scheme;
   absl::optional<WTF::AtomicString> prefers_reduced_motion;
+  absl::optional<WTF::AtomicString> prefers_reduced_transparency;
 
   if (document_) {  // Only get frame info if the frame is not detached
     image_info = ClientHintImageInfo();
@@ -469,12 +464,17 @@ void FrameFetchContext::AddClientHintsIfNecessary(
       image_info->viewport_height = GetFrame()->View()->ViewportHeight();
     }
 
-    prefers_color_scheme = document_->InDarkMode()
-                               ? network::kPrefersColorSchemeDark
-                               : network::kPrefersColorSchemeLight;
-    prefers_reduced_motion = GetSettings()->GetPrefersReducedMotion()
-                                 ? network::kPrefersReducedMotionReduce
-                                 : network::kPrefersReducedMotionNoPreference;
+    prefers_color_scheme = AtomicString(
+        document_->InDarkMode() ? network::kPrefersColorSchemeDark
+                                : network::kPrefersColorSchemeLight);
+    prefers_reduced_motion =
+        AtomicString(GetSettings()->GetPrefersReducedMotion()
+                         ? network::kPrefersReducedMotionReduce
+                         : network::kPrefersReducedMotionNoPreference);
+    prefers_reduced_transparency =
+        AtomicString(GetSettings()->GetPrefersReducedTransparency()
+                         ? network::kPrefersReducedTransparencyReduce
+                         : network::kPrefersReducedTransparencyNoPreference);
   }
 
   // GetClientHintsPreferences() has things parsed for this document
@@ -482,7 +482,8 @@ void FrameFetchContext::AddClientHintsIfNecessary(
   // with renderer-parsed http-equiv merged in.
   BaseFetchContext::AddClientHintsIfNecessary(
       GetClientHintsPreferences(), resource_origin, is_1p_origin, ua, policy,
-      image_info, prefers_color_scheme, prefers_reduced_motion, request);
+      image_info, prefers_color_scheme, prefers_reduced_motion,
+      prefers_reduced_transparency, request);
 }
 
 void FrameFetchContext::AddReducedAcceptLanguageIfNecessary(
@@ -509,14 +510,15 @@ void FrameFetchContext::AddReducedAcceptLanguageIfNecessary(
   const String& reduced_accept_language = GetReducedAcceptLanguage();
   if (!reduced_accept_language.empty() &&
       request.HttpHeaderField(http_names::kAcceptLanguage).empty()) {
-    request.SetHttpHeaderField(http_names::kAcceptLanguage,
-                               reduced_accept_language.Ascii().c_str());
+    request.SetHttpHeaderField(
+        http_names::kAcceptLanguage,
+        AtomicString(reduced_accept_language.Ascii().c_str()));
   }
 }
 
 void FrameFetchContext::PopulateResourceRequest(
     ResourceType type,
-    const FetchParameters::ResourceWidth& resource_width,
+    const absl::optional<float> resource_width,
     ResourceRequest& request,
     const ResourceLoaderOptions& options) {
   if (!GetResourceFetcherProperties().IsDetached())
@@ -531,6 +533,18 @@ bool FrameFetchContext::IsPrerendering() const {
   if (GetResourceFetcherProperties().IsDetached())
     return frozen_state_->is_prerendering;
   return document_->IsPrerendering();
+}
+
+bool FrameFetchContext::DoesLCPPHaveAnyHintData() {
+  if (GetResourceFetcherProperties().IsDetached()) {
+    return false;
+  }
+
+  LCPCriticalPathPredictor* lcpp = GetFrame()->GetLCPP();
+  if (!lcpp) {
+    return false;
+  }
+  return lcpp->HasAnyHintData();
 }
 
 void FrameFetchContext::SetFirstPartyCookie(ResourceRequest& request) {
@@ -727,18 +741,6 @@ String FrameFetchContext::GetUserAgent() const {
   return GetFrame()->Loader().UserAgent();
 }
 
-String FrameFetchContext::GetFullUserAgent() const {
-  if (GetResourceFetcherProperties().IsDetached())
-    return frozen_state_->user_agent;
-  return GetFrame()->Loader().FullUserAgent();
-}
-
-String FrameFetchContext::GetReducedUserAgent() const {
-  if (GetResourceFetcherProperties().IsDetached())
-    return frozen_state_->user_agent;
-  return GetFrame()->Loader().ReducedUserAgent();
-}
-
 absl::optional<UserAgentMetadata> FrameFetchContext::GetUserAgentMetadata()
     const {
   if (GetResourceFetcherProperties().IsDetached())
@@ -787,25 +789,15 @@ FetchContext* FrameFetchContext::Detach() {
   if (GetResourceFetcherProperties().IsDetached())
     return this;
 
-  // If the Sec-CH-UA-Full client hint header is set on the request, then the
-  // full User-Agent string should be set on the User-Agent request header.
-  // If the Sec-CH-UA-Reduced client hint header is set on the request, then the
-  // reduced User-Agent string should also be set on the User-Agent request
-  // header.
+  // As we completed the reduction in the user-agent, the reduced User-Agent
+  // string returns from GetUserAgent() should also be set on the User-Agent
+  // request header.
   const ClientHintsPreferences& client_hints_prefs =
       GetClientHintsPreferences();
-  String user_agent = client_hints_prefs.ShouldSend(
-                          network::mojom::WebClientHintsType::kFullUserAgent)
-                          ? GetFullUserAgent()
-                          : client_hints_prefs.ShouldSend(
-                                network::mojom::WebClientHintsType::kUAReduced)
-                                ? GetReducedUserAgent()
-                                : GetUserAgent();
-
   frozen_state_ = MakeGarbageCollected<FrozenState>(
       Url(), GetContentSecurityPolicy(), GetSiteForCookies(),
       GetTopFrameOrigin(), client_hints_prefs, GetDevicePixelRatio(),
-      user_agent, GetUserAgentMetadata(), IsSVGImageChromeClient(),
+      GetUserAgent(), GetUserAgentMetadata(), IsSVGImageChromeClient(),
       IsPrerendering(), GetReducedAcceptLanguage());
   document_loader_ = nullptr;
   document_ = nullptr;
@@ -889,16 +881,8 @@ CoreProbeSink* FrameFetchContext::Probe() const {
 }
 
 void FrameFetchContext::UpdateSubresourceLoadMetrics(
-    uint32_t number_of_subresources_loaded,
-    uint32_t number_of_subresource_loads_handled_by_service_worker,
-    bool pervasive_payload_requested,
-    int64_t pervasive_bytes_fetched,
-    int64_t total_bytes_fetched) {
-  document_loader_->UpdateSubresourceLoadMetrics(
-      number_of_subresources_loaded,
-      number_of_subresource_loads_handled_by_service_worker,
-      pervasive_payload_requested, pervasive_bytes_fetched,
-      total_bytes_fetched);
+    const SubresourceLoadMetrics& subresource_load_metrics) {
+  document_loader_->UpdateSubresourceLoadMetrics(subresource_load_metrics);
 }
 
 }  // namespace blink

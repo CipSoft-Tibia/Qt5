@@ -38,6 +38,7 @@
 #include "components/download/public/common/download_features.h"
 #include "components/download/public/common/download_file_factory.h"
 #include "components/download/public/common/download_file_impl.h"
+#include "components/download/public/common/download_item.h"
 #include "components/download/public/common/download_item_impl.h"
 #include "components/download/public/common/download_task_runner.h"
 #include "components/download/public/common/parallel_download_configs.h"
@@ -603,7 +604,8 @@ class ErrorInjectionDownloadFileFactory : public download::DownloadFileFactory {
     download_file_ = nullptr;
   }
 
-  raw_ptr<ErrorInjectionDownloadFile, DanglingUntriaged> download_file_;
+  raw_ptr<ErrorInjectionDownloadFile, AcrossTasksDanglingUntriaged>
+      download_file_;
   int64_t injected_error_offset_ = -1;
   int64_t injected_error_length_ = 0;
   base::WeakPtrFactory<ErrorInjectionDownloadFileFactory> weak_ptr_factory_{
@@ -771,6 +773,13 @@ class ErrorStreamCountingObserver : public DownloadCountingObserver {
 
  private:
   base::HistogramTester histogram_tester_;
+};
+
+class ReceivedBytesCountingObserver : public DownloadCountingObserver {
+ private:
+  bool IsCountReached(download::DownloadItem* download, int count) override {
+    return download->GetReceivedBytes() == count;
+  }
 };
 
 // Class to wait for a WebContents to kick off a specified number of
@@ -1470,7 +1479,7 @@ class DownloadPrerenderTest : public DownloadContentTest {
   ~DownloadPrerenderTest() override = default;
 
   void SetUp() override {
-    prerender_helper_.SetUp(embedded_test_server());
+    prerender_helper_.RegisterServerRequestMonitor(embedded_test_server());
     DownloadContentTest::SetUp();
   }
 
@@ -3235,8 +3244,7 @@ IN_PROC_BROWSER_TEST_F(DownloadContentTest, ResumeRestoredDownload_NoHash) {
       parameters.pattern_generator_seed, 0, kIntermediateSize);
   {
     base::ScopedAllowBlockingForTesting allow_blocking;
-    ASSERT_EQ(kIntermediateSize, base::WriteFile(intermediate_file_path,
-                                                 output.data(), output.size()));
+    ASSERT_TRUE(base::WriteFile(intermediate_file_path, output));
   }
 
   url_chain.push_back(server_url);
@@ -3291,8 +3299,7 @@ IN_PROC_BROWSER_TEST_F(DownloadContentTest,
       parameters.pattern_generator_seed + 1, 0, kIntermediateSize);
   {
     base::ScopedAllowBlockingForTesting allow_blocking;
-    ASSERT_EQ(kIntermediateSize, base::WriteFile(intermediate_file_path,
-                                                 output.data(), output.size()));
+    ASSERT_TRUE(base::WriteFile(intermediate_file_path, output));
   }
 
   url_chain.push_back(server_url);
@@ -3348,8 +3355,7 @@ IN_PROC_BROWSER_TEST_F(DownloadContentTest,
       parameters.pattern_generator_seed, 0, kIntermediateSize);
   {
     base::ScopedAllowBlockingForTesting allow_blocking;
-    ASSERT_EQ(kIntermediateSize, base::WriteFile(intermediate_file_path,
-                                                 output.data(), output.size()));
+    ASSERT_TRUE(base::WriteFile(intermediate_file_path, output));
   }
   // SHA-256 hash of the pattern bytes in buffer.
   static const uint8_t kPartialHash[] = {
@@ -3416,8 +3422,8 @@ IN_PROC_BROWSER_TEST_F(DownloadContentTest, ResumeRestoredDownload_WrongHash) {
   std::vector<char> buffer(kIntermediateSize);
   {
     base::ScopedAllowBlockingForTesting allow_blocking;
-    ASSERT_EQ(kIntermediateSize, base::WriteFile(intermediate_file_path,
-                                                 buffer.data(), buffer.size()));
+    ASSERT_TRUE(base::WriteFile(intermediate_file_path,
+                                {buffer.data(), buffer.size()}));
   }
   // SHA-256 hash of the expected pattern bytes in buffer. This doesn't match
   // the current contents of the intermediate file which should all be 0.
@@ -3501,9 +3507,7 @@ IN_PROC_BROWSER_TEST_F(DownloadContentTest, ResumeRestoredDownload_ShortFile) {
       parameters.pattern_generator_seed, 0, kIntermediateSize - 100);
   {
     base::ScopedAllowBlockingForTesting allow_blocking;
-    ASSERT_EQ(
-        kIntermediateSize - 100,
-        base::WriteFile(intermediate_file_path, output.data(), output.size()));
+    ASSERT_TRUE(base::WriteFile(intermediate_file_path, output));
   }
   url_chain.push_back(server_url);
 
@@ -3577,9 +3581,7 @@ IN_PROC_BROWSER_TEST_F(DownloadContentTest, ResumeRestoredDownload_LongFile) {
       parameters.pattern_generator_seed, 0, kIntermediateSize + 100);
   {
     base::ScopedAllowBlockingForTesting allow_blocking;
-    ASSERT_EQ(
-        kIntermediateSize + 100,
-        base::WriteFile(intermediate_file_path, output.data(), output.size()));
+    ASSERT_TRUE(base::WriteFile(intermediate_file_path, output));
   }
   url_chain.push_back(server_url);
 
@@ -4658,6 +4660,8 @@ IN_PROC_BROWSER_TEST_F(ParallelDownloadTest,
 // Verify that if the second request fails after the beginning request takes
 // over and completes its slice, download should complete.
 IN_PROC_BROWSER_TEST_F(ParallelDownloadTest, MiddleSliceDelayedError) {
+  const int64_t kFileSize = 5097152;
+
   scoped_refptr<TestFileErrorInjector> injector(
       TestFileErrorInjector::Create(DownloadManagerForShell(shell())));
 
@@ -4668,7 +4672,7 @@ IN_PROC_BROWSER_TEST_F(ParallelDownloadTest, MiddleSliceDelayedError) {
   injector->InjectError(err);
   TestDownloadHttpResponse::Parameters parameters;
   parameters.etag = "ABC";
-  parameters.size = 5097152;
+  parameters.size = kFileSize;
   parameters.connection_type = net::HttpResponseInfo::CONNECTION_INFO_HTTP1_1;
   // The 2nd response will be dalyed.
   parameters.SetResponseForRangeRequest(1699000, 2000000, k404Response,
@@ -4689,15 +4693,23 @@ IN_PROC_BROWSER_TEST_F(ParallelDownloadTest, MiddleSliceDelayedError) {
 
   // Wait for the 3rd request to complete first.
   test_response_handler()->WaitUntilCompletion(1);
-  ReceivedSlicesCountingObserver obs;
-  obs.WaitForFinished(download, 2);
+  ReceivedSlicesCountingObserver slices_counting_observer;
+  slices_counting_observer.WaitForFinished(download, 2);
   std::vector<download::DownloadItem::ReceivedSlice> received_slices =
       download->GetReceivedSlices();
   EXPECT_EQ(received_slices[1].offset + received_slices[1].received_bytes,
-            5097152);
-  // Now resume the first request and wait for it to complete.
+            kFileSize);
+
+  // Now resume the first request and wait for it to complete, including writing
+  // the whole file.
   request_pause_handler.Resume();
-  test_response_handler()->WaitUntilCompletion(2);
+  ReceivedBytesCountingObserver bytes_counting_observer;
+  bytes_counting_observer.WaitForFinished(download, kFileSize);
+  // Note that download is not yet completed even though the whole file is
+  // downloaded - second request is not yet processed.
+  EXPECT_EQ(download->GetState(),
+            download::DownloadItem::DownloadState::IN_PROGRESS);
+
   // Dispatch the delayed response, and wait for download to complete.
   test_response_handler()->DispatchDelayedResponses();
   WaitForCompletion(download);

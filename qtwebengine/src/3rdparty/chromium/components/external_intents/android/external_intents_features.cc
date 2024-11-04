@@ -18,9 +18,8 @@ namespace {
 
 // Array of features exposed through the Java ExternalIntentsFeatures API.
 const base::Feature* kFeaturesExposedToJava[] = {
-    &kExternalNavigationDebugLogs,       &kExternalNavigationSubframeRedirects,
-    &kBlockSubframeIntentToSelf,         &kBlockFrameRenavigations,
-    &kDoNotRequireSpecializedCCTHandler, &kBlockIntentsToSelf};
+    &kExternalNavigationDebugLogs, &kBlockFrameRenavigations,
+    &kBlockIntentsToSelf, &kTrustedClientGestureBypass};
 
 }  // namespace
 
@@ -30,24 +29,16 @@ BASE_FEATURE(kExternalNavigationDebugLogs,
              "ExternalNavigationDebugLogs",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kExternalNavigationSubframeRedirects,
-             "ExternalNavigationSubframeRedirects",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
-BASE_FEATURE(kBlockSubframeIntentToSelf,
-             "BlockSubframeIntentToSelf",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kBlockFrameRenavigations,
-             "BlockFrameRenavigations",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
-BASE_FEATURE(kDoNotRequireSpecializedCCTHandler,
-             "DoNotRequireSpecializedCCTHandler",
+             "BlockFrameRenavigations3",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kBlockIntentsToSelf,
              "BlockIntentsToSelf",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kTrustedClientGestureBypass,
+             "TrustedClientGestureBypass",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 static jlong JNI_ExternalIntentsFeatures_GetFeature(JNIEnv* env, jint ordinal) {

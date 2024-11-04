@@ -35,7 +35,8 @@ BluetoothRemoteGATTCharacteristic::BluetoothRemoteGATTCharacteristic(
     mojom::blink::WebBluetoothRemoteGATTCharacteristicPtr characteristic,
     BluetoothRemoteGATTService* service,
     BluetoothDevice* device)
-    : ExecutionContextLifecycleObserver(context),
+    : ActiveScriptWrappable<BluetoothRemoteGATTCharacteristic>({}),
+      ExecutionContextLifecycleObserver(context),
       characteristic_(std::move(characteristic)),
       service_(service),
       device_(device),
@@ -85,8 +86,7 @@ bool BluetoothRemoteGATTCharacteristic::HasPendingActivity() const {
 void BluetoothRemoteGATTCharacteristic::AddedEventListener(
     const AtomicString& event_type,
     RegisteredEventListener& registered_listener) {
-  EventTargetWithInlineData::AddedEventListener(event_type,
-                                                registered_listener);
+  EventTarget::AddedEventListener(event_type, registered_listener);
 }
 
 void BluetoothRemoteGATTCharacteristic::ReadValueCallback(
@@ -144,7 +144,8 @@ ScriptPromise BluetoothRemoteGATTCharacteristic::readValue(
     return ScriptPromise();
   }
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
   GetGatt()->AddToActiveAlgorithms(resolver);
 
@@ -225,7 +226,8 @@ ScriptPromise BluetoothRemoteGATTCharacteristic::WriteCharacteristicValue(
   value_vector.Append(value.Bytes(),
                       static_cast<wtf_size_t>(value.ByteLength()));
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
   GetGatt()->AddToActiveAlgorithms(resolver);
 
@@ -335,7 +337,8 @@ ScriptPromise BluetoothRemoteGATTCharacteristic::startNotifications(
     return ScriptPromise();
   }
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
   GetGatt()->AddToActiveAlgorithms(resolver);
 
@@ -376,7 +379,8 @@ ScriptPromise BluetoothRemoteGATTCharacteristic::stopNotifications(
     return ScriptPromise();
   }
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
   GetGatt()->AddToActiveAlgorithms(resolver);
 
@@ -447,7 +451,8 @@ ScriptPromise BluetoothRemoteGATTCharacteristic::GetDescriptorsImpl(
     return ScriptPromise();
   }
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
   GetGatt()->AddToActiveAlgorithms(resolver);
 
@@ -529,7 +534,7 @@ void BluetoothRemoteGATTCharacteristic::Trace(Visitor* visitor) const {
   visitor->Trace(receivers_);
   visitor->Trace(deferred_value_change_data_);
 
-  EventTargetWithInlineData::Trace(visitor);
+  EventTarget::Trace(visitor);
   ExecutionContextLifecycleObserver::Trace(visitor);
 }
 

@@ -1,7 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
-//TESTED_COMPONENT=src/multimedia
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QDebug>
@@ -127,7 +125,7 @@ void tst_QMediaRecorder::testNullControls()
     QCOMPARE(recorder.mediaFormat().videoCodec(), QMediaFormat::VideoCodec::VP9);
     QCOMPARE(recorder.mediaFormat().fileFormat(), QMediaFormat::MPEG4);
 
-    QSignalSpy spy(&recorder, SIGNAL(recorderStateChanged(RecorderState)));
+    QSignalSpy spy(&recorder, &QMediaRecorder::recorderStateChanged);
 
     recorder.record();
     QCOMPARE(recorder.recorderState(), QMediaRecorder::StoppedState);
@@ -192,12 +190,12 @@ void tst_QMediaRecorder::testError()
 {
     const QString errorString(QLatin1String("format error"));
 
-    QSignalSpy spy(encoder, SIGNAL(errorOccurred(Error, const QString&)));
+    QSignalSpy spy(encoder, &QMediaRecorder::errorOccurred);
 
     QCOMPARE(encoder->error(), QMediaRecorder::NoError);
     QCOMPARE(encoder->errorString(), QString());
 
-    mock->error(QMediaRecorder::FormatError, errorString);
+    mock->updateError(QMediaRecorder::FormatError, errorString);
     QCOMPARE(encoder->error(), QMediaRecorder::FormatError);
     QCOMPARE(encoder->errorString(), errorString);
     QCOMPARE(spy.size(), 1);
@@ -209,14 +207,14 @@ void tst_QMediaRecorder::testSink()
 {
     encoder->setOutputLocation(QUrl("test.tmp"));
     QUrl s = encoder->outputLocation();
-    QCOMPARE(s.toString(), QString("test.tmp"));
+    QCOMPARE(s.toString(), QStringLiteral("test.tmp"));
     QCOMPARE(encoder->actualLocation(), QUrl());
 
     //the actual location is available after record
     encoder->record();
-    QCOMPARE(encoder->actualLocation().toString(), QString("test.tmp"));
+    QCOMPARE(encoder->actualLocation().toString(), QStringLiteral("test.tmp"));
     encoder->stop();
-    QCOMPARE(encoder->actualLocation().toString(), QString("test.tmp"));
+    QCOMPARE(encoder->actualLocation().toString(), QStringLiteral("test.tmp"));
 
     //setOutputLocation resets the actual location
     encoder->setOutputLocation(QUrl());
@@ -232,8 +230,8 @@ void tst_QMediaRecorder::testSink()
 
 void tst_QMediaRecorder::testRecord()
 {
-    QSignalSpy stateSignal(encoder,SIGNAL(recorderStateChanged(RecorderState)));
-    QSignalSpy progressSignal(encoder, SIGNAL(durationChanged(qint64)));
+    QSignalSpy stateSignal(encoder, &QMediaRecorder::recorderStateChanged);
+    QSignalSpy progressSignal(encoder, &QMediaRecorder::durationChanged);
     encoder->record();
     QCOMPARE(encoder->recorderState(), QMediaRecorder::RecordingState);
     QCOMPARE(encoder->error(), QMediaRecorder::NoError);
@@ -388,10 +386,10 @@ void tst_QMediaRecorder::metaData()
     QVERIFY(recorder.metaData().isEmpty());
 
     QMediaMetaData data;
-    data.insert(QMediaMetaData::Author, QString::fromUtf8("John Doe"));
+    data.insert(QMediaMetaData::Author, QStringLiteral("John Doe"));
     recorder.setMetaData(data);
 
-    QCOMPARE(recorder.metaData().value(QMediaMetaData::Author).toString(), QString::fromUtf8("John Doe"));
+    QCOMPARE(recorder.metaData().value(QMediaMetaData::Author).toString(), QStringLiteral("John Doe"));
 }
 
 void tst_QMediaRecorder::testIsAvailable()
@@ -415,12 +413,12 @@ void tst_QMediaRecorder::testEnum()
 {
     const QString errorString(QLatin1String("resource error"));
 
-    QSignalSpy spy(encoder, SIGNAL(errorOccurred(Error, const QString&)));
+    QSignalSpy spy(encoder, &QMediaRecorder::errorOccurred);
 
     QCOMPARE(encoder->error(), QMediaRecorder::NoError);
     QCOMPARE(encoder->errorString(), QString());
 
-    emit mock->error(QMediaRecorder::ResourceError, errorString);
+    mock->updateError(QMediaRecorder::ResourceError, errorString);
     QCOMPARE(encoder->error(), QMediaRecorder::ResourceError);
     QCOMPARE(encoder->errorString(), errorString);
     QCOMPARE(spy.size(), 1);
@@ -473,7 +471,7 @@ void tst_QMediaRecorder::testApplicationInative()
     encoder.setQuality(QMediaRecorder::VeryHighQuality);
 
     encoder.setOutputLocation(QUrl("test.tmp"));
-    QCOMPARE(encoder.outputLocation().toString(), QString("test.tmp"));
+    QCOMPARE(encoder.outputLocation().toString(), QStringLiteral("test.tmp"));
     QCOMPARE(encoder.actualLocation(), QUrl());
 
     encoder.record();
@@ -487,7 +485,7 @@ void tst_QMediaRecorder::testApplicationInative()
     encoder.stop();
 
     // the actual location is available after record
-    QCOMPARE(encoder.actualLocation().toString(), QString("test.tmp"));
+    QCOMPARE(encoder.actualLocation().toString(), QStringLiteral("test.tmp"));
 }
 
 QTEST_GUILESS_MAIN(tst_QMediaRecorder)

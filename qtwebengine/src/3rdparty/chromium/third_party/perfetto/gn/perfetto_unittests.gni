@@ -20,6 +20,7 @@ perfetto_unittests_targets = [
   "src/base:unittests",
   "src/base/threading:unittests",
   "src/protozero:unittests",
+  "src/shared_lib:unittests",
   "src/tracing/core:unittests",
   "src/tracing:unittests",
   "src/profiling:unittests",
@@ -72,12 +73,10 @@ if (enable_perfetto_traced_perf) {
 
 if (enable_perfetto_trace_processor) {
   perfetto_unittests_targets += [ "src/trace_processor:unittests" ]
-
-  # TODO(mohitms): reenable this once we no longer link lite and full protobuf
-  # simultaneously.
-  # perfetto_unittests_targets += [ "src/traceconv:unittests" ]
+  perfetto_unittests_targets += [ "src/traceconv:unittests" ]
 
   if (enable_perfetto_trace_processor_sqlite) {
     perfetto_unittests_targets += [ "src/trace_processor/metrics:unittests" ]
+    perfetto_unittests_targets += [ "src/cloud_trace_processor:unittests" ]
   }
 }

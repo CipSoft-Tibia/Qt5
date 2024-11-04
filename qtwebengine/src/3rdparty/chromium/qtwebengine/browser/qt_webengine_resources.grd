@@ -8,23 +8,11 @@
   </outputs>
   <release seq="1">
     <includes>
-      <include name="IDR_ACCESSIBILITY_HTML" file="../../chrome/browser/resources/accessibility/accessibility.html" flattenhtml="true" allowexternalscript="true" type="BINDATA" />
-      <include name="IDR_ACCESSIBILITY_CSS" file="../../chrome/browser/resources/accessibility/accessibility.css" type="BINDATA" />
-      <include name="IDR_ACCESSIBILITY_JS" file="${root_gen_dir}/chrome/browser/resources/accessibility/tsc/accessibility.js" use_base_dir="false" type="BINDATA" />
       <if expr="not is_ios">
         <include name="IDR_DEVTOOLS_DISCOVERY_PAGE_HTML" file="devtools_discovery_page.html" type="BINDATA"/>
       </if>
       <if expr="enable_pdf">
         <include name="IDR_PDF_MANIFEST" file="../../chrome/browser/resources/pdf/manifest.json" type="BINDATA" />
-      </if>
-      <if expr="is_android or is_linux">
-        <include name="IDR_SANDBOX_INTERNALS_HTML" file="../../chrome/browser/resources/sandbox_internals/sandbox_internals.html" preprocess="true" type="BINDATA" />
-        <include name="IDR_SANDBOX_INTERNALS_JS" file="${root_gen_dir}\chrome\browser\resources\sandbox_internals\tsc\sandbox_internals.js" use_base_dir="false" type="BINDATA" />
-
-      </if>
-      <if expr="is_win">
-        <include name="IDR_SANDBOX_INTERNALS_HTML" file="../../chrome/browser/resources/sandbox_internals/sandbox_internals.html" preprocess="true" type="BINDATA" />
-        <include name="IDR_SANDBOX_INTERNALS_JS" file="${root_gen_dir}\chrome\browser\resources\sandbox_internals\tsc\sandbox_internals_win.js" use_base_dir="false" type="BINDATA" />
       </if>
       <if expr="enable_hangout_services_extension">
         <include name="IDR_HANGOUT_SERVICES_MANIFEST" file="../../chrome/browser/resources/hangout_services/manifest.json" type="BINDATA" />

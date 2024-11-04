@@ -15,8 +15,8 @@ generate_css("css_files") {
     "cssHintDetailsView.css",
     "cssPropertyDocsView.css",
     "cssQuery.css",
+    "cssVariableValueView.css",
     "elementsBreadcrumbs.css",
-    "elementsPanelLink.css",
     "elementsTreeExpandButton.css",
     "queryContainer.css",
     "stylePropertyEditor.css",
@@ -32,11 +32,11 @@ devtools_module("components") {
     "CSSPropertyDocsView.ts",
     "CSSPropertyIconResolver.ts",
     "CSSQuery.ts",
+    "CSSVariableValueView.ts",
     "ComputedStyleProperty.ts",
     "ComputedStyleTrace.ts",
     "ElementsBreadcrumbs.ts",
     "ElementsBreadcrumbsUtils.ts",
-    "ElementsPanelLink.ts",
     "ElementsTreeExpandButton.ts",
     "Helper.ts",
     "LayoutPane.ts",
@@ -53,6 +53,7 @@ devtools_module("components") {
     "../../../core/sdk:bundle",
     "../../../ui/components/helpers:bundle",
     "../../../ui/components/icon_button:bundle",
+    "../../../ui/components/legacy_wrapper:bundle",
     "../../../ui/components/node_text:bundle",
     "../../../ui/components/render_coordinator:bundle",
     "../../../ui/components/survey_link:bundle",
@@ -77,6 +78,8 @@ devtools_entrypoint("bundle") {
     "../../../../test/unittests/front_end/panels/elements/components",
     "../../../ui/components/docs/*",
     "../../application/components/*",
-    "../../issues/*",
+
+    # TODO : Remove after moving CSSHintDetailView to ui folder
+    "../../protocol_monitor/*",
   ]
 }

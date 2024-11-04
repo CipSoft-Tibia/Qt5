@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtQuick
 import QtTest
@@ -1229,5 +1229,26 @@ TestCase {
         compare(control.first.pressed, false)
         compare(control.first.value, 0.2)
         compare(control.first.position, 0.2)
+    }
+
+    function test_clickFocus() {
+        let control = createTemporaryObject(sliderComponent, testCase)
+        verify(control)
+
+        // Click on the second handle - it should get focus on press.
+        mousePress(control, control.second.handle.x, control.second.handle.y, Qt.LeftButton)
+        if (Qt.platform.os === "osx")
+            verify(!control.activeFocus)
+        else
+            verify(control.activeFocus)
+        mouseRelease(control, control.second.handle.x, control.second.handle.y, Qt.LeftButton)
+
+        // Click on the first handle - it should get focus on press.
+        mousePress(control, control.first.handle.x, control.first.handle.y, Qt.LeftButton)
+        if (Qt.platform.os === "osx")
+            verify(!control.activeFocus)
+        else
+            verify(control.activeFocus)
+        mouseRelease(control, control.first.handle.x, control.first.handle.y, Qt.LeftButton)
     }
 }

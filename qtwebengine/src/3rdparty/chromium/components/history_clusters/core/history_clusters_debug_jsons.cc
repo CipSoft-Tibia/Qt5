@@ -63,6 +63,11 @@ base::Value::Dict GetDebugJSONDictForAnnotatedVisit(
                       ? ComputeURLForDeduping(visit.url_row.url()).spec()
                       : visit.content_annotations.search_normalized_url.spec());
   debug_visit.Set("visitSource", base::NumberToString(visit.source));
+  debug_visit.Set("isKnownToSync", visit.visit_row.is_known_to_sync);
+  debug_visit.Set("normalized_url",
+                  visit.content_annotations.search_normalized_url.is_empty()
+                      ? visit.url_row.url().spec()
+                      : visit.content_annotations.search_normalized_url.spec());
 
   // Content annotations.
   base::Value::List debug_categories;
@@ -86,6 +91,10 @@ base::Value::Dict GetDebugJSONDictForAnnotatedVisit(
   debug_visit.Set("visibility",
                   visit.content_annotations.model_annotations.visibility_score);
   debug_visit.Set("searchTerms", visit.content_annotations.search_terms);
+  if (!visit.content_annotations.search_terms.empty()) {
+    debug_visit.Set("hasRelatedSearches",
+                    !visit.content_annotations.related_searches.empty());
+  }
   debug_visit.Set("hasUrlKeyedImage",
                   visit.content_annotations.has_url_keyed_image);
   return debug_visit;
@@ -121,7 +130,7 @@ std::string GetDebugJSONForClusters(
   base::Value::List debug_clusters_list;
   for (const auto& cluster : clusters) {
     base::Value::Dict debug_cluster;
-
+    debug_cluster.Set("id", static_cast<int>(cluster.cluster_id));
     debug_cluster.Set("label", cluster.label.value_or(u""));
     base::Value::Dict debug_keyword_to_data_map;
     for (const auto& keyword_data_p : cluster.keyword_to_data_map) {
@@ -146,6 +155,9 @@ std::string GetDebugJSONForClusters(
       base::Value::Dict debug_visit =
           GetDebugJSONDictForAnnotatedVisit(visit.annotated_visit);
       debug_visit.Set("score", visit.score);
+      debug_visit.Set("interaction_state",
+                      history::ClusterVisit::InteractionStateToInt(
+                          visit.interaction_state));
       debug_visit.Set("site_engagement_score", visit.engagement_score);
 
       base::Value::List debug_duplicate_visits;
@@ -160,10 +172,11 @@ std::string GetDebugJSONForClusters(
     debug_clusters_list.Append(std::move(debug_cluster));
   }
 
+  base::Value::Dict debug_value;
+  debug_value.Set("clusters", std::move(debug_clusters_list));
   std::string debug_string;
   if (!base::JSONWriter::WriteWithOptions(
-          debug_clusters_list, base::JSONWriter::OPTIONS_PRETTY_PRINT,
-          &debug_string)) {
+          debug_value, base::JSONWriter::OPTIONS_PRETTY_PRINT, &debug_string)) {
     debug_string = "Error: Could not write clusters to JSON.";
   }
   return debug_string;

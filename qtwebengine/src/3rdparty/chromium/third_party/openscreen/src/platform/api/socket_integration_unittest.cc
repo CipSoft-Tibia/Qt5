@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,7 +21,7 @@ TEST(SocketIntegrationTest, ResolvesLocalEndpoint_IPv4) {
   FakeTaskRunner task_runner(&clock);
   testing::StrictMock<FakeUdpSocket::MockClient> client;
   ErrorOr<std::unique_ptr<UdpSocket>> create_result = UdpSocket::Create(
-      &task_runner, &client, IPEndpoint{IPAddress(kIpV4AddrAny), 0});
+      task_runner, &client, IPEndpoint{IPAddress(kIpV4AddrAny), 0});
   ASSERT_TRUE(create_result) << create_result.error();
   const auto socket = std::move(create_result.value());
   EXPECT_CALL(client, OnBound(_)).Times(1);
@@ -39,7 +39,7 @@ TEST(SocketIntegrationTest, ResolvesLocalEndpoint_IPv6) {
   FakeTaskRunner task_runner(&clock);
   testing::StrictMock<FakeUdpSocket::MockClient> client;
   ErrorOr<std::unique_ptr<UdpSocket>> create_result = UdpSocket::Create(
-      &task_runner, &client, IPEndpoint{IPAddress(kIpV6AddrAny), 0});
+      task_runner, &client, IPEndpoint{IPAddress(kIpV6AddrAny), 0});
   ASSERT_TRUE(create_result) << create_result.error();
   const auto socket = std::move(create_result.value());
   EXPECT_CALL(client, OnBound(_)).Times(1);

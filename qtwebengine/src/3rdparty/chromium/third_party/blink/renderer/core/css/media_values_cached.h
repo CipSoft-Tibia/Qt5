@@ -8,6 +8,7 @@
 #include "services/device/public/mojom/device_posture_provider.mojom-blink.h"
 #include "third_party/blink/public/common/css/forced_colors.h"
 #include "third_party/blink/public/common/css/navigation_controls.h"
+#include "third_party/blink/public/common/css/scripting.h"
 #include "third_party/blink/public/mojom/css/preferred_color_scheme.mojom-blink.h"
 #include "third_party/blink/public/mojom/css/preferred_contrast.mojom-blink.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom-blink.h"
@@ -41,18 +42,23 @@ class CORE_EXPORT MediaValuesCached final : public MediaValues {
     bool device_supports_hdr = false;
     int color_bits_per_component = 24;
     int monochrome_bits_per_component = 0;
+    bool inverted_colors = false;
     mojom::blink::PointerType primary_pointer_type =
         mojom::blink::PointerType::kPointerNone;
     // Bitmask of |ui::PointerType|
     int available_pointer_types = ui::POINTER_TYPE_NONE;
     mojom::blink::HoverType primary_hover_type =
         mojom::blink::HoverType::kHoverNone;
+    mojom::blink::OutputDeviceUpdateAbilityType
+        output_device_update_ability_type =
+            mojom::blink::OutputDeviceUpdateAbilityType::kFastType;
     // Bitmask of |ui::HoverType|
     int available_hover_types = ui::HOVER_TYPE_NONE;
     float em_size = 16.f;
     float ex_size = 8.f;
     float ch_size = 8.f;
     float ic_size = 16.f;
+    float cap_size = 16.f;
     float line_height = 0;
     bool three_d_enabled = false;
     bool strict_mode = true;
@@ -66,12 +72,14 @@ class CORE_EXPORT MediaValuesCached final : public MediaValues {
         mojom::blink::PreferredContrast::kNoPreference;
     bool prefers_reduced_motion = false;
     bool prefers_reduced_data = false;
+    bool prefers_reduced_transparency = false;
     ForcedColors forced_colors = ForcedColors::kNone;
     NavigationControls navigation_controls = NavigationControls::kNone;
     int horizontal_viewport_segments = 0;
     int vertical_viewport_segments = 0;
     device::mojom::blink::DevicePostureType device_posture =
         device::mojom::blink::DevicePostureType::kContinuous;
+    Scripting scripting = Scripting::kNone;
 
     MediaValuesCachedData();
     explicit MediaValuesCachedData(Document&);
@@ -89,6 +97,8 @@ class CORE_EXPORT MediaValuesCached final : public MediaValues {
       data.primary_pointer_type = primary_pointer_type;
       data.available_pointer_types = available_pointer_types;
       data.primary_hover_type = primary_hover_type;
+      data.output_device_update_ability_type =
+          output_device_update_ability_type;
       data.available_hover_types = available_hover_types;
       data.em_size = em_size;
       data.ex_size = ex_size;
@@ -103,11 +113,14 @@ class CORE_EXPORT MediaValuesCached final : public MediaValues {
       data.preferred_contrast = preferred_contrast;
       data.prefers_reduced_motion = prefers_reduced_motion;
       data.prefers_reduced_data = prefers_reduced_data;
+      data.prefers_reduced_transparency = prefers_reduced_transparency;
       data.forced_colors = forced_colors;
       data.navigation_controls = navigation_controls;
       data.horizontal_viewport_segments = horizontal_viewport_segments;
       data.vertical_viewport_segments = vertical_viewport_segments;
       data.device_posture = device_posture;
+      data.inverted_colors = inverted_colors;
+      data.scripting = scripting;
       return data;
     }
   };
@@ -124,9 +137,12 @@ class CORE_EXPORT MediaValuesCached final : public MediaValues {
   bool DeviceSupportsHDR() const override;
   int ColorBitsPerComponent() const override;
   int MonochromeBitsPerComponent() const override;
+  bool InvertedColors() const override;
   mojom::blink::PointerType PrimaryPointerType() const override;
   int AvailablePointerTypes() const override;
   mojom::blink::HoverType PrimaryHoverType() const override;
+  mojom::blink::OutputDeviceUpdateAbilityType OutputDeviceUpdateAbilityType()
+      const override;
   int AvailableHoverTypes() const override;
   bool ThreeDEnabled() const override;
   bool StrictMode() const override;
@@ -139,11 +155,13 @@ class CORE_EXPORT MediaValuesCached final : public MediaValues {
   mojom::blink::PreferredContrast GetPreferredContrast() const override;
   bool PrefersReducedMotion() const override;
   bool PrefersReducedData() const override;
+  bool PrefersReducedTransparency() const override;
   ForcedColors GetForcedColors() const override;
   NavigationControls GetNavigationControls() const override;
   int GetHorizontalViewportSegments() const override;
   int GetVerticalViewportSegments() const override;
   device::mojom::blink::DevicePostureType GetDevicePosture() const override;
+  Scripting GetScripting() const override;
 
   void OverrideViewportDimensions(double width, double height);
 
@@ -159,6 +177,8 @@ class CORE_EXPORT MediaValuesCached final : public MediaValues {
   float RicFontSize(float zoom) const override;
   float LineHeight(float zoom) const override;
   float RootLineHeight(float zoom) const override;
+  float CapFontSize(float zoom) const override;
+  float RcapFontSize(float zoom) const override;
   double ViewportWidth() const override;
   double ViewportHeight() const override;
   double SmallViewportWidth() const override;

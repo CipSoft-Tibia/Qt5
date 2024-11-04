@@ -49,8 +49,9 @@ ObjectPaintInvalidatorWithContext::ComputePaintInvalidationReason() {
   if (context_.fragment_data->PaintOffset() != context_.old_paint_offset)
     return PaintInvalidationReason::kLayout;
 
-  if (object_.ShouldDoFullPaintInvalidation())
-    return object_.FullPaintInvalidationReason();
+  if (object_.ShouldDoFullPaintInvalidation()) {
+    return object_.PaintInvalidationReasonForPrePaint();
+  }
 
   if (object_.GetDocument().InForcedColorsMode() && object_.IsLayoutBlockFlow())
     return PaintInvalidationReason::kBackplate;
@@ -80,8 +81,9 @@ void ObjectPaintInvalidatorWithContext::InvalidatePaintWithComputedReason(
       return;
     // See layout_selection.cc SetShouldInvalidateIfNeeded() for the reason
     // for the IsSVGText() condition here.
-    if (!object_.CanBeSelectionLeaf() && !object_.IsSVGText())
+    if (!object_.CanBeSelectionLeaf()) {
       return;
+    }
 
     reason = PaintInvalidationReason::kSelection;
     if (const auto* selection_client =

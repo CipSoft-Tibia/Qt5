@@ -11,9 +11,14 @@
 #include "include/core/SkTypes.h"
 #include "include/private/base/SkTemplates.h"
 #include "include/private/base/SkTo.h"
-#include "src/base/SkLeanWindows.h"
 
+#if defined(SK_BUILD_FOR_WIN)
+#include "src/base/SkLeanWindows.h"
+#endif
+
+#include <ctime>
 #include <chrono>
+#include <ratio>
 
 void SkTime::DateTime::toISO8601(SkString* dst) const {
     if (dst) {
@@ -30,7 +35,7 @@ void SkTime::DateTime::toISO8601(SkString* dst) const {
     }
 }
 
-#ifdef SK_BUILD_FOR_WIN
+#if defined(SK_BUILD_FOR_WIN)
 
 void SkTime::GetDateTime(DateTime* dt) {
     if (dt) {
@@ -49,7 +54,6 @@ void SkTime::GetDateTime(DateTime* dt) {
 
 #else // SK_BUILD_FOR_WIN
 
-#include <time.h>
 void SkTime::GetDateTime(DateTime* dt) {
     if (dt) {
         time_t m_time;

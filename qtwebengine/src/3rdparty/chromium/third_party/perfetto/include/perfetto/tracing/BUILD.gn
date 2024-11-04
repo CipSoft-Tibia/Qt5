@@ -16,6 +16,7 @@ source_set("tracing") {
   public_deps = [
     "../../../protos/perfetto/common:cpp",
     "../../../protos/perfetto/common:zero",
+    "../../../protos/perfetto/config:cpp",
     "../../../protos/perfetto/config/track_event:cpp",
     "../../../protos/perfetto/trace:zero",
     "../../../protos/perfetto/trace/interned_data:zero",
@@ -48,6 +49,7 @@ source_set("tracing") {
     "internal/track_event_data_source.h",
     "internal/track_event_internal.h",
     "internal/track_event_interned_fields.h",
+    "internal/track_event_legacy.h",
     "internal/track_event_macros.h",
     "internal/write_track_event_args.h",
     "locked_handle.h",

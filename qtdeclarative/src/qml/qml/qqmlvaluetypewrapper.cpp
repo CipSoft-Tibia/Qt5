@@ -58,15 +58,6 @@ void Heap::QQmlValueTypeWrapper::destroy()
     ReferenceObject::destroy();
 }
 
-void Heap::QQmlValueTypeWrapper::setData(const void *data)
-{
-    if (auto *gadget = gadgetPtr())
-        metaType().destruct(gadget);
-    if (!gadgetPtr())
-        setGadgetPtr(::operator new(metaType().sizeOf()));
-    metaType().construct(gadgetPtr(), data);
-}
-
 QVariant Heap::QQmlValueTypeWrapper::toVariant() const
 {
     Q_ASSERT(gadgetPtr());
@@ -348,12 +339,6 @@ static ReturnedValue getGadgetProperty(ExecutionEngine *engine,
                     time, valueTypeWrapper, index, referenceFlags(metaObject, index));
     };
 
-#if QT_CONFIG(qml_locale)
-    const auto wrapLocale = [engine](const QLocale &locale) {
-        return QQmlLocale::wrap(engine, locale);
-    };
-#endif
-
 #define VALUE_TYPE_LOAD(metatype, cpptype, constructor) \
     case metatype: { \
         cpptype v; \
@@ -406,9 +391,6 @@ static ReturnedValue getGadgetProperty(ExecutionEngine *engine,
     VALUE_TYPE_LOAD(QMetaType::QJsonValue, QJsonValue, wrapJsonValue);
     VALUE_TYPE_LOAD(QMetaType::QJsonObject, QJsonObject, wrapJsonObject);
     VALUE_TYPE_LOAD(QMetaType::QJsonArray, QJsonArray, wrapJsonArray);
-#if QT_CONFIG(qml_locale)
-    VALUE_TYPE_LOAD(QMetaType::QLocale, QLocale, wrapLocale);
-#endif
     case QMetaType::QPixmap:
     case QMetaType::QImage: {
         QVariant v(metaType);

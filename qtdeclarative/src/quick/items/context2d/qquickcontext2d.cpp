@@ -44,6 +44,8 @@
 
 #include <private/qsgdefaultrendercontext_p.h>
 
+#include <QtCore/qpointer.h>
+
 #include <cmath>
 #if defined(Q_OS_QNX) || defined(Q_OS_ANDROID)
 #include <ctype.h>
@@ -932,7 +934,7 @@ void QV4::Heap::QQuickJSContext2DImageData::init()
 
 DEFINE_OBJECT_VTABLE(QQuickJSContext2DImageData);
 
-static QV4::ReturnedValue qt_create_image_data(qreal w, qreal h, QV4::ExecutionEngine *v4, const QImage& image)
+static QV4::ReturnedValue qt_create_image_data(qreal w, qreal h, QV4::ExecutionEngine *v4, QImage&& image)
 {
     QV4::Scope scope(v4);
     QQuickContext2DEngineData *ed = engineData(scope.engine);
@@ -946,7 +948,7 @@ static QV4::ReturnedValue qt_create_image_data(qreal w, qreal h, QV4::ExecutionE
     } else {
         // After qtbase 88e56d0932a3615231adf40d5ae033e742d72c33, the image size can be off by one.
         Q_ASSERT(qAbs(image.width() - qRound(w * image.devicePixelRatio())) <= 1 && qAbs(image.height() - qRound(h * image.devicePixelRatio())) <= 1);
-        *pixelData->d()->image = image.format() == QImage::Format_ARGB32 ? image : image.convertToFormat(QImage::Format_ARGB32);
+        *pixelData->d()->image = image.format() == QImage::Format_ARGB32 ? std::move(image) : std::move(image).convertToFormat(QImage::Format_ARGB32);
     }
 
     QV4::Scoped<QQuickJSContext2DImageData> imageData(scope, scope.engine->memoryManager->allocate<QQuickJSContext2DImageData>());
@@ -3410,7 +3412,7 @@ bool QQuickJSContext2DPixelData::virtualPut(QV4::Managed *m, QV4::PropertyKey id
 /*!
     \qmlmethod CanvasImageData QtQuick::Context2D::createImageData(CanvasImageData imageData)
 
-    Creates a CanvasImageData object with the same dimensions as the argument.
+    Creates a CanvasImageData object with the same dimensions as the \a imageData argument.
 */
 /*!
     \qmlmethod CanvasImageData QtQuick::Context2D::createImageData(Url imageUrl)
@@ -3441,7 +3443,7 @@ QV4::ReturnedValue QQuickJSContext2DPrototype::method_createImageData(const QV4:
             }
         } else if (arg0->isString()) {
             QImage image = r->d()->context()->createPixmap(QUrl(arg0->toQStringNoThrow()))->image();
-            RETURN_RESULT(qt_create_image_data(image.width(), image.height(), scope.engine, image));
+            RETURN_RESULT(qt_create_image_data(image.width(), image.height(), scope.engine, std::move(image)));
         }
     } else if (argc == 2) {
         qreal w = argv[0].toNumber();
@@ -3482,7 +3484,7 @@ QV4::ReturnedValue QQuickJSContext2DPrototype::method_getImageData(const QV4::Fu
             THROW_DOM(DOMEXCEPTION_INDEX_SIZE_ERR, "getImageData(): Invalid arguments");
 
         QImage image = r->d()->context()->canvas()->toImage(QRectF(x, y, w, h));
-        RETURN_RESULT(qt_create_image_data(w, h, scope.engine, image));
+        RETURN_RESULT(qt_create_image_data(w, h, scope.engine, std::move(image)));
     }
     RETURN_RESULT(QV4::Encode::null());
 }
@@ -4139,6 +4141,7 @@ static int textAlignOffset(QQuickContext2D::TextAlignType value, const QFontMetr
         break;
     case QQuickContext2D::Right:
         offset = metrics.horizontalAdvance(text);
+        break;
     case QQuickContext2D::Left:
     default:
         break;
@@ -4152,9 +4155,9 @@ void QQuickContext2D::setGrabbedImage(const QImage& grab)
     m_grabbed = true;
 }
 
-QQmlRefPointer<QQuickCanvasPixmap> QQuickContext2D::createPixmap(const QUrl& url)
+QQmlRefPointer<QQuickCanvasPixmap> QQuickContext2D::createPixmap(const QUrl& url, QSizeF sourceSize)
 {
-    return m_canvas->loadedPixmap(url);
+    return m_canvas->loadedPixmap(url, sourceSize);
 }
 
 QPainterPath QQuickContext2D::createTextGlyphs(qreal x, qreal y, const QString& text)

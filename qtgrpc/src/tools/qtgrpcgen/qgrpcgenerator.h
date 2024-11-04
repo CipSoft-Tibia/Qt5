@@ -38,6 +38,10 @@ private:
             const ::google::protobuf::FileDescriptor *file,
             ::google::protobuf::compiler::GeneratorContext *generatorContext) const;
 
+    void GenerateQmlClientServices(
+            const ::google::protobuf::FileDescriptor *file,
+            ::google::protobuf::compiler::GeneratorContext *generatorContext) const;
+
     [[maybe_unused]] bool GenerateServerServices(
             const ::google::protobuf::FileDescriptor *file,
             ::google::protobuf::compiler::GeneratorContext *generatorContext) const;
@@ -46,8 +50,8 @@ private:
             const ::google::protobuf::FileDescriptor *file);
 
     template <typename ServicePrinterT>
-    static void RunPrinter(const ::google::protobuf::FileDescriptor *file,
-                           std::shared_ptr<::google::protobuf::io::Printer> printer);
+    void RunPrinter(const ::google::protobuf::FileDescriptor *file,
+                    std::shared_ptr<::google::protobuf::io::Printer> printer) const;
 };
 } // namespace QtGrpc
 

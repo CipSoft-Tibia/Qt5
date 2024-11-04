@@ -19,7 +19,8 @@ package. It works as an extension to Google's \c protoc tool.
 \section1 Usage
 
 Qt provides CMake functions that ease the use of the \c qtprotobufgen tool.
-When using CMake as a build tool you should prefer using the Qt CMake API.
+When using CMake as a build tool you should prefer using the
+\l{CMake Commands in Qt6 Protobuf}{Qt CMake API}.
 For build systems other than CMake, adapt the commands described in
 \l{Running manually}.
 

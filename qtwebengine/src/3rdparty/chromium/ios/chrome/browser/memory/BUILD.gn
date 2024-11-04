@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 source_set("memory") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "memory_debugger.h",
     "memory_debugger.mm",
@@ -16,8 +15,8 @@ source_set("memory") {
     "//base",
     "//build:branding_buildflags",
     "//components/prefs",
-    "//ios/chrome/browser/prefs:pref_names",
-    "//ios/chrome/browser/ui/util",
+    "//ios/chrome/browser/shared/model/prefs:pref_names",
+    "//ios/chrome/browser/shared/ui/util",
     "//ios/chrome/common/ui/util",
   ]
 }

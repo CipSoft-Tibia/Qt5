@@ -296,24 +296,23 @@ bool Manifest::ValidateManifest(
     Feature::Availability result = map_entry.second->IsAvailableToManifest(
         hashed_id_, type_, location_, manifest_version_, kUnspecifiedContextId);
     if (!result.is_available())
-      warnings->push_back(InstallWarning(result.message(), map_entry.first));
+      warnings->emplace_back(result.message(), map_entry.first);
   }
 
   // Also generate warnings for keys that are not features.
   for (const auto item : value_) {
     if (!manifest_feature_provider->GetFeature(item.first)) {
-      warnings->push_back(InstallWarning(
+      warnings->emplace_back(
           ErrorUtils::FormatErrorMessage(
               manifest_errors::kUnrecognizedManifestKey, item.first),
-          item.first));
+          item.first);
     }
   }
 
   if (IsUnpackedLocation(location_) &&
       value_.FindByDottedPath(manifest_keys::kDifferentialFingerprint)) {
-    warnings->push_back(
-        InstallWarning(manifest_errors::kHasDifferentialFingerprint,
-                       manifest_keys::kDifferentialFingerprint));
+    warnings->emplace_back(manifest_errors::kHasDifferentialFingerprint,
+                           manifest_keys::kDifferentialFingerprint);
   }
   return true;
 }
@@ -340,13 +339,6 @@ const std::string* Manifest::FindStringPath(base::StringPiece path) const {
 
 const base::Value::Dict* Manifest::FindDictPath(base::StringPiece path) const {
   return available_values_.FindDictByDottedPath(path);
-}
-
-const base::Value* Manifest::FindDictPathAsValue(base::StringPiece path) const {
-  const base::Value* result = available_values_.FindByDottedPath(path);
-  if (result && result->is_dict())
-    return result;
-  return nullptr;
 }
 
 bool Manifest::GetList(const std::string& path,

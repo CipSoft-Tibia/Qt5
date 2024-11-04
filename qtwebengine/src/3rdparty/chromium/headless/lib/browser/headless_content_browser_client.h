@@ -65,6 +65,7 @@ class HeadlessContentBrowserClient : public content::ContentBrowserClient {
       base::OnceCallback<void(content::CertificateRequestResultType)> callback)
       override;
   base::OnceClosure SelectClientCertificate(
+      content::BrowserContext* browser_context,
       content::WebContents* web_contents,
       net::SSLCertRequestInfo* cert_request_info,
       net::ClientCertIdentityList client_certs,
@@ -89,9 +90,13 @@ class HeadlessContentBrowserClient : public content::ContentBrowserClient {
 
   std::string GetProduct() override;
   std::string GetUserAgent() override;
+  blink::UserAgentMetadata GetUserAgentMetadata() override;
 
   bool CanAcceptUntrustedExchangesIfNeeded() override;
   device::GeolocationManager* GetGeolocationManager() override;
+#if BUILDFLAG(IS_WIN)
+  void SessionEnding(absl::optional<DWORD> control_type) override;
+#endif
 
 #if defined(HEADLESS_USE_POLICY)
   std::vector<std::unique_ptr<content::NavigationThrottle>>

@@ -1,7 +1,7 @@
 /*
 
 * Copyright (C) 2016 The Qt Company Ltd.
-* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 */
 
@@ -94,7 +94,7 @@ public:
         mainToolBar = new QToolBar(TrPreviewToolClass);
         mainToolBar->setObjectName("mainToolBar");
         mainToolBar->setOrientation(Qt::Horizontal);
-        TrPreviewToolClass->addToolBar(Qt::TopToolBarArea, mainToolBar);
+        TrPreviewToolClass->addToolBar(Qt::ToolBarArea::TopToolBarArea, mainToolBar);
         statusBar = new QStatusBar(TrPreviewToolClass);
         statusBar->setObjectName("statusBar");
         TrPreviewToolClass->setStatusBar(statusBar);
@@ -115,7 +115,7 @@ public:
         vboxLayout->addWidget(viewForms);
 
         dwForms->setWidget(dockWidgetContents);
-        TrPreviewToolClass->addDockWidget(Qt::LeftDockWidgetArea, dwForms);
+        TrPreviewToolClass->addDockWidget(Qt::DockWidgetArea::LeftDockWidgetArea, dwForms);
 
         menuBar->addAction(menuFile->menuAction());
         menuBar->addAction(menuView->menuAction());

@@ -1,16 +1,9 @@
 // This file is generated from a similarly-named Perl script in the BoringSSL
 // source tree. Do not edit by hand.
 
-#if defined(__has_feature)
-#if __has_feature(memory_sanitizer) && !defined(OPENSSL_NO_ASM)
-#define OPENSSL_NO_ASM
-#endif
-#endif
+#include <openssl/asm_base.h>
 
-#if defined(__x86_64__) && !defined(OPENSSL_NO_ASM) && defined(__ELF__)
-#if defined(BORINGSSL_PREFIX)
-#include <boringssl_prefix_symbols_asm.h>
-#endif
+#if !defined(OPENSSL_NO_ASM) && defined(OPENSSL_X86_64) && defined(__ELF__)
 .text	
 
 
@@ -24,6 +17,7 @@
 gcm_gmult_ssse3:
 .cfi_startproc	
 
+_CET_ENDBR
 	movdqu	(%rdi),%xmm0
 	movdqa	.Lreverse_bytes(%rip),%xmm10
 	movdqa	.Llow4_mask(%rip),%xmm2
@@ -214,6 +208,7 @@ gcm_gmult_ssse3:
 gcm_ghash_ssse3:
 .cfi_startproc	
 
+_CET_ENDBR
 	movdqu	(%rdi),%xmm0
 	movdqa	.Lreverse_bytes(%rip),%xmm10
 	movdqa	.Llow4_mask(%rip),%xmm11
@@ -415,6 +410,7 @@ gcm_ghash_ssse3:
 
 .size	gcm_ghash_ssse3,.-gcm_ghash_ssse3
 
+.section	.rodata
 .align	16
 
 
@@ -423,8 +419,5 @@ gcm_ghash_ssse3:
 
 .Llow4_mask:
 .quad	0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f
-#endif
-#if defined(__ELF__)
-// See https://www.airs.com/blog/archives/518.
-.section .note.GNU-stack,"",%progbits
+.text	
 #endif

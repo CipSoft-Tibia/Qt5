@@ -39,6 +39,8 @@ public:
     bool generateFieldEnum() const { return m_generateFieldEnum; }
     const std::string &extraNamespace() const { return m_extraNamespace; }
     const std::string &exportMacro() const { return m_exportMacro; }
+    const std::string &exportMacroFilename() const { return m_exportMacroFilename; }
+    bool generateMacroExportFile() const { return m_generateMacroExportFile; }
     const std::string &qmlUri() const { return m_qmlUri; }
 
 private:
@@ -47,6 +49,8 @@ private:
     bool m_generateFieldEnum;
     std::string m_extraNamespace;
     std::string m_exportMacro;
+    std::string m_exportMacroFilename;
+    bool m_generateMacroExportFile;
     std::string m_qmlUri;
     bool m_qml;
 };

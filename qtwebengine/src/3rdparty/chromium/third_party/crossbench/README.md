@@ -3,9 +3,13 @@
 Crossbench is a cross-browser/cross-benchmark runner to extract performance
 numbers.
 
+Mailing list: <crossbench@chromium.org>
+
+Issues/Bugs: [Tests > CrossBench](https://bugs.chromium.org/p/chromium/issues/list?q=component%3ATest%3ECrossBench)
+
 Supported Browsers: Chrome/Chromium, Firefox, Safari and Edge.
 
-Supported OS: macOS, linux and windows.
+Supported OS: macOS, Android, linux and windows.
 
 ## Basic usage:
 ### Chromium Devs (with a full chromium checkout)
@@ -27,17 +31,17 @@ Run the latest [speedometer benchmark](https://browserbench.org/Speedometer/)
 
 Profile individual line items (with pprof on linux):
 ```bash
-./cb.py speedometer --probe=profiling --separate
+./cb.py speedometer --probe='profiling' --separate
 ```
 
 Use a custom chrome build and only run a subset of the stories:
 ```bash
-./cb.py speedometer --browser=$PATH --probe=profiling --story='Ember.*'
+./cb.py speedometer --browser=$PATH --probe='profiling' --story='Ember.*'
 ```
 
 Profile a website for 17 seconds on Chrome M100 (auto-downloading on macOS and linux):
 ```bash
-./cb.py loading --browser=chrome-m100 --probe=profiling --url=www.cnn.com,17s
+./cb.py loading --browser=chrome-m100 --probe='profiling' --url=www.cnn.com,17s
 ```
 
 
@@ -53,7 +57,7 @@ multiple browsers use `--browser-config` (or pass simple flags after `--` to
 the browser).
 
 ```bash
-./cb.py speedometer --browser=$BROWSER -- --enable-field-trial-config 
+./cb.py speedometer --browser=$BROWSER -- --enable-field-trial-config
 ```
 
 #### Browser Config File
@@ -74,7 +78,7 @@ Probes define a way to extract arbitrary (performance) numbers from a
 host or running browser. This can reach from running simple JS-snippets to
 extract page-specific numbers to system-wide profiling.
 
-Multiple probes can be added with repeated `--probe=XXX` options.
+Multiple probes can be added with repeated `--probe='XXX'` options.
 You can use the `describe probes` subcommand to list all probes:
 
 ```bash
@@ -95,7 +99,7 @@ all options.
 ./cb.py describe probe v8.log
 
 # Use inline hjson to configure a probe:
-./cb.py speedometer --probe='v8.log{prof:true}'
+./cb.py speedometer --probe='v8.log:{prof:true}'
 ```
 
 #### Probe Config File
@@ -144,10 +148,13 @@ This project uses [poetry](https://python-poetry.org/) deps and package scripts
 to setup the correct environment for testing and debugging.
 
 ```bash
+# a) On debian:
+sudo apt-get install python3.10 python3-poetry
+# b) With python 3.8 to 3.10 installed already:
 pip3 install poetry
 ```
 
-Check that you have poetry on your path and make sure you have the right 
+Check that you have poetry on your path and make sure you have the right
 `$PATH` settings.
 ```bash
 poetry --help || echo "Please update your \$PATH to include poetry bin location";
@@ -159,11 +166,17 @@ python3 -c "import sysconfig; print(sysconfig.get_path('scripts'))";
 Install the necessary dependencies from the lock file using poetry:
 
 ```bash
+# Select the python version you want to use (3.8 to 3.10):
+poetry use 3.10
 poetry install
+
+# For python 3.11 you have to skip pytype support:
+poetry use 3.11
+poetry install --without=dev-pytype
 ```
 
 ## Crossbench
-For local development / non-chromium installation you should 
+For local development / non-chromium installation you should
 use `poetry run cb ...` instead of `./cb.py ...`.
 
 Side-note, beware that poetry eats up an empty `--`:

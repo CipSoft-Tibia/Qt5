@@ -18,6 +18,7 @@
 #include "components/prefs/pref_store.h"
 #include "components/supervised_user/core/common/supervised_users.h"
 #include "components/sync/model/syncable_service.h"
+#include "components/sync/service/sync_type_preference_provider.h"
 #include "url/gurl.h"
 
 class PersistentPrefStore;
@@ -55,6 +56,7 @@ namespace supervised_user {
 // and one with key "Moose:baz" and value "blurp".
 class SupervisedUserSettingsService : public KeyedService,
                                       public syncer::SyncableService,
+                                      public syncer::SyncTypePreferenceProvider,
                                       public PrefStore::Observer {
  public:
   // A callback whose first parameter is a dictionary containing all supervised
@@ -92,7 +94,7 @@ class SupervisedUserSettingsService : public KeyedService,
   // |sequenced_task_runner|. If |load_synchronously| is true, the settings will
   // be loaded synchronously, otherwise asynchronously.
   void Init(base::FilePath profile_path,
-            base::SequencedTaskRunner* sequenced_task_runner,
+            scoped_refptr<base::SequencedTaskRunner> sequenced_task_runner,
             bool load_synchronously);
 
   // Initializes the service by loading its settings from the |pref_store|.
@@ -143,7 +145,7 @@ class SupervisedUserSettingsService : public KeyedService,
   // This may be called regardless of whether the sync server has completed
   // initialization; in either case the local changes will be handled
   // immediately.
-  void SaveItem(const std::string& key, std::unique_ptr<base::Value> value);
+  void SaveItem(const std::string& key, base::Value value);
 
   // Sets the setting with the given `key` to `value`.
   void SetLocalSetting(base::StringPiece key, base::Value value);
@@ -174,6 +176,9 @@ class SupervisedUserSettingsService : public KeyedService,
   // PrefStore::Observer implementation:
   void OnPrefValueChanged(const std::string& key) override;
   void OnInitializationCompleted(bool success) override;
+
+  // SyncTypePreferenceProvider implementation:
+  bool IsCustomPassphraseAllowed() const override;
 
   const base::Value::Dict& LocalSettingsForTest() const;
 

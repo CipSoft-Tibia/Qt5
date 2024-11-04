@@ -25,6 +25,7 @@
 #include "ui/base/emoji/emoji_panel_helper.h"
 #include "ui/base/ime/ash/ime_bridge.h"
 #include "ui/resources/grit/webui_resources.h"
+#include "ui/webui/color_change_listener/color_change_handler.h"
 
 namespace {
 constexpr gfx::Size kExtensionWindowSize(420, 480);
@@ -58,7 +59,6 @@ EmojiUI::EmojiUI(content::WebUI* web_ui)
   webui::SetupWebUIDataSource(
       source, base::make_span(kEmojiPickerResources, kEmojiPickerResourcesSize),
       IDR_EMOJI_PICKER_INDEX_HTML);
-  source->DisableTrustedTypesCSP();
 
   Profile* profile = Profile::FromWebUI(web_ui);
   content::URLDataSource::Add(profile,
@@ -66,6 +66,10 @@ EmojiUI::EmojiUI(content::WebUI* web_ui)
 }
 
 EmojiUI::~EmojiUI() = default;
+
+bool EmojiUI::ShouldShow(const ui::TextInputClient* input_client) {
+  return input_client != nullptr;
+}
 
 void EmojiUI::Show(Profile* profile) {
   if (TabletMode::Get()->InTabletMode()) {
@@ -77,6 +81,12 @@ void EmojiUI::Show(Profile* profile) {
       IMEBridge::Get()->GetInputContextHandler()->GetInputMethod();
   ui::TextInputClient* input_client =
       input_method ? input_method->GetTextInputClient() : nullptr;
+
+  // Does not show emoji picker if there is no input client.
+  if (!ShouldShow(input_client)) {
+    return;
+  }
+
   const bool incognito_mode =
       input_client ? !input_client->ShouldDoLearning() : false;
   gfx::Rect caret_bounds =
@@ -127,6 +137,12 @@ void EmojiUI::Show(Profile* profile) {
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(EmojiUI)
+
+void EmojiUI::BindInterface(
+    mojo::PendingReceiver<color_change_listener::mojom::PageHandler> receiver) {
+  color_provider_handler_ = std::make_unique<ui::ColorChangeHandler>(
+      web_ui()->GetWebContents(), std::move(receiver));
+}
 
 void EmojiUI::BindInterface(
     mojo::PendingReceiver<emoji_picker::mojom::PageHandlerFactory> receiver) {

@@ -52,6 +52,7 @@ public:
     void setBreakOnShaderTranslationError(bool enable);
     void setTessellationMode(QShaderDescription::TessellationMode mode);
     void setTessellationOutputVertexCount(int count);
+    void setMultiViewCount(int count);
 
     void setSpirvOptions(SpirvOptions options);
 

@@ -4,18 +4,23 @@ The Open Screen Library follows the [Chromium C++ coding style](https://chromium
 which, in turn, defers to the [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
 We also follow the [Chromium C++ Do's and Don'ts](https://sites.google.com/a/chromium.org/dev/developers/coding-style/cpp-dos-and-donts).
 
-C++14 language and library features are allowed in the Open Screen Library
-according to the [C++14 use in Chromium](https://chromium.googlesource.com/chromium/src/+/main/styleguide/c++/c++11.md)
-guidelines.
+C++17 is the maximum language level allowed in the library.  For C++11, C++14,
+and C++17 language and library features, we follow [C++ features in
+Chromium](https://chromium.googlesource.com/chromium/src/+/main/styleguide/c++/c++-features.md)
+guidelines with the following exceptions noted below.
 
 In general Open Screen follows [You Aren't Gonna Need
-It](https://martinfowler.com/bliki/Yagni.html) principles.
+It](https://martinfowler.com/bliki/Yagni.html) principles.  This means we avoid
+adding generic classes, functions, or libraries that are only used in one place
+for one thing.  Once there are multiple usages of a function that can be handled
+in a generic way, that function is a candidate for our base libraries in `util/`
+and `platform/base`.
 
 ## Disallowed Styles and Features
 
 Blink style is *not allowed* anywhere in the Open Screen Library.
 
-C++17-only features are currently *not allowed* in the Open Screen Library.
+C++20-only features are currently *not allowed* in the Open Screen Library.
 
 GCC does not support designated initializers for non-trivial types.  This means
 that the `.member = value` struct initialization syntax is not supported unless
@@ -28,7 +33,8 @@ unions, complex constructors, etc.).
 - `<chrono>` is allowed and encouraged for representation of time.
 - Abseil types are allowed based on the allowed list in [DEPS](
   https://chromium.googlesource.com/openscreen/+/refs/heads/master/DEPS).
-- However, Abseil types **must not be used in public APIs**.
+- However, Abseil types **must not be used in public APIs**.  Public APIs are
+  headers in targets with GN visibility outside the library or in public/ folders.
 - `<thread>` and `<mutex>` are allowed, but discouraged from general use as the
   library only needs to handle threading in very specific places;
   see [threading.md](threading.md).
@@ -36,7 +42,9 @@ unions, complex constructors, etc.).
   needed; for example, implementing operator< for use in an STL container does
   not require implementing all comparison operators.
 
-## Code Syntax
+## 
+
+Code Syntax
 
 - Braces are optional for single-line if statements; follow the style of
   surrounding code.
@@ -50,6 +58,8 @@ unions, complex constructors, etc.).
       declare a type alias at namespace scope for that identifier instead of using
       the POD type.  For example, if a class Foo has a string identifier, declare
       `using FooId = std::string` in foo.h.
+    - Case by case exceptions may be made for readability/convenience,
+      e.g. as in `platform/base/span.h`.
 
 ## Copy and Move Operators
 
@@ -119,9 +129,11 @@ all of its members.
 ## Template Programming
 
 Template programming should be not be used to write generic algorithms or
-classes when there is no application of the code to more than one type.  When
-similar code applies to multiple types, use templates sparingly and on a
-case-by-case basis.
+classes when there is no usage of the algorithm or class with more than one
+dependent type.  When similar code applies to multiple types, use templates
+sparingly and on a case-by-case basis. Keep template metaprogramming (i.e.,
+conditional and/or computed template parameters) to a minimum to ensure
+type safety.
 
 ## Unit testing
 

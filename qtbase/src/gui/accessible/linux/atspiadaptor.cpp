@@ -469,6 +469,14 @@ QString AtSpiAdaptor::introspect(const QString &path) const
                 "      <arg direction=\"out\" name=\"row_extents\" type=\"i\" />\n"
                 "      <arg direction=\"out\" name=\"col_extents\" type=\"i\" />\n"
                 "    </method>\n"
+                "    <method name=\"GetColumnHeaderCells\">\n"
+                "      <arg direction=\"out\" type=\"a(so)\"/>\n"
+                "      <annotation value=\"QSpiObjectReferenceArray\" name=\"org.qtproject.QtDBus.QtTypeName.Out0\"/>\n"
+                "    </method>\n"
+                "    <method name=\"GetRowHeaderCells\">\n"
+                "      <arg direction=\"out\" type=\"a(so)\"/>\n"
+                "      <annotation value=\"QSpiObjectReferenceArray\" name=\"org.qtproject.QtDBus.QtTypeName.Out0\"/>\n"
+                "    </method>\n"
                 "  </interface>\n"
                 );
 
@@ -2152,7 +2160,7 @@ namespace
     QString atspiColor(const QString &ia2Color)
     {
         // "rgb(%u,%u,%u)" -> "%u,%u,%u"
-        return ia2Color.mid(4, ia2Color.size() - (4+1));
+        return ia2Color.mid(4, ia2Color.size() - (4+1)).replace(u"\\,"_s, u","_s);
     }
 
     QString atspiSize(const QString &ia2Size)
@@ -2214,6 +2222,13 @@ namespace
                 // (on which it produces traceback and fails to read any following text attributes),
                 // but that is the default value, so omit it anyway
                 value = QString();
+        } else if (((ia2Name == "text-line-through-style"_L1 || ia2Name == "text-line-through-type"_L1) && (ia2Value != "none"_L1))
+                   || (ia2Name == "text-line-through-text"_L1 && !ia2Value.isEmpty())) {
+            // if any of the above is set, set "strikethrough" to true, but don't explicitly set
+            // to false otherwise, since any of the others might still be set to indicate strikethrough
+            // and no strikethrough is assumed anyway when nothing is explicitly set
+            name = QStringLiteral("strikethrough");
+            value = QStringLiteral("true");
         } else if (ia2Name == "text-position"_L1) {
             name = QStringLiteral("vertical-align");
             if (value != "baseline"_L1 && value != "super"_L1 && value != "sub"_L1) {
@@ -2786,7 +2801,17 @@ bool AtSpiAdaptor::tableCellInterface(QAccessibleInterface *interface, const QSt
         return false;
     }
 
-    if (function == "GetColumnSpan"_L1) {
+    if (function == "GetColumnHeaderCells"_L1) {
+        QSpiObjectReferenceArray headerCells;
+        const auto headerCellInterfaces = cellInterface->columnHeaderCells();
+        headerCells.reserve(headerCellInterfaces.size());
+        for (QAccessibleInterface *cell : headerCellInterfaces) {
+            const QString childPath = pathForInterface(cell);
+            const QSpiObjectReference ref(connection, QDBusObjectPath(childPath));
+            headerCells << ref;
+        }
+        connection.send(message.createReply(QVariant::fromValue(headerCells)));
+    } else if (function == "GetColumnSpan"_L1) {
         connection.send(message.createReply(QVariant::fromValue(QDBusVariant(
             QVariant::fromValue(cellInterface->columnExtent())))));
     } else if (function == "GetPosition"_L1) {
@@ -2794,6 +2819,16 @@ bool AtSpiAdaptor::tableCellInterface(QAccessibleInterface *interface, const QSt
         const int column = cellInterface->columnIndex();
         connection.send(message.createReply(QVariant::fromValue(QDBusVariant(
             QVariant::fromValue(QPoint(row, column))))));
+    } else if (function == "GetRowHeaderCells"_L1) {
+        QSpiObjectReferenceArray headerCells;
+        const auto headerCellInterfaces = cellInterface->rowHeaderCells();
+        headerCells.reserve(headerCellInterfaces.size());
+        for (QAccessibleInterface *cell : headerCellInterfaces) {
+            const QString childPath = pathForInterface(cell);
+            const QSpiObjectReference ref(connection, QDBusObjectPath(childPath));
+            headerCells << ref;
+        }
+        connection.send(message.createReply(QVariant::fromValue(headerCells)));
     } else if (function == "GetRowSpan"_L1) {
         connection.send(message.createReply(QVariant::fromValue(QDBusVariant(
             QVariant::fromValue(cellInterface->rowExtent())))));
@@ -2807,6 +2842,9 @@ bool AtSpiAdaptor::tableCellInterface(QAccessibleInterface *interface, const QSt
         if (table && table->tableInterface())
             ref = QSpiObjectReference(connection, QDBusObjectPath(pathForInterface(table)));
         connection.send(message.createReply(QVariant::fromValue(QDBusVariant(QVariant::fromValue(ref)))));
+    } else {
+        qCWarning(lcAccessibilityAtspi) << "AtSpiAdaptor::tableCellInterface does not implement" << function << message.path();
+        return false;
     }
 
     return true;

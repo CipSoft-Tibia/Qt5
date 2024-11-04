@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,8 +15,8 @@
 namespace openscreen {
 
 // static
-ErrorOr<SimpleFraction> SimpleFraction::FromString(absl::string_view value) {
-  std::vector<absl::string_view> fields = absl::StrSplit(value, '/');
+ErrorOr<SimpleFraction> SimpleFraction::FromString(std::string_view value) {
+  std::vector<std::string_view> fields = absl::StrSplit(value, '/');
   if (fields.size() != 1 && fields.size() != 2) {
     return Error::Code::kParameterInvalid;
   }

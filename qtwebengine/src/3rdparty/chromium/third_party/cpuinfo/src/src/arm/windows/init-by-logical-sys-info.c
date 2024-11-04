@@ -283,16 +283,21 @@ bool cpu_info_init_by_logical_sys_info(
 		goto clean_up;
 	}
 	prev_uarch = cpuinfo_uarch_unknown;
-	for (uint32_t i = 0, uarch_counter = 0; i < nr_of_cores; i++) {
+	for (uint32_t i = 0, uarch_index = 0; i < nr_of_cores; i++) {
 		if (prev_uarch != cores[i].uarch) {
+			if (i != 0) {
+				uarch_index++;
+			}
+			if (uarch_index >= nr_of_uarchs) {
+				cpuinfo_log_error("more uarchs detected than reported");
+			}
 			prev_uarch = cores[i].uarch;
-			uarchs[uarch_counter].uarch = cores[i].uarch;
-			uarchs[uarch_counter].core_count = 1;
-			uarchs[uarch_counter].processor_count = cores[i].processor_count;
-			uarch_counter++;
+			uarchs[uarch_index].uarch = cores[i].uarch;
+			uarchs[uarch_index].core_count = 1;
+			uarchs[uarch_index].processor_count = cores[i].processor_count;
 		} else if (prev_uarch != cpuinfo_uarch_unknown) {
-			uarchs[uarch_counter].core_count++;
-			uarchs[uarch_counter].processor_count += cores[i].processor_count;
+			uarchs[uarch_index].core_count++;
+			uarchs[uarch_index].processor_count += cores[i].processor_count;
 		}
 	}
 
@@ -689,7 +694,7 @@ static bool parse_relation_cache_info(
 		current_cache->flags = CPUINFO_CACHE_UNIFIED;
 	}
 
-	for (uint32_t i = 0; i <= info->Cache.GroupCount; i++) {
+	for (uint32_t i = 0; i < info->Cache.GroupCount; i++) {
 	/* Zero GroupCount is valid, GroupMask still can store bits set. */
 		const uint32_t group_id = info->Cache.GroupMasks[i].Group;
 		/* Bitmask representing processors in this group belonging to this package */
@@ -832,8 +837,19 @@ static bool connect_packages_cores_clusters_by_processors(
 		processor->cluster = cluster;
 
 		if (chip_info) {
-			strncpy_s(package->name, CPUINFO_PACKAGE_NAME_MAX, chip_info->chip_name_string,
-				strnlen(chip_info->chip_name_string, CPUINFO_PACKAGE_NAME_MAX));
+			size_t converted_chars = 0;
+			if (!WideCharToMultiByte(
+					CP_UTF8,
+					WC_ERR_INVALID_CHARS,
+					chip_info->chip_name_string,
+					-1,
+					package->name,
+					CPUINFO_PACKAGE_NAME_MAX,
+					NULL,
+					NULL)) {
+				cpuinfo_log_error("cpu name character conversion error");
+				return false;
+			};
 		}
 
 		/* Set start indexes and counts per packages / clusters / cores - going backwards */

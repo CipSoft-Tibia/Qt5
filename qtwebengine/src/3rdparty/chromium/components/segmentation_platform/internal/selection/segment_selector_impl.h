@@ -26,7 +26,6 @@ class Clock;
 namespace segmentation_platform {
 
 struct Config;
-class DefaultModelManager;
 class ExperimentalGroupRecorder;
 class FieldTrialRegister;
 class SegmentationResultPrefs;
@@ -40,8 +39,7 @@ class SegmentSelectorImpl : public SegmentSelector {
                       const Config* config,
                       FieldTrialRegister* field_trial_register,
                       base::Clock* clock,
-                      const PlatformOptions& platform_options,
-                      DefaultModelManager* default_model_manager);
+                      const PlatformOptions& platform_options);
 
   SegmentSelectorImpl(SegmentInfoDatabase* segment_database,
                       SignalStorageConfig* signal_storage_config,
@@ -49,8 +47,7 @@ class SegmentSelectorImpl : public SegmentSelector {
                       const Config* config,
                       FieldTrialRegister* field_trial_register,
                       base::Clock* clock,
-                      const PlatformOptions& platform_options,
-                      DefaultModelManager* default_model_manager);
+                      const PlatformOptions& platform_options);
 
   ~SegmentSelectorImpl() override;
 
@@ -107,11 +104,18 @@ class SegmentSelectorImpl : public SegmentSelector {
       SegmentId current_segment_id,
       std::unique_ptr<SegmentResultProvider::SegmentResult> result);
 
+  void RecordFieldTrials() const;
+
   // Loops through all segments, performs discrete mapping, honors finch
   // supplied tie-breakers, TTL, inertia etc, and finds the highest rank.
   // Ignores the segments that have no results.
   std::pair<SegmentId, float> FindBestSegment(
       const SegmentRanks& segment_scores);
+
+  // Wrapped result callback for recording metrics.
+  void CallbackWrapper(base::Time start_time,
+                       SegmentSelectionCallback callback,
+                       const SegmentSelectionResult& result);
 
   std::unique_ptr<SegmentResultProvider> segment_result_provider_;
 
@@ -124,11 +128,8 @@ class SegmentSelectorImpl : public SegmentSelector {
   // The database to determine whether the signal storage requirements are met.
   const raw_ptr<SignalStorageConfig> signal_storage_config_;
 
-  // The default model manager is used for the default model fallbacks.
-  const raw_ptr<DefaultModelManager> default_model_manager_;
-
   // The config for providing configuration params.
-  const raw_ptr<const Config> config_;
+  const raw_ptr<const Config, DanglingUntriaged> config_;
 
   // Delegate that records selected segments to metrics.
   const raw_ptr<FieldTrialRegister> field_trial_register_;
@@ -144,11 +145,16 @@ class SegmentSelectorImpl : public SegmentSelector {
   const PlatformOptions platform_options_;
 
   // Segment selection result is read from prefs on init and used for serving
-  // the clients in the current session.
-  SegmentSelectionResult selected_segment_last_session_;
+  // the clients in the current session. The selection could be updated if it
+  // was unused by the client and a result refresh was triggered. If used by
+  // client, then the result is not updated and effective onnly in the next
+  // session.
+  SegmentSelectionResult selected_segment_;
+  bool used_result_in_current_session_ = false;
 
   // Pointer to the training data collector.
-  raw_ptr<TrainingDataCollector, DanglingUntriaged> training_data_collector_{};
+  raw_ptr<TrainingDataCollector, DanglingUntriaged> training_data_collector_ =
+      nullptr;
 
   base::WeakPtrFactory<SegmentSelectorImpl> weak_ptr_factory_{this};
 };

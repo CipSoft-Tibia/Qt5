@@ -1,5 +1,5 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "tst_qjsmanagedvalue.h"
 
@@ -542,7 +542,7 @@ void tst_QJSManagedValue::toVariant()
     }
 
 
-    // array
+    // variant list
     {
         auto handler = qInstallMessageHandler([](QtMsgType type, const QMessageLogContext &, const QString &) {
             if (type == QtMsgType::QtWarningMsg)
@@ -553,12 +553,10 @@ void tst_QJSManagedValue::toVariant()
         QVariantList listIn;
         listIn << 123 << QStringLiteral("hello");
         QJSManagedValue array(eng.toManagedValue(listIn));
-        QVERIFY(array.isArray());
         QCOMPARE(array.property(QStringLiteral("length")).toInt(), 2);
 
         QVariant retained = array.toVariant();
-        QCOMPARE(retained.metaType(), QMetaType::fromType<QJSValue>());
-        QVERIFY(QJSManagedValue(retained.value<QJSValue>(), &eng).strictlyEquals(array));
+        QCOMPARE(retained.metaType(), QMetaType::fromType<QVariantList>());
 
         QVariantList listOut = retained.toList();
         QCOMPARE(listOut.size(), listIn.size());
@@ -566,7 +564,6 @@ void tst_QJSManagedValue::toVariant()
             QCOMPARE(listOut.at(i), listIn.at(i));
         // round-trip conversion
         QJSManagedValue array2(eng.toManagedValue(retained));
-        QVERIFY(array2.isArray());
         QCOMPARE(array2.property(QStringLiteral("length")).toInt(), array.property(QStringLiteral("length")).toInt());
         for (int i = 0; i < array.property(QStringLiteral("length")).toInt(); ++i)
             QVERIFY(array2.property(i).strictlyEquals(array.property(i)));
@@ -1525,8 +1522,6 @@ void tst_QJSManagedValue::strictlyEquals()
     {
         QJSManagedValue var1(eng.toManagedValue(QVariant(QStringList() << QStringLiteral("a"))));
         QJSManagedValue var2(eng.toManagedValue(QVariant(QStringList() << QStringLiteral("a"))));
-        QVERIFY(var1.isArray());
-        QVERIFY(var2.isArray());
         QVERIFY(!var1.strictlyEquals(var2));
     }
     {
@@ -1582,22 +1577,22 @@ void tst_QJSManagedValue::castToPointer()
 
 void tst_QJSManagedValue::engineDeleted()
 {
-    QJSEngine *eng = new QJSEngine;
+    std::unique_ptr<QJSEngine> eng = std::make_unique<QJSEngine>();
     QObject *temp = new QObject(); // Owned by JS engine, as newQObject() sets JS ownership explicitly
     QJSManagedValue v1(eng->toManagedValue(123));
     QCOMPARE(v1.type(), QJSManagedValue::Number);
     QJSManagedValue v2(eng->toManagedValue(QStringLiteral("ciao")));
     QCOMPARE(v2.type(), QJSManagedValue::String);
-    QJSManagedValue v3(eng->newObject(), eng);
+    QJSManagedValue v3(eng->newObject(), eng.get());
     QCOMPARE(v3.type(), QJSManagedValue::Object);
     QVERIFY(!v3.isNull());
-    QJSManagedValue v4(eng->newQObject(temp), eng);
+    QJSManagedValue v4(eng->newQObject(temp), eng.get());
     QCOMPARE(v4.type(), QJSManagedValue::Object);
     QVERIFY(!v4.isNull());
-    QJSManagedValue v5(QStringLiteral("Hello"), eng);
+    QJSManagedValue v5(QStringLiteral("Hello"), eng.get());
     QCOMPARE(v2.type(), QJSManagedValue::String);
 
-    delete eng;
+    eng.reset();
 
     // You can still check the type, but anything involving the engine is obviously prohibited.
     QCOMPARE(v1.type(), QJSManagedValue::Undefined);

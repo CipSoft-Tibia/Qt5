@@ -61,13 +61,6 @@ struct CoeffLoader {
     return m_tensor.template packet<LoadMode>(index);
   }
 
-  #ifdef EIGEN_USE_SYCL
-  // The placeholder accessors require to be bound to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_tensor.bind(cgh);
-  }
-  #endif
-
  private:
   const Tensor m_tensor;
 };
@@ -97,12 +90,6 @@ struct CoeffLoader<Tensor, true, MakePointer_> {
     return internal::ploadt_ro<typename Tensor::PacketReturnType, LoadMode>(m_data + index);
   }
 
-  #ifdef EIGEN_USE_SYCL
-  // The placeholder accessors require to be bound to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_data.bind(cgh);
-  }
-  #endif
  private:
   typedef typename Tensor::Scalar Scalar;
 
@@ -249,13 +236,6 @@ class SimpleTensorContractionMapper {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Index stride() const {
     return ((side == Lhs) && inner_dim_contiguous && array_size<contract_t>::value > 0) ? m_contract_strides[0] : 1;
   }
-
-  #ifdef EIGEN_USE_SYCL
-  // The placeholder accessors require to be bound to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_tensor.bind(cgh);
-  }
-  #endif
 
   const CoeffLoader<Tensor, Tensor::RawAccess, MakePointer_>& tensor() const {
     return m_tensor;
@@ -463,6 +443,14 @@ class TensorContractionSubMapper {
     return m_base_mapper.template loadPacket<PacketT,Alignment>(i + m_vert_offset, j + m_horiz_offset);
   }
 
+  template <typename PacketT>
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE PacketT loadPacketPartial(Index i, Index j, Index, Index = 0) const {
+    if (UseDirectOffsets) {
+      return m_base_mapper.template loadPacket<PacketT,Alignment>(i, j);
+    }
+    return m_base_mapper.template loadPacket<PacketT,Alignment>(i + m_vert_offset, j + m_horiz_offset);
+  }
+
   template <typename PacketT, int AlignmentType>
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE PacketT loadPacket(Index i, Index j) const {
     if (UseDirectOffsets) {
@@ -493,6 +481,8 @@ class TensorContractionSubMapper {
     return SubMapper(m_base_mapper, i + m_vert_offset, j + m_horiz_offset);
   }
 
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE const Index stride() const { return m_base_mapper.stride(); }
+
   template <typename PacketT, int AlignmentType>
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE PacketT load(Index i) const {
     EIGEN_STATIC_ASSERT((internal::is_same<PacketT, PacketT>::value), YOU_MADE_A_PROGRAMMING_MISTAKE);
@@ -507,13 +497,6 @@ class TensorContractionSubMapper {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool aligned(Index) const {
     return false;
   }
-
-  #ifdef EIGEN_USE_SYCL
-  // The placeholder accessors require to be bound to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_base_mapper.bind(cgh);
-  }
-  #endif
 
   const ParentMapper& base_mapper() const { return m_base_mapper; }
   Index vert_offset() const { return m_vert_offset; }

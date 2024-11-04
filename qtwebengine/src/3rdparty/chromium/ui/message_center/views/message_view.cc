@@ -86,7 +86,7 @@ MessageView::MessageView(const Notification& notification)
     const auto& shadow = gfx::ShadowDetails::Get(2, 0);
     gfx::Insets ninebox_insets = gfx::ShadowValue::GetBlurRegion(shadow.values);
     SetBorder(views::CreateBorderPainter(
-        views::Painter::CreateImagePainter(shadow.ninebox_image,
+        views::Painter::CreateImagePainter(shadow.nine_patch_image,
                                            ninebox_insets),
         -gfx::ShadowValue::GetMargin(shadow.values)));
   }
@@ -161,7 +161,7 @@ void MessageView::SlideOutAndClose(int direction) {
 }
 
 void MessageView::SetExpanded(bool expanded) {
-  // Not implemented by default.
+  MessageCenter::Get()->OnSetExpanded(notification_id_, expanded);
 }
 
 bool MessageView::IsExpanded() const {
@@ -460,6 +460,13 @@ MessageView::Mode MessageView::GetMode() const {
 }
 
 float MessageView::GetSlideAmount() const {
+  if (slide_out_controller_.mode() ==
+      views::SlideOutController::SlideMode::kNone) {
+    // The return value of this method is used by NotificationSwipeControlView
+    // to determine visibility of the setting button. Returning 0 not to show
+    // the setting button with SlideMode::kNone.
+    return 0.f;
+  }
   return slide_out_controller_.gesture_amount();
 }
 
@@ -500,6 +507,8 @@ void MessageView::OnSettingsButtonPressed(const ui::Event& event) {
 void MessageView::OnSnoozeButtonPressed(const ui::Event& event) {
   for (auto& observer : observers_)
     observer.OnSnoozeButtonPressed(notification_id_);
+
+  MessageCenter::Get()->ClickOnSnoozeButton(notification_id());
 }
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
@@ -545,12 +554,13 @@ void MessageView::UpdateBackgroundPainter() {
 void MessageView::UpdateNestedBorder() {
   if (!is_nested_ || !GetWidget())
     return;
-  SkColor border_color =
-      GetColorProvider()->GetColor(ui::kColorFocusableBorderUnfocused);
 
+  SkColor border_color;
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-  if (ash::features::IsNotificationsRefreshEnabled())
-    border_color = SK_ColorTRANSPARENT;
+  border_color = SK_ColorTRANSPARENT;
+#else
+  border_color =
+      GetColorProvider()->GetColor(ui::kColorFocusableBorderUnfocused);
 #endif
 
   SetBorder(views::CreateRoundedRectBorder(

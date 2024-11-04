@@ -90,8 +90,8 @@ WebrtcDesktopCapturePrivateChooseDesktopMediaFunction::Run() {
                                                             request_id_, this);
   mutable_args().erase(args().begin());
 
-  std::unique_ptr<Params> params = Params::Create(args());
-  EXTENSION_FUNCTION_VALIDATE(params.get());
+  absl::optional<Params> params = Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
 
   content::RenderFrameHost* rfh = content::RenderFrameHost::FromID(
       params->request.guest_process_id,
@@ -160,8 +160,7 @@ void WebrtcDesktopCapturePrivateChooseDesktopMediaFunction::ProcessAccessRequest
 
   std::string result = content::DesktopStreamsRegistry::GetInstance()->RegisterStream(
         main_frame->GetProcess()->GetID(), main_frame->GetRoutingID(),
-        url::Origin::Create(origin), source, extension()->name(),
-        content::kRegistryStreamTypeDesktop);
+        url::Origin::Create(origin), source, content::kRegistryStreamTypeDesktop);
 
   Options options;
   options.can_request_audio_track = source.audio_share;

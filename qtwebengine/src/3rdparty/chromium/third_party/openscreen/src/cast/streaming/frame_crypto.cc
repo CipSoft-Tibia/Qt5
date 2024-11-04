@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,8 +16,7 @@
 #include "util/crypto/random_bytes.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 EncryptedFrame::EncryptedFrame() {
   data = owned_data_;
@@ -100,5 +99,4 @@ void FrameCrypto::EncryptCommon(FrameId frame_id,
                      aes_nonce.data(), ecount_buf.data(), &block_offset);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

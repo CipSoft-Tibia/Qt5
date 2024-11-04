@@ -22,7 +22,6 @@
 #include "ui/gl/direct_composition_support.h"
 
 namespace viz {
-struct DebugRendererSettings;
 class DisplayResourceProvider;
 
 class VIZ_SERVICE_EXPORT DCLayerOverlayProcessor final
@@ -33,7 +32,6 @@ class VIZ_SERVICE_EXPORT DCLayerOverlayProcessor final
   // When |skip_initialization_for_testing| is true, object will be isolated
   // for unit tests.
   explicit DCLayerOverlayProcessor(
-      const DebugRendererSettings* debug_settings,
       int allowed_yuv_overlay_count,
       bool skip_initialization_for_testing = false);
 
@@ -74,21 +72,20 @@ class VIZ_SERVICE_EXPORT DCLayerOverlayProcessor final
 
   // UpdateDCLayerOverlays() adds the quad at |it| to the overlay list
   // |dc_layer_overlays|.
-  void UpdateDCLayerOverlays(const gfx::RectF& display_rect,
+  void UpdateDCLayerOverlays(DisplayResourceProvider* resource_provider,
+                             const gfx::RectF& display_rect,
                              AggregatedRenderPass* render_pass,
                              const QuadList::Iterator& it,
                              const gfx::Rect& quad_rectangle_in_root_space,
                              bool is_overlay,
-                             QuadList::Iterator* new_it,
-                             size_t* new_index,
                              gfx::Rect* damage_rect,
                              OverlayCandidateList* dc_layer_overlays,
                              bool is_page_fullscreen_mode);
 
   // Returns an iterator to the element after |it|.
-  QuadList::Iterator ProcessForOverlay(const gfx::RectF& display_rect,
-                                       AggregatedRenderPass* render_pass,
-                                       const QuadList::Iterator& it);
+  void ProcessForOverlay(const gfx::RectF& display_rect,
+                         AggregatedRenderPass* render_pass,
+                         const QuadList::Iterator& it);
   void ProcessForUnderlay(const gfx::RectF& display_rect,
                           AggregatedRenderPass* render_pass,
                           const gfx::Rect& quad_rectangle,
@@ -102,10 +99,6 @@ class VIZ_SERVICE_EXPORT DCLayerOverlayProcessor final
 
   void RemoveOverlayDamageRect(const QuadList::Iterator& it);
 
-  void InsertDebugBorderDrawQuad(const OverlayCandidateList* dc_layer_overlays,
-                                 AggregatedRenderPass* render_pass,
-                                 const gfx::RectF& display_rect,
-                                 gfx::Rect* damage_rect);
   bool IsPreviousFrameUnderlayRect(const gfx::Rect& quad_rectangle,
                                    size_t index);
 
@@ -131,16 +124,13 @@ class VIZ_SERVICE_EXPORT DCLayerOverlayProcessor final
   // candidates.
   void RemoveClearVideoQuadCandidatesIfMoving(
       const QuadList* quad_list,
-      std::vector<size_t>* candidate_index_list);
+      std::vector<QuadList::Iterator>& candidates);
 
   bool has_overlay_support_;
   bool system_hdr_enabled_ = false;
   const int allowed_yuv_overlay_count_;
   int processed_yuv_overlay_count_ = 0;
   uint64_t frames_since_last_qualified_multi_overlays_ = 0;
-
-  // Reference to the global viz singleton.
-  const raw_ptr<const DebugRendererSettings> debug_settings_;
 
   bool previous_frame_underlay_is_opaque_ = true;
   bool allow_promotion_hinting_ = false;

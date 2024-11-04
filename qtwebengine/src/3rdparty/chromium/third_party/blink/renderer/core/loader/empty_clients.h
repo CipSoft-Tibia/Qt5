@@ -118,6 +118,8 @@ class CORE_EXPORT EmptyChromeClient : public ChromeClient {
   void WillCommitCompositorFrame() override {}
   std::unique_ptr<cc::ScopedPauseRendering> PauseRendering(
       LocalFrame&) override;
+  absl::optional<int> GetMaxRenderBufferBounds(
+      LocalFrame& frame) const override;
   bool StartDeferringCommits(LocalFrame& main_frame,
                              base::TimeDelta timeout,
                              cc::PaintHoldingReason reason) override;
@@ -236,7 +238,7 @@ class CORE_EXPORT EmptyChromeClient : public ChromeClient {
   void RequestUnbufferedInputEvents(LocalFrame*) override {}
   void SetTouchAction(LocalFrame*, TouchAction) override {}
   void SetPanAction(LocalFrame*, mojom::blink::PanAction pan_action) override {}
-  void DidAssociateFormControlsAfterLoad(LocalFrame*) override {}
+  void DidAddOrRemoveFormRelatedElementsAfterLoad(LocalFrame*) override {}
   String AcceptLanguages() override;
   void RegisterPopupOpeningObserver(PopupOpeningObserver*) override {}
   void UnregisterPopupOpeningObserver(PopupOpeningObserver*) override {}
@@ -264,6 +266,10 @@ class EmptyWebWorkerFetchContext : public WebWorkerFetchContext {
     return nullptr;
   }
   void WillSendRequest(WebURLRequest&) override {}
+  WebVector<std::unique_ptr<URLLoaderThrottle>> CreateThrottles(
+      const WebURLRequest&) override {
+    return {};
+  }
   blink::mojom::ControllerServiceWorkerMode GetControllerServiceWorkerMode()
       const override {
     return mojom::ControllerServiceWorkerMode::kNoController;
@@ -337,7 +343,8 @@ class CORE_EXPORT EmptyLocalFrameClient : public LocalFrameClient {
       const LocalFrameToken* initiator_frame_token,
       std::unique_ptr<SourceLocation>,
       mojo::PendingRemote<mojom::blink::PolicyContainerHostKeepAliveHandle>,
-      bool is_container_initiated) override;
+      bool is_container_initiated,
+      bool is_fullscreen_requested) override;
 
   void DispatchWillSendSubmitEvent(HTMLFormElement*) override;
 
@@ -348,8 +355,6 @@ class CORE_EXPORT EmptyLocalFrameClient : public LocalFrameClient {
 
   String UserAgentOverride() override { return ""; }
   String UserAgent() override { return ""; }
-  String FullUserAgent() override { return ""; }
-  String ReducedUserAgent() override { return ""; }
   absl::optional<blink::UserAgentMetadata> UserAgentMetadata() override {
     return blink::UserAgentMetadata();
   }
@@ -375,8 +380,8 @@ class CORE_EXPORT EmptyLocalFrameClient : public LocalFrameClient {
 
   RemoteFrame* CreateFencedFrame(
       HTMLFencedFrameElement*,
-      mojo::PendingAssociatedReceiver<mojom::blink::FencedFrameOwnerHost>,
-      mojom::blink::FencedFrameMode) override;
+      mojo::PendingAssociatedReceiver<mojom::blink::FencedFrameOwnerHost>)
+      override;
 
   WebPluginContainerImpl* CreatePlugin(HTMLPlugInElement&,
                                        const KURL&,

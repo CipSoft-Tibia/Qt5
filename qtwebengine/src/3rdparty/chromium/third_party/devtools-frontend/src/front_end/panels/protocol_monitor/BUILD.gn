@@ -25,6 +25,7 @@ devtools_module("protocol_monitor") {
     "../../ui/legacy:bundle",
     "../../ui/legacy/components/source_frame:bundle",
     "../../ui/lit-html:bundle",
+    "./components:bundle",
   ]
 }
 

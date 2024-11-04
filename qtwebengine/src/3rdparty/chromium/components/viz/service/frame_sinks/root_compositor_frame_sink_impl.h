@@ -63,7 +63,8 @@ class VIZ_SERVICE_EXPORT RootCompositorFrameSinkImpl
 
   ~RootCompositorFrameSinkImpl() override;
 
-  void DidEvictSurface(const SurfaceId& surface_id);
+  // Returns true iff it is okay to evict the root surface immediately.
+  bool WillEvictSurface(const SurfaceId& surface_id);
 
   const SurfaceId& CurrentSurfaceId() const;
 
@@ -98,10 +99,13 @@ class VIZ_SERVICE_EXPORT RootCompositorFrameSinkImpl
       override;
   void SetStandaloneBeginFrameObserver(
       mojo::PendingRemote<mojom::BeginFrameObserver> observer) override;
+  void SetMaxVrrInterval(
+      absl::optional<base::TimeDelta> max_vrr_interval) override;
 
   // mojom::CompositorFrameSink:
   void SetNeedsBeginFrame(bool needs_begin_frame) override;
   void SetWantsAnimateOnlyBeginFrames() override;
+  void SetWantsBeginFrameAcks() override;
   void SubmitCompositorFrame(
       const LocalSurfaceId& local_surface_id,
       CompositorFrame frame,
@@ -119,11 +123,15 @@ class VIZ_SERVICE_EXPORT RootCompositorFrameSinkImpl
       SubmitCompositorFrameSyncCallback callback) override;
   void InitializeCompositorFrameSinkType(
       mojom::CompositorFrameSinkType type) override;
+  void BindLayerContext(mojom::PendingLayerContextPtr context) override;
 #if BUILDFLAG(IS_ANDROID)
   void SetThreadIds(const std::vector<int32_t>& thread_ids) override;
 #endif
 
   base::ScopedClosureRunner GetCacheBackBufferCb();
+  ExternalBeginFrameSource* external_begin_frame_source() {
+    return external_begin_frame_source_.get();
+  }
 
  private:
   class StandaloneBeginFrameObserver;
@@ -139,8 +147,7 @@ class VIZ_SERVICE_EXPORT RootCompositorFrameSinkImpl
       std::unique_ptr<SyntheticBeginFrameSource> synthetic_begin_frame_source,
       std::unique_ptr<ExternalBeginFrameSource> external_begin_frame_source,
       std::unique_ptr<Display> display,
-      bool hw_support_for_multiple_refresh_rates,
-      bool apply_simple_frame_rate_throttling);
+      bool hw_support_for_multiple_refresh_rates);
 
   // DisplayClient:
   void DisplayOutputSurfaceLost() override;
@@ -159,6 +166,9 @@ class VIZ_SERVICE_EXPORT RootCompositorFrameSinkImpl
 
   void UpdateVSyncParameters();
   BeginFrameSource* begin_frame_source();
+
+  std::vector<base::TimeDelta> GetSupportedFrameIntervals(
+      base::TimeDelta interval);
 
   mojo::Remote<mojom::CompositorFrameSinkClient> compositor_frame_sink_client_;
   mojo::AssociatedReceiver<mojom::CompositorFrameSink>
@@ -194,9 +204,10 @@ class VIZ_SERVICE_EXPORT RootCompositorFrameSinkImpl
   base::TimeDelta preferred_frame_interval_ =
       FrameRateDecider::UnspecifiedFrameInterval();
 
-  // Determines whether to throttle frame rate by half.
-  // TODO(http://crbug.com/1153404): Remove this field when experiment is over.
-  bool apply_simple_frame_rate_throttling_ = false;
+  // If we evict the root surface, we want to push an empty compositor frame to
+  // it first to unref its resources. This requires a draw and swap to complete
+  // to actually unref.
+  LocalSurfaceId to_evict_on_next_draw_and_swap_ = LocalSurfaceId();
 
 // TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
 // of lacros-chrome is complete.

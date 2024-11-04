@@ -448,7 +448,9 @@ g.test('transferToImageBitmap_unconfigured_nonzero_size')
 
 g.test('transferToImageBitmap_zero_size')
   .desc(
-    `Regression test for a crash when calling transferImageBitmap on an unconfigured. Case where the canvas is empty.`
+    `Regression test for a crash when calling transferImageBitmap on an unconfigured. Case where the canvas is empty.
+
+    TODO: Spec and expect a particular Exception type here.`
   )
   .params(u => u.combine('configure', [true, false]))
   .fn(t => {
@@ -461,6 +463,18 @@ g.test('transferToImageBitmap_zero_size')
     }
 
     // Transferring would give an empty ImageBitmap which is not possible, so an Exception is thrown.
+    t.shouldThrow(true, () => {
+      canvas.transferToImageBitmap();
+    });
+  });
+
+g.test('transferToImageBitmap_huge_size')
+  .desc(`Regression test for a crash when calling transferImageBitmap on a HUGE canvas.`)
+  .fn(t => {
+    const canvas = createCanvas(t, 'offscreen', 1000000, 1000000);
+    canvas.getContext('webgpu')!;
+
+    // Transferring to such a HUGE image bitmap would not be possible, so an Exception is thrown.
     t.shouldThrow(true, () => {
       canvas.transferToImageBitmap();
     });

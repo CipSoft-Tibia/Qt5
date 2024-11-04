@@ -3,6 +3,7 @@
 
 #include "css_length.h"
 #include "types.h"
+#include "web_color.h"
 
 namespace litehtml
 {
@@ -31,6 +32,8 @@ namespace litehtml
 			color	= val.color;
 			return *this;
 		}
+
+		string to_string() const;
 	};
 
 	struct border
@@ -154,6 +157,35 @@ namespace litehtml
 			if (bottom_left_x < 0) bottom_left_x = 0;
 			if (bottom_left_y < 0) bottom_left_y = 0;
 		}
+		void fix_values(int width, int height)
+		{
+			fix_values();
+			int half_width = width / 2;
+			int half_height = height / 2;
+			auto fix_one = [&](int& radii_x, int& radii_y)
+				{
+					double factor = std::min((double) half_width / (double) radii_x, (double) half_height / (double) radii_y);
+					radii_x = (int) ((double) radii_x * factor);
+					radii_y = (int) ((double) radii_y * factor);
+				};
+
+			if(top_left_x > half_width || top_left_y > half_height)
+			{
+				fix_one(top_left_x, top_left_y);
+			}
+			if(top_right_x > half_width || top_right_y > half_height)
+			{
+				fix_one(top_right_x, top_right_y);
+			}
+			if(bottom_right_x > half_width || bottom_right_y > half_height)
+			{
+				fix_one(bottom_right_x, bottom_right_y);
+			}
+			if(bottom_left_x > half_width || bottom_left_y > half_height)
+			{
+				fix_one(bottom_left_x, bottom_left_y);
+			}
+		}
 	};
 
 	struct css_border_radius
@@ -199,7 +231,7 @@ namespace litehtml
 			bottom_right_y	= val.bottom_right_y;
 			return *this;
 		}
-		border_radiuses calc_percents(int width, int height)
+		border_radiuses calc_percents(int width, int height) const
 		{
 			border_radiuses ret;
 			ret.bottom_left_x = bottom_left_x.calc_percent(width);
@@ -210,6 +242,7 @@ namespace litehtml
 			ret.top_right_y = top_right_y.calc_percent(height);
 			ret.bottom_right_x = bottom_right_x.calc_percent(width);
 			ret.bottom_right_y = bottom_right_y.calc_percent(height);
+			ret.fix_values(width, height);
 			return ret;
 		}
 	};
@@ -224,10 +257,10 @@ namespace litehtml
 
 		css_borders() = default;
 
-        bool is_visible() const
-        {
-            return left.width.val() != 0 || right.width.val() != 0 || top.width.val() != 0 || bottom.width.val() != 0;
-        }
+		bool is_visible() const
+		{
+			return left.width.val() != 0 || right.width.val() != 0 || top.width.val() != 0 || bottom.width.val() != 0;
+		}
 
 		css_borders(const css_borders& val)
 		{
@@ -246,6 +279,13 @@ namespace litehtml
 			bottom	= val.bottom;
 			radius	= val.radius;
 			return *this;
+		}
+		string to_string() const
+		{
+			return	"left: " + left.to_string() +
+					", top: " + top.to_string() +
+					", right: " + top.to_string() +
+					", bottom: " + bottom.to_string();
 		}
 	};
 
@@ -276,10 +316,10 @@ namespace litehtml
 			bottom = val.bottom;
 		}
 
-        bool is_visible() const
-        {
-            return left.width != 0 || right.width != 0 || top.width != 0 || bottom.width != 0;
-        }
+		bool is_visible() const
+		{
+			return left.width != 0 || right.width != 0 || top.width != 0 || bottom.width != 0;
+		}
 
 		borders& operator=(const borders& val)
 		{

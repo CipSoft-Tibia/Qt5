@@ -98,10 +98,16 @@ void QQuickPopupPositioner::reposition()
                 !centerInParent ? p->allowVerticalMove ? p->y : popupItem->y() : 0,
                 !p->hasWidth && iw > 0 ? iw : w,
                 !p->hasHeight && ih > 0 ? ih : h);
+    bool relaxEdgeConstraint = p->relaxEdgeConstraint;
     if (m_parentItem) {
         // m_parentItem is the parent that the popup should open in,
         // and popupItem()->parentItem() is the overlay, so the mapToItem() calls below
         // effectively map the rect to scene coordinates.
+
+        // Animations can cause reposition() to get called when m_parentItem no longer has a window.
+        if (!m_parentItem->window())
+            return;
+
         if (centerInParent) {
             if (centerInParent != parentItem() && !centerInOverlay) {
                 qmlWarning(m_popup) << "Popup can only be centered within its immediate parent or Overlay.overlay";
@@ -110,6 +116,8 @@ void QQuickPopupPositioner::reposition()
 
             if (centerInOverlay) {
                 rect.moveCenter(QPointF(qRound(centerInOverlay->width() / 2.0), qRound(centerInOverlay->height() / 2.0)));
+                // Popup cannot be moved outside window bounds when its centered with overlay
+                relaxEdgeConstraint = false;
             } else {
                 const QPointF parentItemCenter = QPointF(qRound(m_parentItem->width() / 2), qRound(m_parentItem->height() / 2));
                 rect.moveCenter(m_parentItem->mapToItem(popupItem->parentItem(), parentItemCenter));
@@ -118,14 +126,25 @@ void QQuickPopupPositioner::reposition()
             rect.moveTopLeft(m_parentItem->mapToItem(popupItem->parentItem(), rect.topLeft()));
         }
 
-        if (p->window) {
+        // The overlay is assumed to fully cover the window's contents, although the overlay's geometry
+        // might not always equal the window's geometry (for example, if the window's contents are rotated).
+        QQuickOverlay *overlay = QQuickOverlay::overlay(p->window);
+        if (overlay) {
+            qreal boundsWidth = overlay->width();
+            qreal boundsHeight = overlay->height();
+
+            // QTBUG-126843: On some platforms, the overlay's geometry is not yet available at the instant
+            // when Component.completed() is emitted. Fall back to the window's geometry for this edge case.
+            if (Q_UNLIKELY(boundsWidth <= 0)) {
+                boundsWidth = p->window->width();
+                boundsHeight = p->window->height();
+            }
+
             const QMarginsF margins = p->getMargins();
             QRectF bounds(qMax<qreal>(0.0, margins.left()),
                           qMax<qreal>(0.0, margins.top()),
-                          p->window->width() - qMax<qreal>(0.0, margins.left()) - qMax<qreal>(0.0, margins.right()),
-                          p->window->height() - qMax<qreal>(0.0, margins.top()) - qMax<qreal>(0.0, margins.bottom()));
-            if (p->window->contentOrientation() == Qt::LandscapeOrientation || p->window->contentOrientation() == Qt::InvertedLandscapeOrientation)
-                bounds = bounds.transposed();
+                          boundsWidth - qMax<qreal>(0.0, margins.left()) - qMax<qreal>(0.0, margins.right()),
+                          boundsHeight - qMax<qreal>(0.0, margins.top()) - qMax<qreal>(0.0, margins.bottom()));
 
             // if the popup doesn't fit horizontally inside the window, try flipping it around (left <-> right)
             if (p->allowHorizontalFlip && (rect.left() < bounds.left() || rect.right() > bounds.right())) {
@@ -170,12 +189,17 @@ void QQuickPopupPositioner::reposition()
                 }
 
                 // as a last resort, adjust the width to fit the window
+                // Negative margins don't require resize as popup not pushed within
+                // the boundary. But otherwise, retain existing behavior of resizing
+                // for items, such as menus, which enables flip.
                 if (p->allowHorizontalResize) {
-                    if (rect.left() < bounds.left()) {
+                    if ((margins.left() >= 0 || !relaxEdgeConstraint)
+                            && (rect.left() < bounds.left())) {
                         rect.setLeft(bounds.left());
                         widthAdjusted = true;
                     }
-                    if (rect.right() > bounds.right()) {
+                    if ((margins.right() >= 0 || !relaxEdgeConstraint)
+                            && (rect.right() > bounds.right())) {
                         rect.setRight(bounds.right());
                         widthAdjusted = true;
                     }
@@ -198,12 +222,17 @@ void QQuickPopupPositioner::reposition()
                 }
 
                 // as a last resort, adjust the height to fit the window
+                // Negative margins don't require resize as popup not pushed within
+                // the boundary. But otherwise, retain existing behavior of resizing
+                // for items, such as menus, which enables flip.
                 if (p->allowVerticalResize) {
-                    if (rect.top() < bounds.top()) {
+                    if ((margins.top() >= 0 || !relaxEdgeConstraint)
+                            && (rect.top() < bounds.top())) {
                         rect.setTop(bounds.top());
                         heightAdjusted = true;
                     }
-                    if (rect.bottom() > bounds.bottom()) {
+                    if ((margins.bottom() >= 0 || !relaxEdgeConstraint)
+                            && (rect.bottom() > bounds.bottom())) {
                         rect.setBottom(bounds.bottom());
                         heightAdjusted = true;
                     }

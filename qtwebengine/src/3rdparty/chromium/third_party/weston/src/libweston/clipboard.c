@@ -110,7 +110,7 @@ clipboard_source_data(int fd, uint32_t mask, void *data)
 
 static void
 clipboard_source_accept(struct weston_data_source *source,
-			uint32_t time, const char *mime_type)
+			uint32_t serial, const char *mime_type)
 {
 }
 

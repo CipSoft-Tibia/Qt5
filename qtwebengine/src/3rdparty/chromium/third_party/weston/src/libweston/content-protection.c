@@ -93,7 +93,7 @@ set_type(struct wl_client *client, struct wl_resource *resource,
 				       "wl_surface@%"PRIu32" Invalid content-type %d for request:set_type\n",
 				       wl_resource_get_id(surface_resource), content_type);
 
-		content_protection_log(cp, "wl_surface@%"PRIu32" Invalid content-type %d for resquest:set_type\n",
+		content_protection_log(cp, "wl_surface@%"PRIu32" Invalid content-type %d for request:set_type\n",
 				       wl_resource_get_id(surface_resource), content_type);
 		return;
 	}
@@ -189,7 +189,10 @@ cp_destroy_listener(struct wl_listener *listener, void *data)
 	wl_list_remove(&cp->protected_list);
 	weston_log_scope_destroy(cp->debug);
 	cp->debug = NULL;
+	if (cp->surface_protection_update)
+		wl_event_source_remove(cp->surface_protection_update);
 	cp->surface_protection_update = NULL;
+	cp->compositor->content_protection = NULL;
 	free(cp);
 }
 

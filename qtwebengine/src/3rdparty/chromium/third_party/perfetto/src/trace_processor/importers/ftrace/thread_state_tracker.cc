@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "src/trace_processor/importers/ftrace/thread_state_tracker.h"
+#include <optional>
 
 namespace perfetto {
 namespace trace_processor {
@@ -50,11 +51,16 @@ void ThreadStateTracker::PushSchedSwitchEvent(int64_t event_ts,
 
 void ThreadStateTracker::PushWakingEvent(int64_t event_ts,
                                          UniqueTid utid,
-                                         UniqueTid waker_utid) {
-  // Only open new runnable state if thread already had a sched switch event.
+                                         UniqueTid waker_utid,
+                                         std::optional<uint16_t> common_flags) {
+  // If thread has not had a sched switch event, just open a runnable state.
+  // There's no pending state to close.
   if (!HasPreviousRowNumbersForUtid(utid)) {
+    AddOpenState(event_ts, utid, runnable_string_id_, std::nullopt, waker_utid,
+                 common_flags);
     return;
   }
+
   auto last_row_ref = RowNumToRef(prev_row_numbers_for_thread_[utid]->last_row);
 
   // Occasionally, it is possible to get a waking event for a thread
@@ -62,24 +68,36 @@ void ThreadStateTracker::PushWakingEvent(int64_t event_ts,
   // is running), we just ignore the waking event. See b/186509316 for details
   // and an example on when this happens. Only blocked events can be waken up.
   if (!IsBlocked(last_row_ref.state())) {
+    // If we receive a waking event while we are not blocked, we ignore this
+    // in the |thread_state| table but we track in the |sched_wakeup| table.
+    // The |thread_state_id| in |sched_wakeup| is the current running/runnable
+    // event.
+    std::optional<uint32_t> irq_context =
+        common_flags
+            ? std::make_optional(CommonFlagsToIrqContext(*common_flags))
+            : std::nullopt;
+    storage_->mutable_spurious_sched_wakeup_table()->Insert(
+        {event_ts, prev_row_numbers_for_thread_[utid]->last_row.row_number(),
+         irq_context, utid, waker_utid});
     return;
   }
 
   // Close the sleeping state and open runnable state.
   ClosePendingState(event_ts, utid, false);
-  AddOpenState(event_ts, utid, runnable_string_id_, base::nullopt, waker_utid);
+  AddOpenState(event_ts, utid, runnable_string_id_, std::nullopt, waker_utid,
+               common_flags);
 }
 
 void ThreadStateTracker::PushNewTaskEvent(int64_t event_ts,
-                                         UniqueTid utid,
-                                         UniqueTid waker_utid) {
-  AddOpenState(event_ts, utid, runnable_string_id_, base::nullopt, waker_utid);
+                                          UniqueTid utid,
+                                          UniqueTid waker_utid) {
+  AddOpenState(event_ts, utid, runnable_string_id_, std::nullopt, waker_utid);
 }
 
 void ThreadStateTracker::PushBlockedReason(
     UniqueTid utid,
-    base::Optional<bool> io_wait,
-    base::Optional<StringId> blocked_function) {
+    std::optional<bool> io_wait,
+    std::optional<StringId> blocked_function) {
   // Return if there is no state, as there is are no previous rows available.
   if (!HasPreviousRowNumbersForUtid(utid))
     return;
@@ -102,8 +120,9 @@ void ThreadStateTracker::PushBlockedReason(
 void ThreadStateTracker::AddOpenState(int64_t ts,
                                       UniqueTid utid,
                                       StringId state,
-                                      base::Optional<uint32_t> cpu,
-                                      base::Optional<UniqueTid> waker_utid) {
+                                      std::optional<uint16_t> cpu,
+                                      std::optional<UniqueTid> waker_utid,
+                                      std::optional<uint16_t> common_flags) {
   // Ignore utid 0 because it corresponds to the swapper thread which doesn't
   // make sense to insert.
   if (utid == 0)
@@ -117,6 +136,10 @@ void ThreadStateTracker::AddOpenState(int64_t ts,
   row.dur = -1;
   row.utid = utid;
   row.state = state;
+  if (common_flags.has_value()) {
+    row.irq_context = CommonFlagsToIrqContext(*common_flags);
+  }
+
   auto row_num = storage_->mutable_thread_state_table()->Insert(row).row_number;
 
   if (utid >= prev_row_numbers_for_thread_.size()) {
@@ -124,16 +147,24 @@ void ThreadStateTracker::AddOpenState(int64_t ts,
   }
 
   if (!prev_row_numbers_for_thread_[utid].has_value()) {
-    prev_row_numbers_for_thread_[utid] = RelatedRows{base::nullopt, row_num};
+    prev_row_numbers_for_thread_[utid] = RelatedRows{std::nullopt, row_num};
   }
 
   if (IsRunning(state)) {
-    prev_row_numbers_for_thread_[utid] = RelatedRows{base::nullopt, row_num};
+    prev_row_numbers_for_thread_[utid] = RelatedRows{std::nullopt, row_num};
   } else if (IsBlocked(state)) {
     prev_row_numbers_for_thread_[utid] = RelatedRows{row_num, row_num};
   } else /* if (IsRunnable(state)) */ {
     prev_row_numbers_for_thread_[utid]->last_row = row_num;
   }
+}
+
+uint32_t ThreadStateTracker::CommonFlagsToIrqContext(uint32_t common_flags) {
+  // If common_flags contains TRACE_FLAG_HARDIRQ | TRACE_FLAG_SOFTIRQ, wakeup
+  // was emitted in interrupt context.
+  // See:
+  // https://cs.android.com/android/kernel/superproject/+/common-android-mainline:common/include/trace/trace_events.h
+  return common_flags & (0x08 | 0x10) ? 1 : 0;
 }
 
 void ThreadStateTracker::ClosePendingState(int64_t end_ts,

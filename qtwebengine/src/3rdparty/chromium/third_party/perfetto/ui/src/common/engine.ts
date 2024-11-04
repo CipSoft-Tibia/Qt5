@@ -13,25 +13,30 @@
 // limitations under the License.
 
 import {defer, Deferred} from '../base/deferred';
+import {Disposable} from '../base/disposable';
 import {assertExists, assertTrue} from '../base/logging';
-import {perfetto} from '../gen/protos';
-
-import {ProtoRingBuffer} from './proto_ring_buffer';
+import {Span, Time} from '../common/time';
 import {
   ComputeMetricArgs,
   ComputeMetricResult,
   DisableAndReadMetatraceResult,
   QueryArgs,
   ResetTraceProcessorArgs,
-} from './protos';
-import {NUM, NUM_NULL, STR} from './query_result';
+} from '../core/protos';
+import {perfetto} from '../gen/protos';
+
+import {ProtoRingBuffer} from './proto_ring_buffer';
 import {
   createQueryResult,
+  LONG,
+  LONG_NULL,
+  NUM,
   QueryError,
   QueryResult,
+  STR,
   WritableQueryResult,
 } from './query_result';
-import {TimeSpan} from './time';
+import {duration, time, TimeSpan} from './time';
 
 import TraceProcessorRpc = perfetto.protos.TraceProcessorRpc;
 import TraceProcessorRpcStream = perfetto.protos.TraceProcessorRpcStream;
@@ -84,7 +89,7 @@ export abstract class Engine {
   private pendingResetTraceProcessors = new Array<Deferred<void>>();
   private pendingQueries = new Array<WritableQueryResult>();
   private pendingRestoreTables = new Array<Deferred<void>>();
-  private pendingComputeMetrics = new Array<Deferred<ComputeMetricResult>>();
+  private pendingComputeMetrics = new Array<Deferred<string|Uint8Array>>();
   private pendingReadMetatrace?: Deferred<DisableAndReadMetatraceResult>;
   private _isMetatracingEnabled = false;
 
@@ -205,7 +210,9 @@ export abstract class Engine {
               });
           pendingComputeMetric.reject(error);
         } else {
-          pendingComputeMetric.resolve(metricRes);
+          const result = metricRes.metricsAsPrototext ||
+              metricRes.metricsAsJson || metricRes.metrics || '';
+          pendingComputeMetric.resolve(result);
         }
         break;
       case TPM.TPM_DISABLE_AND_READ_METATRACE:
@@ -286,14 +293,23 @@ export abstract class Engine {
   }
 
   // Shorthand for sending a compute metrics request to the engine.
-  async computeMetric(metrics: string[]): Promise<ComputeMetricResult> {
-    const asyncRes = defer<ComputeMetricResult>();
+  async computeMetric(metrics: string[], format: 'json'|'prototext'|'proto'):
+      Promise<string|Uint8Array> {
+    const asyncRes = defer<string|Uint8Array>();
     this.pendingComputeMetrics.push(asyncRes);
     const rpc = TraceProcessorRpc.create();
     rpc.request = TPM.TPM_COMPUTE_METRIC;
     const args = rpc.computeMetricArgs = new ComputeMetricArgs();
     args.metricNames = metrics;
-    args.format = ComputeMetricArgs.ResultFormat.TEXTPROTO;
+    if (format === 'json') {
+      args.format = ComputeMetricArgs.ResultFormat.JSON;
+    } else if (format === 'prototext') {
+      args.format = ComputeMetricArgs.ResultFormat.TEXTPROTO;
+    } else if (format === 'proto') {
+      args.format = ComputeMetricArgs.ResultFormat.BINARY_PROTOBUF;
+    } else {
+      throw new Error(`Unknown compute metric format ${format}`);
+    }
     this.rpcSendRequest(rpc);
     return asyncRes;
   }
@@ -410,34 +426,35 @@ export abstract class Engine {
     return result.firstRow({cnt: NUM}).cnt;
   }
 
-  async getTraceTimeBounds(): Promise<TimeSpan> {
+  async getTraceTimeBounds(): Promise<Span<time, duration>> {
     const result = await this.query(
         `select start_ts as startTs, end_ts as endTs from trace_bounds`);
     const bounds = result.firstRow({
-      startTs: NUM,
-      endTs: NUM,
+      startTs: LONG,
+      endTs: LONG,
     });
-    return new TimeSpan(bounds.startTs / 1e9, bounds.endTs / 1e9);
+    return new TimeSpan(
+        Time.fromRaw(bounds.startTs), Time.fromRaw(bounds.endTs));
   }
 
-  async getTracingMetadataTimeBounds(): Promise<TimeSpan> {
+  async getTracingMetadataTimeBounds(): Promise<Span<time, duration>> {
     const queryRes = await this.query(`select
          name,
          int_value as intValue
          from metadata
          where name = 'tracing_started_ns' or name = 'tracing_disabled_ns'
          or name = 'all_data_source_started_ns'`);
-    let startBound = -Infinity;
-    let endBound = Infinity;
-    const it = queryRes.iter({'name': STR, 'intValue': NUM_NULL});
+    let startBound = Time.MIN;
+    let endBound = Time.MAX;
+    const it = queryRes.iter({'name': STR, 'intValue': LONG_NULL});
     for (; it.valid(); it.next()) {
       const columnName = it.name;
       const timestamp = it.intValue;
       if (timestamp === null) continue;
       if (columnName === 'tracing_disabled_ns') {
-        endBound = Math.min(endBound, timestamp / 1e9);
+        endBound = Time.min(endBound, Time.fromRaw(timestamp));
       } else {
-        startBound = Math.max(startBound, timestamp / 1e9);
+        startBound = Time.max(startBound, Time.fromRaw(timestamp));
       }
     }
 
@@ -451,16 +468,37 @@ export abstract class Engine {
 
 // Lightweight wrapper over Engine exposing only `query` method and annotating
 // all queries going through it with a tag.
-export class EngineProxy {
+export class EngineProxy implements Disposable {
   private engine: Engine;
   private tag: string;
+  private isAlive: boolean;
 
   constructor(engine: Engine, tag: string) {
     this.engine = engine;
     this.tag = tag;
+    this.isAlive = true;
   }
 
-  query(sqlQuery: string, tag?: string): Promise<QueryResult>&QueryResult {
-    return this.engine.query(sqlQuery, tag || this.tag);
+  query(query: string, tag?: string): Promise<QueryResult>&QueryResult {
+    if (!this.isAlive) {
+      throw new Error(`EngineProxy ${this.tag} was disposed.`);
+    }
+    return this.engine.query(query, tag || this.tag);
+  }
+
+  async computeMetric(metrics: string[], format: 'json'|'prototext'|'proto'):
+      Promise<string|Uint8Array> {
+    if (!this.isAlive) {
+      return Promise.reject(new Error(`EngineProxy ${this.tag} was disposed.`));
+    }
+    return this.engine.computeMetric(metrics, format);
+  }
+
+  get engineId(): string {
+    return this.engine.id;
+  }
+
+  dispose() {
+    this.isAlive = false;
   }
 }

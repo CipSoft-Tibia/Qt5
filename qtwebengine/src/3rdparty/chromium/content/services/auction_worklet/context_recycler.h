@@ -25,6 +25,7 @@ class ForDebuggingOnlyBindings;
 class PrivateAggregationBindings;
 class SharedStorageBindings;
 class RegisterAdBeaconBindings;
+class RegisterAdMacroBindings;
 class ReportBindings;
 class SetBidBindings;
 class SetPriorityBindings;
@@ -34,7 +35,7 @@ class InterestGroupLazyFiller;
 
 // Base class for bindings used with contexts used with ContextRecycler.
 // The expected lifecycle is:
-// 1) FillInGlobalTemplate()
+// 1) AttachToContext()
 // 2) Use by script
 // 3) Reset()
 // 4) Use by script
@@ -44,8 +45,7 @@ class Bindings {
  public:
   Bindings();
   virtual ~Bindings();
-  virtual void FillInGlobalTemplate(
-      v8::Local<v8::ObjectTemplate> global_template) = 0;
+  virtual void AttachToContext(v8::Local<v8::Context> context) = 0;
   virtual void Reset() = 0;
 };
 
@@ -130,6 +130,11 @@ class CONTENT_EXPORT ContextRecycler {
     return register_ad_beacon_bindings_.get();
   }
 
+  void AddRegisterAdMacroBindings();
+  RegisterAdMacroBindings* register_ad_macro_bindings() {
+    return register_ad_macro_bindings_.get();
+  }
+
   void AddReportBindings();
   ReportBindings* report_bindings() { return report_bindings_.get(); }
 
@@ -159,7 +164,7 @@ class CONTENT_EXPORT ContextRecycler {
  private:
   friend class ContextRecyclerScope;
 
-  // Should be called before GetContext(); assumes `bindings` is already owned
+  // Should be called after GetContext(); assumes `bindings` is already owned
   // by one of the fields.
   void AddBindings(Bindings* bindings);
 
@@ -176,6 +181,7 @@ class CONTENT_EXPORT ContextRecycler {
   std::unique_ptr<PrivateAggregationBindings> private_aggregation_bindings_;
   std::unique_ptr<SharedStorageBindings> shared_storage_bindings_;
   std::unique_ptr<RegisterAdBeaconBindings> register_ad_beacon_bindings_;
+  std::unique_ptr<RegisterAdMacroBindings> register_ad_macro_bindings_;
   std::unique_ptr<ReportBindings> report_bindings_;
   std::unique_ptr<SetBidBindings> set_bid_bindings_;
   std::unique_ptr<SetPriorityBindings> set_priority_bindings_;

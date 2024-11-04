@@ -5,6 +5,7 @@
 #ifndef CHROME_BROWSER_UI_WEBUI_SETTINGS_ASH_BLUETOOTH_SECTION_H_
 #define CHROME_BROWSER_UI_WEBUI_SETTINGS_ASH_BLUETOOTH_SECTION_H_
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/values.h"
@@ -33,18 +34,18 @@ class BluetoothSection : public OsSettingsSection,
                    PrefService* pref_service);
   ~BluetoothSection() override;
 
- private:
   // OsSettingsSection:
   void AddLoadTimeData(content::WebUIDataSource* html_source) override;
   void AddHandlers(content::WebUI* web_ui) override;
   int GetSectionNameMessageId() const override;
   chromeos::settings::mojom::Section GetSection() const override;
   mojom::SearchResultIcon GetSectionIcon() const override;
-  std::string GetSectionPath() const override;
+  const char* GetSectionPath() const override;
   bool LogMetric(chromeos::settings::mojom::Setting setting,
                  base::Value& value) const override;
   void RegisterHierarchy(HierarchyGenerator* generator) const override;
 
+ private:
   // device::BluetoothAdapter::Observer:
   void AdapterPresentChanged(device::BluetoothAdapter* adapter,
                              bool present) override;
@@ -63,7 +64,7 @@ class BluetoothSection : public OsSettingsSection,
   void UpdateSearchTags();
 
   // Observes user profile prefs.
-  PrefService* pref_service_;
+  raw_ptr<PrefService, ExperimentalAsh> pref_service_;
   std::unique_ptr<PrefChangeRegistrar> pref_change_registrar_;
   scoped_refptr<device::BluetoothAdapter> bluetooth_adapter_;
   base::WeakPtrFactory<BluetoothSection> weak_ptr_factory_{this};

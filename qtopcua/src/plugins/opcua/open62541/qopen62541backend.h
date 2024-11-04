@@ -43,6 +43,8 @@ public Q_SLOTS:
     void writeNodeAttributes(const QList<QOpcUaWriteItem> &nodesToWrite);
 
     void readHistoryRaw(QOpcUaHistoryReadRawRequest request, QList<QByteArray> continuationPoints, bool releaseContinuationPoints, quint64 handle);
+    void readHistoryEvents(const QOpcUaHistoryReadEventRequest &request, const QList<QByteArray> &continuationPoints,
+                           bool releaseContinuationPoints, quint64 handle);
 
     // Node management
     void addNode(const QOpcUaAddNodeItem &nodeToAdd);
@@ -57,6 +59,10 @@ public Q_SLOTS:
     void handleSubscriptionTimeout(QOpen62541Subscription *sub, QList<QPair<quint64, QOpcUa::NodeAttribute>> items);
     void cleanupSubscriptions();
 
+    // Register and unregister nodes
+    void registerNodes(const QStringList &nodesToRegister);
+    void unregisterNodes(const QStringList &nodesToUnregister);
+
     // Callbacks
     static void asyncMethodCallback(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response);
     static void asyncTranslateBrowsePathCallback(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response);
@@ -70,6 +76,9 @@ public Q_SLOTS:
     static void asyncBatchReadCallback(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response);
     static void asyncBatchWriteCallback(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response);
     static void asyncReadHistoryDataCallBack(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response);
+    static void asyncRegisterNodesCallback(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response);
+    static void asyncUnregisterNodesCallback(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response);
+    static void asyncReadHistoryEventsCallback(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response);
 
 public:
     UA_Client *m_uaclient;
@@ -186,6 +195,17 @@ private:
         QOpcUaHistoryReadRawRequest historyReadRawRequest;
     };
     QMap<quint32, AsyncReadHistoryDataContext> m_asyncReadHistoryDataContext;
+
+    struct AsyncRegisterUnregisterNodesContext {
+        QStringList nodeIds;
+    };
+    QMap<quint32, AsyncRegisterUnregisterNodesContext> m_asyncRegisterUnregisterNodesContext;
+
+    struct AsyncReadHistoryEventsContext {
+        quint64 handle;
+        QOpcUaHistoryReadEventRequest historyReadEventRequest;
+    };
+    QMap<quint32, AsyncReadHistoryEventsContext> m_asyncReadHistoryEventsContext;
 };
 
 QT_END_NAMESPACE

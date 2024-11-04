@@ -153,7 +153,7 @@ void AVFVideoRendererControl::updateVideoFrame(const CVTimeStamp &ts)
     CVPixelBufferRelease(pixelBuffer);
 
     frame = QVideoFrame(buffer, buffer->videoFormat());
-    frame.setRotationAngle(QVideoFrame::RotationAngle(m_rotation));
+    frame.setRotation(m_rotation);
     frame.setMirrored(m_mirrored);
     m_sink->setVideoFrame(frame);
 }

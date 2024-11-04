@@ -15,10 +15,9 @@ import signal
 import socket
 import sys
 import tempfile
-import six
 
 # The following non-std imports are fetched via vpython. See the list at
-# //.vpython
+# //.vpython3
 import dateutil.parser  # pylint: disable=import-error
 import jsonlines  # pylint: disable=import-error
 import psutil  # pylint: disable=import-error
@@ -33,9 +32,8 @@ from pylib.base import base_test_result  # pylint: disable=import-error
 from pylib.results import json_results  # pylint: disable=import-error
 
 sys.path.insert(0, os.path.join(CHROMIUM_SRC_PATH, 'build', 'util'))
-from lib.results import result_sink  # pylint: disable=import-error
-
-assert not six.PY2, 'Py2 not supported for this file.'
+# TODO(crbug.com/1421441): Re-enable the 'no-name-in-module' check.
+from lib.results import result_sink  # pylint: disable=import-error,no-name-in-module
 
 import subprocess  # pylint: disable=import-error,wrong-import-order
 
@@ -327,7 +325,7 @@ class TastTest(RemoteTest):
       self._attr_expr = '(' + ' || '.join(names) + ')'
 
     if self._attr_expr:
-      # Don't use pipes.quote() here. Something funky happens with the arg
+      # Don't use shlex.quote() here. Something funky happens with the arg
       # as it gets passed down from cros_run_test to tast. (Tast picks up the
       # escaping single quotes and complains that the attribute expression
       # "must be within parentheses".)
@@ -398,6 +396,9 @@ class TastTest(RemoteTest):
         # inside as an RDB 'artifact'. (This could include system logs, screen
         # shots, etc.)
         artifacts = self.get_artifacts(test['outDir'])
+        html_artifact = debug_link
+        if result == base_test_result.ResultType.SKIP:
+          html_artifact = 'Test was skipped because: ' + test['skipReason']
         self._rdb_client.Post(
             test['name'],
             result,
@@ -406,7 +407,7 @@ class TastTest(RemoteTest):
             None,
             artifacts=artifacts,
             failure_reason=primary_error_message,
-            html_artifact=debug_link)
+            html_artifact=html_artifact)
 
     if self._rdb_client and self._logs_dir:
       # Attach artifacts from the device that don't apply to a single test.
@@ -480,6 +481,7 @@ class GTestTest(RemoteTest):
   def __init__(self, args, unknown_args):
     super().__init__(args, unknown_args)
 
+    self._test_cmd = ['vpython3'] + self._test_cmd
     self._test_exe = args.test_exe
     self._runtime_deps_path = args.runtime_deps_path
     self._vpython_dir = args.vpython_dir
@@ -572,7 +574,7 @@ class GTestTest(RemoteTest):
     if self._trace_dir:
       device_test_script_contents.extend([
           'rm -rf %s' % device_trace_dir,
-          'su chronos -c -- "mkdir -p %s"' % device_trace_dir,
+          'sudo -E -u chronos -- /bin/bash -c "mkdir -p %s"' % device_trace_dir,
       ])
       test_invocation += ' --trace-dir=%s' % device_trace_dir
 
@@ -583,10 +585,17 @@ class GTestTest(RemoteTest):
       device_test_script_contents += [
           'stop ui',
       ]
+      # Send a user activity ping to powerd to ensure the display is on.
+      device_test_script_contents += [
+          'dbus-send --system --type=method_call'
+          ' --dest=org.chromium.PowerManager /org/chromium/PowerManager'
+          ' org.chromium.PowerManager.HandleUserActivity int32:0'
+      ]
       # The UI service on the device owns the chronos user session, so shutting
       # it down as chronos kills the entire execution of the test. So we'll have
       # to run as root up until the test invocation.
-      test_invocation = 'su chronos -c -- "%s"' % test_invocation
+      test_invocation = (
+          'sudo -E -u chronos -- /bin/bash -c "%s"' % test_invocation)
       # And we'll need to chown everything since cros_run_test's "--as-chronos"
       # option normally does that for us.
       device_test_script_contents.append('chown -R chronos: ../..')
@@ -598,6 +607,14 @@ class GTestTest(RemoteTest):
       ]
 
     device_test_script_contents.append(test_invocation)
+
+    # (Re)start ui after all tests are done. This is for developer convenienve.
+    # Without this, the device would remain in a black screen which looks like
+    # powered off.
+    if self._stop_ui:
+      device_test_script_contents += [
+          'start ui',
+      ]
 
     self._on_device_script = self.write_test_script_to_disk(
         device_test_script_contents)
@@ -872,7 +889,8 @@ def main():
   gtest_parser.add_argument(
       '--stop-ui',
       action='store_true',
-      help='Will stop the UI service in the device before running the test.')
+      help='Will stop the UI service in the device before running the test. '
+      'Also start the UI service after all tests are done.')
   gtest_parser.add_argument(
       '--trace-dir',
       type=str,
@@ -941,6 +959,13 @@ def main():
 
   add_common_args(gtest_parser, tast_test_parser, host_cmd_parser)
   args, unknown_args = parser.parse_known_args()
+  # Re-add N-1 -v/--verbose flags to the args we'll pass to whatever we are
+  # running. The assumption is that only one verbosity incrase would be meant
+  # for this script since it's a boolean value instead of increasing verbosity
+  # with more instances.
+  verbose_flags = [a for a in sys.argv if a in ('-v', '--verbose')]
+  if verbose_flags:
+    unknown_args += verbose_flags[1:]
 
   logging.basicConfig(level=logging.DEBUG if args.verbose else logging.WARN)
 

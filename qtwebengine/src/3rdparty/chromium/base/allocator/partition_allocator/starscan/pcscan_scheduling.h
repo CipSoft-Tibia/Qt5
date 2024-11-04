@@ -33,11 +33,19 @@ struct QuarantineData final {
   std::atomic<size_t> epoch{0u};
 };
 
+// No virtual destructor to allow constant initialization of PCScan as
+// static global which directly embeds LimitBackend as default backend.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wnon-virtual-dtor"
+#endif
 class PA_COMPONENT_EXPORT(PARTITION_ALLOC) PCScanSchedulingBackend {
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+
  public:
-  explicit inline constexpr PCScanSchedulingBackend(PCScanScheduler&);
-  // No virtual destructor to allow constant initialization of PCScan as
-  // static global which directly embeds LimitBackend as default backend.
+  inline constexpr explicit PCScanSchedulingBackend(PCScanScheduler&);
 
   PCScanSchedulingBackend(const PCScanSchedulingBackend&) = delete;
   PCScanSchedulingBackend& operator=(const PCScanSchedulingBackend&) = delete;
@@ -82,7 +90,7 @@ class PA_COMPONENT_EXPORT(PARTITION_ALLOC) LimitBackend final
  public:
   static constexpr double kQuarantineSizeFraction = 0.1;
 
-  explicit inline constexpr LimitBackend(PCScanScheduler&);
+  inline constexpr explicit LimitBackend(PCScanScheduler&);
 
   bool LimitReached() final;
   void UpdateScheduleAfterScan(size_t, base::TimeDelta, size_t) final;
@@ -188,7 +196,7 @@ QuarantineData& PCScanSchedulingBackend::GetQuarantineData() {
 constexpr LimitBackend::LimitBackend(PCScanScheduler& scheduler)
     : PCScanSchedulingBackend(scheduler) {}
 
-bool PCScanScheduler::AccountFreed(size_t size) {
+PA_ALWAYS_INLINE bool PCScanScheduler::AccountFreed(size_t size) {
   const size_t size_before =
       quarantine_data_.current_size.fetch_add(size, std::memory_order_relaxed);
   return (size_before + size >

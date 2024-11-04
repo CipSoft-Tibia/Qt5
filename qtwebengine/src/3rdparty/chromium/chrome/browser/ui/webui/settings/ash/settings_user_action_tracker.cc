@@ -15,8 +15,11 @@ namespace ash::settings {
 
 SettingsUserActionTracker::SettingsUserActionTracker(
     Hierarchy* hierarchy,
-    OsSettingsSections* sections)
-    : hierarchy_(hierarchy), sections_(sections) {}
+    OsSettingsSections* sections,
+    PrefService* profile_pref_service)
+    : hierarchy_(hierarchy),
+      sections_(sections),
+      profile_pref_service_(profile_pref_service) {}
 
 SettingsUserActionTracker::~SettingsUserActionTracker() = default;
 
@@ -30,17 +33,18 @@ void SettingsUserActionTracker::BindInterface(
                      base::Unretained(this)));
 
   // New session started, so create a new per session tracker.
-  per_session_tracker_ =
-      std::make_unique<PerSessionSettingsUserActionTracker>();
+  per_session_tracker_ = std::make_unique<PerSessionSettingsUserActionTracker>(
+      profile_pref_service_);
 }
 
 void SettingsUserActionTracker::EndCurrentSession() {
-  // Session ended, so delete the per session tracker.
+  // reset the pointers
   per_session_tracker_.reset();
   receiver_.reset();
 }
 
 void SettingsUserActionTracker::OnBindingDisconnected() {
+  // Settings window is closed by the user, ending the current session.
   EndCurrentSession();
 }
 
@@ -72,7 +76,7 @@ void SettingsUserActionTracker::RecordSettingChange() {
 void SettingsUserActionTracker::RecordSettingChangeWithDetails(
     chromeos::settings::mojom::Setting setting,
     mojom::SettingChangeValuePtr value) {
-  per_session_tracker_->RecordSettingChange();
+  per_session_tracker_->RecordSettingChange(setting);
 
   // Get the primary section location of the changed setting and log the metric.
   chromeos::settings::mojom::Section section_id =

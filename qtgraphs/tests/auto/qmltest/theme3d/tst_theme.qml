@@ -14,36 +14,36 @@ Item {
         id: initial
     }
 
-    ColorGradient {
+    Gradient {
         id: gradient1
         stops: [
-            ColorGradientStop { color: "red"; position: 0 },
-            ColorGradientStop { color: "blue"; position: 1 }
+            GradientStop { color: "red"; position: 0 },
+            GradientStop { color: "blue"; position: 1 }
         ]
     }
 
-    ColorGradient {
+    Gradient {
         id: gradient2
         stops: [
-            ColorGradientStop { color: "green"; position: 0 },
-            ColorGradientStop { color: "red"; position: 1 }
+            GradientStop { color: "green"; position: 0 },
+            GradientStop { color: "red"; position: 1 }
         ]
     }
 
-    ColorGradient {
+    Gradient {
         id: gradient3
         stops: [
-            ColorGradientStop { color: "gray"; position: 0 },
-            ColorGradientStop { color: "darkgray"; position: 1 }
+            GradientStop { color: "gray"; position: 0 },
+            GradientStop { color: "darkgray"; position: 1 }
         ]
     }
 
-    ThemeColor {
+    Color {
         id: color1
         color: "red"
     }
 
-    ThemeColor {
+    Color {
         id: color2
         color: "blue"
     }
@@ -55,11 +55,10 @@ Item {
         backgroundEnabled: false
         baseColors: [color1, color2]
         baseGradients: [gradient1, gradient2]
-        colorStyle: Theme3D.ColorStyleRangeGradient
+        colorStyle: Theme3D.ColorStyle.RangeGradient
         font.family: "Arial"
         gridEnabled: false
         gridLineColor: "#00ff00"
-        highlightLightStrength: 5.0
         labelBackgroundColor: "#ff00ff"
         labelBackgroundEnabled: false
         labelBorderEnabled: false
@@ -71,7 +70,7 @@ Item {
         shadowStrength: 12.5
         singleHighlightColor: "#ff0000"
         singleHighlightGradient: gradient3
-        type: Theme3D.ThemeQt // Default values will be overwritten by initialized values
+        type: Theme3D.Theme.UserDefined // Default values will be overwritten by initialized values
         windowColor: "#fff00f"
     }
 
@@ -94,15 +93,15 @@ Item {
             compare(initial.backgroundEnabled, true)
             compare(initial.baseColors.length, 1)
             compare(initial.baseColors[0].color, "#000000")
-            compare(initial.baseGradients.length, 1)
-            compare(initial.baseGradients[0].stops[0].color, "#000000")
-            compare(initial.baseGradients[0].stops[1].color, "#ffffff")
-            compare(initial.colorStyle, Theme3D.ColorStyleUniform)
+            // TODO: Do we actually need to support this? QTBUG-116923
+            //compare(initial.baseGradients.length, 1)
+            //compare(initial.baseGradients[0].stops[0], "#000000")
+            //compare(initial.baseGradients[0].stops[1], "#ffffff")
+            compare(initial.colorStyle, Theme3D.ColorStyle.Uniform)
             // Initial font needs to be tested like this, as different platforms have different default font (QFont())
             compare(initial.font.family, dummy.font.family)
             compare(initial.gridEnabled, true)
             compare(initial.gridLineColor, "#ffffff")
-            compare(initial.highlightLightStrength, 7.5)
             compare(initial.labelBackgroundColor, "#a0a0a4")
             compare(initial.labelBackgroundEnabled, true)
             compare(initial.labelBorderEnabled, true)
@@ -110,11 +109,11 @@ Item {
             compare(initial.lightColor, "#ffffff")
             compare(initial.lightStrength, 5)
             compare(initial.multiHighlightColor, "#0000ff")
-            compare(initial.multiHighlightGradient, null)
+            compare(initial.multiHighlightGradient, 0)
             compare(initial.shadowStrength, 25)
             compare(initial.singleHighlightColor, "#ff0000")
-            compare(initial.singleHighlightGradient, null)
-            compare(initial.type, Theme3D.ThemeUserDefined)
+            compare(initial.singleHighlightGradient, 0)
+            compare(initial.type, Theme3D.Theme.UserDefined)
             compare(initial.windowColor, "#000000")
         }
     }
@@ -132,11 +131,10 @@ Item {
             compare(initialized.baseGradients.length, 2)
             compare(initialized.baseGradients[0], gradient1)
             compare(initialized.baseGradients[1], gradient2)
-            compare(initialized.colorStyle, Theme3D.ColorStyleRangeGradient)
+            compare(initialized.colorStyle, Theme3D.ColorStyle.RangeGradient)
             compare(initialized.font.family, "Arial")
             compare(initialized.gridEnabled, false)
             compare(initialized.gridLineColor, "#00ff00")
-            compare(initialized.highlightLightStrength, 5.0)
             compare(initialized.labelBackgroundColor, "#ff00ff")
             compare(initialized.labelBackgroundEnabled, false)
             compare(initialized.labelBorderEnabled, false)
@@ -148,7 +146,7 @@ Item {
             compare(initialized.shadowStrength, 12.5)
             compare(initialized.singleHighlightColor, "#ff0000")
             compare(initialized.singleHighlightGradient, gradient3)
-            compare(initialized.type, Theme3D.ThemeQt)
+            compare(initialized.type, Theme3D.Theme.UserDefined)
             compare(initialized.windowColor, "#fff00f")
         }
     }
@@ -156,31 +154,30 @@ Item {
     TestCase {
         name: "Theme3D Change"
 
-        ThemeColor {
+        Color {
             id: color3
             color: "red"
         }
 
-        ColorGradient {
+        Gradient {
             id: gradient4
             stops: [
-                ColorGradientStop { color: "red"; position: 0 },
-                ColorGradientStop { color: "blue"; position: 1 }
+                GradientStop { color: "red"; position: 0 },
+                GradientStop { color: "blue"; position: 1 }
             ]
         }
 
         function test_1_change() {
-            change.type = Theme3D.ThemeStoneMoss // Default values will be overwritten by the following sets
+            change.type = Theme3D.Theme.StoneMoss // Default values will be overwritten by the following sets
             change.ambientLightStrength = 0.3
             change.backgroundColor = "#ff0000"
             change.backgroundEnabled = false
             change.baseColors = [color3, color2]
             change.baseGradients = [gradient4, gradient2]
-            change.colorStyle = Theme3D.ColorStyleObjectGradient
+            change.colorStyle = Theme3D.ColorStyle.ObjectGradient
             change.font.family = "Arial"
             change.gridEnabled = false
             change.gridLineColor = "#00ff00"
-            change.highlightLightStrength = 5.0
             change.labelBackgroundColor = "#ff00ff"
             change.labelBackgroundEnabled = false
             change.labelBorderEnabled = false
@@ -203,11 +200,10 @@ Item {
             compare(change.baseGradients.length, 2)
             compare(change.baseGradients[0], gradient4)
             compare(change.baseGradients[1], gradient2)
-            compare(change.colorStyle, Theme3D.ColorStyleObjectGradient)
+            compare(change.colorStyle, Theme3D.ColorStyle.ObjectGradient)
             compare(change.font.family, "Arial")
             compare(change.gridEnabled, false)
             compare(change.gridLineColor, "#00ff00")
-            compare(change.highlightLightStrength, 5.0)
             compare(change.labelBackgroundColor, "#ff00ff")
             compare(change.labelBackgroundEnabled, false)
             compare(change.labelBorderEnabled, false)
@@ -219,7 +215,7 @@ Item {
             compare(change.shadowStrength, 50)
             compare(change.singleHighlightColor, "#ff0000")
             compare(change.singleHighlightGradient, gradient3)
-            compare(change.type, Theme3D.ThemeStoneMoss)
+            compare(change.type, Theme3D.Theme.StoneMoss)
             compare(change.windowColor, "#fff00f")
         }
 
@@ -243,10 +239,6 @@ Item {
             compare(invalid.ambientLightStrength, 0.25)
             invalid.ambientLightStrength = 1.1
             compare(invalid.ambientLightStrength, 0.25)
-            invalid.highlightLightStrength = -1.0
-            compare(invalid.highlightLightStrength, 7.5)
-            invalid.highlightLightStrength = 10.1
-            compare(invalid.highlightLightStrength, 7.5)
             invalid.lightStrength = -1.0
             compare(invalid.lightStrength, 5.0)
             invalid.lightStrength = 10.1

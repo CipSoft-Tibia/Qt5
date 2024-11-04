@@ -34,7 +34,8 @@ class CaptionBubbleSessionObserver;
 //
 class CaptionBubbleControllerViews : public CaptionBubbleController {
  public:
-  explicit CaptionBubbleControllerViews(PrefService* profile_prefs);
+  CaptionBubbleControllerViews(PrefService* profile_prefs,
+                               const std::string& application_locale);
   ~CaptionBubbleControllerViews() override;
   CaptionBubbleControllerViews(const CaptionBubbleControllerViews&) = delete;
   CaptionBubbleControllerViews& operator=(const CaptionBubbleControllerViews&) =
@@ -63,6 +64,9 @@ class CaptionBubbleControllerViews : public CaptionBubbleController {
   bool IsWidgetVisibleForTesting() override;
   bool IsGenericErrorMessageVisibleForTesting() override;
   std::string GetBubbleLabelTextForTesting() override;
+  void OnLanguageIdentificationEvent(
+      CaptionBubbleContext* caption_bubble_context,
+      const media::mojom::LanguageIdentificationEventPtr& event) override;
   void CloseActiveModelForTesting() override;
   views::Widget* GetCaptionWidgetForTesting();
   CaptionBubble* GetCaptionBubbleForTesting();

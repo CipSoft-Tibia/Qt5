@@ -1,7 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
-//TESTED_COMPONENT=src/multimedia
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 
@@ -11,6 +9,8 @@
 #include <QtGui/QImage>
 #include <QtCore/QPointer>
 #include <QtMultimedia/private/qtmultimedia-config_p.h>
+#include "private/qvideoframeconverter_p.h"
+#include "../../../integration/shared/mediabackendutils.h"
 
 // Adds an enum, and the stringized version
 #define ADD_ENUM_TEST(x) \
@@ -18,6 +18,53 @@
         << QVideoFrame::x \
     << QString(QLatin1String(#x));
 
+
+QSet s_pixelFormats{ QVideoFrameFormat::Format_ARGB8888,
+                     QVideoFrameFormat::Format_ARGB8888_Premultiplied,
+                     QVideoFrameFormat::Format_XRGB8888,
+                     QVideoFrameFormat::Format_BGRA8888,
+                     QVideoFrameFormat::Format_BGRA8888_Premultiplied,
+                     QVideoFrameFormat::Format_BGRX8888,
+                     QVideoFrameFormat::Format_ABGR8888,
+                     QVideoFrameFormat::Format_XBGR8888,
+                     QVideoFrameFormat::Format_RGBA8888,
+                     QVideoFrameFormat::Format_RGBX8888,
+                     QVideoFrameFormat::Format_NV12,
+                     QVideoFrameFormat::Format_NV21,
+                     QVideoFrameFormat::Format_IMC1,
+                     QVideoFrameFormat::Format_IMC2,
+                     QVideoFrameFormat::Format_IMC3,
+                     QVideoFrameFormat::Format_IMC4,
+                     QVideoFrameFormat::Format_AYUV,
+                     QVideoFrameFormat::Format_AYUV_Premultiplied,
+                     QVideoFrameFormat::Format_YV12,
+                     QVideoFrameFormat::Format_YUV420P,
+                     QVideoFrameFormat::Format_YUV422P,
+                     QVideoFrameFormat::Format_UYVY,
+                     QVideoFrameFormat::Format_YUYV,
+                     QVideoFrameFormat::Format_Y8,
+                     QVideoFrameFormat::Format_Y16,
+                     QVideoFrameFormat::Format_P010,
+                     QVideoFrameFormat::Format_P016,
+                     QVideoFrameFormat::Format_YUV420P10 };
+
+bool isSupportedPixelFormat(QVideoFrameFormat::PixelFormat pixelFormat)
+{
+#ifdef Q_OS_ANDROID
+    // TODO: QTBUG-125238
+    switch (pixelFormat) {
+    case QVideoFrameFormat::Format_Y16:
+    case QVideoFrameFormat::Format_P010:
+    case QVideoFrameFormat::Format_P016:
+    case QVideoFrameFormat::Format_YUV420P10:
+        return false;
+    default:
+        return true;
+    }
+#else
+    return true;
+#endif
+}
 
 class tst_QVideoFrame : public QObject
 {
@@ -53,6 +100,9 @@ private slots:
     void formatConversion_data();
     void formatConversion();
 
+    void qImageFromVideoFrame_doesNotCrash_whenCalledWithEvenAndOddSizedFrames_data();
+    void qImageFromVideoFrame_doesNotCrash_whenCalledWithEvenAndOddSizedFrames();
+
     void isMapped();
     void isReadable();
     void isWritable();
@@ -61,6 +111,8 @@ private slots:
     void image();
 
     void emptyData();
+
+    void mirrored_takesValue_fromVideoFrameFormat();
 };
 
 class QtTestDummyVideoBuffer : public QObject, public QAbstractVideoBuffer
@@ -71,8 +123,6 @@ public:
         : QAbstractVideoBuffer(QVideoFrame::NoHandle) {}
     explicit QtTestDummyVideoBuffer(QVideoFrame::HandleType type)
         : QAbstractVideoBuffer(type) {}
-
-    [[nodiscard]] QVideoFrame::MapMode mapMode() const override { return QVideoFrame::NotMapped; }
 
     MapData map(QVideoFrame::MapMode) override { return {}; }
     void unmap() override {}
@@ -87,8 +137,6 @@ public:
     explicit QtTestVideoBuffer(QVideoFrame::HandleType type)
         : QAbstractVideoBuffer(type)
     {}
-
-    [[nodiscard]] QVideoFrame::MapMode mapMode() const override { return m_mapMode; }
 
     MapData map(QVideoFrame::MapMode mode) override
     {
@@ -144,34 +192,43 @@ void tst_QVideoFrame::create_data()
 {
     QTest::addColumn<QSize>("size");
     QTest::addColumn<QVideoFrameFormat::PixelFormat>("pixelFormat");
-    QTest::addColumn<int>("bytes");
     QTest::addColumn<int>("bytesPerLine");
 
     QTest::newRow("64x64 ARGB32")
             << QSize(64, 64)
-            << QVideoFrameFormat::Format_ARGB8888;
+            << QVideoFrameFormat::Format_ARGB8888
+            << 64*4;
     QTest::newRow("32x256 YUV420P")
             << QSize(32, 256)
-            << QVideoFrameFormat::Format_YUV420P;
+            << QVideoFrameFormat::Format_YUV420P
+            << 32;
+    QTest::newRow("32x256 UYVY")
+            << QSize(32, 256)
+            << QVideoFrameFormat::Format_UYVY
+            << 32*2;
 }
 
 void tst_QVideoFrame::create()
 {
     QFETCH(QSize, size);
     QFETCH(QVideoFrameFormat::PixelFormat, pixelFormat);
+    QFETCH(int, bytesPerLine);
 
     QVideoFrame frame(QVideoFrameFormat(size, pixelFormat));
 
     QVERIFY(frame.isValid());
     QCOMPARE(frame.handleType(), QVideoFrame::NoHandle);
     QVERIFY(frame.videoBuffer() != nullptr);
-    QCOMPARE(frame.videoBuffer()->textureHandle(0), 0u);
+    QCOMPARE(frame.videoBuffer()->textureHandle(nullptr, 0), 0u);
     QCOMPARE(frame.pixelFormat(), pixelFormat);
     QCOMPARE(frame.size(), size);
     QCOMPARE(frame.width(), size.width());
     QCOMPARE(frame.height(), size.height());
     QCOMPARE(frame.startTime(), qint64(-1));
     QCOMPARE(frame.endTime(), qint64(-1));
+    frame.map(QVideoFrame::ReadOnly);
+    QCOMPARE(frame.bytesPerLine(0), bytesPerLine);
+    frame.unmap();
 }
 
 void tst_QVideoFrame::createInvalid_data()
@@ -813,6 +870,73 @@ void tst_QVideoFrame::formatConversion()
         QCOMPARE(QVideoFrameFormat::imageFormatFromPixelFormat(pixelFormat), imageFormat);
 }
 
+void tst_QVideoFrame::qImageFromVideoFrame_doesNotCrash_whenCalledWithEvenAndOddSizedFrames_data() {
+    QTest::addColumn<QSize>("size");
+    QTest::addColumn<QVideoFrameFormat::PixelFormat>("pixelFormat");
+    QTest::addColumn<bool>("forceCpuConversion");
+    QTest::addColumn<bool>("supportedOnPlatform");
+
+    const std::vector<QSize> sizes{
+        // Even sized
+        { 2, 2 },
+        { 2, 10 },
+        { 10, 2 },
+        { 640, 480 },
+        { 4096, 2160 },
+        // Odd sized
+        { 0, 0 },
+        { 3, 3 },
+        { 2, 3 },
+        { 3, 2 },
+        { 641, 480 },
+        { 640, 481 },
+        // TODO: Crashes
+        // { 1, 1 } // TODO: Division by zero in QVideoFrame::map (Debug)
+        // { 1, 2 } // TODO: D3D validation error in QRhiD3D11::executeCommandBuffer
+        // { 2, 1 } // TODO: D3D validation error in QRhiD3D11::executeCommandBuffer
+    };
+
+    for (const QSize &size : sizes) {
+        for (const QVideoFrameFormat::PixelFormat pixelFormat : s_pixelFormats) {
+            QList<bool> cpuChoices = { true };
+            if (isRhiRenderingSupported())
+                cpuChoices.push_back(false); // Only run tests on GPU if RHI is supported
+
+            for (const bool forceCpu : cpuChoices) {
+
+                if (pixelFormat == QVideoFrameFormat::Format_YUV420P10 && forceCpu)
+                    continue; // TODO: Cpu conversion not implemented
+
+                QString name = QStringLiteral("%1x%2_%3%4")
+                               .arg(size.width())
+                               .arg(size.height())
+                               .arg(QVideoFrameFormat::pixelFormatToString(pixelFormat))
+                               .arg(forceCpu ? "_cpu" : "");
+
+                QTest::addRow("%s", name.toLatin1().data())
+                        << size << pixelFormat << forceCpu << isSupportedPixelFormat(pixelFormat);
+            }
+        }
+    }
+}
+
+void tst_QVideoFrame::qImageFromVideoFrame_doesNotCrash_whenCalledWithEvenAndOddSizedFrames() {
+    QFETCH(const QSize, size);
+    QFETCH(const QVideoFrameFormat::PixelFormat, pixelFormat);
+    QFETCH(const bool, forceCpuConversion);
+    QFETCH(const bool, supportedOnPlatform);
+
+    const QVideoFrameFormat format{ size, pixelFormat };
+    const QVideoFrame frame{ format };
+    const QImage actual = qImageFromVideoFrame(frame, QtVideo::Rotation::None, false, false,
+                                               forceCpuConversion);
+
+    if (supportedOnPlatform)
+        QCOMPARE_EQ(actual.isNull(), size.isEmpty());
+    // Otherwise, we don't expect an image being produced, although it might.
+    // TODO: Investigate why 16 bit formats fail on some Android flavors.
+}
+
 #define TEST_MAPPED(frame, mode) \
 do { \
     QVERIFY(frame.bits(0)); \
@@ -983,6 +1107,19 @@ void tst_QVideoFrame::emptyData()
     QVideoFrame f(new QMemoryVideoBuffer(data, 600),
                   QVideoFrameFormat(QSize(800, 600), QVideoFrameFormat::Format_ARGB8888));
     QVERIFY(!f.map(QVideoFrame::ReadOnly));
+}
+
+void tst_QVideoFrame::mirrored_takesValue_fromVideoFrameFormat()
+{
+    QVideoFrameFormat format(QSize(10, 20), QVideoFrameFormat::Format_ARGB8888);
+    format.setMirrored(true);
+
+    QVideoFrame frame(format);
+    QVERIFY(frame.mirrored());
+
+    frame.setMirrored(false);
+    QVERIFY(!frame.mirrored());
+    QVERIFY(!frame.surfaceFormat().isMirrored());
 }
 
 QTEST_MAIN(tst_QVideoFrame)

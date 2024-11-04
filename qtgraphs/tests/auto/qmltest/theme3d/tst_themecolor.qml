@@ -10,21 +10,21 @@ Item {
     width: 150
     height: 150
 
-    ThemeColor {
+    Color {
         id: initial
     }
 
-    ThemeColor {
+    Color {
         id: initialized
         color: "red"
     }
 
-    ThemeColor {
+    Color {
         id: change
     }
 
     TestCase {
-        name: "ThemeColor Initial"
+        name: "Color Initial"
 
         function test_initial() {
             compare(initial.color, "#000000")
@@ -32,7 +32,7 @@ Item {
     }
 
     TestCase {
-        name: "ThemeColor Initialized"
+        name: "Color Initialized"
 
         function test_initialized() {
             compare(initialized.color, "#ff0000")
@@ -40,7 +40,7 @@ Item {
     }
 
     TestCase {
-        name: "ThemeColor Change"
+        name: "Color Change"
 
         function test_change() {
             change.color = "blue"

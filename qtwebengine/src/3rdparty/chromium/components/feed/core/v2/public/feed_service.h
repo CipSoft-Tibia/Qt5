@@ -16,6 +16,7 @@
 #include "components/feed/core/v2/public/types.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/leveldb_proto/public/proto_database.h"
+#include "components/search_engines/template_url_service.h"
 #include "components/signin/public/base/consent_level.h"
 #include "components/web_resource/eula_accepted_notifier.h"
 
@@ -51,6 +52,7 @@ class FeedStore;
 class FeedStream;
 class PersistentKeyValueStoreImpl;
 class ImageFetcher;
+class ResourceFetcher;
 
 namespace internal {
 bool ShouldClearFeed(bool is_signed_in,
@@ -67,8 +69,6 @@ class FeedService : public KeyedService {
     virtual std::string GetLanguageTag() = 0;
     // Returns display metrics for the device.
     virtual DisplayMetrics GetDisplayMetrics() = 0;
-    // Returns true if autoplay is enabled.
-    virtual bool IsAutoplayEnabled() = 0;
     // Returns how the tab group feature is enabled.
     virtual TabGroupEnabledState GetTabGroupEnabledState() = 0;
     // Clear all stored data.
@@ -103,7 +103,8 @@ class FeedService : public KeyedService {
       scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
       scoped_refptr<base::SequencedTaskRunner> background_task_runner,
       const std::string& api_key,
-      const ChromeInfo& chrome_info);
+      const ChromeInfo& chrome_info,
+      TemplateURLService* template_url_service);
   static std::unique_ptr<FeedService> CreateForTesting(FeedApi* api);
   ~FeedService() override;
   FeedService(const FeedService&) = delete;
@@ -151,6 +152,7 @@ class FeedService : public KeyedService {
   std::unique_ptr<NetworkDelegateImpl> network_delegate_;
   std::unique_ptr<FeedNetwork> feed_network_;
   std::unique_ptr<ImageFetcher> image_fetcher_;
+  std::unique_ptr<ResourceFetcher> resource_fetcher_;
   std::unique_ptr<FeedStore> store_;
   std::unique_ptr<PersistentKeyValueStoreImpl> persistent_key_value_store_;
   std::unique_ptr<RefreshTaskScheduler> refresh_task_scheduler_;

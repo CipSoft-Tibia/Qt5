@@ -11,28 +11,38 @@
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
-#include "include/core/SkImageInfo.h"
 #include "include/core/SkRect.h"
-#include "include/core/SkScalar.h"
-#include "include/core/SkSize.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkSamplingOptions.h"
 #include "src/core/SkDevice.h"
 #include "src/core/SkGlyphRunPainter.h"
-#include "src/core/SkRasterClip.h"
+#include "src/core/SkImageFilterTypes.h"
 #include "src/core/SkRasterClipStack.h"
 
+#include <cstddef>
+
+class SkBlender;
+class SkImage;
 class SkImageFilterCache;
 class SkMatrix;
+class SkMesh;
 class SkPaint;
 class SkPath;
 class SkPixmap;
-class SkRasterHandleAllocator;
 class SkRRect;
+class SkRasterHandleAllocator;
+class SkRegion;
+class SkShader;
+class SkSpecialImage;
 class SkSurface;
 class SkSurfaceProps;
+class SkVertices;
+enum class SkClipOp;
+namespace sktext { class GlyphRunList; }
+struct SkImageInfo;
 struct SkPoint;
-#ifdef SK_ENABLE_SKSL
-class SkMesh;
-#endif
+struct SkRSXform;
+
 ///////////////////////////////////////////////////////////////////////////////
 class SkBitmapDevice : public SkBaseDevice {
 public:
@@ -88,9 +98,8 @@ protected:
                        SkCanvas::SrcRectConstraint) override;
 
     void drawVertices(const SkVertices*, sk_sp<SkBlender>, const SkPaint&, bool) override;
-#ifdef SK_ENABLE_SKSL
+    // Implemented in src/sksl/SkBitmapDevice_mesh.cpp
     void drawMesh(const SkMesh&, sk_sp<SkBlender>, const SkPaint&) override;
-#endif
 
     void drawAtlas(const SkRSXform[], const SkRect[], const SkColor[], int count, sk_sp<SkBlender>,
                    const SkPaint&) override;
@@ -138,6 +147,7 @@ protected:
 private:
     friend class SkCanvas;
     friend class SkDraw;
+    friend class SkDrawBase;
     friend class SkDrawTiler;
     friend class SkSurface_Raster;
 

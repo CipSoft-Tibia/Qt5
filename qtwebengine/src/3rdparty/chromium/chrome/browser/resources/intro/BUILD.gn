@@ -11,7 +11,12 @@ assert(is_chromeos_lacros || enable_dice_support)
 build_webui("build") {
   grd_prefix = "intro"
 
-  static_files = [ "intro.html" ]
+  static_files = [
+    "default_browser/default_browser.html",
+    "intro.html",
+    "images/default_browser_frame.svg",
+    "images/default_browser_frame_dark.svg",
+  ]
 
   if (enable_dice_support) {
     static_files += [
@@ -22,18 +27,22 @@ build_webui("build") {
     if (!is_chrome_branded) {
       static_files += [ "images/security.svg" ]
     }
-  }
-
-  if (is_chromeos_lacros) {
-    web_component_files = [ "lacros_app.ts" ]
-  } else if (enable_dice_support) {
     web_component_files = [
+      "default_browser/app.ts",
       "dice_app.ts",
       "sign_in_promo.ts",
     ]
   }
 
-  non_web_component_files = [ "browser_proxy.ts" ]
+  if (is_chromeos_lacros) {
+    static_files += [ "images/lacros_intro_banner.svg" ]
+    web_component_files = [ "lacros_app.ts" ]
+  }
+
+  non_web_component_files = [
+    "default_browser/browser_proxy.ts",
+    "browser_proxy.ts",
+  ]
 
   ts_definitions = [ "//tools/typescript/definitions/chrome_send.d.ts" ]
   ts_composite = true

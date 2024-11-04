@@ -19,6 +19,8 @@
 #include "aom_mem/aom_mem.h"
 #include "av1/encoder/encoder.h"
 #include "av1/encoder/encoder_utils.h"
+#include "av1/encoder/pickcdef.h"
+#include "av1/encoder/picklpf.h"
 #include "av1/encoder/ratectrl.h"
 #include "av1/encoder/rc_utils.h"
 #include "av1/encoder/svc_layercontext.h"
@@ -38,6 +40,7 @@ AV1RateControlRtcConfig::AV1RateControlRtcConfig() {
   max_intra_bitrate_pct = 50;
   max_inter_bitrate_pct = 0;
   framerate = 30.0;
+  ss_number_layers = 1;
   ts_number_layers = 1;
   aq_mode = 0;
   layer_target_bitrate[0] = static_cast<int>(target_bandwidth);
@@ -68,11 +71,7 @@ std::unique_ptr<AV1RateControlRTC> AV1RateControlRTC::Create(
   av1_zero(*rc_api->cpi_->ppi);
   rc_api->cpi_->common.seq_params = &rc_api->cpi_->ppi->seq_params;
   av1_zero(*rc_api->cpi_->common.seq_params);
-  const int num_layers = cfg.ss_number_layers * cfg.ts_number_layers;
-  if (num_layers > 1 && !av1_alloc_layer_context(rc_api->cpi_, num_layers)) {
-    return nullptr;
-  }
-  rc_api->InitRateControl(cfg);
+  if (!rc_api->InitRateControl(cfg)) return nullptr;
   if (cfg.aq_mode) {
     AV1_COMP *const cpi = rc_api->cpi_;
     cpi->enc_seg.map = static_cast<uint8_t *>(aom_calloc(
@@ -112,7 +111,7 @@ AV1RateControlRTC::~AV1RateControlRTC() {
   }
 }
 
-void AV1RateControlRTC::InitRateControl(const AV1RateControlRtcConfig &rc_cfg) {
+bool AV1RateControlRTC::InitRateControl(const AV1RateControlRtcConfig &rc_cfg) {
   AV1_COMMON *cm = &cpi_->common;
   AV1EncoderConfig *oxcf = &cpi_->oxcf;
   RATE_CONTROL *const rc = &cpi_->rc;
@@ -128,13 +127,14 @@ void AV1RateControlRTC::InitRateControl(const AV1RateControlRtcConfig &rc_cfg) {
   oxcf->rc_cfg.drop_frames_water_mark = 0;
   oxcf->tool_cfg.bit_depth = AOM_BITS_8;
   oxcf->tool_cfg.superblock_size = AOM_SUPERBLOCK_SIZE_DYNAMIC;
+  oxcf->algo_cfg.loopfilter_control = LOOPFILTER_ALL;
   cm->current_frame.frame_number = 0;
   cpi_->ppi->p_rc.kf_boost = DEFAULT_KF_BOOST_RT;
   for (auto &lvl_idx : oxcf->target_seq_level_idx) lvl_idx = SEQ_LEVEL_MAX;
 
   memcpy(cpi_->ppi->level_params.target_seq_level_idx,
          oxcf->target_seq_level_idx, sizeof(oxcf->target_seq_level_idx));
-  UpdateRateControl(rc_cfg);
+  if (!UpdateRateControl(rc_cfg)) return false;
   set_sb_size(cm->seq_params,
               av1_select_sb_size(oxcf, cm->width, cm->height,
                                  cpi_->svc.number_spatial_layers));
@@ -148,10 +148,21 @@ void AV1RateControlRTC::InitRateControl(const AV1RateControlRtcConfig &rc_cfg) {
   // Enable external rate control.
   cpi_->rc.rtc_external_ratectrl = 1;
   cpi_->sf.rt_sf.use_nonrd_pick_mode = 1;
+  return true;
 }
 
-void AV1RateControlRTC::UpdateRateControl(
+bool AV1RateControlRTC::UpdateRateControl(
     const AV1RateControlRtcConfig &rc_cfg) {
+  if (rc_cfg.ss_number_layers < 1 ||
+      rc_cfg.ss_number_layers > AOM_MAX_SS_LAYERS ||
+      rc_cfg.ts_number_layers < 1 ||
+      rc_cfg.ts_number_layers > AOM_MAX_TS_LAYERS) {
+    return false;
+  }
+  const int num_layers = rc_cfg.ss_number_layers * rc_cfg.ts_number_layers;
+  if (num_layers > 1 && !av1_alloc_layer_context(cpi_, num_layers)) {
+    return false;
+  }
   AV1_COMMON *cm = &cpi_->common;
   AV1EncoderConfig *oxcf = &cpi_->oxcf;
   RATE_CONTROL *const rc = &cpi_->rc;
@@ -212,6 +223,7 @@ void AV1RateControlRTC::UpdateRateControl(
     av1_update_layer_context_change_config(cpi_, target_bandwidth_svc);
   }
   check_reset_rc_flag(cpi_);
+  return true;
 }
 
 void AV1RateControlRTC::ComputeQP(const AV1FrameParamsRTC &frame_params) {
@@ -294,12 +306,38 @@ int AV1RateControlRTC::GetQP() const {
   return cpi_->common.quant_params.base_qindex;
 }
 
-signed char *AV1RateControlRTC::GetCyclicRefreshMap() const {
-  return cpi_->cyclic_refresh->map;
+AV1LoopfilterLevel AV1RateControlRTC::GetLoopfilterLevel() const {
+  av1_pick_filter_level(nullptr, cpi_, LPF_PICK_FROM_Q);
+  AV1LoopfilterLevel lpf_level;
+  lpf_level.filter_level[0] = cpi_->common.lf.filter_level[0];
+  lpf_level.filter_level[1] = cpi_->common.lf.filter_level[1];
+  lpf_level.filter_level_u = cpi_->common.lf.filter_level_u;
+  lpf_level.filter_level_v = cpi_->common.lf.filter_level_v;
+
+  return lpf_level;
 }
 
-int *AV1RateControlRTC::GetDeltaQ() const {
-  return cpi_->cyclic_refresh->qindex_delta;
+AV1CdefInfo AV1RateControlRTC::GetCdefInfo() const {
+  av1_pick_cdef_from_qp(&cpi_->common, 0, 0);
+  AV1CdefInfo cdef_level;
+  cdef_level.cdef_strength_y = cpi_->common.cdef_info.cdef_strengths[0];
+  cdef_level.cdef_strength_uv = cpi_->common.cdef_info.cdef_uv_strengths[0];
+  cdef_level.damping = cpi_->common.cdef_info.cdef_damping;
+
+  return cdef_level;
+}
+
+bool AV1RateControlRTC::GetSegmentationData(
+    AV1SegmentationData *segmentation_data) const {
+  if (cpi_->oxcf.q_cfg.aq_mode == 0) {
+    return false;
+  }
+  segmentation_data->segmentation_map = cpi_->enc_seg.map;
+  segmentation_data->segmentation_map_size =
+      cpi_->common.mi_params.mi_rows * cpi_->common.mi_params.mi_cols;
+  segmentation_data->delta_q = cpi_->cyclic_refresh->qindex_delta;
+  segmentation_data->delta_q_size = 3u;
+  return true;
 }
 
 void AV1RateControlRTC::PostEncodeUpdate(uint64_t encoded_frame_size) {

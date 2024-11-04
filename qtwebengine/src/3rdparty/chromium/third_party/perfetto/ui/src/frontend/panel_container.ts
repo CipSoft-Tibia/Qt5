@@ -12,9 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
+import m from 'mithril';
 
-import {assertExists, assertFalse, assertTrue} from '../base/logging';
+import {Trash} from '../base/disposable';
+import {assertExists, assertFalse} from '../base/logging';
+import {SimpleResizeObserver} from '../base/resize_observer';
+import {
+  debugNow,
+  perfDebug,
+  perfDisplay,
+  PerfStatsSource,
+  RunningStatistics,
+  runningStatStr,
+} from '../core/perf';
+import {raf} from '../core/raf_scheduler';
 
 import {
   SELECTION_STROKE_COLOR,
@@ -27,13 +38,6 @@ import {
 } from './flow_events_renderer';
 import {globals} from './globals';
 import {isPanelVNode, Panel, PanelSize} from './panel';
-import {
-  debugNow,
-  perfDebug,
-  perfDisplay,
-  RunningStatistics,
-  runningStatStr,
-} from './perf';
 import {TrackGroupAttrs} from './viewer_page';
 
 // If the panel container scrolls, the backing canvas height is
@@ -46,7 +50,7 @@ export type AnyAttrsVnode = m.Vnode<any, any>;
 export interface Attrs {
   panels: AnyAttrsVnode[];
   doesScroll: boolean;
-  kind: 'TRACKS'|'OVERVIEW'|'DETAILS';
+  kind: 'TRACKS'|'OVERVIEW';
 }
 
 interface PanelInfo {
@@ -58,7 +62,8 @@ interface PanelInfo {
   y: number;
 }
 
-export class PanelContainer implements m.ClassComponent<Attrs> {
+export class PanelContainer implements m.ClassComponent<Attrs>,
+                                       PerfStatsSource {
   // These values are updated with proper values in oncreate.
   private parentWidth = 0;
   private parentHeight = 0;
@@ -86,9 +91,7 @@ export class PanelContainer implements m.ClassComponent<Attrs> {
 
   private ctx?: CanvasRenderingContext2D;
 
-  private onResize: () => void = () => {};
-  private parentOnScroll: () => void = () => {};
-  private canvasRedrawer: () => void;
+  private trash: Trash;
 
   get canvasOverdrawFactor() {
     return this.attrs.doesScroll ? SCROLLING_CANVAS_OVERDRAW_FACTOR : 1;
@@ -135,11 +138,13 @@ export class PanelContainer implements m.ClassComponent<Attrs> {
       return;
     }
 
+    const {visibleTimeScale} = globals.frontendLocalState;
+
     // The Y value is given from the top of the pan and zoom region, we want it
     // from the top of the panel container. The parent offset corrects that.
     const panels = this.getPanelsInRegion(
-        globals.frontendLocalState.timeScale.timeToPx(area.startSec),
-        globals.frontendLocalState.timeScale.timeToPx(area.endSec),
+        visibleTimeScale.timeToPx(area.start),
+        visibleTimeScale.timeToPx(area.end),
         globals.frontendLocalState.areaY.start + TOPBAR_HEIGHT,
         globals.frontendLocalState.areaY.end + TOPBAR_HEIGHT);
     // Get the track ids from the panels.
@@ -160,64 +165,67 @@ export class PanelContainer implements m.ClassComponent<Attrs> {
         }
       }
     }
-    globals.frontendLocalState.selectArea(area.startSec, area.endSec, tracks);
+    globals.frontendLocalState.selectArea(area.start, area.end, tracks);
   }
 
   constructor(vnode: m.CVnode<Attrs>) {
     this.attrs = vnode.attrs;
-    this.canvasRedrawer = () => this.redrawCanvas();
-    globals.rafScheduler.addRedrawCallback(this.canvasRedrawer);
-    perfDisplay.addContainer(this);
     this.flowEventsRenderer = new FlowEventsRenderer();
+    this.trash = new Trash();
+
+    const onRedraw = () => this.redrawCanvas();
+    raf.addRedrawCallback(onRedraw);
+    this.trash.addCallback(() => {
+      raf.removeRedrawCallback(onRedraw);
+    });
+
+    perfDisplay.addContainer(this);
+    this.trash.addCallback(() => {
+      perfDisplay.removeContainer(this);
+    });
   }
 
-  oncreate(vnodeDom: m.CVnodeDOM<Attrs>) {
+  oncreate({dom}: m.CVnodeDOM<Attrs>) {
     // Save the canvas context in the state.
-    const canvas =
-        vnodeDom.dom.querySelector('.main-canvas') as HTMLCanvasElement;
+    const canvas = dom.querySelector('.main-canvas') as HTMLCanvasElement;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       throw Error('Cannot create canvas context');
     }
     this.ctx = ctx;
 
-    this.readParentSizeFromDom(vnodeDom.dom);
-    this.readPanelHeightsFromDom(vnodeDom.dom);
+    this.readParentSizeFromDom(dom);
+    this.readPanelHeightsFromDom(dom);
 
     this.updateCanvasDimensions();
     this.repositionCanvas();
 
-    // Save the resize handler in the state so we can remove it later.
-    // TODO: Encapsulate resize handling better.
-    this.onResize = () => {
-      this.readParentSizeFromDom(vnodeDom.dom);
-      this.updateCanvasDimensions();
-      this.repositionCanvas();
-      globals.rafScheduler.scheduleFullRedraw();
-    };
-
-    // Once ResizeObservers are out, we can stop accessing the window here.
-    window.addEventListener('resize', this.onResize);
+    this.trash.add(new SimpleResizeObserver(dom, () => {
+      const parentSizeChanged = this.readParentSizeFromDom(dom);
+      if (parentSizeChanged) {
+        this.updateCanvasDimensions();
+        this.repositionCanvas();
+        this.redrawCanvas();
+      }
+    }));
 
     // TODO(dproy): Handle change in doesScroll attribute.
     if (this.attrs.doesScroll) {
-      this.parentOnScroll = () => {
-        this.scrollTop = assertExists(vnodeDom.dom.parentElement).scrollTop;
+      const parentOnScroll = () => {
+        this.scrollTop = dom.parentElement!.scrollTop;
         this.repositionCanvas();
-        globals.rafScheduler.scheduleRedraw();
+        raf.scheduleRedraw();
       };
-      vnodeDom.dom.parentElement!.addEventListener(
-          'scroll', this.parentOnScroll, {passive: true});
+      dom.parentElement!.addEventListener(
+          'scroll', parentOnScroll, {passive: true});
+      this.trash.addCallback(() => {
+        dom.parentElement!.removeEventListener('scroll', parentOnScroll);
+      });
     }
   }
 
-  onremove({attrs, dom}: m.CVnodeDOM<Attrs>) {
-    window.removeEventListener('resize', this.onResize);
-    globals.rafScheduler.removeRedrawCallback(this.canvasRedrawer);
-    if (attrs.doesScroll) {
-      dom.parentElement!.removeEventListener('scroll', this.parentOnScroll);
-    }
-    perfDisplay.removeContainer(this);
+  onremove() {
+    this.trash.dispose();
   }
 
   isTrackGroupAttrs(attrs: unknown): attrs is TrackGroupAttrs {
@@ -269,9 +277,9 @@ export class PanelContainer implements m.ClassComponent<Attrs> {
     ];
   }
 
-  onupdate(vnodeDom: m.CVnodeDOM<Attrs>) {
-    const totalPanelHeightChanged = this.readPanelHeightsFromDom(vnodeDom.dom);
-    const parentSizeChanged = this.readParentSizeFromDom(vnodeDom.dom);
+  onupdate({dom}: m.CVnodeDOM<Attrs>) {
+    const totalPanelHeightChanged = this.readPanelHeightsFromDom(dom);
+    const parentSizeChanged = this.readParentSizeFromDom(dom);
     const canvasSizeShouldChange =
         parentSizeChanged || !this.attrs.doesScroll && totalPanelHeightChanged;
     if (canvasSizeShouldChange) {
@@ -449,8 +457,9 @@ export class PanelContainer implements m.ClassComponent<Attrs> {
       return;
     }
 
-    const startX = globals.frontendLocalState.timeScale.timeToPx(area.startSec);
-    const endX = globals.frontendLocalState.timeScale.timeToPx(area.endSec);
+    const {visibleTimeScale} = globals.frontendLocalState;
+    const startX = visibleTimeScale.timeToPx(area.start);
+    const endX = visibleTimeScale.timeToPx(area.end);
     // To align with where to draw on the canvas subtract the first panel Y.
     selectedTracksMinY -= this.panelContainerTop;
     selectedTracksMaxY -= this.panelContainerTop;
@@ -495,15 +504,13 @@ export class PanelContainer implements m.ClassComponent<Attrs> {
     this.perfStats.panelsOnCanvas = panelsOnCanvas;
   }
 
-  renderPerfStats(index: number) {
-    assertTrue(perfDebug());
-    return [m(
-        'section',
-        m('div', `Panel Container ${index + 1}`),
-        m('div',
-          `${this.perfStats.totalPanels} panels, ` +
-              `${this.perfStats.panelsOnCanvas} on canvas.`),
-        m('div', runningStatStr(this.perfStats.renderStats)))];
+  renderPerfStats() {
+    return [
+      m('div',
+        `${this.perfStats.totalPanels} panels, ` +
+            `${this.perfStats.panelsOnCanvas} on canvas.`),
+      m('div', runningStatStr(this.perfStats.renderStats)),
+    ];
   }
 
   private getCanvasOverdrawHeightPerSide() {

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,13 +6,12 @@
 #define DISCOVERY_DNSSD_IMPL_INSTANCE_KEY_H_
 
 #include <string>
+#include <string_view>
 #include <utility>
 
-#include "absl/strings/string_view.h"
 #include "discovery/dnssd/impl/service_key.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
 class DnsSdInstance;
 class DomainName;
@@ -31,15 +30,15 @@ class InstanceKey : public ServiceKey {
 
   // NOTE: The provided parameters must be valid instance,  service and domain
   // ids.
-  InstanceKey(absl::string_view instance,
-              absl::string_view service,
-              absl::string_view domain);
+  InstanceKey(std::string_view instance,
+              std::string_view service,
+              std::string_view domain);
 
   InstanceKey(const InstanceKey& other);
-  InstanceKey(InstanceKey&& other);
+  InstanceKey(InstanceKey&& other) noexcept;
 
   InstanceKey& operator=(const InstanceKey& rhs);
-  InstanceKey& operator=(InstanceKey&& rhs);
+  InstanceKey& operator=(InstanceKey&& rhs) noexcept;
 
   DomainName GetName() const override;
 
@@ -94,7 +93,6 @@ inline bool operator!=(const InstanceKey& lhs, const InstanceKey& rhs) {
   return !(lhs == rhs);
 }
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery
 
 #endif  // DISCOVERY_DNSSD_IMPL_INSTANCE_KEY_H_

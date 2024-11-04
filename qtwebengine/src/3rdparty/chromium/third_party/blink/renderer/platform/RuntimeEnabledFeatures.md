@@ -1,6 +1,6 @@
 # Runtime Enabled Features
 ## Overview
-Runtime flags enable Blink developers the ability to control access Chromium users have to new features they implement. Features that are hidden behind a runtime flag are known as Runtime Enabled Features. It is a requirement of the Blink Launch Process to implement new web exposed features behind a runtime flag until an Intent To Ship has been approved.
+Runtime flags enable Blink to control access to new features. Features that are hidden behind a runtime flag are known as Runtime Enabled Features. It is a requirement of the Blink Launch Process to implement new web exposed features behind a runtime flag until an Intent To Ship has been approved. Additionally, all changes with non-trivial compatibility risk [should be guarded](/docs/flag_guarding_guidelines.md) by a Runtime Enabled Feature (or other base::Feature) so that they can be disabled quickly.
 
 ## Adding A Runtime Enabled Feature
 Runtime Enabled Features are defined in runtime_enabled_features.json5 in alphabetical order. Add your feature's flag to [runtime_enabled_features.json5] and the rest will be generated for you automatically.
@@ -65,12 +65,12 @@ Any in-development feature can be added with no status, the only requirement is 
 * For a feature to be marked `status: "experimental"`, it should be far enough along to permit testing by early adopter web developers.  Many chromium enthusiasts run with `--enable-experimental-web-platform-features`, and so promoting a feature to experimental status can be a good way to get early warning of any stability or compatibility problems.  If such problems are discovered (e.g. major websites being seriously broken when the feature is enabled), the feature should be demoted back to no status or `status: "test"` to avoid creating undue problems for such users.  It's notoriously difficult to diagnose a bug report from a user who neglects to mention that they have this flag enabled.  Often a feature will be set to experimental status long before it's implementation is complete, and while there is still substantial churn on the API design.  Features in this state are not expected to work completely, just do something of value which developers may want to provide feedback on.
 
    **Note:** features set to "experimental" should **not** be expected to cause significant breakage of existing major sites. The primary use case is new APIs or features that are not expected to cause compat issues. If your feature could be reasonably expected to cause compat issues, please keep it marked no status or `status:"test"` [4], and instead use the Finch system, which is better suited to detect and disable such features in case of problems.
-   
-\[4]: In this case, "no status" is preferred to `status:"test"` unless you can ensure test coverage of the code paths with the feature disabled. See the `status:"test"` section for more details.   
+
+\[4]: In this case, "no status" is preferred to `status:"test"` unless you can ensure test coverage of the code paths with the feature disabled. See the `status:"test"` section for more details.
 
 * For a feature to be marked `status: "stable"`, it must be complete and ready for use by all chrome users. Often this means it has gotten approval via the [blink launch process]. However, for features which are not web observable (e.g. a flag to track a large-scale code refactoring), this approval is not needed. In rare cases a feature may be tested on canary and dev channels by temporarily setting it to `status: "stable"`, with a comment pointing to a bug marked `Release-Block-Beta` tracking setting the feature back to `status: "experimental"` before the branch for beta.
 
-When a feature has shipped and is no longer at risk of needing to be disabled, it's associated RuntimeEnableFeatures entry should be removed entirely.  Permanent features should generally not have flags.
+When a feature has shipped and is no longer at risk of needing to be disabled, its associated RuntimeEnableFeatures entry should be removed entirely.  Permanent features should generally not have flags.
 
 If a feature is not stable and no longer under active development, remove `status: "test"/"experimental"` on it (and consider deleting the code implementing the feature).
 

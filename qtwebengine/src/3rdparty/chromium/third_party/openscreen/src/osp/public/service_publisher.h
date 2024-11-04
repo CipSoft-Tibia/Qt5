@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,7 @@
 #include "platform/base/interface_info.h"
 #include "platform/base/macros.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 class ServicePublisher {
  public:
@@ -141,7 +140,6 @@ class ServicePublisher {
   OSP_DISALLOW_COPY_AND_ASSIGN(ServicePublisher);
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_PUBLIC_SERVICE_PUBLISHER_H_

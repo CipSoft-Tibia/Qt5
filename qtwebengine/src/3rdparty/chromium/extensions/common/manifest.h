@@ -173,7 +173,6 @@ class Manifest final {
   const std::string* FindStringPath(base::StringPiece path) const;
 
   const base::Value::Dict* FindDictPath(base::StringPiece path) const;
-  const base::Value* FindDictPathAsValue(base::StringPiece path) const;
 
   // Deprecated: Use the FindDictPath(asValue) functions instead.
   bool GetList(const std::string& path, const base::Value** out_value) const;
@@ -201,7 +200,7 @@ class Manifest final {
   // like directory structures and URLs, and is expected to not change across
   // versions. It is generated as a SHA-256 hash of the extension's public
   // key, or as a hash of the path in the case of unpacked extensions.
-  const std::string extension_id_;
+  const ExtensionId extension_id_;
 
   // The hex-encoding of the SHA1 of the extension id; used to determine feature
   // availability.

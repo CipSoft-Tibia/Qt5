@@ -189,7 +189,8 @@ TEST_F(WindowTreeHostTest, NoRewritesPostIME) {
   ui::test::TestEventRewriter event_rewriter;
   host()->AddEventRewriter(&event_rewriter);
 
-  ui::KeyEvent key_event('A', ui::VKEY_A, ui::DomCode::NONE, 0);
+  ui::KeyEvent key_event =
+      ui::KeyEvent::FromCharacter('A', ui::VKEY_A, ui::DomCode::NONE, 0);
   ui::EventDispatchDetails details =
       host()->GetInputMethod()->DispatchKeyEvent(&key_event);
   ASSERT_TRUE(!details.dispatcher_destroyed && !details.target_destroyed);
@@ -323,10 +324,6 @@ class TestWindowTreeHost : public WindowTreeHostPlatform {
 
   TestWindowTreeHost(const TestWindowTreeHost&) = delete;
   TestWindowTreeHost& operator=(const TestWindowTreeHost&) = delete;
-
-  void OnVideoCaptureLockChanged() override { ++num_capture_lock_changes; }
-
-  int num_capture_lock_changes = 0;
 };
 
 TEST_F(WindowTreeHostTest, LostCaptureDuringTearDown) {
@@ -336,20 +333,6 @@ TEST_F(WindowTreeHostTest, LostCaptureDuringTearDown) {
       features::kApplyNativeOcclusionToCompositor);
 #endif
   TestWindowTreeHost host;
-}
-
-TEST_F(WindowTreeHostTest, VideoCaptureLockRecorded) {
-  TestWindowTreeHost host;
-  ASSERT_FALSE(host.HasVideoCaptureLocks());
-  ASSERT_EQ(host.num_capture_lock_changes, 0);
-
-  auto lock = host.CreateVideoCaptureLock();
-  EXPECT_TRUE(host.HasVideoCaptureLocks());
-  EXPECT_EQ(host.num_capture_lock_changes, 1);
-
-  lock.reset();
-  EXPECT_FALSE(host.HasVideoCaptureLocks());
-  EXPECT_EQ(host.num_capture_lock_changes, 2);
 }
 
 #if BUILDFLAG(IS_WIN)

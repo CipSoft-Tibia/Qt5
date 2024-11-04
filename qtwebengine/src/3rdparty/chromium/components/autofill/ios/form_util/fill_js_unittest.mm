@@ -12,10 +12,6 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #import "testing/gtest_mac.h"
 
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-#error "This file requires ARC support."
-#endif
-
 namespace {
 
 class FillJsTest : public web::WebTestWithWebState {
@@ -88,6 +84,18 @@ TEST_F(FillJsTest, GetAriaLabel) {
       autofill::FormUtilJavaScriptFeature::GetInstance());
   NSString* expected_result = @"the label";
   EXPECT_NSEQ(result, expected_result);
+}
+
+// Tests if shouldAutocomplete returns valid result for
+// autocomplete='one-time-code'.
+TEST_F(FillJsTest, ShouldAutocompleteOneTimeCode) {
+  LoadHtml(@"<input id='input' type='text' autocomplete='one-time-code'/>");
+
+  id result = web::test::ExecuteJavaScriptForFeature(
+      web_state(),
+      @"__gCrWeb.fill.shouldAutocomplete(document.getElementById('input'));",
+      autofill::FormUtilJavaScriptFeature::GetInstance());
+  EXPECT_NSEQ(result, @NO);
 }
 
 // Tests that aria-labelledby works. Simple case: only one id referenced.

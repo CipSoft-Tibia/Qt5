@@ -26,6 +26,7 @@
 # include <qaccessible.h>
 #endif
 
+#include <QtCore/qpointer.h>
 
 //#define QABSTRACTSPINBOX_QSBDEBUG
 #ifdef QABSTRACTSPINBOX_QSBDEBUG
@@ -691,14 +692,14 @@ void QAbstractSpinBox::setLineEdit(QLineEdit *lineEdit)
     d->edit->setAcceptDrops(false);
 
     if (d->type != QMetaType::UnknownType) {
-        connect(d->edit, SIGNAL(textChanged(QString)),
-                this, SLOT(_q_editorTextChanged(QString)));
-        connect(d->edit, SIGNAL(cursorPositionChanged(int,int)),
-                this, SLOT(_q_editorCursorPositionChanged(int,int)));
-        connect(d->edit, SIGNAL(cursorPositionChanged(int,int)),
-                this, SLOT(updateMicroFocus()));
-        connect(d->edit->d_func()->control, SIGNAL(updateMicroFocus()),
-                this, SLOT(updateMicroFocus()));
+        QObjectPrivate::connect(d->edit, &QLineEdit::textChanged,
+                                d, &QAbstractSpinBoxPrivate::editorTextChanged);
+        QObjectPrivate::connect(d->edit, &QLineEdit::cursorPositionChanged,
+                                d, &QAbstractSpinBoxPrivate::editorCursorPositionChanged);
+        connect(d->edit, &QLineEdit::cursorPositionChanged,
+                this, [this]() { updateMicroFocus(); });
+        connect(d->edit->d_func()->control, &QWidgetLineControl::updateMicroFocus,
+                this, [this]() { updateMicroFocus(); });
     }
     d->updateEditFieldGeometry();
     d->edit->setContextMenuPolicy(Qt::NoContextMenu);
@@ -1510,7 +1511,7 @@ void QAbstractSpinBoxPrivate::emitSignals(EmitPolicy, const QVariant &)
     signal.
 */
 
-void QAbstractSpinBoxPrivate::_q_editorTextChanged(const QString &t)
+void QAbstractSpinBoxPrivate::editorTextChanged(const QString &t)
 {
     Q_Q(QAbstractSpinBox);
 
@@ -1540,7 +1541,7 @@ void QAbstractSpinBoxPrivate::_q_editorTextChanged(const QString &t)
     the different sections etc.
 */
 
-void QAbstractSpinBoxPrivate::_q_editorCursorPositionChanged(int oldpos, int newpos)
+void QAbstractSpinBoxPrivate::editorCursorPositionChanged(int oldpos, int newpos)
 {
     if (!edit->hasSelectedText() && !ignoreCursorPositionChanged && !specialValue()) {
         ignoreCursorPositionChanged = true;
@@ -2042,6 +2043,7 @@ QVariant operator-(const QVariant &arg1, const QVariant &arg2)
                 dt.setTime(dt.time().addMSecs(msecs));
             ret = QVariant(dt);
         }
+        break;
     }
     default: break;
     }

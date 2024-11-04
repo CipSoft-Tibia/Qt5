@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 import * as Common from '../../core/common/common.js';
+import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as IconButton from '../../ui/components/icon_button/icon_button.js';
@@ -24,14 +25,14 @@ const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 
 export class TopLayerContainer extends UI.TreeOutline.TreeElement {
   tree: ElementsTreeOutline.ElementsTreeOutline;
-  domModel: SDK.DOMModel.DOMModel;
+  document: SDK.DOMModel.DOMDocument;
   currentTopLayerDOMNodes: Set<SDK.DOMModel.DOMNode> = new Set();
   topLayerUpdateThrottler: Common.Throttler.Throttler;
 
-  constructor(tree: ElementsTreeOutline.ElementsTreeOutline, domModel: SDK.DOMModel.DOMModel) {
+  constructor(tree: ElementsTreeOutline.ElementsTreeOutline, document: SDK.DOMModel.DOMDocument) {
     super('#top-layer');
     this.tree = tree;
-    this.domModel = domModel;
+    this.document = document;
     this.topLayerUpdateThrottler = new Common.Throttler.Throttler(1);
   }
 
@@ -43,28 +44,31 @@ export class TopLayerContainer extends UI.TreeOutline.TreeElement {
     this.removeChildren();
     this.removeCurrentTopLayerElementsAdorners();
     this.currentTopLayerDOMNodes = new Set();
-
-    const newTopLayerElementsIDs = await this.domModel.getTopLayerElements();
+    const domModel = this.document.domModel();
+    const newTopLayerElementsIDs = await domModel.getTopLayerElements();
     if (!newTopLayerElementsIDs || newTopLayerElementsIDs.length === 0) {
       return;
     }
 
     let topLayerElementIndex = 0;
     for (let i = 0; i < newTopLayerElementsIDs.length; i++) {
-      const topLayerDOMNode = this.domModel.idToDOMNode.get(newTopLayerElementsIDs[i]);
-      if (topLayerDOMNode && topLayerDOMNode.nodeName() !== '::backdrop') {
+      const topLayerDOMNode = domModel.idToDOMNode.get(newTopLayerElementsIDs[i]);
+      if (!topLayerDOMNode || topLayerDOMNode.ownerDocument !== this.document) {
+        continue;
+      }
+
+      if (topLayerDOMNode.nodeName() !== '::backdrop') {
         const topLayerElementShortcut = new SDK.DOMModel.DOMNodeShortcut(
-            this.domModel.target(), topLayerDOMNode.backendNodeId(), 0, topLayerDOMNode.nodeName());
+            domModel.target(), topLayerDOMNode.backendNodeId(), 0, topLayerDOMNode.nodeName());
         const topLayerElementRepresentation = new ElementsTreeOutline.ShortcutTreeElement(topLayerElementShortcut);
         this.appendChild(topLayerElementRepresentation);
         this.currentTopLayerDOMNodes.add(topLayerDOMNode);
 
         // Add the element's backdrop if previous top layer element is a backdrop.
-        const previousTopLayerDOMNode =
-            (i > 0) ? this.domModel.idToDOMNode.get(newTopLayerElementsIDs[i - 1]) : undefined;
+        const previousTopLayerDOMNode = (i > 0) ? domModel.idToDOMNode.get(newTopLayerElementsIDs[i - 1]) : undefined;
         if (previousTopLayerDOMNode && previousTopLayerDOMNode.nodeName() === '::backdrop') {
           const backdropElementShortcut = new SDK.DOMModel.DOMNodeShortcut(
-              this.domModel.target(), previousTopLayerDOMNode.backendNodeId(), 0, previousTopLayerDOMNode.nodeName());
+              domModel.target(), previousTopLayerDOMNode.backendNodeId(), 0, previousTopLayerDOMNode.nodeName());
           const backdropElementRepresentation = new ElementsTreeOutline.ShortcutTreeElement(backdropElementShortcut);
           topLayerElementRepresentation.appendChild(backdropElementRepresentation);
         }
@@ -94,8 +98,7 @@ export class TopLayerContainer extends UI.TreeOutline.TreeElement {
     const adornerContent = document.createElement('span');
     adornerContent.classList.add('adorner-with-icon');
     const linkIcon = new IconButton.Icon.Icon();
-    linkIcon
-        .data = {iconName: 'ic_show_node_16x16', color: 'var(--color-text-disabled)', width: '12px', height: '12px'};
+    linkIcon.data = {iconName: 'select-element', color: 'var(--icon-default)', width: '14px', height: '14px'};
     const adornerText = document.createElement('span');
     adornerText.textContent = ` top-layer (${topLayerElementIndex}) `;
     adornerContent.append(linkIcon);
@@ -103,6 +106,7 @@ export class TopLayerContainer extends UI.TreeOutline.TreeElement {
     const adorner = element?.adorn(config, adornerContent);
     if (adorner) {
       const onClick = (((): void => {
+                         Host.userMetrics.badgeActivated(Host.UserMetrics.BadgeType.TOP_LAYER);
                          topLayerElementRepresentation.revealAndSelect();
                        }) as EventListener);
       adorner.addInteraction(onClick, {

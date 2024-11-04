@@ -20,7 +20,8 @@ compliant AV1 decoder. More information on the AV1 video format can be found at
     From within the libgav1 directory:
 
     ```shell
-    $ git clone https://github.com/abseil/abseil-cpp.git third_party/abseil-cpp
+    $ git clone -b 20220623.0 --depth 1 \
+      https://github.com/abseil/abseil-cpp.git third_party/abseil-cpp
     ```
 
     Note: Abseil is required by the examples and tests. libgav1 will depend on
@@ -31,7 +32,8 @@ compliant AV1 decoder. More information on the AV1 video format can be found at
     From within the libgav1 directory:
 
     ```shell
-    $ git clone https://github.com/google/googletest.git third_party/googletest
+    $ git clone -b release-1.12.1 --depth 1 \
+      https://github.com/google/googletest.git third_party/googletest
     ```
 
 ### Compile
@@ -44,8 +46,8 @@ compliant AV1 decoder. More information on the AV1 video format can be found at
 
 Configuration options:
 
-*   `LIBGAV1_MAX_BITDEPTH`: defines the maximum supported bitdepth (8, 10;
-    default: 10).
+*   `LIBGAV1_MAX_BITDEPTH`: defines the maximum supported bitdepth (8, 10, 12;
+    default: 12).
 *   `LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS`: define to a non-zero value to disable
     [symbol reduction](#symbol-reduction) in an optimized build to keep all
     versions of dsp functions available. Automatically defined in

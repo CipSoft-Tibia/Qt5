@@ -257,6 +257,14 @@ private:
         const std::less<const T*> less = {};
         return !less(d->end(), i.i) && !less(i.i, d->begin());
     }
+
+    void verify([[maybe_unused]] qsizetype pos = 0, [[maybe_unused]] qsizetype n = 1) const
+    {
+        Q_ASSERT(pos >= 0);
+        Q_ASSERT(pos <= size());
+        Q_ASSERT(n >= 0);
+        Q_ASSERT(n <= size() - pos);
+    }
 public:
     QList(DataPointer dd) noexcept
         : d(dd)
@@ -266,20 +274,20 @@ public:
 public:
     QList() = default;
     explicit QList(qsizetype size)
-        : d(Data::allocate(size))
+        : d(size)
     {
         if (size)
             d->appendInitialize(size);
     }
     QList(qsizetype size, parameter_type t)
-        : d(Data::allocate(size))
+        : d(size)
     {
         if (size)
             d->copyAppend(size, t);
     }
 
     inline QList(std::initializer_list<T> args)
-        : d(Data::allocate(qsizetype(args.size())))
+        : d(qsizetype(args.size()))
     {
         if (args.size())
             d->copyAppend(args.begin(), args.end());
@@ -287,10 +295,7 @@ public:
 
     QList<T> &operator=(std::initializer_list<T> args)
     {
-        d = DataPointer(Data::allocate(qsizetype(args.size())));
-        if (args.size())
-            d->copyAppend(args.begin(), args.end());
-        return *this;
+        return assign(args);
     }
 
     template <typename InputIterator, if_input_iterator<InputIterator> = true>
@@ -301,7 +306,7 @@ public:
         } else {
             const auto distance = std::distance(i1, i2);
             if (distance) {
-                d = DataPointer(Data::allocate(qsizetype(distance)));
+                d = DataPointer(qsizetype(distance));
                 // appendIteratorRange can deal with contiguous iterators on its own,
                 // this is an optimization for C++17 code.
                 if constexpr (std::is_same_v<std::decay_t<InputIterator>, iterator> ||
@@ -417,7 +422,7 @@ public:
             return;
         if (d->needsDetach()) {
             // must allocate memory
-            DataPointer detached(Data::allocate(d.allocatedCapacity()));
+            DataPointer detached(d.allocatedCapacity());
             d.swap(detached);
         } else {
             d->truncate(0);
@@ -634,27 +639,13 @@ public:
     QList<T> mid(qsizetype pos, qsizetype len = -1) const;
 
     QList<T> first(qsizetype n) const
-    {
-        Q_ASSERT(size_t(n) <= size_t(size()));
-        return QList<T>(begin(), begin() + n);
-    }
+    { verify(0, n); return QList<T>(begin(), begin() + n); }
     QList<T> last(qsizetype n) const
-    {
-        Q_ASSERT(size_t(n) <= size_t(size()));
-        return QList<T>(end() - n, end());
-    }
+    { verify(0, n); return QList<T>(end() - n, end()); }
     QList<T> sliced(qsizetype pos) const
-    {
-        Q_ASSERT(size_t(pos) <= size_t(size()));
-        return QList<T>(begin() + pos, end());
-    }
+    { verify(pos, 0); return QList<T>(begin() + pos, end()); }
     QList<T> sliced(qsizetype pos, qsizetype n) const
-    {
-        Q_ASSERT(size_t(pos) <= size_t(size()));
-        Q_ASSERT(n >= 0);
-        Q_ASSERT(pos + n <= size());
-        return QList<T>(begin() + pos, begin() + pos + n);
-    }
+    { verify(pos, n); return QList<T>(begin() + pos, begin() + pos + n); }
 
     T value(qsizetype i) const { return value(i, T()); }
     T value(qsizetype i, parameter_type defaultValue) const;
@@ -754,7 +745,7 @@ void QList<T>::reserve(qsizetype asize)
         }
     }
 
-    DataPointer detached(Data::allocate(qMax(asize, size())));
+    DataPointer detached(qMax(asize, size()));
     detached->copyAppend(d->begin(), d->end());
     if (detached.d_ptr())
         detached->setFlag(Data::CapacityReserved);
@@ -768,7 +759,7 @@ inline void QList<T>::squeeze()
         return;
     if (d->needsDetach() || size() < capacity()) {
         // must allocate memory
-        DataPointer detached(Data::allocate(size()));
+        DataPointer detached(size());
         if (size()) {
             if (d.needsDetach())
                 detached->copyAppend(d.data(), d.data() + d.size);
@@ -897,7 +888,7 @@ inline QList<T> &QList<T>::fill(parameter_type t, qsizetype newSize)
         newSize = size();
     if (d->needsDetach() || newSize > capacity()) {
         // must allocate memory
-        DataPointer detached(Data::allocate(d->detachCapacity(newSize)));
+        DataPointer detached(d->detachCapacity(newSize));
         detached->copyAppend(newSize, t);
         d.swap(detached);
     } else {
@@ -979,7 +970,7 @@ inline QList<T> QList<T>::mid(qsizetype pos, qsizetype len) const
     }
 
     // Allocate memory
-    DataPointer copied(Data::allocate(l));
+    DataPointer copied(l);
     copied->copyAppend(data() + p, data() + p + l);
     return copied;
 }

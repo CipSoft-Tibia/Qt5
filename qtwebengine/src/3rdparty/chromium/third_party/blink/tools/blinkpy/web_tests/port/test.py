@@ -693,6 +693,7 @@ class TestPort(Port):
             'test-win-win10': 'win10',
             'test-mac-mac10.10': 'mac10.10',
             'test-mac-mac10.11': 'mac10.11',
+            'test-mac-mac11-arm64': 'mac11-arm64',
             'test-linux-precise': 'precise',
             'test-linux-trusty': 'trusty',
         }
@@ -703,16 +704,22 @@ class TestPort(Port):
         elif self._operating_system == 'mac':
             self._architecture = 'arm64'
 
-        self.all_systems = (('mac10.10', 'x86'), ('mac10.11', 'x86'),
-                            ('win7', 'x86'), ('win10', 'x86'),
-                            ('precise', 'x86_64'), ('trusty', 'x86_64'))
+        self.all_systems = (
+            ('mac10.10', 'x86'),
+            ('mac10.11', 'x86'),
+            ('mac11-arm64', 'arm64'),
+            ('win7', 'x86'),
+            ('win10', 'x86'),
+            ('precise', 'x86_64'),
+            ('trusty', 'x86_64'),
+        )
 
         self.all_build_types = ('debug', 'release')
 
         # To avoid surprises when introducing new macros, these are
         # intentionally fixed in time.
         self.configuration_specifier_macros_dict = {
-            'mac': ['mac10.10', 'mac10.11'],
+            'mac': ['mac10.10', 'mac10.11', 'mac10.12'],
             'win': ['win7', 'win10'],
             'linux': ['precise', 'trusty']
         }
@@ -738,7 +745,7 @@ class TestPort(Port):
                 crash_logs[cp[0]] = (b'delayed crash log', '/tmp')
         return crash_logs
 
-    def _path_to_driver(self, target=None):
+    def path_to_driver(self, target=None):
         # This routine shouldn't normally be called, but it is called by
         # the mock_drt Driver. We return something, but make sure it's useless.
         return 'MOCK _path_to_driver'
@@ -906,8 +913,11 @@ class TestDriver(Driver):
         self.pid = 0
 
     def cmd_line(self, per_test_args):
-        return [self._port._path_to_driver()] + \
-            self._port.get_option('additional_driver_flag', []) + per_test_args
+        return [
+            self._port.path_to_driver(),
+            *self._port.get_option('additional_driver_flag', []),
+            *per_test_args,
+        ]
 
     def run_test(self, driver_input):
         if not self.started:

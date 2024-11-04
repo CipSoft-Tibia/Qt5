@@ -212,7 +212,7 @@ void QPersistentModelIndexData::destroy(QPersistentModelIndexData *data)
 */
 
 /*!
-    \fn template <typename Container> QModelRoleDataSpan::QModelRoleDataSpan(Container &c) noexcept
+    \fn template <typename Container, QModelRoleDataSpan::if_compatible_container<Container> = true> QModelRoleDataSpan::QModelRoleDataSpan(Container &c) noexcept
 
     Constructs an QModelRoleDataSpan spanning over the container \a c,
     which can be any contiguous container of QModelRoleData objects.
@@ -382,7 +382,7 @@ QPersistentModelIndex::~QPersistentModelIndex()
   model index are used when comparing with another persistent model index.
 */
 
-bool QPersistentModelIndex::operator==(const QPersistentModelIndex &other) const
+bool QPersistentModelIndex::operator==(const QPersistentModelIndex &other) const noexcept
 {
     if (d && other.d)
         return d->index == other.d->index;
@@ -399,7 +399,7 @@ bool QPersistentModelIndex::operator==(const QPersistentModelIndex &other) const
     model index are used when comparing with another persistent model index.
 */
 
-bool QPersistentModelIndex::operator<(const QPersistentModelIndex &other) const
+bool QPersistentModelIndex::operator<(const QPersistentModelIndex &other) const noexcept
 {
     if (d && other.d)
         return d->index < other.d->index;
@@ -477,7 +477,7 @@ QPersistentModelIndex::operator QModelIndex() const
     model index are used when comparing with another model index.
 */
 
-bool QPersistentModelIndex::operator==(const QModelIndex &other) const
+bool QPersistentModelIndex::operator==(const QModelIndex &other) const noexcept
 {
     if (d)
         return d->index == other;
@@ -491,7 +491,7 @@ bool QPersistentModelIndex::operator==(const QModelIndex &other) const
     location as the \a other model index; otherwise returns \c{false}.
 */
 
-bool QPersistentModelIndex::operator!=(const QModelIndex &other) const
+bool QPersistentModelIndex::operator!=(const QModelIndex &other) const noexcept
 {
     if (d)
         return d->index != other;
@@ -601,7 +601,8 @@ QModelIndex QPersistentModelIndex::sibling(int row, int column) const
 
 /*!
     Returns the data for the given \a role for the item referred to by the
-    index.
+    index, or a default-constructed QVariant if this persistent model index
+    is \l{isValid()}{invalid}.
 
     \sa Qt::ItemDataRole, QAbstractItemModel::setData()
 */
@@ -1308,7 +1309,8 @@ void QAbstractItemModel::resetInternalData()
     \fn QVariant QModelIndex::data(int role) const
 
     Returns the data for the given \a role for the item referred to by the
-    index.
+    index, or a default-constructed QVariant if this model index is
+    \l{isValid()}{invalid}.
 */
 
 /*!

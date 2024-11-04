@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,8 +15,7 @@
 #include "util/saturate_cast.h"
 #include "util/stringprintf.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 using clock_operators::operator<<;
 
@@ -185,12 +184,13 @@ int SenderPacketRouter::SendJustTheRtcpPackets(Clock::time_point send_time) {
     // most up-to-date Sender state. Having multiple RTCP packets in the same
     // burst would mean that all but the last one are old/irrelevant snapshots
     // of Sender state, and this would just thrash/confuse the Receiver.
-    const absl::Span<uint8_t> packet =
-        entry.sender->GetRtcpPacketForImmediateSend(
-            send_time,
-            absl::Span<uint8_t>(packet_buffer_.get(), packet_buffer_size_));
+    const ByteBuffer packet = entry.sender->GetRtcpPacketForImmediateSend(
+        send_time, ByteBuffer(packet_buffer_.get(), packet_buffer_size_));
     if (!packet.empty()) {
-      environment_->SendPacket(ByteView(packet.data(), packet.size()));
+      environment_->SendPacket(
+          ByteView(packet.data(), packet.size()),
+          PacketMetadata{.stream_type = entry.sender->GetStreamType(),
+                         .rtp_timestamp = entry.sender->GetLastRtpTimestamp()});
       entry.next_rtcp_send_time = send_time + kRtcpReportInterval;
       ++num_sent;
     }
@@ -211,14 +211,15 @@ int SenderPacketRouter::SendJustTheRtpPackets(Clock::time_point send_time,
     }
 
     for (; num_sent < num_packets_to_send; ++num_sent) {
-      const absl::Span<uint8_t> packet =
-          entry.sender->GetRtpPacketForImmediateSend(
-              send_time,
-              absl::Span<uint8_t>(packet_buffer_.get(), packet_buffer_size_));
+      const ByteBuffer packet = entry.sender->GetRtpPacketForImmediateSend(
+          send_time, ByteBuffer(packet_buffer_.get(), packet_buffer_size_));
       if (packet.empty()) {
         break;
       }
-      environment_->SendPacket(ByteView(packet.data(), packet.size()));
+      environment_->SendPacket(
+          ByteView(packet.data(), packet.size()),
+          PacketMetadata{.stream_type = entry.sender->GetStreamType(),
+                         .rtp_timestamp = entry.sender->GetLastRtpTimestamp()});
     }
     entry.next_rtp_send_time = entry.sender->GetRtpResumeTime();
   }
@@ -270,5 +271,4 @@ constexpr milliseconds SenderPacketRouter::kDefaultBurstInterval;
 // static
 constexpr Clock::time_point SenderPacketRouter::kNever;
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

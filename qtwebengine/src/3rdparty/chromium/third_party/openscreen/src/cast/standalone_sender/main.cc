@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -30,8 +30,7 @@
 #include "util/chrono_helpers.h"
 #include "util/stringprintf.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 void LogUsage(const char* argv0) {
@@ -224,7 +223,7 @@ int StandaloneSenderMain(int argc, char* argv[]) {
   if (!remote_endpoint.port) {
     for (const InterfaceInfo& interface : GetNetworkInterfaces()) {
       if (interface.name == iface_or_endpoint) {
-        ReceiverChooser chooser(interface, task_runner,
+        ReceiverChooser chooser(interface, *task_runner,
                                 [&](IPEndpoint endpoint) {
                                   remote_endpoint = endpoint;
                                   task_runner->RequestStopSoon();
@@ -247,7 +246,7 @@ int StandaloneSenderMain(int argc, char* argv[]) {
   LoopingFileCastAgent* cast_agent = nullptr;
   task_runner->PostTask([&] {
     cast_agent =
-        new LoopingFileCastAgent(task_runner, std::move(cast_trust_store),
+        new LoopingFileCastAgent(*task_runner, std::move(cast_trust_store),
                                  [&] { task_runner->RequestStopSoon(); });
 
     cast_agent->Connect({.receiver_endpoint = remote_endpoint,
@@ -279,8 +278,7 @@ int StandaloneSenderMain(int argc, char* argv[]) {
 }
 
 }  // namespace
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 #endif
 
 int main(int argc, char* argv[]) {

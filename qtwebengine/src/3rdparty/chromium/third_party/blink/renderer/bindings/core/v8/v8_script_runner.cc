@@ -38,6 +38,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/script_streamer.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_code_cache.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_compile_hints_producer.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_initializer.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_throw_dom_exception.h"
 #include "third_party/blink/renderer/bindings/core/v8/worker_or_worklet_script_controller.h"
@@ -69,11 +70,6 @@ namespace {
 // Used to throw an exception before we exceed the C++ stack and crash.
 // This limit was arrived at arbitrarily. crbug.com/449744
 const int kMaxRecursionDepth = 44;
-
-bool InDiscardExperiment() {
-  return base::FeatureList::IsEnabled(
-      blink::features::kDiscardCodeCacheAfterFirstUse);
-}
 
 // In order to make sure all pending messages to be processed in
 // v8::Function::Call, we don't call throwStackOverflowException
@@ -170,6 +166,7 @@ v8::MaybeLocal<v8::Script> CompileScriptInternal(
       ScriptCacheConsumer* cache_consumer = classic_script.CacheConsumer();
       scoped_refptr<CachedMetadata> cached_metadata =
           V8CodeCache::GetCachedMetadata(cache_handler);
+      const bool full_code_cache = V8CodeCache::IsFull(cached_metadata.get());
       v8::ScriptCompiler::Source source(
           code, origin,
           V8CodeCache::CreateCachedData(cached_metadata).release(),
@@ -194,18 +191,11 @@ v8::MaybeLocal<v8::Script> CompileScriptInternal(
             ExecutionContext::GetCodeCacheHostFromContext(
                 ExecutionContext::From(script_state)),
             CachedMetadataHandler::kClearPersistentStorage);
-      } else if (InDiscardExperiment()) {
-        // Experimentally free code cache from memory after first use. See
-        // http://crbug.com/1045052.
-        cache_handler->ClearCachedMetadata(
-            ExecutionContext::GetCodeCacheHostFromContext(
-                ExecutionContext::From(script_state)),
-            CachedMetadataHandler::kDiscardLocally);
       }
       if (cache_result) {
         *cache_result = absl::make_optional(
             inspector_compile_script_event::V8ConsumeCacheResult(
-                cached_data->length, cached_data->rejected));
+                cached_data->length, cached_data->rejected, full_code_cache));
       }
       return script;
     }
@@ -327,6 +317,9 @@ v8::MaybeLocal<v8::Module> V8ScriptRunner::CompileModule(
         CachedMetadataHandler* cache_handler = params.CacheHandler();
         DCHECK(cache_handler);
         cache_handler->DidUseCodeCache();
+        const scoped_refptr<CachedMetadata> cached_metadata =
+            V8CodeCache::GetCachedMetadata(cache_handler);
+        const bool full_code_cache = V8CodeCache::IsFull(cached_metadata.get());
         // TODO(leszeks): Add support for passing in ScriptCacheConsumer.
         v8::ScriptCompiler::Source source(
             code, origin,
@@ -345,16 +338,10 @@ v8::MaybeLocal<v8::Module> V8ScriptRunner::CompileModule(
           cache_handler->ClearCachedMetadata(
               ExecutionContext::GetCodeCacheHostFromContext(execution_context),
               CachedMetadataHandler::kClearPersistentStorage);
-        } else if (InDiscardExperiment()) {
-          // Experimentally free code cache from memory after first use. See
-          // http://crbug.com/1045052.
-          cache_handler->ClearCachedMetadata(
-              ExecutionContext::GetCodeCacheHostFromContext(execution_context),
-              CachedMetadataHandler::kDiscardLocally);
         }
         cache_result = absl::make_optional(
             inspector_compile_script_event::V8ConsumeCacheResult(
-                cached_data->length, cached_data->rejected));
+                cached_data->length, cached_data->rejected, full_code_cache));
         break;
       }
       default:
@@ -400,7 +387,11 @@ v8::MaybeLocal<v8::Value> V8ScriptRunner::RunCompiledScript(
       ThrowScriptForbiddenException(isolate);
       return v8::MaybeLocal<v8::Value>();
     }
-    DCHECK(!ScriptForbiddenScope::WillBeScriptForbidden());
+    if (RuntimeEnabledFeatures::BlinkLifecycleScriptForbiddenEnabled()) {
+      CHECK(!ScriptForbiddenScope::WillBeScriptForbidden());
+    } else {
+      DCHECK(!ScriptForbiddenScope::WillBeScriptForbidden());
+    }
 
     v8::Isolate::SafeForTerminationScope safe_for_termination(isolate);
     v8::MicrotasksScope microtasks_scope(isolate, microtask_queue,
@@ -412,8 +403,8 @@ v8::MaybeLocal<v8::Value> V8ScriptRunner::RunCompiledScript(
 
     // ToCoreString here should be zero copy due to externalized string
     // unpacked.
-    probe::ExecuteScript probe(context, isolate->GetCurrentContext(),
-                               ToCoreString(script_url),
+    String url = ToCoreString(script_url);
+    probe::ExecuteScript probe(context, isolate->GetCurrentContext(), url,
                                script->GetUnboundScript()->GetId());
     result = script->Run(isolate->GetCurrentContext(), host_defined_options);
   }
@@ -513,9 +504,15 @@ ScriptEvaluationResult V8ScriptRunner::CompileAndRunScript(
     v8::ScriptCompiler::CompileOptions compile_options;
     V8CodeCache::ProduceCacheOptions produce_cache_options;
     v8::ScriptCompiler::NoCacheReason no_cache_reason;
+    Page* page = frame != nullptr ? frame->GetPage() : nullptr;
+    bool might_generate_compile_hints =
+        page ? page->GetV8CrowdsourcedCompileHintsProducer().MightGenerateData()
+             : false;
+
     std::tie(compile_options, produce_cache_options, no_cache_reason) =
         V8CodeCache::GetCompileOptions(execution_context->GetV8CacheOptions(),
-                                       *classic_script);
+                                       *classic_script,
+                                       might_generate_compile_hints);
 
     v8::ScriptOrigin origin = classic_script->CreateScriptOrigin(isolate);
     v8::MaybeLocal<v8::Value> maybe_result;
@@ -572,21 +569,19 @@ ScriptEvaluationResult V8ScriptRunner::CompileAndRunScript(
             produce_cache_options);
       }
 
-#if BUILDFLAG(ENABLE_V8_COMPILE_HINTS)
-      if (compile_options == v8::ScriptCompiler::kProduceCompileHints &&
-          frame != nullptr) {
-        // TODO(chromium:1406506): Add a compile hints solution for workers.
-        // TODO(chromium:1406506): Add a compile hints solution for fenced
-        // frames.
-        // TODO(chromium:1406506): Add a compile hints solution for
-        // out-of-process iframes.
-        Page* page = frame->GetPage();
-        if (page != nullptr) {
-          page->GetV8CompileHints().RecordScript(frame, execution_context,
-                                                 script, script_state);
+#if BUILDFLAG(PRODUCE_V8_COMPILE_HINTS)
+      if (page != nullptr) {
+        if (compile_options == v8::ScriptCompiler::kProduceCompileHints) {
+          // TODO(chromium:1406506): Add a compile hints solution for workers.
+          // TODO(chromium:1406506): Add a compile hints solution for fenced
+          // frames.
+          // TODO(chromium:1406506): Add a compile hints solution for
+          // out-of-process iframes.
+          page->GetV8CrowdsourcedCompileHintsProducer().RecordScript(
+              frame, execution_context, script, script_state);
         }
       }
-#endif  // BUILDFLAG(ENABLE_V8_COMPILE_HINTS)
+#endif  // BUILDFLAG(PRODUCE_V8_COMPILE_HINTS)
     }
 
     // TODO(crbug/1114601): Investigate whether to check CanContinue() in other
@@ -672,7 +667,11 @@ v8::MaybeLocal<v8::Value> V8ScriptRunner::CallAsConstructor(
     ThrowScriptForbiddenException(isolate);
     return v8::MaybeLocal<v8::Value>();
   }
-  DCHECK(!ScriptForbiddenScope::WillBeScriptForbidden());
+  if (RuntimeEnabledFeatures::BlinkLifecycleScriptForbiddenEnabled()) {
+    CHECK(!ScriptForbiddenScope::WillBeScriptForbidden());
+  } else {
+    DCHECK(!ScriptForbiddenScope::WillBeScriptForbidden());
+  }
 
   // TODO(dominicc): When inspector supports tracing object
   // invocation, change this to use v8::Object instead of
@@ -713,7 +712,6 @@ v8::MaybeLocal<v8::Value> V8ScriptRunner::CallFunction(
     v8::Local<v8::Value> argv[],
     v8::Isolate* isolate) {
   LocalDOMWindow* window = DynamicTo<LocalDOMWindow>(context);
-  LocalFrame* frame = window ? window->GetFrame() : nullptr;
   TRACE_EVENT0("v8", "v8.callFunction");
   RuntimeCallStatsScopedTracer rcs_scoped_tracer(isolate);
   RUNTIME_CALL_TIMER_SCOPE(isolate, RuntimeCallStats::CounterId::kV8);
@@ -729,12 +727,15 @@ v8::MaybeLocal<v8::Value> V8ScriptRunner::CallFunction(
     ThrowScriptForbiddenException(isolate);
     return v8::MaybeLocal<v8::Value>();
   }
-  DCHECK(!ScriptForbiddenScope::WillBeScriptForbidden());
+  if (RuntimeEnabledFeatures::BlinkLifecycleScriptForbiddenEnabled()) {
+    CHECK(!ScriptForbiddenScope::WillBeScriptForbidden());
+  } else {
+    DCHECK(!ScriptForbiddenScope::WillBeScriptForbidden());
+  }
 
-  DCHECK(!frame ||
-         BindingSecurity::ShouldAllowAccessToFrame(
-             ToLocalDOMWindow(function->GetCreationContextChecked()), frame,
-             BindingSecurity::ErrorReportOption::kDoNotReport));
+  DCHECK(!window || !window->GetFrame() ||
+         BindingSecurity::ShouldAllowAccessTo(
+             ToLocalDOMWindow(function->GetCreationContextChecked()), window));
   v8::Isolate::SafeForTerminationScope safe_for_termination(isolate);
   v8::MicrotasksScope microtasks_scope(isolate, microtask_queue,
                                        v8::MicrotasksScope::kRunMicrotasks);

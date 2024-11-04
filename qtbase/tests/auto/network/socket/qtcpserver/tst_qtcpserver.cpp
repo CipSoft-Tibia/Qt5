@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qglobal.h>
 #if defined(_WIN32)
@@ -865,10 +865,12 @@ void tst_QTcpServer::serverAddress_data()
     QTest::newRow("AnyIPv4") << QHostAddress(QHostAddress::AnyIPv4) << QHostAddress(QHostAddress::AnyIPv4);
     if (QtNetworkSettings::hasIPv6())
         QTest::newRow("AnyIPv6") << QHostAddress(QHostAddress::AnyIPv6) << QHostAddress(QHostAddress::AnyIPv6);
-    foreach (const QNetworkInterface &iface, QNetworkInterface::allInterfaces()) {
+    const auto ifaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface &iface : ifaces) {
         if ((iface.flags() & QNetworkInterface::IsUp) == 0)
             continue;
-        foreach (const QNetworkAddressEntry &entry, iface.addressEntries()) {
+        const auto entries = iface.addressEntries();
+        for (const QNetworkAddressEntry &entry : entries) {
             QTest::newRow(qPrintable(entry.ip().toString())) << entry.ip() << entry.ip();
         }
     }
@@ -922,7 +924,8 @@ void tst_QTcpServer::linkLocal()
     QSet <QString> scopes;
     QHostAddress localMaskv4("169.254.0.0");
     QHostAddress localMaskv6("fe80::");
-    foreach (const QNetworkInterface& iface, QNetworkInterface::allInterfaces()) {
+    const auto ifaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface &iface : ifaces) {
         //Windows preallocates link local addresses to interfaces that are down.
         //These may or may not work depending on network driver (they do not work for the Bluetooth PAN driver)
         if (iface.flags() & QNetworkInterface::IsUp) {
@@ -942,7 +945,8 @@ void tst_QTcpServer::linkLocal()
             if (iface.name().startsWith("awdl"))
                 continue;
 #endif
-            foreach (QNetworkAddressEntry addressEntry, iface.addressEntries()) {
+            const auto entries = iface.addressEntries();
+            for (const QNetworkAddressEntry &addressEntry : entries) {
                 QHostAddress addr = addressEntry.ip();
                 if (addr.isInSubnet(localMaskv4, 16)) {
                     addresses << addr;
@@ -961,7 +965,7 @@ void tst_QTcpServer::linkLocal()
 
     QList<QTcpServer*> servers;
     quint16 port = 0;
-    foreach (const QHostAddress& addr, addresses) {
+    for (const QHostAddress &addr : std::as_const(addresses)) {
         QTcpServer *server = new QTcpServer;
         QVERIFY(server->listen(addr, port));
         port = server->serverPort(); //listen to same port on different interfaces
@@ -969,7 +973,7 @@ void tst_QTcpServer::linkLocal()
     }
 
     QList<QTcpSocket*> clients;
-    foreach (const QHostAddress& addr, addresses) {
+    for (const QHostAddress &addr : std::as_const(addresses)) {
         //unbound socket
         QTcpSocket *socket = new QTcpSocket;
         socket->connectToHost(addr, port);
@@ -984,7 +988,7 @@ void tst_QTcpServer::linkLocal()
     }
 
     //each server should have two connections
-    foreach (QTcpServer* server, servers) {
+    for (QTcpServer *server : std::as_const(servers)) {
         //qDebug() << "checking for connections" << server->serverAddress() << ":" << server->serverPort();
         QVERIFY(server->waitForNewConnection(5000));
         QTcpSocket* remote = server->nextPendingConnection();

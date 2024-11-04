@@ -17,6 +17,7 @@
 #include "content/public/browser/web_ui_data_source.h"
 #include "services/network/public/mojom/content_security_policy.mojom.h"
 #include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/base/webui/resource_path.h"
 #include "ui/base/webui/web_ui_util.h"
 #include "ui/resources/grit/webui_resources.h"
@@ -26,7 +27,7 @@ namespace {
 
 // Helper to create parameters used for testing, when loading the intercept
 // bubble directly with the `debug` query param set.
-DiceWebSigninInterceptor::Delegate::BubbleParameters
+WebSigninInterceptor::Delegate::BubbleParameters
 CreateSampleBubbleParameters() {
   // Looks like the transparent checkerboard.
   std::string small_png =
@@ -50,8 +51,8 @@ CreateSampleBubbleParameters() {
   primary_account.picture_url = small_png;
   primary_account.hosted_domain = kNoHostedDomainFound;
 
-  return DiceWebSigninInterceptor::Delegate::BubbleParameters(
-      DiceWebSigninInterceptor::SigninInterceptionType::kMultiUser,
+  return WebSigninInterceptor::Delegate::BubbleParameters(
+      WebSigninInterceptor::SigninInterceptionType::kMultiUser,
       intercepted_account, primary_account, SK_ColorMAGENTA);
 }
 
@@ -91,6 +92,7 @@ DiceWebSigninInterceptUI::DiceWebSigninInterceptUI(content::WebUI* web_ui)
       "script-src chrome://resources chrome://test chrome://webui-test "
       "'self';");
   webui::EnableTrustedTypesCSP(source);
+  webui::SetupChromeRefresh2023(source);
 
   if (web_ui->GetWebContents()->GetVisibleURL().query() == "debug") {
     // Not intended to be hooked to anything. The bubble will not initialize it
@@ -103,8 +105,7 @@ DiceWebSigninInterceptUI::DiceWebSigninInterceptUI(content::WebUI* web_ui)
 DiceWebSigninInterceptUI::~DiceWebSigninInterceptUI() = default;
 
 void DiceWebSigninInterceptUI::Initialize(
-    const DiceWebSigninInterceptor::Delegate::BubbleParameters&
-        bubble_parameters,
+    const WebSigninInterceptor::Delegate::BubbleParameters& bubble_parameters,
     base::OnceCallback<void(int)> show_widget_with_height_callback,
     base::OnceCallback<void(SigninInterceptionUserChoice)>
         completion_callback) {

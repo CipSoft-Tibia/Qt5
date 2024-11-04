@@ -95,8 +95,6 @@ qt_internal_add_module(Location
         Qt::QuickPrivate
         Qt::PositioningPrivate
         Qt::PositioningQuickPrivate
-    DEFINES
-        QT_NO_FOREACH
     GENERATE_CPP_EXPORTS
     GENERATE_PRIVATE_CPP_EXPORTS
 )
@@ -131,6 +129,7 @@ qt_internal_add_qml_module(Location
         declarativemaps/error_messages.cpp declarativemaps/error_messages_p.h
         declarativemaps/qdeclarativegeocodemodel.cpp declarativemaps/qdeclarativegeocodemodel_p.h
         declarativemaps/qdeclarativegeoroutemodel.cpp declarativemaps/qdeclarativegeoroutemodel_p.h
+        declarativemaps/qdeclarativegeojsondata.cpp declarativemaps/qdeclarativegeojsondata_p.h
         quickmapitems/qgeomapitemgeometry.cpp quickmapitems/qgeomapitemgeometry_p.h
         quickmapitems/qdeclarativegeomap_p.h quickmapitems/qdeclarativegeomap.cpp
         quickmapitems/qdeclarativegeomapitembase_p.h
@@ -174,8 +173,6 @@ qt_internal_add_qml_module(Location
         declarativeplaces/qdeclarativesearchsuggestionmodel_p.h
         declarativeplaces/qdeclarativesupportedcategoriesmodel.cpp
         declarativeplaces/qdeclarativesupportedcategoriesmodel_p.h
-    DEFINES
-        QT_NO_FOREACH
     DEPENDENCIES
         QtQuick/auto
         QtPositioning/auto

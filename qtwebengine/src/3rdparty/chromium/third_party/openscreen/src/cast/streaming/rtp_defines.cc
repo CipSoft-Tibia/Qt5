@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,11 @@
 
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 RtpPayloadType GetPayloadType(AudioCodec codec, bool use_android_rtp_hack) {
   if (use_android_rtp_hack) {
-    return codec == AudioCodec::kNotSpecified
-               ? RtpPayloadType::kAudioVarious
-               : RtpPayloadType::kAudioHackForAndroidTV;
+    return RtpPayloadType::kAudioHackForAndroidTV;
   }
 
   switch (codec) {
@@ -30,9 +27,7 @@ RtpPayloadType GetPayloadType(AudioCodec codec, bool use_android_rtp_hack) {
 
 RtpPayloadType GetPayloadType(VideoCodec codec, bool use_android_rtp_hack) {
   if (use_android_rtp_hack) {
-    return codec == VideoCodec::kNotSpecified
-               ? RtpPayloadType::kVideoVarious
-               : RtpPayloadType::kVideoHackForAndroidTV;
+    return RtpPayloadType::kVideoHackForAndroidTV;
   }
   switch (codec) {
     // VP8 and VP9 share the same payload type.
@@ -54,6 +49,27 @@ RtpPayloadType GetPayloadType(VideoCodec codec, bool use_android_rtp_hack) {
     default:
       OSP_NOTREACHED();
   }
+}
+
+StreamType ToStreamType(RtpPayloadType type, bool use_android_rtp_hack) {
+  if (use_android_rtp_hack) {
+    if (type == RtpPayloadType::kAudioHackForAndroidTV) {
+      return StreamType::kAudio;
+    }
+    if (type == RtpPayloadType::kVideoHackForAndroidTV) {
+      return StreamType::kVideo;
+    }
+  }
+
+  if (RtpPayloadType::kAudioFirst <= type &&
+      type <= RtpPayloadType::kAudioLast) {
+    return StreamType::kAudio;
+  }
+  if (RtpPayloadType::kVideoFirst <= type &&
+      type <= RtpPayloadType::kVideoLast) {
+    return StreamType::kVideo;
+  }
+  return StreamType::kUnknown;
 }
 
 bool IsRtpPayloadType(uint8_t raw_byte) {
@@ -94,5 +110,4 @@ bool IsRtcpPacketType(uint8_t raw_byte) {
   return false;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

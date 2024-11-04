@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,14 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 
-#include "absl/types/optional.h"
 #include "cast/common/channel/proto/cast_channel.pb.h"
 #include "cast/common/channel/virtual_connection.h"
 #include "cast/common/public/cast_socket.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class CastMessageHandler;
 class ConnectionNamespaceHandler;
@@ -80,7 +79,7 @@ class VirtualConnectionRouter final : public CastSocket::Client {
   // Returns the AssociatedData for a |virtual_connection| if a connection
   // exists, nullopt otherwise. The pointer isn't stable in the long term; so,
   // if it actually needs to be stored for later, the caller should make a copy.
-  absl::optional<const VirtualConnection::AssociatedData*> GetConnectionData(
+  std::optional<const VirtualConnection::AssociatedData*> GetConnectionData(
       const VirtualConnection& virtual_connection) const;
 
   // Adds/Removes a CastMessageHandler for all messages destined for the given
@@ -139,7 +138,6 @@ class VirtualConnectionRouter final : public CastSocket::Client {
   std::map<std::string /* local_id */, CastMessageHandler*> endpoints_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_CHANNEL_VIRTUAL_CONNECTION_ROUTER_H_

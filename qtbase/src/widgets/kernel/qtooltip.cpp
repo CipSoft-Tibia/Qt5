@@ -179,8 +179,8 @@ void QTipLabel::reuseTip(const QString &text, int msecDisplayTime, const QPoint 
 {
 #ifndef QT_NO_STYLE_STYLESHEET
     if (styleSheetParent){
-        disconnect(styleSheetParent, SIGNAL(destroyed()),
-                   QTipLabel::instance, SLOT(styleSheetParentDestroyed()));
+        disconnect(styleSheetParent, &QWidget::destroyed,
+                   this, &QTipLabel::styleSheetParentDestroyed);
         styleSheetParent = nullptr;
     }
 #endif
@@ -329,6 +329,7 @@ bool QTipLabel::eventFilter(QObject *o, QEvent *e)
     case QEvent::MouseMove:
         if (o == widget && !rect.isNull() && !rect.contains(static_cast<QMouseEvent*>(e)->position().toPoint()))
             hideTip();
+        break;
     default:
         break;
     }
@@ -354,8 +355,8 @@ void QTipLabel::placeTip(const QPoint &pos, QWidget *w)
         // Set up for cleaning up this later...
         QTipLabel::instance->styleSheetParent = w;
         if (w) {
-            connect(w, SIGNAL(destroyed()),
-                QTipLabel::instance, SLOT(styleSheetParentDestroyed()));
+            connect(w, &QWidget::destroyed,
+                    QTipLabel::instance, &QTipLabel::styleSheetParentDestroyed);
         }
         // QTBUG-64550: A font inherited by the style sheet might change the size,
         // particular on Windows, where the tip is not parented on a window.

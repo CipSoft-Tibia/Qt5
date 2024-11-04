@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QFile>
@@ -45,6 +45,7 @@ private slots:
     void storageImageFlags();
     void storageBufferRuntimeArrayStride();
     void storageBufferQualifiers();
+    void multiview();
 };
 
 void tst_QShaderBaker::initTestCase()
@@ -511,7 +512,7 @@ void tst_QShaderBaker::reflectArrayOfStructInBlock()
             QCOMPARE(var.size, 640);
             QCOMPARE(var.type, QShaderDescription::Struct);
             QCOMPARE(var.arrayDims, QList<int>() << 10);
-            QCOMPARE(var.structMembers.size(), 7);
+            QCOMPARE(var.structMembers.size(), 8);
             for (const QShaderDescription::BlockVariable &structVar : var.structMembers) {
                 if (structVar.name == QByteArrayLiteral("ECLightPosition")) {
                     QCOMPARE(structVar.offset, 0);
@@ -526,19 +527,23 @@ void tst_QShaderBaker::reflectArrayOfStructInBlock()
                     QCOMPARE(structVar.size, 12);
                     QCOMPARE(structVar.type, QShaderDescription::Vec3);
                 } else if (structVar.name == QByteArrayLiteral("intensity")) {
-                    QCOMPARE(structVar.offset, 44);
-                    QCOMPARE(structVar.size, 4);
-                    QCOMPARE(structVar.type, QShaderDescription::Float);
-                } else if (structVar.name == QByteArrayLiteral("specularExp")) {
                     QCOMPARE(structVar.offset, 48);
                     QCOMPARE(structVar.size, 4);
                     QCOMPARE(structVar.type, QShaderDescription::Float);
-                } else if (structVar.name == QByteArrayLiteral("__dummy0")) {
+                } else if (structVar.name == QByteArrayLiteral("specularExp")) {
                     QCOMPARE(structVar.offset, 52);
                     QCOMPARE(structVar.size, 4);
                     QCOMPARE(structVar.type, QShaderDescription::Float);
-                } else if (structVar.name == QByteArrayLiteral("__dummy1")) {
-                    QCOMPARE(structVar.offset, 56);
+                } else if (structVar.name == QByteArrayLiteral("padding1")) {
+                    QCOMPARE(structVar.offset, 12);
+                    QCOMPARE(structVar.size, 4);
+                    QCOMPARE(structVar.type, QShaderDescription::Float);
+                } else if (structVar.name == QByteArrayLiteral("padding2")) {
+                    QCOMPARE(structVar.offset, 28);
+                    QCOMPARE(structVar.size, 4);
+                    QCOMPARE(structVar.type, QShaderDescription::Float);
+                } else if (structVar.name == QByteArrayLiteral("padding3")) {
+                    QCOMPARE(structVar.offset, 44);
                     QCOMPARE(structVar.size, 4);
                     QCOMPARE(structVar.type, QShaderDescription::Float);
                 } else {
@@ -1367,6 +1372,36 @@ void tst_QShaderBaker::storageBufferQualifiers()
              QShaderDescription::QualifierFlags(QShaderDescription::QualifierWriteOnly
                                                 | QShaderDescription::QualifierReadOnly
                                                 | QShaderDescription::QualifierRestrict));
+}
+
+void tst_QShaderBaker::multiview()
+{
+    QShaderBaker baker;
+    baker.setSourceFileName(QLatin1String(":/data/multiview_simple.vert"));
+    baker.setGeneratedShaderVariants({ QShader::StandardShader });
+
+    QVector<QShaderBaker::GeneratedShader> targets;
+    // SPV_KHR_multiview
+    targets.append({ QShader::SpirvShader, QShaderVersion(100) });
+    // SV_ViewID is in shader model 6.1
+    targets.append({ QShader::HlslShader, QShaderVersion(61) });
+    // GL_OVR_multiview(2) is written for OpenGL 3.0 / OpenGL ES 3.0 and newer, just pick
+    // some GLSL versions accordingly for the test
+    targets.append({ QShader::GlslShader, QShaderVersion(150) });
+    targets.append({ QShader::GlslShader, QShaderVersion(300, QShaderVersion::GlslEs) });
+    baker.setGeneratedShaders(targets);
+
+    // should fail due to GLSL
+    QShader s = baker.bake();
+    QVERIFY(!s.isValid());
+    QVERIFY(!baker.errorMessage().isEmpty());
+    qDebug() << baker.errorMessage();
+
+    // now provide num_views and it should succeed
+    baker.setMultiViewCount(2);
+    s = baker.bake();
+    QVERIFY(s.isValid());
+    QVERIFY(baker.errorMessage().isEmpty());
 }
 
 #include <tst_qshaderbaker.moc>

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,9 @@
 #include "cast/streaming/rtcp_common.h"
 #include "cast/streaming/rtp_defines.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
-std::pair<ApparentPacketType, Ssrc> InspectPacketForRouting(
-    absl::Span<const uint8_t> packet) {
+std::pair<ApparentPacketType, Ssrc> InspectPacketForRouting(ByteView packet) {
   // Check for RTP packets first, since they are more frequent.
   if (packet.size() >= kRtpPacketMinValidSize &&
       packet[0] == kRtpRequiredFirstByte &&
@@ -38,5 +36,4 @@ std::pair<ApparentPacketType, Ssrc> InspectPacketForRouting(
   return std::make_pair(ApparentPacketType::UNKNOWN, Ssrc{0});
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

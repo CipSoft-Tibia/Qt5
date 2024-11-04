@@ -91,7 +91,6 @@ if (is_android) {
   android_library("blink_headers_java") {
     deps = [
       "//services/network/public/mojom:mojom_java",
-      "//third_party/android_deps:com_android_support_support_annotations_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
     ]
     srcjar_deps = [ ":blink_headers_java_enums_srcjar" ]
@@ -208,7 +207,6 @@ source_set("blink_headers") {
     "platform/web_font.h",
     "platform/web_font_description.h",
     "platform/web_font_render_style.h",
-    "platform/web_frame_request_blocker.h",
     "platform/web_gesture_curve.h",
     "platform/web_graphics_context_3d_provider.h",
     "platform/web_http_body.h",
@@ -233,8 +231,6 @@ source_set("blink_headers") {
     "platform/web_policy_container.h",
     "platform/web_prescient_networking.h",
     "platform/web_private_ptr.h",
-    "platform/web_request_peer.h",
-    "platform/web_resource_request_sender_delegate.h",
     "platform/web_runtime_features.h",
     "platform/web_scoped_page_pauser.h",
     "platform/web_scroll_anchor_data.h",
@@ -380,10 +376,12 @@ source_set("blink_headers") {
     "web/web_searchable_form_data.h",
     "web/web_security_policy.h",
     "web/web_select_element.h",
+    "web/web_select_list_element.h",
     "web/web_selector.h",
     "web/web_serialized_script_value.h",
     "web/web_serialized_script_value_version.h",
     "web/web_settings.h",
+    "web/web_shared_storage_worklet_thread.h",
     "web/web_shared_worker.h",
     "web/web_shared_worker_client.h",
     "web/web_testing_support.h",
@@ -391,6 +389,7 @@ source_set("blink_headers") {
     "web/web_text_checking_completion.h",
     "web/web_text_checking_result.h",
     "web/web_text_decoration_type.h",
+    "web/web_user_level_memory_pressure_signal_generator.h",
     "web/web_v8_context_snapshot.h",
     "web/web_v8_features.h",
     "web/web_view.h",

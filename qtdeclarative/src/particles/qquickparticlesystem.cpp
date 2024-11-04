@@ -14,6 +14,7 @@
 #include "qquicktrailemitter_p.h"//###For auto-follow on states, perhaps should be in emitter?
 #include <private/qqmlengine_p.h>
 #include <private/qqmlglobal_p.h>
+#include <private/qqmlvaluetypewrapper_p.h>
 #include <cmath>
 #include <QDebug>
 
@@ -204,8 +205,7 @@ void QQuickParticleDataHeap::insertTimed(QQuickParticleData* data, int time)
 
 int QQuickParticleDataHeap::top()
 {
-    if (m_end == 0)
-        return 1 << 30;
+    Q_ASSERT(!isEmpty());
     return m_data[0].time;
 }
 
@@ -355,7 +355,7 @@ bool QQuickParticleGroupData::recycle()
 {
     m_latestAliveParticles.clear();
 
-    while (dataHeap.top() <= m_system->timeInt) {
+    while (!dataHeap.isEmpty() && dataHeap.top() <= m_system->timeInt) {
         for (QQuickParticleData *datum : dataHeap.pop()) {
             if (!datum->stillAlive(m_system)) {
                 freeList.free(datum->index);
@@ -384,113 +384,9 @@ void QQuickParticleGroupData::prepareRecycler(QQuickParticleData* d)
     }
 }
 
-QQuickParticleData::QQuickParticleData()
-    : index(0)
-    , systemIndex(-1)
-    , groupId(0)
-    , colorOwner(nullptr)
-    , rotationOwner(nullptr)
-    , deformationOwner(nullptr)
-    , animationOwner(nullptr)
-    , v4Datum(nullptr)
+QQuickV4ParticleData QQuickParticleData::v4Value(QQuickParticleSystem *particleSystem)
 {
-    x = 0;
-    y = 0;
-    t = -1;
-    lifeSpan = 0;
-    size = 0;
-    endSize = 0;
-    vx = 0;
-    vy = 0;
-    ax = 0;
-    ay = 0;
-    xx = 1;
-    xy = 0;
-    yx = 0;
-    yy = 1;
-    rotation = 0;
-    rotationVelocity = 0;
-    autoRotate = 0;
-    animIdx = 0;
-    frameDuration = 1;
-    frameAt = -1;
-    frameCount = 1;
-    animT = -1;
-    animX = 0;
-    animY = 0;
-    animWidth = 1;
-    animHeight = 1;
-    color.r = 255;
-    color.g = 255;
-    color.b = 255;
-    color.a = 255;
-    delegate = nullptr;
-}
-
-QQuickParticleData::~QQuickParticleData()
-{
-    delete v4Datum;
-}
-
-QQuickParticleData::QQuickParticleData(const QQuickParticleData &other)
-{
-    *this = other;
-}
-
-QQuickParticleData &QQuickParticleData::operator=(const QQuickParticleData &other)
-{
-    clone(other);
-
-    groupId = other.groupId;
-    index = other.index;
-    systemIndex = other.systemIndex;
-    // Lazily initialized
-    v4Datum = nullptr;
-
-    return *this;
-}
-
-void QQuickParticleData::clone(const QQuickParticleData& other)
-{
-    x = other.x;
-    y = other.y;
-    t = other.t;
-    lifeSpan = other.lifeSpan;
-    size = other.size;
-    endSize = other.endSize;
-    vx = other.vx;
-    vy = other.vy;
-    ax = other.ax;
-    ay = other.ay;
-    xx = other.xx;
-    xy = other.xy;
-    yx = other.yx;
-    yy = other.yy;
-    rotation = other.rotation;
-    rotationVelocity = other.rotationVelocity;
-    autoRotate = other.autoRotate;
-    animIdx = other.animIdx;
-    frameDuration = other.frameDuration;
-    frameCount = other.frameCount;
-    animT = other.animT;
-    animX = other.animX;
-    animY = other.animY;
-    animWidth = other.animWidth;
-    animHeight = other.animHeight;
-    color = other.color;
-    delegate = other.delegate;
-
-    colorOwner = other.colorOwner;
-    rotationOwner = other.rotationOwner;
-    deformationOwner = other.deformationOwner;
-    animationOwner = other.animationOwner;
-}
-
-QV4::ReturnedValue QQuickParticleData::v4Value(QQuickParticleSystem* particleSystem)
-{
-    if (!v4Datum)
-        v4Datum = new QQuickV4ParticleData(qmlEngine(particleSystem)->handle(), this, particleSystem);
-    return v4Datum->v4Value();
+    return QQuickV4ParticleData(this, particleSystem);
 }
 
 void QQuickParticleData::debugDump(QQuickParticleSystem* particleSystem) const
@@ -589,12 +485,12 @@ void QQuickParticleSystem::registerParticleEmitter(QQuickParticleEmitter* e)
 
 void QQuickParticleSystem::finishRegisteringParticleEmitter(QQuickParticleEmitter* e)
 {
-    connect(e, SIGNAL(particleCountChanged()),
-            this, SLOT(emittersChanged()));
-    connect(e, SIGNAL(groupChanged(QString)),
-            this, SLOT(emittersChanged()));
+    connect(e, &QQuickParticleEmitter::particleCountChanged,
+            this, &QQuickParticleSystem::emittersChanged);
+    connect(e, &QQuickParticleEmitter::groupChanged,
+            this, &QQuickParticleSystem::emittersChanged);
     if (m_componentComplete)
-        emittersChanged();
+        emitterAdded(e);
     e->reset();//Start, so that starttime factors appropriately
 }
 
@@ -833,6 +729,11 @@ void QQuickParticleSystem::emittersChanged()
         particleCount += groupData[i]->size();
     }
 
+    postProcessEmitters();
+}
+
+void QQuickParticleSystem::postProcessEmitters()
+{
     if (m_debugMode)
         qDebug() << "Particle system emitters changed. New particle count: " << particleCount << "in" << groupData.size() << "groups.";
 
@@ -851,6 +752,30 @@ void QQuickParticleSystem::emittersChanged()
     if (!m_groups.isEmpty())
         createEngine();
 
+}
+
+void QQuickParticleSystem::emitterAdded(QQuickParticleEmitter *e)
+{
+    if (!m_componentComplete)
+        return;
+
+    // Populate group and set size.
+    const int groupId = e->groupId();
+    if (groupId == QQuickParticleGroupData::InvalidID) {
+        QQuickParticleGroupData *group = new QQuickParticleGroupData(e->group(), this);
+        group->setSize(e->particleCount());
+    } else {
+        QQuickParticleGroupData *group = groupData[groupId];
+        group->setSize(group->size() + e->particleCount());
+    }
+
+    // groupData can have changed independently, so we still have to iterate it all
+    // to count the particles.
+    particleCount = 0;
+    for (int i = 0, ei = groupData.size(); i != ei; ++i)
+        particleCount += groupData[i]->size();
+
+    postProcessEmitters();
 }
 
 void QQuickParticleSystem::createEngine()
@@ -902,8 +827,8 @@ void QQuickParticleSystem::createEngine()
         stateEngine->setCount(particleCount);
         stateEngine->m_states = states;
 
-        connect(stateEngine, SIGNAL(stateChanged(int)),
-                this, SLOT(particleStateChange(int)));
+        connect(stateEngine, &QQuickStochasticEngine::stateChanged,
+                this, &QQuickParticleSystem::particleStateChange);
 
     } else {
         if (stateEngine)
@@ -923,11 +848,10 @@ void QQuickParticleSystem::moveGroups(QQuickParticleData *d, int newGIdx)
     if (!d || newGIdx == d->groupId)
         return;
 
-    QQuickParticleData* pd = newDatum(newGIdx, false, d->systemIndex);
+    QQuickParticleData *pd = newDatum(newGIdx, false, d->systemIndex, d);
     if (!pd)
         return;
 
-    pd->clone(*d);
     finishNewDatum(pd);
 
     d->systemIndex = -1;
@@ -950,14 +874,28 @@ int QQuickParticleSystem::nextSystemIndex()
     return m_nextIndex++;
 }
 
-QQuickParticleData* QQuickParticleSystem::newDatum(int groupId, bool respectLimits, int sysIndex)
+QQuickParticleData *QQuickParticleSystem::newDatum(
+        int groupId, bool respectLimits, int sysIndex,
+        const QQuickParticleData *cloneFrom)
 {
     Q_ASSERT(groupId < groupData.size());//XXX shouldn't really be an assert
 
-    QQuickParticleData* ret = groupData[groupId]->newDatum(respectLimits);
-    if (!ret) {
+    QQuickParticleData *ret = groupData[groupId]->newDatum(respectLimits);
+    if (!ret)
         return nullptr;
+
+    if (cloneFrom) {
+        // We need to retain the "identity" information of the new particle data since it may be
+        // "recycled" and still be tracked.
+        const int retainedIndex = ret->index;
+        const int retainedGroupId = ret->groupId;
+        const int retainedSystemIndex = ret->systemIndex;
+        *ret = *cloneFrom;
+        ret->index = retainedIndex;
+        ret->groupId = retainedGroupId;
+        ret->systemIndex = retainedSystemIndex;
     }
+
     if (sysIndex == -1) {
         if (ret->systemIndex == -1)
             ret->systemIndex = nextSystemIndex();

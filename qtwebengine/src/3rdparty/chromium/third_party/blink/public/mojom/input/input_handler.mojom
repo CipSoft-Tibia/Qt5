@@ -4,27 +4,28 @@
 
 module blink.mojom;
 
+import "cc/mojom/browser_controls_state.mojom";
 import "cc/mojom/overscroll_behavior.mojom";
 import "cc/mojom/touch_action.mojom";
 import "mojo/public/mojom/base/string16.mojom";
 import "mojo/public/mojom/base/time.mojom";
 import "third_party/blink/public/mojom/input/gesture_event.mojom";
-import "third_party/blink/public/mojom/input/input_event.mojom";
+import "third_party/blink/public/mojom/input/handwriting_gesture_result.mojom";
 import "third_party/blink/public/mojom/input/input_event_result.mojom";
+import "third_party/blink/public/mojom/input/input_event.mojom";
 import "third_party/blink/public/mojom/input/pointer_lock_context.mojom";
 import "third_party/blink/public/mojom/input/pointer_lock_result.mojom";
+import "third_party/blink/public/mojom/input/stylus_writing_gesture.mojom";
 import "third_party/blink/public/mojom/input/touch_event.mojom";
 import "third_party/blink/public/mojom/selection_menu/selection_menu_behavior.mojom";
 import "ui/base/ime/mojom/ime_types.mojom";
-import "third_party/blink/public/mojom/input/handwriting_gesture_result.mojom";
-import "third_party/blink/public/mojom/input/stylus_writing_gesture.mojom";
-import "ui/events/mojom/event.mojom";
 import "ui/events/mojom/event_constants.mojom";
+import "ui/events/mojom/event_latency_metadata.mojom";
+import "ui/events/mojom/event.mojom";
 import "ui/events/mojom/scroll_granularity.mojom";
 import "ui/gfx/geometry/mojom/geometry.mojom";
 import "ui/gfx/range/mojom/range.mojom";
 import "ui/latency/mojom/latency_info.mojom";
-import "cc/mojom/browser_controls_state.mojom";
 
 [EnableIf=is_android]
 import "third_party/blink/public/mojom/input/synchronous_compositor.mojom";
@@ -63,6 +64,7 @@ struct PointerData {
   gfx.mojom.PointF widget_position;
   gfx.mojom.PointF screen_position;
   MouseData? mouse_data;
+  int32 device_id;
 };
 
 struct WheelData {
@@ -129,6 +131,10 @@ struct TapData {
   bool needs_wheel_event;
 };
 
+struct TapDownData {
+  int32 tap_down_count;
+};
+
 struct GestureData {
   gfx.mojom.PointF screen_position;
   gfx.mojom.PointF widget_position;
@@ -143,6 +149,7 @@ struct GestureData {
   PinchUpdateData? pinch_update_data;
   PinchEndData? pinch_end_data;
   TapData? tap_data;
+  TapDownData? tap_down_data;
   FlingData? fling_data;
 };
 
@@ -168,6 +175,7 @@ struct Event {
   int32 modifiers;
   mojo_base.mojom.TimeTicks timestamp;
   ui.mojom.LatencyInfo latency;
+  ui.mojom.EventLatencyMetadata event_latency_metadata;
   KeyData? key_data;
   PointerData? pointer_data;
   GestureData? gesture_data;
@@ -254,7 +262,8 @@ interface WidgetInputHandlerHost {
   // Sends the character bounds after every composition change
   // to always have correct bound info.
   ImeCompositionRangeChanged(gfx.mojom.Range range,
-                             array<gfx.mojom.Rect> bounds);
+                             array<gfx.mojom.Rect>? character_bounds,
+                             array<gfx.mojom.Rect>? line_bounds);
 
   // Updates the mouse capture state of this widget. While capture is enabled,
   // all mouse events, including those that don't hittest to this widget, will
@@ -307,6 +316,12 @@ interface FrameWidgetInputHandler {
   // before and after the selection or caret.
   ExtendSelectionAndDelete(int32 before, int32 after);
 
+  // Deletes the current selection plus the specified number of characters
+  // before and after the selection or caret.
+  ExtendSelectionAndReplace(uint32 before,
+                            uint32 after,
+                            mojo_base.mojom.String16 replacement_text);
+
   // Deletes text before and after the current cursor position, excluding the
   // selection. The lengths are supplied in Java chars (UTF-16 Code Unit),
   // not in code points or in glyphs.
@@ -337,6 +352,7 @@ interface FrameWidgetInputHandler {
   Cut();
   Copy();
   CopyToFindPboard();
+  CenterSelection();
   Paste();
   PasteAndMatchStyle();
   Delete();

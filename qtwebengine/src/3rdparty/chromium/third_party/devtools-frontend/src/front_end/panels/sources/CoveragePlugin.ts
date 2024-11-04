@@ -5,7 +5,6 @@
 import * as i18n from '../../core/i18n/i18n.js';
 import type * as Platform from '../../core/platform/platform.js';
 import * as SDK from '../../core/sdk/sdk.js';
-import * as Formatter from '../../models/formatter/formatter.js';
 import type * as Workspace from '../../models/workspace/workspace.js';
 import * as CodeMirror from '../../third_party/codemirror.next/codemirror.next.js';
 import * as SourceFrame from '../../ui/legacy/components/source_frame/source_frame.js';
@@ -47,15 +46,14 @@ export class CoveragePlugin extends Plugin {
 
   constructor(uiSourceCode: Workspace.UISourceCode.UISourceCode) {
     super(uiSourceCode);
-    this.originalSourceCode =
-        Formatter.SourceFormatter.SourceFormatter.instance().getOriginalUISourceCode(this.uiSourceCode);
+    this.originalSourceCode = this.uiSourceCode;
     this.infoInToolbar = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.clickToShowCoveragePanel));
     this.infoInToolbar.setSecondary();
     this.infoInToolbar.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, () => {
       void UI.ViewManager.ViewManager.instance().showView('coverage');
     });
 
-    const mainTarget = SDK.TargetManager.TargetManager.instance().mainFrameTarget();
+    const mainTarget = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (mainTarget) {
       this.model = mainTarget.model(Coverage.CoverageModel.CoverageModel);
       if (this.model) {
@@ -72,7 +70,7 @@ export class CoveragePlugin extends Plugin {
     this.updateStats();
   }
 
-  dispose(): void {
+  override dispose(): void {
     if (this.coverage) {
       this.coverage.removeEventListener(
           Coverage.CoverageModel.URLCoverageInfo.Events.SizesChanged, this.handleCoverageSizesChanged, this);
@@ -82,7 +80,7 @@ export class CoveragePlugin extends Plugin {
     }
   }
 
-  static accepts(uiSourceCode: Workspace.UISourceCode.UISourceCode): boolean {
+  static override accepts(uiSourceCode: Workspace.UISourceCode.UISourceCode): boolean {
     return uiSourceCode.contentType().isDocumentOrScriptOrStyleSheet();
   }
 
@@ -110,11 +108,11 @@ export class CoveragePlugin extends Plugin {
     }
   }
 
-  rightToolbarItems(): UI.Toolbar.ToolbarItem[] {
+  override rightToolbarItems(): UI.Toolbar.ToolbarItem[] {
     return [this.infoInToolbar];
   }
 
-  editorExtension(): CodeMirror.Extension {
+  override editorExtension(): CodeMirror.Extension {
     return coverageCompartment.of([]);
   }
 
@@ -122,13 +120,13 @@ export class CoveragePlugin extends Plugin {
     return this.uiSourceCode.getDecorationData(SourceFrame.SourceFrame.DecoratorType.COVERAGE);
   }
 
-  editorInitialized(editor: TextEditor.TextEditor.TextEditor): void {
+  override editorInitialized(editor: TextEditor.TextEditor.TextEditor): void {
     if (this.getCoverageManager()) {
       this.startDecoUpdate(editor);
     }
   }
 
-  decorationChanged(type: SourceFrame.SourceFrame.DecoratorType, editor: TextEditor.TextEditor.TextEditor): void {
+  override decorationChanged(type: SourceFrame.SourceFrame.DecoratorType, editor: TextEditor.TextEditor.TextEditor): void {
     if (type === SourceFrame.SourceFrame.DecoratorType.COVERAGE) {
       this.startDecoUpdate(editor);
     }
@@ -158,11 +156,11 @@ export class CoveragePlugin extends Plugin {
 }
 
 const coveredMarker = new (class extends CodeMirror.GutterMarker {
-  elementClass = 'cm-coverageUsed';
+  override elementClass = 'cm-coverageUsed';
 })();
 
 const notCoveredMarker = new (class extends CodeMirror.GutterMarker {
-  elementClass = 'cm-coverageUnused';
+  override elementClass = 'cm-coverageUnused';
 })();
 
 function markersFromCoverageData(

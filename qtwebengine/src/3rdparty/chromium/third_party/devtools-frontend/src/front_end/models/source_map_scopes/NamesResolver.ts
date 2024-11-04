@@ -8,14 +8,17 @@ import * as Formatter from '../formatter/formatter.js';
 import * as TextUtils from '../text_utils/text_utils.js';
 import type * as Workspace from '../workspace/workspace.js';
 import * as Protocol from '../../generated/protocol.js';
+import * as Platform from '../../core/platform/platform.js';
+
+import {ScopeTreeCache} from './ScopeTreeCache.js';
 
 interface CachedScopeMap {
   sourceMap: SDK.SourceMap.SourceMap|undefined;
   mappingPromise: Promise<{variableMapping: Map<string, string>, thisMapping: string|null}>;
 }
 
-const scopeToCachedIdentifiersMap = new WeakMap<SDK.DebuggerModel.ScopeChainEntry, CachedScopeMap>();
-const cachedMapByCallFrame = new WeakMap<SDK.DebuggerModel.CallFrame, Map<string, string>>();
+const scopeToCachedIdentifiersMap = new WeakMap<Formatter.FormatterWorkerPool.ScopeTreeNode, CachedScopeMap>();
+const cachedMapByCallFrame = new WeakMap<SDK.DebuggerModel.CallFrame, Map<string, string|null>>();
 const cachedTextByDeferredContent = new WeakMap<TextUtils.ContentProvider.DeferredContent, TextUtils.Text.Text|null>();
 
 async function getTextFor(contentProvider: TextUtils.ContentProvider.ContentProvider):
@@ -48,98 +51,45 @@ export class IdentifierPositions {
   }
 }
 
-const tryParseScope = async function(scopeText: string): Promise<{
-  prefixLength: number, scopeTree: Formatter.FormatterWorkerPool.ScopeTreeNode,
+const computeScopeTree = async function(script: SDK.Script.Script): Promise<{
+  scopeTree: Formatter.FormatterWorkerPool.ScopeTreeNode, text: TextUtils.Text.Text,
 }|null> {
-  const prefixSuffixToTry = [
-    // We wrap the scope in a class constructor. This handles the case where the
-    // scope is a (non-arrow) function and the case where it is a constructor
-    // (so that parsing 'super' calls succeeds).
-    {prefix: 'class DummyClass extends DummyBase { constructor', suffix: '}'},
-    // Next, we try async generator, this handles functions with yield or await keywords.
-    {prefix: 'async function* __DEVTOOLS_DUMMY__', suffix: ''},
-    // Finally, try parse as an async arrow function.
-    {prefix: 'async ', suffix: ''},
-  ];
-  for (const {prefix, suffix} of prefixSuffixToTry) {
-    const scopeTree =
-        await Formatter.FormatterWorkerPool.formatterWorkerPool().javaScriptScopeTree(prefix + scopeText + suffix);
-    if (scopeTree) {
-      return {prefixLength: prefix.length, scopeTree};
-    }
+  if (!script.sourceMapURL) {
+    return null;
   }
-  return null;
-};
 
-const computeScopeTree = async function(functionScope: SDK.DebuggerModel.ScopeChainEntry): Promise<{
-  scopeTree: Formatter.FormatterWorkerPool.ScopeTreeNode, text: TextUtils.Text.Text, slide: number,
-}|null> {
-  const functionStartLocation = functionScope.startLocation();
-  const functionEndLocation = functionScope.endLocation();
-  if (!functionStartLocation || !functionEndLocation) {
-    return null;
-  }
-  const script = functionStartLocation.script();
-  if (!script || !script.sourceMapURL || script !== functionEndLocation.script()) {
-    return null;
-  }
   const text = await getTextFor(script);
   if (!text) {
     return null;
   }
-  const scopeRange = new TextUtils.TextRange.TextRange(
-      functionStartLocation.lineNumber, functionStartLocation.columnNumber, functionEndLocation.lineNumber,
-      functionEndLocation.columnNumber);
-  const scopeText = text.extract(scopeRange);
-  const scopeStart = text.toSourceRange(scopeRange).offset;
-  const prefixLengthAndscopeTree = await tryParseScope(scopeText);
-  if (!prefixLengthAndscopeTree) {
+
+  const scopeTree = await ScopeTreeCache.instance().scopeTreeForScript(script);
+  if (!scopeTree) {
     return null;
   }
-  const {prefixLength, scopeTree} = prefixLengthAndscopeTree;
-  return {scopeTree, text, slide: scopeStart - prefixLength};
+  return {scopeTree, text};
 };
 
-export const scopeIdentifiers = async function(
-    functionScope: SDK.DebuggerModel.ScopeChainEntry|null, scope: SDK.DebuggerModel.ScopeChainEntry): Promise<{
-  freeVariables: IdentifierPositions[], boundVariables: IdentifierPositions[],
-}|null> {
-  if (!functionScope) {
-    return null;
-  }
-
-  const startLocation = scope.startLocation();
-  const endLocation = scope.endLocation();
-  if (!startLocation || !endLocation) {
-    return null;
-  }
-
-  // Parse the function scope to get the scope tree.
-  const scopeTreeAndStart = await computeScopeTree(functionScope);
-  if (!scopeTreeAndStart) {
-    return null;
-  }
-  const {scopeTree, text, slide} = scopeTreeAndStart;
-
-  // Compute the offset within the scope tree coordinate space.
-  const scopeOffsets = {
-    start: text.offsetFromPosition(startLocation.lineNumber, startLocation.columnNumber) - slide,
-    end: text.offsetFromPosition(endLocation.lineNumber, endLocation.columnNumber) - slide,
-  };
-
-  if (!contains(scopeTree, scopeOffsets)) {
-    return null;
+/**
+ * @returns the scope chain from outer-most to inner-most scope where the inner-most
+ * scope either contains or matches the "needle".
+ */
+const findScopeChain = function(
+                           scopeTree: Formatter.FormatterWorkerPool.ScopeTreeNode,
+                           scopeNeedle: {start: number, end: number}): Formatter.FormatterWorkerPool.ScopeTreeNode[] {
+  if (!contains(scopeTree, scopeNeedle)) {
+    return [];
   }
 
   // Find the corresponding scope in the scope tree.
   let containingScope = scopeTree;
-  const ancestorScopes = [];
+  const scopeChain = [scopeTree];
   while (true) {
     let childFound = false;
     for (const child of containingScope.children) {
-      if (contains(child, scopeOffsets)) {
+      if (contains(child, scopeNeedle)) {
         // We found a nested containing scope, continue with search there.
-        ancestorScopes.push(containingScope);
+        scopeChain.push(child);
         containingScope = child;
         childFound = true;
         break;
@@ -147,9 +97,9 @@ export const scopeIdentifiers = async function(
       // Sanity check: |scope| should not straddle any of the scopes in the tree. That is:
       // Either |scope| is disjoint from |child| or |child| must be inside |scope|.
       // (Or the |scope| is inside |child|, but that case is covered above.)
-      if (!disjoint(scopeOffsets, child) && !contains(scopeOffsets, child)) {
+      if (!disjoint(scopeNeedle, child) && !contains(scopeNeedle, child)) {
         console.error('Wrong nesting of scopes');
-        return null;
+        return [];
       }
     }
     if (!childFound) {
@@ -158,10 +108,58 @@ export const scopeIdentifiers = async function(
     }
   }
 
+  return scopeChain;
+
+  function contains(scope: {start: number, end: number}, candidate: {start: number, end: number}): boolean {
+    return (scope.start <= candidate.start) && (scope.end >= candidate.end);
+  }
+  function disjoint(scope: {start: number, end: number}, other: {start: number, end: number}): boolean {
+    return (scope.end <= other.start) || (other.end <= scope.start);
+  }
+};
+
+export async function findScopeChainForDebuggerScope(scope: SDK.DebuggerModel.ScopeChainEntry):
+    Promise<Formatter.FormatterWorkerPool.ScopeTreeNode[]> {
+  const startLocation = scope.range()?.start;
+  const endLocation = scope.range()?.end;
+  if (!startLocation || !endLocation) {
+    return [];
+  }
+
+  const script = startLocation.script();
+  if (!script) {
+    return [];
+  }
+
+  const scopeTreeAndText = await computeScopeTree(script);
+  if (!scopeTreeAndText) {
+    return [];
+  }
+  const {scopeTree, text} = scopeTreeAndText;
+
+  // Compute the offset within the scope tree coordinate space.
+  const scopeOffsets = {
+    start: text.offsetFromPosition(startLocation.lineNumber, startLocation.columnNumber),
+    end: text.offsetFromPosition(endLocation.lineNumber, endLocation.columnNumber),
+  };
+
+  return findScopeChain(scopeTree, scopeOffsets);
+}
+
+export const scopeIdentifiers = async function(
+    script: SDK.Script.Script, scope: Formatter.FormatterWorkerPool.ScopeTreeNode,
+    ancestorScopes: Formatter.FormatterWorkerPool.ScopeTreeNode[]): Promise<{
+  freeVariables: IdentifierPositions[], boundVariables: IdentifierPositions[],
+}|null> {
+  const text = await getTextFor(script);
+  if (!text) {
+    return null;
+  }
+
   // Now we have containing scope. Collect all the scope variables.
   const boundVariables = [];
   const cursor = new TextUtils.TextCursor.TextCursor(text.lineEndings());
-  for (const variable of containingScope.variables) {
+  for (const variable of scope.variables) {
     // Skip the fixed-kind variable (i.e., 'this' or 'arguments') if we only found their "definition"
     // without any uses.
     if (variable.kind === Formatter.FormatterWorkerPool.DefinitionKind.Fixed && variable.offsets.length <= 1) {
@@ -170,8 +168,7 @@ export const scopeIdentifiers = async function(
 
     const identifier = new IdentifierPositions(variable.name);
     for (const offset of variable.offsets) {
-      const start = offset + slide;
-      cursor.resetTo(start);
+      cursor.resetTo(offset);
       identifier.addPosition(cursor.lineNumber(), cursor.columnNumber());
     }
     boundVariables.push(identifier);
@@ -183,12 +180,11 @@ export const scopeIdentifiers = async function(
     for (const ancestorVariable of ancestor.variables) {
       let identifier = null;
       for (const offset of ancestorVariable.offsets) {
-        if (offset >= containingScope.start && offset < containingScope.end) {
+        if (offset >= scope.start && offset < scope.end) {
           if (!identifier) {
             identifier = new IdentifierPositions(ancestorVariable.name);
           }
-          const start = offset + slide;
-          cursor.resetTo(start);
+          cursor.resetTo(offset);
           identifier.addPosition(cursor.lineNumber(), cursor.columnNumber());
         }
       }
@@ -198,13 +194,6 @@ export const scopeIdentifiers = async function(
     }
   }
   return {boundVariables, freeVariables};
-
-  function contains(scope: {start: number, end: number}, candidate: {start: number, end: number}): boolean {
-    return (scope.start <= candidate.start) && (scope.end >= candidate.end);
-  }
-  function disjoint(scope: {start: number, end: number}, other: {start: number, end: number}): boolean {
-    return (scope.end <= other.start) || (other.end <= scope.start);
-  }
 };
 
 const identifierAndPunctuationRegExp = /^\s*([A-Za-z_$][A-Za-z_$0-9]*)\s*([.;,=]?)\s*$/;
@@ -217,16 +206,25 @@ const enum Punctuation {
   Equals = 'equals',
 }
 
-const resolveScope =
-    async(scope: SDK.DebuggerModel
-              .ScopeChainEntry): Promise<{variableMapping: Map<string, string>, thisMapping: string | null}> => {
-  let cachedScopeMap = scopeToCachedIdentifiersMap.get(scope);
-  const script = scope.callFrame().script;
+const resolveDebuggerScope = async(scope: SDK.DebuggerModel.ScopeChainEntry):
+    Promise<{variableMapping: Map<string, string>, thisMapping: string | null}> => {
+      const script = scope.callFrame().script;
+      const scopeChain = await findScopeChainForDebuggerScope(scope);
+      return resolveScope(script, scopeChain);
+    };
+
+const resolveScope = async(
+    script: SDK.Script.Script,
+    scopeChain: Formatter.FormatterWorkerPool
+        .ScopeTreeNode[]): Promise<{variableMapping: Map<string, string>, thisMapping: string | null}> => {
+  const parsedScope = scopeChain[scopeChain.length - 1];
+  if (!parsedScope) {
+    return {variableMapping: new Map<string, string>(), thisMapping: null};
+  }
+  let cachedScopeMap = scopeToCachedIdentifiersMap.get(parsedScope);
   const sourceMap = script.debuggerModel.sourceMapManager().sourceMapForClient(script);
 
   if (!cachedScopeMap || cachedScopeMap.sourceMap !== sourceMap) {
-    // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const identifiersPromise =
         (async(): Promise<{variableMapping: Map<string, string>, thisMapping: string | null}> => {
           const variableMapping = new Map<string, string>();
@@ -268,8 +266,7 @@ const resolveScope =
             promises.push(resolvePosition());
           };
 
-          const functionScope = findFunctionScope();
-          const parsedVariables = await scopeIdentifiers(functionScope, scope);
+          const parsedVariables = await scopeIdentifiers(script, parsedScope, scopeChain.slice(0, -1));
           if (!parsedVariables) {
             return {variableMapping, thisMapping};
           }
@@ -292,7 +289,7 @@ const resolveScope =
           return {variableMapping, thisMapping};
         })();
     cachedScopeMap = {sourceMap, mappingPromise: identifiersPromise};
-    scopeToCachedIdentifiersMap.set(scope, {sourceMap, mappingPromise: identifiersPromise});
+    scopeToCachedIdentifiersMap.set(parsedScope, {sourceMap, mappingPromise: identifiersPromise});
   }
   return await cachedScopeMap.mappingPromise;
 
@@ -380,24 +377,6 @@ const resolveScope =
       return {name, punctuation};
     }
   }
-
-  function findFunctionScope(): SDK.DebuggerModel.ScopeChainEntry|null {
-    // First find the scope in the callframe's scope chain and then find the containing function scope (closure or local).
-    const scopeChain = scope.callFrame().scopeChain();
-    let scopeIndex = 0;
-    for (scopeIndex; scopeIndex < scopeChain.length; scopeIndex++) {
-      if (scopeChain[scopeIndex] === scope) {
-        break;
-      }
-    }
-    for (scopeIndex; scopeIndex < scopeChain.length; scopeIndex++) {
-      const kind = scopeChain[scopeIndex].type();
-      if (kind === Protocol.Debugger.ScopeType.Local || kind === Protocol.Debugger.ScopeType.Closure) {
-        break;
-      }
-    }
-    return scopeIndex === scopeChain.length ? null : scopeChain[scopeIndex];
-  }
 };
 
 export const resolveScopeChain =
@@ -415,23 +394,75 @@ export const resolveScopeChain =
   return callFrame.scopeChain();
 };
 
-export const allVariablesInCallFrame = async(callFrame: SDK.DebuggerModel.CallFrame): Promise<Map<string, string>> => {
+/**
+ * @returns A mapping from original name -> compiled name. If the orignal name is unavailable (e.g. because the compiled name was
+ * shadowed) we set it to `null`.
+ */
+export const allVariablesInCallFrame =
+    async(callFrame: SDK.DebuggerModel.CallFrame): Promise<Map<string, string|null>> => {
   const cachedMap = cachedMapByCallFrame.get(callFrame);
   if (cachedMap) {
     return cachedMap;
   }
 
   const scopeChain = callFrame.scopeChain();
-  const nameMappings = await Promise.all(scopeChain.map(resolveScope));
-  const reverseMapping = new Map<string, string>();
+  const nameMappings = await Promise.all(scopeChain.map(resolveDebuggerScope));
+  const reverseMapping = new Map<string, string|null>();
+  const compiledNames = new Set<string>();
   for (const {variableMapping} of nameMappings) {
     for (const [compiledName, originalName] of variableMapping) {
-      if (originalName && !reverseMapping.has(originalName)) {
-        reverseMapping.set(originalName, compiledName);
+      if (!originalName) {
+        continue;
       }
+      if (!reverseMapping.has(originalName)) {
+        // An inner scope might have shadowed {compiledName}. Mark it as "unavailable" in that case.
+        const compiledNameOrNull = compiledNames.has(compiledName) ? null : compiledName;
+        reverseMapping.set(originalName, compiledNameOrNull);
+      }
+      compiledNames.add(compiledName);
     }
   }
   cachedMapByCallFrame.set(callFrame, reverseMapping);
+  return reverseMapping;
+};
+
+/**
+ * @returns A mapping from original name -> compiled name. If the orignal name is unavailable (e.g. because the compiled name was
+ * shadowed) we set it to `null`.
+ */
+export const allVariablesAtPosition =
+    async(location: SDK.DebuggerModel.Location): Promise<Map<string, string|null>> => {
+  const reverseMapping = new Map<string, string|null>();
+  const script = location.script();
+  if (!script) {
+    return reverseMapping;
+  }
+
+  const scopeTreeAndText = await computeScopeTree(script);
+  if (!scopeTreeAndText) {
+    return reverseMapping;
+  }
+
+  const {scopeTree, text} = scopeTreeAndText;
+  const locationOffset = text.offsetFromPosition(location.lineNumber, location.columnNumber);
+  const scopeChain = findScopeChain(scopeTree, {start: locationOffset, end: locationOffset});
+  const compiledNames = new Set<string>();
+
+  while (scopeChain.length > 0) {
+    const {variableMapping} = await resolveScope(script, scopeChain);
+    for (const [compiledName, originalName] of variableMapping) {
+      if (!originalName) {
+        continue;
+      }
+      if (!reverseMapping.has(originalName)) {
+        // An inner scope might have shadowed {compiledName}. Mark it as "unavailable" in that case.
+        const compiledNameOrNull = compiledNames.has(compiledName) ? null : compiledName;
+        reverseMapping.set(originalName, compiledNameOrNull);
+      }
+      compiledNames.add(compiledName);
+    }
+    scopeChain.pop();
+  }
   return reverseMapping;
 };
 
@@ -475,8 +506,37 @@ export const resolveExpression = async(
   if (textRanges.length !== 1) {
     return '';
   }
-  const subjectText = text.extract(textRanges[0]);
+  const [compiledRange] = textRanges;
+  const subjectText = text.extract(compiledRange);
   if (!subjectText) {
+    return '';
+  }
+  // Map `subjectText` back to the authored code and check that the source map spits out
+  // `originalText` again modulo some whitespace/punctuation.
+  const authoredText = await getTextFor(uiSourceCode);
+  if (!authoredText) {
+    return '';
+  }
+
+  // Take the "start point" and the "end point - 1" of the compiled range and map them
+  // with the source map. Note that for "end point - 1" we need the line endings array to potentially
+  // move to the end of the previous line.
+  const startRange = sourceMap.findEntryRanges(compiledRange.startLine, compiledRange.startColumn);
+  const endLine = compiledRange.endColumn === 0 ? compiledRange.endLine - 1 : compiledRange.endLine;
+  const endColumn = compiledRange.endColumn === 0 ? text.lineEndings()[endLine] : compiledRange.endColumn - 1;
+  const endRange = sourceMap.findEntryRanges(endLine, endColumn);
+  if (!startRange || !endRange) {
+    return '';
+  }
+
+  // Merge `startRange` with `endRange`. This might not be 100% correct if there are interleaved ranges inbetween.
+  const mappedAuthoredText = authoredText.extract(new TextUtils.TextRange.TextRange(
+      startRange.sourceRange.startLine, startRange.sourceRange.startColumn, endRange.sourceRange.endLine,
+      endRange.sourceRange.endColumn));
+
+  // Check that what we found after applying the source map roughly matches `originalText`.
+  const originalTextRegex = new RegExp(`^[\\s,;]*${Platform.StringUtilities.escapeForRegExp(originalText)}`, 'g');
+  if (!originalTextRegex.test(mappedAuthoredText)) {
     return '';
   }
   return await Formatter.FormatterWorkerPool.formatterWorkerPool().evaluatableJavaScriptSubstring(subjectText);
@@ -492,7 +552,7 @@ export const resolveThisObject =
     return callFrame.thisObject();
   }
 
-  const {thisMapping} = await resolveScope(scopeChain[0]);
+  const {thisMapping} = await resolveDebuggerScope(scopeChain[0]);
   if (!thisMapping) {
     return callFrame.thisObject();
   }
@@ -512,12 +572,11 @@ export const resolveThisObject =
 };
 
 export const resolveScopeInObject = function(scope: SDK.DebuggerModel.ScopeChainEntry): SDK.RemoteObject.RemoteObject {
-  const startLocation = scope.startLocation();
-  const endLocation = scope.endLocation();
-  const startLocationScript = startLocation ? startLocation.script() : null;
+  const endLocation = scope.range()?.end;
+  const startLocationScript = scope.range()?.start.script() ?? null;
 
   if (scope.type() === Protocol.Debugger.ScopeType.Global || !startLocationScript || !endLocation ||
-      !startLocationScript.sourceMapURL || startLocationScript !== endLocation.script()) {
+      !startLocationScript.sourceMapURL) {
     return scope.object();
   }
 
@@ -533,73 +592,64 @@ export class RemoteObject extends SDK.RemoteObject.RemoteObject {
     this.object = scope.object();
   }
 
-  customPreview(): Protocol.Runtime.CustomPreview|null {
+  override customPreview(): Protocol.Runtime.CustomPreview|null {
     return this.object.customPreview();
   }
 
-  get objectId(): Protocol.Runtime.RemoteObjectId|undefined {
+  override get objectId(): Protocol.Runtime.RemoteObjectId|undefined {
     return this.object.objectId;
   }
 
-  get type(): string {
+  override get type(): string {
     return this.object.type;
   }
 
-  get subtype(): string|undefined {
+  override get subtype(): string|undefined {
     return this.object.subtype;
   }
 
   // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  get value(): any {
+  override get value(): any {
     return this.object.value;
   }
 
-  get description(): string|undefined {
+  override get description(): string|undefined {
     return this.object.description;
   }
 
-  get hasChildren(): boolean {
+  override get hasChildren(): boolean {
     return this.object.hasChildren;
   }
 
-  get preview(): Protocol.Runtime.ObjectPreview|undefined {
+  override get preview(): Protocol.Runtime.ObjectPreview|undefined {
     return this.object.preview;
   }
 
-  arrayLength(): number {
+  override arrayLength(): number {
     return this.object.arrayLength();
   }
 
-  getOwnProperties(generatePreview: boolean): Promise<SDK.RemoteObject.GetPropertiesResult> {
+  override getOwnProperties(generatePreview: boolean): Promise<SDK.RemoteObject.GetPropertiesResult> {
     return this.object.getOwnProperties(generatePreview);
   }
 
-  async getAllProperties(accessorPropertiesOnly: boolean, generatePreview: boolean):
+  override async getAllProperties(accessorPropertiesOnly: boolean, generatePreview: boolean):
       Promise<SDK.RemoteObject.GetPropertiesResult> {
     const allProperties = await this.object.getAllProperties(accessorPropertiesOnly, generatePreview);
-    const {variableMapping} = await resolveScope(this.scope);
+    const {variableMapping} = await resolveDebuggerScope(this.scope);
 
     const properties = allProperties.properties;
     const internalProperties = allProperties.internalProperties;
-    const newProperties = [];
-    if (properties) {
-      for (let i = 0; i < properties.length; ++i) {
-        const property = properties[i];
-        const name = variableMapping.get(property.name) || properties[i].name;
-        if (!property.value) {
-          continue;
-        }
-        newProperties.push(new SDK.RemoteObject.RemoteObjectProperty(
-            name, property.value, property.enumerable, property.writable, property.isOwn, property.wasThrown,
-            property.symbol, property.synthetic));
-      }
-    }
-    return {properties: newProperties, internalProperties: internalProperties};
+    const newProperties = properties?.map(property => {
+      const name = variableMapping.get(property.name);
+      return name !== undefined ? property.cloneWithNewName(name) : property;
+    });
+    return {properties: newProperties ?? [], internalProperties};
   }
 
-  async setPropertyValue(argumentName: string|Protocol.Runtime.CallArgument, value: string): Promise<string|undefined> {
-    const {variableMapping} = await resolveScope(this.scope);
+  override async setPropertyValue(argumentName: string|Protocol.Runtime.CallArgument, value: string): Promise<string|undefined> {
+    const {variableMapping} = await resolveDebuggerScope(this.scope);
 
     let name;
     if (typeof argumentName === 'string') {
@@ -618,34 +668,34 @@ export class RemoteObject extends SDK.RemoteObject.RemoteObject {
     return this.object.setPropertyValue(actualName, value);
   }
 
-  async deleteProperty(name: Protocol.Runtime.CallArgument): Promise<string|undefined> {
+  override async deleteProperty(name: Protocol.Runtime.CallArgument): Promise<string|undefined> {
     return this.object.deleteProperty(name);
   }
 
-  callFunction<T>(functionDeclaration: (this: Object, ...arg1: unknown[]) => T, args?: Protocol.Runtime.CallArgument[]):
+  override callFunction<T>(functionDeclaration: (this: Object, ...arg1: unknown[]) => T, args?: Protocol.Runtime.CallArgument[]):
       Promise<SDK.RemoteObject.CallFunctionResult> {
     return this.object.callFunction(functionDeclaration, args);
   }
 
-  callFunctionJSON<T>(
+  override callFunctionJSON<T>(
       functionDeclaration: (this: Object, ...arg1: unknown[]) => T,
       args?: Protocol.Runtime.CallArgument[]): Promise<T> {
     return this.object.callFunctionJSON(functionDeclaration, args);
   }
 
-  release(): void {
+  override release(): void {
     this.object.release();
   }
 
-  debuggerModel(): SDK.DebuggerModel.DebuggerModel {
+  override debuggerModel(): SDK.DebuggerModel.DebuggerModel {
     return this.object.debuggerModel();
   }
 
-  runtimeModel(): SDK.RuntimeModel.RuntimeModel {
+  override runtimeModel(): SDK.RuntimeModel.RuntimeModel {
     return this.object.runtimeModel();
   }
 
-  isNode(): boolean {
+  override isNode(): boolean {
     return this.object.isNode();
   }
 }
@@ -664,7 +714,19 @@ async function getFunctionNameFromScopeStart(
     return null;
   }
 
-  const name = sourceMap.findEntry(lineNumber, columnNumber)?.name;
+  const mappingEntry = sourceMap.findEntry(lineNumber, columnNumber);
+  if (!mappingEntry || !mappingEntry.sourceURL) {
+    return null;
+  }
+
+  const scopeName =
+      sourceMap.findScopeEntry(mappingEntry.sourceURL, mappingEntry.sourceLineNumber, mappingEntry.sourceColumnNumber)
+          ?.scopeName();
+  if (scopeName) {
+    return scopeName;
+  }
+
+  const name = mappingEntry.name;
   if (!name) {
     return null;
   }
@@ -684,7 +746,7 @@ async function getFunctionNameFromScopeStart(
 }
 
 export async function resolveDebuggerFrameFunctionName(frame: SDK.DebuggerModel.CallFrame): Promise<string|null> {
-  const startLocation = frame.localScope()?.startLocation();
+  const startLocation = frame.localScope()?.range()?.start;
   if (!startLocation) {
     return null;
   }
@@ -717,17 +779,13 @@ export async function resolveProfileFrameFunctionName(
 }
 
 // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration)
-// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any
-let _scopeResolvedForTest: (...arg0: any[]) => void = function(): void {};
+// eslint-disable-next-line @typescript-eslint/naming-convention
+let _scopeResolvedForTest: (...arg0: unknown[]) => void = function(): void {};
 
-// TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration)
-// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any
-export const getScopeResolvedForTest = (): (...arg0: any[]) => void => {
+export const getScopeResolvedForTest = (): (...arg0: unknown[]) => void => {
   return _scopeResolvedForTest;
 };
 
-// TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration)
-// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any
-export const setScopeResolvedForTest = (scope: (...arg0: any[]) => void): void => {
+export const setScopeResolvedForTest = (scope: (...arg0: unknown[]) => void): void => {
   _scopeResolvedForTest = scope;
 };

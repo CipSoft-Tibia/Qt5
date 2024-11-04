@@ -4,12 +4,13 @@
 
 #include "third_party/blink/renderer/core/paint/document_marker_painter.h"
 
-#include "base/cxx17_backports.h"
+#include <algorithm>
+
 #include "build/build_config.h"
 #include "third_party/blink/renderer/core/editing/markers/document_marker_controller.h"
+#include "third_party/blink/renderer/core/highlight/highlight_style_utils.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
 #include "third_party/blink/renderer/core/layout/layout_theme.h"
-#include "third_party/blink/renderer/core/paint/highlight_painting_utils.h"
 #include "third_party/blink/renderer/core/paint/paint_auto_dark_mode.h"
 #include "third_party/blink/renderer/core/paint/paint_info.h"
 #include "third_party/blink/renderer/core/paint/text_paint_style.h"
@@ -17,6 +18,7 @@
 #include "third_party/blink/renderer/platform/fonts/simple_font_data.h"
 #include "third_party/blink/renderer/platform/geometry/layout_unit.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_context_state_saver.h"
+#include "third_party/blink/renderer/platform/graphics/paint/paint_shader.h"
 #include "third_party/skia/include/core/SkPathBuilder.h"
 
 namespace blink {
@@ -296,7 +298,7 @@ TextPaintStyle DocumentMarkerPainter::ComputeTextPaintStyleFrom(
   text_style.shadow = nullptr;
   if (marker.GetType() == DocumentMarker::kTextMatch)
     return text_style;
-  return HighlightPaintingUtils::HighlightPaintingStyle(
+  return HighlightStyleUtils::HighlightPaintingStyle(
       document, style, node, kPseudoIdTargetText, text_style, paint_info);
 }
 }  // namespace blink

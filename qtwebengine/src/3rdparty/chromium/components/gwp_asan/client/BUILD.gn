@@ -13,6 +13,8 @@ component("client") {
     "guarded_page_allocator.h",
     "gwp_asan.cc",
     "gwp_asan.h",
+    "lightweight_detector.cc",
+    "lightweight_detector.h",
     "sampling_state.h",
   ]
 
@@ -45,6 +47,7 @@ component("client") {
     "//base/allocator:buildflags",
     "//components/crash/core/common:crash_key",
     "//components/gwp_asan/common",
+    "//components/gwp_asan/common:crash_keys",
   ]
 
   if (is_android) {
@@ -57,6 +60,7 @@ source_set("unit_tests") {
   sources = [
     "guarded_page_allocator_unittest.cc",
     "gwp_asan_unittest.cc",
+    "lightweight_detector_unittest.cc",
   ]
 
   if (use_allocator_shim) {
@@ -73,6 +77,7 @@ source_set("unit_tests") {
     "//base/test:test_support",
     "//components/crash/core/common:crash_key",
     "//components/gwp_asan/common",
+    "//components/gwp_asan/common:crash_keys",
     "//testing/gmock",
     "//testing/gtest",
   ]

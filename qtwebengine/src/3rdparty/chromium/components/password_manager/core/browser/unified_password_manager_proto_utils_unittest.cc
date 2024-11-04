@@ -59,13 +59,18 @@ sync_pb::PasswordSpecificsData CreateSpecificsData(
   password_specifics.set_federation_url(std::string());
   // The current code always populates password issues for outgoing protos even
   // when none exist.
-  *password_specifics.mutable_password_issues() =
-      sync_pb::PasswordSpecificsData_PasswordIssues();
+  *password_specifics.mutable_password_issues() = sync_pb::PasswordIssues();
   if (base::FeatureList::IsEnabled(syncer::kPasswordNotesWithBackup)) {
     // The current code always populates notes for outgoing protos even when
     // non-exists.
     password_specifics.mutable_notes();
   }
+  // The current code always populates shared password metadata for outgoing
+  // protos even when none exist.
+  password_specifics.set_sender_email("");
+  password_specifics.set_sender_name("");
+  password_specifics.set_date_received_windows_epoch_micros(0);
+  password_specifics.set_sharing_notification_displayed(false);
   return password_specifics;
 }
 

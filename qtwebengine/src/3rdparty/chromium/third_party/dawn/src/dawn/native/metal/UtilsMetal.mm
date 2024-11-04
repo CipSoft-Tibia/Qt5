@@ -143,6 +143,19 @@ void ResolveInAnotherRenderPass(
 
 }  // anonymous namespace
 
+NSRef<NSString> MakeDebugName(DeviceBase* device, const char* prefix, std::string label) {
+    std::ostringstream objectNameStream;
+    objectNameStream << prefix;
+
+    if (!label.empty() && device->IsToggleEnabled(Toggle::UseUserDefinedLabelsInBackend)) {
+        objectNameStream << "_" << label;
+    }
+    const std::string debugName = objectNameStream.str();
+    NSRef<NSString> nsDebugName =
+        AcquireNSRef([[NSString alloc] initWithUTF8String:debugName.c_str()]);
+    return nsDebugName;
+}
+
 Aspect GetDepthStencilAspects(MTLPixelFormat format) {
     switch (format) {
         case MTLPixelFormatDepth16Unorm:
@@ -344,17 +357,18 @@ TextureBufferCopySplit ComputeTextureBufferCopySplit(const Texture* texture,
     return copy;
 }
 
-void EnsureDestinationTextureInitialized(CommandRecordingContext* commandContext,
-                                         Texture* texture,
-                                         const TextureCopy& dst,
-                                         const Extent3D& size) {
+MaybeError EnsureDestinationTextureInitialized(CommandRecordingContext* commandContext,
+                                               Texture* texture,
+                                               const TextureCopy& dst,
+                                               const Extent3D& size) {
     ASSERT(texture == dst.texture.Get());
     SubresourceRange range = GetSubresourcesAffectedByCopy(dst, size);
     if (IsCompleteSubresourceCopiedTo(dst.texture.Get(), size, dst.mipLevel)) {
         texture->SetIsSubresourceContentInitialized(true, range);
     } else {
-        texture->EnsureSubresourceContentInitialized(commandContext, range);
+        DAWN_TRY(texture->EnsureSubresourceContentInitialized(commandContext, range));
     }
+    return {};
 }
 
 MaybeError EncodeMetalRenderPass(Device* device,
@@ -451,7 +465,7 @@ MaybeError EncodeMetalRenderPass(Device* device,
         std::array<id<MTLTexture>, kMaxColorAttachments> resolveTextures = {};
         for (uint32_t i = 0; i < kMaxColorAttachments; ++i) {
             if (mtlRenderPass.colorAttachments[i].storeAction ==
-                kMTLStoreActionStoreAndMultisampleResolve) {
+                MTLStoreActionStoreAndMultisampleResolve) {
                 hasStoreAndMSAAResolve = true;
                 resolveTextures[i] = mtlRenderPass.colorAttachments[i].resolveTexture;
 

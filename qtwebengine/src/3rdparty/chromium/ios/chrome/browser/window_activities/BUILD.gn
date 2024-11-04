@@ -6,7 +6,6 @@ import("//build/buildflag_header.gni")
 import("//ios/build/chrome_build.gni")
 
 source_set("window_activities") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "window_activity_helpers.h",
     "window_activity_helpers.mm",
@@ -14,7 +13,7 @@ source_set("window_activities") {
   deps = [
     ":ios_move_tab_activity_type_buildflags",
     "//base",
-    "//ios/chrome/browser/url:constants",
+    "//ios/chrome/browser/shared/model/url:constants",
     "//ios/chrome/browser/url_loading:url_loading_params_header",
     "//ios/web/public/navigation",
     "//net",

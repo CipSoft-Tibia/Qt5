@@ -220,8 +220,8 @@ void ShowReauthForAccount(Profile* profile,
   ::GetAccountManagerFacade(profile->GetPath().value())
       ->ShowReauthAccountDialog(account_manager::AccountManagerFacade::
                                     AccountAdditionSource::kContentAreaReauth,
-                                email, base::OnceClosure());
-#else
+                                email, base::DoNothing());
+#elif BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS_LACROS)
   // Pass `false` for `enable_sync`, as this function is not expected to start a
   // sync setup flow after the reauth.
   GetSigninUiDelegate()->ShowReauthUI(
@@ -236,7 +236,7 @@ void ShowExtensionSigninPrompt(Profile* profile,
                                const std::string& email_hint) {
 #if BUILDFLAG(IS_CHROMEOS_ASH)
   NOTREACHED();
-#else
+#elif BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS_LACROS)
   // There is no sign-in flow for guest or system profile.
   if (profile->IsGuestSession() || profile->IsSystemProfile())
     return;
@@ -266,6 +266,28 @@ void ShowExtensionSigninPrompt(Profile* profile,
       profile, email_hint, enable_sync,
       signin_metrics::AccessPoint::ACCESS_POINT_EXTENSIONS,
       signin_metrics::PromoAction::PROMO_ACTION_NO_SIGNIN_PROMO);
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+}
+
+void ShowSigninPromptFromPromo(Profile* profile,
+                               signin_metrics::AccessPoint access_point) {
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  NOTREACHED();
+#elif BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS_LACROS)
+  CHECK_NE(signin_metrics::AccessPoint::ACCESS_POINT_UNKNOWN, access_point);
+  CHECK(!profile->IsOffTheRecord());
+
+  signin::IdentityManager* identity_manager =
+      IdentityManagerFactory::GetForProfile(profile);
+  if (identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
+    DVLOG(1) << "The user is already signed in.";
+    return;
+  }
+
+  GetSigninUiDelegate()->ShowSigninUI(
+      profile, /*enable_sync=*/false, access_point,
+      signin_metrics::PromoAction::
+          PROMO_ACTION_NEW_ACCOUNT_NO_EXISTING_ACCOUNT);
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 }
 

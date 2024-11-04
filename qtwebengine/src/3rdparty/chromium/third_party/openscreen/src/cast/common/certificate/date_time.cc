@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,7 @@
 
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 bool operator<(const DateTime& a, const DateTime& b) {
   if (a.year < b.year) {
@@ -97,5 +96,4 @@ std::chrono::seconds DateTimeToSeconds(const DateTime& time) {
   return std::chrono::seconds(sec);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

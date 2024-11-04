@@ -25,10 +25,15 @@ namespace extensions {
 class Extension;
 }
 
+namespace web_app {
+class WebApp;
+}
+
 class ChromeDevToolsManagerDelegate : public content::DevToolsManagerDelegate {
  public:
   static const char kTypeApp[];
   static const char kTypeBackgroundPage[];
+  static const char kTypePage[];
 
   ChromeDevToolsManagerDelegate();
 
@@ -50,6 +55,10 @@ class ChromeDevToolsManagerDelegate : public content::DevToolsManagerDelegate {
   // the settings for |profile|.
   static bool AllowInspection(Profile* profile,
                               const extensions::Extension* extension);
+
+  // |web_app| may be null, in which case this function just checks
+  // the settings for |profile|.
+  static bool AllowInspection(Profile* profile, const web_app::WebApp* web_app);
 
   // Resets |device_manager_|.
   void ResetAndroidDeviceManagerForTesting();
@@ -82,7 +91,7 @@ class ChromeDevToolsManagerDelegate : public content::DevToolsManagerDelegate {
       content::DevToolsAgentHostClientChannel* channel) override;
   scoped_refptr<content::DevToolsAgentHost> CreateNewTarget(
       const GURL& url,
-      bool for_tab) override;
+      TargetType target_type) override;
   bool HasBundledFrontendResources() override;
 
   void DevicesAvailable(

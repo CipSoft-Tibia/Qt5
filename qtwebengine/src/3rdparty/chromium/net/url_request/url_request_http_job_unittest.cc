@@ -63,7 +63,7 @@
 
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/jni_android.h"
-#include "net/net_test_jni_headers/AndroidNetworkLibraryTestUtil_jni.h"
+#include "net/android/net_test_support_jni/AndroidNetworkLibraryTestUtil_jni.h"
 #endif
 
 using net::test::IsError;
@@ -1764,6 +1764,7 @@ TEST_F(URLRequestHttpJobTest, GetFirstPartySetsCacheFilterMatchInfo) {
     TestDelegate delegate;
     std::unique_ptr<URLRequest> req(context->CreateRequest(
         kTestUrl, DEFAULT_PRIORITY, &delegate, TRAFFIC_ANNOTATION_FOR_TESTS));
+    req->set_allow_credentials(false);
     req->Start();
     delegate.RunUntilComplete();
     EXPECT_EQ("0", delegate.data_received());
@@ -1773,6 +1774,7 @@ TEST_F(URLRequestHttpJobTest, GetFirstPartySetsCacheFilterMatchInfo) {
     std::unique_ptr<URLRequest> req(context->CreateRequest(
         kTestUrl, DEFAULT_PRIORITY, &delegate, TRAFFIC_ANNOTATION_FOR_TESTS));
     req->SetLoadFlags(LOAD_SKIP_CACHE_VALIDATION);
+    req->set_allow_credentials(false);
     req->Start();
     delegate.RunUntilComplete();
     EXPECT_EQ("0", delegate.data_received());
@@ -1791,6 +1793,7 @@ TEST_F(URLRequestHttpJobTest, GetFirstPartySetsCacheFilterMatchInfo) {
     std::unique_ptr<URLRequest> req(context->CreateRequest(
         kTestUrl, DEFAULT_PRIORITY, &delegate, TRAFFIC_ANNOTATION_FOR_TESTS));
     req->SetLoadFlags(LOAD_SKIP_CACHE_VALIDATION);
+    req->set_allow_credentials(false);
     req->Start();
     delegate.RunUntilComplete();
     EXPECT_EQ("1", delegate.data_received());
@@ -1799,28 +1802,7 @@ TEST_F(URLRequestHttpJobTest, GetFirstPartySetsCacheFilterMatchInfo) {
   ResetContentCount();
 }
 
-class PartitionedCookiesURLRequestHttpJobTest
-    : public URLRequestHttpJobTest,
-      public testing::WithParamInterface<bool> {
- protected:
-  // testing::Test
-  void SetUp() override {
-    if (PartitionedCookiesEnabled())
-      scoped_feature_list_.InitAndEnableFeature(features::kPartitionedCookies);
-    URLRequestHttpJobTest::SetUp();
-  }
-
-  bool PartitionedCookiesEnabled() { return GetParam(); }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
-};
-
-INSTANTIATE_TEST_SUITE_P(/* no label */,
-                         PartitionedCookiesURLRequestHttpJobTest,
-                         testing::Bool());
-
-TEST_P(PartitionedCookiesURLRequestHttpJobTest, SetPartitionedCookie) {
+TEST_F(URLRequestHttpJobTest, SetPartitionedCookie) {
   EmbeddedTestServer https_test(EmbeddedTestServer::TYPE_HTTPS);
   https_test.AddDefaultHandlers(base::FilePath());
   ASSERT_TRUE(https_test.Start());
@@ -1873,11 +1855,7 @@ TEST_P(PartitionedCookiesURLRequestHttpJobTest, SetPartitionedCookie) {
     req->set_isolation_info(kOtherTestIsolationInfo);
     req->Start();
     delegate.RunUntilComplete();
-    if (PartitionedCookiesEnabled()) {
-      EXPECT_EQ("None", delegate.data_received());
-    } else {
-      EXPECT_EQ("__Host-foo=bar", delegate.data_received());
-    }
+    EXPECT_EQ("None", delegate.data_received());
   }
 
   {  // Test request from same top-level eTLD+1 but different scheme. Note that
@@ -1895,15 +1873,11 @@ TEST_P(PartitionedCookiesURLRequestHttpJobTest, SetPartitionedCookie) {
     req->set_isolation_info(kHttpTestIsolationInfo);
     req->Start();
     delegate.RunUntilComplete();
-    if (PartitionedCookiesEnabled()) {
-      EXPECT_EQ("None", delegate.data_received());
-    } else {
-      EXPECT_EQ("__Host-foo=bar", delegate.data_received());
-    }
+    EXPECT_EQ("None", delegate.data_received());
   }
 }
 
-TEST_P(PartitionedCookiesURLRequestHttpJobTest, PrivacyMode) {
+TEST_F(URLRequestHttpJobTest, PartitionedCookiePrivacyMode) {
   EmbeddedTestServer https_test(EmbeddedTestServer::TYPE_HTTPS);
   https_test.AddDefaultHandlers(base::FilePath());
   ASSERT_TRUE(https_test.Start());
@@ -1956,13 +1930,10 @@ TEST_P(PartitionedCookiesURLRequestHttpJobTest, PrivacyMode) {
     req->set_isolation_info(kTestIsolationInfo);
     req->Start();
     delegate.RunUntilComplete();
-    EXPECT_EQ(PartitionedCookiesEnabled() ? "__Host-partitioned=0" : "None",
-              delegate.data_received());
+    EXPECT_EQ("__Host-partitioned=0", delegate.data_received());
     auto want_exclusion_reasons =
-        PartitionedCookiesEnabled()
-            ? std::vector<CookieInclusionStatus::ExclusionReason>{}
-            : std::vector<CookieInclusionStatus::ExclusionReason>{
-                  CookieInclusionStatus::EXCLUDE_USER_PREFERENCES};
+        std::vector<CookieInclusionStatus::ExclusionReason>{};
+
     EXPECT_THAT(
         req->maybe_sent_cookies(),
         UnorderedElementsAre(

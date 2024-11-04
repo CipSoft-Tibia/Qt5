@@ -12,7 +12,9 @@
 
 #if PA_CONFIG(HAS_MEMORY_TAGGING)
 #include <arm_acle.h>
+#include <asm/hwcap.h>
 #include <sys/auxv.h>
+#include <sys/ifunc.h>
 #include <sys/prctl.h>
 #define PR_SET_TAGGED_ADDR_CTRL 55
 #define PR_GET_TAGGED_ADDR_CTRL 56
@@ -35,6 +37,7 @@
 #define PR_MTE_TCF_MASK (3UL << PR_MTE_TCF_SHIFT)
 #define PR_MTE_TAG_SHIFT 3
 #define PR_MTE_TAG_MASK (0xffffUL << PR_MTE_TAG_SHIFT)
+#define HWCAP2_MTE (1 << 18)
 #endif
 #endif
 
@@ -120,18 +123,13 @@ namespace {
 }
 
 #if PA_CONFIG(HAS_MEMORY_TAGGING)
-static bool HasCPUMemoryTaggingExtension() {
-  return base::CPU::GetInstanceNoAllocation().has_mte();
-}
-#endif  // PA_CONFIG(HAS_MEMORY_TAGGING)
-
-#if PA_CONFIG(HAS_MEMORY_TAGGING)
 void* TagRegionRandomlyForMTE(void* ptr, size_t sz, uint64_t mask) {
   // Randomly tag a region (MTE-enabled systems only). The first 16-byte
   // granule is randomly tagged, all other granules in the region are
   // then assigned that initial tag via __arm_mte_set_tag.
-  if (!CheckTagRegionParameters(ptr, sz))
+  if (!CheckTagRegionParameters(ptr, sz)) {
     return nullptr;
+  }
   // __arm_mte_create_random_tag generates a randomly tagged pointer via the
   // hardware's random number generator, but does not apply it to the memory.
   char* nptr = reinterpret_cast<char*>(__arm_mte_create_random_tag(ptr, mask));
@@ -146,8 +144,9 @@ void* TagRegionRandomlyForMTE(void* ptr, size_t sz, uint64_t mask) {
 void* TagRegionIncrementForMTE(void* ptr, size_t sz) {
   // Increment a region's tag (MTE-enabled systems only), using the tag of the
   // first granule.
-  if (!CheckTagRegionParameters(ptr, sz))
+  if (!CheckTagRegionParameters(ptr, sz)) {
     return nullptr;
+  }
   // Increment ptr's tag.
   char* nptr = reinterpret_cast<char*>(__arm_mte_increment_tag(ptr, 1u));
   for (size_t i = 0; i < sz; i += kMemTagGranuleSize) {
@@ -164,7 +163,6 @@ void* RemaskVoidPtrForMTE(void* ptr) {
   }
   return nullptr;
 }
-#endif
 
 void* TagRegionIncrementNoOp(void* ptr, size_t sz) {
   // Region parameters are checked even on non-MTE systems to check the
@@ -181,24 +179,49 @@ void* TagRegionRandomlyNoOp(void* ptr, size_t sz, uint64_t mask) {
 void* RemaskVoidPtrNoOp(void* ptr) {
   return ptr;
 }
+#endif
 
 }  // namespace
 
-void InitializeMTESupportIfNeeded() {
 #if PA_CONFIG(HAS_MEMORY_TAGGING)
-  if (HasCPUMemoryTaggingExtension()) {
-    global_remask_void_ptr_fn = RemaskVoidPtrForMTE;
-    global_tag_memory_range_increment_fn = TagRegionIncrementForMTE;
-    global_tag_memory_range_randomly_fn = TagRegionRandomlyForMTE;
+using RemaskPtrInternalFn = void*(void* ptr);
+using TagMemoryRangeIncrementInternalFn = void*(void* ptr, size_t size);
+
+using TagMemoryRangeRandomlyInternalFn = void*(void* ptr,
+                                               size_t size,
+                                               uint64_t mask);
+
+extern "C" TagMemoryRangeIncrementInternalFn(
+    *ResolveTagMemoryRangeIncrement(uint64_t hwcap, struct __ifunc_arg_t* hw)) {
+  if ((hwcap & _IFUNC_ARG_HWCAP) && (hw->_hwcap2 & HWCAP2_MTE)) {
+    return TagRegionIncrementForMTE;
   }
-#endif
+  return TagRegionIncrementNoOp;
 }
 
-RemaskPtrInternalFn* global_remask_void_ptr_fn = RemaskVoidPtrNoOp;
-TagMemoryRangeIncrementInternalFn* global_tag_memory_range_increment_fn =
-    TagRegionIncrementNoOp;
-TagMemoryRangeRandomlyInternalFn* global_tag_memory_range_randomly_fn =
-    TagRegionRandomlyNoOp;
+extern "C" TagMemoryRangeRandomlyInternalFn(
+    *ResolveTagMemoryRandomly(uint64_t hwcap, struct __ifunc_arg_t* hw)) {
+  if ((hwcap & _IFUNC_ARG_HWCAP) && (hw->_hwcap2 & HWCAP2_MTE)) {
+    return TagRegionRandomlyForMTE;
+  }
+  return TagRegionRandomlyNoOp;
+}
+
+extern "C" RemaskPtrInternalFn(
+    *ResolveRemaskPointer(uint64_t hwcap, struct __ifunc_arg_t* hw)) {
+  if ((hwcap & _IFUNC_ARG_HWCAP) && (hw->_hwcap2 & HWCAP2_MTE)) {
+    return RemaskVoidPtrForMTE;
+  }
+  return RemaskVoidPtrNoOp;
+}
+
+void* TagMemoryRangeIncrementInternal(void* ptr, size_t size)
+    __attribute__((ifunc("ResolveTagMemoryRangeIncrement")));
+void* TagMemoryRangeRandomlyInternal(void* ptr, size_t size, uint64_t mask)
+    __attribute__((ifunc("ResolveTagMemoryRandomly")));
+void* RemaskPointerInternal(void* ptr)
+    __attribute__((ifunc("ResolveRemaskPointer")));
+#endif // PA_CONFIG(HAS_MEMORY_TAGGING)
 
 TagViolationReportingMode GetMemoryTaggingModeForCurrentThread() {
 #if PA_CONFIG(HAS_MEMORY_TAGGING)
@@ -208,16 +231,46 @@ TagViolationReportingMode GetMemoryTaggingModeForCurrentThread() {
   }
   int status = prctl(PR_GET_TAGGED_ADDR_CTRL, 0, 0, 0, 0);
   PA_CHECK(status >= 0);
-  if ((status & PR_TAGGED_ADDR_ENABLE) && (status & PR_MTE_TCF_SYNC)) {
-    return TagViolationReportingMode::kSynchronous;
-  }
+  // Check for Asynchronous first because ASYNC on Android sets both
+  // PR_MTE_TCF_ASYNC and PR_MTE_TCF_SYNC bits.
   if ((status & PR_TAGGED_ADDR_ENABLE) && (status & PR_MTE_TCF_ASYNC)) {
     return TagViolationReportingMode::kAsynchronous;
   }
-#endif  // PA_CONFIG(HAS_MEMORY_TAGGING)
+  if ((status & PR_TAGGED_ADDR_ENABLE) && (status & PR_MTE_TCF_SYNC)) {
+    return TagViolationReportingMode::kSynchronous;
+  }
+  return TagViolationReportingMode::kDisabled;
+#else
   return TagViolationReportingMode::kUndefined;
+#endif  // PA_CONFIG(HAS_MEMORY_TAGGING)
 }
 
 }  // namespace internal
+
+#if PA_CONFIG(HAS_MEMORY_TAGGING) && BUILDFLAG(IS_ANDROID)
+bool PermissiveMte::enabled_ = false;
+
+// static
+void PermissiveMte::SetEnabled(bool enabled) {
+  PermissiveMte::enabled_ = enabled;
+}
+
+// static
+bool PermissiveMte::HandleCrash(int signo,
+                                siginfo_t* siginfo,
+                                ucontext_t* context) {
+  if (siginfo->si_signo == SIGSEGV &&
+      (siginfo->si_code == SEGV_MTESERR || siginfo->si_code == SEGV_MTEAERR) &&
+      PermissiveMte::enabled_) {
+    // In MTE permissive mode, do not crash the process. Instead, disable MTE
+    // and let the failing instruction be retried. The second time should
+    // succeed (except if there is another non-MTE fault).
+    internal::ChangeMemoryTaggingModeForAllThreadsPerProcess(
+        partition_alloc::TagViolationReportingMode::kDisabled);
+    return true;
+  }
+  return false;
+}
+#endif  // PA_CONFIG(HAS_MEMORY_TAGGING) && BUILDFLAG(IS_ANDROID)
 
 }  // namespace partition_alloc

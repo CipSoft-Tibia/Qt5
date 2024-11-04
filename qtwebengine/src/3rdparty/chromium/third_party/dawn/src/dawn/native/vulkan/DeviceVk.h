@@ -43,7 +43,7 @@ class ResourceMemoryAllocator;
 
 class Device final : public DeviceBase {
   public:
-    static ResultOrError<Ref<Device>> Create(Adapter* adapter,
+    static ResultOrError<Ref<Device>> Create(AdapterBase* adapter,
                                              const DeviceDescriptor* descriptor,
                                              const TogglesState& deviceToggles);
     ~Device() override;
@@ -58,7 +58,7 @@ class Device final : public DeviceBase {
     const VulkanGlobalInfo& GetGlobalInfo() const;
     VkDevice GetVkDevice() const;
     uint32_t GetGraphicsQueueFamily() const;
-    VkQueue GetQueue() const;
+    VkQueue GetVkQueue() const;
 
     FencedDeleter* GetFencedDeleter() const;
     RenderPassCache* GetRenderPassCache() const;
@@ -115,16 +115,21 @@ class Device final : public DeviceBase {
     // Used to associate this device with validation layer messages.
     const char* GetDebugPrefix() { return mDebugPrefix.c_str(); }
 
-    void ForceEventualFlushOfCommands() override;
+    // TODO(dawn:1413) move these methods the vulkan::Queue.
+    void ForceEventualFlushOfCommands();
+    bool HasPendingCommands() const;
+    ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials();
+    MaybeError WaitForIdleForDestruction();
 
   private:
-    Device(Adapter* adapter, const DeviceDescriptor* descriptor, const TogglesState& deviceToggles);
+    Device(AdapterBase* adapter,
+           const DeviceDescriptor* descriptor,
+           const TogglesState& deviceToggles);
 
     ResultOrError<Ref<BindGroupBase>> CreateBindGroupImpl(
         const BindGroupDescriptor* descriptor) override;
-    ResultOrError<Ref<BindGroupLayoutBase>> CreateBindGroupLayoutImpl(
-        const BindGroupLayoutDescriptor* descriptor,
-        PipelineCompatibilityToken pipelineCompatibilityToken) override;
+    ResultOrError<Ref<BindGroupLayoutInternalBase>> CreateBindGroupLayoutImpl(
+        const BindGroupLayoutDescriptor* descriptor) override;
     ResultOrError<Ref<BufferBase>> CreateBufferImpl(const BufferDescriptor* descriptor) override;
     ResultOrError<Ref<PipelineLayoutBase>> CreatePipelineLayoutImpl(
         const PipelineLayoutDescriptor* descriptor) override;
@@ -136,10 +141,8 @@ class Device final : public DeviceBase {
         ShaderModuleParseResult* parseResult,
         OwnedCompilationMessages* compilationMessages) override;
     ResultOrError<Ref<SwapChainBase>> CreateSwapChainImpl(
-        const SwapChainDescriptor* descriptor) override;
-    ResultOrError<Ref<NewSwapChainBase>> CreateSwapChainImpl(
         Surface* surface,
-        NewSwapChainBase* previousSwapChain,
+        SwapChainBase* previousSwapChain,
         const SwapChainDescriptor* descriptor) override;
     ResultOrError<Ref<TextureBase>> CreateTextureImpl(const TextureDescriptor* descriptor) override;
     ResultOrError<Ref<TextureViewBase>> CreateTextureViewImpl(
@@ -157,18 +160,17 @@ class Device final : public DeviceBase {
                                            WGPUCreateRenderPipelineAsyncCallback callback,
                                            void* userdata) override;
 
-    ResultOrError<VulkanDeviceKnobs> CreateDevice(VkPhysicalDevice physicalDevice);
-    void GatherQueueFromDevice();
+    ResultOrError<wgpu::TextureUsage> GetSupportedSurfaceUsageImpl(
+        const Surface* surface) const override;
 
-    uint32_t FindComputeSubgroupSize() const;
+    ResultOrError<VulkanDeviceKnobs> CreateDevice(VkPhysicalDevice vkPhysicalDevice);
+    void GatherQueueFromDevice();
 
     MaybeError CheckDebugLayerAndGenerateErrors();
     void AppendDebugLayerMessages(ErrorData* error) override;
     void CheckDebugMessagesAfterDestruction() const;
 
     void DestroyImpl() override;
-    MaybeError WaitForIdleForDestruction() override;
-    bool HasPendingCommands() const override;
 
     // To make it easier to use fn it is a public const member. However
     // the Device is allowed to mutate them through these private methods.
@@ -178,7 +180,6 @@ class Device final : public DeviceBase {
     VkDevice mVkDevice = VK_NULL_HANDLE;
     uint32_t mQueueFamily = 0;
     VkQueue mQueue = VK_NULL_HANDLE;
-    uint32_t mComputeSubgroupSize = 0;
 
     SerialQueue<ExecutionSerial, Ref<DescriptorSetAllocator>>
         mDescriptorAllocatorsPendingDeallocation;
@@ -190,7 +191,6 @@ class Device final : public DeviceBase {
     std::unique_ptr<external_semaphore::Service> mExternalSemaphoreService;
 
     ResultOrError<VkFence> GetUnusedFence();
-    ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials() override;
 
     // We track which operations are in flight on the GPU with an increasing serial.
     // This works only because we have a single queue. Each submit to a queue is associated

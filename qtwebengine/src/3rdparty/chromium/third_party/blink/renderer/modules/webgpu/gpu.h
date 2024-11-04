@@ -31,6 +31,7 @@ class NavigatorBase;
 class ScriptPromiseResolver;
 class ScriptState;
 class DawnControlClientHolder;
+class WGSLLanguageFeatures;
 
 struct BoxedMappableWGPUBufferHandles
     : public RefCounted<BoxedMappableWGPUBufferHandles> {
@@ -79,6 +80,9 @@ class MODULES_EXPORT GPU final : public ScriptWrappable,
   ScriptPromise requestAdapter(ScriptState* script_state,
                                const GPURequestAdapterOptions* options);
   String getPreferredCanvasFormat();
+  WGSLLanguageFeatures* wgslLanguageFeatures() const;
+
+  static WGPUTextureFormat preferred_canvas_format();
 
   // Store the buffer in a weak hash set so we can destroy it when the
   // context is destroyed.
@@ -109,6 +113,8 @@ class MODULES_EXPORT GPU final : public ScriptWrappable,
   void RequestAdapterImpl(ScriptState* script_state,
                           const GPURequestAdapterOptions* options,
                           ScriptPromiseResolver* resolver);
+
+  Member<WGSLLanguageFeatures> wgsl_language_features_;
 
   scoped_refptr<DawnControlClientHolder> dawn_control_client_;
   WTF::Vector<base::OnceCallback<void()>>

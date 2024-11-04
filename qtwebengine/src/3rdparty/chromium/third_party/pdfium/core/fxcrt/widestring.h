@@ -22,7 +22,7 @@
 #include "core/fxcrt/string_view_template.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/base/check.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
 namespace fxcrt {
 
@@ -32,6 +32,7 @@ class ByteString;
 // avoids the cost of std::string's iterator stability guarantees.
 class WideString {
  public:
+  // TODO(crbug.com/pdfium/2031): Consider switching to `char16_t` instead.
   using CharType = wchar_t;
   using const_iterator = const CharType*;
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
@@ -302,6 +303,13 @@ std::wostream& operator<<(std::wostream& os, const WideString& str);
 std::ostream& operator<<(std::ostream& os, const WideString& str);
 std::wostream& operator<<(std::wostream& os, WideStringView str);
 std::ostream& operator<<(std::ostream& os, WideStringView str);
+
+// This is declared here for use in gtest-based tests but is defined in a test
+// support target. This should not be used in production code. Just use
+// operator<< from above instead.
+// In some cases, gtest will automatically use operator<< as well, but in this
+// case, it needs PrintTo() because WideString looks like a container to gtest.
+void PrintTo(const WideString& str, std::ostream* os);
 
 }  // namespace fxcrt
 

@@ -1,0 +1,44 @@
+MetaInfo {
+    Type {
+        name: "QtGraphs.GraphsView"
+        icon: "images/barseries-icon16.png"
+
+        ItemLibraryEntry {
+            name: "Bar"
+            category: "Qt Graphs - GraphsView"
+            libraryIcon: "images/barseries-icon.png"
+            version: "1.0"
+            requiredImport: "QtGraphs"
+
+            QmlSource { source: "default/BarSeries.qml" }
+        }
+    }
+    Type {
+        name: "QtGraphs.GraphsView"
+        icon: "images/lineseries-chart-icon16.png"
+
+        ItemLibraryEntry {
+            name: "Line"
+            category: "Qt Graphs - GraphsView"
+            libraryIcon: "images/lineseries-chart-icon.png"
+            version: "1.0"
+            requiredImport: "QtGraphs"
+
+            QmlSource { source: "default/LineSeries.qml" }
+        }
+    }
+    Type {
+        name: "QtGraphs.GraphsView"
+        icon: "images/scatterseries-chart-icon16.png"
+
+        ItemLibraryEntry {
+            name: "Scatter"
+            category: "Qt Graphs - GraphsView"
+            libraryIcon: "images/scatterseries-chart-icon.png"
+            version: "1.0"
+            requiredImport: "QtGraphs"
+
+            QmlSource { source: "default/ScatterSeries.qml" }
+        }
+    }
+}

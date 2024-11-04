@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -32,8 +32,8 @@ class YetAnotherBitVector {
 
   ~YetAnotherBitVector();
 
-  YetAnotherBitVector(YetAnotherBitVector&& other);
-  YetAnotherBitVector& operator=(YetAnotherBitVector&& other);
+  YetAnotherBitVector(YetAnotherBitVector&& other) noexcept;
+  YetAnotherBitVector& operator=(YetAnotherBitVector&& other) noexcept;
 
   // Not Implemented: Conceptually, there's no reason to prohibit copying these
   // objects. Implement it if you need it. :)

@@ -5,7 +5,7 @@
     \example cannon
     \ingroup quick3dphysics-examples
     \title Qt Quick 3D Physics - Cannon Example
-    \examplecategory {Data Visualization & 3D}
+    \examplecategory {3D}
     \brief Demonstrates how to spawn physical objects.
     \image cannon-example.jpg
 

@@ -890,6 +890,14 @@ uint16_t* Tile::GetReferenceCdf(
         block, kReferenceFrameBackward, kReferenceFrameBackward,
         kReferenceFrameAlternate2, kReferenceFrameAlternate2);
   }
+  // When using GCC 12.x for some targets the compiler reports a false positive
+  // with the context subscript when is_single=false, is_backward=false and
+  // index=0. GetReferenceContext() can only return values between 0 and 2.
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
+  assert(context >= 0 && context <= 2);
   if (is_single) {
     // The index parameter for single references is offset by one since the spec
     // uses 1-based index for these elements.
@@ -900,6 +908,9 @@ uint16_t* Tile::GetReferenceCdf(
         .compound_backward_reference_cdf[context][index];
   }
   return symbol_decoder_context_.compound_reference_cdf[type][context][index];
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 }
 
 void Tile::ReadReferenceFrames(const Block& block, bool skip_mode) {

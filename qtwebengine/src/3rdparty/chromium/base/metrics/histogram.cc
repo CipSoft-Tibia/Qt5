@@ -13,12 +13,12 @@
 #include <limits.h>
 #include <math.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "base/compiler_specific.h"
-#include "base/cxx17_backports.h"
 #include "base/debug/alias.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
@@ -201,7 +201,6 @@ HistogramBase* Histogram::Factory::Build() {
     // persistent allocation fails (perhaps because it is full).
     if (!tentative_histogram) {
       DCHECK(!histogram_ref);  // Should never have been set.
-      DCHECK(!allocator);  // Shouldn't have failed.
       flags_ &= ~HistogramBase::kIsPersistent;
       tentative_histogram = HeapAlloc(registered_ranges);
       tentative_histogram->SetFlags(flags_);
@@ -561,10 +560,10 @@ std::unique_ptr<HistogramSamples> Histogram::SnapshotDelta() {
   // vector: this way, the next snapshot will include any concurrent updates
   // missed by the current snapshot.
 
-  // MarkSamplesAsLogged() is final in order to a prevent vtable lookup here,
-  // since SnapshotDelta() might be called often.
-  std::unique_ptr<HistogramSamples> snapshot = SnapshotUnloggedSamplesImpl();
-  MarkSamplesAsLogged(*snapshot);
+  std::unique_ptr<HistogramSamples> snapshot =
+      std::make_unique<SampleVector>(unlogged_samples_->id(), bucket_ranges());
+  snapshot->Extract(*unlogged_samples_);
+  logged_samples_->Add(*snapshot);
 
   return snapshot;
 }
@@ -953,7 +952,7 @@ void ScaledLinearHistogram::AddScaledCount(Sample value, int64_t count) {
   DCHECK_EQ(histogram_->GetHistogramType(), LINEAR_HISTOGRAM);
   LinearHistogram* histogram = static_cast<LinearHistogram*>(histogram_);
   const auto max_value = static_cast<Sample>(histogram->bucket_count() - 1);
-  value = base::clamp(value, 0, max_value);
+  value = std::clamp(value, 0, max_value);
 
   int64_t scaled_count = count / scale_;
   subtle::Atomic32 remainder = static_cast<int>(count - scaled_count * scale_);

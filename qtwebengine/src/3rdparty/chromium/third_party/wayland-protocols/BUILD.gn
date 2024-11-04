@@ -23,6 +23,10 @@ wayland_protocol("extended_drag") {
   sources = [ "unstable/extended-drag/extended-drag-unstable-v1.xml" ]
 }
 
+wayland_protocol("fractional_scale_protocol") {
+  sources = [ "src/staging/fractional-scale/fractional-scale-v1.xml" ]
+}
+
 wayland_protocol("fullscreen_shell_protocol") {
   sources = [ "src/unstable/fullscreen-shell/fullscreen-shell-unstable-v1.xml" ]
 }
@@ -112,12 +116,24 @@ wayland_protocol("secure_output_protocol") {
   sources = [ "unstable/secure-output/secure-output-unstable-v1.xml" ]
 }
 
+wayland_protocol("single_pixel_buffer") {
+  sources = [ "src/staging/single-pixel-buffer/single-pixel-buffer-v1.xml" ]
+}
+
 wayland_protocol("stylus_protocol") {
   sources = [ "unstable/stylus/stylus-unstable-v2.xml" ]
 }
 
 wayland_protocol("stylus_tools_protocol") {
   sources = [ "unstable/stylus-tools/stylus-tools-unstable-v1.xml" ]
+}
+
+wayland_protocol("tablet_protocol") {
+  sources = [ "src/unstable/tablet/tablet-unstable-v2.xml" ]
+}
+
+wayland_protocol("tearing_control_protocol") {
+  sources = [ "src/staging/tearing-control/tearing-control-v1.xml" ]
 }
 
 wayland_protocol("text_input_extension_protocol") {

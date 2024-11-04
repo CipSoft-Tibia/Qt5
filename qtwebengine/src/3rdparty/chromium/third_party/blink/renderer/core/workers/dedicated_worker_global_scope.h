@@ -90,7 +90,7 @@ class CORE_EXPORT DedicatedWorkerGlobalScope final : public WorkerGlobalScope {
   bool IsDedicatedWorkerGlobalScope() const override { return true; }
 
   // Implements EventTarget
-  // (via WorkerOrWorkletGlobalScope -> EventTargetWithInlineData).
+  // (via WorkerOrWorkletGlobalScope -> EventTarget).
   const AtomicString& InterfaceName() const override;
 
   // RequestAnimationFrame
@@ -128,11 +128,7 @@ class CORE_EXPORT DedicatedWorkerGlobalScope final : public WorkerGlobalScope {
 
   // Implements scheduler::WorkerScheduler::Delegate.
   void UpdateBackForwardCacheDisablingFeatures(
-      uint64_t features_mask,
-      const BFCacheBlockingFeatureAndLocations&
-          non_sticky_features_and_js_locations,
-      const BFCacheBlockingFeatureAndLocations&
-          sticky_features_and_js_locations) override;
+      BlockingDetails details) override;
   // Implements BackForwardCacheLoaderHelperImpl::Delegate.
   void EvictFromBackForwardCache(
       mojom::blink::RendererEvictionReason reason) override;

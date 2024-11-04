@@ -322,10 +322,17 @@ IN_PROC_BROWSER_TEST_F(TextFragmentAnchorBrowserTest,
   EXPECT_DID_SCROLL(false);
 }
 
+// crbug.com/1470712: Flaky on CrOS Debug
+#if BUILDFLAG(IS_CHROMEOS) && !defined(NDEBUG)
+#define MAYBE_SameDocumentBrowserNavigation \
+  DISABLED_SameDocumentBrowserNavigation
+#else
+#define MAYBE_SameDocumentBrowserNavigation SameDocumentBrowserNavigation
+#endif
 // Ensure a same-document navigation from browser UI scrolls to the text
 // fragment.
 IN_PROC_BROWSER_TEST_F(TextFragmentAnchorBrowserTest,
-                       SameDocumentBrowserNavigation) {
+                       MAYBE_SameDocumentBrowserNavigation) {
   ASSERT_TRUE(embedded_test_server()->Start());
   GURL url(embedded_test_server()->GetURL(
       "/scrollable_page_with_content.html#:~:text=text"));
@@ -356,11 +363,19 @@ IN_PROC_BROWSER_TEST_F(TextFragmentAnchorBrowserTest,
   EXPECT_DID_SCROLL(true);
 }
 
-IN_PROC_BROWSER_TEST_F(TextFragmentAnchorBrowserTest,
-                       SameDocumentBrowserNavigationOnScriptNavigatedDocument) {
+// crbug.com/1470712: Flaky on CrOS Debug
+#if BUILDFLAG(IS_CHROMEOS) && !defined(NDEBUG)
+#define MAYBE_SameDocumentBrowserNavigationOnScriptNavigatedDocument \
+  DISABLED_SameDocumentBrowserNavigationOnScriptNavigatedDocument
+#else
+#define MAYBE_SameDocumentBrowserNavigationOnScriptNavigatedDocument \
+  SameDocumentBrowserNavigationOnScriptNavigatedDocument
+#endif
+IN_PROC_BROWSER_TEST_F(
+    TextFragmentAnchorBrowserTest,
+    MAYBE_SameDocumentBrowserNavigationOnScriptNavigatedDocument) {
   ASSERT_TRUE(embedded_test_server()->Start());
   WebContents* main_contents = shell()->web_contents();
-  RenderFrameSubmissionObserver frame_observer(main_contents);
   // The test assumes the RenderWidgetHost stays the same after navigation,
   // which won't happen if same-site back/forward-cache is enabled. Disable it
   // so that we will keep RenderWidgetHost even after navigation.
@@ -385,6 +400,8 @@ IN_PROC_BROWSER_TEST_F(TextFragmentAnchorBrowserTest,
     EXPECT_TRUE(ExecJs(main_contents, "location = '" + target_url.spec() + "';",
                        EXECUTE_SCRIPT_NO_USER_GESTURE));
     observer.Wait();
+
+    RenderFrameSubmissionObserver frame_observer(main_contents);
     EXPECT_EQ(target_url, main_contents->GetLastCommittedURL());
     frame_observer.WaitForScrollOffsetAtTop(false);
     EXPECT_DID_SCROLL(true);
@@ -394,6 +411,7 @@ IN_PROC_BROWSER_TEST_F(TextFragmentAnchorBrowserTest,
   // we'll use below to ensure the same-document navigation invokes the text
   // fragment.
   {
+    RenderFrameSubmissionObserver frame_observer(main_contents);
     EXPECT_TRUE(ExecJs(main_contents, "window.scrollTo(0, 0)"));
     frame_observer.WaitForScrollOffsetAtTop(true);
     RunUntilInputProcessed(GetWidgetHost());
@@ -408,6 +426,7 @@ IN_PROC_BROWSER_TEST_F(TextFragmentAnchorBrowserTest,
         "/scrollable_page_with_content.html#:~:text=some"));
     EXPECT_TRUE(NavigateToURL(shell(), same_doc_url));
 
+    RenderFrameSubmissionObserver frame_observer(main_contents);
     WaitForPageLoad(main_contents);
 
     frame_observer.WaitForScrollOffsetAtTop(

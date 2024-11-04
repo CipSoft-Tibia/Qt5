@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 """Definitions of builders in the chromium.gpu.fyi builder group."""
 
+load("//lib/branches.star", "branches")
 load("//lib/builder_config.star", "builder_config")
 load("//lib/builders.star", "reclient", "sheriff_rotations")
 load("//lib/ci.star", "ci")
@@ -20,11 +21,15 @@ ci.defaults.set(
     reclient_instance = reclient.instance.DEFAULT_TRUSTED,
     reclient_jobs = reclient.jobs.DEFAULT,
     service_account = ci.gpu.SERVICE_ACCOUNT,
+    shadow_service_account = ci.gpu.SHADOW_SERVICE_ACCOUNT,
     thin_tester_cores = 2,
 )
 
 consoles.console_view(
     name = "chromium.gpu.fyi",
+    branch_selector = [
+        branches.selector.ANDROID_BRANCHES,
+    ],
     ordering = {
         None: ["Windows", "Mac", "Linux"],
         "*builder*": ["Builder"],
@@ -97,7 +102,7 @@ ci.thin_tester(
         chromium_config = builder_config.chromium_config(
             config = "android",
             apply_configs = [
-                "download_vr_test_apks",
+                "download_xr_test_apks",
             ],
             target_platform = builder_config.target_platform.ANDROID,
         ),
@@ -163,6 +168,7 @@ ci.thin_tester(
 
 ci.thin_tester(
     name = "Android FYI Release (Pixel 6)",
+    branch_selector = branches.selector.ANDROID_BRANCHES,
     triggered_by = ["GPU FYI Android arm64 Builder"],
     builder_spec = builder_config.builder_spec(
         execution_mode = builder_config.execution_mode.TEST,
@@ -175,7 +181,7 @@ ci.thin_tester(
         chromium_config = builder_config.chromium_config(
             config = "android",
             apply_configs = [
-                "download_vr_test_apks",
+                "download_xr_test_apks",
             ],
             target_platform = builder_config.target_platform.ANDROID,
         ),
@@ -188,9 +194,6 @@ ci.thin_tester(
         category = "Android|S64|ARM",
         short_name = "P6",
     ),
-    # TODO(crbug.com/1280418): Revert this to the default once more Pixel 6
-    # capacity is deployed.
-    execution_timeout = 8 * time.hour,
 )
 
 ci.thin_tester(
@@ -338,7 +341,7 @@ ci.gpu.linux_builder(
         ),
         run_tests_serially = True,
         skylab_upload_location = builder_config.skylab_upload_location(
-            gs_bucket = "lacros-arm64-generic-rel-skylab-try",
+            gs_bucket = "chromium-ci-skylab",
             gs_extra = "chromeos_gpu",
         ),
     ),
@@ -346,6 +349,9 @@ ci.gpu.linux_builder(
         category = "ChromeOS|ARM",
         short_name = "kvn",
     ),
+    # Given the capacity constraints, the default 6 hour timeout is not
+    # sufficient.
+    execution_timeout = 12 * time.hour,
     reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
 )
 
@@ -407,6 +413,7 @@ ci.gpu.linux_builder(
 
 ci.gpu.linux_builder(
     name = "GPU FYI Android arm64 Builder",
+    branch_selector = branches.selector.ANDROID_BRANCHES,
     builder_spec = builder_config.builder_spec(
         gclient_config = builder_config.gclient_config(
             config = "chromium",
@@ -417,7 +424,7 @@ ci.gpu.linux_builder(
         chromium_config = builder_config.chromium_config(
             config = "android",
             apply_configs = [
-                "download_vr_test_apks",
+                "download_xr_test_apks",
             ],
             target_platform = builder_config.target_platform.ANDROID,
         ),
@@ -878,10 +885,10 @@ ci.thin_tester(
         run_tests_serially = True,
     ),
     # Uncomment this entry when this experimental tester is actually in use.
-    # console_view_entry = consoles.console_view_entry(
-    #     category = "Mac|Intel",
-    #     short_name = "exp",
-    # ),
+    console_view_entry = consoles.console_view_entry(
+        category = "Mac|Intel",
+        short_name = "exp",
+    ),
     list_view = "chromium.gpu.experimental",
 )
 
@@ -905,10 +912,10 @@ ci.thin_tester(
         run_tests_serially = True,
     ),
     # Uncomment this entry when this experimental tester is actually in use.
-    # console_view_entry = consoles.console_view_entry(
-    #     category = "Mac|AMD|Retina",
-    #     short_name = "exp",
-    # ),
+    console_view_entry = consoles.console_view_entry(
+        category = "Mac|AMD|Retina",
+        short_name = "exp",
+    ),
     list_view = "chromium.gpu.experimental",
 )
 
@@ -932,14 +939,13 @@ ci.thin_tester(
         run_tests_serially = True,
     ),
     # Uncomment this entry when this experimental tester is actually in use.
-    # console_view_entry = consoles.console_view_entry(
-    #     category = "Mac|Nvidia",
-    #     short_name = "exp",
-    # ),
+    console_view_entry = consoles.console_view_entry(
+        category = "Mac|Nvidia",
+        short_name = "exp",
+    ),
     list_view = "chromium.gpu.experimental",
     # This bot has one machine backing its tests at the moment.
     # If it gets more, this can be removed.
-    # See crbug.com/853307 for more context.
     execution_timeout = 12 * time.hour,
 )
 
@@ -965,7 +971,33 @@ ci.thin_tester(
     ),
     console_view_entry = consoles.console_view_entry(
         category = "Mac|Apple",
-        short_name = "rel",
+        short_name = "m1",
+    ),
+)
+
+ci.thin_tester(
+    name = "Mac FYI Retina Release (Apple M2)",
+    triggered_by = ["GPU FYI Mac arm64 Builder"],
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+        run_tests_serially = True,
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "Mac|Apple",
+        short_name = "m2",
     ),
 )
 

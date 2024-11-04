@@ -5,6 +5,8 @@
 #ifndef DEVICE_VR_ANDROID_MAILBOX_TO_SURFACE_BRIDGE_H_
 #define DEVICE_VR_ANDROID_MAILBOX_TO_SURFACE_BRIDGE_H_
 
+#include "base/functional/callback_forward.h"
+
 namespace gfx {
 class ColorSpace;
 class GpuFence;
@@ -53,8 +55,6 @@ class MailboxToSurfaceBridge {
   // Returns true if swapped successfully. This can fail if the GL
   // context isn't ready for use yet, in that case the caller
   // won't get a new frame on the SurfaceTexture.
-  virtual bool CopyMailboxToSurfaceAndSwap(
-      const gpu::MailboxHolder& mailbox) = 0;
   virtual bool CopyMailboxToSurfaceAndSwap(
       const gpu::MailboxHolder& mailbox,
       const gfx::Transform& uv_transform) = 0;

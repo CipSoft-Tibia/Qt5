@@ -37,8 +37,7 @@
 #include "sandbox/policy/mac/utility.sb.h"
 #include "sandbox/policy/mojom/sandbox.mojom.h"
 
-namespace sandbox {
-namespace policy {
+namespace sandbox::policy {
 
 base::FilePath GetCanonicalPath(const base::FilePath& path) {
   base::ScopedFD fd(HANDLE_EINTR(open(path.value().c_str(), O_RDONLY)));
@@ -132,5 +131,4 @@ bool CanCacheSandboxPolicy(sandbox::mojom::Sandbox sandbox_type) {
   }
 }
 
-}  // namespace policy
-}  // namespace sandbox
+}  // namespace sandbox::policy

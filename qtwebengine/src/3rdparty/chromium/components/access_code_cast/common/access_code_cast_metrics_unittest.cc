@@ -122,22 +122,72 @@ TEST(AccessCodeCastMetricsTest, RecordAccessCodeNotFoundCount) {
 TEST(AccessCodeCastMetricsTest, RecordAccessCodeRouteStarted) {
   base::HistogramTester histogram_tester;
 
-  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(base::Seconds(0));
+  AccessCodeCastCastMode cast_mode = AccessCodeCastCastMode::kPresentation;
+
+  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(base::Seconds(0), false,
+                                                      cast_mode);
   histogram_tester.ExpectBucketCount(
       "AccessCodeCast.Discovery.DeviceDurationOnRoute", 0, 1);
 
   // Ensure the functions properly converts duration to seconds
-  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(
-      base::Milliseconds(10000));
+  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(base::Milliseconds(10000),
+                                                      false, cast_mode);
   histogram_tester.ExpectBucketCount(
       "AccessCodeCast.Discovery.DeviceDurationOnRoute", 10, 1);
-  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(
-      base::Milliseconds(20000));
+  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(base::Milliseconds(20000),
+                                                      false, cast_mode);
   histogram_tester.ExpectBucketCount(
       "AccessCodeCast.Discovery.DeviceDurationOnRoute", 20, 1);
 
   histogram_tester.ExpectTotalCount(
       "AccessCodeCast.Discovery.DeviceDurationOnRoute", 3);
+}
+
+TEST(AccessCodeCastMetricsTest, RecordAccessCodeRouteStartedRouteInfo) {
+  base::HistogramTester histogram_tester;
+
+  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(
+      base::Seconds(0), true, AccessCodeCastCastMode::kPresentation);
+  histogram_tester.ExpectBucketCount(
+      "AccessCodeCast.Session.RouteDiscoveryTypeAndSource", 1, 1);
+
+  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(
+      base::Seconds(0), true, AccessCodeCastCastMode::kTabMirror);
+  histogram_tester.ExpectBucketCount(
+      "AccessCodeCast.Session.RouteDiscoveryTypeAndSource", 2, 1);
+
+  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(
+      base::Seconds(0), true, AccessCodeCastCastMode::kDesktopMirror);
+  histogram_tester.ExpectBucketCount(
+      "AccessCodeCast.Session.RouteDiscoveryTypeAndSource", 3, 1);
+
+  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(
+      base::Seconds(0), true, AccessCodeCastCastMode::kRemotePlayback);
+  histogram_tester.ExpectBucketCount(
+      "AccessCodeCast.Session.RouteDiscoveryTypeAndSource", 4, 1);
+
+  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(
+      base::Seconds(0), false, AccessCodeCastCastMode::kPresentation);
+  histogram_tester.ExpectBucketCount(
+      "AccessCodeCast.Session.RouteDiscoveryTypeAndSource", 5, 1);
+
+  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(
+      base::Seconds(0), false, AccessCodeCastCastMode::kTabMirror);
+  histogram_tester.ExpectBucketCount(
+      "AccessCodeCast.Session.RouteDiscoveryTypeAndSource", 6, 1);
+
+  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(
+      base::Seconds(0), false, AccessCodeCastCastMode::kDesktopMirror);
+  histogram_tester.ExpectBucketCount(
+      "AccessCodeCast.Session.RouteDiscoveryTypeAndSource", 7, 1);
+
+  AccessCodeCastMetrics::RecordAccessCodeRouteStarted(
+      base::Seconds(0), false, AccessCodeCastCastMode::kRemotePlayback);
+  histogram_tester.ExpectBucketCount(
+      "AccessCodeCast.Session.RouteDiscoveryTypeAndSource", 8, 1);
+
+  histogram_tester.ExpectTotalCount(
+      "AccessCodeCast.Session.RouteDiscoveryTypeAndSource", 8);
 }
 
 TEST(AccessCodeCastMetricsTest, RecordDialogLoadTime) {
@@ -217,6 +267,43 @@ TEST(AccessCodeCastMetricsTest, RecordRouteDuration) {
   histogram_tester.ExpectTotalCount(histogram, 3);
 }
 
+TEST(AccessCodeCastMetricsTest, RecordMirroringPauseCount) {
+  base::HistogramTester histogram_tester;
+  char histogram[] = "AccessCodeCast.Session.FreezeCount";
+
+  AccessCodeCastMetrics::RecordMirroringPauseCount(0);
+  histogram_tester.ExpectBucketCount(histogram, 0, 1);
+
+  AccessCodeCastMetrics::RecordMirroringPauseCount(1);
+  histogram_tester.ExpectBucketCount(histogram, 1, 1);
+
+  AccessCodeCastMetrics::RecordMirroringPauseCount(100);
+  histogram_tester.ExpectBucketCount(histogram, 100, 1);
+
+  // Over 100 should be reported as 100.
+  AccessCodeCastMetrics::RecordMirroringPauseCount(500);
+  histogram_tester.ExpectBucketCount(histogram, 100, 2);
+
+  histogram_tester.ExpectTotalCount(histogram, 4);
+}
+
+TEST(AccessCodeCastMetricsTest, RecordMirroringPauseDuration) {
+  base::HistogramTester histogram_tester;
+  char histogram[] = "AccessCodeCast.Session.FreezeDuration";
+
+  AccessCodeCastMetrics::RecordMirroringPauseDuration(base::Milliseconds(1));
+  histogram_tester.ExpectTimeBucketCount(histogram, base::Milliseconds(1), 1);
+
+  AccessCodeCastMetrics::RecordMirroringPauseDuration(base::Minutes(5));
+  histogram_tester.ExpectTimeBucketCount(histogram, base::Minutes(5), 1);
+
+  AccessCodeCastMetrics::RecordMirroringPauseDuration(base::Hours(2));
+  // The long times histogram has a maximum value of 1 hours.
+  histogram_tester.ExpectTimeBucketCount(histogram, base::Hours(1), 1);
+
+  histogram_tester.ExpectTotalCount(histogram, 3);
+}
+
 TEST(AccessCodeCastMetricsTest, CheckMetricsEnums) {
   base::HistogramTester histogram_tester;
 
@@ -255,4 +342,49 @@ TEST(AccessCodeCastMetricsTest, CheckMetricsEnums) {
       << "'AccessCodeCastDialogOpenLocation' enum was changed in "
          "access_code_cast_metrics.h. Please update the entry in "
          "enums.xml to match.";
+
+  // DiscoveryTypeAndSource
+  absl::optional<base::HistogramEnumEntryMap> discovery_types_and_sources =
+      base::ReadEnumFromEnumsXml("AccessCodeCastDiscoveryTypeAndSource");
+  EXPECT_TRUE(
+      discovery_types_and_sources->size() ==
+      static_cast<int>(AccessCodeCastDiscoveryTypeAndSource::kMaxValue) + 1)
+      << "'AccessCodeCastDicoveryTypeAndSource' enum was changed in "
+         "access_code_cast_metrics.h. Please update the entry in "
+         "enums.xml to match.";
+}
+
+TEST(AccessCodeCastMetricsTest, RecordSavedDeviceConnectDuration) {
+  base::HistogramTester histogram_tester;
+  char histogram[] = "AccessCodeCast.Session.SavedDeviceRouteCreationDuration";
+
+  AccessCodeCastMetrics::RecordSavedDeviceConnectDuration(
+      base::Milliseconds(1));
+  histogram_tester.ExpectTimeBucketCount(histogram, base::Milliseconds(1), 1);
+
+  AccessCodeCastMetrics::RecordSavedDeviceConnectDuration(
+      base::Milliseconds(500));
+  histogram_tester.ExpectTimeBucketCount(histogram, base::Milliseconds(500), 1);
+
+  AccessCodeCastMetrics::RecordSavedDeviceConnectDuration(base::Hours(10));
+  histogram_tester.ExpectTimeBucketCount(histogram, base::Seconds(180), 1);
+
+  histogram_tester.ExpectTotalCount(histogram, 3);
+}
+
+TEST(AccessCodeCastMetricsTest, RecordNewDeviceConnectDuration) {
+  base::HistogramTester histogram_tester;
+  char histogram[] = "AccessCodeCast.Session.NewDeviceRouteCreationDuration";
+
+  AccessCodeCastMetrics::RecordNewDeviceConnectDuration(base::Milliseconds(1));
+  histogram_tester.ExpectTimeBucketCount(histogram, base::Milliseconds(1), 1);
+
+  AccessCodeCastMetrics::RecordNewDeviceConnectDuration(
+      base::Milliseconds(500));
+  histogram_tester.ExpectTimeBucketCount(histogram, base::Milliseconds(500), 1);
+
+  AccessCodeCastMetrics::RecordNewDeviceConnectDuration(base::Hours(10));
+  histogram_tester.ExpectTimeBucketCount(histogram, base::Seconds(180), 1);
+
+  histogram_tester.ExpectTotalCount(histogram, 3);
 }

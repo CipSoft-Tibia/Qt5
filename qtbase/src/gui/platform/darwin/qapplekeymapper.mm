@@ -18,7 +18,6 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcQpaKeyMapper, "qt.qpa.keymapper");
 Q_LOGGING_CATEGORY(lcQpaKeyMapperKeys, "qt.qpa.keymapper.keys");
 
 static Qt::KeyboardModifiers swapModifiersIfNeeded(const Qt::KeyboardModifiers modifiers)
@@ -35,36 +34,6 @@ static Qt::KeyboardModifiers swapModifiersIfNeeded(const Qt::KeyboardModifiers m
         swappedModifiers |= Qt::ControlModifier;
 
     return swappedModifiers;
-}
-
-Qt::Key QAppleKeyMapper::fromNSString(Qt::KeyboardModifiers qtModifiers, NSString *characters,
-                                      NSString *charactersIgnoringModifiers, QString &text)
-{
-    if ([characters isEqualToString:@"\t"]) {
-        if (qtModifiers & Qt::ShiftModifier)
-            return Qt::Key_Backtab;
-        return Qt::Key_Tab;
-    } else if ([characters isEqualToString:@"\r"]) {
-        if (qtModifiers & Qt::KeypadModifier)
-            return Qt::Key_Enter;
-        return Qt::Key_Return;
-    }
-    if ([characters length] != 0 || [charactersIgnoringModifiers length] != 0) {
-        QChar ch;
-        if (((qtModifiers & Qt::MetaModifier) || (qtModifiers & Qt::AltModifier)) &&
-            ([charactersIgnoringModifiers length] != 0)) {
-            ch = QChar([charactersIgnoringModifiers characterAtIndex:0]);
-        } else if ([characters length] != 0) {
-            ch = QChar([characters characterAtIndex:0]);
-        }
-        if (!(qtModifiers & (Qt::ControlModifier | Qt::MetaModifier)) &&
-            (ch.unicode() < 0xf700 || ch.unicode() > 0xf8ff)) {
-            text = QString::fromNSString(characters);
-        }
-        if (!ch.isNull())
-            return Qt::Key(ch.toUpper().unicode());
-    }
-    return Qt::Key_unknown;
 }
 
 #ifdef Q_OS_MACOS
@@ -384,7 +353,7 @@ Qt::Key QAppleKeyMapper::fromCocoaKey(QChar keyCode)
 
 // ------------------------------------------------
 
-Qt::KeyboardModifiers QAppleKeyMapper::queryKeyboardModifiers()
+Qt::KeyboardModifiers QAppleKeyMapper::queryKeyboardModifiers() const
 {
     return fromCocoaModifiers(NSEvent.modifierFlags);
 }
@@ -538,11 +507,9 @@ const QAppleKeyMapper::KeyMap &QAppleKeyMapper::keyMapForKey(VirtualKeyCode virt
     where each modifier-key combination has been mapped to the
     key it will produce.
 */
-QList<int> QAppleKeyMapper::possibleKeys(const QKeyEvent *event) const
+QList<QKeyCombination> QAppleKeyMapper::possibleKeyCombinations(const QKeyEvent *event) const
 {
-    QList<int> ret;
-
-    qCDebug(lcQpaKeyMapper) << "Computing possible keys for" << event;
+    QList<QKeyCombination> ret;
 
     const auto nativeVirtualKey = event->nativeVirtualKey();
     if (!nativeVirtualKey)
@@ -555,16 +522,49 @@ QList<int> QAppleKeyMapper::possibleKeys(const QKeyEvent *event) const
 
     auto eventModifiers = event->modifiers();
 
-    // The complete set of event modifiers, along with the
-    // unmodified key, is always a valid key combination,
-    // and the first priority.
-    ret << int(eventModifiers) + int(unmodifiedKey);
+    int startingModifierLayer = 0;
+    if (toCocoaModifiers(eventModifiers) & NSEventModifierFlagCommand) {
+        // When the Command key is pressed AppKit seems to do key equivalent
+        // matching using a Latin/Roman interpretation of the current keyboard
+        // layout. For example, for a Greek layout, pressing Option+Command+C
+        // produces a key event with chars="ç" and unmodchars="ψ", but AppKit
+        // still treats this as a match for a key equivalent of Option+Command+C.
+        // We can't do the same by just applying the modifiers to our key map,
+        // as that too contains "ψ" for the Option+Command combination. What we
+        // can do instead is take advantage of the fact that the Command
+        // modifier layer in all/most keyboard layouts contains a Latin
+        // layer. We then combine that with the modifiers of the event
+        // to produce the resulting "Latin" key combination.
+        static constexpr int kCommandLayer = 2;
+        ret << QKeyCombination::fromCombined(
+            int(eventModifiers) + int(keyMap[kCommandLayer]));
+
+        // If the unmodified key is outside of Latin1, we also treat
+        // that as a valid key combination, even if AppKit natively
+        // does not. For example, for a Greek layout, we still want
+        // to support Option+Command+ψ as a key combination, as it's
+        // unlikely to clash with the Latin key combination we added
+        // above.
+
+        // However, if the unmodified key is within Latin1, we skip
+        // it, to avoid these types of conflicts. For example, in
+        // the same Greek layout, pressing the key next to Tab will
+        // produce a Latin ';' symbol, but we've already treated that
+        // as 'q' above, thanks to the Command modifier, so we skip
+        // the potential Command+; key combination. This is also in
+        // line with what AppKit natively does.
+
+        // Skipping Latin1 unmodified keys also handles the case of
+        // a Latin layout, where the unmodified and modified keys
+        // are the same.
+
+        if (unmodifiedKey <= 0xff)
+            startingModifierLayer = 1;
+    }
 
     // FIXME: We only compute the first 8 combinations. Why?
-    for (int i = 1; i < 8; ++i) {
+    for (int i = startingModifierLayer; i < 15; ++i) {
         auto keyAfterApplyingModifiers = keyMap[i];
-        if (keyAfterApplyingModifiers == unmodifiedKey)
-            continue;
         if (!keyAfterApplyingModifiers)
              continue;
 
@@ -575,18 +575,39 @@ QList<int> QAppleKeyMapper::possibleKeys(const QKeyEvent *event) const
             // If the event includes more modifiers than the candidate they
             // will need to be included in the resulting key combination.
             auto additionalModifiers = eventModifiers & ~candidateModifiers;
-            ret << int(additionalModifiers) + int(keyAfterApplyingModifiers);
-        }
-    }
 
-    if (lcQpaKeyMapper().isDebugEnabled()) {
-        qCDebug(lcQpaKeyMapper) << "Possible keys:";
-        for (int keyAndModifiers : ret) {
-            auto keyCombination = QKeyCombination::fromCombined(keyAndModifiers);
-            auto keySequence = QKeySequence(keyCombination);
-            qCDebug(lcQpaKeyMapper).verbosity(0) << "\t-"
-                << keyCombination << "/" << keySequence << "/"
-                << qUtf8Printable(keySequence.toString(QKeySequence::NativeText));
+            auto keyCombination = QKeyCombination::fromCombined(
+                int(additionalModifiers) + int(keyAfterApplyingModifiers));
+
+            // If there's an existing key combination with the same key,
+            // but a different set of modifiers, we want to choose only
+            // one of them, by priority (see below).
+            const auto existingCombination = std::find_if(
+                ret.begin(), ret.end(), [&](auto existingCombination) {
+                    return existingCombination.key() == keyAfterApplyingModifiers;
+                });
+
+            if (existingCombination != ret.end()) {
+                // We prioritize the combination with the more specific
+                // modifiers. In the case where the number of modifiers
+                // are the same, we want to prioritize Command over Option
+                // over Control over Shift. Unfortunately the order (and
+                // hence value) of the modifiers in Qt::KeyboardModifier
+                // does not match our preferred order when Control and
+                // Meta is switched, but we can work around that by
+                // explicitly swapping the modifiers and using that
+                // for the comparison. This also works when the
+                // Qt::AA_MacDontSwapCtrlAndMeta application attribute
+                // is set, as the incoming modifiers are then left
+                // as is, and we can still trust the order.
+                auto existingModifiers = swapModifiersIfNeeded(existingCombination->keyboardModifiers());
+                auto replacementModifiers = swapModifiersIfNeeded(additionalModifiers);
+                if (replacementModifiers > existingModifiers)
+                    *existingCombination = keyCombination;
+            } else {
+                // All is good, no existing combination has this key
+                ret << keyCombination;
+            }
         }
     }
 
@@ -596,6 +617,36 @@ QList<int> QAppleKeyMapper::possibleKeys(const QKeyEvent *event) const
 
 
 #else // iOS
+
+Qt::Key QAppleKeyMapper::fromNSString(Qt::KeyboardModifiers qtModifiers, NSString *characters,
+                                      NSString *charactersIgnoringModifiers, QString &text)
+{
+    if ([characters isEqualToString:@"\t"]) {
+        if (qtModifiers & Qt::ShiftModifier)
+            return Qt::Key_Backtab;
+        return Qt::Key_Tab;
+    } else if ([characters isEqualToString:@"\r"]) {
+        if (qtModifiers & Qt::KeypadModifier)
+            return Qt::Key_Enter;
+        return Qt::Key_Return;
+    }
+    if ([characters length] != 0 || [charactersIgnoringModifiers length] != 0) {
+        QChar ch;
+        if (((qtModifiers & Qt::MetaModifier) || (qtModifiers & Qt::AltModifier)) &&
+            ([charactersIgnoringModifiers length] != 0)) {
+            ch = QChar([charactersIgnoringModifiers characterAtIndex:0]);
+        } else if ([characters length] != 0) {
+            ch = QChar([characters characterAtIndex:0]);
+        }
+        if (!(qtModifiers & (Qt::ControlModifier | Qt::MetaModifier)) &&
+            (ch.unicode() < 0xf700 || ch.unicode() > 0xf8ff)) {
+            text = QString::fromNSString(characters);
+        }
+        if (!ch.isNull())
+            return Qt::Key(ch.toUpper().unicode());
+    }
+    return Qt::Key_unknown;
+}
 
 // Keyboard keys (non-modifiers)
 API_AVAILABLE(ios(13.4)) Qt::Key QAppleKeyMapper::fromUIKitKey(NSString *keyCode)

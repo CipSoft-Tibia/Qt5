@@ -90,7 +90,6 @@ struct GPU_EXPORT Capabilities {
   int max_viewport_height = 0;
   int num_compressed_texture_formats = 0;
   int num_shader_binary_formats = 0;
-  int num_stencil_bits = 0;  // For the default framebuffer.
   int bind_generates_resource_chromium = 0;
 
   int max_3d_texture_size = 0;
@@ -161,10 +160,13 @@ struct GPU_EXPORT Capabilities {
 
   // TODO(vasilyt): We need SharedImageInterface capabilities and move it there.
   bool supports_scanout_shared_images = false;
+  bool supports_luminance_shared_images = false;
+  bool disable_r8_shared_images = false;
 
   bool supports_oop_raster = false;
 
   bool supports_yuv_rgb_conversion = false;
+  bool supports_yuv_readback = false;
 
   bool chromium_gpu_fence = false;
 
@@ -181,8 +183,7 @@ struct GPU_EXPORT Capabilities {
   // Used by OOP raster.
   bool context_supports_distance_field_text = true;
 
-  // Used only by NaCL graphics 3D.
-  bool use_shared_images_swapchain_for_ppapi = false;
+  bool using_vulkan_context = false;
 
   GpuMemoryBufferFormatSet gpu_memory_buffer_formats = {
       gfx::BufferFormat::BGR_565,   gfx::BufferFormat::RGBA_4444,

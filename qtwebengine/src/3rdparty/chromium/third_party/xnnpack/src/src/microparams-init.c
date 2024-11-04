@@ -826,16 +826,31 @@ size_t xnn_init_qu8_conv_minmax_fp32_wasmsimd_params(
 void xnn_init_qc8_scale_fp32_params(
   size_t channels,
   size_t channels_tile,
+  size_t channels_subtile,
   size_t stride,
+  size_t substride,
+  size_t stride_offset,
   const float scale[XNN_MIN_ELEMENTS(1)],
   void* packed_w)
 {
-  for (size_t tile_start = 0; tile_start < channels; tile_start += channels_tile) {
-    const size_t tile_size = min(channels - tile_start, channels_tile);
+  const size_t tiled_channels = round_down_po2(channels, channels_tile);
+  size_t tile_start = 0;
+  for (; tile_start < tiled_channels; tile_start += channels_tile) {
+    const size_t tile_size = channels_tile;
     for (size_t tile_offset = 0; tile_offset < tile_size; tile_offset++) {
       unaligned_indexed_store_f32(packed_w, tile_offset, scale[tile_start + tile_offset]);
     }
     packed_w = (void*) ((uintptr_t) packed_w + stride);
+  }
+
+  packed_w = (void*) ((uintptr_t) packed_w - stride_offset);
+
+  for (; tile_start < channels; tile_start += channels_subtile) {
+    const size_t tile_size = min(channels - tile_start, channels_subtile);
+    for (size_t tile_offset = 0; tile_offset < tile_size; tile_offset++) {
+      unaligned_indexed_store_f32(packed_w, tile_offset, scale[tile_start + tile_offset]);
+    }
+    packed_w = (void*) ((uintptr_t) packed_w + substride);
   }
 }
 
@@ -2359,6 +2374,475 @@ size_t xnn_init_f32_sigmoid_wasmsimd_rr2_p5_params(
   return sizeof(params->wasmsimd_rr2_p5);
 }
 #endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+size_t xnn_init_f16_tanh_avx_expm1minus_rr1_p3h2_params(
+  union xnn_f16_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 16; i++) {
+    params->avx_expm1minus_rr1_p3h2.sign_mask[i] = UINT16_C(0x8000);
+  }
+  for (uint32_t i = 0; i < 8; i++) {
+    params->avx_expm1minus_rr1_p3h2.sat_cutoff[i] = -0x1.208000p+2f;
+    params->avx_expm1minus_rr1_p3h2.log2e[i] = 0x1.715476p+0f;
+    params->avx_expm1minus_rr1_p3h2.magic_bias[i] = 0x1.8000FEp+22f;
+    params->avx_expm1minus_rr1_p3h2.minus_ln2[i] = -0x1.62E430p-1f;
+    params->avx_expm1minus_rr1_p3h2.c3[i] = 0x1.560722p+0f;
+    params->avx_expm1minus_rr1_p3h2.c2[i] = 0x1.01E2A2p+1f;
+    params->avx_expm1minus_rr1_p3h2.two[i] = 2.0f;
+    params->avx_expm1minus_rr1_p3h2.minus_one[i] = -1.0f;
+  }
+  return sizeof(params->avx_expm1minus_rr1_p3h2);
+}
+
+size_t xnn_init_f16_tanh_avx_polynomial_p19h9t2_params(
+  union xnn_f16_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 8; i++) {
+    params->avx_polynomial_p19h9t2.neg_sat_cutoff[i] = -0x1.1F0000p+2f;
+    params->avx_polynomial_p19h9t2.pos_sat_cutoff[i] = 0x1.1F0000p+2f;
+    params->avx_polynomial_p19h9t2.c19[i] = -0x1.1D841Cp-32f;
+    params->avx_polynomial_p19h9t2.c17[i] = 0x1.C4FC88p-26f;
+    params->avx_polynomial_p19h9t2.c15[i] = -0x1.332066p-20f;
+    params->avx_polynomial_p19h9t2.c13[i] = 0x1.D1AEA2p-16f;
+    params->avx_polynomial_p19h9t2.c11[i] = -0x1.B2782Ep-12f;
+    params->avx_polynomial_p19h9t2.c9[i] = 0x1.03CAEAp-8f;
+    params->avx_polynomial_p19h9t2.c7[i] = -0x1.967628p-6f;
+    params->avx_polynomial_p19h9t2.c5[i] = 0x1.ABC35Cp-4f;
+    params->avx_polynomial_p19h9t2.c3[i] = -0x1.499D08p-2f;
+  }
+  return sizeof(params->avx_polynomial_p19h9t2);
+}
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+size_t xnn_init_f32_tanh_scalar_expm1minus_rr1_lut8_p4h3_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  params->scalar_expm1minus_rr1_lut8_p4h3.sat_cutoff = 0x1.205968p+3f;
+  params->scalar_expm1minus_rr1_lut8_p4h3.minus_log2e = -0x1.715476p+0f;
+  params->scalar_expm1minus_rr1_lut8_p4h3.magic_bias = 0x1.800000p+19f;
+  params->scalar_expm1minus_rr1_lut8_p4h3.ln2 = 0x1.62E430p-1f;
+  params->scalar_expm1minus_rr1_lut8_p4h3.c4 = 0x1.5558ECp-1f;
+  params->scalar_expm1minus_rr1_lut8_p4h3.c3 = -0x1.555C20p+0f;
+  params->scalar_expm1minus_rr1_lut8_p4h3.c2 = 0x1.000000p+1f;
+  params->scalar_expm1minus_rr1_lut8_p4h3.minus_two = -2.0f;
+  params->scalar_expm1minus_rr1_lut8_p4h3.one = 1.0f;
+  return sizeof(params->scalar_expm1minus_rr1_lut8_p4h3);
+}
+
+size_t xnn_init_f32_tanh_scalar_expm1minus_rr1_p6h5_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  params->scalar_expm1minus_rr1_p6h5.sat_cutoff = 0x1.205968p+3f;
+  params->scalar_expm1minus_rr1_p6h5.minus_log2e = -0x1.715476p+0f;
+  params->scalar_expm1minus_rr1_p6h5.magic_bias = 0x1.8000FEp+22f;
+  params->scalar_expm1minus_rr1_p6h5.ln2 = 0x1.62E430p-1f;
+  params->scalar_expm1minus_rr1_p6h5.c6 = 0x1.6B7338p-4f;
+  params->scalar_expm1minus_rr1_p6h5.c5 = -0x1.12278Ep-2f;
+  params->scalar_expm1minus_rr1_p6h5.c4 = 0x1.555716p-1f;
+  params->scalar_expm1minus_rr1_p6h5.c3 = -0x1.5554B0p+0f;
+  params->scalar_expm1minus_rr1_p6h5.c2 = 0x1.FFFFFEp+0f;
+  params->scalar_expm1minus_rr1_p6h5.minus_two = -2.0f;
+  params->scalar_expm1minus_rr1_p6h5.one = 1.0f;
+  return sizeof(params->scalar_expm1minus_rr1_p6h5);
+}
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+size_t xnn_init_f32_tanh_sse_expm1minus_rr1_lut8_p4h3_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 4; i++) {
+    params->sse_expm1minus_rr1_lut8_p4h3.sign_mask[i] = -0.0f;
+    params->sse_expm1minus_rr1_lut8_p4h3.sat_cutoff[i] = -0x1.205968p+3f;
+    params->sse_expm1minus_rr1_lut8_p4h3.log2e[i] = 0x1.715476p+0f;
+    params->sse_expm1minus_rr1_lut8_p4h3.magic_bias[i] = 0x1.800000p+19f;
+    params->sse_expm1minus_rr1_lut8_p4h3.index_mask[i] = UINT32_C(0x7);
+    params->sse_expm1minus_rr1_lut8_p4h3.minus_ln2[i] = -0x1.62E430p-1f;
+    params->sse_expm1minus_rr1_lut8_p4h3.c4[i] = 0x1.5558ECp-1f;
+    params->sse_expm1minus_rr1_lut8_p4h3.c3[i] = 0x1.555C20p+0f;
+    params->sse_expm1minus_rr1_lut8_p4h3.c2[i] = 0x1.000000p+1f;
+    params->sse_expm1minus_rr1_lut8_p4h3.minus_two[i] = -2.0f;
+    params->sse_expm1minus_rr1_lut8_p4h3.minus_one[i] = -1.0f;
+  }
+  return sizeof(params->sse_expm1minus_rr1_lut8_p4h3);
+}
+
+size_t xnn_init_f32_tanh_sse_expm1minus_rr1_p6h5_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 4; i++) {
+    params->sse_expm1minus_rr1_p6h5.sign_mask[i] = -0.0f;
+    params->sse_expm1minus_rr1_p6h5.sat_cutoff[i] = -0x1.205968p+3f;
+    params->sse_expm1minus_rr1_p6h5.log2e[i] = 0x1.715476p+0f;
+    params->sse_expm1minus_rr1_p6h5.magic_bias[i] = 0x1.8000FEp+22f;
+    params->sse_expm1minus_rr1_p6h5.minus_ln2[i] = -0x1.62E430p-1f;
+    params->sse_expm1minus_rr1_p6h5.c6[i] = 0x1.6B7338p-4f;
+    params->sse_expm1minus_rr1_p6h5.c5[i] = 0x1.12278Ep-2f;
+    params->sse_expm1minus_rr1_p6h5.c4[i] = 0x1.555716p-1f;
+    params->sse_expm1minus_rr1_p6h5.c3[i] = 0x1.5554B0p+0f;
+    params->sse_expm1minus_rr1_p6h5.c2[i] = 0x1.FFFFFEp+0f;
+    params->sse_expm1minus_rr1_p6h5.minus_two[i] = -2.0f;
+    params->sse_expm1minus_rr1_p6h5.minus_one[i] = -1.0f;
+  }
+  return sizeof(params->sse_expm1minus_rr1_p6h5);
+}
+
+size_t xnn_init_f32_tanh_avx_expm1minus_rr1_lut4_p4h2_perm_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 8; i++) {
+    params->avx_expm1minus_rr1_lut4_p4h2_perm.sign_mask[i] = -0.0f;
+    params->avx_expm1minus_rr1_lut4_p4h2_perm.sat_cutoff[i] = -0x1.205968p+3f;
+    params->avx_expm1minus_rr1_lut4_p4h2_perm.log2e[i] = 0x1.715476p+0f;
+    params->avx_expm1minus_rr1_lut4_p4h2_perm.magic_bias[i] = 0x1.800000p+20f;
+    params->avx_expm1minus_rr1_lut4_p4h2_perm.minus_ln2[i] = -0x1.62E430p-1f;
+    params->avx_expm1minus_rr1_lut4_p4h2_perm.c4[i] = 0x1.554F9Ap-2f;
+    params->avx_expm1minus_rr1_lut4_p4h2_perm.c3[i] = 0x1.557082p-1f;
+    params->avx_expm1minus_rr1_lut4_p4h2_perm.c2[i] = 0x1.000002p+0f;
+    params->avx_expm1minus_rr1_lut4_p4h2_perm.two[i] = 2.0f;
+    params->avx_expm1minus_rr1_lut4_p4h2_perm.minus_one[i] = -1.0f;
+  }
+  params->avx_expm1minus_rr1_lut4_p4h2_perm.table[0] = 0x1.000000p+0f;
+  params->avx_expm1minus_rr1_lut4_p4h2_perm.table[1] = 0x1.F06FE0p-1f;
+  params->avx_expm1minus_rr1_lut4_p4h2_perm.table[2] = 0x1.EA09E6p-1f;
+  params->avx_expm1minus_rr1_lut4_p4h2_perm.table[3] = 0x1.EE89FAp-1f;
+  params->avx_expm1minus_rr1_lut4_p4h2_perm.table[4] = 0x1.000000p+0f;
+  params->avx_expm1minus_rr1_lut4_p4h2_perm.table[5] = 0x1.F06FE0p-1f;
+  params->avx_expm1minus_rr1_lut4_p4h2_perm.table[6] = 0x1.EA09E6p-1f;
+  params->avx_expm1minus_rr1_lut4_p4h2_perm.table[7] = 0x1.EE89FAp-1f;
+  for (uint32_t i = 0; i < 7; i++) {
+    params->avx_expm1minus_rr1_lut4_p4h2_perm.mask_table[i] = -1;
+  }
+  for (uint32_t i = 7; i < 14; i++) {
+    params->avx_expm1minus_rr1_lut4_p4h2_perm.mask_table[i] = 0;
+  }
+  return sizeof(params->avx_expm1minus_rr1_lut4_p4h2_perm);
+}
+
+size_t xnn_init_f32_tanh_avx_expm1minus_rr1_lut4_p4h3_perm_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 8; i++) {
+    params->avx_expm1minus_rr1_lut4_p4h3_perm.sign_mask[i] = -0.0f;
+    params->avx_expm1minus_rr1_lut4_p4h3_perm.sat_cutoff[i] = -0x1.205968p+3f;
+    params->avx_expm1minus_rr1_lut4_p4h3_perm.log2e[i] = 0x1.715476p+0f;
+    params->avx_expm1minus_rr1_lut4_p4h3_perm.magic_bias[i] = 0x1.800000p+20f;
+    params->avx_expm1minus_rr1_lut4_p4h3_perm.minus_ln2[i] = -0x1.62E430p-1f;
+    params->avx_expm1minus_rr1_lut4_p4h3_perm.c4[i] = 0x1.554F9Ap-1f;
+    params->avx_expm1minus_rr1_lut4_p4h3_perm.c3[i] = 0x1.557082p+0f;
+    params->avx_expm1minus_rr1_lut4_p4h3_perm.c2[i] = 0x1.000002p+1f;
+    params->avx_expm1minus_rr1_lut4_p4h3_perm.two[i] = 2.0f;
+    params->avx_expm1minus_rr1_lut4_p4h3_perm.minus_one[i] = -1.0f;
+  }
+  params->avx_expm1minus_rr1_lut4_p4h3_perm.table[0] = 0x1.000000p+0f;
+  params->avx_expm1minus_rr1_lut4_p4h3_perm.table[1] = 0x1.F06FE0p-1f;
+  params->avx_expm1minus_rr1_lut4_p4h3_perm.table[2] = 0x1.EA09E6p-1f;
+  params->avx_expm1minus_rr1_lut4_p4h3_perm.table[3] = 0x1.EE89FAp-1f;
+  params->avx_expm1minus_rr1_lut4_p4h3_perm.table[4] = 0x1.000000p+0f;
+  params->avx_expm1minus_rr1_lut4_p4h3_perm.table[5] = 0x1.F06FE0p-1f;
+  params->avx_expm1minus_rr1_lut4_p4h3_perm.table[6] = 0x1.EA09E6p-1f;
+  params->avx_expm1minus_rr1_lut4_p4h3_perm.table[7] = 0x1.EE89FAp-1f;
+  for (uint32_t i = 0; i < 7; i++) {
+    params->avx_expm1minus_rr1_lut4_p4h3_perm.mask_table[i] = -1;
+  }
+  for (uint32_t i = 7; i < 14; i++) {
+    params->avx_expm1minus_rr1_lut4_p4h3_perm.mask_table[i] = 0;
+  }
+  return sizeof(params->avx_expm1minus_rr1_lut4_p4h3_perm);
+}
+
+size_t xnn_init_f32_tanh_avx_expm1minus_rr1_lut8_p4h3_perm_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 8; i++) {
+    params->avx_expm1minus_rr1_lut8_p4h3_perm.sign_mask[i] = -0.0f;
+    params->avx_expm1minus_rr1_lut8_p4h3_perm.sat_cutoff[i] = -0x1.205968p+3f;
+    params->avx_expm1minus_rr1_lut8_p4h3_perm.log2e[i] = 0x1.715476p+0f;
+    params->avx_expm1minus_rr1_lut8_p4h3_perm.magic_bias[i] = 0x1.800000p+19f;
+    params->avx_expm1minus_rr1_lut8_p4h3_perm.minus_ln2[i] = -0x1.62E430p-1f;
+    params->avx_expm1minus_rr1_lut8_p4h3_perm.c4[i] = 0x1.5558ECp-1f;
+    params->avx_expm1minus_rr1_lut8_p4h3_perm.c3[i] = 0x1.555C20p+0f;
+    params->avx_expm1minus_rr1_lut8_p4h3_perm.c2[i] = 0x1.000000p+1f;
+    params->avx_expm1minus_rr1_lut8_p4h3_perm.two[i] = 2.0f;
+    params->avx_expm1minus_rr1_lut8_p4h3_perm.minus_one[i] = -1.0f;
+  }
+  params->avx_expm1minus_rr1_lut8_p4h3_perm.table[0] = UINT32_C(0x3F800000);
+  params->avx_expm1minus_rr1_lut8_p4h3_perm.table[1] = UINT32_C(0x3F7B95C2);
+  params->avx_expm1minus_rr1_lut8_p4h3_perm.table[2] = UINT32_C(0x3F7837F0);
+  params->avx_expm1minus_rr1_lut8_p4h3_perm.table[3] = UINT32_C(0x3F75FED7);
+  params->avx_expm1minus_rr1_lut8_p4h3_perm.table[4] = UINT32_C(0x3F7504F3);
+  params->avx_expm1minus_rr1_lut8_p4h3_perm.table[5] = UINT32_C(0x3F75672A);
+  params->avx_expm1minus_rr1_lut8_p4h3_perm.table[6] = UINT32_C(0x3F7744FD);
+  params->avx_expm1minus_rr1_lut8_p4h3_perm.table[7] = UINT32_C(0x3F7AC0C7);
+  for (uint32_t i = 0; i < 7; i++) {
+    params->avx_expm1minus_rr1_lut8_p4h3_perm.mask_table[i] = -1;
+  }
+  for (uint32_t i = 7; i < 14; i++) {
+    params->avx_expm1minus_rr1_lut8_p4h3_perm.mask_table[i] = 0;
+  }
+  return sizeof(params->avx_expm1minus_rr1_lut8_p4h3_perm);
+}
+
+size_t xnn_init_f32_tanh_avx_expm1minus_rr1_lut8_p4h3_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 8; i++) {
+    params->avx_expm1minus_rr1_lut8_p4h3.sign_mask[i] = -0.0f;
+    params->avx_expm1minus_rr1_lut8_p4h3.sat_cutoff[i] = -0x1.205968p+3f;
+    params->avx_expm1minus_rr1_lut8_p4h3.log2e[i] = 0x1.715476p+0f;
+    params->avx_expm1minus_rr1_lut8_p4h3.magic_bias[i] = 0x1.800000p+19f;
+    params->avx_expm1minus_rr1_lut8_p4h3.index_mask[i] = UINT32_C(0x7);
+    params->avx_expm1minus_rr1_lut8_p4h3.minus_ln2[i] = -0x1.62E430p-1f;
+    params->avx_expm1minus_rr1_lut8_p4h3.c4[i] = 0x1.5558ECp-1f;
+    params->avx_expm1minus_rr1_lut8_p4h3.c3[i] = 0x1.555C20p+0f;
+    params->avx_expm1minus_rr1_lut8_p4h3.c2[i] = 0x1.000000p+1f;
+    params->avx_expm1minus_rr1_lut8_p4h3.two[i] = 2.0f;
+    params->avx_expm1minus_rr1_lut8_p4h3.minus_one[i] = -1.0f;
+  }
+  for (uint32_t i = 0; i < 7; i++) {
+    params->avx_expm1minus_rr1_lut8_p4h3.mask_table[i] = -1;
+  }
+  for (uint32_t i = 7; i < 14; i++) {
+    params->avx_expm1minus_rr1_lut8_p4h3.mask_table[i] = 0;
+  }
+  return sizeof(params->avx_expm1minus_rr1_lut8_p4h3);
+}
+
+size_t xnn_init_f32_tanh_avx_expm1minus_rr1_p6h5_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 8; i++) {
+    params->avx_expm1minus_rr1_p6h5.sign_mask[i] = -0.0f;
+    params->avx_expm1minus_rr1_p6h5.sat_cutoff[i] = -0x1.205968p+3f;
+    params->avx_expm1minus_rr1_p6h5.log2e[i] = 0x1.715476p+0f;
+    params->avx_expm1minus_rr1_p6h5.magic_bias[i] = 0x1.8000FEp+22f;
+    params->avx_expm1minus_rr1_p6h5.minus_ln2[i] = -0x1.62E430p-1f;
+    params->avx_expm1minus_rr1_p6h5.c6[i] = 0x1.6B7338p-4f;
+    params->avx_expm1minus_rr1_p6h5.c5[i] = 0x1.12278Ep-2f;
+    params->avx_expm1minus_rr1_p6h5.c4[i] = 0x1.555716p-1f;
+    params->avx_expm1minus_rr1_p6h5.c3[i] = 0x1.5554B0p+0f;
+    params->avx_expm1minus_rr1_p6h5.c2[i] = 0x1.FFFFFEp+0f;
+    params->avx_expm1minus_rr1_p6h5.two[i] = 2.0f;
+    params->avx_expm1minus_rr1_p6h5.minus_one[i] = -1.0f;
+  }
+  for (uint32_t i = 0; i < 7; i++) {
+    params->avx_expm1minus_rr1_p6h5.mask_table[i] = -1;
+  }
+  for (uint32_t i = 7; i < 14; i++) {
+    params->avx_expm1minus_rr1_p6h5.mask_table[i] = 0;
+  }
+  return sizeof(params->avx_expm1minus_rr1_p6h5);
+}
+
+size_t xnn_init_f32_tanh_avx512_expm1minus_rr1_lut4_p4h3_perm_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.sat_cutoff = 0x1.205968p+3f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.minus_log2e = -0x1.715476p+0f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.magic_bias = 0x1.800000p+20f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.ln2 = 0x1.62E430p-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.c4 = 0x1.554F9Ap-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.c3 = -0x1.557082p+0f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.c2 = 0x1.000002p+1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.minus_two = -2.0f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.one = 1.0f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.sign_mask = UINT32_C(0x80000000);
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[ 0] = 0x1.000000p+0f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[ 1] = 0x1.F06FE0p-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[ 2] = 0x1.EA09E6p-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[ 3] = 0x1.EE89FAp-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[ 4] = 0x1.000000p+0f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[ 5] = 0x1.F06FE0p-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[ 6] = 0x1.EA09E6p-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[ 7] = 0x1.EE89FAp-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[ 8] = 0x1.000000p+0f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[ 9] = 0x1.F06FE0p-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[10] = 0x1.EA09E6p-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[11] = 0x1.EE89FAp-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[12] = 0x1.000000p+0f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[13] = 0x1.F06FE0p-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[14] = 0x1.EA09E6p-1f;
+  params->avx512_expm1minus_rr1_lut4_p4h3_perm.table[15] = 0x1.EE89FAp-1f;
+  return sizeof(params->avx512_expm1minus_rr1_lut4_p4h3_perm);
+}
+
+size_t xnn_init_f32_tanh_avx512_expm1minus_rr1_lut8_p4h3_perm_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.sat_cutoff = 0x1.205968p+3f;
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.minus_log2e = -0x1.715476p+0f;
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.magic_bias = 0x1.800000p+19f;
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.ln2 = 0x1.62E430p-1f;
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.c4 = 0x1.5558ECp-1f;
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.c3 = -0x1.555C20p+0f;
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.c2 = 0x1.000000p+1f;
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.minus_two = -2.0f;
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.one = 1.0f;
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.sign_mask = UINT32_C(0x80000000);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[ 0] = UINT32_C(0x3F800000);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[ 1] = UINT32_C(0x3F7B95C2);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[ 2] = UINT32_C(0x3F7837F0);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[ 3] = UINT32_C(0x3F75FED7);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[ 4] = UINT32_C(0x3F7504F3);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[ 5] = UINT32_C(0x3F75672A);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[ 6] = UINT32_C(0x3F7744FD);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[ 7] = UINT32_C(0x3F7AC0C7);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[ 8] = UINT32_C(0x3F800000);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[ 9] = UINT32_C(0x3F7B95C2);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[10] = UINT32_C(0x3F7837F0);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[11] = UINT32_C(0x3F75FED7);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[12] = UINT32_C(0x3F7504F3);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[13] = UINT32_C(0x3F75672A);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[14] = UINT32_C(0x3F7744FD);
+  params->avx512_expm1minus_rr1_lut8_p4h3_perm.table[15] = UINT32_C(0x3F7AC0C7);
+  return sizeof(params->avx512_expm1minus_rr1_lut8_p4h3_perm);
+}
+
+size_t xnn_init_f32_tanh_avx512_expm1minus_rr1_lut8_p4h3_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  params->avx512_expm1minus_rr1_lut8_p4h3.sat_cutoff = 0x1.205968p+3f;
+  params->avx512_expm1minus_rr1_lut8_p4h3.minus_log2e = -0x1.715476p+0f;
+  params->avx512_expm1minus_rr1_lut8_p4h3.magic_bias = 0x1.800000p+19f;
+  params->avx512_expm1minus_rr1_lut8_p4h3.index_mask = UINT32_C(0x7);
+  params->avx512_expm1minus_rr1_lut8_p4h3.ln2 = 0x1.62E430p-1f;
+  params->avx512_expm1minus_rr1_lut8_p4h3.c4 = 0x1.5558ECp-1f;
+  params->avx512_expm1minus_rr1_lut8_p4h3.c3 = -0x1.555C20p+0f;
+  params->avx512_expm1minus_rr1_lut8_p4h3.c2 = 0x1.000000p+1f;
+  params->avx512_expm1minus_rr1_lut8_p4h3.minus_two = -2.0f;
+  params->avx512_expm1minus_rr1_lut8_p4h3.one = 1.0f;
+  params->avx512_expm1minus_rr1_lut8_p4h3.sign_mask = UINT32_C(0x80000000);
+  return sizeof(params->avx512_expm1minus_rr1_lut8_p4h3);
+}
+
+size_t xnn_init_f32_tanh_avx512_expm1minus_rr1_p6h5_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  params->avx512_expm1minus_rr1_p6h5.sign_mask = UINT32_C(0x80000000);
+  params->avx512_expm1minus_rr1_p6h5.sat_cutoff = 0x1.205968p+3f;
+  params->avx512_expm1minus_rr1_p6h5.minus_log2e = -0x1.715476p+0f;
+  params->avx512_expm1minus_rr1_p6h5.magic_bias = 0x1.8000FEp+22f;
+  params->avx512_expm1minus_rr1_p6h5.ln2 = 0x1.62E430p-1f;
+  params->avx512_expm1minus_rr1_p6h5.c6 = 0x1.6B7338p-4f;
+  params->avx512_expm1minus_rr1_p6h5.c5 = -0x1.12278Ep-2f;
+  params->avx512_expm1minus_rr1_p6h5.c4 = 0x1.555716p-1f;
+  params->avx512_expm1minus_rr1_p6h5.c3 = -0x1.5554B0p+0f;
+  params->avx512_expm1minus_rr1_p6h5.c2 = 0x1.FFFFFEp+0f;
+  params->avx512_expm1minus_rr1_p6h5.minus_two = -2.0f;
+  params->avx512_expm1minus_rr1_p6h5.one = 1.0f;
+  return sizeof(params->avx512_expm1minus_rr1_p6h5);
+}
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+size_t xnn_init_f32_tanh_wasmsimd_expm1minus_rr1_lut8_p4h3_abs_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 2; i++) {
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_abs.sat_cutoff[i] = 0x1.205968p+3f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_abs.minus_log2e[i] = -0x1.715476p+0f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_abs.magic_bias[i] = 0x1.800000p+19f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_abs.index_mask[i] = UINT32_C(0x7);
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_abs.ln2[i] = 0x1.62E430p-1f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_abs.c4[i] = 0x1.5558ECp-1f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_abs.c3[i] = -0x1.555C20p+0f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_abs.c2[i] = 0x1.000000p+1f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_abs.minus_two[i] = -2.0f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_abs.one[i] = 1.0f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_abs.sign_mask[i] = -0.0f;
+  }
+  return sizeof(params->wasmsimd_expm1minus_rr1_lut8_p4h3_abs);
+}
+
+size_t xnn_init_f32_tanh_wasmsimd_expm1minus_rr1_p6h5_abs_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 2; i++) {
+    params->wasmsimd_expm1minus_rr1_p6h5_abs.sat_cutoff[i] = 0x1.205968p+3f;
+    params->wasmsimd_expm1minus_rr1_p6h5_abs.minus_log2e[i] = -0x1.715476p+0f;
+    params->wasmsimd_expm1minus_rr1_p6h5_abs.magic_bias[i] = 0x1.8000FEp+22f;
+    params->wasmsimd_expm1minus_rr1_p6h5_abs.ln2[i] = 0x1.62E430p-1f;
+    params->wasmsimd_expm1minus_rr1_p6h5_abs.c6[i] = 0x1.6B7338p-4f;
+    params->wasmsimd_expm1minus_rr1_p6h5_abs.c5[i] = -0x1.12278Ep-2f;
+    params->wasmsimd_expm1minus_rr1_p6h5_abs.c4[i] = 0x1.555716p-1f;
+    params->wasmsimd_expm1minus_rr1_p6h5_abs.c3[i] = -0x1.5554B0p+0f;
+    params->wasmsimd_expm1minus_rr1_p6h5_abs.c2[i] = 0x1.FFFFFEp+0f;
+    params->wasmsimd_expm1minus_rr1_p6h5_abs.minus_two[i] = -2.0f;
+    params->wasmsimd_expm1minus_rr1_p6h5_abs.one[i] = 1.0f;
+    params->wasmsimd_expm1minus_rr1_p6h5_abs.sign_mask[i] = -0.0f;
+  }
+  return sizeof(params->wasmsimd_expm1minus_rr1_p6h5_abs);
+}
+
+size_t xnn_init_f32_tanh_wasmsimd_expm1minus_rr1_lut8_p4h3_nabs_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 2; i++) {
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_nabs.sign_mask[i] = -0.0f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_nabs.sat_cutoff[i] = -0x1.205968p+3f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_nabs.log2e[i] = 0x1.715476p+0f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_nabs.magic_bias[i] = 0x1.800000p+19f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_nabs.index_mask[i] = UINT32_C(0x7);
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_nabs.minus_ln2[i] = -0x1.62E430p-1f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_nabs.c4[i] = 0x1.5558ECp-1f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_nabs.c3[i] = 0x1.555C20p+0f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_nabs.c2[i] = 0x1.000000p+1f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_nabs.two[i] = 2.0f;
+    params->wasmsimd_expm1minus_rr1_lut8_p4h3_nabs.one[i] = 1.0f;
+  }
+  return sizeof(params->wasmsimd_expm1minus_rr1_lut8_p4h3_nabs);
+}
+
+size_t xnn_init_f32_tanh_wasmsimd_expm1minus_rr1_p6h5_nabs_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  for (uint32_t i = 0; i < 2; i++) {
+    params->wasmsimd_expm1minus_rr1_p6h5_nabs.sign_mask[i] = -0.0f;
+    params->wasmsimd_expm1minus_rr1_p6h5_nabs.sat_cutoff[i] = -0x1.205968p+3f;
+    params->wasmsimd_expm1minus_rr1_p6h5_nabs.log2e[i] = 0x1.715476p+0f;
+    params->wasmsimd_expm1minus_rr1_p6h5_nabs.magic_bias[i] = 0x1.8000FEp+22f;
+    params->wasmsimd_expm1minus_rr1_p6h5_nabs.minus_ln2[i] = -0x1.62E430p-1f;
+    params->wasmsimd_expm1minus_rr1_p6h5_nabs.c6[i] = 0x1.6B7338p-4f;
+    params->wasmsimd_expm1minus_rr1_p6h5_nabs.c5[i] = 0x1.12278Ep-2f;
+    params->wasmsimd_expm1minus_rr1_p6h5_nabs.c4[i] = 0x1.555716p-1f;
+    params->wasmsimd_expm1minus_rr1_p6h5_nabs.c3[i] = 0x1.5554B0p+0f;
+    params->wasmsimd_expm1minus_rr1_p6h5_nabs.c2[i] = 0x1.FFFFFEp+0f;
+    params->wasmsimd_expm1minus_rr1_p6h5_nabs.two[i] = 2.0f;
+    params->wasmsimd_expm1minus_rr1_p6h5_nabs.one[i] = 1.0f;
+  }
+  return sizeof(params->wasmsimd_expm1minus_rr1_p6h5_nabs);
+}
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+
+#if XNN_ARCH_ARM || XNN_ARCH_ARM64
+size_t xnn_init_f32_tanh_neon_expm1minus_rr1_lut8_p4h3_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  params->neon_expm1minus_rr1_lut8_p4h3.sat_cutoff = 0x1.205968p+3f;
+  params->neon_expm1minus_rr1_lut8_p4h3.minus_log2e = -0x1.715476p+0f;
+  params->neon_expm1minus_rr1_lut8_p4h3.magic_bias = 0x1.800000p+19f;
+  params->neon_expm1minus_rr1_lut8_p4h3.ln2 = 0x1.62E430p-1f;
+  params->neon_expm1minus_rr1_lut8_p4h3.c4 = 0x1.5558ECp-1f;
+  params->neon_expm1minus_rr1_lut8_p4h3.c3 = -0x1.555C20p+0f;
+  params->neon_expm1minus_rr1_lut8_p4h3.c2 = 0x1.000000p+1f;
+  return sizeof(params->neon_expm1minus_rr1_lut8_p4h3);
+}
+
+size_t xnn_init_f32_tanh_neon_expm1minus_rr1_p6h5_params(
+  union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)])
+{
+  params->neon_expm1minus_rr1_p6h5.sat_cutoff = 0x1.205968p+3f;
+  params->neon_expm1minus_rr1_p6h5.minus_log2e = -0x1.715476p+0f;
+  params->neon_expm1minus_rr1_p6h5.magic_bias = 0x1.8000FEp+22f;
+  params->neon_expm1minus_rr1_p6h5.ln2 = 0x1.62E430p-1f;
+  params->neon_expm1minus_rr1_p6h5.c6 = 0x1.6B7338p-4f;
+  params->neon_expm1minus_rr1_p6h5.c5 = -0x1.12278Ep-2f;
+  params->neon_expm1minus_rr1_p6h5.c4 = 0x1.555716p-1f;
+  params->neon_expm1minus_rr1_p6h5.c3 = -0x1.5554B0p+0f;
+  params->neon_expm1minus_rr1_p6h5.c2 = 0x1.FFFFFEp+0f;
+  return sizeof(params->neon_expm1minus_rr1_p6h5);
+}
+#endif  // XNN_ARCH_ARM || XNN_ARCH_ARM64
 
 #if XNN_ARCH_X86 || XNN_ARCH_X86_64
 size_t xnn_init_f16_abs_sse_params(
@@ -6467,6 +6951,271 @@ size_t xnn_init_qs8_cvt_wasmsimd_params(
     params->wasmsimd.multiplier[i] = (int16_t) multiplier;
     params->wasmsimd.output_zero_point[i] = (int16_t) output_zero_point;
   }
+  return sizeof(params->wasmsimd);
+}
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+
+size_t xnn_init_qs16_qs8_cvt_scalar_params(
+  union xnn_qs16_qs8_cvt_params params[XNN_MIN_ELEMENTS(1)],
+  float input_output_scale,
+  int8_t output_zero_point)
+{
+  assert(input_output_scale >= 0x1.0p-16);
+  assert(input_output_scale <= 0x1.0p+8);
+
+  const long multiplier = lrintf(65536.0f * input_output_scale);
+  assert(multiplier >= 1L);
+  assert(multiplier <= 0x01000000L);
+  params->scalar.multiplier = (int32_t) multiplier;
+  params->scalar.bias = ((int32_t) output_zero_point << 16) + INT32_C(0x8000);
+  return sizeof(params->scalar);
+}
+
+#if XNN_ARCH_ARM || XNN_ARCH_ARM64
+size_t xnn_init_qs16_qs8_cvt_neon_params(
+  union xnn_qs16_qs8_cvt_params params[XNN_MIN_ELEMENTS(1)],
+  float input_output_scale,
+  int8_t output_zero_point)
+{
+  assert(input_output_scale >= 0x1.0p-16);
+  assert(input_output_scale <= 0x1.0p+8);
+
+  const long multiplier = lrintf(65536.0f * input_output_scale);
+  assert(multiplier >= 1L);
+  assert(multiplier <= 0x01000000L);
+  params->neon.multiplier = (int32_t) multiplier;
+  params->neon.output_zero_point = (int16_t) output_zero_point;
+  return sizeof(params->neon);
+}
+#endif  // XNN_ARCH_ARM || XNN_ARCH_ARM64
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+size_t xnn_init_qs16_qs8_cvt_sse2_params(
+  union xnn_qs16_qs8_cvt_params params[XNN_MIN_ELEMENTS(1)],
+  float input_output_scale,
+  int8_t output_zero_point)
+{
+  assert(input_output_scale >= 0x1.0p-16);
+  assert(input_output_scale <= 0x1.0p+8);
+
+  const long multiplier = lrintf(65536.0f * input_output_scale);
+  assert(multiplier >= 1L);
+  assert(multiplier <= 0x01000000L);
+  const int64_t bias = (int64_t) ((uint64_t) output_zero_point << 32) + INT64_C(0x80000000) -
+      (INT64_C(0x80000000) * (int64_t) multiplier);
+
+  for (uint32_t i = 0; i < 8; i++) {
+    params->sse2.input_bias[i] = UINT16_C(0x8000);
+  }
+  for (uint32_t i = 0; i < 4; i++) {
+    params->sse2.multiplier[i] = (int32_t) multiplier;
+  }
+  for (uint32_t i = 0; i < 2; i++) {
+    params->sse2.bias[i] = (int64_t) bias;
+  }
+  return sizeof(params->sse2);
+}
+
+size_t xnn_init_qs16_qs8_cvt_ssse3_params(
+  union xnn_qs16_qs8_cvt_params params[XNN_MIN_ELEMENTS(1)],
+  float input_output_scale,
+  int8_t output_zero_point)
+{
+  assert(input_output_scale >= 0x1.0p-16);
+  assert(input_output_scale <= 0x1.0p+8);
+
+  const long multiplier = lrintf(65536.0f * input_output_scale);
+  assert(multiplier >= 1L);
+  assert(multiplier <= 0x01000000L);
+  const int64_t bias = (int64_t) ((uint64_t) output_zero_point << 32) + INT64_C(0x80000000) -
+      (INT64_C(0x80000000) * (int64_t) multiplier);
+
+  for (uint32_t i = 0; i < 8; i++) {
+    params->ssse3.input_bias[i] = UINT16_C(0x8000);
+  }
+  for (uint32_t i = 0; i < 4; i++) {
+    params->ssse3.multiplier[i] = (int32_t) multiplier;
+  }
+  for (uint32_t i = 0; i < 2; i++) {
+    params->ssse3.bias[i] = (int64_t) bias;
+  }
+  params->ssse3.shuffle01[0]  = 0x80;
+  params->ssse3.shuffle01[1]  = 0x80;
+  params->ssse3.shuffle01[2]  = 0;
+  params->ssse3.shuffle01[3]  = 1;
+  params->ssse3.shuffle01[4]  = 0x80;
+  params->ssse3.shuffle01[5]  = 0x80;
+  params->ssse3.shuffle01[6]  = 0x80;
+  params->ssse3.shuffle01[7]  = 0x80;
+  params->ssse3.shuffle01[8]  = 0x80;
+  params->ssse3.shuffle01[9]  = 0x80;
+  params->ssse3.shuffle01[10] = 2;
+  params->ssse3.shuffle01[11] = 3;
+  params->ssse3.shuffle01[12] = 0x80;
+  params->ssse3.shuffle01[13] = 0x80;
+  params->ssse3.shuffle01[14] = 0x80;
+  params->ssse3.shuffle01[15] = 0x80;
+
+  params->ssse3.shuffle23[0]  = 0x80;
+  params->ssse3.shuffle23[1]  = 0x80;
+  params->ssse3.shuffle23[2]  = 4;
+  params->ssse3.shuffle23[3]  = 5;
+  params->ssse3.shuffle23[4]  = 0x80;
+  params->ssse3.shuffle23[5]  = 0x80;
+  params->ssse3.shuffle23[6]  = 0x80;
+  params->ssse3.shuffle23[7]  = 0x80;
+  params->ssse3.shuffle23[8]  = 0x80;
+  params->ssse3.shuffle23[9]  = 0x80;
+  params->ssse3.shuffle23[10] = 6;
+  params->ssse3.shuffle23[11] = 7;
+  params->ssse3.shuffle23[12] = 0x80;
+  params->ssse3.shuffle23[13] = 0x80;
+  params->ssse3.shuffle23[14] = 0x80;
+  params->ssse3.shuffle23[15] = 0x80;
+
+  params->ssse3.shuffle45[0]  = 0x80;
+  params->ssse3.shuffle45[1]  = 0x80;
+  params->ssse3.shuffle45[2]  = 8;
+  params->ssse3.shuffle45[3]  = 9;
+  params->ssse3.shuffle45[4]  = 0x80;
+  params->ssse3.shuffle45[5]  = 0x80;
+  params->ssse3.shuffle45[6]  = 0x80;
+  params->ssse3.shuffle45[7]  = 0x80;
+  params->ssse3.shuffle45[8]  = 0x80;
+  params->ssse3.shuffle45[9]  = 0x80;
+  params->ssse3.shuffle45[10] = 10;
+  params->ssse3.shuffle45[11] = 11;
+  params->ssse3.shuffle45[12] = 0x80;
+  params->ssse3.shuffle45[13] = 0x80;
+  params->ssse3.shuffle45[14] = 0x80;
+  params->ssse3.shuffle45[15] = 0x80;
+
+  params->ssse3.shuffle67[0]  = 0x80;
+  params->ssse3.shuffle67[1]  = 0x80;
+  params->ssse3.shuffle67[2]  = 12;
+  params->ssse3.shuffle67[3]  = 13;
+  params->ssse3.shuffle67[4]  = 0x80;
+  params->ssse3.shuffle67[5]  = 0x80;
+  params->ssse3.shuffle67[6]  = 0x80;
+  params->ssse3.shuffle67[7]  = 0x80;
+  params->ssse3.shuffle67[8]  = 0x80;
+  params->ssse3.shuffle67[9]  = 0x80;
+  params->ssse3.shuffle67[10] = 14;
+  params->ssse3.shuffle67[11] = 15;
+  params->ssse3.shuffle67[12] = 0x80;
+  params->ssse3.shuffle67[13] = 0x80;
+  params->ssse3.shuffle67[14] = 0x80;
+  params->ssse3.shuffle67[15] = 0x80;
+  return sizeof(params->ssse3);
+}
+
+size_t xnn_init_qs16_qs8_cvt_sse4_params(
+  union xnn_qs16_qs8_cvt_params params[XNN_MIN_ELEMENTS(1)],
+  float input_output_scale,
+  int8_t output_zero_point)
+{
+  assert(input_output_scale >= 0x1.0p-16);
+  assert(input_output_scale <= 0x1.0p+8);
+
+  const long multiplier = lrintf(65536.0f * input_output_scale);
+  assert(multiplier >= 1L);
+  assert(multiplier <= 0x01000000L);
+  const int64_t bias = (int64_t) ((uint64_t) output_zero_point << 32) + INT64_C(0x80000000);
+
+  for (uint32_t i = 0; i < 4; i++) {
+    params->sse4.multiplier[i] = (int32_t) multiplier;
+  }
+  for (uint32_t i = 0; i < 2; i++) {
+    params->sse4.bias[i] = (int64_t) bias;
+  }
+  params->sse4.shuffle01[0]  = 0x80;
+  params->sse4.shuffle01[1]  = 0x80;
+  params->sse4.shuffle01[2]  = 0;
+  params->sse4.shuffle01[3]  = 1;
+  params->sse4.shuffle01[4]  = 0x80;
+  params->sse4.shuffle01[5]  = 0x80;
+  params->sse4.shuffle01[6]  = 0x80;
+  params->sse4.shuffle01[7]  = 0x80;
+  params->sse4.shuffle01[8]  = 0x80;
+  params->sse4.shuffle01[9]  = 0x80;
+  params->sse4.shuffle01[10] = 2;
+  params->sse4.shuffle01[11] = 3;
+  params->sse4.shuffle01[12] = 0x80;
+  params->sse4.shuffle01[13] = 0x80;
+  params->sse4.shuffle01[14] = 0x80;
+  params->sse4.shuffle01[15] = 0x80;
+
+  params->sse4.shuffle23[0]  = 0x80;
+  params->sse4.shuffle23[1]  = 0x80;
+  params->sse4.shuffle23[2]  = 4;
+  params->sse4.shuffle23[3]  = 5;
+  params->sse4.shuffle23[4]  = 0x80;
+  params->sse4.shuffle23[5]  = 0x80;
+  params->sse4.shuffle23[6]  = 0x80;
+  params->sse4.shuffle23[7]  = 0x80;
+  params->sse4.shuffle23[8]  = 0x80;
+  params->sse4.shuffle23[9]  = 0x80;
+  params->sse4.shuffle23[10] = 6;
+  params->sse4.shuffle23[11] = 7;
+  params->sse4.shuffle23[12] = 0x80;
+  params->sse4.shuffle23[13] = 0x80;
+  params->sse4.shuffle23[14] = 0x80;
+  params->sse4.shuffle23[15] = 0x80;
+
+  params->sse4.shuffle45[0]  = 0x80;
+  params->sse4.shuffle45[1]  = 0x80;
+  params->sse4.shuffle45[2]  = 8;
+  params->sse4.shuffle45[3]  = 9;
+  params->sse4.shuffle45[4]  = 0x80;
+  params->sse4.shuffle45[5]  = 0x80;
+  params->sse4.shuffle45[6]  = 0x80;
+  params->sse4.shuffle45[7]  = 0x80;
+  params->sse4.shuffle45[8]  = 0x80;
+  params->sse4.shuffle45[9]  = 0x80;
+  params->sse4.shuffle45[10] = 10;
+  params->sse4.shuffle45[11] = 11;
+  params->sse4.shuffle45[12] = 0x80;
+  params->sse4.shuffle45[13] = 0x80;
+  params->sse4.shuffle45[14] = 0x80;
+  params->sse4.shuffle45[15] = 0x80;
+
+  params->sse4.shuffle67[0]  = 0x80;
+  params->sse4.shuffle67[1]  = 0x80;
+  params->sse4.shuffle67[2]  = 12;
+  params->sse4.shuffle67[3]  = 13;
+  params->sse4.shuffle67[4]  = 0x80;
+  params->sse4.shuffle67[5]  = 0x80;
+  params->sse4.shuffle67[6]  = 0x80;
+  params->sse4.shuffle67[7]  = 0x80;
+  params->sse4.shuffle67[8]  = 0x80;
+  params->sse4.shuffle67[9]  = 0x80;
+  params->sse4.shuffle67[10] = 14;
+  params->sse4.shuffle67[11] = 15;
+  params->sse4.shuffle67[12] = 0x80;
+  params->sse4.shuffle67[13] = 0x80;
+  params->sse4.shuffle67[14] = 0x80;
+  params->sse4.shuffle67[15] = 0x80;
+  return sizeof(params->sse4);
+}
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+size_t xnn_init_qs16_qs8_cvt_wasmsimd_params(
+  union xnn_qs16_qs8_cvt_params params[XNN_MIN_ELEMENTS(1)],
+  float input_output_scale,
+  int8_t output_zero_point)
+{
+  assert(input_output_scale >= 0x1.0p-16);
+  assert(input_output_scale <= 0x1.0p+8);
+
+  const long multiplier = lrintf(65536.0f * input_output_scale);
+  const int64_t bias = ((int32_t) output_zero_point << 16) + INT32_C(0x8000);
+  assert(multiplier >= 1L);
+  assert(multiplier <= 0x01000000L);
+
+  params->wasmsimd.multiplier[0] = (int32_t) multiplier;
+  params->wasmsimd.multiplier[1] = (int32_t) multiplier;
+  params->wasmsimd.bias = bias;
   return sizeof(params->wasmsimd);
 }
 #endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD

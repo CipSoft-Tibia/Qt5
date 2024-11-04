@@ -38,7 +38,7 @@
 #include "fpdfsdk/cpdfsdk_helpers.h"
 #include "public/cpp/fpdf_scopers.h"
 #include "third_party/base/check.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
 struct XObjectContext {
   UnownedPtr<CPDF_Document> dest_doc;
@@ -833,14 +833,11 @@ FPDF_NewFormObjectFromXObject(FPDF_XOBJECT xobject) {
   if (!xobj)
     return nullptr;
 
-  // If used directly with std::make_unique(), linking fails.
-  // Build toolchain bug?
-  constexpr int kNoContentStream = CPDF_PageObject::kNoContentStream;
   auto form = std::make_unique<CPDF_Form>(xobj->dest_doc, nullptr,
                                           xobj->xobject, nullptr);
   form->ParseContent(nullptr, nullptr, nullptr);
   auto form_object = std::make_unique<CPDF_FormObject>(
-      kNoContentStream, std::move(form), CFX_Matrix());
+      CPDF_PageObject::kNoContentStream, std::move(form), CFX_Matrix());
   return FPDFPageObjectFromCPDFPageObject(form_object.release());
 }
 

@@ -13,6 +13,7 @@
 #define AOM_AV1_ENCODER_NONRD_OPT_H_
 
 #include "av1/encoder/rdopt_utils.h"
+#include "av1/encoder/rdopt.h"
 
 #define RTC_INTER_MODES (4)
 #define RTC_INTRA_MODES (4)
@@ -49,7 +50,6 @@ typedef struct {
   MOTION_MODE best_motion_mode;
   WarpedMotionParams wm_params;
   int num_proj_ref;
-  uint8_t blk_skip[MAX_MIB_SIZE * MAX_MIB_SIZE / 4];
   PALETTE_MODE_INFO pmi;
   int64_t best_sse;
 } BEST_PICKMODE;
@@ -172,7 +172,7 @@ enum {
 // The original scan order (default_scan_8x8) is modified according to the extra
 // transpose in hadamard c implementation, i.e., aom_hadamard_lp_8x8_c and
 // aom_hadamard_8x8_c.
-static const int16_t default_scan_8x8_transpose[64] = {
+DECLARE_ALIGNED(16, static const int16_t, default_scan_8x8_transpose[64]) = {
   0,  8,  1,  2,  9,  16, 24, 17, 10, 3,  4,  11, 18, 25, 32, 40,
   33, 26, 19, 12, 5,  6,  13, 20, 27, 34, 41, 48, 56, 49, 42, 35,
   28, 21, 14, 7,  15, 22, 29, 36, 43, 50, 57, 58, 51, 44, 37, 30,
@@ -186,7 +186,8 @@ static const int16_t default_scan_8x8_transpose[64] = {
 // guaranteed to scan low coefficients first, therefore we modify the scan order
 // accordingly.
 // Note that this one has to be used together with default_scan_8x8_transpose.
-static const int16_t av1_default_iscan_8x8_transpose[64] = {
+DECLARE_ALIGNED(16, static const int16_t,
+                av1_default_iscan_8x8_transpose[64]) = {
   0,  2,  3,  9,  10, 20, 21, 35, 1,  4,  8,  11, 19, 22, 34, 36,
   5,  7,  12, 18, 23, 33, 37, 48, 6,  13, 17, 24, 32, 38, 47, 49,
   14, 16, 25, 31, 39, 46, 50, 57, 15, 26, 30, 40, 45, 51, 56, 58,
@@ -196,7 +197,8 @@ static const int16_t av1_default_iscan_8x8_transpose[64] = {
 // The original scan order (default_scan_16x16) is modified according to the
 // extra transpose in hadamard c implementation in lp case, i.e.,
 // aom_hadamard_lp_16x16_c.
-static const int16_t default_scan_lp_16x16_transpose[256] = {
+DECLARE_ALIGNED(16, static const int16_t,
+                default_scan_lp_16x16_transpose[256]) = {
   0,   8,   2,   4,   10,  16,  24,  18,  12,  6,   64,  14,  20,  26,  32,
   40,  34,  28,  22,  72,  66,  68,  74,  80,  30,  36,  42,  48,  56,  50,
   44,  38,  88,  82,  76,  70,  128, 78,  84,  90,  96,  46,  52,  58,  1,
@@ -222,7 +224,8 @@ static const int16_t default_scan_lp_16x16_transpose[256] = {
 // extra shift in hadamard c implementation in fp case, i.e.,
 // aom_hadamard_16x16_c. Note that 16x16 lp and fp hadamard generate different
 // outputs, so we handle them separately.
-static const int16_t default_scan_fp_16x16_transpose[256] = {
+DECLARE_ALIGNED(16, static const int16_t,
+                default_scan_fp_16x16_transpose[256]) = {
   0,   4,   2,   8,   6,   16,  20,  18,  12,  10,  64,  14,  24,  22,  32,
   36,  34,  28,  26,  68,  66,  72,  70,  80,  30,  40,  38,  48,  52,  50,
   44,  42,  84,  82,  76,  74,  128, 78,  88,  86,  96,  46,  56,  54,  1,
@@ -250,7 +253,8 @@ static const int16_t default_scan_fp_16x16_transpose[256] = {
 // such that the normal scan order is no longer guaranteed to scan low
 // coefficients first, therefore we modify the scan order accordingly. Note that
 // this one has to be used together with default_scan_lp_16x16_transpose.
-static const int16_t av1_default_iscan_lp_16x16_transpose[256] = {
+DECLARE_ALIGNED(16, static const int16_t,
+                av1_default_iscan_lp_16x16_transpose[256]) = {
   0,   44,  2,   46,  3,   63,  9,   69,  1,   45,  4,   64,  8,   68,  11,
   87,  5,   65,  7,   67,  12,  88,  18,  94,  6,   66,  13,  89,  17,  93,
   24,  116, 14,  90,  16,  92,  25,  117, 31,  123, 15,  91,  26,  118, 30,
@@ -278,7 +282,8 @@ static const int16_t av1_default_iscan_lp_16x16_transpose[256] = {
 // such that the normal scan order is no longer guaranteed to scan low
 // coefficients first, therefore we modify the scan order accordingly. Note that
 // this one has to be used together with default_scan_fp_16x16_transpose.
-static const int16_t av1_default_iscan_fp_16x16_transpose[256] = {
+DECLARE_ALIGNED(16, static const int16_t,
+                av1_default_iscan_fp_16x16_transpose[256]) = {
   0,   44,  2,   46,  1,   45,  4,   64,  3,   63,  9,   69,  8,   68,  11,
   87,  5,   65,  7,   67,  6,   66,  13,  89,  12,  88,  18,  94,  17,  93,
   24,  116, 14,  90,  16,  92,  15,  91,  26,  118, 25,  117, 31,  123, 30,
@@ -307,21 +312,21 @@ static const int16_t av1_default_iscan_fp_16x16_transpose[256] = {
 // faster version of IDTX.
 
 // Must be used together with av1_fast_idtx_iscan_4x4
-static const int16_t av1_fast_idtx_scan_4x4[16] = {
-  0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15
-};
+DECLARE_ALIGNED(16, static const int16_t,
+                av1_fast_idtx_scan_4x4[16]) = { 0, 1,  4,  8,  5, 2,  3,  6,
+                                                9, 12, 13, 10, 7, 11, 14, 15 };
 
 // Must be used together with av1_fast_idtx_scan_4x4
-static const int16_t av1_fast_idtx_iscan_4x4[16] = { 0, 1,  5,  6, 2,  4,
-                                                     7, 12, 3,  8, 11, 13,
-                                                     9, 10, 14, 15 };
+DECLARE_ALIGNED(16, static const int16_t,
+                av1_fast_idtx_iscan_4x4[16]) = { 0, 1, 5,  6,  2, 4,  7,  12,
+                                                 3, 8, 11, 13, 9, 10, 14, 15 };
 
 static const SCAN_ORDER av1_fast_idtx_scan_order_4x4 = {
   av1_fast_idtx_scan_4x4, av1_fast_idtx_iscan_4x4
 };
 
 // Must be used together with av1_fast_idtx_iscan_8x8
-static const int16_t av1_fast_idtx_scan_8x8[64] = {
+DECLARE_ALIGNED(16, static const int16_t, av1_fast_idtx_scan_8x8[64]) = {
   0,  1,  8,  16, 9,  2,  3,  10, 17, 24, 32, 25, 18, 11, 4,  5,
   12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6,  7,  14, 21, 28,
   35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51,
@@ -329,7 +334,7 @@ static const int16_t av1_fast_idtx_scan_8x8[64] = {
 };
 
 // Must be used together with av1_fast_idtx_scan_8x8
-static const int16_t av1_fast_idtx_iscan_8x8[64] = {
+DECLARE_ALIGNED(16, static const int16_t, av1_fast_idtx_iscan_8x8[64]) = {
   0,  1,  5,  6,  14, 15, 27, 28, 2,  4,  7,  13, 16, 26, 29, 42,
   3,  8,  12, 17, 25, 30, 41, 43, 9,  11, 18, 24, 31, 40, 44, 53,
   10, 19, 23, 32, 39, 45, 52, 54, 20, 22, 33, 38, 46, 51, 55, 60,
@@ -341,7 +346,7 @@ static const SCAN_ORDER av1_fast_idtx_scan_order_8x8 = {
 };
 
 // Must be used together with av1_fast_idtx_iscan_16x16
-static const int16_t av1_fast_idtx_scan_16x16[256] = {
+DECLARE_ALIGNED(16, static const int16_t, av1_fast_idtx_scan_16x16[256]) = {
   0,   1,   16,  32,  17,  2,   3,   18,  33,  48,  64,  49,  34,  19,  4,
   5,   20,  35,  50,  65,  80,  96,  81,  66,  51,  36,  21,  6,   7,   22,
   37,  52,  67,  82,  97,  112, 128, 113, 98,  83,  68,  53,  38,  23,  8,
@@ -363,7 +368,7 @@ static const int16_t av1_fast_idtx_scan_16x16[256] = {
 };
 
 // Must be used together with av1_fast_idtx_scan_16x16
-static const int16_t av1_fast_idtx_iscan_16x16[256] = {
+DECLARE_ALIGNED(16, static const int16_t, av1_fast_idtx_iscan_16x16[256]) = {
   0,   1,   5,   6,   14,  15,  27,  28,  44,  45,  65,  66,  90,  91,  119,
   120, 2,   4,   7,   13,  16,  26,  29,  43,  46,  64,  67,  89,  92,  118,
   121, 150, 3,   8,   12,  17,  25,  30,  42,  47,  63,  68,  88,  93,  117,
@@ -463,5 +468,100 @@ static INLINE void find_predictors(AV1_COMP *cpi, MACROBLOCK *x,
   }
   mbmi->num_proj_ref = 1;
 }
+
+static INLINE void init_mbmi_nonrd(MB_MODE_INFO *mbmi,
+                                   PREDICTION_MODE pred_mode,
+                                   MV_REFERENCE_FRAME ref_frame0,
+                                   MV_REFERENCE_FRAME ref_frame1,
+                                   const AV1_COMMON *cm) {
+  PALETTE_MODE_INFO *const pmi = &mbmi->palette_mode_info;
+  mbmi->ref_mv_idx = 0;
+  mbmi->mode = pred_mode;
+  mbmi->uv_mode = UV_DC_PRED;
+  mbmi->ref_frame[0] = ref_frame0;
+  mbmi->ref_frame[1] = ref_frame1;
+  pmi->palette_size[PLANE_TYPE_Y] = 0;
+  pmi->palette_size[PLANE_TYPE_UV] = 0;
+  mbmi->filter_intra_mode_info.use_filter_intra = 0;
+  mbmi->mv[0].as_int = mbmi->mv[1].as_int = 0;
+  mbmi->motion_mode = SIMPLE_TRANSLATION;
+  mbmi->num_proj_ref = 1;
+  mbmi->interintra_mode = 0;
+  set_default_interp_filters(mbmi, cm->features.interp_filter);
+}
+
+static INLINE void init_estimate_block_intra_args(
+    struct estimate_block_intra_args *args, AV1_COMP *cpi, MACROBLOCK *x) {
+  args->cpi = cpi;
+  args->x = x;
+  args->mode = DC_PRED;
+  args->skippable = 1;
+  args->rdc = 0;
+  args->best_sad = UINT_MAX;
+  args->prune_mode_based_on_sad = false;
+}
+
+static INLINE int get_pred_buffer(PRED_BUFFER *p, int len) {
+  for (int buf_idx = 0; buf_idx < len; buf_idx++) {
+    if (!p[buf_idx].in_use) {
+      p[buf_idx].in_use = 1;
+      return buf_idx;
+    }
+  }
+  return -1;
+}
+
+static INLINE void free_pred_buffer(PRED_BUFFER *p) {
+  if (p != NULL) p->in_use = 0;
+}
+
+#if CONFIG_INTERNAL_STATS
+static INLINE void store_coding_context_nonrd(MACROBLOCK *x,
+                                              PICK_MODE_CONTEXT *ctx,
+                                              int mode_index) {
+#else
+static INLINE void store_coding_context_nonrd(MACROBLOCK *x,
+                                              PICK_MODE_CONTEXT *ctx) {
+#endif  // CONFIG_INTERNAL_STATS
+  MACROBLOCKD *const xd = &x->e_mbd;
+  TxfmSearchInfo *txfm_info = &x->txfm_search_info;
+
+  // Take a snapshot of the coding context so it can be
+  // restored if we decide to encode this way
+  ctx->rd_stats.skip_txfm = txfm_info->skip_txfm;
+
+  ctx->skippable = txfm_info->skip_txfm;
+#if CONFIG_INTERNAL_STATS
+  ctx->best_mode_index = mode_index;
+#endif  // CONFIG_INTERNAL_STATS
+  ctx->mic = *xd->mi[0];
+  ctx->skippable = txfm_info->skip_txfm;
+  av1_copy_mbmi_ext_to_mbmi_ext_frame(&ctx->mbmi_ext_best, &x->mbmi_ext,
+                                      av1_ref_frame_type(xd->mi[0]->ref_frame));
+}
+
+void av1_block_yrd(MACROBLOCK *x, RD_STATS *this_rdc, int *skippable,
+                   BLOCK_SIZE bsize, TX_SIZE tx_size);
+
+void av1_block_yrd_idtx(MACROBLOCK *x, const uint8_t *const pred_buf,
+                        int pred_stride, RD_STATS *this_rdc, int *skippable,
+                        BLOCK_SIZE bsize, TX_SIZE tx_size);
+
+int64_t av1_model_rd_for_sb_uv(AV1_COMP *cpi, BLOCK_SIZE plane_bsize,
+                               MACROBLOCK *x, MACROBLOCKD *xd,
+                               RD_STATS *this_rdc, int start_plane,
+                               int stop_plane);
+
+void av1_estimate_block_intra(int plane, int block, int row, int col,
+                              BLOCK_SIZE plane_bsize, TX_SIZE tx_size,
+                              void *arg);
+
+void av1_estimate_intra_mode(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bsize,
+                             int best_early_term, unsigned int ref_cost_intra,
+                             int reuse_prediction, struct buf_2d *orig_dst,
+                             PRED_BUFFER *tmp_buffers,
+                             PRED_BUFFER **this_mode_pred, RD_STATS *best_rdc,
+                             BEST_PICKMODE *best_pickmode,
+                             PICK_MODE_CONTEXT *ctx);
 
 #endif  // AOM_AV1_ENCODER_NONRD_OPT_H_

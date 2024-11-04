@@ -23,6 +23,7 @@ source_set("declarative_net_request") {
     "//extensions/common",
     "//extensions/common/api",
     "//services/preferences/public/cpp",
+    "//components/web_cache/browser",
   ]
 
   public_deps = [ "//extensions/browser:browser_sources" ]

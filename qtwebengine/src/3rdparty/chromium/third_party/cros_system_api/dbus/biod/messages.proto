@@ -8,6 +8,8 @@ option optimize_for = LITE_RUNTIME;
 
 package biod;
 
+option go_package = "chromiumos/system_api/biod_messages_proto";
+
 import "constants.proto";
 
 // Included in biod's AuthScanDone signal
@@ -107,4 +109,22 @@ message AuthenticateCredentialReply {
   optional bytes iv = 4;
   optional FpPublicKey pub = 5;
   optional string record_id = 6;
+}
+
+message DeleteCredentialRequest {
+  optional string user_id = 1;
+  optional string record_id = 2;
+}
+
+message DeleteCredentialReply {
+  enum DeleteCredentialStatus {
+    UNKNOWN = 0;
+    SUCCESS = 1;
+    INCORRECT_STATE = 2;
+    // The credential to delete doesn't exist. No need for deletion.
+    NOT_EXIST = 3;
+    // The credential to delete exists, but deletion failed.
+    DELETION_FAILED = 4;
+  }
+  optional DeleteCredentialStatus status = 1;
 }

@@ -34,6 +34,9 @@ constexpr const char kOutDirFlag[] = "--out-dir";
 // Command line flag for source root directory for the generated file.
 constexpr const char kSourceDirFlag[] = "--source-dir";
 
+// Command line flag for additional import directories for proto lookup.
+constexpr const char kImportDir[] = "--import-dir";
+
 // Suffix added to the generated file.
 constexpr const char kCastCorePbExtension[] = ".castcore.pb.h";
 
@@ -106,10 +109,14 @@ class SourceProto {
         cpp_headerguard_(CreateHeaderGuard(output_file_path_)),
         includes_(includes) {}
 
-  bool Initialize(std::string source_dir) {
+  bool Initialize(std::string source_dir,
+                  std::vector<std::string> import_dirs) {
     includes_->AddInclude(output_file_path_ + kGrpcPbExtension);
 
     source_tree_.MapPath("", source_dir);
+    for (const auto& import_dir : import_dirs) {
+      source_tree_.MapPath("", source_dir + import_dir);
+    }
     importer_ = std::make_unique<Importer>(&source_tree_, &error_collector_);
 
     file_descriptor_ = importer_->Import(proto_file_path_);
@@ -319,6 +326,7 @@ int main(int argc, char** argv) {
   std::string out_dir;
   std::string source_dir;
   std::vector<std::string> include_file_paths;
+  std::vector<std::string> import_dirs;
   for (int i = 1; i < argc; ++i) {
     if (flag.empty()) {
       flag = argv[i];
@@ -328,6 +336,8 @@ int main(int argc, char** argv) {
       proto_file_path = argv[i];
     } else if (flag == kIncludesFlag) {
       include_file_paths.push_back(argv[i]);
+    } else if (flag == kImportDir) {
+      import_dirs.push_back(argv[i]);
     } else if (flag == kOutDirFlag) {
       out_dir = argv[i];
       if (out_dir.empty()) {
@@ -359,7 +369,7 @@ int main(int argc, char** argv) {
 
   Includes includes(std::move(include_file_paths));
   SourceProto source_proto(std::move(proto_file_path), &includes);
-  if (!source_proto.Initialize(std::move(source_dir))) {
+  if (!source_proto.Initialize(std::move(source_dir), std::move(import_dirs))) {
     return -2;
   }
   if (!source_proto.Generate(std::move(out_dir))) {

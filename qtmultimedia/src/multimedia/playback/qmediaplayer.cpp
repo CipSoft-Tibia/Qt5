@@ -3,6 +3,7 @@
 
 #include "qmediaplayer_p.h"
 
+#include <private/qmultimediautils_p.h>
 #include <private/qplatformmediaintegration_p.h>
 #include <qvideosink.h>
 #include <qaudiooutput.h>
@@ -11,10 +12,10 @@
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qtimer.h>
 #include <QtCore/qdebug.h>
+#include <QtCore/qdir.h>
 #include <QtCore/qpointer.h>
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qtemporaryfile.h>
-#include <QtCore/qdir.h>
 #include <QtCore/qcoreapplication.h>
 
 #if defined(Q_OS_ANDROID)
@@ -188,9 +189,7 @@ void QMediaPlayerPrivate::setMedia(const QUrl &media, QIODevice *stream)
         }
     } else {
         qrcMedia = QUrl();
-        QUrl url = media;
-        if (url.scheme().isEmpty() || url.scheme() == QLatin1String("file"))
-            url = QUrl::fromUserInput(media.toString(), QDir::currentPath(), QUrl::AssumeLocalFile);
+        QUrl url = qMediaFromUserInput(media);
         if (url.scheme() == QLatin1String("content") && !stream) {
             file.reset(new QFile(media.url()));
             stream = file.get();
@@ -591,12 +590,18 @@ void QMediaPlayer::setPlaybackRate(qreal rate)
 
     Setting the media to a null QUrl will cause the player to discard all
     information relating to the current media source and to cease all I/O operations related
-    to that media.
+    to that media. Setting the media will stop the playback.
 
     \note This function returns immediately after recording the specified source of the media.
     It does not wait for the media to finish loading and does not check for errors. Listen for
     the mediaStatusChanged() and error() signals to be notified when the media is loaded and
     when an error occurs during loading.
+
+    \note FFmpeg, used by the FFmpeg media backend, restricts use of nested protocols for
+    security reasons. In controlled environments where all inputs are trusted, the list of
+    approved protocols can be overridden using the QT_FFMPEG_PROTOCOL_WHITELIST environment
+    variable. This environment variable is Qt's private API and can change between patch
+    releases without notice.
 */
 
 void QMediaPlayer::setSource(const QUrl &source)

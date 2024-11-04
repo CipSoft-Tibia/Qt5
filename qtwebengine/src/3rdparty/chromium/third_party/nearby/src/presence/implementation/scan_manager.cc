@@ -23,7 +23,7 @@
 
 #include "absl/status/status.h"
 #include "absl/types/variant.h"
-#include "internal/crypto/random.h"
+#include "internal/platform/implementation/crypto.h"
 #include "internal/platform/future.h"
 #include "internal/platform/implementation/ble_v2.h"
 #include "internal/platform/implementation/credential_callbacks.h"
@@ -46,7 +46,7 @@ using ScanningCallback = ::nearby::api::ble_v2::BleMedium::ScanningCallback;
 
 ScanSessionId ScanManager::StartScan(ScanRequest scan_request,
                                      ScanCallback cb) {
-  ScanSessionId id = ::crypto::RandData<ScanSessionId>();
+  ScanSessionId id = nearby::RandData<ScanSessionId>();
   RunOnServiceControllerThread(
       "start-scan",
       [this, id, scan_request, scan_callback = std::move(cb)]()
@@ -58,7 +58,6 @@ ScanSessionId ScanManager::StartScan(ScanRequest scan_request,
                         absl::Status ble_status) mutable {
                       start_scan_client(ble_status);
                     },
-                // TODO(b/256686710): Track known devices
                 .advertisement_found_cb =
                     [this, id](BlePeripheral& peripheral,
                                BleAdvertisementData data) {
@@ -113,11 +112,21 @@ void ScanManager::NotifyFoundBle(ScanSessionId id, BleAdvertisementData data,
     return;
   }
   if (it->second.decoder.MatchesScanFilter(advert->data_elements)) {
-    // TODO(b/256913915): Provide more information in PresenceDevice once
-    // fully implemented
     internal::Metadata metadata;
     metadata.set_bluetooth_mac_address(std::string(remote_address));
-    it->second.callback.on_discovered_cb(PresenceDevice(metadata));
+    PresenceDevice device(DeviceMotion(), metadata, advert->identity_type);
+    // Ok if the advertisement is for trusted/private identity.
+    if (advert->public_credential.ok()) {
+      device.SetDecryptSharedCredential(*(advert->public_credential));
+    }
+    device.AddExtendedProperties(advert->data_elements);
+    for (const auto& data_element : advert->data_elements) {
+      if (data_element.GetType() == DataElement::kActionFieldType) {
+        device.AddAction(PresenceAction(static_cast<int>(
+            static_cast<uint8_t>(data_element.GetValue()[0]))));
+      }
+    }
+    it->second.callback.on_discovered_cb(std::move(device));
   }
 }
 
@@ -126,6 +135,14 @@ void ScanManager::FetchCredentials(ScanSessionId id,
   std::vector<CredentialSelector> credential_selectors =
       AdvertisementDecoder::GetCredentialSelectors(scan_request);
   for (const CredentialSelector& selector : credential_selectors) {
+    // Not fetching for PUBLIC.
+    if (selector.identity_type == internal::IDENTITY_TYPE_UNSPECIFIED ||
+        selector.identity_type == internal::IDENTITY_TYPE_PUBLIC) {
+      NEARBY_LOGS(INFO) << __func__
+                        << ": skip feteching creds for identity type: "
+                        << selector.identity_type;
+      continue;
+    }
     credential_manager_->GetPublicCredentials(
         selector, PublicCredentialType::kRemotePublicCredential,
         {.credentials_fetched_cb =

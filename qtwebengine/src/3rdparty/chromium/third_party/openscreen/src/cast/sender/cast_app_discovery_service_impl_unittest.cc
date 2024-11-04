@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,8 +16,7 @@
 #include "platform/test/fake_task_runner.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 using ::cast::channel::CastMessage;
 
@@ -83,7 +82,7 @@ class CastAppDiscoveryServiceImplTest : public ::testing::Test {
   VirtualConnectionRouter router_;
   FakeClock clock_{Clock::now()};
   FakeTaskRunner task_runner_{&clock_};
-  CastPlatformClient platform_client_{&router_, &FakeClock::now, &task_runner_};
+  CastPlatformClient platform_client_{&router_, &FakeClock::now, task_runner_};
   CastAppDiscoveryServiceImpl app_discovery_service_{&platform_client_,
                                                      &FakeClock::now};
 
@@ -345,5 +344,4 @@ TEST_F(CastAppDiscoveryServiceImplTest, AvailabilityUnknownOrUnavailable) {
   AddOrUpdateReceiver(receiver_, socket_id_);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

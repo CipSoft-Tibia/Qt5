@@ -33,8 +33,6 @@
 // POSSIBILITY OF SUCH DAMAGE.
 //
 
-#ifndef GLSLANG_WEB
-
 //
 // GL_EXT_spirv_intrinsics
 //
@@ -45,6 +43,15 @@
 
 namespace QtShaderTools {
 namespace glslang {
+
+bool TSpirvTypeParameter::operator==(const TSpirvTypeParameter& rhs) const
+{
+    if (constant != nullptr)
+        return constant->getConstArray() == rhs.constant->getConstArray();
+
+    assert(type != nullptr);
+    return *type == *rhs.type;
+}
 
 //
 // Handle SPIR-V requirements
@@ -68,7 +75,7 @@ TSpirvRequirement* TParseContext::makeSpirvRequirement(const TSourceLoc& loc, co
             spirvReq->capabilities.insert(capability->getAsConstantUnion()->getConstArray()[0].getIConst());
         }
     } else
-        error(loc, "unknow SPIR-V requirement", name.c_str(), "");
+        error(loc, "unknown SPIR-V requirement", name.c_str(), "");
 
     return spirvReq;
 }
@@ -169,7 +176,7 @@ void TQualifier::setSpirvDecorateId(int decoration, const TIntermAggregate* args
     TVector<const TIntermTyped*> extraOperands;
     for (auto arg : args->getSequence()) {
         auto extraOperand = arg->getAsTyped();
-        assert(extraOperand != nullptr && extraOperand->getQualifier().isConstant());
+        assert(extraOperand != nullptr);
         extraOperands.push_back(extraOperand);
     }
     spirvDecorate->decorateIds[decoration] = extraOperands;
@@ -203,30 +210,29 @@ TString TQualifier::getSpirvDecorateQualifierString() const
     const auto appendStr = [&](const char* s) { qualifierString.append(s); };
 
     const auto appendDecorate = [&](const TIntermTyped* constant) {
-        auto& constArray = constant->getAsConstantUnion() != nullptr ? constant->getAsConstantUnion()->getConstArray()
-                                                                     : constant->getAsSymbolNode()->getConstArray();
-        if (constant->getBasicType() == EbtFloat) {
-            float value = static_cast<float>(constArray[0].getDConst());
-            appendFloat(value);
+        if (constant->getAsConstantUnion()) {
+            auto& constArray = constant->getAsConstantUnion()->getConstArray();
+            if (constant->getBasicType() == EbtFloat) {
+                float value = static_cast<float>(constArray[0].getDConst());
+                appendFloat(value);
+            } else if (constant->getBasicType() == EbtInt) {
+                int value = constArray[0].getIConst();
+                appendInt(value);
+            } else if (constant->getBasicType() == EbtUint) {
+                unsigned value = constArray[0].getUConst();
+                appendUint(value);
+            } else if (constant->getBasicType() == EbtBool) {
+                bool value = constArray[0].getBConst();
+                appendBool(value);
+            } else if (constant->getBasicType() == EbtString) {
+                const TString* value = constArray[0].getSConst();
+                appendStr(value->c_str());
+            } else
+                assert(0);
+        } else {
+            assert(constant->getAsSymbolNode());
+            appendStr(constant->getAsSymbolNode()->getName().c_str());
         }
-        else if (constant->getBasicType() == EbtInt) {
-            int value = constArray[0].getIConst();
-            appendInt(value);
-        }
-        else if (constant->getBasicType() == EbtUint) {
-            unsigned value = constArray[0].getUConst();
-            appendUint(value);
-        }
-        else if (constant->getBasicType() == EbtBool) {
-            bool value = constArray[0].getBConst();
-            appendBool(value);
-        }
-        else if (constant->getBasicType() == EbtString) {
-            const TString* value = constArray[0].getSConst();
-            appendStr(value->c_str());
-        }
-        else
-            assert(0);
     };
 
     for (auto& decorate : spirvDecorate->decorates) {
@@ -285,11 +291,17 @@ TSpirvTypeParameters* TParseContext::makeSpirvTypeParameters(const TSourceLoc& l
         constant->getBasicType() != EbtBool &&
         constant->getBasicType() != EbtString)
         error(loc, "this type not allowed", constant->getType().getBasicString(), "");
-    else {
-        assert(constant);
+    else
         spirvTypeParams->push_back(TSpirvTypeParameter(constant));
-    }
 
+    return spirvTypeParams;
+}
+
+TSpirvTypeParameters* TParseContext::makeSpirvTypeParameters(const TSourceLoc& /* loc */,
+                                                             const TPublicType& type)
+{
+    TSpirvTypeParameters* spirvTypeParams = new TSpirvTypeParameters;
+    spirvTypeParams->push_back(TSpirvTypeParameter(new TType(type)));
     return spirvTypeParams;
 }
 
@@ -348,5 +360,3 @@ TSpirvInstruction* TParseContext::mergeSpirvInstruction(const TSourceLoc& loc, T
 
 } // end namespace glslang
 } // namespace QtShaderTools
-
-#endif // GLSLANG_WEB

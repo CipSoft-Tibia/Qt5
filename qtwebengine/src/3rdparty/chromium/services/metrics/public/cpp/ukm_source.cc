@@ -52,7 +52,7 @@ SourceType ToProtobufSourceType(SourceIdType source_id_type) {
       return SourceType::WEBAPK_ID;
     case SourceIdType::PAYMENT_APP_ID:
       return SourceType::PAYMENT_APP_ID;
-    case SourceIdType::DESKTOP_WEB_APP_ID:
+    case SourceIdType::DEPRECATED_DESKTOP_WEB_APP_ID:
       return SourceType::DESKTOP_WEB_APP_ID;
     case SourceIdType::WORKER_ID:
       return SourceType::WORKER_ID;
@@ -156,7 +156,6 @@ void UkmSource::UpdateUrl(const GURL& new_url) {
 void UkmSource::PopulateProto(Source* proto_source) const {
   DCHECK(!proto_source->has_id());
   DCHECK(!proto_source->has_type());
-  DCHECK(!proto_source->has_url());
 
   proto_source->set_id(id_);
   proto_source->set_type(ToProtobufSourceType(type_));

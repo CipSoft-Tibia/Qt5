@@ -33,6 +33,10 @@ def main(argv):
       "--includes",
       required=True,
       help="Comma-separated list of includes to add to generated output.")
+  parser.add_argument(
+      "--import-dirs",
+      required=False,
+      help="Additional directories to lookup for imported protos")
   options = parser.parse_args(argv)
 
   if not options.proto_in_dir.startswith("//"):
@@ -57,6 +61,9 @@ def main(argv):
   generator_cmd += ["--out-dir", out_dir]
   for option in options.includes.split(","):
     generator_cmd += ["--include", option]
+  if options.import_dirs:
+    for option in options.import_dirs.split(","):
+      generator_cmd += ["--import-dir", option[2:]]
 
   ret = subprocess.call(generator_cmd)
   if ret != 0:

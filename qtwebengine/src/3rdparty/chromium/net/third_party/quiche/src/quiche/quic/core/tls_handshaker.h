@@ -166,6 +166,12 @@ class QUIC_EXPORT_PRIVATE TlsHandshaker : public TlsConnection::Delegate,
   // See |SSL_CTX_set_info_callback| for the meaning of |type| and |value|.
   void InfoCallback(int /*type*/, int /*value*/) override {}
 
+  // Message callback from BoringSSL, for debugging purposes. See
+  // |SSL_CTX_set_msg_callback| for how to interpret |version|, |content_type|,
+  // and |data|.
+  void MessageCallback(bool is_write, int version, int content_type,
+                       absl::string_view data) override;
+
  private:
   // ProofVerifierCallbackImpl handles the result of an asynchronous certificate
   // verification operation.
@@ -199,6 +205,8 @@ class QUIC_EXPORT_PRIVATE TlsHandshaker : public TlsConnection::Delegate,
 
   int expected_ssl_error_ = SSL_ERROR_WANT_READ;
   bool is_connection_closed_ = false;
+  const bool check_connected_before_set_read_secret_ =
+      GetQuicReloadableFlag(quic_check_connected_before_set_read_secret);
 
   QuicCryptoStream* stream_;
   HandshakerDelegateInterface* handshaker_delegate_;
@@ -221,8 +229,6 @@ class QUIC_EXPORT_PRIVATE TlsHandshaker : public TlsConnection::Delegate,
     uint8_t desc;
   };
   absl::optional<TlsAlert> last_tls_alert_;
-  const bool dont_close_connection_in_tls_alert_callback_ =
-      GetQuicReloadableFlag(quic_dont_close_connection_in_tls_alert_callback);
 };
 
 }  // namespace quic

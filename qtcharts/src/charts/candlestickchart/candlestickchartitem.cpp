@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include <QtCharts/QCandlestickSeries>
 #include <QtCharts/QCandlestickSet>
 #include <private/candlestickchartitem_p.h>
@@ -126,7 +128,8 @@ void CandlestickChartItem::handleCandlestickSeriesChange()
     int seriesCount = 0;
 
     int index = 0;
-    foreach (QAbstractSeries *series, m_series->chart()->series()) {
+    const auto allSeries = m_series->chart()->series();
+    for (QAbstractSeries *series : allSeries) {
         if (series->type() == QAbstractSeries::SeriesTypeCandlestick) {
             if (m_series == static_cast<QCandlestickSeries *>(series))
                 seriesIndex = index;

@@ -92,7 +92,8 @@ class RTCRtpReceiver final : public ScriptWrappable,
   void UnregisterEncodedAudioStreamCallback();
   void InitializeEncodedAudioStreams(ScriptState*);
   void OnAudioFrameFromDepacketizer(
-      std::unique_ptr<webrtc::TransformableFrameInterface> encoded_audio_frame);
+      std::unique_ptr<webrtc::TransformableAudioFrameInterface>
+          encoded_audio_frame);
   void RegisterEncodedVideoStreamCallback();
   void UnregisterEncodedVideoStreamCallback();
   void InitializeEncodedVideoStreams(ScriptState*);
@@ -109,6 +110,7 @@ class RTCRtpReceiver final : public ScriptWrappable,
       scoped_refptr<base::SingleThreadTaskRunner> task_runner);
   void SetVideoUnderlyingSink(
       RTCEncodedVideoUnderlyingSink* new_underlying_sink);
+  void LogMessage(const std::string& message);
 
   Member<RTCPeerConnection> pc_;
   std::unique_ptr<RTCRtpReceiverPlatform> receiver_;
@@ -130,6 +132,8 @@ class RTCRtpReceiver final : public ScriptWrappable,
   // use Encoded Insertable Streams.
   bool encoded_insertable_streams_;
 
+  THREAD_CHECKER(thread_checker_);
+
   // Insertable Streams support for audio.
   base::Lock audio_underlying_source_lock_;
   CrossThreadPersistent<RTCEncodedAudioUnderlyingSource>
@@ -139,7 +143,7 @@ class RTCRtpReceiver final : public ScriptWrappable,
   CrossThreadPersistent<RTCEncodedAudioUnderlyingSink>
       audio_to_decoder_underlying_sink_ GUARDED_BY(audio_underlying_sink_lock_);
   Member<RTCInsertableStreams> encoded_audio_streams_;
-  scoped_refptr<blink::RTCEncodedAudioStreamTransformer::Broker>
+  const scoped_refptr<blink::RTCEncodedAudioStreamTransformer::Broker>
       encoded_audio_transformer_;
 
   // Insertable Streams support for video.
@@ -151,10 +155,8 @@ class RTCRtpReceiver final : public ScriptWrappable,
   CrossThreadPersistent<RTCEncodedVideoUnderlyingSink>
       video_to_decoder_underlying_sink_ GUARDED_BY(video_underlying_sink_lock_);
   Member<RTCInsertableStreams> encoded_video_streams_;
-  scoped_refptr<blink::RTCEncodedVideoStreamTransformer::Broker>
+  const scoped_refptr<blink::RTCEncodedVideoStreamTransformer::Broker>
       encoded_video_transformer_;
-
-  THREAD_CHECKER(thread_checker_);
 };
 
 }  // namespace blink

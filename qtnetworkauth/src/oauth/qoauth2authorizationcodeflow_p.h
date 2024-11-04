@@ -22,6 +22,7 @@
 #include <QtNetworkAuth/qoauthglobal.h>
 #include <QtNetworkAuth/qoauth2authorizationcodeflow.h>
 
+#include <QtCore/qpointer.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qdatetime.h>
 

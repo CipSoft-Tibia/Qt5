@@ -4,6 +4,7 @@
 
 #include "core/fxcrt/unowned_ptr.h"
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <set>
@@ -11,6 +12,14 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/base/containers/contains.h"
+
+#if defined(PDF_USE_PARTITION_ALLOC)
+#if defined(PDF_USE_PARTITION_ALLOC_NEW_LOCATION)
+#include "base/allocator/partition_allocator/src/partition_alloc/shim/allocator_shim_default_dispatch_to_partition_alloc.h"
+#else
+#include "base/allocator/partition_allocator/shim/allocator_shim_default_dispatch_to_partition_alloc.h"
+#endif
+#endif
 
 namespace fxcrt {
 namespace {
@@ -162,7 +171,7 @@ TEST(UnownedPtr, PtrOk) {
 }
 
 TEST(UnownedPtr, PtrNotOk) {
-#if defined(ADDRESS_SANITIZER)
+#if defined(UNOWNED_PTR_DANGLING_CHECKS)
   EXPECT_DEATH(DeleteDangling(), "");
 #else
   DeleteDangling();
@@ -179,7 +188,7 @@ TEST(UnownedPtr, AssignOk) {
 }
 
 TEST(UnownedPtr, AssignNotOk) {
-#if defined(ADDRESS_SANITIZER)
+#if defined(UNOWNED_PTR_DANGLING_CHECKS)
   EXPECT_DEATH(AssignDangling(), "");
 #else
   AssignDangling();
@@ -196,7 +205,7 @@ TEST(UnownedPtr, ReleaseOk) {
 }
 
 TEST(UnownedPtr, ReleaseNotOk) {
-#if defined(ADDRESS_SANITIZER)
+#if defined(UNOWNED_PTR_DANGLING_CHECKS)
   EXPECT_DEATH(ReleaseDangling(), "");
 #else
   ReleaseDangling();
@@ -258,5 +267,35 @@ TEST(UnownedPtr, TransparentCompare) {
   EXPECT_TRUE(pdfium::Contains(holder, &foos[0]));
   EXPECT_FALSE(pdfium::Contains(holder, &foos[1]));
 }
+
+#if defined(PDF_USE_PARTITION_ALLOC)
+#if BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) && \
+    BUILDFLAG(HAS_64_BIT_POINTERS) && BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT)
+
+TEST(UnownedPtr, DanglingGetsQuarantined) {
+  partition_alloc::PartitionRoot* root =
+      allocator_shim::internal::PartitionAllocMalloc::Allocator();
+  size_t original_byte_count =
+      root->total_size_of_brp_quarantined_bytes.load(std::memory_order_relaxed);
+
+  auto ptr = std::make_unique<double>(4.0);
+  UnownedPtr<double> dangler = ptr.get();
+  EXPECT_EQ(
+      root->total_size_of_brp_quarantined_bytes.load(std::memory_order_relaxed),
+      original_byte_count);
+
+  ptr.reset();
+  EXPECT_GE(
+      root->total_size_of_brp_quarantined_bytes.load(std::memory_order_relaxed),
+      original_byte_count + sizeof(double));
+
+  dangler = nullptr;
+  EXPECT_EQ(
+      root->total_size_of_brp_quarantined_bytes.load(std::memory_order_relaxed),
+      original_byte_count);
+}
+
+#endif  // BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) ...
+#endif  // PDF_USE_PARTITION_ALLOC
 
 }  // namespace fxcrt

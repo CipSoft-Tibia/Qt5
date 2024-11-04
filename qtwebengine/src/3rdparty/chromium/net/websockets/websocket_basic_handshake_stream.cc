@@ -5,7 +5,9 @@
 #include "net/websockets/websocket_basic_handshake_stream.h"
 
 #include <stddef.h>
+
 #include <algorithm>
+#include <array>
 #include <iterator>
 #include <set>
 #include <utility>
@@ -70,11 +72,9 @@ std::string MissingHeaderMessage(const std::string& header_name) {
 }
 
 std::string GenerateHandshakeChallenge() {
-  std::string raw_challenge(websockets::kRawChallengeLength, '\0');
-  crypto::RandBytes(std::data(raw_challenge), raw_challenge.length());
-  std::string encoded_challenge;
-  base::Base64Encode(raw_challenge, &encoded_challenge);
-  return encoded_challenge;
+  std::array<uint8_t, websockets::kRawChallengeLength> raw_challenge = {};
+  crypto::RandBytes(raw_challenge);
+  return base::Base64Encode(raw_challenge);
 }
 
 GetHeaderResult GetSingleHeaderValue(const HttpResponseHeaders* headers,
@@ -161,11 +161,12 @@ bool ValidateConnection(const HttpResponseHeaders* headers,
   return true;
 }
 
-base::Value NetLogFailureParam(int net_error, const std::string& message) {
+base::Value::Dict NetLogFailureParam(int net_error,
+                                     const std::string& message) {
   base::Value::Dict dict;
   dict.Set("net_error", net_error);
   dict.Set("message", message);
-  return base::Value(std::move(dict));
+  return dict;
 }
 
 }  // namespace
@@ -433,6 +434,14 @@ std::unique_ptr<WebSocketStream> WebSocketBasicHandshakeStream::Upgrade() {
   }
 
   return basic_stream;
+}
+
+bool WebSocketBasicHandshakeStream::CanReadFromStream() const {
+  auto* connection = state_.connection();
+  if (!connection) {
+    return false;
+  }
+  return connection->socket();
 }
 
 base::WeakPtr<WebSocketHandshakeStreamBase>

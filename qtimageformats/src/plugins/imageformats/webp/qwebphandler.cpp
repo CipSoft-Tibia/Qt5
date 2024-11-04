@@ -213,11 +213,9 @@ bool QWebpHandler::write(const QImage &image)
         return false;
     }
 
-    QImage srcImage = image;
-    bool alpha = srcImage.hasAlphaChannel();
+    const bool alpha = image.hasAlphaChannel();
     QImage::Format newFormat = alpha ? QImage::Format_RGBA8888 : QImage::Format_RGB888;
-    if (srcImage.format() != newFormat)
-        srcImage = srcImage.convertToFormat(newFormat);
+    const QImage srcImage = (image.format() == newFormat) ? image : image.convertedTo(newFormat);
 
     WebPPicture picture;
     WebPConfig config;
@@ -232,9 +230,9 @@ bool QWebpHandler::write(const QImage &image)
     picture.use_argb = 1;
     bool failed = false;
     if (alpha)
-        failed = !WebPPictureImportRGBA(&picture, srcImage.bits(), srcImage.bytesPerLine());
+        failed = !WebPPictureImportRGBA(&picture, srcImage.constBits(), srcImage.bytesPerLine());
     else
-        failed = !WebPPictureImportRGB(&picture, srcImage.bits(), srcImage.bytesPerLine());
+        failed = !WebPPictureImportRGB(&picture, srcImage.constBits(), srcImage.bytesPerLine());
 
     if (failed) {
         qWarning() << "failed to import image data to webp picture.";

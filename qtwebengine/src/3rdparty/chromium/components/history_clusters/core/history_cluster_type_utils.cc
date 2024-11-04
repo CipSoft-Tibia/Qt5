@@ -25,14 +25,13 @@ mojom::URLVisitPtr VisitToMojom(const TemplateURLService* template_url_service,
   visit_mojom->visit_id = visit.annotated_visit.visit_row.visit_id;
   visit_mojom->normalized_url = visit.normalized_url;
   visit_mojom->url_for_display = base::UTF16ToUTF8(visit.url_for_display);
-  if (!visit.image_url.is_empty()) {
-    visit_mojom->image_url = visit.image_url;
-  }
   visit_mojom->is_known_to_sync =
       visit.annotated_visit.visit_row.is_known_to_sync;
 
   // Add the raw URLs and visit times so the UI can perform deletion.
   auto& annotated_visit = visit.annotated_visit;
+  visit_mojom->has_url_keyed_image =
+      annotated_visit.content_annotations.has_url_keyed_image;
   visit_mojom->raw_visit_data = mojom::RawVisitData::New(
       annotated_visit.url_row.url(), annotated_visit.visit_row.visit_time);
   for (const auto& duplicate : visit.duplicate_visits) {
@@ -59,10 +58,6 @@ mojom::URLVisitPtr VisitToMojom(const TemplateURLService* template_url_service,
   visit_mojom->relative_date = base::UTF16ToUTF8(ui::TimeFormat::Simple(
       ui::TimeFormat::FORMAT_ELAPSED, ui::TimeFormat::LENGTH_SHORT,
       base::Time::Now() - annotated_visit.visit_row.visit_time));
-  if (annotated_visit.context_annotations.is_existing_part_of_tab_group ||
-      annotated_visit.context_annotations.is_placed_in_tab_group) {
-    visit_mojom->annotations.push_back(mojom::Annotation::kTabGrouped);
-  }
   if (annotated_visit.context_annotations.is_existing_bookmark ||
       annotated_visit.context_annotations.is_new_bookmark) {
     visit_mojom->annotations.push_back(mojom::Annotation::kBookmarked);
@@ -81,6 +76,8 @@ mojom::URLVisitPtr VisitToMojom(const TemplateURLService* template_url_service,
     visit_mojom->debug_info["visit_id"] =
         base::NumberToString(annotated_visit.visit_row.visit_id);
     visit_mojom->debug_info["score"] = base::NumberToString(visit.score);
+    visit_mojom->debug_info["interaction_state"] = base::NumberToString(
+        history::ClusterVisit::InteractionStateToInt(visit.interaction_state));
     visit_mojom->debug_info["visit_time"] =
         base::TimeToISO8601(visit.annotated_visit.visit_row.visit_time);
     visit_mojom->debug_info["foreground_duration"] =
@@ -128,6 +125,13 @@ mojom::ClusterPtr ClusterToMojom(const TemplateURLService* template_url_service,
       match_mojom->begin = match.first;
       match_mojom->end = match.second;
       cluster_mojom->label_match_positions.push_back(std::move(match_mojom));
+    }
+
+    if (GetConfig().named_new_tab_groups && cluster.raw_label &&
+        (cluster.label_source == history::Cluster::LabelSource::kSearch ||
+         cluster.label_source ==
+             history::Cluster::LabelSource::kContentDerivedEntity)) {
+      cluster_mojom->tab_group_name = base::UTF16ToUTF8(*cluster.raw_label);
     }
   }
 

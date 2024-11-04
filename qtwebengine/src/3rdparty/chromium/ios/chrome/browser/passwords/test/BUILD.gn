@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 source_set("test") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
 
   sources = [
@@ -20,6 +19,7 @@ source_set("test") {
     "//components/prefs:test_support",
     "//components/safe_browsing/core/common:safe_browsing_prefs",
     "//ios/chrome/browser/passwords:infobar_delegates",
+    "//ios/chrome/browser/shared/public/commands",
     "//testing/gmock",
     "//testing/gtest",
     "//url",

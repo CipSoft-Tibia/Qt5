@@ -6,7 +6,6 @@
 #include <QtGraphs/QScatterDataProxy>
 #include <QtGraphs/QValue3DAxis>
 #include <QtGraphs/Q3DScene>
-#include <QtGraphs/Q3DCamera>
 #include <QtGraphs/QScatter3DSeries>
 #include <QtGraphs/Q3DTheme>
 #include <QtCore/qmath.h>
@@ -15,12 +14,12 @@
 #include <QtCore/QDebug>
 
 ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
-    : m_graph(scatter),
-      m_inputHandler(new CustomInputHandler())
+    : m_graph(scatter)
+    , m_inputHandler(new CustomInputHandler(m_graph))
 {
-    m_graph->activeTheme()->setType(Q3DTheme::ThemeDigia);
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQualityMedium);
-    m_graph->scene()->activeCamera()->setCameraPreset(Q3DCamera::CameraPresetFront);
+    m_graph->activeTheme()->setType(Q3DTheme::Theme::PrimaryColors);
+    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::Medium);
+    m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::Front);
 
     m_graph->setAxisX(new QValue3DAxis);
     m_graph->setAxisY(new QValue3DAxis);
@@ -32,12 +31,12 @@ ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
 
     QScatter3DSeries *series = new QScatter3DSeries;
     series->setItemLabelFormat(QStringLiteral("@xLabel, @yLabel, @zLabel"));
-    series->setMesh(QAbstract3DSeries::MeshCube);
+    series->setMesh(QAbstract3DSeries::Mesh::Cube);
     series->setItemSize(0.15f);
     m_graph->addSeries(series);
 
     //! [2]
-    m_animationCameraX = new QPropertyAnimation(m_graph->scene()->activeCamera(), "xRotation");
+    m_animationCameraX = new QPropertyAnimation(m_graph, "cameraXRotation");
     m_animationCameraX->setDuration(20000);
     m_animationCameraX->setStartValue(QVariant::fromValue(0.0f));
     m_animationCameraX->setEndValue(QVariant::fromValue(360.0f));
@@ -45,12 +44,12 @@ ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
     //! [2]
 
     //! [3]
-    QPropertyAnimation *upAnimation = new QPropertyAnimation(m_graph->scene()->activeCamera(), "yRotation");
+    QPropertyAnimation *upAnimation = new QPropertyAnimation(m_graph, "cameraYRotation");
     upAnimation->setDuration(9000);
     upAnimation->setStartValue(QVariant::fromValue(5.0f));
     upAnimation->setEndValue(QVariant::fromValue(45.0f));
 
-    QPropertyAnimation *downAnimation = new QPropertyAnimation(m_graph->scene()->activeCamera(), "yRotation");
+    QPropertyAnimation *downAnimation = new QPropertyAnimation(m_graph, "cameraYRotation");
     downAnimation->setDuration(9000);
     downAnimation->setStartValue(QVariant::fromValue(45.0f));
     downAnimation->setEndValue(QVariant::fromValue(5.0f));
@@ -67,13 +66,13 @@ ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
     // Give ownership of the handler to the graph and make it the active handler
     //! [0]
     m_graph->setActiveInputHandler(m_inputHandler);
-    //! [0]
 
-    //! [1]
     m_selectionTimer = new QTimer(this);
-    m_selectionTimer->setInterval(10);
+    m_selectionTimer->setInterval(1000);
     m_selectionTimer->setSingleShot(false);
-    QObject::connect(m_selectionTimer, &QTimer::timeout, this,
+    QObject::connect(m_selectionTimer,
+                     &QTimer::timeout,
+                     this,
                      &ScatterDataModifier::triggerSelection);
     m_selectionTimer->start();
     //! [1]
@@ -118,13 +117,11 @@ void ScatterDataModifier::addData()
     }
 
     // Add data from the QList to datamodel
-    QScatterDataArray *dataArray = new QScatterDataArray;
-    dataArray->resize(itemList.size());
-    QScatterDataItem *ptrToDataArray = &dataArray->first();
-    for (int i = 0; i < itemList.size(); i++) {
-        ptrToDataArray->setPosition(itemList.at(i));
-        ptrToDataArray++;
-    }
+    QScatterDataArray dataArray;
+    dataArray.resize(itemList.size());
+
+    for (int i = 0; i < itemList.size(); i++)
+        dataArray[i].setPosition(itemList.at(i));
 
     m_graph->seriesList().at(0)->dataProxy()->resetArray(dataArray);
 }

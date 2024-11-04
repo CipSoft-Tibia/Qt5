@@ -12,6 +12,7 @@
 #include <string>
 
 #include "base/containers/span.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/strings/string_piece.h"
 #include "net/base/net_export.h"
@@ -115,7 +116,7 @@ class NET_EXPORT_PRIVATE DnsQuery {
   scoped_refptr<IOBufferWithSize> io_buffer_;
 
   // Pointer to the dns header section.
-  dns_protocol::Header* header_ = nullptr;
+  raw_ptr<dns_protocol::Header> header_ = nullptr;
 };
 
 }  // namespace net

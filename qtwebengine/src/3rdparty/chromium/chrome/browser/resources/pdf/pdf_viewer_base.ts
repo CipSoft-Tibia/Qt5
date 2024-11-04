@@ -149,11 +149,6 @@ export abstract class PdfViewerBaseElement extends PolymerElement {
 
     record(UserAction.DOCUMENT_OPENED);
 
-    // Parse open pdf parameters.
-    this.paramsParser = new OpenPdfParamsParser(destination => {
-      return PluginController.getInstance().getNamedDestination(destination);
-    });
-
     // Create the viewport.
     const defaultZoom =
         this.browserApi!.getZoomBehavior() === ZoomBehavior.MANAGE ?
@@ -189,6 +184,16 @@ export abstract class PdfViewerBaseElement extends PolymerElement {
         () => this.loaded);
     pluginController.isActive = true;
     this.currentController = pluginController;
+
+    // Parse open pdf parameters.
+    const getNamedDestinationCallback = (destination: string) => {
+      return PluginController.getInstance().getNamedDestination(destination);
+    };
+    const getPageBoundingBoxCallback = (page: number) => {
+      return PluginController.getInstance().getPageBoundingBox(page);
+    };
+    this.paramsParser = new OpenPdfParamsParser(
+        getNamedDestinationCallback, getPageBoundingBoxCallback);
 
     this.tracker.add(
         pluginController.getEventTarget(),
@@ -354,6 +359,7 @@ export abstract class PdfViewerBaseElement extends PolymerElement {
     this.documentDimensions = documentDimensions;
     this.isUserInitiatedEvent = false;
     this.viewport_!.setDocumentDimensions(this.documentDimensions);
+    this.paramsParser!.setPageCount(documentDimensions.pageDimensions.length);
     this.paramsParser!.setViewportDimensions(this.viewport_!.size);
     this.isUserInitiatedEvent = true;
   }
@@ -432,27 +438,23 @@ export abstract class PdfViewerBaseElement extends PolymerElement {
 
     if (params.position) {
       this.viewport_.goToPageAndXy(
-          params.page ? params.page : 0, params.position.x, params.position.y);
-    } else if (params.page) {
-      this.viewport_.goToPage(params.page);
+          params.page || 0, params.position.x, params.position.y);
     }
 
     if (params.view) {
       this.isUserInitiatedEvent = false;
-      this.viewport_.setFittingType(params.view);
+      const fittingTypeParams = {
+        boundingBox: params.boundingBox,
+        page: params.page || 0,
+        viewPosition: params.viewPosition,
+        fitToWidth: params.view === FittingType.FIT_TO_BOUNDING_BOX_WIDTH,
+      };
+      this.viewport_.setFittingType(params.view, fittingTypeParams);
       this.forceFit(params.view);
-      if (params.viewPosition) {
-        const zoomedPositionShift =
-            params.viewPosition * this.viewport_.getZoom();
-        const currentViewportPosition = this.viewport_.position;
-        if (params.view === FittingType.FIT_TO_WIDTH) {
-          currentViewportPosition.y += zoomedPositionShift;
-        } else if (params.view === FittingType.FIT_TO_HEIGHT) {
-          currentViewportPosition.x += zoomedPositionShift;
-        }
-        this.viewport_.setPosition(currentViewportPosition);
-      }
       this.isUserInitiatedEvent = true;
+    } else if (!params.position && params.page) {
+      // No fitting type provided, so just go to page.
+      this.viewport_.goToPage(params.page);
     }
   }
 

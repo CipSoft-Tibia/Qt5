@@ -56,11 +56,8 @@
 #include "ui/views/widget/widget_delegate.h"
 #endif
 
-#if defined(TOOLKIT_QT)
-#include "qtwebengine/grit/qt_webengine_resources.h"
-#else
-#include "chrome/grit/dev_ui_browser_resources.h"
-#endif
+#include "chrome/grit/accessibility_resources.h"
+#include "chrome/grit/accessibility_resources_map.h"
 
 static const char kTargetsDataFile[] = "targets-data.json";
 
@@ -351,13 +348,16 @@ AccessibilityUI::AccessibilityUI(content::WebUI* web_ui)
 
   // Add required resources.
   html_source->UseStringsJs();
-  html_source->AddResourcePath("accessibility.css", IDR_ACCESSIBILITY_CSS);
-  html_source->AddResourcePath("accessibility.js", IDR_ACCESSIBILITY_JS);
-  html_source->SetDefaultResource(IDR_ACCESSIBILITY_HTML);
+  html_source->AddResourcePaths(
+      base::make_span(kAccessibilityResources, kAccessibilityResourcesSize));
+  html_source->SetDefaultResource(IDR_ACCESSIBILITY_ACCESSIBILITY_HTML);
   html_source->SetRequestFilter(
       base::BindRepeating(&ShouldHandleAccessibilityRequestCallback),
       base::BindRepeating(&HandleAccessibilityRequestCallback,
                           web_ui->GetWebContents()->GetBrowserContext()));
+  html_source->OverrideContentSecurityPolicy(
+      network::mojom::CSPDirectiveName::TrustedTypes,
+      "trusted-types parse-html-subset sanitize-inner-html;");
 
   web_ui->AddMessageHandler(std::make_unique<AccessibilityUIMessageHandler>());
 }

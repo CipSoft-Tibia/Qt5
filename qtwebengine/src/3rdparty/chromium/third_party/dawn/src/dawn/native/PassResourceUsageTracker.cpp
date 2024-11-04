@@ -115,7 +115,14 @@ void SyncScopeUsageTracker::AddBindGroup(BindGroupBase* group) {
 
             case BindingInfoType::Texture: {
                 TextureViewBase* view = group->GetBindingAsTextureView(bindingIndex);
-                TextureViewUsedAs(view, wgpu::TextureUsage::TextureBinding);
+                switch (bindingInfo.texture.sampleType) {
+                    case kInternalResolveAttachmentSampleType:
+                        TextureViewUsedAs(view, kResolveAttachmentLoadingUsage);
+                        break;
+                    default:
+                        TextureViewUsedAs(view, wgpu::TextureUsage::TextureBinding);
+                        break;
+                }
                 break;
             }
 
@@ -123,7 +130,11 @@ void SyncScopeUsageTracker::AddBindGroup(BindGroupBase* group) {
                 TextureViewBase* view = group->GetBindingAsTextureView(bindingIndex);
                 switch (bindingInfo.storageTexture.access) {
                     case wgpu::StorageTextureAccess::WriteOnly:
+                    case wgpu::StorageTextureAccess::ReadWrite:
                         TextureViewUsedAs(view, wgpu::TextureUsage::StorageBinding);
+                        break;
+                    case wgpu::StorageTextureAccess::ReadOnly:
+                        TextureViewUsedAs(view, kReadOnlyStorageTexture);
                         break;
                     case wgpu::StorageTextureAccess::Undefined:
                         UNREACHABLE();

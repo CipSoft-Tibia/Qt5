@@ -9,12 +9,14 @@
 
 #include "base/containers/flat_set.h"
 #include "base/containers/small_map.h"
+#include "components/page_load_metrics/common/page_load_metrics.mojom-forward.h"
 #include "components/page_load_metrics/common/page_load_timing.h"
 #include "components/page_load_metrics/renderer/page_resource_data_use.h"
 #include "components/page_load_metrics/renderer/page_timing_metadata_recorder.h"
 #include "services/network/public/mojom/url_response_head.mojom-forward.h"
 #include "third_party/blink/public/common/loader/loading_behavior_flag.h"
 #include "third_party/blink/public/common/responsiveness_metrics/user_interaction_latency.h"
+#include "third_party/blink/public/common/subresource_load_metrics.h"
 #include "third_party/blink/public/common/use_counter/use_counter_feature_tracker.h"
 #include "third_party/blink/public/web/web_local_frame_client.h"
 
@@ -24,9 +26,17 @@ namespace base {
 class OneShotTimer;
 }  // namespace base
 
+namespace blink {
+struct JavaScriptFrameworkDetectionResult;
+}  // namespace blink
+
 namespace network {
 struct URLLoaderCompletionStatus;
 }  // namespace network
+
+namespace blink {
+struct SoftNavigationMetrics;
+}  // namespace blink
 
 namespace page_load_metrics {
 
@@ -50,14 +60,12 @@ class PageTimingMetricsSender {
   ~PageTimingMetricsSender();
 
   void DidObserveLoadingBehavior(blink::LoadingBehaviorFlag behavior);
+  void DidObserveJavaScriptFrameworks(
+      const blink::JavaScriptFrameworkDetectionResult&);
   void DidObserveSubresourceLoad(
-      uint32_t number_of_subresources_loaded,
-      uint32_t number_of_subresource_loads_handled_by_service_worker,
-      bool pervasive_payload_requested,
-      int64_t pervasive_bytes_fetched,
-      int64_t total_bytes_fetched);
+      const blink::SubresourceLoadMetrics& subresource_load_metrics);
   void DidObserveNewFeatureUsage(const blink::UseCounterFeature& feature);
-  void DidObserveSoftNavigation(uint32_t count);
+  void DidObserveSoftNavigation(blink::SoftNavigationMetrics metrics);
   void DidObserveLayoutShift(double score, bool after_input_or_scroll);
 
   void DidStartResponse(const url::SchemeHostPort& final_response_url,
@@ -80,7 +88,8 @@ class PageTimingMetricsSender {
                                           const gfx::Rect& image_ad_rect);
 
   void DidObserveInputDelay(base::TimeDelta input_delay);
-  void DidObserveUserInteraction(base::TimeDelta max_event_duration,
+  void DidObserveUserInteraction(base::TimeTicks max_event_start,
+                                 base::TimeTicks max_event_end,
                                  blink::UserInteractionType interaction_type);
   // Updates the timing information. Buffers |timing| to be sent over mojo
   // sometime 'soon'.
@@ -100,6 +109,12 @@ class PageTimingMetricsSender {
                               bool completed_before_fcp);
   void SetUpSmoothnessReporting(base::ReadOnlySharedMemoryRegion shared_memory);
   void InitiateUserInteractionTiming();
+  mojom::SoftNavigationMetricsPtr GetSoftNavigationMetrics() {
+    return soft_navigation_metrics_->Clone();
+  }
+
+  void UpdateSoftNavigationMetrics(
+      mojom::SoftNavigationMetricsPtr soft_navigation_metrics);
 
  protected:
   base::OneShotTimer* timer() const { return timer_.get(); }
@@ -107,14 +122,14 @@ class PageTimingMetricsSender {
  private:
   void EnsureSendTimer(bool urgent = false);
   void SendNow();
-  void ClearNewFeatures();
+  void InsertPageResourceDataUse(std::unique_ptr<PageResourceDataUse> data);
 
   std::unique_ptr<PageTimingSender> sender_;
   std::unique_ptr<base::OneShotTimer> timer_;
   mojom::PageLoadTimingPtr last_timing_;
   mojom::CpuTimingPtr last_cpu_timing_;
   mojom::InputTimingPtr input_timing_delta_;
-  mojom::SubresourceLoadMetricsPtr subresource_load_metrics_;
+  absl::optional<blink::SubresourceLoadMetrics> subresource_load_metrics_;
 
   // The the sender keep track of metadata as it comes in, because the sender is
   // scoped to a single committed load.
@@ -126,7 +141,7 @@ class PageTimingMetricsSender {
 
   blink::UseCounterFeatureTracker feature_tracker_;
 
-  uint32_t soft_navigation_count_ = 0;
+  mojom::SoftNavigationMetricsPtr soft_navigation_metrics_;
 
   bool have_sent_ipc_ = false;
 

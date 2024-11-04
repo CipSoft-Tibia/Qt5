@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,17 +8,15 @@
 
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "absl/types/optional.h"
-#include "absl/types/span.h"
 #include "discovery/dnssd/impl/constants.h"
 #include "discovery/dnssd/impl/instance_key.h"
 #include "discovery/dnssd/impl/service_key.h"
 #include "discovery/dnssd/public/dns_sd_instance.h"
-#include "discovery/mdns/mdns_records.h"
 #include "discovery/mdns/public/mdns_constants.h"
+#include "discovery/mdns/public/mdns_records.h"
+#include "util/span_util.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 namespace {
 
 void AddServiceInfoToLabels(const std::string& service,
@@ -109,31 +107,27 @@ MdnsRecord CreateTxtRecord(const DnsSdInstance& endpoint,
 
 ErrorOr<DnsSdTxtRecord> CreateFromDnsTxt(const TxtRecordRdata& txt_data) {
   DnsSdTxtRecord txt;
-  if (txt_data.texts().size() == 1 && txt_data.texts()[0] == "") {
+  if (txt_data.texts().size() == 1 && txt_data.texts()[0].empty()) {
     return txt;
   }
 
   // Iterate backwards so that the first key of each type is the one that is
-  // present at the end, as pet spec.
+  // present at the end, as required by spec.
   for (auto it = txt_data.texts().rbegin(); it != txt_data.texts().rend();
        it++) {
-    const std::string& text = *it;
-    size_t index_of_eq = text.find_first_of('=');
-    if (index_of_eq != std::string::npos) {
-      if (index_of_eq == 0) {
+    auto eq_it = std::find(it->cbegin(), it->cend(), '=');
+    if (eq_it != it->cend()) {
+      if (eq_it == it->cbegin()) {
         return Error::Code::kParameterInvalid;
       }
-      std::string key = text.substr(0, index_of_eq);
-      std::string value = text.substr(index_of_eq + 1);
-      absl::Span<const uint8_t> data(
-          reinterpret_cast<const uint8_t*>(value.data()), value.size());
-      const auto set_result =
-          txt.SetValue(key, std::vector<uint8_t>(data.begin(), data.end()));
+      ByteView key(&*(it->cbegin()), &*eq_it);
+      ByteView value(&*(eq_it + 1), &*(it->cend()));
+      const auto set_result = txt.SetValue(ByteViewToString(key), value);
       if (!set_result.ok()) {
         return set_result;
       }
     } else {
-      const auto set_result = txt.SetFlag(text, true);
+      const auto set_result = txt.SetFlag(ByteViewToString(*it), true);
       if (!set_result.ok()) {
         return set_result;
       }
@@ -198,5 +192,4 @@ std::vector<MdnsRecord> GetDnsRecords(const DnsSdInstanceEndpoint& endpoint) {
   return records;
 }
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

@@ -21,6 +21,29 @@
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/skia/include/core/SkSurface.h"
 
+namespace {
+
+class ScopedPixelLocalStorageInterrupt {
+ public:
+  explicit ScopedPixelLocalStorageInterrupt(
+      blink::DrawingBuffer::Client* client)
+      : client_(client) {
+    if (client_) {
+      client_->DrawingBufferClientInterruptPixelLocalStorage();
+    }
+  }
+  ~ScopedPixelLocalStorageInterrupt() {
+    if (client_) {
+      client_->DrawingBufferClientRestorePixelLocalStorage();
+    }
+  }
+
+ private:
+  blink::DrawingBuffer::Client* const client_;
+};
+
+}  // namespace
+
 namespace blink {
 
 // Large parts of this file have been shamelessly borrowed from
@@ -219,6 +242,8 @@ gfx::Size XRWebGLDrawingBuffer::AdjustSize(const gfx::Size& new_size) {
 
 void XRWebGLDrawingBuffer::UseSharedBuffer(
     const gpu::MailboxHolder& buffer_mailbox_holder) {
+  ScopedPixelLocalStorageInterrupt scoped_pls_interrupt(
+      drawing_buffer_->client());
   gpu::gles2::GLES2Interface* gl = drawing_buffer_->ContextGL();
 
   // Ensure that the mailbox holder is ready to use, the following actions need
@@ -289,6 +314,8 @@ void XRWebGLDrawingBuffer::UseSharedBuffer(
 void XRWebGLDrawingBuffer::DoneWithSharedBuffer() {
   DVLOG(3) << __FUNCTION__;
 
+  ScopedPixelLocalStorageInterrupt scoped_pls_interrupt(
+      drawing_buffer_->client());
   BindAndResolveDestinationFramebuffer();
 
   gpu::gles2::GLES2Interface* gl = drawing_buffer_->ContextGL();
@@ -320,6 +347,8 @@ void XRWebGLDrawingBuffer::DoneWithSharedBuffer() {
 }
 
 void XRWebGLDrawingBuffer::ClearBoundFramebuffer() {
+  ScopedPixelLocalStorageInterrupt scoped_pls_interrupt(
+      drawing_buffer_->client());
   gpu::gles2::GLES2Interface* gl = drawing_buffer_->ContextGL();
 
   GLbitfield clear_bits = GL_COLOR_BUFFER_BIT;
@@ -360,6 +389,8 @@ void XRWebGLDrawingBuffer::Resize(const gfx::Size& new_size) {
   if (ContextLost())
     return;
 
+  ScopedPixelLocalStorageInterrupt scoped_pls_interrupt(
+      drawing_buffer_->client());
   gpu::gles2::GLES2Interface* gl = drawing_buffer_->ContextGL();
 
   size_ = adjusted_size;
@@ -455,6 +486,8 @@ void XRWebGLDrawingBuffer::Resize(const gfx::Size& new_size) {
 
 scoped_refptr<XRWebGLDrawingBuffer::ColorBuffer>
 XRWebGLDrawingBuffer::CreateColorBuffer() {
+  ScopedPixelLocalStorageInterrupt scoped_pls_interrupt(
+      drawing_buffer_->client());
   auto* sii = drawing_buffer_->ContextProvider()->SharedImageInterface();
   uint32_t usage = gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
                    gpu::SHARED_IMAGE_USAGE_GLES2 |
@@ -463,7 +496,7 @@ XRWebGLDrawingBuffer::CreateColorBuffer() {
       alpha_ ? viz::SinglePlaneFormat::kRGBA_8888
              : viz::SinglePlaneFormat::kRGBX_8888,
       size_, gfx::ColorSpace(), kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType,
-      usage, gpu::kNullSurfaceHandle);
+      usage, "XRWebGLDrawingBuffer", gpu::kNullSurfaceHandle);
 
   gpu::gles2::GLES2Interface* gl = drawing_buffer_->ContextGL();
   gl->WaitSyncTokenCHROMIUM(sii->GenUnverifiedSyncToken().GetConstData());
@@ -507,6 +540,7 @@ void XRWebGLDrawingBuffer::BindAndResolveDestinationFramebuffer() {
   gpu::gles2::GLES2Interface* gl = drawing_buffer_->ContextGL();
 
   DrawingBuffer::Client* client = drawing_buffer_->client();
+  ScopedPixelLocalStorageInterrupt scoped_pls_interrupt(client);
 
   // Resolve multisample buffers if needed
   if (WantExplicitResolve()) {
@@ -540,6 +574,7 @@ void XRWebGLDrawingBuffer::SwapColorBuffers() {
   gpu::gles2::GLES2Interface* gl = drawing_buffer_->ContextGL();
 
   DrawingBuffer::Client* client = drawing_buffer_->client();
+  ScopedPixelLocalStorageInterrupt scoped_pls_interrupt(client);
 
   BindAndResolveDestinationFramebuffer();
 
@@ -607,8 +642,8 @@ XRWebGLDrawingBuffer::TransferToStaticBitmapImage() {
     // to transferToImageBitmap are made back-to-back, if the framebuffer is
     // incomplete (likely due to a failed buffer allocation), or when the
     // context gets lost.
-    sk_sp<SkSurface> surface =
-        SkSurface::MakeRasterN32Premul(size_.width(), size_.height());
+    sk_sp<SkSurface> surface = SkSurfaces::Raster(
+        SkImageInfo::MakeN32Premul(size_.width(), size_.height()));
     return UnacceleratedStaticBitmapImage::Create(surface->makeImageSnapshot());
   }
 

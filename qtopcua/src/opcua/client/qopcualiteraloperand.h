@@ -10,7 +10,7 @@
 
 QT_BEGIN_NAMESPACE
 
-// OPC-UA part 4, 7.4.4.3
+// OPC UA 1.05 part 4, 7.7.4.3
 class QOpcUaLiteralOperandData;
 class Q_OPCUA_EXPORT QOpcUaLiteralOperand
 {
@@ -29,6 +29,17 @@ public:
     void setType(QOpcUa::Types type);
 
 private:
+    friend Q_OPCUA_EXPORT bool comparesEqual(const QOpcUaLiteralOperand &lhs,
+                                             const QOpcUaLiteralOperand &rhs) noexcept;
+    friend bool operator==(const QOpcUaLiteralOperand &lhs,
+                           const QOpcUaLiteralOperand &rhs) noexcept
+    { return comparesEqual(lhs, rhs); }
+    friend bool operator!=(const QOpcUaLiteralOperand &lhs,
+                           const QOpcUaLiteralOperand &rhs) noexcept
+    {
+        return !(lhs == rhs);
+    }
+
     QSharedDataPointer<QOpcUaLiteralOperandData> data;
 };
 

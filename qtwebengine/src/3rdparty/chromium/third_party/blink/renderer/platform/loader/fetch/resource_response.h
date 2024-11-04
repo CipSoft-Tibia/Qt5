@@ -34,13 +34,13 @@
 #include "base/time/time.h"
 #include "net/base/ip_endpoint.h"
 #include "net/ssl/ssl_info.h"
-#include "services/network/public/cpp/trigger_attestation.h"
-#include "services/network/public/mojom/alternate_protocol_usage.mojom-shared.h"
-#include "services/network/public/mojom/cross_origin_embedder_policy.mojom-shared.h"
+#include "services/network/public/cpp/cors/cors_error_status.h"
+#include "services/network/public/cpp/trigger_verification.h"
+#include "services/network/public/mojom/cross_origin_embedder_policy.mojom-forward.h"
 #include "services/network/public/mojom/fetch_api.mojom-shared.h"
 #include "services/network/public/mojom/ip_address_space.mojom-shared.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/blink/public/mojom/timing/resource_timing.mojom-blink.h"
+#include "third_party/blink/public/mojom/timing/resource_timing.mojom-blink-forward.h"
 #include "third_party/blink/public/platform/web_url_response.h"
 #include "third_party/blink/renderer/platform/network/http_header_map.h"
 #include "third_party/blink/renderer/platform/network/http_parsers.h"
@@ -282,6 +282,11 @@ class PLATFORM_EXPORT ResourceResponse final {
     did_service_worker_navigation_preload_ = value;
   }
 
+  bool DidUseSharedDictionary() const { return did_use_shared_dictionary_; }
+  void SetDidUseSharedDictionary(bool value) {
+    did_use_shared_dictionary_ = value;
+  }
+
   base::Time ResponseTime() const { return response_time_; }
   void SetResponseTime(base::Time response_time) {
     response_time_ = response_time;
@@ -294,13 +299,13 @@ class PLATFORM_EXPORT ResourceResponse final {
     remote_ip_endpoint_ = value;
   }
 
-  const absl::optional<network::TriggerAttestation>& GetTriggerAttestation()
+  const WTF::Vector<network::TriggerVerification>& GetTriggerVerifications()
       const {
-    return trigger_attestation_;
+    return trigger_verifications_;
   }
-  void SetTriggerAttestation(
-      const absl::optional<network::TriggerAttestation>& value) {
-    trigger_attestation_ = value;
+  void SetTriggerVerifications(
+      WTF::Vector<network::TriggerVerification> value) {
+    trigger_verifications_ = std::move(value);
   }
 
   network::mojom::IPAddressSpace AddressSpace() const { return address_space_; }
@@ -313,6 +318,15 @@ class PLATFORM_EXPORT ResourceResponse final {
   }
   void SetClientAddressSpace(network::mojom::IPAddressSpace value) {
     client_address_space_ = value;
+  }
+
+  network::mojom::PrivateNetworkAccessPreflightResult
+  PrivateNetworkAccessPreflightResult() const {
+    return private_network_access_preflight_result_;
+  }
+  void SetPrivateNetworkAccessPreflightResult(
+      network::mojom::PrivateNetworkAccessPreflightResult result) {
+    private_network_access_preflight_result_ = result;
   }
 
   bool WasAlpnNegotiated() const { return was_alpn_negotiated_; }
@@ -472,6 +486,12 @@ class PLATFORM_EXPORT ResourceResponse final {
   network::mojom::IPAddressSpace client_address_space_ =
       network::mojom::IPAddressSpace::kUnknown;
 
+  // The result of any PNA preflight sent for this request, if any.
+  // TODO(https://crbug.com/1268378): Remove this once preflights are enforced.
+  network::mojom::PrivateNetworkAccessPreflightResult
+      private_network_access_preflight_result_ =
+          network::mojom::PrivateNetworkAccessPreflightResult::kNone;
+
   bool was_cached_ : 1;
   bool connection_reused_ : 1;
   bool is_null_ : 1;
@@ -501,6 +521,9 @@ class PLATFORM_EXPORT ResourceResponse final {
   // True if service worker navigation preload was performed due to
   // the request for this resource.
   bool did_service_worker_navigation_preload_ : 1;
+
+  // True if a shared dictionary was used to decompress the response body.
+  bool did_use_shared_dictionary_ : 1;
 
   // True if this resource is stale and needs async revalidation. Will only
   // possibly be set if the load_flags indicated SUPPORT_ASYNC_REVALIDATION.
@@ -642,7 +665,7 @@ class PLATFORM_EXPORT ResourceResponse final {
 
   bool emitted_extra_info_ = false;
 
-  absl::optional<network::TriggerAttestation> trigger_attestation_;
+  WTF::Vector<network::TriggerVerification> trigger_verifications_;
 };
 
 }  // namespace blink

@@ -17,12 +17,13 @@ licenses(["notice"])
 cc_library(
     name = "scanning",
     srcs = [
-        "fast_pair_discoverable_scanner_impl.cc",
+        "fast_pair_discoverable_scanner.cc",
+        "fast_pair_non_discoverable_scanner.cc",
         "fast_pair_scanner_impl.cc",
     ],
     hdrs = [
         "fast_pair_discoverable_scanner.h",
-        "fast_pair_discoverable_scanner_impl.h",
+        "fast_pair_non_discoverable_scanner.h",
         "fast_pair_scanner.h",
         "fast_pair_scanner_impl.h",
     ],
@@ -33,18 +34,18 @@ cc_library(
     deps = [
         "//fastpair/common",
         "//fastpair/dataparser",
-        "//fastpair/internal/ble",
+        "//fastpair/internal/mediums",
         "//fastpair/proto:fastpair_cc_proto",
         "//fastpair/repository",
-        "//fastpair/server_access",
+        "//fastpair/repository:device_repository",
         "//internal/base",
         "//internal/platform:base",
         "//internal/platform:comm",
-        "//internal/platform:logging",
         "//internal/platform:types",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -54,7 +55,6 @@ cc_library(
         "fake_fast_pair_scanner.cc",
     ],
     hdrs = [
-        "fake_fast_pair_discoverable_scanner.h",
         "fake_fast_pair_scanner.h",
     ],
     visibility = [
@@ -78,6 +78,7 @@ cc_test(
     deps = [
         ":scanning",
         "//fastpair/common",
+        "//fastpair/internal/mediums",
         "//internal/platform:base",
         "//internal/platform:comm",
         "//internal/platform:test_util",
@@ -91,22 +92,41 @@ cc_test(
 )
 
 cc_test(
-    name = "fast_pair_discoverable_scanner_impl_test",
+    name = "fast_pair_discoverable_scanner_test",
     size = "small",
     srcs = [
-        "fast_pair_discoverable_scanner_impl_test.cc",
+        "fast_pair_discoverable_scanner_test.cc",
     ],
     shard_count = 16,
     deps = [
         ":scanning",
-        "//fastpair/dataparser",
-        "//fastpair/server_access:test_support",
+        ":test_support",
+        "//fastpair/repository:device_repository",
+        "//fastpair/repository:test_support",
         "//fastpair/testing",
         "//internal/platform:comm",
-        "//internal/platform:test_util",
         "//internal/platform/implementation/g3",  # build_cleaner: keep
         "@com_github_protobuf_matchers//protobuf-matchers",
         "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "fast_pair_non_discoverable_scanner_test",
+    size = "small",
+    srcs = [
+        "fast_pair_non_discoverable_scanner_test.cc",
+    ],
+    shard_count = 16,
+    deps = [
+        ":scanning",
+        ":test_support",
+        "//fastpair/common",
+        "//fastpair/repository:test_support",
+        "//fastpair/testing",
+        "//internal/platform/implementation/g3",  # build_cleaner: keep
+        "@com_github_protobuf_matchers//protobuf-matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

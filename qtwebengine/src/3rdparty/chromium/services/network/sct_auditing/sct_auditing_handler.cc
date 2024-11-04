@@ -185,7 +185,7 @@ void SCTAuditingHandler::MaybeEnqueueReport(
               std::move(sct_metadata));
 }
 
-bool SCTAuditingHandler::SerializeData(std::string* output) {
+absl::optional<std::string> SCTAuditingHandler::SerializeData() {
   DCHECK(foreground_runner_->RunsTasksInCurrentSequence());
 
   base::Value::List reports;
@@ -193,30 +193,32 @@ bool SCTAuditingHandler::SerializeData(std::string* output) {
     auto reporter_key = kv.first;
     auto* reporter = kv.second.get();
 
-    base::Value::Dict report_entry;
+    std::string serialized_report;
+    reporter->report()->SerializeToString(&serialized_report);
+    base::Base64Encode(serialized_report, &serialized_report);
 
-    report_entry.Set(kReporterKeyKey, reporter_key.ToString());
+    auto report_entry =
+        base::Value::Dict()
+            .Set(kReporterKeyKey, reporter_key.ToString())
+            .Set(kBackoffEntryKey,
+                 net::BackoffEntrySerializer::SerializeToList(
+                     *reporter->backoff_entry(), base::Time::Now()))
+            .Set(kAlreadyCountedKey, reporter->counted_towards_report_limit())
+            .Set(kReportKey, serialized_report);
 
     if (reporter->sct_hashdance_metadata()) {
       report_entry.Set(kSCTHashdanceMetadataKey,
                        reporter->sct_hashdance_metadata()->ToValue());
     }
 
-    base::Value::List backoff_entry_value =
-        net::BackoffEntrySerializer::SerializeToList(*reporter->backoff_entry(),
-                                                     base::Time::Now());
-    report_entry.Set(kBackoffEntryKey, std::move(backoff_entry_value));
-    report_entry.Set(kAlreadyCountedKey,
-                     reporter->counted_towards_report_limit());
-
-    std::string serialized_report;
-    reporter->report()->SerializeToString(&serialized_report);
-    base::Base64Encode(serialized_report, &serialized_report);
-    report_entry.Set(kReportKey, serialized_report);
-
     reports.Append(std::move(report_entry));
   }
-  return base::JSONWriter::Write(reports, output);
+
+  std::string output;
+  if (!base::JSONWriter::Write(reports, &output)) {
+    return absl::nullopt;
+  }
+  return output;
 }
 
 void SCTAuditingHandler::DeserializeData(const std::string& serialized) {
@@ -380,9 +382,10 @@ void SCTAuditingHandler::ClearPendingReports(base::OnceClosure callback) {
                   return std::move(cb).Run();
                 },
                 std::move(callback))));
-    auto data = std::make_unique<std::string>();
-    SerializeData(data.get());
-    writer_->WriteNow(std::move(data));
+    absl::optional<std::string> data = SerializeData();
+    if (data) {
+      writer_->WriteNow(std::move(*data));
+    }
   } else {
     std::move(callback).Run();
   }

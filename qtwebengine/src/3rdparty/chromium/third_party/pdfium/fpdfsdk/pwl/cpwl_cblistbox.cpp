@@ -74,8 +74,7 @@ bool CPWL_CBListBox::OnMovementKeyDown(FWL_VKEYCODE nKeyCode,
       m_pListCtrl->OnVK_RIGHT(IsSHIFTKeyDown(nFlag), IsCTRLKeyDown(nFlag));
       break;
     default:
-      NOTREACHED();
-      break;
+      NOTREACHED_NORETURN();
   }
   return OnNotifySelectionChanged(true, nFlag);
 }

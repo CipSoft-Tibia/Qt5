@@ -345,11 +345,12 @@ LIBGAV1_ALWAYS_INLINE void ButterflyRotation_FirstIsZero(int16x8_t* a,
                                                          int16x8_t* b,
                                                          const int angle,
                                                          const bool flip) {
+  // Clang < 14 targeting armv8.1-a+ optimizes vqrdmulhq_n_s16 and vqsubq_s16
+  // (in HadamardRotation) into vqrdmlshq_s16 resulting in an "off by one"
+  // error. This behavior was fixed in 14.0.0:
+  // https://github.com/llvm/llvm-project/commit/82973edfb72a95b442fa6d2bb404e15a4031855e
 #if defined(__ARM_FEATURE_QRDMX) && defined(__aarch64__) && \
-    defined(__clang__)  // ARM v8.1-A
-  // Clang optimizes vqrdmulhq_n_s16 and vqsubq_s16 (in HadamardRotation) into
-  // vqrdmlshq_s16 resulting in an "off by one" error. For now, do not use
-  // vqrdmulhq_n_s16().
+    defined(__clang__) && __clang_major__ < 14
   const int16_t cos128 = Cos128(angle);
   const int16_t sin128 = Sin128(angle);
   const int32x4_t x0 = vmull_n_s16(vget_low_s16(*b), -sin128);

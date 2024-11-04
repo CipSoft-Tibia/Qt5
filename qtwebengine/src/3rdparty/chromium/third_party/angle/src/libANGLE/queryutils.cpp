@@ -372,6 +372,9 @@ void QueryTexParameterBase(const Context *context,
         case GL_TEXTURE_PROTECTED_EXT:
             *params = CastFromGLintStateValue<ParamType>(pname, texture->hasProtectedContent());
             break;
+        case GL_TEXTURE_TILING_EXT:
+            *params = CastFromGLintStateValue<ParamType>(pname, texture->getTilingMode());
+            break;
         default:
             UNREACHABLE();
             break;
@@ -484,6 +487,12 @@ void SetTexParameterBase(Context *context, Texture *texture, GLenum pname, const
             break;
         case GL_TEXTURE_PROTECTED_EXT:
             texture->setProtectedContent(context, (params[0] == GL_TRUE));
+            break;
+        case GL_RENDERABILITY_VALIDATION_ANGLE:
+            texture->setRenderabilityValidation(context, (params[0] == GL_TRUE));
+            break;
+        case GL_TEXTURE_TILING_EXT:
+            texture->setTilingMode(context, ConvertToGLenum(pname, params[0]));
             break;
         default:
             UNREACHABLE();
@@ -691,7 +700,8 @@ void QueryBufferParameterBase(const Buffer *buffer, GLenum pname, ParamType *par
     }
 }
 
-GLint GetCommonVariableProperty(const sh::ShaderVariable &var, GLenum prop)
+template <typename T>
+GLint GetCommonVariableProperty(const T &var, GLenum prop)
 {
     switch (prop)
     {
@@ -715,19 +725,20 @@ GLint GetCommonVariableProperty(const sh::ShaderVariable &var, GLenum prop)
 
 GLint GetInputResourceProperty(const Program *program, GLuint index, GLenum prop)
 {
-    const sh::ShaderVariable &variable = program->getInputResource(index);
+    const ProgramInput &variable = program->getInputResource(index);
 
     switch (prop)
     {
         case GL_TYPE:
+            return clampCast<GLint>(variable.getType());
         case GL_ARRAY_SIZE:
-            return GetCommonVariableProperty(variable, prop);
+            return clampCast<GLint>(variable.getBasicTypeElementCount());
 
         case GL_NAME_LENGTH:
             return clampCast<GLint>(program->getInputResourceName(index).size() + 1u);
 
         case GL_LOCATION:
-            return variable.isBuiltIn() ? GL_INVALID_INDEX : variable.location;
+            return variable.isBuiltIn() ? GL_INVALID_INDEX : variable.getLocation();
 
         // The query is targeted at the set of active input variables used by the first shader stage
         // of program. If program contains multiple shader stages then input variables from any
@@ -747,7 +758,7 @@ GLint GetInputResourceProperty(const Program *program, GLuint index, GLenum prop
             return program->getState().getFirstAttachedShaderStageType() ==
                    ShaderType::TessEvaluation;
         case GL_IS_PER_PATCH_EXT:
-            return variable.isPatch;
+            return variable.isPatch();
 
         default:
             UNREACHABLE();
@@ -872,6 +883,16 @@ GLint FindMaxSize(const std::vector<T> &resources, M member)
     return max;
 }
 
+GLint FindMaxNameLength(const std::vector<std::string> &names)
+{
+    GLint max = 0;
+    for (const std::string &name : names)
+    {
+        max = std::max(max, clampCast<GLint>(name.size()));
+    }
+    return max;
+}
+
 GLint QueryProgramInterfaceMaxNameLength(const Program *program, GLenum programInterface)
 {
     GLint maxNameLength = 0;
@@ -886,7 +907,7 @@ GLint QueryProgramInterfaceMaxNameLength(const Program *program, GLenum programI
             break;
 
         case GL_UNIFORM:
-            maxNameLength = FindMaxSize(program->getState().getUniforms(), &LinkedUniform::name);
+            maxNameLength = FindMaxNameLength(program->getState().getUniformNames());
             break;
 
         case GL_UNIFORM_BLOCK:
@@ -1317,7 +1338,7 @@ void QueryProgramiv(Context *context, const Program *program, GLenum pname, GLin
             *params = program->isValidated();
             return;
         case GL_INFO_LOG_LENGTH:
-            *params = program->getExecutable().getInfoLogLength();
+            *params = program->getInfoLogLength();
             return;
         case GL_ATTACHED_SHADERS:
             *params = program->getAttachedShadersCount();
@@ -1896,27 +1917,31 @@ GLint GetUniformResourceProperty(const Program *program, GLuint index, const GLe
     switch (resourceProp)
     {
         case GL_TYPE:
+            return clampCast<GLint>(uniform.getType());
+
         case GL_ARRAY_SIZE:
+            return clampCast<GLint>(uniform.getBasicTypeElementCount());
+
         case GL_NAME_LENGTH:
-            return GetCommonVariableProperty(uniform, resourceProp);
+            return clampCast<GLint>(program->getUniformNameByIndex(index).size() + 1u);
 
         case GL_LOCATION:
-            return program->getUniformLocation(uniform.name).value;
+            return program->getUniformLocation(program->getUniformNameByIndex(index)).value;
 
         case GL_BLOCK_INDEX:
-            return (uniform.isAtomicCounter() ? -1 : uniform.bufferIndex);
+            return (uniform.isAtomicCounter() ? -1 : uniform.getBufferIndex());
 
         case GL_OFFSET:
-            return uniform.blockInfo.offset;
+            return uniform.flagBits.isBlock ? uniform.blockOffset : -1;
 
         case GL_ARRAY_STRIDE:
-            return uniform.blockInfo.arrayStride;
+            return uniform.flagBits.isBlock ? uniform.blockArrayStride : -1;
 
         case GL_MATRIX_STRIDE:
-            return uniform.blockInfo.matrixStride;
+            return uniform.flagBits.isBlock ? uniform.blockMatrixStride : -1;
 
         case GL_IS_ROW_MAJOR:
-            return static_cast<GLint>(uniform.blockInfo.isRowMajorMatrix);
+            return uniform.flagBits.blockIsRowMajorMatrix ? 1 : 0;
 
         case GL_REFERENCED_BY_VERTEX_SHADER:
             return uniform.isActive(ShaderType::Vertex);
@@ -1937,7 +1962,7 @@ GLint GetUniformResourceProperty(const Program *program, GLuint index, const GLe
             return uniform.isActive(ShaderType::TessEvaluation);
 
         case GL_ATOMIC_COUNTER_BUFFER_INDEX:
-            return (uniform.isAtomicCounter() ? uniform.bufferIndex : -1);
+            return (uniform.isAtomicCounter() ? uniform.getBufferIndex() : -1);
 
         default:
             UNREACHABLE();
@@ -3075,6 +3100,7 @@ unsigned int GetTexParameterCount(GLenum pname)
         case GL_DEPTH_STENCIL_TEXTURE_MODE:
         case GL_TEXTURE_NATIVE_ID_ANGLE:
         case GL_REQUIRED_TEXTURE_IMAGE_UNITS_OES:
+        case GL_RENDERABILITY_VALIDATION_ANGLE:
             return 1;
         default:
             return 0;
@@ -3244,6 +3270,36 @@ bool GetQueryParameterInfo(const State &glState,
             *numParams = 1;
             return true;
         }
+        case GL_POLYGON_OFFSET_POINT_NV:
+        {
+            if (!extensions.polygonModeNV)
+            {
+                return false;
+            }
+            *type      = GL_BOOL;
+            *numParams = 1;
+            return true;
+        }
+        case GL_POLYGON_OFFSET_LINE_NV:  // = GL_POLYGON_OFFSET_LINE_ANGLE
+        {
+            if (!extensions.polygonModeAny())
+            {
+                return false;
+            }
+            *type      = GL_BOOL;
+            *numParams = 1;
+            return true;
+        }
+        case GL_DEPTH_CLAMP_EXT:
+        {
+            if (!extensions.depthClampEXT)
+            {
+                return false;
+            }
+            *type      = GL_BOOL;
+            *numParams = 1;
+            return true;
+        }
         case GL_COLOR_LOGIC_OP:
         {
             if (!extensions.logicOpANGLE)
@@ -3373,6 +3429,16 @@ bool GetQueryParameterInfo(const State &glState,
             *type      = GL_INT;
             *numParams = 1;
             return true;
+        case GL_POLYGON_MODE_NV:  // = GL_POLYGON_MODE_ANGLE
+        {
+            if (!extensions.polygonModeAny())
+            {
+                return false;
+            }
+            *type      = GL_INT;
+            *numParams = 1;
+            return true;
+        }
         case GL_PRIMITIVE_BOUNDING_BOX:
             if (!extensions.primitiveBoundingBoxAny())
             {
@@ -3791,7 +3857,6 @@ bool GetQueryParameterInfo(const State &glState,
         case GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS:
         case GL_UNPACK_IMAGE_HEIGHT:
         case GL_UNPACK_SKIP_IMAGES:
-        case GL_FRAGMENT_INTERPOLATION_OFFSET_BITS_OES:
         {
             *type      = GL_INT;
             *numParams = 1;
@@ -3820,12 +3885,30 @@ bool GetQueryParameterInfo(const State &glState,
         }
 
         case GL_MAX_TEXTURE_LOD_BIAS:
-        case GL_MIN_FRAGMENT_INTERPOLATION_OFFSET_OES:
-        case GL_MAX_FRAGMENT_INTERPOLATION_OFFSET_OES:
         {
             *type      = GL_FLOAT;
             *numParams = 1;
             return true;
+        }
+    }
+
+    if (extensions.shaderMultisampleInterpolationOES)
+    {
+        switch (pname)
+        {
+            case GL_MIN_FRAGMENT_INTERPOLATION_OFFSET_OES:
+            case GL_MAX_FRAGMENT_INTERPOLATION_OFFSET_OES:
+            {
+                *type      = GL_FLOAT;
+                *numParams = 1;
+                return true;
+            }
+            case GL_FRAGMENT_INTERPOLATION_OFFSET_BITS_OES:
+            {
+                *type      = GL_INT;
+                *numParams = 1;
+                return true;
+            }
         }
     }
 
@@ -4119,7 +4202,7 @@ void QueryProgramPipelineiv(const Context *context,
             *params = 0;
             if (programPipeline)
             {
-                *params = programPipeline->getExecutable().getInfoLogLength();
+                *params = programPipeline->getInfoLogLength();
             }
             break;
         }

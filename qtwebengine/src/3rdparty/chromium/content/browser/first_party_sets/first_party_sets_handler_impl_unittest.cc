@@ -13,6 +13,7 @@
 #include "base/json/json_reader.h"
 #include "base/run_loop.h"
 #include "base/test/bind.h"
+#include "base/test/gmock_expected_support.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
@@ -54,12 +55,17 @@ namespace {
 using ParseErrorType = FirstPartySetsHandler::ParseErrorType;
 using ParseWarningType = FirstPartySetsHandler::ParseWarningType;
 
-const char* kAdditionsField = "additions";
-const char* kPrimaryField = "primary";
-const char* kCctldsField = "ccTLDs";
+constexpr char kAdditionsField[] = "additions";
+constexpr char kPrimaryField[] = "primary";
+constexpr char kCctldsField[] = "ccTLDs";
 
-const char* kFirstPartySetsClearSiteDataOutcomeHistogram =
+constexpr char kFirstPartySetsClearSiteDataOutcomeHistogram[] =
     "FirstPartySets.Initialization.ClearSiteDataOutcome";
+
+constexpr char kDelayedQueriesCountHistogram[] =
+    "Cookie.FirstPartySets.Browser.DelayedQueriesCount";
+constexpr char kMostDelayedQueryDeltaHistogram[] =
+    "Cookie.FirstPartySets.Browser.MostDelayedQueryDelta";
 
 }  // namespace
 
@@ -82,12 +88,10 @@ TEST(FirstPartySetsHandlerImpl, ValidateEnterprisePolicy_ValidPolicy) {
             )")
                           .value();
   // Validation doesn't fail with an error and there are no warnings to output.
-  std::pair<absl::optional<FirstPartySetsHandler::ParseError>,
-            std::vector<FirstPartySetsHandler::ParseWarning>>
-      opt_error_and_warnings =
-          FirstPartySetsHandler::ValidateEnterprisePolicy(input.GetDict());
-  EXPECT_FALSE(opt_error_and_warnings.first.has_value());
-  EXPECT_THAT(opt_error_and_warnings.second, IsEmpty());
+  auto [success, warnings] =
+      FirstPartySetsHandler::ValidateEnterprisePolicy(input.GetDict());
+  EXPECT_TRUE(success.has_value());
+  EXPECT_THAT(warnings, IsEmpty());
 }
 
 TEST(FirstPartySetsHandlerImpl,
@@ -109,18 +113,15 @@ TEST(FirstPartySetsHandlerImpl,
             )")
                           .value();
   // Validation succeeds without errors.
-  std::pair<absl::optional<FirstPartySetsHandler::ParseError>,
-            std::vector<FirstPartySetsHandler::ParseWarning>>
-      opt_error_and_warnings =
-          FirstPartySetsHandler::ValidateEnterprisePolicy(input.GetDict());
-  EXPECT_FALSE(opt_error_and_warnings.first.has_value());
+  auto [success, warnings] =
+      FirstPartySetsHandler::ValidateEnterprisePolicy(input.GetDict());
+  EXPECT_TRUE(success.has_value());
   // Outputs metadata that can be used to surface a descriptive warning.
-  EXPECT_EQ(opt_error_and_warnings.second,
-            std::vector<FirstPartySetsHandler::ParseWarning>{
-                FirstPartySetsHandler::ParseWarning(
-                    ParseWarningType::kCctldKeyNotCanonical,
-                    {kAdditionsField, 0, kCctldsField,
-                     "https://non-canonical.test"})});
+  EXPECT_THAT(
+      warnings,
+      UnorderedElementsAre(FirstPartySetsHandler::ParseWarning(
+          ParseWarningType::kCctldKeyNotCanonical,
+          {kAdditionsField, 0, kCctldsField, "https://non-canonical.test"})));
 }
 
 TEST(FirstPartySetsHandlerImpl, ValidateEnterprisePolicy_InvalidPolicy) {
@@ -143,25 +144,20 @@ TEST(FirstPartySetsHandlerImpl, ValidateEnterprisePolicy_InvalidPolicy) {
               }
             )")
                           .value();
-  // Validation fails with an error.
-  std::pair<absl::optional<FirstPartySetsHandler::ParseError>,
-            std::vector<FirstPartySetsHandler::ParseWarning>>
-      opt_error_and_warnings =
-          FirstPartySetsHandler::ValidateEnterprisePolicy(input.GetDict());
-  EXPECT_TRUE(opt_error_and_warnings.first.has_value());
-  // An appropriate ParseError is returned.
-  EXPECT_EQ(
-      opt_error_and_warnings.first.value(),
-      FirstPartySetsHandler::ParseError(ParseErrorType::kNonDisjointSets,
-                                        {kAdditionsField, 0, kPrimaryField}));
+  // Validation fails with an error and an appropriate ParseError is returned.
+  EXPECT_THAT(
+      FirstPartySetsHandler::ValidateEnterprisePolicy(input.GetDict()).first,
+      base::test::ErrorIs(FirstPartySetsHandler::ParseError(
+          ParseErrorType::kNonDisjointSets,
+          {kAdditionsField, 0, kPrimaryField})));
 }
 
-class FirstPartySetsHandlerImplEnabledTest : public ::testing::Test {
+class FirstPartySetsHandlerImplTest : public ::testing::Test {
  public:
-  explicit FirstPartySetsHandlerImplEnabledTest()
+  explicit FirstPartySetsHandlerImplTest(bool enabled)
       : handler_(FirstPartySetsHandlerImpl::CreateForTesting(
-            /*enabled=*/true,
-            /*embedder_will_provide_public_sets=*/true)) {
+            /*enabled=*/enabled,
+            /*embedder_will_provide_public_sets=*/enabled)) {
     CHECK(scoped_dir_.CreateUniqueTempDir());
     CHECK(PathExists(scoped_dir_.GetPath()));
   }
@@ -254,6 +250,31 @@ class FirstPartySetsHandlerImplEnabledTest : public ::testing::Test {
   FirstPartySetsHandlerImpl handler_;
 };
 
+class FirstPartySetsHandlerImplDisabledTest
+    : public FirstPartySetsHandlerImplTest {
+ public:
+  FirstPartySetsHandlerImplDisabledTest()
+      : FirstPartySetsHandlerImplTest(/*enabled=*/false) {}
+};
+
+TEST_F(FirstPartySetsHandlerImplDisabledTest, InitMetrics) {
+  base::HistogramTester histogram_tester;
+  handler().Init(
+      /*user_data_dir=*/{}, LocalSetDeclaration());
+
+  base::RunLoop().RunUntilIdle();
+
+  histogram_tester.ExpectTotalCount(kDelayedQueriesCountHistogram, 1);
+  histogram_tester.ExpectTotalCount(kMostDelayedQueryDeltaHistogram, 1);
+}
+
+class FirstPartySetsHandlerImplEnabledTest
+    : public FirstPartySetsHandlerImplTest {
+ public:
+  FirstPartySetsHandlerImplEnabledTest()
+      : FirstPartySetsHandlerImplTest(/*enabled=*/true) {}
+};
+
 TEST_F(FirstPartySetsHandlerImplEnabledTest, EmptyDBPath) {
   net::SchemefulSite example(GURL("https://example.test"));
   net::SchemefulSite associated(GURL("https://associatedsite1.test"));
@@ -305,6 +326,9 @@ TEST_F(FirstPartySetsHandlerImplEnabledTest,
                                 foo, net::SiteType::kPrimary, absl::nullopt)),
                   Pair(associated, net::FirstPartySetEntry(
                                        foo, net::SiteType::kAssociated, 0))));
+
+  histogram.ExpectTotalCount(kDelayedQueriesCountHistogram, 1);
+  histogram.ExpectTotalCount(kMostDelayedQueryDeltaHistogram, 1);
 
   ClearSiteDataOnChangedSetsForContextAndWait(
       context(), browser_context_id, net::FirstPartySetsContextConfig());
@@ -363,6 +387,8 @@ TEST_F(FirstPartySetsHandlerImplEnabledTest,
                                        absl::nullopt))));
   histogram.ExpectUniqueSample(kFirstPartySetsClearSiteDataOutcomeHistogram,
                                /*sample=*/true, 1);
+  histogram.ExpectTotalCount(kDelayedQueriesCountHistogram, 1);
+  histogram.ExpectTotalCount(kMostDelayedQueryDeltaHistogram, 1);
 }
 
 TEST_F(FirstPartySetsHandlerImplEnabledTest,
@@ -501,6 +527,8 @@ TEST_F(FirstPartySetsHandlerImplEnabledTest,
   EXPECT_EQ(GetPersistedSetsAndWait(browser_context_id), absl::nullopt);
   // Should not be recorded.
   histogram.ExpectTotalCount(kFirstPartySetsClearSiteDataOutcomeHistogram, 0);
+  histogram.ExpectTotalCount(kDelayedQueriesCountHistogram, 1);
+  histogram.ExpectTotalCount(kMostDelayedQueryDeltaHistogram, 1);
 }
 
 TEST_F(FirstPartySetsHandlerImplEnabledTest,
@@ -548,6 +576,8 @@ TEST_F(FirstPartySetsHandlerImplEnabledTest,
                                        absl::nullopt))));
   histogram.ExpectUniqueSample(kFirstPartySetsClearSiteDataOutcomeHistogram,
                                /*sample=*/true, 1);
+  histogram.ExpectTotalCount(kDelayedQueriesCountHistogram, 1);
+  histogram.ExpectTotalCount(kMostDelayedQueryDeltaHistogram, 1);
 }
 
 TEST_F(FirstPartySetsHandlerImplEnabledTest,
@@ -638,7 +668,6 @@ TEST_F(FirstPartySetsHandlerImplEnabledTest,
 
   base::test::TestFuture<net::FirstPartySetMetadata> future;
   handler().ComputeFirstPartySetMetadata(example, &associated,
-                                         /*party_context=*/{},
                                          net::FirstPartySetsContextConfig(),
                                          future.GetCallback());
   EXPECT_TRUE(future.IsReady());
@@ -651,9 +680,9 @@ TEST_F(FirstPartySetsHandlerImplEnabledTest,
   base::test::TestFuture<net::FirstPartySetMetadata> future;
   net::SchemefulSite example(GURL("https://example.test"));
   net::SchemefulSite associated(GURL("https://associatedsite.test"));
-  handler().ComputeFirstPartySetMetadata(
-      example, &associated, /*party_context=*/{},
-      net::FirstPartySetsContextConfig(), future.GetCallback());
+  handler().ComputeFirstPartySetMetadata(example, &associated,
+                                         net::FirstPartySetsContextConfig(),
+                                         future.GetCallback());
   EXPECT_FALSE(future.IsReady());
 
   handler().Init(scoped_dir_.GetPath(), LocalSetDeclaration());

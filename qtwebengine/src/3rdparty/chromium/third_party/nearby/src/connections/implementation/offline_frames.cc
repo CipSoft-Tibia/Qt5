@@ -14,15 +14,18 @@
 
 #include "connections/implementation/offline_frames.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "connections/implementation/flags/nearby_connections_feature_flags.h"
 #include "connections/implementation/offline_frames_validator.h"
-#include "connections/status.h"
-#include "internal/platform/byte_array.h"
 #include "connections/implementation/proto/offline_wire_formats.pb.h"
+#include "connections/status.h"
+#include "internal/flags/nearby_flags.h"
+#include "internal/platform/byte_array.h"
 
 namespace nearby {
 namespace connections {
@@ -72,20 +75,28 @@ V1Frame::FrameType GetFrameType(const OfflineFrame& frame) {
   return V1Frame::UNKNOWN_FRAME_TYPE;
 }
 
-ByteArray ForConnectionRequest(const ConnectionInfo& conection_info) {
+ByteArray ForConnectionRequestConnections(
+    const location::nearby::connections::ConnectionsDevice&
+        proto_connections_device,
+    const ConnectionInfo& conection_info) {
   OfflineFrame frame;
 
   frame.set_version(OfflineFrame::V1);
   auto* v1_frame = frame.mutable_v1();
   v1_frame->set_type(V1Frame::CONNECTION_REQUEST);
   auto* connection_request = v1_frame->mutable_connection_request();
-  if (!conection_info.local_endpoint_id.empty())
+  if (proto_connections_device.has_endpoint_id()) {
+    connection_request->mutable_connections_device()->MergeFrom(
+        proto_connections_device);
+  }
+  if (!conection_info.local_endpoint_id.empty()) {
     connection_request->set_endpoint_id(conection_info.local_endpoint_id);
+  }
   if (!conection_info.local_endpoint_info.Empty()) {
     connection_request->set_endpoint_name(
-        std::string(conection_info.local_endpoint_info));
+        conection_info.local_endpoint_info.string_data());
     connection_request->set_endpoint_info(
-        std::string(conection_info.local_endpoint_info));
+        conection_info.local_endpoint_info.string_data());
   }
   connection_request->set_nonce(conection_info.nonce);
   auto* medium_metadata = connection_request->mutable_medium_metadata();
@@ -112,7 +123,53 @@ ByteArray ForConnectionRequest(const ConnectionInfo& conection_info) {
   return ToBytes(std::move(frame));
 }
 
-ByteArray ForConnectionResponse(std::int32_t status, const OsInfo& os_info) {
+ByteArray ForConnectionRequestPresence(
+    const location::nearby::connections::PresenceDevice& proto_presence_device,
+    const ConnectionInfo& connection_info) {
+  OfflineFrame frame;
+
+  frame.set_version(OfflineFrame::V1);
+  auto* v1_frame = frame.mutable_v1();
+  v1_frame->set_type(V1Frame::CONNECTION_REQUEST);
+  auto* connection_request = v1_frame->mutable_connection_request();
+  if (!connection_info.local_endpoint_id.empty()) {
+    connection_request->set_endpoint_id(proto_presence_device.endpoint_id());
+  }
+  if (!connection_info.local_endpoint_info.Empty()) {
+    connection_request->set_endpoint_name(
+        connection_info.local_endpoint_info.string_data());
+    connection_request->set_endpoint_info(
+        connection_info.local_endpoint_info.string_data());
+  }
+  connection_request->mutable_presence_device()->MergeFrom(
+      proto_presence_device);
+  connection_request->set_nonce(connection_info.nonce);
+  auto* medium_metadata = connection_request->mutable_medium_metadata();
+  medium_metadata->set_supports_5_ghz(connection_info.supports_5_ghz);
+  if (!connection_info.bssid.empty())
+    medium_metadata->set_bssid(connection_info.bssid);
+  medium_metadata->set_ap_frequency(connection_info.ap_frequency);
+  if (!connection_info.ip_address.empty())
+    medium_metadata->set_ip_address(connection_info.ip_address);
+  if (!connection_info.supported_mediums.empty()) {
+    for (const auto& medium : connection_info.supported_mediums) {
+      connection_request->add_mediums(MediumToConnectionRequestMedium(medium));
+    }
+  }
+  if (connection_info.keep_alive_interval_millis > 0) {
+    connection_request->set_keep_alive_interval_millis(
+        connection_info.keep_alive_interval_millis);
+  }
+  if (connection_info.keep_alive_timeout_millis > 0) {
+    connection_request->set_keep_alive_timeout_millis(
+        connection_info.keep_alive_timeout_millis);
+  }
+
+  return ToBytes(std::move(frame));
+}
+
+ByteArray ForConnectionResponse(
+    std::int32_t status, const OsInfo& os_info) {
   OfflineFrame frame;
 
   frame.set_version(OfflineFrame::V1);
@@ -128,6 +185,10 @@ ByteArray ForConnectionResponse(std::int32_t status, const OsInfo& os_info) {
                               ? ConnectionResponseFrame::ACCEPT
                               : ConnectionResponseFrame::REJECT);
   *sub_frame->mutable_os_info() = os_info;
+  sub_frame->set_safe_to_disconnect_version(
+      NearbyFlags::GetInstance().GetInt64Flag(
+          config_package_nearby::nearby_connections_feature::
+              kSafeToDisconnectVersion));
 
   return ToBytes(std::move(frame));
 }
@@ -392,13 +453,16 @@ ByteArray ForKeepAlive() {
   return ToBytes(std::move(frame));
 }
 
-ByteArray ForDisconnection() {
+ByteArray ForDisconnection(bool request_safe_to_disconnect,
+                           bool ack_safe_to_disconnect) {
   OfflineFrame frame;
 
   frame.set_version(OfflineFrame::V1);
   auto* v1_frame = frame.mutable_v1();
   v1_frame->set_type(V1Frame::DISCONNECTION);
-  v1_frame->mutable_disconnection();
+  auto* disconnection = v1_frame->mutable_disconnection();
+  disconnection->set_request_safe_to_disconnect(request_safe_to_disconnect);
+  disconnection->set_ack_safe_to_disconnect(ack_safe_to_disconnect);
 
   return ToBytes(std::move(frame));
 }

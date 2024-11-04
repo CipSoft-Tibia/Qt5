@@ -2048,7 +2048,12 @@ TEST(X509Test, SignCertificate) {
         ASSERT_TRUE(
             X509_set1_signature_value(cert.get(), sig.data(), sig.size()));
       } else {
-        ASSERT_TRUE(X509_sign(cert.get(), pkey.get(), EVP_sha384()));
+        int ret = X509_sign(cert.get(), pkey.get(), EVP_sha384());
+        ASSERT_GT(ret, 0);
+        // |X509_sign| returns the length of the signature on success.
+        const ASN1_BIT_STRING *sig;
+        X509_get0_signature(&sig, /*out_alg=*/nullptr, cert.get());
+        EXPECT_EQ(ret, ASN1_STRING_length(sig));
       }
 
       // Check the signature.
@@ -2330,7 +2335,7 @@ TEST(X509Test, TestFromBufferWithTrailingData) {
   bssl::UniquePtr<uint8_t> data;
   ASSERT_TRUE(PEMToDER(&data, &data_len, kRootCAPEM));
 
-  std::unique_ptr<uint8_t[]> trailing_data(new uint8_t[data_len + 1]);
+  auto trailing_data = std::make_unique<uint8_t[]>(data_len + 1);
   OPENSSL_memcpy(trailing_data.get(), data.get(), data_len);
 
   bssl::UniquePtr<CRYPTO_BUFFER> buf_trailing_data(
@@ -2433,7 +2438,7 @@ TEST(X509Test, TestFailedParseFromBuffer) {
   bssl::UniquePtr<uint8_t> data;
   ASSERT_TRUE(PEMToDER(&data, &data_len, kRootCAPEM));
 
-  std::unique_ptr<uint8_t[]> data_with_trailing_byte(new uint8_t[data_len + 1]);
+  auto data_with_trailing_byte = std::make_unique<uint8_t[]>(data_len + 1);
   OPENSSL_memcpy(data_with_trailing_byte.get(), data.get(), data_len);
   data_with_trailing_byte[data_len] = 0;
 
@@ -4134,6 +4139,48 @@ soBsxWI=
 -----END CERTIFICATE-----
 )";
 
+// kNonMinimalLengthOuter is an X.509 certificate where the outermost SEQUENCE
+// has a non-minimal length.
+static const char kNonMinimalLengthOuter[] = R"(
+-----BEGIN CERTIFICATE-----
+MIMAASAwgcagAwIBAgICBNIwCgYIKoZIzj0EAwIwDzENMAsGA1UEAxMEVGVzdDAg
+Fw0wMDAxMDEwMDAwMDBaGA8yMTAwMDEwMTAwMDAwMFowDzENMAsGA1UEAxMEVGVz
+dDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABOYraeK/ZZ+Xvi8eDZSKTNWXa7ep
+Hg1G+92pqR6d3LpaAefWl6gKGPnDxKMeVuJ8g0jbFhoc9R1+8ZQtS89yIsGjEDAO
+MAwGA1UdEwQFMAMBAf8wCgYIKoZIzj0EAwIDSQAwRgIhAKnSIhfmzfQpeOKFHiAq
+cml3ex6oaVVGoJWCsPQoZjVAAiEAqTHS9HzZBTQ20cMPXUpf8u5AXZP7adeh4qnk
+soBsxWI=
+-----END CERTIFICATE-----
+)";
+
+// kNonMinimalLengthSignature is an X.509 certificate where the signature has a
+// non-minimal length.
+static const char kNonMinimalLengthSignature[] = R"(
+-----BEGIN CERTIFICATE-----
+MIIBITCBxqADAgECAgIE0jAKBggqhkjOPQQDAjAPMQ0wCwYDVQQDEwRUZXN0MCAX
+DTAwMDEwMTAwMDAwMFoYDzIxMDAwMTAxMDAwMDAwWjAPMQ0wCwYDVQQDEwRUZXN0
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5itp4r9ln5e+Lx4NlIpM1Zdrt6ke
+DUb73ampHp3culoB59aXqAoY+cPEox5W4nyDSNsWGhz1HX7xlC1Lz3IiwaMQMA4w
+DAYDVR0TBAUwAwEB/zAKBggqhkjOPQQDAgOBSQAwRgIhAKnSIhfmzfQpeOKFHiAq
+cml3ex6oaVVGoJWCsPQoZjVAAiEAqTHS9HzZBTQ20cMPXUpf8u5AXZP7adeh4qnk
+soBsxWI=
+-----END CERTIFICATE-----
+)";
+
+// kNonMinimalLengthSerial is an X.509 certificate where the serial number has a
+// non-minimal length.
+static const char kNonMinimalLengthSerial[] = R"(
+-----BEGIN CERTIFICATE-----
+MIIBITCBx6ADAgECAoECBNIwCgYIKoZIzj0EAwIwDzENMAsGA1UEAxMEVGVzdDAg
+Fw0wMDAxMDEwMDAwMDBaGA8yMTAwMDEwMTAwMDAwMFowDzENMAsGA1UEAxMEVGVz
+dDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABOYraeK/ZZ+Xvi8eDZSKTNWXa7ep
+Hg1G+92pqR6d3LpaAefWl6gKGPnDxKMeVuJ8g0jbFhoc9R1+8ZQtS89yIsGjEDAO
+MAwGA1UdEwQFMAMBAf8wCgYIKoZIzj0EAwIDSQAwRgIhAKnSIhfmzfQpeOKFHiAq
+cml3ex6oaVVGoJWCsPQoZjVAAiEAqTHS9HzZBTQ20cMPXUpf8u5AXZP7adeh4qnk
+soBsxWI=
+-----END CERTIFICATE-----
+)";
+
 TEST(X509Test, BER) {
   // Constructed strings are forbidden in DER.
   EXPECT_FALSE(CertFromPEM(kConstructedBitString));
@@ -4145,6 +4192,12 @@ TEST(X509Test, BER) {
   // Tags must be minimal in both BER and DER, though many BER decoders
   // incorrectly support non-minimal tags.
   EXPECT_FALSE(CertFromPEM(kHighTagNumber));
+  // Lengths must be minimal in DER.
+  EXPECT_FALSE(CertFromPEM(kNonMinimalLengthOuter));
+  EXPECT_FALSE(CertFromPEM(kNonMinimalLengthSerial));
+  // We, for now, accept a non-minimal length in the signature field. See
+  // b/18228011.
+  EXPECT_TRUE(CertFromPEM(kNonMinimalLengthSignature));
 }
 
 TEST(X509Test, Names) {
@@ -4654,50 +4707,35 @@ TEST(X509Test, NamePrint) {
        "CN = \"Common "
        "Name/CN=A/CN=B,CN=A,CN=B+CN=A+CN=B;CN=A;CN=B\\0ACN=A\\0A\", "
        "CN = \" spaces \""},
-      // |XN_FLAG_MULTILINE| is an OpenSSL-specific multi-line format that tries
-      // to vertically align the equal sizes. The vertical alignment doesn't
-      // quite handle multi-valued RDNs right and uses a non-RFC-2253 escaping.
+      // Callers can also customize the output, with both |XN_FLAG_*| and
+      // |ASN1_STRFLGS_*|. |XN_FLAG_SEP_SPLUS_SPC| uses semicolon separators.
       {/*indent=*/0,
-       /*flags=*/XN_FLAG_MULTILINE,
-       "countryName               = US\n"
-       "stateOrProvinceName       = Some State + "
-       "stateOrProvinceName       = Some Other State \\U2603 + "
-       "stateOrProvinceName       = Another State \\U2603 + "
-       "1.2.840.113554.4.1.72585.2 = \\U2603\n"
-       "1.2.840.113554.4.1.72585.3 = 0\\06\\02\\01\\01\\02\\01\\02\n"
-       "organizationName          = Org Name\n"
-       "commonName                = Common "
-       "Name/CN=A/CN=B,CN=A,CN=B+CN=A+CN=B;CN=A;CN=B\\0ACN=A\\0A\n"
-       "commonName                =  spaces "},
-      // The multiline format indents every line.
-      {/*indent=*/2,
-       /*flags=*/XN_FLAG_MULTILINE,
-       "  countryName               = US\n"
-       "  stateOrProvinceName       = Some State + "
-       "stateOrProvinceName       = Some Other State \\U2603 + "
-       "stateOrProvinceName       = Another State \\U2603 + "
-       "1.2.840.113554.4.1.72585.2 = \\U2603\n"
-       "  1.2.840.113554.4.1.72585.3 = 0\\06\\02\\01\\01\\02\\01\\02\n"
-       "  organizationName          = Org Name\n"
-       "  commonName                = Common "
-       "Name/CN=A/CN=B,CN=A,CN=B+CN=A+CN=B;CN=A;CN=B\\0ACN=A\\0A\n"
-       "  commonName                =  spaces "},
-      // Callers can also customize the output, wuith both |XN_FLAG_*| and
-      // |ASN1_STRFLGS_*|. |XN_FLAG_SEP_SPLUS_SPC| uses semicolon separators and
-      // |XN_FLAG_FN_OID| forces OIDs.
-      {/*indent=*/0,
-       /*flags=*/XN_FLAG_SEP_SPLUS_SPC | XN_FLAG_FN_OID | ASN1_STRFLGS_RFC2253 |
+       /*flags=*/XN_FLAG_SEP_SPLUS_SPC | ASN1_STRFLGS_RFC2253 |
            ASN1_STRFLGS_ESC_QUOTE,
-       "2.5.4.6=US; "
-       "2.5.4.8=Some State + "
-       "2.5.4.8=Some Other State \\E2\\98\\83 + "
-       "2.5.4.8=Another State \\E2\\98\\83 + "
+       "C=US; "
+       "ST=Some State + "
+       "ST=Some Other State \\E2\\98\\83 + "
+       "ST=Another State \\E2\\98\\83 + "
        "1.2.840.113554.4.1.72585.2=\\E2\\98\\83; "
        "1.2.840.113554.4.1.72585.3=#3006020101020102; "
-       "2.5.4.10=Org Name; "
-       "2.5.4.3=\"Common "
+       "O=Org Name; "
+       "CN=\"Common "
        "Name/CN=A/CN=B,CN=A,CN=B+CN=A+CN=B;CN=A;CN=B\\0ACN=A\\0A\"; "
-       "2.5.4.3=\" spaces \""},
+       "CN=\" spaces \""},
+      // Node uses these parameters.
+      {/*indent=*/0,
+       /*flags=*/ASN1_STRFLGS_ESC_2253 | ASN1_STRFLGS_ESC_CTRL |
+           ASN1_STRFLGS_UTF8_CONVERT | XN_FLAG_SEP_MULTILINE | XN_FLAG_FN_SN,
+       "C=US\n"
+       "ST=Some State + "
+       "ST=Some Other State \xE2\x98\x83 + "
+       "ST=Another State \xE2\x98\x83 + "
+       "1.2.840.113554.4.1.72585.2=\xE2\x98\x83\n"
+       "1.2.840.113554.4.1.72585.3=0\\06\\02\\01\\01\\02\\01\\02\n"
+       "O=Org Name\n"
+       "CN=Common "
+       "Name/CN=A/CN=B\\,CN=A\\,CN=B\\+CN=A\\+CN=B\\;CN=A\\;CN=B\\0ACN=A\\0A\n"
+       "CN=\\ spaces\\ "},
       // |XN_FLAG_COMPAT| matches |X509_NAME_print|, rather than
       // |X509_NAME_print_ex|.
       //
@@ -5265,6 +5303,9 @@ TEST(X509Test, Policy) {
   bssl::UniquePtr<X509> leaf_invalid(CertFromPEM(
       GetTestData("crypto/x509/test/policy_leaf_invalid.pem").c_str()));
   ASSERT_TRUE(leaf_invalid);
+  bssl::UniquePtr<X509> leaf_none(CertFromPEM(
+      GetTestData("crypto/x509/test/policy_leaf_none.pem").c_str()));
+  ASSERT_TRUE(leaf_none);
   bssl::UniquePtr<X509> leaf_oid1(CertFromPEM(
       GetTestData("crypto/x509/test/policy_leaf_oid1.pem").c_str()));
   ASSERT_TRUE(leaf_oid1);
@@ -5287,14 +5328,6 @@ TEST(X509Test, Policy) {
       GetTestData("crypto/x509/test/policy_leaf_require1.pem").c_str()));
   ASSERT_TRUE(leaf_require1);
 
-  // By default, OpenSSL does not check policies, so even syntax errors in the
-  // certificatePolicies extension go unnoticed. (This is probably not
-  // important.)
-  EXPECT_EQ(X509_V_OK, Verify(leaf.get(), {root.get()},
-                              {intermediate.get()}, /*crls=*/{}));
-  EXPECT_EQ(X509_V_OK, Verify(leaf_invalid.get(), {root.get()},
-                              {intermediate.get()}, /*crls=*/{}));
-
   auto set_policies = [](X509_VERIFY_PARAM *param,
                          std::vector<const ASN1_OBJECT *> oids) {
     for (const ASN1_OBJECT *oid : oids) {
@@ -5303,13 +5336,12 @@ TEST(X509Test, Policy) {
       ASSERT_TRUE(X509_VERIFY_PARAM_add0_policy(param, copy.get()));
       copy.release();  // |X509_VERIFY_PARAM_add0_policy| takes ownership on
                        // success.
-      // TODO(davidben): |X509_VERIFY_PARAM_add0_policy| does not set this flag,
-      // while |X509_VERIFY_PARAM_set1_policies| does. Is this a bug?
-      X509_VERIFY_PARAM_set_flags(param, X509_V_FLAG_POLICY_CHECK);
     }
   };
 
   // The chain is good for |oid1| and |oid2|, but not |oid3|.
+  EXPECT_EQ(X509_V_OK, Verify(leaf.get(), {root.get()}, {intermediate.get()},
+                              /*crls=*/{}, X509_V_FLAG_EXPLICIT_POLICY));
   EXPECT_EQ(X509_V_OK,
             Verify(leaf.get(), {root.get()}, {intermediate.get()}, /*crls=*/{},
                    X509_V_FLAG_EXPLICIT_POLICY, [&](X509_VERIFY_PARAM *param) {
@@ -5349,6 +5381,9 @@ TEST(X509Test, Policy) {
                    [&](X509_VERIFY_PARAM *param) {
                      set_policies(param, {oid1.get()});
                    }));
+  EXPECT_EQ(X509_V_ERR_INVALID_POLICY_EXTENSION,
+            Verify(leaf_invalid.get(), {root.get()}, {intermediate.get()},
+                   /*crls=*/{}));
 
   // There is a duplicate policy in the policy extension.
   EXPECT_EQ(X509_V_ERR_INVALID_POLICY_EXTENSION,
@@ -5393,7 +5428,17 @@ TEST(X509Test, Policy) {
                      set_policies(param, {oid3.get()});
                    }));
 
+  // requireExplicitPolicy applies even if the application does not configure a
+  // user-initial-policy-set. If the validation results in no policies, the
+  // chain is invalid.
+  EXPECT_EQ(X509_V_ERR_NO_EXPLICIT_POLICY,
+            Verify(leaf_none.get(), {root.get()}, {intermediate_require.get()},
+                   /*crls=*/{}));
+
   // A leaf can also set requireExplicitPolicy.
+  EXPECT_EQ(X509_V_OK,
+            Verify(leaf_require.get(), {root.get()}, {intermediate.get()},
+                   /*crls=*/{}, /*flags=*/0));
   EXPECT_EQ(X509_V_OK, Verify(leaf_require.get(), {root.get()},
                               {intermediate.get()}, /*crls=*/{},
                               /*flags=*/0, [&](X509_VERIFY_PARAM *param) {
@@ -6413,4 +6458,184 @@ TEST(X509Test, AddUnserializableExtension) {
   bssl::UniquePtr<X509_EXTENSION> ext(X509_EXTENSION_new());
   ASSERT_TRUE(X509_EXTENSION_set_object(ext.get(), OBJ_nid2obj(NID_undef)));
   EXPECT_FALSE(X509_add_ext(x509.get(), ext.get(), /*loc=*/-1));
+}
+
+// Test that, when constructing an |X509_NAME|, names are sorted by DER order.
+TEST(X509Test, SortRDN) {
+  bssl::UniquePtr<X509_NAME> name(X509_NAME_new());
+  ASSERT_TRUE(name);
+
+  auto append_entry_new_rdn = [&](const char *str) {
+    return X509_NAME_add_entry_by_NID(name.get(), NID_commonName, MBSTRING_ASC,
+                                      reinterpret_cast<const uint8_t *>(str),
+                                      strlen(str), /*loc=*/-1, /*set=*/0);
+  };
+  auto append_entry_prev_rdn = [&](const char *str) {
+    return X509_NAME_add_entry_by_NID(name.get(), NID_commonName, MBSTRING_ASC,
+                                      reinterpret_cast<const uint8_t *>(str),
+                                      strlen(str), /*loc=*/-1, /*set=*/-1);
+  };
+
+  // This is the sort order to expect.
+  ASSERT_TRUE(append_entry_new_rdn("A"));
+  ASSERT_TRUE(append_entry_prev_rdn("B"));
+  ASSERT_TRUE(append_entry_prev_rdn("AA"));
+  ASSERT_TRUE(append_entry_prev_rdn("AB"));
+
+  // The same RDN, with entries added in a different order.
+  ASSERT_TRUE(append_entry_new_rdn("AB"));
+  ASSERT_TRUE(append_entry_prev_rdn("AA"));
+  ASSERT_TRUE(append_entry_prev_rdn("B"));
+  ASSERT_TRUE(append_entry_prev_rdn("A"));
+
+  // The same RDN, with entries added in a different order.
+  ASSERT_TRUE(append_entry_new_rdn("A"));
+  ASSERT_TRUE(append_entry_prev_rdn("AA"));
+  ASSERT_TRUE(append_entry_prev_rdn("B"));
+  ASSERT_TRUE(append_entry_prev_rdn("AB"));
+
+  uint8_t *der = nullptr;
+  int der_len = i2d_X509_NAME(name.get(), &der);
+  ASSERT_GT(der_len, 0);
+  bssl::UniquePtr<uint8_t> free_der(der);
+
+  // SEQUENCE {
+  //   SET {
+  //     SEQUENCE {
+  //       # commonName
+  //       OBJECT_IDENTIFIER { 2.5.4.3 }
+  //       UTF8String { "A" }
+  //     }
+  //     SEQUENCE {
+  //       # commonName
+  //       OBJECT_IDENTIFIER { 2.5.4.3 }
+  //       UTF8String { "B" }
+  //     }
+  //     SEQUENCE {
+  //       # commonName
+  //       OBJECT_IDENTIFIER { 2.5.4.3 }
+  //       UTF8String { "AA" }
+  //     }
+  //     SEQUENCE {
+  //       # commonName
+  //       OBJECT_IDENTIFIER { 2.5.4.3 }
+  //       UTF8String { "AB" }
+  //     }
+  //   }
+  //   ...two more copies of the above SET...
+  // }
+  static uint8_t kExpected[] = {
+      0x30, 0x81, 0x84, 0x31, 0x2a, 0x30, 0x08, 0x06, 0x03, 0x55, 0x04, 0x03,
+      0x0c, 0x01, 0x41, 0x30, 0x08, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x01,
+      0x42, 0x30, 0x09, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x02, 0x41, 0x41,
+      0x30, 0x09, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x02, 0x41, 0x42, 0x31,
+      0x2a, 0x30, 0x08, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x01, 0x41, 0x30,
+      0x08, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x01, 0x42, 0x30, 0x09, 0x06,
+      0x03, 0x55, 0x04, 0x03, 0x0c, 0x02, 0x41, 0x41, 0x30, 0x09, 0x06, 0x03,
+      0x55, 0x04, 0x03, 0x0c, 0x02, 0x41, 0x42, 0x31, 0x2a, 0x30, 0x08, 0x06,
+      0x03, 0x55, 0x04, 0x03, 0x0c, 0x01, 0x41, 0x30, 0x08, 0x06, 0x03, 0x55,
+      0x04, 0x03, 0x0c, 0x01, 0x42, 0x30, 0x09, 0x06, 0x03, 0x55, 0x04, 0x03,
+      0x0c, 0x02, 0x41, 0x41, 0x30, 0x09, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c,
+      0x02, 0x41, 0x42};
+  EXPECT_EQ(Bytes(kExpected), Bytes(der, der_len));
+}
+
+TEST(X509Test, NameAttributeValues) {
+  // 1.2.840.113554.4.1.72585.0. We use an unrecognized OID because using an
+  // arbitrary ASN.1 type as the value for commonName is invalid. Our parser
+  // does not check this, but best to avoid unrelated errors in tests, in case
+  // we decide to later.
+  static const uint8_t kOID[] = {0x2a, 0x86, 0x48, 0x86, 0xf7, 0x12,
+                                 0x04, 0x01, 0x84, 0xb7, 0x09, 0x00};
+
+  const struct {
+    CBS_ASN1_TAG der_tag;
+    std::string der_contents;
+    int str_type;
+    std::string str_contents;
+  } kTests[] = {
+      // String types are parsed as string types.
+      {CBS_ASN1_BITSTRING, std::string("\0", 1), V_ASN1_BIT_STRING, ""},
+      {CBS_ASN1_UTF8STRING, "abc", V_ASN1_UTF8STRING, "abc"},
+      {CBS_ASN1_NUMERICSTRING, "123", V_ASN1_NUMERICSTRING, "123"},
+      {CBS_ASN1_PRINTABLESTRING, "abc", V_ASN1_PRINTABLESTRING, "abc"},
+      {CBS_ASN1_T61STRING, "abc", V_ASN1_T61STRING, "abc"},
+      {CBS_ASN1_IA5STRING, "abc", V_ASN1_IA5STRING, "abc"},
+      {CBS_ASN1_UNIVERSALSTRING, std::string("\0\0\0a", 4),
+       V_ASN1_UNIVERSALSTRING, std::string("\0\0\0a", 4)},
+      {CBS_ASN1_BMPSTRING, std::string("\0a", 2), V_ASN1_BMPSTRING,
+       std::string("\0a", 2)},
+
+      // ENUMERATED is supported but, currently, INTEGER is not.
+      {CBS_ASN1_ENUMERATED, "\x01", V_ASN1_ENUMERATED, "\x01"},
+
+      // SEQUENCE is supported but, currently, SET is not. Note the
+      // |ASN1_STRING| representation will include the tag and length.
+      {CBS_ASN1_SEQUENCE, "", V_ASN1_SEQUENCE, std::string("\x30\x00", 2)},
+
+      // These types are not actually supported by the library but,
+      // historically, we would parse them, and not other unsupported types, due
+      // to quirks of |ASN1_tag2bit|.
+      {7, "", V_ASN1_OBJECT_DESCRIPTOR, ""},
+      {8, "", V_ASN1_EXTERNAL, ""},
+      {9, "", V_ASN1_REAL, ""},
+      {11, "", 11 /* EMBEDDED PDV */, ""},
+      {13, "", 13 /* RELATIVE-OID */, ""},
+      {14, "", 14 /* TIME */, ""},
+      {15, "", 15 /* not a type; reserved value */, ""},
+      {29, "", 29 /* CHARACTER STRING */, ""},
+
+      // TODO(crbug.com/boringssl/412): Attribute values are an ANY DEFINED BY
+      // type, so we actually shoudl be accepting all ASN.1 types. We currently
+      // do not and only accept the above types. Extend this test when we fix
+      // this.
+  };
+  for (const auto &t : kTests) {
+    SCOPED_TRACE(t.der_tag);
+    SCOPED_TRACE(Bytes(t.der_contents));
+
+    // Construct an X.509 name containing a single RDN with a single attribute:
+    // kOID with the specified value.
+    bssl::ScopedCBB cbb;
+    ASSERT_TRUE(CBB_init(cbb.get(), 128));
+    CBB seq, rdn, attr, attr_type, attr_value;
+    ASSERT_TRUE(CBB_add_asn1(cbb.get(), &seq, CBS_ASN1_SEQUENCE));
+    ASSERT_TRUE(CBB_add_asn1(&seq, &rdn, CBS_ASN1_SET));
+    ASSERT_TRUE(CBB_add_asn1(&rdn, &attr, CBS_ASN1_SEQUENCE));
+    ASSERT_TRUE(CBB_add_asn1(&attr, &attr_type, CBS_ASN1_OBJECT));
+    ASSERT_TRUE(CBB_add_bytes(&attr_type, kOID, sizeof(kOID)));
+    ASSERT_TRUE(CBB_add_asn1(&attr, &attr_value, t.der_tag));
+    ASSERT_TRUE(CBB_add_bytes(
+        &attr_value, reinterpret_cast<const uint8_t *>(t.der_contents.data()),
+        t.der_contents.size()));
+    ASSERT_TRUE(CBB_flush(cbb.get()));
+    SCOPED_TRACE(Bytes(CBB_data(cbb.get()), CBB_len(cbb.get())));
+
+    // The input should parse.
+    const uint8_t *inp = CBB_data(cbb.get());
+    bssl::UniquePtr<X509_NAME> name(
+        d2i_X509_NAME(nullptr, &inp, CBB_len(cbb.get())));
+    ASSERT_TRUE(name);
+    EXPECT_EQ(inp, CBB_data(cbb.get()) + CBB_len(cbb.get()))
+        << "input was not fully consumed";
+
+    // Check there is a single attribute with the expected in-memory
+    // representation.
+    ASSERT_EQ(1, X509_NAME_entry_count(name.get()));
+    const X509_NAME_ENTRY *entry = X509_NAME_get_entry(name.get(), 0);
+    const ASN1_OBJECT *obj = X509_NAME_ENTRY_get_object(entry);
+    EXPECT_EQ(Bytes(OBJ_get0_data(obj), OBJ_length(obj)), Bytes(kOID));
+    const ASN1_STRING *value = X509_NAME_ENTRY_get_data(entry);
+    EXPECT_EQ(ASN1_STRING_type(value), t.str_type);
+    EXPECT_EQ(Bytes(ASN1_STRING_get0_data(value), ASN1_STRING_length(value)),
+              Bytes(t.str_contents));
+
+    // The name should re-encode with the same input.
+    uint8_t *der = nullptr;
+    int der_len = i2d_X509_NAME(name.get(), &der);
+    ASSERT_GE(der_len, 0);
+    bssl::UniquePtr<uint8_t> free_der(der);
+    EXPECT_EQ(Bytes(der, der_len),
+              (Bytes(CBB_data(cbb.get()), CBB_len(cbb.get()))));
+  }
 }

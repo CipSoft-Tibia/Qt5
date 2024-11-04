@@ -195,7 +195,7 @@ class QUIC_EXPORT_PRIVATE QuicUdpBatchWriterIOTest
 
       result = GetWriter()->WritePacket(&packet_buffer_[0], this_packet_size,
                                         self_address_.host(), peer_address_,
-                                        nullptr);
+                                        nullptr, QuicPacketWriterParams());
 
       ASSERT_EQ(WRITE_STATUS_OK, result.status) << strerror(result.error_code);
       bytes_flushed += result.bytes_written;
@@ -233,9 +233,9 @@ class QUIC_EXPORT_PRIVATE QuicUdpBatchWriterIOTest
       result.control_buffer = {&control_buffer_[0], sizeof(control_buffer_)};
       QuicUdpSocketApi().ReadPacket(
           peer_socket_,
-          quic::BitMask64(QuicUdpPacketInfoBit::V4_SELF_IP,
-                          QuicUdpPacketInfoBit::V6_SELF_IP,
-                          QuicUdpPacketInfoBit::PEER_ADDRESS),
+          quic::QuicUdpPacketInfoBitMask({QuicUdpPacketInfoBit::V4_SELF_IP,
+                                          QuicUdpPacketInfoBit::V6_SELF_IP,
+                                          QuicUdpPacketInfoBit::PEER_ADDRESS}),
           &result);
       ASSERT_TRUE(result.ok);
       ASSERT_TRUE(

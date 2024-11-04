@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,14 +33,14 @@ namespace openscreen {
 // running the client's Task later; or c) runs the client's Task.
 class Alarm {
  public:
-  Alarm(ClockNowFunctionPtr now_function, TaskRunner* task_runner);
+  Alarm(ClockNowFunctionPtr now_function, TaskRunner& task_runner);
   ~Alarm();
 
   // The design requires that Alarm instances not be copied or moved.
   Alarm(const Alarm&) = delete;
   Alarm& operator=(const Alarm&) = delete;
-  Alarm(Alarm&&) = delete;
-  Alarm& operator=(Alarm&&) = delete;
+  Alarm(Alarm&&) noexcept = delete;
+  Alarm& operator=(Alarm&&) noexcept = delete;
 
   // Schedule the |functor| to be invoked at |alarm_time|. If this Alarm was
   // already scheduled, the prior scheduling is canceled. The Functor can be any
@@ -85,7 +85,7 @@ class Alarm {
   void TryInvoke();
 
   const ClockNowFunctionPtr now_function_;
-  TaskRunner* const task_runner_;
+  TaskRunner& task_runner_;
 
   // This is the task the client wants to have run at a specific point-in-time.
   // This is NOT the task that Alarm provides to the TaskRunner.

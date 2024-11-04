@@ -16,13 +16,6 @@ namespace Eigen {
 
 namespace internal {
 
-// Disable the code for older versions of gcc that don't support many of the required avx512 math instrinsics.
-#if EIGEN_GNUC_STRICT_AT_LEAST(5,3,0) || EIGEN_COMP_CLANG || EIGEN_COMP_MSVC >= 1923 || EIGEN_COMP_ICC >= 1900
-#define EIGEN_HAS_AVX512_MATH 1
-#else
-#define EIGEN_HAS_AVX512_MATH 0
-#endif
-
 typedef __m512h Packet32h;
 typedef eigen_packet_wrapper<__m256i, 1> Packet16h;
 typedef eigen_packet_wrapper<__m128i, 2> Packet8h;
@@ -40,7 +33,6 @@ struct packet_traits<half> : default_packet_traits {
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size = 32,
-    HasHalfPacket = 1,
 
     HasCmp = 1,
     HasAdd = 1,
@@ -54,15 +46,15 @@ struct packet_traits<half> : default_packet_traits {
     HasMax = 1,
     HasConj = 1,
     HasSetLinear = 0,
+    HasLog = 1,
+    HasLog1p = 1,
+    HasExp = 1,
+    HasExpm1 = 1,
+    HasSqrt = 1,
+    HasRsqrt = 1,
     // These ones should be implemented in future
-    HasLog = EIGEN_HAS_AVX512_MATH,
-    HasLog1p = EIGEN_HAS_AVX512_MATH,
-    HasExp = EIGEN_HAS_AVX512_MATH,
-    HasExpm1 = EIGEN_HAS_AVX512_MATH,
-    HasSqrt = EIGEN_HAS_AVX512_MATH,
-    HasRsqrt = EIGEN_HAS_AVX512_MATH,
-    HasBessel = 0,  // EIGEN_HAS_AVX512_MATH,
-    HasNdtri = 0,   // EIGEN_HAS_AVX512_MATH,
+    HasBessel = 0,
+    HasNdtri = 0,
     HasSin = EIGEN_FAST_MATH,
     HasCos = EIGEN_FAST_MATH,
     HasTanh = EIGEN_FAST_MATH,

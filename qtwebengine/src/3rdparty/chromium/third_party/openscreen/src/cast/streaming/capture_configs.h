@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,7 @@
 #include "cast/streaming/resolution.h"
 #include "util/simple_fraction.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // A configuration set that can be used by the sender to capture audio, and the
 // receiver to playback audio. Used by Cast Streaming to provide an offer to the
@@ -77,7 +76,6 @@ struct VideoCaptureConfig {
   std::string codec_parameter;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_CAPTURE_CONFIGS_H_

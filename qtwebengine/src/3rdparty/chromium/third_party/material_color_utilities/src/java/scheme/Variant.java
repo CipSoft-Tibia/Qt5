@@ -21,5 +21,9 @@ public enum Variant {
   NEUTRAL,
   TONAL_SPOT,
   VIBRANT,
-  EXPRESSIVE;
+  EXPRESSIVE,
+  FIDELITY,
+  CONTENT,
+  RAINBOW,
+  FRUIT_SALAD
 }

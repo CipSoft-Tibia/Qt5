@@ -270,6 +270,12 @@ SIMD_INLINE v256 get_max_secondary(const int is_lowbd, v256 *tap, v256 max,
   return max;
 }
 
+// MSVC takes far too much time optimizing these.
+// https://bugs.chromium.org/p/aomedia/issues/detail?id=3395
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma optimize("", off)
+#endif
+
 CDEF_INLINE void filter_block_4x4(const int is_lowbd, void *dest, int dstride,
                                   const uint16_t *in, int pri_strength,
                                   int sec_strength, int dir, int pri_damping,
@@ -616,6 +622,10 @@ CDEF_INLINE void filter_block_8x8(const int is_lowbd, void *dest, int dstride,
     }
   }
 }
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma optimize("", on)
+#endif
 
 SIMD_INLINE void copy_block_4xh(const int is_lowbd, void *dest, int dstride,
                                 const uint16_t *in, int height) {

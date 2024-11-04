@@ -50,7 +50,6 @@ using rtc::SocketAddress;
 
 using ::testing::_;
 using ::testing::DoAll;
-using ::testing::InvokeArgument;
 using ::testing::Return;
 using ::testing::ReturnPointee;
 using ::testing::SetArgPointee;
@@ -1912,8 +1911,9 @@ TEST_F(TurnPortWithMockDnsResolverTest, TestHostnameResolved) {
   SetDnsResolverExpectations(
       [](webrtc::MockAsyncDnsResolver* resolver,
          webrtc::MockAsyncDnsResolverResult* resolver_result) {
-        EXPECT_CALL(*resolver, Start(kTurnValidAddr, _))
-            .WillOnce(InvokeArgument<1>());
+        EXPECT_CALL(*resolver, Start(kTurnValidAddr, /*family=*/AF_INET, _))
+            .WillOnce([](const rtc::SocketAddress& addr, int family,
+                         absl::AnyInvocable<void()> callback) { callback(); });
         EXPECT_CALL(*resolver, result)
             .WillRepeatedly(ReturnPointee(resolver_result));
         EXPECT_CALL(*resolver_result, GetError).WillRepeatedly(Return(0));
@@ -1932,87 +1932,9 @@ TEST_F(TurnPortWithMockDnsResolverTest, TestHostnameResolvedIPv6Network) {
   SetDnsResolverExpectations(
       [](webrtc::MockAsyncDnsResolver* resolver,
          webrtc::MockAsyncDnsResolverResult* resolver_result) {
-        EXPECT_CALL(*resolver, Start(kTurnValidAddr, _))
-            .WillOnce(InvokeArgument<1>());
-        EXPECT_CALL(*resolver, result)
-            .WillRepeatedly(ReturnPointee(resolver_result));
-        EXPECT_CALL(*resolver_result, GetError).WillRepeatedly(Return(0));
-        EXPECT_CALL(*resolver_result, GetResolvedAddress(AF_INET6, _))
-            .WillOnce(
-                DoAll(SetArgPointee<1>(kTurnUdpIPv6IntAddr), Return(true)));
-      });
-  TestTurnAllocateSucceeds(kSimulatedRtt * 2);
-}
-
-// Test an allocation from a TURN server specified by a hostname on an IPv6
-// network, without network family-specific resolution.
-TEST_F(TurnPortWithMockDnsResolverTest,
-       TestHostnameResolvedIPv6NetworkFamilyFieldTrialDisabled) {
-  webrtc::test::ScopedKeyValueConfig override_field_trials(
-      field_trials_, "WebRTC-IPv6NetworkResolutionFixes/Disabled/");
-  turn_server_.AddInternalSocket(kTurnUdpIPv6IntAddr, PROTO_UDP);
-  CreateTurnPort(kLocalIPv6Addr, kTurnUsername, kTurnPassword,
-                 kTurnPortValidHostnameProtoAddr);
-  SetDnsResolverExpectations(
-      [](webrtc::MockAsyncDnsResolver* resolver,
-         webrtc::MockAsyncDnsResolverResult* resolver_result) {
-        // Expect to call Resolver::Start without family arg.
-        EXPECT_CALL(*resolver, Start(kTurnValidAddr, _))
-            .WillOnce(InvokeArgument<1>());
-        EXPECT_CALL(*resolver, result)
-            .WillRepeatedly(ReturnPointee(resolver_result));
-        EXPECT_CALL(*resolver_result, GetError).WillRepeatedly(Return(0));
-        EXPECT_CALL(*resolver_result, GetResolvedAddress(AF_INET6, _))
-            .WillOnce(
-                DoAll(SetArgPointee<1>(kTurnUdpIPv6IntAddr), Return(true)));
-      });
-  TestTurnAllocateSucceeds(kSimulatedRtt * 2);
-}
-
-// Test an allocation from a TURN server specified by a hostname on an IPv6
-// network, without network family-specific resolution.
-TEST_F(TurnPortWithMockDnsResolverTest,
-       TestHostnameResolvedIPv6NetworkFamilyFieldTrialParamDisabled) {
-  webrtc::test::ScopedKeyValueConfig override_field_trials(
-      field_trials_,
-      "WebRTC-IPv6NetworkResolutionFixes/"
-      "Enabled,ResolveTurnHostnameForFamily:false/");
-  turn_server_.AddInternalSocket(kTurnUdpIPv6IntAddr, PROTO_UDP);
-  CreateTurnPort(kLocalIPv6Addr, kTurnUsername, kTurnPassword,
-                 kTurnPortValidHostnameProtoAddr);
-  SetDnsResolverExpectations(
-      [](webrtc::MockAsyncDnsResolver* resolver,
-         webrtc::MockAsyncDnsResolverResult* resolver_result) {
-        // Expect to call Resolver::Start without family arg.
-        EXPECT_CALL(*resolver, Start(kTurnValidAddr, _))
-            .WillOnce(InvokeArgument<1>());
-        EXPECT_CALL(*resolver, result)
-            .WillRepeatedly(ReturnPointee(resolver_result));
-        EXPECT_CALL(*resolver_result, GetError).WillRepeatedly(Return(0));
-        EXPECT_CALL(*resolver_result, GetResolvedAddress(AF_INET6, _))
-            .WillOnce(
-                DoAll(SetArgPointee<1>(kTurnUdpIPv6IntAddr), Return(true)));
-      });
-  TestTurnAllocateSucceeds(kSimulatedRtt * 2);
-}
-
-// Test an allocation from a TURN server specified by a hostname on an IPv6
-// network, with network family-specific resolution.
-TEST_F(TurnPortWithMockDnsResolverTest,
-       TestHostnameResolvedIPv6NetworkFieldTrialEnabled) {
-  webrtc::test::ScopedKeyValueConfig override_field_trials(
-      field_trials_,
-      "WebRTC-IPv6NetworkResolutionFixes/"
-      "Enabled,ResolveTurnHostnameForFamily:true/");
-  turn_server_.AddInternalSocket(kTurnUdpIPv6IntAddr, PROTO_UDP);
-  CreateTurnPort(kLocalIPv6Addr, kTurnUsername, kTurnPassword,
-                 kTurnPortValidHostnameProtoAddr);
-  SetDnsResolverExpectations(
-      [](webrtc::MockAsyncDnsResolver* resolver,
-         webrtc::MockAsyncDnsResolverResult* resolver_result) {
-        // Expect to call Resolver::Start _with_ family arg.
         EXPECT_CALL(*resolver, Start(kTurnValidAddr, /*family=*/AF_INET6, _))
-            .WillOnce(InvokeArgument<2>());
+            .WillOnce([](const rtc::SocketAddress& addr, int family,
+                         absl::AnyInvocable<void()> callback) { callback(); });
         EXPECT_CALL(*resolver, result)
             .WillRepeatedly(ReturnPointee(resolver_result));
         EXPECT_CALL(*resolver_result, GetError).WillRepeatedly(Return(0));

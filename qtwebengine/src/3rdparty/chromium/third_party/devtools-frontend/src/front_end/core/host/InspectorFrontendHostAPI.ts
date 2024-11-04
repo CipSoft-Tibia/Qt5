@@ -27,7 +27,7 @@ export enum Events {
   IndexingWorked = 'indexingWorked',
   IndexingDone = 'indexingDone',
   KeyEventUnhandled = 'keyEventUnhandled',
-  ReattachMainTarget = 'reattachMainTarget',
+  ReattachRootTarget = 'reattachMainTarget',
   ReloadInspectedPage = 'reloadInspectedPage',
   RevealSourceLine = 'revealSourceLine',
   SavedURL = 'savedURL',
@@ -60,7 +60,7 @@ export const EventDescriptors = [
   [Events.IndexingWorked, 'indexingWorked', ['requestId', 'fileSystemPath', 'worked']],
   [Events.IndexingDone, 'indexingDone', ['requestId', 'fileSystemPath']],
   [Events.KeyEventUnhandled, 'keyEventUnhandled', ['event']],
-  [Events.ReattachMainTarget, 'reattachMainTarget', []],
+  [Events.ReattachRootTarget, 'reattachMainTarget', []],
   [Events.ReloadInspectedPage, 'reloadInspectedPage', ['hard']],
   [Events.RevealSourceLine, 'revealSourceLine', ['url', 'lineNumber', 'columnNumber']],
   [Events.SavedURL, 'savedURL', ['url', 'fileSystemPath']],
@@ -136,6 +136,10 @@ export interface SearchCompletedEvent {
   files: Platform.DevToolsPath.RawPathString[];
 }
 
+export interface DoAidaConversationResult {
+  response: string;
+}
+
 // While `EventDescriptors` are used to dynamically dispatch host binding events,
 // the `EventTypes` "type map" is used for type-checking said events by TypeScript.
 // `EventTypes` is not used at runtime.
@@ -162,7 +166,7 @@ export type EventTypes = {
   [Events.IndexingWorked]: IndexingWorkedEvent,
   [Events.IndexingDone]: IndexingEvent,
   [Events.KeyEventUnhandled]: KeyEventUnhandledEvent,
-  [Events.ReattachMainTarget]: void,
+  [Events.ReattachRootTarget]: void,
   [Events.ReloadInspectedPage]: boolean,
   [Events.RevealSourceLine]: RevealSourceLineEvent,
   [Events.SavedURL]: SavedURLEvent,
@@ -248,6 +252,9 @@ export interface InspectorFrontendHostAPI {
 
   platform(): string;
 
+  recordCountHistogram(histogramName: string, sample: number, min: number, exclusiveMax: number, bucketSize: number):
+      void;
+
   recordEnumeratedHistogram(actionName: EnumeratedHistogram, actionCode: number, bucketSize: number): void;
 
   recordPerformanceHistogram(histogramName: string, duration: number): void;
@@ -297,10 +304,12 @@ export interface InspectorFrontendHostAPI {
   setAddExtensionCallback(callback: (arg0: ExtensionDescriptor) => void): void;
 
   initialTargetId(): Promise<string|null>;
+
+  doAidaConversation: (request: string, cb: (result: DoAidaConversationResult) => void) => void;
 }
 
 export interface ContextMenuDescriptor {
-  type: string;
+  type: 'checkbox'|'item'|'separator'|'subMenu';
   id?: number;
   label?: string;
   enabled?: boolean;
@@ -322,6 +331,7 @@ export interface ExtensionDescriptor {
   name: string;
   exposeExperimentalAPIs: boolean;
   hostsPolicy?: ExtensionHostsPolicy;
+  allowFileAccess?: boolean;
 }
 export interface ExtensionHostsPolicy {
   runtimeAllowedHosts: string[];
@@ -366,7 +376,9 @@ export enum EnumeratedHistogram {
   IssuesPanelOpenedFrom = 'DevTools.IssuesPanelOpenedFrom',
   IssuesPanelResourceOpened = 'DevTools.IssuesPanelResourceOpened',
   KeybindSetSettingChanged = 'DevTools.KeybindSetSettingChanged',
+  ElementsSidebarTabShown = 'DevTools.Elements.SidebarTabShown',
   ExperimentEnabledAtLaunch = 'DevTools.ExperimentEnabledAtLaunch',
+  ExperimentDisabledAtLaunch = 'DevTools.ExperimentDisabledAtLaunch',
   ExperimentEnabled = 'DevTools.ExperimentEnabled',
   ExperimentDisabled = 'DevTools.ExperimentDisabled',
   DeveloperResourceLoaded = 'DevTools.DeveloperResourceLoaded',
@@ -375,6 +387,7 @@ export enum EnumeratedHistogram {
   LinearMemoryInspectorTarget = 'DevTools.LinearMemoryInspector.Target',
   Language = 'DevTools.Language',
   SyncSetting = 'DevTools.SyncSetting',
+  RecordingAssertion = 'DevTools.RecordingAssertion',
   RecordingCodeToggled = 'DevTools.RecordingCodeToggled',
   RecordingCopiedToClipboard = 'DevTools.RecordingCopiedToClipboard',
   RecordingEdited = 'DevTools.RecordingEdited',
@@ -383,6 +396,8 @@ export enum EnumeratedHistogram {
   RecordingReplaySpeed = 'DevTools.RecordingReplaySpeed',
   RecordingReplayStarted = 'DevTools.RecordingReplayStarted',
   RecordingToggled = 'DevTools.RecordingToggled',
+  SourcesSidebarTabShown = 'DevTools.Sources.SidebarTabShown',
+  SourcesPanelFileDebugged = 'DevTools.SourcesPanelFileDebugged',
   SourcesPanelFileOpened = 'DevTools.SourcesPanelFileOpened',
   NetworkPanelResponsePreviewOpened = 'DevTools.NetworkPanelResponsePreviewOpened',
   StyleTextCopied = 'DevTools.StyleTextCopied',
@@ -392,4 +407,11 @@ export enum EnumeratedHistogram {
   ColorConvertedFrom = 'DevTools.ColorConvertedFrom',
   ColorPickerOpenedFrom = 'DevTools.ColorPickerOpenedFrom',
   CSSPropertyDocumentation = 'DevTools.CSSPropertyDocumentation',
+  InlineScriptParsed = 'DevTools.InlineScriptParsed',
+  VMInlineScriptTypeShown = 'DevTools.VMInlineScriptShown',
+  BreakpointsRestoredFromStorageCount = 'DevTools.BreakpointsRestoredFromStorageCount',
+  SwatchActivated = 'DevTools.SwatchActivated',
+  BadgeActivated = 'DevTools.BadgeActivated',
+  AnimationPlaybackRateChanged = 'DevTools.AnimationPlaybackRateChanged',
+  AnimationPointDragged = 'DevTools.AnimationPointDragged',
 }

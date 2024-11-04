@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -15,7 +16,6 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 
 // Convert '-' to '_' to use a CDDL identifier as a C identifier.
 std::string ToUnderscoreId(const std::string& x) {
@@ -354,7 +354,7 @@ bool WriteTypeDefinition(int fd, const CppType& type) {
     } break;
     case CppType::Which::kStruct: {
       dprintf(fd, "\nstruct %s {\n", name.c_str());
-      if (type.type_key != absl::nullopt) {
+      if (type.type_key != std::nullopt) {
         dprintf(fd, "  // type key: %" PRIu64 "\n", type.type_key.value());
       }
       dprintf(fd, "  bool operator==(const %s& other) const;\n", name.c_str());
@@ -854,7 +854,7 @@ uint8_t GetByte(uint64_t value, size_t byte) {
 }
 
 std::string GetEncodedTypeKey(const CppType& type) {
-  if (type.type_key == absl::nullopt) {
+  if (type.type_key == std::nullopt) {
     return "";
   }
 
@@ -1518,8 +1518,7 @@ bool WriteHeaderPrologue(int fd, const std::string& header_filename) {
 
 #include "third_party/tinycbor/src/src/cbor.h"
 
-namespace openscreen {
-namespace msgs {
+namespace openscreen::msgs {
 
 enum CborErrors {
   kParserEOF = -CborErrorUnexpectedEOF,
@@ -1567,8 +1566,7 @@ class CborEncodeBuffer {
 CborError ExpectKey(CborValue* it, const uint64_t key);
 CborError ExpectKey(CborValue* it, const char* key, size_t key_length);
 
-}  // namespace msgs
-}  // namespace openscreen
+}  // namespace openscreen::msgs
 #endif  // %s)";
   std::string header_guard = ToHeaderGuard(header_filename);
   dprintf(fd, epilogue, header_guard.c_str());
@@ -1582,8 +1580,7 @@ bool WriteSourcePrologue(int fd, const std::string& header_filename) {
 #include "third_party/tinycbor/src/src/utf8_p.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace msgs {
+namespace openscreen::msgs {
 namespace {
 
 /*
@@ -1707,8 +1704,7 @@ bool IsError(ssize_t x) {
 
 bool WriteSourceEpilogue(int fd) {
   static const char epilogue[] = R"(
-}  // namespace msgs
-}  // namespace openscreen)";
+}  // namespace openscreen::msgs)";
   dprintf(fd, epilogue);
   return true;
 }

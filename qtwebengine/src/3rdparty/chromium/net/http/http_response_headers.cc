@@ -27,9 +27,9 @@
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/time/time.h"
-#include "base/trace_event/trace_event.h"
 #include "base/values.h"
 #include "net/base/parse_number.h"
+#include "net/base/tracing.h"
 #include "net/http/http_byte_range.h"
 #include "net/http/http_log_util.h"
 #include "net/http/http_status_code.h"
@@ -123,11 +123,7 @@ bool ShouldUpdateHeader(base::StringPiece name) {
 }
 
 bool HasEmbeddedNulls(base::StringPiece str) {
-  for (char c : str) {
-    if (c == '\0')
-      return true;
-  }
-  return false;
+  return str.find('\0') != std::string::npos;
 }
 
 void CheckDoesNotHaveEmbeddedNulls(base::StringPiece str) {
@@ -457,6 +453,8 @@ void HttpResponseHeaders::UpdateWithNewRange(const HttpByteRange& byte_range,
 
 void HttpResponseHeaders::Parse(const std::string& raw_input) {
   raw_headers_.reserve(raw_input.size());
+  // TODO(https://crbug.com/1470137): Call reserve() on `parsed_` with an
+  // appropriate value.
 
   // ParseStatusLine adds a normalized status line to raw_headers_
   std::string::const_iterator line_begin = raw_input.begin();
@@ -1217,7 +1215,7 @@ bool HttpResponseHeaders::GetAgeValue(base::TimeDelta* result) const {
   // Parse the delta-seconds as 1*DIGIT.
   uint32_t seconds;
   ParseIntError error;
-  if (!ParseUint32(value, &seconds, &error)) {
+  if (!ParseUint32(value, ParseIntFormat::NON_NEGATIVE, &seconds, &error)) {
     if (error == ParseIntError::FAILED_OVERFLOW) {
       // If the Age value cannot fit in a uint32_t, saturate it to a maximum
       // value. This is similar to what RFC 2616 says in section 14.6 for how
@@ -1369,7 +1367,7 @@ bool HttpResponseHeaders::GetContentRangeFor206(
       instance_length);
 }
 
-base::Value HttpResponseHeaders::NetLogParams(
+base::Value::Dict HttpResponseHeaders::NetLogParams(
     NetLogCaptureMode capture_mode) const {
   base::Value::Dict dict;
   base::Value::List headers;
@@ -1383,7 +1381,7 @@ base::Value HttpResponseHeaders::NetLogParams(
     headers.Append(NetLogStringValue(base::StrCat({name, ": ", log_value})));
   }
   dict.Set("headers", std::move(headers));
-  return base::Value(std::move(dict));
+  return dict;
 }
 
 bool HttpResponseHeaders::IsChunkEncoded() const {

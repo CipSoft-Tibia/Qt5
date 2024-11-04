@@ -13,6 +13,7 @@
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
@@ -124,9 +125,9 @@ class AnimationGallery : public BoxLayoutView, public TextfieldController {
     InvalidateLayout();
   }
 
-  AnimatedImageView* animated_image_view_ = nullptr;
-  Textfield* size_input_ = nullptr;
-  Textfield* file_chooser_ = nullptr;
+  raw_ptr<AnimatedImageView> animated_image_view_ = nullptr;
+  raw_ptr<Textfield> size_input_ = nullptr;
+  raw_ptr<Textfield> file_chooser_ = nullptr;
 
   int size_ = 0;
 };

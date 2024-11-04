@@ -6,7 +6,9 @@
 
 #include <utility>
 
+
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "quiche/quic/core/crypto/quic_random.h"
 #include "quiche/quic/core/http/spdy_utils.h"
@@ -86,12 +88,16 @@ void QuicSpdyClientBase::OnClose(QuicSpdyStream* stream) {
       QUIC_LOG(ERROR) << "Invalid :status response header: " << status->second;
     }
     latest_response_headers_ = response_headers.DebugString();
-    preliminary_response_headers_ =
-        client_stream->preliminary_headers().DebugString();
+    for (const Http2HeaderBlock& headers :
+         client_stream->preliminary_headers()) {
+      absl::StrAppend(&preliminary_response_headers_, headers.DebugString());
+    }
     latest_response_header_block_ = response_headers.Clone();
     latest_response_body_ = std::string(client_stream->data());
     latest_response_trailers_ =
         client_stream->received_trailers().DebugString();
+    latest_ttfb_ = client_stream->time_to_response_headers_received();
+    latest_ttlb_ = client_stream->time_to_response_complete();
   }
 }
 

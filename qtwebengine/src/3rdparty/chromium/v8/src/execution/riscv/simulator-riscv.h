@@ -70,6 +70,8 @@ T Nabs(T a) {
 }
 
 #if defined(USE_SIMULATOR)
+typedef signed __int128_t __attribute__((__mode__(__TI__)));
+typedef unsigned __uint128_t __attribute__((__mode__(__TI__)));
 // Running with a simulator.
 
 #include "src/base/hashmap.h"
@@ -200,7 +202,7 @@ inline double fsgnj64(double rs1, double rs2, bool n, bool x) {
 }
 
 inline Float64 fsgnj64(Float64 rs1, Float64 rs2, bool n, bool x) {
-  u64_f64 a = {.d = rs1.get_scalar()}, b = {.d = rs2.get_scalar()};
+  u64_f64 a = {.u = rs1.get_bits()}, b = {.u = rs2.get_bits()};
   u64_f64 res;
   if (x) {  // RO_FSQNJX_D
     res.u = (a.u & ~F64_SIGN) | ((a.u ^ b.u) & F64_SIGN);
@@ -525,8 +527,12 @@ class Simulator : public SimulatorBase {
 
   Address get_sp() const { return static_cast<Address>(get_register(sp)); }
 
-  // Accessor to the internal simulator stack area.
+  // Accessor to the internal simulator stack area. Adds a safety
+  // margin to prevent overflows (kAdditionalStackMargin).
   uintptr_t StackLimit(uintptr_t c_limit) const;
+  // Return current stack view, without additional safety margins.
+  // Users, for example wasm::StackMemory, can add their own.
+  base::Vector<uint8_t> GetCurrentStackView() const;
 
   // Executes RISC-V instructions until the PC reaches end_sim_pc.
   void Execute();
@@ -842,8 +848,8 @@ class Simulator : public SimulatorBase {
         if (trace_buf_[i] == '\0') break;
       }
       SNPrintF(trace_buf_.SubVector(i, trace_buf_.length()),
-               "  sew:%s lmul:%s vstart:%lu vl:%lu", rvv_sew_s(), rvv_lmul_s(),
-               rvv_vstart(), rvv_vl());
+               "  sew:%s lmul:%s vstart:%" PRId64 "vl:%" PRId64, rvv_sew_s(),
+               rvv_lmul_s(), rvv_vstart(), rvv_vl());
     }
   }
 
@@ -1091,8 +1097,21 @@ class Simulator : public SimulatorBase {
 #endif
   // Simulator support.
   // Allocate 1MB for stack.
-  size_t stack_size_;
-  char* stack_;
+  uint8_t* stack_;
+  static const size_t kStackProtectionSize = 256 * kSystemPointerSize;
+  // This includes a protection margin at each end of the stack area.
+  static size_t AllocatedStackSize() {
+#if V8_TARGET_ARCH_PPC64
+    size_t stack_size = v8_flags.sim_stack_size * KB;
+#else
+    size_t stack_size = 1 * MB;  // allocate 1MB for stack
+#endif
+    return stack_size + (2 * kStackProtectionSize);
+  }
+  static size_t UsableStackSize() {
+    return AllocatedStackSize() - kStackProtectionSize;
+  }
+
   bool pc_modified_;
   int64_t icount_;
   sreg_t* watch_address_ = nullptr;

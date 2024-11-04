@@ -13,181 +13,267 @@
 // limitations under the License.
 
 
-import * as m from 'mithril';
+import m from 'mithril';
 
+import {BigintMath} from '../base/bigint_math';
 import {Actions} from '../common/actions';
 import {QueryResponse} from '../common/queries';
 import {Row} from '../common/query_result';
-import {fromNs} from '../common/time';
+import {Duration, Time} from '../common/time';
 
+import {Anchor} from './anchor';
 import {copyToClipboard, queryResponseToClipboard} from './clipboard';
+import {downloadData} from './download_utils';
 import {globals} from './globals';
 import {Panel} from './panel';
 import {Router} from './router';
-import {
-  focusHorizontalRange,
-  verticalScrollToTrack,
-} from './scroll_helper';
+import {reveal} from './scroll_helper';
+import {Button} from './widgets/button';
+import {Callout} from './widgets/callout';
+import {DetailsShell} from './widgets/details_shell';
 
 interface QueryTableRowAttrs {
   row: Row;
   columns: string[];
 }
 
+type Numeric = bigint|number;
+
+function isIntegral(x: Row[string]): x is Numeric {
+  return typeof x === 'bigint' ||
+      (typeof x === 'number' && Number.isInteger(x));
+}
+
+function hasTs(row: Row): row is Row&{ts: Numeric} {
+  return ('ts' in row && isIntegral(row.ts));
+}
+
+function hasDur(row: Row): row is Row&{dur: Numeric} {
+  return ('dur' in row && isIntegral(row.dur));
+}
+
+function hasTrackId(row: Row): row is Row&{track_id: Numeric} {
+  return ('track_id' in row && isIntegral(row.track_id));
+}
+
+function hasType(row: Row): row is Row&{type: string} {
+  return ('type' in row && typeof row.type === 'string');
+}
+
+function hasId(row: Row): row is Row&{id: Numeric} {
+  return ('id' in row && isIntegral(row.id));
+}
+
+function hasSliceId(row: Row): row is Row&{slice_id: Numeric} {
+  return ('slice_id' in row && isIntegral(row.slice_id));
+}
+
+// These are properties that a row should have in order to be "slice-like",
+// insofar as it represents a time range and a track id which can be revealed
+// or zoomed-into on the timeline.
+type Sliceish = {
+  ts: Numeric,
+  dur: Numeric,
+  track_id: Numeric
+};
+
+export function isSliceish(row: Row): row is Row&Sliceish {
+  return hasTs(row) && hasDur(row) && hasTrackId(row);
+}
+
+// Attempts to extract a slice ID from a row, or undefined if none can be found
+export function getSliceId(row: Row): number|undefined {
+  if (hasType(row) && row.type.includes('slice')) {
+    if (hasId(row)) {
+      return Number(row.id);
+    }
+  } else {
+    if (hasSliceId(row)) {
+      return Number(row.slice_id);
+    }
+  }
+  return undefined;
+}
+
 class QueryTableRow implements m.ClassComponent<QueryTableRowAttrs> {
-  static columnsContainsSliceLocation(columns: string[]) {
-    const requiredColumns = ['ts', 'dur', 'track_id'];
-    for (const col of requiredColumns) {
-      if (!columns.includes(col)) return false;
-    }
-    return true;
-  }
-
-  static rowOnClickHandler(
-      event: Event, row: Row, nextTab: 'CurrentSelection'|'QueryResults') {
-    // TODO(dproy): Make click handler work from analyze page.
-    if (Router.parseUrl(window.location.href).page !== '/viewer') return;
-    // If the click bubbles up to the pan and zoom handler that will deselect
-    // the slice.
-    event.stopPropagation();
-
-    const sliceStart = fromNs(row.ts as number);
-    // row.dur can be negative. Clamp to 1ns.
-    const sliceDur = fromNs(Math.max(row.dur as number, 1));
-    const sliceEnd = sliceStart + sliceDur;
-    const trackId = row.track_id as number;
-    const uiTrackId = globals.state.uiTrackIdByTraceTrackId[trackId];
-    if (uiTrackId === undefined) return;
-    verticalScrollToTrack(uiTrackId, true);
-    focusHorizontalRange(sliceStart, sliceEnd);
-    let sliceId: number|undefined;
-    if (row.type?.toString().includes('slice')) {
-      sliceId = row.id as number | undefined;
-    } else {
-      sliceId = row.slice_id as number | undefined;
-    }
-    if (sliceId !== undefined) {
-      globals.makeSelection(
-          Actions.selectChromeSlice(
-              {id: sliceId, trackId: uiTrackId, table: 'slice'}),
-          nextTab === 'QueryResults' ? globals.state.currentTab :
-                                       'current_selection');
-    }
-  }
-
   view(vnode: m.Vnode<QueryTableRowAttrs>) {
-    const cells = [];
     const {row, columns} = vnode.attrs;
-    for (const col of columns) {
-      const value = row[col];
-      if (value instanceof Uint8Array) {
-        cells.push(m('td', `<BLOB sz=${value.length}>`));
-      } else {
-        cells.push(m('td', value));
+    const cells = columns.map((col) => this.renderCell(col, row[col]));
+
+    // TODO(dproy): Make click handler work from analyze page.
+    if (Router.parseUrl(window.location.href).page === '/viewer' &&
+        isSliceish(row)) {
+      return m(
+          'tr',
+          {
+            onclick: () => this.highlightSlice(row, globals.state.currentTab),
+            // TODO(altimin): Consider improving the logic here (e.g. delay?) to
+            // account for cases when dblclick fires late.
+            ondblclick: () => this.highlightSlice(row),
+            clickable: true,
+            title: 'Go to slice',
+          },
+          cells);
+    } else {
+      return m('tr', cells);
+    }
+  }
+
+  private renderCell(name: string, value: Row[string]) {
+    if (value instanceof Uint8Array) {
+      return m('td', this.renderBlob(name, value));
+    } else {
+      return m('td', `${value}`);
+    }
+  }
+
+  private renderBlob(name: string, value: Uint8Array) {
+    return m(
+        Anchor,
+        {
+          onclick: () => downloadData(`${name}.blob`, value),
+        },
+        `Blob (${value.length} bytes)`);
+  }
+
+  private highlightSlice(row: Row&Sliceish, nextTab?: string) {
+    const trackId = Number(row.track_id);
+    const sliceStart = Time.fromRaw(BigInt(row.ts));
+    // row.dur can be negative. Clamp to 1ns.
+    const sliceDur = BigintMath.max(BigInt(row.dur), 1n);
+    const uiTrackId = globals.state.uiTrackIdByTraceTrackId[trackId];
+    if (uiTrackId !== undefined) {
+      reveal(uiTrackId, sliceStart, Time.add(sliceStart, sliceDur), true);
+      const sliceId = getSliceId(row);
+      if (sliceId !== undefined) {
+        this.selectSlice(sliceId, uiTrackId, nextTab);
       }
     }
-    const containsSliceLocation =
-        QueryTableRow.columnsContainsSliceLocation(columns);
-    const maybeOnClick = containsSliceLocation ?
-        (e: Event) => QueryTableRow.rowOnClickHandler(e, row, 'QueryResults') :
-        null;
-    const maybeOnDblClick = containsSliceLocation ?
-        (e: Event) =>
-            QueryTableRow.rowOnClickHandler(e, row, 'CurrentSelection') :
-        null;
-    return m(
-        'tr',
-        {
-          'onclick': maybeOnClick,
-          // TODO(altimin): Consider improving the logic here (e.g. delay?) to
-          // account for cases when dblclick fires late.
-          'ondblclick': maybeOnDblClick,
-          'clickable': containsSliceLocation,
-        },
-        cells);
+  }
+
+  private selectSlice(sliceId: number, uiTrackId: string, nextTab?: string) {
+    const action = Actions.selectChromeSlice({
+      id: sliceId,
+      trackId: uiTrackId,
+      table: 'slice',
+    });
+    globals.makeSelection(action, {tab: nextTab});
   }
 }
 
-interface QueryTableAttrs {
-  queryId: string;
+interface QueryTableContentAttrs {
+  resp: QueryResponse;
 }
 
-export class QueryTable extends Panel<QueryTableAttrs> {
+class QueryTableContent implements m.ClassComponent<QueryTableContentAttrs> {
   private previousResponse?: QueryResponse;
 
-  onbeforeupdate(vnode: m.CVnode<QueryTableAttrs>) {
-    const {queryId} = vnode.attrs;
-    const resp = globals.queryResults.get(queryId) as QueryResponse;
-    const res = resp !== this.previousResponse;
-    return res;
+  onbeforeupdate(vnode: m.CVnode<QueryTableContentAttrs>) {
+    return vnode.attrs.resp !== this.previousResponse;
   }
 
-  view(vnode: m.CVnode<QueryTableAttrs>) {
-    const {queryId} = vnode.attrs;
-    const resp = globals.queryResults.get(queryId) as QueryResponse;
-    if (resp === undefined) {
-      return m('');
-    }
+  view(vnode: m.CVnode<QueryTableContentAttrs>) {
+    const resp = vnode.attrs.resp;
     this.previousResponse = resp;
     const cols = [];
     for (const col of resp.columns) {
       cols.push(m('td', col));
     }
-    const header = m('tr', cols);
+    const tableHeader = m('tr', cols);
 
-    const rows = [];
-    for (let i = 0; i < resp.rows.length; i++) {
-      rows.push(m(QueryTableRow, {row: resp.rows[i], columns: resp.columns}));
+    const rows =
+        resp.rows.map((row) => m(QueryTableRow, {row, columns: resp.columns}));
+
+    if (resp.error) {
+      return m('.query-error', `SQL error: ${resp.error}`);
+    } else {
+      return m(
+          'table.pf-query-table', m('thead', tableHeader), m('tbody', rows));
     }
+  }
+}
 
-    const headers = [
-      m(
-          'header.overview',
-          m('span', `Query result - ${Math.round(resp.durationMs)} ms`),
-          m('span.code.text-select', resp.query),
-          m('span.spacer'),
-          m('button.query-ctrl',
-            {
-              onclick: () => {
-                copyToClipboard(resp.query);
-              },
-            },
-            'Copy query'),
-          resp.error ? null :
-                       m('button.query-ctrl',
-                         {
-                           onclick: () => {
-                             queryResponseToClipboard(resp);
-                           },
-                         },
-                         'Copy result (.tsv)'),
-          m('button.query-ctrl',
-            {
-              onclick: () => {
-                globals.queryResults.delete(queryId);
-                globals.rafScheduler.scheduleFullRedraw();
-              },
-            },
-            'Close'),
-          ),
-    ];
+interface QueryTableAttrs {
+  query: string;
+  onClose: () => void;
+  resp?: QueryResponse;
+  contextButtons?: m.Child[];
+  fillParent: boolean;
+}
 
-
-    if (resp.statementWithOutputCount > 1) {
-      headers.push(
-          m('header.overview',
-            `${resp.statementWithOutputCount} out of ${resp.statementCount} ` +
-                `statements returned a result. Only the results for the last ` +
-                `statement are displayed in the table below.`));
-    }
+export class QueryTable extends Panel<QueryTableAttrs> {
+  view({attrs}: m.CVnode<QueryTableAttrs>) {
+    const {
+      resp,
+      query,
+      onClose,
+      contextButtons = [],
+      fillParent,
+    } = attrs;
 
     return m(
-        'div',
-        ...headers,
-        resp.error ?
-            m('.query-error', `SQL error: ${resp.error}`) :
-            m('.query-table-container.x-scrollable',
-              m('table.query-table', m('thead', header), m('tbody', rows))));
+        DetailsShell,
+        {
+          title: this.renderTitle(resp),
+          description: query,
+          buttons: this.renderButtons(query, onClose, contextButtons, resp),
+          fillParent,
+        },
+        resp && this.renderTableContent(resp),
+    );
+  }
+
+  renderTitle(resp?: QueryResponse) {
+    if (!resp) {
+      return 'Query - running';
+    }
+    const result = resp.error ? 'error' : `${resp.rows.length} rows`;
+    const dur = Duration.humanise(Duration.fromMillis(resp.durationMs));
+    return `Query result (${result}) - ${dur}`;
+  }
+
+  renderButtons(
+      query: string, onClose: () => void, contextButtons: m.Child[],
+      resp?: QueryResponse) {
+    return [
+      contextButtons,
+      m(Button, {
+        label: 'Copy query',
+        minimal: true,
+        onclick: () => {
+          copyToClipboard(query);
+        },
+      }),
+      (resp && resp.error === undefined) && m(Button, {
+        label: 'Copy result (.tsv)',
+        minimal: true,
+        onclick: () => {
+          queryResponseToClipboard(resp);
+        },
+      }),
+      m(Button, {
+        minimal: true,
+        label: 'Close',
+        onclick: onClose,
+      }),
+    ];
+  }
+
+  renderTableContent(resp: QueryResponse) {
+    return m(
+        '.pf-query-panel',
+        resp.statementWithOutputCount > 1 &&
+            m('.pf-query-warning',
+              m(
+                  Callout,
+                  {icon: 'warning'},
+                  `${resp.statementWithOutputCount} out of ${
+                      resp.statementCount} `,
+                  'statements returned a result. ',
+                  'Only the results for the last statement are displayed.',
+                  )),
+        m(QueryTableContent, {resp}),
+    );
   }
 
   renderCanvas() {}

@@ -7,16 +7,22 @@
 #include "base/command_line.h"
 #include "base/logging.h"
 #include "build/build_config.h"
-#include "components/viz/common/resources/resource_format.h"
-#include "components/viz/common/resources/resource_format_utils.h"
 #include "gpu/command_buffer/service/feature_info.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
 #include "gpu/config/gpu_finch_features.h"
 #include "gpu/config/gpu_switches.h"
 #include "gpu/config/skia_limits.h"
+#include "third_party/skia/include/core/SkImage.h"
+#include "third_party/skia/include/core/SkRefCnt.h"
+#include "third_party/skia/include/core/SkSurface.h"
+#include "third_party/skia/include/core/SkTextureCompressionType.h"
 #include "third_party/skia/include/gpu/GrBackendSurface.h"
 #include "third_party/skia/include/gpu/GrContextThreadSafeProxy.h"
+#include "third_party/skia/include/gpu/GrDirectContext.h"
+#include "third_party/skia/include/gpu/ganesh/gl/GrGLBackendSurface.h"
+#include "third_party/skia/include/gpu/ganesh/vk/GrVkBackendSurface.h"
 #include "third_party/skia/include/gpu/gl/GrGLTypes.h"
+#include "third_party/skia/include/gpu/graphite/GraphiteTypes.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gl/gl_bindings.h"
@@ -48,6 +54,10 @@ void CleanupAfterSkiaFlush(void* context) {
   delete flush_context;
 }
 
+void CleanupAfterGraphiteRecording(void* context, skgpu::CallbackResult) {
+  CleanupAfterSkiaFlush(context);
+}
+
 template <class T>
 void DeleteSkObject(SharedContextState* context_state, sk_sp<T> sk_object) {
   DCHECK(sk_object && sk_object->unique());
@@ -71,7 +81,7 @@ void DeleteSkObject(SharedContextState* context_state, sk_sp<T> sk_object) {
 
 }  // namespace
 
-GrContextOptions GetDefaultGrContextOptions(GrContextType type) {
+GrContextOptions GetDefaultGrContextOptions() {
   // If you make any changes to the GrContext::Options here that could affect
   // text rendering, make sure to match the capabilities initialized in
   // GetCapabilities and ensuring these are also used by the
@@ -87,11 +97,6 @@ GrContextOptions GetDefaultGrContextOptions(GrContextType type) {
   // in a more granular way.  For OOPR-Canvas we want 8, but for other purposes,
   // a texture atlas with sample count of 4 would be sufficient
   options.fInternalMultisampleCount = 8;
-  options.fAllowMSAAOnNewIntel =
-      base::FeatureList::IsEnabled(features::kEnableMSAAOnNewIntelGPUs);
-
-  if (type == GrContextType::kMetal)
-    options.fRuntimeProgramCacheSize = 1024;
 
   options.fSuppressMipmapSupport =
       base::CommandLine::ForCurrentProcess()->HasSwitch(
@@ -99,6 +104,30 @@ GrContextOptions GetDefaultGrContextOptions(GrContextType type) {
 
   // fSupportBilerpFromGlyphAtlas is needed for Raw Draw.
   options.fSupportBilerpFromGlyphAtlas = features::IsUsingRawDraw();
+
+  return options;
+}
+
+skgpu::graphite::ContextOptions GetDefaultGraphiteContextOptions(
+    const GpuDriverBugWorkarounds& workarounds) {
+  skgpu::graphite::ContextOptions options;
+  size_t max_resource_cache_bytes;
+  size_t glyph_cache_max_texture_bytes;
+  DetermineGrCacheLimitsFromAvailableMemory(&max_resource_cache_bytes,
+                                            &glyph_cache_max_texture_bytes);
+  options.fGlyphCacheTextureMaximumBytes = glyph_cache_max_texture_bytes;
+
+  // Disable multisampled antialiasing when it's slow if the relevant
+  // base::Feature is enabled.
+  // NOTE: `workarounds.msaa_is_slow` is true on all Intel devices.
+  // gpu::gles2::MSAAIsSlow() will return true on Intel devices unless the
+  // features::kEnableMSAAOnNewIntelGPUs base::Feature is enabled. If rolling
+  // out single-sampling for Graphite, we should consider whether to tie the
+  // rollout to the features::kEnableMSSAOnNewIntelGPUs experiment.
+  if (workarounds.msaa_is_slow &&
+      base::FeatureList::IsEnabled(features::kDisableSlowMSAAInGraphite)) {
+    options.fInternalMultisampleCount = 1;
+  }
 
   return options;
 }
@@ -135,10 +164,9 @@ GLuint GetGrGLBackendTextureFormat(
 
   // Map ETC1 to ETC2 type depending on conversion by skia
   if (gl_storage_format == GL_ETC1_RGB8_OES) {
-    GrGLFormat gr_gl_format =
-        gr_context_thread_safe
-            ->compressedBackendFormat(SkImage::kETC1_CompressionType)
-            .asGLFormat();
+    GrGLFormat gr_gl_format = GrBackendFormats::AsGLFormat(
+        gr_context_thread_safe->compressedBackendFormat(
+            SkTextureCompressionType::kETC1_RGB8));
     if (gr_gl_format == GrGLFormat::kCOMPRESSED_ETC1_RGB8) {
       internal_format = GL_ETC1_RGB8_OES;
     } else if (gr_gl_format == GrGLFormat::kCOMPRESSED_RGB8_ETC2) {
@@ -173,8 +201,8 @@ bool GetGrBackendTexture(const gles2::FeatureInfo* feature_info,
   texture_info.fTarget = target;
   texture_info.fFormat = GetGrGLBackendTextureFormat(
       feature_info, gl_storage_format, gr_context_thread_safe);
-  *gr_texture = GrBackendTexture(size.width(), size.height(), GrMipMapped::kNo,
-                                 texture_info);
+  *gr_texture = GrBackendTextures::MakeGL(size.width(), size.height(),
+                                          skgpu::Mipmapped::kNo, texture_info);
   return true;
 }
 
@@ -182,14 +210,31 @@ void AddCleanupTaskForSkiaFlush(base::OnceClosure task,
                                 GrFlushInfo* flush_info) {
   FlushCleanupContext* context;
   if (!flush_info->fFinishedProc) {
-    DCHECK(!flush_info->fFinishedContext);
+    CHECK(!flush_info->fFinishedContext);
     flush_info->fFinishedProc = &CleanupAfterSkiaFlush;
     context = new FlushCleanupContext();
     flush_info->fFinishedContext = context;
   } else {
-    DCHECK_EQ(flush_info->fFinishedProc, &CleanupAfterSkiaFlush);
-    DCHECK(flush_info->fFinishedContext);
+    CHECK_EQ(flush_info->fFinishedProc, &CleanupAfterSkiaFlush);
+    CHECK(flush_info->fFinishedContext);
     context = static_cast<FlushCleanupContext*>(flush_info->fFinishedContext);
+  }
+  context->cleanup_tasks.push_back(std::move(task));
+}
+
+void AddCleanupTaskForGraphiteRecording(
+    base::OnceClosure task,
+    skgpu::graphite::InsertRecordingInfo* info) {
+  FlushCleanupContext* context;
+  if (!info->fFinishedProc) {
+    CHECK(!info->fFinishedContext);
+    info->fFinishedProc = &CleanupAfterGraphiteRecording;
+    context = new FlushCleanupContext();
+    info->fFinishedContext = context;
+  } else {
+    CHECK_EQ(info->fFinishedProc, &CleanupAfterGraphiteRecording);
+    CHECK(info->fFinishedContext);
+    context = static_cast<FlushCleanupContext*>(info->fFinishedContext);
   }
   context->cleanup_tasks.push_back(std::move(task));
 }
@@ -273,7 +318,9 @@ GrVkImageInfo CreateGrVkImageInfo(VulkanImage* image) {
       (image->format() == VK_FORMAT_R8G8B8A8_UNORM ||
        image->format() == VK_FORMAT_R8G8B8_UNORM ||
        image->format() == VK_FORMAT_B8G8R8A8_UNORM ||
-       image->format() == VK_FORMAT_B8G8R8_UNORM)) {
+       image->format() == VK_FORMAT_B8G8R8_UNORM ||
+       image->format() == VK_FORMAT_R8_UNORM ||
+       image->format() == VK_FORMAT_R8G8_UNORM)) {
     image_info.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
   } else {
     image_info.fImageTiling = image->image_tiling();
@@ -354,8 +401,10 @@ bool ShouldVulkanSyncCpuForSkiaSubmit(
     const absl::optional<uint32_t>& sync_cpu_memory_limit =
         context_provider->GetSyncCpuMemoryLimit();
     if (sync_cpu_memory_limit.has_value()) {
-      uint64_t total_allocated_bytes = gpu::vma::GetTotalAllocatedMemory(
-          context_provider->GetDeviceQueue()->vma_allocator());
+      uint64_t total_allocated_bytes =
+          gpu::vma::GetTotalAllocatedAndUsedMemory(
+              context_provider->GetDeviceQueue()->vma_allocator())
+              .first;
       if (total_allocated_bytes > sync_cpu_memory_limit.value()) {
         return true;
       }
@@ -369,31 +418,17 @@ uint64_t GrBackendTextureTracingID(const GrBackendTexture& backend_texture) {
   switch (backend_texture.backend()) {
     case GrBackendApi::kOpenGL: {
       GrGLTextureInfo tex_info;
-      if (backend_texture.getGLTextureInfo(&tex_info))
+      if (GrBackendTextures::GetGLTextureInfo(backend_texture, &tex_info)) {
         return tex_info.fID;
+      }
       break;
     }
-#if BUILDFLAG(IS_MAC)
-    case GrBackendApi::kMetal: {
-      GrMtlTextureInfo image_info;
-      if (backend_texture.getMtlTextureInfo(&image_info))
-        return reinterpret_cast<uint64_t>(image_info.fTexture.get());
-      break;
-    }
-#endif
 #if BUILDFLAG(ENABLE_VULKAN)
     case GrBackendApi::kVulkan: {
       GrVkImageInfo image_info;
-      if (backend_texture.getVkImageInfo(&image_info))
+      if (GrBackendTextures::GetVkImageInfo(backend_texture, &image_info)) {
         return reinterpret_cast<uint64_t>(image_info.fImage);
-      break;
-    }
-#endif
-#if BUILDFLAG(SKIA_USE_DAWN)
-    case GrBackendApi::kDawn: {
-      GrDawnTextureInfo tex_info;
-      if (backend_texture.getDawnTextureInfo(&tex_info))
-        return reinterpret_cast<uint64_t>(tex_info.fTexture.Get());
+      }
       break;
     }
 #endif

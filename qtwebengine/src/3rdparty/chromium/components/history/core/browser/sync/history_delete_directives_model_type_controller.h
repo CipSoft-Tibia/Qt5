@@ -7,8 +7,8 @@
 
 #include "base/scoped_observation.h"
 #include "components/history/core/browser/sync/history_model_type_controller_helper.h"
-#include "components/sync/driver/sync_service_observer.h"
-#include "components/sync/driver/syncable_service_based_model_type_controller.h"
+#include "components/sync/service/sync_service_observer.h"
+#include "components/sync/service/syncable_service_based_model_type_controller.h"
 
 class PrefService;
 
@@ -47,8 +47,7 @@ class HistoryDeleteDirectivesModelTypeController
   PreconditionState GetPreconditionState() const override;
   void LoadModels(const syncer::ConfigureContext& configure_context,
                   const ModelLoadCallback& model_load_callback) override;
-  void Stop(syncer::ShutdownReason shutdown_reason,
-            StopCallback callback) override;
+  void Stop(syncer::SyncStopMetadataFate fate, StopCallback callback) override;
 
   // syncer::SyncServiceObserver implementation.
   void OnStateChanged(syncer::SyncService* sync) override;

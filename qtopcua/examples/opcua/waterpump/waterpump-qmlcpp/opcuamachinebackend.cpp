@@ -3,7 +3,10 @@
 
 #include "opcuamachinebackend.h"
 
-#include <QtQml>
+#include <QOpcUaProvider>
+#include <QQmlEngine>
+
+using namespace Qt::Literals::StringLiterals;
 
 OpcUaMachineBackend::OpcUaMachineBackend(QObject *parent)
     : QObject(parent)
@@ -13,7 +16,7 @@ OpcUaMachineBackend::OpcUaMachineBackend(QObject *parent)
     , m_tank2ValveState(false)
     , m_machineState(MachineState::Idle)
     , m_connected(false)
-    , m_message("Ready to connect")
+    , m_message(u"Ready to connect"_s)
     , m_successfullyCreated(false)
 {
     qRegisterMetaType<OpcUaMachineBackend::MachineState>();
@@ -36,52 +39,97 @@ void OpcUaMachineBackend::clientStateHandler(QOpcUaClient::ClientState state)
     emit connectedChanged(m_connected);
 
     if (state == QOpcUaClient::ClientState::Connected) {
-        setMessage("Connected");
+        setMessage(u"Connected"_s);
         // Create node objects for reading, writing and subscriptions
-        m_machineNode.reset(m_client->node("ns=2;s=Machine"));
-        m_machineStateNode.reset(m_client->node("ns=2;s=Machine.State"));
-        m_percentFilledTank1Node.reset(m_client->node("ns=2;s=Machine.Tank1.PercentFilled"));
-        m_percentFilledTank2Node.reset(m_client->node("ns=2;s=Machine.Tank2.PercentFilled"));
-        m_tank2TargetPercentNode.reset(m_client->node("ns=2;s=Machine.Tank2.TargetPercent"));
-        m_tank2ValveStateNode.reset(m_client->node("ns=2;s=Machine.Tank2.ValveState"));
-        m_machineDesignationNode.reset(m_client->node("ns=2;s=Machine.Designation"));
+        m_machineNode.reset(m_client->node(u"ns=2;s=Machine"_s));
+        m_machineStateNode.reset(m_client->node(u"ns=2;s=Machine.State"_s));
+        m_percentFilledTank1Node.reset(m_client->node(u"ns=2;s=Machine.Tank1.PercentFilled"_s));
+        m_percentFilledTank2Node.reset(m_client->node(u"ns=2;s=Machine.Tank2.PercentFilled"_s));
+        m_tank2TargetPercentNode.reset(m_client->node(u"ns=2;s=Machine.Tank2.TargetPercent"_s));
+        m_tank2ValveStateNode.reset(m_client->node(u"ns=2;s=Machine.Tank2.ValveState"_s));
+        m_machineDesignationNode.reset(m_client->node(u"ns=2;s=Machine.Designation"_s));
 
         // Connect signal handlers for subscribed values
-        QObject::connect(m_machineStateNode.data(), &QOpcUaNode::dataChangeOccurred, this, &OpcUaMachineBackend::machineStateUpdated);
-        QObject::connect(m_percentFilledTank1Node.data(), &QOpcUaNode::dataChangeOccurred, this, &OpcUaMachineBackend::percentFilledTank1Updated);
-        QObject::connect(m_percentFilledTank2Node.data(), &QOpcUaNode::dataChangeOccurred, this, &OpcUaMachineBackend::percentFilledTank2Updated);
-        QObject::connect(m_tank2TargetPercentNode.data(), &QOpcUaNode::dataChangeOccurred, this, &OpcUaMachineBackend::tank2TargetPercentUpdated);
-        QObject::connect(m_tank2ValveStateNode.data(), &QOpcUaNode::dataChangeOccurred, this, &OpcUaMachineBackend::tank2ValveStateUpdated);
+        QObject::connect(m_machineStateNode.data(),
+                         &QOpcUaNode::dataChangeOccurred,
+                         this,
+                         &OpcUaMachineBackend::machineStateUpdated);
+        QObject::connect(m_percentFilledTank1Node.data(),
+                         &QOpcUaNode::dataChangeOccurred,
+                         this,
+                         &OpcUaMachineBackend::percentFilledTank1Updated);
+        QObject::connect(m_percentFilledTank2Node.data(),
+                         &QOpcUaNode::dataChangeOccurred,
+                         this,
+                         &OpcUaMachineBackend::percentFilledTank2Updated);
+        QObject::connect(m_tank2TargetPercentNode.data(),
+                         &QOpcUaNode::dataChangeOccurred,
+                         this,
+                         &OpcUaMachineBackend::tank2TargetPercentUpdated);
+        QObject::connect(m_tank2ValveStateNode.data(),
+                         &QOpcUaNode::dataChangeOccurred,
+                         this,
+                         &OpcUaMachineBackend::tank2ValveStateUpdated);
 
         // Subscribe to data changes
-        m_machineStateNode->enableMonitoring(QOpcUa::NodeAttribute::Value, QOpcUaMonitoringParameters(100));
-        m_percentFilledTank1Node->enableMonitoring(QOpcUa::NodeAttribute::Value, QOpcUaMonitoringParameters(100));
-        m_percentFilledTank2Node->enableMonitoring(QOpcUa::NodeAttribute::Value, QOpcUaMonitoringParameters(100));
-        m_tank2TargetPercentNode->enableMonitoring(QOpcUa::NodeAttribute::Value, QOpcUaMonitoringParameters(100));
-        m_tank2ValveStateNode->enableMonitoring(QOpcUa::NodeAttribute::Value, QOpcUaMonitoringParameters(100));
+        m_machineStateNode->enableMonitoring(
+                QOpcUa::NodeAttribute::Value, QOpcUaMonitoringParameters(100));
+        m_percentFilledTank1Node->enableMonitoring(
+                QOpcUa::NodeAttribute::Value, QOpcUaMonitoringParameters(100));
+        m_percentFilledTank2Node->enableMonitoring(
+                QOpcUa::NodeAttribute::Value, QOpcUaMonitoringParameters(100));
+        m_tank2TargetPercentNode->enableMonitoring(
+                QOpcUa::NodeAttribute::Value, QOpcUaMonitoringParameters(100));
+        m_tank2ValveStateNode->enableMonitoring(
+                QOpcUa::NodeAttribute::Value, QOpcUaMonitoringParameters(100));
 
         // Connect the handler for async reading
-        QObject::connect(m_machineDesignationNode.data(), &QOpcUaNode::attributeRead, this, &OpcUaMachineBackend::machineDesignationRead);
+        QObject::connect(m_machineDesignationNode.data(),
+                         &QOpcUaNode::attributeRead,
+                         this,
+                         &OpcUaMachineBackend::machineDesignationRead);
+
         // Request the value attribute of the machine designation node
         m_machineDesignationNode->readAttributes(QOpcUa::NodeAttribute::Value);
 
         // Add handlers for write and call results
-        QObject::connect(m_tank2TargetPercentNode.data(), &QOpcUaNode::attributeWritten, this, &OpcUaMachineBackend::setpointWritten);
-        QObject::connect(m_machineNode.data(), &QOpcUaNode::methodCallFinished, this, &OpcUaMachineBackend::handleMethodResult);
+        QObject::connect(m_tank2TargetPercentNode.data(),
+                         &QOpcUaNode::attributeWritten,
+                         this,
+                         &OpcUaMachineBackend::setpointWritten);
+        QObject::connect(m_machineNode.data(),
+                         &QOpcUaNode::methodCallFinished,
+                         this,
+                         &OpcUaMachineBackend::handleMethodResult);
 
         // Add handlers for enableMonitoring results
-        QObject::connect(m_machineStateNode.data(), &QOpcUaNode::enableMonitoringFinished, this, &OpcUaMachineBackend::enableMonitoringFinished);
-        QObject::connect(m_percentFilledTank1Node.data(), &QOpcUaNode::enableMonitoringFinished, this, &OpcUaMachineBackend::enableMonitoringFinished);
-        QObject::connect(m_percentFilledTank2Node.data(), &QOpcUaNode::enableMonitoringFinished, this, &OpcUaMachineBackend::enableMonitoringFinished);
-        QObject::connect(m_tank2TargetPercentNode.data(), &QOpcUaNode::enableMonitoringFinished, this, &OpcUaMachineBackend::enableMonitoringFinished);
-        QObject::connect(m_tank2ValveStateNode.data(), &QOpcUaNode::enableMonitoringFinished, this, &OpcUaMachineBackend::enableMonitoringFinished);
+        QObject::connect(m_machineStateNode.data(),
+                         &QOpcUaNode::enableMonitoringFinished,
+                         this,
+                         &OpcUaMachineBackend::enableMonitoringFinished);
+        QObject::connect(m_percentFilledTank1Node.data(),
+                         &QOpcUaNode::enableMonitoringFinished,
+                         this,
+                         &OpcUaMachineBackend::enableMonitoringFinished);
+        QObject::connect(m_percentFilledTank2Node.data(),
+                         &QOpcUaNode::enableMonitoringFinished,
+                         this,
+                         &OpcUaMachineBackend::enableMonitoringFinished);
+        QObject::connect(m_tank2TargetPercentNode.data(),
+                         &QOpcUaNode::enableMonitoringFinished,
+                         this,
+                         &OpcUaMachineBackend::enableMonitoringFinished);
+        QObject::connect(m_tank2ValveStateNode.data(),
+                         &QOpcUaNode::enableMonitoringFinished,
+                         this,
+                         &OpcUaMachineBackend::enableMonitoringFinished);
     }
 
     if (state == QOpcUaClient::ClientState::Connecting)
-        setMessage(QStringLiteral("Connecting"));
+        setMessage(u"Connecting"_s);
 
     if (state == QOpcUaClient::ClientState::Disconnected) {
-        setMessage(QStringLiteral("Disconnected: %1")
+        setMessage(u"Disconnected: %1"_s
                    .arg(QMetaEnum::fromType<QOpcUaClient::ClientError>().valueToKey(
                             static_cast<int>(m_client->error()))));
     }
@@ -138,48 +186,53 @@ void OpcUaMachineBackend::machineDesignationRead(QOpcUa::NodeAttributes attr)
 void OpcUaMachineBackend::setpointWritten(QOpcUa::NodeAttribute attr, QOpcUa::UaStatusCode status)
 {
     if (attr == QOpcUa::NodeAttribute::Value && status == QOpcUa::UaStatusCode::Good)
-        setMessage("Setpoint successfully set");
+        setMessage(u"Setpoint successfully set"_s);
     else if (attr == QOpcUa::NodeAttribute::Value && status != QOpcUa::UaStatusCode::Good)
-        setMessage("Failed to set setpoint");
+        setMessage(u"Failed to set setpoint"_s);
 }
 
-void OpcUaMachineBackend::handleMethodResult(QString methodNodeId, const QVariant &result, QOpcUa::UaStatusCode statusCode)
+void OpcUaMachineBackend::handleMethodResult(QString methodNodeId,
+                                             const QVariant &result,
+                                             QOpcUa::UaStatusCode statusCode)
 {
     Q_UNUSED(result);
 
-    if (methodNodeId == "ns=2;s=Machine.Start") {
+    if (methodNodeId == u"ns=2;s=Machine.Start"_s) {
         if (statusCode == QOpcUa::UaStatusCode::Good)
-            setMessage("Pump successfully started");
+            setMessage(u"Pump successfully started"_s);
         else
-            setMessage("Unable to start pump");
-    } else if (methodNodeId == "ns=2;s=Machine.Stop") {
+            setMessage(u"Unable to start pump"_s);
+    } else if (methodNodeId == u"ns=2;s=Machine.Stop"_s) {
         if (statusCode == QOpcUa::UaStatusCode::Good)
-            setMessage("Pump successfully stopped");
+            setMessage(u"Pump successfully stopped"_s);
         else
-            setMessage("Unable to stop pump");
-    } else if (methodNodeId == "ns=2;s=Machine.FlushTank2") {
+            setMessage(u"Unable to stop pump"_s);
+    } else if (methodNodeId == u"ns=2;s=Machine.FlushTank2"_s) {
         if (statusCode == QOpcUa::UaStatusCode::Good)
-            setMessage("Flushing tank 2 successfully started");
+            setMessage(u"Flushing tank 2 successfully started"_s);
         else
-            setMessage("Unable to flush tank 2");
-    } else if (methodNodeId == "ns=2;s=Machine.Reset") {
+            setMessage(u"Unable to flush tank 2"_s);
+    } else if (methodNodeId == u"ns=2;s=Machine.Reset"_s) {
         if (statusCode == QOpcUa::UaStatusCode::Good)
-            setMessage("Simulation successfully reset");
+            setMessage(u"Simulation successfully reset"_s);
         else
-            setMessage("Unable to reset simulation");
+            setMessage(u"Unable to reset simulation"_s);
     }
 }
 
-void OpcUaMachineBackend::enableMonitoringFinished(QOpcUa::NodeAttribute attr, QOpcUa::UaStatusCode status)
+void OpcUaMachineBackend::enableMonitoringFinished(QOpcUa::NodeAttribute attr,
+                                                   QOpcUa::UaStatusCode status)
 {
     Q_UNUSED(attr);
     if (!sender())
         return;
-    if (status == QOpcUa::UaStatusCode::Good)
-        qDebug() << "Monitoring successfully enabled for" << qobject_cast<QOpcUaNode *>(sender())->nodeId();
-    else {
-        qDebug() << "Failed to enable monitoring for" << qobject_cast<QOpcUaNode *>(sender())->nodeId() << ":" << status;
-        setMessage("Failed to enable monitoring");
+    if (status == QOpcUa::UaStatusCode::Good) {
+        qDebug() << "Monitoring successfully enabled for"
+                 << qobject_cast<QOpcUaNode *>(sender())->nodeId();
+    } else {
+        qDebug() << "Failed to enable monitoring for"
+                 << qobject_cast<QOpcUaNode *>(sender())->nodeId() << ":" << status;
+        setMessage(u"Failed to enable monitoring"_s);
     }
 }
 
@@ -219,25 +272,25 @@ void OpcUaMachineBackend::machineWriteTank2TargetPercent(double value)
 
 void OpcUaMachineBackend::startPump()
 {
-    m_machineNode->callMethod("ns=2;s=Machine.Start");
+    m_machineNode->callMethod(u"ns=2;s=Machine.Start"_s);
 }
 
 void OpcUaMachineBackend::stopPump()
 {
     if (m_machineNode)
-        m_machineNode->callMethod("ns=2;s=Machine.Stop");
+        m_machineNode->callMethod(u"ns=2;s=Machine.Stop"_s);
 }
 
 void OpcUaMachineBackend::flushTank2()
 {
     if (m_machineNode)
-        m_machineNode->callMethod("ns=2;s=Machine.FlushTank2");
+        m_machineNode->callMethod(u"ns=2;s=Machine.FlushTank2"_s);
 }
 
 void OpcUaMachineBackend::resetSimulation()
 {
     if (m_machineNode)
-        m_machineNode->callMethod("ns=2;s=Machine.Reset");
+        m_machineNode->callMethod(u"ns=2;s=Machine.Reset"_s);
 }
 
 void OpcUaMachineBackend::requestEndpointsFinished(const QList<QOpcUaEndpointDescription> &endpoints)
@@ -291,8 +344,14 @@ void OpcUaMachineBackend::connectToEndpoint(const QString &url, qint32 index)
     if (!m_client || (m_client && m_client->backend() != m_backends.at(index))) {
         m_client.reset(provider.createClient(m_backends.at(index)));
         if (m_client) {
-            QObject::connect(m_client.data(), &QOpcUaClient::endpointsRequestFinished, this, &OpcUaMachineBackend::requestEndpointsFinished);
-            QObject::connect(m_client.data(), &QOpcUaClient::stateChanged, this, &OpcUaMachineBackend::clientStateHandler);
+            QObject::connect(m_client.data(),
+                             &QOpcUaClient::endpointsRequestFinished,
+                             this,
+                             &OpcUaMachineBackend::requestEndpointsFinished);
+            QObject::connect(m_client.data(),
+                             &QOpcUaClient::stateChanged,
+                             this,
+                             &OpcUaMachineBackend::clientStateHandler);
         }
     }
 

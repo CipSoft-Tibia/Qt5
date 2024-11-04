@@ -4,6 +4,6 @@
 
 // TODO(vmpstr): Rename this to UpdateDOMCallback
 [
-  RuntimeEnabled=ViewTransition
+  SupportsTaskAttribution
 ] callback ViewTransitionCallback = Promise<void>();
 

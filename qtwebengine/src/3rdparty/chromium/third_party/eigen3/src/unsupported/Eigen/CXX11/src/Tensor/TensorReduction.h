@@ -603,8 +603,10 @@ static constexpr bool RunningOnGPU = false;
   static constexpr bool RunningFullReduction = (NumOutputDims==0);
 
   EIGEN_STRONG_INLINE TensorReductionEvaluatorBase(const XprType& op, const Device& device)
-      : m_impl(op.expression(), device), m_reducer(op.reducer()), m_result(NULL), m_device(device)
-  {
+      : m_impl(op.expression(), device),
+        m_reducer(op.reducer()),
+        m_result(NULL),
+        m_device(device) {
     EIGEN_STATIC_ASSERT((NumInputDims >= NumReducedDims), YOU_MADE_A_PROGRAMMING_MISTAKE);
     EIGEN_STATIC_ASSERT((!ReducingInnerMostDims | !PreservingInnerMostDims | (NumReducedDims == NumInputDims)),
                         YOU_MADE_A_PROGRAMMING_MISTAKE);
@@ -891,13 +893,6 @@ static constexpr bool RunningOnGPU = false;
   EIGEN_DEVICE_FUNC EvaluatorPointerType data() const { return m_result; }
   EIGEN_DEVICE_FUNC const TensorEvaluator<ArgType, Device>& impl() const { return m_impl; }
   EIGEN_DEVICE_FUNC const Device& device() const { return m_device; }
-#ifdef EIGEN_USE_SYCL
-  // binding placeholder accessors to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_impl.bind(cgh);
-    if(m_result) m_result.bind(cgh);
-  }
-#endif
 
   private:
   template <int, typename, typename> friend struct internal::GenericDimReducer;

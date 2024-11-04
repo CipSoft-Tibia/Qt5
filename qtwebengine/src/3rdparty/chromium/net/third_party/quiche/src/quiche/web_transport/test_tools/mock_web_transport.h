@@ -8,12 +8,14 @@
 #define QUICHE_WEB_TRANSPORT_TEST_TOOLS_MOCK_WEB_TRANSPORT_H_
 
 #include "quiche/common/platform/api/quiche_test.h"
+#include "quiche/common/quiche_callbacks.h"
 #include "quiche/web_transport/web_transport.h"
 
 namespace webtransport {
 namespace test {
 
 class QUICHE_NO_EXPORT MockStreamVisitor : public StreamVisitor {
+ public:
   MOCK_METHOD(void, OnCanRead, (), (override));
   MOCK_METHOD(void, OnCanWrite, (), (override));
   MOCK_METHOD(void, OnResetStreamReceived, (StreamErrorCode), (override));
@@ -22,6 +24,7 @@ class QUICHE_NO_EXPORT MockStreamVisitor : public StreamVisitor {
 };
 
 class QUICHE_NO_EXPORT MockStream : public Stream {
+ public:
   MOCK_METHOD(ReadResult, Read, (absl::Span<char> buffer), (override));
   MOCK_METHOD(ReadResult, Read, (std::string * output), (override));
   MOCK_METHOD(absl::Status, Writev,
@@ -29,6 +32,7 @@ class QUICHE_NO_EXPORT MockStream : public Stream {
                const quiche::StreamWriteOptions& options),
               (override));
   MOCK_METHOD(bool, CanWrite, (), (const, override));
+  MOCK_METHOD(void, AbruptlyTerminate, (absl::Status), (override));
   MOCK_METHOD(size_t, ReadableBytes, (), (const, override));
   MOCK_METHOD(StreamId, GetStreamId, (), (const, override));
   MOCK_METHOD(void, ResetWithUserCode, (StreamErrorCode error), (override));
@@ -41,8 +45,8 @@ class QUICHE_NO_EXPORT MockStream : public Stream {
 };
 
 class QUICHE_NO_EXPORT MockSessionVisitor : public SessionVisitor {
-  MOCK_METHOD(void, OnSessionReady, (const spdy::Http2HeaderBlock& headers),
-              (override));
+ public:
+  MOCK_METHOD(void, OnSessionReady, (), (override));
   MOCK_METHOD(void, OnSessionClosed,
               (SessionErrorCode error_code, const std::string& error_message),
               (override));
@@ -65,11 +69,15 @@ class QUICHE_NO_EXPORT MockSession : public Session {
   MOCK_METHOD(bool, CanOpenNextOutgoingUnidirectionalStream, (), (override));
   MOCK_METHOD(Stream*, OpenOutgoingBidirectionalStream, (), (override));
   MOCK_METHOD(Stream*, OpenOutgoingUnidirectionalStream, (), (override));
+  MOCK_METHOD(Stream*, GetStreamById, (StreamId), (override));
   MOCK_METHOD(DatagramStatus, SendOrQueueDatagram, (absl::string_view datagram),
               (override));
-  MOCK_METHOD(size_t, GetMaxDatagramSize, (), (const, override));
+  MOCK_METHOD(uint64_t, GetMaxDatagramSize, (), (const, override));
   MOCK_METHOD(void, SetDatagramMaxTimeInQueue,
               (absl::Duration max_time_in_queue), (override));
+  MOCK_METHOD(void, NotifySessionDraining, (), (override));
+  MOCK_METHOD(void, SetOnDraining, (quiche::SingleUseCallback<void()>),
+              (override));
 };
 
 }  // namespace test

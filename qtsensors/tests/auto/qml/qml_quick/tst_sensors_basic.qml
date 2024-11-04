@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtTest
 import QtSensors
@@ -200,5 +200,27 @@ TestCase {
                     {tag: "LightSensor", initialReading: {illuminance: 1.0}, newReading: {illuminance: 2.0}},
                     {tag: "IRProximitySensor", initialReading: {reflectance: 0.5}, newReading: {reflectance: 0.6}}
                ];
+    }
+
+    function test_SupportedFeatures()
+    {
+        var sensor = Qt.createQmlObject("import QtSensors; Accelerometer \
+                                         {identifier: \"QAccelerometer\"}",
+                                         testCase);
+        verify(sensor.start())
+        verify(sensor.connectedToBackend)
+
+        // According to isFeatureSupported() override implementation in test_backends.h,
+        // only SkipDuplicates should be supported afterwards
+        verify(!sensor.isFeatureSupported(Sensor.Buffering))
+        verify(!sensor.isFeatureSupported(Sensor.AlwaysOn))
+        verify(!sensor.isFeatureSupported(Sensor.GeoValues))
+        verify(!sensor.isFeatureSupported(Sensor.FieldOfView))
+        verify(!sensor.isFeatureSupported(Sensor.AccelerationMode))
+        verify(sensor.isFeatureSupported(Sensor.SkipDuplicates))
+        verify(!sensor.isFeatureSupported(Sensor.AxesOrientation))
+        verify(!sensor.isFeatureSupported(Sensor.PressureSensorTemperature))
+
+        sensor.destroy()
     }
 }

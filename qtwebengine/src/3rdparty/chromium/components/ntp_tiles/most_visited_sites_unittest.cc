@@ -178,7 +178,7 @@ class FakeHomepageClient : public MostVisitedSites::HomepageClient {
  public:
   FakeHomepageClient()
       : homepage_tile_enabled_(false), homepage_url_(kHomepageUrl) {}
-  ~FakeHomepageClient() override {}
+  ~FakeHomepageClient() override = default;
 
   bool IsHomepageTileEnabled() const override { return homepage_tile_enabled_; }
 
@@ -278,6 +278,25 @@ class PopularSitesFactoryForTest {
               "favicon_url": "http://news.google.com/favicon.ico"
             }
            ])");
+#if BUILDFLAG(IS_IOS)
+    test_url_loader_factory_.AddResponse(
+        "https://www.gstatic.com/chrome/ntp/ios/"
+        "suggested_sites_US_2023q1_mvt_experiment_with_popular_sites.json",
+        R"([{
+              "title": "ESPN",
+              "url": "http://www.espn.com",
+              "favicon_url": "http://www.espn.com/favicon.ico"
+            }, {
+              "title": "Mobile",
+              "url": "http://www.mobile.de",
+              "favicon_url": "http://www.mobile.de/favicon.ico"
+            }, {
+              "title": "Google News",
+              "url": "http://news.google.com",
+              "favicon_url": "http://news.google.com/favicon.ico"
+            }
+           ])");
+#endif
 
     test_url_loader_factory_.AddResponse(
         "https://www.gstatic.com/chrome/ntp/suggested_sites_IN_6.json",
@@ -361,11 +380,10 @@ class MostVisitedSitesTest : public ::testing::TestWithParam<bool> {
 
     // Updating list value in pref with default gmail URL for unit testing.
     // Also adding migration feature to be enabled for unit test.
-    base::Value::List defaults;
-    defaults.Append("pjkljhegncpnkpknbcohdijeoejaedia");
+    auto defaults =
+        base::Value::List().Append("pjkljhegncpnkpknbcohdijeoejaedia");
     pref_service_.registry()->RegisterListPref(
-        webapps::kWebAppsMigratedPreinstalledApps,
-        base::Value(std::move(defaults)));
+        webapps::kWebAppsMigratedPreinstalledApps, std::move(defaults));
 
     feature_list_.InitWithFeatures(enabled_features, disabled_features);
     if (IsPopularSitesFeatureEnabled())
@@ -449,7 +467,7 @@ class MostVisitedSitesTest : public ::testing::TestWithParam<bool> {
   bool is_custom_links_enabled_ = false;
   TopSitesCallbackList top_sites_callbacks_;
 
-  base::test::SingleThreadTaskEnvironment task_environment_;
+  base::test::TaskEnvironment task_environment_;
   data_decoder::test::InProcessDataDecoder in_process_data_decoder_;
   sync_preferences::TestingPrefServiceSyncable pref_service_;
   PopularSitesFactoryForTest popular_sites_factory_{&pref_service_};

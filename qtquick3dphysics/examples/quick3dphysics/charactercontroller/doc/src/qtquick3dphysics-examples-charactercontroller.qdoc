@@ -5,7 +5,7 @@
     \example charactercontroller
     \ingroup quick3dphysics-examples
     \title Qt Quick 3D Physics - CharacterController Example
-    \examplecategory {Data Visualization & 3D}
+    \examplecategory {3D}
     \brief Demonstrates the CharacterController type.
     \image charactercontroller-example.jpg
 

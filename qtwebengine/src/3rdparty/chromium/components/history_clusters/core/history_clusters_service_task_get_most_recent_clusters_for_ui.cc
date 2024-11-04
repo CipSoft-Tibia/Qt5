@@ -46,7 +46,11 @@ HistoryClustersServiceTaskGetMostRecentClustersForUI::
 }
 
 HistoryClustersServiceTaskGetMostRecentClustersForUI::
-    ~HistoryClustersServiceTaskGetMostRecentClustersForUI() = default;
+    ~HistoryClustersServiceTaskGetMostRecentClustersForUI() {
+  if (!done_) {
+    std::move(callback_).Run({}, continuation_params_);
+  }
+}
 
 void HistoryClustersServiceTaskGetMostRecentClustersForUI::Start(
     QueryClustersFilterParams filter_params) {
@@ -104,8 +108,23 @@ void HistoryClustersServiceTaskGetMostRecentClustersForUI::
                                  .annotated_visit.visit_row.visit_time,
                              true, false, true, false};
 
+  if (!clusters.empty()) {
+    int time_horizon_hours = (continuation_params_.continuation_time -
+                              continuation_params.continuation_time)
+                                 .InHours();
+    base::UmaHistogramCounts1000(
+        "History.Clusters.Backend.GetMostRecentClustersForUI."
+        "GetMostRecentPersistedClustersTimeHorizon",
+        time_horizon_hours);
+    base::UmaHistogramCounts1000(
+        "History.Clusters.Backend.GetMostRecentClustersForUI."
+        "GetMostRecentPersistedClustersTimeHorizon" +
+            GetHistogramNameSliceForRequestSource(clustering_request_source_),
+        time_horizon_hours);
+  }
+
   // Prune out synced clusters if feature not enabled.
-  if (!GetConfig().include_synced_visits) {
+  if (!filter_params.include_synced_visits) {
     auto it = clusters.begin();
     while (it != clusters.end()) {
       if (it->originator_cache_guid.empty()) {

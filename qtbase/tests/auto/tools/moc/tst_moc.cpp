@@ -1,6 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2020 Olivier Goffart <ogoffart@woboq.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QSignalSpy>
@@ -62,6 +62,8 @@
 
 #include "qmlmacro.h"
 
+#include "tech-preview.h"
+
 using namespace Qt::StringLiterals;
 
 #ifdef Q_MOC_RUN
@@ -81,6 +83,26 @@ namespace A {
    namespace B::inline C {}
 }
 #endif
+
+
+namespace TokenStartingWithNumber
+{
+Q_NAMESPACE
+
+#define FOR_EACH_ITEM( CALL ) \
+  CALL( EXAMPLE ) \
+  CALL( 123_EXAMPLE ) \
+  CALL( OTHER_EXAMPLE )
+
+enum FooItems
+{
+
+#define ENUM_ITEM(NAME, ...) FOO ## NAME,
+  FOR_EACH_ITEM( ENUM_ITEM )
+};
+
+Q_ENUM_NS(FooItems)
+}
 
 Q_DECLARE_METATYPE(const QMetaObject*);
 
@@ -256,6 +278,24 @@ public:
 };
 
 CreatableGadget creatableGadget; // Force the compiler to use the constructor
+
+struct ParentWithSignalWithArgument : QObject {
+    Q_OBJECT
+    Q_PROPERTY(int i READ i WRITE setI NOTIFY iChanged)
+
+public:
+    int i() const {return 0;}
+    void setI(int) {}
+
+signals:
+    void iChanged(int);
+};
+
+struct SignalWithArgumentInParent : ParentWithSignalWithArgument
+{
+    Q_OBJECT
+    Q_PROPERTY(int otherI READ i WRITE setI NOTIFY iChanged)
+};
 
 struct MyStruct {};
 struct MyStruct2 {};
@@ -831,6 +871,7 @@ private slots:
     void readWriteThroughBindable();
     void invokableCtors();
     void virtualInlineTaggedSlot();
+    void tokenStartingWithNumber();
 
 signals:
     void sigWithUnsignedArg(unsigned foo);
@@ -1563,7 +1604,8 @@ public:
 static StaticPluginInstance staticInstance;
 
 void tst_Moc::specifyMetaTagsFromCmdline() {
-    foreach (const QStaticPlugin &plugin, QPluginLoader::staticPlugins()) {
+    const auto staticPlugins = QPluginLoader::staticPlugins();
+    for (const QStaticPlugin &plugin : staticPlugins) {
         const QString iid = plugin.metaData().value(QLatin1String("IID")).toString();
         if (iid == QLatin1String("test.meta.tags")) {
             const QJsonArray metaTagsUriList = plugin.metaData().value("uri").toArray();
@@ -1581,41 +1623,43 @@ void tst_Moc::specifyMetaTagsFromCmdline() {
 
 void tst_Moc::invokable()
 {
+    const int fooIndex = 4;
     {
         const QMetaObject &mobj = InvokableBeforeReturnType::staticMetaObject;
-        QCOMPARE(mobj.methodCount(), 6);
-        QCOMPARE(mobj.method(5).methodSignature(), QByteArray("foo()"));
+        QCOMPARE(mobj.methodCount(), 5);
+        QCOMPARE(mobj.method(fooIndex).methodSignature(), QByteArray("foo()"));
     }
 
     {
         const QMetaObject &mobj = InvokableBeforeInline::staticMetaObject;
-        QCOMPARE(mobj.methodCount(), 7);
-        QCOMPARE(mobj.method(5).methodSignature(), QByteArray("foo()"));
-        QCOMPARE(mobj.method(6).methodSignature(), QByteArray("bar()"));
+        QCOMPARE(mobj.methodCount(), 6);
+        QCOMPARE(mobj.method(fooIndex).methodSignature(), QByteArray("foo()"));
+        QCOMPARE(mobj.method(fooIndex + 1).methodSignature(), QByteArray("bar()"));
     }
 }
 
 void tst_Moc::singleFunctionKeywordSignalAndSlot()
 {
+    const int mySignalIndex = 4;
     {
         const QMetaObject &mobj = SingleFunctionKeywordBeforeReturnType::staticMetaObject;
-        QCOMPARE(mobj.methodCount(), 7);
-        QCOMPARE(mobj.method(5).methodSignature(), QByteArray("mySignal()"));
-        QCOMPARE(mobj.method(6).methodSignature(), QByteArray("mySlot()"));
+        QCOMPARE(mobj.methodCount(), 6);
+        QCOMPARE(mobj.method(mySignalIndex).methodSignature(), QByteArray("mySignal()"));
+        QCOMPARE(mobj.method(mySignalIndex + 1).methodSignature(), QByteArray("mySlot()"));
     }
 
     {
         const QMetaObject &mobj = SingleFunctionKeywordBeforeInline::staticMetaObject;
-        QCOMPARE(mobj.methodCount(), 7);
-        QCOMPARE(mobj.method(5).methodSignature(), QByteArray("mySignal()"));
-        QCOMPARE(mobj.method(6).methodSignature(), QByteArray("mySlot()"));
+        QCOMPARE(mobj.methodCount(), 6);
+        QCOMPARE(mobj.method(mySignalIndex).methodSignature(), QByteArray("mySignal()"));
+        QCOMPARE(mobj.method(mySignalIndex + 1).methodSignature(), QByteArray("mySlot()"));
     }
 
     {
         const QMetaObject &mobj = SingleFunctionKeywordAfterInline::staticMetaObject;
-        QCOMPARE(mobj.methodCount(), 7);
-        QCOMPARE(mobj.method(5).methodSignature(), QByteArray("mySignal()"));
-        QCOMPARE(mobj.method(6).methodSignature(), QByteArray("mySlot()"));
+        QCOMPARE(mobj.methodCount(), 6);
+        QCOMPARE(mobj.method(mySignalIndex).methodSignature(), QByteArray("mySignal()"));
+        QCOMPARE(mobj.method(mySignalIndex + 1).methodSignature(), QByteArray("mySlot()"));
     }
 }
 
@@ -3896,7 +3940,7 @@ void tst_Moc::relatedMetaObjectsNameConflict()
 {
     typedef QList<const QMetaObject *> QMetaObjects;
     QFETCH(const QMetaObject*, dependingObject);
-    QFETCH(QMetaObjects, relatedMetaObjects);
+    QFETCH(const QMetaObjects, relatedMetaObjects);
 
     // load all specified metaobjects int a set
     QSet<const QMetaObject*> dependency;
@@ -3907,7 +3951,7 @@ void tst_Moc::relatedMetaObjectsNameConflict()
     }
 
     // check if all required metaobjects are specified
-    foreach (const QMetaObject *mo, relatedMetaObjects)
+    for (const QMetaObject *mo : relatedMetaObjects)
         QVERIFY(dependency.contains(mo));
 
     // check if no additional metaobjects ara specified
@@ -4642,6 +4686,15 @@ void tst_Moc::virtualInlineTaggedSlot()
     QVERIFY(method.isValid());
     QCOMPARE(method.tag(), "Q_NOREPLY");
     QCOMPARE(method.returnMetaType(), QMetaType::fromType<int>());
+}
+
+void tst_Moc::tokenStartingWithNumber()
+{
+    auto *mo  = &TokenStartingWithNumber::staticMetaObject;
+    int index = mo->indexOfEnumerator("FooItems");
+    QMetaEnum metaEnum = mo->enumerator(index);
+    QVERIFY(metaEnum.isValid());
+    QCOMPARE(metaEnum.keyCount(), 3);
 }
 
 QTEST_MAIN(tst_Moc)

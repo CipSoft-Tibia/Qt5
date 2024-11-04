@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,7 @@
 
 #include "osp/public/timestamp.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 // Holds a set of metrics, captured over a specific range of time, about the
 // behavior of a network service running in the library.
@@ -39,7 +38,6 @@ struct NetworkMetrics {
   size_t max_ipv6_connections = 0;
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_PUBLIC_NETWORK_METRICS_H_

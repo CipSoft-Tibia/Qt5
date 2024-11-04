@@ -7,7 +7,9 @@
 
 #include <list>
 #include <memory>
+#include <ostream>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "base/containers/circular_deque.h"
@@ -31,10 +33,15 @@
 #include "ui/ozone/platform/wayland/common/wayland_object.h"
 #include "ui/ozone/platform/wayland/host/wayland_output.h"
 #include "ui/ozone/platform/wayland/host/wayland_surface.h"
+#include "ui/ozone/platform/wayland/host/wayland_zaura_surface.h"
 #include "ui/platform_window/platform_window.h"
 #include "ui/platform_window/platform_window_delegate.h"
 #include "ui/platform_window/platform_window_init_properties.h"
 #include "ui/platform_window/wm/wm_drag_handler.h"
+
+#if BUILDFLAG(IS_LINUX)
+#include "ui/ozone/platform/wayland/host/wayland_async_cursor.h"
+#endif
 
 struct zwp_keyboard_shortcuts_inhibitor_v1;
 
@@ -53,13 +60,15 @@ class WaylandSubsurface;
 class WaylandWindowDragController;
 class WaylandFrameManager;
 class WaylandPopup;
+class WaylandToplevelWindow;
 
 using WidgetSubsurfaceSet = base::flat_set<std::unique_ptr<WaylandSubsurface>>;
 
 class WaylandWindow : public PlatformWindow,
                       public PlatformEventDispatcher,
                       public WmDragHandler,
-                      public EventTarget {
+                      public EventTarget,
+                      public WaylandZAuraSurface::Delegate {
  public:
   WaylandWindow(const WaylandWindow&) = delete;
   WaylandWindow& operator=(const WaylandWindow&) = delete;
@@ -92,6 +101,7 @@ class WaylandWindow : public PlatformWindow,
   const WidgetSubsurfaceSet& wayland_subsurfaces() const {
     return wayland_subsurfaces_;
   }
+  WaylandZAuraSurface* GetZAuraSurface();
 
   base::LinkedList<WaylandSubsurface>* subsurface_stack_committed() {
     return &subsurface_stack_committed_;
@@ -234,6 +244,10 @@ class WaylandWindow : public PlatformWindow,
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
     WindowTiledEdges tiled_edges;
 #endif
+
+    // Dumps the values of the states that are part of the standard
+    // xdg_toplevel.state enum into a string;
+    std::string ToString() const;
   };
 
   // Configure related:
@@ -325,12 +339,16 @@ class WaylandWindow : public PlatformWindow,
   virtual bool IsActive() const;
 
   // WaylandWindow can be any type of object - WaylandToplevelWindow,
-  // WaylandPopup, WaylandAuxiliaryWindow. This method casts itself to
-  // WaylandPopup, if |this| has type of WaylandPopup.
+  // WaylandPopup. The following methods cast itself to WaylandPopup or
+  // WaylandToplevelWindow, if |this| is of that type.
   virtual WaylandPopup* AsWaylandPopup();
+  virtual WaylandToplevelWindow* AsWaylandToplevelWindow();
 
   // Returns true if the window's bounds is in screen coordinates.
   virtual bool IsScreenCoordinatesEnabled() const;
+
+  // Returns true if this window's configure state supports the minimized state.
+  virtual bool SupportsConfigureMinimizedState() const;
 
   scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner() {
     return ui_task_runner_;
@@ -343,6 +361,8 @@ class WaylandWindow : public PlatformWindow,
   // Clears the state of the |frame_manager_| when the GPU channel is
   // destroyed.
   void OnChannelDestroyed();
+
+  virtual void DumpState(std::ostream& out) const;
 
 #if DCHECK_IS_ON()
   void disable_null_target_dcheck_for_testing() {
@@ -360,11 +380,6 @@ class WaylandWindow : public PlatformWindow,
   zaura_surface* aura_surface() {
     return aura_surface_ ? aura_surface_.get() : nullptr;
   }
-
-  void SetAuraSurface(zaura_surface* aura_surface);
-
-  // Returns true if `aura_surface_` version is equal or newer than `version`.
-  bool IsSupportedOnAuraSurface(uint32_t version) const;
 
   // Update the bounds of the window in DIP. Unlike SetBoundInDIP, it will not
   // send a request to the compositor even if the screen coordinate is enabled.
@@ -384,7 +399,7 @@ class WaylandWindow : public PlatformWindow,
   // fixes them so they don't.
   gfx::Rect AdjustBoundsToConstraintsDIP(const gfx::Rect& bounds_dip);
 
-  const gfx::Size& restored_size_dip() const { return restored_size_dip_; }
+  const gfx::Rect& restored_bounds_dip() const { return restored_bounds_dip_; }
 
   // Configure related:
 
@@ -421,6 +436,14 @@ class WaylandWindow : public PlatformWindow,
   // be applied, even if requests are being throttled. This is used for client
   // requested changes (server requested changes may be throttled).
   void MaybeApplyLatestStateRequest(bool force);
+
+  // Returns the next state that will be applied, or the currently applied state
+  // if there are no later unapplied states. This is used when updating a single
+  // property (e.g. window scale) without wanting to modify the others.
+  PlatformWindowDelegate::State GetLatestRequestedState() const {
+    return in_flight_requests_.empty() ? applied_state_
+                                       : in_flight_requests_.back().state;
+  }
 
   // PendingConfigureState describes the content of a configure sent from the
   // wayland server.
@@ -469,6 +492,11 @@ class WaylandWindow : public PlatformWindow,
 
   void UpdateCursorShape(scoped_refptr<BitmapCursor> cursor);
 
+#if BUILDFLAG(IS_LINUX)
+  void OnCursorLoaded(scoped_refptr<WaylandAsyncCursor> cursor,
+                      scoped_refptr<BitmapCursor> bitmap_cursor);
+#endif
+
   // StateRequest describes a State that we are applying to the window, and the
   // metadata about that State, such as what serial number to use for ack (if it
   // came from a configure), or the viz sequence number.
@@ -490,10 +518,8 @@ class WaylandWindow : public PlatformWindow,
 
   // Latches the given request. This must be called after the frame
   // corresponding to the request is received. This acks the request and updates
-  // any window state that should be based on the currently latched state. If
-  // |force| is true, wayland messages will be sent even if there is no change
-  // from the previous state. This is used for sending the initial state.
-  void LatchStateRequest(const StateRequest& req, bool force);
+  // any window state that should be based on the currently latched state.
+  void LatchStateRequest(const StateRequest& req);
 
   raw_ptr<PlatformWindowDelegate> delegate_;
   raw_ptr<WaylandConnection> connection_;
@@ -525,8 +551,13 @@ class WaylandWindow : public PlatformWindow,
 
   wl::Object<zaura_surface> aura_surface_;
 
+#if BUILDFLAG(IS_LINUX)
+  // The current asynchronously loaded cursor (Linux specific).
+  scoped_refptr<WaylandAsyncCursor> async_cursor_;
+#else
   // The current cursor bitmap (immutable).
   scoped_refptr<BitmapCursor> cursor_;
+#endif
 
   // Margins between edges of the surface and the window geometry (i.e., the
   // area of the window that is visible to the user as the actual window).  The
@@ -549,9 +580,9 @@ class WaylandWindow : public PlatformWindow,
   // Set when the window enters in shutdown process.
   bool shutting_down_ = false;
 
-  // The size of the platform window before it went maximized or fullscreen in
+  // The bounds of the platform window before it went maximized or fullscreen in
   // dip.
-  gfx::Size restored_size_dip_;
+  gfx::Rect restored_bounds_dip_;
 
   // This holds the currently applied state. When in doubt, use this as the
   // source of truth for this window's state. Whenever applied_state_ is

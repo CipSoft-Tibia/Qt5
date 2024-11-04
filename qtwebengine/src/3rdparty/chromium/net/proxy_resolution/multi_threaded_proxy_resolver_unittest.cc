@@ -264,7 +264,7 @@ class MultiThreadedProxyResolverTest : public TestWithTaskEnvironment {
   }
 
  private:
-  raw_ptr<BlockableProxyResolverFactory> factory_ = nullptr;
+  raw_ptr<BlockableProxyResolverFactory, DanglingUntriaged> factory_ = nullptr;
   std::unique_ptr<ProxyResolverFactory> factory_owner_;
   std::unique_ptr<MultiThreadedProxyResolverFactory> resolver_factory_;
   std::unique_ptr<ProxyResolver> resolver_;
@@ -502,7 +502,8 @@ TEST_F(MultiThreadedProxyResolverTest, SingleThread_CancelRequest) {
 TEST_F(MultiThreadedProxyResolverTest,
        SingleThread_WithNetworkAnonymizationKey) {
   const SchemefulSite kSite(GURL("https://origin.test/"));
-  const net::NetworkAnonymizationKey kNetworkAnonymizationKey(kSite, kSite);
+  const auto kNetworkAnonymizationKey =
+      NetworkAnonymizationKey::CreateSameSite(kSite);
   const GURL kUrl("https://url.test/");
 
   const size_t kNumThreads = 1u;

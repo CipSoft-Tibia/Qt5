@@ -60,6 +60,7 @@ namespace Eigen {
 
 }
 
+// IWYU pragma: begin_exports
 #include "src/SpecialFunctions/BesselFunctionsImpl.h"
 #include "src/SpecialFunctions/BesselFunctionsBFloat16.h"
 #include "src/SpecialFunctions/BesselFunctionsHalf.h"
@@ -92,6 +93,7 @@ namespace Eigen {
 #if defined EIGEN_VECTORIZE_GPU
   #include "src/SpecialFunctions/arch/GPU/SpecialFunctions.h"
 #endif
+// IWYU pragma: end_exports
 
 namespace Eigen {
 //@}

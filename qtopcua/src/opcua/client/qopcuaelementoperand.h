@@ -11,7 +11,7 @@
 
 QT_BEGIN_NAMESPACE
 
-// OPC-UA part 4, 7.4.4.2
+// OPC UA 1.05 part 4, 7.7.4.2
 class QOpcUaElementOperandData;
 class Q_OPCUA_EXPORT QOpcUaElementOperand
 {
@@ -27,6 +27,17 @@ public:
     void setIndex(quint32 index);
 
 private:
+    friend Q_OPCUA_EXPORT bool comparesEqual(const QOpcUaElementOperand &lhs,
+                                             const QOpcUaElementOperand &rhs) noexcept;
+    friend bool operator==(const QOpcUaElementOperand &lhs,
+                           const QOpcUaElementOperand &rhs) noexcept
+    { return comparesEqual(lhs, rhs); }
+    friend bool operator!=(const QOpcUaElementOperand &lhs,
+                           const QOpcUaElementOperand &rhs) noexcept
+    {
+        return !(lhs == rhs);
+    }
+
     QSharedDataPointer<QOpcUaElementOperandData> data;
 };
 

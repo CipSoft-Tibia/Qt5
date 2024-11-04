@@ -595,6 +595,11 @@ TEST_F(FPDFStructTreeEmbedderTest, GetAttributes) {
       ASSERT_EQ(2, FPDF_StructElement_Attr_GetCount(attr));
       ASSERT_FALSE(
           FPDF_StructElement_Attr_GetName(attr, 1, nullptr, 0U, nullptr));
+      unsigned long buffer_len_needed = ULONG_MAX;
+      // Pass buffer = nullptr to obtain the size of the buffer needed,
+      ASSERT_TRUE(FPDF_StructElement_Attr_GetName(attr, 1, nullptr, 0,
+                                                  &buffer_len_needed));
+      EXPECT_EQ(2U, buffer_len_needed);
       char buffer[8] = {};
       unsigned long out_len = ULONG_MAX;
       // Deliberately pass in a small buffer size to make sure `buffer` remains
@@ -643,11 +648,12 @@ TEST_F(FPDFStructTreeEmbedderTest, GetAttributes) {
       FPDF_STRUCTELEMENT td = FPDF_StructElement_GetChildAtIndex(tr, 1);
       ASSERT_TRUE(td);
       {
+        // Test counting and obtaining attributes via reference
         ASSERT_EQ(1, FPDF_StructElement_GetAttributeCount(td));
         FPDF_STRUCTELEMENT_ATTR attr =
             FPDF_StructElement_GetAttributeAtIndex(td, 0);
         ASSERT_TRUE(attr);
-        ASSERT_EQ(3, FPDF_StructElement_Attr_GetCount(attr));
+        ASSERT_EQ(4, FPDF_StructElement_Attr_GetCount(attr));
         // Test string and blob type
         {
           char buffer[16] = {};
@@ -690,6 +696,23 @@ TEST_F(FPDFStructTreeEmbedderTest, GetAttributes) {
           ASSERT_TRUE(
               FPDF_StructElement_Attr_GetBooleanValue(attr, buffer, &val));
           EXPECT_TRUE(val);
+        }
+
+        // Test reference to number
+        {
+          char buffer[16] = {};
+          unsigned long out_len = ULONG_MAX;
+          ASSERT_TRUE(FPDF_StructElement_Attr_GetName(
+              attr, 3, buffer, sizeof(buffer), &out_len));
+          EXPECT_EQ(8U, out_len);
+          EXPECT_STREQ("RowSpan", buffer);
+
+          EXPECT_EQ(FPDF_OBJECT_REFERENCE,
+                    FPDF_StructElement_Attr_GetType(attr, buffer));
+          float val;
+          ASSERT_TRUE(
+              FPDF_StructElement_Attr_GetNumberValue(attr, buffer, &val));
+          EXPECT_FLOAT_EQ(3, val);
         }
       }
     }
@@ -827,6 +850,21 @@ TEST_F(FPDFStructTreeEmbedderTest, Bug1296920) {
     ASSERT_EQ(1, FPDF_StructTree_CountChildren(struct_tree.get()));
 
     // Destroying this tree should not crash.
+  }
+
+  UnloadPage(page);
+}
+
+TEST_F(FPDFStructTreeEmbedderTest, Bug1443100) {
+  ASSERT_TRUE(OpenDocument("tagged_table_bad_parent.pdf"));
+  FPDF_PAGE page = LoadPage(0);
+  ASSERT_TRUE(page);
+
+  {
+    // Calling these APIs should not trigger a dangling pointer.
+    ScopedFPDFStructTree struct_tree(FPDF_StructTree_GetForPage(page));
+    ASSERT_TRUE(struct_tree);
+    ASSERT_EQ(1, FPDF_StructTree_CountChildren(struct_tree.get()));
   }
 
   UnloadPage(page);

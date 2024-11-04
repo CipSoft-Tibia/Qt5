@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
+import m from 'mithril';
 
-import {DataSourceDescriptor} from '../../common/protos';
+import {DataSourceDescriptor} from '../../core/protos';
 import {globals} from '../globals';
 import {
   Dropdown,
   DropdownAttrs,
   Probe,
   ProbeAttrs,
+  Slider,
+  SliderAttrs,
   Textarea,
   TextareaAttrs,
   Toggle,
@@ -87,7 +89,7 @@ class AtraceAppsList implements m.ClassComponent {
           'com.android.phone\n' +
           'lmkd\n' +
           'com.android.nfc',
-      cssClass: '.atrace-apps-list',
+      cssClass: '.record-apps-list',
       set: (cfg, val) => cfg.atraceApps = val,
       get: (cfg) => cfg.atraceApps,
     } as TextareaAttrs);
@@ -172,6 +174,23 @@ export class AndroidSettings implements
                     Requires Android 13 (T) or above.`,
           setEnabled: (cfg, val) => cfg.androidGameInterventionList = val,
           isEnabled: (cfg) => cfg.androidGameInterventionList,
-        } as ProbeAttrs));
+        } as ProbeAttrs),
+        m(Probe,
+          {
+            title: 'Network Tracing',
+            img: '',
+            descr: `Records detailed information on network packets.
+                      Requires Android 14 (U) or above.`,
+            setEnabled: (cfg, val) => cfg.androidNetworkTracing = val,
+            isEnabled: (cfg) => cfg.androidNetworkTracing,
+          } as ProbeAttrs,
+          m(Slider, {
+            title: 'Poll interval',
+            cssClass: '.thin',
+            values: [100, 250, 500, 1000, 2500],
+            unit: 'ms',
+            set: (cfg, val) => cfg.androidNetworkTracingPollMs = val,
+            get: (cfg) => cfg.androidNetworkTracingPollMs,
+          } as SliderAttrs)));
   }
 }

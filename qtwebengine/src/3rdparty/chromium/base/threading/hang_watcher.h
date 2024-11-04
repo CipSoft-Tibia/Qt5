@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "base/atomicops.h"
+#include "base/auto_reset.h"
 #include "base/base_export.h"
 #include "base/bits.h"
 #include "base/compiler_specific.h"
@@ -23,7 +24,6 @@
 #include "base/gtest_prod_util.h"
 #include "base/memory/memory_pressure_listener.h"
 #include "base/memory/raw_ptr.h"
-#include "base/memory/raw_ptr_exclusion.h"
 #include "base/synchronization/lock.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/template_util.h"
@@ -31,7 +31,6 @@
 #include "base/threading/platform_thread.h"
 #include "base/threading/simple_thread.h"
 #include "base/threading/thread_checker.h"
-#include "base/threading/thread_local.h"
 #include "base/time/tick_clock.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
@@ -64,7 +63,7 @@ namespace base {
 // member but special care is required when doing so as a WatchHangsInScope
 // that stays alive longer than intended will generate non-actionable hang
 // reports.
-class BASE_EXPORT WatchHangsInScope {
+class BASE_EXPORT [[maybe_unused, nodiscard]] WatchHangsInScope {
  public:
   // A good default value needs to be large enough to represent a significant
   // hang and avoid noise while being small enough to not exclude too many
@@ -99,9 +98,7 @@ class BASE_EXPORT WatchHangsInScope {
 
 #if DCHECK_IS_ON()
   // The previous WatchHangsInScope created on this thread.
-  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
-  // #union
-  RAW_PTR_EXCLUSION WatchHangsInScope* previous_watch_hangs_in_scope_;
+  raw_ptr<WatchHangsInScope> previous_watch_hangs_in_scope_;
 #endif
 };
 
@@ -153,7 +150,8 @@ class BASE_EXPORT HangWatcher : public DelegateSimpleThread::Delegate {
 
   // Initializes HangWatcher. Must be called once on the main thread during
   // startup while single-threaded.
-  static void InitializeOnMainThread(ProcessType process_type);
+  static void InitializeOnMainThread(ProcessType process_type,
+                                     bool is_zygote_child);
 
   // Returns the values that were set through InitializeOnMainThread() to their
   // default value. Used for testing since in prod initialization should happen
@@ -246,6 +244,10 @@ class BASE_EXPORT HangWatcher : public DelegateSimpleThread::Delegate {
 
   // Begin executing the monitoring loop on the HangWatcher thread.
   void Start();
+
+  // Returns true if Start() has been called and Stop() has not been called
+  // since.
+  bool IsStarted() const { return thread_started_; }
 
   // Returns the value of the crash key with the time since last system power
   // resume.
@@ -380,6 +382,7 @@ class BASE_EXPORT HangWatcher : public DelegateSimpleThread::Delegate {
       GUARDED_BY_CONTEXT(hang_watcher_thread_checker_);
 
   base::DelegateSimpleThread thread_;
+  bool thread_started_ = false;
 
   RepeatingClosure after_monitor_closure_for_testing_;
   RepeatingClosure on_hang_closure_for_testing_;
@@ -581,8 +584,7 @@ class BASE_EXPORT HangWatchState {
   // Retrieves the hang watch state associated with the calling thread.
   // Returns nullptr if no HangWatchState exists for the current thread (see
   // CreateHangWatchStateForCurrentThread()).
-  static ThreadLocalPointer<HangWatchState>*
-  GetHangWatchStateForCurrentThread();
+  static HangWatchState* GetHangWatchStateForCurrentThread();
 
   // Returns the current deadline. Use this function if you need to
   // store the value. To test if the deadline has expired use IsOverDeadline().
@@ -649,6 +651,8 @@ class BASE_EXPORT HangWatchState {
   // The thread that creates the instance should be the class that updates
   // the deadline.
   THREAD_CHECKER(thread_checker_);
+
+  const AutoReset<HangWatchState*> resetter_;
 
   // If the deadline fails to be updated before TimeTicks::Now() ever
   // reaches the value contained in it this constistutes a hang.

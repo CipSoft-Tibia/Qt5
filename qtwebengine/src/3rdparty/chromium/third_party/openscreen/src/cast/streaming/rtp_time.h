@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,8 +17,7 @@
 #include "platform/api/time.h"
 #include "util/saturate_cast.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Forward declarations (see below).
 class RtpTimeDelta;
@@ -253,7 +252,6 @@ class RtpTimeTicks : public ExpandedValueBase<int64_t, RtpTimeTicks> {
   friend std::ostream& operator<<(std::ostream& out, const RtpTimeTicks rhs);
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_RTP_TIME_H_

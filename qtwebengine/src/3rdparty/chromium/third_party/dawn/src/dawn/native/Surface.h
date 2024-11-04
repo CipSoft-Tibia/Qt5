@@ -24,7 +24,7 @@
 #include "dawn/common/Platform.h"
 
 #if DAWN_PLATFORM_IS(WINDOWS)
-#include "dawn/native/d3d12/d3d12_platform.h"
+#include "dawn/native/d3d/d3d_platform.h"
 #endif  // DAWN_PLATFORM_IS(WINDOWS)
 
 // Forward declare IUnknown
@@ -34,8 +34,7 @@ struct IUnknown;
 
 namespace dawn::native {
 
-MaybeError ValidateSurfaceDescriptor(const InstanceBase* instance,
-                                     const SurfaceDescriptor* descriptor);
+MaybeError ValidateSurfaceDescriptor(InstanceBase* instance, const SurfaceDescriptor* descriptor);
 
 // A surface is a sum types of all the kind of windows Dawn supports. The OS-specific types
 // aren't used because they would cause compilation errors on other OSes (or require
@@ -48,8 +47,8 @@ class Surface final : public ErrorMonad {
 
     Surface(InstanceBase* instance, const SurfaceDescriptor* descriptor);
 
-    void SetAttachedSwapChain(NewSwapChainBase* swapChain);
-    NewSwapChainBase* GetAttachedSwapChain();
+    void SetAttachedSwapChain(SwapChainBase* swapChain);
+    SwapChainBase* GetAttachedSwapChain();
 
     // These are valid to call on all Surfaces.
     enum class Type {
@@ -96,7 +95,7 @@ class Surface final : public ErrorMonad {
     Type mType;
 
     // The swapchain will set this to null when it is destroyed.
-    Ref<NewSwapChainBase> mSwapChain;
+    Ref<SwapChainBase> mSwapChain;
 
     // MetalLayer
     void* mMetalLayer = nullptr;
@@ -112,13 +111,13 @@ class Surface final : public ErrorMonad {
     void* mHInstance = nullptr;
     void* mHWND = nullptr;
 
-#if DAWN_PLATFORM_IS(WINDOWS)
+#if defined(DAWN_USE_WINDOWS_UI)
     // WindowsCoreWindow
     ComPtr<IUnknown> mCoreWindow;
 
     // WindowsSwapChainPanel
     ComPtr<IUnknown> mSwapChainPanel;
-#endif  // DAWN_PLATFORM_IS(WINDOWS)
+#endif  // defined(DAWN_USE_WINDOWS_UI)
 
     // Xlib
     void* mXDisplay = nullptr;

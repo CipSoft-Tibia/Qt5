@@ -26,13 +26,13 @@ void xnn_f32_vneg_ukernel__rvv_x8v(
   assert(input != NULL);
   assert(output != NULL);
 
-  batch >>= 2;  // log2(sizeof(float))
+  batch >>= XNN_LOG2_SIZEOF_FLOAT;
   do {
-    const size_t n = vsetvl_e32m8(batch);
-    const vfloat32m8_t vi = vle32_v_f32m8(input, n);
+    const size_t n = __riscv_vsetvl_e32m8(batch);
+    const vfloat32m8_t vi = __riscv_vle32_v_f32m8(input, n);
     input += n;
-    const vfloat32m8_t vo = vfneg_v_f32m8(vi, n);
-    vse32_v_f32m8(output, vo, n);
+    const vfloat32m8_t vo = __riscv_vfneg_v_f32m8(vi, n);
+    __riscv_vse32_v_f32m8(output, vo, n);
     output += n;
 
     batch -= n;

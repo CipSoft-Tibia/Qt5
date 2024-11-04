@@ -18,6 +18,7 @@
 #include "core/fxge/cfx_fillrenderoptions.h"
 #include "core/fxge/cfx_graphstatedata.h"
 #include "core/fxge/cfx_path.h"
+#include "core/fxge/dib/cfx_dibbase.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
 #include "core/fxge/render_defines.h"
 #include "core/fxge/win32/cwin32_platform.h"
@@ -152,10 +153,11 @@ void SetPathToDC(HDC hDC, const CFX_Path& path, const CFX_Matrix* pMatrix) {
   EndPath(hDC);
 }
 
-ByteString GetBitmapInfo(const RetainPtr<CFX_DIBitmap>& pBitmap) {
+ByteString GetBitmapInfo(const RetainPtr<const CFX_DIBBase>& source) {
   int len = sizeof(BITMAPINFOHEADER);
-  if (pBitmap->GetBPP() == 1 || pBitmap->GetBPP() == 8)
-    len += sizeof(DWORD) * (int)(1 << pBitmap->GetBPP());
+  if (source->GetBPP() == 1 || source->GetBPP() == 8) {
+    len += sizeof(DWORD) * (int)(1 << source->GetBPP());
+  }
 
   ByteString result;
   {
@@ -164,30 +166,33 @@ ByteString GetBitmapInfo(const RetainPtr<CFX_DIBitmap>& pBitmap) {
     BITMAPINFOHEADER* pbmih = reinterpret_cast<BITMAPINFOHEADER*>(cspan.data());
     memset(pbmih, 0, sizeof(BITMAPINFOHEADER));
     pbmih->biSize = sizeof(BITMAPINFOHEADER);
-    pbmih->biBitCount = pBitmap->GetBPP();
+    pbmih->biBitCount = source->GetBPP();
     pbmih->biCompression = BI_RGB;
-    pbmih->biHeight = -(int)pBitmap->GetHeight();
+    pbmih->biHeight = -(int)source->GetHeight();
     pbmih->biPlanes = 1;
-    pbmih->biWidth = pBitmap->GetWidth();
-    if (pBitmap->GetBPP() == 8) {
-      uint32_t* pPalette = (uint32_t*)(pbmih + 1);
-      if (pBitmap->HasPalette()) {
-        pdfium::span<const uint32_t> palette = pBitmap->GetPaletteSpan();
-        for (int i = 0; i < 256; i++)
-          pPalette[i] = palette[i];
+    pbmih->biWidth = source->GetWidth();
+    if (source->GetBPP() == 8) {
+      uint32_t* palette = (uint32_t*)(pbmih + 1);
+      if (source->HasPalette()) {
+        pdfium::span<const uint32_t> palette_span = source->GetPaletteSpan();
+        for (int i = 0; i < 256; i++) {
+          palette[i] = palette_span[i];
+        }
       } else {
-        for (int i = 0; i < 256; i++)
-          pPalette[i] = ArgbEncode(0, i, i, i);
+        for (int i = 0; i < 256; i++) {
+          palette[i] = ArgbEncode(0, i, i, i);
+        }
       }
     }
-    if (pBitmap->GetBPP() == 1) {
-      uint32_t* pPalette = (uint32_t*)(pbmih + 1);
-      if (pBitmap->HasPalette()) {
-        pPalette[0] = pBitmap->GetPaletteSpan()[0];
-        pPalette[1] = pBitmap->GetPaletteSpan()[1];
+    if (source->GetBPP() == 1) {
+      uint32_t* palette = (uint32_t*)(pbmih + 1);
+      if (source->HasPalette()) {
+        pdfium::span<const uint32_t> palette_span = source->GetPaletteSpan();
+        palette[0] = palette_span[0];
+        palette[1] = palette_span[1];
       } else {
-        pPalette[0] = 0;
-        pPalette[1] = 0xffffff;
+        palette[0] = 0;
+        palette[1] = 0xffffff;
       }
     }
   }
@@ -384,85 +389,107 @@ void CGdiDeviceDriver::RestoreState(bool bKeepSaved) {
     SaveDC(m_hDC);
 }
 
-bool CGdiDeviceDriver::GDI_SetDIBits(const RetainPtr<CFX_DIBitmap>& pBitmap1,
+bool CGdiDeviceDriver::GDI_SetDIBits(const RetainPtr<CFX_DIBBase>& source,
                                      const FX_RECT& src_rect,
                                      int left,
                                      int top) {
   if (m_DeviceType == DeviceType::kPrinter) {
-    RetainPtr<CFX_DIBitmap> pBitmap = pBitmap1->FlipImage(false, true);
-    if (!pBitmap)
+    RetainPtr<CFX_DIBBase> flipped_source = source->FlipImage(false, true);
+    if (!flipped_source) {
       return false;
+    }
 
-    LPBYTE pBuffer = pBitmap->GetBuffer().data();
-    ByteString info = GetBitmapInfo(pBitmap);
+    RetainPtr<const CFX_DIBBase> realized_source =
+        flipped_source->RealizeIfNeeded();
+    if (!realized_source) {
+      return false;
+    }
+    ByteString info = GetBitmapInfo(realized_source);
     ((BITMAPINFOHEADER*)info.c_str())->biHeight *= -1;
     FX_RECT dst_rect(0, 0, src_rect.Width(), src_rect.Height());
-    dst_rect.Intersect(0, 0, pBitmap->GetWidth(), pBitmap->GetHeight());
+    dst_rect.Intersect(0, 0, realized_source->GetWidth(),
+                       realized_source->GetHeight());
     int dst_width = dst_rect.Width();
     int dst_height = dst_rect.Height();
     ::StretchDIBits(m_hDC, left, top, dst_width, dst_height, 0, 0, dst_width,
-                    dst_height, pBuffer, (BITMAPINFO*)info.c_str(),
-                    DIB_RGB_COLORS, SRCCOPY);
+                    dst_height, realized_source->GetBuffer().data(),
+                    (BITMAPINFO*)info.c_str(), DIB_RGB_COLORS, SRCCOPY);
     return true;
   }
 
-  RetainPtr<CFX_DIBitmap> pBitmap = pBitmap1;
-  LPBYTE pBuffer = pBitmap->GetBuffer().data();
-  ByteString info = GetBitmapInfo(pBitmap);
-  ::SetDIBitsToDevice(m_hDC, left, top, src_rect.Width(), src_rect.Height(),
-                      src_rect.left, pBitmap->GetHeight() - src_rect.bottom, 0,
-                      pBitmap->GetHeight(), pBuffer, (BITMAPINFO*)info.c_str(),
-                      DIB_RGB_COLORS);
+  RetainPtr<const CFX_DIBBase> realized_source = source->RealizeIfNeeded();
+  if (!realized_source) {
+    return false;
+  }
+  ByteString info = GetBitmapInfo(realized_source);
+  ::SetDIBitsToDevice(
+      m_hDC, left, top, src_rect.Width(), src_rect.Height(), src_rect.left,
+      realized_source->GetHeight() - src_rect.bottom, 0,
+      realized_source->GetHeight(), realized_source->GetBuffer().data(),
+      (BITMAPINFO*)info.c_str(), DIB_RGB_COLORS);
   return true;
 }
 
-bool CGdiDeviceDriver::GDI_StretchDIBits(
-    const RetainPtr<CFX_DIBitmap>& pBitmap1,
-    int dest_left,
-    int dest_top,
-    int dest_width,
-    int dest_height,
-    const FXDIB_ResampleOptions& options) {
-  RetainPtr<CFX_DIBitmap> pBitmap = pBitmap1;
-  if (!pBitmap || dest_width == 0 || dest_height == 0)
+bool CGdiDeviceDriver::GDI_StretchDIBits(const RetainPtr<CFX_DIBBase>& source,
+                                         int dest_left,
+                                         int dest_top,
+                                         int dest_width,
+                                         int dest_height,
+                                         const FXDIB_ResampleOptions& options) {
+  if (!source || dest_width == 0 || dest_height == 0) {
     return false;
+  }
 
-  ByteString info = GetBitmapInfo(pBitmap);
   if ((int64_t)abs(dest_width) * abs(dest_height) <
-          (int64_t)pBitmap1->GetWidth() * pBitmap1->GetHeight() * 4 ||
+          (int64_t)source->GetWidth() * source->GetHeight() * 4 ||
       options.bInterpolateBilinear) {
     SetStretchBltMode(m_hDC, HALFTONE);
   } else {
     SetStretchBltMode(m_hDC, COLORONCOLOR);
   }
-  RetainPtr<CFX_DIBitmap> pToStrechBitmap = pBitmap;
+
+  RetainPtr<const CFX_DIBBase> realized_source;
   if (m_DeviceType == DeviceType::kPrinter &&
-      ((int64_t)pBitmap->GetWidth() * pBitmap->GetHeight() >
+      ((int64_t)source->GetWidth() * source->GetHeight() >
        (int64_t)abs(dest_width) * abs(dest_height))) {
-    pToStrechBitmap = pBitmap->StretchTo(dest_width, dest_height,
-                                         FXDIB_ResampleOptions(), nullptr);
+    RetainPtr<CFX_DIBBase> stretch_source = source->StretchTo(
+        dest_width, dest_height, FXDIB_ResampleOptions(), nullptr);
+    if (!stretch_source) {
+      return false;
+    }
+    realized_source = stretch_source->RealizeIfNeeded();
+  } else {
+    realized_source = source->RealizeIfNeeded();
   }
-  ByteString toStrechBitmapInfo = GetBitmapInfo(pToStrechBitmap);
+  if (!realized_source) {
+    return false;
+  }
+
+  ByteString info = GetBitmapInfo(realized_source);
   ::StretchDIBits(m_hDC, dest_left, dest_top, dest_width, dest_height, 0, 0,
-                  pToStrechBitmap->GetWidth(), pToStrechBitmap->GetHeight(),
-                  pToStrechBitmap->GetBuffer().data(),
-                  (BITMAPINFO*)toStrechBitmapInfo.c_str(), DIB_RGB_COLORS,
-                  SRCCOPY);
+                  realized_source->GetWidth(), realized_source->GetHeight(),
+                  realized_source->GetBuffer().data(),
+                  (BITMAPINFO*)info.c_str(), DIB_RGB_COLORS, SRCCOPY);
   return true;
 }
 
-bool CGdiDeviceDriver::GDI_StretchBitMask(
-    const RetainPtr<CFX_DIBitmap>& pBitmap1,
-    int dest_left,
-    int dest_top,
-    int dest_width,
-    int dest_height,
-    uint32_t bitmap_color) {
-  RetainPtr<CFX_DIBitmap> pBitmap = pBitmap1;
-  if (!pBitmap || dest_width == 0 || dest_height == 0)
+bool CGdiDeviceDriver::GDI_StretchBitMask(const RetainPtr<CFX_DIBBase>& source,
+                                          int dest_left,
+                                          int dest_top,
+                                          int dest_width,
+                                          int dest_height,
+                                          uint32_t bitmap_color) {
+  if (!source || dest_width == 0 || dest_height == 0) {
     return false;
+  }
 
-  int width = pBitmap->GetWidth(), height = pBitmap->GetHeight();
+  RetainPtr<const CFX_DIBBase> realized_source = source->RealizeIfNeeded();
+  if (!realized_source) {
+    return false;
+  }
+
+  int width = realized_source->GetWidth();
+  int height = realized_source->GetHeight();
   struct {
     BITMAPINFOHEADER bmiHeader;
     uint32_t bmiColors[2];
@@ -502,8 +529,8 @@ bool CGdiDeviceDriver::GDI_StretchBitMask(
   // 0xB8074A
 
   ::StretchDIBits(m_hDC, dest_left, dest_top, dest_width, dest_height, 0, 0,
-                  width, height, pBitmap->GetBuffer().data(), (BITMAPINFO*)&bmi,
-                  DIB_RGB_COLORS, 0xB8074A);
+                  width, height, realized_source->GetBuffer().data(),
+                  (BITMAPINFO*)&bmi, DIB_RGB_COLORS, 0xB8074A);
 
   SelectObject(m_hDC, hOld);
   DeleteObject(hPattern);
@@ -513,6 +540,20 @@ bool CGdiDeviceDriver::GDI_StretchBitMask(
 
 bool CGdiDeviceDriver::GetClipBox(FX_RECT* pRect) {
   return !!(::GetClipBox(m_hDC, (RECT*)pRect));
+}
+
+bool CGdiDeviceDriver::MultiplyAlpha(float alpha) {
+  // Not implemented. All callers are using `CFX_DIBitmap`-backed raster devices
+  // anyway.
+  NOTREACHED();
+  return false;
+}
+
+bool CGdiDeviceDriver::MultiplyAlpha(const RetainPtr<CFX_DIBBase>& mask) {
+  // Not implemented. All callers are using `CFX_DIBitmap`-backed raster devices
+  // anyway.
+  NOTREACHED();
+  return false;
 }
 
 void CGdiDeviceDriver::DrawLine(float x1, float y1, float x2, float y2) {

@@ -5,7 +5,8 @@
 
 load("//lib/branches.star", "branches")
 load("//lib/builder_config.star", "builder_config")
-load("//lib/builders.star", "reclient")
+load("//lib/builder_health_indicators.star", "health_spec")
+load("//lib/builders.star", "reclient", "sheriff_rotations")
 load("//lib/ci.star", "ci")
 load("//lib/consoles.star", "consoles")
 
@@ -13,10 +14,13 @@ ci.defaults.set(
     executable = ci.DEFAULT_EXECUTABLE,
     builder_group = "chromium.dawn",
     pool = ci.gpu.POOL,
+    sheriff_rotations = sheriff_rotations.DAWN,
     execution_timeout = ci.DEFAULT_EXECUTION_TIMEOUT,
+    health_spec = health_spec.DEFAULT,
     reclient_instance = reclient.instance.DEFAULT_TRUSTED,
     reclient_jobs = reclient.jobs.DEFAULT,
     service_account = ci.gpu.SERVICE_ACCOUNT,
+    shadow_service_account = ci.gpu.SHADOW_SERVICE_ACCOUNT,
     thin_tester_cores = 2,
 )
 
@@ -97,9 +101,63 @@ ci.gpu.linux_builder(
 )
 
 ci.gpu.linux_builder(
-    name = "Dawn Android arm DEPS Release (Pixel 4)",
-    branch_selector = branches.selector.ANDROID_BRANCHES,
+    name = "Dawn Android arm DEPS Builder",
     builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                "android",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "android",
+            target_platform = builder_config.target_platform.ANDROID,
+        ),
+        android_config = builder_config.android_config(
+            config = "main_builder_rel_mb",
+        ),
+        build_gs_bucket = "chromium-dawn-archive",
+        run_tests_serially = True,
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "DEPS|Android|Builder",
+        short_name = "arm",
+    ),
+    reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
+)
+
+ci.thin_tester(
+    name = "Dawn Android arm DEPS Release (Nexus 5X)",
+    triggered_by = ["ci/Dawn Android arm DEPS Builder"],
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                "android",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "android",
+            target_platform = builder_config.target_platform.ANDROID,
+        ),
+        android_config = builder_config.android_config(
+            config = "main_builder_rel_mb",
+        ),
+        build_gs_bucket = "chromium-dawn-archive",
+        run_tests_serially = True,
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "DEPS|Android",
+        short_name = "n5x",
+    ),
+)
+
+ci.thin_tester(
+    name = "Dawn Android arm DEPS Release (Pixel 4)",
+    triggered_by = ["ci/Dawn Android arm DEPS Builder"],
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
         gclient_config = builder_config.gclient_config(
             config = "chromium",
             apply_configs = [
@@ -119,6 +177,31 @@ ci.gpu.linux_builder(
     console_view_entry = consoles.console_view_entry(
         category = "DEPS|Android",
         short_name = "p4",
+    ),
+)
+
+ci.gpu.linux_builder(
+    name = "Dawn Android arm64 DEPS Release (Pixel 6)",
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                "android",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "android",
+            target_platform = builder_config.target_platform.ANDROID,
+        ),
+        android_config = builder_config.android_config(
+            config = "arm64_builder_rel_mb",
+        ),
+        build_gs_bucket = "chromium-dawn-archive",
+        run_tests_serially = True,
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "DEPS|Android",
+        short_name = "p6",
     ),
     reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
 )
@@ -180,8 +263,96 @@ ci.thin_tester(
 )
 
 ci.gpu.linux_builder(
-    name = "Dawn Android arm Release (Pixel 4)",
+    name = "Dawn Linux TSAN Release",
     builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                "dawn_top_of_tree",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.LINUX,
+        ),
+        build_gs_bucket = "chromium-dawn-archive",
+        run_tests_serially = True,
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "ToT|Linux|TSAN",
+        short_name = "x64",
+    ),
+    # Serially executed tests + TSAN = more than the default timeout needed in
+    # order to prevent build timeouts.
+    execution_timeout = 6 * time.hour,
+    reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CI,
+)
+
+ci.gpu.linux_builder(
+    name = "Dawn Android arm Builder",
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                "android",
+                "dawn_top_of_tree",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "android",
+            target_platform = builder_config.target_platform.ANDROID,
+        ),
+        android_config = builder_config.android_config(
+            config = "main_builder_rel_mb",
+        ),
+        build_gs_bucket = "chromium-dawn-archive",
+        run_tests_serially = True,
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "ToT|Android|Builder",
+        short_name = "arm",
+    ),
+    reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
+)
+
+ci.thin_tester(
+    name = "Dawn Android arm Release (Nexus 5X)",
+    triggered_by = ["ci/Dawn Android arm Builder"],
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                "android",
+                "dawn_top_of_tree",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "android",
+            target_platform = builder_config.target_platform.ANDROID,
+        ),
+        android_config = builder_config.android_config(
+            config = "main_builder_rel_mb",
+        ),
+        build_gs_bucket = "chromium-dawn-archive",
+        run_tests_serially = True,
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "ToT|Android",
+        short_name = "n5x",
+    ),
+)
+
+ci.thin_tester(
+    name = "Dawn Android arm Release (Pixel 4)",
+    triggered_by = ["ci/Dawn Android arm Builder"],
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
         gclient_config = builder_config.gclient_config(
             config = "chromium",
             apply_configs = [
@@ -202,6 +373,32 @@ ci.gpu.linux_builder(
     console_view_entry = consoles.console_view_entry(
         category = "ToT|Android",
         short_name = "p4",
+    ),
+)
+
+ci.gpu.linux_builder(
+    name = "Dawn Android arm64 Release (Pixel 6)",
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                "android",
+                "dawn_top_of_tree",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "android",
+            target_platform = builder_config.target_platform.ANDROID,
+        ),
+        android_config = builder_config.android_config(
+            config = "arm64_builder_rel_mb",
+        ),
+        build_gs_bucket = "chromium-dawn-archive",
+        run_tests_serially = True,
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "ToT|Android",
+        short_name = "p6",
     ),
     reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
 )
@@ -255,6 +452,59 @@ ci.thin_tester(
     console_view_entry = consoles.console_view_entry(
         category = "ToT|Linux|Nvidia",
         short_name = "x64",
+    ),
+)
+
+ci.gpu.mac_builder(
+    name = "Dawn Mac arm64 DEPS Release (Apple M2)",
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+        build_gs_bucket = "chromium-dawn-archive",
+        run_tests_serially = True,
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "DEPS|Mac",
+        short_name = "arm64",
+    ),
+)
+
+ci.gpu.mac_builder(
+    name = "Dawn Mac arm64 Release (Apple M2)",
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                "dawn_top_of_tree",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+        build_gs_bucket = "chromium-dawn-archive",
+        run_tests_serially = True,
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "ToT|Mac",
+        short_name = "arm64",
     ),
 )
 
@@ -390,10 +640,10 @@ ci.thin_tester(
         run_tests_serially = True,
     ),
     # Uncomment this entry when this experimental tester is actually in use.
-    # console_view_entry = consoles.console_view_entry(
-    #     category = "ToT|Mac|AMD",
-    #     short_name = "exp",
-    # ),
+    console_view_entry = consoles.console_view_entry(
+        category = "ToT|Mac|AMD",
+        short_name = "exp",
+    ),
     list_view = "chromium.gpu.experimental",
 )
 
@@ -418,10 +668,10 @@ ci.thin_tester(
         run_tests_serially = True,
     ),
     # Uncomment this entry when this experimental tester is actually in use.
-    # console_view_entry = consoles.console_view_entry(
-    #     category = "ToT|Mac|Intel",
-    #     short_name = "exp",
-    # ),
+    console_view_entry = consoles.console_view_entry(
+        category = "ToT|Mac|Intel",
+        short_name = "exp",
+    ),
     list_view = "chromium.gpu.experimental",
 )
 
@@ -478,8 +728,39 @@ ci.thin_tester(
 )
 
 ci.gpu.windows_builder(
-    name = "Dawn Win10 x64 ASAN Release",
+    name = "Dawn Win10 x64 ASAN Builder",
+    # One build every 2 hours.
+    schedule = "0 */2 * * *",
     builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                "dawn_top_of_tree",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.WIN,
+        ),
+        build_gs_bucket = "chromium-dawn-archive",
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "ToT|Windows|ASAN|Builder",
+        short_name = "x64",
+    ),
+    reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CI,
+)
+
+ci.thin_tester(
+    name = "Dawn Win10 x64 ASAN Release (Intel)",
+    triggered_by = ["ci/Dawn Win10 x64 ASAN Builder"],
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
         gclient_config = builder_config.gclient_config(
             config = "chromium",
             apply_configs = [
@@ -499,13 +780,38 @@ ci.gpu.windows_builder(
         run_tests_serially = True,
     ),
     console_view_entry = consoles.console_view_entry(
-        category = "ToT|Windows|ASAN",
+        category = "ToT|Windows|ASAN|Intel",
         short_name = "x64",
     ),
-    # Serially executed tests + ASAN = more than the default timeout needed in
-    # order to prevent build timeouts.
-    execution_timeout = 6 * time.hour,
-    reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CI,
+)
+
+ci.thin_tester(
+    name = "Dawn Win10 x64 ASAN Release (NVIDIA)",
+    triggered_by = ["ci/Dawn Win10 x64 ASAN Builder"],
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                "dawn_top_of_tree",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.WIN,
+        ),
+        build_gs_bucket = "chromium-dawn-archive",
+        run_tests_serially = True,
+    ),
+    console_view_entry = consoles.console_view_entry(
+        category = "ToT|Windows|ASAN|Nvidia",
+        short_name = "x64",
+    ),
 )
 
 ci.gpu.windows_builder(

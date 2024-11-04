@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -7,7 +7,7 @@
 #include <QtCore/private/qendian_p.h>
 #include <QtCore/qsysinfo.h>
 
-#if QT_SUPPORTS_INT128
+#ifdef QT_SUPPORTS_INT128
 #define ONLY_INT128(...) __VA_ARGS__
 #else
 #define ONLY_INT128(...)

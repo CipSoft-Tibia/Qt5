@@ -11,10 +11,11 @@ jumbo_static_library("common") {
   sources = [
     "credential_manager_types.cc",
     "credential_manager_types.h",
-    "password_manager_constants.h",
     "password_manager_pref_names.cc",
     "password_manager_pref_names.h",
     "password_manager_ui.h",
+    "password_manager_util.cc",
+    "password_manager_util.h",
   ]
 
   if (is_ios) {
@@ -26,11 +27,19 @@ jumbo_static_library("common") {
 
   deps = [
     "//base",
+    "//components/autofill/core/common",
     "//sql",
     "//url",
   ]
 
-  public_deps = [ ":features" ]
+  public_deps = [
+    ":constants",
+    ":features",
+  ]
+}
+
+source_set("constants") {
+  sources = [ "password_manager_constants.h" ]
 }
 
 source_set("features") {
@@ -43,21 +52,30 @@ source_set("features") {
     sources += [ "password_manager_feature_variations_android.h" ]
   }
 
-  deps = [ "//base" ]
+  deps = [
+    "//base",
+    "//build:blink_buildflags",
+  ]
 }
 
-if (is_ios) {
-  source_set("unit_tests") {
-    testonly = true
-    sources = [ "passwords_directory_util_ios_unittest.cc" ]
+source_set("unit_tests") {
+  testonly = true
 
-    deps = [
-      ":common",
+  sources = [ "password_manager_util_unittest.cc" ]
+
+  deps = [
+    ":common",
+    "//components/autofill/core/common",
+    "//testing/gtest",
+  ]
+
+  if (is_ios) {
+    sources += [ "passwords_directory_util_ios_unittest.cc" ]
+
+    deps += [
       "//base",
       "//base/test:test_support",
-      "//components/autofill/core/common",
       "//sql",
-      "//testing/gtest",
       "//url",
     ]
   }

@@ -157,7 +157,6 @@ if (enable_perfetto_trace_processor_sqlite) {
       "../base",
       "../protozero",
       "db",
-      "dynamic",
       "importers/android_bugreport",
       "importers/common",
       "importers/ftrace:full",
@@ -170,16 +169,21 @@ if (enable_perfetto_trace_processor_sqlite) {
       "importers/proto:minimal",
       "importers/systrace:full",
       "metrics",
-      "prelude/functions",
-      "prelude/operators",
+      "perfetto_sql/engine",
+      "perfetto_sql/intrinsics/functions",
+      "perfetto_sql/intrinsics/operators",
+      "perfetto_sql/intrinsics/table_functions",
+      "perfetto_sql/prelude",
+      "perfetto_sql/stdlib",
       "sqlite",
-      "stdlib:gen_amalgamated_stdlib",
       "storage",
       "tables",
       "types",
       "util",
       "util:gzip",
+      "util:protozero_to_json",
       "util:protozero_to_text",
+      "util:regex",
       "util:stdlib",
       "views",
     ]
@@ -215,12 +219,15 @@ if (enable_perfetto_trace_processor_sqlite) {
       "util/proto_to_json.cc",
       "util/proto_to_json.h",
     ]
-    if (perfetto_build_standalone && !is_perfetto_build_generator) {
+    if ((perfetto_build_standalone || build_with_chromium) &&
+        !is_perfetto_build_generator) {
       data_deps = [
         # The diff testing framework depends on these descriptors.
         "../../protos/perfetto/metrics:descriptor",
         "../../protos/perfetto/trace:descriptor",
         "../../protos/perfetto/trace:test_extensions_descriptor",
+        "../../protos/perfetto/trace_processor:stack_descriptor",
+        "../../protos/third_party/pprof:profile_descriptor",
       ]
     }
   }
@@ -265,6 +272,8 @@ perfetto_unittest_source_set("unittests") {
     ":top_level_unittests",
     "containers:unittests",
     "db:unittests",
+    "db/overlays:unittests",
+    "db/storage:unittests",
     "importers/android_bugreport:unittests",
     "importers/common:unittests",
     "importers/ftrace:unittests",
@@ -285,9 +294,10 @@ perfetto_unittest_source_set("unittests") {
   }
   if (enable_perfetto_trace_processor_sqlite) {
     deps += [
-      "dynamic:unittests",
-      "prelude/functions:unittests",
-      "prelude/operators:unittests",
+      "perfetto_sql/engine:unittests",
+      "perfetto_sql/intrinsics/functions:unittests",
+      "perfetto_sql/intrinsics/operators:unittests",
+      "perfetto_sql/intrinsics/table_functions:unittests",
       "sqlite:unittests",
     ]
   }

@@ -165,8 +165,15 @@ struct BaseDef {
     qsizetype end = 0;
 };
 
+struct SuperClass {
+    QByteArray classname;
+    QByteArray qualified;
+    FunctionDef::Access access;
+};
+Q_DECLARE_TYPEINFO(SuperClass, Q_RELOCATABLE_TYPE);
+
 struct ClassDef : BaseDef {
-    QList<QPair<QByteArray, FunctionDef::Access>> superclassList;
+    QList<SuperClass> superclassList;
 
     struct Interface
     {
@@ -245,6 +252,8 @@ public:
         return index > def->begin && index < def->end - 1;
     }
 
+    const QByteArray &toFullyQualified(const QByteArray &name) const noexcept;
+
     void prependNamespaces(BaseDef &def, const QList<NamespaceDef> &namespaceList) const;
 
     Type parseType();
@@ -292,6 +301,8 @@ public:
     void checkSuperClasses(ClassDef *def);
     void checkProperties(ClassDef* cdef);
     bool testForFunctionModifiers(FunctionDef *def);
+
+    void checkListSizes(const ClassDef &def);
 };
 #endif // -- QtScxml
 

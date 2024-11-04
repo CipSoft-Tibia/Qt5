@@ -1164,17 +1164,6 @@
       ]
     },
     {
-      "id": 152,
-      "cr_bugs": [581777],
-      "description": "copyTexImage2D fails when reading from IOSurface on multiple GPU types.",
-      "os": {
-        "type": "macosx"
-      },
-      "features": [
-        "use_intermediary_for_copy_texture_image"
-      ]
-    },
-    {
       "id": 153,
       "cr_bugs": [594016],
       "description": "Vivante GC1000 with EXT_multisampled_render_to_texture fails glReadPixels",
@@ -2171,10 +2160,11 @@
     {
       "id": 245,
       "description": "Switching framebuffers without a flush can lead to crashes on Intel 9th Generation GPU Macs.",
-      "cr_bugs": [783979],
+      "cr_bugs": [783979, 1472087],
       "os": {
         "type": "macosx"
       },
+      "gl_renderer": "ANGLE.*OpenGL.*",
       "intel_gpu_series": [
         "skylake",
         "kabylake",
@@ -3143,49 +3133,6 @@
       ]
     },
     {
-      "id": 336,
-      "cr_bugs": [625785],
-      "description": "DXVA video decoder crashes on some AMD GPUs.",
-      "os": {
-        "type": "win"
-      },
-      "vendor_id": "0x1002",
-      "device_id": ["0x15d8", "0x15dd"],
-      "exceptions": [
-        {
-          "vendor_id": "0x1002",
-          "driver_version": {
-            "op": "between",
-            "value": "26.20.11030.2",
-            "value2": "26.20.11999.99999"
-          }
-        },
-        {
-          "driver_version": {
-            "op": "between",
-            "value": "26.20.12020.15",
-            "value2": "26.20.12999.99999"
-          }
-        },
-        {
-          "driver_version": {
-            "op": "between",
-            "value": "26.20.13001.27002",
-            "value2": "26.20.13999.99999"
-          }
-        },
-        {
-          "driver_version": {
-            "op": ">=",
-            "value": "26.20.14001.7001"
-          }
-        }
-      ],
-      "features": [
-        "disable_dxva_video_decoder"
-      ]
-    },
-    {
       "id": 337,
       "description": "Disable hardware MFT H.264 encoder on older NVIDIA drivers",
       "cr_bugs": [1058583, 1263058],
@@ -3358,7 +3305,7 @@
         "meteorlake"
       ],
       "features": [
-        "force_rgb10a2_overlay_support_flags"
+        "force_rgb10a2_overlay_support"
       ]
     },
     {
@@ -3407,12 +3354,12 @@
     {
       "id": 354,
       "cr_bugs": [1126834],
-      "description": "AMD devices 98e4 and 15d8 with specific drivers can't use d3d11 video decoder",
+      "description": "AMD device 98e4 with specific drivers can't use d3d11 video decoder",
       "os": {
         "type": "win"
       },
       "vendor_id": "0x1002",
-      "device_id": ["0x98e4", "0x15dd"],
+      "device_id": ["0x98e4"],
       "features": [
         "disable_d3d11_video_decoder"
       ],
@@ -3643,18 +3590,6 @@
       ]
     },
     {
-      "id": 374,
-      "cr_bugs": [1087422],
-      "description": "VP9 resilient mode causes corruptions with AMD VCN HW decoders, using DXVA",
-      "os": {
-        "type": "win"
-      },
-      "vendor_id": "0x1002",
-      "features": [
-        "disallow_vp9_resilient_dxva_decoding"
-      ]
-    },
-    {
       "id": 376,
       "cr_bugs": [1219028],
       "description": "Don't use Media Foundation hardware security on Turing-architecture NVIDIA GPUs.",
@@ -3790,7 +3725,7 @@
     },
     {
       "id": 387,
-      "description": "DXVAVideoDecodeAccelerator doesn't support a set of legacy AMD Gpus",
+      "description": "Windows hardware decoding doesn't support a set of legacy AMD GPUs",
       "cr_bugs": [822644, 1187900],
       "os": {
         "type": "win"
@@ -3841,7 +3776,7 @@
     },
     {
       "id": 388,
-      "description": "DXVAVideoDecodeAccelerator doesn't support a set of legacy Intel Gpus",
+      "description": "Windows hardware decoding doesn't support a set of legacy Intel GPUs",
       "cr_bugs": [822644, 1187900],
       "os": {
         "type": "win"
@@ -4077,7 +4012,7 @@
     },
     {
       "id": 403,
-      "description": "Disable hardware MFT Av1 encoder on machines with multiple GPUs",
+      "description": "Disable hardware MFT Av1 encoder on machines with multiple GPUs except Intel alchemist GPUs",
       "cr_bugs": [1367038],
       "os": {
         "type": "win"
@@ -4086,6 +4021,19 @@
         "op": ">",
         "value": "2"
       },
+      "exceptions": [
+        {
+          "vendor_id": "0x8086",
+          "multi_gpu_category":"any",
+          "intel_gpu_series": [
+            "alchemist"
+          ],
+          "driver_version": {
+            "op": ">=",
+            "value": "31.0.101.4146"
+          }
+        }
+      ],
       "features": [
         "disable_accelerated_av1_encode"
       ]
@@ -4097,18 +4045,6 @@
         "type": "chromeos"
       },
       "gl_renderer": "llvmpipe.*",
-      "features": [
-        "disable_egl_ext_image_dma_buf_import_modifiers"
-      ]
-    },
-    {
-      "id": 405,
-      "description": "Disable EGL_EXT_image_dma_buf_import_modifiers for Exo KMS modifier discovery on old proprietary Mali drivers",
-      "os": {
-        "type": "chromeos"
-      },
-      "gl_renderer": "Mali.*",
-      "gl_version_string": ".*r26p0-01rel0.*",
       "features": [
         "disable_egl_ext_image_dma_buf_import_modifiers"
       ]
@@ -4187,6 +4123,38 @@
       ]
     },
     {
+      "id": 411,
+      "cr_bugs": [1433287],
+      "description": "Disable VP9 HW encode on Intel GPU with old drivers",
+      "os": {
+        "type": "win"
+      },
+      "vendor_id": "0x8086",
+      "driver_version": {
+        "op": "<",
+        "value": "30.0.100.9667"
+      },
+      "features": [
+        "disable_accelerated_vp9_encode"
+      ]
+    },
+    {
+      "id": 412,
+      "cr_bugs": [1217298, 1107331],
+      "description": "Disable VP9 HW encode on Intel GPUs preceding Ice Lake",
+      "os": {
+        "type": "win"
+      },
+      "vendor_id": "0x8086",
+      "intel_gpu_generation": {
+        "op": "<",
+        "value": "11"
+      },
+      "features": [
+        "disable_accelerated_vp9_encode"
+      ]
+    },
+    {
       "id": 413,
       "cr_bugs": [1447972],
       "description": "Force to use the triple buffer video swap chain of direct composition",
@@ -4200,7 +4168,101 @@
       "features": [
         "force_dcomp_triple_buffer_video_swap_chain"
       ]
+    },
+    {
+      "id": 414,
+      "cr_bugs": [
+        1445741
+      ],
+      "description": "Only enable video processor auto HDR on NVIDIA GPUs with 550.50+ driver",
+      "os": {
+        "type": "win"
+      },
+      "exceptions": [
+        {
+          "vendor_id": "0x10de",
+          "os": {
+            "type": "win"
+          },
+          "driver_version": {
+            "schema": "nvidia_driver",
+            "op": ">",
+            "value": "550.50"
+          }
+        }
+      ],
+      "features": [
+        "disable_vp_auto_hdr"
+      ]
+    },
+    {
+      "id": 415,
+      "cr_bugs": [1464136],
+      "description": "Disable VP9 and H.264 video acceleration on Elkhart Lake Intel devices",
+      "os": {
+        "type": "chromeos"
+      },
+      "intel_gpu_series": [
+        "elkhartlake"
+      ],
+      "features": [
+        "disable_accelerated_h264_decode",
+        "disable_accelerated_h264_encode",
+        "disable_accelerated_vp9_decode",
+        "disable_accelerated_vp9_encode",
+        "disable_accelerated_vp9_profile2_decode"
+      ]
+    },
+    {
+      "id": 417,
+      "description": "Limit D3D11VideoDecoder to 11.0 due to failures on QC chipsets.",
+      "comment": [
+        "On QC chipsets calling ID3D11VideoContext1::SubmitDecoderBuffer1 with ",
+        "non-protected content can result in an E_INVALIDARG result and playback ",
+        "failure. Force the use of 11.0 to create an ID3D11VideoContext instead."
+      ],
+      "os": {
+        "type": "win"
+      },
+      "vendor_id": "0x4d4f4351",
+      "features": [
+        "limit_d3d11_video_decoder_to_11_0"
+      ]
+    },
+    {
+      "id": 418,
+      "description": "Uploading data or rendering to R8 EGL images generates driver errors.",
+      "cr_bugs": [1455752],
+      "os": {
+        "type": "android",
+        "version": {
+          "op": "<=",
+          "value": "9.0"
+        }
+      },
+      "gl_vendor": "ARM.*",
+      "gl_type": "gles",
+      "features": [
+        "r8_egl_images_broken"
+      ]
+    },
+    {
+      "id": 419,
+      "cr_bugs": [1473665],
+      "description": "Corruption when consecutive VP9 keyframes are requested from MFVEA on Intel.",
+      "comment": [
+        "In MFVEA, the Intel MFT driver currently misbehaves when requesting ",
+        "two consecutive keyframes. MFVEA fixes this by causing a delta frame ",
+        "encode in between the keyframes whose results are thrown away. ",
+        "External bitrate control isn't made aware that this happens."
+      ],
+      "os": {
+        "type": "win"
+      },
+      "vendor_id": "0x8086",
+      "features": [
+        "avoid_consecutive_keyframes_for_vp9"
+      ]
     }
-
   ]
 }

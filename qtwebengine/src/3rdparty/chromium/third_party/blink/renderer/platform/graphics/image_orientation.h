@@ -56,6 +56,7 @@ enum class ImageOrientationEnum : int8_t {
   kOriginLeftBottom = 8,   // 270 degree CW rotation
   // All other values are "reserved" as of EXIF 2.2
   kDefault = kOriginTopLeft,
+  kMinValue = kOriginTopLeft,
   kMaxValue = kOriginLeftBottom,
 };
 
@@ -77,20 +78,14 @@ class PLATFORM_EXPORT ImageOrientation final {
     return orientation_ >= ImageOrientationEnum::kOriginLeftTop;
   }
 
-  // ImageOrientationEnum currently matches EXIF values, however code outside
-  // this function should never assume that.
-  static ImageOrientation FromEXIFValue(int exif_value) {
-    // Values direct from images may be invalid, in which case we use the
-    // default.
-    if (exif_value < static_cast<int>(ImageOrientationEnum::kOriginTopLeft) ||
-        exif_value > static_cast<int>(ImageOrientationEnum::kOriginLeftBottom))
-      return ImageOrientationEnum::kDefault;
-    return static_cast<ImageOrientationEnum>(exif_value);
-  }
-
   // This transform can be used for drawing an image according to the
   // orientation. It should be used in a right-handed coordinate system.
   AffineTransform TransformFromDefault(const gfx::SizeF& drawn_size) const;
+
+  // This transform can be used to reverse an image orientation, it's for
+  // drawing an image according to the way it is encoded. It should be used in a
+  // right-handed coordinate system.
+  AffineTransform TransformToDefault(const gfx::SizeF& drawn_size) const;
 
   inline bool operator==(const ImageOrientation& other) const {
     return other.orientation_ == orientation_;

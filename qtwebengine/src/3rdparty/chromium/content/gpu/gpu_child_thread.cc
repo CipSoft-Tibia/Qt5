@@ -30,7 +30,7 @@
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/gpu/content_gpu_client.h"
-#include "gpu/command_buffer/common/activity_flags.h"
+#include "gpu/command_buffer/common/shm_count.h"
 #include "gpu/ipc/service/gpu_channel_manager.h"
 #include "gpu/ipc/service/gpu_init.h"
 #include "gpu/ipc/service/gpu_watchdog_thread.h"
@@ -97,11 +97,9 @@ viz::VizMainImpl::ExternalDependencies CreateVizMainDependencies() {
   deps.shutdown_event = process->GetShutDownEvent();
   deps.io_thread_task_runner = process->io_task_runner();
 
-  mojo::PendingRemote<ukm::mojom::UkmRecorderInterface> ukm_recorder;
-  ChildThread::Get()->BindHostReceiver(
-      ukm_recorder.InitWithNewPipeAndPassReceiver());
-  deps.ukm_recorder =
-      std::make_unique<ukm::MojoUkmRecorder>(std::move(ukm_recorder));
+  mojo::Remote<ukm::mojom::UkmRecorderFactory> factory;
+  ChildThread::Get()->BindHostReceiver(factory.BindNewPipeAndPassReceiver());
+  deps.ukm_recorder = ukm::MojoUkmRecorder::Create(*factory);
   return deps;
 }
 

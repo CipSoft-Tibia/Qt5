@@ -62,7 +62,6 @@
 #include "extensions/browser/extensions_browser_client.h"
 #include "extensions/browser/guest_view/web_view/web_view_guest.h"
 #include "extensions/browser/guest_view/web_view/web_view_renderer_state.h"
-#include "extensions/browser/info_map.h"
 #include "extensions/browser/process_map.h"
 #include "extensions/browser/process_map_factory.h"
 #include "extensions/browser/url_request_util.h"
@@ -520,7 +519,6 @@ class ExtensionURLLoader : public network::mojom::URLLoader {
       const network::ResourceRequest& request,
       bool is_web_view_request,
       int render_process_id,
-      scoped_refptr<extensions::InfoMap> extension_info_map,
       content::BrowserContext* browser_context,
       ukm::SourceIdObj ukm_source_id) {
     DCHECK(browser_context);
@@ -529,7 +527,7 @@ class ExtensionURLLoader : public network::mojom::URLLoader {
     // the URLLoader or the URLLoaderClient connection gets dropped).
     auto* url_loader = new ExtensionURLLoader(
         std::move(loader), std::move(client), request, is_web_view_request,
-        render_process_id, extension_info_map, browser_context, ukm_source_id);
+        render_process_id, browser_context, ukm_source_id);
     url_loader->Start();
   }
 
@@ -561,15 +559,13 @@ class ExtensionURLLoader : public network::mojom::URLLoader {
       const network::ResourceRequest& request,
       bool is_web_view_request,
       int render_process_id,
-      scoped_refptr<extensions::InfoMap> extension_info_map,
       content::BrowserContext* browser_context,
       ukm::SourceIdObj ukm_source_id)
       : request_(request),
         browser_context_(browser_context),
         is_web_view_request_(is_web_view_request),
         ukm_source_id_(ukm_source_id),
-        render_process_id_(render_process_id),
-        extension_info_map_(extension_info_map) {
+        render_process_id_(render_process_id) {
     client =
         WrapWithMetricsIfNeeded(request.url, ukm_source_id, std::move(client));
     client_.Bind(std::move(client));
@@ -606,7 +602,7 @@ class ExtensionURLLoader : public network::mojom::URLLoader {
     const std::string extension_id = request_.url.host();
     ExtensionRegistry* registry = ExtensionRegistry::Get(browser_context_);
     scoped_refptr<const Extension> extension =
-        registry->GenerateInstalledExtensionsSet()->GetByIDorGUID(extension_id);
+        registry->GenerateInstalledExtensionsSet().GetByIDorGUID(extension_id);
     const ExtensionSet& enabled_extensions = registry->enabled_extensions();
     const ProcessMap* process_map = ProcessMap::Get(browser_context_);
     bool incognito_enabled =
@@ -674,13 +670,12 @@ class ExtensionURLLoader : public network::mojom::URLLoader {
   void OnFilePathAndLastModifiedTimeRead(
       const extensions::ExtensionResource& resource,
       scoped_refptr<net::HttpResponseHeaders> headers,
+      scoped_refptr<ContentVerifier> content_verifier,
       std::pair<base::FilePath, base::Time> file_path_and_time) {
     DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
     const auto& read_file_path = file_path_and_time.first;
     const auto& last_modified_time = file_path_and_time.second;
     request_.url = net::FilePathToFileURL(read_file_path);
-    scoped_refptr<ContentVerifier> content_verifier =
-        extension_info_map_->content_verifier();
 
     AddCacheHeaders(*headers, last_modified_time);
     content::GetIOThreadTaskRunner({})->PostTask(
@@ -859,13 +854,16 @@ class ExtensionURLLoader : public network::mojom::URLLoader {
     if (follow_symlinks_anywhere)
       resource.set_follow_symlinks_anywhere();
 
+    scoped_refptr<ContentVerifier> content_verifier =
+        extensions::ExtensionSystem::Get(browser_context_)->content_verifier();
+
     base::ThreadPool::PostTaskAndReplyWithResult(
         FROM_HERE, {base::MayBlock()},
         base::BindOnce(&ReadResourceFilePathAndLastModifiedTime, resource,
                        directory_path),
         base::BindOnce(&ExtensionURLLoader::OnFilePathAndLastModifiedTimeRead,
                        weak_ptr_factory_.GetWeakPtr(), resource,
-                       std::move(headers)));
+                       std::move(headers), std::move(content_verifier)));
   }
 
   void OnMojoDisconnect() { DeleteThis(); }
@@ -873,7 +871,8 @@ class ExtensionURLLoader : public network::mojom::URLLoader {
   mojo::Receiver<network::mojom::URLLoader> loader_{this};
   mojo::Remote<network::mojom::URLLoaderClient> client_;
   network::ResourceRequest request_;
-  const raw_ptr<content::BrowserContext> browser_context_;
+  const raw_ptr<content::BrowserContext, AcrossTasksDanglingUntriaged>
+      browser_context_;
   const bool is_web_view_request_;
   const ukm::SourceIdObj ukm_source_id_;
 
@@ -881,7 +880,6 @@ class ExtensionURLLoader : public network::mojom::URLLoader {
   // avoid holding on to stale pointers if we get requests past the lifetime of
   // the objects.
   const int render_process_id_;
-  const scoped_refptr<extensions::InfoMap> extension_info_map_;
 
   // Tracker for favicon callback.
   std::unique_ptr<base::CancelableTaskTracker> tracker_;
@@ -945,8 +943,6 @@ class ExtensionURLLoaderFactory : public network::SelfDeletingURLLoaderFactory {
         ukm_source_id_(ukm_source_id),
         render_process_id_(render_process_id) {
     DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-    extension_info_map_ =
-        extensions::ExtensionSystem::Get(browser_context_)->info_map();
 
     // base::Unretained is safe below, because lifetime of
     // |browser_context_shutdown_subscription_| guarantees that
@@ -972,10 +968,9 @@ class ExtensionURLLoaderFactory : public network::SelfDeletingURLLoaderFactory {
       override {
     DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
     DCHECK_EQ(kExtensionScheme, request.url.scheme());
-    ExtensionURLLoader::CreateAndStart(std::move(loader), std::move(client),
-                                       request, is_web_view_request_,
-                                       render_process_id_, extension_info_map_,
-                                       browser_context_, ukm_source_id_);
+    ExtensionURLLoader::CreateAndStart(
+        std::move(loader), std::move(client), request, is_web_view_request_,
+        render_process_id_, browser_context_, ukm_source_id_);
   }
 
   void OnBrowserContextDestroyed() {
@@ -1011,9 +1006,8 @@ class ExtensionURLLoaderFactory : public network::SelfDeletingURLLoaderFactory {
 
     content::BrowserContext* GetBrowserContextToUse(
         content::BrowserContext* context) const override {
-      return ExtensionsBrowserClient::Get()->GetContextForRegularAndIncognito(
-          context, /*force_guest_profile=*/true,
-          /*force_system_profile=*/false);
+      return ExtensionsBrowserClient::Get()->GetContextOwnInstance(
+          context, /*force_guest_profile=*/true);
     }
   };
 
@@ -1025,7 +1019,6 @@ class ExtensionURLLoaderFactory : public network::SelfDeletingURLLoaderFactory {
   // avoid holding on to stale pointers if we get requests past the lifetime of
   // the objects.
   const int render_process_id_;
-  scoped_refptr<extensions::InfoMap> extension_info_map_;
 
   base::CallbackListSubscription browser_context_shutdown_subscription_;
 };
@@ -1069,13 +1062,22 @@ CreateExtensionURLLoaderFactory(int render_process_id, int render_frame_id) {
   content::RenderProcessHost* process_host =
       content::RenderProcessHost::FromID(render_process_id);
   content::BrowserContext* browser_context = process_host->GetBrowserContext();
-  content::RenderFrameHost* rfh =
+  content::RenderFrameHost* render_frame_host =
       content::RenderFrameHost::FromID(render_process_id, render_frame_id);
-  bool is_web_view_request = WebViewGuest::FromRenderFrameHost(rfh) != nullptr;
+  bool is_web_view_request =
+      WebViewGuest::FromRenderFrameHost(render_frame_host) != nullptr;
 
   ukm::SourceIdObj ukm_source_id = ukm::kInvalidSourceIdObj;
-  if (rfh)
-    ukm_source_id = ukm::SourceIdObj::FromInt64(rfh->GetPageUkmSourceId());
+  // Our data collection policy disallows collecting UKMs while prerendering.
+  // So, assign a valid ID only when the page is not in the prerendering state.
+  // See //content/browser/preloading/prerender/README.md and ask the team to
+  // explore options to record data for prerendering pages.
+  if (render_frame_host &&
+      !render_frame_host->IsInLifecycleState(
+          content::RenderFrameHost::LifecycleState::kPrerendering)) {
+    ukm_source_id =
+        ukm::SourceIdObj::FromInt64(render_frame_host->GetPageUkmSourceId());
+  }
 
   return ExtensionURLLoaderFactory::Create(
       browser_context, ukm_source_id, is_web_view_request, render_process_id);

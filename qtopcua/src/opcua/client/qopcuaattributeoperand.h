@@ -16,7 +16,7 @@ class QOpcUaRelativePathElement;
 class QVariant;
 class QOpcUaRelativePathElement;
 
-// OPC-UA part 4, 7.4.4.4
+// OPC UA 1.05 part 4, 7.7.4.4
 class QOpcUaAttributeOperandData;
 class Q_OPCUA_EXPORT QOpcUaAttributeOperand
 {
@@ -44,6 +44,17 @@ public:
     void setIndexRange(const QString &indexRange);
 
 private:
+    friend Q_OPCUA_EXPORT bool comparesEqual(const QOpcUaAttributeOperand &lhs,
+                                             const QOpcUaAttributeOperand &rhs) noexcept;
+    friend bool operator==(const QOpcUaAttributeOperand &lhs,
+                           const QOpcUaAttributeOperand &rhs) noexcept
+    { return comparesEqual(lhs, rhs); }
+    friend bool operator!=(const QOpcUaAttributeOperand &lhs,
+                           const QOpcUaAttributeOperand &rhs) noexcept
+    {
+        return !(lhs == rhs);
+    }
+
     QSharedDataPointer<QOpcUaAttributeOperandData> data;
 };
 

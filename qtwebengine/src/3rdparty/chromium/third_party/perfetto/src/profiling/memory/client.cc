@@ -27,12 +27,6 @@
 #include <cinttypes>
 #include <new>
 
-#include <unwindstack/MachineArm.h>
-#include <unwindstack/MachineArm64.h>
-#include <unwindstack/MachineMips.h>
-#include <unwindstack/MachineMips64.h>
-#include <unwindstack/MachineX86.h>
-#include <unwindstack/MachineX86_64.h>
 #include <unwindstack/Regs.h>
 #include <unwindstack/RegsGetLocal.h>
 
@@ -82,6 +76,9 @@ uint64_t GetMaxTries(const ClientConfiguration& client_config) {
 }
 
 StackRange GetThreadStackRange() {
+  // In glibc pthread_getattr_np can call realloc, even for a non-main-thread.
+  // This is fine, because the heapprofd wrapper for glibc prevents re-entering
+  // malloc.
   pthread_attr_t attr;
   if (pthread_getattr_np(pthread_self(), &attr) != 0)
     return {nullptr, nullptr};
@@ -112,9 +109,10 @@ StackRange GetSigAltStackRange() {
           static_cast<char*>(altstack.ss_sp) + altstack.ss_size};
 }
 
-// The implementation of pthread_getattr_np for the main thread uses malloc,
-// so we cannot use it in GetStackEnd, which we use inside of RecordMalloc
-// (which is called from malloc). We would re-enter malloc if we used it.
+// The implementation of pthread_getattr_np for the main thread on bionic uses
+// malloc, so we cannot use it in GetStackEnd, which we use inside of
+// RecordMalloc (which is called from malloc). We would re-enter malloc if we
+// used it.
 //
 // This is why we find the stack base for the main-thread when constructing
 // the client and remember it.
@@ -140,21 +138,21 @@ StackRange GetMainThreadStackRange() {
 }
 
 // static
-base::Optional<base::UnixSocketRaw> Client::ConnectToHeapprofd(
+std::optional<base::UnixSocketRaw> Client::ConnectToHeapprofd(
     const std::string& sock_name) {
   auto sock = base::UnixSocketRaw::CreateMayFail(base::SockFamily::kUnix,
                                                  base::SockType::kStream);
   if (!sock || !sock.Connect(sock_name)) {
     PERFETTO_PLOG("Failed to connect to %s", sock_name.c_str());
-    return base::nullopt;
+    return std::nullopt;
   }
   if (!sock.SetTxTimeout(kClientSockTimeoutMs)) {
     PERFETTO_PLOG("Failed to set send timeout for %s", sock_name.c_str());
-    return base::nullopt;
+    return std::nullopt;
   }
   if (!sock.SetRxTimeout(kClientSockTimeoutMs)) {
     PERFETTO_PLOG("Failed to set receive timeout for %s", sock_name.c_str());
-    return base::nullopt;
+    return std::nullopt;
   }
   return std::move(sock);
 }

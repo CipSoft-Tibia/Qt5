@@ -56,32 +56,25 @@
 #include "third_party/blink/renderer/core/html/forms/labels_node_list.h"
 #include "third_party/blink/renderer/core/html/html_frame_owner_element.h"
 #include "third_party/blink/renderer/core/html/html_image_element.h"
-#include "third_party/blink/renderer/core/html/html_table_caption_element.h"
-#include "third_party/blink/renderer/core/html/html_table_cell_element.h"
-#include "third_party/blink/renderer/core/html/html_table_col_element.h"
-#include "third_party/blink/renderer/core/html/html_table_element.h"
 #include "third_party/blink/renderer/core/html/media/html_media_element.h"
 #include "third_party/blink/renderer/core/html/shadow/shadow_element_names.h"
 #include "third_party/blink/renderer/core/input_type_names.h"
-#include "third_party/blink/renderer/core/layout/api/line_layout_api_shim.h"
 #include "third_party/blink/renderer/core/layout/geometry/transform_state.h"
 #include "third_party/blink/renderer/core/layout/hit_test_result.h"
 #include "third_party/blink/renderer/core/layout/layout_box.h"
 #include "third_party/blink/renderer/core/layout/layout_html_canvas.h"
 #include "third_party/blink/renderer/core/layout/layout_image.h"
 #include "third_party/blink/renderer/core/layout/layout_inline.h"
-#include "third_party/blink/renderer/core/layout/layout_list_item.h"
-#include "third_party/blink/renderer/core/layout/layout_list_marker.h"
 #include "third_party/blink/renderer/core/layout/layout_replaced.h"
-#include "third_party/blink/renderer/core/layout/layout_table.h"
-#include "third_party/blink/renderer/core/layout/layout_table_cell.h"
-#include "third_party/blink/renderer/core/layout/layout_table_row.h"
-#include "third_party/blink/renderer/core/layout/layout_table_section.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/layout/list_marker.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_cursor.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_node.h"
 #include "third_party/blink/renderer/core/layout/ng/list/layout_ng_list_item.h"
+#include "third_party/blink/renderer/core/layout/ng/table/layout_ng_table.h"
+#include "third_party/blink/renderer/core/layout/ng/table/layout_ng_table_cell.h"
+#include "third_party/blink/renderer/core/layout/ng/table/layout_ng_table_row.h"
+#include "third_party/blink/renderer/core/layout/ng/table/layout_ng_table_section.h"
 #include "third_party/blink/renderer/core/loader/progress_tracker.h"
 #include "third_party/blink/renderer/core/mathml/mathml_element.h"
 #include "third_party/blink/renderer/core/page/page.h"
@@ -102,6 +95,28 @@
 #include "ui/accessibility/ax_role_properties.h"
 
 namespace blink {
+
+namespace {
+
+// Return the first LayoutNGTableSection if maybe_table is a non-anonymous
+// table. If non-null, set table_out to the containing table.
+LayoutNGTableSection* FirstTableSection(LayoutObject* maybe_table,
+                                        LayoutNGTable** table_out = nullptr) {
+  if (auto* table = DynamicTo<LayoutNGTable>(maybe_table)) {
+    if (table->GetNode()) {
+      if (table_out) {
+        *table_out = table;
+      }
+      return table->FirstSection();
+    }
+  }
+  if (table_out) {
+    *table_out = nullptr;
+  }
+  return nullptr;
+}
+
+}  // anonymous namespace
 
 AXLayoutObject::AXLayoutObject(LayoutObject* layout_object,
                                AXObjectCacheImpl& ax_object_cache)
@@ -184,7 +199,7 @@ ax::mojom::blink::Role AXLayoutObject::RoleFromLayoutObjectOrNode() const {
     return ax::mojom::blink::Role::kListItem;
   }
 
-  if (layout_object_->IsListMarkerIncludingAll()) {
+  if (layout_object_->IsListMarker()) {
     Node* list_item = layout_object_->GeneratingNode();
     if (list_item && ShouldIgnoreListItem(list_item))
       return ax::mojom::blink::Role::kNone;
@@ -244,9 +259,9 @@ ax::mojom::blink::Role AXLayoutObject::RoleFromLayoutObjectOrNode() const {
     }
     if (layout_object_->IsSVGShape())
       return ax::mojom::blink::Role::kGraphicsSymbol;
-    if (layout_object_->IsSVGForeignObjectIncludingNG() ||
-        IsA<SVGGElement>(node))
+    if (layout_object_->IsSVGForeignObject() || IsA<SVGGElement>(node)) {
       return ax::mojom::blink::Role::kGroup;
+    }
     if (IsA<SVGUseElement>(node))
       return ax::mojom::blink::Role::kGraphicsObject;
   }
@@ -273,15 +288,6 @@ Node* AXLayoutObject::GetNodeOrContainingBlockNode() const {
   if (IsDetached())
     return nullptr;
 
-  // For legacy layout, or editable list marker when disabling EditingNG.
-  if (layout_object_->IsListMarker()) {
-    // Return the originating list item node.
-    return layout_object_->GetNode()->parentNode();
-  }
-
-  // For LayoutNG list marker.
-  // Note: When EditingNG is disabled, editable list items are laid out legacy
-  // layout even if LayoutNG enabled.
   if (auto* list_marker = ListMarker::Get(layout_object_)) {
     // Return the originating list item node.
     return list_marker->ListItem(*layout_object_)->GetNode();
@@ -380,9 +386,9 @@ bool AXLayoutObject::IsPlaceholder() const {
     return false;
 
   LayoutObject* parent_layout_object = parent_object->GetLayoutObject();
-  if (!parent_layout_object ||
-      !parent_layout_object->IsTextControlIncludingNG())
+  if (!parent_layout_object || !parent_layout_object->IsTextControl()) {
     return false;
+  }
 
   const auto* text_control_element =
       To<TextControlElement>(parent_layout_object->GetNode());
@@ -396,10 +402,6 @@ bool AXLayoutObject::ComputeAccessibilityIsIgnored(
 #if DCHECK_IS_ON()
   DCHECK(initialized_);
 #endif
-
-  // Ignore continuations, they're duplicate copies of inline nodes with blocks
-  // inside. AXObjects are no longer created for these.
-  DCHECK(!layout_object_->IsElementContinuation());
 
   if (AXObject::ShouldIgnoreForHiddenOrInert(ignored_reasons)) {
     return true;
@@ -461,8 +463,7 @@ bool AXLayoutObject::ComputeAccessibilityIsIgnored(
 
     // A 1x1 canvas is too small for the user to see and thus ignored.
     const auto* canvas = DynamicTo<LayoutHTMLCanvas>(GetLayoutObject());
-    if (canvas &&
-        (canvas->Size().Height() <= 1 || canvas->Size().Width() <= 1)) {
+    if (canvas && (canvas->Size().height <= 1 || canvas->Size().width <= 1)) {
       if (ignored_reasons)
         ignored_reasons->push_back(IgnoredReason(kAXProbablyPresentational));
       return true;
@@ -500,12 +501,17 @@ bool AXLayoutObject::ComputeAccessibilityIsIgnored(
     // To save processing, only walk up the ignored objects.
     // This means that other interesting objects inside the <label> will
     // cause the text to be unignored.
+    // TODO(aleventhal) Speed this up by only doing this work inside of a label.
+    // See IsUsedForLabelOrDescription() in upcoming crrev.com/c/4574033.
     AXObject* ancestor = ParentObject();
     while (ancestor && ancestor->AccessibilityIsIgnored()) {
-      if (ancestor->RoleValue() == ax::mojom::blink::Role::kLabelText) {
-        if (ignored_reasons)
-          ignored_reasons->push_back(IgnoredReason(kAXPresentational));
-        return true;
+      if (auto* label = DynamicTo<HTMLLabelElement>(ancestor->GetNode())) {
+        if (AXNodeObject::IsRedundantLabel(label)) {
+          if (ignored_reasons) {
+            ignored_reasons->push_back(IgnoredReason(kAXPresentational));
+          }
+          return true;
+        }
       }
       ancestor = ancestor->ParentObject();
     }
@@ -517,7 +523,7 @@ bool AXLayoutObject::ComputeAccessibilityIsIgnored(
   if (alt_text)
     return alt_text->empty();
 
-  if (layout_object_->IsListMarkerIncludingAll()) {
+  if (layout_object_->IsListMarker()) {
     // Ignore TextAlternative of the list marker for SUMMARY because:
     //  - TextAlternatives for disclosure-* are triangle symbol characters used
     //    to visually indicate the expansion state.
@@ -618,19 +624,23 @@ ax::mojom::blink::ListStyle AXLayoutObject::GetListStyle() const {
     case ListMarker::ListStyleCategory::kSymbol: {
       const AtomicString& counter_style_name =
           computed_style->ListStyleType()->GetCounterStyleName();
-      if (counter_style_name == "disc")
+      if (counter_style_name == keywords::kDisc) {
         return ax::mojom::blink::ListStyle::kDisc;
-      if (counter_style_name == "circle")
+      }
+      if (counter_style_name == keywords::kCircle) {
         return ax::mojom::blink::ListStyle::kCircle;
-      if (counter_style_name == "square")
+      }
+      if (counter_style_name == keywords::kSquare) {
         return ax::mojom::blink::ListStyle::kSquare;
+      }
       return ax::mojom::blink::ListStyle::kOther;
     }
     case ListMarker::ListStyleCategory::kLanguage: {
       const AtomicString& counter_style_name =
           computed_style->ListStyleType()->GetCounterStyleName();
-      if (counter_style_name == "decimal")
+      if (counter_style_name == keywords::kDecimal) {
         return ax::mojom::blink::ListStyle::kNumeric;
+      }
       if (counter_style_name == "decimal-leading-zero") {
         // 'decimal-leading-zero' may be overridden by custom counter styles. We
         // return kNumeric only when we are using the predefined counter style.
@@ -911,10 +921,6 @@ String AXLayoutObject::TextAlternative(
         text_alternative = visible_text;
       }
       found_text_alternative = true;
-    } else if (layout_object_->IsListMarkerForNormalContent() && !recursive) {
-      text_alternative =
-          To<LayoutListMarker>(layout_object_.Get())->TextAlternative();
-      found_text_alternative = true;
     } else if (!recursive) {
       if (ListMarker* marker = ListMarker::Get(layout_object_)) {
         text_alternative = marker->TextAlternative(*layout_object_);
@@ -963,8 +969,7 @@ AXObject* AXLayoutObject::AccessibilityHitTest(const gfx::Point& point) const {
   HitTestRequest request(HitTestRequest::kReadOnly | HitTestRequest::kActive);
   HitTestLocation location(point);
   HitTestResult hit_test_result = HitTestResult(request, location);
-  layer->HitTest(location, hit_test_result,
-                 PhysicalRect(PhysicalRect::InfiniteIntRect()));
+  layer->HitTest(location, hit_test_result, PhysicalRect(InfiniteIntRect()));
 
   Node* node = hit_test_result.InnerNode();
   if (!node)
@@ -1031,222 +1036,11 @@ void AXLayoutObject::HandleAutofillStateChanged(WebAXAutofillState state) {
   AXObjectCache().SetAutofillState(AXObjectID(), state);
 }
 
-// The following is a heuristic used to determine if a
-// <table> should be with ax::mojom::blink::Role::kTable or
-// ax::mojom::blink::Role::kLayoutTable.
-bool AXLayoutObject::IsDataTable() const {
-  if (!layout_object_ || !GetNode())
-    return false;
-
-  // If it has an ARIA role, it's definitely a data table.
-  AtomicString role;
-  if (HasAOMPropertyOrARIAAttribute(AOMStringProperty::kRole, role))
-    return true;
-
-  // When a section of the document is contentEditable, all tables should be
-  // treated as data tables, otherwise users may not be able to work with rich
-  // text editors that allow creating and editing tables.
-  if (GetNode() && blink::IsEditable(*GetNode()))
-    return true;
-
-  // This employs a heuristic to determine if this table should appear.
-  // Only "data" tables should be exposed as tables.
-  // Unfortunately, there is no good way to determine the difference
-  // between a "layout" table and a "data" table.
-  auto* table_element = DynamicTo<HTMLTableElement>(GetNode());
-  if (!table_element)
-    return false;
-
-  // If there is a caption element, summary, THEAD, or TFOOT section, it's most
-  // certainly a data table
-  if (!table_element->Summary().empty() || table_element->tHead() ||
-      table_element->tFoot() || table_element->caption())
-    return true;
-
-  // if someone used "rules" attribute than the table should appear
-  if (!table_element->Rules().empty())
-    return true;
-
-  // if there's a colgroup or col element, it's probably a data table.
-  if (Traversal<HTMLTableColElement>::FirstChild(*table_element))
-    return true;
-
-  // If there are at least 20 rows, we'll call it a data table.
-  HTMLTableRowsCollection* rows = table_element->rows();
-  int num_rows = rows->length();
-  if (num_rows >= AXObjectCacheImpl::kDataTableHeuristicMinRows)
-    return true;
-  if (num_rows <= 0)
-    return false;
-
-  int num_cols_in_first_body = rows->Item(0)->cells()->length();
-  // If there's only one cell, it's not a good AXTable candidate.
-  if (num_rows == 1 && num_cols_in_first_body == 1)
-    return false;
-
-  // Store the background color of the table to check against cell's background
-  // colors.
-  const ComputedStyle* table_style = layout_object_->Style();
-  if (!table_style)
-    return false;
-
-  Color table_bg_color =
-      table_style->VisitedDependentColor(GetCSSPropertyBackgroundColor());
-  bool has_cell_spacing = table_style->HorizontalBorderSpacing() &&
-                          table_style->VerticalBorderSpacing();
-
-  // check enough of the cells to find if the table matches our criteria
-  // Criteria:
-  //   1) must have at least one valid cell (and)
-  //   2) at least half of cells have borders (or)
-  //   3) at least half of cells have different bg colors than the table, and
-  //      there is cell spacing
-  unsigned valid_cell_count = 0;
-  unsigned bordered_cell_count = 0;
-  unsigned background_difference_cell_count = 0;
-  unsigned cells_with_top_border = 0;
-  unsigned cells_with_bottom_border = 0;
-  unsigned cells_with_left_border = 0;
-  unsigned cells_with_right_border = 0;
-
-  Color alternating_row_colors[5];
-  int alternating_row_color_count = 0;
-  for (int row = 0; row < num_rows; ++row) {
-    HTMLTableRowElement* row_element = rows->Item(row);
-    int n_cols = row_element->cells()->length();
-    for (int col = 0; col < n_cols; ++col) {
-      const Element* cell = row_element->cells()->item(col);
-      if (!cell)
-        continue;
-      // Any <th> tag -> treat as data table.
-      if (cell->HasTagName(html_names::kThTag))
-        return true;
-
-      // Check for an explicitly assigned a "data" table attribute.
-      auto* cell_elem = DynamicTo<HTMLTableCellElement>(*cell);
-      if (cell_elem) {
-        if (!cell_elem->Headers().empty() || !cell_elem->Abbr().empty() ||
-            !cell_elem->Axis().empty() ||
-            !cell_elem->FastGetAttribute(html_names::kScopeAttr).empty())
-          return true;
-      }
-
-      LayoutObject* cell_layout_object = cell->GetLayoutObject();
-      if (!cell_layout_object || !cell_layout_object->IsLayoutBlock())
-        continue;
-
-      const LayoutBlock* cell_layout_block =
-          To<LayoutBlock>(cell_layout_object);
-      if (cell_layout_block->Size().Width() < 1 ||
-          cell_layout_block->Size().Height() < 1)
-        continue;
-
-      valid_cell_count++;
-
-      const ComputedStyle* computed_style = cell_layout_block->Style();
-      if (!computed_style)
-        continue;
-
-      // If the empty-cells style is set, we'll call it a data table.
-      if (computed_style->EmptyCells() == EEmptyCells::kHide)
-        return true;
-
-      // If a cell has matching bordered sides, call it a (fully) bordered cell.
-      if ((cell_layout_block->BorderTop() > 0 &&
-           cell_layout_block->BorderBottom() > 0) ||
-          (cell_layout_block->BorderLeft() > 0 &&
-           cell_layout_block->BorderRight() > 0))
-        bordered_cell_count++;
-
-      // Also keep track of each individual border, so we can catch tables where
-      // most cells have a bottom border, for example.
-      if (cell_layout_block->BorderTop() > 0)
-        cells_with_top_border++;
-      if (cell_layout_block->BorderBottom() > 0)
-        cells_with_bottom_border++;
-      if (cell_layout_block->BorderLeft() > 0)
-        cells_with_left_border++;
-      if (cell_layout_block->BorderRight() > 0)
-        cells_with_right_border++;
-
-      // If the cell has a different color from the table and there is cell
-      // spacing, then it is probably a data table cell (spacing and colors take
-      // the place of borders).
-      Color cell_color = computed_style->VisitedDependentColor(
-          GetCSSPropertyBackgroundColor());
-      if (has_cell_spacing && table_bg_color != cell_color &&
-          cell_color.Alpha() != 1)
-        background_difference_cell_count++;
-
-      // If we've found 10 "good" cells, we don't need to keep searching.
-      if (bordered_cell_count >= 10 || background_difference_cell_count >= 10)
-        return true;
-
-      // For the first 5 rows, cache the background color so we can check if
-      // this table has zebra-striped rows.
-      if (row < 5 && row == alternating_row_color_count) {
-        LayoutObject* layout_row = cell_layout_block->Parent();
-        if (!layout_row || !layout_row->IsBoxModelObject() ||
-            !layout_row->IsTableRow())
-          continue;
-        const ComputedStyle* row_computed_style = layout_row->Style();
-        if (!row_computed_style)
-          continue;
-        Color row_color = row_computed_style->VisitedDependentColor(
-            GetCSSPropertyBackgroundColor());
-        alternating_row_colors[alternating_row_color_count] = row_color;
-        alternating_row_color_count++;
-      }
-    }
-  }
-
-  // if there is less than two valid cells, it's not a data table
-  if (valid_cell_count <= 1)
-    return false;
-
-  // half of the cells had borders, it's a data table
-  unsigned needed_cell_count = valid_cell_count / 2;
-  if (bordered_cell_count >= needed_cell_count ||
-      cells_with_top_border >= needed_cell_count ||
-      cells_with_bottom_border >= needed_cell_count ||
-      cells_with_left_border >= needed_cell_count ||
-      cells_with_right_border >= needed_cell_count)
-    return true;
-
-  // half had different background colors, it's a data table
-  if (background_difference_cell_count >= needed_cell_count)
-    return true;
-
-  // Check if there is an alternating row background color indicating a zebra
-  // striped style pattern.
-  if (alternating_row_color_count > 2) {
-    Color first_color = alternating_row_colors[0];
-    for (int k = 1; k < alternating_row_color_count; k++) {
-      // If an odd row was the same color as the first row, its not alternating.
-      if (k % 2 == 1 && alternating_row_colors[k] == first_color)
-        return false;
-      // If an even row is not the same as the first row, its not alternating.
-      if (!(k % 2) && alternating_row_colors[k] != first_color)
-        return false;
-    }
-    return true;
-  }
-
-  return false;
-}
-
 unsigned AXLayoutObject::ColumnCount() const {
   if (AriaRoleAttribute() != ax::mojom::blink::Role::kUnknown)
     return AXNodeObject::ColumnCount();
 
-  LayoutObject* layout_object = GetLayoutObject();
-  if (!layout_object || !layout_object->IsTable() || !layout_object->GetNode())
-    return AXNodeObject::ColumnCount();
-
-  LayoutNGTableInterface* table =
-      ToInterface<LayoutNGTableInterface>(layout_object);
-  table->RecalcSectionsIfNeeded();
-  LayoutNGTableSectionInterface* table_section = table->FirstSectionInterface();
+  auto* table_section = FirstTableSection(GetLayoutObject());
   if (!table_section)
     return AXNodeObject::ColumnCount();
 
@@ -1257,37 +1051,23 @@ unsigned AXLayoutObject::RowCount() const {
   if (AriaRoleAttribute() != ax::mojom::blink::Role::kUnknown)
     return AXNodeObject::RowCount();
 
-  LayoutObject* layout_object = GetLayoutObject();
-  if (!layout_object || !layout_object->IsTable() || !layout_object->GetNode())
-    return AXNodeObject::RowCount();
-
-  LayoutNGTableInterface* table =
-      ToInterface<LayoutNGTableInterface>(layout_object);
-  table->RecalcSectionsIfNeeded();
-
-  unsigned row_count = 0;
-  const LayoutNGTableSectionInterface* table_section =
-      table->FirstSectionInterface();
+  LayoutNGTable* table;
+  auto* table_section = FirstTableSection(GetLayoutObject(), &table);
   if (!table_section)
     return AXNodeObject::RowCount();
 
+  unsigned row_count = 0;
   while (table_section) {
     row_count += table_section->NumRows();
-    table_section =
-        table->NextSectionInterface(table_section, kSkipEmptySections);
+    table_section = table->NextSection(table_section, kSkipEmptySections);
   }
   return row_count;
 }
 
 unsigned AXLayoutObject::ColumnIndex() const {
-  LayoutObject* layout_object = GetLayoutObject();
-  if (!layout_object || !layout_object->GetNode())
-    return AXNodeObject::ColumnIndex();
-
-  if (layout_object->IsTableCell()) {
-    const LayoutNGTableCellInterface* cell =
-        ToInterface<LayoutNGTableCellInterface>(layout_object);
-    return cell->TableInterface()->AbsoluteColumnToEffectiveColumn(
+  auto* cell = DynamicTo<LayoutNGTableCell>(GetLayoutObject());
+  if (cell && cell->GetNode()) {
+    return cell->Table()->AbsoluteColumnToEffectiveColumn(
         cell->AbsoluteColumnIndex());
   }
 
@@ -1300,20 +1080,16 @@ unsigned AXLayoutObject::RowIndex() const {
     return AXNodeObject::RowIndex();
 
   unsigned row_index = 0;
-  const LayoutNGTableSectionInterface* row_section = nullptr;
-  const LayoutNGTableInterface* table = nullptr;
-  if (layout_object->IsTableRow()) {
-    const LayoutNGTableRowInterface* row =
-        ToInterface<LayoutNGTableRowInterface>(layout_object);
+  const LayoutNGTableSection* row_section = nullptr;
+  const LayoutNGTable* table = nullptr;
+  if (const auto* row = DynamicTo<LayoutNGTableRow>(layout_object)) {
     row_index = row->RowIndex();
-    row_section = row->SectionInterface();
-    table = row->TableInterface();
-  } else if (layout_object->IsTableCell()) {
-    const LayoutNGTableCellInterface* cell =
-        ToInterface<LayoutNGTableCellInterface>(layout_object);
+    row_section = row->Section();
+    table = row->Table();
+  } else if (const auto* cell = DynamicTo<LayoutNGTableCell>(layout_object)) {
     row_index = cell->RowIndex();
-    row_section = cell->SectionInterface();
-    table = cell->TableInterface();
+    row_section = cell->Section();
+    table = cell->Table();
   } else {
     return AXNodeObject::RowIndex();
   }
@@ -1323,42 +1099,34 @@ unsigned AXLayoutObject::RowIndex() const {
 
   // Since our table might have multiple sections, we have to offset our row
   // appropriately.
-  table->RecalcSectionsIfNeeded();
-  const LayoutNGTableSectionInterface* section = table->FirstSectionInterface();
+  const LayoutNGTableSection* section = table->FirstSection();
   while (section && section != row_section) {
     row_index += section->NumRows();
-    section = table->NextSectionInterface(section, kSkipEmptySections);
+    section = table->NextSection(section, kSkipEmptySections);
   }
 
   return row_index;
 }
 
 unsigned AXLayoutObject::ColumnSpan() const {
-  LayoutObject* layout_object = GetLayoutObject();
-  if (!layout_object || !layout_object->IsTableCell())
+  auto* cell = DynamicTo<LayoutNGTableCell>(GetLayoutObject());
+  if (!cell) {
     return AXNodeObject::ColumnSpan();
+  }
 
-  const LayoutNGTableCellInterface* cell =
-      ToInterface<LayoutNGTableCellInterface>(layout_object);
+  LayoutNGTable* table = cell->Table();
   unsigned absolute_first_col = cell->AbsoluteColumnIndex();
   unsigned absolute_last_col = absolute_first_col + cell->ColSpan() - 1;
   unsigned effective_first_col =
-      cell->TableInterface()->AbsoluteColumnToEffectiveColumn(
-          absolute_first_col);
+      table->AbsoluteColumnToEffectiveColumn(absolute_first_col);
   unsigned effective_last_col =
-      cell->TableInterface()->AbsoluteColumnToEffectiveColumn(
-          absolute_last_col);
+      table->AbsoluteColumnToEffectiveColumn(absolute_last_col);
   return effective_last_col - effective_first_col + 1;
 }
 
 unsigned AXLayoutObject::RowSpan() const {
-  LayoutObject* layout_object = GetLayoutObject();
-  if (!layout_object || !layout_object->IsTableCell())
-    return AXNodeObject::ColumnSpan();
-
-  LayoutNGTableCellInterface* cell =
-      ToInterface<LayoutNGTableCellInterface>(layout_object);
-  return cell->ResolvedRowSpan();
+  auto* cell = DynamicTo<LayoutNGTableCell>(GetLayoutObject());
+  return cell ? cell->ResolvedRowSpan() : AXNodeObject::RowSpan();
 }
 
 ax::mojom::blink::SortDirection AXLayoutObject::GetSortDirection() const {
@@ -1385,17 +1153,8 @@ ax::mojom::blink::SortDirection AXLayoutObject::GetSortDirection() const {
 
 AXObject* AXLayoutObject::CellForColumnAndRow(unsigned target_column_index,
                                               unsigned target_row_index) const {
-  LayoutObject* layout_object = GetLayoutObject();
-  if (!layout_object || !layout_object->IsTable()) {
-    return AXNodeObject::CellForColumnAndRow(target_column_index,
-                                             target_row_index);
-  }
-
-  LayoutNGTableInterface* table =
-      ToInterface<LayoutNGTableInterface>(layout_object);
-  table->RecalcSectionsIfNeeded();
-
-  LayoutNGTableSectionInterface* table_section = table->FirstSectionInterface();
+  LayoutNGTable* table;
+  auto* table_section = FirstTableSection(GetLayoutObject(), &table);
   if (!table_section) {
     return AXNodeObject::CellForColumnAndRow(target_column_index,
                                              target_row_index);
@@ -1405,32 +1164,29 @@ AXObject* AXLayoutObject::CellForColumnAndRow(unsigned target_column_index,
   while (table_section) {
     // Iterate backwards through the rows in case the desired cell has a rowspan
     // and exists in a previous row.
-    for (LayoutNGTableRowInterface* row = table_section->LastRowInterface();
-         row; row = row->PreviousRowInterface()) {
+    for (LayoutNGTableRow* row = table_section->LastRow(); row;
+         row = row->PreviousRow()) {
       unsigned row_index = row->RowIndex() + row_offset;
-      for (LayoutNGTableCellInterface* cell = row->LastCellInterface(); cell;
-           cell = cell->PreviousCellInterface()) {
+      for (LayoutNGTableCell* cell = row->LastCell(); cell;
+           cell = cell->PreviousCell()) {
         unsigned absolute_first_col = cell->AbsoluteColumnIndex();
         unsigned absolute_last_col = absolute_first_col + cell->ColSpan() - 1;
         unsigned effective_first_col =
-            cell->TableInterface()->AbsoluteColumnToEffectiveColumn(
-                absolute_first_col);
+            table->AbsoluteColumnToEffectiveColumn(absolute_first_col);
         unsigned effective_last_col =
-            cell->TableInterface()->AbsoluteColumnToEffectiveColumn(
-                absolute_last_col);
+            table->AbsoluteColumnToEffectiveColumn(absolute_last_col);
         unsigned row_span = cell->ResolvedRowSpan();
         if (target_column_index >= effective_first_col &&
             target_column_index <= effective_last_col &&
             target_row_index >= row_index &&
             target_row_index < row_index + row_span) {
-          return AXObjectCache().GetOrCreate(cell->ToMutableLayoutObject());
+          return AXObjectCache().GetOrCreate(cell);
         }
       }
     }
 
     row_offset += table_section->NumRows();
-    table_section =
-        table->NextSectionInterface(table_section, kSkipEmptySections);
+    table_section = table->NextSection(table_section, kSkipEmptySections);
   }
 
   return nullptr;
@@ -1438,32 +1194,24 @@ AXObject* AXLayoutObject::CellForColumnAndRow(unsigned target_column_index,
 
 bool AXLayoutObject::FindAllTableCellsWithRole(ax::mojom::blink::Role role,
                                                AXObjectVector& cells) const {
-  LayoutObject* layout_object = GetLayoutObject();
-  if (!layout_object || !layout_object->IsTable())
+  LayoutNGTable* table;
+  auto* table_section = FirstTableSection(GetLayoutObject(), &table);
+  if (!table_section) {
     return false;
-
-  LayoutNGTableInterface* table =
-      ToInterface<LayoutNGTableInterface>(layout_object);
-  table->RecalcSectionsIfNeeded();
-
-  LayoutNGTableSectionInterface* table_section = table->FirstSectionInterface();
-  if (!table_section)
-    return true;
+  }
 
   while (table_section) {
-    for (LayoutNGTableRowInterface* row = table_section->FirstRowInterface();
-         row; row = row->NextRowInterface()) {
-      for (LayoutNGTableCellInterface* cell = row->FirstCellInterface(); cell;
-           cell = cell->NextCellInterface()) {
-        AXObject* ax_cell =
-            AXObjectCache().GetOrCreate(cell->ToMutableLayoutObject());
+    for (LayoutNGTableRow* row = table_section->FirstRow(); row;
+         row = row->NextRow()) {
+      for (LayoutNGTableCell* cell = row->FirstCell(); cell;
+           cell = cell->NextCell()) {
+        AXObject* ax_cell = AXObjectCache().GetOrCreate(cell);
         if (ax_cell && ax_cell->RoleValue() == role)
           cells.push_back(ax_cell);
       }
     }
 
-    table_section =
-        table->NextSectionInterface(table_section, kSkipEmptySections);
+    table_section = table->NextSection(table_section, kSkipEmptySections);
   }
 
   return true;
@@ -1482,17 +1230,14 @@ void AXLayoutObject::RowHeaders(AXObjectVector& headers) const {
 }
 
 AXObject* AXLayoutObject::HeaderObject() const {
-  LayoutObject* layout_object = GetLayoutObject();
-  if (!layout_object || !layout_object->IsTableRow())
+  auto* row = DynamicTo<LayoutNGTableRow>(GetLayoutObject());
+  if (!row) {
     return nullptr;
+  }
 
-  LayoutNGTableRowInterface* row =
-      ToInterface<LayoutNGTableRowInterface>(layout_object);
-  for (LayoutNGTableCellInterface* cell = row->FirstCellInterface(); cell;
-       cell = cell->NextCellInterface()) {
-    AXObject* ax_cell =
-        cell ? AXObjectCache().GetOrCreate(cell->ToMutableLayoutObject())
-             : nullptr;
+  for (LayoutNGTableCell* cell = row->FirstCell(); cell;
+       cell = cell->NextCell()) {
+    AXObject* ax_cell = cell ? AXObjectCache().GetOrCreate(cell) : nullptr;
     if (ax_cell && ax_cell->RoleValue() == ax::mojom::blink::Role::kRowHeader)
       return ax_cell;
   }
@@ -1502,21 +1247,20 @@ AXObject* AXLayoutObject::HeaderObject() const {
 
 void AXLayoutObject::GetWordBoundaries(Vector<int>& word_starts,
                                        Vector<int>& word_ends) const {
-  if (!layout_object_ || !layout_object_->IsListMarkerIncludingAll())
+  if (!layout_object_ || !layout_object_->IsListMarker()) {
     return;
+  }
 
   String text_alternative;
-  if (layout_object_->IsListMarkerForNormalContent()) {
-    text_alternative =
-        To<LayoutListMarker>(layout_object_.Get())->TextAlternative();
-  } else if (ListMarker* marker = ListMarker::Get(layout_object_)) {
+  if (ListMarker* marker = ListMarker::Get(layout_object_)) {
     text_alternative = marker->TextAlternative(*layout_object_);
   }
   if (text_alternative.ContainsOnlyWhitespaceOrEmpty())
     return;
 
-  Vector<AbstractInlineTextBox::WordBoundaries> boundaries;
-  AbstractInlineTextBox::GetWordBoundariesForText(boundaries, text_alternative);
+  Vector<NGAbstractInlineTextBox::WordBoundaries> boundaries;
+  NGAbstractInlineTextBox::GetWordBoundariesForText(boundaries,
+                                                    text_alternative);
   word_starts.reserve(boundaries.size());
   word_ends.reserve(boundaries.size());
   for (const auto& boundary : boundaries) {
@@ -1539,9 +1283,11 @@ AXObject* AXLayoutObject::AccessibilityImageMapHitTest(
   if (!parent)
     return nullptr;
 
+  PhysicalOffset physical_point(point);
   for (const auto& child : parent->ChildrenIncludingIgnored()) {
-    if (child->GetBoundsInFrameCoordinates().Contains(LayoutPoint(point)))
+    if (child->GetBoundsInFrameCoordinates().Contains(physical_point)) {
       return child.Get();
+    }
   }
 
   return nullptr;

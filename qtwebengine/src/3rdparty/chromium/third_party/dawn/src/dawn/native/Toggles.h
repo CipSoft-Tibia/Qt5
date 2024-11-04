@@ -46,17 +46,15 @@ enum class Toggle {
     DisableBaseVertex,
     DisableBaseInstance,
     DisableIndexedDrawBuffers,
-    DisableSnormRead,
     DisableDepthRead,
     DisableStencilRead,
     DisableDepthStencilRead,
-    DisableBGRARead,
     DisableSampleVariables,
     UseD3D12SmallShaderVisibleHeapForTesting,
     UseDXC,
     DisableRobustness,
     MetalEnableVertexPulling,
-    DisallowUnsafeAPIs,
+    AllowUnsafeAPIs,
     FlushBeforeClientWaitSync,
     UseTempBufferInSmallFormatTextureToTextureCopyFromGreaterToLessMipLevel,
     EmitHLSLDebugSymbols,
@@ -70,6 +68,7 @@ enum class Toggle {
     FxcOptimizations,
     RecordDetailedTimingInTraceEvents,
     DisableTimestampQueryConversion,
+    ClearBufferBeforeResolveQueries,
     VulkanUseZeroInitializeWorkgroupMemoryExtension,
     D3D12SplitBufferTextureCopyForRowsPerImagePaddings,
     MetalRenderR8RG8UnormSmallMipToTempTexture,
@@ -82,20 +81,35 @@ enum class Toggle {
     D3D12UseTempBufferInTextureToTextureCopyBetweenDifferentDimensions,
     ApplyClearBigIntegerColorValueWithDraw,
     MetalUseMockBlitEncoderForWriteTimestamp,
-    VulkanSplitCommandBufferOnDepthStencilComputeSampleAfterRenderPass,
-    D3D12Allocate2DTextureWithCopyDstOrRenderAttachmentAsCommittedResource,
+    VulkanSplitCommandBufferOnComputePassAfterRenderPass,
+    DisableSubAllocationFor2DTextureWithCopyDstOrRenderAttachment,
     MetalUseCombinedDepthStencilFormatForStencil8,
     MetalUseBothDepthAndStencilAttachmentsForCombinedDepthStencilFormats,
     MetalKeepMultisubresourceDepthStencilTexturesInitialized,
+    MetalFillEmptyOcclusionQueriesWithZero,
     UseBlitForBufferToDepthTextureCopy,
     UseBlitForBufferToStencilTextureCopy,
     UseBlitForDepthTextureToTextureCopyToNonzeroSubresource,
-    DisallowDeprecatedAPIs,
+    UseBlitForDepth16UnormTextureToBufferCopy,
+    UseBlitForDepth32FloatTextureToBufferCopy,
+    UseBlitForStencilTextureToBufferCopy,
+    UseBlitForSnormTextureToBufferCopy,
+    UseBlitForBGRA8UnormTextureToBufferCopy,
+    D3D12ReplaceAddWithMinusWhenDstFactorIsZeroAndSrcFactorIsDstAlpha,
+    D3D12PolyfillReflectVec2F32,
+    VulkanClearGen12TextureWithCCSAmbiguateOnCreation,
+    D3D12UseRootSignatureVersion1_1,
+    VulkanUseImageRobustAccess2,
+    VulkanUseBufferRobustAccess2,
+    D3D12Use64KBAlignedMSAATexture,
+    ResolveMultipleAttachmentInSeparatePasses,
+    D3D12CreateNotZeroedHeap,
+    D3D12DontUseNotZeroedHeapFlagOnTexturesAsCommitedResources,
 
     // Unresolved issues.
     NoWorkaroundSampleMaskBecomesZeroForAllButLastColorTarget,
     NoWorkaroundIndirectBaseVertexNotApplied,
-    NoWorkaroundDstAlphaBlendDoesNotWork,
+    NoWorkaroundDstAlphaAsSrcBlendFactorForBothColorAndAlphaDoesNotWork,
 
     EnumCount,
     InvalidEnum = EnumCount,
@@ -118,23 +132,36 @@ class Sink;
 }
 
 // TogglesState hold the actual state of toggles for instances, adapters and devices. Each toggle
-// is of one of these states: set/default to enabled/disabled, force set to enabled/disabled, or
-// left unset without default value (and thus implicitly disabled).
+// is in of one of these states:
+//    - set
+//    - defaulted to enable
+//    - disabled
+//    - force set to enabled
+//    - force set to disabled
+//    - unset without default (and thus implicitly disabled).
 class TogglesState {
   public:
     // Create an empty toggles state of given stage
     explicit TogglesState(ToggleStage stage);
 
-    // Create a RequiredTogglesSet from a DawnTogglesDescriptor, only considering toggles of
+    // Create a TogglesState from a DawnTogglesDescriptor, only considering toggles of
     // required toggle stage.
     static TogglesState CreateFromTogglesDescriptor(const DawnTogglesDescriptor* togglesDesc,
                                                     ToggleStage requiredStage);
+
+    // Inherit from a given toggles state of earlier stage, only inherit the forced and the
+    // unrequired toggles to allow overriding. Return *this to allow method chaining manner.
+    TogglesState& InheritFrom(const TogglesState& inheritedToggles);
 
     // Set a toggle of the same stage of toggles state stage if and only if it is not already set.
     void Default(Toggle toggle, bool enabled);
     // Force set a toggle of same stage of toggles state stage. A force-set toggle will get
     // inherited to all later stage as forced.
     void ForceSet(Toggle toggle, bool enabled);
+
+    // Set a toggle of any stage for testing propose. Return *this to allow method chaining
+    // manner.
+    TogglesState& SetForTesting(Toggle toggle, bool enabled, bool forced);
 
     // Return whether the toggle is set or not. Force-set is always treated as set.
     bool IsSet(Toggle toggle) const;
@@ -163,6 +190,9 @@ class TogglesInfo {
   public:
     TogglesInfo();
     ~TogglesInfo();
+
+    // Retrieves all fo the ToggleInfo information
+    static std::vector<const ToggleInfo*> AllToggleInfos();
 
     // Used to query the details of a toggle. Return nullptr if toggleName is not a valid name
     // of a toggle supported in Dawn.

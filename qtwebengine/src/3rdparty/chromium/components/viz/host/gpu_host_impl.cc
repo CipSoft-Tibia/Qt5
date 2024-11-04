@@ -13,6 +13,7 @@
 #include "base/no_destructor.h"
 #include "base/process/process_handle.h"
 #include "base/strings/strcat.h"
+#include "base/system/sys_info.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/threading/thread_checker.h"
 #include "base/trace_event/trace_event.h"
@@ -107,7 +108,9 @@ GpuHostImpl::GpuHostImpl(Delegate* delegate,
                          InitParams params)
     : delegate_(delegate),
       viz_main_(std::move(viz_main)),
-      params_(std::move(params)) {
+      params_(std::move(params)),
+      shared_bitmap_to_shared_image_flag_(
+          base::FeatureList::IsEnabled(features::kSharedBitmapToSharedImage)) {
   // Create a special GPU info collection service if the GPU process is used for
   // info collection only.
 #if BUILDFLAG(IS_WIN)
@@ -139,7 +142,8 @@ GpuHostImpl::GpuHostImpl(Delegate* delegate,
   viz_main_->CreateGpuService(
       gpu_service_remote_.BindNewPipeAndPassReceiver(task_runner),
       gpu_host_receiver_.BindNewPipeAndPassRemote(task_runner),
-      std::move(discardable_manager_remote), activity_flags_.CloneRegion(),
+      std::move(discardable_manager_remote),
+      use_shader_cache_shm_count_.CloneRegion(),
       GetFontRenderParams().Get()->subpixel_rendering);
 
 #if BUILDFLAG(IS_OZONE)
@@ -176,8 +180,7 @@ void GpuHostImpl::OnProcessCrashed() {
   // If the GPU process crashed while compiling a shader, we may have invalid
   // cached binaries. Completely clear the shader cache to force shader binaries
   // to be re-created.
-  if (activity_flags_.IsFlagSet(
-          gpu::ActivityFlagsBase::FLAG_LOADING_PROGRAM_BINARY)) {
+  if (use_shader_cache_shm_count_.GetCount() > 0) {
     auto* gpu_disk_cache_factory = delegate_->GetGpuDiskCacheFactory();
     for (auto& [_, cache] : client_id_to_caches_) {
       // This call will temporarily extend the lifetime of the cache (kept
@@ -233,7 +236,10 @@ void GpuHostImpl::EstablishGpuChannel(int client_id,
   shutdown_timeout_.Stop();
 
   // If GPU features are already blocklisted, no need to establish the channel.
-  if (!delegate_->GpuAccessAllowed()) {
+  bool gpu_channel_allowed = shared_bitmap_to_shared_image_flag_
+                                 ? true
+                                 : delegate_->GpuAccessAllowed();
+  if (!gpu_channel_allowed) {
     DVLOG(1) << "GPU access blocked, refusing to open a GPU channel.";
     std::move(callback).Run(mojo::ScopedMessagePipeHandle(), gpu::GPUInfo(),
                             gpu::GpuFeatureInfo(),
@@ -324,7 +330,7 @@ void GpuHostImpl::CloseChannel(int client_id) {
 }
 
 #if BUILDFLAG(USE_VIZ_DEBUGGER)
-void GpuHostImpl::FilterVisualDebugStream(base::Value json) {
+void GpuHostImpl::FilterVisualDebugStream(base::Value::Dict json) {
   viz_main_->FilterDebugStream(std::move(json));
 }
 
@@ -409,12 +415,20 @@ std::string GpuHostImpl::GetShaderPrefixKey() {
 
     shader_prefix_key_ = params_.product + "-" + info.gl_vendor + "-" +
                          info.gl_renderer + "-" + active_gpu.driver_version +
-                         "-" + active_gpu.driver_vendor;
+                         "-" + active_gpu.driver_vendor + "-" +
+                         base::SysInfo::ProcessCPUArchitecture();
 
 #if BUILDFLAG(IS_ANDROID)
     std::string build_fp =
         base::android::BuildInfo::GetInstance()->android_build_fp();
     shader_prefix_key_ += "-" + build_fp;
+#elif BUILDFLAG(IS_CHROMEOS_LACROS)
+    // ChromeOS can update independently of Lacros and the GPU driver
+    // information is not enough to ensure blob compatibility. See
+    // crbug.com/1444684
+    std::string chromeos_version = base::SysInfo::OperatingSystemName() + " " +
+                                   base::SysInfo::OperatingSystemVersion();
+    shader_prefix_key_ += "-" + chromeos_version;
 #endif
   }
 
@@ -432,7 +446,6 @@ void GpuHostImpl::LoadedBlob(const gpu::GpuDiskCacheHandle& handle,
     case gpu::GpuDiskCacheType::kGlShaders: {
       std::string prefix = GetShaderPrefixKey();
       bool prefix_ok = !key.compare(0, prefix.length(), prefix);
-      UMA_HISTOGRAM_BOOLEAN("GPU.ShaderLoadPrefixOK", prefix_ok);
       if (prefix_ok) {
         // Remove the prefix from the key before load.
         std::string key_no_prefix = key.substr(prefix.length() + 1);
@@ -471,7 +484,10 @@ void GpuHostImpl::OnChannelEstablished(
 
   // Currently if any of the GPU features are blocklisted, we don't establish a
   // GPU channel.
-  if (channel_handle.is_valid() && !delegate_->GpuAccessAllowed()) {
+  bool gpu_channel_allowed = shared_bitmap_to_shared_image_flag_
+                                 ? true
+                                 : delegate_->GpuAccessAllowed();
+  if (channel_handle.is_valid() && !gpu_channel_allowed) {
     gpu_service_remote_->CloseChannel(client_id);
     std::move(callback).Run(mojo::ScopedMessagePipeHandle(), gpu::GPUInfo(),
                             gpu::GpuFeatureInfo(),
@@ -514,6 +530,8 @@ void GpuHostImpl::DidInitialize(
                               gpu::kDisplayCompositorGpuDiskCacheHandle);
     SetChannelDiskCacheHandle(gpu::kGrShaderCacheClientId,
                               gpu::kGrShaderGpuDiskCacheHandle);
+    SetChannelDiskCacheHandle(gpu::kGraphiteDawnClientId,
+                              gpu::kGraphiteDawnGpuDiskCacheHandle);
   }
 }
 

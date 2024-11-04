@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -9,9 +9,7 @@
 #include <numeric>
 #include <string>
 
-#if QT_CONFIG(cxx11_future)
-# include <thread>
-#endif
+#include <thread>
 
 // COM interface
 #if defined(Q_OS_WIN) && defined(interface)
@@ -253,14 +251,7 @@ void tst_QByteArrayMatcher::haystacksWithMoreThan4GiBWork()
     QCOMPARE(large.size(), BaseSize + needle.size());
     qDebug("created dataset in %lld ms", timer.elapsed());
 
-# if QT_CONFIG(cxx11_future)
     using MaybeThread = std::thread;
-# else
-    struct MaybeThread {
-        std::function<void()> func;
-        void join() { func(); }
-    };
-# endif
 
     //
     // WHEN: trying to match an occurrence past the 4GiB mark

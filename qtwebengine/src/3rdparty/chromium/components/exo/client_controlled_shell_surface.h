@@ -13,6 +13,7 @@
 #include "ash/wm/client_controlled_state.h"
 #include "base/functional/callback.h"
 #include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
 #include "components/exo/client_controlled_accelerators.h"
 #include "components/exo/shell_surface_base.h"
 #include "ui/base/hit_test.h"
@@ -62,7 +63,8 @@ class ClientControlledShellSurface : public ShellSurfaceBase,
   ClientControlledShellSurface(Surface* surface,
                                bool can_minimize,
                                int container,
-                               bool default_scale_cancellation);
+                               bool default_scale_cancellation,
+                               bool supports_floated_state);
 
   ClientControlledShellSurface(const ClientControlledShellSurface&) = delete;
   ClientControlledShellSurface& operator=(const ClientControlledShellSurface&) =
@@ -122,13 +124,6 @@ class ClientControlledShellSurface : public ShellSurfaceBase,
   // Set the pending scale.
   void SetScale(double scale);
 
-  // Commit the pending scale if it was changed. The scale set by SetScale() is
-  // otherwise committed by OnPostWidgetCommit().
-  void CommitPendingScale();
-
-  // Set top inset for surface.
-  void SetTopInset(int height);
-
   // Sends the request to change the zoom level to the client.
   void ChangeZoomLevel(ZoomChange change);
 
@@ -169,10 +164,6 @@ class ClientControlledShellSurface : public ShellSurfaceBase,
   // Set the extra title for the surface.
   void SetExtraTitle(const std::u16string& extra_title);
 
-  // Set the accessibility ID provided by client for the surface. If
-  // |accessibility_id| is negative value, it will unset the ID.
-  void SetClientAccessibilityId(int32_t accessibility_id);
-
   // Rebind a surface as the root surface of the shell surface.
   void RebindRootSurface(Surface* root_surface,
                          bool can_minimize,
@@ -208,6 +199,7 @@ class ClientControlledShellSurface : public ShellSurfaceBase,
   void OnDeviceScaleFactorChanged(float old_dsf, float new_dsf) override;
 
   // Overridden from aura::WindowObserver:
+  void OnWindowDestroying(aura::Window* window) override;
   void OnWindowAddedToRootWindow(aura::Window* window) override;
 
   // Overridden from display::DisplayObserver:
@@ -227,12 +219,12 @@ class ClientControlledShellSurface : public ShellSurfaceBase,
 
   ash::WideFrameView* wide_frame_for_test() { return wide_frame_.get(); }
 
-  // Exposed for testing. Returns the effective scale as opposed to
-  // |pending_scale_|.
-  double scale() const { return scale_; }
-
   // Used to scale incoming coordinates from the client to DP.
   float GetClientToDpScale() const;
+
+  // Used to scale incoming coordinates from the client to DP before the pending
+  // scale is committed.
+  float GetClientToDpPendingScale() const;
 
   // Sets the resize lock type to the surface.
   void SetResizeLockType(ash::ArcResizeLockType resize_lock_type);
@@ -246,6 +238,9 @@ class ClientControlledShellSurface : public ShellSurfaceBase,
  protected:
   // Overridden from ShellSurfaceBase:
   float GetScale() const override;
+
+  // Overridden from SurfaceTreeHost:
+  float GetScaleFactor() const override;
 
  private:
   FRIEND_TEST_ALL_PREFIXES(ClientControlledShellSurfaceTest,
@@ -263,7 +258,6 @@ class ClientControlledShellSurface : public ShellSurfaceBase,
   bool OnPreWidgetCommit() override;
   void OnPostWidgetCommit() override;
   void OnSurfaceDestroying(Surface* surface) override;
-  void OnContentSizeChanged(Surface* surface) override;
 
   // Update frame status. This may create (or destroy) a wide frame
   // that spans the full work area width if the surface didn't cover
@@ -293,19 +287,10 @@ class ClientControlledShellSurface : public ShellSurfaceBase,
   const ash::NonClientFrameViewAsh* GetFrameView() const;
 
   void EnsurePendingScale(bool commit_immediately);
-  float GetClientToDpPendingScale() const;
 
   gfx::Rect GetClientBoundsForWindowBoundsAndWindowState(
       const gfx::Rect& window_bounds,
       chromeos::WindowStateType window_state) const;
-
-  int top_inset_height_ = 0;
-  int pending_top_inset_height_ = 0;
-
-  double scale_ = 1.0;
-  // The pending scale is initialized to 0.0 to indicate that the scale is not
-  // yet initialized.
-  double pending_scale_ = 0.0;
 
   uint32_t frame_visible_button_mask_ = 0;
   uint32_t frame_enabled_button_mask_ = 0;
@@ -317,7 +302,8 @@ class ClientControlledShellSurface : public ShellSurfaceBase,
   Orientation orientation_ = Orientation::LANDSCAPE;
   Orientation expected_orientation_ = Orientation::LANDSCAPE;
 
-  ash::ClientControlledState* client_controlled_state_ = nullptr;
+  raw_ptr<ash::ClientControlledState, ExperimentalAsh>
+      client_controlled_state_ = nullptr;
 
   chromeos::WindowStateType pending_window_state_ =
       chromeos::WindowStateType::kNormal;
@@ -366,11 +352,11 @@ class ClientControlledShellSurface : public ShellSurfaceBase,
   // Client controlled specific accelerator target.
   std::unique_ptr<ClientControlledAcceleratorTarget> accelerator_target_;
 
-  // Accessibility ID provided by client.
-  absl::optional<int32_t> client_accessibility_id_;
-
   ash::ArcResizeLockType pending_resize_lock_type_ =
       ash::ArcResizeLockType::NONE;
+
+  // True if the window supports the floated state.
+  const bool supports_floated_state_;
 };
 
 }  // namespace exo

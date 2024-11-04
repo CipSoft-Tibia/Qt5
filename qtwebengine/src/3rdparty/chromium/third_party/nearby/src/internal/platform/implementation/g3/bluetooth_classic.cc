@@ -15,10 +15,18 @@
 #include "internal/platform/implementation/g3/bluetooth_classic.h"
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
+#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "internal/platform/cancellation_flag.h"
 #include "internal/platform/cancellation_flag_listener.h"
+#include "internal/platform/exception.h"
+#include "internal/platform/implementation/bluetooth_adapter.h"
 #include "internal/platform/implementation/bluetooth_classic.h"
 #include "internal/platform/implementation/g3/bluetooth_adapter.h"
 #include "internal/platform/logging.h"
@@ -27,81 +35,13 @@
 namespace nearby {
 namespace g3 {
 
-BluetoothSocket::~BluetoothSocket() {
-  absl::MutexLock lock(&mutex_);
-  DoClose();
-}
-
-void BluetoothSocket::Connect(BluetoothSocket& other) {
-  absl::MutexLock lock(&mutex_);
-  remote_socket_ = &other;
-  input_ = other.output_;
-}
-
-bool BluetoothSocket::IsConnected() const {
-  absl::MutexLock lock(&mutex_);
-  return IsConnectedLocked();
-}
-
-bool BluetoothSocket::IsClosed() const {
-  absl::MutexLock lock(&mutex_);
-  return closed_;
-}
-
-bool BluetoothSocket::IsConnectedLocked() const { return input_ != nullptr; }
-
-InputStream& BluetoothSocket::GetInputStream() {
-  auto* remote_socket = GetRemoteSocket();
-  CHECK(remote_socket != nullptr);
-  return remote_socket->GetLocalInputStream();
-}
-
-OutputStream& BluetoothSocket::GetOutputStream() {
-  return GetLocalOutputStream();
-}
-
-InputStream& BluetoothSocket::GetLocalInputStream() {
-  absl::MutexLock lock(&mutex_);
-  return output_->GetInputStream();
-}
-
-OutputStream& BluetoothSocket::GetLocalOutputStream() {
-  absl::MutexLock lock(&mutex_);
-  return output_->GetOutputStream();
-}
-
-Exception BluetoothSocket::Close() {
-  absl::MutexLock lock(&mutex_);
-  DoClose();
-  return {Exception::kSuccess};
-}
-
-void BluetoothSocket::DoClose() {
-  if (!closed_) {
-    remote_socket_ = nullptr;
-    output_->GetOutputStream().Close();
-    output_->GetInputStream().Close();
-    input_->GetOutputStream().Close();
-    input_->GetInputStream().Close();
-    closed_ = true;
-  }
-}
-
-BluetoothSocket* BluetoothSocket::GetRemoteSocket() {
-  absl::MutexLock lock(&mutex_);
-  return remote_socket_;
-}
-
 BluetoothDevice* BluetoothSocket::GetRemoteDevice() {
-  BluetoothAdapter* remote_adapter = nullptr;
-  {
-    absl::MutexLock lock(&mutex_);
-    if (remote_socket_ == nullptr || remote_socket_->adapter_ == nullptr) {
-      return nullptr;
-    }
-    remote_adapter = remote_socket_->adapter_;
+  BluetoothSocket* remote_socket =
+      static_cast<BluetoothSocket*>(GetRemoteSocket());
+  if (remote_socket == nullptr || remote_socket->adapter_ == nullptr) {
+    return nullptr;
   }
-  return remote_adapter ? &remote_adapter->GetDevice() : nullptr;
+  return &remote_socket->adapter_->GetDevice();
 }
 
 std::unique_ptr<api::BluetoothSocket> BluetoothServerSocket::Accept() {
@@ -170,6 +110,36 @@ Exception BluetoothServerSocket::DoClose() {
     }
   }
   return {Exception::kSuccess};
+}
+
+BluetoothPairing::BluetoothPairing(api::BluetoothDevice& remote_device)
+    : remote_device_(remote_device) {}
+
+BluetoothPairing::~BluetoothPairing() {
+  MediumEnvironment::Instance().ClearBluetoothDevicesForPairing();
+}
+
+bool BluetoothPairing::InitiatePairing(
+    api::BluetoothPairingCallback pairing_cb) {
+  return MediumEnvironment::Instance().InitiatePairing(&remote_device_,
+                                                       std::move(pairing_cb));
+}
+
+bool BluetoothPairing::FinishPairing(
+    std::optional<absl::string_view> pin_code) {
+  return MediumEnvironment::Instance().FinishPairing(&remote_device_);
+}
+
+bool BluetoothPairing::CancelPairing() {
+  return MediumEnvironment::Instance().CancelPairing(&remote_device_);
+}
+
+bool BluetoothPairing::Unpair() {
+  return MediumEnvironment::Instance().SetPairingState(&remote_device_, false);
+}
+
+bool BluetoothPairing::IsPaired() {
+  return MediumEnvironment::Instance().IsPaired(&remote_device_);
 }
 
 BluetoothClassicMedium::BluetoothClassicMedium(api::BluetoothAdapter& adapter)
@@ -267,10 +237,24 @@ BluetoothClassicMedium::ListenForService(const std::string& service_name,
   return socket;
 }
 
+std::unique_ptr<api::BluetoothPairing> BluetoothClassicMedium::CreatePairing(
+    api::BluetoothDevice& remote_device) {
+  return std::make_unique<BluetoothPairing>(remote_device);
+}
+
 api::BluetoothDevice* BluetoothClassicMedium::GetRemoteDevice(
     const std::string& mac_address) {
-  auto& env = MediumEnvironment::Instance();
-  return env.FindBluetoothDevice(mac_address);
+  return MediumEnvironment::Instance().FindBluetoothDevice(mac_address);
+}
+
+void BluetoothClassicMedium::AddObserver(
+    api::BluetoothClassicMedium::Observer* observer) {
+  MediumEnvironment::Instance().AddObserver(observer);
+}
+
+void BluetoothClassicMedium::RemoveObserver(
+    api::BluetoothClassicMedium::Observer* observer) {
+  MediumEnvironment::Instance().RemoveObserver(observer);
 }
 
 }  // namespace g3

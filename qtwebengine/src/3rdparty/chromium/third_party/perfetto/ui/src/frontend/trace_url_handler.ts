@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
+import m from 'mithril';
 
 import {Actions} from '../common/actions';
 import {tryGetTrace} from '../common/cache_manager';
@@ -23,6 +23,13 @@ import {showModal} from './modal';
 import {Route, Router} from './router';
 import {taskTracker} from './task_tracker';
 
+function getCurrentTraceUrl(): undefined|string {
+  const source = globals.getCurrentEngine()?.source;
+  if (source && source.type === 'URL') {
+    return source.url;
+  }
+  return undefined;
+}
 
 export function maybeOpenTraceFromRoute(route: Route) {
   if (route.args.s) {
@@ -31,11 +38,12 @@ export function maybeOpenTraceFromRoute(route: Route) {
     return;
   }
 
-  if (route.args.url) {
+  const url = route.args.url;
+  if (url && url !== getCurrentTraceUrl()) {
     // /?url=https://commondatastorage.googleapis.com/bucket/trace
     // This really works only for GCS because the Content Security Policy
     // forbids any other url.
-    loadTraceFromUrl(route.args.url);
+    loadTraceFromUrl(url);
     return;
   }
 

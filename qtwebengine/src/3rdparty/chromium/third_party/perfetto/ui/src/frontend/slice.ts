@@ -13,13 +13,17 @@
 // limitations under the License.
 
 import {Color} from '../common/colorizer';
+import {duration, time} from '../common/time';
 
 export interface Slice {
   // These properties are updated only once per query result when the Slice
   // object is created and don't change afterwards.
   readonly id: number;
-  readonly startS: number;
-  readonly durationS: number;
+  readonly startNsQ: time;
+  readonly endNsQ: time;
+  readonly durNsQ: duration;
+  readonly ts: time;
+  readonly dur: duration;
   readonly depth: number;
   readonly flags: number;
 

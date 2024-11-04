@@ -9,6 +9,7 @@
 
 #include <private/qguiapplication_p.h>
 #include <qpa/qplatformintegration.h>
+#include <qpa/qplatformkeymapper.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -23,8 +24,7 @@ QT_BEGIN_NAMESPACE
 /*!
     Constructs a new key mapper.
 */
-QKeyMapper::QKeyMapper()
-    : QObject(*new QKeyMapperPrivate, nullptr)
+QKeyMapper::QKeyMapper() : QObject()
 {
 }
 
@@ -35,34 +35,34 @@ QKeyMapper::~QKeyMapper()
 {
 }
 
-static QList<int> extractKeyFromEvent(QKeyEvent *e)
+QList<QKeyCombination> QKeyMapper::possibleKeys(const QKeyEvent *e)
 {
-    QList<int> result;
-    if (e->key() && (e->key() != Qt::Key_unknown))
-        result << e->keyCombination().toCombined();
-    else if (!e->text().isEmpty())
-        result << int(e->text().at(0).unicode() + (int)e->modifiers());
-    return result;
-}
+    qCDebug(lcQpaKeyMapper).verbosity(3) << "Computing possible key combinations for" << e;
 
-QList<int> QKeyMapper::possibleKeys(QKeyEvent *e)
-{
-    return instance()->d_func()->possibleKeys(e);
-}
+    const auto *platformIntegration = QGuiApplicationPrivate::platformIntegration();
+    const auto *platformKeyMapper = platformIntegration->keyMapper();
+    QList<QKeyCombination> result = platformKeyMapper->possibleKeyCombinations(e);
 
-extern bool qt_sendSpontaneousEvent(QObject *receiver, QEvent *event); // in qapplication_*.cpp
-void QKeyMapper::changeKeyboard()
-{
-    // ## TODO: Support KeyboardLayoutChange on QPA
-#if 0
-    // inform all toplevel widgets of the change
-    QEvent e(QEvent::KeyboardLayoutChange);
-    QWidgetList list = QApplication::topLevelWidgets();
-    for (int i = 0; i < list.size(); ++i) {
-        QWidget *w = list.at(i);
-        qt_sendSpontaneousEvent(w, &e);
+    if (result.isEmpty()) {
+        if (e->key() && (e->key() != Qt::Key_unknown))
+            result << e->keyCombination();
+        else if (!e->text().isEmpty())
+            result << (Qt::Key(e->text().at(0).unicode()) | e->modifiers());
+    }
+
+#if QT_CONFIG(shortcut)
+    if (lcQpaKeyMapper().isDebugEnabled()) {
+        qCDebug(lcQpaKeyMapper) << "Resulting possible key combinations:";
+        for (auto keyCombination : result) {
+            auto keySequence = QKeySequence(keyCombination);
+            qCDebug(lcQpaKeyMapper).verbosity(0) << "\t-"
+                << keyCombination << "/" << keySequence << "/"
+                << qUtf8Printable(keySequence.toString(QKeySequence::NativeText));
+        }
     }
 #endif
+
+    return result;
 }
 
 Q_GLOBAL_STATIC(QKeyMapper, keymapper)
@@ -73,30 +73,6 @@ Q_GLOBAL_STATIC(QKeyMapper, keymapper)
 QKeyMapper *QKeyMapper::instance()
 {
     return keymapper();
-}
-
-QKeyMapperPrivate *qt_keymapper_private()
-{
-    return QKeyMapper::instance()->d_func();
-}
-
-QKeyMapperPrivate::QKeyMapperPrivate()
-{
-    keyboardInputLocale = QLocale::system();
-    keyboardInputDirection = keyboardInputLocale.textDirection();
-}
-
-QKeyMapperPrivate::~QKeyMapperPrivate()
-{
-}
-
-QList<int> QKeyMapperPrivate::possibleKeys(QKeyEvent *e)
-{
-    QList<int> result = QGuiApplicationPrivate::platformIntegration()->possibleKeys(e);
-    if (!result.isEmpty())
-        return result;
-
-    return extractKeyFromEvent(e);
 }
 
 void *QKeyMapper::resolveInterface(const char *name, int revision) const

@@ -8,10 +8,19 @@ set -ex
 echo "set WritePreparedUpdates=false" | sudo tee -a /etc/PackageKit/PackageKit.conf
 sudo systemctl stop packagekit
 sudo systemctl disable packagekit
+while sudo fuser /usr/libexec/packagekitd >/dev/null 2>&1; do
+    echo "Waiting for PackageKit to finish..."
+    sleep 1
+done
 sudo yum -y remove PackageKit gnome-software
 
 sudo subscription-manager config --rhsm.manage_repos=1
 sudo subscription-manager refresh
+
+# List available RHEL versions and bind with correct one
+sudo subscription-manager release --list
+sudo subscription-manager release --set=8.8
+sudo yum clean all
 
 # sudo yum config-manager --enable 'rhceph-4-tools-for-rhel-8-x86_64-rpms'
 sudo yum config-manager --enable 'codeready-builder-for-rhel-8-x86_64-rpms'

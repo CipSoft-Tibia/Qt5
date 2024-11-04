@@ -1023,6 +1023,10 @@ void DirectionalIntraPredictorZone2_SSE4_1(void* const dest, ptrdiff_t stride,
   uint8_t left_buffer[288];
   memcpy(top_buffer + 128, static_cast<const uint8_t*>(top_row) - 16, 160);
   memcpy(left_buffer + 128, static_cast<const uint8_t*>(left_column) - 16, 160);
+#if LIBGAV1_MSAN
+  memset(top_buffer, 0x33, 128);
+  memset(left_buffer, 0x44, 128);
+#endif
   const uint8_t* top_ptr = top_buffer + 144;
   const uint8_t* left_ptr = left_buffer + 144;
   if (width == 4 || height == 4) {

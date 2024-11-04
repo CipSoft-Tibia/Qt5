@@ -21,6 +21,10 @@
 #include "url/gurl.h"
 #include "url/origin.h"
 
+namespace gfx {
+class Image;
+}
+
 namespace net {
 enum class ReferrerPolicy;
 }
@@ -72,6 +76,7 @@ class CONTENT_EXPORT IdpNetworkRequestManager {
     // responses. It is used to classify a successful response where the list in
     // the response is empty.
     kEmptyListError,
+    kInvalidContentTypeError,
   };
   struct FetchStatus {
     ParseStatus parse_status;
@@ -84,6 +89,19 @@ class CONTENT_EXPORT IdpNetworkRequestManager {
   enum class LogoutResponse {
     kSuccess,
     kError,
+  };
+
+  // Don't change the meaning or the order of these values because they are
+  // being recorded in metrics and in sync with the counterpart in enums.xml.
+  enum class AccountsResponseInvalidReason {
+    kResponseIsNotJsonOrDict,
+    kNoAccountsKey,
+    kAccountListIsEmpty,
+    kAccountIsNotDict,
+    kAccountMissesRequiredField,
+    kAccountsShareSameId,
+
+    kMaxValue = kAccountsShareSameId
   };
 
   struct CONTENT_EXPORT Endpoints {
@@ -100,6 +118,20 @@ class CONTENT_EXPORT IdpNetworkRequestManager {
   struct ClientMetadata {
     GURL privacy_policy_url;
     GURL terms_of_service_url;
+  };
+
+  struct IdentityCredentialTokenError {
+    int code;
+    GURL url;
+  };
+
+  struct CONTENT_EXPORT TokenResult {
+    TokenResult();
+    ~TokenResult();
+    TokenResult(const TokenResult&);
+
+    std::string token;
+    absl::optional<IdentityCredentialTokenError> error;
   };
 
   // Error codes sent to the metrics endpoint.
@@ -127,7 +159,8 @@ class CONTENT_EXPORT IdpNetworkRequestManager {
       base::OnceCallback<void(FetchStatus, AccountList)>;
   using DownloadCallback =
       base::OnceCallback<void(std::unique_ptr<std::string> response_body,
-                              int response_code)>;
+                              int response_code,
+                              const std::string& mime_type)>;
   using FetchWellKnownCallback =
       base::OnceCallback<void(FetchStatus, const std::set<GURL>&)>;
   using FetchConfigCallback = base::OnceCallback<
@@ -139,7 +172,9 @@ class CONTENT_EXPORT IdpNetworkRequestManager {
       base::OnceCallback<void(FetchStatus,
                               data_decoder::DataDecoder::ValueOrError)>;
   using TokenRequestCallback =
-      base::OnceCallback<void(FetchStatus, const std::string&)>;
+      base::OnceCallback<void(FetchStatus, TokenResult)>;
+  using ContinueOnCallback = base::OnceCallback<void(FetchStatus, const GURL&)>;
+  using ImageCallback = base::OnceCallback<void(const gfx::Image&)>;
 
   static std::unique_ptr<IdpNetworkRequestManager> Create(
       RenderFrameHostImpl* host);
@@ -181,7 +216,8 @@ class CONTENT_EXPORT IdpNetworkRequestManager {
   virtual void SendTokenRequest(const GURL& token_url,
                                 const std::string& account,
                                 const std::string& url_encoded_post_data,
-                                TokenRequestCallback callback);
+                                TokenRequestCallback callback,
+                                ContinueOnCallback continue_on);
 
   // Sends metrics to metrics endpoint after a token was successfully generated.
   virtual void SendSuccessfulTokenRequestMetrics(
@@ -198,6 +234,9 @@ class CONTENT_EXPORT IdpNetworkRequestManager {
 
   // Send logout request to a single target.
   virtual void SendLogout(const GURL& logout_url, LogoutCallback);
+
+  // Download and decode an image. The request is made uncredentialed.
+  virtual void DownloadAndDecodeImage(const GURL& url, ImageCallback callback);
 
  private:
   // Starts download request using `url_loader`. Calls `parse_json_callback`
@@ -219,6 +258,13 @@ class CONTENT_EXPORT IdpNetworkRequestManager {
   void OnDownloadedUrl(std::unique_ptr<network::SimpleURLLoader> url_loader,
                        DownloadCallback callback,
                        std::unique_ptr<std::string> response_body);
+
+  void OnDownloadedImage(ImageCallback callback,
+                         std::unique_ptr<std::string> response_body,
+                         int response_code,
+                         const std::string& mime_type);
+
+  void OnDecodedImage(ImageCallback callback, const SkBitmap& decoded_bitmap);
 
   std::unique_ptr<network::ResourceRequest> CreateUncredentialedResourceRequest(
       const GURL& target_url,

@@ -18,6 +18,7 @@ constexpr char kTypecdCableWarning[] = "CableWarning";
 // Methods.
 constexpr char kTypecdSetPeripheralDataAccessMethod[] =
     "SetPeripheralDataAccess";
+constexpr char kTypecdSetPortsUsingDisplaysMethod[] = "SetPortsUsingDisplays";
 
 enum class DeviceConnectedType {
   kThunderboltOnly = 0,

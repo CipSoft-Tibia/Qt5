@@ -1,16 +1,9 @@
 // This file is generated from a similarly-named Perl script in the BoringSSL
 // source tree. Do not edit by hand.
 
-#if defined(__has_feature)
-#if __has_feature(memory_sanitizer) && !defined(OPENSSL_NO_ASM)
-#define OPENSSL_NO_ASM
-#endif
-#endif
+#include <openssl/asm_base.h>
 
-#if defined(__x86_64__) && !defined(OPENSSL_NO_ASM) && defined(__ELF__)
-#if defined(BORINGSSL_PREFIX)
-#include <boringssl_prefix_symbols_asm.h>
-#endif
+#if !defined(OPENSSL_NO_ASM) && defined(OPENSSL_X86_64) && defined(__ELF__)
 .text	
 .extern	OPENSSL_ia32cap_P
 .hidden OPENSSL_ia32cap_P
@@ -21,6 +14,7 @@
 .align	16
 sha1_block_data_order:
 .cfi_startproc	
+_CET_ENDBR
 	leaq	OPENSSL_ia32cap_P(%rip),%r10
 	movl	0(%r10),%r9d
 	movl	4(%r10),%r8d
@@ -1299,6 +1293,7 @@ _shaext_shortcut:
 	leaq	64(%rsi),%r8
 	paddd	%xmm4,%xmm1
 	cmovneq	%r8,%rsi
+	prefetcht0	512(%rsi)
 	movdqa	%xmm0,%xmm8
 .byte	15,56,201,229
 	movdqa	%xmm0,%xmm2
@@ -5449,6 +5444,7 @@ _avx2_shortcut:
 	.byte	0xf3,0xc3
 .cfi_endproc	
 .size	sha1_block_data_order_avx2,.-sha1_block_data_order_avx2
+.section	.rodata
 .align	64
 K_XX_XX:
 .long	0x5a827999,0x5a827999,0x5a827999,0x5a827999
@@ -5464,8 +5460,5 @@ K_XX_XX:
 .byte	0xf,0xe,0xd,0xc,0xb,0xa,0x9,0x8,0x7,0x6,0x5,0x4,0x3,0x2,0x1,0x0
 .byte	83,72,65,49,32,98,108,111,99,107,32,116,114,97,110,115,102,111,114,109,32,102,111,114,32,120,56,54,95,54,52,44,32,67,82,89,80,84,79,71,65,77,83,32,98,121,32,60,97,112,112,114,111,64,111,112,101,110,115,115,108,46,111,114,103,62,0
 .align	64
-#endif
-#if defined(__ELF__)
-// See https://www.airs.com/blog/archives/518.
-.section .note.GNU-stack,"",%progbits
+.text	
 #endif

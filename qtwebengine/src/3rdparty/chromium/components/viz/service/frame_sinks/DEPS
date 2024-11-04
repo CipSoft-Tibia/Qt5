@@ -6,6 +6,7 @@ include_rules = [
   "+components/viz/service/display",
   "+components/viz/service/display_embedder",
   "+components/viz/service/hit_test",
+  "+components/viz/service/layers",
   "+components/viz/service/performance_hint",
   "+components/viz/service/surfaces",
   "+components/viz/service/transitions",
@@ -24,5 +25,9 @@ specific_include_rules = {
   ],
   "external_begin_frame_source_android.cc": [
     "+components/viz/service/service_jni_headers/ExternalBeginFrameSourceAndroid_jni.h",
+  ],
+  "external_begin_frame_source_mac.h": [
+    "+ui/display/mac/display_link_mac.h",
+    "+ui/display/types/display_constants.h",
   ],
 }

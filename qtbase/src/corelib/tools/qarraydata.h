@@ -12,6 +12,12 @@
 
 QT_BEGIN_NAMESPACE
 
+#if __has_cpp_attribute(gnu::malloc)
+#  define Q_DECL_MALLOCLIKE [[nodiscard, gnu::malloc]]
+#else
+#  define Q_DECL_MALLOCLIKE [[nodiscard]]
+#endif
+
 template <class T> struct QTypedArrayData;
 
 struct QArrayData
@@ -67,7 +73,7 @@ struct QArrayData
     // Returns true if a detach is necessary before modifying the data
     // This method is intentionally not const: if you want to know whether
     // detaching is necessary, you should be in a non-const function already
-    bool needsDetach() const noexcept
+    bool needsDetach() noexcept
     {
         return ref_.loadRelaxed() > 1;
     }
@@ -79,13 +85,17 @@ struct QArrayData
         return newSize;
     }
 
-    [[nodiscard]]
-#if defined(Q_CC_GNU)
-    __attribute__((__malloc__))
-#endif
+    Q_DECL_MALLOCLIKE
     static Q_CORE_EXPORT void *allocate(QArrayData **pdata, qsizetype objectSize, qsizetype alignment,
             qsizetype capacity, AllocationOption option = QArrayData::KeepSize) noexcept;
-    [[nodiscard]] static Q_CORE_EXPORT QPair<QArrayData *, void *> reallocateUnaligned(QArrayData *data, void *dataPointer,
+    Q_DECL_MALLOCLIKE
+    static Q_CORE_EXPORT void *allocate1(QArrayData **pdata, qsizetype capacity,
+                                         AllocationOption option = QArrayData::KeepSize) noexcept;
+    Q_DECL_MALLOCLIKE
+    static Q_CORE_EXPORT void *allocate2(QArrayData **pdata, qsizetype capacity,
+                                         AllocationOption option = QArrayData::KeepSize) noexcept;
+
+    [[nodiscard]] static Q_CORE_EXPORT std::pair<QArrayData *, void *> reallocateUnaligned(QArrayData *data, void *dataPointer,
             qsizetype objectSize, qsizetype newCapacity, AllocationOption option) noexcept;
     static Q_CORE_EXPORT void deallocate(QArrayData *data, qsizetype objectSize,
             qsizetype alignment) noexcept;
@@ -93,30 +103,56 @@ struct QArrayData
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QArrayData::ArrayOptions)
 
+namespace QtPrivate {
+// QArrayData with strictest alignment requirements supported by malloc()
+#if defined(Q_PROCESSOR_X86_32) && defined(Q_CC_GNU)
+// GCC's definition is incorrect since GCC 8 (commit r240248 in SVN; commit
+// 63012d9a57edc950c5f30242d1e19318b5708060 in Git). This is applied to all
+// GCC-like compilers in case they decide to follow GCC's lead in being wrong.
+constexpr size_t MaxPrimitiveAlignment = 2 * sizeof(void *);
+#else
+constexpr size_t MaxPrimitiveAlignment = alignof(std::max_align_t);
+#endif
+
+struct alignas(MaxPrimitiveAlignment) AlignedQArrayData : QArrayData
+{
+};
+}
+
 template <class T>
 struct QTypedArrayData
     : QArrayData
 {
-    struct AlignmentDummy { QArrayData header; T data; };
+    struct AlignmentDummy { QtPrivate::AlignedQArrayData header; T data; };
 
-    [[nodiscard]] static QPair<QTypedArrayData *, T *> allocate(qsizetype capacity, AllocationOption option = QArrayData::KeepSize)
+    [[nodiscard]] static std::pair<QTypedArrayData *, T *> allocate(qsizetype capacity, AllocationOption option = QArrayData::KeepSize)
     {
         static_assert(sizeof(QTypedArrayData) == sizeof(QArrayData));
         QArrayData *d;
-        void *result = QArrayData::allocate(&d, sizeof(T), alignof(AlignmentDummy), capacity, option);
+        void *result;
+        if constexpr (sizeof(T) == 1) {
+            // necessarily, alignof(T) == 1
+            result = allocate1(&d, capacity, option);
+        } else if constexpr (sizeof(T) == 2) {
+            // alignof(T) may be 1, but that makes no difference
+            result = allocate2(&d, capacity, option);
+        } else {
+            result = QArrayData::allocate(&d, sizeof(T), alignof(AlignmentDummy), capacity, option);
+        }
 #if __has_builtin(__builtin_assume_aligned)
+        // and yet we do offer results that have stricter alignment
         result = __builtin_assume_aligned(result, Q_ALIGNOF(AlignmentDummy));
 #endif
-        return qMakePair(static_cast<QTypedArrayData *>(d), static_cast<T *>(result));
+        return {static_cast<QTypedArrayData *>(d), static_cast<T *>(result)};
     }
 
-    static QPair<QTypedArrayData *, T *>
+    static std::pair<QTypedArrayData *, T *>
     reallocateUnaligned(QTypedArrayData *data, T *dataPointer, qsizetype capacity, AllocationOption option)
     {
         static_assert(sizeof(QTypedArrayData) == sizeof(QArrayData));
-        QPair<QArrayData *, void *> pair =
+        std::pair<QArrayData *, void *> pair =
                 QArrayData::reallocateUnaligned(data, dataPointer, sizeof(T), capacity, option);
-        return qMakePair(static_cast<QTypedArrayData *>(pair.first), static_cast<T *>(pair.second));
+        return {static_cast<QTypedArrayData *>(pair.first), static_cast<T *>(pair.second)};
     }
 
     static void deallocate(QArrayData *data) noexcept
@@ -172,6 +208,8 @@ struct Q_CORE_EXPORT QContainerImplHelper
     }
 };
 }
+
+#undef Q_DECL_MALLOCLIKE
 
 QT_END_NAMESPACE
 

@@ -28,7 +28,11 @@ public:
     bool writeAttributes(const QOpcUaNode::AttributeMap &toWrite, QOpcUa::Types valueAttributeType) override;
     bool callMethod(const QString &methodNodeId, const QList<QOpcUa::TypedVariant> &args) override;
 
-    QOpcUaHistoryReadResponse *readHistoryRaw(const QDateTime &startTime, const QDateTime &endTime, quint32 numValues, bool returnBounds) override;
+    QOpcUaHistoryReadResponse *readHistoryRaw(const QDateTime &startTime, const QDateTime &endTime, quint32 numValues, bool returnBounds,
+                                              QOpcUa::TimestampsToReturn timestampsToReturn) override;
+
+    QOpcUaHistoryReadResponse *readHistoryEvents(const QDateTime &startTime, const QDateTime &endTime,
+                                                 const QOpcUaMonitoringParameters::EventFilter &filter, quint32 numValues) override;
 
     bool resolveBrowsePath(const QList<QOpcUaRelativePathElement> &path) override;
 

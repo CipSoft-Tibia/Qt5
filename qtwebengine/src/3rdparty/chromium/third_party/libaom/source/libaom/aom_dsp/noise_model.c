@@ -387,7 +387,7 @@ int aom_noise_strength_solver_fit_piecewise(
     max_output_points = solver->num_bins;
   }
 
-  double *residual = aom_malloc(solver->num_bins * sizeof(*residual));
+  double *residual = (double *)aom_malloc(solver->num_bins * sizeof(*residual));
   if (!residual) {
     aom_noise_strength_lut_free(lut);
     return 0;
@@ -1530,11 +1530,11 @@ struct aom_denoise_and_model_t *aom_denoise_and_model_alloc(int bit_depth,
   ctx->bit_depth = bit_depth;
 
   ctx->noise_psd[0] =
-      aom_malloc(sizeof(*ctx->noise_psd[0]) * block_size * block_size);
+      (float *)aom_malloc(sizeof(*ctx->noise_psd[0]) * block_size * block_size);
   ctx->noise_psd[1] =
-      aom_malloc(sizeof(*ctx->noise_psd[1]) * block_size * block_size);
+      (float *)aom_malloc(sizeof(*ctx->noise_psd[1]) * block_size * block_size);
   ctx->noise_psd[2] =
-      aom_malloc(sizeof(*ctx->noise_psd[2]) * block_size * block_size);
+      (float *)aom_malloc(sizeof(*ctx->noise_psd[2]) * block_size * block_size);
   if (!ctx->noise_psd[0] || !ctx->noise_psd[1] || !ctx->noise_psd[2]) {
     fprintf(stderr, "Unable to allocate noise PSD buffers\n");
     aom_denoise_and_model_free(ctx);
@@ -1574,16 +1574,20 @@ static int denoise_and_model_realloc_if_necessary(
   aom_free(ctx->flat_blocks);
   ctx->flat_blocks = NULL;
 
-  ctx->denoised[0] = aom_malloc((sd->y_stride * sd->y_height) << use_highbd);
-  ctx->denoised[1] = aom_malloc((sd->uv_stride * sd->uv_height) << use_highbd);
-  ctx->denoised[2] = aom_malloc((sd->uv_stride * sd->uv_height) << use_highbd);
+  ctx->denoised[0] =
+      (uint8_t *)aom_malloc((sd->y_stride * sd->y_height) << use_highbd);
+  ctx->denoised[1] =
+      (uint8_t *)aom_malloc((sd->uv_stride * sd->uv_height) << use_highbd);
+  ctx->denoised[2] =
+      (uint8_t *)aom_malloc((sd->uv_stride * sd->uv_height) << use_highbd);
   if (!ctx->denoised[0] || !ctx->denoised[1] || !ctx->denoised[2]) {
     fprintf(stderr, "Unable to allocate denoise buffers\n");
     return 0;
   }
   ctx->num_blocks_w = (sd->y_width + ctx->block_size - 1) / ctx->block_size;
   ctx->num_blocks_h = (sd->y_height + ctx->block_size - 1) / ctx->block_size;
-  ctx->flat_blocks = aom_malloc(ctx->num_blocks_w * ctx->num_blocks_h);
+  ctx->flat_blocks =
+      (uint8_t *)aom_malloc(ctx->num_blocks_w * ctx->num_blocks_h);
   if (!ctx->flat_blocks) {
     fprintf(stderr, "Unable to allocate flat_blocks buffer\n");
     return 0;
@@ -1617,6 +1621,8 @@ static int denoise_and_model_realloc_if_necessary(
   return 1;
 }
 
+// TODO(aomedia:3151): Handle a monochrome image (sd->u_buffer and sd->v_buffer
+// are null pointers) correctly.
 int aom_denoise_and_model_run(struct aom_denoise_and_model_t *ctx,
                               YV12_BUFFER_CONFIG *sd,
                               aom_film_grain_t *film_grain, int apply_denoise) {
@@ -1674,10 +1680,12 @@ int aom_denoise_and_model_run(struct aom_denoise_and_model_t *ctx,
     if (apply_denoise) {
       memcpy(raw_data[0], ctx->denoised[0],
              (strides[0] * sd->y_height) << use_highbd);
-      memcpy(raw_data[1], ctx->denoised[1],
-             (strides[1] * sd->uv_height) << use_highbd);
-      memcpy(raw_data[2], ctx->denoised[2],
-             (strides[2] * sd->uv_height) << use_highbd);
+      if (!sd->monochrome) {
+        memcpy(raw_data[1], ctx->denoised[1],
+               (strides[1] * sd->uv_height) << use_highbd);
+        memcpy(raw_data[2], ctx->denoised[2],
+               (strides[2] * sd->uv_height) << use_highbd);
+      }
     }
   }
   return 1;

@@ -54,10 +54,23 @@ operations, or both (a non-declared pair will be implicitly deleted).  Always
 declare or delete both construction and assignment, not just one (which can
 introduce subtle bugs).
 
+```cpp
+class TypeName {
+ public:
+  TypeName(int arg);
+  ...
+  TypeName(const TypeName&) = delete;
+  TypeName& operator=(const TypeName&) = delete;
+  ...
+  ~TypeName();
+}
+```
+
 ## Variable initialization
 
-There are myriad ways to initialize variables in C++11.  Prefer the following
+There are myriad ways to initialize variables in C++. Prefer the following
 general rules:
+
 1. Use assignment syntax when performing "simple" initialization with one or
    more literal values which will simply be composed into the object:
 
@@ -113,6 +126,9 @@ general rules:
    ```cpp
    auto x{1};  // Until C++17, decltype(x) is std::initializer_list<int>, not int!
    ```
+
+For more reading, please see abseil's [Tip of the Week #88: Initialization: =,
+(), and {}](https://abseil.io/tips/88).
 
 ## Initialize members in the declaration where possible
 
@@ -268,16 +284,17 @@ Good::Good() = default;
 
 ## Comment style
 
-References to code in comments should be wrapped in `` ` ` `` pairs. Codesearch uses
-this as a heuristic for finding C++ symbols in comments and generating
-cross-references for that symbol.
+References to code in comments should be wrapped in `` ` ` `` pairs. Codesearch
+uses this as a heuristic for finding C++ symbols in comments and generating
+cross-references for that symbol. Historically, Chrome also used `||` pairs to
+delimit variable names; codesearch understands both conventions and will
+generate a cross-reference either way. Going forward, prefer the new style even
+if existing code uses the old one.
 
 * Class and type names: `` `FooClass` ``.
 * Function names: `` `FooFunction()` ``. The trailing parens disambiguate
   against class names, and occasionally, English words.
-* Variable names: `` `foo_var` ``. Historically, Chrome also used `||` pairs to
-  delimit variable names; codesearch understands both conventions and will
-  generate a cross-reference either way.
+* Variable names: `` `foo_var` ``.
 * Tracking comments for future improvements: `// TODO(crbug.com/12345): ...`,
   or, less optimally, `// TODO(knowledgeable_username): ...`.  Tracking bugs
   provide space to give background context and current status; a username might

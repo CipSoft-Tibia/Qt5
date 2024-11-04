@@ -14,6 +14,7 @@
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/values.h"
 #include "chrome/common/extensions/extension_test_util.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/crx_file/id_util.h"
@@ -34,7 +35,6 @@
 #include "extensions/common/switches.h"
 #include "extensions/common/url_pattern_set.h"
 #include "extensions/common/user_script.h"
-#include "extensions/common/value_builder.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/gurl.h"
 #include "url/origin.h"
@@ -76,18 +76,17 @@ scoped_refptr<const Extension> GetExtensionWithHostPermission(
     const std::string& id,
     const std::string& host_permissions,
     ManifestLocation location) {
-  ListBuilder permissions;
+  base::Value::List permissions;
   if (!host_permissions.empty())
     permissions.Append(host_permissions);
 
   return ExtensionBuilder()
-      .SetManifest(DictionaryBuilder()
+      .SetManifest(base::Value::Dict()
                        .Set("name", id)
                        .Set("description", "an extension")
                        .Set("manifest_version", 2)
                        .Set("version", "1.0.0")
-                       .Set("permissions", permissions.Build())
-                       .Build())
+                       .Set("permissions", std::move(permissions)))
       .SetLocation(location)
       .SetID(id)
       .Build();
@@ -325,7 +324,8 @@ TEST(PermissionsDataTest, GetPermissionMessages_ManyAPIPermissions) {
   expected_messages.push_back("Read and change your data on api.flickr.com");
   expected_messages.push_back("Read and change your bookmarks");
   expected_messages.push_back("Detect your physical location");
-  expected_messages.push_back("Read and change your browsing history");
+  expected_messages.push_back(
+      "Read and change your browsing history on all your signed-in devices");
   expected_messages.push_back("Manage your apps, extensions, and themes");
   EXPECT_TRUE(VerifyPermissionMessages(extension->permissions_data(),
                                        expected_messages, false));

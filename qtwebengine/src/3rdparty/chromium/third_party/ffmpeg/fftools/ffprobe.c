@@ -79,6 +79,12 @@
 #  define pthread_mutex_unlock(a) do{}while(0)
 #endif
 
+// attached as opaque_ref to packets/frames
+typedef struct FrameData {
+    int64_t pkt_pos;
+    int     pkt_size;
+} FrameData;
+
 typedef struct InputStream {
     AVStream *st;
 
@@ -372,17 +378,6 @@ static void log_callback(void *ptr, int level, const char *fmt, va_list vl)
     }
 
     pthread_mutex_unlock(&log_mutex);
-#endif
-}
-
-static void ffprobe_cleanup(int ret)
-{
-    int i;
-    for (i = 0; i < FF_ARRAY_ELEMS(sections); i++)
-        av_dict_free(&(sections[i].entries_to_show));
-
-#if HAVE_THREADS
-    pthread_mutex_destroy(&log_mutex);
 #endif
 }
 
@@ -2221,8 +2216,8 @@ static void print_dynamic_hdr_vivid(WriterContext *w, const AVDynamicHDRVivid *m
         const AVHDRVividColorTransformParams *params = &metadata->params[n];
 
         print_int("tone_mapping_mode_flag", params->tone_mapping_mode_flag);
-        print_int("tone_mapping_param_num", params->tone_mapping_param_num);
         if (params->tone_mapping_mode_flag) {
+            print_int("tone_mapping_param_num", params->tone_mapping_param_num);
             for (int i = 0; i < params->tone_mapping_param_num; i++) {
                 const AVHDRVividColorToneMappingParams *tm_params = &params->tm_params[i];
 
@@ -2246,14 +2241,16 @@ static void print_dynamic_hdr_vivid(WriterContext *w, const AVDynamicHDRVivid *m
                 print_int("3Spline_enable_flag", tm_params->three_Spline_enable_flag);
                 if (tm_params->three_Spline_enable_flag) {
                     print_int("3Spline_num", tm_params->three_Spline_num);
-                    print_int("3Spline_TH_mode", tm_params->three_Spline_TH_mode);
 
                     for (int j = 0; j < tm_params->three_Spline_num; j++) {
-                        print_q("3Spline_TH_enable_MB", tm_params->three_Spline_TH_enable_MB, '/');
-                        print_q("3Spline_TH_enable", tm_params->three_Spline_TH_enable, '/');
-                        print_q("3Spline_TH_Delta1", tm_params->three_Spline_TH_Delta1, '/');
-                        print_q("3Spline_TH_Delta2", tm_params->three_Spline_TH_Delta2, '/');
-                        print_q("3Spline_enable_Strength", tm_params->three_Spline_enable_Strength, '/');
+                        const AVHDRVivid3SplineParams *three_spline = &tm_params->three_spline[j];
+                        print_int("3Spline_TH_mode", three_spline->th_mode);
+                        if (three_spline->th_mode == 0 || three_spline->th_mode == 2)
+                            print_q("3Spline_TH_enable_MB", three_spline->th_enable_mb, '/');
+                        print_q("3Spline_TH_enable", three_spline->th_enable, '/');
+                        print_q("3Spline_TH_Delta1", three_spline->th_delta1, '/');
+                        print_q("3Spline_TH_Delta2", three_spline->th_delta2, '/');
+                        print_q("3Spline_enable_Strength", three_spline->enable_strength, '/');
                     }
                 }
             }
@@ -2352,6 +2349,9 @@ static void print_pkt_side_data(WriterContext *w,
             AVContentLightMetadata *metadata = (AVContentLightMetadata *)sd->data;
             print_int("max_content", metadata->MaxCLL);
             print_int("max_average", metadata->MaxFALL);
+        } else if (sd->type == AV_PKT_DATA_DYNAMIC_HDR10_PLUS) {
+            AVDynamicHDRPlus *metadata = (AVDynamicHDRPlus *)sd->data;
+            print_dynamic_hdr10_plus(w, metadata);
         } else if (sd->type == AV_PKT_DATA_DOVI_CONF) {
             AVDOVIDecoderConfigurationRecord *dovi = (AVDOVIDecoderConfigurationRecord *)sd->data;
             print_int("dv_version_major", dovi->dv_version_major);
@@ -2385,6 +2385,19 @@ static void print_pkt_side_data(WriterContext *w,
         writer_print_section_footer(w);
     }
     writer_print_section_footer(w);
+}
+
+static void print_private_data(WriterContext *w, void *priv_data)
+{
+    const AVOption *opt = NULL;
+    while (opt = av_opt_next(priv_data, opt)) {
+        uint8_t *str;
+        if (!(opt->flags & AV_OPT_FLAG_EXPORT)) continue;
+        if (av_opt_get(priv_data, opt->name, 0, &str) >= 0) {
+            print_str(opt->name, str);
+            av_free(str);
+        }
+    }
 }
 
 static void print_color_range(WriterContext *w, enum AVColorRange color_range)
@@ -2436,7 +2449,6 @@ static void print_chroma_location(WriterContext *w, enum AVChromaLocation chroma
         print_str("chroma_location", val);
     }
 }
-
 
 static void clear_log(int need_lock)
 {
@@ -2513,8 +2525,9 @@ static void show_packet(WriterContext *w, InputFile *ifile, AVPacket *pkt, int p
     print_val("size",             pkt->size, unit_byte_str);
     if (pkt->pos != -1) print_fmt    ("pos", "%"PRId64, pkt->pos);
     else                print_str_opt("pos", "N/A");
-    print_fmt("flags", "%c%c",      pkt->flags & AV_PKT_FLAG_KEY ? 'K' : '_',
-              pkt->flags & AV_PKT_FLAG_DISCARD ? 'D' : '_');
+    print_fmt("flags", "%c%c%c",      pkt->flags & AV_PKT_FLAG_KEY ? 'K' : '_',
+              pkt->flags & AV_PKT_FLAG_DISCARD ? 'D' : '_',
+              pkt->flags & AV_PKT_FLAG_CORRUPT ? 'C' : '_');
     if (do_show_data)
         writer_print_data(w, "data", pkt->data, pkt->size);
     writer_print_data_hash(w, "data_hash", pkt->data, pkt->size);
@@ -2568,6 +2581,7 @@ static void show_subtitle(WriterContext *w, AVSubtitle *sub, AVStream *stream,
 static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
                        AVFormatContext *fmt_ctx)
 {
+    FrameData *fd = frame->opaque_ref ? (FrameData*)frame->opaque_ref->data : NULL;
     AVBPrint pbuf;
     char val_str[128];
     const char *s;
@@ -2581,14 +2595,14 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
     if (s) print_str    ("media_type", s);
     else   print_str_opt("media_type", "unknown");
     print_int("stream_index",           stream->index);
-    print_int("key_frame",              frame->key_frame);
+    print_int("key_frame",           !!(frame->flags & AV_FRAME_FLAG_KEY));
     print_ts  ("pts",                   frame->pts);
     print_time("pts_time",              frame->pts, &stream->time_base);
     print_ts  ("pkt_dts",               frame->pkt_dts);
     print_time("pkt_dts_time",          frame->pkt_dts, &stream->time_base);
     print_ts  ("best_effort_timestamp", frame->best_effort_timestamp);
     print_time("best_effort_timestamp_time", frame->best_effort_timestamp, &stream->time_base);
-#if LIBAVUTIL_VERSION_MAJOR < 58
+#if LIBAVUTIL_VERSION_MAJOR < 59
     AV_NOWARN_DEPRECATED(
     print_duration_ts  ("pkt_duration",      frame->pkt_duration);
     print_duration_time("pkt_duration_time", frame->pkt_duration, &stream->time_base);
@@ -2596,10 +2610,10 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
 #endif
     print_duration_ts  ("duration",          frame->duration);
     print_duration_time("duration_time",     frame->duration, &stream->time_base);
-    if (frame->pkt_pos != -1) print_fmt    ("pkt_pos", "%"PRId64, frame->pkt_pos);
-    else                      print_str_opt("pkt_pos", "N/A");
-    if (frame->pkt_size != -1) print_val    ("pkt_size", frame->pkt_size, unit_byte_str);
-    else                       print_str_opt("pkt_size", "N/A");
+    if (fd && fd->pkt_pos != -1)  print_fmt    ("pkt_pos", "%"PRId64, fd->pkt_pos);
+    else                          print_str_opt("pkt_pos", "N/A");
+    if (fd && fd->pkt_size != -1) print_val    ("pkt_size", fd->pkt_size, unit_byte_str);
+    else                          print_str_opt("pkt_size", "N/A");
 
     switch (stream->codecpar->codec_type) {
         AVRational sar;
@@ -2607,6 +2621,10 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
     case AVMEDIA_TYPE_VIDEO:
         print_int("width",                  frame->width);
         print_int("height",                 frame->height);
+        print_int("crop_top",               frame->crop_top);
+        print_int("crop_bottom",            frame->crop_bottom);
+        print_int("crop_left",              frame->crop_left);
+        print_int("crop_right",             frame->crop_right);
         s = av_get_pix_fmt_name(frame->format);
         if (s) print_str    ("pix_fmt", s);
         else   print_str_opt("pix_fmt", "unknown");
@@ -2617,10 +2635,14 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
             print_str_opt("sample_aspect_ratio", "N/A");
         }
         print_fmt("pict_type",              "%c", av_get_picture_type_char(frame->pict_type));
+#if LIBAVUTIL_VERSION_MAJOR < 59
+    AV_NOWARN_DEPRECATED(
         print_int("coded_picture_number",   frame->coded_picture_number);
         print_int("display_picture_number", frame->display_picture_number);
-        print_int("interlaced_frame",       frame->interlaced_frame);
-        print_int("top_field_first",        frame->top_field_first);
+    )
+#endif
+        print_int("interlaced_frame",       !!(frame->flags & AV_FRAME_FLAG_INTERLACED));
+        print_int("top_field_first",        !!(frame->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST));
         print_int("repeat_pict",            frame->repeat_pict);
 
         print_color_range(w, frame->color_range);
@@ -2733,7 +2755,7 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
 
 static av_always_inline int process_frame(WriterContext *w,
                                           InputFile *ifile,
-                                          AVFrame *frame, AVPacket *pkt,
+                                          AVFrame *frame, const AVPacket *pkt,
                                           int *packet_new)
 {
     AVFormatContext *fmt_ctx = ifile->fmt_ctx;
@@ -2904,6 +2926,15 @@ static int read_interval_packets(WriterContext *w, InputFile *ifile,
             }
             if (do_read_frames) {
                 int packet_new = 1;
+                FrameData *fd;
+
+                pkt->opaque_ref = av_buffer_allocz(sizeof(*fd));
+                if (!pkt->opaque_ref)
+                    return AVERROR(ENOMEM);
+                fd = (FrameData*)pkt->opaque_ref->data;
+                fd->pkt_pos  = pkt->pos;
+                fd->pkt_size = pkt->size;
+
                 while (process_frame(w, ifile, frame, pkt, &packet_new) > 0);
             }
         }
@@ -3085,16 +3116,11 @@ static int show_stream(WriterContext *w, AVFormatContext *fmt_ctx, int stream_id
         break;
     }
 
-    if (dec_ctx && dec_ctx->codec->priv_class && show_private_data) {
-        const AVOption *opt = NULL;
-        while (opt = av_opt_next(dec_ctx->priv_data,opt)) {
-            uint8_t *str;
-            if (!(opt->flags & AV_OPT_FLAG_EXPORT)) continue;
-            if (av_opt_get(dec_ctx->priv_data, opt->name, 0, &str) >= 0) {
-                print_str(opt->name, str);
-                av_free(str);
-            }
-        }
+    if (show_private_data) {
+        if (dec_ctx && dec_ctx->codec->priv_class)
+            print_private_data(w, dec_ctx->priv_data);
+        if (fmt_ctx->iformat->priv_class)
+            print_private_data(w, fmt_ctx->priv_data);
     }
 
     if (fmt_ctx->iformat->flags & AVFMT_SHOW_IDS) print_fmt    ("id", "0x%x", stream->id);
@@ -3313,7 +3339,7 @@ static int open_input_file(InputFile *ifile, const char *filename,
 
     fmt_ctx = avformat_alloc_context();
     if (!fmt_ctx)
-        report_and_exit(AVERROR(ENOMEM));
+        return AVERROR(ENOMEM);
 
     if (!av_dict_get(format_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE)) {
         av_dict_set(&format_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
@@ -3335,8 +3361,12 @@ static int open_input_file(InputFile *ifile, const char *filename,
         av_log(NULL, AV_LOG_WARNING, "Option %s skipped - not known to demuxer.\n", t->key);
 
     if (find_stream_info) {
-        AVDictionary **opts = setup_find_stream_info_opts(fmt_ctx, codec_opts);
+        AVDictionary **opts;
         int orig_nb_streams = fmt_ctx->nb_streams;
+
+        err = setup_find_stream_info_opts(fmt_ctx, codec_opts, &opts);
+        if (err < 0)
+            return err;
 
         err = avformat_find_stream_info(fmt_ctx, opts);
 
@@ -3380,8 +3410,12 @@ static int open_input_file(InputFile *ifile, const char *filename,
             continue;
         }
         {
-            AVDictionary *opts = filter_codec_opts(codec_opts, stream->codecpar->codec_id,
-                                                   fmt_ctx, stream, codec);
+            AVDictionary *opts;
+
+            err = filter_codec_opts(codec_opts, stream->codecpar->codec_id,
+                                    fmt_ctx, stream, codec, &opts);
+            if (err < 0)
+                exit(1);
 
             ist->dec_ctx = avcodec_alloc_context3(codec);
             if (!ist->dec_ctx)
@@ -3397,6 +3431,8 @@ static int open_input_file(InputFile *ifile, const char *filename,
                 // That is in fact possible but not trivial
                 av_dict_set(&codec_opts, "threads", "1", 0);
             }
+
+            av_dict_set(&opts, "flags", "+copy_opaque", AV_DICT_MULTIKEY);
 
             ist->dec_ctx->pkt_timebase = stream->time_base;
 
@@ -3622,8 +3658,14 @@ static int opt_show_optional_fields(void *optctx, const char *opt, const char *a
     else if (!av_strcasecmp(arg, "never"))  show_optional_fields = SHOW_OPTIONAL_FIELDS_NEVER;
     else if (!av_strcasecmp(arg, "auto"))   show_optional_fields = SHOW_OPTIONAL_FIELDS_AUTO;
 
-    if (show_optional_fields == SHOW_OPTIONAL_FIELDS_AUTO && av_strcasecmp(arg, "auto"))
-        show_optional_fields = parse_number_or_die("show_optional_fields", arg, OPT_INT, SHOW_OPTIONAL_FIELDS_AUTO, SHOW_OPTIONAL_FIELDS_ALWAYS);
+    if (show_optional_fields == SHOW_OPTIONAL_FIELDS_AUTO && av_strcasecmp(arg, "auto")) {
+        double num;
+        int ret = parse_number("show_optional_fields", arg, OPT_INT,
+                               SHOW_OPTIONAL_FIELDS_AUTO, SHOW_OPTIONAL_FIELDS_ALWAYS, &num);
+        if (ret < 0)
+            return ret;
+        show_optional_fields = num;
+    }
     return 0;
 }
 
@@ -3721,17 +3763,19 @@ static int opt_show_entries(void *optctx, const char *opt, const char *arg)
     return ret;
 }
 
-static void opt_input_file(void *optctx, const char *arg)
+static int opt_input_file(void *optctx, const char *arg)
 {
     if (input_filename) {
         av_log(NULL, AV_LOG_ERROR,
                 "Argument '%s' provided as input filename, but '%s' was already specified.\n",
                 arg, input_filename);
-        exit_program(1);
+        return AVERROR(EINVAL);
     }
     if (!strcmp(arg, "-"))
         arg = "fd:";
     input_filename = arg;
+
+    return 0;
 }
 
 static int opt_input_file_i(void *optctx, const char *opt, const char *arg)
@@ -3740,22 +3784,18 @@ static int opt_input_file_i(void *optctx, const char *opt, const char *arg)
     return 0;
 }
 
-static void opt_output_file(void *optctx, const char *arg)
+static int opt_output_file_o(void *optctx, const char *opt, const char *arg)
 {
     if (output_filename) {
         av_log(NULL, AV_LOG_ERROR,
                 "Argument '%s' provided as output filename, but '%s' was already specified.\n",
                 arg, output_filename);
-        exit_program(1);
+        return AVERROR(EINVAL);
     }
     if (!strcmp(arg, "-"))
         arg = "fd:";
     output_filename = arg;
-}
 
-static int opt_output_file_o(void *optctx, const char *opt, const char *arg)
-{
-    opt_output_file(optctx, arg);
     return 0;
 }
 
@@ -4062,7 +4102,6 @@ int main(int argc, char **argv)
     }
 #endif
     av_log_set_flags(AV_LOG_SKIP_REPEATED);
-    register_exit(ffprobe_cleanup);
 
     options = real_options;
     parse_loglevel(argc, argv, options);
@@ -4072,7 +4111,11 @@ int main(int argc, char **argv)
 #endif
 
     show_banner(argc, argv, options);
-    parse_options(NULL, argc, argv, options, opt_input_file);
+    ret = parse_options(NULL, argc, argv, options, opt_input_file);
+    if (ret < 0) {
+        ret = AVERROR_EXIT ? 0 : ret;
+        goto end;
+    }
 
     if (do_show_log)
         av_log_set_callback(log_callback);
@@ -4195,6 +4238,10 @@ end:
         av_dict_free(&(sections[i].entries_to_show));
 
     avformat_network_deinit();
+
+#if HAVE_THREADS
+    pthread_mutex_destroy(&log_mutex);
+#endif
 
     return ret < 0;
 }

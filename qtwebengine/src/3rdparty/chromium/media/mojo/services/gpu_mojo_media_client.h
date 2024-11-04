@@ -105,11 +105,12 @@ void NotifyPlatformDecoderSupport(
 #endif  // BUILDFLAG(USE_VAAPI) || BUILDFLAG(USE_V4L2_CODEC)
 
 // Queries the platform-specific VideoDecoder implementation for its
-// supported profiles. Many platforms fall back to use the VDAVideoDecoder
+// supported profiles. Some platforms fall back to use the VDAVideoDecoder
 // so that implementation is shared, and its supported configs can be
 // queries using the |get_vda_configs| callback.
 absl::optional<SupportedVideoDecoderConfigs>
 GetPlatformSupportedVideoDecoderConfigs(
+    base::WeakPtr<MediaGpuChannelManager> manager,
     gpu::GpuDriverBugWorkarounds gpu_workarounds,
     gpu::GpuPreferences gpu_preferences,
     const gpu::GPUInfo& gpu_info,
@@ -118,7 +119,8 @@ GetPlatformSupportedVideoDecoderConfigs(
 // Creates a platform-specific media::AudioDecoder. Most platforms don't do
 // anything here, but android, for example, does.
 std::unique_ptr<AudioDecoder> CreatePlatformAudioDecoder(
-    scoped_refptr<base::SequencedTaskRunner> task_runner);
+    scoped_refptr<base::SequencedTaskRunner> task_runner,
+    std::unique_ptr<MediaLog> media_log);
 
 // Creates a platform-specific media::AudioEncoder. Most platforms don't do
 // anything here.
@@ -160,7 +162,8 @@ class MEDIA_MOJO_EXPORT GpuMojoMediaClient final : public MojoMediaClient {
   SupportedVideoDecoderConfigs GetSupportedVideoDecoderConfigs() final;
   VideoDecoderType GetDecoderImplementationType() final;
   std::unique_ptr<AudioDecoder> CreateAudioDecoder(
-      scoped_refptr<base::SequencedTaskRunner> task_runner) final;
+      scoped_refptr<base::SequencedTaskRunner> task_runner,
+      std::unique_ptr<MediaLog> media_log) final;
   std::unique_ptr<AudioEncoder> CreateAudioEncoder(
       scoped_refptr<base::SequencedTaskRunner> task_runner) final;
 
@@ -183,6 +186,7 @@ class MEDIA_MOJO_EXPORT GpuMojoMediaClient final : public MojoMediaClient {
 
   static absl::optional<SupportedVideoDecoderConfigs>
   GetSupportedVideoDecoderConfigsStatic(
+      base::WeakPtr<MediaGpuChannelManager> manager,
       const gpu::GpuPreferences& gpu_preferences,
       const gpu::GpuDriverBugWorkarounds& gpu_workarounds,
       const gpu::GPUInfo& gpu_info);

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "cast/standalone_sender/connection_settings.h"
@@ -16,8 +17,7 @@
 #include "cast/standalone_sender/streaming_video_encoder.h"
 #include "cast/streaming/sender_session.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Plays the media file at a given path over and over again, transcoding and
 // streaming its audio/video.
@@ -44,11 +44,15 @@ class LoopingFileSender final : public SimulatedAudioCapturer::Client,
   // SimulatedAudioCapturer overrides.
   void OnAudioData(const float* interleaved_samples,
                    int num_samples,
-                   Clock::time_point capture_time) final;
+                   Clock::time_point capture_begin_time,
+                   Clock::time_point capture_end_time,
+                   Clock::time_point reference_time) final;
 
   // SimulatedVideoCapturer overrides;
   void OnVideoFrame(const AVFrame& av_frame,
-                    Clock::time_point capture_time) final;
+                    Clock::time_point capture_begin_time,
+                    Clock::time_point capture_end_time,
+                    Clock::time_point reference_time) final;
 
   void UpdateStatusOnConsole();
 
@@ -60,7 +64,7 @@ class LoopingFileSender final : public SimulatedAudioCapturer::Client,
 
   std::unique_ptr<StreamingVideoEncoder> CreateVideoEncoder(
       const StreamingVideoEncoder::Parameters& params,
-      TaskRunner* task_runner,
+      TaskRunner& task_runner,
       std::unique_ptr<Sender> sender);
 
   // Holds the required injected dependencies (clock, task runner) used for Cast
@@ -84,16 +88,15 @@ class LoopingFileSender final : public SimulatedAudioCapturer::Client,
   std::unique_ptr<StreamingVideoEncoder> video_encoder_;
 
   int num_capturers_running_ = 0;
-  Clock::time_point capture_start_time_{};
+  Clock::time_point capture_begin_time_{};
   Clock::time_point latest_frame_time_{};
-  absl::optional<SimulatedAudioCapturer> audio_capturer_;
-  absl::optional<SimulatedVideoCapturer> video_capturer_;
+  std::optional<SimulatedAudioCapturer> audio_capturer_;
+  std::optional<SimulatedVideoCapturer> video_capturer_;
 
   Alarm next_task_;
   Alarm console_update_task_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STANDALONE_SENDER_LOOPING_FILE_SENDER_H_

@@ -34,6 +34,10 @@
 // rules apply as detailed at the top of minidump_writer.h: no libc calls and
 // use the alternative allocator.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "client/linux/minidump_writer/linux_dumper.h"
 
 #include <assert.h>

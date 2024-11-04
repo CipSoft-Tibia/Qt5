@@ -9,6 +9,7 @@
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qthread.h>
 #include <QtCore/qloggingcategory.h>
+#include <QtNetwork/qlocalsocket.h>
 #include <QtNetwork/qtcpsocket.h>
 
 #include <private/qhttpserverrequest_p.h>
@@ -27,7 +28,12 @@ void QHttpServerStream::handleReadyRead()
         socket->startTransaction();
 
     if (!request.d->parse(socket)) {
-        socket->disconnectFromHost();
+        if (tcpSocket)
+            tcpSocket->disconnectFromHost();
+#if QT_CONFIG(localserver)
+        else if (localSocket)
+            localSocket->disconnectFromServer();
+#endif
         return;
     }
 
@@ -39,28 +45,31 @@ void QHttpServerStream::handleReadyRead()
     QHttpServerResponder responder(this);
 
 #if defined(QT_WEBSOCKETS_LIB)
-    if (request.d->upgrade) { // Upgrade
-        const auto &upgradeValue = request.value(QByteArrayLiteral("upgrade"));
-        if (upgradeValue.compare(QByteArrayLiteral("websocket"), Qt::CaseInsensitive) == 0) {
-            static const auto signal =
-                    QMetaMethod::fromSignal(&QAbstractHttpServer::newWebSocketConnection);
-            if (server->isSignalConnected(signal) && server->handleRequest(request, responder)) {
-                // Socket will now be managed by websocketServer
-                socket->disconnect();
-                socket->rollbackTransaction();
-                server->d_func()->websocketServer.handleConnection(socket);
-                Q_EMIT socket->readyRead();
-            } else {
-                qWarning(lcHttpServerStream,
-                         "WebSocket received but no slots connected to "
-                         "QWebSocketServer::newConnection or request not handled");
-                server->missingHandler(request, std::move(responder));
-                socket->disconnectFromHost();
+    if (auto *tcpSocket = qobject_cast<QTcpSocket*>(socket)) {
+        if (request.d->upgrade) { // Upgrade
+            const auto &upgradeValue = request.value(QByteArrayLiteral("upgrade"));
+            if (upgradeValue.compare(QByteArrayLiteral("websocket"), Qt::CaseInsensitive) == 0) {
+                static const auto signal =
+                        QMetaMethod::fromSignal(&QAbstractHttpServer::newWebSocketConnection);
+                if (server->isSignalConnected(signal)
+                    && server->handleRequest(request, responder)) {
+                    // Socket will now be managed by websocketServer
+                    socket->disconnect();
+                    socket->rollbackTransaction();
+                    server->d_func()->websocketServer.handleConnection(tcpSocket);
+                    Q_EMIT socket->readyRead();
+                } else {
+                    qWarning(lcHttpServerStream,
+                            "WebSocket received but no slots connected to "
+                            "QWebSocketServer::newConnection or request not handled");
+                    server->missingHandler(request, std::move(responder));
+                    tcpSocket->disconnectFromHost();
+                }
+                return;
             }
-            return;
         }
     }
-#endif
+#endif // QT_WEBSOCKETS_LIB
 
     socket->commitTransaction();
 
@@ -68,9 +77,9 @@ void QHttpServerStream::handleReadyRead()
         server->missingHandler(request, std::move(responder));
 
     if (handlingRequest)
-        disconnect(socket, &QTcpSocket::readyRead, this, &QHttpServerStream::handleReadyRead);
+        disconnect(socket, &QIODevice::readyRead, this, &QHttpServerStream::handleReadyRead);
     else if (socket->bytesAvailable() > 0)
-        QMetaObject::invokeMethod(socket, &QAbstractSocket::readyRead, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(socket, &QIODevice::readyRead, Qt::QueuedConnection);
 }
 
 void QHttpServerStream::socketDisconnected()
@@ -79,18 +88,46 @@ void QHttpServerStream::socketDisconnected()
         deleteLater();
 }
 
-QHttpServerStream::QHttpServerStream(QAbstractHttpServer *server, QTcpSocket *socket)
+QHttpServerRequest QHttpServerStream::initRequestFromSocket(QTcpSocket *tcpSocket)
+{
+    if (tcpSocket) {
+#if QT_CONFIG(ssl)
+        if (auto *ssl = qobject_cast<const QSslSocket *>(tcpSocket)) {
+            return QHttpServerRequest(ssl->peerAddress(), ssl->peerPort(),
+                                      ssl->localAddress(), ssl->localPort(),
+                                      ssl->sslConfiguration());
+        }
+#endif
+        return QHttpServerRequest(tcpSocket->peerAddress(), tcpSocket->peerPort(),
+                                  tcpSocket->localAddress(), tcpSocket->localPort());
+    }
+
+    return QHttpServerRequest(QHostAddress::LocalHost, 0, QHostAddress::LocalHost, 0);
+}
+
+QHttpServerStream::QHttpServerStream(QAbstractHttpServer *server, QIODevice *socket)
     : QObject(server),
       server(server),
       socket(socket),
-      request(socket->peerAddress(), socket->peerPort(), socket->localAddress(),
-              socket->localPort())
+      tcpSocket(qobject_cast<QTcpSocket *>(socket)),
+#if QT_CONFIG(localserver)
+      localSocket(qobject_cast<QLocalSocket*>(socket)),
+#endif
+      request(initRequestFromSocket(tcpSocket))
 {
     socket->setParent(this);
 
-    qCDebug(lcHttpServerStream) << "Connection from:" << socket->peerAddress();
-    connect(socket, &QTcpSocket::readyRead, this, &QHttpServerStream::handleReadyRead);
-    connect(socket, &QTcpSocket::disconnected, this, &QHttpServerStream::socketDisconnected);
+    if (tcpSocket) {
+        qCDebug(lcHttpServerStream) << "Connection from:" << tcpSocket->peerAddress();
+        connect(socket, &QTcpSocket::readyRead, this, &QHttpServerStream::handleReadyRead);
+        connect(tcpSocket, &QTcpSocket::disconnected, this, &QHttpServerStream::socketDisconnected);
+#if QT_CONFIG(localserver)
+    } else if (localSocket) {
+        qCDebug(lcHttpServerStream) << "Connection from:" << localSocket->serverName();
+        connect(socket, &QLocalSocket::readyRead, this, &QHttpServerStream::handleReadyRead);
+        connect(localSocket, &QLocalSocket::disconnected, this, &QHttpServerStream::socketDisconnected);
+#endif
+    }
 }
 
 void QHttpServerStream::write(const QByteArray &ba)
@@ -111,11 +148,23 @@ void QHttpServerStream::responderDestroyed()
     Q_ASSERT(handlingRequest);
     handlingRequest = false;
 
-    if (socket->state() != QAbstractSocket::ConnectedState) {
-        deleteLater();
-    } else {
-        connect(socket, &QTcpSocket::readyRead, this, &QHttpServerStream::handleReadyRead);
-        QMetaObject::invokeMethod(socket, &QAbstractSocket::readyRead, Qt::QueuedConnection);
+    if (tcpSocket) {
+        if (tcpSocket->state() != QAbstractSocket::ConnectedState) {
+            deleteLater();
+        } else {
+            connect(tcpSocket, &QTcpSocket::readyRead, this, &QHttpServerStream::handleReadyRead);
+            QMetaObject::invokeMethod(tcpSocket, &QTcpSocket::readyRead, Qt::QueuedConnection);
+        }
+#if QT_CONFIG(localserver)
+    } else if (localSocket) {
+        if (localSocket->state() != QLocalSocket::ConnectedState) {
+            deleteLater();
+        } else {
+            connect(localSocket, &QLocalSocket::readyRead,
+                    this, &QHttpServerStream::handleReadyRead);
+            QMetaObject::invokeMethod(localSocket, &QLocalSocket::readyRead, Qt::QueuedConnection);
+        }
+#endif
     }
 }
 

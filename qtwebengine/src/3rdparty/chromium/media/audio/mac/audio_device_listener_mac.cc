@@ -6,10 +6,10 @@
 
 #include <vector>
 
+#include "base/apple/osstatus_logging.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/mac/mac_logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/task/single_thread_task_runner.h"
@@ -23,32 +23,32 @@ namespace media {
 const AudioObjectPropertyAddress
     AudioDeviceListenerMac::kDefaultOutputDeviceChangePropertyAddress = {
         kAudioHardwarePropertyDefaultOutputDevice,
-        kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster};
+        kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
 
 const AudioObjectPropertyAddress
     AudioDeviceListenerMac::kDefaultInputDeviceChangePropertyAddress = {
         kAudioHardwarePropertyDefaultInputDevice,
-        kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster};
+        kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
 
 const AudioObjectPropertyAddress
     AudioDeviceListenerMac::kDevicesPropertyAddress = {
         kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMaster};
+        kAudioObjectPropertyElementMain};
 
 const AudioObjectPropertyAddress
     AudioDeviceListenerMac::kPropertyOutputSampleRateChanged = {
         kAudioDevicePropertyNominalSampleRate, kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMaster};
+        kAudioObjectPropertyElementMain};
 
 const AudioObjectPropertyAddress
     AudioDeviceListenerMac::kPropertyOutputSourceChanged = {
         kAudioDevicePropertyDataSource, kAudioDevicePropertyScopeOutput,
-        kAudioObjectPropertyElementMaster};
+        kAudioObjectPropertyElementMain};
 
 const AudioObjectPropertyAddress
     AudioDeviceListenerMac::kPropertyInputSourceChanged = {
         kAudioDevicePropertyDataSource, kAudioDevicePropertyScopeInput,
-        kAudioObjectPropertyElementMaster};
+        kAudioObjectPropertyElementMain};
 
 class AudioDeviceListenerMac::PropertyListener {
  public:

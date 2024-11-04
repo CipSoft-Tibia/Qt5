@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,7 +23,7 @@ class MdnsService;
 
 class ServiceInstance final : public DnsSdService {
  public:
-  ServiceInstance(TaskRunner* task_runner,
+  ServiceInstance(TaskRunner& task_runner,
                   ReportingClient* reporting_client,
                   const Config& config,
                   const InterfaceInfo& network_info);
@@ -43,7 +43,7 @@ class ServiceInstance final : public DnsSdService {
   DnsSdPublisher* GetPublisher() override { return publisher_.get(); }
 
  private:
-  TaskRunner* const task_runner_;
+  TaskRunner& task_runner_;
 
   std::unique_ptr<MdnsService> mdns_service_;
 

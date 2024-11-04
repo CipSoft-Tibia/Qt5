@@ -204,6 +204,13 @@ typedef struct {
 
   int decimation_factor;
   int decimation_count;
+  int prev_frame_is_dropped;
+
+  /*!
+   * Frame number for encoded frames (non-dropped).
+   * Use for setting the rtc reference structure.
+   */
+  unsigned int frame_number_encoded;
 
   /*!\endcond */
   /*!
@@ -267,7 +274,7 @@ typedef struct {
   // pct > THR), consider to add bit_est_ratio_g for golden frames.
   int bit_est_ratio;
 
-  // Whether use a fixed qp for the frame, bypassing internal rate control.
+  // Whether to use a fixed qp for the frame, bypassing internal rate control.
   // This flag will reset to 0 after every frame.
   int use_external_qp_one_pass;
   /*!\endcond */
@@ -470,11 +477,6 @@ typedef struct {
    */
   int temp_extend_maxq;
 
-  /*!
-   * Temporary variable used in simulating the delayed update of
-   * extend_minq_fast.
-   */
-  int temp_extend_minq_fast;
 #endif
   /*!
    * Proposed minimum allowed Q different layers in a coding pyramid

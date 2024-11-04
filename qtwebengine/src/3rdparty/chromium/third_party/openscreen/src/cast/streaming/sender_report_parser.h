@@ -1,19 +1,19 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CAST_STREAMING_SENDER_REPORT_PARSER_H_
 #define CAST_STREAMING_SENDER_REPORT_PARSER_H_
 
-#include "absl/types/optional.h"
-#include "absl/types/span.h"
+#include <optional>
+
 #include "cast/streaming/rtcp_common.h"
 #include "cast/streaming/rtcp_session.h"
 #include "cast/streaming/rtp_defines.h"
 #include "cast/streaming/rtp_time.h"
+#include "platform/base/span.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Parses RTCP packets from a Sender to extract Sender Reports. Ignores anything
 // else, since that is all a Receiver would be interested in.
@@ -35,7 +35,7 @@ class SenderReportParser {
   // Parses the RTCP |packet|, and returns a parsed sender report if the packet
   // contained one. Returns nullopt if the data is corrupt or the packet did not
   // contain a sender report.
-  absl::optional<SenderReportWithId> Parse(absl::Span<const uint8_t> packet);
+  std::optional<SenderReportWithId> Parse(ByteView packet);
 
  private:
   RtcpSession* const session_;
@@ -45,7 +45,6 @@ class SenderReportParser {
   RtpTimeTicks last_parsed_rtp_timestamp_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_SENDER_REPORT_PARSER_H_

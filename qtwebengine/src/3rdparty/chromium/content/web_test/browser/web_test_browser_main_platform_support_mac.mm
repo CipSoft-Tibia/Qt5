@@ -15,13 +15,13 @@ namespace content {
 
 namespace {
 
-void SetDefaultsToWebTestValues(void) {
+void SetDefaultsToWebTestValues() {
   // So we can match the Blink web tests, we want to force a bunch of
   // preferences that control appearance to match.
   // (We want to do this as early as possible in application startup so
   // the settings are in before any higher layers could cache values.)
 
-  NSUserDefaults* defaults = [NSUserDefaults standardUserDefaults];
+  NSUserDefaults* defaults = NSUserDefaults.standardUserDefaults;
   // Do not set text-rendering prefs (AppleFontSmoothing,
   // AppleAntiAliasingThreshold) here: Skia picks the right settings for this
   // in web test mode, see FontSkia.cpp in WebKit and
@@ -33,7 +33,6 @@ void SetDefaultsToWebTestValues(void) {
   [defaults setObject:@"0.500000 0.500000 0.500000"
                forKey:@"AppleOtherHighlightColor"];
   [defaults setObject:[NSArray arrayWithObject:@"en"] forKey:@"AppleLanguages"];
-  [defaults setBool:NO forKey:@"AppleScrollAnimationEnabled"];
   [defaults setBool:NO forKey:@"NSScrollAnimationEnabled"];
   [defaults setObject:@"Always" forKey:@"AppleShowScrollBars"];
 

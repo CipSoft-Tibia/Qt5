@@ -9,6 +9,7 @@
 #include "base/base64.h"
 #include "base/containers/contains.h"
 #include "base/feature_list.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/no_destructor.h"
 #include "base/observer_list.h"
@@ -202,6 +203,26 @@ bool VariationsIdsProvider::ForceDisableVariationIds(
                                   &force_disabled_ids_set_)) {
     return false;
   }
+
+  // When disabling a variation ID through the command line, ensure it is
+  // disabled in every contexts.
+  static_assert(
+      ID_COLLECTION_COUNT == 6,
+      "If you add a new collection key, make sure it can be disabled here.");
+  std::set<VariationIDEntry> additional_disabled_ids;
+  for (const auto& entry : force_disabled_ids_set_) {
+    if (entry.second == GOOGLE_WEB_PROPERTIES_ANY_CONTEXT) {
+      additional_disabled_ids.insert(
+          VariationIDEntry(entry.first, GOOGLE_WEB_PROPERTIES_SIGNED_IN));
+      additional_disabled_ids.insert(
+          VariationIDEntry(entry.first, GOOGLE_WEB_PROPERTIES_FIRST_PARTY));
+    } else if (entry.second == GOOGLE_WEB_PROPERTIES_TRIGGER_ANY_CONTEXT) {
+      additional_disabled_ids.insert(VariationIDEntry(
+          entry.first, GOOGLE_WEB_PROPERTIES_TRIGGER_FIRST_PARTY));
+    }
+  }
+  force_disabled_ids_set_.merge(additional_disabled_ids);
+
   if (variation_ids_cache_initialized_) {
     // Update the cached variation ids header value after cache initialization,
     // otherwise the change won't be in the cache.
@@ -265,6 +286,8 @@ void VariationsIdsProvider::OnFieldTrialGroupFinalized(
 }
 
 void VariationsIdsProvider::OnSyntheticTrialsChanged(
+    const std::vector<SyntheticTrialGroup>& trials_updated,
+    const std::vector<SyntheticTrialGroup>& trials_removed,
     const std::vector<SyntheticTrialGroup>& groups) {
   base::AutoLock scoped_lock(lock_);
 
@@ -302,6 +325,11 @@ void VariationsIdsProvider::InitVariationIDsCacheIfNeeded() {
   DCHECK(success);
 
   base::FieldTrial::ActiveGroups initial_groups;
+  // These field trial group IDs may be sent to Google servers for web-visible
+  // studies.
+  // Low anonymity trials cannot be web-visible (enforced server-side), but as
+  // an additional safeguard we do not include them in the list of field trials
+  // we fetch here.
   base::FieldTrialList::GetActiveFieldTrialGroups(&initial_groups);
 
   for (const auto& entry : initial_groups) {
@@ -508,7 +536,9 @@ VariationsIdsProvider::GetAllVariationIds() {
   // The entropy source value is used for retrospective A/A tests to validate
   // that there's no existing bias between two randomized groups of clients for
   // a later A/B study.
-  if (low_entropy_source_value_) {
+  base::UmaHistogramBoolean("Variations.Headers.HasLowEntropySourceValue",
+                            low_entropy_source_value_.has_value());
+  if (low_entropy_source_value_.has_value()) {
     int source_value = low_entropy_source_value_.value() +
                        kLowEntropySourceVariationIdRangeMin;
     DCHECK_GE(source_value, kLowEntropySourceVariationIdRangeMin);

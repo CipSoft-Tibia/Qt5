@@ -124,13 +124,16 @@ class FakeSocketClient : public mojom::P2PSocketClient {
   ~FakeSocketClient() override;
 
   // mojom::P2PSocketClient interface.
-  MOCK_METHOD2(SocketCreated,
-               void(const net::IPEndPoint&, const net::IPEndPoint&));
-  MOCK_METHOD1(SendComplete, void(const P2PSendPacketMetrics&));
-  MOCK_METHOD3(DataReceived,
-               void(const net::IPEndPoint&,
-                    base::span<const uint8_t>,
-                    base::TimeTicks));
+  MOCK_METHOD(void,
+              SocketCreated,
+              (const net::IPEndPoint&, const net::IPEndPoint&));
+  MOCK_METHOD(void, SendComplete, (const P2PSendPacketMetrics&));
+  MOCK_METHOD(void,
+              DataReceived,
+              (const std::vector<network::mojom::P2PReceivedPacketPtr>));
+  MOCK_METHOD(void,
+              SendBatchComplete,
+              (const std::vector<P2PSendPacketMetrics>&));
 
   bool connection_error() { return disconnect_error_; }
 
@@ -177,6 +180,12 @@ MATCHER_P2(MatchSendPacketMetrics, rtc_packet_id, test_start_time, "") {
   return arg.rtc_packet_id == rtc_packet_id &&
          arg.send_time_ms >= test_start_time &&
          arg.send_time_ms <= rtc::TimeMillis();
+}
+
+// Creates a GMock matcher that matches `base::span` to `std::vector`.
+MATCHER_P(SpanEq, expected, "") {
+  std::vector<uint8_t> result(arg.data(), arg.data() + arg.size());
+  return result == expected;
 }
 
 }  // namespace network

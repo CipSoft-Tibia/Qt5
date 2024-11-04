@@ -17,7 +17,7 @@ const UIStrings = {
   /**
    *@description Text in Main
    */
-  focusDebuggee: 'Focus debuggee',
+  focusDebuggee: 'Focus page',
   /**
    *@description Text in the Shortcuts page in settings to explain a keyboard shortcut
    */
@@ -826,7 +826,7 @@ Common.Settings.registerSettingExtension({
 
 UI.ViewManager.registerLocationResolver({
   name: UI.ViewManager.ViewLocationValues.DRAWER_VIEW,
-  category: UI.ViewManager.ViewLocationCategoryValues.DRAWER,
+  category: UI.ViewManager.ViewLocationCategory.DRAWER,
   async loadResolver() {
     return UI.InspectorView.InspectorView.instance();
   },
@@ -834,7 +834,7 @@ UI.ViewManager.registerLocationResolver({
 
 UI.ViewManager.registerLocationResolver({
   name: UI.ViewManager.ViewLocationValues.DRAWER_SIDEBAR,
-  category: UI.ViewManager.ViewLocationCategoryValues.DRAWER_SIDEBAR,
+  category: UI.ViewManager.ViewLocationCategory.DRAWER_SIDEBAR,
   async loadResolver() {
     return UI.InspectorView.InspectorView.instance();
   },
@@ -842,7 +842,7 @@ UI.ViewManager.registerLocationResolver({
 
 UI.ViewManager.registerLocationResolver({
   name: UI.ViewManager.ViewLocationValues.PANEL,
-  category: UI.ViewManager.ViewLocationCategoryValues.PANEL,
+  category: UI.ViewManager.ViewLocationCategory.PANEL,
   async loadResolver() {
     return UI.InspectorView.InspectorView.instance();
   },
@@ -911,7 +911,7 @@ UI.Toolbar.registerToolbarItem({
     const Main = await loadMainModule();
     return Main.MainImpl.SettingsButtonProvider.instance();
   },
-  order: 98,
+  order: 99,
   location: UI.Toolbar.ToolbarItemLocation.MAIN_TOOLBAR_RIGHT,
   showLabel: undefined,
   condition: undefined,
@@ -924,7 +924,7 @@ UI.Toolbar.registerToolbarItem({
     const Main = await loadMainModule();
     return Main.MainImpl.MainMenuItem.instance();
   },
-  order: 99,
+  order: 100,
   location: UI.Toolbar.ToolbarItemLocation.MAIN_TOOLBAR_RIGHT,
   showLabel: undefined,
   condition: undefined,
@@ -936,7 +936,7 @@ UI.Toolbar.registerToolbarItem({
   async loadItem() {
     return UI.DockController.CloseButtonProvider.instance();
   },
-  order: 100,
+  order: 101,
   location: UI.Toolbar.ToolbarItemLocation.MAIN_TOOLBAR_RIGHT,
   showLabel: undefined,
   condition: undefined,

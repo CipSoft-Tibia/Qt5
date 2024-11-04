@@ -1,6 +1,5 @@
 // Copyright (C) 2014 Governikus GmbH & Co. KG.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -66,7 +65,8 @@ void tst_QSslEllipticCurve::fromShortName_data()
     QTest::newRow("QString()") << QString() << QSslEllipticCurve() << false;
     QTest::newRow("\"\"") << QString("") << QSslEllipticCurve() << false;
     QTest::newRow("does-not-exist") << QStringLiteral("does-not-exist") << QSslEllipticCurve() << false;
-    Q_FOREACH (QSslEllipticCurve ec, QSslConfiguration::supportedEllipticCurves()) {
+    const auto supported = QSslConfiguration::supportedEllipticCurves();
+    for (QSslEllipticCurve ec : supported) {
         const QString sN = ec.shortName();
         QTest::newRow(qPrintable("supported EC \"" + sN + '"')) << sN << ec << true;
         // At least in the OpenSSL impl, the short name is case-sensitive. That feels odd.
@@ -99,7 +99,8 @@ void tst_QSslEllipticCurve::fromLongName_data()
     QTest::newRow("QString()") << QString() << QSslEllipticCurve() << false;
     QTest::newRow("\"\"") << QString("") << QSslEllipticCurve() << false;
     QTest::newRow("does-not-exist") << QStringLiteral("does-not-exist") << QSslEllipticCurve() << false;
-    Q_FOREACH (QSslEllipticCurve ec, QSslConfiguration::supportedEllipticCurves()) {
+    const auto supported = QSslConfiguration::supportedEllipticCurves();
+    for (QSslEllipticCurve ec : supported) {
         const QString lN = ec.longName();
         QTest::newRow(qPrintable("supported EC \"" + lN + '"')) << lN << ec << true;
     }

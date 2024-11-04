@@ -41,8 +41,9 @@ void MessageDefinitionPrinter::printClassMembers()
             m_descriptor, [&](const FieldDescriptor *field, const PropertyMap &propertyMap) {
                 if (common::isOneofField(field))
                     return;
-
-                if (common::isPureMessage(field)) {
+                if (common::isOptionalField(field)) {
+                    m_printer->Print(propertyMap, CommonTemplates::MemberOptionalTemplate());
+                } else if (common::isPureMessage(field)) {
                     m_printer->Print(propertyMap, CommonTemplates::MemberMessageTemplate());
                 } else if (field->is_repeated() && !field->is_map()) {
                     m_printer->Print(propertyMap, CommonTemplates::MemberRepeatedTemplate());
@@ -129,6 +130,7 @@ void MessageDefinitionPrinter::printClassDefinitionPrivate()
     printMoveSemantic();
     printComparisonOperators();
     printGetters();
+    printPublicExtras();
 }
 
 void MessageDefinitionPrinter::printClassDefinition()
@@ -251,9 +253,9 @@ void MessageDefinitionPrinter::printUintData(const char *templateString)
             { "json_name", field->json_name() },
         };
 
-        // Oneof properties generate additional has<OneofField> property next to the field property
-        // one.
-        if (common::isOneofField(field))
+        // Oneof and optional properties generate additional has<FieldName> property next to the
+        // field property one.
+        if (common::isOneofField(field) || common::isOptionalField(field))
             ++propertyIndex;
 
         m_printer->Print(variables, templateString);
@@ -310,7 +312,8 @@ void MessageDefinitionPrinter::printInitializationList()
     m_printer->Indent();
     common::iterateMessageFields(
             m_descriptor, [&](const FieldDescriptor *field, PropertyMap propertyMap) {
-                if (field->is_repeated() || common::isOneofField(field))
+                if (field->is_repeated() || common::isOneofField(field)
+                    || common::isOptionalField(field))
                     return;
 
                 if (!propertyMap["initializer"].empty()) {
@@ -346,7 +349,7 @@ void MessageDefinitionPrinter::printComparisonOperators()
     Indent();
     common::iterateMessageFields(
                 m_descriptor, [&](const FieldDescriptor *field, PropertyMap &propertyMap) {
-        if (field->containing_oneof())
+        if (common::isOneofField(field))
             return;
         m_printer->Print("\n&& ");
         if (common::isPureMessage(field)) {
@@ -397,8 +400,12 @@ void MessageDefinitionPrinter::printGetters()
                     return;
                 }
 
-                if (common::hasQmlAlias(field)) {
-                    m_printer->Print(propertyMap, CommonTemplates::GetterNonScriptableDefinitionTemplate());
+                if (common::isOptionalField(field)) {
+                    m_printer->Print(propertyMap,
+                                     CommonTemplates::PrivateGetterOptionalDefinitionTemplate());
+                    m_printer->Print(propertyMap,
+                                     CommonTemplates::GetterOptionalDefinitionTemplate());
+                    return;
                 }
 
                 if (common::isPureMessage(field)) {
@@ -406,6 +413,8 @@ void MessageDefinitionPrinter::printGetters()
                                      CommonTemplates::PrivateGetterMessageDefinitionTemplate());
                     m_printer->Print(propertyMap,
                                      CommonTemplates::GetterMessageDefinitionTemplate());
+                    m_printer->Print(propertyMap,
+                                     CommonTemplates::ClearMessageDefinitionTemplate());
                 } else {
                     m_printer->Print(propertyMap, CommonTemplates::GetterDefinitionTemplate());
                 }
@@ -426,9 +435,17 @@ void MessageDefinitionPrinter::printGetters()
                                     : CommonTemplates::PrivateSetterOneofDefinitionTemplate());
                     return;
                 }
-                if (common::hasQmlAlias(field)) {
-                    m_printer->Print(propertyMap, CommonTemplates::SetterNonScriptableDefinitionTemplate());
+
+                if (common::isOptionalField(field)) {
+                    m_printer->Print(propertyMap,
+                                     CommonTemplates::SetterOptionalDefinitionTemplate());
+                    m_printer->Print(propertyMap,
+                                     CommonTemplates::PrivateSetterOptionalDefinitionTemplate());
+                    m_printer->Print(propertyMap,
+                                     CommonTemplates::ClearOptionalDefinitionTemplate());
+                    return;
                 }
+
                 switch (field->type()) {
                 case FieldDescriptor::TYPE_MESSAGE:
                     if (common::isPureMessage(field)) {
@@ -446,6 +463,14 @@ void MessageDefinitionPrinter::printGetters()
                     m_printer->Print(propertyMap,
                                      CommonTemplates::SetterComplexDefinitionTemplate());
                     break;
+                case FieldDescriptor::TYPE_FLOAT:
+                case FieldDescriptor::TYPE_DOUBLE:
+                    if (!field->is_repeated()) {
+                        m_printer->Print(propertyMap,
+                                         CommonTemplates::SetterFloatingPointDefinitionTemplate());
+                        break;
+                    }
+                    // fall through
                 default:
                     m_printer->Print(propertyMap, CommonTemplates::SetterDefinitionTemplate());
                     break;
@@ -462,6 +487,25 @@ void MessageDefinitionPrinter::printGetters()
 void MessageDefinitionPrinter::printDestructor()
 {
     m_printer->Print(m_typeMap, "$classname$::~$classname$() = default;\n\n");
+}
+
+void MessageDefinitionPrinter::printPublicExtras()
+{
+    if (m_descriptor->full_name() == "google.protobuf.Timestamp") {
+        m_printer->Print(
+                "Timestamp Timestamp::fromDateTime(const QDateTime &dateTime)\n"
+                "{\n"
+                "    Timestamp ts;\n"
+                "    ts.setSeconds(dateTime.toMSecsSinceEpoch() / 1000);\n"
+                "    ts.setNanos((dateTime.toMSecsSinceEpoch() % 1000) * 1000000);\n"
+                "    return ts;\n"
+                "}\n\n"
+                "QDateTime Timestamp::toDateTime() const\n"
+                "{\n"
+                "    return QDateTime::fromMSecsSinceEpoch(\n"
+                "            seconds() * 1000 + nanos() / 1000000, QTimeZone(QTimeZone::UTC));\n"
+                "}\n\n");
+    }
 }
 
 void MessageDefinitionPrinter::printClassRegistration(Printer *printer)

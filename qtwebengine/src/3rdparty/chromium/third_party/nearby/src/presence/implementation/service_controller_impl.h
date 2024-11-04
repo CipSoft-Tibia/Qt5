@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "internal/proto/metadata.pb.h"
 #include "presence/implementation/broadcast_manager.h"
 #include "presence/implementation/credential_manager_impl.h"
 #include "presence/implementation/mediums/mediums.h"
@@ -46,6 +47,24 @@ class ServiceControllerImpl : public ServiceController {
   absl::StatusOr<BroadcastSessionId> StartBroadcast(
       BroadcastRequest broadcast_request, BroadcastCallback callback) override;
   void StopBroadcast(BroadcastSessionId) override;
+  void UpdateLocalDeviceMetadata(
+      const ::nearby::internal::Metadata& metadata, bool regen_credentials,
+      absl::string_view manager_app_id,
+      const std::vector<nearby::internal::IdentityType>& identity_types,
+      int credential_life_cycle_days, int contiguous_copy_of_credentials,
+      GenerateCredentialsResultCallback credentials_generated_cb) override;
+
+  ::nearby::internal::Metadata GetLocalDeviceMetadata() override {
+    return credential_manager_.GetLocalDeviceMetadata();
+  }
+  void GetLocalPublicCredentials(
+      const CredentialSelector& credential_selector,
+      GetPublicCredentialsResultCallback callback) override;
+  void UpdateRemotePublicCredentials(
+      absl::string_view manager_app_id, absl::string_view account_name,
+      const std::vector<nearby::internal::SharedCredential>&
+          remote_public_creds,
+      UpdateRemotePublicCredentialsCallback credentials_updated_cb) override;
 
   SingleThreadExecutor& GetBackgroundExecutor() { return executor_; }
 

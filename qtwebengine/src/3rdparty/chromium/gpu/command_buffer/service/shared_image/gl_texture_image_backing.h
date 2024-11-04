@@ -8,10 +8,11 @@
 #include "gpu/command_buffer/service/shared_image/gl_common_image_backing_factory.h"
 #include "gpu/command_buffer/service/shared_image/gl_texture_holder.h"
 
+class GrPromiseImageTexture;
+
 namespace gpu {
 
-// Implementation of SharedImageBacking that creates a GL Texture that is not
-// backed by a GLImage.
+// Implementation of SharedImageBacking that uses GL Textures as storage.
 class GLTextureImageBacking : public ClearTrackingSharedImageBacking {
  public:
   static bool SupportsPixelUploadWithFormat(viz::SharedImageFormat format);
@@ -33,7 +34,8 @@ class GLTextureImageBacking : public ClearTrackingSharedImageBacking {
       const std::vector<GLCommonImageBackingFactory::FormatInfo>& format_info,
       base::span<const uint8_t> pixel_data,
       gl::ProgressReporter* progress_reporter,
-      bool framebuffer_attachment_angle);
+      bool framebuffer_attachment_angle,
+      std::string debug_label);
 
  private:
   // SharedImageBacking:
@@ -49,10 +51,10 @@ class GLTextureImageBacking : public ClearTrackingSharedImageBacking {
   std::unique_ptr<DawnImageRepresentation> ProduceDawn(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker,
-      WGPUDevice device,
-      WGPUBackendType backend_type,
-      std::vector<WGPUTextureFormat> view_formats) final;
-  std::unique_ptr<SkiaImageRepresentation> ProduceSkia(
+      const wgpu::Device& device,
+      wgpu::BackendType backend_type,
+      std::vector<wgpu::TextureFormat> view_formats) final;
+  std::unique_ptr<SkiaGaneshImageRepresentation> ProduceSkiaGanesh(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker,
       scoped_refptr<SharedContextState> context_state) override;
@@ -65,7 +67,7 @@ class GLTextureImageBacking : public ClearTrackingSharedImageBacking {
   const bool is_passthrough_;
 
   std::vector<GLTextureHolder> textures_;
-  std::vector<sk_sp<SkPromiseImageTexture>> cached_promise_textures_;
+  std::vector<sk_sp<GrPromiseImageTexture>> cached_promise_textures_;
 };
 
 }  // namespace gpu

@@ -1,5 +1,6 @@
 /*
  * Copyright © 2008 Kristian Høgsberg
+ * Copyright 2022 Collabora, Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -24,6 +25,7 @@
 #include "config.h"
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -33,25 +35,49 @@
 #include <limits.h>
 #include <sys/param.h>
 #include <sys/mman.h>
+#include <pixman.h>
 #include <cairo.h>
+#include <assert.h>
 
 #include <wayland-client.h>
-#include "weston-screenshooter-client-protocol.h"
+#include "weston-output-capture-client-protocol.h"
 #include "shared/os-compatibility.h"
 #include "shared/xalloc.h"
 #include "shared/file-util.h"
+#include "pixel-formats.h"
 
-/* The screenshooter is a good example of a custom object exposed by
- * the compositor and serves as a test bed for implementing client
- * side marshalling outside libwayland.so */
+struct screenshooter_app {
+	struct wl_registry *registry;
+	struct wl_shm *shm;
+	struct weston_capture_v1 *capture_factory;
 
+	struct wl_list output_list; /* struct screenshooter_output::link */
+
+	bool retry;
+	bool failed;
+	int waitcount;
+};
+
+struct screenshooter_buffer {
+	size_t len;
+	void *data;
+	struct wl_buffer *wl_buffer;
+	pixman_image_t *image;
+};
 
 struct screenshooter_output {
-	struct wl_output *output;
-	struct wl_buffer *buffer;
-	int width, height, offset_x, offset_y;
-	void *data;
-	struct wl_list link;
+	struct screenshooter_app *app;
+	struct wl_list link; /* struct screenshooter_app::output_list */
+
+	struct wl_output *wl_output;
+	int offset_x, offset_y;
+
+	struct weston_capture_source_v1 *source;
+
+	int buffer_width;
+	int buffer_height;
+	const struct pixel_format_info *fmt;
+	struct screenshooter_buffer *buffer;
 };
 
 struct buffer_size {
@@ -61,97 +87,204 @@ struct buffer_size {
 	int max_x, max_y;
 };
 
-struct screenshooter_data {
-	struct wl_shm *shm;
-	struct wl_list output_list;
+static struct screenshooter_buffer *
+screenshot_create_shm_buffer(struct screenshooter_app *app,
+			     size_t width, size_t height,
+			     const struct pixel_format_info *fmt)
+{
+	struct screenshooter_buffer *buffer;
+	struct wl_shm_pool *pool;
+	int fd;
+	size_t bytes_pp;
+	size_t stride;
 
-	struct weston_screenshooter *screenshooter;
-	int buffer_copy_done;
-};
+	assert(width > 0);
+	assert(height > 0);
+	assert(fmt && fmt->bpp > 0);
+	assert(fmt->pixman_format);
 
+	buffer = xzalloc(sizeof *buffer);
+
+	bytes_pp = fmt->bpp / 8;
+	stride = width * bytes_pp;
+	buffer->len = stride * height;
+
+	assert(width == stride / bytes_pp);
+	assert(height == buffer->len / stride);
+
+	fd = os_create_anonymous_file(buffer->len);
+	if (fd < 0) {
+		fprintf(stderr, "creating a buffer file for %zd B failed: %s\n",
+			buffer->len, strerror(errno));
+		free(buffer);
+		return NULL;
+	}
+
+	buffer->data = mmap(NULL, buffer->len, PROT_READ | PROT_WRITE,
+			    MAP_SHARED, fd, 0);
+	if (buffer->data == MAP_FAILED) {
+		fprintf(stderr, "mmap failed: %s\n", strerror(errno));
+		close(fd);
+		free(buffer);
+		return NULL;
+	}
+
+	pool = wl_shm_create_pool(app->shm, fd, buffer->len);
+	close(fd);
+	buffer->wl_buffer =
+		wl_shm_pool_create_buffer(pool, 0, width, height, stride,
+					  pixel_format_get_shm_format(fmt));
+	wl_shm_pool_destroy(pool);
+
+	buffer->image = pixman_image_create_bits(fmt->pixman_format,
+						 width, height,
+						 buffer->data, stride);
+	abort_oom_if_null(buffer->image);
+
+	return buffer;
+}
 
 static void
-display_handle_geometry(void *data,
-			struct wl_output *wl_output,
-			int x,
-			int y,
-			int physical_width,
-			int physical_height,
-			int subpixel,
-			const char *make,
-			const char *model,
-			int transform)
+screenshooter_buffer_destroy(struct screenshooter_buffer *buffer)
+{
+	if (!buffer)
+		return;
+
+	pixman_image_unref(buffer->image);
+	munmap(buffer->data, buffer->len);
+	wl_buffer_destroy(buffer->wl_buffer);
+	free(buffer);
+}
+
+static void
+capture_source_handle_format(void *data,
+			     struct weston_capture_source_v1 *proxy,
+			     uint32_t drm_format)
+{
+	struct screenshooter_output *output = data;
+
+	assert(output->source == proxy);
+
+	output->fmt = pixel_format_get_info(drm_format);
+}
+
+static void
+capture_source_handle_size(void *data,
+			   struct weston_capture_source_v1 *proxy,
+			   int32_t width, int32_t height)
+{
+	struct screenshooter_output *output = data;
+
+	assert(width > 0);
+	assert(height > 0);
+
+	output->buffer_width = width;
+	output->buffer_height = height;
+}
+
+static void
+capture_source_handle_complete(void *data,
+			       struct weston_capture_source_v1 *proxy)
+{
+	struct screenshooter_output *output = data;
+
+	output->app->waitcount--;
+}
+
+static void
+capture_source_handle_retry(void *data,
+			    struct weston_capture_source_v1 *proxy)
+{
+	struct screenshooter_output *output = data;
+
+	output->app->waitcount--;
+	output->app->retry = true;
+}
+
+static void
+capture_source_handle_failed(void *data,
+			     struct weston_capture_source_v1 *proxy,
+			     const char *msg)
+{
+	struct screenshooter_output *output = data;
+
+	output->app->waitcount--;
+	output->app->failed = true;
+
+	if (msg)
+		fprintf(stderr, "Output capture error: %s\n", msg);
+}
+
+static const struct weston_capture_source_v1_listener capture_source_handlers = {
+	.format = capture_source_handle_format,
+	.size = capture_source_handle_size,
+	.complete = capture_source_handle_complete,
+	.retry = capture_source_handle_retry,
+	.failed = capture_source_handle_failed,
+};
+
+static void
+create_output(struct screenshooter_app *app, uint32_t output_name, uint32_t version)
 {
 	struct screenshooter_output *output;
 
-	output = wl_output_get_user_data(wl_output);
+	version = MIN(version, 4);
+	output = xzalloc(sizeof *output);
+	output->app = app;
+	output->wl_output = wl_registry_bind(app->registry, output_name,
+					     &wl_output_interface, version);
+	abort_oom_if_null(output->wl_output);
 
-	if (wl_output == output->output) {
-		output->offset_x = x;
-		output->offset_y = y;
-	}
+	output->source = weston_capture_v1_create(app->capture_factory,
+						  output->wl_output,
+						  WESTON_CAPTURE_V1_SOURCE_FRAMEBUFFER);
+	abort_oom_if_null(output->source);
+	weston_capture_source_v1_add_listener(output->source,
+					      &capture_source_handlers, output);
+
+	wl_list_insert(&app->output_list, &output->link);
 }
 
 static void
-display_handle_mode(void *data,
-		    struct wl_output *wl_output,
-		    uint32_t flags,
-		    int width,
-		    int height,
-		    int refresh)
+destroy_output(struct screenshooter_output *output)
 {
-	struct screenshooter_output *output;
+	weston_capture_source_v1_destroy(output->source);
 
-	output = wl_output_get_user_data(wl_output);
+	if (wl_output_get_version(output->wl_output) >= WL_OUTPUT_RELEASE_SINCE_VERSION)
+		wl_output_release(output->wl_output);
+	else
+		wl_output_destroy(output->wl_output);
 
-	if (wl_output == output->output && (flags & WL_OUTPUT_MODE_CURRENT)) {
-		output->width = width;
-		output->height = height;
-	}
+	screenshooter_buffer_destroy(output->buffer);
+	wl_list_remove(&output->link);
+	free(output);
 }
-
-static const struct wl_output_listener output_listener = {
-	display_handle_geometry,
-	display_handle_mode
-};
-
-static void
-screenshot_done(void *data, struct weston_screenshooter *screenshooter)
-{
-	struct screenshooter_data *sh_data = data;
-	sh_data->buffer_copy_done = 1;
-}
-
-static const struct weston_screenshooter_listener screenshooter_listener = {
-	screenshot_done
-};
 
 static void
 handle_global(void *data, struct wl_registry *registry,
 	      uint32_t name, const char *interface, uint32_t version)
 {
-	static struct screenshooter_output *output;
-	struct screenshooter_data *sh_data = data;
+	struct screenshooter_app *app = data;
 
-	if (strcmp(interface, "wl_output") == 0) {
-		output = xmalloc(sizeof *output);
-		output->output = wl_registry_bind(registry, name,
-						  &wl_output_interface, 1);
-		wl_list_insert(&sh_data->output_list, &output->link);
-		wl_output_add_listener(output->output, &output_listener, output);
-	} else if (strcmp(interface, "wl_shm") == 0) {
-		sh_data->shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
-	} else if (strcmp(interface, "weston_screenshooter") == 0) {
-		sh_data->screenshooter = wl_registry_bind(registry, name,
-							  &weston_screenshooter_interface,
-							  1);
+	if (strcmp(interface, wl_output_interface.name) == 0) {
+		create_output(app, name, version);
+	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
+		app->shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
+		/*
+		 * Not listening for format advertisements,
+		 * weston_capture_source_v1.format event tells us what to use.
+		 */
+	} else if (strcmp(interface, weston_capture_v1_interface.name) == 0) {
+		app->capture_factory = wl_registry_bind(registry, name,
+							&weston_capture_v1_interface,
+							1);
 	}
 }
 
 static void
 handle_global_remove(void *data, struct wl_registry *registry, uint32_t name)
 {
-	/* XXX: unimplemented */
+	/* Dynamic output removals will just fail the respective shot. */
 }
 
 static const struct wl_registry_listener registry_listener = {
@@ -159,80 +292,52 @@ static const struct wl_registry_listener registry_listener = {
 	handle_global_remove
 };
 
-static struct wl_buffer *
-screenshot_create_shm_buffer(int width, int height, void **data_out,
-			     struct wl_shm *shm)
+static void
+screenshooter_output_capture(struct screenshooter_output *output)
 {
-	struct wl_shm_pool *pool;
-	struct wl_buffer *buffer;
-	int fd, size, stride;
-	void *data;
+	screenshooter_buffer_destroy(output->buffer);
+	output->buffer = screenshot_create_shm_buffer(output->app,
+						      output->buffer_width,
+						      output->buffer_height,
+						      output->fmt);
+	abort_oom_if_null(output->buffer);
 
-	stride = width * 4;
-	size = stride * height;
-
-	fd = os_create_anonymous_file(size);
-	if (fd < 0) {
-		fprintf(stderr, "creating a buffer file for %d B failed: %s\n",
-			size, strerror(errno));
-		return NULL;
-	}
-
-	data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (data == MAP_FAILED) {
-		fprintf(stderr, "mmap failed: %s\n", strerror(errno));
-		close(fd);
-		return NULL;
-	}
-
-	pool = wl_shm_create_pool(shm, fd, size);
-	close(fd);
-	buffer = wl_shm_pool_create_buffer(pool, 0, width, height, stride,
-					   WL_SHM_FORMAT_XRGB8888);
-	wl_shm_pool_destroy(pool);
-
-	*data_out = data;
-
-	return buffer;
+	weston_capture_source_v1_capture(output->source,
+					 output->buffer->wl_buffer);
+	output->app->waitcount++;
 }
 
 static void
 screenshot_write_png(const struct buffer_size *buff_size,
 		     struct wl_list *output_list)
 {
-	int output_stride, buffer_stride, i;
+	pixman_image_t *shot;
 	cairo_surface_t *surface;
-	void *data, *d, *s;
-	struct screenshooter_output *output, *next;
+	struct screenshooter_output *output;
 	FILE *fp;
 	char filepath[PATH_MAX];
 
-	buffer_stride = buff_size->width * 4;
+	shot = pixman_image_create_bits(PIXMAN_a8r8g8b8,
+					buff_size->width, buff_size->height,
+					NULL, 0);
+	abort_oom_if_null(shot);
 
-	data = xmalloc(buffer_stride * buff_size->height);
-	if (!data)
-		return;
-
-	wl_list_for_each_safe(output, next, output_list, link) {
-		output_stride = output->width * 4;
-		s = output->data;
-		d = data + (output->offset_y - buff_size->min_y) * buffer_stride +
-			   (output->offset_x - buff_size->min_x) * 4;
-
-		for (i = 0; i < output->height; i++) {
-			memcpy(d, s, output_stride);
-			d += buffer_stride;
-			s += output_stride;
-		}
-
-		free(output);
+	wl_list_for_each(output, output_list, link) {
+		pixman_image_composite32(PIXMAN_OP_SRC,
+					 output->buffer->image, /* src */
+					 NULL, /* mask */
+					 shot, /* dest */
+					 0, 0, /* src x,y */
+					 0, 0, /* mask x,y */
+					 output->offset_x, output->offset_y, /* dst x,y */
+					 output->buffer_width, output->buffer_height);
 	}
 
-	surface = cairo_image_surface_create_for_data(data,
+	surface = cairo_image_surface_create_for_data((void *)pixman_image_get_data(shot),
 						      CAIRO_FORMAT_ARGB32,
-						      buff_size->width,
-						      buff_size->height,
-						      buffer_stride);
+						      pixman_image_get_width(shot),
+						      pixman_image_get_height(shot),
+						      pixman_image_get_stride(shot));
 
 	fp = file_create_dated(getenv("XDG_PICTURES_DIR"), "wayland-screenshot-",
 			       ".png", filepath, sizeof(filepath));
@@ -241,11 +346,12 @@ screenshot_write_png(const struct buffer_size *buff_size,
 		cairo_surface_write_to_png(surface, filepath);
 	}
 	cairo_surface_destroy(surface);
-	free(data);
+	pixman_image_unref(shot);
 }
 
 static int
-screenshot_set_buffer_size(struct buffer_size *buff_size, struct wl_list *output_list)
+screenshot_set_buffer_size(struct buffer_size *buff_size,
+			   struct wl_list *output_list)
 {
 	struct screenshooter_output *output;
 	buff_size->min_x = buff_size->min_y = INT_MAX;
@@ -254,16 +360,16 @@ screenshot_set_buffer_size(struct buffer_size *buff_size, struct wl_list *output
 
 	wl_list_for_each_reverse(output, output_list, link) {
 		output->offset_x = position;
-		position += output->width;
+		position += output->buffer_width;
 	}
 
 	wl_list_for_each(output, output_list, link) {
 		buff_size->min_x = MIN(buff_size->min_x, output->offset_x);
 		buff_size->min_y = MIN(buff_size->min_y, output->offset_y);
 		buff_size->max_x =
-			MAX(buff_size->max_x, output->offset_x + output->width);
+			MAX(buff_size->max_x, output->offset_x + output->buffer_width);
 		buff_size->max_y =
-			MAX(buff_size->max_y, output->offset_y + output->height);
+			MAX(buff_size->max_y, output->offset_y + output->buffer_height);
 	}
 
 	if (buff_size->max_x <= buff_size->min_x ||
@@ -276,13 +382,16 @@ screenshot_set_buffer_size(struct buffer_size *buff_size, struct wl_list *output
 	return 0;
 }
 
-int main(int argc, char *argv[])
+int
+main(int argc, char *argv[])
 {
 	struct wl_display *display;
-	struct wl_registry *registry;
 	struct screenshooter_output *output;
+	struct screenshooter_output *tmp_output;
 	struct buffer_size buff_size = {};
-	struct screenshooter_data sh_data = {};
+	struct screenshooter_app app = {};
+
+	wl_list_init(&app.output_list);
 
 	display = wl_display_connect(NULL);
 	if (display == NULL) {
@@ -291,39 +400,52 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	wl_list_init(&sh_data.output_list);
-	registry = wl_display_get_registry(display);
-	wl_registry_add_listener(registry, &registry_listener, &sh_data);
-	wl_display_dispatch(display);
+	app.registry = wl_display_get_registry(display);
+	wl_registry_add_listener(app.registry, &registry_listener, &app);
+
+	/* Process wl_registry advertisements */
 	wl_display_roundtrip(display);
-	if (sh_data.screenshooter == NULL) {
-		fprintf(stderr, "display doesn't support screenshooter\n");
+
+	if (!app.shm) {
+		fprintf(stderr, "Error: display does not support wl_shm\n");
+		return -1;
+	}
+	if (!app.capture_factory) {
+		fprintf(stderr, "Error: display does not support weston_capture_v1\n");
 		return -1;
 	}
 
-	weston_screenshooter_add_listener(sh_data.screenshooter,
-					  &screenshooter_listener,
-					  &sh_data);
+	/* Process initial events for wl_output and weston_capture_source_v1 */
+	wl_display_roundtrip(display);
 
-	if (screenshot_set_buffer_size(&buff_size, &sh_data.output_list))
-		return -1;
+	do {
+		app.retry = false;
 
+		wl_list_for_each(output, &app.output_list, link)
+			screenshooter_output_capture(output);
 
-	wl_list_for_each(output, &sh_data.output_list, link) {
-		output->buffer =
-			screenshot_create_shm_buffer(output->width,
-						     output->height,
-						     &output->data,
-						     sh_data.shm);
-		weston_screenshooter_shoot(sh_data.screenshooter,
-					   output->output,
-					   output->buffer);
-		sh_data.buffer_copy_done = 0;
-		while (!sh_data.buffer_copy_done)
-			wl_display_roundtrip(display);
+		while (app.waitcount > 0 && !app.failed) {
+			if (wl_display_dispatch(display) < 0)
+				app.failed = true;
+			assert(app.waitcount >= 0);
+		}
+	} while (app.retry && !app.failed);
+
+	if (!app.failed) {
+		if (screenshot_set_buffer_size(&buff_size, &app.output_list) < 0)
+			return -1;
+		screenshot_write_png(&buff_size, &app.output_list);
+	} else {
+		fprintf(stderr, "Error: screenshot or protocol failure\n");
 	}
 
-	screenshot_write_png(&buff_size, &sh_data.output_list);
+	wl_list_for_each_safe(output, tmp_output, &app.output_list, link)
+		destroy_output(output);
+
+	weston_capture_v1_destroy(app.capture_factory);
+	wl_shm_destroy(app.shm);
+	wl_registry_destroy(app.registry);
+	wl_display_disconnect(display);
 
 	return 0;
 }

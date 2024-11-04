@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,8 +15,7 @@
 #include "cast/common/public/message_port.h"
 #include "util/weak_ptr.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class CastSocketMessagePort : public MessagePort, public CastMessageHandler {
  public:
@@ -51,7 +50,6 @@ class CastSocketMessagePort : public MessagePort, public CastMessageHandler {
   WeakPtr<CastSocket> socket_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_CHANNEL_CAST_SOCKET_MESSAGE_PORT_H_

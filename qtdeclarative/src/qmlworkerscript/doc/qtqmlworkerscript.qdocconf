@@ -29,5 +29,5 @@ exampledirs += snippets
 
 navigation.qmltypespage = "Qt Qml WorkerScript QML Types"
 
-# Fail the documentation build if there are more warnings than the limit
+# Enforce zero documentation warnings
 warninglimit = 0

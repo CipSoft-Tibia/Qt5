@@ -27,6 +27,7 @@
 #include "idl_gen_cpp.h"
 #include "idl_gen_csharp.h"
 #include "idl_gen_dart.h"
+#include "idl_gen_fbs.h"
 #include "idl_gen_go.h"
 #include "idl_gen_java.h"
 #include "idl_gen_json_schema.h"
@@ -101,6 +102,11 @@ int main(int argc, const char *argv[]) {
       flatbuffers::NewDartCodeGenerator());
 
   flatc.RegisterCodeGenerator(
+      flatbuffers::FlatCOption{ "", "proto", "",
+                                "Input is a .proto, translate to .fbs" },
+      flatbuffers::NewFBSCodeGenerator());
+
+  flatc.RegisterCodeGenerator(
       flatbuffers::FlatCOption{ "g", "go", "",
                                 "Generate Go files for tables/structs" },
       flatbuffers::NewGoCodeGenerator());
@@ -118,6 +124,11 @@ int main(int argc, const char *argv[]) {
       flatbuffers::FlatCOption{ "", "kotlin", "",
                                 "Generate Kotlin classes for tables/structs" },
       flatbuffers::NewKotlinCodeGenerator());
+
+  flatc.RegisterCodeGenerator(
+      flatbuffers::FlatCOption{ "", "kotlin-kmp", "",
+                                "Generate Kotlin multiplatform classes for tables/structs" },
+      flatbuffers::NewKotlinKMPCodeGenerator());
 
   flatc.RegisterCodeGenerator(
       flatbuffers::FlatCOption{ "", "lobster", "",

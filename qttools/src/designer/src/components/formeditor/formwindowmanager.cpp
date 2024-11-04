@@ -342,7 +342,8 @@ QWidget *FormWindowManager::findManagedWidget(FormWindow *fw, QWidget *w)
 void FormWindowManager::setupActions()
 {
 #if QT_CONFIG(clipboard)
-    const QIcon cutIcon = QIcon::fromTheme(u"edit-cut"_s, createIconSet(u"editcut.png"_s));
+    const QIcon cutIcon = createIconSet(QIcon::ThemeIcon::EditCut,
+                                        "editcut.png"_L1);
     m_actionCut = new QAction(cutIcon, tr("Cu&t"), this);
     m_actionCut->setObjectName(u"__qt_cut_action"_s);
     m_actionCut->setShortcut(QKeySequence::Cut);
@@ -351,8 +352,7 @@ void FormWindowManager::setupActions()
     connect(m_actionCut, &QAction::triggered, this, &FormWindowManager::slotActionCutActivated);
     m_actionCut->setEnabled(false);
 
-    const QIcon copyIcon = QIcon::fromTheme(u"edit-copy"_s,
-                                            createIconSet(u"editcopy.png"_s));
+    const QIcon copyIcon = createIconSet(QIcon::ThemeIcon::EditCopy, "editcopy.png"_L1);
     m_actionCopy = new QAction(copyIcon, tr("&Copy"), this);
     m_actionCopy->setObjectName(u"__qt_copy_action"_s);
     m_actionCopy->setShortcut(QKeySequence::Copy);
@@ -361,8 +361,7 @@ void FormWindowManager::setupActions()
     connect(m_actionCopy, &QAction::triggered, this, &FormWindowManager::slotActionCopyActivated);
     m_actionCopy->setEnabled(false);
 
-    const QIcon pasteIcon = QIcon::fromTheme(u"edit-paste"_s,
-                                             createIconSet(u"editpaste.png"_s));
+    const QIcon pasteIcon = createIconSet(QIcon::ThemeIcon::EditPaste, "editpaste.png"_L1);
     m_actionPaste = new QAction(pasteIcon, tr("&Paste"), this);
     m_actionPaste->setObjectName(u"__qt_paste_action"_s);
     m_actionPaste->setShortcut(QKeySequence::Paste);
@@ -372,7 +371,7 @@ void FormWindowManager::setupActions()
     m_actionPaste->setEnabled(false);
 #endif
 
-    m_actionDelete = new QAction(QIcon::fromTheme(u"edit-delete"_s),
+    m_actionDelete = new QAction(QIcon::fromTheme(QIcon::ThemeIcon::EditDelete),
                                  tr("&Delete"), this);
     m_actionDelete->setObjectName(u"__qt_delete_action"_s);
     m_actionDelete->setStatusTip(tr("Deletes the selected widgets"));
@@ -388,7 +387,7 @@ void FormWindowManager::setupActions()
     connect(m_actionSelectAll, &QAction::triggered, this, &FormWindowManager::slotActionSelectAllActivated);
     m_actionSelectAll->setEnabled(false);
 
-    m_actionRaise = new QAction(createIconSet(u"editraise.png"_s),
+    m_actionRaise = new QAction(createIconSet("editraise.png"_L1),
                                 tr("Bring to &Front"), this);
     m_actionRaise->setObjectName(u"__qt_raise_action"_s);
     m_actionRaise->setShortcut(Qt::CTRL | Qt::Key_L);
@@ -397,7 +396,7 @@ void FormWindowManager::setupActions()
     connect(m_actionRaise, &QAction::triggered, this, &FormWindowManager::slotActionRaiseActivated);
     m_actionRaise->setEnabled(false);
 
-    m_actionLower = new QAction(createIconSet(u"editlower.png"_s),
+    m_actionLower = new QAction(createIconSet("editlower.png"_L1),
                                 tr("Send to &Back"), this);
     m_actionLower->setObjectName(u"__qt_lower_action"_s);
     m_actionLower->setShortcut(Qt::CTRL | Qt::Key_K);
@@ -406,7 +405,7 @@ void FormWindowManager::setupActions()
     connect(m_actionLower, &QAction::triggered, this, &FormWindowManager::slotActionLowerActivated);
     m_actionLower->setEnabled(false);
 
-    m_actionAdjustSize = new QAction(createIconSet(u"adjustsize.png"_s),
+    m_actionAdjustSize = new QAction(createIconSet("adjustsize.png"_L1),
                                      tr("Adjust &Size"), this);
     m_actionAdjustSize->setObjectName(u"__qt_adjust_size_action"_s);
     m_actionAdjustSize->setShortcut(Qt::CTRL | Qt::Key_J);
@@ -416,7 +415,7 @@ void FormWindowManager::setupActions()
     m_actionAdjustSize->setEnabled(false);
 
 
-    m_actionHorizontalLayout = new QAction(createIconSet(u"edithlayout.png"_s),
+    m_actionHorizontalLayout = new QAction(createIconSet("edithlayout.png"_L1),
                                            tr("Lay Out &Horizontally"), this);
     m_actionHorizontalLayout->setObjectName(u"__qt_horizontal_layout_action"_s);
     m_actionHorizontalLayout->setShortcut(Qt::CTRL | Qt::Key_1);
@@ -426,7 +425,7 @@ void FormWindowManager::setupActions()
     m_actionHorizontalLayout->setEnabled(false);
     connect(m_actionHorizontalLayout, &QAction::triggered, this, &FormWindowManager::createLayout);
 
-    m_actionVerticalLayout = new QAction(createIconSet(u"editvlayout.png"_s),
+    m_actionVerticalLayout = new QAction(createIconSet("editvlayout.png"_L1),
                                          tr("Lay Out &Vertically"), this);
     m_actionVerticalLayout->setObjectName(u"__qt_vertical_layout_action"_s);
     m_actionVerticalLayout->setShortcut(Qt::CTRL | Qt::Key_2);
@@ -437,7 +436,7 @@ void FormWindowManager::setupActions()
     connect(m_actionVerticalLayout, &QAction::triggered, this, &FormWindowManager::createLayout);
 
     QIcon formIcon = QIcon::fromTheme(u"designer-form-layout"_s,
-                                      createIconSet(u"editform.png"_s));
+                                      createIconSet("editform.png"_L1));
     m_actionFormLayout = new QAction(formIcon, tr("Lay Out in a &Form Layout"), this);
     m_actionFormLayout->setObjectName(u"__qt_form_layout_action"_s);
     m_actionFormLayout->setShortcut(Qt::CTRL | Qt::Key_6);
@@ -447,7 +446,7 @@ void FormWindowManager::setupActions()
     m_actionFormLayout->setEnabled(false);
     connect(m_actionFormLayout, &QAction::triggered, this, &FormWindowManager::createLayout);
 
-    m_actionGridLayout = new QAction(createIconSet(u"editgrid.png"_s),
+    m_actionGridLayout = new QAction(createIconSet("editgrid.png"_L1),
                                      tr("Lay Out in a &Grid"), this);
     m_actionGridLayout->setObjectName(u"__qt_grid_layout_action"_s);
     m_actionGridLayout->setShortcut(Qt::CTRL | Qt::Key_5);
@@ -457,7 +456,7 @@ void FormWindowManager::setupActions()
     m_actionGridLayout->setEnabled(false);
     connect(m_actionGridLayout, &QAction::triggered, this, &FormWindowManager::createLayout);
 
-    m_actionSplitHorizontal = new QAction(createIconSet(u"edithlayoutsplit.png"_s),
+    m_actionSplitHorizontal = new QAction(createIconSet("edithlayoutsplit.png"_L1),
                                           tr("Lay Out Horizontally in S&plitter"), this);
     m_actionSplitHorizontal->setObjectName(u"__qt_split_horizontal_action"_s);
     m_actionSplitHorizontal->setShortcut(Qt::CTRL | Qt::Key_3);
@@ -467,7 +466,7 @@ void FormWindowManager::setupActions()
     m_actionSplitHorizontal->setEnabled(false);
     connect(m_actionSplitHorizontal, &QAction::triggered, this, &FormWindowManager::createLayout);
 
-    m_actionSplitVertical = new QAction(createIconSet(u"editvlayoutsplit.png"_s),
+    m_actionSplitVertical = new QAction(createIconSet("editvlayoutsplit.png"_L1),
                                         tr("Lay Out Vertically in Sp&litter"), this);
     m_actionSplitVertical->setObjectName(u"__qt_split_vertical_action"_s);
     m_actionSplitVertical->setShortcut(Qt::CTRL | Qt::Key_4);
@@ -478,7 +477,7 @@ void FormWindowManager::setupActions()
 
     m_actionSplitVertical->setEnabled(false);
 
-    m_actionBreakLayout = new QAction(createIconSet(u"editbreaklayout.png"_s),
+    m_actionBreakLayout = new QAction(createIconSet("editbreaklayout.png"_L1),
                                       tr("&Break Layout"), this);
     m_actionBreakLayout->setObjectName(u"__qt_break_layout_action"_s);
     m_actionBreakLayout->setShortcut(Qt::CTRL | Qt::Key_0);
@@ -506,10 +505,10 @@ void FormWindowManager::setupActions()
     m_actionUndo = m_undoGroup->createUndoAction(this);
     m_actionUndo->setEnabled(false);
 
-    m_actionUndo->setIcon(QIcon::fromTheme(u"edit-undo"_s, createIconSet(u"undo.png"_s)));
+    m_actionUndo->setIcon(createIconSet(QIcon::ThemeIcon::EditUndo, "undo.png"_L1));
     m_actionRedo = m_undoGroup->createRedoAction(this);
     m_actionRedo->setEnabled(false);
-    m_actionRedo->setIcon(QIcon::fromTheme(u"edit-redo"_s, createIconSet(u"redo.png"_s)));
+    m_actionRedo->setIcon(createIconSet(QIcon::ThemeIcon::EditRedo, "redo.png"_L1));
 
     m_actionShowFormWindowSettingsDialog = new QAction(tr("Form &Settings..."), this);
     m_actionShowFormWindowSettingsDialog->setObjectName(u"__qt_form_settings_action"_s);

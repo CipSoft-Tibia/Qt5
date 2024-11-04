@@ -19,9 +19,7 @@ const char kClosedTabWithEightOrMore[] = "closed_tab_with_eight_or_more";
 const char kReadingListItemAdded[] = "reading_list_item_added";
 const char kReadingListMenuOpened[] = "reading_list_menu_opened";
 const char kBookmarkStarMenuOpened[] = "bookmark_star_menu_opened";
-
-const char kReopenTabConditionsMet[] = "reopen_tab_conditions_met";
-const char kTabReopened[] = "tab_reopened";
+const char kCustomizeChromeOpened[] = "customize_chrome_opened";
 
 const char kMediaBackgrounded[] = "media_backgrounded";
 const char kGlobalMediaControlsOpened[] = "global_media_controls_opened";
@@ -53,6 +51,14 @@ const char kHighEfficiencyDialogShown[] = "high_efficiency_info_shown";
 
 const char kPerformanceMenuItemActivated[] = "performance_activated";
 
+const char kExtensionsMenuOpenedWhileExtensionHasAccess[] =
+    "extensions_menu_opened_while_extension_has_access";
+
+const char kExtensionsRequestAccessButtonClicked[] =
+    "extensions_request_access_button_clicked";
+
+const char kCookieControlsBubbleShown[] = "cookie_controls_bubble_shown";
+
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
 
@@ -71,6 +77,12 @@ const char kOverflowMenuNoHorizontalScrollOrAction[] =
     "overflow_menu_no_horizontal_scroll_or_action";
 const char kPriceNotificationsUsed[] = "price_notifications_used";
 const char kDefaultBrowserPromoShown[] = "default_browser_promo_shown";
+const char kPasswordManagerWidgetPromoTriggered[] =
+    "password_manager_widget_promo_trigger";
+const char kPasswordManagerWidgetPromoUsed[] =
+    "password_manager_widget_promo_used";
+const char kPasswordManagerWidgetPromoClosed[] =
+    "password_manager_widget_promo_closed";
 
 // Default browser blue dot promo.
 const char kBlueDotPromoCriterionMet[] = "blue_dot_promo_criterion_met";
@@ -86,6 +98,15 @@ const char kBlueDotPromoOverflowMenuDismissed[] =
     "blue_dot_promo_overflow_menu_dismissed";
 const char kBlueDotPromoSettingsDismissed[] =
     "blue_dot_promo_settings_dismissed";
+const char kCredentialProviderExtensionPromoSnoozed[] =
+    "credential_provider_extension_promo_snoozed";
+const char kOpenUrlFromOmnibox[] = "open_url_from_omnibox";
+const char kNewTabToolbarItemUsed[] = "new_tab_toolbar_item_used";
+const char kTabGridToolbarItemUsed[] = "tab_grid_toolbar_item_used";
+const char kHistoryOnOverflowMenuUsed[] = "history_on_overflow_menu_used";
+const char kShareToolbarItemUsed[] = "share_toolbar_item_used";
+const char kDefaultBrowserVideoPromoConditionsMet[] =
+    "default_browser_video_promo_conditions_met";
 #endif  // BUILDFLAG(IS_IOS)
 
 #if BUILDFLAG(IS_ANDROID)

@@ -1,6 +1,6 @@
 // Copyright (C) 2017 Ford Motor Company
 // Copyright (C) 2017 The Qt Company
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtTest
 import QtQml.StateMachine

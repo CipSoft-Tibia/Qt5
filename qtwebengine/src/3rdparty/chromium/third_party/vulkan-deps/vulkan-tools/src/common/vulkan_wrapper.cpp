@@ -464,6 +464,8 @@ int InitVulkan(void) {
         reinterpret_cast<PFN_vkGetPipelineExecutableStatisticsKHR>(dlsym(libvulkan, "vkGetPipelineExecutableStatisticsKHR"));
     vkGetPipelineExecutableInternalRepresentationsKHR = reinterpret_cast<PFN_vkGetPipelineExecutableInternalRepresentationsKHR>(
         dlsym(libvulkan, "vkGetPipelineExecutableInternalRepresentationsKHR"));
+    vkMapMemory2KHR = reinterpret_cast<PFN_vkMapMemory2KHR>(dlsym(libvulkan, "vkMapMemory2KHR"));
+    vkUnmapMemory2KHR = reinterpret_cast<PFN_vkUnmapMemory2KHR>(dlsym(libvulkan, "vkUnmapMemory2KHR"));
     vkCmdSetEvent2KHR = reinterpret_cast<PFN_vkCmdSetEvent2KHR>(dlsym(libvulkan, "vkCmdSetEvent2KHR"));
     vkCmdResetEvent2KHR = reinterpret_cast<PFN_vkCmdResetEvent2KHR>(dlsym(libvulkan, "vkCmdResetEvent2KHR"));
     vkCmdWaitEvents2KHR = reinterpret_cast<PFN_vkCmdWaitEvents2KHR>(dlsym(libvulkan, "vkCmdWaitEvents2KHR"));
@@ -486,6 +488,15 @@ int InitVulkan(void) {
         reinterpret_cast<PFN_vkGetDeviceImageMemoryRequirementsKHR>(dlsym(libvulkan, "vkGetDeviceImageMemoryRequirementsKHR"));
     vkGetDeviceImageSparseMemoryRequirementsKHR = reinterpret_cast<PFN_vkGetDeviceImageSparseMemoryRequirementsKHR>(
         dlsym(libvulkan, "vkGetDeviceImageSparseMemoryRequirementsKHR"));
+    vkCmdBindIndexBuffer2KHR = reinterpret_cast<PFN_vkCmdBindIndexBuffer2KHR>(dlsym(libvulkan, "vkCmdBindIndexBuffer2KHR"));
+    vkGetRenderingAreaGranularityKHR =
+        reinterpret_cast<PFN_vkGetRenderingAreaGranularityKHR>(dlsym(libvulkan, "vkGetRenderingAreaGranularityKHR"));
+    vkGetDeviceImageSubresourceLayoutKHR =
+        reinterpret_cast<PFN_vkGetDeviceImageSubresourceLayoutKHR>(dlsym(libvulkan, "vkGetDeviceImageSubresourceLayoutKHR"));
+    vkGetImageSubresourceLayout2KHR =
+        reinterpret_cast<PFN_vkGetImageSubresourceLayout2KHR>(dlsym(libvulkan, "vkGetImageSubresourceLayout2KHR"));
+    vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR>(
+        dlsym(libvulkan, "vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR"));
     vkCreateAccelerationStructureKHR =
         reinterpret_cast<PFN_vkCreateAccelerationStructureKHR>(dlsym(libvulkan, "vkCreateAccelerationStructureKHR"));
     vkDestroyAccelerationStructureKHR =
@@ -577,6 +588,11 @@ int InitVulkan(void) {
 #endif
 
 #ifdef VK_ENABLE_BETA_EXTENSIONS
+    vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR =
+        reinterpret_cast<PFN_vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR>(
+            dlsym(libvulkan, "vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR"));
+    vkGetEncodedVideoSessionParametersKHR =
+        reinterpret_cast<PFN_vkGetEncodedVideoSessionParametersKHR>(dlsym(libvulkan, "vkGetEncodedVideoSessionParametersKHR"));
     vkCmdEncodeVideoKHR = reinterpret_cast<PFN_vkCmdEncodeVideoKHR>(dlsym(libvulkan, "vkCmdEncodeVideoKHR"));
 #endif
     return 1;
@@ -903,6 +919,8 @@ PFN_vkDeferredOperationJoinKHR vkDeferredOperationJoinKHR;
 PFN_vkGetPipelineExecutablePropertiesKHR vkGetPipelineExecutablePropertiesKHR;
 PFN_vkGetPipelineExecutableStatisticsKHR vkGetPipelineExecutableStatisticsKHR;
 PFN_vkGetPipelineExecutableInternalRepresentationsKHR vkGetPipelineExecutableInternalRepresentationsKHR;
+PFN_vkMapMemory2KHR vkMapMemory2KHR;
+PFN_vkUnmapMemory2KHR vkUnmapMemory2KHR;
 PFN_vkCmdSetEvent2KHR vkCmdSetEvent2KHR;
 PFN_vkCmdResetEvent2KHR vkCmdResetEvent2KHR;
 PFN_vkCmdWaitEvents2KHR vkCmdWaitEvents2KHR;
@@ -921,6 +939,11 @@ PFN_vkCmdTraceRaysIndirect2KHR vkCmdTraceRaysIndirect2KHR;
 PFN_vkGetDeviceBufferMemoryRequirementsKHR vkGetDeviceBufferMemoryRequirementsKHR;
 PFN_vkGetDeviceImageMemoryRequirementsKHR vkGetDeviceImageMemoryRequirementsKHR;
 PFN_vkGetDeviceImageSparseMemoryRequirementsKHR vkGetDeviceImageSparseMemoryRequirementsKHR;
+PFN_vkCmdBindIndexBuffer2KHR vkCmdBindIndexBuffer2KHR;
+PFN_vkGetRenderingAreaGranularityKHR vkGetRenderingAreaGranularityKHR;
+PFN_vkGetDeviceImageSubresourceLayoutKHR vkGetDeviceImageSubresourceLayoutKHR;
+PFN_vkGetImageSubresourceLayout2KHR vkGetImageSubresourceLayout2KHR;
+PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR;
 PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT;
 PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT;
 PFN_vkDebugReportMessageEXT vkDebugReportMessageEXT;
@@ -958,6 +981,8 @@ PFN_vkGetSwapchainCounterEXT vkGetSwapchainCounterEXT;
 PFN_vkGetRefreshCycleDurationGOOGLE vkGetRefreshCycleDurationGOOGLE;
 PFN_vkGetPastPresentationTimingGOOGLE vkGetPastPresentationTimingGOOGLE;
 PFN_vkCmdSetDiscardRectangleEXT vkCmdSetDiscardRectangleEXT;
+PFN_vkCmdSetDiscardRectangleEnableEXT vkCmdSetDiscardRectangleEnableEXT;
+PFN_vkCmdSetDiscardRectangleModeEXT vkCmdSetDiscardRectangleModeEXT;
 PFN_vkSetHdrMetadataEXT vkSetHdrMetadataEXT;
 PFN_vkSetDebugUtilsObjectNameEXT vkSetDebugUtilsObjectNameEXT;
 PFN_vkSetDebugUtilsObjectTagEXT vkSetDebugUtilsObjectTagEXT;
@@ -1000,6 +1025,7 @@ PFN_vkGetCalibratedTimestampsEXT vkGetCalibratedTimestampsEXT;
 PFN_vkCmdDrawMeshTasksNV vkCmdDrawMeshTasksNV;
 PFN_vkCmdDrawMeshTasksIndirectNV vkCmdDrawMeshTasksIndirectNV;
 PFN_vkCmdDrawMeshTasksIndirectCountNV vkCmdDrawMeshTasksIndirectCountNV;
+PFN_vkCmdSetExclusiveScissorEnableNV vkCmdSetExclusiveScissorEnableNV;
 PFN_vkCmdSetExclusiveScissorNV vkCmdSetExclusiveScissorNV;
 PFN_vkCmdSetCheckpointNV vkCmdSetCheckpointNV;
 PFN_vkGetQueueCheckpointDataNV vkGetQueueCheckpointDataNV;
@@ -1033,6 +1059,11 @@ PFN_vkCmdSetDepthCompareOpEXT vkCmdSetDepthCompareOpEXT;
 PFN_vkCmdSetDepthBoundsTestEnableEXT vkCmdSetDepthBoundsTestEnableEXT;
 PFN_vkCmdSetStencilTestEnableEXT vkCmdSetStencilTestEnableEXT;
 PFN_vkCmdSetStencilOpEXT vkCmdSetStencilOpEXT;
+PFN_vkCopyMemoryToImageEXT vkCopyMemoryToImageEXT;
+PFN_vkCopyImageToMemoryEXT vkCopyImageToMemoryEXT;
+PFN_vkCopyImageToImageEXT vkCopyImageToImageEXT;
+PFN_vkTransitionImageLayoutEXT vkTransitionImageLayoutEXT;
+PFN_vkGetImageSubresourceLayout2EXT vkGetImageSubresourceLayout2EXT;
 PFN_vkReleaseSwapchainImagesEXT vkReleaseSwapchainImagesEXT;
 PFN_vkGetGeneratedCommandsMemoryRequirementsNV vkGetGeneratedCommandsMemoryRequirementsNV;
 PFN_vkCmdPreprocessGeneratedCommandsNV vkCmdPreprocessGeneratedCommandsNV;
@@ -1040,6 +1071,7 @@ PFN_vkCmdExecuteGeneratedCommandsNV vkCmdExecuteGeneratedCommandsNV;
 PFN_vkCmdBindPipelineShaderGroupNV vkCmdBindPipelineShaderGroupNV;
 PFN_vkCreateIndirectCommandsLayoutNV vkCreateIndirectCommandsLayoutNV;
 PFN_vkDestroyIndirectCommandsLayoutNV vkDestroyIndirectCommandsLayoutNV;
+PFN_vkCmdSetDepthBias2EXT vkCmdSetDepthBias2EXT;
 PFN_vkAcquireDrmDisplayEXT vkAcquireDrmDisplayEXT;
 PFN_vkGetDrmDisplayEXT vkGetDrmDisplayEXT;
 PFN_vkCreatePrivateDataSlotEXT vkCreatePrivateDataSlotEXT;
@@ -1058,7 +1090,6 @@ PFN_vkGetImageViewOpaqueCaptureDescriptorDataEXT vkGetImageViewOpaqueCaptureDesc
 PFN_vkGetSamplerOpaqueCaptureDescriptorDataEXT vkGetSamplerOpaqueCaptureDescriptorDataEXT;
 PFN_vkGetAccelerationStructureOpaqueCaptureDescriptorDataEXT vkGetAccelerationStructureOpaqueCaptureDescriptorDataEXT;
 PFN_vkCmdSetFragmentShadingRateEnumNV vkCmdSetFragmentShadingRateEnumNV;
-PFN_vkGetImageSubresourceLayout2EXT vkGetImageSubresourceLayout2EXT;
 PFN_vkGetDeviceFaultInfoEXT vkGetDeviceFaultInfoEXT;
 PFN_vkCmdSetVertexInputEXT vkCmdSetVertexInputEXT;
 PFN_vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI;
@@ -1097,6 +1128,9 @@ PFN_vkCmdCopyMemoryIndirectNV vkCmdCopyMemoryIndirectNV;
 PFN_vkCmdCopyMemoryToImageIndirectNV vkCmdCopyMemoryToImageIndirectNV;
 PFN_vkCmdDecompressMemoryNV vkCmdDecompressMemoryNV;
 PFN_vkCmdDecompressMemoryIndirectCountNV vkCmdDecompressMemoryIndirectCountNV;
+PFN_vkGetPipelineIndirectMemoryRequirementsNV vkGetPipelineIndirectMemoryRequirementsNV;
+PFN_vkCmdUpdatePipelineIndirectBufferNV vkCmdUpdatePipelineIndirectBufferNV;
+PFN_vkGetPipelineIndirectDeviceAddressNV vkGetPipelineIndirectDeviceAddressNV;
 PFN_vkCmdSetTessellationDomainOriginEXT vkCmdSetTessellationDomainOriginEXT;
 PFN_vkCmdSetDepthClampEnableEXT vkCmdSetDepthClampEnableEXT;
 PFN_vkCmdSetPolygonModeEXT vkCmdSetPolygonModeEXT;
@@ -1135,8 +1169,13 @@ PFN_vkCreateOpticalFlowSessionNV vkCreateOpticalFlowSessionNV;
 PFN_vkDestroyOpticalFlowSessionNV vkDestroyOpticalFlowSessionNV;
 PFN_vkBindOpticalFlowSessionImageNV vkBindOpticalFlowSessionImageNV;
 PFN_vkCmdOpticalFlowExecuteNV vkCmdOpticalFlowExecuteNV;
+PFN_vkCreateShadersEXT vkCreateShadersEXT;
+PFN_vkDestroyShaderEXT vkDestroyShaderEXT;
+PFN_vkGetShaderBinaryDataEXT vkGetShaderBinaryDataEXT;
+PFN_vkCmdBindShadersEXT vkCmdBindShadersEXT;
 PFN_vkGetFramebufferTilePropertiesQCOM vkGetFramebufferTilePropertiesQCOM;
 PFN_vkGetDynamicRenderingTilePropertiesQCOM vkGetDynamicRenderingTilePropertiesQCOM;
+PFN_vkCmdSetAttachmentFeedbackLoopEnableEXT vkCmdSetAttachmentFeedbackLoopEnableEXT;
 PFN_vkCreateAccelerationStructureKHR vkCreateAccelerationStructureKHR;
 PFN_vkDestroyAccelerationStructureKHR vkDestroyAccelerationStructureKHR;
 PFN_vkCmdBuildAccelerationStructuresKHR vkCmdBuildAccelerationStructuresKHR;
@@ -1284,8 +1323,24 @@ PFN_vkCreateScreenSurfaceQNX vkCreateScreenSurfaceQNX;
 PFN_vkGetPhysicalDeviceScreenPresentationSupportQNX vkGetPhysicalDeviceScreenPresentationSupportQNX;
 #endif
 
+#ifdef VK_USE_PLATFORM_SCREEN_QNX
+PFN_vkGetScreenBufferPropertiesQNX vkGetScreenBufferPropertiesQNX;
+#endif
+
 #ifdef VK_ENABLE_BETA_EXTENSIONS
+PFN_vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR;
+PFN_vkGetEncodedVideoSessionParametersKHR vkGetEncodedVideoSessionParametersKHR;
 PFN_vkCmdEncodeVideoKHR vkCmdEncodeVideoKHR;
+#endif
+
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+PFN_vkCreateExecutionGraphPipelinesAMDX vkCreateExecutionGraphPipelinesAMDX;
+PFN_vkGetExecutionGraphPipelineScratchSizeAMDX vkGetExecutionGraphPipelineScratchSizeAMDX;
+PFN_vkGetExecutionGraphPipelineNodeIndexAMDX vkGetExecutionGraphPipelineNodeIndexAMDX;
+PFN_vkCmdInitializeGraphScratchMemoryAMDX vkCmdInitializeGraphScratchMemoryAMDX;
+PFN_vkCmdDispatchGraphAMDX vkCmdDispatchGraphAMDX;
+PFN_vkCmdDispatchGraphIndirectAMDX vkCmdDispatchGraphIndirectAMDX;
+PFN_vkCmdDispatchGraphIndirectCountAMDX vkCmdDispatchGraphIndirectCountAMDX;
 #endif
 
 #ifdef __cplusplus

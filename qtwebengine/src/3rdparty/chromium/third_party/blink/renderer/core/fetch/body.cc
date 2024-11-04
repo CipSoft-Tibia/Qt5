@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "base/memory/scoped_refptr.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
@@ -33,13 +34,27 @@ namespace blink {
 
 namespace {
 
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class BodyConsumerBaseFetchCheckPoint {
+  kConstructor = 0,
+  kDidFetchDataLoadFailed = 1,
+  kMaxValue = kDidFetchDataLoadFailed,
+};
+
+void SendHistogram(BodyConsumerBaseFetchCheckPoint cp) {
+  base::UmaHistogramEnumeration("Net.Fetch.CheckPoint.BodyConsumerBase", cp);
+}
+
 class BodyConsumerBase : public GarbageCollected<BodyConsumerBase>,
                          public FetchDataLoader::Client {
  public:
   explicit BodyConsumerBase(ScriptPromiseResolver* resolver)
       : resolver_(resolver),
         task_runner_(ExecutionContext::From(resolver_->GetScriptState())
-                         ->GetTaskRunner(TaskType::kNetworking)) {}
+                         ->GetTaskRunner(TaskType::kNetworking)) {
+    SendHistogram(BodyConsumerBaseFetchCheckPoint::kConstructor);
+  }
   BodyConsumerBase(const BodyConsumerBase&) = delete;
   BodyConsumerBase& operator=(const BodyConsumerBase&) = delete;
 
@@ -48,6 +63,7 @@ class BodyConsumerBase : public GarbageCollected<BodyConsumerBase>,
     ScriptState::Scope scope(Resolver()->GetScriptState());
     resolver_->Reject(V8ThrowException::CreateTypeError(
         Resolver()->GetScriptState()->GetIsolate(), "Failed to fetch"));
+    SendHistogram(BodyConsumerBaseFetchCheckPoint::kDidFetchDataLoadFailed);
   }
 
   void Abort() override {
@@ -185,7 +201,8 @@ ScriptPromise Body::arrayBuffer(ScriptState* script_state,
   if (!ExecutionContext::From(script_state))
     return ScriptPromise();
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
   if (BodyBuffer()) {
     BodyBuffer()->StartLoading(
@@ -213,7 +230,8 @@ ScriptPromise Body::blob(ScriptState* script_state,
   if (!ExecutionContext::From(script_state))
     return ScriptPromise();
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
   if (BodyBuffer()) {
     ExecutionContext* context = ExecutionContext::From(script_state);
@@ -245,7 +263,8 @@ ScriptPromise Body::formData(ScriptState* script_state,
   if (!ExecutionContext::From(script_state))
     return ScriptPromise();
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   const ParsedContentType parsedTypeWithParameters(ContentType());
   const String parsedType = parsedTypeWithParameters.MimeType().LowerASCII();
   ScriptPromise promise = resolver->Promise();
@@ -315,7 +334,8 @@ ScriptPromise Body::json(ScriptState* script_state,
   if (!ExecutionContext::From(script_state))
     return ScriptPromise();
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
   if (BodyBuffer()) {
     BodyBuffer()->StartLoading(
@@ -344,7 +364,8 @@ ScriptPromise Body::text(ScriptState* script_state,
   if (!ExecutionContext::From(script_state))
     return ScriptPromise();
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
   if (BodyBuffer()) {
     BodyBuffer()->StartLoading(
@@ -385,15 +406,6 @@ bool Body::IsBodyUsed() const {
 bool Body::IsBodyLocked() const {
   auto* body_buffer = BodyBuffer();
   return body_buffer && body_buffer->IsStreamLocked();
-}
-
-bool Body::HasPendingActivity() const {
-  if (!GetExecutionContext() || GetExecutionContext()->IsContextDestroyed())
-    return false;
-  auto* body_buffer = BodyBuffer();
-  if (!body_buffer)
-    return false;
-  return body_buffer->HasPendingActivity();
 }
 
 Body::Body(ExecutionContext* context) : ExecutionContextClient(context) {}

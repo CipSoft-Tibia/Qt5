@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 #define CAST_COMMON_CHANNEL_MESSAGE_UTIL_H_
 
 #include <string>
+#include <string_view>
 
-#include "absl/strings/string_view.h"
 #include "cast/common/channel/proto/cast_channel.pb.h"
 #include "util/enum_name_table.h"
 
@@ -15,8 +15,7 @@ namespace Json {
 class Value;
 }
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Reserved message namespaces for internal messages.
 static constexpr char kCastInternalNamespacePrefix[] =
@@ -195,7 +194,7 @@ inline bool IsAuthMessage(const ::cast::channel::CastMessage& message) {
   return message.namespace_() == kAuthNamespace;
 }
 
-inline bool IsTransportNamespace(absl::string_view namespace_) {
+inline bool IsTransportNamespace(std::string_view namespace_) {
   return (namespace_.size() > (sizeof(kTransportNamespacePrefix) - 1)) &&
          (namespace_.find_first_of(kTransportNamespacePrefix) == 0);
 }
@@ -218,7 +217,13 @@ std::string MakeUniqueSessionId(const char* prefix);
 
 // Returns true if the type field in |object| is set to the given |type|.
 bool HasType(const Json::Value& object, CastMessageType type);
-}  // namespace cast
-}  // namespace openscreen
+
+// Serializes a given cast message to a string.
+std::string ToString(const ::cast::channel::CastMessage& message);
+
+// Helper to get the actual message payload out of a cast message.
+const std::string& GetPayload(const ::cast::channel::CastMessage& message);
+
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_CHANNEL_MESSAGE_UTIL_H_

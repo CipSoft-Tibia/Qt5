@@ -36,7 +36,7 @@ namespace dawn::native::utils {
 
 ResultOrError<Ref<ShaderModuleBase>> CreateShaderModule(DeviceBase* device, const char* source) {
     ShaderModuleWGSLDescriptor wgslDesc;
-    wgslDesc.source = source;
+    wgslDesc.code = source;
     ShaderModuleDescriptor descriptor;
     descriptor.nextInChain = &wgslDesc;
     return device->CreateShaderModule(&descriptor);
@@ -53,7 +53,7 @@ ResultOrError<Ref<BufferBase>> CreateBufferFromData(DeviceBase* device,
     Ref<BufferBase> buffer;
     DAWN_TRY_ASSIGN(buffer, device->CreateBuffer(&descriptor));
     memcpy(buffer->GetMappedRange(0, size), data, size);
-    buffer->Unmap();
+    DAWN_TRY(buffer->Unmap());
     return buffer;
 }
 
@@ -77,7 +77,7 @@ ResultOrError<Ref<BindGroupLayoutBase>> MakeBindGroupLayout(
     }
 
     BindGroupLayoutDescriptor descriptor;
-    descriptor.entryCount = static_cast<uint32_t>(entries.size());
+    descriptor.entryCount = entries.size();
     descriptor.entries = entries.data();
     return device->CreateBindGroupLayout(&descriptor, allowInternalBinding);
 }

@@ -23,19 +23,15 @@
 -- @task_name: a task name following chrome_tasks.sql naming convention to
 -- find stack samples on.
 
+INCLUDE PERFETTO MODULE chrome.tasks;
 
-SELECT RUN_METRIC('chrome/chrome_tasks.sql');
-
-
-SELECT CREATE_FUNCTION(
-  'DescribeSymbol(symbol STRING, frame_name STRING)',
-  'STRING',
-  'SELECT COALESCE($symbol,
-   CASE WHEN demangle($frame_name) IS NULL
-    THEN $frame_name
-    ELSE demangle($frame_name)
-   END)'
-);
+CREATE PERFETTO FUNCTION describe_symbol(symbol STRING, frame_name STRING)
+RETURNS STRING AS
+SELECT COALESCE($symbol,
+  CASE WHEN demangle($frame_name) IS NULL
+  THEN $frame_name
+  ELSE demangle($frame_name)
+  END);
 
 -- Get all Chrome tasks that match a specific name on a specific thread.
 -- The timestamps for those tasks are going to be used later on to gather
@@ -90,7 +86,7 @@ JOIN process USING(upid);
 DROP VIEW IF EXISTS chrome_thread_symbolized_child_frames;
 CREATE VIEW chrome_thread_symbolized_child_frames AS
 SELECT
-  DescribeSymbol(symbol.name, frame_name) AS description,
+  describe_symbol(symbol.name, frame_name) AS description,
   depth,
   ts,
   callsite_id,
@@ -121,7 +117,7 @@ JOIN chrome_non_symbolized_frames
 DROP VIEW IF EXISTS chrome_frames_timed_and_symbolized;
 CREATE VIEW chrome_frames_timed_and_symbolized AS
 SELECT
-  DescribeSymbol(symbol.name, frame_name) AS description,
+  describe_symbol(symbol.name, frame_name) AS description,
   ts,
   depth,
   callsite_id,

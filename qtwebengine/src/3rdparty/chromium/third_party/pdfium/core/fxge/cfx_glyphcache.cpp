@@ -27,7 +27,7 @@
 #include "core/fxge/scoped_font_transform.h"
 #include "third_party/base/numerics/safe_math.h"
 
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
 #include "third_party/skia/include/core/SkStream.h"  // nogncheck
 #include "third_party/skia/include/core/SkTypeface.h"  // nogncheck
 
@@ -76,6 +76,7 @@ void GenKey(UniqueKeyGen* pKeyGen,
   int nMatrixC = static_cast<int>(matrix.c * 10000);
   int nMatrixD = static_cast<int>(matrix.d * 10000);
 
+#if BUILDFLAG(IS_APPLE)
   if (bNative) {
     if (pFont->GetSubstFont()) {
       pKeyGen->Generate(10, nMatrixA, nMatrixB, nMatrixC, nMatrixD, dest_width,
@@ -86,22 +87,27 @@ void GenKey(UniqueKeyGen* pKeyGen,
       pKeyGen->Generate(7, nMatrixA, nMatrixB, nMatrixC, nMatrixD, dest_width,
                         anti_alias, 3);
     }
+    return;
+  }
+#else
+  CHECK(!bNative);
+#endif
+
+  if (pFont->GetSubstFont()) {
+    pKeyGen->Generate(9, nMatrixA, nMatrixB, nMatrixC, nMatrixD, dest_width,
+                      anti_alias, pFont->GetSubstFont()->m_Weight,
+                      pFont->GetSubstFont()->m_ItalicAngle,
+                      pFont->IsVertical());
   } else {
-    if (pFont->GetSubstFont()) {
-      pKeyGen->Generate(9, nMatrixA, nMatrixB, nMatrixC, nMatrixD, dest_width,
-                        anti_alias, pFont->GetSubstFont()->m_Weight,
-                        pFont->GetSubstFont()->m_ItalicAngle,
-                        pFont->IsVertical());
-    } else {
-      pKeyGen->Generate(6, nMatrixA, nMatrixB, nMatrixC, nMatrixD, dest_width,
-                        anti_alias);
-    }
+    pKeyGen->Generate(6, nMatrixA, nMatrixB, nMatrixC, nMatrixD, dest_width,
+                      anti_alias);
   }
 }
 
 }  // namespace
 
-CFX_GlyphCache::CFX_GlyphCache(RetainPtr<CFX_Face> face) : m_Face(face) {}
+CFX_GlyphCache::CFX_GlyphCache(RetainPtr<CFX_Face> face)
+    : m_Face(std::move(face)) {}
 
 CFX_GlyphCache::~CFX_GlyphCache() = default;
 
@@ -198,7 +204,7 @@ std::unique_ptr<CFX_GlyphBitmap> CFX_GlyphCache::RenderGlyph(
                                         : FXDIB_Format::k8bppMask);
   int dest_pitch = pGlyphBitmap->GetBitmap()->GetPitch();
   int src_pitch = FXFT_Get_Bitmap_Pitch(FXFT_Get_Glyph_Bitmap(GetFaceRec()));
-  uint8_t* pDestBuf = pGlyphBitmap->GetBitmap()->GetBuffer().data();
+  uint8_t* pDestBuf = pGlyphBitmap->GetBitmap()->GetWritableBuffer().data();
   uint8_t* pSrcBuf = static_cast<uint8_t*>(
       FXFT_Get_Bitmap_Buffer(FXFT_Get_Glyph_Bitmap(GetFaceRec())));
   if (anti_alias != FT_RENDER_MODE_MONO &&
@@ -312,7 +318,21 @@ const CFX_GlyphBitmap* CFX_GlyphCache::LoadGlyphBitmap(
 #endif  // BUILDFLAG(IS_APPLE)
 }
 
-#ifdef _SKIA_SUPPORT_
+int CFX_GlyphCache::GetGlyphWidth(const CFX_Font* font,
+                                  uint32_t glyph_index,
+                                  int dest_width,
+                                  int weight) {
+  const WidthMapKey key = std::make_tuple(glyph_index, dest_width, weight);
+  auto it = m_WidthMap.find(key);
+  if (it != m_WidthMap.end()) {
+    return it->second;
+  }
+
+  m_WidthMap[key] = font->GetGlyphWidthImpl(glyph_index, dest_width, weight);
+  return m_WidthMap[key];
+}
+
+#if defined(_SKIA_SUPPORT_)
 CFX_TypeFace* CFX_GlyphCache::GetDeviceCache(const CFX_Font* pFont) {
   if (!m_pTypeface) {
     pdfium::span<const uint8_t> span = pFont->GetFontSpan();
@@ -329,11 +349,7 @@ CFX_TypeFace* CFX_GlyphCache::GetDeviceCache(const CFX_Font* pFont) {
 #endif  // BUILDFLAG(IS_WIN)
   return m_pTypeface.get();
 }
-#endif  // _SKIA_SUPPORT_
-
-#if !BUILDFLAG(IS_APPLE)
-void CFX_GlyphCache::InitPlatform() {}
-#endif
+#endif  // defined(_SKIA_SUPPORT_)
 
 CFX_GlyphBitmap* CFX_GlyphCache::LookUpGlyphBitmap(
     const CFX_Font* pFont,

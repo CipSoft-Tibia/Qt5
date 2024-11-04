@@ -12,7 +12,6 @@
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/gpu/content_gpu_client.h"
-#include "gpu/config/gpu_finch_features.h"
 #include "gpu/config/gpu_preferences.h"
 #include "gpu/ipc/service/gpu_init.h"
 #include "media/gpu/buildflags.h"
@@ -95,35 +94,10 @@ void InProcessGpuThread::CleanUp() {
   gpu_process_.reset();
 }
 
-namespace {
-
-class Controller final : public GpuThreadController {
-public:
-    Controller(std::unique_ptr<base::Thread> thread) : thread_(std::move(thread))
-    {
-        base::Thread::Options options;
-#if (BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)) && !defined(TOOLKIT_QT)
-        // WGL needs to create its own window and pump messages on it.
-        options.message_loop_type = base::MessagePumpType::UI;
-#endif
-        options.thread_type = base::ThreadType::kCompositing;
-        thread_->StartWithOptions(std::move(options));
-    }
-
-    ~Controller() override {
-        // Don't stop before starting.
-        thread_->WaitUntilThreadStarted();
-    }
-
-private:
-    std::unique_ptr<base::Thread> thread_;
-};
-} // namespace
-
-std::unique_ptr<GpuThreadController> CreateInProcessGpuThread(
+base::Thread* CreateInProcessGpuThread(
     const InProcessChildThreadParams& params,
     const gpu::GpuPreferences& gpu_preferences) {
-  return std::make_unique<Controller>(std::make_unique<InProcessGpuThread>(params, gpu_preferences));
+  return new InProcessGpuThread(params, gpu_preferences);
 }
 
 }  // namespace content

@@ -22,7 +22,9 @@
 #include "ui/base/hit_test.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
+#include "ui/color/color_provider_key.h"
 #include "ui/color/color_provider_manager.h"
+#include "ui/color/color_recipe.h"
 #include "ui/compositor/layer.h"
 #include "ui/compositor/layer_animation_observer.h"
 #include "ui/compositor/scoped_animation_duration_scale_mode.h"
@@ -43,6 +45,8 @@
 #include "ui/views/event_monitor.h"
 #include "ui/views/layout/fill_layout.h"
 #include "ui/views/style/platform_style.h"
+#include "ui/views/test/mock_drag_controller.h"
+#include "ui/views/test/mock_native_widget.h"
 #include "ui/views/test/native_widget_factory.h"
 #include "ui/views/test/test_views.h"
 #include "ui/views/test/test_widget_observer.h"
@@ -53,6 +57,8 @@
 #include "ui/views/widget/native_widget_delegate.h"
 #include "ui/views/widget/native_widget_private.h"
 #include "ui/views/widget/root_view.h"
+#include "ui/views/widget/unique_widget_ptr.h"
+#include "ui/views/widget/widget_delegate.h"
 #include "ui/views/widget/widget_deletion_observer.h"
 #include "ui/views/widget/widget_interactive_uitest_utils.h"
 #include "ui/views/widget/widget_removals_observer.h"
@@ -302,6 +308,48 @@ TEST_F(WidgetWithCustomParamsTest, NamePropagatedFromContentsViewClassName) {
   EXPECT_EQ(contents->GetClassName(), widget->GetName());
 }
 
+TEST_F(WidgetWithCustomParamsTest, InitWithNativeTheme) {
+  // Verify that `InitParams::native_theme` is applied during widget
+  // initialization.
+
+  class TestView : public View {
+   public:
+    ~TestView() override = default;
+
+    void OnThemeChanged() override {
+      View::OnThemeChanged();
+      auto* native_theme = GetNativeTheme();
+      if (native_theme && native_theme->user_color()) {
+        user_color_ = *native_theme->user_color();
+      }
+    }
+
+    SkColor user_color() const { return user_color_; }
+
+   private:
+    SkColor user_color_ = SK_ColorWHITE;
+  };
+
+  const SkColor test_color = SkColorSetARGB(1, 2, 3, 4);
+
+  WidgetDelegate delegate;
+  auto view = std::make_unique<TestView>();
+  auto* view_raw_ptr = view.get();
+  delegate.SetContentsView(std::move(view));
+
+  ui::TestNativeTheme test_native_theme;
+  test_native_theme.set_user_color(test_color);
+
+  SetInitFunction(base::BindLambdaForTesting([&](Widget::InitParams* params) {
+    params->delegate = &delegate;
+    params->native_theme = &test_native_theme;
+  }));
+
+  std::unique_ptr<Widget> widget = CreateTestWidget();
+
+  EXPECT_EQ(view_raw_ptr->user_color(), test_color);
+}
+
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 TEST_F(WidgetWithCustomParamsTest, SkottieColorsTest) {
   struct SkottieColors {
@@ -349,8 +397,7 @@ TEST_F(WidgetWithCustomParamsTest, SkottieColorsTest) {
       delegate1.SetContentsView(std::make_unique<ViewObservingSkottieColors>());
   SetInitFunction(base::BindLambdaForTesting([&](Widget::InitParams* params) {
     params->delegate = &delegate1;
-    params->background_elevation =
-        ui::ColorProviderManager::ElevationMode::kLow;
+    params->background_elevation = ui::ColorProviderKey::ElevationMode::kLow;
   }));
   std::unique_ptr<Widget> widget1 = CreateTestWidget();
   ASSERT_EQ(1u, contents1->history.size());
@@ -361,8 +408,7 @@ TEST_F(WidgetWithCustomParamsTest, SkottieColorsTest) {
       delegate2.SetContentsView(std::make_unique<ViewObservingSkottieColors>());
   SetInitFunction(base::BindLambdaForTesting([&](Widget::InitParams* params) {
     params->delegate = &delegate2;
-    params->background_elevation =
-        ui::ColorProviderManager::ElevationMode::kHigh;
+    params->background_elevation = ui::ColorProviderKey::ElevationMode::kHigh;
   }));
   std::unique_ptr<Widget> widget2 = CreateTestWidget();
   ASSERT_EQ(1u, contents2->history.size());
@@ -389,8 +435,7 @@ TEST_F(WidgetWithCustomParamsTest, SkottieColorsTest) {
       delegate3.SetContentsView(std::make_unique<ViewObservingSkottieColors>());
   SetInitFunction(base::BindLambdaForTesting([&](Widget::InitParams* params) {
     params->delegate = &delegate3;
-    params->background_elevation =
-        ui::ColorProviderManager::ElevationMode::kLow;
+    params->background_elevation = ui::ColorProviderKey::ElevationMode::kLow;
   }));
   std::unique_ptr<Widget> widget3 = CreateTestWidget();
   ASSERT_EQ(1u, contents3->history.size());
@@ -405,8 +450,7 @@ TEST_F(WidgetWithCustomParamsTest, SkottieColorsTest) {
       delegate4.SetContentsView(std::make_unique<ViewObservingSkottieColors>());
   SetInitFunction(base::BindLambdaForTesting([&](Widget::InitParams* params) {
     params->delegate = &delegate4;
-    params->background_elevation =
-        ui::ColorProviderManager::ElevationMode::kHigh;
+    params->background_elevation = ui::ColorProviderKey::ElevationMode::kHigh;
   }));
   std::unique_ptr<Widget> widget4 = CreateTestWidget();
   ASSERT_EQ(1u, contents4->history.size());
@@ -434,6 +478,144 @@ TEST_F(WidgetWithCustomParamsTest, SkottieColorsTest) {
   EXPECT_EQ(contents2->history[2u], contents4->history[1u]);
 }
 #endif
+
+class WidgetColorModeTest : public WidgetTest {
+ public:
+  static constexpr SkColor kLightColor = SK_ColorWHITE;
+  static constexpr SkColor kDarkColor = SK_ColorBLACK;
+
+  WidgetColorModeTest() = default;
+  ~WidgetColorModeTest() override = default;
+
+  void SetUp() override {
+    WidgetTest::SetUp();
+
+    // Setup color provider for the ui::kColorSysPrimary color.
+    ui::ColorProviderManager& manager =
+        ui::ColorProviderManager::GetForTesting();
+    manager.AppendColorProviderInitializer(base::BindRepeating(&AddColor));
+  }
+
+  void TearDown() override {
+    ui::ColorProviderManager::ResetForTesting();
+    WidgetTest::TearDown();
+  }
+
+ private:
+  static void AddColor(ui::ColorProvider* provider,
+                       const ui::ColorProviderKey& key) {
+    ui::ColorMixer& mixer = provider->AddMixer();
+    mixer[ui::kColorSysPrimary] = {
+        key.color_mode == ui::ColorProviderKey::ColorMode::kDark ? kDarkColor
+                                                                 : kLightColor};
+  }
+};
+
+TEST_F(WidgetColorModeTest, ColorModeOverride_NoOverride) {
+  ui::TestNativeTheme test_theme;
+  WidgetAutoclosePtr widget(CreateTopLevelPlatformWidget());
+  test_theme.SetDarkMode(true);
+  widget->SetNativeThemeForTest(&test_theme);
+
+  widget->SetColorModeOverride({});
+  // Verify that we resolve the dark color when we don't override color mode.
+  EXPECT_EQ(kDarkColor,
+            widget->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+}
+
+TEST_F(WidgetColorModeTest, ColorModeOverride_DarkOverride) {
+  ui::TestNativeTheme test_theme;
+  WidgetAutoclosePtr widget(CreateTopLevelPlatformWidget());
+  test_theme.SetDarkMode(false);
+  widget->SetNativeThemeForTest(&test_theme);
+
+  widget->SetColorModeOverride(ui::ColorProviderKey::ColorMode::kDark);
+  // Verify that we resolve the light color even though the theme is dark.
+  EXPECT_EQ(kDarkColor,
+            widget->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+}
+
+TEST_F(WidgetColorModeTest, ColorModeOverride_LightOverride) {
+  ui::TestNativeTheme test_theme;
+  WidgetAutoclosePtr widget(CreateTopLevelPlatformWidget());
+  test_theme.SetDarkMode(true);
+  widget->SetNativeThemeForTest(&test_theme);
+
+  widget->SetColorModeOverride(ui::ColorProviderKey::ColorMode::kLight);
+  // Verify that we resolve the light color even though the theme is dark.
+  EXPECT_EQ(kLightColor,
+            widget->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+}
+
+TEST_F(WidgetColorModeTest, ChildInheritsColorMode_NoOverrides) {
+  // Create the parent widget and set the native theme to dark.
+  ui::TestNativeTheme test_theme;
+  WidgetAutoclosePtr widget(CreateTopLevelPlatformWidget());
+  test_theme.SetDarkMode(true);
+  widget->SetNativeThemeForTest(&test_theme);
+
+  // Create the child widget.
+  Widget* widget_child = CreateChildPlatformWidget(widget->GetNativeView());
+
+  // Ensure neither has an override set. The child should inherit the color mode
+  // of the parent.
+  widget->SetColorModeOverride({});
+  widget_child->SetColorModeOverride({});
+  EXPECT_EQ(kDarkColor,
+            widget->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+  EXPECT_EQ(kDarkColor,
+            widget_child->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+
+  // Set the parent's native theme to light. The child should inherit the color
+  // mode of the parent.
+  test_theme.SetDarkMode(false);
+  EXPECT_EQ(kLightColor,
+            widget->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+  EXPECT_EQ(kLightColor,
+            widget_child->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+}
+
+TEST_F(WidgetColorModeTest, ChildInheritsColorMode_Overrides) {
+  // Create the parent widget and set the native theme to dark.
+  ui::TestNativeTheme test_theme;
+  WidgetAutoclosePtr widget(CreateTopLevelPlatformWidget());
+  test_theme.SetDarkMode(true);
+  widget->SetNativeThemeForTest(&test_theme);
+
+  // Create the child widget.
+  Widget* widget_child = CreateChildPlatformWidget(widget->GetNativeView());
+
+  // Ensure neither has an override set. The child should inherit the color mode
+  // of the parent.
+  widget->SetColorModeOverride({});
+  widget_child->SetColorModeOverride({});
+  EXPECT_EQ(kDarkColor,
+            widget->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+  EXPECT_EQ(kDarkColor,
+            widget_child->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+
+  // Set the parent's override to light, then back to dark. the child should
+  // follow the parent's overridden color mode.
+  widget->SetColorModeOverride(ui::ColorProviderKey::ColorMode::kLight);
+  EXPECT_EQ(kLightColor,
+            widget->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+  EXPECT_EQ(kLightColor,
+            widget_child->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+
+  widget->SetColorModeOverride(ui::ColorProviderKey::ColorMode::kDark);
+  EXPECT_EQ(kDarkColor,
+            widget->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+  EXPECT_EQ(kDarkColor,
+            widget_child->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+
+  // Override the child's color mode to light. The parent should continue to
+  // report a dark color mode.
+  widget_child->SetColorModeOverride(ui::ColorProviderKey::ColorMode::kLight);
+  EXPECT_EQ(kDarkColor,
+            widget->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+  EXPECT_EQ(kLightColor,
+            widget_child->GetColorProvider()->GetColor(ui::kColorSysPrimary));
+}
 
 TEST_F(WidgetTest, NativeWindowProperty) {
   const char* key = "foo";
@@ -1175,10 +1357,6 @@ TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest,
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, Deactivate) {
   widget()->Deactivate();
-}
-
-TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, DebugToggleFrameType) {
-  widget()->DebugToggleFrameType();
 }
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, DraggedView) {
@@ -1965,12 +2143,12 @@ class WidgetObserverTest : public WidgetTest, public WidgetObserver {
  private:
   raw_ptr<Widget> active_ = nullptr;
 
-  raw_ptr<Widget> widget_closed_ = nullptr;
+  raw_ptr<Widget, DanglingUntriaged> widget_closed_ = nullptr;
   raw_ptr<Widget> widget_activated_ = nullptr;
-  raw_ptr<Widget> widget_deactivated_ = nullptr;
-  raw_ptr<Widget> widget_shown_ = nullptr;
-  raw_ptr<Widget> widget_hidden_ = nullptr;
-  raw_ptr<Widget> widget_bounds_changed_ = nullptr;
+  raw_ptr<Widget, DanglingUntriaged> widget_deactivated_ = nullptr;
+  raw_ptr<Widget, DanglingUntriaged> widget_shown_ = nullptr;
+  raw_ptr<Widget, DanglingUntriaged> widget_hidden_ = nullptr;
+  raw_ptr<Widget, DanglingUntriaged> widget_bounds_changed_ = nullptr;
 
   raw_ptr<Widget> widget_to_close_on_hide_ = nullptr;
 };
@@ -2696,7 +2874,8 @@ class DesktopAuraPaintWidgetTest : public DesktopWidgetTest {
     }
   };
 
-  raw_ptr<DesktopAuraTestValidPaintWidget> paint_widget_ = nullptr;
+  raw_ptr<DesktopAuraTestValidPaintWidget, DanglingUntriaged> paint_widget_ =
+      nullptr;
 };
 
 TEST_F(DesktopAuraPaintWidgetTest, DesktopNativeWidgetNoPaintAfterCloseTest) {
@@ -3014,9 +3193,8 @@ TEST_F(WidgetTest, MousePressCausesCapture) {
   event_count_view->SetBounds(0, 0, 300, 300);
 
   // No capture has been set.
-  EXPECT_EQ(
-      gfx::kNullNativeView,
-      internal::NativeWidgetPrivate::GetGlobalCapture(widget->GetNativeView()));
+  EXPECT_EQ(gfx::NativeView(), internal::NativeWidgetPrivate::GetGlobalCapture(
+                                   widget->GetNativeView()));
 
   MousePressEventConsumer consumer;
   event_count_view->AddPostTargetHandler(&consumer);
@@ -3062,8 +3240,8 @@ class CaptureEventConsumer : public ui::EventHandler {
     }
   }
 
-  raw_ptr<EventCountView> event_count_view_;
-  raw_ptr<Widget> widget_;
+  raw_ptr<EventCountView, DanglingUntriaged> event_count_view_;
+  raw_ptr<Widget, DanglingUntriaged> widget_;
 };
 
 }  // namespace
@@ -3079,9 +3257,8 @@ TEST_F(WidgetTest, CaptureDuringMousePressNotOverridden) {
       widget->GetRootView()->AddChildView(std::make_unique<EventCountView>());
   event_count_view->SetBounds(0, 0, 300, 300);
 
-  EXPECT_EQ(
-      gfx::kNullNativeView,
-      internal::NativeWidgetPrivate::GetGlobalCapture(widget->GetNativeView()));
+  EXPECT_EQ(gfx::NativeView(), internal::NativeWidgetPrivate::GetGlobalCapture(
+                                   widget->GetNativeView()));
 
   Widget* widget2 = CreateTopLevelNativeWidget();
   // Gives explicit capture to |widget2|
@@ -3122,7 +3299,7 @@ class ClosingEventObserver : public ui::EventObserver {
   }
 
  private:
-  raw_ptr<Widget> widget_;
+  raw_ptr<Widget, DanglingUntriaged> widget_;
 };
 
 class ClosingView : public View {
@@ -3342,6 +3519,49 @@ TEST_F(DesktopWidgetTest,
   EXPECT_TRUE(top_level_widget->ShouldPaintAsActive());
   EXPECT_EQ(top_level_counter.CallCount(), 0);
   EXPECT_EQ(bubble_counter.CallCount(), 0);
+}
+
+// Widget delegate that holds paint as active lock during its lifetime.
+class PaintAsActiveTestDesktopWidgetDelegate
+    : public TestDesktopWidgetDelegate {
+ public:
+  PaintAsActiveTestDesktopWidgetDelegate() = default;
+  ~PaintAsActiveTestDesktopWidgetDelegate() override = default;
+
+  void LockWidgetPaintAsActive() {
+    paint_as_active_lock_ = GetWidget()->LockPaintAsActive();
+  }
+
+ private:
+  std::unique_ptr<Widget::PaintAsActiveLock> paint_as_active_lock_;
+};
+
+// Tests that there is no crash when paint as active lock is removed for child
+// widget while its parent widget is being closed.
+TEST_F(DesktopWidgetTest, LockPaintAsActiveAndCloseParent) {
+  // Make sure that DesktopNativeWidgetAura is used for widgets.
+  test_views_delegate()->set_use_desktop_native_widgets(true);
+
+  std::unique_ptr<Widget> parent = CreateTestWidget();
+  parent->Show();
+
+  auto* delegate = new PaintAsActiveTestDesktopWidgetDelegate();
+  // Ensure that the delegate is destroyed in Widget::OnNativeWidgetDestroyed().
+  delegate->SetOwnedByWidget(true);
+  Widget::InitParams params = CreateParams(Widget::InitParams::TYPE_WINDOW);
+  params.parent = parent->GetNativeView();
+  delegate->InitWidget(std::move(params));
+  delegate->LockWidgetPaintAsActive();
+  base::WeakPtr<Widget> child = delegate->GetWidget()->GetWeakPtr();
+  child->ShowInactive();
+
+  // Child widget and its delegate are destroyed when the parent widget is being
+  // closed. PaintAsActiveTestDesktopWidgetDelegate::paint_as_active_lock_ is
+  // also deleted which should not cause a crash.
+  parent->CloseNow();
+
+  // Ensure that child widget has been destroyed.
+  ASSERT_FALSE(child);
 }
 
 // Widget used to destroy itself when OnNativeWidgetDestroyed is called.
@@ -4304,6 +4524,37 @@ TEST_F(WidgetTest, ScrollGestureEventDispatch) {
   widget->Close();
 }
 
+// TODO(b/271490637): on Mac a drag controller should still be notified when
+// drag will start. Figure out how to write a unit test for Mac. Then remove
+// this build flag check.
+#if !BUILDFLAG(IS_MAC)
+
+// Verifies that the drag controller is notified when the view drag will start.
+TEST_F(WidgetTest, NotifyDragControllerWhenDragWillStart) {
+  // Create a widget whose contents view is draggable.
+  UniqueWidgetPtr widget(std::make_unique<Widget>());
+  Widget::InitParams params = CreateParams(Widget::InitParams::TYPE_POPUP);
+  params.bounds = gfx::Rect(/*width=*/650, /*height=*/650);
+  widget->Init(std::move(params));
+  widget->Show();
+  MockDragController mock_drag_controller;
+  views::View contents_view;
+  contents_view.set_drag_controller(&mock_drag_controller);
+  widget->SetContentsView(&contents_view);
+
+  // Expect the drag controller is notified of the drag start.
+  EXPECT_CALL(mock_drag_controller, OnWillStartDragForView(&contents_view));
+
+  // Drag-and-drop `contents_view` by mouse.
+  ui::test::EventGenerator generator(GetContext(), widget->GetNativeWindow());
+  generator.MoveMouseTo(contents_view.GetBoundsInScreen().CenterPoint());
+  generator.PressLeftButton();
+  generator.MoveMouseBy(/*x=*/200, /*y=*/0);
+  generator.ReleaseLeftButton();
+}
+
+#endif  // !BUILDFLAG(IS_MAC)
+
 // A class used in WidgetTest.GestureEventLocationWhileBubbling to verify
 // that when a gesture event bubbles up a View hierarchy, the location
 // of a gesture event seen by each View is in the local coordinate space
@@ -4686,7 +4937,7 @@ class ChildDesktopWidgetTest : public DesktopWidgetTest {
   }
 
  private:
-  gfx::NativeWindow context_ = nullptr;
+  gfx::NativeWindow context_ = gfx::NativeWindow();
 };
 
 // Verifies Widget::IsActive() invoked from
@@ -5096,6 +5347,101 @@ TEST_F(WidgetTest, MouseWheelEvent) {
   EXPECT_EQ(1, event_count_view->GetEventCount(ui::ET_MOUSEWHEEL));
 }
 
+// Test that ui::ET_MOUSE_ENTERED is dispatched even when not followed by
+// ui::ET_MOUSE_MOVED.
+TEST_F(WidgetTest, MouseEnteredWithoutMoved) {
+  WidgetAutoclosePtr widget(CreateTopLevelFramelessPlatformWidget());
+  widget->SetBounds(gfx::Rect(0, 0, 100, 100));
+
+  auto* root_view = static_cast<internal::RootView*>(widget->GetRootView());
+  auto* v1 = root_view->AddChildView(std::make_unique<EventCountView>());
+  v1->SetBounds(10, 10, 10, 10);
+  auto* v2 = root_view->AddChildView(std::make_unique<EventCountView>());
+  v2->SetBounds(20, 10, 10, 10);
+
+  widget->Show();
+
+  auto generator =
+      CreateEventGenerator(GetContext(), widget->GetNativeWindow());
+
+  // Enter |v1| and check that it received ui::ET_MOUSE_ENTERED.
+  auto enter_location = v1->GetBoundsInScreen().CenterPoint();
+  generator->set_current_screen_location(enter_location);
+  generator->SendMouseEnter();
+  EXPECT_EQ(v1, GetMouseMoveHandler(root_view));
+  EXPECT_EQ(1, v1->GetEventCount(ui::ET_MOUSE_ENTERED));
+  EXPECT_EQ(0, v1->GetEventCount(ui::ET_MOUSE_MOVED));
+  EXPECT_EQ(0, v1->GetEventCount(ui::ET_MOUSE_EXITED));
+  EXPECT_EQ(0, v2->GetEventCount(ui::ET_MOUSE_ENTERED));
+  EXPECT_EQ(0, v2->GetEventCount(ui::ET_MOUSE_MOVED));
+  EXPECT_EQ(0, v2->GetEventCount(ui::ET_MOUSE_EXITED));
+
+  // Enter |v2| and check that |v1| received ui::ET_MOUSE_EXITED and |v2|
+  // received ui::ET_MOUSE_ENTERED.
+  enter_location = v2->GetBoundsInScreen().CenterPoint();
+  generator->set_current_screen_location(enter_location);
+  generator->SendMouseEnter();
+  EXPECT_EQ(v2, GetMouseMoveHandler(root_view));
+  EXPECT_EQ(1, v1->GetEventCount(ui::ET_MOUSE_ENTERED));
+  EXPECT_EQ(0, v1->GetEventCount(ui::ET_MOUSE_MOVED));
+  EXPECT_EQ(1, v1->GetEventCount(ui::ET_MOUSE_EXITED));
+  EXPECT_EQ(1, v2->GetEventCount(ui::ET_MOUSE_ENTERED));
+  EXPECT_EQ(0, v2->GetEventCount(ui::ET_MOUSE_MOVED));
+  EXPECT_EQ(0, v2->GetEventCount(ui::ET_MOUSE_EXITED));
+
+  // Enter |root_view| and check that |v2| received ui::ET_MOUSE_EXITED.
+  enter_location = gfx::Point(0, 0);
+  generator->set_current_screen_location(enter_location);
+  generator->SendMouseEnter();
+  EXPECT_EQ(nullptr, GetMouseMoveHandler(root_view));
+  EXPECT_EQ(1, v1->GetEventCount(ui::ET_MOUSE_ENTERED));
+  EXPECT_EQ(0, v1->GetEventCount(ui::ET_MOUSE_MOVED));
+  EXPECT_EQ(1, v1->GetEventCount(ui::ET_MOUSE_EXITED));
+  EXPECT_EQ(1, v2->GetEventCount(ui::ET_MOUSE_ENTERED));
+  EXPECT_EQ(0, v2->GetEventCount(ui::ET_MOUSE_MOVED));
+  EXPECT_EQ(1, v2->GetEventCount(ui::ET_MOUSE_EXITED));
+}
+
+// Test that ui::ET_MOUSE_MOVED after ui::ET_MOUSE_ENTERED doesn't cause an
+// extra ui::ET_MOUSE_ENTERED.
+TEST_F(WidgetTest, MouseMovedAfterEnteredDoesntCauseEntered) {
+  WidgetAutoclosePtr widget(CreateTopLevelFramelessPlatformWidget());
+  widget->SetBounds(gfx::Rect(0, 0, 100, 100));
+
+  auto* root_view = widget->GetRootView();
+  auto* v = root_view->AddChildView(std::make_unique<EventCountView>());
+  v->SetBounds(10, 10, 10, 10);
+
+  widget->Show();
+
+  auto generator =
+      CreateEventGenerator(GetContext(), widget->GetNativeWindow());
+
+  // Enter |v|.
+  auto enter_location = v->GetBoundsInScreen().CenterPoint();
+  generator->set_current_screen_location(enter_location);
+  generator->SendMouseEnter();
+
+  // Send ui::ET_MOUSE_MOVED at the same location and check that it didn't
+  // generate ui::ET_MOUSE_ENTERED again.
+  generator->MoveMouseBy(0, 0);
+  EXPECT_EQ(1, v->GetEventCount(ui::ET_MOUSE_ENTERED));
+  EXPECT_EQ(1, v->GetEventCount(ui::ET_MOUSE_MOVED));
+
+  // Reset state by entering |root_view|.
+  generator->MoveMouseTo(0, 0);
+
+  // Enter |v| again.
+  generator->set_current_screen_location(enter_location);
+  generator->SendMouseEnter();
+
+  // Send ui::ET_MOUSE_MOVED at a slightly offset location and check that it
+  // didn't generate ui::ET_MOUSE_ENTERED again.
+  generator->MoveMouseBy(1, 1);
+  EXPECT_EQ(2, v->GetEventCount(ui::ET_MOUSE_ENTERED));
+  EXPECT_EQ(2, v->GetEventCount(ui::ET_MOUSE_MOVED));
+}
+
 class CloseFromClosingObserver : public WidgetObserver {
  public:
   ~CloseFromClosingObserver() override {
@@ -5177,6 +5523,88 @@ TEST_F(WidgetTest, ShouldSaveWindowPlacement) {
     EXPECT_EQ(save ? 1 : 0, widget_delegate.save_window_placement_count());
   }
 }
+
+// Parameterized test that verifies the behavior of SetAspectRatio with respect
+// to the excluded margin.
+class WidgetSetAspectRatioTest
+    : public ViewsTestBase,
+      public testing::WithParamInterface<gfx::Size /* margin */> {
+ public:
+  WidgetSetAspectRatioTest() : margin_(GetParam()) {}
+
+  WidgetSetAspectRatioTest(const WidgetSetAspectRatioTest&) = delete;
+  WidgetSetAspectRatioTest& operator=(const WidgetSetAspectRatioTest&) = delete;
+
+  ~WidgetSetAspectRatioTest() override = default;
+
+  // ViewsTestBase:
+  void SetUp() override {
+    ViewsTestBase::SetUp();
+    widget_ = std::make_unique<Widget>();
+    Widget::InitParams params = CreateParams(Widget::InitParams::TYPE_WINDOW);
+    native_widget_ = std::make_unique<MockNativeWidget>(widget());
+    ON_CALL(*native_widget(), CreateNonClientFrameView).WillByDefault([this]() {
+      return std::make_unique<NonClientFrameViewWithFixedMargin>(margin());
+    });
+    params.native_widget = native_widget();
+    widget()->Init(std::move(params));
+    task_environment()->RunUntilIdle();
+  }
+
+  void TearDown() override {
+    native_widget_.reset();
+    widget()->Close();
+    widget_.reset();
+    ViewsTestBase::TearDown();
+  }
+
+  const gfx::Size& margin() const { return margin_; }
+  Widget* widget() { return widget_.get(); }
+  MockNativeWidget* native_widget() { return native_widget_.get(); }
+
+ private:
+  // Margin around the client view that should be excluded.
+  const gfx::Size margin_;
+  std::unique_ptr<Widget> widget_;
+  std::unique_ptr<MockNativeWidget> native_widget_;
+
+  // `NonClientFrameView` that pads the client view with a fixed-size margin,
+  // to leave room for drawing that's not included in the aspect ratio.
+  class NonClientFrameViewWithFixedMargin : public NonClientFrameView {
+   public:
+    // `margin` is the margin that we'll provide to our client view.
+    explicit NonClientFrameViewWithFixedMargin(const gfx::Size& margin)
+        : margin_(margin) {}
+
+    // NonClientFrameView
+    gfx::Rect GetBoundsForClientView() const override {
+      gfx::Rect r = bounds();
+      return gfx::Rect(r.x(), r.y(), r.width() - margin_.width(),
+                       r.height() - margin_.height());
+    }
+
+    const gfx::Size margin_;
+  };
+};
+
+TEST_P(WidgetSetAspectRatioTest, SetAspectRatioIncludesMargin) {
+  // Provide a nonzero size.  It doesn't particularly matter what, as long as
+  // it's larger than our margin.
+  const gfx::Rect root_view_bounds(0, 0, 100, 200);
+  ASSERT_GT(root_view_bounds.width(), margin().width());
+  ASSERT_GT(root_view_bounds.height(), margin().height());
+  widget()->non_client_view()->SetBoundsRect(root_view_bounds);
+
+  // Verify that the excluded margin matches the margin that our custom
+  // non-client frame provides.
+  const gfx::SizeF aspect_ratio(1.5f, 1.0f);
+  EXPECT_CALL(*native_widget(), SetAspectRatio(aspect_ratio, margin()));
+  widget()->SetAspectRatio(aspect_ratio);
+}
+
+INSTANTIATE_TEST_SUITE_P(WidgetSetAspectRatioTestInstantiation,
+                         WidgetSetAspectRatioTest,
+                         ::testing::Values(gfx::Size(15, 20), gfx::Size(0, 0)));
 
 class WidgetShadowTest : public WidgetTest {
  public:
@@ -5397,11 +5825,14 @@ TEST_F(DesktopWidgetTest, StackAboveTest) {
   grandchild_two->ShowInactive();
 
   // Creates the following where Z-Order is from Left to Right.
-  //            Root_one                    Root_two
+  //            root_one                    root_two
   //             /    \                         /
-  //       child_one  child_one_b           child_two
-  //          /                               /
-  // grandchild_one                     grandchild_two
+  //       child_one_b  child_one           child_two
+  //                       /                  /
+  //                 grandchild_one    grandchild_two
+  //
+  // Note: child_one and grandchild_one were brought to front
+  //       when grandchild_one was shown.
 
   // Child elements are stacked above parent.
   EXPECT_TRUE(child_one->IsStackedAbove(root_one->GetNativeView()));
@@ -5410,8 +5841,8 @@ TEST_F(DesktopWidgetTest, StackAboveTest) {
   EXPECT_TRUE(grandchild_two->IsStackedAbove(root_two->GetNativeView()));
 
   // Siblings with higher z-order are stacked correctly.
-  EXPECT_TRUE(child_one_b->IsStackedAbove(child_one->GetNativeView()));
-  EXPECT_TRUE(child_one_b->IsStackedAbove(grandchild_one->GetNativeView()));
+  EXPECT_TRUE(child_one->IsStackedAbove(child_one_b->GetNativeView()));
+  EXPECT_TRUE(grandchild_one->IsStackedAbove(child_one_b->GetNativeView()));
 
   // Root elements are stacked above child of a root with lower z-order.
   EXPECT_TRUE(root_two->IsStackedAbove(root_one->GetNativeView()));
@@ -5431,7 +5862,7 @@ TEST_F(DesktopWidgetTest, StackAboveTest) {
   EXPECT_FALSE(child_one_b->IsStackedAbove(child_two->GetNativeView()));
   EXPECT_FALSE(grandchild_one->IsStackedAbove(grandchild_two->GetNativeView()));
   EXPECT_FALSE(grandchild_one->IsStackedAbove(root_two->GetNativeView()));
-  EXPECT_FALSE(grandchild_one->IsStackedAbove(child_one_b->GetNativeView()));
+  EXPECT_FALSE(child_one_b->IsStackedAbove(grandchild_one->GetNativeView()));
 }
 
 #endif  // BUILDFLAG(IS_WIN)

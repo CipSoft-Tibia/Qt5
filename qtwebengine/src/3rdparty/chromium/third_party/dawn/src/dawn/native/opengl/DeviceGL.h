@@ -33,7 +33,7 @@
 #include "dawn/common/windows_with_undefs.h"
 #endif
 
-typedef void* EGLImage;
+using EGLImage = void*;
 
 namespace dawn::native::opengl {
 
@@ -57,9 +57,11 @@ class Device final : public DeviceBase {
 
     void SubmitFenceSync();
 
-    MaybeError ValidateEGLImageCanBeWrapped(const TextureDescriptor* descriptor, ::EGLImage image);
+    MaybeError ValidateTextureCanBeWrapped(const TextureDescriptor* descriptor);
     TextureBase* CreateTextureWrappingEGLImage(const ExternalImageDescriptor* descriptor,
                                                ::EGLImage image);
+    TextureBase* CreateTextureWrappingGLTexture(const ExternalImageDescriptor* descriptor,
+                                                GLuint texture);
 
     ResultOrError<Ref<CommandBufferBase>> CreateCommandBuffer(
         CommandEncoder* encoder,
@@ -82,13 +84,18 @@ class Device final : public DeviceBase {
     uint64_t GetOptimalBufferToTextureCopyOffsetAlignment() const override;
 
     float GetTimestampPeriodInNS() const override;
-    void ForceEventualFlushOfCommands() override;
 
     class Context {
       public:
         virtual ~Context() {}
         virtual void MakeCurrent() = 0;
     };
+
+    // TODO(dawn:1413) move these methods to the opengl::Queue.
+    void ForceEventualFlushOfCommands();
+    bool HasPendingCommands() const;
+    ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials();
+    MaybeError WaitForIdleForDestruction();
 
   private:
     Device(AdapterBase* adapter,
@@ -99,9 +106,8 @@ class Device final : public DeviceBase {
 
     ResultOrError<Ref<BindGroupBase>> CreateBindGroupImpl(
         const BindGroupDescriptor* descriptor) override;
-    ResultOrError<Ref<BindGroupLayoutBase>> CreateBindGroupLayoutImpl(
-        const BindGroupLayoutDescriptor* descriptor,
-        PipelineCompatibilityToken pipelineCompatibilityToken) override;
+    ResultOrError<Ref<BindGroupLayoutInternalBase>> CreateBindGroupLayoutImpl(
+        const BindGroupLayoutDescriptor* descriptor) override;
     ResultOrError<Ref<BufferBase>> CreateBufferImpl(const BufferDescriptor* descriptor) override;
     ResultOrError<Ref<PipelineLayoutBase>> CreatePipelineLayoutImpl(
         const PipelineLayoutDescriptor* descriptor) override;
@@ -113,10 +119,8 @@ class Device final : public DeviceBase {
         ShaderModuleParseResult* parseResult,
         OwnedCompilationMessages* compilationMessages) override;
     ResultOrError<Ref<SwapChainBase>> CreateSwapChainImpl(
-        const SwapChainDescriptor* descriptor) override;
-    ResultOrError<Ref<NewSwapChainBase>> CreateSwapChainImpl(
         Surface* surface,
-        NewSwapChainBase* previousSwapChain,
+        SwapChainBase* previousSwapChain,
         const SwapChainDescriptor* descriptor) override;
     ResultOrError<Ref<TextureBase>> CreateTextureImpl(const TextureDescriptor* descriptor) override;
     ResultOrError<Ref<TextureViewBase>> CreateTextureViewImpl(
@@ -127,11 +131,11 @@ class Device final : public DeviceBase {
     Ref<RenderPipelineBase> CreateUninitializedRenderPipelineImpl(
         const RenderPipelineDescriptor* descriptor) override;
 
+    ResultOrError<wgpu::TextureUsage> GetSupportedSurfaceUsageImpl(
+        const Surface* surface) const override;
+
     GLenum GetBGRAInternalFormat() const;
-    ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials() override;
     void DestroyImpl() override;
-    MaybeError WaitForIdleForDestruction() override;
-    bool HasPendingCommands() const override;
 
     const OpenGLFunctions mGL;
 

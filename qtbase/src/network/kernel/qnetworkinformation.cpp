@@ -47,13 +47,20 @@ static void networkInfoCleanup()
     if (!instance)
         return;
 
-    auto needsReinvoke = instance->thread() && instance->thread() != QThread::currentThread();
-    if (needsReinvoke) {
-        QMetaObject::invokeMethod(dataHolder->instanceHolder.get(), []() { networkInfoCleanup(); });
-        return;
-    }
     dataHolder->instanceHolder.reset();
 }
+
+using namespace Qt::Literals::StringLiterals;
+
+class QNetworkInformationDummyBackend : public QNetworkInformationBackend {
+    Q_OBJECT
+public:
+    QString name() const override { return u"dummy"_s; }
+    QNetworkInformation::Features featuresSupported() const override
+    {
+        return {};
+    }
+};
 
 class QNetworkInformationPrivate : public QObjectPrivate
 {
@@ -65,6 +72,7 @@ public:
 
     static QNetworkInformation *create(QNetworkInformation::Features features);
     static QNetworkInformation *create(QStringView name);
+    static QNetworkInformation *createDummy();
     static QNetworkInformation *instance()
     {
         if (!dataHolder())
@@ -188,7 +196,7 @@ QNetworkInformation *QNetworkInformationPrivate::create(QStringView name)
             QString listNames;
             listNames.reserve(8 * dataHolder->factories.count());
             for (const auto *factory : std::as_const(dataHolder->factories))
-                listNames += factory->name() + QStringLiteral(", ");
+                listNames += factory->name() + ", "_L1;
             listNames.chop(2);
             qDebug().nospace() << "Couldn't find " << name << " in list with names: { "
                                 << listNames << " }";
@@ -230,7 +238,7 @@ QNetworkInformation *QNetworkInformationPrivate::create(QNetworkInformation::Fea
         return dataHolder->instanceHolder.get();
 
     const auto supportsRequestedFeatures = [features](QNetworkInformationBackendFactory *factory) {
-        return factory && (factory->featuresSupported() & features) == features;
+        return factory && factory->featuresSupported().testFlags(features);
     };
 
     for (auto it = dataHolder->factories.cbegin(), end = dataHolder->factories.cend(); it != end;
@@ -269,6 +277,20 @@ QNetworkInformation *QNetworkInformationPrivate::create(QNetworkInformation::Fea
     qDebug() << "Couldn't find/create an appropriate backend.";
 #endif
     return nullptr;
+}
+
+QNetworkInformation *QNetworkInformationPrivate::createDummy()
+{
+    if (!dataHolder())
+        return nullptr;
+
+    QMutexLocker locker(&dataHolder->instanceMutex);
+    if (dataHolder->instanceHolder)
+        return dataHolder->instanceHolder.get();
+
+    QNetworkInformationBackend *backend =  new QNetworkInformationDummyBackend;
+    dataHolder->instanceHolder.reset(new QNetworkInformation(backend));
+    return dataHolder->instanceHolder.get();
 }
 
 /*!
@@ -492,6 +514,14 @@ QNetworkInformation::QNetworkInformation(QNetworkInformationBackend *backend)
             &QNetworkInformation::transportMediumChanged);
     connect(backend, &QNetworkInformationBackend::isMeteredChanged, this,
            &QNetworkInformation::isMeteredChanged);
+
+    QThread *main = nullptr;
+
+    if (QCoreApplication::instance())
+        main = QCoreApplication::instance()->thread();
+
+    if (main && thread() != main)
+        moveToThread(main);
 }
 
 /*!
@@ -599,6 +629,12 @@ QNetworkInformation::Features QNetworkInformation::supportedFeatures() const
 
     Attempts to load the platform-default backend.
 
+    \note Starting with 6.7 this tries to load any backend that supports
+    \l{QNetworkInformation::Feature::Reachability}{Reachability} if the
+    platform-default backend is not available or fails to load.
+    If this also fails it will fall back to a backend that only returns
+    the default values for all properties.
+
     This platform-to-plugin mapping is as follows:
 
     \table
@@ -619,12 +655,14 @@ QNetworkInformation::Features QNetworkInformation::supportedFeatures() const
         \li networkmanager
     \endtable
 
-    This function is provided for convenience where the default for a given
-    platform is good enough. If you are not using the default plugins you must
-    use one of the other load() overloads.
+    This function is provided for convenience where the logic earlier
+    is good enough. If you require a specific plugin then you should call
+    loadBackendByName() or loadBackendByFeatures() directly instead.
 
-    Returns \c true if it managed to load the backend or if it was already
-    loaded. Returns \c false otherwise.
+    Determines a suitable backend to load and returns \c true if this backend
+    is already loaded or on successful loading of it. Returns \c false if any
+    other backend has already been loaded, or if loading of the selected
+    backend fails.
 
     \sa instance(), load()
 */
@@ -640,9 +678,15 @@ bool QNetworkInformation::loadDefaultBackend()
 #elif defined(Q_OS_LINUX)
     index = QNetworkInformationBackend::PluginNamesLinuxIndex;
 #endif
-    if (index == -1)
-        return false;
-    return loadBackendByName(QNetworkInformationBackend::PluginNames[index]);
+    if (index != -1 && loadBackendByName(QNetworkInformationBackend::PluginNames[index]))
+        return true;
+    // We assume reachability is the most commonly wanted feature, and try to
+    // load the backend that advertises the most features including that:
+    if (loadBackendByFeatures(Feature::Reachability))
+        return true;
+
+    // Fall back to the dummy backend
+    return loadBackendByName(u"dummy");
 }
 
 /*!
@@ -658,6 +702,9 @@ bool QNetworkInformation::loadDefaultBackend()
 */
 bool QNetworkInformation::loadBackendByName(QStringView backend)
 {
+    if (backend == u"dummy")
+        return QNetworkInformationPrivate::createDummy() != nullptr;
+
     auto loadedBackend = QNetworkInformationPrivate::create(backend);
     return loadedBackend && loadedBackend->backendName().compare(backend, Qt::CaseInsensitive) == 0;
 }
@@ -724,3 +771,4 @@ QT_END_NAMESPACE
 
 #include "moc_qnetworkinformation.cpp"
 #include "moc_qnetworkinformation_p.cpp"
+#include "qnetworkinformation.moc"

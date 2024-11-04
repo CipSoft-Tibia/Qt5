@@ -25,7 +25,6 @@
 #include "components/device_event_log/device_event_log.h"
 #include "crypto/aead.h"
 #include "device/fido/cable/v2_constants.h"
-#include "device/fido/features.h"
 #include "device/fido/fido_constants.h"
 #include "device/fido/fido_parsing_utils.h"
 #include "third_party/boringssl/src/include/openssl/aes.h"
@@ -101,14 +100,6 @@ std::array<uint8_t, 32> PairingSignature(
 // all set to zero.
 bool ReservedBitsAreZero(const CableEidArray& eid) {
   return eid[0] == 0;
-}
-
-bssl::UniquePtr<EC_KEY> ECKeyFromSeed(
-    base::span<const uint8_t, kQRSeedSize> seed) {
-  bssl::UniquePtr<EC_GROUP> p256(
-      EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1));
-  return bssl::UniquePtr<EC_KEY>(
-      EC_KEY_derive_from_secret(p256.get(), seed.data(), seed.size()));
 }
 
 // kAdditionalDataBytes is the AD input to the AEAD used in caBLEv2. We're
@@ -190,15 +181,15 @@ GURL GetConnectURL(KnownDomainID domain,
   return url;
 }
 
-GURL GetContactURL(const std::string& tunnel_server,
+GURL GetContactURL(KnownDomainID tunnel_server,
                    base::span<const uint8_t> contact_id) {
   std::string contact_id_base64;
   base::Base64UrlEncode(
       base::StringPiece(reinterpret_cast<const char*>(contact_id.data()),
                         contact_id.size()),
       base::Base64UrlEncodePolicy::OMIT_PADDING, &contact_id_base64);
-  GURL ret(std::string("wss://") + tunnel_server + "/cable/contact/" +
-           contact_id_base64);
+  GURL ret(std::string("wss://") + tunnelserver::DecodeDomain(tunnel_server) +
+           "/cable/contact/" + contact_id_base64);
   DCHECK(ret.is_valid());
   return ret;
 }
@@ -439,7 +430,7 @@ absl::optional<Components> Parse(const std::string& qr_url) {
 }
 
 std::string Encode(base::span<const uint8_t, kQRKeySize> qr_key,
-                   CableRequestType request_type) {
+                   FidoRequestType request_type) {
   cbor::Value::MapValue qr_contents;
   qr_contents.emplace(
       0, SeedToCompressedPublicKey(
@@ -456,12 +447,6 @@ std::string Encode(base::span<const uint8_t, kQRKeySize> qr_key,
   qr_contents.emplace(4, true);  // client supports storing linking information.
 
   qr_contents.emplace(5, RequestTypeToString(request_type));
-
-  if (request_type == CableRequestType::kMakeCredential &&
-      base::FeatureList::IsEnabled(
-          device::kWebAuthnNonDiscoverableMakeCredentialQRFlag)) {
-    qr_contents.emplace(6, true);
-  }
 
   const absl::optional<std::vector<uint8_t>> qr_data =
       cbor::Writer::Write(cbor::Value(std::move(qr_contents)));
@@ -605,23 +590,22 @@ void Derive(uint8_t* out,
 
 }  // namespace internal
 
-const char* RequestTypeToString(CableRequestType request_type) {
+const char* RequestTypeToString(FidoRequestType request_type) {
   switch (request_type) {
-    case CableRequestType::kMakeCredential:
-    case CableRequestType::kDiscoverableMakeCredential:
+    case FidoRequestType::kMakeCredential:
       return "mc";
-    case CableRequestType::kGetAssertion:
+    case FidoRequestType::kGetAssertion:
       return "ga";
       // If adding a value here, also update `RequestTypeFromString`.
   }
 }
 
-CableRequestType RequestTypeFromString(const std::string& s) {
+FidoRequestType RequestTypeFromString(const std::string& s) {
   if (s == "mc") {
-    return CableRequestType::kMakeCredential;
+    return FidoRequestType::kMakeCredential;
   }
   // kGetAssertion is the default if the value is unknown too.
-  return CableRequestType::kGetAssertion;
+  return FidoRequestType::kGetAssertion;
 }
 
 bssl::UniquePtr<EC_KEY> IdentityKey(base::span<const uint8_t, 32> root_secret) {
@@ -629,6 +613,14 @@ bssl::UniquePtr<EC_KEY> IdentityKey(base::span<const uint8_t, 32> root_secret) {
   seed = device::cablev2::Derive<EXTENT(seed)>(
       root_secret, /*nonce=*/base::span<uint8_t>(),
       device::cablev2::DerivedValueType::kIdentityKeySeed);
+  bssl::UniquePtr<EC_GROUP> p256(
+      EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1));
+  return bssl::UniquePtr<EC_KEY>(
+      EC_KEY_derive_from_secret(p256.get(), seed.data(), seed.size()));
+}
+
+bssl::UniquePtr<EC_KEY> ECKeyFromSeed(
+    base::span<const uint8_t, kQRSeedSize> seed) {
   bssl::UniquePtr<EC_GROUP> p256(
       EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1));
   return bssl::UniquePtr<EC_KEY>(
@@ -863,15 +855,17 @@ bool& Crypter::GetNewConstructionFlagForTesting() {
 }
 
 HandshakeInitiator::HandshakeInitiator(
-    base::span<const uint8_t, 32> psk,
+    absl::optional<base::span<const uint8_t, 32>> psk,
     absl::optional<base::span<const uint8_t, kP256X962Length>> peer_identity,
     absl::optional<base::span<const uint8_t, kQRSeedSize>> identity_seed)
-    : psk_(fido_parsing_utils::Materialize(psk)),
-      local_identity_(identity_seed ? ECKeyFromSeed(*identity_seed) : nullptr) {
+    : local_identity_(identity_seed ? ECKeyFromSeed(*identity_seed) : nullptr) {
   DCHECK(peer_identity.has_value() ^ static_cast<bool>(local_identity_));
   if (peer_identity) {
     peer_identity_ =
         fido_parsing_utils::Materialize<kP256X962Length>(*peer_identity);
+  }
+  if (psk) {
+    psk_ = fido_parsing_utils::Materialize(*psk);
   }
 }
 
@@ -880,19 +874,25 @@ HandshakeInitiator::~HandshakeInitiator() = default;
 std::vector<uint8_t> HandshakeInitiator::BuildInitialMessage() {
   uint8_t prologue[1];
 
-  if (peer_identity_) {
+  if (!psk_.has_value()) {
+    noise_.Init(Noise::HandshakeType::kNK);
+    prologue[0] = 0;
+    noise_.MixHash(prologue);
+    noise_.MixHash(*peer_identity_);
+  } else if (peer_identity_) {
     noise_.Init(Noise::HandshakeType::kNKpsk0);
     prologue[0] = 0;
     noise_.MixHash(prologue);
     noise_.MixHash(*peer_identity_);
+    noise_.MixKeyAndHash(*psk_);
   } else {
     noise_.Init(Noise::HandshakeType::kKNpsk0);
     prologue[0] = 1;
     noise_.MixHash(prologue);
     noise_.MixHashPoint(EC_KEY_get0_public_key(local_identity_.get()));
+    noise_.MixKeyAndHash(*psk_);
   }
 
-  noise_.MixKeyAndHash(psk_);
   ephemeral_key_.reset(EC_KEY_new_by_curve_name(NID_X9_62_prime256v1));
   const EC_GROUP* group = EC_KEY_get0_group(ephemeral_key_.get());
   CHECK(EC_KEY_generate_key(ephemeral_key_.get()));
@@ -985,7 +985,7 @@ HandshakeResult HandshakeInitiator::ProcessResponse(
 }
 
 HandshakeResult RespondToHandshake(
-    base::span<const uint8_t, 32> psk,
+    absl::optional<base::span<const uint8_t, 32>> psk,
     bssl::UniquePtr<EC_KEY> identity,
     absl::optional<base::span<const uint8_t, kP256X962Length>> peer_identity,
     base::span<const uint8_t> in,
@@ -1001,19 +1001,25 @@ HandshakeResult RespondToHandshake(
 
   Noise noise;
   uint8_t prologue[1];
-  if (identity) {
+  if (!psk.has_value()) {
+    noise.Init(device::Noise::HandshakeType::kNK);
+    prologue[0] = 0;
+    noise.MixHash(prologue);
+    noise.MixHashPoint(EC_KEY_get0_public_key(identity.get()));
+  } else if (identity) {
     noise.Init(device::Noise::HandshakeType::kNKpsk0);
     prologue[0] = 0;
     noise.MixHash(prologue);
     noise.MixHashPoint(EC_KEY_get0_public_key(identity.get()));
+    noise.MixKeyAndHash(*psk);
   } else {
     noise.Init(device::Noise::HandshakeType::kKNpsk0);
     prologue[0] = 1;
     noise.MixHash(prologue);
     noise.MixHash(*peer_identity);
+    noise.MixKeyAndHash(*psk);
   }
 
-  noise.MixKeyAndHash(psk);
   noise.MixHash(peer_point_bytes);
   noise.MixKey(peer_point_bytes);
 

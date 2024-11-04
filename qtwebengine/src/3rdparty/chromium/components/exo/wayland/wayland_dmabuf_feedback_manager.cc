@@ -10,14 +10,21 @@
 #include <sys/stat.h>
 
 #include "ash/constants/ash_features.h"
+#include "ash/shell.h"
 #include "base/containers/contains.h"
 #include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "components/exo/buffer.h"
 #include "components/exo/display.h"
+#include "components/exo/shell_surface_base.h"
+#include "components/exo/shell_surface_util.h"
+#include "components/exo/surface.h"
 #include "components/exo/wayland/server_util.h"
 #include "components/viz/common/gpu/context_provider.h"
 #include "ui/aura/env.h"
 #include "ui/compositor/compositor.h"
+#include "ui/display/manager/display_manager.h"
+#include "ui/display/manager/managed_display_info.h"
 #include "ui/display/types/display_constants.h"
 #include "ui/gfx/linux/drm_util_linux.h"
 
@@ -130,7 +137,10 @@ class WaylandDmabufFeedback {
 
     const display::Display surface_display = surface->GetDisplay();
     display::DrmFormatsAndModifiers display_formats_and_modifiers =
-        surface_display.GetDRMFormatsAndModifiers();
+        ash::Shell::Get()
+            ->display_manager()
+            ->GetDisplayInfo(surface_display.id())
+            .GetDRMFormatsAndModifiers();
     IndexedDrmFormatsAndModifiers scanout_formats_and_modifiers;
 
     for (const auto& [format, modifier_entries] :
@@ -138,10 +148,16 @@ class WaylandDmabufFeedback {
       if (base::Contains(display_formats_and_modifiers, format)) {
         base::flat_map<size_t, uint64_t> scanout_modifier_entries;
 
-        for (const auto& [table_index, modifier] : modifier_entries) {
-          if (base::Contains(display_formats_and_modifiers.at(format),
-                             modifier)) {
-            scanout_modifier_entries.emplace(table_index, modifier);
+        if (modifier_entries.size() == 1) {
+          auto it = modifier_entries.begin();
+          DCHECK(it->second == DRM_FORMAT_MOD_INVALID);
+          scanout_modifier_entries.emplace(it->first, it->second);
+        } else {
+          for (const auto& [table_index, modifier] : modifier_entries) {
+            if (base::Contains(display_formats_and_modifiers.at(format),
+                               modifier)) {
+              scanout_modifier_entries.emplace(table_index, modifier);
+            }
           }
         }
 
@@ -195,6 +211,8 @@ class WaylandDmabufSurfaceFeedback : public SurfaceObserver {
   ~WaylandDmabufSurfaceFeedback() override;
 
   void OnSurfaceDestroying(Surface* surface) override {
+    feedback_manager_->RemoveSurfaceFromScanoutCandidates(
+        surface_, ScanoutReasonFlags::kNone);
     feedback_manager_->RemoveSurfaceFeedback(surface_);
   }
 
@@ -202,6 +220,27 @@ class WaylandDmabufSurfaceFeedback : public SurfaceObserver {
                         int64_t old_display,
                         int64_t new_display) override {
     feedback_manager_->MaybeResendFeedback(surface_);
+  }
+
+  void OnFullscreenStateChanged(bool fullscreen) override {
+    if (fullscreen) {
+      feedback_manager_->AddSurfaceToScanoutCandidates(
+          surface_, ScanoutReasonFlags::kFullscreen);
+    } else {
+      feedback_manager_->RemoveSurfaceFromScanoutCandidates(
+          surface_, ScanoutReasonFlags::kFullscreen);
+    }
+  }
+
+  void OnOverlayPriorityHintChanged(
+      OverlayPriority overlay_priority_hint) override {
+    if (overlay_priority_hint == OverlayPriority::REQUIRED) {
+      feedback_manager_->AddSurfaceToScanoutCandidates(
+          surface_, ScanoutReasonFlags::kOverlayPriorityHint);
+    } else {
+      feedback_manager_->RemoveSurfaceFromScanoutCandidates(
+          surface_, ScanoutReasonFlags::kOverlayPriorityHint);
+    }
   }
 
   void AddSurfaceFeedbackRef(
@@ -223,8 +262,9 @@ class WaylandDmabufSurfaceFeedback : public SurfaceObserver {
   }
 
  private:
-  WaylandDmabufFeedbackManager* const feedback_manager_;
-  Surface* const surface_;
+  const raw_ptr<WaylandDmabufFeedbackManager, ExperimentalAsh>
+      feedback_manager_;
+  const raw_ptr<Surface, ExperimentalAsh> surface_;
   std::unique_ptr<WaylandDmabufFeedback> const feedback_;
   std::set<WaylandDmabufSurfaceFeedbackResourceWrapper*> surface_feedback_refs_;
 };
@@ -254,8 +294,8 @@ class WaylandDmabufSurfaceFeedbackResourceWrapper {
   void SetInert() { surface_feedback_ = nullptr; }
 
  private:
-  WaylandDmabufSurfaceFeedback* surface_feedback_;
-  wl_resource* resource_;
+  raw_ptr<WaylandDmabufSurfaceFeedback, ExperimentalAsh> surface_feedback_;
+  raw_ptr<wl_resource, ExperimentalAsh> resource_;
 };
 
 WaylandDmabufSurfaceFeedback::~WaylandDmabufSurfaceFeedback() {
@@ -276,6 +316,21 @@ WaylandDmabufFeedbackManager::WaylandDmabufFeedbackManager(Display* display)
           ->SharedMainThreadContextProvider();
   gpu::Capabilities caps = context_provider->ContextCapabilities();
 
+  // Intel CCS modifiers leak memory on gbm to gl buffer import. Block these
+  // modifiers for now. See crbug.com/1445252, crbug.com/1458575
+  // Also blocking |DRM_FORMAT_YVU420| for a specific modifier based a test
+  // failing in minigbm. See b/289714323
+  const base::flat_set<std::pair<uint64_t, uint64_t>> modifier_block_list = {
+      {DRM_FORMAT_INVALID, I915_FORMAT_MOD_Y_TILED_CCS},
+      {DRM_FORMAT_INVALID, I915_FORMAT_MOD_Yf_TILED_CCS},
+      {DRM_FORMAT_INVALID, I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS},
+      {DRM_FORMAT_INVALID, I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS},
+      {DRM_FORMAT_INVALID, I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS_CC},
+      {DRM_FORMAT_INVALID, I915_FORMAT_MOD_4_TILED_DG2_RC_CCS},
+      {DRM_FORMAT_INVALID, I915_FORMAT_MOD_4_TILED_DG2_MC_CCS},
+      {DRM_FORMAT_INVALID, I915_FORMAT_MOD_4_TILED_DG2_RC_CCS_CC},
+      {DRM_FORMAT_YVU420, DRM_FORMAT_MOD_QCOM_COMPRESSED}};
+
   size_t format_table_index = 0;
   for (const auto& [drm_format, modifiers] : caps.drm_formats_and_modifiers) {
     if (!ui::IsValidBufferFormat(drm_format))
@@ -290,8 +345,13 @@ WaylandDmabufFeedbackManager::WaylandDmabufFeedbackManager(Display* display)
     modifier_entries.emplace(format_table_index++, DRM_FORMAT_MOD_INVALID);
 
     if (base::FeatureList::IsEnabled(ash::features::kExoLinuxDmabufModifiers)) {
-      for (uint64_t modifier : modifiers)
-        modifier_entries.emplace(format_table_index++, modifier);
+      for (uint64_t modifier : modifiers) {
+        // Check for generic blocking first then format specific blocking.
+        if (!modifier_block_list.contains({DRM_FORMAT_INVALID, modifier}) &&
+            !modifier_block_list.contains({drm_format, modifier})) {
+          modifier_entries.emplace(format_table_index++, modifier);
+        }
+      }
     }
 
     drm_formats_and_modifiers_.emplace(drm_format, modifier_entries);
@@ -402,6 +462,20 @@ void WaylandDmabufFeedbackManager::GetSurfaceFeedback(
         std::make_unique<WaylandDmabufFeedback>(default_feedback_);
     auto new_surface_feedback = std::make_unique<WaylandDmabufSurfaceFeedback>(
         this, surface, std::move(defaut_feedback_copy));
+
+    ShellSurfaceBase* shell_surface_base = nullptr;
+    for (auto* window = surface->window(); window && !shell_surface_base;
+         window = window->parent()) {
+      shell_surface_base = GetShellSurfaceBaseForWindow(window);
+    }
+    if (shell_surface_base) {
+      bool fullscreen = shell_surface_base->GetWidget()->IsFullscreen();
+      new_surface_feedback->OnFullscreenStateChanged(fullscreen);
+    }
+
+    new_surface_feedback->OnOverlayPriorityHintChanged(
+        surface->GetOverlayPriorityHint());
+
     it = surface_feedbacks_.emplace_hint(it, surface,
                                          std::move(new_surface_feedback));
   }
@@ -431,23 +505,31 @@ void WaylandDmabufFeedbackManager::RemoveSurfaceFeedback(Surface* surface) {
 }
 
 void WaylandDmabufFeedbackManager::AddSurfaceToScanoutCandidates(
-    Surface* surface) {
-  if (base::Contains(scanout_candidates_, surface))
+    Surface* surface,
+    ScanoutReasonFlags reason) {
+  auto search = scanout_candidates_.find(surface);
+  if (search != scanout_candidates_.end()) {
+    search->second = static_cast<ScanoutReasonFlags>(
+        static_cast<uint32_t>(search->second) | static_cast<uint32_t>(reason));
     return;
+  }
 
-  scanout_candidates_.emplace(surface);
+  scanout_candidates_.emplace(surface, reason);
 
-  if (!base::Contains(surface_feedbacks_, surface))
+  if (!base::Contains(surface_feedbacks_, surface)) {
     return;
+  }
 
   const auto& surface_feedback = surface_feedbacks_[surface];
   auto* feedback = surface_feedback->GetFeedback();
-  if (feedback->GetScanoutTranche())
+  if (feedback->GetScanoutTranche()) {
     return;
+  }
 
   feedback->MaybeAddScanoutTranche(surface);
-  if (!feedback->GetScanoutTranche())
+  if (!feedback->GetScanoutTranche()) {
     return;
+  }
 
   for (auto* feedback_ref : surface_feedback->GetFeedbackRefs()) {
     SendFeedback(feedback, feedback_ref->GetFeedbackResource());
@@ -455,19 +537,31 @@ void WaylandDmabufFeedbackManager::AddSurfaceToScanoutCandidates(
 }
 
 void WaylandDmabufFeedbackManager::RemoveSurfaceFromScanoutCandidates(
-    Surface* surface) {
-  if (!base::Contains(scanout_candidates_, surface))
+    Surface* surface,
+    ScanoutReasonFlags reason) {
+  auto search = scanout_candidates_.find(surface);
+  if (search == scanout_candidates_.end()) {
     return;
+  }
 
-  scanout_candidates_.erase(surface);
-
-  if (!base::Contains(surface_feedbacks_, surface))
+  search->second = static_cast<ScanoutReasonFlags>(
+      static_cast<uint32_t>(search->second) & ~static_cast<uint32_t>(reason));
+  if (search->second == ScanoutReasonFlags::kNone ||
+      reason == ScanoutReasonFlags::kNone) {
+    scanout_candidates_.erase(surface);
+  } else {
     return;
+  }
+
+  if (!base::Contains(surface_feedbacks_, surface)) {
+    return;
+  }
 
   const auto& surface_feedback = surface_feedbacks_[surface];
   auto* feedback = surface_feedback->GetFeedback();
-  if (!feedback->GetScanoutTranche())
+  if (!feedback->GetScanoutTranche()) {
     return;
+  }
 
   feedback->ClearScanoutTranche();
   for (auto* feedback_ref : surface_feedback->GetFeedbackRefs()) {

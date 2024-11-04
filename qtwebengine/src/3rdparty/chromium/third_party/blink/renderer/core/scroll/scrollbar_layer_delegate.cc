@@ -71,9 +71,9 @@ bool ScrollbarLayerDelegate::IsOverlay() const {
 }
 
 gfx::Rect ScrollbarLayerDelegate::ThumbRect() const {
-  gfx::Rect track_rect = scrollbar_->GetTheme().ThumbRect(*scrollbar_);
-  track_rect.Offset(-scrollbar_->Location().OffsetFromOrigin());
-  return track_rect;
+  gfx::Rect thumb_rect = scrollbar_->GetTheme().ThumbRect(*scrollbar_);
+  thumb_rect.Offset(-scrollbar_->Location().OffsetFromOrigin());
+  return thumb_rect;
 }
 
 gfx::Rect ScrollbarLayerDelegate::TrackRect() const {
@@ -114,6 +114,14 @@ bool ScrollbarLayerDelegate::NeedsRepaintPart(cc::ScrollbarPart part) const {
   if (part == cc::ScrollbarPart::THUMB)
     return scrollbar_->ThumbNeedsRepaint();
   return scrollbar_->TrackNeedsRepaint();
+}
+
+bool ScrollbarLayerDelegate::NeedsUpdateDisplay() const {
+  return scrollbar_->NeedsUpdateDisplay();
+}
+
+void ScrollbarLayerDelegate::ClearNeedsUpdateDisplay() {
+  scrollbar_->ClearNeedsUpdateDisplay();
 }
 
 bool ScrollbarLayerDelegate::UsesNinePatchThumbResource() const {

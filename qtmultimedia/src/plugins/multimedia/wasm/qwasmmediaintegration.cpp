@@ -26,8 +26,6 @@
 QT_BEGIN_NAMESPACE
 
 
-static Q_LOGGING_CATEGORY(qtWasmMediaPlugin, "qt.multimedia.wasm")
-
 class QWasmMediaPlugin : public QPlatformMediaPlugin
 {
     Q_OBJECT
@@ -40,13 +38,14 @@ public:
 
     QPlatformMediaIntegration *create(const QString &name) override
     {
-        if (name == QLatin1String("wasm"))
+        if (name == u"wasm")
             return new QWasmMediaIntegration;
         return nullptr;
     }
 };
 
-QWasmMediaIntegration::QWasmMediaIntegration() = default;
+QWasmMediaIntegration::QWasmMediaIntegration()
+    : QPlatformMediaIntegration(QLatin1String("wasm")) { }
 
 QMaybe<QPlatformMediaPlayer *> QWasmMediaIntegration::createPlayer(QMediaPlayer *player)
 {

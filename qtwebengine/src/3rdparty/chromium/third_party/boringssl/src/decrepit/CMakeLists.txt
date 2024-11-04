@@ -20,19 +20,3 @@ add_library(
   xts/xts.c
 )
 target_link_libraries(decrepit crypto ssl)
-
-add_executable(
-  decrepit_test
-
-  blowfish/blowfish_test.cc
-  cast/cast_test.cc
-  cfb/cfb_test.cc
-  evp/evp_test.cc
-  ripemd/ripemd_test.cc
-  xts/xts_test.cc
-
-  $<TARGET_OBJECTS:boringssl_gtest_main>
-)
-target_link_libraries(decrepit_test test_support_lib boringssl_gtest decrepit
-                      crypto)
-add_dependencies(all_tests decrepit_test)

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,10 +15,9 @@
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
-#include "absl/types/optional.h"
 #include "tools/cddl/logging.h"
 
-static_assert(sizeof(absl::string_view::size_type) == sizeof(size_t),
+static_assert(sizeof(std::string_view::size_type) == sizeof(size_t),
               "We assume string_view's size_type is the same as size_t. If "
               "not, the following file needs to be refactored");
 
@@ -33,7 +32,7 @@ struct Parser {
 
 AstNode* AddNode(Parser* p,
                  AstNode::Type type,
-                 absl::string_view text,
+                 std::string_view text,
                  AstNode* children = nullptr) {
   p->nodes.emplace_back(new AstNode);
   AstNode* node = p->nodes.back().get();
@@ -61,7 +60,7 @@ bool IsWhitespaceOrSemicolon(char c) {
   return c == ' ' || c == ';' || c == '\r' || c == '\n';
 }
 
-absl::string_view SkipNewline(absl::string_view view) {
+std::string_view SkipNewline(std::string_view view) {
   size_t index = 0;
   while (IsNewline(view[index])) {
     ++index;
@@ -71,7 +70,7 @@ absl::string_view SkipNewline(absl::string_view view) {
 }
 
 // Skips over a comment that makes up the remainder of the current line.
-absl::string_view SkipComment(absl::string_view view) {
+std::string_view SkipComment(std::string_view view) {
   size_t index = 0;
   if (view[index] == ';') {
     ++index;
@@ -94,8 +93,8 @@ void SkipWhitespace(Parser* p, bool skip_comments = true) {
     return;
   }
 
-  absl::string_view view = p->data;
-  absl::string_view new_view;
+  std::string_view view = p->data;
+  std::string_view new_view;
 
   while (true) {
     new_view = SkipComment(view);
@@ -159,7 +158,7 @@ AstNode* ParseType(Parser* p, bool skip_comments = true);
 AstNode* ParseId(Parser* p);
 
 void SkipUint(Parser* p) {
-  absl::string_view view = p->data;
+  std::string_view view = p->data;
 
   bool is_binary = false;
   size_t index = 0;
@@ -196,7 +195,7 @@ AstNode* ParseNumber(Parser* p) {
 
   AstNode* node =
       AddNode(p, AstNode::Type::kNumber,
-              absl::string_view(p->data, p_speculative.data - p->data));
+              std::string_view(p->data, p_speculative.data - p->data));
   p->data = p_speculative.data;
   std::move(p_speculative.nodes.begin(), p_speculative.nodes.end(),
             std::back_inserter(p->nodes));
@@ -249,21 +248,21 @@ AstNode* ParseOccur(Parser* p) {
 
   AstNode* node =
       AddNode(p, AstNode::Type::kOccur,
-              absl::string_view(p->data, p_speculative.data - p->data));
+              std::string_view(p->data, p_speculative.data - p->data));
   p->data = p_speculative.data;
   return node;
 }
 
-absl::optional<std::string> ParseTypeKeyFromComment(Parser* p) {
+std::optional<std::string> ParseTypeKeyFromComment(Parser* p) {
   Parser p_speculative{p->data};
   if (!TrySkipCharacter(&p_speculative, ';')) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   SkipWhitespace(&p_speculative, false);
   const char kTypeKeyPrefix[] = "type key";
   if (!absl::StartsWith(p_speculative.data, kTypeKeyPrefix)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   p_speculative.data += strlen(kTypeKeyPrefix);
 
@@ -271,8 +270,8 @@ absl::optional<std::string> ParseTypeKeyFromComment(Parser* p) {
   Parser p_speculative2{p_speculative.data};
   for (; absl::ascii_isdigit(p_speculative2.data[0]); p_speculative2.data++) {
   }
-  auto result = absl::string_view(p_speculative.data,
-                                  p_speculative2.data - p_speculative.data);
+  auto result = std::string_view(p_speculative.data,
+                                 p_speculative2.data - p_speculative.data);
   p->data = p_speculative2.data;
   return std::string(result.data()).substr(0, result.length());
 }
@@ -316,7 +315,7 @@ AstNode* ParseMemberKey1(Parser* p) {
   }
   AstNode* node =
       AddNode(p, AstNode::Type::kMemberKey,
-              absl::string_view(p->data, p_speculative.data - p->data));
+              std::string_view(p->data, p_speculative.data - p->data));
   p->data = p_speculative.data;
   std::move(p_speculative.nodes.begin(), p_speculative.nodes.end(),
             std::back_inserter(p->nodes));
@@ -338,7 +337,7 @@ AstNode* ParseMemberKey2(Parser* p) {
 
   AstNode* node =
       AddNode(p, AstNode::Type::kMemberKey,
-              absl::string_view(p->data, p_speculative.data - p->data), id);
+              std::string_view(p->data, p_speculative.data - p->data), id);
   p->data = p_speculative.data;
   std::move(p_speculative.nodes.begin(), p_speculative.nodes.end(),
             std::back_inserter(p->nodes));
@@ -359,7 +358,7 @@ AstNode* ParseMemberKey3(Parser* p) {
   }
   AstNode* node =
       AddNode(p, AstNode::Type::kMemberKey,
-              absl::string_view(p->data, p_speculative.data - p->data), value);
+              std::string_view(p->data, p_speculative.data - p->data), value);
   p->data = p_speculative.data;
   std::move(p_speculative.nodes.begin(), p_speculative.nodes.end(),
             std::back_inserter(p->nodes));
@@ -397,7 +396,7 @@ AstNode* ParseGroupChoice(Parser* p) {
   Parser p_speculative{p->data};
   AstNode* tail = nullptr;
   AstNode* group_node =
-      AddNode(&p_speculative, AstNode::Type::kGrpchoice, absl::string_view());
+      AddNode(&p_speculative, AstNode::Type::kGrpchoice, std::string_view());
   const char* group_node_text = p_speculative.data;
   while (true) {
     const char* orig = p_speculative.data;
@@ -434,13 +433,13 @@ AstNode* ParseGroup(Parser* p) {
     return nullptr;
   }
   return AddNode(p, AstNode::Type::kGroup,
-                 absl::string_view(orig, p->data - orig), group_choice);
+                 std::string_view(orig, p->data - orig), group_choice);
 }
 
 // Parse optional range operator .. (inlcusive) or ... (exclusive)
 // ABNF rule: rangeop = "..." / ".."
 AstNode* ParseRangeop(Parser* p) {
-  absl::string_view view(p->data);
+  std::string_view view(p->data);
   if (absl::StartsWith(view, "...")) {
     // rangeop ...
     p->data += 3;
@@ -456,7 +455,7 @@ AstNode* ParseRangeop(Parser* p) {
 // Parse optional control operator .id
 // ABNF rule: ctlop = "." id
 AstNode* ParseCtlop(Parser* p) {
-  absl::string_view view(p->data);
+  std::string_view view(p->data);
   if (!absl::StartsWith(view, ".")) {
     return nullptr;
   }
@@ -472,7 +471,7 @@ AstNode* ParseCtlop(Parser* p) {
 AstNode* ParseType2(Parser* p) {
   const char* orig = p->data;
   const char* it = p->data;
-  AstNode* node = AddNode(p, AstNode::Type::kType2, absl::string_view());
+  AstNode* node = AddNode(p, AstNode::Type::kType2, std::string_view());
   if (IsValue(it[0])) {
     AstNode* value = ParseValue(p);
     if (!value) {
@@ -660,7 +659,7 @@ AstNode* ParseType1(Parser* p) {
     rangeop_or_ctlop->sibling = param;
   }
   return AddNode(p, AstNode::Type::kType1,
-                 absl::string_view(orig, p->data - orig), type2);
+                 std::string_view(orig, p->data - orig), type2);
 }
 
 // Different valid types for a call are specified as type1 / type2, so we split
@@ -692,7 +691,7 @@ AstNode* ParseType(Parser* p, bool skip_comments) {
   // Create a new AstNode with all parsed types.
   AstNode* node =
       AddNode(p, AstNode::Type::kType,
-              absl::string_view(p->data, p_speculative.data - p->data), type1);
+              std::string_view(p->data, p_speculative.data - p->data), type1);
   p->data = p_speculative.data;
   std::move(p_speculative.nodes.begin(), p_speculative.nodes.end(),
             std::back_inserter(p->nodes));
@@ -725,7 +724,7 @@ AstNode* ParseId(Parser* p) {
 
   // Create and return a new node with the parsed data.
   AstNode* node =
-      AddNode(p, AstNode::Type::kId, absl::string_view(p->data, it - p->data));
+      AddNode(p, AstNode::Type::kId, std::string_view(p->data, it - p->data));
   p->data = it;
   return node;
 }
@@ -735,7 +734,7 @@ AstNode* UpdateNodesForGroupEntry(Parser* p,
                                   AstNode* occur,
                                   AstNode* member_key,
                                   AstNode* type) {
-  AstNode* node = AddNode(p, AstNode::Type::kGrpent, absl::string_view());
+  AstNode* node = AddNode(p, AstNode::Type::kGrpent, std::string_view());
   if (occur) {
     node->children = occur;
     if (member_key) {
@@ -830,7 +829,7 @@ AstNode* ParseGroupEntryWithGroupReference(Parser* p) {
   }
 
   // Create a new node containing this sub-group reference.
-  AstNode* node = AddNode(p, AstNode::Type::kGrpent, absl::string_view());
+  AstNode* node = AddNode(p, AstNode::Type::kGrpent, std::string_view());
   if (occur) {
     occur->sibling = id;
     node->children = occur;
@@ -867,7 +866,7 @@ AstNode* ParseGroupEntryWithInlineGroupDefinition(Parser* p) {
     return nullptr;
   }
   ++p_speculative.data;
-  AstNode* node = AddNode(p, AstNode::Type::kGrpent, absl::string_view());
+  AstNode* node = AddNode(p, AstNode::Type::kGrpent, std::string_view());
   if (occur) {
     node->children = occur;
     occur->sibling = group;
@@ -911,7 +910,7 @@ AstNode* ParseRule(Parser* p) {
   const char* start = p->data;
 
   // Parse the type key, if it's present
-  absl::optional<std::string> type_key = ParseTypeKeyFromComment(p);
+  std::optional<std::string> type_key = ParseTypeKeyFromComment(p);
   SkipWhitespace(p);
 
   // Use the parser to extract the id and data.
@@ -935,13 +934,12 @@ AstNode* ParseRule(Parser* p) {
     Logger::Error("No assignment operator found! assign_type: %d", assign_type);
     return nullptr;
   }
-  AstNode* assign_node = AddNode(
-      p,
-      (assign_type == AssignType::kAssign)
-          ? AstNode::Type::kAssign
-          : (assign_type == AssignType::kAssignT) ? AstNode::Type::kAssignT
-                                                  : AstNode::Type::kAssignG,
-      absl::string_view(assign_start, p->data - assign_start));
+  AstNode* assign_node =
+      AddNode(p,
+              (assign_type == AssignType::kAssign)    ? AstNode::Type::kAssign
+              : (assign_type == AssignType::kAssignT) ? AstNode::Type::kAssignT
+                                                      : AstNode::Type::kAssignG,
+              std::string_view(assign_start, p->data - assign_start));
   id->sibling = assign_node;
 
   // Parse the object type being assigned.
@@ -961,13 +959,13 @@ AstNode* ParseRule(Parser* p) {
 
   // Return the results.
   auto rule_node = AddNode(p, AstNode::Type::kRule,
-                           absl::string_view(start, p->data - start), id);
+                           std::string_view(start, p->data - start), id);
   rule_node->type_key = type_key;
   return rule_node;
 }
 
 // Iteratively parse the CDDL spec into a tree structure.
-ParseResult ParseCddl(absl::string_view data) {
+ParseResult ParseCddl(std::string_view data) {
   if (data[0] == 0) {
     return {nullptr, {}};
   }
@@ -1082,14 +1080,14 @@ void DumpAst(AstNode* node, int indent_level) {
         node_text += "kOther";
         break;
     }
-    if (node->type_key != absl::nullopt) {
+    if (node->type_key != std::nullopt) {
       node_text += " (type key=\"" + node->type_key.value() + "\")";
     }
     node_text += ": ";
 
     // Print the contents.
     int size = static_cast<int>(node->text.size());
-    absl::string_view text = node->text.data();
+    std::string_view text = node->text.data();
     for (int i = 0; i < size; ++i) {
       if (text[i] == ' ' || text[i] == '\n') {
         node_text += " ";

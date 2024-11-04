@@ -143,6 +143,7 @@ typedef enum spv_operand_type_t {
   // may be larger than 32, which would require such a typed literal value to
   // occupy multiple SPIR-V words.
   SPV_OPERAND_TYPE_TYPED_LITERAL_NUMBER,
+  SPV_OPERAND_TYPE_LITERAL_FLOAT,  // Always 32-bit float.
 
   // Set 3:  The literal string operand type.
   SPV_OPERAND_TYPE_LITERAL_STRING,
@@ -284,6 +285,18 @@ typedef enum spv_operand_type_t {
   SPV_OPERAND_TYPE_PACKED_VECTOR_FORMAT,  // SPIR-V Sec 3.x
   // An optional packed vector format
   SPV_OPERAND_TYPE_OPTIONAL_PACKED_VECTOR_FORMAT,
+
+  // Concrete operand types for cooperative matrix.
+  SPV_OPERAND_TYPE_COOPERATIVE_MATRIX_OPERANDS,
+  // An optional cooperative matrix operands
+  SPV_OPERAND_TYPE_OPTIONAL_COOPERATIVE_MATRIX_OPERANDS,
+  SPV_OPERAND_TYPE_COOPERATIVE_MATRIX_LAYOUT,
+  SPV_OPERAND_TYPE_COOPERATIVE_MATRIX_USE,
+
+  // Enum type from SPV_INTEL_global_variable_fpga_decorations
+  SPV_OPERAND_TYPE_INITIALIZATION_MODE_QUALIFIER,
+  // Enum type from SPV_INTEL_global_variable_host_access
+  SPV_OPERAND_TYPE_HOST_ACCESS_QUALIFIER,
 
   // This is a sentinel value, and does not represent an operand type.
   // It should come last.

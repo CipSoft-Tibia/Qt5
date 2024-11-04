@@ -5,8 +5,10 @@
 #include <private/qqmlpropertycache_p.h>
 #include <private/qqmldata_p.h>
 #include <private/qqmlmetatype_p.h>
+
 #include <private/qmetaobjectbuilder_p.h>
 #include <qdebug.h>
+#include <QtCore/qpointer.h>
 #include <QtCore/qset.h>
 
 QT_BEGIN_NAMESPACE
@@ -67,6 +69,11 @@ QByteArray QQmlOpenMetaObjectType::propertyName(int idx) const
     Q_ASSERT(idx >= 0 && idx < d->names.size());
 
     return d->mob.property(idx).name();
+}
+
+QQmlPropertyCache::Ptr QQmlOpenMetaObjectType::cache() const
+{
+    return d->cache;
 }
 
 void QQmlOpenMetaObjectType::createProperties(const QVector<QByteArray> &names)
@@ -193,7 +200,11 @@ public:
         return data[idx].valueSet;
     }
 
-    void dropPropertyCache() {
+    void dropStalePropertyCache() {
+        // Do not drop the property cache if we've created it ourselves.
+        // In that case we've also updated it to reflect any changes.
+        if (cacheProperties)
+            return;
         if (QQmlData *ddata = QQmlData::get(object, /*create*/false))
             ddata->propertyCache.reset();
     }
@@ -373,7 +384,7 @@ void QQmlOpenMetaObject::setValues(const QHash<QByteArray, QVariant> &values, bo
         return;
 
     d->type->createProperties(missingProperties);
-    d->dropPropertyCache();
+    d->dropStalePropertyCache();
 
     for (const QByteArray &name : std::as_const(missingProperties))
         checkedSetValue(names[name], values[name], force);
@@ -427,7 +438,7 @@ int QQmlOpenMetaObject::createProperty(const char *name, const char *)
         }
 
         const int result = d->type->createProperty(name);
-        d->dropPropertyCache();
+        d->dropStalePropertyCache();
         return result;
     } else
         return -1;

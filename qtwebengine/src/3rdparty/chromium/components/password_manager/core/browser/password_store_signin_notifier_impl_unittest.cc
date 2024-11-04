@@ -78,12 +78,13 @@ TEST_F(PasswordStoreSigninNotifierImplTest, SignOutContentArea) {
       /*email=*/"username2",
       /*refresh_token=*/"refresh_token",
       /*is_under_advanced_protection=*/false,
+      signin_metrics::AccessPoint::ACCESS_POINT_UNKNOWN,
       signin_metrics::SourceForRefreshTokenOperation::kUnknown);
   // This call is necessary to ensure that the account removal is fully
   // processed in this testing context.
   identity_test_env()->EnableRemovalOfExtendedAccountInfo();
   identity_manager->GetAccountsMutator()->RemoveAccount(
-      CoreAccountId("secondary_account_id"),
+      CoreAccountId::FromGaiaId("secondary_account_id"),
       signin_metrics::SourceForRefreshTokenOperation::kUserMenu_RemoveAccount);
   testing::Mock::VerifyAndClearExpectations(&reuse_manager_);
 

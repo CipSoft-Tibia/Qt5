@@ -51,12 +51,37 @@ GURL GetEmbeddedReauthURLWithEmail(signin_metrics::AccessPoint access_point,
                                    const std::string& email);
 #endif  // !BUILDFLAG(IS_CHROMEOS_ASH)
 
+// Controls the information displayed around the Gaia Sign In page via the
+// "flow" url parameter.
+enum class Flow {
+  // No value set for the "flow" parameter.
+  NONE,
+  // The "promo" flow indicates to the user that they are signing in to Chrome
+  // but unlike the default dice sign-in page, they don't mention sync
+  // benefits.
+  PROMO,
+  // The "embedded_promo" flow has the same effect as `PROMO` with the addition
+  // of providing a page with no outbound links, in order not to be able to open
+  // browser page during the signin flow.
+  EMBEDDED_PROMO
+};
+
+// Wraps arguments for `GetChromeSyncURLForDice()`. They are all optional.
+struct ChromeSyncUrlArgs {
+  // If not empty, will be passed as hint to the page so that it will be
+  // autofilled by Gaia.
+  const std::string email;
+  // If empty, after login, Gaia may redirect to myaccount.
+  const std::string continue_url;
+  // If true, the dark mode version of the page will be requested.
+  bool request_dark_scheme = false;
+  // Sets the "flow" parameter in the gaia sign in url.
+  Flow flow = Flow::NONE;
+};
+
 // Returns the URL to be used to signin and turn on Sync when DICE is enabled.
-// If email is not empty, then it will pass email as hint to the page so that it
-// will be autofilled by Gaia.
-// If |continue_url| is empty, this may redirect to myaccount.
-GURL GetChromeSyncURLForDice(const std::string& email,
-                             const std::string& continue_url);
+// See `ChromeSyncUrlArgs` docs for details on the arguments.
+GURL GetChromeSyncURLForDice(ChromeSyncUrlArgs args);
 
 // Returns the URL to be used to add (secondary) account when DICE is enabled.
 // If email is not empty, then it will pass email as hint to the page so that it

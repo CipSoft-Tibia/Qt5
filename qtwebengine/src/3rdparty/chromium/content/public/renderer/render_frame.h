@@ -67,10 +67,6 @@ class AXTreeSnapshotter {
   // Return in |accessibility_tree| a snapshot of the accessibility tree
   // for the frame with the given accessibility mode.
   //
-  // - |exclude_offscreen| excludes a subtree if a node is entirely offscreen,
-  //   but note that this heuristic is imperfect, and an aboslute-positioned
-  //   node that's visible, but whose ancestors are entirely offscreen, may
-  //   get excluded.
   // - |max_nodes_count| specifies the maximum number of nodes to snapshot
   //   before exiting early. Note that this is not a hard limit; once this limit
   //   is reached a few more nodes may be added in order to ensure a
@@ -79,8 +75,7 @@ class AXTreeSnapshotter {
   //   (per frame), specified in milliseconds. Like max_node_count, this is not
   //   a hard limit, and once this/ limit is reached a few more nodes may
   //   be added in order to ensure a well-formed tree. Use 0 for no timeout.
-  virtual void Snapshot(bool exclude_offscreen,
-                        size_t max_node_count,
+  virtual void Snapshot(size_t max_node_count,
                         base::TimeDelta timeout,
                         ui::AXTreeUpdate* accessibility_tree) = 0;
 
@@ -204,8 +199,7 @@ class CONTENT_EXPORT RenderFrame : public IPC::Listener,
 
   // Returns true in between the time that Blink requests navigation until the
   // browser responds with the result.
-  // TODO(ahemery): Rename this to be more explicit.
-  virtual bool IsBrowserSideNavigationPending() = 0;
+  virtual bool IsRequestingNavigation() = 0;
 
   // Renderer scheduler frame-specific task queues handles.
   // See third_party/WebKit/Source/platform/WebFrameScheduler.h for details.

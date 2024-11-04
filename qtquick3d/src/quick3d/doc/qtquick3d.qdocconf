@@ -6,6 +6,7 @@ version                 = $QT_VERSION
 buildversion            = Qt Quick 3D | Commercial or GPLv3
 
 examplesinstallpath     = quick3d
+url.examples            = "https://code.qt.io/cgit/qt/qtquick3d.git/tree/examples/\1?h=$QT_VER"
 
 qhp.projects            = QtQuick3D
 
@@ -31,7 +32,8 @@ qhp.QtQuick3D.subprojects.classes.sortPages  = true
 depends += qtcore qtgui qtdoc qtqml qtqmlmodels qtquick qtquickcontrols qtshadertools qtquicktimeline qtcmake
 
 headerdirs  += .. \
-               ../../quick3dparticles/
+               ../../quick3dparticles \
+               ../../runtimerender/extensionapi
 
 headers += ../../helpers/gridgeometry_p.h \
            ../../helpers/randominstancing_p.h \
@@ -40,11 +42,17 @@ headers += ../../helpers/gridgeometry_p.h \
            ../../helpers/lookatnode_p.h \
            ../../helpers/heightfieldgeometry_p.h \
            ../../helpers/proceduralskytexturedata_p.h \
-           ../../assetutils/qquick3druntimeloader_p.h
+           ../../helpers/qquick3dtexturedatafrontend_p.h \
+           ../../helpers/proceduralmesh_p.h \
+           ../../assetutils/qquick3druntimeloader_p.h \
+           ../../runtimerender/qssgrendercontextcore.h \
+           ../../runtimerender/qssgrhicontext.h \
+           ../../runtimerender/qssgrenderpickresult.h
 
 sourcedirs  += .. \
                src \
-               ../../quick3dparticles/
+               ../../quick3dparticles \
+               ../../runtimerender/extensionapi
 
 sources += ../../helpers/gridgeometry.cpp \
            ../../helpers/randominstancing.cpp \
@@ -53,7 +61,11 @@ sources += ../../helpers/gridgeometry.cpp \
            ../../helpers/lookatnode.cpp \
            ../../helpers/heightfieldgeometry.cpp \
            ../../helpers/proceduralskytexturedata.cpp \
-           ../../assetutils/qquick3druntimeloader.cpp
+           ../../helpers/qquick3dtexturedatafrontend.cpp \
+           ../../helpers/proceduralmesh.cpp \
+           ../../assetutils/qquick3druntimeloader.cpp \
+           ../../runtimerender/qssgrendercontextcore.cpp \
+           ../../runtimerender/qssgrhicontext.cpp
 
 exampledirs +=  ../../../examples/quick3d
 examples.fileextensions += "*.frag *.geom *.vert *.tesc *.tese *.comp"
@@ -73,5 +85,6 @@ navigation.cppclassespage = "Qt Quick 3D C++ Classes"
 
 tagfile                 = qtquick3d.tags
 
-# Fail the documentation build if there are more warnings than the limit
-warninglimit = 0
+# Fail the documentation build if warnings exceed the limit
+#   src/quick3d/qquick3dtexture.cpp:653: (qdoc) warning: Can't link to 'RenderExtension'
+warninglimit = 1

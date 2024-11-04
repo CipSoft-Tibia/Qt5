@@ -61,7 +61,6 @@
 #include "cc/trees/target_property.h"
 #include "cc/trees/viewport_layers.h"
 #include "cc/trees/viewport_property_ids.h"
-#include "components/viz/common/resources/resource_format.h"
 #include "components/viz/common/surfaces/local_surface_id.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -216,7 +215,7 @@ class CC_EXPORT LayerTreeHost : public MutatorHostClient {
   void SetPaintWorkletLayerPainter(
       std::unique_ptr<PaintWorkletLayerPainter> painter);
 
-  // Attachs a SwapPromise to the Layer tree, that passes through the
+  // Attaches a SwapPromise to the Layer tree, that passes through the
   // LayerTreeHost and LayerTreeHostImpl with the next commit and frame
   // submission, which can be used to observe that progress. This also
   // causes a main frame to be requested.
@@ -255,7 +254,7 @@ class CC_EXPORT LayerTreeHost : public MutatorHostClient {
   // Called in response to a LayerTreeFrameSink request made to the client
   // using LayerTreeHostClient::RequestNewLayerTreeFrameSink. The client will
   // be informed of the LayerTreeFrameSink initialization status using
-  // DidInitializaLayerTreeFrameSink or DidFailToInitializeLayerTreeFrameSink.
+  // DidInitializeLayerTreeFrameSink or DidFailToInitializeLayerTreeFrameSink.
   // The request is completed when the host successfully initializes an
   // LayerTreeFrameSink.
   void SetLayerTreeFrameSink(
@@ -319,9 +318,6 @@ class CC_EXPORT LayerTreeHost : public MutatorHostClient {
   // during the main frame) updates are presented before rendering is paused.
   [[nodiscard]] std::unique_ptr<ScopedPauseRendering> PauseRendering();
 
-  // Notification that the proxy paused or resumed rendering.
-  void OnPauseRenderingChanged(bool);
-
   // Returns whether main frame updates are deferred. See conditions above.
   bool MainFrameUpdatesAreDeferred() const;
 
@@ -332,7 +328,7 @@ class CC_EXPORT LayerTreeHost : public MutatorHostClient {
   // while still allowing main frame lifecycle updates. |timeout|
   // is the interval after which commits will restart if nothing stops
   // deferring sooner. If multiple calls are made to StartDeferringCommits
-  // while deferal is active, the first timeout continues to apply.
+  // while deferral is active, the first timeout continues to apply.
   bool StartDeferringCommits(base::TimeDelta timeout,
                              PaintHoldingReason reason);
 
@@ -395,11 +391,11 @@ class CC_EXPORT LayerTreeHost : public MutatorHostClient {
 
   // Returns the id of the benchmark on success, 0 otherwise.
   int ScheduleMicroBenchmark(const std::string& benchmark_name,
-                             base::Value settings,
+                             base::Value::Dict settings,
                              MicroBenchmark::DoneCallback callback);
 
   // Returns true if the message was successfully delivered and handled.
-  bool SendMessageToMicroBenchmark(int id, base::Value message);
+  bool SendMessageToMicroBenchmark(int id, base::Value::Dict message);
 
   // When the main thread informs the compositor thread that it is ready to
   // commit, generally it would remain blocked until the main thread state is
@@ -898,8 +894,6 @@ class CC_EXPORT LayerTreeHost : public MutatorHostClient {
   [[nodiscard]] base::AutoReset<bool> SimulateSyncingDeltasForTesting() {
     return base::AutoReset<bool>(&syncing_deltas_for_test_, true);
   }
-
-  void IncrementVisualUpdateDuration(base::TimeDelta visual_update_duration);
 
  protected:
   LayerTreeHost(InitParams params, CompositorMode mode);

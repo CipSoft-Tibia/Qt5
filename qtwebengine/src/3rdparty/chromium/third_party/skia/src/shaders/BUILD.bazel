@@ -1,4 +1,5 @@
-load("//bazel:macros.bzl", "bool_flag", "exports_files_legacy", "skia_filegroup", "split_srcs_and_hdrs")
+load("//bazel:skia_rules.bzl", "exports_files_legacy", "skia_filegroup", "split_srcs_and_hdrs")
+load("//bazel:flags.bzl", "bool_flag")
 
 licenses(["notice"])
 
@@ -7,22 +8,32 @@ exports_files_legacy()
 SHADER_FILES = [
     "SkBitmapProcShader.cpp",
     "SkBitmapProcShader.h",
-    "SkCoordClampShader.cpp",
+    "SkBlendShader.cpp",
+    "SkBlendShader.h",
     "SkColorFilterShader.cpp",
     "SkColorFilterShader.h",
     "SkColorShader.cpp",
-    "SkComposeShader.cpp",
+    "SkColorShader.h",
+    "SkCoordClampShader.cpp",
+    "SkCoordClampShader.h",
     "SkEmptyShader.cpp",
+    "SkEmptyShader.h",
     "SkGainmapShader.cpp",
     "SkImageShader.cpp",
     "SkImageShader.h",
     "SkLocalMatrixShader.cpp",
     "SkLocalMatrixShader.h",
-    "SkPerlinNoiseShader.cpp",
+    "SkPerlinNoiseShaderImpl.cpp",
+    "SkPerlinNoiseShaderImpl.h",
+    "SkRuntimeShader.cpp",
+    "SkRuntimeShader.h",
     "SkShader.cpp",
+    "SkShaderBase.cpp",
     "SkShaderBase.h",
     "SkTransformShader.cpp",
     "SkTransformShader.h",
+    "SkTriColorShader.cpp",
+    "SkTriColorShader.h",
 ]
 
 split_srcs_and_hdrs(

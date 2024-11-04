@@ -53,5 +53,6 @@ namespace glslang {
 // 'noContraction' means the object is 'precise'; and for arithmetic operation
 // nodes, it means the operation should not be contracted.
 void PropagateNoContraction(const glslang::TIntermediate& intermediate);
+
 }
-};
+} // namespace QtShaderTools

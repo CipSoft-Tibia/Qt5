@@ -62,7 +62,7 @@ export class ClassesPaneWidget extends UI.Widget.Widget {
     proxyElement.addEventListener('keydown', this.onKeyDown.bind(this), false);
 
     SDK.TargetManager.TargetManager.instance().addModelListener(
-        SDK.DOMModel.DOMModel, SDK.DOMModel.Events.DOMMutated, this.onDOMMutated, this);
+        SDK.DOMModel.DOMModel, SDK.DOMModel.Events.DOMMutated, this.onDOMMutated, this, {scoped: true});
     this.mutatingNodes = new Set();
     this.pendingNodeClasses = new Map();
     this.updateNodeThrottler = new Common.Throttler.Throttler(0);
@@ -149,7 +149,7 @@ export class ClassesPaneWidget extends UI.Widget.Widget {
     this.update();
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.update();
     this.registerCSSFiles([classesPaneWidgetStyles]);
@@ -360,7 +360,6 @@ export class ClassNamePrompt extends UI.TextPrompt.TextPrompt {
         text: completion,
         title: undefined,
         subtitle: undefined,
-        iconType: undefined,
         priority: undefined,
         isSecondary: undefined,
         subtitleRenderer: undefined,

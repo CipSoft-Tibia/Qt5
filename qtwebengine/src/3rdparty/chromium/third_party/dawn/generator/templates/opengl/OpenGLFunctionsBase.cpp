@@ -36,12 +36,25 @@ MaybeError OpenGLFunctionsBase::LoadOpenGLESProcs(GetProcAddress getProc, int ma
 
     {% endfor %}
 
+    InitializeSupportedGLExtensions();
+
     {% for block in extension_gles_blocks %}
         // {{block.extension}}
-        {% for proc in block.procs %}
-            DAWN_TRY(LoadProc(getProc, &{{proc.ProcName()}}, "{{proc.glProcName()}}"));
+        if (IsGLExtensionSupported("{{block.extension}}")) {
+            {% for proc in block.procs %}
+                DAWN_TRY(LoadProc(getProc, &{{proc.ProcName()}}, "{{proc.glProcName()}}"));
         {% endfor %}
+        }
     {% endfor %}
+
+    // GL_ANGLE_base_vertex_base_instance
+    // See crbug.com/dawn/1715 for why this is embedded
+    if (IsGLExtensionSupported("GL_ANGLE_base_vertex_base_instance")) {
+        DAWN_TRY(LoadProc(getProc, &DrawArraysInstancedBaseInstanceANGLE, "glDrawArraysInstancedBaseInstanceANGLE"));
+        DAWN_TRY(LoadProc(getProc, &DrawElementsInstancedBaseVertexBaseInstanceANGLE, "glDrawElementsInstancedBaseVertexBaseInstanceANGLE"));
+        DAWN_TRY(LoadProc(getProc, &MultiDrawArraysInstancedBaseInstanceANGLE, "glMultiDrawArraysInstancedBaseInstanceANGLE"));
+        DAWN_TRY(LoadProc(getProc, &MultiDrawElementsInstancedBaseVertexBaseInstanceANGLE, "glMultiDrawElementsInstancedBaseVertexBaseInstanceANGLE"));
+    }
 
     return {};
 }
@@ -57,14 +70,33 @@ MaybeError OpenGLFunctionsBase::LoadDesktopGLProcs(GetProcAddress getProc, int m
 
     {% endfor %}
 
+    InitializeSupportedGLExtensions();
+
     {% for block in extension_desktop_gl_blocks %}
         // {{block.extension}}
-        {% for proc in block.procs %}
-            DAWN_TRY(LoadProc(getProc, &{{proc.ProcName()}}, "{{proc.glProcName()}}"));
-        {% endfor %}
+        if (IsGLExtensionSupported("{{block.extension}}")) {
+            {% for proc in block.procs %}
+                DAWN_TRY(LoadProc(getProc, &{{proc.ProcName()}}, "{{proc.glProcName()}}"));
+            {% endfor %}
+        }
     {% endfor %}
 
     return {};
+}
+
+void OpenGLFunctionsBase::InitializeSupportedGLExtensions() {
+    int32_t numExtensions;
+    GetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
+
+    for (int32_t i = 0; i < numExtensions; ++i) {
+        const char* extensionName = reinterpret_cast<const char*>(GetStringi(GL_EXTENSIONS, i));
+        mSupportedGLExtensionsSet.insert(extensionName);
+    }
+}
+
+bool OpenGLFunctionsBase::IsGLExtensionSupported(const char* extension) const {
+    ASSERT(extension != nullptr);
+    return mSupportedGLExtensionsSet.count(extension) != 0;
 }
 
 }  // namespace dawn::native::opengl

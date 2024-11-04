@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,11 +11,10 @@
 #include "discovery/dnssd/impl/conversion_layer.h"
 #include "discovery/dnssd/impl/service_key.h"
 #include "discovery/dnssd/public/dns_sd_instance.h"
-#include "discovery/mdns/mdns_records.h"
 #include "discovery/mdns/public/mdns_constants.h"
+#include "discovery/mdns/public/mdns_records.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
 InstanceKey::InstanceKey(const MdnsRecord& record)
     : InstanceKey(GetDomainName(record)) {}
@@ -30,19 +29,19 @@ InstanceKey::InstanceKey(const DnsSdInstance& instance)
                   instance.service_id(),
                   instance.domain_id()) {}
 
-InstanceKey::InstanceKey(absl::string_view instance,
-                         absl::string_view service,
-                         absl::string_view domain)
+InstanceKey::InstanceKey(std::string_view instance,
+                         std::string_view service,
+                         std::string_view domain)
     : ServiceKey(service, domain), instance_id_(instance) {
   OSP_DCHECK(IsInstanceValid(instance_id_))
       << "invalid instance id" << instance;
 }
 
 InstanceKey::InstanceKey(const InstanceKey& other) = default;
-InstanceKey::InstanceKey(InstanceKey&& other) = default;
+InstanceKey::InstanceKey(InstanceKey&& other) noexcept = default;
 
 InstanceKey& InstanceKey::operator=(const InstanceKey& rhs) = default;
-InstanceKey& InstanceKey::operator=(InstanceKey&& rhs) = default;
+InstanceKey& InstanceKey::operator=(InstanceKey&& rhs) noexcept = default;
 
 DomainName InstanceKey::GetName() const {
   std::vector<std::string> labels = ServiceKey::GetName().labels();
@@ -50,5 +49,4 @@ DomainName InstanceKey::GetName() const {
   return DomainName(std::move(labels));
 }
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

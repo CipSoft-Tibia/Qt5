@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,7 @@
 #include "gtest/gtest.h"
 #include "platform/base/error.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 TEST(ServiceInfoTest, Compare) {
   const ServiceInfo receiver1{
@@ -52,5 +51,4 @@ TEST(ServiceInfoTest, Update) {
   original.Update("buzz", 1, {{193, 169, 2, 11}, 1234}, {});
   EXPECT_EQ(original, updated);
 }
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

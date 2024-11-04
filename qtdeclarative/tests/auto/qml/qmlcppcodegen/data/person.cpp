@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "person.h"
 
@@ -106,8 +106,13 @@ QRectF Person::area() const
 
 void Person::setArea(const QRectF &newArea)
 {
-    if (m_area == newArea)
+    if (m_area.valueBypassingBindings() == newArea)
         return;
     m_area = newArea;
     emit areaChanged();
+}
+
+QBindable<QRectF> Person::areaBindable()
+{
+    return QBindable<QRectF>(&m_area);
 }

@@ -15,19 +15,33 @@
 
 #include <errno.h>
 
-#include <cassert>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <memory>
+#include <ostream>
+#include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
+#include "absl/base/config.h"
 #include "absl/base/internal/raw_logging.h"
 #include "absl/base/internal/strerror.h"
 #include "absl/base/macros.h"
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
+#include "absl/functional/function_ref.h"
+#include "absl/memory/memory.h"
+#include "absl/status/internal/status_internal.h"
 #include "absl/status/status_payload_printer.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 
 namespace absl {
 ABSL_NAMESPACE_BEGIN
@@ -80,10 +94,8 @@ std::ostream& operator<<(std::ostream& os, StatusCode code) {
 namespace status_internal {
 
 static absl::optional<size_t> FindPayloadIndexByUrl(
-    const Payloads* payloads,
-    absl::string_view type_url) {
-  if (payloads == nullptr)
-    return absl::nullopt;
+    const Payloads* payloads, absl::string_view type_url) {
+  if (payloads == nullptr) return absl::nullopt;
 
   for (size_t i = 0; i < payloads->size(); ++i) {
     if ((*payloads)[i].type_url == type_url) return i;
@@ -125,8 +137,7 @@ absl::optional<absl::Cord> Status::GetPayload(
   const auto* payloads = GetPayloads();
   absl::optional<size_t> index =
       status_internal::FindPayloadIndexByUrl(payloads, type_url);
-  if (index.has_value())
-    return (*payloads)[index.value()].payload;
+  if (index.has_value()) return (*payloads)[index.value()].payload;
 
   return absl::nullopt;
 }
@@ -303,7 +314,7 @@ std::string Status::ToStringSlow(StatusToStringMode mode) const {
   absl::StrAppend(&text, absl::StatusCodeToString(code()), ": ", message());
 
   const bool with_payload = (mode & StatusToStringMode::kWithPayload) ==
-                      StatusToStringMode::kWithPayload;
+                            StatusToStringMode::kWithPayload;
 
   if (with_payload) {
     status_internal::StatusPayloadPrinter printer =
@@ -618,6 +629,13 @@ std::string* MakeCheckFailString(const absl::Status* status,
 }
 
 }  // namespace status_internal
+
+const char* StatusMessageAsCStr(const Status& status) {
+  // As an internal implementation detail, we guarantee that if status.message()
+  // is non-empty, then the resulting string_view is null terminated.
+  auto sv_message = status.message();
+  return sv_message.empty() ? "" : sv_message.data();
+}
 
 ABSL_NAMESPACE_END
 }  // namespace absl

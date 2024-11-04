@@ -1,4 +1,4 @@
-// Copyright 2021 The Chromium Authors. All rights reserved.
+// Copyright 2021 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -10,12 +10,10 @@
 #ifndef CAST_STREAMING_RESOLUTION_H_
 #define CAST_STREAMING_RESOLUTION_H_
 
-#include "absl/types/optional.h"
 #include "json/value.h"
 #include "util/simple_fraction.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // A resolution in pixels.
 struct Resolution {
@@ -64,7 +62,6 @@ struct Dimensions {
   SimpleFraction frame_rate{0, 1};
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_RESOLUTION_H_

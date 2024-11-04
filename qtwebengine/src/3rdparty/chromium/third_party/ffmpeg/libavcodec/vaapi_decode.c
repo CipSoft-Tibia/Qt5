@@ -398,6 +398,11 @@ static const struct {
     MAP(MPEG4,       MPEG4_ADVANCED_SIMPLE,
                                MPEG4AdvancedSimple),
     MAP(MPEG4,       MPEG4_MAIN,      MPEG4Main   ),
+#if VA_CHECK_VERSION(1, 18, 0)
+    MAP(H264,        H264_HIGH_10_INTRA,
+                                      H264High10  ),
+    MAP(H264,        H264_HIGH_10,    H264High10  ),
+#endif
     MAP(H264,        H264_CONSTRAINED_BASELINE,
                            H264ConstrainedBaseline),
     MAP(H264,        H264_MAIN,       H264Main    ),
@@ -410,7 +415,9 @@ static const struct {
 #endif
 #if VA_CHECK_VERSION(1, 2, 0) && CONFIG_HEVC_VAAPI_HWACCEL
     MAP(HEVC,        HEVC_REXT,       None,
-                 ff_vaapi_parse_hevc_rext_profile ),
+                 ff_vaapi_parse_hevc_rext_scc_profile ),
+    MAP(HEVC,        HEVC_SCC,        None,
+                 ff_vaapi_parse_hevc_rext_scc_profile ),
 #endif
     MAP(MJPEG,       MJPEG_HUFFMAN_BASELINE_DCT,
                                       JPEGBaseline),

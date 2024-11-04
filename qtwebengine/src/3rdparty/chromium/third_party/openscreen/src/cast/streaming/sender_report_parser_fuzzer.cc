@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "cast/streaming/sender_report_parser.h"
 #include "platform/api/time.h"
+#include "platform/base/span.h"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   using openscreen::cast::RtcpSenderReport;
@@ -28,7 +29,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   static SenderReportParser parser(&session);
 #pragma clang diagnostic pop
 
-  parser.Parse(absl::Span<const uint8_t>(data, size));
+  parser.Parse(openscreen::ByteView(data, size));
 
   return 0;
 }

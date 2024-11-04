@@ -19,6 +19,10 @@ static_library("http_server") {
     "//net:net_web_socket_encoder_fuzzer_deps",
   ]
 
+  if (is_qtwebengine) {
+    visibility += [ "*" ]
+  }
+
   friend = [
     ":net_http_server_fuzzer",
     "//net:net_web_socket_encoder_fuzzer",
@@ -80,8 +84,7 @@ if (enable_websockets && use_fuzzing_engine) {
     testonly = true
     visibility = [
       ":net_http_server_fuzzer",
-      ":net_http_server_fuzzer_arch_executable",
-      ":net_http_server_fuzzer_arch_executable_sources",
+      ":net_http_server_fuzzer_executable",
       ":run_net_http_server_fuzzer",
     ]
     public_deps = [

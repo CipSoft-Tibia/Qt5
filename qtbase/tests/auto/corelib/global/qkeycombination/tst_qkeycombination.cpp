@@ -1,5 +1,5 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QObject>
 #include <QTest>
@@ -285,6 +285,17 @@ void tst_QKeyCombination::operator_or()
     QCOMPARE(Qt::AltModifier | Qt::Key_F1, QKeyCombination(Qt::AltModifier, Qt::Key_F1));
     QCOMPARE(Qt::SHIFT | Qt::ALT | Qt::Key_F1, QKeyCombination(Qt::SHIFT | Qt::ALT, Qt::Key_F1));
     QCOMPARE(Qt::ControlModifier | Qt::Key_Escape, QKeyCombination(Qt::ControlModifier, Qt::Key_Escape));
+}
+
+namespace QTBUG_126820 {
+struct S {};
+S operator|(S, S);
+S operator+(S, S);
+
+[[maybe_unused]] constexpr QKeyCombination kc1 = Qt::SHIFT | Qt::Key_A;
+#if QT_DEPRECATED_SINCE(6, 0)
+[[maybe_unused]] constexpr QKeyCombination kc2 = Qt::SHIFT + Qt::Key_A;
+#endif
 }
 
 QTEST_APPLESS_MAIN(tst_QKeyCombination)

@@ -144,9 +144,8 @@ TEST_F(URLUtilTest, GetStandardSchemeType) {
 
 TEST_F(URLUtilTest, GetStandardSchemes) {
   std::vector<std::string> expected = {
-      kHttpsScheme,      kHttpScheme,          kFileScheme,
-      kFtpScheme,        kWssScheme,           kWsScheme,
-      kFileSystemScheme, kQuicTransportScheme, "foo",
+      kHttpsScheme, kHttpScheme, kFileScheme,       kFtpScheme,
+      kWssScheme,   kWsScheme,   kFileSystemScheme, "foo",
   };
   AddStandardScheme("foo", url::SCHEME_WITHOUT_AUTHORITY);
   EXPECT_EQ(expected, GetStandardSchemes());
@@ -248,6 +247,13 @@ TEST_F(URLUtilTest, DecodeURLEscapeSequences) {
       {"%70%71%72%73%74%75%76%77%78%79%7a%7B%7C%7D%7e%7f/",
        "pqrstuvwxyz{|}~\x7f/"},
       {"%e4%bd%a0%e5%a5%bd", "\xe4\xbd\xa0\xe5\xa5\xbd"},
+      // U+FFFF (Noncharacter) should not be replaced with U+FFFD (Replacement
+      // Character) (http://crbug.com/1416021)
+      {"%ef%bf%bf", "\xef\xbf\xbf"},
+      // U+FDD0 (Noncharacter)
+      {"%ef%b7%90", "\xef\xb7\x90"},
+      // U+FFFD (Replacement Character)
+      {"%ef%bf%bd", "\xef\xbf\xbd"},
   };
 
   for (size_t i = 0; i < std::size(decode_cases); i++) {
@@ -395,6 +401,7 @@ TEST_F(URLUtilTest, TestResolveRelativeWithNonStandardBase) {
       {"about:blank", "#id42", true, "about:blank#id42"},
       {"about:blank", " #id42", true, "about:blank#id42"},
       {"about:blank#oldfrag", "#newfrag", true, "about:blank#newfrag"},
+      {"about:blank", " #id:42", true, "about:blank#id:42"},
       // A surprising side effect of allowing fragments to resolve against
       // any URL scheme is we might break javascript: URLs by doing so...
       {"javascript:alert('foo#bar')", "#badfrag", true,

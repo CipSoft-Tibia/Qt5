@@ -15,6 +15,7 @@
 #include "components/user_education/common/user_education_class_properties.h"
 #include "components/user_education/views/help_bubble_delegate.h"
 #include "components/user_education/views/help_bubble_view.h"
+#include "components/user_education/views/toggle_tracked_element_attention_utils.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/interaction/element_tracker.h"
@@ -144,27 +145,26 @@ void HelpBubbleViews::MaybeResetAnchorView() {
   if (!anchor_view)
     return;
   anchor_view->SetProperty(kHasInProductHelpPromoKey, false);
+  MaybeRemoveAttentionStateFromTrackedElement(anchor_view);
 }
 
 void HelpBubbleViews::CloseBubbleImpl() {
-  if (!help_bubble_view_)
-    return;
-
   anchor_hidden_subscription_ = base::CallbackListSubscription();
   anchor_bounds_changed_subscription_ = base::CallbackListSubscription();
   scoped_observation_.Reset();
   MaybeResetAnchorView();
-  help_bubble_view_->GetWidget()->Close();
+
+  // Reset the anchor view. Closing the widget could cause callbacks which could
+  // theoretically destroy `this`, so
+  auto* const help_bubble_view = help_bubble_view_.get();
   help_bubble_view_ = nullptr;
+  if (help_bubble_view && help_bubble_view->GetWidget()) {
+    help_bubble_view->GetWidget()->Close();
+  }
 }
 
 void HelpBubbleViews::OnWidgetDestroying(views::Widget* widget) {
-  anchor_hidden_subscription_ = base::CallbackListSubscription();
-  anchor_bounds_changed_subscription_ = base::CallbackListSubscription();
-  scoped_observation_.Reset();
-  MaybeResetAnchorView();
-  help_bubble_view_ = nullptr;
-  NotifyBubbleClosed();
+  Close();
 }
 
 void HelpBubbleViews::OnElementHidden(ui::TrackedElement* element) {
@@ -219,6 +219,9 @@ std::unique_ptr<HelpBubble> HelpBubbleFactoryViews::CreateBubbleImpl(
     result->bubble_view()->GetFocusManager()->RegisterAccelerator(
         accelerator, ui::AcceleratorManager::HandlerPriority::kNormalPriority,
         result.get());
+  }
+  if (result) {
+    MaybeApplyAttentionStateToTrackedElement(anchor.view);
   }
   return result;
 }

@@ -35,6 +35,8 @@ Q_GLOBAL_STATIC(QMutex, qsg_valid_texture_mutex)
 
 QT_BEGIN_NAMESPACE
 
+Q_DECLARE_LOGGING_CATEGORY(lcQsgLeak)
+
 bool operator==(const QSGSamplerDescription &a, const QSGSamplerDescription &b) noexcept
 {
     return a.filtering == b.filtering
@@ -85,7 +87,7 @@ QSGTexturePrivate::QSGTexturePrivate(QSGTexture *t)
     , m_d3d11TextureAccessor(t)
     , m_d3d12TextureAccessor(t)
 #endif
-#if defined(__OBJC__)
+#if defined(Q_OS_APPLE)
     , m_metalTextureAccessor(t)
 #endif
 #if QT_CONFIG(vulkan)
@@ -117,7 +119,7 @@ static QHash<QSGTexture*, SGTextureTraceItem*> qt_debug_allocated_textures;
 
 inline static void qt_debug_print_texture_count()
 {
-    qDebug("Number of leaked textures: %i", qt_debug_texture_count);
+    qCDebug(lcQsgLeak, "Number of leaked textures: %i", qt_debug_texture_count);
     qt_debug_texture_count = -1;
 
 #if defined(CAN_BACKTRACE_EXECINFO)
@@ -303,7 +305,7 @@ QSGTexture::QSGTexture()
     : QObject(*(new QSGTexturePrivate(this)))
 {
 #ifndef QT_NO_DEBUG
-    if (_q_sg_leak_check)
+    if (lcQsgLeak().isDebugEnabled())
         qt_debug_add_texture(this);
 
     QMutexLocker locker(qsg_valid_texture_mutex());
@@ -318,7 +320,7 @@ QSGTexture::QSGTexture(QSGTexturePrivate &dd)
     : QObject(dd)
 {
 #ifndef QT_NO_DEBUG
-    if (_q_sg_leak_check)
+    if (lcQsgLeak().isDebugEnabled())
         qt_debug_add_texture(this);
 
     QMutexLocker locker(qsg_valid_texture_mutex());
@@ -332,7 +334,7 @@ QSGTexture::QSGTexture(QSGTexturePrivate &dd)
 QSGTexture::~QSGTexture()
 {
 #ifndef QT_NO_DEBUG
-    if (_q_sg_leak_check)
+    if (lcQsgLeak().isDebugEnabled())
         qt_debug_remove_texture(this);
 
     QMutexLocker locker(qsg_valid_texture_mutex());
@@ -1045,7 +1047,7 @@ void *QSGTexture::resolveInterface(const char *name, int revision) const
 #if QT_CONFIG(vulkan)
     QT_NATIVE_INTERFACE_RETURN_IF(QSGVulkanTexture, &dd->m_vulkanTextureAccessor);
 #endif
-#if defined(__OBJC__)
+#if defined(Q_OS_APPLE)
     QT_NATIVE_INTERFACE_RETURN_IF(QSGMetalTexture, &dd->m_metalTextureAccessor);
 #endif
 #if defined(Q_OS_WIN)

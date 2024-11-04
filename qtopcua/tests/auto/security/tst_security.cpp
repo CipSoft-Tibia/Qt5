@@ -1,7 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
-#include "backend_environment.h"
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtOpcUa/QOpcUaAuthenticationInformation>
 #include <QtOpcUa/QOpcUaClient>
@@ -96,12 +94,11 @@ static QString messageSecurityModeToString(QOpcUaEndpointDescription::MessageSec
 {\
     QTest::addColumn<QString>("backend");\
     QTest::addColumn<QOpcUaEndpointDescription>("endpoint");\
-    for (auto backend : m_backends)\
-        for (auto endpoint : m_endpoints) { \
+    for (const auto &backend : m_backends)\
+        for (const auto &endpoint : m_endpoints) { \
             const QString rowName = QStringLiteral("%1 using %2 %3") \
-                    .arg(backend) \
-                    .arg(endpoint.securityPolicy()) \
-                    .arg(messageSecurityModeToString(endpoint.securityMode())); \
+                    .arg(backend, endpoint.securityPolicy(), \
+                         messageSecurityModeToString(endpoint.securityMode())); \
             QTest::newRow(rowName.toLatin1().constData()) << backend << endpoint; \
         } \
 }
@@ -191,11 +188,30 @@ void Tst_QOpcUaSecurity::initTestCase()
         m_serverProcess.start(m_testServerPath);
         QVERIFY2(m_serverProcess.waitForStarted(), qPrintable(m_serverProcess.errorString()));
         // Let the server come up
-        QTest::qSleep(2000);
+
+        QTest::qSleep(100);
+        socket.connectToHost(defaultHost, defaultPort);
+        if (!socket.waitForConnected(5000))
+        {
+            bool success = false;
+            for (int i = 0; i < 50; ++i) {
+                QTest::qSleep(100);
+                socket.connectToHost(defaultHost, defaultPort);
+                if (socket.waitForConnected(5000)) {
+                    success = true;
+                    break;
+                }
+            }
+
+            if (!success)
+                QFAIL("Server does not run");
+        }
+
+        socket.disconnectFromHost();
     }
     QString host = envOrDefault("OPCUA_HOST", defaultHost.toString());
     QString port = envOrDefault("OPCUA_PORT", QString::number(defaultPort));
-    m_discoveryEndpoint = QStringLiteral("opc.tcp://%1:%2").arg(host).arg(port);
+    m_discoveryEndpoint = QStringLiteral("opc.tcp://%1:%2").arg(host, port);
     qDebug() << "Using endpoint:" << m_discoveryEndpoint;
 
     QScopedPointer<QOpcUaClient> client(m_opcUa.createClient(m_backends.first()));
@@ -238,7 +254,7 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureUnencryptedKey()
     if (!client->supportedSecurityPolicies().contains(endpoint.securityPolicy())) {
         QSKIP(QStringLiteral("This test is skipped because backend %1 "
                              "does not support security policy %2")
-              .arg(client->backend()).arg(endpoint.securityPolicy()).toLatin1().constData());
+              .arg(client->backend(), endpoint.securityPolicy()).toLatin1().constData());
     }
 
     const QString pkidir = m_pkiData->path();
@@ -261,7 +277,9 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureUnencryptedKey()
     qDebug() << "Testing security policy" << endpoint.securityPolicy();
     QSignalSpy connectSpy(client.data(), &QOpcUaClient::stateChanged);
     int passwordRequestSpy = 0;
-    connect(client.data(), &QOpcUaClient::passwordForPrivateKeyRequired, [&passwordRequestSpy](const QString &privateKeyFilePath, QString *password, bool previousTryFailed) {
+    connect(client.data(), &QOpcUaClient::passwordForPrivateKeyRequired,
+            this, [&passwordRequestSpy](const QString &privateKeyFilePath, QString *password,
+                                        bool previousTryFailed) {
         Q_UNUSED(privateKeyFilePath);
         Q_UNUSED(previousTryFailed);
         Q_UNUSED(password);
@@ -270,12 +288,11 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureUnencryptedKey()
 
     client->connectToEndpoint(endpoint);
     connectSpy.wait(signalSpyTimeout);
-    if (client->state() == QOpcUaClient::Connecting)
+    if (connectSpy.size() != 2)
         connectSpy.wait(signalSpyTimeout);
 
     QCOMPARE(connectSpy.size(), 2);
     QCOMPARE(connectSpy.at(0).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Connecting);
-    connectSpy.wait(signalSpyTimeout);
     QCOMPARE(connectSpy.at(1).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Connected);
 
     QCOMPARE(passwordRequestSpy, 0);
@@ -287,6 +304,8 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureUnencryptedKey()
     connectSpy.clear();
     client->disconnectFromEndpoint();
     connectSpy.wait(signalSpyTimeout);
+    if (connectSpy.size() != 2)
+        connectSpy.wait(signalSpyTimeout);
     QCOMPARE(connectSpy.size(), 2);
     QCOMPARE(connectSpy.at(0).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Closing);
     QCOMPARE(connectSpy.at(1).at(0).value<QOpcUaClient::ClientState>(), QOpcUaClient::Disconnected);
@@ -312,7 +331,7 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureEncryptedKey()
     if (!client->supportedSecurityPolicies().contains(endpoint.securityPolicy())) {
         QSKIP(QStringLiteral("This test is skipped because backend %1 "
                              "does not support security policy %2")
-              .arg(client->backend()).arg(endpoint.securityPolicy()).toLatin1().constData());
+              .arg(client->backend(), endpoint.securityPolicy()).toLatin1().constData());
     }
 
     const QString pkidir = m_pkiData->path();
@@ -335,7 +354,9 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureEncryptedKey()
     qDebug() << "Testing security policy" << endpoint.securityPolicy();
     QSignalSpy connectSpy(client.data(), &QOpcUaClient::stateChanged);
     int passwordRequestSpy = 0;
-    connect(client.data(), &QOpcUaClient::passwordForPrivateKeyRequired, [&passwordRequestSpy, &pkiConfig](const QString &privateKeyFilePath, QString *password, bool previousTryFailed) {
+    connect(client.data(), &QOpcUaClient::passwordForPrivateKeyRequired,
+            this, [&passwordRequestSpy, &pkiConfig](const QString &privateKeyFilePath,
+                                                    QString *password, bool previousTryFailed) {
         qDebug() << "Password requested";
         if (passwordRequestSpy == 0) {
             QVERIFY(password->isEmpty());
@@ -356,7 +377,7 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureEncryptedKey()
 
     client->connectToEndpoint(endpoint);
     connectSpy.wait(signalSpyTimeout);
-    if (client->state() == QOpcUaClient::Connecting)
+    if (connectSpy.size() != 2)
         connectSpy.wait(signalSpyTimeout);
 
     QCOMPARE(connectSpy.size(), 2);
@@ -372,6 +393,11 @@ void Tst_QOpcUaSecurity::connectAndDisconnectSecureEncryptedKey()
     connectSpy.clear();
     client->disconnectFromEndpoint();
     connectSpy.wait(signalSpyTimeout);
+    // Sometimes, the first wait() only gets the first signal.
+    // Make the wait conditional because an unconditional second
+    // wait() would block for the full time if there is no signal.
+    if (connectSpy.size() != 2)
+        connectSpy.wait(signalSpyTimeout);
     QCOMPARE(connectSpy.size(), 2);
     QCOMPARE(connectSpy.at(0).at(0), QOpcUaClient::Closing);
     QCOMPARE(connectSpy.at(1).at(0), QOpcUaClient::Disconnected);
@@ -387,7 +413,6 @@ void Tst_QOpcUaSecurity::cleanupTestCase()
 
 int main(int argc, char *argv[])
 {
-    updateEnvironment();
     QCoreApplication app(argc, argv);
 
     QTEST_SET_MAIN_SOURCE_PATH

@@ -17,6 +17,8 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <WebKit/WebKit.h>
 
+#include <QtCore/qjsondocument.h>
+
 #ifdef Q_OS_IOS
 #import <UIKit/UIKit.h>
 #import <UIKit/UIGestureRecognizerSubclass.h>
@@ -528,7 +530,29 @@ QVariant fromJSValue(id result)
     if ([result isKindOfClass:[NSDate class]])
         return QDateTime::fromNSDate(static_cast<NSDate *>(result));
 
-    // JSValue also supports arrays and dictionaries, but we don't handle that yet
+    if ([result isKindOfClass:[NSArray class]]
+     || [result isKindOfClass:[NSDictionary class]]) {
+        @try {
+            // Round-trip via JSON, so we don't have to implement conversion
+            // from NSArray and NSDictionary manually.
+
+            // FIXME: NSJSONSerialization requires that any nested object
+            // is NSString, NSNumber, NSArray, NSDictionary, or NSNull, so
+            // nested NSDates are not supported -- meaning we support plain
+            // NSDate (above), but not in an array or dict. To handle this
+            // use-case we'd need a manual conversion.
+            auto jsonData = QByteArray::fromNSData(
+                [NSJSONSerialization dataWithJSONObject:result options:0 error:nil]);
+
+            QJsonParseError parseError;
+            auto jsonDocument = QJsonDocument::fromJson(jsonData, &parseError);
+            if (parseError.error == QJsonParseError::NoError)
+                return jsonDocument.toVariant();
+        } @catch (NSException *) {
+            return QVariant();
+        }
+    }
+
     return QVariant();
 }
 

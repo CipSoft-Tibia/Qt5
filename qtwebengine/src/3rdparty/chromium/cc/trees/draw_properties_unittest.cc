@@ -1143,6 +1143,8 @@ TEST_F(DrawPropertiesTest, ClipRectCullsRenderSurfaces) {
   LayerImpl* leaf_node1 = AddLayer<LayerImpl>();
   LayerImpl* leaf_node2 = AddLayer<LayerImpl>();
 
+  SetElementIdsForTesting();
+
   root->SetBounds(gfx::Size(500, 500));
   child->SetBounds(gfx::Size(20, 20));
   grand_child->SetBounds(gfx::Size(10, 10));
@@ -1168,10 +1170,8 @@ TEST_F(DrawPropertiesTest, ClipRectCullsRenderSurfaces) {
   UpdateActiveTreeDrawProperties();
 
   ASSERT_EQ(2U, GetRenderSurfaceList().size());
-  EXPECT_EQ(static_cast<uint64_t>(root->id()),
-            GetRenderSurfaceList().at(0)->id());
-  EXPECT_EQ(static_cast<uint64_t>(child->id()),
-            GetRenderSurfaceList().at(1)->id());
+  EXPECT_EQ(root->element_id(), GetRenderSurfaceList().at(0)->id());
+  EXPECT_EQ(child->element_id(), GetRenderSurfaceList().at(1)->id());
 }
 
 TEST_F(DrawPropertiesTest, ClipRectCullsSurfaceWithoutVisibleContent) {
@@ -1215,8 +1215,7 @@ TEST_F(DrawPropertiesTest, ClipRectCullsSurfaceWithoutVisibleContent) {
 
   // We should cull child and grand_child from the GetRenderSurfaceList.
   ASSERT_EQ(1U, GetRenderSurfaceList().size());
-  EXPECT_EQ(static_cast<uint64_t>(root->id()),
-            GetRenderSurfaceList().at(0)->id());
+  EXPECT_EQ(root->element_id(), GetRenderSurfaceList().at(0)->id());
 }
 
 TEST_F(DrawPropertiesTest, IsClippedIsSetCorrectlyLayerImpl) {
@@ -3790,6 +3789,7 @@ TEST_F(DrawPropertiesTestWithLayerTree, SubtreeHiddenWithCopyRequest) {
   copy_layer->RequestCopyOfOutput(
       viz::CopyOutputRequest::CreateStubForTesting());
 
+  host()->SetElementIdsForTesting();
   CommitAndActivate();
 
   EXPECT_TRUE(GetEffectNode(ImplOf(root))->subtree_has_copy_request);
@@ -3802,14 +3802,11 @@ TEST_F(DrawPropertiesTestWithLayerTree, SubtreeHiddenWithCopyRequest) {
   // parent since it has opacity and two drawing descendants, one for the parent
   // since it owns a surface, and one for the copy_layer.
   ASSERT_EQ(4u, GetRenderSurfaceList().size());
-  EXPECT_EQ(static_cast<uint64_t>(root->id()),
-            GetRenderSurfaceList().at(0)->id());
-  EXPECT_EQ(static_cast<uint64_t>(copy_grand_parent->id()),
+  EXPECT_EQ(root->element_id(), GetRenderSurfaceList().at(0)->id());
+  EXPECT_EQ(copy_grand_parent->element_id(),
             GetRenderSurfaceList().at(1)->id());
-  EXPECT_EQ(static_cast<uint64_t>(copy_parent->id()),
-            GetRenderSurfaceList().at(2)->id());
-  EXPECT_EQ(static_cast<uint64_t>(copy_layer->id()),
-            GetRenderSurfaceList().at(3)->id());
+  EXPECT_EQ(copy_parent->element_id(), GetRenderSurfaceList().at(2)->id());
+  EXPECT_EQ(copy_layer->element_id(), GetRenderSurfaceList().at(3)->id());
 
   // The root render surface should have 2 contributing layers.
   EXPECT_EQ(2, GetRenderSurfaceImpl(root)->num_contributors());
@@ -3875,13 +3872,13 @@ TEST_F(DrawPropertiesTestWithLayerTree, ClippedOutCopyRequest) {
   root->AddChild(copy_parent);
 
   host()->SetRootLayer(root);
+  host()->SetElementIdsForTesting();
 
   CommitAndActivate();
 
   // We should have two render surface, as the others are clipped out.
   ASSERT_EQ(2u, GetRenderSurfaceList().size());
-  EXPECT_EQ(static_cast<uint64_t>(root->id()),
-            GetRenderSurfaceList().at(0)->id());
+  EXPECT_EQ(root->element_id(), GetRenderSurfaceList().at(0)->id());
 
   // The root render surface should have only 2 contributing layer, since the
   // other layers are clipped away.
@@ -5468,7 +5465,7 @@ TEST_F(DrawPropertiesStickyPositionTest, StickyPositionNested) {
       inner_sticky_impl->ScreenSpaceTransform().To2dTranslation());
 }
 
-class DrawPropertiesAnchorScrollTest : public DrawPropertiesTest {
+class DrawPropertiesAnchorPositionScrollTest : public DrawPropertiesTest {
  protected:
   void CreateRoot() {
     root_ = Layer::Create();
@@ -5503,9 +5500,9 @@ class DrawPropertiesAnchorScrollTest : public DrawPropertiesTest {
     anchored->SetBounds(gfx::Size(10, 10));
     CopyProperties(parent, anchored.get());
     CreateTransformNode(anchored.get());
-    SetAnchorScrollContainers(anchored.get(),
-                              inner_most_scroller->scroll_tree_index(),
-                              outer_most_scroller->scroll_tree_index());
+    SetAnchorPositionScrollers(anchored.get(),
+                               inner_most_scroller->scroll_tree_index(),
+                               outer_most_scroller->scroll_tree_index());
     root_->AddChild(anchored);
     return anchored;
   }
@@ -5522,13 +5519,13 @@ class DrawPropertiesAnchorScrollTest : public DrawPropertiesTest {
     return layer_tree_impl->LayerById(layer->id());
   }
 
-  void SetAnchorScrollContainers(Layer* anchored,
-                                 int inner_most_scroll_container_id,
-                                 int outer_most_scroll_container_id) {
-    auto& data =
-        GetPropertyTrees(anchored)
-            ->transform_tree_mutable()
-            .EnsureAnchorScrollContainersData(anchored->transform_tree_index());
+  void SetAnchorPositionScrollers(Layer* anchored,
+                                  int inner_most_scroll_container_id,
+                                  int outer_most_scroll_container_id) {
+    auto& data = GetPropertyTrees(anchored)
+                     ->transform_tree_mutable()
+                     .EnsureAnchorPositionScrollersData(
+                         anchored->transform_tree_index());
     for (int scroller_id = inner_most_scroll_container_id;
          scroller_id != kInvalidPropertyNodeId;) {
       const ScrollNode* scroll_node =
@@ -5545,7 +5542,7 @@ class DrawPropertiesAnchorScrollTest : public DrawPropertiesTest {
   scoped_refptr<Layer> root_;
 };
 
-TEST_F(DrawPropertiesAnchorScrollTest, Basics) {
+TEST_F(DrawPropertiesAnchorPositionScrollTest, Basics) {
   // Virtual layer hierarchy:
   // + root
   //   + container
@@ -5584,7 +5581,7 @@ TEST_F(DrawPropertiesAnchorScrollTest, Basics) {
       GetImpl(anchored.get())->ScreenSpaceTransform().To2dTranslation());
 }
 
-TEST_F(DrawPropertiesAnchorScrollTest, NestedScrollers) {
+TEST_F(DrawPropertiesAnchorPositionScrollTest, NestedScrollers) {
   // Virtual layer hierarchy:
   // + root
   //   + container1
@@ -7988,19 +7985,18 @@ TEST_F(DrawPropertiesTestWithLayerTree, SubtreeHiddenWithCacheRenderSurface) {
   cache_grand_parent_sibling_after->SetHideLayerAndSubtree(true);
   cache_grand_child->SetHideLayerAndSubtree(true);
 
+  host()->SetElementIdsForTesting();
   CommitAndActivate();
 
   // We should have four render surfaces, one for the root, one for the grand
   // parent since it has opacity and two drawing descendants, one for the parent
   // since it owns a surface, and one for the cache.
   ASSERT_EQ(4u, GetRenderSurfaceList().size());
-  EXPECT_EQ(static_cast<uint64_t>(root->id()),
-            GetRenderSurfaceList().at(0)->id());
-  EXPECT_EQ(static_cast<uint64_t>(cache_grand_parent->id()),
+  EXPECT_EQ(root->element_id(), GetRenderSurfaceList().at(0)->id());
+  EXPECT_EQ(cache_grand_parent->element_id(),
             GetRenderSurfaceList().at(1)->id());
-  EXPECT_EQ(static_cast<uint64_t>(cache_parent->id()),
-            GetRenderSurfaceList().at(2)->id());
-  EXPECT_EQ(static_cast<uint64_t>(cache_render_surface->id()),
+  EXPECT_EQ(cache_parent->element_id(), GetRenderSurfaceList().at(2)->id());
+  EXPECT_EQ(cache_render_surface->element_id(),
             GetRenderSurfaceList().at(3)->id());
 
   // The root render surface should have 2 contributing layers.

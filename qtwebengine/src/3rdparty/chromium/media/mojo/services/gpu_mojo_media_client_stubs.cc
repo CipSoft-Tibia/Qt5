@@ -7,6 +7,7 @@
 #include "media/base/audio_decoder.h"
 #include "media/base/audio_encoder.h"
 #include "media/base/cdm_factory.h"
+#include "media/base/media_log.h"
 #include "media/base/video_decoder.h"
 #include "media/mojo/services/gpu_mojo_media_client.h"
 
@@ -19,6 +20,7 @@ std::unique_ptr<VideoDecoder> CreatePlatformVideoDecoder(
 
 absl::optional<SupportedVideoDecoderConfigs>
 GetPlatformSupportedVideoDecoderConfigs(
+    base::WeakPtr<MediaGpuChannelManager> manager,
     gpu::GpuDriverBugWorkarounds gpu_workarounds,
     gpu::GpuPreferences gpu_preferences,
     const gpu::GPUInfo& gpu_info,
@@ -27,7 +29,8 @@ GetPlatformSupportedVideoDecoderConfigs(
 }
 
 std::unique_ptr<AudioDecoder> CreatePlatformAudioDecoder(
-    scoped_refptr<base::SequencedTaskRunner> task_runner) {
+    scoped_refptr<base::SequencedTaskRunner> task_runner,
+    std::unique_ptr<MediaLog> media_log) {
   return nullptr;
 }
 

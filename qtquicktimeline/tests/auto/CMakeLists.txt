@@ -4,3 +4,4 @@
 # Generated from auto.pro.
 
 add_subdirectory(qtquicktimeline)
+add_subdirectory(qtquicktimeline_blendtrees)

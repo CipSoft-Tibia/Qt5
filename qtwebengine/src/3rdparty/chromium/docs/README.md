@@ -20,7 +20,8 @@ below.**
     and the
     [Chromium Documentation Best Practices](documentation_best_practices.md).
 *   Markdown documents must follow the
-    [style guide](https://github.com/google/styleguide/tree/gh-pages/docguide).
+    [Markdown Style
+    Guide](https://chromium.googlesource.com/chromium/src/+/HEAD/styleguide/markdown/markdown.md).
 
 ### Previewing changes
 
@@ -99,6 +100,7 @@ used when committed.
 *   [Git Cookbook](git_cookbook.md) - A collection of git recipes for common
     tasks
 *   [Git Tips](git_tips.md) - More git tips
+*   [Git submodules](git_submodules.md) - Git submodule (tips, FAQ)
 
 ### Clang
 *   [Clang Compiler](clang.md) - General information on the clang compiler, used
@@ -125,6 +127,7 @@ used when committed.
 *   [Commit Checklist](commit_checklist.md) - Streamlined checklist to go
     through before uploading CLs on Gerrit.
 *   [Code Reviews](code_reviews.md) - Code review requirements and guidelines
+*   [Dependency management](dependencies.md) - Managing dependencies (DEPS, git submodules)
 *   [Respectful Code Reviews](cr_respect.md) - A guide for code reviewers
 *   [Respectful Changes](cl_respect.md) - A guide for code authors
 *   [Mandatory Code-Review Rollout](code_review_owners.md) - Upcoming policy changes related to code review and OWNERS
@@ -343,7 +346,11 @@ used when committed.
     audio streams interact
 *   [Autoplay of HTMLMediaElements](media/autoplay.md) - How HTMLMediaElements
     are autoplayed.
+*   [Latency tracing](media/latency_tracing.md) - How to use the
+    `"audio.latency"` tracing category to measure audio latency.
 *   [Piranha Plant](piranha_plant.md) - Future architecture of MediaStreams
+*   [Media Capture](media/capture/README.md) - Features and APIs that enable the
+    browser to capture pixels and audio from itself or the underlying OS.
 *   [Video Encode Accelerator Tests](media/gpu/veatest_usage.md) - How to
     use the accelerated video encoder test program.
 *   [Video Decoder Tests](media/gpu/video_decoder_test_usage.md) - Running the

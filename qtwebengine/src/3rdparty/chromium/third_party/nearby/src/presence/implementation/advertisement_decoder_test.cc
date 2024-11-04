@@ -38,7 +38,6 @@ using ::nearby::ByteArray;  // NOLINT
 using ::nearby::internal::IdentityType;
 using ::nearby::internal::SharedCredential;  // NOLINT
 using ::testing::ElementsAre;
-using ::protobuf_matchers::EqualsProto;
 using ::testing::Matcher;
 using ::testing::Pointwise;
 using ::testing::Return;
@@ -55,7 +54,7 @@ ScanRequest GetScanRequest() {
                              IdentityType::IDENTITY_TYPE_PROVISIONED}};
 }
 
-#if USE_RUST_LDT == 1
+#ifdef USE_RUST_LDT
 ScanRequest GetScanRequest(std::vector<SharedCredential> credentials) {
   LegacyPresenceScanFilter scan_filter = {.remote_public_credentials =
                                               credentials};
@@ -79,7 +78,8 @@ SharedCredential GetPublicCredential() {
                        163, 203, 100, 235, 53,  65, 202, 97,  75,  180});
   SharedCredential public_credential;
   public_credential.set_key_seed(seed.AsStringView());
-  public_credential.set_metadata_encryption_key_tag(known_mac.AsStringView());
+  public_credential.set_metadata_encryption_key_tag_v0(
+      known_mac.AsStringView());
   return public_credential;
 }
 
@@ -94,7 +94,7 @@ TEST(AdvertisementDecoder, DecodeBaseNpPrivateAdvertisement) {
   AdvertisementDecoder decoder(GetScanRequest(), &credentials);
 
   absl::StatusOr<Advertisement> result = decoder.DecodeAdvertisement(
-      absl::HexStringToBytes("00414142ceb073b0e34f58d7dc6dea370783ac943fa5"));
+      absl::HexStringToBytes("00514142c2c30e79fee14599e36e34d5d42e49fc37b0df"));
 
   ASSERT_OK(result);
   EXPECT_EQ(result->metadata_key, metadata_key.AsStringView());
@@ -117,7 +117,7 @@ TEST(AdvertisementDecoder,
   AdvertisementDecoder decoder(GetScanRequest(credentials));
 
   absl::StatusOr<Advertisement> result = decoder.DecodeAdvertisement(
-      absl::HexStringToBytes("00414142ceb073b0e34f58d7dc6dea370783ac943fa5"));
+      absl::HexStringToBytes("00514142c2c30e79fee14599e36e34d5d42e49fc37b0df"));
 
   ASSERT_OK(result);
   EXPECT_EQ(result->metadata_key, metadata_key.AsStringView());
@@ -141,7 +141,7 @@ TEST(AdvertisementDecoder, DecodeBaseNpTrustedAdvertisement) {
   AdvertisementDecoder decoder(GetScanRequest(), &credentials);
 
   absl::StatusOr<Advertisement> result = decoder.DecodeAdvertisement(
-      absl::HexStringToBytes("00424142253536ac63191a96894d95f0ffa38b57cf9b"));
+      absl::HexStringToBytes("00524142099500aeef8bff5df05169a79726e11563b865"));
 
   ASSERT_OK(result);
   EXPECT_EQ(result->metadata_key, metadata_key.AsStringView());
@@ -168,7 +168,7 @@ TEST(AdvertisementDecoder, DecodeBaseNpProvisionedAdvertisement) {
   AdvertisementDecoder decoder(GetScanRequest(), &credentials);
 
   absl::StatusOr<Advertisement> result = decoder.DecodeAdvertisement(
-      absl::HexStringToBytes("00444142253536ac63191a96894d95f0ffa38b57cf9b"));
+      absl::HexStringToBytes("00544142099500aeef8bff5df05169a79726e11563b865"));
 
   ASSERT_OK(result);
   EXPECT_EQ(result->metadata_key, metadata_key.AsStringView());
@@ -221,14 +221,14 @@ TEST(AdvertisementDecoder, DecodeBaseNpPublicAdvertisement) {
                               absl::HexStringToBytes("EE"))));
 }
 
-TEST(AdvertisementDecoder, DecodeBaseNpWithTxActionField) {
+TEST(AdvertisementDecoder, DecodeBaseNpWithTxAndActionFields) {
   std::string salt = "AB";
   AdvertisementDecoder decoder(GetScanRequest());
 
   auto result = decoder.DecodeAdvertisement(
-      absl::HexStringToBytes("00204142034650B04180"));
+      absl::HexStringToBytes("0020414203155036B04180"));
 
-  EXPECT_OK(result);
+  ASSERT_OK(result);
   EXPECT_THAT(result->data_elements,
               UnorderedElementsAre(
                   DataElement(DataElement::kSaltFieldType, salt),
@@ -237,9 +237,24 @@ TEST(AdvertisementDecoder, DecodeBaseNpWithTxActionField) {
                               absl::HexStringToBytes("50")),
                   DataElement(DataElement::kContextTimestampFieldType,
                               absl::HexStringToBytes("0B")),
-                  DataElement(DataElement(ActionBit::kEddystoneAction)),
                   DataElement(DataElement(ActionBit::kTapToTransferAction)),
                   DataElement(DataElement(ActionBit::kNearbyShareAction))));
+}
+
+TEST(AdvertisementDecoder, DecodeBaseNpV0PublicIdentityWithTxAndActionFields) {
+  AdvertisementDecoder decoder(GetScanRequest());
+
+  auto result = decoder.DecodeAdvertisement(
+      // v0 public identity, power and action, action value 8 for active unlock.
+      absl::HexStringToBytes("000315FF260080"));
+
+  EXPECT_OK(result);
+  EXPECT_THAT(result->data_elements,
+              UnorderedElementsAre(
+                  DataElement(DataElement::kPublicIdentityFieldType, ""),
+                  DataElement(DataElement::kTxPowerFieldType,
+                              absl::HexStringToBytes("ff")),
+                  DataElement(DataElement(ActionBit::kActiveUnlockAction))));
 }
 
 TEST(AdvertisementDecoder,
@@ -372,10 +387,10 @@ TEST(AdvertisementDecoder, MatchesLegacyPresenceScanFilterWithActions) {
   DataElement model_id =
       DataElement(DataElement::kModelIdFieldType, "model id");
   DataElement salt = DataElement(DataElement::kSaltFieldType, "salt");
-  DataElement eddystone_action = DataElement(ActionBit::kEddystoneAction);
+  DataElement ttt_action = DataElement(ActionBit::kTapToTransferAction);
   LegacyPresenceScanFilter filter = {
       .actions = {static_cast<int>(ActionBit::kActiveUnlockAction),
-                  static_cast<int>(ActionBit::kEddystoneAction)},
+                  static_cast<int>(ActionBit::kTapToTransferAction)},
       .extended_properties = {model_id, salt}};
 
   AdvertisementDecoder decoder(
@@ -383,7 +398,7 @@ TEST(AdvertisementDecoder, MatchesLegacyPresenceScanFilterWithActions) {
       ScanRequestBuilder().AddScanFilter(filter).Build());
 
   EXPECT_FALSE(decoder.MatchesScanFilter({salt, model_id}));
-  EXPECT_TRUE(decoder.MatchesScanFilter({salt, eddystone_action, model_id}));
+  EXPECT_TRUE(decoder.MatchesScanFilter({salt, ttt_action, model_id}));
 }
 
 TEST(AdvertisementDecoder, MatchesMultipleFilters) {
@@ -392,11 +407,11 @@ TEST(AdvertisementDecoder, MatchesMultipleFilters) {
   DataElement model_id =
       DataElement(DataElement::kModelIdFieldType, "model id");
   DataElement salt = DataElement(DataElement::kSaltFieldType, "salt");
-  DataElement eddystone_action = DataElement(ActionBit::kEddystoneAction);
+  DataElement ttt_action = DataElement(ActionBit::kTapToTransferAction);
   PresenceScanFilter presence_filter = {.extended_properties = {model_id}};
   LegacyPresenceScanFilter legacy_filter = {
       .actions = {static_cast<int>(ActionBit::kActiveUnlockAction),
-                  static_cast<int>(ActionBit::kEddystoneAction)},
+                  static_cast<int>(ActionBit::kTapToTransferAction)},
       .extended_properties = {salt}};
 
   AdvertisementDecoder decoder(ScanRequestBuilder()
@@ -405,8 +420,8 @@ TEST(AdvertisementDecoder, MatchesMultipleFilters) {
                                    .Build());
 
   EXPECT_TRUE(decoder.MatchesScanFilter({model_id}));
-  EXPECT_TRUE(decoder.MatchesScanFilter({salt, eddystone_action}));
-  EXPECT_FALSE(decoder.MatchesScanFilter({eddystone_action}));
+  EXPECT_TRUE(decoder.MatchesScanFilter({salt, ttt_action}));
+  EXPECT_FALSE(decoder.MatchesScanFilter({ttt_action}));
 }
 
 }  // namespace

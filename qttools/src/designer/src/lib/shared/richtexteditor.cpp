@@ -42,9 +42,9 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-static const char RichTextDialogGroupC[] = "RichTextDialog";
-static const char GeometryKeyC[] = "Geometry";
-static const char TabKeyC[] = "Tab";
+static constexpr auto RichTextDialogGroupC = "RichTextDialog"_L1;
+static constexpr auto GeometryKeyC = "Geometry"_L1;
+static constexpr auto TabKeyC = "Tab"_L1;
 
 const bool simplifyRichTextDefault = true;
 
@@ -407,19 +407,22 @@ RichTextEditorToolBar::RichTextEditorToolBar(QDesignerFormEditorInterface *core,
     // Bold, italic and underline buttons
 
     m_bold_action = createCheckableAction(
-            createIconSet(u"textbold.png"_s), tr("Bold"), this);
+            createIconSet(QIcon::ThemeIcon::FormatTextBold,
+                          "textbold.png"_L1), tr("Bold"), this);
     connect(m_bold_action, &QAction::triggered, editor, &RichTextEditor::setFontBold);
     m_bold_action->setShortcut(tr("CTRL+B"));
     addAction(m_bold_action);
 
     m_italic_action = createCheckableAction(
-            createIconSet(u"textitalic.png"_s), tr("Italic"), this);
+            createIconSet(QIcon::ThemeIcon::FormatTextItalic,
+                          "textitalic.png"_L1), tr("Italic"), this);
     connect(m_italic_action, &QAction::triggered, editor, &RichTextEditor::setFontItalic);
     m_italic_action->setShortcut(tr("CTRL+I"));
     addAction(m_italic_action);
 
     m_underline_action = createCheckableAction(
-            createIconSet(u"textunder.png"_s), tr("Underline"), this);
+            createIconSet(QIcon::ThemeIcon::FormatTextUnderline,
+                          "textunder.png"_L1), tr("Underline"), this);
     connect(m_underline_action, &QAction::triggered, editor, &RichTextEditor::setFontUnderline);
     m_underline_action->setShortcut(tr("CTRL+U"));
     addAction(m_underline_action);
@@ -433,23 +436,28 @@ RichTextEditorToolBar::RichTextEditorToolBar(QDesignerFormEditorInterface *core,
             this, &RichTextEditorToolBar::alignmentActionTriggered);
 
     m_align_left_action = createCheckableAction(
-            createIconSet(u"textleft.png"_s), tr("Left Align"), alignment_group);
+            createIconSet(QIcon::ThemeIcon::FormatJustifyLeft,
+                          "textleft.png"_L1), tr("Left Align"), alignment_group);
     addAction(m_align_left_action);
 
     m_align_center_action = createCheckableAction(
-            createIconSet(u"textcenter.png"_s), tr("Center"), alignment_group);
+            createIconSet(QIcon::ThemeIcon::FormatJustifyCenter,
+                          "textcenter.png"_L1), tr("Center"), alignment_group);
     addAction(m_align_center_action);
 
     m_align_right_action = createCheckableAction(
-            createIconSet(u"textright.png"_s), tr("Right Align"), alignment_group);
+            createIconSet(QIcon::ThemeIcon::FormatJustifyRight,
+                          "textright.png"_L1), tr("Right Align"), alignment_group);
     addAction(m_align_right_action);
 
     m_align_justify_action = createCheckableAction(
-            createIconSet(u"textjustify.png"_s), tr("Justify"), alignment_group);
+            createIconSet(QIcon::ThemeIcon::FormatJustifyFill,
+                          "textjustify.png"_L1), tr("Justify"), alignment_group);
     addAction(m_align_justify_action);
 
     m_layoutDirectionAction = createCheckableAction(
-            createIconSet(u"righttoleft.png"_s), tr("Right to Left"));
+            createIconSet(QIcon::ThemeIcon::FormatTextDirectionRtl,
+                          "righttoleft.png"_L1), tr("Right to Left"));
     connect(m_layoutDirectionAction, &QAction::triggered,
             this, &RichTextEditorToolBar::layoutDirectionChanged);
     addAction(m_layoutDirectionAction);
@@ -459,13 +467,13 @@ RichTextEditorToolBar::RichTextEditorToolBar(QDesignerFormEditorInterface *core,
     // Superscript and subscript buttons
 
     m_valign_sup_action = createCheckableAction(
-            createIconSet(u"textsuperscript.png"_s), tr("Superscript"), this);
+            createIconSet("textsuperscript.png"_L1), tr("Superscript"), this);
     connect(m_valign_sup_action, &QAction::triggered,
             this, &RichTextEditorToolBar::setVAlignSuper);
     addAction(m_valign_sup_action);
 
     m_valign_sub_action = createCheckableAction(
-            createIconSet(u"textsubscript.png"_s), tr("Subscript"), this);
+            createIconSet("textsubscript.png"_L1), tr("Subscript"), this);
     connect(m_valign_sub_action, &QAction::triggered,
             this, &RichTextEditorToolBar::setVAlignSub);
     addAction(m_valign_sub_action);
@@ -474,12 +482,12 @@ RichTextEditorToolBar::RichTextEditorToolBar(QDesignerFormEditorInterface *core,
 
     // Insert hyperlink and image buttons
 
-    m_link_action->setIcon(createIconSet(u"textanchor.png"_s));
+    m_link_action->setIcon(createIconSet("textanchor.png"_L1));
     m_link_action->setText(tr("Insert &Link"));
     connect(m_link_action, &QAction::triggered, this, &RichTextEditorToolBar::insertLink);
     addAction(m_link_action);
 
-    m_image_action->setIcon(createIconSet(u"insertimage.png"_s));
+    m_image_action->setIcon(createIconSet("insertimage.png"_L1));
     m_image_action->setText(tr("Insert &Image"));
     connect(m_image_action, &QAction::triggered, this, &RichTextEditorToolBar::insertImage);
     addAction(m_image_action);
@@ -495,7 +503,7 @@ RichTextEditorToolBar::RichTextEditorToolBar(QDesignerFormEditorInterface *core,
 
     // Simplify rich text
     m_simplify_richtext_action
-        = createCheckableAction(createIconSet(u"simplifyrichtext.png"_s), tr("Simplify Rich Text"));
+        = createCheckableAction(createIconSet("simplifyrichtext.png"_L1), tr("Simplify Rich Text"));
     connect(m_simplify_richtext_action, &QAction::triggered,
             m_editor, &RichTextEditor::setSimplifyRichText);
     m_simplify_richtext_action->setChecked(m_editor->simplifyRichText());
@@ -729,9 +737,9 @@ RichTextEditorDialog::RichTextEditorDialog(QDesignerFormEditorInterface *core, Q
 
     // Read settings
     const QDesignerSettingsInterface *settings = core->settingsManager();
-    const QString rootKey = QLatin1StringView(RichTextDialogGroupC) + u'/';
-    const QByteArray lastGeometry = settings->value(rootKey + QLatin1StringView(GeometryKeyC)).toByteArray();
-    const int initialTab = settings->value(rootKey + QLatin1StringView(TabKeyC), QVariant(m_initialTab)).toInt();
+    const QString rootKey = RichTextDialogGroupC + u'/';
+    const QByteArray lastGeometry = settings->value(rootKey + GeometryKeyC).toByteArray();
+    const int initialTab = settings->value(rootKey + TabKeyC, QVariant(m_initialTab)).toInt();
     if (initialTab == RichTextIndex || initialTab == SourceIndex)
         m_initialTab = initialTab;
 
@@ -781,10 +789,10 @@ RichTextEditorDialog::RichTextEditorDialog(QDesignerFormEditorInterface *core, Q
 RichTextEditorDialog::~RichTextEditorDialog()
 {
     QDesignerSettingsInterface *settings = m_core->settingsManager();
-    settings->beginGroup(QLatin1StringView(RichTextDialogGroupC));
+    settings->beginGroup(RichTextDialogGroupC);
 
-    settings->setValue(QLatin1StringView(GeometryKeyC), saveGeometry());
-    settings->setValue(QLatin1StringView(TabKeyC), m_tab_widget->currentIndex());
+    settings->setValue(GeometryKeyC, saveGeometry());
+    settings->setValue(TabKeyC, m_tab_widget->currentIndex());
     settings->endGroup();
 }
 

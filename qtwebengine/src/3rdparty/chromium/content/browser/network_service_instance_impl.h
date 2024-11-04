@@ -7,16 +7,20 @@
 
 #include "base/callback_list.h"
 #include "base/functional/callback.h"
+#include "build/build_config.h"
 #include "content/common/content_export.h"
 
-namespace base {
-class TimeDelta;
-}
+#if BUILDFLAG(IS_ANDROID)
+namespace network::mojom {
+class EmptyNetworkService;
+}  // namespace network::mojom
+#endif
 
 namespace content {
 
 // Creates the network::NetworkService object on the IO thread directly instead
 // of trying to go through the ServiceManager.
+// This also calls ForceInProcessNetworkService().
 CONTENT_EXPORT void ForceCreateNetworkServiceDirectlyForTesting();
 
 // Resets the interface ptr to the network service.
@@ -31,19 +35,6 @@ CONTENT_EXPORT void ResetNetworkServiceForTesting();
 CONTENT_EXPORT base::CallbackListSubscription
 RegisterNetworkServiceCrashHandler(base::RepeatingClosure handler);
 
-// Corresponds to the "NetworkServiceAvailability" histogram enumeration type in
-// src/tools/metrics/histograms/enums.xml.
-//
-// DO NOT REORDER OR CHANGE THE MEANING OF THESE VALUES.
-enum class NetworkServiceAvailability {
-  AVAILABLE = 0,
-  NOT_CREATED = 1,
-  NOT_BOUND = 2,
-  ENCOUNTERED_ERROR = 3,
-  NOT_RESPONDING = 4,
-  kMaxValue = NOT_RESPONDING
-};
-
 constexpr char kSSLKeyLogFileHistogram[] = "Net.SSLKeyLogFileUse";
 
 // These values are persisted to logs. Entries should not be renumbered and
@@ -55,15 +46,18 @@ enum class SSLKeyLogFileAction {
   kMaxValue = kEnvVarFound,
 };
 
-// TODO(http://crbug.com/934317): Remove these when done debugging renderer
-// hangs.
-NetworkServiceAvailability GetNetworkServiceAvailability();
-base::TimeDelta GetTimeSinceLastNetworkServiceCrash();
-void PingNetworkService(base::OnceClosure closure);
-
 // Shuts down the in-process network service or disconnects from the out-of-
 // process one, allowing it to shut down.
 CONTENT_EXPORT void ShutDownNetworkService();
+
+// `on_restart` will be called at the end of every RestartNetworkService().
+CONTENT_EXPORT void OnRestartNetworkServiceForTesting(
+    base::RepeatingClosure on_restart);
+
+#if BUILDFLAG(IS_ANDROID)
+CONTENT_EXPORT network::mojom::EmptyNetworkService*
+GetEmptyNetworkServiceForTesting();
+#endif
 
 }  // namespace content
 

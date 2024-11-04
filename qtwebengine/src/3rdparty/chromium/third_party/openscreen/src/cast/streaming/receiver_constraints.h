@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,7 @@
 #include "cast/streaming/constants.h"
 #include "cast/streaming/resolution.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Information about the display the receiver is attached to.
 struct Display {
@@ -170,7 +169,6 @@ class ReceiverConstraints {
   std::unique_ptr<RemotingConstraints> remoting;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_RECEIVER_CONSTRAINTS_H_

@@ -165,17 +165,16 @@ using AccessorNameSetterCallback =
 /**
  * Access control specifications.
  *
- * Some accessors should be accessible across contexts.  These
+ * Some accessors should be accessible across contexts. These
  * accessors have an explicit access control parameter which specifies
  * the kind of cross-context access that should be allowed.
  *
- * TODO(dcarney): Remove PROHIBITS_OVERWRITING as it is now unused.
  */
 enum AccessControl {
   DEFAULT = 0,
   ALL_CAN_READ = 1,
   ALL_CAN_WRITE = 1 << 1,
-  PROHIBITS_OVERWRITING = 1 << 2
+  PROHIBITS_OVERWRITING V8_ENUM_DEPRECATE_SOON("unused") = 1 << 2
 };
 
 /**
@@ -475,13 +474,13 @@ class V8_EXPORT Object : public Value {
   /** Same as above, but works for PersistentBase. */
   V8_INLINE static int InternalFieldCount(
       const PersistentBase<Object>& object) {
-    return object.val_->InternalFieldCount();
+    return object.template value<Object>()->InternalFieldCount();
   }
 
   /** Same as above, but works for BasicTracedReference. */
   V8_INLINE static int InternalFieldCount(
       const BasicTracedReference<Object>& object) {
-    return object->InternalFieldCount();
+    return object.template value<Object>()->InternalFieldCount();
   }
 
   /** Gets the value from an internal field. */
@@ -500,13 +499,15 @@ class V8_EXPORT Object : public Value {
   /** Same as above, but works for PersistentBase. */
   V8_INLINE static void* GetAlignedPointerFromInternalField(
       const PersistentBase<Object>& object, int index) {
-    return object.val_->GetAlignedPointerFromInternalField(index);
+    return object.template value<Object>()->GetAlignedPointerFromInternalField(
+        index);
   }
 
   /** Same as above, but works for TracedReference. */
   V8_INLINE static void* GetAlignedPointerFromInternalField(
       const BasicTracedReference<Object>& object, int index) {
-    return object->GetAlignedPointerFromInternalField(index);
+    return object.template value<Object>()->GetAlignedPointerFromInternalField(
+        index);
   }
 
   /**
@@ -614,8 +615,21 @@ class V8_EXPORT Object : public Value {
   /** Same as above, but works for Persistents */
   V8_INLINE static MaybeLocal<Context> GetCreationContext(
       const PersistentBase<Object>& object) {
-    return object.val_->GetCreationContext();
+    return object.template value<Object>()->GetCreationContext();
   }
+
+  /**
+   * Gets the context in which the object was created (see GetCreationContext())
+   * and if it's available reads respective embedder field value.
+   * If the context can't be obtained nullptr is returned.
+   * Basically it's a shortcut for
+   *   obj->GetCreationContext().GetAlignedPointerFromEmbedderData(index)
+   * which doesn't create a handle for Context object on the way and doesn't
+   * try to expand the embedder data attached to the context.
+   * In case the Local<Context> is already available because of other reasons,
+   * it's fine to keep using Context::GetAlignedPointerFromEmbedderData().
+   */
+  void* GetAlignedPointerFromEmbedderDataInCreationContext(int index);
 
   /**
    * Checks whether a callback is set by the
@@ -667,6 +681,10 @@ class V8_EXPORT Object : public Value {
    */
   Isolate* GetIsolate();
 
+  V8_INLINE static Isolate* GetIsolate(const TracedReference<Object>& handle) {
+    return handle.template value<Object>()->GetIsolate();
+  }
+
   /**
    * If this object is a Set, Map, WeakSet or WeakMap, this returns a
    * representation of the elements of this object as an array.
@@ -717,7 +735,7 @@ Local<Value> Object::GetInternalField(int index) {
 #ifndef V8_ENABLE_CHECKS
   using A = internal::Address;
   using I = internal::Internals;
-  A obj = internal::ValueHelper::ValueToAddress(this);
+  A obj = internal::ValueHelper::ValueAsAddress(this);
   // Fast path: If the object is a plain JSObject, which is the common case, we
   // know where to find the internal fields and can return the value directly.
   int instance_type = I::GetInstanceType(obj);
@@ -730,14 +748,9 @@ Local<Value> Object::GetInternalField(int index) {
     value = I::DecompressTaggedField(obj, static_cast<uint32_t>(value));
 #endif
 
-#ifdef V8_ENABLE_CONSERVATIVE_STACK_SCANNING
-    return Local<Value>(reinterpret_cast<Value*>(value));
-#else
-    internal::Isolate* isolate =
-        internal::IsolateFromNeverReadOnlySpaceObject(obj);
-    A* result = HandleScope::CreateHandle(isolate, value);
-    return Local<Value>(reinterpret_cast<Value*>(result));
-#endif
+    auto isolate = reinterpret_cast<v8::Isolate*>(
+        internal::IsolateFromNeverReadOnlySpaceObject(obj));
+    return Local<Value>::New(isolate, value);
   }
 #endif
   return SlowGetInternalField(index);
@@ -747,7 +760,7 @@ void* Object::GetAlignedPointerFromInternalField(int index) {
 #if !defined(V8_ENABLE_CHECKS)
   using A = internal::Address;
   using I = internal::Internals;
-  A obj = internal::ValueHelper::ValueToAddress(this);
+  A obj = internal::ValueHelper::ValueAsAddress(this);
   // Fast path: If the object is a plain JSObject, which is the common case, we
   // know where to find the internal fields and can return the value directly.
   auto instance_type = I::GetInstanceType(obj);

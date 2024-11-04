@@ -1,5 +1,5 @@
 // Copyright (C) 2023 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "grabber.h"
 #include "fixture.h"
@@ -39,7 +39,7 @@ std::vector<QVideoFrame> FrameGrabber::waitAndTakeFrames(size_t minCount, qint64
         return m_frames.size() >= minCount;
     };
 
-    if (!QTest::qWaitFor(enoughFramesOrStopped, static_cast<int>(s_testTimeout.count())))
+    if (!QTest::qWaitFor(enoughFramesOrStopped, s_testTimeout))
         return {};
 
     if (m_stopped)

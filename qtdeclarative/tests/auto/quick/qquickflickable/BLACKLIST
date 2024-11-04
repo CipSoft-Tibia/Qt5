@@ -1,5 +1,10 @@
 [movingAndFlicking]
 macos-11
+opensuse-leap # QTBUG-118060
 
 [flickVelocity]
 macos-11
+
+# QTBUG-118060
+[ignoreNonLeftMouseButtons]
+opensuse-leap

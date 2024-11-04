@@ -44,6 +44,8 @@ QT_BEGIN_NAMESPACE
                                         message.
     \value UnexpectedEndOfStreamError   While deserializing a message, the
                                         stream ended unexpectedly.
+    \value InvalidFormatError           The data has invalid format. For example
+                                        the JSON value doesn't match the field type.
 */
 
 /*!

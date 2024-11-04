@@ -12,17 +12,18 @@
 #include "base/allocator/partition_allocator/partition_alloc_base/bits.h"
 #include "base/allocator/partition_allocator/partition_alloc_base/compiler_specific.h"
 #include "base/allocator/partition_allocator/partition_alloc_base/component_export.h"
+#include "base/allocator/partition_allocator/partition_alloc_buildflags.h"
 
-#if PA_CONFIG(POINTER_COMPRESSION)
+#if BUILDFLAG(ENABLE_POINTER_COMPRESSION)
 
-#if !PA_CONFIG(GLUE_CORE_POOLS)
+#if !BUILDFLAG(GLUE_CORE_POOLS)
 #error "Pointer compression only works with glued pools"
 #endif
 #if PA_CONFIG(DYNAMICALLY_SELECT_POOL_SIZE)
 #error "Pointer compression currently supports constant pool size"
 #endif
 
-#endif  // PA_CONFIG(POINTER_COMPRESSION)
+#endif  // BUILDFLAG(ENABLE_POINTER_COMPRESSION)
 
 namespace partition_alloc {
 
@@ -32,7 +33,7 @@ template <typename T1, typename T2>
 constexpr bool IsDecayedSame =
     std::is_same_v<std::decay_t<T1>, std::decay_t<T2>>;
 
-#if PA_CONFIG(POINTER_COMPRESSION)
+#if BUILDFLAG(ENABLE_POINTER_COMPRESSION)
 
 // Pointer compression works by storing only the 'useful' 32-bit part of the
 // pointer. The other half (the base) is stored in a global variable
@@ -117,11 +118,11 @@ class CompressedPointerBaseGlobal final {
   friend class PartitionAddressSpace;
 };
 
-#endif  // PA_CONFIG(POINTER_COMPRESSION)
+#endif  // BUILDFLAG(ENABLE_POINTER_COMPRESSION)
 
 }  // namespace internal
 
-#if PA_CONFIG(POINTER_COMPRESSION)
+#if BUILDFLAG(ENABLE_POINTER_COMPRESSION)
 
 template <typename T>
 class PA_TRIVIAL_ABI CompressedPointer final {
@@ -227,7 +228,7 @@ class PA_TRIVIAL_ABI CompressedPointer final {
       internal::CompressedPointerBaseGlobal::kBitsToShift +
       kBitsForSignExtension;
 
-  static PA_ALWAYS_INLINE UnderlyingType Compress(T* ptr) {
+  PA_ALWAYS_INLINE static UnderlyingType Compress(T* ptr) {
     static constexpr size_t kMinimalRequiredAlignment = 8;
     static_assert((1 << kOverallBitsToShift) == kMinimalRequiredAlignment);
 
@@ -252,13 +253,14 @@ class PA_TRIVIAL_ABI CompressedPointer final {
     // frequent operation, we let more work here in favor of faster
     // decompression.
     // TODO(1376980): Avoid this by overreserving the heap.
-    if (compressed)
+    if (compressed) {
       compressed |= (1u << (sizeof(uint32_t) * CHAR_BIT - 1));
+    }
 
     return compressed;
   }
 
-  static PA_ALWAYS_INLINE T* Decompress(UnderlyingType ptr) {
+  PA_ALWAYS_INLINE static T* Decompress(UnderlyingType ptr) {
     PA_DCHECK(internal::CompressedPointerBaseGlobal::IsSet());
     const uintptr_t base = internal::CompressedPointerBaseGlobal::Get();
     // Treat compressed pointer as signed and cast it to uint64_t, which will
@@ -442,7 +444,7 @@ PA_ALWAYS_INLINE constexpr bool operator>=(T* a, CompressedPointer<U> b) {
   return static_cast<CompressedPointer<T>>(a) >= b;
 }
 
-#endif  // PA_CONFIG(POINTER_COMPRESSION)
+#endif  // BUILDFLAG(ENABLE_POINTER_COMPRESSION)
 
 // Simple wrapper over the raw pointer.
 template <typename T>
@@ -460,13 +462,13 @@ class PA_TRIVIAL_ABI UncompressedPointer final {
 
   template <typename U,
             std::enable_if_t<std::is_convertible_v<U*, T*>>* = nullptr>
-  PA_ALWAYS_INLINE constexpr UncompressedPointer(
+  PA_ALWAYS_INLINE constexpr explicit UncompressedPointer(
       const UncompressedPointer<U>& other)
       : ptr_(other.ptr_) {}
 
   template <typename U,
             std::enable_if_t<std::is_convertible_v<U*, T*>>* = nullptr>
-  PA_ALWAYS_INLINE constexpr UncompressedPointer(
+  PA_ALWAYS_INLINE constexpr explicit UncompressedPointer(
       UncompressedPointer<U>&& other) noexcept
       : ptr_(std::move(other.ptr_)) {}
 

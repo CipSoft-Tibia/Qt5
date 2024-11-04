@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtSerialBus/qcanbusdevice.h>
 #include <QtSerialBus/qcanbusframe.h>
@@ -599,7 +599,7 @@ void tst_QCanBusDevice::tst_waitForFramesReceived()
         device->triggerNewFrame();
     });
     QTimer::singleShot(2000, [&]() { device->triggerNewFrame(); });
-    QObject::connect(device.get(), &QCanBusDevice::framesReceived, [this, &handleCounter]() {
+    QObject::connect(device.get(), &QCanBusDevice::framesReceived, this, [this, &handleCounter]() {
         handleCounter++;
         // this should trigger a recursion which we want to catch
         QVERIFY(!device->waitForFramesReceived(5000));
@@ -686,7 +686,7 @@ void tst_QCanBusDevice::tst_waitForFramesWritten()
     device->writeFrame(frame);
     QTimer::singleShot(1000, [&]() { device->writeFrame(frame); });
     QTimer::singleShot(2000, [&]() { device->writeFrame(frame); });
-    QObject::connect(device.get(), &QCanBusDevice::framesWritten, [this, &handleCounter]() {
+    QObject::connect(device.get(), &QCanBusDevice::framesWritten, this, [this, &handleCounter]() {
         handleCounter++;
         // this should trigger a recursion which we want to catch
         QVERIFY(!device->waitForFramesWritten(5000));

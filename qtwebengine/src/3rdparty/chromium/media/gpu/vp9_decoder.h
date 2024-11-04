@@ -91,6 +91,9 @@ class MEDIA_GPU_EXPORT VP9Decoder : public AcceleratedVideoDecoder {
 
     // Schedule output (display) of |pic|.
     //
+    // If `show_existing_hdr` is not nullptr, then it contains the header of
+    // a show_existing_frame frame that requests the output of `pic`.
+    //
     // Note that returning from this method does not mean that |pic| has already
     // been outputted (displayed), but guarantees that all pictures will be
     // outputted in the same order as this method was called for them, and that
@@ -136,9 +139,14 @@ class MEDIA_GPU_EXPORT VP9Decoder : public AcceleratedVideoDecoder {
   VideoCodecProfile GetProfile() const override;
   uint8_t GetBitDepth() const override;
   VideoChromaSampling GetChromaSampling() const override;
+  VideoColorSpace GetVideoColorSpace() const override;
   absl::optional<gfx::HDRMetadata> GetHDRMetadata() const override;
   size_t GetRequiredNumOfPictures() const override;
   size_t GetNumReferenceFrames() const override;
+
+  void set_ignore_resolution_changes_to_smaller_for_testing(bool value) {
+    ignore_resolution_changes_to_smaller_for_testing_ = value;
+  }
 
  private:
   // Decode and possibly output |pic| (if the picture is to be shown).
@@ -178,6 +186,13 @@ class MEDIA_GPU_EXPORT VP9Decoder : public AcceleratedVideoDecoder {
   // Color space provided by the container.
   const VideoColorSpace container_color_space_;
 
+  // For VP9 validation purposes, this class can be indicated that it's OK to
+  // keep the decoding reference frames etc when the resolution decreases
+  // without a keyframe; this is an arcane feature of VP9, and are rare in the
+  // wild, but part of VP9 verification sets (see[1] "frm_resize" and
+  // "sub8x8_sf"). [1] https://www.webmproject.org/vp9/levels/#test-descriptions
+  bool ignore_resolution_changes_to_smaller_for_testing_ = false;
+
   // Reference frames currently in use.
   Vp9ReferenceFrameVector ref_frames_;
 
@@ -191,6 +206,8 @@ class MEDIA_GPU_EXPORT VP9Decoder : public AcceleratedVideoDecoder {
   uint8_t bit_depth_ = 0;
   // Chroma subsampling format of input bitstream.
   VideoChromaSampling chroma_sampling_ = VideoChromaSampling::kUnknown;
+  // Video color space of input bitstream.
+  VideoColorSpace picture_color_space_;
 
   // Pending picture for decode when accelerator returns kTryAgain.
   scoped_refptr<VP9Picture> pending_pic_;

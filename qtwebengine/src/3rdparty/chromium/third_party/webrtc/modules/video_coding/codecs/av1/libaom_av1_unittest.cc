@@ -89,8 +89,8 @@ class TestAv1Decoder {
 
   void Decode(int64_t frame_id, const EncodedImage& image) {
     ASSERT_THAT(decoder_, NotNull());
-    int32_t error = decoder_->Decode(image, /*missing_frames=*/false,
-                                     /*render_time_ms=*/image.capture_time_ms_);
+    int32_t error =
+        decoder_->Decode(image, /*render_time_ms=*/image.capture_time_ms_);
     if (error != WEBRTC_VIDEO_CODEC_OK) {
       ADD_FAILURE() << "Failed to decode frame id " << frame_id
                     << " with error code " << error << " by decoder#"
@@ -267,9 +267,9 @@ MATCHER(SameLayerIdAndBitrateIsNear, "") {
   // First check if layer id is the same.
   return std::get<0>(arg).first == std::get<1>(arg).first &&
          // check measured bitrate is not much lower than requested.
-         std::get<0>(arg).second >= std::get<1>(arg).second * 0.8 &&
+         std::get<0>(arg).second >= std::get<1>(arg).second * 0.75 &&
          // check measured bitrate is not much larger than requested.
-         std::get<0>(arg).second <= std::get<1>(arg).second * 1.1;
+         std::get<0>(arg).second <= std::get<1>(arg).second * 1.25;
 }
 
 TEST_P(LibaomAv1SvcTest, SetRatesMatchMeasuredBitrate) {

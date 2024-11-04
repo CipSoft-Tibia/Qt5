@@ -75,6 +75,7 @@ PaymentResponse::PaymentResponse(
     PaymentStateResolver* payment_state_resolver,
     const String& request_id)
     : ExecutionContextClient(ExecutionContext::From(script_state)),
+      ActiveScriptWrappable<PaymentResponse>({}),
       request_id_(request_id),
       method_name_(response->method_name),
       shipping_address_(shipping_address),
@@ -183,7 +184,7 @@ void PaymentResponse::Trace(Visitor* visitor) const {
   visitor->Trace(details_);
   visitor->Trace(shipping_address_);
   visitor->Trace(payment_state_resolver_);
-  EventTargetWithInlineData::Trace(visitor);
+  EventTarget::Trace(visitor);
   ExecutionContextClient::Trace(visitor);
 }
 

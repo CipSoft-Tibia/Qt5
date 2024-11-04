@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QtCore/QCoreApplication>
@@ -89,6 +89,7 @@ private slots:
     void qDebugQFlags() const;
     void qDebugStdChrono_data() const;
     void qDebugStdChrono() const;
+    void qDebugStdOptional() const;
     void textStreamModifiers() const;
     void resetFormat() const;
     void defaultMessagehandler() const;
@@ -318,11 +319,17 @@ void tst_QDebug::debugNoQuotes() const
     MessageHandlerSetter mhs(myMessageHandler);
     {
         QDebug d = qDebug();
+        QVERIFY(d.quoteStrings());
         d << QStringLiteral("Hello");
+        QVERIFY(d.quoteStrings());
         d.noquote();
+        QVERIFY(!d.quoteStrings());
         d << QStringLiteral("Hello");
+        QVERIFY(!d.quoteStrings());
         d.quote();
+        QVERIFY(d.quoteStrings());
         d << QStringLiteral("Hello");
+        QVERIFY(d.quoteStrings());
     }
     QCOMPARE(s_msg, QString::fromLatin1("\"Hello\" Hello \"Hello\""));
 
@@ -331,7 +338,7 @@ void tst_QDebug::debugNoQuotes() const
         d << QChar('H');
         d << QLatin1String("Hello");
         d << QByteArray("Hello");
-        d.noquote();
+        d.setQuoteStrings(false);
         d << QChar('H');
         d << QLatin1String("Hello");
         d << QByteArray("Hello");
@@ -1207,6 +1214,28 @@ void tst_QDebug::qDebugStdChrono() const
     QFETCH(ToStringFunction, fn);
     QFETCH(QString, expected);
     QCOMPARE(fn(), expected);
+}
+
+void tst_QDebug::qDebugStdOptional() const
+{
+    QString file, function;
+    int line = 0;
+    MessageHandlerSetter mhs(myMessageHandler);
+    {
+        std::optional<QByteArray> notSet = std::nullopt;
+        std::optional<QByteArray> set("foo");
+        auto no = std::nullopt;
+        QDebug d = qDebug();
+        d << notSet << set << no;
+    }
+#ifndef QT_NO_MESSAGELOGCONTEXT
+    file = __FILE__; line = __LINE__ - 4; function = Q_FUNC_INFO;
+#endif
+    QCOMPARE(s_msgType, QtDebugMsg);
+    QCOMPARE(s_msg, QString::fromLatin1("nullopt std::optional(\"foo\") nullopt"));
+    QCOMPARE(QString::fromLatin1(s_file), file);
+    QCOMPARE(s_line, line);
+    QCOMPARE(QString::fromLatin1(s_function), function);
 }
 
 void tst_QDebug::textStreamModifiers() const

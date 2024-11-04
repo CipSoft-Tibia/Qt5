@@ -29,7 +29,7 @@ export class ScreencastApp implements Common.App.App,
   rootView?: UI.RootView.RootView;
   constructor() {
     this.enabledSetting = Common.Settings.Settings.instance().createSetting('screencastEnabled', true);
-    this.toggleButton = new UI.Toolbar.ToolbarToggle(i18nString(UIStrings.toggleScreencast), 'largeicon-phone');
+    this.toggleButton = new UI.Toolbar.ToolbarToggle(i18nString(UIStrings.toggleScreencast), 'devices');
     this.toggleButton.setToggled(this.enabledSetting.get());
     this.toggleButton.setEnabled(false);
     this.toggleButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.toggleButtonClicked, this);
@@ -60,7 +60,7 @@ export class ScreencastApp implements Common.App.App,
   }
 
   modelAdded(screenCaptureModel: SDK.ScreenCaptureModel.ScreenCaptureModel): void {
-    if (screenCaptureModel.target() !== SDK.TargetManager.TargetManager.instance().mainFrameTarget()) {
+    if (screenCaptureModel.target() !== SDK.TargetManager.TargetManager.instance().primaryPageTarget()) {
       return;
     }
     this.screenCaptureModel = screenCaptureModel;

@@ -33,6 +33,10 @@ public:
 
     void setReleaseCallback(sk_sp<RefCntedCallback>);
 
+#if defined(GRAPHITE_TEST_UTILS)
+    const Texture* asTexture() const override { return this; }
+#endif
+
 protected:
     Texture(const SharedContext*,
             SkISize dimensions,
@@ -42,6 +46,8 @@ protected:
             skgpu::Budgeted);
 
     MutableTextureStateRef* mutableState() const;
+
+    void invokeReleaseProc() override;
 
 private:
     SkISize fDimensions;

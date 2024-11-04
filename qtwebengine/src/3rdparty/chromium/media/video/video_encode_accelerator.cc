@@ -11,6 +11,7 @@
 #include "base/strings/stringprintf.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
+#include "media/base/video_frame.h"
 
 namespace media {
 
@@ -38,15 +39,16 @@ BitstreamBufferMetadata::BitstreamBufferMetadata(size_t payload_size_bytes,
       timestamp(timestamp) {}
 BitstreamBufferMetadata::~BitstreamBufferMetadata() = default;
 
+bool BitstreamBufferMetadata::end_of_picture() const {
+  if (vp9) {
+    return vp9->end_of_picture;
+  }
+  return true;
+}
+
 absl::optional<uint8_t> BitstreamBufferMetadata::spatial_idx() const {
   if (vp9) {
     return vp9->spatial_idx;
-  }
-  if (av1) {
-    return av1->spatial_idx;
-  }
-  if (h265) {
-    return h265->spatial_idx;
   }
   return absl::nullopt;
 }
@@ -71,7 +73,7 @@ VideoEncodeAccelerator::Config::Config(
     absl::optional<StorageType> storage_type,
     ContentType content_type,
     const std::vector<SpatialLayer>& spatial_layers,
-    InterLayerPredMode inter_layer_pred)
+    SVCInterLayerPredMode inter_layer_pred)
     : input_format(input_format),
       input_visible_size(input_visible_size),
       output_profile(output_profile),
@@ -124,6 +126,16 @@ std::string VideoEncodeAccelerator::Config::AsHumanReadableString() const {
       break;
   }
 
+  str += ", content_type: ";
+  switch (content_type) {
+    case ContentType::kCamera:
+      str += "camera";
+      break;
+    case ContentType::kDisplay:
+      str += "display";
+      break;
+  }
+
   if (spatial_layers.empty())
     return str;
 
@@ -139,13 +151,13 @@ std::string VideoEncodeAccelerator::Config::AsHumanReadableString() const {
 
   str += ", InterLayerPredMode::";
   switch (inter_layer_pred) {
-    case Config::InterLayerPredMode::kOff:
+    case SVCInterLayerPredMode::kOff:
       str += "kOff";
       break;
-    case Config::InterLayerPredMode::kOn:
+    case SVCInterLayerPredMode::kOn:
       str += "kOn";
       break;
-    case Config::InterLayerPredMode::kOnKeyPic:
+    case SVCInterLayerPredMode::kOnKeyPic:
       str += "kOnKeyPic";
       break;
   }
@@ -192,6 +204,12 @@ VideoEncodeAccelerator::SupportedProfile::SupportedProfile(
 
 VideoEncodeAccelerator::SupportedProfile::~SupportedProfile() = default;
 
+void VideoEncodeAccelerator::Encode(
+    scoped_refptr<VideoFrame> frame,
+    const VideoEncoder::EncodeOptions& options) {
+  Encode(std::move(frame), options.key_frame);
+}
+
 void VideoEncodeAccelerator::Flush(FlushCallback flush_callback) {
   // TODO(owenlin): implements this https://crbug.com/755889.
   NOTIMPLEMENTED();
@@ -235,8 +253,7 @@ bool operator==(const H264Metadata& l, const H264Metadata& r) {
 }
 
 bool operator==(const H265Metadata& l, const H265Metadata& r) {
-  return l.temporal_idx == r.temporal_idx && l.spatial_idx == r.spatial_idx &&
-         l.layer_sync == r.layer_sync;
+  return l.temporal_idx == r.temporal_idx;
 }
 
 bool operator==(const Vp8Metadata& l, const Vp8Metadata& r) {
@@ -257,12 +274,7 @@ bool operator==(const Vp9Metadata& l, const Vp9Metadata& r) {
 }
 
 bool operator==(const Av1Metadata& l, const Av1Metadata& r) {
-  return l.inter_pic_predicted == r.inter_pic_predicted &&
-         l.switch_frame == r.switch_frame &&
-         l.end_of_picture == r.end_of_picture &&
-         l.temporal_idx == r.temporal_idx && l.spatial_idx == r.spatial_idx &&
-         l.spatial_layer_resolutions == r.spatial_layer_resolutions &&
-         l.f_diffs == r.f_diffs;
+  return l.temporal_idx == r.temporal_idx;
 }
 
 bool operator==(const BitstreamBufferMetadata& l,

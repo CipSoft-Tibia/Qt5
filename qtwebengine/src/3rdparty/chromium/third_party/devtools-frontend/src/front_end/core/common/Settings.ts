@@ -182,9 +182,9 @@ export class Settings {
 
   clearAll(): void {
     this.globalStorage.removeAll();
+    this.syncedStorage.removeAll();
     this.localStorage.removeAll();
-    const versionSetting = Settings.instance().createSetting(VersionController.currentVersionName, 0);
-    versionSetting.set(VersionController.currentVersion);
+    new VersionController().resetToCurrent();
   }
 
   private storageFromType(storageType?: SettingStorageType): SettingsStorage {
@@ -538,7 +538,7 @@ export class RegExpSetting extends Setting<any> {
     this.#regexFlags = regexFlags;
   }
 
-  get(): string {
+  override get(): string {
     const result = [];
     const items = this.getAsArray();
     for (let i = 0; i < items.length; ++i) {
@@ -554,7 +554,7 @@ export class RegExpSetting extends Setting<any> {
     return super.get();
   }
 
-  set(value: string): void {
+  override set(value: string): void {
     this.setAsArray([{pattern: value, disabled: false}]);
   }
 
@@ -580,30 +580,57 @@ export class RegExpSetting extends Setting<any> {
 }
 
 export class VersionController {
-  static get currentVersionName(): string {
-    return 'inspectorVersion';
+  static readonly GLOBAL_VERSION_SETTING_NAME = 'inspectorVersion';
+  static readonly SYNCED_VERSION_SETTING_NAME = 'syncedInspectorVersion';
+  static readonly LOCAL_VERSION_SETTING_NAME = 'localInspectorVersion';
+
+  static readonly CURRENT_VERSION = 35;
+
+  readonly #globalVersionSetting: Setting<number>;
+  readonly #syncedVersionSetting: Setting<number>;
+  readonly #localVersionSetting: Setting<number>;
+
+  constructor() {
+    // If no version setting is found, we initialize with the current version and don't do anything.
+    this.#globalVersionSetting = Settings.instance().createSetting(
+        VersionController.GLOBAL_VERSION_SETTING_NAME, VersionController.CURRENT_VERSION, SettingStorageType.Global);
+    this.#syncedVersionSetting = Settings.instance().createSetting(
+        VersionController.SYNCED_VERSION_SETTING_NAME, VersionController.CURRENT_VERSION, SettingStorageType.Synced);
+    this.#localVersionSetting = Settings.instance().createSetting(
+        VersionController.LOCAL_VERSION_SETTING_NAME, VersionController.CURRENT_VERSION, SettingStorageType.Local);
   }
 
-  static get currentVersion(): number {
-    return 35;
+  /**
+   * Force re-sets all version number settings to the current version without
+   * running any migrations.
+   */
+  resetToCurrent(): void {
+    this.#globalVersionSetting.set(VersionController.CURRENT_VERSION);
+    this.#syncedVersionSetting.set(VersionController.CURRENT_VERSION);
+    this.#localVersionSetting.set(VersionController.CURRENT_VERSION);
   }
 
+  /**
+   * Runs the appropriate migrations and updates the version settings accordingly.
+   *
+   * To determine what migrations to run we take the minimum of all version number settings.
+   *
+   * IMPORTANT: All migrations must be idempotent since they might be applied multiple times.
+   */
   updateVersion(): void {
-    const localStorageVersion = window.localStorage ? window.localStorage[VersionController.currentVersionName] : 0;
-    const versionSetting = Settings.instance().createSetting(VersionController.currentVersionName, 0);
-    const currentVersion = VersionController.currentVersion;
-    const oldVersion = versionSetting.get() || parseInt(localStorageVersion || '0', 10);
-    if (oldVersion === 0) {
-      // First run, no need to do anything.
-      versionSetting.set(currentVersion);
-      return;
-    }
-    const methodsToRun = this.methodsToRunToUpdateVersion(oldVersion, currentVersion);
+    const currentVersion = VersionController.CURRENT_VERSION;
+    const minimumVersion =
+        Math.min(this.#globalVersionSetting.get(), this.#syncedVersionSetting.get(), this.#localVersionSetting.get());
+    const methodsToRun = this.methodsToRunToUpdateVersion(minimumVersion, currentVersion);
+    console.assert(
+        // @ts-ignore
+        this[`updateVersionFrom${currentVersion}To${currentVersion + 1}`] === undefined,
+        'Unexpected migration method found. Increment CURRENT_VERSION or remove the method.');
     for (const method of methodsToRun) {
       // @ts-ignore Special version method matching
       this[method].call(this);
     }
-    versionSetting.set(currentVersion);
+    this.resetToCurrent();
   }
 
   private methodsToRunToUpdateVersion(oldVersion: number, currentVersion: number): string[] {
@@ -1169,6 +1196,14 @@ export class VersionController {
     }
     breakpointsSetting.set(breakpoints);
   }
+
+  /*
+   * Any new migration should be added before this comment.
+   *
+   * IMPORTANT: Migrations must be idempotent, since they may be applied
+   * multiple times! E.g. when renaming a setting one has to check that the
+   * a setting with the new name does not yet exist.
+   * ----------------------------------------------------------------------- */
 
   private migrateSettingsFromLocalStorage(): void {
     // This step migrates all the settings except for the ones below into the browser profile.

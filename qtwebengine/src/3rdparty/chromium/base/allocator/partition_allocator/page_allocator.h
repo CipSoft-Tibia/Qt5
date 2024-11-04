@@ -12,6 +12,7 @@
 #include "base/allocator/partition_allocator/partition_alloc_base/compiler_specific.h"
 #include "base/allocator/partition_allocator/partition_alloc_base/component_export.h"
 #include "base/allocator/partition_allocator/partition_alloc_buildflags.h"
+#include "base/allocator/partition_allocator/thread_isolation/thread_isolation.h"
 #include "build/build_config.h"
 
 namespace partition_alloc {
@@ -19,6 +20,10 @@ namespace partition_alloc {
 struct PageAccessibilityConfiguration {
   enum Permissions {
     kInaccessible,
+    // This flag is valid only with AllocPages(), where in creates kInaccessible
+    // pages that may later be re-mapped as executable, on platforms which
+    // distinguish never-executable and maybe-executable pages.
+    kInaccessibleWillJitLater,
     kRead,
     kReadWrite,
     // This flag is mapped to kReadWrite on systems that
@@ -33,21 +38,23 @@ struct PageAccessibilityConfiguration {
     kReadWriteExecute,
   };
 
-#if BUILDFLAG(ENABLE_PKEYS)
-  explicit constexpr PageAccessibilityConfiguration(Permissions permissions)
-      : permissions(permissions), pkey(0) {}
-  constexpr PageAccessibilityConfiguration(Permissions permissions, int pkey)
-      : permissions(permissions), pkey(pkey) {}
-#else
-  explicit constexpr PageAccessibilityConfiguration(Permissions permissions)
+#if BUILDFLAG(ENABLE_THREAD_ISOLATION)
+  constexpr explicit PageAccessibilityConfiguration(Permissions permissions)
       : permissions(permissions) {}
-#endif  // BUILDFLAG(ENABLE_PKEYS)
+  constexpr PageAccessibilityConfiguration(
+      Permissions permissions,
+      ThreadIsolationOption thread_isolation)
+      : permissions(permissions), thread_isolation(thread_isolation) {}
+#else
+  constexpr explicit PageAccessibilityConfiguration(Permissions permissions)
+      : permissions(permissions) {}
+#endif  // BUILDFLAG(ENABLE_THREAD_ISOLATION)
 
   Permissions permissions;
-#if BUILDFLAG(ENABLE_PKEYS)
+#if BUILDFLAG(ENABLE_THREAD_ISOLATION)
   // Tag the page with a Memory Protection Key. Use 0 for none.
-  int pkey;
-#endif  // BUILDFLAG(ENABLE_PKEYS)
+  ThreadIsolationOption thread_isolation;
+#endif  // BUILDFLAG(ENABLE_THREAD_ISOLATION)
 };
 
 // Use for De/RecommitSystemPages API.
@@ -62,16 +69,32 @@ enum class PageAccessibilityDisposition {
   kAllowKeepForPerf,
 };
 
-// macOS supports tagged memory regions, to help in debugging. On Android,
-// these tags are used to name anonymous mappings.
+// Some platforms (including macOS and some Linux-based ones) support tagged
+// memory regions, to help in debugging. On Android, these tags are used to name
+// anonymous mappings.
+//
+// kChromium is the default value, used to distinguish general
+// Chromium-originated allocations from other ones (e.g. from platform
+// libraries).
 enum class PageTag {
-  kFirst = 240,           // Minimum tag value.
+  kSimulation = 251,      // Memory simulator tool.
   kBlinkGC = 252,         // Blink GC pages.
   kPartitionAlloc = 253,  // PartitionAlloc, no matter the partition.
   kChromium = 254,        // Chromium page.
   kV8 = 255,              // V8 heap pages.
-  kLast = kV8             // Maximum tag value.
+
+  kFirst = kSimulation,  // Minimum tag value.
+  kLast = kV8            // Maximum tag value.
 };
+
+// See
+// https://github.com/apple-oss-distributions/xnu/blob/5c2921b07a2480ab43ec66f5b9e41cb872bc554f/osfmk/mach/vm_statistics.h#L687
+static_assert(static_cast<int>(PageTag::kLast) >= 240,
+              "The first application-reserved tag on macOS is 240, see "
+              "vm_statistics.h in XNU.");
+static_assert(
+    static_cast<int>(PageTag::kLast) < 256,
+    "Tags are only 1 byte long on macOS, see vm_statistics.h in XNU.");
 
 PA_COMPONENT_EXPORT(PARTITION_ALLOC)
 uintptr_t NextAlignedWithOffset(uintptr_t ptr,
@@ -95,7 +118,7 @@ uintptr_t NextAlignedWithOffset(uintptr_t ptr,
 // PageAccessibilityConfiguration::kInaccessible means uncommitted.
 //
 // |page_tag| is used on some platforms to identify the source of the
-// allocation. Use PageTag::kChromium as a catch-all category.
+// allocation.
 //
 // |file_descriptor_for_shared_alloc| is only used in mapping the shadow
 // pools to the same physical address as the real one in
@@ -106,20 +129,20 @@ PA_COMPONENT_EXPORT(PARTITION_ALLOC)
 uintptr_t AllocPages(size_t length,
                      size_t align,
                      PageAccessibilityConfiguration accessibility,
-                     PageTag page_tag,
+                     PageTag page_tag = PageTag::kChromium,
                      int file_descriptor_for_shared_alloc = -1);
 PA_COMPONENT_EXPORT(PARTITION_ALLOC)
 uintptr_t AllocPages(uintptr_t address,
                      size_t length,
                      size_t align,
                      PageAccessibilityConfiguration accessibility,
-                     PageTag page_tag);
+                     PageTag page_tag = PageTag::kChromium);
 PA_COMPONENT_EXPORT(PARTITION_ALLOC)
 void* AllocPages(void* address,
                  size_t length,
                  size_t align,
                  PageAccessibilityConfiguration accessibility,
-                 PageTag page_tag);
+                 PageTag page_tag = PageTag::kChromium);
 PA_COMPONENT_EXPORT(PARTITION_ALLOC)
 uintptr_t AllocPagesWithAlignOffset(
     uintptr_t address,
@@ -127,7 +150,7 @@ uintptr_t AllocPagesWithAlignOffset(
     size_t align,
     size_t align_offset,
     PageAccessibilityConfiguration page_accessibility,
-    PageTag page_tag,
+    PageTag page_tag = PageTag::kChromium,
     int file_descriptor_for_shared_alloc = -1);
 
 // Frees one or more pages starting at |address| and continuing for |length|
@@ -223,9 +246,13 @@ void DecommitSystemPages(
 //
 // This API will crash if the operation cannot be performed.
 PA_COMPONENT_EXPORT(PARTITION_ALLOC)
-void DecommitAndZeroSystemPages(uintptr_t address, size_t length);
+void DecommitAndZeroSystemPages(uintptr_t address,
+                                size_t length,
+                                PageTag page_tag = PageTag::kChromium);
 PA_COMPONENT_EXPORT(PARTITION_ALLOC)
-void DecommitAndZeroSystemPages(void* address, size_t length);
+void DecommitAndZeroSystemPages(void* address,
+                                size_t length,
+                                PageTag page_tag = PageTag::kChromium);
 
 // Whether decommitted memory is guaranteed to be zeroed when it is
 // recommitted. Do not assume that this will not change over time.
@@ -300,7 +327,7 @@ void DiscardSystemPages(void* address, size_t length);
 
 // Rounds up |address| to the next multiple of |SystemPageSize()|. Returns
 // 0 for an |address| of 0.
-PAGE_ALLOCATOR_CONSTANTS_DECLARE_CONSTEXPR PA_ALWAYS_INLINE uintptr_t
+PA_ALWAYS_INLINE PAGE_ALLOCATOR_CONSTANTS_DECLARE_CONSTEXPR uintptr_t
 RoundUpToSystemPage(uintptr_t address) {
   return (address + internal::SystemPageOffsetMask()) &
          internal::SystemPageBaseMask();
@@ -308,14 +335,14 @@ RoundUpToSystemPage(uintptr_t address) {
 
 // Rounds down |address| to the previous multiple of |SystemPageSize()|. Returns
 // 0 for an |address| of 0.
-PAGE_ALLOCATOR_CONSTANTS_DECLARE_CONSTEXPR PA_ALWAYS_INLINE uintptr_t
+PA_ALWAYS_INLINE PAGE_ALLOCATOR_CONSTANTS_DECLARE_CONSTEXPR uintptr_t
 RoundDownToSystemPage(uintptr_t address) {
   return address & internal::SystemPageBaseMask();
 }
 
 // Rounds up |address| to the next multiple of |PageAllocationGranularity()|.
 // Returns 0 for an |address| of 0.
-PAGE_ALLOCATOR_CONSTANTS_DECLARE_CONSTEXPR PA_ALWAYS_INLINE uintptr_t
+PA_ALWAYS_INLINE PAGE_ALLOCATOR_CONSTANTS_DECLARE_CONSTEXPR uintptr_t
 RoundUpToPageAllocationGranularity(uintptr_t address) {
   return (address + internal::PageAllocationGranularityOffsetMask()) &
          internal::PageAllocationGranularityBaseMask();
@@ -323,7 +350,7 @@ RoundUpToPageAllocationGranularity(uintptr_t address) {
 
 // Rounds down |address| to the previous multiple of
 // |PageAllocationGranularity()|. Returns 0 for an |address| of 0.
-PAGE_ALLOCATOR_CONSTANTS_DECLARE_CONSTEXPR PA_ALWAYS_INLINE uintptr_t
+PA_ALWAYS_INLINE PAGE_ALLOCATOR_CONSTANTS_DECLARE_CONSTEXPR uintptr_t
 RoundDownToPageAllocationGranularity(uintptr_t address) {
   return address & internal::PageAllocationGranularityBaseMask();
 }

@@ -25,6 +25,8 @@
 #include <QtQuick/private/qquicktransitionmanager_p_p.h>
 #include <QtQuick/private/qquickitem_p.h>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 class QQuickTransition;
@@ -154,6 +156,7 @@ public:
     bool outsidePressed = false;
     bool outsideParentPressed = false;
     bool inDestructor = false;
+    bool relaxEdgeConstraint = false;
     int touchId = -1;
     qreal x = 0;
     qreal y = 0;

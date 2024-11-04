@@ -8,6 +8,8 @@ option optimize_for = LITE_RUNTIME;
 
 package biod;
 
+option go_package = "chromiumos/system_api/biod_messages_proto";
+
 // Included in FingerprintMessage.
 // Android codes end at 1000. Everything above is intended to be used for
 // returning vendor specific codes. Chrome OS specific codes start from

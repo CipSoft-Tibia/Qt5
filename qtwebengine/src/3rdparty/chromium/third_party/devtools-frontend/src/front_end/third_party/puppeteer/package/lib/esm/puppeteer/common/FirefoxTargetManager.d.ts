@@ -13,11 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CDPSession, Connection } from './Connection.js';
-import { Target } from './Target.js';
 import { TargetFilterCallback } from '../api/Browser.js';
-import { TargetFactory, TargetInterceptor, TargetManager } from './TargetManager.js';
+import { CDPSession, Connection } from './Connection.js';
 import { EventEmitter } from './EventEmitter.js';
+import { CDPTarget } from './Target.js';
+import { TargetFactory, TargetInterceptor, TargetManager } from './TargetManager.js';
 /**
  * FirefoxTargetManager implements target management using
  * `Target.setDiscoverTargets` without using auto-attach. It, therefore, creates
@@ -39,7 +39,7 @@ export declare class FirefoxTargetManager extends EventEmitter implements Target
     removeTargetInterceptor(client: CDPSession | Connection, interceptor: TargetInterceptor): void;
     setupAttachmentListeners(session: CDPSession | Connection): void;
     removeSessionListeners(session: CDPSession): void;
-    getAvailableTargets(): Map<string, Target>;
+    getAvailableTargets(): Map<string, CDPTarget>;
     dispose(): void;
     initialize(): Promise<void>;
 }

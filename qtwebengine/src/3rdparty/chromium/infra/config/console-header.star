@@ -35,7 +35,7 @@ HEADER = headers.header(
         ),
         headers.oncall(
             name = "Fuchsia",
-            url = "https://chrome-ops-rotation-proxy.appspot.com/current/grotation:chrome-fuchsia-gardener",
+            url = "https://chrome-ops-rotation-proxy.appspot.com/current/grotation:chrome-fuchsia-engprod",
         ),
         headers.oncall(
             name = "GPU",
@@ -197,9 +197,14 @@ HEADER = headers.header(
                     alt = "Chromium GPU console",
                 ),
                 headers.link(
-                    text = "packager",
-                    url = "/p/{}/g/chromium.packager".format(settings.project),
-                    alt = "Chromium Packager console",
+                    text = "infra",
+                    url = "/p/{}/g/chromium.infra".format(settings.project),
+                    alt = "Chromium Infra console",
+                ),
+                headers.link(
+                    text = "memory.fyi",
+                    url = "/p/{}/g/chromium.memory.fyi".format(settings.project),
+                    alt = "Chromium Memory FYI console",
                 ),
                 headers.link(
                     text = "perf",

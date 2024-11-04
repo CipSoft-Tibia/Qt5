@@ -60,7 +60,7 @@ def main():
         istanbul_coverage_dir = os.path.join(params.task_output_dir,
                                              'istanbul')
         output_dir = os.path.join(istanbul_coverage_dir, 'merged')
-        os.makedirs(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
 
         coverage_file_path = os.path.join(output_dir, 'coverage.json')
         logging.info('Merging istanbul reports to %s', coverage_file_path)
@@ -83,7 +83,7 @@ def main():
         javascript_merger.generate_coverage_reports(
             output_dir, params.javascript_coverage_dir)
     except RuntimeError as e:
-        logging.warn('Failed executing istanbul tasks: %s', e)
+        logging.warning('Failed executing istanbul tasks: %s', e)
 
 
 if __name__ == '__main__':

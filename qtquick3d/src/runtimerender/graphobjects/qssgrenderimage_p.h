@@ -57,6 +57,7 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderImage : public QSSGRenderGraphObj
     // BufferManager will refuse to use this if the threads don't match.
     QSGTexture *m_qsgTexture = nullptr; // overrides m_imagePath and m_rawTextureData when non-null
     QSSGRenderTextureData *m_rawTextureData = nullptr; // overrides m_imagePath and m_qsgTexture when non-null
+    QSSGRenderExtension *m_extensionsSource = nullptr;
 
     Flags m_flags;
 
@@ -70,6 +71,7 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderImage : public QSSGRenderGraphObj
     MappingModes m_mappingMode = MappingModes::Normal;
     QSSGRenderTextureCoordOp m_horizontalTilingMode = QSSGRenderTextureCoordOp::Repeat;
     QSSGRenderTextureCoordOp m_verticalTilingMode = QSSGRenderTextureCoordOp::Repeat;
+    QSSGRenderTextureCoordOp m_depthTilingMode = QSSGRenderTextureCoordOp::Repeat;
     QSSGRenderTextureFilterOp m_magFilterType = QSSGRenderTextureFilterOp::Linear;
     QSSGRenderTextureFilterOp m_minFilterType = QSSGRenderTextureFilterOp::Linear;
     QSSGRenderTextureFilterOp m_mipFilterType = QSSGRenderTextureFilterOp::Linear;

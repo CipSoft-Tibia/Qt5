@@ -27,7 +27,7 @@
 #include "testing/utils/path_service.h"
 #include "third_party/base/check.h"
 
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
 #include "third_party/skia/include/core/SkCanvas.h"           // nogncheck
 #include "third_party/skia/include/core/SkColor.h"            // nogncheck
 #include "third_party/skia/include/core/SkColorType.h"        // nogncheck
@@ -38,7 +38,7 @@
 #include "third_party/skia/include/core/SkRefCnt.h"           // nogncheck
 #include "third_party/skia/include/core/SkSize.h"             // nogncheck
 #include "third_party/skia/include/core/SkSurface.h"          // nogncheck
-#endif  // _SKIA_SUPPORT_
+#endif  // defined(_SKIA_SUPPORT_)
 
 using pdfium::ManyRectanglesChecksum;
 
@@ -109,7 +109,7 @@ class MockDownloadHints final : public FX_DOWNLOADHINTS {
   ~MockDownloadHints() = default;
 };
 
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
 ScopedFPDFBitmap SkImageToPdfiumBitmap(const SkImage& image) {
   ScopedFPDFBitmap bitmap(
       FPDFBitmap_Create(image.width(), image.height(), /*alpha=*/1));
@@ -133,7 +133,7 @@ ScopedFPDFBitmap SkImageToPdfiumBitmap(const SkImage& image) {
 ScopedFPDFBitmap SkPictureToPdfiumBitmap(sk_sp<SkPicture> picture,
                                          const SkISize& size) {
   sk_sp<SkSurface> surface =
-      SkSurface::MakeRasterN32Premul(size.width(), size.height());
+      SkSurfaces::Raster(SkImageInfo::MakeN32Premul(size));
   if (!surface) {
     ADD_FAILURE() << "Could not create SkSurface";
     return nullptr;
@@ -149,7 +149,7 @@ ScopedFPDFBitmap SkPictureToPdfiumBitmap(sk_sp<SkPicture> picture,
 
   return SkImageToPdfiumBitmap(*image);
 }
-#endif  // _SKIA_SUPPORT_
+#endif  // defined(_SKIA_SUPPORT_)
 
 }  // namespace
 
@@ -227,25 +227,28 @@ class FPDFViewEmbedderTest : public EmbedderTest {
         page, format, /*bitmap_stride=*/0, expected_checksum);
   }
 
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
   void TestRenderPageSkp(FPDF_PAGE page, const char* expected_checksum) {
     int width = static_cast<int>(FPDF_GetPageWidth(page));
     int height = static_cast<int>(FPDF_GetPageHeight(page));
 
-    FPDF_RECORDER opaque_recorder = FPDF_RenderPageSkp(page, width, height);
-    ASSERT_TRUE(opaque_recorder);
+    sk_sp<SkPicture> picture;
+    {
+      auto recorder = std::make_unique<SkPictureRecorder>();
+      recorder->beginRecording(width, height);
 
-    SkPictureRecorder* recorder =
-        reinterpret_cast<SkPictureRecorder*>(opaque_recorder);
-    sk_sp<SkPicture> picture = recorder->finishRecordingAsPicture();
-    delete recorder;
-    ASSERT_TRUE(picture);
+      FPDF_RenderPageSkia(
+          reinterpret_cast<FPDF_SKIA_CANVAS>(recorder->getRecordingCanvas()),
+          page, width, height);
+      picture = recorder->finishRecordingAsPicture();
+      ASSERT_TRUE(picture);
+    }
 
     ScopedFPDFBitmap bitmap = SkPictureToPdfiumBitmap(
         std::move(picture), SkISize::Make(width, height));
     CompareBitmap(bitmap.get(), width, height, expected_checksum);
   }
-#endif  // _SKIA_SUPPORT_
+#endif  // defined(_SKIA_SUPPORT_)
 
  private:
   void TestRenderPageBitmapWithExternalMemoryImpl(
@@ -540,14 +543,7 @@ TEST_F(FPDFViewEmbedderTest, EmptyDocument) {
     EXPECT_FALSE(FPDF_GetFileVersion(document(), &version));
     EXPECT_EQ(0, version);
   }
-  {
-#ifdef PDF_ENABLE_XFA
-    const unsigned long kExpected = static_cast<uint32_t>(-1);
-#else   // PDF_ENABLE_XFA
-    const unsigned long kExpected = 0;
-#endif  // PDF_ENABLE_XFA
-    EXPECT_EQ(kExpected, FPDF_GetDocPermissions(document()));
-  }
+  EXPECT_EQ(0U, FPDF_GetDocPermissions(document()));
   EXPECT_EQ(-1, FPDF_GetSecurityHandlerRevision(document()));
   EXPECT_EQ(0, FPDF_GetPageCount(document()));
   EXPECT_TRUE(FPDF_VIEWERREF_GetPrintScaling(document()));
@@ -1003,7 +999,7 @@ TEST_F(FPDFViewEmbedderTest, FPDF_RenderPageBitmapWithMatrix) {
   }();
   const char* hori_stretched_checksum = []() {
     if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "af6eaa0d3388261693df5390138e4da1";
+      return "6d3776d7bb21cbb7195126b8e95dfba2";
     return "48ef9205941ed19691ccfa00d717187e";
   }();
   const char* rotated_90_clockwise_checksum = []() {
@@ -1038,7 +1034,7 @@ TEST_F(FPDFViewEmbedderTest, FPDF_RenderPageBitmapWithMatrix) {
   }();
   const char* larger_rotated_diagonal_checksum = []() {
     if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "1dbf599403c235926d3ddcbc0ea10ee8";
+      return "85c41bb892c1a09882f432aa2f4a5ef6";
     return "3d62417468bdaff0eb14391a0c30a3b1";
   }();
   const char* tile_checksum = []() {
@@ -1454,11 +1450,14 @@ TEST_F(FPDFViewEmbedderTest, RenderBug664284WithNoNativeText) {
   // macOS rendering result doesn't.
 
   const char* original_checksum = []() {
+    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+      return "29cb8045c21cfa2c920fdf43de70efd8";
+    }
 #if BUILDFLAG(IS_APPLE)
-    if (!CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "0e339d606aafb63077f49e238dc27cb0";
-#endif
+    return "0e339d606aafb63077f49e238dc27cb0";
+#else
     return "288502887ffc63291f35a0573b944375";
+#endif
   }();
   static const char kNoNativeTextChecksum[] =
       "288502887ffc63291f35a0573b944375";
@@ -1470,6 +1469,27 @@ TEST_F(FPDFViewEmbedderTest, RenderBug664284WithNoNativeText) {
   TestRenderPageBitmapWithFlags(page, FPDF_NO_NATIVETEXT,
                                 kNoNativeTextChecksum);
 
+  UnloadPage(page);
+}
+
+TEST_F(FPDFViewEmbedderTest, RenderAnnotationWithPrintingFlag) {
+  const char* annotation_checksum = []() {
+    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+      return "eaece6b8041c0cb9b33398e5b6d5ddda";
+    }
+    return "c108ba6e0a9743652f12e4bc223f9b32";
+  }();
+  static const char kPrintingChecksum[] = "3e235b9f88f652f2b97b1fc393924849";
+  ASSERT_TRUE(OpenDocument("bug_1658.pdf"));
+  FPDF_PAGE page = LoadPage(0);
+  ASSERT_TRUE(page);
+
+  // A yellow highlight is rendered with `FPDF_ANNOT` flag.
+  TestRenderPageBitmapWithFlags(page, FPDF_ANNOT, annotation_checksum);
+
+  // After adding `FPDF_PRINTING` flag, the yellow highlight is not rendered.
+  TestRenderPageBitmapWithFlags(page, FPDF_PRINTING | FPDF_ANNOT,
+                                kPrintingChecksum);
   UnloadPage(page);
 }
 
@@ -1628,7 +1648,7 @@ TEST_F(FPDFViewEmbedderTest, RenderHelloWorldWithFlags) {
 
   const char* lcd_text_checksum = []() {
     if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "c1c548442e0e0f949c5550d89bf8ae3b";
+      return "d1decde2de1c07b5274cc8cb44f92427";
 #if BUILDFLAG(IS_APPLE)
     return "6eef7237f7591f07616e238422086737";
 #else
@@ -1636,11 +1656,14 @@ TEST_F(FPDFViewEmbedderTest, RenderHelloWorldWithFlags) {
 #endif  // BUILDFLAG(IS_APPLE)
   }();
   const char* no_smoothtext_checksum = []() {
+    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+      return "cd5bbe9407c3fcc85d365172a9a55abd";
+    }
 #if BUILDFLAG(IS_APPLE)
-    if (!CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "6eef7237f7591f07616e238422086737";
-#endif
+    return "6eef7237f7591f07616e238422086737";
+#else
     return "37d0b34e1762fdda4c05ce7ea357b828";
+#endif
   }();
 
   TestRenderPageBitmapWithFlags(page, FPDF_LCD_TEXT, lcd_text_checksum);
@@ -1883,10 +1906,6 @@ restore
 }
 
 TEST_F(FPDFViewEmbedderTest, ImageMask) {
-  // TODO(crbug.com/pdfium/1500): Fix this test and enable.
-  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-    return;
-
   ASSERT_TRUE(OpenDocument("bug_674771.pdf"));
   FPDF_PAGE page = LoadPage(0);
   ASSERT_TRUE(page);
@@ -2000,7 +2019,7 @@ TEST_F(FPDFViewEmbedderTest, RenderXfaPage) {
   UnloadPage(page);
 }
 
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
 TEST_F(FPDFViewEmbedderTest, RenderPageToSkp) {
   if (!CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
     GTEST_SKIP() << "FPDF_RenderPageSkp() only makes sense with Skia";
@@ -2031,14 +2050,22 @@ TEST_F(FPDFViewEmbedderTest, RenderXfaPageToSkp) {
 
   UnloadPage(page);
 }
-#endif  // _SKIA_SUPPORT_
+#endif  // defined(_SKIA_SUPPORT_)
 
 TEST_F(FPDFViewEmbedderTest, NoSmoothTextItalicOverlappingGlyphs) {
   ASSERT_TRUE(OpenDocument("bug_1919.pdf"));
   FPDF_PAGE page = LoadPage(0);
   ASSERT_TRUE(page);
 
-  TestRenderPageBitmapWithFlags(page, FPDF_RENDER_NO_SMOOTHTEXT,
-                                "4ef1f65ab1ac76acb97a3540dcb10b4e");
+  const char* checksum = []() {
+#if !BUILDFLAG(IS_APPLE)
+    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+      return "ceeb93d2bcdb586d62c95b33cadcd873";
+    }
+#endif
+    return "4ef1f65ab1ac76acb97a3540dcb10b4e";
+  }();
+
+  TestRenderPageBitmapWithFlags(page, FPDF_RENDER_NO_SMOOTHTEXT, checksum);
   UnloadPage(page);
 }

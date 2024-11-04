@@ -27,6 +27,7 @@ public:
               QIODevice &outfile, // -- QtScxml
               bool requireCompleteTypes = false);
     void generateCode();
+    qsizetype registeredStringsCount() { return strings.size(); };
 
 // -- QtScxml
     void generateAccessorDefs();
@@ -50,8 +51,7 @@ private:
     void generateProperties();
     void generateMetacall();
     void generateStaticMetacall();
-    void generateSignal(FunctionDef *def, int index);
-    void generateQPropertyApi();
+    void generateSignal(const FunctionDef *def, int index);
 #if 0 // -- QtScxml
     void generatePluginMetaData();
 #endif // -- QtScxml

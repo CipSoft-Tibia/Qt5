@@ -55,6 +55,7 @@
 #include "third_party/blink/renderer/core/html/forms/html_select_element.h"
 #include "third_party/blink/renderer/core/html/forms/listed_element.h"
 #include "third_party/blink/renderer/core/html/forms/text_control_element.h"
+#include "third_party/blink/renderer/core/html/html_iframe_element.h"
 #include "third_party/blink/renderer/core/html/html_plugin_element.h"
 #include "third_party/blink/renderer/core/html/html_slot_element.h"
 #include "third_party/blink/renderer/core/html/portal/html_portal_element.h"
@@ -66,7 +67,6 @@
 #include "third_party/blink/renderer/core/page/focus_changed_observer.h"
 #include "third_party/blink/renderer/core/page/frame_tree.h"
 #include "third_party/blink/renderer/core/page/page.h"
-#include "third_party/blink/renderer/core/page/slot_scoped_traversal.h"
 #include "third_party/blink/renderer/core/page/spatial_navigation.h"
 
 namespace blink {
@@ -183,7 +183,7 @@ class FocusNavigation : public GarbageCollected<FocusNavigation> {
     Element* owner = nullptr;
     Element* owner_slot = nullptr;
     if (Element* element = DynamicTo<Element>(node))
-      owner_slot = SlotScopedTraversal::FindScopeOwnerSlot(*element);
+      owner_slot = FocusController::FindScopeOwnerSlot(*element);
 
     if (owner_slot)
       owner = owner_slot;
@@ -322,8 +322,9 @@ Element* ScopedFocusNavigation::Owner() const {
 ScopedFocusNavigation ScopedFocusNavigation::CreateFor(
     const Element& current,
     FocusController::OwnerMap& owner_map) {
-  if (HTMLSlotElement* slot = SlotScopedTraversal::FindScopeOwnerSlot(current))
+  if (HTMLSlotElement* slot = FocusController::FindScopeOwnerSlot(current)) {
     return ScopedFocusNavigation(*slot, &current, owner_map);
+  }
   if (HTMLSlotElement* slot =
           ScopedFocusNavigation::FindFallbackScopeOwnerSlot(current)) {
     return ScopedFocusNavigation(*slot, &current, owner_map);
@@ -394,6 +395,36 @@ HTMLSlotElement* ScopedFocusNavigation::FindFallbackScopeOwnerSlot(
     parent = parent->parentElement();
   }
   return nullptr;
+}
+
+// Checks whether |element| is an <iframe> and seems like a captcha based on
+// heuristics. The heuristics cannot be perfect and therefore is a subject to
+// change, e.g. adding a list of domains of captcha providers to be compared
+// with 'src' attribute.
+bool IsLikelyCaptchaIframe(const Element& element) {
+  auto* iframe_element = DynamicTo<HTMLIFrameElement>(element);
+  if (!iframe_element) {
+    return false;
+  }
+  DEFINE_STATIC_LOCAL(String, kCaptcha, ("captcha"));
+  return iframe_element->FastGetAttribute(html_names::kSrcAttr)
+             .Contains(kCaptcha) ||
+         iframe_element->title().Contains(kCaptcha) ||
+         iframe_element->GetIdAttribute().Contains(kCaptcha) ||
+         iframe_element->GetNameAttribute().Contains(kCaptcha);
+}
+
+// Checks whether |element| is a captcha <iframe> or enclosed with such an
+// <iframe>.
+bool IsLikelyWithinCaptchaIframe(const Element& element,
+                                 FocusController::OwnerMap& owner_map) {
+  if (IsLikelyCaptchaIframe(element)) {
+    return true;
+  }
+  ScopedFocusNavigation scope =
+      ScopedFocusNavigation::CreateFor(element, owner_map);
+  Element* scope_owner = scope.Owner();
+  return scope_owner && IsLikelyCaptchaIframe(*scope_owner);
 }
 
 inline void DispatchBlurEvent(const Document& document,
@@ -641,8 +672,10 @@ Element* FindFocusableElementRecursivelyForward(
         ScopedFocusNavigation inner_scope =
             ScopedFocusNavigation::OwnedByShadowHost(*found, owner_map);
         if (Element* found_in_inner_focus_scope =
-                FindFocusableElementRecursivelyForward(inner_scope, owner_map))
+                FindFocusableElementRecursivelyForward(inner_scope,
+                                                       owner_map)) {
           return found_in_inner_focus_scope;
+        }
       }
       // Skip to the next element in the same scope.
       continue;
@@ -1103,7 +1136,8 @@ bool FocusController::AdvanceFocusInDocumentOrder(
 
     // We didn't find an element to focus, so we should try to pass focus to
     // Chrome.
-    if (!initial_focus && page_->GetChromeClient().CanTakeFocus(type)) {
+    if ((!initial_focus || document->GetFrame()->IsFencedFrameRoot()) &&
+        page_->GetChromeClient().CanTakeFocus(type)) {
       document->ClearFocusedElement();
       document->SetSequentialFocusNavigationStartingPoint(nullptr);
       SetFocusedFrame(nullptr);
@@ -1194,8 +1228,9 @@ bool FocusController::AdvanceFocusInDocumentOrder(
 
   SetFocusedFrame(new_document.GetFrame());
 
-  element->Focus(
-      FocusParams(SelectionBehaviorOnFocus::kReset, type, source_capabilities));
+  element->Focus(FocusParams(SelectionBehaviorOnFocus::kReset, type,
+                             source_capabilities, FocusOptions::Create(),
+                             FocusTrigger::kUserGesture));
   return true;
 }
 
@@ -1256,6 +1291,10 @@ Element* FocusController::NextFocusableElementForImeAndAutofill(
         }
       }
     }
+    // Captcha is a sort of an input field that should have user input as well.
+    if (IsLikelyWithinCaptchaIframe(*next_html_element, owner_map)) {
+      return next_element;
+    }
     auto* next_form_control_element =
         DynamicTo<HTMLFormControlElement>(next_element);
     if (!next_form_control_element)
@@ -1279,7 +1318,7 @@ Element* FocusController::NextFocusableElementForImeAndAutofill(
       return next_element;
     }
     LayoutObject* layout = next_element->GetLayoutObject();
-    if (layout && layout->IsTextControlIncludingNG()) {
+    if (layout && layout->IsTextControl()) {
       // TODO(crbug.com/1320441): Extend it for radio buttons and checkboxes.
       return next_element;
     }
@@ -1296,7 +1335,6 @@ Element* FocusController::NextFocusableElementForImeAndAutofill(
 // https://html.spec.whatwg.org/C/#get-the-focusable-area
 Element* FocusController::FindFocusableElementInShadowHost(
     const Element& shadow_host) {
-  DCHECK(shadow_host.AuthorShadowRoot());
   // We have no behavior difference by focus trigger. Skip step 2.1.
 
   // 2.2. Otherwise, let possible focus delegates be the list of all
@@ -1310,6 +1348,18 @@ Element* FocusController::FindFocusableElementInShadowHost(
     if (auto* current_element = DynamicTo<Element>(current)) {
       if (current_element->IsFocusable())
         return current_element;
+    }
+  }
+  return nullptr;
+}
+
+// static
+HTMLSlotElement* FocusController::FindScopeOwnerSlot(const Element& current) {
+  Element* element = const_cast<Element*>(&current);
+  for (; element; element = element->parentElement()) {
+    HTMLSlotElement* slot_element = element->AssignedSlot();
+    if (slot_element) {
+      return slot_element;
     }
   }
   return nullptr;
@@ -1454,12 +1504,8 @@ int FocusController::AdjustedTabIndex(const Element& element) {
     // missing values.
     return element.GetIntegralAttribute(html_names::kTabindexAttr, 0);
   }
-  bool default_focusable =
-      element.SupportsFocus() ||
-      (RuntimeEnabledFeatures::KeyboardFocusableScrollersEnabled() &&
-       IsScrollableNode(&element));
   return element.GetIntegralAttribute(html_names::kTabindexAttr,
-                                      default_focusable ? 0 : -1);
+                                      element.IsFocusable() ? 0 : -1);
 }
 
 void FocusController::Trace(Visitor* visitor) const {

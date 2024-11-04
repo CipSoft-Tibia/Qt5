@@ -97,6 +97,8 @@ public:
     explicit Instruction(Op opCode) : resultId(NoResult), typeId(NoType), opCode(opCode), block(nullptr) { }
     virtual ~Instruction() {}
     void addIdOperand(Id id) {
+        // ids can't be 0
+        assert(id);
         operands.push_back(id);
         idOperand.push_back(true);
     }
@@ -349,6 +351,7 @@ public:
     const std::vector<Block*>& getBlocks() const { return blocks; }
     void addLocalVariable(std::unique_ptr<Instruction> inst);
     Id getReturnType() const { return functionInstruction.getTypeId(); }
+    Id getFuncId() const { return functionInstruction.getResultId(); }
     void setReturnPrecision(Decoration precision)
     {
         if (precision == DecorationRelaxedPrecision)
@@ -385,7 +388,7 @@ public:
         if (lineInstruction != nullptr) {
             lineInstruction->dump(out);
         }
-        
+
         // OpFunction
         functionInstruction.dump(out);
 

@@ -5,6 +5,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_PEERCONNECTION_PEER_CONNECTION_DEPENDENCY_FACTORY_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_PEERCONNECTION_PEER_CONNECTION_DEPENDENCY_FACTORY_H_
 
+#include "base/feature_list.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread.h"
@@ -35,6 +36,7 @@ class PortAllocator;
 namespace media {
 class DecoderFactory;
 class GpuVideoAcceleratorFactories;
+class MojoVideoEncoderMetricsProviderFactory;
 }
 
 namespace rtc {
@@ -102,7 +104,8 @@ class MODULES_EXPORT PeerConnectionDependencyFactory
   // Asks the libjingle PeerConnection factory to create a libjingle
   // PeerConnection object.
   // The PeerConnection object is owned by PeerConnectionHandler.
-  virtual scoped_refptr<webrtc::PeerConnectionInterface> CreatePeerConnection(
+  virtual rtc::scoped_refptr<webrtc::PeerConnectionInterface>
+  CreatePeerConnection(
       const webrtc::PeerConnectionInterface::RTCConfiguration& config,
       blink::WebLocalFrame* web_frame,
       webrtc::PeerConnectionObserver* observer,
@@ -176,6 +179,8 @@ class MODULES_EXPORT PeerConnectionDependencyFactory
       scoped_refptr<base::SequencedTaskRunner> media_task_runner,
       media::GpuVideoAcceleratorFactories* gpu_factories,
       base::WeakPtr<media::DecoderFactory> media_decoder_factory,
+      scoped_refptr<media::MojoVideoEncoderMetricsProviderFactory>
+          video_encoder_metrics_provider_factory,
       base::WaitableEvent* event);
 
   void CreateIpcNetworkManagerOnNetworkThread(

@@ -180,39 +180,40 @@ TEST_F(RealtimeReportingJobConfigurationTest, ValidatePayload) {
   absl::optional<base::Value> payload =
       base::JSONReader::Read(configuration_->GetPayload());
   EXPECT_TRUE(payload.has_value());
-  EXPECT_EQ(kDummyToken, *payload->FindStringPath(
+  const base::Value::Dict& payload_dict = payload->GetDict();
+  EXPECT_EQ(kDummyToken, *payload_dict.FindStringByDottedPath(
                              ReportingJobConfigurationBase::
                                  DeviceDictionaryBuilder::GetDMTokenPath()));
-  EXPECT_EQ(
-      client_.client_id(),
-      *payload->FindStringPath(ReportingJobConfigurationBase::
-                                   DeviceDictionaryBuilder::GetClientIdPath()));
+  EXPECT_EQ(client_.client_id(),
+            *payload_dict.FindStringByDottedPath(
+                ReportingJobConfigurationBase::DeviceDictionaryBuilder::
+                    GetClientIdPath()));
   EXPECT_EQ(GetOSUsername(),
-            *payload->FindStringPath(
+            *payload_dict.FindStringByDottedPath(
                 ReportingJobConfigurationBase::BrowserDictionaryBuilder::
                     GetMachineUserPath()));
   EXPECT_EQ(version_info::GetVersionNumber(),
-            *payload->FindStringPath(
+            *payload_dict.FindStringByDottedPath(
                 ReportingJobConfigurationBase::BrowserDictionaryBuilder::
                     GetChromeVersionPath()));
   EXPECT_EQ(GetOSPlatform(),
-            *payload->FindStringPath(
+            *payload_dict.FindStringByDottedPath(
                 ReportingJobConfigurationBase::DeviceDictionaryBuilder::
                     GetOSPlatformPath()));
   EXPECT_EQ(GetOSVersion(),
-            *payload->FindStringPath(
+            *payload_dict.FindStringByDottedPath(
                 ReportingJobConfigurationBase::DeviceDictionaryBuilder::
                     GetOSVersionPath()));
   EXPECT_FALSE(GetDeviceName().empty());
-  EXPECT_EQ(GetDeviceName(), *payload->FindStringPath(
+  EXPECT_EQ(GetDeviceName(), *payload_dict.FindStringByDottedPath(
                                  ReportingJobConfigurationBase::
                                      DeviceDictionaryBuilder::GetNamePath()));
 
-  base::Value* events =
-      payload->FindListKey(RealtimeReportingJobConfiguration::kEventListKey);
-  EXPECT_EQ(kIds.size(), events->GetList().size());
+  base::Value::List* events = payload->GetDict().FindList(
+      RealtimeReportingJobConfiguration::kEventListKey);
+  EXPECT_EQ(kIds.size(), events->size());
   int i = -1;
-  for (const base::Value& event_val : events->GetList()) {
+  for (const base::Value& event_val : *events) {
     const base::Value::Dict& event = event_val.GetDict();
     const std::string& id = CHECK_DEREF(event.FindString(kEventId));
     EXPECT_EQ(kIds[++i], id);
@@ -318,6 +319,12 @@ TEST_F(RealtimeReportingJobConfigurationTest, ShouldRetry_PermanentFailure) {
   EXPECT_EQ(DeviceManagementService::Job::NO_RETRY, should_retry);
 }
 
+TEST_F(RealtimeReportingJobConfigurationTest, ShouldRetry_InvalidResponse) {
+  auto should_retry = configuration_->ShouldRetry(
+      DeviceManagementService::kSuccess, "some error");
+  EXPECT_EQ(DeviceManagementService::Job::NO_RETRY, should_retry);
+}
+
 TEST_F(RealtimeReportingJobConfigurationTest, OnBeforeRetry_HttpFailure) {
   // No change should be made to the payload in this case.
   auto original_payload = configuration_->GetPayload();
@@ -335,11 +342,18 @@ TEST_F(RealtimeReportingJobConfigurationTest, OnBeforeRetry_PartialBatch) {
                                 response_string);
   absl::optional<base::Value> payload =
       base::JSONReader::Read(configuration_->GetPayload());
-  base::Value* events =
-      payload->FindListKey(RealtimeReportingJobConfiguration::kEventListKey);
-  EXPECT_EQ(1u, events->GetList().size());
-  auto& event = events->GetList()[0];
-  EXPECT_EQ(kIds[1], *event.FindStringKey(kEventId));
+  base::Value::List* events = payload->GetDict().FindList(
+      RealtimeReportingJobConfiguration::kEventListKey);
+  EXPECT_EQ(1u, events->size());
+  auto& event = (*events)[0];
+  EXPECT_EQ(kIds[1], *event.GetDict().FindString(kEventId));
+}
+
+TEST_F(RealtimeReportingJobConfigurationTest, OnBeforeRetry_InvalidResponse) {
+  // No change should be made to the payload in this case.
+  auto original_payload = configuration_->GetPayload();
+  configuration_->OnBeforeRetry(DeviceManagementService::kSuccess, "error");
+  EXPECT_EQ(original_payload, configuration_->GetPayload());
 }
 
 }  // namespace policy

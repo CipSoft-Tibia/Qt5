@@ -8,11 +8,15 @@
 #include <QtQml/QQmlFile>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/private/qquickitem_p.h>
+#include <QSGTextureProvider>
 #include <QtCore/qmath.h>
+
+#include <ssg/qssgrenderextensions.h>
 
 #include "qquick3dobject_p.h"
 #include "qquick3dscenemanager_p.h"
 #include "qquick3dutils_p.h"
+#include "qquick3drenderextensions.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -319,6 +323,23 @@ QQuick3DTexture::TilingMode QQuick3DTexture::horizontalTiling() const
 QQuick3DTexture::TilingMode QQuick3DTexture::verticalTiling() const
 {
     return m_tilingModeVertical;
+}
+
+/*!
+    \qmlproperty enumeration QtQuick3D::Texture::tilingModeDepth
+
+    This property controls how the texture is mapped when the Z scaling value
+    is greater than 1.
+
+    By default, this property is set to \c{Texture.Repeat}.
+
+    \value Texture.ClampToEdge Texture is not tiled, but the value on the edge is used instead.
+    \value Texture.MirroredRepeat Texture is repeated and mirrored over the Z axis.
+    \value Texture.Repeat Texture is repeated over the Z axis.
+*/
+QQuick3DTexture::TilingMode QQuick3DTexture::depthTiling() const
+{
+    return m_tilingModeDepth;
 }
 
 /*!
@@ -630,6 +651,25 @@ bool QQuick3DTexture::autoOrientation() const
     return m_autoOrientation;
 }
 
+/*!
+    \qmlproperty RenderExtension QtQuick3D::Texture::textureProvider
+
+    This property holds the RenderExtension that will provide the \l QRhiTexture
+    that will be used by this item.
+
+    \note The texture created by RenderExtension needs to be made available by
+    \l{QSSGRenderExtensionHelpers::registerRenderResult}{registering} it with the engine.
+
+    \since 6.7
+
+    \sa RenderExtension, QSSGRenderExtensionHelpers
+*/
+
+QQuick3DRenderExtension *QQuick3DTexture::textureProvider() const
+{
+    return m_renderExtension;
+}
+
 void QQuick3DTexture::setSource(const QUrl &source)
 {
     if (m_source == source)
@@ -775,6 +815,15 @@ void QQuick3DTexture::setVerticalTiling(QQuick3DTexture::TilingMode tilingModeVe
     update();
 }
 
+void QQuick3DTexture::setDepthTiling(QQuick3DTexture::TilingMode tilingModeDepth)
+{
+    if (m_tilingModeDepth == tilingModeDepth)
+        return;
+    m_tilingModeDepth = tilingModeDepth;
+    emit depthTilingChanged();
+    update();
+}
+
 void QQuick3DTexture::setRotationUV(float rotationUV)
 {
     if (qFuzzyCompare(m_rotationUV, rotationUV))
@@ -883,7 +932,7 @@ void QQuick3DTexture::setTextureData(QQuick3DTextureData *textureData)
 
     if (m_textureData) {
         m_textureDataConnection
-                = QObject::connect(m_textureData, &QQuick3DTextureData::textureDataNodeDirty, [this]() {
+                = QObject::connect(m_textureData, &QQuick3DTextureData::textureDataNodeDirty, this, [this]() {
             markDirty(DirtyFlag::TextureDataDirty);
         });
     }
@@ -970,10 +1019,10 @@ bool QQuick3DTexture::effectiveFlipV(const QSSGRenderImage &imageNode) const
     if (m_sourceItem)
         return !m_flipV;
 
-    // With textureData we assume the application knows what it is doing,
+    // With textureData and renderExtension we assume the application knows what it is doing,
     // because there the application is controlling the content itself.
 
-    if (m_textureData)
+    if (m_textureData || m_renderExtension)
         return m_flipV;
 
     // Compressed textures (or any texture that is coming from the associated
@@ -1061,6 +1110,8 @@ QSSGRenderGraphObject *QQuick3DTexture::updateSpatialNode(QSSGRenderGraphObject 
                                   QSSGRenderTextureCoordOp(m_tilingModeHorizontal));
     nodeChanged |= qUpdateIfNeeded(imageNode->m_verticalTilingMode,
                                   QSSGRenderTextureCoordOp(m_tilingModeVertical));
+    nodeChanged |= qUpdateIfNeeded(imageNode->m_depthTilingMode,
+                                  QSSGRenderTextureCoordOp(m_tilingModeDepth));
 
     if (m_dirtyFlags.testFlag(DirtyFlag::SamplerDirty)) {
         m_dirtyFlags.setFlag(DirtyFlag::SamplerDirty, false);
@@ -1081,6 +1132,23 @@ QSSGRenderGraphObject *QQuick3DTexture::updateSpatialNode(QSSGRenderGraphObject 
             imageNode->m_rawTextureData = static_cast<QSSGRenderTextureData *>(QQuick3DObjectPrivate::get(m_textureData)->spatialNode);
         else
             imageNode->m_rawTextureData = nullptr;
+        nodeChanged = true;
+    }
+
+    if (m_dirtyFlags.testFlag(DirtyFlag::ExtensionDirty)) {
+        bool extDirty = false;
+        if (m_renderExtension) {
+            auto *sn = QQuick3DObjectPrivate::get(m_renderExtension)->spatialNode;
+            // NOTE: We don't clear if we haven't gotten the spatial node yet, as
+            // we'll be called once _again_ when the extensions have been processed.
+            extDirty = (sn == nullptr);
+            if (sn && QSSG_GUARD(sn->type == QSSGRenderGraphObject::Type::RenderExtension))
+                imageNode->m_extensionsSource = static_cast<QSSGRenderExtension *>(sn);
+        }
+
+        m_dirtyFlags.setFlag(DirtyFlag::ExtensionDirty, extDirty);
+        m_dirtyFlags.setFlag(DirtyFlag::FlipVDirty, true);
+
         nodeChanged = true;
     }
 
@@ -1398,6 +1466,24 @@ void QQuick3DTexture::markAllDirty()
 {
     m_dirtyFlags = DirtyFlags(0xFFFF);
     QQuick3DObject::markAllDirty();
+}
+
+void QQuick3DTexture::setTextureProvider(QQuick3DRenderExtension *textureProvider)
+{
+    if (m_renderExtension == textureProvider)
+        return;
+
+    QQuick3DObjectPrivate::attachWatcher(this, &QQuick3DTexture::setTextureProvider, textureProvider, m_renderExtension);
+
+    m_renderExtension = textureProvider;
+
+    m_dirtyFlags.setFlag(DirtyFlag::SourceDirty);
+    m_dirtyFlags.setFlag(DirtyFlag::SourceItemDirty);
+    m_dirtyFlags.setFlag(DirtyFlag::TextureDataDirty);
+    m_dirtyFlags.setFlag(DirtyFlag::ExtensionDirty);
+
+    emit textureProviderChanged();
+    update();
 }
 
 QT_END_NAMESPACE

@@ -1,0 +1,25 @@
+From 6875f18b6a62168d3902efc9cee94991005f8ed5 Mon Sep 17 00:00:00 2001
+From: Krzysztof Sommerfeld <krzysztof.sommerfeld@siili.com>
+Date: Thu, 10 Aug 2023 11:19:35 +0200
+Subject: [PATCH] Replace BOOL with ANOTHER_BOOL define for VxWroks
+
+Task-number: QTBUG-115777
+Change-Id: I0d8c8104306d822247f53a74733781bd9e209ae3
+---
+ src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h | 3 +-
+ 1 file changed, 3 insertion(+), 0 deletion(-)
+
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h
+index 65d1b8e..6942a8e 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h
+@@ -44,6 +44,9 @@
+ #if YYDEBUG
+ extern int yydebug;
+ #endif
++#ifdef __VXWORKS__
++#define BOOL ANOTHER_BOOL // VxWorks has typedef BOOL
++#endif
+ 
+ /* Token kinds.  */
+ #ifndef YYTOKENTYPE

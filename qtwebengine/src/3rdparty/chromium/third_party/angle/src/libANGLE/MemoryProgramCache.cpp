@@ -33,6 +33,11 @@ namespace gl
 namespace
 {
 
+// Limit decompressed programs to 10MB. If they're larger then this there is a good chance the data
+// is not what we expect. This limits the amount of memory we will allocate based on a binary blob
+// we believe is compressed data.
+static constexpr size_t kMaxUncompressedProgramSize = 10 * 1024 * 1024;
+
 void WriteProgramBindings(BinaryOutputStream *stream, const ProgramBindings &bindings)
 {
     for (const auto &binding : bindings.getStableIterationMap())
@@ -48,17 +53,6 @@ void WriteProgramAliasedBindings(BinaryOutputStream *stream, const ProgramAliase
     {
         stream->writeString(binding.first);
         stream->writeInt(binding.second.location);
-    }
-}
-
-void WriteVariableLocations(BinaryOutputStream *stream,
-                            const std::vector<gl::VariableLocation> &locations)
-{
-    for (const auto &loc : locations)
-    {
-        stream->writeInt(loc.index);
-        stream->writeInt(loc.arrayIndex);
-        stream->writeBool(loc.ignored);
     }
 }
 
@@ -100,9 +94,7 @@ void MemoryProgramCache::ComputeHash(const Context *context,
     {
         hashStream.writeString(transformFeedbackVaryingName);
     }
-    hashStream.writeInt(program->getState().getTransformFeedbackBufferMode());
-    WriteVariableLocations(&hashStream, program->getState().getOutputLocations());
-    WriteVariableLocations(&hashStream, program->getState().getSecondaryOutputLocations());
+    hashStream.writeInt(program->getTransformFeedbackBufferMode());
 
     // Include the status of FrameCapture, which adds source strings to the binary
     hashStream.writeBool(context->getShareGroup()->getFrameCaptureShared()->enabled());
@@ -125,7 +117,8 @@ angle::Result MemoryProgramCache::getProgram(const Context *context,
     ComputeHash(context, program, hashOut);
 
     angle::MemoryBuffer uncompressedData;
-    switch (mBlobCache.getAndDecompress(context->getScratchBuffer(), *hashOut, &uncompressedData))
+    switch (mBlobCache.getAndDecompress(context->getScratchBuffer(), *hashOut,
+                                        kMaxUncompressedProgramSize, &uncompressedData))
     {
         case egl::BlobCache::GetAndDecompressResult::NotFound:
             return angle::Result::Incomplete;

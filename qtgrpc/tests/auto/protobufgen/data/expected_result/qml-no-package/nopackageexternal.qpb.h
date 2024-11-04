@@ -12,6 +12,7 @@
 
 #include <QtCore/qbytearray.h>
 #include <QtCore/qstring.h>
+#include "tst_qtprotobufgen_nopackage_qml_gen_exports.qpb.h"
 
 #include <QtCore/qmetatype.h>
 #include <QtCore/qlist.h>
@@ -19,18 +20,13 @@
 
 #include <memory>
 
-#if defined(QT_SHARED) || !defined(QT_STATIC)
-#  if defined(QT_BUILD_TST_QTPROTOBUFGEN_NOPACKAGE_QML_GEN_LIB)
-#    define QPB_TST_QTPROTOBUFGEN_NOPACKAGE_QML_GEN_EXPORT Q_DECL_EXPORT
-#  else
-#    define QPB_TST_QTPROTOBUFGEN_NOPACKAGE_QML_GEN_EXPORT Q_DECL_IMPORT
-#  endif
-#else
-#  define QPB_TST_QTPROTOBUFGEN_NOPACKAGE_QML_GEN_EXPORT
-#endif
 
 class SimpleIntMessageExt;
 using SimpleIntMessageExtRepeated = QList<SimpleIntMessageExt>;
+namespace SimpleIntMessageExt_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleIntMessageExt_QtProtobufNested
+
 
 class SimpleIntMessageExt_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_NOPACKAGE_QML_GEN_EXPORT SimpleIntMessageExt : public QProtobufMessage
@@ -39,15 +35,10 @@ class QPB_TST_QTPROTOBUFGEN_NOPACKAGE_QML_GEN_EXPORT SimpleIntMessageExt : publi
     Q_PROTOBUF_OBJECT
     Q_DECLARE_PROTOBUF_SERIALIZERS(SimpleIntMessageExt)
     QML_VALUE_TYPE(simpleIntMessageExt)
-    Q_PROPERTY(QtProtobuf::int32 testFieldInt_p READ testFieldInt WRITE setTestFieldInt SCRIPTABLE false)
-    Q_PROPERTY(int testFieldInt READ testFieldInt_p WRITE setTestFieldInt_p SCRIPTABLE true)
+    Q_PROPERTY(QtProtobuf::int32 testFieldInt READ testFieldInt WRITE setTestFieldInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleIntMessageExt_QtProtobufNested::QtProtobufFieldEnum;
     SimpleIntMessageExt();
     ~SimpleIntMessageExt();
     SimpleIntMessageExt(const SimpleIntMessageExt &other);
@@ -62,10 +53,18 @@ public:
     static void registerTypes();
 
 private:
-    int testFieldInt_p() const;
-    void setTestFieldInt_p(const int &testFieldInt);
     QExplicitlySharedDataPointer<SimpleIntMessageExt_QtProtobufData> dptr;
 };
+namespace SimpleIntMessageExt_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_NOPACKAGE_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleIntMessageExt)
+
+enum class QtProtobufFieldEnum {
+    TestFieldIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleIntMessageExt_QtProtobufNested
 
 Q_DECLARE_METATYPE(SimpleIntMessageExt)
 #endif // QPROTOBUF_NOPACKAGEEXTERNAL_H

@@ -7,38 +7,47 @@
 
 #include <string>
 
+#include "base/location.h"
+
 class GURL;
 
 namespace content {
 class RenderFrameHost;
 }  // namespace content
 
-namespace storage {
-namespace test {
+namespace storage::test {
 
 // Gets the text content of a given frame.
 std::string GetFrameContent(content::RenderFrameHost* frame);
 
 // Helpers to set and check various types of storage on a given frame. Typically
 // used on page like //chrome/test/data/browsing_data/site_data.html
-void SetStorageForFrame(content::RenderFrameHost* frame, bool include_cookies);
-void SetStorageForWorker(content::RenderFrameHost* frame);
+void SetStorageForFrame(content::RenderFrameHost* frame,
+                        bool include_cookies,
+                        const base::Location& location = FROM_HERE);
+void SetStorageForWorker(content::RenderFrameHost* frame,
+                         const base::Location& location = FROM_HERE);
 void ExpectStorageForFrame(content::RenderFrameHost* frame,
-                           bool include_cookies,
-                           bool expected);
-void ExpectStorageForWorker(content::RenderFrameHost* frame, bool expected);
+                           bool expected,
+                           const base::Location& location = FROM_HERE);
+void ExpectStorageForWorker(content::RenderFrameHost* frame,
+                            bool expected,
+                            const base::Location& location = FROM_HERE);
 
 // Helpers to set and check various types of cross tab info for a given frame.
 // Typically used on page like //chrome/test/data/browsing_data/site_data.html
-void SetCrossTabInfoForFrame(content::RenderFrameHost* frame);
-void ExpectCrossTabInfoForFrame(content::RenderFrameHost* frame, bool expected);
+void SetCrossTabInfoForFrame(content::RenderFrameHost* frame,
+                             const base::Location& location = FROM_HERE);
+void ExpectCrossTabInfoForFrame(content::RenderFrameHost* frame,
+                                bool expected,
+                                const base::Location& location = FROM_HERE);
 
 // Helper to request storage access for a frame using
-// document.requestStorageAccess(). Returns true if the promise resolves; false
-// if it rejects.
-bool RequestStorageAccessForFrame(content::RenderFrameHost* frame);
+// document.requestStorageAccess() and then get the value of
+// document.hasStorageAccess(). If either call rejects, this helper DCHECKs.
+bool RequestAndCheckStorageAccessForFrame(content::RenderFrameHost* frame);
 // Helper to request storage access with a site override for a frame using
-// document.requestStorageAccessForOrigin(origin). Returns true if the promise
+// document.requestStorageAccessFor(origin). Returns true if the promise
 // resolves; false if it rejects.
 bool RequestStorageAccessForOrigin(content::RenderFrameHost* frame,
                                    const std::string& origin);
@@ -54,6 +63,5 @@ std::string FetchWithCredentials(content::RenderFrameHost* frame,
                                  const GURL& url,
                                  const bool cors_enabled);
 
-}  // namespace test
-}  // namespace storage
+}  // namespace storage::test
 #endif  // CHROME_BROWSER_NET_STORAGE_TEST_UTILS_H_

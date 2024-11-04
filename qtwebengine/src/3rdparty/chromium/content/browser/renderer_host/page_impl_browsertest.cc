@@ -113,7 +113,7 @@ class PageImplPrerenderBrowserTest : public PageImplTest {
                                 base::Unretained(this))) {}
 
   void SetUp() override {
-    prerender_helper_.SetUp(embedded_test_server());
+    prerender_helper_.RegisterServerRequestMonitor(embedded_test_server());
     PageImplTest::SetUp();
   }
 
@@ -528,14 +528,9 @@ class PageImplWithBackForwardCacheTest : public PageImplTest {
  public:
   PageImplWithBackForwardCacheTest() {
     scoped_feature_list_.InitWithFeaturesAndParameters(
-        {{features::kBackForwardCache, {{}}},
-         {features::kBackForwardCacheTimeToLiveControl,
-          // Set a very long TTL before expiration (longer than the test
-          // timeout) so tests that are expecting deletion don't pass when
-          // they shouldn't.
-          {{"time_to_live_seconds", "3600"}}}},
-        // Allow BackForwardCache for all devices regardless of their memory.
-        {features::kBackForwardCacheMemoryControls});
+        GetDefaultEnabledBackForwardCacheFeaturesForTesting(
+            /*ignore_outstanding_network_request=*/false),
+        GetDefaultDisabledBackForwardCacheFeaturesForTesting());
   }
 
  private:

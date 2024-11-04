@@ -266,11 +266,6 @@ struct TensorEvaluator<const TensorGeneratorOp<Generator, ArgType>, Device>
 
   EIGEN_DEVICE_FUNC EvaluatorPointerType  data() const { return NULL; }
 
-#ifdef EIGEN_USE_SYCL
-  // binding placeholder accessors to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler&) const {}
-#endif
-
  protected:
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
   void extract_coordinates(Index index, array<Index, NumDims>& coords) const {

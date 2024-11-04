@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 #include <sstream>
 #include <type_traits>
 
-#include "absl/types/optional.h"
 #include "osp/impl/presentation/url_availability_requester.h"
 #include "osp/msgs/osp_messages.h"
 #include "osp/public/message_demuxer.h"
@@ -18,8 +17,7 @@
 #include "util/osp_logging.h"
 #include "util/std_util.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 #define DECLARE_MSG_REQUEST_RESPONSE(base_name)                        \
   using RequestMsgType = msgs::Presentation##base_name##Request;       \
@@ -388,7 +386,7 @@ Controller::ConnectRequest::ConnectRequest() = default;
 Controller::ConnectRequest::ConnectRequest(Controller* controller,
                                            const std::string& service_id,
                                            bool is_reconnect,
-                                           absl::optional<uint64_t> request_id)
+                                           std::optional<uint64_t> request_id)
     : service_id_(service_id),
       is_reconnect_(is_reconnect),
       request_id_(request_id),
@@ -428,7 +426,7 @@ Controller::Controller(ClockNowFunctionPtr now_function) {
                                               ->GetProtocolConnectionClient()
                                               ->message_demuxer());
   const std::vector<ServiceInfo>& receivers =
-      NetworkServiceManager::Get()->GetMdnsServiceListener()->GetReceivers();
+      NetworkServiceManager::Get()->GetServiceListener()->GetReceivers();
   for (const auto& info : receivers) {
     // TODO(crbug.com/openscreen/33): Replace service_id with endpoint_id when
     // endpoint_id is more than just an IPEndpoint counter and actually relates
@@ -440,12 +438,12 @@ Controller::Controller(ClockNowFunctionPtr now_function) {
   }
   // TODO(btolsch): This is for |receiver_endpoints_|, but this should really be
   // tracked elsewhere so it's available to other protocols as well.
-  NetworkServiceManager::Get()->GetMdnsServiceListener()->AddObserver(this);
+  NetworkServiceManager::Get()->GetServiceListener()->AddObserver(this);
 }
 
 Controller::~Controller() {
   connection_manager_.reset();
-  NetworkServiceManager::Get()->GetMdnsServiceListener()->RemoveObserver(this);
+  NetworkServiceManager::Get()->GetServiceListener()->RemoveObserver(this);
 }
 
 Controller::ReceiverWatch Controller::RegisterReceiverWatch(
@@ -604,7 +602,7 @@ ProtocolConnection* Controller::GetConnectionRequestGroupStream(
   return nullptr;
 }
 
-void Controller::OnError(ServiceListenerError) {}
+void Controller::OnError(Error) {}
 void Controller::OnMetrics(ServiceListener::Metrics) {}
 
 class Controller::TerminationListener final
@@ -783,5 +781,4 @@ void Controller::OnAllReceiversRemoved() {
   availability_requester_->RemoveAllReceivers();
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

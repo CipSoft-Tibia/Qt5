@@ -5,14 +5,11 @@
 #include "components/policy/core/common/cloud/cloud_policy_refresh_scheduler.h"
 
 #include <algorithm>
-#include <memory>
 
-#include "base/cxx17_backports.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/no_destructor.h"
 #include "base/rand_util.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/clock.h"
@@ -124,7 +121,7 @@ CloudPolicyRefreshScheduler::~CloudPolicyRefreshScheduler() {
 void CloudPolicyRefreshScheduler::SetDesiredRefreshDelay(
     int64_t refresh_delay) {
   refresh_delay_ms_ =
-      base::clamp(refresh_delay, kRefreshDelayMinMs, kRefreshDelayMaxMs);
+      std::clamp(refresh_delay, kRefreshDelayMinMs, kRefreshDelayMaxMs);
   ScheduleRefresh();
 }
 

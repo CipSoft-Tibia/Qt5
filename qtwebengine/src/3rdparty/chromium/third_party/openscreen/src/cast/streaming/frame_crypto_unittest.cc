@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,7 @@
 #include "platform/test/byte_view_test_util.h"
 #include "util/crypto/random_bytes.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 TEST(FrameCryptoTest, EncryptsAndDecryptsFrames) {
@@ -73,5 +72,4 @@ TEST(FrameCryptoTest, EncryptsAndDecryptsFrames) {
 }
 
 }  // namespace
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

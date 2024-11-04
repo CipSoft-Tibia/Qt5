@@ -994,6 +994,11 @@ TEST_P(QuicSessionTestServer, DebugDFatalIfMarkingClosedStreamWriteBlocked) {
                   msg);
 }
 
+// SpdySession::OnCanWrite() queries QuicWriteBlockedList for the number of
+// streams that are marked as connection level write blocked, then queries
+// QuicWriteBlockedList that many times for what stream to write data on.  This
+// can result in some streams writing multiple times in a single
+// SpdySession::OnCanWrite() call while other streams not getting a turn.
 TEST_P(QuicSessionTestServer, OnCanWrite) {
   CompleteHandshake();
   session_.set_writev_consumes_all_data(true);
@@ -1012,14 +1017,29 @@ TEST_P(QuicSessionTestServer, OnCanWrite) {
     session_.SendStreamData(stream2);
     session_.MarkConnectionLevelWriteBlocked(stream2->id());
   }));
-  // 2 will get called a second time as it didn't finish its block
-  EXPECT_CALL(*stream2, OnCanWrite()).WillOnce(Invoke([this, stream2]() {
-    session_.SendStreamData(stream2);
-  }));
-  EXPECT_CALL(*stream6, OnCanWrite()).WillOnce(Invoke([this, stream6]() {
-    session_.SendStreamData(stream6);
-  }));
-  // 4 will not get called, as we exceeded the loop limit.
+
+  if (!GetQuicReloadableFlag(quic_disable_batch_write) ||
+      GetQuicReloadableFlag(quic_priority_respect_incremental)) {
+    // If batched writes are enabled, stream 2 will write again. Also, streams
+    // are non-incremental by default, so if the incremental flag is respected,
+    // then stream 2 will write again. (If it is not respected, then every
+    // stream is treated as incremental.)
+    EXPECT_CALL(*stream2, OnCanWrite()).WillOnce(Invoke([this, stream2]() {
+      session_.SendStreamData(stream2);
+    }));
+    EXPECT_CALL(*stream6, OnCanWrite()).WillOnce(Invoke([this, stream6]() {
+      session_.SendStreamData(stream6);
+    }));
+  } else {
+    EXPECT_CALL(*stream6, OnCanWrite()).WillOnce(Invoke([this, stream6]() {
+      session_.SendStreamData(stream6);
+    }));
+    EXPECT_CALL(*stream4, OnCanWrite()).WillOnce(Invoke([this, stream4]() {
+      session_.SendStreamData(stream4);
+    }));
+  }
+
+  // Stream 4 will not get called, as we exceeded the loop limit.
   session_.OnCanWrite();
   EXPECT_TRUE(session_.WillingAndAbleToWrite());
 }
@@ -1030,26 +1050,41 @@ TEST_P(QuicSessionTestServer, TestBatchedWrites) {
   TestStream* stream4 = session_.CreateOutgoingBidirectionalStream();
   TestStream* stream6 = session_.CreateOutgoingBidirectionalStream();
 
+  const QuicStreamPriority priority(
+      HttpStreamPriority{HttpStreamPriority::kDefaultUrgency,
+                         /* incremental = */ true});
+  stream2->SetPriority(priority);
+  stream4->SetPriority(priority);
+  stream6->SetPriority(priority);
+
   session_.set_writev_consumes_all_data(true);
+  // Tell the session that stream2 and stream4 have data to write.
   session_.MarkConnectionLevelWriteBlocked(stream2->id());
   session_.MarkConnectionLevelWriteBlocked(stream4->id());
 
-  // With two sessions blocked, we should get two write calls.  They should both
-  // go to the first stream as it will only write 6k and mark itself blocked
-  // again.
+  // With two sessions blocked, we should get two write calls.
   InSequence s;
   EXPECT_CALL(*stream2, OnCanWrite()).WillOnce(Invoke([this, stream2]() {
     session_.SendLargeFakeData(stream2, 6000);
     session_.MarkConnectionLevelWriteBlocked(stream2->id());
   }));
-  EXPECT_CALL(*stream2, OnCanWrite()).WillOnce(Invoke([this, stream2]() {
-    session_.SendLargeFakeData(stream2, 6000);
-    session_.MarkConnectionLevelWriteBlocked(stream2->id());
-  }));
+  if (GetQuicReloadableFlag(quic_disable_batch_write)) {
+    EXPECT_CALL(*stream4, OnCanWrite()).WillOnce(Invoke([this, stream4]() {
+      session_.SendLargeFakeData(stream4, 6000);
+      session_.MarkConnectionLevelWriteBlocked(stream4->id());
+    }));
+  } else {
+    // Since stream2 only wrote 6 kB and marked itself blocked again,
+    // the second write happens on the same stream.
+    EXPECT_CALL(*stream2, OnCanWrite()).WillOnce(Invoke([this, stream2]() {
+      session_.SendLargeFakeData(stream2, 6000);
+      session_.MarkConnectionLevelWriteBlocked(stream2->id());
+    }));
+  }
   session_.OnCanWrite();
 
-  // We should get one more call for stream2, at which point it has used its
-  // write quota and we move over to stream 4.
+  // If batched write is enabled, stream2 can write a third time in a row.
+  // If batched write is disabled, stream2 has a turn again after stream4.
   EXPECT_CALL(*stream2, OnCanWrite()).WillOnce(Invoke([this, stream2]() {
     session_.SendLargeFakeData(stream2, 6000);
     session_.MarkConnectionLevelWriteBlocked(stream2->id());
@@ -1060,17 +1095,26 @@ TEST_P(QuicSessionTestServer, TestBatchedWrites) {
   }));
   session_.OnCanWrite();
 
-  // Now let stream 4 do the 2nd of its 3 writes, but add a block for a high
-  // priority stream 6.  4 should be preempted.  6 will write but *not* block so
-  // will cede back to 4.
-  stream6->SetPriority(QuicStreamPriority{
-      kV3HighestPriority, QuicStreamPriority::kDefaultIncremental});
-  EXPECT_CALL(*stream4, OnCanWrite())
-      .WillOnce(Invoke([this, stream4, stream6]() {
-        session_.SendLargeFakeData(stream4, 6000);
-        session_.MarkConnectionLevelWriteBlocked(stream4->id());
-        session_.MarkConnectionLevelWriteBlocked(stream6->id());
-      }));
+  // The next write adds a block for stream 6.
+  stream6->SetPriority(QuicStreamPriority(HttpStreamPriority{
+      kV3HighestPriority, HttpStreamPriority::kDefaultIncremental}));
+  if (GetQuicReloadableFlag(quic_disable_batch_write)) {
+    EXPECT_CALL(*stream2, OnCanWrite())
+        .WillOnce(Invoke([this, stream2, stream6]() {
+          session_.SendLargeFakeData(stream2, 6000);
+          session_.MarkConnectionLevelWriteBlocked(stream2->id());
+          session_.MarkConnectionLevelWriteBlocked(stream6->id());
+        }));
+  } else {
+    EXPECT_CALL(*stream4, OnCanWrite())
+        .WillOnce(Invoke([this, stream4, stream6]() {
+          session_.SendLargeFakeData(stream4, 6000);
+          session_.MarkConnectionLevelWriteBlocked(stream4->id());
+          session_.MarkConnectionLevelWriteBlocked(stream6->id());
+        }));
+  }
+  // Stream 6 will write next, because it has higher priority.
+  // It does not mark itself as blocked.
   EXPECT_CALL(*stream6, OnCanWrite())
       .WillOnce(Invoke([this, stream4, stream6]() {
         session_.SendStreamData(stream6);
@@ -1078,8 +1122,9 @@ TEST_P(QuicSessionTestServer, TestBatchedWrites) {
       }));
   session_.OnCanWrite();
 
-  // Stream4 alread did 6k worth of writes, so after doing another 12k it should
-  // cede and 2 should resume.
+  // If batched write is enabled, stream4 can continue to write, but will
+  // exhaust its write limit, so the last write is on stream2.
+  // If batched write is disabled, stream4 has a turn again, then stream2.
   EXPECT_CALL(*stream4, OnCanWrite()).WillOnce(Invoke([this, stream4]() {
     session_.SendLargeFakeData(stream4, 12000);
     session_.MarkConnectionLevelWriteBlocked(stream4->id());
@@ -1125,7 +1170,7 @@ TEST_P(QuicSessionTestServer, OnCanWriteBundlesStreams) {
 
   // Expect that we only send one packet, the writes from different streams
   // should be bundled together.
-  EXPECT_CALL(*writer, WritePacket(_, _, _, _, _))
+  EXPECT_CALL(*writer, WritePacket(_, _, _, _, _, _))
       .WillOnce(Return(WriteResult(WRITE_STATUS_OK, 0)));
   EXPECT_CALL(*send_algorithm, OnPacketSent(_, _, _, _, _));
   EXPECT_CALL(*send_algorithm, OnApplicationLimited(_));
@@ -1193,7 +1238,7 @@ TEST_P(QuicSessionTestServer, OnCanWriteWriterBlocks) {
   MockPacketWriter* writer = static_cast<MockPacketWriter*>(
       QuicConnectionPeer::GetWriter(session_.connection()));
   EXPECT_CALL(*writer, IsWriteBlocked()).WillRepeatedly(Return(true));
-  EXPECT_CALL(*writer, WritePacket(_, _, _, _, _)).Times(0);
+  EXPECT_CALL(*writer, WritePacket(_, _, _, _, _, _)).Times(0);
 
   TestStream* stream2 = session_.CreateOutgoingBidirectionalStream();
 
@@ -1370,7 +1415,7 @@ TEST_P(QuicSessionTestServer, SendGoAway) {
   connection_->SetDefaultEncryptionLevel(ENCRYPTION_FORWARD_SECURE);
   MockPacketWriter* writer = static_cast<MockPacketWriter*>(
       QuicConnectionPeer::GetWriter(session_.connection()));
-  EXPECT_CALL(*writer, WritePacket(_, _, _, _, _))
+  EXPECT_CALL(*writer, WritePacket(_, _, _, _, _, _))
       .WillOnce(Return(WriteResult(WRITE_STATUS_OK, 0)));
 
   EXPECT_CALL(*connection_, SendControlFrame(_))
@@ -1413,7 +1458,8 @@ TEST_P(QuicSessionTestServer, InvalidGoAway) {
 // Test that server session will send a connectivity probe in response to a
 // connectivity probe on the same path.
 TEST_P(QuicSessionTestServer, ServerReplyToConnectivityProbe) {
-  if (VersionHasIetfQuicFrames(transport_version())) {
+  if (VersionHasIetfQuicFrames(transport_version()) ||
+      GetQuicReloadableFlag(quic_ignore_gquic_probing)) {
     return;
   }
   connection_->SetDefaultEncryptionLevel(ENCRYPTION_FORWARD_SECURE);
@@ -1426,7 +1472,7 @@ TEST_P(QuicSessionTestServer, ServerReplyToConnectivityProbe) {
 
   MockPacketWriter* writer = static_cast<MockPacketWriter*>(
       QuicConnectionPeer::GetWriter(session_.connection()));
-  EXPECT_CALL(*writer, WritePacket(_, _, _, new_peer_address, _))
+  EXPECT_CALL(*writer, WritePacket(_, _, _, new_peer_address, _, _))
       .WillOnce(Return(WriteResult(WRITE_STATUS_OK, 0)));
 
   EXPECT_CALL(*connection_, SendConnectivityProbingPacket(_, _))
@@ -2088,17 +2134,15 @@ TEST_P(QuicSessionTestClient, AvailableBidirectionalStreamsClient) {
 }
 
 TEST_P(QuicSessionTestClient, NewStreamCreationResumesMultiPortProbing) {
-  session_.config()->SetConnectionOptionsToSend({kRVCM});
+  if (!VersionHasIetfQuicFrames(transport_version())) {
+    return;
+  }
   session_.config()->SetClientConnectionOptions({kMPQC});
   session_.Initialize();
   connection_->CreateConnectionIdManager();
   connection_->SetDefaultEncryptionLevel(ENCRYPTION_FORWARD_SECURE);
   connection_->OnHandshakeComplete();
   session_.OnConfigNegotiated();
-
-  if (!connection_->connection_migration_use_new_cid()) {
-    return;
-  }
 
   EXPECT_CALL(*connection_, MaybeProbeMultiPortPath());
   session_.CreateOutgoingBidirectionalStream();
@@ -3078,7 +3122,7 @@ TEST_P(QuicSessionTestServer, BlockedFrameCausesWriteError) {
   CompleteHandshake();
   MockPacketWriter* writer = static_cast<MockPacketWriter*>(
       QuicConnectionPeer::GetWriter(session_.connection()));
-  EXPECT_CALL(*writer, WritePacket(_, _, _, _, _))
+  EXPECT_CALL(*writer, WritePacket(_, _, _, _, _, _))
       .WillOnce(Return(WriteResult(WRITE_STATUS_OK, 0)));
   // Set a small connection level flow control limit.
   const uint64_t kWindow = 36;

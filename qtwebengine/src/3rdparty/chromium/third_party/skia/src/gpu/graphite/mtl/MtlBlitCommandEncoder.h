@@ -85,7 +85,8 @@ public:
     void copyTextureToTexture(id<MTLTexture> srcTexture,
                               SkIRect srcRect,
                               id<MTLTexture> dstTexture,
-                              SkIPoint dstPoint) {
+                              SkIPoint dstPoint,
+                              int mipLevel) {
         [(*fCommandEncoder) copyFromTexture: srcTexture
                                 sourceSlice: 0
                                 sourceLevel: 0
@@ -93,7 +94,7 @@ public:
                                  sourceSize: MTLSizeMake(srcRect.width(), srcRect.height(), 1)
                                   toTexture: dstTexture
                            destinationSlice: 0
-                           destinationLevel: 0
+                           destinationLevel: mipLevel
                           destinationOrigin: MTLOriginMake(dstPoint.fX, dstPoint.fY, 0)];
     }
 
@@ -116,7 +117,7 @@ public:
 private:
     MtlBlitCommandEncoder(const SharedContext* sharedContext,
                           sk_cfp<id<MTLBlitCommandEncoder>> encoder)
-            : Resource(sharedContext, Ownership::kOwned, skgpu::Budgeted::kYes)
+            : Resource(sharedContext, Ownership::kOwned, skgpu::Budgeted::kYes, /*gpuMemorySize=*/0)
             , fCommandEncoder(std::move(encoder)) {}
 
     void freeGpuData() override {

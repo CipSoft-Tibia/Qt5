@@ -33,7 +33,6 @@ void uiLibWarning(const QString &message) {
     qWarning("Designer: %s", qPrintable(message));
 }
 
-
 QFormBuilderExtra::CustomWidgetData::CustomWidgetData() = default;
 
 QFormBuilderExtra::CustomWidgetData::CustomWidgetData(const DomCustomWidget *dcw) :
@@ -474,7 +473,7 @@ void QFormBuilderExtra::clearGridLayoutColumnMinimumWidth(QGridLayout *grid)
     clearPerCellValue(grid, grid->columnCount(), &QGridLayout::setColumnMinimumWidth);
 }
 
-void QFormBuilderExtra::setPixmapProperty(DomProperty *p, const QPair<QString, QString> &ip)
+void QFormBuilderExtra::setPixmapProperty(DomProperty *p, const std::pair<QString, QString> &ip)
 {
     DomResourcePixmap *pix = new DomResourcePixmap;
     if (!ip.second.isEmpty())

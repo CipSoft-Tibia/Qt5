@@ -475,7 +475,8 @@ void CdmRegistryImpl::AttemptToFinalizeKeySystemCapability(
     return;
   }
 
-  // Needs lazy initialize. Use BindToCurrentLoop() to force a post.
+  // Needs lazy initialize. Use base::BindPostTaskToCurrentDefault() to force a
+  // post.
   pending_lazy_initializations_.insert({key_system, robustness});
   LazyInitializeCapability(
       key_system, robustness,
@@ -505,8 +506,9 @@ void CdmRegistryImpl::LazyInitializeCapability(
     auto cdm_info =
         GetCdmInfo(key_system, CdmInfo::Robustness::kHardwareSecure);
     DCHECK(cdm_info && !cdm_info->capability);
-    GetMediaFoundationServiceHardwareSecureCdmCapability(
-        key_system, cdm_info->path, std::move(cdm_capability_cb));
+    GetMediaFoundationServiceCdmCapability(key_system, cdm_info->path,
+                                           /*is_hw_secure=*/true,
+                                           std::move(cdm_capability_cb));
   } else {
     // kSoftwareSecure should have been determined from the manifest.
     std::move(cdm_capability_cb).Run(absl::nullopt);

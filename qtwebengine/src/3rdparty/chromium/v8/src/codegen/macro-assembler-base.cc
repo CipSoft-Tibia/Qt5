@@ -30,12 +30,12 @@ Address MacroAssemblerBase::BuiltinEntry(Builtin builtin) {
   DCHECK(Builtins::IsBuiltinId(builtin));
   if (isolate_ != nullptr) {
     Address entry = isolate_->builtin_entry_table()[Builtins::ToInt(builtin)];
-    DCHECK_EQ(entry, EmbeddedData::FromBlob(isolate_).InstructionStartOfBuiltin(
-                         builtin));
+    DCHECK_EQ(entry,
+              EmbeddedData::FromBlob(isolate_).InstructionStartOf(builtin));
     return entry;
   }
   EmbeddedData d = EmbeddedData::FromBlob();
-  return d.InstructionStartOfBuiltin(builtin);
+  return d.InstructionStartOf(builtin);
 }
 
 void MacroAssemblerBase::IndirectLoadConstant(Register destination,
@@ -126,11 +126,17 @@ bool MacroAssemblerBase::IsAddressableThroughRootRegister(
   return isolate->root_register_addressable_region().contains(address);
 }
 
-Tagged_t MacroAssemblerBase::ReadOnlyRootPtr(RootIndex index) {
+// static
+Tagged_t MacroAssemblerBase::ReadOnlyRootPtr(RootIndex index,
+                                             Isolate* isolate) {
   DCHECK(CanBeImmediate(index));
-  Object obj = isolate_->root(index);
-  CHECK(obj.IsHeapObject());
-  return V8HeapCompressionScheme::CompressTagged(obj.ptr());
+  Tagged<Object> obj = isolate->root(index);
+  CHECK(IsHeapObject(obj));
+  return V8HeapCompressionScheme::CompressObject(obj.ptr());
+}
+
+Tagged_t MacroAssemblerBase::ReadOnlyRootPtr(RootIndex index) {
+  return ReadOnlyRootPtr(index, isolate_);
 }
 
 }  // namespace internal

@@ -13,7 +13,7 @@ namespace blink {
 namespace {
 
 struct SameSizeAsNGInlineBreakToken : NGBreakToken {
-  scoped_refptr<const ComputedStyle> style_;
+  Member<const ComputedStyle> style;
   unsigned numbers[2];
 };
 
@@ -52,8 +52,7 @@ const NGInlineBreakToken* NGInlineBreakToken::SubBreakTokenInParallelFlow()
 NGInlineBreakToken* NGInlineBreakToken::Create(
     NGInlineNode node,
     const ComputedStyle* style,
-    unsigned item_index,
-    unsigned text_offset,
+    const NGInlineItemTextIndex& start,
     unsigned flags /* NGInlineBreakTokenFlags */,
     const NGBreakToken* sub_break_token) {
   // We store the children list inline in the break token as a flexible
@@ -68,23 +67,21 @@ NGInlineBreakToken* NGInlineBreakToken::Create(
     flags |= kHasSubBreakToken;
   }
 
-  return MakeGarbageCollected<NGInlineBreakToken>(
-      AdditionalBytes(size), PassKey(), node, style, item_index, text_offset,
-      flags, sub_break_token);
+  return MakeGarbageCollected<NGInlineBreakToken>(AdditionalBytes(size),
+                                                  PassKey(), node, style, start,
+                                                  flags, sub_break_token);
 }
 
 NGInlineBreakToken::NGInlineBreakToken(
     PassKey key,
     NGInlineNode node,
     const ComputedStyle* style,
-    unsigned item_index,
-    unsigned text_offset,
+    const NGInlineItemTextIndex& start,
     unsigned flags /* NGInlineBreakTokenFlags */,
     const NGBreakToken* sub_break_token)
     : NGBreakToken(kInlineBreakToken, node, flags),
       style_(style),
-      item_index_(item_index),
-      text_offset_(text_offset) {
+      start_(start) {
   if (UNLIKELY(sub_break_token)) {
 #if DCHECK_IS_ON()
     // Only one level of inline break token nesting is expected.
@@ -97,21 +94,22 @@ NGInlineBreakToken::NGInlineBreakToken(
 }
 
 bool NGInlineBreakToken::IsAfterBlockInInline() const {
-  if (!ItemIndex())
+  if (!StartItemIndex()) {
     return false;
+  }
   const auto node = To<NGInlineNode>(InputNode());
   const NGInlineItemsData& items_data = node.ItemsData(/*is_first_line*/ false);
-  const NGInlineItem& last_item = items_data.items[ItemIndex() - 1];
+  const NGInlineItem& last_item = items_data.items[StartItemIndex() - 1];
   return last_item.Type() == NGInlineItem::kBlockInInline &&
-         TextOffset() == last_item.EndOffset();
+         StartTextOffset() == last_item.EndOffset();
 }
 
 #if DCHECK_IS_ON()
 
 String NGInlineBreakToken::ToString() const {
   StringBuilder string_builder;
-  string_builder.Append(
-      String::Format(" index:%u offset:%u", ItemIndex(), TextOffset()));
+  string_builder.Append(String::Format(" index:%u offset:%u", StartItemIndex(),
+                                       StartTextOffset()));
   if (IsForcedBreak())
     string_builder.Append(" forced");
   return string_builder.ToString();
@@ -124,6 +122,7 @@ void NGInlineBreakToken::TraceAfterDispatch(Visitor* visitor) const {
   // in ctor.
   if (flags_ & kHasSubBreakToken)
     visitor->Trace(*sub_break_token_);
+  visitor->Trace(style_);
   NGBreakToken::TraceAfterDispatch(visitor);
 }
 

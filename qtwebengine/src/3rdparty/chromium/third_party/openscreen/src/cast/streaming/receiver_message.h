@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,17 +6,17 @@
 #define CAST_STREAMING_RECEIVER_MESSAGE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "absl/types/variant.h"
 #include "cast/streaming/answer_messages.h"
 #include "json/value.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 enum class MediaCapability {
   kAudio,
@@ -47,8 +47,8 @@ struct ReceiverCapability {
 // To avoid collisions with legacy error values, all Open Screen receiver errors
 // are offset.
 struct ReceiverError {
-  explicit ReceiverError(int code, absl::string_view description = "");
-  explicit ReceiverError(Error::Code code, absl::string_view description = "");
+  explicit ReceiverError(int code, std::string_view description = "");
+  explicit ReceiverError(Error::Code code, std::string_view description = "");
   explicit ReceiverError(Error error);
 
   ReceiverError(const ReceiverError&);
@@ -69,7 +69,7 @@ struct ReceiverError {
   int32_t code = -1;
 
   // Parsed openscreen::Error code. May be nullopt if not a match.
-  absl::optional<Error::Code> openscreen_code;
+  std::optional<Error::Code> openscreen_code;
 
   // Error description.
   std::string description;
@@ -109,7 +109,6 @@ struct ReceiverMessage {
       body;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_RECEIVER_MESSAGE_H_

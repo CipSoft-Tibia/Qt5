@@ -15,22 +15,24 @@
 // We mean it.
 //
 
-#include <private/qplatformimagecapture_p.h>
-#include <private/qmultimediautils_p.h>
-#include "qgstreamermediacapture_p.h"
-#include "qgstreamerbufferprobe_p.h"
+#include <QtMultimedia/private/qplatformimagecapture_p.h>
+#include <QtMultimedia/private/qmultimediautils_p.h>
 
-#include <qqueue.h>
+#include <QtCore/qmutex.h>
+#include <QtCore/qqueue.h>
+#include <QtConcurrent/QtConcurrentRun>
 
-#include <qgst_p.h>
+#include <common/qgst_p.h>
+#include <common/qgstreamerbufferprobe_p.h>
+#include <mediacapture/qgstreamermediacapture_p.h>
 #include <gst/video/video.h>
 
 QT_BEGIN_NAMESPACE
 
 class QGstreamerImageCapture : public QPlatformImageCapture, private QGstreamerBufferProbe
-
 {
     Q_OBJECT
+
 public:
     static QMaybe<QPlatformImageCapture *> create(QImageCapture *parent);
     virtual ~QGstreamerImageCapture();
@@ -46,20 +48,26 @@ public:
 
     void setCaptureSession(QPlatformMediaCaptureSession *session);
 
-    QGstElement gstElement() const { return QGstElement{ bin.element() }; }
+    QGstElement gstElement() const { return bin; }
+
+    void setMetaData(const QMediaMetaData &m) override;
 
 public Q_SLOTS:
     void cameraActiveChanged(bool active);
     void onCameraChanged();
 
 private:
-    QGstreamerImageCapture(QGstElement videoconvert, QGstElement jpegenc, QGstElement jifmux,
-                           QImageCapture *parent);
+    QGstreamerImageCapture(QImageCapture *parent);
 
     void setResolution(const QSize &resolution);
     int doCapture(const QString &fileName);
-    static gboolean saveImageFilter(GstElement *element, GstBuffer *buffer, GstPad *pad, void *appdata);
+    static gboolean saveImageFilter(GstElement *element, GstBuffer *buffer, GstPad *pad,
+                                    QGstreamerImageCapture *capture);
 
+    void saveBufferToImage(GstBuffer *buffer);
+
+    mutable QRecursiveMutex
+            m_mutex; // guard all elements accessed from probeBuffer/saveBufferToImage
     QGstreamerMediaCapture *m_session = nullptr;
     int m_lastId = 0;
     QImageEncoderSettings m_settings;
@@ -83,6 +91,17 @@ private:
 
     bool passImage = false;
     bool cameraActive = false;
+
+    QGObjectHandlerScopedConnection m_handoffConnection;
+
+    QMap<int, QFuture<void>> m_pendingFutures;
+    int futureIDAllocator = 0;
+
+    template <typename Functor>
+    void invokeDeferred(Functor &&fn)
+    {
+        QMetaObject::invokeMethod(this, std::forward<decltype(fn)>(fn), Qt::QueuedConnection);
+    };
 };
 
 QT_END_NAMESPACE

@@ -23,6 +23,7 @@
 #include "components/crash/core/common/crash_key.h"
 #include "components/gwp_asan/client/guarded_page_allocator.h"
 #include "components/gwp_asan/common/crash_key_name.h"
+#include "components/gwp_asan/common/lightweight_detector_state.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/multiprocess_func_list.h"
 
@@ -51,15 +52,7 @@ constexpr size_t kLoopIterations = kSamplingFrequency * 4;
 constexpr int kSuccess = 0;
 constexpr int kFailure = 1;
 
-constexpr partition_alloc::PartitionOptions kAllocatorOptions = {
-    partition_alloc::PartitionOptions::AlignedAlloc::kDisallowed,
-    partition_alloc::PartitionOptions::ThreadCache::kDisabled,
-    partition_alloc::PartitionOptions::Quarantine::kDisallowed,
-    partition_alloc::PartitionOptions::Cookie::kAllowed,
-    partition_alloc::PartitionOptions::BackupRefPtr::kDisabled,
-    partition_alloc::PartitionOptions::BackupRefPtrZapping::kDisabled,
-    partition_alloc::PartitionOptions::UseConfigurablePool::kNo,
-};
+constexpr partition_alloc::PartitionOptions kAllocatorOptions = {};
 
 static void HandleOOM(size_t unused_size) {
   LOG(FATAL) << "Out of memory.";
@@ -70,10 +63,10 @@ class SamplingPartitionAllocShimsTest : public base::MultiProcessTest {
   static void multiprocessTestSetup() {
     crash_reporter::InitializeCrashKeys();
     partition_alloc::PartitionAllocGlobalInit(HandleOOM);
-    InstallPartitionAllocHooks(AllocatorState::kMaxMetadata,
-                               AllocatorState::kMaxMetadata,
-                               AllocatorState::kMaxRequestedSlots,
-                               kSamplingFrequency, base::DoNothing());
+    InstallPartitionAllocHooks(
+        AllocatorState::kMaxMetadata, AllocatorState::kMaxMetadata,
+        AllocatorState::kMaxRequestedSlots, kSamplingFrequency,
+        base::DoNothing(), LightweightDetectorMode::kOff, 0);
   }
 
  protected:

@@ -158,6 +158,7 @@ qt_internal_add_3rdparty_library(BundledGlslang_Glslang
         ../3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp
         ../3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp
         ../3rdparty/glslang/glslang/MachineIndependent/reflection.cpp
+        ../3rdparty/glslang/glslang/ResourceLimits/ResourceLimits.cpp
     INCLUDE_DIRECTORIES
         ../3rdparty/glslang
     PUBLIC_LIBRARIES

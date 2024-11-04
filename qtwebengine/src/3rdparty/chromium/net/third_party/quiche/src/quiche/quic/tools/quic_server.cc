@@ -97,8 +97,13 @@ void QuicServer::Initialize() {
 }
 
 QuicServer::~QuicServer() {
-  close(fd_);
-  fd_ = -1;
+  if (event_loop_ != nullptr) {
+    if (!event_loop_->UnregisterSocket(fd_)) {
+      QUIC_LOG(ERROR) << "Failed to unregister socket: " << fd_;
+    }
+  }
+  (void)socket_api::Close(fd_);
+  fd_ = kInvalidSocketFd;
 
   // Should be fine without because nothing should send requests to the backend
   // after `this` is destroyed, but for extra pointer safety, clear the socket

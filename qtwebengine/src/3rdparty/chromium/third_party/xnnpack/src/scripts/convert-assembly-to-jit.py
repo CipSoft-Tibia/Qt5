@@ -13,11 +13,17 @@ import argparse
 import codecs
 from collections import defaultdict
 import datetime
+from enum import Enum
 import os
 import re
 import sys
 from typing import List, Tuple, Mapping
 
+
+class PrfmMode(Enum):
+  NoPrfm = 1
+  PrfmInFileName = 2
+  ForcePrfm = 3
 
 SPACES = r'\s*'
 COMMA = r',' + SPACES
@@ -93,6 +99,8 @@ INSTR_REG_REG_MEMOP_OFFSET_RE = re.compile(INSTR + REG + COMMA + REG + COMMA +
 # e.g. LDP q20, q21, [x5], 32
 INSTR_REG_REG_MEMOP_IMM_RE = re.compile(INSTR + REG + COMMA + REG + COMMA +
                                         MEMOP + COMMA + IMM + COMMENTS)
+# e.g. PLD [r9]
+INSTR_MEMOP_RE = re.compile(INSTR + MEMOP + COMMENTS)
 # e.g. PLD [r4, 64]
 INSTR_MEMOP_OFFSET_RE = re.compile(INSTR + MEMOP_OFFSET + COMMENTS)
 # e.g. movlo r12, r3, vdup.32 q0, d14[0]
@@ -225,6 +233,9 @@ AARCH32_POST_OP = """void Generator::perform_post_operations(
   size_t num_post_operations,
   const xnn_post_operation* post_operations)
 {
+  if (num_post_operations == 0) {
+    return;
+  }
   for (size_t i = 0; i < num_post_operations; i++) {
     switch (post_operations[i].op_type) {
       case xnn_post_operation_type_hardswish: {
@@ -252,6 +263,9 @@ AARCH32_POST_OP_RELOAD = """void Generator::perform_post_operations(
   size_t num_post_operations,
   const xnn_post_operation* post_operations)
 {
+  if (num_post_operations == 0) {
+    return;
+  }
   ldr(PARAMS_REG_PLACEHOLDER, mem[sp, PARAMS_OFFSET_PLACEHOLDER]);  // params
   for (size_t i = 0; i < num_post_operations; i++) {
     switch (post_operations[i].op_type) {
@@ -280,6 +294,9 @@ AARCH64_POST_OP = """void Generator::perform_post_operations(
   size_t num_post_operations,
   const xnn_post_operation* post_operations)
 {
+  if (num_post_operations == 0) {
+    return;
+  }
   for (size_t i = 0; i < num_post_operations; i++) {
     switch (post_operations[i].op_type) {
       case xnn_post_operation_type_hardswish: {
@@ -397,7 +414,7 @@ def get_post_operation_implementation(arch, mr: int, params_register: str,
 
 
 def parse_prologue(input_file: str, lines: List[str], arch: str, minmax: bool,
-                   kernel_type: str, prfm: bool, mr: int,
+                   kernel_type: str, prfm_mode: PrfmMode, mr: int,
                    post_op: bool) -> Tuple[List[str], Mapping[str, int]]:
   prologue = []
   # Whether we are in the auto-generated comment.
@@ -423,7 +440,7 @@ def parse_prologue(input_file: str, lines: List[str], arch: str, minmax: bool,
     elif 'BEGIN_FUNCTION' in line:
       prologue.append(f'// Converted from: {input_file[20:]}')
       params = 'const jit_gemm_params* jit_gemm_params'
-      prefetch = 'bool prefetch, ' if prfm else ''
+      prefetch = 'bool prefetch, ' if prfm_mode == PrfmMode.PrfmInFileName else ''
       if kernel_type == GEMM:
         prologue.append(
             f'void Generator::generate({prefetch}size_t max_mr, size_t nc_mod_nr, size_t kc, {params})'
@@ -465,7 +482,7 @@ def parse_prologue(input_file: str, lines: List[str], arch: str, minmax: bool,
       prologue.append(' public:')
       params = 'float min, float max' if minmax else 'void* params'
       params = 'const jit_gemm_params* jit_gemm_params'
-      prefetch = 'bool prefetch, ' if prfm else ''
+      prefetch = 'bool prefetch, ' if prfm_mode == PrfmMode.PrfmInFileName else ''
       if kernel_type == GEMM:
         prologue.append(
             f'  void generate({prefetch}size_t max_mr, size_t nc_mod_nr, size_t kc, {params});'
@@ -605,15 +622,18 @@ def parse_prologue(input_file: str, lines: List[str], arch: str, minmax: bool,
   return prologue, vector_register_map, vector_register_usage
 
 
-def emit_prefetch_instruction(instr: str, prfm: bool,
+def emit_prefetch_instruction(instr: str, prfm_mode: PrfmMode,
                               instructions: List[str]) -> None:
-  """Emit instructions depending on prfm.
+  """Emit instructions depending on prfm_mode.
 
-  If prfm is True, guard instruction behind a prefetch check. instr should be
+  If prfm_mode is PrfmInFileName, guard instruction behind a prefetch check. instr should be
   the generated prefetch instruction (not the assembly instruction).
+  If prfm_mode is ForcePrfm, emit unguarded prefetch.
   """
-  if prfm:
+  if prfm_mode == PrfmMode.PrfmInFileName:
     instructions.append(f'if (prefetch) {{ {instr} }}')
+  elif prfm_mode == PrfmMode.ForcePrfm:
+    instructions.append(f'{instr}')
 
 
 def emit_clamp_instruction(instr: str, instructions: List[str]) -> None:
@@ -682,10 +702,25 @@ def emit_instruction(instr: str,
     return
 
   if ((instr_name == 'stp' or instr_name == 'ldp') and
-      reg in get_callee_saved()
-     ):  # pushing and popping from stack, no max_mr guard.
+      reg in get_callee_saved()) and 'mem[sp' in instr:
+    # pushing and popping from stack, no max_mr guard.
     instructions.append(instr)
     return
+
+  # In some AArch64 GEMM microkernels, we use ldp to load 2 A pointers, we need
+  # to split this up based on max_mr.
+  if (instr_name == 'ldp'):
+    m = re.search(r'ldp\((x\d+), (x\d+), (mem\[x\d+\]), (\d+)', instr)
+    if m:
+      reg1 = m[1]
+      reg2 = m[2]
+      mem = m[3]
+      offset = m[4]
+      if all(reg in vector_register_map for reg in [reg1, reg2]):
+        max_mr = vector_register_map[reg2]
+        instructions.append(f'if (max_mr == {max_mr}) {{ ldr({reg1}, {mem}, {int(offset)//2}); }}');
+        instructions.append(f'if (max_mr > {max_mr}) {{ ldp({reg1}, {reg2}, {mem}, {offset}); }}');
+        return
 
   cmp_m = re.search(r'cmp\((?:x|r)0, (\d+)\);', instr)
   if cmp_m:
@@ -740,7 +775,7 @@ def emit_instruction(instr: str,
 
 
 def parse_microkernel(
-    lines: List[str], prfm: bool, is_a53: bool,
+    lines: List[str], prfm_mode: PrfmMode, is_a53: bool,
     vector_register_map: Mapping[str, int], vector_register_usage) -> Tuple[List[str], List[str]]:
   # All labels need to be declared first, collect them and output them after
   # function signature.
@@ -800,11 +835,22 @@ def parse_microkernel(
     if m:
       if m[1].lower() == 'pld':
         emit_prefetch_instruction(
-            f'{fix_instr_name(m[1])}(mem[{m[2]}, {m[3]}]){sc} {m[4]}', prfm,
+            f'{fix_instr_name(m[1])}(mem[{m[2]}, {m[3]}]){sc} {m[4]}', prfm_mode,
             instructions)
       else:
         emit_instruction(
             f'{fix_instr_name(m[1])}(mem[{m[2]}, {m[3]}]){sc} {m[4]}',
+            instructions, vector_register_map, vector_register_usage)
+      continue
+    m = re.fullmatch(INSTR_MEMOP_RE, line)
+    if m:
+      if m[1].lower() == 'pld':
+        emit_prefetch_instruction(
+            f'{fix_instr_name(m[1])}(mem[{m[2]}]){sc} {m[4]}', prfm_mode,
+            instructions)
+      else:
+        emit_instruction(
+            f'{fix_instr_name(m[1])}(mem[{m[2]}]){sc} {m[4]}',
             instructions, vector_register_map, vector_register_usage)
       continue
     m = re.fullmatch(INSTR_REG_MEMOP_RE, line)
@@ -963,14 +1009,14 @@ def parse_microkernel(
     m = re.fullmatch(INSTR_PLD_MEMOP, line)
     if m:
       emit_prefetch_instruction(
-          f'{fix_instr_name(m[1])}(k{m[2]}, mem[{m[3]}]){sc} {m[4]}', prfm,
+          f'{fix_instr_name(m[1])}(k{m[2]}, mem[{m[3]}]){sc} {m[4]}', prfm_mode,
           instructions)
       continue
     m = re.fullmatch(INSTR_PLD_MEMOP_OFFSET, line)
     if m:
       emit_prefetch_instruction(
           f'{fix_instr_name(m[1])}(k{m[2]}, mem[{m[3]}, {m[4]}]){sc} {m[5]}',
-          prfm, instructions)
+          prfm_mode, instructions)
       continue
     m = re.fullmatch(INSTR_REG_REG_REG_COND_RE, line)
     if m:
@@ -1122,12 +1168,11 @@ def find_params_offset_and_register(lines: List[str]) -> Tuple[str, str]:
   return None, None
 
 
-def convert(input_file: str, post_op: bool, reload_params: bool, debug: bool) -> None:
+def convert(input_file: str, post_op: bool, reload_params: bool, debug: bool, force_prfm: bool) -> None:
   output = []
   arch = None
   kernel_type = GEMM
   minmax = False
-  prfm = False
   base_filename = os.path.basename(input_file)
   if base_filename.startswith('f16-'):
     ctype = 'uint16_t'
@@ -1153,8 +1198,12 @@ def convert(input_file: str, post_op: bool, reload_params: bool, debug: bool) ->
     kernel_type = IGEMM
   if 'minmax' in input_file:
     minmax = True
+  prfm_mode = PrfmMode.NoPrfm
   if 'prfm' in input_file:
-    prfm = True
+    prfm_mode = PrfmMode.PrfmInFileName
+    assert(not force_prfm)
+  if force_prfm:
+    prfm_mode = PrfmMode.ForcePrfm
 
   mr = 0
   nr = 0
@@ -1189,7 +1238,7 @@ def convert(input_file: str, post_op: bool, reload_params: bool, debug: bool) ->
 
   prologue, vector_register_map, vector_register_usage = parse_prologue(input_file, prologue_lines,
                                                  arch, minmax, kernel_type,
-                                                 prfm, mr, post_op)
+                                                 prfm_mode, mr, post_op)
   if debug:
     print(vector_register_map)
     print(vector_register_usage)
@@ -1202,7 +1251,7 @@ def convert(input_file: str, post_op: bool, reload_params: bool, debug: bool) ->
     sys.exit(1)
 
   is_a53 = 'cortex_a53' in fn_name
-  instructions, labels = parse_microkernel(microkernel_body, prfm, is_a53,
+  instructions, labels = parse_microkernel(microkernel_body, prfm_mode, is_a53,
                                            vector_register_map, vector_register_usage)
   # TODO(zhin): iterate until fixpoint instead.
   instructions = merge_consecutive_checks(instructions)
@@ -1278,7 +1327,7 @@ def convert(input_file: str, post_op: bool, reload_params: bool, debug: bool) ->
   output.append(f'}}  // namespace {arch}')
   output.append('}  // namespace xnnpack')
   output.append('')
-  if prfm:
+  if prfm_mode == PrfmMode.PrfmInFileName:
     print_generator_definition(
         output,
         kernel_type,
@@ -1366,9 +1415,14 @@ def main(sys_args):
       help='Output debugging information',
       default=False,
       action=argparse.BooleanOptionalAction)
+  parser.add_argument(
+      "--force-prfm",
+      help='Force PRFM instructions in output',
+      default=False,
+      action=argparse.BooleanOptionalAction)
   args = parser.parse_args(sys_args)
 
-  output = '\n'.join(convert(args.input, args.post_op, args.reload_params, args.debug))
+  output = '\n'.join(convert(args.input, args.post_op, args.reload_params, args.debug, args.force_prfm))
   # Add trailing new line.
   output += '\n'
 

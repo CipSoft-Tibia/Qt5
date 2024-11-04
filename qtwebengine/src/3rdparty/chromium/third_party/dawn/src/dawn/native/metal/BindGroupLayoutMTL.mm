@@ -19,28 +19,24 @@
 namespace dawn::native::metal {
 
 // static
-Ref<BindGroupLayout> BindGroupLayout::Create(
-    DeviceBase* device,
-    const BindGroupLayoutDescriptor* descriptor,
-    PipelineCompatibilityToken pipelineCompatibilityToken) {
-    return AcquireRef(new BindGroupLayout(device, descriptor, pipelineCompatibilityToken));
+Ref<BindGroupLayout> BindGroupLayout::Create(DeviceBase* device,
+                                             const BindGroupLayoutDescriptor* descriptor) {
+    return AcquireRef(new BindGroupLayout(device, descriptor));
 }
 
-BindGroupLayout::BindGroupLayout(DeviceBase* device,
-                                 const BindGroupLayoutDescriptor* descriptor,
-                                 PipelineCompatibilityToken pipelineCompatibilityToken)
-    : BindGroupLayoutBase(device, descriptor, pipelineCompatibilityToken),
+BindGroupLayout::BindGroupLayout(DeviceBase* device, const BindGroupLayoutDescriptor* descriptor)
+    : BindGroupLayoutInternalBase(device, descriptor),
       mBindGroupAllocator(MakeFrontendBindGroupAllocator<BindGroup>(4096)) {}
 
 BindGroupLayout::~BindGroupLayout() = default;
 
 Ref<BindGroup> BindGroupLayout::AllocateBindGroup(Device* device,
                                                   const BindGroupDescriptor* descriptor) {
-    return AcquireRef(mBindGroupAllocator.Allocate(device, descriptor));
+    return AcquireRef(mBindGroupAllocator->Allocate(device, descriptor));
 }
 
 void BindGroupLayout::DeallocateBindGroup(BindGroup* bindGroup) {
-    mBindGroupAllocator.Deallocate(bindGroup);
+    mBindGroupAllocator->Deallocate(bindGroup);
 }
 
 }  // namespace dawn::native::metal

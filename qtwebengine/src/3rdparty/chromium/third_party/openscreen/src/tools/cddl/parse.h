@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,11 +9,10 @@
 
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
-
-#include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 
 struct AstNode {
   // These types all correspond to types in the grammar, which can be found in
@@ -62,7 +61,7 @@ struct AstNode {
   std::string integer_member_key_text;
 
   // Text parsed from the CDDL spec for the type key.
-  absl::optional<std::string> type_key;
+  std::optional<std::string> type_key;
 };
 
 // Override for << operator to simplify logging.
@@ -151,7 +150,7 @@ struct ParseResult {
   std::vector<std::unique_ptr<AstNode>> nodes;
 };
 
-ParseResult ParseCddl(absl::string_view data);
+ParseResult ParseCddl(std::string_view data);
 void DumpAst(AstNode* node, int indent_level = 0);
 
 #endif  // TOOLS_CDDL_PARSE_H_

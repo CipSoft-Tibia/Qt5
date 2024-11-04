@@ -16,10 +16,12 @@
 #include "build/build_config.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/back_forward_cache.h"
+#include "content/public/browser/web_exposed_isolation_level.h"
 #include "content/public/common/extra_mojo_js_features.mojom.h"
 #include "content/public/common/isolated_world_ids.h"
 #include "ipc/ipc_listener.h"
 #include "ipc/ipc_sender.h"
+#include "net/cookies/cookie_setting_override.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "services/network/public/mojom/web_sandbox_flags.mojom-forward.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -49,7 +51,6 @@ class JavaRef;
 }  // namespace android
 #endif
 
-class TimeDelta;
 class UnguessableToken;
 }  // namespace base
 
@@ -96,7 +97,6 @@ class InterfaceProvider;
 namespace ui {
 struct AXActionData;
 struct AXTreeUpdate;
-class AXMode;
 class AXTreeID;
 }  // namespace ui
 
@@ -181,6 +181,11 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener,
 
   ~RenderFrameHost() override = default;
 
+  // Returns the storage key for the last committed document in this
+  // RenderFrameHost. It is used for partitioning storage by the various
+  // storage APIs.
+  virtual const blink::StorageKey& GetStorageKey() const = 0;
+
   // Returns the route id for this frame.
   virtual int GetRoutingID() const = 0;
 
@@ -198,13 +203,6 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener,
 
   using AXTreeSnapshotCallback =
       base::OnceCallback<void(const ui::AXTreeUpdate&)>;
-  // Request a one-time snapshot of the accessibility tree without changing
-  // the accessibility mode.
-  virtual void RequestAXTreeSnapshot(AXTreeSnapshotCallback callback,
-                                     const ui::AXMode& ax_mode,
-                                     bool exclude_offscreen,
-                                     size_t max_nodes,
-                                     const base::TimeDelta& timeout) = 0;
 
   // Returns the SiteInstance grouping all RenderFrameHosts that have script
   // access to this RenderFrameHost, and must therefore live in the same
@@ -457,73 +455,18 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener,
   // Returns true if the frame is out of process relative to its parent.
   virtual bool IsCrossProcessSubframe() = 0;
 
-  // Reflects the web-exposed isolation properties of a given frame, which
-  // depends both on the process in which the frame lives, as well as the agent
-  // cluster into which it has been placed.
+  // Returns the cross-origin isolation capability of this frame.
   //
-  // Three broad categories are possible:
-  //
-  // 1.  The frame may not be isolated in a web-facing way.
-  //
-  // 2.  The frame may be "cross-origin isolated", corresponding to the value
-  //     returned by `WorkerOrWindowGlobalScope.crossOriginIsolated`, and gating
-  //     the set of APIs which specify [CrossOriginIsolated] attributes. The
-  //     requirements for this level of isolation are described in [1] and [2]
-  //     below.
-  //
-  //     In practice this means that the frame is guaranteed to be hosted in a
-  //     process that is isolated to the frame's origin. Additionally, the
-  //     frame may embed cross-origin frames and workers only if they have
-  //     opted in to being embedded by asserting CORS or CORP headers.
-  //
-  // 3.  The frame may be an "isolated application", corresponding to a mostly
-  //     TBD set of restrictions we're exploring in https://crbug.com/1206150,
-  //     and which currently gate the set of APIs which specify
-  //     [DirectSocketEnabled] attributes.
-  //
-  // The enum below is ordered from least-isolated to most-isolated.
-  //
-  // [1]
-  // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope/crossOriginIsolated
-  // [2] https://w3c.github.io/webappsec-permissions-policy/
-  //
-  // NOTE: some of the information needed to fully determine a frame's
-  // isolation status is currently not available in the browser process.
-  // Access to web platform API's must be checked in the renderer, with the
-  // WebExposedIsolationLevel on the browser side only used as a backup to
-  // catch misbehaving renderers.
-  enum class WebExposedIsolationLevel {
-    // The frame is not in a cross-origin isolated agent cluster. It may not
-    // meet the requirements for such isolation in itself, or it may be
-    // hosted in a process capable of supporting cross-origin isolation or
-    // application isolation, but barred from using those capabilities by
-    // its embedder.
-    kNotIsolated,
-
-    // The frame is in a cross-origin isolated process and agent cluster,
-    // allowed to access web platform APIs gated on [CrossOriginIsolated].
-    //
-    // TODO(clamy): Remove this "maybe" status once it is possible to determine
-    // conclusively whether the document is capable of calling cross-origin
-    // isolated APIs by examining the active document policy.
-    kMaybeIsolated,
-    kIsolated,
-
-    // The frame is in a cross-origin isolated process and agent cluster that
-    // supports application isolation, allowing access to web platform APIs
-    // gated on both [CrossOriginIsolated] and [DirectSocketEnabled].
-    //
-    // TODO(clamy): Remove this "maybe" status once it is possible to determine
-    // conclusively whether the document is capable of calling cross-origin
-    // isolated APIs by examining the active document policy.
-    kMaybeIsolatedApplication,
-    kIsolatedApplication
-  };
-
-  // Returns the web-exposed isolation level of a frame's agent cluster.
-  //
-  // Note that this is a property of the document so can change as the frame
+  // Note that this is a property of the document and can change as the frame
   // navigates.
+  //
+  // Unlike RenderProcessHost::GetWebExposedIsolationLevel(), this takes the
+  // currently document's Permissions Policy into account and may return a
+  // lower isolation level than RenderProcessHost if the
+  // "cross-origin-isolated" feature is not delegated to this frame. Because
+  // of this, this function should generally be used instead of
+  // RenderProcessHost::GetWebExposedIsolationLevel() when making decisions
+  // based on the isolation level, such as API availability.
   //
   // TODO(https://936696): Once RenderDocument ships this should be exposed as
   // an invariant of the document host.
@@ -784,31 +727,34 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener,
   // always match.
   virtual bool IsActive() = 0;
 
-  // Returns true iff the RenderFrameHost is inactive, i.e., when the
-  // RenderFrameHost is either in BackForwardCache, Prerendering, or pending
-  // deletion. This function should be used when we are unsure if inactive
-  // RenderFrameHosts can properly handle events and events processing shouldn't
-  // or can't be deferred until the RenderFrameHost becomes active again.
-  // Callers that only want to check whether a RenderFrameHost is active or not
-  // should use IsActive() instead.
+  // Checks that the RenderFrameHost is inactive (with some exceptions) and
+  // ensures that it will be never activated if it is inactive when calling this
+  // function.
   //
-  // Additionally, this method has a side effect for back-forward cache and
-  // prerendering, where the document is prevented from ever becoming active
-  // after calling this method. This allows to safely ignore the event as the
-  // RenderFrameHost will never be shown to the user again.
+  // Side effect: In the case of the RenderFrameHost is inactive, this ensures
+  // it will be never activated through the following:
   //
-  // For BackForwardCache: it evicts the document from the cache and triggers
-  // deletion.
-  // For Prerendering: it cancels prerendering and triggers deletion.
+  // - For BackForwardCache: it evicts the document from the cache and
+  //   triggers deletion.
+  // - For Prerendering: it cancels prerendering and triggers deletion.
   //
-  // This should not be called for speculative and pending commit
+  // This should be used when we are unsure if inactive RenderFrameHosts can
+  // properly handle events and events processing shouldn't or can't be deferred
+  // until the RenderFrameHost becomes active again. This allows the callers to
+  // safely ignore the event as the RenderFrameHost will never be shown to the
+  // user again.
+  //
+  // This should not be used just to check whether a RenderFrameHost is active
+  // or not. For that, use |IsActive()| instead.
+  //
+  // This should not be used for speculative and pending commit
   // RenderFrameHosts as disallowing activation is not supported. In that case
   // |IsInactiveAndDisallowActivation()| returns false along with terminating
   // the renderer process.
   //
-  // The return value of IsInactiveAndDisallowActivation() is the opposite of
-  // IsActive() except in some uncommon cases:
-  // - The "small window" referred to in the IsActive() documentation.
+  // Return value: The opposite of |IsActive()|, except in some uncommon cases:
+  //
+  // - The "small window" referred to in the |IsActive()| documentation.
   // - For speculative and pending commit RenderFrameHosts, as mentioned above.
   //
   // |reason| will be logged via UMA and UKM. It is recommended to provide
@@ -1018,6 +964,10 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener,
   // fenced frames is the same as the id for the outermost main frame. For
   // portals, this id for frames inside a portal is the same as the id for the
   // main frame for the portal.
+  // Should not be called while prerendering as our data collection policy
+  // disallow recording UKMs until the page activation.
+  // See //content/browser/preloading/prerender/README.md#ukm-source-ids for
+  // more details to record UKMS for prerendering.
   virtual ukm::SourceId GetPageUkmSourceId() = 0;
 
   // Report an inspector issue to devtools. Note that the issue is stored on the
@@ -1091,6 +1041,31 @@ class CONTENT_EXPORT RenderFrameHost : public IPC::Listener,
   // Whether the current document is loaded inside iframe credentialless.
   // Updated on every cross-document navigation.
   virtual bool IsCredentialless() const = 0;
+
+  // Whether the last cross-document committed navigation was initiated from the
+  // browser (e.g. typing on the location bar) or from the renderer while having
+  // transient user activation
+  virtual bool IsLastCrossDocumentNavigationStartedByUser() const = 0;
+
+  // Checks Blink runtime-enabled features (BREF) to create and return
+  // a CookieSettingOverrides pertaining to the last committed document in the
+  // frame. Can only be called on a frame with a committed navigation.
+  virtual net::CookieSettingOverrides GetCookieSettingOverrides() = 0;
+
+  // Whether a same-site navigation that happens when this RenderFrameHost is
+  // the current RenderFrameHost should initiate a RenderFrameHost change, due
+  // to RenderDocument. the result may differ depending on whether the
+  // RenderFrameHost is a main/local root/non-local-root frame, whether it has
+  // committed any navigations or not, and whether it's a crashed frame that
+  // must be replaced or not.
+  virtual bool ShouldChangeRenderFrameHostOnSameSiteNavigation() const = 0;
+
+  // The embedder calls this method when a prediction model believes that the
+  // user is likely to click on an anchor element and wants to report the
+  // likelihood of the click. The `score` is the probability that a user will
+  // click on the `url`, and it is a value between 0 and 1.
+  virtual void OnPreloadingHeuristicsModelDone(const GURL& url,
+                                               float score) = 0;
 
  private:
   // This interface should only be implemented inside content.

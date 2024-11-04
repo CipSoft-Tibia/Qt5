@@ -6,7 +6,7 @@
 #define BASE_DEBUG_PROFILER_H_
 
 #include <stddef.h>
-#include <cstdint>
+#include <stdint.h>
 
 #include <string>
 

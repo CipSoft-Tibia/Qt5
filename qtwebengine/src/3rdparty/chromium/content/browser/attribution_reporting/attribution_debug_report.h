@@ -7,20 +7,20 @@
 
 #include "base/time/time.h"
 #include "base/values.h"
-#include "content/browser/attribution_reporting/attribution_storage.h"
+#include "components/attribution_reporting/suitable_origin.h"
 #include "content/common/content_export.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "url/gurl.h"
 
-namespace attribution_reporting {
-class SuitableOrigin;
-}  // namespace attribution_reporting
+class GURL;
 
 namespace content {
 
 class AttributionTrigger;
 class CreateReportResult;
 class StorableSource;
+
+struct OsRegistration;
+struct StoreSourceResult;
 
 // Class that contains all the data needed to serialize and send an attribution
 // debug report.
@@ -29,12 +29,14 @@ class CONTENT_EXPORT AttributionDebugReport {
   static absl::optional<AttributionDebugReport> Create(
       const StorableSource& source,
       bool is_debug_cookie_set,
-      const AttributionStorage::StoreSourceResult& result);
+      const StoreSourceResult& result);
 
   static absl::optional<AttributionDebugReport> Create(
       const AttributionTrigger& trigger,
       bool is_debug_cookie_set,
       const CreateReportResult& result);
+
+  static absl::optional<AttributionDebugReport> Create(const OsRegistration&);
 
   ~AttributionDebugReport();
 
@@ -46,7 +48,11 @@ class CONTENT_EXPORT AttributionDebugReport {
 
   const base::Value::List& ReportBody() const { return report_body_; }
 
-  const GURL& report_url() const { return report_url_; }
+  const attribution_reporting::SuitableOrigin& reporting_origin() const {
+    return reporting_origin_;
+  }
+
+  GURL ReportUrl() const;
 
   // TODO(apaseltiner): This is a workaround to allow the simulator to adjust
   // times while accounting for sub-second precision. Investigate removing it.
@@ -55,13 +61,12 @@ class CONTENT_EXPORT AttributionDebugReport {
   }
 
  private:
-  AttributionDebugReport(
-      base::Value::List report_body,
-      const attribution_reporting::SuitableOrigin& reporting_origin,
-      base::Time original_report_time);
+  AttributionDebugReport(base::Value::List report_body,
+                         attribution_reporting::SuitableOrigin reporting_origin,
+                         base::Time original_report_time);
 
   base::Value::List report_body_;
-  GURL report_url_;
+  attribution_reporting::SuitableOrigin reporting_origin_;
 
   // Only set for report bodies that would include an event-level
   // scheduled_report_time field.

@@ -200,9 +200,8 @@ QGeoRectangle::QGeoRectangle(const QList<QGeoCoordinate> &coordinates)
         const QGeoCoordinate &startCoordinate = coordinates.first();
         d_ptr = new QGeoRectanglePrivate(startCoordinate, startCoordinate);
 
-        foreach (const QGeoCoordinate &coordinate, coordinates) {
+        for (const QGeoCoordinate &coordinate : coordinates)
             d_func()->extendRectangle(coordinate);
-        }
     }
 }
 

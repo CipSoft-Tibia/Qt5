@@ -6,6 +6,7 @@
 #define COMPONENTS_POWER_BOOKMARKS_STORAGE_POWER_BOOKMARK_DATABASE_IMPL_H_
 
 #include "base/files/file_path.h"
+#include "base/gtest_prod_util.h"
 #include "components/power_bookmarks/common/power.h"
 #include "components/power_bookmarks/common/power_overview.h"
 #include "components/power_bookmarks/storage/power_bookmark_database.h"
@@ -45,7 +46,7 @@ class PowerBookmarkDatabaseImpl : public PowerBookmarkDatabase {
       const SearchParams& search_params) override;
   bool CreatePower(std::unique_ptr<Power> power) override;
   std::unique_ptr<Power> UpdatePower(std::unique_ptr<Power> power) override;
-  bool DeletePower(const base::GUID& guid) override;
+  bool DeletePower(const base::Uuid& guid) override;
   bool DeletePowersForURL(
       const GURL& url,
       const sync_pb::PowerBookmarkSpecifics::PowerType& power_type,
@@ -72,7 +73,7 @@ class PowerBookmarkDatabaseImpl : public PowerBookmarkDatabase {
 
   absl::optional<sync_pb::PowerBookmarkSpecifics> DeserializeOrDelete(
       const std::string& data,
-      const base::GUID& id);
+      const base::Uuid& id);
 
   std::vector<std::string> GetGUIDsForURL(
       const GURL& url,
@@ -82,7 +83,7 @@ class PowerBookmarkDatabaseImpl : public PowerBookmarkDatabase {
 
   bool UpdatePowerInternal(const Power& power);
 
-  bool DeletePowerInternal(const base::GUID& guid);
+  bool DeletePowerInternal(const base::Uuid& guid);
 
   sql::Database db_ GUARDED_BY_CONTEXT(sequence_checker_);
   sql::MetaTable meta_table_ GUARDED_BY_CONTEXT(sequence_checker_);

@@ -6,12 +6,16 @@
 
 #include "build/build_config.h"
 #include "components/history/core/browser/top_sites_impl.h"
+#if !defined(TOOLKIT_QT)
+#include "components/sync/base/features.h"
+#endif
 
 namespace history {
 namespace {
+constexpr auto is_android = !!BUILDFLAG(IS_ANDROID);
 constexpr auto kOrganicRepeatableQueriesDefaultValue =
-    BUILDFLAG(IS_ANDROID) ? base::FEATURE_ENABLED_BY_DEFAULT
-                          : base::FEATURE_DISABLED_BY_DEFAULT;
+    is_android ? base::FEATURE_ENABLED_BY_DEFAULT
+               : base::FEATURE_DISABLED_BY_DEFAULT;
 
 // Specifies the scaling behavior, i.e. whether the relevance scales of the
 // top sites and repeatable queries should be first aligned.
@@ -58,7 +62,7 @@ const base::FeatureParam<bool> kPrivilegeRepeatableQueries(
 const base::FeatureParam<bool> kRepeatableQueriesIgnoreDuplicateVisits(
     &kOrganicRepeatableQueries,
     "RepeatableQueriesIgnoreDuplicateVisits",
-    false);
+    is_android);
 
 // The maximum number of days since the last visit (in days) in order for a
 // search query to considered as a repeatable query.
@@ -72,6 +76,30 @@ const base::FeatureParam<int> kRepeatableQueriesMaxAgeDays(
 const base::FeatureParam<int> kRepeatableQueriesMinVisitCount(
     &kOrganicRepeatableQueries,
     "RepeatableQueriesMinVisitCount",
-    1);
+    is_android ? 6 : 1);
+
+BASE_FEATURE(kPopulateVisitedLinkDatabase,
+             "PopulateVisitedLinkDatabase",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kSyncSegmentsData,
+             "SyncSegmentsData",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// The maximum number of New Tab Page displays to show with synced segments
+// data.
+const base::FeatureParam<int> kMaxNumNewTabPageDisplays(
+    &kSyncSegmentsData,
+    "MaxNumNumNewTabPageDisplays",
+    5);
+
+bool IsSyncSegmentsDataEnabled() {
+#if !defined(TOOLKIT_QT)
+  return base::FeatureList::IsEnabled(syncer::kSyncEnableHistoryDataType) &&
+         base::FeatureList::IsEnabled(kSyncSegmentsData);
+#else
+  return false;
+#endif
+}
 
 }  // namespace history

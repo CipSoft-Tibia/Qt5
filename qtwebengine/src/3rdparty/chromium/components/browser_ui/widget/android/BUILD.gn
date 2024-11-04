@@ -9,6 +9,7 @@ android_library("java") {
     "java/src/org/chromium/components/browser_ui/widget/AlwaysDismissedDialog.java",
     "java/src/org/chromium/components/browser_ui/widget/BoundedLinearLayout.java",
     "java/src/org/chromium/components/browser_ui/widget/CheckBoxWithDescription.java",
+    "java/src/org/chromium/components/browser_ui/widget/ChromeDialog.java",
     "java/src/org/chromium/components/browser_ui/widget/ChromeTransitionDrawable.java",
     "java/src/org/chromium/components/browser_ui/widget/ClipDrawableProgressBar.java",
     "java/src/org/chromium/components/browser_ui/widget/CompositeTouchDelegate.java",
@@ -19,6 +20,7 @@ android_library("java") {
     "java/src/org/chromium/components/browser_ui/widget/FadingEdgeScrollView.java",
     "java/src/org/chromium/components/browser_ui/widget/FadingShadow.java",
     "java/src/org/chromium/components/browser_ui/widget/FadingShadowView.java",
+    "java/src/org/chromium/components/browser_ui/widget/FullscreenAlertDialog.java",
     "java/src/org/chromium/components/browser_ui/widget/InsetObserverView.java",
     "java/src/org/chromium/components/browser_ui/widget/InsetObserverViewSupplier.java",
     "java/src/org/chromium/components/browser_ui/widget/MaterialCardViewNoShadow.java",
@@ -44,7 +46,6 @@ android_library("java") {
     "java/src/org/chromium/components/browser_ui/widget/WrappingLayout.java",
     "java/src/org/chromium/components/browser_ui/widget/animation/CancelAwareAnimatorListener.java",
     "java/src/org/chromium/components/browser_ui/widget/animation/FocusAnimator.java",
-    "java/src/org/chromium/components/browser_ui/widget/animation/Interpolators.java",
     "java/src/org/chromium/components/browser_ui/widget/async_image/AsyncImageView.java",
     "java/src/org/chromium/components/browser_ui/widget/async_image/AutoAnimatorDrawable.java",
     "java/src/org/chromium/components/browser_ui/widget/async_image/ForegroundDrawableCompat.java",
@@ -62,6 +63,7 @@ android_library("java") {
     "java/src/org/chromium/components/browser_ui/widget/dragreorder/DragReorderableListAdapter.java",
     "java/src/org/chromium/components/browser_ui/widget/dragreorder/DragReorderableRecyclerViewAdapter.java",
     "java/src/org/chromium/components/browser_ui/widget/dragreorder/DragStateDelegate.java",
+    "java/src/org/chromium/components/browser_ui/widget/dragreorder/DragUtils.java",
     "java/src/org/chromium/components/browser_ui/widget/gesture/BackPressHandler.java",
     "java/src/org/chromium/components/browser_ui/widget/gesture/SwipeGestureListener.java",
     "java/src/org/chromium/components/browser_ui/widget/highlight/PulseDrawable.java",
@@ -98,6 +100,7 @@ android_library("java") {
     "java/src/org/chromium/components/browser_ui/widget/scrim/ScrimProperties.java",
     "java/src/org/chromium/components/browser_ui/widget/scrim/ScrimView.java",
     "java/src/org/chromium/components/browser_ui/widget/scrim/ScrimViewBinder.java",
+    "java/src/org/chromium/components/browser_ui/widget/selectable_list/CheckableSelectableItemView.java",
     "java/src/org/chromium/components/browser_ui/widget/selectable_list/SelectableItemView.java",
     "java/src/org/chromium/components/browser_ui/widget/selectable_list/SelectableItemViewBase.java",
     "java/src/org/chromium/components/browser_ui/widget/selectable_list/SelectableItemViewHolder.java",
@@ -126,8 +129,8 @@ android_library("java") {
     "//components/browser_ui/styles/android:java",
     "//components/browser_ui/util/android:java",
     "//components/embedder_support/android:util_java",
-    "//third_party/android_deps:com_android_support_support_annotations_java",
     "//third_party/android_deps:material_design_java",
+    "//third_party/androidx:androidx_activity_activity_java",
     "//third_party/androidx:androidx_annotation_annotation_java",
     "//third_party/androidx:androidx_appcompat_appcompat_java",
     "//third_party/androidx:androidx_appcompat_appcompat_resources_java",
@@ -137,6 +140,7 @@ android_library("java") {
     "//third_party/androidx:androidx_recyclerview_recyclerview_java",
     "//third_party/androidx:androidx_vectordrawable_vectordrawable_animated_java",
     "//third_party/androidx:androidx_vectordrawable_vectordrawable_java",
+    "//ui/accessibility:ax_base_java",
     "//ui/android:ui_java",
     "//url:gurl_java",
   ]
@@ -219,27 +223,32 @@ android_resources("java_resources") {
     "java/res/drawable/list_item_icon_modern_bg.xml",
     "java/res/drawable/list_item_icon_modern_bg_rect.xml",
     "java/res/drawable/modern_toolbar_tablet_text_box_background.xml",
+    "java/res/drawable/modern_toolbar_text_box_background_highlight.xml",
     "java/res/drawable/oval_surface_0.xml",
     "java/res/drawable/oval_surface_1.xml",
     "java/res/drawable/oval_surface_2.xml",
+    "java/res/drawable/oval_surface_3.xml",
     "java/res/drawable/query_tile_overlay.xml",
     "java/res/drawable/rectangle_surface_1.xml",
+    "java/res/drawable/rounded_rectangle_surface_0.xml",
     "java/res/drawable/rounded_rectangle_surface_1.xml",
+    "java/res/drawable/search_row_modern_bg.xml",
     "java/res/drawable/search_toolbar_modern_bg.xml",
     "java/res/drawable/tile_view_highlight.xml",
     "java/res/drawable/tile_view_highlight_mask.xml",
     "java/res/layout/app_menu_divider.xml",
     "java/res/layout/app_menu_layout.xml",
+    "java/res/layout/automotive_layout_with_back_button_toolbar.xml",
     "java/res/layout/checkbox_with_description.xml",
     "java/res/layout/date_divided_adapter_header_view_holder.xml",
     "java/res/layout/dialog_control_description.xml",
     "java/res/layout/divider_preference.xml",
+    "java/res/layout/empty_state_view.xml",
     "java/res/layout/expand_arrow_with_separator.xml",
     "java/res/layout/horizontal_divider.xml",
     "java/res/layout/indeterminate_progress_view.xml",
     "java/res/layout/list_menu_item.xml",
     "java/res/layout/modern_list_item_view.xml",
-    "java/res/layout/modern_list_item_view_v2.xml",
     "java/res/layout/more_progress_button.xml",
     "java/res/layout/number_roll_view.xml",
     "java/res/layout/promo_card_view_compact.xml",
@@ -262,6 +271,7 @@ android_resources("java_resources") {
     "java/res/values-night/colors.xml",
     "java/res/values-night/dimens.xml",
     "java/res/values-night/drawables.xml",
+    "java/res/values-v31/styles.xml",
     "java/res/values/attrs.xml",
     "java/res/values/colors.xml",
     "java/res/values/dimens.xml",
@@ -271,6 +281,7 @@ android_resources("java_resources") {
     "java/res/values/values.xml",
   ]
   deps = [
+    "shared_with_webview:java_resources",
     "//components/browser_ui/strings/android:browser_ui_strings_grd",
     "//components/browser_ui/styles/android:java_resources",
     "//third_party/android_deps:material_design_java",
@@ -280,6 +291,7 @@ android_resources("java_resources") {
 
 android_library("test_support_java") {
   testonly = true
+  resources_package = "org.chromium.components.browser_ui.widget"
 
   sources = [
     "test/java/src/org/chromium/components/browser_ui/widget/RecyclerViewTestUtils.java",
@@ -292,11 +304,14 @@ android_library("test_support_java") {
     "//third_party/androidx:androidx_recyclerview_recyclerview_java",
     "//third_party/hamcrest:hamcrest_core_java",
     "//third_party/hamcrest:hamcrest_library_java",
+    "//ui/android:ui_no_recycler_view_java",
+    "//ui/android:ui_recycler_view_java",
   ]
 }
 
 android_library("unit_device_javatests") {
   testonly = true
+  resources_package = "org.chromium.components.browser_ui.widget.test"
 
   sources = [
     "java/src/org/chromium/components/browser_ui/widget/CheckBoxWithDescriptionTest.java",
@@ -331,12 +346,11 @@ android_library("unit_device_javatests") {
     "//components/browser_ui/test/android:test_support_java",
     "//components/browser_ui/theme/android:java_resources",
     "//content/public/test/android:content_java_test_support",
-    "//third_party/android_support_test_runner:rules_java",
-    "//third_party/android_support_test_runner:runner_java",
     "//third_party/androidx:androidx_annotation_annotation_java",
     "//third_party/androidx:androidx_appcompat_appcompat_resources_java",
     "//third_party/androidx:androidx_core_core_java",
     "//third_party/androidx:androidx_recyclerview_recyclerview_java",
+    "//third_party/androidx:androidx_test_monitor_java",
     "//third_party/androidx:androidx_test_runner_java",
     "//third_party/hamcrest:hamcrest_java",
     "//third_party/junit",
@@ -344,7 +358,6 @@ android_library("unit_device_javatests") {
     "//ui/android:ui_java",
     "//ui/android:ui_java_test_support",
   ]
-  resources_package = "org.chromium.components.browser_ui.widget.test"
 }
 
 android_resources("java_test_resources") {
@@ -381,6 +394,7 @@ android_resources("java_test_resources") {
 }
 
 robolectric_library("junit") {
+  resources_package = "org.chromium.components.browser_ui.widget"
   sources = [
     "java/src/org/chromium/components/browser_ui/widget/ChromeTransitionDrawableTest.java",
     "java/src/org/chromium/components/browser_ui/widget/CompositeTouchDelegateUnitTest.java",
@@ -394,15 +408,19 @@ robolectric_library("junit") {
   ]
   deps = [
     ":java",
+    ":java_resources",
+    "//base:base_java",
     "//base:base_java_test_support",
     "//base:base_junit_test_support",
     "//base/test:test_support_java",
     "//components/browser_ui/test/android:test_support_java",
     "//third_party/androidx:androidx_annotation_annotation_java",
+    "//third_party/androidx:androidx_core_core_java",
     "//third_party/androidx:androidx_test_core_java",
     "//third_party/androidx:androidx_test_runner_java",
     "//third_party/junit",
     "//third_party/mockito:mockito_java",
+    "//ui/accessibility:ax_base_java",
     "//ui/android:ui_no_recycler_view_java",
   ]
 }

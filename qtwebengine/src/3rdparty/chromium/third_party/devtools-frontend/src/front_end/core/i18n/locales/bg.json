@@ -224,9 +224,6 @@
   "core/i18n/time-utilities.ts | fs": {
     "message": "{PH1} сек"
   },
-  "core/sdk/CPUProfileDataModel.ts | devtoolsCpuProfileParserIsFixing": {
-    "message": "DevTools: Инструментът за синтактичен анализ на профила на CPU отстранява грешките за {PH1} липсващи примера."
-  },
   "core/sdk/CPUProfilerModel.ts | profileD": {
     "message": "Профил {PH1}"
   },
@@ -238,6 +235,9 @@
   },
   "core/sdk/CompilerSourceMappingContentProvider.ts | couldNotLoadContentForSS": {
     "message": "Съдържанието за {PH1} не бе заредено ({PH2})"
+  },
+  "core/sdk/ConsoleModel.ts | bfcacheNavigation": {
+    "message": "Навигацията до {PH1} бе възстановена от кеша за назад/напред (вижте https://web.dev/bfcache/)"
   },
   "core/sdk/ConsoleModel.ts | failedToSaveToTempVariable": {
     "message": "Запазването на временната променлива не бе успешно."
@@ -419,9 +419,6 @@
   "core/sdk/EventBreakpointsModel.ts | beforeSellerWorkletScoringStart": {
     "message": "Seller Scoring Phase Start"
   },
-  "core/sdk/NetworkManager.ts | crossoriginReadBlockingCorb": {
-    "message": "Функцията за блокиране на четенето на данни от външни източници (CORB) блокира отговора от външния адрес {PH1} с MIME от типа „{PH2}“. За повече подробности вижте https://www.chromestatus.com/feature/5629709824032768."
-  },
   "core/sdk/NetworkManager.ts | fastG": {
     "message": "Бърза 3G връзка"
   },
@@ -551,9 +548,6 @@
   "core/sdk/OverlayModel.ts | pausedInDebugger": {
     "message": "Поставено на пауза в инструмента за откриване и отстраняване на грешки"
   },
-  "core/sdk/PageResourceLoader.ts | loadCanceledDueToLoadTimeout": {
-    "message": "Зареждането е анулирано поради изтичане на времето за изчакване"
-  },
   "core/sdk/PageResourceLoader.ts | loadCanceledDueToReloadOf": {
     "message": "Зареждането е анулирано поради презареждане на проверяваната страница"
   },
@@ -618,7 +612,7 @@
     "message": "спира"
   },
   "core/sdk/sdk-meta.ts | achromatopsia": {
-    "message": "Ахроматопсия"
+    "message": "Ахроматопсия (без цвят)"
   },
   "core/sdk/sdk-meta.ts | blurredVision": {
     "message": "Замъглено зрение"
@@ -627,7 +621,7 @@
     "message": "Записване на асинхронните трасирания на стека"
   },
   "core/sdk/sdk-meta.ts | deuteranopia": {
-    "message": "Деутеранопия"
+    "message": "Деутеранопия (без зелено)"
   },
   "core/sdk/sdk-meta.ts | disableAsyncStackTraces": {
     "message": "Деактивиране на асинхронните трасирания на стека"
@@ -690,7 +684,7 @@
     "message": "Емулиране на страница, върху която е поставен фокусът"
   },
   "core/sdk/sdk-meta.ts | emulateAchromatopsia": {
-    "message": "Емулиране на ахроматопсия"
+    "message": "Емулиране на ахроматопсия (без цвят)"
   },
   "core/sdk/sdk-meta.ts | emulateAutoDarkMode": {
     "message": "Емулиране на автоматичния тъмен режим"
@@ -714,13 +708,16 @@
     "message": "Емулиране на медийния тип на CSS за показване на екрана"
   },
   "core/sdk/sdk-meta.ts | emulateDeuteranopia": {
-    "message": "Емулиране на деутеранопия"
+    "message": "Емулиране на деутеранопия (без зелено)"
   },
   "core/sdk/sdk-meta.ts | emulateProtanopia": {
-    "message": "Емулиране на протанопия"
+    "message": "Емулиране на протанопия (без червено)"
+  },
+  "core/sdk/sdk-meta.ts | emulateReducedContrast": {
+    "message": "Емулиране на намален контраст"
   },
   "core/sdk/sdk-meta.ts | emulateTritanopia": {
-    "message": "Емулиране на тританопия"
+    "message": "Емулиране на тританопия (без синьо)"
   },
   "core/sdk/sdk-meta.ts | emulateVisionDeficiencies": {
     "message": "Емулиране на зрителни увреждания"
@@ -789,10 +786,13 @@
     "message": "отпечатване"
   },
   "core/sdk/sdk-meta.ts | protanopia": {
-    "message": "Протанопия"
+    "message": "Протанопия (без червено)"
   },
   "core/sdk/sdk-meta.ts | query": {
     "message": "заявка"
+  },
+  "core/sdk/sdk-meta.ts | reducedContrast": {
+    "message": "Намален контраст"
   },
   "core/sdk/sdk-meta.ts | screen": {
     "message": "екран"
@@ -840,7 +840,7 @@
     "message": "Показване на размерите на линиите"
   },
   "core/sdk/sdk-meta.ts | tritanopia": {
-    "message": "Тританопия"
+    "message": "Тританопия (без синьо)"
   },
   "entrypoints/inspector_main/InspectorMain.ts | javascriptIsDisabled": {
     "message": "JavaScript е деактивиран"
@@ -853,6 +853,12 @@
   },
   "entrypoints/inspector_main/InspectorMain.ts | tab": {
     "message": "Раздел"
+  },
+  "entrypoints/inspector_main/OutermostTargetSelector.ts | targetNotSelected": {
+    "message": "Страница: Не е избрано нищо"
+  },
+  "entrypoints/inspector_main/OutermostTargetSelector.ts | targetS": {
+    "message": "Страница: {PH1}"
   },
   "entrypoints/inspector_main/RenderingOptions.ts | coreWebVitals": {
     "message": "Основни показатели за мрежата"
@@ -898,6 +904,9 @@
   },
   "entrypoints/inspector_main/RenderingOptions.ts | forcesCssPrefersreducedmotion": {
     "message": "Принудително активиране на медийната функция prefers-reduced-motion на CSS"
+  },
+  "entrypoints/inspector_main/RenderingOptions.ts | forcesCssPrefersreducedtransparencyMedia": {
+    "message": "Принудително активиране на медийната функция prefers-reduced-transparency на CSS"
   },
   "entrypoints/inspector_main/RenderingOptions.ts | forcesMediaTypeForTestingPrint": {
     "message": "Принудително активиране на медийния тип за тестване на стиловете за показване на екрана и отпечатване"
@@ -1023,7 +1032,7 @@
     "message": "Прикрепяне вдясно"
   },
   "entrypoints/main/MainImpl.ts | focusDebuggee": {
-    "message": "Фокус върху целта за отстраняване на грешки"
+    "message": "Поставяне на фокуса върху страницата"
   },
   "entrypoints/main/MainImpl.ts | help": {
     "message": "Помощ"
@@ -1062,7 +1071,7 @@
     "message": "Цветови формат:"
   },
   "entrypoints/main/main-meta.ts | colorFormatSettingDisabled": {
-    "message": "Тази настройка е оттеглена, защото не е съвместима със съвременните цветови пространства. За да я активирате отново, можете да деактивирате съответния експеримент."
+    "message": "Тази настройка е оттеглена, защото не е съвместима със съвременните цветови пространства. За да я активирате отново, деактивирайте съответния експеримент."
   },
   "entrypoints/main/main-meta.ts | darkCapital": {
     "message": "Тъмна"
@@ -1098,7 +1107,7 @@
     "message": "Търсене на предишния резултат"
   },
   "entrypoints/main/main-meta.ts | focusDebuggee": {
-    "message": "Фокус върху целта за отстраняване на грешки"
+    "message": "Поставяне на фокуса върху страницата"
   },
   "entrypoints/main/main-meta.ts | horizontal": {
     "message": "хоризонтално"
@@ -1241,6 +1250,183 @@
   "entrypoints/worker_app/WorkerMain.ts | main": {
     "message": "Основно"
   },
+  "generated/Deprecation.ts | AuthorizationCoveredByWildcard": {
+    "message": "Заместващият знак (*) няма да обхваща заглавката Authorization при обработване на Access-Control-Allow-Headers в CORS."
+  },
+  "generated/Deprecation.ts | CSSSelectorInternalMediaControlsOverlayCastButton": {
+    "message": "За деактивиране на стандартната интеграция на функцията за предаване трябва да се използва атрибутът disableRemotePlayback, а не селекторът -internal-media-controls-overlay-cast-button."
+  },
+  "generated/Deprecation.ts | CanRequestURLHTTPContainingNewline": {
+    "message": "Заявките за ресурси, чиито URL адреси съдържат премахнатите знаци за интервал (\\(n|r|t)) и знака за по-малко (<), са блокирани. За да се заредят тези ресурси, премахнете новите редове и кодирайте знаците за по-малко, използвани например в стойности на атрибути за елементи."
+  },
+  "generated/Deprecation.ts | ChromeLoadTimesConnectionInfo": {
+    "message": "Приложният програмен интерфейс chrome.loadTimes() е оттеглен. Вместо него използвайте стандартизирания API Navigation Timing 2."
+  },
+  "generated/Deprecation.ts | ChromeLoadTimesFirstPaintAfterLoadTime": {
+    "message": "Приложният програмен интерфейс chrome.loadTimes() е оттеглен. Вместо него използвайте стандартизирания API Paint Timing."
+  },
+  "generated/Deprecation.ts | ChromeLoadTimesWasAlternateProtocolAvailable": {
+    "message": "Приложният програмен интерфейс chrome.loadTimes() е оттеглен. Вместо него използвайте стандартизирания API nextHopProtocol в Navigation Timing 2."
+  },
+  "generated/Deprecation.ts | CookieWithTruncatingChar": {
+    "message": "„Бисквитките“, съдържащи знак \\(0|r|n), ще бъдат отхвърляни вместо скъсявани."
+  },
+  "generated/Deprecation.ts | CrossOriginAccessBasedOnDocumentDomain": {
+    "message": "Възможността за отмяна на правилото за външни източници чрез задаване на document.domain е оттеглена и ще бъде деактивирана по подразбиране. Това предупреждение за оттегляне се отнася за достъпа от външни източници, активиран чрез настройката document.domain."
+  },
+  "generated/Deprecation.ts | CrossOriginWindowAlert": {
+    "message": "Възможността за задействане на window.alert от вложени рамки от външни източници е оттеглена и ще бъде премахната в бъдеще."
+  },
+  "generated/Deprecation.ts | CrossOriginWindowConfirm": {
+    "message": "Възможността за задействане на window.confirm от вложени рамки от външни източници е оттеглена и ще бъде премахната в бъдеще."
+  },
+  "generated/Deprecation.ts | DOMMutationEvents": {
+    "message": "Събития за промяна на DOM, включително DOMSubtreeModified, DOMNodeInserted, DOMNodeRemoved, DOMNodeRemovedFromDocument, DOMNodeInsertedIntoDocument и DOMCharacterDataModified, са оттеглени (https://w3c.github.io/uievents/#legacy-event-types) и ще бъдат премахнати. Вместо това използвайте MutationObserver."
+  },
+  "generated/Deprecation.ts | DataUrlInSvgUse": {
+    "message": "Поддръжката на данни: URL адресите в елемента SVGUseElement са оттеглени и ще бъдат премахнати в бъдеще."
+  },
+  "generated/Deprecation.ts | DocumentDomainSettingWithoutOriginAgentClusterHeader": {
+    "message": "Възможността за отмяна на правилото за външни източници чрез задаване на document.domain е оттеглена и ще бъде деактивирана по подразбиране. За да продължите да използвате тази функция, откажете се от групите агенти с ключ източник, като изпратите заглавка Origin-Agent-Cluster: ?0 заедно с HTTP отговора за документа и рамките. За повече подробности вижте https://developer.chrome.com/blog/immutable-document-domain/."
+  },
+  "generated/Deprecation.ts | ExpectCTHeader": {
+    "message": "Заглавката Expect-CT е оттеглена и ще бъде премахната. Chrome изисква Прозрачност на сертификатите за всички публично надеждни сертификати, издадени след 30 април 2018 г."
+  },
+  "generated/Deprecation.ts | GeolocationInsecureOrigin": {
+    "message": "getCurrentPosition() и watchPosition() вече не работят за незащитени източници. За да използвате тази функция, препоръчваме да прехвърлите приложението си към защитен източник, като например HTTPS. За повече подробности вижте https://goo.gle/chrome-insecure-origins."
+  },
+  "generated/Deprecation.ts | GeolocationInsecureOriginDeprecatedNotRemoved": {
+    "message": "getCurrentPosition() и watchPosition() са оттеглени за незащитени източници. За да използвате тази функция, препоръчваме да прехвърлите приложението си към защитен източник, като например HTTPS. За повече подробности вижте https://goo.gle/chrome-insecure-origins."
+  },
+  "generated/Deprecation.ts | GetUserMediaInsecureOrigin": {
+    "message": "getUserMedia() вече не работи за незащитени източници. За да използвате тази функция, препоръчваме да прехвърлите приложението си към защитен източник, като например HTTPS. За повече подробности вижте https://goo.gle/chrome-insecure-origins."
+  },
+  "generated/Deprecation.ts | HostCandidateAttributeGetter": {
+    "message": "Полето RTCPeerConnectionIceErrorEvent.hostCandidate е оттеглено. Вместо него използвайте RTCPeerConnectionIceErrorEvent.address или RTCPeerConnectionIceErrorEvent.port."
+  },
+  "generated/Deprecation.ts | IdentityInCanMakePaymentEvent": {
+    "message": "Източникът на търговеца и произволни данни от събитието canmakepayment на service worker са оттеглени и ще бъдат премахнати: topOrigin, paymentRequestOrigin, methodData, modifiers."
+  },
+  "generated/Deprecation.ts | InsecurePrivateNetworkSubresourceRequest": {
+    "message": "Уебсайтът заяви подресурс от мрежа, до която успя да осъществи достъп само заради специалните разрешения на потребителите в нея. Тези заявки разкриват в интернет информация за непублични устройства и сървъри. Това повишава риска от атаки чрез фалшифициране на заявки от друг сайт (CSRF) и/или от изтичане на информация. За да намали този риск, Chrome оттегля инициираните от незащитен контекст заявки до непублични подресурси и ще започне да ги блокира."
+  },
+  "generated/Deprecation.ts | InterestGroupDailyUpdateUrl": {
+    "message": "Полето dailyUpdateUrl на InterestGroups, което се задава за joinAdInterestGroup(), бе преименувано на updateUrl, за да се отрази по-точно поведението му."
+  },
+  "generated/Deprecation.ts | LocalCSSFileExtensionRejected": {
+    "message": "CSS не може да се зареди от URL адреси със схема file:, освен ако не завършват с файловото разширение .css."
+  },
+  "generated/Deprecation.ts | MediaSourceAbortRemove": {
+    "message": "Възможността за използване на SourceBuffer.abort() за прекратяване на асинхронното премахване на периоди чрез remove() е оттеглена поради промяна на спецификацията. Поддръжката ще бъде премахната в бъдеще. Вместо това трябва да използвате приемател за събитието updateend. Функцията abort() е предназначена за прекратяване само на асинхронно добавяне на мултимедия или нулиране на състоянието на инструмента за синтактичен анализ."
+  },
+  "generated/Deprecation.ts | MediaSourceDurationTruncatingBuffered": {
+    "message": "Възможността за задаване на стойност за MediaSource.duration, по-малка от най-голямото клеймо за дата и час за представяне на буферирани кодирани рамки, е оттеглена поради промяна на спецификацията. Поддръжката за неявно премахване на скъсена буферирана мултимедия ще бъде премахната в бъдеще. Вместо това трябва да извършвате изрично премахване чрез remove(newDuration, oldDuration) за всички елементи sourceBuffers, за които newDuration < oldDuration."
+  },
+  "generated/Deprecation.ts | NoSysexWebMIDIWithoutPermission": {
+    "message": "Уеб MIDI ще иска разрешение за използване на специални системни съобщения дори ако опцията sysex не е посочена в MIDIOptions."
+  },
+  "generated/Deprecation.ts | NonStandardDeclarativeShadowDOM": {
+    "message": "По-старият, нестандартизиран атрибут shadowroot е оттеглен и вече няма да функционира във версия M119. Вместо него използвайте новия, стандартизиран атрибут shadowrootmode."
+  },
+  "generated/Deprecation.ts | NotificationInsecureOrigin": {
+    "message": "API за известия вече не може да се използва от незащитени източници. Препоръчваме да прехвърлите приложението си към защитен източник, като например HTTPS. За повече подробности вижте https://goo.gle/chrome-insecure-origins."
+  },
+  "generated/Deprecation.ts | NotificationPermissionRequestedIframe": {
+    "message": "Разрешението за достъп до API за известия вече не може да се заявява от вложени рамки от външни източници. Препоръчваме да го заявявате от рамка от първо ниво или да отваряте нов прозорец."
+  },
+  "generated/Deprecation.ts | ObsoleteCreateImageBitmapImageOrientationNone": {
+    "message": "Опцията imageOrientation: 'none' в createImageBitmap е оттеглена. Вместо това използвайте createImageBitmap с опцията {imageOrientation: 'from-image'}."
+  },
+  "generated/Deprecation.ts | ObsoleteWebRtcCipherSuite": {
+    "message": "Партньорът ви договаря връзка през остаряла версия на (D)TLS. Помолете го да отстрани проблема."
+  },
+  "generated/Deprecation.ts | OverflowVisibleOnReplacedElement": {
+    "message": "Посочването на overflow: visible в маркери img, video и canvas може да доведе до показване на визуално съдържание извън границите на елемента. Вижте https://github.com/WICG/shared-element-transitions/blob/main/debugging_overflow_on_images.md."
+  },
+  "generated/Deprecation.ts | PaymentInstruments": {
+    "message": "Приложният програмен интерфейс paymentManager.instruments е оттеглен. Вместо него използвайте функцията за навременно инсталиране на инструменти за обработване на плащания."
+  },
+  "generated/Deprecation.ts | PaymentRequestCSPViolation": {
+    "message": "Начинът, по който извиквате PaymentRequest, заобикаля директивата connect-src на правилата за сигурност на съдържанието (CSP). Тази възможност за заобикаляне е оттеглена. От PaymentRequest API (в полето supportedMethods) добавете идентификатора на начина на плащане към директивата connect-src на CSP."
+  },
+  "generated/Deprecation.ts | PersistentQuotaType": {
+    "message": "Приложният програмен интерфейс StorageType.persistent е оттеглен. Вместо него използвайте стандартизирания navigator.storage."
+  },
+  "generated/Deprecation.ts | PictureSourceSrc": {
+    "message": "Комбинацията от <source src> и родителски елемент <picture> е невалидна и следователно бе пренебрегната. Вместо това използвайте <source srcset>."
+  },
+  "generated/Deprecation.ts | PrefixedCancelAnimationFrame": {
+    "message": "Методът webkitCancelAnimationFrame е ограничен до конкретен доставчик. Вместо него използвайте стандартния cancelAnimationFrame."
+  },
+  "generated/Deprecation.ts | PrefixedRequestAnimationFrame": {
+    "message": "Методът webkitRequestAnimationFrame е ограничен до конкретен доставчик. Вместо него използвайте стандартния requestAnimationFrame."
+  },
+  "generated/Deprecation.ts | PrefixedVideoDisplayingFullscreen": {
+    "message": "Приложният програмен интерфейс HTMLVideoElement.webkitDisplayingFullscreen е оттеглен. Вместо него използвайте Document.fullscreenElement."
+  },
+  "generated/Deprecation.ts | PrefixedVideoEnterFullScreen": {
+    "message": "Приложният програмен интерфейс HTMLVideoElement.webkitEnterFullScreen() е оттеглен. Вместо него използвайте Element.requestFullscreen()."
+  },
+  "generated/Deprecation.ts | PrefixedVideoEnterFullscreen": {
+    "message": "Приложният програмен интерфейс HTMLVideoElement.webkitEnterFullscreen() е оттеглен. Вместо него използвайте Element.requestFullscreen()."
+  },
+  "generated/Deprecation.ts | PrefixedVideoExitFullScreen": {
+    "message": "Приложният програмен интерфейс HTMLVideoElement.webkitExitFullScreen() е оттеглен. Вместо него използвайте Document.exitFullscreen()."
+  },
+  "generated/Deprecation.ts | PrefixedVideoExitFullscreen": {
+    "message": "Приложният програмен интерфейс HTMLVideoElement.webkitExitFullscreen() е оттеглен. Вместо него използвайте Document.exitFullscreen()."
+  },
+  "generated/Deprecation.ts | PrefixedVideoSupportsFullscreen": {
+    "message": "Приложният програмен интерфейс HTMLVideoElement.webkitSupportsFullscreen е оттеглен. Вместо него използвайте Document.fullscreenEnabled."
+  },
+  "generated/Deprecation.ts | PrivacySandboxExtensionsAPI": {
+    "message": "Оттегляме приложния програмен интерфейс (API) chrome.privacy.websites.privacySandboxEnabled, въпреки че ще остане активен с цел наследена съвместимост до пускането на версия M113. Вместо него използвайте chrome.privacy.websites.topicsEnabled, chrome.privacy.websites.fledgeEnabled и chrome.privacy.websites.adMeasurementEnabled. Вижте https://developer.chrome.com/docs/extensions/reference/privacy/#property-websites-privacySandboxEnabled."
+  },
+  "generated/Deprecation.ts | RTCConstraintEnableDtlsSrtpFalse": {
+    "message": "Ограничението DtlsSrtpKeyAgreement е премахнато. Посочихте за него стойност false, която се тълкува като опит за използване на оттегления метод SDES key negotiation. Тази функционалност е премахната. Вместо нея използвайте услуга, която поддържа DTLS key negotiation."
+  },
+  "generated/Deprecation.ts | RTCConstraintEnableDtlsSrtpTrue": {
+    "message": "Ограничението DtlsSrtpKeyAgreement е премахнато. Посочихте за него стойност true, която няма ефект, но можете да премахнете това ограничение с цел опростяване."
+  },
+  "generated/Deprecation.ts | RTCPeerConnectionGetStatsLegacyNonCompliant": {
+    "message": "Приложният програмен интерфейс (API) getStats(), базиран на обратни извиквания, е оттеглен и ще бъде премахнат. Вместо това използвайте отговарящия на спецификациите API getStats()."
+  },
+  "generated/Deprecation.ts | RangeExpand": {
+    "message": "Приложният програмен интерфейс Range.expand() е оттеглен. Вместо него използвайте Selection.modify()."
+  },
+  "generated/Deprecation.ts | RequestedSubresourceWithEmbeddedCredentials": {
+    "message": "Заявките за подресурси, чиито URL адреси съдържат вградени идентификационни данни (напр. https://user:pass@host/), са блокирани."
+  },
+  "generated/Deprecation.ts | RtcpMuxPolicyNegotiate": {
+    "message": "Опцията rtcpMuxPolicy е оттеглена и ще бъде премахната."
+  },
+  "generated/Deprecation.ts | SharedArrayBufferConstructedWithoutIsolation": {
+    "message": "SharedArrayBuffer ще изисква изолиране от външни източници. За повече подробности вижте https://developer.chrome.com/blog/enabling-shared-array-buffer/."
+  },
+  "generated/Deprecation.ts | TextToSpeech_DisallowedByAutoplay": {
+    "message": "Възможността за използване на speechSynthesis.speak() без активиране от потребител е оттеглена и ще бъде премахната."
+  },
+  "generated/Deprecation.ts | V8SharedArrayBufferConstructedInExtensionWithoutIsolation": {
+    "message": "Разширенията трябва да се включат в изолирането от външни източници, за да продължат да използват SharedArrayBuffer. Вижте https://developer.chrome.com/docs/extensions/mv3/cross-origin-isolation/."
+  },
+  "generated/Deprecation.ts | WebSQL": {
+    "message": "Web SQL се оттегля. Моля, използвайте SQLite WebAssembly или индексирана база от данни"
+  },
+  "generated/Deprecation.ts | WindowPlacementPermissionDescriptorUsed": {
+    "message": "Описанието за разрешения window-placement е оттеглено. Вместо него използвайте window-management. За допълнителна помощ посетете https://bit.ly/window-placement-rename."
+  },
+  "generated/Deprecation.ts | WindowPlacementPermissionPolicyParsed": {
+    "message": "Правилото за разрешения window-placement е оттеглено. Вместо него използвайте window-management. За допълнителна помощ посетете https://bit.ly/window-placement-rename."
+  },
+  "generated/Deprecation.ts | XHRJSONEncodingDetection": {
+    "message": "UTF-16 не се поддържа от JSON отговора в XMLHttpRequest"
+  },
+  "generated/Deprecation.ts | XMLHttpRequestSynchronousInNonWorkerOutsideBeforeUnload": {
+    "message": "Възможността за използване на синхронни обекти XMLHttpRequest в основната нишка е оттеглена, тъй като влошава практическата работа на крайните потребители. За повече помощ посетете https://xhr.spec.whatwg.org/."
+  },
+  "generated/Deprecation.ts | XRSupportsSession": {
+    "message": "Методът supportsSession() е оттеглен. Вместо него използвайте isSessionSupported() и проверете получената логическа стойност."
+  },
   "models/bindings/ContentProviderBasedProject.ts | unknownErrorLoadingFile": {
     "message": "При зареждането на файла възникна неизвестна грешка"
   },
@@ -1269,7 +1455,7 @@
     "message": "[{PH1}] Зареждат се символите за отстраняване на грешки за {PH2} (чрез {PH3})..."
   },
   "models/bindings/IgnoreListManager.ts | addAllContentScriptsToIgnoreList": {
-    "message": "Добавяне на всички скриптове за съдържание към списъка за пренебрегване"
+    "message": "Добавяне на всички скриптове на разширения към списъка за пренебрегване"
   },
   "models/bindings/IgnoreListManager.ts | addAllThirdPartyScriptsToIgnoreList": {
     "message": "Добавяне на всички скриптове на трети страни към списъка за пренебрегване"
@@ -1331,6 +1517,9 @@
   "models/har/Writer.ts | writingFile": {
     "message": "Записва се файл…"
   },
+  "models/issues_manager/BounceTrackingIssue.ts | bounceTrackingMitigations": {
+    "message": "Намаляване на възможностите за проследяване чрез пренасочване"
+  },
   "models/issues_manager/ClientHintIssue.ts | clientHintsInfrastructure": {
     "message": "Инфраструктура за подсказки за клиентски програми"
   },
@@ -1364,6 +1553,9 @@
   "models/issues_manager/CookieIssue.ts | samesiteCookiesExplained": {
     "message": "Обяснение за „бисквитките“ SameSite"
   },
+  "models/issues_manager/CookieIssue.ts | thirdPartyPhaseoutExplained": {
+    "message": "Подготовка за оттеглянето на „бисквитките“ на трети страни"
+  },
   "models/issues_manager/CorsIssue.ts | CORS": {
     "message": "Споделяне на ресурси от външен източник (CORS)"
   },
@@ -1376,167 +1568,38 @@
   "models/issues_manager/CrossOriginEmbedderPolicyIssue.ts | samesiteAndSameorigin": {
     "message": "Same-Site и Same-Origin"
   },
-  "models/issues_manager/DeprecationIssue.ts | authorizationCoveredByWildcard": {
-    "message": "Заместващият знак (*) няма да обхваща заглавката Authorization при обработване на Access-Control-Allow-Headers в CORS."
-  },
-  "models/issues_manager/DeprecationIssue.ts | canRequestURLHTTPContainingNewline": {
-    "message": "Заявките за ресурси, чиито URL адреси съдържат премахнатите знаци за интервал (\\(n|r|t)) и знака за по-малко (<), са блокирани. За да се заредят тези ресурси, премахнете новите редове и кодирайте знаците за по-малко, използвани например в стойности на атрибути за елементи."
-  },
-  "models/issues_manager/DeprecationIssue.ts | chromeLoadTimesConnectionInfo": {
-    "message": "Приложният програмен интерфейс chrome.loadTimes() е оттеглен. Вместо него използвайте стандартизирания API Navigation Timing 2."
-  },
-  "models/issues_manager/DeprecationIssue.ts | chromeLoadTimesFirstPaintAfterLoadTime": {
-    "message": "Приложният програмен интерфейс chrome.loadTimes() е оттеглен. Вместо него използвайте стандартизирания API Paint Timing."
-  },
-  "models/issues_manager/DeprecationIssue.ts | chromeLoadTimesWasAlternateProtocolAvailable": {
-    "message": "Приложният програмен интерфейс chrome.loadTimes() е оттеглен. Вместо него използвайте стандартизирания API nextHopProtocol в Navigation Timing 2."
-  },
-  "models/issues_manager/DeprecationIssue.ts | cookieWithTruncatingChar": {
-    "message": "„Бисквитките“, съдържащи знак \\(0|r|n), ще бъдат отхвърляни вместо скъсявани."
-  },
-  "models/issues_manager/DeprecationIssue.ts | crossOriginAccessBasedOnDocumentDomain": {
-    "message": "Възможността за отмяна на правилото за външни източници чрез задаване на document.domain е оттеглена и ще бъде деактивирана по подразбиране. Това предупреждение за оттегляне се отнася за достъпа от външни източници, активиран чрез настройката document.domain."
-  },
-  "models/issues_manager/DeprecationIssue.ts | crossOriginWindowApi": {
-    "message": "Възможността за задействане на {PH1} от вложени рамки от външни източници е оттеглена и ще бъде премахната в бъдеще."
-  },
-  "models/issues_manager/DeprecationIssue.ts | cssSelectorInternalMediaControlsOverlayCastButton": {
-    "message": "За деактивиране на стандартната интеграция на функцията за предаване трябва да се използва атрибутът disableRemotePlayback, а не селекторът -internal-media-controls-overlay-cast-button."
-  },
-  "models/issues_manager/DeprecationIssue.ts | deprecatedWithReplacement": {
-    "message": "Приложният програмен интерфейс {PH1} е оттеглен. Вместо него използвайте {PH2}."
-  },
-  "models/issues_manager/DeprecationIssue.ts | deprecationExample": {
-    "message": "Това е пример на преведено съобщение за оттегляне."
-  },
-  "models/issues_manager/DeprecationIssue.ts | documentDomainSettingWithoutOriginAgentClusterHeader": {
-    "message": "Възможността за отмяна на правилото за външни източници чрез задаване на document.domain е оттеглена и ще бъде деактивирана по подразбиране. За да продължите да използвате тази функция, откажете се от групите агенти с ключ източник, като изпратите заглавка Origin-Agent-Cluster: ?0 заедно с HTTP отговора за документа и рамките. За повече подробности вижте https://developer.chrome.com/blog/immutable-document-domain/."
-  },
-  "models/issues_manager/DeprecationIssue.ts | eventPath": {
-    "message": "Приложният програмен интерфейс Event.path е оттеглен и ще бъде премахнат. Вместо него използвайте Event.composedPath()."
-  },
-  "models/issues_manager/DeprecationIssue.ts | expectCTHeader": {
-    "message": "Заглавката Expect-CT е оттеглена и ще бъде премахната. Chrome изисква Прозрачност на сертификатите за всички публично надеждни сертификати, издадени след 30 април 2018 г."
-  },
   "models/issues_manager/DeprecationIssue.ts | feature": {
     "message": "Проверете страницата за състояние на функцията за още подробности."
-  },
-  "models/issues_manager/DeprecationIssue.ts | geolocationInsecureOrigin": {
-    "message": "getCurrentPosition() и watchPosition() вече не работят за незащитени източници. За да използвате тази функция, препоръчваме да прехвърлите приложението си към защитен източник, като например HTTPS. За повече подробности вижте https://goo.gle/chrome-insecure-origins."
-  },
-  "models/issues_manager/DeprecationIssue.ts | geolocationInsecureOriginDeprecatedNotRemoved": {
-    "message": "getCurrentPosition() и watchPosition() са оттеглени за незащитени източници. За да използвате тази функция, препоръчваме да прехвърлите приложението си към защитен източник, като например HTTPS. За повече подробности вижте https://goo.gle/chrome-insecure-origins."
-  },
-  "models/issues_manager/DeprecationIssue.ts | getUserMediaInsecureOrigin": {
-    "message": "getUserMedia() вече не работи за незащитени източници. За да използвате тази функция, препоръчваме да прехвърлите приложението си към защитен източник, като например HTTPS. За повече подробности вижте https://goo.gle/chrome-insecure-origins."
-  },
-  "models/issues_manager/DeprecationIssue.ts | hostCandidateAttributeGetter": {
-    "message": "Полето RTCPeerConnectionIceErrorEvent.hostCandidate е оттеглено. Вместо него използвайте RTCPeerConnectionIceErrorEvent.address или RTCPeerConnectionIceErrorEvent.port."
-  },
-  "models/issues_manager/DeprecationIssue.ts | identityInCanMakePaymentEvent": {
-    "message": "Източникът на търговеца и произволни данни от събитието canmakepayment на service worker са оттеглени и ще бъдат премахнати: topOrigin, paymentRequestOrigin, methodData, modifiers."
-  },
-  "models/issues_manager/DeprecationIssue.ts | insecurePrivateNetworkSubresourceRequest": {
-    "message": "Уебсайтът заяви подресурс от мрежа, до която успя да осъществи достъп само заради специалните разрешения на потребителите в нея. Тези заявки разкриват в интернет информация за непублични устройства и сървъри. Това повишава риска от атаки чрез фалшифициране на заявки от друг сайт (CSRF) и/или от изтичане на информация. За да намали този риск, Chrome оттегля инициираните от незащитен контекст заявки до непублични подресурси и ще започне да ги блокира."
-  },
-  "models/issues_manager/DeprecationIssue.ts | localCSSFileExtensionRejected": {
-    "message": "CSS не може да се зареди от URL адреси със схема file:, освен ако не завършват с файловото разширение .css."
-  },
-  "models/issues_manager/DeprecationIssue.ts | mediaSourceAbortRemove": {
-    "message": "Възможността за използване на SourceBuffer.abort() за прекратяване на асинхронното премахване на периоди чрез remove() е оттеглена поради промяна на спецификацията. Поддръжката ще бъде премахната в бъдеще. Вместо това трябва да използвате приемател за събитието updateend. Функцията abort() е предназначена за прекратяване само на асинхронно добавяне на мултимедия или нулиране на състоянието на инструмента за синтактичен анализ."
-  },
-  "models/issues_manager/DeprecationIssue.ts | mediaSourceDurationTruncatingBuffered": {
-    "message": "Възможността за задаване на стойност за MediaSource.duration, по-малка от най-голямото клеймо за дата и час за представяне на буферирани кодирани рамки, е оттеглена поради промяна на спецификацията. Поддръжката за неявно премахване на скъсена буферирана мултимедия ще бъде премахната в бъдеще. Вместо това трябва да извършвате изрично премахване чрез remove(newDuration, oldDuration) за всички елементи sourceBuffers, за които newDuration < oldDuration."
   },
   "models/issues_manager/DeprecationIssue.ts | milestone": {
     "message": "Тази промяна ще влезе в сила с важния етап {milestone}."
   },
-  "models/issues_manager/DeprecationIssue.ts | noSysexWebMIDIWithoutPermission": {
-    "message": "Уеб MIDI ще иска разрешение за използване на специални системни съобщения дори ако опцията sysex не е посочена в MIDIOptions."
-  },
-  "models/issues_manager/DeprecationIssue.ts | notificationInsecureOrigin": {
-    "message": "API за известия вече не може да се използва от незащитени източници. Препоръчваме да прехвърлите приложението си към защитен източник, като например HTTPS. За повече подробности вижте https://goo.gle/chrome-insecure-origins."
-  },
-  "models/issues_manager/DeprecationIssue.ts | notificationPermissionRequestedIframe": {
-    "message": "Разрешението за достъп до API за известия вече не може да се заявява от вложени рамки от външни източници. Препоръчваме да го заявявате от рамка от първо ниво или да отваряте нов прозорец."
-  },
-  "models/issues_manager/DeprecationIssue.ts | obsoleteCreateImageBitmAPImageOrientationNone": {
-    "message": "Опцията imageOrientation: \"none\" в createImageBitmap е оттеглена. Вместо това използвайте createImageBitmap с опцията {imageOrientation: \"from-image\"}."
-  },
-  "models/issues_manager/DeprecationIssue.ts | obsoleteWebRtcCipherSuite": {
-    "message": "Партньорът ви договаря връзка през остаряла версия на (D)TLS. Помолете го да отстрани проблема."
-  },
-  "models/issues_manager/DeprecationIssue.ts | openWebDatabaseInsecureContext": {
-    "message": "Възможността за използване на WebSQL в незащитен контекст е оттеглена и скоро ще бъде премахната. Моля, използвайте уеб хранилище или индексирана база от данни."
-  },
-  "models/issues_manager/DeprecationIssue.ts | overflowVisibleOnReplacedElement": {
-    "message": "Посочването на overflow: visible в маркери img, video и canvas може да доведе до показване на визуално съдържание извън границите на елемента. Вижте https://github.com/WICG/shared-element-transitions/blob/main/debugging_overflow_on_images.md."
-  },
-  "models/issues_manager/DeprecationIssue.ts | paymentInstruments": {
-    "message": "Приложният програмен интерфейс paymentManager.instruments е оттеглен. Вместо него използвайте функцията за навременно инсталиране на инструменти за обработване на плащания."
-  },
-  "models/issues_manager/DeprecationIssue.ts | paymentRequestCSPViolation": {
-    "message": "Начинът, по който извиквате PaymentRequest, заобикаля директивата connect-src на правилата за сигурност на съдържанието (CSP). Тази възможност за заобикаляне е оттеглена. От PaymentRequest API (в полето supportedMethods) добавете идентификатора на начина на плащане към директивата connect-src на CSP."
-  },
-  "models/issues_manager/DeprecationIssue.ts | persistentQuotaType": {
-    "message": "Приложният програмен интерфейс StorageType.persistent е оттеглен. Вместо него използвайте стандартизирания navigator.storage."
-  },
-  "models/issues_manager/DeprecationIssue.ts | pictureSourceSrc": {
-    "message": "Комбинацията от <source src> и родителски елемент <picture> е невалидна и следователно бе пренебрегната. Вместо това използвайте <source srcset>."
-  },
-  "models/issues_manager/DeprecationIssue.ts | prefixedStorageInfo": {
-    "message": "Приложният програмен интерфейс window.webkitStorageInfo е оттеглен. Вместо него използвайте стандартизирания navigator.storage."
-  },
-  "models/issues_manager/DeprecationIssue.ts | privacySandboxExtensionsAPI": {
-    "message": "Оттегляме приложния програмен интерфейс (API) chrome.privacy.websites.privacySandboxEnabled, въпреки че ще остане активен с цел наследена съвместимост до пускането на версия M113. Вместо него използвайте chrome.privacy.websites.topicsEnabled, chrome.privacy.websites.fledgeEnabled и chrome.privacy.websites.adMeasurementEnabled. Вижте https://developer.chrome.com/docs/extensions/reference/privacy/#property-websites-privacySandboxEnabled."
-  },
-  "models/issues_manager/DeprecationIssue.ts | requestedSubresourceWithEmbeddedCredentials": {
-    "message": "Заявките за подресурси, чиито URL адреси съдържат вградени идентификационни данни (напр. https://user:pass@host/), са блокирани."
-  },
-  "models/issues_manager/DeprecationIssue.ts | rtcConstraintEnableDtlsSrtpFalse": {
-    "message": "Ограничението DtlsSrtpKeyAgreement е премахнато. Посочихте за него стойност false, която се тълкува като опит за използване на оттегления метод SDES key negotiation. Тази функционалност е премахната. Вместо нея използвайте услуга, която поддържа DTLS key negotiation."
-  },
-  "models/issues_manager/DeprecationIssue.ts | rtcConstraintEnableDtlsSrtpTrue": {
-    "message": "Ограничението DtlsSrtpKeyAgreement е премахнато. Посочихте за него стойност true, която няма ефект, но можете да премахнете това ограничение с цел опростяване."
-  },
-  "models/issues_manager/DeprecationIssue.ts | rtcPeerConnectionComplexPlanBSdpUsingDefaultSdpSemantics": {
-    "message": "Установено е използване на Complex Plan B SDP. Тази версия на Session Description Protocol вече не се поддържа. Вместо нея използвайте Unified Plan SDP."
-  },
-  "models/issues_manager/DeprecationIssue.ts | rtcPeerConnectionSdpSemanticsPlanB": {
-    "message": "Версията Plan B SDP semantics, която се използва за изграждане на връзка от типа RTCPeerConnection с {sdpSemantics:'plan-b'}, е предишна, нестандартна версия на Session Description Protocol, която е изтрита за постоянно от уеб платформата. Тя все още е налична при създаване на връзки чрез IS_FUCHSIA, но планираме да я изтрием възможно най-скоро. Спрете да разчитате на нея. За информация относно състоянието вижте https://crbug.com/1302249."
-  },
-  "models/issues_manager/DeprecationIssue.ts | rtcpMuxPolicyNegotiate": {
-    "message": "Опцията rtcpMuxPolicy е оттеглена и ще бъде премахната."
-  },
-  "models/issues_manager/DeprecationIssue.ts | sharedArrayBufferConstructedWithoutIsolation": {
-    "message": "SharedArrayBuffer ще изисква изолиране от външни източници. За повече подробности вижте https://developer.chrome.com/blog/enabling-shared-array-buffer/."
-  },
-  "models/issues_manager/DeprecationIssue.ts | textToSpeech_DisallowedByAutoplay": {
-    "message": "Възможността за използване на speechSynthesis.speak() без активиране от потребител е оттеглена и ще бъде премахната."
-  },
   "models/issues_manager/DeprecationIssue.ts | title": {
     "message": "Използвана е оттеглена функция"
-  },
-  "models/issues_manager/DeprecationIssue.ts | v8SharedArrayBufferConstructedInExtensionWithoutIsolation": {
-    "message": "Разширенията трябва да се включат в изолирането от външни източници, за да продължат да използват SharedArrayBuffer. Вижте https://developer.chrome.com/docs/extensions/mv3/cross-origin-isolation/."
-  },
-  "models/issues_manager/DeprecationIssue.ts | vendorSpecificApi": {
-    "message": "Методът {PH1} е за конкретен доставчик. Вместо него използвайте стандартния {PH2}."
-  },
-  "models/issues_manager/DeprecationIssue.ts | xhrJSONEncodingDetection": {
-    "message": "UTF-16 не се поддържа от JSON отговора в XMLHttpRequest"
-  },
-  "models/issues_manager/DeprecationIssue.ts | xmlHttpRequestSynchronousInNonWorkerOutsideBeforeUnload": {
-    "message": "Възможността за използване на синхронни обекти XMLHttpRequest в основната нишка е оттеглена, тъй като влошава практическата работа на крайните потребители. За повече помощ посетете https://xhr.spec.whatwg.org/."
-  },
-  "models/issues_manager/DeprecationIssue.ts | xrSupportsSession": {
-    "message": "Методът supportsSession() е оттеглен. Вместо него използвайте isSessionSupported() и проверете получената логическа стойност."
   },
   "models/issues_manager/FederatedAuthRequestIssue.ts | fedCm": {
     "message": "API за управление на идентификационни данни за федерирано удостоверяване"
   },
+  "models/issues_manager/FederatedAuthUserInfoRequestIssue.ts | fedCmUserInfo": {
+    "message": "API за потребителска информация във Federated Credential Management"
+  },
+  "models/issues_manager/GenericIssue.ts | autocompleteAttributePageTitle": {
+    "message": "HTML атрибут: автоматично довършване"
+  },
+  "models/issues_manager/GenericIssue.ts | corbExplainerPageTitle": {
+    "message": "Обяснение за CORB"
+  },
   "models/issues_manager/GenericIssue.ts | crossOriginPortalPostMessage": {
     "message": "Портали – Комуникационни канали с един и същ произход"
+  },
+  "models/issues_manager/GenericIssue.ts | howDoesAutofillWorkPageTitle": {
+    "message": "Как работи автоматичното попълване?"
+  },
+  "models/issues_manager/GenericIssue.ts | inputFormElementPageTitle": {
+    "message": "Елементът input за формуляри"
+  },
+  "models/issues_manager/GenericIssue.ts | labelFormlementsPageTitle": {
+    "message": "Елементите на етикета"
   },
   "models/issues_manager/HeavyAdIssue.ts | handlingHeavyAdInterventions": {
     "message": "Мерки за справяне с ресурсоемки реклами"
@@ -1565,17 +1628,11 @@
   "models/issues_manager/MixedContentIssue.ts | preventingMixedContent": {
     "message": "Предотвратяване на показването на смесено съдържание"
   },
-  "models/issues_manager/NavigatorUserAgentIssue.ts | userAgentReduction": {
-    "message": "Намаляване на низовете на потребителския агент"
-  },
   "models/issues_manager/QuirksModeIssue.ts | documentCompatibilityMode": {
     "message": "Режим за съвместимост на документа"
   },
   "models/issues_manager/SharedArrayBufferIssue.ts | enablingSharedArrayBuffer": {
     "message": "SharedArrayBuffer се активира"
-  },
-  "models/issues_manager/TrustedWebActivityIssue.ts | changesToQualityCriteriaForPwas": {
-    "message": "Промени в критериите за качество на PWA, използващи надеждна активност в мрежата"
   },
   "models/logs/NetworkLog.ts | anonymous": {
     "message": "<анонимно>"
@@ -1643,14 +1700,17 @@
   "models/persistence/PersistenceActions.ts | openInContainingFolder": {
     "message": "Отваряне в съдържащата папка"
   },
+  "models/persistence/PersistenceActions.ts | overrideContent": {
+    "message": "Замяна на съдържание"
+  },
   "models/persistence/PersistenceActions.ts | saveAs": {
     "message": "Запазване като..."
   },
-  "models/persistence/PersistenceActions.ts | saveForOverrides": {
-    "message": "Запазване на заменените стойности"
-  },
   "models/persistence/PersistenceActions.ts | saveImage": {
     "message": "Запазване на изображението"
+  },
+  "models/persistence/PersistenceActions.ts | showOverrides": {
+    "message": "Показване на всички заменени файлове"
   },
   "models/persistence/PersistenceUtils.ts | linkedToS": {
     "message": "Свързано с(ъс) {PH1}"
@@ -1732,9 +1792,6 @@
   },
   "models/timeline_model/TimelineModel.ts | unknownWorkletS": {
     "message": "Worklet за търгове – {PH1}"
-  },
-  "models/timeline_model/TimelineModel.ts | userInteractions": {
-    "message": "Потребителски взаимодействия"
   },
   "models/timeline_model/TimelineModel.ts | workerS": {
     "message": "Worker — {PH1}"
@@ -2264,6 +2321,9 @@
   "panels/application/AppManifestView.ts | couldNotDownloadARequiredIcon": {
     "message": "Изисквана икона от манифеста не бе изтеглена"
   },
+  "panels/application/AppManifestView.ts | customizePwaTitleBar": {
+    "message": "Персонализиране на наслагването с контроли за прозореца на заглавната лента на PWA."
+  },
   "panels/application/AppManifestView.ts | darkBackgroundColor": {
     "message": "Цвят на тъмния фон"
   },
@@ -2336,9 +2396,6 @@
   "panels/application/AppManifestView.ts | newNoteUrl": {
     "message": "URL адрес на нова бележка"
   },
-  "panels/application/AppManifestView.ts | noMatchingServiceWorkerDetected": {
-    "message": "Не е открит съответстващ файл service worker. Може да се наложи да презаредите страницата или да се уверите, че зададените в манифеста обхват и URL адрес за стартиране попадат в обхвата на service worker за текущата страница."
-  },
   "panels/application/AppManifestView.ts | noPlayStoreIdProvided": {
     "message": "Не е предоставен идентификатор за Google Play Магазин"
   },
@@ -2374,12 +2431,6 @@
   },
   "panels/application/AppManifestView.ts | presentation": {
     "message": "Презентация"
-  },
-  "panels/application/AppManifestView.ts | primaryIconasUsedByChrome": {
-    "message": "Основната икона, използвана от Chrome"
-  },
-  "panels/application/AppManifestView.ts | primaryManifestIconFromS": {
-    "message": "Основна икона от манифеста от {PH1}"
   },
   "panels/application/AppManifestView.ts | protocolHandlers": {
     "message": "Манипулатори на протоколи"
@@ -2450,8 +2501,17 @@
   "panels/application/AppManifestView.ts | themeColor": {
     "message": "Цвят на темата"
   },
-  "panels/application/ApplicationPanelPreloadingSection.ts | prefetchingAndPrerendering": {
-    "message": "Предварително извличане и предварително рендериране"
+  "panels/application/AppManifestView.ts | wcoFound": {
+    "message": "Chrome успешно откри стойността на {PH1} за полето {PH2} в(ъв) {PH3}."
+  },
+  "panels/application/AppManifestView.ts | wcoNeedHelpReadMore": {
+    "message": "Нужна ви е помощ? Посетете {PH1}."
+  },
+  "panels/application/AppManifestView.ts | wcoNotFound": {
+    "message": "Дефинирайте {PH1} в манифеста, за да използвате API за наслагване с контроли за прозореца, и персонализирайте заглавната лента на приложението си."
+  },
+  "panels/application/AppManifestView.ts | windowControlsOverlay": {
+    "message": "Наслагване с контроли за прозореца"
   },
   "panels/application/ApplicationPanelSidebar.ts | appManifest": {
     "message": "Манифест на приложението"
@@ -2624,6 +2684,9 @@
   "panels/application/BackgroundServiceView.ts | timestamp": {
     "message": "Дата и час"
   },
+  "panels/application/BounceTrackingMitigationsTreeElement.ts | bounceTrackingMitigations": {
+    "message": "Намаляване на възможностите за проследяване чрез пренасочване"
+  },
   "panels/application/CookieItemsView.ts | clearAllCookies": {
     "message": "Изтриване на всички „бисквитки“"
   },
@@ -2646,7 +2709,7 @@
     "message": "Изберете „бисквитка“, за да прегледате стойността ѝ"
   },
   "panels/application/CookieItemsView.ts | showUrlDecoded": {
-    "message": "Показване на декодирания URL адрес"
+    "message": "Показване на декодираната стойност в URL адреса"
   },
   "panels/application/DOMStorageItemsView.ts | domStorage": {
     "message": "Хранилище на DOM"
@@ -2732,9 +2795,6 @@
   "panels/application/IndexedDBViews.ts | keyString": {
     "message": "Ключ"
   },
-  "panels/application/IndexedDBViews.ts | loading": {
-    "message": "Зарежда се…"
-  },
   "panels/application/IndexedDBViews.ts | objectStores": {
     "message": "Хранилища за обекти"
   },
@@ -2749,9 +2809,6 @@
   },
   "panels/application/IndexedDBViews.ts | refreshDatabase": {
     "message": "Опресняване на базата от данни"
-  },
-  "panels/application/IndexedDBViews.ts | securityOrigin": {
-    "message": "Източник на мерките за сигурност"
   },
   "panels/application/IndexedDBViews.ts | showNextPage": {
     "message": "Показване на следващата страница"
@@ -2836,6 +2893,15 @@
   },
   "panels/application/OpenedWindowDetailsView.ts | yes": {
     "message": "Да"
+  },
+  "panels/application/PreloadingTreeElement.ts | preloads": {
+    "message": "Предварително заредени елементи"
+  },
+  "panels/application/PreloadingTreeElement.ts | speculationRules": {
+    "message": "Спекулативни правила"
+  },
+  "panels/application/PreloadingTreeElement.ts | thisPage": {
+    "message": "Тази страница"
   },
   "panels/application/ReportingApiReportsView.ts | clickToDisplayBody": {
     "message": "Кликнете върху отчет, за да се покаже основният му текст"
@@ -3047,6 +3113,9 @@
   "panels/application/SharedStorageListTreeElement.ts | sharedStorage": {
     "message": "Споделено хранилище"
   },
+  "panels/application/StorageBucketsTreeElement.ts | storageBuckets": {
+    "message": "Групи в хранилището"
+  },
   "panels/application/StorageItemsView.ts | clearAll": {
     "message": "Изчистване на всички"
   },
@@ -3062,11 +3131,11 @@
   "panels/application/StorageItemsView.ts | refreshedStatus": {
     "message": "Таблицата бе опреснена"
   },
+  "panels/application/StorageView.ts | SiteDataCleared": {
+    "message": "Данните за сайтовете бяха изчистени"
+  },
   "panels/application/StorageView.ts | application": {
     "message": "Приложение"
-  },
-  "panels/application/StorageView.ts | cache": {
-    "message": "Кеш"
   },
   "panels/application/StorageView.ts | cacheStorage": {
     "message": "Хранилище за кеш"
@@ -3103,6 +3172,9 @@
   },
   "panels/application/StorageView.ts | numberMustBeNonNegative": {
     "message": "Числото не трябва да е отрицателно"
+  },
+  "panels/application/StorageView.ts | numberMustBeSmaller": {
+    "message": "Числото трябва да е по-малко от {PH1}"
   },
   "panels/application/StorageView.ts | other": {
     "message": "Друго"
@@ -3147,7 +3219,7 @@
     "message": "Web SQL"
   },
   "panels/application/TrustTokensTreeElement.ts | trustTokens": {
-    "message": "Означения за доверие"
+    "message": "Токени за частно състояние"
   },
   "panels/application/application-meta.ts | application": {
     "message": "Приложение"
@@ -3170,6 +3242,12 @@
   "panels/application/application-meta.ts | stopRecordingEvents": {
     "message": "Спиране на записването на събития"
   },
+  "panels/application/components/BackForwardCacheStrings.ts | CookieFlushed": {
+    "message": "Неопределено"
+  },
+  "panels/application/components/BackForwardCacheStrings.ts | HTTPAuthRequired": {
+    "message": "Неопределено"
+  },
   "panels/application/components/BackForwardCacheStrings.ts | HTTPMethodNotGET": {
     "message": "На условията за кеша за назад/напред отговарят само страниците, заредени чрез заявка GET."
   },
@@ -3181,9 +3259,6 @@
   },
   "panels/application/components/BackForwardCacheStrings.ts | appBanner": {
     "message": "Страниците, които са заявили AppBanner, понастоящем не отговарят на условията за кеша за назад/напред."
-  },
-  "panels/application/components/BackForwardCacheStrings.ts | authorizationHeader": {
-    "message": "Кешът за назад/напред е деактивиран поради заявка за проверка на връзката."
   },
   "panels/application/components/BackForwardCacheStrings.ts | backForwardCacheDisabled": {
     "message": "Кешът за назад/напред е деактивиран чрез флагове. За да го активирате локално на това устройство, отворете chrome://flags/#back-forward-cache."
@@ -3250,6 +3325,9 @@
   },
   "panels/application/components/BackForwardCacheStrings.ts | contentWebUSB": {
     "message": "Страниците, които използват WebUSB API, не отговарят на условията за кеша за назад/напред."
+  },
+  "panels/application/components/BackForwardCacheStrings.ts | cookieDisabled": {
+    "message": "Кешът за назад/напред е деактивиран, защото „бисквитките“ са деактивирани на страница, която използва Cache-Control: no-store."
   },
   "panels/application/components/BackForwardCacheStrings.ts | dedicatedWorkerOrWorklet": {
     "message": "Страниците, които използват worker или worklet само за себе си, понастоящем не отговарят на условията за кеша за назад/напред."
@@ -3336,10 +3414,13 @@
     "message": "Страниците, в които JavaScript е вмъкнат от разширение, понастоящем не отговарят на условията за кеша за назад/напред."
   },
   "panels/application/components/BackForwardCacheStrings.ts | injectedStyleSheet": {
-    "message": "Страниците, в които стиловият лист е вмъкнат от разширение, понастоящем не отговарят на условията за кеша за назад/напред."
+    "message": "Страниците, в които StyleSheet е вмъкнат от разширение, понастоящем не отговарят на условията за кеша за назад/напред."
   },
   "panels/application/components/BackForwardCacheStrings.ts | internalError": {
     "message": "Вътрешна грешка."
+  },
+  "panels/application/components/BackForwardCacheStrings.ts | jsNetworkRequestReceivedCacheControlNoStoreResource": {
+    "message": "Кешът за назад/напред е деактивиран, защото в отговор на мрежова заявка за JavaScript  бе получен ресурс със заглавка Cache-Control: no-store."
   },
   "panels/application/components/BackForwardCacheStrings.ts | keepaliveRequest": {
     "message": "Кешът за назад/напред е деактивиран поради заявка за проверка на връзката."
@@ -3506,14 +3587,23 @@
   "panels/application/components/BackForwardCacheStrings.ts | webRTC": {
     "message": "Страниците с WebRTC не могат да бъдат добавени към кеша за назад/напред."
   },
+  "panels/application/components/BackForwardCacheStrings.ts | webRTCSticky": {
+    "message": "Кешът за назад/напред е деактивиран поради използване на WebRTC."
+  },
   "panels/application/components/BackForwardCacheStrings.ts | webShare": {
     "message": "Страниците, които използват WebShare, понастоящем не отговарят на условията за кеша за назад/напред."
   },
   "panels/application/components/BackForwardCacheStrings.ts | webSocket": {
     "message": "Страниците с WebSocket не могат да бъдат добавени към кеша за назад/напред."
   },
+  "panels/application/components/BackForwardCacheStrings.ts | webSocketSticky": {
+    "message": "Кешът за назад/напред е деактивиран поради използване на WebSocket."
+  },
   "panels/application/components/BackForwardCacheStrings.ts | webTransport": {
     "message": "Страниците с WebTransport не могат да бъдат добавени към кеша за назад/напред."
+  },
+  "panels/application/components/BackForwardCacheStrings.ts | webTransportSticky": {
+    "message": "Кешът за назад/напред е деактивиран поради използване на WebTransport."
   },
   "panels/application/components/BackForwardCacheStrings.ts | webXR": {
     "message": "Страниците, които използват WebXR, понастоящем не отговарят на условията за кеша за назад/напред."
@@ -3586,6 +3676,33 @@
   },
   "panels/application/components/BackForwardCacheView.ts | url": {
     "message": "URL адрес:"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | bounceTrackingMitigationsTitle": {
+    "message": "Намаляване на възможностите за проследяване чрез пренасочване"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | checkingPotentialTrackers": {
+    "message": "Проверява се за потенциални сайтове, проследяващи чрез пренасочване."
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | featureDisabled": {
+    "message": "Намаляването на възможностите за проследяване чрез пренасочване е деактивирано. За да го активирате, задайте опцията за активиране при изтриване за флага на страницата „{PH1}“."
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | featureFlag": {
+    "message": "Флаг на функцията за намаляване на възможностите за проследяване чрез пренасочване"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | forceRun": {
+    "message": "Принудително изпълнение"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | learnMore": {
+    "message": "Научете повече: Намаляване на възможностите за проследяване чрез пренасочване"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | noPotentialBounceTrackersIdentified": {
+    "message": "Състоянието не бе изчистено за потенциалните сайтове, проследяващи чрез пренасочване. Не бяха идентифицирани такива или „бисквитките“ на трети страни не са блокирани."
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | runningMitigations": {
+    "message": "Изпълнява се"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | stateDeletedFor": {
+    "message": "Състоянието бе изтрито за следните сайтове:"
   },
   "panels/application/components/EndpointsGrid.ts | noEndpointsToDisplay": {
     "message": "Няма крайни точки за показване"
@@ -4022,23 +4139,14 @@
   "panels/application/components/SharedStorageMetadataView.ts | creation": {
     "message": "Време на създаване"
   },
-  "panels/application/components/SharedStorageMetadataView.ts | entries": {
-    "message": "Записи"
-  },
   "panels/application/components/SharedStorageMetadataView.ts | entropyBudget": {
     "message": "Ентропиен бюджет за изолираните рамки"
-  },
-  "panels/application/components/SharedStorageMetadataView.ts | metadata": {
-    "message": "Метаданни"
   },
   "panels/application/components/SharedStorageMetadataView.ts | notYetCreated": {
     "message": "Още не е създадено"
   },
   "panels/application/components/SharedStorageMetadataView.ts | numEntries": {
     "message": "Брой записи"
-  },
-  "panels/application/components/SharedStorageMetadataView.ts | origin": {
-    "message": "Източник"
   },
   "panels/application/components/SharedStorageMetadataView.ts | resetBudget": {
     "message": "Нулиране на бюджета"
@@ -4049,83 +4157,530 @@
   "panels/application/components/StackTrace.ts | cannotRenderStackTrace": {
     "message": "Трасирането на стека не може да се рендерира"
   },
+  "panels/application/components/StackTrace.ts | showLess": {
+    "message": "Показване на по-малко"
+  },
   "panels/application/components/StackTrace.ts | showSMoreFrames": {
     "message": "{n,plural, =1{Показване на още # рамка}other{Показване на още # рамки}}"
   },
+  "panels/application/components/StorageMetadataView.ts | bucketName": {
+    "message": "Име на групата"
+  },
+  "panels/application/components/StorageMetadataView.ts | confirmBucketDeletion": {
+    "message": "Да се изтрие ли групата „{PH1}“?"
+  },
+  "panels/application/components/StorageMetadataView.ts | defaultBucket": {
+    "message": "Основна група"
+  },
+  "panels/application/components/StorageMetadataView.ts | deleteBucket": {
+    "message": "Изтриване на групата"
+  },
+  "panels/application/components/StorageMetadataView.ts | durability": {
+    "message": "Устойчивост"
+  },
+  "panels/application/components/StorageMetadataView.ts | expiration": {
+    "message": "Валидност"
+  },
+  "panels/application/components/StorageMetadataView.ts | isOpaque": {
+    "message": "Непрозрачно"
+  },
+  "panels/application/components/StorageMetadataView.ts | isThirdParty": {
+    "message": "От трета страна"
+  },
+  "panels/application/components/StorageMetadataView.ts | loading": {
+    "message": "Зарежда се…"
+  },
+  "panels/application/components/StorageMetadataView.ts | no": {
+    "message": "Не"
+  },
+  "panels/application/components/StorageMetadataView.ts | none": {
+    "message": "Няма"
+  },
+  "panels/application/components/StorageMetadataView.ts | opaque": {
+    "message": "(непрозрачно)"
+  },
+  "panels/application/components/StorageMetadataView.ts | origin": {
+    "message": "Източник"
+  },
+  "panels/application/components/StorageMetadataView.ts | persistent": {
+    "message": "Постоянно"
+  },
+  "panels/application/components/StorageMetadataView.ts | quota": {
+    "message": "Квота"
+  },
+  "panels/application/components/StorageMetadataView.ts | topLevelSite": {
+    "message": "Сайт от първо ниво"
+  },
+  "panels/application/components/StorageMetadataView.ts | yes": {
+    "message": "Да"
+  },
+  "panels/application/components/StorageMetadataView.ts | yesBecauseAncestorChainHasCrossSite": {
+    "message": "Да, тъй като родителската верига съдържа източник на трета страна"
+  },
+  "panels/application/components/StorageMetadataView.ts | yesBecauseKeyIsOpaque": {
+    "message": "Да, защото ключът за хранилището е непрозрачен"
+  },
+  "panels/application/components/StorageMetadataView.ts | yesBecauseOriginNotInTopLevelSite": {
+    "message": "Да, защото източникът е извън сайта от първо ниво"
+  },
+  "panels/application/components/StorageMetadataView.ts | yesBecauseTopLevelIsOpaque": {
+    "message": "Да, защото сайтът от първо ниво е непрозрачен"
+  },
   "panels/application/components/TrustTokensView.ts | allStoredTrustTokensAvailableIn": {
-    "message": "Всички съхранени означения за доверие, налични в този екземпляр на браузъра."
+    "message": "Всички съхранени токени за частно състояние, налични в този екземпляр на браузъра."
   },
   "panels/application/components/TrustTokensView.ts | deleteTrustTokens": {
-    "message": "Изтриване на всички съхранени означения за доверие, издадени от {PH1}."
+    "message": "Изтриване на всички съхранени токени за частно състояние, издадени от {PH1}."
   },
   "panels/application/components/TrustTokensView.ts | issuer": {
     "message": "Издател"
   },
   "panels/application/components/TrustTokensView.ts | noTrustTokensStored": {
-    "message": "Понастоящем няма съхранени означения за доверие."
+    "message": "Понастоящем няма съхранени токени за частно състояние."
   },
   "panels/application/components/TrustTokensView.ts | storedTokenCount": {
     "message": "Брой съхранени означения"
   },
-  "panels/application/preloading/PreloadingView.ts | clearNotOngoing": {
-    "message": "Изчистване на съдържанието, което не се изпълнява"
+  "panels/application/components/TrustTokensView.ts | trustTokens": {
+    "message": "Токени за частно състояние"
   },
-  "panels/application/preloading/PreloadingView.ts | statusActivated": {
-    "message": "Активирани"
+  "panels/application/preloading/PreloadingView.ts | filterAllPreloads": {
+    "message": "Всички предварителни зареждания"
   },
-  "panels/application/preloading/PreloadingView.ts | statusDiscarded": {
-    "message": "Отхвърлено"
+  "panels/application/preloading/PreloadingView.ts | filterFilterByRuleSet": {
+    "message": "Филтриране по набор от правила"
   },
-  "panels/application/preloading/PreloadingView.ts | statusPrerendering": {
-    "message": "Предварително рендериране"
+  "panels/application/preloading/PreloadingView.ts | statusFailure": {
+    "message": "Неуспех"
   },
-  "panels/application/preloading/PreloadingView.ts | warningDetailPreloadingDisabledByFeatureFlag": {
-    "message": "Предварителното зареждане е активирано принудително, тъй като инструментариумът DevTools е отворен. Когато той е затворен, предварителното рендериране ще бъде деактивирано, тъй като тази сесия на браузъра е част от изолирана група, която служи за сравняване на ефективността."
+  "panels/application/preloading/PreloadingView.ts | statusNotTriggered": {
+    "message": "Не е задействано"
   },
-  "panels/application/preloading/PreloadingView.ts | warningDetailPrerenderingDisabledByFeatureFlag": {
-    "message": "Предварителното рендериране е активирано принудително, тъй като инструментариумът DevTools е отворен. Когато той е затворен, предварителното рендериране ще бъде деактивирано, тъй като тази сесия на браузъра е част от изолирана група, която служи за сравняване на ефективността."
+  "panels/application/preloading/PreloadingView.ts | statusPending": {
+    "message": "Изчаква се"
   },
-  "panels/application/preloading/PreloadingView.ts | warningTitlePreloadingDisabledByFeatureFlag": {
-    "message": "Предварителното зареждане бе деактивирано, но вече е активирано принудително"
+  "panels/application/preloading/PreloadingView.ts | statusReady": {
+    "message": "Готово"
   },
-  "panels/application/preloading/PreloadingView.ts | warningTitlePrerenderingDisabledByFeatureFlag": {
-    "message": "Предварителното рендериране бе деактивирано, но вече е активирано принудително"
+  "panels/application/preloading/PreloadingView.ts | statusRunning": {
+    "message": "Изпълнява се"
   },
-  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsBasicInformation": {
-    "message": "Основна информация"
+  "panels/application/preloading/PreloadingView.ts | statusSuccess": {
+    "message": "Успех"
   },
-  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsStartedAt": {
-    "message": "Започна в(ъв)"
+  "panels/application/preloading/PreloadingView.ts | validityInvalid": {
+    "message": "Невалидно"
+  },
+  "panels/application/preloading/PreloadingView.ts | validitySomeRulesInvalid": {
+    "message": "Някои правила са невалидни"
+  },
+  "panels/application/preloading/PreloadingView.ts | validityValid": {
+    "message": "Валидно"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | action": {
+    "message": "Действие"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | status": {
+    "message": "Състояние"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | statusFailure": {
+    "message": "Неуспех"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | statusNotTriggered": {
+    "message": "Не е задействано"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | statusPending": {
+    "message": "Изчаква се"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | statusReady": {
+    "message": "Готово"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | statusRunning": {
+    "message": "Изпълнява се"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | statusSuccess": {
+    "message": "Успех"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | url": {
+    "message": "URL адрес"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | buttonClickToInspect": {
+    "message": "Кликнете за проверка на предварително рендерираната страница"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | buttonClickToRevealRuleSet": {
+    "message": "Кликнете за показване на набора от правила"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | buttonInspect": {
+    "message": "Инспектиране"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusFailure": {
+    "message": "Предварителното зареждане не бе успешно."
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusNotTriggered": {
+    "message": "Опитът за предварително зареждане още не се е задействал."
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusPending": {
+    "message": "Опитът за предварително зареждане отговаря на условията, но е в състояние на изчакване."
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusReady": {
+    "message": "Предварителното зареждане завърши и резултатът е готов за следващото навигиране."
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusRunning": {
+    "message": "Предварителното зареждане е в ход."
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusSuccess": {
+    "message": "Предварителното зареждане завърши и се използва за навигация."
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsAction": {
+    "message": "Действие"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsDetailedInformation": {
+    "message": "Подробна информация"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsFailureReason": {
+    "message": "Причина за проблема"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsRuleSet": {
+    "message": "Набор от правила"
   },
   "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsStatus": {
     "message": "Състояние"
   },
-  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsTrigger": {
-    "message": "Задействане"
-  },
   "panels/application/preloading/components/PreloadingDetailsReportView.ts | selectAnElementForMoreDetails": {
     "message": "За повече подробности изберете елемент"
   },
-  "panels/application/preloading/components/PreloadingDetailsReportView.ts | statusActivated": {
-    "message": "Активирани"
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByBatterySaver": {
+    "message": "Предварителното зареждане е деактивирано заради режима за запазване на батерията на операционната система."
   },
-  "panels/application/preloading/components/PreloadingDetailsReportView.ts | statusDiscarded": {
-    "message": "Отхвърлено"
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByDataSaver": {
+    "message": "Предварителното зареждане е деактивирано заради режима „Икономия на данни“ на операционната система."
   },
-  "panels/application/preloading/components/PreloadingDetailsReportView.ts | statusPrerendering": {
-    "message": "Предварително рендериране"
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByHoldbackPrefetchSpeculationRules": {
+    "message": "Предварителното извличане е активирано принудително, тъй като инструментариумът DevTools е отворен. Когато той е затворен, предварителното извличане ще бъде деактивирано, тъй като тази сесия на браузъра е част от изолирана група, която служи за сравняване на ефективността."
   },
-  "panels/application/preloading/components/PreloadingGrid.ts | startedAt": {
-    "message": "Започна в(ъв)"
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByHoldbackPrerenderSpeculationRules": {
+    "message": "Предварителното рендериране е активирано принудително, тъй като инструментариумът DevTools е отворен. Когато той е затворен, предварителното рендериране ще бъде деактивирано, тъй като тази сесия на браузъра е част от изолирана група, която служи за сравняване на ефективността."
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByPreference": {
+    "message": "Предварителното зареждане е деактивирано заради потребителски настройки или разширение. Отворете {PH1}, за да актуализирате предпочитанието си. Отворете {PH2}, за да деактивирате разширенията, които блокират предварителното зареждане."
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | extensionsSettings": {
+    "message": "Настройки за разширенията"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | footerLearnMore": {
+    "message": "Научете повече"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | headerDisabledByBatterySaver": {
+    "message": "Режим за запазване на батерията"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | headerDisabledByDataSaver": {
+    "message": "Икономия на данни"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | headerDisabledByHoldbackPrefetchSpeculationRules": {
+    "message": "Предварителното зареждане бе деактивирано, но вече е активирано принудително"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | headerDisabledByHoldbackPrerenderSpeculationRules": {
+    "message": "Предварителното рендериране бе деактивирано, но вече е активирано принудително"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | headerDisabledByPreference": {
+    "message": "Настройки или разширения на потребителя"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | infobarPreloadingIsDisabled": {
+    "message": "Предварителното зареждане е деактивирано"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | infobarPreloadingIsForceEnabled": {
+    "message": "Предварителното зареждане е активирано принудително"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | preloadingPagesSettings": {
+    "message": "Настройки за предварителното зареждане на страници"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | titleReasonsPreventingPreloading": {
+    "message": "Причини за предотвратяване на предварителното зареждане"
+  },
+  "panels/application/preloading/components/PreloadingGrid.ts | action": {
+    "message": "Действие"
+  },
+  "panels/application/preloading/components/PreloadingGrid.ts | ruleSet": {
+    "message": "Набор от правила"
   },
   "panels/application/preloading/components/PreloadingGrid.ts | status": {
     "message": "Състояние"
   },
-  "panels/application/preloading/components/PreloadingGrid.ts | trigger": {
-    "message": "Задействане"
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchEvicted": {
+    "message": "Предварително извлечените данни бяха отхвърлени заради по-нови, защото настройката |kPrefetchNewLimits| е активирана"
   },
-  "panels/application/preloading/components/PreloadingGrid.ts | type": {
-    "message": "Тип"
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedIneligibleRedirect": {
+    "message": "Предварителното извличане бе пренасочено, но URL адресът за пренасочване не отговаря на условията за предварително извличане."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedInvalidRedirect": {
+    "message": "Предварителното извличане бе пренасочено, но възникна проблем с пренасочването."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedMIMENotSupported": {
+    "message": "Предварителното извличане не бе успешно, защото заглавката Content-Type на отговора не се поддържа."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedNetError": {
+    "message": "Предварителното извличане не бе успешно поради грешка в мрежата."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedNon2XX": {
+    "message": "Предварителното извличане не бе успешно поради HTTP отговор с код на състоянието, различен от 2xx."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedPerPageLimitExceeded": {
+    "message": "Предварителното извличане не бе изпълнено, защото за страницата, поискала това, вече се изпълняват твърде много предварителни извличания."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchIneligibleRetryAfter": {
+    "message": "За предишно предварително извличане за източника е получен HTTP отговор 503 със заглавка Retry-After, времето за която още не е изтекло."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchIsPrivacyDecoy": {
+    "message": "URL адресът не отговаряше на условията за предварително извличане, защото за съответния източник има регистриран service worker или „бисквитки“ от външен сайт, но въпреки това предварително извлечените данни са поставени в мрежата, без да се използват, за да се прикрие, че потребителят е имал предишна връзка с източника."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchIsStale": {
+    "message": "Изминало е твърде много време между предварителното извличане на данните и използването им, така че те бяха отхвърлени."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleBatterySaverEnabled": {
+    "message": "Предварителното извличане не бе изпълнено, защото настройката за режима за запазване на батерията е активирана."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleBrowserContextOffTheRecord": {
+    "message": "Предварителното извличане не бе изпълнено, защото браузърът е в режим „инкогнито“ или режим на гост."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleDataSaverEnabled": {
+    "message": "Предварителното извличане не бе изпълнено, защото операционната система е в режим за икономия на данни."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleExistingProxy": {
+    "message": "URL адресът не отговаря на условията за предварително извличане, защото е конфигуриран да използва прокси сървър в стандартния контекст на мрежата."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleHostIsNonUnique": {
+    "message": "URL адресът не отговаряше на условията за предварително извличане, защото хостът му не е уникален (напр. IP адрес, който не е публично маршрутизиращ се, или име на хост, което не се контролира чрез системния регистър), а предварителното извличане трябва да се осъществи през прокси сървър."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleNonDefaultStoragePartition": {
+    "message": "URL адресът не отговаряше на условията за предварително извличане, защото използва дял от хранилището, различен от стандартния."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligiblePreloadingDisabled": {
+    "message": "Предварителното извличане не бе изпълнено, защото предварителното зареждане е деактивирано."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleSameSiteCrossOriginPrefetchRequiredProxy": {
+    "message": "URL адресът не отговаряше на условията за предварително извличане, защото стандартният контекст на мрежата не може да бъде конфигуриран така, че прокси сървърът за предварително извличане да се използва за заявки, подадени от същия сайт с цел предварително извличане от външен източник."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleSchemeIsNotHttps": {
+    "message": "URL адресът не отговаряше на условията за предварително извличане, защото схемата му е различна от https:."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleUserHasCookies": {
+    "message": "URL адресът не отговаряше на условията за предварително извличане, защото е от външен сайт, а потребителят има „бисквитки“ за съответния източник."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleUserHasServiceWorker": {
+    "message": "URL адресът не отговаряше на условията за предварително извличане, защото за съответния източник има регистриран service worker, който понастоящем не се поддържа."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotUsedCookiesChanged": {
+    "message": "Предварителното извличане не бе използвано, защото е извършено от външен сайт, а „бисквитките“ за този URL адрес са добавени, докато е било в ход, така че предварително извлеченият отговор вече не е актуален."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotUsedProbeFailed": {
+    "message": "Предварителното извличане бе блокирано от доставчика ви на интернет услуги или системния ви администратор."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchProxyNotAvailable": {
+    "message": "Възникна грешка в мрежата при опита за настройване на връзка с прокси сървъра за предварително извличане."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusActivatedDuringMainFrameNavigation": {
+    "message": "Предварително рендерираната страница бе активирана по време на навигиране в основната рамка на първоначалната страница."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusActivationFramePolicyNotCompatible": {
+    "message": "Предварителното рендериране не бе използвано, защото флаговете за тестова среда или правилата за разрешенията на първоначалната страница не бяха съвместими с тези на предварително рендерираната страница."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusActivationNavigationParameterMismatch": {
+    "message": "Предварителното рендериране не бе използвано, защото по време на активирането бяха изчислени различни параметри за навигация (напр. HTTP заглавки) от тези в първоначалната заявка за навигация при предварително рендериране."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusAudioOutputDeviceRequested": {
+    "message": "Предварително рендерираната страница поиска да извежда звук, което понастоящем не се поддържа."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusBatterySaverEnabled": {
+    "message": "Предварителното рендериране не бе изпълнено, защото потребителят е поискал браузърът да изразходва по-малко батерия."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusBlockedByClient": {
+    "message": "Зареждането на част от ресурсите бе блокирано."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusClientCertRequested": {
+    "message": "Навигацията при предварително рендериране изискваше сертификат за HTTP клиент."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusCrossSiteNavigationInInitialNavigation": {
+    "message": "Предварителното рендериране не бе успешно, защото бе насочено към URL адрес от друг сайт."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusCrossSiteNavigationInMainFrameNavigation": {
+    "message": "Зареждането на предварително рендерираната страница доведе до отваряне на URL адрес от друг сайт."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusCrossSiteRedirectInInitialNavigation": {
+    "message": "Навигацията при предварително рендериране не бе успешна, защото предварително рендерираният URL адрес доведе до пренасочване към URL адрес от друг сайт."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusCrossSiteRedirectInMainFrameNavigation": {
+    "message": "Зареждането на предварително рендерираната страница доведе до отваряне на URL адрес, който пренасочи към URL адрес от друг сайт."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusDataSaverEnabled": {
+    "message": "Предварителното рендериране не бе изпълнено, защото потребителят е поискал браузърът да използва по-малко данни."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusDownload": {
+    "message": "Предварително рендерираната страница опита да стартира изтегляне. Понастоящем това не се поддържа."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusFailToGetMemoryUsage": {
+    "message": "Предварителното рендериране не бе изпълнено, защото в браузъра възникна вътрешна грешка при опита за определяне на текущата използвана памет."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusHasEffectiveUrl": {
+    "message": "Първоначалната страница не може да бъде предварително рендерирана, тъй като действителният URL адрес за нея е различен от нормалния ѝ. (Например новият раздел в браузъра или хостваните приложения.)"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusInvalidSchemeNavigation": {
+    "message": "URL адресът не отговаряше на условията за предварително рендериране, защото схемата му е различна от http: или https:."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusInvalidSchemeRedirect": {
+    "message": "Навигацията при предварително рендериране не бе успешна, защото доведе до пренасочване към URL адрес, чиято схема не бе http: или https:."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusLoginAuthRequested": {
+    "message": "Навигацията при предварително рендериране изискваше удостоверяване с HTTP, което понастоящем не се поддържа."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusLowEndDevice": {
+    "message": "Предварителното рендериране не бе изпълнено, защото устройството няма достатъчно обща системна памет за целта."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMainFrameNavigation": {
+    "message": "Зареждането на предварително рендерираната страница доведе до отваряне на друг URL адрес, което понастоящем не се поддържа."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMaxNumOfRunningPrerendersExceeded": {
+    "message": "Предварителното рендериране не бе изпълнено, защото за страницата, поискала това, вече се изпълняват твърде много предварителни рендерирания. Премахнете другите спекулативни правила, за да имате възможност да изпълните допълнителни предварителни рендерирания."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMemoryLimitExceeded": {
+    "message": "Предварителното рендериране не бе изпълнено, защото браузърът надхвърли ограничението за паметта за този процес."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMemoryPressureAfterTriggered": {
+    "message": "Предварително рендерираната страница бе премахната, защото браузърът не разполагаше с достатъчно памет."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMemoryPressureOnTrigger": {
+    "message": "Предварителното рендериране не бе изпълнено, защото браузърът не разполагаше с достатъчно памет."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMixedContent": {
+    "message": "В предварително рендерираната страница имаше смесено съдържание."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMojoBinderPolicy": {
+    "message": "Предварително рендерираната страница използва забранен API на JavaScript, който понастоящем не се поддържа. (Вътрешен интерфейс на Mojo: {PH1}.)"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusNavigationBadHttpStatus": {
+    "message": "Предварителното рендериране не бе успешно поради HTTP отговор с код на състоянието, различен от 2xx."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusNavigationRequestBlockedByCsp": {
+    "message": "Навигацията при предварително рендериране бе блокирана от правило за сигурност на съдържанието."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusNavigationRequestNetworkError": {
+    "message": "По време на навигацията при предварително рендериране възникна грешка в мрежата."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusPreloadingDisabled": {
+    "message": "Предварителното рендериране не бе изпълнено, защото потребителят е деактивирал съответната функция в настройките на браузъра си."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusPrerenderingDisabledByDevTools": {
+    "message": "Предварителното рендериране не бе изпълнено, тъй като е деактивирано чрез DevTools."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusPrimaryMainFrameRendererProcessCrashed": {
+    "message": "Първоначалната страница претърпя срив."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusPrimaryMainFrameRendererProcessKilled": {
+    "message": "Първоначалната страница бе затворена."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusRendererProcessCrashed": {
+    "message": "Предварително рендерираната страница претърпя срив."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusRendererProcessKilled": {
+    "message": "Предварителното рендериране на страницата бе прекратено."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusResourceLoadBlockedByClient": {
+    "message": "Зареждането на част от ресурсите бе блокирано."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSameSiteCrossOriginNavigationNotOptInInInitialNavigation": {
+    "message": "Зареждането на предварително рендерираната страница доведе до отваряне на URL адрес от външен източник за същия сайт. Отговорът на местоназначението обаче не включваше подходящата заглавка Supports-Loading-Mode."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSameSiteCrossOriginNavigationNotOptInInMainFrameNavigation": {
+    "message": "Зареждането на предварително рендерираната страница доведе до отваряне на URL адрес от външен източник за същия сайт. Отговорът на местоназначението обаче не включваше подходящата заглавка Supports-Loading-Mode."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSameSiteCrossOriginRedirectNotOptInInInitialNavigation": {
+    "message": "Навигацията при предварително рендериране не бе успешна, защото предварително рендерираният URL адрес доведе до пренасочване към URL адрес от външен източник за същия сайт. Отговорът на местоназначението обаче не включваше подходящата заглавка Supports-Loading-Mode."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSameSiteCrossOriginRedirectNotOptInInMainFrameNavigation": {
+    "message": "Зареждането на предварително рендерираната страница доведе до отваряне на URL адрес, който пренасочи към URL адрес от външен източник за същия сайт. Отговорът на местоназначението обаче не включваше подходящата заглавка Supports-Loading-Mode."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSpeculationRuleRemoved": {
+    "message": "Неизвестно"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSslCertificateError": {
+    "message": "Предварителното рендериране не бе успешно поради невалиден SSL сертификат."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusTimeoutBackgrounded": {
+    "message": "Първоначалната страница бе преместена на заден план за дълъг период от време, затова предварително рендерираната страница бе отхвърлена."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusTriggerBackgrounded": {
+    "message": "Първоначалната страница бе преместена на заден план, затова предварително рендерираната страница бе отхвърлена."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusUaChangeRequiresReload": {
+    "message": "В навигацията при предварително рендериране възникна промяна на потребителския агент."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | statusFailure": {
+    "message": "Неуспех"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | statusNotTriggered": {
+    "message": "Не е задействано"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | statusPending": {
+    "message": "Изчаква се"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | statusReady": {
+    "message": "Готово"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | statusRunning": {
+    "message": "Изпълнява се"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | statusSuccess": {
+    "message": "Успех"
+  },
+  "panels/application/preloading/components/RuleSetGrid.ts | buttonClickToRevealInElementsPanel": {
+    "message": "Кликнете за показване в панела за елементи"
+  },
+  "panels/application/preloading/components/RuleSetGrid.ts | buttonClickToRevealInNetworkPanel": {
+    "message": "Кликнете за показване в панела за мрежата"
+  },
+  "panels/application/preloading/components/RuleSetGrid.ts | buttonRevealPreloadsAssociatedWithRuleSet": {
+    "message": "Показване на предварителните зареждания, свързани с този набор от правила"
+  },
+  "panels/application/preloading/components/RuleSetGrid.ts | errors": {
+    "message": "{errorCount,plural, =1{# грешка}other{# грешки}}"
+  },
+  "panels/application/preloading/components/RuleSetGrid.ts | ruleSet": {
+    "message": "Набор от правила"
+  },
+  "panels/application/preloading/components/RuleSetGrid.ts | status": {
+    "message": "Състояние"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | currentURL": {
+    "message": "Текущ URL адрес"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | detailsFailureReason": {
+    "message": "Причина за проблема"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | downgradedPrefetchUsed": {
+    "message": "Първоначалната страница се опита да рендерира предварително URL адреса на тази страница. Това не бе успешно, но полученият основен текст на отговора бе използван като предварително извличане."
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | learnMore": {
+    "message": "Научете повече"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | noPreloads": {
+    "message": "Първоначалната страница не опита да зареди предварително URL адреса на тази страница."
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | prefetchFailed": {
+    "message": "Първоначалната страница се опита да извлече предварително URL адреса на тази страница, но процесът не бе успешен, затова бе извършено пълно навигиране."
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | prefetchUsed": {
+    "message": "Тази страница бе извлечена предварително."
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | preloadedURLs": {
+    "message": "URL адреси, които се зареждат предварително от първоначалната страница"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | preloadingStatus": {
+    "message": "Състояние на предварителното зареждане"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | prerenderFailed": {
+    "message": "Първоначалната страница се опита да рендерира предварително URL адреса на тази страница, но процесът не бе успешен, затова бе извършено пълно навигиране."
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | prerenderUsed": {
+    "message": "Тази страница бе рендерирана предварително."
   },
   "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | breakpointHit": {
     "message": "достигната е точка на прекъсване"
@@ -4328,8 +4883,14 @@
   "panels/console/ConsolePinPane.ts | removeExpressionS": {
     "message": "Премахване на израза: {PH1}"
   },
+  "panels/console/ConsolePrompt.ts | allowPasting": {
+    "message": "разрешаване на поставянето"
+  },
   "panels/console/ConsolePrompt.ts | consolePrompt": {
     "message": "Команден ред на конзолата"
+  },
+  "panels/console/ConsolePrompt.ts | selfXssWarning": {
+    "message": "Предупреждение: Не поставяйте код, който не разбирате или не сте проверили, в конзолата на DevTools. Това може да даде възможност на хакерите да откраднат самоличността ви или да поемат контрол над компютъра ви. Моля, въведете „{PH1}“ по-долу, за да разрешите поставянето."
   },
   "panels/console/ConsoleSidebar.ts | dErrors": {
     "message": "{n,plural, =0{Няма грешки}=1{# грешка}other{# грешки}}"
@@ -4499,6 +5060,9 @@
   "panels/console/ConsoleViewMessage.ts | clearAllMessagesWithS": {
     "message": "Изчистване на всички съобщения с {PH1}"
   },
+  "panels/console/ConsoleViewMessage.ts | cndBreakpoint": {
+    "message": "Условна точка на прекъсване"
+  },
   "panels/console/ConsoleViewMessage.ts | console": {
     "message": "Конзола"
   },
@@ -4528,6 +5092,9 @@
   },
   "panels/console/ConsoleViewMessage.ts | interventionS": {
     "message": "[Intervention] {PH1}"
+  },
+  "panels/console/ConsoleViewMessage.ts | logpoint": {
+    "message": "Регистрационна точка"
   },
   "panels/console/ConsoleViewMessage.ts | repeatS": {
     "message": "{n,plural, =1{Повтаря се # път}other{Повтаря се # пъти}}"
@@ -4568,6 +5135,9 @@
   "panels/console/console-meta.ts | autocompleteFromHistory": {
     "message": "Автоматично довършване от историята"
   },
+  "panels/console/console-meta.ts | autocompleteOnEnter": {
+    "message": "Приемане на автоматичното довършване на предложението при натискане на Enter"
+  },
   "panels/console/console-meta.ts | clearConsole": {
     "message": "Изчистване на данните в конзолата"
   },
@@ -4575,7 +5145,7 @@
     "message": "Изчистване на историята на конзолата"
   },
   "panels/console/console-meta.ts | collapseConsoleTraceMessagesByDefault": {
-    "message": "Свиване на съобщенията от метода console.trace() по подразбиране"
+    "message": "Без автоматично разгъване на съобщенията от console.trace()"
   },
   "panels/console/console-meta.ts | console": {
     "message": "Конзола"
@@ -4585,6 +5155,9 @@
   },
   "panels/console/console-meta.ts | doNotAutocompleteFromHistory": {
     "message": "Без автоматично довършване от историята"
+  },
+  "panels/console/console-meta.ts | doNotAutocompleteOnEnter": {
+    "message": "Без приемане на автоматичното довършване на предложението при натискане на Enter"
   },
   "panels/console/console-meta.ts | doNotEagerlyEvaluateConsole": {
     "message": "Без незабавен анализ на текста в командния ред на конзолата"
@@ -4605,10 +5178,10 @@
     "message": "Незабавен анализ на текста в командния ред на конзолата"
   },
   "panels/console/console-meta.ts | evaluateTriggersUserActivation": {
-    "message": "Анализът задейства активиране от потребител"
+    "message": "Третиране на анализа на кода като потребителско действие"
   },
   "panels/console/console-meta.ts | expandConsoleTraceMessagesByDefault": {
-    "message": "Разгъване на съобщенията от метода console.trace() по подразбиране"
+    "message": "Автоматично разгъване на съобщенията от console.trace()"
   },
   "panels/console/console-meta.ts | groupSimilarMessagesInConsole": {
     "message": "Групиране на подобни съобщения в конзолата"
@@ -4712,8 +5285,14 @@
   "panels/coverage/CoverageListView.ts | usageVisualization": {
     "message": "Визуализация на употребата"
   },
+  "panels/coverage/CoverageView.ts | activationNoCapture": {
+    "message": "Информацията за покритието не бе записана, тъй като страницата е предварително рендерирана на заден план."
+  },
   "panels/coverage/CoverageView.ts | all": {
     "message": "Всички"
+  },
+  "panels/coverage/CoverageView.ts | bfcacheNoCapture": {
+    "message": "Информацията за покритието не бе записана, тъй като страницата е показана от кеша за назад/напред."
   },
   "panels/coverage/CoverageView.ts | chooseCoverageGranularityPer": {
     "message": "Изберете детайлност на данните за обхвата: опцията „На ниво функция“ използва по-малко ресурси, а „На ниво блок“ по-ресурсоемка."
@@ -4754,6 +5333,9 @@
   "panels/coverage/CoverageView.ts | perFunction": {
     "message": "На ниво функция"
   },
+  "panels/coverage/CoverageView.ts | reloadPrompt": {
+    "message": "Кликнете върху бутона {PH1}, за да презаредите страницата и да запишете обхвата."
+  },
   "panels/coverage/CoverageView.ts | sOfSSUsedSoFarSUnused": {
     "message": "Използвано досега: {PH1} от {PH2} ({PH3}%), неизползвано: {PH4}."
   },
@@ -4765,6 +5347,9 @@
   },
   "panels/coverage/coverage-meta.ts | instrumentCoverage": {
     "message": "Инструментация на обхвата"
+  },
+  "panels/coverage/coverage-meta.ts | reloadPage": {
+    "message": "Презареждане на страницата"
   },
   "panels/coverage/coverage-meta.ts | showCoverage": {
     "message": "Показване на инструмента за обхвата"
@@ -4886,6 +5471,9 @@
   "panels/css_overview/CSSOverviewSidebarPanel.ts | clearOverview": {
     "message": "Изчистване на общия преглед"
   },
+  "panels/css_overview/CSSOverviewSidebarPanel.ts | cssOverviewPanelSidebar": {
+    "message": "Странична лента за панела за общ преглед на CSS"
+  },
   "panels/css_overview/CSSOverviewUnusedDeclarations.ts | bottomAppliedToAStatically": {
     "message": "Bottom е приложено към статично позициониран елемент"
   },
@@ -4968,13 +5556,13 @@
     "message": "URL адрес"
   },
   "panels/developer_resources/DeveloperResourcesView.ts | enableLoadingThroughTarget": {
-    "message": "Активиране на зареждането чрез целта"
+    "message": "Зареждане чрез уебсайт"
   },
   "panels/developer_resources/DeveloperResourcesView.ts | enterTextToSearchTheUrlAndError": {
     "message": "Въведете текст за търсене в колоните с URL адреси и грешки"
   },
   "panels/developer_resources/DeveloperResourcesView.ts | loadHttpsDeveloperResources": {
-    "message": "Зареждане на HTTP(S) ресурсите за програмисти чрез проверяваната цел"
+    "message": "Зареждане на HTTP(S) ресурсите за програмисти чрез уебсайта, който проверявате, а не чрез DevTools"
   },
   "panels/developer_resources/DeveloperResourcesView.ts | resources": {
     "message": "{n,plural, =1{# ресурс}other{# ресурса}}"
@@ -4987,6 +5575,9 @@
   },
   "panels/developer_resources/developer_resources-meta.ts | showDeveloperResources": {
     "message": "Показване на ресурсите за програмисти"
+  },
+  "panels/elements/CSSRuleValidator.ts | fontVariationSettingsWarning": {
+    "message": "Стойността {PH2} за настройката {PH1} е извън поддържания диапазон [{PH3}, {PH4}] за семейството шрифтове {PH5}."
   },
   "panels/elements/CSSRuleValidator.ts | ruleViolatedByParentElementRuleFix": {
     "message": "Опитайте да зададете {TARGET_PARENT_ELEMENT_RULE} за свойството {EXISTING_PARENT_ELEMENT_RULE} на родителския елемент."
@@ -5068,9 +5659,6 @@
   },
   "panels/elements/ElementsPanel.ts | findByStringSelectorOrXpath": {
     "message": "Търсене по низ, селектор или XPath"
-  },
-  "panels/elements/ElementsPanel.ts | frame": {
-    "message": "Кадър"
   },
   "panels/elements/ElementsPanel.ts | hideComputedStylesSidebar": {
     "message": "Скриване на страничната лента за изчислени стилове"
@@ -5372,9 +5960,6 @@
   "panels/elements/StylePropertyTreeElement.ts | togglePropertyAndContinueEditing": {
     "message": "Превключване на свойството и продължаване с редактирането"
   },
-  "panels/elements/StylePropertyTreeElement.ts | valueForSettingSSIsOutsideThe": {
-    "message": "Стойността {PH2} за настройката {PH1} е извън поддържания диапазон [{PH3}, {PH4}] за семейството шрифтове {PH5}."
-  },
   "panels/elements/StylePropertyTreeElement.ts | viewComputedValue": {
     "message": "Преглед на изчислената стойност"
   },
@@ -5388,7 +5973,7 @@
     "message": "Копирано в буферната памет"
   },
   "panels/elements/StylesSidebarPane.ts | copyAllCSSChanges": {
-    "message": "Копиране на всички промени в CSS"
+    "message": "Копиране на промените в CSS"
   },
   "panels/elements/StylesSidebarPane.ts | cssPropertyName": {
     "message": "Име на свойството в CSS: {PH1}"
@@ -5432,6 +6017,9 @@
   "panels/elements/StylesSidebarPane.ts | pseudoSElement": {
     "message": "Псевдоелемент ::{PH1}"
   },
+  "panels/elements/StylesSidebarPane.ts | specificity": {
+    "message": "Конкретност: {PH1}"
+  },
   "panels/elements/StylesSidebarPane.ts | toggleRenderingEmulations": {
     "message": "Превключване на често срещаните емулации за рендериране"
   },
@@ -5454,6 +6042,12 @@
     "message": "Показване на значките"
   },
   "panels/elements/components/CSSHintDetailsView.ts | learnMore": {
+    "message": "Научете повече"
+  },
+  "panels/elements/components/CSSPropertyDocsView.ts | dontShow": {
+    "message": "Да не се показва"
+  },
+  "panels/elements/components/CSSPropertyDocsView.ts | learnMore": {
     "message": "Научете повече"
   },
   "panels/elements/components/ElementsBreadcrumbs.ts | breadcrumbs": {
@@ -5548,6 +6142,9 @@
   },
   "panels/elements/elements-meta.ts | selectAnElementInThePageTo": {
     "message": "Изберете елемент в страницата, за да го проверите"
+  },
+  "panels/elements/elements-meta.ts | showCSSDocumentationTooltip": {
+    "message": "Показване на подсказката за документацията за CSS"
   },
   "panels/elements/elements-meta.ts | showComputedStyles": {
     "message": "Показване на изчислените стилове"
@@ -5924,29 +6521,14 @@
   "panels/issues/AffectedSourcesView.ts | nSources": {
     "message": "{n,plural, =1{# източник}other{# източника}}"
   },
-  "panels/issues/AffectedTrustedWebActivityIssueDetailsView.ts | nResources": {
-    "message": "{n,plural, =1{# ресурс}other{# ресурса}}"
-  },
-  "panels/issues/AffectedTrustedWebActivityIssueDetailsView.ts | packageName": {
-    "message": "Име на пакета"
-  },
-  "panels/issues/AffectedTrustedWebActivityIssueDetailsView.ts | packageSignature": {
-    "message": "Подпис на пакета"
-  },
-  "panels/issues/AffectedTrustedWebActivityIssueDetailsView.ts | statusCode": {
-    "message": "Код на състоянието"
-  },
-  "panels/issues/AffectedTrustedWebActivityIssueDetailsView.ts | url": {
-    "message": "URL адрес"
+  "panels/issues/AffectedTrackingSitesView.ts | nTrackingSites": {
+    "message": "{n,plural, =1{1 потенциално проследяващ уебсайт}other{# потенциално проследяващи уебсайта}}"
   },
   "panels/issues/AttributionReportingIssueDetailsView.ts | element": {
     "message": "Елемент"
   },
   "panels/issues/AttributionReportingIssueDetailsView.ts | invalidHeaderValue": {
     "message": "Невалидна стойност на заглавката"
-  },
-  "panels/issues/AttributionReportingIssueDetailsView.ts | maximumConcurrentRegistrations": {
-    "message": "Максимален брой едновременни регистрации"
   },
   "panels/issues/AttributionReportingIssueDetailsView.ts | nViolations": {
     "message": "{n,plural, =1{# нарушение}other{# нарушения}}"
@@ -6157,9 +6739,6 @@
   },
   "panels/issues/IssuesPane.ts | samesiteCookie": {
     "message": "„Бисквитка“ SameSite"
-  },
-  "panels/issues/IssuesPane.ts | trustedWebActivity": {
-    "message": "Надеждна активност в мрежата"
   },
   "panels/issues/components/HideIssuesMenu.ts | tooltipTitle": {
     "message": "Скриване на проблемите"
@@ -6389,8 +6968,8 @@
   "panels/lighthouse/LighthouseController.ts | bestPractices": {
     "message": "Най-добри практики"
   },
-  "panels/lighthouse/LighthouseController.ts | canOnlyAuditHttphttpsPagesAnd": {
-    "message": "Могат да се проверяват само страници с HTTP/HTTPS и разширения за Chrome. Отворете друга страница, за да стартирате проверка."
+  "panels/lighthouse/LighthouseController.ts | canOnlyAuditHttphttpsPages": {
+    "message": "Могат да се проверяват само страници с HTTP или HTTPS. Отворете друга страница."
   },
   "panels/lighthouse/LighthouseController.ts | clearStorage": {
     "message": "Изчистване на хранилището"
@@ -6424,9 +7003,6 @@
   },
   "panels/lighthouse/LighthouseController.ts | javaScriptDisabled": {
     "message": "JavaScript е деактивиран. Трябва да го активирате, за да бъде проверена тази страница. За целта отворете менюто за команди и изпълнете командата за активиране на JavaScript."
-  },
-  "panels/lighthouse/LighthouseController.ts | legacyNavigation": {
-    "message": "Наследен режим на навигиране"
   },
   "panels/lighthouse/LighthouseController.ts | lighthouseMode": {
     "message": "Режим на Lighthouse"
@@ -6490,9 +7066,6 @@
   },
   "panels/lighthouse/LighthouseController.ts | timespanTooltip": {
     "message": "Режима за период от време анализира произволен времеви интервал, който обикновено съдържа потребителски взаимодействия."
-  },
-  "panels/lighthouse/LighthouseController.ts | useLegacyNavigation": {
-    "message": "Анализиране на страницата посредством класическата версия на Lighthouse, когато сте в режим на навигиране."
   },
   "panels/lighthouse/LighthouseController.ts | webSql": {
     "message": "Web SQL"
@@ -6860,8 +7433,8 @@
   "panels/mobile_throttling/NetworkPanelIndicator.ts | requestsMayBeBlocked": {
     "message": "Заявките може да бъдат блокирани"
   },
-  "panels/mobile_throttling/NetworkPanelIndicator.ts | requestsMayBeRewrittenByLocal": {
-    "message": "Заявките може да бъдат пренаписани от функцията за замяна с локални настройки"
+  "panels/mobile_throttling/NetworkPanelIndicator.ts | requestsMayBeOverridden": {
+    "message": "Заявките може да бъдат заменени локално"
   },
   "panels/mobile_throttling/NetworkThrottlingSelector.ts | custom": {
     "message": "Персонализирано"
@@ -6899,8 +7472,8 @@
   "panels/mobile_throttling/ThrottlingManager.ts | hardwareConcurrencyIsEnabled": {
     "message": "Активирана е заменяща настройка за капацитета за многозадачност на хардуера"
   },
-  "panels/mobile_throttling/ThrottlingManager.ts | hardwareConcurrencyValue": {
-    "message": "Стойност на navigator.hardwareConcurrency"
+  "panels/mobile_throttling/ThrottlingManager.ts | hardwareConcurrencySettingTooltip": {
+    "message": "Замяна на стойността, отчетена на страницата от navigator.hardwareConcurrency"
   },
   "panels/mobile_throttling/ThrottlingManager.ts | noThrottling": {
     "message": "Без ограничаване на мрежата"
@@ -7185,7 +7758,7 @@
     "message": "Инструмент за синтактичен анализ"
   },
   "panels/network/NetworkDataGridNode.ts | pending": {
-    "message": "Изчакващо"
+    "message": "Изчаква се"
   },
   "panels/network/NetworkDataGridNode.ts | pendingq": {
     "message": "(изчаква)"
@@ -7204,6 +7777,15 @@
   },
   "panels/network/NetworkDataGridNode.ts | redirect": {
     "message": "Пренасочване"
+  },
+  "panels/network/NetworkDataGridNode.ts | requestContentHeadersOverridden": {
+    "message": "Съдържанието и заглавките на заявките са заменени"
+  },
+  "panels/network/NetworkDataGridNode.ts | requestContentOverridden": {
+    "message": "Съдържанието на заявката е заменено"
+  },
+  "panels/network/NetworkDataGridNode.ts | requestHeadersOverridden": {
+    "message": "Заглавките на заявките са заменени"
   },
   "panels/network/NetworkDataGridNode.ts | sPreflight": {
     "message": "{PH1} + предстартов процес"
@@ -7305,10 +7887,10 @@
     "message": "Време"
   },
   "panels/network/NetworkItemView.ts | trustTokenOperationDetails": {
-    "message": "Подробности за операциите с означението за доверие"
+    "message": "Подробности за операциите с токена за частно състояние"
   },
   "panels/network/NetworkItemView.ts | trustTokens": {
-    "message": "Означения за доверие"
+    "message": "Токени за частно състояние"
   },
   "panels/network/NetworkItemView.ts | websocketMessages": {
     "message": "Съобщения от WebSocket"
@@ -7327,6 +7909,9 @@
   },
   "panels/network/NetworkLogView.ts | blockedRequests": {
     "message": "Блокирани заявки"
+  },
+  "panels/network/NetworkLogView.ts | chromeExtensions": {
+    "message": "Скриване на URL адресите на разширенията"
   },
   "panels/network/NetworkLogView.ts | clearBrowserCache": {
     "message": "Изчистване на кеша на браузъра"
@@ -7398,7 +7983,10 @@
     "message": "Край: {PH1}"
   },
   "panels/network/NetworkLogView.ts | hasBlockedCookies": {
-    "message": "Има блокирани „бисквитки“"
+    "message": "Блокирани „бисквитки“ за отговор"
+  },
+  "panels/network/NetworkLogView.ts | hideChromeExtension": {
+    "message": "Скриване на заявките към URL адреси от типа chrome-extension://"
   },
   "panels/network/NetworkLogView.ts | hideDataUrls": {
     "message": "Скриване на URL адресите за данни"
@@ -7424,11 +8012,11 @@
   "panels/network/NetworkLogView.ts | onlyShowBlockedRequests": {
     "message": "Показване само на блокираните заявки"
   },
-  "panels/network/NetworkLogView.ts | onlyShowRequestsWithBlocked": {
+  "panels/network/NetworkLogView.ts | onlyShowRequestsWithBlockedCookies": {
     "message": "Показване само на заявките с блокирани „бисквитки“ за отговор"
   },
   "panels/network/NetworkLogView.ts | onlyShowThirdPartyRequests": {
-    "message": "Показва само заявките, чиито произход е различен от този на страницата"
+    "message": "Показване само на заявките, чиито произход е различен от този на страницата"
   },
   "panels/network/NetworkLogView.ts | overrideHeaders": {
     "message": "Замяна на заглавки"
@@ -7590,13 +8178,10 @@
     "message": "Няма персонализирани заглавки"
   },
   "panels/network/NetworkPanel.ts | captureScreenshots": {
-    "message": "Създаване на екранни снимки"
+    "message": "Екранни снимки"
   },
   "panels/network/NetworkPanel.ts | captureScreenshotsWhenLoadingA": {
     "message": "Правене на екранни снимки при зареждане на страница"
-  },
-  "panels/network/NetworkPanel.ts | clear": {
-    "message": "Изчистване"
   },
   "panels/network/NetworkPanel.ts | close": {
     "message": "Затваряне"
@@ -7650,7 +8235,7 @@
     "message": "Показване на още информация в редовете за заявките"
   },
   "panels/network/NetworkPanel.ts | showOverview": {
-    "message": "Показване на общ преглед"
+    "message": "Общ преглед"
   },
   "panels/network/NetworkPanel.ts | showOverviewOfNetworkRequests": {
     "message": "Общ преглед на заявките в мрежата"
@@ -7659,7 +8244,7 @@
     "message": "Ограничаване на потока на данни"
   },
   "panels/network/NetworkPanel.ts | useLargeRequestRows": {
-    "message": "Използване на големи редове за заявките"
+    "message": "Големи редове за заявките"
   },
   "panels/network/NetworkSearchScope.ts | url": {
     "message": "URL адрес"
@@ -7748,9 +8333,6 @@
   "panels/network/RequestHeadersView.ts | general": {
     "message": "Общи"
   },
-  "panels/network/RequestHeadersView.ts | headerOverrides": {
-    "message": "Замени на заглавките"
-  },
   "panels/network/RequestHeadersView.ts | learnMore": {
     "message": "Научете повече"
   },
@@ -7794,7 +8376,7 @@
     "message": "Код на състоянието"
   },
   "panels/network/RequestHeadersView.ts | thisDocumentWasBlockedFrom": {
-    "message": "Зареждането на този документ бе блокирано в(ъв) iframe с атрибут sandbox, защото документът посочва правило за изолиране на родителския елемент от външни източници."
+    "message": "Зареждането на документа бе блокирано в изскачащ прозорец, отворен от вложена рамка в тестова среда, защото документът посочва правило за изолиране на родителския елемент от външни източници."
   },
   "panels/network/RequestHeadersView.ts | toEmbedThisFrameInYourDocument": {
     "message": "За да вградите тази рамка в документа си, правилото относно вграждането на съдържание от външни източници трябва да бъде наложено в отговора чрез посочване на следната заглавка за отговор:"
@@ -8198,9 +8780,6 @@
   "panels/network/components/RequestHeadersView.ts | general": {
     "message": "Общи"
   },
-  "panels/network/components/RequestHeadersView.ts | headerOverrides": {
-    "message": "Замени на заглавките"
-  },
   "panels/network/components/RequestHeadersView.ts | raw": {
     "message": "Необработен вид"
   },
@@ -8264,6 +8843,9 @@
   "panels/network/components/RequestTrustTokensView.ts | success": {
     "message": "Успех"
   },
+  "panels/network/components/RequestTrustTokensView.ts | theKeysForThisPSTIssuerAreUnavailable": {
+    "message": "Ключовете за този издател на означения за частно състояние (PST) не са налице. Може да се наложи издателят да бъде регистриран чрез съответния процес на Chrome."
+  },
   "panels/network/components/RequestTrustTokensView.ts | theOperationFailedForAnUnknown": {
     "message": "Операцията не бе успешна по неизвестна причина."
   },
@@ -8292,7 +8874,7 @@
     "message": "Изберете тази опция само ако даден уебсайт, включващ този ресурс, не представлява риск за сигурността."
   },
   "panels/network/components/ResponseHeaderSection.ts | thisDocumentWasBlockedFrom": {
-    "message": "Зареждането на този документ бе блокирано в(ъв) iframe с атрибут sandbox, защото документът посочва правило за изолиране на родителския елемент от външни източници."
+    "message": "Зареждането на документа бе блокирано в изскачащ прозорец, отворен от вложена рамка в тестова среда, защото документът посочва правило за изолиране на родителския елемент от външни източници."
   },
   "panels/network/components/ResponseHeaderSection.ts | toEmbedThisFrameInYourDocument": {
     "message": "За да вградите тази рамка в документа си, правилото относно вграждането на съдържание от външни източници трябва да бъде наложено в отговора чрез посочване на следната заглавка за отговор:"
@@ -8308,6 +8890,9 @@
   },
   "panels/network/components/WebBundleInfoView.ts | bundledResource": {
     "message": "Ресурс в пакет"
+  },
+  "panels/network/network-meta.ts | clear": {
+    "message": "Изчистване на регистрационния файл за мрежата"
   },
   "panels/network/network-meta.ts | colorCode": {
     "message": "цветово кодиране"
@@ -9002,6 +9587,21 @@
   "panels/profiler/ProfilesPanel.ts | clearAllProfiles": {
     "message": "Изчистване на всички профили"
   },
+  "panels/profiler/ProfilesPanel.ts | deprecationWarnMsg": {
+    "message": "Този панел ще бъде оттеглен в предстоящата версия. Използвайте панела „Ефективност“, за да записвате профили на процесора при работа с JavaScript."
+  },
+  "panels/profiler/ProfilesPanel.ts | enableThisPanelTemporarily": {
+    "message": "Временно активиране на този панел"
+  },
+  "panels/profiler/ProfilesPanel.ts | feedback": {
+    "message": "Отзиви"
+  },
+  "panels/profiler/ProfilesPanel.ts | goToPerformancePanel": {
+    "message": "Към панела „Ефективност“"
+  },
+  "panels/profiler/ProfilesPanel.ts | learnMore": {
+    "message": "Научете повече"
+  },
   "panels/profiler/ProfilesPanel.ts | load": {
     "message": "Зареждане…"
   },
@@ -9041,14 +9641,29 @@
   "panels/profiler/profiler-meta.ts | stopRecordingHeapAllocations": {
     "message": "Спиране на записването на разпределената памет"
   },
+  "panels/protocol_monitor/ProtocolMonitor.ts | CDPCommandEditorHidden": {
+    "message": "Редакторът за команди за CDP е скрит"
+  },
+  "panels/protocol_monitor/ProtocolMonitor.ts | CDPCommandEditorShown": {
+    "message": "Редакторът за команди за CDP е показан"
+  },
   "panels/protocol_monitor/ProtocolMonitor.ts | clearAll": {
     "message": "Изчистване на всички"
   },
   "panels/protocol_monitor/ProtocolMonitor.ts | documentation": {
     "message": "Документация"
   },
+  "panels/protocol_monitor/ProtocolMonitor.ts | editAndResend": {
+    "message": "Редактиране и повторно изпращане"
+  },
+  "panels/protocol_monitor/ProtocolMonitor.ts | elapsedTime": {
+    "message": "Изминало време"
+  },
   "panels/protocol_monitor/ProtocolMonitor.ts | filter": {
     "message": "Филтър"
+  },
+  "panels/protocol_monitor/ProtocolMonitor.ts | hideCDPCommandEditor": {
+    "message": "Скриване на редактора за команди за CDP"
   },
   "panels/protocol_monitor/ProtocolMonitor.ts | method": {
     "message": "Метод"
@@ -9083,6 +9698,9 @@
   "panels/protocol_monitor/ProtocolMonitor.ts | session": {
     "message": "Сесия"
   },
+  "panels/protocol_monitor/ProtocolMonitor.ts | showCDPCommandEditor": {
+    "message": "Показване на редактора за команди за CDP"
+  },
   "panels/protocol_monitor/ProtocolMonitor.ts | target": {
     "message": "Цел"
   },
@@ -9092,11 +9710,377 @@
   "panels/protocol_monitor/ProtocolMonitor.ts | type": {
     "message": "Тип"
   },
+  "panels/protocol_monitor/components/JSONEditor.ts | addParameter": {
+    "message": "Добавяне на параметър"
+  },
+  "panels/protocol_monitor/components/JSONEditor.ts | deleteParameter": {
+    "message": "Изтриване на параметъра"
+  },
+  "panels/protocol_monitor/components/JSONEditor.ts | resetDefaultValue": {
+    "message": "Възстановяване на стандартната стойност"
+  },
+  "panels/protocol_monitor/components/Toolbar.ts | copyCommand": {
+    "message": "Копиране на командата"
+  },
   "panels/protocol_monitor/protocol_monitor-meta.ts | protocolMonitor": {
     "message": "Инструмент за наблюдение на протокола"
   },
   "panels/protocol_monitor/protocol_monitor-meta.ts | showProtocolMonitor": {
     "message": "Показване на инструмента за наблюдение на протокола"
+  },
+  "panels/recorder/RecorderController.ts | continueReplay": {
+    "message": "Напред"
+  },
+  "panels/recorder/RecorderController.ts | copyShortcut": {
+    "message": "Копиране на записа или избраната стъпка"
+  },
+  "panels/recorder/RecorderController.ts | createRecording": {
+    "message": "Създаване на нов запис"
+  },
+  "panels/recorder/RecorderController.ts | deleteRecording": {
+    "message": "Изтриване на записа"
+  },
+  "panels/recorder/RecorderController.ts | export": {
+    "message": "Експортиране"
+  },
+  "panels/recorder/RecorderController.ts | exportRecording": {
+    "message": "Експортиране"
+  },
+  "panels/recorder/RecorderController.ts | exportViaExtensions": {
+    "message": "Експортиране чрез разширения"
+  },
+  "panels/recorder/RecorderController.ts | getExtensions": {
+    "message": "Изтегляне на разширения…"
+  },
+  "panels/recorder/RecorderController.ts | importRecording": {
+    "message": "Импортиране на запис"
+  },
+  "panels/recorder/RecorderController.ts | replayRecording": {
+    "message": "Повторно пускане на записа"
+  },
+  "panels/recorder/RecorderController.ts | sendFeedback": {
+    "message": "Изпращане на отзиви"
+  },
+  "panels/recorder/RecorderController.ts | startStopRecording": {
+    "message": "Стартиране/спиране на записването"
+  },
+  "panels/recorder/RecorderController.ts | stepOverReplay": {
+    "message": "Изпълняване на една стъпка"
+  },
+  "panels/recorder/RecorderController.ts | toggleCode": {
+    "message": "Превключване на прегледа на кода"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | cancelRecording": {
+    "message": "Анулиране на записа"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | createRecording": {
+    "message": "Създаване на нов запис"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | includeNecessarySelectors": {
+    "message": "Трябва да изберете CSS, Pierce или XPath като една от опциите. Гарантирано е записването само на тези селектори, тъй като селекторите на ARIA и текстовите селектори може да не са уникални."
+  },
+  "panels/recorder/components/CreateRecordingView.ts | recordingName": {
+    "message": "Име на записа"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | recordingNameIsRequired": {
+    "message": "Въведете име на записа"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorAttribute": {
+    "message": "Атрибут за селектор"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorTypeARIA": {
+    "message": "ARIA"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorTypeCSS": {
+    "message": "CSS"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorTypePierce": {
+    "message": "Pierce"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorTypeText": {
+    "message": "Текст"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorTypeXPath": {
+    "message": "XPath"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorTypes": {
+    "message": "Типове селектори, които да бъдат записани"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | startRecording": {
+    "message": "Стартиране на запис"
+  },
+  "panels/recorder/components/ExtensionView.ts | closeView": {
+    "message": "Затваряне"
+  },
+  "panels/recorder/components/ExtensionView.ts | extension": {
+    "message": "Съдържание, предоставено от разширение на браузъра"
+  },
+  "panels/recorder/components/RecordingListView.ts | createRecording": {
+    "message": "Създаване на нов запис"
+  },
+  "panels/recorder/components/RecordingListView.ts | deleteRecording": {
+    "message": "Изтриване на записа"
+  },
+  "panels/recorder/components/RecordingListView.ts | openRecording": {
+    "message": "Отваряне на записа"
+  },
+  "panels/recorder/components/RecordingListView.ts | playRecording": {
+    "message": "Пускане на записа"
+  },
+  "panels/recorder/components/RecordingListView.ts | savedRecordings": {
+    "message": "Запазени записи"
+  },
+  "panels/recorder/components/RecordingView.ts | addAssertion": {
+    "message": "Добавяне на потвърждение"
+  },
+  "panels/recorder/components/RecordingView.ts | cancelReplay": {
+    "message": "Анулиране на повторното пускане"
+  },
+  "panels/recorder/components/RecordingView.ts | default": {
+    "message": "По подразбиране"
+  },
+  "panels/recorder/components/RecordingView.ts | desktop": {
+    "message": "Компютър"
+  },
+  "panels/recorder/components/RecordingView.ts | download": {
+    "message": "Изтегляне: {value}"
+  },
+  "panels/recorder/components/RecordingView.ts | editReplaySettings": {
+    "message": "Редактиране на настройките за повторно пускане"
+  },
+  "panels/recorder/components/RecordingView.ts | editTitle": {
+    "message": "Редактиране на заглавието"
+  },
+  "panels/recorder/components/RecordingView.ts | endRecording": {
+    "message": "Край на записа"
+  },
+  "panels/recorder/components/RecordingView.ts | environment": {
+    "message": "Среда"
+  },
+  "panels/recorder/components/RecordingView.ts | hideCode": {
+    "message": "Скриване на кода"
+  },
+  "panels/recorder/components/RecordingView.ts | latency": {
+    "message": "Забавяне: {value} мсек"
+  },
+  "panels/recorder/components/RecordingView.ts | mobile": {
+    "message": "Мобилно устройство"
+  },
+  "panels/recorder/components/RecordingView.ts | network": {
+    "message": "Мрежа"
+  },
+  "panels/recorder/components/RecordingView.ts | performancePanel": {
+    "message": "Панел за ефективността"
+  },
+  "panels/recorder/components/RecordingView.ts | recording": {
+    "message": "Записва се…"
+  },
+  "panels/recorder/components/RecordingView.ts | recordingIsBeingStopped": {
+    "message": "Записването спира…"
+  },
+  "panels/recorder/components/RecordingView.ts | replaySettings": {
+    "message": "Настройки за повторно пускане"
+  },
+  "panels/recorder/components/RecordingView.ts | requiredTitleError": {
+    "message": "Въведете заглавие"
+  },
+  "panels/recorder/components/RecordingView.ts | screenshotForSection": {
+    "message": "Екранна снимка за тази секция"
+  },
+  "panels/recorder/components/RecordingView.ts | showCode": {
+    "message": "Показване на кода"
+  },
+  "panels/recorder/components/RecordingView.ts | timeout": {
+    "message": "Време за изчакване: {value} мсек"
+  },
+  "panels/recorder/components/RecordingView.ts | timeoutExplanation": {
+    "message": "Настройката за времето за изчакване (в милисекунди) се прилага за всяко действие при повторно възпроизвеждане на записа. Ако например елемент на DOM, идентифициран чрез CSS селектор, не се покаже на страницата в рамките на посоченото време за изчакване, повторното възпроизвеждане няма да бъде успешно поради грешка."
+  },
+  "panels/recorder/components/RecordingView.ts | timeoutLabel": {
+    "message": "Време за изчакване"
+  },
+  "panels/recorder/components/RecordingView.ts | upload": {
+    "message": "Качване: {value}"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplayExtremelySlowButtonLabel": {
+    "message": "Повторно пускане при изключително ниска скорост"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplayExtremelySlowItemLabel": {
+    "message": "Изключително бавно"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplayNormalButtonLabel": {
+    "message": "Повторно пускане"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplayNormalItemLabel": {
+    "message": "Нормално (по подразбиране)"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplaySlowButtonLabel": {
+    "message": "Повторно пускане при ниска скорост"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplaySlowItemLabel": {
+    "message": "Бавно"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplayVerySlowButtonLabel": {
+    "message": "Повторно пускане при много ниска скорост"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplayVerySlowItemLabel": {
+    "message": "Много бавно"
+  },
+  "panels/recorder/components/ReplayButton.ts | extensionGroup": {
+    "message": "Разширения"
+  },
+  "panels/recorder/components/ReplayButton.ts | speedGroup": {
+    "message": "Скорост"
+  },
+  "panels/recorder/components/StartView.ts | createRecording": {
+    "message": "Създаване на нов запис"
+  },
+  "panels/recorder/components/StartView.ts | header": {
+    "message": "Измерване на ефективността за целия път на потребителя"
+  },
+  "panels/recorder/components/StartView.ts | quickStart": {
+    "message": "Бърз старт: Запознайте се с новия панел „Рекордер“ в DevTools"
+  },
+  "panels/recorder/components/StartView.ts | step1": {
+    "message": "Записване на често използван път на потребителя за уебсайта или приложението ви"
+  },
+  "panels/recorder/components/StartView.ts | step2": {
+    "message": "Пуснете отново записа, за да проверите дали потокът работи"
+  },
+  "panels/recorder/components/StartView.ts | step3": {
+    "message": "Генериране на подробно трасиране на ефективността или експортиране на скрипт на Puppeteer с цел тестване"
+  },
+  "panels/recorder/components/StepEditor.ts | addAttribute": {
+    "message": "Добавяне на {attributeName}"
+  },
+  "panels/recorder/components/StepEditor.ts | addFrameIndex": {
+    "message": "Добавяне на индекс на рамката в йерархията на рамките"
+  },
+  "panels/recorder/components/StepEditor.ts | addSelector": {
+    "message": "Добавяне на селектор"
+  },
+  "panels/recorder/components/StepEditor.ts | addSelectorPart": {
+    "message": "Добавяне на част от селектор"
+  },
+  "panels/recorder/components/StepEditor.ts | deleteRow": {
+    "message": "Изтриване на реда"
+  },
+  "panels/recorder/components/StepEditor.ts | notSaved": {
+    "message": "Неуспешно запазване: {error}"
+  },
+  "panels/recorder/components/StepEditor.ts | removeFrameIndex": {
+    "message": "Премахване на индекса на рамката"
+  },
+  "panels/recorder/components/StepEditor.ts | removeSelector": {
+    "message": "Премахване на селектор"
+  },
+  "panels/recorder/components/StepEditor.ts | removeSelectorPart": {
+    "message": "Премахване на част от селектор"
+  },
+  "panels/recorder/components/StepEditor.ts | selectorPicker": {
+    "message": "Изберете елемент в страницата, за да актуализирате селекторите"
+  },
+  "panels/recorder/components/StepEditor.ts | unknownActionType": {
+    "message": "Неизвестен тип действие."
+  },
+  "panels/recorder/components/StepView.ts | addBreakpoint": {
+    "message": "Добавяне на точка на прекъсване"
+  },
+  "panels/recorder/components/StepView.ts | addStepAfter": {
+    "message": "Добавяне на стъпка след текущата"
+  },
+  "panels/recorder/components/StepView.ts | addStepBefore": {
+    "message": "Добавяне на стъпка пред текущата"
+  },
+  "panels/recorder/components/StepView.ts | breakpoints": {
+    "message": "Точки на прекъсване"
+  },
+  "panels/recorder/components/StepView.ts | changeStepTitle": {
+    "message": "Промяна"
+  },
+  "panels/recorder/components/StepView.ts | clickStepTitle": {
+    "message": "Кликване"
+  },
+  "panels/recorder/components/StepView.ts | closeStepTitle": {
+    "message": "Затваряне"
+  },
+  "panels/recorder/components/StepView.ts | copyAs": {
+    "message": "Копиране като"
+  },
+  "panels/recorder/components/StepView.ts | customStepTitle": {
+    "message": "Персонализирана стъпка"
+  },
+  "panels/recorder/components/StepView.ts | doubleClickStepTitle": {
+    "message": "Двукратно кликване"
+  },
+  "panels/recorder/components/StepView.ts | elementRoleButton": {
+    "message": "Бутон"
+  },
+  "panels/recorder/components/StepView.ts | elementRoleFallback": {
+    "message": "Елемент"
+  },
+  "panels/recorder/components/StepView.ts | elementRoleInput": {
+    "message": "Входящи данни"
+  },
+  "panels/recorder/components/StepView.ts | emulateNetworkConditionsStepTitle": {
+    "message": "Емулиране на мрежовите условия"
+  },
+  "panels/recorder/components/StepView.ts | hoverStepTitle": {
+    "message": "Задържане на курсора на мишката"
+  },
+  "panels/recorder/components/StepView.ts | keyDownStepTitle": {
+    "message": "Натиснат клавиш"
+  },
+  "panels/recorder/components/StepView.ts | keyUpStepTitle": {
+    "message": "Освободен клавиш"
+  },
+  "panels/recorder/components/StepView.ts | navigateStepTitle": {
+    "message": "Навигация"
+  },
+  "panels/recorder/components/StepView.ts | openStepActions": {
+    "message": "Отваряне на действията за стъпката"
+  },
+  "panels/recorder/components/StepView.ts | removeBreakpoint": {
+    "message": "Премахване на точката на прекъсване"
+  },
+  "panels/recorder/components/StepView.ts | removeStep": {
+    "message": "Премахване на стъпката"
+  },
+  "panels/recorder/components/StepView.ts | scrollStepTitle": {
+    "message": "Превъртане"
+  },
+  "panels/recorder/components/StepView.ts | setViewportClickTitle": {
+    "message": "Задаване на прозоречния изглед"
+  },
+  "panels/recorder/components/StepView.ts | stepManagement": {
+    "message": "Управление на стъпките"
+  },
+  "panels/recorder/components/StepView.ts | waitForElementStepTitle": {
+    "message": "Изчакване на елемента"
+  },
+  "panels/recorder/components/StepView.ts | waitForExpressionStepTitle": {
+    "message": "Изчакване на израза"
+  },
+  "panels/recorder/models/RecorderSettings.ts | defaultRecordingName": {
+    "message": "Запис ({DATE} в {TIME})"
+  },
+  "panels/recorder/recorder-meta.ts | createRecording": {
+    "message": "Създаване на нов запис"
+  },
+  "panels/recorder/recorder-meta.ts | recorder": {
+    "message": "Рекордер"
+  },
+  "panels/recorder/recorder-meta.ts | replayRecording": {
+    "message": "Повторно пускане на записа"
+  },
+  "panels/recorder/recorder-meta.ts | showRecorder": {
+    "message": "Показване на рекордера"
+  },
+  "panels/recorder/recorder-meta.ts | startStopRecording": {
+    "message": "Стартиране/спиране на записването"
+  },
+  "panels/recorder/recorder-meta.ts | toggleCode": {
+    "message": "Превключване на прегледа на кода"
   },
   "panels/screencast/ScreencastApp.ts | toggleScreencast": {
     "message": "Превключване на функцията за скрийнкаст"
@@ -9726,10 +10710,7 @@
     "message": "Добавяне на образец..."
   },
   "panels/settings/FrameworkIgnoreListSettingsTab.ts | automaticallyIgnoreListKnownThirdPartyScripts": {
-    "message": "Автоматично добавяне на познатите скриптове на трети страни към списъка за пренебрегване"
-  },
-  "panels/settings/FrameworkIgnoreListSettingsTab.ts | automaticallyIgnoreListKnownThirdPartyScriptsTooltip": {
-    "message": "Добавяне на източниците от полето x_google_ignoreList на картите на изходния код към списъка за пренебрегване"
+    "message": "Известни скриптове на трети страни от картите на изходния код"
   },
   "panels/settings/FrameworkIgnoreListSettingsTab.ts | customExclusionRules": {
     "message": "Персонализирани правила за изключване:"
@@ -9750,13 +10731,13 @@
     "message": "Общи правила за изключване:"
   },
   "panels/settings/FrameworkIgnoreListSettingsTab.ts | ignoreListContentScripts": {
-    "message": "Добавяне на скриптове за съдържание към списъка за пренебрегване"
-  },
-  "panels/settings/FrameworkIgnoreListSettingsTab.ts | ignoreListContentScriptsExtension": {
-    "message": "Добавяне на скриптове за съдържание към списъка за пренебрегване (скриптове на разширения в страницата)"
+    "message": "Скриптове за съдържание, вмъкнати от разширения"
   },
   "panels/settings/FrameworkIgnoreListSettingsTab.ts | ignoreScriptsWhoseNamesMatchS": {
     "message": "Пренебрегване на скриптовете, чиито имена съответстват на {PH1}"
+  },
+  "panels/settings/FrameworkIgnoreListSettingsTab.ts | learnMore": {
+    "message": "Научете повече"
   },
   "panels/settings/FrameworkIgnoreListSettingsTab.ts | pattern": {
     "message": "Добавяне на образец"
@@ -9914,8 +10895,8 @@
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | architecturePlaceholder": {
     "message": "Архитектура (напр. x86)"
   },
-  "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandDeleteAriaLabel": {
-    "message": "Изтриване на {PH1}"
+  "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandFullVersionListDelete": {
+    "message": "Изтриване на марката от списъка на пълната версия"
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandName": {
     "message": "Марка"
@@ -9926,14 +10907,14 @@
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandProperties": {
     "message": "Свойства на потребителския агент"
   },
+  "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandUserAgentDelete": {
+    "message": "Изтриване на марката от секцията на потребителския агент"
+  },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandVersionAriaLabel": {
     "message": "Версия {PH1}"
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandVersionPlaceholder": {
     "message": "Версия (напр. 87.0.4280.88)"
-  },
-  "panels/settings/emulation/components/UserAgentClientHintsForm.ts | deleteTooltip": {
-    "message": "Изтриване"
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | deletedBrand": {
     "message": "Изтрит е ред с марки"
@@ -9952,6 +10933,9 @@
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | fullVersionList": {
     "message": "Списък на пълните версии (Sec-CH-UA-Full-Version-List)"
+  },
+  "panels/settings/emulation/components/UserAgentClientHintsForm.ts | learnMore": {
+    "message": "Научете повече"
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | mobileCheckboxLabel": {
     "message": "Мобилно устройство"
@@ -9981,7 +10965,7 @@
     "message": "Актуализиране"
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | userAgentClientHintsInfo": {
-    "message": "Подсказките за потребителския агент са алтернатива на съответния низ и служат за идентифициране на браузъра и устройството по по-структуриран начин, който е по-подходящ от гледна точка на поверителността. Кликнете върху бутона, за да научите повече."
+    "message": "Подсказките за потребителския агент са алтернатива на съответния низ и служат за идентифициране на браузъра и устройството по по-структуриран начин, който е по-подходящ от гледна точка на поверителността."
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | useragent": {
     "message": "Потребителски агент (Sec-CH-UA)"
@@ -10051,6 +11035,9 @@
   },
   "panels/sources/BreakpointEditDialog.ts | breakpointType": {
     "message": "Тип точка на прекъсване"
+  },
+  "panels/sources/BreakpointEditDialog.ts | closeDialog": {
+    "message": "Затваряне на диалоговия прозорец за редактиране и запазване на промените"
   },
   "panels/sources/BreakpointEditDialog.ts | conditionalBreakpoint": {
     "message": "Условна точка на прекъсване"
@@ -10205,6 +11192,9 @@
   "panels/sources/DebuggerPlugin.ts | debugInfoNotFound": {
     "message": "Зареждането на информацията за отстраняване на грешки за {PH1} не бе успешно."
   },
+  "panels/sources/DebuggerPlugin.ts | debuggingPowerReduced": {
+    "message": "Инструментариумът DevTools не може да показва упълномощените източници, но можете да отстраните грешките във внедрения код."
+  },
   "panels/sources/DebuggerPlugin.ts | disableBreakpoint": {
     "message": "{n,plural, =1{Деактивиране на точката на прекъсване}other{Деактивиране на всички точки на прекъсване в реда}}"
   },
@@ -10214,17 +11204,20 @@
   "panels/sources/DebuggerPlugin.ts | enableBreakpoint": {
     "message": "{n,plural, =1{Активиране на точка на прекъсване}other{Активиране на всички точки на прекъсване в реда}}"
   },
+  "panels/sources/DebuggerPlugin.ts | errorLoading": {
+    "message": "Грешка при зареждането на URL адреса {PH1}: {PH2}"
+  },
+  "panels/sources/DebuggerPlugin.ts | ignoreContentScripts": {
+    "message": "Пренебрегване на скриптовете на разширенията"
+  },
+  "panels/sources/DebuggerPlugin.ts | ignoreScript": {
+    "message": "Пренебрегване на този файл"
+  },
   "panels/sources/DebuggerPlugin.ts | neverPauseHere": {
     "message": "Без пауза тук"
   },
-  "panels/sources/DebuggerPlugin.ts | prettyprint": {
-    "message": "Стилово оформяне"
-  },
-  "panels/sources/DebuggerPlugin.ts | prettyprintThisMinifiedFile": {
-    "message": "Да се извърши ли стилово оформяне на този минимизиран файл?"
-  },
-  "panels/sources/DebuggerPlugin.ts | prettyprintingWillFormatThisFile": {
-    "message": "При стилово оформяне този файл ще бъде форматиран в нов раздел, където можете да продължите отстраняването на грешки. Можете също да извършите стилово оформяне на този файл, като кликнете върху бутона {PH1} в долната част на лентата на състоянието."
+  "panels/sources/DebuggerPlugin.ts | reloadForSourceMap": {
+    "message": "За повторно активиране трябва да се уверите, че файлът не е в списъка за пренебрегване, след което да презаредите."
   },
   "panels/sources/DebuggerPlugin.ts | removeBreakpoint": {
     "message": "{n,plural, =1{Премахване на точката на прекъсване}other{Премахване на всички точки на прекъсване в реда}}"
@@ -10232,11 +11225,14 @@
   "panels/sources/DebuggerPlugin.ts | removeFromIgnoreList": {
     "message": "Премахване от списъка за пренебрегване"
   },
-  "panels/sources/DebuggerPlugin.ts | sourceMapDetected": {
-    "message": "Открита е карта на изходния код."
+  "panels/sources/DebuggerPlugin.ts | sourceMapFailed": {
+    "message": "Картата на изходния код не бе заредена."
   },
-  "panels/sources/DebuggerPlugin.ts | sourceMapFoundButIgnoredForFile": {
-    "message": "Картата на изходния код бе намерена, но бе пренебрегната за файла в списъка за пренебрегване."
+  "panels/sources/DebuggerPlugin.ts | sourceMapLoaded": {
+    "message": "Картата на изходния код бе заредена."
+  },
+  "panels/sources/DebuggerPlugin.ts | sourceMapSkipped": {
+    "message": "Картата на изходния код е пропусната за този файл."
   },
   "panels/sources/DebuggerPlugin.ts | theDebuggerWillSkipStepping": {
     "message": "Инструментът за откриване и отстраняване на грешки няма да проверява този скрипт ред по ред и няма да спира при изключения."
@@ -10246,6 +11242,9 @@
   },
   "panels/sources/FilteredUISourceCodeListProvider.ts | noFilesFound": {
     "message": "Няма намерени файлове"
+  },
+  "panels/sources/FilteredUISourceCodeListProvider.ts | sIgnoreListed": {
+    "message": "{PH1} (в списъка за пренебрегване)"
   },
   "panels/sources/GoToLineQuickOpen.ts | currentLineSTypeALineNumber": {
     "message": "Текущ ред: {PH1}. Въведете номер на ред между 1 и {PH2}, към който да се навигира."
@@ -10276,57 +11275,6 @@
   },
   "panels/sources/InplaceFormatterEditorAction.ts | formatS": {
     "message": "Форматиране на {PH1}"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | activateBreakpoints": {
-    "message": "Активиране на точките на прекъсване"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | checked": {
-    "message": "с отметка"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | deactivateBreakpoints": {
-    "message": "Деактивиране на точките на прекъсване"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | disableAllBreakpoints": {
-    "message": "Деактивиране на всички точки на прекъсване"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | disableBreakpointsInFile": {
-    "message": "Деактивиране на точките на прекъсване във файла"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | enableAllBreakpoints": {
-    "message": "Активиране на всички точки на прекъсване"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | enableBreakpointsInFile": {
-    "message": "Активиране на точките на прекъсване във файла"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | mixed": {
-    "message": "смесено"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | noBreakpoints": {
-    "message": "Няма точки на прекъсване"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | removeAllBreakpoints": {
-    "message": "Премахване на всички точки на прекъсване"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | removeAllBreakpointsInLine": {
-    "message": "Премахване на всички точки на прекъсване в реда"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | removeBreakpoint": {
-    "message": "Премахване на точката на прекъсване"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | removeOtherBreakpoints": {
-    "message": "Премахване на другите точки на прекъсване"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | revealLocation": {
-    "message": "Показване на местоположението"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | sBreakpointHit": {
-    "message": "Достигане до точка на прекъсване: {PH1}"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | unchecked": {
-    "message": "без отметка"
-  },
-  "panels/sources/NavigatorView.ts | areYouSureYouWantToDeleteAll": {
-    "message": "Наистина ли искате да изтриете всички заменящи настройки в тази папка?"
   },
   "panels/sources/NavigatorView.ts | areYouSureYouWantToDeleteThis": {
     "message": "Наистина ли искате да изтриете този файл?"
@@ -10379,6 +11327,9 @@
   "panels/sources/NavigatorView.ts | sFromSourceMap": {
     "message": "{PH1} (от картата на изходния код)"
   },
+  "panels/sources/NavigatorView.ts | sIgnoreListed": {
+    "message": "{PH1} (в списъка за пренебрегване)"
+  },
   "panels/sources/NavigatorView.ts | searchInAllFiles": {
     "message": "Търсене във всички файлове"
   },
@@ -10403,11 +11354,11 @@
   "panels/sources/ProfilePlugin.ts | ms": {
     "message": "мсек"
   },
-  "panels/sources/ResourceOriginPlugin.ts | providedViaDebugInfoByS": {
-    "message": "(предоставено чрез информация за отстраняване на грешки от {PH1})"
+  "panels/sources/ResourceOriginPlugin.ts | fromS": {
+    "message": "(от {PH1})"
   },
   "panels/sources/ResourceOriginPlugin.ts | sourceMappedFromS": {
-    "message": "(съответстващият изходен код е намерен на {PH1})"
+    "message": "(съответстващият изходен код е от {PH1})"
   },
   "panels/sources/ScopeChainSidebarPane.ts | closure": {
     "message": "Затваряне"
@@ -10433,12 +11384,6 @@
   "panels/sources/ScopeChainSidebarPane.ts | revealInMemoryInspectorPanel": {
     "message": "Показване в панела за проверка на паметта"
   },
-  "panels/sources/ScriptFormatterEditorAction.ts | prettyPrint": {
-    "message": "Стилово оформяне"
-  },
-  "panels/sources/ScriptFormatterEditorAction.ts | prettyPrintS": {
-    "message": "Стилово оформяне на „{PH1}“"
-  },
   "panels/sources/SnippetsPlugin.ts | ctrlenter": {
     "message": "Ctrl + Enter"
   },
@@ -10448,26 +11393,26 @@
   "panels/sources/SourcesNavigator.ts | clearConfiguration": {
     "message": "Изчистване на конфигурацията"
   },
-  "panels/sources/SourcesNavigator.ts | contentScriptsServedByExtensions": {
-    "message": "Тук се показват скриптовете за съдържание, предоставяни от разширения"
-  },
-  "panels/sources/SourcesNavigator.ts | createAndSaveCodeSnippetsFor": {
-    "message": "Създавайте и запазвайте фрагменти от код, които да използвате по-късно"
-  },
   "panels/sources/SourcesNavigator.ts | createNewSnippet": {
     "message": "Създаване на нов фрагмент"
+  },
+  "panels/sources/SourcesNavigator.ts | explainContentScripts": {
+    "message": "Преглед на скриптовете за съдържание, предоставяни от разширения"
+  },
+  "panels/sources/SourcesNavigator.ts | explainLocalOverrides": {
+    "message": "Замяна на заявките в мрежата и уеб съдържанието на местно ниво с цел имитиране на отдалечените ресурси"
+  },
+  "panels/sources/SourcesNavigator.ts | explainSnippets": {
+    "message": "Запазете кода на JavaScript, който изпълнявате често, за да го стартирате отново по всяко време"
+  },
+  "panels/sources/SourcesNavigator.ts | explainWorkspace": {
+    "message": "Настройте работно пространство, за да синхронизирате редакциите директно с разработваните от вас източници"
   },
   "panels/sources/SourcesNavigator.ts | learnMore": {
     "message": "Научете повече"
   },
-  "panels/sources/SourcesNavigator.ts | learnMoreAboutWorkspaces": {
-    "message": "Научете повече за работните пространства"
-  },
   "panels/sources/SourcesNavigator.ts | newSnippet": {
     "message": "Нов фрагмент"
-  },
-  "panels/sources/SourcesNavigator.ts | overridePageAssetsWithFilesFromA": {
-    "message": "Замяна на активите в страницата с файлове от локална папка"
   },
   "panels/sources/SourcesNavigator.ts | remove": {
     "message": "Премахване"
@@ -10483,9 +11428,6 @@
   },
   "panels/sources/SourcesNavigator.ts | selectFolderForOverrides": {
     "message": "Избиране на папка за замяна на настройки"
-  },
-  "panels/sources/SourcesNavigator.ts | syncChangesInDevtoolsWithThe": {
-    "message": "Синхронизиране на промените в DevTools с локалната файлова система"
   },
   "panels/sources/SourcesPanel.ts | continueToHere": {
     "message": "Продължаване към това място"
@@ -10507,9 +11449,6 @@
   },
   "panels/sources/SourcesPanel.ts | debuggerShown": {
     "message": "Страничната лента за инструмента за откриване и отстраняване на грешки е показана"
-  },
-  "panels/sources/SourcesPanel.ts | dontPauseOnExceptions": {
-    "message": "Без поставяне на пауза при изключения"
   },
   "panels/sources/SourcesPanel.ts | dropWorkspaceFolderHere": {
     "message": "Преместете тук папката за работното пространство"
@@ -10544,9 +11483,6 @@
   "panels/sources/SourcesPanel.ts | pauseOnCaughtExceptions": {
     "message": "Поставяне на пауза при задействане на изключения"
   },
-  "panels/sources/SourcesPanel.ts | pauseOnExceptions": {
-    "message": "Поставяне на пауза при изключения"
-  },
   "panels/sources/SourcesPanel.ts | resumeWithAllPausesBlockedForMs": {
     "message": "Възобновяване, при което всички паузи се блокират за 500 мсек"
   },
@@ -10567,9 +11503,6 @@
   },
   "panels/sources/SourcesPanel.ts | terminateCurrentJavascriptCall": {
     "message": "Прекратяване на текущото извикване на JavaScript"
-  },
-  "panels/sources/SourcesView.ts | dropInAFolderToAddToWorkspace": {
-    "message": "Преместете папка вътре, за да я добавите към работното пространство"
   },
   "panels/sources/SourcesView.ts | openFile": {
     "message": "Отваряне на файл"
@@ -10676,6 +11609,9 @@
   "panels/sources/components/HeadersView.ts | errorWhenParsing": {
     "message": "При синтактичното анализиране на {PH1} възникна грешка."
   },
+  "panels/sources/components/HeadersView.ts | learnMore": {
+    "message": "Научете повече"
+  },
   "panels/sources/components/HeadersView.ts | parsingErrorExplainer": {
     "message": "Това най-вероятно се дължи на синтактична грешка в(ъв) {PH1}. Опитайте да отворите този файл във външен редактор, за да отстраните грешката, или изтрийте файла и създайте отново отмяната."
   },
@@ -10754,6 +11690,9 @@
   "panels/sources/sources-meta.ts | disableTabMovesFocus": {
     "message": "Деактивиране на преместването на фокуса с клавиша Tab"
   },
+  "panels/sources/sources-meta.ts | disableWasmAutoStepping": {
+    "message": "Деактивиране на автоматичното изпълнение на функциите step в Wasm"
+  },
   "panels/sources/sources-meta.ts | disallowScrollingPastEndOfFile": {
     "message": "Забраняване на превъртането след края на файла"
   },
@@ -10796,14 +11735,14 @@
   "panels/sources/sources-meta.ts | enableTabMovesFocus": {
     "message": "Активиране на преместването на фокуса с клавиша Tab"
   },
+  "panels/sources/sources-meta.ts | enableWasmAutoStepping": {
+    "message": "Активиране на автоматичното изпълнение на функциите step в Wasm"
+  },
   "panels/sources/sources-meta.ts | evaluateSelectedTextInConsole": {
     "message": "Анализ на избрания текст в конзолата"
   },
   "panels/sources/sources-meta.ts | file": {
     "message": "Файл"
-  },
-  "panels/sources/sources-meta.ts | filesystem": {
-    "message": "Файлова система"
   },
   "panels/sources/sources-meta.ts | goTo": {
     "message": "Към"
@@ -10880,9 +11819,6 @@
   "panels/sources/sources-meta.ts | showBreakpoints": {
     "message": "Показване на инструмента за точки на прекъсване"
   },
-  "panels/sources/sources-meta.ts | showFilesystem": {
-    "message": "Показване на инструмента за файлова система"
-  },
   "panels/sources/sources-meta.ts | showQuickSource": {
     "message": "Показване на инструмента за бърз достъп до изходния код"
   },
@@ -10955,8 +11891,17 @@
   "panels/sources/sources-meta.ts | trailing": {
     "message": "Следпоставени"
   },
+  "panels/sources/sources-meta.ts | wasmAutoStepping": {
+    "message": "Когато отстранявате грешки в Wasm посредством информация за целта, не поставяйте на пауза байткода на Wasm, ако е възможно"
+  },
   "panels/sources/sources-meta.ts | watch": {
     "message": "Наблюдение"
+  },
+  "panels/timeline/AnimationsTrackAppender.ts | animations": {
+    "message": "Анимации"
+  },
+  "panels/timeline/AppenderUtils.ts | sSelfS": {
+    "message": "{PH1} (собствено: {PH2})"
   },
   "panels/timeline/CountersGraph.ts | documents": {
     "message": "Документи"
@@ -10991,6 +11936,24 @@
   "panels/timeline/EventsTimelineTreeView.ts | startTime": {
     "message": "Начален час"
   },
+  "panels/timeline/GPUTrackAppender.ts | gpu": {
+    "message": "ГП"
+  },
+  "panels/timeline/InteractionsTrackAppender.ts | interactions": {
+    "message": "Взаимодействия"
+  },
+  "panels/timeline/LayoutShiftsTrackAppender.ts | layoutShifts": {
+    "message": "Структурни промени"
+  },
+  "panels/timeline/NetworkTrackAppender.ts | network": {
+    "message": "Мрежа"
+  },
+  "panels/timeline/ThreadAppender.ts | anonymous": {
+    "message": "(анонимно)"
+  },
+  "panels/timeline/ThreadAppender.ts | thread": {
+    "message": "Основна нишка по нова машина"
+  },
   "panels/timeline/TimelineController.ts | cpuProfileForATargetIsNot": {
     "message": "Не е налице профил на процесора за определена цел."
   },
@@ -11003,17 +11966,11 @@
   "panels/timeline/TimelineDetailsView.ts | callTree": {
     "message": "Дърво на извикванията"
   },
-  "panels/timeline/TimelineDetailsView.ts | estimated": {
-    "message": "прогноза"
-  },
   "panels/timeline/TimelineDetailsView.ts | eventLog": {
     "message": "Регистър на събитията"
   },
   "panels/timeline/TimelineDetailsView.ts | layers": {
     "message": "Слоеве"
-  },
-  "panels/timeline/TimelineDetailsView.ts | learnMore": {
-    "message": "Научете повече"
   },
   "panels/timeline/TimelineDetailsView.ts | paintProfiler": {
     "message": "Инструмент за анализ на изобразяването"
@@ -11023,12 +11980,6 @@
   },
   "panels/timeline/TimelineDetailsView.ts | summary": {
     "message": "Обобщена информация"
-  },
-  "panels/timeline/TimelineDetailsView.ts | totalBlockingTimeSmss": {
-    "message": "Общо време на блокиране: {PH1} мсек {PH2}"
-  },
-  "panels/timeline/TimelineEventOverview.ts | coverage": {
-    "message": "ОБХВАТ"
   },
   "panels/timeline/TimelineEventOverview.ts | cpu": {
     "message": "Процесор"
@@ -11042,17 +11993,8 @@
   "panels/timeline/TimelineEventOverview.ts | sSDash": {
     "message": "{PH1} – {PH2}"
   },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | animation": {
-    "message": "Анимация"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | console": {
-    "message": "Конзола"
-  },
   "panels/timeline/TimelineFlameChartDataProvider.ts | droppedFrame": {
     "message": "Пропуснат кадър"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | experience": {
-    "message": "Практическа работа"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | frame": {
     "message": "Кадър"
@@ -11063,23 +12005,14 @@
   "panels/timeline/TimelineFlameChartDataProvider.ts | frames": {
     "message": "Кадри"
   },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | gpu": {
-    "message": "ГП"
-  },
   "panels/timeline/TimelineFlameChartDataProvider.ts | idleFrame": {
     "message": "Рамка при неактивност"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | longFrame": {
-    "message": "Бавен кадър"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | main": {
     "message": "Основно"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | mainS": {
     "message": "Основно – {PH1}"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | occurrencesS": {
-    "message": "Срещания: {PH1}"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | onIgnoreList": {
     "message": "В списъка за пренебрегване"
@@ -11101,18 +12034,6 @@
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | thread": {
     "message": "Нишка"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | threadS": {
-    "message": "Нишка {PH1}"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | timings": {
-    "message": "Времена"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | userInteractions": {
-    "message": "Взаимодействия"
-  },
-  "panels/timeline/TimelineFlameChartNetworkDataProvider.ts | network": {
-    "message": "Мрежа"
   },
   "panels/timeline/TimelineFlameChartView.ts | sAtS": {
     "message": "{PH1} – {PH2}"
@@ -11198,9 +12119,6 @@
   "panels/timeline/TimelinePanel.ts | close": {
     "message": "Затваряне"
   },
-  "panels/timeline/TimelinePanel.ts | coverage": {
-    "message": "Обхват"
-  },
   "panels/timeline/TimelinePanel.ts | cpu": {
     "message": "Процесор:"
   },
@@ -11219,8 +12137,8 @@
   "panels/timeline/TimelinePanel.ts | enableAdvancedPaint": {
     "message": "Активиране на разширената инструментация на изобразяването (бавна)"
   },
-  "panels/timeline/TimelinePanel.ts | failedToSaveTimelineSSS": {
-    "message": "Запазването на хронологията не бе успешно: {PH1} ({PH2}, {PH3})"
+  "panels/timeline/TimelinePanel.ts | failedToSaveTimelineSS": {
+    "message": "Запазването на хронологията не бе успешно: {PH1} ({PH2})"
   },
   "panels/timeline/TimelinePanel.ts | initializingProfiler": {
     "message": "Инструментът за анализ се инициализира…"
@@ -11252,9 +12170,6 @@
   "panels/timeline/TimelinePanel.ts | received": {
     "message": "Получено"
   },
-  "panels/timeline/TimelinePanel.ts | recordCoverageWithPerformance": {
-    "message": "Записване на обхвата с трасиране на ефективността"
-  },
   "panels/timeline/TimelinePanel.ts | recordingFailed": {
     "message": "Записването не бе успешно"
   },
@@ -11266,9 +12181,6 @@
   },
   "panels/timeline/TimelinePanel.ts | showMemoryTimeline": {
     "message": "Показване на хронологията на паметта"
-  },
-  "panels/timeline/TimelinePanel.ts | showWebVitals": {
-    "message": "Показване на показателите за мрежата"
   },
   "panels/timeline/TimelinePanel.ts | ssec": {
     "message": "{PH1} сек"
@@ -11287,9 +12199,6 @@
   },
   "panels/timeline/TimelinePanel.ts | wasd": {
     "message": "WASD"
-  },
-  "panels/timeline/TimelinePanel.ts | webVitals": {
-    "message": "Показатели за мрежата"
   },
   "panels/timeline/TimelineTreeView.ts | activity": {
     "message": "Активност"
@@ -11465,6 +12374,9 @@
   "panels/timeline/TimelineUIUtils.ts | commit": {
     "message": "Въвеждане"
   },
+  "panels/timeline/TimelineUIUtils.ts | compilationCacheKind": {
+    "message": "Вид на кеша на компилацията"
+  },
   "panels/timeline/TimelineUIUtils.ts | compilationCacheSize": {
     "message": "Размер на кеша на компилацията"
   },
@@ -11524,6 +12436,9 @@
   },
   "panels/timeline/TimelineUIUtils.ts | decryptReply": {
     "message": "Разшифроване на отговора"
+  },
+  "panels/timeline/TimelineUIUtils.ts | deserializeCodeCache": {
+    "message": "Десериализиране на кеша на кода"
   },
   "panels/timeline/TimelineUIUtils.ts | destroyWebsocket": {
     "message": "Унищожаване на WebSocket"
@@ -11669,17 +12584,17 @@
   "panels/timeline/TimelineUIUtils.ts | imageUrl": {
     "message": "URL адрес на изображението"
   },
+  "panels/timeline/TimelineUIUtils.ts | initialPriority": {
+    "message": "Първоначален приоритет"
+  },
   "panels/timeline/TimelineUIUtils.ts | initiator": {
     "message": "Инициатор"
-  },
-  "panels/timeline/TimelineUIUtils.ts | inputLatency": {
-    "message": "Забавяне при входящо действие"
   },
   "panels/timeline/TimelineUIUtils.ts | installTimer": {
     "message": "Инсталиране на таймер"
   },
-  "panels/timeline/TimelineUIUtils.ts | interactionEvent": {
-    "message": "Тип взаимодействие: {PH1}, ID: {PH2}"
+  "panels/timeline/TimelineUIUtils.ts | interactionID": {
+    "message": "Идентификатор"
   },
   "panels/timeline/TimelineUIUtils.ts | invalidateLayout": {
     "message": "Анулиране на валидността на оформление"
@@ -11690,11 +12605,17 @@
   "panels/timeline/TimelineUIUtils.ts | invokedByTimeout": {
     "message": "Извикано заради изтекло време за изчакване"
   },
-  "panels/timeline/TimelineUIUtils.ts | jank": {
-    "message": "прекъсване на изобразяването"
-  },
   "panels/timeline/TimelineUIUtils.ts | jsFrame": {
     "message": "Рамка на JS"
+  },
+  "panels/timeline/TimelineUIUtils.ts | jsIdleFrame": {
+    "message": "Рамка на JS при неактивност"
+  },
+  "panels/timeline/TimelineUIUtils.ts | jsRoot": {
+    "message": "Основен възел на JS"
+  },
+  "panels/timeline/TimelineUIUtils.ts | jsSystemFrame": {
+    "message": "Системна рамка на JS"
   },
   "panels/timeline/TimelineUIUtils.ts | largestContentfulPaint": {
     "message": "Изобразяване на най-голямото съдържание (LCP)"
@@ -11734,6 +12655,9 @@
   },
   "panels/timeline/TimelineUIUtils.ts | location": {
     "message": "Местоположение"
+  },
+  "panels/timeline/TimelineUIUtils.ts | longInteractionINP": {
+    "message": "Продължително взаимодействие"
   },
   "panels/timeline/TimelineUIUtils.ts | longTask": {
     "message": "Дълга задача"
@@ -11840,6 +12764,9 @@
   "panels/timeline/TimelineUIUtils.ts | producedCacheSize": {
     "message": "Размер на създадения кеш"
   },
+  "panels/timeline/TimelineUIUtils.ts | profilingOverhead": {
+    "message": "Време за профилиране"
+  },
   "panels/timeline/TimelineUIUtils.ts | range": {
     "message": "Диапазон"
   },
@@ -11927,8 +12854,8 @@
   "panels/timeline/TimelineUIUtils.ts | sIsALikelyPerformanceBottleneck": {
     "message": "{PH1}: това вероятно е слабо място, което влияе на ефективността."
   },
-  "panels/timeline/TimelineUIUtils.ts | sLongFrameTimesAreAnIndicationOf": {
-    "message": "{PH1}. Дългото време за изобразяване на кадъра е признак за {PH2}"
+  "panels/timeline/TimelineUIUtils.ts | sIsLikelyPoorPageResponsiveness": {
+    "message": "{PH1} показва слаба реакция на страницата."
   },
   "panels/timeline/TimelineUIUtils.ts | sOfS": {
     "message": "{PH1} от {PH2}"
@@ -12038,9 +12965,6 @@
   "panels/timeline/TimelineUIUtils.ts | timeSpentInRendering": {
     "message": "Време за рендериране"
   },
-  "panels/timeline/TimelineUIUtils.ts | timeWaitingForMainThread": {
-    "message": "Време за изчакване на основната нишка"
-  },
   "panels/timeline/TimelineUIUtils.ts | timeout": {
     "message": "Време за изчакване"
   },
@@ -12113,6 +13037,9 @@
   "panels/timeline/TimelineUIUtils.ts | yes": {
     "message": "Да"
   },
+  "panels/timeline/TimingsTrackAppender.ts | timings": {
+    "message": "Времена"
+  },
   "panels/timeline/UIDevtoolsUtils.ts | drawFrame": {
     "message": "Изчертаване на рамка"
   },
@@ -12136,36 +13063,6 @@
   },
   "panels/timeline/UIDevtoolsUtils.ts | system": {
     "message": "Система"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | fcp": {
-    "message": "FCP"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | firstContentfulPaint": {
-    "message": "Първо изобразяване на съдържание (FCP)"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | good": {
-    "message": "Добра"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | largestContentfulPaint": {
-    "message": "Изобразяване на най-голямото съдържание (LCP)"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | lcp": {
-    "message": "LCP"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | longTask": {
-    "message": "Дълга задача"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | longTasks": {
-    "message": "Дълги задачи"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | ls": {
-    "message": "СП"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | needsImprovement": {
-    "message": "Необходимо е подобрение"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | poor": {
-    "message": "Лоша"
   },
   "panels/timeline/timeline-meta.ts | hideChromeFrameInLayersView": {
     "message": "Скриване на рамката на chrome в изгледа със слоеве"
@@ -12282,7 +13179,7 @@
     "message": "Експортиране"
   },
   "panels/webauthn/WebauthnPane.ts | id": {
-    "message": "Идент. №"
+    "message": "Идентификатор"
   },
   "panels/webauthn/WebauthnPane.ts | isResident": {
     "message": "Представлява резидентна идентификационна информация"
@@ -12351,7 +13248,7 @@
     "message": "WebAuthn"
   },
   "ui/components/data_grid/DataGrid.ts | enterToSort": {
-    "message": "Натиснете Enter за прилагане на филтъра за сортиране"
+    "message": "Състояние на сортирането на графата: {PH1}. Натиснете Enter за прилагане на филтъра за сортиране"
   },
   "ui/components/data_grid/DataGrid.ts | headerOptions": {
     "message": "Опции за заглавката"
@@ -12359,8 +13256,17 @@
   "ui/components/data_grid/DataGrid.ts | resetColumns": {
     "message": "Нулиране на колоните"
   },
+  "ui/components/data_grid/DataGrid.ts | sortAsc": {
+    "message": "възходящ ред"
+  },
   "ui/components/data_grid/DataGrid.ts | sortBy": {
     "message": "Сортиране по"
+  },
+  "ui/components/data_grid/DataGrid.ts | sortDesc": {
+    "message": "низходящ ред"
+  },
+  "ui/components/data_grid/DataGrid.ts | sortNone": {
+    "message": "няма"
   },
   "ui/components/data_grid/DataGridController.ts | sortInAscendingOrder": {
     "message": "Сортирахте {PH1} във възходящ ред"
@@ -12370,6 +13276,18 @@
   },
   "ui/components/data_grid/DataGridController.ts | sortingCanceled": {
     "message": "Сортирането на {PH1} е анулирано"
+  },
+  "ui/components/dialogs/IconDialog.ts | close": {
+    "message": "Затваряне"
+  },
+  "ui/components/dialogs/ShortcutDialog.ts | close": {
+    "message": "Затваряне"
+  },
+  "ui/components/dialogs/ShortcutDialog.ts | dialogTitle": {
+    "message": "Клавишни комбинации"
+  },
+  "ui/components/dialogs/ShortcutDialog.ts | showShortcutTitle": {
+    "message": "Показване на клавишните комбинации"
   },
   "ui/components/diff_view/DiffView.ts | SkippingDMatchingLines": {
     "message": "(… пропускат се {PH1} съответстващи реда…)"
@@ -12512,6 +13430,66 @@
   "ui/components/text_editor/config.ts | codeEditor": {
     "message": "Редактор на код"
   },
+  "ui/components/text_editor/config.ts | sSuggestionSOfS": {
+    "message": "{PH1}, предложение {PH2} от {PH3}"
+  },
+  "ui/legacy/ActionRegistration.ts | background_services": {
+    "message": "Фонови услуги"
+  },
+  "ui/legacy/ActionRegistration.ts | console": {
+    "message": "Конзола"
+  },
+  "ui/legacy/ActionRegistration.ts | debugger": {
+    "message": "Инструмент за откриване и отстраняване на грешки"
+  },
+  "ui/legacy/ActionRegistration.ts | drawer": {
+    "message": "Слой"
+  },
+  "ui/legacy/ActionRegistration.ts | elements": {
+    "message": "Елементи"
+  },
+  "ui/legacy/ActionRegistration.ts | global": {
+    "message": "Глобални"
+  },
+  "ui/legacy/ActionRegistration.ts | help": {
+    "message": "Помощ"
+  },
+  "ui/legacy/ActionRegistration.ts | javascript_profiler": {
+    "message": "Инструмент за анализ на JavaScript"
+  },
+  "ui/legacy/ActionRegistration.ts | layers": {
+    "message": "Слоеве"
+  },
+  "ui/legacy/ActionRegistration.ts | memory": {
+    "message": "Памет"
+  },
+  "ui/legacy/ActionRegistration.ts | mobile": {
+    "message": "Мобилни"
+  },
+  "ui/legacy/ActionRegistration.ts | navigation": {
+    "message": "Навигиране"
+  },
+  "ui/legacy/ActionRegistration.ts | network": {
+    "message": "Мрежа"
+  },
+  "ui/legacy/ActionRegistration.ts | performance": {
+    "message": "Ефективност"
+  },
+  "ui/legacy/ActionRegistration.ts | rendering": {
+    "message": "Рендериране"
+  },
+  "ui/legacy/ActionRegistration.ts | resources": {
+    "message": "Ресурси"
+  },
+  "ui/legacy/ActionRegistration.ts | screenshot": {
+    "message": "Екранна снимка"
+  },
+  "ui/legacy/ActionRegistration.ts | settings": {
+    "message": "Настройки"
+  },
+  "ui/legacy/ActionRegistration.ts | sources": {
+    "message": "Източници"
+  },
   "ui/legacy/DockController.ts | close": {
     "message": "Затваряне"
   },
@@ -12557,8 +13535,8 @@
   "ui/legacy/Infobar.ts | dontShowAgain": {
     "message": "Да не се показва отново"
   },
-  "ui/legacy/Infobar.ts | learnMore": {
-    "message": "Научете повече"
+  "ui/legacy/Infobar.ts | showMore": {
+    "message": "Показване на още"
   },
   "ui/legacy/InspectorView.ts | closeDrawer": {
     "message": "Затваряне на слоя"
@@ -12764,6 +13742,27 @@
   "ui/legacy/ViewManager.ts | sPanel": {
     "message": "Панел „{PH1}“"
   },
+  "ui/legacy/ViewRegistration.ts | drawer": {
+    "message": "Слой"
+  },
+  "ui/legacy/ViewRegistration.ts | drawer_sidebar": {
+    "message": "Странична лента за слоя"
+  },
+  "ui/legacy/ViewRegistration.ts | elements": {
+    "message": "Елементи"
+  },
+  "ui/legacy/ViewRegistration.ts | network": {
+    "message": "Мрежа"
+  },
+  "ui/legacy/ViewRegistration.ts | panel": {
+    "message": "Панел"
+  },
+  "ui/legacy/ViewRegistration.ts | settings": {
+    "message": "Настройки"
+  },
+  "ui/legacy/ViewRegistration.ts | sources": {
+    "message": "Източници"
+  },
   "ui/legacy/components/color_picker/ContrastDetails.ts | aa": {
     "message": "AA"
   },
@@ -12947,9 +13946,6 @@
   "ui/legacy/components/data_grid/ShowMoreDataGridNode.ts | showDBefore": {
     "message": "Показване на предишните {PH1}"
   },
-  "ui/legacy/components/data_grid/ViewportDataGrid.ts | collapsed": {
-    "message": "свито"
-  },
   "ui/legacy/components/inline_editor/CSSShadowEditor.ts | blur": {
     "message": "Замъгляване"
   },
@@ -12975,7 +13971,7 @@
     "message": "Свойства на CSS"
   },
   "ui/legacy/components/inline_editor/FontEditor.ts | deleteS": {
-    "message": "Изтриване на {PH1}"
+    "message": "Изтриване на „{PH1}“"
   },
   "ui/legacy/components/inline_editor/FontEditor.ts | fallbackS": {
     "message": "Резервен елемент {PH1}"
@@ -13063,6 +14059,9 @@
   },
   "ui/legacy/components/object_ui/ObjectPropertiesSection.ts | noProperties": {
     "message": "Няма свойства"
+  },
+  "ui/legacy/components/object_ui/ObjectPropertiesSection.ts | revealInMemoryInpector": {
+    "message": "Показване в панела за проверка на паметта"
   },
   "ui/legacy/components/object_ui/ObjectPropertiesSection.ts | showAllD": {
     "message": "Показване на всички {PH1}"
@@ -13263,7 +14262,7 @@
     "message": "Зарежда се…"
   },
   "ui/legacy/components/source_frame/SourceFrame.ts | prettyPrint": {
-    "message": "Стилово оформяне"
+    "message": "Отпечатване с форматиране"
   },
   "ui/legacy/components/source_frame/SourceFrame.ts | source": {
     "message": "Източник"
@@ -13327,6 +14326,9 @@
   },
   "ui/legacy/components/utils/JSPresentationUtils.ts | removeFromIgnore": {
     "message": "Премахване от списъка за пренебрегване"
+  },
+  "ui/legacy/components/utils/JSPresentationUtils.ts | showLess": {
+    "message": "Показване на по-малко"
   },
   "ui/legacy/components/utils/JSPresentationUtils.ts | showSMoreFrames": {
     "message": "{n,plural, =1{Показване на още # рамка}other{Показване на още # рамки}}"

@@ -17,44 +17,36 @@
 
 #include "dawn/native/OpenGLBackend.h"
 
-#include "dawn/common/SwapChainUtils.h"
 #include "dawn/native/opengl/DeviceGL.h"
-#include "dawn/native/opengl/NativeSwapChainImplGL.h"
 
 namespace dawn::native::opengl {
 
-AdapterDiscoveryOptions::AdapterDiscoveryOptions(WGPUBackendType type)
-    : AdapterDiscoveryOptionsBase(type) {}
-
-AdapterDiscoveryOptionsES::AdapterDiscoveryOptionsES()
-    : AdapterDiscoveryOptions(WGPUBackendType_OpenGLES) {}
-
-DawnSwapChainImplementation CreateNativeSwapChainImpl(WGPUDevice device,
-                                                      PresentCallback present,
-                                                      void* presentUserdata) {
-    Device* backendDevice = ToBackend(FromAPI(device));
-
-    DawnSwapChainImplementation impl;
-    impl = CreateSwapChainImplementation(
-        new NativeSwapChainImpl(backendDevice, present, presentUserdata));
-    impl.textureUsage = WGPUTextureUsage_Present;
-
-    return impl;
+RequestAdapterOptionsGetGLProc::RequestAdapterOptionsGetGLProc() {
+    sType = wgpu::SType::RequestAdapterOptionsGetGLProc;
 }
 
-WGPUTextureFormat GetNativeSwapChainPreferredFormat(const DawnSwapChainImplementation* swapChain) {
-    NativeSwapChainImpl* impl = reinterpret_cast<NativeSwapChainImpl*>(swapChain->userData);
-    return static_cast<WGPUTextureFormat>(impl->GetPreferredFormat());
-}
+PhysicalDeviceDiscoveryOptions::PhysicalDeviceDiscoveryOptions(WGPUBackendType type)
+    : PhysicalDeviceDiscoveryOptionsBase(type) {}
 
 ExternalImageDescriptorEGLImage::ExternalImageDescriptorEGLImage()
     : ExternalImageDescriptor(ExternalImageType::EGLImage) {}
+
+ExternalImageDescriptorGLTexture::ExternalImageDescriptorGLTexture()
+    : ExternalImageDescriptor(ExternalImageType::GLTexture) {}
 
 WGPUTexture WrapExternalEGLImage(WGPUDevice device,
                                  const ExternalImageDescriptorEGLImage* descriptor) {
     Device* backendDevice = ToBackend(FromAPI(device));
     TextureBase* texture =
         backendDevice->CreateTextureWrappingEGLImage(descriptor, descriptor->image);
+    return ToAPI(texture);
+}
+
+WGPUTexture WrapExternalGLTexture(WGPUDevice device,
+                                  const ExternalImageDescriptorGLTexture* descriptor) {
+    Device* backendDevice = ToBackend(FromAPI(device));
+    TextureBase* texture =
+        backendDevice->CreateTextureWrappingGLTexture(descriptor, descriptor->texture);
     return ToAPI(texture);
 }
 

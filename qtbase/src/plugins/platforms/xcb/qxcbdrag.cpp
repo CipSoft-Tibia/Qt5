@@ -5,6 +5,7 @@
 #include <xcb/xcb.h>
 #include "qxcbconnection.h"
 #include "qxcbclipboard.h"
+#include "qxcbkeyboard.h"
 #include "qxcbmime.h"
 #include "qxcbwindow.h"
 #include "qxcbscreen.h"
@@ -26,6 +27,8 @@
 #include <private/qhighdpiscaling_p.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::Literals::StringLiterals;
 
 const int xdnd_version = 5;
 
@@ -459,7 +462,7 @@ void QXcbDrag::move(const QPoint &globalPos, Qt::MouseButtons b, Qt::KeyboardMod
     static const bool isUnity = qgetenv("XDG_CURRENT_DESKTOP").toLower() == "unity";
     if (isUnity && xdndCollectionWindow == XCB_NONE) {
         QString name = QXcbWindow::windowTitle(connection(), target);
-        if (name == QStringLiteral("XdndCollectionWindowImp"))
+        if (name == "XdndCollectionWindowImp"_L1)
             xdndCollectionWindow = target;
     }
     if (target == xdndCollectionWindow) {
@@ -766,7 +769,7 @@ void QXcbDrag::handle_xdnd_position(QPlatformWindow *w, const xcb_client_message
     }
 
     auto buttons = currentDrag() ? b : connection()->queryMouseButtons();
-    auto modifiers = currentDrag() ? mods : connection()->queryKeyboardModifiers();
+    auto modifiers = currentDrag() ? mods : connection()->keyboard()->queryKeyboardModifiers();
 
     QPlatformDragQtResponse qt_response = QWindowSystemInterface::handleDrag(
                 w->window(), dropData, p, supported_actions, buttons, modifiers);
@@ -1006,7 +1009,7 @@ void QXcbDrag::handleDrop(QPlatformWindow *, const xcb_client_message_event_t *e
         return;
 
     auto buttons = currentDrag() ? b : connection()->queryMouseButtons();
-    auto modifiers = currentDrag() ? mods : connection()->queryKeyboardModifiers();
+    auto modifiers = currentDrag() ? mods : connection()->keyboard()->queryKeyboardModifiers();
 
     QPlatformDropQtResponse response = QWindowSystemInterface::handleDrop(
                 currentWindow.data(), dropData, currentPosition, supported_drop_actions,
@@ -1303,32 +1306,33 @@ QVariant QXcbDropData::retrieveData_sys(const QString &mimetype, QMetaType reque
 
 QVariant QXcbDropData::xdndObtainData(const QByteArray &format, QMetaType requestedType) const
 {
-    QByteArray result;
-
     QXcbConnection *c = drag->connection();
     QXcbWindow *xcb_window = c->platformWindowFromId(drag->xdnd_dragsource);
     if (xcb_window && drag->currentDrag() && xcb_window->window()->type() != Qt::Desktop) {
         QMimeData *data = drag->currentDrag()->mimeData();
         if (data->hasFormat(QLatin1StringView(format)))
-            result = data->data(QLatin1StringView(format));
-        return result;
+            return data->data(QLatin1StringView(format));
+        return QVariant();
     }
 
     QList<xcb_atom_t> atoms = drag->xdnd_types;
     bool hasUtf8 = false;
     xcb_atom_t a = mimeAtomForFormat(c, QLatin1StringView(format), requestedType, atoms, &hasUtf8);
     if (a == XCB_NONE)
-        return result;
+        return QVariant();
 
 #ifndef QT_NO_CLIPBOARD
     if (c->selectionOwner(c->atom(QXcbAtom::AtomXdndSelection)) == XCB_NONE)
-        return result; // should never happen?
+        return QVariant(); // should never happen?
 
     xcb_atom_t xdnd_selection = c->atom(QXcbAtom::AtomXdndSelection);
-    result = c->clipboard()->getSelection(xdnd_selection, a, xdnd_selection, drag->targetTime());
+    const std::optional<QByteArray> result = c->clipboard()->getSelection(xdnd_selection, a, xdnd_selection, drag->targetTime());
+    if (!result.has_value())
+        return QVariant();
+    return mimeConvertToFormat(c, a, result.value(), QLatin1StringView(format), requestedType, hasUtf8);
+#else
+    return QVariant();
 #endif
-
-    return mimeConvertToFormat(c, a, result, QLatin1StringView(format), requestedType, hasUtf8);
 }
 
 bool QXcbDropData::hasFormat_sys(const QString &format) const

@@ -10,11 +10,32 @@
         // Usefull in scenarios where the users wants to use an existent
         // user-data-dir instead of creating a new temporary directory.
         --user-data-dir="PATH/SOMETHING/SOMETHING",
-        --fullscreen=true,
+        //--start-fullscreen=true,
+        --start-maximized=true,
         --center-mouse=true
       ]
     }
   },
-  // env: "catan",
-  // probes: {}
+  env: {
+    "disk_min_free_space_gib": null,
+    "power_use_battery": true,
+    "screen_brightness_percent": 60,
+    "cpu_max_usage_percent": 98,
+    "cpu_min_relative_speed": 1,
+    "system_allow_monitoring": false,
+    "browser_allow_existing_process": false,
+    "browser_is_headless": false,
+    "require_probes": true,
+    "system_forbidden_process_names": "",
+    "screen_allow_autobrightness": false,
+  },
+  probes: {
+    "powersampler": {
+      bin_path: "/Users/aattar/chromium/src/out/Release/power_sampler",
+      // Use sampling_interval=0 to use '--sample-on-notification' instead of
+      // specifying an explicit sampling_interval
+      sampling_interval: 0,
+      wait_for_battery: false,
+    },
+  }
 }

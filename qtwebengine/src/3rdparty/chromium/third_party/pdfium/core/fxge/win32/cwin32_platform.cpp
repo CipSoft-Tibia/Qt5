@@ -14,8 +14,8 @@
 #include "core/fxge/cfx_folderfontinfo.h"
 #include "core/fxge/cfx_gemodule.h"
 #include "third_party/base/check.h"
+#include "third_party/base/containers/span.h"
 #include "third_party/base/numerics/safe_conversions.h"
-#include "third_party/base/span.h"
 #include "third_party/base/win/scoped_select_object.h"
 #include "third_party/base/win/win_util.h"
 
@@ -348,7 +348,7 @@ void* CFX_Win32FontInfo::MapFont(int weight,
   if (charset == FX_Charset::kANSI || charset == FX_Charset::kSymbol)
     charset = FX_Charset::kDefault;
 
-  int subst_pitch_family = pitch_family;
+  int subst_pitch_family;
   switch (charset) {
     case FX_Charset::kShiftJIS:
       subst_pitch_family = FF_ROMAN;
@@ -357,6 +357,9 @@ void* CFX_Win32FontInfo::MapFont(int weight,
     case FX_Charset::kHangul:
     case FX_Charset::kChineseSimplified:
       subst_pitch_family = 0;
+      break;
+    default:
+      subst_pitch_family = pitch_family;
       break;
   }
   HFONT hFont = Win32CreateFont(weight, bItalic, charset, subst_pitch_family,
@@ -393,7 +396,7 @@ void* CFX_Win32FontInfo::MapFont(int weight,
     case FX_Charset::kHangul:
       new_face = "Gulim";
       break;
-    case FX_Charset::kChineseTraditional:
+    case FX_Charset::kChineseTraditional: {
       static const char* const kMonospaceFonts[] = {"Microsoft YaHei",
                                                     "MingLiU"};
       static const char* const kProportionalFonts[] = {"Microsoft JHengHei",
@@ -402,6 +405,9 @@ void* CFX_Win32FontInfo::MapFont(int weight,
           new_face.Contains("MSung") ? kMonospaceFonts : kProportionalFonts;
       return GetFontFromList(weight, bItalic, charset, subst_pitch_family,
                              candidate_fonts);
+    }
+    default:
+      break;
   }
   return Win32CreateFont(weight, bItalic, charset, subst_pitch_family,
                          new_face.c_str());

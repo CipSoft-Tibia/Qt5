@@ -218,10 +218,19 @@ DRM-backend tests
 
 DRM-backend tests require a DRM device, so they are a special case. To select a
 device the test suite will simply look at the environment variable
-``WESTON_TEST_SUITE_DRM_DEVICE``. So the first thing the user has to do in order
-to run DRM-backend tests is to set this environment variable with the card that
-should run the tests. For instance, in order to run DRM-backend tests with
-``card0`` we need to run ``export WESTON_TEST_SUITE_DRM_DEVICE=card0``.
+``WESTON_TEST_SUITE_DRM_DEVICE``. In Weston's CI, we set this variable to the
+DRM node that VKMS takes (``cardX`` - X can change across each bot, as the order
+in which devices are loaded is not predictable).
+
+**IMPORTANT**: our DRM-backend tests are written specifically to run on top of
+VKMS (KMS driver created to be used by headless machines in test suites, so it
+aims to be more configurable and predictable than real hardware). We don't
+guarantee that these tests will work on real hardware.
+
+But if users want to run DRM-backend tests using real hardware anyway, the first
+thing they need to do is to set this environment variable with the DRM node of
+the card that should run the tests. For instance, in order to run DRM-backend
+tests with ``card0`` we need to run ``export WESTON_TEST_SUITE_DRM_DEVICE=card0``.
 
 Note that the card should not be in use by a desktop environment (or any other
 program that requires master status), as there can only be one user at a time

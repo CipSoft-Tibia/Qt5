@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 #ifndef DEVICE_BLUETOOTH_FLOSS_BLUETOOTH_REMOTE_GATT_CHARACTERISTIC_FLOSS_H_
@@ -8,6 +8,7 @@
 
 #include "device/bluetooth/bluetooth_export.h"
 #include "device/bluetooth/bluetooth_remote_gatt_characteristic.h"
+#include "device/bluetooth/floss/bluetooth_gatt_characteristic_floss.h"
 #include "device/bluetooth/floss/floss_dbus_client.h"
 #include "device/bluetooth/floss/floss_gatt_manager_client.h"
 
@@ -20,7 +21,8 @@ namespace floss {
 class BluetoothRemoteGattServiceFloss;
 
 class DEVICE_BLUETOOTH_EXPORT BluetoothRemoteGattCharacteristicFloss
-    : public device::BluetoothRemoteGattCharacteristic,
+    : public BluetoothGattCharacteristicFloss,
+      public device::BluetoothRemoteGattCharacteristic,
       public FlossGattClientObserver {
  public:
   // Construct remote characteristic.
@@ -114,7 +116,7 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothRemoteGattCharacteristicFloss
   void OnWriteCharacteristic(base::OnceClosure callback,
                              ErrorCallback error_callback,
                              std::vector<uint8_t> data,
-                             DBusResult<Void> result);
+                             DBusResult<GattWriteRequestStatus> result);
 
  private:
   friend class BluetoothRemoteGattServiceFloss;

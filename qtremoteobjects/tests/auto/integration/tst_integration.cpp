@@ -1,5 +1,5 @@
 // Copyright (C) 2017 Ford Motor Company
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "../../shared/testutils.h"
 
@@ -111,6 +111,20 @@ public:
 private:
     EngineReplica::EngineType type;
 };
+
+class MyClass : public MyClassSimpleSource
+{
+public:
+    QMap<QString, MyPOD> myPodMap() override
+    {
+        return {{"Zero", MyPOD(0,0,"0")},{"One", MyPOD(1,1,"1")},{"Two", MyPOD(2,2,"2")}};
+    }
+    QList<MyPOD> myPodList() override
+    {
+        return {MyPOD(0,0,"0"),MyPOD(1,1,"1"),MyPOD(2,2,"2")};
+    }
+};
+
 
 class tst_Integration: public QObject
 {
@@ -561,7 +575,8 @@ private slots:
         QScopedPointer<QRemoteObjectDynamicReplica> regDynamic, regDynamicNamed;
 
         int regAdded = 0;
-        connect(client->registry(), &QRemoteObjectRegistry::remoteObjectAdded, [&](QRemoteObjectSourceLocation entry)
+        connect(client->registry(), &QRemoteObjectRegistry::remoteObjectAdded,
+                this, [&](QRemoteObjectSourceLocation entry)
             {
                 if (entry.first == QLatin1String("Engine")) {
                     ++regAdded;
@@ -788,7 +803,7 @@ private slots:
 
         QSignalSpy spy(this, &tst_Integration::forwardResult);
         QScopedPointer<QRemoteObjectDynamicReplica> engine_dr(client->acquireDynamic(QStringLiteral("Engine")));
-        connect(engine_dr.data(), &QRemoteObjectDynamicReplica::initialized, [&]()
+        connect(engine_dr.data(), &QRemoteObjectDynamicReplica::initialized, this, [&]()
             {
                 const QMetaObject *metaObject = engine_dr->metaObject();
                 const int propIndex = metaObject->indexOfProperty("rpm");
@@ -1368,7 +1383,7 @@ private slots:
 
         MyPOD shouldPass(1, 2.0, QStringLiteral("pass"));
         MyPOD shouldFail(1, 2.0, QStringLiteral("fail"));
-        MyClassSimpleSource m;
+        MyClass m;
         m.setMyPOD(shouldPass);
         host->enableRemoting(&m);
         const QScopedPointer<MyClassReplica> myclass_r(client->acquire<MyClassReplica>());
@@ -1376,6 +1391,18 @@ private slots:
 
         QVERIFY(myclass_r->myPOD() == m.myPOD());
         QVERIFY(myclass_r->myPOD() != shouldFail);
+
+        auto podMapReply = myclass_r->myPodMap();
+        QVERIFY(podMapReply.waitForFinished(1000));
+        auto podMap = podMapReply.returnValue();
+        QCOMPARE(podMap.size(), 3);
+        QCOMPARE(podMap, m.myPodMap());
+
+        auto podListReply = myclass_r->myPodList();
+        QVERIFY(podListReply.waitForFinished(1000));
+        auto podList = podListReply.returnValue();
+        QCOMPARE(podList.size(), 3);
+        QCOMPARE(podList, m.myPodList());
     }
 
     void SchemeTest()

@@ -148,6 +148,9 @@ enum RmadErrorCode {
 
   // No USB found when performing a task that requires a USB.
   RMAD_ERROR_USB_NOT_FOUND = 45;
+
+  // No Diagnostics app found in external or internal storage.
+  RMAD_ERROR_DIAGNOSTICS_APP_NOT_FOUND = 46;
 }
 
 // Defined Rmad components.
@@ -174,8 +177,11 @@ enum RmadComponent {
   RMAD_COMPONENT_LID_ACCELEROMETER = 17;
   RMAD_COMPONENT_BASE_GYROSCOPE = 18;
   RMAD_COMPONENT_LID_GYROSCOPE = 19;
+  RMAD_COMPONENT_AP_I2C = 20;
+  RMAD_COMPONENT_EC_I2C = 21;
+  RMAD_COMPONENT_TCPC = 22;
   // Reserved for additional runtime_probe supported components.
-  reserved 20 to 32;
+  reserved 23 to 32;
   // Irrelevant components.
   // TODO(chenghan): Do we really need these?
   RMAD_COMPONENT_KEYBOARD = 33;
@@ -401,6 +407,16 @@ message RestockState {
 
 // Allow device info to be updated if necessary.
 message UpdateDeviceInfoState {
+  enum FeatureLevel {
+    // The device doesn't require feature level.
+    RMAD_FEATURE_LEVEL_UNSUPPORTED = 0;
+    // The device requires feature level but it is currently unknown.
+    RMAD_FEATURE_LEVEL_UNKNOWN = 1;
+    // Detected feature level.
+    RMAD_FEATURE_LEVEL_0 = 2;
+    RMAD_FEATURE_LEVEL_1 = 3;
+  }
+
   // User provided serial number of device.
   string serial_number = 1;
   // Chosen region index for the current choice. See |region_list| below.
@@ -414,6 +430,10 @@ message UpdateDeviceInfoState {
   string dram_part_number = 5;
   // Chosen custom-label index of device. See |custom_label_list| below.
   int32 custom_label_index = 6;
+  // Chosen boolean for branded chassis.
+  bool is_chassis_branded = 7;
+  // Chosen hardware compliance version, 4 bits.
+  uint32 hw_compliance_version = 8;
 
   // Read only data.
   // List of all valid regions for this device.
@@ -439,6 +459,8 @@ message UpdateDeviceInfoState {
   string original_dram_part_number = 205;
   // Custom-label index of device at beginning of RMA finalization.
   int32 original_custom_label_index = 206;
+  // Detected feature level at beginning of RMA finalization.
+  FeatureLevel original_feature_level = 207;
 
   // MLB repair mode.
   bool mlb_repair = 301;
@@ -652,4 +674,23 @@ enum WpDisableMethod {
   RMAD_WP_DISABLE_METHOD_RSU = 2;
   RMAD_WP_DISABLE_METHOD_PHYSICAL_ASSEMBLE_DEVICE = 3;
   RMAD_WP_DISABLE_METHOD_PHYSICAL_KEEP_DEVICE_OPEN = 4;
+}
+
+// Reply for ExtractExternalDiagnosticsApp.
+message ExtractExternalDiagnosticsAppReply {
+  RmadErrorCode error = 1;
+  string diagnostics_app_swbn_path = 2;
+  string diagnostics_app_crx_path = 3;
+}
+
+// Reply for InstallExtractedDiagnosticsApp.
+message InstallExtractedDiagnosticsAppReply {
+  RmadErrorCode error = 1;
+}
+
+// Reply for GetInstalledDiagnosticsApp.
+message GetInstalledDiagnosticsAppReply {
+  RmadErrorCode error = 1;
+  string diagnostics_app_swbn_path = 2;
+  string diagnostics_app_crx_path = 3;
 }

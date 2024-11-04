@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,8 +20,7 @@
 #include "platform/test/paths.h"
 #include "testing/util/read_file.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 using ::cast::channel::AuthResponse;
@@ -219,5 +218,4 @@ TEST_F(DeviceAuthNamespaceHandlerTest, UnsupportedSignatureAlgorithm) {
 }
 
 }  // namespace
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

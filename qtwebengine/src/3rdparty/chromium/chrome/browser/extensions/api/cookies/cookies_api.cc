@@ -235,7 +235,7 @@ CookiesGetFunction::~CookiesGetFunction() = default;
 
 ExtensionFunction::ResponseAction CookiesGetFunction::Run() {
   parsed_args_ = api::cookies::Get::Params::Create(args());
-  EXTENSION_FUNCTION_VALIDATE(parsed_args_.get());
+  EXTENSION_FUNCTION_VALIDATE(parsed_args_);
 
   // Read/validate input parameters.
   std::string error;
@@ -310,7 +310,7 @@ CookiesGetAllFunction::~CookiesGetAllFunction() {
 
 ExtensionFunction::ResponseAction CookiesGetAllFunction::Run() {
   parsed_args_ = api::cookies::GetAll::Params::Create(args());
-  EXTENSION_FUNCTION_VALIDATE(parsed_args_.get());
+  EXTENSION_FUNCTION_VALIDATE(parsed_args_);
 
   std::string error;
   if (parsed_args_->details.url &&
@@ -392,10 +392,10 @@ void CookiesGetAllFunction::NotifyExtensionTelemetry() {
           extension_id(), parsed_args_->details.domain.value_or(std::string()),
           parsed_args_->details.name.value_or(std::string()),
           parsed_args_->details.path.value_or(std::string()),
-          parsed_args_->details.secure.value_or(false),
+          parsed_args_->details.secure,
           parsed_args_->details.store_id.value_or(std::string()),
           parsed_args_->details.url.value_or(std::string()),
-          parsed_args_->details.session.value_or(false));
+          parsed_args_->details.session);
   telemetry_service->AddSignal(std::move(cookies_get_all_signal));
 }
 
@@ -407,7 +407,7 @@ CookiesSetFunction::~CookiesSetFunction() {
 
 ExtensionFunction::ResponseAction CookiesSetFunction::Run() {
   parsed_args_ = api::cookies::Set::Params::Create(args());
-  EXTENSION_FUNCTION_VALIDATE(parsed_args_.get());
+  EXTENSION_FUNCTION_VALIDATE(parsed_args_);
 
   // Read/validate input parameters.
   std::string error;
@@ -434,20 +434,20 @@ ExtensionFunction::ResponseAction CookiesSetFunction::Run() {
 
   net::CookieSameSite same_site = net::CookieSameSite::UNSPECIFIED;
   switch (parsed_args_->details.same_site) {
-    case api::cookies::SAME_SITE_STATUS_NO_RESTRICTION:
+    case api::cookies::SameSiteStatus::kNoRestriction:
       same_site = net::CookieSameSite::NO_RESTRICTION;
       break;
-    case api::cookies::SAME_SITE_STATUS_LAX:
+    case api::cookies::SameSiteStatus::kLax:
       same_site = net::CookieSameSite::LAX_MODE;
       break;
-    case api::cookies::SAME_SITE_STATUS_STRICT:
+    case api::cookies::SameSiteStatus::kStrict:
       same_site = net::CookieSameSite::STRICT_MODE;
       break;
     // This is the case if the optional sameSite property is given as
     // "unspecified":
-    case api::cookies::SAME_SITE_STATUS_UNSPECIFIED:
+    case api::cookies::SameSiteStatus::kUnspecified:
     // This is the case if the optional sameSite property is left out:
-    case api::cookies::SAME_SITE_STATUS_NONE:
+    case api::cookies::SameSiteStatus::kNone:
       same_site = net::CookieSameSite::UNSPECIFIED;
       break;
   }
@@ -536,7 +536,7 @@ void CookiesSetFunction::GetCookieListCallback(
     }
   }
 
-  Respond(value ? std::move(*value) : WithArguments());
+  Respond(value ? std::move(*value) : NoArguments());
 }
 
 CookiesRemoveFunction::CookiesRemoveFunction() {
@@ -547,7 +547,7 @@ CookiesRemoveFunction::~CookiesRemoveFunction() {
 
 ExtensionFunction::ResponseAction CookiesRemoveFunction::Run() {
   parsed_args_ = api::cookies::Remove::Params::Create(args());
-  EXTENSION_FUNCTION_VALIDATE(parsed_args_.get());
+  EXTENSION_FUNCTION_VALIDATE(parsed_args_);
 
   // Read/validate input parameters.
   std::string error;

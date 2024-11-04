@@ -264,8 +264,7 @@ void ZygoteCommunication::Init(
       switches::kCdmWidevinePath,
 #endif
   };
-  cmd_line.CopySwitchesFrom(browser_command_line, kForwardSwitches,
-                            std::size(kForwardSwitches));
+  cmd_line.CopySwitchesFrom(browser_command_line, kForwardSwitches);
 
   pid_ = std::move(launcher).Run(&cmd_line, &control_fd_);
 

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,8 +22,7 @@
 #include "platform/test/fake_task_runner.h"
 #include "platform/test/fake_udp_socket.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 class MockServiceObserver : public ProtocolConnectionServiceObserver {
  public:
@@ -56,7 +55,7 @@ class MockServerObserver : public ProtocolConnectionServer::Observer {
 
 class FakeQuicBridge {
  public:
-  FakeQuicBridge(FakeTaskRunner* task_runner, ClockNowFunctionPtr now_function);
+  FakeQuicBridge(FakeTaskRunner& task_runner, ClockNowFunctionPtr now_function);
   ~FakeQuicBridge();
 
   const IPEndpoint kControllerEndpoint{{192, 168, 1, 3}, 4321};
@@ -78,13 +77,12 @@ class FakeQuicBridge {
   void PostPacketsUntilIdle();
   FakeClientQuicConnectionFactory* GetClientFactory();
   FakeServerQuicConnectionFactory* GetServerFactory();
-  FakeTaskRunner* task_runner_;
+  FakeTaskRunner& task_runner_;
 
   std::unique_ptr<FakeUdpSocket> client_socket_;
   std::unique_ptr<FakeUdpSocket> server_socket_;
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_IMPL_QUIC_TESTING_QUIC_TEST_SUPPORT_H_

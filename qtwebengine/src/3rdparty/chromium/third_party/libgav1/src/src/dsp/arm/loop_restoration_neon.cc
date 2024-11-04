@@ -1125,7 +1125,11 @@ inline void CalculateIntermediate(const uint16x8_t sum,
   val = AdjustValue(val, idx, 101);  // 101 is the last index which value is 3.
   val = AdjustValue(val, idx, 169);  // 169 is the last index which value is 2.
   val = AdjustValue(val, idx, 254);  // 254 is the last index which value is 1.
-  *ma = (offset == 0) ? vcombine_u8(val, vget_high_u8(*ma))
+  // offset == 0 is assumed to be the first call to this function. Note
+  // vget_high_u8(*ma) is not used in this case to avoid a -Wuninitialized
+  // warning with some versions of gcc. vdup_n_u8(0) could work as well, but in
+  // most cases clang and gcc generated better code with this version.
+  *ma = (offset == 0) ? vcombine_u8(val, val)
                       : vcombine_u8(vget_low_u8(*ma), val);
 
   // b = ma * b * one_over_n

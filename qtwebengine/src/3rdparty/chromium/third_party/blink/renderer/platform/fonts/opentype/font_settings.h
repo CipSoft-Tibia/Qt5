@@ -26,11 +26,11 @@ class FontTagValuePair {
   FontTagValuePair(uint32_t tag, T value) : tag_(tag), value_(value) {
     // ensure tag is either valid or zero
     DCHECK(tag == 0 ||
-           (tag & 0xff000000) < 0x7f000000 &&
+           ((tag & 0xff000000) < 0x7f000000 &&
                (tag & 0xff000000) >= 0x20000000 &&
                (tag & 0xff0000) < 0x7f0000 && (tag & 0xff0000) >= 0x200000 &&
                (tag & 0xff00) < 0x7f00 && (tag & 0xff00) >= 0x2000 &&
-               (tag & 0xff) < 0x7f && (tag & 0xff) >= 0x20);
+               (tag & 0xff) < 0x7f && (tag & 0xff) >= 0x20));
   }
   FontTagValuePair(const AtomicString& tag, T value)
       : tag_(AtomicStringToFourByteTag(tag)), value_(value) {

@@ -67,13 +67,14 @@ public:
     void setColorTemperature(int temperature) override;
 
     QWasmVideoOutput *cameraOutput() { return m_cameraOutput.data(); }
-
+Q_SIGNALS:
+    void cameraIsReady();
 private:
     void createCamera(const QCameraDevice &camera);
     void updateCameraFeatures();
 
     QCameraDevice m_cameraDev;
-    QWasmMediaCaptureSession *m_CaptureSession;
+    QWasmMediaCaptureSession *m_CaptureSession = nullptr;
     bool m_cameraActive = false;
     QScopedPointer <QWasmVideoOutput> m_cameraOutput;
 
@@ -89,6 +90,8 @@ private:
     QCamera::WhiteBalanceMode m_wasmWhiteBalanceMode;
     int m_wasmColorTemperature;
     bool m_cameraIsReady = false;
+    bool m_cameraShouldStartActive = false;
+    bool m_shouldBeActive = false;
 };
 
 QT_END_NAMESPACE

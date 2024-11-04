@@ -1,5 +1,5 @@
 # Copyright (C) 2023 The Qt Company Ltd.
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets PdfWidgets
                  OPTIONAL_COMPONENTS PrintSupport)
@@ -32,8 +32,14 @@ if(TARGET Qt6::PrintSupport)
     target_link_libraries(pdfviewer PRIVATE Qt6::PrintSupport)
 endif()
 
+if(WIN32)
+    set(install_destination "${CMAKE_INSTALL_BINDIR}/app")
+elseif(APPLE)
+    set(install_destination ".")
+else()
+    set(install_destination "${CMAKE_INSTALL_BINDIR}")
+endif()
 install(TARGETS pdfviewer
-    BUNDLE DESTINATION "${INSTALL_EXAMPLEDIR}/plugins"
-    LIBRARY DESTINATION "${INSTALL_EXAMPLEDIR}/plugins"
+    RUNTIME DESTINATION "${install_destination}"
+    LIBRARY DESTINATION "${install_destination}"
 )
-

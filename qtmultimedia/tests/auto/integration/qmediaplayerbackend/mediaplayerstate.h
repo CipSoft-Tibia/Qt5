@@ -1,13 +1,18 @@
 // Copyright (C) 2023 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef MEDIAPLAYERSTATE_H
 #define MEDIAPLAYERSTATE_H
 
-#include <qlist.h>
-#include <qmediatimerange.h>
-#include <qmediametadata.h>
-#include <qtestcase.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qurl.h>
+#include <QtMultimedia/qaudiooutput.h>
+#include <QtMultimedia/qmediametadata.h>
+#include <QtMultimedia/qmediaplayer.h>
+#include <QtMultimedia/qmediatimerange.h>
+#include <QtTest/qtestcase.h>
+
+#include <optional>
 
 QT_USE_NAMESPACE
 
@@ -54,7 +59,7 @@ struct MediaPlayerState
     /*!
      * Read the state from an existing media player
      */
-    MediaPlayerState(const QMediaPlayer &player)
+    explicit MediaPlayerState(const QMediaPlayer &player)
         : audioTracks{ player.audioTracks() },
           videoTracks{ player.videoTracks() },
           subtitleTracks{ player.subtitleTracks() },

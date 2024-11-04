@@ -90,32 +90,6 @@ class DEVICE_BLUETOOTH_EXPORT FlossManagerClient
     virtual void DefaultAdapterChanged(int previous, int adapter) {}
   };
 
-  class PoweredCallback {
-   public:
-    explicit PoweredCallback(ResponseCallback<Void> cb, int timeout_ms);
-    ~PoweredCallback();
-
-    static std::unique_ptr<FlossManagerClient::PoweredCallback>
-    CreateWithTimeout(ResponseCallback<Void> cb, int timeout_ms);
-    void RunError() {
-      if (cb_) {
-        std::move(cb_).Run(base::unexpected(Error(kErrorNoResponse, "")));
-      }
-    }
-    void RunNoError() {
-      if (cb_) {
-        std::move(cb_).Run(Void{});
-      }
-    }
-
-   private:
-    void PostDelayedError();
-
-    ResponseCallback<Void> cb_;
-    int timeout_ms_;
-    base::WeakPtrFactory<PoweredCallback> weak_ptr_factory_{this};
-  };
-
   // Creates the instance.
   static std::unique_ptr<FlossManagerClient> Create();
 
@@ -158,7 +132,8 @@ class DEVICE_BLUETOOTH_EXPORT FlossManagerClient
   // Initializes the manager client.
   void Init(dbus::Bus* bus,
             const std::string& service_name,
-            const int adapter_index) override;
+            const int adapter_index,
+            base::OnceClosure on_ready) override;
 
  protected:
   friend class FlossManagerClientTest;
@@ -185,6 +160,9 @@ class DEVICE_BLUETOOTH_EXPORT FlossManagerClient
   // Handle response to |GetAvailableAdapters| DBus method call.
   void HandleGetAvailableAdapters(
       DBusResult<std::vector<internal::AdapterWithEnabled>> adapters);
+
+  // Handle response to |RegisterCallback| DBus method call.
+  void HandleRegisterCallback(DBusResult<Void> result);
 
   // internal::FlossManagerClientCallbacks overrides.
   void OnHciDeviceChanged(int32_t adapter, bool present) override;
@@ -236,9 +214,9 @@ class DEVICE_BLUETOOTH_EXPORT FlossManagerClient
   // Default adapter to use.
   int default_adapter_ = 0;
 
-  // Cached list of available adapters and their powered state indexed by hci
+  // Cached list of available adapters and their enabled state indexed by hci
   // index.
-  base::flat_map<int, bool> adapter_to_powered_;
+  base::flat_map<int, bool> adapter_to_enabled_;
 
   // Name of service that implements manager interface.
   std::string service_name_;
@@ -277,11 +255,12 @@ class DEVICE_BLUETOOTH_EXPORT FlossManagerClient
   // enabled).
   static const int kSetFlossEnabledDBusTimeoutMs;
 
-  // Powered callback called only when adapter actually powers on
-  std::unique_ptr<PoweredCallback> powered_callback_;
+  // Enabled callback called only when adapter becomes enabled.
+  std::unique_ptr<WeaklyOwnedResponseCallback<Void>> adapter_enabled_callback_;
 
   // Callback sent for SetFlossEnabled completion.
-  std::unique_ptr<WeaklyOwnedCallback<bool>> set_floss_enabled_callback_;
+  std::unique_ptr<WeaklyOwnedResponseCallback<bool>>
+      set_floss_enabled_callback_;
 
   template <typename R, typename... Args>
   void CallManagerMethod(ResponseCallback<R> callback,
@@ -294,6 +273,9 @@ class DEVICE_BLUETOOTH_EXPORT FlossManagerClient
   // Exported callbacks for interacting with daemon.
   ExportedCallbackManager<FlossManagerClientCallbacks>
       exported_callback_manager_{manager::kCallbackInterface};
+
+  // Signal when the client is ready to be used.
+  base::OnceClosure on_ready_;
 
   base::WeakPtrFactory<FlossManagerClient> weak_ptr_factory_{this};
 };

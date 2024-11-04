@@ -12,7 +12,7 @@ class DataSource : public QObject
     Q_OBJECT
 public:
     explicit DataSource(QObject *parent = 0);
-    virtual ~DataSource();
+    ~DataSource() override;
 
 public:
     Q_INVOKABLE void fillVolume(QCustom3DVolume *volumeItem);

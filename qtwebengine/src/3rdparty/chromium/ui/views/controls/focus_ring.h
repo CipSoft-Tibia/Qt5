@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "base/functional/callback.h"
 #include "base/scoped_observation.h"
 #include "ui/base/class_property.h"
 #include "ui/color/color_id.h"
@@ -35,7 +36,7 @@ class VIEWS_EXPORT FocusRing : public View, public ViewObserver {
 
   static constexpr float kDefaultCornerRadiusDp = 2.0f;
 
-  using ViewPredicate = std::function<bool(View* view)>;
+  using ViewPredicate = base::RepeatingCallback<bool(const View* view)>;
 
   // The default thickness and inset amount of focus ring halos. If you need
   // the thickness of a specific focus ring, call halo_thickness() instead.
@@ -88,10 +89,10 @@ class VIEWS_EXPORT FocusRing : public View, public ViewObserver {
   void SetHaloThickness(float halo_thickness);
   void SetHaloInset(float halo_inset);
 
-  // If set we do not draw an inner stroke using the color of the
-  // host's parent's background color. This may result in insufficient contrast
-  // between the focus ring and the host view.
-  void SetInnerStrokeDisabled() { inner_stroke_enabled_ = false; }
+  // Explicitly disable using style of focus ring that is drawn with a 2dp gap
+  // between the focus ring and component.
+  void SetOutsetFocusRingDisabled(bool disable);
+  bool GetOutsetFocusRingDisabled() const;
 
   bool ShouldPaintForTesting();
 
@@ -100,7 +101,6 @@ class VIEWS_EXPORT FocusRing : public View, public ViewObserver {
   void ViewHierarchyChanged(
       const ViewHierarchyChangedDetails& details) override;
   void OnPaint(gfx::Canvas* canvas) override;
-  void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
   void OnThemeChanged() override;
 
   // ViewObserver:
@@ -110,15 +110,18 @@ class VIEWS_EXPORT FocusRing : public View, public ViewObserver {
  private:
   FocusRing();
 
+  // Outset the input bounds if conditions are met.
+  void AdjustBounds(SkRect& rect) const;
+  void AdjustBounds(SkRRect& rect) const;
+
   SkPath GetPath() const;
   SkRRect GetRingRoundRect() const;
 
   void RefreshLayer();
 
-  // Returns whether we should draw the focus ring as two strokes. An outer
-  // stroke of the focus ring color and an inner stroke with the host's
-  // background color.
-  bool ShouldDrawInnerStroke() const;
+  // Returns whether we should outset by `kFocusRingOutset` dp before drawing
+  // the focus ring.
+  bool ShouldSetOutsetFocusRing() const;
 
   bool ShouldPaint();
 
@@ -133,7 +136,7 @@ class VIEWS_EXPORT FocusRing : public View, public ViewObserver {
   // The path generator used to draw this focus ring.
   std::unique_ptr<HighlightPathGenerator> path_generator_;
 
-  bool inner_stroke_enabled_ = true;
+  bool outset_focus_ring_disabled_ = false;
 
   // Whether the enclosed View is in an invalid state, which controls whether
   // the focus ring shows an invalid appearance (usually a different color).
@@ -143,7 +146,7 @@ class VIEWS_EXPORT FocusRing : public View, public ViewObserver {
   absl::optional<ui::ColorId> color_id_;
 
   // The predicate used to determine whether the parent has focus.
-  absl::optional<ViewPredicate> has_focus_predicate_;
+  ViewPredicate has_focus_predicate_;
 
   // The thickness of the focus ring halo, in DIP.
   float halo_thickness_ = kDefaultHaloThickness;

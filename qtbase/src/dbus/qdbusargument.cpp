@@ -31,17 +31,17 @@ QDBusArgumentPrivate::~QDBusArgumentPrivate()
         q_dbus_message_unref(message);
 }
 
-QByteArray QDBusArgumentPrivate::createSignature(int id)
+QByteArray QDBusArgumentPrivate::createSignature(QMetaType type)
 {
     if (!qdbus_loadLibDBus())
         return "";
 
     QByteArray signature;
-    QDBusMarshaller *marshaller = new QDBusMarshaller(0);
+    QDBusMarshaller *marshaller = new QDBusMarshaller;
     marshaller->ba = &signature;
 
     // run it
-    QVariant v{QMetaType(id)};
+    QVariant v{type};
     QDBusArgument arg(marshaller);
     QDBusMetaType::marshall(arg, v.metaType(), v.constData());
     arg.d = nullptr;
@@ -51,16 +51,16 @@ QByteArray QDBusArgumentPrivate::createSignature(int id)
     delete marshaller;
 
     if (signature.isEmpty() || !ok || !QDBusUtil::isValidSingleSignature(QString::fromLatin1(signature))) {
-        qWarning("QDBusMarshaller: type '%s' produces invalid D-BUS signature '%s' "
+        qWarning("QDBusMarshaller: type '%s' produces invalid D-Bus signature '%s' "
                  "(Did you forget to call beginStructure() ?)",
-                 QMetaType(id).name(), signature.isEmpty() ? "<empty>" : signature.constData());
+                 type.name(), signature.isEmpty() ? "<empty>" : signature.constData());
         return "";
     } else if ((signature.at(0) != DBUS_TYPE_ARRAY && signature.at(0) != DBUS_STRUCT_BEGIN_CHAR) ||
                (signature.at(0) == DBUS_TYPE_ARRAY && (signature.at(1) == DBUS_TYPE_BYTE ||
                                                        signature.at(1) == DBUS_TYPE_STRING))) {
-        qWarning("QDBusMarshaller: type '%s' attempts to redefine basic D-BUS type '%s' (%s) "
+        qWarning("QDBusMarshaller: type '%s' attempts to redefine basic D-Bus type '%s' (%s) "
                  "(Did you forget to call beginStructure() ?)",
-                 QMetaType(id).name(), signature.constData(),
+                 type.name(), signature.constData(),
                  QDBusMetaType::signatureToMetaType(signature).name());
         return "";
     }
@@ -71,7 +71,7 @@ bool QDBusArgumentPrivate::checkWrite(QDBusArgumentPrivate *&d)
 {
     if (!d)
         return false;
-    if (d->direction == Marshalling) {
+    if (d->direction == Direction::Marshalling) {
         if (!d->marshaller()->ok)
             return false;
 
@@ -99,7 +99,7 @@ bool QDBusArgumentPrivate::checkRead(QDBusArgumentPrivate *d)
 {
     if (!d)
         return false;
-    if (d->direction == Demarshalling)
+    if (d->direction == Direction::Demarshalling)
         return true;
 
 #ifdef QT_DEBUG
@@ -260,7 +260,7 @@ QDBusArgument::QDBusArgument()
         return;
     }
 
-    QDBusMarshaller *dd = new QDBusMarshaller(0);
+    QDBusMarshaller *dd = new QDBusMarshaller;
     d = dd;
 
     // create a new message with any type, we won't sent it anyways
@@ -537,7 +537,7 @@ QString QDBusArgument::currentSignature() const
 {
     if (!d)
         return QString();
-    if (d->direction == QDBusArgumentPrivate::Demarshalling)
+    if (d->direction == QDBusArgumentPrivate::Direction::Demarshalling)
         return d->demarshaller()->currentSignature();
     else
         return d->marshaller()->currentSignature();
@@ -556,14 +556,14 @@ QDBusArgument::ElementType QDBusArgument::currentType() const
 {
     if (!d)
         return UnknownType;
-    if (d->direction == QDBusArgumentPrivate::Demarshalling)
+    if (d->direction == QDBusArgumentPrivate::Direction::Demarshalling)
         return d->demarshaller()->currentType();
     return UnknownType;
 }
 
 /*!
-    Extracts one D-BUS primitive argument of type \c{BYTE} from the
-    D-BUS stream and puts it into \a arg.
+    Extracts one D-Bus primitive argument of type \c{BYTE} from the
+    D-Bus stream and puts it into \a arg.
 */
 const QDBusArgument &QDBusArgument::operator>>(uchar &arg) const
 {

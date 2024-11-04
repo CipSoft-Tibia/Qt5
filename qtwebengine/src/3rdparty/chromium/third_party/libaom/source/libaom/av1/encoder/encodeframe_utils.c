@@ -63,6 +63,25 @@ void av1_set_ssim_rdmult(const AV1_COMP *const cpi, int *errorperbit,
   av1_set_error_per_bit(errorperbit, *rdmult);
 }
 
+#if CONFIG_SALIENCY_MAP
+void av1_set_saliency_map_vmaf_rdmult(const AV1_COMP *const cpi,
+                                      int *errorperbit, const BLOCK_SIZE bsize,
+                                      const int mi_row, const int mi_col,
+                                      int *const rdmult) {
+  const AV1_COMMON *const cm = &cpi->common;
+  const int num_mi_w = mi_size_wide[bsize];
+  const int num_mi_h = mi_size_high[bsize];
+  const int num_cols = (cm->mi_params.mi_cols + num_mi_w - 1) / num_mi_w;
+
+  *rdmult =
+      (int)(*rdmult * cpi->sm_scaling_factor[(mi_row / num_mi_h) * num_cols +
+                                             (mi_col / num_mi_w)]);
+
+  *rdmult = AOMMAX(*rdmult, 0);
+  av1_set_error_per_bit(errorperbit, *rdmult);
+}
+#endif
+
 // TODO(angiebird): Move these function to tpl_model.c
 #if !CONFIG_REALTIME_ONLY
 // Return the end column for the current superblock, in unit of TPL blocks.
@@ -320,8 +339,7 @@ void av1_update_state(const AV1_COMP *const cpi, ThreadData *td,
   }
 
   // Count zero motion vector.
-  if (!dry_run && cpi->oxcf.q_cfg.aq_mode == CYCLIC_REFRESH_AQ &&
-      !frame_is_intra_only(cm)) {
+  if (!dry_run && !frame_is_intra_only(cm)) {
     const MV mv = mi->mv[0].as_mv;
     if (is_inter_block(mi) && mi->ref_frame[0] == LAST_FRAME &&
         abs(mv.row) < 8 && abs(mv.col) < 8) {
@@ -1723,5 +1741,25 @@ void av1_set_cost_upd_freq(AV1_COMP *cpi, ThreadData *td,
       av1_fill_dv_costs(&xd->tile_ctx->ndvc, x->dv_costs);
       break;
     default: assert(0);
+  }
+}
+
+void av1_dealloc_src_diff_buf(struct macroblock *mb, int num_planes) {
+  for (int plane = 0; plane < num_planes; ++plane) {
+    aom_free(mb->plane[plane].src_diff);
+    mb->plane[plane].src_diff = NULL;
+  }
+}
+
+void av1_alloc_src_diff_buf(const struct AV1Common *cm, struct macroblock *mb) {
+  const int num_planes = av1_num_planes(cm);
+  for (int plane = 0; plane < num_planes; ++plane) {
+    const int subsampling_xy =
+        plane ? cm->seq_params->subsampling_x + cm->seq_params->subsampling_y
+              : 0;
+    const int sb_size = MAX_SB_SQUARE >> subsampling_xy;
+    CHECK_MEM_ERROR(cm, mb->plane[plane].src_diff,
+                    (int16_t *)aom_memalign(
+                        32, sizeof(*mb->plane[plane].src_diff) * sb_size));
   }
 }

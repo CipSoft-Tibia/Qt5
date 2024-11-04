@@ -151,13 +151,6 @@ struct TensorEvaluator<const TensorCustomUnaryOp<CustomUnaryFunc, XprType>, Devi
 
   EIGEN_DEVICE_FUNC EvaluatorPointerType data() const { return m_result; }
 
-#ifdef EIGEN_USE_SYCL
-  // binding placeholder accessors to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_result.bind(cgh);
-  }
-#endif
-
  protected:
   void evalTo(EvaluatorPointerType data) {
     TensorMap<Tensor<CoeffReturnType, NumDims, Layout, Index> > result(m_device.get(data), m_dimensions);
@@ -324,12 +317,6 @@ struct TensorEvaluator<const TensorCustomBinaryOp<CustomBinaryFunc, LhsXprType, 
 
   EIGEN_DEVICE_FUNC EvaluatorPointerType data() const { return m_result; }
 
-#ifdef EIGEN_USE_SYCL
-  // binding placeholder accessors to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_result.bind(cgh);
-  }
-#endif
 
  protected:
   void evalTo(EvaluatorPointerType data) {

@@ -103,7 +103,7 @@ void DynPropGetterAdapter_MethodCallback(
   }
 
   v8::Local<v8::String> hPropName =
-      hCallBackInfo->GetInternalField(1).As<v8::String>();
+      hCallBackInfo->GetInternalField(1).As<v8::Value>().As<v8::String>();
   if (hPropName.IsEmpty())
     return;
 
@@ -286,7 +286,7 @@ CFXJSE_Class* CFXJSE_Class::Create(
   pClass->m_pClassDescriptor = pClassDescriptor;
   CFXJSE_ScopeUtil_IsolateHandleRootContext scope(pIsolate);
   v8::Local<v8::FunctionTemplate> hFunctionTemplate = v8::FunctionTemplate::New(
-      pIsolate, bIsJSGlobal ? 0 : V8ConstructorCallback_Wrapper,
+      pIsolate, bIsJSGlobal ? nullptr : V8ConstructorCallback_Wrapper,
       v8::External::New(pIsolate,
                         const_cast<FXJSE_CLASS_DESCRIPTOR*>(pClassDescriptor)));
   v8::Local<v8::String> classname =

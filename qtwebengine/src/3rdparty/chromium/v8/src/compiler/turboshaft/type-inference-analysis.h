@@ -37,7 +37,7 @@ namespace v8::internal::compiler::turboshaft {
 // information.
 class TypeInferenceAnalysis {
  public:
-  explicit TypeInferenceAnalysis(Graph& graph, Zone* phase_zone)
+  explicit TypeInferenceAnalysis(const Graph& graph, Zone* phase_zone)
       : graph_(graph),
         // TODO(nicohartmann@): Might put types back into phase_zone once we
         // don't store them in the graph anymore.
@@ -49,19 +49,32 @@ class TypeInferenceAnalysis {
         predecessors_(phase_zone),
         graph_zone_(graph.graph_zone()) {}
 
-  void Run() {
+  GrowingSidetable<Type> Run(
+      GrowingBlockSidetable<std::vector<std::pair<OpIndex, Type>>>*
+          block_refinements = nullptr) {
+#ifdef DEBUG
+    block_refinements_ = block_refinements;
+#endif  // DEBUG
     TURBOSHAFT_TRACE_TYPING("=== Running Type Inference Analysis ===\n");
     for (uint32_t unprocessed_index = 0;
          unprocessed_index < graph_.block_count();) {
       BlockIndex block_index = static_cast<BlockIndex>(unprocessed_index);
       ++unprocessed_index;
-
       const Block& block = graph_.Get(block_index);
+
+#ifdef DEBUG
+      if (V8_UNLIKELY(v8_flags.turboshaft_trace_typing)) {
+        std::stringstream os;
+        os << block.kind() << " " << block.index().id();
+        TURBOSHAFT_TRACE_TYPING("=== %s ===\n", os.str().c_str());
+      }
+#endif  // DEBUG
+
       ProcessBlock<false>(block, &unprocessed_index);
     }
     TURBOSHAFT_TRACE_TYPING("=== Completed Type Inference Analysis ===\n");
 
-    std::swap(graph_.operation_types(), types_);
+    return std::move(types_);
   }
 
   template <bool revisit_loop_header>
@@ -103,7 +116,7 @@ class TypeInferenceAnalysis {
     // predecessors.
     {
       auto MergeTypes = [&](table_t::Key,
-                            base::Vector<Type> predecessors) -> Type {
+                            base::Vector<const Type> predecessors) -> Type {
         DCHECK_GT(predecessors.size(), 0);
         Type result_type = predecessors[0];
         for (size_t i = 1; i < predecessors.size(); ++i) {
@@ -148,6 +161,12 @@ class TypeInferenceAnalysis {
         case Opcode::kSwitch:
         case Opcode::kTuple:
         case Opcode::kStaticAssert:
+        case Opcode::kDebugBreak:
+        case Opcode::kDebugPrint:
+#if V8_ENABLE_WEBASSEMBLY
+        case Opcode::kGlobalSet:
+#endif
+        case Opcode::kCheckException:
           // These operations do not produce any output that needs to be typed.
           DCHECK_EQ(0, op.outputs_rep().size());
           break;
@@ -173,8 +192,10 @@ class TypeInferenceAnalysis {
         case Opcode::kWordBinop:
           ProcessWordBinop(index, op.Cast<WordBinopOp>());
           break;
+        case Opcode::kWord32PairBinop:
+        case Opcode::kAtomicWord32Pair:
         case Opcode::kPendingLoopPhi:
-          // Input graph must not contain PendingLoopPhi.
+          // Input graph must not contain these op codes.
           UNREACHABLE();
         case Opcode::kPhi:
           if constexpr (revisit_loop_header) {
@@ -187,9 +208,17 @@ class TypeInferenceAnalysis {
         case Opcode::kGoto: {
           const GotoOp& gto = op.Cast<GotoOp>();
           // Check if this is a backedge.
-          if (gto.destination->IsLoop() &&
-              gto.destination->index() < current_block_->index()) {
-            ProcessBlock<true>(*gto.destination, unprocessed_index);
+          if (gto.destination->IsLoop()) {
+            if (gto.destination->index() < current_block_->index()) {
+              ProcessBlock<true>(*gto.destination, unprocessed_index);
+            } else if (gto.destination->index() == current_block_->index()) {
+              // This is a single block loop. We must only revisit the current
+              // header block if we actually need to, in order to prevent
+              // infinite recursion.
+              if (!revisit_loop_header || loop_needs_revisit) {
+                ProcessBlock<true>(*gto.destination, unprocessed_index);
+              }
+            }
           }
           break;
         }
@@ -199,11 +228,13 @@ class TypeInferenceAnalysis {
         case Opcode::kShift:
         case Opcode::kEqual:
         case Opcode::kChange:
+        case Opcode::kChangeOrDeopt:
         case Opcode::kTryChange:
-        case Opcode::kFloat64InsertWord32:
+        case Opcode::kBitcastWord32PairToFloat64:
         case Opcode::kTaggedBitcast:
         case Opcode::kSelect:
         case Opcode::kLoad:
+        case Opcode::kAtomicRMW:
         case Opcode::kAllocate:
         case Opcode::kDecodeExternalPointer:
         case Opcode::kParameter:
@@ -212,13 +243,89 @@ class TypeInferenceAnalysis {
         case Opcode::kStackSlot:
         case Opcode::kFrameConstant:
         case Opcode::kCall:
-        case Opcode::kCallAndCatchException:
-        case Opcode::kLoadException:
+        case Opcode::kCatchBlockBegin:
         case Opcode::kTailCall:
+        case Opcode::kDidntThrow:
         case Opcode::kObjectIs:
-        case Opcode::kConvertToObject:
-        case Opcode::kTag:
-        case Opcode::kUntag:
+        case Opcode::kFloatIs:
+        case Opcode::kObjectIsNumericValue:
+        case Opcode::kConvert:
+        case Opcode::kConvertUntaggedToJSPrimitive:
+        case Opcode::kConvertUntaggedToJSPrimitiveOrDeopt:
+        case Opcode::kConvertJSPrimitiveToUntagged:
+        case Opcode::kConvertJSPrimitiveToUntaggedOrDeopt:
+        case Opcode::kTruncateJSPrimitiveToUntagged:
+        case Opcode::kTruncateJSPrimitiveToUntaggedOrDeopt:
+        case Opcode::kConvertJSPrimitiveToObject:
+        case Opcode::kNewConsString:
+        case Opcode::kNewArray:
+        case Opcode::kDoubleArrayMinMax:
+        case Opcode::kLoadFieldByIndex:
+        case Opcode::kBigIntBinop:
+        case Opcode::kBigIntEqual:
+        case Opcode::kBigIntComparison:
+        case Opcode::kBigIntUnary:
+        case Opcode::kStringAt:
+#ifdef V8_INTL_SUPPORT
+        case Opcode::kStringToCaseIntl:
+#endif  // V8_INTL_SUPPORT
+        case Opcode::kStringLength:
+        case Opcode::kStringIndexOf:
+        case Opcode::kStringFromCodePointAt:
+        case Opcode::kStringSubstring:
+        case Opcode::kStringConcat:
+        case Opcode::kStringEqual:
+        case Opcode::kStringComparison:
+        case Opcode::kArgumentsLength:
+        case Opcode::kNewArgumentsElements:
+        case Opcode::kLoadTypedElement:
+        case Opcode::kLoadDataViewElement:
+        case Opcode::kLoadStackArgument:
+        case Opcode::kStoreTypedElement:
+        case Opcode::kStoreDataViewElement:
+        case Opcode::kTransitionAndStoreArrayElement:
+        case Opcode::kCompareMaps:
+        case Opcode::kCheckMaps:
+        case Opcode::kAssumeMap:
+        case Opcode::kCheckedClosure:
+        case Opcode::kCheckEqualsInternalizedString:
+        case Opcode::kLoadMessage:
+        case Opcode::kStoreMessage:
+        case Opcode::kSameValue:
+        case Opcode::kFloat64SameValue:
+        case Opcode::kFastApiCall:
+        case Opcode::kRuntimeAbort:
+        case Opcode::kEnsureWritableFastElements:
+        case Opcode::kMaybeGrowFastElements:
+        case Opcode::kTransitionElementsKind:
+        case Opcode::kFindOrderedHashEntry:
+#if V8_ENABLE_WEBASSEMBLY
+        // TODO(14108): Implement.
+        case Opcode::kGlobalGet:
+        case Opcode::kIsNull:
+        case Opcode::kNull:
+        case Opcode::kAssertNotNull:
+        case Opcode::kRttCanon:
+        case Opcode::kWasmTypeCheck:
+        case Opcode::kWasmTypeCast:
+        case Opcode::kStructGet:
+        case Opcode::kStructSet:
+        case Opcode::kArrayGet:
+        case Opcode::kArraySet:
+        case Opcode::kArrayLength:
+        case Opcode::kSimd128Constant:
+        case Opcode::kSimd128Binop:
+        case Opcode::kSimd128Unary:
+        case Opcode::kSimd128Shift:
+        case Opcode::kSimd128Test:
+        case Opcode::kSimd128Splat:
+        case Opcode::kSimd128Ternary:
+        case Opcode::kSimd128ExtractLane:
+        case Opcode::kSimd128ReplaceLane:
+        case Opcode::kSimd128LaneMemory:
+        case Opcode::kSimd128LoadTransform:
+        case Opcode::kSimd128Shuffle:
+#endif
           // TODO(nicohartmann@): Support remaining operations. For now we
           // compute fallback types.
           if (op.outputs_rep().size() > 0) {
@@ -228,6 +335,10 @@ class TypeInferenceAnalysis {
                     Typer::TypeForRepresentation(op.outputs_rep(), graph_zone_),
                     allow_narrowing, is_fallback_for_unsupported_operation);
           }
+          break;
+        case Opcode::kLoadRootRegister:
+          SetType(index,
+                  Typer::TypeForRepresentation(op.outputs_rep(), graph_zone_));
           break;
       }
     }
@@ -296,7 +407,7 @@ class TypeInferenceAnalysis {
     Type old_type = GetTypeAtDefinition(index);
     Type new_type = ComputeTypeForPhi(phi);
 
-    if (old_type.IsInvalid() || old_type.IsNone()) {
+    if (old_type.IsInvalid()) {
       SetType(index, new_type);
       return true;
     }
@@ -319,7 +430,9 @@ class TypeInferenceAnalysis {
         graph_.Get(index).ToString().substr(0, 40).c_str(),
         old_type.ToString().c_str(), new_type.ToString().c_str());
 
-    new_type = Widen(old_type, new_type);
+    if (!old_type.IsNone()) {
+      new_type = Widen(old_type, new_type);
+    }
     SetType(index, new_type);
     return true;
   }
@@ -368,9 +481,21 @@ class TypeInferenceAnalysis {
   }
 
   Type ComputeTypeForPhi(const PhiOp& phi) {
-    Type result_type = GetTypeOrDefault(phi.inputs()[0], Type::None());
+    // Word64 values are truncated to word32 implicitly, we need to handle this
+    // here.
+    auto MaybeTruncate = [&](Type t) -> Type {
+      if (t.IsNone()) return t;
+      if (phi.rep == RegisterRepresentation::Word32()) {
+        return Typer::TruncateWord32Input(t, true, graph_zone_);
+      }
+      return t;
+    };
+
+    Type result_type =
+        MaybeTruncate(GetTypeOrDefault(phi.inputs()[0], Type::None()));
     for (size_t i = 1; i < phi.inputs().size(); ++i) {
-      Type input_type = GetTypeOrDefault(phi.inputs()[i], Type::None());
+      Type input_type =
+          MaybeTruncate(GetTypeOrDefault(phi.inputs()[i], Type::None()));
       result_type = Type::LeastUpperBound(result_type, input_type, graph_zone_);
     }
     return result_type;
@@ -408,9 +533,9 @@ class TypeInferenceAnalysis {
     table_.Set(*key_opt, type);
 
 #ifdef DEBUG
-    std::vector<std::pair<OpIndex, Type>>& refinement =
-        graph_.block_type_refinement()[new_block->index()];
-    refinement.push_back(std::make_pair(op, type));
+    if (block_refinements_) {
+      (*block_refinements_)[new_block->index()].emplace_back(op, type);
+    }
 #endif
 
     // TODO(nicohartmann@): One could push the refined type deeper into the
@@ -505,7 +630,7 @@ class TypeInferenceAnalysis {
   }
 
  private:
-  Graph& graph_;
+  const Graph& graph_;
   GrowingSidetable<Type> types_;
   using table_t = SnapshotTable<Type>;
   table_t table_;
@@ -517,6 +642,12 @@ class TypeInferenceAnalysis {
   // it, in order to save memory and not reallocate it for each merge.
   ZoneVector<table_t::Snapshot> predecessors_;
   Zone* graph_zone_;
+
+#ifdef DEBUG
+  // {block_refinements_} are only stored for tracing in Debug builds.
+  GrowingBlockSidetable<std::vector<std::pair<OpIndex, Type>>>*
+      block_refinements_ = nullptr;
+#endif
 };
 
 }  // namespace v8::internal::compiler::turboshaft

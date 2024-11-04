@@ -6,7 +6,6 @@
 #include <QtGraphs/qitemmodelbardataproxy.h>
 #include <QtGraphs/qvalue3daxis.h>
 #include <QtGraphs/q3dscene.h>
-#include <QtGraphs/q3dcamera.h>
 #include <QtGraphs/qbar3dseries.h>
 #include <QtGraphs/q3dtheme.h>
 
@@ -79,7 +78,7 @@ GraphDataGenerator::GraphDataGenerator(Q3DBars *bargraph, QTableWidget *tableWid
 #endif
 
     // Set theme
-    m_graph->activeTheme()->setType(Q3DTheme::ThemeDigia);
+    m_graph->activeTheme()->setType(Q3DTheme::Theme::PrimaryColors);
 
     // Set font
     QFont font = QFont("Impact", 20);
@@ -87,7 +86,7 @@ GraphDataGenerator::GraphDataGenerator(Q3DBars *bargraph, QTableWidget *tableWid
     m_graph->activeTheme()->setFont(font);
 
     // Set preset camera position
-    m_graph->scene()->activeCamera()->setCameraPreset(Q3DCamera::CameraPresetFront);
+    m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::Front);
 }
 
 GraphDataGenerator::~GraphDataGenerator()
@@ -224,7 +223,7 @@ int main(int argc, char **argv)
     QItemModelBarDataProxy *proxy = new QItemModelBarDataProxy(tableWidget->model());
     proxy->setUseModelCategories(true);
     QBar3DSeries *series = new QBar3DSeries(proxy);
-    series->setMesh(QAbstract3DSeries::MeshPyramid);
+    series->setMesh(QAbstract3DSeries::Mesh::Pyramid);
     graph->addSeries(series);
 
     GraphDataGenerator generator(graph, tableWidget);

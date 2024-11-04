@@ -12,28 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
+import m from 'mithril';
 
 import {searchSegment} from '../../base/binary_search';
 import {assertTrue} from '../../base/logging';
 import {Actions} from '../../common/actions';
-import {
-  EngineProxy,
-  NUM,
-  NUM_NULL,
-  PluginContext,
-  STR,
-  TrackInfo,
-} from '../../common/plugin_api';
-import {fromNs, toNs} from '../../common/time';
+import {duration, time, Time} from '../../common/time';
 import {TrackData} from '../../common/track_data';
-import {
-  TrackController,
-} from '../../controller/track_controller';
+import {TrackController} from '../../controller/track_controller';
 import {checkerboardExcept} from '../../frontend/checkerboard';
 import {globals} from '../../frontend/globals';
-import {PopupMenuButton, PopupMenuItem} from '../../frontend/popup_menu';
 import {NewTrackArgs, Track} from '../../frontend/track';
+import {Button} from '../../frontend/widgets/button';
+import {MenuItem, PopupMenu2} from '../../frontend/widgets/menu';
+import {
+  LONG,
+  LONG_NULL,
+  NUM,
+  Plugin,
+  PluginContext,
+  PluginInfo,
+  STR,
+  TracePluginContext,
+  TrackInfo,
+} from '../../public';
 
 export const COUNTER_TRACK_KIND = 'CounterTrack';
 
@@ -48,7 +50,7 @@ export interface Data extends TrackData {
   minimumDelta: number;
   maximumRate: number;
   minimumRate: number;
-  timestamps: Float64Array;
+  timestamps: BigInt64Array;
   lastIds: Float64Array;
   minValues: Float64Array;
   maxValues: Float64Array;
@@ -61,8 +63,8 @@ export interface Config {
   name: string;
   maximumValue?: number;
   minimumValue?: number;
-  startTs?: number;
-  endTs?: number;
+  startTs?: time;
+  endTs?: time;
   namespace: string;
   trackId: number;
   scale?: CounterScaleOptions;
@@ -75,19 +77,10 @@ class CounterTrackController extends TrackController<Config, Data> {
   private minimumValueSeen = 0;
   private maximumDeltaSeen = 0;
   private minimumDeltaSeen = 0;
-  private maxDurNs = 0;
+  private maxDurNs: duration = 0n;
 
-  async onBoundsChange(start: number, end: number, resolution: number):
+  async onBoundsChange(start: time, end: time, resolution: duration):
       Promise<Data> {
-    const startNs = toNs(start);
-    const endNs = toNs(end);
-
-    const pxSize = this.pxSize();
-
-    // ns per quantization bucket (i.e. ns per pixel). /2 * 2 is to force it to
-    // be an even number, so we can snap in the middle.
-    const bucketNs = Math.max(Math.round(resolution * 1e9 * pxSize / 2) * 2, 1);
-
     if (!this.setup) {
       if (this.config.namespace === undefined) {
         await this.query(`
@@ -122,7 +115,7 @@ class CounterTrackController extends TrackController<Config, Data> {
             ) as maxDur
           from ${this.tableName('counter_view')}
       `);
-      this.maxDurNs = maxDurResult.firstRow({maxDur: NUM_NULL}).maxDur || 0;
+      this.maxDurNs = maxDurResult.firstRow({maxDur: LONG_NULL}).maxDur || 0n;
 
       const queryRes = await this.query(`
         select
@@ -143,14 +136,14 @@ class CounterTrackController extends TrackController<Config, Data> {
 
     const queryRes = await this.query(`
       select
-        (ts + ${bucketNs / 2}) / ${bucketNs} * ${bucketNs} as tsq,
+        (ts + ${resolution / 2n}) / ${resolution} * ${resolution} as tsq,
         min(value) as minValue,
         max(value) as maxValue,
         sum(delta) as totalDelta,
         value_at_max_ts(ts, id) as lastId,
         value_at_max_ts(ts, value) as lastValue
       from ${this.tableName('counter_view')}
-      where ts >= ${startNs - this.maxDurNs} and ts <= ${endNs}
+      where ts >= ${start - this.maxDurNs} and ts <= ${end}
       group by tsq
       order by tsq
     `);
@@ -168,7 +161,7 @@ class CounterTrackController extends TrackController<Config, Data> {
       maximumRate: 0,
       minimumRate: 0,
       resolution,
-      timestamps: new Float64Array(numRows),
+      timestamps: new BigInt64Array(numRows),
       lastIds: new Float64Array(numRows),
       minValues: new Float64Array(numRows),
       maxValues: new Float64Array(numRows),
@@ -178,7 +171,7 @@ class CounterTrackController extends TrackController<Config, Data> {
     };
 
     const it = queryRes.iter({
-      'tsq': NUM,
+      'tsq': LONG,
       'lastId': NUM,
       'minValue': NUM,
       'maxValue': NUM,
@@ -186,11 +179,11 @@ class CounterTrackController extends TrackController<Config, Data> {
       'totalDelta': NUM,
     });
     let lastValue = 0;
-    let lastTs = 0;
+    let lastTs = 0n;
     for (let row = 0; it.valid(); it.next(), row++) {
-      const ts = fromNs(it.tsq);
+      const ts = Time.fromRaw(it.tsq);
       const value = it.lastValue;
-      const rate = (value - lastValue) / (ts - lastTs);
+      const rate = (value - lastValue) / (Time.toSeconds(Time.sub(ts, lastTs)));
       lastTs = ts;
       lastValue = value;
 
@@ -240,8 +233,8 @@ class CounterTrack extends Track<Config, Data> {
 
   private mousePos = {x: 0, y: 0};
   private hoveredValue: number|undefined = undefined;
-  private hoveredTs: number|undefined = undefined;
-  private hoveredTsEnd: number|undefined = undefined;
+  private hoveredTs: time|undefined = undefined;
+  private hoveredTsEnd: time|undefined = undefined;
 
   constructor(args: NewTrackArgs) {
     super(args);
@@ -259,18 +252,11 @@ class CounterTrack extends Track<Config, Data> {
       {name: 'DELTA_FROM_PREVIOUS', humanName: 'Delta'},
       {name: 'RATE', humanName: 'Rate'},
     ];
-    const items: PopupMenuItem[] = [];
-    for (const scale of scales) {
-      let text;
-      if (currentScale === scale.name) {
-        text = `*${scale.humanName}*`;
-      } else {
-        text = scale.humanName;
-      }
-      items.push({
-        itemType: 'regular',
-        text,
-        callback: () => {
+    const menuItems = scales.map((scale) => {
+      return m(MenuItem, {
+        label: scale.humanName,
+        active: currentScale === scale.name,
+        onclick: () => {
           this.config.scale = scale.name;
           Actions.updateTrackConfig({
             id: this.trackState.id,
@@ -278,16 +264,23 @@ class CounterTrack extends Track<Config, Data> {
           });
         },
       });
-    }
-    return m(PopupMenuButton, {
-      icon: 'show_chart',
-      items,
     });
+
+    return m(
+        PopupMenu2,
+        {
+          trigger: m(Button, {icon: 'show_chart', minimal: true}),
+        },
+        menuItems,
+    );
   }
 
   renderCanvas(ctx: CanvasRenderingContext2D): void {
     // TODO: fonts and colors should come from the CSS and not hardcoded here.
-    const {timeScale, visibleWindowTime} = globals.frontendLocalState;
+    const {
+      visibleTimeScale: timeScale,
+      windowSpan,
+    } = globals.frontendLocalState;
     const data = this.data();
 
     // Can't possibly draw anything.
@@ -323,7 +316,7 @@ class CounterTrack extends Track<Config, Data> {
       minimumValue = data.minimumRate;
     }
 
-    const endPx = Math.floor(timeScale.timeToPx(visibleWindowTime.end));
+    const endPx = windowSpan.end;
     const zeroY = MARGIN_TOP + RECT_HEIGHT / (minimumValue < 0 ? 2 : 1);
 
     // Quantize the Y axis to quarters of powers of tens (7.5K, 10K, 12.5K).
@@ -367,7 +360,7 @@ class CounterTrack extends Track<Config, Data> {
     ctx.fillStyle = `hsl(${hue}, 45%, 75%)`;
     ctx.strokeStyle = `hsl(${hue}, 45%, 45%)`;
 
-    const calculateX = (ts: number) => {
+    const calculateX = (ts: time) => {
       return Math.floor(timeScale.timeToPx(ts));
     };
     const calculateY = (value: number) => {
@@ -376,10 +369,12 @@ class CounterTrack extends Track<Config, Data> {
     };
 
     ctx.beginPath();
-    ctx.moveTo(calculateX(data.timestamps[0]), zeroY);
+    const timestamp = Time.fromRaw(data.timestamps[0]);
+    ctx.moveTo(calculateX(timestamp), zeroY);
     let lastDrawnY = zeroY;
     for (let i = 0; i < data.timestamps.length; i++) {
-      const x = calculateX(data.timestamps[i]);
+      const timestamp = Time.fromRaw(data.timestamps[i]);
+      const x = calculateX(timestamp);
       const minY = calculateY(minValues[i]);
       const maxY = calculateY(maxValues[i]);
       const lastY = calculateY(lastValues[i]);
@@ -465,9 +460,10 @@ class CounterTrack extends Track<Config, Data> {
 
     // TODO(hjd): Refactor this into checkerboardExcept
     {
-      const endPx = timeScale.timeToPx(visibleWindowTime.end);
-      const counterEndPx =
-          Math.min(timeScale.timeToPx(this.config.endTs || Infinity), endPx);
+      let counterEndPx = Infinity;
+      if (this.config.endTs) {
+        counterEndPx = Math.min(timeScale.timeToPx(this.config.endTs), endPx);
+      }
 
       // Grey out RHS.
       if (counterEndPx < endPx) {
@@ -481,8 +477,8 @@ class CounterTrack extends Track<Config, Data> {
     checkerboardExcept(
         ctx,
         this.getHeight(),
-        timeScale.timeToPx(visibleWindowTime.start),
-        timeScale.timeToPx(visibleWindowTime.end),
+        windowSpan.start,
+        windowSpan.end,
         timeScale.timeToPx(data.start),
         timeScale.timeToPx(data.end));
   }
@@ -491,15 +487,17 @@ class CounterTrack extends Track<Config, Data> {
     const data = this.data();
     if (data === undefined) return;
     this.mousePos = pos;
-    const {timeScale} = globals.frontendLocalState;
-    const time = timeScale.pxToTime(pos.x);
+    const {visibleTimeScale} = globals.frontendLocalState;
+    const time = visibleTimeScale.pxToHpTime(pos.x);
 
     const values = this.config.scale === 'DELTA_FROM_PREVIOUS' ?
         data.totalDeltas :
         data.lastValues;
-    const [left, right] = searchSegment(data.timestamps, time);
-    this.hoveredTs = left === -1 ? undefined : data.timestamps[left];
-    this.hoveredTsEnd = right === -1 ? undefined : data.timestamps[right];
+    const [left, right] = searchSegment(data.timestamps, time.toTime());
+    this.hoveredTs =
+        left === -1 ? undefined : Time.fromRaw(data.timestamps[left]);
+    this.hoveredTsEnd =
+        right === -1 ? undefined : Time.fromRaw(data.timestamps[right]);
     this.hoveredValue = left === -1 ? undefined : values[left];
   }
 
@@ -508,20 +506,20 @@ class CounterTrack extends Track<Config, Data> {
     this.hoveredTs = undefined;
   }
 
-  onMouseClick({x}: {x: number}) {
+  onMouseClick({x}: {x: number}): boolean {
     const data = this.data();
     if (data === undefined) return false;
-    const {timeScale} = globals.frontendLocalState;
-    const time = timeScale.pxToTime(x);
-    const [left, right] = searchSegment(data.timestamps, time);
+    const {visibleTimeScale} = globals.frontendLocalState;
+    const time = visibleTimeScale.pxToHpTime(x);
+    const [left, right] = searchSegment(data.timestamps, time.toTime());
     if (left === -1) {
       return false;
     } else {
       const counterId = data.lastIds[left];
       if (counterId === -1) return true;
       globals.makeSelection(Actions.selectCounter({
-        leftTs: toNs(data.timestamps[left]),
-        rightTs: right !== -1 ? toNs(data.timestamps[right]) : -1,
+        leftTs: Time.fromRaw(data.timestamps[left]),
+        rightTs: Time.fromRaw(right !== -1 ? data.timestamps[right] : -1n),
         id: counterId,
         trackId: this.trackState.id,
       }));
@@ -530,8 +528,15 @@ class CounterTrack extends Track<Config, Data> {
   }
 }
 
-async function globalTrackProvider(engine: EngineProxy): Promise<TrackInfo[]> {
-  const result = await engine.query(`
+class CounterPlugin implements Plugin {
+  onActivate(ctx: PluginContext): void {
+    ctx.registerTrackController(CounterTrackController);
+    ctx.registerTrack(CounterTrack);
+  }
+
+  async findPotentialTracks({engine}: TracePluginContext):
+      Promise<TrackInfo[]> {
+    const result = await engine.query(`
     select name, id
     from (
       select name, id
@@ -545,35 +550,30 @@ async function globalTrackProvider(engine: EngineProxy): Promise<TrackInfo[]> {
     order by name
   `);
 
-  // Add global or GPU counter tracks that are not bound to any pid/tid.
-  const it = result.iter({
-    name: STR,
-    id: NUM,
-  });
-
-  const tracks: TrackInfo[] = [];
-  for (; it.valid(); it.next()) {
-    const name = it.name;
-    const trackId = it.id;
-    tracks.push({
-      trackKind: COUNTER_TRACK_KIND,
-      name,
-      config: {
-        name,
-        trackId,
-      },
+    // Add global or GPU counter tracks that are not bound to any pid/tid.
+    const it = result.iter({
+      name: STR,
+      id: NUM,
     });
+
+    const tracks: TrackInfo[] = [];
+    for (; it.valid(); it.next()) {
+      const name = it.name;
+      const trackId = it.id;
+      tracks.push({
+        trackKind: COUNTER_TRACK_KIND,
+        name,
+        config: {
+          name,
+          trackId,
+        },
+      });
+    }
+    return tracks;
   }
-  return tracks;
 }
 
-export function activate(ctx: PluginContext) {
-  ctx.registerTrackController(CounterTrackController);
-  ctx.registerTrack(CounterTrack);
-  ctx.registerTrackProvider(globalTrackProvider);
-}
-
-export const plugin = {
+export const plugin: PluginInfo = {
   pluginId: 'perfetto.Counter',
-  activate,
+  plugin: CounterPlugin,
 };

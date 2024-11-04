@@ -19,11 +19,6 @@
 #include "device/bluetooth/bluetooth_socket_thread.h"
 #include "device/bluetooth/floss/bluetooth_adapter_floss.h"
 #include "device/bluetooth/floss/fake_floss_adapter_client.h"
-#include "device/bluetooth/floss/fake_floss_advertiser_client.h"
-#include "device/bluetooth/floss/fake_floss_battery_manager_client.h"
-#include "device/bluetooth/floss/fake_floss_gatt_manager_client.h"
-#include "device/bluetooth/floss/fake_floss_lescan_client.h"
-#include "device/bluetooth/floss/fake_floss_logging_client.h"
 #include "device/bluetooth/floss/fake_floss_manager_client.h"
 #include "device/bluetooth/floss/fake_floss_socket_manager.h"
 #include "device/bluetooth/floss/floss_dbus_client.h"
@@ -31,10 +26,6 @@
 #include "net/base/io_buffer.h"
 #include "net/base/net_errors.h"
 #include "testing/gtest/include/gtest/gtest.h"
-
-#if BUILDFLAG(IS_CHROMEOS)
-#include "device/bluetooth/floss/fake_floss_admin_client.h"
-#endif  // BUILDFLAG(IS_CHROMEOS)
 
 namespace {
 
@@ -51,40 +42,8 @@ class BluetoothSocketFlossTest : public testing::Test {
         floss::FlossDBusManager::GetSetterForTesting();
 
     auto fake_floss_manager_client = std::make_unique<FakeFlossManagerClient>();
-    auto fake_floss_socket_manager = std::make_unique<FakeFlossSocketManager>();
-    auto fake_floss_lescan_client = std::make_unique<FakeFlossLEScanClient>();
-    auto fake_floss_advertiser_client =
-        std::make_unique<FakeFlossAdvertiserClient>();
-    auto fake_floss_battery_manager_client =
-        std::make_unique<FakeFlossBatteryManagerClient>();
-
-#if BUILDFLAG(IS_CHROMEOS)
-    auto fake_floss_admin_client = std::make_unique<FakeFlossAdminClient>();
-#endif  // BUILDFLAG(IS_CHROMEOS)
-
     fake_floss_manager_client_ = fake_floss_manager_client.get();
-    fake_floss_socket_manager_ = fake_floss_socket_manager.get();
-    fake_floss_lescan_client_ = fake_floss_lescan_client.get();
-    fake_floss_advertiser_client_ = fake_floss_advertiser_client.get();
-    fake_floss_battery_manager_client_ =
-        fake_floss_battery_manager_client.get();
-
     dbus_setter->SetFlossManagerClient(std::move(fake_floss_manager_client));
-    dbus_setter->SetFlossAdapterClient(
-        std::make_unique<FakeFlossAdapterClient>());
-    dbus_setter->SetFlossGattManagerClient(
-        std::make_unique<FakeFlossGattManagerClient>());
-    dbus_setter->SetFlossSocketManager(std::move(fake_floss_socket_manager));
-    dbus_setter->SetFlossLEScanClient(std::move(fake_floss_lescan_client));
-    dbus_setter->SetFlossAdvertiserClient(
-        std::move(fake_floss_advertiser_client));
-    dbus_setter->SetFlossBatteryManagerClient(
-        std::move(fake_floss_battery_manager_client));
-    dbus_setter->SetFlossLoggingClient(
-        std::make_unique<FakeFlossLoggingClient>());
-#if BUILDFLAG(IS_CHROMEOS)
-    dbus_setter->SetFlossAdminClient(std::make_unique<FakeFlossAdminClient>());
-#endif  // BUILDFLAG(IS_CHROMEOS)
 
     InitializeAndEnableAdapter();
   }
@@ -97,8 +56,7 @@ class BluetoothSocketFlossTest : public testing::Test {
   void InitializeAndEnableAdapter() {
     adapter_ = BluetoothAdapterFloss::CreateAdapter();
 
-    fake_floss_manager_client_->SetAdapterPowered(/*adapter*/ 0,
-                                                  /*powered*/ true);
+    fake_floss_manager_client_->SetDefaultEnabled(true);
 
     base::RunLoop run_loop;
     adapter_->Initialize(run_loop.QuitClosure());
@@ -180,6 +138,11 @@ class BluetoothSocketFlossTest : public testing::Test {
     run_loop.Run();
   }
 
+  FakeFlossSocketManager* GetFakeFlossSocketManager() {
+    return static_cast<FakeFlossSocketManager*>(
+        FlossDBusManager::Get()->GetSocketManager());
+  }
+
   base::test::TaskEnvironment task_environment_;
   scoped_refptr<BluetoothAdapter> adapter_;
 
@@ -193,10 +156,6 @@ class BluetoothSocketFlossTest : public testing::Test {
   // Holds pointer to FakeFloss*Client's so that we can manipulate the fake
   // within tests.
   raw_ptr<FakeFlossManagerClient> fake_floss_manager_client_;
-  raw_ptr<FakeFlossSocketManager> fake_floss_socket_manager_;
-  raw_ptr<FakeFlossLEScanClient> fake_floss_lescan_client_;
-  raw_ptr<FakeFlossAdvertiserClient> fake_floss_advertiser_client_;
-  raw_ptr<FakeFlossBatteryManagerClient> fake_floss_battery_manager_client_;
 
   base::WeakPtrFactory<BluetoothSocketFlossTest> weak_ptr_factory_{this};
 };
@@ -252,9 +211,9 @@ TEST_F(BluetoothSocketFlossTest, Connect) {
 }
 
 // TODO (crbug.com/1412530) Test is failing on ASan bots
-TEST_F(BluetoothSocketFlossTest, DISABLED_Listen) {
+TEST_F(BluetoothSocketFlossTest, Listen) {
   // Get socket id for next returned socket.
-  FlossSocketManager::SocketId id = fake_floss_socket_manager_->GetNextId();
+  FlossSocketManager::SocketId id = GetFakeFlossSocketManager()->GetNextId();
 
   // First create the service.
   {
@@ -268,6 +227,11 @@ TEST_F(BluetoothSocketFlossTest, DISABLED_Listen) {
         base::BindOnce(&BluetoothSocketFlossTest::ErrorCallback,
                        weak_ptr_factory_.GetWeakPtr(),
                        run_loop.QuitWhenIdleClosure()));
+    // Mark the socket as ready. This should trigger the success callback and an
+    // accept.
+    GetFakeFlossSocketManager()->SendSocketReady(
+        id, device::BluetoothUUID(FakeFlossSocketManager::kRfcommUuid),
+        FlossDBusClient::BtifStatus::kSuccess);
     run_loop.Run();
   }
 
@@ -280,15 +244,10 @@ TEST_F(BluetoothSocketFlossTest, DISABLED_Listen) {
       std::move(last_socket_);
   ClearCounters();
 
-  // Mark the socket as ready. This should trigger an accept.
-  fake_floss_socket_manager_->SendSocketReady(
-      id, device::BluetoothUUID(FakeFlossSocketManager::kRfcommUuid),
-      FlossDBusClient::BtifStatus::kSuccess);
-
   // Simulate incoming connection. This queues one up to be accepted later.
   FlossDeviceId device = {.address = FakeFlossAdapterClient::kBondedAddress1,
                           .name = "Foobar"};
-  fake_floss_socket_manager_->SendIncomingConnection(
+  GetFakeFlossSocketManager()->SendIncomingConnection(
       id, device, device::BluetoothUUID(FakeFlossSocketManager::kRfcommUuid));
 
   // Accept a connection and verify there is something there.
@@ -316,6 +275,33 @@ TEST_F(BluetoothSocketFlossTest, DISABLED_Listen) {
   client_socket = nullptr;
   ClearCounters();
 
+  // Accept a connection when there's nothing there and then receives connection
+  // failed.
+  {
+    base::RunLoop run_loop;
+    server_socket->Accept(
+        base::BindOnce(&BluetoothSocketFlossTest::AcceptSuccessCallback,
+                       weak_ptr_factory_.GetWeakPtr(),
+                       run_loop.QuitWhenIdleClosure()),
+        base::BindOnce(&BluetoothSocketFlossTest::ErrorCallback,
+                       weak_ptr_factory_.GetWeakPtr(),
+                       run_loop.QuitWhenIdleClosure()));
+    run_loop.RunUntilIdle();
+
+    // No sockets found to accept.
+    EXPECT_EQ(0, success_callback_count_);
+    EXPECT_EQ(0, error_callback_count_);
+
+    GetFakeFlossSocketManager()->SendSocketReady(
+        id, device::BluetoothUUID(FakeFlossSocketManager::kRfcommUuid),
+        FlossDBusClient::BtifStatus::kFail);
+
+    EXPECT_EQ(1, error_callback_count_);
+    EXPECT_EQ(0, success_callback_count_);
+    EXPECT_TRUE(last_socket_.get() == nullptr);
+    ClearCounters();
+  }
+
   // Accept a connection when there's nothing there and then send connection.
   {
     // First runloop will push the accept callbacks into socket.
@@ -337,7 +323,7 @@ TEST_F(BluetoothSocketFlossTest, DISABLED_Listen) {
     EXPECT_EQ(0, error_callback_count_);
     EXPECT_TRUE(last_socket_.get() == nullptr);
 
-    fake_floss_socket_manager_->SendIncomingConnection(
+    GetFakeFlossSocketManager()->SendIncomingConnection(
         id, device, device::BluetoothUUID(FakeFlossSocketManager::kRfcommUuid));
     inner_loop.Run();
 

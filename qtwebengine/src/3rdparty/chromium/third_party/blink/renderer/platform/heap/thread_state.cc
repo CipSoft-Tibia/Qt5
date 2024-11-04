@@ -32,9 +32,6 @@ namespace {
 // lazily.
 class BlinkRootsHandler final : public v8::EmbedderRootsHandler {
  public:
-  explicit BlinkRootsHandler(v8::CppHeap& cpp_heap) : cpp_heap_(cpp_heap) {}
-  ~BlinkRootsHandler() final = default;
-
   bool IsRoot(const v8::TracedReference<v8::Value>& handle) final {
     const uint16_t class_id = handle.WrapperClassId();
     // Stand-alone reference or kCustomWrappableId. Keep as root as
@@ -59,11 +56,6 @@ class BlinkRootsHandler final : public v8::EmbedderRootsHandler {
   void ResetRoot(const v8::TracedReference<v8::Value>& handle) final {
     DCHECK(handle.WrapperClassId() == WrapperTypeInfo::kNodeClassId ||
            handle.WrapperClassId() == WrapperTypeInfo::kObjectClassId);
-    // Clearing the wrapper below adjusts the DOM wrapper store which may
-    // re-allocate its backing. NoGarbageCollectionScope is required to avoid
-    // triggering a GC from such re-allocating calls as ResetRoot() is itself
-    // called from GC.
-    cppgc::subtle::NoGarbageCollectionScope no_gc(cpp_heap_.GetHeapHandle());
     const v8::TracedReference<v8::Object>& traced = handle.As<v8::Object>();
     bool success = DOMWrapperWorld::UnsetSpecificWrapperIfSet(
         ToScriptWrappable(traced), traced);
@@ -72,8 +64,13 @@ class BlinkRootsHandler final : public v8::EmbedderRootsHandler {
     CHECK(success);
   }
 
- private:
-  v8::CppHeap& cpp_heap_;
+  bool TryResetRoot(const v8::TracedReference<v8::Value>& handle) final {
+    DCHECK(handle.WrapperClassId() == WrapperTypeInfo::kNodeClassId ||
+           handle.WrapperClassId() == WrapperTypeInfo::kObjectClassId);
+    const v8::TracedReference<v8::Object>& traced = handle.As<v8::Object>();
+    return DOMWrapperWorld::UnsetMainWorldWrapperIfSet(
+        ToScriptWrappable(traced), traced);
+  }
 };
 
 }  // namespace
@@ -129,7 +126,7 @@ void ThreadState::AttachToIsolate(v8::Isolate* isolate,
   isolate->AttachCppHeap(cpp_heap_.get());
   CHECK_EQ(cpp_heap_.get(), isolate->GetCppHeap());
   isolate_ = isolate;
-  embedder_roots_handler_ = std::make_unique<BlinkRootsHandler>(cpp_heap());
+  embedder_roots_handler_ = std::make_unique<BlinkRootsHandler>();
   isolate_->SetEmbedderRootsHandler(embedder_roots_handler_.get());
 }
 
@@ -174,7 +171,7 @@ void ThreadState::NotifyGarbageCollection(v8::GCType type,
     // required for testing code that cannot use GC internals but rather has
     // to rely on window.gc(). Only schedule additional GCs if the last GC was
     // using conservative stack scanning.
-    if (type == v8::kGCTypeScavenge) {
+    if (type == v8::kGCTypeScavenge || type == v8::kGCTypeMinorMarkSweep) {
       forced_scheduled_gc_for_testing_ = true;
     } else if (type == v8::kGCTypeMarkSweepCompact) {
       forced_scheduled_gc_for_testing_ =
@@ -281,7 +278,7 @@ class BufferedStream final : public v8::OutputStream {
 }  // namespace
 
 void ThreadState::TakeHeapSnapshotForTesting(const char* filename) const {
-  CHECK(IsAttachedToIsolate());
+  CHECK(isolate_);
   v8::HeapProfiler* profiler = isolate_->GetHeapProfiler();
   CHECK(profiler);
 

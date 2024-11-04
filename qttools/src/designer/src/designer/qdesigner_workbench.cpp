@@ -50,7 +50,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-static const char appFontPrefixC[] = "AppFonts";
+static constexpr auto appFontPrefixC = "AppFonts"_L1;
 
 using ActionList = QList<QAction *>;
 
@@ -142,8 +142,8 @@ static inline QMenu *addMenu(QMenuBar *mb, const QString &title, const ActionLis
 
 // -------- QDesignerWorkbench
 
-QDesignerWorkbench::QDesignerWorkbench()  :
-    m_core(QDesignerComponents::createFormEditor(this)),
+QDesignerWorkbench::QDesignerWorkbench(const QStringList &pluginPaths)  :
+    m_core(QDesignerComponents::createFormEditorWithPluginPaths(pluginPaths, this)),
     m_windowActions(new QActionGroup(this)),
     m_globalMenuBar(new QMenuBar)
 {
@@ -220,7 +220,7 @@ QDesignerWorkbench::QDesignerWorkbench()  :
     }
 
     restoreUISettings();
-    AppFontWidget::restore(m_core->settingsManager(), QLatin1StringView(appFontPrefixC));
+    AppFontWidget::restore(m_core->settingsManager(), appFontPrefixC);
     m_state = StateUp;
 }
 
@@ -627,7 +627,7 @@ void QDesignerWorkbench::saveSettings() const
     QDesignerSettings settings(m_core);
     settings.clearBackup();
     saveGeometries(settings);
-    AppFontWidget::save(m_core->settingsManager(), QLatin1StringView(appFontPrefixC));
+    AppFontWidget::save(m_core->settingsManager(), appFontPrefixC);
 }
 
 void QDesignerWorkbench::saveGeometries(QDesignerSettings &settings) const

@@ -533,7 +533,9 @@ void CppDumper::writeImplStart()
     cpp << l("#include \"") << headerName << l("\"") << Qt::endl;
     cpp << Qt::endl
         << QStringLiteral("#include <qscxmlinvokableservice.h>") << Qt::endl
-        << QStringLiteral("#include <qscxmltabledata.h>") << Qt::endl;
+        << QStringLiteral("#include <qscxmltabledata.h>") << Qt::endl
+        << QStringLiteral("#include <QtCore/qtmochelpers.h>") << Qt::endl;
+
     for (const QString &inc : std::as_const(includes)) {
         cpp << l("#include <") << inc << l(">") << Qt::endl;
     }
@@ -727,7 +729,11 @@ QString CppDumper::generateMetaObject(const QString &className,
     ClassDef classDef;
     classDef.classname = className.toUtf8();
     classDef.qualified = classDef.classname;
-    classDef.superclassList << qMakePair(QByteArray("QScxmlStateMachine"), FunctionDef::Public);
+    classDef.superclassList << SuperClass {
+        QByteArray("QScxmlStateMachine"),
+        QByteArray(QT_STRINGIFY(QT_PREPEND_NAMESPACE(QScxmlStateMachine))),
+        FunctionDef::Public
+    };
     classDef.hasQObject = true;
     FunctionDef constructor;
     constructor.name = className.toUtf8();

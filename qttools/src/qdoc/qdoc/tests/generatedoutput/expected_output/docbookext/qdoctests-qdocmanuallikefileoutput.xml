@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<db:article xmlns:db="http://docbook.org/ns/docbook" xmlns:xlink="http://www.w3.org/1999/xlink" version="5.2" xml:lang="en">
+<db:info>
+<db:title>Document Navigation</db:title>
+<db:productname>OutputFromQDocFiles</db:productname>
+<db:edition>OutputFromQDocFiles - A test project for QDoc build artifacts</db:edition>
+<db:titleabbrev>A test project for QDoc build artifacts</db:titleabbrev>
+<db:abstract>
+<db:para>A test project for QDoc build artifacts.</db:para></db:abstract>
+</db:info>
+<db:para>The navigation commands...</db:para>
+<db:blockquote/>
+<db:programlisting language="cpp">&amp;lt;head&amp;gt;
+    ...
+    &amp;lt;link rel=&amp;quot;start&amp;quot; href=&amp;quot;basicqt.html&amp;quot; /&amp;gt;
+    ...
+&amp;lt;/head&amp;gt;
+</db:programlisting>
+<db:section xml:id="commands">
+<db:title>Commands</db:title>
+<db:anchor xml:id="previouspage-command"/>
+<db:section xml:id="previouspage">
+<db:title>\previouspage</db:title>
+<db:para>The \previouspage command...</db:para>
+</db:section>
+</db:section>
+</db:article>

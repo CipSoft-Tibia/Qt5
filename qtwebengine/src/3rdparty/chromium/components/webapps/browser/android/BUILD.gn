@@ -39,18 +39,20 @@ android_library("java") {
     "//components/browser_ui/bottomsheet/android:java",
     "//components/browser_ui/widget/android:java",
     "//components/infobars/android:java",
+    "//components/infobars/android:java_resources",
     "//components/webapk/android/libs/client:java",
     "//content/public/android:content_java",
     "//third_party/androidx:androidx_annotation_annotation_java",
     "//third_party/androidx:androidx_recyclerview_recyclerview_java",
     "//ui/android:ui_no_recycler_view_java",
+    "//ui/android:ui_utils_java",
     "//url:gurl_java",
   ]
   srcjar_deps = [
     ":webapps_java_enums_srcjar",
+    ":webapps_jni_headers",
     "//components/webapps/browser/android/webapk:enums_srcjar",
   ]
-  annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
 }
 
 generate_jni("webapps_jni_headers") {
@@ -69,7 +71,7 @@ generate_jni("webapps_jni_headers") {
 
 java_cpp_enum("webapps_java_enums_srcjar") {
   sources = [
-    "//components/webapps/browser/android/app_banner_manager_android.h",
+    "//components/webapps/browser/android/ambient_badge_manager.h",
     "//components/webapps/browser/banners/app_banner_manager.h",
     "//components/webapps/browser/banners/app_banner_settings_helper.h",
     "//components/webapps/browser/installable/installable_metrics.h",
@@ -99,7 +101,6 @@ android_resources("java_resources") {
     "java/res/layout/add_to_homescreen_dialog.xml",
     "java/res/layout/image_zoom_view.xml",
     "java/res/layout/pwa_install_bottom_sheet_content.xml",
-    "java/res/layout/pwa_install_bottom_sheet_toolbar.xml",
     "java/res/mipmap-hdpi/shortcut_icon_shadow.png",
     "java/res/mipmap-mdpi/shortcut_icon_shadow.png",
     "java/res/mipmap-xhdpi/shortcut_icon_shadow.png",
@@ -128,15 +129,18 @@ source_set("unit_tests") {
   testonly = true
   sources = [
     "add_to_homescreen_data_fetcher_unittest.cc",
+    "install_prompt_prefs_unittest.cc",
     "shortcut_info_unittest.cc",
     "webapk/webapk_icon_hasher_unittest.cc",
     "webapk/webapk_proto_builder_unittest.cc",
+    "webapp_icon_unittest.cc",
     "webapps_utils_unittest.cc",
   ]
   deps = [
     "//base",
     "//components/favicon/content",
     "//components/favicon_base",
+    "//components/prefs:test_support",
     "//components/webapk:proto",
     "//components/webapps/browser",
     "//components/webapps/common:mojo_bindings",
@@ -159,6 +163,7 @@ source_set("unit_tests") {
 }
 
 robolectric_library("junit") {
+  resources_package = "org.chromium.components.webapps"
   sources = [
     "java/src/org/chromium/components/webapps/AddToHomescreenDialogViewTest.java",
     "java/src/org/chromium/components/webapps/AddToHomescreenMediatorTest.java",
@@ -166,10 +171,11 @@ robolectric_library("junit") {
   ]
   deps = [
     ":java",
+    ":java_resources",
     "//base:base_java_test_support",
     "//base:base_junit_test_support",
+    "//base:jni_java",
     "//base/test:test_support_java",
-    "//third_party/androidx:androidx_test_runner_java",
     "//third_party/junit",
     "//third_party/mockito:mockito_java",
     "//ui/android:ui_no_recycler_view_java",

@@ -226,6 +226,17 @@ qint64 QHttpNetworkConnectionPrivate::uncompressedBytesAvailableNextBlock(const 
     return reply.d_func()->responseData.sizeNextBlock();
 }
 
+static QByteArray makeAcceptLanguage()
+{
+    QString systemLocale = QLocale::system().name();
+    if (systemLocale == "C"_L1)
+        return "en,*"_ba;
+    systemLocale.replace('_'_L1, '-'_L1);
+    if (systemLocale.startsWith("en-"_L1))
+        return (systemLocale + ",*"_L1).toLatin1();
+    return (systemLocale + ",en,*"_L1).toLatin1();
+}
+
 void QHttpNetworkConnectionPrivate::prepareRequest(HttpMessagePair &messagePair)
 {
     QHttpNetworkRequest &request = messagePair.first;
@@ -276,8 +287,8 @@ void QHttpNetworkConnectionPrivate::prepareRequest(HttpMessagePair &messagePair)
     value = request.headerField("accept-encoding");
     if (value.isEmpty()) {
 #ifndef QT_NO_COMPRESS
-        const QByteArrayList &acceptedEncoding = QDecompressHelper::acceptedEncoding();
-        request.setHeaderField("Accept-Encoding", acceptedEncoding.join(", "));
+        const static QByteArray acceptedEncoding = QDecompressHelper::acceptedEncoding().join(", ");
+        request.setHeaderField("Accept-Encoding", acceptedEncoding);
         request.d->autoDecompress = true;
 #else
         // if zlib is not available set this to false always
@@ -290,17 +301,8 @@ void QHttpNetworkConnectionPrivate::prepareRequest(HttpMessagePair &messagePair)
     // not with us, but we work around this by setting
     // one always.
     value = request.headerField("accept-language");
-    if (value.isEmpty()) {
-        QString systemLocale = QLocale::system().name().replace(QChar::fromLatin1('_'),QChar::fromLatin1('-'));
-        QString acceptLanguage;
-        if (systemLocale == "C"_L1)
-            acceptLanguage = QString::fromLatin1("en,*");
-        else if (systemLocale.startsWith("en-"_L1))
-            acceptLanguage = systemLocale + ",*"_L1;
-        else
-            acceptLanguage = systemLocale + ",en,*"_L1;
-        request.setHeaderField("Accept-Language", std::move(acceptLanguage).toLatin1());
-    }
+    if (value.isEmpty())
+        request.setHeaderField("Accept-Language", makeAcceptLanguage());
 
     // set the User Agent
     value = request.headerField("user-agent");
@@ -313,7 +315,7 @@ void QHttpNetworkConnectionPrivate::prepareRequest(HttpMessagePair &messagePair)
         QByteArray host;
         if (add.setAddress(hostName)) {
             if (add.protocol() == QAbstractSocket::IPv6Protocol)
-                host = '[' + hostName.toLatin1() + ']'; //format the ipv6 in the standard way
+                host = (u'[' + hostName + u']').toLatin1(); //format the ipv6 in the standard way
             else
                 host = hostName.toLatin1();
 
@@ -916,7 +918,7 @@ QString QHttpNetworkConnectionPrivate::errorDetail(QNetworkReply::NetworkError e
     case QNetworkReply::SslHandshakeFailedError:
         errorString = QCoreApplication::translate("QHttp", "SSL handshake failed");
         if (socket)
-            errorString += QStringLiteral(": ") + socket->errorString();
+            errorString += ": "_L1 + socket->errorString();
         break;
     case QNetworkReply::TooManyRedirectsError:
         errorString = QCoreApplication::translate("QHttp", "Too many redirects");
@@ -1445,9 +1447,9 @@ QNetworkProxy QHttpNetworkConnection::transparentProxy() const
 }
 #endif
 
-QHttpNetworkConnection::ConnectionType QHttpNetworkConnection::connectionType()
+QHttpNetworkConnection::ConnectionType QHttpNetworkConnection::connectionType() const
 {
-    Q_D(QHttpNetworkConnection);
+    Q_D(const QHttpNetworkConnection);
     return d->connectionType;
 }
 
@@ -1482,9 +1484,9 @@ void QHttpNetworkConnection::setSslConfiguration(const QSslConfiguration &config
         d->channels[i].setSslConfiguration(config);
 }
 
-std::shared_ptr<QSslContext> QHttpNetworkConnection::sslContext()
+std::shared_ptr<QSslContext> QHttpNetworkConnection::sslContext() const
 {
-    Q_D(QHttpNetworkConnection);
+    Q_D(const QHttpNetworkConnection);
     return d->sslContext;
 }
 

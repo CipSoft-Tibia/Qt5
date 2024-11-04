@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,8 +19,7 @@
 #include "platform/test/fake_clock.h"
 #include "platform/test/fake_task_runner.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 namespace {
 
@@ -62,47 +61,45 @@ class MockReceiverDelegate final : public ReceiverDelegate {
 
 class PresentationReceiverTest : public ::testing::Test {
  public:
-  PresentationReceiverTest() {
-    fake_clock_ = std::make_unique<FakeClock>(
-        Clock::time_point(std::chrono::milliseconds(1298424)));
-    task_runner_ = std::make_unique<FakeTaskRunner>(fake_clock_.get());
-    quic_bridge_ =
-        std::make_unique<FakeQuicBridge>(task_runner_.get(), FakeClock::now);
-  }
+  PresentationReceiverTest()
+      : fake_clock_(Clock::time_point(std::chrono::milliseconds(1298424))),
+        task_runner_(&fake_clock_),
+        quic_bridge_(task_runner_, FakeClock::now) {}
 
  protected:
   std::unique_ptr<ProtocolConnection> MakeClientStream() {
     MockConnectRequest mock_connect_request;
     NetworkServiceManager::Get()->GetProtocolConnectionClient()->Connect(
-        quic_bridge_->kReceiverEndpoint, &mock_connect_request);
+        quic_bridge_.kReceiverEndpoint, &mock_connect_request);
     std::unique_ptr<ProtocolConnection> stream;
     EXPECT_CALL(mock_connect_request, OnConnectionOpened(_, _))
         .WillOnce([&stream](uint64_t request_id,
                             std::unique_ptr<ProtocolConnection> connection) {
           stream = std::move(connection);
         });
-    quic_bridge_->RunTasksUntilIdle();
+    quic_bridge_.RunTasksUntilIdle();
     return stream;
   }
 
   void SetUp() override {
     NetworkServiceManager::Create(nullptr, nullptr,
-                                  std::move(quic_bridge_->quic_client),
-                                  std::move(quic_bridge_->quic_server));
-    Receiver::Get()->Init();
-    Receiver::Get()->SetReceiverDelegate(&mock_receiver_delegate_);
+                                  std::move(quic_bridge_.quic_client),
+                                  std::move(quic_bridge_.quic_server));
+    receiver_.Init();
+    receiver_.SetReceiverDelegate(&mock_receiver_delegate_);
   }
 
   void TearDown() override {
-    Receiver::Get()->SetReceiverDelegate(nullptr);
-    Receiver::Get()->Deinit();
+    receiver_.SetReceiverDelegate(nullptr);
+    receiver_.Deinit();
     NetworkServiceManager::Dispose();
   }
 
-  std::unique_ptr<FakeClock> fake_clock_;
-  std::unique_ptr<FakeTaskRunner> task_runner_;
+  Receiver receiver_;
+  FakeClock fake_clock_;
+  FakeTaskRunner task_runner_;
   const std::string url1_{"https://www.example.com/receiver.html"};
-  std::unique_ptr<FakeQuicBridge> quic_bridge_;
+  FakeQuicBridge quic_bridge_;
   MockReceiverDelegate mock_receiver_delegate_;
 };
 
@@ -113,7 +110,7 @@ class PresentationReceiverTest : public ::testing::Test {
 TEST_F(PresentationReceiverTest, QueryAvailability) {
   MockMessageCallback mock_callback;
   MessageDemuxer::MessageWatch availability_watch =
-      quic_bridge_->controller_demuxer->SetDefaultMessageTypeWatch(
+      quic_bridge_.controller_demuxer->SetDefaultMessageTypeWatch(
           msgs::Type::kPresentationUrlAvailabilityResponse, &mock_callback);
 
   std::unique_ptr<ProtocolConnection> stream = MakeClientStream();
@@ -145,7 +142,7 @@ TEST_F(PresentationReceiverTest, QueryAvailability) {
             buf, buffer_size, &response);
         return result;
       }));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   EXPECT_EQ(request.request_id, response.request_id);
   EXPECT_EQ(
       (std::vector<msgs::UrlAvailability>{msgs::UrlAvailability::kAvailable}),
@@ -155,7 +152,7 @@ TEST_F(PresentationReceiverTest, QueryAvailability) {
 TEST_F(PresentationReceiverTest, StartPresentation) {
   MockMessageCallback mock_callback;
   MessageDemuxer::MessageWatch initiation_watch =
-      quic_bridge_->controller_demuxer->SetDefaultMessageTypeWatch(
+      quic_bridge_.controller_demuxer->SetDefaultMessageTypeWatch(
           msgs::Type::kPresentationStartResponse, &mock_callback);
 
   std::unique_ptr<ProtocolConnection> stream = MakeClientStream();
@@ -174,15 +171,15 @@ TEST_F(PresentationReceiverTest, StartPresentation) {
   EXPECT_CALL(mock_receiver_delegate_, StartPresentation(_, _, request.headers))
       .WillOnce(::testing::DoAll(::testing::SaveArg<0>(&info),
                                  ::testing::Return(true)));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   EXPECT_EQ(presentation_id, info.id);
   EXPECT_EQ(url1_, info.url);
 
   NiceMock<MockConnectionDelegate> null_connection_delegate;
   Connection connection(Connection::PresentationInfo{presentation_id, url1_},
-                        &null_connection_delegate, Receiver::Get());
-  Receiver::Get()->OnPresentationStarted(presentation_id, &connection,
-                                         ResponseResult::kSuccess);
+                        &null_connection_delegate, &receiver_);
+  receiver_.OnPresentationStarted(presentation_id, &connection,
+                                  ResponseResult::kSuccess);
   msgs::PresentationStartResponse response;
   EXPECT_CALL(mock_callback, OnStreamMessage(_, _, _, _, _, _))
       .WillOnce(Invoke([&response](uint64_t endpoint_id, uint64_t cid,
@@ -192,7 +189,7 @@ TEST_F(PresentationReceiverTest, StartPresentation) {
             msgs::DecodePresentationStartResponse(buf, buf_size, &response);
         return result;
       }));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   EXPECT_EQ(msgs::Result::kSuccess, response.result);
   EXPECT_EQ(connection.connection_id(), response.connection_id);
 }
@@ -200,5 +197,4 @@ TEST_F(PresentationReceiverTest, StartPresentation) {
 // TODO(btolsch): Connect and reconnect.
 // TODO(btolsch): Terminate request and event.
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

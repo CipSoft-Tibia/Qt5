@@ -17,6 +17,7 @@
 #include <ios>
 #include <limits>
 
+#include "base/debug/alias.h"
 #include "base/debug/stack_trace.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
@@ -241,6 +242,10 @@ Process LaunchProcess(const CommandLine& cmdline,
 
 Process LaunchProcess(const CommandLine::StringType& cmdline,
                       const LaunchOptions& options) {
+  // Retain the command line on the stack for investigating shutdown hangs
+  // tracked in https://crbug.com/1431378
+  DEBUG_ALIAS_FOR_WCHARCSTR(cmdline_for_debugging, cmdline.c_str(), 200);
+
   if (options.elevated) {
     return LaunchElevatedProcess(base::CommandLine::FromString(cmdline),
                                  options.start_hidden, options.wait);
@@ -331,9 +336,13 @@ Process LaunchProcess(const CommandLine::StringType& cmdline,
 
   if (options.stdin_handle || options.stdout_handle || options.stderr_handle) {
     DCHECK(inherit_handles);
-    DCHECK(options.stdin_handle);
-    DCHECK(options.stdout_handle);
-    DCHECK(options.stderr_handle);
+    // If an explicit handle inheritance list is not set, require that all
+    // stdio handle values be explicitly specified.
+    if (options.handles_to_inherit.empty()) {
+      CHECK(options.stdin_handle);
+      CHECK(options.stdout_handle);
+      CHECK(options.stderr_handle);
+    }
     startup_info->dwFlags |= STARTF_USESTDHANDLES;
     startup_info->hStdInput = options.stdin_handle;
     startup_info->hStdOutput = options.stdout_handle;

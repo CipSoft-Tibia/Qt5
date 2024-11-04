@@ -78,7 +78,7 @@ static bool UpdateYUVAInfoSubsamplingAndWidthBytes(
 
 ImageFrameGenerator::ImageFrameGenerator(const SkISize& full_size,
                                          bool is_multi_frame,
-                                         const ColorBehavior& color_behavior,
+                                         ColorBehavior color_behavior,
                                          Vector<SkISize> supported_sizes)
     : full_size_(full_size),
       decoder_color_behavior_(color_behavior),
@@ -273,11 +273,12 @@ bool ImageFrameGenerator::GetYUVAInfo(
   if (yuv_decoding_failed_)
     return false;
   std::unique_ptr<ImageDecoder> decoder = ImageDecoder::Create(
-      data, true /* data_complete */, ImageDecoder::kAlphaPremultiplied,
+      data, /*data_complete=*/true, ImageDecoder::kAlphaPremultiplied,
       ImageDecoder::kDefaultBitDepth, decoder_color_behavior_);
   DCHECK(decoder);
 
-  DCHECK(decoder->CanDecodeToYUV());
+  DCHECK(decoder->CanDecodeToYUV())
+      << decoder->FilenameExtension() << " image decoder";
   SkYUVAInfo::Subsampling subsampling;
   size_t width_bytes[SkYUVAInfo::kMaxPlanes];
   if (!UpdateYUVAInfoSubsamplingAndWidthBytes(decoder.get(), &subsampling,

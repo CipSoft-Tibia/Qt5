@@ -82,7 +82,7 @@ LeakCheckCredential MakeLeakCredential(base::StringPiece16 username,
                              std::u16string(password));
 }
 
-class InsecureCredentialsManagerTest : public ::testing::Test {
+class InsecureCredentialsManagerTest : public testing::TestWithParam<bool> {
  protected:
   InsecureCredentialsManagerTest() {
     store_->Init(/*prefs=*/nullptr, /*affiliated_match_helper=*/nullptr);
@@ -98,7 +98,6 @@ class InsecureCredentialsManagerTest : public ::testing::Test {
   TestPasswordStore& store() { return *store_; }
   SavedPasswordsPresenter& presenter() { return presenter_; }
   InsecureCredentialsManager& provider() { return provider_; }
-  MockAffiliationService& affiliation_service() { return affiliation_service_; }
 
   void RunUntilIdle() { task_env_.RunUntilIdle(); }
 
@@ -117,17 +116,22 @@ class InsecureCredentialsManagerTest : public ::testing::Test {
     return std::u16string();
   }
 
-  base::HistogramTester& histogram_tester() { return histogram_tester_; }
-
   void AdvanceClock(base::TimeDelta time) { task_env_.AdvanceClock(time); }
+
+  constexpr bool IsGroupingEnabled() {
+#if BUILDFLAG(IS_ANDROID)
+    return false;
+#else
+    return true;
+#endif
+  }
 
  private:
   base::test::TaskEnvironment task_env_{
       base::test::TaskEnvironment::TimeSource::MOCK_TIME};
-  base::HistogramTester histogram_tester_;
   scoped_refptr<TestPasswordStore> store_ =
       base::MakeRefCounted<TestPasswordStore>();
-  MockAffiliationService affiliation_service_;
+  FakeAffiliationService affiliation_service_;
   SavedPasswordsPresenter presenter_{&affiliation_service_, store_,
                                      /*account_store=*/nullptr};
   InsecureCredentialsManager provider_{&presenter_, store_,
@@ -332,8 +336,9 @@ TEST_F(InsecureCredentialsManagerTest, StartWeakCheckNotifiesOnCompletion) {
 }
 
 TEST_F(InsecureCredentialsManagerTest, StartWeakCheckOnEmptyPasswordsList) {
+  base::HistogramTester histogram_tester;
   EXPECT_THAT(
-      histogram_tester().GetTotalCountsForPrefix("PasswordManager.WeakCheck"),
+      histogram_tester.GetTotalCountsForPrefix("PasswordManager.WeakCheck"),
       IsEmpty());
 
   RunUntilIdle();
@@ -343,12 +348,12 @@ TEST_F(InsecureCredentialsManagerTest, StartWeakCheckOnEmptyPasswordsList) {
 
   EXPECT_THAT(provider().GetInsecureCredentialEntries(), IsEmpty());
 
-  histogram_tester().ExpectUniqueSample(
+  histogram_tester.ExpectUniqueSample(
       "PasswordManager.WeakCheck.CheckedPasswords", 0, 1);
-  histogram_tester().ExpectUniqueSample("PasswordManager.WeakCheck.Time",
-                                        kDelay, 1);
-  histogram_tester().ExpectUniqueSample(
-      "PasswordManager.WeakCheck.WeakPasswords", 0, 1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.Time", kDelay,
+                                      1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.WeakPasswords",
+                                      0, 1);
 }
 
 TEST_F(InsecureCredentialsManagerTest, WeakCredentialsNotFound) {
@@ -358,25 +363,27 @@ TEST_F(InsecureCredentialsManagerTest, WeakCredentialsNotFound) {
 
   store().AddLogin(passwords[0]);
   store().AddLogin(passwords[1]);
+  RunUntilIdle();
+
+  base::HistogramTester histogram_tester;
   EXPECT_THAT(
-      histogram_tester().GetTotalCountsForPrefix("PasswordManager.WeakCheck"),
+      histogram_tester.GetTotalCountsForPrefix("PasswordManager.WeakCheck"),
       IsEmpty());
 
-  RunUntilIdle();
   provider().StartWeakCheck();
   AdvanceClock(base::Milliseconds(2 * kDelay));
   RunUntilIdle();
 
   EXPECT_THAT(provider().GetInsecureCredentialEntries(), IsEmpty());
 
-  histogram_tester().ExpectUniqueSample(
+  histogram_tester.ExpectUniqueSample(
       "PasswordManager.WeakCheck.CheckedPasswords", 2, 1);
-  histogram_tester().ExpectUniqueSample("PasswordManager.WeakCheck.Time",
-                                        2 * kDelay, 1);
-  histogram_tester().ExpectUniqueSample(
-      "PasswordManager.WeakCheck.WeakPasswords", 0, 1);
-  histogram_tester().ExpectUniqueSample(
-      "PasswordManager.WeakCheck.PasswordScore", 4, 2);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.Time",
+                                      2 * kDelay, 1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.WeakPasswords",
+                                      0, 1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.PasswordScore",
+                                      4, 2);
 }
 
 TEST_F(InsecureCredentialsManagerTest, DetectedWeakCredential) {
@@ -386,11 +393,13 @@ TEST_F(InsecureCredentialsManagerTest, DetectedWeakCredential) {
 
   store().AddLogin(passwords[0]);
   store().AddLogin(passwords[1]);
+  RunUntilIdle();
+
+  base::HistogramTester histogram_tester;
   EXPECT_THAT(
-      histogram_tester().GetTotalCountsForPrefix("PasswordManager.WeakCheck"),
+      histogram_tester.GetTotalCountsForPrefix("PasswordManager.WeakCheck"),
       IsEmpty());
 
-  RunUntilIdle();
   provider().StartWeakCheck();
   AdvanceClock(base::Milliseconds(kDelay));
   RunUntilIdle();
@@ -398,14 +407,14 @@ TEST_F(InsecureCredentialsManagerTest, DetectedWeakCredential) {
   EXPECT_THAT(provider().GetInsecureCredentialEntries(),
               ElementsAre(CredentialUIEntry(passwords[0])));
 
-  histogram_tester().ExpectUniqueSample(
+  histogram_tester.ExpectUniqueSample(
       "PasswordManager.WeakCheck.CheckedPasswords", 2, 1);
-  histogram_tester().ExpectUniqueSample("PasswordManager.WeakCheck.Time",
-                                        kDelay, 1);
-  histogram_tester().ExpectUniqueSample(
-      "PasswordManager.WeakCheck.WeakPasswords", 1, 1);
-  histogram_tester().ExpectTotalCount("PasswordManager.WeakCheck.PasswordScore",
-                                      2);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.Time", kDelay,
+                                      1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.WeakPasswords",
+                                      1, 1);
+  histogram_tester.ExpectTotalCount("PasswordManager.WeakCheck.PasswordScore",
+                                    2);
 }
 
 // Tests that credentials with the same signon_realm and username, but different
@@ -419,8 +428,9 @@ TEST_F(InsecureCredentialsManagerTest,
 
   store().AddLogin(passwords[0]);
   store().AddLogin(passwords[1]);
-
   RunUntilIdle();
+
+  base::HistogramTester histogram_tester;
   provider().StartWeakCheck();
   AdvanceClock(base::Milliseconds(kDelay));
   RunUntilIdle();
@@ -429,14 +439,14 @@ TEST_F(InsecureCredentialsManagerTest,
               ElementsAre(CredentialUIEntry(passwords[0]),
                           CredentialUIEntry(passwords[1])));
 
-  histogram_tester().ExpectUniqueSample(
+  histogram_tester.ExpectUniqueSample(
       "PasswordManager.WeakCheck.CheckedPasswords", 2, 1);
-  histogram_tester().ExpectUniqueSample("PasswordManager.WeakCheck.Time",
-                                        kDelay, 1);
-  histogram_tester().ExpectUniqueSample(
-      "PasswordManager.WeakCheck.WeakPasswords", 2, 1);
-  histogram_tester().ExpectTotalCount("PasswordManager.WeakCheck.PasswordScore",
-                                      2);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.Time", kDelay,
+                                      1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.WeakPasswords",
+                                      2, 1);
+  histogram_tester.ExpectTotalCount("PasswordManager.WeakCheck.PasswordScore",
+                                    2);
 }
 
 // Tests that credentials with the same signon_realm, username and passwords
@@ -449,8 +459,9 @@ TEST_F(InsecureCredentialsManagerTest,
 
   store().AddLogin(passwords[0]);
   store().AddLogin(passwords[1]);
-
   RunUntilIdle();
+
+  base::HistogramTester histogram_tester;
   provider().StartWeakCheck();
   AdvanceClock(base::Milliseconds(kDelay));
   RunUntilIdle();
@@ -458,14 +469,14 @@ TEST_F(InsecureCredentialsManagerTest,
   EXPECT_THAT(provider().GetInsecureCredentialEntries(),
               ElementsAre(CredentialUIEntry(passwords[0])));
 
-  histogram_tester().ExpectUniqueSample(
+  histogram_tester.ExpectUniqueSample(
       "PasswordManager.WeakCheck.CheckedPasswords", 1, 1);
-  histogram_tester().ExpectUniqueSample("PasswordManager.WeakCheck.Time",
-                                        kDelay, 1);
-  histogram_tester().ExpectUniqueSample(
-      "PasswordManager.WeakCheck.WeakPasswords", 1, 1);
-  histogram_tester().ExpectUniqueSample(
-      "PasswordManager.WeakCheck.PasswordScore", 0, 1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.Time", kDelay,
+                                      1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.WeakPasswords",
+                                      1, 1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.PasswordScore",
+                                      0, 1);
 }
 
 TEST_F(InsecureCredentialsManagerTest, BothWeakAndCompromisedCredentialsExist) {
@@ -479,8 +490,9 @@ TEST_F(InsecureCredentialsManagerTest, BothWeakAndCompromisedCredentialsExist) {
 
   store().AddLogin(passwords[0]);
   store().AddLogin(passwords[1]);
-
   RunUntilIdle();
+
+  base::HistogramTester histogram_tester;
   provider().StartWeakCheck();
   AdvanceClock(base::Milliseconds(kDelay));
   RunUntilIdle();
@@ -491,20 +503,21 @@ TEST_F(InsecureCredentialsManagerTest, BothWeakAndCompromisedCredentialsExist) {
 
   credentials[0].password_issues.insert(
       {password_manager::InsecureType::kWeak,
-       password_manager::InsecurityMetadata(base::Time(),
-                                            password_manager::IsMuted(false))});
+       password_manager::InsecurityMetadata(
+           base::Time(), password_manager::IsMuted(false),
+           password_manager::TriggerBackendNotification(false))});
 
   EXPECT_THAT(provider().GetInsecureCredentialEntries(),
               ElementsAreArray(credentials));
 
-  histogram_tester().ExpectUniqueSample(
+  histogram_tester.ExpectUniqueSample(
       "PasswordManager.WeakCheck.CheckedPasswords", 2, 1);
-  histogram_tester().ExpectUniqueSample("PasswordManager.WeakCheck.Time",
-                                        kDelay, 1);
-  histogram_tester().ExpectUniqueSample(
-      "PasswordManager.WeakCheck.WeakPasswords", 1, 1);
-  histogram_tester().ExpectTotalCount("PasswordManager.WeakCheck.PasswordScore",
-                                      2);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.Time", kDelay,
+                                      1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.WeakPasswords",
+                                      1, 1);
+  histogram_tester.ExpectTotalCount("PasswordManager.WeakCheck.PasswordScore",
+                                    2);
 }
 
 // Checks that for a credential that is both weak and compromised,
@@ -518,8 +531,9 @@ TEST_F(InsecureCredentialsManagerTest, SingleCredentialIsWeakAndCompromised) {
       {InsecureType::kLeaked, InsecurityMetadata()});
 
   store().AddLogin(passwords[0]);
-
   RunUntilIdle();
+
+  base::HistogramTester histogram_tester;
   provider().StartWeakCheck();
   AdvanceClock(base::Milliseconds(kDelay));
   RunUntilIdle();
@@ -529,14 +543,14 @@ TEST_F(InsecureCredentialsManagerTest, SingleCredentialIsWeakAndCompromised) {
   EXPECT_THAT(provider().GetInsecureCredentialEntries(),
               ElementsAre(CredentialUIEntry(passwords[0])));
 
-  histogram_tester().ExpectUniqueSample(
+  histogram_tester.ExpectUniqueSample(
       "PasswordManager.WeakCheck.CheckedPasswords", 1, 1);
-  histogram_tester().ExpectUniqueSample("PasswordManager.WeakCheck.Time",
-                                        kDelay, 1);
-  histogram_tester().ExpectUniqueSample(
-      "PasswordManager.WeakCheck.WeakPasswords", 1, 1);
-  histogram_tester().ExpectUniqueSample(
-      "PasswordManager.WeakCheck.PasswordScore", 0, 1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.Time", kDelay,
+                                      1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.WeakPasswords",
+                                      1, 1);
+  histogram_tester.ExpectUniqueSample("PasswordManager.WeakCheck.PasswordScore",
+                                      0, 1);
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -569,7 +583,8 @@ TEST_F(InsecureCredentialsManagerTest, SaveCompromisedPasswordForExistingLeak) {
   LeakCheckCredential credential = MakeLeakCredential(kUsername1, kPassword1);
 
   InsecurityMetadata insecurity_metadata(base::Time::Now() - base::Days(3),
-                                         IsMuted(true));
+                                         IsMuted(true),
+                                         TriggerBackendNotification(false));
   password_form.password_issues.insert(
       {InsecureType::kLeaked, insecurity_metadata});
 
@@ -618,7 +633,9 @@ TEST_F(InsecureCredentialsManagerTest, UnmuteCompromisedMutedCredential) {
   PasswordForm password =
       MakeSavedPassword(kExampleCom, kUsername1, kPassword1);
   password.password_issues.insert(
-      {InsecureType::kLeaked, InsecurityMetadata(base::Time(), IsMuted(true))});
+      {InsecureType::kLeaked,
+       InsecurityMetadata(base::Time(), IsMuted(true),
+                          TriggerBackendNotification(false))});
 
   store().AddLogin(password);
   RunUntilIdle();
@@ -645,7 +662,8 @@ TEST_F(InsecureCredentialsManagerTest, UnmuteCompromisedNotMutedCredential) {
       MakeSavedPassword(kExampleCom, kUsername1, kPassword1);
   password.password_issues.insert(
       {InsecureType::kLeaked,
-       InsecurityMetadata(base::Time(), IsMuted(false))});
+       InsecurityMetadata(base::Time(), IsMuted(false),
+                          TriggerBackendNotification(false))});
 
   store().AddLogin(password);
   RunUntilIdle();
@@ -672,10 +690,13 @@ TEST_F(InsecureCredentialsManagerTest,
   PasswordForm password =
       MakeSavedPassword(kExampleCom, kUsername1, kPassword1);
   password.password_issues.insert(
-      {InsecureType::kLeaked, InsecurityMetadata(base::Time(), IsMuted(true))});
+      {InsecureType::kLeaked,
+       InsecurityMetadata(base::Time(), IsMuted(true),
+                          TriggerBackendNotification(false))});
   password.password_issues.insert(
       {InsecureType::kPhished,
-       InsecurityMetadata(base::Time(), IsMuted(true))});
+       InsecurityMetadata(base::Time(), IsMuted(true),
+                          TriggerBackendNotification(false))});
 
   store().AddLogin(password);
   RunUntilIdle();
@@ -712,14 +733,21 @@ TEST_F(InsecureCredentialsManagerTest,
   PasswordForm password =
       MakeSavedPassword(kExampleCom, kUsername1, kPassword1);
   password.password_issues.insert(
-      {InsecureType::kLeaked, InsecurityMetadata(base::Time(), IsMuted(true))});
+      {InsecureType::kLeaked,
+       InsecurityMetadata(base::Time(), IsMuted(true),
+                          TriggerBackendNotification(false))});
   password.password_issues.insert(
       {InsecureType::kPhished,
-       InsecurityMetadata(base::Time(), IsMuted(true))});
+       InsecurityMetadata(base::Time(), IsMuted(true),
+                          TriggerBackendNotification(false))});
   password.password_issues.insert(
-      {InsecureType::kReused, InsecurityMetadata(base::Time(), IsMuted(true))});
+      {InsecureType::kReused,
+       InsecurityMetadata(base::Time(), IsMuted(true),
+                          TriggerBackendNotification(false))});
   password.password_issues.insert(
-      {InsecureType::kWeak, InsecurityMetadata(base::Time(), IsMuted(true))});
+      {InsecureType::kWeak,
+       InsecurityMetadata(base::Time(), IsMuted(true),
+                          TriggerBackendNotification(false))});
 
   store().AddLogin(password);
   RunUntilIdle();
@@ -765,7 +793,9 @@ TEST_F(InsecureCredentialsManagerTest, MuteCompromisedCredentialOnMutedIsNoOp) {
   PasswordForm password =
       MakeSavedPassword(kExampleCom, kUsername1, kPassword1);
   password.password_issues.insert(
-      {InsecureType::kLeaked, InsecurityMetadata(base::Time(), IsMuted(true))});
+      {InsecureType::kLeaked,
+       InsecurityMetadata(base::Time(), IsMuted(true),
+                          TriggerBackendNotification(false))});
 
   store().AddLogin(password);
   RunUntilIdle();
@@ -791,10 +821,12 @@ TEST_F(InsecureCredentialsManagerTest,
       MakeSavedPassword(kExampleCom, kUsername1, kPassword1);
   password.password_issues.insert(
       {InsecureType::kLeaked,
-       InsecurityMetadata(base::Time(), IsMuted(false))});
+       InsecurityMetadata(base::Time(), IsMuted(false),
+                          TriggerBackendNotification(false))});
   password.password_issues.insert(
       {InsecureType::kPhished,
-       InsecurityMetadata(base::Time(), IsMuted(false))});
+       InsecurityMetadata(base::Time(), IsMuted(false),
+                          TriggerBackendNotification(false))});
 
   store().AddLogin(password);
   RunUntilIdle();
@@ -828,15 +860,20 @@ TEST_F(InsecureCredentialsManagerTest, FilterThenMuteMultipleInsecurityTypes) {
       MakeSavedPassword(kExampleCom, kUsername1, kPassword1);
   password.password_issues.insert(
       {InsecureType::kLeaked,
-       InsecurityMetadata(base::Time(), IsMuted(false))});
+       InsecurityMetadata(base::Time(), IsMuted(false),
+                          TriggerBackendNotification(false))});
   password.password_issues.insert(
       {InsecureType::kPhished,
-       InsecurityMetadata(base::Time(), IsMuted(false))});
+       InsecurityMetadata(base::Time(), IsMuted(false),
+                          TriggerBackendNotification(false))});
   password.password_issues.insert(
       {InsecureType::kReused,
-       InsecurityMetadata(base::Time(), IsMuted(false))});
+       InsecurityMetadata(base::Time(), IsMuted(false),
+                          TriggerBackendNotification(false))});
   password.password_issues.insert(
-      {InsecureType::kWeak, InsecurityMetadata(base::Time(), IsMuted(false))});
+      {InsecureType::kWeak,
+       InsecurityMetadata(base::Time(), IsMuted(false),
+                          TriggerBackendNotification(false))});
 
   store().AddLogin(password);
   RunUntilIdle();
@@ -884,7 +921,9 @@ TEST_F(InsecureCredentialsManagerTest, MuteWeakPasswordNoOp) {
       MakeSavedPassword(kExampleCom, kUsername1, kPassword1);
 
   password.password_issues.insert(
-      {InsecureType::kWeak, InsecurityMetadata(base::Time(), IsMuted(false))});
+      {InsecureType::kWeak,
+       InsecurityMetadata(base::Time(), IsMuted(false),
+                          TriggerBackendNotification(false))});
 
   store().AddLogin(password);
   RunUntilIdle();
@@ -919,7 +958,9 @@ TEST_F(InsecureCredentialsManagerTest, UnMuteWeakPasswordNoOp) {
       MakeSavedPassword(kExampleCom, kUsername1, kPassword1);
 
   password.password_issues.insert(
-      {InsecureType::kWeak, InsecurityMetadata(base::Time(), IsMuted(true))});
+      {InsecureType::kWeak,
+       InsecurityMetadata(base::Time(), IsMuted(true),
+                          TriggerBackendNotification(false))});
 
   store().AddLogin(password);
   RunUntilIdle();
@@ -956,7 +997,8 @@ TEST_F(InsecureCredentialsManagerTest, MuteReusedPasswordNoOp) {
 
   password.password_issues.insert(
       {InsecureType::kReused,
-       InsecurityMetadata(base::Time(), IsMuted(false))});
+       InsecurityMetadata(base::Time(), IsMuted(false),
+                          TriggerBackendNotification(false))});
 
   store().AddLogin(password);
   RunUntilIdle();
@@ -991,7 +1033,9 @@ TEST_F(InsecureCredentialsManagerTest, UnMuteReusedPasswordNoOp) {
       MakeSavedPassword(kExampleCom, kUsername1, kPassword1);
 
   password.password_issues.insert(
-      {InsecureType::kReused, InsecurityMetadata(base::Time(), IsMuted(true))});
+      {InsecureType::kReused,
+       InsecurityMetadata(base::Time(), IsMuted(true),
+                          TriggerBackendNotification(false))});
 
   store().AddLogin(password);
   RunUntilIdle();
@@ -1143,29 +1187,33 @@ TEST_F(InsecureCredentialsManagerTest, GetInsecureCredentialsReused) {
   PasswordForm form1 =
       MakeSavedPassword(kExampleCom, kUsername1, kWeakPassword1);
   PasswordForm form2 =
-      MakeSavedPassword(kExampleCom, kUsername2, kWeakPassword1);
+      MakeSavedPassword("https://example2.com/", kUsername2, kWeakPassword1);
 
   store().AddLogin(form1);
   store().AddLogin(form2);
   RunUntilIdle();
+
+  base::HistogramTester histogram_tester;
   provider().StartReuseCheck();
+  AdvanceClock(base::Milliseconds(kDelay));
   RunUntilIdle();
 
   EXPECT_THAT(provider().GetInsecureCredentialEntries(),
               ElementsAre(CredentialUIEntry(form1), CredentialUIEntry(form2)));
+
+  histogram_tester.ExpectUniqueSample("PasswordManager.ReuseCheck.Time", kDelay,
+                                      1);
 }
 
 TEST_F(InsecureCredentialsManagerTest, UpdatingReusedPasswordFixesTheIssue) {
 #if BUILDFLAG(IS_IOS)
   base::test::ScopedFeatureList scoped_feature_list(
       password_manager::features::kIOSPasswordCheckup);
-#else
-  base::test::ScopedFeatureList scoped_feature_list(
-      password_manager::features::kPasswordManagerRedesign);
 #endif
 
   PasswordForm form1 = MakeSavedPassword(kExampleCom, kUsername1, kPassword1);
-  PasswordForm form2 = MakeSavedPassword(kExampleCom, kUsername2, kPassword1);
+  PasswordForm form2 =
+      MakeSavedPassword("https://example2.com/", kUsername2, kPassword1);
 
   store().AddLogin(form1);
   store().AddLogin(form2);
@@ -1185,10 +1233,52 @@ TEST_F(InsecureCredentialsManagerTest, UpdatingReusedPasswordFixesTheIssue) {
   EXPECT_THAT(provider().GetInsecureCredentialEntries(), IsEmpty());
 }
 
+TEST_F(InsecureCredentialsManagerTest, IrrelevantUpdatesDontCauseReuseCheck) {
+#if BUILDFLAG(IS_IOS)
+  base::test::ScopedFeatureList scoped_feature_list(
+      password_manager::features::kIOSPasswordCheckup);
+#endif
+
+  PasswordForm form1 = MakeSavedPassword(kExampleCom, kUsername1, kPassword1);
+  PasswordForm form2 = MakeSavedPassword(kExampleCom, kUsername2, kPassword216);
+
+  store().AddLogin(form1);
+  store().AddLogin(form2);
+  RunUntilIdle();
+
+  base::HistogramTester histogram_tester;
+
+  provider().StartReuseCheck();
+  RunUntilIdle();
+
+  histogram_tester.ExpectTotalCount("PasswordManager.ReuseCheck.Time", 1);
+
+  // Updating leak information doesn't cause a recheck.
+  CredentialUIEntry updated_credential(form1);
+  updated_credential.password_issues.insert(
+      {InsecureType::kLeaked, InsecurityMetadata()});
+  presenter().EditSavedCredentials(CredentialUIEntry(form1),
+                                   updated_credential);
+  RunUntilIdle();
+  histogram_tester.ExpectTotalCount("PasswordManager.ReuseCheck.Time", 1);
+
+  // Adding a new password on the other hand will cause a recheck.
+  store().AddLogin(MakeSavedPassword(kExampleCom, kUsername2, kPassword1));
+  RunUntilIdle();
+
+  histogram_tester.ExpectTotalCount("PasswordManager.ReuseCheck.Time", 2);
+}
+
 TEST_F(InsecureCredentialsManagerTest, ReuseCheckUsesAffiliationInfo) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(
-      password_manager::features::kPasswordsGrouping);
+  if (!IsGroupingEnabled()) {
+    return;
+  }
+  MockAffiliationService mock_affiliation_service;
+  SavedPasswordsPresenter presenter{&mock_affiliation_service, &store(),
+                                    nullptr};
+  InsecureCredentialsManager provider{&presenter, &store(), nullptr};
+  presenter.Init();
+  RunUntilIdle();
 
   // Setup two credentials with the same passwords that belong to two affiliated
   // groups. Those should *not* be flagged for password reuse.
@@ -1201,16 +1291,16 @@ TEST_F(InsecureCredentialsManagerTest, ReuseCheckUsesAffiliationInfo) {
   grouped_facets[0].facets.push_back(facet);
   facet.uri = FacetURI::FromPotentiallyInvalidSpec(form2.signon_realm);
   grouped_facets[0].facets.push_back(facet);
-  EXPECT_CALL(affiliation_service(), GetAllGroups)
-      .WillRepeatedly(base::test::RunOnceCallback<0>(grouped_facets));
+  EXPECT_CALL(mock_affiliation_service, GetGroupingInfo)
+      .WillRepeatedly(base::test::RunOnceCallback<1>(grouped_facets));
 
   store().AddLogin(form1);
   store().AddLogin(form2);
   RunUntilIdle();
-  provider().StartReuseCheck();
+  provider.StartReuseCheck();
   RunUntilIdle();
 
-  EXPECT_THAT(provider().GetInsecureCredentialEntries(), IsEmpty());
+  EXPECT_THAT(provider.GetInsecureCredentialEntries(), IsEmpty());
 }
 
 #else

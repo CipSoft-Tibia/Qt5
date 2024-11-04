@@ -12,6 +12,9 @@
 // Dense Inverse Search flow algorithm
 // Paper: https://arxiv.org/abs/1603.03590
 
+#include <assert.h>
+#include <math.h>
+
 #include "aom_dsp/aom_dsp_common.h"
 #include "aom_dsp/flow_estimation/corner_detect.h"
 #include "aom_dsp/flow_estimation/disflow.h"
@@ -26,8 +29,6 @@
 // replacing av1_upscale_plane_double_prec().
 // Then we can avoid needing to include code from av1/
 #include "av1/common/resize.h"
-
-#include <assert.h>
 
 // Amount to downsample the flow field by.
 // eg. DOWNSAMPLE_SHIFT = 2 (DOWNSAMPLE_FACTOR == 4) means we calculate
@@ -71,12 +72,13 @@ static INLINE void get_cubic_kernel_int(double x, int *kernel) {
   kernel[3] = (int)rint(kernel_dbl[3] * (1 << DISFLOW_INTERP_BITS));
 }
 
-static INLINE double getCubicValue_dbl(const double *p, const double *kernel) {
+static INLINE double get_cubic_value_dbl(const double *p,
+                                         const double *kernel) {
   return kernel[0] * p[0] + kernel[1] * p[1] + kernel[2] * p[2] +
          kernel[3] * p[3];
 }
 
-static INLINE int getCubicValue_int(const int *p, const int *kernel) {
+static INLINE int get_cubic_value_int(const int *p, const int *kernel) {
   return kernel[0] * p[0] + kernel[1] * p[1] + kernel[2] * p[2] +
          kernel[3] * p[3];
 }
@@ -87,11 +89,11 @@ static INLINE double bicubic_interp_one(const double *arr, int stride,
 
   // Horizontal convolution
   for (int i = -1; i < 3; ++i) {
-    tmp[i + 1] = getCubicValue_dbl(&arr[i * stride - 1], h_kernel);
+    tmp[i + 1] = get_cubic_value_dbl(&arr[i * stride - 1], h_kernel);
   }
 
   // Vertical convolution
-  return getCubicValue_dbl(tmp, v_kernel);
+  return get_cubic_value_dbl(tmp, v_kernel);
 }
 
 static int determine_disflow_correspondence(CornerList *corners,
@@ -152,9 +154,13 @@ static int determine_disflow_correspondence(CornerList *corners,
 // (x, y) in src and the other at (x + u, y + v) in ref.
 // This function returns the sum of squared pixel differences between
 // the two regions.
-static INLINE void compute_flow_error(const uint8_t *ref, const uint8_t *src,
-                                      int width, int height, int stride, int x,
-                                      int y, double u, double v, int16_t *dt) {
+static INLINE void compute_flow_vector(const uint8_t *src, const uint8_t *ref,
+                                       int width, int height, int stride, int x,
+                                       int y, double u, double v,
+                                       const int16_t *dx, const int16_t *dy,
+                                       int *b) {
+  memset(b, 0, 2 * sizeof(*b));
+
   // Split offset into integer and fractional parts, and compute cubic
   // interpolation kernels
   const int u_int = (int)floor(u);
@@ -209,7 +215,7 @@ static INLINE void compute_flow_error(const uint8_t *ref, const uint8_t *src,
       // in an int16_t. But with 7 fractional bits it would be 36720,
       // which is too large.
       tmp[i * DISFLOW_PATCH_SIZE + j] = ROUND_POWER_OF_TWO(
-          getCubicValue_int(arr, h_kernel), DISFLOW_INTERP_BITS - 6);
+          get_cubic_value_int(arr, h_kernel), DISFLOW_INTERP_BITS - 6);
     }
   }
 
@@ -219,7 +225,7 @@ static INLINE void compute_flow_error(const uint8_t *ref, const uint8_t *src,
       const int *p = &tmp[i * DISFLOW_PATCH_SIZE + j];
       const int arr[4] = { p[-DISFLOW_PATCH_SIZE], p[0], p[DISFLOW_PATCH_SIZE],
                            p[2 * DISFLOW_PATCH_SIZE] };
-      const int result = getCubicValue_int(arr, v_kernel);
+      const int result = get_cubic_value_int(arr, v_kernel);
 
       // Apply kernel and round.
       // This time, we have to round off the 6 extra bits which were kept
@@ -228,8 +234,9 @@ static INLINE void compute_flow_error(const uint8_t *ref, const uint8_t *src,
       const int round_bits = DISFLOW_INTERP_BITS + 6 - DISFLOW_DERIV_SCALE_LOG2;
       const int warped = ROUND_POWER_OF_TWO(result, round_bits);
       const int src_px = src[(x + j) + (y + i) * stride] << 3;
-      const int err = warped - src_px;
-      dt[i * DISFLOW_PATCH_SIZE + j] = err;
+      const int dt = warped - src_px;
+      b[0] += dx[i * DISFLOW_PATCH_SIZE + j] * dt;
+      b[1] += dy[i * DISFLOW_PATCH_SIZE + j] * dt;
     }
   }
 }
@@ -287,25 +294,37 @@ static INLINE void sobel_filter(const uint8_t *src, int src_stride,
 }
 
 // Computes the components of the system of equations used to solve for
-// a flow vector. This includes:
-// 1.) An approximation to the Hessian. We do not compute the Hessian of the
-//     actual error function, as this involves second derivatives of the image
-//     and so is very noise-sensitive.
+// a flow vector.
 //
-//     Instead, we approximate that the error will be a quadratic function of
-//     the x and y coordinates when we are close to convergence, which leads
-//     to an approximate Hessian of the form:
+// The flow equations are a least-squares system, derived as follows:
 //
-//       M = |sum(dx * dx)  sum(dx * dy)|
-//           |sum(dx * dy)  sum(dy * dy)|
+// For each pixel in the patch, we calculate the current error `dt`,
+// and the x and y gradients `dx` and `dy` of the source patch.
+// This means that, to first order, the squared error for this pixel is
 //
-// 2.)   b = |sum(dx * dt)|
-//           |sum(dy * dt)|
+//    (dt + u * dx + v * dy)^2
 //
-// Where the sums are computed over a square window of DISFLOW_PATCH_SIZE.
-static INLINE void compute_hessian(const int16_t *dx, int dx_stride,
-                                   const int16_t *dy, int dy_stride,
-                                   double *M) {
+// where (u, v) are the incremental changes to the flow vector.
+//
+// We then want to find the values of u and v which minimize the sum
+// of the squared error across all pixels. Conveniently, this fits exactly
+// into the form of a least squares problem, with one equation
+//
+//   u * dx + v * dy = -dt
+//
+// for each pixel.
+//
+// Summing across all pixels in a square window of size DISFLOW_PATCH_SIZE,
+// and absorbing the - sign elsewhere, this results in the least squares system
+//
+//   M = |sum(dx * dx)  sum(dx * dy)|
+//       |sum(dx * dy)  sum(dy * dy)|
+//
+//   b = |sum(dx * dt)|
+//       |sum(dy * dt)|
+static INLINE void compute_flow_matrix(const int16_t *dx, int dx_stride,
+                                       const int16_t *dy, int dy_stride,
+                                       double *M) {
   int tmp[4] = { 0 };
 
   for (int i = 0; i < DISFLOW_PATCH_SIZE; i++) {
@@ -317,6 +336,18 @@ static INLINE void compute_hessian(const int16_t *dx, int dx_stride,
     }
   }
 
+  // Apply regularization
+  // We follow the standard regularization method of adding `k * I` before
+  // inverting. This ensures that the matrix will be invertible.
+  //
+  // Setting the regularization strength k to 1 seems to work well here, as
+  // typical values coming from the other equations are very large (1e5 to
+  // 1e6, with an upper limit of around 6e7, at the time of writing).
+  // It also preserves the property that all matrix values are whole numbers,
+  // which is convenient for integerized SIMD implementation.
+  tmp[0] += 1;
+  tmp[3] += 1;
+
   tmp[2] = tmp[1];
 
   M[0] = (double)tmp[0];
@@ -325,39 +356,21 @@ static INLINE void compute_hessian(const int16_t *dx, int dx_stride,
   M[3] = (double)tmp[3];
 }
 
-static INLINE void compute_flow_vector(const int16_t *dx, int dx_stride,
-                                       const int16_t *dy, int dy_stride,
-                                       const int16_t *dt, int dt_stride,
-                                       int *b) {
-  memset(b, 0, 2 * sizeof(*b));
-
-  for (int i = 0; i < DISFLOW_PATCH_SIZE; i++) {
-    for (int j = 0; j < DISFLOW_PATCH_SIZE; j++) {
-      b[0] += dx[i * dx_stride + j] * dt[i * dt_stride + j];
-      b[1] += dy[i * dy_stride + j] * dt[i * dt_stride + j];
-    }
-  }
-}
-
+// Try to invert the matrix M
+// Note: Due to the nature of how a least-squares matrix is constructed, all of
+// the eigenvalues will be >= 0, and therefore det M >= 0 as well.
+// The regularization term `+ k * I` further ensures that det M >= k^2.
+// As mentioned in compute_flow_matrix(), here we use k = 1, so det M >= 1.
+// So we don't have to worry about non-invertible matrices here.
 static INLINE void invert_2x2(const double *M, double *M_inv) {
-  double M_0 = M[0];
-  double M_3 = M[3];
-  double det = (M_0 * M_3) - (M[1] * M[2]);
-  if (det < 1e-5) {
-    // Handle singular matrix
-    // TODO(sarahparker) compare results using pseudo inverse instead
-    M_0 += 1e-10;
-    M_3 += 1e-10;
-    det = (M_0 * M_3) - (M[1] * M[2]);
-  }
+  double det = (M[0] * M[3]) - (M[1] * M[2]);
+  assert(det >= 1);
   const double det_inv = 1 / det;
 
-  // TODO(rachelbarker): Is using regularized values
-  // or original values better here?
-  M_inv[0] = M_3 * det_inv;
+  M_inv[0] = M[3] * det_inv;
   M_inv[1] = -M[1] * det_inv;
   M_inv[2] = -M[2] * det_inv;
-  M_inv[3] = M_0 * det_inv;
+  M_inv[3] = M[0] * det_inv;
 }
 
 void aom_compute_flow_at_point_c(const uint8_t *src, const uint8_t *ref, int x,
@@ -366,41 +379,32 @@ void aom_compute_flow_at_point_c(const uint8_t *src, const uint8_t *ref, int x,
   double M[4];
   double M_inv[4];
   int b[2];
-  int16_t dt[DISFLOW_PATCH_SIZE * DISFLOW_PATCH_SIZE];
   int16_t dx[DISFLOW_PATCH_SIZE * DISFLOW_PATCH_SIZE];
   int16_t dy[DISFLOW_PATCH_SIZE * DISFLOW_PATCH_SIZE];
-  const double o_u = *u;
-  const double o_v = *v;
 
   // Compute gradients within this patch
   const uint8_t *src_patch = &src[y * stride + x];
   sobel_filter(src_patch, stride, dx, DISFLOW_PATCH_SIZE, 1);
   sobel_filter(src_patch, stride, dy, DISFLOW_PATCH_SIZE, 0);
 
-  compute_hessian(dx, DISFLOW_PATCH_SIZE, dy, DISFLOW_PATCH_SIZE, M);
+  compute_flow_matrix(dx, DISFLOW_PATCH_SIZE, dy, DISFLOW_PATCH_SIZE, M);
   invert_2x2(M, M_inv);
 
   for (int itr = 0; itr < DISFLOW_MAX_ITR; itr++) {
-    compute_flow_error(ref, src, width, height, stride, x, y, *u, *v, dt);
-    compute_flow_vector(dx, DISFLOW_PATCH_SIZE, dy, DISFLOW_PATCH_SIZE, dt,
-                        DISFLOW_PATCH_SIZE, b);
+    compute_flow_vector(src, ref, width, height, stride, x, y, *u, *v, dx, dy,
+                        b);
 
     // Solve flow equations to find a better estimate for the flow vector
     // at this point
     const double step_u = M_inv[0] * b[0] + M_inv[1] * b[1];
     const double step_v = M_inv[2] * b[0] + M_inv[3] * b[1];
-    *u += step_u * DISFLOW_STEP_SIZE;
-    *v += step_v * DISFLOW_STEP_SIZE;
+    *u += fclamp(step_u * DISFLOW_STEP_SIZE, -2, 2);
+    *v += fclamp(step_v * DISFLOW_STEP_SIZE, -2, 2);
 
     if (fabs(step_u) + fabs(step_v) < DISFLOW_STEP_SIZE_THRESOLD) {
       // Stop iteration when we're close to convergence
       break;
     }
-  }
-  if (fabs(*u - o_u) > DISFLOW_PATCH_SIZE ||
-      fabs(*v - o_v) > DISFLOW_PATCH_SIZE) {
-    *u = o_u;
-    *v = o_v;
   }
 }
 
@@ -593,11 +597,11 @@ static void free_flow_field(FlowField *flow) {
 // Following the convention in flow_estimation.h, the flow vectors are computed
 // at fixed points in `src` and point to the corresponding locations in `ref`,
 // regardless of the temporal ordering of the frames.
-int av1_compute_global_motion_disflow(TransformationType type,
-                                      YV12_BUFFER_CONFIG *src,
-                                      YV12_BUFFER_CONFIG *ref, int bit_depth,
-                                      MotionModel *motion_models,
-                                      int num_motion_models) {
+bool av1_compute_global_motion_disflow(TransformationType type,
+                                       YV12_BUFFER_CONFIG *src,
+                                       YV12_BUFFER_CONFIG *ref, int bit_depth,
+                                       MotionModel *motion_models,
+                                       int num_motion_models) {
   // Precompute information we will need about each frame
   ImagePyramid *src_pyramid = src->y_pyramid;
   CornerList *src_corners = src->corners;
@@ -612,31 +616,25 @@ int av1_compute_global_motion_disflow(TransformationType type,
   assert(ref_pyramid->layers[0].height == src_height);
 
   FlowField *flow = alloc_flow_field(src_width, src_height);
+  if (!flow) return false;
 
   compute_flow_field(src_pyramid, ref_pyramid, flow);
 
   // find correspondences between the two images using the flow field
   Correspondence *correspondences =
       aom_malloc(src_corners->num_corners * sizeof(*correspondences));
+  if (!correspondences) {
+    free_flow_field(flow);
+    return false;
+  }
+
   const int num_correspondences =
       determine_disflow_correspondence(src_corners, flow, correspondences);
 
-  ransac(correspondences, num_correspondences, type, motion_models,
-         num_motion_models);
+  bool result = ransac(correspondences, num_correspondences, type,
+                       motion_models, num_motion_models);
 
   aom_free(correspondences);
   free_flow_field(flow);
-
-  // Set num_inliers = 0 for motions with too few inliers so they are ignored.
-  for (int i = 0; i < num_motion_models; ++i) {
-    if (motion_models[i].num_inliers < MIN_INLIER_PROB * num_correspondences) {
-      motion_models[i].num_inliers = 0;
-    }
-  }
-
-  // Return true if any one of the motions has inliers.
-  for (int i = 0; i < num_motion_models; ++i) {
-    if (motion_models[i].num_inliers > 0) return true;
-  }
-  return false;
+  return result;
 }

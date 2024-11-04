@@ -17,6 +17,8 @@
 #ifndef SRC_TRACE_PROCESSOR_UTIL_PROTO_TO_ARGS_PARSER_H_
 #define SRC_TRACE_PROCESSOR_UTIL_PROTO_TO_ARGS_PARSER_H_
 
+#include <functional>
+
 #include "perfetto/base/status.h"
 #include "perfetto/protozero/field.h"
 #include "protos/perfetto/trace/interned_data/interned_data.pbzero.h"
@@ -85,6 +87,12 @@ class ProtoToArgsParser {
     virtual void AddDouble(const Key& key, double value) = 0;
     virtual void AddPointer(const Key& key, const void* value) = 0;
     virtual void AddBoolean(const Key& key, bool value) = 0;
+    virtual void AddBytes(const Key& key, const protozero::ConstBytes& value) {
+      // In the absence of a better implementation default to showing
+      // bytes as string with the size:
+      std::string msg = "<bytes size=" + std::to_string(value.size) + ">";
+      AddString(key, msg);
+    }
     // Returns whether an entry was added or not.
     virtual bool AddJson(const Key& key,
                          const protozero::ConstChars& value) = 0;
@@ -99,7 +107,7 @@ class ProtoToArgsParser {
 
     template <typename FieldMetadata>
     typename FieldMetadata::cpp_field_type::Decoder* GetInternedMessage(
-        protozero::proto_utils::internal::FieldMetadataHelper<FieldMetadata>,
+        FieldMetadata,
         uint64_t iid) {
       static_assert(std::is_base_of<protozero::proto_utils::FieldMetadataBase,
                                     FieldMetadata>::value,
@@ -135,13 +143,9 @@ class ProtoToArgsParser {
   // |type| must be the fully qualified name, but with a '.' added to the
   // beginning. I.E. ".perfetto.protos.TrackEvent". And must match one of the
   // descriptors already added through |AddProtoFileDescriptor|.
-  //
-  // IMPORTANT: currently bytes fields are not supported.
-  //
-  // TODO(b/145578432): Add support for byte fields.
   base::Status ParseMessage(const protozero::ConstBytes& cb,
                             const std::string& type,
-                            const std::vector<uint16_t>* allowed_fields,
+                            const std::vector<uint32_t>* allowed_fields,
                             Delegate& delegate,
                             int* unknown_extensions = nullptr);
 
@@ -168,8 +172,8 @@ class ProtoToArgsParser {
     struct ScopedStringAppender;
 
     Key& key_;
-    base::Optional<size_t> old_flat_key_length_ = base::nullopt;
-    base::Optional<size_t> old_key_length_ = base::nullopt;
+    std::optional<size_t> old_flat_key_length_ = std::nullopt;
+    std::optional<size_t> old_key_length_ = std::nullopt;
   };
 
   // These methods can be called from parsing overrides to enter nested
@@ -179,14 +183,14 @@ class ProtoToArgsParser {
   ScopedNestedKeyContext EnterArray(size_t index);
 
   using ParsingOverrideForField =
-      std::function<base::Optional<base::Status>(const protozero::Field&,
-                                                 Delegate& delegate)>;
+      std::function<std::optional<base::Status>(const protozero::Field&,
+                                                Delegate& delegate)>;
 
   // Installs an override for the field at the specified path. We will invoke
   // |parsing_override| when the field is encountered.
   //
   // The return value of |parsing_override| indicates whether the override
-  // parsed the sub-message and ProtoToArgsParser should skip it (base::nullopt)
+  // parsed the sub-message and ProtoToArgsParser should skip it (std::nullopt)
   // or the sub-message should continue to be parsed by ProtoToArgsParser using
   // the descriptor (base::Status).
   //
@@ -207,7 +211,7 @@ class ProtoToArgsParser {
   void AddParsingOverrideForField(const std::string& field_path,
                                   ParsingOverrideForField parsing_override);
 
-  using ParsingOverrideForType = std::function<base::Optional<base::Status>(
+  using ParsingOverrideForType = std::function<std::optional<base::Status>(
       ScopedNestedKeyContext& key,
       const protozero::ConstBytes& data,
       Delegate& delegate)>;
@@ -217,7 +221,7 @@ class ProtoToArgsParser {
   // Note that the path-based overrides take precedence over type overrides.
   //
   // The return value of |parsing_override| indicates whether the override
-  // parsed the sub-message and ProtoToArgsParser should skip it (base::nullopt)
+  // parsed the sub-message and ProtoToArgsParser should skip it (std::nullopt)
   // or the sub-message should continue to be parsed by ProtoToArgsParser using
   // the descriptor (base::Status).
   //
@@ -247,11 +251,18 @@ class ProtoToArgsParser {
                           Delegate& delegate,
                           int* unknown_extensions);
 
-  base::Optional<base::Status> MaybeApplyOverrideForField(
+  base::Status ParsePackedField(
+      const FieldDescriptor& field_descriptor,
+      std::unordered_map<size_t, int>& repeated_field_index,
+      protozero::Field field,
+      Delegate& delegate,
+      int* unknown_extensions);
+
+  std::optional<base::Status> MaybeApplyOverrideForField(
       const protozero::Field&,
       Delegate& delegate);
 
-  base::Optional<base::Status> MaybeApplyOverrideForType(
+  std::optional<base::Status> MaybeApplyOverrideForType(
       const std::string& message_type,
       ScopedNestedKeyContext& key,
       const protozero::ConstBytes& data,
@@ -262,7 +273,7 @@ class ProtoToArgsParser {
   base::Status ParseMessageInternal(ScopedNestedKeyContext& key,
                                     const protozero::ConstBytes& cb,
                                     const std::string& type,
-                                    const std::vector<uint16_t>* fields,
+                                    const std::vector<uint32_t>* fields,
                                     Delegate& delegate,
                                     int* unknown_extensions);
 

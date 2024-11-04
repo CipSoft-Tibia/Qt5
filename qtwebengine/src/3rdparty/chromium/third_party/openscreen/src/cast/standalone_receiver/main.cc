@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,8 +26,7 @@
 #include "util/stringprintf.h"
 #include "util/trace_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 void LogUsage(const char* argv0) {
@@ -222,7 +221,7 @@ int RunStandaloneReceiver(int argc, char* argv[]) {
                               std::unique_ptr<TaskRunnerImpl>(task_runner));
   RunCastService(task_runner,
                  CastService::Configuration{
-                     task_runner, interface, std::move(creds.value()),
+                     *task_runner, interface, std::move(creds.value()),
                      friendly_name, model_name, enable_discovery});
   PlatformClientPosix::ShutDown();
 
@@ -230,8 +229,7 @@ int RunStandaloneReceiver(int argc, char* argv[]) {
 }
 
 }  // namespace
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 int main(int argc, char* argv[]) {
   return openscreen::cast::RunStandaloneReceiver(argc, argv);

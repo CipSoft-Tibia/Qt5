@@ -6,6 +6,8 @@ gclient_gn_args = [
   'generate_location_tags',
 ]
 
+git_dependencies = 'SYNC'
+
 vars = {
   'chromium_git': 'https://chromium.googlesource.com',
   'dawn_git': 'https://dawn.googlesource.com',
@@ -32,19 +34,35 @@ vars = {
 
   # Fetch clang-tidy into the same bin/ directory as our clang binary.
   'checkout_clang_tidy': False,
+
+  # Fetch configuration files required for the 'use_remoteexec' gn arg
+  'download_remoteexec_cfg': False,
+  # RBE instance to use for running remote builds
+  'rbe_instance': 'projects/rbe-chrome-untrusted/instances/default_instance',
+  # RBE project to download rewrapper config files for. Only needed if
+  # different from the project used in 'rbe_instance'
+  'rewrapper_cfg_project': '',
+  # reclient CIPD package
+  'reclient_package': 'infra/rbe/client/',
+  # reclient CIPD package version
+  'reclient_version': 're_client_version:0.108.0.7cdbbe9-gomaip',
+
+  # 'magic' text to tell depot_tools that git submodules should be accepted
+  # but parity with DEPS file is expected.
+  'SUBMODULE_MIGRATION': 'True'
 }
 
 deps = {
   # Dependencies required to use GN/Clang in standalone
   'build': {
-    'url': '{chromium_git}/chromium/src/build@1103ef535ca1e100db5d4e59781a4e59369a9818',
+    'url': '{chromium_git}/chromium/src/build@5885d3c24833ad72845a52a1b913a2b8bc651b56',
     'condition': 'dawn_standalone',
   },
   'buildtools': {
-    'url': '{chromium_git}/chromium/src/buildtools@2ff42d2008f09f65de12e70c6ff0ad58ddb090ad',
+    'url': '{chromium_git}/chromium/src/buildtools@79ab87fa54614258c4c95891e873223371194525',
     'condition': 'dawn_standalone',
   },
-  'buildtools/clang_format/script': {
+  'third_party/clang-format/script': {
     'url': '{chromium_git}/external/github.com/llvm/llvm-project/clang/tools/clang-format.git@8b525d2747f2584fc35d8c7e612e66f377858df7',
     'condition': 'dawn_standalone',
   },
@@ -73,18 +91,18 @@ deps = {
     'condition': 'dawn_standalone and host_os == "win"',
   },
 
-  'buildtools/third_party/libc++/trunk': {
-    'url': '{chromium_git}/external/github.com/llvm/llvm-project/libcxx.git@c1341b9a1a7de7c193a23bf003d5479c48957f7d',
+  'third_party/libc++/src': {
+    'url': '{chromium_git}/external/github.com/llvm/llvm-project/libcxx.git@84fb809dd6dae36d556dc0bb702c6cc2ce9d4b80',
     'condition': 'dawn_standalone',
   },
 
-  'buildtools/third_party/libc++abi/trunk': {
-    'url': '{chromium_git}/external/github.com/llvm/llvm-project/libcxxabi.git@f7460fc60ab56553f0b3b0853f1ea60aa51b9478',
+  'third_party/libc++abi/src': {
+    'url': '{chromium_git}/external/github.com/llvm/llvm-project/libcxxabi.git@d4760c0af99ccc9bce077960d5ddde4d66146c05',
     'condition': 'dawn_standalone',
   },
 
   'tools/clang': {
-    'url': '{chromium_git}/chromium/src/tools/clang@effd9257d456f2d42e9e22fa4f37a24d8cf0b5b5',
+    'url': '{chromium_git}/chromium/src/tools/clang@8f75392b4aa947fb55c7c206b36804229595e4da',
     'condition': 'dawn_standalone',
   },
   'tools/clang/dsymutil': {
@@ -107,17 +125,21 @@ deps = {
   },
   # This is a dependency of //testing
   'third_party/catapult': {
-    'url': '{chromium_git}/catapult.git@c1e70d412ce01fb194f73f7abfdac710aae87dae',
+    'url': '{chromium_git}/catapult.git@dd218dfd815774289f8a81015f7a3131f72afbde',
+    'condition': 'dawn_standalone',
+  },
+  'third_party/google_benchmark/src': {
+    'url': '{chromium_git}/external/github.com/google/benchmark.git' + '@' + 'efc89f0b524780b1994d5dddd83a92718e5be492',
     'condition': 'dawn_standalone',
   },
 
   # Jinja2 and MarkupSafe for the code generator
   'third_party/jinja2': {
-    'url': '{chromium_git}/chromium/src/third_party/jinja2@ee69aa00ee8536f61db6a451f3858745cf587de6',
+    'url': '{chromium_git}/chromium/src/third_party/jinja2@515dd10de9bf63040045902a4a310d2ba25213a0',
     'condition': 'dawn_standalone',
   },
   'third_party/markupsafe': {
-    'url': '{chromium_git}/chromium/src/third_party/markupsafe@0944e71f4b2cb9a871bcbe353f95e889b64a611a',
+    'url': '{chromium_git}/chromium/src/third_party/markupsafe@006709ba3ed87660a17bd4548c45663628f5ed85',
     'condition': 'dawn_standalone',
   },
 
@@ -127,38 +149,56 @@ deps = {
   },
 
   'third_party/vulkan_memory_allocator': {
-    'url': '{chromium_git}/external/github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator@5e49f57a6e71a026a54eb42e366de09a4142d24e',
+    'url': '{chromium_git}/external/github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator@e87036508bb156f9986ea959323de1869e328f58',
     'condition': 'dawn_standalone',
   },
 
   'third_party/angle': {
-    'url': '{chromium_git}/angle/angle@389b86e7d76c7a374fcf519364cc97d1cbb5ce7a',
+    'url': '{chromium_git}/angle/angle@9624db05ed7ef219d12b5210d06f37db99092e2d',
     'condition': 'dawn_standalone',
   },
 
   'third_party/swiftshader': {
-    'url': '{swiftshader_git}/SwiftShader@3575b5479af54e471ea6750a8585e2c9bc87801c',
+    'url': '{swiftshader_git}/SwiftShader@32f9332d1d7aacbdba7c1aa5df894bb1890bb2cc',
     'condition': 'dawn_standalone',
   },
 
   'third_party/vulkan-deps': {
-    'url': '{chromium_git}/vulkan-deps@d03d09324f149758551b2d29a66d1f2772529a50',
+    'url': '{chromium_git}/vulkan-deps@5857bae969d54323f987b6d1ebb4a7e809381eef',
     'condition': 'dawn_standalone',
   },
 
   'third_party/zlib': {
-    'url': '{chromium_git}/chromium/src/third_party/zlib@64bbf988543996eb8df9a86877b32917187eba8f',
+    'url': '{chromium_git}/chromium/src/third_party/zlib@526382e41c9c5275dc329db4328b54e4f344a204',
     'condition': 'dawn_standalone',
   },
 
   'third_party/abseil-cpp': {
-    'url': '{chromium_git}/chromium/src/third_party/abseil-cpp@bc3ab29356a081d0b5dd4ac55e30f4b45d8794cc',
+    'url': '{chromium_git}/chromium/src/third_party/abseil-cpp@4ef9b33175828ea46d091e7e5ec28259d39a8ba5',
     'condition': 'dawn_standalone',
+  },
+
+  'third_party/dxc': {
+    'url': '{chromium_git}/external/github.com/microsoft/DirectXShaderCompiler@50c4c887f1ccfa1a4bfb158b7dbc93058659ed01',
+  },
+
+  'third_party/dxheaders': {
+    # The non-Windows build of DXC depends on DirectX-Headers, and at a specific commit (not ToT)
+    'url': '{chromium_git}/external/github.com/microsoft/DirectX-Headers@980971e835876dc0cde415e8f9bc646e64667bf7',
+    'condition': 'host_os != "win"',
+  },
+
+  'third_party/khronos/OpenGL-Registry': {
+    'url': '{chromium_git}/external/github.com/KhronosGroup/OpenGL-Registry@5bae8738b23d06968e7c3a41308568120943ae77',
+  },
+
+  'third_party/khronos/EGL-Registry': {
+    'url': '{chromium_git}/external/github.com/KhronosGroup/EGL-Registry@7dea2ed79187cd13f76183c4b9100159b9e3e071',
   },
 
   # WebGPU CTS - not used directly by Dawn, only transitively by Chromium.
   'third_party/webgpu-cts': {
-    'url': '{chromium_git}/external/github.com/gpuweb/cts@13410d18b430ae45889846a03583c76c0435704f',
+    'url': '{chromium_git}/external/github.com/gpuweb/cts@5dfa3b88f0863c3949f713804e0461c9cc34a030',
     'condition': 'build_with_chromium',
   },
 
@@ -172,7 +212,7 @@ deps = {
     'condition': 'dawn_node',
   },
   'third_party/gpuweb': {
-    'url': '{github_git}/gpuweb/gpuweb.git@0f5fc665a0d5b281e8119f0201e9067b05cf7927',
+    'url': '{github_git}/gpuweb/gpuweb.git@913189072715569b8ad60e5c2e38e501273bd5b0',
     'condition': 'dawn_node',
   },
 
@@ -203,13 +243,21 @@ deps = {
     'dep_type': 'cipd',
   },
 
-  # Misc dependencies inherited from Tint
-  'third_party/benchmark': {
-    'url': '{chromium_git}/external/github.com/google/benchmark.git@e991355c02b93fe17713efe04cbc2e278e00fdbd',
+  # RBE dependencies
+  'buildtools/reclient': {
+    'packages': [
+      {
+        'package': Var('reclient_package') + '${{platform}}',
+        'version': Var('reclient_version'),
+      }
+    ],
+    'dep_type': 'cipd',
     'condition': 'dawn_standalone',
   },
+
+  # Misc dependencies inherited from Tint
   'third_party/protobuf': {
-    'url': '{chromium_git}/external/github.com/protocolbuffers/protobuf.git@fde7cf7358ec7cd69e8db9be4f1fa6a5c431386a',
+    'url': '{chromium_git}/external/github.com/protocolbuffers/protobuf.git@2b673bbb57e34fe1bd4570f726fc86b769a3a3d2',
     'condition': 'dawn_standalone',
   },
 }
@@ -428,7 +476,22 @@ hooks = [
                 '-o', 'third_party/node/node.exe',
     ],
   },
-
+ {
+   # Download remote exec cfg files
+   'name': 'fetch_reclient_cfgs',
+   'pattern': '.',
+   'condition': 'download_remoteexec_cfg and dawn_standalone',
+   'action': ['python3',
+              'buildtools/reclient_cfgs/fetch_reclient_cfgs.py',
+              '--rbe_instance',
+              Var('rbe_instance'),
+              '--reproxy_cfg_template',
+              'reproxy.cfg.template',
+              '--rewrapper_cfg_project',
+              Var('rewrapper_cfg_project'),
+              '--quiet',
+              ],
+ },
 ]
 
 recursedeps = [

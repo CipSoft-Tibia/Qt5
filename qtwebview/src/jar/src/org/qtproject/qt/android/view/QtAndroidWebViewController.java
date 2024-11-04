@@ -59,8 +59,8 @@ public class QtAndroidWebViewController
     private native void c_onReceivedTitle(long id, String title);
     private native void c_onRunJavaScriptResult(long id, long callbackId, String result);
     private native void c_onReceivedError(long id, int errorCode, String description, String url);
-    private native void c_onCookieAdded(long id, boolean result, String domain, String name);
-    private native void c_onCookieRemoved(long id, boolean result, String domain, String name);
+    private static native void c_onCookieAdded(long id, boolean result, String domain, String name);
+    private static native void c_onCookieRemoved(long id, boolean result, String domain, String name);
 
     // We need to block the UI thread in some cases, if it takes to long we should timeout before
     // ANR kicks in... Usually the hard limit is set to 10s and if exceed that then we're in trouble.
@@ -627,7 +627,7 @@ public class QtAndroidWebViewController
         });
     }
 
-    private void setCookieImp(final String url, final String cookieString, ValueCallback<Boolean> callback)
+    private static void setCookieImp(final String url, final String cookieString, ValueCallback<Boolean> callback)
     {
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
@@ -639,13 +639,13 @@ public class QtAndroidWebViewController
         }
     }
 
-    public void setCookie(final String url, final String cookieString)
+    public static void setCookie(final long id, final String url, final String cookieString)
     {
         setCookieImp(url, cookieString, new ValueCallback<Boolean>() {
             @Override
             public void onReceiveValue(Boolean value) {
                 try {
-                    c_onCookieAdded(m_id, value, url, cookieString.split("=")[0]);
+                    c_onCookieAdded(id, value, url, cookieString.split("=")[0]);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -653,7 +653,7 @@ public class QtAndroidWebViewController
         });
     }
 
-    private boolean hasValidCookie(final String url, final String cookieString)
+    private static boolean hasValidCookie(final String url, final String cookieString)
     {
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.removeExpiredCookie();
@@ -677,12 +677,12 @@ public class QtAndroidWebViewController
         return cookieFound;
     }
 
-    private String getExpireString()
+    private static String getExpireString()
     {
         return "expires=\"Thu, 1 Jan 1970 00:00:00 GMT\"";
     }
 
-    public void removeCookie(final String url, final String cookieString)
+    public static void removeCookie(final long id, final String url, final String cookieString)
     {
         // We need to work with what we have
         // 1. Check if there's cookies for the url
@@ -696,7 +696,7 @@ public class QtAndroidWebViewController
                     try {
                         // 3. Verify that the cookie was indeed removed
                         final boolean removed = (hadCookie && !hasValidCookie(url, cookieString));
-                        c_onCookieRemoved(m_id, removed, url, cookieString.split("=")[0]);
+                        c_onCookieRemoved(id, removed, url, cookieString.split("=")[0]);
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -705,7 +705,7 @@ public class QtAndroidWebViewController
         }
     }
 
-    public void removeCookies() {
+    public static void removeCookies() {
         try {
             CookieManager.getInstance().removeAllCookies(null);
         } catch (Exception e) {

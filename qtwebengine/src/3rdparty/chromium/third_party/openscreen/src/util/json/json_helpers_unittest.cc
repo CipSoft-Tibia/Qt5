@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,7 @@
 #include "gtest/gtest.h"
 #include "util/chrono_helpers.h"
 
-namespace openscreen {
-namespace json {
+namespace openscreen::json {
 namespace {
 
 using ::testing::ElementsAre;
@@ -209,5 +208,4 @@ TEST(ParsingHelpersTest, TryParseStringArray) {
   EXPECT_FALSE(TryParseStringArray(kEmptyArray, &out));
 }
 
-}  // namespace json
-}  // namespace openscreen
+}  // namespace openscreen::json

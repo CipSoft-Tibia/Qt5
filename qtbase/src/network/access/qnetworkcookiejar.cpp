@@ -112,7 +112,7 @@ void QNetworkCookieJar::setAllCookies(const QList<QNetworkCookie> &cookieList)
     d->allCookies = cookieList;
 }
 
-static inline bool isParentPath(const QString &path, const QString &reference)
+static inline bool isParentPath(QStringView path, QStringView reference)
 {
     if ((path.isEmpty() && reference == "/"_L1) || path.startsWith(reference)) {
         //The cookie-path and the request-path are identical.
@@ -131,12 +131,12 @@ static inline bool isParentPath(const QString &path, const QString &reference)
     return false;
 }
 
-static inline bool isParentDomain(const QString &domain, const QString &reference)
+static inline bool isParentDomain(QStringView domain, QStringView reference)
 {
     if (!reference.startsWith(u'.'))
         return domain == reference;
 
-    return domain.endsWith(reference) || domain == QStringView{reference}.mid(1);
+    return domain.endsWith(reference) || domain == reference.mid(1);
 }
 
 /*!
@@ -200,49 +200,38 @@ QList<QNetworkCookie> QNetworkCookieJar::cookiesForUrl(const QUrl &url) const
     Q_D(const QNetworkCookieJar);
     const QDateTime now = QDateTime::currentDateTimeUtc();
     QList<QNetworkCookie> result;
-    bool isEncrypted = url.scheme() == "https"_L1;
+    const bool isEncrypted = url.scheme() == "https"_L1;
 
     // scan our cookies for something that matches
-    QList<QNetworkCookie>::ConstIterator it = d->allCookies.constBegin(),
-                                        end = d->allCookies.constEnd();
-    for ( ; it != end; ++it) {
-        if (!isParentDomain(url.host(), it->domain()))
+    for (const auto &cookie : std::as_const(d->allCookies)) {
+        if (!isEncrypted && cookie.isSecure())
             continue;
-        if (!isParentPath(url.path(), it->path()))
+        if (!cookie.isSessionCookie() && cookie.expirationDate() < now)
             continue;
-        if (!(*it).isSessionCookie() && (*it).expirationDate() < now)
+        const QString urlHost = url.host();
+        const QString cookieDomain = cookie.domain();
+        if (!isParentDomain(urlHost, cookieDomain))
             continue;
-        if ((*it).isSecure() && !isEncrypted)
+        if (!isParentPath(url.path(), cookie.path()))
             continue;
 
-        QString domain = it->domain();
+        QStringView domain = cookieDomain;
         if (domain.startsWith(u'.')) /// Qt6?: remove when compliant with RFC6265
-            domain = domain.mid(1);
+            domain = domain.sliced(1);
 #if QT_CONFIG(topleveldomain)
-        if (qIsEffectiveTLD(domain) && url.host() != domain)
+        if (urlHost != domain && qIsEffectiveTLD(domain))
             continue;
 #else
-        if (!domain.contains(u'.') && url.host() != domain)
+        if (!domain.contains(u'.') && urlHost != domain)
             continue;
 #endif // topleveldomain
 
-        // insert this cookie into result, sorted by path
-        QList<QNetworkCookie>::Iterator insertIt = result.begin();
-        while (insertIt != result.end()) {
-            if (insertIt->path().size() < it->path().size()) {
-                // insert here
-                insertIt = result.insert(insertIt, *it);
-                break;
-            } else {
-                ++insertIt;
-            }
-        }
-
-        // this is the shortest path yet, just append
-        if (insertIt == result.end())
-            result += *it;
+        result += cookie;
     }
 
+    auto longerPath = [](const auto &c1, const auto &c2)
+                      { return c1.path().size() > c2.path().size(); };
+    std::sort(result.begin(), result.end(), longerPath);
     return result;
 }
 
@@ -299,12 +288,11 @@ bool QNetworkCookieJar::updateCookie(const QNetworkCookie &cookie)
 bool QNetworkCookieJar::deleteCookie(const QNetworkCookie &cookie)
 {
     Q_D(QNetworkCookieJar);
-    QList<QNetworkCookie>::Iterator it;
-    for (it = d->allCookies.begin(); it != d->allCookies.end(); ++it) {
-        if (it->hasSameIdentifier(cookie)) {
-            d->allCookies.erase(it);
-            return true;
-        }
+    const auto it = std::find_if(d->allCookies.cbegin(), d->allCookies.cend(),
+                                 [&cookie](const auto &c) { return c.hasSameIdentifier(cookie); });
+    if (it != d->allCookies.cend()) {
+        d->allCookies.erase(it);
+        return true;
     }
     return false;
 }
@@ -317,13 +305,14 @@ bool QNetworkCookieJar::deleteCookie(const QNetworkCookie &cookie)
 */
 bool QNetworkCookieJar::validateCookie(const QNetworkCookie &cookie, const QUrl &url) const
 {
-    QString domain = cookie.domain();
+    const QString cookieDomain = cookie.domain();
+    QStringView domain = cookieDomain;
     const QString host = url.host();
     if (!isParentDomain(domain, host) && !isParentDomain(host, domain))
         return false; // not accepted
 
     if (domain.startsWith(u'.'))
-        domain = domain.mid(1);
+        domain = domain.sliced(1);
 
     // We shouldn't reject if:
     // "[...] the domain-attribute is identical to the canonicalized request-host"

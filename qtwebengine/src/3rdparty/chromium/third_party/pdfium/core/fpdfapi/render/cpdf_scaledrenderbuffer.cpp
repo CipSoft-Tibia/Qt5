@@ -69,6 +69,11 @@ CFX_RenderDevice* CPDF_ScaledRenderBuffer::GetDevice() const {
 
 void CPDF_ScaledRenderBuffer::OutputToDevice() {
   if (m_pBitmapDevice) {
+#if defined(_SKIA_SUPPORT_)
+    if (!m_pBitmapDevice->SyncInternalBitmaps()) {
+      return;
+    }
+#endif
     m_pDevice->StretchDIBits(m_pBitmapDevice->GetBitmap(), m_Rect.left,
                              m_Rect.top, m_Rect.Width(), m_Rect.Height());
   }

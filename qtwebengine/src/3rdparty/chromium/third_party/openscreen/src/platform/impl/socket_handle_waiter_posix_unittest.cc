@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,11 +16,12 @@
 #include "platform/impl/timeval_posix.h"
 #include "platform/test/fake_clock.h"
 
+using ::testing::_;
+using ::testing::ByMove;
+using ::testing::Return;
+
 namespace openscreen {
 namespace {
-
-using namespace ::testing;
-using ::testing::_;
 
 class MockSubscriber : public SocketHandleWaiter::Subscriber {
  public:

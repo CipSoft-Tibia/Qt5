@@ -47,6 +47,8 @@ using AdvertisingCallback =
 using ::nearby::SingleThreadExecutor;
 
 using CountDownLatch = ::nearby::CountDownLatch;
+// using ::testing::UnorderedElementsAre;
+using ::testing::Contains;
 
 class ScanManagerTest : public testing::Test {
  protected:
@@ -199,6 +201,22 @@ TEST_F(ScanManagerTest, PresenceMetadataIsRetained) {
       .on_discovered_cb =
           [this, &address](PresenceDevice pd) {
             if (pd.GetMetadata().bluetooth_mac_address() == address) {
+              EXPECT_THAT(
+                  pd.GetExtendedProperties(),
+                  Contains(
+                      DataElement(DataElement::kPublicIdentityFieldType, ""))
+                      .Times(1));
+              // MakeDefaultScanRequest() used kPresenceManagerAction for
+              // broadcasting. Thus verify DE and action got it recorded.
+              EXPECT_THAT(
+                  pd.GetExtendedProperties(),
+                  Contains(DataElement(ActionBit::kPresenceManagerAction))
+                      .Times(1));
+              EXPECT_THAT(pd.GetActions(),
+                          Contains(PresenceAction{
+                                       (int)ActionBit::kPresenceManagerAction})
+                              .Times(1));
+
               found_latch_.CountDown();
             }
           }};
@@ -281,15 +299,22 @@ TEST_F(ScanManagerTest, StopOneSessionFromAnotherDeadlock) {
 TEST_F(ScanManagerTest, NoDeviceFoundAfterStopScan) {
   Mediums mediums;
   ScanManager manager(mediums, credential_manager_, executor_);
+  CountDownLatch start_scan_latch{1};
   nearby::BluetoothAdapter server_adapter;
   Ble ble2(server_adapter);
   std::atomic_bool stopped = false;
   ScanSessionId scan_session = manager.StartScan(
       MakeDefaultScanRequest(),
-      ScanCallback{.start_scan_cb = [](absl::Status status) {},
+      ScanCallback{.start_scan_cb =
+                       [&start_scan_latch](absl::Status status) {
+                         if (status.ok()) {
+                           start_scan_latch.CountDown();
+                         }
+                       },
                    .on_discovered_cb =
                        [&](PresenceDevice pd) { EXPECT_FALSE(stopped); }});
 
+  start_scan_latch.Await();
   manager.StopScan(scan_session);
   stopped = true;
   std::unique_ptr<AdvertisingSession> advertising_session =

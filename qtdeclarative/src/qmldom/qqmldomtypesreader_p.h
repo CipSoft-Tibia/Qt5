@@ -1,5 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLDOMTYPESREADER_H
 #define QQMLDOMTYPESREADER_H
@@ -32,7 +32,7 @@ class QmltypesReader
 {
     Q_DECLARE_TR_FUNCTIONS(TypeDescriptionReader)
 public:
-    explicit QmltypesReader(DomItem qmltypesFile)
+    explicit QmltypesReader(const DomItem &qmltypesFile)
         : m_qmltypesFilePtr(qmltypesFile.ownerAs<QmltypesFile>()), m_qmltypesFile(qmltypesFile)
     {
     }
@@ -40,12 +40,12 @@ public:
     bool parse();
     // static void read
 private:
-    void addError(ErrorMessage message);
+    void addError(ErrorMessage &&message);
 
-    void insertProperty(QQmlJSScope::Ptr jsScope, const QQmlJSMetaProperty &property,
+    void insertProperty(const QQmlJSScope::ConstPtr &jsScope, const QQmlJSMetaProperty &property,
                         QMap<int, QmlObject> &objs);
     void insertSignalOrMethod(const QQmlJSMetaMethod &metaMethod, QMap<int, QmlObject> &objs);
-    void insertComponent(const QQmlJSScope::Ptr &jsScope,
+    void insertComponent(const QQmlJSScope::ConstPtr &jsScope,
                          const QList<QQmlJSScope::Export> &exportsList);
     EnumDecl enumFromMetaEnum(const QQmlJSMetaEnum &metaEnum);
 
@@ -53,11 +53,10 @@ private:
     DomItem &qmltypesFile() { return m_qmltypesFile; }
     ErrorHandler handler()
     {
-        return [this](ErrorMessage m) { this->addError(m); };
+        return [this](const ErrorMessage &m) { this->addError(ErrorMessage(m)); };
     }
 
 private:
-    bool m_isValid;
     std::shared_ptr<QmltypesFile> m_qmltypesFilePtr;
     DomItem m_qmltypesFile;
     Path m_currentPath;

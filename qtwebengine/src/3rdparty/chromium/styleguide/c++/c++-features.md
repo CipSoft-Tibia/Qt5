@@ -32,12 +32,14 @@ The current status of existing standards and Abseil features is:
 *   **C++14:** _Default allowed_
 *   **C++17:** Initially supported December 23, 2021; see allowed/banned/TBD
     features below
-*   **C++20:** _Not yet supported in Chromium_
+*   **C++20:** _Not yet supported in Chromium_, with the exception of
+    [designated initializers](https://google.github.io/styleguide/cppguide.html#Designated_initializers)
 *   **C++23:** _Not yet standardized_
 *   **Abseil:** _Default allowed; see banned/TBD features below_
       * absl::AnyInvocable: Initially supported June 20, 2022
       * Log library: Initially supported Aug 31, 2022
       * CRC32C library: Initially supported Dec 5, 2022
+      * Nullability annotation: Initially supported Jun 21, 2023
 
 [TOC]
 
@@ -97,29 +99,32 @@ Banned in the
 [Google Style Guide](https://google.github.io/styleguide/cppguide.html#Operator_Overloading).
 ***
 
-### thread_local Storage Class <sup>[banned]</sup>
-
-```c++
-thread_local int foo = 1;
-```
-
-**Description:** Puts variables into thread local storage.
-
-**Documentation:**
-[Storage duration](https://en.cppreference.com/w/cpp/language/storage_duration)
-
-**Notes:**
-*** promo
-Some surprising effects on Mac
-([discussion](https://groups.google.com/a/chromium.org/forum/#!topic/chromium-dev/2msN8k3Xzgs),
-[fork](https://groups.google.com/a/chromium.org/forum/#!topic/cxx/h7O5BdtWCZw)).
-Use `base::SequenceLocalStorageSlot` for sequence support, and
-`base::ThreadLocal`/`base::ThreadLocalStorage` otherwise.
-***
-
 ## C++11 Banned Library Features {#library-blocklist-11}
 
 The following C++11 library features are not allowed in the Chromium codebase.
+
+### &lt;cctype&gt;, &lt;ctype.h&gt;, &lt;cwctype&gt;, &lt;wctype.h&gt; <sup>[banned]</sup>
+
+```c++
+#include <cctype>
+#include <cwctype>
+#include <ctype.h>
+#include <wctype.h>
+```
+
+**Description:** Provides utilities for ASCII characters.
+
+**Documentation:**
+[Standard library header `<cctype>`](https://en.cppreference.com/w/cpp/header/cctype),
+[Standard library header `<cwctype>`](https://en.cppreference.com/w/cpp/header/cwctype)
+
+**Notes:**
+*** promo
+Banned due to dependence on the C locale as well as UB when arguments don't fit
+in an `unsigned char`/`wchar_t`. Use similarly-named replacements in
+[third_party/abseil-cpp/absl/strings/ascii.h](https://source.chromium.org/chromium/chromium/src/+/main:third_party/abseil-cpp/absl/strings/ascii.h)
+instead.
+***
 
 ### &lt;cfenv&gt;, &lt;fenv.h&gt; <sup>[banned]</sup>
 
@@ -178,21 +183,21 @@ explicitly allowed.
 [Discussion thread](https://groups.google.com/a/chromium.org/forum/#!topic/chromium-dev/8i4tMqNpHhg)
 ***
 
-### &lt;random&gt; <sup>[banned]</sup>
+### Engines And Generators From &lt;random&gt; <sup>[banned]</sup>
 
 ```c++
-#include <random>
+std::mt19937 generator;
 ```
 
-**Description:** Random number generation algorithms and utilities.
+**Description:** Methods of generating random numbers.
 
 **Documentation:**
 [Pseudo-random number generation](https://en.cppreference.com/w/cpp/numeric/random)
 
 **Notes:**
 *** promo
-Do not use any random number engines from `<random>`. Instead, use
-`base::RandomBitGenerator`.
+Do not use any random number engines or generators from `<random>`. Instead, use
+`base::RandomBitGenerator`. (You may use the distributions from `<random>`.)
 
 [Discussion thread](https://groups.google.com/a/chromium.org/forum/#!topic/cxx/16Xmw05C-Y0)
 ***
@@ -756,6 +761,17 @@ struct is_lock_free_impl
 [Discussion thread](https://groups.google.com/u/1/a/chromium.org/g/cxx/c/jNMsxFTd30M)
 ***
 
+### std::clamp <sup>[allowed]</sup>
+
+```c++
+int x = std::clamp(inp, 0, 100);
+```
+
+**Description:** Clamps a value between a minimum and a maximum.
+
+**Documentation:**
+[`std::clamp`](https://en.cppreference.com/w/cpp/algorithm/clamp)
+
 ### std::{{con,dis}junction,negation} <sup>[allowed]</sup>
 
 ```c++
@@ -1074,6 +1090,25 @@ Prefer range-based for loops over `std::size()`: range-based for loops work even
 for regular arrays.
 ***
 
+### std::[u16]string_view <sup>[allowed]</sup>
+
+```c++
+std::string_view str = "foo";
+std::u16string_view str16 = u"bar";
+```
+
+**Description:** A non-owning reference to a string. Useful for providing an
+abstraction on top of strings (e.g. for parsing).
+
+**Documentation:**
+[`std::basic_string_view`](https://en.cppreference.com/w/cpp/string/basic_string_view)
+
+**Notes:**
+*** promo
+[Migration bug](https://crbug.com/691162) and
+[discussion thread](https://groups.google.com/a/chromium.org/g/cxx/c/Ix2BzMzf7WI)
+***
+
 ### Type trait variable templates <sup>[allowed]</sup>
 
 ```c++
@@ -1154,22 +1189,6 @@ std::any x = 5;
 
 Banned since workaround for lack of RTTI isn't compatible with the component
 build ([Bug](https://crbug.com/1096380)). Also see `absl::any`.
-***
-
-### std::clamp <sup>[banned]</sup>
-
-```c++
-int x = std::clamp(inp, 0, 100);
-```
-
-**Description:** Clamps a value between a minimum and a maximum.
-
-**Documentation:**
-[`std::clamp`](https://en.cppreference.com/w/cpp/algorithm/clamp)
-
-**Notes:**
-*** promo
-[Will be allowed soon](https://crbug.com/1373621); for now, use `base::clamp`.
 ***
 
 ### std::filesystem <sup>[banned]</sup>
@@ -1257,25 +1276,6 @@ for optional is the return value of a function that may fail.
 *** promo
 [Will be allowed soon](https://crbug.com/1373619); for now, use
 `absl::optional`.
-***
-
-### std::[u16]string_view <sup>[banned]</sup>
-
-```c++
-std::string_view str = "foo";
-std::u16string_view str16 = u"bar";
-```
-
-**Description:** A non-owning reference to a string. Useful for providing an
-abstraction on top of strings (e.g. for parsing).
-
-**Documentation:**
-[`std::basic_string_view`](https://en.cppreference.com/w/cpp/string/basic_string_view)
-
-**Notes:**
-*** promo
-[Will be allowed soon](https://crbug.com/691162); for now, use
-`base::StringPiece[16]`.
 ***
 
 ### std::uncaught_exceptions <sup>[banned]</sup>
@@ -1526,6 +1526,26 @@ contexts.
 None
 ***
 
+## C++20 Allowed Language Features {#core-allowlist-20}
+
+### Designated initializers <sup>[allowed]</sup>
+
+```c++
+struct S { int x = 1; int y = 2; }
+S s{ .y = 3 };  // OK, s.x == 1, s.y == 3
+```
+
+**Description:** Allows explicit initialization of subsets of aggregate members
+at construction.
+
+**Documentation:**
+[Designated initializers](https://en.cppreference.com/w/cpp/language/aggregate_initialization#Designated_initializers)
+
+**Notes:**
+*** promo
+None
+***
+
 ## Abseil Banned Library Features {#absl-blocklist}
 
 The following Abseil library features are not allowed in the Chromium codebase.
@@ -1720,8 +1740,9 @@ absl::string_view
 
 **Notes:**
 *** promo
-Banned due to only working with 8-bit characters. Keep using
-`base::StringPiece` from `base/strings/`.
+Originally banned due to only working with 8-bit characters. Now it is
+unnecessary because, in Chromium, it is the same type as `std::string_view`.
+Please use `std::string_view` instead.
 ***
 
 ### Strings Library <sup>[banned]</sup>
@@ -1822,7 +1843,6 @@ absl::btree_map
 absl::btree_set
 absl::btree_multimap
 absl::btree_multiset
-absl::InlinedVector
 absl::FixedArray
 ```
 
@@ -1836,6 +1856,10 @@ in the general case.
 **Notes:**
 *** promo
 Supplements `base/containers/`.
+
+absl::InlinedVector is explicitly allowed, see the [discussion
+thread](https://groups.google.com/a/chromium.org/g/cxx/c/jTfqVfU-Ka0/m/caaal90NCgAJ).
+
 ***
 
 ### CRC32C library <sup>[tbd]</sup>
@@ -1868,4 +1892,24 @@ absl::AddLogSink(&custom_sink_to_capture_absl_logs);
 **Notes:**
 *** promo
 Overlaps and uses same macros names as `base/logging.h`.
+***
+
+### Nullability annotations <sup>[tbd]</sup>
+
+```c++
+void PaySalary(absl::NotNull<Employee *> employee) {
+  pay(*employee);  // OK to dereference
+}
+```
+
+**Description:** Annotations to more clearly specify contracts
+
+**Documentation:**
+[nullability.h](https://source.chromium.org/chromium/chromium/src/+/main:third_party/abseil-cpp/absl/base/nullability.h)
+
+**Notes:**
+*** promo
+These nullability annotations are primarily a human readable signal about the
+intended contract of the pointer. They are not *types* and do not currently
+provide any correctness guarantees.
 ***

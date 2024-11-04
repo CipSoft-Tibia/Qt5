@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "resourceserver.h"
 
@@ -43,7 +43,7 @@ bool ResourceServer::init()
     if (m_server.isListening())
         return false;
 
-    QObject::connect(&m_server, &QLocalServer::newConnection, [this]() {
+    QObject::connect(&m_server, &QLocalServer::newConnection, this, [this]() {
         qDebug() << "srv: Incoming connection!";
         if (m_connection != nullptr && m_connection->isOpen()) {
             qDebug("Client already connected! Connection refused!");
@@ -52,17 +52,17 @@ bool ResourceServer::init()
             if (m_connection)
                 m_connection->close();
             m_connection = m_server.nextPendingConnection();
-            QObject::connect(m_connection, &QLocalSocket::readyRead, [this]() {
+            QObject::connect(m_connection, &QLocalSocket::readyRead, this, [this]() {
                 const auto message = Message::getMessage(*m_connection);
                 if (message && message->type() != Message::Type::Invalid)
                     Q_EMIT messageReceived(message);
             });
-            QObject::connect(m_connection, &QLocalSocket::errorOccurred, [this]() {
+            QObject::connect(m_connection, &QLocalSocket::errorOccurred, &m_server, [this]() {
                 qDebug("srv: Error occurred\n - %s", qPrintable(m_connection->errorString()));
                 m_server.close();
                 m_server.listen(m_serverName);
             });
-            QObject::connect(m_connection, &QLocalSocket::connected, []() {
+            QObject::connect(m_connection, &QLocalSocket::connected, this, []() {
                 qDebug("srv: Connection established!");
             });
         }

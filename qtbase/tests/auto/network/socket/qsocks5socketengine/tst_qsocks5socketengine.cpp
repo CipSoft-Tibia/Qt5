@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QtTest/QTest>
@@ -22,6 +22,8 @@
 #include <qdebug.h>
 
 #include "../../../network-settings.h"
+
+using namespace std::chrono_literals;
 
 class tst_QSocks5SocketEngine : public QObject, public QAbstractSocketEngineReceiver
 {
@@ -341,7 +343,7 @@ void tst_QSocks5SocketEngine::simpleErrorsAndStates()
         QCOMPARE(socketDevice.state(), QAbstractSocket::UnconnectedState);
         QVERIFY(!socketDevice.connectToHost(QHostInfo::fromName(QtNetworkSettings::socksProxyServerName()).addresses().first(), 8088));
         QCOMPARE(socketDevice.state(), QAbstractSocket::ConnectingState);
-        if (socketDevice.waitForWrite(15000)) {
+        if (socketDevice.waitForWrite(15s)) {
             QVERIFY(socketDevice.state() == QAbstractSocket::UnconnectedState ||
                     socketDevice.state() == QAbstractSocket::ConnectedState);
         } else {

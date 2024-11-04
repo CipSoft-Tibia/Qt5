@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QSignalSpy>
@@ -249,13 +249,13 @@ void tst_qinputmethod::query()
 
 void tst_qinputmethod::inputDirection()
 {
-    QCOMPARE(m_platformInputContext.m_inputDirectionCallCount, 0);
+    auto originalCount = m_platformInputContext.m_inputDirectionCallCount;
     qApp->inputMethod()->inputDirection();
-    QCOMPARE(m_platformInputContext.m_inputDirectionCallCount, 1);
+    QCOMPARE(m_platformInputContext.m_inputDirectionCallCount, originalCount + 1);
 
-    QCOMPARE(m_platformInputContext.m_localeCallCount, 0);
+    originalCount = m_platformInputContext.m_localeCallCount;
     qApp->inputMethod()->locale();
-    QCOMPARE(m_platformInputContext.m_localeCallCount, 1);
+    QCOMPARE(m_platformInputContext.m_localeCallCount, originalCount + 1);
 }
 
 void tst_qinputmethod::inputMethodAccepted()

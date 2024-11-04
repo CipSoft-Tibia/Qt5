@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,7 @@
 #include "cast/common/channel/virtual_connection.h"
 #include "util/json/json_serialization.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class VirtualConnectionRouter;
 
@@ -93,7 +92,6 @@ class ConnectionNamespaceHandler : public CastMessageHandler {
   std::vector<PendingRequest> pending_remote_requests_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_CHANNEL_CONNECTION_NAMESPACE_HANDLER_H_

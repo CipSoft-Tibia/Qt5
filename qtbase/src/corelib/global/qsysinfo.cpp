@@ -91,32 +91,30 @@ using namespace Qt::StringLiterals;
 static const char *osVer_helper(QOperatingSystemVersion version = QOperatingSystemVersion::current())
 {
 #ifdef Q_OS_MACOS
-    if (version.majorVersion() == 13)
-        return "Ventura";
-    if (version.majorVersion() == 12)
-        return "Monterey";
-    // Compare against predefined constant to handle 10.16/11.0
-    if (QOperatingSystemVersion::MacOSBigSur.version().isPrefixOf(version.version()))
-        return "Big Sur";
-    if (version.majorVersion() == 10) {
+    switch (version.majorVersion()) {
+    case 10: {
         switch (version.minorVersion()) {
-        case 9:
-            return "Mavericks";
-        case 10:
-            return "Yosemite";
-        case 11:
-            return "El Capitan";
-        case 12:
-            return "Sierra";
-        case 13:
-            return "High Sierra";
-        case 14:
-            return "Mojave";
-        case 15:
-            return "Catalina";
+        case 9: return "Mavericks";
+        case 10: return "Yosemite";
+        case 11: return "El Capitan";
+        case 12: return "Sierra";
+        case 13: return "High Sierra";
+        case 14: return "Mojave";
+        case 15: return "Catalina";
+        case 16: return "Big Sur";
+        default:
+            Q_UNREACHABLE();
         }
     }
-    // unknown, future version
+    case 11: return "Big Sur";
+    case 12: return "Monterey";
+    case 13: return "Ventura";
+    case 14: return "Sonoma";
+    case 15: return "Sequoia";
+    default:
+        // Unknown, future version
+        break;
+    }
 #else
     Q_UNUSED(version);
 #endif
@@ -709,7 +707,8 @@ QString QSysInfo::kernelType()
     Returns the release version of the operating system kernel. On Windows, it
     returns the version of the NT kernel. On Unix systems, including
     Android and \macos, it returns the same as the \c{uname -r}
-    command would return.
+    command would return. On VxWorks, it returns the numeric part of the string
+    reported by kernelVersion().
 
     If the version could not be determined, this function may return an empty
     string.
@@ -724,8 +723,17 @@ QString QSysInfo::kernelVersion()
                              osver.majorVersion(), osver.minorVersion(), osver.microVersion());
 #else
     struct utsname u;
-    if (uname(&u) == 0)
+    if (uname(&u) == 0) {
+#   ifdef Q_OS_VXWORKS
+        // The string follows the pattern "Core Kernel version: w.x.y.z"
+        auto versionStr = QByteArrayView(u.kernelversion);
+        if (auto lastSpace = versionStr.lastIndexOf(' '); lastSpace != -1) {
+            return QString::fromLatin1(versionStr.sliced(lastSpace + 1));
+        }
+#   else
         return QString::fromLatin1(u.release);
+#   endif
+    }
     return QString();
 #endif
 }
@@ -762,6 +770,8 @@ QString QSysInfo::kernelVersion()
 
     \b{Windows note}: this function return "windows"
 
+    \b{VxWorks note}: this function return "vxworks"
+
     For other Unix-type systems, this function usually returns "unknown".
 
     \sa QFileSelector, kernelType(), kernelVersion(), productVersion(), prettyProductName()
@@ -790,6 +800,8 @@ QString QSysInfo::productType()
     return QStringLiteral("darwin");
 #elif defined(Q_OS_WASM)
     return QStringLiteral("wasm");
+#elif defined(Q_OS_VXWORKS)
+    return QStringLiteral("vxworks");
 
 #elif defined(USE_ETC_OS_RELEASE) // Q_OS_UNIX
     QUnixOSVersion unixOsVersion;
@@ -806,7 +818,7 @@ QString QSysInfo::productType()
     Returns the product version of the operating system in string form. If the
     version could not be determined, this function returns "unknown".
 
-    It will return the Android, iOS, \macos, Windows full-product
+    It will return the Android, iOS, \macos, VxWorks, Windows full-product
     versions on those systems.
 
     Typical returned values are (note: list not exhaustive):
@@ -819,6 +831,7 @@ QString QSysInfo::productType()
         \li "8.6" (watchOS 8.6)
         \li "11" (Windows 11)
         \li "Server 2022" (Windows Server 2022)
+        \li "24.03" (VxWorks 7 - 24.03)
     \endlist
 
     On Linux systems, it will try to determine the distribution version and will
@@ -845,6 +858,12 @@ QString QSysInfo::productVersion()
         const QLatin1Char spaceChar(' ');
         return QString::fromLatin1(version).remove(spaceChar).toLower() + winSp_helper().remove(spaceChar).toLower();
     }
+    // fall through
+
+#elif defined(Q_OS_VXWORKS)
+    utsname u;
+    if (uname(&u) == 0)
+        return QString::fromLatin1(u.releaseversion);
     // fall through
 
 #elif defined(USE_ETC_OS_RELEASE) // Q_OS_UNIX

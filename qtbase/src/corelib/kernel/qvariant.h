@@ -496,6 +496,7 @@ public:
         // If possible we reuse the current QVariant private.
         if (isDetached() && d.type() == metaType) {
             *reinterpret_cast<VT *>(const_cast<void *>(constData())) = std::forward<T>(avalue);
+            d.is_null = false;
         } else {
             *this = QVariant::fromValue<VT>(std::forward<T>(avalue));
         }
@@ -512,7 +513,7 @@ public:
     }
 
     template<typename T>
-    inline T value() const
+    inline T value() const &
     { return qvariant_cast<T>(*this); }
 
     template<typename T>
@@ -522,6 +523,10 @@ public:
         QMetaType::view(metaType(), data(), QMetaType::fromType<T>(), &t);
         return t;
     }
+
+    template<typename T>
+    inline T value() &&
+    { return qvariant_cast<T>(std::move(*this)); }
 
     template<typename T, if_rvalue<T> = true>
 #ifndef Q_QDOC
@@ -539,16 +544,15 @@ public:
         // handle special cases
         using Type = std::remove_cv_t<T>;
         if constexpr (std::is_null_pointer_v<Type>)
-            return QVariant(QMetaType::fromType<std::nullptr_t>());
+            return QVariant::fromMetaType(QMetaType::fromType<std::nullptr_t>());
         else if constexpr (std::is_same_v<Type, QVariant>)
             return std::forward<T>(value);
         else if constexpr (std::is_same_v<Type, std::monostate>)
             return QVariant();
         QMetaType mt = QMetaType::fromType<Type>();
         mt.registerType(); // we want the type stored in QVariant to always be registered
-        // T is a forwarding reference, so if T satifies the enable-ifery,
-        // we get this overload even if T is an lvalue reference and thus must check here
-        // Moreover, we only try to move if the type is actually moveable and not if T is const
+
+        // We only try to move if the type is actually moveable and not if T is const
         // as in const int i; QVariant::fromValue(std::move(i));
         if constexpr (std::conjunction_v<std::is_move_constructible<Type>, std::negation<std::is_const<T>>>)
             return moveConstruct(QMetaType::fromType<Type>(), std::addressof(value));
@@ -585,6 +589,8 @@ public:
     {
         return fromStdVariantImpl(std::move(value));
     }
+
+    static QVariant fromMetaType(QMetaType type, const void *copy = nullptr);
 
     template<typename T>
     bool canConvert() const
@@ -658,6 +664,9 @@ private:
 
     template<typename T>
     friend inline T qvariant_cast(const QVariant &);
+    template<typename T>
+    friend inline T qvariant_cast(QVariant &&);
+
 protected:
     Private d;
     void create(int type, const void *copy);
@@ -746,6 +755,35 @@ template<typename T> inline T qvariant_cast(const QVariant &v)
     if (v.d.type() == targetType)
         return v.d.get<T>();
     if constexpr (std::is_same_v<T,std::remove_const_t<std::remove_pointer_t<T>> const *>) {
+        using nonConstT = std::remove_const_t<std::remove_pointer_t<T>> *;
+        QMetaType nonConstTargetType = QMetaType::fromType<nonConstT>();
+        if (v.d.type() == nonConstTargetType)
+            return v.d.get<nonConstT>();
+    }
+
+    T t{};
+    QMetaType::convert(v.metaType(), v.constData(), targetType, &t);
+    return t;
+}
+
+template<typename T> inline T qvariant_cast(QVariant &&v)
+{
+    QMetaType targetType = QMetaType::fromType<T>();
+    if (v.d.type() == targetType) {
+        if constexpr (QVariant::Private::CanUseInternalSpace<T>) {
+            return std::move(*reinterpret_cast<T *>(v.d.data.data));
+        } else {
+            if (v.d.data.shared->ref.loadRelaxed() == 1)
+                return std::move(*reinterpret_cast<T *>(v.d.data.shared->data()));
+            else
+                return v.d.get<T>();
+        }
+    }
+    if constexpr (std::is_same_v<T, QVariant>) {
+        // if the metatype doesn't match, but we want a QVariant, just return the current variant
+        return v;
+    } if constexpr (std::is_same_v<T,std::remove_const_t<std::remove_pointer_t<T>> const *>) {
+        // moving a pointer is pointless, just do the same as the const & overload
         using nonConstT = std::remove_const_t<std::remove_pointer_t<T>> *;
         QMetaType nonConstTargetType = QMetaType::fromType<nonConstT>();
         if (v.d.type() == nonConstTargetType)

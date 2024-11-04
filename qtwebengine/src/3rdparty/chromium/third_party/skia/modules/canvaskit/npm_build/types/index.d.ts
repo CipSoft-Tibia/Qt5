@@ -1,7 +1,7 @@
 // Minimum TypeScript Version: 4.4
 /// <reference types="@webgpu/types" />
 
-export default function CanvasKitInit(opts: CanvasKitInitOptions): Promise<CanvasKit>;
+export default function CanvasKitInit(opts?: CanvasKitInitOptions): Promise<CanvasKit>;
 
 export interface CanvasKitInitOptions {
     /**
@@ -460,7 +460,9 @@ export interface CanvasKit {
 
     // Factories, i.e. things made with CanvasKit.Foo.MakeTurboEncabulator()
     readonly ParagraphBuilder: ParagraphBuilderFactory;
+    readonly Blender: BlenderFactory;
     readonly ColorFilter: ColorFilterFactory;
+    readonly FontCollection: FontCollectionFactory;
     readonly FontMgr: FontMgrFactory;
     readonly ImageFilter: ImageFilterFactory;
     readonly MaskFilter: MaskFilterFactory;
@@ -584,9 +586,11 @@ export interface Camera {
 /**
  * CanvasKit is built with Emscripten and Embind. Embind adds the following methods to all objects
  * that are exposed with it.
+ * This _type field is necessary for the TypeScript compiler to differentiate
+ * between opaque types such as Shader and ColorFilter. It doesn't exist at runtime.
  */
-export interface EmbindObject<T extends EmbindObject<T>> {
-    clone(): T;
+export interface EmbindObject<T extends string> {
+    _type: T;
     delete(): void;
     deleteLater(): void;
     isAliasOf(other: any): boolean;
@@ -659,7 +663,7 @@ export interface FontStyle {
 /**
  * See GrDirectContext.h for more on this class.
  */
-export interface GrDirectContext extends EmbindObject<GrDirectContext> {
+export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
     getResourceCacheLimitBytes(): number;
     getResourceCacheUsageBytes(): number;
     releaseResourcesAndAbandonContext(): void;
@@ -891,21 +895,82 @@ export interface TextProperty {
     value: TextValue;
 }
 
+/**
+ * Transform property value. Maps to AE styled transform.
+ */
+export interface TransformValue {
+    /**
+     * Anchor point for transform. x and y value.
+     */
+    anchor: Point;
+    /**
+     * Position of transform. x and y value.
+     */
+    position: Point;
+    /**
+     * Scale of transform. x and y value.
+     */
+    scale: Vector2;
+    /**
+     * Rotation of transform in degrees.
+     */
+    rotation: number;
+    /**
+     * Skew to apply during transform.
+     */
+    skew: number;
+    /**
+     * Direction of skew in degrees.
+     */
+    skew_axis: number;
+}
+
+/**
+ * Named transform property for Skottie property observer.
+ */
+export interface TransformProperty {
+    /**
+     * Property identifier, usually the node name.
+     */
+    key: string;
+    /**
+     * Property value.
+     */
+    value: TransformValue;
+}
+
 export interface ManagedSkottieAnimation extends SkottieAnimation {
     setColor(key: string, color: InputColor): boolean;
     setOpacity(key: string, opacity: number): boolean;
     setText(key: string, text: string, size: number): boolean;
+    setTransform(key: string, anchor: InputPoint, position: InputPoint, scale: InputVector2,
+                 rotation: number, skew: number, skew_axis: number): boolean;
     getMarkers(): AnimationMarker[];
     getColorProps(): ColorProperty[];
     getOpacityProps(): OpacityProperty[];
     getTextProps(): TextProperty[];
+    getTransformProps(): TransformProperty[];
+
+    // Slots in Lottie were exposed with bodymovin version 5.11.0
+    // Properties tracked under the Essential Graphics window in AE will be "slotted". These slots
+    // can be observed and editted live like with the other get/set tools. The slot id passed in
+    // must match the name of the property in the Essential Graphics window. Property Groups support
+    // one-to-many relationships.
+    setColorSlot(key: string, color: InputColor): boolean;
+    setScalarSlot(key: string, scalar: number): boolean;
+    setVec2Slot(key: string, vec2: InputVector2): boolean;
+    setImageSlot(key: string, assetName: string): boolean;
+
+    getColorSlot(key: string): Color | null;
+    getScalarSlot(key: string): number | null;
+    getVec2Slot(key: string): Vector2 | null;
 }
 
 /**
  * See Paragraph.h for more information on this class. This is only available if Paragraph has
  * been compiled in.
  */
-export interface Paragraph extends EmbindObject<Paragraph> {
+export interface Paragraph extends EmbindObject<"Paragraph"> {
     didExceedMaxLines(): boolean;
     getAlphabeticBaseline(): number;
 
@@ -950,9 +1015,15 @@ export interface Paragraph extends EmbindObject<Paragraph> {
      * @param width
      */
     layout(width: number): void;
+
+    /**
+     * When called after shaping, returns the glyph IDs which were not matched
+     * by any of the provided fonts.
+     */
+    unresolvedCodepoints(): number[];
 }
 
-export interface ParagraphBuilder extends EmbindObject<ParagraphBuilder> {
+export interface ParagraphBuilder extends EmbindObject<"ParagraphBuilder"> {
     /**
      * Pushes the information required to leave an open space.
      * @param width
@@ -1085,6 +1156,7 @@ export interface ParagraphStyle {
     textDirection?: TextDirection;
     textHeightBehavior?: TextHeightBehavior;
     textStyle?: TextStyle;
+    applyRoundingHack?: boolean;
 }
 
 export interface PositionWithAffinity {
@@ -1103,7 +1175,7 @@ export interface SkSLUniform {
 /**
  * See SkAnimatedImage.h for more information on this class.
  */
-export interface AnimatedImage extends EmbindObject<AnimatedImage> {
+export interface AnimatedImage extends EmbindObject<"AnimatedImage"> {
     /**
      * Returns the length of the current frame in ms.
      */
@@ -1146,9 +1218,14 @@ export interface AnimatedImage extends EmbindObject<AnimatedImage> {
 }
 
 /**
+ * See SkBlender.h for more on this class. The objects are opaque.
+ */
+export type Blender = EmbindObject<"Blender">;
+
+/**
  * See SkCanvas.h for more information on this class.
  */
-export interface Canvas extends EmbindObject<Canvas> {
+export interface Canvas extends EmbindObject<"Canvas"> {
     /**
      * Fills the current clip with the given color using Src BlendMode.
      * This has the effect of replacing all pixels contained by clip with color.
@@ -1650,9 +1727,9 @@ export interface Canvas extends EmbindObject<Canvas> {
 /**
  * See SkColorFilter.h for more on this class. The objects are opaque.
  */
-export type ColorFilter = EmbindObject<ColorFilter>;
+export type ColorFilter = EmbindObject<"ColorFilter">;
 
-export interface ContourMeasureIter extends EmbindObject<ContourMeasureIter> {
+export interface ContourMeasureIter extends EmbindObject<"ContourMeasureIter"> {
     /**
      *  Iterates through contours in path, returning a contour-measure object for each contour
      *  in the path. Returns null when it is done.
@@ -1662,7 +1739,7 @@ export interface ContourMeasureIter extends EmbindObject<ContourMeasureIter> {
     next(): ContourMeasure | null;
 }
 
-export interface ContourMeasure extends EmbindObject<ContourMeasure> {
+export interface ContourMeasure extends EmbindObject<"ContourMeasure"> {
     /**
      * Returns the given position and tangent line for the distance on the given contour.
      * The return value is 4 floats in this order: posX, posY, vecX, vecY.
@@ -1701,7 +1778,7 @@ export interface FontMetrics {
 /**
  * See SkFont.h for more on this class.
  */
-export interface Font extends EmbindObject<Font> {
+export interface Font extends EmbindObject<"Font"> {
     /**
      * Returns the FontMetrics for this font.
      */
@@ -1852,7 +1929,7 @@ export interface Font extends EmbindObject<Font> {
 /**
  * See SkFontMgr.h for more details
  */
-export interface FontMgr extends EmbindObject<FontMgr> {
+export interface FontMgr extends EmbindObject<"FontMgr"> {
     /**
      * Return the number of font families loaded in this manager. Useful for debugging.
      */
@@ -1863,12 +1940,17 @@ export interface FontMgr extends EmbindObject<FontMgr> {
      * @param index
      */
     getFamilyName(index: number): string;
+
+    /**
+     * Find the closest matching typeface to the specified familyName and style.
+     */
+    matchFamilyStyle(name: string, style: FontStyle): Typeface;
 }
 
 /**
  * See SkImage.h for more information on this class.
  */
-export interface Image extends EmbindObject<Image> {
+export interface Image extends EmbindObject<"Image"> {
     /**
      * Encodes this image's pixels to the specified format and returns them. Must be built with
      * the specified codec. If the options are unspecified, sensible defaults will be
@@ -1954,7 +2036,21 @@ export interface Image extends EmbindObject<Image> {
 /**
  * See ImageFilter.h for more on this class. The objects are opaque.
  */
-export type ImageFilter = EmbindObject<ImageFilter>;
+export interface ImageFilter extends EmbindObject<"ImageFilter"> {
+    /**
+     * Returns an IRect that is the updated bounds of inputRect after this
+     * filter has been applied.
+     *
+     * @param drawBounds - The local (pre-transformed) bounding box of the
+     *        geometry being drawn _before_ the filter is applied.
+     * @param ctm - If provided, the current transform at the time the filter
+     *        would be used.
+     * @param outputRect - If provided, the result will be output to this array
+     *        rather than allocating a new one.
+     * @returns an IRect describing the updated bounds.
+     */
+    getOutputBounds(drawBounds: Rect, ctm?: InputMatrix, outputRect?: IRect): IRect;
+}
 
 export interface ImageInfo {
     alphaType: AlphaType;
@@ -1990,12 +2086,12 @@ export interface FilterOptions {
 /**
  * See SkMaskFilter.h for more on this class. The objects are opaque.
  */
-export type MaskFilter = EmbindObject<MaskFilter>;
+export type MaskFilter = EmbindObject<"MaskFilter">;
 
 /**
  * See SkPaint.h for more information on this class.
  */
-export interface Paint extends EmbindObject<Paint> {
+export interface Paint extends EmbindObject<"Paint"> {
     /**
      * Returns a copy of this paint.
      */
@@ -2048,6 +2144,18 @@ export interface Paint extends EmbindObject<Paint> {
     setBlendMode(mode: BlendMode): void;
 
     /**
+     * Sets the current blender, increasing its refcnt, and if a blender is already
+     * present, decreasing that object's refcnt.
+     *
+     * * A nullptr blender signifies the default SrcOver behavior.
+     *
+     * * For convenience, you can call setBlendMode() if the blend effect can be expressed
+     * as one of those values.
+     * @param blender
+     */
+    setBlender(blender: Blender): void;
+
+    /**
      * Sets alpha and RGB used when stroking and filling. The color is four floating
      * point values, unpremultiplied. The color values are interpreted as being in
      * the provided colorSpace.
@@ -2081,6 +2189,12 @@ export interface Paint extends EmbindObject<Paint> {
      * @param colorSpace - defaults to sRGB.
      */
     setColorInt(color: ColorInt, colorSpace?: ColorSpace): void;
+
+    /**
+     * Requests, but does not require, to distribute color error.
+     * @param shouldDither
+     */
+    setDither(shouldDither: boolean): void;
 
     /**
      * Sets the current image filter, replacing the existing one if there was one.
@@ -2140,7 +2254,7 @@ export interface Paint extends EmbindObject<Paint> {
 /**
  * See SkPath.h for more information on this class.
  */
-export interface Path extends EmbindObject<Path> {
+export interface Path extends EmbindObject<"Path"> {
     /**
      * Appends arc to Path, as the start of new contour. Arc added is part of ellipse
      * bounded by oval, from startAngle through sweepAngle. Both startAngle and
@@ -2598,7 +2712,7 @@ export interface Path extends EmbindObject<Path> {
 /**
  * See SkPathEffect.h for more on this class. The objects are opaque.
  */
-export type PathEffect = EmbindObject<PathEffect>;
+export type PathEffect = EmbindObject<"PathEffect">;
 
 /**
  * See SkPicture.h for more information on this class.
@@ -2606,7 +2720,7 @@ export type PathEffect = EmbindObject<PathEffect>;
  * Of note, SkPicture is *not* what is colloquially thought of as a "picture" (what we
  * call a bitmap). An SkPicture is a series of draw commands.
  */
-export interface SkPicture extends EmbindObject<SkPicture> {
+export interface SkPicture extends EmbindObject<"SkPicture"> {
     /**
      *  Returns a new shader that will draw with this picture.
      *
@@ -2624,19 +2738,34 @@ export interface SkPicture extends EmbindObject<SkPicture> {
                localMatrix?: InputMatrix, tileRect?: InputRect): Shader;
 
     /**
+     * Return the bounding area for the Picture.
+     * @param outputArray - if provided, the bounding box will be copied into this array instead of
+     *                      allocating a new one.
+     */
+    cullRect(outputArray?: Rect): Rect;
+
+    /**
+     * Returns the approximate byte size. Does not include large objects.
+     */
+    approximateBytesUsed(): number;
+
+    /**
      * Returns the serialized format of this SkPicture. The format may change at anytime and
      * no promises are made for backwards or forward compatibility.
      */
     serialize(): Uint8Array | null;
 }
 
-export interface PictureRecorder extends EmbindObject<PictureRecorder> {
+export interface PictureRecorder extends EmbindObject<"PictureRecorder"> {
     /**
      * Returns a canvas on which to draw. When done drawing, call finishRecordingAsPicture()
      *
      * @param bounds - a rect to cull the results.
+     * @param computeBounds - Optional boolean (default false) which tells the
+     *                        recorder to compute a more accurate bounds for the
+     *                        cullRect of the picture.
      */
-    beginRecording(bounds: InputRect): Canvas;
+    beginRecording(bounds: InputRect, computeBounds?: boolean): Canvas;
 
     /**
      * Returns the captured draw commands as a picture and invalidates the canvas returned earlier.
@@ -2647,7 +2776,13 @@ export interface PictureRecorder extends EmbindObject<PictureRecorder> {
 /**
  * See SkRuntimeEffect.h for more details.
  */
-export interface RuntimeEffect extends EmbindObject<RuntimeEffect> {
+export interface RuntimeEffect extends EmbindObject<"RuntimeEffect"> {
+    /**
+     * Returns a shader executed using the given uniform data.
+     * @param uniforms
+     */
+    makeBlender(uniforms: Float32Array | number[] | MallocObj): Blender;
+
     /**
      * Returns a shader executed using the given uniform data.
      * @param uniforms
@@ -2693,9 +2828,9 @@ export interface RuntimeEffect extends EmbindObject<RuntimeEffect> {
 /**
  * See SkShader.h for more on this class. The objects are opaque.
  */
-export type Shader = EmbindObject<Shader>;
+export type Shader = EmbindObject<"Shader">;
 
-export interface Surface extends EmbindObject<Surface> {
+export interface Surface extends EmbindObject<"Surface"> {
     /**
      * A convenient way to draw exactly once on the canvas associated with this surface.
      * This requires an environment where a global function called requestAnimationFrame is
@@ -2827,12 +2962,12 @@ export interface Surface extends EmbindObject<Surface> {
 /**
  * See SkTextBlob.h for more on this class. The objects are opaque.
  */
-export type TextBlob = EmbindObject<TextBlob>;
+export type TextBlob = EmbindObject<"TextBlob">;
 
 /**
  * See SkTypeface.h for more on this class. The objects are opaque.
  */
-export interface Typeface extends EmbindObject<Typeface> {
+export interface Typeface extends EmbindObject<"Typeface"> {
     /**
      * Retrieves the glyph ids for each code point in the provided string. Note that glyph IDs
      * are typeface-dependent; different faces may have different ids for the same code point.
@@ -2847,7 +2982,7 @@ export interface Typeface extends EmbindObject<Typeface> {
 /**
  * See SkVertices.h for more on this class.
  */
-export interface Vertices extends EmbindObject<Vertices> {
+export interface Vertices extends EmbindObject<"Vertices"> {
     /**
      * Return the bounding area for the vertices.
      * @param outputArray - if provided, the bounding box will be copied into this array instead of
@@ -2861,7 +2996,7 @@ export interface Vertices extends EmbindObject<Vertices> {
     uniqueID(): number;
 }
 
-export interface SkottieAnimation extends EmbindObject<SkottieAnimation> {
+export interface SkottieAnimation extends EmbindObject<"SkottieAnimation"> {
     /**
      * Returns the animation duration in seconds.
      */
@@ -2985,7 +3120,7 @@ export interface TonalColorsOutput {
     spot: Color;
 }
 
-export interface TypefaceFontProvider extends EmbindObject<TypefaceFontProvider> {
+export interface TypefaceFontProvider extends FontMgr {
     /**
      * Registers a given typeface with the given family name (ignoring whatever name the
      * typface has for itself).
@@ -2993,6 +3128,22 @@ export interface TypefaceFontProvider extends EmbindObject<TypefaceFontProvider>
      * @param family
      */
     registerFont(bytes: ArrayBuffer | Uint8Array, family: string): void;
+}
+
+/**
+ * See FontCollection.h in SkParagraph for more details
+ */
+export interface FontCollection extends EmbindObject<"FontCollection"> {
+    /**
+     * Enable fallback to dynamically discovered fonts for characters that are not handled
+     * by the text style's fonts.
+     */
+    enableFontFallback(): void;
+
+    /**
+     * Set the default provider used to locate fonts.
+     */
+    setDefaultFontManager(fontManager: TypefaceFontProvider | null): void;
 }
 
 export interface URange {
@@ -3244,6 +3395,17 @@ export interface Matrix4x4Helpers {
     transpose(matrix: Matrix4x4 | number[]): number[];
 }
 
+    /**
+     * For more information, see SkBlender.h.
+     */
+export interface BlenderFactory {
+    /**
+     * Create a blender that implements the specified BlendMode.
+     * @param mode
+     */
+    Mode(mode: BlendMode): Blender;
+}
+
 export interface ParagraphBuilderFactory {
     /**
      * Creates a ParagraphBuilder using the fonts available from the given font manager.
@@ -3260,9 +3422,22 @@ export interface ParagraphBuilderFactory {
     MakeFromFontProvider(style: ParagraphStyle, fontSrc: TypefaceFontProvider): ParagraphBuilder;
 
     /**
+     * Creates a ParagraphBuilder using the given font collection.
+     * @param style
+     * @param fontCollection
+     */
+    MakeFromFontCollection(style: ParagraphStyle, fontCollection: FontCollection): ParagraphBuilder;
+
+    /**
      * Return a shaped array of lines
      */
     ShapeText(text: string, runs: FontBlock[], width?: number): ShapedLine[];
+
+    /**
+     * Whether the paragraph builder requires ICU data to be provided by the
+     * client.
+     */
+    RequiresClientICU(): boolean;
 }
 
 export interface ParagraphStyleConstructor {
@@ -3667,7 +3842,7 @@ export interface PathEffectFactory {
 /**
  * See RuntimeEffect.h for more details.
  */
-export interface DebugTrace extends EmbindObject<DebugTrace> {
+export interface DebugTrace extends EmbindObject<"DebugTrace"> {
     writeTrace(): string;
 }
 
@@ -3684,6 +3859,14 @@ export interface RuntimeEffectFactory {
      *                   be printed to console.log().
      */
     Make(sksl: string, callback?: (err: string) => void): RuntimeEffect | null;
+
+    /**
+     * Compiles a RuntimeEffect from the given blender code.
+     * @param sksl - Source code for a blender written in SkSL
+     * @param callback - will be called with any compilation error. If not provided, errors will
+     *                   be printed to console.log().
+     */
+    MakeForBlender(sksl: string, callback?: (err: string) => void): RuntimeEffect | null;
 
     /**
      * Adds debug tracing to an existing RuntimeEffect.
@@ -3904,6 +4087,13 @@ export interface TypefaceFontProviderFactory {
     Make(): TypefaceFontProvider;
 }
 
+export interface FontCollectionFactory {
+    /**
+     * Return an empty FontCollection
+     */
+    Make(): FontCollection;
+}
+
 /**
  * Functions for manipulating vectors. It is Loosely based off of SkV3 in SkM44.h but Skia
  * also has SkVec2 and Skv4. This combines them and works on vectors of any length.
@@ -4064,6 +4254,12 @@ export type WeightList = MallocObj | Float32Array | number[];
 export type Matrix4x4 = Float32Array;
 export type Matrix3x3 = Float32Array;
 export type Matrix3x2 = Float32Array;
+
+/**
+ * Vector2 represents an x, y coordinate or vector. It has length 2.
+ */
+export type Vector2 = Point;
+
 /**
  * Vector3 represents an x, y, z coordinate or vector. It has length 3.
  */
@@ -4134,6 +4330,12 @@ export type InputRRect = MallocObj | RRect | number[];
  * be scos, ssin, tx, ty for each RSXForm. See RSXForm.h for more details.
  */
 export type InputFlattenedRSXFormArray = MallocObj | Float32Array | number[];
+
+/**
+ * InputVector2 maps to InputPoint, the alias is to not use the word "Point" when not accurate, but
+ * they are in practice the same, a representation of x and y.
+ */
+export type InputVector2 =  InputPoint;
 /**
  * CanvasKit APIs accept normal arrays, typed arrays, or Malloc'd memory as a vector of 3 floats.
  * For example, this is the x, y, z coordinates.
@@ -4168,7 +4370,7 @@ export type BlendMode = EmbindEnumEntity;
 export type BlurStyle = EmbindEnumEntity;
 export type ClipOp = EmbindEnumEntity;
 export type ColorChannel = EmbindEnumEntity;
-export type ColorSpace = EmbindObject<ColorSpace>;
+export type ColorSpace = EmbindObject<"ColorSpace">;
 export type ColorType = EmbindEnumEntity;
 export type EncodedImageFormat = EmbindEnumEntity;
 export type FillType = EmbindEnumEntity;

@@ -15,6 +15,7 @@ import * as UI from '../../ui/legacy/legacy.js';
 import * as Adorners from '../../ui/components/adorners/adorners.js';
 import * as NetworkForward from '../../panels/network/forward/forward.js';
 import * as Components from './components/components.js';
+import * as Root from '../../core/root/root.js';
 
 import {AffectedDirectivesView} from './AffectedDirectivesView.js';
 import {AffectedBlockedByResponseView} from './AffectedBlockedByResponseView.js';
@@ -26,7 +27,7 @@ import {AffectedHeavyAdView} from './AffectedHeavyAdView.js';
 import {AffectedItem, AffectedResourcesView, extractShortPath} from './AffectedResourcesView.js';
 import {AffectedSharedArrayBufferIssueDetailsView} from './AffectedSharedArrayBufferIssueDetailsView.js';
 import {AffectedSourcesView} from './AffectedSourcesView.js';
-import {AffectedTrustedWebActivityIssueDetailsView} from './AffectedTrustedWebActivityIssueDetailsView.js';
+import {AffectedTrackingSitesView} from './AffectedTrackingSitesView.js';
 import {CorsIssueDetailsView} from './CorsIssueDetailsView.js';
 import {GenericIssueDetailsView} from './GenericIssueDetailsView.js';
 import {AttributionReportingIssueDetailsView} from './AttributionReportingIssueDetailsView.js';
@@ -92,7 +93,11 @@ class AffectedRequestsView extends AffectedResourcesView {
       const element = document.createElement('tr');
       element.classList.add('affected-resource-request');
       const category = this.issue.getCategory();
-      const tab = issueTypeToNetworkHeaderMap.get(category) || NetworkForward.UIRequestLocation.UIRequestTabs.Headers;
+      let tab = issueTypeToNetworkHeaderMap.get(category) || NetworkForward.UIRequestLocation.UIRequestTabs.Headers;
+      if (tab === NetworkForward.UIRequestLocation.UIRequestTabs.Headers &&
+          Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.HEADER_OVERRIDES)) {
+        tab = NetworkForward.UIRequestLocation.UIRequestTabs.HeadersComponent;
+      }
       element.appendChild(this.createRequestCell(affectedRequest, {
         networkTab: tab,
         additionalOnClickAction() {
@@ -170,8 +175,12 @@ class AffectedMixedContentView extends AffectedResourcesView {
     element.classList.add('affected-resource-mixed-content');
 
     if (mixedContent.request) {
-      const networkTab = issueTypeToNetworkHeaderMap.get(this.issue.getCategory()) ||
+      let networkTab = issueTypeToNetworkHeaderMap.get(this.issue.getCategory()) ||
           NetworkForward.UIRequestLocation.UIRequestTabs.Headers;
+      if (networkTab === NetworkForward.UIRequestLocation.UIRequestTabs.Headers &&
+          Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.HEADER_OVERRIDES)) {
+        networkTab = NetworkForward.UIRequestLocation.UIRequestTabs.HeadersComponent;
+      }
       element.appendChild(this.createRequestCell(mixedContent.request, {
         networkTab,
         additionalOnClickAction() {
@@ -212,7 +221,7 @@ class AffectedMixedContentView extends AffectedResourcesView {
 export class IssueView extends UI.TreeOutline.TreeElement {
   #issue: AggregatedIssue;
   #description: IssuesManager.MarkdownIssueDescription.IssueDescription;
-  toggleOnClick: boolean;
+  override toggleOnClick: boolean;
   affectedResources: UI.TreeOutline.TreeElement;
   readonly #affectedResourceViews: AffectedResourcesView[];
   #aggregatedIssuesCount: HTMLElement|null;
@@ -246,12 +255,12 @@ export class IssueView extends UI.TreeOutline.TreeElement {
       new AffectedBlockedByResponseView(this, this.#issue),
       new AffectedSharedArrayBufferIssueDetailsView(this, this.#issue),
       new AffectedElementsWithLowContrastView(this, this.#issue),
-      new AffectedTrustedWebActivityIssueDetailsView(this, this.#issue),
       new CorsIssueDetailsView(this, this.#issue),
       new GenericIssueDetailsView(this, this.#issue),
       new AffectedDocumentsInQuirksModeView(this, this.#issue),
       new AttributionReportingIssueDetailsView(this, this.#issue),
       new AffectedRawCookieLinesView(this, this.#issue),
+      new AffectedTrackingSitesView(this, this.#issue),
     ];
     this.#hiddenIssuesMenu = new Components.HideIssuesMenu.HideIssuesMenu();
     this.#aggregatedIssuesCount = null;
@@ -286,7 +295,7 @@ export class IssueView extends UI.TreeOutline.TreeElement {
     return this.#description.title;
   }
 
-  onattach(): void {
+  override onattach(): void {
     if (!this.#contentCreated) {
       this.createContent();
       return;
@@ -298,10 +307,15 @@ export class IssueView extends UI.TreeOutline.TreeElement {
     this.#appendHeader();
     this.#createBody();
     this.appendChild(this.affectedResources);
+    const visibleAffectedResource: AffectedResourcesView[] = [];
     for (const view of this.#affectedResourceViews) {
       this.appendAffectedResource(view);
       view.update();
+      if (!view.isEmpty()) {
+        visibleAffectedResource.push(view);
+      }
     }
+    this.#updateAffectedResourcesPositionAndSize(visibleAffectedResource);
 
     this.#createReadMoreLinks();
     this.updateAffectedResourceVisibility();
@@ -310,6 +324,14 @@ export class IssueView extends UI.TreeOutline.TreeElement {
 
   appendAffectedResource(resource: UI.TreeOutline.TreeElement): void {
     this.affectedResources.appendChild(resource);
+  }
+
+  #updateAffectedResourcesPositionAndSize(visibleAffectedResource: AffectedResourcesView[]): void {
+    for (let i = 0; i < visibleAffectedResource.length; i++) {
+      const element = visibleAffectedResource[i].listItemElement;
+      UI.ARIAUtils.setPositionInSet(element, i + 1);
+      UI.ARIAUtils.setSetSize(element, visibleAffectedResource.length);
+    }
   }
 
   #appendHeader(): void {
@@ -338,7 +360,7 @@ export class IssueView extends UI.TreeOutline.TreeElement {
     this.listItemElement.appendChild(header);
   }
 
-  onexpand(): void {
+  override onexpand(): void {
     Host.userMetrics.issuesPanelIssueExpanded(this.#issue.getCategory());
 
     if (this.#needsUpdateOnExpand) {
@@ -393,6 +415,8 @@ export class IssueView extends UI.TreeOutline.TreeElement {
     wrapper.listItemElement.classList.add('affected-resources-label');
     wrapper.listItemElement.textContent = i18nString(UIStrings.affectedResources);
     wrapper.childrenListElement.classList.add('affected-resources');
+    UI.ARIAUtils.setPositionInSet(wrapper.listItemElement, 2);
+    UI.ARIAUtils.setSetSize(wrapper.listItemElement, this.#description.links.length === 0 ? 2 : 3);
     return wrapper;
   }
 
@@ -403,6 +427,8 @@ export class IssueView extends UI.TreeOutline.TreeElement {
     const markdownComponent = new MarkdownView.MarkdownView.MarkdownView();
     markdownComponent.data = {tokens: this.#description.markdown};
     messageElement.listItemElement.appendChild(markdownComponent);
+    UI.ARIAUtils.setPositionInSet(messageElement.listItemElement, 1);
+    UI.ARIAUtils.setSetSize(messageElement.listItemElement, this.#description.links.length === 0 ? 2 : 3);
     this.appendChild(messageElement);
   }
 
@@ -414,13 +440,15 @@ export class IssueView extends UI.TreeOutline.TreeElement {
     const linkWrapper = new UI.TreeOutline.TreeElement();
     linkWrapper.setCollapsible(false);
     linkWrapper.listItemElement.classList.add('link-wrapper');
+    UI.ARIAUtils.setPositionInSet(linkWrapper.listItemElement, 3);
+    UI.ARIAUtils.setSetSize(linkWrapper.listItemElement, 3);
 
     const linkList = linkWrapper.listItemElement.createChild('ul', 'link-list');
     for (const description of this.#description.links) {
       const link = UI.Fragment.html`<x-link class="link devtools-link" tabindex="0" href=${description.link}>${
                        i18nString(UIStrings.learnMoreS, {PH1: description.linkTitle})}</x-link>` as UI.XLink.XLink;
       const linkIcon = new IconButton.Icon.Icon();
-      linkIcon.data = {iconName: 'link_icon', color: 'var(--color-link)', width: '16px', height: '16px'};
+      linkIcon.data = {iconName: 'open-externally', color: 'var(--icon-link)', width: '16px', height: '16px'};
       linkIcon.classList.add('link-icon');
       link.prepend(linkIcon);
       link.addEventListener('x-link-invoke', () => {

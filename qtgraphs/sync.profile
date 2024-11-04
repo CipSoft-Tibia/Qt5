@@ -1,5 +1,5 @@
 %modules = ( # path to module name map
-    "QtGraphs" => "$basedir/src/graphs"
+    "QtGraphs" => "$basedir/src/graphs3d"
 );
 %moduleheaders = ( # restrict the module headers to those found in relative path
 );

@@ -6,6 +6,8 @@ tree under the `//third_party/` directory.  They are structured as follows:
 ```
   //third_party/<library>
    BUILD.gn
+   LICENSE
+   README.chromium
    ...other necessary adapter files...
    src/
      <library>'s source
@@ -24,33 +26,26 @@ new library called `alpha`. Opening up DEPS, you would add
         + '@' + '<revision>'
 ```
 
-Then you need to add a BUILD.gn file for it under `//third_party/alpha`,
-assuming it doesn't already provide its own BUILD.gn.
+Then you need to add `BUILD.gn` and `README.chromium` file for it under
+`//third_party/alpha`, assuming it doesn't already provide its own `BUILD.gn`.
+You will also need to provide a `LICENSE` for it if it does not have its own.
 
-Finally, add a new entry for the "src" directory of your dependency to
-the //third_party/.gitignore.
+You will also need to add a gitmodule entry for the new dependency.  Follow the
+[Chromium instructions](https://chromium.googlesource.com/chromium/src/+/main/docs/dependencies.md#regenerating-git-submodules)
+to synchronize gitmodules with DEPS.
+
+Finally, add a new entry for the `src` directory of your dependency to
+the `//third_party/.gitignore`.
+
+Commit all of these changes and upload the CL for review.  New dependencies have
+impacts to binary size, code health, portability, and security so expect some
+discussion in the review before the new dependency is approved.
 
 ## Roll a dependency to a new version
 
-Rolling a dependency forward (or to any different version really) consists of
-two steps:
-  1. Update the revision string for the dependency in the DEPS file.
-  1. `git add` the DEPS file and commit, then run gclient sync.
+See [roll_deps.md](../docs/roll_deps.md) for instructions.
 
-Of course, you should also make sure that the new change is still compatible
-with the rest of the project, including any adapter files under
-`//third_party/<library>` (e.g. BUILD.gn).  Any necessary updates to make the
-rest of the project work with the new dependency version should happen in the
-same change.
+## Removing a dependency
 
-## Build Failures
-
-If after running `gclient sync`, your build starts failing due to errors in
-`//third_party/`, then do the following:
-
-  1. Delete the `//out/` directory.
-  1. Delete the `src/` directory of the failing `//third_party` library.
-  1. Re-run `gclient sync`.
-
-This will remove any directories and files which were removed in the updated
-library but not deleted by `gclient sync`.
+See [Chromium documentation](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/docs/dependencies.md#Deleting-dependencies)
+for instructions.

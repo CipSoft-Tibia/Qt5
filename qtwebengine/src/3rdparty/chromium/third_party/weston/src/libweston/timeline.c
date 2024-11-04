@@ -362,7 +362,7 @@ weston_timeline_get_subscription_object(struct weston_log_subscription *sub,
  * Can be used from outside libweston.
  *
  * @param wc a weston_compositor instance
- * @param object the underyling object
+ * @param object the underlying object
  *
  * @ingroup log
  */

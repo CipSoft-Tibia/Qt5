@@ -31,44 +31,44 @@ Item {
         anchors.top: mainwindow.top
         anchors.left: mainwindow.left
 
-        ColorGradient {
+        Gradient {
             id: mainGradient
-            ColorGradientStop { position: 0.0; color: "red"}
-            ColorGradientStop { position: 0.5; color: "green"}
-            ColorGradientStop { position: 0.8; color: "blue"}
-            ColorGradientStop { position: 0.6; color: "yellow"}
-            ColorGradientStop { position: 0.8; color: "black"}
-            ColorGradientStop { position: 1.0; color: "peru"}
+            GradientStop { position: 0.0; color: "red"}
+            GradientStop { position: 0.5; color: "green"}
+            GradientStop { position: 0.8; color: "blue"}
+            GradientStop { position: 0.6; color: "yellow"}
+            GradientStop { position: 0.8; color: "black"}
+            GradientStop { position: 1.0; color: "peru"}
         }
 
-        ColorGradient {
+        Gradient {
             id: secondaryGradient
-            ColorGradientStop { position: 0.0; color: "crimson"}
-            ColorGradientStop { position: 0.5; color: "chartreuse"}
-            ColorGradientStop { position: 0.8; color: "blueviolet"}
-            ColorGradientStop { position: 0.6; color: "gold"}
-            ColorGradientStop { position: 0.8; color: "darkslategrey"}
-            ColorGradientStop { position: 1.0; color: "seagreen"}
+            GradientStop { position: 0.0; color: "crimson"}
+            GradientStop { position: 0.5; color: "chartreuse"}
+            GradientStop { position: 0.8; color: "blueviolet"}
+            GradientStop { position: 0.6; color: "gold"}
+            GradientStop { position: 0.8; color: "darkslategrey"}
+            GradientStop { position: 1.0; color: "seagreen"}
         }
 
-        ColorGradient {
+        Gradient {
             id: seriesGradient
-            ColorGradientStop { position: 0.0; color: "gold" }
-            ColorGradientStop { position: 0.5; color: "crimson" }
-            ColorGradientStop { position: 1.0; color: "blueviolet" }
+            GradientStop { position: 0.0; color: "gold" }
+            GradientStop { position: 0.5; color: "crimson" }
+            GradientStop { position: 1.0; color: "blueviolet" }
         }
 
         Theme3D {
             id: mainTheme
-            type: Q3DTheme.ThemeStoneMoss
+            type: Theme3D.Theme.StoneMoss
 
-            colorStyle: Q3DTheme.ColorStyleRangeGradient
+            colorStyle: Theme3D.ColorStyle.RangeGradient
             baseGradients: [mainGradient]
         }
 
         Theme3D {
             id: secondaryTheme
-            type: Q3DTheme.ThemeArmyBlue
+            type: Theme3D.Theme.ArmyBlue
             baseGradients: [secondaryGradient]
         }
 
@@ -78,9 +78,9 @@ Item {
             height: surfaceview.height
             theme: mainTheme
 
-            shadowQuality: AbstractGraph3D.ShadowQualityMedium
+            shadowQuality: AbstractGraph3D.ShadowQuality.Medium
             selectionMode: AbstractGraph3D.SelectionSlice | AbstractGraph3D.SelectionItemAndRow
-            scene.activeCamera.cameraPreset: Camera3D.CameraPresetIsometricLeft
+            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeft
             axisY.min: 0.0
             axisY.max: 500.0
             axisX.segmentCount: 10

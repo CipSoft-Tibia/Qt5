@@ -42,6 +42,8 @@ void TrackEventSessionObserver::OnStop(const DataSourceBase::StopArgs&) {}
 void TrackEventSessionObserver::WillClearIncrementalState(
     const DataSourceBase::ClearIncrementalStateArgs&) {}
 
+TrackEventTlsStateUserData::~TrackEventTlsStateUserData() = default;
+
 namespace internal {
 
 BaseTrackEventInternedDataIndex::~BaseTrackEventInternedDataIndex() = default;
@@ -199,6 +201,9 @@ static constexpr protos::pbzero::BuiltinClock kDefaultTraceClock =
 
 // static
 protos::pbzero::BuiltinClock TrackEventInternal::clock_ = kDefaultTraceClock;
+
+// static
+bool TrackEventInternal::disallow_merging_with_system_tracks_ = false;
 
 // static
 void TrackEventInternal::EnableTracing(
@@ -519,7 +524,7 @@ void TrackEventInternal::WriteEventName(perfetto::DynamicString event_name,
 EventContext TrackEventInternal::WriteEvent(
     TraceWriterBase* trace_writer,
     TrackEventIncrementalState* incr_state,
-    const TrackEventTlsState& tls_state,
+    TrackEventTlsState& tls_state,
     const Category* category,
     perfetto::protos::pbzero::TrackEvent::Type type,
     const TraceTimestamp& timestamp,

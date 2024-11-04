@@ -6,10 +6,12 @@
 
 #include "base/json/json_reader.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/test/gmock_expected_support.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "cc/base/math_util.h"
 #include "content/browser/renderer_host/cross_process_frame_connector.h"
+#include "content/browser/renderer_host/input/synthetic_pointer_action.h"
 #include "content/browser/renderer_host/input/synthetic_touchscreen_pinch_gesture.h"
 #include "content/browser/renderer_host/render_process_host_impl.h"
 #include "content/browser/renderer_host/render_widget_host_view_child_frame.h"
@@ -441,21 +443,23 @@ IN_PROC_BROWSER_TEST_P(SitePerProcessBrowserTest,
 
   // Wait until dppx becomes 2 if the frame's dpr hasn't beeen updated
   // to 2 yet.
-  const char kScript[] =
-      "function sendDpr() "
-      "{window.domAutomationController.send(window.devicePixelRatio);}; "
-      "if (window.devicePixelRatio == 2) sendDpr();"
-      "window.matchMedia('screen and "
-      "(min-resolution: 2dppx)').addListener(function(e) { if (e.matches) { "
-      "sendDpr();}})";
+  const char kScript[] = R"(
+      new Promise(resolve => {
+        if (window.devicePixelRatio == 2)
+          resolve(window.devicePixelRatio);
+        window.matchMedia('screen and (min-resolution: 2dppx)')
+            .addListener(function(e) {
+          if (e.matches) {
+            resolve(window.devicePixelRatio);
+          }
+        });
+      });
+      )";
   // Make sure that both main frame and iframe are updated to 2x.
-  EXPECT_EQ(expected_dip_scale,
-            EvalJs(child, kScript, content::EXECUTE_SCRIPT_USE_MANUAL_REPLY)
-                .ExtractDouble());
+  EXPECT_EQ(expected_dip_scale, EvalJs(child, kScript).ExtractDouble());
 
-  EXPECT_EQ(expected_dip_scale, EvalJs(web_contents(), kScript,
-                                       content::EXECUTE_SCRIPT_USE_MANUAL_REPLY)
-                                    .ExtractDouble());
+  EXPECT_EQ(expected_dip_scale,
+            EvalJs(web_contents(), kScript).ExtractDouble());
 }
 
 #endif
@@ -626,14 +630,16 @@ IN_PROC_BROWSER_TEST_P(SitePerProcessBrowserTest,
 
   // Explanation of terms:
   //   5000 = offset from top of nested iframe to top of containing div, due to
-  //          scroll offset of div
+  //          scroll offset of div. This needs to be scaled by DSF or the test
+  //          will fail on HighDPI devices.
   //   child_div_offset_top = offset of containing div from top of child frame
   //   50 = offset of child frame's intersection with the top document viewport
   //       from the top of the child frame (i.e, clipped amount at top of child)
   //   view_height * 0.15 = padding added to the top of the compositing rect
   //                        (half the the 30% total padding)
-  int expected_offset =
-      5000 - ((child_div_offset_top - 50) * scale_factor) - expansion;
+  int expected_offset = (5000 * scale_factor) -
+                        ((child_div_offset_top - 50) * scale_factor) -
+                        expansion;
 
   // Allow a small amount for rounding differences from applying page and
   // device scale factors at different times.
@@ -2275,10 +2281,8 @@ IN_PROC_BROWSER_TEST_P(SitePerProcessBrowserTest,
   FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
 
   // Add an onmessage handler to the subframe to send back its width.
-  EXPECT_TRUE(ExecJs(root->child_at(0), R"(
-      window.addEventListener('message', function(event) {
-        domAutomationController.send(document.body.clientWidth);
-      });)"));
+  EXPECT_TRUE(ExecJs(root->child_at(0),
+                     WaitForMessageScript("document.body.clientWidth")));
 
   // Drop the visual properties ACKs from the child renderer.  To do this,
   // unsubscribe the child's RenderWidgetHost from its
@@ -2294,14 +2298,14 @@ IN_PROC_BROWSER_TEST_P(SitePerProcessBrowserTest,
 
   // Now, resize the subframe twice from the main frame and send it a
   // postMessage. The postMessage handler should see the second updated size.
-  EXPECT_EQ(700, EvalJs(root, R"(
+  EXPECT_TRUE(ExecJs(root, R"(
       var f = document.querySelector('iframe');
       f.width = 500;
       f.offsetTop; // force layout; this sends a resize IPC for width of 500.
       f.width = 700;
       f.offsetTop; // force layout; this sends a resize IPC for width of 700.
-      f.contentWindow.postMessage('foo', '*');)",
-                        EXECUTE_SCRIPT_USE_MANUAL_REPLY));
+      f.contentWindow.postMessage('foo', '*');)"));
+  EXPECT_EQ(700, EvalJs(root->child_at(0), "onMessagePromise"));
 }
 
 // This test verifies that when scrolling an OOPIF in a pinched-zoomed page,
@@ -2424,14 +2428,14 @@ IN_PROC_BROWSER_TEST_P(SitePerProcessBrowserTest,
       actions_template.c_str(), scroll_start_location_in_screen.x(),
       scroll_start_location_in_screen.y(), scroll_end_location_in_screen.x(),
       scroll_end_location_in_screen.y());
-  auto parsed_json =
-      base::JSONReader::ReadAndReturnValueWithError(touch_move_sequence_json);
-  ASSERT_TRUE(parsed_json.has_value()) << parsed_json.error().message;
-  ActionsParser actions_parser(std::move(*parsed_json));
+  ASSERT_OK_AND_ASSIGN(
+      auto parsed_json,
+      base::JSONReader::ReadAndReturnValueWithError(touch_move_sequence_json));
+  ActionsParser actions_parser(std::move(parsed_json));
 
   ASSERT_TRUE(actions_parser.Parse());
-  auto synthetic_scroll_gesture =
-      SyntheticGesture::Create(actions_parser.gesture_params());
+  auto synthetic_scroll_gesture = std::make_unique<SyntheticPointerAction>(
+      actions_parser.pointer_action_params());
 
   {
     auto* child_host = static_cast<RenderWidgetHostImpl*>(

@@ -25,11 +25,12 @@ void FakePageTimingSender::SendTiming(
     const mojom::FrameRenderDataUpdate& render_data,
     const mojom::CpuTimingPtr& cpu_timing,
     const mojom::InputTimingPtr new_input_timing,
-    const mojom::SubresourceLoadMetricsPtr subresource_load_metrics,
-    uint32_t soft_navigation_count) {
+    const absl::optional<blink::SubresourceLoadMetrics>&
+        subresource_load_metrics,
+    const mojom::SoftNavigationMetricsPtr& soft_navigation_metrics) {
   validator_->UpdateTiming(timing, metadata, new_features, resources,
                            render_data, cpu_timing, new_input_timing,
-                           subresource_load_metrics, soft_navigation_count);
+                           subresource_load_metrics, soft_navigation_metrics);
 }
 
 void FakePageTimingSender::SetUpSmoothnessReporting(
@@ -67,6 +68,26 @@ void FakePageTimingSender::PageTimingValidator::VerifyExpectedTimings() const {
   }
 }
 
+void FakePageTimingSender::PageTimingValidator::ExpectSoftNavigationMetrics(
+    const mojom::SoftNavigationMetrics& soft_navigation_metrics) {
+  VerifyExpectedSoftNavigationMetrics();
+  expected_soft_navigation_metrics_.push_back(soft_navigation_metrics.Clone());
+}
+
+void FakePageTimingSender::PageTimingValidator::
+    VerifyExpectedSoftNavigationMetrics() const {
+  ASSERT_EQ(actual_soft_navigation_metrics_.size(),
+            expected_soft_navigation_metrics_.size());
+  for (size_t i = 0; i < actual_soft_navigation_metrics_.size(); ++i) {
+    if (actual_soft_navigation_metrics_.at(i)->Equals(
+            *expected_soft_navigation_metrics_.at(i))) {
+      continue;
+    }
+    ADD_FAILURE() << "Observed soft navigation metric != expected one at index "
+                  << i;
+  }
+}
+
 void FakePageTimingSender::PageTimingValidator::UpdateExpectedInputTiming(
     const base::TimeDelta input_delay) {
   expected_input_timing->num_input_events++;
@@ -87,8 +108,8 @@ void FakePageTimingSender::PageTimingValidator::VerifyExpectedInputTiming()
 
 void FakePageTimingSender::PageTimingValidator::
     UpdateExpectedSubresourceLoadMetrics(
-        const mojom::SubresourceLoadMetrics& subresource_load_metrics) {
-  expected_subresource_load_metrics_ = subresource_load_metrics.Clone();
+        const blink::SubresourceLoadMetrics& subresource_load_metrics) {
+  expected_subresource_load_metrics_ = subresource_load_metrics;
 }
 
 void FakePageTimingSender::PageTimingValidator::
@@ -145,9 +166,11 @@ void FakePageTimingSender::PageTimingValidator::UpdateTiming(
     const mojom::FrameRenderDataUpdate& render_data,
     const mojom::CpuTimingPtr& cpu_timing,
     const mojom::InputTimingPtr& new_input_timing,
-    const mojom::SubresourceLoadMetricsPtr& subresource_load_metrics,
-    uint32_t soft_navigation_count) {
+    const absl::optional<blink::SubresourceLoadMetrics>&
+        subresource_load_metrics,
+    const mojom::SoftNavigationMetricsPtr& soft_navigation_metrics) {
   actual_timings_.push_back(timing.Clone());
+  actual_soft_navigation_metrics_.push_back(soft_navigation_metrics->Clone());
   if (!cpu_timing->task_time.is_zero()) {
     actual_cpu_timings_.push_back(cpu_timing.Clone());
   }
@@ -166,7 +189,7 @@ void FakePageTimingSender::PageTimingValidator::UpdateTiming(
   actual_input_timing->total_input_delay += new_input_timing->total_input_delay;
   actual_input_timing->total_adjusted_input_delay +=
       new_input_timing->total_adjusted_input_delay;
-  actual_subresource_load_metrics_ = subresource_load_metrics.Clone();
+  actual_subresource_load_metrics_ = subresource_load_metrics;
 
   VerifyExpectedTimings();
   VerifyExpectedCpuTimings();
@@ -175,7 +198,7 @@ void FakePageTimingSender::PageTimingValidator::UpdateTiming(
   VerifyExpectedMainFrameIntersectionRect();
   VerifyExpectedMainFrameViewportRect();
   VerifyExpectedSubresourceLoadMetrics();
-  // TODO(yoav): Verify that soft nav count matches expectations.
+  VerifyExpectedSoftNavigationMetrics();
 }
 
 }  // namespace page_load_metrics

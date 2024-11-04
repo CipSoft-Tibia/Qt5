@@ -1,4 +1,4 @@
-# Copyright (C) 2022 The Qt Company Ltd.
+# Copyright (C) 2023 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
@@ -14,22 +14,20 @@ qt_internal_add_plugin(QAndroidIntegrationPlugin
         androidcontentfileengine.cpp androidcontentfileengine.h
         androiddeadlockprotector.h
         androidjniaccessibility.cpp androidjniaccessibility.h
-        androidjniclipboard.cpp androidjniclipboard.h
         androidjniinput.cpp androidjniinput.h
         androidjnimain.cpp androidjnimain.h
         androidjnimenu.cpp androidjnimenu.h
-        androidsurfaceclient.h
         main.cpp
         qandroidassetsfileenginehandler.cpp qandroidassetsfileenginehandler.h
         qandroideventdispatcher.cpp qandroideventdispatcher.h
         qandroidinputcontext.cpp qandroidinputcontext.h
         qandroidplatformaccessibility.cpp qandroidplatformaccessibility.h
-        qandroidplatformbackingstore.cpp qandroidplatformbackingstore.h
         qandroidplatformclipboard.cpp qandroidplatformclipboard.h
         qandroidplatformdialoghelpers.cpp qandroidplatformdialoghelpers.h
         qandroidplatformfiledialoghelper.cpp qandroidplatformfiledialoghelper.h
         qandroidplatformfontdatabase.cpp qandroidplatformfontdatabase.h
         qandroidplatformforeignwindow.cpp qandroidplatformforeignwindow.h
+        qandroidplatformiconengine.cpp qandroidplatformiconengine.h
         qandroidplatformintegration.cpp qandroidplatformintegration.h
         qandroidplatformmenu.cpp qandroidplatformmenu.h
         qandroidplatformmenubar.cpp qandroidplatformmenubar.h
@@ -42,6 +40,7 @@ qt_internal_add_plugin(QAndroidIntegrationPlugin
         qandroidplatformtheme.cpp qandroidplatformtheme.h
         qandroidplatformwindow.cpp qandroidplatformwindow.h
         qandroidsystemlocale.cpp qandroidsystemlocale.h
+        androidwindowembedding.cpp androidwindowembedding.h
     NO_UNITY_BUILD_SOURCES
         # Conflicting symbols and macros with androidjnimain.cpp
         # TODO: Unify the usage of FIND_AND_CHECK_CLASS, and similar
@@ -54,8 +53,6 @@ qt_internal_add_plugin(QAndroidIntegrationPlugin
         # Conflicting JNI classes, and types
         androidcontentfileengine.cpp
         qandroidplatformintegration.cpp
-    DEFINES
-        QT_USE_QSTRINGBUILDER
     INCLUDE_DIRECTORIES
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${QtBase_SOURCE_DIR}/src/3rdparty/android

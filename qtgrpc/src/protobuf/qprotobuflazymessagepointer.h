@@ -5,9 +5,8 @@
 #ifndef QPROTOBUFLAZYMESSAGEPOINTER_H
 #define QPROTOBUFLAZYMESSAGEPOINTER_H
 
-#include <QtProtobuf/qtprotobufglobal.h>
-
 #include <QtProtobuf/qprotobufmessage.h>
+#include <QtProtobuf/qtprotobufglobal.h>
 
 QT_BEGIN_NAMESPACE
 namespace QtProtobufPrivate {
@@ -17,8 +16,8 @@ class QProtobufLazyMessagePointerBase
     mutable QProtobufMessage *m_ptr = nullptr; // @todo lost QPointer functionality
 
 protected:
-    QProtobufLazyMessagePointerBase() = default;
-    explicit QProtobufLazyMessagePointerBase(QProtobufMessage *ptr) : m_ptr(ptr) { }
+    QProtobufLazyMessagePointerBase() noexcept = default;
+    explicit QProtobufLazyMessagePointerBase(QProtobufMessage *ptr) noexcept : m_ptr(ptr) { }
     QProtobufLazyMessagePointerBase(QProtobufLazyMessagePointerBase &&other) noexcept
         : m_ptr(std::exchange(other.m_ptr, nullptr))
     {
@@ -29,8 +28,8 @@ protected:
         return *this;
     }
 
-    QProtobufMessage *message() const { return m_ptr; }
-    void setMessage(QProtobufMessage *msg) const { m_ptr = msg; }
+    QProtobufMessage *message() const noexcept { return m_ptr; }
+    void setMessage(QProtobufMessage *msg) const noexcept{ m_ptr = msg; }
 
     ~QProtobufLazyMessagePointerBase() { QProtobufMessageDeleter()(m_ptr); }
 
@@ -38,14 +37,17 @@ protected:
     explicit operator bool() const noexcept { return message() != nullptr; }
 };
 
-template<typename T>
+template <typename T, std::enable_if_t<std::is_base_of_v<QProtobufMessage, T>, bool> = true>
 class QProtobufLazyMessagePointer : private QProtobufLazyMessagePointerBase
 {
     T *messageAsT() const { return static_cast<T *>(message()); }
 
 public:
     QProtobufLazyMessagePointer() noexcept = default;
-    explicit QProtobufLazyMessagePointer(T *p) { setMessage(p); }
+    explicit QProtobufLazyMessagePointer(T *p) noexcept { setMessage(p); }
+    QProtobufLazyMessagePointer(const QProtobufLazyMessagePointer &other) noexcept = default;
+    QProtobufLazyMessagePointer &
+    operator=(const QProtobufLazyMessagePointer &other) noexcept = default;
     QProtobufLazyMessagePointer(QProtobufLazyMessagePointer &&other) noexcept = default;
     QProtobufLazyMessagePointer &operator=(QProtobufLazyMessagePointer &&other) noexcept = default;
     ~QProtobufLazyMessagePointer() = default; // We don't own anything + base is not virtual
@@ -59,7 +61,7 @@ public:
         return messageAsT();
     }
 
-    void reset(T *p = nullptr)
+    void reset(T *p = nullptr) noexcept
     {
         Q_ASSERT(!p || message() != p);
         QProtobufLazyMessagePointer(p).swap(*this);
@@ -79,7 +81,7 @@ private:
         T *lhsPtr = lhs.messageAsT();
         T *rhsPtr = rhs.messageAsT();
         return (lhsPtr == nullptr && rhsPtr == nullptr)
-                || (lhsPtr != nullptr && rhsPtr != nullptr && *lhsPtr == *rhsPtr);
+            || (lhsPtr != nullptr && rhsPtr != nullptr && *lhsPtr == *rhsPtr);
     }
     friend bool operator!=(const QProtobufLazyMessagePointer &lhs,
                            const QProtobufLazyMessagePointer &rhs) noexcept

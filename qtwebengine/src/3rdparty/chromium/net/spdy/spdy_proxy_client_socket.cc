@@ -277,10 +277,11 @@ int SpdyProxyClientSocket::GetLocalAddress(IPEndPoint* address) const {
 }
 
 void SpdyProxyClientSocket::RunWriteCallback(int result) {
-  CHECK(write_callback_);
-
   base::WeakPtr<SpdyProxyClientSocket> weak_ptr = weak_factory_.GetWeakPtr();
-  std::move(write_callback_).Run(result);
+  // `write_callback_` might be consumed by OnClose().
+  if (write_callback_) {
+    std::move(write_callback_).Run(result);
+  }
   if (!weak_ptr) {
     // `this` was already destroyed while running `write_callback_`. Must
     // return immediately without touching any field member.
@@ -458,8 +459,7 @@ void SpdyProxyClientSocket::OnEarlyHintsReceived(
     const spdy::Http2HeaderBlock& headers) {}
 
 void SpdyProxyClientSocket::OnHeadersReceived(
-    const spdy::Http2HeaderBlock& response_headers,
-    const spdy::Http2HeaderBlock* pushed_request_headers) {
+    const spdy::Http2HeaderBlock& response_headers) {
   // If we've already received the reply, existing headers are too late.
   // TODO(mbelshe): figure out a way to make HEADERS frames useful after the
   //                initial response.

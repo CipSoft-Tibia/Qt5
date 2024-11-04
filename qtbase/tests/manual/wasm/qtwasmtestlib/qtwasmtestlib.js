@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 // A minimal async test runner for Qt async auto tests.
 //
@@ -77,12 +77,13 @@ async function runTestFunction(instance, name) {
     }
 }
 
-async function runTestCaseImpl(testFunctionStarted, testFunctionCompleted, qtContainers) {
+async function runTestCaseImpl(entryFunction, testFunctionStarted, testFunctionCompleted, qtContainers)
+{
     // Create test case instance
     const config = {
         qtContainerElements: qtContainers || []
     }
-    const instance = await createQtAppInstance(config);
+    const instance = await entryFunction(config);
 
     // Run all test functions
     const functionsString = instance.getTestFunctions();
@@ -124,10 +125,11 @@ function testFunctionCompleted(status) {
     g_htmlLogElement.innerHTML += line;
 }
 
-async function runTestCase(htmlLogElement, qtContainers) {
+async function runTestCase(entryFunction, htmlLogElement, qtContainers)
+{
     g_htmlLogElement = htmlLogElement;
     try {
-        await runTestCaseImpl(testFunctionStarted, testFunctionCompleted, qtContainers);
+        await runTestCaseImpl(entryFunction, testFunctionStarted, testFunctionCompleted, qtContainers);
         g_htmlLogElement.innerHTML += "<br> DONE"
     } catch (err) {
         g_htmlLogElement.innerHTML += err

@@ -30,6 +30,7 @@
 #include "quiche/common/platform/api/quiche_bug_tracker.h"
 #include "quiche/common/platform/api/quiche_export.h"
 #include "quiche/common/platform/api/quiche_logging.h"
+#include "quiche/common/quiche_callbacks.h"
 
 namespace gfe2 {
 class Http2HeaderValidator;
@@ -448,9 +449,6 @@ class QUICHE_EXPORT BalsaHeaders : public HeaderApi {
       absl::flat_hash_map<absl::string_view, std::vector<absl::string_view>,
                           StringPieceCaseHash, StringPieceCaseEqual>;
 
-  // TODO(fenix): Revisit the amount of bytes initially allocated to the second
-  // block of the balsa_buffer_. It may make sense to pre-allocate some amount
-  // (roughly the amount we'd append in new headers such as X-User-Ip, etc.)
   BalsaHeaders()
       : balsa_buffer_(4096),
         content_length_(0),
@@ -523,8 +521,6 @@ class QUICHE_EXPORT BalsaHeaders : public HeaderApi {
   // a new header if none exist.  See 'AppendHeader' below for additional
   // comments about ContentLength and TransferEncoding headers. Note that this
   // will allocate new storage every time that it is called.
-  // TODO(fenix): modify this function to reuse existing storage
-  // if it is available.
   void ReplaceOrAppendHeader(absl::string_view key,
                              absl::string_view value) override;
 
@@ -839,9 +835,10 @@ class QUICHE_EXPORT BalsaHeaders : public HeaderApi {
   void DumpToString(std::string* str) const;
   std::string DebugString() const override;
 
-  bool ForEachHeader(std::function<bool(const absl::string_view key,
-                                        const absl::string_view value)>
-                         fn) const override;
+  bool ForEachHeader(
+      quiche::UnretainedCallback<bool(const absl::string_view key,
+                                      const absl::string_view value)>
+          fn) const override;
 
   void DumpToPrefixedString(const char* spaces, std::string* str) const;
 
@@ -1012,8 +1009,8 @@ class QUICHE_EXPORT BalsaHeaders : public HeaderApi {
   absl::string_view Authority() const override;
   void ReplaceOrAppendAuthority(absl::string_view value) override;
   void RemoveAuthority() override;
-  void ApplyToCookie(
-      std::function<void(absl::string_view cookie)> f) const override;
+  void ApplyToCookie(quiche::UnretainedCallback<void(absl::string_view cookie)>
+                         f) const override;
 
   void set_enforce_header_policy(bool enforce) override {
     enforce_header_policy_ = enforce;
@@ -1246,9 +1243,6 @@ class QUICHE_EXPORT BalsaHeaders::iterator_base
     // The condition below exists so that ++(end() - 1) == end(), even
     // if there are only 'skip == true' elements between the end() iterator
     // and the end of the vector of HeaderLineDescriptions.
-    // TODO(fenix): refactor this list so that we don't have to do
-    // linear scanning through skipped headers (and this condition is
-    // then unnecessary)
     if (idx_ == header_lines_size) {
       idx_ = original_idx + 1;
     }

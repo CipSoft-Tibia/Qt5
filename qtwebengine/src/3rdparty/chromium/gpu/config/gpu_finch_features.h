@@ -28,13 +28,21 @@ GPU_EXPORT BASE_DECLARE_FEATURE(kWebViewThreadSafeMediaDefault);
 GPU_EXPORT BASE_DECLARE_FEATURE(kIncreaseBufferCountForHighFrameRate);
 #endif  // BUILDFLAG(IS_ANDROID)
 
+GPU_EXPORT BASE_DECLARE_FEATURE(kAggressiveSkiaGpuResourcePurge);
+
 GPU_EXPORT BASE_DECLARE_FEATURE(kDefaultEnableGpuRasterization);
 
 GPU_EXPORT BASE_DECLARE_FEATURE(kCanvasOopRasterization);
 
+#if BUILDFLAG(IS_OZONE)
+GPU_EXPORT BASE_DECLARE_FEATURE(kOzoneFrontBufferUsage);
+#endif
+
 GPU_EXPORT BASE_DECLARE_FEATURE(kEnableMSAAOnNewIntelGPUs);
 
 GPU_EXPORT BASE_DECLARE_FEATURE(kDefaultEnableANGLEValidation);
+
+GPU_EXPORT BASE_DECLARE_FEATURE(kDisableSlowMSAAInGraphite);
 
 GPU_EXPORT BASE_DECLARE_FEATURE(kCanvasContextLostInBackground);
 
@@ -44,10 +52,12 @@ GPU_EXPORT BASE_DECLARE_FEATURE(kGpuProcessHighPriorityWin);
 GPU_EXPORT BASE_DECLARE_FEATURE(kDisableVideoOverlayIfMoving);
 
 GPU_EXPORT BASE_DECLARE_FEATURE(kNoUndamagedOverlayPromotion);
+
+GPU_EXPORT BASE_DECLARE_FEATURE(kDCompPresenter);
 #endif
 
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_IOS)
-GPU_EXPORT BASE_DECLARE_FEATURE(kMetal);
+GPU_EXPORT BASE_DECLARE_FEATURE(kAdjustGpuProcessPriority);
 #endif
 
 GPU_EXPORT BASE_DECLARE_FEATURE(kSharedImageManager);
@@ -58,7 +68,11 @@ GPU_EXPORT BASE_DECLARE_FEATURE(kVaapiWebPImageDecodeAcceleration);
 
 GPU_EXPORT BASE_DECLARE_FEATURE(kVulkan);
 
-GPU_EXPORT BASE_DECLARE_FEATURE(kSkiaDawn);
+GPU_EXPORT BASE_DECLARE_FEATURE(kSkiaGraphite);
+
+#if BUILDFLAG(IS_WIN)
+GPU_EXPORT BASE_DECLARE_FEATURE(kSkiaGraphiteDawnUseD3D12);
+#endif
 
 GPU_EXPORT BASE_DECLARE_FEATURE(kEnableGrShaderCacheForVulkan);
 
@@ -78,6 +92,8 @@ GPU_EXPORT BASE_DECLARE_FEATURE(kForceRestartGpuKillSwitch);
 
 GPU_EXPORT BASE_DECLARE_FEATURE(kUseGpuSchedulerDfs);
 
+GPU_EXPORT BASE_DECLARE_FEATURE(kUseClientGmbInterface);
+
 #if BUILDFLAG(IS_ANDROID)
 // This flag is use additionally with kEnableDrDc to enable the feature for
 // vulkan enabled android devices.
@@ -85,12 +101,18 @@ GPU_EXPORT BASE_DECLARE_FEATURE(kEnableDrDcVulkan);
 #endif  // BUILDFLAG(IS_ANDROID)
 
 GPU_EXPORT BASE_DECLARE_FEATURE(kWebGPUService);
+GPU_EXPORT BASE_DECLARE_FEATURE(kWebGPUBlobCache);
+GPU_EXPORT BASE_DECLARE_FEATURE(kWebGPUUseDXC);
 
 GPU_EXPORT BASE_DECLARE_FEATURE(kIncreasedCmdBufferParseSlice);
 
 GPU_EXPORT BASE_DECLARE_FEATURE(kPassthroughYuvRgbConversion);
 
-GPU_EXPORT BASE_DECLARE_FEATURE(kCmdDecoderAlwaysGetSizeFromSourceTexture);
+GPU_EXPORT BASE_DECLARE_FEATURE(kGpuCleanupInBackground);
+
+#if BUILDFLAG(IS_ANDROID)
+GPU_EXPORT BASE_DECLARE_FEATURE(kCmdDecoderSkipGLRedMesaWorkaroundOnAndroid);
+#endif
 
 GPU_EXPORT bool UseGles2ForOopR();
 GPU_EXPORT bool IsUsingVulkan();

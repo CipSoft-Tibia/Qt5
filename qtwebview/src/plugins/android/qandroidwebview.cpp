@@ -7,24 +7,29 @@
 #include <QtCore/private/qjnihelpers_p.h>
 #include <QtCore/qjniobject.h>
 
-#include <QtCore/qmap.h>
-#include <android/bitmap.h>
-#include <QtGui/qguiapplication.h>
+#include <QtCore/qset.h>
 #include <QtCore/qjsondocument.h>
 #include <QtCore/qjsonobject.h>
 #include <QtCore/qurl.h>
 #include <QtCore/qdebug.h>
+#include <QtCore/qthread.h>
+#include <QtCore/qabstracteventdispatcher.h>
 
-#include <QAbstractEventDispatcher>
-#include <QThread>
+#include <QtGui/qguiapplication.h>
+
+#include <android/bitmap.h>
+#include <android/log.h>
 
 QT_BEGIN_NAMESPACE
 
-QAndroidWebViewSettingsPrivate::QAndroidWebViewSettingsPrivate(QJniObject viewController, QObject *p)
-    : QAbstractWebViewSettings(p)
-    , m_viewController(viewController)
-{
+Q_DECLARE_JNI_CLASS(Bitmap, "android/graphics/Bitmap");
 
+using namespace QtJniTypes;
+using namespace Qt::StringLiterals;
+
+QAndroidWebViewSettingsPrivate::QAndroidWebViewSettingsPrivate(const WebViewController &viewController, QObject *p)
+    : QAbstractWebViewSettings(p), m_viewController(viewController)
+{
 }
 
 bool QAndroidWebViewSettingsPrivate::localStorageEnabled() const
@@ -49,51 +54,30 @@ bool QAndroidWebViewSettingsPrivate::allowFileAccess() const
 
 void QAndroidWebViewSettingsPrivate::setLocalContentCanAccessFileUrls(bool enabled)
 {
-    m_viewController.callMethod<void>("setAllowFileAccessFromFileURLs", "(Z)V", enabled);
+    m_viewController.callMethod<void>("setAllowFileAccessFromFileURLs", enabled);
 }
 
 void QAndroidWebViewSettingsPrivate::setJavascriptEnabled(bool enabled)
 {
-    m_viewController.callMethod<void>("setJavaScriptEnabled", "(Z)V", enabled);
+    m_viewController.callMethod<void>("setJavaScriptEnabled", enabled);
 }
 
 void QAndroidWebViewSettingsPrivate::setLocalStorageEnabled(bool enabled)
 {
-    m_viewController.callMethod<void>("setLocalStorageEnabled", "(Z)V", enabled);
+    m_viewController.callMethod<void>("setLocalStorageEnabled", enabled);
 }
 
 void QAndroidWebViewSettingsPrivate::setAllowFileAccess(bool enabled)
 {
-    m_viewController.callMethod<void>("setAllowFileAccess", "(Z)V", enabled);
+    m_viewController.callMethod<void>("setAllowFileAccess", enabled);
 }
 
-static const char qtAndroidWebViewControllerClass[] = "org/qtproject/qt/android/view/QtAndroidWebViewController";
-
-//static bool favIcon(JNIEnv *env, jobject icon, QImage *image)
-//{
-//    // TODO:
-//    AndroidBitmapInfo bitmapInfo;
-//    if (AndroidBitmap_getInfo(env, icon, &bitmapInfo) != ANDROID_BITMAP_RESULT_SUCCESS)
-//        return false;
-
-//    void *pixelData;
-//    if (AndroidBitmap_lockPixels(env, icon, &pixelData) != ANDROID_BITMAP_RESULT_SUCCESS)
-//        return false;
-
-//    *image = QImage::fromData(static_cast<const uchar *>(pixelData), bitmapInfo.width * bitmapInfo.height);
-//    AndroidBitmap_unlockPixels(env, icon);
-
-//    return true;
-//}
-
-typedef QMap<quintptr, QAndroidWebViewPrivate *> WebViews;
+typedef QSet<QAndroidWebViewPrivate *> WebViews;
 Q_GLOBAL_STATIC(WebViews, g_webViews)
 
 QAndroidWebViewPrivate::QAndroidWebViewPrivate(QObject *p)
-    : QAbstractWebView(p)
-    , m_id(reinterpret_cast<quintptr>(this))
-    , m_callbackId(0)
-    , m_window(0)
+    : QAbstractWebView(p) , m_callbackId(0) , m_window(nullptr)
+    , m_viewController(nullptr) , m_webView(nullptr)
 {
     // QtAndroidWebViewController constructor blocks a qGuiThread until
     // the WebView is created and configured in UI thread.
@@ -104,26 +88,22 @@ QAndroidWebViewPrivate::QAndroidWebViewPrivate(QObject *p)
             eventDispatcher->processEvents(
                     QEventLoop::ExcludeUserInputEvents|QEventLoop::ExcludeSocketNotifiers);
     }
-    m_viewController = QJniObject(qtAndroidWebViewControllerClass,
-                                  "(Landroid/app/Activity;J)V",
-                                  QtAndroidPrivate::activity(),
-                                  m_id);
+    m_viewController = WebViewController(QtAndroidPrivate::activity(), reinterpret_cast<jlong>(this));
 
     QtAndroidPrivate::releaseAndroidDeadlockProtector();
 
-    m_webView = m_viewController.callObjectMethod("getWebView",
-                                                  "()Landroid/webkit/WebView;");
+    m_webView = m_viewController.callMethod<WebView>("getWebView");
     m_settings = new QAndroidWebViewSettingsPrivate(m_viewController, this);
 
     m_window = QWindow::fromWinId(reinterpret_cast<WId>(m_webView.object()));
-    g_webViews->insert(m_id, this);
+    g_webViews->insert(this);
     connect(qApp, &QGuiApplication::applicationStateChanged,
             this, &QAndroidWebViewPrivate::onApplicationStateChanged);
 }
 
 QAndroidWebViewPrivate::~QAndroidWebViewPrivate()
 {
-    g_webViews->take(m_id);
+    g_webViews->remove(this);
     if (m_window != 0) {
         m_window->setVisible(false);
         m_window->setParent(0);
@@ -135,52 +115,40 @@ QAndroidWebViewPrivate::~QAndroidWebViewPrivate()
 
 QString QAndroidWebViewPrivate::httpUserAgent() const
 {
-    return QString( m_viewController.callObjectMethod<jstring>("getUserAgent").toString());
+    return m_viewController.callMethod<QString>("getUserAgent");
 }
 
 void QAndroidWebViewPrivate::setHttpUserAgent(const QString &userAgent)
 {
-    m_viewController.callMethod<void>("setUserAgent",
-                                      "(Ljava/lang/String;)V",
-                                      QJniObject::fromString(userAgent).object());
+    m_viewController.callMethod<void>("setUserAgent", userAgent);
     Q_EMIT httpUserAgentChanged(userAgent);
 }
 
 QUrl QAndroidWebViewPrivate::url() const
 {
-    return QUrl::fromUserInput(m_viewController.callObjectMethod<jstring>("getUrl").toString());
+    return QUrl::fromUserInput(m_viewController.callMethod<QString>("getUrl"));
 }
 
 void QAndroidWebViewPrivate::setUrl(const QUrl &url)
 {
-    m_viewController.callMethod<void>("loadUrl",
-                                      "(Ljava/lang/String;)V",
-                                      QJniObject::fromString(url.toString()).object());
+    m_viewController.callMethod<void>("loadUrl", url.toString());
 }
 
 void QAndroidWebViewPrivate::loadHtml(const QString &html, const QUrl &baseUrl)
 {
-    const QJniObject &htmlString = QJniObject::fromString(html);
-    const QJniObject &mimeTypeString = QJniObject::fromString(QLatin1String("text/html;charset=UTF-8"));
+    const QString mimeTypeString = u"text/html;charset=UTF-8"_s;
 
-    baseUrl.isEmpty() ? m_viewController.callMethod<void>("loadData",
-                                                          "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
-                                                          htmlString.object(),
-                                                          mimeTypeString.object(),
-                                                          0)
-
+    baseUrl.isEmpty() ? m_viewController.callMethod<void>("loadData", html, mimeTypeString,
+                                                          jstring(nullptr))
                       : m_viewController.callMethod<void>("loadDataWithBaseURL",
-                                                          "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
-                                                          QJniObject::fromString(baseUrl.toString()).object(),
-                                                          htmlString.object(),
-                                                          mimeTypeString.object(),
-                                                          0,
-                                                          0);
+                                                          baseUrl.toString(),
+                                                          html, mimeTypeString,
+                                                          jstring(nullptr), jstring(nullptr));
 }
 
 bool QAndroidWebViewPrivate::canGoBack() const
 {
-    return m_viewController.callMethod<jboolean>("canGoBack");
+    return m_viewController.callMethod<bool>("canGoBack");
 }
 
 void QAndroidWebViewPrivate::goBack()
@@ -190,7 +158,7 @@ void QAndroidWebViewPrivate::goBack()
 
 bool QAndroidWebViewPrivate::canGoForward() const
 {
-    return m_viewController.callMethod<jboolean>("canGoForward");
+    return m_viewController.callMethod<bool>("canGoForward");
 }
 
 void QAndroidWebViewPrivate::goForward()
@@ -205,7 +173,7 @@ void QAndroidWebViewPrivate::reload()
 
 QString QAndroidWebViewPrivate::title() const
 {
-    return m_viewController.callObjectMethod<jstring>("getTitle").toString();
+    return m_viewController.callMethod<QString>("getTitle");
 }
 
 void QAndroidWebViewPrivate::setGeometry(const QRect &geometry)
@@ -233,10 +201,7 @@ void QAndroidWebViewPrivate::runJavaScriptPrivate(const QString &script,
         Q_EMIT javaScriptResult(callbackId, QVariant());
     }
 
-    m_viewController.callMethod<void>("runJavaScript",
-                                      "(Ljava/lang/String;J)V",
-                                      static_cast<jstring>(QJniObject::fromString(script).object()),
-                                      callbackId);
+    m_viewController.callMethod<void>("runJavaScript", script, jlong(callbackId));
 }
 
 QAbstractWebViewSettings *QAndroidWebViewPrivate::getSettings() const
@@ -247,27 +212,23 @@ QAbstractWebViewSettings *QAndroidWebViewPrivate::getSettings() const
 void QAndroidWebViewPrivate::setCookie(const QString &domain, const QString &name, const QString &value)
 {
     QNativeInterface::QAndroidApplication::runOnAndroidMainThread([=]() {
-        m_viewController.callMethod<void>("setCookie",
-                                          "(Ljava/lang/String;Ljava/lang/String;)V",
-                                          static_cast<jstring>(QJniObject::fromString(domain).object()),
-                                          static_cast<jstring>(QJniObject::fromString(name + "=" + value).object()));
+        const QString cookie = name + u'=' + value;
+        WebViewController::callStaticMethod<void>("setCookie", jlong(this), domain, cookie);
     });
 }
 
 void QAndroidWebViewPrivate::deleteCookie(const QString &domain, const QString &name)
 {
     QNativeInterface::QAndroidApplication::runOnAndroidMainThread([=]() {
-        m_viewController.callMethod<void>("removeCookie",
-                                          "(Ljava/lang/String;Ljava/lang/String;)V",
-                                          static_cast<jstring>(QJniObject::fromString(domain).object()),
-                                          static_cast<jstring>(QJniObject::fromString(name.split(u'=').at(0) + u'=').object()));
+        const QString cookie = name.split(u'=').at(0) + u'=';
+        WebViewController::callStaticMethod<void>("removeCookie", jlong(this), domain, cookie);
     });
 }
 
 void QAndroidWebViewPrivate::deleteAllCookies()
 {
     QNativeInterface::QAndroidApplication::runOnAndroidMainThread([=]() {
-        m_viewController.callMethod<void>("removeCookies");
+        WebViewController::callStaticMethod<void>("removeCookies");
     });
 }
 
@@ -278,12 +239,12 @@ void QAndroidWebViewPrivate::setVisible(bool visible)
 
 int QAndroidWebViewPrivate::loadProgress() const
 {
-    return m_viewController.callMethod<jint>("getProgress");
+    return m_viewController.callMethod<int>("getProgress");
 }
 
 bool QAndroidWebViewPrivate::isLoading() const
 {
-    return m_viewController.callMethod<jboolean>("isLoading");
+    return m_viewController.callMethod<bool>("isLoading");
 }
 
 void QAndroidWebViewPrivate::setParentView(QObject *view)
@@ -328,9 +289,9 @@ static void c_onRunJavaScriptResult(JNIEnv *env,
     Q_UNUSED(env);
     Q_UNUSED(thiz);
 
-    const WebViews &wv = (*g_webViews);
-    QAndroidWebViewPrivate *wc = static_cast<QAndroidWebViewPrivate *>(wv[id]);
-    if (!wc)
+    Q_ASSERT(id);
+    QAndroidWebViewPrivate *wc = reinterpret_cast<QAndroidWebViewPrivate *>(id);
+    if (!g_webViews->contains(wc))
         return;
 
     const QString &resultString = QJniObject(result).toString();
@@ -349,6 +310,7 @@ static void c_onRunJavaScriptResult(JNIEnv *env,
                                 jsonValue.isNull() ? resultString
                                                    : jsonValue.toVariant());
 }
+Q_DECLARE_JNI_NATIVE_METHOD(c_onRunJavaScriptResult)
 
 static void c_onPageFinished(JNIEnv *env,
                              jobject thiz,
@@ -357,9 +319,10 @@ static void c_onPageFinished(JNIEnv *env,
 {
     Q_UNUSED(env);
     Q_UNUSED(thiz);
-    const WebViews &wv = (*g_webViews);
-    QAndroidWebViewPrivate *wc = wv[id];
-    if (!wc)
+
+    Q_ASSERT(id);
+    QAndroidWebViewPrivate *wc = reinterpret_cast<QAndroidWebViewPrivate *>(id);
+    if (!g_webViews->contains(wc))
         return;
 
     QWebViewLoadRequestPrivate loadRequest(QUrl(QJniObject(url).toString()),
@@ -367,20 +330,23 @@ static void c_onPageFinished(JNIEnv *env,
                                            QString());
     Q_EMIT wc->loadingChanged(loadRequest);
 }
+Q_DECLARE_JNI_NATIVE_METHOD(c_onPageFinished)
 
 static void c_onPageStarted(JNIEnv *env,
                             jobject thiz,
                             jlong id,
                             jstring url,
-                            jobject icon)
+                            Bitmap icon)
 {
     Q_UNUSED(env);
     Q_UNUSED(thiz);
     Q_UNUSED(icon);
-    const WebViews &wv = (*g_webViews);
-    QAndroidWebViewPrivate *wc = wv[id];
-    if (!wc)
+
+    Q_ASSERT(id);
+    QAndroidWebViewPrivate *wc = reinterpret_cast<QAndroidWebViewPrivate *>(id);
+    if (!g_webViews->contains(wc))
         return;
+
     QWebViewLoadRequestPrivate loadRequest(QUrl(QJniObject(url).toString()),
                                            QWebView::LoadStartedStatus,
                                            QString());
@@ -393,6 +359,7 @@ static void c_onPageStarted(JNIEnv *env,
 //    if (favIcon(env, icon, &image))
 //        Q_EMIT wc->iconChanged(image);
 }
+Q_DECLARE_JNI_NATIVE_METHOD(c_onPageStarted)
 
 static void c_onProgressChanged(JNIEnv *env,
                                 jobject thiz,
@@ -401,36 +368,38 @@ static void c_onProgressChanged(JNIEnv *env,
 {
     Q_UNUSED(env);
     Q_UNUSED(thiz);
-    const WebViews &wv = (*g_webViews);
-    QAndroidWebViewPrivate *wc = wv[id];
-    if (!wc)
+
+    Q_ASSERT(id);
+    QAndroidWebViewPrivate *wc = reinterpret_cast<QAndroidWebViewPrivate *>(id);
+    if (!g_webViews->contains(wc))
         return;
 
     Q_EMIT wc->loadProgressChanged(newProgress);
 }
+Q_DECLARE_JNI_NATIVE_METHOD(c_onProgressChanged)
 
 static void c_onReceivedIcon(JNIEnv *env,
                              jobject thiz,
                              jlong id,
-                             jobject icon)
+                             Bitmap icon)
 {
     Q_UNUSED(env);
     Q_UNUSED(thiz);
-    Q_UNUSED(id);
     Q_UNUSED(icon);
 
-    const WebViews &wv = (*g_webViews);
-    QAndroidWebViewPrivate *wc = wv[id];
-    if (!wc)
+    Q_ASSERT(id);
+    QAndroidWebViewPrivate *wc = reinterpret_cast<QAndroidWebViewPrivate *>(id);
+    if (!g_webViews->contains(wc))
         return;
 
-    if (!icon)
+    if (!icon.isValid())
         return;
 
 //    QImage image;
 //    if (favIcon(env, icon, &image))
 //        Q_EMIT wc->iconChanged(image);
 }
+Q_DECLARE_JNI_NATIVE_METHOD(c_onReceivedIcon)
 
 static void c_onReceivedTitle(JNIEnv *env,
                               jobject thiz,
@@ -439,14 +408,16 @@ static void c_onReceivedTitle(JNIEnv *env,
 {
     Q_UNUSED(env);
     Q_UNUSED(thiz);
-    const WebViews &wv = (*g_webViews);
-    QAndroidWebViewPrivate *wc = wv[id];
-    if (!wc)
+
+    Q_ASSERT(id);
+    QAndroidWebViewPrivate *wc = reinterpret_cast<QAndroidWebViewPrivate *>(id);
+    if (!g_webViews->contains(wc))
         return;
 
     const QString &qTitle = QJniObject(title).toString();
     Q_EMIT wc->titleChanged(qTitle);
 }
+Q_DECLARE_JNI_NATIVE_METHOD(c_onReceivedTitle)
 
 static void c_onReceivedError(JNIEnv *env,
                               jobject thiz,
@@ -459,18 +430,20 @@ static void c_onReceivedError(JNIEnv *env,
     Q_UNUSED(thiz);
     Q_UNUSED(errorCode);
 
-    const WebViews &wv = (*g_webViews);
-    QAndroidWebViewPrivate *wc = wv[id];
-    if (!wc)
+    Q_ASSERT(id);
+    QAndroidWebViewPrivate *wc = reinterpret_cast<QAndroidWebViewPrivate *>(id);
+    if (!g_webViews->contains(wc))
         return;
+
     QWebViewLoadRequestPrivate loadRequest(QUrl(QJniObject(url).toString()),
                                            QWebView::LoadFailedStatus,
                                            QJniObject(description).toString());
     Q_EMIT wc->loadingChanged(loadRequest);
 }
+Q_DECLARE_JNI_NATIVE_METHOD(c_onReceivedError)
 
 static void c_onCookieAdded(JNIEnv *env,
-                            jobject thiz,
+                            jclass thiz,
                             jlong id,
                             jboolean result,
                             jstring domain,
@@ -479,17 +452,18 @@ static void c_onCookieAdded(JNIEnv *env,
     Q_UNUSED(env);
     Q_UNUSED(thiz);
 
-    if (result) {
-        const WebViews &wv = (*g_webViews);
-        QAndroidWebViewPrivate *wc = wv[id];
-        if (!wc)
-            return;
+    Q_ASSERT(id);
+    QAndroidWebViewPrivate *wc = reinterpret_cast<QAndroidWebViewPrivate *>(id);
+    if (!g_webViews->contains(wc))
+        return;
+
+    if (result)
         Q_EMIT wc->cookieAdded(QJniObject(domain).toString(), QJniObject(name).toString());
-    }
 }
+Q_DECLARE_JNI_NATIVE_METHOD(c_onCookieAdded)
 
 static void c_onCookieRemoved(JNIEnv *env,
-                              jobject thiz,
+                              jclass thiz,
                               jlong id,
                               jboolean result,
                               jstring domain,
@@ -498,54 +472,37 @@ static void c_onCookieRemoved(JNIEnv *env,
     Q_UNUSED(env);
     Q_UNUSED(thiz);
 
-    if (result) {
-        const WebViews &wv = (*g_webViews);
-        QAndroidWebViewPrivate *wc = wv[id];
-        if (!wc)
-            return;
-        Q_EMIT wc->cookieRemoved(QJniObject(domain).toString(), QJniObject(name).toString());
-    }
-}
+    Q_ASSERT(id);
+    QAndroidWebViewPrivate *wc = reinterpret_cast<QAndroidWebViewPrivate *>(id);
+    if (!g_webViews->contains(wc))
+        return;
 
-JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/)
+    if (result)
+        Q_EMIT wc->cookieRemoved(QJniObject(domain).toString(), QJniObject(name).toString());
+}
+Q_DECLARE_JNI_NATIVE_METHOD(c_onCookieRemoved)
+
+JNIEXPORT jint JNI_OnLoad(JavaVM* /* vm */, void* /*reserved*/)
 {
     static bool initialized = false;
     if (initialized)
         return JNI_VERSION_1_6;
     initialized = true;
 
-    typedef union {
-        JNIEnv *nativeEnvironment;
-        void *venv;
-    } UnionJNIEnvToVoid;
-
-    UnionJNIEnvToVoid uenv;
-    uenv.venv = NULL;
-
-    if (vm->GetEnv(&uenv.venv, JNI_VERSION_1_6) != JNI_OK)
+    if (!WebViewController::registerNativeMethods({
+        Q_JNI_NATIVE_METHOD(c_onRunJavaScriptResult),
+        Q_JNI_NATIVE_METHOD(c_onPageFinished),
+        Q_JNI_NATIVE_METHOD(c_onPageStarted),
+        Q_JNI_NATIVE_METHOD(c_onProgressChanged),
+        Q_JNI_NATIVE_METHOD(c_onReceivedIcon),
+        Q_JNI_NATIVE_METHOD(c_onReceivedTitle),
+        Q_JNI_NATIVE_METHOD(c_onReceivedError),
+        Q_JNI_NATIVE_METHOD(c_onCookieAdded),
+        Q_JNI_NATIVE_METHOD(c_onCookieRemoved),
+    })) {
+        qCritical("Failed to register native methods for WebViewController");
         return JNI_ERR;
-
-    JNIEnv *env = uenv.nativeEnvironment;
-    jclass clazz = QtAndroidPrivate::findClass(qtAndroidWebViewControllerClass, env);
-    if (!clazz)
-        return JNI_ERR;
-
-    JNINativeMethod methods[] = {
-        {"c_onPageFinished", "(JLjava/lang/String;)V", reinterpret_cast<void *>(c_onPageFinished)},
-        {"c_onPageStarted", "(JLjava/lang/String;Landroid/graphics/Bitmap;)V", reinterpret_cast<void *>(c_onPageStarted)},
-        {"c_onProgressChanged", "(JI)V", reinterpret_cast<void *>(c_onProgressChanged)},
-        {"c_onReceivedIcon", "(JLandroid/graphics/Bitmap;)V", reinterpret_cast<void *>(c_onReceivedIcon)},
-        {"c_onReceivedTitle", "(JLjava/lang/String;)V", reinterpret_cast<void *>(c_onReceivedTitle)},
-        {"c_onRunJavaScriptResult", "(JJLjava/lang/String;)V", reinterpret_cast<void *>(c_onRunJavaScriptResult)},
-        {"c_onReceivedError", "(JILjava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void *>(c_onReceivedError)},
-        {"c_onCookieAdded", "(JZLjava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void *>(c_onCookieAdded)},
-        {"c_onCookieRemoved", "(JZLjava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void *>(c_onCookieRemoved)}
-    };
-
-    const int nMethods = sizeof(methods) / sizeof(methods[0]);
-
-    if (env->RegisterNatives(clazz, methods, nMethods) != JNI_OK)
-        return JNI_ERR;
+    }
 
     return JNI_VERSION_1_6;
 }

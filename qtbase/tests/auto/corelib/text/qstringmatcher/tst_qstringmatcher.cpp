@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <qstringmatcher.h>
@@ -24,6 +24,7 @@ void tst_QStringMatcher::qstringmatcher()
     QCOMPARE(matcher.caseSensitivity(), Qt::CaseSensitive);
     QCOMPARE(matcher.indexIn("foo", 1), 1);
     QCOMPARE(matcher.pattern(), QString());
+    QCOMPARE(matcher.patternView(), QStringView());
 }
 
 // public Qt::CaseSensitivity caseSensitivity() const
@@ -143,6 +144,7 @@ void tst_QStringMatcher::assignOperator()
 
     QStringMatcher m2 = m1;
     QCOMPARE(m2.pattern(), needle);
+    QCOMPARE(m2.patternView(), needle);
     QCOMPARE(m2.indexIn(hayStack), 3);
 }
 

@@ -139,8 +139,7 @@ class WebRtcVideoCaptureServiceEnumerationBrowserTest
       int expected_device_count) {
     const std::string javascript_to_execute = base::StringPrintf(
         kEnumerateVideoCaptureDevicesAndVerify, expected_device_count);
-    ASSERT_EQ("OK", EvalJs(shell(), javascript_to_execute,
-                           EXECUTE_SCRIPT_USE_MANUAL_REPLY));
+    ASSERT_TRUE(ExecJs(shell(), javascript_to_execute));
   }
 
   void RegisterForDeviceChangeEventInRenderer() {
@@ -148,8 +147,7 @@ class WebRtcVideoCaptureServiceEnumerationBrowserTest
   }
 
   void WaitForDeviceChangeEventInRenderer() {
-    ASSERT_EQ("OK", EvalJs(shell(), kWaitForDeviceChangeEvent,
-                           EXECUTE_SCRIPT_USE_MANUAL_REPLY));
+    ASSERT_TRUE(ExecJs(shell(), kWaitForDeviceChangeEvent));
   }
 
   void ResetHasReceivedChangedEventFlag() {
@@ -233,9 +231,10 @@ IN_PROC_BROWSER_TEST_P(WebRtcVideoCaptureServiceEnumerationBrowserTest,
 }
 
 // The mediadevices.ondevicechange event is currently not supported on Android.
-// Flaky on ChromeOS.  https://crbug.com/1126373
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS_ASH) || \
-    BUILDFLAG(IS_CHROMEOS_LACROS)
+// TODO(crbug.com/1126373): The test is flaky on multiple platforms.
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS_ASH) ||    \
+    BUILDFLAG(IS_CHROMEOS_LACROS) || BUILDFLAG(IS_FUCHSIA) || \
+    BUILDFLAG(IS_IOS)
 #define MAYBE_AddingAndRemovingVirtualDeviceTriggersMediaElementOnDeviceChange \
   DISABLED_AddingAndRemovingVirtualDeviceTriggersMediaElementOnDeviceChange
 #else

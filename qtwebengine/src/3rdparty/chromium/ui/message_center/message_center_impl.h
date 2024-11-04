@@ -52,6 +52,7 @@ class MessageCenterImpl : public MessageCenter,
   ExpandState GetNotificationExpandState(const std::string& id) override;
   void SetNotificationExpandState(const std::string& id,
                                   const ExpandState state) override;
+  void OnSetExpanded(const std::string& id, bool expanded) override;
   void SetHasMessageCenterView(bool has_message_center_view) override;
   bool HasMessageCenterView() const override;
   size_t NotificationCount() const override;
@@ -90,6 +91,7 @@ class MessageCenterImpl : public MessageCenter,
                                           int button_index,
                                           const std::u16string& reply) override;
   void ClickOnSettingsButton(const std::string& id) override;
+  void ClickOnSnoozeButton(const std::string& id) override;
   void DisableNotification(const std::string& id) override;
   void MarkSinglePopupAsShown(const std::string& id,
                               bool mark_notification_as_read) override;
@@ -138,7 +140,7 @@ class MessageCenterImpl : public MessageCenter,
   bool visible_ = false;
   bool has_message_center_view_ = true;
   bool spoken_feedback_enabled_ = false;
-  bool notifications_grouping_enabled_ = false;
+  const bool notifications_grouping_enabled_;
 
   std::u16string system_notification_app_name_;
 

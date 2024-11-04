@@ -18,6 +18,10 @@
 #include <QtWebSockets/qwebsocket.h>
 #endif // defined(QT_WEBSOCKETS_LIB)
 
+#if QT_CONFIG(localserver)
+#include <QtNetwork/qlocalserver.h>
+#endif
+
 #include <memory>
 
 QT_BEGIN_NAMESPACE
@@ -44,6 +48,11 @@ public:
 
     void bind(QTcpServer *server = nullptr);
     QList<QTcpServer *> servers() const;
+
+#if QT_CONFIG(localserver)
+    void bind(QLocalServer *server);
+    QList<QLocalServer *> localServers() const;
+#endif
 
 #if QT_CONFIG(ssl)
     void sslSetup(const QSslCertificate &certificate, const QSslKey &privateKey,

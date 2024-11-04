@@ -18,7 +18,7 @@ class CORE_EXPORT LayoutNGView : public LayoutNGBlockFlowMixin<LayoutView> {
 
   bool IsFragmentationContextRoot() const override;
 
-  void UpdateBlockLayout(bool relayout_children) override;
+  void UpdateLayout() final;
 
   const char* GetName() const override {
     NOT_DESTROYED();
@@ -29,7 +29,6 @@ class CORE_EXPORT LayoutNGView : public LayoutNGBlockFlowMixin<LayoutView> {
   bool IsOfType(LayoutObjectType) const override;
 
  private:
-  MinMaxSizes ComputeIntrinsicLogicalWidths() const override;
   AtomicString NamedPageAtIndex(wtf_size_t page_index) const override;
 };
 

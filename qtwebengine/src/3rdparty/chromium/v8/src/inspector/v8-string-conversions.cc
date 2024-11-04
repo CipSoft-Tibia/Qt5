@@ -12,7 +12,7 @@
 
 namespace v8_inspector {
 namespace {
-using UChar = uint16_t;
+using UChar = char16_t;
 using UChar32 = uint32_t;
 
 bool isASCII(UChar c) { return !(c & ~0x7F); }
@@ -359,8 +359,8 @@ std::string UTF16ToUTF8(const UChar* stringStart, size_t length) {
   std::string output(length * 3, '\0');
   const UChar* characters = stringStart;
   const UChar* characters_end = characters + length;
-  char* buffer = &*output.begin();
-  char* buffer_end = &*output.end();
+  char* buffer = output.data();
+  char* buffer_end = output.data() + output.size();
   while (characters < characters_end) {
     // Use strict conversion to detect unpaired surrogates.
     ConversionResult result = convertUTF16ToUTF8(
@@ -386,7 +386,7 @@ std::string UTF16ToUTF8(const UChar* stringStart, size_t length) {
 
 std::basic_string<UChar> UTF8ToUTF16(const char* stringStart, size_t length) {
   if (!stringStart || !length) return std::basic_string<UChar>();
-  std::vector<uint16_t> buffer(length);
+  std::vector<UChar> buffer(length);
   UChar* bufferStart = buffer.data();
 
   UChar* bufferCurrent = bufferStart;
@@ -395,7 +395,7 @@ std::basic_string<UChar> UTF8ToUTF16(const char* stringStart, size_t length) {
                          reinterpret_cast<const char*>(stringStart + length),
                          &bufferCurrent, bufferCurrent + buffer.size(), nullptr,
                          true) != conversionOK)
-    return std::basic_string<uint16_t>();
+    return std::basic_string<UChar>();
   size_t utf16Length = bufferCurrent - bufferStart;
   return std::basic_string<UChar>(bufferStart, bufferStart + utf16Length);
 }

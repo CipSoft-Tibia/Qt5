@@ -22,7 +22,6 @@ GL_EXPORT void ClearBindingsGLX();
 GL_EXPORT bool GetGLWindowSystemBindingInfoGLX(const GLVersionInfo& gl_info,
                                                GLWindowSystemBindingInfo* info);
 GL_EXPORT void SetDisabledExtensionsGLX(const std::string& disabled_extensions);
-GL_EXPORT bool InitializeExtensionSettingsOneOffGLX();
 
 class GL_EXPORT GLXApiBase : public GLXApi {
  public:

@@ -1,13 +1,12 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR
-// GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qffmpegscreencapture_dxgi_p.h"
 #include "qffmpegsurfacecapturegrabber_p.h"
 #include <private/qabstractvideobuffer_p.h>
 #include <private/qmultimediautils_p.h>
 #include <private/qwindowsmultimediautils_p.h>
-#include <qpa/qplatformscreen_p.h>
+#include <qtgui/qscreen_platform.h>
 #include "qvideoframe.h"
 
 #include <qloggingcategory.h>
@@ -82,11 +81,6 @@ public:
     ~QD3D11TextureVideoBuffer()
     {
         QD3D11TextureVideoBuffer::unmap();
-    }
-
-    QVideoFrame::MapMode mapMode() const override
-    {
-        return m_mapMode;
     }
 
     MapData map(QVideoFrame::MapMode mode) override
@@ -287,7 +281,7 @@ private:
         if (!screen)
             return { unexpect, E_FAIL, "Cannot find nullptr screen"_L1 };
 
-        auto *winScreen = screen->nativeInterface<QNativeInterface::Private::QWindowsScreen>();
+        auto *winScreen = screen->nativeInterface<QNativeInterface::QWindowsScreen>();
         HMONITOR handle = winScreen ? winScreen->handle() : nullptr;
 
         ComPtr<IDXGIFactory1> factory;
@@ -322,7 +316,7 @@ private:
 
 QSize getPhysicalSizePixels(const QScreen *screen)
 {
-    const auto *winScreen = screen->nativeInterface<QNativeInterface::Private::QWindowsScreen>();
+    const auto *winScreen = screen->nativeInterface<QNativeInterface::QWindowsScreen>();
     if (!winScreen)
         return {};
 

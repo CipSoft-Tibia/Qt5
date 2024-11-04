@@ -1,5 +1,5 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtest.h>
 #include <QDebug>
@@ -548,6 +548,10 @@ private slots:
 
     void visibleVsVisibility_data();
     void visibleVsVisibility();
+
+    void visibilityDoesntClobberWindowState();
+
+    void eventTypes();
 
 private:
     QPointingDevice *touchDevice; // TODO make const after fixing QTBUG-107864
@@ -4119,7 +4123,7 @@ void tst_qquickwindow::visibleVsVisibility()
     QFETCH(bool, expectVisible);
     QFETCH(bool, expectConflictingPropertyWarning);
 
-    const QString warningMsg = qmlfile.toString() + ": Conflicting properties 'visible' and 'visibility'";
+    const QString warningMsg = qmlfile.toString() + ":3:1: QML Window: Conflicting properties 'visible' and 'visibility'";
 
     QTest::failOnWarning(QRegularExpression(".*"));
     if (expectConflictingPropertyWarning)
@@ -4135,6 +4139,50 @@ void tst_qquickwindow::visibleVsVisibility()
     QQuickWindow *window = qobject_cast<QQuickWindow*>(created);
     QVERIFY(window);
     QCOMPARE(window->isVisible(), expectVisible);
+}
+
+void tst_qquickwindow::visibilityDoesntClobberWindowState()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.loadUrl(testFileUrl("visibilityDoesntClobberWindowState.qml"));
+    QObject *created = component.create();
+    QScopedPointer<QObject> cleanup(created);
+    QVERIFY(created);
+
+    QQuickWindow *window = qobject_cast<QQuickWindow*>(created);
+    QVERIFY(window);
+
+    window->showMaximized();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QCOMPARE(window->windowState(), Qt::WindowMaximized);
+
+    window->setProperty("visible", false);
+    window->setProperty("visible", true);
+
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QCOMPARE(window->windowState(), Qt::WindowMaximized);
+
+    EventFilter eventFilter;
+    window->installEventFilter(&eventFilter);
+    window->setProperty("visibility", QWindow::FullScreen);
+    QTRY_VERIFY(eventFilter.events.contains(QEvent::WindowStateChange));
+    QTRY_COMPARE(window->windowState(), Qt::WindowFullScreen);
+
+    eventFilter.events.clear();
+    window->setWindowState(Qt::WindowMaximized);
+    QTRY_VERIFY(eventFilter.events.contains(QEvent::WindowStateChange));
+    QTRY_COMPARE(window->windowState(), Qt::WindowMaximized);
+}
+
+void tst_qquickwindow::eventTypes()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.loadUrl(testFileUrl("eventTypes.qml"));
+    QObject *created = component.create();
+    QScopedPointer<QObject> cleanup(created);
+    QVERIFY(created);
 }
 
 QTEST_MAIN(tst_qquickwindow)

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,7 @@
 #include "platform/api/tls_connection_factory.h"
 #include "platform/base/ip_address.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class ReceiverSocketFactory final : public TlsConnectionFactory::Client {
  public:
@@ -49,7 +48,6 @@ class ReceiverSocketFactory final : public TlsConnectionFactory::Client {
   CastSocket::Client* const socket_client_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_RECEIVER_PUBLIC_RECEIVER_SOCKET_FACTORY_H_

@@ -57,6 +57,8 @@ class CONTENT_EXPORT AuctionURLLoaderFactoryProxy
   // of not making unnecessary connections. Invoked immediately, if it's going
   // to be invoked at all.
   //
+  // `force_reload` if true, the request will be made bypassing the cache.
+  //
   // `frame_origin` is the origin of the frame running the auction. Used as the
   // initiator.
   //
@@ -74,11 +76,16 @@ class CONTENT_EXPORT AuctionURLLoaderFactoryProxy
   // for an optional WASM helper for the worklet, and `trusted_signals_url` is
   // the optional JSON url for additional input to the script. No other URLs may
   // be requested.
+  //
+  // `needs_cors_for_additional_bid` should be set if this is a bidder resource
+  // that's not been verifiably selected by the bidder itself, but indirectly
+  // via an additional bid, so additional checks are needed.
   AuctionURLLoaderFactoryProxy(
       mojo::PendingReceiver<network::mojom::URLLoaderFactory> pending_receiver,
       GetUrlLoaderFactoryCallback get_frame_url_loader_factory,
       GetUrlLoaderFactoryCallback get_trusted_url_loader_factory,
       PreconnectSocketCallback preconnect_socket_callback,
+      bool force_reload,
       const url::Origin& top_frame_origin,
       const url::Origin& frame_origin,
       absl::optional<int> renderer_process_id,
@@ -86,7 +93,8 @@ class CONTENT_EXPORT AuctionURLLoaderFactoryProxy
       network::mojom::ClientSecurityStatePtr client_security_state,
       const GURL& script_url,
       const absl::optional<GURL>& wasm_url,
-      const absl::optional<GURL>& trusted_signals_base_url);
+      const absl::optional<GURL>& trusted_signals_base_url,
+      bool needs_cors_for_additional_bid);
   AuctionURLLoaderFactoryProxy(const AuctionURLLoaderFactoryProxy&) = delete;
   AuctionURLLoaderFactoryProxy& operator=(const AuctionURLLoaderFactoryProxy&) =
       delete;
@@ -128,6 +136,7 @@ class CONTENT_EXPORT AuctionURLLoaderFactoryProxy
   const url::Origin frame_origin_;
   const absl::optional<int> renderer_process_id_;
   const bool is_for_seller_;
+  const bool force_reload_;
   const network::mojom::ClientSecurityStatePtr client_security_state_;
 
   // IsolationInfo used for requests using the trusted URLLoaderFactory. A
@@ -138,6 +147,7 @@ class CONTENT_EXPORT AuctionURLLoaderFactoryProxy
   const GURL script_url_;
   const absl::optional<GURL> wasm_url_;
   const absl::optional<GURL> trusted_signals_base_url_;
+  const bool needs_cors_for_additional_bid_;
 };
 
 }  // namespace content

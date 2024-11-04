@@ -124,7 +124,7 @@ void tst_proxy::initialProperties()
     QCOMPARE(m_proxy->columnRolePattern(), QRegularExpression());
     QCOMPARE(m_proxy->columnRoleReplace(), QString());
     QVERIFY(!m_proxy->itemModel());
-    QCOMPARE(m_proxy->multiMatchBehavior(), QItemModelBarDataProxy::MMBLast);
+    QCOMPARE(m_proxy->multiMatchBehavior(), QItemModelBarDataProxy::MultiMatchBehavior::Last);
     QCOMPARE(m_proxy->rotationRole(), QString());
     QCOMPARE(m_proxy->rotationRolePattern(), QRegularExpression());
     QCOMPARE(m_proxy->rotationRoleReplace(), QString());
@@ -142,7 +142,7 @@ void tst_proxy::initialProperties()
     QCOMPARE(m_proxy->rowLabels().size(), 0);
     QVERIFY(!m_proxy->series());
 
-    QCOMPARE(m_proxy->type(), QAbstractDataProxy::DataTypeBar);
+    QCOMPARE(m_proxy->type(), QAbstractDataProxy::DataType::Bar);
 }
 
 void tst_proxy::initializeProperties()
@@ -158,7 +158,7 @@ void tst_proxy::initializeProperties()
     m_proxy->setColumnRolePattern(QRegularExpression("/^.*-(\\d\\d)$/"));
     m_proxy->setColumnRoleReplace("\\\\1");
     m_proxy->setItemModel(table.model());
-    m_proxy->setMultiMatchBehavior(QItemModelBarDataProxy::MMBAverage);
+    m_proxy->setMultiMatchBehavior(QItemModelBarDataProxy::MultiMatchBehavior::Average);
     m_proxy->setRotationRole("rotation");
     m_proxy->setRotationRolePattern(QRegularExpression("/-/"));
     m_proxy->setRotationRoleReplace("\\\\1");
@@ -178,7 +178,7 @@ void tst_proxy::initializeProperties()
     QCOMPARE(m_proxy->columnRolePattern(), QRegularExpression("/^.*-(\\d\\d)$/"));
     QCOMPARE(m_proxy->columnRoleReplace(), QString("\\\\1"));
     QVERIFY(m_proxy->itemModel());
-    QCOMPARE(m_proxy->multiMatchBehavior(), QItemModelBarDataProxy::MMBAverage);
+    QCOMPARE(m_proxy->multiMatchBehavior(), QItemModelBarDataProxy::MultiMatchBehavior::Average);
     QCOMPARE(m_proxy->rotationRole(), QString("rotation"));
     QCOMPARE(m_proxy->rotationRolePattern(), QRegularExpression("/-/"));
     QCOMPARE(m_proxy->rotationRoleReplace(), QString("\\\\1"));
@@ -233,16 +233,16 @@ void tst_proxy::multiMatch()
 
     QCoreApplication::processEvents();
     QCOMPARE(graph.valueAxis()->max(), 6.5f);
-    m_proxy->setMultiMatchBehavior(QItemModelBarDataProxy::MMBFirst);
+    m_proxy->setMultiMatchBehavior(QItemModelBarDataProxy::MultiMatchBehavior::First);
     QCoreApplication::processEvents();
     QCOMPARE(graph.valueAxis()->max(), 3.5f);
-    m_proxy->setMultiMatchBehavior(QItemModelBarDataProxy::MMBLast);
+    m_proxy->setMultiMatchBehavior(QItemModelBarDataProxy::MultiMatchBehavior::Last);
     QCoreApplication::processEvents();
     QCOMPARE(graph.valueAxis()->max(), 6.5f);
-    m_proxy->setMultiMatchBehavior(QItemModelBarDataProxy::MMBAverage);
+    m_proxy->setMultiMatchBehavior(QItemModelBarDataProxy::MultiMatchBehavior::Average);
     QCoreApplication::processEvents();
     QCOMPARE(graph.valueAxis()->max(), 5.0f);
-    m_proxy->setMultiMatchBehavior(QItemModelBarDataProxy::MMBCumulative);
+    m_proxy->setMultiMatchBehavior(QItemModelBarDataProxy::MultiMatchBehavior::Cumulative);
     QCoreApplication::processEvents();
     QCOMPARE(graph.valueAxis()->max(), 15.0f);
 

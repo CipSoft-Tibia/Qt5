@@ -49,7 +49,7 @@ namespace {
 
 constexpr const char kCategory[] = "media";
 
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS) || defined(ARCH_CPU_ARM_FAMILY)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 constexpr uint32_t kDefaultOpusComplexity = 5;
 #else
 constexpr uint32_t kDefaultOpusComplexity = 9;
@@ -144,13 +144,6 @@ AudioEncoderTraits::ParsedConfig* ParseOpusConfigStatic(
     return nullptr;
   }
 
-  // TODO(crbug.com/1378399): Support all multiples of basic frame durations.
-  if (!VerifyParameterValues(frame_duration, &exception_state,
-                             "Unsupported Opus frameDuration.",
-                             {2500, 5000, 10000, 20000, 40000, 60000})) {
-    return nullptr;
-  }
-
   if (opus_config->format().AsEnum() == V8OpusBitstreamFormat::Enum::kOgg) {
     exception_state.ThrowDOMException(DOMExceptionCode::kNotSupportedError,
                                       "Opus Ogg format is unsupported");
@@ -175,6 +168,12 @@ AudioEncoderTraits::ParsedConfig* ParseConfigStatic(
     exception_state.ThrowTypeError("No config provided");
     return nullptr;
   }
+
+  if (config->codec().LengthWithStrippedWhiteSpace() == 0) {
+    exception_state.ThrowTypeError("Invalid codec; codec is required.");
+    return nullptr;
+  }
+
   auto* result = MakeGarbageCollected<AudioEncoderTraits::ParsedConfig>();
 
   result->options.codec = media::AudioCodec::kUnknown;
@@ -183,25 +182,22 @@ AudioEncoderTraits::ParsedConfig* ParseConfigStatic(
       "", config->codec().Utf8(), &is_codec_ambiguous, &result->options.codec);
 
   if (!parse_succeeded || is_codec_ambiguous) {
-    exception_state.ThrowTypeError("Unknown codec.");
-    return nullptr;
+    result->options.codec = media::AudioCodec::kUnknown;
+    return result;
   }
 
   result->options.channels = config->numberOfChannels();
-  if (result->options.channels < 1 ||
-      result->options.channels > media::limits::kMaxChannels) {
+  if (result->options.channels == 0) {
     exception_state.ThrowTypeError(String::Format(
-        "Invalid channel number; expected range from %d to %d, received %d.", 1,
-        media::limits::kMaxChannels, result->options.channels));
+        "Invalid channel count; channel count must be non-zero, received %d.",
+        result->options.channels));
     return nullptr;
   }
 
   result->options.sample_rate = config->sampleRate();
-  if (result->options.sample_rate < media::limits::kMinSampleRate ||
-      result->options.sample_rate > media::limits::kMaxSampleRate) {
+  if (result->options.sample_rate == 0) {
     exception_state.ThrowTypeError(String::Format(
-        "Invalid sample rate; expected range from %d to %d, received %d.",
-        media::limits::kMinSampleRate, media::limits::kMaxSampleRate,
+        "Invalid sample rate; sample rate must be non-zero, received %d.",
         result->options.sample_rate));
     return nullptr;
   }
@@ -234,8 +230,43 @@ AudioEncoderTraits::ParsedConfig* ParseConfigStatic(
 
 bool VerifyCodecSupportStatic(AudioEncoderTraits::ParsedConfig* config,
                               ExceptionState* exception_state) {
+  if (config->options.channels < 1 ||
+      config->options.channels > media::limits::kMaxChannels) {
+    if (exception_state) {
+      exception_state->ThrowDOMException(
+          DOMExceptionCode::kNotSupportedError,
+          String::Format("Unsupported channel count; expected range from %d to "
+                         "%d, received %d.",
+                         1, media::limits::kMaxChannels,
+                         config->options.channels));
+    }
+    return false;
+  }
+
+  if (config->options.sample_rate < media::limits::kMinSampleRate ||
+      config->options.sample_rate > media::limits::kMaxSampleRate) {
+    if (exception_state) {
+      exception_state->ThrowDOMException(
+          DOMExceptionCode::kNotSupportedError,
+          String::Format(
+              "Unsupported sample rate; expected range from %d to %d, "
+              "received %d.",
+              media::limits::kMinSampleRate, media::limits::kMaxSampleRate,
+              config->options.sample_rate));
+    }
+    return false;
+  }
+
   switch (config->options.codec) {
     case media::AudioCodec::kOpus: {
+      // TODO(crbug.com/1378399): Support all multiples of basic frame
+      // durations.
+      if (!VerifyParameterValues(
+              config->options.opus->frame_duration.InMicroseconds(),
+              exception_state, "Unsupported Opus frameDuration.",
+              {2500, 5000, 10000, 20000, 40000, 60000})) {
+        return false;
+      }
       if (config->options.channels > 2) {
         // Our Opus implementation only supports up to 2 channels
         if (exception_state) {
@@ -396,7 +427,7 @@ void AudioEncoder::ProcessConfigure(Request* request) {
 
   media_encoder_ = CreateMediaAudioEncoder(*active_config_);
   if (!media_encoder_) {
-    HandleError(logger_->MakeException(
+    HandleError(logger_->MakeOperationError(
         "Encoder creation error.",
         media::EncoderStatus(
             media::EncoderStatus::Codes::kEncoderInitializationError,
@@ -421,8 +452,8 @@ void AudioEncoder::ProcessConfigure(Request* request) {
     }
     DCHECK_CALLED_ON_VALID_SEQUENCE(self->sequence_checker_);
     if (!status.is_ok()) {
-      self->HandleError(
-          self->logger_->MakeException("Encoding error.", std::move(status)));
+      self->HandleError(self->logger_->MakeOperationError("Encoding error.",
+                                                          std::move(status)));
     } else {
       base::UmaHistogramEnumeration("Blink.WebCodecs.AudioEncoder.Codec",
                                     codec);
@@ -467,8 +498,8 @@ void AudioEncoder::ProcessEncode(Request* request) {
     }
     DCHECK_CALLED_ON_VALID_SEQUENCE(self->sequence_checker_);
     if (!status.is_ok()) {
-      self->HandleError(
-          self->logger_->MakeException("Encoding error.", std::move(status)));
+      self->HandleError(self->logger_->MakeEncodingError("Encoding error.",
+                                                         std::move(status)));
     }
 
     req->EndTracing();
@@ -477,7 +508,7 @@ void AudioEncoder::ProcessEncode(Request* request) {
 
   if (data->channel_count() != active_config_->options.channels ||
       data->sample_rate() != active_config_->options.sample_rate) {
-    HandleError(logger_->MakeException(
+    HandleError(logger_->MakeEncodingError(
         "Input audio buffer is incompatible with codec parameters",
         media::EncoderStatus(media::EncoderStatus::Codes::kEncoderFailedEncode)
             .WithData("channels", data->channel_count())

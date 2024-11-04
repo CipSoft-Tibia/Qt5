@@ -51,6 +51,7 @@ const char kSetGameModeMethod[] = "SetGameMode";
 const char kSetGameModeWithTimeoutMethod[] = "SetGameModeWithTimeout";
 const char kSetMemoryMarginsBps[] = "SetMemoryMarginsBps";
 const char kSetFullscreenVideoWithTimeout[] = "SetFullscreenVideoWithTimeout";
+const char kSetVmBootModeWithTimeoutMethod[] = "SetVmBootModeWithTimeout";
 
 // Signals.
 

@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef TESTSERVER_H
 #define TESTSERVER_H
@@ -43,7 +43,14 @@ public:
     UA_NodeId addAddNamespaceMethod(const UA_NodeId &folder, const QString &variableNode, const QString &description);
     UA_NodeId addNodeWithFixedTimestamp(const UA_NodeId &folder, const QString &nodeId, const QString &displayName);
 
+    UA_StatusCode addServerStatusTypeTestNodes(const UA_NodeId &parent);
+
     UA_StatusCode addEventTrigger(const UA_NodeId &parent);
+    UA_StatusCode addEventHistorian(const UA_NodeId &parent);
+
+    UA_StatusCode addEncoderTestModel();
+
+    UA_StatusCode addUnreadableVariableNode(const UA_NodeId &parent);
 
     static UA_StatusCode multiplyMethod(UA_Server *server, const UA_NodeId *sessionId, void *sessionHandle,
                                             const UA_NodeId *methodId, void *methodContext,
@@ -68,6 +75,19 @@ public:
                              const UA_NodeId *objectId, void *objectContext,
                              size_t inputSize, const UA_Variant *input,
                              size_t outputSize, UA_Variant *output);
+
+    static void readHistoryEventCallback(UA_Server *server,
+                                  void *hdbContext,
+                                  const UA_NodeId *sessionId,
+                                  void *sessionContext,
+                                  const UA_RequestHeader *requestHeader,
+                                  const UA_ReadEventDetails *historyReadDetails,
+                                  UA_TimestampsToReturn timestampsToReturn,
+                                  UA_Boolean releaseContinuationPoints,
+                                  size_t nodesToReadSize,
+                                  const UA_HistoryReadValueId *nodesToRead,
+                                  UA_HistoryReadResponse *response,
+                                  UA_HistoryEvent * const * const historyData);
 
     UA_ServerConfig *m_config{nullptr};
     UA_Server *m_server{nullptr};

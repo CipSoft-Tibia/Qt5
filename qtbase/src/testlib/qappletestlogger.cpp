@@ -3,8 +3,6 @@
 
 #include "qappletestlogger_p.h"
 
-#include <QPair>
-
 QT_BEGIN_NAMESPACE
 
 #if defined(QT_USE_APPLE_UNIFIED_LOGGING)
@@ -105,6 +103,14 @@ void QAppleTestLogger::addIncident(IncidentTypes type, const char *description,
     QString message = testIdentifier();
     if (qstrlen(description))
         message += u'\n' % QString::fromLatin1(description);
+
+    // As long as the Apple logger doesn't propagate the context's file and
+    // line number we need to manually print it.
+    if (context.line && context.file) {
+        QTestCharBuffer line;
+        QTest::qt_asprintf(&line, "\n   [Loc: %s:%d]", context.file, context.line);
+        message += QLatin1String(line.data());
+    }
 
     AppleUnifiedLogger::messageHandler(messageData.messageType, context, message, subsystem());
 }

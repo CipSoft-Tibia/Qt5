@@ -17,7 +17,6 @@
 
 #include <vector>
 
-#include "dawn/dawn_wsi.h"
 #include "dawn/native/DawnNative.h"
 
 // The specifics of the Metal backend expose types in function signatures that might not be
@@ -36,9 +35,13 @@ typedef __IOSurface* IOSurfaceRef;
 
 namespace dawn::native::metal {
 
-struct DAWN_NATIVE_EXPORT AdapterDiscoveryOptions : public AdapterDiscoveryOptionsBase {
-    AdapterDiscoveryOptions();
+struct DAWN_NATIVE_EXPORT PhysicalDeviceDiscoveryOptions
+    : public PhysicalDeviceDiscoveryOptionsBase {
+    PhysicalDeviceDiscoveryOptions();
 };
+
+// TODO(dawn:1774): Deprecated.
+using AdapterDiscoveryOptions = PhysicalDeviceDiscoveryOptions;
 
 struct DAWN_NATIVE_EXPORT ExternalImageMTLSharedEventDescriptor {
     // Shared event handle `id<MTLSharedEvent>`.
@@ -62,9 +65,6 @@ struct DAWN_NATIVE_EXPORT ExternalImageDescriptorIOSurface : ExternalImageDescri
     ~ExternalImageDescriptorIOSurface();
 
     IOSurfaceRef ioSurface;
-
-    // This has been deprecated.
-    uint32_t plane;
 
     // A list of events to wait on before accessing the texture.
     std::vector<ExternalImageMTLSharedEventDescriptor> waitEvents;

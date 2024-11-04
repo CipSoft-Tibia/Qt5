@@ -3,12 +3,14 @@
 
 /*!
     \example satelliteinfo
-    \title SatelliteInfo (C++/QML)
+    \title Satellite Info
     \examplecategory {Application Examples}
     \examplecategory {Positioning & Location}
+    \meta tags {c++, qml, quick}
 
-    \brief The SatelliteInfo example shows the available satellites
+    \brief The Satellite Info example shows the available satellites
     using Sky View, Table View, or RSSI View and the user's current position.
+    It is implemented with \l{Qt Positioning} and \l{Qt Quick}.
 
     \ingroup qtpositioning-examples
 

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,10 @@
 #include <string>
 #include <utility>
 
-#include "discovery/mdns/mdns_records.h"
 #include "discovery/mdns/public/mdns_constants.h"
+#include "discovery/mdns/public/mdns_records.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
 // This is the DNS Information required to start a new query.
 struct DnsQueryInfo {
@@ -21,7 +20,6 @@ struct DnsQueryInfo {
   DnsClass dns_class;
 };
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery
 
 #endif  // DISCOVERY_DNSSD_IMPL_CONSTANTS_H_

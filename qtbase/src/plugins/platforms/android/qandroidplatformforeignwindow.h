@@ -4,29 +4,31 @@
 #ifndef QANDROIDPLATFORMFOREIGNWINDOW_H
 #define QANDROIDPLATFORMFOREIGNWINDOW_H
 
-#include "androidsurfaceclient.h"
 #include "qandroidplatformwindow.h"
 
 #include <QtCore/QJniObject>
 
 QT_BEGIN_NAMESPACE
 
+Q_DECLARE_JNI_CLASS(View, "android/view/View")
+
 class QAndroidPlatformForeignWindow : public QAndroidPlatformWindow
 {
 public:
     explicit QAndroidPlatformForeignWindow(QWindow *window, WId nativeHandle);
     ~QAndroidPlatformForeignWindow();
-    void lower() override;
-    void raise() override;
     void setGeometry(const QRect &rect) override;
     void setVisible(bool visible) override;
     void applicationStateChanged(Qt::ApplicationState state) override;
-    void setParent(const QPlatformWindow *window) override;
     bool isForeignWindow() const override { return true; }
 
+    WId winId() const override;
+
 private:
-    int m_surfaceId;
-    QJniObject m_view;
+    void addViewToWindow();
+
+    QtJniTypes::View m_view;
+    bool m_nativeViewInserted;
 };
 
 QT_END_NAMESPACE

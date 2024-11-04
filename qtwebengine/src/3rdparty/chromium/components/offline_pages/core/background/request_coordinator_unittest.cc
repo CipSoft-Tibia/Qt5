@@ -390,7 +390,7 @@ class RequestCoordinatorTest : public testing::Test {
   }
 
  protected:
-  raw_ptr<ActiveTabInfoStub> active_tab_info_ = nullptr;
+  raw_ptr<ActiveTabInfoStub, DanglingUntriaged> active_tab_info_ = nullptr;
 
  private:
   GetRequestsResult last_get_requests_result_;
@@ -399,9 +399,10 @@ class RequestCoordinatorTest : public testing::Test {
   scoped_refptr<base::TestMockTimeTaskRunner> task_runner_;
   base::SingleThreadTaskRunner::CurrentDefaultHandle
       task_runner_current_default_handle_;
-  raw_ptr<network::NetworkQualityTracker> network_quality_tracker_;
+  raw_ptr<network::NetworkQualityTracker, DanglingUntriaged>
+      network_quality_tracker_;
   std::unique_ptr<RequestCoordinatorStubTaco> coordinator_taco_;
-  raw_ptr<OfflinerStub> offliner_;
+  raw_ptr<OfflinerStub, DanglingUntriaged> offliner_;
   base::WaitableEvent waiter_;
   ObserverStub observer_;
   AddRequestResult expected_add_request_result_;
@@ -540,16 +541,6 @@ TEST_F(RequestCoordinatorTest, StartScheduledProcessingWithNoRequests) {
   PumpLoop();
 
   EXPECT_TRUE(processing_callback_called());
-
-  // Verify queue depth UMA for starting scheduled processing on empty queue.
-  if (base::SysInfo::IsLowEndDevice()) {
-    histograms().ExpectBucketCount(
-        "OfflinePages.Background.ScheduledStart.AvailableRequestCount.Svelte",
-        0, 1);
-  } else {
-    histograms().ExpectBucketCount(
-        "OfflinePages.Background.ScheduledStart.AvailableRequestCount", 0, 1);
-  }
 }
 
 TEST_F(RequestCoordinatorTest, NetworkProgressCallback) {
@@ -586,9 +577,6 @@ TEST_F(RequestCoordinatorTest, StartImmediateProcessingWithNoRequests) {
   PumpLoop();
 
   EXPECT_TRUE(processing_callback_called());
-
-  histograms().ExpectBucketCount("OfflinePages.Background.ImmediateStartStatus",
-                                 0 /* STARTED */, 1);
 }
 
 TEST_F(RequestCoordinatorTest, StartImmediateProcessingOnSvelte) {
@@ -596,8 +584,6 @@ TEST_F(RequestCoordinatorTest, StartImmediateProcessingOnSvelte) {
   SetIsLowEndDeviceForTest(true);
 
   EXPECT_FALSE(coordinator()->StartImmediateProcessing(processing_callback()));
-  histograms().ExpectBucketCount("OfflinePages.Background.ImmediateStartStatus",
-                                 5 /* NOT_STARTED_ON_SVELTE */, 1);
 }
 
 TEST_F(RequestCoordinatorTest, StartImmediateProcessingWhenDisconnected) {
@@ -606,8 +592,6 @@ TEST_F(RequestCoordinatorTest, StartImmediateProcessingWhenDisconnected) {
       net::NetworkChangeNotifier::CONNECTION_NONE);
   SetDeviceConditionsForTest(disconnected_conditions);
   EXPECT_FALSE(coordinator()->StartImmediateProcessing(processing_callback()));
-  histograms().ExpectBucketCount("OfflinePages.Background.ImmediateStartStatus",
-                                 3 /* NO_CONNECTION */, 1);
 }
 
 TEST_F(RequestCoordinatorTest, StartImmediateProcessingWithRequestInProgress) {
@@ -627,9 +611,6 @@ TEST_F(RequestCoordinatorTest, StartImmediateProcessingWithRequestInProgress) {
 
   // Now trying to start processing should return false since already busy.
   EXPECT_FALSE(coordinator()->StartImmediateProcessing(processing_callback()));
-
-  histograms().ExpectBucketCount("OfflinePages.Background.ImmediateStartStatus",
-                                 1 /* BUSY */, 1);
 }
 
 TEST_F(RequestCoordinatorTest, SavePageLater) {
@@ -680,10 +661,6 @@ TEST_F(RequestCoordinatorTest, SavePageLater) {
 
   // Check that the observer got the notification that a page is available
   EXPECT_TRUE(observer().added_called());
-
-  // Verify queue depth UMA for starting immediate processing.
-  histograms().ExpectBucketCount(
-      "OfflinePages.Background.ImmediateStart.AvailableRequestCount", 1, 1);
 }
 
 TEST_F(RequestCoordinatorTest, SavePageLaterFailed) {
@@ -756,9 +733,6 @@ TEST_F(RequestCoordinatorTest, OfflinerDoneRequestSucceeded) {
   // Check that the observer got the notification that we succeeded, and that
   // the request got removed from the queue.
   EXPECT_TRUE(observer().completed_called());
-  histograms().ExpectBucketCount(
-      "OfflinePages.Background.FinalSavePageResult.bookmark", 0 /* SUCCESS */,
-      1);
   EXPECT_EQ(RequestCoordinator::BackgroundSavePageResult::SUCCESS,
             observer().last_status());
 }
@@ -830,9 +804,6 @@ TEST_F(RequestCoordinatorTest, OfflinerDoneRequestFailed) {
   // subsequent notification that the request was removed) since we exceeded
   // retry count.
   EXPECT_TRUE(observer().completed_called());
-  histograms().ExpectBucketCount(
-      "OfflinePages.Background.FinalSavePageResult.bookmark",
-      6 /* RETRY_COUNT_EXCEEDED */, 1);
   EXPECT_EQ(RequestCoordinator::BackgroundSavePageResult::RETRY_COUNT_EXCEEDED,
             observer().last_status());
 }
@@ -873,12 +844,6 @@ TEST_F(RequestCoordinatorTest, OfflinerDoneRequestFailedNoRetryFailure) {
   EXPECT_TRUE(observer().completed_called());
   EXPECT_EQ(RequestCoordinator::BackgroundSavePageResult::LOADING_FAILURE,
             observer().last_status());
-  // We should have a histogram entry for the effective network conditions
-  // when this failed request began.
-  histograms().ExpectBucketCount(
-      "OfflinePages.Background.EffectiveConnectionType.OffliningStartType."
-      "bookmark",
-      net::NetworkChangeNotifier::CONNECTION_UNKNOWN, 1);
 }
 
 TEST_F(RequestCoordinatorTest, OfflinerDoneRequestFailedNoNextFailure) {

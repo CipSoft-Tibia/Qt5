@@ -14,7 +14,6 @@
 #include "base/types/strong_alias.h"
 #include "build/build_config.h"
 #include "components/autofill/core/common/language_code.h"
-#include "components/autofill/core/common/mojom/autofill_types.mojom.h"
 #include "components/autofill/core/common/password_generation_util.h"
 #include "components/autofill/core/common/unique_ids.h"
 #include "components/password_manager/core/browser/credentials_filter.h"
@@ -23,15 +22,12 @@
 #include "components/password_manager/core/browser/leak_detection_dialog_utils.h"
 #include "components/password_manager/core/browser/manage_passwords_referrer.h"
 #include "components/password_manager/core/browser/password_manager.h"
-#include "components/password_manager/core/browser/password_manager_metrics_util.h"
-#include "components/password_manager/core/browser/password_reuse_detector.h"
 #include "components/password_manager/core/browser/password_store_backend_error.h"
 #include "components/password_manager/core/browser/webauthn_credentials_delegate.h"
 #include "components/profile_metrics/browser_profile_type.h"
 #include "components/safe_browsing/buildflags.h"
-#include "components/sync/driver/sync_service.h"
+#include "components/sync/service/sync_service.h"
 #include "net/cert/cert_status_flags.h"
-#include "services/metrics/public/cpp/ukm_recorder.h"
 
 class PrefService;
 
@@ -68,12 +64,18 @@ class PasswordProtectionService;
 }
 
 namespace device_reauth {
-class BiometricAuthenticator;
+class DeviceAuthenticator;
 }
 
 namespace version_info {
 enum class Channel;
 }
+
+namespace webauthn {
+#if BUILDFLAG(IS_ANDROID)
+class WebAuthnCredManDelegate;
+#endif  // BUILDFLAG(IS_ANDROID)
+}  // namespace webauthn
 
 namespace password_manager {
 
@@ -96,10 +98,23 @@ enum class SyncState {
   kSyncingWithCustomPassphrase,
   // Sync is disabled but the user is signed in and opted in to passwords
   // account storage.
-  kAccountPasswordsActiveNormalEncryption
+  kAccountPasswordsActiveNormalEncryption,
+  // Same as above but the account has a custom passphrase set.
+  kAccountPasswordsActiveWithCustomPassphrase,
 };
 
 enum class ErrorMessageFlowType { kSaveFlow, kFillFlow };
+
+#if BUILDFLAG(IS_ANDROID)
+struct SubmissionReadinessParams {
+  autofill::FormData form;
+  uint64_t username_field_index;
+  uint64_t password_field_index;
+  // TODO(crbug/1462532): Remove this param after
+  // PasswordSuggestionBottomSheetV2 is launched.
+  autofill::mojom::SubmissionReadinessState submission_readiness;
+};
+#endif  // BUILDFLAG(IS_ANDROID)
 
 // An abstraction of operations that depend on the embedders (e.g. Chrome)
 // environment. PasswordManagerClient is instantiated once per WebContents.
@@ -131,10 +146,6 @@ class PasswordManagerClient {
   // TODO(crbug.com/1071842): This method's name is misleading as it also
   // determines whether saving prompts should be shown.
   virtual bool IsFillingEnabled(const GURL& url) const;
-
-  // Checks if manual filling fallback is enabled for the page that has |url|
-  // address.
-  virtual bool IsFillingFallbackEnabled(const GURL& url) const;
 
   // Checks if the auto sign-in functionality is enabled.
   virtual bool IsAutoSignInEnabled() const;
@@ -199,20 +210,18 @@ class PasswordManagerClient {
       ErrorMessageFlowType flow_type,
       password_manager::PasswordStoreBackendErrorType error_type);
 
-  // Instructs the client to show the Touch To Fill UI.
-  virtual void ShowTouchToFill(
+  // Instructs the client to show a keyboard replacing surface UI (e.g.
+  // TouchToFill).
+  virtual void ShowKeyboardReplacingSurface(
       PasswordManagerDriver* driver,
-      autofill::mojom::SubmissionReadinessState submission_readiness);
-
-  // Informs `PasswordReuseDetectionManager` about reused passwords selected
-  // from the AllPasswordsBottomSheet.
-  virtual void OnPasswordSelected(const std::u16string& text);
+      const SubmissionReadinessParams& submission_readiness_params,
+      bool is_webauthn_form);
 #endif
 
-  // Returns a pointer to a BiometricAuthenticator. Might be null if
+  // Returns a pointer to a DeviceAuthenticator. Might be null if
   // BiometricAuthentication is not available for a given platform.
-  virtual scoped_refptr<device_reauth::BiometricAuthenticator>
-  GetBiometricAuthenticator();
+  virtual scoped_refptr<device_reauth::DeviceAuthenticator>
+  GetDeviceAuthenticator();
 
   // Informs the embedder that the user has requested to generate a
   // password in the focused password field.
@@ -346,7 +355,7 @@ class PasswordManagerClient {
   virtual void PromptUserToEnableAutosignin();
 
   // If this browsing session should not be persisted.
-  virtual bool IsIncognito() const;
+  virtual bool IsOffTheRecord() const;
 
   // Returns the profile type of the session.
   virtual profile_metrics::BrowserProfileType GetProfileType() const;
@@ -402,26 +411,6 @@ class PasswordManagerClient {
                                            const GURL& frame_url) = 0;
 #endif
 
-  // Checks the safe browsing reputation of the webpage where password reuse
-  // happens. This is called by the PasswordReuseDetectionManager when a
-  // protected password is typed on the wrong domain. This may trigger a
-  // warning dialog if it looks like the page is phishy.
-  // The |username| is the user name of the reused password. The user name
-  // can be an email or a username for a non-GAIA or saved-password reuse. No
-  // validation has been done on it. The |domain| is the origin of the webpage
-  // where password reuse happens. The |reused_password_hash| is the hash of the
-  // reused password.
-  virtual void CheckProtectedPasswordEntry(
-      metrics_util::PasswordType reused_password_type,
-      const std::string& username,
-      const std::vector<MatchingReusedCredential>& matching_reused_credentials,
-      bool password_field_exists,
-      uint64_t reused_password_hash,
-      const std::string& domain) = 0;
-
-  // Records a Chrome Sync event that GAIA password reuse was detected.
-  virtual void LogPasswordReuseDetectedEvent() = 0;
-
   // If the feature is enabled send an event to the enterprise reporting
   // connector server indicating that the user signed in to a website.
   virtual void MaybeReportEnterpriseLoginEvent(
@@ -459,6 +448,9 @@ class PasswordManagerClient {
   // Returns the identity manager for profile.
   virtual signin::IdentityManager* GetIdentityManager() = 0;
 
+  // Returns the field info manager for profile.
+  virtual password_manager::FieldInfoManager* GetFieldInfoManager() const;
+
   // Returns a pointer to the URLLoaderFactory owned by the storage partition of
   // the current profile.
   virtual scoped_refptr<network::SharedURLLoaderFactory>
@@ -476,17 +468,24 @@ class PasswordManagerClient {
   virtual void NavigateToManagePasswordsPage(ManagePasswordsReferrer referrer) {
   }
 
+#if BUILDFLAG(IS_ANDROID)
+  virtual void NavigateToManagePasskeysPage(ManagePasswordsReferrer referrer) {}
+#endif
+
   virtual bool IsIsolationForPasswordSitesEnabled() const = 0;
 
   // Returns true if the current page is to the new tab page.
   virtual bool IsNewTabPage() const = 0;
 
-  // Returns a FieldInfoManager associated with the current profile.
-  virtual FieldInfoManager* GetFieldInfoManager() const = 0;
-
   // Returns the WebAuthnCredentialsDelegate for the given driver, if available.
   virtual WebAuthnCredentialsDelegate* GetWebAuthnCredentialsDelegateForDriver(
       PasswordManagerDriver* driver);
+
+#if BUILDFLAG(IS_ANDROID)
+  // Returns the WebAuthnCredManDelegate for the driver.
+  virtual webauthn::WebAuthnCredManDelegate*
+  GetWebAuthnCredManDelegateForDriver(PasswordManagerDriver* driver);
+#endif  // BUILDFLAG(IS_ANDROID)
 
   // Returns the Chrome channel for the installation.
   virtual version_info::Channel GetChannel() const;

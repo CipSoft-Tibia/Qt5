@@ -166,7 +166,6 @@ struct PacketType<Scalar, SyclDevice> : internal::default_packet_traits {
     Vectorizable = 0,
     size = 1,
     AlignedOnScalar = 0,
-    HasHalfPacket = 0
   };
   enum {
     HasAdd    = 0,
@@ -269,7 +268,7 @@ namespace internal {
   template<typename IndexType, typename Index, Index First, Index... Is>
   EIGEN_CONSTEXPR EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
   array<Index, 1 + sizeof...(Is)> customIndices2Array(IndexType& idx, numeric_list<Index, First, Is...>) {
-    return { idx[First], idx[Is]... };
+    return { static_cast<Index>(idx[First]), static_cast<Index>(idx[Is])... };
   }
   template<typename IndexType, typename Index>
   EIGEN_CONSTEXPR EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE

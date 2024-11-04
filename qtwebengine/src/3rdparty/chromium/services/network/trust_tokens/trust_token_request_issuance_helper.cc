@@ -57,8 +57,9 @@ BeginIssuanceOnPostedSequence(std::unique_ptr<Cryptographer> cryptographer,
 TrustTokenRequestIssuanceHelper::CryptographerAndUnblindedTokens
 ConfirmIssuanceOnPostedSequence(std::unique_ptr<Cryptographer> cryptographer,
                                 std::string response_header) {
-  // From the "spec" (design doc): "If the response has an empty Sec-Trust-Token
-  // header, return; this is a 'success' response bearing 0 tokens"
+  // From the "spec" (design doc): "If the response has an empty
+  // Sec-Private-State-Token header, return; this is a 'success' response
+  // bearing 0 tokens"
   if (response_header.empty()) {
     return {std::move(cryptographer),
             std::make_unique<Cryptographer::UnblindedTokens>()};
@@ -69,10 +70,8 @@ ConfirmIssuanceOnPostedSequence(std::unique_ptr<Cryptographer> cryptographer,
   return {std::move(cryptographer), std::move(unblinded_tokens)};
 }
 
-base::Value CreateLogValue(base::StringPiece outcome) {
-  base::Value ret(base::Value::Type::DICT);
-  ret.SetStringKey("outcome", outcome);
-  return ret;
+base::Value::Dict CreateLogValue(base::StringPiece outcome) {
+  return base::Value::Dict().Set("outcome", outcome);
 }
 
 // Define convenience aliases for the NetLogEventTypes for brevity.
@@ -181,7 +180,7 @@ void TrustTokenRequestIssuanceHelper::OnGotKeyCommitment(
   if (!commitment_result) {
     LogOutcome(net_log_, kBegin, "No keys for issuer");
     std::move(done).Run(absl::nullopt,
-                        mojom::TrustTokenOperationStatus::kFailedPrecondition);
+                        mojom::TrustTokenOperationStatus::kMissingIssuerKeys);
     return;
   }
 
@@ -320,9 +319,8 @@ void TrustTokenRequestIssuanceHelper::OnDoneProcessingIssuanceResponse(
   net_log_.EndEvent(
       net::NetLogEventType::TRUST_TOKEN_OPERATION_FINALIZE_ISSUANCE,
       [num_obtained_tokens = *num_obtained_tokens_]() {
-        base::Value ret = CreateLogValue("Success");
-        ret.SetIntKey("# tokens obtained", num_obtained_tokens);
-        return ret;
+        return CreateLogValue("Success").Set(
+            "# tokens obtained", static_cast<int>(num_obtained_tokens));
       });
   std::move(done).Run(mojom::TrustTokenOperationStatus::kOk);
   return;

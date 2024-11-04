@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -10,6 +10,7 @@
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
+#include <QtCore/QEventLoop>
 #include <QtCore/QtGlobal>
 #include <QtCore/QThread>
 #include <QtCore/QSysInfo>
@@ -39,6 +40,13 @@
 
 #ifdef Q_OS_INTEGRITY
 #include "qplatformdefs.h"
+#endif
+
+#if defined(Q_OS_WASM)
+#include <QtCore/private/qstdweb_p.h>
+
+#include "emscripten/threading.h"
+#include "emscripten/val.h"
 #endif
 
 Q_DECLARE_METATYPE(QSettings::Format)
@@ -83,6 +91,10 @@ static void populateWithFormats()
     QTest::addColumn<QSettings::Format>("format");
 
     QTest::newRow("native") << QSettings::NativeFormat;
+#if defined(Q_OS_WASM)
+    if (qstdweb::haveJspi())
+        QTest::newRow("idb") << QSettings::WebIndexedDBFormat;
+#endif // defined(Q_OS_WASM)
     QTest::newRow("ini") << QSettings::IniFormat;
     QTest::newRow("custom1") << QSettings::CustomFormat1;
     QTest::newRow("custom2") << QSettings::CustomFormat2;
@@ -102,6 +114,9 @@ private slots:
     void getSetCheck();
     void ctor_data() { populateWithFormats(); }
     void ctor();
+#ifdef Q_OS_WASM
+    void idb();
+#endif
     void beginGroup();
     void setValue();
     void remove();
@@ -322,6 +337,32 @@ void tst_QSettings::cleanupTestFiles()
     QSettings(QSettings::SystemScope, "software.org").clear();
     QSettings(QSettings::UserScope, "other.software.org").clear();
     QSettings(QSettings::SystemScope, "other.software.org").clear();
+#endif
+#if defined(Q_OS_WASM)
+    emscripten::val::global("window")["localStorage"].call<void>("clear");
+    if (qstdweb::haveJspi()) {
+        QSettings(QSettings::Format::WebIndexedDBFormat, QSettings::UserScope, "software.org",
+                  "KillerAPP")
+                .clear();
+        QSettings(QSettings::Format::WebIndexedDBFormat, QSettings::SystemScope, "software.org",
+                  "KillerAPP")
+                .clear();
+        QSettings(QSettings::Format::WebIndexedDBFormat, QSettings::UserScope, "other.software.org",
+                  "KillerAPP")
+                .clear();
+        QSettings(QSettings::Format::WebIndexedDBFormat, QSettings::SystemScope,
+                  "other.software.org", "KillerAPP")
+                .clear();
+        QSettings(QSettings::Format::WebIndexedDBFormat, QSettings::UserScope, "software.org")
+                .clear();
+        QSettings(QSettings::Format::WebIndexedDBFormat, QSettings::SystemScope, "software.org")
+                .clear();
+        QSettings(QSettings::Format::WebIndexedDBFormat, QSettings::UserScope, "other.software.org")
+                .clear();
+        QSettings(QSettings::Format::WebIndexedDBFormat, QSettings::SystemScope,
+                  "other.software.org")
+                .clear();
+    }
 #endif
 
     const QString foo(QLatin1String("foo"));
@@ -617,6 +658,50 @@ void tst_QSettings::ctor()
         QCOMPARE(settings2.applicationName(), QLatin1String("KillerAPP"));
     }
 }
+
+#if defined(Q_OS_WASM)
+void tst_QSettings::idb()
+{
+    if (!qstdweb::haveJspi())
+        QSKIP("JSPI needed for IndexedDB format");
+
+    QString systemScopeOrganizationWideFile;
+    {
+        QSettings settingsUserScopeAppSpecific(QSettings::Format::WebIndexedDBFormat,
+                                               QSettings::UserScope, "software.org", "KillerAPP");
+        QSettings settingsUserScopeOrganizationWide(QSettings::Format::WebIndexedDBFormat,
+                                                    QSettings::UserScope, "software.org");
+        QSettings settingsSystemScopeAppSpecific(QSettings::Format::WebIndexedDBFormat,
+                                                 QSettings::SystemScope, "software.org",
+                                                 "KillerAPP");
+        QSettings settingsSystemScopeOrganizationWide(QSettings::Format::WebIndexedDBFormat,
+                                                      QSettings::SystemScope, "software.org");
+
+        settingsSystemScopeOrganizationWide.setValue("testKey", 1);
+        systemScopeOrganizationWideFile = settingsSystemScopeOrganizationWide.fileName();
+    }
+
+    // Emscripten's memfs has a bug that makes a file appear twice in the hashmap.
+    while (QFile::exists(systemScopeOrganizationWideFile)) {
+        Q_ASSERT(QFile::remove(systemScopeOrganizationWideFile));
+    }
+
+    QEventLoop loop;
+    QTimer timer;
+    timer.setInterval(1);
+
+    connect(&timer, &QTimer::timeout, [&loop]() { loop.quit(); });
+    timer.start();
+
+    loop.exec();
+    {
+        QSettings settingsUserScopeAppSpecific(QSettings::Format::WebIndexedDBFormat,
+                                               QSettings::UserScope, "software.org", "KillerAPP");
+
+        QCOMPARE(settingsUserScopeAppSpecific.value("testKey").toInt(), 1);
+    }
+}
+#endif // Q_OS_WASM
 
 void tst_QSettings::testByteArray_data()
 {
@@ -1973,6 +2058,14 @@ void tst_QSettings::testChildKeysAndGroups()
         l.sort();
         QCOMPARE(l, QStringList() << "bar" << "foo");
     }
+
+#if defined(Q_OS_WASM)
+    // WebIndexedDBFormat does not use the cached settings file on creation, but instead always uses
+    // the file from the indexed DB anew.
+    if (format == QSettings::Format::WebIndexedDBFormat)
+        settings1.sync();
+#endif
+
     {
         QSettings settings3(format, QSettings::UserScope, "software.org", "application");
         settings3.setFallbacksEnabled(false);
@@ -2050,6 +2143,16 @@ void SettingsThread::run()
 
 void tst_QSettings::testThreadSafety()
 {
+#if !QT_CONFIG(thread)
+    QSKIP("This test requires threads to be enabled.");
+#endif // !QT_CONFIG(thread)
+#if defined(Q_OS_WASM)
+    if (!qstdweb::haveJspi())
+        QSKIP("Test needs jspi on WASM. Calls are proxied to the main thread from SettingsThreads, "
+              "which necessitates the use of an event loop to yield to the main loop. Event loops "
+              "require jspi.");
+#endif
+
     SettingsThread threads[NumThreads];
     int i, j;
 
@@ -2057,6 +2160,19 @@ void tst_QSettings::testThreadSafety()
 
     for (i = 0; i < NumThreads; ++i)
         threads[i].start(i + 1);
+
+#if defined(Q_OS_WASM) && QT_CONFIG(thread)
+    QEventLoop loop;
+    int remaining = NumThreads;
+    for (int i = 0; i < NumThreads; ++i) {
+        QObject::connect(&threads[i], &QThread::finished, this, [&remaining, &loop]() {
+            if (!--remaining)
+                loop.quit();
+        });
+    }
+    loop.exec();
+#endif // defined(Q_OS_WASM) && QT_CONFIG(thread)
+
     for (i = 0; i < NumThreads; ++i)
         threads[i].wait();
 
@@ -2328,6 +2444,12 @@ void tst_QSettings::fromFile()
 
     QStringList strList = QStringList() << "hope" << "destiny" << "chastity";
 
+#if !defined(Q_OS_WIN)
+    auto deleteFile = QScopeGuard([path, oldCur]() {
+        QFile::remove(path);
+        QDir::setCurrent(oldCur);
+    });
+#endif // !defined(Q_OS_WIN)
     {
         QSettings settings1(path, format);
         QVERIFY(settings1.allKeys().isEmpty());
@@ -2363,8 +2485,6 @@ void tst_QSettings::fromFile()
         QCOMPARE(settings1.value("gamma/foo.bar").toInt(), 4);
         QCOMPARE(settings1.allKeys().size(), 3);
     }
-
-    QDir::setCurrent(oldCur);
 }
 
 static bool containsSubList(QStringList mom, QStringList son)
@@ -3310,7 +3430,7 @@ void tst_QSettings::setPath()
         path checks that it has no bad side effects.
     */
     for (int i = 0; i < 2; ++i) {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_DARWIN)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_DARWIN) && !defined(Q_OS_WASM)
         TEST_PATH(i == 0, "conf", NativeFormat, UserScope, "alpha")
         TEST_PATH(i == 0, "conf", NativeFormat, SystemScope, "beta")
 #endif
@@ -3427,6 +3547,12 @@ void tst_QSettings::rainersSyncBugOnMac()
     if (format == QSettings::NativeFormat)
         QSKIP("Apple OSes do not support direct reads from and writes to .plist files, due to caching and background syncing. See QTBUG-34899.");
 #endif
+#if defined(Q_OS_WASM)
+    if (format == QSettings::NativeFormat)
+        QSKIP("WASM's localStorage backend recognizes no concept of file");
+    if (format == QSettings::WebIndexedDBFormat)
+        QSKIP("WASM's indexedDB backend uses the virtual FS file only as a backing store");
+#endif  // Q_OS_WASM
 
     QString fileName;
 
@@ -3497,14 +3623,14 @@ void tst_QSettings::consistentRegistryStorage()
 }
 #endif
 
-#if defined(QT_BUILD_INTERNAL) && defined(Q_OS_UNIX) && !defined(Q_OS_DARWIN) && !defined(Q_OS_ANDROID) && !defined(QT_NO_STANDARDPATHS)
+#if defined(QT_BUILD_INTERNAL) && defined(Q_OS_UNIX) && !defined(Q_OS_DARWIN) && !defined(Q_OS_ANDROID) && !defined(Q_OS_WASM) && !defined(QT_NO_STANDARDPATHS)
 QT_BEGIN_NAMESPACE
 extern void clearDefaultPaths();
 QT_END_NAMESPACE
 #endif
 void tst_QSettings::testXdg()
 {
-#if defined(QT_BUILD_INTERNAL) && defined(Q_OS_UNIX) && !defined(Q_OS_DARWIN) && !defined(Q_OS_ANDROID) && !defined(QT_NO_STANDARDPATHS)
+#if defined(QT_BUILD_INTERNAL) && defined(Q_OS_UNIX) && !defined(Q_OS_DARWIN) && !defined(Q_OS_ANDROID) && !defined(Q_OS_WASM) && !defined(QT_NO_STANDARDPATHS)
     // Note: The XDG_CONFIG_DIRS test must be done before overriding the system path
     // by QSettings::setPath/setSystemIniPath (used in cleanupTestFiles()).
     clearDefaultPaths();

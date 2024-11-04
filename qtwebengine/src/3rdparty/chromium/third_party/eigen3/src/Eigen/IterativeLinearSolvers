@@ -34,6 +34,7 @@
     \endcode
   */
 
+// IWYU pragma: begin_exports
 #include "src/IterativeLinearSolvers/SolveWithGuess.h"
 #include "src/IterativeLinearSolvers/IterativeSolverBase.h"
 #include "src/IterativeLinearSolvers/BasicPreconditioners.h"
@@ -42,6 +43,7 @@
 #include "src/IterativeLinearSolvers/BiCGSTAB.h"
 #include "src/IterativeLinearSolvers/IncompleteLUT.h"
 #include "src/IterativeLinearSolvers/IncompleteCholesky.h"
+// IWYU pragma: end_exports
 
 #include "src/Core/util/ReenableStupidWarnings.h"
 

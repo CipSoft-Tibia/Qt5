@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QSet>
 #include <QTest>
@@ -125,10 +125,12 @@ void tst_QSet::unite_int_data()
 auto build_sets(int lhsSize, int rhsSize, int overlap)
 {
     QSet<int> lhs;
+    lhs.reserve(lhsSize);
     for (int i = 0; i < lhsSize; ++i)
         lhs.insert(i);
 
     QSet<int> rhs;
+    rhs.reserve(rhsSize);
     for (int i = lhsSize - overlap; i < rhsSize + lhsSize - overlap; ++i)
         rhs.insert(i);
 

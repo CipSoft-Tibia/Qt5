@@ -4,12 +4,20 @@
 
 #include "third_party/blink/renderer/core/layout/ng/layout_ng_view.h"
 
+#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_block_node.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_constraint_space.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_constraint_space_builder.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_layout_result.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_physical_box_fragment.h"
+#include "third_party/blink/renderer/core/layout/view_fragmentation_context.h"
+#include "third_party/blink/renderer/core/page/chrome_client.h"
 #include "third_party/blink/renderer/core/svg/svg_document_extensions.h"
+#include "ui/display/screen_info.h"
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+#include "third_party/blink/renderer/platform/fonts/font_cache.h"
+#endif
 
 namespace blink {
 
@@ -33,42 +41,67 @@ bool LayoutNGView::IsFragmentationContextRoot() const {
   return ShouldUsePrintingLayout();
 }
 
-void LayoutNGView::UpdateBlockLayout(bool relayout_children) {
-  relayout_children |=
-      !ShouldUsePrintingLayout() &&
-      (!GetFrameView() || LogicalWidth() != ViewLogicalWidthForBoxSizing() ||
-       LogicalHeight() != ViewLogicalHeightForBoxSizing());
-  if (relayout_children && GetDocument().SvgExtensions()) {
-    GetDocument()
-        .AccessSVGExtensions()
-        .InvalidateSVGRootsWithRelativeLengthDescendents(nullptr);
+void LayoutNGView::UpdateLayout() {
+  NOT_DESTROYED();
+  if (ShouldUsePrintingLayout()) {
+    intrinsic_logical_widths_ = LogicalWidth();
+    if (!fragmentation_context_) {
+      fragmentation_context_ =
+          MakeGarbageCollected<ViewFragmentationContext>(*this);
+    }
+  } else if (fragmentation_context_) {
+    fragmentation_context_.Clear();
   }
 
-  NGConstraintSpace constraint_space =
-      NGConstraintSpace::CreateFromLayoutObject(*this);
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  // The font code in FontPlatformData does not have a direct connection to the
+  // document, the frame or anything from which we could retrieve the device
+  // scale factor. After using zoom for DSF, the GraphicsContext does only ever
+  // have a DSF of 1 on Linux. In order for the font code to be aware of an up
+  // to date DSF when layout happens, we plumb this through to the FontCache, so
+  // that we can correctly retrieve RenderStyleForStrike from out of
+  // process. crbug.com/845468
+  LocalFrame& frame = GetFrameView()->GetFrame();
+  ChromeClient& chrome_client = frame.GetChromeClient();
+  FontCache::SetDeviceScaleFactor(
+      chrome_client.GetScreenInfo(frame).device_scale_factor);
+#endif
 
-  NGBlockNode(this).Layout(constraint_space);
-}
+  bool is_resizing_initial_containing_block =
+      LogicalWidth() != ViewLogicalWidthForBoxSizing() ||
+      LogicalHeight() != ViewLogicalHeightForBoxSizing();
+  bool invalidate_svg_roots =
+      GetDocument().SvgExtensions() && !ShouldUsePrintingLayout() &&
+      (!GetFrameView() || is_resizing_initial_containing_block);
+  if (invalidate_svg_roots) {
+    GetDocument()
+        .AccessSVGExtensions()
+        .InvalidateSVGRootsWithRelativeLengthDescendents();
+  }
 
-MinMaxSizes LayoutNGView::ComputeIntrinsicLogicalWidths() const {
-  NOT_DESTROYED();
-  WritingMode writing_mode = StyleRef().GetWritingMode();
+  DCHECK(!initial_containing_block_resize_handled_list_);
+  if (is_resizing_initial_containing_block) {
+    initial_containing_block_resize_handled_list_ =
+        MakeGarbageCollected<HeapHashSet<Member<const LayoutObject>>>();
+  }
 
-  NGConstraintSpace space =
-      NGConstraintSpaceBuilder(writing_mode, StyleRef().GetWritingDirection(),
-                               /* is_new_fc */ true)
-          .ToConstraintSpace();
+  const auto& style = StyleRef();
+  NGConstraintSpaceBuilder builder(
+      style.GetWritingMode(), style.GetWritingDirection(),
+      /* is_new_fc */ true, /* adjust_inline_size_if_needed */ false);
+  builder.SetAvailableSize(InitialContainingBlockSize());
+  builder.SetIsFixedInlineSize(true);
+  builder.SetIsFixedBlockSize(true);
 
-  NGBlockNode node(const_cast<LayoutNGView*>(this));
-  DCHECK(node.CanUseNewLayout());
-  return node.ComputeMinMaxSizes(writing_mode, MinMaxSizesType::kContent, space)
-      .sizes;
+  NGBlockNode(this).Layout(builder.ToConstraintSpace());
+  initial_containing_block_resize_handled_list_ = nullptr;
 }
 
 AtomicString LayoutNGView::NamedPageAtIndex(wtf_size_t page_index) const {
-  // If LayoutNGView is enabled, but not LayoutNGPrinting, fall back to legacy.
-  if (!RuntimeEnabledFeatures::LayoutNGPrintingEnabled())
-    return LayoutView::NamedPageAtIndex(page_index);
+  // If layout is dirty, it's not possible to look up page names reliably.
+  DCHECK_GE(GetDocument().Lifecycle().GetState(),
+            DocumentLifecycle::kLayoutClean);
+
   if (!PhysicalFragmentCount())
     return AtomicString();
   DCHECK_EQ(PhysicalFragmentCount(), 1u);

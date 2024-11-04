@@ -36,20 +36,35 @@ static inline const char *data(const QByteArray &arr)
 }
 
 QDBusMessagePrivate::QDBusMessagePrivate()
-    : msg(nullptr), reply(nullptr), localReply(nullptr), ref(1), type(QDBusMessage::InvalidMessage),
-      delayedReply(false), localMessage(false),
-      parametersValidated(false), autoStartService(true),
-      interactiveAuthorizationAllowed(false)
+    : localReply(nullptr), ref(1), type(QDBusMessage::InvalidMessage),
+      delayedReply(false), parametersValidated(false),
+      localMessage(false), autoStartService(true),
+      interactiveAuthorizationAllowed(false), isReplyRequired(false)
 {
 }
 
 QDBusMessagePrivate::~QDBusMessagePrivate()
 {
-    if (msg)
-        q_dbus_message_unref(msg);
-    if (reply)
-        q_dbus_message_unref(reply);
     delete localReply;
+}
+
+void QDBusMessagePrivate::createResponseLink(const QDBusMessagePrivate *call)
+{
+    if (Q_UNLIKELY(call->type != QDBusMessage::MethodCallMessage)) {
+        qWarning("QDBusMessage: replying to a message that isn't a method call");
+        return;
+    }
+
+    if (call->localMessage) {
+        localMessage = true;
+        call->localReply = new QDBusMessage(*this); // keep an internal copy
+    } else {
+        serial = call->serial;
+        service = call->service;
+    }
+
+    // the reply must have a serial or be a local-loop optimization
+    Q_ASSERT(serial || localMessage);
 }
 
 /*!
@@ -113,8 +128,8 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
     case QDBusMessage::ReplyMessage:
         msg = q_dbus_message_new(DBUS_MESSAGE_TYPE_METHOD_RETURN);
         if (!d_ptr->localMessage) {
-            q_dbus_message_set_destination(msg, q_dbus_message_get_sender(d_ptr->reply));
-            q_dbus_message_set_reply_serial(msg, q_dbus_message_get_serial(d_ptr->reply));
+            q_dbus_message_set_destination(msg, data(d_ptr->service.toUtf8()));
+            q_dbus_message_set_reply_serial(msg, d_ptr->serial);
         }
         break;
     case QDBusMessage::ErrorMessage:
@@ -126,8 +141,8 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
         msg = q_dbus_message_new(DBUS_MESSAGE_TYPE_ERROR);
         q_dbus_message_set_error_name(msg, d_ptr->name.toUtf8());
         if (!d_ptr->localMessage) {
-            q_dbus_message_set_destination(msg, q_dbus_message_get_sender(d_ptr->reply));
-            q_dbus_message_set_reply_serial(msg, q_dbus_message_get_serial(d_ptr->reply));
+            q_dbus_message_set_destination(msg, data(d_ptr->service.toUtf8()));
+            q_dbus_message_set_reply_serial(msg, d_ptr->serial);
         }
         break;
     case QDBusMessage::SignalMessage:
@@ -204,6 +219,7 @@ QDBusMessage QDBusMessagePrivate::fromDBusMessage(DBusMessage *dmsg, QDBusConnec
         return message;
 
     message.d_ptr->type = QDBusMessage::MessageType(q_dbus_message_get_type(dmsg));
+    message.d_ptr->serial = q_dbus_message_get_serial(dmsg);
     message.d_ptr->path = QString::fromUtf8(q_dbus_message_get_path(dmsg));
     message.d_ptr->interface = QString::fromUtf8(q_dbus_message_get_interface(dmsg));
     message.d_ptr->name = message.d_ptr->type == DBUS_MESSAGE_TYPE_ERROR ?
@@ -212,7 +228,7 @@ QDBusMessage QDBusMessagePrivate::fromDBusMessage(DBusMessage *dmsg, QDBusConnec
     message.d_ptr->service = QString::fromUtf8(q_dbus_message_get_sender(dmsg));
     message.d_ptr->signature = QString::fromUtf8(q_dbus_message_get_signature(dmsg));
     message.d_ptr->interactiveAuthorizationAllowed = q_dbus_message_get_allow_interactive_authorization(dmsg);
-    message.d_ptr->msg = q_dbus_message_ref(dmsg);
+    message.d_ptr->isReplyRequired = !q_dbus_message_get_no_reply(dmsg);
 
     QDBusDemarshaller demarshaller(capabilities);
     demarshaller.message = q_dbus_message_ref(dmsg);
@@ -402,6 +418,7 @@ QDBusMessage QDBusMessage::createMethodCall(const QString &service, const QStrin
     message.d_ptr->path = path;
     message.d_ptr->interface = interface;
     message.d_ptr->name = method;
+    message.d_ptr->isReplyRequired = true;
 
     return message;
 }
@@ -444,15 +461,7 @@ QDBusMessage QDBusMessage::createReply(const QVariantList &arguments) const
     QDBusMessage reply;
     reply.setArguments(arguments);
     reply.d_ptr->type = ReplyMessage;
-    if (d_ptr->msg)
-        reply.d_ptr->reply = q_dbus_message_ref(d_ptr->msg);
-    if (d_ptr->localMessage) {
-        reply.d_ptr->localMessage = true;
-        d_ptr->localReply = new QDBusMessage(reply); // keep an internal copy
-    }
-
-    // the reply must have a msg or be a local-loop optimization
-    Q_ASSERT(reply.d_ptr->reply || reply.d_ptr->localMessage);
+    reply.d_ptr->createResponseLink(d_ptr);
     return reply;
 }
 
@@ -463,15 +472,7 @@ QDBusMessage QDBusMessage::createReply(const QVariantList &arguments) const
 QDBusMessage QDBusMessage::createErrorReply(const QString &name, const QString &msg) const
 {
     QDBusMessage reply = QDBusMessage::createError(name, msg);
-    if (d_ptr->msg)
-        reply.d_ptr->reply = q_dbus_message_ref(d_ptr->msg);
-    if (d_ptr->localMessage) {
-        reply.d_ptr->localMessage = true;
-        d_ptr->localReply = new QDBusMessage(reply); // keep an internal copy
-    }
-
-    // the reply must have a msg or be a local-loop optimization
-    Q_ASSERT(reply.d_ptr->reply || reply.d_ptr->localMessage);
+    reply.d_ptr->createResponseLink(d_ptr);
     return reply;
 }
 
@@ -555,6 +556,8 @@ QDBusMessage &QDBusMessage::operator=(const QDBusMessage &other)
 */
 QString QDBusMessage::service() const
 {
+    if (d_ptr->type == ErrorMessage || d_ptr->type == ReplyMessage)
+        return QString();   // d_ptr->service holds the destination
     return d_ptr->service;
 }
 
@@ -617,9 +620,9 @@ bool QDBusMessage::isReplyRequired() const
     if (d_ptr->type != QDBusMessage::MethodCallMessage)
         return false;
 
-    if (!d_ptr->msg)
-        return d_ptr->localMessage; // if it's a local message, reply is required
-    return !q_dbus_message_get_no_reply(d_ptr->msg);
+    if (d_ptr->localMessage) // if it's a local message, reply is required
+        return true;
+    return d_ptr->isReplyRequired;
 }
 
 /*!
@@ -691,20 +694,26 @@ bool QDBusMessage::autoStartService() const
 }
 
 /*!
-    Sets the interactive authorization flag to \a enable.
-    This flag only makes sense for method call messages, where it
-    tells the D-Bus server that the caller of the method is prepared
-    to wait for interactive authorization to take place (for instance
-    via Polkit) before the actual method is processed.
+    Enables or disables the \c ALLOW_INTERACTIVE_AUTHORIZATION flag
+    in a message.
 
-    By default this flag is false and the other end is expected to
-    make any authorization decisions non-interactively and promptly.
+    This flag only makes sense for method call messages
+    (\l QDBusMessage::MethodCallMessage). If \a enable
+    is set to \c true, the flag indicates to the callee that the
+    caller of the method is prepared to wait for interactive authorization
+    to take place (for instance via Polkit) before the actual method
+    is processed.
+
+    If \a enable is set to \c false, the flag is not
+    set, meaning that the other end is expected to make any authorization
+    decisions non-interactively and promptly. This is the default.
 
     The \c org.freedesktop.DBus.Error.InteractiveAuthorizationRequired
     error indicates that authorization failed, but could have succeeded
     if this flag had been set.
 
-    \sa isInteractiveAuthorizationAllowed()
+    \sa isInteractiveAuthorizationAllowed(),
+        QDBusAbstractInterface::setInteractiveAuthorizationAllowed()
 
     \since 5.12
 */
@@ -714,12 +723,11 @@ void QDBusMessage::setInteractiveAuthorizationAllowed(bool enable)
 }
 
 /*!
-    Returns the interactive authorization allowed flag, as set by
-    setInteractiveAuthorizationAllowed(). By default this flag
-    is false and the other end is expected to make any authorization
-    decisions non-interactively and promptly.
+    Returns whether the message has the
+    \c ALLOW_INTERACTIVE_AUTHORIZATION flag set.
 
-    \sa setInteractiveAuthorizationAllowed()
+    \sa setInteractiveAuthorizationAllowed(),
+        QDBusAbstractInterface::isInteractiveAuthorizationAllowed()
 
     \since 5.12
 */
@@ -757,6 +765,12 @@ QDBusMessage &QDBusMessage::operator<<(const QVariant &arg)
 {
     d_ptr->arguments.append(arg);
     return *this;
+}
+
+QDBusMessage::QDBusMessage(QDBusMessagePrivate &dd)
+    : d_ptr(&dd)
+{
+    d_ptr->ref.ref();
 }
 
 /*!

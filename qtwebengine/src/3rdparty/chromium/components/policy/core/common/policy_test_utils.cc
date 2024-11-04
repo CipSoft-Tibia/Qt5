@@ -19,14 +19,14 @@
 #if BUILDFLAG(IS_APPLE)
 #include <CoreFoundation/CoreFoundation.h>
 
-#include "base/mac/scoped_cftyperef.h"
+#include "base/apple/scoped_cftyperef.h"
 #endif
 
 namespace policy {
 
-PolicyDetailsMap::PolicyDetailsMap() {}
+PolicyDetailsMap::PolicyDetailsMap() = default;
 
-PolicyDetailsMap::~PolicyDetailsMap() {}
+PolicyDetailsMap::~PolicyDetailsMap() = default;
 
 GetChromePolicyDetailsCallback PolicyDetailsMap::GetCallback() const {
   return base::BindRepeating(&PolicyDetailsMap::Lookup, base::Unretained(this));
@@ -83,16 +83,17 @@ CFPropertyListRef ValueToProperty(const base::Value& value) {
     }
 
     case base::Value::Type::DICT: {
+      const base::Value::Dict& value_dict = value.GetDict();
       // |dict| is owned by the caller.
       CFMutableDictionaryRef dict = CFDictionaryCreateMutable(
-          kCFAllocatorDefault, value.DictSize(), &kCFTypeDictionaryKeyCallBacks,
-          &kCFTypeDictionaryValueCallBacks);
-      for (const auto key_value_pair : value.DictItems()) {
+          kCFAllocatorDefault, value_dict.size(),
+          &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+      for (const auto key_value_pair : value_dict) {
         // CFDictionaryAddValue() retains both |key| and |value|, so make sure
         // the references are balanced.
-        base::ScopedCFTypeRef<CFStringRef> key(
+        base::apple::ScopedCFTypeRef<CFStringRef> key(
             base::SysUTF8ToCFStringRef(key_value_pair.first));
-        base::ScopedCFTypeRef<CFPropertyListRef> cf_value(
+        base::apple::ScopedCFTypeRef<CFPropertyListRef> cf_value(
             ValueToProperty(key_value_pair.second));
         if (cf_value)
           CFDictionaryAddValue(dict, key, cf_value);
@@ -103,11 +104,11 @@ CFPropertyListRef ValueToProperty(const base::Value& value) {
     case base::Value::Type::LIST: {
       const base::Value::List& list = value.GetList();
       CFMutableArrayRef array =
-          CFArrayCreateMutable(NULL, list.size(), &kCFTypeArrayCallBacks);
+          CFArrayCreateMutable(nullptr, list.size(), &kCFTypeArrayCallBacks);
       for (const base::Value& entry : list) {
         // CFArrayAppendValue() retains |cf_value|, so make sure the reference
         // created by ValueToProperty() is released.
-        base::ScopedCFTypeRef<CFPropertyListRef> cf_value(
+        base::apple::ScopedCFTypeRef<CFPropertyListRef> cf_value(
             ValueToProperty(entry));
         if (cf_value)
           CFArrayAppendValue(array, cf_value);
@@ -122,7 +123,7 @@ CFPropertyListRef ValueToProperty(const base::Value& value) {
       break;
   }
 
-  return NULL;
+  return nullptr;
 }
 #endif  // BUILDFLAG(IS_APPLE)
 

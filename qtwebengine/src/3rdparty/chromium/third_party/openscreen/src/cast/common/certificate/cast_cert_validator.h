@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,7 @@
 #include "platform/base/error.h"
 #include "platform/base/macros.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class CastCRL;
 class ParsedCertificate;
@@ -79,7 +78,6 @@ enum class CRLPolicy {
     CRLPolicy crl_policy,
     TrustStore* trust_store);
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_CERTIFICATE_CAST_CERT_VALIDATOR_H_

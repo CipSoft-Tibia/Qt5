@@ -43,6 +43,8 @@ private:
     void printGetters();
     void printDestructor();
 
+    void printPublicExtras();
+
     void printClassDefinitionPrivate();
 };
 

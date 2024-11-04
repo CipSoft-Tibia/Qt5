@@ -25,63 +25,46 @@
 
 QT_BEGIN_NAMESPACE
 
+class QDBusServer;
+
 class QDBusConnectionManager : public QDaemonThread
 {
     Q_OBJECT
-    struct ConnectionRequestData;
 public:
     QDBusConnectionManager();
     ~QDBusConnectionManager();
     static QDBusConnectionManager* instance();
 
     QDBusConnectionPrivate *busConnection(QDBusConnection::BusType type);
-    QDBusConnectionPrivate *connection(const QString &name) const;
-    void removeConnection(const QString &name);
-    void setConnection(const QString &name, QDBusConnectionPrivate *c);
+    QDBusConnectionPrivate *existingConnection(const QString &name) const;
+
+    void removeConnections(const QStringList &names);
+    void disconnectFrom(const QString &name, QDBusConnectionPrivate::ConnectionMode mode);
+    void addConnection(const QString &name, QDBusConnectionPrivate *c);
+
     QDBusConnectionPrivate *connectToBus(QDBusConnection::BusType type, const QString &name, bool suspendedDelivery);
     QDBusConnectionPrivate *connectToBus(const QString &address, const QString &name);
     QDBusConnectionPrivate *connectToPeer(const QString &address, const QString &name);
 
-    mutable QMutex mutex;
-
-signals:
-    void connectionRequested(ConnectionRequestData *);
-    void serverRequested(const QString &address, void *server);
+    void createServer(const QString &address, QDBusServer *server);
 
 protected:
     void run() override;
 
 private:
-    void executeConnectionRequest(ConnectionRequestData *data);
-    void createServer(const QString &address, void *server);
+    QDBusConnectionPrivate *doConnectToStandardBus(QDBusConnection::BusType type,
+                                                   const QString &name, bool suspendedDelivery);
+    QDBusConnectionPrivate *doConnectToBus(const QString &address, const QString &name);
+    QDBusConnectionPrivate *doConnectToPeer(const QString &address, const QString &name);
 
+    mutable QMutex mutex;
     QHash<QString, QDBusConnectionPrivate *> connectionHash;
+    QDBusConnectionPrivate *connection(const QString &name) const;
+    void removeConnection(const QString &name);
+    void setConnection(const QString &name, QDBusConnectionPrivate *c);
 
     QMutex defaultBusMutex;
     QDBusConnectionPrivate *defaultBuses[2];
-
-    mutable QMutex senderMutex;
-    QString senderName; // internal; will probably change
-};
-
-// TODO: move into own header and use Q_MOC_INCLUDE
-struct QDBusConnectionManager::ConnectionRequestData
-{
-    enum RequestType {
-        ConnectToStandardBus,
-        ConnectToBusByAddress,
-        ConnectToPeerByAddress
-    } type;
-
-    union {
-        QDBusConnection::BusType busType;
-        const QString *busAddress;
-    };
-    const QString *name;
-
-    QDBusConnectionPrivate *result;
-
-    bool suspendedDelivery;
 };
 
 QT_END_NAMESPACE

@@ -6,15 +6,20 @@ if(UIKIT)
     return()
 endif()
 
+add_subdirectory(corelib)
 add_subdirectory(filetest)
 # diaglib is broken in dev due to missing
 # QtOpenGL/QGLFunctions headers
 # add_subdirectory(embeddedintoforeignwindow)
 # add_subdirectory(foreignwindows)
 add_subdirectory(gestures)
+if (QT_FEATURE_graphicsframecapture)
+    add_subdirectory(graphicsframecapture)
+endif()
 add_subdirectory(highdpi)
 add_subdirectory(inputmethodhints)
 add_subdirectory(keypadnavigation)
+add_subdirectory(keyevents)
 #add_subdirectory(lance) # qgl.h missing
 add_subdirectory(qcursor)
 add_subdirectory(qdesktopservices)

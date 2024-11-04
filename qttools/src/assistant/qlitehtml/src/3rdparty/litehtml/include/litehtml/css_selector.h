@@ -117,31 +117,41 @@ namespace litehtml
 
 	//////////////////////////////////////////////////////////////////////////
 
-	enum attr_select_condition
+	enum attr_select_type
 	{
+		select_class,
+		select_id,
+
 		select_exists,
 		select_equal,
 		select_contain_str,
 		select_start_str,
 		select_end_str,
+
 		select_pseudo_class,
 		select_pseudo_element,
 	};
 
 	//////////////////////////////////////////////////////////////////////////
 
+	class css_element_selector;
+
 	struct css_attribute_selector
 	{
 		typedef std::vector<css_attribute_selector>	vector;
 
-		tstring					attribute;
-		tstring					val;
-		string_vector			class_val;
-		attr_select_condition	condition;
+		attr_select_type	type;
+		string_id			name; // .name, #name, [name], :name
+		string				val;  // [name=val], :lang(val)
+
+		std::shared_ptr<css_element_selector> sel; // :not(sel)
+		int a, b; // :nth-child(an+b)
 
 		css_attribute_selector()
 		{
-			condition = select_exists;
+			type = select_class;
+			name = empty_id;
+			a = b = 0;
 		}
 	};
 
@@ -150,11 +160,12 @@ namespace litehtml
 	class css_element_selector
 	{
 	public:
-		tstring							m_tag;
+		string_id						m_tag;
 		css_attribute_selector::vector	m_attrs;
 	public:
 
-		void parse(const tstring& txt);
+		void parse(const string& txt);
+		static void parse_nth_child_params(const string& param, int& num, int& off);
 	};
 
 	//////////////////////////////////////////////////////////////////////////
@@ -179,15 +190,13 @@ namespace litehtml
 		css_element_selector	m_right;
 		css_selector::ptr		m_left;
 		css_combinator			m_combinator;
-		tstring					m_style;
+		style::ptr				m_style;
 		int						m_order;
 		media_query_list::ptr	m_media_query;
-		tstring					m_baseurl;
 	public:
-		explicit css_selector(const media_query_list::ptr& media, const tstring& baseurl)
+		explicit css_selector(const media_query_list::ptr& media = nullptr)
 		{
 			m_media_query	= media;
-			m_baseurl		= baseurl;
 			m_combinator	= combinator_descendant;
 			m_order			= 0;
 		}
@@ -210,7 +219,7 @@ namespace litehtml
 			m_media_query	= val.m_media_query;
 		}
 
-		bool parse(const tstring& text);
+		bool parse(const string& text);
 		void calc_specificity();
 		bool is_media_valid() const;
 		void add_media_to_doc(document* doc) const;
@@ -246,7 +255,7 @@ namespace litehtml
 		return (v1.m_specificity < v2.m_specificity);
 	}
 
-	inline bool operator >(const css_selector::ptr& v1, const css_selector::ptr& v2)
+	inline bool operator > (const css_selector::ptr& v1, const css_selector::ptr& v2)
 	{
 		return (*v1 > *v2);
 	}
@@ -271,6 +280,19 @@ namespace litehtml
 		{
 			m_used		= used;
 			m_selector	= selector;
+		}
+
+		used_selector(const used_selector& val)
+		{
+			m_used = val.m_used;
+			m_selector = val.m_selector;
+		}
+
+		used_selector& operator=(const used_selector& val)
+		{
+			m_used = val.m_used;
+			m_selector = val.m_selector;
+			return *this;
 		}
 	};
 }

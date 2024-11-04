@@ -798,6 +798,11 @@ av_cold int ff_mpv_encode_init(AVCodecContext *avctx)
                                                 AV_CODEC_FLAG_INTERLACED_ME) ||
                                 s->alternate_scan);
 
+    if (s->lmin > s->lmax) {
+        av_log(avctx, AV_LOG_WARNING, "Clipping lmin value to %d\n", s->lmax);
+        s->lmin = s->lmax;
+    }
+
     /* init */
     ff_mpv_idct_init(s);
     if ((ret = ff_mpv_common_init(s)) < 0)
@@ -902,8 +907,10 @@ av_cold int ff_mpv_encode_init(AVCodecContext *avctx)
 
     s->quant_precision = 5;
 
-    ff_set_cmp(&s->mecc, s->mecc.ildct_cmp,      avctx->ildct_cmp);
-    ff_set_cmp(&s->mecc, s->mecc.frame_skip_cmp, s->frame_skip_cmp);
+    ret  = ff_set_cmp(&s->mecc, s->mecc.ildct_cmp,      avctx->ildct_cmp);
+    ret |= ff_set_cmp(&s->mecc, s->mecc.frame_skip_cmp, s->frame_skip_cmp);
+    if (ret < 0)
+        return AVERROR(EINVAL);
 
     if (CONFIG_H263_ENCODER && s->out_format == FMT_H263) {
         ff_h263_encode_init(s);
@@ -1219,7 +1226,7 @@ static int load_input_picture(MpegEncContext *s, const AVFrame *pic_arg)
         if (ret < 0)
             return ret;
 
-        pic->f->display_picture_number = display_picture_number;
+        pic->display_picture_number = display_picture_number;
         pic->f->pts = pts; // we set this here to avoid modifying pic_arg
     } else {
         /* Flushing: When we have not received enough input frames,
@@ -1477,14 +1484,14 @@ static int select_input_picture(MpegEncContext *s)
             !s->next_picture_ptr || s->intra_only) {
             s->reordered_input_picture[0] = s->input_picture[0];
             s->reordered_input_picture[0]->f->pict_type = AV_PICTURE_TYPE_I;
-            s->reordered_input_picture[0]->f->coded_picture_number =
+            s->reordered_input_picture[0]->coded_picture_number =
                 s->coded_picture_number++;
         } else {
             int b_frames = 0;
 
             if (s->avctx->flags & AV_CODEC_FLAG_PASS2) {
                 for (i = 0; i < s->max_b_frames + 1; i++) {
-                    int pict_num = s->input_picture[0]->f->display_picture_number + i;
+                    int pict_num = s->input_picture[0]->display_picture_number + i;
 
                     if (pict_num >= s->rc_context.num_entries)
                         break;
@@ -1563,13 +1570,13 @@ static int select_input_picture(MpegEncContext *s)
             s->reordered_input_picture[0] = s->input_picture[b_frames];
             if (s->reordered_input_picture[0]->f->pict_type != AV_PICTURE_TYPE_I)
                 s->reordered_input_picture[0]->f->pict_type = AV_PICTURE_TYPE_P;
-            s->reordered_input_picture[0]->f->coded_picture_number =
+            s->reordered_input_picture[0]->coded_picture_number =
                 s->coded_picture_number++;
             for (i = 0; i < b_frames; i++) {
                 s->reordered_input_picture[i + 1] = s->input_picture[i];
                 s->reordered_input_picture[i + 1]->f->pict_type =
                     AV_PICTURE_TYPE_B;
-                s->reordered_input_picture[i + 1]->f->coded_picture_number =
+                s->reordered_input_picture[i + 1]->coded_picture_number =
                     s->coded_picture_number++;
             }
         }
@@ -1604,6 +1611,8 @@ no_output_pic:
             ret = av_frame_copy_props(pic->f, s->reordered_input_picture[0]->f);
             if (ret < 0)
                 return ret;
+            pic->coded_picture_number = s->reordered_input_picture[0]->coded_picture_number;
+            pic->display_picture_number = s->reordered_input_picture[0]->display_picture_number;
 
             /* mark us unused / free shared pic */
             av_frame_unref(s->reordered_input_picture[0]->f);
@@ -1618,7 +1627,8 @@ no_output_pic:
                     s->new_picture->data[i] += INPLACE_OFFSET;
             }
         }
-        s->picture_number = s->new_picture->display_picture_number;
+        s->picture_number = s->current_picture_ptr->display_picture_number;
+
     }
     return 0;
 }
@@ -1693,7 +1703,10 @@ static int frame_start(MpegEncContext *s)
     }
 
     s->current_picture_ptr->f->pict_type = s->pict_type;
-    s->current_picture_ptr->f->key_frame = s->pict_type == AV_PICTURE_TYPE_I;
+    if (s->pict_type == AV_PICTURE_TYPE_I)
+        s->current_picture.f->flags |= AV_FRAME_FLAG_KEY;
+    else
+        s->current_picture.f->flags &= ~AV_FRAME_FLAG_KEY;
 
     ff_mpeg_unref_picture(s->avctx, &s->current_picture);
     if ((ret = ff_mpeg_ref_picture(s->avctx, &s->current_picture,
@@ -1954,7 +1967,7 @@ vbv_retry:
         pkt->pts = s->current_picture.f->pts;
         pkt->duration = s->current_picture.f->duration;
         if (!s->low_delay && s->pict_type != AV_PICTURE_TYPE_B) {
-            if (!s->current_picture.f->coded_picture_number)
+            if (!s->current_picture.coded_picture_number)
                 pkt->dts = pkt->pts - s->dts_delta;
             else
                 pkt->dts = s->reordered_pts;
@@ -1969,7 +1982,7 @@ vbv_retry:
                 return ret;
         }
 
-        if (s->current_picture.f->key_frame)
+        if (s->current_picture.f->flags & AV_FRAME_FLAG_KEY)
             pkt->flags |= AV_PKT_FLAG_KEY;
         if (s->mb_info)
             av_packet_shrink_side_data(pkt, AV_PKT_DATA_H263_MB_INFO, s->mb_info_size);
@@ -3773,12 +3786,17 @@ static int encode_picture(MpegEncContext *s)
     }
 
     //FIXME var duplication
-    s->current_picture_ptr->f->key_frame =
-    s->current_picture.f->key_frame = s->pict_type == AV_PICTURE_TYPE_I; //FIXME pic_ptr
+    if (s->pict_type == AV_PICTURE_TYPE_I) {
+        s->current_picture_ptr->f->flags |= AV_FRAME_FLAG_KEY; //FIXME pic_ptr
+        s->current_picture.f->flags |= AV_FRAME_FLAG_KEY;
+    } else {
+        s->current_picture_ptr->f->flags &= ~AV_FRAME_FLAG_KEY; //FIXME pic_ptr
+        s->current_picture.f->flags &= ~AV_FRAME_FLAG_KEY;
+    }
     s->current_picture_ptr->f->pict_type =
     s->current_picture.f->pict_type = s->pict_type;
 
-    if (s->current_picture.f->key_frame)
+    if (s->current_picture.f->flags & AV_FRAME_FLAG_KEY)
         s->picture_in_gop_number=0;
 
     s->mb_x = s->mb_y = 0;

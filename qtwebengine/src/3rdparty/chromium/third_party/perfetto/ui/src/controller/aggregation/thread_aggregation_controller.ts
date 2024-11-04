@@ -17,12 +17,11 @@ import {Engine} from '../../common/engine';
 import {NUM, NUM_NULL, STR_NULL} from '../../common/query_result';
 import {Area, Sorting} from '../../common/state';
 import {translateState} from '../../common/thread_state';
-import {toNs} from '../../common/time';
+import {globals} from '../../frontend/globals';
 import {
   Config,
   THREAD_STATE_TRACK_KIND,
 } from '../../tracks/thread_state';
-import {globals} from '../globals';
 
 import {AggregationController} from './aggregation_controller';
 
@@ -56,12 +55,12 @@ export class ThreadAggregationController extends AggregationController {
         sum(dur) AS total_dur,
         sum(dur)/count(1) as avg_dur,
         count(1) as occurrences
-      FROM process
-      JOIN thread USING(upid)
+      FROM thread
       JOIN thread_state USING(utid)
+      LEFT JOIN process USING(upid)
       WHERE utid IN (${this.utids}) AND
-      thread_state.ts + thread_state.dur > ${toNs(area.startSec)} AND
-      thread_state.ts < ${toNs(area.endSec)}
+      thread_state.ts + thread_state.dur > ${area.start} AND
+      thread_state.ts < ${area.end}
       GROUP BY utid, concat_state
     `;
 
@@ -73,13 +72,11 @@ export class ThreadAggregationController extends AggregationController {
     this.setThreadStateUtids(area.tracks);
     if (this.utids === undefined || this.utids.length === 0) return;
 
-    const query =
-        `select state, io_wait as ioWait, sum(dur) as totalDur from process
-      JOIN thread USING(upid)
-      JOIN thread_state USING(utid)
+    const query = `select state, io_wait as ioWait, sum(dur) as totalDur
+      FROM thread JOIN thread_state USING(utid)
       WHERE utid IN (${this.utids}) AND thread_state.ts + thread_state.dur > ${
-            toNs(area.startSec)} AND
-      thread_state.ts < ${toNs(area.endSec)}
+        area.start} AND
+      thread_state.ts < ${area.end}
       GROUP BY state, io_wait`;
     const result = await engine.query(query);
 

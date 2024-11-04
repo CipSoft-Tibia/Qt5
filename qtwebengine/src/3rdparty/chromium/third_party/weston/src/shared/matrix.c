@@ -26,17 +26,13 @@
 
 #include "config.h"
 
+#include <assert.h>
 #include <float.h>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
 
-#ifdef UNIT_TEST
-#define WL_EXPORT
-#else
 #include <wayland-server.h>
-#endif
-
 #include <libweston/matrix.h>
 
 
@@ -65,16 +61,16 @@ weston_matrix_multiply(struct weston_matrix *m, const struct weston_matrix *n)
 {
 	struct weston_matrix tmp;
 	const float *row, *column;
-	div_t d;
-	int i, j;
+	int i, j, k;
 
-	for (i = 0; i < 16; i++) {
-		tmp.d[i] = 0;
-		d = div(i, 4);
-		row = m->d + d.quot * 4;
-		column = n->d + d.rem;
-		for (j = 0; j < 4; j++)
-			tmp.d[i] += row[j] * column[j * 4];
+	for (i = 0; i < 4; i++) {
+		row = m->d + i * 4;
+		for (j = 0; j < 4; j++) {
+			tmp.d[4 * i + j] = 0;
+			column = n->d + j;
+			for (k = 0; k < 4; k++)
+				tmp.d[4 * i + j] += row[k] * column[k * 4];
+		}
 	}
 	tmp.type = m->type | n->type;
 	memcpy(m, &tmp, sizeof tmp);
@@ -115,7 +111,8 @@ weston_matrix_rotate_xy(struct weston_matrix *matrix, float cos, float sin)
 
 /* v <- m * v */
 WL_EXPORT void
-weston_matrix_transform(struct weston_matrix *matrix, struct weston_vector *v)
+weston_matrix_transform(const struct weston_matrix *matrix,
+			struct weston_vector *v)
 {
 	int i, j;
 	struct weston_vector t;
@@ -127,6 +124,22 @@ weston_matrix_transform(struct weston_matrix *matrix, struct weston_vector *v)
 	}
 
 	*v = t;
+}
+
+WL_EXPORT struct weston_coord
+weston_matrix_transform_coord(const struct weston_matrix *matrix,
+			      struct weston_coord c)
+{
+	struct weston_coord out;
+	struct weston_vector t = { { c.x, c.y, 0.0, 1.0 } };
+
+	weston_matrix_transform(matrix, &t);
+
+	assert(fabsf(t.f[3]) > 1e-6);
+
+	out.x = t.f[0] / t.f[3];
+	out.y = t.f[1] / t.f[3];
+	return out;
 }
 
 static inline void
@@ -169,7 +182,7 @@ find_pivot(double *column, unsigned k)
  * LU decomposition, forward and back substitution: Chapter 3.
  */
 
-MATRIX_TEST_EXPORT inline int
+static int
 matrix_invert(double *A, unsigned *p, const struct weston_matrix *matrix)
 {
 	unsigned i, j, k;
@@ -204,7 +217,7 @@ matrix_invert(double *A, unsigned *p, const struct weston_matrix *matrix)
 	return 0;
 }
 
-MATRIX_TEST_EXPORT inline void
+static void
 inverse_transform(const double *LU, const unsigned *p, float *v)
 {
 	/* Solve A * x = v, when we have P * A = L * U.
@@ -273,4 +286,297 @@ weston_matrix_invert(struct weston_matrix *inverse,
 	inverse->type = matrix->type;
 
 	return 0;
+}
+
+static bool
+near_zero(float a)
+{
+	if (fabs(a) > 0.00001)
+		return false;
+
+	return true;
+}
+
+static float
+get_el(const struct weston_matrix *matrix, int row, int col)
+{
+	assert(row >= 0 && row <= 3);
+	assert(col >= 0 && col <= 3);
+
+	return matrix->d[col * 4 + row];
+}
+
+static bool
+near_zero_at(const struct weston_matrix *matrix, int row, int col)
+{
+	return near_zero(get_el(matrix, row, col));
+}
+
+static bool
+near_one_at(const struct weston_matrix *matrix, int row, int col)
+{
+	return near_zero(get_el(matrix, row, col) - 1.0);
+}
+
+static bool
+near_pm_one_at(const struct weston_matrix *matrix, int row, int col)
+{
+	return near_zero(fabs(get_el(matrix, row, col)) - 1.0);
+}
+
+static bool
+near_int_at(const struct weston_matrix *matrix, int row, int col)
+{
+	float el = get_el(matrix, row, col);
+
+	return near_zero(roundf(el) - el);
+}
+
+/* Lazy decompose the matrix to figure out whether its operations will
+ * cause an image to look ugly without some kind of filtering.
+ *
+ * while this is a 3D transformation matrix, we only concern ourselves
+ * with 2D for this test. We do use some small rounding to try to catch
+ * sequences of operations that lead back to a matrix that doesn't
+ * require filters.
+ *
+ * We assume the matrix won't be used to transform a vector with w != 1.0
+ *
+ * Filtering will be necessary when:
+ *  a non-integral translation is applied
+ *  non-affine (perspective) translation is in use
+ *  any scaling (other than -1) is in use
+ *  a rotation that isn't a multiple of 90 degrees about Z is present
+ */
+WL_EXPORT bool
+weston_matrix_needs_filtering(const struct weston_matrix *matrix)
+{
+	/* check for non-integral X/Y translation - ignore Z */
+	if (!near_int_at(matrix, 0, 3) ||
+	    !near_int_at(matrix, 1, 3))
+		return true;
+
+	/* Any transform matrix that matches this will be non-affine. */
+	if (!near_zero_at(matrix, 3, 0) ||
+	    !near_zero_at(matrix, 3, 1) ||
+	    !near_zero_at(matrix, 3, 2) ||
+	    !near_pm_one_at(matrix, 3, 3))
+		return true;
+
+	/* Check for anything that could come from a rotation that isn't
+	 * around the Z axis:
+	 * [  ?   ?  0  ? ]
+	 * [  ?   ?  0  ? ]
+	 * [  0   0 ±1  ? ]
+	 * [  ?   ?  ?  1 ]
+	 * It's not clear that we'd realistically see a -1 in [2][2], but
+	 * it wouldn't require filtering if we did, so allow it.
+	 */
+	if (!near_zero_at(matrix, 0, 2) ||
+	    !near_zero_at(matrix, 1, 2) ||
+	    !near_zero_at(matrix, 2, 0) ||
+	    !near_zero_at(matrix, 2, 1) ||
+	    !near_pm_one_at(matrix, 2, 2))
+		return true;
+
+	/* We've culled the low hanging fruit, now let's match the only
+	 * matrices left we don't have to filter, before defaulting to
+	 * filtering.
+	 *
+	 * These are a combination of testing rotation and scaling at once: */
+	if (near_pm_one_at(matrix, 0, 0)) {
+		/* This could be a multiple of 90 degree rotation about Z,
+		 * possibly with a flip, if the matrix is of the form:
+		 * [  ±1  0  0  ? ]
+		 * [  0  ±1  0  ? ]
+		 * [  0   0  1  ? ]
+		 * [  0   0  0  1 ]
+		 * Forcing ±1 excludes non-unity scale.
+		 */
+		if (near_zero_at(matrix, 1, 0) &&
+		    near_zero_at(matrix, 0, 1) &&
+		    near_pm_one_at(matrix, 1, 1))
+			return false;
+	}
+	if (near_zero_at(matrix, 0, 0)) {
+		/* This could be a multiple of 90 degree rotation about Z,
+		 * possibly with a flip, if the matrix is of the form:
+		 * [  0  ±1  0  ? ]
+		 * [  ±1  0  0  ? ]
+		 * [  0   0  1  ? ]
+		 * [  0   0  0  1 ]
+		 * Forcing ±1 excludes non-unity scale.
+		 */
+		if (near_zero_at(matrix, 1, 1) &&
+		    near_pm_one_at(matrix, 1, 0) &&
+		    near_pm_one_at(matrix, 0, 1))
+			return false;
+	}
+
+	/* The matrix wasn't "simple" enough to classify with dumb
+	 * heuristics, so recommend filtering */
+	return true;
+}
+
+/** Examine a matrix to see if it applies a standard output transform.
+ *
+ * \param mat matrix to examine
+ * \param[out] transform the transform, if applicable
+ * \return true if a standard transform is present
+
+ * Note that the check only considers rotations and flips.
+ * If any other scale or translation is present, those may have to
+ * be dealt with by the caller in some way.
+ */
+WL_EXPORT bool
+weston_matrix_to_transform(const struct weston_matrix *mat,
+			   enum wl_output_transform *transform)
+{
+	/* As a first pass we can eliminate any matrix that doesn't have
+	 * zeroes in these positions:
+	 * [  ?   ?  0  ? ]
+	 * [  ?   ?  0  ? ]
+	 * [  0   0  ?  ? ]
+	 * [  0   0  0  ? ]
+	 * As they will be non-affine, or rotations about axes
+	 * other than Z.
+	 */
+	if (!near_zero_at(mat, 2, 0) ||
+	    !near_zero_at(mat, 3, 0) ||
+	    !near_zero_at(mat, 2, 1) ||
+	    !near_zero_at(mat, 3, 1) ||
+	    !near_zero_at(mat, 0, 2) ||
+	    !near_zero_at(mat, 1, 2) ||
+	    !near_zero_at(mat, 3, 2))
+		return false;
+
+	/* Enforce the form:
+	 * [  ?   ?  0  ? ]
+	 * [  ?   ?  0  ? ]
+	 * [  0   0  ?  ? ]
+	 * [  0   0  0  1 ]
+	 * While we could scale all the elements by a constant to make
+	 * 3,3 == 1, we choose to be lazy and not bother. A matrix
+	 * that doesn't fit this form seems likely to be too complicated
+	 * to pass the other checks.
+	 */
+	if (!near_one_at(mat, 3, 3))
+		return false;
+
+	if (near_zero_at(mat, 0, 0)) {
+		if (!near_zero_at(mat, 1, 1))
+			return false;
+
+		/* We now have a matrix like:
+		 * [  0   A  0  ? ]
+		 * [  B   0  0  ? ]
+		 * [  0   0  ?  ? ]
+		 * [  0   0  0  1 ]
+		 * When transforming a vector with a matrix of this form, the X
+		 * and Y coordinates are effectively exchanged, so we have a
+		 * 90 or 270 degree rotation (not 0 or 180), and could have
+		 * a flip depending on the signs of A and B.
+		 *
+		 * We don't require A and B to have the same absolute value,
+		 * so there may be independent scales in the X or Y dimensions.
+		 */
+		if (get_el(mat, 0, 1) > 0) {
+			/*  A is positive */
+
+			if (get_el(mat, 1, 0) > 0)
+				*transform = WL_OUTPUT_TRANSFORM_FLIPPED_90;
+			else
+				*transform = WL_OUTPUT_TRANSFORM_90;
+		} else {
+			/* A is negative */
+
+			if (get_el(mat, 1, 0) > 0)
+				*transform = WL_OUTPUT_TRANSFORM_270;
+			else
+				*transform = WL_OUTPUT_TRANSFORM_FLIPPED_270;
+		}
+	} else if (near_zero_at(mat, 1, 0)) {
+		if (!near_zero_at(mat, 0, 1))
+			return false;
+
+		/* We now have a matrix like:
+		 * [  A   0  0  ? ]
+		 * [  0   B  0  ? ]
+		 * [  0   0  ?  ? ]
+		 * [  0   0  0  1 ]
+		 * This case won't exchange the X and Y inputs, so the
+		 * transform is 0 or 180 degrees. We could have a flip
+		 * depending on the signs of A and B.
+		 *
+		 * We don't require A and B to have the same absolute value,
+		 * so there may be independent scales in the X or Y dimensions.
+		 */
+		if (get_el(mat, 0, 0) > 0) {
+			/* A is positive */
+
+			if (get_el(mat, 1, 1) > 0)
+				*transform = WL_OUTPUT_TRANSFORM_NORMAL;
+			else
+				*transform = WL_OUTPUT_TRANSFORM_FLIPPED_180;
+		} else {
+			/* A is negative */
+
+			if (get_el(mat, 1, 1) > 0)
+				*transform = WL_OUTPUT_TRANSFORM_FLIPPED;
+			else
+				*transform = WL_OUTPUT_TRANSFORM_180;
+		}
+	} else {
+		return false;
+	}
+
+	return true;
+}
+
+WL_EXPORT void
+weston_matrix_init_transform(struct weston_matrix *matrix,
+			     enum wl_output_transform transform,
+			     int x, int y, int width, int height,
+			     int scale)
+{
+	weston_matrix_init(matrix);
+
+	weston_matrix_translate(matrix, -x, -y, 0);
+
+	switch (transform) {
+	case WL_OUTPUT_TRANSFORM_FLIPPED:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+		weston_matrix_scale(matrix, -1, 1, 1);
+		weston_matrix_translate(matrix, width, 0, 0);
+		break;
+	default:
+		break;
+	}
+
+	switch (transform) {
+	default:
+	case WL_OUTPUT_TRANSFORM_NORMAL:
+	case WL_OUTPUT_TRANSFORM_FLIPPED:
+		break;
+	case WL_OUTPUT_TRANSFORM_90:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+		weston_matrix_rotate_xy(matrix, 0, -1);
+		weston_matrix_translate(matrix, 0, width, 0);
+		break;
+	case WL_OUTPUT_TRANSFORM_180:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+		weston_matrix_rotate_xy(matrix, -1, 0);
+		weston_matrix_translate(matrix,
+					width, height, 0);
+		break;
+	case WL_OUTPUT_TRANSFORM_270:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+		weston_matrix_rotate_xy(matrix, 0, 1);
+		weston_matrix_translate(matrix, height, 0, 0);
+		break;
+	}
+
+	weston_matrix_scale(matrix, scale, scale, 1);
 }

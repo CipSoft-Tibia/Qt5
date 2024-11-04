@@ -86,6 +86,22 @@ if (!defined(dawn_abseil_dir)) {
   dawn_abseil_dir = "//third_party/abseil-cpp"
 }
 
+if (!defined(dawn_dxc_dir)) {
+  dawn_dxc_dir = "//third_party/dxc"
+}
+
+if (!defined(dawn_dxheaders_dir)) {
+  dawn_dxheaders_dir = "//third_party/dxheaders"
+}
+
 if (!defined(dawn_version_file)) {
   dawn_version_file = ""
+}
+
+if (!defined(dawn_opengl_registry_dir)) {
+  dawn_opengl_registry_dir = "${dawn_root}/third_party/khronos/OpenGL-Registry"
+}
+
+if (!defined(dawn_egl_registry_dir)) {
+  dawn_egl_registry_dir = "${dawn_root}/third_party/khronos/EGL-Registry"
 }

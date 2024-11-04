@@ -92,9 +92,9 @@ QXcbConnection::QXcbConnection(QXcbNativeInterface *nativeInterface, bool canGra
     const int focusInDelay = 100;
     m_focusInTimer.setSingleShot(true);
     m_focusInTimer.setInterval(focusInDelay);
-    m_focusInTimer.callOnTimeout([]() {
+    m_focusInTimer.callOnTimeout(this, []() {
         // No FocusIn events for us, proceed with FocusOut normally.
-        QWindowSystemInterface::handleWindowActivated(nullptr, Qt::ActiveWindowFocusReason);
+        QWindowSystemInterface::handleFocusWindowChanged(nullptr, Qt::ActiveWindowFocusReason);
     });
 
     sync();
@@ -1139,13 +1139,6 @@ Qt::MouseButtons QXcbConnection::queryMouseButtons() const
     int stateMask = 0;
     QXcbCursor::queryPointer(connection(), nullptr, nullptr, &stateMask);
     return translateMouseButtons(stateMask);
-}
-
-Qt::KeyboardModifiers QXcbConnection::queryKeyboardModifiers() const
-{
-    int stateMask = 0;
-    QXcbCursor::queryPointer(connection(), nullptr, nullptr, &stateMask);
-    return keyboard()->translateModifiers(stateMask);
 }
 
 QXcbGlIntegration *QXcbConnection::glIntegration() const

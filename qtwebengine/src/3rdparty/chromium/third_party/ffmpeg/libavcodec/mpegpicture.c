@@ -27,6 +27,8 @@
 
 #include "avcodec.h"
 #include "encode.h"
+#include "internal.h"
+#include "decode.h"
 #include "motion_est.h"
 #include "mpegpicture.h"
 #include "mpegutils.h"
@@ -172,7 +174,7 @@ static int alloc_frame_buffer(AVCodecContext *avctx,  Picture *pic,
     if (avctx->hwaccel) {
         assert(!pic->hwaccel_picture_private);
         if (avctx->hwaccel->frame_priv_data_size) {
-            pic->hwaccel_priv_buf = av_buffer_allocz(avctx->hwaccel->frame_priv_data_size);
+            pic->hwaccel_priv_buf = ff_hwaccel_frame_priv_alloc(avctx, avctx->hwaccel);
             if (!pic->hwaccel_priv_buf) {
                 av_log(avctx, AV_LOG_ERROR, "alloc_frame_buffer() failed (hwaccel private data allocation)\n");
                 return -1;
@@ -332,6 +334,8 @@ void ff_mpeg_unref_picture(AVCodecContext *avctx, Picture *pic)
     pic->needs_realloc = 0;
     pic->reference     = 0;
     pic->shared        = 0;
+    pic->display_picture_number = 0;
+    pic->coded_picture_number   = 0;
 }
 
 int ff_update_picture_tables(Picture *dst, const Picture *src)
@@ -397,6 +401,8 @@ int ff_mpeg_ref_picture(AVCodecContext *avctx, Picture *dst, Picture *src)
     dst->needs_realloc           = src->needs_realloc;
     dst->reference               = src->reference;
     dst->shared                  = src->shared;
+    dst->display_picture_number  = src->display_picture_number;
+    dst->coded_picture_number    = src->coded_picture_number;
 
     return 0;
 fail:

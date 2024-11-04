@@ -19,7 +19,6 @@ class LayoutNGFrameSet final : public LayoutNGBlock {
   bool IsChildAllowed(LayoutObject* child, const ComputedStyle&) const override;
   void AddChild(LayoutObject* new_child, LayoutObject* before_child) override;
   void RemoveChild(LayoutObject* child) override;
-  void UpdateBlockLayout(bool relayout_children) override;
   CursorDirective GetCursor(const PhysicalOffset& point,
                             ui::Cursor& cursor) const override;
 };
@@ -27,7 +26,7 @@ class LayoutNGFrameSet final : public LayoutNGBlock {
 template <>
 struct DowncastTraits<LayoutNGFrameSet> {
   static bool AllowFrom(const LayoutObject& object) {
-    return object.IsLayoutNGFrameSet();
+    return object.IsFrameSet();
   }
 };
 

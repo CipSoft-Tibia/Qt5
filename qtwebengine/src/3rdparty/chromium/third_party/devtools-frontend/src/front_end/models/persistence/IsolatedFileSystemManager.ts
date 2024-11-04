@@ -160,6 +160,9 @@ export class IsolatedFileSystemManager extends Common.ObjectWrapper.ObjectWrappe
   }
 
   addFileSystem(type?: string): Promise<IsolatedFileSystem|null> {
+    Host.userMetrics.actionTaken(
+        type === 'overrides' ? Host.UserMetrics.Action.OverrideTabAddFolder :
+                               Host.UserMetrics.Action.WorkspaceTabAddFolder);
     return new Promise(resolve => {
       this.fileSystemRequestResolve = resolve;
       Host.InspectorFrontendHost.InspectorFrontendHostInstance.addFileSystem(type || '');
@@ -167,6 +170,9 @@ export class IsolatedFileSystemManager extends Common.ObjectWrapper.ObjectWrappe
   }
 
   removeFileSystem(fileSystem: PlatformFileSystem): void {
+    Host.userMetrics.actionTaken(
+        fileSystem.type() === 'overrides' ? Host.UserMetrics.Action.OverrideTabRemoveFolder :
+                                            Host.UserMetrics.Action.WorkspaceTabRemoveFolder);
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.removeFileSystem(fileSystem.embedderPath());
   }
 

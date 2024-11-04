@@ -26,18 +26,21 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_STYLE_CONTENT_DATA_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_STYLE_CONTENT_DATA_H_
 
+#include "third_party/blink/renderer/core/css/css_value.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
 #include "third_party/blink/renderer/core/style/style_image.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/member.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
+
+#include <iosfwd>
 
 namespace blink {
 
 class ComputedStyle;
 class LayoutObject;
-enum class LegacyLayout;
 class PseudoElement;
 class TreeScope;
 
@@ -53,8 +56,7 @@ class ContentData : public GarbageCollected<ContentData> {
   virtual bool IsNone() const { return false; }
 
   virtual LayoutObject* CreateLayoutObject(PseudoElement&,
-                                           const ComputedStyle&,
-                                           LegacyLayout) const = 0;
+                                           const ComputedStyle&) const = 0;
 
   virtual ContentData* Clone() const;
 
@@ -69,11 +71,29 @@ class ContentData : public GarbageCollected<ContentData> {
 
   virtual void Trace(Visitor*) const;
 
+  // For debugging/logging only.
+  virtual String DebugString() const { return "<unknown>"; }
+
  private:
   virtual ContentData* CloneInternal() const = 0;
 
   Member<ContentData> next_;
+
+  friend std::ostream& operator<<(std::ostream& stream,
+                                  const ContentData& content_data);
 };
+
+inline std::ostream& operator<<(std::ostream& stream,
+                                const ContentData& content_data) {
+  const ContentData* ptr = &content_data;
+  stream << "ContentData{";
+  while (ptr) {
+    stream << content_data.DebugString();
+    stream << ",";
+    ptr = ptr->next_.Get();
+  }
+  return stream << "}";
+}
 
 class ImageContentData final : public ContentData {
   friend class ContentData;
@@ -92,8 +112,7 @@ class ImageContentData final : public ContentData {
 
   bool IsImage() const override { return true; }
   LayoutObject* CreateLayoutObject(PseudoElement&,
-                                   const ComputedStyle&,
-                                   LegacyLayout) const override;
+                                   const ComputedStyle&) const override;
 
   bool Equals(const ContentData& data) const override {
     if (!data.IsImage()) {
@@ -104,6 +123,33 @@ class ImageContentData final : public ContentData {
   }
 
   void Trace(Visitor*) const override;
+
+  String DebugString() const override {
+    StringBuilder str;
+    str.Append("<image: ");
+    if (image_->IsImageResource()) {
+      str.Append("[is_resource]");
+    }
+    if (image_->IsPendingImage()) {
+      str.Append("[pending]");
+    }
+    if (image_->IsGeneratedImage()) {
+      str.Append("[generated]");
+    }
+    if (image_->IsContentful()) {
+      str.Append("[contentful]");
+    }
+    if (image_->IsImageResourceSet()) {
+      str.Append("[resourceset]");
+    }
+    if (image_->IsPaintImage()) {
+      str.Append("[paint]");
+    }
+    if (image_->IsCrossfadeImage()) {
+      str.Append("[crossfade]");
+    }
+    return str + image_->CssValue()->CssText() + ">";
+  }
 
  private:
   ContentData* CloneInternal() const override {
@@ -132,8 +178,7 @@ class TextContentData final : public ContentData {
 
   bool IsText() const override { return true; }
   LayoutObject* CreateLayoutObject(PseudoElement&,
-                                   const ComputedStyle&,
-                                   LegacyLayout) const override;
+                                   const ComputedStyle&) const override;
 
   bool Equals(const ContentData& data) const override {
     if (!data.IsText()) {
@@ -141,6 +186,8 @@ class TextContentData final : public ContentData {
     }
     return static_cast<const TextContentData&>(data).GetText() == GetText();
   }
+
+  String DebugString() const override { return text_; }
 
  private:
   ContentData* CloneInternal() const override {
@@ -166,8 +213,7 @@ class AltTextContentData final : public ContentData {
 
   bool IsAltText() const override { return true; }
   LayoutObject* CreateLayoutObject(PseudoElement&,
-                                   const ComputedStyle&,
-                                   LegacyLayout) const override;
+                                   const ComputedStyle&) const override;
 
   bool Equals(const ContentData& data) const override {
     if (!data.IsAltText()) {
@@ -175,6 +221,8 @@ class AltTextContentData final : public ContentData {
     }
     return static_cast<const AltTextContentData&>(data).GetText() == GetText();
   }
+
+  String DebugString() const override { return "<alt: " + text_ + ">"; }
 
  private:
   ContentData* CloneInternal() const override {
@@ -205,8 +253,7 @@ class CounterContentData final : public ContentData {
 
   bool IsCounter() const override { return true; }
   LayoutObject* CreateLayoutObject(PseudoElement&,
-                                   const ComputedStyle&,
-                                   LegacyLayout) const override;
+                                   const ComputedStyle&) const override;
 
   const AtomicString& Identifier() const { return identifier_; }
   const AtomicString& ListStyle() const { return list_style_; }
@@ -214,6 +261,8 @@ class CounterContentData final : public ContentData {
   const TreeScope* GetTreeScope() const { return tree_scope_; }
 
   void Trace(Visitor*) const override;
+
+  String DebugString() const override { return "<counter>"; }
 
  private:
   ContentData* CloneInternal() const override {
@@ -257,8 +306,7 @@ class QuoteContentData final : public ContentData {
 
   bool IsQuote() const override { return true; }
   LayoutObject* CreateLayoutObject(PseudoElement&,
-                                   const ComputedStyle&,
-                                   LegacyLayout) const override;
+                                   const ComputedStyle&) const override;
 
   bool Equals(const ContentData& data) const override {
     if (!data.IsQuote()) {
@@ -266,6 +314,8 @@ class QuoteContentData final : public ContentData {
     }
     return static_cast<const QuoteContentData&>(data).Quote() == Quote();
   }
+
+  String DebugString() const override { return "<quote>"; }
 
  private:
   ContentData* CloneInternal() const override {
@@ -290,10 +340,11 @@ class NoneContentData final : public ContentData {
 
   bool IsNone() const override { return true; }
   LayoutObject* CreateLayoutObject(PseudoElement&,
-                                   const ComputedStyle&,
-                                   LegacyLayout) const override;
+                                   const ComputedStyle&) const override;
 
   bool Equals(const ContentData& data) const override { return data.IsNone(); }
+
+  String DebugString() const override { return "<none>"; }
 
  private:
   ContentData* CloneInternal() const override {

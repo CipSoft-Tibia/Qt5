@@ -2,19 +2,13 @@
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#ifdef QT_NO_DEBUG
-#undef QT_NO_DEBUG
-#endif
-#ifdef qDebug
-#undef qDebug
-#endif
-
 #include "qdebug.h"
 #include "private/qdebug_p.h"
 #include "qmetaobject.h"
 #include <private/qtextstream_p.h>
 #include <private/qtools_p.h>
 
+#include <array>
 #include <q20chrono.h>
 
 QT_BEGIN_NAMESPACE
@@ -436,6 +430,87 @@ void QDebug::putTimeUnit(qint64 num, qint64 den)
     stream->ts << timeUnit(num, den); // ### optimize
 }
 
+namespace {
+
+#ifdef QT_SUPPORTS_INT128
+
+constexpr char Q_INT128_MIN_STR[] = "-170141183460469231731687303715884105728";
+
+constexpr int Int128BufferSize = sizeof(Q_INT128_MIN_STR);
+using Int128Buffer = std::array<char, Int128BufferSize>;
+                                           // numeric_limits<qint128>::digits10 may not exist
+
+static char *i128ToStringHelper(Int128Buffer &buffer, quint128 n)
+{
+    auto dst = buffer.data() + buffer.size();
+    *--dst = '\0'; // NUL-terminate
+    if (n == 0) {
+        *--dst = '0'; // and done
+    } else {
+        while (n != 0) {
+            *--dst = "0123456789"[n % 10];
+            n /= 10;
+        }
+    }
+    return dst;
+}
+#endif // QT_SUPPORTS_INT128
+
+[[maybe_unused]]
+static const char *int128Warning()
+{
+    const char *msg = "Qt was not compiled with int128 support.";
+    qWarning("%s", msg);
+    return msg;
+}
+
+} // unnamed namespace
+
+/*!
+    \since 6.7
+    \internal
+    Helper to the qint128 debug streaming output.
+ */
+void QDebug::putInt128([[maybe_unused]] const void *p)
+{
+#ifdef QT_SUPPORTS_INT128
+    Q_ASSERT(p);
+    qint128 i;
+    memcpy(&i, p, sizeof(i)); // alignment paranoia
+    if (i == Q_INT128_MIN) {
+        // -i is not representable, hardcode the result:
+        stream->ts << Q_INT128_MIN_STR;
+    } else {
+        Int128Buffer buffer;
+        auto dst = i128ToStringHelper(buffer, i < 0 ? -i : i);
+        if (i < 0)
+            *--dst = '-';
+        stream->ts << dst;
+    }
+    return;
+#endif // QT_SUPPORTS_INT128
+    stream->ts << int128Warning();
+}
+
+/*!
+    \since 6.7
+    \internal
+    Helper to the quint128 debug streaming output.
+ */
+void QDebug::putUInt128([[maybe_unused]] const void *p)
+{
+#ifdef QT_SUPPORTS_INT128
+    Q_ASSERT(p);
+    quint128 i;
+    memcpy(&i, p, sizeof(i)); // alignment paranoia
+    Int128Buffer buffer;
+    stream->ts << i128ToStringHelper(buffer, i);
+    return;
+#endif // QT_SUPPORTS_INT128
+    stream->ts << int128Warning();
+}
+
+
 /*!
     \fn QDebug::swap(QDebug &other)
     \since 5.0
@@ -508,6 +583,29 @@ QDebug &QDebug::resetFormat()
     \since 5.0
 
     \sa QDebugStateSaver
+*/
+
+
+/*!
+    \fn bool QDebug::quoteStrings() const
+    \since 6.7
+
+    Returns \c true if this QDebug instance will quote strings streamed into
+    it (which is the default).
+
+    \sa QDebugStateSaver, quote(), noquote(), setQuoteStrings()
+*/
+
+/*!
+    \fn void QDebug::setQuoteStrings(bool b)
+    \since 6.7
+
+    Enables quoting of strings streamed into this QDebug instance if \a b is
+    \c true; otherwise quoting is disabled.
+
+    The default is to quote strings.
+
+    \sa QDebugStateSaver, quote(), noquote(), quoteStrings()
 */
 
 
@@ -880,6 +978,23 @@ QDebug &QDebug::resetFormat()
 */
 
 /*!
+    \fn template <typename T, QDebug::if_qint128<T>> QDebug::operator<<(T i)
+    \fn template <typename T, QDebug::if_quint128<T>> QDebug::operator<<(T i)
+    \since 6.7
+
+    Prints the textual representation of the 128-bit integer \a i.
+
+    \note This operator is only available if Qt supports 128-bit integer types.
+    If 128-bit integer types are available in your build, but the Qt libraries
+    were compiled without, the operator will print a warning instead.
+
+    \note Because the operator is a function template, no implicit conversions
+    are performed on its argument. It must be exactly qint128/quint128.
+
+    \sa QT_SUPPORTS_INT128
+*/
+
+/*!
     \fn template <class T> QString QDebug::toString(T &&object)
     \since 6.0
 
@@ -988,6 +1103,15 @@ QDebug &QDebug::resetFormat()
 */
 
 /*!
+    \since 6.7
+    \fn template <class T> QDebug operator<<(QDebug debug, const std::optional<T> &opt)
+    \relates QDebug
+
+    Writes the contents of \a opt (or \c nullopt if not set) to \a debug.
+    \c T needs to support streaming into QDebug.
+*/
+
+/*!
     \fn template <typename T> QDebug operator<<(QDebug debug, const QContiguousCache<T> &cache)
     \relates QDebug
 
@@ -1018,6 +1142,13 @@ QDebug &QDebug::resetFormat()
   \fn QDebug &QDebug::operator<<(std::nullptr_t)
   \internal
  */
+
+/*!
+    \since 6.7
+    \fn QDebug &QDebug::operator<<(std::nullopt_t)
+
+    Writes nullopt to the stream.
+*/
 
 /*!
     \class QDebugStateSaver

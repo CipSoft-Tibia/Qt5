@@ -18,6 +18,7 @@
 #include "base/rand_util.h"
 #include "base/ranges/algorithm.h"
 #include "base/run_loop.h"
+#include "base/scoped_multi_source_observation.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
@@ -57,9 +58,11 @@
 #include "ui/views/controls/textfield/textfield.h"
 #include "ui/views/layout/box_layout.h"
 #include "ui/views/paint_info.h"
+#include "ui/views/test/ax_event_counter.h"
 #include "ui/views/test/view_metadata_test_utils.h"
 #include "ui/views/test/views_test_base.h"
 #include "ui/views/test/widget_test.h"
+#include "ui/views/view_class_properties.h"
 #include "ui/views/view_observer.h"
 #include "ui/views/view_utils.h"
 #include "ui/views/views_features.h"
@@ -68,7 +71,14 @@
 #include "ui/views/widget/unique_widget_ptr.h"
 #include "ui/views/window/dialog_delegate.h"
 
-using testing::ElementsAre;
+using ::testing::_;
+using ::testing::ElementsAre;
+using ::testing::Eq;
+using ::testing::IsNull;
+using ::testing::Mock;
+using ::testing::Pointee;
+using ::testing::StrictMock;
+using ::testing::WithArg;
 
 namespace {
 
@@ -277,7 +287,51 @@ class TestView : public View {
   raw_ptr<const ui::NativeTheme> native_theme_ = nullptr;
 
   // Accessibility events
-  ax::mojom::Event last_a11y_event_;
+  ax::mojom::Event last_a11y_event_ = ax::mojom::Event::kNone;
+};
+
+class A11yTestView : public TestView {
+ public:
+  // Convenience constructor to test `View::SetAccessibilityProperties`
+  explicit A11yTestView(
+      absl::optional<ax::mojom::Role> role = absl::nullopt,
+      absl::optional<std::u16string> name = absl::nullopt,
+      absl::optional<std::u16string> description = absl::nullopt,
+      absl::optional<std::u16string> role_description = absl::nullopt,
+      absl::optional<ax::mojom::NameFrom> name_from = absl::nullopt,
+      absl::optional<ax::mojom::DescriptionFrom> description_from =
+          absl::nullopt) {
+    SetAccessibilityProperties(
+        std::move(role), std::move(name), std::move(description),
+        std::move(role_description), std::move(name_from),
+        std::move(description_from));
+  }
+
+  ~A11yTestView() override = default;
+
+  // Overridden from views::View:
+  void AdjustAccessibleName(std::u16string& new_name,
+                            ax::mojom::NameFrom& name_from) override {
+    if (name_prefix_.has_value()) {
+      new_name.insert(0, name_prefix_.value());
+    }
+
+    if (name_from_.has_value()) {
+      name_from = name_from_.value();
+    }
+  }
+
+  void SetAccessibleNamePrefix(absl::optional<std::u16string> name_prefix) {
+    name_prefix_ = std::move(name_prefix);
+  }
+
+  void SetAccessibleNameFrom(absl::optional<ax::mojom::NameFrom> name_from) {
+    name_from_ = std::move(name_from);
+  }
+
+ private:
+  absl::optional<std::u16string> name_prefix_;
+  absl::optional<ax::mojom::NameFrom> name_from_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -335,13 +389,514 @@ TEST_F(ViewTest, SizeToPreferredSizeInducesLayout) {
   EXPECT_TRUE(example_view.did_layout_);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// OnBoundsChanged
-////////////////////////////////////////////////////////////////////////////////
-
 void TestView::OnAccessibilityEvent(ax::mojom::Event event_type) {
   last_a11y_event_ = event_type;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Accessibility Property Setters
+////////////////////////////////////////////////////////////////////////////////
+
+TEST_F(ViewTest, PauseAccessibilityEvents) {
+  TestView v;
+  EXPECT_EQ(v.pause_accessibility_events_, false);
+
+  // Setting the accessible name when `pause_accessibility_events_` is false
+  // should result in an event being fired.
+  v.last_a11y_event_ = ax::mojom::Event::kNone;
+  v.SetAccessibleName(u"Name");
+  EXPECT_EQ(v.last_a11y_event_, ax::mojom::Event::kTextChanged);
+  EXPECT_EQ(v.pause_accessibility_events_, false);
+
+  // Setting the accessible name when `pause_accessibility_events_` is true
+  // should result in no event being fired.
+  v.last_a11y_event_ = ax::mojom::Event::kNone;
+  v.pause_accessibility_events_ = true;
+  v.SetAccessibleName(u"New Name");
+  EXPECT_EQ(v.last_a11y_event_, ax::mojom::Event::kNone);
+  EXPECT_EQ(v.pause_accessibility_events_, true);
+
+  // A11yTestView views are constructed using `SetAccessibilityProperties`. By
+  // default, `pause_accessibility_events_` is false. It is temporarily set to
+  // true and then reset at the end of initialization.
+  A11yTestView ax_v(ax::mojom::Role::kButton, u"Name", u"Description");
+  EXPECT_EQ(ax_v.last_a11y_event_, ax::mojom::Event::kNone);
+  EXPECT_EQ(ax_v.pause_accessibility_events_, false);
+}
+
+TEST_F(ViewTest, SetAccessibilityPropertiesRoleNameDescription) {
+  views::test::AXEventCounter ax_counter(views::AXEventManager::Get());
+  A11yTestView v(ax::mojom::Role::kButton, u"Name", u"Description");
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleRole(), ax::mojom::Role::kButton);
+  EXPECT_EQ(data.role, ax::mojom::Role::kButton);
+  EXPECT_EQ(v.GetAccessibleName(), u"Name");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            u"Name");
+  EXPECT_EQ(static_cast<ax::mojom::NameFrom>(
+                data.GetIntAttribute(ax::mojom::IntAttribute::kNameFrom)),
+            ax::mojom::NameFrom::kAttribute);
+  EXPECT_EQ(v.GetAccessibleDescription(), u"Description");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kDescription),
+            u"Description");
+  EXPECT_EQ(static_cast<ax::mojom::DescriptionFrom>(data.GetIntAttribute(
+                ax::mojom::IntAttribute::kDescriptionFrom)),
+            ax::mojom::DescriptionFrom::kAriaDescription);
+
+  // There should not be any accessibility events fired when properties are
+  // set within `SetAccessibilityProperties`. For the above properties, the only
+  // event type is `kTextChanged`.
+  EXPECT_EQ(ax_counter.GetCount(ax::mojom::Event::kTextChanged, &v), 0);
+
+  // Setting the accessible name after initialization should result in an event
+  // being fired.
+  v.SetAccessibleName(u"New Name");
+  EXPECT_EQ(ax_counter.GetCount(ax::mojom::Event::kTextChanged, &v), 1);
+}
+
+TEST_F(ViewTest, SetAccessibilityPropertiesRoleNameDescriptionDetailed) {
+  views::test::AXEventCounter ax_counter(views::AXEventManager::Get());
+  A11yTestView v(ax::mojom::Role::kButton, u"Name", u"Description",
+                 /*role_description*/ u"", ax::mojom::NameFrom::kContents,
+                 ax::mojom::DescriptionFrom::kTitle);
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleRole(), ax::mojom::Role::kButton);
+  EXPECT_EQ(data.role, ax::mojom::Role::kButton);
+  EXPECT_EQ(v.GetAccessibleName(), u"Name");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            u"Name");
+  EXPECT_EQ(static_cast<ax::mojom::NameFrom>(
+                data.GetIntAttribute(ax::mojom::IntAttribute::kNameFrom)),
+            ax::mojom::NameFrom::kContents);
+  EXPECT_EQ(v.GetAccessibleDescription(), u"Description");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kDescription),
+            u"Description");
+  EXPECT_EQ(static_cast<ax::mojom::DescriptionFrom>(data.GetIntAttribute(
+                ax::mojom::IntAttribute::kDescriptionFrom)),
+            ax::mojom::DescriptionFrom::kTitle);
+
+  // There should not be any accessibility events fired when properties are
+  // set within `SetAccessibilityProperties`. For the above properties, the only
+  // event type is `kTextChanged`.
+  EXPECT_EQ(ax_counter.GetCount(ax::mojom::Event::kTextChanged, &v), 0);
+
+  // Setting the accessible name after initialization should result in an event
+  // being fired.
+  v.SetAccessibleName(u"New Name");
+  EXPECT_EQ(ax_counter.GetCount(ax::mojom::Event::kTextChanged, &v), 1);
+}
+
+TEST_F(ViewTest, SetAccessibilityPropertiesRoleRolenameNameDescription) {
+  views::test::AXEventCounter ax_counter(views::AXEventManager::Get());
+  A11yTestView v(ax::mojom::Role::kButton, u"Name", u"Description",
+                 u"Super Button");
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleRole(), ax::mojom::Role::kButton);
+  EXPECT_EQ(data.role, ax::mojom::Role::kButton);
+  EXPECT_EQ(
+      data.GetString16Attribute(ax::mojom::StringAttribute::kRoleDescription),
+      u"Super Button");
+  EXPECT_EQ(v.GetAccessibleName(), u"Name");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            u"Name");
+  EXPECT_EQ(v.GetAccessibleDescription(), u"Description");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kDescription),
+            u"Description");
+
+  // There should not be any accessibility events fired when properties are
+  // set within `SetAccessibilityProperties`. For the above properties, the only
+  // event type is `kTextChanged`.
+  EXPECT_EQ(ax_counter.GetCount(ax::mojom::Event::kTextChanged, &v), 0);
+
+  // Setting the accessible name after initialization should result in an event
+  // being fired.
+  v.SetAccessibleName(u"New Name");
+  EXPECT_EQ(ax_counter.GetCount(ax::mojom::Event::kTextChanged, &v), 1);
+}
+
+TEST_F(ViewTest, SetAccessibilityPropertiesRoleAndRoleDescription) {
+  A11yTestView v(ax::mojom::Role::kButton,
+                 /*name*/ absl::nullopt,
+                 /*description*/ absl::nullopt, u"Super Button");
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleRole(), ax::mojom::Role::kButton);
+  EXPECT_EQ(data.role, ax::mojom::Role::kButton);
+  EXPECT_EQ(
+      data.GetString16Attribute(ax::mojom::StringAttribute::kRoleDescription),
+      u"Super Button");
+}
+
+TEST_F(ViewTest, SetAccessibilityPropertiesNameExplicitlyEmpty) {
+  A11yTestView v(ax::mojom::Role::kNone,
+                 /*name*/ u"",
+                 /*description*/ u"",
+                 /*role_description*/ u"",
+                 ax::mojom::NameFrom::kAttributeExplicitlyEmpty);
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleRole(), ax::mojom::Role::kNone);
+  EXPECT_EQ(data.role, ax::mojom::Role::kNone);
+  EXPECT_EQ(v.GetAccessibleName(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+  EXPECT_EQ(static_cast<ax::mojom::NameFrom>(
+                data.GetIntAttribute(ax::mojom::IntAttribute::kNameFrom)),
+            ax::mojom::NameFrom::kAttributeExplicitlyEmpty);
+}
+
+TEST_F(ViewTest, SetAccessibleRole) {
+  TestView v;
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleRole(), ax::mojom::Role::kUnknown);
+  EXPECT_EQ(data.role, ax::mojom::Role::kUnknown);
+
+  data = ui::AXNodeData();
+  v.SetAccessibleRole(ax::mojom::Role::kButton);
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(data.role, ax::mojom::Role::kButton);
+  EXPECT_EQ(v.GetAccessibleRole(), ax::mojom::Role::kButton);
+}
+
+TEST_F(ViewTest, SetAccessibleNameToStringWithRoleAlreadySet) {
+  TestView v;
+  v.SetAccessibleRole(ax::mojom::Role::kButton);
+
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+
+  v.last_a11y_event_ = ax::mojom::Event::kNone;
+  data = ui::AXNodeData();
+
+  v.SetAccessibleName(u"Name");
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"Name");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            u"Name");
+  EXPECT_EQ(v.last_a11y_event_, ax::mojom::Event::kTextChanged);
+}
+
+TEST_F(ViewTest, AdjustAccessibleNameStringWithRoleAlreadySet) {
+  A11yTestView v(ax::mojom::Role::kButton);
+  v.SetAccessibleNamePrefix(u"Prefix: ");
+
+  ui::AXNodeData data;
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+
+  v.last_a11y_event_ = ax::mojom::Event::kNone;
+  data = ui::AXNodeData();
+
+  v.SetAccessibleName(u"Name");
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"Prefix: Name");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            u"Prefix: Name");
+  EXPECT_EQ(v.last_a11y_event_, ax::mojom::Event::kTextChanged);
+}
+
+TEST_F(ViewTest, SetAccessibleNameToLabelWithRoleAlreadySet) {
+  TestView label;
+  label.SetAccessibleName(u"Label's Name");
+
+  TestView v;
+  v.SetAccessibleRole(ax::mojom::Role::kButton);
+
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+  EXPECT_EQ(static_cast<ax::mojom::NameFrom>(
+                data.GetIntAttribute(ax::mojom::IntAttribute::kNameFrom)),
+            ax::mojom::NameFrom::kNone);
+  EXPECT_FALSE(
+      data.HasIntListAttribute(ax::mojom::IntListAttribute::kLabelledbyIds));
+
+  v.last_a11y_event_ = ax::mojom::Event::kNone;
+  data = ui::AXNodeData();
+
+  v.SetAccessibleName(&label);
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"Label's Name");
+  EXPECT_TRUE(
+      data.HasIntListAttribute(ax::mojom::IntListAttribute::kLabelledbyIds));
+  EXPECT_EQ(static_cast<ax::mojom::NameFrom>(
+                data.GetIntAttribute(ax::mojom::IntAttribute::kNameFrom)),
+            ax::mojom::NameFrom::kRelatedElement);
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            u"Label's Name");
+  EXPECT_EQ(v.last_a11y_event_, ax::mojom::Event::kTextChanged);
+}
+
+TEST_F(ViewTest, AdjustAccessibleNameFrom) {
+  A11yTestView v(ax::mojom::Role::kTextField);
+  v.SetAccessibleNameFrom(ax::mojom::NameFrom::kPlaceholder);
+
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+
+  v.last_a11y_event_ = ax::mojom::Event::kNone;
+  data = ui::AXNodeData();
+
+  v.SetAccessibleName(u"Name");
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"Name");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            u"Name");
+  EXPECT_EQ(static_cast<ax::mojom::NameFrom>(
+                data.GetIntAttribute(ax::mojom::IntAttribute::kNameFrom)),
+            ax::mojom::NameFrom::kPlaceholder);
+  EXPECT_EQ(v.last_a11y_event_, ax::mojom::Event::kTextChanged);
+}
+
+TEST_F(ViewTest, AdjustAccessibleNameFromLabelWithRoleAlreadySet) {
+  TestView label;
+  label.SetAccessibleName(u"Label's Name");
+
+  A11yTestView v(ax::mojom::Role::kButton);
+  v.SetAccessibleNamePrefix(u"Prefix: ");
+
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+  EXPECT_EQ(static_cast<ax::mojom::NameFrom>(
+                data.GetIntAttribute(ax::mojom::IntAttribute::kNameFrom)),
+            ax::mojom::NameFrom::kNone);
+  EXPECT_FALSE(
+      data.HasIntListAttribute(ax::mojom::IntListAttribute::kLabelledbyIds));
+
+  v.last_a11y_event_ = ax::mojom::Event::kNone;
+  data = ui::AXNodeData();
+
+  v.SetAccessibleName(&label);
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"Prefix: Label's Name");
+  EXPECT_TRUE(
+      data.HasIntListAttribute(ax::mojom::IntListAttribute::kLabelledbyIds));
+  EXPECT_EQ(static_cast<ax::mojom::NameFrom>(
+                data.GetIntAttribute(ax::mojom::IntAttribute::kNameFrom)),
+            ax::mojom::NameFrom::kRelatedElement);
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            u"Prefix: Label's Name");
+  EXPECT_EQ(v.last_a11y_event_, ax::mojom::Event::kTextChanged);
+}
+
+TEST_F(ViewTest, SetAccessibleNameExplicitlyEmpty) {
+  TestView v;
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+  EXPECT_EQ(static_cast<ax::mojom::NameFrom>(
+                data.GetIntAttribute(ax::mojom::IntAttribute::kNameFrom)),
+            ax::mojom::NameFrom::kNone);
+
+  data = ui::AXNodeData();
+  v.SetAccessibleName(u"", ax::mojom::NameFrom::kAttributeExplicitlyEmpty);
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+  EXPECT_EQ(static_cast<ax::mojom::NameFrom>(
+                data.GetIntAttribute(ax::mojom::IntAttribute::kNameFrom)),
+            ax::mojom::NameFrom::kAttributeExplicitlyEmpty);
+}
+
+TEST_F(ViewTest, SetAccessibleNameExplicitlyEmptyToRemoveName) {
+  TestView v;
+  ui::AXNodeData data = ui::AXNodeData();
+  v.SetAccessibleRole(ax::mojom::Role::kButton);
+  v.SetAccessibleName(u"Name");
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"Name");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            u"Name");
+
+  data = ui::AXNodeData();
+  v.SetAccessibleName(u"", ax::mojom::NameFrom::kAttributeExplicitlyEmpty);
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+  EXPECT_EQ(static_cast<ax::mojom::NameFrom>(
+                data.GetIntAttribute(ax::mojom::IntAttribute::kNameFrom)),
+            ax::mojom::NameFrom::kAttributeExplicitlyEmpty);
+}
+
+TEST_F(ViewTest, SetAccessibleNameToStringRoleNotInitiallySet) {
+  TestView v;
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+
+  v.last_a11y_event_ = ax::mojom::Event::kNone;
+  data = ui::AXNodeData();
+
+  // Setting the name prior to setting the role violates an expectation of
+  // `AXNodeData::SetName`. `View::SetAccessibleName` handles that case by
+  // setting the property but not adding it to `ax_node_data_` until a role
+  // has been set.
+  v.SetAccessibleName(u"Name");
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"Name");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+  EXPECT_EQ(v.last_a11y_event_, ax::mojom::Event::kTextChanged);
+
+  v.last_a11y_event_ = ax::mojom::Event::kNone;
+  data = ui::AXNodeData();
+
+  // Setting the role to a valid role should add the previously-set name to
+  // ax_node_data_. Note there is currently no role-changed accessibility event.
+  v.SetAccessibleRole(ax::mojom::Role::kButton);
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"Name");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            u"Name");
+  EXPECT_EQ(v.last_a11y_event_, ax::mojom::Event::kNone);
+
+  v.last_a11y_event_ = ax::mojom::Event::kNone;
+  data = ui::AXNodeData();
+}
+
+TEST_F(ViewTest, SetAccessibleNameToLabelRoleNotInitiallySet) {
+  TestView label;
+  label.SetAccessibleName(u"Label's Name");
+
+  TestView v;
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+
+  v.last_a11y_event_ = ax::mojom::Event::kNone;
+  data = ui::AXNodeData();
+
+  // Setting the name prior to setting the role violates an expectation of
+  // `AXNodeData::SetName`. `View::SetAccessibleName` handles that case by
+  // setting the property but not adding it to `ax_node_data_` until a role
+  // has been set.
+  v.SetAccessibleName(&label);
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"Label's Name");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName), u"");
+  EXPECT_EQ(v.last_a11y_event_, ax::mojom::Event::kTextChanged);
+
+  v.last_a11y_event_ = ax::mojom::Event::kNone;
+  data = ui::AXNodeData();
+
+  // Setting the role to a valid role should add the previously-set name to
+  // ax_node_data_. Note there is currently no role-changed accessibility event.
+  v.SetAccessibleRole(ax::mojom::Role::kButton);
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleName(), u"Label's Name");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kName),
+            u"Label's Name");
+  EXPECT_EQ(v.last_a11y_event_, ax::mojom::Event::kNone);
+}
+
+TEST_F(ViewTest, SetAccessibleDescriptionToString) {
+  TestView v;
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleDescription(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kDescription),
+            u"");
+
+  data = ui::AXNodeData();
+  v.SetAccessibleDescription(u"Description");
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleDescription(), u"Description");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kDescription),
+            u"Description");
+}
+
+TEST_F(ViewTest, SetAccessibleDescriptionToLabel) {
+  TestView label;
+  label.SetAccessibleName(u"Label's Name");
+
+  TestView v;
+  v.SetAccessibleRole(ax::mojom::Role::kButton);
+
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleDescription(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kDescription),
+            u"");
+  EXPECT_EQ(static_cast<ax::mojom::DescriptionFrom>(data.GetIntAttribute(
+                ax::mojom::IntAttribute::kDescriptionFrom)),
+            ax::mojom::DescriptionFrom::kNone);
+  EXPECT_FALSE(
+      data.HasIntListAttribute(ax::mojom::IntListAttribute::kDescribedbyIds));
+
+  data = ui::AXNodeData();
+  v.SetAccessibleDescription(&label);
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleDescription(), u"Label's Name");
+  EXPECT_TRUE(
+      data.HasIntListAttribute(ax::mojom::IntListAttribute::kDescribedbyIds));
+  EXPECT_EQ(static_cast<ax::mojom::DescriptionFrom>(data.GetIntAttribute(
+                ax::mojom::IntAttribute::kDescriptionFrom)),
+            ax::mojom::DescriptionFrom::kRelatedElement);
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kDescription),
+            u"Label's Name");
+}
+
+TEST_F(ViewTest, SetAccessibleDescriptionExplicitlyEmpty) {
+  TestView v;
+  ui::AXNodeData data = ui::AXNodeData();
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleDescription(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kDescription),
+            u"");
+  EXPECT_EQ(static_cast<ax::mojom::DescriptionFrom>(data.GetIntAttribute(
+                ax::mojom::IntAttribute::kDescriptionFrom)),
+            ax::mojom::DescriptionFrom::kNone);
+
+  data = ui::AXNodeData();
+  v.SetAccessibleDescription(
+      u"", ax::mojom::DescriptionFrom::kAttributeExplicitlyEmpty);
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleDescription(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kDescription),
+            u"");
+  EXPECT_EQ(static_cast<ax::mojom::DescriptionFrom>(data.GetIntAttribute(
+                ax::mojom::IntAttribute::kDescriptionFrom)),
+            ax::mojom::DescriptionFrom::kAttributeExplicitlyEmpty);
+}
+
+TEST_F(ViewTest, SetAccessibleDescriptionExplicitlyEmptyToRemoveDescription) {
+  TestView v;
+  ui::AXNodeData data = ui::AXNodeData();
+  v.SetAccessibleRole(ax::mojom::Role::kButton);
+  v.SetAccessibleDescription(u"Description");
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleDescription(), u"Description");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kDescription),
+            u"Description");
+
+  data = ui::AXNodeData();
+  v.SetAccessibleDescription(
+      u"", ax::mojom::DescriptionFrom::kAttributeExplicitlyEmpty);
+  v.GetAccessibleNodeData(&data);
+  EXPECT_EQ(v.GetAccessibleDescription(), u"");
+  EXPECT_EQ(data.GetString16Attribute(ax::mojom::StringAttribute::kDescription),
+            u"");
+  EXPECT_EQ(static_cast<ax::mojom::DescriptionFrom>(data.GetIntAttribute(
+                ax::mojom::IntAttribute::kDescriptionFrom)),
+            ax::mojom::DescriptionFrom::kAttributeExplicitlyEmpty);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// OnBoundsChanged
+////////////////////////////////////////////////////////////////////////////////
 
 TEST_F(ViewTest, OnBoundsChangedFiresA11yEvent) {
   TestView v;
@@ -592,7 +1147,12 @@ class ScopedTestPaintWidget {
   ScopedTestPaintWidget(const ScopedTestPaintWidget&) = delete;
   ScopedTestPaintWidget& operator=(const ScopedTestPaintWidget&) = delete;
 
-  ~ScopedTestPaintWidget() { widget_->CloseNow(); }
+  ~ScopedTestPaintWidget() {
+    // Widget is self-owning, and CloseNow() destroys the Widget, so this method
+    // has to pull the raw Widget* out of the raw_ptr to avoid the raw_ptr
+    // dangling after the Widget is destroyed.
+    widget_.ExtractAsDangling()->CloseNow();
+  }
 
   Widget* operator->() { return widget_; }
 
@@ -2906,6 +3466,8 @@ TEST_F(ViewTest, ConversionsWithTransform) {
   // View used to test a rotation transform.
   TestView* child_2 = new TestView;
 
+  constexpr float kDefaultAllowedConversionError = 0.00001f;
+
   {
     top_view.AddChildView(child);
     child->AddChildView(child_child);
@@ -2969,83 +3531,150 @@ TEST_F(ViewTest, ConversionsWithTransform) {
 
   // Conversions from child->top and top->child.
   {
+    // child->top
     gfx::Point point(5, 5);
     View::ConvertPointToTarget(child, &top_view, &point);
     EXPECT_EQ(22, point.x());
     EXPECT_EQ(39, point.y());
 
-    gfx::RectF rect(5.0f, 5.0f, 10.0f, 20.0f);
-    View::ConvertRectToTarget(child, &top_view, &rect);
-    EXPECT_FLOAT_EQ(22.0f, rect.x());
-    EXPECT_FLOAT_EQ(39.0f, rect.y());
-    EXPECT_FLOAT_EQ(30.0f, rect.width());
-    EXPECT_FLOAT_EQ(80.0f, rect.height());
+    gfx::Rect kSrc(5, 5, 10, 20);
+    gfx::RectF kSrcF(kSrc);
+    gfx::Rect kExpected(22, 39, 30, 80);
 
+    gfx::Rect kActual = View::ConvertRectToTarget(child, &top_view, kSrc);
+    EXPECT_EQ(kActual, kExpected);
+
+    gfx::RectF kActualF = View::ConvertRectToTarget(child, &top_view, kSrcF);
+    EXPECT_TRUE(kActualF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                            kDefaultAllowedConversionError,
+                                            kDefaultAllowedConversionError));
+
+    View::ConvertRectToTarget(child, &top_view, &kSrcF);
+    EXPECT_TRUE(kSrcF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                         kDefaultAllowedConversionError,
+                                         kDefaultAllowedConversionError));
+
+    // top->child
     point.SetPoint(22, 39);
     View::ConvertPointToTarget(&top_view, child, &point);
     EXPECT_EQ(5, point.x());
     EXPECT_EQ(5, point.y());
 
-    rect.SetRect(22.0f, 39.0f, 30.0f, 80.0f);
-    View::ConvertRectToTarget(&top_view, child, &rect);
-    EXPECT_FLOAT_EQ(5.0f, rect.x());
-    EXPECT_FLOAT_EQ(5.0f, rect.y());
-    EXPECT_FLOAT_EQ(10.0f, rect.width());
-    EXPECT_FLOAT_EQ(20.0f, rect.height());
+    kSrc.SetRect(22, 39, 30, 80);
+    kSrcF = gfx::RectF(kSrc);
+    kExpected.SetRect(5, 5, 10, 20);
+
+    kActual = View::ConvertRectToTarget(&top_view, child, kSrc);
+    EXPECT_EQ(kActual, kExpected);
+
+    kActualF = View::ConvertRectToTarget(&top_view, child, kSrcF);
+    EXPECT_TRUE(kActualF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                            kDefaultAllowedConversionError,
+                                            kDefaultAllowedConversionError));
+
+    View::ConvertRectToTarget(&top_view, child, &kSrcF);
+    EXPECT_TRUE(kSrcF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                         kDefaultAllowedConversionError,
+                                         kDefaultAllowedConversionError));
   }
 
   // Conversions from child_child->top and top->child_child.
   {
+    // child_child->top
     gfx::Point point(5, 5);
     View::ConvertPointToTarget(child_child, &top_view, &point);
     EXPECT_EQ(133, point.x());
     EXPECT_EQ(211, point.y());
 
-    gfx::RectF rect(5.0f, 5.0f, 10.0f, 20.0f);
-    View::ConvertRectToTarget(child_child, &top_view, &rect);
-    EXPECT_FLOAT_EQ(133.0f, rect.x());
-    EXPECT_FLOAT_EQ(211.0f, rect.y());
-    EXPECT_FLOAT_EQ(150.0f, rect.width());
-    EXPECT_FLOAT_EQ(560.0f, rect.height());
+    gfx::Rect kSrc(5, 5, 10, 20);
+    gfx::RectF kSrcF(kSrc);
+    gfx::Rect kExpected(133, 211, 150, 560);
 
+    gfx::Rect kActual = View::ConvertRectToTarget(child_child, &top_view, kSrc);
+    EXPECT_EQ(kActual, kExpected);
+
+    gfx::RectF kActualF =
+        View::ConvertRectToTarget(child_child, &top_view, kSrcF);
+    EXPECT_TRUE(kActualF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                            kDefaultAllowedConversionError,
+                                            kDefaultAllowedConversionError));
+
+    View::ConvertRectToTarget(child_child, &top_view, &kSrcF);
+    EXPECT_TRUE(kSrcF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                         kDefaultAllowedConversionError,
+                                         kDefaultAllowedConversionError));
+
+    // top->child_child
     point.SetPoint(133, 211);
     View::ConvertPointToTarget(&top_view, child_child, &point);
     EXPECT_EQ(5, point.x());
     EXPECT_EQ(5, point.y());
 
-    rect.SetRect(133.0f, 211.0f, 150.0f, 560.0f);
-    View::ConvertRectToTarget(&top_view, child_child, &rect);
-    EXPECT_FLOAT_EQ(5.0f, rect.x());
-    EXPECT_FLOAT_EQ(5.0f, rect.y());
-    EXPECT_FLOAT_EQ(10.0f, rect.width());
-    EXPECT_FLOAT_EQ(20.0f, rect.height());
+    kSrc.SetRect(133, 211, 150, 560);
+    kSrcF = gfx::RectF(kSrc);
+    kExpected.SetRect(5, 5, 10, 20);
+
+    kActual = View::ConvertRectToTarget(&top_view, child_child, kSrc);
+    EXPECT_EQ(kActual, kExpected);
+
+    kActualF = View::ConvertRectToTarget(&top_view, child_child, kSrcF);
+    EXPECT_TRUE(kActualF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                            kDefaultAllowedConversionError,
+                                            kDefaultAllowedConversionError));
+
+    View::ConvertRectToTarget(&top_view, child_child, &kSrcF);
+    EXPECT_TRUE(kSrcF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                         kDefaultAllowedConversionError,
+                                         kDefaultAllowedConversionError));
   }
 
   // Conversions from child_child->child and child->child_child
   {
+    // child_child->child
     gfx::Point point(5, 5);
     View::ConvertPointToTarget(child_child, child, &point);
     EXPECT_EQ(42, point.x());
     EXPECT_EQ(48, point.y());
 
-    gfx::RectF rect(5.0f, 5.0f, 10.0f, 20.0f);
-    View::ConvertRectToTarget(child_child, child, &rect);
-    EXPECT_FLOAT_EQ(42.0f, rect.x());
-    EXPECT_FLOAT_EQ(48.0f, rect.y());
-    EXPECT_FLOAT_EQ(50.0f, rect.width());
-    EXPECT_FLOAT_EQ(140.0f, rect.height());
+    gfx::Rect kSrc(5, 5, 10, 20);
+    gfx::RectF kSrcF(kSrc);
+    gfx::Rect kExpected(42, 48, 50, 140);
 
+    gfx::Rect kActual = View::ConvertRectToTarget(child_child, child, kSrc);
+    EXPECT_EQ(kActual, kExpected);
+
+    gfx::RectF kActualF = View::ConvertRectToTarget(child_child, child, kSrcF);
+    EXPECT_TRUE(kActualF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                            kDefaultAllowedConversionError,
+                                            kDefaultAllowedConversionError));
+
+    View::ConvertRectToTarget(child_child, child, &kSrcF);
+    EXPECT_TRUE(kSrcF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                         kDefaultAllowedConversionError,
+                                         kDefaultAllowedConversionError));
+
+    // child->child_child
     point.SetPoint(42, 48);
     View::ConvertPointToTarget(child, child_child, &point);
     EXPECT_EQ(5, point.x());
     EXPECT_EQ(5, point.y());
 
-    rect.SetRect(42.0f, 48.0f, 50.0f, 140.0f);
-    View::ConvertRectToTarget(child, child_child, &rect);
-    EXPECT_FLOAT_EQ(5.0f, rect.x());
-    EXPECT_FLOAT_EQ(5.0f, rect.y());
-    EXPECT_FLOAT_EQ(10.0f, rect.width());
-    EXPECT_FLOAT_EQ(20.0f, rect.height());
+    kSrc.SetRect(42, 48, 50, 140);
+    kSrcF = gfx::RectF(kSrc);
+    kExpected.SetRect(5, 5, 10, 20);
+
+    kActual = View::ConvertRectToTarget(child, child_child, kSrc);
+    EXPECT_EQ(kActual, kExpected);
+
+    kActualF = View::ConvertRectToTarget(child, child_child, kSrcF);
+    EXPECT_TRUE(kActualF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                            kDefaultAllowedConversionError,
+                                            kDefaultAllowedConversionError));
+
+    View::ConvertRectToTarget(child, child_child, &kSrcF);
+    EXPECT_TRUE(kSrcF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                         kDefaultAllowedConversionError,
+                                         kDefaultAllowedConversionError));
   }
 
   // Conversions from top_view to child with a value that should be negative.
@@ -3067,19 +3696,41 @@ TEST_F(ViewTest, ConversionsWithTransform) {
 
   // Rect conversions from top_view->child_2 and child_2->top_view.
   {
-    gfx::RectF rect(50.0f, 55.0f, 20.0f, 30.0f);
-    View::ConvertRectToTarget(child_2, &top_view, &rect);
-    EXPECT_FLOAT_EQ(615.0f, rect.x());
-    EXPECT_FLOAT_EQ(775.0f, rect.y());
-    EXPECT_FLOAT_EQ(30.0f, rect.width());
-    EXPECT_FLOAT_EQ(20.0f, rect.height());
+    // top_view->child_2
+    gfx::Rect kSrc(50, 55, 20, 30);
+    gfx::RectF kSrcF(kSrc);
+    gfx::Rect kExpected(615, 775, 30, 20);
 
-    rect.SetRect(615.0f, 775.0f, 30.0f, 20.0f);
-    View::ConvertRectToTarget(&top_view, child_2, &rect);
-    EXPECT_FLOAT_EQ(50.0f, rect.x());
-    EXPECT_FLOAT_EQ(55.0f, rect.y());
-    EXPECT_FLOAT_EQ(20.0f, rect.width());
-    EXPECT_FLOAT_EQ(30.0f, rect.height());
+    gfx::Rect kActual = View::ConvertRectToTarget(child_2, &top_view, kSrc);
+    EXPECT_EQ(kActual, kExpected);
+
+    gfx::RectF kActualF = View::ConvertRectToTarget(child_2, &top_view, kSrcF);
+    EXPECT_TRUE(kActualF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                            kDefaultAllowedConversionError,
+                                            kDefaultAllowedConversionError));
+
+    View::ConvertRectToTarget(child_2, &top_view, &kSrcF);
+    EXPECT_TRUE(kSrcF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                         kDefaultAllowedConversionError,
+                                         kDefaultAllowedConversionError));
+
+    // child_2->top_view
+    kSrc.SetRect(615, 775, 30, 20);
+    kSrcF = gfx::RectF(kSrc);
+    kExpected.SetRect(50, 55, 20, 30);
+
+    kActual = View::ConvertRectToTarget(&top_view, child_2, kSrc);
+    EXPECT_EQ(kActual, kExpected);
+
+    kActualF = View::ConvertRectToTarget(&top_view, child_2, kSrcF);
+    EXPECT_TRUE(kActualF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                            kDefaultAllowedConversionError,
+                                            kDefaultAllowedConversionError));
+
+    View::ConvertRectToTarget(&top_view, child_2, &kSrcF);
+    EXPECT_TRUE(kSrcF.ApproximatelyEqual(gfx::RectF(kExpected),
+                                         kDefaultAllowedConversionError,
+                                         kDefaultAllowedConversionError));
   }
 }
 
@@ -3163,16 +3814,13 @@ class ObserverView : public View {
 
   ~ObserverView() override;
 
-  void ResetTestState();
+  void ForgetOldDetails();
 
-  bool has_add_details() const { return has_add_details_; }
-  bool has_remove_details() const { return has_remove_details_; }
-
-  const ViewHierarchyChangedDetails& add_details() const {
+  absl::optional<ViewHierarchyChangedDetails> add_details() {
     return add_details_;
   }
 
-  const ViewHierarchyChangedDetails& remove_details() const {
+  absl::optional<ViewHierarchyChangedDetails> remove_details() {
     return remove_details_;
   }
 
@@ -3181,164 +3829,153 @@ class ObserverView : public View {
   void ViewHierarchyChanged(
       const ViewHierarchyChangedDetails& details) override;
 
-  bool has_add_details_ = false;
-  bool has_remove_details_ = false;
-  ViewHierarchyChangedDetails add_details_;
-  ViewHierarchyChangedDetails remove_details_;
+  absl::optional<ViewHierarchyChangedDetails> add_details_;
+  absl::optional<ViewHierarchyChangedDetails> remove_details_;
 };
 
 ObserverView::ObserverView() = default;
 
 ObserverView::~ObserverView() = default;
 
-void ObserverView::ResetTestState() {
-  has_add_details_ = false;
-  has_remove_details_ = false;
-  add_details_ = ViewHierarchyChangedDetails();
-  remove_details_ = ViewHierarchyChangedDetails();
+void ObserverView::ForgetOldDetails() {
+  add_details_.reset();
+  remove_details_.reset();
 }
 
 void ObserverView::ViewHierarchyChanged(
     const ViewHierarchyChangedDetails& details) {
-  if (details.is_add) {
-    has_add_details_ = true;
-    add_details_ = details;
-  } else {
-    has_remove_details_ = true;
-    remove_details_ = details;
+  (details.is_add ? add_details_ : remove_details_).emplace(details);
+}
+
+using ViewHierarchyChangedTest = ViewTest;
+
+void ForgetAllOldDetails(std::vector<ObserverView*> views) {
+  for (auto* view : views) {
+    view->ForgetOldDetails();
   }
 }
 
-// Verifies that the ViewHierarchyChanged() notification is sent correctly when
-// a child view is added or removed to all the views in the hierarchy (up and
-// down).
-// The tree looks like this:
-// v1
-// +-- v2(view2)
-//     +-- v3
-//     +-- v4 (starts here, then get reparented to v1)
-TEST_F(ViewTest, ViewHierarchyChanged) {
-  auto view1 = std::make_unique<ObserverView>();
-  ObserverView* v1 = view1.get();
+TEST_F(ViewHierarchyChangedTest, ParentReceivesAdd) {
+  auto parent = std::make_unique<ObserverView>();
+  auto* child = parent->AddChildView(std::make_unique<ObserverView>());
 
-  auto view3 = std::make_unique<ObserverView>();
+  ASSERT_TRUE(parent->add_details().has_value());
+  EXPECT_FALSE(parent->remove_details().has_value());
+  EXPECT_EQ(parent.get(), parent->add_details()->parent);
+  EXPECT_EQ(child, parent->add_details()->child);
+  EXPECT_EQ(nullptr, parent->add_details()->move_view);
 
-  auto view2 = std::make_unique<ObserverView>();
-  ObserverView* v3 = view2->AddChildView(std::move(view3));
+  ForgetAllOldDetails({parent.get(), child});
+}
 
-  // Make sure both |view2| and |v3| receive the ViewHierarchyChanged()
-  // notification.
-  EXPECT_TRUE(view2->has_add_details());
-  EXPECT_FALSE(view2->has_remove_details());
-  EXPECT_EQ(view2.get(), view2->add_details().parent);
-  EXPECT_EQ(v3, view2->add_details().child);
-  EXPECT_EQ(nullptr, view2->add_details().move_view);
+TEST_F(ViewHierarchyChangedTest, ChildReceivesAdd) {
+  auto parent = std::make_unique<ObserverView>();
+  auto* child = parent->AddChildView(std::make_unique<ObserverView>());
 
-  EXPECT_TRUE(v3->has_add_details());
-  EXPECT_FALSE(v3->has_remove_details());
-  EXPECT_EQ(view2.get(), v3->add_details().parent);
-  EXPECT_EQ(v3, v3->add_details().child);
-  EXPECT_EQ(nullptr, v3->add_details().move_view);
+  ASSERT_TRUE(child->add_details().has_value());
+  EXPECT_FALSE(child->remove_details().has_value());
+  EXPECT_EQ(parent.get(), child->add_details()->parent);
+  EXPECT_EQ(child, child->add_details()->child);
+  EXPECT_EQ(nullptr, child->add_details()->move_view);
 
-  // Reset everything to the initial state.
-  view2->ResetTestState();
-  v3->ResetTestState();
+  ForgetAllOldDetails({parent.get(), child});
+}
 
-  // Add |view2| to |view1|.
-  ObserverView* v2 = view1->AddChildView(std::move(view2));
+TEST_F(ViewHierarchyChangedTest, HierarchyReceivesAdd) {
+  auto child = std::make_unique<ObserverView>();
+  auto* grandchild = child->AddChildView(std::make_unique<ObserverView>());
 
-  // Verifies that |v2| is the child view *added* and the parent view is
-  // |v1|. Make sure all the views (v1, v2, v3) received _that_ information.
-  EXPECT_TRUE(v1->has_add_details());
-  EXPECT_FALSE(v1->has_remove_details());
-  EXPECT_EQ(v1, view1->add_details().parent);
-  EXPECT_EQ(v2, view1->add_details().child);
-  EXPECT_EQ(nullptr, view1->add_details().move_view);
+  ForgetAllOldDetails({child.get(), grandchild});
 
-  EXPECT_TRUE(v2->has_add_details());
-  EXPECT_FALSE(v2->has_remove_details());
-  EXPECT_EQ(v1, v2->add_details().parent);
-  EXPECT_EQ(v2, v2->add_details().child);
-  EXPECT_EQ(nullptr, v2->add_details().move_view);
+  auto parent = std::make_unique<ObserverView>();
+  auto* weak_child = parent->AddChildView(std::move(child));
 
-  EXPECT_TRUE(v3->has_add_details());
-  EXPECT_FALSE(v3->has_remove_details());
-  EXPECT_EQ(v1, v3->add_details().parent);
-  EXPECT_EQ(v2, v3->add_details().child);
-  EXPECT_EQ(nullptr, v3->add_details().move_view);
+  for (auto* view : {parent.get(), weak_child, grandchild}) {
+    ASSERT_TRUE(view->add_details().has_value());
+    EXPECT_FALSE(view->remove_details().has_value());
+    EXPECT_EQ(parent.get(), view->add_details()->parent);
+    EXPECT_EQ(weak_child, view->add_details()->child);
+    EXPECT_EQ(nullptr, view->add_details()->move_view);
+  }
 
-  v1->ResetTestState();
-  v2->ResetTestState();
-  v3->ResetTestState();
+  ForgetAllOldDetails({parent.get(), weak_child, grandchild});
+}
 
-  view2 = view1->RemoveChildViewT(v2);
+TEST_F(ViewHierarchyChangedTest, HierarchyReceivesRemove) {
+  auto parent = std::make_unique<ObserverView>();
+  auto* weak_child = parent->AddChildView(std::make_unique<ObserverView>());
+  auto* grandchild = weak_child->AddChildView(std::make_unique<ObserverView>());
 
-  // view2 now owns v2 from here.
-  // Verifies that |view2| is the child view *removed* and the parent view is
-  // |v1|. Make sure all the views (v1, v2, v3) received _that_ information.
-  EXPECT_FALSE(v1->has_add_details());
-  EXPECT_TRUE(v1->has_remove_details());
-  EXPECT_EQ(v1, v1->remove_details().parent);
-  EXPECT_EQ(v2, v1->remove_details().child);
-  EXPECT_EQ(nullptr, v1->remove_details().move_view);
+  ForgetAllOldDetails({parent.get(), weak_child, grandchild});
 
-  EXPECT_FALSE(v2->has_add_details());
-  EXPECT_TRUE(v2->has_remove_details());
-  EXPECT_EQ(v1, view2->remove_details().parent);
-  EXPECT_EQ(v2, view2->remove_details().child);
-  EXPECT_EQ(nullptr, view2->remove_details().move_view);
+  auto child = parent->RemoveChildViewT(weak_child);
 
-  EXPECT_FALSE(v3->has_add_details());
-  EXPECT_TRUE(v3->has_remove_details());
-  EXPECT_EQ(v1, v3->remove_details().parent);
-  EXPECT_EQ(v3, v3->remove_details().child);
-  EXPECT_EQ(nullptr, v3->remove_details().move_view);
+  // The parent and child both receive a remove:
+  for (auto* view : {parent.get(), weak_child}) {
+    EXPECT_FALSE(view->add_details().has_value());
+    ASSERT_TRUE(view->remove_details().has_value());
+    EXPECT_EQ(parent.get(), view->remove_details()->parent);
+    EXPECT_EQ(weak_child, view->remove_details()->child);
+    EXPECT_EQ(nullptr, view->remove_details()->move_view);
+  }
 
-  // Verifies notifications when reparenting a view.
-  // Add |v4| to |view2|.
-  auto* v4 = view2->AddChildView(std::make_unique<ObserverView>());
+  // The grandchild also receives a remove, but the removed view is marked as
+  // the *grandchild*, not as the child.
+  // TODO(ellyjones): Why does that happen? It seems like either:
+  // a) The grandchild should receive no notification,
+  // b) The grandchild should receive a notification with parent == parent and
+  //    child == child (same as the other two views receive), or
+  // c) The grandchild should receive a notification with parent == child and
+  //    child == grandchild
+  EXPECT_FALSE(grandchild->add_details().has_value());
+  ASSERT_TRUE(grandchild->remove_details().has_value());
+  EXPECT_EQ(parent.get(), grandchild->remove_details()->parent);
+  EXPECT_EQ(grandchild, grandchild->remove_details()->child);
+  EXPECT_EQ(nullptr, grandchild->remove_details()->move_view);
 
-  // Reset everything to the initial state.
-  v1->ResetTestState();
-  v2->ResetTestState();
-  v3->ResetTestState();
-  v4->ResetTestState();
+  ForgetAllOldDetails({parent.get(), weak_child, grandchild});
+}
 
-  // Reparent |v4| to |view1|.
-  v1->AddChildView(v4);
+TEST_F(ViewHierarchyChangedTest, HierarchyReceivesMove) {
+  auto new_parent = std::make_unique<ObserverView>();
+  auto old_parent = std::make_unique<ObserverView>();
+  auto* sibling = old_parent->AddChildView(std::make_unique<ObserverView>());
+  auto* child = old_parent->AddChildView(std::make_unique<ObserverView>());
 
-  // Verifies that all views receive the correct information for all the child,
-  // parent and move views.
+  ForgetAllOldDetails({new_parent.get(), old_parent.get(), sibling, child});
 
-  // |v1| is the new parent, |v4| is the child for add, |v2| is the old parent.
-  EXPECT_TRUE(v1->has_add_details());
-  EXPECT_FALSE(v1->has_remove_details());
-  EXPECT_EQ(v1, view1->add_details().parent);
-  EXPECT_EQ(v4, view1->add_details().child);
-  EXPECT_EQ(v2, view1->add_details().move_view);
+  new_parent->AddChildView(child);
 
-  // |v2| is the old parent, |v4| is the child for remove, |v1| is the new
-  // parent.
-  EXPECT_FALSE(v2->has_add_details());
-  EXPECT_TRUE(v2->has_remove_details());
-  EXPECT_EQ(v2, view2->remove_details().parent);
-  EXPECT_EQ(v4, view2->remove_details().child);
-  EXPECT_EQ(v1, view2->remove_details().move_view);
+  // The new parent receives an add:
+  ASSERT_TRUE(new_parent->add_details().has_value());
+  EXPECT_FALSE(new_parent->remove_details().has_value());
+  EXPECT_EQ(new_parent.get(), new_parent->add_details()->parent);
+  EXPECT_EQ(child, new_parent->add_details()->child);
+  EXPECT_EQ(old_parent.get(), new_parent->add_details()->move_view);
 
-  // |v3| is not impacted by this operation, and hence receives no notification.
-  EXPECT_FALSE(v3->has_add_details());
-  EXPECT_FALSE(v3->has_remove_details());
+  // The old parent receives a remove:
+  EXPECT_FALSE(old_parent->add_details().has_value());
+  ASSERT_TRUE(old_parent->remove_details().has_value());
+  EXPECT_EQ(old_parent.get(), old_parent->remove_details()->parent);
+  EXPECT_EQ(child, old_parent->remove_details()->child);
+  EXPECT_EQ(new_parent.get(), old_parent->remove_details()->move_view);
 
-  // |v4| is the reparented child, so it receives notifications for the remove
-  // and then the add. |view2| is its old parent, |v1| is its new parent.
-  EXPECT_TRUE(v4->has_remove_details());
-  EXPECT_TRUE(v4->has_add_details());
-  EXPECT_EQ(v2, v4->remove_details().parent);
-  EXPECT_EQ(v1, v4->add_details().parent);
-  EXPECT_EQ(v4, v4->add_details().child);
-  EXPECT_EQ(v4, v4->remove_details().child);
-  EXPECT_EQ(v1, v4->remove_details().move_view);
-  EXPECT_EQ(v2, v4->add_details().move_view);
+  // The sibling is not affected and receives neither:
+  EXPECT_FALSE(sibling->add_details().has_value());
+  EXPECT_FALSE(sibling->remove_details().has_value());
+
+  // The reparented child receives a remove from the old parent and an add to
+  // the new parent:
+  ASSERT_TRUE(child->remove_details().has_value());
+  EXPECT_EQ(old_parent.get(), child->remove_details()->parent);
+  EXPECT_EQ(child, child->remove_details()->child);
+  EXPECT_EQ(new_parent.get(), child->remove_details()->move_view);
+  ASSERT_TRUE(child->add_details().has_value());
+  EXPECT_EQ(new_parent.get(), child->add_details()->parent);
+  EXPECT_EQ(child, child->add_details()->child);
+  EXPECT_EQ(old_parent.get(), child->add_details()->move_view);
+
+  ForgetAllOldDetails({old_parent.get(), new_parent.get(), sibling, child});
 }
 
 class WidgetObserverView : public View {
@@ -3880,7 +4517,7 @@ class TestingLayerViewObserver : public ViewObserver {
 
  private:
   // ViewObserver:
-  void OnLayerTargetBoundsChanged(View* view) override {
+  void OnViewLayerBoundsSet(View* view) override {
     last_layer_bounds_ = view->layer()->bounds();
   }
 
@@ -3916,7 +4553,7 @@ class ViewLayerTest : public ViewsTestBase {
   }
 
   void TearDown() override {
-    widget_->CloseNow();
+    widget_.ExtractAsDangling()->CloseNow();
     ViewsTestBase::TearDown();
   }
 
@@ -5628,14 +6265,14 @@ TEST_F(ViewTest, InsertAfterInFocusList) {
 // Observer tests.
 ////////////////////////////////////////////////////////////////////////////////
 
-class ViewObserverTest : public ViewTest, public ViewObserver {
+class TestViewObserver : public ViewObserver {
  public:
-  ViewObserverTest() = default;
-
-  ViewObserverTest(const ViewObserverTest&) = delete;
-  ViewObserverTest& operator=(const ViewObserverTest&) = delete;
-
-  ~ViewObserverTest() override = default;
+  explicit TestViewObserver(std::vector<View*> views) {
+    for (auto* view : views) {
+      observations_.AddObservation(view);
+    }
+  }
+  ~TestViewObserver() override = default;
 
   // ViewObserver:
   void OnChildViewAdded(View* parent, View* child) override {
@@ -5660,24 +6297,6 @@ class ViewObserverTest : public ViewTest, public ViewObserver {
     view_reordered_ = view;
   }
 
-  void reset() {
-    child_view_added_times_ = 0;
-    child_view_removed_times_ = 0;
-    child_view_added_ = nullptr;
-    child_view_added_parent_ = nullptr;
-    child_view_removed_ = nullptr;
-    child_view_removed_parent_ = nullptr;
-    view_visibility_changed_ = nullptr;
-    view_bounds_changed_ = nullptr;
-    view_reordered_ = nullptr;
-  }
-
-  std::unique_ptr<View> NewView() {
-    auto view = std::make_unique<View>();
-    view->AddObserver(this);
-    return view;
-  }
-
   int child_view_added_times() { return child_view_added_times_; }
   int child_view_removed_times() { return child_view_removed_times_; }
   const View* child_view_added() const { return child_view_added_; }
@@ -5698,6 +6317,8 @@ class ViewObserverTest : public ViewTest, public ViewObserver {
   const View* view_reordered() const { return view_reordered_; }
 
  private:
+  base::ScopedMultiSourceObservation<View, ViewObserver> observations_{this};
+
   int child_view_added_times_ = 0;
   int child_view_removed_times_ = 0;
 
@@ -5711,82 +6332,162 @@ class ViewObserverTest : public ViewTest, public ViewObserver {
   raw_ptr<View> view_reordered_ = nullptr;
 };
 
-TEST_F(ViewObserverTest, ViewParentChanged) {
-  std::unique_ptr<View> parent1 = NewView();
-  std::unique_ptr<View> parent2 = NewView();
-  std::unique_ptr<View> child_view = NewView();
+using ViewObserverTest = ViewTest;
 
-  parent1->AddChildView(child_view.get());
-  EXPECT_EQ(0, child_view_removed_times());
-  EXPECT_EQ(1, child_view_added_times());
-  EXPECT_EQ(child_view.get(), child_view_added());
-  EXPECT_EQ(child_view->parent(), child_view_added_parent());
-  EXPECT_EQ(child_view->parent(), parent1.get());
-  reset();
+TEST_F(ViewObserverTest, ViewParentChanged) {
+  auto parent1 = std::make_unique<View>();
+  auto parent2 = std::make_unique<View>();
+  auto child = std::make_unique<View>();
+  View* weak_child = child.get();
+
+  {
+    TestViewObserver observer({parent1.get(), parent2.get(), weak_child});
+    parent1->AddChildView(std::move(child));
+    EXPECT_EQ(0, observer.child_view_removed_times());
+    EXPECT_EQ(1, observer.child_view_added_times());
+    EXPECT_EQ(weak_child, observer.child_view_added());
+    EXPECT_EQ(weak_child->parent(), observer.child_view_added_parent());
+    EXPECT_EQ(weak_child->parent(), parent1.get());
+  }
 
   // Removed from parent1, added to parent2
-  parent1->RemoveChildView(child_view.get());
-  parent2->AddChildView(child_view.get());
-  EXPECT_EQ(1, child_view_removed_times());
-  EXPECT_EQ(1, child_view_added_times());
-  EXPECT_EQ(child_view.get(), child_view_removed());
-  EXPECT_EQ(parent1.get(), child_view_removed_parent());
-  EXPECT_EQ(child_view.get(), child_view_added());
-  EXPECT_EQ(child_view->parent(), parent2.get());
+  {
+    TestViewObserver observer({parent1.get(), parent2.get(), weak_child});
+    parent2->AddChildView(parent1->RemoveChildViewT(weak_child));
+    EXPECT_EQ(1, observer.child_view_removed_times());
+    EXPECT_EQ(1, observer.child_view_added_times());
+    EXPECT_EQ(weak_child, observer.child_view_removed());
+    EXPECT_EQ(parent1.get(), observer.child_view_removed_parent());
+    EXPECT_EQ(weak_child, observer.child_view_added());
+    EXPECT_EQ(weak_child->parent(), parent2.get());
+  }
 
-  reset();
-
-  parent2->RemoveChildView(child_view.get());
-  EXPECT_EQ(1, child_view_removed_times());
-  EXPECT_EQ(0, child_view_added_times());
-  EXPECT_EQ(child_view.get(), child_view_removed());
-  EXPECT_EQ(parent2.get(), child_view_removed_parent());
+  {
+    TestViewObserver observer({parent1.get(), parent2.get(), weak_child});
+    child = parent2->RemoveChildViewT(weak_child);
+    EXPECT_EQ(1, observer.child_view_removed_times());
+    EXPECT_EQ(0, observer.child_view_added_times());
+    EXPECT_EQ(weak_child, observer.child_view_removed());
+    EXPECT_EQ(parent2.get(), observer.child_view_removed_parent());
+  }
 }
 
 TEST_F(ViewObserverTest, ViewVisibilityChanged) {
-  std::unique_ptr<View> parent(new View);
-  View* view = parent->AddChildView(NewView());
+  auto parent = std::make_unique<View>();
+  View* weak_child = parent->AddChildView(std::make_unique<View>());
 
   // Ensure setting |view| itself not visible calls the observer.
-  view->SetVisible(false);
-  EXPECT_EQ(view, view_visibility_changed());
-  EXPECT_EQ(view, view_visibility_changed_starting());
-  reset();
+  {
+    TestViewObserver observer({weak_child});
+    weak_child->SetVisible(false);
+    EXPECT_EQ(weak_child, observer.view_visibility_changed());
+    EXPECT_EQ(weak_child, observer.view_visibility_changed_starting());
+  }
 
   // Ditto for setting it visible.
-  view->SetVisible(true);
-  EXPECT_EQ(view, view_visibility_changed());
-  EXPECT_EQ(view, view_visibility_changed_starting());
-  reset();
+  {
+    TestViewObserver observer({weak_child});
+    weak_child->SetVisible(true);
+    EXPECT_EQ(weak_child, observer.view_visibility_changed());
+    EXPECT_EQ(weak_child, observer.view_visibility_changed_starting());
+  }
 
   // Ensure setting |parent| not visible also calls the
   // observer. |view->GetVisible()| should still return true however.
-  parent->SetVisible(false);
-  EXPECT_EQ(view, view_visibility_changed());
-  EXPECT_EQ(parent.get(), view_visibility_changed_starting());
+  {
+    TestViewObserver observer({weak_child});
+    parent->SetVisible(false);
+    EXPECT_EQ(weak_child, observer.view_visibility_changed());
+    EXPECT_EQ(parent.get(), observer.view_visibility_changed_starting());
+  }
 }
 
 TEST_F(ViewObserverTest, ViewBoundsChanged) {
-  std::unique_ptr<View> view = NewView();
-  gfx::Rect bounds(2, 2, 2, 2);
-  view->SetBoundsRect(bounds);
-  EXPECT_EQ(view.get(), view_bounds_changed());
-  EXPECT_EQ(bounds, view->bounds());
+  auto view = std::make_unique<View>();
 
-  reset();
+  {
+    TestViewObserver observer({view.get()});
+    gfx::Rect bounds(2, 2, 2, 2);
+    view->SetBoundsRect(bounds);
+    EXPECT_EQ(view.get(), observer.view_bounds_changed());
+    EXPECT_EQ(bounds, view->bounds());
+  }
 
-  gfx::Rect new_bounds(1, 1, 1, 1);
-  view->SetBoundsRect(new_bounds);
-  EXPECT_EQ(view.get(), view_bounds_changed());
-  EXPECT_EQ(new_bounds, view->bounds());
+  {
+    TestViewObserver observer({view.get()});
+    gfx::Rect new_bounds(1, 1, 1, 1);
+    view->SetBoundsRect(new_bounds);
+    EXPECT_EQ(view.get(), observer.view_bounds_changed());
+    EXPECT_EQ(new_bounds, view->bounds());
+  }
 }
 
 TEST_F(ViewObserverTest, ChildViewReordered) {
-  std::unique_ptr<View> view = NewView();
-  view->AddChildView(NewView());
-  View* child_view2 = view->AddChildView(NewView());
-  view->ReorderChildView(child_view2, 0);
-  EXPECT_EQ(child_view2, view_reordered());
+  auto parent = std::make_unique<View>();
+  parent->AddChildView(std::make_unique<View>());
+  auto* child = parent->AddChildView(std::make_unique<View>());
+
+  {
+    TestViewObserver observer({parent.get()});
+    parent->ReorderChildView(child, 0);
+    EXPECT_EQ(child, observer.view_reordered());
+  }
+}
+
+class MockViewObserver : public ViewObserver {
+ public:
+  // ViewObserver:
+  MOCK_METHOD(void,
+              OnViewPropertyChanged,
+              (View * observed_view, const void* key, int64_t old_value),
+              (override));
+};
+
+ACTION_TEMPLATE(ExpectThatViewProperty,
+                HAS_1_TEMPLATE_PARAMS(typename, T),
+                AND_1_VALUE_PARAMS(Matcher)) {
+  EXPECT_THAT(ui::ClassPropertyCaster<T*>::FromInt64(arg0), Matcher);
+}
+
+TEST_F(ViewObserverTest, ViewPropertyChanged) {
+  auto view = std::make_unique<View>();
+
+  // Observe `view`.
+  StrictMock<MockViewObserver> view_observer;
+  base::ScopedObservation<View, ViewObserver> view_observation(&view_observer);
+  view_observation.Observe(view.get());
+
+  constexpr auto kNewValue = gfx::Insets::TLBR(1, 2, 3, 4);
+
+  // Expect that setting `kNewValue` to the `kMarginsKey` will notify observers.
+  // Because a property at `kMarginsKey` was not previously set, the `old_value`
+  // should be a `nullptr`.
+  EXPECT_CALL(
+      view_observer,
+      OnViewPropertyChanged(Eq(view.get()), Eq(kMarginsKey), /*old_value*/ _))
+      .WillOnce(WithArg<2>(ExpectThatViewProperty<gfx::Insets>(IsNull())));
+
+  // Set `kNewValue` to `kMarginsKey` and verify expectations.
+  view->SetProperty(kMarginsKey, kNewValue);
+  Mock::VerifyAndClearExpectations(&view_observer);
+  EXPECT_THAT(view->GetProperty(kMarginsKey), Pointee(Eq(kNewValue)));
+
+  constexpr auto kPreviousValue = kNewValue;
+  constexpr auto kAnotherNewValue = gfx::Insets::TLBR(5, 6, 7, 8);
+
+  // Expect that setting `kAnotherNewValue` to the `kMarginsKey` will notify
+  // observers. Because a property at `kMarginsKey` was previously set, the
+  // `old_value` should point to the `kPreviousValue`.
+  EXPECT_CALL(
+      view_observer,
+      OnViewPropertyChanged(Eq(view.get()), Eq(kMarginsKey), /*old_value=*/_))
+      .WillOnce(WithArg<2>(
+          ExpectThatViewProperty<gfx::Insets>(Pointee(Eq(kPreviousValue)))));
+
+  // Set `kAnotherNewValue` to `kMarginsKey` and verify expectations.
+  view->SetProperty(kMarginsKey, kAnotherNewValue);
+  Mock::VerifyAndClearExpectations(&view_observer);
+  EXPECT_THAT(view->GetProperty(kMarginsKey), Pointee(Eq(kAnotherNewValue)));
 }
 
 // Provides a simple parent view implementation which tracks layer change
@@ -5830,21 +6531,93 @@ class TestParentView : public View {
 // 2. We don't receive two layer changes when a child with an existing layer
 //    creates a new layer.
 TEST_F(ViewObserverTest, ChildViewLayerNotificationTest) {
-  std::unique_ptr<TestParentView> parent_view(new TestParentView);
-  std::unique_ptr<View> child_view = NewView();
-  parent_view->AddChildView(child_view.get());
+  auto parent = std::make_unique<TestParentView>();
+  auto* child = parent->AddChildView(std::make_unique<View>());
 
-  EXPECT_FALSE(parent_view->received_layer_change_notification());
-  EXPECT_EQ(0, parent_view->layer_change_count());
+  EXPECT_FALSE(parent->received_layer_change_notification());
+  EXPECT_EQ(0, parent->layer_change_count());
 
-  child_view->SetPaintToLayer(ui::LAYER_TEXTURED);
-  EXPECT_TRUE(parent_view->received_layer_change_notification());
-  EXPECT_EQ(1, parent_view->layer_change_count());
+  child->SetPaintToLayer(ui::LAYER_TEXTURED);
+  EXPECT_TRUE(parent->received_layer_change_notification());
+  EXPECT_EQ(1, parent->layer_change_count());
 
-  parent_view->Reset();
-  child_view->SetPaintToLayer(ui::LAYER_SOLID_COLOR);
-  EXPECT_TRUE(parent_view->received_layer_change_notification());
-  EXPECT_EQ(1, parent_view->layer_change_count());
+  parent->Reset();
+  child->SetPaintToLayer(ui::LAYER_SOLID_COLOR);
+  EXPECT_TRUE(parent->received_layer_change_notification());
+  EXPECT_EQ(1, parent->layer_change_count());
+}
+
+namespace {
+
+// This view always resizes the associated layer when bounds change.
+class LayerResizingView : public View {
+ public:
+  explicit LayerResizingView(ui::Layer* layer) : layer_(layer) {}
+
+ private:
+  void OnBoundsChanged(const gfx::Rect& previous_bounds) override {
+    // Drop the coordinate since the layer should always be aligned.
+    gfx::Rect layer_rect = gfx::Rect(size());
+    layer_->SetBounds(layer_rect);
+  }
+
+  raw_ptr<ui::Layer> layer_;
+};
+
+}  // namespace
+
+// Confirms that the size of a View and the size of a region-attached layer stay
+// in sync.
+TEST(ViewTestUnfixtured, ViewLayerSizeStayInSync) {
+  // Make a layer with implicit animations.
+  std::unique_ptr<ui::Layer> region_layer = std::make_unique<ui::Layer>();
+  region_layer->SetAnimator(ui::LayerAnimator::CreateImplicitAnimator());
+
+  // Make a view, attach the layer to a region. The view keeps the bounds of the
+  // layer in sync. See implementation of LayerResizingView::OnBoundsChanged().
+  std::unique_ptr<View> view_owned =
+      std::make_unique<LayerResizingView>(region_layer.get());
+  view_owned->SetPaintToLayer(ui::LAYER_SOLID_COLOR);
+  view_owned->AddLayerToRegion(region_layer.get(), views::LayerRegion::kBelow);
+  raw_ptr<View> view = view_owned.get();
+
+  // Make a parent view. All it does is keep the child view the same size.
+  std::unique_ptr<View> parent_view = std::make_unique<View>();
+  parent_view->AddChildView(std::move(view_owned));
+  parent_view->SetUseDefaultFillLayout(true);
+
+  // Initial conditions: everything has 0 width.
+  EXPECT_EQ(0, view->width());
+  EXPECT_EQ(0, region_layer->bounds().width());
+  EXPECT_EQ(0, region_layer->GetTargetBounds().width());
+
+  // Setting bounds on the parent view will propagate the size to the child
+  // view. The child view then propagates the size to its layer. Note that the
+  // layer's bounds are not immediately updated as the animation has not yet
+  // started. Instead, the layer's target bounds is updated.
+  gfx::Rect bounds = gfx::Rect(0, 0, 60, 80);
+  parent_view->SetBoundsRect(bounds);
+  EXPECT_EQ(60, view->width());
+  EXPECT_EQ(0, region_layer->bounds().width());
+  EXPECT_EQ(60, region_layer->GetTargetBounds().width());
+
+  // Now we move the parent view without changing the size. This does not
+  // propagate a size change to the child view. However, it does cause the layer
+  // to reset its target bounds to its current bounds.
+  gfx::Rect new_bounds = bounds;
+  new_bounds.set_x(10);
+  parent_view->SetBoundsRect(new_bounds);
+  EXPECT_EQ(60, view->width());
+  EXPECT_EQ(0, region_layer->bounds().width());
+
+  // This is the expected behavior: target bounds does not change.
+  // EXPECT_EQ(60, region_layer->GetTargetBounds().width());
+
+  // This is the broken behavior: target bounds is set to the current value of
+  // bounds.
+  EXPECT_EQ(0, region_layer->GetTargetBounds().width());
+
+  view = nullptr;
 }
 
 }  // namespace views

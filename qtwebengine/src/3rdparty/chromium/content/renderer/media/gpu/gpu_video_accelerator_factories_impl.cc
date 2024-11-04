@@ -24,6 +24,7 @@
 #include "gpu/ipc/client/command_buffer_proxy_impl.h"
 #include "gpu/ipc/client/gpu_channel_host.h"
 #include "media/base/decoder.h"
+#include "media/base/media_switches.h"
 #include "media/base/supported_video_decoder_config.h"
 #include "media/mojo/buildflags.h"
 #include "media/video/video_encode_accelerator.h"
@@ -302,6 +303,14 @@ unsigned GpuVideoAcceleratorFactoriesImpl::ImageTextureTarget(
 media::GpuVideoAcceleratorFactories::OutputFormat
 GpuVideoAcceleratorFactoriesImpl::VideoFrameOutputFormat(
     media::VideoPixelFormat pixel_format) {
+  auto format = VideoFrameOutputFormatImpl(pixel_format);
+  UMA_HISTOGRAM_ENUMERATION("Media.GPU.OutputFormat", format);
+  return format;
+}
+
+media::GpuVideoAcceleratorFactories::OutputFormat
+GpuVideoAcceleratorFactoriesImpl::VideoFrameOutputFormatImpl(
+    media::VideoPixelFormat pixel_format) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   if (CheckContextLost())
     return media::GpuVideoAcceleratorFactories::OutputFormat::UNDEFINED;
@@ -353,6 +362,13 @@ GpuVideoAcceleratorFactoriesImpl::VideoFrameOutputFormat(
 #elif SK_PMCOLOR_BYTE_ORDER(R, G, B, A)
     return media::GpuVideoAcceleratorFactories::OutputFormat::RGBA;
 #endif
+  }
+
+  if (capabilities.texture_rg &&
+      base::FeatureList::IsEnabled(
+          media::kUseMultiPlaneFormatForSoftwareVideo)) {
+    // Use a single GMB and single multi-planar shared image for video.
+    return media::GpuVideoAcceleratorFactories::OutputFormat::NV12_SINGLE_GMB;
   }
 
   if (capabilities.image_ycbcr_420v &&

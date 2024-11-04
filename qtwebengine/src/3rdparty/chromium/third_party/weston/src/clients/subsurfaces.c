@@ -733,6 +733,8 @@ demoapp_create(struct display *display)
 	app->window = window_create(app->display);
 	app->widget = window_frame_create(app->window, app);
 	window_set_title(app->window, "Wayland Sub-surface Demo");
+	window_set_appid(app->window,
+			 "org.freedesktop.weston.wayland-sub-surface-demo");
 
 	window_set_key_handler(app->window, key_handler);
 	window_set_user_data(app->window, app);

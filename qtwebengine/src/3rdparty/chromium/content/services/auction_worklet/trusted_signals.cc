@@ -4,6 +4,7 @@
 
 #include "content/services/auction_worklet/trusted_signals.h"
 
+#include <cstddef>
 #include <memory>
 #include <set>
 #include <string>
@@ -20,8 +21,8 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/sequenced_task_runner.h"
-#include "content/services/auction_worklet/auction_downloader.h"
 #include "content/services/auction_worklet/auction_v8_helper.h"
+#include "content/services/auction_worklet/public/cpp/auction_downloader.h"
 #include "gin/converter.h"
 #include "net/base/parse_number.h"
 #include "services/network/public/mojom/url_loader_factory.mojom-forward.h"
@@ -40,8 +41,9 @@ namespace {
 // `values` will be. Each entry in `keys` will be added at most once.
 std::string CreateQueryParam(const char* name,
                              const std::set<std::string>& keys) {
-  if (keys.empty())
+  if (keys.empty()) {
     return std::string();
+  }
 
   std::string query_param = base::StringPrintf("&%s=", name);
   bool first_key = true;
@@ -69,20 +71,23 @@ std::map<std::string, AuctionV8Helper::SerializedValue> ParseKeyValueMap(
     v8::Local<v8::Object> v8_object,
     const std::set<std::string>& keys) {
   std::map<std::string, AuctionV8Helper::SerializedValue> out;
-  if (keys.empty())
+  if (keys.empty()) {
     return out;
+  }
 
   for (const auto& key : keys) {
     v8::Local<v8::String> v8_key;
-    if (!v8_helper->CreateUtf8String(key).ToLocal(&v8_key))
+    if (!v8_helper->CreateUtf8String(key).ToLocal(&v8_key)) {
       continue;
+    }
 
     // Skip over missing properties (rather than serializing 'undefined') and
     // also things in the prototype.
     v8::Maybe<bool> has_key =
         v8_object->HasOwnProperty(v8_helper->scratch_context(), v8_key);
-    if (has_key.IsNothing() || !has_key.FromJust())
+    if (has_key.IsNothing() || !has_key.FromJust()) {
       continue;
+    }
 
     v8::Local<v8::Value> v8_value;
     if (!v8_object->Get(v8_helper->scratch_context(), v8_key)
@@ -91,8 +96,9 @@ std::map<std::string, AuctionV8Helper::SerializedValue> ParseKeyValueMap(
     }
     AuctionV8Helper::SerializedValue serialized_value =
         v8_helper->Serialize(v8_helper->scratch_context(), v8_value);
-    if (!serialized_value.IsOK())
+    if (!serialized_value.IsOK()) {
       continue;
+    }
     out[key] = std::move(serialized_value);
   }
   return out;
@@ -107,16 +113,21 @@ std::map<std::string, AuctionV8Helper::SerializedValue> ParseChildKeyValueMap(
     const char* name,
     const std::set<std::string>& keys) {
   std::map<std::string, AuctionV8Helper::SerializedValue> out;
-  if (keys.empty())
+  if (keys.empty()) {
     return out;
+  }
 
   v8::Local<v8::Value> named_object_value;
-  // Don't consider the entire object missing a fatal error.
+  // Don't consider the entire object missing (or values other than objects) a
+  // fatal error.
   if (!v8_object
            ->Get(v8_helper->scratch_context(),
                  v8_helper->CreateStringFromLiteral(name))
            .ToLocal(&named_object_value) ||
-      !named_object_value->IsObject()) {
+      !named_object_value->IsObject() ||
+      // Arrays are considered objects by Javascript, but they're not the object
+      // type we're looking for.
+      named_object_value->IsArray()) {
     return out;
   }
 
@@ -190,7 +201,10 @@ ParsePriorityVectorsInPerInterestGroupMap(
            ->Get(v8_helper->scratch_context(),
                  v8_helper->CreateStringFromLiteral("perInterestGroupData"))
            .ToLocal(&per_group_data_value) ||
-      !per_group_data_value->IsObject()) {
+      !per_group_data_value->IsObject() ||
+      // Arrays are considered objects by Javascript, but they're not the object
+      // type we're looking for.
+      per_group_data_value->IsArray()) {
     return {};
   }
   v8::Local<v8::Object> per_group_data_object =
@@ -199,13 +213,17 @@ ParsePriorityVectorsInPerInterestGroupMap(
   TrustedSignals::Result::PriorityVectorMap out;
   for (const auto& interest_group_name : interest_group_names) {
     v8::Local<v8::String> v8_name;
-    if (!v8_helper->CreateUtf8String(interest_group_name).ToLocal(&v8_name))
+    if (!v8_helper->CreateUtf8String(interest_group_name).ToLocal(&v8_name)) {
       continue;
+    }
 
     v8::Local<v8::Value> per_interest_group_data_value;
     if (!per_group_data_object->Get(v8_helper->scratch_context(), v8_name)
              .ToLocal(&per_interest_group_data_value) ||
-        !per_interest_group_data_value->IsObject()) {
+        !per_interest_group_data_value->IsObject() ||
+        // Arrays are considered objects by Javascript, but they're not the
+        // object type we're looking for.
+        per_group_data_value->IsArray()) {
       continue;
     }
 
@@ -213,8 +231,9 @@ ParsePriorityVectorsInPerInterestGroupMap(
         per_interest_group_data_value.As<v8::Object>();
     absl::optional<TrustedSignals::Result::PriorityVector> priority_vector =
         ParsePriorityVector(v8_helper, per_interest_group_data);
-    if (priority_vector)
+    if (priority_vector) {
       out.emplace(interest_group_name, std::move(*priority_vector));
+    }
   }
   return out;
 }
@@ -270,8 +289,9 @@ TrustedSignals::Result::GetPriorityVector(
     const std::string& interest_group_name) const {
   DCHECK(priority_vectors_.has_value());
   auto result = priority_vectors_->find(interest_group_name);
-  if (result == priority_vectors_->end())
+  if (result == priority_vectors_->end()) {
     return nullptr;
+  }
   return &result->second;
 }
 
@@ -297,11 +317,14 @@ v8::Local<v8::Object> TrustedSignals::Result::GetScoringSignals(
 
   v8::Local<v8::Object> out = v8::Object::New(v8_helper->isolate());
 
-  // Create renderUrl sub-object, and add it to to `out`.
+  // Create renderURL sub-object, and add it to `out`.
   v8::Local<v8::Object> render_url_v8_object =
       CreateObjectFromMap(std::vector<std::string>{render_url.spec()},
                           *render_url_data_, v8_helper, context);
-  bool result = v8_helper->InsertValue("renderUrl", render_url_v8_object, out);
+  bool result = v8_helper->InsertValue("renderURL", render_url_v8_object, out);
+  DCHECK(result);
+  // TODO(crbug.com/1441988): Remove deprecated `renderUrl` alias.
+  result = v8_helper->InsertValue("renderUrl", render_url_v8_object, out);
   DCHECK(result);
 
   // If there are any ad components, assemble and add an `adComponentRenderUrls`
@@ -309,6 +332,9 @@ v8::Local<v8::Object> TrustedSignals::Result::GetScoringSignals(
   if (!ad_component_render_urls.empty()) {
     v8::Local<v8::Object> ad_components_v8_object = CreateObjectFromMap(
         ad_component_render_urls, *ad_component_data_, v8_helper, context);
+    result = v8_helper->InsertValue("adComponentRenderURLs",
+                                    ad_components_v8_object, out);
+    // TODO(crbug.com/1441988): Remove deprecated `adComponentRenderUrls` alias.
     result = v8_helper->InsertValue("adComponentRenderUrls",
                                     ad_components_v8_object, out);
     DCHECK(result);
@@ -376,6 +402,7 @@ std::unique_ptr<TrustedSignals> TrustedSignals::LoadScoringSignals(
           std::move(ad_component_render_urls), trusted_scoring_signals_url,
           std::move(v8_helper), std::move(load_signals_callback)));
 
+  // TODO(crbug.com/1432707): Find a way to rename renderUrls to renderURLs.
   std::string query_params = base::StrCat(
       {"hostname=", base::EscapeQueryParamValue(hostname, /*use_plus=*/true),
        CreateQueryParam("renderUrls", *trusted_signals->render_urls_),
@@ -428,9 +455,12 @@ void TrustedSignals::StartDownload(
     const GURL& full_signals_url) {
   download_start_time_ = base::TimeTicks::Now();
   auction_downloader_ = std::make_unique<AuctionDownloader>(
-      url_loader_factory, full_signals_url, AuctionDownloader::MimeType::kJson,
+      url_loader_factory, full_signals_url,
+      AuctionDownloader::DownloadMode::kActualDownload,
+      AuctionDownloader::MimeType::kJson,
       base::BindOnce(&TrustedSignals::OnDownloadComplete,
-                     base::Unretained(this)));
+                     base::Unretained(this)),
+      /*network_events_delegate=*/nullptr);
 }
 
 void TrustedSignals::OnDownloadComplete(
@@ -480,7 +510,9 @@ void TrustedSignals::HandleDownloadResultOnV8Thread(
   std::string data_version_string;
   if (headers &&
       headers->GetNormalizedHeader("Data-Version", &data_version_string) &&
-      !net::ParseUint32(data_version_string, &data_version)) {
+      !net::ParseUint32(data_version_string,
+                        net::ParseIntFormat::STRICT_NON_NEGATIVE,
+                        &data_version)) {
     std::string error = base::StringPrintf(
         "Rejecting load of %s due to invalid Data-Version header: %s",
         signals_url.spec().c_str(), data_version_string.c_str());
@@ -495,7 +527,11 @@ void TrustedSignals::HandleDownloadResultOnV8Thread(
   v8::Local<v8::Value> v8_data;
   if (!v8_helper->CreateValueFromJson(v8_helper->scratch_context(), *body)
            .ToLocal(&v8_data) ||
-      !v8_data->IsObject()) {
+      !v8_data->IsObject() ||
+      // v8 considers arrays a subtype of object, but the response body must be
+      // a JSON object, not a JSON array, so need to explicitly check if it's an
+      // array.
+      v8_data->IsArray()) {
     std::string error = base::StrCat(
         {signals_url.spec(), " Unable to parse as a JSON object."});
     PostCallbackToUserThread(std::move(user_thread_task_runner), weak_instance,
@@ -508,8 +544,9 @@ void TrustedSignals::HandleDownloadResultOnV8Thread(
   scoped_refptr<Result> result;
 
   absl::optional<uint32_t> maybe_data_version;
-  if (!data_version_string.empty())
+  if (!data_version_string.empty()) {
     maybe_data_version = data_version;
+  }
 
   if (bidding_signals_keys) {
     // Handle bidding signals case.
@@ -520,8 +557,11 @@ void TrustedSignals::HandleDownloadResultOnV8Thread(
     int format_version = 1;
     std::string format_version_string;
     if (headers &&
-        headers->GetNormalizedHeader("X-fledge-bidding-signals-format-version",
-                                     &format_version_string)) {
+        (headers->GetNormalizedHeader(
+             "Ad-Auction-Bidding-Signals-Format-Version",
+             &format_version_string) ||
+         headers->GetNormalizedHeader("X-fledge-bidding-signals-format-version",
+                                      &format_version_string))) {
       if (!base::StringToInt(format_version_string, &format_version) ||
           (format_version != 1 && format_version != 2)) {
         std::string error = base::StringPrintf(
@@ -533,11 +573,18 @@ void TrustedSignals::HandleDownloadResultOnV8Thread(
         return;
       }
     }
+    base::UmaHistogramBoolean(
+        "Ads.InterestGroup.ReceivedDeprecatedBiddingSignalsFormat",
+        format_version != 2);
     if (format_version == 1) {
       result = base::MakeRefCounted<Result>(
           /*priority_vectors=*/TrustedSignals::Result::PriorityVectorMap(),
           ParseKeyValueMap(v8_helper.get(), v8_object, *bidding_signals_keys),
           maybe_data_version);
+      error_msg = base::StringPrintf(
+          "Bidding signals URL %s is using outdated bidding signals format. "
+          "Consumers should be updated to use bidding signals format version 2",
+          signals_url.spec().c_str());
     } else {
       DCHECK_EQ(format_version, 2);
       result = base::MakeRefCounted<Result>(
@@ -553,17 +600,29 @@ void TrustedSignals::HandleDownloadResultOnV8Thread(
         "Ads.InterestGroup.Net.ResponseSizeBytes.TrustedScoring", body->size());
     base::UmaHistogramTimes("Ads.InterestGroup.Net.DownloadTime.TrustedScoring",
                             download_time);
+
+    // TODO(crbug.com/1441988): Remove deprecated `renderUrl` alias.
+    auto render_urls_map = ParseChildKeyValueMap(v8_helper.get(), v8_object,
+                                                 "renderURLs", *render_urls);
+    auto render_urls_map_deprecated = ParseChildKeyValueMap(
+        v8_helper.get(), v8_object, "renderUrls", *render_urls);
+    auto ad_component_render_urls_map = ParseChildKeyValueMap(
+        v8_helper.get(), v8_object, "adComponentRenderURLs",
+        *ad_component_render_urls);
+    auto ad_component_render_urls_map_deprecated = ParseChildKeyValueMap(
+        v8_helper.get(), v8_object, "adComponentRenderUrls",
+        *ad_component_render_urls);
     result = base::MakeRefCounted<Result>(
-        ParseChildKeyValueMap(v8_helper.get(), v8_object, "renderUrls",
-                              *render_urls),
-        ParseChildKeyValueMap(v8_helper.get(), v8_object,
-                              "adComponentRenderUrls",
-                              *ad_component_render_urls),
+        !render_urls_map.empty() ? std::move(render_urls_map)
+                                 : std::move(render_urls_map_deprecated),
+        !ad_component_render_urls_map.empty()
+            ? std::move(ad_component_render_urls_map)
+            : std::move(ad_component_render_urls_map_deprecated),
         maybe_data_version);
   }
 
   PostCallbackToUserThread(std::move(user_thread_task_runner), weak_instance,
-                           std::move(result), absl::nullopt);
+                           std::move(result), std::move(error_msg));
 }
 
 void TrustedSignals::PostCallbackToUserThread(

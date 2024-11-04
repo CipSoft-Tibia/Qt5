@@ -123,10 +123,13 @@ class VariationsService
 
   // Returns the permanent overridden country code stored for this client. This
   // value will not be updated on Chrome updates.
+  // Country code is in the format of lowercase ISO 3166-1 alpha-2. Example: us,
+  // br, in.
   std::string GetOverriddenPermanentCountry();
 
-  // Returns the permanent country code stored for this client. Country code is
-  // in the format of lowercase ISO 3166-1 alpha-2. Example: us, br, in
+  // Returns the permanent country code stored for this client.
+  // Country code is in the format of lowercase ISO 3166-1 alpha-2. Example: us,
+  // br, in.
   std::string GetStoredPermanentCountry();
 
   // Forces an override of the stored permanent country. Returns true
@@ -137,6 +140,8 @@ class VariationsService
 
   // Returns what variations will consider to be the latest country. Returns
   // empty if it is not available.
+  // Country code is in the format of lowercase ISO 3166-1 alpha-2. Example: us,
+  // br, in.
   std::string GetLatestCountry() const;
 
   // Ensures the locale that was used for evaluating variations matches the
@@ -195,6 +200,9 @@ class VariationsService
           extra_overrides,
       std::unique_ptr<base::FeatureList> feature_list,
       PlatformFieldTrials* platform_field_trials);
+
+  // The seed type used.
+  SeedType GetSeedType() const;
 
   // Overrides cached UI strings on the resource bundle once it is initialized.
   void OverrideCachedUIStrings();

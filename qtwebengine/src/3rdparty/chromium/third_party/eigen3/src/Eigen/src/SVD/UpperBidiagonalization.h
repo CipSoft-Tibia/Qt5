@@ -341,11 +341,15 @@ void upperbidiagonalization_inplace_blocked(MatrixType& A, BidiagType& bidiagona
     // Finally, the algorithm continue on the updated A22.
     //
     // However, if B is too small, or A22 empty, then let's use an unblocked strategy
+
+    auto upper_diagonal = bidiagonal.template diagonal<1>();
+    typename MatrixType::RealScalar* upper_diagonal_ptr = upper_diagonal.size() > 0 ? &upper_diagonal.coeffRef(k) : nullptr;
+
     if(k+bs==cols || bcols<48) // somewhat arbitrary threshold
     {
       upperbidiagonalization_inplace_unblocked(B,
                                                &(bidiagonal.template diagonal<0>().coeffRef(k)),
-                                               &(bidiagonal.template diagonal<1>().coeffRef(k)),
+                                               upper_diagonal_ptr,
                                                X.data()
                                               );
       break; // We're done
@@ -354,7 +358,7 @@ void upperbidiagonalization_inplace_blocked(MatrixType& A, BidiagType& bidiagona
     {
       upperbidiagonalization_blocked_helper<BlockType>( B,
                                                         &(bidiagonal.template diagonal<0>().coeffRef(k)),
-                                                        &(bidiagonal.template diagonal<1>().coeffRef(k)),
+                                                        upper_diagonal_ptr,
                                                         bs,
                                                         X.topLeftCorner(brows,bs),
                                                         Y.topLeftCorner(bcols,bs)

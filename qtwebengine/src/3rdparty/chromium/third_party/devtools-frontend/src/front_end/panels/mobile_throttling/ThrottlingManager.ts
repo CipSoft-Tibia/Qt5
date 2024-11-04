@@ -6,17 +6,17 @@ import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as SDK from '../../core/sdk/sdk.js';
+import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
 import {MobileThrottlingSelector} from './MobileThrottlingSelector.js';
 import {NetworkThrottlingSelector} from './NetworkThrottlingSelector.js';
-
 import {
-  ThrottlingPresets,
   type Conditions,
   type ConditionsList,
   type MobileThrottlingConditionsGroup,
   type NetworkThrottlingConditionsGroup,
+  ThrottlingPresets,
 } from './ThrottlingPresets.js';
 
 const UIStrings = {
@@ -73,13 +73,13 @@ const UIStrings = {
    */
   resetConcurrency: 'Reset to the default value',
   /**
-   *@description Screen reader label for an check box that neables overriding navigator.hardwareConcurrency
+   *@description Label for an check box that neables overriding navigator.hardwareConcurrency
    */
   hardwareConcurrency: 'Hardware concurrency',
   /**
-   *@description Screen reader label for an input box that overrides navigator.hardwareConcurrency
+   *@description Tooltip text for an input box that overrides navigator.hardwareConcurrency on the page
    */
-  hardwareConcurrencyValue: 'Value of navigator.hardwareConcurrency',
+  hardwareConcurrencySettingTooltip: 'Override the value reported by navigator.hardwareConcurrency on the page',
   /**
    *@description Icon title in Throttling Manager of the Performance panel
    */
@@ -151,13 +151,13 @@ export class ThrottlingManager {
           // The title is usually an i18nLazyString except for custom values that are stored in the local storage in the form of a string.
           const title = typeof conditions.title === 'function' ? conditions.title() : conditions.title;
           const option = new Option(title, title);
-          UI.ARIAUtils.setAccessibleName(option, i18nString(UIStrings.sS, {PH1: group.title, PH2: title}));
+          UI.ARIAUtils.setLabel(option, i18nString(UIStrings.sS, {PH1: group.title, PH2: title}));
           groupElement.appendChild(option);
           options.push(conditions);
         }
         if (i === groups.length - 1) {
           const option = new Option(i18nString(UIStrings.add), i18nString(UIStrings.add));
-          UI.ARIAUtils.setAccessibleName(option, i18nString(UIStrings.addS, {PH1: group.title}));
+          UI.ARIAUtils.setLabel(option, i18nString(UIStrings.addS, {PH1: group.title}));
           groupElement.appendChild(option);
           options.push(null);
         }
@@ -188,24 +188,23 @@ export class ThrottlingManager {
         i18nString(UIStrings.offline), i18nString(UIStrings.forceDisconnectedFromNetwork), forceOffline.bind(this));
     SDK.NetworkManager.MultitargetNetworkManager.instance().addEventListener(
         SDK.NetworkManager.MultitargetNetworkManager.Events.ConditionsChanged, networkConditionsChanged);
-    checkbox.setChecked(
-        SDK.NetworkManager.MultitargetNetworkManager.instance().networkConditions() ===
-        SDK.NetworkManager.OfflineConditions);
+    checkbox.setChecked(SDK.NetworkManager.MultitargetNetworkManager.instance().isOffline());
 
     function forceOffline(this: ThrottlingManager): void {
       if (checkbox.checked()) {
         SDK.NetworkManager.MultitargetNetworkManager.instance().setNetworkConditions(
             SDK.NetworkManager.OfflineConditions);
       } else {
-        SDK.NetworkManager.MultitargetNetworkManager.instance().setNetworkConditions(
-            this.lastNetworkThrottlingConditions);
+        const newConditions =
+            (!this.lastNetworkThrottlingConditions.download && !this.lastNetworkThrottlingConditions.upload) ?
+            SDK.NetworkManager.NoThrottlingConditions :
+            this.lastNetworkThrottlingConditions;
+        SDK.NetworkManager.MultitargetNetworkManager.instance().setNetworkConditions(newConditions);
       }
     }
 
     function networkConditionsChanged(): void {
-      checkbox.setChecked(
-          SDK.NetworkManager.MultitargetNetworkManager.instance().networkConditions() ===
-          SDK.NetworkManager.OfflineConditions);
+      checkbox.setChecked(SDK.NetworkManager.MultitargetNetworkManager.instance().isOffline());
     }
 
     return checkbox;
@@ -255,7 +254,7 @@ export class ThrottlingManager {
       const option = options[index];
       if (option) {
         button.setText(option.title);
-        button.setTitle(option.description);
+        button.setTitle(`${option.title} ${option.description}`);
       }
     }
   }
@@ -268,7 +267,8 @@ export class ThrottlingManager {
       UI.InspectorView.InspectorView.instance().setPanelIcon('timeline', null);
       return;
     }
-    const icon = UI.Icon.Icon.create('smallicon-warning');
+    const icon = new IconButton.Icon.Icon();
+    icon.data = {iconName: 'warning-filled', color: 'var(--icon-warning)', width: '14px', height: '14px'};
     const tooltips: string[] = [];
     if (cpuRate !== SDK.CPUThrottlingManager.CPUThrottlingRates.NoThrottling) {
       tooltips.push(i18nString(UIStrings.cpuThrottlingIsEnabled));
@@ -318,15 +318,18 @@ export class ThrottlingManager {
     toggle: UI.Toolbar.ToolbarItem,
   } {
     const input = new UI.Toolbar.ToolbarItem(UI.UIUtils.createInput('devtools-text-input', 'number'));
-    input.setTitle(i18nString(UIStrings.hardwareConcurrencyValue));
+    input.setTitle(i18nString(UIStrings.hardwareConcurrencySettingTooltip));
     const inputElement = input.element as HTMLInputElement;
     inputElement.min = '1';
     input.setEnabled(false);
 
-    const toggle = new UI.Toolbar.ToolbarCheckbox(i18nString(UIStrings.hardwareConcurrency));
-    const reset = new UI.Toolbar.ToolbarButton('Reset concurrency', 'largeicon-undo');
+    const toggle = new UI.Toolbar.ToolbarCheckbox(
+        i18nString(UIStrings.hardwareConcurrency), i18nString(UIStrings.hardwareConcurrencySettingTooltip));
+    const reset = new UI.Toolbar.ToolbarButton('Reset concurrency', 'undo');
     reset.setTitle(i18nString(UIStrings.resetConcurrency));
-    const warning = new UI.Toolbar.ToolbarItem(UI.Icon.Icon.create('smallicon-warning'));
+    const icon = new IconButton.Icon.Icon();
+    icon.data = {iconName: 'warning-filled', color: 'var(--icon-warning)', width: '14px', height: '14px'};
+    const warning = new UI.Toolbar.ToolbarItem(icon);
     warning.setTitle(i18nString(UIStrings.excessConcurrency));
 
     toggle.inputElement.disabled = true;  // Prevent modification while still wiring things up asynchronously below

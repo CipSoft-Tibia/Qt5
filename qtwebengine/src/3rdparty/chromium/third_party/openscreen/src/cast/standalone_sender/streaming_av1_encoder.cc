@@ -1,4 +1,4 @@
-// Copyright 2021 The Chromium Authors. All rights reserved.
+// Copyright 2021 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,8 +18,7 @@
 #include "util/osp_logging.h"
 #include "util/saturate_cast.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 using clock_operators::operator<<;
 
@@ -40,7 +39,7 @@ constexpr int kLowestEncodingSpeed = 0;
 }  // namespace
 
 StreamingAv1Encoder::StreamingAv1Encoder(const Parameters& params,
-                                         TaskRunner* task_runner,
+                                         TaskRunner& task_runner,
                                          std::unique_ptr<Sender> sender)
     : StreamingVideoEncoder(params, task_runner, std::move(sender)) {
   ideal_speed_setting_ = kHighestEncodingSpeed;
@@ -117,6 +116,8 @@ void StreamingAv1Encoder::EncodeAndSend(
     Clock::time_point reference_time,
     std::function<void(Stats)> stats_callback) {
   WorkUnit work_unit;
+  work_unit.capture_begin_time = frame.capture_begin_time;
+  work_unit.capture_end_time = frame.capture_end_time;
 
   // TODO(jophba): The |VideoFrame| struct should provide the media timestamp,
   // instead of this code inferring it from the reference timestamps, since: 1)
@@ -220,7 +221,7 @@ void StreamingAv1Encoder::ProcessWorkUnitsUntilTimeToQuit() {
                             work_unit);
     UpdateSpeedSettingForNextFrame(work_unit.stats);
 
-    main_task_runner_->PostTask(
+    main_task_runner_.PostTask(
         [this, results = std::move(work_unit)]() mutable {
           SendEncodedFrame(std::move(results));
         });
@@ -351,7 +352,8 @@ void StreamingAv1Encoder::ComputeFrameEncodeStats(
       1.0 / Clock::to_duration(seconds(1)).count();
   const double target_bytes_per_clock_tick =
       target_bitrate * (kBytesPerBit * kSecondsPerClockTick);
-  stats.target_size = target_bytes_per_clock_tick * work_unit.duration.count();
+  stats.target_size = target_bytes_per_clock_tick *
+                      static_cast<double>(work_unit.duration.count());
 
   // The quantizer the encoder used. This is the result of the AV1 encoder
   // taking a guess at what quantizer value would produce an encoded frame size
@@ -367,7 +369,7 @@ void StreamingAv1Encoder::ComputeFrameEncodeStats(
 }
 
 void StreamingAv1Encoder::SendEncodedFrame(WorkUnitWithResults results) {
-  OSP_DCHECK(main_task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(main_task_runner_.IsRunningOnTaskRunner());
 
   EncodedFrame frame;
   frame.frame_id = sender_->GetNextFrameId();
@@ -379,6 +381,8 @@ void StreamingAv1Encoder::SendEncodedFrame(WorkUnitWithResults results) {
     frame.referenced_frame_id = frame.frame_id - 1;
   }
   frame.rtp_timestamp = results.rtp_timestamp;
+  frame.capture_begin_time = results.capture_begin_time;
+  frame.capture_end_time = results.capture_end_time;
   frame.reference_time = results.reference_time;
   frame.data = ByteBuffer(results.payload);
 
@@ -419,5 +423,4 @@ StreamingAv1Encoder::Av1ImageUniquePtr StreamingAv1Encoder::CloneAsAv1Image(
   return image;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

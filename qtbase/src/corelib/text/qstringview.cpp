@@ -179,7 +179,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn  template <typename Char> QStringView::QStringView(const Char *str, qsizetype len)
+    \fn template <typename Char, QStringView::if_compatible_char<Char> = true> QStringView::QStringView(const Char *str, qsizetype len)
 
     Constructs a string view on \a str with length \a len.
 
@@ -195,7 +195,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn template <typename Char> QStringView::QStringView(const Char *first, const Char *last)
+    \fn template <typename Char, QStringView::if_compatible_char<Char> = true> QStringView::QStringView(const Char *first, const Char *last)
 
     Constructs a string view on \a first with length (\a last - \a first).
 
@@ -262,7 +262,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn template <typename Container, if_compatible_container<Container>> QStringView::QStringView(const Container &str)
+    \fn template <typename Container, QStringView::if_compatible_container<Container>> QStringView::QStringView(const Container &str)
 
     Constructs a string view on \a str. The length is taken from \c{std::size(str)}.
 
@@ -281,7 +281,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn template <typename Char, size_t Size> static QStringView QStringView::fromArray(const Char (&string)[Size]) noexcept
+    \fn template <typename Char, size_t Size, QStringView::if_compatible_char<Char> = true> static QStringView QStringView::fromArray(const Char (&string)[Size]) noexcept
 
     Constructs a string view on the full character string literal \a string,
     including any trailing \c{Char(0)}. If you don't want the
@@ -654,8 +654,10 @@ QT_BEGIN_NAMESPACE
     Returns a string view that points to \a n characters of this string view,
     starting at position \a pos.
 
+//! [UB-sliced-index-length]
     \note The behavior is undefined when \a pos < 0, \a n < 0,
     or \a pos + \a n > size().
+//! [UB-sliced-index-length]
 
     \sa first(), last(), chopped(), chop(), truncate()
 */
@@ -668,7 +670,9 @@ QT_BEGIN_NAMESPACE
     Returns a string view starting at position \a pos in this object,
     and extending to its end.
 
+//! [UB-sliced-index-only]
     \note The behavior is undefined when \a pos < 0 or \a pos > size().
+//! [UB-sliced-index-only]
 
     \sa first(), last(), chopped(), chop(), truncate()
 */
@@ -1093,6 +1097,32 @@ or the character \a ch
 */
 
 /*!
+    \fn bool QStringView::isLower() const
+    \since 6.7
+    Returns \c true if this view is identical to its lowercase folding.
+
+    Note that this does \e not mean that the string view does not contain
+    uppercase letters (some uppercase letters do not have a lowercase
+    folding; they are left unchanged by toString().toLower()).
+    For more information, refer to the Unicode standard, section 3.13.
+
+    \sa QChar::toLower(), isUpper()
+*/
+
+/*!
+    \fn bool QStringView::isUpper() const
+    \since 6.7
+    Returns \c true if this view is identical to its uppercase folding.
+
+    Note that this does \e not mean that the the string view does not contain
+    lowercase letters (some lowercase letters do not have a uppercase
+    folding; they are left unchanged by toString().toUpper()).
+    For more information, refer to the Unicode standard, section 3.13.
+
+    \sa QChar::toUpper(), isLower()
+*/
+
+/*!
     \fn QStringView::toWCharArray(wchar_t *array) const
     \since 5.14
 
@@ -1412,6 +1442,15 @@ or the character \a ch
 
     \since 6.0
     \sa QStringTokenizer, qTokenize()
+*/
+
+/*!
+    \fn QStringView::operator std::u16string_view() const
+    \since 6.7
+
+    Converts this QStringView object to a \c{std::u16string_view} object.
+    The returned view will have the same data pointer and length of
+    this view.
 */
 
 QT_END_NAMESPACE

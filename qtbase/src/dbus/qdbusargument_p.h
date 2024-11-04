@@ -17,6 +17,7 @@
 
 #include <QtDBus/private/qtdbusglobal_p.h>
 #include <qdbusargument.h>
+#include "qdbusconnection.h"
 #include "qdbusunixfiledescriptor.h"
 #include "qdbus_symbols_p.h"
 
@@ -33,10 +34,10 @@ class QDBusMarshaller;
 class QDBusDemarshaller;
 class QDBusArgumentPrivate
 {
+    Q_DISABLE_COPY_MOVE(QDBusArgumentPrivate)
 public:
-    inline QDBusArgumentPrivate(int flags = 0)
-        : message(nullptr), ref(1), capabilities(flags)
-    { }
+    enum class Direction { Marshalling, Demarshalling };
+
     virtual ~QDBusArgumentPrivate();
 
     static bool checkRead(QDBusArgumentPrivate *d);
@@ -46,7 +47,7 @@ public:
     QDBusMarshaller *marshaller();
     QDBusDemarshaller *demarshaller();
 
-    static QByteArray createSignature(int id);
+    static QByteArray createSignature(QMetaType type);
     static inline QDBusArgument create(QDBusArgumentPrivate *d)
     {
         QDBusArgument q(d);
@@ -55,21 +56,26 @@ public:
     static inline QDBusArgumentPrivate *d(QDBusArgument &q)
     { return q.d; }
 
-public:
-    DBusMessage *message;
-    QAtomicInt ref;
-    int capabilities;
-    enum Direction {
-        Marshalling,
-        Demarshalling
-    } direction;
+    DBusMessage *message = nullptr;
+    QAtomicInt ref = 1;
+    QDBusConnection::ConnectionCapabilities capabilities;
+    Direction direction;
+
+protected:
+    explicit QDBusArgumentPrivate(Direction direction,
+                                  QDBusConnection::ConnectionCapabilities flags = {})
+        : capabilities(flags), direction(direction)
+    {
+    }
 };
 
-class QDBusMarshaller: public QDBusArgumentPrivate
+class QDBusMarshaller final : public QDBusArgumentPrivate
 {
 public:
-    QDBusMarshaller(int flags) : QDBusArgumentPrivate(flags), parent(nullptr), ba(nullptr), closeCode(0), ok(true), skipSignature(false)
-    { direction = Marshalling; }
+    explicit QDBusMarshaller(QDBusConnection::ConnectionCapabilities flags = {})
+        : QDBusArgumentPrivate(Direction::Marshalling, flags)
+    {
+    }
     ~QDBusMarshaller();
 
     QString currentSignature();
@@ -109,25 +115,26 @@ public:
     bool appendRegisteredType(const QVariant &arg);
     bool appendCrossMarshalling(QDBusDemarshaller *arg);
 
-public:
     DBusMessageIter iterator;
-    QDBusMarshaller *parent;
-    QByteArray *ba;
+    QDBusMarshaller *parent = nullptr;
+    QByteArray *ba = nullptr;
     QString errorString;
-    char closeCode;
-    bool ok;
-    bool skipSignature;
+    char closeCode = 0;
+    bool ok = true;
+    bool skipSignature = false;
 
 private:
     Q_DECL_COLD_FUNCTION void unregisteredTypeError(QMetaType t);
     Q_DISABLE_COPY_MOVE(QDBusMarshaller)
 };
 
-class QDBusDemarshaller: public QDBusArgumentPrivate
+class QDBusDemarshaller final : public QDBusArgumentPrivate
 {
 public:
-    inline QDBusDemarshaller(int flags) : QDBusArgumentPrivate(flags), parent(nullptr)
-    { direction = Demarshalling; }
+    explicit QDBusDemarshaller(QDBusConnection::ConnectionCapabilities flags = {})
+        : QDBusArgumentPrivate(Direction::Demarshalling, flags)
+    {
+    }
     ~QDBusDemarshaller();
 
     QString currentSignature();
@@ -168,9 +175,8 @@ public:
     QDBusArgument::ElementType currentType();
     bool isCurrentTypeStringLike();
 
-public:
     DBusMessageIter iterator;
-    QDBusDemarshaller *parent;
+    QDBusDemarshaller *parent = nullptr;
 
 private:
     Q_DISABLE_COPY_MOVE(QDBusDemarshaller)

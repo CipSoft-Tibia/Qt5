@@ -130,11 +130,10 @@ bool CSSPrimitiveValue::IsCalculatedPercentageWithLength() const {
 }
 
 bool CSSPrimitiveValue::IsResolution() const {
-  // TODO(crbug.com/983613): Either support math functions on resolutions; or
-  // provide a justification for not supporting it, and move this function to
-  // |CSSNumericLiteralValue|.
-  return IsNumericLiteralValue() &&
-         To<CSSNumericLiteralValue>(this)->IsResolution();
+  return (IsNumericLiteralValue() &&
+          To<CSSNumericLiteralValue>(this)->IsResolution()) ||
+         (IsMathFunctionValue() &&
+          To<CSSMathFunctionValue>(this)->IsResolution());
 }
 
 bool CSSPrimitiveValue::IsFlex() const {
@@ -193,6 +192,13 @@ bool CSSPrimitiveValue::IsPercentage() const {
   return To<CSSMathFunctionValue>(this)->IsPercentage();
 }
 
+bool CSSPrimitiveValue::HasPercentage() const {
+  if (IsNumericLiteralValue()) {
+    return To<CSSNumericLiteralValue>(this)->IsPercentage();
+  }
+  return To<CSSMathFunctionValue>(this)->ExpressionNode()->HasPercentage();
+}
+
 bool CSSPrimitiveValue::IsTime() const {
   if (IsNumericLiteralValue()) {
     return To<CSSNumericLiteralValue>(this)->IsTime();
@@ -232,22 +238,18 @@ CSSPrimitiveValue* CSSPrimitiveValue::CreateFromLength(const Length& length,
                                             UnitType::kPixels);
     case Length::kCalculated: {
       const CalculationValue& calc = length.GetCalculationValue();
-      if (calc.IsExpression() || (calc.Pixels() && calc.Percent())) {
+      if (calc.IsExpression() || calc.Pixels()) {
         return CSSMathFunctionValue::Create(length, zoom);
       }
-      if (!calc.Pixels()) {
-        double num = calc.Percent();
-        if (num < 0 && calc.IsNonNegative()) {
-          num = 0;
-        }
-        return CSSNumericLiteralValue::Create(num, UnitType::kPercentage);
-      }
-      double num = calc.Pixels() / zoom;
+      double num = calc.Percent();
       if (num < 0 && calc.IsNonNegative()) {
         num = 0;
       }
-      return CSSNumericLiteralValue::Create(num, UnitType::kPixels);
+      return CSSNumericLiteralValue::Create(num, UnitType::kPercentage);
     }
+    case Length::kFlex:
+      return CSSNumericLiteralValue::Create(length.GetFloatValue(),
+                                            UnitType::kFlex);
     default:
       break;
   }
@@ -272,9 +274,12 @@ double CSSPrimitiveValue::ComputeDegrees() const {
 }
 
 double CSSPrimitiveValue::ComputeDotsPerPixel() const {
-  // TODO(crbug.com/983613): Either support math functions on resolutions; or
-  // provide a justification for not supporting it.
-  DCHECK(IsNumericLiteralValue());
+  DCHECK(IsResolution());
+
+  if (IsCalculated()) {
+    return To<CSSMathFunctionValue>(this)->ComputeDotsPerPixel();
+  }
+
   return To<CSSNumericLiteralValue>(this)->ComputeDotsPerPixel();
 }
 
@@ -331,6 +336,14 @@ double CSSPrimitiveValue::ComputeLength(
     const CSSLengthResolver& length_resolver) const {
   return CSSValueClampingUtils::ClampLength(
       ComputeLengthDouble(length_resolver));
+}
+
+int CSSPrimitiveValue::ComputeInteger(
+    const CSSLengthResolver& length_resolver) const {
+  DCHECK(IsNumber());
+  return IsCalculated()
+             ? To<CSSMathFunctionValue>(this)->ComputeInteger(length_resolver)
+             : To<CSSNumericLiteralValue>(this)->ComputeInteger();
 }
 
 double CSSPrimitiveValue::ComputeLengthDouble(
@@ -520,6 +533,12 @@ CSSPrimitiveValue::UnitType CSSPrimitiveValue::CanonicalUnitTypeForCategory(
   }
 }
 
+// static
+CSSPrimitiveValue::UnitType CSSPrimitiveValue::CanonicalUnit(
+    CSSPrimitiveValue::UnitType unit_type) {
+  return CanonicalUnitTypeForCategory(UnitTypeToUnitCategory(unit_type));
+}
+
 bool CSSPrimitiveValue::UnitTypeToLengthUnitType(UnitType unit_type,
                                                  LengthUnitType& length_type) {
   switch (unit_type) {
@@ -557,6 +576,12 @@ bool CSSPrimitiveValue::UnitTypeToLengthUnitType(UnitType unit_type,
       return true;
     case CSSPrimitiveValue::UnitType::kIcs:
       length_type = kUnitTypeIdeographicFullWidth;
+      return true;
+    case CSSPrimitiveValue::UnitType::kCaps:
+      length_type = kUnitTypeFontCapitalHeight;
+      return true;
+    case CSSPrimitiveValue::UnitType::kRcaps:
+      length_type = kUnitTypeRootFontCapitalHeight;
       return true;
     case CSSPrimitiveValue::UnitType::kLhs:
       length_type = kUnitTypeLineHeight;
@@ -683,6 +708,10 @@ CSSPrimitiveValue::UnitType CSSPrimitiveValue::LengthUnitTypeToUnitType(
       return CSSPrimitiveValue::UnitType::kChs;
     case kUnitTypeIdeographicFullWidth:
       return CSSPrimitiveValue::UnitType::kIcs;
+    case kUnitTypeFontCapitalHeight:
+      return CSSPrimitiveValue::UnitType::kCaps;
+    case kUnitTypeRootFontCapitalHeight:
+      return CSSPrimitiveValue::UnitType::kRcaps;
     case kUnitTypeLineHeight:
       return CSSPrimitiveValue::UnitType::kLhs;
     case kUnitTypeRootLineHeight:
@@ -785,6 +814,10 @@ const char* CSSPrimitiveValue::UnitTypeToString(UnitType type) {
       return "lh";
     case UnitType::kRlhs:
       return "rlh";
+    case UnitType::kCaps:
+      return "cap";
+    case UnitType::kRcaps:
+      return "rcap";
     case UnitType::kPixels:
       return "px";
     case UnitType::kCentimeters:
@@ -823,7 +856,7 @@ const char* CSSPrimitiveValue::UnitTypeToString(UnitType type) {
       return "khz";
     case UnitType::kTurns:
       return "turn";
-    case UnitType::kFraction:
+    case UnitType::kFlex:
       return "fr";
     case UnitType::kViewportWidth:
       return "vw";

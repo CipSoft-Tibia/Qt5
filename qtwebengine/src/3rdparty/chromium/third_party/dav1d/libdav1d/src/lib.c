@@ -53,6 +53,7 @@
 static COLD void init_internal(void) {
     dav1d_init_cpu();
     dav1d_init_interintra_masks();
+    dav1d_init_intra_edge_tree();
     dav1d_init_qm_tables();
     dav1d_init_thread();
     dav1d_init_wedge_masks();
@@ -279,12 +280,6 @@ COLD int dav1d_open(Dav1dContext **const c_out, const Dav1dSettings *const s) {
     }
     dav1d_refmvs_dsp_init(&c->refmvs_dsp);
 
-    // intra edge tree
-    c->intra_edge.root[BL_128X128] = &c->intra_edge.branch_sb128[0].node;
-    dav1d_init_mode_tree(c->intra_edge.root[BL_128X128], c->intra_edge.tip_sb128, 1);
-    c->intra_edge.root[BL_64X64] = &c->intra_edge.branch_sb64[0].node;
-    dav1d_init_mode_tree(c->intra_edge.root[BL_64X64], c->intra_edge.tip_sb64, 0);
-
     pthread_attr_destroy(&thread_attr);
 
     return 0;
@@ -397,6 +392,7 @@ static int output_picture_ready(Dav1dContext *const c, const int drain) {
 
 static int drain_picture(Dav1dContext *const c, Dav1dPicture *const out) {
     unsigned drain_count = 0;
+    int drained = 0;
     do {
         const unsigned next = c->frame_thread.next;
         Dav1dFrameContext *const f = &c->fc[next];
@@ -416,6 +412,10 @@ static int drain_picture(Dav1dContext *const c, Dav1dPicture *const out) {
                                            &first, UINT_MAX);
             if (c->task_thread.cur && c->task_thread.cur < c->n_fc)
                 c->task_thread.cur--;
+            drained = 1;
+        } else if (drained) {
+            pthread_mutex_unlock(&c->task_thread.lock);
+            break;
         }
         if (++c->frame_thread.next == c->n_fc)
             c->frame_thread.next = 0;
@@ -587,6 +587,7 @@ void dav1d_flush(Dav1dContext *const c) {
     c->mastering_display = NULL;
     c->content_light = NULL;
     c->itut_t35 = NULL;
+    c->n_itut_t35 = 0;
     dav1d_ref_dec(&c->mastering_display_ref);
     dav1d_ref_dec(&c->content_light_ref);
     dav1d_ref_dec(&c->itut_t35_ref);

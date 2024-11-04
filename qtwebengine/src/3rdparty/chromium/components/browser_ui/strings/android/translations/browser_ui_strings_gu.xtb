@@ -4,6 +4,7 @@
 <translation id="1006017844123154345">ઑનલાઇન ખોલો</translation>
 <translation id="1036348656032585052">બંધ કરો</translation>
 <translation id="1044891598689252897">સાઇટ સામાન્ય રીતે કાર્ય કરશે</translation>
+<translation id="1073417869336441572">તમે ત્રીજા પક્ષની કુકીને કેમ મંજૂરી આપી છે તે અમને જણાવીને Chromeને બહેતર બનાવવામાં અમારી સહાય કરો. <ph name="BEGIN_LINK" />પ્રતિસાદ મોકલો<ph name="END_LINK" /></translation>
 <translation id="1124090076051167250">આમ કરવાથી તમારી હોમ સ્ક્રીન પર સાઇટ કે ઍપ દ્વારા સ્ટોર કરવામાં આવેલો ડેટા અને કૂકીના <ph name="DATASIZE" /> સાફ કરવામાં આવશે.</translation>
 <translation id="1178581264944972037">થોભો</translation>
 <translation id="1181037720776840403">કાઢી નાખો</translation>
@@ -19,13 +20,13 @@
 <translation id="1371239764779356792">કોઈ સાઇટને તમારા ડિવાઇસ પર ડેટા સાચવવાની મંજૂરી આપો</translation>
 <translation id="1383876407941801731">શોધો</translation>
 <translation id="1384959399684842514">ડાઉનલોડ થોભાવ્યું</translation>
-<translation id="1409426117486808224">ખુલ્લી ટૅબ માટે સરળ દૃશ્ય</translation>
 <translation id="1415402041810619267">URL ટૂંકી કરી છે</translation>
 <translation id="1426410128494586442">હા</translation>
 <translation id="1446450296470737166">MIDI ઉપકરણોના પૂર્ણ નિયંત્રણની મંજૂરી આપો</translation>
 <translation id="1448064542941920355">નાનું-મોટું કરવાની ટકાવારી ઘટાડો</translation>
 <translation id="1510341833810331442">સાઇટને તમારા ડિવાઇસ પર ડેટા સાચવવાની મંજૂરી આપવામાં આવતી નથી</translation>
 <translation id="1547123415014299762">ત્રીજા પક્ષની કુકીને મંજૂરી આપવામાં આવી છે</translation>
+<translation id="1593426485665524382">સ્ક્રીનમાં સૌથી ઉપરની નજીક ક્રિયાઓ ઉપલબ્ધ છે</translation>
 <translation id="1620510694547887537">કૅમેરા</translation>
 <translation id="1633720957382884102">સંબંધિત સાઇટ</translation>
 <translation id="1644574205037202324">ઇતિહાસ</translation>
@@ -39,7 +40,6 @@
 <translation id="1779089405699405702">છબી ડીકોડર</translation>
 <translation id="1785415724048343560">શ્રેષ્ઠ અનુભવ માટે આનો સુઝાવ આપવામાં આવે છે</translation>
 <translation id="1818308510395330587"><ph name="APP_NAME" />ને ARનો વપરાશ કરવા દેવા માટે, <ph name="BEGIN_LINK" />Android સેટિંગ<ph name="END_LINK" />માંથી પણ કૅમેરા ચાલુ કરો.</translation>
-<translation id="1864927262126810325"><ph name="SOURCE_NAME" /> પરથી</translation>
 <translation id="187227595286001730">સંબંધિત સાઇટ, ગ્રૂપમાંની તમારી પ્રવૃત્તિ જોઈ શકે છે</translation>
 <translation id="1887786770086287077">આ ઉપકરણ માટે સ્થાન ઍક્સેસ બંધ છે. તેને <ph name="BEGIN_LINK" />Android સેટિંગ<ph name="END_LINK" />માં ચાલુ કરો.</translation>
 <translation id="1915307458270490472">સમાપ્ત કરો</translation>
@@ -55,6 +55,7 @@
 <translation id="2030769033451695672"><ph name="URL_OF_THE_CURRENT_TAB" /> પર પરત ફરવા માટે, ટૅપ કરો</translation>
 <translation id="2079545284768500474">છેલ્લો ફેરફાર રદ કરો</translation>
 <translation id="2091887806945687916">ધ્વનિ</translation>
+<translation id="2117655453726830283">આગલી સ્લાઇડ</translation>
 <translation id="2148716181193084225">આજે</translation>
 <translation id="216989819110952009">લીલા ચશ્માં દ્વારા આંખો સુરક્ષિત હોવા છતાં પણ, ડોરોથી અને તેના મિત્રો પહેલાં તો આનાથી અંજાઈ ગયા હતા</translation>
 <translation id="2176704795966505152">મુખ્ય મેનૂમાં નાનું-મોટું કરવાનો વિકલ્પ બતાવો</translation>
@@ -66,6 +67,7 @@
 <translation id="2238944249568001759">તમારા છેલ્લા ટૅબ પર આધારિત સૂચવેલી શોધ</translation>
 <translation id="2241634353105152135">માત્ર એક વખત</translation>
 <translation id="2253414712144136228"><ph name="NAME_OF_LIST_ITEM" /> કાઢી નાખો</translation>
+<translation id="2253989982043948086">{NUM_SELECTED,plural, =1{1 સાઇટને બ્લૉક કરી}one{# સાઇટને બ્લૉક કરી}other{# સાઇટને બ્લૉક કરી}}</translation>
 <translation id="228293613124499805">તમે મુલાકાત લો છો તે મોટાભાગની સાઇટ કદાચ તમારા ડિવાઇસ પરનો ડેટા સાચવે છે, ઘણીવાર તમારી પસંદગીઓ કે તમે સાઇટ સાથે શેર કરો છો તે માહિતીને સાચવીને તમારા અનુભવને બહેતર બનાવવા માટે આમ કરવામાં આવે છે. અમે આ સેટિંગ ચાલુ રાખવાનો સુઝાવ આપીએ છીએ.</translation>
 <translation id="2289270750774289114">જ્યારે કોઈ સાઇટ નજીકના બ્લૂટૂથ ડિવાઇસને શોધવા માગે ત્યારે પૂછો (સુઝાવ આપેલ)</translation>
 <translation id="2315043854645842844">ઓપરેટિંગ સિસ્ટમ દ્વારા ક્લાઇન્ટ તરફની પ્રમાણપત્ર પસંદગી સપોર્ટ કરતી નથી.</translation>
@@ -81,6 +83,7 @@
 <translation id="2434158240863470628">ડાઉનલોડ પૂર્ણ <ph name="SEPARATOR" /><ph name="BYTES_DOWNLOADED" /></translation>
 <translation id="244264527810019436">છૂપા મોડમાં અમુક સાઇટ પર અમુક સુવિધાઓ કદાચ કામ કરી શકશે નહીં</translation>
 <translation id="2442870161001914531">હંમેશાં ડેસ્કટૉપ સાઇટની વિનંતી કરો</translation>
+<translation id="2479148705183875116">સેટિંગ પર જાઓ</translation>
 <translation id="2482878487686419369">નોટિફિકેશનો</translation>
 <translation id="2485422356828889247">અનઇન્સ્ટૉલ કરો</translation>
 <translation id="2490684707762498678"><ph name="APP_NAME" /> દ્વારા મેનેજ થયેલ</translation>
@@ -92,15 +95,17 @@
 <translation id="257931822824936280">વિસ્તૃત - સંકુચિત કરવા માટે ક્લિક કરો.</translation>
 <translation id="2586657967955657006">ક્લિપબોર્ડ</translation>
 <translation id="2597457036804169544">સાઇટ પર ઘેરી થીમ લાગુ કરશો નહીં</translation>
+<translation id="2606760465469169465">ઑટોમૅટિક ચકાસણી</translation>
 <translation id="2621115761605608342">ચોક્કસ સાઇટ માટે JavaScript ની મંજૂરી આપો.</translation>
 <translation id="2653659639078652383">સબમિટ કરો</translation>
 <translation id="2677748264148917807">છોડો</translation>
+<translation id="2678468611080193228">ત્રીજા પક્ષની કુકીને હંગામી રીતે મંજૂરી આપવાનો પ્રયાસ કરવાનો અર્થ છે ઓછું સંરક્ષણ પરંતુ સાઇટની સુવિધાઓની કાર્ય કરવાની સંભાવના વધુ છે</translation>
 <translation id="2687403674020088961">બધી કુકીને બ્લૉક કરો (સુઝાવ આપતા નથી)</translation>
 <translation id="2713106313042589954">કૅમેરા બંધ કરો</translation>
 <translation id="2717722538473713889">ઇમેઇલ ઍડ્રેસ</translation>
 <translation id="2750481671343847896">સાઇટ ઓળખ સેવાઓના સાઇન ઇન કરવાના સંકેતો બતાવી શકે છે.</translation>
-<translation id="2779966372261694284">આ સાઇટમાંથી તમને સાઇન આઉટ કરવામાં આવશે</translation>
 <translation id="2822354292072154809">શું તમે ખરેખર <ph name="CHOSEN_OBJECT_NAME" />ની બધી સાઇટ પસંદગીઓને રીસેટ કરવા માગો છે?</translation>
+<translation id="2850913818900871965">મોબાઇલ વ્યૂની વિનંતી કરો</translation>
 <translation id="2870560284913253234">સાઇટ</translation>
 <translation id="2874939134665556319">પાછલું ટ્રૅક</translation>
 <translation id="2891975107962658722">કોઈ સાઇટને તમારા ડિવાઇસ પર ડેટા સાચવવાથી બ્લૉક કરો</translation>
@@ -113,6 +118,8 @@
 <translation id="3008272652534848354">પરવાનગીઓ રીસેટ કરો</translation>
 <translation id="301521992641321250">ઑટોમૅટિક રીતે બ્લૉક થયું</translation>
 <translation id="3069226013421428034">ચોક્કસ સાઇટ માટે ત્રીજા પક્ષ દ્વારા સાઇન-ઇનને મંજૂરી આપો.</translation>
+<translation id="3082992102194421695">{COUNT,plural, =1{આવતીકાલે સમયસીમા સમાપ્ત થાય છે}one{# દિવસમાં સમયસીમા સમાપ્ત થાય છે}other{# દિવસમાં સમયસીમા સમાપ્ત થાય છે}}</translation>
+<translation id="310297983047869047">પાછલી સ્લાઇડ</translation>
 <translation id="3109724472072898302">સંકુચિત</translation>
 <translation id="3114012059975132928">વીડિયો પ્લેયર</translation>
 <translation id="3115898365077584848">માહિતી બતાવો</translation>
@@ -121,7 +128,6 @@
 <translation id="3162899666601560689">તમને વધુ સારો બ્રાઉઝિંગ અનુભવ આપવા માટે, ઉદાહરણ તરીકે, તમને સાઇન ઇન કરીને રાખવા અથવા તમારા શૉપિંગ કાર્ટની આઇટમ યાદ રાખવા માટે, સાઇટ કુકીનો ઉપયોગ કરી શકે છે</translation>
 <translation id="3165022941318558018">સાઇટને ત્રીજા પક્ષની કુકીનો ઉપયોગ કરવાની મંજૂરી આપો</translation>
 <translation id="3198916472715691905"><ph name="STORAGE_AMOUNT" /> સંગ્રહિત ડેટા</translation>
-<translation id="3203366800380907218">વેબ પરથી</translation>
 <translation id="321187648315454507"><ph name="APP_NAME" /> તમને નોટિફિકેશન મોકલી શકે તે માટે <ph name="BEGIN_LINK" />Android સેટિંગ<ph name="END_LINK" />માં પણ નોટિફિકેશન ચાલુ કરો.</translation>
 <translation id="3227137524299004712">માઇક્રોફોન</translation>
 <translation id="3248611290851046188">આ સાઇટ એવી રુચિઓને નિર્ધારિત કરે છે કે જેનો ઉપયોગ અન્ય સાઇટ તમને જાહેરાતો બતાવવા માટે કરી શકે છે. તમને વધુ સંબંધિત જાહેરાતો બતાવવા માટે, આ સાઇટ Chromeમાંથી તમારી રુચિઓ પણ મેળવે છે.</translation>
@@ -134,6 +140,8 @@
 <translation id="3362437373201486687">બ્લૂટૂથ ડિવાઇસ માટે સ્કૅન કરી રહ્યાં છીએ</translation>
 <translation id="3386292677130313581">સાઇટને તમારા સ્થાનને જાણવાની મંજૂરી આપતાં પહેલાં પૂછો (સુઝાવ આપેલો છે)</translation>
 <translation id="3403537308306431953"><ph name="ZOOM_LEVEL" /> %%</translation>
+<translation id="344449859752187052">ત્રીજા પક્ષની કુકી બ્લૉક કરેલી છે</translation>
+<translation id="3465378418721443318">{DAYS,plural, =1{Chrome આવતીકાલે પણ ફરી કુકી બ્લૉક કરશે}one{Chrome # દિવસમાં કુકીને ફરીથી બ્લૉક કરશે}other{Chrome # દિવસમાં કુકીને ફરીથી બ્લૉક કરશે}}</translation>
 <translation id="3521663503435878242"><ph name="DOMAIN" /> હેઠળની સાઇટ</translation>
 <translation id="3538390592868664640">કોઈ સાઇટને તમારી આજુબાજુનો 3D નકશો બનાવવા અથવા કૅમેરાના સ્ટેટસને ટ્રૅક કરી શકવા માટે બ્લૉક કરો</translation>
 <translation id="3544058026430919413">કંપની એવી સાઇટનું ગ્રૂપ નિર્ધારિત કરી શકે છે, જે ગ્રૂપમાં તમારી પ્રવૃત્તિ શેર કરવા માટે કુકીનો ઉપયોગ કરી શકે. આ સુવિધા છૂપા મોડમાં કામ કરતી નથી.</translation>
@@ -145,8 +153,8 @@
 <translation id="3600792891314830896">જે સાઇટ સાઉન્ડ ચલાવતી હોય તેઓને મ્યૂટ કરો</translation>
 <translation id="3602290021589620013">પ્રીવ્યૂ કરો</translation>
 <translation id="3628308229821498208">સૂચવેલી શોધ</translation>
-<translation id="3636279694100170143">તમે મુલાકાત લો છો તે સાઇટ તમે વાસ્તવિક વપરાશકર્તા છો અને બૉટ નથી તે માન્ય કરી શકે છે</translation>
-<translation id="3649190289964910441">તમે મુલાકાત લો છો તે સાઇટ માહિતીને Chrome પર સાચવે છે, જે માન્ય કરે છે કે તમે વાસ્તવિક વપરાશકર્તા છો. જેમ-જેમ તમે બ્રાઉઝ કરતા રહો છો, તેમ-તેમ સાઇટ Chrome સાથે ચેક કરી શકે છે અને પહેલી સાઇટ પરથી માન્ય કરી શકે છે કે તમારા વિશ્વસનીય વપરાશકર્તા હોવાની શક્યતા છે.</translation>
+<translation id="3707034683772193706">તમે મુલાકાત લો છો તે સાઇટ Chrome પર થોડીક માહિતી સાચવી શકે છે, મુખ્યત્વે એ ચકાસણી કરવા કે તમે બૉટ નથી</translation>
+<translation id="3721953990244350188">છોડી દો અને આગલી ઉપલબ્ધ ક્રિયા બતાવો</translation>
 <translation id="3744111561329211289">બૅકગ્રાઉન્ડ સિંક</translation>
 <translation id="3763247130972274048">10 સેકન્ડ છોડવા માટે ડાબે અથવા જમણે બે વાર ટૅપ કરો</translation>
 <translation id="3794286421982011626">તમે મુલાકાત લેતા હો એવી કોઈ સાઇટ, તમે સાઇટ પર જે કરી રહ્યાં હો તે વિશેની માહિતી સાચવી શકે છે, જેથી તે તમારી અપેક્ષા મુજબ કામ કરી શકે — ઉદાહરણ તરીકે, તમને કોઈ સાઇટમાં સાઇન ઇન કરી રાખવા કે તમારા શૉપિંગ કાર્ટમાં આઇટમ સાચવવા માટે. સાઇટ ઘણીવાર આ માહિતીને તમારા ડિવાઇસ પર હંગામી રીતે સાચવે છે.</translation>
@@ -156,6 +164,7 @@
 <translation id="381841723434055211">ફોન નંબર</translation>
 <translation id="3826050100957962900">Third-party sign-in</translation>
 <translation id="3835233591525155343">તમારા ડિવાઇસનો વપરાશ</translation>
+<translation id="3843916486309149084">Chrome આજે પણ ફરી કુકી બ્લૉક કરશે</translation>
 <translation id="385051799172605136">પાછળ</translation>
 <translation id="3859306556332390985">આગળ કરો</translation>
 <translation id="3895926599014793903">ફરજિયાતપૂર્વક ઝૂમ ચાલુ કરો</translation>
@@ -169,6 +178,7 @@
 <translation id="4002066346123236978">શીર્ષક</translation>
 <translation id="4008040567710660924">કોઈ ચોક્કસ સાઇટ માટે કુકીને મંજૂરી આપો.</translation>
 <translation id="4046123991198612571">આગલો ટ્રૅક</translation>
+<translation id="4053720452172726777">Google Chrome ને કસ્ટમાઇઝ કરો અને તેનું નિયંત્રણ કરો</translation>
 <translation id="4149994727733219643">વેબપેજ માટે સરળ દૃશ્ય</translation>
 <translation id="4151930093518524179">'નાનું-મોટું કરો'નું ડિફૉલ્ટ લેવલ</translation>
 <translation id="4165986682804962316">સાઇટ સેટિંગ</translation>
@@ -176,7 +186,7 @@
 <translation id="4194328954146351878">NFC ડિવાઇસ પર સાઇટને માહિતી જોવાની અને બદલવાની મંજૂરી આપતા પહેલાં પૂછો (ભલામણ કરવામાં આવે છે)</translation>
 <translation id="4200726100658658164">સ્થાન સેટિંગ ખોલો</translation>
 <translation id="4226663524361240545">સૂચનાઓ ઉપકરણને વાઇબ્રેટ કરી શકે છે</translation>
-<translation id="4259722352634471385">નેવિગેશન અવરોધિત છે: <ph name="URL" /></translation>
+<translation id="4259722352634471385">નૅવિગેશન બ્લૉક કરેલું છે: <ph name="URL" /></translation>
 <translation id="4278390842282768270">મંજૂર</translation>
 <translation id="429312253194641664">સાઇટ મીડિયા ચલાવી રહી છે</translation>
 <translation id="42981349822642051">વિસ્તૃત કરો</translation>
@@ -186,20 +196,18 @@
 <translation id="4412992751769744546">તૃતીય-પક્ષ કૂકીઝને મંજૂરી આપો</translation>
 <translation id="4428065317363009941">રુચિ મુજબ જાહેરાત</translation>
 <translation id="4434045419905280838">પૉપ-અપ અને રીડાયરેક્ટ</translation>
-<translation id="4440642537584213025"><ph name="TARGET_DESCRIPTION" />ને મોટું કરો</translation>
 <translation id="4468959413250150279">કોઈ એક ચોક્કસ સાઇટ માટે અવાજ બંધ કરો.</translation>
 <translation id="4475912480633855319">{COOKIES,plural, =1{# કુકી}one{# કુકી}other{# કુકી}}</translation>
+<translation id="4478158430052450698">વિવિધ સાઇટ માટે "નાનું-મોટું કરો"ને કસ્ટમાઇઝ કરવાનું સરળ બનાવો</translation>
 <translation id="4479647676395637221">સાઇટને તમારા કૅમેરાના ઉપયોગની મંજૂરી આપતાં પહેલાં પૂછો (સુઝાવ આપીએ છીએ)</translation>
 <translation id="4505788138578415521">URL મોટી કરી છે</translation>
 <translation id="4534723447064627427"><ph name="APP_NAME" /> તમારું માઇક્રોફોન ઍક્સેસ કરી શકે તે માટે <ph name="BEGIN_LINK" />Android સેટિંગ<ph name="END_LINK" />માં પણ માઇક્રોફોન ચાલુ કરો.</translation>
 <translation id="4566417217121906555">માઇક્રોફોન મ્યૂટ કરો</translation>
 <translation id="4570913071927164677">વિગતો</translation>
-<translation id="4575264539271661854">તમે મુલાકાત લેતા હો એવી કોઈ સાઇટ માટે, ટેક્સ્ટ અને છબીઓને મોટી કરવાનું સરળ બનાવો</translation>
 <translation id="4598549027014564149">જ્યારે છૂપા મોડમાં હો, ત્યારે સમગ્ર સાઇટ કે સંબંધિત સાઇટ પર પણ તમારી બ્રાઉઝિંગ પ્રવૃત્તિને જોવા માટે સાઇટ તમારી કુકીનો ઉપયોગ કરી શકશે નહીં. તમારી બ્રાઉઝિંગ પ્રવૃત્તિનો ઉપયોગ જાહેરાતોને મનગમતી બનાવવા જેવી વસ્તુઓ માટે કરવામાં આવતો નથી. અમુક સુવિધાઓ કેટલીક સાઇટ પર કામ કરી શકશે નહીં.</translation>
 <translation id="4645575059429386691">તમારા માતાપિતા દ્વારા મેનેજ થયેલ</translation>
 <translation id="4670064810192446073">વર્ચ્યુઅલ રિયાલિટી</translation>
 <translation id="4751476147751820511">મોશન અથવા લાઇટ સેન્સર</translation>
-<translation id="477781522763920796">આ સેટિંગ તમારી ઓળખ કર્યા વિના અથવા સાઇટને તમારો બ્રાઉઝિંગ ઇતિહાસ જોવાની મંજૂરી આપ્યા વિના કામ કરે છે.</translation>
 <translation id="4779083564647765204">ઝૂમ કરો</translation>
 <translation id="4811450222531576619">તેના સૉર્સ અને વિષય વિશે જાણો</translation>
 <translation id="4836046166855586901">તમે સક્રિય રૂપે આ ડિવાઇસનો ઉપયોગ ક્યારે કરો છો તેના વિશે જ્યારે કોઈ સાઇટ જાણવા માગે, ત્યારે પૂછો</translation>
@@ -210,6 +218,7 @@
 <translation id="4962975101802056554">ડિવાઇસ માટેની બધી પરવાનગીઓને રદબાતલ કરો</translation>
 <translation id="497421865427891073">આગળ જાઓ</translation>
 <translation id="4976702386844183910">છેલ્લે <ph name="DATE" />ના રોજ મુલાકાત લીધી</translation>
+<translation id="4985206706500620449">તમે આ સાઇટ માટે ત્રીજા પક્ષની કુકીને મંજૂરી આપી છે</translation>
 <translation id="4994033804516042629">કોઈ સંપર્કો મળ્યા નથી</translation>
 <translation id="4996978546172906250">આનાથી શેર કરો</translation>
 <translation id="5001526427543320409">ત્રીજા પક્ષની કુકી</translation>
@@ -221,7 +230,6 @@
 <translation id="509133520954049755">ડેસ્કટૉપ વ્યૂની વિનંતી કરો</translation>
 <translation id="5100237604440890931">સંકુચિત - વિસ્તૃત કરવા માટે ક્લિક કરો.</translation>
 <translation id="5123685120097942451">છૂપા મોડમાંની ટૅબ</translation>
-<translation id="5134599672855298214">મોબાઇલ વ્યૂની વિનંતી કરો (સુઝાવ આપવામાં આવે છે)</translation>
 <translation id="5186036860380548585">સ્ક્રીનની ટોચની નજીક વિકલ્પ ઉપલબ્ધ છે</translation>
 <translation id="5197729504361054390">તમે પસંદ કરશો તે સંપર્કોને <ph name="BEGIN_BOLD" /><ph name="SITE" /><ph name="END_BOLD" /> સાથે શેર કરવામાં આવશે.</translation>
 <translation id="5216942107514965959">છેલ્લે આજે મુલાકાત લીધી</translation>
@@ -249,12 +257,12 @@
 <translation id="5545693483061321551">અલગ-અલગ સાઇટ પરની તમારી બ્રાઉઝિંગ પ્રવૃત્તિ જોવા માટે સાઇટ તમારી કુકીનો ઉપયોગ કરી શકશે નહીં, ઉદાહરણ તરીકે, જાહેરાતોને વ્યક્તિગત બનાવવા માટે. અમુક સુવિધાઓ કેટલીક સાઇટ પર કામ કરી શકશે નહીં.</translation>
 <translation id="5553374991681107062">નવીનતમ</translation>
 <translation id="5556459405103347317">ફરીથી લોડ કરો</translation>
-<translation id="5596627076506792578">વધુ વિકલ્પો</translation>
 <translation id="5649053991847567735">ઑટોમૅટિક રીતે ડાઉનલોડ</translation>
 <translation id="5668404140385795438">ઝૂમ વધારવાનું અટકાવવા માટે વેબસાઇટની વિનંતી ઑવરરાઇડ કરો</translation>
 <translation id="5677928146339483299">બ્લૉક કરેલ</translation>
 <translation id="5689516760719285838">સ્થાન</translation>
 <translation id="5690795753582697420">Android સેટિંગમાંથી કૅમેરા બંધ કરવામાં આવ્યો છે</translation>
+<translation id="5700761515355162635">ત્રીજા પક્ષની કુકીને મંજૂરી આપી</translation>
 <translation id="5706552988683188916">આમ કરવાથી <ph name="WEBSITE" /> માટેના કુકી અને સાઇટનો અન્ય ડેટા ડિલીટ થઈ જશે</translation>
 <translation id="5719847187258001597">આમ કરવાથી તમારી હોમ સ્ક્રીન પર <ph name="ORIGIN" /> અથવા તેની ઍપ દ્વારા સ્ટોર કરવામાં આવેલો બધો ડેટા અને કૂકી સાફ કરવામાં આવશે.</translation>
 <translation id="5723967018671998714">છૂપા મોડમાં ત્રીજા પક્ષની કુકી બ્લૉક કરવામાં આવી છે</translation>
@@ -278,6 +286,7 @@
 <translation id="6040143037577758943">બંધ કરો</translation>
 <translation id="6042308850641462728">વધુ</translation>
 <translation id="6064125863973209585">પૂર્ણ થયેલા ડાઉનલોડ</translation>
+<translation id="6071501408666570960">તમને આ સાઇટમાંથી સાઇન આઉટ કરવામાં આવી શકે છે</translation>
 <translation id="6165508094623778733">વધુ જાણો</translation>
 <translation id="6177111841848151710">હાલનાં શોધ એન્જિન માટે બ્લૉક કરાયેલું</translation>
 <translation id="6177128806592000436">આ સાઇટ પરનું તમારું કનેક્શન સુરક્ષિત નથી</translation>
@@ -295,11 +304,14 @@
 <translation id="6367753977865761591">ચોક્કસ સાઇટ માટે ત્રીજા પક્ષ દ્વારા સાઇન-ઇનને બ્લૉક કરો.</translation>
 <translation id="6388207532828177975">સાફ કરો અને ફરીથી સેટ કરો</translation>
 <translation id="6398765197997659313">પૂર્ણ સ્ક્રીનથી બહાર નીકળો</translation>
+<translation id="640163077447496506">આજે સમાપ્ત થાય છે</translation>
 <translation id="6405650995156823521"><ph name="FIRST_PART" /> • <ph name="SECOND_PART" /></translation>
 <translation id="6439114592976064011">સાઇટને તમારું વર્ચ્યુઅલ રિયાલિટી ડિવાઇસ અને ડેટાનો ઉપયોગ કરવાથી બ્લૉક કરો</translation>
 <translation id="6447842834002726250">કૂકીઝ</translation>
 <translation id="6467852467360539617">ડેટા સાફ કરો અને પરવાનગીઓ રીસેટ કરો</translation>
+<translation id="6500423977866688905">વિન્ડો નાની હોય ત્યારે, મોબાઇલ વ્યૂની વિનંતી કરો</translation>
 <translation id="6527303717912515753">શેર કરો</translation>
+<translation id="652937045869844725">ત્રીજા પક્ષની કુકીને મંજૂરી આપવાનો પ્રયાસ કરવાનો અર્થ છે ઓછું સંરક્ષણ પરંતુ સાઇટની સુવિધાઓની કાર્ય કરવાની સંભાવના વધુ છે</translation>
 <translation id="6545864417968258051">બ્લૂટૂથ સ્કૅનિંગ</translation>
 <translation id="6552800053856095716">{PERMISSIONS_SUMMARY_BLOCKED,plural, =1{<ph name="PERMISSION_1" />, <ph name="PERMISSION_2" /> અને વધુ <ph name="NUM_MORE" /> બ્લૉક કરી}one{<ph name="PERMISSION_1" />, <ph name="PERMISSION_2" /> અને વધુ <ph name="NUM_MORE" /> બ્લૉક કરી}other{<ph name="PERMISSION_1" />, <ph name="PERMISSION_2" /> અને વધુ <ph name="NUM_MORE" /> બ્લૉક કરી}}</translation>
 <translation id="6554732001434021288">છેલ્લે <ph name="NUM_DAYS" /> દિવસ પહેલાં મુલાકાત લીધી</translation>
@@ -309,6 +321,7 @@
 <translation id="6612358246767739896">સુરક્ષિત કન્ટેન્ટ</translation>
 <translation id="662080504995468778">પૃષ્ઠ પર રહો</translation>
 <translation id="6643016212128521049">સાફ કરો</translation>
+<translation id="6653342741369270081">પૂર્ણ સ્ક્રીનથી બહાર નીકળવા માટે 'પાછળ' બટનને દબાવો</translation>
 <translation id="6689172468748959065">પ્રોફાઇલ ફોટો</translation>
 <translation id="6697925417670533197">ડાઉનલોડ કરવાનું સક્રિય કરો</translation>
 <translation id="6722828510648505498">ઓળખ સેવાઓના સાઇન ઇન કરવાના સંકેતો બ્લૉક કરો.</translation>
@@ -327,8 +340,6 @@
 <translation id="7000754031042624318">Android સેટિંગમાં પરવાનગી બંધ કરી છે</translation>
 <translation id="7016516562562142042">હાલનાં શોધ એન્જિન માટે મંજૂર</translation>
 <translation id="702275896380648118">તમને ગમતી બાબતો વિશે આ સાઇટ અનુમાન લગાવે છે અને પછી અન્ય સાઇટને જાહેરાતો સૂચવે છે. તમને વધુ સંબંધિત જાહેરાતો બતાવવા માટે, આ સાઇટ Chromeમાંથી જાહેરાતના તમારા વિષયોની માહિતી પણ મેળવે છે.</translation>
-<translation id="702463548815491781">જ્યારે ટૉકબૅક અથવા સ્વિચ ઍક્સેસ ચાલુ હોય ત્યારે આપેલ સુઝાવ</translation>
-<translation id="7050519587566342213">એક સાઇટથી આગળની બીજી સાઇટ માટે તમારી વિશ્વસનીય હોવાની શક્યતા વધુ હોવાથી, બ્રાઉઝિંગ વધુ સરળ બને છે.</translation>
 <translation id="7053983685419859001">અવરોધિત કરો</translation>
 <translation id="7066151586745993502">{NUM_SELECTED,plural, =1{1 પસંદ કરી}one{# પસંદ કરી}other{# પસંદ કરી}}</translation>
 <translation id="7087918508125750058"><ph name="ITEM_COUNT" />ની પસંદગી કરી. સ્ક્રીનના ટોચની નજીક વિકલ્પો ઉપલબ્ધ છે</translation>
@@ -344,6 +355,7 @@
 <translation id="7302486331832100261">તમે સામાન્ય રીતે નોટિફિકેશનને બ્લૉક કરો છો. મંજૂરી આપવા માટે, વિગતો પર ટૅપ કરો.</translation>
 <translation id="7366415735885268578">એક સાઇટ ઉમેરો</translation>
 <translation id="7383715096023715447"><ph name="DOMAIN" /> માટેના સેટિંગ</translation>
+<translation id="7406113532070524618">આ સેટિંગ તમારી ઓળખ કર્યા વિના અથવા સાઇટને તમારો બ્રાઉઝિંગ ઇતિહાસ જોવાની મંજૂરી આપ્યા વિના કામ કરે છે, તેમ છતાં ચકાસણીના ભાગ તરીકે થોડીક માહિતી શેર કરી શકે છે</translation>
 <translation id="7423098979219808738">પ્રથમ પૂછો</translation>
 <translation id="7423538860840206698">ક્લિપબોર્ડ વાંચવાનું બ્લૉક કરેલ છે</translation>
 <translation id="7425915948813553151">સાઇટ માટે ઘેરી થીમ</translation>
@@ -353,7 +365,6 @@
 <translation id="757524316907819857">સાઇટને સંરક્ષિત કન્ટેન્ટ ચલાવવાથી બ્લૉક કરો</translation>
 <translation id="7577900504646297215">રુચિઓ મેનેજ કરો</translation>
 <translation id="7594634374516752650">બ્લૂટૂથ ડિવાઇસ સાથે કનેક્ટ કરી</translation>
-<translation id="7634280112532283638">સ્પામ અને કપટમાં ઘટાડો</translation>
 <translation id="7641339528570811325">બ્રાઉઝિંગ ડેટા સાફ કરો…</translation>
 <translation id="7649070708921625228">સહાય</translation>
 <translation id="7658239707568436148">રદ કરો</translation>
@@ -370,6 +381,7 @@
 <translation id="7846076177841592234">પસંદગી રદ કરો</translation>
 <translation id="7882806643839505685">કોઈ એક ચોક્કસ સાઇટ માટે અવાજ ચલાવવાની મંજૂરી આપો.</translation>
 <translation id="789180354981963912">ત્રીજા પક્ષની કુકીને છૂપા મોડમાં બ્લૉક કરો:</translation>
+<translation id="7895868624847501462">આ ક્રિયા કુકી સહિતનો તમામ સ્થાનિક ડેટા સાફ કરશે અને <ph name="DOMAIN" /> તથા તેની હેઠળની બધી સાઇટ માટેની તમામ પરવાનગીઓ રીસેટ કરશે</translation>
 <translation id="7940722705963108451">મને યાદ કરાવો</translation>
 <translation id="7974024493641668069">{COUNT,plural, =1{<ph name="FPS_OWNER" />ના સાઇટના ગ્રૂપમાંની <ph name="FPS_MEMBERS_COUNT" /> સાઇટ, જે ગ્રૂપમાંની તમારી પ્રવૃત્તિ જોઈ શકે છે}one{<ph name="FPS_OWNER" />ના સાઇટના ગ્રૂપમાંની <ph name="FPS_MEMBERS_COUNT" /> સાઇટ, જે ગ્રૂપમાંની તમારી પ્રવૃત્તિ જોઈ શકે છે}other{<ph name="FPS_OWNER" />ના સાઇટના ગ્રૂપમાંની <ph name="FPS_MEMBERS_COUNT" /> સાઇટ, જે ગ્રૂપમાંની તમારી પ્રવૃત્તિ જોઈ શકે છે}}</translation>
 <translation id="7986741934819883144">સંપર્ક પસંદ કરો</translation>
@@ -381,11 +393,13 @@
 <translation id="8068648041423924542">પ્રમાણપત્ર પસંદ કરવામાં અસમર્થ.</translation>
 <translation id="8077120325605624147">તમે મુલાકાત લો છો તેવી કોઈપણ સાઇટ તમને કોઈપણ જાહેરાત બતાવી શકે છે</translation>
 <translation id="8087000398470557479">આ કન્ટેન્ટ <ph name="DOMAIN_NAME" /> માંથી, Google દ્વારા વિતરિત કરેલ છે.</translation>
+<translation id="8088603949666785339"><ph name="BANNER_TITLE" />માં વધુ વિકલ્પો</translation>
 <translation id="8116925261070264013">મ્યૂટ કરેલ</translation>
 <translation id="813082847718468539">સ્થાન માહિતી જુઓ</translation>
 <translation id="8131740175452115882">પુષ્ટિ કરો</translation>
 <translation id="8154912474061769055">અમુક સુવિધાઓ ઘણી સાઇટ પર કામ કરી શકશે નહીં</translation>
 <translation id="8168435359814927499">કન્ટેન્ટ</translation>
+<translation id="8186479265534291036">સાઇટ કામ નથી કરતી? ત્રીજા પક્ષની કુકી બ્લૉક કરેલી છે</translation>
 <translation id="8197286292360124385"><ph name="PERMISSION_1" />ની મંજૂરી આપી</translation>
 <translation id="8200772114523450471">રિઝ્યુમે</translation>
 <translation id="8206354486702514201">આ સેટિંગ તમારા વહીવટકર્તા દ્વારા લાગુ કરેલી છે.</translation>
@@ -395,6 +409,7 @@
 <translation id="8284326494547611709">કૅપ્શન્સ</translation>
 <translation id="8300705686683892304">ઍપ દ્વારા મેનેજ થતી</translation>
 <translation id="8324158725704657629">ફરીથી પૂછશો નહીં</translation>
+<translation id="8338445138528827481">આ ક્રિયા કુકી સહિતનો તમામ સ્થાનિક ડેટા સાફ કરશે અને <ph name="ORIGIN" /> માટેની બધી પરવાનગીઓને રીસેટ કરશે</translation>
 <translation id="8362795839483915693">તમે મુલાકાત લો છો તે સાઇટને તમે મોટી કે નાની કરી શકો છો</translation>
 <translation id="8372893542064058268">ચોક્કસ સાઇટ માટે બૅકગ્રાઉન્ડ સિંકની મંજૂરી આપો.</translation>
 <translation id="8376384591331888629">આ સાઇટ પરની ત્રીજા પક્ષની કુકી શામેલ છે</translation>
@@ -426,20 +441,24 @@
 <translation id="8719283222052720129"><ph name="BEGIN_LINK" />Android સેટિંગ<ph name="END_LINK" />માં <ph name="APP_NAME" /> માટે પરવાનગી ચાલુ કરો.</translation>
 <translation id="8725066075913043281">ફરી પ્રયાસ કરો</translation>
 <translation id="8730621377337864115">થઈ ગયું</translation>
+<translation id="8736193154595564524">{NUM_SELECTED,plural, =1{1 સાઇટને મંજૂરી આપી}one{# સાઇટને મંજૂરી આપી}other{# સાઇટને મંજૂરી આપી}}</translation>
 <translation id="8737217482364735741">આમ કરવાથી, <ph name="ORIGIN" /> દ્વારા સ્ટોર કરવામાં આવેલો બધો ડેટા અને કુકી સાફ કરવામાં આવશે.</translation>
 <translation id="8751914237388039244">છબી પસંદ કરો</translation>
+<translation id="8800034312320686233">સાઇટ કામ નથી કરતી?</translation>
 <translation id="8801436777607969138">કોઈ ચોક્કસ સાઇટ માટે JavaScriptને બ્લૉક કરો.</translation>
 <translation id="8803526663383843427">જ્યારે ચાલુ હોય</translation>
+<translation id="8805385115381080995">બ્રાઉઝિંગની સ્પીડ વધી જાય છે, કારણ કે અલગ-અલગ સાઇટ દ્વારા ચકાસણી માટે તમને એ પૂછવાની શક્યતા ઘટી જાય છે કે તમે જ અસલી વપરાશકર્તા છો</translation>
 <translation id="8816026460808729765">સાઇટને સેન્સરને ઍક્સેસ કરવાથી બ્લૉક કરો</translation>
 <translation id="8823559166155093873">કુકી બ્લૉક કરો</translation>
 <translation id="8847988622838149491">USB</translation>
+<translation id="8889294078294184559">જેમ જેમ તમે બ્રાઉઝ કરવાનું ચાલુ રાખો છો, તેમ તેમ વિવિધ વેબસાઇટ Chrome વડે એ ચેક કરી શકે છે કે તમે અસલી વપરાશકર્તા છો કે નહીં અને સાથે જ તમે મુલાકાત લીધી હોય એવી અગાઉની સાઇટ વડે આ બાબતની ચકાસણી પણ તે કરી શકે છે</translation>
 <translation id="8899807382908246773">ખલેલ પાડતી જાહેરાતો</translation>
 <translation id="8903921497873541725">ઝૂમ વધારો</translation>
 <translation id="8921772741368021346"><ph name="POSITION" /> / <ph name="DURATION" /></translation>
 <translation id="8926666909099850184">આ ડિવાઇસ માટે NFC સેવા બંધ કરેલી છે. તેને <ph name="BEGIN_LINK" />Android સેટિંગ<ph name="END_LINK" />માં ચાલુ કરો.</translation>
 <translation id="8928445016601307354">NFC ડિવાઇસ પર સાઇટને માહિતી જોવાથી અને બદલવાથી બ્લૉક કરો</translation>
 <translation id="8958424370300090006">કોઈ ચોક્કસ સાઇટ માટે કુકીને બ્લૉક કરો.</translation>
-<translation id="8959122750345127698">નેવિગેશન બિનપહોંચ યોગ્ય છે: <ph name="URL" /></translation>
+<translation id="8959122750345127698">નૅવિગેશન સુધી પહોંચી શકાય તેમ નથી: <ph name="URL" /></translation>
 <translation id="8986362086234534611">ભૂલી જાઓ</translation>
 <translation id="8990043154272859344">બધી સાઇટમાંથી તમને સાઇન આઉટ કરવામાં આવશે</translation>
 <translation id="9019902583201351841">તમારા માતાપિતા દ્વારા મેનેજ થયેલ</translation>
@@ -453,5 +472,6 @@
 <translation id="9162462602695099906">આ પેજ જોખમી છે</translation>
 <translation id="9201023452444595544">બધો ઑફલાઇન ડેટા સાફ કરવામાં આવશે</translation>
 <translation id="930525582205581608">આ સાઇટને ભૂલી જઈએ?</translation>
+<translation id="947156494302904893">તમે મુલાકાત લો છો એ વિવિધ સાઇટ એ વાતની ચકાસણી કરી શકે છે કે તમે જ અસલી વપરાશકર્તા છો અને બૉટ નથી</translation>
 <translation id="967624055006145463">સ્ટોર કરેલ ડેટા</translation>
 </translationbundle>

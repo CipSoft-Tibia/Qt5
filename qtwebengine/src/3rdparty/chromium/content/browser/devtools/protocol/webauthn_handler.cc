@@ -16,7 +16,7 @@
 #include "base/strings/string_piece.h"
 #include "content/browser/devtools/protocol/web_authn.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
-#include "content/browser/webauth/authenticator_environment_impl.h"
+#include "content/browser/webauth/authenticator_environment.h"
 #include "content/browser/webauth/virtual_authenticator.h"
 #include "content/browser/webauth/virtual_authenticator_manager_impl.h"
 #include "device/fido/fido_constants.h"
@@ -158,15 +158,15 @@ Response WebAuthnHandler::Enable(Maybe<bool> enable_ui) {
   if (!frame_host_)
     return Response::ServerError(kDevToolsNotAttached);
 
-  AuthenticatorEnvironmentImpl::GetInstance()->EnableVirtualAuthenticatorFor(
+  AuthenticatorEnvironment::GetInstance()->EnableVirtualAuthenticatorFor(
       frame_host_->frame_tree_node(),
-      enable_ui.fromMaybe(/*default_value=*/false));
+      enable_ui.value_or(/*default_value=*/false));
   return Response::Success();
 }
 
 Response WebAuthnHandler::Disable() {
   if (frame_host_) {
-    AuthenticatorEnvironmentImpl::GetInstance()->DisableVirtualAuthenticatorFor(
+    AuthenticatorEnvironment::GetInstance()->DisableVirtualAuthenticatorFor(
         frame_host_->frame_tree_node());
   }
   return Response::Success();
@@ -176,7 +176,7 @@ Response WebAuthnHandler::AddVirtualAuthenticator(
     std::unique_ptr<WebAuthn::VirtualAuthenticatorOptions> options,
     String* out_authenticator_id) {
   VirtualAuthenticatorManagerImpl* authenticator_manager =
-      AuthenticatorEnvironmentImpl::GetInstance()
+      AuthenticatorEnvironment::GetInstance()
           ->MaybeGetVirtualAuthenticatorManager(frame_host_->frame_tree_node());
   if (!authenticator_manager)
     return Response::ServerError(kVirtualEnvironmentNotEnabled);
@@ -263,7 +263,7 @@ Response WebAuthnHandler::AddVirtualAuthenticator(
 Response WebAuthnHandler::RemoveVirtualAuthenticator(
     const String& authenticator_id) {
   VirtualAuthenticatorManagerImpl* authenticator_manager =
-      AuthenticatorEnvironmentImpl::GetInstance()
+      AuthenticatorEnvironment::GetInstance()
           ->MaybeGetVirtualAuthenticatorManager(frame_host_->frame_tree_node());
   if (!authenticator_manager)
     return Response::ServerError(kVirtualEnvironmentNotEnabled);
@@ -280,7 +280,7 @@ Response WebAuthnHandler::SetResponseOverrideBits(
     Maybe<bool> is_bad_uv,
     Maybe<bool> is_bad_up) {
   VirtualAuthenticatorManagerImpl* authenticator_manager =
-      AuthenticatorEnvironmentImpl::GetInstance()
+      AuthenticatorEnvironment::GetInstance()
           ->MaybeGetVirtualAuthenticatorManager(frame_host_->frame_tree_node());
   if (!authenticator_manager)
     return Response::ServerError(kVirtualEnvironmentNotEnabled);
@@ -291,9 +291,9 @@ Response WebAuthnHandler::SetResponseOverrideBits(
     return Response::InvalidParams(kAuthenticatorNotFound);
 
   authenticator->set_bogus_signature(
-      is_bogus_signature.fromMaybe(/*default_value=*/false));
-  authenticator->set_bad_uv_bit(is_bad_uv.fromMaybe(/*default_value=*/false));
-  authenticator->set_bad_up_bit(is_bad_up.fromMaybe(/*default_value=*/false));
+      is_bogus_signature.value_or(/*default_value=*/false));
+  authenticator->set_bad_uv_bit(is_bad_uv.value_or(/*default_value=*/false));
+  authenticator->set_bad_up_bit(is_bad_up.value_or(/*default_value=*/false));
   return Response::Success();
 }
 
@@ -483,7 +483,7 @@ Response WebAuthnHandler::FindAuthenticator(
     VirtualAuthenticator** out_authenticator) {
   *out_authenticator = nullptr;
   VirtualAuthenticatorManagerImpl* authenticator_manager =
-      AuthenticatorEnvironmentImpl::GetInstance()
+      AuthenticatorEnvironment::GetInstance()
           ->MaybeGetVirtualAuthenticatorManager(frame_host_->frame_tree_node());
   if (!authenticator_manager)
     return Response::ServerError(kVirtualEnvironmentNotEnabled);

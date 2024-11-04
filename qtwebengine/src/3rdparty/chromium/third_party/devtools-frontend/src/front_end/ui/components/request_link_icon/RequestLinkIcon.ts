@@ -4,6 +4,7 @@
 
 import type * as SDK from '../../../core/sdk/sdk.js';
 import type * as Platform from '../../../core/platform/platform.js';
+import * as Root from '../../../core/root/root.js';
 import * as i18n from '../../../core/i18n/i18n.js';
 import * as Common from '../../../core/common/common.js';
 import * as NetworkForward from '../../../panels/network/forward/forward.js';
@@ -41,6 +42,9 @@ export interface RequestLinkIconData {
   networkTab?: NetworkForward.UIRequestLocation.UIRequestTabs;
   requestResolver?: Logs.RequestResolver.RequestResolver;
   displayURL?: boolean;
+  // If displayURL && urlToDisplay !== undefined, uses urlToDisplay for the text of the link.
+  // If displayURL only, uses filename of the URL.
+  urlToDisplay?: string;
   additionalOnClickAction?: () => void;
   revealOverride?: (revealable: Object|null, omitFocus?: boolean|undefined) => Promise<void>;
 }
@@ -63,6 +67,7 @@ export class RequestLinkIcon extends HTMLElement {
   #highlightHeader?: {section: NetworkForward.UIRequestLocation.UIHeaderSection, name: string};
   #requestResolver?: Logs.RequestResolver.RequestResolver;
   #displayURL: boolean = false;
+  #urlToDisplay?: string;
   #networkTab?: NetworkForward.UIRequestLocation.UIRequestTabs;
   #affectedRequest?: {requestId: Protocol.Network.RequestId, url?: string};
   #additionalOnClickAction?: () => void;
@@ -79,6 +84,7 @@ export class RequestLinkIcon extends HTMLElement {
     this.#networkTab = data.networkTab;
     this.#requestResolver = data.requestResolver;
     this.#displayURL = data.displayURL ?? false;
+    this.#urlToDisplay = data.urlToDisplay;
     this.#additionalOnClickAction = data.additionalOnClickAction;
     if (data.revealOverride) {
       this.#reveal = data.revealOverride;
@@ -115,6 +121,7 @@ export class RequestLinkIcon extends HTMLElement {
       networkTab: this.#networkTab,
       requestResolver: this.#requestResolver,
       displayURL: this.#displayURL,
+      urlToDisplay: this.#urlToDisplay,
       additionalOnClickAction: this.#additionalOnClickAction,
       revealOverride: this.#reveal !== Common.Revealer.reveal ? this.#reveal : undefined,
     };
@@ -122,14 +129,14 @@ export class RequestLinkIcon extends HTMLElement {
 
   #iconColor(): string {
     if (!this.#request) {
-      return '--issue-color-yellow';
+      return '--icon-no-request';
     }
-    return '--color-link';
+    return '--icon-link';
   }
 
   iconData(): IconButton.Icon.IconData {
     return {
-      iconName: 'network_panel_icon',
+      iconName: 'arrow-up-down-circle',
       color: `var(${this.#iconColor()})`,
       width: '16px',
       height: '16px',
@@ -149,8 +156,11 @@ export class RequestLinkIcon extends HTMLElement {
           linkedRequest, this.#highlightHeader.section, this.#highlightHeader.name);
       void this.#reveal(requestLocation);
     } else {
-      const requestLocation = NetworkForward.UIRequestLocation.UIRequestLocation.tab(
-          linkedRequest, this.#networkTab ?? NetworkForward.UIRequestLocation.UIRequestTabs.Headers);
+      const headersTab = Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.HEADER_OVERRIDES) ?
+          NetworkForward.UIRequestLocation.UIRequestTabs.HeadersComponent :
+          NetworkForward.UIRequestLocation.UIRequestTabs.Headers;
+      const requestLocation =
+          NetworkForward.UIRequestLocation.UIRequestLocation.tab(linkedRequest, this.#networkTab ?? headersTab);
       void this.#reveal(requestLocation);
     }
     this.#additionalOnClickAction?.();
@@ -174,10 +184,16 @@ export class RequestLinkIcon extends HTMLElement {
     if (!this.#displayURL) {
       return LitHtml.nothing;
     }
+
     const url = this.#getUrlForDisplaying();
     if (!url) {
       return LitHtml.nothing;
     }
+
+    if (this.#urlToDisplay) {
+      return LitHtml.html`<span title=${url}>${this.#urlToDisplay}</span>`;
+    }
+
     const filename = extractShortPath(url);
     return LitHtml.html`<span aria-label=${i18nString(UIStrings.shortenedURL)} title=${url}>${filename}</span>`;
   }

@@ -16,6 +16,7 @@
  */
 
 #pragma once
+#include "generated/sync_validation_types.h"
 #include <vulkan/vulkan.h>
 #include <string>
 
@@ -40,12 +41,6 @@ VkPipelineStageFlags2KHR WithEarlierPipelineStages(VkPipelineStageFlags2KHR stag
 
 VkPipelineStageFlags2KHR WithLaterPipelineStages(VkPipelineStageFlags2KHR stage_mask);
 
-int GetGraphicsPipelineStageLogicalOrdinal(VkPipelineStageFlags2KHR flag);
-
-VkPipelineStageFlags2KHR GetLogicallyEarliestGraphicsPipelineStage(VkPipelineStageFlags2KHR inflags);
-
-VkPipelineStageFlags2KHR GetLogicallyLatestGraphicsPipelineStage(VkPipelineStageFlags2KHR inflags);
-
 std::string StringPipelineStageFlags(VkPipelineStageFlags2KHR mask);
 
 std::string StringAccessFlags(VkAccessFlags2KHR mask);
@@ -54,7 +49,14 @@ struct ExecScopes {
     VkPipelineStageFlags2KHR src;
     VkPipelineStageFlags2KHR dst;
 };
-
 ExecScopes GetGlobalStageMasks(const VkDependencyInfoKHR& dep_info);
+
+struct ShaderStageAccesses {
+    SyncStageAccessIndex sampled_read;
+    SyncStageAccessIndex storage_read;
+    SyncStageAccessIndex storage_write;
+    SyncStageAccessIndex uniform_read;
+};
+ShaderStageAccesses GetShaderStageAccesses(VkShaderStageFlagBits shader_stage);
 
 }  // namespace sync_utils

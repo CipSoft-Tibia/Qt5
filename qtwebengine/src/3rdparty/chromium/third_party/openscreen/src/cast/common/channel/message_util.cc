@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,8 +16,7 @@
 #include <TargetConditionals.h>
 #endif
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 using ::cast::channel::CastMessage;
@@ -169,5 +168,25 @@ bool HasType(const Json::Value& object, CastMessageType type) {
   return value.isString() && value.asString() == CastMessageTypeToString(type);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+std::string ToString(const CastMessage& message) {
+  std::stringstream ss;
+  ss << "CastMessage(source=" << message.source_id()
+     << ", dest=" << message.destination_id()
+     << ", namespace=" << message.namespace_()
+     << ", payload_utf8=" << message.payload_utf8()
+     << ", payload_binary=" << message.payload_binary()
+     << ", remaining length=" << message.remaining_length() << ")";
+  return ss.str();
+}
+
+const std::string& GetPayload(const CastMessage& message) {
+  // Receiver messages will report if they are string or binary, but may
+  // populate either the utf8 or the binary field with the message contents.
+  // TODO(https://crbug.com/1429410): CastSocket's CastMessage results have
+  // wrong payload field filled out.
+  OSP_DCHECK(message.payload_type() == ::cast::channel::CastMessage::STRING);
+  return !message.payload_utf8().empty() ? message.payload_utf8()
+                                         : message.payload_binary();
+}
+
+}  // namespace openscreen::cast

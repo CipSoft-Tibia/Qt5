@@ -7,8 +7,7 @@
 
 #include "build/build_config.h"
 
-namespace password_manager {
-namespace prefs {
+namespace password_manager::prefs {
 
 // Alphabetical list of preference names specific to the PasswordManager
 // component.
@@ -82,12 +81,6 @@ extern const char kTimeOfLastMigrationAttempt[];
 // backends due to sync settings change.
 extern const char kRequiresMigrationAfterSyncStatusChange[];
 
-// Boolean value indicating if the user has clicked on the "Password Manager"
-// item in settings after switching to the Unified Password Manager. A "New"
-// label is shown for the users who have not clicked on this item yet.
-// TODO(crbug.com/1217070): Remove this once the feature is rolled out.
-extern const char kPasswordsPrefWithNewLabelUsed[];
-
 // Boolean value indicating if the user should not get UPM experience because
 // of user-unresolvable errors received on communication with Google Mobile
 // Services.
@@ -120,11 +113,22 @@ extern const char kTimesReenrolledToGoogleMobileServices[];
 // after a successful reenrollment.
 extern const char kTimesAttemptedToReenrollToGoogleMobileServices[];
 
-// Integer value indicating the number of consecutive times the password manager
-// auth error UI was displayed to the user. Reset once the error is resolved
-// (detected by a successful backend request) or when the user is unenrolled
-// from UPM.
-extern const char kTimesUPMAuthErrorShown[];
+// Boolean value meant to record in the prefs if the user clicked "Got it" in
+// the UPM local passwords migration warning. When set to true, the warning
+// should not be displayed again.
+extern const char kUserAcknowledgedLocalPasswordsMigrationWarning[];
+
+// The timestamp at which the last UPM local passwords migration warning was
+// shown to the user in microseconds since Windows epoch. This is needed to
+// ensure that the UI is prompted only once per given time interval (currently
+// one month).
+extern const char kLocalPasswordsMigrationWarningShownTimestamp[];
+
+// Whether the local password migration warning was already shown at startup.
+extern const char kLocalPasswordMigrationWarningShownAtStartup[];
+
+// The version of the password migration warning prefs.
+extern const char kLocalPasswordMigrationWarningPrefsVersion[];
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -153,10 +157,12 @@ extern const char kWasAutoSignInFirstRunExperienceShown[];
 // performed.
 extern const char kWereOldGoogleLoginsRemoved[];
 
+#if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
 // A dictionary of account-storage-related settings that exist per Gaia account
 // (e.g. whether that user has opted in). It maps from hash of Gaia ID to
 // dictionary of key-value pairs.
 extern const char kAccountStoragePerAccountSettings[];
+#endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
 
 // String that represents the sync password hash.
 extern const char kSyncPasswordHash[];
@@ -192,6 +198,15 @@ extern const char kPasswordLeakDetectionEnabled[];
 // compromised credentials that were submitted by the user.
 extern const char kPasswordDismissCompromisedAlertEnabled[];
 
+// Boolean value indicating if the user has clicked on the "Password Manager"
+// item in settings after switching to the Unified Password Manager. A "New"
+// label is shown for the users who have not clicked on this item yet.
+// TODO(crbug.com/1217070): Remove this on Android once the feature is rolled
+// out.
+// TODO(crbug.com/1420597): Remove this for desktop once the feature is rolled
+// out.
+extern const char kPasswordsPrefWithNewLabelUsed[];
+
 // Timestamps of when credentials from the profile / account store were last
 // used to fill a form, in microseconds since Windows epoch.
 extern const char kProfileStoreDateLastUsedForFilling[];
@@ -221,7 +236,22 @@ extern const char kBiometricAuthenticationBeforeFilling[];
 extern const char kHadBiometricsAvailable[];
 #endif
 
-}  // namespace prefs
-}  // namespace password_manager
+#if BUILDFLAG(IS_IOS)
+// Boolean pref indicating if the one-time notice for account storage was shown.
+// The notice informs passwords will start being saved to the signed-in account.
+extern const char kAccountStorageNoticeShown[];
+
+// Integer value indicating the number of times the "new feature icon" was
+// displayed with the account storage opt-out toggle.
+extern const char kAccountStorageNewFeatureIconImpressions[];
+#endif  // BUILDFLAG(IS_IOS)
+
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)  // Desktop
+// A list of available promo cards with related information which are displayed
+// in the Password Manager UI.
+extern const char kPasswordManagerPromoCardsList[];
+#endif
+
+}  // namespace password_manager::prefs
 
 #endif  // COMPONENTS_PASSWORD_MANAGER_CORE_COMMON_PASSWORD_MANAGER_PREF_NAMES_H_

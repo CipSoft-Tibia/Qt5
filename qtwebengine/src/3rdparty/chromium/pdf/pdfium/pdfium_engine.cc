@@ -19,7 +19,6 @@
 #include "base/check_op.h"
 #include "base/containers/contains.h"
 #include "base/containers/flat_map.h"
-#include "base/debug/alias.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
@@ -501,7 +500,9 @@ void ParamsTransformPageToScreen(unsigned long view_fit_type,
 
 }  // namespace
 
-void InitializeSDK(bool enable_v8, FontMappingMode font_mapping_mode) {
+void InitializeSDK(bool enable_v8,
+                   bool use_skia,
+                   FontMappingMode font_mapping_mode) {
   FPDF_LIBRARY_CONFIG config;
   config.version = 4;
   config.m_pUserFontPaths = nullptr;
@@ -509,9 +510,7 @@ void InitializeSDK(bool enable_v8, FontMappingMode font_mapping_mode) {
   config.m_pPlatform = nullptr;
   config.m_v8EmbedderSlot = gin::kEmbedderPDFium;
   config.m_RendererType =
-      base::FeatureList::IsEnabled(features::kPdfUseSkiaRenderer)
-          ? FPDF_RENDERERTYPE_SKIA
-          : FPDF_RENDERERTYPE_AGG;
+      use_skia ? FPDF_RENDERERTYPE_SKIA : FPDF_RENDERERTYPE_AGG;
 
 #if defined(PDF_ENABLE_V8)
   if (enable_v8) {
@@ -2071,12 +2070,6 @@ bool PDFiumEngine::SelectFindResult(bool forward) {
   gfx::Rect bounding_rect;
   gfx::Rect visible_rect = GetVisibleRect();
 
-  // TODO(crbug.com/1108574): Remove after fixing the issue.
-  size_t find_results_size = find_results_.size();
-  base::debug::Alias(&find_results_size);
-  size_t current_find_index_value = current_find_index_.value();
-  base::debug::Alias(&current_find_index_value);
-
   // Use zoom of 1.0 since `visible_rect` is without zoom.
   const std::vector<gfx::Rect>& rects =
       find_results_[current_find_index_.value()].GetScreenRects(
@@ -2627,6 +2620,11 @@ std::vector<AccessibilityImageInfo> PDFiumEngine::GetImageInfo(
     uint32_t text_run_count) {
   DCHECK(PageIndexInBounds(page_index));
   return pages_[page_index]->GetImageInfo(text_run_count);
+}
+
+SkBitmap PDFiumEngine::GetImageForOcr(int page_index, int image_index) {
+  DCHECK(PageIndexInBounds(page_index));
+  return pages_[page_index]->GetImageForOcr(image_index);
 }
 
 std::vector<AccessibilityHighlightInfo> PDFiumEngine::GetHighlightInfo(
@@ -3469,6 +3467,14 @@ gfx::Rect PDFiumEngine::GetPageScreenRect(int page_index) const {
 
 gfx::Rect PDFiumEngine::GetScreenRect(const gfx::Rect& rect) const {
   return draw_utils::GetScreenRect(rect, position_, current_zoom_);
+}
+
+gfx::RectF PDFiumEngine::GetPageBoundingBox(int page_index) {
+  PDFiumPage* page = GetPage(page_index);
+  if (!page) {
+    return gfx::RectF();
+  }
+  return page->GetBoundingBox();
 }
 
 void PDFiumEngine::Highlight(void* buffer,

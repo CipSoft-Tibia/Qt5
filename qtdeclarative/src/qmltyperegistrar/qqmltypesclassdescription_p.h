@@ -16,37 +16,67 @@
 //
 
 #include <QtCore/qstring.h>
-#include <QtCore/qjsonobject.h>
+#include <QtCore/qcbormap.h>
 #include <QtCore/qvector.h>
 #include <QtCore/qset.h>
 #include <QtCore/qversionnumber.h>
 
 QT_BEGIN_NAMESPACE
 
+struct FoundType
+{
+    enum Origin {
+        Unknown,
+        OwnTypes,
+        ForeignTypes,
+    };
+
+    FoundType() = default;
+    FoundType(const QCborMap &single, Origin origin);
+
+    QCborMap native;
+    QCborMap javaScript;
+
+    Origin nativeOrigin = Unknown;
+    Origin javaScriptOrigin = Unknown;
+
+    operator bool() const { return !native.isEmpty() || !javaScript.isEmpty(); }
+
+    QCborMap select(const QCborMap &category, QAnyStringView relation) const;
+
+};
+
 struct QmlTypesClassDescription
 {
-    const QJsonObject *resolvedClass = nullptr;
-    QString file;
-    QString className;
-    QString elementName;
-    QString defaultProp;
-    QString parentProp;
-    QString superClass;
-    QString attachedType;
-    QString extensionType;
-    QString sequenceValueType;
-    QString accessSemantics;
+    // All the string views in this class are based on string data in the JSON they are parsed from.
+    // You must keep the relevant QCborValues alive while the QmlTypesClassDescription exists.
+
+    QCborMap resolvedClass;
+    QAnyStringView file;
+    QAnyStringView className;
+    QList<QAnyStringView> elementNames;
+    QAnyStringView defaultProp;
+    QAnyStringView parentProp;
+    QAnyStringView superClass;
+    QAnyStringView attachedType;
+    QAnyStringView javaScriptExtensionType;
+    QAnyStringView nativeExtensionType;
+    QAnyStringView sequenceValueType;
+    QAnyStringView accessSemantics;
     QList<QTypeRevision> revisions;
     QTypeRevision addedInRevision;
     QTypeRevision removedInRevision;
     bool isCreatable = true;
+    bool isStructured = false;
     bool isSingleton = false;
     bool hasCustomParser = false;
-    bool omitFromQmlTypes = false;
+    bool isRootClass = false;
+    bool extensionIsJavaScript = false;
     bool extensionIsNamespace = false;
-    QStringList implementsInterfaces;
-    QStringList deferredNames;
-    QStringList immediateNames;
+    bool registerEnumClassesScoped = false;
+    QList<QAnyStringView> implementsInterfaces;
+    QList<QAnyStringView> deferredNames;
+    QList<QAnyStringView> immediateNames;
 
     enum CollectMode {
         TopLevel,
@@ -54,26 +84,27 @@ struct QmlTypesClassDescription
         RelatedType
     };
 
-    void collect(const QJsonObject *classDef, const QVector<QJsonObject> &types,
-                 const QVector<QJsonObject> &foreign, CollectMode mode,
+    void collect(const QCborMap &classDef, const QVector<QCborMap> &types,
+                 const QVector<QCborMap> &foreign, CollectMode mode,
                  QTypeRevision defaultRevision);
-    const QJsonObject *collectRelated(
-            const QString &related, const QVector<QJsonObject> &types,
-            const QVector<QJsonObject> &foreign, QTypeRevision defaultRevision,
-            const QStringList &namespaces);
-    static const QJsonObject *findType(
-            const QVector<QJsonObject> &types, const QVector<QJsonObject> &foreign,
-            const QString &name, const QStringList &namespaces);
+    FoundType collectRelated(
+            QAnyStringView related, const QVector<QCborMap> &types,
+            const QVector<QCborMap> &foreign, QTypeRevision defaultRevision,
+            const QList<QAnyStringView> &namespaces);
 
-    void collectLocalAnonymous(const QJsonObject *classDef,const QVector<QJsonObject> &types,
-                      const QVector<QJsonObject> &foreign, QTypeRevision defaultRevision);
+    static FoundType findType(
+            const QVector<QCborMap> &types, const QVector<QCborMap> &foreign,
+            const QAnyStringView &name, const QList<QAnyStringView> &namespaces);
+
+    void collectLocalAnonymous(const QCborMap &classDef,const QVector<QCborMap> &types,
+                      const QVector<QCborMap> &foreign, QTypeRevision defaultRevision);
 
 
 private:
     void collectSuperClasses(
-            const QJsonObject *classDef, const QVector<QJsonObject> &types,
-            const QVector<QJsonObject> &foreign, CollectMode mode, QTypeRevision defaultRevision);
-    void collectInterfaces(const QJsonObject *classDef);
+            const QCborMap &classDef, const QVector<QCborMap> &types,
+            const QVector<QCborMap> &foreign, CollectMode mode, QTypeRevision defaultRevision);
+    void collectInterfaces(const QCborMap &classDef);
 };
 
 QT_END_NAMESPACE

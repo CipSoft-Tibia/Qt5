@@ -40,10 +40,10 @@ devtools_module("sdk") {
     "DebuggerModel.ts",
     "EmulationModel.ts",
     "EventBreakpointsModel.ts",
-    "FilmStripModel.ts",
     "FrameAssociated.ts",
     "FrameManager.ts",
     "HeapProfilerModel.ts",
+    "HttpReasonPhraseStrings.ts",
     "IOModel.ts",
     "IsolateManager.ts",
     "IssuesModel.ts",
@@ -59,7 +59,6 @@ devtools_module("sdk") {
     "PaintProfiler.ts",
     "PerformanceMetricsModel.ts",
     "PreloadingModel.ts",
-    "PrerenderingModel.ts",
     "ProfileTreeModel.ts",
     "RemoteObject.ts",
     "Resource.ts",
@@ -74,12 +73,10 @@ devtools_module("sdk") {
     "ServiceWorkerManager.ts",
     "SourceMap.ts",
     "SourceMapManager.ts",
+    "StorageBucketsModel.ts",
     "StorageKeyManager.ts",
     "Target.ts",
     "TargetManager.ts",
-    "TraceSDKServices.ts",
-    "TracingManager.ts",
-    "TracingModel.ts",
     "WebAuthnModel.ts",
   ]
 
@@ -92,8 +89,8 @@ devtools_module("sdk") {
     "../../core/root:bundle",
     "../../generated",
     "../../generated:protocol",
+    "../../models/cpu_profile:bundle",
     "../../models/text_utils:bundle",
-    "../../models/trace:bundle",
   ]
 }
 

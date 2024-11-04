@@ -34,7 +34,7 @@ class AnimationEffectStackTest : public PageTestBase {
     PageTestBase::SetUp(gfx::Size());
     GetDocument().GetAnimationClock().ResetTimeForTesting();
     timeline = GetDocument().Timeline();
-    element = GetDocument().CreateElementForBinding("foo");
+    element = GetDocument().CreateElementForBinding(AtomicString("foo"));
   }
 
   Animation* Play(KeyframeEffect* effect, double start_time) {
@@ -76,7 +76,7 @@ class AnimationEffectStackTest : public PageTestBase {
     Timing timing;
     timing.fill_mode = Timing::FillMode::BOTH;
     return MakeGarbageCollected<InertEffect>(
-        effect, timing, false, AnimationTimeDelta(), absl::nullopt, 1.0);
+        effect, timing, animation_test_helpers::TestAnimationProxy());
   }
 
   KeyframeEffect* MakeKeyframeEffect(KeyframeEffectModelBase* effect,

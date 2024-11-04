@@ -16,6 +16,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_property.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_value.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_throw_dom_exception.h"
+#include "third_party/blink/renderer/core/css/css_rule.h"
 #include "third_party/blink/renderer/core/css/style_change_reason.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
@@ -28,6 +29,7 @@
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/layout/layout_box_model_object.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
+#include "third_party/blink/renderer/core/layout/layout_view_transition_root.h"
 #include "third_party/blink/renderer/core/page/chrome_client.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/paint/paint_layer.h"
@@ -158,6 +160,13 @@ bool ViewTransition::ScopedPauseRendering::ShouldThrottleRendering() const {
   return !cc_paused_;
 }
 
+void ViewTransition::UpdateSnapshotContainingBlockStyle() {
+  LayoutViewTransitionRoot* transition_root =
+      document_->GetLayoutView()->GetViewTransitionRoot();
+  CHECK(transition_root);
+  transition_root->UpdateSnapshotStyle(*style_tracker_);
+}
+
 // static
 const char* ViewTransition::StateToString(State state) {
   switch (state) {
@@ -210,7 +219,8 @@ ViewTransition::ViewTransition(Document* document,
                                ScriptState* script_state,
                                V8ViewTransitionCallback* update_dom_callback,
                                Delegate* delegate)
-    : ExecutionContextLifecycleObserver(document->GetExecutionContext()),
+    : ActiveScriptWrappable<ViewTransition>({}),
+      ExecutionContextLifecycleObserver(document->GetExecutionContext()),
       creation_type_(CreationType::kScript),
       document_(document),
       delegate_(delegate),
@@ -236,7 +246,8 @@ ViewTransition* ViewTransition::CreateForSnapshotForNavigation(
 ViewTransition::ViewTransition(Document* document,
                                ViewTransitionStateCallback callback,
                                Delegate* delegate)
-    : ExecutionContextLifecycleObserver(document->GetExecutionContext()),
+    : ActiveScriptWrappable<ViewTransition>({}),
+      ExecutionContextLifecycleObserver(document->GetExecutionContext()),
       creation_type_(CreationType::kForSnapshot),
       document_(document),
       delegate_(delegate),
@@ -262,7 +273,8 @@ ViewTransition* ViewTransition::CreateFromSnapshotForNavigation(
 ViewTransition::ViewTransition(Document* document,
                                ViewTransitionState transition_state,
                                Delegate* delegate)
-    : ExecutionContextLifecycleObserver(document->GetExecutionContext()),
+    : ActiveScriptWrappable<ViewTransition>({}),
+      ExecutionContextLifecycleObserver(document->GetExecutionContext()),
       creation_type_(CreationType::kFromSnapshot),
       document_(document),
       delegate_(delegate),
@@ -333,7 +345,7 @@ void ViewTransition::SkipTransitionInternal(
   if (static_cast<int>(state_) >
       static_cast<int>(State::kCaptureTagDiscovery)) {
     delegate_->AddPendingRequest(
-        ViewTransitionRequest::CreateRelease(document_tag_));
+        ViewTransitionRequest::CreateRelease(document_tag_, navigation_id_));
   }
 
   // We always need to call the transition state callback (mojo seems to require
@@ -577,7 +589,17 @@ void ViewTransition::ProcessCurrentState() {
         // created by the script API.
         DCHECK(script_bound_state_);
 
-        switch (InvokeDOMChangeCallback()) {
+        DOMCallbackResult result = InvokeDOMChangeCallback();
+
+        // Since invoking the callback could yield (at least when devtools
+        // breakpoint is hit, but maybe in other situations), we could have
+        // timed out already. Make sure we don't advance the state out of a
+        // terminal state.
+        if (IsTerminalState(state_)) {
+          break;
+        }
+
+        switch (result) {
           case DOMCallbackResult::kFinished:
             process_next_state = AdvanceTo(State::kDOMCallbackFinished);
             DCHECK(process_next_state);
@@ -606,6 +628,15 @@ void ViewTransition::ProcessCurrentState() {
         break;
 
       case State::kDOMCallbackFinished:
+        // For testing check: if the flag is enabled, re-create the style
+        // tracker with the serialized state that the current style tracker
+        // produces. This allows us to use SPA tests for MPA serialization.
+        if (RuntimeEnabledFeatures::
+                SerializeViewTransitionStateInSPAEnabled()) {
+          style_tracker_ = MakeGarbageCollected<ViewTransitionStyleTracker>(
+              *document_, style_tracker_->GetViewTransitionState());
+        }
+
         ResumeRendering();
         if (!dom_callback_succeeded_) {
           SkipTransitionInternal(ScriptBoundState::Response::kRejectAbort);
@@ -666,8 +697,8 @@ void ViewTransition::ProcessCurrentState() {
                       script_bound_state_->finished_promise_property);
         }
 
-        delegate_->AddPendingRequest(
-            ViewTransitionRequest::CreateRelease(document_tag_));
+        delegate_->AddPendingRequest(ViewTransitionRequest::CreateRelease(
+            document_tag_, navigation_id_));
         delegate_->OnTransitionFinished(this);
 
         style_tracker_ = nullptr;
@@ -809,20 +840,44 @@ bool ViewTransition::NeedsViewTransitionEffectNode(
 
   // Otherwise check if the layout object has an active transition element.
   auto* element = DynamicTo<Element>(object.GetNode());
+  return element && IsTransitionElementExcludingRoot(*element);
+}
+
+bool ViewTransition::NeedsViewTransitionClipNode(
+    const LayoutObject& object) const {
+  // The root element's painting is already clipped to the snapshot root using
+  // LayoutView::ViewRect.
+  if (IsA<LayoutView>(object)) {
+    return false;
+  }
+
+  auto* element = DynamicTo<Element>(object.GetNode());
   return element && style_tracker_ &&
-         style_tracker_->IsTransitionElement(element);
+         style_tracker_->NeedsCaptureClipNode(*element);
 }
 
 bool ViewTransition::IsRepresentedViaPseudoElements(
     const LayoutObject& object) const {
-  if (IsTerminalState(state_))
+  if (IsTerminalState(state_)) {
     return false;
+  }
 
-  if (IsA<LayoutView>(object))
-    return style_tracker_->IsRootTransitioning();
+  if (IsA<LayoutView>(object)) {
+    return document_->documentElement() &&
+           style_tracker_->IsTransitionElement(*document_->documentElement());
+  }
 
   auto* element = DynamicTo<Element>(object.GetNode());
-  return element && style_tracker_->IsTransitionElement(element);
+  return element && IsTransitionElementExcludingRoot(*element);
+}
+
+bool ViewTransition::IsTransitionElementExcludingRoot(
+    const Element& node) const {
+  if (IsTerminalState(state_)) {
+    return false;
+  }
+
+  return !node.IsDocumentElement() && style_tracker_->IsTransitionElement(node);
 }
 
 PaintPropertyChangeType ViewTransition::UpdateEffect(
@@ -846,29 +901,53 @@ PaintPropertyChangeType ViewTransition::UpdateEffect(
     // The only non-element participant is the layout view.
     DCHECK(object.IsLayoutView());
 
-    style_tracker_->UpdateRootIndexAndSnapshotId(
-        state.view_transition_element_id,
-        state.view_transition_element_resource_id);
-    DCHECK(state.view_transition_element_id.valid() ||
-           !style_tracker_->IsRootTransitioning());
+    // We always generate an effect node for the root element but element and
+    // resource IDs are only setup if the root element is participating in the
+    // transition, requiring a snapshot.
+    if (IsRootTransitioning()) {
+      style_tracker_->UpdateElementIndicesAndSnapshotId(
+          document_->documentElement(), state.view_transition_element_id,
+          state.view_transition_element_resource_id);
+    }
     return style_tracker_->UpdateRootEffect(std::move(state), current_effect);
   }
 
+  state.self_or_ancestor_participates_in_view_transition = true;
   style_tracker_->UpdateElementIndicesAndSnapshotId(
       element, state.view_transition_element_id,
       state.view_transition_element_resource_id);
-  return style_tracker_->UpdateEffect(element, std::move(state),
+  return style_tracker_->UpdateEffect(*element, std::move(state),
                                       current_effect);
 }
 
-EffectPaintPropertyNode* ViewTransition::GetEffect(
+PaintPropertyChangeType ViewTransition::UpdateCaptureClip(
+    const LayoutObject& object,
+    const ClipPaintPropertyNodeOrAlias* current_clip,
+    const TransformPaintPropertyNodeOrAlias* current_transform) {
+  DCHECK(NeedsViewTransitionClipNode(object));
+  DCHECK(current_transform);
+
+  auto* element = DynamicTo<Element>(object.GetNode());
+  DCHECK(element);
+  return style_tracker_->UpdateCaptureClip(*element, current_clip,
+                                           current_transform);
+}
+
+const EffectPaintPropertyNode* ViewTransition::GetEffect(
     const LayoutObject& object) const {
   DCHECK(NeedsViewTransitionEffectNode(object));
 
   auto* element = DynamicTo<Element>(object.GetNode());
   if (!element)
     return style_tracker_->GetRootEffect();
-  return style_tracker_->GetEffect(element);
+  return style_tracker_->GetEffect(*element);
+}
+
+const ClipPaintPropertyNode* ViewTransition::GetCaptureClip(
+    const LayoutObject& object) const {
+  DCHECK(NeedsViewTransitionClipNode(object));
+
+  return style_tracker_->GetCaptureClip(*To<Element>(object.GetNode()));
 }
 
 void ViewTransition::RunViewTransitionStepsOutsideMainFrame() {
@@ -883,6 +962,8 @@ void ViewTransition::RunViewTransitionStepsOutsideMainFrame() {
 }
 
 void ViewTransition::RunViewTransitionStepsDuringMainFrame() {
+  DCHECK_NE(state_, State::kWaitForRenderBlock);
+
   DCHECK_GE(document_->Lifecycle().GetState(),
             DocumentLifecycle::kPrePaintClean);
   DCHECK(!in_main_lifecycle_update_);
@@ -913,13 +994,13 @@ PseudoElement* ViewTransition::CreatePseudoElement(
                                              view_transition_name);
 }
 
-String ViewTransition::UAStyleSheet() const {
+CSSStyleSheet* ViewTransition::UAStyleSheet() const {
   // TODO(vmpstr): We can still request getComputedStyle(html,
   // "::view-transition-pseudo") outside of a page transition. What should we
   // return in that case?
   if (!style_tracker_)
-    return "";
-  return style_tracker_->UAStyleSheet();
+    return nullptr;
+  return &style_tracker_->UAStyleSheet();
 }
 
 void ViewTransition::WillCommitCompositorFrame() {

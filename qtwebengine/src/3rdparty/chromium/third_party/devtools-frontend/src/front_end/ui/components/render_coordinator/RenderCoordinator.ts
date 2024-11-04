@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as Platform from '../../../core/platform/platform.js';
+
 /**
  * Components don't orchestrate their DOM updates in a wider context
  * (i.e. the host frame's document), which leads to interleaved reading
@@ -16,13 +18,29 @@
  * for the next available frame.
  */
 
-interface CoordinatorCallback {
-  (): unknown;
+interface CoordinatorCallback<T> {
+  (): T|PromiseLike<T>;
 }
 
-interface CoordinatorFrame {
-  readers: CoordinatorCallback[];
-  writers: CoordinatorCallback[];
+class WorkItem<T> {
+  readonly promise: Promise<T>;
+  readonly trigger: () => void;
+  readonly cancel: (e: Error) => void;
+  readonly label: string;
+  #handler: CoordinatorCallback<T>;
+
+  constructor(label: string, initialHandler: CoordinatorCallback<T>) {
+    const {promise, resolve, reject} = Platform.PromiseUtilities.promiseWithResolvers<void>();
+    this.promise = promise.then(() => this.#handler());
+    this.trigger = resolve;
+    this.cancel = reject;
+    this.label = label;
+    this.#handler = initialHandler;
+  }
+
+  set handler(newHandler: CoordinatorCallback<T>) {
+    this.#handler = newHandler;
+  }
 }
 
 interface CoordinatorLogEntry {
@@ -48,9 +66,6 @@ export class RenderCoordinatorNewFrameEvent extends Event {
     super(RenderCoordinatorNewFrameEvent.eventName);
   }
 }
-
-type RenderCoordinatorResolverCallback = (value: unknown) => void;
-type RenderCoordinatorRejectorCallback = (error: Error) => void;
 
 let renderCoordinatorInstance: RenderCoordinator;
 
@@ -78,7 +93,7 @@ export class RenderCoordinator extends EventTarget {
       throw new Error('No render coordinator instance found.');
     }
 
-    return renderCoordinatorInstance.pendingFramesCount();
+    return renderCoordinatorInstance.hasPendingWork() ? 1 : 0;
   }
 
   // Toggle on to start tracking. You must call takeRecords() to
@@ -92,50 +107,55 @@ export class RenderCoordinator extends EventTarget {
 
   readonly #logInternal: CoordinatorLogEntry[] = [];
 
-  readonly #pendingWorkFrames: CoordinatorFrame[] = [];
-  readonly #resolvers = new WeakMap<CoordinatorCallback, RenderCoordinatorResolverCallback>();
-  readonly #rejectors = new WeakMap<CoordinatorCallback, RenderCoordinatorRejectorCallback>();
-  readonly #labels = new WeakMap<CoordinatorCallback, string>();
+  #pendingReaders: WorkItem<unknown>[] = [];
+  #pendingWriters: WorkItem<unknown>[] = [];
   #scheduledWorkId = 0;
 
-  pendingFramesCount(): number {
-    return this.#pendingWorkFrames.length;
+  hasPendingWork(): boolean {
+    return this.#pendingReaders.length !== 0 || this.#pendingWriters.length !== 0;
   }
 
-  done(): Promise<void> {
-    if (this.#pendingWorkFrames.length === 0) {
+  done(options?: {waitForWork: boolean}): Promise<void> {
+    if (!this.hasPendingWork() && !options?.waitForWork) {
       this.#logIfEnabled('[Queue empty]');
       return Promise.resolve();
     }
     return new Promise(resolve => this.addEventListener('renderqueueempty', () => resolve(), {once: true}));
   }
 
-  async read<T extends unknown>(callback: CoordinatorCallback): Promise<T>;
-  async read<T extends unknown>(label: string, callback: CoordinatorCallback): Promise<T>;
-  async read<T extends unknown>(labelOrCallback: CoordinatorCallback|string, callback?: CoordinatorCallback):
-      Promise<T> {
+  // Schedules a 'read' job which is being executed within an animation frame
+  // before all 'write' jobs. If multiple jobs are scheduled with the same
+  // non-empty label, only the latest callback would be executed. Such
+  // invocations would return the same promise that will resolve to the value of
+  // the latest callback.
+  async read<T>(callback: CoordinatorCallback<T>): Promise<T>;
+  async read<T>(label: string, callback: CoordinatorCallback<T>): Promise<T>;
+  async read<T>(labelOrCallback: CoordinatorCallback<T>|string, callback?: CoordinatorCallback<T>): Promise<T> {
     if (typeof labelOrCallback === 'string') {
       if (!callback) {
         throw new Error('Read called with label but no callback');
       }
-      return this.#enqueueHandler<T>(callback, ACTION.READ, labelOrCallback);
+      return this.#enqueueHandler(callback, ACTION.READ, labelOrCallback);
     }
 
-    return this.#enqueueHandler<T>(labelOrCallback, ACTION.READ, UNNAMED_READ);
+    return this.#enqueueHandler(labelOrCallback, ACTION.READ, UNNAMED_READ);
   }
 
-  async write<T extends unknown>(callback: CoordinatorCallback): Promise<T>;
-  async write<T extends unknown>(label: string, callback: CoordinatorCallback): Promise<T>;
-  async write<T extends unknown>(labelOrCallback: CoordinatorCallback|string, callback?: CoordinatorCallback):
-      Promise<T> {
+  // Schedules a 'write' job which is being executed within an animation frame
+  // after all 'read' and 'scroll' jobs. If multiple jobs are scheduled with
+  // the same non-empty label, only the latest callback would be executed. Such
+  // invocations would return the same promise that will resolve when the latest callback is run.
+  async write<T>(callback: CoordinatorCallback<T>): Promise<T>;
+  async write<T>(label: string, callback: CoordinatorCallback<T>): Promise<T>;
+  async write<T>(labelOrCallback: CoordinatorCallback<T>|string, callback?: CoordinatorCallback<T>): Promise<T> {
     if (typeof labelOrCallback === 'string') {
       if (!callback) {
         throw new Error('Write called with label but no callback');
       }
-      return this.#enqueueHandler<T>(callback, ACTION.WRITE, labelOrCallback);
+      return this.#enqueueHandler(callback, ACTION.WRITE, labelOrCallback);
     }
 
-    return this.#enqueueHandler<T>(labelOrCallback, ACTION.WRITE, UNNAMED_WRITE);
+    return this.#enqueueHandler(labelOrCallback, ACTION.WRITE, UNNAMED_WRITE);
   }
 
   takeRecords(): CoordinatorLogEntry[] {
@@ -148,75 +168,54 @@ export class RenderCoordinator extends EventTarget {
    * We offer a convenience function for scroll-based activity, but often triggering a scroll
    * requires a layout pass, thus it is better handled as a read activity, i.e. we wait until
    * the layout-triggering work has been completed then it should be possible to scroll without
-   * first forcing layout.
+   * first forcing layout.  If multiple jobs are scheduled with the same non-empty label, only
+   * the latest callback would be executed. Such invocations would return the same promise that
+   * will resolve when the latest callback is run.
    */
-  async scroll<T extends unknown>(callback: CoordinatorCallback): Promise<T>;
-  async scroll<T extends unknown>(label: string, callback: CoordinatorCallback): Promise<T>;
-  async scroll<T extends unknown>(labelOrCallback: CoordinatorCallback|string, callback?: CoordinatorCallback):
-      Promise<T> {
+  async scroll<T>(callback: CoordinatorCallback<T>): Promise<T>;
+  async scroll<T>(label: string, callback: CoordinatorCallback<T>): Promise<T>;
+  async scroll<T>(labelOrCallback: CoordinatorCallback<T>|string, callback?: CoordinatorCallback<T>): Promise<T> {
     if (typeof labelOrCallback === 'string') {
       if (!callback) {
         throw new Error('Scroll called with label but no callback');
       }
-      return this.#enqueueHandler<T>(callback, ACTION.READ, labelOrCallback);
+      return this.#enqueueHandler(callback, ACTION.READ, labelOrCallback);
     }
 
-    return this.#enqueueHandler<T>(labelOrCallback, ACTION.READ, UNNAMED_SCROLL);
+    return this.#enqueueHandler(labelOrCallback, ACTION.READ, UNNAMED_SCROLL);
   }
 
-  #enqueueHandler<T = unknown>(callback: CoordinatorCallback, action: ACTION, label = ''): Promise<T> {
-    this.#labels.set(callback, `${action === ACTION.READ ? '[Read]' : '[Write]'}: ${label}`);
+  #enqueueHandler<T>(callback: CoordinatorCallback<T>, action: ACTION, label: string): Promise<T> {
+    const hasName = ![UNNAMED_READ, UNNAMED_WRITE, UNNAMED_SCROLL].includes(label);
+    label = `${action === ACTION.READ ? '[Read]' : '[Write]'}: ${label}`;
 
-    if (this.#pendingWorkFrames.length === 0) {
-      this.#pendingWorkFrames.push({
-        readers: [],
-        writers: [],
-      });
-    }
-
-    const frame = this.#pendingWorkFrames[0];
-    if (!frame) {
-      throw new Error('No frame available');
-    }
-
+    let workItems = null;
     switch (action) {
       case ACTION.READ:
-        frame.readers.push(callback);
+        workItems = this.#pendingReaders;
         break;
 
       case ACTION.WRITE:
-        frame.writers.push(callback);
+        workItems = this.#pendingWriters;
         break;
 
       default:
         throw new Error(`Unknown action: ${action}`);
     }
 
-    const resolverPromise = new Promise((resolve, reject) => {
-      this.#resolvers.set(callback, resolve);
-      this.#rejectors.set(callback, reject);
-    });
+    let workItem = hasName ? workItems.find(w => w.label === label) as WorkItem<T>| undefined : undefined;
+    if (!workItem) {
+      workItem = new WorkItem<T>(label, callback);
+      workItems.push(workItem);
+    } else {
+      // We are always using the latest handler, so that we don't end up with a
+      // stale results. We are reusing the promise to avoid blocking the first invocation, when
+      // it is being "overridden" by another one.
+      workItem.handler = callback;
+    }
 
     this.#scheduleWork();
-    return resolverPromise as Promise<T>;
-  }
-
-  async #handleWork(handler: CoordinatorCallback): Promise<void> {
-    const resolver = this.#resolvers.get(handler);
-    const rejector = this.#rejectors.get(handler);
-    this.#resolvers.delete(handler);
-    this.#rejectors.delete(handler);
-    if (!resolver || !rejector) {
-      throw new Error('Unable to locate resolver or rejector');
-    }
-    let data;
-    try {
-      data = await handler.call(undefined);
-    } catch (error) {
-      rejector.call(undefined, error);
-    }
-
-    resolver.call(undefined, data);
+    return workItem.promise;
   }
 
   #scheduleWork(): void {
@@ -226,9 +225,8 @@ export class RenderCoordinator extends EventTarget {
     }
 
     this.#scheduledWorkId = requestAnimationFrame(async () => {
-      const hasPendingFrames = this.#pendingWorkFrames.length > 0;
-      if (!hasPendingFrames) {
-        // No pending frames means all pending work has completed.
+      if (!this.hasPendingWork()) {
+        // All pending work has completed.
         // The events dispatched below are mostly for testing contexts.
         // The first is for cases where we have a direct reference to
         // the render coordinator. The second is for other test contexts
@@ -244,23 +242,22 @@ export class RenderCoordinator extends EventTarget {
       this.dispatchEvent(new RenderCoordinatorNewFrameEvent());
       this.#logIfEnabled('[New frame]');
 
-      const frame = this.#pendingWorkFrames.shift();
-      if (!frame) {
-        return;
-      }
+      const readers = this.#pendingReaders;
+      this.#pendingReaders = [];
+      const writers = this.#pendingWriters;
+      this.#pendingWriters = [];
 
       // Start with all the readers and allow them
       // to proceed together.
-      const readers: Promise<unknown>[] = [];
-      for (const reader of frame.readers) {
-        this.#logIfEnabled(this.#labels.get(reader));
-        readers.push(this.#handleWork(reader));
+      for (const reader of readers) {
+        this.#logIfEnabled(reader.label);
+        reader.trigger();
       }
 
       // Wait for them all to be done.
       try {
         await Promise.race([
-          Promise.all(readers),
+          Promise.all(readers.map(r => r.promise)),
           new Promise((_, reject) => {
             window.setTimeout(
                 () => reject(new Error(`Readers took over ${DEADLOCK_TIMEOUT}ms. Possible deadlock?`)),
@@ -268,20 +265,19 @@ export class RenderCoordinator extends EventTarget {
           }),
         ]);
       } catch (err) {
-        this.rejectAll(frame.readers, err);
+        this.#rejectAll(readers, err);
       }
 
       // Next do all the writers as a block.
-      const writers: Promise<unknown>[] = [];
-      for (const writer of frame.writers) {
-        this.#logIfEnabled(this.#labels.get(writer));
-        writers.push(this.#handleWork(writer));
+      for (const writer of writers) {
+        this.#logIfEnabled(writer.label);
+        writer.trigger();
       }
 
       // And wait for them to be done, too.
       try {
         await Promise.race([
-          Promise.all(writers),
+          Promise.all(writers.map(w => w.promise)),
           new Promise((_, reject) => {
             window.setTimeout(
                 () => reject(new Error(`Writers took over ${DEADLOCK_TIMEOUT}ms. Possible deadlock?`)),
@@ -289,7 +285,7 @@ export class RenderCoordinator extends EventTarget {
           }),
         ]);
       } catch (err) {
-        this.rejectAll(frame.writers, err);
+        this.#rejectAll(writers, err);
       }
 
       // Since there may have been more work requested in
@@ -300,17 +296,16 @@ export class RenderCoordinator extends EventTarget {
     });
   }
 
-  rejectAll(handlers: CoordinatorCallback[], error: Error): void {
+  #rejectAll(handlers: WorkItem<unknown>[], error: Error): void {
     for (const handler of handlers) {
-      const rejector = this.#rejectors.get(handler);
-      if (!rejector) {
-        continue;
-      }
-
-      rejector.call(undefined, error);
-      this.#resolvers.delete(handler);
-      this.#rejectors.delete(handler);
+      handler.cancel(error);
     }
+  }
+
+  cancelPending(): void {
+    const error = new Error();
+    this.#rejectAll(this.#pendingReaders, error);
+    this.#rejectAll(this.#pendingWriters, error);
   }
 
   #logIfEnabled(value: string|undefined): void {

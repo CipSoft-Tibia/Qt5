@@ -23,6 +23,7 @@
 #include "dawn/native/BackendConnection.h"
 
 #include "dawn/common/DynamicLib.h"
+#include "dawn/common/Ref.h"
 #include "dawn/common/RefCounted.h"
 #include "dawn/common/ityp_array.h"
 #include "dawn/native/vulkan/VulkanFunctions.h"
@@ -34,6 +35,7 @@ enum class ICD {
     None,
     SwiftShader,
 };
+constexpr uint32_t kICDCount = 2u;
 
 class Device;
 
@@ -53,7 +55,7 @@ class VulkanInstance : public RefCounted {
     const VulkanFunctions& GetFunctions() const;
     VkInstance GetVkInstance() const;
     const VulkanGlobalInfo& GetGlobalInfo() const;
-    const std::vector<VkPhysicalDevice>& GetPhysicalDevices() const;
+    const std::vector<VkPhysicalDevice>& GetVkPhysicalDevices() const;
 
     // TODO(dawn:831): This set of functions guards may need to be adjusted when Dawn is updated
     // to support multithreading.
@@ -76,7 +78,7 @@ class VulkanInstance : public RefCounted {
 
     VkDebugUtilsMessengerEXT mDebugUtilsMessenger = VK_NULL_HANDLE;
 
-    std::vector<VkPhysicalDevice> mPhysicalDevices;
+    std::vector<VkPhysicalDevice> mVkPhysicalDevices;
 
     // Devices keep the VulkanInstance alive, so as long as devices remove themselves from this
     // map on destruction the pointers it contains should remain valid.
@@ -91,12 +93,15 @@ class Backend : public BackendConnection {
 
     MaybeError Initialize();
 
-    std::vector<Ref<AdapterBase>> DiscoverDefaultAdapters() override;
-    ResultOrError<std::vector<Ref<AdapterBase>>> DiscoverAdapters(
-        const AdapterDiscoveryOptionsBase* optionsBase) override;
+    std::vector<Ref<PhysicalDeviceBase>> DiscoverPhysicalDevices(
+        const RequestAdapterOptions* options) override;
+    void ClearPhysicalDevices() override;
+    size_t GetPhysicalDeviceCountForTesting() const override;
 
   private:
-    ityp::array<ICD, Ref<VulkanInstance>, 2> mVulkanInstances = {};
+    ityp::bitset<ICD, kICDCount> mVulkanInstancesCreated = {};
+    ityp::array<ICD, Ref<VulkanInstance>, kICDCount> mVulkanInstances = {};
+    ityp::array<ICD, std::vector<Ref<PhysicalDevice>>, kICDCount> mPhysicalDevices = {};
 };
 
 }  // namespace dawn::native::vulkan

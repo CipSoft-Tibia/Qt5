@@ -1,9 +1,10 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtQuick
 import QtTest
 import QtQuick.Controls
+import Qt.test.controls
 
 TestCase {
     id: testCase
@@ -448,12 +449,20 @@ TestCase {
             verify(!textLabel)
             compare(iconImage.x, (control.availableWidth - iconImage.width) / 2)
             compare(iconImage.y, (control.availableHeight - iconImage.height) / 2)
+            if (StyleInfo.styleName === "Material") {
+                compare(control.leftPadding, Material.buttonLeftPadding(false, true))
+                compare(control.rightPadding, Material.buttonRightPadding(false, true, false))
+            }
             break;
         case Button.TextOnly:
             verify(!iconImage)
             verify(textLabel)
             compare(textLabel.x, (control.availableWidth - textLabel.width) / 2)
             compare(textLabel.y, (control.availableHeight - textLabel.height) / 2)
+            if (StyleInfo.styleName === "Material") {
+                compare(control.leftPadding, Material.buttonLeftPadding(false, false))
+                compare(control.rightPadding, Material.buttonRightPadding(false, false, true))
+            }
             break;
         case Button.TextUnderIcon:
             verify(iconImage)
@@ -461,6 +470,10 @@ TestCase {
             compare(iconImage.x, (control.availableWidth - iconImage.width) / 2)
             compare(textLabel.x, (control.availableWidth - textLabel.width) / 2)
             verify(iconImage.y < textLabel.y)
+            if (StyleInfo.styleName === "Material") {
+                compare(control.leftPadding, Material.buttonLeftPadding(false, true))
+                compare(control.rightPadding, Material.buttonRightPadding(false, true, true))
+            }
             break;
         case Button.TextBesideIcon:
             verify(iconImage)
@@ -471,6 +484,10 @@ TestCase {
                 verify(iconImage.x < textLabel.x)
             compare(iconImage.y, (control.availableHeight - iconImage.height) / 2)
             compare(textLabel.y, (control.availableHeight - textLabel.height) / 2)
+            if (StyleInfo.styleName === "Material") {
+                compare(control.leftPadding, Material.buttonLeftPadding(false, true))
+                compare(control.rightPadding, Material.buttonRightPadding(false, true, true))
+            }
             break;
         }
     }

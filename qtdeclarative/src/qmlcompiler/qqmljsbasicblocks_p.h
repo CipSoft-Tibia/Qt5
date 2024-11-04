@@ -15,8 +15,9 @@
 // We mean it.
 
 
-#include <private/qqmljscompilepass_p.h>
 #include <private/qflatmap_p.h>
+#include <private/qqmljscompilepass_p.h>
+#include <private/qqmljscompiler_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -31,19 +32,25 @@ public:
         QList<QQmlJSScope::ConstPtr> readTypes;
         int jumpTarget = -1;
         bool jumpIsUnconditional = false;
+        bool isReturnBlock = false;
+        bool isThrowBlock = false;
     };
 
-    QQmlJSBasicBlocks(const QV4::Compiler::JSUnitGenerator *unitGenerator,
+    QQmlJSBasicBlocks(const QV4::Compiler::Context *context,
+                      const QV4::Compiler::JSUnitGenerator *unitGenerator,
                       const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger)
-        : QQmlJSCompilePass(unitGenerator, typeResolver, logger)
+        : QQmlJSCompilePass(unitGenerator, typeResolver, logger), m_context{ context }
     {
     }
 
     ~QQmlJSBasicBlocks() = default;
 
-    InstructionAnnotations run(
-            const Function *function, const InstructionAnnotations &annotations,
-            QQmlJS::DiagnosticMessage *error);
+    InstructionAnnotations run(const Function *function, const InstructionAnnotations &annotations,
+                               QQmlJS::DiagnosticMessage *error, QQmlJSAotCompiler::Flags,
+                               bool &basicBlocksValidationFailed);
+
+    struct BasicBlocksValidationResult { bool success = true; QString errorMessage; };
+    BasicBlocksValidationResult basicBlocksValidation();
 
 private:
     struct RegisterAccess
@@ -54,6 +61,19 @@ private:
         int trackedRegister;
     };
 
+    struct ObjectOrArrayDefinition
+    {
+        enum {
+            ArrayClassId = -1,
+            ArrayConstruct1ArgId = -2,
+        };
+
+        int instructionOffset = -1;
+        int internalClassId = ArrayClassId;
+        int argc = 0;
+        int argv = -1;
+    };
+
     QV4::Moth::ByteCodeHandler::Verdict startInstruction(QV4::Moth::Instr::Type type) override;
     void endInstruction(QV4::Moth::Instr::Type type) override;
 
@@ -62,11 +82,15 @@ private:
     void generate_JumpFalse(int offset) override;
     void generate_JumpNoException(int offset) override;
     void generate_JumpNotUndefined(int offset) override;
+    void generate_IteratorNext(int value, int offset) override;
+    void generate_GetOptionalLookup(int index, int offset) override;
 
     void generate_Ret() override;
     void generate_ThrowException() override;
 
     void generate_DefineArray(int argc, int argv) override;
+    void generate_DefineObjectLiteral(int internalClassId, int argc, int args) override;
+    void generate_Construct(int func, int argc, int argv) override;
 
     enum JumpMode { Unconditional, Conditional };
     void processJump(int offset, JumpMode mode);
@@ -75,10 +99,19 @@ private:
     void adjustTypes();
     bool canMove(int instructionOffset, const RegisterAccess &access) const;
 
+    QFlatMap<int, BasicBlock>::iterator
+    basicBlockForInstruction(QFlatMap<int, BasicBlock> &container, int instructionOffset);
+    QFlatMap<int, BasicBlock>::const_iterator
+    basicBlockForInstruction(const QFlatMap<int, BasicBlock> &container, int instructionOffset) const;
+
+    void dumpBasicBlocks();
+    void dumpDOTGraph();
+
+    const QV4::Compiler::Context *m_context;
     InstructionAnnotations m_annotations;
     QFlatMap<int, BasicBlock> m_basicBlocks;
     QHash<int, RegisterAccess> m_readerLocations;
-    QList<int> m_arrayDefinitions;
+    QList<ObjectOrArrayDefinition> m_objectAndArrayDefinitions;
     bool m_skipUntilNextLabel = false;
     bool m_hadBackJumps = false;
 };

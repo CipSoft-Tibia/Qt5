@@ -40,9 +40,9 @@ void xnn_f32_vrdivc_minmax_ukernel__avx512f_x16(
     vacc0 = _mm512_div_ps(vb, vacc0);
 
 
-    vacc0 = _mm512_max_ps(vacc0, voutput_min);
+    vacc0 = _mm512_max_ps(voutput_min, vacc0);
 
-    vacc0 = _mm512_min_ps(vacc0, voutput_max);
+    vacc0 = _mm512_min_ps(voutput_max, vacc0);
 
     _mm512_storeu_ps(output, vacc0);
     output += 16;
@@ -51,13 +51,13 @@ void xnn_f32_vrdivc_minmax_ukernel__avx512f_x16(
     assert(batch >= 1 * sizeof(float));
     assert(batch <= 15 * sizeof(float));
     // Prepare mask for valid 32-bit elements (depends on batch).
-    batch >>= 2 /* log2(sizeof(float)) */;
+    batch >>= XNN_LOG2_SIZEOF_FLOAT;
     const __mmask16 vmask = _cvtu32_mask16((uint16_t) ((uint32_t) (UINT32_C(1) << batch) - UINT32_C(1)));
 
     __m512 vacc = _mm512_maskz_loadu_ps(vmask, input_a);
     vacc = _mm512_maskz_div_ps(vmask, vb, vacc);
-    vacc = _mm512_maskz_max_ps(vmask, vacc, voutput_min);
-    vacc = _mm512_maskz_min_ps(vmask, vacc, voutput_max);
+    vacc = _mm512_maskz_max_ps(vmask, voutput_min, vacc);
+    vacc = _mm512_maskz_min_ps(vmask, voutput_max, vacc);
     _mm512_mask_storeu_ps(output, vmask, vacc);
   }
 }

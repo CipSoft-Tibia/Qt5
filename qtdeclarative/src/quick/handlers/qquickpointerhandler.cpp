@@ -8,6 +8,8 @@
 #include <QtQuick/private/qquickdeliveryagent_p_p.h>
 #include <QtGui/private/qinputdevice_p.h>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcPointerHandlerDispatch, "qt.quick.handler.dispatch")
@@ -558,10 +560,10 @@ bool QQuickPointerHandler::parentContains(const QPointF &scenePosition) const
 {
     if (QQuickItem *par = parentItem()) {
         if (par->window()) {
-            QRect windowGeometry = par->window()->geometry();
+            QRectF windowGeometry = par->window()->geometry();
             if (!par->window()->isTopLevel())
-                windowGeometry = QRect(QWindowPrivate::get(par->window())->globalPosition(), par->window()->size());
-            QPoint screenPosition = par->window()->mapToGlobal(scenePosition.toPoint());
+                windowGeometry = QRectF(QWindowPrivate::get(par->window())->globalPosition(), par->window()->size());
+            QPointF screenPosition = par->window()->mapToGlobal(scenePosition);
             if (!windowGeometry.contains(screenPosition))
                 return false;
         }
@@ -885,6 +887,8 @@ QQuickPointerHandlerPrivate::QQuickPointerHandlerPrivate()
     Returns \c true if the movement delta \a d in pixels along the \a axis
     exceeds QQuickPointerHandler::dragThreshold() \e or QEventPoint::velocity()
     exceeds QStyleHints::startDragVelocity().
+
+    \sa QQuickDeliveryAgentPrivate::dragOverThreshold()
 */
 template <typename TEventPoint>
 bool QQuickPointerHandlerPrivate::dragOverThreshold(qreal d, Qt::Axis axis, const TEventPoint &p) const
@@ -903,6 +907,8 @@ bool QQuickPointerHandlerPrivate::dragOverThreshold(qreal d, Qt::Axis axis, cons
 /*!
     Returns \c true if the movement \a delta in pixels exceeds
     QQuickPointerHandler::dragThreshold().
+
+    \sa QQuickDeliveryAgentPrivate::dragOverThreshold()
 */
 bool QQuickPointerHandlerPrivate::dragOverThreshold(QVector2D delta) const
 {
@@ -912,9 +918,11 @@ bool QQuickPointerHandlerPrivate::dragOverThreshold(QVector2D delta) const
 }
 
 /*!
-    Returns \c true if the movement \a delta in pixels (calculated as
-    QEventPoint::scenePosition() - QEventPoint::scenePressPosition())
-    expressed in \a point exceeds QQuickPointerHandler::dragThreshold().
+    Returns \c true if the movement delta of \a point in pixels
+    (calculated as QEventPoint::scenePosition() - QEventPoint::scenePressPosition())
+    exceeds QQuickPointerHandler::dragThreshold().
+
+    \sa QQuickDeliveryAgentPrivate::dragOverThreshold()
 */
 bool QQuickPointerHandlerPrivate::dragOverThreshold(const QEventPoint &point) const
 {

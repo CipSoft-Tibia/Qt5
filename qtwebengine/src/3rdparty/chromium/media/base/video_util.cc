@@ -18,18 +18,28 @@
 #include "base/trace_event/trace_event.h"
 #include "gpu/GLES2/gl2extchromium.h"
 #include "gpu/command_buffer/client/raster_interface.h"
+#include "gpu/command_buffer/common/capabilities.h"
 #include "media/base/limits.h"
 #include "media/base/video_frame.h"
 #include "media/base/video_frame_pool.h"
 #include "media/base/video_types.h"
 #include "media/base/wait_and_replace_sync_token_client.h"
 #include "third_party/libyuv/include/libyuv.h"
+#include "third_party/skia/include/core/SkAlphaType.h"
 #include "third_party/skia/include/core/SkColorSpace.h"
+#include "third_party/skia/include/core/SkColorType.h"
 #include "third_party/skia/include/core/SkImage.h"
+#include "third_party/skia/include/core/SkImageInfo.h"
+#include "third_party/skia/include/core/SkPixmap.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
 #include "third_party/skia/include/core/SkSurface.h"
 #include "third_party/skia/include/core/SkYUVAPixmaps.h"
+#include "third_party/skia/include/gpu/GpuTypes.h"
+#include "third_party/skia/include/gpu/GrBackendSurface.h"
 #include "third_party/skia/include/gpu/GrDirectContext.h"
+#include "third_party/skia/include/gpu/GrTypes.h"
+#include "third_party/skia/include/gpu/ganesh/SkImageGanesh.h"
+#include "third_party/skia/include/gpu/ganesh/gl/GrGLBackendSurface.h"
 #include "third_party/skia/include/gpu/gl/GrGLTypes.h"
 #include "ui/gfx/gpu_memory_buffer.h"
 
@@ -101,8 +111,7 @@ GrGLenum GLFormatForPlane(VideoPixelFormat format, size_t plane) {
     case kBGRA_8888_SkColorType:
       return GL_BGRA8_EXT;
     default:
-      NOTREACHED();
-      return 0;
+      NOTREACHED_NORETURN();
   }
 }
 
@@ -151,15 +160,16 @@ bool ReadbackTexturePlaneToMemorySyncSkImage(const VideoFrame& src_frame,
   gl_texture_info.fID = texture_id;
   gl_texture_info.fTarget = holder.texture_target;
   gl_texture_info.fFormat = texture_format;
-  GrBackendTexture texture(width, height, GrMipMapped::kNo, gl_texture_info);
+  auto texture = GrBackendTextures::MakeGL(width, height, skgpu::Mipmapped::kNo,
+                                           gl_texture_info);
 
-  auto image =
-      SkImage::MakeFromTexture(gr_context, texture,
-                               src_frame.metadata().texture_origin_is_top_left
-                                   ? kTopLeft_GrSurfaceOrigin
-                                   : kBottomLeft_GrSurfaceOrigin,
-                               sk_color_type, sk_alpha_type,
-                               /*colorSpace=*/nullptr);
+  auto image = SkImages::BorrowTextureFrom(
+      gr_context, texture,
+      src_frame.metadata().texture_origin_is_top_left
+          ? kTopLeft_GrSurfaceOrigin
+          : kBottomLeft_GrSurfaceOrigin,
+      sk_color_type, sk_alpha_type,
+      /*colorSpace=*/nullptr);
   if (!image) {
     DLOG(ERROR) << "Can't create SkImage from texture plane " << src_plane;
     return false;
@@ -193,20 +203,34 @@ bool ReadbackTexturePlaneToMemorySyncOOP(const VideoFrame& src_frame,
   }
 
   bool has_alpha = !IsOpaque(format) && src_frame.NumTextures() == 1;
-
-  const gpu::MailboxHolder& holder = src_frame.mailbox_holder(src_plane);
-  DCHECK(!holder.mailbox.IsZero());
-  ri->WaitSyncTokenCHROMIUM(holder.sync_token.GetConstData());
-
   SkColorType sk_color_type = SkColorTypeForPlane(format, src_plane);
   SkAlphaType sk_alpha_type =
       has_alpha ? kUnpremul_SkAlphaType : kOpaque_SkAlphaType;
 
   auto info = SkImageInfo::Make(src_rect.width(), src_rect.height(),
                                 sk_color_type, sk_alpha_type);
-  ri->ReadbackImagePixels(holder.mailbox, info, dest_stride, src_rect.x(),
-                          src_rect.y(), /*plane_index=*/0, dest_pixels);
-  return ri->GetGraphicsResetStatusKHR() == GL_NO_ERROR &&
+
+  bool result = false;
+  // Perform readback for a mailbox per plane for legacy shared image format
+  // types where planes and mailboxes are 1:1. With multiplanar shared images,
+  // there's one shared image mailbox for multiplanar formats so perform
+  // readback passing the appropriate `src_plane` for the single mailbox.
+  if (src_frame.shared_image_format_type() == SharedImageFormatType::kLegacy) {
+    const gpu::MailboxHolder& holder = src_frame.mailbox_holder(src_plane);
+    DCHECK(!holder.mailbox.IsZero());
+    ri->WaitSyncTokenCHROMIUM(holder.sync_token.GetConstData());
+    result =
+        ri->ReadbackImagePixels(holder.mailbox, info, dest_stride, src_rect.x(),
+                                src_rect.y(), /*plane_index=*/0, dest_pixels);
+  } else {
+    const gpu::MailboxHolder& holder = src_frame.mailbox_holder(0);
+    DCHECK(!holder.mailbox.IsZero());
+    ri->WaitSyncTokenCHROMIUM(holder.sync_token.GetConstData());
+    result =
+        ri->ReadbackImagePixels(holder.mailbox, info, dest_stride, src_rect.x(),
+                                src_rect.y(), src_plane, dest_pixels);
+  }
+  return result && ri->GetGraphicsResetStatusKHR() == GL_NO_ERROR &&
          ri->GetError() == GL_NO_ERROR;
 }
 
@@ -717,6 +741,7 @@ scoped_refptr<VideoFrame> ReadbackTextureBackedFrameToMemorySync(
     VideoFrame& txt_frame,
     gpu::raster::RasterInterface* ri,
     GrDirectContext* gr_context,
+    const gpu::Capabilities& caps,
     VideoFramePool* pool) {
   DCHECK(ri);
 
@@ -740,12 +765,16 @@ scoped_refptr<VideoFrame> ReadbackTextureBackedFrameToMemorySync(
   result->metadata().MergeMetadataFrom(txt_frame.metadata());
   result->metadata().ClearTextureFrameMedatada();
 
+  // NOTE: Iterating over the number of planes of the readback format (rather
+  // than `txt_frame`) ensures that frames with external
+  // sampling are correctly sampled as a single opaque texture, as
+  // ReadbackFormat() returns RGB for such frames.
   size_t planes = VideoFrame::NumPlanes(format);
   for (size_t plane = 0; plane < planes; plane++) {
     gfx::Rect src_rect(0, 0, txt_frame.columns(plane), txt_frame.rows(plane));
     if (!ReadbackTexturePlaneToMemorySync(
             txt_frame, plane, src_rect, result->writable_data(plane),
-            result->stride(plane), ri, gr_context)) {
+            result->stride(plane), ri, gr_context, caps)) {
       return nullptr;
     }
   }
@@ -758,11 +787,14 @@ bool ReadbackTexturePlaneToMemorySync(VideoFrame& src_frame,
                                       uint8_t* dest_pixels,
                                       size_t dest_stride,
                                       gpu::raster::RasterInterface* ri,
-                                      GrDirectContext* gr_context) {
+                                      GrDirectContext* gr_context,
+                                      const gpu::Capabilities& caps) {
   DCHECK(ri);
 
   bool result;
-  if (gr_context) {
+  if (gr_context &&
+      !(caps.supports_yuv_rgb_conversion &&
+        src_frame.mailbox_holder(src_plane).mailbox.IsSharedImage())) {
     result = ReadbackTexturePlaneToMemorySyncSkImage(
         src_frame, src_plane, src_rect, dest_pixels, dest_stride, ri,
         gr_context);
@@ -1230,9 +1262,9 @@ EncoderStatus ConvertAndScaleFrame(const VideoFrame& src_frame,
       .WithData("dst", dst_frame.AsHumanReadableString());
 }
 
-// TODO(crbug.com/1395524): There is some strange channel switch during RGB
-// readback. When frame's pixel format matches GL and Skia color types we get
-// reversed channels. But why?
+// Media pixel format enums have names opposite to their byte order.
+// That's why PIXEL_FORMAT_ABGR corresponds to kRGBA_8888_SkColorType
+// and so on.
 MEDIA_EXPORT SkColorType SkColorTypeForPlane(VideoPixelFormat format,
                                              size_t plane) {
   switch (format) {
@@ -1260,8 +1292,7 @@ MEDIA_EXPORT SkColorType SkColorTypeForPlane(VideoPixelFormat format,
     case PIXEL_FORMAT_ARGB:
       return kBGRA_8888_SkColorType;
     default:
-      NOTREACHED();
-      return kUnknown_SkColorType;
+      NOTREACHED_NORETURN();
   }
 }
 

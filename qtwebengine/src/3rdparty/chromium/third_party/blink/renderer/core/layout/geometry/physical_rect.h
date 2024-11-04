@@ -33,7 +33,8 @@ struct CORE_EXPORT PhysicalRect {
   // TODO(wangxianzhu): This is temporary for convenience of constructing
   // PhysicalRect with LayoutBox::Size(), before we convert LayoutBox::Size() to
   // PhysicalSize.
-  constexpr PhysicalRect(const PhysicalOffset& offset, const LayoutSize& size)
+  constexpr PhysicalRect(const PhysicalOffset& offset,
+                         const DeprecatedLayoutSize& size)
       : offset(offset), size(size) {}
   constexpr PhysicalRect(LayoutUnit left,
                          LayoutUnit top,
@@ -103,11 +104,6 @@ struct CORE_EXPORT PhysicalRect {
   bool Contains(const PhysicalOffset& point) const {
     return Contains(point.left, point.top);
   }
-  // Variant of Contains() that also returns true if |point| falls on the right
-  // or bottom edge.
-  bool ContainsInclusive(const PhysicalOffset& point) const {
-    return Contains(PhysicalRect(point, PhysicalSize()));
-  }
 
   [[nodiscard]] bool Intersects(const PhysicalRect&) const;
   [[nodiscard]] bool IntersectsInclusively(const PhysicalRect&) const;
@@ -127,7 +123,6 @@ struct CORE_EXPORT PhysicalRect {
   bool InclusiveIntersect(const PhysicalRect&);
 
   void Expand(const NGPhysicalBoxStrut&);
-  void Expand(const LayoutRectOutsets&);
   void ExpandEdges(LayoutUnit top,
                    LayoutUnit right,
                    LayoutUnit bottom,
@@ -141,7 +136,6 @@ struct CORE_EXPORT PhysicalRect {
   void Inflate(LayoutUnit d) { ExpandEdges(d, d, d, d); }
 
   void Contract(const NGPhysicalBoxStrut&);
-  void Contract(const LayoutRectOutsets&);
   void ContractEdges(LayoutUnit top,
                      LayoutUnit right,
                      LayoutUnit bottom,
@@ -219,15 +213,6 @@ struct CORE_EXPORT PhysicalRect {
 
   explicit PhysicalRect(const gfx::Rect& r)
       : offset(r.origin()), size(r.size()) {}
-
-  // Returns a big enough rect that can contain all reasonable rendered results.
-  // The rect can be used as a "non-clipping" clip rect. The rect can be
-  // modified to clip at one or more sides, e.g.
-  //   gfx::Rect r = LayoutRect::InfiniteRect();
-  //   r.set_width(clip_right - r.x());
-  static constexpr gfx::Rect InfiniteIntRect() {
-    return LayoutRect::InfiniteIntRect();
-  }
 
   void Scale(float s) {
     offset.Scale(s);

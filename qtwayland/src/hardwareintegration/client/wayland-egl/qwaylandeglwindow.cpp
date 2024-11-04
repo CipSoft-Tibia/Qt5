@@ -50,6 +50,15 @@ QWaylandWindow::WindowType QWaylandEglWindow::windowType() const
 
 void QWaylandEglWindow::ensureSize()
 {
+    // this is always called on the main thread
+    QMargins margins = mWindowDecoration ? frameMargins() : QMargins{};
+    QRect rect = geometry();
+    QSize sizeWithMargins = (rect.size() + QSize(margins.left() + margins.right(), margins.top() + margins.bottom())) * scale();
+    {
+        QWriteLocker lock(&m_bufferSizeLock);
+        m_bufferSize = sizeWithMargins;
+    }
+
     updateSurface(false);
 }
 
@@ -60,14 +69,17 @@ void QWaylandEglWindow::setGeometry(const QRect &rect)
     // we're now getting a resize we don't want to create it again.
     // Just resize the wl_egl_window, the EGLSurface will be created
     // the next time makeCurrent is called.
-    updateSurface(false);
+    ensureSize();
 }
 
 void QWaylandEglWindow::updateSurface(bool create)
 {
-    QMargins margins = mWindowDecoration ? frameMargins() : QMargins{};
-    QRect rect = geometry();
-    QSize sizeWithMargins = (rect.size() + QSize(margins.left() + margins.right(), margins.top() + margins.bottom())) * scale();
+
+    QSize sizeWithMargins;
+    {
+        QReadLocker lock(&m_bufferSizeLock);
+        sizeWithMargins = m_bufferSize;
+    }
 
     // wl_egl_windows must have both width and height > 0
     // mesa's egl returns NULL if we try to create a, invalid wl_egl_window, however not all EGL
@@ -86,7 +98,8 @@ void QWaylandEglWindow::updateSurface(bool create)
     } else {
         QReadLocker locker(&mSurfaceLock);
         if (m_waylandEglWindow) {
-            int current_width, current_height;
+            int current_width = 0;
+            int current_height = 0;
             static bool disableResizeCheck = qgetenv("QT_WAYLAND_DISABLE_RESIZECHECK").toInt();
 
             if (!disableResizeCheck) {
@@ -100,20 +113,28 @@ void QWaylandEglWindow::updateSurface(bool create)
                 m_resize = true;
             }
         } else if (create && mSurface) {
-            m_waylandEglWindow = wl_egl_window_create(mSurface->object(), sizeWithMargins.width(), sizeWithMargins.height());
-            m_requestedSize = sizeWithMargins;
-        }
+            wl_egl_window *eglWindow = wl_egl_window_create(mSurface->object(), sizeWithMargins.width(), sizeWithMargins.height());
+            if (Q_UNLIKELY(!eglWindow)) {
+                qCWarning(lcQpaWayland, "Could not create wl_egl_window with size %dx%d\n", sizeWithMargins.width(), sizeWithMargins.height());
+                return;
+            }
 
-        if (!m_eglSurface && m_waylandEglWindow && create) {
-            EGLNativeWindowType eglw = (EGLNativeWindowType) m_waylandEglWindow;
             QSurfaceFormat fmt = window()->requestedFormat();
             if (mDisplay->supportsWindowDecoration())
                 fmt.setAlphaBufferSize(8);
             EGLConfig eglConfig = q_configFromGLFormat(m_clientBufferIntegration->eglDisplay(), fmt);
             m_format = q_glFormatFromConfig(m_clientBufferIntegration->eglDisplay(), eglConfig, fmt);
-            m_eglSurface = eglCreateWindowSurface(m_clientBufferIntegration->eglDisplay(), eglConfig, eglw, 0);
-            if (Q_UNLIKELY(m_eglSurface == EGL_NO_SURFACE))
+
+            EGLSurface eglSurface = eglCreateWindowSurface(m_clientBufferIntegration->eglDisplay(), eglConfig, (EGLNativeWindowType) eglWindow, 0);
+            if (Q_UNLIKELY(eglSurface == EGL_NO_SURFACE)) {
                 qCWarning(lcQpaWayland, "Could not create EGL surface (EGL error 0x%x)\n", eglGetError());
+                wl_egl_window_destroy(eglWindow);
+                return;
+            }
+
+            m_waylandEglWindow = eglWindow;
+            m_eglSurface = eglSurface;
+            m_requestedSize = sizeWithMargins;
         }
     }
 }

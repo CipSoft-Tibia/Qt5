@@ -58,7 +58,7 @@ void tst_proxy::initialProperties()
     QCOMPARE(m_proxy->rowLabels().size(), 0);
     QVERIFY(!m_proxy->series());
 
-    QCOMPARE(m_proxy->type(), QAbstractDataProxy::DataTypeBar);
+    QCOMPARE(m_proxy->type(), QAbstractDataProxy::DataType::Bar);
 }
 
 void tst_proxy::initializeProperties()
@@ -66,8 +66,8 @@ void tst_proxy::initializeProperties()
     QVERIFY(m_proxy);
 
     m_proxy->setColumnLabels(QStringList() << "1" << "2" << "3");
-    QBarDataRow *data = new QBarDataRow;
-    *data << 1.0f << 3.0f << 7.5f;
+    QBarDataRow data;
+    data << QBarDataItem(1.0f) << QBarDataItem(3.0f) << QBarDataItem(7.5f);
     m_proxy->addRow(data);
     m_proxy->setRowLabels(QStringList() << "1");
 

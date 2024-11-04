@@ -76,7 +76,7 @@ export function renderIconLink(
     <button class="link" role="link" tabindex=0 @click=${clickHandler} title=${title}>
       <${IconButton.Icon.Icon.litTagName} .data=${{
         iconName: iconName,
-        color: 'var(--color-primary)',
+        color: 'var(--icon-link)',
         width: '16px',
         height: '16px',
       } as IconButton.Icon.IconData}>
@@ -173,11 +173,17 @@ export class PermissionsPolicySection extends HTMLElement {
         await Common.Revealer.reveal(requestLocation);
       };
 
+      // Disabled until https://crbug.com/1079231 is fixed.
+      // clang-format off
       return LitHtml.html`
         <div class="permissions-row">
           <div>
             <${IconButton.Icon.Icon.litTagName} class="allowed-icon"
-              .data=${{color: '', iconName: 'error_icon', width: '14px'} as IconButton.Icon.IconData}>
+              .data=${{
+                color: 'var(--icon-error)',
+                iconName: 'cross-circle',
+                width: '20px', height: '20px',
+              } as IconButton.Icon.IconData}>
             </${IconButton.Icon.Icon.litTagName}>
           </div>
           <div class="feature-name text-ellipsis">
@@ -187,14 +193,12 @@ export class PermissionsPolicySection extends HTMLElement {
           <div>
             ${
           linkTargetDOMNode ? renderIconLink(
-                                  'elements_panel_icon',
-                                  i18nString(UIStrings.clickToShowIframe),
-                                  (): Promise<void> => Common.Revealer.reveal(linkTargetDOMNode),
-                                  ) :
+                                  'code-circle', i18nString(UIStrings.clickToShowIframe),
+                                  (): Promise<void> => Common.Revealer.reveal(linkTargetDOMNode)) :
                               LitHtml.nothing}
             ${
           linkTargetRequest ? renderIconLink(
-                                  'network_panel_icon',
+                                  'arrow-up-down-circle',
                                   i18nString(UIStrings.clickToShowHeader),
                                   revealHeader,
                                   ) :
@@ -202,6 +206,7 @@ export class PermissionsPolicySection extends HTMLElement {
           </div>
         </div>
       `;
+      // clang-format on
     }));
 
     return LitHtml.html`

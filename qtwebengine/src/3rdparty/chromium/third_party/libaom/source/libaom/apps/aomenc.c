@@ -74,7 +74,10 @@ static AOM_TOOLS_FORMAT_PRINTF(3, 0) void warn_or_exit_on_errorv(
 
     if (detail) fprintf(stderr, "    %s\n", detail);
 
-    if (fatal) exit(EXIT_FAILURE);
+    if (fatal) {
+      aom_codec_destroy(ctx);
+      exit(EXIT_FAILURE);
+    }
   }
 }
 
@@ -457,7 +460,6 @@ const arg_def_t *av1_key_val_args[] = {
   &g_av1_codec_arg_defs.sb_qp_sweep,
   &g_av1_codec_arg_defs.dist_metric,
   &g_av1_codec_arg_defs.kf_max_pyr_height,
-  &g_av1_codec_arg_defs.global_motion_method,
   NULL,
 };
 
@@ -1303,21 +1305,6 @@ static const char *file_type_to_string(enum VideoFileType t) {
   switch (t) {
     case FILE_TYPE_RAW: return "RAW";
     case FILE_TYPE_Y4M: return "Y4M";
-    default: return "Other";
-  }
-}
-
-static const char *image_format_to_string(aom_img_fmt_t f) {
-  switch (f) {
-    case AOM_IMG_FMT_I420: return "I420";
-    case AOM_IMG_FMT_I422: return "I422";
-    case AOM_IMG_FMT_I444: return "I444";
-    case AOM_IMG_FMT_YV12: return "YV12";
-    case AOM_IMG_FMT_NV12: return "NV12";
-    case AOM_IMG_FMT_YV1216: return "YV1216";
-    case AOM_IMG_FMT_I42016: return "I42016";
-    case AOM_IMG_FMT_I42216: return "I42216";
-    case AOM_IMG_FMT_I44416: return "I44416";
     default: return "Other";
   }
 }

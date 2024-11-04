@@ -1,6 +1,6 @@
 // Copyright (C) 2015 Giuseppe D'Angelo <dangelog@gmail.com>.
 // Copyright (C) 2015 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <qstring.h>
@@ -2389,6 +2389,10 @@ void tst_QRegularExpression::threadSafety_data()
 
 void tst_QRegularExpression::threadSafety()
 {
+#if defined(Q_OS_WASM)
+    QSKIP("This test misbehaves on WASM. Investigation needed (QTBUG-110067)");
+#endif
+
     QFETCH(QString, pattern);
     QFETCH(QString, subject);
 

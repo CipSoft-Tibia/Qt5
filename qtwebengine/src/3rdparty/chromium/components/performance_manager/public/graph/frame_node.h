@@ -13,6 +13,7 @@
 #include "components/performance_manager/public/graph/node.h"
 #include "components/performance_manager/public/mojom/coordination_unit.mojom.h"
 #include "components/performance_manager/public/mojom/lifecycle.mojom.h"
+#include "components/performance_manager/public/resource_attribution/resource_contexts.h"
 #include "content/public/browser/browsing_instance_id.h"
 #include "content/public/browser/site_instance.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -30,6 +31,10 @@ class RenderFrameHostProxy;
 class WorkerNode;
 
 using execution_context_priority::PriorityAndReason;
+
+namespace execution_context_priority {
+class InheritClientPriorityVoter;
+}
 
 // Frame nodes form a tree structure, each FrameNode at most has one parent
 // that is a FrameNode. Conceptually, a FrameNode corresponds to a
@@ -109,6 +114,10 @@ class FrameNode : public Node {
   // Gets the ID of the site instance to which this frame belongs. This is a
   // constant over the lifetime of the frame.
   virtual content::SiteInstanceId GetSiteInstanceId() const = 0;
+
+  // Gets the unique token identifying this node for resource attribution. This
+  // token will not be reused after the node is destroyed.
+  virtual resource_attribution::FrameContext GetResourceContext() const = 0;
 
   // A frame is a main frame if it has no parent FrameNode. This can be
   // called from any thread.
@@ -196,10 +205,6 @@ class FrameNode : public Node {
   virtual bool VisitChildDedicatedWorkers(
       const WorkerNodeVisitor& visitor) const = 0;
 
-  // Returns the current priority of the frame, and the reason for the frame
-  // having that particular priority.
-  virtual const PriorityAndReason& GetPriorityAndReason() const = 0;
-
   // Returns true if at least one form of the frame has been interacted with.
   virtual bool HadFormInteraction() const = 0;
 
@@ -224,6 +229,9 @@ class FrameNode : public Node {
   // proxy may only be dereferenced on the UI thread.
   virtual const RenderFrameHostProxy& GetRenderFrameHostProxy() const = 0;
 
+  // TODO(joenotcharles): Move the resource usage estimates to a separate
+  // class.
+
   // Returns the most recently estimated resident set of the frame, in
   // kilobytes. This is an estimate because RSS is computed by process, and a
   // process can host multiple frames.
@@ -233,6 +241,14 @@ class FrameNode : public Node {
   // kilobytes. This is an estimate because it is computed by process, and a
   // process can host multiple frames.
   virtual uint64_t GetPrivateFootprintKbEstimate() const = 0;
+
+ private:
+  friend class execution_context_priority::InheritClientPriorityVoter;
+
+  // Returns the current priority of the frame, and the reason for the frame
+  // having that particular priority.
+  // Note: Do not use, not ready for prime time.
+  virtual const PriorityAndReason& GetPriorityAndReason() const = 0;
 };
 
 // Pure virtual observer interface. Derive from this if you want to be forced to

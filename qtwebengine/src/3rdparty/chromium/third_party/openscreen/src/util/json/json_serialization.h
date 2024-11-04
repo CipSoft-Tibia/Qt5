@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 #define UTIL_JSON_JSON_SERIALIZATION_H_
 
 #include <string>
+#include <string_view>
 
-#include "absl/strings/string_view.h"
 #include "json/value.h"
 #include "platform/base/error.h"
 
@@ -15,7 +15,7 @@ namespace openscreen {
 
 namespace json {
 
-ErrorOr<Json::Value> Parse(absl::string_view value);
+ErrorOr<Json::Value> Parse(std::string_view value);
 ErrorOr<std::string> Stringify(const Json::Value& value);
 
 }  // namespace json

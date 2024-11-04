@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,18 +7,18 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "osp/public/presentation/presentation_connection.h"
 #include "osp/public/protocol_connection.h"
 #include "osp/public/service_listener.h"
 #include "platform/api/time.h"
 #include "platform/base/error.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 class UrlAvailabilityRequester;
 
@@ -79,7 +79,7 @@ class Controller final : public ServiceListener::Observer,
     ConnectRequest(Controller* controller,
                    const std::string& service_id,
                    bool is_reconnect,
-                   absl::optional<uint64_t> request_id);
+                   std::optional<uint64_t> request_id);
     ConnectRequest(ConnectRequest&&) noexcept;
     ~ConnectRequest();
 
@@ -92,7 +92,7 @@ class Controller final : public ServiceListener::Observer,
    private:
     std::string service_id_;
     bool is_reconnect_;
-    absl::optional<uint64_t> request_id_;
+    std::optional<uint64_t> request_id_;
     Controller* controller_;
   };
 
@@ -200,7 +200,7 @@ class Controller final : public ServiceListener::Observer,
   void OnReceiverChanged(const ServiceInfo& info) override;
   void OnReceiverRemoved(const ServiceInfo& info) override;
   void OnAllReceiversRemoved() override;
-  void OnError(ServiceListenerError) override;
+  void OnError(Error) override;
   void OnMetrics(ServiceListener::Metrics) override;
 
   std::map<std::string, uint64_t> next_connection_id_;
@@ -217,7 +217,6 @@ class Controller final : public ServiceListener::Observer,
       termination_listener_by_id_;
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_PUBLIC_PRESENTATION_PRESENTATION_CONTROLLER_H_

@@ -9,8 +9,6 @@
 #include <memory>
 #include <utility>
 
-#include "base/allocator/buildflags.h"
-#include "base/allocator/dispatcher/dispatcher.h"
 #include "base/allocator/dispatcher/reentry_guard.h"
 #include "base/allocator/dispatcher/tls.h"
 #include "base/check.h"
@@ -35,10 +33,12 @@ const intptr_t kAccumulatedBytesOffset = 1 << 29;
 bool g_deterministic = false;
 
 // Pointer to the current |LockFreeAddressHashSet|.
-std::atomic<LockFreeAddressHashSet*> g_sampled_addresses_set{nullptr};
+ABSL_CONST_INIT std::atomic<LockFreeAddressHashSet*> g_sampled_addresses_set{
+    nullptr};
 
 // Sampling interval parameter, the mean value for intervals between samples.
-std::atomic_size_t g_sampling_interval{kDefaultSamplingIntervalBytes};
+ABSL_CONST_INIT std::atomic_size_t g_sampling_interval{
+    kDefaultSamplingIntervalBytes};
 
 struct ThreadLocalData {
   // Accumulated bytes towards sample.
@@ -172,27 +172,13 @@ PoissonAllocationSampler::ScopedMuteHookedSamplesForTesting::
 }
 
 // static
-PoissonAllocationSampler* PoissonAllocationSampler::instance_ = nullptr;
-
-// static
 ABSL_CONST_INIT std::atomic<PoissonAllocationSampler::ProfilingStateFlagMask>
     PoissonAllocationSampler::profiling_state_{0};
 
 PoissonAllocationSampler::PoissonAllocationSampler() {
-  CHECK_EQ(nullptr, instance_);
-  instance_ = this;
   Init();
   auto* sampled_addresses = new LockFreeAddressHashSet(64);
   g_sampled_addresses_set.store(sampled_addresses, std::memory_order_release);
-
-  // Install the allocator hooks immediately, to better match the behaviour
-  // of base::allocator::Initializer.
-  //
-  // TODO(crbug/1137393): Use base::allocator::Initializer to install the
-  // PoissonAllocationSampler hooks. All observers need to be passed to the
-  // initializer at the same time so this will install the hooks even
-  // earlier in process startup.
-  allocator::dispatcher::InstallStandardAllocatorHooks();
 }
 
 // static
@@ -209,7 +195,7 @@ void PoissonAllocationSampler::Init() {
 void PoissonAllocationSampler::SetSamplingInterval(
     size_t sampling_interval_bytes) {
   // TODO(alph): Reset the sample being collected if running.
-  g_sampling_interval = sampling_interval_bytes;
+  g_sampling_interval.store(sampling_interval_bytes, std::memory_order_relaxed);
 }
 
 size_t PoissonAllocationSampler::SamplingInterval() const {

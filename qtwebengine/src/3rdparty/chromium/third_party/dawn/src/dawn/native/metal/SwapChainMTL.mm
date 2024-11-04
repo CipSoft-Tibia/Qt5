@@ -18,54 +18,14 @@
 #include "dawn/native/metal/DeviceMTL.h"
 #include "dawn/native/metal/TextureMTL.h"
 
-#include "dawn/dawn_wsi.h"
-
 #import <QuartzCore/CAMetalLayer.h>
 
 namespace dawn::native::metal {
 
-// OldSwapChain
-
-// static
-Ref<OldSwapChain> OldSwapChain::Create(Device* device, const SwapChainDescriptor* descriptor) {
-    return AcquireRef(new OldSwapChain(device, descriptor));
-}
-
-OldSwapChain::OldSwapChain(Device* device, const SwapChainDescriptor* descriptor)
-    : OldSwapChainBase(device, descriptor) {
-    const auto& im = GetImplementation();
-    DawnWSIContextMetal wsiContext = {};
-    wsiContext.device = ToBackend(GetDevice())->GetMTLDevice();
-    wsiContext.queue = ToBackend(GetDevice())->GetMTLQueue();
-    im.Init(im.userData, &wsiContext);
-}
-
-OldSwapChain::~OldSwapChain() {}
-
-TextureBase* OldSwapChain::GetNextTextureImpl(const TextureDescriptor* descriptor) {
-    const auto& im = GetImplementation();
-    DawnSwapChainNextTexture next = {};
-    DawnSwapChainError error = im.GetNextTexture(im.userData, &next);
-    if (error) {
-        GetDevice()->HandleError(InternalErrorType::Internal, error);
-        return nullptr;
-    }
-
-    id<MTLTexture> nativeTexture = reinterpret_cast<id<MTLTexture>>(next.texture.ptr);
-
-    return Texture::CreateWrapping(ToBackend(GetDevice()), descriptor, nativeTexture).Detach();
-}
-
-MaybeError OldSwapChain::OnBeforePresent(TextureViewBase*) {
-    return {};
-}
-
-// SwapChain
-
 // static
 ResultOrError<Ref<SwapChain>> SwapChain::Create(Device* device,
                                                 Surface* surface,
-                                                NewSwapChainBase* previousSwapChain,
+                                                SwapChainBase* previousSwapChain,
                                                 const SwapChainDescriptor* descriptor) {
     Ref<SwapChain> swapchain = AcquireRef(new SwapChain(device, surface, descriptor));
     DAWN_TRY(swapchain->Initialize(previousSwapChain));
@@ -73,7 +33,7 @@ ResultOrError<Ref<SwapChain>> SwapChain::Create(Device* device,
 }
 
 SwapChain::SwapChain(DeviceBase* dev, Surface* sur, const SwapChainDescriptor* desc)
-    : NewSwapChainBase(dev, sur, desc) {}
+    : SwapChainBase(dev, sur, desc) {}
 
 SwapChain::~SwapChain() = default;
 
@@ -82,7 +42,7 @@ void SwapChain::DestroyImpl() {
     DetachFromSurface();
 }
 
-MaybeError SwapChain::Initialize(NewSwapChainBase* previousSwapChain) {
+MaybeError SwapChain::Initialize(SwapChainBase* previousSwapChain) {
     ASSERT(GetSurface()->GetType() == Surface::Type::MetalLayer);
 
     if (previousSwapChain != nullptr) {
@@ -109,9 +69,7 @@ MaybeError SwapChain::Initialize(NewSwapChainBase* previousSwapChain) {
     [*mLayer setPixelFormat:MetalPixelFormat(GetDevice(), GetFormat())];
 
 #if DAWN_PLATFORM_IS(MACOS)
-    if (@available(macos 10.13, *)) {
-        [*mLayer setDisplaySyncEnabled:(GetPresentMode() != wgpu::PresentMode::Immediate)];
-    }
+    [*mLayer setDisplaySyncEnabled:(GetPresentMode() != wgpu::PresentMode::Immediate)];
 #endif  // DAWN_PLATFORM_IS(MACOS)
 
     // There is no way to control Fifo vs. Mailbox in Metal.
@@ -131,15 +89,17 @@ MaybeError SwapChain::PresentImpl() {
     return {};
 }
 
-ResultOrError<Ref<TextureViewBase>> SwapChain::GetCurrentTextureViewImpl() {
-    ASSERT(mCurrentDrawable == nullptr);
-    mCurrentDrawable = [*mLayer nextDrawable];
+ResultOrError<Ref<TextureBase>> SwapChain::GetCurrentTextureImpl() {
+    @autoreleasepool {
+        ASSERT(mCurrentDrawable == nullptr);
+        mCurrentDrawable = [*mLayer nextDrawable];
 
-    TextureDescriptor textureDesc = GetSwapChainBaseTextureDescriptor(this);
+        TextureDescriptor textureDesc = GetSwapChainBaseTextureDescriptor(this);
 
-    mTexture =
-        Texture::CreateWrapping(ToBackend(GetDevice()), &textureDesc, [*mCurrentDrawable texture]);
-    return mTexture->CreateView();
+        mTexture = Texture::CreateWrapping(ToBackend(GetDevice()), &textureDesc,
+                                           NSPRef<id<MTLTexture>>([*mCurrentDrawable texture]));
+        return mTexture;
+    }
 }
 
 void SwapChain::DetachFromSurfaceImpl() {

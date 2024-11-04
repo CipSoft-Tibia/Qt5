@@ -73,13 +73,12 @@ class V4StoreTest : public PlatformTest {
 
     std::string file_format_string;
     file_format->SerializeToString(&file_format_string);
-    base::WriteFile(store_path_, file_format_string.data(),
-                    file_format_string.size());
+    base::WriteFile(store_path_, file_format_string);
   }
 
   void UpdatedStoreReady(bool* called_back,
                          bool expect_store,
-                         std::unique_ptr<V4Store> store) {
+                         V4StorePtr store) {
     *called_back = true;
     if (expect_store) {
       ASSERT_TRUE(store);
@@ -104,7 +103,7 @@ class V4StoreTest : public PlatformTest {
   base::FilePath store_path_;
   scoped_refptr<base::TestSimpleTaskRunner> task_runner_;
   base::test::TaskEnvironment task_environment_;
-  std::unique_ptr<V4Store> updated_store_;
+  V4StorePtr updated_store_{nullptr, V4StoreDeleter(nullptr)};
 };
 
 TEST_F(V4StoreTest, TestReadFromEmptyFile) {
@@ -122,7 +121,7 @@ TEST_F(V4StoreTest, TestReadFromAbsentFile) {
 
 TEST_F(V4StoreTest, TestReadFromInvalidContentsFile) {
   const char kInvalidContents[] = "Chromium";
-  base::WriteFile(store_path_, kInvalidContents, strlen(kInvalidContents));
+  base::WriteFile(store_path_, kInvalidContents);
   EXPECT_EQ(PROTO_PARSING_FAILURE,
             InMemoryV4Store(task_runner_, store_path_).ReadFromDisk());
 }
@@ -132,7 +131,7 @@ TEST_F(V4StoreTest, TestReadFromFileWithUnknownProto) {
   checksum.set_sha256("checksum");
   std::string checksum_string;
   checksum.SerializeToString(&checksum_string);
-  base::WriteFile(store_path_, checksum_string.data(), checksum_string.size());
+  base::WriteFile(store_path_, checksum_string);
 
   // Even though we wrote a completely different proto to file, the proto
   // parsing method does not fail. This shows the importance of a magic number.
@@ -937,6 +936,7 @@ TEST_F(V4StoreTest, VerifyChecksumMmapFile) {
   auto* hash_file = file_format.add_hash_files();
   hash_file->set_prefix_size(5);
   hash_file->set_extension("foo");
+  hash_file->set_file_size(5);
 
   WriteFileFormatProtoToFile(&file_format, 0x600D71FE, 9,
                              &list_update_response);
@@ -947,7 +947,7 @@ TEST_F(V4StoreTest, VerifyChecksumMmapFile) {
   EXPECT_EQ(READ_SUCCESS, store.ReadFromDisk());
   EXPECT_FALSE(store.expected_checksum_.empty());
   EXPECT_EQ("test_client_state", store.state());
-  EXPECT_EQ(78, store.file_size_);
+  EXPECT_EQ(85, store.file_size_);
 
   EXPECT_TRUE(store.VerifyChecksum());
 
@@ -1034,13 +1034,17 @@ TEST_F(V4StoreTest, MigrateToInMemory) {
   EXPECT_EQ(write_store.GetMatchingHashPrefix(kFullHash), kHash);
 
   // Make sure a mmap store can read correctly.
-  V4Store mmap_store(task_runner_, store_path_,
-                     std::make_unique<MmapHashPrefixMap>(store_path_));
+  auto mmap_map2 = std::make_unique<MmapHashPrefixMap>(store_path_);
+  auto* mmap_map_raw2 = mmap_map2.get();
+  V4Store mmap_store(task_runner_, store_path_, std::move(mmap_map2));
   EXPECT_EQ(READ_SUCCESS, mmap_store.ReadFromDisk());
   EXPECT_EQ("test_client_state", mmap_store.state());
   EXPECT_EQ(mmap_store.hash_prefix_map_->view()[5], kHash);
   EXPECT_TRUE(base::PathExists(hashes_path));
   EXPECT_EQ(mmap_store.GetMatchingHashPrefix(kFullHash), kHash);
+
+  mmap_map_raw->ClearAndWaitForTesting();
+  mmap_map_raw2->ClearAndWaitForTesting();
 
   write_store.Reset();
   mmap_store.Reset();
@@ -1137,6 +1141,8 @@ TEST_F(V4StoreTest, FileSizeIncludesHashFiles) {
 
   int64_t original_file_size = write_store.file_size();
 
+  static_cast<MmapHashPrefixMap*>(write_store.hash_prefix_map_.get())
+      ->ClearAndWaitForTesting();
   write_store.Reset();
   write_store.hash_prefix_map_->Append(4, "abcd");
   write_store.hash_prefix_map_->Append(4, "efgh");

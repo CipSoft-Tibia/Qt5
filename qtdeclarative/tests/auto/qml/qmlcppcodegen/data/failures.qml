@@ -78,15 +78,22 @@ QtObject {
         return a;
     }
 
-    property Person shadowable
-    function setLookupOnShadowable() {
-        shadowable.area.width = 16
-    }
-
     // TODO: Drop these once we can manipulate QVariant-wrapped lists.
     property list<withLength> withLengths
     property int l: withLengths.length
     property withLength w: withLengths[10]
+
+    property unconstructibleWithLength uwl: 12 + 1
+
+    // Cannot generate code for getters
+    property rect r3: ({ get x() { return 42; }, y: 4 })
+
+    property int nonIterable: {
+        var result = 1;
+        for (var a in Component)
+            ++result;
+        return result;
+    }
 
     property alias selfself: self
     property alias nastyBad: theNasty.bad

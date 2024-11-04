@@ -13,7 +13,6 @@
 #include "chrome/browser/ui/webui/ash/parent_access/parent_access_ui.mojom.h"
 #include "chrome/browser/ui/webui/ash/parent_access/parent_access_ui_handler_delegate.h"
 #include "chrome/browser/ui/webui/ash/system_web_dialog_delegate.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace ash {
 
@@ -30,6 +29,7 @@ class ParentAccessDialog : public ParentAccessUIHandlerDelegate,
       kApproved,  // The parent was verified and they approved.
       kDeclined,  // The request was explicitly declined by the parent.
       kCanceled,  // The request was canceled/dismissed by the parent.
+      kDisabled,  // Making a request has been disabled by the parent.
       kError,     // An error occurred while handling the request.
     };
     Status status = Status::kCanceled;
@@ -53,6 +53,8 @@ class ParentAccessDialog : public ParentAccessUIHandlerDelegate,
   ui::ModalType GetDialogModalType() const override;
   void GetDialogSize(gfx::Size* size) const override;
   bool ShouldCloseDialogOnEscape() const override;
+  bool ShouldShowDialogTitle() const override;
+  bool ShouldShowCloseButton() const override;
 
   // ParentAccessUIHandlerDelegate:
   parent_access_ui::mojom::ParentAccessParamsPtr CloneParentAccessParams()
@@ -61,6 +63,7 @@ class ParentAccessDialog : public ParentAccessUIHandlerDelegate,
                    const base::Time& expire_timestamp) override;
   void SetDeclined() override;
   void SetCanceled() override;
+  void SetDisabled() override;
   void SetError() override;
 
   parent_access_ui::mojom::ParentAccessParams* GetParentAccessParamsForTest()
@@ -128,14 +131,7 @@ class ParentAccessDialogProvider {
     kNotAChildUser = 2,
     kMaxValue = kNotAChildUser
   };
-
-  // Returns the name of parent access widget error histogram for a flow type.
-  static const std::string
-  GetParentAccessWidgetShowDialogErrorHistogramForFlowType(
-      absl::optional<parent_access_ui::mojom::ParentAccessParams::FlowType>
-          flow_type);
 };
-
 }  // namespace ash
 
 #endif  // CHROME_BROWSER_UI_WEBUI_ASH_PARENT_ACCESS_PARENT_ACCESS_DIALOG_H_

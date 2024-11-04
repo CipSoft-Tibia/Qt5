@@ -216,7 +216,7 @@ export class SensorsView extends UI.Widget.VBox {
 
     this.createLocationSection(this.Location);
 
-    this.contentElement.createChild('div').classList.add('panel-section-separator');
+    this.createPanelSeparator();
 
     this.deviceOrientationSetting =
         Common.Settings.Settings.instance().createSetting('emulation.deviceOrientationOverride', '');
@@ -225,15 +225,15 @@ export class SensorsView extends UI.Widget.VBox {
 
     this.createDeviceOrientationSection();
 
-    this.contentElement.createChild('div').classList.add('panel-section-separator');
+    this.createPanelSeparator();
 
     this.appendTouchControl();
 
-    this.contentElement.createChild('div').classList.add('panel-section-separator');
+    this.createPanelSeparator();
 
     this.appendIdleEmulator();
 
-    this.contentElement.createChild('div').classList.add('panel-section-separator');
+    this.createPanelSeparator();
   }
 
   static instance(): SensorsView {
@@ -243,9 +243,13 @@ export class SensorsView extends UI.Widget.VBox {
     return _instanceObject;
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([sensorsStyles]);
+  }
+
+  private createPanelSeparator(): void {
+    this.contentElement.createChild('div').classList.add('panel-section-separator');
   }
 
   private createLocationSection(location: SDK.EmulationModel.Location): void {
@@ -266,7 +270,7 @@ export class SensorsView extends UI.Widget.VBox {
     const customLocations = Common.Settings.Settings.instance().moduleSetting('emulation.locations');
     const manageButton =
         UI.UIUtils.createTextButton(i18nString(UIStrings.manage), () => Common.Revealer.reveal(customLocations));
-    UI.ARIAUtils.setAccessibleName(manageButton, i18nString(UIStrings.manageTheListOfLocations));
+    UI.ARIAUtils.setLabel(manageButton, i18nString(UIStrings.manageTheListOfLocations));
     fields.appendChild(manageButton);
     const fillCustomSettings = (): void => {
       if (!this.customLocationsGroup) {
@@ -627,7 +631,7 @@ export class SensorsView extends UI.Widget.VBox {
 
     const resetButton = UI.UIUtils.createTextButton(
         i18nString(UIStrings.reset), this.resetDeviceOrientation.bind(this), 'orientation-reset-button');
-    UI.ARIAUtils.setAccessibleName(resetButton, i18nString(UIStrings.resetDeviceOrientation));
+    UI.ARIAUtils.setLabel(resetButton, i18nString(UIStrings.resetDeviceOrientation));
     resetButton.setAttribute('type', 'reset');
     cellElement.appendChild(resetButton);
     return fieldsetElement;

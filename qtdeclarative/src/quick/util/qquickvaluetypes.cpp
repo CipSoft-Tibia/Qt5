@@ -859,6 +859,54 @@ QVariant QQuickFontValueType::create(const QJSValue &params)
         ok = true;
     }
 
+    {
+        const QJSValue variableAxes = params.property(QStringLiteral("variableAxes"));
+        if (variableAxes.isObject()) {
+            QVariantMap variantMap = variableAxes.toVariant().toMap();
+            for (auto [variableAxisName, variableAxisValue] : variantMap.asKeyValueRange()) {
+                const auto maybeTag = QFont::Tag::fromString(variableAxisName);
+                if (!maybeTag) {
+                    qWarning() << "Invalid variable axis" << variableAxisName << "ignored";
+                    continue;
+                }
+
+                bool valueOk;
+                float value = variableAxisValue.toFloat(&valueOk);
+                if (!valueOk) {
+                    qWarning() << "Variable axis" << variableAxisName << "value" << variableAxisValue << "is not a floating point value.";
+                    continue;
+                }
+
+                ret.setVariableAxis(*maybeTag, value);
+                ok = true;
+            }
+        }
+    }
+
+    {
+        const QJSValue features = params.property(QStringLiteral("features"));
+        if (features.isObject()) {
+            QVariantMap variantMap = features.toVariant().toMap();
+            for (auto [featureName, featureValue] : variantMap.asKeyValueRange()) {
+                const auto maybeTag = QFont::Tag::fromString(featureName);
+                if (!maybeTag) {
+                    qWarning() << "Invalid font feature" << featureName << "ignored";
+                    continue;
+                }
+
+                bool valueOk;
+                quint32 value = featureValue.toUInt(&valueOk);
+                if (!valueOk) {
+                    qWarning() << "Font feature" << featureName << "value" << featureValue << "is not an integer.";
+                    continue;
+                }
+
+                ret.setFeature(*maybeTag, value);
+                ok = true;
+            }
+        }
+    }
+
     return ok ? ret : QVariant();
 }
 
@@ -1047,36 +1095,62 @@ void QQuickFontValueType::setPreferShaping(bool enable)
         v.setStyleStrategy(static_cast<QFont::StyleStrategy>(v.styleStrategy() | QFont::PreferNoShaping));
 }
 
+void QQuickFontValueType::setVariableAxes(const QVariantMap &variableAxes)
+{
+    v.clearVariableAxes();
+    for (auto [variableAxisName, variableAxisValue] : variableAxes.asKeyValueRange()) {
+        const auto maybeTag = QFont::Tag::fromString(variableAxisName);
+        if (!maybeTag) {
+            qWarning() << "Invalid variable axis" << variableAxisName << "ignored";
+            continue;
+        }
+
+        bool ok;
+        float value = variableAxisValue.toFloat(&ok);
+        if (!ok) {
+            qWarning() << "Variable axis" << variableAxisName << "value" << variableAxisValue << "is not a floating point value.";
+            continue;
+        }
+
+        v.setVariableAxis(*maybeTag, value);
+    }
+}
+
+QVariantMap QQuickFontValueType::variableAxes() const
+{
+    QVariantMap ret;
+    for (const auto &tag : v.variableAxisTags())
+        ret.insert(QString::fromUtf8(tag.toString()), v.variableAxisValue(tag));
+
+    return ret;
+}
+
 void QQuickFontValueType::setFeatures(const QVariantMap &features)
 {
     v.clearFeatures();
-    for (auto it = features.constBegin(); it != features.constEnd(); ++it) {
-        QString featureName = it.key();
-        quint32 tag = QFont::stringToTag(featureName.toUtf8());
-        if (tag == 0) {
+    for (auto [featureName, featureValue] : features.asKeyValueRange()) {
+        const auto maybeTag = QFont::Tag::fromString(featureName);
+        if (!maybeTag) {
             qWarning() << "Invalid font feature" << featureName << "ignored";
             continue;
         }
 
         bool ok;
-        quint32 value = it.value().toUInt(&ok);
+        quint32 value = featureValue.toUInt(&ok);
         if (!ok) {
-            qWarning() << "Font feature value" << it.value() << "is not an integer.";
+            qWarning() << "Font feature" << featureName << "value" << featureValue << "is not an integer.";
             continue;
         }
 
-        v.setFeature(tag, value);
+        v.setFeature(*maybeTag, value);
     }
 }
 
 QVariantMap QQuickFontValueType::features() const
 {
     QVariantMap ret;
-    for (quint32 tag : v.featureTags()) {
-        QString featureName = QString::fromUtf8(QFont::tagToString(tag));
-
-        ret.insert(featureName, v.featureValue(tag));
-    }
+    for (const auto &tag : v.featureTags())
+        ret.insert(QString::fromUtf8(tag.toString()), v.featureValue(tag));
 
     return ret;
 }

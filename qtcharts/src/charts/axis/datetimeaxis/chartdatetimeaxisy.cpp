@@ -72,7 +72,8 @@ QSizeF ChartDateTimeAxisY::sizeHint(Qt::SizeHint which, const QSizeF &constraint
     QSizeF sh;
 
     QSizeF base = VerticalAxis::sizeHint(which, constraint);
-    QStringList ticksList = createDateTimeLabels(min(), max(), m_axis->tickCount(), m_axis->format());
+    const QStringList ticksList =
+            createDateTimeLabels(min(), max(), m_axis->tickCount(), m_axis->format());
     qreal width = 0;
     // Height of vertical axis sizeHint indicates the maximum distance labels can extend past
     // first and last ticks. Base height is irrelevant.
@@ -100,7 +101,7 @@ QSizeF ChartDateTimeAxisY::sizeHint(Qt::SizeHint which, const QSizeF &constraint
         if (labelsVisible()) {
             qreal labelWidth = 0.0;
             qreal firstHeight = -1.0;
-            foreach (const QString& s, ticksList) {
+            for (const QString &s : ticksList) {
                 QRectF rect = ChartPresenter::textBoundingRect(axis()->labelsFont(), s, axis()->labelsAngle());
                 labelWidth = qMax(rect.width(), labelWidth);
                 height = rect.height();

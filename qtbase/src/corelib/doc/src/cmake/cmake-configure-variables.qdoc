@@ -63,6 +63,7 @@ This variable is written out as part of the deployment settings for a target.
 /*!
 \page cmake-variable-qt-android-application-arguments.html
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-manifest-properties
 
 \title QT_ANDROID_APPLICATION_ARGUMENTS
 \target cmake-variable-QT_ANDROID_APPLICATION_ARGUMENTS
@@ -80,20 +81,25 @@ is written out as part of the deployment settings for a target.
 */
 
 /*!
-\page cmake-variable-qt-android-deploy-release.html
+\page cmake-variable-qt-android-deployment-type.html
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
 
-\title QT_ANDROID_DEPLOY_RELEASE
-\target cmake-variable-QT_ANDROID_DEPLOY_RELEASE
+\title QT_ANDROID_DEPLOYMENT_TYPE
+\target cmake-variable-QT_ANDROID_DEPLOYMENT_TYPE
 
-\summary {Sets the package type as a release.}
+\summary {Forces or disables release package signing regardless of the build type.}
 
-\cmakevariablesince 6.5.2
+\cmakevariablesince 6.7
 \preliminarycmakevariable
 \cmakevariableandroidonly
 
-When set to \c TRUE, allows you to create a release package
-by passing the \c --release flag to the \c androiddeployqt tool.
+When set to \c Release, the \c --release flag is passed to the \c
+androiddeployqt tool, regardless of the application build type. When set to
+another value, the \c --release flag is never passed to the tool, which
+effectively disables release package signing even in Release or RelWithDebInfo
+builds. When not set, the default behavior is to use release package signing in
+build types other than Debug.
 
 \sa {androiddeployqt}
 */
@@ -101,6 +107,7 @@ by passing the \c --release flag to the \c androiddeployqt tool.
 /*!
 \page cmake_variable-qt-android-multi-abi-forward-vars
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_MULTI_ABI_FORWARD_VARS
 \target cmake-variable-QT_ANDROID_MULTI_ABI_FORWARD_VARS
@@ -182,6 +189,7 @@ finalization occurs automatically when using CMake 3.19 or later.
 /*!
 \page cmake-variable-qt-android-build-all-abis.html
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_BUILD_ALL_ABIS
 \target cmake-variable-QT_ANDROID_BUILD_ALL_ABIS
@@ -215,6 +223,7 @@ The variable is set to \c FALSE by default.
 /*!
 \page cmake-variable-qt-android-abis.html
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_ABIS
 \target cmake-variable-QT_ANDROID_ABIS
@@ -259,6 +268,7 @@ Each variable can be used to specify the path to Qt for Android for the correspo
 /*!
 \page cmake-variable-qt-android-sign-aab.html
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_SIGN_AAB
 \target cmake-variable-QT_ANDROID_SIGN_AAB
@@ -284,6 +294,7 @@ The mentioned variables are used internally by \l{androiddeployqt}.
 /*!
 \page cmake-variable-qt-android-sign-apk.html
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_SIGN_APK
 \target cmake-variable-QT_ANDROID_SIGN_APK
@@ -478,6 +489,61 @@ via \l{add_subdirectory()}, \l{FetchContent_MakeAvailable()}, or other similar
 methods provided by CMake.
 
 \sa {qt6_standard_project_setup}{qt_standard_project_setup()}
+*/
+
+/*!
+\page cmake-variable-qt-i18n-languages.html
+\ingroup cmake-variables-qtcore
+
+\title QT_I18N_TRANSLATED_LANGUAGES
+\target cmake-variable-QT_I18N_TRANSLATED_LANGUAGES
+
+\summary {List of languages to be used for project internationalization.}
+
+\cmakevariablesince 6.7
+
+Specifies a list of languages that are used for project
+internationalization. The single languages must be compatible with the
+string-based \l QLocale constructor.
+
+The languages in \c QT_I18N_TRANSLATED_LANGUAGES are used to:
+\list
+    \li Set up executable targets for consuming \c{.qm} files.
+    \li Automatically construct \c{.ts} file names in
+        \l{qt6_add_translations}{qt_add_translations()}.
+\endlist
+
+This variable can be conveniently set with the
+\l {qt6_standard_project_setup}{qt_standard_project_setup()} command.
+
+By default, translatable strings are considered to be written in \c{en}.
+
+\sa {qt6_standard_project_setup}{qt_standard_project_setup()}
+\sa {qt6_add_translations}{qt_add_translations()}
+*/
+
+/*!
+\page cmake-variable-qt-i18n-native-language.html
+\ingroup cmake-variables-qtcore
+
+\title QT_I18N_SOURCE_LANGUAGE
+\target cmake-variable-QT_I18N_SOURCE_LANGUAGE
+
+\summary {Specifies the language of translatable strings.}
+
+\cmakevariablesince 6.7
+
+Specifies the language of translatable strings in the source code.
+The language must be compatible with the string-based \l QLocale constructor.
+
+Together with \c{QT_I18N_TRANSLATED_LANGUAGES}, this variable is used to determine the
+names of \c{.ts} files for \l{qt6_add_translations}{qt_add_translations()}.
+
+This variable can be conveniently set with the
+\l {qt6_standard_project_setup}{qt_standard_project_setup()} command.
+
+\sa {qt6_standard_project_setup}{qt_standard_project_setup()}
+\sa {qt6_add_translations}{qt_add_translations()}
 */
 
 /*!

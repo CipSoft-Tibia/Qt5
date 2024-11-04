@@ -121,8 +121,8 @@ AdvertisementFactory::CreateBaseNpAdvertisement(
   payload.reserve(kMaxBaseNpAdvSize);
   payload.push_back(kBaseVersion);
   absl::Status result;
-  std::string tx_power_and_action = {static_cast<char>(request.tx_power)};
-  tx_power_and_action.append(SerializeAction(presence.action));
+  std::string tx_power = {static_cast<char>(request.tx_power)};
+  std::string action = SerializeAction(presence.action);
   uint8_t identity_type =
       GetIdentityFieldType(presence.credential_selector.identity_type);
   bool needs_encryption =
@@ -136,12 +136,18 @@ AdvertisementFactory::CreateBaseNpAdvertisement(
       return absl::FailedPreconditionError("Missing credentials");
     }
     std::string unencrypted;
-    // In v0 OTA format, this is a combined TX and Action DE
-    result = AppendDataElement(DataElement::kActionFieldType,
-                               tx_power_and_action, unencrypted);
+    result = AppendDataElement(DataElement::kTxPowerFieldType, tx_power,
+                               unencrypted);
     if (!result.ok()) {
       return result;
     }
+    result =
+        AppendDataElement(DataElement::kActionFieldType, action, unencrypted);
+    if (!result.ok()) {
+      return result;
+    }
+    NEARBY_LOGS(VERBOSE) << "Unencrypted advertisement payload "
+                         << absl::BytesToHexString(unencrypted);
     absl::StatusOr<std::string> encrypted =
         EncryptDataElements(*credential, request.salt, unencrypted);
     if (!encrypted.ok()) {
@@ -176,9 +182,12 @@ AdvertisementFactory::CreateBaseNpAdvertisement(
         return result;
       }
     }
-    // In v0 OTA format, this is a combined TX and Action DE
-    result = AppendDataElement(DataElement::kActionFieldType,
-                               tx_power_and_action, payload);
+    result =
+        AppendDataElement(DataElement::kTxPowerFieldType, tx_power, payload);
+    if (!result.ok()) {
+      return result;
+    }
+    result = AppendDataElement(DataElement::kActionFieldType, action, payload);
     if (!result.ok()) {
       return result;
     }
@@ -189,10 +198,10 @@ AdvertisementFactory::CreateBaseNpAdvertisement(
 absl::StatusOr<std::string> AdvertisementFactory::EncryptDataElements(
     const LocalCredential& credential, absl::string_view salt,
     absl::string_view data_elements) const {
-  if (credential.metadata_encryption_key().size() != kBaseMetadataSize) {
+  if (credential.metadata_encryption_key_v0().size() != kBaseMetadataSize) {
     return absl::FailedPreconditionError(absl::StrFormat(
         "Metadata key size %d, expected %d",
-        credential.metadata_encryption_key().size(), kBaseMetadataSize));
+        credential.metadata_encryption_key_v0().size(), kBaseMetadataSize));
   }
 
   // HMAC is not used during encryption, so we can pass an empty value.
@@ -202,7 +211,7 @@ absl::StatusOr<std::string> AdvertisementFactory::EncryptDataElements(
     return encryptor.status();
   }
   std::string plaintext =
-      absl::StrCat(credential.metadata_encryption_key(), data_elements);
+      absl::StrCat(credential.metadata_encryption_key_v0(), data_elements);
   return encryptor->Encrypt(plaintext, salt);
 }
 

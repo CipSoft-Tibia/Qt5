@@ -13,7 +13,6 @@
 #include <QtGui/qtextlist.h>
 
 #include <private/qquicktext_p.h>
-#include <private/qquicktextdocument_p.h>
 #include <private/qtextdocumentlayout_p.h>
 #include <private/qtextimagehandler_p.h>
 #include <private/qrawfont_p.h>
@@ -143,6 +142,8 @@ int QQuickTextNodeEngine::addText(const QTextBlock &block,
     while (textPos < fragmentEnd) {
         int blockRelativePosition = textPos - block.position();
         QTextLine line = block.layout()->lineForTextPosition(blockRelativePosition);
+        if (!line.isValid())
+            break;
         if (!currentLine().isValid()
                 || line.lineNumber() != currentLine().lineNumber()) {
             setCurrentLine(line);
@@ -429,15 +430,8 @@ void QQuickTextNodeEngine::addTextObject(const QTextBlock &block, const QPointF 
 
         if (format.objectType() == QTextFormat::ImageObject) {
             QTextImageFormat imageFormat = format.toImageFormat();
-            if (QQuickTextDocumentWithImageResources *imageDoc = qobject_cast<QQuickTextDocumentWithImageResources *>(textDocument)) {
-                image = imageDoc->image(imageFormat);
-
-                if (image.isNull())
-                    return;
-            } else {
-                QTextImageHandler *imageHandler = static_cast<QTextImageHandler *>(handler);
-                image = imageHandler->image(textDocument, imageFormat);
-            }
+            QTextImageHandler *imageHandler = static_cast<QTextImageHandler *>(handler);
+            image = imageHandler->image(textDocument, imageFormat);
         }
 
         if (image.isNull()) {
@@ -668,10 +662,14 @@ void QQuickTextNodeEngine::addFrameDecorations(QTextDocument *document, QTextFra
     if (borderStyle == QTextFrameFormat::BorderStyle_None)
         return;
 
-    addBorder(boundingRect.adjusted(frameFormat.leftMargin(), frameFormat.topMargin(),
-                                    -frameFormat.rightMargin() - borderWidth,
-                                    -frameFormat.bottomMargin() - borderWidth),
-              borderWidth, borderStyle, borderBrush);
+    const auto collapsed = table->format().borderCollapse();
+
+    if (!collapsed) {
+        addBorder(boundingRect.adjusted(frameFormat.leftMargin(), frameFormat.topMargin(),
+                                        -frameFormat.rightMargin() - borderWidth,
+                                        -frameFormat.bottomMargin() - borderWidth),
+                  borderWidth, borderStyle, borderBrush);
+    }
     if (table != nullptr) {
         int rows = table->rows();
         int columns = table->columns();
@@ -681,7 +679,7 @@ void QQuickTextNodeEngine::addFrameDecorations(QTextDocument *document, QTextFra
                 QTextTableCell cell = table->cellAt(row, column);
 
                 QRectF cellRect = documentLayout->tableCellBoundingRect(table, cell);
-                addBorder(cellRect.adjusted(-borderWidth, -borderWidth, 0, 0), borderWidth,
+                addBorder(cellRect.adjusted(-borderWidth, -borderWidth, collapsed ? -borderWidth : 0, collapsed ? -borderWidth : 0), borderWidth,
                           borderStyle, borderBrush);
             }
         }
@@ -702,6 +700,9 @@ void QQuickTextNodeEngine::mergeProcessedNodes(QList<BinaryTreeNode *> *regularN
         BinaryTreeNode *node = m_processedNodes.data() + i;
 
         if (node->image.isNull()) {
+            if (node->glyphRun.isEmpty())
+                continue;
+
             BinaryTreeNodeKey key(node);
 
             QList<BinaryTreeNode *> &nodes = map[key];
@@ -756,7 +757,7 @@ void QQuickTextNodeEngine::mergeProcessedNodes(QList<BinaryTreeNode *> *regularN
     }
 }
 
-void  QQuickTextNodeEngine::addToSceneGraph(QQuickTextNode *parentNode,
+void QQuickTextNodeEngine::addToSceneGraph(QSGInternalTextNode *parentNode,
                                             QQuickText::TextStyle style,
                                             const QColor &styleColor)
 {
@@ -801,7 +802,7 @@ void  QQuickTextNodeEngine::addToSceneGraph(QQuickTextNode *parentNode,
                 ? m_selectedTextColor
                 : textDecoration.color;
 
-        parentNode->addRectangleNode(textDecoration.rect, color);
+        parentNode->addDecorationNode(textDecoration.rect, color);
     }
 
     // Finally add the selected text on top of everything

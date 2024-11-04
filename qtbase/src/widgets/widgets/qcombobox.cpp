@@ -50,6 +50,8 @@
 #endif
 #include <array>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
@@ -1453,6 +1455,9 @@ QComboBox::~QComboBox()
     } QT_CATCH(...) {
         ; // objects can't throw in destructor
     }
+
+    // Dispose of container before QComboBox goes away
+    delete d->container;
 }
 
 /*!
@@ -2570,7 +2575,7 @@ bool QComboBoxPrivate::showNativePopup()
             currentItem = item;
 
         IndexSetter setter = { i, q };
-        QObject::connect(item, &QPlatformMenuItem::activated, setter);
+        QObject::connect(item, &QPlatformMenuItem::activated, q, setter);
 
         m_platformMenu->insertMenuItem(item, 0);
         m_platformMenu->syncMenuItem(item);
@@ -3001,6 +3006,7 @@ void QComboBox::changeEvent(QEvent *e)
         if (d->container)
             d->container->updateStyleSettings();
         d->updateDelegate();
+
 #ifdef Q_OS_MAC
     case QEvent::MacSizeChange:
 #endif

@@ -13,6 +13,7 @@ class CSSParserContext;
 
 enum class CSSAtRuleID {
   kCSSAtRuleInvalid,
+  kCSSAtRuleViewTransitions,
   kCSSAtRuleCharset,
   kCSSAtRuleFontFace,
   kCSSAtRuleFontPaletteValues,
@@ -27,7 +28,7 @@ enum class CSSAtRuleID {
   kCSSAtRuleContainer,
   kCSSAtRuleCounterStyle,
   kCSSAtRuleScope,
-  kCSSAtRuleScrollTimeline,
+  kCSSAtRuleStartingStyle,
   kCSSAtRuleSupports,
   kCSSAtRuleTry,
   kCSSAtRuleWebkitKeyframes,

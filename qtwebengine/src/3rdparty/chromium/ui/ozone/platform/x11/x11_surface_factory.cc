@@ -38,7 +38,7 @@ enum class NativePixmapSupportType {
   kDMABuf,
 
   // Native pixmaps are first imported as X11 pixmaps using DRI3 and then into
-  // EGL. Using pixmap imports is currently not supported.
+  // EGL.
   kX11Pixmap,
 };
 
@@ -55,7 +55,7 @@ NativePixmapSupportType GetNativePixmapSupportType() {
 
 class GLOzoneEGLX11 : public GLOzoneEGL {
  public:
-  GLOzoneEGLX11() : support_type_(GetNativePixmapSupportType()) {}
+  GLOzoneEGLX11() = default;
 
   GLOzoneEGLX11(const GLOzoneEGLX11&) = delete;
   GLOzoneEGLX11& operator=(const GLOzoneEGLX11&) = delete;
@@ -70,9 +70,7 @@ class GLOzoneEGLX11 : public GLOzoneEGL {
   }
 
   bool CanImportNativePixmap() override {
-    // TODO(crbug.com/1236697): enable X11Pixmap support when the Vaapi
-    // pipeline supports it.
-    return support_type_ == NativePixmapSupportType::kDMABuf;
+    return GetNativePixmapSupportType() != NativePixmapSupportType::kNone;
   }
 
   std::unique_ptr<NativePixmapGLBinding> ImportNativePixmap(
@@ -83,7 +81,7 @@ class GLOzoneEGLX11 : public GLOzoneEGL {
       const gfx::ColorSpace& color_space,
       GLenum target,
       GLuint texture_id) override {
-    switch (support_type_) {
+    switch (GetNativePixmapSupportType()) {
       case NativePixmapSupportType::kDMABuf: {
         return NativePixmapEGLBinding::Create(pixmap, plane_format, plane,
                                               plane_size, color_space, target,
@@ -150,7 +148,6 @@ class GLOzoneEGLX11 : public GLOzoneEGL {
   }
 
  private:
-  const NativePixmapSupportType support_type_;
   bool is_swiftshader_ = false;
 };
 
@@ -211,7 +208,6 @@ scoped_refptr<gfx::NativePixmap> X11SurfaceFactory::CreateNativePixmap(
     gfx::BufferUsage usage,
     absl::optional<gfx::Size> framebuffer_size) {
   scoped_refptr<gfx::NativePixmapDmaBuf> pixmap;
-#if BUILDFLAG(USE_VAAPI)
   auto buffer = ui::GpuMemoryBufferSupportX11::GetInstance()->CreateBuffer(
       format, size, usage);
   if (buffer) {
@@ -222,7 +218,7 @@ scoped_refptr<gfx::NativePixmap> X11SurfaceFactory::CreateNativePixmap(
     pixmap = base::MakeRefCounted<gfx::NativePixmapDmaBuf>(size, format,
                                                            std::move(handle));
   }
-#endif
+
   // CreateNativePixmap is non-blocking operation. Thus, it is safe to call it
   // and return the result with the provided callback.
   return pixmap;
@@ -266,6 +262,19 @@ X11SurfaceFactory::CreateNativePixmapFromHandle(
         size, format, std::move(buffer_handle));
   }
   return pixmap;
+}
+
+std::vector<gfx::BufferFormat>
+X11SurfaceFactory::GetSupportedFormatsForTexturing() const {
+  std::vector<gfx::BufferFormat> supported_buffer_formats;
+  for (int j = 0; j <= static_cast<int>(gfx::BufferFormat::LAST); ++j) {
+    const gfx::BufferFormat buffer_format = static_cast<gfx::BufferFormat>(j);
+    if (ui::GpuMemoryBufferSupportX11::GetInstance()
+            ->CanCreateNativePixmapForFormat(buffer_format)) {
+      supported_buffer_formats.push_back(buffer_format);
+    }
+  }
+  return supported_buffer_formats;
 }
 
 }  // namespace ui

@@ -47,7 +47,6 @@ import org.chromium.base.annotations.JNINamespace;
 import org.chromium.base.annotations.NativeMethods;
 import org.chromium.base.library_loader.LibraryLoader;
 import org.chromium.base.library_loader.LibraryProcessType;
-import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.task.AsyncTask;
 import org.chromium.base.task.BackgroundOnlyAsyncTask;
 import org.chromium.base.task.PostTask;
@@ -63,7 +62,6 @@ import org.chromium.components.browser_ui.share.ShareImageFileUtils;
 import org.chromium.components.component_updater.ComponentLoaderPolicyBridge;
 import org.chromium.components.component_updater.EmbeddedComponentLoader;
 import org.chromium.components.embedder_support.application.ClassLoaderContextWrapperFactory;
-import org.chromium.components.embedder_support.application.FirebaseConfig;
 import org.chromium.components.payments.PaymentDetailsUpdateService;
 import org.chromium.components.webapk.lib.client.ChromeWebApkHostSignature;
 import org.chromium.components.webapk.lib.client.WebApkValidator;
@@ -83,7 +81,6 @@ import org.chromium.ui.base.SelectFileDialog;
 import org.chromium.ui.base.WindowAndroid;
 import org.chromium.weblayer_private.interfaces.APICallException;
 import org.chromium.weblayer_private.interfaces.IBrowser;
-import org.chromium.weblayer_private.interfaces.ICrashReporterController;
 import org.chromium.weblayer_private.interfaces.IObjectWrapper;
 import org.chromium.weblayer_private.interfaces.IProfile;
 import org.chromium.weblayer_private.interfaces.IWebLayer;
@@ -215,7 +212,10 @@ public final class WebLayerImpl extends IWebLayer.Stub {
         if (mOnNativeLoadedCalled) return;
         mOnNativeLoadedCalled = true;
 
-        CrashReporterControllerImpl.getInstance().notifyNativeInitialized();
+        // TODO(swestphal): Move this earlier when it is not depending on native code being loaded.
+        ChildProcessLauncherHelper.warmUp(appContext, true);
+
+        CrashReporterController.getInstance().notifyNativeInitialized();
         NetworkChangeNotifier.init();
         NetworkChangeNotifier.registerToReceiveNotificationsAlways();
 
@@ -287,22 +287,13 @@ public final class WebLayerImpl extends IWebLayer.Stub {
             }
         }
 
-        // Enable ATRace on debug OS or app builds. Requires commandline initialization.
-        int applicationFlags = wrappedAppContext.getApplicationInfo().flags;
-        boolean isAppDebuggable = (applicationFlags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
-        boolean isOsDebuggable = BuildInfo.isDebugAndroid();
-        // Requires command-line flags.
-        TraceEvent.maybeEnableEarlyTracing(
-                (isAppDebuggable || isOsDebuggable) ? TraceEvent.ATRACE_TAG_APP : 0,
-                /*readCommandLine=*/true);
+        TraceEvent.maybeEnableEarlyTracing(/*readCommandLine=*/true);
         TraceEvent.begin("WebLayer init");
 
         WebApkValidator.init(
                 ChromeWebApkHostSignature.EXPECTED_SIGNATURE, ChromeWebApkHostSignature.PUBLIC_KEY);
 
         BuildInfo.setBrowserPackageInfo(packageInfo);
-        BuildInfo.setFirebaseAppId(
-                FirebaseConfig.getFirebaseAppIdForPackage(packageInfo.packageName));
 
         SelectionPopupController.setMustUseWebContentsContext();
         SelectionPopupController.setShouldGetReadbackViewFromWindowAndroid();
@@ -311,7 +302,6 @@ public final class WebLayerImpl extends IWebLayer.Stub {
         BundleUtils.setIsBundle(ProductConfig.IS_BUNDLE);
 
         setChildProcessCreationParams(wrappedAppContext, packageInfo.packageName);
-        ChildProcessLauncherHelper.warmUp(wrappedAppContext, true);
 
         // Creating the Android shared preferences object causes I/O.
         try (StrictModeContext ignored = StrictModeContext.allowDiskWrites()) {
@@ -406,16 +396,6 @@ public final class WebLayerImpl extends IWebLayer.Stub {
     }
 
     @Override
-    public ICrashReporterController getCrashReporterController(
-            IObjectWrapper appContext, IObjectWrapper remoteContext) {
-        StrictModeWorkaround.apply();
-        // This is a no-op if init has already happened.
-        minimalInitForContext(ObjectWrapper.unwrap(appContext, Context.class),
-                ObjectWrapper.unwrap(remoteContext, Context.class));
-        return CrashReporterControllerImpl.getInstance();
-    }
-
-    @Override
     public void onReceivedBroadcast(IObjectWrapper appContextWrapper, Intent intent) {
         StrictModeWorkaround.apply();
         Context context = ObjectWrapper.unwrap(appContextWrapper, Context.class);
@@ -494,19 +474,6 @@ public final class WebLayerImpl extends IWebLayer.Stub {
     public void setClient(IWebLayerClient client) {
         StrictModeWorkaround.apply();
         sClient = client;
-
-        if (WebLayerFactoryImpl.getClientMajorVersion() >= 88) {
-            try {
-                RecordHistogram.recordTimesHistogram("WebLayer.Startup.ClassLoaderCreationTime",
-                        sClient.getClassLoaderCreationTime());
-                RecordHistogram.recordTimesHistogram(
-                        "WebLayer.Startup.ContextCreationTime", sClient.getContextCreationTime());
-                RecordHistogram.recordTimesHistogram("WebLayer.Startup.WebLayerLoaderCreationTime",
-                        sClient.getWebLayerLoaderCreationTime());
-            } catch (RemoteException e) {
-                throw new APICallException(e);
-            }
-        }
     }
 
     @Override
@@ -669,10 +636,6 @@ public final class WebLayerImpl extends IWebLayer.Stub {
         }
     }
 
-    /**
-     * Performs the minimal initialization needed for a context. This is used for example in
-     * CrashReporterControllerImpl, so it can be used before full WebLayer initialization.
-     */
     private static Context minimalInitForContext(Context appContext, Context remoteContext) {
         if (ContextUtils.getApplicationContext() != null) {
             return ContextUtils.getApplicationContext();
@@ -690,7 +653,7 @@ public final class WebLayerImpl extends IWebLayer.Stub {
 
         // TODO: The call to onResourcesLoaded() can be slow, we may need to parallelize this with
         // other expensive startup tasks.
-        org.chromium.base.R.onResourcesLoaded(lightPackageId);
+        R.onResourcesLoaded(lightPackageId);
 
         // Wrap the app context so that it can be used to load WebLayer implementation classes.
         appContext = ClassLoaderContextWrapperFactory.get(appContext);

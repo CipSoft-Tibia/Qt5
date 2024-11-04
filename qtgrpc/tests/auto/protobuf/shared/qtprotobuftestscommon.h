@@ -1,6 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2020 Alexey Edelev <semlanik@gmail.com>, Viktor Kopp <vifactor@gmail.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QTPROTOBUFTESTSCOMMON_H
 #define QTPROTOBUFTESTSCOMMON_H
@@ -9,7 +9,7 @@
 #include <QTest>
 
 template<typename MessageType, typename PropertyType>
-static void qProtobufAssertMessagePropertyRegistered(int fieldIndex, const char *propertyTypeName, const char *propertyName, bool skipMetatypeCheck = false)
+static void qProtobufAssertMessagePropertyRegistered(int fieldIndex, const char *propertyTypeName, const char *propertyName)
 {
     // TODO: there should be(?) a mapping available: PropertyType -> propertyTypeName
 
@@ -19,10 +19,8 @@ static void qProtobufAssertMessagePropertyRegistered(int fieldIndex, const char 
     // Q_PROPERTY returns non-aliased type for the aliases defined using the 'using' keyword.
     // QCOMPARE(QLatin1String(propertyTypeName), QLatin1String(MessageType::staticMetaObject.property(propertyNumber).typeName()));
     Q_UNUSED(propertyTypeName)
-    if (!skipMetatypeCheck) {
-        QCOMPARE(QMetaType::fromType<PropertyType>(),
-                 MessageType::staticMetaObject.property(propertyNumber).metaType());
-    }
+    QCOMPARE(QMetaType::fromType<PropertyType>(),
+             MessageType::staticMetaObject.property(propertyNumber).metaType());
     QCOMPARE(QLatin1String(MessageType::staticMetaObject.property(propertyNumber).name()),
              QLatin1String(propertyName));
 }

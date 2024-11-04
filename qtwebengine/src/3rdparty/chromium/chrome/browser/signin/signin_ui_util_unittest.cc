@@ -29,6 +29,7 @@
 #include "components/google/core/common/google_util.h"
 #include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/base/signin_buildflags.h"
+#include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/accounts_mutator.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
@@ -253,6 +254,7 @@ TEST_F(SigninUiUtilTest, EnableSyncWithExistingAccount) {
   CoreAccountId account_id =
       GetIdentityManager()->GetAccountsMutator()->AddOrUpdateAccount(
           kMainGaiaID, kMainEmail, "refresh_token", false,
+          signin_metrics::AccessPoint::ACCESS_POINT_UNKNOWN,
           signin_metrics::SourceForRefreshTokenOperation::kUnknown);
 
   for (bool is_default_promo_account : {true, false}) {
@@ -286,6 +288,7 @@ TEST_F(SigninUiUtilTest, EnableSyncWithAccountThatNeedsReauth) {
   CoreAccountId account_id =
       GetIdentityManager()->GetAccountsMutator()->AddOrUpdateAccount(
           kMainGaiaID, kMainEmail, "refresh_token", false,
+          signin_metrics::AccessPoint::ACCESS_POINT_UNKNOWN,
           signin_metrics::SourceForRefreshTokenOperation::kUnknown);
 
   // Add an account and then put its refresh token into an error state to
@@ -318,8 +321,8 @@ TEST_F(SigninUiUtilTest, EnableSyncWithAccountThatNeedsReauth) {
     TabStripModel* tab_strip = browser()->tab_strip_model();
     content::WebContents* active_contents = tab_strip->GetActiveWebContents();
     ASSERT_TRUE(active_contents);
-    EXPECT_EQ(signin::GetChromeSyncURLForDice(kMainEmail,
-                                              google_util::kGoogleHomepageURL),
+    EXPECT_EQ(signin::GetChromeSyncURLForDice(
+                  {kMainEmail, google_util::kGoogleHomepageURL}),
               active_contents->GetVisibleURL());
     tab_strip->CloseWebContentsAt(
         tab_strip->GetIndexOfWebContents(active_contents),
@@ -347,9 +350,9 @@ TEST_F(SigninUiUtilTest, EnableSyncForNewAccountWithNoTab) {
   content::WebContents* active_contents =
       browser()->tab_strip_model()->GetActiveWebContents();
   ASSERT_TRUE(active_contents);
-  EXPECT_EQ(
-      signin::GetChromeSyncURLForDice("", google_util::kGoogleHomepageURL),
-      active_contents->GetVisibleURL());
+  EXPECT_EQ(signin::GetChromeSyncURLForDice(
+                {.continue_url = google_util::kGoogleHomepageURL}),
+            active_contents->GetVisibleURL());
 }
 
 TEST_F(SigninUiUtilTest, EnableSyncForNewAccountWithNoTabWithExisting) {
@@ -358,6 +361,7 @@ TEST_F(SigninUiUtilTest, EnableSyncForNewAccountWithNoTabWithExisting) {
 
   GetIdentityManager()->GetAccountsMutator()->AddOrUpdateAccount(
       kMainGaiaID, kMainEmail, "refresh_token", false,
+      signin_metrics::AccessPoint::ACCESS_POINT_UNKNOWN,
       signin_metrics::SourceForRefreshTokenOperation::kUnknown);
 
   ExpectNoSigninStartedHistograms(histogram_tester);
@@ -394,9 +398,9 @@ TEST_F(SigninUiUtilTest, EnableSyncForNewAccountWithOneTab) {
   content::WebContents* active_contents =
       browser()->tab_strip_model()->GetActiveWebContents();
   ASSERT_TRUE(active_contents);
-  EXPECT_EQ(
-      signin::GetChromeSyncURLForDice("", google_util::kGoogleHomepageURL),
-      active_contents->GetVisibleURL());
+  EXPECT_EQ(signin::GetChromeSyncURLForDice(
+                {.continue_url = google_util::kGoogleHomepageURL}),
+            active_contents->GetVisibleURL());
 }
 
 TEST_F(SigninUiUtilTest, GetOrderedAccountsForDisplay) {
@@ -490,9 +494,11 @@ TEST_F(SigninUiUtilTest,
        ShouldShowAnimatedIdentityOnOpeningWindow_ReturnsTrueForMultiSignin) {
   GetIdentityManager()->GetAccountsMutator()->AddOrUpdateAccount(
       kMainGaiaID, kMainEmail, "refresh_token", false,
+      signin_metrics::AccessPoint::ACCESS_POINT_UNKNOWN,
       signin_metrics::SourceForRefreshTokenOperation::kUnknown);
   GetIdentityManager()->GetAccountsMutator()->AddOrUpdateAccount(
       kSecondaryGaiaID, kSecondaryEmail, "refresh_token", false,
+      signin_metrics::AccessPoint::ACCESS_POINT_UNKNOWN,
       signin_metrics::SourceForRefreshTokenOperation::kUnknown);
 
   EXPECT_TRUE(ShouldShowAnimatedIdentityOnOpeningWindow(
@@ -510,6 +516,7 @@ TEST_F(
     ShouldShowAnimatedIdentityOnOpeningWindow_ReturnsFalseForSingleProfileSingleSignin) {
   GetIdentityManager()->GetAccountsMutator()->AddOrUpdateAccount(
       kMainGaiaID, kMainEmail, "refresh_token", false,
+      signin_metrics::AccessPoint::ACCESS_POINT_UNKNOWN,
       signin_metrics::SourceForRefreshTokenOperation::kUnknown);
 
   EXPECT_FALSE(ShouldShowAnimatedIdentityOnOpeningWindow(
@@ -565,6 +572,31 @@ TEST_F(SigninUiUtilTest, ShowExtensionSigninPrompt_AsLockedProfile) {
   EXPECT_EQ(0, tab_strip->count());
   ShowExtensionSigninPrompt(profile, /*enable_sync=*/false,
                             /*email_hint=*/std::string());
+  EXPECT_EQ(0, tab_strip->count());
+}
+
+TEST_F(SigninUiUtilTest, ShowSigninPromptFromPromo) {
+  Profile* profile = browser()->profile();
+  TabStripModel* tab_strip = browser()->tab_strip_model();
+  ShowSigninPromptFromPromo(profile, access_point_);
+  EXPECT_EQ(1, tab_strip->count());
+
+  content::WebContents* tab = tab_strip->GetWebContentsAt(0);
+  ASSERT_TRUE(tab);
+  EXPECT_TRUE(
+      base::StartsWith(tab->GetVisibleURL().spec(),
+                       GaiaUrls::GetInstance()->add_account_url().spec(),
+                       base::CompareCase::INSENSITIVE_ASCII));
+}
+
+TEST_F(SigninUiUtilTest, ShowSigninPromptFromPromoWithExistingAccount) {
+  signin::MakePrimaryAccountAvailable(GetIdentityManager(), "foo@example.com",
+                                      signin::ConsentLevel::kSignin);
+
+  Profile* profile = browser()->profile();
+  TabStripModel* tab_strip = browser()->tab_strip_model();
+  EXPECT_EQ(0, tab_strip->count());
+  ShowSigninPromptFromPromo(profile, access_point_);
   EXPECT_EQ(0, tab_strip->count());
 }
 #endif  // !BUILDFLAG(IS_CHROMEOS_LACROS)
@@ -742,6 +774,25 @@ TEST_F(MirrorSigninUiUtilTest,
   ShowExtensionSigninPrompt(profile(), /*enable_sync=*/true, kMainEmail);
 }
 
+TEST_F(MirrorSigninUiUtilTest, ShowSigninPromptFromPromo) {
+  signin_metrics::AccessPoint kAccessPoint =
+      signin_metrics::AccessPoint::ACCESS_POINT_AVATAR_BUBBLE_SIGN_IN;
+  ExpectAddAccount(
+      /*enable_sync=*/false, kAccessPoint,
+      signin_metrics::PromoAction::
+          PROMO_ACTION_NEW_ACCOUNT_NO_EXISTING_ACCOUNT);
+  ShowSigninPromptFromPromo(profile(), kAccessPoint);
+}
+
+TEST_F(MirrorSigninUiUtilTest, ShowSigninPromptFromPromoWithExistingAccount) {
+  signin::MakePrimaryAccountAvailable(
+      IdentityManagerFactory::GetForProfile(profile()), "foo@example.com",
+      signin::ConsentLevel::kSignin);
+  ShowSigninPromptFromPromo(
+      profile(),
+      signin_metrics::AccessPoint::ACCESS_POINT_AVATAR_BUBBLE_SIGN_IN);
+}
+
 #endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
 
 // This test does not use the SigninUiUtilTest test fixture, because it
@@ -767,9 +818,11 @@ TEST(ShouldShowAnimatedIdentityOnOpeningWindow, ReturnsFalseForNewWindow) {
       IdentityManagerFactory::GetForProfile(profile);
   identity_manager->GetAccountsMutator()->AddOrUpdateAccount(
       kMainGaiaID, kMainEmail, "refresh_token", false,
+      signin_metrics::AccessPoint::ACCESS_POINT_UNKNOWN,
       signin_metrics::SourceForRefreshTokenOperation::kUnknown);
   identity_manager->GetAccountsMutator()->AddOrUpdateAccount(
       kSecondaryGaiaID, kSecondaryEmail, "refresh_token", false,
+      signin_metrics::AccessPoint::ACCESS_POINT_UNKNOWN,
       signin_metrics::SourceForRefreshTokenOperation::kUnknown);
   EXPECT_TRUE(ShouldShowAnimatedIdentityOnOpeningWindow(
       *profile_manager.profile_attributes_storage(), profile));

@@ -27,11 +27,12 @@ import mitt from '../../third_party/mitt/index.js';
  * @public
  */
 export class EventEmitter {
+    emitter;
+    eventsMap = new Map();
     /**
      * @internal
      */
     constructor() {
-        this.eventsMap = new Map();
         this.emitter = mitt(this.eventsMap);
     }
     /**
@@ -119,8 +120,7 @@ export class EventEmitter {
         return this;
     }
     eventListenersCount(event) {
-        var _a;
-        return ((_a = this.eventsMap.get(event)) === null || _a === void 0 ? void 0 : _a.length) || 0;
+        return this.eventsMap.get(event)?.length || 0;
     }
 }
 //# sourceMappingURL=EventEmitter.js.map

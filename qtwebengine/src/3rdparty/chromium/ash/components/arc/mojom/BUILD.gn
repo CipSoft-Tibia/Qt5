@@ -9,7 +9,6 @@ assert(is_chromeos_ash)
 
 mojom("mojom") {
   sources = [
-    "accessibility_helper.mojom",
     "adbd.mojom",
     "anr.mojom",
     "app.mojom",
@@ -22,6 +21,7 @@ mojom("mojom") {
     "bluetooth.mojom",
     "boot_phase_monitor.mojom",
     "camera.mojom",
+    "chrome_feature_flags.mojom",
     "clipboard.mojom",
     "compatibility_mode.mojom",
     "crash_collector.mojom",
@@ -46,7 +46,6 @@ mojom("mojom") {
     "nearby_share.mojom",
     "net.mojom",
     "obb_mounter.mojom",
-    "payment_app.mojom",
     "pip.mojom",
     "policy.mojom",
     "power.mojom",
@@ -55,11 +54,11 @@ mojom("mojom") {
     "privacy_items.mojom",
     "process.mojom",
     "property.mojom",
-    "rotation_lock.mojom",
     "scale_factor.mojom",
     "screen_capture.mojom",
     "sharesheet.mojom",
     "storage_manager.mojom",
+    "system_state.mojom",
     "system_ui.mojom",
     "timer.mojom",
     "tracing.mojom",
@@ -84,6 +83,7 @@ mojom("mojom") {
     "//mojo/public/mojom/base",
     "//printing/mojom",
     "//sandbox/policy/mojom",
+    "//services/accessibility/android/public/mojom",
     "//services/device/public/mojom:usb",
     "//services/media_session/public/mojom",
     "//services/resource_coordinator/public/mojom",
@@ -343,10 +343,6 @@ mojom("media") {
           cpp = "::media::VideoEncodeAccelerator::Config::StorageType"
         },
         {
-          mojom = "arc.mojom.VideoEncodeAccelerator.Error"
-          cpp = "::media::VideoEncodeAccelerator::Error"
-        },
-        {
           mojom = "arc.mojom.VideoEncodeProfile"
           cpp = "::media::VideoEncodeAccelerator::SupportedProfile"
         },
@@ -372,6 +368,12 @@ mojom("media") {
 mojom("camera_intent") {
   sources = [ "camera_intent.mojom" ]
   webui_module_path = "/ash/components/arc/mojom"
+  use_typescript_sources = true
+
+  # Since this is a dependency of the very large target above that is still
+  # generating legacy JS bindings/closure targets, generate legacy bindings
+  # here as well.
+  generate_legacy_js_bindings = true
 }
 
 mojom("notifications") {
@@ -412,6 +414,7 @@ mojom("protected_buffer_manager") {
 source_set("unit_tests") {
   testonly = true
   sources = [
+    "//ash/components/arc/intent_helper/intent_filter_mojom_traits_unittest.cc",
     "ime_mojom_traits_unittest.cc",
     "video_accelerator_mojom_traits_unittest.cc",
     "video_encode_accelerator_mojom_traits_unittest.cc",
@@ -419,6 +422,7 @@ source_set("unit_tests") {
 
   deps = [
     ":mojom",
+    "//components/arc",
     "//media",
     "//mojo/public/cpp/test_support:test_utils",
     "//testing/gtest",

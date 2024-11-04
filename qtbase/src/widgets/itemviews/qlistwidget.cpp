@@ -1083,57 +1083,71 @@ void QListWidgetPrivate::setup()
     Q_Q(QListWidget);
     q->QListView::setModel(new QListModel(q));
     // view signals
-    QObject::connect(q, SIGNAL(pressed(QModelIndex)), q, SLOT(_q_emitItemPressed(QModelIndex)));
-    QObject::connect(q, SIGNAL(clicked(QModelIndex)), q, SLOT(_q_emitItemClicked(QModelIndex)));
-    QObject::connect(q, SIGNAL(doubleClicked(QModelIndex)),
-                     q, SLOT(_q_emitItemDoubleClicked(QModelIndex)));
-    QObject::connect(q, SIGNAL(activated(QModelIndex)),
-                     q, SLOT(_q_emitItemActivated(QModelIndex)));
-    QObject::connect(q, SIGNAL(entered(QModelIndex)), q, SLOT(_q_emitItemEntered(QModelIndex)));
-    QObject::connect(model, SIGNAL(dataChanged(QModelIndex,QModelIndex)),
-                     q, SLOT(_q_emitItemChanged(QModelIndex)));
-    QObject::connect(model, SIGNAL(dataChanged(QModelIndex,QModelIndex)),
-                     q, SLOT(_q_dataChanged(QModelIndex,QModelIndex)));
-    QObject::connect(model, SIGNAL(columnsRemoved(QModelIndex,int,int)), q, SLOT(_q_sort()));
+    connections = {
+        QObjectPrivate::connect(q, &QListWidget::pressed,
+                                this, &QListWidgetPrivate::emitItemPressed),
+        QObjectPrivate::connect(q, &QListWidget::clicked,
+                                this, &QListWidgetPrivate::emitItemClicked),
+        QObjectPrivate::connect(q, &QListWidget::doubleClicked,
+                                this, &QListWidgetPrivate::emitItemDoubleClicked),
+        QObjectPrivate::connect(q, &QListWidget::activated,
+                                this, &QListWidgetPrivate::emitItemActivated),
+        QObjectPrivate::connect(q, &QListWidget::entered,
+                                this, &QListWidgetPrivate::emitItemEntered),
+        QObjectPrivate::connect(model, &QAbstractItemModel::dataChanged,
+                                this, &QListWidgetPrivate::emitItemChanged),
+        QObjectPrivate::connect(model, &QAbstractItemModel::dataChanged,
+                                this, &QListWidgetPrivate::dataChanged),
+        QObjectPrivate::connect(model, &QAbstractItemModel::columnsRemoved,
+                                this, &QListWidgetPrivate::sort)
+    };
 }
 
-void QListWidgetPrivate::_q_emitItemPressed(const QModelIndex &index)
+void QListWidgetPrivate::clearConnections()
+{
+    for (const QMetaObject::Connection &connection : connections)
+        QObject::disconnect(connection);
+    for (const QMetaObject::Connection &connection : selectionModelConnections)
+        QObject::disconnect(connection);
+}
+
+void QListWidgetPrivate::emitItemPressed(const QModelIndex &index)
 {
     Q_Q(QListWidget);
     emit q->itemPressed(listModel()->at(index.row()));
 }
 
-void QListWidgetPrivate::_q_emitItemClicked(const QModelIndex &index)
+void QListWidgetPrivate::emitItemClicked(const QModelIndex &index)
 {
     Q_Q(QListWidget);
     emit q->itemClicked(listModel()->at(index.row()));
 }
 
-void QListWidgetPrivate::_q_emitItemDoubleClicked(const QModelIndex &index)
+void QListWidgetPrivate::emitItemDoubleClicked(const QModelIndex &index)
 {
     Q_Q(QListWidget);
     emit q->itemDoubleClicked(listModel()->at(index.row()));
 }
 
-void QListWidgetPrivate::_q_emitItemActivated(const QModelIndex &index)
+void QListWidgetPrivate::emitItemActivated(const QModelIndex &index)
 {
     Q_Q(QListWidget);
     emit q->itemActivated(listModel()->at(index.row()));
 }
 
-void QListWidgetPrivate::_q_emitItemEntered(const QModelIndex &index)
+void QListWidgetPrivate::emitItemEntered(const QModelIndex &index)
 {
     Q_Q(QListWidget);
     emit q->itemEntered(listModel()->at(index.row()));
 }
 
-void QListWidgetPrivate::_q_emitItemChanged(const QModelIndex &index)
+void QListWidgetPrivate::emitItemChanged(const QModelIndex &index)
 {
     Q_Q(QListWidget);
     emit q->itemChanged(listModel()->at(index.row()));
 }
 
-void QListWidgetPrivate::_q_emitCurrentItemChanged(const QModelIndex &current,
+void QListWidgetPrivate::emitCurrentItemChanged(const QModelIndex &current,
                                                 const QModelIndex &previous)
 {
     Q_Q(QListWidget);
@@ -1151,14 +1165,14 @@ void QListWidgetPrivate::_q_emitCurrentItemChanged(const QModelIndex &current,
     emit q->currentRowChanged(persistentCurrent.row());
 }
 
-void QListWidgetPrivate::_q_sort()
+void QListWidgetPrivate::sort()
 {
     if (sortingEnabled)
         model->sort(0, sortOrder);
 }
 
-void QListWidgetPrivate::_q_dataChanged(const QModelIndex &topLeft,
-                                        const QModelIndex &bottomRight)
+void QListWidgetPrivate::dataChanged(const QModelIndex &topLeft,
+                                     const QModelIndex &bottomRight)
 {
     if (sortingEnabled && topLeft.isValid() && bottomRight.isValid())
         listModel()->ensureSorted(topLeft.column(), sortOrder,
@@ -1364,6 +1378,8 @@ QListWidget::QListWidget(QWidget *parent)
 
 QListWidget::~QListWidget()
 {
+    Q_D(QListWidget);
+    d->clearConnections();
 }
 
 /*!
@@ -1374,20 +1390,18 @@ void QListWidget::setSelectionModel(QItemSelectionModel *selectionModel)
 {
     Q_D(QListWidget);
 
-    if (d->selectionModel) {
-        QObject::disconnect(d->selectionModel, SIGNAL(currentChanged(QModelIndex,QModelIndex)),
-                            this, SLOT(_q_emitCurrentItemChanged(QModelIndex,QModelIndex)));
-        QObject::disconnect(d->selectionModel, SIGNAL(selectionChanged(QItemSelection,QItemSelection)),
-                            this, SIGNAL(itemSelectionChanged()));
-    }
+    for (const QMetaObject::Connection &connection : d->selectionModelConnections)
+        disconnect(connection);
 
     QListView::setSelectionModel(selectionModel);
 
     if (d->selectionModel) {
-        QObject::connect(d->selectionModel, SIGNAL(currentChanged(QModelIndex,QModelIndex)),
-                         this, SLOT(_q_emitCurrentItemChanged(QModelIndex,QModelIndex)));
-        QObject::connect(d->selectionModel, SIGNAL(selectionChanged(QItemSelection,QItemSelection)),
-                         this, SIGNAL(itemSelectionChanged()));
+        d->selectionModelConnections = {
+            QObjectPrivate::connect(d->selectionModel, &QItemSelectionModel::currentChanged,
+                                    d, &QListWidgetPrivate::emitCurrentItemChanged),
+            QObject::connect(d->selectionModel, &QItemSelectionModel::selectionChanged,
+                             this, &QListWidget::itemSelectionChanged)
+        };
     }
 }
 
@@ -1698,6 +1712,8 @@ QWidget *QListWidget::itemWidget(QListWidgetItem *item) const
     a list widget item. If you want to display custom dynamic content or
     implement a custom editor widget, use QListView and subclass QStyledItemDelegate
     instead.
+
+    \note The list takes ownership of the \a widget.
 
     \sa itemWidget(), removeItemWidget(), {Delegate Classes}
 */

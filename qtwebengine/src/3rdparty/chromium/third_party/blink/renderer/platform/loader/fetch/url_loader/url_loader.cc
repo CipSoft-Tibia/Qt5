@@ -68,7 +68,6 @@
 #include "third_party/blink/public/platform/resource_load_info_notifier_wrapper.h"
 #include "third_party/blink/public/platform/resource_request_blocked_reason.h"
 #include "third_party/blink/public/platform/url_conversion.h"
-#include "third_party/blink/public/platform/web_request_peer.h"
 #include "third_party/blink/public/platform/web_security_origin.h"
 #include "third_party/blink/public/platform/web_url.h"
 #include "third_party/blink/public/platform/web_url_error.h"
@@ -79,6 +78,7 @@
 #include "third_party/blink/public/web/web_security_policy.h"
 #include "third_party/blink/renderer/platform/blob/blob_data.h"
 #include "third_party/blink/renderer/platform/loader/fetch/back_forward_cache_loader_helper.h"
+#include "third_party/blink/renderer/platform/loader/fetch/url_loader/resource_request_client.h"
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/resource_request_sender.h"
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/sync_load_response.h"
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/url_loader_client.h"
@@ -97,7 +97,7 @@ namespace blink {
 // This inner class exists since the URLLoader may be deleted while inside a
 // call to URLLoaderClient. Refcounting is to keep the context from being
 // deleted if it may have work to do after calling into the client.
-class URLLoader::Context : public WebRequestPeer {
+class URLLoader::Context : public ResourceRequestClient {
  public:
   Context(URLLoader* loader,
           const Vector<String>& cors_exempt_header_list,
@@ -106,7 +106,8 @@ class URLLoader::Context : public WebRequestPeer {
           scoped_refptr<base::SingleThreadTaskRunner> unfreezable_task_runner,
           scoped_refptr<network::SharedURLLoaderFactory> factory,
           mojo::PendingRemote<mojom::blink::KeepAliveHandle> keep_alive_handle,
-          BackForwardCacheLoaderHelper* back_forward_cache_loader_helper);
+          BackForwardCacheLoaderHelper* back_forward_cache_loader_helper,
+          Vector<std::unique_ptr<URLLoaderThrottle>> throttles);
 
   int request_id() const { return request_id_; }
   URLLoaderClient* client() const { return client_; }
@@ -131,7 +132,7 @@ class URLLoader::Context : public WebRequestPeer {
              std::unique_ptr<ResourceLoadInfoNotifierWrapper>
                  resource_load_info_notifier_wrapper);
 
-  // WebRequestPeer overrides:
+  // ResourceRequestClient overrides:
   void OnUploadProgress(uint64_t position, uint64_t size) override;
   bool OnReceivedRedirect(const net::RedirectInfo& redirect_info,
                           network::mojom::URLResponseHeadPtr head,
@@ -151,12 +152,6 @@ class URLLoader::Context : public WebRequestPeer {
 
  private:
   ~Context() override;
-
-  // Called when the body data stream is detached from the reader side.
-  void CancelBodyStreaming();
-
-  void OnBodyAvailable(MojoResult, const mojo::HandleSignalsState&);
-  void OnBodyHasBeenRead(uint32_t read_bytes);
 
   static net::NetworkTrafficAnnotationTag GetTrafficAnnotationTag(
       network::ResourceRequest* request);
@@ -188,10 +183,6 @@ class URLLoader::Context : public WebRequestPeer {
   base::WaitableEvent* terminate_sync_load_event_;
 
   int request_id_;
-  bool in_two_phase_read_ = false;
-  bool is_in_on_body_available_ = false;
-
-  absl::optional<network::URLLoaderCompletionStatus> completion_status_;
 
   std::unique_ptr<ResourceRequestSender> resource_request_sender_;
 
@@ -199,6 +190,7 @@ class URLLoader::Context : public WebRequestPeer {
 
   WeakPersistent<BackForwardCacheLoaderHelper>
       back_forward_cache_loader_helper_;
+  Vector<std::unique_ptr<URLLoaderThrottle>> throttles_;
 };
 
 // URLLoader::Context -------------------------------------------------------
@@ -211,7 +203,8 @@ URLLoader::Context::Context(
     scoped_refptr<base::SingleThreadTaskRunner> unfreezable_task_runner,
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
     mojo::PendingRemote<mojom::blink::KeepAliveHandle> keep_alive_handle,
-    BackForwardCacheLoaderHelper* back_forward_cache_loader_helper)
+    BackForwardCacheLoaderHelper* back_forward_cache_loader_helper,
+    Vector<std::unique_ptr<URLLoaderThrottle>> throttles)
     : loader_(loader),
       has_devtools_request_id_(false),
       client_(nullptr),
@@ -223,7 +216,8 @@ URLLoader::Context::Context(
       request_id_(-1),
       resource_request_sender_(std::make_unique<ResourceRequestSender>()),
       url_loader_factory_(std::move(url_loader_factory)),
-      back_forward_cache_loader_helper_(back_forward_cache_loader_helper) {
+      back_forward_cache_loader_helper_(back_forward_cache_loader_helper),
+      throttles_(std::move(throttles)) {
   DCHECK(url_loader_factory_);
 }
 
@@ -281,9 +275,6 @@ void URLLoader::Context::Start(
   // TODO(horo): Check credentials flag is unset when credentials mode is omit.
   //             Check credentials flag is set when credentials mode is include.
 
-  const network::mojom::RequestDestination request_destination =
-      request->destination;
-
   scoped_refptr<WebURLRequestExtraData> empty_url_request_extra_data;
   WebURLRequestExtraData* url_request_extra_data;
   if (passed_url_request_extra_data) {
@@ -295,16 +286,9 @@ void URLLoader::Context::Start(
     url_request_extra_data = empty_url_request_extra_data.get();
   }
 
-  auto throttles =
-      url_request_extra_data->TakeURLLoaderThrottles().ReleaseVector();
-  // The frame request blocker is only for a frame's subresources.
-  if (url_request_extra_data->frame_request_blocker() &&
-      !IsRequestDestinationFrame(request_destination)) {
-    auto throttle = url_request_extra_data->frame_request_blocker()
-                        ->GetThrottleIfRequestsBlocked();
-    if (throttle) {
-      throttles.push_back(std::move(throttle));
-    }
+  std::vector<std::unique_ptr<blink::URLLoaderThrottle>> throttles;
+  for (auto& throttle : throttles_) {
+    throttles.push_back(std::move(throttle));
   }
 
   // TODO(falken): URLLoader should be able to get the top frame origin via some
@@ -459,8 +443,7 @@ void URLLoader::Context::OnCompletedRequest(
     } else {
       client_->DidFinishLoading(status.completion_time, total_transfer_size,
                                 encoded_body_size, status.decoded_body_length,
-                                status.should_report_corb_blocking,
-                                status.pervasive_payload_requested);
+                                status.should_report_corb_blocking);
     }
   }
 }
@@ -468,20 +451,6 @@ void URLLoader::Context::OnCompletedRequest(
 URLLoader::Context::~Context() {
   // We must be already cancelled at this point.
   DCHECK_LT(request_id_, 0);
-}
-
-void URLLoader::Context::CancelBodyStreaming() {
-  scoped_refptr<Context> protect(this);
-
-  if (client_) {
-    // TODO(yhirano): Set |stale_copy_in_cache| appropriately if possible.
-    client_->DidFail(WebURLError(net::ERR_ABORTED, url_),
-                     base::TimeTicks::Now(),
-                     URLLoaderClient::kUnknownEncodedDataLength, 0, 0);
-  }
-
-  // Notify the browser process that the request is canceled.
-  Cancel();
 }
 
 // URLLoader ----------------------------------------------------------------
@@ -493,15 +462,17 @@ URLLoader::URLLoader(
     scoped_refptr<base::SingleThreadTaskRunner> unfreezable_task_runner,
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
     mojo::PendingRemote<mojom::blink::KeepAliveHandle> keep_alive_handle,
-    BackForwardCacheLoaderHelper* back_forward_cache_loader_helper)
-    : context_(new Context(this,
-                           cors_exempt_header_list,
-                           terminate_sync_load_event,
-                           std::move(freezable_task_runner),
-                           std::move(unfreezable_task_runner),
-                           std::move(url_loader_factory),
-                           std::move(keep_alive_handle),
-                           back_forward_cache_loader_helper)) {}
+    BackForwardCacheLoaderHelper* back_forward_cache_loader_helper,
+    Vector<std::unique_ptr<URLLoaderThrottle>> throttles)
+    : context_(base::MakeRefCounted<Context>(this,
+                                             cors_exempt_header_list,
+                                             terminate_sync_load_event,
+                                             std::move(freezable_task_runner),
+                                             std::move(unfreezable_task_runner),
+                                             std::move(url_loader_factory),
+                                             std::move(keep_alive_handle),
+                                             back_forward_cache_loader_helper,
+                                             std::move(throttles))) {}
 
 URLLoader::URLLoader() = default;
 
@@ -694,6 +665,7 @@ net::NetworkTrafficAnnotationTag URLLoader::Context::GetTrafficAnnotationTag(
     case network::mojom::RequestDestination::kWebBundle:
     case network::mojom::RequestDestination::kWorker:
     case network::mojom::RequestDestination::kXslt:
+    case network::mojom::RequestDestination::kDictionary:
       return net::DefineNetworkTrafficAnnotation("blink_resource_loader", R"(
       semantics {
         sender: "Blink Resource Loader"

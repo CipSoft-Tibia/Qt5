@@ -344,46 +344,81 @@ class SparseCompressedBase<Derived>::ReverseInnerIterator
 namespace internal {
 
 // modified from https://artificial-mind.net/blog/2020/11/28/std-sort-multiple-ranges
+
+template <typename Scalar, typename StorageIndex>
+class StorageVal;
+template <typename Scalar, typename StorageIndex>
+class StorageRef;
 template <typename Scalar, typename StorageIndex>
 class CompressedStorageIterator;
 
-// wrapper class analogous to std::pair<StorageIndex&, Scalar&>
+// class to hold an index/value pair
+template <typename Scalar, typename StorageIndex>
+class StorageVal
+{
+public:
+    
+  StorageVal(const StorageIndex& innerIndex, const Scalar& value) : m_innerIndex(innerIndex), m_value(value) {}
+  StorageVal(const StorageVal& other) : m_innerIndex(other.m_innerIndex), m_value(other.m_value) {}
+  StorageVal(StorageVal&& other) = default;
+
+  inline const StorageIndex& key() const { return m_innerIndex; }
+  inline StorageIndex& key() { return m_innerIndex; }
+  inline const Scalar& value() const { return m_value; }
+  inline Scalar& value() { return m_value; }
+
+  // enables StorageVal to be compared with respect to any type that is convertible to StorageIndex
+  inline operator StorageIndex() const { return m_innerIndex; }
+
+protected:
+  StorageIndex m_innerIndex;
+  Scalar m_value;
+private:
+  StorageVal() = delete;
+};
+// class to hold an index/value iterator pair
 // used to define assignment, swap, and comparison operators for CompressedStorageIterator
 template <typename Scalar, typename StorageIndex>
 class StorageRef 
 {
 public:
-  using value_type = std::pair<StorageIndex, Scalar>;
+  using value_type = StorageVal<Scalar, StorageIndex>;
+  
+  // StorageRef Needs to be move-able for sort on macos.
+  StorageRef(StorageRef&& other) = default;
 
   inline StorageRef& operator=(const StorageRef& other) {
-    *m_innerIndexIterator = *other.m_innerIndexIterator;
-    *m_valueIterator = *other.m_valueIterator;
+    key() = other.key();
+    value() = other.value();
     return *this;
   }
   inline StorageRef& operator=(const value_type& other) {
-    std::tie(*m_innerIndexIterator, *m_valueIterator) = other;
+    key() = other.key();
+    value() = other.value();
     return *this;
   }
-  inline operator value_type() const { return std::make_pair(*m_innerIndexIterator, *m_valueIterator); }
+  inline operator value_type() const { return value_type(key(), value()); }
   inline friend void swap(const StorageRef& a, const StorageRef& b) {
-    std::iter_swap(a.m_innerIndexIterator, b.m_innerIndexIterator);
-    std::iter_swap(a.m_valueIterator, b.m_valueIterator);
+    std::iter_swap(a.keyPtr(), b.keyPtr());
+    std::iter_swap(a.valuePtr(), b.valuePtr());
   }
 
-  inline static const StorageIndex& key(const StorageRef& a) { return *a.m_innerIndexIterator; }
-  inline static const StorageIndex& key(const value_type& a) { return a.first; }
-  #define REF_COMP_REF(OP) inline friend bool operator OP(const StorageRef& a, const StorageRef& b) { return key(a) OP key(b); };
-  #define REF_COMP_VAL(OP) inline friend bool operator OP(const StorageRef& a, const value_type& b) { return key(a) OP key(b); };
-  #define VAL_COMP_REF(OP) inline friend bool operator OP(const value_type& a, const StorageRef& b) { return key(a) OP key(b); };
-  #define MAKE_COMPS(OP) REF_COMP_REF(OP) REF_COMP_VAL(OP) VAL_COMP_REF(OP)
-  MAKE_COMPS(<) MAKE_COMPS(>) MAKE_COMPS(<=) MAKE_COMPS(>=) MAKE_COMPS(==) MAKE_COMPS(!=)
+  inline const StorageIndex& key() const { return *m_innerIndexIterator; }
+  inline StorageIndex& key() { return *m_innerIndexIterator; }
+  inline const Scalar& value() const { return *m_valueIterator; }
+  inline Scalar& value() { return *m_valueIterator; }
+  inline StorageIndex* keyPtr() const { return m_innerIndexIterator; }
+  inline Scalar* valuePtr() const { return m_valueIterator; }
+
+  // enables StorageRef to be compared with respect to any type that is convertible to StorageIndex
+  inline operator StorageIndex() const { return *m_innerIndexIterator; }
 
 protected:
   StorageIndex* m_innerIndexIterator;
   Scalar* m_valueIterator;
 private:
   StorageRef() = delete;
-  // these constructors are only called by the CompressedStorageIterator constructors for convenience only
+  // these constructors are called by the CompressedStorageIterator constructors for convenience only
   StorageRef(StorageIndex* innerIndexIterator, Scalar* valueIterator) : m_innerIndexIterator(innerIndexIterator), m_valueIterator(valueIterator) {}
   StorageRef(const StorageRef& other) : m_innerIndexIterator(other.m_innerIndexIterator), m_valueIterator(other.m_valueIterator) {}
 
@@ -405,6 +440,7 @@ public:
   CompressedStorageIterator(difference_type index, StorageIndex* innerIndexPtr, Scalar* valuePtr) : m_index(index), m_data(innerIndexPtr, valuePtr) {}
   CompressedStorageIterator(difference_type index, reference data) : m_index(index), m_data(data) {}
   CompressedStorageIterator(const CompressedStorageIterator& other) : m_index(other.m_index), m_data(other.m_data) {}
+  CompressedStorageIterator(CompressedStorageIterator&& other) = default;
   inline CompressedStorageIterator& operator=(const CompressedStorageIterator& other) {
     m_index = other.m_index;
     m_data = other.m_data;
@@ -418,10 +454,16 @@ public:
   inline CompressedStorageIterator& operator--() { --m_index; return *this; }
   inline CompressedStorageIterator& operator+=(difference_type offset) { m_index += offset; return *this; }
   inline CompressedStorageIterator& operator-=(difference_type offset) { m_index -= offset; return *this; }
-  inline reference operator*() const { return reference(m_data.m_innerIndexIterator + m_index, m_data.m_valueIterator + m_index); }
+  inline reference operator*() const { return reference(m_data.keyPtr() + m_index, m_data.valuePtr() + m_index); }
 
   #define MAKE_COMP(OP) inline bool operator OP(const CompressedStorageIterator& other) const { return m_index OP other.m_index; }
-  MAKE_COMP(<) MAKE_COMP(>) MAKE_COMP(>=) MAKE_COMP(<=) MAKE_COMP(!=) MAKE_COMP(==)
+  MAKE_COMP(<)
+  MAKE_COMP(>)
+  MAKE_COMP(>=)
+  MAKE_COMP(<=)
+  MAKE_COMP(!=)
+  MAKE_COMP(==)
+  #undef MAKE_COMP
 
 protected:
   difference_type m_index;

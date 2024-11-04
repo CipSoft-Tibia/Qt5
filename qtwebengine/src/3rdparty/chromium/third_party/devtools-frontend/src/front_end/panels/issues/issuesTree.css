@@ -3,9 +3,9 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+
 /* Remove container padding from TreeOutline.
  * Allows issues to touch the edges of the container. */
-
 :host,
 .issues {
   padding: 0;
@@ -15,26 +15,25 @@
 .issues {
   --issue-indent: 8px;
 }
-/* Override whitespace behavior for tree items to allow wrapping */
 
+/* Override whitespace behavior for tree items to allow wrapping */
 .issues li {
   white-space: normal;
+  align-items: flex-start;
 }
-/* Hide toggle for tree items which cannot be collapsed */
 
+/* Hide toggle for tree items which cannot be collapsed */
 .issues .always-parent::before {
   display: none;
 }
-/* Override TreeOutline toggle switching to allow animation */
 
 .issues li.parent::before {
-  transition: transform 200ms;
-  transform-origin: 25% 50%;
+  margin-top: 8px;
 }
 
-.issues li.parent.expanded::before {
-  -webkit-mask-position: 0 0;
-  transform: rotate(90deg);
+.issues .affected-resources li.parent::before {
+  margin-top: 3px;
+  margin-right: 0;
 }
 
 .issue-category,
@@ -45,19 +44,19 @@
   overflow: hidden;
   flex: none;
   transition: background-color 200ms;
-  border: 1px solid var(--color-details-hairline-light);
+  border: 1px solid var(--sys-color-divider);
   border-width: 0 0 1px;
 }
 
 .issue-category.hidden-issues.parent.expanded,
 .issue-kind.parent.expanded {
   border-width: 0 0 1px;
-  background-color: var(--color-background-elevation-1);
+  background-color: var(--sys-color-surface2);
 }
 
 .issue-category + .children .issue,
 .issue.expanded {
-  background: var(--color-background);
+  background: var(--sys-color-cdt-base-container);
 }
 
 .issue.expanded {
@@ -66,19 +65,25 @@
 
 .issue.selected,
 .issue.expanded.selected {
-  background-color: var(--legacy-focus-bg-color);
+  background-color: var(--sys-color-neutral-container);
+}
+
+.issue.selected:focus,
+.issue.expanded.selected:focus {
+  background-color: var(--sys-color-tonal-container);
 }
 
 .unhide-all-issues-button {
-  line-height: normal;
+  margin: 0;
+  height: 20px;
 }
 
 p {
   margin-block-start: 2px;
   margin-block-end: 2px;
 }
-/* Override selected tree item styles for issues to avoid changing width. */
 
+/* Override selected tree item styles for issues to avoid changing width. */
 .tree-outline-disclosure:not(.tree-outline-disclosure-hide-overflow) .tree-outline.hide-selection-when-blurred .issue-category.selected:focus-visible,
 .tree-outline-disclosure:not(.tree-outline-disclosure-hide-overflow) .tree-outline.hide-selection-when-blurred .issue-kind.selected:focus-visible,
 .tree-outline-disclosure:not(.tree-outline-disclosure-hide-overflow) .tree-outline.hide-selection-when-blurred .issue.selected:focus-visible {
@@ -89,28 +94,22 @@ p {
 .header {
   display: flex;
   flex-direction: row;
-  align-items: center;
-  padding: 6px 0;
+  align-items: flex-start;
+  padding: 4px 0;
   cursor: pointer;
   width: 100%;
 }
 
 .header devtools-hide-issues-menu {
-  display: none;
+  visibility: hidden;
 }
 
 .header:hover devtools-hide-issues-menu {
-  display: block;
+  visibility: visible;
 }
 
 .header devtools-hide-issues-menu.has-context-menu-opened {
-  display: block;
-}
-
-.issue-category .header,
-.issue-kind .header {
-  line-height: 24px;
-  padding-left: 2px;
+  visibility: visible;
 }
 
 .title {
@@ -119,6 +118,7 @@ p {
   color: var(--color-text-primary);
   font-weight: normal;
   user-select: text;
+  padding-top: 2px;
 }
 
 .issue.expanded .title {
@@ -165,7 +165,7 @@ p {
 }
 
 devtools-icon.leading-issue-icon {
-  margin: 0 7px;
+  margin: 1px 0 -1px 7px;
 }
 
 .message {
@@ -230,8 +230,8 @@ devtools-icon.leading-issue-icon {
   list-style-position: inside;
   padding-inline-start: 0;
 }
-/* We inherit all the styles from treeoutline, but these are simple text <li>, so we override some styles */
 
+/* We inherit all the styles from treeoutline, but these are simple text <li>, so we override some styles */
 .link-list li::before {
   content: none;
   -webkit-mask-image: none;
@@ -252,6 +252,7 @@ devtools-icon.leading-issue-icon {
 ul > li.plain-enum {
   display: list-item;
 }
+
 /* This is a hack because the tree view's CSS overrides list styling in a non-compositional way. This
    can be removed once we've moved to proper components. */
 ul > li.plain-enum::before {
@@ -398,17 +399,17 @@ ul > li.plain-enum::before {
 }
 
 .affected-resources > .parent.expanded {
-  background: var(--color-background-elevation-0);
+  background: var(--sys-color-cdt-base-container);
 }
 
 .affected-resources > .children.expanded {
-  background: var(--color-background-elevation-0);
+  background: var(--sys-color-cdt-base-container);
   padding: 6px 0 9px 5px;
   margin-bottom: 10px;
 }
 
 .aggregated-issues-count {
-  padding-right: 7px;
+  padding: 3px 7px 0;
 }
 
 .affected-resource-directive-info-header {

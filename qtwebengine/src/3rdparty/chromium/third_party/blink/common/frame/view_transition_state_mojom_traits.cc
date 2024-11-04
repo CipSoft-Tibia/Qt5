@@ -19,12 +19,16 @@ bool StructTraits<blink::mojom::ViewTransitionElementDataView,
       !data.ReadViewportMatrix(&out->viewport_matrix) ||
       !data.ReadOverflowRectInLayoutSpace(
           &out->overflow_rect_in_layout_space) ||
-      !data.ReadSnapshotId(&out->snapshot_id)) {
+      !data.ReadSnapshotId(&out->snapshot_id) ||
+      !data.ReadCapturedRectInLayoutSpace(
+          &out->captured_rect_in_layout_space)) {
     return false;
   }
 
   out->paint_order = data.paint_order();
-  out->is_root = data.is_root();
+  out->container_writing_mode = data.container_writing_mode();
+  out->mix_blend_mode = data.mix_blend_mode();
+  out->text_orientation = data.text_orientation();
   return true;
 }
 
@@ -32,8 +36,11 @@ bool StructTraits<blink::mojom::ViewTransitionStateDataView,
                   blink::ViewTransitionState>::
     Read(blink::mojom::ViewTransitionStateDataView data,
          blink::ViewTransitionState* out) {
+  out->device_pixel_ratio = data.device_pixel_ratio();
   return data.ReadElements(&out->elements) &&
-         data.ReadNavigationId(&out->navigation_id);
+         data.ReadNavigationId(&out->navigation_id) &&
+         data.ReadSnapshotRootSizeAtCapture(
+             &out->snapshot_root_size_at_capture);
 }
 
 }  // namespace mojo

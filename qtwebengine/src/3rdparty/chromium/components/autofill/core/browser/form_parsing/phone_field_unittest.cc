@@ -62,7 +62,7 @@ class PhoneFieldTest
     // An empty page_language means the language is unknown and patterns of all
     // languages are used.
     std::unique_ptr<FormField> field =
-        PhoneField::Parse(scanner, LanguageCode(""), GetActivePatternSource(),
+        PhoneField::Parse(scanner, LanguageCode(""), *GetActivePatternSource(),
                           /*log_manager=*/nullptr);
     return std::unique_ptr<PhoneField>(
         static_cast<PhoneField*>(field.release()));
@@ -160,9 +160,9 @@ FieldRendererId PhoneFieldTest::MakeFieldRendererId() {
 }
 
 void PhoneFieldTest::Clear() {
-  list_.clear();
-  field_.reset();
   field_candidates_map_.clear();
+  field_.reset();
+  list_.clear();
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -179,9 +179,26 @@ TEST_P(PhoneFieldTest, NonParse) {
   RunParsingTest({}, /*expect_success=*/false);
 }
 
-TEST_P(PhoneFieldTest, ParseOneLinePhone) {
+TEST_P(PhoneFieldTest, ParseOneLinePhoneWithoutDefaultToCityAndNumber) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      features::kAutofillDefaultToCityAndNumber);
   for (const char* field_type : kFieldTypes) {
     RunParsingTest({{field_type, u"Phone", u"phone", PHONE_HOME_WHOLE_NUMBER}});
+  }
+}
+
+TEST_P(PhoneFieldTest, ParseOneLinePhoneWithDefaultToCityAndNumber) {
+  base::test::ScopedFeatureList scoped_feature_list{
+      features::kAutofillDefaultToCityAndNumber};
+  for (const char* field_type : kFieldTypes) {
+    RunParsingTest(
+        {{field_type, u"Phone", u"phone", PHONE_HOME_CITY_AND_NUMBER}});
+  }
+
+  for (const char* field_type : kFieldTypes) {
+    RunParsingTest({{field_type, u"Phone (e.g. +49...)", u"phone",
+                     PHONE_HOME_WHOLE_NUMBER}});
   }
 }
 
@@ -245,16 +262,12 @@ TEST_P(PhoneFieldTest, CountryAndCityAndPhoneNumber) {
 
 TEST_P(PhoneFieldTest, EmptyLabels) {
   base::test::ScopedFeatureList enabled_features;
-  enabled_features.InitWithFeatures(
-      /*enabled_features=*/
-      {features::kAutofillEnableSupportForPhoneNumberTrunkTypes,
-       features::kAutofillEnableParsingEmptyPhoneNumberLabels},
-      /*disabled_features=*/{});
+  enabled_features.InitAndEnableFeature(
+      features::kAutofillEnableParsingEmptyPhoneNumberLabels);
 
   // Phone: <input><input>
-  RunParsingTest(
-      {{"text", u"Phone", u"", PHONE_HOME_COUNTRY_CODE},
-       {"text", u"", u"", PHONE_HOME_CITY_AND_NUMBER_WITHOUT_TRUNK_PREFIX}});
+  RunParsingTest({{"text", u"Phone", u"", PHONE_HOME_COUNTRY_CODE},
+                  {"text", u"", u"", PHONE_HOME_CITY_AND_NUMBER}});
 
   // Phone: <input><input><input>
   RunParsingTest({{"text", u"Phone", u"", PHONE_HOME_COUNTRY_CODE},
@@ -268,38 +281,14 @@ TEST_P(PhoneFieldTest, GrammarMetrics) {
   // PHONE_HOME_WHOLE_NUMBER corresponds to the last grammar. We thus expect
   // that 2*16 + 1 = 33 is logged.
   base::HistogramTester histogram_tester;
-  RunParsingTest({{"text", u"Phone", u"phone", PHONE_HOME_WHOLE_NUMBER}});
+  bool default_to_city_and_number =
+      base::FeatureList::IsEnabled(features::kAutofillDefaultToCityAndNumber);
+  RunParsingTest({{"text", u"Phone", u"phone",
+                   default_to_city_and_number ? PHONE_HOME_CITY_AND_NUMBER
+                                              : PHONE_HOME_WHOLE_NUMBER}});
   EXPECT_THAT(histogram_tester.GetAllSamples(
                   "Autofill.FieldPrediction.PhoneNumberGrammarUsage"),
               BucketsAre(base::Bucket(33, 1)));
-}
-
-TEST_P(PhoneFieldTest, TrunkPrefixTypes) {
-  base::test::ScopedFeatureList trunk_types_enabled;
-  trunk_types_enabled.InitAndEnableFeature(
-      features::kAutofillEnableSupportForPhoneNumberTrunkTypes);
-
-  // Whole number instead of city-and-number.
-  RunParsingTest({{"text", u"Phone", u"phone", PHONE_HOME_WHOLE_NUMBER}});
-
-  // In presence of a country code, city-and-number without a trunk prefix
-  // is chosen.
-  RunParsingTest(
-      {{"text", u"Phone", u"ccode", PHONE_HOME_COUNTRY_CODE, /*max_length=*/3},
-       {"text", u"Phone", u"phone",
-        PHONE_HOME_CITY_AND_NUMBER_WITHOUT_TRUNK_PREFIX}});
-
-  // Similarly, city codes don't require a trunk prefix when a country code
-  // is present.
-  RunParsingTest(
-      {{"text", u"Phone", u"ccode", PHONE_HOME_COUNTRY_CODE, /*max_length=*/3},
-       {"text", u"Phone", u"areacode", PHONE_HOME_CITY_CODE},
-       {"text", u"Phone", u"phone", PHONE_HOME_NUMBER}});
-
-  // Without a country code, the city code requires a trunk prefix.
-  RunParsingTest(
-      {{"text", u"Phone", u"areacode", PHONE_HOME_CITY_CODE_WITH_TRUNK_PREFIX},
-       {"text", u"Phone", u"phone", PHONE_HOME_NUMBER}});
 }
 
 // Tests if the country code, city code and phone number fields are correctly

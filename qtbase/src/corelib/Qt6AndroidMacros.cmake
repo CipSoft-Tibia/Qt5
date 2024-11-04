@@ -10,7 +10,8 @@ function(_qt_internal_android_get_sdk_build_tools_revision out_var)
             LIST_DIRECTORIES true
             RELATIVE "${ANDROID_SDK_ROOT}/build-tools"
             "${ANDROID_SDK_ROOT}/build-tools/*")
-        if (NOT android_build_tools)
+        list(FILTER android_build_tools INCLUDE REGEX "[0-9]+\.[0-9]+(\.[0-9]+)?")
+        if(NOT android_build_tools)
             message(FATAL_ERROR "Could not locate Android SDK build tools under \"${ANDROID_SDK_ROOT}/build-tools\"")
         endif()
         list(SORT android_build_tools)
@@ -390,7 +391,8 @@ function(qt6_android_add_apk_target target)
     # No need to use genex for the BINARY_DIR since it's read-only.
     get_target_property(target_binary_dir ${target} BINARY_DIR)
 
-    if($CACHE{QT_USE_TARGET_ANDROID_BUILD_DIR})
+    if("$CACHE{QT_USE_TARGET_ANDROID_BUILD_DIR}" AND
+       "$CACHE{QT_USE_TARGET_ANDROID_BUILD_DIR}" STREQUAL "${QT_USE_TARGET_ANDROID_BUILD_DIR}")
         set(apk_final_dir "${target_binary_dir}/android-build-${target}")
     else()
         if(QT_USE_TARGET_ANDROID_BUILD_DIR)
@@ -426,6 +428,10 @@ function(qt6_android_add_apk_target target)
 
     set(extra_deps "")
 
+    if(QT_ENABLE_VERBOSE_DEPLOYMENT)
+       set(uses_terminal USES_TERMINAL)
+    endif()
+
     # Plugins still might be added after creating the deployment targets.
     if(NOT TARGET qt_internal_plugins)
         add_custom_target(qt_internal_plugins)
@@ -445,6 +451,7 @@ function(qt6_android_add_apk_target target)
         DEPENDS ${target} ${extra_deps}
         COMMAND ${copy_command}
         COMMENT "Copying ${target} binary to apk folder"
+        ${uses_terminal}
     )
 
     set(sign_apk "")
@@ -463,8 +470,18 @@ function(qt6_android_add_apk_target target)
     if(QT_ENABLE_VERBOSE_DEPLOYMENT)
         list(APPEND extra_args "--verbose")
     endif()
+
     if(QT_ANDROID_DEPLOY_RELEASE)
-        list(APPEND extra_args "--release")
+        message(WARNING "QT_ANDROID_DEPLOY_RELEASE is not a valid Qt variable."
+            " Please set QT_ANDROID_DEPLOYMENT_TYPE to RELEASE instead.")
+    endif()
+    # Setting QT_ANDROID_DEPLOYMENT_TYPE to a value other than Release disables
+    # release package signing regardless of the build type.
+    if(QT_ANDROID_DEPLOYMENT_TYPE)
+        string(TOUPPER "${QT_ANDROID_DEPLOYMENT_TYPE}" deployment_type_upper)
+        if("${deployment_type_upper}" STREQUAL "RELEASE")
+            list(APPEND extra_args "--release")
+        endif()
     elseif(NOT QT_BUILD_TESTS)
     # Workaround for tests: do not set automatically --release flag if QT_BUILD_TESTS is set.
     # Release package need to be signed. Signing is currently not supported by CI.
@@ -506,6 +523,7 @@ function(qt6_android_add_apk_target target)
             DEPENDS "${target}" "${deployment_file}" ${extra_deps}
             DEPFILE "${dep_file_path}"
             VERBATIM
+            ${uses_terminal}
         )
         cmake_policy(POP)
 
@@ -522,6 +540,7 @@ function(qt6_android_add_apk_target target)
                 ${sign_apk}
             COMMENT "Creating APK for ${target}"
             VERBATIM
+            ${uses_terminal}
         )
     endif()
 
@@ -538,6 +557,7 @@ function(qt6_android_add_apk_target target)
             ${sign_aab}
             ${extra_args}
         COMMENT "Creating AAB for ${target}"
+        ${uses_terminal}
     )
 
     if(QT_IS_ANDROID_MULTI_ABI_EXTERNAL_PROJECT)
@@ -558,7 +578,7 @@ function(qt6_android_add_apk_target target)
             "$<TARGET_FILE:${target}>"
             "${androiddeployqt_output_path}/${target_file_copy_relative_path}"
         )
-        if(has_depfile_support AND FALSE) # TODO: It breaks multi-abi builds. See QTBUG-122838
+        if(has_depfile_support)
             set(deploy_android_deps_dir "${apk_final_dir}/${target}_deploy_android")
             set(timestamp_file "${deploy_android_deps_dir}/timestamp")
             set(dep_file "${deploy_android_deps_dir}/${target}.d")
@@ -577,6 +597,7 @@ function(qt6_android_add_apk_target target)
                 COMMENT "Resolving ${CMAKE_ANDROID_ARCH_ABI} dependencies for the ${target} APK"
                 DEPFILE "${dep_file}"
                 VERBATIM
+                ${uses_terminal}
             )
             add_custom_target(qt_internal_${target}_copy_apk_dependencies
                 DEPENDS "${timestamp_file}")
@@ -590,6 +611,7 @@ function(qt6_android_add_apk_target target)
                     --copy-dependencies-only
                     ${extra_args}
                 COMMENT "Resolving ${CMAKE_ANDROID_ARCH_ABI} dependencies for the ${target} APK"
+                ${uses_terminal}
             )
         endif()
     endif()
@@ -1067,7 +1089,8 @@ function(_qt_internal_get_android_abi_cmake_dir_path out_path abi)
             NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_INTERNAL_IS_STANDALONE_TEST)
             set(cmake_dir "${QT_CONFIG_BUILD_DIR}")
         else()
-            set(cmake_dir "${prefix_path}/${QT6_INSTALL_LIBS}/cmake")
+            string(TOUPPER "${QT_CMAKE_EXPORT_NAMESPACE}" export_namespace_upper)
+            set(cmake_dir "${prefix_path}/${${export_namespace_upper}_INSTALL_LIBS}/cmake")
         endif()
     endif()
 
@@ -1161,6 +1184,95 @@ function(_qt_internal_collect_default_android_abis)
     set(QT_ANDROID_BUILD_ALL_ABIS FALSE CACHE BOOL
         "Build project using the list of autodetected Qt for Android ABIs"
     )
+endfunction()
+
+# Returns a path to the timestamp file for the specific step of the multi-ABI Android project
+function(_qt_internal_get_android_abi_step_stampfile out project abi step)
+    get_target_property(build_dir ${project} _qt_android_build_directory)
+    get_property(is_multi GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+    if(is_multi)
+        set(${out} "${build_dir}/$<CONFIG>/${project}_${step}_stamp" PARENT_SCOPE)
+    else()
+        set(${out} "${build_dir}/${project}_${step}_stamp" PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Creates the multi-ABI Android projects and assigns the JOB_POOL to them if it's possible
+function(_qt_internal_add_android_abi_project project abi)
+    add_custom_target(${project})
+
+    set(build_dir "${CMAKE_BINARY_DIR}/android_abi_builds/${abi}")
+    set_target_properties(${project} PROPERTIES
+        _qt_android_build_directory "${build_dir}"
+    )
+
+    file(MAKE_DIRECTORY "${build_dir}")
+    if(CMAKE_GENERATOR MATCHES "^Ninja")
+        set_property(GLOBAL APPEND PROPERTY JOB_POOLS _qt_android_${project}_pool=1)
+    endif()
+endfunction()
+
+# Adds the custom build step to the multi-ABI Android project
+function(_qt_internal_add_android_abi_step project abi step)
+    cmake_parse_arguments(arg "" "" "COMMAND;DEPENDS" ${ARGV})
+
+    if(NOT arg_COMMAND)
+        message(FATAL_ERROR "COMMAND is not set for ${project} step ${step} Android ABI ${abi}.")
+    endif()
+
+    set(dep_stamps "")
+    foreach(dep ${arg_DEPENDS})
+        _qt_internal_get_android_abi_step_stampfile(stamp ${project} ${abi} ${dep})
+        list(APPEND dep_stamps "${stamp}")
+    endforeach()
+
+    get_target_property(build_dir ${project} _qt_android_build_directory)
+
+    if(CMAKE_GENERATOR MATCHES "^Ninja")
+        set(add_to_pool JOB_POOL _qt_android_${project}_pool)
+    else()
+        set(add_to_pool "")
+    endif()
+
+    _qt_internal_get_android_abi_step_stampfile(stamp ${project} ${abi} ${step})
+    add_custom_command(OUTPUT "${stamp}"
+        COMMAND ${arg_COMMAND}
+        COMMAND "${CMAKE_COMMAND}" -E touch "${stamp}"
+        ${add_to_pool}
+        DEPENDS
+            ${dep_stamps}
+        WORKING_DIRECTORY
+            "${build_dir}"
+        VERBATIM
+    )
+    add_custom_target("${project}_${step}" DEPENDS "${stamp}")
+
+    get_target_property(known_steps ${project} _qt_android_abi_steps)
+    if(NOT CMAKE_GENERATOR MATCHES "^Ninja")
+        if(NOT QT_NO_WARN_ANDROID_MULTI_ABI_GENERATOR)
+            get_property(is_warned GLOBAL PROPERTY _qt_internal_warn_android_multi_abi_generator)
+            if(NOT is_warned)
+                set_property(GLOBAL PROPERTY _qt_internal_warn_android_multi_abi_generator TRUE)
+                message(WARNING "Building Multi-ABI Qt projects with the '${CMAKE_GENERATOR}'"
+                    " generator has limitations. All targets from non-main ABI will be built"
+                    " unconditionally. Please use the 'Ninja' or 'Ninja Multi-config' generators"
+                    " with ninja build instead. Set QT_NO_WARN_ANDROID_MULTI_ABI_GENERATOR to"
+                    " 'TRUE' to suppress this warning."
+                )
+            endif()
+        endif()
+        if(known_steps)
+            list(GET known_steps 0 first)
+            add_dependencies(${first} ${project}_${step})
+        endif()
+    endif()
+
+    if(known_steps)
+        list(PREPEND known_steps ${project}_${step})
+    else()
+        set(known_steps ${project}_${step})
+    endif()
+    set_target_properties(${project} PROPERTIES _qt_android_abi_steps "${known_steps}")
 endfunction()
 
 # The function configures external projects for ABIs that target packages need to build with.
@@ -1262,6 +1374,11 @@ function(_qt_internal_configure_android_multiabi_target target)
             "-DCMAKE_CXX_COMPILER_LAUNCHER=${compiler_launcher}")
     endif()
 
+    if(DEFINED QT_USE_TARGET_ANDROID_BUILD_DIR)
+        list(APPEND extra_cmake_args
+            "-DQT_USE_TARGET_ANDROID_BUILD_DIR=${QT_USE_TARGET_ANDROID_BUILD_DIR}")
+    endif()
+
     unset(user_cmake_args)
     foreach(var IN LISTS QT_ANDROID_MULTI_ABI_FORWARD_VARS)
         string(REPLACE ";" "$<SEMICOLON>" var_value "${${var}}")
@@ -1272,7 +1389,6 @@ function(_qt_internal_configure_android_multiabi_target target)
     set(previous_copy_apk_dependencies_target ${target})
     # Create external projects for each android ABI except the main one.
     list(REMOVE_ITEM android_abis "${CMAKE_ANDROID_ARCH_ABI}")
-    include(ExternalProject)
     foreach(abi IN ITEMS ${android_abis})
         if(NOT "${abi}" IN_LIST QT_DEFAULT_ANDROID_ABIS)
             list(APPEND missing_qt_abi_toolchains ${abi})
@@ -1280,16 +1396,17 @@ function(_qt_internal_configure_android_multiabi_target target)
             continue()
         endif()
 
-        set(android_abi_build_dir "${CMAKE_BINARY_DIR}/android_abi_builds/${abi}")
         get_property(abi_external_projects GLOBAL
             PROPERTY _qt_internal_abi_external_projects)
         if(NOT abi_external_projects
             OR NOT "qt_internal_android_${abi}" IN_LIST abi_external_projects)
+            _qt_internal_add_android_abi_project(qt_internal_android_${abi} ${abi})
+
+            get_target_property(android_abi_build_dir qt_internal_android_${abi}
+                _qt_android_build_directory)
             _qt_internal_get_android_abi_toolchain_path(qt_abi_toolchain_path ${abi})
-            ExternalProject_Add("qt_internal_android_${abi}"
-                SOURCE_DIR "${CMAKE_SOURCE_DIR}"
-                BINARY_DIR "${android_abi_build_dir}"
-                CONFIGURE_COMMAND
+            _qt_internal_add_android_abi_step(qt_internal_android_${abi} ${abi} configure
+                COMMAND
                     "${CMAKE_COMMAND}"
                     "-G${CMAKE_GENERATOR}"
                     "-DCMAKE_TOOLCHAIN_FILE=${qt_abi_toolchain_path}"
@@ -1301,44 +1418,40 @@ function(_qt_internal_configure_android_multiabi_target target)
                     "${user_cmake_args}"
                     "-B" "${android_abi_build_dir}"
                     "-S" "${CMAKE_SOURCE_DIR}"
-                EXCLUDE_FROM_ALL TRUE
-                BUILD_COMMAND "" # avoid top-level build of external project
             )
             set_property(GLOBAL APPEND PROPERTY
                 _qt_internal_abi_external_projects "qt_internal_android_${abi}")
+            if(NOT CMAKE_GENERATOR MATCHES "^Ninja")
+                add_dependencies(qt_internal_android_${abi}_configure
+                    ${previous_copy_apk_dependencies_target})
+            endif()
         endif()
-        ExternalProject_Add_Step("qt_internal_android_${abi}"
-            "${target}_build"
-            DEPENDEES configure
-            # TODO: Remove this when the step will depend on DEPFILE generated by
-            # androiddeployqt for the ${target}.
-            ALWAYS TRUE
-            EXCLUDE_FROM_MAIN TRUE
-            COMMAND "${CMAKE_COMMAND}"
-                "--build" "${android_abi_build_dir}"
-                "--config" "$<CONFIG>"
-                "--target" "${target}"
-        )
-        ExternalProject_Add_StepTargets("qt_internal_android_${abi}"
-            "${target}_build")
-        add_dependencies(${target} "qt_internal_android_${abi}-${target}_build")
 
-        ExternalProject_Add_Step("qt_internal_android_${abi}"
-            "${target}_copy_apk_dependencies"
-            DEPENDEES "${target}_build"
-            # TODO: Remove this when the step will depend on DEPFILE generated by
-            # androiddeployqt for the ${target}.
-            ALWAYS TRUE
-            EXCLUDE_FROM_MAIN TRUE
-            COMMAND "${CMAKE_COMMAND}"
-                "--build" "${android_abi_build_dir}"
-                "--config" "$<CONFIG>"
-                "--target" "qt_internal_${target}_copy_apk_dependencies"
+        get_target_property(android_abi_build_dir qt_internal_android_${abi}
+            _qt_android_build_directory)
+        _qt_internal_add_android_abi_step(qt_internal_android_${abi} ${abi} ${target}_build
+            DEPENDS
+                configure
+            COMMAND
+                "${CMAKE_COMMAND}"
+                --build "${android_abi_build_dir}"
+                --config $<CONFIG>
+                --target ${target}
         )
-        ExternalProject_Add_StepTargets("qt_internal_android_${abi}"
-            "${target}_copy_apk_dependencies")
+        add_dependencies(${target} "qt_internal_android_${abi}_${target}_build")
+
+        _qt_internal_add_android_abi_step(qt_internal_android_${abi} ${abi}
+            ${target}_copy_apk_dependencies
+            DEPENDS
+                ${target}_build
+            COMMAND
+                "${CMAKE_COMMAND}"
+                --build "${android_abi_build_dir}"
+                --config $<CONFIG>
+                --target qt_internal_${target}_copy_apk_dependencies
+        )
         set(external_project_copy_target
-            "qt_internal_android_${abi}-${target}_copy_apk_dependencies")
+            "qt_internal_android_${abi}_${target}_copy_apk_dependencies")
 
         # Need to build dependency chain between the
         # qt_internal_android_${abi}-${target}_copy_apk_dependencies targets for all ABI's, to

@@ -51,6 +51,7 @@ class Adapter final : public ObjectBase {
                                  const WGPUFeatureName* features);
 
     // Unimplementable. Only availale in dawn_native.
+    WGPUInstance GetInstance() const;
     WGPUDevice CreateDevice(const WGPUDeviceDescriptor*);
 
   private:
@@ -64,6 +65,8 @@ class Adapter final : public ObjectBase {
     };
     RequestTracker<RequestDeviceData> mRequestDeviceRequests;
 };
+
+void ClientAdapterPropertiesFreeMembers(WGPUAdapterProperties);
 
 }  // namespace dawn::wire::client
 

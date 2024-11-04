@@ -53,6 +53,7 @@
 #include "internal/platform/implementation/windows/listenable_future.h"
 #include "internal/platform/implementation/windows/log_message.h"
 #include "internal/platform/implementation/windows/mutex.h"
+#include "internal/platform/implementation/windows/preferences_manager.h"
 #include "internal/platform/implementation/windows/scheduled_executor.h"
 #include "internal/platform/implementation/windows/server_sync.h"
 #include "internal/platform/implementation/windows/settable_future.h"
@@ -69,6 +70,8 @@ namespace nearby {
 namespace api {
 
 namespace {
+
+constexpr char kNCRelativePath[] = "Google\\Nearby\\Connections";
 
 std::string GetApplicationName(DWORD pid) {
   HANDLE handle =
@@ -132,10 +135,10 @@ std::string ImplementationPlatform::GetAppDataPath(
   // KNOWNFOLDERID.
   // https://docs.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shgetknownfolderpath
   SHGetKnownFolderPath(
-      FOLDERID_ProgramData,  //  rfid: A reference to the KNOWNFOLDERID that
-                             //  identifies the folder.
+      FOLDERID_LocalAppData,  //  rfid: A reference to the KNOWNFOLDERID that
+                              //  identifies the folder.
       0,           // dwFlags: Flags that specify special retrieval options.
-      NULL,        // hToken: An access token that represents a particular user.
+      nullptr,     // hToken: An access token that represents a particular user.
       &basePath);  // ppszPath: When this method returns, contains the address
                    // of a pointer to a null-terminated Unicode string that
                    // specifies the path of the known folder. The calling
@@ -143,20 +146,17 @@ std::string ImplementationPlatform::GetAppDataPath(
                    // is no longer needed by calling CoTaskMemFree, whether
                    // SHGetKnownFolderPath succeeds or not.
   size_t bufferSize;
-  wcstombs_s(&bufferSize, NULL, 0, basePath, 0);
+  wcstombs_s(&bufferSize, nullptr, 0, basePath, 0);
   std::string fullpathUTF8(bufferSize - 1, '\0');
   wcstombs_s(&bufferSize, fullpathUTF8.data(), bufferSize, basePath, _TRUNCATE);
   CoTaskMemFree(basePath);
-
-  // Get the application image name
-  auto app_name = GetApplicationName(GetCurrentProcessId());
 
   // Check if our folder exists
   std::replace(fullpathUTF8.begin(), fullpathUTF8.end(), '\\', '/');
 
   std::stringstream path("");
 
-  path << fullpathUTF8.c_str() << "/" << app_name.c_str() << "/"
+  path << fullpathUTF8.c_str() << "/" << kNCRelativePath << "/"
        << file_name.data();
 
   return path.str();
@@ -179,9 +179,12 @@ std::unique_ptr<CountDownLatch> ImplementationPlatform::CreateCountDownLatch(
   return absl::make_unique<shared::CountDownLatch>(count);
 }
 
+#pragma push_macro("CreateMutex")
+#undef CreateMutex
 std::unique_ptr<Mutex> ImplementationPlatform::CreateMutex(Mutex::Mode mode) {
   return absl::make_unique<windows::Mutex>(mode);
 }
+#pragma pop_macro("CreateMutex")
 
 std::unique_ptr<ConditionVariable>
 ImplementationPlatform::CreateConditionVariable(Mutex* mutex) {
@@ -298,7 +301,7 @@ ImplementationPlatform::CreateWifiDirectMedium() {
   return nullptr;
 }
 
-// TODO(b/184975123): replace with real implementation.
+// TODO(b/261663238) replace with real implementation.
 std::unique_ptr<WebRtcMedium> ImplementationPlatform::CreateWebRtcMedium() {
   return nullptr;
 }
@@ -315,6 +318,11 @@ std::unique_ptr<Timer> ImplementationPlatform::CreateTimer() {
 
 std::unique_ptr<DeviceInfo> ImplementationPlatform::CreateDeviceInfo() {
   return std::make_unique<windows::DeviceInfo>();
+}
+
+std::unique_ptr<nearby::api::PreferencesManager>
+ImplementationPlatform::CreatePreferencesManager(absl::string_view path) {
+  return std::make_unique<windows::PreferencesManager>(path);
 }
 
 }  // namespace api

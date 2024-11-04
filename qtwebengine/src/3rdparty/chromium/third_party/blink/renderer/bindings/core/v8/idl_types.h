@@ -19,6 +19,7 @@
 
 namespace blink {
 
+class BigInt;
 class EventListener;
 class ScriptPromise;
 class ScriptValue;
@@ -31,6 +32,9 @@ struct IDLAny final : public IDLBaseHelper<ScriptValue> {};
 
 // boolean
 struct IDLBoolean final : public IDLBaseHelper<bool> {};
+
+// bigint
+struct IDLBigint final : public IDLBaseHelper<BigInt> {};
 
 // Integer types
 
@@ -130,7 +134,7 @@ namespace bindings {
 enum class IDLStringConvMode {
   kDefault,
   kNullable,
-  kTreatNullAsEmptyString,
+  kLegacyNullToEmptyString,
 };
 
 }  // namespace bindings
@@ -147,8 +151,8 @@ using IDLByteString = IDLByteStringBase<bindings::IDLStringConvMode::kDefault>;
 template <bindings::IDLStringConvMode mode>
 struct IDLStringBase final : public IDLStringTypeBase {};
 using IDLString = IDLStringBase<bindings::IDLStringConvMode::kDefault>;
-using IDLStringTreatNullAsEmptyString =
-    IDLStringBase<bindings::IDLStringConvMode::kTreatNullAsEmptyString>;
+using IDLStringLegacyNullToEmptyString =
+    IDLStringBase<bindings::IDLStringConvMode::kLegacyNullToEmptyString>;
 
 // USVString
 template <bindings::IDLStringConvMode mode>
@@ -161,9 +165,9 @@ struct IDLStringStringContextTrustedHTMLBase final : public IDLStringTypeBase {
 };
 using IDLStringStringContextTrustedHTML = IDLStringStringContextTrustedHTMLBase<
     bindings::IDLStringConvMode::kDefault>;
-using IDLStringStringContextTrustedHTMLTreatNullAsEmptyString =
+using IDLStringLegacyNullToEmptyStringStringContextTrustedHTML =
     IDLStringStringContextTrustedHTMLBase<
-        bindings::IDLStringConvMode::kTreatNullAsEmptyString>;
+        bindings::IDLStringConvMode::kLegacyNullToEmptyString>;
 
 // [StringContext=TrustedScript] DOMString
 template <bindings::IDLStringConvMode mode>
@@ -172,9 +176,9 @@ struct IDLStringStringContextTrustedScriptBase final
 using IDLStringStringContextTrustedScript =
     IDLStringStringContextTrustedScriptBase<
         bindings::IDLStringConvMode::kDefault>;
-using IDLStringStringContextTrustedScriptTreatNullAsEmptyString =
+using IDLStringLegacyNullToEmptyStringStringContextTrustedScript =
     IDLStringStringContextTrustedScriptBase<
-        bindings::IDLStringConvMode::kTreatNullAsEmptyString>;
+        bindings::IDLStringConvMode::kLegacyNullToEmptyString>;
 
 // [StringContext=TrustedScriptURL] USVString
 template <bindings::IDLStringConvMode mode>

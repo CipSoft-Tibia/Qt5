@@ -32,10 +32,6 @@ namespace guest_view {
 
 namespace {
 
-using WebContentsGuestViewMap = std::map<const WebContents*, GuestViewBase*>;
-base::LazyInstance<WebContentsGuestViewMap>::Leaky g_webcontents_guestview_map =
-    LAZY_INSTANCE_INITIALIZER;
-
 void DestroyGuestIfUnattached(GuestViewBase* guest) {
   std::unique_ptr<GuestViewBase> owned_guest =
       guest->GetGuestViewManager()->TransferOwnership(guest);
@@ -66,11 +62,12 @@ class GuestViewBase::OwnerContentsObserver : public WebContentsObserver {
     // Once attached, the guest can't outlive its owner WebContents.
     DCHECK_EQ(guest_->element_instance_id(), kInstanceIDNone);
 
-    // Defensively clear the guest's `owner_web_contents_`, since a unique_ptr
+    // Defensively clear the guest's `owner_rfh_id_`, since a unique_ptr
     // to the guest may be passed through asynchronous calls early in its
-    // initialization, and it's possible that its pointer to
-    // `owner_web_contents_` could become stale during this process.
-    guest_->owner_web_contents_ = nullptr;
+    // initialization, and it's possible that the owner WebContents could be
+    // destroyed during this process. Lookups using an id would still be safe,
+    // but we clear this anyway to avoid unexpected lookups during destruction.
+    guest_->owner_rfh_id_ = content::GlobalRenderFrameHostId();
     DestroyGuestIfUnattached(&*guest_);
   }
 
@@ -139,12 +136,12 @@ class GuestViewBase::OpenerLifetimeObserver : public WebContentsObserver {
   raw_ptr<GuestViewBase> guest_;
 };
 
-GuestViewBase::GuestViewBase(WebContents* owner_web_contents)
-    : owner_web_contents_(owner_web_contents),
-      browser_context_(owner_web_contents->GetBrowserContext()),
+GuestViewBase::GuestViewBase(content::RenderFrameHost* owner_rfh)
+    : owner_rfh_id_(owner_rfh->GetGlobalId()),
+      browser_context_(owner_rfh->GetBrowserContext()),
       guest_instance_id_(GetGuestViewManager()->GetNextInstanceID()) {
   owner_contents_observer_ = std::make_unique<OwnerContentsObserver>(
-      weak_ptr_factory_.GetSafeRef(), owner_web_contents_);
+      weak_ptr_factory_.GetSafeRef(), owner_web_contents());
   SetOwnerHost();
 }
 
@@ -152,15 +149,15 @@ GuestViewBase::~GuestViewBase() {
   DCHECK(!is_being_destroyed_);
   is_being_destroyed_ = true;
 
-  // If `this` was ever attached, it is important to clear `owner_web_contents_`
+  // If `this` was ever attached, it is important to clear `owner_rfh_id_`
   // after the call to StopTrackingEmbedderZoomLevel(), but before the rest of
   // the statements in this function.
   StopTrackingEmbedderZoomLevel();
-  owner_web_contents_ = nullptr;
+  owner_rfh_id_ = content::GlobalRenderFrameHostId();
 
   // This is not necessarily redundant with the removal when the guest contents
   // is destroyed, since we may never have initialized a guest WebContents.
-  GetGuestViewManager()->RemoveGuest(guest_instance_id_,
+  GetGuestViewManager()->RemoveGuest(this,
                                      /*invalidate_id=*/true);
 
   pending_events_.clear();
@@ -200,9 +197,7 @@ void GuestViewBase::InitWithWebContents(const base::Value::Dict& create_params,
 
   WebContentsObserver::Observe(guest_web_contents);
   guest_web_contents->SetDelegate(this);
-  g_webcontents_guestview_map.Get().insert(
-      std::make_pair(guest_web_contents, this));
-  GetGuestViewManager()->AddGuest(guest_instance_id_, guest_web_contents);
+  GetGuestViewManager()->AddGuest(this);
 
   // Populate the view instance ID if we have it on creation.
   view_instance_id_ =
@@ -252,9 +247,7 @@ gfx::Size GuestViewBase::GetDefaultSize() const {
     return gfx::Size(kDefaultWidth, kDefaultHeight);
 
   // Full page plugins default to the size of the owner's viewport.
-  return owner_web_contents()
-      ->GetRenderWidgetHostView()
-      ->GetVisibleViewportSize();
+  return owner_rfh()->GetView()->GetVisibleViewportSize();
 }
 
 void GuestViewBase::SetSize(const SetSizeParams& params) {
@@ -315,10 +308,14 @@ void GuestViewBase::SetSize(const SetSizeParams& params) {
 }
 
 // static
-GuestViewBase* GuestViewBase::FromWebContents(const WebContents* web_contents) {
-  WebContentsGuestViewMap* guest_map = g_webcontents_guestview_map.Pointer();
-  auto it = guest_map->find(web_contents);
-  return it == guest_map->end() ? nullptr : it->second;
+GuestViewBase* GuestViewBase::FromWebContents(WebContents* web_contents) {
+  if (!web_contents) {
+    return nullptr;
+  }
+
+  auto* manager =
+      GuestViewManager::FromBrowserContext(web_contents->GetBrowserContext());
+  return manager ? manager->GetGuestFromWebContents(web_contents) : nullptr;
 }
 
 // static
@@ -390,7 +387,7 @@ GuestViewManager* GuestViewBase::GetGuestViewManager() {
 std::unique_ptr<WebContents> GuestViewBase::CreateNewGuestWindow(
     const WebContents::CreateParams& create_params) {
   return GetGuestViewManager()->CreateGuestWithWebContentsParams(
-      GetViewType(), owner_web_contents(), create_params);
+      GetViewType(), owner_rfh(), create_params);
 }
 
 void GuestViewBase::DidAttach() {
@@ -412,23 +409,16 @@ void GuestViewBase::DidAttach() {
 }
 
 WebContents* GuestViewBase::GetOwnerWebContents() {
-  return owner_web_contents_;
+  return owner_web_contents();
 }
 
 content::RenderFrameHost* GuestViewBase::GetProspectiveOuterDocument() {
   DCHECK(!attached());
-  // TODO(crbug.com/769461): We should be more specific here and return the
-  // owner RenderFrameHost rather than assume it's the owner's primary main
-  // frame.
-  return owner_web_contents() ? owner_web_contents()->GetPrimaryMainFrame()
-                              : nullptr;
+  return owner_rfh();
 }
 
 const GURL& GuestViewBase::GetOwnerSiteURL() const {
-  return owner_web_contents()
-      ->GetPrimaryMainFrame()
-      ->GetSiteInstance()
-      ->GetSiteURL();
+  return owner_rfh()->GetSiteInstance()->GetSiteURL();
 }
 
 void GuestViewBase::SetAttachParams(const base::Value::Dict& params) {
@@ -445,13 +435,11 @@ void GuestViewBase::SetOpener(GuestViewBase* guest) {
   }
 }
 
-void GuestViewBase::WillAttach(
+void GuestViewBase::AttachToOuterWebContentsFrame(
     std::unique_ptr<GuestViewBase> owned_this,
-    WebContents* embedder_web_contents,
     content::RenderFrameHost* outer_contents_frame,
     int element_instance_id,
     bool is_full_page_plugin,
-    base::OnceClosure completion_callback,
     GuestViewMessageHandler::AttachToEmbedderFrameCallback
         attachment_callback) {
   // Stop tracking the old embedder's zoom level.
@@ -459,8 +447,16 @@ void GuestViewBase::WillAttach(
   // embedder at this point, since guest reattachment is no longer possible.
   StopTrackingEmbedderZoomLevel();
 
-  if (owner_web_contents_ != embedder_web_contents) {
-    SetNewOwnerWebContents(embedder_web_contents);
+  content::WebContents* embedder_web_contents =
+      content::WebContents::FromRenderFrameHost(outer_contents_frame);
+
+  if (owner_web_contents() != embedder_web_contents) {
+    UpdateWebContentsForNewOwner(outer_contents_frame->GetParent());
+  } else {
+    // Even if the owner WebContents hasn't changed, it still could be the case
+    // that the owner switches to a same-origin subframe. But we don't need to
+    // do anything beyond updating the id of the owner in this case.
+    owner_rfh_id_ = outer_contents_frame->GetParent()->GetGlobalId();
   }
 
   // Start tracking the new embedder's zoom level.
@@ -488,7 +484,7 @@ void GuestViewBase::WillAttach(
   // not have RemoteFrame mojo channels so we pass in
   // NullAssociatedRemote/Receivers. New channels will be bound when the
   // `CreateView` IPC is sent.
-  owner_web_contents_->AttachInnerWebContents(
+  owner_web_contents()->AttachInnerWebContents(
       std::move(owned_guest_contents), outer_contents_frame,
       /*remote_frame=*/mojo::NullAssociatedRemote(),
       /*remote_frame_host_receiver=*/mojo::NullAssociatedReceiver(),
@@ -503,7 +499,8 @@ void GuestViewBase::WillAttach(
 
   // Completing attachment will resume suspended resource loads and then send
   // queued events.
-  SignalWhenReady(std::move(completion_callback));
+  SignalWhenReady(base::BindOnce(&GuestViewBase::DidAttach,
+                                 weak_ptr_factory_.GetWeakPtr()));
 }
 
 void GuestViewBase::SignalWhenReady(base::OnceClosure callback) {
@@ -533,13 +530,8 @@ void GuestViewBase::DidStopLoading() {
   GuestViewDidStopLoading();
 }
 
-void GuestViewBase::RenderViewReady() {
-  GuestReady();
-}
-
 void GuestViewBase::WebContentsDestroyed() {
-  g_webcontents_guestview_map.Get().erase(web_contents());
-  GetGuestViewManager()->RemoveGuest(guest_instance_id_,
+  GetGuestViewManager()->RemoveGuest(this,
                                      /*invalidate_id=*/false);
 
   // Self-destruct.
@@ -661,48 +653,8 @@ void GuestViewBase::UpdateTargetURL(WebContents* source, const GURL& url) {
 bool GuestViewBase::ShouldResumeRequestsForCreatedWindow() {
   // Delay so that the embedder page has a chance to call APIs such as
   // webRequest in time to be applied to the initial navigation in the new guest
-  // contents. We resume during WillAttach.
+  // contents. We resume during AttachToOuterWebContentsFrame.
   return false;
-}
-
-content::RenderWidgetHost* GuestViewBase::GetOwnerRenderWidgetHost() {
-  // We assume guests live inside an owner RenderFrame but the RenderFrame may
-  // not be cross-process. In case a type of guest should be allowed to be
-  // embedded in a cross-process frame, this method should be overrode for that
-  // specific guest type. For all other guests, the owner RenderWidgetHost is
-  // that of the owner WebContents.
-  DCHECK(!CanBeEmbeddedInsideCrossProcessFrames());
-  auto* owner = GetOwnerWebContents();
-  if (owner && owner->GetRenderWidgetHostView())
-    return owner->GetRenderWidgetHostView()->GetRenderWidgetHost();
-  return nullptr;
-}
-
-content::SiteInstance* GuestViewBase::GetOwnerSiteInstance() {
-  // We assume guests live inside an owner RenderFrame but the RenderFrame may
-  // not be cross-process. In case a type of guest should be allowed to be
-  // embedded in a cross-process frame, this method should be overrode for that
-  // specific guest type. For all other guests, the owner site instance can be
-  // from the owner WebContents.
-  DCHECK(!CanBeEmbeddedInsideCrossProcessFrames());
-  if (auto* owner_contents = GetOwnerWebContents())
-    return owner_contents->GetSiteInstance();
-  return nullptr;
-}
-
-void GuestViewBase::AttachToOuterWebContentsFrame(
-    std::unique_ptr<GuestViewBase> owned_this,
-    content::RenderFrameHost* embedder_frame,
-    int32_t element_instance_id,
-    bool is_full_page_plugin,
-    GuestViewMessageHandler::AttachToEmbedderFrameCallback
-        attachment_callback) {
-  auto completion_callback =
-      base::BindOnce(&GuestViewBase::DidAttach, weak_ptr_factory_.GetWeakPtr());
-  WillAttach(std::move(owned_this),
-             WebContents::FromRenderFrameHost(embedder_frame), embedder_frame,
-             element_instance_id, is_full_page_plugin,
-             std::move(completion_callback), std::move(attachment_callback));
 }
 
 void GuestViewBase::OnZoomControllerDestroyed(zoom::ZoomController* source) {
@@ -786,16 +738,20 @@ void GuestViewBase::ClearOwnedGuestContents() {
   owned_guest_contents_.reset();
 }
 
-void GuestViewBase::SetNewOwnerWebContents(
-    content::WebContents* owner_web_contents) {
+void GuestViewBase::UpdateWebContentsForNewOwner(
+    content::RenderFrameHost* new_owner_rfh) {
+  content::WebContents* new_owner_web_contents =
+      content::WebContents::FromRenderFrameHost(new_owner_rfh);
   DCHECK(!attached());
-  DCHECK(owner_web_contents_);
-  DCHECK(owner_web_contents);
-  DCHECK_NE(owner_web_contents_, owner_web_contents);
-  DCHECK_EQ(owner_contents_observer_->web_contents(), owner_web_contents_);
-  owner_web_contents_ = owner_web_contents;
+  DCHECK(owner_web_contents());
+  DCHECK(new_owner_web_contents);
+  DCHECK_NE(owner_web_contents(), new_owner_web_contents);
+  DCHECK_EQ(owner_contents_observer_->web_contents(), owner_web_contents());
+
+  owner_rfh_id_ = new_owner_rfh->GetGlobalId();
+
   owner_contents_observer_ = std::make_unique<OwnerContentsObserver>(
-      weak_ptr_factory_.GetSafeRef(), owner_web_contents_);
+      weak_ptr_factory_.GetSafeRef(), owner_web_contents());
   SetOwnerHost();
 }
 
@@ -909,9 +865,8 @@ void GuestViewBase::UpdateGuestSize(const gfx::Size& new_size,
 }
 
 void GuestViewBase::SetOwnerHost() {
-  auto* manager = GuestViewManager::FromBrowserContext(browser_context_);
-  owner_host_ = manager->IsOwnedByExtension(this)
-                    ? owner_web_contents()->GetLastCommittedURL().host()
+  owner_host_ = GetGuestViewManager()->IsOwnedByExtension(this)
+                    ? owner_rfh()->GetLastCommittedURL().host()
                     : std::string();
 }
 
@@ -921,6 +876,10 @@ bool GuestViewBase::CanBeEmbeddedInsideCrossProcessFrames() const {
 
 bool GuestViewBase::RequiresSslInterstitials() const {
   return false;
+}
+
+bool GuestViewBase::IsPermissionRequestable(ContentSettingsType type) const {
+  return true;
 }
 
 content::RenderFrameHost* GuestViewBase::GetGuestMainFrame() const {

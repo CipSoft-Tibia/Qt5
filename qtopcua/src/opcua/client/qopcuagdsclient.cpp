@@ -666,7 +666,7 @@ void QOpcUaGdsClientPrivate::start()
             return;
         }
 
-        QObject::connect(m_client, &QOpcUaClient::namespaceArrayUpdated, [this]() {
+        QObject::connect(m_client, &QOpcUaClient::namespaceArrayUpdated, q, [this]() {
             setState(QOpcUaGdsClient::State::Connected);
             this->resolveDirectoryNode();
         });
@@ -692,7 +692,7 @@ void QOpcUaGdsClientPrivate::start()
             }
         });
 
-        QObject::connect(m_client, &QOpcUaClient::connectError, [](QOpcUaErrorState *errorState) {
+        QObject::connect(m_client, &QOpcUaClient::connectError, q, [](QOpcUaErrorState *errorState) {
             // Ignore all client side errors and continue
             if (errorState->isClientSideError())
                 errorState->setIgnoreError();
@@ -823,9 +823,10 @@ void QOpcUaGdsClientPrivate::resolveDirectoryNode()
         return;
     }
 
-    QObject::connect(m_directoryNode, &QOpcUaNode::resolveBrowsePathFinished, [this, q](QList<QOpcUaBrowsePathTarget> targets,
-                                                                 QList<QOpcUaRelativePathElement> path,
-                                                                 QOpcUa::UaStatusCode statusCode) {
+    QObject::connect(m_directoryNode, &QOpcUaNode::resolveBrowsePathFinished, q,
+                     [this, q](QList<QOpcUaBrowsePathTarget> targets,
+                               QList<QOpcUaRelativePathElement> path,
+                               QOpcUa::UaStatusCode statusCode) {
         m_directoryNode->deleteLater();
         m_directoryNode = nullptr;
 
@@ -866,10 +867,20 @@ void QOpcUaGdsClientPrivate::resolveDirectoryNode()
             return;
         }
 
-        QObject::connect(m_directoryNode, SIGNAL(resolveBrowsePathFinished(QList<QOpcUaBrowsePathTarget>, QList<QOpcUaRelativePathElement>, QOpcUa::UaStatusCode)),
-                         q, SLOT(_q_handleResolveBrowsePathFinished(QList<QOpcUaBrowsePathTarget>, QList<QOpcUaRelativePathElement>, QOpcUa::UaStatusCode)));
-        QObject::connect(m_directoryNode, SIGNAL(methodCallFinished(QString, QVariant, QOpcUa::UaStatusCode)),
-                         q, SLOT(_q_handleDirectoryNodeMethodCallFinished(QString, QVariant, QOpcUa::UaStatusCode)));
+        auto handleResolve = [this](QList<QOpcUaBrowsePathTarget> targets,
+                                    QList<QOpcUaRelativePathElement> path,
+                                    QOpcUa::UaStatusCode statusCode) {
+            _q_handleResolveBrowsePathFinished(targets, path, statusCode);
+        };
+        QObject::connect(m_directoryNode, &QOpcUaNode::resolveBrowsePathFinished,
+                         q, std::move(handleResolve));
+
+        auto handleDirNode = [this](QString methodNodeId, QVariant result,
+                                    QOpcUa::UaStatusCode statusCode) {
+            _q_handleDirectoryNodeMethodCallFinished(methodNodeId, result, statusCode);
+        };
+        QObject::connect(m_directoryNode, &QOpcUaNode::methodCallFinished,
+                         q, std::move(handleDirNode));
 
         qCDebug(QT_OPCUA_GDSCLIENT) << "Directory node resolved:" << m_directoryNode->nodeId();
         this->resolveMethodNodes();
@@ -890,7 +901,7 @@ void QOpcUaGdsClientPrivate::resolveDirectoryNode()
 
 void QOpcUaGdsClientPrivate::resolveMethodNodes()
 {
-    // See OPC UA Specification 1.04 part 12 6.3.2 "Directory"
+    // See OPC UA Specification 1.05 part 12 6.6.2 "Directory"
 
     QOpcUaRelativePathElement pathElement(QOpcUaQualifiedName(m_gdsNamespaceIndex, QLatin1String()),
                                            QOpcUa::ReferenceTypeId::HasComponent);
@@ -959,7 +970,7 @@ void QOpcUaGdsClientPrivate::_q_handleResolveBrowsePathFinished(QList<QOpcUaBrow
 
 void QOpcUaGdsClientPrivate::getApplication()
 {
-    // See OPC UA Specification 1.04 part 12 6.3.9 "GetApplication"
+    // See OPC UA Specification 1.05 part 12 6.6.9 "GetApplication"
 
     if (!m_client || m_client->state() != QOpcUaClient::Connected) {
         qCWarning(QT_OPCUA_GDSCLIENT) << "No connection";
@@ -1151,7 +1162,7 @@ void QOpcUaGdsClientPrivate::handleRegisterApplicationFinished(const QVariant &r
 
 void QOpcUaGdsClientPrivate::getCertificateGroups()
 {
-    // OPC UA Specification Version 1.04 Part 4 Chapter 7.6.6 GetCertificateGroups
+    // OPC UA Specification Version 1.05 Part 12 Chapter 7.9.7 GetCertificateGroups
 
     if (!m_client || m_client->state() != QOpcUaClient::Connected) {
         qCWarning(QT_OPCUA_GDSCLIENT) << "No connection";
@@ -1192,6 +1203,8 @@ void QOpcUaGdsClientPrivate::handleGetCertificateGroupsFinished(const QVariant &
 
 void QOpcUaGdsClientPrivate::resolveCertificateTypes()
 {
+    Q_Q(QOpcUaGdsClient);
+
     if (!m_client || m_client->state() != QOpcUaClient::Connected) {
         qCWarning(QT_OPCUA_GDSCLIENT) << "No connection";
         setError(QOpcUaGdsClient::Error::FailedToGetCertificateStatus);
@@ -1213,9 +1226,10 @@ void QOpcUaGdsClientPrivate::resolveCertificateTypes()
         return;
     }
 
-    QObject::connect(m_certificateGroupNode, &QOpcUaNode::resolveBrowsePathFinished, [this](QList<QOpcUaBrowsePathTarget> targets,
-                                                                 QList<QOpcUaRelativePathElement> path,
-                                                                 QOpcUa::UaStatusCode statusCode) {
+    QObject::connect(m_certificateGroupNode, &QOpcUaNode::resolveBrowsePathFinished,
+                     q, [this](QList<QOpcUaBrowsePathTarget> targets,
+                               QList<QOpcUaRelativePathElement> path,
+                               QOpcUa::UaStatusCode statusCode) {
         if (path.size() != 1) {
             qCWarning(QT_OPCUA_GDSCLIENT) << "Invalid path size";
             setError(QOpcUaGdsClient::Error::FailedToGetCertificateStatus);
@@ -1264,6 +1278,8 @@ void QOpcUaGdsClientPrivate::resolveCertificateTypes()
 
 void QOpcUaGdsClientPrivate::getCertificateTypes()
 {
+    Q_Q(QOpcUaGdsClient);
+
     if (!m_client || m_client->state() != QOpcUaClient::Connected) {
         qCWarning(QT_OPCUA_GDSCLIENT) << "No connection";
         setError(QOpcUaGdsClient::Error::FailedToGetCertificateStatus);
@@ -1285,7 +1301,8 @@ void QOpcUaGdsClientPrivate::getCertificateTypes()
         return;
     }
 
-    QObject::connect(m_certificateTypesNode, &QOpcUaNode::attributeUpdated, [this](QOpcUa::NodeAttribute attr, QVariant value) {
+    QObject::connect(m_certificateTypesNode, &QOpcUaNode::attributeUpdated,
+                     q, [this](QOpcUa::NodeAttribute attr, QVariant value) {
         if (attr == QOpcUa::NodeAttribute::Value)
             qCWarning(QT_OPCUA_GDSCLIENT) << "possible certificate types" << value;
         registrationDone();
@@ -1314,7 +1331,7 @@ void QOpcUaGdsClientPrivate::registrationDone()
 
 void QOpcUaGdsClientPrivate::getCertificateStatus()
 {
-    // OPC UA Specification Version 1.04 Part 4 Chapter 7.6.8 GetCertificateStatus
+    // OPC UA Specification Version 1.05 Part 12 Chapter 7.9.10 GetCertificateStatus
 
     if (!m_client || m_client->state() != QOpcUaClient::Connected) {
         qCWarning(QT_OPCUA_GDSCLIENT) << "No connection";
@@ -1367,7 +1384,7 @@ void QOpcUaGdsClientPrivate::handleGetCertificateStatusFinished(const QVariant &
 
 void QOpcUaGdsClientPrivate::startCertificateRequest()
 {
-    // OPC UA Specification Version 1.04 Part 4 Chapter 7.6.3 StartSigningRequest
+    // OPC UA Specification Version 1.05 Part 12 Chapter 7.9.3 StartSigningRequest
 
     if (!m_client || m_client->state() != QOpcUaClient::Connected) {
         qCWarning(QT_OPCUA_GDSCLIENT) << "No connection";
@@ -1428,6 +1445,8 @@ void QOpcUaGdsClientPrivate::startCertificateRequest()
 
 void QOpcUaGdsClientPrivate::handleStartSigningRequestFinished(const QVariant &result, QOpcUa::UaStatusCode statusCode)
 {
+    Q_Q(QOpcUaGdsClient);
+
     if (statusCode != QOpcUa::Good) {
         qCWarning(QT_OPCUA_GDSCLIENT) << "Getting certificate failed" << statusCode;
         setError(QOpcUaGdsClient::Error::FailedToGetCertificate);
@@ -1441,7 +1460,7 @@ void QOpcUaGdsClientPrivate::handleStartSigningRequestFinished(const QVariant &r
 
     m_certificateFinishTimer->setInterval(2000);
     m_certificateFinishTimer->setSingleShot(true);
-    QObject::connect(m_certificateFinishTimer, &QTimer::timeout, [this]() {
+    QObject::connect(m_certificateFinishTimer, &QTimer::timeout, q, [this]() {
         this->finishCertificateRequest();
     });
 
@@ -1450,7 +1469,7 @@ void QOpcUaGdsClientPrivate::handleStartSigningRequestFinished(const QVariant &r
 
 void QOpcUaGdsClientPrivate::finishCertificateRequest()
 {
-    // OPC UA Specification Version 1.04 Part 4 Chapter 7.6.5 FinishRequest
+    // OPC UA Specification Version 1.05 Part 12 Chapter 7.9.5 FinishRequest
 
     if (!m_client || m_client->state() != QOpcUaClient::Connected) {
         qCWarning(QT_OPCUA_GDSCLIENT) << "No connection";
@@ -1761,7 +1780,7 @@ void QOpcUaGdsClientPrivate::_q_certificateCheckTimeout()
 
 void QOpcUaGdsClientPrivate::_q_updateTrustList()
 {
-    // OPC UA Specification Version 1.04 Part 4 Chapter 7.6.7 GetTrustList
+    // OPC UA Specification Version 1.05 Part 12 Chapter 7.9.9 GetTrustList
 
     if (!m_client || m_client->state() != QOpcUaClient::Connected) {
         qCWarning(QT_OPCUA_GDSCLIENT) << "No connection";
@@ -1810,7 +1829,8 @@ void QOpcUaGdsClientPrivate::handleGetTrustListFinished(const QVariant &result, 
         return;
     }
 
-    QObject::connect(m_trustListNode, &QOpcUaNode::attributeUpdated, [q](QOpcUa::NodeAttribute attr, QVariant value) {
+    QObject::connect(m_trustListNode, &QOpcUaNode::attributeUpdated,
+                     q, [q](QOpcUa::NodeAttribute attr, QVariant value) {
         Q_UNUSED(value);
         if (attr == QOpcUa::NodeAttribute::Value)
             emit q->trustListUpdated();

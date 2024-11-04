@@ -29,6 +29,19 @@ QT_BEGIN_NAMESPACE
     Internally, TriangleMeshShape converts the mesh to an optimized data structure. This conversion
     can be done in advance. See the \l{Qt Quick 3D Physics Cooking}{cooking overview documentation}
     for details.
+
+    \note If both the \l{TriangleMeshShape::}{geometry} and \l{TriangleMeshShape::}{source}
+    properties are set then only \l{TriangleMeshShape::}{geometry} will be used.
+    \sa TriangleMeshShape::geometry
+*/
+
+/*!
+    \qmlproperty Geometry TriangleMeshShape::geometry
+    This property defines the geometry of a mesh used to define the shape.
+    \note If both the \l{TriangleMeshShape::}{geometry} and \l{TriangleMeshShape::}{source}
+    properties are set then only \l{TriangleMeshShape::}{geometry} will be used.
+    \sa TriangleMeshShape::source
+    \since 6.7
 */
 
 QMeshShape::MeshType QTriangleMeshShape::shapeType() const

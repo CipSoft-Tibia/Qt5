@@ -10,14 +10,20 @@
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/pseudo_element.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
-#include "third_party/blink/renderer/core/view_transition/view_transition.h"
+#include "third_party/blink/renderer/core/view_transition/view_transition_request_forward.h"
 
 namespace blink {
+
+class ViewTransition;
 
 class CORE_EXPORT ViewTransitionUtils {
  public:
   template <typename Functor>
   static void ForEachTransitionPseudo(Document& document, Functor& func) {
+    if (!document.documentElement()) {
+      return;
+    }
+
     auto* transition_pseudo =
         document.documentElement()->GetPseudoElement(kPseudoIdViewTransition);
     if (!transition_pseudo)
@@ -56,6 +62,10 @@ class CORE_EXPORT ViewTransitionUtils {
   template <typename Functor>
   static PseudoElement* FindPseudoIf(const Document& document,
                                      const Functor& condition) {
+    if (!document.documentElement()) {
+      return nullptr;
+    }
+
     auto* transition_pseudo =
         document.documentElement()->GetPseudoElement(kPseudoIdViewTransition);
     if (!transition_pseudo) {
@@ -101,6 +111,54 @@ class CORE_EXPORT ViewTransitionUtils {
     return nullptr;
   }
 
+  template <typename Functor>
+  static void ForEachDirectTransitionPseudo(const Element* element,
+                                            Functor& func) {
+    if (element->IsDocumentElement()) {
+      if (auto* pseudo = element->GetPseudoElement(kPseudoIdViewTransition)) {
+        func(pseudo);
+      }
+      return;
+    }
+
+    if (!IsTransitionPseudoElement(element->GetPseudoId())) {
+      return;
+    }
+
+    switch (element->GetPseudoId()) {
+      case kPseudoIdViewTransition:
+        for (auto name :
+             element->GetDocument().GetStyleEngine().ViewTransitionTags()) {
+          if (auto* pseudo = element->GetPseudoElement(
+                  kPseudoIdViewTransitionGroup, name)) {
+            func(pseudo);
+          }
+        }
+        break;
+      case kPseudoIdViewTransitionGroup:
+        if (auto* pseudo =
+                element->GetPseudoElement(kPseudoIdViewTransitionImagePair)) {
+          func(pseudo);
+        }
+        break;
+      case kPseudoIdViewTransitionImagePair:
+        if (auto* pseudo =
+                element->GetPseudoElement(kPseudoIdViewTransitionOld)) {
+          func(pseudo);
+        }
+        if (auto* pseudo =
+                element->GetPseudoElement(kPseudoIdViewTransitionNew)) {
+          func(pseudo);
+        }
+        break;
+      case kPseudoIdViewTransitionOld:
+      case kPseudoIdViewTransitionNew:
+        break;
+      default:
+        NOTREACHED();
+    }
+  }
+
   // Returns the active transition from the document, if any.
   static ViewTransition* GetActiveTransition(const Document& document);
 
@@ -115,6 +173,22 @@ class CORE_EXPORT ViewTransitionUtils {
   // Returns true if the given layout object corresponds to the root
   // ::view-transition pseudo element of a view transition hierarchy.
   static bool IsViewTransitionRoot(const LayoutObject& object);
+
+  // Returns true if this object represents an element that is a view transition
+  // participant.
+  static bool IsViewTransitionParticipant(const LayoutObject& object);
+
+  // Returns true if this element is a view transition participant. This is a
+  // slow check that walks all of the view transition elements in the
+  // ViewTransitionStyleTracker.
+  static bool IsViewTransitionElementExcludingRootFromSupplement(
+      const Element& element);
+
+  // Returns true if this object represents an element that is a view transition
+  // participant. This is a slow check that walks all of the view transition
+  // elements in the ViewTransitionStyleTracker.
+  static bool IsViewTransitionParticipantFromSupplement(
+      const LayoutObject& object);
 };
 
 }  // namespace blink

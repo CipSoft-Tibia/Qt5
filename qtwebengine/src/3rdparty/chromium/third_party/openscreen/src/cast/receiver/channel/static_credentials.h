@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,13 +9,11 @@
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "cast/receiver/channel/device_auth_namespace_handler.h"
 #include "platform/base/error.h"
 #include "platform/base/tls_credentials.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class StaticCredentialsProvider final
     : public DeviceAuthNamespaceHandler::CredentialsProvider {
@@ -31,8 +29,8 @@ class StaticCredentialsProvider final
   StaticCredentialsProvider& operator=(StaticCredentialsProvider&&);
   ~StaticCredentialsProvider();
 
-  absl::Span<const uint8_t> GetCurrentTlsCertAsDer() override {
-    return absl::Span<uint8_t>(tls_cert_der);
+  ByteView GetCurrentTlsCertAsDer() override {
+    return ByteBuffer(tls_cert_der);
   }
   const DeviceCredentials& GetCurrentDeviceCredentials() override {
     return device_creds;
@@ -63,7 +61,6 @@ ErrorOr<GeneratedCredentials> GenerateCredentials(
 ErrorOr<GeneratedCredentials> GenerateCredentialsForTesting(
     const std::string& device_certificate_id);
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_RECEIVER_CHANNEL_STATIC_CREDENTIALS_H_

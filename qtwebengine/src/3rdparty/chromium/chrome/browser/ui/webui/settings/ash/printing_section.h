@@ -5,6 +5,7 @@
 #ifndef CHROME_BROWSER_UI_WEBUI_SETTINGS_ASH_PRINTING_SECTION_H_
 #define CHROME_BROWSER_UI_WEBUI_SETTINGS_ASH_PRINTING_SECTION_H_
 
+#include "base/memory/raw_ptr.h"
 #include "base/values.h"
 #include "chrome/browser/ash/printing/cups_printers_manager.h"
 #include "chrome/browser/ui/webui/settings/ash/os_settings_section.h"
@@ -26,18 +27,18 @@ class PrintingSection : public OsSettingsSection,
                   CupsPrintersManager* printers_manager);
   ~PrintingSection() override;
 
- private:
   // OsSettingsSection:
   void AddLoadTimeData(content::WebUIDataSource* html_source) override;
   void AddHandlers(content::WebUI* web_ui) override;
   int GetSectionNameMessageId() const override;
   chromeos::settings::mojom::Section GetSection() const override;
   mojom::SearchResultIcon GetSectionIcon() const override;
-  std::string GetSectionPath() const override;
+  const char* GetSectionPath() const override;
   bool LogMetric(chromeos::settings::mojom::Setting setting,
                  base::Value& value) const override;
   void RegisterHierarchy(HierarchyGenerator* generator) const override;
 
+ private:
   // CupsPrintersManager::Observer
   void OnPrintersChanged(
       chromeos::PrinterClass printer_class,
@@ -45,7 +46,7 @@ class PrintingSection : public OsSettingsSection,
 
   void UpdateSavedPrintersSearchTags();
 
-  CupsPrintersManager* printers_manager_;
+  raw_ptr<CupsPrintersManager, ExperimentalAsh> printers_manager_;
 };
 
 }  // namespace ash::settings

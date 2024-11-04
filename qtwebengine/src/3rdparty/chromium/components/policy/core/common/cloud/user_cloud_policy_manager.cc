@@ -87,6 +87,12 @@ void UserCloudPolicyManager::Shutdown() {
 }
 
 void UserCloudPolicyManager::SetSigninAccountId(const AccountId& account_id) {
+  if (account_id.is_valid()) {
+    // Start the recorder as it is assumed that there is now a valid managed
+    // account.
+    StartRecordingMetric();
+  }
+
   store_->SetSigninAccountId(account_id);
 }
 
@@ -116,16 +122,6 @@ void UserCloudPolicyManager::Connect(
                                 policy_prefs::kUserPolicyRefreshRate);
   if (external_data_manager_)
     external_data_manager_->Connect(std::move(url_loader_factory));
-}
-
-// static
-std::unique_ptr<CloudPolicyClient>
-UserCloudPolicyManager::CreateCloudPolicyClient(
-    DeviceManagementService* device_management_service,
-    scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory) {
-  return std::make_unique<CloudPolicyClient>(
-      device_management_service, std::move(url_loader_factory),
-      CloudPolicyClient::DeviceDMTokenCallback());
 }
 
 void UserCloudPolicyManager::DisconnectAndRemovePolicy() {
@@ -173,6 +169,11 @@ bool UserCloudPolicyManager::IsFirstPolicyLoadComplete(
     PolicyDomain domain) const {
   return !policies_required_ ||
          CloudPolicyManager::IsFirstPolicyLoadComplete(domain);
+}
+
+void UserCloudPolicyManager::StartRecordingMetric() {
+  // Starts a recording session by creating the recorder.
+  metrics_recorder_ = std::make_unique<UserPolicyMetricsRecorder>(this);
 }
 
 }  // namespace policy

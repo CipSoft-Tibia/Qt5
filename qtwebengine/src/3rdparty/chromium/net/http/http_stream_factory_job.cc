@@ -16,19 +16,16 @@
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
-#include "base/metrics/histogram_macros.h"
-#include "base/metrics/sparse_histogram.h"
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/task/single_thread_task_runner.h"
-#include "base/trace_event/trace_event.h"
 #include "base/values.h"
 #include "build/build_config.h"
 #include "net/base/host_port_pair.h"
 #include "net/base/port_util.h"
 #include "net/base/proxy_delegate.h"
-#include "net/base/trace_constants.h"
+#include "net/base/tracing.h"
 #include "net/cert/cert_verifier.h"
 #include "net/dns/public/secure_dns_policy.h"
 #include "net/http/bidirectional_stream_impl.h"
@@ -51,7 +48,6 @@
 #include "net/socket/ssl_client_socket.h"
 #include "net/socket/stream_socket.h"
 #include "net/spdy/bidirectional_stream_spdy_impl.h"
-#include "net/spdy/http2_push_promise_index.h"
 #include "net/spdy/spdy_http_stream.h"
 #include "net/spdy/spdy_session.h"
 #include "net/ssl/ssl_cert_request_info.h"
@@ -88,13 +84,13 @@ const char* NetLogHttpStreamJobType(HttpStreamFactory::JobType job_type) {
 }
 
 // Returns parameters associated with the start of a HTTP stream job.
-base::Value NetLogHttpStreamJobParams(const NetLogSource& source,
-                                      const GURL& original_url,
-                                      const GURL& url,
-                                      bool expect_spdy,
-                                      bool using_quic,
-                                      HttpStreamFactory::JobType job_type,
-                                      RequestPriority priority) {
+base::Value::Dict NetLogHttpStreamJobParams(const NetLogSource& source,
+                                            const GURL& original_url,
+                                            const GURL& url,
+                                            bool expect_spdy,
+                                            bool using_quic,
+                                            HttpStreamFactory::JobType job_type,
+                                            RequestPriority priority) {
   base::Value::Dict dict;
   if (source.IsValid())
     source.AddToEventParameters(dict);
@@ -104,15 +100,15 @@ base::Value NetLogHttpStreamJobParams(const NetLogSource& source,
   dict.Set("using_quic", using_quic);
   dict.Set("priority", RequestPriorityToString(priority));
   dict.Set("type", NetLogHttpStreamJobType(job_type));
-  return base::Value(std::move(dict));
+  return dict;
 }
 
 // Returns parameters associated with the ALPN protocol of a HTTP stream.
-base::Value NetLogHttpStreamProtoParams(NextProto negotiated_protocol) {
+base::Value::Dict NetLogHttpStreamProtoParams(NextProto negotiated_protocol) {
   base::Value::Dict dict;
 
   dict.Set("proto", NextProtoToString(negotiated_protocol));
-  return base::Value(std::move(dict));
+  return dict;
 }
 
 HttpStreamFactory::Job::Job(Delegate* delegate,
@@ -169,7 +165,6 @@ HttpStreamFactory::Job::Job(Delegate* delegate,
       quic_version_(quic_version),
       expect_spdy_(alternative_protocol == kProtoHTTP2 && !using_quic_),
       quic_request_(session_->quic_stream_factory()),
-      pushed_stream_id_(kNoPushedStreamFound),
       spdy_session_key_(
           using_quic_
               ? SpdySessionKey()
@@ -229,6 +224,17 @@ HttpStreamFactory::Job::Job(Delegate* delegate,
     DCHECK(origin_url_.SchemeIsWSOrWSS());
   } else {
     DCHECK(!origin_url_.SchemeIsWSOrWSS());
+  }
+
+  const NetLogWithSource* delegate_net_log = delegate_->GetNetLog();
+  if (delegate_net_log) {
+    net_log_.BeginEvent(NetLogEventType::HTTP_STREAM_JOB, [&] {
+      return NetLogHttpStreamJobParams(
+          delegate_net_log->source(), request_info_.url, origin_url_,
+          expect_spdy_, using_quic_, job_type_, priority_);
+    });
+    delegate_net_log->AddEventReferencingSource(
+        NetLogEventType::HTTP_STREAM_REQUEST_STARTED_JOB, net_log_.source());
   }
 }
 
@@ -334,7 +340,8 @@ bool HttpStreamFactory::Job::HasAvailableSpdySession() const {
 bool HttpStreamFactory::Job::HasAvailableQuicSession() const {
   if (!using_quic_)
     return false;
-  bool require_dns_https_alpn = (job_type_ == DNS_ALPN_H3);
+  bool require_dns_https_alpn =
+      (job_type_ == DNS_ALPN_H3) || (job_type_ == PRECONNECT_DNS_ALPN_H3);
   return quic_request_.CanUseExistingSession(
       origin_url_, request_info_.privacy_mode, request_info_.socket_tag,
       request_info_.network_anonymization_key, request_info_.secure_dns_policy,
@@ -548,12 +555,10 @@ void HttpStreamFactory::Job::OnPreconnectsComplete(int result) {
 }
 
 void HttpStreamFactory::Job::OnIOComplete(int result) {
-  TRACE_EVENT0(NetTracingCategory(), "HttpStreamFactory::Job::OnIOComplete");
   RunLoop(result);
 }
 
 void HttpStreamFactory::Job::RunLoop(int result) {
-  TRACE_EVENT0(NetTracingCategory(), "HttpStreamFactory::Job::RunLoop");
   result = DoLoop(result);
 
   if (result == ERR_IO_PENDING)
@@ -680,18 +685,6 @@ int HttpStreamFactory::Job::StartInternal() {
 }
 
 int HttpStreamFactory::Job::DoStart() {
-  const NetLogWithSource* net_log = delegate_->GetNetLog();
-
-  if (net_log) {
-    net_log_.BeginEvent(NetLogEventType::HTTP_STREAM_JOB, [&] {
-      return NetLogHttpStreamJobParams(net_log->source(), request_info_.url,
-                                       origin_url_, expect_spdy_, using_quic_,
-                                       job_type_, priority_);
-    });
-    net_log->AddEventReferencingSource(
-        NetLogEventType::HTTP_STREAM_REQUEST_STARTED_JOB, net_log_.source());
-  }
-
   // Don't connect to restricted ports.
   if (!IsPortAllowedForScheme(destination_.port(),
                               request_info_.url.scheme_piece())) {
@@ -794,11 +787,6 @@ int HttpStreamFactory::Job::DoInitConnectionImpl() {
   // connection this request can pool to.  If so, then go straight to using
   // that.
   if (CanUseExistingSpdySession()) {
-    if (!is_websocket_) {
-      session_->spdy_session_pool()->push_promise_index()->ClaimPushedStream(
-          spdy_session_key_, origin_url_, request_info_,
-          &existing_spdy_session_, &pushed_stream_id_);
-    }
     if (!existing_spdy_session_) {
       if (!spdy_session_request_) {
         // If not currently watching for an H2 session, use
@@ -1165,8 +1153,8 @@ int HttpStreamFactory::Job::SetSpdyHttpStreamOrBidirectionalStreamImpl(
   // will be creating all the SpdyHttpStreams, since it will know when
   // SpdySessions become available.
 
-  stream_ = std::make_unique<SpdyHttpStream>(
-      session, pushed_stream_id_, net_log_.source(), std::move(dns_aliases));
+  stream_ = std::make_unique<SpdyHttpStream>(session, net_log_.source(),
+                                             std::move(dns_aliases));
   return OK;
 }
 
@@ -1201,25 +1189,18 @@ int HttpStreamFactory::Job::DoCreateStream() {
 
   CHECK(!stream_.get());
 
-  // It is possible that a pushed stream has been opened by a server since last
-  // time Job checked above.
+  // It is also possible that an HTTP/2 connection has been established since
+  // last time Job checked above.
   if (!existing_spdy_session_) {
     // WebSocket over HTTP/2 is only allowed to use existing HTTP/2 connections.
     // Therefore |using_spdy_| could not have been set unless a connection had
     // already been found.
     DCHECK(!is_websocket_);
 
-    session_->spdy_session_pool()->push_promise_index()->ClaimPushedStream(
-        spdy_session_key_, origin_url_, request_info_, &existing_spdy_session_,
-        &pushed_stream_id_);
-    // It is also possible that an HTTP/2 connection has been established since
-    // last time Job checked above.
-    if (!existing_spdy_session_) {
-      existing_spdy_session_ =
-          session_->spdy_session_pool()->FindAvailableSession(
-              spdy_session_key_, enable_ip_based_pooling_,
-              /* is_websocket = */ false, net_log_);
-    }
+    existing_spdy_session_ =
+        session_->spdy_session_pool()->FindAvailableSession(
+            spdy_session_key_, enable_ip_based_pooling_,
+            /* is_websocket = */ false, net_log_);
   }
   if (existing_spdy_session_) {
     // We picked up an existing session, so we don't need our socket.
@@ -1310,8 +1291,10 @@ void HttpStreamFactory::Job::OnSpdySessionAvailable(
 
 int HttpStreamFactory::Job::ReconsiderProxyAfterError(int error) {
   // Check if the error was a proxy failure.
-  if (!CanFalloverToNextProxy(proxy_info_.proxy_server(), error, &error))
+  if (!CanFalloverToNextProxy(proxy_info_.proxy_server(), error, &error,
+                              proxy_info_.is_for_ip_protection())) {
     return error;
+  }
 
   should_reconsider_proxy_ = true;
   return error;

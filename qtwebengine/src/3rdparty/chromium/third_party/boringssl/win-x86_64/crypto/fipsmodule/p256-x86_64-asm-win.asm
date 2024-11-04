@@ -6,6 +6,7 @@ default	rel
 %define XMMWORD
 %define YMMWORD
 %define ZMMWORD
+%define _CET_ENDBR
 
 %ifdef BORINGSSL_PREFIX
 %include "boringssl_prefix_symbols_nasm.inc"
@@ -15,6 +16,7 @@ section	.text code align=64
 EXTERN	OPENSSL_ia32cap_P
 
 
+section	.rdata rdata align=8
 ALIGN	64
 $L$poly:
 	DQ	0xffffffffffffffff,0x00000000ffffffff,0x0000000000000000,0xffffffff00000001
@@ -33,6 +35,8 @@ $L$ord:
 	DQ	0xf3b9cac2fc632551,0xbce6faada7179e84,0xffffffffffffffff,0xffffffff00000000
 $L$ordK:
 	DQ	0xccd1c8aaee00bc4f
+section	.text
+
 
 
 
@@ -49,6 +53,7 @@ $L$SEH_begin_ecp_nistz256_neg:
 
 
 
+_CET_ENDBR
 	push	r12
 
 	push	r13
@@ -119,6 +124,7 @@ $L$SEH_begin_ecp_nistz256_ord_mul_mont:
 
 
 
+_CET_ENDBR
 	lea	rcx,[OPENSSL_ia32cap_P]
 	mov	rcx,QWORD[8+rcx]
 	and	ecx,0x80100
@@ -457,6 +463,7 @@ $L$SEH_begin_ecp_nistz256_ord_sqr_mont:
 
 
 
+_CET_ENDBR
 	lea	rcx,[OPENSSL_ia32cap_P]
 	mov	rcx,QWORD[8+rcx]
 	and	ecx,0x80100
@@ -1230,6 +1237,7 @@ $L$SEH_begin_ecp_nistz256_mul_mont:
 
 
 
+_CET_ENDBR
 	lea	rcx,[OPENSSL_ia32cap_P]
 	mov	rcx,QWORD[8+rcx]
 	and	ecx,0x80100
@@ -1530,6 +1538,7 @@ $L$SEH_begin_ecp_nistz256_sqr_mont:
 
 
 
+_CET_ENDBR
 	lea	rcx,[OPENSSL_ia32cap_P]
 	mov	rcx,QWORD[8+rcx]
 	and	ecx,0x80100
@@ -2055,6 +2064,7 @@ global	ecp_nistz256_select_w5
 ALIGN	32
 ecp_nistz256_select_w5:
 
+_CET_ENDBR
 	lea	rax,[OPENSSL_ia32cap_P]
 	mov	rax,QWORD[8+rax]
 	test	eax,32
@@ -2145,6 +2155,7 @@ global	ecp_nistz256_select_w7
 ALIGN	32
 ecp_nistz256_select_w7:
 
+_CET_ENDBR
 	lea	rax,[OPENSSL_ia32cap_P]
 	mov	rax,QWORD[8+rax]
 	test	eax,32
@@ -2313,6 +2324,7 @@ ALIGN	32
 ecp_nistz256_avx2_select_w7:
 
 $L$avx2_select_w7:
+_CET_ENDBR
 	vzeroupper
 	mov	r11,rsp
 	lea	rax,[((-136))+rsp]
@@ -2551,6 +2563,7 @@ $L$SEH_begin_ecp_nistz256_point_double:
 
 
 
+_CET_ENDBR
 	lea	rcx,[OPENSSL_ia32cap_P]
 	mov	rcx,QWORD[8+rcx]
 	and	ecx,0x80100
@@ -2789,6 +2802,7 @@ $L$SEH_begin_ecp_nistz256_point_add:
 
 
 
+_CET_ENDBR
 	lea	rcx,[OPENSSL_ia32cap_P]
 	mov	rcx,QWORD[8+rcx]
 	and	ecx,0x80100
@@ -3230,6 +3244,7 @@ $L$SEH_begin_ecp_nistz256_point_add_affine:
 
 
 
+_CET_ENDBR
 	lea	rcx,[OPENSSL_ia32cap_P]
 	mov	rcx,QWORD[8+rcx]
 	and	ecx,0x80100

@@ -137,12 +137,16 @@ class TestUrlCheckInterceptor : public safe_browsing::UrlCheckInterceptor {
   void Clear() { map_.clear(); }
 
   // safe_browsing::UrlCheckInterceptor
-  void Check(std::unique_ptr<SbBridge::ResponseCallback> callback,
-             const GURL& url) const override {
+  void CheckBySafetyNet(std::unique_ptr<SbBridge::ResponseCallback> callback,
+                        const GURL& url) override {
     RunCallbackOnIOThread(std::move(callback), Find(url),
                           safe_browsing::ThreatMetadata());
   }
-  ~TestUrlCheckInterceptor() override {}
+  void CheckBySafeBrowsing(std::unique_ptr<SbBridge::ResponseCallback> callback,
+                           const GURL& url) override {
+    NOTREACHED();
+  }
+  ~TestUrlCheckInterceptor() override = default;
 
  private:
   safe_browsing::SBThreatType Find(const GURL& url) const {
@@ -320,18 +324,15 @@ IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest, DoesNotShowInterstitial_Safe) {
   NavigateWithThreatType(safe_browsing::SB_THREAT_TYPE_SAFE, false);
 }
 
-IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest,
-                       DISABLED_ShowsInterstitial_Malware) {
+IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest, ShowsInterstitial_Malware) {
   NavigateWithThreatType(safe_browsing::SB_THREAT_TYPE_URL_MALWARE, true);
 }
 
-IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest,
-                       DISABLED_ShowsInterstitial_Phishing) {
+IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest, ShowsInterstitial_Phishing) {
   NavigateWithThreatType(safe_browsing::SB_THREAT_TYPE_URL_PHISHING, true);
 }
 
-IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest,
-                       DISABLED_CheckNavigationErrorType) {
+IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest, CheckNavigationErrorType) {
   auto threat_types = {
       safe_browsing::SB_THREAT_TYPE_URL_PHISHING,
       safe_browsing::SB_THREAT_TYPE_URL_MALWARE,
@@ -352,18 +353,16 @@ IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest,
 
 // Tests below are disabled due to failures on Android.
 // See crbug.com/1340200.
-IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest,
-                       DISABLED_ShowsInterstitial_Unwanted) {
+IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest, ShowsInterstitial_Unwanted) {
   NavigateWithThreatType(safe_browsing::SB_THREAT_TYPE_URL_UNWANTED, true);
 }
 
-IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest,
-                       DISABLED_ShowsInterstitial_Billing) {
+IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest, ShowsInterstitial_Billing) {
   NavigateWithThreatType(safe_browsing::SB_THREAT_TYPE_BILLING, true);
 }
 
 IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest,
-                       DISABLED_ShowsInterstitial_Malware_Subresource) {
+                       ShowsInterstitial_Malware_Subresource) {
   NavigateWithSubResourceAndThreatType(
       safe_browsing::SB_THREAT_TYPE_URL_MALWARE, true);
 }
@@ -439,7 +438,7 @@ IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest,
 }
 
 IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest,
-                       DISABLED_NoAccessTokenFetchInBasicSafeBrowsing) {
+                       NoAccessTokenFetchInBasicSafeBrowsing) {
   SetSafeBrowsingEnabled(true);
 
   GURL a_url(embedded_test_server()->GetURL("a.com", "/simple_page.html"));
@@ -448,6 +447,7 @@ IN_PROC_BROWSER_TEST_F(SafeBrowsingBrowserTest,
   EXPECT_FALSE(access_token_fetch_delegate()->has_received_request());
 }
 
+// Disabled due to https://crbug.com/1448377.
 IN_PROC_BROWSER_TEST_F(
     SafeBrowsingBrowserTest,
     DISABLED_NoAccessTokenFetchInRealTimeUrlLookupsUnlessEnabled) {
@@ -474,6 +474,7 @@ IN_PROC_BROWSER_TEST_F(
 // Tests that even if the embedder does not respond to an access token fetch
 // that is made by safe browsing as part of a navigation, the navigation
 // completes due to Safe Browsing's timing out the access token fetch.
+// Disabled due to https://crbug.com/1448377.
 IN_PROC_BROWSER_TEST_F(
     SafeBrowsingBrowserTest,
     DISABLED_UnfulfilledAccessTokenFetchTimesOutAndNavigationCompletes) {

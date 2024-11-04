@@ -117,7 +117,7 @@ public:
         return nullptr;
     }
 
-    CompositeMetaTypeIds typeIdsForComponent(const QString &inlineComponentName = QString()) const;
+    QQmlType qmlTypeForComponent(const QString &inlineComponentName = QString()) const;
 
 private:
     QList<QQmlError> errors;

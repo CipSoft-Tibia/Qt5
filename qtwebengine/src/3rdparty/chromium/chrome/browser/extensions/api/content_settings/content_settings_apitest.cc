@@ -24,6 +24,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/common/chrome_switches.h"
+#include "components/content_settings/core/browser/content_settings_uma_util.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings.h"
@@ -32,7 +33,6 @@
 #include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "components/permissions/features.h"
 #include "components/permissions/permission_manager.h"
-#include "components/permissions/permission_result.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/common/content_switches.h"
@@ -130,6 +130,9 @@ class ExtensionContentSettingsApiTest : public ExtensionApiTest {
     EXPECT_EQ(CONTENT_SETTING_ALLOW,
               map->GetContentSetting(example_url, example_url,
                                      ContentSettingsType::AUTOPLAY));
+    EXPECT_EQ(CONTENT_SETTING_BLOCK,
+              map->GetContentSetting(example_url, example_url,
+                                     ContentSettingsType::ANTI_ABUSE));
 
     // Check content settings for www.google.com
     GURL url("http://www.google.com");
@@ -160,6 +163,9 @@ class ExtensionContentSettingsApiTest : public ExtensionApiTest {
                                      ContentSettingsType::AUTOMATIC_DOWNLOADS));
     EXPECT_EQ(CONTENT_SETTING_ALLOW,
               map->GetContentSetting(url, url, ContentSettingsType::AUTOPLAY));
+    EXPECT_EQ(
+        CONTENT_SETTING_BLOCK,
+        map->GetContentSetting(url, url, ContentSettingsType::ANTI_ABUSE));
   }
 
   void CheckContentSettingsDefault() {
@@ -198,6 +204,9 @@ class ExtensionContentSettingsApiTest : public ExtensionApiTest {
                                      ContentSettingsType::AUTOMATIC_DOWNLOADS));
     EXPECT_EQ(CONTENT_SETTING_ALLOW,
               map->GetContentSetting(url, url, ContentSettingsType::AUTOPLAY));
+    EXPECT_EQ(
+        CONTENT_SETTING_ALLOW,
+        map->GetContentSetting(url, url, ContentSettingsType::ANTI_ABUSE));
   }
 
   // Returns a snapshot of content settings for a given URL.
@@ -235,7 +244,7 @@ class ExtensionContentSettingsApiTest : public ExtensionApiTest {
   }
 
  private:
-  raw_ptr<Profile, DanglingUntriaged> profile_ = nullptr;
+  raw_ptr<Profile, AcrossTasksDanglingUntriaged> profile_ = nullptr;
   std::unique_ptr<ScopedKeepAlive> keep_alive_;
   std::unique_ptr<ScopedProfileKeepAlive> profile_keep_alive_;
 };
@@ -347,13 +356,15 @@ IN_PROC_BROWSER_TEST_P(ExtensionContentSettingsApiTestWithContextType,
   const char kExtensionPath[] = "content_settings/embeddedsettingsmetric";
   EXPECT_TRUE(RunExtensionTest(kExtensionPath)) << message_;
 
-  size_t num_values = 0;
-  int images_type = ContentSettingTypeToHistogramValue(
-      ContentSettingsType::IMAGES, &num_values);
-  int geolocation_type = ContentSettingTypeToHistogramValue(
-      ContentSettingsType::GEOLOCATION, &num_values);
-  int cookies_type = ContentSettingTypeToHistogramValue(
-      ContentSettingsType::COOKIES, &num_values);
+  int images_type =
+      content_settings_uma_util::ContentSettingTypeToHistogramValue(
+          ContentSettingsType::IMAGES);
+  int geolocation_type =
+      content_settings_uma_util::ContentSettingTypeToHistogramValue(
+          ContentSettingsType::GEOLOCATION);
+  int cookies_type =
+      content_settings_uma_util::ContentSettingTypeToHistogramValue(
+          ContentSettingsType::COOKIES);
 
   histogram_tester.ExpectBucketCount(
       "ContentSettings.ExtensionEmbeddedSettingSet", images_type, 1);
@@ -381,8 +392,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionContentSettingsApiTest, ConsoleErrorTest) {
                            ->host_contents();
   content::WebContentsConsoleObserver console_observer(web_contents);
   console_observer.SetPattern("*contentSettings.plugins is deprecated.*");
-  browsertest_util::ExecuteScriptInBackgroundPageNoWait(
-      profile(), extension->id(), "setPluginsSetting()");
+  ExecuteScriptInBackgroundPageNoWait(extension->id(), "setPluginsSetting()");
   ASSERT_TRUE(console_observer.Wait());
   EXPECT_EQ(1u, console_observer.messages().size());
 }

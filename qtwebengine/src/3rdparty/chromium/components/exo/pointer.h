@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "ash/shell_observer.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/unguessable_token.h"
 #include "components/exo/surface_observer.h"
@@ -55,7 +56,9 @@ class Pointer : public SurfaceTreeHost,
                 public aura::client::FocusChangeObserver,
                 public ash::ShellObserver {
  public:
-  Pointer(PointerDelegate* delegate, Seat* seat);
+  Pointer(PointerDelegate* delegate,
+          Seat* seat,
+          std::unique_ptr<aura::Window> host_window = nullptr);
 
   Pointer(const Pointer&) = delete;
   Pointer& operator=(const Pointer&) = delete;
@@ -179,7 +182,13 @@ class Pointer : public SurfaceTreeHost,
   void OnCursorCaptured(const gfx::Point& hotspot,
                         std::unique_ptr<viz::CopyOutputResult> result);
 
-  // Update |cursor_| to |cursor_bitmap_| transformed for the current display.
+  // Called when cursor bitmap has been obtained either from viz copy output
+  // results or directly from the buffer.
+  void OnCursorBitmapObtained(const gfx::Point& hotspot,
+                              const SkBitmap& cursor_bitmap,
+                              float cursor_scale);
+
+  // Update |cursor_| to |cursor_bitmap_| transformed with |cursor_scale_|.
   void UpdateCursor();
 
   // Called to check if cursor should be moved to the center of the window when
@@ -210,28 +219,31 @@ class Pointer : public SurfaceTreeHost,
                            const gfx::PointF& location_in_target);
 
   // The delegate instance that all events are dispatched to.
-  PointerDelegate* const delegate_;
+  const raw_ptr<PointerDelegate, DanglingUntriaged | ExperimentalAsh> delegate_;
 
-  Seat* const seat_;
+  const raw_ptr<Seat, ExperimentalAsh> seat_;
 
   // The delegate instance that all pinch related events are dispatched to.
-  PointerGesturePinchDelegate* pinch_delegate_ = nullptr;
+  raw_ptr<PointerGesturePinchDelegate, ExperimentalAsh> pinch_delegate_ =
+      nullptr;
 
   // The delegate instance that relative movement events are dispatched to.
-  RelativePointerDelegate* relative_pointer_delegate_ = nullptr;
+  raw_ptr<RelativePointerDelegate, ExperimentalAsh> relative_pointer_delegate_ =
+      nullptr;
 
   // Delegate that owns the currently granted pointer lock, if any.
-  PointerConstraintDelegate* pointer_constraint_delegate_ = nullptr;
+  raw_ptr<PointerConstraintDelegate, ExperimentalAsh>
+      pointer_constraint_delegate_ = nullptr;
 
   // All delegates currently requesting a pointer locks, whether granted or
   // not. Only one such request may exist per surface; others will be denied.
   base::flat_map<Surface*, PointerConstraintDelegate*> constraints_;
 
   // The delegate instance that stylus/pen events are dispatched to.
-  PointerStylusDelegate* stylus_delegate_ = nullptr;
+  raw_ptr<PointerStylusDelegate, ExperimentalAsh> stylus_delegate_ = nullptr;
 
   // The current focus surface for the pointer.
-  Surface* focus_surface_ = nullptr;
+  raw_ptr<Surface, ExperimentalAsh> focus_surface_ = nullptr;
 
   // The location of the pointer in the root window.
   gfx::PointF location_in_root_;
@@ -248,7 +260,7 @@ class Pointer : public SurfaceTreeHost,
 
   // The window with pointer capture. Pointer capture is enabled if and only if
   // this is not null.
-  aura::Window* capture_window_ = nullptr;
+  raw_ptr<aura::Window, ExperimentalAsh> capture_window_ = nullptr;
 
   // True if this pointer is permitted to be captured.
   //
@@ -262,14 +274,14 @@ class Pointer : public SurfaceTreeHost,
   // Latest cursor snapshot.
   SkBitmap cursor_bitmap_;
 
+  // Latest cursor image scale;
+  float cursor_scale_ = 1.0f;
+
   // The current cursor.
   ui::Cursor cursor_;
 
   // Hotspot to use with latest cursor snapshot.
   gfx::Point cursor_hotspot_;
-
-  // Scale at which cursor snapshot is captured.
-  float capture_scale_;
 
   // Source used for cursor capture copy output requests.
   const base::UnguessableToken cursor_capture_source_id_;

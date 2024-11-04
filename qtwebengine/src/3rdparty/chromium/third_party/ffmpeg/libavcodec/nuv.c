@@ -139,7 +139,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *picture,
     int size_change = 0;
     int minsize = 0;
     int flags = 0;
-    int result, init_frame = !avctx->frame_number;
+    int result, init_frame = !avctx->frame_num;
     enum {
         NUV_UNCOMPRESSED  = '0',
         NUV_RTJPEG        = '1',
@@ -263,7 +263,10 @@ retry:
     }
 
     c->pic->pict_type = keyframe ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
-    c->pic->key_frame = keyframe;
+    if (keyframe)
+        c->pic->flags |= AV_FRAME_FLAG_KEY;
+    else
+        c->pic->flags &= ~AV_FRAME_FLAG_KEY;
     // decompress/copy/whatever data
     switch (comptype) {
     case NUV_LZO:

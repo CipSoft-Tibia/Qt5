@@ -28,6 +28,8 @@
 #include <QtCore/qdebug.h>
 #include <QtCore/qbuffer.h>
 #include <QtCore/qpoint.h>
+#include <QtCore/qpointer.h>
+#include <QtCore/private/qcomobject_p.h>
 
 #include <shlobj.h>
 
@@ -167,7 +169,7 @@ static Qt::MouseButtons lastButtons = Qt::NoButton;
     \internal
 */
 
-class QWindowsOleDropSource : public QWindowsComBase<IDropSource>
+class QWindowsOleDropSource : public QComObject<IDropSource>
 {
 public:
     enum Mode {
@@ -252,8 +254,9 @@ void QWindowsOleDropSource::createCursors()
         if (const QScreen *primaryScreen = QGuiApplication::primaryScreen())
             platformScreen = primaryScreen->handle();
     }
-    Q_ASSERT(platformScreen);
-    QPlatformCursor *platformCursor = platformScreen->cursor();
+    QPlatformCursor *platformCursor = nullptr;
+    if (platformScreen)
+        platformCursor = platformScreen->cursor();
 
     if (GetSystemMetrics (SM_REMOTESESSION) != 0) {
         /* Workaround for RDP issues with large cursors.
@@ -270,7 +273,7 @@ void QWindowsOleDropSource::createCursors()
         hotSpotScaleFactor = QHighDpiScaling::factor(platformScreen);
         pixmapScaleFactor = hotSpotScaleFactor / pixmap.devicePixelRatio();
     }
-    QPixmap scaledPixmap = qFuzzyCompare(pixmapScaleFactor, 1.0)
+    QPixmap scaledPixmap = (!hasPixmap || qFuzzyCompare(pixmapScaleFactor, 1.0))
         ? pixmap
         :  pixmap.scaled((QSizeF(pixmap.size()) * pixmapScaleFactor).toSize(),
                          Qt::KeepAspectRatio, Qt::SmoothTransformation);
@@ -526,7 +529,8 @@ QWindowsOleDropTarget::DragLeave()
 
     qCDebug(lcQpaMime) << __FUNCTION__ << ' ' << m_window;
 
-    lastModifiers = QWindowsKeyMapper::queryKeyboardModifiers();
+    const auto *keyMapper = QWindowsContext::instance()->keyMapper();
+    lastModifiers = keyMapper->queryKeyboardModifiers();
     lastButtons = QWindowsMouseHandler::queryMouseButtons();
 
     QWindowSystemInterface::handleDrag(m_window, nullptr, QPoint(), Qt::IgnoreAction,
@@ -611,7 +615,6 @@ QWindowsOleDropTarget::Drop(LPDATAOBJECT pDataObj, DWORD grfKeyState,
 */
 
 bool QWindowsDrag::m_canceled = false;
-bool QWindowsDrag::m_dragging = false;
 
 QWindowsDrag::QWindowsDrag() = default;
 
@@ -739,10 +742,7 @@ Qt::DropAction QWindowsDrag::drag(QDrag *drag)
     const DWORD allowedEffects = translateToWinDragEffects(possibleActions);
     qCDebug(lcQpaMime) << '>' << __FUNCTION__ << "possible Actions=0x"
         << Qt::hex << int(possibleActions) << "effects=0x" << allowedEffects << Qt::dec;
-    // Indicate message handlers we are in DoDragDrop() event loop.
-    QWindowsDrag::m_dragging = true;
     const HRESULT r = startDoDragDrop(dropDataObject, windowDropSource, allowedEffects, &resultEffect);
-    QWindowsDrag::m_dragging = false;
     const DWORD  reportedPerformedEffect = dropDataObject->reportedPerformedEffect();
     if (r == DRAGDROP_S_DROP) {
         if (reportedPerformedEffect == DROPEFFECT_MOVE && resultEffect != DROPEFFECT_MOVE) {

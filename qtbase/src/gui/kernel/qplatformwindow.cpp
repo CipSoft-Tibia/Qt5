@@ -370,18 +370,18 @@ void QPlatformWindow::setMask(const QRegion &region)
   Reimplement to let Qt be able to request activation/focus for a window
 
   Some window systems will probably not have callbacks for this functionality,
-  and then calling QWindowSystemInterface::handleWindowActivated(QWindow *w)
+  and then calling QWindowSystemInterface::handleFocusWindowChanged(QWindow *w)
   would be sufficient.
 
   If the window system has some event handling/callbacks then call
-  QWindowSystemInterface::handleWindowActivated(QWindow *w) when the window system
+  QWindowSystemInterface::handleFocusWindowChanged(QWindow *w) when the window system
   gives the notification.
 
-  Default implementation calls QWindowSystem::handleWindowActivated(QWindow *w)
+  Default implementation calls QWindowSystem::handleFocusWindowChanged(QWindow *w)
 */
 void QPlatformWindow::requestActivateWindow()
 {
-    QWindowSystemInterface::handleWindowActivated(window());
+    QWindowSystemInterface::handleFocusWindowChanged(window());
 }
 
 /*!
@@ -778,6 +778,15 @@ void QPlatformWindow::deliverUpdateRequest()
 
     QWindow *w = window();
     QWindowPrivate *wp = qt_window_private(w);
+
+    // We expect that the platform plugins send DevicePixelRatioChange events.
+    // As a fail-safe make a final check here to make sure the cached DPR value is
+    // always up to date before delivering the update request.
+    if (wp->updateDevicePixelRatio()) {
+        qWarning() << "The cached device pixel ratio value was stale on window update. "
+                   << "Please file a QTBUG which explains how to reproduce.";
+    }
+
     wp->updateRequestPending = false;
     QEvent request(QEvent::UpdateRequest);
     QCoreApplication::sendEvent(w, &request);

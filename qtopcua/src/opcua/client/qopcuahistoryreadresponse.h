@@ -5,6 +5,7 @@
 #define QOPCUAHISTORYREADRESPONSE_H
 
 #include <QtOpcUa/qopcuahistorydata.h>
+#include <QtOpcUa/qopcuahistoryevent.h>
 #include <QtOpcUa/qopcuaglobal.h>
 
 #include <QtOpcUa/qopcuahistoryreadrawrequest.h>
@@ -29,7 +30,7 @@ public:
         Reading,
         Finished,
         MoreDataAvailable,
-        Error
+        Error,
     };
     Q_ENUM(State)
 
@@ -40,10 +41,12 @@ public:
     bool releaseContinuationPoints();
 
     QList<QOpcUaHistoryData> data() const;
+    QList<QOpcUaHistoryEvent> events() const;
     QOpcUa::UaStatusCode serviceResult() const;
 
 Q_SIGNALS:
     void readHistoryDataFinished(const QList<QOpcUaHistoryData> &results, QOpcUa::UaStatusCode serviceResult);
+    void readHistoryEventsFinished(const QList<QOpcUaHistoryEvent> &results, QOpcUa::UaStatusCode serviceResult);
     void stateChanged(State state);
 };
 

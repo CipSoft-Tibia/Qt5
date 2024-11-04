@@ -5,19 +5,20 @@
 #ifndef CHROME_BROWSER_UI_WEBUI_SETTINGS_ASH_PEOPLE_SECTION_H_
 #define CHROME_BROWSER_UI_WEBUI_SETTINGS_ASH_PEOPLE_SECTION_H_
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
 #include "base/values.h"
+#include "chrome/browser/ui/ash/auth/legacy_fingerprint_engine.h"
 #include "chrome/browser/ui/webui/settings/ash/os_settings_section.h"
+#include "chromeos/ash/components/login/auth/auth_performer.h"
 #include "components/account_manager_core/account.h"
 #include "components/account_manager_core/account_manager_facade.h"
 #include "components/account_manager_core/chromeos/account_manager.h"
 #include "components/prefs/pref_change_registrar.h"
-#include "components/sync/driver/sync_service_observer.h"
 
 class PrefService;
 class Profile;
-class SupervisedUserService;
 
 namespace content {
 class WebUIDataSource;
@@ -26,10 +27,6 @@ class WebUIDataSource;
 namespace signin {
 class IdentityManager;
 }  // namespace signin
-
-namespace syncer {
-class SyncService;
-}  // namespace syncer
 
 namespace ash {
 
@@ -50,24 +47,22 @@ class PeopleSection : public OsSettingsSection,
  public:
   PeopleSection(Profile* profile,
                 SearchTagRegistry* search_tag_registry,
-                syncer::SyncService* sync_service,
-                SupervisedUserService* supervised_user_service,
                 signin::IdentityManager* identity_manager,
                 PrefService* pref_service);
   ~PeopleSection() override;
 
- private:
   // OsSettingsSection:
   void AddLoadTimeData(content::WebUIDataSource* html_source) override;
   void AddHandlers(content::WebUI* web_ui) override;
   int GetSectionNameMessageId() const override;
   chromeos::settings::mojom::Section GetSection() const override;
   mojom::SearchResultIcon GetSectionIcon() const override;
-  std::string GetSectionPath() const override;
+  const char* GetSectionPath() const override;
   bool LogMetric(chromeos::settings::mojom::Setting setting,
                  base::Value& value) const override;
   void RegisterHierarchy(HierarchyGenerator* generator) const override;
 
+ private:
   // AccountManagerFacade::Observer:
   void OnAccountUpserted(const ::account_manager::Account& account) override;
   void OnAccountRemoved(const ::account_manager::Account& account) override;
@@ -79,18 +74,23 @@ class PeopleSection : public OsSettingsSection,
   void UpdateAccountManagerSearchTags(
       const std::vector<::account_manager::Account>& accounts);
 
-  account_manager::AccountManager* account_manager_ = nullptr;
-  account_manager::AccountManagerFacade* account_manager_facade_ = nullptr;
-  AccountAppsAvailability* account_apps_availability_ = nullptr;
-  SupervisedUserService* supervised_user_service_;
-  signin::IdentityManager* identity_manager_;
-  PrefService* pref_service_;
+  raw_ptr<account_manager::AccountManager, ExperimentalAsh> account_manager_ =
+      nullptr;
+  raw_ptr<account_manager::AccountManagerFacade, ExperimentalAsh>
+      account_manager_facade_ = nullptr;
+  raw_ptr<AccountAppsAvailability, ExperimentalAsh> account_apps_availability_ =
+      nullptr;
+  raw_ptr<signin::IdentityManager, ExperimentalAsh> identity_manager_;
+  raw_ptr<PrefService, ExperimentalAsh> pref_service_;
 
   // An observer for `AccountManagerFacade`. Automatically deregisters when
   // `this` is destructed.
   base::ScopedObservation<account_manager::AccountManagerFacade,
                           account_manager::AccountManagerFacade::Observer>
       account_manager_facade_observation_{this};
+
+  AuthPerformer auth_performer_;
+  LegacyFingerprintEngine fp_engine_;
 
   base::WeakPtrFactory<PeopleSection> weak_factory_{this};
 };

@@ -16,6 +16,7 @@
 #include "components/autofill/core/browser/metrics/autofill_metrics.h"
 #include "components/autofill/core/browser/metrics/payments/better_auth_metrics.h"
 #include "components/autofill/core/browser/metrics/payments/card_unmask_authentication_metrics.h"
+#include "components/autofill/core/browser/payments/autofill_payments_feature_availability.h"
 #include "components/autofill/core/browser/payments/payments_util.h"
 #include "components/autofill/core/browser/personal_data_manager.h"
 #include "components/autofill/core/common/autofill_clock.h"
@@ -115,7 +116,7 @@ void FullCardRequest::GetFullCardImpl(
   // If unmasking is for a virtual card and
   // |last_committed_primary_main_frame_origin| is empty, end the request as
   // failure and reset.
-  if (card.record_type() == CreditCard::VIRTUAL_CARD &&
+  if (card.record_type() == CreditCard::RecordType::kVirtualCard &&
       !last_committed_primary_main_frame_origin.has_value()) {
     NOTREACHED();
     if (ui_delegate_) {
@@ -142,9 +143,9 @@ void FullCardRequest::GetFullCardImpl(
     request_->selected_challenge_option = selected_challenge_option;
 
   should_unmask_card_ = card.masked() ||
-                        (card_type == CreditCard::FULL_SERVER_CARD &&
+                        (card_type == CreditCard::RecordType::kFullServerCard &&
                          card.ShouldUpdateExpiration()) ||
-                        (card_type == CreditCard::VIRTUAL_CARD);
+                        (card_type == CreditCard::RecordType::kVirtualCard);
   if (should_unmask_card_) {
     payments_client_->Prepare();
     request_->billing_customer_number =
@@ -152,6 +153,11 @@ void FullCardRequest::GetFullCardImpl(
   }
 
   request_->fido_assertion_info = std::move(fido_assertion_info);
+
+  if (ShouldShowCardMetadata(card)) {
+    request_->client_behavior_signals.push_back(
+        ClientBehaviorConstants::kShowingCardArtImageAndCardProductName);
+  }
 
   // If there is a UI delegate, then perform a CVC check.
   // Otherwise, continue and use |fido_assertion_info| to unmask.
@@ -178,7 +184,7 @@ void FullCardRequest::OnUnmaskPromptAccepted(
     request_->card.SetRawInfo(CREDIT_CARD_EXP_4_DIGIT_YEAR,
                               user_response.exp_year);
 
-  if (request_->card.record_type() == CreditCard::LOCAL_CARD &&
+  if (request_->card.record_type() == CreditCard::RecordType::kLocalCard &&
       !request_->card.guid().empty() &&
       (!user_response.exp_month.empty() || !user_response.exp_year.empty())) {
     personal_data_manager_->UpdateCreditCard(request_->card);
@@ -329,15 +335,19 @@ void FullCardRequest::OnDidGetRealPan(
 
       if (response_details.card_type ==
           AutofillClient::PaymentsRpcCardType::kVirtualCard) {
-        request_->card.set_record_type(CreditCard::VIRTUAL_CARD);
+        request_->card.set_record_type(CreditCard::RecordType::kVirtualCard);
         request_->card.SetExpirationMonthFromString(
             base::UTF8ToUTF16(response_details.expiration_month),
             /*app_locale=*/std::string());
         request_->card.SetExpirationYearFromString(
             base::UTF8ToUTF16(response_details.expiration_year));
+        // `request_->card` will already already have a CVC set as it's the card
+        // from the autofill table, so we only need to override from the server
+        // response in the virtual card case.
+        request_->card.set_cvc(base::UTF8ToUTF16(response_details.dcvv));
       } else if (response_details.card_type ==
                  AutofillClient::PaymentsRpcCardType::kServerCard) {
-        request_->card.set_record_type(CreditCard::FULL_SERVER_CARD);
+        request_->card.set_record_type(CreditCard::RecordType::kFullServerCard);
       } else {
         NOTREACHED();
       }

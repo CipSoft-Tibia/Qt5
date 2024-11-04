@@ -164,7 +164,8 @@ Notification* Notification::Create(ExecutionContext* context,
 Notification::Notification(ExecutionContext* context,
                            Type type,
                            mojom::blink::NotificationDataPtr data)
-    : ExecutionContextLifecycleObserver(context),
+    : ActiveScriptWrappable<Notification>({}),
+      ExecutionContextLifecycleObserver(context),
       type_(type),
       state_(State::kLoading),
       data_(std::move(data)),
@@ -527,7 +528,7 @@ void Notification::Trace(Visitor* visitor) const {
   visitor->Trace(prepare_show_timer_);
   visitor->Trace(loader_);
   visitor->Trace(listener_receiver_);
-  EventTargetWithInlineData::Trace(visitor);
+  EventTarget::Trace(visitor);
   ExecutionContextLifecycleObserver::Trace(visitor);
 }
 

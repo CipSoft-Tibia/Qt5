@@ -1,8 +1,8 @@
 #include "perfetto/tracing/tracing.h"
 
 #include <stdio.h>
+#include <optional>
 
-#include "perfetto/ext/base/optional.h"
 #include "perfetto/ext/base/thread_task_runner.h"
 #include "perfetto/ext/base/waitable_event.h"
 #include "perfetto/ext/tracing/ipc/service_ipc_host.h"
@@ -25,6 +25,12 @@ using ::testing::Property;
 
 class TracingMuxerImplIntegrationTest : public testing::Test {
  protected:
+  void SetUp() override {
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
+    GTEST_SKIP() << "Unix sockets not supported on windows";
+#endif
+  }
+
   // Sets the environment variable `name` to `value`. Restores it to the
   // previous value when the test finishes.
   void SetEnvVar(const char* name, const char* value) {
@@ -38,7 +44,7 @@ class TracingMuxerImplIntegrationTest : public testing::Test {
     base::SetEnv(name, value);
   }
 
-  ~TracingMuxerImplIntegrationTest() {
+  ~TracingMuxerImplIntegrationTest() override {
     perfetto::Tracing::ResetForTesting();
     while (!prev_state_.empty()) {
       const EnvVar& var = prev_state_.top();
@@ -53,7 +59,7 @@ class TracingMuxerImplIntegrationTest : public testing::Test {
 
   struct EnvVar {
     const char* name;
-    base::Optional<std::string> value;
+    std::optional<std::string> value;
   };
   // Stores previous values of environment variables overridden by tests. We
   // need to to this because some android integration tests need to talk to the

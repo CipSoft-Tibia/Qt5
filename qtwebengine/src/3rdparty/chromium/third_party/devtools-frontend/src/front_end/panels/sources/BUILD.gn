@@ -13,7 +13,6 @@ generate_css("css_files") {
     "callStackSidebarPane.css",
     "debuggerPausedMessage.css",
     "dialog.css",
-    "javaScriptBreakpointsSidebarPane.css",
     "navigatorTree.css",
     "navigatorView.css",
     "scopeChainSidebarPane.css",
@@ -29,7 +28,6 @@ devtools_module("sources") {
   sources = [
     "AddSourceMapURLDialog.ts",
     "BreakpointEditDialog.ts",
-    "BreakpointsSidebarPane.ts",
     "CSSPlugin.ts",
     "CallStackSidebarPane.ts",
     "CoveragePlugin.ts",
@@ -40,7 +38,6 @@ devtools_module("sources") {
     "FilteredUISourceCodeListProvider.ts",
     "GoToLineQuickOpen.ts",
     "InplaceFormatterEditorAction.ts",
-    "JavaScriptBreakpointsSidebarPane.ts",
     "NavigatorView.ts",
     "OpenFileQuickOpen.ts",
     "OutlineQuickOpen.ts",
@@ -48,7 +45,6 @@ devtools_module("sources") {
     "ProfilePlugin.ts",
     "ResourceOriginPlugin.ts",
     "ScopeChainSidebarPane.ts",
-    "ScriptFormatterEditorAction.ts",
     "SearchSourcesView.ts",
     "SnippetsPlugin.ts",
     "SourcesNavigator.ts",
@@ -68,6 +64,7 @@ devtools_module("sources") {
     "../../core/platform:bundle",
     "../../core/sdk:bundle",
     "../../models/bindings:bundle",
+    "../../models/breakpoints:bundle",
     "../../models/extensions:bundle",
     "../../models/formatter:bundle",
     "../../models/issues_manager:bundle",
@@ -110,6 +107,7 @@ devtools_entrypoint("bundle") {
     "../../../test/unittests/front_end/entrypoints/missing_entrypoints/*",
     "../../../test/unittests/front_end/panels/sources/*",
     "../../entrypoints/*",
+    "../../panels/explain/*",
     "../../panels/network/*",
 
     # TODO(crbug.com/1202788): Remove invalid dependents
@@ -137,6 +135,7 @@ devtools_entrypoint("meta") {
     ":bundle",
     "../../core/i18n:bundle",
     "../../core/sdk:bundle",
+    "./components:bundle",
   ]
 
   visibility = [ "../../entrypoints/*" ]

@@ -19,17 +19,14 @@ class LayoutNGMathMLBlock : public LayoutNGBlock {
   }
 
  private:
-  void UpdateBlockLayout(bool relayout_children) final;
-
   bool IsOfType(LayoutObjectType) const final;
   bool IsChildAllowed(LayoutObject*, const ComputedStyle&) const final;
   bool CanHaveChildren() const final;
   void StyleDidChange(StyleDifference, const ComputedStyle*) final;
 
-  PaginationBreakability GetPaginationBreakability(
-      FragmentationEngine) const final {
+  bool IsMonolithic() const final {
     NOT_DESTROYED();
-    return kForbidBreaks;
+    return true;
   }
 };
 

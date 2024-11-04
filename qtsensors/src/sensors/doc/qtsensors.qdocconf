@@ -51,6 +51,3 @@ manifestmeta.highlighted.names = "QtSensors/Sensors Showcase"
 navigation.landingpage = "Qt Sensors"
 navigation.cppclassespage = "Qt Sensors C++ Classes"
 navigation.qmltypespage = "Qt Sensors QML Types"
-
-# Fail the documentation build if there are more warnings than the limit
-warninglimit = 0

@@ -197,7 +197,7 @@ template<typename Derived> class MapBase<Derived, ReadOnlyAccessors>
       // innerStride() is not set yet when this function is called, so we optimistically assume the lowest plausible value:
       const Index minInnerStride = InnerStrideAtCompileTime == Dynamic ? 1 : Index(InnerStrideAtCompileTime);
       EIGEN_ONLY_USED_FOR_DEBUG(minInnerStride);
-      eigen_assert((   ((internal::UIntPtr(m_data) % internal::traits<Derived>::Alignment) == 0)
+      eigen_assert((   ((std::uintptr_t(m_data) % internal::traits<Derived>::Alignment) == 0)
                     || (cols() * rows() * minInnerStride * sizeof(Scalar)) < internal::traits<Derived>::Alignment ) && "data is not aligned");
 #endif
     }

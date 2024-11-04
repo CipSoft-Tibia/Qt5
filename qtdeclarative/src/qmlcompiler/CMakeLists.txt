@@ -29,6 +29,7 @@ qt_internal_add_module(QmlCompiler
         qqmljsresourcefilemapper.cpp qqmljsresourcefilemapper_p.h
         qqmljsscope.cpp qqmljsscope_p.h
         qqmljsscopesbyid_p.h
+        qqmljscontextualtypes_p.h
         qqmljsshadowcheck.cpp qqmljsshadowcheck_p.h
         qqmljsstoragegeneralizer.cpp qqmljsstoragegeneralizer_p.h
         qqmljstypedescriptionreader.cpp qqmljstypedescriptionreader_p.h
@@ -47,19 +48,21 @@ qt_internal_add_module(QmlCompiler
         Qt::Qml
     LIBRARIES
         Qt::QmlPrivate
+        Qt::QmlToolingSettingsPrivate
     PRIVATE_MODULE_INTERFACE
         Qt::QmlPrivate
-
+        Qt::QmlToolingSettingsPrivate
 )
 
+qt_path_join(qml_build_dir "${QT_BUILD_DIR}" "${INSTALL_QMLDIR}")
 qt_internal_add_resource(QmlCompiler "builtins"
     PREFIX
         "/qt-project.org/qml/builtins"
     BASE
-        "${CMAKE_CURRENT_SOURCE_DIR}/../imports/builtins/"
+        "${qml_build_dir}"
     FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/../imports/builtins/builtins.qmltypes"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../imports/builtins/jsroot.qmltypes"
+        "${qml_build_dir}/builtins.qmltypes"
+        "${qml_build_dir}/jsroot.qmltypes"
 )
 
 qt_internal_add_docs(QmlCompiler

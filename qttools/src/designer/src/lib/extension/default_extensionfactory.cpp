@@ -24,7 +24,7 @@ QT_BEGIN_NAMESPACE
     {QExtensionManager}{extension manager}.
 
     The QExtensionManager class provides extension management
-    facilities for Qt Designer. When an extension is required, Qt
+    facilities for \QD. When an extension is required, Qt
     Designer's \l {QExtensionManager}{extension manager} will run
     through all its registered factories calling
     QExtensionFactory::createExtension() for each until the first one
@@ -32,7 +32,7 @@ QT_BEGIN_NAMESPACE
     object, is found. This factory will then make an instance of the
     extension.
 
-    There are four available types of extensions in Qt Designer:
+    There are four available types of extensions in \QD:
     QDesignerContainerExtension , QDesignerMemberSheetExtension,
     QDesignerPropertySheetExtension and QDesignerTaskMenuExtension. Qt
     Designer's behavior is the same whether the requested extension is
@@ -54,7 +54,7 @@ QT_BEGIN_NAMESPACE
     \l {taskmenuextension}{Task Menu Extension example}. The
     example shows how to create a custom widget plugin for Qt
     Designer, and how to use the QDesignerTaskMenuExtension class
-    to add custom items to Qt Designer's task menu.
+    to add custom items to \QD's task menu.
 
     \sa QExtensionManager, QAbstractExtensionFactory
 */
@@ -77,7 +77,7 @@ QObject *QExtensionFactory::extension(QObject *object, const QString &iid) const
 {
     if (!object)
         return nullptr;
-    const auto key = qMakePair(iid, object);
+    const auto key = std::make_pair(iid, object);
 
     auto it = m_extensions.find(key);
     if (it == m_extensions.end()) {

@@ -27,7 +27,8 @@
 #include "perfetto/protozero/message.h"
 #include "perfetto/protozero/scattered_heap_buffer.h"
 #include "perfetto/trace_processor/trace_processor.h"
-#include "src/trace_processor/prelude/functions/register_function.h"
+#include "src/trace_processor/perfetto_sql/engine/perfetto_sql_engine.h"
+#include "src/trace_processor/perfetto_sql/intrinsics/functions/sql_function.h"
 #include "src/trace_processor/util/descriptors.h"
 
 #include "protos/perfetto/trace_processor/metrics_impl.pbzero.h"
@@ -46,12 +47,12 @@ struct SqlMetricFile {
   // Optional because not all protos need to have a field associated with them
   // in the root proto; most files will be just be run using RUN_METRIC by
   // other files.
-  base::Optional<std::string> proto_field_name;
+  std::optional<std::string> proto_field_name;
 
   // The table name which will be created by the SQL below to read the proto
   // bytes from.
   // Should only be set when |proto_field_name| is set.
-  base::Optional<std::string> output_table_name;
+  std::optional<std::string> output_table_name;
 
   // The SQL run by this metric.
   std::string sql;
@@ -175,7 +176,7 @@ struct BuildProto : public SqlFunction {
 // Implements the RUN_METRIC SQL function.
 struct RunMetric : public SqlFunction {
   struct Context {
-    TraceProcessor* tp;
+    PerfettoSqlEngine* engine;
     std::vector<SqlMetricFile>* metrics;
   };
   static constexpr bool kVoidReturn = true;
@@ -199,7 +200,7 @@ struct UnwrapMetricProto : public SqlFunction {
 void RepeatedFieldStep(sqlite3_context* ctx, int argc, sqlite3_value** argv);
 void RepeatedFieldFinal(sqlite3_context* ctx);
 
-base::Status ComputeMetrics(TraceProcessor* impl,
+base::Status ComputeMetrics(PerfettoSqlEngine*,
                             const std::vector<std::string> metrics_to_compute,
                             const std::vector<SqlMetricFile>& metrics,
                             const DescriptorPool& pool,

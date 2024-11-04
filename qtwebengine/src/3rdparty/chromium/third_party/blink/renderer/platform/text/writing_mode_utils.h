@@ -76,22 +76,6 @@ class PhysicalToLogical {
     return writing_direction_.IsFlippedBlocks() ? left_ : right_;
   }
 
-  Value Over() const {
-    return writing_direction_.IsHorizontal() ? top_ : right_;
-  }
-
-  Value Under() const {
-    return writing_direction_.IsHorizontal() ? bottom_ : left_;
-  }
-
-  Value LineLeft() const {
-    return writing_direction_.IsHorizontal() ? left_ : top_;
-  }
-
-  Value LineRight() const {
-    return writing_direction_.IsHorizontal() ? right_ : bottom_;
-  }
-
   // Legacy logical directions.
   Value Start() const { return InlineStart(); }
   Value End() const { return InlineEnd(); }
@@ -154,6 +138,41 @@ class LogicalToPhysical {
   Value block_end_;     // a.k.a. after
 };
 
+template <typename Value>
+class LogicalToLogical {
+  STACK_ALLOCATED();
+
+ public:
+  LogicalToLogical(WritingDirectionMode from_writing_direction,
+                   WritingDirectionMode to_writing_direction,
+                   Value inline_start,
+                   Value inline_end,
+                   Value block_start,
+                   Value block_end)
+      : LogicalToLogical(to_writing_direction,
+                         LogicalToPhysical<Value>(from_writing_direction,
+                                                  inline_start,
+                                                  inline_end,
+                                                  block_start,
+                                                  block_end)) {}
+
+  Value InlineStart() const { return logical_.InlineStart(); }
+  Value BlockStart() const { return logical_.BlockStart(); }
+  Value InlineEnd() const { return logical_.InlineEnd(); }
+  Value BlockEnd() const { return logical_.BlockEnd(); }
+
+ private:
+  LogicalToLogical(WritingDirectionMode to_writing_direction,
+                   LogicalToPhysical<Value> physical)
+      : logical_(to_writing_direction,
+                 physical.Top(),
+                 physical.Right(),
+                 physical.Bottom(),
+                 physical.Left()) {}
+
+  PhysicalToLogical<Value> logical_;
+};
+
 template <typename Value, typename Object>
 class LogicalToPhysicalGetter {
   STACK_ALLOCATED();
@@ -206,10 +225,6 @@ class PhysicalToLogicalGetter {
   Value InlineEnd() const { return (object_.*converter_.InlineEnd())(); }
   Value BlockStart() const { return (object_.*converter_.BlockStart())(); }
   Value BlockEnd() const { return (object_.*converter_.BlockEnd())(); }
-  Value Over() const { return (object_.*converter_.Over())(); }
-  Value Under() const { return (object_.*converter_.Under())(); }
-  Value LineLeft() const { return (object_.*converter_.LineLeft())(); }
-  Value LineRight() const { return (object_.*converter_.LineRight())(); }
   Value Start() const { return (object_.*converter_.Start())(); }
   Value End() const { return (object_.*converter_.End())(); }
   Value Before() const { return (object_.*converter_.Before())(); }
@@ -274,10 +289,6 @@ class LogicalToPhysicalSetter {
   void SetInlineEnd(Value v) { (object_.*converter_.InlineEnd())(v); }
   void SetBlockStart(Value v) { (object_.*converter_.BlockStart())(v); }
   void SetBlockEnd(Value v) { (object_.*converter_.BlockEnd())(v); }
-  void SetOver(Value v) { (object_.*converter_.Over())(v); }
-  void SetUnder(Value v) { (object_.*converter_.Under())(v); }
-  void SetLineLeft(Value v) { (object_.*converter_.LineLeft())(v); }
-  void SetLineRight(Value v) { (object_.*converter_.LineRight())(v); }
   void SetStart(Value v) { (object_.*converter_.Start())(v); }
   void SetEnd(Value v) { (object_.*converter_.End())(v); }
   void SetBefore(Value v) { (object_.*converter_.Before())(v); }

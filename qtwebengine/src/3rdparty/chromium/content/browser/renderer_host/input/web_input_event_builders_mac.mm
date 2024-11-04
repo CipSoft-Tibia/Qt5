@@ -35,12 +35,12 @@
 
 #include <stdint.h>
 
+#include "base/apple/owned_objc.h"
 #include "base/mac/mac_util.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/string_util.h"
 #include "base/time/time.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
-#include "ui/base/cocoa/cocoa_base_utils.h"
 #include "ui/events/base_event_utils.h"
 #include "ui/events/blink/blink_event_util.h"
 #import "ui/events/cocoa/cocoa_event_utils.h"
@@ -123,11 +123,12 @@ void SetWebEventLocationFromEventInView(blink::WebMouseEvent* result,
                                         NSEvent* event,
                                         NSView* view,
                                         bool unacceleratedMovement = false) {
-  NSPoint screen_local = ui::ConvertPointFromWindowToScreen(
-      [view window], [event locationInWindow]);
+  NSPoint screen_local =
+      [view.window convertPointToScreen:event.locationInWindow];
   NSScreen* primary_screen = ([[NSScreen screens] count] > 0)
                                  ? [[NSScreen screens] firstObject]
                                  : nil;
+
   // Flip y conditionally.
   result->SetPositionInScreen(
       screen_local.x, primary_screen
@@ -250,19 +251,20 @@ blink::WebMouseEvent::Button ButtonFromButtonNumber(NSEvent* event) {
 }  // namespace
 
 blink::WebKeyboardEvent WebKeyboardEventBuilder::Build(NSEvent* event) {
-  ui::ComputeEventLatencyOS(event);
+  ui::ComputeEventLatencyOS(base::apple::OwnedNSEvent(event));
 
   ui::DomCode dom_code = ui::DomCodeFromNSEvent(event);
   int modifiers =
       ModifiersFromEvent(event) | ui::DomCodeToWebInputEventModifiers(dom_code);
 
-  if (([event type] != NSEventTypeFlagsChanged) && [event isARepeat])
+  if ((event.type != NSEventTypeFlagsChanged) && event.ARepeat) {
     modifiers |= blink::WebInputEvent::kIsAutoRepeat;
+  }
 
   blink::WebKeyboardEvent result(
       ui::IsKeyUpEvent(event) ? blink::WebInputEvent::Type::kKeyUp
                               : blink::WebInputEvent::Type::kRawKeyDown,
-      modifiers, ui::EventTimeStampFromSeconds([event timestamp]));
+      modifiers, ui::EventTimeStampFromSeconds(event.timestamp));
 
   // Some keys have the same meaning but different locations on the keyboard:
   // the left and right shift keys; the numeric keypad keys and their
@@ -331,7 +333,7 @@ blink::WebMouseEvent WebMouseEventBuilder::Build(
     NSView* view,
     blink::WebPointerProperties::PointerType pointerType,
     bool unacceleratedMovement) {
-  ui::ComputeEventLatencyOS(event);
+  ui::ComputeEventLatencyOS(base::apple::OwnedNSEvent(event));
   blink::WebInputEvent::Type event_type =
       blink::WebInputEvent::Type::kUndefined;
   int click_count = 0;
@@ -449,7 +451,7 @@ blink::WebMouseEvent WebMouseEventBuilder::Build(
 blink::WebMouseWheelEvent WebMouseWheelEventBuilder::Build(
     NSEvent* event,
     NSView* view) {
-  ui::ComputeEventLatencyOS(event);
+  ui::ComputeEventLatencyOS(base::apple::OwnedNSEvent(event));
   blink::WebMouseWheelEvent result(
       blink::WebInputEvent::Type::kMouseWheel, ModifiersFromEvent(event),
       ui::EventTimeStampFromSeconds([event timestamp]));
@@ -681,7 +683,7 @@ blink::WebTouchEvent WebTouchEventBuilder::Build(NSEvent* event, NSView* view) {
 
   blink::WebTouchEvent result(event_type, ModifiersFromEvent(event),
                               ui::EventTimeStampFromSeconds([event timestamp]));
-  ui::ComputeEventLatencyOS(event);
+  ui::ComputeEventLatencyOS(base::apple::OwnedNSEvent(event));
   result.hovering = event_type == blink::WebInputEvent::Type::kTouchEnd;
   result.unique_touch_event_id = ui::GetNextTouchEventId();
   result.touches_length = 1;

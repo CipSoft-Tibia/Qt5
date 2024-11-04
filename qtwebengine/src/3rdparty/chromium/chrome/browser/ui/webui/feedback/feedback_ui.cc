@@ -6,18 +6,37 @@
 
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/common/pref_names.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/browser_resources.h"
 #include "chrome/grit/feedback_resources.h"
 #include "chrome/grit/feedback_resources_map.h"
 #include "chrome/grit/generated_resources.h"
+#include "components/prefs/pref_service.h"
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
+#include "ui/webui/color_change_listener/color_change_handler.h"
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "ash/constants/ash_features.h"
 #include "chrome/browser/ash/arc/arc_util.h"
+#include "chromeos/strings/grit/chromeos_strings.h"
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+
+namespace {
+
+// Jelly colors should only be considered enabled when jelly styling is
+// enabled for Feedback on ChromeOS.
+bool IsJellyColorsEnabled() {
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  return ash::features::IsJellyEnabledForOsFeedback();
+#else
+  return false;
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+}
+
+}  // namespace
 
 void AddStringResources(content::WebUIDataSource* source,
                         const Profile* profile) {
@@ -30,12 +49,19 @@ void AddStringResources(content::WebUIDataSource* source,
       {"attachFileLabel", IDS_FEEDBACK_ATTACH_FILE_LABEL},
       {"attachFileNote", IDS_FEEDBACK_ATTACH_FILE_NOTE},
       {"attachFileToBig", IDS_FEEDBACK_ATTACH_FILE_TO_BIG},
+      {"autofillMetadataPageTitle", IDS_FEEDBACK_AUTOFILL_METADATA_PAGE_TITLE},
       {"autofillMetadataInfo", IDS_FEEDBACK_INCLUDE_AUTOFILL_METADATA_CHECKBOX},
       {"bluetoothLogsInfo", IDS_FEEDBACK_BLUETOOTH_LOGS_CHECKBOX},
       {"bluetoothLogsMessage", IDS_FEEDBACK_BLUETOOTH_LOGS_MESSAGE},
       {"cancel", IDS_CANCEL},
       {"consentCheckboxLabel", IDS_FEEDBACK_CONSENT_CHECKBOX_LABEL},
       {"freeFormText", IDS_FEEDBACK_FREE_TEXT_LABEL},
+      {"logsMapPageCollapseAllBtn", IDS_ABOUT_SYS_COLLAPSE_ALL},
+      {"logsMapPageCollapseBtn", IDS_ABOUT_SYS_COLLAPSE},
+      {"logsMapPageExpandAllBtn", IDS_ABOUT_SYS_EXPAND_ALL},
+      {"logsMapPageExpandBtn", IDS_ABOUT_SYS_EXPAND},
+      {"logsMapPageStatusLoading", IDS_FEEDBACK_SYSINFO_PAGE_LOADING},
+      {"logsMapPageTableTitle", IDS_ABOUT_SYS_TABLE_TITLE},
       {"minimizeBtnLabel", IDS_FEEDBACK_MINIMIZE_BUTTON_LABEL},
       {"noDescription", IDS_FEEDBACK_NO_DESCRIPTION},
       {"pageTitle", IDS_FEEDBACK_REPORT_PAGE_TITLE},
@@ -45,19 +71,15 @@ void AddStringResources(content::WebUIDataSource* source,
       {"screenshot", IDS_FEEDBACK_SCREENSHOT_LABEL},
       {"screenshotA11y", IDS_FEEDBACK_SCREENSHOT_A11Y_TEXT},
       {"sendReport", IDS_FEEDBACK_SEND_REPORT},
-      {"sysinfoPageCollapseAllBtn", IDS_ABOUT_SYS_COLLAPSE_ALL},
-      {"sysinfoPageCollapseBtn", IDS_ABOUT_SYS_COLLAPSE},
       {"sysinfoPageDescription", IDS_ABOUT_SYS_DESC},
-      {"sysinfoPageExpandAllBtn", IDS_ABOUT_SYS_EXPAND_ALL},
-      {"sysinfoPageExpandBtn", IDS_ABOUT_SYS_EXPAND},
-      {"sysinfoPageStatusLoading", IDS_FEEDBACK_SYSINFO_PAGE_LOADING},
-      {"sysinfoPageTableTitle", IDS_ABOUT_SYS_TABLE_TITLE},
       {"sysinfoPageTitle", IDS_FEEDBACK_SYSINFO_PAGE_TITLE},
       {"userEmail", IDS_FEEDBACK_USER_EMAIL_LABEL},
   };
 
   source->AddLocalizedStrings(kStrings);
 #if BUILDFLAG(IS_CHROMEOS_ASH)
+  source->AddLocalizedString("mayBeSharedWithPartnerNote",
+                             IDS_FEEDBACK_TOOL_MAY_BE_SHARED_NOTE);
   source->AddLocalizedString(
       "sysInfo",
       arc::IsArcPlayStoreEnabledForProfile(profile)
@@ -67,6 +89,8 @@ void AddStringResources(content::WebUIDataSource* source,
   source->AddLocalizedString("sysInfo",
                              IDS_FEEDBACK_INCLUDE_SYSTEM_INFORMATION_CHKBOX);
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+
+  source->AddBoolean("isJellyEnabledForOsFeedback", IsJellyColorsEnabled());
 }
 
 void CreateAndAddFeedbackHTMLSource(Profile* profile) {
@@ -90,3 +114,18 @@ FeedbackUI::FeedbackUI(content::WebUI* web_ui) : WebDialogUI(web_ui) {
 }
 
 FeedbackUI::~FeedbackUI() = default;
+
+bool FeedbackUI::IsFeedbackEnabled(Profile* profile) {
+  return profile->GetPrefs()->GetBoolean(prefs::kUserFeedbackAllowed);
+}
+
+void FeedbackUI::BindInterface(
+    mojo::PendingReceiver<color_change_listener::mojom::PageHandler> receiver) {
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  DCHECK(IsJellyColorsEnabled());
+  color_provider_handler_ = std::make_unique<ui::ColorChangeHandler>(
+      web_ui()->GetWebContents(), std::move(receiver));
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+}
+
+WEB_UI_CONTROLLER_TYPE_IMPL(FeedbackUI)

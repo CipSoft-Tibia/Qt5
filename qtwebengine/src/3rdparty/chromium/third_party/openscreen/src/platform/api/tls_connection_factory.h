@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -56,7 +56,7 @@ class TlsConnectionFactory {
   // callbacks both on the factory and on created TlsConnection instances.
   static std::unique_ptr<TlsConnectionFactory> CreateFactory(
       Client* client,
-      TaskRunner* task_runner);
+      TaskRunner& task_runner);
 
   virtual ~TlsConnectionFactory();
 

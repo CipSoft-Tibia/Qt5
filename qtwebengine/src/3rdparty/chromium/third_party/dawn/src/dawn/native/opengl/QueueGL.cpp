@@ -26,15 +26,12 @@ namespace dawn::native::opengl {
 Queue::Queue(Device* device, const QueueDescriptor* descriptor) : QueueBase(device, descriptor) {}
 
 MaybeError Queue::SubmitImpl(uint32_t commandCount, CommandBufferBase* const* commands) {
-    Device* device = ToBackend(GetDevice());
-
     TRACE_EVENT_BEGIN0(GetDevice()->GetPlatform(), Recording, "CommandBufferGL::Execute");
     for (uint32_t i = 0; i < commandCount; ++i) {
         DAWN_TRY(ToBackend(commands[i])->Execute());
     }
     TRACE_EVENT_END0(GetDevice()->GetPlatform(), Recording, "CommandBufferGL::Execute");
 
-    device->SubmitFenceSync();
     return {};
 }
 
@@ -69,11 +66,27 @@ MaybeError Queue::WriteTextureImpl(const ImageCopyTexture& destination,
     if (IsCompleteSubresourceCopiedTo(destination.texture, writeSizePixel, destination.mipLevel)) {
         destination.texture->SetIsSubresourceContentInitialized(true, range);
     } else {
-        ToBackend(destination.texture)->EnsureSubresourceContentInitialized(range);
+        DAWN_TRY(ToBackend(destination.texture)->EnsureSubresourceContentInitialized(range));
     }
     DoTexSubImage(ToBackend(GetDevice())->GetGL(), textureCopy, data, dataLayout, writeSizePixel);
     ToBackend(destination.texture)->Touch();
     return {};
+}
+
+bool Queue::HasPendingCommands() const {
+    return ToBackend(GetDevice())->HasPendingCommands();
+}
+
+ResultOrError<ExecutionSerial> Queue::CheckAndUpdateCompletedSerials() {
+    return ToBackend(GetDevice())->CheckAndUpdateCompletedSerials();
+}
+
+void Queue::ForceEventualFlushOfCommands() {
+    return ToBackend(GetDevice())->ForceEventualFlushOfCommands();
+}
+
+MaybeError Queue::WaitForIdleForDestruction() {
+    return ToBackend(GetDevice())->WaitForIdleForDestruction();
 }
 
 }  // namespace dawn::native::opengl

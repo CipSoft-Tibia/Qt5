@@ -66,8 +66,8 @@ void tst_series::initialProperties()
 
     // Common properties. The ones identical between different series are tested in QBar3DSeries tests
     QCOMPARE(m_series->itemLabelFormat(), QString("@xLabel, @yLabel, @zLabel"));
-    QCOMPARE(m_series->mesh(), QAbstract3DSeries::MeshSphere);
-    QCOMPARE(m_series->type(), QAbstract3DSeries::SeriesTypeScatter);
+    QCOMPARE(m_series->mesh(), QAbstract3DSeries::Mesh::Sphere);
+    QCOMPARE(m_series->type(), QAbstract3DSeries::SeriesType::Scatter);
 }
 
 void tst_series::initializeProperties()
@@ -82,10 +82,10 @@ void tst_series::initializeProperties()
     QCOMPARE(m_series->selectedItem(), 0);
 
     // Common properties. The ones identical between different series are tested in QBar3DSeries tests
-    m_series->setMesh(QAbstract3DSeries::MeshPoint);
+    m_series->setMesh(QAbstract3DSeries::Mesh::Point);
     m_series->setMeshRotation(QQuaternion(1, 1, 10, 20));
 
-    QCOMPARE(m_series->mesh(), QAbstract3DSeries::MeshPoint);
+    QCOMPARE(m_series->mesh(), QAbstract3DSeries::Mesh::Point);
     QCOMPARE(m_series->meshRotation(), QQuaternion(1, 1, 10, 20));
 }
 

@@ -85,9 +85,9 @@ bool CFX_DIBitmap::Copy(const RetainPtr<CFX_DIBBase>& pSrc) {
 
 CFX_DIBitmap::~CFX_DIBitmap() = default;
 
-pdfium::span<uint8_t> CFX_DIBitmap::GetBuffer() const {
+pdfium::span<const uint8_t> CFX_DIBitmap::GetBuffer() const {
   if (!m_pBuffer)
-    return pdfium::span<uint8_t>();
+    return pdfium::span<const uint8_t>();
 
   return {m_pBuffer.Get(), m_Height * m_Pitch};
 }
@@ -167,6 +167,8 @@ void CFX_DIBitmap::Clear(uint32_t color) {
     case FXDIB_Format::kArgb: {
       if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer() &&
           FXDIB_Format::kRgb32 == GetFormat()) {
+        // TODO(crbug.com/pdfium/2016): This is not reliable because alpha may
+        // be modified outside of this operation.
         color |= 0xFF000000;
       }
       for (int i = 0; i < m_Width; i++)
@@ -235,7 +237,7 @@ bool CFX_DIBitmap::TransferWithUnequalFormats(
   if (!offset.IsValid())
     return false;
 
-  pdfium::span<uint8_t> dest_buf = GetBuffer().subspan(
+  pdfium::span<uint8_t> dest_buf = GetWritableBuffer().subspan(
       dest_top * m_Pitch + static_cast<uint32_t>(offset.ValueOrDie()));
   DataVector<uint32_t> d_plt;
   return ConvertBuffer(dest_format, dest_buf, m_Pitch, width, height,
@@ -387,11 +389,9 @@ bool CFX_DIBitmap::SetUniformOpaqueAlpha() {
 }
 
 bool CFX_DIBitmap::MultiplyAlpha(const RetainPtr<CFX_DIBBase>& pSrcBitmap) {
-  if (!m_pBuffer)
-    return false;
+  CHECK(pSrcBitmap->IsMaskFormat());
 
-  if (!pSrcBitmap->IsMaskFormat()) {
-    NOTREACHED();
+  if (!m_pBuffer) {
     return false;
   }
 
@@ -484,7 +484,7 @@ bool CFX_DIBitmap::MultiplyAlpha(int alpha) {
   return true;
 }
 
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
 uint32_t CFX_DIBitmap::GetPixel(int x, int y) const {
   if (!m_pBuffer)
     return 0;
@@ -524,9 +524,7 @@ uint32_t CFX_DIBitmap::GetPixel(int x, int y) const {
   }
   return 0;
 }
-#endif  // _SKIA_SUPPORT_
 
-#if defined(_SKIA_SUPPORT_)
 void CFX_DIBitmap::SetPixel(int x, int y, uint32_t color) {
   if (!m_pBuffer)
     return;
@@ -672,16 +670,12 @@ absl::optional<CFX_DIBitmap::PitchAndSize> CFX_DIBitmap::CalculatePitchAndSize(
 
   uint32_t actual_pitch = pitch;
   if (actual_pitch == 0) {
-    FX_SAFE_UINT32 safe_pitch = width;
-    safe_pitch *= bpp;
-    safe_pitch += 31;
-    // Note: This is not the same as /8 due to truncation.
-    safe_pitch /= 32;
-    safe_pitch *= 4;
-    if (!safe_pitch.IsValid())
+    absl::optional<uint32_t> pitch32 = fxge::CalculatePitch32(bpp, width);
+    if (!pitch32.has_value()) {
       return absl::nullopt;
+    }
 
-    actual_pitch = safe_pitch.ValueOrDie();
+    actual_pitch = pitch32.value();
   }
 
   size_t safe_size = actual_pitch;
@@ -703,11 +697,8 @@ bool CFX_DIBitmap::CompositeBitmap(int dest_left,
                                    BlendMode blend_type,
                                    const CFX_ClipRgn* pClipRgn,
                                    bool bRgbByteOrder) {
-  if (pSrcBitmap->IsMaskFormat()) {
-    // Should have called CompositeMask().
-    NOTREACHED();
-    return false;
-  }
+  // Should have called CompositeMask().
+  CHECK(!pSrcBitmap->IsMaskFormat());
 
   if (!m_pBuffer)
     return false;
@@ -770,11 +761,8 @@ bool CFX_DIBitmap::CompositeMask(int dest_left,
                                  BlendMode blend_type,
                                  const CFX_ClipRgn* pClipRgn,
                                  bool bRgbByteOrder) {
-  if (!pMask->IsMaskFormat()) {
-    // Should have called CompositeBitmap().
-    NOTREACHED();
-    return false;
-  }
+  // Should have called CompositeBitmap().
+  CHECK(pMask->IsMaskFormat());
 
   if (!m_pBuffer)
     return false;
@@ -931,11 +919,7 @@ bool CFX_DIBitmap::CompositeRect(int left,
     return true;
   }
 
-  if (GetBppFromFormat(m_Format) < 24) {
-    NOTREACHED();
-    return false;
-  }
-
+  CHECK_GE(GetBppFromFormat(m_Format), 24);
   color_p[3] = static_cast<uint8_t>(src_alpha);
   int Bpp = GetBppFromFormat(m_Format) / 8;
   const bool bAlpha = IsAlphaFormat();

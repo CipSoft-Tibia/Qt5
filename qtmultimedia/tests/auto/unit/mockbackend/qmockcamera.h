@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QMOCKCAMERA_H
 #define QMOCKCAMERA_H
@@ -30,9 +30,6 @@ public:
     bool isActive() const override;
 
     void setActive(bool active) override;
-
-    /* helper method to emit the signal error */
-    void setError(QCamera::Error err, QString errorString);
 
     void setCamera(const QCameraDevice &camera) override;
 

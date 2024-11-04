@@ -30,9 +30,12 @@ static_library("personalization_app") {
     "//ash",
     "//ash/constants:constants",
     "//ash/public/cpp",
+    "//ash/webui/common:trusted_types_util",
     "//ash/webui/personalization_app/mojom",
     "//ash/webui/personalization_app/proto",
     "//ash/webui/personalization_app/resources:resources",
+    "//ash/webui/system_apps/public:system_web_app_config",
+    "//ash/webui/system_apps/public:system_web_app_type",
     "//chromeos/ash/components/local_search_service",
     "//chromeos/ash/components/local_search_service/public/cpp",
     "//chromeos/ash/components/local_search_service/public/mojom",
@@ -40,37 +43,22 @@ static_library("personalization_app") {
     "//components/keyed_service/content",
     "//components/keyed_service/core",
     "//content/public/browser",
+    "//ui/chromeos",
     "//ui/chromeos/styles:cros_styles_views",
     "//ui/resources:webui_resources_grd_grit",
     "//ui/webui",
   ]
 }
 
-js2gtest("browser_tests_js") {
-  test_type = "mojo_lite_webui"
-
-  sources = [ "test/personalization_app_browsertest.js" ]
-
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-  deps = [ ":browser_test_support" ]
-}
-
-source_set("browser_test_support") {
+source_set("test_support") {
   testonly = true
   sources = [
     "test/fake_personalization_app_ambient_provider.cc",
     "test/fake_personalization_app_ambient_provider.h",
     "test/fake_personalization_app_keyboard_backlight_provider.cc",
     "test/fake_personalization_app_keyboard_backlight_provider.h",
-    "test/fake_personalization_app_theme_provider.cc",
-    "test/fake_personalization_app_theme_provider.h",
     "test/fake_personalization_app_user_provider.cc",
     "test/fake_personalization_app_user_provider.h",
-    "test/fake_personalization_app_wallpaper_provider.cc",
-    "test/fake_personalization_app_wallpaper_provider.h",
-    "test/personalization_app_browsertest_fixture.cc",
-    "test/personalization_app_browsertest_fixture.h",
     "test/personalization_app_mojom_banned_browsertest_fixture.cc",
     "test/personalization_app_mojom_banned_browsertest_fixture.h",
   ]
@@ -97,6 +85,7 @@ source_set("unit_tests") {
     "//ash:test_support",
     "//ash/constants",
     "//ash/public/cpp",
+    "//ash/public/cpp:test_support",
     "//ash/webui/personalization_app/search:mojo_bindings",
     "//base/test:test_support",
     "//chromeos/ash/components:test_support",

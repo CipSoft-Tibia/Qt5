@@ -69,15 +69,14 @@ void CompileJsToWasmWrappers(Isolate* isolate, const WasmModule* module);
 // compiled yet.
 V8_EXPORT_PRIVATE
 WasmCode* CompileImportWrapper(
-    NativeModule* native_module, Counters* counters,
-    compiler::WasmImportCallKind kind, const FunctionSig* sig,
-    uint32_t canonical_type_index, int expected_arity, Suspend suspend,
-    WasmImportWrapperCache::ModificationScope* cache_scope);
+    NativeModule* native_module, Counters* counters, ImportCallKind kind,
+    const FunctionSig* sig, uint32_t canonical_type_index, int expected_arity,
+    Suspend suspend, WasmImportWrapperCache::ModificationScope* cache_scope);
 
 // Triggered by the WasmCompileLazy builtin. The return value indicates whether
 // compilation was successful. Lazy compilation can fail only if validation is
 // also lazy.
-bool CompileLazy(Isolate*, WasmInstanceObject, int func_index);
+bool CompileLazy(Isolate*, Tagged<WasmInstanceObject>, int func_index);
 
 // Throws the compilation error after failed lazy compilation.
 void ThrowLazyCompilationError(Isolate* isolate,
@@ -86,10 +85,10 @@ void ThrowLazyCompilationError(Isolate* isolate,
 
 // Trigger tier-up of a particular function to TurboFan. If tier-up was already
 // triggered, we instead increase the priority with exponential back-off.
-V8_EXPORT_PRIVATE void TriggerTierUp(WasmInstanceObject instance,
+V8_EXPORT_PRIVATE void TriggerTierUp(Tagged<WasmInstanceObject> instance,
                                      int func_index);
 // Synchronous version of the above.
-void TierUpNowForTesting(Isolate* isolate, WasmInstanceObject instance,
+void TierUpNowForTesting(Isolate* isolate, Tagged<WasmInstanceObject> instance,
                          int func_index);
 
 template <typename Key, typename KeyInfo, typename Hash>
@@ -137,7 +136,8 @@ class AsyncCompileJob {
  public:
   AsyncCompileJob(Isolate* isolate, WasmFeatures enabled_features,
                   base::OwnedVector<const uint8_t> bytes,
-                  Handle<Context> context, Handle<Context> incumbent_context,
+                  Handle<Context> context,
+                  Handle<NativeContext> incumbent_context,
                   const char* api_method_name,
                   std::shared_ptr<CompilationResultResolver> resolver,
                   int compilation_id);
@@ -278,7 +278,7 @@ class AsyncCompileJob {
   // {native_module_}).
   ModuleWireBytes wire_bytes_;
   Handle<NativeContext> native_context_;
-  Handle<Context> incumbent_context_;
+  Handle<NativeContext> incumbent_context_;
   v8::metrics::Recorder::ContextId context_id_;
   v8::metrics::WasmModuleDecoded metrics_event_;
   const std::shared_ptr<CompilationResultResolver> resolver_;

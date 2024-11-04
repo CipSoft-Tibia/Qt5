@@ -21,13 +21,11 @@ let cssWorkspaceBindingInstance: CSSWorkspaceBinding|undefined;
 export class CSSWorkspaceBinding implements SDK.TargetManager.SDKModelObserver<SDK.CSSModel.CSSModel> {
   readonly #resourceMapping: ResourceMapping;
   readonly #modelToInfo: Map<SDK.CSSModel.CSSModel, ModelInfo>;
-  readonly #sourceMappings: SourceMapping[];
   readonly #liveLocationPromises: Set<Promise<unknown>>;
 
   private constructor(resourceMapping: ResourceMapping, targetManager: SDK.TargetManager.TargetManager) {
     this.#resourceMapping = resourceMapping;
     this.#modelToInfo = new Map();
-    this.#sourceMappings = [];
     targetManager.observeModels(SDK.CSSModel.CSSModel, this);
 
     this.#liveLocationPromises = new Set();
@@ -133,38 +131,15 @@ export class CSSWorkspaceBinding implements SDK.TargetManager.SDKModelObserver<S
   }
 
   rawLocationToUILocation(rawLocation: SDK.CSSModel.CSSLocation): Workspace.UISourceCode.UILocation|null {
-    for (let i = this.#sourceMappings.length - 1; i >= 0; --i) {
-      const uiLocation = this.#sourceMappings[i].rawLocationToUILocation(rawLocation);
-      if (uiLocation) {
-        return uiLocation;
-      }
-    }
     return this.getCSSModelInfo(rawLocation.cssModel()).rawLocationToUILocation(rawLocation);
   }
 
   uiLocationToRawLocations(uiLocation: Workspace.UISourceCode.UILocation): SDK.CSSModel.CSSLocation[] {
-    for (let i = this.#sourceMappings.length - 1; i >= 0; --i) {
-      const rawLocations = this.#sourceMappings[i].uiLocationToRawLocations(uiLocation);
-      if (rawLocations.length) {
-        return rawLocations;
-      }
-    }
     const rawLocations = [];
     for (const modelInfo of this.#modelToInfo.values()) {
       rawLocations.push(...modelInfo.uiLocationToRawLocations(uiLocation));
     }
     return rawLocations;
-  }
-
-  addSourceMapping(sourceMapping: SourceMapping): void {
-    this.#sourceMappings.push(sourceMapping);
-  }
-
-  removeSourceMapping(sourceMapping: SourceMapping): void {
-    const index = this.#sourceMappings.indexOf(sourceMapping);
-    if (index !== -1) {
-      this.#sourceMappings.splice(index, 1);
-    }
   }
 }
 
@@ -324,7 +299,7 @@ export class LiveLocation extends LiveLocationWithPool {
     this.headerInternal = header;
   }
 
-  async uiLocation(): Promise<Workspace.UISourceCode.UILocation|null> {
+  override async uiLocation(): Promise<Workspace.UISourceCode.UILocation|null> {
     if (!this.headerInternal) {
       return null;
     }
@@ -332,12 +307,12 @@ export class LiveLocation extends LiveLocationWithPool {
     return CSSWorkspaceBinding.instance().rawLocationToUILocation(rawLocation);
   }
 
-  dispose(): void {
+  override dispose(): void {
     super.dispose();
     this.#info.disposeLocation(this);
   }
 
-  async isIgnoreListed(): Promise<boolean> {
+  override async isIgnoreListed(): Promise<boolean> {
     return false;
   }
 }

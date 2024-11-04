@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium OS Authors. All rights reserved.
+// Copyright 2019 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,49 +6,90 @@
 #define LIBIPP_IPP_ATTRIBUTE_H_
 
 #include <cstdint>
+#include <iterator>
+#include <limits>
+#include <map>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
-#include "ipp_enums.h"  // NOLINT(build/include)
-#include "ipp_export.h"  // NOLINT(build/include)
+#include "colls_view.h"
+#include "ipp_enums.h"
+#include "ipp_export.h"
 
 namespace ipp {
 
-// Represents the current state of the attribute:
-// set/unset or one of the out-of-band values.
-// "unset" means that the attribute is not included in a IPP frame.
-enum class AttrState : uint8_t {
-  unset = 0x00,             // internal
-  set = 0x01,               // internal
+// Forward declaration
+enum class Code;
+
+// Values of ValueTag enum are copied from IPP specification; this is why
+// they do not follow the standard naming rule.
+// ValueTag defines type of an attribute. It is also called as `syntax` in the
+// IPP specification. All valid tags are listed below. Values of attributes with
+// these tags are mapped to C++ types.
+enum class ValueTag : uint8_t {
+  // 0x00-0x0f are invalid.
+  // 0x10-0x1f are Out-of-Band tags. Attributes with this tag have no values.
+  // All tags from the range 0x10-0x1f are valid.
   unsupported = 0x10,       // [rfc8010]
   unknown = 0x12,           // [rfc8010]
-  novalue_ = 0x13,          // [rfc8010]
+  no_value = 0x13,          // [rfc8010]
   not_settable = 0x15,      // [rfc3380]
   delete_attribute = 0x16,  // [rfc3380]
-  admin_define = 0x17       // [rfc3380]
-};
-
-// Represents types of values hold by attributes (see [rfc8010]).
-// "collection" means that the attribute has class Collection as a value.
-enum class AttrType : uint8_t {
+  admin_define = 0x17,      // [rfc3380]
+  // 0x20-0x2f represents integer types.
+  // Only the following tags are valid. They map to int32_t.
   integer = 0x21,
-  boolean = 0x22,
+  boolean = 0x22,  // maps to both int32_t and bool.
   enum_ = 0x23,
-  octetString = 0x30,
-  dateTime = 0x31,
-  resolution = 0x32,
-  rangeOfInteger = 0x33,
-  collection = 0x34,  // use begCollection tag value [rfc8010]
-  text = 0x35,        // use textWithLanguage tag value [rfc8010]
-  name = 0x36,        // use nameWithLanguage tag value [rfc8010]
+  // 0x30-0x3f are called "octetString types". They map to dedicated types.
+  // Only the following tags are valid.
+  octetString = 0x30,       // maps to std::string
+  dateTime = 0x31,          // maps to DateTime
+  resolution = 0x32,        // maps to Resolution
+  rangeOfInteger = 0x33,    // maps to RangeOfInteger
+  collection = 0x34,        // = begCollection tag [rfc8010], maps to Collection
+  textWithLanguage = 0x35,  // maps to StringWithLanguage
+  nameWithLanguage = 0x36,  // maps to StringWithLanguage
+  // 0x40-0x5f represents 'character-string values'. They map to std::string.
+  // All tags from the ranges 0x40-0x49 and 0x4b-0x5f are valid.
+  textWithoutLanguage = 0x41,
+  nameWithoutLanguage = 0x42,
   keyword = 0x44,
   uri = 0x45,
   uriScheme = 0x46,
   charset = 0x47,
   naturalLanguage = 0x48,
   mimeMediaType = 0x49
+  // memberAttrName = 0x4a is invalid.
+  // 0x60-0xff are invalid.
 };
+
+// Is valid Out-of-Band tag (0x10-0x1f).
+constexpr bool IsOutOfBand(ValueTag tag) {
+  return (tag >= static_cast<ValueTag>(0x10) &&
+          tag <= static_cast<ValueTag>(0x1f));
+}
+// Is valid integer type (0x21-0x23).
+constexpr bool IsInteger(ValueTag tag) {
+  return (tag >= static_cast<ValueTag>(0x21) &&
+          tag <= static_cast<ValueTag>(0x23));
+}
+// Is valid character-string type (0x40-0x5f without 0x4a).
+constexpr bool IsString(ValueTag tag) {
+  return (tag >= static_cast<ValueTag>(0x40) &&
+          tag <= static_cast<ValueTag>(0x5f) &&
+          tag != static_cast<ValueTag>(0x4a));
+}
+// Is valid tag.
+constexpr bool IsValid(ValueTag tag) {
+  return (IsOutOfBand(tag) || IsInteger(tag) || IsString(tag) ||
+          (tag >= static_cast<ValueTag>(0x30) &&
+           tag <= static_cast<ValueTag>(0x36)));
+}
 
 // It is used to hold name and text values (see [rfc8010]).
 // If language == "" it represents nameWithoutLanguage or textWithoutLanguage,
@@ -63,25 +104,48 @@ struct StringWithLanguage {
   explicit StringWithLanguage(std::string&& value) : value(value) {}
   operator std::string() const { return value; }
 };
+inline bool operator==(const StringWithLanguage& v1,
+                       const StringWithLanguage& v2) {
+  return (v1.language == v2.language) && (v1.value == v2.value);
+}
+inline bool operator!=(const StringWithLanguage& v1,
+                       const StringWithLanguage& v2) {
+  return !(v1 == v2);
+}
 
 // Represents resolution type from [rfc8010].
 struct Resolution {
-  int size1 = 0;
-  int size2 = 0;
-  enum Units { kDotsPerInch = 3, kDotsPerCentimeter = 4 } units = kDotsPerInch;
+  int32_t xres = 0;
+  int32_t yres = 0;
+  enum Units : int8_t {
+    kDotsPerInch = 3,
+    kDotsPerCentimeter = 4
+  } units = kDotsPerInch;
   Resolution() = default;
-  Resolution(int size1, int size2, Units units = Units::kDotsPerInch)
-      : size1(size1), size2(size2), units(units) {}
+  Resolution(int32_t size1, int32_t size2, Units units = Units::kDotsPerInch)
+      : xres(size1), yres(size2), units(units) {}
 };
+inline bool operator==(const Resolution& v1, const Resolution& v2) {
+  return (v1.xres == v2.xres) && (v1.yres == v2.yres) && (v1.units == v2.units);
+}
+inline bool operator!=(const Resolution& v1, const Resolution& v2) {
+  return !(v1 == v2);
+}
 
 // Represents rangeOfInteger type from [rfc8010].
 struct RangeOfInteger {
-  int min_value = 0;
-  int max_value = 0;
+  int32_t min_value = 0;
+  int32_t max_value = 0;
   RangeOfInteger() = default;
-  RangeOfInteger(int min_value, int max_value)
+  RangeOfInteger(int32_t min_value, int32_t max_value)
       : min_value(min_value), max_value(max_value) {}
 };
+inline bool operator==(const RangeOfInteger& v1, const RangeOfInteger& v2) {
+  return (v1.min_value == v2.min_value) && (v1.max_value == v2.max_value);
+}
+inline bool operator!=(const RangeOfInteger& v1, const RangeOfInteger& v2) {
+  return !(v1 == v2);
+}
 
 // Represents dateTime type from [rfc8010,rfc2579].
 struct DateTime {
@@ -90,468 +154,390 @@ struct DateTime {
   uint8_t day = 1;              // 1..31
   uint8_t hour = 0;             // 0..23
   uint8_t minutes = 0;          // 0..59
-  uint8_t seconds = 0;          //  0..60 (60 - leap second :-)
+  uint8_t seconds = 0;          // 0..60 (60 - leap second :-)
   uint8_t deci_seconds = 0;     // 0..9
   uint8_t UTC_direction = '+';  // '+' / '-'
   uint8_t UTC_hours = 0;        // 0..13
-  uint8_t UTC_minutes = 0;      //  0..59
+  uint8_t UTC_minutes = 0;      // 0..59
 };
+inline bool operator==(const DateTime& v1, const DateTime& v2) {
+  return (v1.year == v2.year) && (v1.month == v2.month) && (v1.day == v2.day) &&
+         (v1.hour == v2.hour) && (v1.minutes == v2.minutes) &&
+         (v1.seconds == v2.seconds) && (v1.deci_seconds == v2.deci_seconds) &&
+         (v1.UTC_direction == v2.UTC_direction) &&
+         (v1.UTC_hours == v2.UTC_hours) && (v1.UTC_minutes == v2.UTC_minutes);
+}
+inline bool operator!=(const DateTime& v1, const DateTime& v2) {
+  return !(v1 == v2);
+}
 
 // Functions converting basic types to string. For enums it returns empty
 // string if given value is not defined.
-IPP_EXPORT std::string ToString(AttrState value);
-IPP_EXPORT std::string ToString(AttrType value);
-IPP_EXPORT std::string ToString(bool value);
-IPP_EXPORT std::string ToString(int value);
-IPP_EXPORT std::string ToString(const Resolution& value);
-IPP_EXPORT std::string ToString(const RangeOfInteger& value);
-IPP_EXPORT std::string ToString(const DateTime& value);
+LIBIPP_EXPORT std::string_view ToStrView(ValueTag tag);
+LIBIPP_EXPORT std::string ToString(bool value);
+LIBIPP_EXPORT std::string ToString(int value);
+LIBIPP_EXPORT std::string ToString(const Resolution& value);
+LIBIPP_EXPORT std::string ToString(const RangeOfInteger& value);
+LIBIPP_EXPORT std::string ToString(const DateTime& value);
+LIBIPP_EXPORT std::string ToString(const StringWithLanguage& value);
 
 // Functions extracting basic types from string.
 // Returns false <=> given pointer is nullptr or given string does not
 // represent a correct value.
-IPP_EXPORT bool FromString(const std::string& str, bool* value);
-IPP_EXPORT bool FromString(const std::string& str, int* value);
+LIBIPP_EXPORT bool FromString(const std::string& str, bool* value);
+LIBIPP_EXPORT bool FromString(const std::string& str, int* value);
 
-// It is defined in ipp_package.h. Represents struct-like entity with
-// attributes, where each attribute must have unique name.
+// Basic values are stored in attributes as variables of the following types:
+enum InternalType : uint8_t {
+  kInteger,             // int32_t
+  kString,              // std::string
+  kStringWithLanguage,  // ipp::StringWithLanguage
+  kResolution,          // ipp::Resolution
+  kRangeOfInteger,      // ipp::RangeOfInteger
+  kDateTime,            // ipp::DateTime
+  kCollection           // Collection*
+};
+
+class Attribute;
 class Collection;
 
-// Base class representing Attribute, contains general API for Attribute.
-class IPP_EXPORT Attribute {
+// Helper structure
+struct AttrDef {
+  ValueTag ipp_type;
+  InternalType cc_type;
+};
+
+// Base class for all IPP collections. Collections is like struct filled with
+// Attributes. Each attribute in Collection must have unique non-empty name.
+// Use AddAttr() methods to add new attributes to the collection and GetAttr()
+// to get access to the attribute by its name. To iterate over all attributes in
+// the collection use iterators, e.g.:
+//
+//    for (Attribute& attr: collection) { ... }
+//    for (const Attribute& attr: collection) { ... }
+//
+// Attributes inside the collection are always in the same order they were added
+// to it. They will also appear in the same order in the resultant frame.
+class LIBIPP_EXPORT Collection {
  public:
-  virtual ~Attribute() = default;
+  class const_iterator;
+  class iterator {
+   public:
+    using iterator_category = std::bidirectional_iterator_tag;
+    using value_type = Attribute;
+    using difference_type = int;
+    using pointer = Attribute*;
+    using reference = Attribute&;
 
-  // Returns a type of the attribute.
-  AttrType GetType() const { return type_; }
+    iterator() = default;
+    iterator& operator++() {
+      ++iter_;
+      return *this;
+    }
+    iterator& operator--() {
+      --iter_;
+      return *this;
+    }
+    iterator operator++(int) { return iterator(iter_++); }
+    iterator operator--(int) { return iterator(iter_--); }
+    Attribute& operator*() { return *(iter_->get()); }
+    Attribute* operator->() { return iter_->get(); }
+    bool operator==(const iterator& i) const { return iter_ == i.iter_; }
+    bool operator!=(const iterator& i) const { return iter_ != i.iter_; }
+    bool operator==(const const_iterator& i) const { return iter_ == i.iter_; }
+    bool operator!=(const const_iterator& i) const { return iter_ != i.iter_; }
 
-  // Returns a state of an attribute. Default state is always AttrState::unset,
-  // setting any value with SetValues(...) switches the state to AttrState::set.
-  // State can be also set by hand with SetState() method.
-  // If (GetType() != collection): returns a state value saved in the object.
-  // If (GetType() == collection): the following algorithm is used:
-  // 1. If the attribute's state was set directly to one of out-of-band values
-  //    (values different that AttrState::unset and AttrState::set), this value
-  //    is returned.
-  // 2. If (GetState() == unset) for all members in all Collections in the
-  //    attribute, the value AttrState::unset is returned (recursive check).
-  // 3. Returns AttrState::set.
-  AttrState GetState();
+   private:
+    friend class Collection;
+    explicit iterator(std::vector<std::unique_ptr<Attribute>>::iterator iter)
+        : iter_(iter) {}
+    std::vector<std::unique_ptr<Attribute>>::iterator iter_;
+  };
 
-  // Sets state of the attribute.
-  // If (GetType() != collection): it sets directly the state in the object.
-  // If (GetType() == collection): the following rules apply:
-  // * If (new_state == unset), it clears out-of-band value from the object
-  //   and calls recursively SetState(unset) for all members in all
-  //   Collections in the attribute.
-  // * If (new_state == set), it only clears out-of-band value from the object.
-  // * In all other cases it just sets directly the given out-of-band value in
-  //   the object.
-  void SetState(AttrState new_state);
+  class const_iterator {
+   public:
+    using iterator_category = std::bidirectional_iterator_tag;
+    using value_type = const Attribute;
+    using difference_type = int;
+    using pointer = const Attribute*;
+    using reference = const Attribute&;
 
-  // Returns true if the attribute is a set, false if it is a single value.
-  bool IsASet() const { return is_a_set_; }
+    const_iterator() = default;
+    explicit const_iterator(iterator it) : iter_(it.iter_) {}
+    const_iterator& operator=(iterator it) {
+      iter_ = it.iter_;
+      return *this;
+    }
+    const_iterator& operator++() {
+      ++iter_;
+      return *this;
+    }
+    const_iterator& operator--() {
+      --iter_;
+      return *this;
+    }
+    const_iterator operator++(int) { return const_iterator(iter_++); }
+    const_iterator operator--(int) { return const_iterator(iter_--); }
+    const Attribute& operator*() { return *(iter_->get()); }
+    const Attribute* operator->() { return iter_->get(); }
+    bool operator==(const iterator& i) const { return iter_ == i.iter_; }
+    bool operator!=(const iterator& i) const { return iter_ != i.iter_; }
+    bool operator==(const const_iterator& i) const { return iter_ == i.iter_; }
+    bool operator!=(const const_iterator& i) const { return iter_ != i.iter_; }
 
-  // Returns enum value corresponding to attributes name. If the name has
-  // no corresponding AttrName value, it returns AttrName::_unknown.
-  AttrName GetNameAsEnum() const { return name_; }
+   private:
+    friend class Collection;
+    explicit const_iterator(
+        std::vector<std::unique_ptr<Attribute>>::const_iterator iter)
+        : iter_(iter) {}
+    std::vector<std::unique_ptr<Attribute>>::const_iterator iter_;
+  };
 
-  // Returns an attribute's name as a non-empty string.
-  virtual std::string GetName() const { return ToString(name_); }
+  Collection();
+  Collection(const Collection&) = delete;
+  Collection(Collection&&) = delete;
+  Collection& operator=(const Collection&) = delete;
+  Collection& operator=(Collection&&) = delete;
+  virtual ~Collection();
 
-  // Returns the current number of elements (values or Collections).
-  // (IsASet() == false) => always returns 1.
-  virtual size_t GetSize() const = 0;
+  // Standard container methods.
+  iterator begin() { return iterator(attributes_.begin()); }
+  iterator end() { return iterator(attributes_.end()); }
+  const_iterator cbegin() const { return const_iterator(attributes_.cbegin()); }
+  const_iterator cend() const { return const_iterator(attributes_.cend()); }
+  const_iterator begin() const { return cbegin(); }
+  const_iterator end() const { return cend(); }
+  size_t size() const { return attributes_index_.size(); }
+  bool empty() const { return attributes_index_.empty(); }
 
-  // Resizes a set of values or Collections if IsASet() == true.
-  // (IsASet() == false) => does nothing.
-  virtual void Resize(size_t) = 0;
+  // Methods return attribute by name. Methods return an iterator end() <=> the
+  // collection has no attributes with this name.
+  iterator GetAttr(std::string_view name);
+  const_iterator GetAttr(std::string_view name) const;
 
-  // Retrieves a value from an attribute, returns true for success and
-  // false if the index is out of range or the value cannot be converted
-  // to given variable (in this case, the given variable is not modified).
-  // (val == nullptr) => does nothing and returns false.
-  // (GetType() == collection) => does nothing and returns false.
-  virtual bool GetValue(std::string* val, size_t index = 0) const {
-    return false;
-  }
-  virtual bool GetValue(StringWithLanguage* val, size_t index = 0) const {
-    return false;
-  }
-  virtual bool GetValue(int* val, size_t index = 0) const { return false; }
-  virtual bool GetValue(Resolution* val, size_t index = 0) const {
-    return false;
-  }
-  virtual bool GetValue(RangeOfInteger* val, size_t index = 0) const {
-    return false;
-  }
-  virtual bool GetValue(DateTime* val, size_t index = 0) const { return false; }
+  // Add a new attribute without values. `tag` must be Out-Of-Band (see ValueTag
+  // definition). Possible errors:
+  //  * kInvalidName
+  //  * kNameConflict
+  //  * kInvalidValueTag
+  //  * kIncompatibleType  (`tag` is not Out-Of-Band)
+  //  * kTooManyAttributes.
+  Code AddAttr(const std::string& name, ValueTag tag);
 
-  // Stores a value in given attribute's element. If the attribute is a set
-  // and given index is out of range, the underlying container is resized.
-  // Returns true for success and false if given value cannot be converted
-  // to internal variable or one of the following rules applies:
-  // (GetType() == collection) => does nothing and returns false.
-  // (IsASet() == false && index != 0) => does nothing and returns false.
-  virtual bool SetValue(const std::string& val, size_t index = 0) {
-    return false;
-  }
-  virtual bool SetValue(const StringWithLanguage& val, size_t index = 0) {
-    return false;
-  }
-  virtual bool SetValue(const int& val, size_t index = 0) { return false; }
-  virtual bool SetValue(const Resolution& val, size_t index = 0) {
-    return false;
-  }
-  virtual bool SetValue(const RangeOfInteger& val, size_t index = 0) {
-    return false;
-  }
-  virtual bool SetValue(const DateTime& val, size_t index = 0) { return false; }
+  // Add a new attribute with one or more values. `tag` must be compatible with
+  // type of the parameter `value`/`values` according to the following rules:
+  //  * int32_t: IsInteger(tag) == true
+  //  * std::string: IsString(tag) == true OR tag == octetString
+  //  * StringWithLanguage: tag == nameWithLanguage OR tag == textWithLanguage
+  //  * DateTime: tag == dateTime
+  //  * Resolution: tag == resolution
+  //  * RangeOfInteger: tag == rangeOfInteger
+  // Possible errors:
+  //  * kInvalidName
+  //  * kNameConflict
+  //  * kInvalidValueTag
+  //  * kIncompatibleType  (see the rules above)
+  //  * kValueOutOfRange   (the vector is empty or one of the value is invalid)
+  //  * kTooManyAttributes.
+  Code AddAttr(const std::string& name, ValueTag tag, int32_t value);
+  Code AddAttr(const std::string& name, ValueTag tag, const std::string& value);
+  Code AddAttr(const std::string& name,
+               ValueTag tag,
+               const StringWithLanguage& value);
+  Code AddAttr(const std::string& name, ValueTag tag, DateTime value);
+  Code AddAttr(const std::string& name, ValueTag tag, Resolution value);
+  Code AddAttr(const std::string& name, ValueTag tag, RangeOfInteger value);
+  Code AddAttr(const std::string& name,
+               ValueTag tag,
+               const std::vector<int32_t>& values);
+  Code AddAttr(const std::string& name,
+               ValueTag tag,
+               const std::vector<std::string>& values);
+  Code AddAttr(const std::string& name,
+               ValueTag tag,
+               const std::vector<StringWithLanguage>& values);
+  Code AddAttr(const std::string& name,
+               ValueTag tag,
+               const std::vector<DateTime>& values);
+  Code AddAttr(const std::string& name,
+               ValueTag tag,
+               const std::vector<Resolution>& values);
+  Code AddAttr(const std::string& name,
+               ValueTag tag,
+               const std::vector<RangeOfInteger>& values);
 
-  // Returns a pointer to Collection.
-  // (GetType() != collection || index >= GetSize()) <=> returns nullptr.
-  virtual Collection* GetCollection(size_t index = 0) { return nullptr; }
+  // Add a new attribute with one or more values. Tag of the new attribute is
+  // deduced from the type of the parameter `value`/`values`.
+  // Possible errors:
+  //  * kInvalidName
+  //  * kNameConflict
+  //  * kValueOutOfRange   (the vector is empty)
+  //  * kTooManyAttributes.
+  Code AddAttr(const std::string& name, bool value);
+  Code AddAttr(const std::string& name, int32_t value);
+  Code AddAttr(const std::string& name, DateTime value);
+  Code AddAttr(const std::string& name, Resolution value);
+  Code AddAttr(const std::string& name, RangeOfInteger value);
+  Code AddAttr(const std::string& name, const std::vector<bool>& values);
+  Code AddAttr(const std::string& name, const std::vector<int32_t>& values);
+  Code AddAttr(const std::string& name, const std::vector<DateTime>& values);
+  Code AddAttr(const std::string& name, const std::vector<Resolution>& values);
+  Code AddAttr(const std::string& name,
+               const std::vector<RangeOfInteger>& values);
 
- protected:
-  // Constructor is available from derived classes only.
-  Attribute(AttrName name, bool is_a_set, AttrType type)
-      : type_(type), name_(name), is_a_set_(is_a_set) {}
-
-  const AttrType type_;
-  const AttrName name_;
-  const bool is_a_set_;
-  AttrState state_ = AttrState::unset;
+  // Add a new attribute with one or more collections. The first method creates
+  // an attribute with a single collection and returns an iterator to it in the
+  // last parameter. The second method creates an attribute with `size`
+  // collections and returns a view of them in the last parameters.
+  // Possible errors:
+  //  * kInvalidName
+  //  * kNameConflict
+  //  * kValueOutOfRange   (`size` is out of range)
+  //  * kTooManyAttributes.
+  Code AddAttr(const std::string& name, CollsView::iterator& coll);
+  Code AddAttr(const std::string& name, size_t size, CollsView& colls);
 
  private:
-  // Copy/move/assign constructors/operators are forbidden.
+  friend class Attribute;
+
+  // Adds new attribute to the collection. Returns Code::OK <=> an attribute
+  // was created. A pointer to the new attribute is saved to `new_attr`.
+  Code CreateNewAttribute(const std::string& name,
+                          ValueTag type,
+                          Attribute*& new_attr);
+
+  // Tries to add a new attribute to the collection and set initial values for
+  // it. This function does not check compatibility of `tag` and ApiType. All
+  // other constraints are enforced. If `tag` is Out-Of-Band the parameter
+  // `values` is ignored.
+  template <typename ApiType>
+  Code AddAttributeToCollection(const std::string& name,
+                                ValueTag tag,
+                                const std::vector<ApiType>& values);
+
+  // Stores attributes in the order they are saved in the frame.
+  std::vector<std::unique_ptr<Attribute>> attributes_;
+
+  // Indexes attributes by name. Values are indices from `attributes_`.
+  std::unordered_map<std::string_view, size_t> attributes_index_;
+};
+
+// Base class representing Attribute, contains general API for Attribute.
+class LIBIPP_EXPORT Attribute {
+ public:
   Attribute(const Attribute&) = delete;
   Attribute(Attribute&&) = delete;
   Attribute& operator=(const Attribute&) = delete;
   Attribute& operator=(Attribute&&) = delete;
-};
 
-// Basic values are stored in attributes as variables of the following types:
-enum InternalType : uint8_t {
-  kInteger,             // int
-  kString,              // std::string
-  kStringWithLanguage,  // ipp::StringWithLanguage
-  kResolution,          // ipp::Resolution
-  kRange,               // ipp::RangeOfIntegers
-  kDateTime             // ipp::DateTime
-};
+  virtual ~Attribute();
 
-// General class for storing basic values, provides implementation for methods
-// GetValue(...) and SetValue(...). It is not suppose to be used directly.
-class IPP_EXPORT ValueAttribute : public Attribute {
- public:
-  virtual ~ValueAttribute();
+  // Returns tag of the attribute.
+  ValueTag Tag() const;
 
-  // Implementation of general API from Attribute.
-  size_t GetSize() const override;
-  void Resize(size_t) override;
-  bool GetValue(std::string* val, size_t index = 0) const override;
-  bool GetValue(StringWithLanguage* val, size_t index = 0) const override;
-  bool GetValue(int* val, size_t index = 0) const override;
-  bool GetValue(Resolution* val, size_t index = 0) const override;
-  bool GetValue(RangeOfInteger* val, size_t index = 0) const override;
-  bool GetValue(DateTime* val, size_t index = 0) const override;
-  bool SetValue(const std::string& val, size_t index = 0) override;
-  bool SetValue(const StringWithLanguage& val, size_t index = 0) override;
-  bool SetValue(const int& val, size_t index = 0) override;
-  bool SetValue(const Resolution& val, size_t index = 0) override;
-  bool SetValue(const RangeOfInteger& val, size_t index = 0) override;
-  bool SetValue(const DateTime& val, size_t index = 0) override;
+  // Returns an attribute's name. It is always a non-empty string.
+  std::string_view Name() const;
 
- protected:
-  // Constructor is available from derived classes only.
-  ValueAttribute(AttrName, bool is_a_set, AttrType, InternalType);
+  // Returns the current number of elements (values or Collections).
+  // It returns 0 <=> IsOutOfBand(Tag()).
+  size_t Size() const;
 
- private:
-  InternalType cpp_type_;
-  union Data {
-    std::vector<int> as_int;
-    std::vector<std::string> as_string;
-    std::vector<Resolution> as_resolution;
-    std::vector<RangeOfInteger> as_ranges;
-    std::vector<DateTime> as_datetime;
-    std::vector<StringWithLanguage> as_string_with_language;
-    // We have to provide constructor and destructor because union's
-    // elements are not trivial. The union is initialized/deleted in
-    // constructor/destructor of the class.
-    IPP_PRIVATE Data() {}
-    IPP_PRIVATE ~Data() {}
-  } data_;
-};
+  // Resizes the attribute (changes the number of stored values/collections).
+  // When (IsOutOfBand(Tag()) or `new_size` equals 0 this method does nothing.
+  void Resize(size_t new_size);
 
-// These templates convert the type from specialized API to the internal type
-// used to store values. Default is integer because it is used for all enum
-// types.
-template <typename TType>
-struct AsInternalType {
-  static const InternalType value = InternalType::kInteger;
-  typedef int Type;
-};
-template <>
-struct AsInternalType<std::string> {
-  static const InternalType value = InternalType::kString;
-  typedef std::string Type;
-};
-template <>
-struct AsInternalType<Resolution> {
-  static const InternalType value = InternalType::kResolution;
-  typedef Resolution Type;
-};
-template <>
-struct AsInternalType<RangeOfInteger> {
-  static const InternalType value = InternalType::kRange;
-  typedef RangeOfInteger Type;
-};
-template <>
-struct AsInternalType<DateTime> {
-  static const InternalType value = InternalType::kDateTime;
-  typedef DateTime Type;
-};
-template <>
-struct AsInternalType<StringWithLanguage> {
-  static const InternalType value = InternalType::kStringWithLanguage;
-  typedef StringWithLanguage Type;
-};
+  // Retrieves a single value from the attribute and saves it in `value`.
+  // Possible errors:
+  //  * kIncompatibleType
+  //  * kIndexOutOfRange
+  // The second parameter must match the type of the attribute, otherwise the
+  // code kIncompatibleType is returned. However, there are a couple of
+  // exceptions when the underlying value is silently converted to the type of
+  // the given parameter. See the table below for a list of silent conversions:
+  //
+  //      ValueTag       |  target C++ type
+  //  -------------------+--------------------
+  //       boolean       |      int32_t  (0 or 1)
+  //        enum         |      int32_t
+  //       integer       |  RangeOfIntegers  (as range [int,int])
+  // nameWithoutLanguage | StringWithLanguage  (language is empty)
+  // textWithoutLanguage | StringWithLanguage  (language is empty)
+  //
+  Code GetValue(size_t index, bool& value) const;
+  Code GetValue(size_t index, int32_t& value) const;
+  Code GetValue(size_t index, std::string& value) const;
+  Code GetValue(size_t index, StringWithLanguage& value) const;
+  Code GetValue(size_t index, DateTime& value) const;
+  Code GetValue(size_t index, Resolution& value) const;
+  Code GetValue(size_t index, RangeOfInteger& value) const;
 
-// Final class for Attribute, represents single value from the schema.
-// Template parameter defines type of the value.
-template <typename TValue>
-class SingleValue : public ValueAttribute {
- public:
-  SingleValue(AttrName name, AttrType type)
-      : ValueAttribute(name, false, type, AsInternalType<TValue>::value) {}
+  // Retrieves values from the attribute. They are copied to the given vector.
+  // Possible errors:
+  //  * kIncompatibleType
+  // These methods follow the same rules for types' conversions as GetValue().
+  Code GetValues(std::vector<bool>& values) const;
+  Code GetValues(std::vector<int32_t>& values) const;
+  Code GetValues(std::vector<std::string>& values) const;
+  Code GetValues(std::vector<StringWithLanguage>& values) const;
+  Code GetValues(std::vector<DateTime>& values) const;
+  Code GetValues(std::vector<Resolution>& values) const;
+  Code GetValues(std::vector<RangeOfInteger>& values) const;
 
-  // Specialized API
-  void Set(const TValue& val) {
-    SetValue(static_cast<typename AsInternalType<TValue>::Type>(val));
-  }
-  TValue Get() const {
-    typename AsInternalType<TValue>::Type val;
-    GetValue(&val);
-    return static_cast<TValue>(val);
-  }
-};
+  // Set new values for the attribute. Previous values are discarded.
+  // Possible errors:
+  //  * kIncompatibleType
+  //  * kValueOutOfRange
+  Code SetValues(bool value);
+  Code SetValues(int32_t value);
+  Code SetValues(const std::string& value);
+  Code SetValues(const StringWithLanguage& value);
+  Code SetValues(DateTime value);
+  Code SetValues(Resolution value);
+  Code SetValues(RangeOfInteger value);
+  Code SetValues(const std::vector<bool>& values);
+  Code SetValues(const std::vector<int32_t>& values);
+  Code SetValues(const std::vector<std::string>& values);
+  Code SetValues(const std::vector<StringWithLanguage>& values);
+  Code SetValues(const std::vector<DateTime>& values);
+  Code SetValues(const std::vector<Resolution>& values);
+  Code SetValues(const std::vector<RangeOfInteger>& values);
 
-// Specialization of the template above for StringWithLanguage to add
-// Set(std::string).
-template <>
-class SingleValue<StringWithLanguage> : public ValueAttribute {
- public:
-  SingleValue(AttrName name, AttrType type)
-      : ValueAttribute(
-            name, false, type, AsInternalType<StringWithLanguage>::value) {}
-
-  // Specialized API
-  void Set(const StringWithLanguage& val) {
-    SetValue(static_cast<StringWithLanguage>(val));
-  }
-  void Set(const std::string& val) {
-    SetValue(static_cast<StringWithLanguage>(val));
-  }
-  StringWithLanguage Get() const {
-    StringWithLanguage val;
-    GetValue(&val);
-    return val;
-  }
-};
-
-// Final class for Attribute, represents sets of values.
-// Template parameter defines type of a single value.
-template <typename TValue>
-class SetOfValues : public ValueAttribute {
- public:
-  SetOfValues(AttrName name, AttrType type)
-      : ValueAttribute(name, true, type, AsInternalType<TValue>::value) {}
-
-  // Specialized API
-  void Set(const std::vector<TValue>& vals) {
-    Resize(vals.size());
-    for (size_t i = 0; i < vals.size(); ++i)
-      SetValue(vals[i], i);
-  }
-  std::vector<TValue> Get() const {
-    std::vector<TValue> vals(GetSize());
-    for (size_t i = 0; i < vals.size(); ++i) {
-      typename AsInternalType<TValue>::Type val;
-      GetValue(&val, i);
-      vals[i] = static_cast<TValue>(val);
-    }
-    return vals;
-  }
-  void Add(const std::vector<TValue>& vals) {
-    const size_t old_size = GetSize();
-    Resize(old_size + vals.size());
-    for (size_t i = 0; i < vals.size(); ++i)
-      SetValue(vals[i], old_size + i);
-  }
-};
-
-// Specialization of the template above for StringWithLanguage to add
-// Set/Add(std::string).
-template <>
-class SetOfValues<StringWithLanguage> : public ValueAttribute {
- public:
-  SetOfValues(AttrName name, AttrType type)
-      : ValueAttribute(
-            name, true, type, AsInternalType<StringWithLanguage>::value) {}
-
-  // Specialized API
-  void Set(const std::vector<StringWithLanguage>& vals) {
-    Resize(vals.size());
-    for (size_t i = 0; i < vals.size(); ++i)
-      SetValue(vals[i], i);
-  }
-  void Set(const std::vector<std::string>& vals) {
-    Resize(vals.size());
-    for (size_t i = 0; i < vals.size(); ++i)
-      SetValue(vals[i], i);
-  }
-  std::vector<StringWithLanguage> Get() const {
-    std::vector<StringWithLanguage> vals(GetSize());
-    for (size_t i = 0; i < vals.size(); ++i) {
-      StringWithLanguage val;
-      GetValue(&val, i);
-      vals[i] = val;
-    }
-    return vals;
-  }
-  void Add(const std::vector<StringWithLanguage>& vals) {
-    const size_t old_size = GetSize();
-    Resize(old_size + vals.size());
-    for (size_t i = 0; i < vals.size(); ++i)
-      SetValue(vals[i], old_size + i);
-  }
-  void Add(const std::vector<std::string>& vals) {
-    const size_t old_size = GetSize();
-    Resize(old_size + vals.size());
-    for (size_t i = 0; i < vals.size(); ++i)
-      SetValue(vals[i], old_size + i);
-  }
-};
-
-// Final class for Attribute, represents sets of values that can contain names
-// outside the schema.
-template <typename TValue>
-class OpenSetOfValues : public ValueAttribute {
- public:
-  OpenSetOfValues(AttrName name, AttrType type)
-      : ValueAttribute(name, true, type, InternalType::kString) {}
-
-  // Specialized API
-  void Set(const std::vector<std::string>& vals) {
-    Resize(vals.size());
-    for (size_t i = 0; i < vals.size(); ++i)
-      SetValue(vals[i], i);
-  }
-  void Set(const std::vector<TValue>& vals) {
-    Resize(vals.size());
-    for (size_t i = 0; i < vals.size(); ++i)
-      SetValue(ToString(vals[i]), i);
-  }
-  std::vector<std::string> Get() const {
-    std::vector<std::string> vals(GetSize());
-    for (size_t i = 0; i < vals.size(); ++i)
-      GetValue(&(vals[i]), i);
-    return vals;
-  }
-  void Add(const std::vector<std::string>& vals) {
-    const size_t old_size = GetSize();
-    Resize(old_size + vals.size());
-    for (size_t i = 0; i < vals.size(); ++i)
-      SetValue(vals[i], old_size + i);
-  }
-  void Add(const std::vector<TValue>& vals) {
-    const size_t old_size = GetSize();
-    Resize(old_size + vals.size());
-    for (size_t i = 0; i < vals.size(); ++i)
-      SetValue(ToString(vals[i]), old_size + i);
-  }
-};
-
-// Final class for Attribute, represents attribute not defined in the schema.
-class IPP_EXPORT UnknownValueAttribute : public ValueAttribute {
- public:
-  UnknownValueAttribute(const std::string& name, bool is_a_set, AttrType type);
-  std::string GetName() const override { return str_name_; }
+  // Provides access to Collection objects. You can iterate over them in the
+  // following ways:
+  //   for (Collection& coll: attr.Colls()) {
+  //     ...
+  //   }
+  // or
+  //   for (size_t i = 0; i < attr.Colls().size(); ) {
+  //     Collection& coll = attr.Colls()[i++];
+  //     ...
+  //   }
+  // (Tag() != collection) <=> attr.Colls().empty()
+  CollsView Colls();
+  ConstCollsView Colls() const;
 
  private:
-  std::string str_name_;
-};
+  friend class Collection;
 
-// Final class for Attribute, represents single IPP collection.
-// Template parameter is a class derived from Collection and defines
-// the structure.
-template <class TCollection>
-class SingleCollection : public Attribute, public TCollection {
- public:
-  explicit SingleCollection(AttrName name)
-      : Attribute(name, false, AttrType::collection) {}
+  // Constructor is called from Collection only.
+  Attribute(std::string_view name, AttrDef def);
 
-  // Implementation of general API from Attribute.
-  size_t GetSize() const override { return 1; }
-  void Resize(size_t) override {}
-  Collection* GetCollection(size_t index = 0) override {
-    if (index == 0)
-      return this;
-    return nullptr;
-  }
-};
+  // Returns the current number of elements (values or Collections).
+  // (IsASet() == false) => always returns 0 or 1.
+  size_t GetSize() const;
 
-// Final class for Attribute, represents set of collections from IPP spec.
-// Template parameter is a class derived from Collection and defines
-// the structure of a single collection.
-template <class TCollection>
-class SetOfCollections : public Attribute {
- public:
-  explicit SetOfCollections(AttrName name)
-      : Attribute(name, true, AttrType::collection) {}
+  // Helper template function.
+  template <typename ApiType>
+  bool SaveValue(size_t index, const ApiType& value);
 
-  // Implementation of general API from Attribute.
-  size_t GetSize() const override { return collections_.size(); }
-  void Resize(size_t new_size) override {
-    while (collections_.size() < new_size)
-      collections_.push_back(std::make_unique<TCollection>());
-    collections_.resize(new_size);
-  }
-  Collection* GetCollection(size_t index = 0) override {
-    if (index >= collections_.size())
-      return nullptr;
-    return collections_[index].get();
-  }
+  // The name of the attribute.
+  std::string name_;
 
-  // Specialized API
-  // If index is out of range, the vector is resized to (index+1).
-  TCollection& operator[](size_t index) {
-    if (index >= collections_.size())
-      Resize(index + 1);
-    return *(collections_[index]);
-  }
+  // Defines the type of values stored in the attribute.
+  const AttrDef def_;
 
- private:
-  std::vector<std::unique_ptr<TCollection>> collections_;
-};
-
-class IPP_EXPORT UnknownCollectionAttribute : public Attribute {
- public:
-  UnknownCollectionAttribute(const std::string& name, bool is_a_set);
-
-  // Implementation of general API from Attribute.
-  std::string GetName() const override { return str_name_; }
-  size_t GetSize() const override { return collections_.size(); }
-  void Resize(size_t new_size) override;
-  Collection* GetCollection(size_t index = 0) override {
-    if (index >= collections_.size())
-      return nullptr;
-    return collections_[index].get();
-  }
-
- private:
-  std::string str_name_;
-  std::vector<std::unique_ptr<Collection>> collections_;
+  // Stores values of the attribute.
+  void* values_ = nullptr;
 };
 
 }  // namespace ipp

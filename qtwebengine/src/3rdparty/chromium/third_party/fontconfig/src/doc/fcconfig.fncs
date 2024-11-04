@@ -109,9 +109,15 @@ disabled. The previous setting of the value is returned.
 @PURPOSE@       Build font database
 @DESC@
 Builds the set of available fonts for the given configuration.  Note that
-any changes to the configuration after this call have indeterminate effects.
-Returns FcFalse if this operation runs out of memory.
-If <parameter>config</parameter> is NULL, the current configuration is used.
+any changes to the configuration after this call (through
+<function>FcConfigParseAndLoad</function> or
+<function>FcConfigParseAndLoadFromMemory</function>) have indeterminate
+effects. (On the other hand, application fonts can still be modified
+through <function>FcConfigAppFontAddFile</function>,
+<function>FcConfigAppFontAddDir</function> and
+<function>FcConfigAppFontClear</function>). Returns FcFalse if this operation
+runs out of memory. If <parameter>config</parameter> is NULL, the current
+configuration is used.
 @@
 
 @RET@           FcStrList *
@@ -385,6 +391,12 @@ and parsed.  If 'complain' is FcFalse, no warning will be displayed if
 'file' does not exist. Error and warning messages will be output to stderr.
 Returns FcFalse if some error occurred while loading the file, either a
 parse error, semantic error or allocation failure. Otherwise returns FcTrue.
+
+After all configuration files / strings have been loaded, with
+<function>FcConfigParseAndLoad</function> and/or
+<function>FcConfigParseAndLoadFromMemory</function>, call
+<function>FcConfigBuildFonts</function> to build the font
+database.
 @@
 
 @RET@           FcBool
@@ -400,6 +412,12 @@ and dparsed.  If 'complain' is FcFalse, no warning will be displayed if
 'file' does not exist. Error and warning messages will be output to stderr.
 Returns FcFalse if fsome error occurred while loading the file, either a
 parse error, semantic error or allocation failure. Otherwise returns FcTrue.
+
+After all configuration files / strings have been loaded, with
+<function>FcConfigParseAndLoad</function> and/or
+<function>FcConfigParseAndLoadFromMemory</function>, call
+<function>FcConfigBuildFonts</function> to build the font
+database.
 @SINCE@         2.12.5
 @@
 

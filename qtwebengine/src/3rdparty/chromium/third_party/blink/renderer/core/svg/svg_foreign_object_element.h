@@ -47,9 +47,15 @@ class SVGForeignObjectElement final : public SVGGraphicsElement {
       MutableCSSPropertyValueSet*) override;
   void SvgAttributeChanged(const SvgAttributeChangedParams&) override;
 
-  LayoutObject* CreateLayoutObject(const ComputedStyle&, LegacyLayout) override;
+  LayoutObject* CreateLayoutObject(const ComputedStyle&) override;
 
   bool SelfHasRelativeLengths() const override;
+
+  SVGAnimatedPropertyBase* PropertyFromAttribute(
+      const QualifiedName& attribute_name) const override;
+  void SynchronizeAllSVGAttributes() const override;
+  void CollectExtraStyleForPresentationAttribute(
+      MutableCSSPropertyValueSet* style) override;
 
   Member<SVGAnimatedLength> x_;
   Member<SVGAnimatedLength> y_;

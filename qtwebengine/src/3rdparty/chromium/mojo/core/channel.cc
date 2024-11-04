@@ -28,8 +28,8 @@
 #include "mojo/core/core.h"
 #include "mojo/core/embedder/features.h"
 
-#if BUILDFLAG(IS_MAC)
-#include "base/mac/mach_logging.h"
+#if BUILDFLAG(MOJO_USE_APPLE_CHANNEL)
+#include "base/apple/mach_logging.h"
 #elif BUILDFLAG(IS_WIN)
 #include "base/win/win_util.h"
 #endif
@@ -185,7 +185,7 @@ struct ComplexMessage : public Channel::Message {
 #if BUILDFLAG(IS_WIN)
   // On Windows, handles are serialised into the extra header section.
   raw_ptr<HandleEntry> handles_ = nullptr;
-#elif BUILDFLAG(IS_MAC)
+#elif BUILDFLAG(MOJO_USE_APPLE_CHANNEL)
   // On OSX, handles are serialised into the extra header section.
   raw_ptr<MachPortsExtraHeader> mach_ports_header_ = nullptr;
 #endif
@@ -354,7 +354,7 @@ Channel::MessagePtr Channel::Message::Deserialize(
   uint32_t max_handles = extra_header_size / sizeof(HandleEntry);
 #elif BUILDFLAG(IS_FUCHSIA)
   uint32_t max_handles = extra_header_size / sizeof(HandleInfoEntry);
-#elif BUILDFLAG(IS_MAC)
+#elif BUILDFLAG(MOJO_USE_APPLE_CHANNEL)
   if (extra_header_size > 0 &&
       extra_header_size < sizeof(MachPortsExtraHeader)) {
     DLOG(ERROR) << "Decoding invalid message: " << extra_header_size << " < "
@@ -523,7 +523,7 @@ ComplexMessage::ComplexMessage(size_t capacity,
 #elif BUILDFLAG(IS_FUCHSIA)
   // On Fuchsia we serialize handle types into the extra header space.
   extra_header_size = max_handles_ * sizeof(HandleInfoEntry);
-#elif BUILDFLAG(IS_MAC)
+#elif BUILDFLAG(MOJO_USE_APPLE_CHANNEL)
   // On OSX, some of the platform handles may be mach ports, which are
   // serialised into the message buffer. Since there could be a mix of fds and
   // mach ports, we store the mach ports as an <index, port> pair (of uint32_t),
@@ -573,7 +573,7 @@ ComplexMessage::ComplexMessage(size_t capacity,
     // Initialize all handles to invalid values.
     for (size_t i = 0; i < max_handles_; ++i)
       handles_[i].handle = base::win::HandleToUint32(INVALID_HANDLE_VALUE);
-#elif BUILDFLAG(IS_MAC)
+#elif BUILDFLAG(MOJO_USE_APPLE_CHANNEL)
     mach_ports_header_ =
         reinterpret_cast<MachPortsExtraHeader*>(mutable_extra_header());
     mach_ports_header_->num_ports = 0;
@@ -609,7 +609,7 @@ bool ComplexMessage::ExtendPayload(size_t new_payload_size) {
 // payload buffer has been relocated.
 #if BUILDFLAG(IS_WIN)
       handles_ = reinterpret_cast<HandleEntry*>(mutable_extra_header());
-#elif BUILDFLAG(IS_MAC)
+#elif BUILDFLAG(MOJO_USE_APPLE_CHANNEL)
       mach_ports_header_ =
           reinterpret_cast<MachPortsExtraHeader*>(mutable_extra_header());
 #endif
@@ -662,7 +662,7 @@ void ComplexMessage::SetHandles(
   }
 #endif  // BUILDFLAG(IS_WIN)
 
-#if BUILDFLAG(IS_MAC)
+#if BUILDFLAG(MOJO_USE_APPLE_CHANNEL)
   if (mach_ports_header_) {
     for (size_t i = 0; i < max_handles_; ++i) {
       mach_ports_header_->entries[i] = {0};
@@ -893,23 +893,13 @@ Channel::~Channel() {
 // static
 scoped_refptr<Channel> Channel::CreateForIpczDriver(
     Delegate* delegate,
-    Endpoint endpoint,
+    PlatformChannelEndpoint endpoint,
     scoped_refptr<base::SingleThreadTaskRunner> io_task_runner) {
 #if BUILDFLAG(IS_NACL)
   return nullptr;
 #else
-  ConnectionParams params =
-      absl::visit(base::Overloaded{
-                      [](PlatformChannelEndpoint& endpoint) {
-                        return ConnectionParams(std::move(endpoint));
-                      },
-                      [](PlatformChannelServerEndpoint& endpoint) {
-                        return ConnectionParams(std::move(endpoint));
-                      },
-                  },
-                  endpoint);
-  return Create(delegate, std::move(params), HandlePolicy::kAcceptHandles,
-                std::move(io_task_runner));
+  return Create(delegate, ConnectionParams{std::move(endpoint)},
+                HandlePolicy::kAcceptHandles, std::move(io_task_runner));
 #endif
 }
 
@@ -953,7 +943,9 @@ bool Channel::OnReadComplete(size_t bytes_read, size_t* next_read_size_hint) {
                                            read_buffer_->num_occupied_bytes()),
                            next_read_size_hint);
     if (result == DispatchResult::kOK) {
-      MaybeLogHistogramForIPCMetrics(MessageType::kReceive);
+      if (ShouldRecordSubsampledHistograms()) {
+        LogHistogramForIPCMetrics(MessageType::kReceive);
+      }
       read_buffer_->Discard(*next_read_size_hint);
       *next_read_size_hint = 0;
     } else if (result == DispatchResult::kNotEnoughData) {
@@ -1100,12 +1092,8 @@ bool Channel::OnControlMessage(Message::MessageType message_type,
   return false;
 }
 
-void Channel::MaybeLogHistogramForIPCMetrics(MessageType type) {
-  {
-    base::AutoLock hold(lock_);
-    if (!sub_sampler_.ShouldSample(0.001))
-      return;
-  }
+// static
+void Channel::LogHistogramForIPCMetrics(MessageType type) {
   if (type == MessageType::kSent) {
     UMA_HISTOGRAM_ENUMERATION(
         "Mojo.Channel.WriteSendMessageProcessType",
@@ -1131,6 +1119,11 @@ MOJO_SYSTEM_IMPL_EXPORT void Channel::OfferChannelUpgrade() {
   return;
 }
 #endif
+
+bool Channel::ShouldRecordSubsampledHistograms() {
+  base::AutoLock hold(lock_);
+  return sub_sampler_.ShouldSample(0.001);
+}
 
 }  // namespace core
 }  // namespace mojo

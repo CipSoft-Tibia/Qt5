@@ -17,39 +17,21 @@ import zipfile
 
 from util import build_utils
 from util import md5_check
-from util import zipalign
+import action_helpers  # build_utils adds //build to sys.path.
+import zip_helpers
 
 
 _DEX_XMX = '2G'  # Increase this when __final_dex OOMs.
 
-_IGNORE_WARNINGS = (
-    # E.g. Triggers for weblayer_instrumentation_test_apk since both it and its
-    # apk_under_test have no shared_libraries.
-    # https://crbug.com/1364192 << To fix this in a better way.
-    r'Missing class org.chromium.build.NativeLibraries',
-    # Caused by internal protobuf package: https://crbug.com/1183971
-    r'referenced from: com.google.protobuf.GeneratedMessageLite$GeneratedExtension',  # pylint: disable=line-too-long
-    # Desugaring configs may occasionally not match types in our program. This
-    # may happen temporarily until we move over to the new desugared library
-    # json flags. See crbug.com/1302088 - this should be removed when this bug
-    # is fixed.
-    r'Warning: Specification conversion: The following',
-    # Caused by protobuf runtime using -identifiernamestring in a way that
-    # doesn't work with R8. Looks like:
-    # Rule matches the static final field `...`, which may have been inlined...
-    # com.google.protobuf.*GeneratedExtensionRegistryLite {
-    #   static java.lang.String CONTAINING_TYPE_*;
-    # }
-    r'GeneratedExtensionRegistryLite.CONTAINING_TYPE_',
-    # Relevant for R8 when optimizing an app that doesn't use protobuf.
-    r'Ignoring -shrinkunusedprotofields since the protobuf-lite runtime is',
-    # Ignore Unused Rule Warnings in third_party libraries.
-    r'/third_party/.*Proguard configuration rule does not match anything',
-    # Ignore Unused Rule Warnings for system classes (aapt2 generates these).
-    r'Proguard configuration rule does not match anything:.*class android\.',
-    # TODO(crbug.com/1303951): Don't ignore all such warnings.
-    r'Proguard configuration rule does not match anything:',
-)
+DEFAULT_IGNORE_WARNINGS = (
+    # Warning: Running R8 version main (build engineering), which cannot be
+    # represented as a semantic version. Using an artificial version newer than
+    # any known version for selecting Proguard configurations embedded under
+    # META-INF/. This means that all rules with a '-upto-' qualifier will be
+    # excluded and all rules with a -from- qualifier will be included.
+    r'Running R8 version main', )
+
+INTERFACE_DESUGARING_WARNINGS = (r'default or static interface methods', )
 
 _SKIPPED_CLASS_FILE_NAMES = (
     'module-info.class',  # Explicitly skipped by r8/utils/FileUtils#isClassFile
@@ -60,7 +42,7 @@ def _ParseArgs(args):
   args = build_utils.ExpandFileArgs(args)
   parser = argparse.ArgumentParser()
 
-  build_utils.AddDepfileOption(parser)
+  action_helpers.add_depfile_arg(parser)
   parser.add_argument('--output', required=True, help='Dex output path.')
   parser.add_argument(
       '--class-inputs',
@@ -141,35 +123,32 @@ def _ParseArgs(args):
     parser.error('Cannot use both --force-enable-assertions and '
                  '--assertion-handler')
 
-  options.class_inputs = build_utils.ParseGnList(options.class_inputs)
-  options.class_inputs_filearg = build_utils.ParseGnList(
+  options.class_inputs = action_helpers.parse_gn_list(options.class_inputs)
+  options.class_inputs_filearg = action_helpers.parse_gn_list(
       options.class_inputs_filearg)
-  options.bootclasspath = build_utils.ParseGnList(options.bootclasspath)
-  options.classpath = build_utils.ParseGnList(options.classpath)
-  options.dex_inputs = build_utils.ParseGnList(options.dex_inputs)
-  options.dex_inputs_filearg = build_utils.ParseGnList(
+  options.bootclasspath = action_helpers.parse_gn_list(options.bootclasspath)
+  options.classpath = action_helpers.parse_gn_list(options.classpath)
+  options.dex_inputs = action_helpers.parse_gn_list(options.dex_inputs)
+  options.dex_inputs_filearg = action_helpers.parse_gn_list(
       options.dex_inputs_filearg)
 
   return options
 
 
-def CreateStderrFilter(show_desugar_default_interface_warnings):
+def CreateStderrFilter(filters):
   def filter_stderr(output):
     # Set this when debugging R8 output.
     if os.environ.get('R8_SHOW_ALL_OUTPUT', '0') != '0':
       return output
 
-    warnings = re.split(r'^(?=Warning)', output, flags=re.MULTILINE)
+    # All missing definitions are logged as a single warning, but start on a
+    # new line like "Missing class ...".
+    warnings = re.split(r'^(?=Warning|Error|Missing (?:class|field|method))',
+                        output,
+                        flags=re.MULTILINE)
     preamble, *warnings = warnings
 
-    patterns = list(_IGNORE_WARNINGS)
-
-    # Missing deps can happen for prebuilts that are missing transitive deps
-    # and have set enable_bytecode_checks=false.
-    if not show_desugar_default_interface_warnings:
-      patterns += ['default or static interface methods']
-
-    combined_pattern = '|'.join(re.escape(p) for p in patterns)
+    combined_pattern = '|'.join(filters)
     preamble = build_utils.FilterLines(preamble, combined_pattern)
 
     compiled_re = re.compile(combined_pattern, re.DOTALL)
@@ -184,7 +163,13 @@ def _RunD8(dex_cmd, input_paths, output_path, warnings_as_errors,
            show_desugar_default_interface_warnings):
   dex_cmd = dex_cmd + ['--output', output_path] + input_paths
 
-  stderr_filter = CreateStderrFilter(show_desugar_default_interface_warnings)
+  # Missing deps can happen for prebuilts that are missing transitive deps
+  # and have set enable_bytecode_checks=false.
+  filters = list(DEFAULT_IGNORE_WARNINGS)
+  if not show_desugar_default_interface_warnings:
+    filters += INTERFACE_DESUGARING_WARNINGS
+
+  stderr_filter = CreateStderrFilter(filters)
 
   is_debug = logging.getLogger().isEnabledFor(logging.DEBUG)
 
@@ -227,7 +212,7 @@ def _ZipAligned(dex_files, output_path):
   with zipfile.ZipFile(output_path, 'w') as z:
     for i, dex_file in enumerate(dex_files):
       name = 'classes{}.dex'.format(i + 1 if i > 0 else '')
-      zipalign.AddToZipHermetic(z, name, src_path=dex_file, alignment=4)
+      zip_helpers.add_to_zip_hermetic(z, name, src_path=dex_file, alignment=4)
 
 
 def _CreateFinalDex(d8_inputs, output, tmp_dir, dex_cmd, options=None):
@@ -440,9 +425,10 @@ def main(args):
   options.class_inputs += options.class_inputs_filearg
   options.dex_inputs += options.dex_inputs_filearg
 
-  input_paths = options.class_inputs + options.dex_inputs
-  input_paths.append(options.r8_jar_path)
-  input_paths.append(options.custom_d8_jar_path)
+  input_paths = ([
+      build_utils.JAVA_PATH_FOR_INPUTS, options.r8_jar_path,
+      options.custom_d8_jar_path
+  ] + options.class_inputs + options.dex_inputs)
   if options.main_dex_rules_path:
     input_paths.extend(options.main_dex_rules_path)
 

@@ -93,10 +93,17 @@ static bool runningUnderDebugger()
 #endif
 }
 
+class QXcbUnixServices : public QGenericUnixServices
+{
+public:
+    QString portalWindowIdentifier(QWindow *window) override;
+};
+
+
 QXcbIntegration *QXcbIntegration::m_instance = nullptr;
 
 QXcbIntegration::QXcbIntegration(const QStringList &parameters, int &argc, char **argv)
-    : m_services(new QGenericUnixServices)
+    : m_services(new QXcbUnixServices)
     , m_instanceName(nullptr)
     , m_canGrab(true)
     , m_defaultVisualId(UINT_MAX)
@@ -422,14 +429,9 @@ QPlatformServices *QXcbIntegration::services() const
     return m_services.data();
 }
 
-Qt::KeyboardModifiers QXcbIntegration::queryKeyboardModifiers() const
+QPlatformKeyMapper *QXcbIntegration::keyMapper() const
 {
-    return m_connection->queryKeyboardModifiers();
-}
-
-QList<int> QXcbIntegration::possibleKeys(const QKeyEvent *e) const
-{
-    return m_connection->keyboard()->possibleKeys(e);
+    return m_connection->keyboard();
 }
 
 QStringList QXcbIntegration::themeNames() const
@@ -591,6 +593,11 @@ void QXcbIntegration::setApplicationBadge(qint64 number)
 {
     auto unixServices = dynamic_cast<QGenericUnixServices *>(services());
     unixServices->setApplicationBadge(number);
+}
+
+QString QXcbUnixServices::portalWindowIdentifier(QWindow *window)
+{
+    return "x11:"_L1 + QString::number(window->winId(), 16);
 }
 
 QT_END_NAMESPACE

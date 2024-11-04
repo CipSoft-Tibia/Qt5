@@ -14,7 +14,11 @@ if (is_android) {
   import("//build/config/android/rules.gni")
 }
 
-assert(enable_printing)
+if (enable_printing_unittests) {
+  import("//build/config/ios/bundle_data_from_filelist.gni")
+} else {
+  assert(enable_printing)
+}
 
 if (is_win || enable_print_preview) {
   # Windows basic printing or print preview requires pdf enabled.
@@ -86,6 +90,7 @@ if (enable_oop_printing && (is_linux || is_chromeos)) {
     configs += [ ":strict" ]
 
     deps = [
+      ":printing_base",
       "//base",
       "//printing/buildflags",
       "//sandbox/linux:sandbox_services",
@@ -322,19 +327,12 @@ static_library("test_support") {
     "//skia",
     "//ui/gfx",
   ]
+}
 
-  if (is_android) {
-    sources += [ "image_android.cc" ]
-  }
-
-  if (is_linux || is_chromeos || is_fuchsia) {
-    sources += [ "image_linux.cc" ]
-  }
-  if (is_apple) {
-    sources += [ "image_mac.cc" ]
-  }
-  if (is_win) {
-    sources += [ "image_win.cc" ]
+if (enable_printing_unittests) {
+  bundle_data_from_filelist("pdf_metafile_cg_mac_unittest_bundle_data") {
+    testonly = true
+    filelist_name = "test/pdf_metafile_cg_mac_unittest_bundle_data.filelist"
   }
 }
 
@@ -385,17 +383,25 @@ test("printing_unittests") {
     ]
   }
 
-  if (is_mac) {
+  if (is_apple) {
     sources += [ "pdf_metafile_cg_mac_unittest.cc" ]
+  }
 
+  if (is_mac) {
     data = [
       "test/data/pdf_cg/",
       "../pdf/test/data/",
+    ]
+  } else if (enable_printing_unittests) {
+    deps += [
+      ":pdf_metafile_cg_mac_unittest_bundle_data",
+      "//pdf:pdf_test_bundle_data",
     ]
   }
 
   if (is_win) {
     sources += [
+      "backend/win_helper_unittest.cc",
       "backend/xps_utils_win_unittest.cc",
       "emf_win_unittest.cc",
       "printed_page_win_unittest.cc",
@@ -471,6 +477,7 @@ if (is_android) {
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//ui/android:ui_java",
     ]
+    srcjar_deps = [ ":printing_jni_headers" ]
     sources = [
       "android/java/src/org/chromium/printing/PrintDocumentAdapterWrapper.java",
       "android/java/src/org/chromium/printing/PrintManagerDelegate.java",
@@ -480,6 +487,5 @@ if (is_android) {
       "android/java/src/org/chromium/printing/PrintingController.java",
       "android/java/src/org/chromium/printing/PrintingControllerImpl.java",
     ]
-    annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
   }
 }

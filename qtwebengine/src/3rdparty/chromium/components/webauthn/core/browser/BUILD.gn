@@ -2,6 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/features.gni")
+
 source_set("browser") {
   sources = []
   deps = []
@@ -14,6 +16,33 @@ source_set("browser") {
       "//url",
     ]
   }
+
+  if (!is_ios && !is_android) {
+    sources += [
+      "passkey_model.h",
+      "passkey_model_utils.cc",
+      "passkey_model_utils.h",
+      "passkey_sync_bridge.cc",
+      "passkey_sync_bridge.h",
+    ]
+    deps += [
+      "//base",
+      "//components/sync",
+    ]
+
+    if (is_qtwebengine) {
+      sources -= [
+        "passkey_model_utils.cc",
+        "passkey_model_utils.h",
+        "passkey_sync_bridge.cc",
+        "passkey_sync_bridge.h",
+      ]
+
+      deps -= [
+        "//components/sync",
+      ]
+    }
+  }
 }
 
 static_library("test_support") {
@@ -25,8 +54,15 @@ static_library("test_support") {
   deps = [
     ":browser",
     "//base/test:test_support",
+    "//components/sync",
     "//content/public/browser",
     "//testing/gmock",
     "//testing/gtest",
   ]
+  if (!is_ios && !is_android) {
+    sources += [
+      "test_passkey_model.cc",
+      "test_passkey_model.h",
+    ]
+  }
 }

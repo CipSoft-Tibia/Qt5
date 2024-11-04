@@ -779,6 +779,12 @@ EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half asin(const half& a) {
 EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half acos(const half& a) {
   return half(::acosf(float(a)));
 }
+EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half atan(const half& a) {
+  return half(::atanf(float(a)));
+}
+EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half atanh(const half& a) {
+  return half(::atanhf(float(a)));
+}
 EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC half floor(const half& a) {
 #if (EIGEN_CUDA_SDK_VER >= 80000 && defined EIGEN_CUDA_ARCH && EIGEN_CUDA_ARCH >= 300) || \
   defined(EIGEN_HIP_DEVICE_COMPILE)
@@ -1007,5 +1013,50 @@ struct hash<Eigen::half> {
 };
 } // end namespace std
 #endif
+
+namespace Eigen {
+namespace internal {
+
+template <>
+struct cast_impl<float, half> {
+  EIGEN_DEVICE_FUNC
+  static inline half run(const float& a) {
+#if (defined(EIGEN_HAS_CUDA_FP16) && defined(EIGEN_CUDA_ARCH) && EIGEN_CUDA_ARCH >= 300) || \
+    (defined(EIGEN_HAS_HIP_FP16) && defined(EIGEN_HIP_DEVICE_COMPILE))
+    return __float2half(a);
+#else
+    return half(a);
+#endif
+  }
+};
+
+template <>
+struct cast_impl<int, half> {
+  EIGEN_DEVICE_FUNC
+  static inline half run(const int& a) {
+#if (defined(EIGEN_HAS_CUDA_FP16) && defined(EIGEN_CUDA_ARCH) && EIGEN_CUDA_ARCH >= 300) || \
+    (defined(EIGEN_HAS_HIP_FP16) && defined(EIGEN_HIP_DEVICE_COMPILE))
+    return __float2half(static_cast<float>(a));
+#else
+    return half(static_cast<float>(a));
+#endif
+  }
+};
+
+template <>
+struct cast_impl<half, float> {
+  EIGEN_DEVICE_FUNC
+  static inline float run(const half& a) {
+#if (defined(EIGEN_HAS_CUDA_FP16) && defined(EIGEN_CUDA_ARCH) && EIGEN_CUDA_ARCH >= 300) || \
+    (defined(EIGEN_HAS_HIP_FP16) && defined(EIGEN_HIP_DEVICE_COMPILE))
+    return __half2float(a);
+#else
+    return static_cast<float>(a);
+#endif
+  }
+};
+
+}  // namespace internal
+}  // namespace Eigen
 
 #endif // EIGEN_HALF_H

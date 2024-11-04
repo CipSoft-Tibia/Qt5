@@ -1088,9 +1088,6 @@ typedef struct AV1EncoderConfig {
 
   // A flag to control if we enable the superblock qp sweep for a given lambda
   int sb_qp_sweep;
-
-  // Selected global motion search method
-  GlobalMotionMethod global_motion_method;
   /*!\endcond */
 } AV1EncoderConfig;
 
@@ -1467,7 +1464,9 @@ typedef struct ThreadData {
   int32_t num_64x64_blocks;
   PICK_MODE_CONTEXT *firstpass_ctx;
   TemporalFilterData tf_data;
+  TplBuffers tpl_tmp_buffers;
   TplTxfmStats tpl_txfm_stats;
+  GlobalMotionData gm_data;
   // Pointer to the array of structures to store gradient information of each
   // pixel in a superblock. The buffer constitutes of MAX_SB_SQUARE pixel level
   // structures for each of the plane types (PLANE_TYPE_Y and PLANE_TYPE_UV).
@@ -1529,6 +1528,19 @@ typedef struct {
    */
   int allocated_sb_rows;
 
+  /*!
+   * Initialized to false, set to true by the worker thread that encounters an
+   * error in order to abort the processing of other worker threads.
+   */
+  bool row_mt_exit;
+
+  /*!
+   * Initialized to false, set to true during first pass encoding by the worker
+   * thread that encounters an error in order to abort the processing of other
+   * worker threads.
+   */
+  bool firstpass_mt_exit;
+
 #if CONFIG_MULTITHREAD
   /*!
    * Mutex lock used while dispatching jobs.
@@ -1554,6 +1566,36 @@ typedef struct {
   void (*sync_write_ptr)(AV1EncRowMultiThreadSync *const, int, int, int);
   /**@}*/
 } AV1EncRowMultiThreadInfo;
+
+/*!
+ * \brief Encoder data related to multi-threading for allintra deltaq-mode=3
+ */
+typedef struct {
+#if CONFIG_MULTITHREAD
+  /*!
+   * Mutex lock used while dispatching jobs.
+   */
+  pthread_mutex_t *mutex_;
+  /*!
+   *  Condition variable used to dispatch loopfilter jobs.
+   */
+  pthread_cond_t *cond_;
+#endif
+
+  /**
+   * \name Row synchronization related function pointers for all intra mode
+   */
+  /**@{*/
+  /*!
+   * Reader.
+   */
+  void (*intra_sync_read_ptr)(AV1EncRowMultiThreadSync *const, int, int);
+  /*!
+   * Writer.
+   */
+  void (*intra_sync_write_ptr)(AV1EncRowMultiThreadSync *const, int, int, int);
+  /**@}*/
+} AV1EncAllIntraMultiThreadInfo;
 
 /*!
  * \brief Max number of recodes used to track the frame probabilities.
@@ -1678,6 +1720,12 @@ typedef struct MultiThreadInfo {
    * Encoder row multi-threading data.
    */
   AV1EncRowMultiThreadInfo enc_row_mt;
+
+  /*!
+   * Encoder multi-threading data for allintra mode in the preprocessing stage
+   * when --deltaq-mode=3.
+   */
+  AV1EncAllIntraMultiThreadInfo intra_mt;
 
   /*!
    * Tpl row multi-threading data.
@@ -2405,6 +2453,23 @@ typedef struct RTC_REF {
   int non_reference_frame;
   int ref_frame_comp[3];
   int gld_idx_1layer;
+  /*!
+   * Frame number of the last frame that refreshed the buffer slot.
+   */
+  unsigned int buffer_time_index[REF_FRAMES];
+  /*!
+   * Spatial layer id of the last frame that refreshed the buffer slot.
+   */
+  unsigned char buffer_spatial_layer[REF_FRAMES];
+  /*!
+   * Flag to indicate whether closest reference was the previous frame.
+   */
+  bool reference_was_previous_frame;
+  /*!
+   * Flag to indicate this frame is based on longer term reference only,
+   * for recovery from past loss, and it should be biased for improved coding.
+   */
+  bool bias_recovery_frame;
 } RTC_REF;
 /*!\endcond */
 
@@ -2751,6 +2816,12 @@ typedef struct AV1_PRIMARY {
    * Struct for the reference structure for RTC.
    */
   RTC_REF rtc_ref;
+
+  /*!
+   * Struct for all intra mode row multi threading in the preprocess stage
+   * when --deltaq-mode=3.
+   */
+  AV1EncRowMultiThreadSync intra_row_mt_sync;
 } AV1_PRIMARY;
 
 /*!
@@ -3485,6 +3556,24 @@ typedef struct AV1_COMP {
    *  This is currently only used for global motion
    */
   int image_pyramid_levels;
+
+#if CONFIG_SALIENCY_MAP
+  /*!
+   * Pixel level saliency map for each frame.
+   */
+  uint8_t *saliency_map;
+
+  /*!
+   * Superblock level rdmult scaling factor driven by saliency map.
+   */
+  double *sm_scaling_factor;
+#endif
+
+  /*!
+   * Number of pixels that choose palette mode for luma in the
+   * fast encoding pass in av1_determine_sc_tools_with_encoding().
+   */
+  int palette_pixel_num;
 } AV1_COMP;
 
 /*!
@@ -3622,11 +3711,11 @@ int av1_init_parallel_frame_context(const AV1_COMP_DATA *const first_cpi_data,
  * \ingroup high_level_algo
  * This function receives the raw frame data from input.
  *
- * \param[in]    cpi            Top-level encoder structure
- * \param[in]    frame_flags    Flags to decide how to encoding the frame
- * \param[in]    sd             Contain raw frame data
- * \param[in]    time_stamp     Time stamp of the frame
- * \param[in]    end_time_stamp End time stamp
+ * \param[in]     cpi            Top-level encoder structure
+ * \param[in]     frame_flags    Flags to decide how to encoding the frame
+ * \param[in,out] sd             Contain raw frame data
+ * \param[in]     time_stamp     Time stamp of the frame
+ * \param[in]     end_time_stamp End time stamp
  *
  * \return Returns a value to indicate if the frame data is received
  * successfully.
@@ -4200,7 +4289,9 @@ static INLINE unsigned int derive_skip_apply_postproc_filters(
   }
   if (use_loopfilter) return SKIP_APPLY_LOOPFILTER;
 
-  return 0;  // All post-processing stages disabled.
+  // If we reach here, all post-processing stages are disabled, so none need to
+  // be skipped.
+  return 0;
 }
 
 static INLINE void set_postproc_filter_default_params(AV1_COMMON *cm) {

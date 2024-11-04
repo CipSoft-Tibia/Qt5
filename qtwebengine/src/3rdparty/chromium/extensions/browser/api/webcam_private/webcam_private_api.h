@@ -8,12 +8,14 @@
 #include <map>
 #include <memory>
 
+#include "base/memory/raw_ptr.h"
 #include "extensions/browser/api/api_resource_manager.h"
 #include "extensions/browser/api/webcam_private/webcam.h"
 #include "extensions/browser/browser_context_keyed_api_factory.h"
 #include "extensions/browser/extension_function.h"
 #include "extensions/browser/process_manager_observer.h"
 #include "extensions/common/api/webcam_private.h"
+#include "url/origin.h"
 
 namespace extensions {
 
@@ -35,10 +37,12 @@ class WebcamPrivateAPI : public BrowserContextKeyedAPI {
                  const std::string& webcam_id,
                  base::OnceCallback<void(Webcam*)> callback);
 
-  bool OpenSerialWebcam(
+  enum class OpenSerialWebcamResult { kSuccess, kInUse, kError };
+  void OpenSerialWebcam(
       const std::string& extension_id,
       const std::string& device_path,
-      const base::RepeatingCallback<void(const std::string&, bool)>& callback);
+      const base::RepeatingCallback<void(const std::string&,
+                                         OpenSerialWebcamResult)>& callback);
   bool CloseWebcam(const std::string& extension_id,
                    const std::string& device_id);
 
@@ -56,15 +60,35 @@ class WebcamPrivateAPI : public BrowserContextKeyedAPI {
       std::string hmac_device_id,
       base::OnceCallback<void(const absl::optional<std::string>&)> callback);
 
+  void GetDeviceIdOnUIThread(const url::Origin& security_origin,
+                             const std::string& extension_id,
+                             const std::string& webcam_id,
+                             base::OnceCallback<void(Webcam*)> webcam_callback,
+                             const std::string& salt);
+
   void OnOpenSerialWebcam(
+      const std::string& webcam_id,
       const std::string& extension_id,
       const std::string& device_path,
       scoped_refptr<Webcam> webcam,
-      const base::RepeatingCallback<void(const std::string&, bool)>& callback,
+      const base::RepeatingCallback<void(const std::string&,
+                                         OpenSerialWebcamResult)>& callback,
       bool success);
+  void GotWebcamId(const std::string& extension_id,
+                   const std::string& device_path,
+                   const base::RepeatingCallback<void(const std::string&,
+                                                      OpenSerialWebcamResult)>&
+                       open_serial_webcam_callback,
+                   const std::string& webcam_id);
 
-  std::string GetWebcamId(const std::string& extension_id,
-                          const std::string& device_id);
+  void GetWebcamId(const std::string& extension_id,
+                   const std::string& device_id,
+                   base::OnceCallback<void(const std::string&)> callback);
+  void FinalizeGetWebcamId(
+      const url::Origin& security_origin,
+      const std::string& device_id,
+      base::OnceCallback<void(const std::string&)> webcam_id_callback,
+      const std::string& device_id_salt);
 
   WebcamResource* FindWebcamResource(const std::string& extension_id,
                                      const std::string& webcam_id) const;
@@ -78,7 +102,7 @@ class WebcamPrivateAPI : public BrowserContextKeyedAPI {
   static const bool kServiceIsNULLWhileTesting = true;
   static const bool kServiceRedirectedInIncognito = true;
 
-  content::BrowserContext* const browser_context_;
+  const raw_ptr<content::BrowserContext, ExperimentalAsh> browser_context_;
   std::unique_ptr<ApiResourceManager<WebcamResource>> webcam_resource_manager_;
 
   base::WeakPtrFactory<WebcamPrivateAPI> weak_ptr_factory_{this};
@@ -107,7 +131,8 @@ class WebcamPrivateOpenSerialWebcamFunction : public ExtensionFunction {
   ResponseAction Run() override;
 
  private:
-  void OnOpenWebcam(const std::string& webcam_id, bool success);
+  void OnOpenWebcam(const std::string& webcam_id,
+                    WebcamPrivateAPI::OpenSerialWebcamResult result);
 };
 
 class WebcamPrivateCloseWebcamFunction : public ExtensionFunction {
@@ -146,7 +171,7 @@ class WebcamPrivateSetFunction : public ExtensionFunction {
 
  private:
   void OnWebcam(
-      std::unique_ptr<extensions::api::webcam_private::Set::Params> params,
+      absl::optional<extensions::api::webcam_private::Set::Params> params,
       Webcam* webcam);
   void OnSetWebcamParameters(bool success);
 
@@ -226,7 +251,7 @@ class WebcamPrivateResetFunction : public ExtensionFunction {
 
  private:
   void OnWebcam(
-      std::unique_ptr<extensions::api::webcam_private::Reset::Params> params,
+      absl::optional<extensions::api::webcam_private::Reset::Params> params,
       Webcam* webcam);
   void OnResetWebcam(bool success);
 };

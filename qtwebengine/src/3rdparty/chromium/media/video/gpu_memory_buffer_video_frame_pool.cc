@@ -17,7 +17,6 @@
 #include "base/bits.h"
 #include "base/command_line.h"
 #include "base/containers/circular_deque.h"
-#include "base/containers/stack_container.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
@@ -35,11 +34,11 @@
 #include "base/trace_event/memory_dump_provider.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
+#include "components/viz/common/resources/shared_image_format.h"
 #include "gpu/GLES2/gl2extchromium.h"
 #include "gpu/command_buffer/client/shared_image_interface.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/config/gpu_switches.h"
-#include "media/base/bind_to_current_loop.h"
 #include "media/base/media_switches.h"
 #include "media/video/gpu_video_accelerator_factories.h"
 #include "third_party/libyuv/include/libyuv.h"
@@ -50,13 +49,16 @@
 
 #if BUILDFLAG(IS_MAC)
 #include "base/mac/mac_util.h"
-#include "ui/gfx/mac/io_surface.h"
+#include "media/base/mac/video_frame_mac.h"
 #endif
 
 namespace media {
 
 bool GpuMemoryBufferVideoFramePool::MultiPlaneVideoSharedImagesEnabled() {
-  return base::FeatureList::IsEnabled(kMultiPlaneSoftwareVideoSharedImages);
+  // With kUseMultiPlaneFormatForSoftwareVideo enable we always use 1 shared
+  // image for all planes.
+  return !base::FeatureList::IsEnabled(kUseMultiPlaneFormatForSoftwareVideo) &&
+         base::FeatureList::IsEnabled(kMultiPlaneSoftwareVideoSharedImages);
 }
 
 // Implementation of a pool of GpuMemoryBuffers used to back VideoFrames.
@@ -369,11 +371,9 @@ size_t NumGpuMemoryBuffers(GpuVideoAcceleratorFactories::OutputFormat format) {
     case GpuVideoAcceleratorFactories::OutputFormat::BGRA:
       return 1;
     case GpuVideoAcceleratorFactories::OutputFormat::UNDEFINED:
-      NOTREACHED();
-      break;
+      NOTREACHED_NORETURN();
   }
-  NOTREACHED();
-  return 0;
+  NOTREACHED_NORETURN();
 }
 
 // The number of shared images for a given format. Note that a single
@@ -1140,6 +1140,28 @@ scoped_refptr<VideoFrame> GpuMemoryBufferVideoFramePool::PoolImpl::
     return nullptr;
   }
 
+  absl::optional<viz::SharedImageFormat> multi_planar_format;
+  if (base::FeatureList::IsEnabled(kUseMultiPlaneFormatForSoftwareVideo)) {
+    // If UseMultiPlaneFormatForSoftwareVideo is enabled and the output_format
+    // is multiplanar then use the equivalent multi-planar SharedImageFormat
+    // instead of equivalent BufferFormat. This forces new multi-planar path
+    // where a single shared image is used.
+
+    switch (output_format_) {
+      case GpuVideoAcceleratorFactories::OutputFormat::NV12_SINGLE_GMB:
+        multi_planar_format = viz::MultiPlaneFormat::kNV12;
+        break;
+      case GpuVideoAcceleratorFactories::OutputFormat::P010:
+        multi_planar_format = viz::MultiPlaneFormat::kP010;
+        break;
+      default:
+        // Other formats aren't applicable.
+        // TODO(hitawala): Add support for OutputFormat::I420 that can use 1 GMB
+        // instead of 3 and return equivalent viz::MultiPlaneFormat::kYV12.
+        break;
+    }
+  }
+
   gpu::MailboxHolder mailbox_holders[VideoFrame::kMaxPlanes];
   bool is_webgpu_compatible = false;
   // Set up the planes creating the mailboxes needed to refer to the textures.
@@ -1152,10 +1174,29 @@ scoped_refptr<VideoFrame> GpuMemoryBufferVideoFramePool::PoolImpl::
         frame_resources->plane_resources[gpu_memory_buffer_plane]
             .gpu_memory_buffer.get();
 
+    if (gpu_memory_buffer) {
+      // Log software/hardware backed GpuMemoryBuffer's `output_format_` used to
+      // create the shared image.
+      gfx::GpuMemoryBufferType buffer_type = gpu_memory_buffer->GetType();
+      if (buffer_type == gfx::GpuMemoryBufferType::SHARED_MEMORY_BUFFER) {
+        UMA_HISTOGRAM_ENUMERATION("Media.GPU.OutputFormatSoftwareGmb",
+                                  output_format_);
+      }
+      if (buffer_type != gfx::GpuMemoryBufferType::EMPTY_BUFFER &&
+          buffer_type != gfx::GpuMemoryBufferType::SHARED_MEMORY_BUFFER) {
+        UMA_HISTOGRAM_ENUMERATION("Media.GPU.OutputFormatHardwareGmb",
+                                  output_format_);
+      }
+    }
+
 #if BUILDFLAG(IS_MAC)
     // Shared image uses iosurface as native resource which is compatible to
     // WebGPU always.
     is_webgpu_compatible = (gpu_memory_buffer != nullptr);
+    if (is_webgpu_compatible) {
+      is_webgpu_compatible &= media::IOSurfaceIsWebGPUCompatible(
+          gpu_memory_buffer->CloneHandle().io_surface.get());
+    }
 #endif
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
@@ -1186,10 +1227,19 @@ scoped_refptr<VideoFrame> GpuMemoryBufferVideoFramePool::PoolImpl::
       }
 #endif
 
-      plane_resource.mailbox = sii->CreateSharedImage(
-          gpu_memory_buffer, gpu_factories_->GpuMemoryBufferManager(),
-          GetSharedImageBufferPlane(output_format_, plane), color_space,
-          kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType, usage);
+      constexpr char kDebugLabel[] = "MediaGmbVideoFramePool";
+      if (multi_planar_format) {
+        DCHECK_EQ(NumSharedImages(output_format_), 1u);
+        plane_resource.mailbox = sii->CreateSharedImage(
+            *multi_planar_format, gpu_memory_buffer->GetSize(), color_space,
+            kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType, usage, kDebugLabel,
+            gpu_memory_buffer->CloneHandle());
+      } else {
+        plane_resource.mailbox = sii->CreateSharedImage(
+            gpu_memory_buffer, gpu_factories_->GpuMemoryBufferManager(),
+            GetSharedImageBufferPlane(output_format_, plane), color_space,
+            kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType, usage, kDebugLabel);
+      }
     } else if (!plane_resource.mailbox.IsZero()) {
       sii->UpdateSharedImage(frame_resources->sync_token,
                              plane_resource.mailbox);
@@ -1224,6 +1274,11 @@ scoped_refptr<VideoFrame> GpuMemoryBufferVideoFramePool::PoolImpl::
 
   if (ycbcr_info) {
     frame->set_ycbcr_info(ycbcr_info);
+  }
+
+  if (multi_planar_format) {
+    frame->set_shared_image_format_type(
+        SharedImageFormatType::kSharedImageFormat);
   }
 
   bool allow_overlay = false;

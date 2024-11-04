@@ -7,6 +7,7 @@
 #include "core/fxge/agg/fx_agg_driver.h"
 
 #include <math.h>
+#include <stdint.h>
 
 #include <algorithm>
 #include <utility>
@@ -14,6 +15,7 @@
 #include "build/build_config.h"
 #include "core/fxcrt/fx_2d_size.h"
 #include "core/fxcrt/fx_safe_types.h"
+#include "core/fxcrt/unowned_ptr_exclusion.h"
 #include "core/fxge/cfx_cliprgn.h"
 #include "core/fxge/cfx_defaultrenderdevice.h"
 #include "core/fxge/cfx_graphstatedata.h"
@@ -23,9 +25,8 @@
 #include "core/fxge/dib/cfx_imagestretcher.h"
 #include "third_party/base/check.h"
 #include "third_party/base/check_op.h"
-#include "third_party/base/cxx17_backports.h"
+#include "third_party/base/containers/span.h"
 #include "third_party/base/notreached.h"
-#include "third_party/base/span.h"
 
 // Ignore fallthrough warnings in agg23 headers.
 #if defined(__clang__)
@@ -51,8 +52,8 @@ namespace {
 const float kMaxPos = 32000.0f;
 
 CFX_PointF HardClip(const CFX_PointF& pos) {
-  return CFX_PointF(pdfium::clamp(pos.x, -kMaxPos, kMaxPos),
-                    pdfium::clamp(pos.y, -kMaxPos, kMaxPos));
+  return CFX_PointF(std::clamp(pos.x, -kMaxPos, kMaxPos),
+                    std::clamp(pos.y, -kMaxPos, kMaxPos));
 }
 
 void RgbByteOrderCompositeRect(const RetainPtr<CFX_DIBitmap>& pBitmap,
@@ -73,7 +74,7 @@ void RgbByteOrderCompositeRect(const RetainPtr<CFX_DIBitmap>& pBitmap,
   int src_b = FXARGB_B(argb);
   int Bpp = pBitmap->GetBPP() / 8;
   int dib_argb = FXARGB_TOBGRORDERDIB(argb);
-  pdfium::span<uint8_t> pBuffer = pBitmap->GetBuffer();
+  pdfium::span<uint8_t> pBuffer = pBitmap->GetWritableBuffer();
   if (src_alpha == 255) {
     for (int row = rect.top; row < rect.bottom; row++) {
       uint8_t* dest_scan =
@@ -150,8 +151,9 @@ void RgbByteOrderTransferBitmap(const RetainPtr<CFX_DIBitmap>& pBitmap,
   const size_t dest_x_offset = Fx2DSizeOrDie(dest_left, Bpp);
   const size_t dest_y_offset = Fx2DSizeOrDie(dest_top, dest_pitch);
 
-  pdfium::span<uint8_t> dest_span =
-      pBitmap->GetBuffer().subspan(dest_y_offset).subspan(dest_x_offset);
+  pdfium::span<uint8_t> dest_span = pBitmap->GetWritableBuffer()
+                                        .subspan(dest_y_offset)
+                                        .subspan(dest_x_offset);
   if (dest_format == src_format) {
     const size_t src_x_offset = Fx2DSizeOrDie(src_left, Bpp);
     for (int row = 0; row < height; row++) {
@@ -191,7 +193,12 @@ void RgbByteOrderTransferBitmap(const RetainPtr<CFX_DIBitmap>& pBitmap,
         *dest_scan++ = src_scan[0];
         src_scan += 4;
       }
-      dest_span = dest_span.subspan(dest_pitch);
+      if (row < height - 1) {
+        // Since `dest_scan` was initialized in a way that takes `dest_x_offset`
+        // and `dest_y_offset` into account, it may go past the end of the span
+        // after processing the last row.
+        dest_span = dest_span.subspan(dest_pitch);
+      }
     }
     return;
   }
@@ -334,55 +341,61 @@ class CFX_Renderer {
   void render(const Scanline& sl);
 
  private:
-  using CompositeSpanFunc = void (
-      CFX_Renderer::*)(uint8_t*, int, int, int, uint8_t*, int, int, uint8_t*);
+  using CompositeSpanFunc = void (CFX_Renderer::*)(uint8_t*,
+                                                   int,
+                                                   int,
+                                                   int,
+                                                   const uint8_t*,
+                                                   int,
+                                                   int,
+                                                   const uint8_t*);
 
   void CompositeSpan(uint8_t* dest_scan,
-                     uint8_t* backdrop_scan,
+                     const uint8_t* backdrop_scan,
                      int Bpp,
                      bool bDestAlpha,
                      int span_left,
                      int span_len,
-                     uint8_t* cover_scan,
+                     const uint8_t* cover_scan,
                      int clip_left,
                      int clip_right,
-                     uint8_t* clip_scan);
+                     const uint8_t* clip_scan);
 
   void CompositeSpan1bpp(uint8_t* dest_scan,
                          int Bpp,
                          int span_left,
                          int span_len,
-                         uint8_t* cover_scan,
+                         const uint8_t* cover_scan,
                          int clip_left,
                          int clip_right,
-                         uint8_t* clip_scan);
+                         const uint8_t* clip_scan);
 
   void CompositeSpanGray(uint8_t* dest_scan,
                          int Bpp,
                          int span_left,
                          int span_len,
-                         uint8_t* cover_scan,
+                         const uint8_t* cover_scan,
                          int clip_left,
                          int clip_right,
-                         uint8_t* clip_scan);
+                         const uint8_t* clip_scan);
 
   void CompositeSpanARGB(uint8_t* dest_scan,
                          int Bpp,
                          int span_left,
                          int span_len,
-                         uint8_t* cover_scan,
+                         const uint8_t* cover_scan,
                          int clip_left,
                          int clip_right,
-                         uint8_t* clip_scan);
+                         const uint8_t* clip_scan);
 
   void CompositeSpanRGB(uint8_t* dest_scan,
                         int Bpp,
                         int span_left,
                         int span_len,
-                        uint8_t* cover_scan,
+                        const uint8_t* cover_scan,
                         int clip_left,
                         int clip_right,
-                        uint8_t* clip_scan);
+                        const uint8_t* clip_scan);
 
   void CompositeSpan1bppHelper(uint8_t* dest_scan,
                                int col_start,
@@ -439,15 +452,15 @@ class CFX_Renderer {
 };
 
 void CFX_Renderer::CompositeSpan(uint8_t* dest_scan,
-                                 uint8_t* backdrop_scan,
+                                 const uint8_t* backdrop_scan,
                                  int Bpp,
                                  bool bDestAlpha,
                                  int span_left,
                                  int span_len,
-                                 uint8_t* cover_scan,
+                                 const uint8_t* cover_scan,
                                  int clip_left,
                                  int clip_right,
-                                 uint8_t* clip_scan) {
+                                 const uint8_t* clip_scan) {
   int col_start = GetColStart(span_left, clip_left);
   int col_end = GetColEnd(span_left, span_len, clip_right);
   if (Bpp) {
@@ -586,10 +599,10 @@ void CFX_Renderer::CompositeSpan1bpp(uint8_t* dest_scan,
                                      int Bpp,
                                      int span_left,
                                      int span_len,
-                                     uint8_t* cover_scan,
+                                     const uint8_t* cover_scan,
                                      int clip_left,
                                      int clip_right,
-                                     uint8_t* clip_scan) {
+                                     const uint8_t* clip_scan) {
   DCHECK(!m_bRgbByteOrder);
   int col_start = GetColStart(span_left, clip_left);
   int col_end = GetColEnd(span_left, span_len, clip_right);
@@ -602,10 +615,10 @@ void CFX_Renderer::CompositeSpanGray(uint8_t* dest_scan,
                                      int Bpp,
                                      int span_left,
                                      int span_len,
-                                     uint8_t* cover_scan,
+                                     const uint8_t* cover_scan,
                                      int clip_left,
                                      int clip_right,
-                                     uint8_t* clip_scan) {
+                                     const uint8_t* clip_scan) {
   DCHECK(!m_bRgbByteOrder);
   int col_start = GetColStart(span_left, clip_left);
   int col_end = GetColEnd(span_left, span_len, clip_right);
@@ -626,10 +639,10 @@ void CFX_Renderer::CompositeSpanARGB(uint8_t* dest_scan,
                                      int Bpp,
                                      int span_left,
                                      int span_len,
-                                     uint8_t* cover_scan,
+                                     const uint8_t* cover_scan,
                                      int clip_left,
                                      int clip_right,
-                                     uint8_t* clip_scan) {
+                                     const uint8_t* clip_scan) {
   int col_start = GetColStart(span_left, clip_left);
   int col_end = GetColEnd(span_left, span_len, clip_right);
   dest_scan += col_start * Bpp;
@@ -694,10 +707,10 @@ void CFX_Renderer::CompositeSpanRGB(uint8_t* dest_scan,
                                     int Bpp,
                                     int span_left,
                                     int span_len,
-                                    uint8_t* cover_scan,
+                                    const uint8_t* cover_scan,
                                     int clip_left,
                                     int clip_right,
-                                    uint8_t* clip_scan) {
+                                    const uint8_t* clip_scan) {
   int col_start = GetColStart(span_left, clip_left);
   int col_end = GetColEnd(span_left, span_len, clip_right);
   dest_scan += col_start * Bpp;
@@ -790,8 +803,8 @@ void CFX_Renderer::render(const Scanline& sl) {
     return;
 
   uint8_t* dest_scan =
-      m_pDevice->GetBuffer().subspan(m_pDevice->GetPitch() * y).data();
-  uint8_t* backdrop_scan = nullptr;
+      m_pDevice->GetWritableBuffer().subspan(m_pDevice->GetPitch() * y).data();
+  const uint8_t* backdrop_scan = nullptr;
   if (m_pBackdropDevice) {
     backdrop_scan = m_pBackdropDevice->GetBuffer()
                         .subspan(m_pBackdropDevice->GetPitch() * y)
@@ -807,7 +820,7 @@ void CFX_Renderer::render(const Scanline& sl) {
 
     int x = span->x;
     uint8_t* dest_pos = nullptr;
-    uint8_t* backdrop_pos = nullptr;
+    const uint8_t* backdrop_pos = nullptr;
     if (Bpp) {
       backdrop_pos = backdrop_scan ? backdrop_scan + x * Bpp : nullptr;
       dest_pos = dest_scan + x * Bpp;
@@ -815,7 +828,7 @@ void CFX_Renderer::render(const Scanline& sl) {
       dest_pos = dest_scan + x / 8;
       backdrop_pos = backdrop_scan ? backdrop_scan + x / 8 : nullptr;
     }
-    uint8_t* clip_pos = nullptr;
+    const uint8_t* clip_pos = nullptr;
     if (m_pClipMask) {
       // TODO(crbug.com/1382604): use subspan arithmetic.
       clip_pos = m_pClipMask->GetBuffer().data() +
@@ -896,7 +909,7 @@ class RendererScanLineAaOffset {
   }
 
  private:
-  base_ren_type* m_ren;
+  UNOWNED_PTR_EXCLUSION base_ren_type* m_ren;
   color_type m_color;
   unsigned m_left;
   unsigned m_top;
@@ -1014,8 +1027,7 @@ int CFX_AggDeviceDriver::GetDeviceCaps(int caps_id) const {
       return flags;
     }
     default:
-      NOTREACHED();
-      return 0;
+      NOTREACHED_NORETURN();
   }
 }
 
@@ -1048,8 +1060,7 @@ void CFX_AggDeviceDriver::SetClipMask(agg::rasterizer_scanline_aa& rasterizer) {
   auto pThisLayer = pdfium::MakeRetain<CFX_DIBitmap>();
   pThisLayer->Create(path_rect.Width(), path_rect.Height(),
                      FXDIB_Format::k8bppMask);
-  pThisLayer->Clear(0);
-  agg::rendering_buffer raw_buf(pThisLayer->GetBuffer().data(),
+  agg::rendering_buffer raw_buf(pThisLayer->GetWritableBuffer().data(),
                                 pThisLayer->GetWidth(), pThisLayer->GetHeight(),
                                 pThisLayer->GetPitch());
   agg::pixfmt_gray8 pixel_buf(raw_buf);
@@ -1119,6 +1130,14 @@ bool CFX_AggDeviceDriver::SetClip_PathStroke(
 
 int CFX_AggDeviceDriver::GetDriverType() const {
   return 1;
+}
+
+bool CFX_AggDeviceDriver::MultiplyAlpha(float alpha) {
+  return m_pBitmap->MultiplyAlpha(static_cast<int32_t>(alpha * 255));
+}
+
+bool CFX_AggDeviceDriver::MultiplyAlpha(const RetainPtr<CFX_DIBBase>& mask) {
+  return m_pBitmap->MultiplyAlpha(mask);
 }
 
 void CFX_AggDeviceDriver::RenderRasterizer(

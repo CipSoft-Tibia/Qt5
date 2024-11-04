@@ -17,6 +17,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,11 +27,14 @@
 #include "absl/log/die_if_null.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "absl/types/variant.h"
+#include "internal/platform/count_down_latch.h"
 #include "internal/platform/credential_storage_impl.h"
 #include "internal/platform/implementation/credential_callbacks.h"
 #include "internal/platform/runnable.h"
 #include "internal/platform/single_thread_executor.h"
 #include "internal/proto/credential.pb.h"
+#include "internal/proto/metadata.pb.h"
 #include "presence/implementation/credential_manager.h"
 
 namespace nearby {
@@ -87,7 +91,8 @@ class CredentialManagerImpl : public CredentialManager {
   GetLocalCredentialsSync(const CredentialSelector& credential_selector,
                           absl::Duration timeout);
 
-  // Used to fetch remote public creds when scanning.
+  // Used to fetch local/remote public creds based on the value of
+  // public_credential_type.
   void GetPublicCredentials(
       const CredentialSelector& credential_selector,
       PublicCredentialType public_credential_type,
@@ -127,6 +132,24 @@ class CredentialManagerImpl : public CredentialManager {
   std::vector<uint8_t> ExtendMetadataEncryptionKey(
       absl::string_view metadata_encryption_key);
 
+  void SetLocalDeviceMetadata(
+      const Metadata& metadata, bool regen_credentials,
+      absl::string_view manager_app_id,
+      const std::vector<nearby::internal::IdentityType>& identity_types,
+      int credential_life_cycle_days, int contiguous_copy_of_credentials,
+      GenerateCredentialsResultCallback credentials_generated_cb) override {
+    metadata_ = metadata;
+    if (regen_credentials) {
+      GenerateCredentials(
+          metadata, manager_app_id, identity_types, credential_life_cycle_days,
+          contiguous_copy_of_credentials, std::move(credentials_generated_cb));
+    }
+  }
+
+  ::nearby::internal::Metadata GetLocalDeviceMetadata() override {
+    return metadata_;
+  }
+
  private:
   struct SubscriberKey {
     CredentialSelector credential_selector;
@@ -161,6 +184,29 @@ class CredentialManagerImpl : public CredentialManager {
                                     Runnable&& runnable) {
     executor_->Execute(std::string(name), std::move(runnable));
   }
+
+  bool WaitForLatch(absl::string_view method_name, CountDownLatch* latch);
+
+  // The similar flow to check-expired-then-refill-if-needed is needed in both
+  // GetLocalCredentials() and GetPublicCredentials(). The high level flow is:
+  // check if there're expired creds from the result credentials list from
+  // GetLocal/GetPublic, if some creds expired, prune the expired, merge with
+  // newly generated ones. Then get the corresponding(local/shared) creds list
+  // from the storage, also prune expired, merge with newly
+  // generated. Then finally, save the newly merged two lists (local & shared)
+  // to storage. For re-use purpose, this private function is made to be able
+  // to take in different parameters from both GetLocalCredentials() and
+  // GetPublicCredentials().
+  void CheckCredentialsAndRefillIfNeeded(
+      const CredentialSelector& credential_selector,
+      absl::variant<std::vector<nearby::internal::LocalCredential>*,
+                    std::vector<nearby::internal::SharedCredential>*>
+          credential_list_variant,
+      std::optional<GetLocalCredentialsResultCallback>
+          callback_for_local_credentials,
+      std::optional<GetPublicCredentialsResultCallback>
+          callback_for_shared_credentials);
+
   void OnCredentialsChanged(absl::string_view manager_app_id,
                             absl::string_view account_name,
                             PublicCredentialType credential_type)
@@ -185,6 +231,7 @@ class CredentialManagerImpl : public CredentialManager {
       ABSL_GUARDED_BY(*executor_);
   SingleThreadExecutor* executor_;
   std::unique_ptr<nearby::CredentialStorageImpl> credential_storage_ptr_;
+  Metadata metadata_;
 };
 
 }  // namespace presence

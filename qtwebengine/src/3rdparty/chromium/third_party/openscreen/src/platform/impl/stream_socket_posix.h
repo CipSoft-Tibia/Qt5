@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <string>
 
-#include "absl/types/optional.h"
 #include "platform/base/error.h"
 #include "platform/base/ip_address.h"
 #include "platform/impl/socket_address_posix.h"
@@ -47,8 +47,8 @@ class StreamSocketPosix : public StreamSocket {
 
   // StreamSocket getter overrides.
   const SocketHandle& socket_handle() const override { return handle_; }
-  absl::optional<IPEndpoint> remote_address() const override;
-  absl::optional<IPEndpoint> local_address() const override;
+  std::optional<IPEndpoint> remote_address() const override;
+  std::optional<IPEndpoint> local_address() const override;
   TcpSocketState state() const override;
   IPAddress::Version version() const override;
 
@@ -72,8 +72,8 @@ class StreamSocketPosix : public StreamSocket {
   // atomic's (trivially) copyable and moveable requirements.
   Error::Code last_error_code_ = Error::Code::kNone;
   IPAddress::Version version_;
-  absl::optional<SocketAddressPosix> local_address_;
-  absl::optional<IPEndpoint> remote_address_;
+  std::optional<SocketAddressPosix> local_address_;
+  std::optional<IPEndpoint> remote_address_;
 
   bool is_bound_ = false;
   TcpSocketState state_ = TcpSocketState::kNotConnected;

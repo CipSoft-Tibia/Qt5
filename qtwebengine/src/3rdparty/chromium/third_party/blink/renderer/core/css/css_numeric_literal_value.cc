@@ -8,6 +8,7 @@
 #include "third_party/blink/renderer/core/css/css_length_resolver.h"
 #include "third_party/blink/renderer/core/css/css_value_pool.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/wtf/math_extras.h"
 #include "third_party/blink/renderer/platform/wtf/size_assertions.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
@@ -40,7 +41,9 @@ CSSNumericLiteralValue* CSSNumericLiteralValue::Create(double value,
   // At this point, we know that value is in a small range,
   // so we can use a simple cast instead of ClampTo<int>.
   int int_value = static_cast<int>(value);
-  if (value != int_value) {
+  // To handle negative zero, detect signed zero
+  // https://en.wikipedia.org/wiki/Signed_zero
+  if (value != int_value || (value == 0 && std::signbit(value))) {
     return MakeGarbageCollected<CSSNumericLiteralValue>(value, type);
   }
 
@@ -113,10 +116,20 @@ double CSSNumericLiteralValue::ComputeDotsPerPixel() const {
   return DoubleValue() * ConversionToCanonicalUnitsScaleFactor(GetType());
 }
 
+double CSSNumericLiteralValue::ComputeInCanonicalUnit() const {
+  return DoubleValue() *
+         CSSPrimitiveValue::ConversionToCanonicalUnitsScaleFactor(GetType());
+}
+
 double CSSNumericLiteralValue::ComputeLengthPx(
     const CSSLengthResolver& length_resolver) const {
   DCHECK(IsLength());
   return length_resolver.ZoomedComputedPixels(num_, GetType());
+}
+
+int CSSNumericLiteralValue::ComputeInteger() const {
+  DCHECK(IsNumber());
+  return ClampTo<int>(num_);
 }
 
 bool CSSNumericLiteralValue::AccumulateLengthArray(CSSLengthArray& length_array,
@@ -205,6 +218,8 @@ String CSSNumericLiteralValue::CustomCSSText() const {
     case UnitType::kRics:
     case UnitType::kChs:
     case UnitType::kIcs:
+    case UnitType::kCaps:
+    case UnitType::kRcaps:
     case UnitType::kLhs:
     case UnitType::kRlhs:
     case UnitType::kPixels:
@@ -227,7 +242,7 @@ String CSSNumericLiteralValue::CustomCSSText() const {
     case UnitType::kHertz:
     case UnitType::kKilohertz:
     case UnitType::kTurns:
-    case UnitType::kFraction:
+    case UnitType::kFlex:
     case UnitType::kViewportWidth:
     case UnitType::kViewportHeight:
     case UnitType::kViewportInlineSize:
@@ -328,13 +343,22 @@ bool CSSNumericLiteralValue::Equals(const CSSNumericLiteralValue& other) const {
     case UnitType::kViewportHeight:
     case UnitType::kViewportMin:
     case UnitType::kViewportMax:
-    case UnitType::kFraction:
+    case UnitType::kFlex:
       return num_ == other.num_;
     case UnitType::kQuirkyEms:
       return false;
     default:
       return false;
   }
+}
+
+CSSPrimitiveValue::UnitType CSSNumericLiteralValue::CanonicalUnit() const {
+  return CanonicalUnitTypeForCategory(UnitTypeToUnitCategory(GetType()));
+}
+
+CSSNumericLiteralValue* CSSNumericLiteralValue::CreateCanonicalUnitValue()
+    const {
+  return Create(ComputeInCanonicalUnit(), CanonicalUnit());
 }
 
 }  // namespace blink

@@ -423,6 +423,8 @@ confine_create(struct display *display)
 	confine->window = window_create(display);
 	confine->widget = window_frame_create(confine->window, confine);
 	window_set_title(confine->window, "Wayland Confine");
+	window_set_appid(confine->window,
+			"org.freedesktop.weston.wayland-confine");
 	confine->display = display;
 	confine->buffer = NULL;
 

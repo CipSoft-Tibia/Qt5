@@ -129,6 +129,8 @@ class CORE_EXPORT SelectionController final
   bool HandleDoubleClick(const MouseEventWithHitTestResults&);
   bool HandleTripleClick(const MouseEventWithHitTestResults&);
 
+  void HandleTapOnCaret(const MouseEventWithHitTestResults&,
+                        const SelectionInFlatTree&);
   bool HandleTapInsideSelection(const MouseEventWithHitTestResults&,
                                 const SelectionInFlatTree&);
 
@@ -136,6 +138,7 @@ class CORE_EXPORT SelectionController final
   // Used to store base before the adjustment at bidi boundary
   PositionInFlatTreeWithAffinity original_base_in_flat_tree_;
   bool mouse_down_may_start_select_;
+  bool mouse_down_was_single_click_on_caret_ = false;
   bool mouse_down_was_single_click_in_selection_;
   bool mouse_down_allows_multi_click_;
   enum class SelectionState {
@@ -150,6 +153,8 @@ bool IsSelectionOverLink(const MouseEventWithHitTestResults&);
 bool IsExtendingSelection(const MouseEventWithHitTestResults&);
 CORE_EXPORT SelectionInFlatTree
 AdjustSelectionWithTrailingWhitespace(const SelectionInFlatTree&);
+CORE_EXPORT SelectionInFlatTree
+AdjustSelectionByUserSelect(Node*, const SelectionInFlatTree&);
 }  // namespace blink
 
 #endif  // THIRD_PARTY_BLINK_RENDERER_CORE_EDITING_SELECTION_CONTROLLER_H_

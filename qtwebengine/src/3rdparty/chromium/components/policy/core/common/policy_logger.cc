@@ -6,11 +6,13 @@
 
 #include <utility>
 
+#include "base/functional/bind.h"
 #include "base/no_destructor.h"
 #include "base/notreached.h"
 #include "base/strings/escape.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
+#include "base/task/sequenced_task_runner.h"
 #include "components/policy/core/common/features.h"
 #include "components/version_info/version_info.h"
 
@@ -23,8 +25,7 @@ constexpr char kChromiumCSUrlFormat[] =
     "https://source.chromium.org/chromium/chromium/src/+/main:%s;l=%i;drc:%s";
 
 // Gets the string value for the log source.
-std::string GetLogSourceValue(
-    const PolicyLogger::Log::Source log_source) {
+std::string GetLogSourceValue(const PolicyLogger::Log::Source log_source) {
   switch (log_source) {
     case PolicyLogger::Log::Source::kPolicyProcessing:
       return "Policy Processing";
@@ -41,8 +42,7 @@ std::string GetLogSourceValue(
   }
 }
 
-std::string GetLogSeverity(
-    const PolicyLogger::Log::Severity log_severity) {
+std::string GetLogSeverity(const PolicyLogger::Log::Severity log_severity) {
   switch (log_severity) {
     case PolicyLogger::Log::Severity::kInfo:
       return "INFO";
@@ -60,13 +60,18 @@ std::string GetLogSeverity(
 // Constructs the URL for Chromium Code Search that points to the line of code
 // that generated the log and the Chromium git revision hash.
 std::string GetLineURL(const base::Location location) {
-  std::string last_change = version_info::GetLastChange();
+  std::string last_change(version_info::GetLastChange());
 
   // The substring separates the last change commit hash from the branch name on
   // the '-'.
   return base::StringPrintf(
       kChromiumCSUrlFormat, location.file_name(), location.line_number(),
       last_change.substr(0, last_change.find('-')).c_str());
+}
+
+// Checks if the log has been if the list for at least `kTimeToLive` minutes.
+bool IsLogExpired(PolicyLogger::Log& log) {
+  return base::Time::Now() - log.timestamp() >= PolicyLogger::kTimeToLive;
 }
 
 }  // namespace
@@ -156,29 +161,61 @@ void PolicyLogger::LogHelper::StreamLog() const {
 base::Value::Dict PolicyLogger::Log::GetAsDict() const {
   base::Value::Dict log_dict;
   log_dict.Set("message", base::EscapeForHTML(message_));
-  log_dict.Set("log_severity", GetLogSeverity(log_severity_));
-  log_dict.Set("log_source", GetLogSourceValue(log_source_));
+  log_dict.Set("logSeverity", GetLogSeverity(log_severity_));
+  log_dict.Set("logSource", GetLogSourceValue(log_source_));
   log_dict.Set("location", GetLineURL(location_));
   log_dict.Set("timestamp", base::TimeFormatHTTP(timestamp_));
   return log_dict;
 }
 
 PolicyLogger::PolicyLogger() = default;
-
-PolicyLogger::~PolicyLogger() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(logs_list_sequence_checker_);
-}
+PolicyLogger::~PolicyLogger() = default;
 
 void PolicyLogger::AddLog(PolicyLogger::Log&& new_log) {
   if (IsPolicyLoggingEnabled()) {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(logs_list_sequence_checker_);
-    logs_.emplace_back(std::move(new_log));
+    {
+      base::AutoLock lock(lock_);
+
+      // The logs deque size should not exceed `kMaxLogsSize`. Remove the first
+      // log if the size is reached before adding the new log.
+      if (logs_.size() == kMaxLogsSize) {
+        logs_.pop_front();
+      }
+
+      logs_.emplace_back(std::move(new_log));
+    }
+
+    if (!is_log_deletion_scheduled_ && is_log_deletion_enabled_) {
+      ScheduleOldLogsDeletion();
+    }
   }
 }
 
-base::Value::List PolicyLogger::GetAsList() const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(logs_list_sequence_checker_);
+void PolicyLogger::DeleteOldLogs() {
+  // Delete older logs with lifetime `kTimeToLive` mins, set the flag and
+  // reschedule the task.
+  base::AutoLock lock(lock_);
+  logs_.erase(std::remove_if(logs_.begin(), logs_.end(), IsLogExpired),
+              logs_.end());
+
+  if (logs_.size() > 0) {
+    ScheduleOldLogsDeletion();
+    return;
+  }
+  is_log_deletion_scheduled_ = false;
+}
+
+void PolicyLogger::ScheduleOldLogsDeletion() {
+  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE,
+      base::BindOnce(&PolicyLogger::DeleteOldLogs, weak_factory_.GetWeakPtr()),
+      kTimeToLive);
+  is_log_deletion_scheduled_ = true;
+}
+
+base::Value::List PolicyLogger::GetAsList() {
   base::Value::List all_logs_list;
+  base::AutoLock lock(lock_);
   for (const Log& log : logs_) {
     all_logs_list.Append(log.GetAsDict());
   }
@@ -188,14 +225,34 @@ base::Value::List PolicyLogger::GetAsList() const {
 bool PolicyLogger::IsPolicyLoggingEnabled() const {
 #if BUILDFLAG(IS_ANDROID)
   return base::FeatureList::IsEnabled(policy::features::kPolicyLogsPageAndroid);
+#elif BUILDFLAG(IS_IOS)
+  return base::FeatureList::IsEnabled(policy::features::kPolicyLogsPageIOS);
 #else
-  return false;
+  // Check that FeatureList is available as a protection against early startup
+  // crashes. Some policy providers are initialized very early even before
+  // base::FeatureList is available, but when policies are finally applied, the
+  // feature stack is fully initialized. The instance check ensures that the
+  // final decision is delayed until all features are initialized, without any
+  // other downstream effect.
+  return base::FeatureList::GetInstance() &&
+         base::FeatureList::IsEnabled(policy::features::kPolicyLogsPageDesktop);
 #endif  // BUILDFLAG(IS_ANDROID)
 }
 
-size_t PolicyLogger::GetPolicyLogsSizeForTesting() const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(logs_list_sequence_checker_);
+void PolicyLogger::EnableLogDeletion() {
+  is_log_deletion_enabled_ = true;
+}
+
+size_t PolicyLogger::GetPolicyLogsSizeForTesting() {
+  base::AutoLock lock(lock_);
   return logs_.size();
+}
+
+void PolicyLogger::ResetLoggerAfterTest() {
+  base::AutoLock lock(lock_);
+  logs_.erase(logs_.begin(), logs_.end());
+  is_log_deletion_scheduled_ = false;
+  is_log_deletion_enabled_ = false;
 }
 
 }  // namespace policy

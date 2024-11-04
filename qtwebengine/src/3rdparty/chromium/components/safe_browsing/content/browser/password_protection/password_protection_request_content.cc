@@ -51,6 +51,33 @@ void ExtractVisualFeaturesAndReplyOnUIThread(
 
 }  // namespace
 
+// static
+scoped_refptr<PasswordProtectionRequest>
+PasswordProtectionRequestContent::CreateForTesting(
+    content::WebContents* web_contents,
+    const GURL& main_frame_url,
+    const GURL& password_form_action,
+    const GURL& password_form_frame_url,
+    const std::string& mime_type,
+    const std::string& username,
+    PasswordType password_type,
+    const std::vector<password_manager::MatchingReusedCredential>&
+        matching_reused_credentials,
+    LoginReputationClientRequest::TriggerType type,
+    bool password_field_exists,
+    PasswordProtectionServiceBase* pps,
+    int request_timeout_in_ms) {
+  scoped_refptr<PasswordProtectionRequest> request(
+      new PasswordProtectionRequestContent(
+          web_contents, main_frame_url, password_form_action,
+          password_form_frame_url, mime_type, username, password_type,
+          matching_reused_credentials, type, password_field_exists, pps,
+          request_timeout_in_ms));
+  static_cast<PasswordProtectionRequestContent*>(request.get())
+      ->prevent_initiating_url_loader_for_testing_ = true;
+  return request;
+}
+
 PasswordProtectionRequestContent::PasswordProtectionRequestContent(
     content::WebContents* web_contents,
     const GURL& main_frame_url,
@@ -147,13 +174,13 @@ void PasswordProtectionRequestContent::GetDomFeatures() {
   phishing_detector_->StartPhishingDetection(
       main_frame_url(),
       base::BindRepeating(&PasswordProtectionRequestContent::OnGetDomFeatures,
-                          AsWeakPtr()));
+                          base::AsWeakPtr(this)));
   content::BrowserThread::GetTaskRunnerForThread(content::BrowserThread::UI)
       ->PostDelayedTask(
           FROM_HERE,
           base::BindOnce(
               &PasswordProtectionRequestContent::OnGetDomFeatureTimeout,
-              AsWeakPtr()),
+              base::AsWeakPtr(this)),
           base::Milliseconds(kDomFeatureTimeoutMs));
 }
 
@@ -248,8 +275,7 @@ void PasswordProtectionRequestContent::MaybeCollectVisualFeatures() {
   // straight to sending the ping.
   bool trigger_type_supports_visual_features =
       trigger_type() == LoginReputationClientRequest::UNFAMILIAR_LOGIN_PAGE ||
-      (trigger_type() == LoginReputationClientRequest::PASSWORD_REUSE_EVENT &&
-       base::FeatureList::IsEnabled(kVisualFeaturesForReusePings));
+      trigger_type() == LoginReputationClientRequest::PASSWORD_REUSE_EVENT;
   if (trigger_type_supports_visual_features && can_extract_visual_features) {
     CollectVisualFeatures();
   } else {
@@ -271,7 +297,7 @@ void PasswordProtectionRequestContent::CollectVisualFeatures() {
   view->CopyFromSurface(
       gfx::Rect(), gfx::Size(),
       base::BindOnce(&PasswordProtectionRequestContent::OnScreenshotTaken,
-                     AsWeakPtr()));
+                     base::AsWeakPtr(this)));
 }
 
 void PasswordProtectionRequestContent::OnScreenshotTaken(
@@ -279,7 +305,7 @@ void PasswordProtectionRequestContent::OnScreenshotTaken(
   // Do the feature extraction on a worker thread, to avoid blocking the UI.
   auto ui_thread_callback = base::BindOnce(
       &PasswordProtectionRequestContent::OnVisualFeatureCollectionDone,
-      AsWeakPtr());
+      base::AsWeakPtr(this));
   base::ThreadPool::PostTask(
       FROM_HERE,
       {base::MayBlock(), base::TaskPriority::BEST_EFFORT,

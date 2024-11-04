@@ -3,6 +3,62 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## 13.0.0 2023-08-23
+
+### Breaking changes
+* Simplify PoolAlloc via thread_local
+  * Remove InitializeDLL functions
+  * Remove OSDependent TLS functions
+* Remove GLSLANG_WEB and GLSLANG_WEB_DEVEL code paths
+
+### Other changes
+* Raise CMAKE minimum to 3.17.2
+* Support GL_KHR_cooperative_matrix 
+* Support GL_QCOM_image_processing_support
+* Support outputting each module to a filename with spirv-remap
+* Generate an error when gl_PrimitiveShaderRateEXT is used without enabling the extension
+* Improve layout checking when GL_EXT_spirv_intrinsics is enabled
+
+## 12.3.1 2023-07-20
+
+### Other changes
+* Improve backward compatibility for glslangValidator rename on Windows
+
+## 12.3.0 2023-07-19
+
+### Other changes
+* Rename glslangValidator to glslang and create glslangValidator symlink
+* Support HLSL binary literals
+* Add missing initialization members for web
+* Improve push_constant upgrading
+* Fix race condition in spirv remap
+* Support pre and post HLSL qualifier validation
+* Force generateDebugInfo when non-semantic debug info is enabled
+* Exit with error if output file cannot be written
+* Fix struct member buffer reference decorations
+
+## 12.2.0 2023-05-17
+
+### Other changes
+* Support GLSL_EXT_shader_tile_image
+* Support GL_EXT_ray_tracing_position_fetch
+* Support custom include callbacks via the C API
+* Add preamble-text command-line option
+* Accept variables as parameters of spirv_decorate_id
+* Fix generation of conditionals with a struct result
+* Fix double expansion of macros
+* Fix DebugCompilationUnit scope
+* Improve line information
+
+## 12.1.0 2023-03-21
+
+### Other changes
+* Reject non-float inputs/outputs for version less than 120
+* Fix invalid BufferBlock decoration for SPIR-V 1.3 and above
+* Add HLSL relaxed-precision float/int matrix expansions
+* Block decorate Vulkan structs with RuntimeArrays
+* Support InterlockedAdd on float types
+
 ## 12.0.0 2023-01-18
 
 ### Breaking changes

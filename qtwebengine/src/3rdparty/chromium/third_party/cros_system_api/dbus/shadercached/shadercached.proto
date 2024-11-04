@@ -20,6 +20,11 @@ message InstallRequest {
   string vm_owner_id = 4;
 }
 
+message InstallResponse {
+  // If true, shader cache is installed and mounted.
+  bool mounted = 1;
+}
+
 message UninstallRequest {
   // Steam application id.
   uint64 steam_app_id = 1;
@@ -45,4 +50,33 @@ message UnmountRequest {
   string vm_owner_id = 2;
   // Steam application id.
   uint64 steam_app_id = 3;
+}
+
+message PrepareShaderCacheRequest {
+  // Name of the VM.
+  string vm_name = 1;
+  // Owner of the vm.
+  string vm_owner_id = 2;
+  // TODO(b/271776528): Support general-purpose VM shader cache creation
+  // Per-boot cache
+  // bool per_boot_cache = 3;
+  // Support precompiled cache
+  // bool precompiled_cache = 4;
+}
+
+message PrepareShaderCacheResponse {
+  // TODO(b/271776528): Support general-purpose VM shader cache creation
+  // Path to device shader cache
+  // string device_path = 1;
+  // Path to render server cache
+  // string render_server_path = 2;
+  // Path to precompiled cache (if applicable)
+  string precompiled_cache_path = 3;
+}
+
+message PurgeRequest {
+  // Name of the VM.
+  string vm_name = 1;
+  // Owner of the vm.
+  string vm_owner_id = 2;
 }

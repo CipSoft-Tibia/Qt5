@@ -104,7 +104,7 @@ void QWindowsFontEngine::getCMap()
     SelectObject(hdc, hfont);
     bool symb = false;
     if (ttf) {
-        cmapTable = getSfntTable(MAKE_TAG('c', 'm', 'a', 'p'));
+        cmapTable = getSfntTable(QFont::Tag("cmap").value());
         cmap = QFontEngine::getCMap(reinterpret_cast<const uchar *>(cmapTable.constData()),
                        cmapTable.size(), &symb, &cmapSize);
     }
@@ -471,7 +471,7 @@ namespace {
 
 QFixed QWindowsFontEngine::capHeight() const
 {
-    const QByteArray tableData = getSfntTable(MAKE_TAG('O', 'S', '/', '2'));
+    const QByteArray tableData = getSfntTable(QFont::Tag("OS/2").value());
     if (size_t(tableData.size()) >= sizeof(OS2Table)) {
         const OS2Table *table = reinterpret_cast<const OS2Table *>(tableData.constData());
         if (qFromBigEndian<quint16>(table->version) >= 2) {
@@ -1089,7 +1089,7 @@ QImage QWindowsFontEngine::alphaRGBMapForGlyph(glyph_t glyph,
 QFontEngine *QWindowsFontEngine::cloneWithSize(qreal pixelSize) const
 {
     QFontDef request = fontDef;
-    QString actualFontName = request.families.first();
+    QString actualFontName = request.families.constFirst();
     if (!uniqueFamilyName.isEmpty())
         request.families = QStringList(uniqueFamilyName);
     request.pixelSize = pixelSize;

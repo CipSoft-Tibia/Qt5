@@ -15,16 +15,14 @@ constexpr size_t kMaxFiltersPerSource = 50;
 
 constexpr size_t kMaxDestinations = 3;
 
+constexpr size_t kMaxEventLevelReportWindows = 5;
+
 constexpr size_t kMaxBytesPerAggregationKeyId = 25;
-constexpr size_t kMaxAggregationKeysPerSourceOrTrigger = 50;
-
-constexpr size_t kMaxAggregatableTriggerDataPerTrigger = 50;
-
-constexpr size_t kMaxEventTriggerData = 10;
-
-constexpr size_t kMaxAggregatableDedupKeys = 10;
+constexpr size_t kMaxAggregationKeysPerSource = 20;
 
 constexpr int kMaxAggregatableValue = 65536;
+
+constexpr int kMaxSettableEventLevelAttributions = 20;
 
 }  // namespace attribution_reporting
 

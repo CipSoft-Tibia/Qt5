@@ -21,11 +21,11 @@
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/network_service_util.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/site_isolation_policy.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_client.h"
-#include "content/public/common/network_service_util.h"
 #include "content/public/common/url_constants.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
@@ -598,14 +598,15 @@ IN_PROC_BROWSER_TEST_F(LoaderBrowserTest, SubresourceRedirectToDataURLBlocked) {
   std::string script = R"((url => {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
-    xhr.onload = () => domAutomationController.send("ALLOWED");
-    xhr.onerror = () => domAutomationController.send("BLOCKED");
-    xhr.send();
+    return new Promise(resolve => {
+      xhr.onload = () => resolve("ALLOWED");
+      xhr.onerror = () => resolve("BLOCKED");
+      xhr.send();
+    });
   }))";
 
   EXPECT_EQ("BLOCKED",
-            EvalJs(shell(), script + "('" + subresource_url.spec() + "')",
-                   EXECUTE_SCRIPT_USE_MANUAL_REPLY));
+            EvalJs(shell(), script + "('" + subresource_url.spec() + "')"));
 }
 
 IN_PROC_BROWSER_TEST_F(LoaderBrowserTest, RedirectToDataURLBlocked) {
@@ -629,17 +630,18 @@ GURL CreateFileSystemURL(Shell* window) {
   std::string filesystem_url_string = EvalJs(window, R"(
       var blob = new Blob(['<html><body>hello</body></html>'],
                           {type: 'text/html'});
-      window.webkitRequestFileSystem(TEMPORARY, blob.size, fs => {
-        fs.root.getFile('foo.html', {create: true}, file => {
-          file.createWriter(writer => {
-            writer.write(blob);
-            writer.onwriteend = () => {
-              domAutomationController.send(file.toURL());
-            }
+      new Promise(resolve => {
+        window.webkitRequestFileSystem(TEMPORARY, blob.size, fs => {
+          fs.root.getFile('foo.html', {create: true}, file => {
+            file.createWriter(writer => {
+              writer.write(blob);
+              writer.onwriteend = () => {
+                resolve(file.toURL());
+              }
+            });
           });
         });
-      });)",
-                                             EXECUTE_SCRIPT_USE_MANUAL_REPLY)
+      });)")
                                           .ExtractString();
   GURL filesystem_url(filesystem_url_string);
   EXPECT_TRUE(filesystem_url.is_valid());
@@ -660,14 +662,15 @@ IN_PROC_BROWSER_TEST_F(LoaderBrowserTest,
   std::string script = R"((url => {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
-    xhr.onload = () => domAutomationController.send("ALLOWED");
-    xhr.onerror = () => domAutomationController.send("BLOCKED");
-    xhr.send();
+    return new Promise(resolve => {
+      xhr.onload = () => resolve("ALLOWED");
+      xhr.onerror = () => resolve("BLOCKED");
+      xhr.send();
+    });
   }))";
 
   EXPECT_EQ("BLOCKED",
-            EvalJs(shell(), script + "('" + subresource_url.spec() + "')",
-                   EXECUTE_SCRIPT_USE_MANUAL_REPLY));
+            EvalJs(shell(), script + "('" + subresource_url.spec() + "')"));
 }
 
 IN_PROC_BROWSER_TEST_F(LoaderBrowserTest, RedirectToFileSystemURLBlocked) {
@@ -767,6 +770,7 @@ IN_PROC_BROWSER_TEST_F(RequestDataBrowserTest, Basic) {
   url::Origin top_origin = url::Origin::Create(top_url);
 
   NavigateToURLBlockUntilNavigationsComplete(shell(), top_url, 1);
+  WaitForRequests(8u);
 
   auto requests = data();
   EXPECT_EQ(8u, requests.size());
@@ -874,6 +878,7 @@ IN_PROC_BROWSER_TEST_F(RequestDataBrowserTest, SameOriginNested) {
   url::Origin top_origin = url::Origin::Create(top_url);
 
   NavigateToURLBlockUntilNavigationsComplete(shell(), top_url, 1);
+  WaitForRequests(3u);
 
   auto requests = data();
   EXPECT_EQ(3u, requests.size());
@@ -913,6 +918,7 @@ IN_PROC_BROWSER_TEST_F(RequestDataBrowserTest, SameOriginAuxiliary) {
   EXPECT_EQ(true, EvalJs(shell(), "clickSameSiteNewWindowLink();"));
   Shell* new_shell = new_shell_observer.GetShell();
   EXPECT_TRUE(WaitForLoadStop(new_shell->web_contents()));
+  WaitForRequests(2u);
 
   auto requests = data();
   EXPECT_EQ(2u, requests.size());
@@ -1002,6 +1008,7 @@ IN_PROC_BROWSER_TEST_F(RequestDataBrowserTest, CrossOriginNested) {
   url::Origin nested_origin = url::Origin::Create(nested_url);
 
   NavigateToURLBlockUntilNavigationsComplete(shell(), top_url, 1);
+  WaitForRequests(4u);
 
   auto requests = data();
   EXPECT_EQ(4u, requests.size());

@@ -30,14 +30,14 @@ void xnn_f32_vclamp_ukernel__rvv_x4v(
   const float vmin = params->scalar.min;
   const float vmax = params->scalar.max;
 
-  batch >>= 2;  // log2(sizeof(float))
+  batch >>= XNN_LOG2_SIZEOF_FLOAT;
   do {
-    const size_t n = vsetvl_e32m4(batch);
-    vfloat32m4_t vacc = vle32_v_f32m4(input, n);
+    const size_t n = __riscv_vsetvl_e32m4(batch);
+    vfloat32m4_t vacc = __riscv_vle32_v_f32m4(input, n);
     input += n;
-    vacc = vfmax_vf_f32m4(vacc, vmin, n);
-    vacc = vfmin_vf_f32m4(vacc, vmax, n);
-    vse32_v_f32m4(output, vacc, n);
+    vacc = __riscv_vfmax_vf_f32m4(vacc, vmin, n);
+    vacc = __riscv_vfmin_vf_f32m4(vacc, vmax, n);
+    __riscv_vse32_v_f32m4(output, vacc, n);
     output += n;
 
     batch -= n;

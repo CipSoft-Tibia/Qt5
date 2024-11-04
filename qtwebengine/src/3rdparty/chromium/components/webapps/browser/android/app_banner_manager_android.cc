@@ -14,21 +14,13 @@
 #include "base/metrics/field_trial_params.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
-#include "components/feature_engagement/public/feature_constants.h"
-#include "components/feature_engagement/public/tracker.h"
-#include "components/infobars/content/content_infobar_manager.h"
-#include "components/infobars/core/infobar.h"
-#include "components/infobars/core/infobar_delegate.h"
-#include "components/messages/android/messages_feature.h"
 #include "components/site_engagement/content/site_engagement_service.h"
 #include "components/version_info/android/channel_getter.h"
 #include "components/version_info/channel.h"
 #include "components/version_info/version_info.h"
 #include "components/webapps/browser/android/add_to_homescreen_coordinator.h"
 #include "components/webapps/browser/android/add_to_homescreen_params.h"
-#include "components/webapps/browser/android/ambient_badge_metrics.h"
 #include "components/webapps/browser/android/bottomsheet/pwa_bottom_sheet_controller.h"
-#include "components/webapps/browser/android/installable/installable_ambient_badge_infobar_delegate.h"
 #include "components/webapps/browser/android/shortcut_info.h"
 #include "components/webapps/browser/android/webapps_icon_utils.h"
 #include "components/webapps/browser/android/webapps_jni_headers/AppBannerManager_jni.h"
@@ -36,7 +28,6 @@
 #include "components/webapps/browser/banners/app_banner_metrics.h"
 #include "components/webapps/browser/banners/app_banner_settings_helper.h"
 #include "components/webapps/browser/features.h"
-#include "components/webapps/browser/installable/installable_data.h"
 #include "components/webapps/browser/installable/installable_manager.h"
 #include "components/webapps/browser/installable/installable_metrics.h"
 #include "components/webapps/browser/webapps_client.h"
@@ -93,7 +84,10 @@ int AppBannerManagerAndroid::GetPipelineStatusForTesting(JNIEnv* env) {
 }
 
 int AppBannerManagerAndroid::GetBadgeStatusForTesting(JNIEnv* env) {
-  return (int)badge_state_;
+  if (!ambient_badge_manager_) {
+    return 0;
+  }
+  return (int)ambient_badge_manager_->state();
 }
 
 bool AppBannerManagerAndroid::OnAppDetailsRetrieved(
@@ -131,8 +125,7 @@ void AppBannerManagerAndroid::RequestAppBanner(const GURL& validated_url) {
   AppBannerManager::RequestAppBanner(validated_url);
 }
 
-void AppBannerManagerAndroid::AddToHomescreenFromBadge() {
-  RecordAmbientBadgeClickEvent(!native_app_data_.is_null());
+void AppBannerManagerAndroid::ShowBannerFromBadge() {
   ShowBannerUi(InstallableMetrics::GetInstallSource(
       web_contents(), InstallTrigger::AMBIENT_BADGE));
 
@@ -140,22 +133,6 @@ void AppBannerManagerAndroid::AddToHomescreenFromBadge() {
   // cannot trigger add to home screen (which would cause a crash). If the
   // banner is dismissed, the event will be resent.
   ResetBindings();
-}
-
-bool AppBannerManagerAndroid::HasSufficientEngagementForAmbientBadge() {
-  double score = GetSiteEngagementService()->GetScore(validated_url_);
-  int min_engagement =
-      features::kAmbientBadgeSiteEngagement_MinEngagement.Get();
-  return score >= min_engagement;
-}
-
-void AppBannerManagerAndroid::BadgeDismissed() {
-  RecordAmbientBadgeDismissEvent(!native_app_data_.is_null());
-  badge_state_ = AmbientBadgeState::DISMISSED;
-
-  AppBannerSettingsHelper::RecordBannerEvent(
-      web_contents(), validated_url_, GetAppIdentifier(),
-      AppBannerSettingsHelper::APP_BANNER_EVENT_DID_BLOCK, GetCurrentTime());
 }
 
 std::string AppBannerManagerAndroid::GetAppIdentifier() {
@@ -185,10 +162,6 @@ void AppBannerManagerAndroid::PerformInstallableChecks() {
 }
 
 void AppBannerManagerAndroid::PerformInstallableWebAppCheck() {
-  if (!manifest_url_.SchemeIsHTTPOrHTTPS()) {
-    Stop(MANIFEST_URL_SCHEME_NOT_SUPPORTED_FOR_WEBAPK);
-    return;
-  }
   if (!webapps::WebappsUtils::AreWebManifestUrlsWebApkCompatible(manifest())) {
     Stop(URL_NOT_SUPPORTED_FOR_WEBAPK);
     return;
@@ -196,33 +169,29 @@ void AppBannerManagerAndroid::PerformInstallableWebAppCheck() {
   AppBannerManager::PerformInstallableWebAppCheck();
 }
 
-void AppBannerManagerAndroid::PerformWorkerCheckForAmbientBadge() {
-  badge_state_ = AmbientBadgeState::PENDING_WORKER;
-  manager()->GetData(
-      ParamsToPerformWorkerCheck(),
-      base::BindOnce(
-          &AppBannerManagerAndroid::OnDidPerformWorkerCheckForAmbientBadge,
-          weak_factory_.GetWeakPtr()));
+void AppBannerManagerAndroid::PerformWorkerCheckForAmbientBadge(
+    InstallableParams params,
+    InstallableCallback callback) {
+  manager()->GetData(params, std::move(callback));
 }
 
-void AppBannerManagerAndroid::OnDidPerformWorkerCheckForAmbientBadge(
-    const InstallableData& data) {
-  if (!data.NoBlockingErrors()) {
-    return;
-  }
-
-  passed_worker_check_ = true;
-
-  if (state_ == State::PENDING_PROMPT_NOT_CANCELED) {
-    MaybeShowAmbientBadge();
-  }
+bool AppBannerManagerAndroid::IsWebAppConsideredInstalled() const {
+  // Also check if a WebAPK is currently being installed. Installation may take
+  // some time, so ensure we don't accidentally allow a new installation whilst
+  // one is in flight for the current site.
+  return WebappsUtils::IsWebApkInstalled(web_contents()->GetBrowserContext(),
+                                         manifest().start_url) ||
+         WebappsClient::Get()->IsInstallationInProgress(web_contents(),
+                                                        manifest_id_);
 }
 
 void AppBannerManagerAndroid::ResetCurrentPageData() {
+  // Reset |ambient_badge_manager_| to stop any running ambient badge pipeline
+  // before clearing installable data.
+  ambient_badge_manager_.reset();
   AppBannerManager::ResetCurrentPageData();
   native_app_data_.Reset();
   native_app_package_ = "";
-  badge_state_ = AmbientBadgeState::INACTIVE;
 }
 
 std::unique_ptr<AddToHomescreenParams>
@@ -233,9 +202,9 @@ AppBannerManagerAndroid::CreateAddToHomescreenParams(
   if (native_app_data_.is_null()) {
     a2hs_params->app_type = AddToHomescreenParams::AppType::WEBAPK;
     a2hs_params->shortcut_info = ShortcutInfo::CreateShortcutInfo(
-        manifest_url_, manifest(), primary_icon_url_);
+        manifest_url_, manifest(), primary_icon_url_,
+        has_maskable_primary_icon_);
     a2hs_params->install_source = install_source;
-    a2hs_params->has_maskable_primary_icon = has_maskable_primary_icon_;
   } else {
     a2hs_params->app_type = AddToHomescreenParams::AppType::NATIVE;
     a2hs_params->native_app_data = native_app_data_;
@@ -248,18 +217,24 @@ void AppBannerManagerAndroid::ShowBannerUi(WebappInstallSource install_source) {
   content::WebContents* contents = web_contents();
   DCHECK(contents);
 
-  auto a2hs_params = CreateAddToHomescreenParams(install_source);
+  bool was_shown = native_app_data_.is_null() &&
+                   MaybeShowPwaBottomSheetController(/* expand_sheet= */ true,
+                                                     install_source);
 
-  bool was_shown = AddToHomescreenCoordinator::ShowForAppBanner(
-      weak_factory_.GetWeakPtr(), std::move(a2hs_params),
-      base::BindRepeating(&AppBannerManagerAndroid::OnInstallEvent,
-                          weak_factory_.GetWeakPtr()));
+  if (!was_shown) {
+    was_shown = AddToHomescreenCoordinator::ShowForAppBanner(
+        weak_factory_.GetWeakPtr(), CreateAddToHomescreenParams(install_source),
+        base::BindRepeating(&AppBannerManagerAndroid::OnInstallEvent,
+                            weak_factory_.GetWeakPtr()));
+  }
 
   // If we are installing from the ambient badge, it will remove itself.
   if (install_source != WebappInstallSource::AMBIENT_BADGE_CUSTOM_TAB &&
       install_source != WebappInstallSource::AMBIENT_BADGE_BROWSER_TAB &&
       install_source != WebappInstallSource::RICH_INSTALL_UI_WEBLAYER) {
-    HideAmbientBadge();
+    if (ambient_badge_manager_) {
+      ambient_badge_manager_->HideAmbientBadge();
+    }
   }
 
   if (was_shown) {
@@ -284,13 +259,6 @@ void AppBannerManagerAndroid::OnInstallEvent(
       (a2hs_params.install_source == WebappInstallSource::MENU_BROWSER_TAB ||
        a2hs_params.install_source == WebappInstallSource::MENU_CUSTOM_TAB)) {
     switch (event) {
-      case AddToHomescreenInstaller::Event::INSTALL_STARTED:
-        AppBannerSettingsHelper::RecordBannerEvent(
-            web_contents(), web_contents()->GetVisibleURL(),
-            a2hs_params.shortcut_info->url.spec(),
-            AppBannerSettingsHelper::APP_BANNER_EVENT_DID_ADD_TO_HOMESCREEN,
-            base::Time::Now());
-        break;
       case AddToHomescreenInstaller::Event::INSTALL_REQUEST_FINISHED:
         SendBannerAccepted();
         OnInstall(a2hs_params.shortcut_info->display);
@@ -555,73 +523,6 @@ void AppBannerManagerAndroid::Install(
                                     std::move(a2hs_event_callback));
 }
 
-void AppBannerManagerAndroid::MaybeShowAmbientBadge() {
-  if (!base::FeatureList::IsEnabled(
-          features::kInstallableAmbientBadgeInfoBar) &&
-      !base::FeatureList::IsEnabled(
-          features::kInstallableAmbientBadgeMessage)) {
-    return;
-  }
-
-  badge_state_ = AmbientBadgeState::ACTIVE;
-
-  // Do not show the ambient badge if it was recently dismissed.
-  if (AppBannerSettingsHelper::WasBannerRecentlyBlocked(
-          web_contents(), validated_url_, GetAppIdentifier(),
-          GetCurrentTime())) {
-    badge_state_ = AmbientBadgeState::BLOCKED;
-    return;
-  }
-
-  // if it's showing for web app (not native app), only show if the worker check
-  // already passed.
-  if (!native_app_data_ && features::SkipServiceWorkerForInstallPromotion() &&
-      !passed_worker_check_) {
-    badge_state_ = AmbientBadgeState::PENDING_WORKER;
-    return;
-  }
-
-  if (ShouldSuppressAmbientBadge()) {
-    badge_state_ = AmbientBadgeState::PENDING_ENGAGEMENT;
-    return;
-  }
-
-  if (base::FeatureList::IsEnabled(features::kAmbientBadgeSiteEngagement) &&
-      !HasSufficientEngagementForAmbientBadge()) {
-    badge_state_ = AmbientBadgeState::PENDING_ENGAGEMENT;
-    return;
-  }
-
-  infobars::ContentInfoBarManager* infobar_manager =
-      webapps::WebappsClient::Get()->GetInfoBarManagerForWebContents(
-          web_contents());
-  bool infobar_visible =
-      infobar_manager &&
-      InstallableAmbientBadgeInfoBarDelegate::GetVisibleAmbientBadgeInfoBar(
-          infobar_manager);
-
-  if (infobar_visible || message_controller_.IsMessageEnqueued())
-    return;
-
-  ShowAmbientBadge();
-}
-
-void AppBannerManagerAndroid::HideAmbientBadge() {
-  message_controller_.DismissMessage();
-  infobars::ContentInfoBarManager* infobar_manager =
-      webapps::WebappsClient::Get()->GetInfoBarManagerForWebContents(
-          web_contents());
-  if (infobar_manager == nullptr)
-    return;
-
-  infobars::InfoBar* ambient_badge_infobar =
-      InstallableAmbientBadgeInfoBarDelegate::GetVisibleAmbientBadgeInfoBar(
-          infobar_manager);
-
-  if (ambient_badge_infobar)
-    infobar_manager->RemoveInfoBar(ambient_badge_infobar);
-}
-
 bool AppBannerManagerAndroid::IsSupportedNonWebAppPlatform(
     const std::u16string& platform) const {
   return base::EqualsASCII(platform, kPlatformPlay);
@@ -639,64 +540,58 @@ bool AppBannerManagerAndroid::IsRelatedNonWebAppInstalled(
   return Java_AppBannerManager_isRelatedNonWebAppInstalled(env, java_id);
 }
 
-bool AppBannerManagerAndroid::IsWebAppConsideredInstalled() const {
-  // Also check if a WebAPK is currently being installed. Installation may take
-  // some time, so ensure we don't accidentally allow a new installation whilst
-  // one is in flight for the current site.
-  return WebappsUtils::IsWebApkInstalled(web_contents()->GetBrowserContext(),
-                                         manifest().start_url) ||
-         WebappsClient::Get()->IsInstallationInProgress(
-             web_contents(), manifest_url_, manifest_id_);
+// TODO(eirage): Implement for Android.
+bool AppBannerManagerAndroid::IsAppFullyInstalledForSiteUrl(
+    const GURL& site_url) const {
+  return false;
 }
 
-bool AppBannerManagerAndroid::ShouldSuppressAmbientBadge() {
-  if (!base::FeatureList::IsEnabled(
-          features::kAmbientBadgeSuppressFirstVisit)) {
-    return false;
-  }
-
-  content::WebContents* contents = web_contents();
-  absl::optional<base::Time> last_could_show_time =
-      AppBannerSettingsHelper::GetSingleBannerEvent(
-          contents, validated_url_, GetAppIdentifier(),
-          AppBannerSettingsHelper::APP_BANNER_EVENT_COULD_SHOW_AMBIENT_BADGE);
-
-  AppBannerSettingsHelper::RecordBannerEvent(
-      contents, validated_url_, GetAppIdentifier(),
-      AppBannerSettingsHelper::APP_BANNER_EVENT_COULD_SHOW_AMBIENT_BADGE,
-      GetCurrentTime());
-
-  if (!last_could_show_time || last_could_show_time->is_null()) {
-    return true;
-  }
-
-  base::TimeDelta period =
-      features::kAmbientBadgeSuppressFirstVisit_Period.Get();
-  return GetCurrentTime() - *last_could_show_time > period;
+bool AppBannerManagerAndroid::IsAppPartiallyInstalledForSiteUrl(
+    const GURL& site_url) const {
+  return false;
 }
 
-void AppBannerManagerAndroid::ShowAmbientBadge() {
-  RecordAmbientBadgeDisplayEvent(!native_app_data_.is_null());
-  badge_state_ = AmbientBadgeState::SHOWING;
+void AppBannerManagerAndroid::SaveInstallationDismissedForMl(
+    const GURL& manifest_id) {
+  // TODO(https://crbug.com/1449993): Implement.
+}
+void AppBannerManagerAndroid::SaveInstallationIgnoredForMl(
+    const GURL& manifest_id) {
+  // TODO(https://crbug.com/1449993): Implement.
+}
+void AppBannerManagerAndroid::SaveInstallationAcceptedForMl(
+    const GURL& manifest_id) {
+  // TODO(https://crbug.com/1449993): Implement.
+}
+bool AppBannerManagerAndroid::IsMlPromotionBlockedByHistoryGuardrail(
+    const GURL& manifest_id) {
+  // TODO(https://crbug.com/1449993): Implement.
+  return false;
+}
 
-  if (base::FeatureList::IsEnabled(features::kInstallableAmbientBadgeMessage) &&
-      base::FeatureList::IsEnabled(
-          messages::kMessagesForAndroidInfrastructure)) {
-    message_controller_.EnqueueMessage(
-        web_contents(), GetAppName(), primary_icon_, has_maskable_primary_icon_,
-        manifest().start_url);
-  } else {
-    InstallableAmbientBadgeInfoBarDelegate::Create(
-        web_contents(), weak_factory_.GetWeakPtr(), GetAppName(), primary_icon_,
-        has_maskable_primary_icon_, manifest().start_url);
-  }
+void AppBannerManagerAndroid::OnMlInstallPrediction(
+    base::PassKey<MLInstallabilityPromoter>,
+    std::string result_label) {
+  // TODO(https://crbug.com/1449993): Implement.
+}
+
+segmentation_platform::SegmentationPlatformService*
+AppBannerManagerAndroid::GetSegmentationPlatformService() {
+  // TODO(https://crbug.com/1449993): Implement.
+  // Note: By returning a non-nullptr, all of the Ml code (after metrics
+  // gathering) in `MlInstallabilityPromoter` will execute, including requesting
+  // classifiction & eventually calling `OnMlInstallPrediction` above. Make sure
+  // that the contract of that class is being followed appropriately, and the ML
+  // parts are correct.
+  return nullptr;
 }
 
 void AppBannerManagerAndroid::RecordExtraMetricsForInstallEvent(
     AddToHomescreenInstaller::Event event,
     const AddToHomescreenParams& a2hs_params) {}
 
-base::WeakPtr<AppBannerManager> AppBannerManagerAndroid::GetWeakPtr() {
+base::WeakPtr<AppBannerManager>
+AppBannerManagerAndroid::GetWeakPtrForThisNavigation() {
   return weak_factory_.GetWeakPtr();
 }
 
@@ -705,7 +600,7 @@ AppBannerManagerAndroid::GetAndroidWeakPtr() {
   return weak_factory_.GetWeakPtr();
 }
 
-void AppBannerManagerAndroid::InvalidateWeakPtrs() {
+void AppBannerManagerAndroid::InvalidateWeakPtrsForThisNavigation() {
   weak_factory_.InvalidateWeakPtrs();
 }
 

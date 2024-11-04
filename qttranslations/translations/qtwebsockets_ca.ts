@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="ca">
+<TS version="2.1" language="ca_ES">
 <context>
     <name>QQmlWebSocket</name>
     <message>
@@ -54,6 +54,15 @@
         <translation>Bytes escrits %1 != %2.</translation>
     </message>
     <message>
+        <source>QWebSocketPrivate::processHandshake: Unsupported WWW-Authenticate challenge encountered.</source>
+        <extracomment>&apos;WWW-Authenticate&apos; is the HTTP header.</extracomment>
+        <translation>QWebSocketPrivate::processHandshake: S&apos;ha trobat un repte WWW-Autenticate no admès.</translation>
+    </message>
+    <message>
+        <source>QWebSocketPrivate::processHandshake: Unsupported WWW-Authenticate challenges encountered.</source>
+        <translation>QWebSocketPrivate::processHandshake: S&apos;han trobat reptes WWW-Autenticate no admesos.</translation>
+    </message>
+    <message>
         <source>Header is too large</source>
         <translation>La capçalera és massa gran</translation>
     </message>
@@ -74,8 +83,12 @@
         <translation>El servidor WebSocket ha triat el protocol %1 que no s&apos;havia sol·licitat</translation>
     </message>
     <message>
+        <source>Invalid parameter encountered during protocol upgrade: %1</source>
+        <translation>S&apos;ha trobat un paràmetre no vàlid durant l&apos;actualització del protocol: %1</translation>
+    </message>
+    <message>
         <source>Invalid parameter(s) presented during protocol upgrade: %1</source>
-        <translation>Paràmetre/s no vàlid/s (s) presentat/s durant l&apos;actualització del protocol: %1</translation>
+        <translation type="vanished">Paràmetre/s no vàlid/s (s) presentat/s durant l&apos;actualització del protocol: %1</translation>
     </message>
     <message>
         <source>Invalid statusline in response: %1.</source>
@@ -99,7 +112,11 @@
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Unknown error condition encountered. Aborting connection.</source>
-        <translation>QWebSocketPrivate::processHandshake: S&apos;ha trobat una condició d&apos;error desconeguda. S&apos;està interrompent la connexió.</translation>
+        <translation>QWebSocketPrivate::processHandshake: S&apos;ha trobat una condició desconeguda d&apos;error. S&apos;està interrompent la connexió.</translation>
+    </message>
+    <message>
+        <source>QWebSocket::processHandshake: Host requires authentication</source>
+        <translation>QWebSocket::processHandshake: El servidor requereix autenticació</translation>
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Unhandled http status code: %1 (%2).</source>

@@ -29,15 +29,29 @@ cc_library(
     ],
     deps = [
         "//fastpair/common",
-        "//fastpair/internal/ble",
+        "//fastpair/internal/mediums",
+        "//fastpair/repository:device_repository",
         "//fastpair/scanning/fastpair:scanning",
         "//internal/base",
-        "//internal/platform:base",
-        "//internal/platform:comm",
-        "//internal/platform:logging",
         "//internal/platform:types",
         "@com_google_absl//absl/functional:bind_front",
-        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "mocks",
+    testonly = 1,
+    hdrs = [
+        "mock_scanner_broker.h",
+    ],
+    visibility = [
+        "//fastpair:__subpackages__",
+    ],
+    deps = [
+        ":scanner",
+        "//fastpair/common",
+        "//internal/base",
+        "@com_google_googletest//:gtest_for_library_testonly",
     ],
 )
 
@@ -51,12 +65,17 @@ cc_test(
     deps = [
         ":scanner",
         "//fastpair/common",
-        "//fastpair/scanning/fastpair:scanning",
-        "//fastpair/scanning/fastpair:test_support",
+        "//fastpair/internal/mediums",
+        "//fastpair/proto:fastpair_cc_proto",
+        "//fastpair/repository:device_repository",
+        "//fastpair/repository:test_support",
+        "//fastpair/testing",
+        "//internal/platform:base",
         "//internal/platform:test_util",
+        "//internal/platform:types",
         "//internal/platform/implementation/g3",  # build_cleaner: keep
         "@com_github_protobuf_matchers//protobuf-matchers",
-        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

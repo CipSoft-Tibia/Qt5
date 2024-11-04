@@ -31,6 +31,10 @@
 // dump_symbols.cc: implement google_breakpad::WriteSymbolFile:
 // Find all the debugging info in a file and dump it as a Breakpad symbol file.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/linux/dump_symbols.h"
 
 #include <assert.h>
@@ -330,6 +334,59 @@ std::pair<uint8_t *, uint64_t> UncompressSectionContents(
     : std::make_pair(uncompressed_buffer.release(), uncompressed_size);
 }
 
+void StartProcessSplitDwarf(google_breakpad::CompilationUnit* reader,
+                            Module* module,
+                            google_breakpad::Endianness endianness,
+                            bool handle_inter_cu_refs,
+                            bool handle_inline) {
+  std::string split_file;
+  google_breakpad::SectionMap split_sections;
+  google_breakpad::ByteReader split_byte_reader(endianness);
+  uint64_t cu_offset = 0;
+  if (!reader->ProcessSplitDwarf(split_file, split_sections, split_byte_reader,
+                                 cu_offset))
+    return;
+  DwarfCUToModule::FileContext file_context(split_file, module,
+                                            handle_inter_cu_refs);
+  for (auto section : split_sections)
+    file_context.AddSectionToSectionMap(section.first, section.second.first,
+                                        section.second.second);
+  // Because DWP/DWO file doesn't have .debug_addr/.debug_line/.debug_line_str,
+  // its debug info will refer to .debug_addr/.debug_line in the main binary.
+  if (file_context.section_map().find(".debug_addr") ==
+      file_context.section_map().end())
+    file_context.AddSectionToSectionMap(".debug_addr", reader->GetAddrBuffer(),
+                                        reader->GetAddrBufferLen());
+  if (file_context.section_map().find(".debug_line") ==
+      file_context.section_map().end())
+    file_context.AddSectionToSectionMap(".debug_line", reader->GetLineBuffer(),
+                                        reader->GetLineBufferLen());
+  if (file_context.section_map().find(".debug_line_str") ==
+      file_context.section_map().end())
+    file_context.AddSectionToSectionMap(".debug_line_str",
+                                        reader->GetLineStrBuffer(),
+                                        reader->GetLineStrBufferLen());
+
+  DumperRangesHandler ranges_handler(&split_byte_reader);
+  DumperLineToModule line_to_module(&split_byte_reader);
+  DwarfCUToModule::WarningReporter reporter(split_file, cu_offset);
+  DwarfCUToModule root_handler(
+      &file_context, &line_to_module, &ranges_handler, &reporter, handle_inline,
+      reader->GetLowPC(), reader->GetAddrBase(), reader->HasSourceLineInfo(),
+      reader->GetSourceLineOffset());
+  google_breakpad::DIEDispatcher die_dispatcher(&root_handler);
+  google_breakpad::CompilationUnit split_reader(
+      split_file, file_context.section_map(), cu_offset, &split_byte_reader,
+      &die_dispatcher);
+  split_reader.SetSplitDwarf(reader->GetAddrBase(), reader->GetDWOID());
+  split_reader.Start();
+  // Normally, it won't happen unless we have transitive reference.
+  if (split_reader.ShouldProcessSplitDwarf()) {
+    StartProcessSplitDwarf(&split_reader, module, endianness,
+                           handle_inter_cu_refs, handle_inline);
+  }
+}
+
 template<typename ElfClass>
 bool LoadDwarf(const string& dwarf_filename,
                const typename ElfClass::Ehdr* elf_header,
@@ -417,6 +474,11 @@ bool LoadDwarf(const string& dwarf_filename,
                                          &die_dispatcher);
     // Process the entire compilation unit; get the offset of the next.
     offset += reader.Start();
+    // Start to process split dwarf file.
+    if (reader.ShouldProcessSplitDwarf()) {
+      StartProcessSplitDwarf(&reader, module, endianness, handle_inter_cu_refs,
+                             handle_inline);
+    }
   }
   return true;
 }
@@ -444,6 +506,9 @@ bool DwarfCFIRegisterNames(const typename ElfClass::Ehdr* elf_header,
       return true;
     case EM_X86_64:
       *register_names = DwarfCFIToModule::RegisterNames::X86_64();
+      return true;
+    case EM_RISCV:
+      *register_names = DwarfCFIToModule::RegisterNames::RISCV();
       return true;
     default:
       return false;
@@ -1018,6 +1083,7 @@ const char* ElfArchitecture(const typename ElfClass::Ehdr* elf_header) {
     case EM_SPARC:      return "sparc";
     case EM_SPARCV9:    return "sparcv9";
     case EM_X86_64:     return "x86_64";
+    case EM_RISCV:      return "riscv";
     default: return NULL;
   }
 }

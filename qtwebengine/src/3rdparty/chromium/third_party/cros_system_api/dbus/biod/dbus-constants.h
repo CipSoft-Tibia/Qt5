@@ -42,6 +42,7 @@ const char kAuthStackManagerStartAuthSessionMethod[] = "StartAuthSession";
 const char kAuthStackManagerCreateCredentialMethod[] = "CreateCredential";
 const char kAuthStackManagerAuthenticateCredentialMethod[] =
     "AuthenticateCredential";
+const char kAuthStackManagerDeleteCredentialMethod[] = "DeleteCredential";
 
 // Signals
 const char kBiometricsManagerEnrollScanDoneSignal[] = "EnrollScanDone";

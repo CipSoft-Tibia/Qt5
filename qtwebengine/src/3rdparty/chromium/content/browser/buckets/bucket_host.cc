@@ -47,11 +47,30 @@ BucketHost::CreateStorageBucketBinding(
   return remote;
 }
 
+void BucketHost::PassStorageBucketBinding(
+    base::WeakPtr<BucketContext> bucket_context,
+    mojo::PendingReceiver<blink::mojom::BucketHost> receiver) {
+  DCHECK(bucket_context);
+  receivers_.Add(this, std::move(receiver), bucket_context);
+}
+
 void BucketHost::Persist(PersistCallback callback) {
-  if (!bucket_info_.is_null() && receivers_.current_context() &&
-      receivers_.current_context()->GetPermissionStatus(
+  if (bucket_info_.is_null() || !receivers_.current_context()) {
+    std::move(callback).Run(false, /*success=*/false);
+    return;
+  }
+
+  // Persistence is a one-way operation. If the bucket is already persistent, it
+  // can't be made non-persistent, so skip the permission status check (which
+  // hypothetically could have reverted from GRANTED to DENIED).
+  if (bucket_info_.persistent) {
+    std::move(callback).Run(true, /*success=*/true);
+    return;
+  }
+
+  if (receivers_.current_context()->GetPermissionStatus(
           blink::PermissionType::DURABLE_STORAGE) ==
-          blink::mojom::PermissionStatus::GRANTED) {
+      blink::mojom::PermissionStatus::GRANTED) {
     GetQuotaManagerProxy()->UpdateBucketPersistence(
         bucket_id_, /*persistent=*/true,
         base::SequencedTaskRunner::GetCurrentDefault(),
@@ -60,7 +79,7 @@ void BucketHost::Persist(PersistCallback callback) {
             base::BindOnce(&BucketHost::DidValidateForPersist,
                            base::Unretained(this), std::move(callback))));
   } else {
-    std::move(callback).Run(false, false);
+    std::move(callback).Run(false, /*success=*/true);
   }
 }
 
@@ -138,8 +157,9 @@ void BucketHost::Expires(ExpiresCallback callback) {
 void BucketHost::DidValidateForExpires(ExpiresCallback callback,
                                        bool bucket_exists) {
   absl::optional<base::Time> expires;
-  if (bucket_exists && !bucket_info_.expiration.is_null())
+  if (bucket_exists && !bucket_info_.expiration.is_null()) {
     expires = bucket_info_.expiration;
+  }
 
   std::move(callback).Run(expires, bucket_exists);
 }
@@ -147,8 +167,9 @@ void BucketHost::DidValidateForExpires(ExpiresCallback callback,
 void BucketHost::GetIdbFactory(
     mojo::PendingReceiver<blink::mojom::IDBFactory> receiver) {
   auto bucket_context = receivers_.current_context();
-  if (!bucket_context)
+  if (!bucket_context) {
     return;
+  }
 
   GlobalRenderFrameHostId rfh_id =
       bucket_context->GetAssociatedRenderFrameHostId();
@@ -165,16 +186,18 @@ void BucketHost::GetIdbFactory(
 void BucketHost::GetCaches(
     mojo::PendingReceiver<blink::mojom::CacheStorage> caches) {
   auto bucket_context = receivers_.current_context();
-  if (!bucket_context)
+  if (!bucket_context) {
     return;
+  }
 
   bucket_context->BindCacheStorageForBucket(bucket_info_, std::move(caches));
 }
 
 void BucketHost::GetDirectory(GetDirectoryCallback callback) {
   auto bucket_context = receivers_.current_context();
-  if (!bucket_context)
+  if (!bucket_context) {
     return;
+  }
 
   bucket_context->GetSandboxedFileSystemForBucket(bucket_info_,
                                                   std::move(callback));
@@ -187,8 +210,9 @@ void BucketHost::GetLockManager(
 }
 
 void BucketHost::OnReceiverDisconnected() {
-  if (!receivers_.empty())
+  if (!receivers_.empty()) {
     return;
+  }
   // Destroys `this`.
   bucket_manager_host_->RemoveBucketHost(bucket_id_);
 }
@@ -202,14 +226,8 @@ void BucketHost::DidGetBucket(
     storage::QuotaErrorOr<storage::BucketInfo> bucket_info) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  if (!bucket_info.ok()) {
-    bucket_info_ = {};
-    std::move(callback).Run(false);
-    return;
-  }
-
-  bucket_info_ = bucket_info.value();
-  std::move(callback).Run(true);
+  bucket_info_ = bucket_info.value_or(storage::BucketInfo());
+  std::move(callback).Run(bucket_info.has_value());
 }
 
 void BucketHost::DidGetUsageAndQuota(EstimateCallback callback,

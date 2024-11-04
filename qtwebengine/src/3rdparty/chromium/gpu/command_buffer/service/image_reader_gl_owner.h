@@ -10,6 +10,7 @@
 #include "base/android/android_image_reader_compat.h"
 #include "base/containers/flat_map.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/memory/raw_ref.h"
 #include "base/threading/thread_checker.h"
 #include "gpu/command_buffer/service/ref_counted_lock.h"
@@ -43,7 +44,6 @@ class GPU_GLES2_EXPORT ImageReaderGLOwner : public TextureOwner,
       const base::RepeatingClosure& frame_available_cb) override;
   gl::ScopedJavaSurface CreateJavaSurface() const override;
   void UpdateTexImage() override;
-  void EnsureTexImageBound(GLuint service_id) override;
   void ReleaseBackBuffers() override;
   std::unique_ptr<base::android::ScopedHardwareBufferFenceSync>
   GetAHardwareBuffer() override;
@@ -83,8 +83,12 @@ class GPU_GLES2_EXPORT ImageReaderGLOwner : public TextureOwner,
     base::ScopedFD GetReadyFence() const;
 
    private:
-    ImageReaderGLOwner* texture_owner_;
-    AImage* image_;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #union
+    RAW_PTR_EXCLUSION ImageReaderGLOwner* texture_owner_;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #union
+    RAW_PTR_EXCLUSION AImage* image_;
     base::ScopedFD ready_fence_;
   };
 

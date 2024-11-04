@@ -5,7 +5,7 @@
 
 wheel: <
   name: "infra/python/wheels/pytype/${vpython_platform}"
-  version: "version:2022.12.15"
+  version: "version:2023.6.2"
 >
 
 wheel: <
@@ -15,12 +15,17 @@ wheel: <
 
 wheel: <
   name: "infra/python/wheels/selenium-py3"
-  version: "version:4.1.0"
+  version: "version:4.10.0"
 >
 
 wheel: <
   name: "infra/python/wheels/psutil/${vpython_platform}"
   version: "version:5.8.0.chromium.3"
+>
+
+wheel: <
+  name: "infra/python/wheels/websockets-py3"
+  version: "version:10.3"
 >
 
 wheel: <
@@ -39,6 +44,16 @@ wheel: <
 >
 
 wheel: <
+  name: "infra/python/wheels/pysocks-py3"
+  version: "version:1.7.1"
+>
+
+wheel: <
+  name: "infra/python/wheels/execnet-py3"
+  version: "version:2.0.2"
+>
+
+wheel: <
   name: "infra/python/wheels/pluggy-py3"
   version: "version:0.13.1"
 >
@@ -46,6 +61,16 @@ wheel: <
 wheel: <
   name: "infra/python/wheels/iniconfig-py3"
   version: "version:1.1.1"
+>
+
+wheel: <
+  name: "infra/python/wheels/pytest-xdist-py3"
+  version: "version:3.3.1"
+>
+
+wheel: <
+  name: "infra/python/wheels/frozendict-py3"
+  version: "version:2.0.6"
 >
 
 wheel: <
@@ -174,8 +199,8 @@ wheel: <
 >
 
 wheel: <
-  name: "infra/python/wheels/certifi-py2_py3"
-  version: "version:2021.5.30"
+  name: "infra/python/wheels/certifi-py3"
+  version: "version:2023.5.7"
 >
 
 wheel: <
@@ -209,8 +234,8 @@ wheel: <
 >
 
 wheel: <
-  name: "infra/python/wheels/requests-py2_py3"
-  version: "version:2.26.0"
+  name: "infra/python/wheels/requests-py3"
+  version: "version:2.31.0"
 >
 
 wheel: <

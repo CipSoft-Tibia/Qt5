@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "tst_qdbusconnection.h"
 
@@ -1409,6 +1409,34 @@ void tst_QDBusConnection::pendingCallWhenDisconnected()
     QVERIFY(reply.isFinished());
     QVERIFY(reply.isError());
     QCOMPARE(reply.error().type(), QDBusError::Disconnected);
+#endif
+}
+
+void tst_QDBusConnection::connectionLimit()
+{
+#if !QT_CONFIG(process)
+    QSKIP("Test requires QProcess");
+#else
+    if (!QCoreApplication::instance())
+        QSKIP("Test requires a QCoreApplication");
+
+    QProcess daemon;
+    daemon.start("dbus-daemon",
+                 QStringList() << "--config-file" << QFINDTESTDATA("tst_qdbusconnection.conf")
+                               << "--nofork"
+                               << "--print-address");
+    QVERIFY2(daemon.waitForReadyRead(2000),
+             "Daemon didn't print its address in time; error: \"" + daemon.errorString().toLocal8Bit() +
+             "\"; stderr:\n" + daemon.readAllStandardError());
+
+    QString address = QString::fromLocal8Bit(daemon.readAll().trimmed());
+    QDBusConnection con = QDBusConnection::connectToBus(address, "connectionLimit");
+    QVERIFY2(!con.isConnected(), "Unexpected successful connection");
+    QCOMPARE(con.lastError().type(), QDBusError::LimitsExceeded);
+
+    // kill the bus
+    daemon.terminate();
+    daemon.waitForFinished();
 #endif
 }
 

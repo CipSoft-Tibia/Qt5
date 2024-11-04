@@ -46,7 +46,7 @@ class FakeFormFetcher : public FormFetcher {
   std::vector<const PasswordForm*> GetNonFederatedMatches() const override;
   std::vector<const PasswordForm*> GetFederatedMatches() const override;
   bool IsBlocklisted() const override;
-  bool IsMovingBlocked(const autofill::GaiaIdHash& destination,
+  bool IsMovingBlocked(const signin::GaiaIdHash& destination,
                        const std::u16string& username) const override;
   const std::vector<const PasswordForm*>& GetAllRelevantMatches()
       const override;
@@ -93,7 +93,6 @@ class FakeFormFetcher : public FormFetcher {
   std::vector<const PasswordForm*> non_federated_same_scheme_;
   std::vector<const PasswordForm*> best_matches_;
   std::vector<const PasswordForm*> insecure_credentials_;
-  const PasswordForm* preferred_match_ = nullptr;
   bool is_blocklisted_ = false;
   absl::optional<PasswordStoreBackendError> profile_store_backend_error_;
 };

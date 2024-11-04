@@ -11,7 +11,7 @@ package optimization_guide.proto;
 
 // Context in which the items are requested.
 enum RequestContext {
-  reserved 1, 3;
+  reserved 1, 3, 10;
   // Context not specified.
   CONTEXT_UNSPECIFIED = 0;
   // Requesting items on page navigation.
@@ -29,6 +29,8 @@ enum RequestContext {
   CONTEXT_JOURNEYS = 8;
   // Requesting metadata for a user when visiting the new tab page.
   CONTEXT_NEW_TAB_PAGE = 9;
+  // Requesting metadata for a user when visiting the page insights hub.
+  CONTEXT_PAGE_INSIGHTS_HUB = 11;
 }
 
 message FieldTrial {

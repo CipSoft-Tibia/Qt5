@@ -15,6 +15,7 @@
 #include "components/segmentation_platform/internal/stats.h"
 #include "components/segmentation_platform/public/proto/aggregation.pb.h"
 #include "components/segmentation_platform/public/proto/model_metadata.pb.h"
+#include "components/segmentation_platform/public/proto/types.pb.h"
 
 namespace segmentation_platform::processing {
 
@@ -132,7 +133,7 @@ void UmaFeatureProcessor::ProcessSingleUmaFeature(
   // need to be captured locally before invoking GetSamples, because the state
   // is moved with the callback, and the order of the move and accessing the
   // members while invoking GetSamples is not guaranteed.
-  auto signal_type = feature.type();
+  proto::SignalType signal_type = feature.type();
   signal_database_->GetSamples(
       signal_type, name_hash, start_time, end_time,
       base::BindOnce(&UmaFeatureProcessor::OnGetSamplesForUmaFeature,
@@ -172,7 +173,11 @@ void UmaFeatureProcessor::OnGetSamplesForUmaFeature(
         std::vector<ProcessedValue>(feature_data.begin(), feature_data.end());
   } else {
     DCHECK_EQ(feature.tensor_length(),
-              static_cast<unsigned int>(feature.default_values_size()));
+              static_cast<unsigned int>(feature.default_values_size()))
+        << " Mismatch between expected value size and default value size for "
+           "UMA feature '"
+        << feature.name()
+        << "'. Did you forget to specify a default value for this feature?";
     result_[index] = std::vector<ProcessedValue>(
         feature.default_values().begin(), feature.default_values().end());
   }

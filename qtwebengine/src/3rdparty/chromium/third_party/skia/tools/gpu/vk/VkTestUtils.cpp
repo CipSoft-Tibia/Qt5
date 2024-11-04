@@ -38,6 +38,8 @@
 #include <sanitizer/lsan_interface.h>
 #endif
 
+using namespace skia_private;
+
 namespace sk_gpu_test {
 
 bool LoadVkLibraryAndGetProcAddrFuncs(PFN_vkGetInstanceProcAddr* instProc) {
@@ -162,8 +164,8 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugReportCallback(
 
 static bool init_instance_extensions_and_layers(PFN_vkGetInstanceProcAddr getInstProc,
                                                 uint32_t specVersion,
-                                                SkTArray<VkExtensionProperties>* instanceExtensions,
-                                                SkTArray<VkLayerProperties>* instanceLayers) {
+                                                TArray<VkExtensionProperties>* instanceExtensions,
+                                                TArray<VkLayerProperties>* instanceLayers) {
     if (getInstProc == nullptr) {
         return false;
     }
@@ -246,8 +248,8 @@ static bool init_instance_extensions_and_layers(PFN_vkGetInstanceProcAddr getIns
 
 static bool init_device_extensions_and_layers(skgpu::VulkanGetProc getProc, uint32_t specVersion,
                                               VkInstance inst, VkPhysicalDevice physDev,
-                                              SkTArray<VkExtensionProperties>* deviceExtensions,
-                                              SkTArray<VkLayerProperties>* deviceLayers) {
+                                              TArray<VkExtensionProperties>* deviceExtensions,
+                                              TArray<VkLayerProperties>* deviceLayers) {
     if (getProc == nullptr) {
         return false;
     }
@@ -433,6 +435,30 @@ static bool setup_features(skgpu::VulkanGetProc getProc, VkInstance inst, VkPhys
         tailPNext = &ycbcrFeature->pNext;
     }
 
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR* dynamicRenderingFeature = nullptr;
+    if (extensions->hasExtension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, 1)) {
+        dynamicRenderingFeature = (VkPhysicalDeviceDynamicRenderingFeaturesKHR*)sk_malloc_throw(
+            sizeof(VkPhysicalDeviceDynamicRenderingFeaturesKHR));
+        dynamicRenderingFeature->sType =
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
+        dynamicRenderingFeature->pNext = nullptr;
+        dynamicRenderingFeature->dynamicRendering = VK_TRUE;
+        *tailPNext = dynamicRenderingFeature;
+        tailPNext = &dynamicRenderingFeature->pNext;
+    }
+
+    VkPhysicalDeviceInlineUniformBlockFeaturesEXT* inlineUniformFeature = nullptr;
+    if (extensions->hasExtension(VK_EXT_INLINE_UNIFORM_BLOCK_EXTENSION_NAME, 1)) {
+        inlineUniformFeature = (VkPhysicalDeviceInlineUniformBlockFeaturesEXT*)sk_malloc_throw(
+            sizeof(VkPhysicalDeviceInlineUniformBlockFeaturesEXT));
+        inlineUniformFeature->sType =
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INLINE_UNIFORM_BLOCK_FEATURES_EXT;
+        inlineUniformFeature->pNext = nullptr;
+        inlineUniformFeature->inlineUniformBlock = VK_TRUE;
+        *tailPNext = inlineUniformFeature;
+        tailPNext = &inlineUniformFeature->pNext;
+    }
+
     if (physDeviceVersion >= VK_MAKE_VERSION(1, 1, 0)) {
         ACQUIRE_VK_PROC_LOCAL(GetPhysicalDeviceFeatures2, inst, VK_NULL_HANDLE);
         grVkGetPhysicalDeviceFeatures2(physDev, features);
@@ -471,6 +497,8 @@ bool CreateVkBackendContext(PFN_vkGetInstanceProcAddr getInstProc,
                                 isProtected)) {
         return false;
     }
+
+    SkASSERT(skgpuCtx.fProtectedContext == skgpu::Protected(isProtected));
     ctx->fInstance = skgpuCtx.fInstance;
     ctx->fPhysicalDevice = skgpuCtx.fPhysicalDevice;
     ctx->fDevice = skgpuCtx.fDevice;
@@ -481,9 +509,7 @@ bool CreateVkBackendContext(PFN_vkGetInstanceProcAddr getInstProc,
     ctx->fDeviceFeatures2 = skgpuCtx.fDeviceFeatures2;
     ctx->fGetProc = skgpuCtx.fGetProc;
     ctx->fOwnsInstanceAndDevice = false;
-    ctx->fProtectedContext =
-            skgpuCtx.fProtectedContext == skgpu::Protected::kYes ? GrProtected::kYes
-                                                                 : GrProtected::kNo;
+    ctx->fProtectedContext = skgpuCtx.fProtectedContext;
     return true;
 }
 
@@ -525,7 +551,7 @@ bool CreateVkBackendContext(PFN_vkGetInstanceProcAddr getInstProc,
 
     instanceVersion = std::min(instanceVersion, apiVersion);
 
-    SkSTArray<2, VkPhysicalDevice> physDevs;
+    STArray<2, VkPhysicalDevice> physDevs;
     VkDevice device;
     VkInstance inst = VK_NULL_HANDLE;
 
@@ -539,8 +565,8 @@ bool CreateVkBackendContext(PFN_vkGetInstanceProcAddr getInstProc,
         apiVersion,                         // apiVersion
     };
 
-    SkTArray<VkLayerProperties> instanceLayers;
-    SkTArray<VkExtensionProperties> instanceExtensions;
+    TArray<VkLayerProperties> instanceLayers;
+    TArray<VkExtensionProperties> instanceExtensions;
 
     if (!init_instance_extensions_and_layers(getInstProc, instanceVersion,
                                              &instanceExtensions,
@@ -548,8 +574,8 @@ bool CreateVkBackendContext(PFN_vkGetInstanceProcAddr getInstProc,
         return false;
     }
 
-    SkTArray<const char*> instanceLayerNames;
-    SkTArray<const char*> instanceExtensionNames;
+    TArray<const char*> instanceLayerNames;
+    TArray<const char*> instanceExtensionNames;
     for (int i = 0; i < instanceLayers.size(); ++i) {
         instanceLayerNames.push_back(instanceLayers[i].layerName);
     }
@@ -709,8 +735,8 @@ bool CreateVkBackendContext(PFN_vkGetInstanceProcAddr getInstProc,
         presentQueueIndex = graphicsQueueIndex;
     }
 
-    SkTArray<VkLayerProperties> deviceLayers;
-    SkTArray<VkExtensionProperties> deviceExtensions;
+    TArray<VkLayerProperties> deviceLayers;
+    TArray<VkExtensionProperties> deviceExtensions;
     if (!init_device_extensions_and_layers(getProc, physDeviceVersion,
                                            inst, physDev,
                                            &deviceExtensions,
@@ -719,8 +745,8 @@ bool CreateVkBackendContext(PFN_vkGetInstanceProcAddr getInstProc,
         return false;
     }
 
-    SkTArray<const char*> deviceLayerNames;
-    SkTArray<const char*> deviceExtensionNames;
+    TArray<const char*> deviceLayerNames;
+    TArray<const char*> deviceExtensionNames;
     for (int i = 0; i < deviceLayers.size(); ++i) {
         deviceLayerNames.push_back(deviceLayers[i].layerName);
     }
@@ -866,7 +892,7 @@ bool CreateVkBackendContext(PFN_vkGetInstanceProcAddr getInstProc,
     ctx->fVkExtensions = extensions;
     ctx->fDeviceFeatures2 = features;
     ctx->fGetProc = getProc;
-    ctx->fProtectedContext = isProtected ? skgpu::Protected::kYes : skgpu::Protected::kNo;
+    ctx->fProtectedContext = skgpu::Protected(isProtected);
 
     return true;
 }

@@ -3689,7 +3689,10 @@ bail0:
     if (realfilename)
 	FcStrFree (realfilename);
     if (!complain)
+    {
+	FcStrBufDestroy (&reason);
 	return FcTrue;
+    }
     if (!ret && complain_again)
     {
 	if (name)

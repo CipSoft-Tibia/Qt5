@@ -18,8 +18,7 @@
  * limitations under the License.
  */
 
-#ifndef BEST_PRACTICES_ERROR_ENUMS_H_
-#define BEST_PRACTICES_ERROR_ENUMS_H_
+#pragma once
 
 // clang-format off
 
@@ -77,10 +76,6 @@
 [[maybe_unused]] static const char *kVUID_BestPractices_DisplayPlane_PropertiesNotCalled =
     "UNASSIGNED-BestPractices-vkGetDisplayPlaneSupportedDisplaysKHR-properties-not-retrieved";
 [[maybe_unused]] static const char *kVUID_BestPractices_MemTrack_InvalidState = "UNASSIGNED-BestPractices-MemTrack-InvalidState";
-[[maybe_unused]] static const char *kVUID_BestPractices_BufferMemReqNotCalled =
-    "UNASSIGNED-BestPractices-vkBindBufferMemory-requirements-not-retrieved";
-[[maybe_unused]] static const char *kVUID_BestPractices_ImageMemReqNotCalled =
-    "UNASSIGNED-BestPractices-vkBindImageMemory-requirements-not-retrieved";
 [[maybe_unused]] static const char *kVUID_BestPractices_BindAccelNV_NoMemReqQuery =
     "UNASSIGNED-BestPractices-BindAccelerationStructureMemoryNV-requirements-not-retrieved";
 [[maybe_unused]] static const char *kVUID_BestPractices_GetVideoSessionMemReqCountNotRetrieved =
@@ -117,10 +112,13 @@
     "UNASSIGNED-BestPractices-vkCmdClearAttachments-clear-after-load";
 [[maybe_unused]] static const char *kVUID_BestPractices_Error_Result = "UNASSIGNED-BestPractices-Error-Result";
 [[maybe_unused]] static const char *kVUID_BestPractices_Failure_Result = "UNASSIGNED-BestPractices-Failure-Result";
-[[maybe_unused]] static const char *kVUID_BestPractices_NonSuccess_Result = "UNASSIGNED-BestPractices-NonSuccess-Result";
+[[maybe_unused]] static const char *kVUID_BestPractices_Verbose_Success_Logging = "UNASSIGNED-BestPractices-Verbose-Success-Logging";
 [[maybe_unused]] static const char *kVUID_BestPractices_SuboptimalSwapchain = "UNASSIGNED-BestPractices-SuboptimalSwapchain";
 [[maybe_unused]] static const char *kVUID_BestPractices_SuboptimalSwapchainImageCount =
     "UNASSIGNED-BestPractices-vkCreateSwapchainKHR-suboptimal-swapchain-image-count";
+[[maybe_unused]] static const char *kVUID_BestPractices_NoVkSwapchainPresentModesCreateInfoEXTProvided =
+    "UNASSIGNED-BestPractices-vkCreateSwapchainKHR-no-VkSwapchainPresentModesCreateInfoEXT-provided";
+
 [[maybe_unused]] static const char *kVUID_BestPractices_Swapchain_InvalidCount = "UNASSIGNED-BestPractices-SwapchainInvalidCount";
 [[maybe_unused]] static const char *kVUID_BestPractices_DepthBiasNoAttachment = "UNASSIGNED-BestPractices-DepthBiasNoAttachment";
 [[maybe_unused]] static const char *kVUID_BestPractices_SpirvDeprecated_WorkgroupSize =
@@ -141,6 +139,10 @@
 [[maybe_unused]] static const char *kVUID_BestPractices_DrawState_SwapchainImagesNotFound = "UNASSIGNED-BestPractices-DrawState-SwapchainImagesNotFound";
 [[maybe_unused]] static const char *kVUID_BestPractices_DrawState_MismatchedImageType = "UNASSIGNED-BestPractices-DrawState-MismatchedImageType";
 [[maybe_unused]] static const char *kVUID_BestPractices_DrawState_InvalidExtents = "UNASSIGNED-BestPractices-DrawState-InvalidExtents";
+[[maybe_unused]] static const char *kVUID_BestPractices_DrawState_InvalidCommandBufferSimultaneousUse = "UNASSIGNED-BestPractices-DrawState-InvalidCommandBufferSimultaneousUse";
+[[maybe_unused]] static const char *kVUID_BestPractices_Shader_InputNotProduced = "UNASSIGNED-BestPractices-Shader-InputNotProduced";
+[[maybe_unused]] static const char *kVUID_BestPractices_Shader_OutputNotConsumed = "UNASSIGNED-BestPractices-Shader-OutputNotConsumed";
+[[maybe_unused]] static const char *kVUID_BestPractices_Shader_FragmentOutputMismatch = "UNASSIGNED-BestPractices-Shader-FragmentOutputMismatch";
 
 // Arm-specific best practice
 [[maybe_unused]] static const char *kVUID_BestPractices_AllocateDescriptorSets_SuboptimalReuse =
@@ -263,6 +265,8 @@
     "UNASSIGNED-BestPractices-SyncObjects-HighNumberOfSemaphores";
 [[maybe_unused]] static const char *kVUID_BestPractices_DynamicRendering_NotSupported =
     "UNASSIGNED-BestPractices-DynamicRendering-NotSupported";
+[[maybe_unused]] static const char *kVUID_BestPractices_LocalWorkgroup_Multiple64 =
+    "UNASSIGNED-BestPractices-LocalWorkgroup-Multiple64";
 
 // Imagination Technologies best practices
 [[maybe_unused]] static const char *kVUID_BestPractices_Texture_Format_PVRTC_Outdated =
@@ -297,5 +301,3 @@
     "UNASSIGNED-BestPractices-ClearColor-NotCompressed";
 
 // clang-format on
-
-#endif

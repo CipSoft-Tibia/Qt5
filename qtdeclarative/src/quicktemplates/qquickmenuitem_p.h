@@ -16,6 +16,9 @@
 //
 
 #include <QtQuickTemplates2/private/qquickabstractbutton_p.h>
+#include <QtQmlModels/private/qtqmlmodelsglobal_p.h>
+
+QT_REQUIRE_CONFIG(qml_object_model);
 
 QT_BEGIN_NAMESPACE
 
@@ -70,7 +73,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickMenuItem)
 
 #endif // QQUICKMENUITEM_P_H

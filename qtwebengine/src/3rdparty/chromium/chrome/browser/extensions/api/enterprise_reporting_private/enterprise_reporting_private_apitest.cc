@@ -50,7 +50,7 @@
 #endif  // BUILDFLAG(IS_WIN)
 
 #if !BUILDFLAG(IS_CHROMEOS_ASH)
-#include "chrome/browser/safe_browsing/cloud_content_scanning/deep_scanning_test_utils.h"
+#include "chrome/browser/enterprise/connectors/test/deep_scanning_test_utils.h"
 #include "components/enterprise/browser/controller/fake_browser_dm_token_storage.h"
 #include "components/policy/core/common/cloud/cloud_policy_core.h"
 #include "components/policy/core/common/cloud/cloud_policy_store.h"
@@ -154,7 +154,8 @@ class EnterpriseReportingPrivateApiTest : public extensions::ExtensionApiTest {
       account_info.hosted_domain = "example.com";
       identity_test_env()->UpdateAccountInfoForAccount(account_info);
 
-      safe_browsing::SetProfileDMToken(profile(), "fake_user_dmtoken");
+      enterprise_connectors::test::SetProfileDMToken(profile(),
+                                                     "fake_user_dmtoken");
       auto profile_policy_data =
           std::make_unique<enterprise_management::PolicyData>();
       profile_policy_data->add_user_affiliation_ids(kAffiliationId);
@@ -463,20 +464,13 @@ IN_PROC_BROWSER_TEST_F(EnterpriseReportingPrivateApiTest, GetContextInfo) {
   init_params->device_properties->serial_number = kFakeDeviceID;
   chromeos::BrowserInitParams::SetInitParamsForTests(std::move(init_params));
 #endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
-#if BUILDFLAG(IS_WIN)
-  constexpr char kChromeCleanupEnabledType[] = "boolean";
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+#if BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
   constexpr char kThirdPartyBlockingEnabledType[] = "boolean";
-  constexpr char kCount[] = "19";
-#else
-  constexpr char kThirdPartyBlockingEnabledType[] = "undefined";
   constexpr char kCount[] = "18";
-#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
 #else
-  constexpr char kChromeCleanupEnabledType[] = "undefined";
   constexpr char kThirdPartyBlockingEnabledType[] = "undefined";
   constexpr char kCount[] = "17";
-#endif  // BUILDFLAG(IS_WIN)
+#endif  // BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
 
   constexpr char kTest[] = R"(
     chrome.test.assertEq(
@@ -500,7 +494,6 @@ IN_PROC_BROWSER_TEST_F(EnterpriseReportingPrivateApiTest, GetContextInfo) {
       chrome.test.assertEq(typeof info.builtInDnsClientEnabled, 'boolean');
       chrome.test.assertEq
         (typeof info.passwordProtectionWarningTrigger, 'string');
-      chrome.test.assertEq(typeof info.chromeCleanupEnabled, '%s');
       chrome.test.assertEq
         (typeof info.chromeRemoteDesktopAppBlocked, 'boolean');
       chrome.test.assertEq(typeof info.thirdPartyBlockingEnabled,'%s');
@@ -510,8 +503,7 @@ IN_PROC_BROWSER_TEST_F(EnterpriseReportingPrivateApiTest, GetContextInfo) {
 
       chrome.test.notifyPass();
     });)";
-  RunTest(base::StringPrintf(kTest, kCount, kChromeCleanupEnabledType,
-                             kThirdPartyBlockingEnabledType));
+  RunTest(base::StringPrintf(kTest, kCount, kThirdPartyBlockingEnabledType));
 }
 
 IN_PROC_BROWSER_TEST_F(EnterpriseReportingPrivateApiTest, GetCertificate) {
@@ -598,7 +590,7 @@ IN_PROC_BROWSER_TEST_F(EnterpriseReportingPrivateApiTest,
 
   kOptions = base::StringPrintf(
       R"(
-    const test_hive = 'HKEY_LOCAL_MACHINE';
+    const test_hive = 'HKEY_CURRENT_USER';
     const registry_path = '%s';
     const invalid_path = 'SOFTWARE\\Chromium\\DeviceTrust\\Invalid';
     const valid_key = '%s';
@@ -632,9 +624,9 @@ IN_PROC_BROWSER_TEST_F(EnterpriseReportingPrivateApiTest,
       registry_path.c_str(), valid_key.c_str());
 
   registry_util::RegistryOverrideManager registry_override_manager_;
-  registry_override_manager_.OverrideRegistry(HKEY_LOCAL_MACHINE);
+  registry_override_manager_.OverrideRegistry(HKEY_CURRENT_USER);
 
-  base::win::RegKey key(HKEY_LOCAL_MACHINE,
+  base::win::RegKey key(HKEY_CURRENT_USER,
                         base::SysUTF8ToWide(registry_path).c_str(),
                         KEY_ALL_ACCESS);
   ASSERT_TRUE(key.WriteValue(base::SysUTF8ToWide(valid_key).c_str(), 37) ==
@@ -702,8 +694,9 @@ IN_PROC_BROWSER_TEST_F(EnterpriseReportingPrivateApiTest,
 #endif  // !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_MAC)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-// // TODO(http://crbug.com/1408618): Failing consistently on Mac.
-#if BUILDFLAG(IS_MAC)
+// TODO(crbug.com/1408618): Failing consistently on Mac.
+// TODO(crbug.com/1361315): Flaky on Linux.
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 #define MAYBE_GetFileSystemInfo_Success DISABLED_GetFileSystemInfo_Success
 #else
 #define MAYBE_GetFileSystemInfo_Success GetFileSystemInfo_Success

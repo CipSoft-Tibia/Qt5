@@ -10,17 +10,16 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_compute_pipeline_descriptor.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_device_descriptor.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_error_filter.h"
-#include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_external_texture_descriptor.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_feature_name.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_query_set_descriptor.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_queue_descriptor.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_render_pipeline_descriptor.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_uncaptured_error_event_init.h"
-#include "third_party/blink/renderer/bindings/modules/v8/v8_union_htmlvideoelement_videoframe.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/modules/event_target_modules.h"
 #include "third_party/blink/renderer/modules/webgpu/dawn_conversions.h"
+#include "third_party/blink/renderer/modules/webgpu/gpu.h"
 #include "third_party/blink/renderer/modules/webgpu/gpu_adapter.h"
 #include "third_party/blink/renderer/modules/webgpu/gpu_bind_group.h"
 #include "third_party/blink/renderer/modules/webgpu/gpu_bind_group_layout.h"
@@ -126,7 +125,8 @@ GPUDevice::GPUDevice(ExecutionContext* execution_context,
                      scoped_refptr<DawnControlClientHolder> dawn_control_client,
                      GPUAdapter* adapter,
                      WGPUDevice dawn_device,
-                     const GPUDeviceDescriptor* descriptor)
+                     const GPUDeviceDescriptor* descriptor,
+                     GPUDeviceLostInfo* lost_info)
     : ExecutionContextClient(execution_context),
       DawnObject(dawn_control_client, dawn_device),
       adapter_(adapter),
@@ -169,6 +169,14 @@ GPUDevice::GPUDevice(ExecutionContext* execution_context,
 
   if (descriptor->defaultQueue()->hasLabel())
     queue_->setLabel(descriptor->defaultQueue()->label());
+
+  external_texture_cache_ = MakeGarbageCollected<ExternalTextureCache>(this);
+
+  // If lost_info is supplied it means the device should be treated as being
+  // lost at creation time.
+  if (lost_info) {
+    lost_property_->Resolve(lost_info);
+  }
 }
 
 GPUDevice::~GPUDevice() {
@@ -187,12 +195,15 @@ void GPUDevice::InjectError(WGPUErrorType type, const char* message) {
 }
 
 void GPUDevice::AddConsoleWarning(const char* message) {
+  AddConsoleWarning(StringFromASCIIAndUTF8(message));
+}
+
+void GPUDevice::AddConsoleWarning(const String& message) {
   ExecutionContext* execution_context = GetExecutionContext();
   if (execution_context && allowed_console_warnings_remaining_ > 0) {
     auto* console_message = MakeGarbageCollected<ConsoleMessage>(
         mojom::blink::ConsoleMessageSource::kRendering,
-        mojom::blink::ConsoleMessageLevel::kWarning,
-        StringFromASCIIAndUTF8(message));
+        mojom::blink::ConsoleMessageLevel::kWarning, message);
     execution_context->AddConsoleMessage(console_message);
 
     allowed_console_warnings_remaining_--;
@@ -203,6 +214,47 @@ void GPUDevice::AddConsoleWarning(const char* message) {
           "WebGPU: too many warnings, no more warnings will be reported to the "
           "console for this GPUDevice.");
       execution_context->AddConsoleMessage(final_message);
+    }
+  }
+}
+
+void GPUDevice::AddSingletonWarning(GPUSingletonWarning type) {
+  size_t index = static_cast<size_t>(type);
+  if (UNLIKELY(!singleton_warning_fired_[index])) {
+    singleton_warning_fired_[index] = true;
+
+    std::string message;
+    switch (type) {
+      case GPUSingletonWarning::kNonPreferredFormat:
+        message =
+            "WebGPU canvas configured with a different format than is "
+            "preferred by this device (\"" +
+            std::string(FromDawnEnum(GPU::preferred_canvas_format())) +
+            "\"). This requires an extra copy, which may impact performance.";
+        break;
+      case GPUSingletonWarning::kDepthKey:
+        message =
+            "The key \"depth\" was included in a GPUExtent3D dictionary, which "
+            "has no effect. It is likely that \"depthOrArrayLayers\" was "
+            "intended instead.";
+        break;
+      case GPUSingletonWarning::kTimestampArray:
+        // TODO(dawn:1800): Remove after a deprecation period;
+        message =
+            "Specifying timestampWrites as an array is deprecated and will "
+            "soon be removed.";
+        break;
+      case GPUSingletonWarning::kCount:
+        NOTREACHED();
+    }
+
+    ExecutionContext* execution_context = GetExecutionContext();
+    if (execution_context) {
+      auto* console_message = MakeGarbageCollected<ConsoleMessage>(
+          mojom::blink::ConsoleMessageSource::kRendering,
+          mojom::blink::ConsoleMessageLevel::kWarning,
+          StringFromASCIIAndUTF8(message.c_str()));
+      execution_context->AddConsoleMessage(console_message);
     }
   }
 }
@@ -313,8 +365,6 @@ void GPUDevice::OnDeviceLostError(WGPUDeviceLostReason reason,
     AddConsoleWarning(message);
   }
 
-  // Invalidate the adapter given that a device was lost.
-  adapter_->invalidate();
   if (lost_property_->GetState() == LostProperty::kPending) {
     auto* device_lost_info = MakeGarbageCollected<GPUDeviceLostInfo>(
         reason, StringFromASCIIAndUTF8(message));
@@ -418,9 +468,13 @@ GPUQueue* GPUDevice::queue() {
   return queue_;
 }
 
+bool GPUDevice::destroyed() const {
+  return destroyed_;
+}
+
 void GPUDevice::destroy(v8::Isolate* isolate) {
   destroyed_ = true;
-  DestroyAllExternalTextures();
+  external_texture_cache_->Destroy();
   // Dissociate mailboxes before destroying the device. This ensures that
   // mailbox operations which run during dissociation can succeed.
   DissociateMailboxes();
@@ -439,15 +493,6 @@ GPUTexture* GPUDevice::createTexture(const GPUTextureDescriptor* descriptor,
   return GPUTexture::Create(this, descriptor, exception_state);
 }
 
-GPUTexture* GPUDevice::experimentalImportTexture(
-    HTMLCanvasElement* canvas,
-    unsigned int usage_flags,
-    ExceptionState& exception_state) {
-  return GPUTexture::FromCanvas(this, canvas,
-                                static_cast<WGPUTextureUsage>(usage_flags),
-                                exception_state);
-}
-
 GPUSampler* GPUDevice::createSampler(const GPUSamplerDescriptor* descriptor) {
   return GPUSampler::Create(this, descriptor);
 }
@@ -455,12 +500,7 @@ GPUSampler* GPUDevice::createSampler(const GPUSamplerDescriptor* descriptor) {
 GPUExternalTexture* GPUDevice::importExternalTexture(
     const GPUExternalTextureDescriptor* descriptor,
     ExceptionState& exception_state) {
-  // Ensure the GPUExternalTexture created from a destroyed GPUDevice will be
-  // expired immediately.
-  if (destroyed_)
-    return GPUExternalTexture::CreateExpired(this, descriptor, exception_state);
-
-  return GPUExternalTexture::Create(this, descriptor, exception_state);
+  return external_texture_cache_->Import(descriptor, exception_state);
 }
 
 GPUBindGroup* GPUDevice::createBindGroup(
@@ -652,24 +692,17 @@ void GPUDevice::Trace(Visitor* visitor) const {
   visitor->Trace(limits_);
   visitor->Trace(queue_);
   visitor->Trace(lost_property_);
-  visitor->Trace(active_external_textures_);
+  visitor->Trace(external_texture_cache_);
   visitor->Trace(textures_with_mailbox_);
   visitor->Trace(mappable_buffers_);
   ExecutionContextClient::Trace(visitor);
-  EventTargetWithInlineData::Trace(visitor);
+  EventTarget::Trace(visitor);
 }
 
 void GPUDevice::Dispose() {
   // This call accesses other GC objects, so it cannot be called inside GC
   // objects destructors. Instead call it in the pre-finalizer.
-  DestroyAllExternalTextures();
-}
-
-void GPUDevice::DestroyAllExternalTextures() {
-  for (auto& external_texture : active_external_textures_) {
-    external_texture->Destroy();
-  }
-  active_external_textures_.clear();
+  external_texture_cache_->Destroy();
 }
 
 void GPUDevice::DissociateMailboxes() {
@@ -691,17 +724,6 @@ void GPUDevice::TrackMappableBuffer(GPUBuffer* buffer) {
 
 void GPUDevice::UntrackMappableBuffer(GPUBuffer* buffer) {
   mappable_buffers_.erase(buffer);
-}
-
-void GPUDevice::AddActiveExternalTexture(GPUExternalTexture* external_texture) {
-  DCHECK(external_texture);
-  active_external_textures_.insert(external_texture);
-}
-
-void GPUDevice::RemoveActiveExternalTexture(
-    GPUExternalTexture* external_texture) {
-  DCHECK(external_texture);
-  active_external_textures_.erase(external_texture);
 }
 
 void GPUDevice::TrackTextureWithMailbox(GPUTexture* texture) {

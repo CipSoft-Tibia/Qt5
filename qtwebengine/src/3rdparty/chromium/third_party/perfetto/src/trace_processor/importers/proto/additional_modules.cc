@@ -21,15 +21,18 @@
 #include "src/trace_processor/importers/proto/graphics_event_module.h"
 #include "src/trace_processor/importers/proto/heap_graph_module.h"
 #include "src/trace_processor/importers/proto/metadata_module.h"
+#include "src/trace_processor/importers/proto/network_trace_module.h"
 #include "src/trace_processor/importers/proto/statsd_module.h"
 #include "src/trace_processor/importers/proto/system_probes_module.h"
 #include "src/trace_processor/importers/proto/translation_table_module.h"
+#include "src/trace_processor/importers/proto/winscope/winscope_module.h"
 
 namespace perfetto {
 namespace trace_processor {
 
 void RegisterAdditionalModules(TraceProcessorContext* context) {
   context->modules.emplace_back(new AndroidProbesModule(context));
+  context->modules.emplace_back(new NetworkTraceModule(context));
   context->modules.emplace_back(new GraphicsEventModule(context));
   context->modules.emplace_back(new HeapGraphModule(context));
   context->modules.emplace_back(new SystemProbesModule(context));
@@ -37,6 +40,7 @@ void RegisterAdditionalModules(TraceProcessorContext* context) {
   context->modules.emplace_back(new StatsdModule(context));
   context->modules.emplace_back(new AndroidCameraEventModule(context));
   context->modules.emplace_back(new MetadataModule(context));
+  context->modules.emplace_back(new WinscopeModule(context));
 
   // Ftrace module is special, because it has one extra method for parsing
   // ftrace packets. So we need to store a pointer to it separately.

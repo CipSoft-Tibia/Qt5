@@ -70,8 +70,8 @@ class TestAppLauncherHandler : public AppLauncherHandler {
   }
 };
 
-std::unique_ptr<WebAppInstallInfo> BuildWebAppInfo() {
-  auto app_info = std::make_unique<WebAppInstallInfo>();
+std::unique_ptr<web_app::WebAppInstallInfo> BuildWebAppInfo() {
+  auto app_info = std::make_unique<web_app::WebAppInstallInfo>();
   app_info->start_url = GURL(kTestAppUrl);
   app_info->scope = GURL(kTestAppUrl);
   app_info->title = kTestAppTitle;
@@ -181,7 +181,7 @@ class AppLauncherHandlerTest
   WebAppProvider* provider() { return WebAppProvider::GetForTest(profile()); }
 
   web_app::OsIntegrationManager::ScopedSuppressForTesting os_hooks_suppress_;
-  raw_ptr<extensions::ExtensionService> extension_service_;
+  raw_ptr<extensions::ExtensionService, DanglingUntriaged> extension_service_;
   base::test::ScopedFeatureList scoped_feature_list_;
 };
 

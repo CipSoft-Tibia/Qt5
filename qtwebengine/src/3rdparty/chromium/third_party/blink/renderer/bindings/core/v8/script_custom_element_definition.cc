@@ -31,7 +31,8 @@ namespace blink {
 ScriptCustomElementDefinition::ScriptCustomElementDefinition(
     const ScriptCustomElementDefinitionData& data,
     const CustomElementDescriptor& descriptor)
-    : CustomElementDefinition(descriptor,
+    : CustomElementDefinition(*data.registry_,
+                              descriptor,
                               std::move(data.observed_attributes_),
                               data.disabled_features_,
                               data.is_form_associated_
@@ -46,7 +47,9 @@ ScriptCustomElementDefinition::ScriptCustomElementDefinition(
       form_associated_callback_(data.form_associated_callback_),
       form_reset_callback_(data.form_reset_callback_),
       form_disabled_callback_(data.form_disabled_callback_),
-      form_state_restore_callback_(data.form_state_restore_callback_) {}
+      form_state_restore_callback_(data.form_state_restore_callback_) {
+  DCHECK(data.registry_);
+}
 
 void ScriptCustomElementDefinition::Trace(Visitor* visitor) const {
   visitor->Trace(script_state_);
@@ -170,8 +173,7 @@ Element* ScriptCustomElementDefinition::CallConstructor() {
     return nullptr;
   }
 
-  return V8Element::ToImplWithTypeCheck(constructor_->GetIsolate(),
-                                        result.V8Value());
+  return V8Element::ToWrappable(constructor_->GetIsolate(), result.V8Value());
 }
 
 v8::Local<v8::Object> ScriptCustomElementDefinition::Constructor() const {

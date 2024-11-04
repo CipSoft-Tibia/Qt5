@@ -44,6 +44,7 @@ import * as Persistence from '../../models/persistence/persistence.js';
 import * as Workspace from '../../models/workspace/workspace.js';
 import * as NetworkForward from '../../panels/network/forward/forward.js';
 import * as ClientVariations from '../../third_party/chromium/client-variations/client-variations.js';
+import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 // eslint-disable-next-line rulesdir/es_modules_import
 import objectPropertiesSectionStyles from '../../ui/legacy/components/object_ui/objectPropertiesSection.css.js';
 // eslint-disable-next-line rulesdir/es_modules_import
@@ -184,7 +185,7 @@ const UIStrings = {
    *@description Text in Headers View of the Network panel
    */
   thisDocumentWasBlockedFrom:
-      'This document was blocked from loading in an `iframe` with a `sandbox` attribute because this document specified a cross-origin opener policy.',
+      'The document was blocked from loading in a popup opened by a sandboxed iframe because this document specified a cross-origin opener policy.',
   /**
    *@description Text in Headers View of the Network panel
    */
@@ -195,11 +196,6 @@ const UIStrings = {
    */
   toUseThisResourceFromADifferentOrigin:
       'To use this resource from a different origin, the server may relax the cross-origin resource policy response header:',
-  /**
-   *@description Label for a link from the network panel's headers view to the file in which
-   * header overrides are defined in the sources panel.
-   */
-  headerOverrides: 'Header overrides',
 };
 const str_ = i18n.i18n.registerUIStrings('panels/network/RequestHeadersView.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -256,7 +252,7 @@ export class RequestHeadersView extends UI.Widget.VBox {
     this.requestHeadersCategory = new Category(root, 'requestHeaders', '');
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     this.clearHighlight();
     this.registerCSSFiles([requestHeadersViewStyles]);
     this.request.addEventListener(SDK.NetworkRequest.Events.RemoteAddressChanged, this.refreshRemoteAddress, this);
@@ -277,7 +273,7 @@ export class RequestHeadersView extends UI.Widget.VBox {
     this.root.select(/* omitFocus */ true, /* selectedByUser */ false);
   }
 
-  willHide(): void {
+  override willHide(): void {
     this.request.removeEventListener(SDK.NetworkRequest.Events.RemoteAddressChanged, this.refreshRemoteAddress, this);
     this.request.removeEventListener(SDK.NetworkRequest.Events.RequestHeadersChanged, this.refreshRequestHeaders, this);
     this.request.removeEventListener(
@@ -353,11 +349,25 @@ export class RequestHeadersView extends UI.Widget.VBox {
         text.classList.add('devtools-link');
         text.textContent = i18nString(UIStrings.learnMoreInTheIssuesTab);
         link.appendChild(text);
-        link.prepend(UI.Icon.Icon.create('largeicon-breaking-change', 'icon'));
+        const issueIcon = new IconButton.Icon.Icon();
+        issueIcon.data = {
+          iconName: 'issue-exclamation-filled',
+          color: 'var(--icon-warning)',
+          width: '20px',
+          height: '20px',
+        };
+        link.prepend(issueIcon);
         callToActionBody.appendChild(link);
       } else if (header.details.link) {
         const link = UI.XLink.XLink.create(header.details.link.url, i18nString(UIStrings.learnMore), 'link');
-        link.prepend(UI.Icon.Icon.create('largeicon-link'));
+        const icon = new IconButton.Icon.Icon();
+        icon.data = {
+          iconName: 'open-externally',
+          color: 'var(--icon-default)',
+          width: '20px',
+          height: '20px',
+        };
+        link.prepend(icon);
         callToActionBody.appendChild(link);
       }
     }
@@ -499,11 +509,14 @@ export class RequestHeadersView extends UI.Widget.VBox {
       UI.Tooltip.Tooltip.install(statusCodeImage, this.request.statusCode + ' ' + this.request.statusText);
 
       if (this.request.statusCode < 300 || this.request.statusCode === 304) {
-        statusCodeImage.type = 'smallicon-green-ball';
+        statusCodeImage
+            .data = {iconName: 'checkmark', color: 'var(--icon-checkmark-green)', width: '14px', height: '14px'};
       } else if (this.request.statusCode < 400) {
-        statusCodeImage.type = 'smallicon-orange-ball';
+        statusCodeImage
+            .data = {iconName: 'warning-filled', color: 'var(--icon-warning)', width: '14px', height: '14px'};
       } else {
-        statusCodeImage.type = 'smallicon-red-ball';
+        statusCodeImage
+            .data = {iconName: 'cross-circle-filled', color: 'var(--icon-error)', width: '14px', height: '14px'};
       }
 
       requestMethodElement.title = this.formatHeader(i18nString(UIStrings.requestMethod), this.request.requestMethod);
@@ -550,13 +563,16 @@ export class RequestHeadersView extends UI.Widget.VBox {
     if (overrideable && this.#workspace.uiSourceCodeForURL(this.#getHeaderOverridesFileUrl())) {
       const overridesSetting: Common.Settings.Setting<boolean> =
           Common.Settings.Settings.instance().moduleSetting('persistenceNetworkOverridesEnabled');
-      const icon = overridesSetting.get() ? UI.Icon.Icon.create('mediumicon-file-sync', 'purple-dot') :
-                                            UI.Icon.Icon.create('mediumicon-file');
+      const icon = new IconButton.Icon.Icon();
+      icon.data = {iconName: 'document', color: 'var(--icon-default)', width: '16px', height: '16px'};
+      if (overridesSetting.get()) {
+        icon.classList.add('dot', 'purple');
+      }
       const button = container.createChild('button', 'link devtools-link headers-link');
       button.appendChild(icon);
       button.addEventListener('click', this.#revealHeadersFile.bind(this));
       const span = document.createElement('span');
-      span.textContent = i18nString(UIStrings.headerOverrides);
+      span.textContent = Persistence.NetworkPersistenceManager.HEADERS_FILENAME;
       button.appendChild(span);
     }
   }
@@ -604,8 +620,8 @@ export class RequestHeadersView extends UI.Widget.VBox {
       const cautionElement = document.createElement('div');
       cautionElement.classList.add('request-headers-caution');
       UI.Tooltip.Tooltip.install(cautionElement, cautionTitle);
-      (cautionElement.createChild('span', '', 'dt-icon-label') as UI.UIUtils.DevToolsIconLabel).type =
-          'smallicon-warning';
+      (cautionElement.createChild('span', '', 'dt-icon-label') as UI.UIUtils.DevToolsIconLabel)
+          .data = {iconName: 'warning-filled', color: 'var(--icon-warning)', width: '14px', height: '14px'};
       cautionElement.createChild('div', 'caution').textContent = cautionText;
       const cautionTreeElement = new UI.TreeOutline.TreeElement(cautionElement);
 
@@ -636,7 +652,8 @@ export class RequestHeadersView extends UI.Widget.VBox {
       if (headerId === 'set-cookie') {
         const matchingBlockedReasons = blockedCookieLineToReasons.get(header.value);
         if (matchingBlockedReasons) {
-          const icon = UI.Icon.Icon.create('smallicon-warning', '');
+          const icon = new IconButton.Icon.Icon();
+          icon.data = {iconName: 'warning-filled', color: 'var(--icon-warning)', width: '14px', height: '14px'};
           headerTreeElement.listItemElement.appendChild(icon);
 
           let titleText = '';
@@ -766,9 +783,9 @@ export class RequestHeadersView extends UI.Widget.VBox {
 const headerNames = new WeakMap<UI.TreeOutline.TreeElement, string>();
 
 export class Category extends UI.TreeOutline.TreeElement {
-  toggleOnClick: boolean;
+  override toggleOnClick: boolean;
   private readonly expandedSetting: Common.Settings.Setting<boolean>;
-  expanded: boolean;
+  override expanded: boolean;
 
   constructor(root: UI.TreeOutline.TreeOutline, name: string, title?: string) {
     super(title || '', true);
@@ -786,11 +803,11 @@ export class Category extends UI.TreeOutline.TreeElement {
     return leaf;
   }
 
-  onexpand(): void {
+  override onexpand(): void {
     this.expandedSetting.set(true);
   }
 
-  oncollapse(): void {
+  override oncollapse(): void {
     this.expandedSetting.set(false);
   }
 }

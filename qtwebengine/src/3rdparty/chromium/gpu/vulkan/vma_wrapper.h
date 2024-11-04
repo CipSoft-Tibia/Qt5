@@ -5,6 +5,8 @@
 #ifndef GPU_VULKAN_VMA_WRAPPER_H_
 #define GPU_VULKAN_VMA_WRAPPER_H_
 
+#include <algorithm>
+
 #include <vulkan/vulkan_core.h>
 
 #include "base/component_export.h"
@@ -25,6 +27,7 @@ VkResult CreateAllocator(VkPhysicalDevice physical_device,
                          VkDevice device,
                          VkInstance instance,
                          const gfx::ExtensionSet& enabled_extensions,
+                         const VkDeviceSize preferred_large_heap_block_size,
                          const VkDeviceSize* heap_size_limit,
                          const bool is_thread_safe,
                          VmaAllocator* allocator);
@@ -99,8 +102,10 @@ void GetPhysicalDeviceProperties(
 COMPONENT_EXPORT(VULKAN)
 void GetBudget(VmaAllocator allocator, VmaBudget* budget);
 
+// Allocated and used, respectively.
 COMPONENT_EXPORT(VULKAN)
-uint64_t GetTotalAllocatedMemory(VmaAllocator allocator);
+std::pair<uint64_t, uint64_t> GetTotalAllocatedAndUsedMemory(
+    VmaAllocator allocator);
 
 }  // namespace vma
 }  // namespace gpu

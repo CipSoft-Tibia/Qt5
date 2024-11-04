@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "base/check.h"
+#include "base/debug/crash_logging.h"
 #include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
 #include "base/strings/escape.h"
@@ -23,6 +24,7 @@
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "net/base/isolation_info.h"
+#include "net/base/load_flags.h"
 #include "net/base/network_anonymization_key.h"
 #include "net/cookies/site_for_cookies.h"
 #include "net/http/http_request_headers.h"
@@ -53,6 +55,7 @@ AuctionURLLoaderFactoryProxy::AuctionURLLoaderFactoryProxy(
     GetUrlLoaderFactoryCallback get_frame_url_loader_factory,
     GetUrlLoaderFactoryCallback get_trusted_url_loader_factory,
     PreconnectSocketCallback preconnect_socket_callback,
+    bool force_reload,
     const url::Origin& top_frame_origin,
     const url::Origin& frame_origin,
     absl::optional<int> renderer_process_id,
@@ -60,7 +63,8 @@ AuctionURLLoaderFactoryProxy::AuctionURLLoaderFactoryProxy(
     network::mojom::ClientSecurityStatePtr client_security_state,
     const GURL& script_url,
     const absl::optional<GURL>& wasm_url,
-    const absl::optional<GURL>& trusted_signals_base_url)
+    const absl::optional<GURL>& trusted_signals_base_url,
+    bool needs_cors_for_additional_bid)
     : receiver_(this, std::move(pending_receiver)),
       get_frame_url_loader_factory_(std::move(get_frame_url_loader_factory)),
       get_trusted_url_loader_factory_(
@@ -69,19 +73,24 @@ AuctionURLLoaderFactoryProxy::AuctionURLLoaderFactoryProxy(
       frame_origin_(frame_origin),
       renderer_process_id_(renderer_process_id),
       is_for_seller_(is_for_seller),
+      force_reload_(force_reload),
       client_security_state_(std::move(client_security_state)),
       isolation_info_(is_for_seller ? net::IsolationInfo::CreateTransient()
                                     : CreateBidderIsolationInfo(
                                           url::Origin::Create(script_url))),
       script_url_(script_url),
       wasm_url_(wasm_url),
-      trusted_signals_base_url_(trusted_signals_base_url) {
+      trusted_signals_base_url_(trusted_signals_base_url),
+      needs_cors_for_additional_bid_(needs_cors_for_additional_bid) {
   DCHECK(client_security_state_);
   if (trusted_signals_base_url_) {
     std::move(preconnect_socket_callback)
         .Run(*trusted_signals_base_url_,
              isolation_info_.network_anonymization_key());
   }
+
+  // `needs_cors_for_additional_bid_` applies only to buyer stuff.
+  DCHECK(!(is_for_seller_ && needs_cors_for_additional_bid_));
 }
 
 AuctionURLLoaderFactoryProxy::~AuctionURLLoaderFactoryProxy() = default;
@@ -134,6 +143,20 @@ void AuctionURLLoaderFactoryProxy::CreateLoaderAndStart(
   }
 
   if (!is_request_allowed) {
+    // Debugging for https://crbug.com/1448458
+    SCOPED_CRASH_KEY_STRING32("fledge", "req-accept", accept_header);
+    SCOPED_CRASH_KEY_STRING256("fledge", "req-url",
+                               url_request.url.possibly_invalid_spec());
+    SCOPED_CRASH_KEY_STRING256("fledge", "expect-script-url",
+                               script_url_.possibly_invalid_spec());
+    SCOPED_CRASH_KEY_STRING256(
+        "fledge", "expect-wasm-url",
+        wasm_url_.value_or(GURL()).possibly_invalid_spec());
+    SCOPED_CRASH_KEY_STRING256(
+        "fledge", "expect-trusted",
+        trusted_signals_base_url_.value_or(GURL()).possibly_invalid_spec());
+    SCOPED_CRASH_KEY_STRING256("fledge", "expect-top-frame",
+                               top_frame_origin_.host());
     receiver_.ReportBadMessage("Unexpected request");
     return;
   }
@@ -154,7 +177,20 @@ void AuctionURLLoaderFactoryProxy::CreateLoaderAndStart(
   new_request.request_initiator = frame_origin_;
   new_request.enable_load_timing = url_request.enable_load_timing;
 
-  if (!maybe_subresource_info) {
+  if (force_reload_) {
+    new_request.load_flags = net::LOAD_BYPASS_CACHE;
+  }
+
+  if (maybe_subresource_info || needs_cors_for_additional_bid_) {
+    // CORS is needed.
+    //
+    // For subresource bundle requests, CORS is supported if the subresource
+    // URL's scheme is https and not uuid-in-package. However, unlike
+    // traditional network requests, the browser cannot read the response if
+    // kNoCors is used, even with CORS-safe methods and headers -- the response
+    // is blocked by CORB.
+    new_request.mode = network::mojom::RequestMode::kCors;
+  } else {
     // CORS is not needed.
     //
     // For bidder worklets, the requests are same origin to the InterestGroup's
@@ -168,15 +204,6 @@ void AuctionURLLoaderFactoryProxy::CreateLoaderAndStart(
     // is only made available to the same-origin script, so CORB isn't needed
     // here.
     new_request.mode = network::mojom::RequestMode::kNoCors;
-  } else {
-    // CORS is needed.
-    //
-    // For subresource bundle requests, CORS is supported if the subresource
-    // URL's scheme is https and not uuid-in-package. However, unlike
-    // traditional network requests, the browser cannot read the response if
-    // kNoCors is used, even with CORS-safe methods and headers -- the response
-    // is blocked by CORB.
-    new_request.mode = network::mojom::RequestMode::kCors;
   }
 
   GetUrlLoaderFactoryCallback url_loader_factory_getter =
@@ -208,6 +235,9 @@ void AuctionURLLoaderFactoryProxy::CreateLoaderAndStart(
       new_request.trusted_params->client_security_state =
           client_security_state_.Clone();
     }
+  } else if (needs_cors_for_additional_bid_) {
+    // For additional bid reporting, act like the frame provided it as well.
+    url_loader_factory_getter = get_frame_url_loader_factory_;
   } else {
     // Treat this as a subresource request from the owner's origin, using the
     // trusted URLLoaderFactory.

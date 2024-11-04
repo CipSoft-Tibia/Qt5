@@ -9,6 +9,7 @@
 #include <cstddef>
 
 #include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "components/segmentation_platform/internal/database/ukm_types.h"
 #include "components/segmentation_platform/public/proto/model_metadata.pb.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -32,9 +33,13 @@ class MetadataWriter {
     const uint64_t tensor_length{0};
     const proto::Aggregation aggregation{proto::Aggregation::UNKNOWN};
     const size_t enum_ids_size{0};
-    const int32_t* const accepted_enum_ids = nullptr;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #constexpr-var-initializer
+    RAW_PTR_EXCLUSION const int32_t* const accepted_enum_ids = nullptr;
     const size_t default_values_size{0};
-    const float* const default_values = nullptr;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #constexpr-var-initializer
+    RAW_PTR_EXCLUSION const float* const default_values = nullptr;
 
     static constexpr UMAFeature FromUserAction(const char* name,
                                                uint64_t bucket_count) {
@@ -80,7 +85,6 @@ class MetadataWriter {
   };
 
   // Defines a feature based on a SQL query.
-  // TODO(ssid): Support custom inputs.
   struct SqlFeature {
     const char* const sql{nullptr};
     struct EventAndMetrics {
@@ -100,7 +104,14 @@ class MetadataWriter {
     const size_t default_values_size{0};
     const raw_ptr<const float> default_values = nullptr;
     const char* name{nullptr};
+
+    using Arg = std::pair<const char*, const char*>;
+    const Arg* arg{nullptr};
+    const size_t arg_size{0};
   };
+  using BindValueType = proto::SqlFeature::BindValue::ParamType;
+  using BindValue = std::pair<BindValueType, CustomInput>;
+  using BindValues = std::vector<BindValue>;
 
   // Appends the list of UMA features in order.
   void AddUmaFeatures(const UMAFeature features[],
@@ -108,7 +119,12 @@ class MetadataWriter {
                       bool is_output = false);
 
   // Appends the list of SQL features in order.
-  void AddSqlFeatures(const SqlFeature features[], size_t features_size);
+  proto::SqlFeature* AddSqlFeature(const SqlFeature& feature);
+
+  proto::SqlFeature* AddSqlFeature(const SqlFeature& feature,
+                                   const BindValues& bind_values);
+
+  void AddBindValueToSql(proto::SqlFeature* sql_feature);
 
   // Creates a custom input feature and appeands to the list of custom inputs in
   // order.
@@ -155,10 +171,22 @@ class MetadataWriter {
                                               int top_k_outputs,
                                               absl::optional<float> threshold);
 
+  // Adds a MultiClassClassifier with one threshold per label.
+  void AddOutputConfigForMultiClassClassifier(
+      const char* const* class_labels,
+      size_t class_labels_length,
+      int top_k_outputs,
+      const float* per_label_thresholds,
+      size_t per_label_thresholds_length);
+
   // Adds a BinnedClassifier.
   void AddOutputConfigForBinnedClassifier(
       const std::vector<std::pair<float, std::string>>& bins,
       std::string underflow_label);
+
+  // Adds a generic predictor output config.
+  void AddOutputConfigForGenericPredictor(
+      const std::vector<std::string>& labels);
 
   // Adds a `PredictedResultTTL` in `OutputConfig`.
   void AddPredictedResultTTLInOutputConfig(
@@ -166,8 +194,15 @@ class MetadataWriter {
       int64_t default_ttl,
       proto::TimeUnit time_unit);
 
+  // Sets `ignore_previous_model_ttl` as true in `OutputConfig`.
+  void SetIgnorePreviousModelTTLInOutputConfig();
+
   // Append a delay trigger for training data collection.
   void AddDelayTrigger(uint64_t delay_sec);
+
+  // Adds a custom input from Input Context.
+  void AddFromInputContext(const char* custom_input_name,
+                           const char* additional_args_name);
 
  private:
   const raw_ptr<proto::SegmentationModelMetadata> metadata_;

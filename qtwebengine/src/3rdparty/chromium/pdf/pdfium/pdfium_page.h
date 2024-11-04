@@ -80,6 +80,12 @@ class PDFiumPage {
   // Get the bounds of the page with the crop box applied, in page pixels.
   gfx::RectF GetCroppedRect();
 
+  // Get the bounding box of the page in page pixels. The bounding box is the
+  // largest rectangle containing all visible content in the effective crop box.
+  // If the bounding box can't be calculated, returns the effective crop box.
+  // The resulting bounding box is relative to the effective crop box.
+  gfx::RectF GetBoundingBox();
+
   // Returns if the character at `char_index` is within `page_bounds`.
   bool IsCharInPageBounds(int char_index, const gfx::RectF& page_bounds);
 
@@ -93,6 +99,9 @@ class PDFiumPage {
   // image pixels in the `image_data` field. Otherwise do not populate the
   // `image_data` field.
   std::vector<AccessibilityImageInfo> GetImageInfo(uint32_t text_run_count);
+
+  // Returns the image as a 32-bit bitmap format for OCR.
+  SkBitmap GetImageForOcr(int page_object_index);
 
   // For all the highlights on the page, get their underlying text ranges and
   // bounding boxes.
@@ -236,6 +245,8 @@ class PDFiumPage {
   FRIEND_TEST_ALL_PREFIXES(PDFiumPageImageTest, CalculateImages);
   FRIEND_TEST_ALL_PREFIXES(PDFiumPageImageTest, ImageAltText);
   FRIEND_TEST_ALL_PREFIXES(PDFiumPageImageDataTest, ImageData);
+  FRIEND_TEST_ALL_PREFIXES(PDFiumPageImageDataTest, ImageDataForNonImage);
+  FRIEND_TEST_ALL_PREFIXES(PDFiumPageImageDataTest, RotatedPageImageData);
   FRIEND_TEST_ALL_PREFIXES(PDFiumPageLinkTest, AnnotLinkGeneration);
   FRIEND_TEST_ALL_PREFIXES(PDFiumPageLinkTest, GetLinkTarget);
   FRIEND_TEST_ALL_PREFIXES(PDFiumPageLinkTest, GetUTF8LinkTarget);
@@ -264,13 +275,12 @@ class PDFiumPage {
     Image(const Image& other);
     ~Image();
 
+    // Index of the object in its page.
     int page_object_index;
+
     // Alt text is available only for PDFs that are tagged for accessibility.
     std::string alt_text;
     gfx::Rect bounding_rect;
-    // Image data is only stored if the user has requested that the OCR service
-    // try to retrieve textual and layout information from this image.
-    SkBitmap image_data;
   };
 
   // Represents a highlight within the page.

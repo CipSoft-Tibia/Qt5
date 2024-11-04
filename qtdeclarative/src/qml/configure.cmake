@@ -14,44 +14,10 @@ qt_find_package(LTTngUST PROVIDED_TARGETS LTTng::UST MODULE_NAME qml QMAKE_LIB l
 qt_find_package(Python REQUIRED)
 if(Python_Interpreter_FOUND)
     # Need to make it globally available to the project
-    set(QT_INTERNAL_DECLARATIVE_PYTHON "${Python_EXECUTABLE}" CACHE STRING "")
+    set(QT_INTERNAL_DECLARATIVE_PYTHON "${Python_EXECUTABLE}" CACHE STRING "" FORCE)
 endif()
 
 #### Tests
-
-# pointer_32bit
-qt_config_compile_test(pointer_32bit
-    LABEL "32bit pointers"
-    CODE
-"
-
-
-int main(int argc, char **argv)
-{
-    (void)argc; (void)argv;
-    /* BEGIN TEST: */
-static_assert(sizeof(void *) == 4, \"fail\");
-    /* END TEST: */
-    return 0;
-}
-")
-
-# pointer_64bit
-qt_config_compile_test(pointer_64bit
-    LABEL "64bit pointers"
-    CODE
-"
-
-
-int main(int argc, char **argv)
-{
-    (void)argc; (void)argv;
-    /* BEGIN TEST: */
-static_assert(sizeof(void *) == 8, \"fail\");
-    /* END TEST: */
-    return 0;
-}
-")
 
 # arm_thumb
 qt_config_compile_test(arm_thumb
@@ -111,13 +77,27 @@ qt_feature("qml-network" PUBLIC
     PURPOSE "Provides network transparency."
     CONDITION QT_FEATURE_network
 )
-# On arm and arm64 we need a specialization of cacheFlush() for each OS to be enabeled. Therefore the config white list. Also Mind that e.g. x86_32 has arch.x86_64 but 32bit pointers. Therefore the checks for architecture and pointer size. Finally, ios and tvos can technically use the JIT but Apple does not allow it. Therefore, it's disabled by default.
+
+qt_feature("qml-ssl" PUBLIC
+    SECTION "QML"
+    LABEL "QML SSL support"
+    PURPOSE "Provides ssl support in QML."
+    CONDITION QT_FEATURE_ssl
+)
+
+# On arm and arm64 we need a specialization of cacheFlush() for each OS to be
+# enabled. Therefore the config white list. Finally, ios and tvos can
+# technically use the JIT but Apple does not allow it. Therefore, it's disabled
+# by default.
 qt_feature("qml-jit" PRIVATE
     SECTION "QML"
     LABEL "QML just-in-time compiler"
     PURPOSE "Provides a JIT for QML and JavaScript"
     AUTODETECT NOT IOS AND NOT TVOS
-    CONDITION ( ( ( TEST_architecture_arch STREQUAL i386 ) AND TEST_pointer_32bit AND QT_FEATURE_sse2 ) OR ( ( TEST_architecture_arch STREQUAL x86_64 ) AND TEST_pointer_64bit AND QT_FEATURE_sse2 ) OR ( ( TEST_architecture_arch STREQUAL arm ) AND TEST_pointer_32bit AND TEST_arm_fp AND TEST_arm_thumb AND ( ANDROID OR LINUX OR IOS OR TVOS OR QNX ) ) OR ( ( TEST_architecture_arch STREQUAL arm64 ) AND TEST_pointer_64bit AND TEST_arm_fp AND ( ANDROID OR LINUX OR IOS OR TVOS OR QNX OR INTEGRITY ) ) )
+    CONDITION ( ( TEST_architecture_arch STREQUAL i386 AND QT_FEATURE_sse2 ) OR
+        ( TEST_architecture_arch STREQUAL x86_64 AND QT_FEATURE_sse2 ) OR
+        ( TEST_architecture_arch STREQUAL arm AND TEST_arm_fp AND TEST_arm_thumb AND ( ANDROID OR LINUX OR IOS OR TVOS OR QNX ) ) OR
+        ( TEST_architecture_arch STREQUAL arm64 AND TEST_arm_fp AND ( ANDROID OR LINUX OR IOS OR TVOS OR QNX OR INTEGRITY ) ) )
 )
 # special case begin
 # When doing macOS universal builds, JIT needs to be disabled for the ARM slice.
@@ -152,7 +132,7 @@ qt_feature("qml-profiler" PRIVATE
     SECTION "QML"
     LABEL "Command line QML Profiler"
     PURPOSE "Supports retrieving QML tracing data from an application."
-    CONDITION ( QT_FEATURE_commandlineparser ) AND ( QT_FEATURE_qml_debug ) AND ( QT_FEATURE_qml_network AND QT_FEATURE_localserver ) AND ( QT_FEATURE_xmlstreamwriter )
+    CONDITION ( QT_FEATURE_commandlineparser ) AND ( QT_FEATURE_qml_debug ) AND ( QT_FEATURE_qml_network AND QT_FEATURE_localserver ) AND ( QT_FEATURE_xmlstreamwriter ) AND QT_FEATURE_process
 )
 qt_feature("qml-preview" PRIVATE
     SECTION "QML"
@@ -206,6 +186,7 @@ qt_configure_add_summary_entry(ARGS "qml-debug")
 qt_configure_add_summary_entry(ARGS "qml-jit")
 qt_configure_add_summary_entry(ARGS "qml-xml-http-request")
 qt_configure_add_summary_entry(ARGS "qml-locale")
+qt_configure_add_summary_entry(ARGS "qml-ssl")
 qt_configure_end_summary_section() # end of "Qt QML" section
 qt_configure_add_report_entry(
     TYPE ERROR

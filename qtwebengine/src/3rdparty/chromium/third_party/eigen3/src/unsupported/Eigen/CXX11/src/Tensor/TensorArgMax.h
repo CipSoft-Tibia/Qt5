@@ -128,12 +128,6 @@ struct TensorEvaluator<const TensorIndexPairOp<ArgType>, Device>
 
   EIGEN_DEVICE_FUNC EvaluatorPointerType data() const { return NULL; }
 
-#ifdef EIGEN_USE_SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_impl.bind(cgh);
-  }
-#endif
-
  protected:
   TensorEvaluator<ArgType, Device> m_impl;
 };
@@ -278,12 +272,6 @@ struct TensorEvaluator<const TensorPairReducerOp<ReduceOp, Dims, ArgType>, Devic
   }
 
   EIGEN_DEVICE_FUNC EvaluatorPointerType data() const { return NULL; }
-#ifdef EIGEN_USE_SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_impl.bind(cgh);
-    m_orig_impl.bind(cgh);
-  }
-#endif
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorOpCost
   costPerCoeff(bool vectorized) const {

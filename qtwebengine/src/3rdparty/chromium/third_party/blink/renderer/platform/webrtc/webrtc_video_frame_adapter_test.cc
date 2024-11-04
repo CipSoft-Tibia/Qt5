@@ -153,9 +153,9 @@ TEST(WebRtcVideoFrameAdapterTest, MapFullFrameIsZeroCopy) {
   scoped_refptr<MockSharedResources> resources =
       new testing::StrictMock<MockSharedResources>();
 
-  auto frame_720p = CreateTestFrame(kSize720p, kRect720p, kSize720p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
+  auto frame_720p = CreateTestFrame(
+      kSize720p, kRect720p, kSize720p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
 
   rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
       new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
@@ -191,12 +191,12 @@ TEST(WebRtcVideoFrameAdapterTest,
              base::TimeDelta timestamp) {
             return CreateTestFrame(coded_size, visible_rect, natural_size,
                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                   format);
+                                   format, base::TimeDelta());
           }));
 
-  auto frame_720p = CreateTestFrame(kSize720p, kRect720p, kSize720p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
+  auto frame_720p = CreateTestFrame(
+      kSize720p, kRect720p, kSize720p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
 
   rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
       new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
@@ -230,12 +230,12 @@ TEST(WebRtcVideoFrameAdapterTest, MapScaledFrameUsesPreScaling) {
   scoped_refptr<MockSharedResources> resources =
       new testing::StrictMock<MockSharedResources>();
 
-  auto frame_720p = CreateTestFrame(kSize720p, kRect720p, kSize720p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
-  auto frame_360p = CreateTestFrame(kSize360p, kRect360p, kSize360p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
+  auto frame_720p = CreateTestFrame(
+      kSize720p, kRect720p, kSize720p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
+  auto frame_360p = CreateTestFrame(
+      kSize360p, kRect360p, kSize360p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
 
   rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
       new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
@@ -269,12 +269,12 @@ TEST(WebRtcVideoFrameAdapterTest,
   scoped_refptr<MockSharedResources> resources =
       new testing::StrictMock<MockSharedResources>();
 
-  auto frame_720p = CreateTestFrame(kSize720p, kRect720p, kSize720p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
-  auto frame_360p = CreateTestFrame(kSize360p, kRect360p, kSize360p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
+  auto frame_720p = CreateTestFrame(
+      kSize720p, kRect720p, kSize720p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
+  auto frame_360p = CreateTestFrame(
+      kSize360p, kRect360p, kSize360p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
 
   // Soft-apply scaling of |frame_720p| so that its natural size is 360p.
   // Because the soft-applied frame is still backed by a 720p coded size frame,
@@ -327,18 +327,18 @@ TEST(WebRtcVideoFrameAdapterTest, MapScaledFrameScalesFromClosestFrame) {
              base::TimeDelta timestamp) {
             return CreateTestFrame(coded_size, visible_rect, natural_size,
                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                   format);
+                                   format, base::TimeDelta());
           }));
 
-  auto frame_720p = CreateTestFrame(kSize720p, kRect720p, kSize720p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
-  auto frame_480p = CreateTestFrame(kSize480p, kRect480p, kSize480p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
-  auto frame_360p = CreateTestFrame(kSize360p, kRect360p, kSize360p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
+  auto frame_720p = CreateTestFrame(
+      kSize720p, kRect720p, kSize720p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
+  auto frame_480p = CreateTestFrame(
+      kSize480p, kRect480p, kSize480p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
+  auto frame_360p = CreateTestFrame(
+      kSize360p, kRect360p, kSize360p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
 
   rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
       new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
@@ -383,12 +383,12 @@ TEST(WebRtcVideoFrameAdapterTest,
              base::TimeDelta timestamp) {
             return CreateTestFrame(coded_size, visible_rect, natural_size,
                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                   format);
+                                   format, base::TimeDelta());
           }));
 
-  auto frame_720p = CreateTestFrame(kSize720p, kRect720p, kSize720p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
+  auto frame_720p = CreateTestFrame(
+      kSize720p, kRect720p, kSize720p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
 
   rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
       new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
@@ -435,14 +435,14 @@ TEST(WebRtcVideoFrameAdapterTest,
              base::TimeDelta timestamp) {
             return CreateTestFrame(coded_size, visible_rect, natural_size,
                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                   format);
+                                   format, base::TimeDelta());
           }));
 
   // Create a full frame with soft-applied cropping and scaling.
-  auto full_frame =
-      CreateTestFrame(kFullCodedSize720p, kFullVisibleRect, kFullNaturalSize,
-                      media::VideoFrame::STORAGE_OWNED_MEMORY,
-                      media::VideoPixelFormat::PIXEL_FORMAT_NV12);
+  auto full_frame = CreateTestFrame(
+      kFullCodedSize720p, kFullVisibleRect, kFullNaturalSize,
+      media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
 
   rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
       new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
@@ -500,12 +500,12 @@ TEST(WebRtcVideoFrameAdapterTest,
              base::TimeDelta timestamp) {
             return CreateTestFrame(coded_size, visible_rect, natural_size,
                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                   format);
+                                   format, base::TimeDelta());
           }));
 
-  auto frame_720p = CreateTestFrame(kSize720p, kRect720p, kSize720p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
+  auto frame_720p = CreateTestFrame(
+      kSize720p, kRect720p, kSize720p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
 
   rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
       new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
@@ -550,12 +550,12 @@ TEST(WebRtcVideoFrameAdapterTest, CanApplyCropAndScale) {
   scoped_refptr<MockSharedResources> resources =
       new testing::StrictMock<MockSharedResources>();
 
-  auto frame_720p = CreateTestFrame(kSize720p, kRect720p, kSize720p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
-  auto frame_360p = CreateTestFrame(kSize360p, kRect360p, kSize360p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
+  auto frame_720p = CreateTestFrame(
+      kSize720p, kRect720p, kSize720p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
+  auto frame_360p = CreateTestFrame(
+      kSize360p, kRect360p, kSize360p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
 
   rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
       new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
@@ -613,9 +613,9 @@ TEST(WebRtcVideoFrameAdapterTest, FrameFeedbackSetsRequireMappedFrame) {
   scoped_refptr<WebRtcVideoFrameAdapter::SharedResources> resources =
       base::MakeRefCounted<WebRtcVideoFrameAdapter::SharedResources>(nullptr);
 
-  auto frame_720p = CreateTestFrame(kSize720p, kRect720p, kSize720p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
+  auto frame_720p = CreateTestFrame(
+      kSize720p, kRect720p, kSize720p, media::VideoFrame::STORAGE_OWNED_MEMORY,
+      media::VideoPixelFormat::PIXEL_FORMAT_NV12, base::TimeDelta());
 
   // By default, the feedback is not set to require mapping.
   EXPECT_FALSE(resources->GetFeedback().require_mapped_frame);
@@ -638,118 +638,6 @@ TEST(WebRtcVideoFrameAdapterTest, FrameFeedbackSetsRequireMappedFrame) {
         ->GetMappedFrameBuffer(kNv12);
   }
   EXPECT_TRUE(resources->GetFeedback().require_mapped_frame);
-}
-
-TEST(WebRtcVideoFrameAdapterTest, FrameFeedbackSetsMappedSizesWithScale) {
-  std::vector<webrtc::VideoFrameBuffer::Type> kNv12 = {
-      webrtc::VideoFrameBuffer::Type::kNV12};
-  const gfx::Size kSize720p(1280, 720);
-  const gfx::Rect kRect720p(0, 0, 1280, 720);
-  const gfx::Size kSize360p(640, 360);
-
-  scoped_refptr<WebRtcVideoFrameAdapter::SharedResources> resources =
-      base::MakeRefCounted<WebRtcVideoFrameAdapter::SharedResources>(nullptr);
-
-  auto frame_720p = CreateTestFrame(kSize720p, kRect720p, kSize720p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
-
-  // By default, there is no mapping.
-  EXPECT_THAT(resources->GetFeedback().mapped_sizes, IsEmpty());
-  // Map the buffer at full scale, 720p.
-  {
-    rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
-        new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
-            frame_720p, std::vector<scoped_refptr<media::VideoFrame>>(),
-            resources));
-    multi_buffer->GetMappedFrameBuffer(kNv12);
-  }
-  EXPECT_THAT(resources->GetFeedback().mapped_sizes, ElementsAre(kSize720p));
-  // Each new adapter will override the old feedback value. This time, map the
-  // buffer after scaling down to 360p. The previous mapping should be gone.
-  {
-    rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
-        new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
-            frame_720p, std::vector<scoped_refptr<media::VideoFrame>>(),
-            resources));
-    multi_buffer->Scale(kSize360p.width(), kSize360p.height())
-        ->GetMappedFrameBuffer(kNv12);
-  }
-  EXPECT_THAT(resources->GetFeedback().mapped_sizes, ElementsAre(kSize360p));
-  // Do some scaling, but but never map it.
-  {
-    rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
-        new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
-            frame_720p, std::vector<scoped_refptr<media::VideoFrame>>(),
-            resources));
-    multi_buffer->Scale(kSize360p.width(), kSize360p.height());
-  }
-  EXPECT_THAT(resources->GetFeedback().mapped_sizes, IsEmpty());
-  // Map both 720p and 360p. The 360p mapping is implied by ToI420().
-  {
-    rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
-        new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
-            frame_720p, std::vector<scoped_refptr<media::VideoFrame>>(),
-            resources));
-    multi_buffer->GetMappedFrameBuffer(kNv12);
-    multi_buffer->Scale(kSize360p.width(), kSize360p.height())->ToI420();
-  }
-  EXPECT_THAT(resources->GetFeedback().mapped_sizes,
-              ElementsAre(kSize720p, kSize360p));
-}
-
-TEST(WebRtcVideoFrameAdapterTest,
-     FrameFeedbackSetsMappedSizesWithCropAndScale) {
-  std::vector<webrtc::VideoFrameBuffer::Type> kNv12 = {
-      webrtc::VideoFrameBuffer::Type::kNV12};
-  const gfx::Size kSize720p(1280, 720);
-  const gfx::Rect kRect720p(0, 0, 1280, 720);
-
-  scoped_refptr<WebRtcVideoFrameAdapter::SharedResources> resources =
-      base::MakeRefCounted<WebRtcVideoFrameAdapter::SharedResources>(nullptr);
-
-  auto frame_720p = CreateTestFrame(kSize720p, kRect720p, kSize720p,
-                                    media::VideoFrame::STORAGE_OWNED_MEMORY,
-                                    media::VideoPixelFormat::PIXEL_FORMAT_NV12);
-
-  // Map a cropped section of the 720p buffer. Because the scale is 1:1, the
-  // buffer that gets mapped should be 720p even though the natural size is of
-  // a cropped area.
-  const gfx::Rect kFullScaleCropRect(100, 100, kSize720p.width() - 200,
-                                     kSize720p.height() - 200);
-  {
-    rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
-        new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
-            frame_720p, std::vector<scoped_refptr<media::VideoFrame>>(),
-            resources));
-    multi_buffer
-        ->CropAndScale(kFullScaleCropRect.x(), kFullScaleCropRect.y(),
-                       kFullScaleCropRect.width(), kFullScaleCropRect.height(),
-                       kFullScaleCropRect.width(), kFullScaleCropRect.height())
-        ->GetMappedFrameBuffer(kNv12);
-  }
-  EXPECT_THAT(resources->GetFeedback().mapped_sizes, ElementsAre(kSize720p));
-  // Scale down the cropped area by a factor of 2. The result will be a cropped
-  // subsection of a 360p buffer, so 360p is what should get reported.
-  const int kDownScaleFactor = 2;
-  const gfx::Size kDownScaleBufferSize(kSize720p.width() / kDownScaleFactor,
-                                       kSize720p.height() / kDownScaleFactor);
-  const gfx::Size kDownScaleCropSize(
-      kFullScaleCropRect.width() / kDownScaleFactor,
-      kFullScaleCropRect.height() / kDownScaleFactor);
-  {
-    rtc::scoped_refptr<WebRtcVideoFrameAdapter> multi_buffer(
-        new rtc::RefCountedObject<WebRtcVideoFrameAdapter>(
-            frame_720p, std::vector<scoped_refptr<media::VideoFrame>>(),
-            resources));
-    multi_buffer
-        ->CropAndScale(kFullScaleCropRect.x(), kFullScaleCropRect.y(),
-                       kFullScaleCropRect.width(), kFullScaleCropRect.height(),
-                       kDownScaleCropSize.width(), kDownScaleCropSize.height())
-        ->GetMappedFrameBuffer(kNv12);
-  }
-  EXPECT_THAT(resources->GetFeedback().mapped_sizes,
-              ElementsAre(kDownScaleBufferSize));
 }
 
 }  // namespace blink

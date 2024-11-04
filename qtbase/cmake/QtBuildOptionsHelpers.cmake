@@ -92,11 +92,12 @@ function(qt_internal_force_set_cmake_build_type_if_cmake_default_initialized val
 endfunction()
 
 function(qt_internal_set_cmake_build_type)
-    # When building standalone tests against a multi-config Qt, we want to configure the tests with
+    # When building standalone tests against a multi-config Qt, we want to configure the
+    # tests / examples with
     # the first multi-config configuration, rather than use CMake's default configuration.
     # In the case of Windows, we definitely don't want it to default to Debug, because that causes
     # issues in the CI.
-    if(QT_BUILD_STANDALONE_TESTS AND QT_MULTI_CONFIG_FIRST_CONFIG)
+    if(QT_INTERNAL_BUILD_STANDALONE_PARTS AND QT_MULTI_CONFIG_FIRST_CONFIG)
         qt_internal_force_set_cmake_build_type_if_cmake_default_initialized(
             "${QT_MULTI_CONFIG_FIRST_CONFIG}")
 
@@ -305,8 +306,32 @@ macro(qt_internal_setup_build_examples)
     option(QT_INSTALL_EXAMPLES_SOURCES_BY_DEFAULT
         "Install example sources as part of the default 'install' target" ON)
 
+    # We need a way to force disable building in-tree examples in the CI, so that we instead build
+    # standalone examples. Because the Coin yaml instructions don't allow us to remove
+    # -make examples from from the configure args, we instead read a variable that only Coin sets.
+    if(QT_INTERNAL_CI_NO_BUILD_IN_TREE_EXAMPLES)
+        set(QT_BUILD_EXAMPLES OFF CACHE BOOL "Build Qt examples" FORCE)
+    endif()
+
+    if(QT_BUILD_STANDALONE_EXAMPLES)
+        # BuildInternals might have set it to OFF on initial configuration. So force it to ON when
+        # building standalone examples.
+        set(QT_BUILD_EXAMPLES ON CACHE BOOL "Build Qt examples" FORCE)
+
+        # Also force the examples to be built as part of the default build target.
+        set(QT_BUILD_EXAMPLES_BY_DEFAULT ON CACHE BOOL
+            "Should examples be built as part of the default 'all' target." FORCE)
+    endif()
+
+    option(QT_DEPLOY_MINIMAL_EXAMPLES
+        "Deploy minimal subset of examples to save time and space" OFF)
+
     # FIXME: Support prefix builds as well QTBUG-96232
-    if(QT_WILL_INSTALL)
+    # We don't want to enable EP examples with -debug-and-release because starting with CMake 3.24
+    # ExternalProject_Add ends up creating build rules twice, once for each configuration, in the
+    # same build dir, which ends up causing various issues due to concurrent builds as well as
+    # clobbered CMakeCache.txt and ninja files.
+    if(QT_WILL_INSTALL OR QT_FEATURE_debug_and_release)
         set(_qt_build_examples_as_external OFF)
     else()
         set(_qt_build_examples_as_external ON)

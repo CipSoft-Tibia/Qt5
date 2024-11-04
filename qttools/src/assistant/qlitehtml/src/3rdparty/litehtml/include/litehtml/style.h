@@ -1,41 +1,163 @@
 #ifndef LH_STYLE_H
 #define LH_STYLE_H
 
-#include "attributes.h"
-#include <string>
-
 namespace litehtml
 {
+	enum property_type
+	{
+		prop_type_invalid, // indicates "not found" condition in style::get_property
+		prop_type_inherit, // "inherit" was specified as the value of this property
+
+		prop_type_enum_item,
+		prop_type_enum_item_vector,
+		prop_type_length,
+		prop_type_length_vector,
+		prop_type_number,
+		prop_type_color,
+		prop_type_string,
+		prop_type_string_vector,
+		prop_type_size_vector,
+
+		prop_type_var, // also string, but needs further parsing because of var()
+	};
+
 	class property_value
 	{
 	public:
-		tstring	m_value;
+		property_type	m_type;
 		bool			m_important;
 
-		property_value()
-		{
-			m_important = false;
-		}
-		property_value(const tchar_t* val, bool imp)
-		{
-			m_important = imp;
-			m_value		= val;
-		}
-		property_value(const property_value& val)
-		{
-			m_value		= val.m_value;
-			m_important	= val.m_important;
-		}
+		union {
+			int 			m_enum_item;
+			int_vector		m_enum_item_vector;
+			css_length		m_length;
+			length_vector	m_length_vector;
+			float			m_number;
+			web_color		m_color;
+			string			m_string;
+			string_vector	m_string_vector;
+			size_vector		m_size_vector;
+		};
 
+		property_value()
+			: m_type(prop_type_invalid)
+		{
+		}
+		property_value(bool important, property_type type)
+			: m_type(type), m_important(important)
+		{
+		}
+		property_value(const string& str, bool important, property_type type = prop_type_string)
+			: m_string(str), m_type(type), m_important(important)
+		{
+		}
+		property_value(const string_vector& vec, bool important)
+			: m_string_vector(vec), m_type(prop_type_string_vector), m_important(important)
+		{
+		}
+		property_value(const css_length& length, bool important)
+			: m_length(length), m_type(prop_type_length), m_important(important)
+		{
+		}
+		property_value(const length_vector& vec, bool important)
+			: m_length_vector(vec), m_type(prop_type_length_vector), m_important(important)
+		{
+		}
+		property_value(float number, bool important)
+			: m_number(number), m_type(prop_type_number), m_important(important)
+		{
+		}
+		property_value(int enum_item, bool important)
+			: m_enum_item(enum_item), m_type(prop_type_enum_item), m_important(important)
+		{
+		}
+		property_value(const int_vector& vec, bool important)
+			: m_enum_item_vector(vec), m_type(prop_type_enum_item_vector), m_important(important)
+		{
+		}
+		property_value(web_color color, bool important)
+			: m_color(color), m_type(prop_type_color), m_important(important)
+		{
+		}
+		property_value(const size_vector& vec, bool important)
+			: m_size_vector(vec), m_type(prop_type_size_vector), m_important(important)
+		{
+		}
+		~property_value()
+		{
+			switch (m_type)
+			{
+			case prop_type_string:
+			case prop_type_var:
+				m_string.~string();
+				break;
+			case prop_type_string_vector:
+				m_string_vector.~string_vector();
+				break;
+			case prop_type_length:
+				m_length.~css_length();
+				break;
+			case prop_type_length_vector:
+				m_length_vector.~length_vector();
+				break;
+			case prop_type_enum_item_vector:
+				m_enum_item_vector.~int_vector();
+				break;
+			case prop_type_color:
+				m_color.~web_color();
+				break;
+			case prop_type_size_vector:
+				m_size_vector.~size_vector();
+				break;
+			}
+		}
 		property_value& operator=(const property_value& val)
 		{
-			m_value		= val.m_value;
-			m_important	= val.m_important;
+			this->~property_value();
+
+			switch (val.m_type)
+			{
+			case prop_type_invalid:
+				new(this) property_value();
+				break;
+			case prop_type_inherit:
+				new(this) property_value(val.m_important, val.m_type);
+				break;
+			case prop_type_string:
+			case prop_type_var:
+				new(this) property_value(val.m_string, val.m_important, val.m_type);
+				break;
+			case prop_type_string_vector:
+				new(this) property_value(val.m_string_vector, val.m_important);
+				break;
+			case prop_type_enum_item:
+				new(this) property_value(val.m_enum_item, val.m_important);
+				break;
+			case prop_type_enum_item_vector:
+				new(this) property_value(val.m_enum_item_vector, val.m_important);
+				break;
+			case prop_type_length:
+				new(this) property_value(val.m_length, val.m_important);
+				break;
+			case prop_type_length_vector:
+				new(this) property_value(val.m_length_vector, val.m_important);
+				break;
+			case prop_type_number:
+				new(this) property_value(val.m_number, val.m_important);
+				break;
+			case prop_type_color:
+				new(this) property_value(val.m_color, val.m_important);
+				break;
+			case prop_type_size_vector:
+				new(this) property_value(val.m_size_vector, val.m_important);
+				break;
+			}
+
 			return *this;
 		}
 	};
 
-	typedef std::map<tstring, property_value>	props_map;
+	typedef std::map<string_id, property_value>	props_map;
 
 	class style
 	{
@@ -43,53 +165,48 @@ namespace litehtml
 		typedef std::shared_ptr<style>		ptr;
 		typedef std::vector<style::ptr>		vector;
 	private:
-		props_map			m_properties;
-		static string_map	m_valid_values;
+		props_map							m_properties;
+		static std::map<string_id, string>	m_valid_values;
 	public:
-		style() = default;
-		style(const style& val);
-
-		style& operator=(const style& val)
+		void add(const string& txt, const string& baseurl = "", document_container* container = nullptr)
 		{
-			m_properties = val.m_properties;
-            return *this;
+			parse(txt, baseurl, container);
 		}
 
-		void add(const tchar_t* txt, const tchar_t* baseurl, const element* el)
-		{
-			parse(txt, baseurl, el);
-		}
+		void add_property(string_id name, const string& val, const string& baseurl = "", bool important = false, document_container* container = nullptr);
 
-		void add_property(const tchar_t* name, const tchar_t* val, const tchar_t* baseurl, bool important, const element* el);
+		const property_value& get_property(string_id name) const;
 
-		const tchar_t* get_property(const tchar_t* name) const
-		{
-			if(name)
-			{
-				auto f = m_properties.find(name);
-				if(f != m_properties.end())
-				{
-					return f->second.m_value.c_str();
-				}
-			}
-			return nullptr;
-		}
-
-		void combine(const litehtml::style& src);
+		void combine(const style& src);
 		void clear()
 		{
 			m_properties.clear();
 		}
 
+		void subst_vars(const element* el);
+
 	private:
-		void parse_property(const tstring& txt, const tchar_t* baseurl, const element* el);
-		void parse(const tchar_t* txt, const tchar_t* baseurl, const element* el);
-		void parse_short_border(const tstring& prefix, const tstring& val, bool important);
-		void parse_short_background(const tstring& val, const tchar_t* baseurl, bool important);
-		void parse_short_font(const tstring& val, bool important);
-		static void subst_vars(tstring& str, const element* el);
-		void add_parsed_property(const tstring& name, const tstring& val, bool important);
-		void remove_property(const tstring& name, bool important);
+		void parse_property(const string& txt, const string& baseurl, document_container* container);
+		void parse(const string& txt, const string& baseurl, document_container* container);
+		void parse_background(const string& val, const string& baseurl, bool important, document_container* container);
+		bool parse_one_background(const string& val, document_container* container, background& bg);
+		void parse_background_image(const string& val, const string& baseurl, bool important);
+		// parse comma-separated list of keywords
+		void parse_keyword_comma_list(string_id name, const string& val, bool important);
+		void parse_background_position(const string& val, bool important);
+		bool parse_one_background_position(const string& val, css_length& x, css_length& y);
+		void parse_background_size(const string& val, bool important);
+		bool parse_one_background_size(const string& val, css_size& size);
+		void parse_font(const string& val, bool important);
+		void parse_flex(const string& val, bool important);
+		void parse_align_self(string_id name, const string& val, bool important);
+		static css_length parse_border_width(const string& str);
+		static void parse_two_lengths(const string& str, css_length len[2]);
+		static int parse_four_lengths(const string& str, css_length len[4]);
+		static void subst_vars_(string& str, const element* el);
+
+		void add_parsed_property(string_id name, const property_value& propval);
+		void remove_property(string_id name, bool important);
 	};
 }
 

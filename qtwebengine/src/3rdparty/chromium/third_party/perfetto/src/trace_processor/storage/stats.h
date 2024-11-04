@@ -40,6 +40,7 @@ namespace stats {
   F(entity_state_residency_lookup_failed, kSingle,  kError,    kAnalysis, ""), \
   F(energy_uid_breakdown_missing_values,  kSingle,  kError,    kAnalysis, ""), \
   F(frame_timeline_event_parser_errors,   kSingle,  kInfo,     kAnalysis, ""), \
+  F(frame_timeline_unpaired_end_event,    kSingle,  kInfo,     kAnalysis, ""), \
   F(ftrace_bundle_tokenizer_errors,       kSingle,  kError,    kAnalysis, ""), \
   F(ftrace_cpu_bytes_read_begin,          kIndexed, kInfo,     kTrace,    ""), \
   F(ftrace_cpu_bytes_read_end,            kIndexed, kInfo,     kTrace,    ""), \
@@ -65,7 +66,7 @@ namespace stats {
   F(ftrace_cpu_read_events_begin,         kIndexed, kInfo,     kTrace,    ""), \
   F(ftrace_cpu_read_events_end,           kIndexed, kInfo,     kTrace,    ""), \
   F(ftrace_cpu_read_events_delta,         kIndexed, kInfo,     kTrace,    ""), \
-  F(ftrace_setup_errors,                  kSingle,  kError,    kTrace,         \
+  F(ftrace_setup_errors,                  kSingle,  kInfo,     kTrace,         \
   "One or more atrace/ftrace categories were not found or failed to enable. "  \
   "See ftrace_setup_errors in the metadata table for more details."),          \
   F(fuchsia_non_numeric_counters,         kSingle,  kError,    kAnalysis, ""), \
@@ -245,6 +246,22 @@ namespace stats {
   F(unknown_extension_fields,             kSingle,  kError,    kTrace,         \
       "TraceEvent had unknown extension fields, which might result in "        \
       "missing some arguments. You may need a newer version of trace "         \
+      "processor to parse them."),                                             \
+  F(network_trace_intern_errors,          kSingle,  kInfo,     kAnalysis, ""), \
+  F(network_trace_parse_errors,           kSingle,  kInfo,     kAnalysis, ""), \
+  F(atom_timestamp_missing,               kSingle,  kError,    kTrace,         \
+      "The corresponding timestamp_nanos entry for a StatsdAtom was "          \
+      "missing. Defaulted to inaccurate packet timestamp."),                   \
+  F(atom_unknown,                         kSingle,  kInfo,     kAnalysis,      \
+      "Unknown statsd atom. Atom descriptor may need to be updated"),          \
+  F(winscope_sf_layers_parse_errors,      kSingle,  kInfo,     kAnalysis,      \
+      "SurfaceFlinger layers snapshot has unknown fields, which results in "   \
+      "some arguments missing. You may need a newer version of trace "         \
+      "processor to parse them."),                                             \
+  F(winscope_sf_transactions_parse_errors,                                     \
+                                          kSingle,  kInfo,     kAnalysis,      \
+      "SurfaceFlinger transactions packet has unknown fields, which results "  \
+      "in some arguments missing. You may need a newer version of trace "      \
       "processor to parse them.")
 // clang-format on
 

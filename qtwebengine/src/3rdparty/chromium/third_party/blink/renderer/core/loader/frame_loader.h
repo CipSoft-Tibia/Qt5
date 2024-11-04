@@ -62,7 +62,6 @@ namespace blink {
 
 class DocumentLoader;
 class FetchClientSettingsObject;
-class Frame;
 class LocalFrame;
 class LocalFrameClient;
 class PolicyContainer;
@@ -89,7 +88,8 @@ class CORE_EXPORT FrameLoader final {
   void Init(const DocumentToken& document_token,
             std::unique_ptr<PolicyContainer> policy_container,
             const StorageKey& storage_key,
-            ukm::SourceId document_ukm_source_id);
+            ukm::SourceId document_ukm_source_id,
+            const KURL& creator_base_url);
 
   ResourceRequest ResourceRequestForReload(
       WebFrameLoadType,
@@ -147,8 +147,6 @@ class CORE_EXPORT FrameLoader final {
   void DidExplicitOpen();
 
   String UserAgent() const;
-  String FullUserAgent() const;
-  String ReducedUserAgent() const;
   absl::optional<blink::UserAgentMetadata> UserAgentMetadata() const;
 
   void DispatchDidClearWindowObjectInMainWorld();
@@ -171,9 +169,6 @@ class CORE_EXPORT FrameLoader final {
       const FetchClientSettingsObject* fetch_client_settings_object,
       LocalDOMWindow* window_for_logging,
       mojom::RequestContextFrameType) const;
-
-  Frame* Opener();
-  void SetOpener(LocalFrame*);
 
   void Detach();
 

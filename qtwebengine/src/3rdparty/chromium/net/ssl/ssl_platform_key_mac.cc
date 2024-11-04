@@ -14,12 +14,12 @@
 #include <utility>
 #include <vector>
 
+#include "base/apple/foundation_util.h"
+#include "base/apple/osstatus_logging.h"
+#include "base/apple/scoped_cftyperef.h"
 #include "base/containers/span.h"
 #include "base/logging.h"
-#include "base/mac/foundation_util.h"
-#include "base/mac/mac_logging.h"
 #include "base/mac/mac_util.h"
-#include "base/mac/scoped_cftyperef.h"
 #include "base/memory/scoped_policy.h"
 #include "base/numerics/safe_conversions.h"
 #include "crypto/openssl_util.h"
@@ -106,8 +106,12 @@ class SSLPlatformKeySecKey : public ThreadedSSLPrivateKey::Delegate {
     SecKeyAlgorithm sec_algorithm =
         GetSecKeyAlgorithmWithFallback(algorithm, &pss_fallback);
     if (!sec_algorithm) {
-      NOTREACHED();
-      return ERR_FAILED;
+      // The caller should not request a signature algorithm we do not support.
+      // However, it's possible `key_` previously reported it supported an
+      // algorithm but no longer does. A compromised network service could also
+      // request invalid algorithms, so cleanly fail.
+      LOG(ERROR) << "Unsupported signature algorithm: " << algorithm;
+      return ERR_SSL_CLIENT_AUTH_SIGNATURE_FAILED;
     }
 
     const EVP_MD* md = SSL_get_signature_algorithm_digest(algorithm);
@@ -132,12 +136,12 @@ class SSLPlatformKeySecKey : public ThreadedSSLPrivateKey::Delegate {
       digest = *pss_storage;
     }
 
-    base::ScopedCFTypeRef<CFDataRef> digest_ref(
+    base::apple::ScopedCFTypeRef<CFDataRef> digest_ref(
         CFDataCreate(kCFAllocatorDefault, digest.data(),
                      base::checked_cast<CFIndex>(digest.size())));
 
-    base::ScopedCFTypeRef<CFErrorRef> error;
-    base::ScopedCFTypeRef<CFDataRef> signature_ref(SecKeyCreateSignature(
+    base::apple::ScopedCFTypeRef<CFErrorRef> error;
+    base::apple::ScopedCFTypeRef<CFDataRef> signature_ref(SecKeyCreateSignature(
         key_, sec_algorithm, digest_ref, error.InitializeInto()));
     if (!signature_ref) {
       LOG(ERROR) << error;
@@ -176,7 +180,7 @@ class SSLPlatformKeySecKey : public ThreadedSSLPrivateKey::Delegate {
 
   std::vector<uint16_t> preferences_;
   bssl::UniquePtr<EVP_PKEY> pubkey_;
-  base::ScopedCFTypeRef<SecKeyRef> key_;
+  base::apple::ScopedCFTypeRef<SecKeyRef> key_;
 };
 
 }  // namespace

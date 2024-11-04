@@ -19,20 +19,26 @@
  **************************************************************************/
 #include "vk_layer_config.h"
 
-#include <string.h>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <charconv>
 #include <sys/stat.h>
 
 #include <vulkan/vk_layer.h>
-#include "vk_layer_utils.h"
+#include "utils/vk_layer_utils.h"
 
 #if defined(_WIN32)
 #include <windows.h>
 #include <direct.h>
 #define GetCurrentDir _getcwd
+#elif defined(VK_USE_PLATFORM_ANDROID_KHR)
+#include <sys/system_properties.h>
+#include <unistd.h>
+#include "utils/android_ndk_types.h"
+#define GetCurrentDir getcwd
 #else
 #include <unistd.h>
 #define GetCurrentDir getcwd
@@ -60,6 +66,13 @@ class ConfigFile {
 
 static ConfigFile layer_config;
 
+#if defined(__ANDROID__)
+static void PropCallback(void *cookie, [[maybe_unused]] const char *name, const char *value, [[maybe_unused]] uint32_t serial) {
+    std::string *property = static_cast<std::string *>(cookie);
+    *property = value;
+}
+#endif
+
 std::string GetEnvironment(const char *variable) {
 #if !defined(__ANDROID__) && !defined(_WIN32)
     const char *output = getenv(variable);
@@ -75,21 +88,21 @@ std::string GetEnvironment(const char *variable) {
     delete[] buffer;
     return output;
 #elif defined(__ANDROID__)
-    string command = "getprop " + string(variable);
-    FILE *pPipe = popen(command.c_str(), "r");
-    if (pPipe != nullptr) {
-        char value[256];
-        fgets(value, 256, pPipe);
-        pclose(pPipe);
+    std::string var = variable;
 
-        // Make sure its not an empty line and does not end in a newline
-        const auto str_len = strcspn(value, "\r\n");
-        if (str_len == 0) {
-            return "";
-        } else {
-            value[str_len] = '\0';
-            return string(value);
-        }
+    if (std::string_view{variable} != kForceDefaultCallbackKey) {
+        // kForceDefaultCallbackKey is a special key that needs to be recognized for backwards compatibilty.
+        // For all other strings, prefix the requested variable with "debug.vvl." so that desktop environment settings can be used
+        // on Android.
+        var = "debug.vvl." + var;
+    }
+
+    const prop_info *prop_info = __system_property_find(var.data());
+
+    if (prop_info) {
+        std::string property;
+        __system_property_read_callback(prop_info, PropCallback, &property);
+        return property;
     } else {
         return "";
     }
@@ -411,23 +424,42 @@ void PrintMessageType(VkFlags vk_flags, char *msg_flags) {
     }
 }
 
-// This catches before dlopen fails if the default Android-26 layers are being used and attempted to be ran on Android 25 or below
-#if defined(__ANDROID__)
-#include "android_ndk_types.h"  // get AHB_VALIDATION_SUPPORT macro
-void __attribute__((constructor)) CheckAndroidVersion();
-void CheckAndroidVersion() {
-#ifdef AHB_VALIDATION_SUPPORT
-    string version_env = GetEnvironment("ro.build.version.sdk");
-    int target_version = atoi(version_env.c_str());
+#ifdef VK_USE_PLATFORM_ANDROID_KHR
 
-    // atoi returns 0 if GetEnvironment fails and don't want false positive errors
-    if ((target_version != 0) && (target_version < 26)) {
-        LOGCONSOLE(
-            "ERROR - Targeted Android version is %d and needs to be 26 or above. Please read "
-            "https://github.com/KhronosGroup/Vulkan-ValidationLayers/blob/main/BUILD.md for how to build the Validation Layers "
-            "for Android 25 and below",
-            target_version);
+// Require at least NDK 20 to build Validation Layers. Makes everything simpler to just have people building the layers to use a
+// recent (over 2 years old) version of the NDK.
+//
+// This avoids issues with older NDKs which complicate correct CMake builds:
+// Example:
+//
+// The NDK toolchain file in r23 contains a bug which means CMAKE_ANDROID_EXCEPTIONS might not be set correctly in some
+// circumstances, if not set directly by the developer.
+#if __NDK_MAJOR__ < 25
+#error "Validation Layers require at least NDK r20 or greater to build"
+#endif
+
+// This catches before dlopen fails if the default Android-26 layers are being used and attempted to be ran on Android 25 or below
+void __attribute__((constructor)) CheckAndroidVersion() {
+    const std::string version = GetEnvironment("ro.build.version.sdk");
+
+    if (version.empty()) {
+        return;
     }
-#endif  // AHB_VALIDATION_SUPPORT
+
+    constexpr uint32_t target_android_api = 26;
+    constexpr uint32_t android_api = __ANDROID_API__;
+
+    static_assert(android_api >= target_android_api, "Vulkan-ValidationLayers is not supported on Android 25 and below");
+
+    uint32_t queried_version{};
+
+    if (std::from_chars(version.data(), version.data() + version.size(), queried_version).ec != std::errc()) {
+        return;
+    }
+
+    if (queried_version < target_android_api) {
+        LOGCONSOLE("ERROR - Android version is %d and needs to be 26 or above.", queried_version);
+    }
 }
-#endif  // defined(__ANDROID__)
+
+#endif

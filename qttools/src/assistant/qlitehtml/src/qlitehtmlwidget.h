@@ -36,6 +36,7 @@ public:
 
     void setDefaultFont(const QFont &font);
     QFont defaultFont() const;
+    void setAntialias(bool on);
 
     void scrollToAnchor(const QString &name);
 

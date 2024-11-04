@@ -3,7 +3,7 @@
         "Id": "material_symbols_and_icons",
         "Name": "Material Symbols and Icons",
         "QDocModule": "qtpositioning",
-        "QtUsage": "Used in the \"SatelliteInfo\" example",
+        "QtUsage": "Used in the \"Satellite Info\" example",
         "QtParts": [ "examples" ],
         "Description": "Material Symbols and Icons",
         "Homepage": "https://fonts.google.com/icons",

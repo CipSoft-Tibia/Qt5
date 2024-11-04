@@ -32,6 +32,7 @@
 #include "third_party/blink/renderer/core/html/canvas/ukm_parameters.h"
 #include "third_party/blink/renderer/core/imagebitmap/image_bitmap.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
+#include "third_party/blink/renderer/core/probe/core_probes.h"
 #include "third_party/blink/renderer/core/workers/dedicated_worker_global_scope.h"
 #include "third_party/blink/renderer/platform/bindings/no_alloc_direct_call_host.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.h"
@@ -82,12 +83,13 @@ OffscreenCanvas::OffscreenCanvas(ExecutionContext* context,
   UpdateMemoryUsage();
 }
 
-OffscreenCanvas* OffscreenCanvas::Create(ExecutionContext* context,
+OffscreenCanvas* OffscreenCanvas::Create(ScriptState* script_state,
                                          unsigned width,
                                          unsigned height) {
   UMA_HISTOGRAM_BOOLEAN("Blink.OffscreenCanvas.NewOffscreenCanvas", true);
   return MakeGarbageCollected<OffscreenCanvas>(
-      context, gfx::Size(ClampTo<int>(width), ClampTo<int>(height)));
+      ExecutionContext::From(script_state),
+      gfx::Size(ClampTo<int>(width), ClampTo<int>(height)));
 }
 
 OffscreenCanvas::~OffscreenCanvas() {
@@ -103,10 +105,10 @@ void OffscreenCanvas::Commit(scoped_refptr<CanvasResource>&& canvas_resource,
 
   base::TimeTicks commit_start_time = base::TimeTicks::Now();
   current_frame_damage_rect_.join(damage_rect);
+  const bool needs_vertical_flip = !canvas_resource->IsOriginTopLeft();
   GetOrCreateResourceDispatcher()->DispatchFrameSync(
       std::move(canvas_resource), commit_start_time, current_frame_damage_rect_,
-      !RenderingContext()->IsOriginTopLeft() /* needs_vertical_flip */,
-      IsOpaque());
+      needs_vertical_flip, IsOpaque());
   current_frame_damage_rect_ = SkIRect::MakeEmpty();
 }
 
@@ -244,13 +246,14 @@ void OffscreenCanvas::RecordIdentifiabilityMetric(
 }
 
 scoped_refptr<Image> OffscreenCanvas::GetSourceImageForCanvas(
+    CanvasResourceProvider::FlushReason reason,
     SourceImageStatus* status,
     const gfx::SizeF& size,
     const AlphaDisposition alpha_disposition) {
   if (!context_) {
     *status = kInvalidSourceImageStatus;
-    sk_sp<SkSurface> surface =
-        SkSurface::MakeRasterN32Premul(size_.width(), size_.height());
+    sk_sp<SkSurface> surface = SkSurfaces::Raster(
+        SkImageInfo::MakeN32Premul(size_.width(), size_.height()));
     return surface ? UnacceleratedStaticBitmapImage::Create(
                          surface->makeImageSnapshot())
                    : nullptr;
@@ -259,7 +262,7 @@ scoped_refptr<Image> OffscreenCanvas::GetSourceImageForCanvas(
     *status = kZeroSizeCanvasSourceImageStatus;
     return nullptr;
   }
-  scoped_refptr<StaticBitmapImage> image = context_->GetImage();
+  scoped_refptr<StaticBitmapImage> image = context_->GetImage(reason);
   if (!image)
     image = CreateTransparentImage(Size());
 
@@ -267,7 +270,8 @@ scoped_refptr<Image> OffscreenCanvas::GetSourceImageForCanvas(
 
   // If the alpha_disposition is already correct, or the image is opaque, this
   // is a no-op.
-  return GetImageWithAlphaDisposition(std::move(image), alpha_disposition);
+  return GetImageWithAlphaDisposition(reason, std::move(image),
+                                      alpha_disposition);
 }
 
 gfx::Size OffscreenCanvas::BitmapSourceSize() const {
@@ -279,8 +283,10 @@ ScriptPromise OffscreenCanvas::CreateImageBitmap(
     absl::optional<gfx::Rect> crop_rect,
     const ImageBitmapOptions* options,
     ExceptionState& exception_state) {
-  if (context_)
-    context_->FinalizeFrame();
+  if (context_) {
+    context_->FinalizeFrame(
+        CanvasResourceProvider::FlushReason::kCreateImageBitmap);
+  }
   return ImageBitmapSource::FulfillImageBitmap(
       script_state,
       IsPaintable()
@@ -303,7 +309,7 @@ CanvasRenderingContext* OffscreenCanvas::GetCanvasRenderingContext(
     return nullptr;
 
   CanvasRenderingContext::CanvasRenderingAPI rendering_api =
-      CanvasRenderingContext::RenderingAPIFromId(id, execution_context);
+      CanvasRenderingContext::RenderingAPIFromId(id);
 
   // Unknown type.
   if (rendering_api == CanvasRenderingContext::CanvasRenderingAPI::kUnknown)
@@ -326,6 +332,10 @@ CanvasRenderingContext* OffscreenCanvas::GetCanvasRenderingContext(
       return nullptr;
     }
   } else {
+    // Tell the debugger about the attempt to create an offscreen
+    // canvas context even if it will fail, to ease debugging.
+    probe::DidCreateOffscreenCanvasContext(this);
+
     CanvasContextCreationAttributesCore recomputed_attributes = attributes;
     if (!allow_high_performance_power_preference_)
       recomputed_attributes.power_preference = "low-power";
@@ -422,45 +432,39 @@ CanvasResourceProvider* OffscreenCanvas::GetOrCreateResourceProvider() {
   gfx::Size surface_size(width(), height());
   const bool can_use_gpu =
       SharedGpuContext::IsGpuCompositingEnabled() &&
-      (IsWebGL() || IsWebGPU() ||
+      (IsWebGL() || IsWebGPU() || IsImageBitmapRenderingContext() ||
        (IsRenderingContext2D() &&
         RuntimeEnabledFeatures::Accelerated2dCanvasEnabled() &&
         !(context_->CreationAttributes().will_read_frequently ==
           CanvasContextCreationAttributesCore::WillReadFrequently::kTrue)));
-  const bool composited_mode =
-      IsWebGPU() ||
-      (IsWebGL() && RuntimeEnabledFeatures::WebGLImageChromiumEnabled()) ||
-      (IsRenderingContext2D() &&
-       RuntimeEnabledFeatures::Canvas2dImageChromiumEnabled());
+  const bool use_shared_image =
+      can_use_gpu ||
+      (HasPlaceholderCanvas() && SharedGpuContext::IsGpuCompositingEnabled());
+  const bool use_scanout =
+      use_shared_image && HasPlaceholderCanvas() &&
+      (IsWebGPU() ||
+       (IsWebGL() && RuntimeEnabledFeatures::WebGLImageChromiumEnabled()) ||
+       (IsRenderingContext2D() &&
+        RuntimeEnabledFeatures::Canvas2dImageChromiumEnabled()));
 
   uint32_t shared_image_usage_flags = gpu::SHARED_IMAGE_USAGE_DISPLAY_READ;
-  if (composited_mode && HasPlaceholderCanvas())
+  if (use_scanout) {
     shared_image_usage_flags |= gpu::SHARED_IMAGE_USAGE_SCANOUT;
+  }
 
   const SkImageInfo resource_info = SkImageInfo::Make(
       SkISize::Make(surface_size.width(), surface_size.height()),
       GetRenderingContextSkColorInfo());
   const cc::PaintFlags::FilterQuality filter_quality = FilterQuality();
-  if (can_use_gpu) {
+  if (use_shared_image) {
     provider = CanvasResourceProvider::CreateSharedImageProvider(
         resource_info, filter_quality,
         CanvasResourceProvider::ShouldInitialize::kCallClear,
-        SharedGpuContext::ContextProviderWrapper(), RasterMode::kGPU,
-        false /*is_origin_top_left*/, shared_image_usage_flags);
-  } else if (HasPlaceholderCanvas() && composited_mode) {
-    // Only try a SoftwareComposited SharedImage if the context has Placeholder
-    // canvas and the composited mode is enabled.
-    provider = CanvasResourceProvider::CreateSharedImageProvider(
-        resource_info, filter_quality,
-        CanvasResourceProvider::ShouldInitialize::kCallClear,
-        SharedGpuContext::ContextProviderWrapper(), RasterMode::kCPU,
-        false /*is_origin_top_left*/, shared_image_usage_flags);
-  }
-
-  if (!provider && HasPlaceholderCanvas()) {
-    // If this context has a Placerholder - which means that we have to display
-    // this resource - and the SharedImage Provider creation above failed, we
-    // try a SharedBitmap Provider before falling back to a Bitmap Provider.
+        SharedGpuContext::ContextProviderWrapper(),
+        can_use_gpu ? RasterMode::kGPU : RasterMode::kCPU,
+        shared_image_usage_flags);
+  } else if (HasPlaceholderCanvas()) {
+    // using the software compositor
     base::WeakPtr<CanvasResourceDispatcher> dispatcher_weakptr =
         GetOrCreateResourceDispatcher()->GetWeakPtr();
     provider = CanvasResourceProvider::CreateSharedBitmapProvider(
@@ -470,8 +474,12 @@ CanvasResourceProvider* OffscreenCanvas::GetOrCreateResourceProvider() {
   }
 
   if (!provider) {
-    // If any of the above Create was able to create a valid provider, a
-    // BitmapProvider will be created here.
+    // Last resort fallback is to use the bitmap provider. Using this
+    // path is normal for software-rendered OffscreenCanvases that have no
+    // placeholder canvas. If there is a placeholder, its content will not be
+    // visible on screen, but at least readbacks will work. Failure to create
+    // another type of resource prover above is a sign that the graphics
+    // pipeline is in a bad state (e.g. gpu process crashed, out of memory)
     provider = CanvasResourceProvider::CreateBitmapProvider(
         resource_info, filter_quality,
         CanvasResourceProvider::ShouldInitialize::kCallClear);
@@ -488,11 +496,6 @@ CanvasResourceProvider* OffscreenCanvas::GetOrCreateResourceProvider() {
     base::UmaHistogramEnumeration("Blink.Canvas.ResourceProviderType",
                                   ResourceProvider()->GetType());
     DidDraw();
-
-    if (needs_matrix_clip_restore_) {
-      needs_matrix_clip_restore_ = false;
-      context_->RestoreCanvasMatrixClipStack(ResourceProvider()->Canvas());
-    }
   }
   return ResourceProvider();
 }
@@ -540,10 +543,10 @@ bool OffscreenCanvas::PushFrame(scoped_refptr<CanvasResource>&& canvas_resource,
   if (current_frame_damage_rect_.isEmpty() || !canvas_resource)
     return false;
   const base::TimeTicks commit_start_time = base::TimeTicks::Now();
+  const bool needs_vertical_flip = !canvas_resource->IsOriginTopLeft();
   GetOrCreateResourceDispatcher()->DispatchFrame(
       std::move(canvas_resource), commit_start_time, current_frame_damage_rect_,
-      !RenderingContext()->IsOriginTopLeft() /* needs_vertical_flip */,
-      IsOpaque());
+      needs_vertical_flip, IsOpaque());
   current_frame_damage_rect_ = SkIRect::MakeEmpty();
   return true;
 }
@@ -636,7 +639,7 @@ size_t OffscreenCanvas::GetMemoryUsage() const {
 void OffscreenCanvas::Trace(Visitor* visitor) const {
   visitor->Trace(context_);
   visitor->Trace(execution_context_);
-  EventTargetWithInlineData::Trace(visitor);
+  EventTarget::Trace(visitor);
 }
 
 }  // namespace blink

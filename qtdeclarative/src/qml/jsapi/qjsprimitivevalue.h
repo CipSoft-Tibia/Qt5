@@ -230,10 +230,14 @@ public:
             return !QJSNumberCoercion::equals(v, 0) && !std::isnan(v);
         }
         case String:    return !asString().isEmpty();
-        default:        Q_UNREACHABLE();
         }
 
+        // GCC 8.x does not treat __builtin_unreachable() as constexpr
+    #if !defined(Q_CC_GNU_ONLY) || (Q_CC_GNU >= 900)
+        Q_UNREACHABLE_RETURN(false);
+    #else
         return false;
+    #endif
     }
 
     constexpr int toInteger() const
@@ -245,10 +249,14 @@ public:
         case Integer:   return asInteger();
         case Double:    return QJSNumberCoercion::toInteger(asDouble());
         case String:    return fromString(asString()).toInteger();
-        default:        Q_UNREACHABLE();
         }
 
+        // GCC 8.x does not treat __builtin_unreachable() as constexpr
+    #if !defined(Q_CC_GNU_ONLY) || (Q_CC_GNU >= 900)
+        Q_UNREACHABLE_RETURN(0);
+    #else
         return 0;
+    #endif
     }
 
     constexpr double toDouble() const
@@ -260,10 +268,14 @@ public:
         case Integer:   return asInteger();
         case Double:    return asDouble();
         case String:    return fromString(asString()).toDouble();
-        default:        Q_UNREACHABLE();
         }
 
+        // GCC 8.x does not treat __builtin_unreachable() as constexpr
+    #if !defined(Q_CC_GNU_ONLY) || (Q_CC_GNU >= 900)
+        Q_UNREACHABLE_RETURN({});
+    #else
         return {};
+    #endif
     }
 
     QString toString() const
@@ -343,11 +355,16 @@ public:
                     return leftInt % rightInt;
                 Q_FALLTHROUGH();
             }
-            default:
+            case Undefined:
+            case Null:
+            case Double:
+            case String:
                 break;
             }
             Q_FALLTHROUGH();
-        default:
+        case Undefined:
+        case Double:
+        case String:
             break;
         }
 
@@ -694,9 +711,18 @@ private:
     {
         switch (type()) {
         case Undefined: return true;
+        case Null:      return false;
+        case Boolean:   return false;
+        case Integer:   return false;
         case Double:    return std::isnan(asDouble());
-        default:        return false;
+        case String:    return false;
         }
+        // GCC 8.x does not treat __builtin_unreachable() as constexpr
+    #if !defined(Q_CC_GNU_ONLY) || (Q_CC_GNU >= 900)
+        Q_UNREACHABLE_RETURN(false);
+    #else
+        return false;
+    #endif
     }
 
     struct QJSPrimitiveValuePrivate
@@ -801,10 +827,10 @@ private:
 
             // GCC 8.x does not treat __builtin_unreachable() as constexpr
         #if !defined(Q_CC_GNU_ONLY) || (Q_CC_GNU >= 900)
-            // NOLINTNEXTLINE(qt-use-unreachable-return): Triggers on Clang, breaking GCC 8
-            Q_UNREACHABLE();
-        #endif
+            Q_UNREACHABLE_RETURN(T());
+        #else
             return T();
+        #endif
         }
 
         constexpr QMetaType metaType() const noexcept {
@@ -825,10 +851,10 @@ private:
 
             // GCC 8.x does not treat __builtin_unreachable() as constexpr
         #if !defined(Q_CC_GNU_ONLY) || (Q_CC_GNU >= 900)
-            // NOLINTNEXTLINE(qt-use-unreachable-return): Triggers on Clang, breaking GCC 8
-            Q_UNREACHABLE();
-        #endif
+            Q_UNREACHABLE_RETURN(QMetaType());
+        #else
             return QMetaType();
+        #endif
         }
 
         constexpr void *data() noexcept {
@@ -848,10 +874,10 @@ private:
 
             // GCC 8.x does not treat __builtin_unreachable() as constexpr
         #if !defined(Q_CC_GNU_ONLY) || (Q_CC_GNU >= 900)
-            // NOLINTNEXTLINE(qt-use-unreachable-return): Triggers on Clang, breaking GCC 8
-            Q_UNREACHABLE();
-        #endif
+            Q_UNREACHABLE_RETURN(nullptr);
+        #else
             return nullptr;
+        #endif
         }
 
         constexpr const void *data() const noexcept {
@@ -871,10 +897,10 @@ private:
 
             // GCC 8.x does not treat __builtin_unreachable() as constexpr
         #if !defined(Q_CC_GNU_ONLY) || (Q_CC_GNU >= 900)
-            // NOLINTNEXTLINE(qt-use-unreachable-return): Triggers on Clang, breaking GCC 8
-            Q_UNREACHABLE();
-        #endif
+            Q_UNREACHABLE_RETURN(nullptr);
+        #else
             return nullptr;
+        #endif
         }
 
     private:
@@ -895,10 +921,14 @@ private:
                 return true;
             case String:
                 return false;
-            default:
-                Q_UNREACHABLE();
             }
+
+            // GCC 8.x does not treat __builtin_unreachable() as constexpr
+        #if !defined(Q_CC_GNU_ONLY) || (Q_CC_GNU >= 900)
+            Q_UNREACHABLE_RETURN(false);
+        #else
             return false;
+        #endif
         }
 
         union {

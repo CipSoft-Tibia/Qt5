@@ -372,17 +372,38 @@ void PostFilter::CopyBordersForOneSuperBlockRow(int row4x4, int sb4x4,
     uint8_t* const start = (for_loop_restoration ? superres_buffer_[plane]
                                                  : frame_buffer_.data(plane)) +
                            row * stride;
-    const int left_border = for_loop_restoration
+#if LIBGAV1_MSAN
+    const int right_padding =
+        (frame_buffer_.stride(plane) >> static_cast<int>(bitdepth_ > 8)) -
+        ((frame_buffer_.left_border(plane) + frame_buffer_.width(plane) +
+          frame_buffer_.right_border(plane)));
+    const int padded_right_border_size =
+        frame_buffer_.right_border(plane) + right_padding;
+    // The optimized loop restoration code may read into the next row's left
+    // border depending on the start of the last superblock and the size of the
+    // right border. This is safe as the post filter is applied after
+    // reconstruction is complete and the threaded implementations do not read
+    // from the left border.
+    const int left_border_overread =
+        (for_loop_restoration && padded_right_border_size < 64)
+            ? 63 - padded_right_border_size
+            : 0;
+    assert(!for_loop_restoration || left_border_overread == 0 ||
+           (frame_buffer_.bottom_border(plane) > 0 &&
+            left_border_overread <= frame_buffer_.left_border(plane)));
+    const int left_border = (for_loop_restoration && left_border_overread == 0)
                                 ? kRestorationHorizontalBorder
                                 : frame_buffer_.left_border(plane);
-#if LIBGAV1_MSAN
     // The optimized loop restoration code will overread the visible frame
     // buffer into the right border. Extend the right boundary further to
     // prevent msan warnings.
     const int right_border = for_loop_restoration
-                                 ? kRestorationHorizontalBorder + 16
+                                 ? std::min(padded_right_border_size, 63)
                                  : frame_buffer_.right_border(plane);
 #else
+    const int left_border = for_loop_restoration
+                                ? kRestorationHorizontalBorder
+                                : frame_buffer_.left_border(plane);
     const int right_border = for_loop_restoration
                                  ? kRestorationHorizontalBorder
                                  : frame_buffer_.right_border(plane);

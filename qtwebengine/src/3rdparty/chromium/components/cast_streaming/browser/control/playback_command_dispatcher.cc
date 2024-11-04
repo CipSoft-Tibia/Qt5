@@ -8,19 +8,78 @@
 #include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
 #include "components/cast_streaming/browser/control/remoting/renderer_rpc_call_translator.h"
-#include "components/cast_streaming/public/rpc_call_message_handler.h"
+#include "media/cast/openscreen/rpc_call_message_handler.h"
 #include "media/mojo/mojom/renderer.mojom.h"
 #include "mojo/public/cpp/bindings/remote.h"
 
 namespace cast_streaming {
+namespace {
+
+bool IsValidAudioCodec(
+    const media::AudioDecoderConfig config,
+    const ReceiverConfig::RemotingConstraints& remoting_constraints) {
+  switch (config.codec()) {
+    // These two are handled outside of the |remoting_constraints|.
+    case media::AudioCodec::kAAC:
+    case media::AudioCodec::kOpus:
+      return true;
+
+    case media::AudioCodec::kMP3:
+      return remoting_constraints.supports_mp3;
+
+    case media::AudioCodec::kVorbis:
+      return remoting_constraints.supports_ogg_vorbis;
+
+    case media::AudioCodec::kFLAC:
+      return remoting_constraints.supports_flac;
+
+    case media::AudioCodec::kMpegHAudio:
+      return remoting_constraints.supports_mpegh;
+
+    case media::AudioCodec::kPCM:
+    case media::AudioCodec::kPCM_MULAW:
+    case media::AudioCodec::kPCM_S16BE:
+    case media::AudioCodec::kPCM_S24BE:
+    case media::AudioCodec::kPCM_ALAW:
+      return remoting_constraints.supports_pcm;
+
+    case media::AudioCodec::kAMR_NB:
+    case media::AudioCodec::kAMR_WB:
+      return remoting_constraints.supports_amr;
+
+    case media::AudioCodec::kGSM_MS:
+      return remoting_constraints.supports_gsm;
+
+    case media::AudioCodec::kEAC3:
+      return remoting_constraints.supports_eac3;
+
+    case media::AudioCodec::kALAC:
+      return remoting_constraints.supports_alac;
+
+    case media::AudioCodec::kAC3:
+      return remoting_constraints.supports_ac3;
+
+    case media::AudioCodec::kDTS:
+    case media::AudioCodec::kDTSXP2:
+    case media::AudioCodec::kDTSE:
+      return remoting_constraints.supports_dts;
+
+    default:
+      return false;
+  }
+}
+
+}  // namespace
 
 PlaybackCommandDispatcher::PlaybackCommandDispatcher(
     scoped_refptr<base::SequencedTaskRunner> task_runner,
     mojo::AssociatedRemote<mojom::RendererController> control_configuration,
-    remoting::RendererRpcCallTranslator::FlushUntilCallback flush_until_cb)
+    remoting::RendererRpcCallTranslator::FlushUntilCallback flush_until_cb,
+    absl::optional<ReceiverConfig::RemotingConstraints> remoting_constraints)
     : RpcInitializationCallHandlerBase(base::BindRepeating(
           &PlaybackCommandDispatcher::SendRemotingRpcMessageToRemote,
           base::Unretained(this))),
+      remoting_constraints_(std::move(remoting_constraints)),
       task_runner_(std::move(task_runner)),
       weak_factory_(this) {
   // Create a muxer using the "real" media::mojom::Renderer instance that
@@ -151,23 +210,23 @@ void PlaybackCommandDispatcher::ProcessRemotingRpcMessageFromRemote(
            << ", handle=" << message->handle();
 
   const bool did_dispatch_as_initialization_call =
-      remoting::DispatchInitializationRpcCall(message.get(), this);
+      media::cast::DispatchInitializationRpcCall(message.get(), this);
   if (did_dispatch_as_initialization_call) {
     return;
   }
 
   const bool did_dispatch_as_renderer_call =
       renderer_call_translator_ &&
-      remoting::DispatchRendererRpcCall(message.get(),
-                                        renderer_call_translator_.get());
+      media::cast::DispatchRendererRpcCall(message.get(),
+                                           renderer_call_translator_.get());
   if (did_dispatch_as_renderer_call) {
     return;
   }
 
   const bool did_dispatch_as_demuxer_stream_callback =
       demuxer_stream_handler_ &&
-      remoting::DispatchDemuxerStreamCBRpcCall(message.get(),
-                                               demuxer_stream_handler_.get());
+      media::cast::DispatchDemuxerStreamCBRpcCall(
+          message.get(), demuxer_stream_handler_.get());
   if (did_dispatch_as_demuxer_stream_callback) {
     return;
   }
@@ -232,11 +291,19 @@ void PlaybackCommandDispatcher::OnRpcAcquireDemuxer(
 
 void PlaybackCommandDispatcher::OnNewAudioConfig(
     media::AudioDecoderConfig config) {
-  DCHECK(streaming_init_info_);
-  DCHECK(streaming_dispatcher_);
+  CHECK(streaming_init_info_);
+  CHECK(streaming_dispatcher_);
+  CHECK(remoting_constraints_);
+
   if (!streaming_init_info_->audio_stream_info) {
     LOG(ERROR) << "Received Audio config for a remoting session where audio is "
                   "not supported";
+    return;
+  }
+
+  if (!IsValidAudioCodec(config, *remoting_constraints_)) {
+    CHECK(renderer_call_translator_);
+    renderer_call_translator_->SendFallbackMessage();
     return;
   }
 

@@ -43,6 +43,9 @@ def blink_class_name(idl_definition):
         # cases.  Plus, we prefer a simple naming rule conformant to the
         # Chromium coding style.  So, we go with this way.
         return "V8Union{}".format("Or".join(idl_definition.member_tokens))
+    elif isinstance(idl_definition, web_idl.AsyncIterator):
+        return "AsyncIterator<{}>".format(
+            blink_class_name(idl_definition.interface))
     elif isinstance(idl_definition, web_idl.SyncIterator):
         return "SyncIterator<{}>".format(
             blink_class_name(idl_definition.interface))
@@ -54,13 +57,16 @@ def v8_bridge_class_name(idl_definition):
     """
     Returns the name of V8-from/to-Blink bridge class.
     """
-    assert isinstance(idl_definition,
-                      (web_idl.CallbackInterface, web_idl.Interface,
-                       web_idl.Namespace, web_idl.SyncIterator))
+    assert isinstance(
+        idl_definition,
+        (web_idl.AsyncIterator, web_idl.CallbackInterface, web_idl.Interface,
+         web_idl.Namespace, web_idl.SyncIterator))
 
     assert idl_definition.identifier[0].isupper()
     # Do not apply |name_style.class_| due to the same reason as
     # |blink_class_name|.
+    if isinstance(idl_definition, web_idl.AsyncIterator):
+        return "V8AsyncIterator{}".format(idl_definition.interface.identifier)
     if isinstance(idl_definition, web_idl.SyncIterator):
         return "V8SyncIterator{}".format(idl_definition.interface.identifier)
     return "V8{}".format(idl_definition.identifier)
@@ -220,6 +226,12 @@ def blink_type_info(idl_type):
         return TypeInfo(cxx_type[real_type.keyword_typename],
                         const_ref_fmt="{}",
                         clear_member_var_fmt="{} = 0")
+
+    if real_type.is_bigint:
+        return TypeInfo("BigInt",
+                        ref_fmt="{}&",
+                        const_ref_fmt="const {}&",
+                        clear_member_var_fmt="{} = BigInt()")
 
     if real_type.is_string:
         return TypeInfo("String",
@@ -420,7 +432,7 @@ def _native_value_tag_impl(idl_type):
     real_type = idl_type.unwrap(typedef=True)
 
     if (real_type.is_boolean or real_type.is_numeric or real_type.is_string
-            or real_type.is_any or real_type.is_object):
+            or real_type.is_any or real_type.is_object or real_type.is_bigint):
         return "IDL{}".format(
             idl_type.type_name_with_extended_attribute_key_values)
 

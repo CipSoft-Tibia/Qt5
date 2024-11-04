@@ -1,20 +1,21 @@
 #ifndef LH_TYPES_H
 #define LH_TYPES_H
 
-#include <stdlib.h>
+#include <cstdlib>
 #include <memory>
 #include <map>
 #include <vector>
+#include <list>
 
 namespace litehtml
 {
 	class document;
 	class element;
 
-	typedef std::map<litehtml::tstring, litehtml::tstring>			string_map;
-	typedef std::vector< std::shared_ptr<litehtml::element> >		elements_vector;
-	typedef std::vector<int>										int_vector;
-	typedef std::vector<litehtml::tstring>							string_vector;
+	typedef std::map<string, string>					string_map;
+	typedef std::list< std::shared_ptr<element> >		elements_list;
+	typedef std::vector<int>							int_vector;
+	typedef std::vector<string>							string_vector;
 
 	const unsigned int font_decoration_none			= 0x00;
 	const unsigned int font_decoration_underline	= 0x01;
@@ -45,10 +46,12 @@ namespace litehtml
 		int		width;
 		int		height;
 
-		size()
+		size(int w, int h) : width(w), height(h)
 		{
-			width	= 0;
-			height	= 0;
+		}
+
+		size() : width(0), height(0)
+		{
 		}
 	};
 
@@ -162,7 +165,7 @@ namespace litehtml
 			x_height		= 0;
 			draw_spaces		= true;
 		}
-		int base_line()	{ return descent; }
+		int base_line() const	{ return descent; }
 	};
 
 	struct font_item
@@ -171,7 +174,7 @@ namespace litehtml
 		font_metrics	metrics;
 	};
 
-	typedef std::map<tstring, font_item>	fonts_map;
+	typedef std::map<string, font_item> fonts_map;
 
 	enum draw_flag
 	{
@@ -182,7 +185,99 @@ namespace litehtml
 		draw_positioned,
 	};
 
-#define  style_display_strings		_t("none;block;inline;inline-block;inline-table;list-item;table;table-caption;table-cell;table-column;table-column-group;table-footer-group;table-header-group;table-row;table-row-group;inline-text")
+	struct containing_block_context
+	{
+		enum cbc_value_type
+		{
+			cbc_value_type_absolute,	// width/height of containing block is defined as absolute value
+			cbc_value_type_percentage,	// width/height of containing block is defined as percentage
+			cbc_value_type_auto,		// width/height of containing block is defined as auto
+			cbc_value_type_none,		// min/max width/height of containing block is defined as none
+		};
+
+		enum cbc_size_mode
+		{
+			size_mode_normal = 0x00,
+			size_mode_exact_width = 0x01,
+			size_mode_exact_height = 0x02,
+			size_mode_content = 0x04,
+		};
+
+		struct typed_int
+		{
+			int 			value;
+			cbc_value_type	type;
+
+			typed_int(int val, cbc_value_type tp)
+			{
+				value = val;
+				type = tp;
+			}
+
+			operator int() const
+			{
+				return value;
+			}
+
+			typed_int& operator=(int val)
+			{
+				value = val;
+				return *this;
+			}
+
+			typed_int& operator=(const typed_int& v)
+			{
+				value = v.value;
+				type = v.type;
+				return *this;
+			}
+		};
+
+		typed_int width;						// width of the containing block
+		typed_int render_width;
+		typed_int min_width;
+		typed_int max_width;
+
+		typed_int height;						// height of the containing block
+		typed_int min_height;
+		typed_int max_height;
+
+		int context_idx;
+		uint32_t size_mode;
+
+		containing_block_context() :
+				width(0, cbc_value_type_auto),
+				render_width(0, cbc_value_type_auto),
+				min_width(0, cbc_value_type_none),
+				max_width(0, cbc_value_type_none),
+				height(0, cbc_value_type_auto),
+				min_height(0, cbc_value_type_none),
+				max_height(0, cbc_value_type_none),
+				context_idx(0),
+				size_mode(size_mode_normal)
+		{}
+
+		containing_block_context new_width(int w, uint32_t _size_mode = size_mode_normal) const
+		{
+			containing_block_context ret = *this;
+			ret.render_width = w - (ret.width - ret.render_width);
+			ret.width = w;
+			ret.size_mode = _size_mode;
+			return ret;
+		}
+
+		containing_block_context new_width_height(int w, int h, uint32_t _size_mode = size_mode_normal) const
+		{
+			containing_block_context ret = *this;
+			ret.render_width = w - (ret.width - ret.render_width);
+			ret.width = w;
+			ret.height = h;
+			ret.size_mode = _size_mode;
+			return ret;
+		}
+	};
+
+#define  style_display_strings		"none;block;inline;inline-block;inline-table;list-item;table;table-caption;table-cell;table-column;table-column-group;table-footer-group;table-header-group;table-row;table-row-group;inline-text;flex;inline-flex"
 
 	enum style_display
 	{
@@ -202,68 +297,68 @@ namespace litehtml
 		display_table_row,
 		display_table_row_group,
 		display_inline_text,
+		display_flex,
+		display_inline_flex,
 	};
 
-	enum style_border
-	{
-		borderNope,
-		borderNone,
-		borderHidden,
-		borderDotted,
-		borderDashed,
-		borderSolid,
-		borderDouble
-	};
-
-#define  font_size_strings		_t("xx-small;x-small;small;medium;large;x-large;xx-large;smaller;larger")
+#define  font_size_strings		"xx-small;x-small;small;medium;large;x-large;xx-large;smaller;larger"
 
 	enum font_size
 	{
-		fontSize_xx_small,
-		fontSize_x_small,
-		fontSize_small,
-		fontSize_medium,
-		fontSize_large,
-		fontSize_x_large,
-		fontSize_xx_large,
-		fontSize_smaller,
-		fontSize_larger,
+		font_size_xx_small,
+		font_size_x_small,
+		font_size_small,
+		font_size_medium,
+		font_size_large,
+		font_size_x_large,
+		font_size_xx_large,
+		font_size_smaller,
+		font_size_larger,
 	};
 
-#define  font_style_strings		_t("normal;italic")
+#define line_height_strings "normal"
+
+	enum line_height
+	{
+		line_height_normal
+	};
+
+#define  font_style_strings		"normal;italic"
 
 	enum font_style
 	{
-		fontStyleNormal,
-		fontStyleItalic
+		font_style_normal,
+		font_style_italic
 	};
 
-#define  font_variant_strings		_t("normal;small-caps")
+#define  font_variant_strings		"normal;small-caps"
 
 	enum font_variant
 	{
 		font_variant_normal,
-		font_variant_italic
+		font_variant_small_caps
 	};
 
-#define  font_weight_strings	_t("normal;bold;bolder;lighter;100;200;300;400;500;600;700")
+#define  font_weight_strings	"normal;bold;bolder;lighter;100;200;300;400;500;600;700;800;900"
 
 	enum font_weight
 	{
-		fontWeightNormal,
-		fontWeightBold,
-		fontWeightBolder,
-		fontWeightLighter,
-		fontWeight100,
-		fontWeight200,
-		fontWeight300,
-		fontWeight400,
-		fontWeight500,
-		fontWeight600,
-		fontWeight700
+		font_weight_normal,
+		font_weight_bold,
+		font_weight_bolder,
+		font_weight_lighter,
+		font_weight_100,
+		font_weight_200,
+		font_weight_300,
+		font_weight_400,
+		font_weight_500,
+		font_weight_600,
+		font_weight_700,
+		font_weight_800,
+		font_weight_900
 	};
 
-#define  list_style_type_strings	_t("none;circle;disc;square;armenian;cjk-ideographic;decimal;decimal-leading-zero;georgian;hebrew;hiragana;hiragana-iroha;katakana;katakana-iroha;lower-alpha;lower-greek;lower-latin;lower-roman;upper-alpha;upper-latin;upper-roman")
+#define  list_style_type_strings	"none;circle;disc;square;armenian;cjk-ideographic;decimal;decimal-leading-zero;georgian;hebrew;hiragana;hiragana-iroha;katakana;katakana-iroha;lower-alpha;lower-greek;lower-latin;lower-roman;upper-alpha;upper-latin;upper-roman"
 
 	enum list_style_type
 	{
@@ -290,7 +385,7 @@ namespace litehtml
 		list_style_type_upper_roman,
 	};
 
-#define  list_style_position_strings	_t("inside;outside")
+#define  list_style_position_strings	"inside;outside"
 
 	enum list_style_position
 	{
@@ -298,7 +393,7 @@ namespace litehtml
 		list_style_position_outside
 	};
 
-#define  vertical_align_strings	_t("baseline;sub;super;top;text-top;middle;bottom;text-bottom")
+#define  vertical_align_strings	"baseline;sub;super;top;text-top;middle;bottom;text-bottom"
 
 	enum vertical_align
 	{
@@ -312,7 +407,7 @@ namespace litehtml
 		va_text_bottom
 	};
 
-#define  border_width_strings	_t("thin;medium;thick")
+#define  border_width_strings	"thin;medium;thick"
 
 	enum border_width
 	{
@@ -321,7 +416,12 @@ namespace litehtml
 		border_width_thick
 	};
 
-#define  border_style_strings	_t("none;hidden;dotted;dashed;solid;double;groove;ridge;inset;outset")
+	const float border_width_thin_value = 1;
+	const float border_width_medium_value = 3;
+	const float border_width_thick_value = 5;
+	const float border_width_values[] = { border_width_thin_value, border_width_medium_value, border_width_thick_value };
+
+#define  border_style_strings	"none;hidden;dotted;dashed;solid;double;groove;ridge;inset;outset"
 
 	enum border_style
 	{
@@ -337,7 +437,7 @@ namespace litehtml
 		border_style_outset
 	};
 
-#define  element_float_strings	_t("none;left;right")
+#define  element_float_strings	"none;left;right"
 
 	enum element_float
 	{
@@ -346,7 +446,7 @@ namespace litehtml
 		float_right
 	};
 
-#define  element_clear_strings	_t("none;left;right;both")
+#define  element_clear_strings	"none;left;right;both"
 
 	enum element_clear
 	{
@@ -356,9 +456,9 @@ namespace litehtml
 		clear_both
 	};
 
-#define  css_units_strings	_t("none;%;in;cm;mm;em;ex;pt;pc;px;dpi;dpcm;vw;vh;vmin;vmax;rem")
+#define  css_units_strings	"none;%;in;cm;mm;em;ex;pt;pc;px;dpi;dpcm;vw;vh;vmin;vmax;rem"
 
-	enum css_units
+	enum css_units : byte
 	{
 		css_units_none,
 		css_units_percentage,
@@ -379,7 +479,7 @@ namespace litehtml
 		css_units_rem,
 	};
 
-#define  background_attachment_strings	_t("scroll;fixed")
+#define  background_attachment_strings	"scroll;fixed"
 
 	enum background_attachment
 	{
@@ -387,7 +487,7 @@ namespace litehtml
 		background_attachment_fixed
 	};
 
-#define  background_repeat_strings	_t("repeat;repeat-x;repeat-y;no-repeat")
+#define  background_repeat_strings	"repeat;repeat-x;repeat-y;no-repeat"
 
 	enum background_repeat
 	{
@@ -397,7 +497,7 @@ namespace litehtml
 		background_repeat_no_repeat
 	};
 
-#define  background_box_strings	_t("border-box;padding-box;content-box")
+#define  background_box_strings	"border-box;padding-box;content-box"
 
 	enum background_box
 	{
@@ -406,7 +506,18 @@ namespace litehtml
 		background_box_content
 	};
 
-#define element_position_strings	_t("static;relative;absolute;fixed")
+#define  background_position_strings	"top;bottom;left;right;center"
+
+	enum background_position
+	{
+		background_position_top,
+		background_position_bottom,
+		background_position_left,
+		background_position_right,
+		background_position_center,
+	};
+
+#define element_position_strings	"static;relative;absolute;fixed"
 
 	enum element_position
 	{
@@ -416,7 +527,7 @@ namespace litehtml
 		element_position_fixed,
 	};
 
-#define text_align_strings		_t("left;right;center;justify")
+#define text_align_strings		"left;right;center;justify"
 
 	enum text_align
 	{
@@ -426,7 +537,7 @@ namespace litehtml
 		text_align_justify
 	};
 
-#define text_transform_strings		_t("none;capitalize;uppercase;lowercase")
+#define text_transform_strings		"none;capitalize;uppercase;lowercase"
 
 	enum text_transform
 	{
@@ -436,7 +547,7 @@ namespace litehtml
 		text_transform_lowercase
 	};
 
-#define white_space_strings		_t("normal;nowrap;pre;pre-line;pre-wrap")
+#define white_space_strings		"normal;nowrap;pre;pre-line;pre-wrap"
 
 	enum white_space
 	{
@@ -447,7 +558,7 @@ namespace litehtml
 		white_space_pre_wrap
 	};
 
-#define overflow_strings		_t("visible;hidden;scroll;auto;no-display;no-content")
+#define overflow_strings		"visible;hidden;scroll;auto;no-display;no-content"
 
 	enum overflow
 	{
@@ -459,7 +570,7 @@ namespace litehtml
 		overflow_no_content
 	};
 
-#define background_size_strings		_t("auto;cover;contain")
+#define background_size_strings		"auto;cover;contain"
 
 	enum background_size
 	{
@@ -468,7 +579,7 @@ namespace litehtml
 		background_size_contain,
 	};
 
-#define visibility_strings			_t("visible;hidden;collapse")
+#define visibility_strings			"visible;hidden;collapse"
 
 	enum visibility
 	{
@@ -477,7 +588,7 @@ namespace litehtml
 		visibility_collapse,
 	};
 
-#define border_collapse_strings		_t("collapse;separate")
+#define border_collapse_strings		"collapse;separate"
 
 	enum border_collapse
 	{
@@ -485,26 +596,7 @@ namespace litehtml
 		border_collapse_separate,
 	};
 
-
-#define pseudo_class_strings		_t("only-child;only-of-type;first-child;first-of-type;last-child;last-of-type;nth-child;nth-of-type;nth-last-child;nth-last-of-type;not;lang")
-
-	enum pseudo_class
-	{
-		pseudo_class_only_child,
-		pseudo_class_only_of_type,
-		pseudo_class_first_child,
-		pseudo_class_first_of_type,
-		pseudo_class_last_child,
-		pseudo_class_last_of_type,
-		pseudo_class_nth_child,
-		pseudo_class_nth_of_type,
-		pseudo_class_nth_last_child,
-		pseudo_class_nth_last_of_type,
-		pseudo_class_not,
-		pseudo_class_lang,
-	};
-
-#define content_property_string		_t("none;normal;open-quote;close-quote;no-open-quote;no-close-quote")
+#define content_property_string		"none;normal;open-quote;close-quote;no-open-quote;no-close-quote"
 
 	enum content_property
 	{
@@ -516,15 +608,16 @@ namespace litehtml
 		content_property_no_close_quote,
 	};
 
+	class render_item;
 
 	struct floated_box
 	{
-		typedef std::vector<floated_box>	vector;
-
-		position		pos;
-		element_float	float_side;
-		element_clear	clear_floats;
-		std::shared_ptr<element>	el;
+		position		                pos;
+		element_float	                float_side;
+		element_clear	                clear_floats;
+		std::shared_ptr<render_item>	el;
+		int								context;
+		int 							min_width;
 
 		floated_box() = default;
 		floated_box(const floated_box& val)
@@ -533,6 +626,8 @@ namespace litehtml
 			float_side = val.float_side;
 			clear_floats = val.clear_floats;
 			el = val.el;
+			context = val.context;
+			min_width = val.min_width;
 		}
 		floated_box& operator=(const floated_box& val)
 		{
@@ -540,6 +635,8 @@ namespace litehtml
 			float_side = val.float_side;
 			clear_floats = val.clear_floats;
 			el = val.el;
+			context = val.context;
+			min_width = val.min_width;
 			return *this;
 		}
 		floated_box(floated_box&& val)
@@ -548,6 +645,8 @@ namespace litehtml
 			float_side = val.float_side;
 			clear_floats = val.clear_floats;
 			el = std::move(val.el);
+			context = val.context;
+			min_width = val.min_width;
 		}
 		void operator=(floated_box&& val)
 		{
@@ -555,6 +654,8 @@ namespace litehtml
 			float_side = val.float_side;
 			clear_floats = val.clear_floats;
 			el = std::move(val.el);
+			context = val.context;
+			min_width = val.min_width;
 		}
 	};
 
@@ -610,7 +711,7 @@ namespace litehtml
 			m_is_default	= true;
 			m_val			= def_val;
 		}
-		bool is_default()
+		bool is_default() const
 		{
 			return m_is_default;
 		}
@@ -620,14 +721,74 @@ namespace litehtml
 			m_is_default	= false;
 			return m_val;
 		}
-		operator T()
+		operator T() const
 		{
 			return m_val;
 		}
 	};
 
+	class baseline
+	{
+	public:
+		enum _baseline_type
+		{
+			baseline_type_none,
+			baseline_type_top,
+			baseline_type_bottom,
+		};
 
-#define media_orientation_strings		_t("portrait;landscape")
+	public:
+		baseline() : m_value(0), m_type(baseline_type_none) {}
+		baseline(int _value, _baseline_type _type) : m_value(_value), m_type(_type) {}
+
+		int value() const				{ return m_value; 	}
+		void value(int _value) 			{ m_value = _value; }
+		_baseline_type type() const		{ return m_type; 	}
+		void type(_baseline_type _type)	{ m_type = _type; 	}
+
+		operator int() const	{ return m_value; 	}
+		baseline& operator=(int _value) { m_value = _value; return *this; }
+
+		void set(int _value, _baseline_type _type)	{ m_value = _value; m_type =_type; }
+		/**
+		 * Get baseline offset from top of element with specified height
+		 * @param height - element height
+		 * @return baseline offset
+		 */
+		int get_offset_from_top(int height) const
+		{
+			if(m_type == baseline_type_top) return m_value;
+			return height - m_value;
+		}
+		/**
+		 * Get baseline offset from bottom of element with specified height
+		 * @param height - element height
+		 * @return baseline offset
+		 */
+		int get_offset_from_bottom(int height) const
+		{
+			if(m_type == baseline_type_bottom) return m_value;
+			return height - m_value;
+		}
+		/**
+		 * Calculate baseline by top and bottom positions of element aligned by baseline == 0
+		 * @param top - top of the aligned element
+		 * @param bottom - bottom of the aligned element
+		 */
+		void calc(int top, int bottom)
+		{
+			if(m_type == baseline_type_top)
+				m_value = -top;
+			else if(m_type == baseline_type_bottom)
+				m_value = bottom;
+		}
+	private:
+		int m_value;
+		_baseline_type m_type;
+	};
+
+
+#define media_orientation_strings		"portrait;landscape"
 
 	enum media_orientation
 	{
@@ -635,7 +796,7 @@ namespace litehtml
 		media_orientation_landscape,
 	};
 
-#define media_feature_strings		_t("none;width;min-width;max-width;height;min-height;max-height;device-width;min-device-width;max-device-width;device-height;min-device-height;max-device-height;orientation;aspect-ratio;min-aspect-ratio;max-aspect-ratio;device-aspect-ratio;min-device-aspect-ratio;max-device-aspect-ratio;color;min-color;max-color;color-index;min-color-index;max-color-index;monochrome;min-monochrome;max-monochrome;resolution;min-resolution;max-resolution")
+#define media_feature_strings		"none;width;min-width;max-width;height;min-height;max-height;device-width;min-device-width;max-device-width;device-height;min-device-height;max-device-height;orientation;aspect-ratio;min-aspect-ratio;max-aspect-ratio;device-aspect-ratio;min-device-aspect-ratio;max-device-aspect-ratio;color;min-color;max-color;color-index;min-color-index;max-color-index;monochrome;min-monochrome;max-monochrome;resolution;min-resolution;max-resolution"
 
 	enum media_feature
 	{
@@ -684,7 +845,7 @@ namespace litehtml
 		media_feature_max_resolution,
 	};
 
-#define box_sizing_strings		_t("content-box;border-box")
+#define box_sizing_strings		"content-box;border-box"
 
 	enum box_sizing
 	{
@@ -693,7 +854,7 @@ namespace litehtml
 	};
 
 
-#define media_type_strings		_t("none;all;screen;print;braille;embossed;handheld;projection;speech;tty;tv")
+#define media_type_strings		"none;all;screen;print;braille;embossed;handheld;projection;speech;tty;tv"
 
 	enum media_type
 	{
@@ -722,19 +883,19 @@ namespace litehtml
 		int			monochrome;		// The number of bits per pixel in a monochrome frame buffer. If the device is not a monochrome device, the output device value will be 0.
 		int			resolution;		// The resolution of the output device (in DPI)
 
-        media_features()
-        {
-            type = media_type::media_type_none,
-            width =0;
-            height = 0;
-            device_width = 0;
-            device_height = 0;
-            color = 0;
-            color_index = 0;
-            monochrome = 0;
-            resolution = 0;
-        }
-    };
+		media_features()
+		{
+			type = media_type::media_type_none,
+			width =0;
+			height = 0;
+			device_width = 0;
+			device_height = 0;
+			color = 0;
+			color_index = 0;
+			monochrome = 0;
+			resolution = 0;
+		}
+	};
 
 	enum render_type
 	{
@@ -744,7 +905,96 @@ namespace litehtml
 	};
 
 	// List of the Void Elements (can't have any contents)
-	const litehtml::tchar_t* const void_elements = _t("area;base;br;col;command;embed;hr;img;input;keygen;link;meta;param;source;track;wbr");
+	const char* const void_elements = "area;base;br;col;command;embed;hr;img;input;keygen;link;meta;param;source;track;wbr";
+
+#define flex_direction_strings		"row;row-reverse;column;column-reverse"
+
+	enum flex_direction
+	{
+		flex_direction_row,
+		flex_direction_row_reverse,
+		flex_direction_column,
+		flex_direction_column_reverse
+	};
+
+#define flex_wrap_strings		"nowrap;wrap;wrap-reverse"
+
+	enum flex_wrap
+	{
+		flex_wrap_nowrap,
+		flex_wrap_wrap,
+		flex_wrap_wrap_reverse
+	};
+
+#define flex_justify_content_strings		"normal;flex-start;flex-end;center;space-between;space-around;start;end;left;right;space-evenly;stretch"
+
+	enum flex_justify_content
+	{
+		flex_justify_content_normal,
+		flex_justify_content_flex_start,
+		flex_justify_content_flex_end,
+		flex_justify_content_center,
+		flex_justify_content_space_between,
+		flex_justify_content_space_around,
+		flex_justify_content_start,
+		flex_justify_content_end,
+		flex_justify_content_left,
+		flex_justify_content_right,
+		flex_justify_content_space_evenly,
+		flex_justify_content_stretch,
+	};
+
+#define flex_align_items_strings		"normal;flex-start;flex-end;center;start;end;baseline;stretch;auto"
+
+	enum flex_align_items
+	{
+		flex_align_items_flex_normal,
+		flex_align_items_flex_start,
+		flex_align_items_flex_end,
+		flex_align_items_center,
+		flex_align_items_start,
+		flex_align_items_end,
+		flex_align_items_baseline,
+		flex_align_items_stretch,
+		flex_align_items_auto, // used for align-self property only
+		flex_align_items_first = 0x100,
+		flex_align_items_last = 0x200,
+		flex_align_items_unsafe = 0x400,
+		flex_align_items_safe  = 0x800,
+	};
+
+#define flex_align_content_strings		"flex-start;start;flex-end;end;center;space-between;space-around;stretch"
+
+	enum flex_align_content
+	{
+		flex_align_content_flex_start,
+		flex_align_content_start,
+		flex_align_content_flex_end,
+		flex_align_content_end,
+		flex_align_content_center,
+		flex_align_content_space_between,
+		flex_align_content_space_around,
+		flex_align_content_stretch
+	};
+
+#define flex_basis_strings		"auto;content;fit-content;min-content;max-content"
+
+	enum flex_basis
+	{
+		flex_basis_auto,
+		flex_basis_content,
+		flex_basis_fit_content,
+		flex_basis_min_content,
+		flex_basis_max_content,
+	};
+
+#define caption_side_strings		"top;bottom"
+
+	enum caption_side
+	{
+		caption_side_top,
+		caption_side_bottom
+	};
 }
 
 #endif  // LH_TYPES_H

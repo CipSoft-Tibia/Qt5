@@ -23,6 +23,8 @@
 #include "perfetto/ext/base/scoped_file.h"
 #include "perfetto/ext/base/unix_socket.h"
 #include "perfetto/ext/tracing/core/basic_types.h"
+#include "perfetto/ext/tracing/core/tracing_service.h"
+#include "perfetto/ext/tracing/ipc/default_socket.h"
 
 namespace perfetto {
 namespace base {
@@ -33,8 +35,6 @@ namespace ipc {
 class Host;
 }  // namespace ipc
 
-class TracingService;
-
 // Creates an instance of the service (business logic + UNIX socket transport).
 // Exposed to:
 //   The code in the tracing client that will host the service e.g., traced.
@@ -42,12 +42,21 @@ class TracingService;
 //   src/tracing/ipc/service/service_ipc_host_impl.cc
 class PERFETTO_EXPORT_COMPONENT ServiceIPCHost {
  public:
-  static std::unique_ptr<ServiceIPCHost> CreateInstance(base::TaskRunner*);
+  static std::unique_ptr<ServiceIPCHost> CreateInstance(
+      base::TaskRunner*,
+      TracingService::InitOpts = {});
   virtual ~ServiceIPCHost();
 
+  // The overload to wrap the multi-value producer socket name in the
+  // single-value variant for compatibility in tests.
+  bool Start(const char* producer_socket_name,
+             const char* consumer_socket_name) {
+    return Start(TokenizeProducerSockets(producer_socket_name),
+                 consumer_socket_name);
+  }
   // Start listening on the Producer & Consumer ports. Returns false in case of
   // failure (e.g., something else is listening on |socket_name|).
-  virtual bool Start(const char* producer_socket_name,
+  virtual bool Start(const std::vector<std::string>& producer_socket_names,
                      const char* consumer_socket_name) = 0;
 
   // Like the above, but takes two file descriptors to already bound sockets.

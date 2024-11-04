@@ -18,6 +18,8 @@
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "private/qaction_widgets_p.h"
 
+#include <QtCore/qpointer.h>
+
 QT_REQUIRE_CONFIG(action);
 
 QT_BEGIN_NAMESPACE
@@ -32,7 +34,7 @@ public:
     uint defaultWidgetInUse : 1;
     uint autoCreated : 1; // created by QToolBar::addWidget and the like
 
-    inline void _q_widgetDestroyed(QObject *o) {
+    inline void widgetDestroyed(QObject *o) {
         createdWidgets.removeAll(static_cast<QWidget *>(o));
     }
 };

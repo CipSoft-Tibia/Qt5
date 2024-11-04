@@ -710,38 +710,58 @@ bool QImageData::checkForAlphaPixels() const
                             The unused bits are always zero.
     \value Format_ARGB4444_Premultiplied  The image is stored using a
                             premultiplied 16-bit ARGB format (4-4-4-4).
-    \value Format_RGBX8888   The image is stored using a 32-bit byte-ordered RGB(x) format (8-8-8-8).
-                             This is the same as the Format_RGBA8888 except alpha must always be 255. (added in Qt 5.2)
-    \value Format_RGBA8888   The image is stored using a 32-bit byte-ordered RGBA format (8-8-8-8).
+    \value [since 5.2]
+           Format_RGBX8888   The image is stored using a 32-bit byte-ordered RGB(x) format (8-8-8-8).
+                             This is the same as the Format_RGBA8888 except alpha must always be 255.
+    \value [since 5.2]
+           Format_RGBA8888   The image is stored using a 32-bit byte-ordered RGBA format (8-8-8-8).
                              Unlike ARGB32 this is a byte-ordered format, which means the 32bit
                              encoding differs between big endian and little endian architectures,
                              being respectively (0xRRGGBBAA) and (0xAABBGGRR). The order of the colors
-                             is the same on any architecture if read as bytes 0xRR,0xGG,0xBB,0xAA. (added in Qt 5.2)
-    \value Format_RGBA8888_Premultiplied    The image is stored using a
-                            premultiplied 32-bit byte-ordered RGBA format (8-8-8-8). (added in Qt 5.2)
-    \value Format_BGR30      The image is stored using a 32-bit BGR format (x-10-10-10). (added in Qt 5.4)
-    \value Format_A2BGR30_Premultiplied    The image is stored using a 32-bit premultiplied ABGR format (2-10-10-10). (added in Qt 5.4)
-    \value Format_RGB30      The image is stored using a 32-bit RGB format (x-10-10-10). (added in Qt 5.4)
-    \value Format_A2RGB30_Premultiplied    The image is stored using a 32-bit premultiplied ARGB format (2-10-10-10). (added in Qt 5.4)
-    \value Format_Alpha8     The image is stored using an 8-bit alpha only format. (added in Qt 5.5)
-    \value Format_Grayscale8 The image is stored using an 8-bit grayscale format. (added in Qt 5.5)
-    \value Format_Grayscale16 The image is stored using an 16-bit grayscale format. (added in Qt 5.13)
-    \value Format_RGBX64     The image is stored using a 64-bit halfword-ordered RGB(x) format (16-16-16-16).
-                             This is the same as the Format_RGBA64 except alpha must always be 65535. (added in Qt 5.12)
-    \value Format_RGBA64     The image is stored using a 64-bit halfword-ordered RGBA format (16-16-16-16). (added in Qt 5.12)
-    \value Format_RGBA64_Premultiplied    The image is stored using a premultiplied 64-bit halfword-ordered
-                             RGBA format (16-16-16-16). (added in Qt 5.12)
-    \value Format_BGR888     The image is stored using a 24-bit BGR format. (added in Qt 5.14)
-    \value Format_RGBX16FPx4 The image is stored using a 4 16-bit halfword floating point RGBx format (16FP-16FP-16FP-16FP).
-                             This is the same as the Format_RGBA16FPx4 except alpha must always be 1.0. (added in Qt 6.2)
-    \value Format_RGBA16FPx4 The image is stored using a 4 16-bit halfword floating point RGBA format (16FP-16FP-16FP-16FP). (added in Qt 6.2)
-    \value Format_RGBA16FPx4_Premultiplied    The image is stored using a premultiplied 4 16-bit halfword floating point
-                             RGBA format (16FP-16FP-16FP-16FP). (added in Qt 6.2)
-    \value Format_RGBX32FPx4 The image is stored using a 4 32-bit floating point RGBx format (32FP-32FP-32FP-32FP).
-                             This is the same as the Format_RGBA32FPx4 except alpha must always be 1.0. (added in Qt 6.2)
-    \value Format_RGBA32FPx4 The image is stored using a 4 32-bit floating point RGBA format (32FP-32FP-32FP-32FP). (added in Qt 6.2)
-    \value Format_RGBA32FPx4_Premultiplied    The image is stored using a premultiplied 4 32-bit floating point
-                             RGBA format (32FP-32FP-32FP-32FP). (added in Qt 6.2)
+                             is the same on any architecture if read as bytes 0xRR,0xGG,0xBB,0xAA.
+    \value [since 5.2]
+           Format_RGBA8888_Premultiplied    The image is stored using a
+                            premultiplied 32-bit byte-ordered RGBA format (8-8-8-8).
+    \value [since 5.4]
+           Format_BGR30      The image is stored using a 32-bit BGR format (x-10-10-10).
+    \value [since 5.4]
+           Format_A2BGR30_Premultiplied    The image is stored using a 32-bit premultiplied ABGR format (2-10-10-10).
+    \value [since 5.4]
+           Format_RGB30      The image is stored using a 32-bit RGB format (x-10-10-10).
+    \value [since 5.4]
+           Format_A2RGB30_Premultiplied    The image is stored using a 32-bit premultiplied ARGB format (2-10-10-10).
+    \value [since 5.5]
+           Format_Alpha8     The image is stored using an 8-bit alpha only format.
+    \value [since 5.5]
+           Format_Grayscale8 The image is stored using an 8-bit grayscale format.
+    \value [since 5.13]
+           Format_Grayscale16 The image is stored using an 16-bit grayscale format.
+    \value [since 5.12]
+           Format_RGBX64     The image is stored using a 64-bit halfword-ordered RGB(x) format (16-16-16-16).
+                             This is the same as the Format_RGBA64 except alpha must always be 65535.
+    \value [since 5.12]
+           Format_RGBA64     The image is stored using a 64-bit halfword-ordered RGBA format (16-16-16-16).
+    \value [since 5.12]
+           Format_RGBA64_Premultiplied    The image is stored using a premultiplied 64-bit halfword-ordered
+                             RGBA format (16-16-16-16).
+    \value [since 5.14]
+           Format_BGR888     The image is stored using a 24-bit BGR format.
+    \value [since 6.2]
+           Format_RGBX16FPx4 The image is stored using a four 16-bit halfword floating point RGBx format (16FP-16FP-16FP-16FP).
+                             This is the same as the Format_RGBA16FPx4 except alpha must always be 1.0.
+    \value [since 6.2]
+           Format_RGBA16FPx4 The image is stored using a four 16-bit halfword floating point RGBA format (16FP-16FP-16FP-16FP).
+    \value [since 6.2]
+           Format_RGBA16FPx4_Premultiplied    The image is stored using a premultiplied four 16-bit halfword floating point
+                             RGBA format (16FP-16FP-16FP-16FP).
+    \value [since 6.2]
+           Format_RGBX32FPx4 The image is stored using a four 32-bit floating point RGBx format (32FP-32FP-32FP-32FP).
+                             This is the same as the Format_RGBA32FPx4 except alpha must always be 1.0.
+    \value [since 6.2]
+           Format_RGBA32FPx4 The image is stored using a four 32-bit floating point RGBA format (32FP-32FP-32FP-32FP).
+    \value [since 6.2]
+           Format_RGBA32FPx4_Premultiplied    The image is stored using a premultiplied four 32-bit floating point
+                             RGBA format (32FP-32FP-32FP-32FP).
 
     \note Drawing into a QImage with QImage::Format_Indexed8 is not
     supported.
@@ -1147,21 +1167,11 @@ static void copyPhysicalMetadata(QImageData *dst, const QImageData *src)
 
 static void copyMetadata(QImageData *dst, const QImageData *src)
 {
-    // Doesn't copy colortable and alpha_clut, or offset.
+    // Doesn't copy colortable and alpha_clut.
     copyPhysicalMetadata(dst, src);
     dst->text = src->text;
+    dst->offset = src->offset;
     dst->colorSpace = src->colorSpace;
-}
-
-static void copyMetadata(QImage *dst, const QImage &src)
-{
-    dst->setDotsPerMeterX(src.dotsPerMeterX());
-    dst->setDotsPerMeterY(src.dotsPerMeterY());
-    dst->setDevicePixelRatio(src.devicePixelRatio());
-    const auto textKeys = src.textKeys();
-    for (const auto &key: textKeys)
-        dst->setText(key, src.text(key));
-
 }
 
 /*!
@@ -1214,7 +1224,6 @@ QImage Q_TRACE_INSTRUMENT(qtgui) QImage::copy(const QRect& r) const
         } else
             memcpy(image.bits(), bits(), d->nbytes);
         image.d->colortable = d->colortable;
-        image.d->offset = d->offset;
         image.d->has_alpha_clut = d->has_alpha_clut;
         copyMetadata(image.d, d);
         return image;
@@ -1303,7 +1312,6 @@ QImage Q_TRACE_INSTRUMENT(qtgui) QImage::copy(const QRect& r) const
     }
 
     copyMetadata(image.d, d);
-    image.d->offset = offset();
     image.d->has_alpha_clut = d->has_alpha_clut;
     return image;
 }
@@ -2203,7 +2211,6 @@ QImage QImage::convertToFormat_helper(Format format, Qt::ImageConversionFlags fl
 
         QIMAGE_SANITYCHECK_MEMORY(image);
 
-        image.d->offset = offset();
         copyMetadata(image.d, d);
 
         converter(image.d, d, flags);
@@ -4693,7 +4700,7 @@ static QImage rotated90(const QImage &image)
     QImage out(image.height(), image.width(), image.format());
     if (out.isNull())
         return out;
-    copyMetadata(&out, image);
+    copyMetadata(QImageData::get(out), QImageData::get(image));
     if (image.colorCount() > 0)
         out.setColorTable(image.colorTable());
     int w = image.width();
@@ -4723,7 +4730,7 @@ static QImage rotated180(const QImage &image)
     QImage out(image.width(), image.height(), image.format());
     if (out.isNull())
         return out;
-    copyMetadata(&out, image);
+    copyMetadata(QImageData::get(out), QImageData::get(image));
     if (image.colorCount() > 0)
         out.setColorTable(image.colorTable());
     int w = image.width();
@@ -4737,7 +4744,7 @@ static QImage rotated270(const QImage &image)
     QImage out(image.height(), image.width(), image.format());
     if (out.isNull())
         return out;
-    copyMetadata(&out, image);
+    copyMetadata(QImageData::get(out), QImageData::get(image));
     if (image.colorCount() > 0)
         out.setColorTable(image.colorTable());
     int w = image.width();
@@ -5781,8 +5788,7 @@ QMap<QString, QString> qt_getImageText(const QImage &image, const QString &descr
 QMap<QString, QString> qt_getImageTextFromDescription(const QString &description)
 {
     QMap<QString, QString> text;
-    const auto pairs = QStringView{description}.split(u"\n\n");
-    for (const auto &pair : pairs) {
+    for (const auto &pair : QStringView{description}.tokenize(u"\n\n")) {
         int index = pair.indexOf(u':');
         if (index >= 0 && pair.indexOf(u' ') < index) {
             if (!pair.trimmed().isEmpty())

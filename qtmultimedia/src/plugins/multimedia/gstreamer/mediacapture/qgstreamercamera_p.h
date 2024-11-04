@@ -15,17 +15,25 @@
 // We mean it.
 //
 
-#include <QHash>
 #include <private/qplatformcamera_p.h>
 #include <private/qmultimediautils_p.h>
-#include "qgstreamermediacapture_p.h"
-#include <qgst_p.h>
+
+#include <mediacapture/qgstreamermediacapture_p.h>
+#include <common/qgst_p.h>
+#include <common/qgstpipeline_p.h>
 
 QT_BEGIN_NAMESPACE
 
-class QGstreamerCamera : public QPlatformCamera
+class QGstreamerCameraBase : public QPlatformCamera
 {
-    Q_OBJECT
+public:
+    using QPlatformCamera::QPlatformCamera;
+
+    virtual QGstElement gstElement() const = 0;
+};
+
+class QGstreamerCamera : public QGstreamerCameraBase
+{
 public:
     static QMaybe<QPlatformCamera *> create(QCamera *camera);
 
@@ -37,7 +45,7 @@ public:
     void setCamera(const QCameraDevice &camera) override;
     bool setCameraFormat(const QCameraFormat &format) override;
 
-    QGstElement gstElement() const { return QGstElement(gstCameraBin.element()); }
+    QGstElement gstElement() const override { return gstCameraBin; }
 #if QT_CONFIG(gstreamer_photography)
     GstPhotography *photography() const;
 #endif
@@ -62,8 +70,7 @@ public:
     void setColorTemperature(int temperature) override;
 
 private:
-    QGstreamerCamera(QGstElement videotestsrc, QGstElement capsFilter, QGstElement videoconvert,
-                     QGstElement videoscale, QCamera *camera);
+    QGstreamerCamera(QCamera *camera);
 
     void updateCameraProperties();
 
@@ -120,6 +127,24 @@ private:
 
     bool m_active = false;
     QString m_v4l2DevicePath;
+};
+
+class QGstreamerCustomCamera : public QGstreamerCameraBase
+{
+public:
+    explicit QGstreamerCustomCamera(QCamera *);
+    explicit QGstreamerCustomCamera(QCamera *, QGstElement element);
+
+    QGstElement gstElement() const override { return gstCamera; }
+    void setCamera(const QCameraDevice &) override;
+
+    bool isActive() const override;
+    void setActive(bool) override;
+
+private:
+    QGstElement gstCamera;
+    bool m_active{};
+    const bool m_userProvidedGstElement;
 };
 
 QT_END_NAMESPACE

@@ -20,12 +20,13 @@
 #include "aom_dsp/aom_dsp_common.h"
 #include "aom_dsp/flow_estimation/corner_detect.h"
 #include "aom_mem/aom_mem.h"
+#include "av1/common/common.h"
 
 #define FAST_BARRIER 18
 
-size_t av1_get_corner_list_size() { return sizeof(CornerList); }
+size_t av1_get_corner_list_size(void) { return sizeof(CornerList); }
 
-CornerList *av1_alloc_corner_list() {
+CornerList *av1_alloc_corner_list(void) {
   CornerList *corners = (CornerList *)aom_calloc(1, sizeof(CornerList));
   if (!corners) {
     return NULL;
@@ -38,24 +39,63 @@ CornerList *av1_alloc_corner_list() {
   return corners;
 }
 
-void compute_corner_list(const ImagePyramid *pyr, CornerList *corners) {
+static void compute_corner_list(const ImagePyramid *pyr, CornerList *corners) {
   const uint8_t *buf = pyr->layers[0].buffer;
   int width = pyr->layers[0].width;
   int height = pyr->layers[0].height;
   int stride = pyr->layers[0].stride;
 
+  int *scores = NULL;
   int num_corners;
-  xy *const frm_corners_xy = aom_fast9_detect_nonmax(
-      buf, width, height, stride, FAST_BARRIER, &num_corners);
-  num_corners = AOMMIN(num_corners, MAX_CORNERS);
-  if (num_corners > 0 && frm_corners_xy) {
-    memcpy(corners->corners, frm_corners_xy,
-           sizeof(*frm_corners_xy) * num_corners);
+  xy *const frame_corners_xy = aom_fast9_detect_nonmax(
+      buf, width, height, stride, FAST_BARRIER, &scores, &num_corners);
+
+  if (num_corners <= 0) {
+    // Some error occured, so no corners are available
+    corners->num_corners = 0;
+  } else if (num_corners <= MAX_CORNERS) {
+    // Use all detected corners
+    memcpy(corners->corners, frame_corners_xy,
+           sizeof(*frame_corners_xy) * num_corners);
     corners->num_corners = num_corners;
   } else {
-    corners->num_corners = 0;
+    // There are more than MAX_CORNERS corners avilable, so pick out a subset
+    // of the sharpest corners, as these will be the most useful for flow
+    // estimation
+    int histogram[256];
+    av1_zero(histogram);
+    for (int i = 0; i < num_corners; i++) {
+      assert(FAST_BARRIER <= scores[i] && scores[i] <= 255);
+      histogram[scores[i]] += 1;
+    }
+
+    int threshold = -1;
+    int found_corners = 0;
+    for (int bucket = 255; bucket >= 0; bucket--) {
+      if (found_corners + histogram[bucket] > MAX_CORNERS) {
+        // Set threshold here
+        threshold = bucket;
+        break;
+      }
+      found_corners += histogram[bucket];
+    }
+    assert(threshold != -1 && "Failed to select a valid threshold");
+
+    int copied_corners = 0;
+    for (int i = 0; i < num_corners; i++) {
+      if (scores[i] > threshold) {
+        assert(copied_corners < MAX_CORNERS);
+        corners->corners[2 * copied_corners + 0] = frame_corners_xy[i].x;
+        corners->corners[2 * copied_corners + 1] = frame_corners_xy[i].y;
+        copied_corners += 1;
+      }
+    }
+    assert(copied_corners == found_corners);
+    corners->num_corners = copied_corners;
   }
-  free(frm_corners_xy);
+
+  free(scores);
+  free(frame_corners_xy);
 }
 
 void av1_compute_corner_list(const ImagePyramid *pyr, CornerList *corners) {

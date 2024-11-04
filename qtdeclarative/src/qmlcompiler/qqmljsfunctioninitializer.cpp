@@ -8,6 +8,8 @@
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qfileinfo.h>
 
+#include <QtQml/private/qqmlsignalnames_p.h>
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
@@ -59,6 +61,7 @@ void QQmlJSFunctionInitializer::populateSignature(
         error->type = QtWarningMsg;
         error->loc = ast->firstSourceLocation();
         error->message = message;
+        function->isFullyTyped = false;
     };
 
     if (!m_typeResolver->canCallJSFunctions()) {
@@ -70,6 +73,11 @@ void QQmlJSFunctionInitializer::populateSignature(
     QQmlJS::AST::BoundNames arguments;
     if (ast->formals)
         arguments = ast->formals->formals();
+
+    // If the function has no arguments and no return type annotation we assume it's untyped.
+    // You can annotate it to return void to make it typed.
+    // Otherwise we first assume it's typed and reset the flag if we detect a problem.
+    function->isFullyTyped = !arguments.isEmpty() || ast->typeAnnotation;
 
     if (function->argumentTypes.isEmpty()) {
         for (const QQmlJS::AST::BoundName &argument : std::as_const(arguments)) {
@@ -160,43 +168,44 @@ QQmlJSCompilePass::Function QQmlJSFunctionInitializer::run(
     }
 
     function.isProperty = m_objectType->hasProperty(propertyName);
-    if (!function.isProperty && QmlIR::IRBuilder::isSignalPropertyName(propertyName)) {
-        const QString signalName = QmlIR::IRBuilder::signalNameFromSignalPropertyName(propertyName);
-
-        if (signalName.endsWith(u"Changed"_s)
-                && m_objectType->hasProperty(signalName.chopped(strlen("Changed")))) {
-            function.isSignalHandler = true;
-        } else {
-            const auto methods = m_objectType->methods(signalName);
-            for (const auto &method : methods) {
-                if (method.isCloned())
-                    continue;
-                if (method.methodType() == QQmlJSMetaMethodType::Signal) {
-                    function.isSignalHandler = true;
-                    const auto arguments = method.parameters();
-                    for (qsizetype i = 0, end = arguments.size(); i < end; ++i) {
-                        const auto &type = arguments[i].type();
-                        if (type.isNull()) {
-                            diagnose(u"Cannot resolve the argument type %1."_s.arg(
-                                             arguments[i].typeName()),
-                                     QtDebugMsg, bindingLocation, error);
-                            function.argumentTypes.append(
+    if (!function.isProperty) {
+        if (QQmlSignalNames::isHandlerName(propertyName)) {
+            if (auto actualPropertyName =
+                QQmlSignalNames::changedHandlerNameToPropertyName(propertyName);
+                actualPropertyName && m_objectType->hasProperty(*actualPropertyName)) {
+                function.isSignalHandler = true;
+            } else {
+                auto signalName = QQmlSignalNames::handlerNameToSignalName(propertyName);
+                const auto methods = m_objectType->methods(*signalName);
+                for (const auto &method : methods) {
+                    if (method.isCloned())
+                        continue;
+                    if (method.methodType() == QQmlJSMetaMethodType::Signal) {
+                        function.isSignalHandler = true;
+                        const auto arguments = method.parameters();
+                        for (qsizetype i = 0, end = arguments.size(); i < end; ++i) {
+                            const auto &type = arguments[i].type();
+                            if (type.isNull()) {
+                                diagnose(u"Cannot resolve the argument type %1."_s.arg(
+                                                 arguments[i].typeName()),
+                                         QtDebugMsg, bindingLocation, error);
+                                function.argumentTypes.append(
                                         m_typeResolver->tracked(
-                                            m_typeResolver->globalType(m_typeResolver->varType())));
-                        } else {
-                            function.argumentTypes.append(m_typeResolver->tracked(
-                                                              m_typeResolver->globalType(type)));
+                                                m_typeResolver->globalType(m_typeResolver->varType())));
+                            } else {
+                                function.argumentTypes.append(m_typeResolver->tracked(
+                                        m_typeResolver->globalType(type)));
+                            }
                         }
+                        break;
                     }
-                    break;
+                }
+                if (!function.isSignalHandler) {
+                    diagnose(u"Could not compile signal handler for %1: The signal does not exist"_s.arg(
+                                     *signalName),
+                             QtWarningMsg, bindingLocation, error);
                 }
             }
-        }
-
-        if (!function.isSignalHandler) {
-            diagnose(u"Could not compile signal handler for %1: The signal does not exist"_s.arg(
-                         signalName),
-                     QtWarningMsg, bindingLocation, error);
         }
     }
 

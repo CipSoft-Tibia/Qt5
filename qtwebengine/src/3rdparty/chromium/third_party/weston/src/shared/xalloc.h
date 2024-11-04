@@ -1,5 +1,6 @@
 /*
  * Copyright © 2008 Kristian Høgsberg
+ * Copyright 2022 Collabora, Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -30,19 +31,32 @@
 extern "C" {
 #endif
 
-#include <stdint.h>
+#include <errno.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 
-#include <libweston/zalloc.h>
+static inline void *
+abort_oom_if_null(void *p)
+{
+	static const char oommsg[] = ": out of memory\n";
+	size_t written __attribute__((unused));
 
-void *
-fail_on_null(void *p, size_t size, char *file, int32_t line);
+	if (p)
+		return p;
 
-#define xmalloc(s) (fail_on_null(malloc(s), (s), __FILE__, __LINE__))
-#define xzalloc(s) (fail_on_null(zalloc(s), (s), __FILE__, __LINE__))
-#define xstrdup(s) (fail_on_null(strdup(s), 0, __FILE__, __LINE__))
-#define xrealloc(p, s) (fail_on_null(realloc(p, s), (s), __FILE__, __LINE__))
+	written = write(STDERR_FILENO, program_invocation_short_name,
+		        strlen(program_invocation_short_name));
+	written = write(STDERR_FILENO, oommsg, strlen(oommsg));
+
+	abort();
+}
+
+#define xmalloc(s) (abort_oom_if_null(malloc(s)))
+#define xzalloc(s) (abort_oom_if_null(calloc(1, s)))
+#define xcalloc(n, s) (abort_oom_if_null(calloc(n, s)))
+#define xstrdup(s) (abort_oom_if_null(strdup(s)))
+#define xrealloc(p, s) (abort_oom_if_null(realloc(p, s)))
 
 #ifdef  __cplusplus
 }

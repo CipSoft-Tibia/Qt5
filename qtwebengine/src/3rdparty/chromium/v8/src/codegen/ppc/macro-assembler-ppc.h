@@ -14,6 +14,7 @@
 #include "src/codegen/bailout-reason.h"
 #include "src/codegen/ppc/assembler-ppc.h"
 #include "src/common/globals.h"
+#include "src/execution/frame-constants.h"
 #include "src/execution/isolate-data.h"
 #include "src/objects/contexts.h"
 
@@ -141,7 +142,7 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   void InitializeRootRegister() {
     ExternalReference isolate_root = ExternalReference::isolate_root(isolate());
     mov(kRootRegister, Operand(isolate_root));
-#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#ifdef V8_COMPRESS_POINTERS
     LoadRootRelative(kPtrComprCageBaseRegister,
                      IsolateData::cage_base_offset());
 #endif
@@ -472,7 +473,7 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   void Push(Register src) { push(src); }
   // Push a handle.
   void Push(Handle<HeapObject> handle);
-  void Push(Smi smi);
+  void Push(Tagged<Smi> smi);
 
   // Push two registers.  Pushes leftmost register first (to highest address).
   void Push(Register src1, Register src2) {
@@ -738,25 +739,18 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
             Condition cond = al);
   void Call(Label* target);
 
-  // Load the builtin given by the Smi in |builtin_index| into the same
-  // register.
-  void LoadEntryFromBuiltinIndex(Register builtin_index);
+  // Load the builtin given by the Smi in |builtin_index| into |target|.
+  void LoadEntryFromBuiltinIndex(Register builtin_index, Register target);
   void LoadEntryFromBuiltin(Builtin builtin, Register destination);
   MemOperand EntryFromBuiltinAsOperand(Builtin builtin);
 
   // Load the code entry point from the Code object.
-  void LoadCodeEntry(Register destination, Register code_object);
-  // Load code entry point from the Code object and compute
-  // InstructionStream object pointer out of it. Must not be used for
-  // Codes corresponding to builtins, because their entry points
-  // values point to the embedded instruction stream in .text section.
-  void LoadCodeInstructionStreamNonBuiltin(Register destination,
-                                           Register code_object);
+  void LoadCodeInstructionStart(Register destination, Register code_object);
   void CallCodeObject(Register code_object);
   void JumpCodeObject(Register code_object,
                       JumpMode jump_mode = JumpMode::kJump);
 
-  void CallBuiltinByIndex(Register builtin_index);
+  void CallBuiltinByIndex(Register builtin_index, Register target);
   void CallForDeoptimization(Builtin target, int deopt_id, Label* exit,
                              DeoptimizeKind kind, Label* ret,
                              Label* jump_deoptimization_entry_label);
@@ -806,7 +800,7 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   void MovIntToFloat(DoubleRegister dst, Register src, Register scratch);
   void MovFloatToInt(Register dst, DoubleRegister src, DoubleRegister scratch);
   // Register move. May do nothing if the registers are identical.
-  void Move(Register dst, Smi smi) { LoadSmiLiteral(dst, smi); }
+  void Move(Register dst, Tagged<Smi> smi) { LoadSmiLiteral(dst, smi); }
   void Move(Register dst, Handle<HeapObject> value,
             RelocInfo::Mode rmode = RelocInfo::FULL_EMBEDDED_OBJECT);
   void Move(Register dst, ExternalReference reference);
@@ -985,13 +979,18 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
 
   // Loads the constant pool pointer (kConstantPoolRegister).
   void LoadConstantPoolPointerRegisterFromCodeTargetAddress(
-      Register code_target_address);
+      Register code_target_address, Register scratch1, Register scratch2);
   void AbortConstantPoolBuilding() {
 #ifdef DEBUG
     // Avoid DCHECK(!is_linked()) failure in ~Label()
     bind(ConstantPoolPosition());
 #endif
   }
+
+  // Convenience functions to call/jmp to the code of a JSFunction object.
+  void CallJSFunction(Register function_object, Register scratch);
+  void JumpJSFunction(Register function_object, Register scratch,
+                      JumpMode jump_mode = JumpMode::kJump);
 
   // Generates an instruction sequence s.t. the return address points to the
   // instruction following the call.
@@ -1129,6 +1128,7 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   V(I32x4Eq)               \
   V(I32x4GtS)              \
   V(I32x4GtU)              \
+  V(I32x4DotI16x8S)        \
   V(I16x8Add)              \
   V(I16x8Sub)              \
   V(I16x8Mul)              \
@@ -1146,6 +1146,7 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   V(I16x8SConvertI32x4)    \
   V(I16x8UConvertI32x4)    \
   V(I16x8RoundingAverageU) \
+  V(I16x8Q15MulRSatS)      \
   V(I8x16Add)              \
   V(I8x16Sub)              \
   V(I8x16MinS)             \
@@ -1193,7 +1194,6 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   V(I32x4ExtMulHighI16x8S)              \
   V(I32x4ExtMulLowI16x8U)               \
   V(I32x4ExtMulHighI16x8U)              \
-  V(I32x4DotI16x8S)                     \
   V(I16x8Ne)                            \
   V(I16x8GeS)                           \
   V(I16x8GeU)                           \
@@ -1201,7 +1201,7 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   V(I16x8ExtMulHighI8x16S)              \
   V(I16x8ExtMulLowI8x16U)               \
   V(I16x8ExtMulHighI8x16U)              \
-  V(I16x8Q15MulRSatS)                   \
+  V(I16x8DotI8x16S)                     \
   V(I8x16Ne)                            \
   V(I8x16GeS)                           \
   V(I8x16GeU)                           \
@@ -1379,6 +1379,30 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
                      Register scratch1, Simd128Register scratch2);
   void StoreLane8LE(Simd128Register src, const MemOperand& mem, int lane,
                     Register scratch1, Simd128Register scratch2);
+  void LoadAndSplat64x2LE(Simd128Register dst, const MemOperand& mem,
+                          Register scratch);
+  void LoadAndSplat32x4LE(Simd128Register dst, const MemOperand& mem,
+                          Register scratch);
+  void LoadAndSplat16x8LE(Simd128Register dst, const MemOperand& me,
+                          Register scratch);
+  void LoadAndSplat8x16LE(Simd128Register dst, const MemOperand& mem,
+                          Register scratch);
+  void LoadAndExtend32x2SLE(Simd128Register dst, const MemOperand& mem,
+                            Register scratch);
+  void LoadAndExtend32x2ULE(Simd128Register dst, const MemOperand& mem,
+                            Register scratch1, Simd128Register scratch2);
+  void LoadAndExtend16x4SLE(Simd128Register dst, const MemOperand& mem,
+                            Register scratch);
+  void LoadAndExtend16x4ULE(Simd128Register dst, const MemOperand& mem,
+                            Register scratch1, Simd128Register scratch2);
+  void LoadAndExtend8x8SLE(Simd128Register dst, const MemOperand& mem,
+                           Register scratch);
+  void LoadAndExtend8x8ULE(Simd128Register dst, const MemOperand& mem,
+                           Register scratch1, Simd128Register scratch2);
+  void LoadV64ZeroLE(Simd128Register dst, const MemOperand& mem,
+                     Register scratch1, Simd128Register scratch2);
+  void LoadV32ZeroLE(Simd128Register dst, const MemOperand& mem,
+                     Register scratch1, Simd128Register scratch2);
   void F64x2Splat(Simd128Register dst, DoubleRegister src, Register scratch);
   void F32x4Splat(Simd128Register dst, DoubleRegister src,
                   DoubleRegister scratch1, Register scratch2);
@@ -1450,6 +1474,8 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
                     Simd128Register src2, uint64_t high, uint64_t low,
                     Register scratch1, Register scratch2,
                     Simd128Register scratch3);
+  void I32x4DotI8x16AddS(Simd128Register dst, Simd128Register src1,
+                         Simd128Register src2, Simd128Register src3);
   void V128AnyTrue(Register dst, Simd128Register src, Register scratch1,
                    Register scratch2, Simd128Register scratch3);
   void S128Const(Simd128Register dst, uint64_t high, uint64_t low,
@@ -1458,16 +1484,8 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
                   Simd128Register src2, Simd128Register mask);
 
   // It assumes that the arguments are located below the stack pointer.
-  // argc is the number of arguments not including the receiver.
-  // TODO(victorgomes): Remove this function once we stick with the reversed
-  // arguments order.
-  void LoadReceiver(Register dest, Register argc) {
-    LoadU64(dest, MemOperand(sp, 0));
-  }
-
-  void StoreReceiver(Register rec, Register argc, Register scratch) {
-    StoreU64(rec, MemOperand(sp, 0));
-  }
+  void LoadReceiver(Register dest) { LoadU64(dest, MemOperand(sp, 0)); }
+  void StoreReceiver(Register rec) { StoreU64(rec, MemOperand(sp, 0)); }
 
   // ---------------------------------------------------------------------------
   // GC Support
@@ -1652,9 +1670,6 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   void JumpToExternalReference(const ExternalReference& builtin,
                                bool builtin_exit_frame = false);
 
-  // Generates a trampoline to jump to the off-heap instruction stream.
-  void JumpToOffHeapInstructionStream(Address entry);
-
   // ---------------------------------------------------------------------------
   // In-place weak references.
   void LoadWeakValue(Register out, Register in, Label* target_if_cleared);
@@ -1728,6 +1743,8 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   void AssertUndefinedOrAllocationSite(Register object,
                                        Register scratch) NOOP_UNLESS_DEBUG_CODE;
 
+  void AssertJSAny(Register object, Register map_tmp, Register tmp,
+                   AbortReason abort_reason) NOOP_UNLESS_DEBUG_CODE;
   // ---------------------------------------------------------------------------
   // Patching helpers.
 
@@ -1768,6 +1785,34 @@ struct MoveCycleState {
   // Whether a move in the cycle needs a double scratch register.
   bool pending_double_scratch_register_use = false;
 };
+
+// Provides access to exit frame parameters (GC-ed).
+inline MemOperand ExitFrameStackSlotOperand(int offset) {
+  // The slot at [sp] is reserved in all ExitFrames for storing the return
+  // address before doing the actual call, it's necessary for frame iteration
+  // (see StoreReturnAddressAndCall for details).
+  static constexpr int kSPOffset = 1 * kSystemPointerSize;
+  return MemOperand(sp, (kStackFrameExtraParamSlot * kSystemPointerSize) +
+                            offset + kSPOffset);
+}
+
+// Provides access to exit frame stack space (not GC-ed).
+inline MemOperand ExitFrameCallerStackSlotOperand(int index) {
+  return MemOperand(
+      fp, (BuiltinExitFrameConstants::kFixedSlotCountAboveFp + index) *
+              kSystemPointerSize);
+}
+
+// Calls an API function.  Allocates HandleScope, extracts returned value
+// from handle and propagates exceptions.  Restores context.  On return removes
+// *stack_space_operand * kSystemPointerSize or stack_space * kSystemPointerSize
+// (GCed, includes the call JS arguments space and the additional space
+// allocated for the fast call).
+void CallApiFunctionAndReturn(MacroAssembler* masm, bool with_profiling,
+                              Register function_address,
+                              ExternalReference thunk_ref, Register thunk_arg,
+                              int stack_space, MemOperand* stack_space_operand,
+                              MemOperand return_value_operand);
 
 #define ACCESS_MASM(masm) masm->
 

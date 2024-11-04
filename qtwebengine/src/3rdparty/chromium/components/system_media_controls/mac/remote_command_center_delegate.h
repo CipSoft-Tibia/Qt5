@@ -6,7 +6,6 @@
 #define COMPONENTS_SYSTEM_MEDIA_CONTROLS_MAC_REMOTE_COMMAND_CENTER_DELEGATE_H_
 
 #include "base/containers/flat_set.h"
-#include "base/mac/scoped_nsobject.h"
 #include "base/observer_list.h"
 
 @class RemoteCommandCenterDelegateCocoa;
@@ -62,7 +61,7 @@ class RemoteCommandCenterDelegate {
 
   bool ShouldSetCommandEnabled(Command command, bool will_enable);
 
-  base::scoped_nsobject<RemoteCommandCenterDelegateCocoa>
+  RemoteCommandCenterDelegateCocoa* __strong
       remote_command_center_delegate_cocoa_;
   base::ObserverList<SystemMediaControlsObserver> observers_;
   base::flat_set<Command> enabled_commands_;

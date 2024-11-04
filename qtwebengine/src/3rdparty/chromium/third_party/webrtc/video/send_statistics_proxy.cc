@@ -743,8 +743,7 @@ VideoSendStream::Stats SendStatisticsProxy::GetStats() {
   PurgeOldStats();
   stats_.input_frame_rate =
       uma_container_->input_frame_rate_tracker_.ComputeRate();
-  stats_.frames =
-      uma_container_->input_frame_rate_tracker_.TotalSampleCount();
+  stats_.frames = uma_container_->input_frame_rate_tracker_.TotalSampleCount();
   stats_.content_type =
       content_type_ == VideoEncoderConfig::ContentType::kRealtimeVideo
           ? VideoContentType::UNSPECIFIED
@@ -978,8 +977,8 @@ void SendStatisticsProxy::OnSendEncodedImage(
   stats->frames_encoded++;
   stats->total_encode_time_ms += encoded_image.timing_.encode_finish_ms -
                                  encoded_image.timing_.encode_start_ms;
-  if (codec_info)
-    stats->scalability_mode = codec_info->scalability_mode;
+  stats->scalability_mode =
+      codec_info ? codec_info->scalability_mode : absl::nullopt;
   // Report resolution of the top spatial layer.
   bool is_top_spatial_layer =
       codec_info == nullptr || codec_info->end_of_picture;
@@ -1055,10 +1054,16 @@ void SendStatisticsProxy::OnSendEncodedImage(
 void SendStatisticsProxy::OnEncoderImplementationChanged(
     EncoderImplementation implementation) {
   MutexLock lock(&mutex_);
-  encoder_changed_ = EncoderChangeEvent{stats_.encoder_implementation_name,
-                                        implementation.name};
+  encoder_changed_ =
+      EncoderChangeEvent{stats_.encoder_implementation_name.value_or("unknown"),
+                         implementation.name};
   stats_.encoder_implementation_name = implementation.name;
   stats_.power_efficient_encoder = implementation.is_hardware_accelerated;
+  // Clear cached scalability mode values, they may no longer be accurate.
+  for (auto& pair : stats_.substreams) {
+    VideoSendStream::StreamStats& stream_stats = pair.second;
+    stream_stats.scalability_mode = absl::nullopt;
+  }
 }
 
 int SendStatisticsProxy::GetInputFrameRate() const {
@@ -1304,20 +1309,19 @@ void SendStatisticsProxy::RtcpPacketTypesCounterUpdated(
 }
 
 void SendStatisticsProxy::OnReportBlockDataUpdated(
-    ReportBlockData report_block_data) {
+    ReportBlockData report_block) {
   MutexLock lock(&mutex_);
   VideoSendStream::StreamStats* stats =
-      GetStatsEntry(report_block_data.report_block().source_ssrc);
+      GetStatsEntry(report_block.source_ssrc());
   if (!stats)
     return;
-  const RTCPReportBlock& report_block = report_block_data.report_block();
   uma_container_->report_block_stats_.Store(
-      /*ssrc=*/report_block.source_ssrc,
-      /*packets_lost=*/report_block.packets_lost,
+      /*ssrc=*/report_block.source_ssrc(),
+      /*packets_lost=*/report_block.cumulative_lost(),
       /*extended_highest_sequence_number=*/
-      report_block.extended_highest_sequence_number);
+      report_block.extended_highest_sequence_number());
 
-  stats->report_block_data = std::move(report_block_data);
+  stats->report_block_data = std::move(report_block);
 }
 
 void SendStatisticsProxy::DataCountersUpdated(

@@ -54,7 +54,7 @@ struct RenderSurfacePropertyChangedFlags {
 
 class CC_EXPORT RenderSurfaceImpl {
  public:
-  RenderSurfaceImpl(LayerTreeImpl* layer_tree_impl, uint64_t stable_id);
+  RenderSurfaceImpl(LayerTreeImpl* layer_tree_impl, ElementId stable_id);
   RenderSurfaceImpl(const RenderSurfaceImpl&) = delete;
   virtual ~RenderSurfaceImpl();
 
@@ -74,11 +74,16 @@ class CC_EXPORT RenderSurfaceImpl {
   }
   float draw_opacity() const { return draw_properties_.draw_opacity; }
 
-  void SetMaskFilterInfo(const gfx::MaskFilterInfo& mask_filter_info) {
+  void SetMaskFilterInfo(const gfx::MaskFilterInfo& mask_filter_info,
+                         bool is_fast_rounded_corner) {
     draw_properties_.mask_filter_info = mask_filter_info;
+    draw_properties_.is_fast_rounded_corner = is_fast_rounded_corner;
   }
   const gfx::MaskFilterInfo& mask_filter_info() const {
     return draw_properties_.mask_filter_info;
+  }
+  bool is_fast_rounded_corner() const {
+    return draw_properties_.is_fast_rounded_corner;
   }
 
   SkBlendMode BlendMode() const;
@@ -176,9 +181,9 @@ class CC_EXPORT RenderSurfaceImpl {
     occlusion_in_content_space_ = occlusion;
   }
 
-  uint64_t id() const { return stable_id_; }
+  ElementId id() const { return id_; }
   viz::CompositorRenderPassId render_pass_id() const {
-    return viz::CompositorRenderPassId{id()};
+    return viz::CompositorRenderPassId(id().GetInternalValue());
   }
 
   bool HasMaskingContributingSurface() const;
@@ -216,7 +221,6 @@ class CC_EXPORT RenderSurfaceImpl {
 
   void ResetPropertyChangedFlags();
   bool SurfacePropertyChanged() const;
-  bool SurfacePropertyChangedOnlyFromDescendant() const;
   bool AncestorPropertyChanged() const;
   void NoteAncestorPropertyChanged();
   bool HasDamageFromeContributingContent() const;
@@ -239,6 +243,7 @@ class CC_EXPORT RenderSurfaceImpl {
   int EffectTreeIndex() const;
 
   const EffectNode* OwningEffectNode() const;
+  EffectNode* OwningEffectNodeMutableForTest() const;
 
   const ViewTransitionElementId& GetViewTransitionElementId() const;
 
@@ -252,7 +257,7 @@ class CC_EXPORT RenderSurfaceImpl {
                      const gfx::Rect& unoccluded_content_rect);
 
   raw_ptr<LayerTreeImpl> layer_tree_impl_;
-  uint64_t stable_id_;
+  ElementId id_;
   int effect_tree_index_;
 
   // Container for properties that render surfaces need to compute before they
@@ -282,6 +287,13 @@ class CC_EXPORT RenderSurfaceImpl {
     // the target space of the render surface. The root render surface will
     // never have this set.
     gfx::MaskFilterInfo mask_filter_info;
+
+    // This information is further passed to SharedQuadState when a
+    // SharedQuadState and a quad for this layer that represents a render
+    // surface is appended. Then, it's up to the SurfaceAggregator to decide
+    // whether it can actually merge this render surface and avoid having
+    // additional render pass.
+    bool is_fast_rounded_corner : 1 = false;
   };
 
   DrawProperties draw_properties_;
@@ -302,7 +314,7 @@ class CC_EXPORT RenderSurfaceImpl {
 
   // The nearest ancestor target surface that will contain the contents of this
   // surface, and that ignores outside occlusion. This can point to itself.
-  raw_ptr<const RenderSurfaceImpl, DanglingUntriaged>
+  raw_ptr<const RenderSurfaceImpl, AcrossTasksDanglingUntriaged>
       nearest_occlusion_immune_ancestor_;
 
   std::unique_ptr<DamageTracker> damage_tracker_;

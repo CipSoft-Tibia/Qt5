@@ -12,7 +12,6 @@ import collections
 import json
 import logging
 import os
-import pipes
 import posixpath
 import random
 import re
@@ -359,7 +358,7 @@ def _RunGdb(device, package_name, debug_process_name, pid, output_directory,
     cmd.append('--verbose')
   if target_cpu:
     cmd.append('--target-arch=%s' % _TargetCpuToTargetArch(target_cpu))
-  logging.warning('Running: %s', ' '.join(pipes.quote(x) for x in cmd))
+  logging.warning('Running: %s', ' '.join(shlex.quote(x) for x in cmd))
   print(_Colorize('All subsequent output is from adb_gdb script.',
                   colorama.Fore.YELLOW))
   os.execv(gdb_script_path, cmd)
@@ -567,7 +566,7 @@ def _RunDiskUsage(devices, package_name):
               odex_paths.append('/data/dalvik-cache/%s@classes%s.dex' % (
                   mangled_apk_path, suffix))
 
-    odex_sizes = _DuHelper(d, ' '.join(pipes.quote(p) for p in odex_paths))
+    odex_sizes = _DuHelper(d, ' '.join(shlex.quote(p) for p in odex_paths))
 
     return (data_dir_sizes, code_cache_sizes, apk_sizes, lib_sizes, odex_sizes,
             compilation_filter)
@@ -982,7 +981,7 @@ def _RunCompileDex(devices, package_name, compilation_filter):
 
 
 def _RunProfile(device, package_name, host_build_directory, pprof_out_path,
-                process_specifier, thread_specifier, extra_args):
+                process_specifier, thread_specifier, events, extra_args):
   simpleperf.PrepareDevice(device)
   device_simpleperf_path = simpleperf.InstallSimpleperf(device, package_name)
   with tempfile.NamedTemporaryFile() as fh:
@@ -990,7 +989,7 @@ def _RunProfile(device, package_name, host_build_directory, pprof_out_path,
 
     with simpleperf.RunSimpleperf(device, device_simpleperf_path, package_name,
                                   process_specifier, thread_specifier,
-                                  extra_args, host_simpleperf_out_path):
+                                  events, extra_args, host_simpleperf_out_path):
       sys.stdout.write('Profiler is running; press Enter to stop...\n')
       sys.stdin.read(1)
       sys.stdout.write('Post-processing data...\n')
@@ -1098,7 +1097,7 @@ def _DisplayArgs(devices, command_line_flags_file):
   print('Existing flags per-device (via /data/local/tmp/{}):'.format(
       command_line_flags_file))
   for flags in _PrintPerDeviceOutput(devices, outputs, single_line=True):
-    quoted_flags = ' '.join(pipes.quote(f) for f in flags)
+    quoted_flags = ' '.join(shlex.quote(f) for f in flags)
     print(quoted_flags or 'No flags set.')
 
 
@@ -1832,13 +1831,18 @@ class _ProfileCommand(_Command):
               'use --profile-thread=main).'))
     group.add_argument('--profile-output', default='profile.pb',
                        help='Output file for profiling data')
+    group.add_argument('--profile-events', default='cpu-cycles',
+                      help=('A comma separated list of perf events to capture '
+                      '(e.g. \'cpu-cycles,branch-misses\'). Run '
+                      '`simpleperf list` on your device to see available '
+                      'events.'))
 
   def Run(self):
     extra_args = shlex.split(self.args.args or '')
     _RunProfile(self.devices[0], self.args.package_name,
                 self.args.output_directory, self.args.profile_output,
                 self.args.profile_process, self.args.profile_thread,
-                extra_args)
+                self.args.profile_events, extra_args)
 
 
 class _RunCommand(_InstallCommand, _LaunchCommand, _LogcatCommand):

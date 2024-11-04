@@ -45,55 +45,8 @@ enum fade_type {
 	FADE_OUT
 };
 
-enum exposay_target_state {
-	EXPOSAY_TARGET_OVERVIEW, /* show all windows */
-	EXPOSAY_TARGET_CANCEL, /* return to normal, same focus */
-	EXPOSAY_TARGET_SWITCH, /* return to normal, switch focus */
-};
-
-enum exposay_layout_state {
-	EXPOSAY_LAYOUT_INACTIVE = 0, /* normal desktop */
-	EXPOSAY_LAYOUT_ANIMATE_TO_INACTIVE, /* in transition to normal */
-	EXPOSAY_LAYOUT_OVERVIEW, /* show all windows */
-	EXPOSAY_LAYOUT_ANIMATE_TO_OVERVIEW, /* in transition to all windows */
-};
-
-struct exposay_output {
-	int num_surfaces;
-	int grid_size;
-	int surface_size;
-	int padding_inner;
-};
-
-struct exposay {
-	/* XXX: Make these exposay_surfaces. */
-	struct weston_view *focus_prev;
-	struct weston_view *focus_current;
-	struct weston_view *clicked;
-	struct workspace *workspace;
-	struct weston_seat *seat;
-
-	struct wl_list surface_list;
-
-	struct weston_keyboard_grab grab_kbd;
-	struct weston_pointer_grab grab_ptr;
-
-	enum exposay_target_state state_target;
-	enum exposay_layout_state state_cur;
-	int in_flight; /* number of animations still running */
-
-	int row_current;
-	int column_current;
-	struct exposay_output *cur_output;
-
-	bool mod_pressed;
-	bool mod_invalid;
-};
-
 struct focus_surface {
-	struct weston_surface *surface;
-	struct weston_view *view;
-	struct weston_transform workspace_transform;
+	struct weston_curtain *curtain;
 };
 
 struct workspace {
@@ -110,7 +63,6 @@ struct workspace {
 struct shell_output {
 	struct desktop_shell  *shell;
 	struct weston_output  *output;
-	struct exposay_output eoutput;
 	struct wl_listener    destroy_listener;
 	struct wl_list        link;
 
@@ -121,7 +73,7 @@ struct shell_output {
 	struct wl_listener background_surface_listener;
 
 	struct {
-		struct weston_view *view;
+		struct weston_curtain *curtain;
 		struct weston_view_animation *animation;
 		enum fade_type type;
 		struct wl_event_source *startup_timer;
@@ -175,32 +127,15 @@ struct desktop_shell {
 	struct weston_surface *lock_surface;
 	struct wl_listener lock_surface_listener;
 
-	struct {
-		struct wl_array array;
-		unsigned int current;
-		unsigned int num;
-
-		struct wl_list client_list;
-
-		struct weston_animation animation;
-		struct wl_list anim_sticky_list;
-		int anim_dir;
-		struct timespec anim_timestamp;
-		double anim_current;
-		struct workspace *anim_from;
-		struct workspace *anim_to;
-	} workspaces;
+	struct workspace workspace;
 
 	struct {
 		struct wl_resource *binding;
 		struct wl_list surfaces;
 	} input_panel;
 
-	struct exposay exposay;
-
 	bool allow_zap;
 	uint32_t binding_modifier;
-	uint32_t exposay_modifier;
 	enum animation_type win_animation_type;
 	enum animation_type win_close_animation_type;
 	enum animation_type startup_animation_type;
@@ -212,6 +147,7 @@ struct desktop_shell {
 	struct wl_listener output_create_listener;
 	struct wl_listener output_move_listener;
 	struct wl_list output_list;
+	struct wl_list seat_list;
 
 	enum weston_desktop_shell_panel_position panel_position;
 
@@ -245,10 +181,6 @@ void
 activate(struct desktop_shell *shell, struct weston_view *view,
 	 struct weston_seat *seat, uint32_t flags);
 
-void
-exposay_binding(struct weston_keyboard *keyboard,
-		enum weston_keyboard_modifier modifier,
-		void *data);
 int
 input_panel_setup(struct desktop_shell *shell);
 void

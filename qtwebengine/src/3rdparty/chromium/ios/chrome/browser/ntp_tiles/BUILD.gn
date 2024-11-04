@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 source_set("ntp_tiles") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "ios_most_visited_sites_factory.cc",
     "ios_most_visited_sites_factory.h",
@@ -19,12 +18,12 @@ source_set("ntp_tiles") {
     "//components/image_fetcher/ios",
     "//components/keyed_service/core",
     "//components/ntp_tiles",
-    "//ios/chrome/browser/application_context",
-    "//ios/chrome/browser/browser_state",
     "//ios/chrome/browser/favicon",
     "//ios/chrome/browser/history",
     "//ios/chrome/browser/json_parser",
     "//ios/chrome/browser/search_engines",
+    "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/browser_state",
     "//ios/web",
     "//services/data_decoder/public/cpp",
     "//services/network/public/cpp",
@@ -32,10 +31,7 @@ source_set("ntp_tiles") {
 }
 
 source_set("eg2_tests") {
-  configs += [
-    "//build/config/compiler:enable_arc",
-    "//build/config/ios:xctest_config",
-  ]
+  configs += [ "//build/config/ios:xctest_config" ]
   testonly = true
   sources = [ "ntp_tiles_egtest.mm" ]
   deps = [
@@ -43,7 +39,6 @@ source_set("eg2_tests") {
     "//ios/chrome/browser/ui/content_suggestions:feature_flags",
     "//ios/chrome/test/earl_grey:eg_test_support+eg2",
     "//ios/testing/earl_grey:eg_test_support+eg2",
-    "//ios/third_party/earl_grey2:test_lib",
     "//ios/web/public/test/http_server:http_server",
     "//net",
   ]

@@ -8,7 +8,9 @@
  */
 'use strict';
 
-const VALID_DEEP_COMPARISON_METHODS = new Set(['deepEqual', 'deepStrictEqual', 'sameMembers', 'sameDeepMembers']);
+const VALID_DEEP_COMPARISON_METHODS = new Set([
+  'deepEqual', 'deepStrictEqual', 'sameMembers', 'sameDeepMembers', 'includeMembers', 'containsAllKeys', 'hasAllKeys'
+]);
 
 // ------------------------------------------------------------------------------
 // Rule Definition

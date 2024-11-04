@@ -19,7 +19,6 @@
 #include "core/fxge/cfx_unicodeencoding.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
 #include "third_party/base/check.h"
-#include "third_party/base/notreached.h"
 #include "xfa/fgas/graphics/cfgas_gecolor.h"
 #include "xfa/fgas/graphics/cfgas_gepath.h"
 #include "xfa/fgas/graphics/cfgas_gepattern.h"
@@ -129,10 +128,7 @@ void CFGAS_GEGraphics::SaveGraphState() {
 
 void CFGAS_GEGraphics::RestoreGraphState() {
   m_renderDevice->RestoreState(false);
-  if (m_infoStack.empty()) {
-    NOTREACHED();
-    return;
-  }
+  CHECK(!m_infoStack.empty());
   m_info = *m_infoStack.back();
   m_infoStack.pop_back();
   return;
@@ -261,7 +257,7 @@ void CFGAS_GEGraphics::FillPathWithPattern(
   auto mask = pdfium::MakeRetain<CFX_DIBitmap>();
   mask->Create(data.width, data.height, FXDIB_Format::k1bppMask);
   fxcrt::spancpy(
-      mask->GetBuffer(),
+      mask->GetWritableBuffer(),
       pdfium::make_span(data.maskBits).first(mask->GetPitch() * data.height));
   const CFX_FloatRect rectf =
       matrix.TransformRect(path.GetPath().GetBoundingBox());
@@ -390,10 +386,6 @@ void CFGAS_GEGraphics::FillPathWithShading(
       result = true;
       break;
     }
-    default: {
-      result = false;
-      break;
-    }
   }
   if (result) {
     CFX_RenderDevice::StateRestorer restorer(m_renderDevice);
@@ -420,22 +412,10 @@ void CFGAS_GEGraphics::SetDIBitsWithMatrix(RetainPtr<CFX_DIBBase> source,
 
 CFGAS_GEGraphics::TInfo::TInfo() = default;
 
-CFGAS_GEGraphics::TInfo::TInfo(const TInfo& info)
-    : graphState(info.graphState),
-      CTM(info.CTM),
-      isActOnDash(info.isActOnDash),
-      strokeColor(info.strokeColor),
-      fillColor(info.fillColor) {}
+CFGAS_GEGraphics::TInfo::TInfo(const TInfo& info) = default;
 
 CFGAS_GEGraphics::TInfo& CFGAS_GEGraphics::TInfo::operator=(
-    const TInfo& other) {
-  graphState = other.graphState;
-  CTM = other.CTM;
-  isActOnDash = other.isActOnDash;
-  strokeColor = other.strokeColor;
-  fillColor = other.fillColor;
-  return *this;
-}
+    const TInfo& other) = default;
 
 CFGAS_GEGraphics::StateRestorer::StateRestorer(CFGAS_GEGraphics* graphics)
     : graphics_(graphics) {

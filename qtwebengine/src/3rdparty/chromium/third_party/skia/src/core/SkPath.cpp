@@ -14,17 +14,17 @@
 #include "include/private/SkPathRef.h"
 #include "include/private/base/SkFloatBits.h"
 #include "include/private/base/SkFloatingPoint.h"
-#include "include/private/base/SkPathEnums.h"
+#include "include/private/base/SkMalloc.h"
 #include "include/private/base/SkTArray.h"
 #include "include/private/base/SkTDArray.h"
-#include "src/base/SkVx.h"
-#include "include/private/base/SkMalloc.h"
 #include "include/private/base/SkTo.h"
 #include "src/base/SkTLazy.h"
+#include "src/base/SkVx.h"
 #include "src/core/SkCubicClipper.h"
 #include "src/core/SkEdgeClipper.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkMatrixPriv.h"
+#include "src/core/SkPathEnums.h"
 #include "src/core/SkPathMakers.h"
 #include "src/core/SkPathPriv.h"
 #include "src/core/SkPointPriv.h"
@@ -1442,17 +1442,16 @@ SkPath& SkPath::addPath(const SkPath& srcPath, const SkMatrix& matrix, AddPathMo
     }
 
     if (kAppend_AddPathMode == mode && !matrix.hasPerspective()) {
-        fLastMoveToIndex = this->countPoints() + src->fLastMoveToIndex;
-
+        if (src->fLastMoveToIndex >= 0) {
+            fLastMoveToIndex = src->fLastMoveToIndex + this->countPoints();
+        } else {
+            fLastMoveToIndex = src->fLastMoveToIndex - this->countPoints();
+        }
         SkPathRef::Editor ed(&fPathRef);
         auto [newPts, newWeights] = ed.growForVerbsInPath(*src->fPathRef);
         matrix.mapPoints(newPts, src->fPathRef->points(), src->countPoints());
         if (int numWeights = src->fPathRef->countWeights()) {
             memcpy(newWeights, src->fPathRef->conicWeights(), numWeights * sizeof(newWeights[0]));
-        }
-        // fiddle with fLastMoveToIndex, as we do in SkPath::close()
-        if ((SkPathVerb)fPathRef->verbsEnd()[-1] == SkPathVerb::kClose) {
-            fLastMoveToIndex ^= ~fLastMoveToIndex >> (8 * sizeof(fLastMoveToIndex) - 1);
         }
         return this->dirtyAfterEdit();
     }
@@ -1468,8 +1467,7 @@ SkPath& SkPath::addPath(const SkPath& srcPath, const SkMatrix& matrix, AddPathMo
                     injectMoveToIfNeeded(); // In case last contour is closed
                     SkPoint lastPt;
                     // don't add lineTo if it is degenerate
-                    if (fLastMoveToIndex < 0 || !this->getLastPt(&lastPt) ||
-                        lastPt != mappedPts[0]) {
+                    if (!this->getLastPt(&lastPt) || lastPt != mappedPts[0]) {
                         this->lineTo(mappedPts[0]);
                     }
                 } else {
@@ -3488,12 +3486,7 @@ SkPath SkPath::Make(const SkPoint pts[], int pointCount,
         return SkPath();
     }
 
-    return SkPath(sk_sp<SkPathRef>(new SkPathRef(
-                                       SkPathRef::PointsArray(pts, info.points),
-                                       SkPathRef::VerbsArray(vbs, verbCount),
-                                       SkPathRef::ConicWeightsArray(ws, info.weights),
-                                                 info.segmentMask)),
-                  ft, isVolatile, SkPathConvexity::kUnknown, SkPathFirstDirection::kUnknown);
+    return MakeInternal(info, pts, vbs, verbCount, ws, ft, isVolatile);
 }
 
 SkPath SkPath::Rect(const SkRect& r, SkPathDirection dir, unsigned startIndex) {
@@ -3530,6 +3523,21 @@ SkPath SkPath::Polygon(const SkPoint pts[], int count, bool isClosed,
                           .setFillType(ft)
                           .setIsVolatile(isVolatile)
                           .detach();
+}
+
+SkPath SkPath::MakeInternal(const SkPathVerbAnalysis& analysis,
+                            const SkPoint points[],
+                            const uint8_t verbs[],
+                            int verbCount,
+                            const SkScalar conics[],
+                            SkPathFillType fillType,
+                            bool isVolatile) {
+  return SkPath(sk_sp<SkPathRef>(new SkPathRef(
+                                     SkPathRef::PointsArray(points, analysis.points),
+                                     SkPathRef::VerbsArray(verbs, verbCount),
+                                     SkPathRef::ConicWeightsArray(conics, analysis.weights),
+                                     analysis.segmentMask)),
+                fillType, isVolatile, SkPathConvexity::kUnknown, SkPathFirstDirection::kUnknown);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////

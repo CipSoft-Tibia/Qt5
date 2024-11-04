@@ -15,14 +15,15 @@
 #include "device/fido/cable/v2_discovery.h"
 #include "device/fido/features.h"
 #include "device/fido/fido_discovery_base.h"
-
-// HID is not supported on Android.
-#if !BUILDFLAG(IS_ANDROID)
 #include "device/fido/hid/fido_hid_discovery.h"
-#endif  // !BUILDFLAG(IS_ANDROID)
+#include "device/fido/mac/icloud_keychain.h"
 
 #if BUILDFLAG(IS_WIN)
+// rpc.h needs to be included before winuser.h.
+#include <rpc.h>
+
 #include <Winuser.h>
+
 #include "device/fido/win/discovery.h"
 #include "device/fido/win/webauthn_api.h"
 #endif  // BUILDFLAG(IS_WIN)
@@ -35,6 +36,10 @@
 #if BUILDFLAG(IS_CHROMEOS)
 #include "device/fido/cros/discovery.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
+
+#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_QTWEBENGINE)
+#include "device/fido/enclave/enclave_discovery.h"
+#endif
 
 namespace device {
 
@@ -82,12 +87,13 @@ std::vector<std::unique_ptr<FidoDiscoveryBase>> FidoDiscoveryFactory::Create(
                            &CableDiscoveryData::version);
         if (qr_generator_key_.has_value() || have_v2_discovery_data) {
           ret.emplace_back(std::make_unique<cablev2::Discovery>(
-              request_type_.value(), network_context_, qr_generator_key_,
-              v1_discovery->GetV2AdvertStream(), std::move(v2_pairings_),
+              request_type_.value(), network_context_factory_, qr_generator_key_,
+              v1_discovery->GetV2AdvertStream(),
               std::move(contact_device_stream_),
               cable_data_.value_or(std::vector<CableDiscoveryData>()),
               std::move(cable_pairing_callback_),
-              std::move(cable_invalidated_pairing_callback_)));
+              std::move(cable_invalidated_pairing_callback_),
+              std::move(cable_event_callback_)));
         }
 
         ret.emplace_back(std::move(v1_discovery));
@@ -98,16 +104,14 @@ std::vector<std::unique_ptr<FidoDiscoveryBase>> FidoDiscoveryFactory::Create(
       // TODO(https://crbug.com/825949): Add NFC support.
       return {};
     case FidoTransportProtocol::kInternal: {
+      std::vector<std::unique_ptr<FidoDiscoveryBase>> discoveries;
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS)
-      std::unique_ptr<FidoDiscoveryBase> discovery =
-          MaybeCreatePlatformDiscovery();
-      if (discovery) {
-        return SingleDiscovery(std::move(discovery));
-      }
-      return {};
-#else
-      return {};
+      discoveries = MaybeCreatePlatformDiscovery();
 #endif
+#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_QTWEBENGINE)
+      MaybeCreateEnclaveDiscovery(discoveries);
+#endif
+      return discoveries;
     }
     case FidoTransportProtocol::kAndroidAccessory:
       if (usb_device_manager_) {
@@ -128,15 +132,13 @@ bool FidoDiscoveryFactory::IsTestOverride() {
 }
 
 void FidoDiscoveryFactory::set_cable_data(
-    CableRequestType request_type,
+    FidoRequestType request_type,
     std::vector<CableDiscoveryData> cable_data,
     const absl::optional<std::array<uint8_t, cablev2::kQRKeySize>>&
-        qr_generator_key,
-    std::vector<std::unique_ptr<cablev2::Pairing>> v2_pairings) {
+        qr_generator_key) {
   request_type_ = request_type;
   cable_data_ = std::move(cable_data);
   qr_generator_key_ = std::move(qr_generator_key);
-  v2_pairings_ = std::move(v2_pairings);
 }
 
 void FidoDiscoveryFactory::set_android_accessory_params(
@@ -146,28 +148,28 @@ void FidoDiscoveryFactory::set_android_accessory_params(
   aoa_request_description_ = std::move(aoa_request_description);
 }
 
-void FidoDiscoveryFactory::set_network_context(
-    network::mojom::NetworkContext* network_context) {
-  network_context_ = network_context;
-}
-
 void FidoDiscoveryFactory::set_cable_pairing_callback(
     base::RepeatingCallback<void(std::unique_ptr<cablev2::Pairing>)> callback) {
-  cable_pairing_callback_.emplace(std::move(callback));
+  cable_pairing_callback_ = std::move(callback);
 }
 
 void FidoDiscoveryFactory::set_cable_invalidated_pairing_callback(
-    base::RepeatingCallback<void(size_t)> callback) {
-  cable_invalidated_pairing_callback_.emplace(std::move(callback));
+    base::RepeatingCallback<void(std::unique_ptr<cablev2::Pairing>)> callback) {
+  cable_invalidated_pairing_callback_ = std::move(callback);
 }
 
-base::RepeatingCallback<void(size_t)>
+void FidoDiscoveryFactory::set_cable_event_callback(
+    base::RepeatingCallback<void(cablev2::Event)> callback) {
+  cable_event_callback_ = std::move(callback);
+}
+
+base::RepeatingCallback<void(std::unique_ptr<cablev2::Pairing>)>
 FidoDiscoveryFactory::get_cable_contact_callback() {
   DCHECK(!contact_device_stream_);
 
-  base::RepeatingCallback<void(size_t)> ret;
-  std::tie(ret, contact_device_stream_) =
-      FidoDeviceDiscovery::EventStream<size_t>::New();
+  base::RepeatingCallback<void(std::unique_ptr<cablev2::Pairing>)> ret;
+  std::tie(ret, contact_device_stream_) = FidoDeviceDiscovery::EventStream<
+      std::unique_ptr<cablev2::Pairing>>::New();
   return ret;
 }
 
@@ -175,6 +177,13 @@ void FidoDiscoveryFactory::set_hid_ignore_list(
     base::flat_set<VidPid> hid_ignore_list) {
   hid_ignore_list_ = std::move(hid_ignore_list);
 }
+
+#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_QTWEBENGINE)
+void FidoDiscoveryFactory::SetEnclavePasskeys(
+    std::vector<sync_pb::WebauthnCredentialSpecifics> passkeys) {
+  enclave_passkeys_ = std::move(passkeys);
+}
+#endif
 
 // static
 std::vector<std::unique_ptr<FidoDiscoveryBase>>
@@ -190,14 +199,6 @@ FidoDiscoveryFactory::SingleDiscovery(
 }
 
 #if BUILDFLAG(IS_WIN)
-void FidoDiscoveryFactory::set_win_webauthn_api(WinWebAuthnApi* api) {
-  win_webauthn_api_ = api;
-}
-
-WinWebAuthnApi* FidoDiscoveryFactory::win_webauthn_api() const {
-  return win_webauthn_api_;
-}
-
 std::unique_ptr<FidoDiscoveryBase>
 FidoDiscoveryFactory::MaybeCreateWinWebAuthnApiDiscovery() {
   // TODO(martinkr): Inject the window from which the request originated.
@@ -205,25 +206,34 @@ FidoDiscoveryFactory::MaybeCreateWinWebAuthnApiDiscovery() {
   // dialog should be centered over the originating Chrome Window; the
   // foreground window may have changed to something else since the request
   // was issued.
-  return win_webauthn_api_ && win_webauthn_api_->IsAvailable()
+  WinWebAuthnApi* const api = WinWebAuthnApi::GetDefault();
+  return api && api->IsAvailable()
              ? std::make_unique<WinWebAuthnApiAuthenticatorDiscovery>(
-                   GetForegroundWindow(), win_webauthn_api_)
+                   GetForegroundWindow(), api)
              : nullptr;
 }
 #endif  // BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(IS_MAC)
-std::unique_ptr<FidoDiscoveryBase>
+std::vector<std::unique_ptr<FidoDiscoveryBase>>
 FidoDiscoveryFactory::MaybeCreatePlatformDiscovery() const {
-  return mac_touch_id_config_
-             ? std::make_unique<fido::mac::FidoTouchIdDiscovery>(
-                   *mac_touch_id_config_)
-             : nullptr;
+  std::vector<std::unique_ptr<FidoDiscoveryBase>> ret;
+  if (mac_touch_id_config_) {
+    ret.emplace_back(std::make_unique<fido::mac::FidoTouchIdDiscovery>(
+        *mac_touch_id_config_));
+  }
+#if CR_XCODE_VERSION >= 1500
+  if (base::FeatureList::IsEnabled(kWebAuthnICloudKeychain) &&
+      fido::icloud_keychain::IsSupported() && nswindow_ != 0) {
+    ret.emplace_back(fido::icloud_keychain::NewDiscovery(nswindow_));
+  }
+#endif
+  return ret;
 }
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)
-std::unique_ptr<FidoDiscoveryBase>
+std::vector<std::unique_ptr<FidoDiscoveryBase>>
 FidoDiscoveryFactory::MaybeCreatePlatformDiscovery() const {
   if (base::FeatureList::IsEnabled(kWebAuthCrosPlatformAuthenticator)) {
     auto discovery = std::make_unique<FidoChromeOSDiscovery>(
@@ -231,9 +241,9 @@ FidoDiscoveryFactory::MaybeCreatePlatformDiscovery() const {
         std::move(get_assertion_request_for_legacy_credential_check_));
     discovery->set_require_power_button_mode(
         require_legacy_cros_authenticator_);
-    return discovery;
+    return SingleDiscovery(std::move(discovery));
   }
-  return nullptr;
+  return {};
 }
 
 void FidoDiscoveryFactory::set_generate_request_id_callback(
@@ -249,6 +259,18 @@ void FidoDiscoveryFactory::
     set_get_assertion_request_for_legacy_credential_check(
         CtapGetAssertionRequest request) {
   get_assertion_request_for_legacy_credential_check_ = std::move(request);
+}
+#endif
+
+#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_QTWEBENGINE)
+void FidoDiscoveryFactory::MaybeCreateEnclaveDiscovery(
+    std::vector<std::unique_ptr<FidoDiscoveryBase>>& discoveries) {
+  if (!base::FeatureList::IsEnabled(kWebAuthnEnclaveAuthenticator)) {
+    return;
+  }
+  discoveries.emplace_back(
+      std::make_unique<enclave::EnclaveAuthenticatorDiscovery>(
+          std::move(enclave_passkeys_)));
 }
 #endif
 

@@ -72,6 +72,19 @@ class PLATFORM_EXPORT MediaStreamTrackPlatform {
   MediaStreamTrackPlatform& operator=(const MediaStreamTrackPlatform&) = delete;
   virtual ~MediaStreamTrackPlatform();
 
+  // Creates a new MediaStreamTrackPlatform of the same type as this based on
+  // data retrieved from the supplied MediaStreamComponent. This method must be
+  // called on a MediaStreamTrackPlatform object of the same type as the
+  // platform track member of the passed MediaStreamComponent.
+  //
+  // TODO(crbug.com/1302689): This is an instance method of this class solely
+  // for creating an object of the right type from either the platform or
+  // modules directories.  Remove this method when there is a better way to
+  // achieve this.
+  virtual std::unique_ptr<MediaStreamTrackPlatform> CreateFromComponent(
+      const MediaStreamComponent* component,
+      const String& id) = 0;
+
   static MediaStreamTrackPlatform* GetTrack(const WebMediaStreamTrack& track);
 
   virtual void SetEnabled(bool enabled) = 0;
@@ -86,6 +99,16 @@ class PLATFORM_EXPORT MediaStreamTrackPlatform {
 
   // TODO(hta): Make method pure virtual when all tracks have the method.
   virtual void GetSettings(Settings& settings) const {}
+
+  // Retrieves a snapshot of the deliverable frames counter (via a round-trip to
+  // the video task runner). The callback with the result is invoked on the main
+  // task runner.
+  virtual void AsyncGetDeliverableVideoFramesCount(
+      base::OnceCallback<void(size_t)> deliverable_video_frames_callback) {
+    // This method is only callable on video tracks.
+    NOTREACHED();
+  }
+
   virtual CaptureHandle GetCaptureHandle();
 
   // Adds a one off callback that will be invoked when observing the first frame

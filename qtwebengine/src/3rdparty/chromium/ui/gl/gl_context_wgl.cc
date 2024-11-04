@@ -12,6 +12,7 @@
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/gl_surface_wgl.h"
+#include "ui/gl/gl_utils.h"
 
 namespace gl {
 
@@ -36,8 +37,7 @@ bool GLContextWGL::Initialize(GLSurface* compatible_surface,
       strstr(wglGetExtensionsStringARB(device_context),
              "WGL_ARB_create_context") != nullptr;
   bool create_core_profile = has_wgl_create_context_arb &&
-                             !base::CommandLine::ForCurrentProcess()->HasSwitch(
-                                 switches::kDisableES3GLContext);
+                             !gl::GetGlWorkarounds().disable_es3gl_context;
 
   if (create_core_profile) {
     std::pair<int, int> attempt_versions[] = {

@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "third_party/abseil-cpp/absl/types/optional.h"
+#include "ui/base/ui_base_types.h"
 #include "ui/views/controls/button/label_button.h"
 #include "ui/views/controls/focus_ring.h"
 #include "ui/views/style/typography.h"
@@ -17,17 +18,6 @@ namespace views {
 // A button class that implements the Material Design text button spec.
 class VIEWS_EXPORT MdTextButton : public LabelButton {
  public:
-  // MdTextButton has various button styles that can change the button's
-  // background and text color.
-  // kDefault: white background with a blue text and a solid outline.
-  // kProminent: blue background with white text.
-  // kTonal: Cyan background with black text.
-  enum class Style {
-    kDefault = 0,
-    kProminent = 1,
-    kTonal = 2,
-  };
-
   METADATA_HEADER(MdTextButton);
 
   explicit MdTextButton(PressedCallback callback = PressedCallback(),
@@ -44,8 +34,11 @@ class VIEWS_EXPORT MdTextButton : public LabelButton {
   void SetProminent(bool is_prominent);
   bool GetProminent() const;
 
-  void SetStyle(views::MdTextButton::Style button_style);
-  Style GetStyle() const;
+  void SetStyle(ui::ButtonStyle button_style);
+  ui::ButtonStyle GetStyle() const;
+
+  // Returns the hover color depending on the button style.
+  SkColor GetHoverColor(ui::ButtonStyle button_style);
 
   // See |bg_color_override_|.
   void SetBgColorOverride(const absl::optional<SkColor>& color);
@@ -84,7 +77,7 @@ class VIEWS_EXPORT MdTextButton : public LabelButton {
   void UpdateBackgroundColor() override;
   void UpdateColors();
 
-  Style style_ = Style::kDefault;
+  ui::ButtonStyle style_ = ui::ButtonStyle::kDefault;
 
   // When set, this provides the background color.
   absl::optional<SkColor> bg_color_override_;
@@ -101,7 +94,7 @@ VIEW_BUILDER_PROPERTY(bool, Prominent)
 VIEW_BUILDER_PROPERTY(absl::optional<float>, CornerRadius)
 VIEW_BUILDER_PROPERTY(absl::optional<SkColor>, BgColorOverride)
 VIEW_BUILDER_PROPERTY(absl::optional<gfx::Insets>, CustomPadding)
-VIEW_BUILDER_PROPERTY(MdTextButton::Style, Style)
+VIEW_BUILDER_PROPERTY(ui::ButtonStyle, Style)
 END_VIEW_BUILDER
 
 }  // namespace views

@@ -58,19 +58,19 @@ void tst_proxy::initialProperties()
     QCOMPARE(m_proxy->rowCount(), 0);
     QVERIFY(!m_proxy->series());
 
-    QCOMPARE(m_proxy->type(), QAbstractDataProxy::DataTypeSurface);
+    QCOMPARE(m_proxy->type(), QAbstractDataProxy::DataType::Surface);
 }
 
 void tst_proxy::initializeProperties()
 {
     QVERIFY(m_proxy);
 
-    QSurfaceDataArray *data = new QSurfaceDataArray;
-    QSurfaceDataRow *dataRow1 = new QSurfaceDataRow;
-    QSurfaceDataRow *dataRow2 = new QSurfaceDataRow;
-    *dataRow1 << QVector3D(0.0f, 0.1f, 0.5f) << QVector3D(1.0f, 0.5f, 0.5f);
-    *dataRow2 << QVector3D(0.0f, 1.8f, 1.0f) << QVector3D(1.0f, 1.2f, 1.0f);
-    *data << dataRow1 << dataRow2;
+    QSurfaceDataArray data;
+    QSurfaceDataRow dataRow1;
+    QSurfaceDataRow dataRow2;
+    dataRow1 << QSurfaceDataItem(0.0f, 0.1f, 0.5f) << QSurfaceDataItem(1.0f, 0.5f, 0.5f);
+    dataRow2 << QSurfaceDataItem(0.0f, 1.8f, 1.0f) << QSurfaceDataItem(1.0f, 1.2f, 1.0f);
+    data << dataRow1 << dataRow2;
 
     m_proxy->resetArray(data);
 
@@ -83,8 +83,8 @@ void tst_proxy::initialRow()
     QSurfaceDataProxy proxy;
     QSurfaceDataRow row{QSurfaceDataItem{QVector3D{0, 0, 0}},
                         QSurfaceDataItem{QVector3D{1, 1, 1}}};
-    proxy.addRow(new QSurfaceDataRow(row));
-    proxy.addRow(new QSurfaceDataRow(row));
+    proxy.addRow(QSurfaceDataRow(row));
+    proxy.addRow(QSurfaceDataRow(row));
 }
 
 QTEST_MAIN(tst_proxy)

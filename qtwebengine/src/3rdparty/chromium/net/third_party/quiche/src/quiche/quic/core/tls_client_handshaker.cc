@@ -52,6 +52,12 @@ TlsClientHandshaker::TlsClientHandshaker(
                                    cert_and_key->private_key.private_key());
     }
   }
+#if BORINGSSL_API_VERSION >= 22
+  if (!crypto_config->preferred_groups().empty()) {
+    SSL_set1_group_ids(ssl(), crypto_config->preferred_groups().data(),
+                       crypto_config->preferred_groups().size());
+  }
+#endif  // BORINGSSL_API_VERSION
 }
 
 TlsClientHandshaker::~TlsClientHandshaker() {}
@@ -116,6 +122,19 @@ bool TlsClientHandshaker::CryptoConnect() {
     if (!cached_state_->token.empty()) {
       session()->SetSourceAddressTokenToSend(cached_state_->token);
     }
+  }
+
+  SSL_set_enable_ech_grease(ssl(),
+                            tls_connection_.ssl_config().ech_grease_enabled);
+  if (!tls_connection_.ssl_config().ech_config_list.empty() &&
+      !SSL_set1_ech_config_list(
+          ssl(),
+          reinterpret_cast<const uint8_t*>(
+              tls_connection_.ssl_config().ech_config_list.data()),
+          tls_connection_.ssl_config().ech_config_list.size())) {
+    CloseConnection(QUIC_HANDSHAKE_FAILED,
+                    "Client failed to set ECHConfigList");
+    return false;
   }
 
   // Start the handshake.
@@ -313,6 +332,11 @@ bool TlsClientHandshaker::ProcessTransportParameters(
 }
 
 int TlsClientHandshaker::num_sent_client_hellos() const { return 0; }
+
+bool TlsClientHandshaker::ResumptionAttempted() const {
+  QUIC_BUG_IF(quic_tls_client_resumption_attempted, !encryption_established_);
+  return cached_state_ != nullptr;
+}
 
 bool TlsClientHandshaker::IsResumption() const {
   QUIC_BUG_IF(quic_bug_12736_1, !one_rtt_keys_available());
@@ -570,6 +594,7 @@ void TlsClientHandshaker::FillNegotiatedParams() {
   crypto_negotiated_params_->key_exchange_group = SSL_get_curve_id(ssl());
   crypto_negotiated_params_->peer_signature_algorithm =
       SSL_get_peer_signature_algorithm(ssl());
+  crypto_negotiated_params_->encrypted_client_hello = SSL_ech_accepted(ssl());
 }
 
 void TlsClientHandshaker::ProcessPostHandshakeMessage() {

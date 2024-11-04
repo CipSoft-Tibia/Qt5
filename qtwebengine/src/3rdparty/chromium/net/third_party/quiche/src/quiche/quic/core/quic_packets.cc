@@ -106,38 +106,29 @@ size_t GetPacketHeaderSize(
     quiche::QuicheVariableLengthIntegerLength retry_token_length_length,
     QuicByteCount retry_token_length,
     quiche::QuicheVariableLengthIntegerLength length_length) {
-  if (VersionHasIetfInvariantHeader(version)) {
-    if (include_version) {
-      // Long header.
-      size_t size = kPacketHeaderTypeSize + kConnectionIdLengthSize +
-                    destination_connection_id_length +
-                    source_connection_id_length + packet_number_length +
-                    kQuicVersionSize;
-      if (include_diversification_nonce) {
-        size += kDiversificationNonceSize;
-      }
-      if (VersionHasLengthPrefixedConnectionIds(version)) {
-        size += kConnectionIdLengthSize;
-      }
-      QUICHE_DCHECK(
-          QuicVersionHasLongHeaderLengths(version) ||
-          retry_token_length_length + retry_token_length + length_length == 0);
-      if (QuicVersionHasLongHeaderLengths(version)) {
-        size += retry_token_length_length + retry_token_length + length_length;
-      }
-      return size;
+  if (include_version) {
+    // Long header.
+    size_t size = kPacketHeaderTypeSize + kConnectionIdLengthSize +
+                  destination_connection_id_length +
+                  source_connection_id_length + packet_number_length +
+                  kQuicVersionSize;
+    if (include_diversification_nonce) {
+      size += kDiversificationNonceSize;
     }
-    // Short header.
-    return kPacketHeaderTypeSize + destination_connection_id_length +
-           packet_number_length;
+    if (VersionHasLengthPrefixedConnectionIds(version)) {
+      size += kConnectionIdLengthSize;
+    }
+    QUICHE_DCHECK(
+        QuicVersionHasLongHeaderLengths(version) ||
+        retry_token_length_length + retry_token_length + length_length == 0);
+    if (QuicVersionHasLongHeaderLengths(version)) {
+      size += retry_token_length_length + retry_token_length + length_length;
+    }
+    return size;
   }
-  // Google QUIC versions <= 43 can only carry one connection ID.
-  QUICHE_DCHECK(destination_connection_id_length == 0 ||
-                source_connection_id_length == 0);
-  return kPublicFlagsSize + destination_connection_id_length +
-         source_connection_id_length +
-         (include_version ? kQuicVersionSize : 0) + packet_number_length +
-         (include_diversification_nonce ? kDiversificationNonceSize : 0);
+  // Short header.
+  return kPacketHeaderTypeSize + destination_connection_id_length +
+         packet_number_length;
 }
 
 size_t GetStartOfEncryptedData(QuicTransportVersion version,
@@ -441,6 +432,7 @@ SerializedPacket::SerializedPacket(SerializedPacket&& other)
       encryption_level(other.encryption_level),
       has_ack(other.has_ack),
       has_stop_waiting(other.has_stop_waiting),
+      has_ack_ecn(other.has_ack_ecn),
       transmission_type(other.transmission_type),
       largest_acked(other.largest_acked),
       has_ack_frame_copy(other.has_ack_frame_copy),
@@ -498,6 +490,7 @@ SerializedPacket* CopySerializedPacket(const SerializedPacket& serialized,
   copy->peer_address = serialized.peer_address;
   copy->bytes_not_retransmitted = serialized.bytes_not_retransmitted;
   copy->initial_header = serialized.initial_header;
+  copy->has_ack_ecn = serialized.has_ack_ecn;
 
   if (copy_buffer) {
     copy->encrypted_buffer = CopyBuffer(serialized);

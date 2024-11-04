@@ -57,7 +57,8 @@ sudo zypper -nq install --force-resolution libxcb-cursor0 xcb-util-cursor-devel
 # qtwebengine
 sudo zypper -nq install alsa-devel dbus-1-devel libxkbfile-devel libdrm-devel \
          libXcomposite-devel libXcursor-devel libXrandr-devel libXtst-devel \
-         mozilla-nspr-devel mozilla-nss-devel glproto-devel libxshmfence-devel
+         mozilla-nspr-devel mozilla-nss-devel glproto-devel libxshmfence-devel \
+         vulkan-devel
 
 # qtwebkit
 sudo zypper -nq install libxml2-devel libxslt-devel
@@ -95,6 +96,9 @@ sudo zypper -nq install nodejs18
 
 # OpenSSL 3
 sudo zypper -nq install openssl-3
+
+# cifs-utils, for mounting smb drive
+sudo zypper -nq install cifs-utils
 
 gccVersion="$(gcc --version |grep gcc |cut -b 17-23)"
 echo "GCC = $gccVersion" >> versions.txt

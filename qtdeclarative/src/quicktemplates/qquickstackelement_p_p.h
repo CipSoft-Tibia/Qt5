@@ -23,6 +23,8 @@
 #include <QtQuick/private/qquickitemchangelistener_p.h>
 #include <QtQml/private/qv4persistent_p.h>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 class QQmlContext;
@@ -43,6 +45,7 @@ public:
 
     static QQuickStackElement *fromString(const QString &str, QQuickStackView *view, QString *error);
     static QQuickStackElement *fromObject(QObject *object, QQuickStackView *view, QString *error);
+    static QQuickStackElement *fromStackViewArg(QQuickStackView *view, QQuickStackViewArg arg);
 
     bool load(QQuickStackView *parent);
     void incubate(QObject *object, RequiredProperties *requiredProperties);

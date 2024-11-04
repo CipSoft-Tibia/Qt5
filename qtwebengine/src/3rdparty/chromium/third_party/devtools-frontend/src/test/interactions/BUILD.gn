@@ -20,8 +20,10 @@ ts_library("tests") {
     "data_grid_controller",
     "helpers",
     "panels/performance/timeline",
+    "panels/recorder/injected",
     "text_editor",
     "tree_outline",
+    "ui/components",
   ]
 }
 

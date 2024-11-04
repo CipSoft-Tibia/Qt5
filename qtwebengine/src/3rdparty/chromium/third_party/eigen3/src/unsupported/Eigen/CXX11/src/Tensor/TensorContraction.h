@@ -91,9 +91,8 @@ struct TensorContractionBlockMemAllocator {
     eigen_assert(rhs_block);
     BlockSizes sz = ComputeLhsRhsBlockSizes(bm, bk, bn);
     char* block_mem = static_cast<char*>(d.allocate(sz.lhs_size + sz.rhs_size));
-    eigen_assert(block_mem);
-    *lhs_block = reinterpret_cast<LhsScalar*>(block_mem);
-    *rhs_block = reinterpret_cast<RhsScalar*>(block_mem + sz.lhs_size);
+    *lhs_block = static_cast<LhsScalar*>(static_cast<void*>(block_mem));
+    *rhs_block = static_cast<RhsScalar*>(static_cast<void*>(block_mem + sz.lhs_size));
     return block_mem;
   }
 
@@ -116,12 +115,12 @@ struct TensorContractionBlockMemAllocator {
     for (Index x = 0; x < num_slices; x++) {
       if (num_lhs > 0) lhs_blocks[x].resize(num_lhs);
       for (Index m = 0; m < num_lhs; m++) {
-        lhs_blocks[x][m] = reinterpret_cast<LhsScalar*>(mem);
+        lhs_blocks[x][m] = static_cast<LhsScalar*>(static_cast<void*>(mem));
         mem += sz.lhs_size;
       }
       if (num_rhs > 0) rhs_blocks[x].resize(num_rhs);
       for (Index n = 0; n < num_rhs; n++) {
-        rhs_blocks[x][n] = reinterpret_cast<RhsScalar*>(mem);
+        rhs_blocks[x][n] = static_cast<RhsScalar*>(static_cast<void*>(mem));
         mem += sz.rhs_size;
       }
     }

@@ -11,7 +11,9 @@
 module ash.cros_healthd.mojom;
 
 import "ash/system/diagnostics/mojom/input.mojom";
+import "chromeos/ash/services/cros_healthd/public/mojom/cros_healthd_probe.mojom";
 import "chromeos/ash/services/cros_healthd/public/mojom/nullable_primitives.mojom";
+import "mojo/public/mojom/base/time.mojom";
 
 // Implemented by clients who desire Bluetooth notifications.
 //
@@ -105,9 +107,9 @@ struct UsbEventInfo {
   enum State {
     // This is required for backwards compatibility, should not be used.
     [Default] kUnmappedEnumField = 0,
-    // Usb plugs in.
+    // USB plugs in.
     kAdd = 1,
-    // Usb unplugs.
+    // USB unplugs.
     kRemove = 2,
   };
 
@@ -244,7 +246,7 @@ struct AudioEventInfo {
 
 // Audio jack event info.
 //
-// NextMinVersion: 1, NextIndex: 1
+// NextMinVersion: 2, NextIndex: 2
 [Stable]
 struct AudioJackEventInfo {
   [Stable, Extensible]
@@ -258,6 +260,18 @@ struct AudioJackEventInfo {
   };
 
   State state@0;
+
+  [Stable, Extensible]
+  enum DeviceType {
+    // This is required for backwards compatibility, should not be used.
+    [Default] kUnmappedEnumField,
+    // The device is a headphone.
+    kHeadphone,
+    // The device is a microphone.
+    kMicrophone,
+  };
+
+  [MinVersion=1] DeviceType device_type@1;
 };
 
 // SD Card event info.
@@ -362,6 +376,172 @@ union TouchpadEventInfo {
   TouchpadConnectedEvent connected_event@3;
 };
 
+// External Display event info.
+//
+// NextMinVersion: 1, NextIndex: 1
+[Stable, RenamedFrom="ash.cros_healthd.mojom.HdmiEventInfo"]
+struct ExternalDisplayEventInfo {
+  [Stable, Extensible]
+  enum State {
+    // This is required for backwards compatibility, should not be used.
+    [Default] kUnmappedEnumField,
+    // External display plugs in.
+    kAdd,
+    // External display plugs out.
+    kRemove,
+  };
+
+  State state@0;
+  // On external display event, also report information about the display.
+  [MinVersion=1] ExternalDisplayInfo? display_info@1;
+};
+
+// Emitted when new touch points are updated.
+//
+// NextMinVersion: 1, NextIndex: 1
+[Stable]
+struct TouchscreenTouchEvent {
+  // The touch points reported by the touchscreen.
+  array<TouchPointInfo> touch_points@0;
+};
+
+// Emitted once the observer get connected to the touchscreen events. This will
+// be the first event from the touchscreen.
+//
+// NextMinVersion: 1, NextIndex: 3
+[Stable]
+struct TouchscreenConnectedEvent {
+  // The maximum possible x position of touch points.
+  uint32 max_x@0;
+  // The maximum possible y position of touch points.
+  uint32 max_y@1;
+  // The maximum possible pressure of touch points, or 0 if pressure is not
+  // supported.
+  uint32 max_pressure@2;
+};
+
+// Union of Touchscreen events.
+//
+// NextMinVersion: 1, NextIndex: 3
+[Stable, Extensible]
+union TouchscreenEventInfo {
+  // The default value for forward compatibility. All the unknown type will be
+  // mapped to this.
+  [Default] uint8 default_type@0;
+  TouchscreenTouchEvent touch_event@1;
+  TouchscreenConnectedEvent connected_event@2;
+};
+
+// Stylus garage event info.
+//
+// NextMinVersion: 1, NextIndex: 1
+[Stable]
+struct StylusGarageEventInfo {
+  [Stable, Extensible]
+  enum State {
+    // This is required for backwards compatibility, should not be used.
+    [Default] kUnmappedEnumField,
+    // Stylus inserted into the garage.
+    kInserted,
+    // Stylus removed from the garage.
+    kRemoved,
+  };
+
+  State state@0;
+};
+
+// Stylus touch point info.
+//
+// NextMinVersion: 1, NextIndex: 3
+[Stable]
+struct StylusTouchPointInfo {
+  // The x position.
+  uint32 x@0;
+  // The y position.
+  uint32 y@1;
+  // The pressure applied to the touch contact.
+  NullableUint32? pressure@2;
+};
+
+// Emitted when new touch point is updated.
+//
+// NextMinVersion: 1, NextIndex: 1
+[Stable]
+struct StylusTouchEvent {
+  // The info of the stylus touch point. A null touch point means the stylus
+  // leaves the contact.
+  StylusTouchPointInfo? touch_point@0;
+};
+
+// Emitted once the observer get connected to the stylus events. This will be
+// the first event from the stylus.
+//
+// NextMinVersion: 1, NextIndex: 3
+[Stable]
+struct StylusConnectedEvent {
+  // The maximum possible x position of touch points.
+  uint32 max_x@0;
+  // The maximum possible y position of touch points.
+  uint32 max_y@1;
+  // The maximum possible pressure of touch points, or 0 if pressure is not
+  // supported.
+  uint32 max_pressure@2;
+};
+
+// Union of stylus events.
+//
+// NextMinVersion: 1, NextIndex: 3
+[Stable, Extensible]
+union StylusEventInfo {
+  // The default value for forward compatibility. All the unknown type will be
+  // mapped to this.
+  [Default] uint8 default_type@0;
+  StylusTouchEvent touch_event@1;
+  StylusConnectedEvent connected_event@2;
+};
+
+// Emitted within CrashEventInfo. Contains information available for uploaded
+// crash events only.
+//
+// NextMinVersion: 1, NextIndex: 3
+[Stable]
+struct CrashUploadInfo {
+  // Corresponding to "upload_id" in uploads.log.
+  string crash_report_id@0;
+  // The creation time of the uploads.log file.
+  // Used to distinguish uploads.log file in case it has been deleted and
+  // recreated.
+  mojo_base.mojom.Time creation_time@1;
+  // Number of valid logs before this event in uploads.log. Useful to inform
+  // subscribers that need to distinguish whether a crash event has been
+  // encountered before.
+  uint64 offset@2;
+};
+
+// Emitted once the observer gets new crash events.
+//
+// NextMinVersion: 1, NextIndex: 4
+[Stable]
+struct CrashEventInfo {
+  [Stable, Extensible]
+  enum CrashType {
+      [Default] kUnknown = 0,
+      kKernel,
+      kEmbeddedController,
+  };
+  // Type of the crash. Corresponding to "fatal_crash_type" in uploads.log.
+  CrashType crash_type@0;
+  // ID that represents crash locally. Corresponding to "path_hash" in
+  // uploads.log.
+  string local_id@1;
+  // The time at which the crash event is captured by the system. Corresponding
+  // to "capture_time" in uploads.log.
+  mojo_base.mojom.Time capture_time@2;
+  // Information available for uploaded crash events only. Missing if the crash
+  // hasn't been uploaded by crash_sender yet.
+  CrashUploadInfo? upload_info@3;
+};
+
 // Implemented by clients who desire events.
 //
 // NextMinVersion: 1, NextIndex: 1
@@ -373,13 +553,13 @@ interface EventObserver {
 
 // Union of event info.
 //
-// NextMinVersion: 5, NextIndex: 11
+// NextMinVersion: 10, NextIndex: 16
 [Stable, Extensible]
 union EventInfo {
   // The default value for forward compatibility. All the unknown type will be
   // mapped to this.
   [Default] uint8 default_type@0;
-  // Usb event info.
+  // USB event info.
   UsbEventInfo usb_event_info@1;
   // Thunderbolt event info.
   ThunderboltEventInfo thunderbolt_event_info@2;
@@ -393,7 +573,7 @@ union EventInfo {
   AudioEventInfo audio_event_info@6;
   // Audio jack event info.
   [MinVersion=1] AudioJackEventInfo audio_jack_event_info@7;
-  // Sd Card event info.
+  // SD Card event info.
   [MinVersion=2] SdCardEventInfo sd_card_event_info@8;
   // Keyboard diagnostics event info. It is fired when users completed a
   // keyboard diagnostic in the Diagnostics App.
@@ -401,11 +581,21 @@ union EventInfo {
     keyboard_diagnostic_event_info@9;
   // Touchpad event info.
   [MinVersion=4] TouchpadEventInfo touchpad_event_info@10;
+  // External Display event info.
+  [MinVersion=5] ExternalDisplayEventInfo external_display_event_info@11;
+  // Touchscreen event info.
+  [MinVersion=6] TouchscreenEventInfo touchscreen_event_info@12;
+  // Stylus garagge event info.
+  [MinVersion=7] StylusGarageEventInfo stylus_garage_event_info@13;
+  // Stylus event info.
+  [MinVersion=8] StylusEventInfo stylus_event_info@14;
+  // Crash event info.
+  [MinVersion=9] CrashEventInfo crash_event_info@15;
 };
 
 // An enumeration of event categories.
 //
-// NextMinVersion: 6, NextIndex: 12
+// NextMinVersion: 11, NextIndex: 17
 [Stable, Extensible]
 enum EventCategoryEnum {
   // This is required for backwards compatibility, should not be used.
@@ -421,4 +611,9 @@ enum EventCategoryEnum {
   [MinVersion=3] kNetwork = 9,
   [MinVersion=4] kKeyboardDiagnostic = 10,
   [MinVersion=5] kTouchpad = 11,
+  [MinVersion=6] kExternalDisplay = 12,
+  [MinVersion=7] kTouchscreen = 13,
+  [MinVersion=8] kStylusGarage = 14,
+  [MinVersion=9] kStylus = 15,
+  [MinVersion=10] kCrash = 16,
 };

@@ -9,7 +9,6 @@
 
 #include "base/memory/raw_ptr.h"
 #include "components/autofill/core/browser/data_model/autofill_profile.h"
-#include "components/autofill/core/browser/data_model/test_data_creator.h"
 #include "components/autofill/core/browser/geo/alternative_state_name_map_updater.h"
 #include "components/sync/base/model_type.h"
 
@@ -74,12 +73,6 @@ class PersonalDataManagerCleaner {
     return DeleteDisusedCreditCards();
   }
 
-  // A wrapper around |ClearProfileNonSettingsOrigins()| used for testing
-  // purposes.
-  void ClearProfileNonSettingsOriginsForTesting() {
-    ClearProfileNonSettingsOrigins();
-  }
-
   // A wrapper around |ClearCreditCardNonSettingsOrigins()| used for testing
   // purposes.
   void ClearCreditCardNonSettingsOriginsForTesting() {
@@ -99,10 +92,6 @@ class PersonalDataManagerCleaner {
 
   // Applies various fixes and cleanups on autofill credit cards.
   void ApplyCardFixesAndCleanups();
-
-  // Runs the routine that removes the orphan rows in the autofill tables if
-  // it's never been done.
-  void RemoveOrphanAutofillTableRows();
 
   // Removes settings-inaccessible profiles values from all profiles stored in
   // the |personal_data_manager_|.
@@ -142,22 +131,12 @@ class PersonalDataManagerCleaner {
   // feature is enabled.
   bool DeleteDisusedCreditCards();
 
-  // Clears the value of the origin field of the autofill profiles or cards that
-  // were not created from the settings page.
-  void ClearProfileNonSettingsOrigins();
+  // Clears the value of the origin field of cards that were not created from
+  // the settings page.
   void ClearCreditCardNonSettingsOrigins();
-
-  // Used for adding test data by |test_data_creator_|.
-  void AddProfileForTest(const AutofillProfile& profile);
-  void AddCreditCardForTest(const CreditCard& credit_card);
 
   // True if autofill profile cleanup needs to be performed.
   bool is_autofill_profile_cleanup_pending_ = false;
-
-  // Used to create test data. If the AutofillCreateDataForTest feature is
-  // enabled, this helper creates autofill profiles and credit card data that
-  // would otherwise be difficult to create manually using the UI.
-  TestDataCreator test_data_creator_;
 
   // The personal data manager, used to load and update the personal data
   // from/to the web database.

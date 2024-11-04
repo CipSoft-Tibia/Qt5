@@ -42,6 +42,7 @@ private:
     void printFieldEnum();
     void printQEnums();
     void printOneofEnums();
+    void printPublicExtras();
 
     //Recursive functionality
     void printClassDeclarationPrivate();

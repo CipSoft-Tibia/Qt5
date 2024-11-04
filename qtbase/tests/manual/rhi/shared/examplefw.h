@@ -1,5 +1,5 @@
 // Copyright (C) 2018 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 // Adapted from hellominimalcrossgfxtriangle with the frame rendering stripped out.
 // Include this file and implement Window::customInit, release and render.
@@ -80,6 +80,8 @@ QRhi::BeginFrameFlags beginFrameFlags;
 QRhi::EndFrameFlags endFrameFlags;
 bool transparentBackground = false;
 bool debugLayer = true;
+QRhiSwapChain::Format swapchainFormat = QRhiSwapChain::SDR;
+float imguiHDRMultiplier = 0.0f;
 
 class Window : public QWindow
 {
@@ -280,6 +282,10 @@ void Window::init()
     m_sc->setDepthStencil(m_ds);
     m_sc->setSampleCount(sampleCount);
     m_sc->setFlags(scFlags);
+    if (!m_sc->isFormatSupported(swapchainFormat))
+        qWarning("Swapchain reports that requested format %d is not supported", int(swapchainFormat));
+    else
+        m_sc->setFormat(swapchainFormat);
     m_rp = m_sc->newCompatibleRenderPassDescriptor();
     m_sc->setRenderPassDescriptor(m_rp);
 
@@ -398,7 +404,7 @@ void Window::render()
 
     QMatrix4x4 guiMvp = m_r->clipSpaceCorrMatrix();
     guiMvp.ortho(0, outputSizeInPixels.width() / dpr, outputSizeInPixels.height() / dpr, 0, 1, -1);
-    m_imguiRenderer->prepare(m_r, rt, cb, guiMvp, 1.0f);
+    m_imguiRenderer->prepare(m_r, rt, cb, guiMvp, 1.0f, imguiHDRMultiplier);
 #endif
 
     customRender();

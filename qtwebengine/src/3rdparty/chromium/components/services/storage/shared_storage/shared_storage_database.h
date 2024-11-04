@@ -21,12 +21,12 @@
 #include "base/threading/sequence_bound.h"
 #include "base/time/clock.h"
 #include "components/services/storage/public/mojom/storage_usage_info.mojom-forward.h"
-#include "components/services/storage/shared_storage/public/mojom/shared_storage.mojom.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "sql/database.h"
 #include "sql/meta_table.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
+#include "third_party/blink/public/mojom/shared_storage/shared_storage_worklet_service.mojom.h"
 
 namespace base {
 class FilePath;
@@ -305,8 +305,7 @@ class SharedStorageDatabase {
   // whether the operation was successful.
   [[nodiscard]] OperationResult Keys(
       const url::Origin& context_origin,
-      mojo::PendingRemote<
-          shared_storage_worklet::mojom::SharedStorageEntriesListener>
+      mojo::PendingRemote<blink::mojom::SharedStorageEntriesListener>
           pending_listener);
 
   // From a list of all the unexpired key-value pairs for `context_origin` taken
@@ -315,14 +314,14 @@ class SharedStorageDatabase {
   // `pending_listener`. Returns whether the operation was successful.
   [[nodiscard]] OperationResult Entries(
       const url::Origin& context_origin,
-      mojo::PendingRemote<
-          shared_storage_worklet::mojom::SharedStorageEntriesListener>
+      mojo::PendingRemote<blink::mojom::SharedStorageEntriesListener>
           pending_listener);
 
   // Clears all origins that match `storage_key_matcher` run on the owning
-  // StoragePartition's `SpecialStoragePolicy` and have `creation_time` between
-  // the times `begin` and `end`. If `perform_storage_cleanup` is true, vacuums
-  // the database afterwards. Returns whether the transaction was successful.
+  // StoragePartition's `SpecialStoragePolicy` and have any key with a
+  // `last_used_time` between the times `begin` and `end`. If
+  // `perform_storage_cleanup` is true, vacuums the database afterwards. Returns
+  // whether the transaction was successful.
   [[nodiscard]] OperationResult PurgeMatchingOrigins(
       StorageKeyPolicyMatcherFunction storage_key_matcher,
       base::Time begin,
@@ -404,19 +403,6 @@ class SharedStorageDatabase {
   // Returns the total number of entries in the table for all origins, or -1 in
   // case of database initialization failure or SQL error.
   [[nodiscard]] int64_t GetTotalNumBudgetEntriesForTesting();
-
-  // Populates the database in order to test integration with
-  // `content::StoragePartitionImpl` while keeping in this file the parts of
-  // those tests that depend on implementation details of
-  // `SharedStorageDatabase`.
-  //
-  // Sets two example key-value pairs for `origin1`, one example pair for
-  // `origin2`, and two example pairs for `origin3`, while also overriding the
-  // `creation_time` for `origin2` so that it is 1 day earlier and the
-  // `creation_time` for `origin3` so that it is 60 days earlier.
-  [[nodiscard]] bool PopulateDatabaseForTesting(url::Origin origin1,
-                                                url::Origin origin2,
-                                                url::Origin origin3);
 
  private:
   // Policy to tell `LazyInit()` whether or not to create a new database if a

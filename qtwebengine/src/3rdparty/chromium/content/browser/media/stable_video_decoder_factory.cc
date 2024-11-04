@@ -117,6 +117,12 @@ class StableVideoDecoderFactoryProcessLauncher final
           receiver) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(ui_sequence_checker_);
 
+    if (gpu_feature_info_
+            ->status_values[gpu::GPU_FEATURE_TYPE_ACCELERATED_VIDEO_DECODE] !=
+        gpu::kGpuFeatureStatusEnabled) {
+      return;
+    }
+
 #if BUILDFLAG(IS_CHROMEOS_ASH)
     const bool enable_direct_video_decoder =
         gpu_preferences_.enable_chromeos_direct_video_decoder;
@@ -177,8 +183,11 @@ void LaunchStableVideoDecoderFactory(
   // For LaCrOS, we need to use crosapi to establish a
   // StableVideoDecoderFactory connection to ash-chrome.
   auto* lacros_service = chromeos::LacrosService::Get();
-  if (lacros_service && lacros_service->IsStableVideoDecoderFactoryAvailable())
+  if (lacros_service &&
+      lacros_service
+          ->IsSupported<media::stable::mojom::StableVideoDecoderFactory>()) {
     lacros_service->BindStableVideoDecoderFactory(std::move(receiver));
+  }
 #endif
 }
 

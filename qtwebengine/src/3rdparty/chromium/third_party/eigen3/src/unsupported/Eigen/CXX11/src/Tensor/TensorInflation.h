@@ -228,13 +228,6 @@ struct TensorEvaluator<const TensorInflationOp<Strides, ArgType>, Device>
 
   EIGEN_DEVICE_FUNC EvaluatorPointerType data() const { return NULL; }
 
-#ifdef EIGEN_USE_SYCL
-  // binding placeholder accessors to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_impl.bind(cgh);
-  }
-#endif
-
  protected:
   Dimensions m_dimensions;
   array<Index, NumDims> m_outputStrides;

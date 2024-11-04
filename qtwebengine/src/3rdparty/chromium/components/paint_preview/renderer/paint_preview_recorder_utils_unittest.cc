@@ -32,10 +32,23 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/skia/include/codec/SkCodec.h"
+#include "third_party/skia/include/codec/SkPngDecoder.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkBlendMode.h"
+#include "third_party/skia/include/core/SkCanvas.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "third_party/skia/include/core/SkData.h"
 #include "third_party/skia/include/core/SkFont.h"
+#include "third_party/skia/include/core/SkImage.h"
+#include "third_party/skia/include/core/SkM44.h"
+#include "third_party/skia/include/core/SkPicture.h"
+#include "third_party/skia/include/core/SkRect.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
+#include "third_party/skia/include/core/SkSamplingOptions.h"
 #include "third_party/skia/include/core/SkTextBlob.h"
 #include "third_party/skia/include/core/SkTypeface.h"
+#include "third_party/skia/include/encode/SkPngEncoder.h"
 
 namespace paint_preview {
 
@@ -368,7 +381,7 @@ TEST_P(PaintPreviewRecorderUtilsSerializeAsSkPictureTest,
             .set_id(cc::PaintImage::GetNextId())
             .set_texture_backing(
                 sk_sp<FakeTextureBacking>(
-                    new FakeTextureBacking(SkImage::MakeFromBitmap(bitmap))),
+                    new FakeTextureBacking(SkImages::RasterFromBitmap(bitmap))),
                 cc::PaintImage::GetNextContentId())
             .TakePaintImage();
     canvas->drawImage(paint_image, 0U, 0U);
@@ -395,9 +408,13 @@ TEST_P(PaintPreviewRecorderUtilsSerializeAsSkPictureTest,
     bitmap.allocN32Pixels(dimensions.width(), dimensions.height());
     SkCanvas sk_canvas(bitmap);
     sk_canvas.drawColor(SkColors::kRed);
-    auto sk_image = SkImage::MakeFromBitmap(bitmap);
-    auto data = sk_image->encodeToData();
-    auto lazy_sk_image = SkImage::MakeFromEncoded(data);
+    auto sk_image = SkImages::RasterFromBitmap(bitmap);
+    auto data = SkPngEncoder::Encode(nullptr, sk_image.get(), {});
+    CHECK(data);
+    ASSERT_TRUE(SkPngDecoder::IsPng(data->data(), data->size()));
+    SkCodecs::Register(SkPngDecoder::Decoder());
+    auto lazy_sk_image = SkImages::DeferredFromEncodedData(data);
+    CHECK(lazy_sk_image);
     ASSERT_TRUE(lazy_sk_image->isLazyGenerated());
     cc::PaintImage paint_image =
         cc::PaintImageBuilder::WithDefault()

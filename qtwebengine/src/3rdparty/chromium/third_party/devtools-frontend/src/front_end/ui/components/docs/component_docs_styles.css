@@ -35,13 +35,14 @@ body {
 
 .components-list a {
   display: block;
+  font-size: 14px;
   padding: 10px;
 }
 
 .components-list a:link,
 .components-list a:visited {
   text-transform: capitalize;
-  color: var(--color-primary);
+  color: var(--color-primary-old);
   text-decoration: none;
   box-shadow: var(--drop-shadow);
 }

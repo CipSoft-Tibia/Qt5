@@ -33,7 +33,6 @@
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/layout/ng/svg/layout_ng_svg_text.h"
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_resource_masker.h"
-#include "third_party/blink/renderer/core/layout/svg/layout_svg_text.h"
 #include "third_party/blink/renderer/core/layout/svg/svg_layout_support.h"
 #include "third_party/blink/renderer/core/layout/svg/svg_resources.h"
 #include "third_party/blink/renderer/core/layout/svg/transform_helper.h"
@@ -57,14 +56,7 @@ LayoutSVGRoot::LayoutSVGRoot(SVGElement* node)
       did_screen_scale_factor_change_(false),
       needs_boundaries_or_transform_update_(true),
       has_non_isolated_blending_descendants_(false),
-      has_non_isolated_blending_descendants_dirty_(false) {
-  auto* svg = To<SVGSVGElement>(node);
-  DCHECK(svg);
-
-  SetIntrinsicSize(
-      LayoutSize(LayoutUnit(svg->IntrinsicWidth().value_or(kDefaultWidth)),
-                 LayoutUnit(svg->IntrinsicHeight().value_or(kDefaultHeight))));
-}
+      has_non_isolated_blending_descendants_dirty_(false) {}
 
 LayoutSVGRoot::~LayoutSVGRoot() = default;
 
@@ -92,21 +84,12 @@ void LayoutSVGRoot::UnscaledIntrinsicSizingInfo(
   if (!intrinsic_sizing_info.size.IsEmpty()) {
     intrinsic_sizing_info.aspect_ratio = intrinsic_sizing_info.size;
   } else {
-    gfx::SizeF view_box_size = svg->viewBox()->CurrentValue()->Rect().size();
+    const gfx::SizeF view_box_size = svg->CurrentViewBox().Rect().size();
     if (!view_box_size.IsEmpty()) {
       // The viewBox can only yield an intrinsic ratio, not an intrinsic size.
       intrinsic_sizing_info.aspect_ratio = view_box_size;
     }
   }
-  EAspectRatioType ar_type = StyleRef().AspectRatio().GetType();
-  if (ar_type == EAspectRatioType::kRatio ||
-      (ar_type == EAspectRatioType::kAutoAndRatio &&
-       intrinsic_sizing_info.aspect_ratio.IsEmpty())) {
-    intrinsic_sizing_info.aspect_ratio = StyleRef().AspectRatio().GetRatio();
-  }
-
-  if (!IsHorizontalWritingMode())
-    intrinsic_sizing_info.Transpose();
 }
 
 void LayoutSVGRoot::ComputeIntrinsicSizingInfo(
@@ -125,8 +108,9 @@ bool LayoutSVGRoot::IsEmbeddedThroughSVGImage() const {
 
 bool LayoutSVGRoot::IsEmbeddedThroughFrameContainingSVGDocument() const {
   NOT_DESTROYED();
-  if (!GetNode())
+  if (!IsDocumentElement() || !GetNode()) {
     return false;
+  }
 
   LocalFrame* frame = GetNode()->GetDocument().GetFrame();
   if (!frame || !frame->GetDocument()->IsSVGDocument())
@@ -142,54 +126,12 @@ bool LayoutSVGRoot::IsEmbeddedThroughFrameContainingSVGDocument() const {
   return owner_layout_object && owner_layout_object->IsEmbeddedObject();
 }
 
-LayoutUnit LayoutSVGRoot::ComputeReplacedLogicalWidth(
-    ShouldComputePreferred should_compute_preferred) const {
-  NOT_DESTROYED();
-  // When we're embedded through SVGImage
-  // (border-image/background-image/<html:img>/...) we're forced to resize to a
-  // specific size.
-  if (!container_size_.IsEmpty())
-    return container_size_.Width();
-
-  if (IsEmbeddedThroughFrameContainingSVGDocument())
-    return ContainingBlock()->AvailableLogicalWidth();
-
-  LayoutUnit width =
-      LayoutReplaced::ComputeReplacedLogicalWidth(should_compute_preferred);
-  if (StyleRef().LogicalWidth().IsPercentOrCalc())
-    width *= LogicalSizeScaleFactorForPercentageLengths();
-  return width;
-}
-
-LayoutUnit LayoutSVGRoot::ComputeReplacedLogicalHeight(
-    LayoutUnit estimated_used_width) const {
-  NOT_DESTROYED();
-  // When we're embedded through SVGImage
-  // (border-image/background-image/<html:img>/...) we're forced to resize to a
-  // specific size.
-  if (!container_size_.IsEmpty())
-    return container_size_.Height();
-
-  if (IsEmbeddedThroughFrameContainingSVGDocument())
-    return ContainingBlock()->AvailableLogicalHeight(
-        kIncludeMarginBorderPadding);
-
-  const Length& logical_height = StyleRef().LogicalHeight();
-  if (IsDocumentElement() && logical_height.IsPercentOrCalc()) {
-    LayoutUnit height = ValueForLength(
-        logical_height,
-        GetDocument().GetLayoutView()->ViewLogicalHeightForPercentages());
-    height *= LogicalSizeScaleFactorForPercentageLengths();
-    return height;
-  }
-
-  return LayoutReplaced::ComputeReplacedLogicalHeight(estimated_used_width);
-}
-
 double LayoutSVGRoot::LogicalSizeScaleFactorForPercentageLengths() const {
   NOT_DESTROYED();
-  if (!IsDocumentElement() || !GetDocument().IsInOutermostMainFrame())
+  CHECK(IsDocumentElement());
+  if (!GetDocument().IsInOutermostMainFrame()) {
     return 1;
+  }
   if (GetDocument().GetLayoutView()->ShouldUsePrintingLayout())
     return 1;
   // This will return the zoom factor which is different from the typical usage
@@ -204,11 +146,7 @@ void LayoutSVGRoot::UpdateLayout() {
   NOT_DESTROYED();
   DCHECK(NeedsLayout());
 
-  LayoutSize old_size = Size();
-  if (!RuntimeEnabledFeatures::LayoutNGReplacedNoBoxSettersEnabled()) {
-    UpdateLogicalWidth();
-    UpdateLogicalHeight();
-  }
+  PhysicalSize old_size = Size();
 
   // Whether we have a self-painting layer depends on whether there are
   // compositing descendants (see: |HasCompositingDescendants()| which is called
@@ -241,14 +179,8 @@ void LayoutSVGRoot::UpdateLayout() {
   // selfNeedsLayout() will cover changes to one (or more) of viewBox,
   // current{Scale,Translate}, decorations and 'overflow'.
   const bool viewport_may_have_changed =
-      SelfNeedsLayout() || old_size != SizeFromNG();
-
-  auto* svg = To<SVGSVGElement>(GetNode());
-  DCHECK(svg);
-  // When hasRelativeLengths() is false, no descendants have relative lengths
-  // (hence no one is interested in viewport size changes).
-  is_layout_size_changed_ =
-      viewport_may_have_changed && svg->HasRelativeLengths();
+      SelfNeedsFullLayout() || old_size != SizeFromNG();
+  is_layout_size_changed_ = viewport_may_have_changed;
 
   SVGContainerLayoutInfo layout_info;
   layout_info.scale_factor_changed = did_screen_scale_factor_change_;
@@ -275,8 +207,6 @@ void LayoutSVGRoot::UpdateLayout() {
       Layer()->SetNeedsCompositingInputsUpdate();
   }
 
-  if (!RuntimeEnabledFeatures::LayoutNGUnifyUpdateAfterLayoutEnabled())
-    UpdateAfterLayout();
   ClearNeedsLayout();
 }
 
@@ -299,7 +229,7 @@ LayoutRect LayoutSVGRoot::ComputeContentsVisualOverflow() const {
   // To condition, we intersect with something that we oftentimes
   // consider to be "infinity".
   return Intersection(EnclosingLayoutRect(content_visual_rect),
-                      LayoutRect(LayoutRect::InfiniteIntRect()));
+                      LayoutRect(InfiniteIntRect()));
 }
 
 void LayoutSVGRoot::PaintReplaced(const PaintInfo& paint_info,
@@ -468,8 +398,13 @@ PositionWithAffinity LayoutSVGRoot::PositionForPoint(
 
   LayoutObject* layout_object = closest_descendant;
   AffineTransform transform = layout_object->LocalToSVGParentTransform();
-  transform.Translate(To<LayoutBox>(layout_object)->Location().X(),
-                      To<LayoutBox>(layout_object)->Location().Y());
+  if (RuntimeEnabledFeatures::LayoutNGNoLocationEnabled()) {
+    PhysicalOffset location = To<LayoutBox>(layout_object)->PhysicalLocation();
+    transform.Translate(location.left, location.top);
+  } else {
+    transform.Translate(To<LayoutBox>(layout_object)->Location().X(),
+                        To<LayoutBox>(layout_object)->Location().Y());
+  }
   while (layout_object) {
     layout_object = layout_object->Parent();
     if (layout_object->IsSVGRoot())
@@ -507,9 +442,25 @@ SVGTransformChange LayoutSVGRoot::BuildLocalToBorderBoxTransform() {
 
 AffineTransform LayoutSVGRoot::LocalToSVGParentTransform() const {
   NOT_DESTROYED();
+  if (RuntimeEnabledFeatures::LayoutNGNoLocationEnabled()) {
+    PhysicalOffset location = PhysicalLocation();
+    return AffineTransform::Translation(RoundToInt(location.left),
+                                        RoundToInt(location.top)) *
+           local_to_border_box_transform_;
+  }
   return AffineTransform::Translation(RoundToInt(Location().X()),
                                       RoundToInt(Location().Y())) *
          local_to_border_box_transform_;
+}
+
+gfx::RectF LayoutSVGRoot::ViewBoxRect() const {
+  return To<SVGSVGElement>(*GetNode()).CurrentViewBoxRect();
+}
+
+gfx::SizeF LayoutSVGRoot::ViewportSize() const {
+  const PhysicalSize& viewport_size = PhysicalContentBoxRectFromNG().size;
+  const float zoom = StyleRef().EffectiveZoom();
+  return gfx::SizeF(viewport_size.width / zoom, viewport_size.height / zoom);
 }
 
 // This method expects local CSS box coordinates.

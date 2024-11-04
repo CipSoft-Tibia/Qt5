@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/qtest.h>
 #include <QtCore/private/qhooks_p.h>
@@ -365,17 +365,18 @@ void tst_customization::override_data()
         {
             "macOS",
             {
-                "Button", "CheckBox", "ComboBox", "Dial",  "Frame", "GroupBox",
-                "ProgressBar", "RadioButton", "SelectionRectangle", "Slider",
-                "SpinBox", "TextArea", "TextField", "TreeViewDelegate"
+                "Button", "CheckBox", "CheckDelegate", "ComboBox", "DelayButton", "Dial",  "Frame",
+                "GroupBox", "ProgressBar", "RadioButton", "RadioDelegate", "SelectionRectangle",
+                "RangeSlider", "Slider", "SpinBox", "TextArea", "TextField", "TreeViewDelegate"
                 // TODO: ScrollView, ScrollBar
             }
         },
         {
             "Windows",
             {
-                "Button", "CheckBox", "ComboBox", "Frame", "GroupBox", "ProgressBar", "RadioButton",
-                "SelectionRectangle", "ScrollBar", "Slider", "SpinBox", "TextArea", "TextField"
+                "Button", "CheckBox", "CheckDelegate", "ComboBox", "DelayButton", "Frame", "GroupBox",
+                "ProgressBar", "RadioButton", "RadioDelegate", "RangeSlider", "SelectionRectangle",
+                "ScrollBar", "Slider", "SpinBox", "Switch", "SwitchDelegate", "TextArea", "TextField"
             }
         }
     };

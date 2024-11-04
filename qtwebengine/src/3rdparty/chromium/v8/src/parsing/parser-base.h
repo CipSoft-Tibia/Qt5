@@ -63,7 +63,7 @@ struct FormalParametersBase {
   int num_parameters() const {
     // Don't include the rest parameter into the function's formal parameter
     // count (esp. the SharedFunctionInfo::internal_formal_parameter_count,
-    // which says whether we need to create an arguments adaptor frame).
+    // which says whether we need to create an inlined arguments frame).
     return arity - has_rest;
   }
 
@@ -597,19 +597,7 @@ class ParserBase {
           private_members(parser->impl()->NewClassPropertyList(4)),
           static_elements(parser->impl()->NewClassStaticElementList(4)),
           instance_fields(parser->impl()->NewClassPropertyList(4)),
-          constructor(parser->impl()->NullExpression()),
-          has_seen_constructor(false),
-          has_static_computed_names(false),
-          has_static_elements(false),
-          has_static_private_methods(false),
-          has_static_blocks(false),
-          has_instance_members(false),
-          requires_brand(false),
-          is_anonymous(false),
-          has_private_methods(false),
-          static_elements_scope(nullptr),
-          instance_members_scope(nullptr),
-          computed_field_count(0) {}
+          constructor(parser->impl()->NullExpression()) {}
     ExpressionT extends;
     ClassPropertyListT public_members;
     ClassPropertyListT private_members;
@@ -617,18 +605,18 @@ class ParserBase {
     ClassPropertyListT instance_fields;
     FunctionLiteralT constructor;
 
-    bool has_seen_constructor;
-    bool has_static_computed_names;
-    bool has_static_elements;
-    bool has_static_private_methods;
-    bool has_static_blocks;
-    bool has_instance_members;
-    bool requires_brand;
-    bool is_anonymous;
-    bool has_private_methods;
-    DeclarationScope* static_elements_scope;
-    DeclarationScope* instance_members_scope;
-    int computed_field_count;
+    bool has_seen_constructor = false;
+    bool has_static_computed_names = false;
+    bool has_static_elements = false;
+    bool has_static_private_methods = false;
+    bool has_static_blocks = false;
+    bool has_instance_members = false;
+    bool requires_brand = false;
+    bool is_anonymous = false;
+    bool has_private_methods = false;
+    DeclarationScope* static_elements_scope = nullptr;
+    DeclarationScope* instance_members_scope = nullptr;
+    int computed_field_count = 0;
     Variable* home_object_variable = nullptr;
     Variable* static_home_object_variable = nullptr;
   };
@@ -1242,6 +1230,9 @@ class ParserBase {
                                 Scanner::Location class_name_location,
                                 bool name_is_strict_reserved,
                                 int class_token_pos);
+  ExpressionT ParseClassLiteralBody(ClassScope* class_scope,
+                                    ClassInfo& class_info, IdentifierT name,
+                                    int class_token_pos);
 
   ExpressionT ParseTemplateLiteral(ExpressionT tag, int start, bool tagged);
   ExpressionT ParseSuperExpression();
@@ -1868,8 +1859,9 @@ typename ParserBase<Impl>::ExpressionT ParserBase<Impl>::ParseRegExpLiteral() {
     return impl()->FailureExpression();
   }
 
-  const AstRawString* js_pattern = GetNextSymbolForRegExpLiteral();
+  const AstRawString* pattern = GetNextSymbolForRegExpLiteral();
   base::Optional<RegExpFlags> flags = scanner()->ScanRegExpFlags();
+  const AstRawString* flags_as_ast_raw_string = GetNextSymbolForRegExpLiteral();
   if (!flags.has_value() || !ValidateRegExpFlags(flags.value())) {
     Next();
     ReportMessage(MessageTemplate::kMalformedRegExpFlags);
@@ -1877,13 +1869,13 @@ typename ParserBase<Impl>::ExpressionT ParserBase<Impl>::ParseRegExpLiteral() {
   }
   Next();
   RegExpError regexp_error;
-  if (!ValidateRegExpLiteral(js_pattern, flags.value(), &regexp_error)) {
+  if (!ValidateRegExpLiteral(pattern, flags.value(), &regexp_error)) {
     if (RegExpErrorIsStackOverflow(regexp_error)) set_stack_overflow();
-    ReportMessage(MessageTemplate::kMalformedRegExp, js_pattern,
-                  RegExpErrorString(regexp_error));
+    ReportMessage(MessageTemplate::kMalformedRegExp, pattern,
+                  flags_as_ast_raw_string, RegExpErrorString(regexp_error));
     return impl()->FailureExpression();
   }
-  return factory()->NewRegExpLiteral(js_pattern, flags.value(), pos);
+  return factory()->NewRegExpLiteral(pattern, flags.value(), pos);
 }
 
 template <typename Impl>
@@ -2579,12 +2571,7 @@ typename ParserBase<Impl>::ExpressionT ParserBase<Impl>::ParseMemberInitializer(
   }
 
   if (is_static) {
-    // For the instance initializer, we will save the positions
-    // later with the positions of the class body so that we can reparse
-    // it later.
     // TODO(joyee): Make scopes be non contiguous.
-    initializer_scope->set_start_position(beg_pos);
-    initializer_scope->set_end_position(end_position());
     class_info->static_elements_scope = initializer_scope;
     class_info->has_static_elements = true;
   } else {
@@ -2604,19 +2591,18 @@ typename ParserBase<Impl>::BlockT ParserBase<Impl>::ParseClassStaticBlock(
   if (initializer_scope == nullptr) {
     initializer_scope =
         NewFunctionScope(FunctionKind::kClassStaticInitializerFunction);
-    initializer_scope->set_start_position(position());
     initializer_scope->SetLanguageMode(LanguageMode::kStrict);
     class_info->static_elements_scope = initializer_scope;
   }
 
   FunctionState initializer_state(&function_state_, &scope_, initializer_scope);
+  FunctionParsingScope body_parsing_scope(impl());
   AcceptINScope accept_in(this, true);
 
   // Each static block has its own var and lexical scope, so make a new var
   // block scope instead of using the synthetic members initializer function
   // scope.
   BlockT static_block = ParseBlock(nullptr, NewVarblockScope());
-  initializer_scope->set_end_position(end_position());
   class_info->has_static_elements = true;
   return static_block;
 }
@@ -2863,8 +2849,7 @@ typename ParserBase<Impl>::ExpressionT ParserBase<Impl>::ParseObjectLiteral() {
   // this runtime function. Here, we make sure that the number of
   // properties is less than number of arguments allowed for a runtime
   // call.
-  if (has_rest_property &&
-      properties.length() > InstructionStream::kMaxArguments) {
+  if (has_rest_property && properties.length() > Code::kMaxArguments) {
     expression_scope()->RecordPatternError(Scanner::Location(pos, position()),
                                            MessageTemplate::kTooManyArguments);
   }
@@ -2920,7 +2905,7 @@ void ParserBase<Impl>::ParseArguments(
     if (!Check(Token::COMMA)) break;
   }
 
-  if (args->length() > InstructionStream::kMaxArguments) {
+  if (args->length() > Code::kMaxArguments) {
     ReportMessage(MessageTemplate::kTooManyArguments);
     return;
   }
@@ -3773,7 +3758,9 @@ ParserBase<Impl>::ParseImportExpressions() {
   AcceptINScope scope(this, true);
   ExpressionT specifier = ParseAssignmentExpressionCoverGrammar();
 
-  if (v8_flags.harmony_import_assertions && Check(Token::COMMA)) {
+  if ((v8_flags.harmony_import_assertions ||
+       v8_flags.harmony_import_attributes) &&
+      Check(Token::COMMA)) {
     if (Check(Token::RPAREN)) {
       // A trailing comma allowed after the specifier.
       return factory()->NewImportCallExpression(specifier, pos);
@@ -3814,9 +3801,9 @@ ParserBase<Impl>::ParseSuperExpression() {
         impl()->ReportMessage(MessageTemplate::kOptionalChainingNoSuper);
         return impl()->FailureExpression();
       }
-      Scope* home_object_scope = scope->RecordSuperPropertyUsage();
+      scope->RecordSuperPropertyUsage();
       UseThis();
-      return impl()->NewSuperPropertyReference(home_object_scope, pos);
+      return impl()->NewSuperPropertyReference(pos);
     }
     // super() is only allowed in derived constructor. new super() is never
     // allowed; it's reported as an error by
@@ -3967,7 +3954,7 @@ void ParserBase<Impl>::ParseFormalParameterList(FormalParametersT* parameters) {
   if (peek() != Token::RPAREN) {
     while (true) {
       // Add one since we're going to be adding a parameter.
-      if (parameters->arity + 1 > InstructionStream::kMaxArguments) {
+      if (parameters->arity + 1 > Code::kMaxArguments) {
         ReportMessage(MessageTemplate::kTooManyParameters);
         return;
       }
@@ -4289,7 +4276,7 @@ typename ParserBase<Impl>::StatementT ParserBase<Impl>::ParseClassDeclaration(
   // so rewrite it as such.
 
   int class_token_pos = position();
-  IdentifierT name = impl()->NullIdentifier();
+  IdentifierT name = impl()->EmptyIdentifierString();
   bool is_strict_reserved = Token::IsStrictReservedWord(peek());
   IdentifierT variable_name = impl()->NullIdentifier();
   if (default_export && (peek() == Token::EXTENDS || peek() == Token::LBRACE)) {
@@ -4574,6 +4561,11 @@ ParserBase<Impl>::ParseArrowFunctionLiteral(
   FunctionKind kind = formal_parameters.scope->function_kind();
   FunctionLiteral::EagerCompileHint eager_compile_hint =
       default_eager_compile_hint_;
+
+  int compile_hint_position = formal_parameters.scope->start_position();
+  eager_compile_hint =
+      impl()->GetEmbedderCompileHint(eager_compile_hint, compile_hint_position);
+
   bool can_preparse = impl()->parse_lazily() &&
                       eager_compile_hint == FunctionLiteral::kShouldLazyCompile;
   // TODO(marja): consider lazy-parsing inner arrow functions too. is_this
@@ -4719,7 +4711,7 @@ typename ParserBase<Impl>::ExpressionT ParserBase<Impl>::ParseClassExpression(
     Scope* outer_scope) {
   Consume(Token::CLASS);
   int class_token_pos = position();
-  IdentifierT name = impl()->NullIdentifier();
+  IdentifierT name = impl()->EmptyIdentifierString();
   bool is_strict_reserved_name = false;
   Scanner::Location class_name_location = Scanner::Location::invalid();
   if (peek_any_identifier()) {
@@ -4736,7 +4728,7 @@ template <typename Impl>
 typename ParserBase<Impl>::ExpressionT ParserBase<Impl>::ParseClassLiteral(
     Scope* outer_scope, IdentifierT name, Scanner::Location class_name_location,
     bool name_is_strict_reserved, int class_token_pos) {
-  bool is_anonymous = impl()->IsNull(name);
+  bool is_anonymous = impl()->IsEmptyIdentifier(name);
 
   // All parts of a ClassDeclaration and ClassExpression are strict code.
   if (!impl()->HasCheckedSyntax() && !is_anonymous) {
@@ -4769,10 +4761,18 @@ typename ParserBase<Impl>::ExpressionT ParserBase<Impl>::ParseClassLiteral(
     class_info.extends = ParseLeftHandSideExpression();
     scope.ValidateExpression();
   }
+  return ParseClassLiteralBody(class_scope, class_info, name, class_token_pos);
+}
+
+template <typename Impl>
+typename ParserBase<Impl>::ExpressionT ParserBase<Impl>::ParseClassLiteralBody(
+    ClassScope* class_scope, ClassInfo& class_info, IdentifierT name,
+    int class_token_pos) {
+  bool has_extends = !impl()->IsNull(class_info.extends);
 
   Expect(Token::LBRACE);
+  int start_pos = position();
 
-  const bool has_extends = !impl()->IsNull(class_info.extends);
   while (peek() != Token::RBRACE) {
     if (Check(Token::SEMICOLON)) continue;
 
@@ -4838,10 +4838,16 @@ typename ParserBase<Impl>::ExpressionT ParserBase<Impl>::ParseClassLiteral(
   Expect(Token::RBRACE);
   int end_pos = end_position();
   class_scope->set_end_position(end_pos);
+  if (class_info.static_elements_scope != nullptr) {
+    // Use the positions of the class body for the static initializer
+    // function so that we can reparse it later.
+    class_info.static_elements_scope->set_start_position(start_pos);
+    class_info.static_elements_scope->set_end_position(end_pos);
+  }
   if (class_info.instance_members_scope != nullptr) {
     // Use the positions of the class body for the instance initializer
     // function so that we can reparse it later.
-    class_info.instance_members_scope->set_start_position(class_token_pos);
+    class_info.instance_members_scope->set_start_position(start_pos);
     class_info.instance_members_scope->set_end_position(end_pos);
   }
 
@@ -4868,7 +4874,7 @@ typename ParserBase<Impl>::ExpressionT ParserBase<Impl>::ParseClassLiteral(
 
   bool should_save_class_variable_index =
       class_scope->should_save_class_variable_index();
-  if (!is_anonymous || should_save_class_variable_index) {
+  if (!class_info.is_anonymous || should_save_class_variable_index) {
     impl()->DeclareClassVariable(class_scope, name, &class_info,
                                  class_token_pos);
     if (should_save_class_variable_index) {

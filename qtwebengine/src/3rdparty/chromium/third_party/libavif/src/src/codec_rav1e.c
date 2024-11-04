@@ -57,6 +57,7 @@ static avifResult rav1eCodecEncodeImage(avifCodec * codec,
                                         int tileColsLog2,
                                         int quantizer,
                                         avifEncoderChanges encoderChanges,
+                                        avifBool disableLaggedOutput,
                                         uint32_t addImageFlags,
                                         avifCodecEncodeOutput * output)
 {
@@ -77,6 +78,9 @@ static avifResult rav1eCodecEncodeImage(avifCodec * codec,
     if (encoder->extraLayerCount > 0) {
         return AVIF_RESULT_NOT_IMPLEMENTED;
     }
+
+    // rav1e does not support disabling lagged output. See https://github.com/xiph/rav1e/issues/2267. Ignore this setting.
+    (void)disableLaggedOutput;
 
     avifResult result = AVIF_RESULT_UNKNOWN_ERROR;
 
@@ -172,6 +176,12 @@ static avifResult rav1eCodecEncodeImage(avifCodec * codec,
                 goto cleanup;
             }
         }
+        if (encoder->keyframeInterval > 0) {
+            // "key_frame_interval" is the maximum interval between two keyframes.
+            if (rav1e_config_parse_int(rav1eConfig, "key_frame_interval", encoder->keyframeInterval) == -1) {
+                goto cleanup;
+            }
+        }
 
         rav1e_config_set_color_description(rav1eConfig,
                                            (RaMatrixCoefficients)image->matrixCoefficients,
@@ -219,7 +229,10 @@ static avifResult rav1eCodecEncodeImage(avifCodec * codec,
             goto cleanup;
         } else if (pkt) {
             if (pkt->data && (pkt->len > 0)) {
-                avifCodecEncodeOutputAddSample(output, pkt->data, pkt->len, (pkt->frame_type == RA_FRAME_TYPE_KEY));
+                result = avifCodecEncodeOutputAddSample(output, pkt->data, pkt->len, (pkt->frame_type == RA_FRAME_TYPE_KEY));
+                if (result != AVIF_RESULT_OK) {
+                    goto cleanup;
+                }
             }
             rav1e_packet_unref(pkt);
             pkt = NULL;
@@ -261,7 +274,10 @@ static avifBool rav1eCodecEncodeFinish(avifCodec * codec, avifCodecEncodeOutput 
             if (pkt) {
                 gotPacket = AVIF_TRUE;
                 if (pkt->data && (pkt->len > 0)) {
-                    avifCodecEncodeOutputAddSample(output, pkt->data, pkt->len, (pkt->frame_type == RA_FRAME_TYPE_KEY));
+                    if (avifCodecEncodeOutputAddSample(output, pkt->data, pkt->len, (pkt->frame_type == RA_FRAME_TYPE_KEY)) !=
+                        AVIF_RESULT_OK) {
+                        return AVIF_FALSE;
+                    }
                 }
                 rav1e_packet_unref(pkt);
                 pkt = NULL;

@@ -11,6 +11,7 @@
 #include <QtCore/qstring.h>
 #include <QtProtobuf/qprotobufoneof.h>
 #include "basicmessages.qpb.h"
+#include "tst_qtprotobufgen_gen_exports.qpb.h"
 
 #include <QtCore/qmetatype.h>
 #include <QtCore/qlist.h>
@@ -22,11 +23,22 @@
 namespace qtprotobufnamespace::tests {
 class OneofSimpleMessage;
 using OneofSimpleMessageRepeated = QList<OneofSimpleMessage>;
+namespace OneofSimpleMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+enum class TestOneofFields;
+} // namespace OneofSimpleMessage_QtProtobufNested
+
 class OneofComplexMessage;
 using OneofComplexMessageRepeated = QList<OneofComplexMessage>;
+namespace OneofComplexMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+enum class TestOneofFields;
+enum class SecondOneofFields;
+} // namespace OneofComplexMessage_QtProtobufNested
+
 
 class OneofSimpleMessage_QtProtobufData;
-class OneofSimpleMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT OneofSimpleMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -37,19 +49,8 @@ class OneofSimpleMessage : public QProtobufMessage
     Q_PROPERTY(bool hasTestOneofFieldSecondInt READ hasTestOneofFieldSecondInt)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestOneofFieldIntProtoFieldNumber = 1,
-        TestOneofFieldSecondIntProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
-    enum class TestOneofFields {
-        UninitializedField = QtProtobuf::InvalidFieldNumber,
-        TestOneofFieldInt = 1,
-        TestOneofFieldSecondInt = 2,
-    };
-    Q_ENUM(TestOneofFields)
-
+    using QtProtobufFieldEnum = OneofSimpleMessage_QtProtobufNested::QtProtobufFieldEnum;
+    using TestOneofFields = OneofSimpleMessage_QtProtobufNested::TestOneofFields;
     OneofSimpleMessage();
     ~OneofSimpleMessage();
     OneofSimpleMessage(const OneofSimpleMessage &other);
@@ -77,9 +78,26 @@ private:
     void setTestOneofFieldSecondInt_p(QtProtobuf::int32 testOneofFieldSecondInt);
     QExplicitlySharedDataPointer<OneofSimpleMessage_QtProtobufData> dptr;
 };
+namespace OneofSimpleMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    TestOneofFieldIntProtoFieldNumber = 1,
+    TestOneofFieldSecondIntProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+enum class TestOneofFields {
+    UninitializedField = QtProtobuf::InvalidFieldNumber,
+    TestOneofFieldInt = 1,
+    TestOneofFieldSecondInt = 2,
+};
+Q_ENUM_NS(TestOneofFields)
+
+} // namespace OneofSimpleMessage_QtProtobufNested
 
 class OneofComplexMessage_QtProtobufData;
-class OneofComplexMessage : public QProtobufMessage
+class QPB_TST_QTPROTOBUFGEN_GEN_EXPORT OneofComplexMessage : public QProtobufMessage
 {
     Q_GADGET
     Q_PROTOBUF_OBJECT
@@ -87,49 +105,23 @@ class OneofComplexMessage : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::int32 testFieldInt READ testFieldInt WRITE setTestFieldInt SCRIPTABLE true)
     Q_PROPERTY(QtProtobuf::int32 testOneofFieldInt READ testOneofFieldInt_p WRITE setTestOneofFieldInt_p)
     Q_PROPERTY(bool hasTestOneofFieldInt READ hasTestOneofFieldInt)
-    Q_PROPERTY(qtprotobufnamespace::tests::ComplexMessage *testOneofComplexField READ testOneofComplexField_p WRITE setTestOneofComplexField_p)
+    Q_PROPERTY(qtprotobufnamespace::tests::ComplexMessage *testOneofComplexField_p READ testOneofComplexField_p WRITE setTestOneofComplexField_p SCRIPTABLE false)
     Q_PROPERTY(bool hasTestOneofComplexField READ hasTestOneofComplexField)
-    Q_PROPERTY(qtprotobufnamespace::tests::ComplexMessage *testOneofSecondComplexField READ testOneofSecondComplexField_p WRITE setTestOneofSecondComplexField_p)
+    Q_PROPERTY(qtprotobufnamespace::tests::ComplexMessage *testOneofSecondComplexField_p READ testOneofSecondComplexField_p WRITE setTestOneofSecondComplexField_p SCRIPTABLE false)
     Q_PROPERTY(bool hasTestOneofSecondComplexField READ hasTestOneofSecondComplexField)
     Q_PROPERTY(QtProtobuf::int32 secondFieldInt READ secondFieldInt_p WRITE setSecondFieldInt_p)
     Q_PROPERTY(bool hasSecondFieldInt READ hasSecondFieldInt)
-    Q_PROPERTY(qtprotobufnamespace::tests::ComplexMessage *secondComplexField READ secondComplexField_p WRITE setSecondComplexField_p)
+    Q_PROPERTY(qtprotobufnamespace::tests::ComplexMessage *secondComplexField_p READ secondComplexField_p WRITE setSecondComplexField_p SCRIPTABLE false)
     Q_PROPERTY(bool hasSecondComplexField READ hasSecondComplexField)
-    Q_PROPERTY(qtprotobufnamespace::tests::ComplexMessage *secondSecondComplexField READ secondSecondComplexField_p WRITE setSecondSecondComplexField_p)
+    Q_PROPERTY(qtprotobufnamespace::tests::ComplexMessage *secondSecondComplexField_p READ secondSecondComplexField_p WRITE setSecondSecondComplexField_p SCRIPTABLE false)
     Q_PROPERTY(bool hasSecondSecondComplexField READ hasSecondSecondComplexField)
     Q_PROPERTY(QtProtobuf::int32 testSnakeCaseField READ testSnakeCaseField_p WRITE setTestSnakeCaseField_p)
     Q_PROPERTY(bool hasTestSnakeCaseField READ hasTestSnakeCaseField)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldIntProtoFieldNumber = 1,
-        TestOneofFieldIntProtoFieldNumber = 42,
-        TestOneofComplexFieldProtoFieldNumber = 3,
-        TestOneofSecondComplexFieldProtoFieldNumber = 4,
-        SecondFieldIntProtoFieldNumber = 43,
-        SecondComplexFieldProtoFieldNumber = 5,
-        SecondSecondComplexFieldProtoFieldNumber = 6,
-        TestSnakeCaseFieldProtoFieldNumber = 7,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
-    enum class TestOneofFields {
-        UninitializedField = QtProtobuf::InvalidFieldNumber,
-        TestOneofFieldInt = 42,
-        TestOneofComplexField = 3,
-        TestOneofSecondComplexField = 4,
-    };
-    Q_ENUM(TestOneofFields)
-
-    enum class SecondOneofFields {
-        UninitializedField = QtProtobuf::InvalidFieldNumber,
-        SecondFieldInt = 43,
-        SecondComplexField = 5,
-        SecondSecondComplexField = 6,
-        TestSnakeCaseField = 7,
-    };
-    Q_ENUM(SecondOneofFields)
-
+    using QtProtobufFieldEnum = OneofComplexMessage_QtProtobufNested::QtProtobufFieldEnum;
+    using TestOneofFields = OneofComplexMessage_QtProtobufNested::TestOneofFields;
+    using SecondOneofFields = OneofComplexMessage_QtProtobufNested::SecondOneofFields;
     OneofComplexMessage();
     ~OneofComplexMessage();
     OneofComplexMessage(const OneofComplexMessage &other);
@@ -192,6 +184,39 @@ private:
     void setTestSnakeCaseField_p(QtProtobuf::int32 testSnakeCaseField);
     QExplicitlySharedDataPointer<OneofComplexMessage_QtProtobufData> dptr;
 };
+namespace OneofComplexMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_GEN_EXPORT)
+
+enum class QtProtobufFieldEnum {
+    TestFieldIntProtoFieldNumber = 1,
+    TestOneofFieldIntProtoFieldNumber = 42,
+    TestOneofComplexFieldProtoFieldNumber = 3,
+    TestOneofSecondComplexFieldProtoFieldNumber = 4,
+    SecondFieldIntProtoFieldNumber = 43,
+    SecondComplexFieldProtoFieldNumber = 5,
+    SecondSecondComplexFieldProtoFieldNumber = 6,
+    TestSnakeCaseFieldProtoFieldNumber = 7,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+enum class TestOneofFields {
+    UninitializedField = QtProtobuf::InvalidFieldNumber,
+    TestOneofFieldInt = 42,
+    TestOneofComplexField = 3,
+    TestOneofSecondComplexField = 4,
+};
+Q_ENUM_NS(TestOneofFields)
+
+enum class SecondOneofFields {
+    UninitializedField = QtProtobuf::InvalidFieldNumber,
+    SecondFieldInt = 43,
+    SecondComplexField = 5,
+    SecondSecondComplexField = 6,
+    TestSnakeCaseField = 7,
+};
+Q_ENUM_NS(SecondOneofFields)
+
+} // namespace OneofComplexMessage_QtProtobufNested
 } // namespace qtprotobufnamespace::tests
 
 Q_DECLARE_METATYPE(qtprotobufnamespace::tests::OneofSimpleMessage)

@@ -10,7 +10,6 @@
 #include "src/codegen/optimized-compilation-info.h"
 #include "src/compiler/heap-refs.h"
 #include "src/maglev/maglev-basic-block.h"
-#include "src/zone/zone-allocator.h"
 
 namespace v8 {
 namespace internal {
@@ -22,20 +21,25 @@ using BlockConstReverseIterator =
 
 class Graph final : public ZoneObject {
  public:
-  static Graph* New(Zone* zone) { return zone->New<Graph>(zone); }
+  static Graph* New(Zone* zone, bool is_osr) {
+    return zone->New<Graph>(zone, is_osr);
+  }
 
   // Shouldn't be used directly; public so that Zone::New can access it.
-  explicit Graph(Zone* zone)
+  Graph(Zone* zone, bool is_osr)
       : blocks_(zone),
         root_(zone),
+        osr_values_(zone),
         smi_(zone),
+        tagged_index_(zone),
         int_(zone),
         float_(zone),
         external_references_(zone),
         parameters_(zone),
         register_inputs_(),
         constants_(zone),
-        inlined_functions_(zone) {}
+        inlined_functions_(zone),
+        is_osr_(is_osr) {}
 
   BasicBlock* operator[](int i) { return blocks_[i]; }
   const BasicBlock* operator[](int i) const { return blocks_[i]; }
@@ -84,9 +88,11 @@ class Graph final : public ZoneObject {
   }
 
   ZoneMap<RootIndex, RootConstant*>& root() { return root_; }
+  ZoneVector<InitialValue*>& osr_values() { return osr_values_; }
   ZoneMap<int, SmiConstant*>& smi() { return smi_; }
+  ZoneMap<int, TaggedIndexConstant*>& tagged_index() { return tagged_index_; }
   ZoneMap<int, Int32Constant*>& int32() { return int_; }
-  ZoneMap<double, Float64Constant*>& float64() { return float_; }
+  ZoneMap<uint64_t, Float64Constant*>& float64() { return float_; }
   ZoneMap<Address, ExternalConstant*>& external_references() {
     return external_references_;
   }
@@ -99,13 +105,17 @@ class Graph final : public ZoneObject {
   inlined_functions() {
     return inlined_functions_;
   }
-  Float64Constant* nan() const { return nan_; }
-  void set_nan(Float64Constant* nan) {
-    DCHECK_NULL(nan_);
-    nan_ = nan;
-  }
   bool has_recursive_calls() const { return has_recursive_calls_; }
   void set_has_recursive_calls(bool value) { has_recursive_calls_ = value; }
+
+  bool is_osr() const { return is_osr_; }
+  uint32_t min_maglev_stackslots_for_unoptimized_frame_size() {
+    DCHECK(is_osr());
+    if (osr_values().size() == 0) {
+      return InitialValue::stack_slot(0);
+    }
+    return osr_values().back()->stack_slot() + 1;
+  }
 
  private:
   uint32_t tagged_stack_slots_ = kMaxUInt32;
@@ -114,18 +124,21 @@ class Graph final : public ZoneObject {
   uint32_t max_deopted_stack_size_ = kMaxUInt32;
   ZoneVector<BasicBlock*> blocks_;
   ZoneMap<RootIndex, RootConstant*> root_;
+  ZoneVector<InitialValue*> osr_values_;
   ZoneMap<int, SmiConstant*> smi_;
+  ZoneMap<int, TaggedIndexConstant*> tagged_index_;
   ZoneMap<int, Int32Constant*> int_;
-  ZoneMap<double, Float64Constant*> float_;
+  // Use the bits of the float as the key.
+  ZoneMap<uint64_t, Float64Constant*> float_;
   ZoneMap<Address, ExternalConstant*> external_references_;
   ZoneVector<InitialValue*> parameters_;
   RegList register_inputs_;
   compiler::ZoneRefMap<compiler::ObjectRef, Constant*> constants_;
   ZoneVector<OptimizedCompilationInfo::InlinedFunctionHolder>
       inlined_functions_;
-  Float64Constant* nan_ = nullptr;
   bool has_recursive_calls_ = false;
   int total_inlined_bytecode_size_ = 0;
+  bool is_osr_ = false;
 };
 
 }  // namespace maglev

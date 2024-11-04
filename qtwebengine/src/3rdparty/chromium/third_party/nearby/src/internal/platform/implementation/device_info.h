@@ -29,7 +29,14 @@ class DeviceInfo {
  public:
   enum class ScreenStatus { kUndetermined = 0, kLocked, kUnlocked };
   enum class DeviceType { kUnknown = 0, kPhone, kTablet, kLaptop };
-  enum class OsType { kUnknown = 0, kAndroid, kChromeOs, kIos, kWindows };
+  enum class OsType {
+    kUnknown = 0,
+    kAndroid,
+    kChromeOs,
+    kIos,
+    kWindows,
+    kMacOS
+  };
 
   virtual ~DeviceInfo() = default;
 
@@ -59,6 +66,10 @@ class DeviceInfo {
       std::function<void(ScreenStatus)> callback) = 0;
   virtual void UnregisterScreenLockedListener(
       absl::string_view listener_name) = 0;
+
+  // Control device sleep
+  virtual bool PreventSleep() = 0;
+  virtual bool AllowSleep() = 0;
 };
 
 }  // namespace api

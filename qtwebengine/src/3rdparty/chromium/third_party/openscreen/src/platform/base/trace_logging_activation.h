@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -39,10 +39,11 @@ class CurrentTracingDestination {
 
  private:
   CurrentTracingDestination(const CurrentTracingDestination&) = delete;
-  CurrentTracingDestination(CurrentTracingDestination&&) = delete;
+  CurrentTracingDestination(CurrentTracingDestination&&) noexcept = delete;
   CurrentTracingDestination& operator=(const CurrentTracingDestination&) =
       delete;
-  CurrentTracingDestination& operator=(CurrentTracingDestination&&) = delete;
+  CurrentTracingDestination& operator=(CurrentTracingDestination&&) noexcept =
+      delete;
 
   // The destination at the time this class was constructed, and is valid for
   // the lifetime of this class. This is nullptr if tracing was inactive.

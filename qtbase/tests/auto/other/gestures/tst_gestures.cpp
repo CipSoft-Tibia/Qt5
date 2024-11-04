@@ -1,6 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtTest/qtesttouch.h>
@@ -209,7 +208,7 @@ protected:
             QGestureEvent *e = static_cast<QGestureEvent*>(event);
             ++gestureEventsReceived;
             eventsPtr = &events;
-            foreach(Qt::GestureType type, ignoredGestures)
+            for (Qt::GestureType type : std::as_const(ignoredGestures))
                 e->ignore(e->gesture(type));
         } else if (event->type() == QEvent::GestureOverride) {
             ++gestureOverrideEventsReceived;
@@ -219,8 +218,8 @@ protected:
         }
         if (eventsPtr) {
             QGestureEvent *e = static_cast<QGestureEvent*>(event);
-            QList<QGesture*> gestures = e->gestures();
-            foreach(QGesture *g, gestures) {
+            const QList<QGesture*> gestures = e->gestures();
+            for (QGesture *g : gestures) {
                 eventsPtr->all << g->gestureType();
                 switch(g->state()) {
                 case Qt::GestureStarted:
@@ -743,9 +742,10 @@ public:
             ++gestureEventsReceived;
             eventsPtr = &events;
             QGestureEvent *e = static_cast<QGestureEvent *>(event);
-            foreach(Qt::GestureType type, ignoredGestures)
+            for (Qt::GestureType type : std::as_const(ignoredGestures))
                 e->ignore(e->gesture(type));
-            foreach(QGesture *g, e->gestures()) {
+            const auto gestures = e->gestures();
+            for (QGesture *g : gestures) {
                 switch (g->state()) {
                 case Qt::GestureStarted:
                     if (ignoredStartedGestures.contains(g->gestureType()))
@@ -771,8 +771,8 @@ public:
         }
         if (eventsPtr) {
             QGestureEvent *e = static_cast<QGestureEvent*>(event);
-            QList<QGesture*> gestures = e->gestures();
-            foreach(QGesture *g, gestures) {
+            const QList<QGesture*> gestures = e->gestures();
+            for (QGesture *g : gestures) {
                 eventsPtr->all << g->gestureType();
                 switch(g->state()) {
                 case Qt::GestureStarted:

@@ -16,28 +16,23 @@
 package gerrit
 
 import (
+	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"log"
 	"net/url"
-	"os"
-	"regexp"
 	"strconv"
 	"strings"
 
+	"dawn.googlesource.com/dawn/tools/src/container"
 	"github.com/andygrunwald/go-gerrit"
+	"go.chromium.org/luci/auth"
 )
 
 // Gerrit is the interface to gerrit
 type Gerrit struct {
 	client        *gerrit.Client
 	authenticated bool
-}
-
-// Credentials holds the user name and password used to access Gerrit.
-type Credentials struct {
-	Username string
-	Password string
 }
 
 // Patchset refers to a single gerrit patchset
@@ -55,8 +50,8 @@ type Patchset struct {
 // ChangeInfo is an alias to gerrit.ChangeInfo
 type ChangeInfo = gerrit.ChangeInfo
 
-// LatestPatchest returns the latest Patchset from the ChangeInfo
-func LatestPatchest(change *ChangeInfo) Patchset {
+// LatestPatchset returns the latest Patchset from the ChangeInfo
+func LatestPatchset(change *ChangeInfo) Patchset {
 	u, _ := url.Parse(change.URL)
 	ps := Patchset{
 		Host:     u.Host,
@@ -87,52 +82,62 @@ func (p Patchset) RefsChanges() string {
 	return fmt.Sprintf("refs/changes/%v/%v/%v", shortChange, p.Change, p.Patchset)
 }
 
-// LoadCredentials attempts to load the gerrit credentials for the given gerrit
-// URL from the git cookies file. Returns an empty Credentials on failure.
-func LoadCredentials(url string) Credentials {
-	cookiesFile := os.Getenv("HOME") + "/.gitcookies"
-	if cookies, err := ioutil.ReadFile(cookiesFile); err == nil {
-		url := strings.TrimSuffix(strings.TrimPrefix(url, "https://"), "/")
-		re := regexp.MustCompile(url + `/?\s+(?:FALSE|TRUE)[\s/]+(?:FALSE|TRUE)\s+[0-9]+\s+.\s+(.*)=(.*)`)
-		match := re.FindStringSubmatch(string(cookies))
-		if len(match) == 3 {
-			return Credentials{match[1], match[2]}
-		}
-	}
-	return Credentials{}
-}
-
 // New returns a new Gerrit instance. If credentials are not provided, then
 // New() will automatically attempt to load them from the gitcookies file.
-func New(url string, cred Credentials) (*Gerrit, error) {
-	client, err := gerrit.NewClient(url, nil)
+func New(ctx context.Context, opts auth.Options, url string) (*Gerrit, error) {
+	http, err := auth.NewAuthenticator(ctx, auth.InteractiveLogin, opts).Client()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create gerrit client: %w", err)
 	}
 
-	if cred.Username == "" {
-		cred = LoadCredentials(url)
+	client, err := gerrit.NewClient(url, http)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create gerrit client: %w", err)
 	}
 
-	if cred.Username != "" {
-		client.Authentication.SetBasicAuth(cred.Username, cred.Password)
-	}
+	return &Gerrit{client, true}, nil
+}
 
-	return &Gerrit{client, cred.Username != ""}, nil
+// QueryExtraData holds extra data to query for with QueryChangesWith()
+type QueryExtraData struct {
+	Labels           bool
+	Messages         bool
+	CurrentRevision  bool
+	DetailedAccounts bool
+	Submittable      bool
 }
 
 // QueryChanges returns the changes that match the given query strings.
 // See: https://gerrit-review.googlesource.com/Documentation/user-search.html#search-operators
-func (g *Gerrit) QueryChanges(querys ...string) (changes []gerrit.ChangeInfo, query string, err error) {
+func (g *Gerrit) QueryChangesWith(extras QueryExtraData, queries ...string) (changes []gerrit.ChangeInfo, query string, err error) {
 	changes = []gerrit.ChangeInfo{}
-	query = strings.Join(querys, "+")
+	query = strings.Join(queries, "+")
+
+	changeOpts := gerrit.ChangeOptions{}
+	if extras.Labels {
+		changeOpts.AdditionalFields = append(changeOpts.AdditionalFields, "LABELS")
+	}
+	if extras.Messages {
+		changeOpts.AdditionalFields = append(changeOpts.AdditionalFields, "MESSAGES")
+	}
+	if extras.CurrentRevision {
+		changeOpts.AdditionalFields = append(changeOpts.AdditionalFields, "CURRENT_REVISION")
+	}
+	if extras.DetailedAccounts {
+		changeOpts.AdditionalFields = append(changeOpts.AdditionalFields, "DETAILED_ACCOUNTS")
+	}
+	if extras.Submittable {
+		changeOpts.AdditionalFields = append(changeOpts.AdditionalFields, "SUBMITTABLE")
+	}
+
 	for {
 		batch, _, err := g.client.Changes.QueryChanges(&gerrit.QueryChangeOptions{
-			QueryOptions: gerrit.QueryOptions{Query: []string{query}},
-			Skip:         len(changes),
+			QueryOptions:  gerrit.QueryOptions{Query: []string{query}},
+			Skip:          len(changes),
+			ChangeOptions: changeOpts,
 		})
 		if err != nil {
-			return nil, "", g.maybeWrapError(err)
+			return nil, "", err
 		}
 
 		changes = append(changes, *batch...)
@@ -143,11 +148,38 @@ func (g *Gerrit) QueryChanges(querys ...string) (changes []gerrit.ChangeInfo, qu
 	return changes, query, nil
 }
 
+// QueryChanges returns the changes that match the given query strings.
+// See: https://gerrit-review.googlesource.com/Documentation/user-search.html#search-operators
+func (g *Gerrit) QueryChanges(queries ...string) (changes []gerrit.ChangeInfo, query string, err error) {
+	return g.QueryChangesWith(QueryExtraData{}, queries...)
+}
+
+// ChangesSubmittedTogether returns the changes that want to be submitted together
+// See: https://gerrit-review.googlesource.com/Documentation/rest-api-changes.html#submitted-together
+func (g *Gerrit) ChangesSubmittedTogether(changeID string) (changes []gerrit.ChangeInfo, err error) {
+	info, _, err := g.client.Changes.ChangesSubmittedTogether(changeID)
+	if err != nil {
+		return nil, err
+	}
+	return *info, nil
+}
+
+func (g *Gerrit) AddLabel(changeID, revisionID, message, label string, value int) error {
+	_, _, err := g.client.Changes.SetReview(changeID, revisionID, &gerrit.ReviewInput{
+		Message: message,
+		Labels:  map[string]string{label: fmt.Sprint(value)},
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // Abandon abandons the change with the given changeID.
 func (g *Gerrit) Abandon(changeID string) error {
 	_, _, err := g.client.Changes.AbandonChange(changeID, &gerrit.AbandonInput{})
 	if err != nil {
-		return g.maybeWrapError(err)
+		return err
 	}
 	return nil
 }
@@ -163,7 +195,7 @@ func (g *Gerrit) CreateChange(project, branch, subject string, wip bool) (*Chang
 		WorkInProgress: wip,
 	})
 	if err != nil {
-		return nil, g.maybeWrapError(err)
+		return nil, err
 	}
 	return change, nil
 }
@@ -177,37 +209,37 @@ func (g *Gerrit) EditFiles(changeID, newCommitMsg string, files map[string]strin
 			Message: newCommitMsg,
 		})
 		if err != nil && resp.StatusCode != 409 { // 409 no changes were made
-			return Patchset{}, g.maybeWrapError(err)
+			return Patchset{}, err
 		}
 	}
 	for path, content := range files {
 		resp, err := g.client.Changes.ChangeFileContentInChangeEdit(changeID, path, content)
 		if err != nil && resp.StatusCode != 409 { // 409 no changes were made
-			return Patchset{}, g.maybeWrapError(err)
+			return Patchset{}, err
 		}
 	}
 	for _, path := range deletedFiles {
 		resp, err := g.client.Changes.DeleteFileInChangeEdit(changeID, path)
 		if err != nil && resp.StatusCode != 409 { // 409 no changes were made
-			return Patchset{}, g.maybeWrapError(err)
+			return Patchset{}, err
 		}
 	}
 
 	resp, err := g.client.Changes.PublishChangeEdit(changeID, "NONE")
 	if err != nil && resp.StatusCode != 409 { // 409 no changes were made
-		return Patchset{}, g.maybeWrapError(err)
+		return Patchset{}, err
 	}
 
-	return g.LatestPatchest(changeID)
+	return g.LatestPatchset(changeID)
 }
 
-// LatestPatchest returns the latest patchset for the change.
-func (g *Gerrit) LatestPatchest(changeID string) (Patchset, error) {
+// LatestPatchset returns the latest patchset for the change.
+func (g *Gerrit) LatestPatchset(changeID string) (Patchset, error) {
 	change, _, err := g.client.Changes.GetChange(changeID, &gerrit.ChangeOptions{
 		AdditionalFields: []string{"CURRENT_REVISION"},
 	})
 	if err != nil {
-		return Patchset{}, g.maybeWrapError(err)
+		return Patchset{}, err
 	}
 	ps := Patchset{
 		Host:     g.client.BaseURL().Host,
@@ -216,6 +248,17 @@ func (g *Gerrit) LatestPatchest(changeID string) (Patchset, error) {
 		Patchset: change.Revisions[change.CurrentRevision].Number,
 	}
 	return ps, nil
+}
+
+// AddHashtags adds the given hashtags to the change
+func (g *Gerrit) AddHashtags(changeID string, tags container.Set[string]) error {
+	_, resp, err := g.client.Changes.SetHashtags(changeID, &gerrit.HashtagsInput{
+		Add: tags.List(),
+	})
+	if err != nil && resp.StatusCode != 409 { // 409: already ready
+		return err
+	}
+	return nil
 }
 
 // CommentSide is an enumerator for specifying which side code-comments should
@@ -263,29 +306,30 @@ func (g *Gerrit) Comment(ps Patchset, msg string, comments []FileComment) error 
 	}
 	_, _, err := g.client.Changes.SetReview(strconv.Itoa(ps.Change), strconv.Itoa(ps.Patchset), input)
 	if err != nil {
-		return g.maybeWrapError(err)
+		return err
 	}
 	return nil
 }
 
 // SetReadyForReview marks the change as ready for review.
-func (g *Gerrit) SetReadyForReview(changeID, message string) error {
+func (g *Gerrit) SetReadyForReview(changeID, message, reviewer string) error {
 	resp, err := g.client.Changes.SetReadyForReview(changeID, &gerrit.ReadyForReviewInput{
 		Message: message,
 	})
 	if err != nil && resp.StatusCode != 409 { // 409: already ready
-		return g.maybeWrapError(err)
+		return err
+	}
+	if reviewer != "" {
+		// Log the reviewer and then replace with enga@.
+		// TODO(crbug.com/dawn/1940): Use the actual reviewer when the bot is stable.
+		log.Printf("Got reviewer %s", reviewer)
+		reviewer = "enga@chromium.org"
+		_, resp, err = g.client.Changes.AddReviewer(changeID, &gerrit.ReviewerInput{
+			Reviewer: reviewer,
+		})
+		if err != nil && resp.StatusCode != 409 { // 409: already ready
+			return err
+		}
 	}
 	return nil
-}
-
-func (g *Gerrit) maybeWrapError(err error) error {
-	if err != nil && !g.authenticated {
-		return fmt.Errorf(`query failed, possibly because of authentication.
-See https://dawn-review.googlesource.com/new-password for obtaining a username
-and password which can be provided with --gerrit-user and --gerrit-pass.
-Note: This tool will scan ~/.gitcookies for credentials.
-%w`, err)
-	}
-	return err
 }

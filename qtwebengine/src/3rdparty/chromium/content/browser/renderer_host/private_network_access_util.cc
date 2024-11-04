@@ -48,6 +48,18 @@ FeatureState FeatureStateForContext(RequestContext request_context) {
       }
 
       return FeatureState::kEnabled;
+    case RequestContext::kIframe:
+      if (!base::FeatureList::IsEnabled(
+              features::kPrivateNetworkAccessForIframes)) {
+        return FeatureState::kDisabled;
+      }
+
+      if (base::FeatureList::IsEnabled(
+              features::kPrivateNetworkAccessForIframesWarningOnly)) {
+        return FeatureState::kWarningOnly;
+      }
+
+      return FeatureState::kEnabled;
   }
 }
 
@@ -198,8 +210,9 @@ AddressSpace IPAddressSpaceForSpecialScheme(const GURL& url,
   };
 
   for (auto* scheme : special_content_schemes) {
-    if (url.SchemeIs(scheme))
+    if (url.SchemeIs(scheme)) {
       return AddressSpace::kLocal;
+    }
   }
 
   // Some of these schemes are only known to the embedder. Query the embedder

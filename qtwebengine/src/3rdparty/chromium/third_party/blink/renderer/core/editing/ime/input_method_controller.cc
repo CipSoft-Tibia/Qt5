@@ -29,6 +29,8 @@
 #include <tuple>
 
 #include "third_party/blink/public/mojom/input/focus_type.mojom-blink.h"
+#include "third_party/blink/public/web/web_frame_widget.h"
+#include "third_party/blink/public/web/web_local_frame.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/dom_node_ids.h"
 #include "third_party/blink/renderer/core/dom/element.h"
@@ -55,6 +57,7 @@
 #include "third_party/blink/renderer/core/events/composition_event.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
+#include "third_party/blink/renderer/core/frame/local_frame_client.h"
 #include "third_party/blink/renderer/core/html/forms/html_input_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_text_area_element.h"
 #include "third_party/blink/renderer/core/input/event_handler.h"
@@ -550,6 +553,22 @@ void InputMethodController::SelectComposition() const {
   if (range.IsNull())
     return;
 
+  // When we select the composition (to be able to replace it), we must not
+  // claim that the selection is the result of an input event, even though
+  // the act of committing the composition _is_ an input event in itself.
+  // Otherwise, X11 clients would interpret the selection as a command to
+  // replace the primary selection (on the clipboard) with the contents
+  // of the composition.
+  bool old_handling_input_event = false;
+  WebFrameWidget* widget = nullptr;
+  if (GetFrame().Client() && GetFrame().Client()->GetWebFrame()) {
+    widget = GetFrame().Client()->GetWebFrame()->FrameWidget();
+  }
+  if (widget) {
+    old_handling_input_event = widget->HandlingInputEvent();
+    widget->SetHandlingInputEvent(false);
+  }
+
   // The composition can start inside a composed character sequence, so we have
   // to override checks. See <http://bugs.webkit.org/show_bug.cgi?id=15781>
 
@@ -560,6 +579,10 @@ void InputMethodController::SelectComposition() const {
   GetFrame().Selection().SetSelection(
       SelectionInDOMTree::Builder().SetBaseAndExtent(range).Build(),
       SetSelectionOptions());
+
+  if (widget) {
+    widget->SetHandlingInputEvent(old_handling_input_event);
+  }
 }
 
 bool IsTextTooLongAt(const Position& position) {
@@ -671,20 +694,32 @@ bool InputMethodController::CommitText(
   return InsertTextAndMoveCaret(text, relative_caret_position, ime_text_spans);
 }
 
-bool InputMethodController::ReplaceText(const String& text,
-                                        PlainTextRange range) {
+bool InputMethodController::ReplaceTextAndMoveCaret(
+    const String& text,
+    PlainTextRange range,
+    MoveCaretBehavior move_caret_behavior) {
   EventQueueScope scope;
   const PlainTextRange old_selection(GetSelectionOffsets());
   if (!SetSelectionOffsets(range))
     return false;
   if (!InsertText(text))
     return false;
-  wtf_size_t selection_delta = text.length() - range.length();
-  wtf_size_t start = old_selection.Start();
-  wtf_size_t end = old_selection.End();
-  return SetSelectionOffsets(
-      {start >= range.End() ? start + selection_delta : start,
-       end >= range.End() ? end + selection_delta : end});
+
+  switch (move_caret_behavior) {
+    case MoveCaretBehavior::kMoveCaretAfterText: {
+      wtf_size_t absolute_caret_position = range.Start() + text.length();
+      return SetSelectionOffsets(
+          {absolute_caret_position, absolute_caret_position});
+    }
+    case MoveCaretBehavior::kDoNotMove: {
+      wtf_size_t selection_delta = text.length() - range.length();
+      wtf_size_t start = old_selection.Start();
+      wtf_size_t end = old_selection.End();
+      return SetSelectionOffsets(
+          {start >= range.End() ? start + selection_delta : start,
+           end >= range.End() ? end + selection_delta : end});
+    }
+  }
 }
 
 bool InputMethodController::ReplaceComposition(const String& text) {
@@ -1524,6 +1559,23 @@ void InputMethodController::DeleteSurroundingTextInCodePoints(int before,
   return DeleteSurroundingText(before_length, after_length);
 }
 
+void InputMethodController::ExtendSelectionAndReplace(
+    int before,
+    int after,
+    const String& replacement_text) {
+  const PlainTextRange selection_offsets(GetSelectionOffsets());
+  if (selection_offsets.IsNull() || before < 0 || after < 0) {
+    return;
+  }
+
+  ReplaceTextAndMoveCaret(
+      replacement_text,
+      PlainTextRange(
+          std::max(static_cast<int>(selection_offsets.Start()) - before, 0),
+          selection_offsets.End() + after),
+      MoveCaretBehavior::kMoveCaretAfterText);
+}
+
 void InputMethodController::GetLayoutBounds(gfx::Rect* control_bounds,
                                             gfx::Rect* selection_bounds) {
   if (!IsAvailable())
@@ -1600,8 +1652,7 @@ WebTextInputInfo InputMethodController::TextInputInfo() const {
   if (const Node* start_node = first_range.StartPosition().AnchorNode()) {
     if (start_node->GetComputedStyle() &&
         !start_node->GetComputedStyle()->IsHorizontalWritingMode()) {
-      if (RuntimeEnabledFeatures::ImeVerticalFlagEnabled())
-        info.flags |= kWebTextInputFlagVertical;
+      info.flags |= kWebTextInputFlagVertical;
     }
   }
 
@@ -1761,10 +1812,8 @@ void InputMethodController::SetVirtualKeyboardVisibilityRequest(
     ui::mojom::VirtualKeyboardVisibilityRequest vk_visibility_request) {
   // show/hide API behavior is only applicable for elements/editcontexts that
   // have manual VK policy.
-  if ((VirtualKeyboardPolicyOfFocusedElement() ==
-       ui::mojom::VirtualKeyboardPolicy::MANUAL) ||
-      (GetActiveEditContext() &&
-       GetActiveEditContext()->IsVirtualKeyboardPolicyManual())) {
+  if (VirtualKeyboardPolicyOfFocusedElement() ==
+      ui::mojom::VirtualKeyboardPolicy::MANUAL) {
     last_vk_visibility_request_ = vk_visibility_request;
   }  // else we don't change the last VK visibility request.
 }

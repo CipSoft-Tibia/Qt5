@@ -33,7 +33,7 @@
 #include "base/trace_event/process_memory_dump.h"
 #include "cc/paint/image_transfer_cache_entry.h"
 #include "cc/paint/transfer_cache_entry.h"
-#include "components/viz/common/resources/resource_format_utils.h"
+#include "components/viz/common/resources/shared_image_format_utils.h"
 #include "gpu/command_buffer/common/buffer.h"
 #include "gpu/command_buffer/common/capabilities.h"
 #include "gpu/command_buffer/common/constants.h"
@@ -150,6 +150,7 @@ class TestSharedImageBackingFactory : public SharedImageBackingFactory {
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
       uint32_t usage,
+      std::string debug_label,
       bool is_thread_safe) override {
     NOTREACHED();
     return nullptr;
@@ -162,6 +163,7 @@ class TestSharedImageBackingFactory : public SharedImageBackingFactory {
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
       uint32_t usage,
+      std::string debug_label,
       base::span<const uint8_t> pixel_data) override {
     NOTREACHED();
     return nullptr;
@@ -175,11 +177,31 @@ class TestSharedImageBackingFactory : public SharedImageBackingFactory {
       const gfx::ColorSpace& color_space,
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
-      uint32_t usage) override {
+      uint32_t usage,
+      std::string debug_label) override {
     auto test_image_backing = std::make_unique<TestImageBacking>(
-        mailbox,
-        viz::SharedImageFormat::SinglePlane(viz::GetResourceFormat(format)),
-        size, color_space, surface_origin, alpha_type, usage, 0);
+        mailbox, viz::GetSinglePlaneSharedImageFormat(format), size,
+        color_space, surface_origin, alpha_type, usage, 0);
+
+    // If the backing is not cleared, SkiaImageRepresentation errors out
+    // when trying to create the scoped read access.
+    test_image_backing->SetCleared();
+
+    return std::move(test_image_backing);
+  }
+  std::unique_ptr<SharedImageBacking> CreateSharedImage(
+      const Mailbox& mailbox,
+      viz::SharedImageFormat format,
+      const gfx::Size& size,
+      const gfx::ColorSpace& color_space,
+      GrSurfaceOrigin surface_origin,
+      SkAlphaType alpha_type,
+      uint32_t usage,
+      std::string debug_label,
+      gfx::GpuMemoryBufferHandle handle) override {
+    auto test_image_backing = std::make_unique<TestImageBacking>(
+        mailbox, format, size, color_space, surface_origin, alpha_type, usage,
+        0);
 
     // If the backing is not cleared, SkiaImageRepresentation errors out
     // when trying to create the scoped read access.
@@ -329,8 +351,8 @@ class ImageDecodeAcceleratorStubTest
         channel_manager()->GetSharedContextState(&context_result);
     ASSERT_EQ(ContextResult::kSuccess, context_result);
     ASSERT_TRUE(shared_context_state);
-    shared_context_state->InitializeGrContext(
-        GpuPreferences(), GpuDriverBugWorkarounds(), nullptr);
+    shared_context_state->InitializeSkia(GpuPreferences(),
+                                         GpuDriverBugWorkarounds());
 
     GpuChannel* channel = CreateChannel(kChannelId, false /* is_gpu_host */);
     ASSERT_TRUE(channel);

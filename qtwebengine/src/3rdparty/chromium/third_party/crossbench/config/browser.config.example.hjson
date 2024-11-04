@@ -4,8 +4,8 @@
     flag-group-1: {
       --js-flags: [
         null,
-        "--max-opt=0",
-        // "--max-opt=1",
+        "--max-opt=1",
+        // "--max-opt=2",
         // "--max-opt=4",
       ],
       --enable-fied-trial-config: [

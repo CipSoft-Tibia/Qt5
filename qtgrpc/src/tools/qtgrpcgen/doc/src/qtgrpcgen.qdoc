@@ -5,7 +5,6 @@
 \page qtgrpcgen-qt-tool.html
 \brief An overview of the qtgrpcgen tool and how to use it.
 \title The qtgrpcgen Tool
-\inmodule Qt GRPC
 
 The \c qtgrpcgen tool can be used to generate Qt GRPC service classes from a
 protobuf schema. The tool is provided by the CMake \c {Qt6::GrpcTools}
@@ -18,7 +17,8 @@ package. It works as an extension to Google's \c protoc tool.
 \section1 Usage
 
 Qt provides CMake functions that ease the use of the \c qtgrpcgen tool.
-When using CMake as a build tool you should prefer using the Qt CMake API.
+When using CMake as a build tool you should prefer using the
+\l{CMake Commands in Qt6 GRPC}{Qt CMake API}.
 For build systems other than CMake, adapt the commands described in
 \l{Running qtgrpcgen manually}.
 
@@ -34,7 +34,7 @@ The following CMake commands integrate a gRPC service into a Qt project.
 Usually \c qtgrpcgen would be invoked through CMake using the
 \c{qt_add_grpc} macro, as shown in the following example:
 
-\include qt-add-grpc-example.qdocinc
+\include qt-add-grpc-example.qdocinc 0
 
 \section2 Running \c qtgrpcgen manually
 
@@ -62,5 +62,6 @@ options are supported:
 
 \list
     \include qtprotoccommon-options.qdocinc 0
+    \include qtgrpcgen-options.qdocinc 0
 \endlist
 */

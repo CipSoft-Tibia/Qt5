@@ -38,8 +38,8 @@
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/input_type_names.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
-#include "third_party/blink/renderer/core/layout/layout_block_flow.h"
-#include "third_party/blink/renderer/core/layout/layout_object_factory.h"
+#include "third_party/blink/renderer/core/keywords.h"
+#include "third_party/blink/renderer/core/layout/ng/layout_ng_block_flow.h"
 #include "third_party/blink/renderer/core/page/chrome_client.h"
 #include "third_party/blink/renderer/core/page/drag_data.h"
 #include "third_party/blink/renderer/core/probe/core_probes.h"
@@ -98,6 +98,20 @@ VectorType CreateFilesFrom(const FormControlState& state,
   return files;
 }
 
+template <typename ItemType, typename VectorType>
+VectorType CreateFilesFrom(const FormControlState& state,
+                           ExecutionContext* execution_context,
+                           ItemType (*factory)(ExecutionContext*,
+                                               const FormControlState&,
+                                               wtf_size_t&)) {
+  VectorType files;
+  files.ReserveInitialCapacity(state.ValueSize() / 3);
+  for (wtf_size_t i = 0; i < state.ValueSize();) {
+    files.push_back(factory(execution_context, state, i));
+  }
+  return files;
+}
+
 Vector<String> FileInputType::FilesFromFormControlState(
     const FormControlState& state) {
   return CreateFilesFrom<String, Vector<String>>(state,
@@ -122,9 +136,10 @@ FormControlState FileInputType::SaveFormControlState() const {
 void FileInputType::RestoreFormControlState(const FormControlState& state) {
   if (state.ValueSize() % 3)
     return;
+  ExecutionContext* execution_context = GetElement().GetExecutionContext();
   HeapVector<Member<File>> file_vector =
       CreateFilesFrom<File*, HeapVector<Member<File>>>(
-          state, &File::CreateFromControlState);
+          state, execution_context, &File::CreateFromControlState);
   auto* file_list = MakeGarbageCollected<FileList>();
   for (const auto& file : file_vector)
     file_list->Append(file);
@@ -134,9 +149,10 @@ void FileInputType::RestoreFormControlState(const FormControlState& state) {
 void FileInputType::AppendToFormData(FormData& form_data) const {
   FileList* file_list = GetElement().files();
   unsigned num_files = file_list->length();
+  ExecutionContext* context = GetElement().GetExecutionContext();
   if (num_files == 0) {
     form_data.AppendFromElement(GetElement().GetName(),
-                                MakeGarbageCollected<File>(""));
+                                MakeGarbageCollected<File>(context, ""));
     return;
   }
 
@@ -217,10 +233,8 @@ void FileInputType::AdjustStyle(ComputedStyleBuilder& builder) {
   builder.SetShouldIgnoreOverflowPropertyForInlineBlockBaseline();
 }
 
-LayoutObject* FileInputType::CreateLayoutObject(const ComputedStyle& style,
-                                                LegacyLayout legacy) const {
-  return LayoutObjectFactory::CreateFileUploadControl(GetElement(), style,
-                                                      legacy);
+LayoutObject* FileInputType::CreateLayoutObject(const ComputedStyle&) const {
+  return MakeGarbageCollected<LayoutNGBlockFlow>(&GetElement());
 }
 
 InputType::ValueMode FileInputType::GetValueMode() const {
@@ -298,7 +312,7 @@ FileList* FileInputType::CreateFileList(ExecutionContext& context,
       String relative_path =
           string_path.Substring(root_length).Replace('\\', '/');
       file_list->Append(
-          File::CreateWithRelativePath(string_path, relative_path));
+          File::CreateWithRelativePath(&context, string_path, relative_path));
     }
     return file_list;
   }
@@ -306,7 +320,7 @@ FileList* FileInputType::CreateFileList(ExecutionContext& context,
   for (const auto& file : files) {
     if (file->is_native_file()) {
       file_list->Append(File::CreateForUserProvidedFile(
-          FilePathToString(file->get_native_file()->file_path),
+          &context, FilePathToString(file->get_native_file()->file_path),
           file->get_native_file()->display_name));
     } else {
       const auto& fs_info = file->get_file_system();
@@ -334,8 +348,7 @@ void FileInputType::CreateShadowSubtree() {
   DCHECK(IsShadowHost(GetElement()));
   Document& document = GetElement().GetDocument();
 
-  auto* button =
-      MakeGarbageCollected<HTMLInputElement>(document, CreateElementFlags());
+  auto* button = MakeGarbageCollected<HTMLInputElement>(document);
   button->setType(input_type_names::kButton);
   button->setAttribute(
       html_names::kValueAttr,
@@ -348,29 +361,27 @@ void FileInputType::CreateShadowSubtree() {
   button->SetActive(GetElement().CanReceiveDroppedFiles());
   GetElement().UserAgentShadowRoot()->AppendChild(button);
 
-  // The following element is used only in LayoutNG.
-  // See LayoutFileUploadControl::IsChildAllowed().
   auto* span = document.CreateRawElement(html_names::kSpanTag);
   GetElement().UserAgentShadowRoot()->AppendChild(span);
 
   // The file input element is presented to AX as one node with the role button,
   // instead of the individual button and text nodes. That's the reason we hide
   // the shadow root elements of the file input in the AX tree.
-  button->setAttribute(html_names::kAriaHiddenAttr, "true");
-  span->setAttribute(html_names::kAriaHiddenAttr, "true");
+  button->setAttribute(html_names::kAriaHiddenAttr, keywords::kTrue);
+  span->setAttribute(html_names::kAriaHiddenAttr, keywords::kTrue);
 
   UpdateView();
 }
 
 HTMLInputElement* FileInputType::UploadButton() const {
-  Element* element = GetElement().UserAgentShadowRoot()->getElementById(
+  Element* element = GetElement().EnsureShadowSubtree()->getElementById(
       shadow_element_names::kIdFileUploadButton);
   CHECK(!element || IsA<HTMLInputElement>(element));
   return To<HTMLInputElement>(element);
 }
 
 Node* FileInputType::FileStatusElement() const {
-  return GetElement().UserAgentShadowRoot()->lastChild();
+  return GetElement().EnsureShadowSubtree()->lastChild();
 }
 
 void FileInputType::DisabledAttributeChanged() {
@@ -423,8 +434,11 @@ void FileInputType::SetFilesAndDispatchEvents(FileList* files) {
     GetElement().DispatchInputEvent();
     GetElement().DispatchChangeEvent();
     if (AXObjectCache* cache =
-            GetElement().GetDocument().ExistingAXObjectCache())
+            GetElement().GetDocument().ExistingAXObjectCache()) {
       cache->HandleValueChanged(&GetElement());
+    }
+  } else {
+    GetElement().DispatchCancelEvent();
   }
 }
 
@@ -574,10 +588,6 @@ String FileInputType::FileStatusText() const {
 }
 
 void FileInputType::UpdateView() {
-  auto* layout_object = GetElement().GetLayoutObject();
-  if (layout_object && layout_object->IsFileUploadControl())
-    layout_object->SetShouldDoFullPaintInvalidation();
-
   if (auto* span = FileStatusElement())
     span->setTextContent(FileStatusText());
 }

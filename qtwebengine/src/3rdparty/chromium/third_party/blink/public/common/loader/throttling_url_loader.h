@@ -12,6 +12,7 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_piece.h"
+#include "base/time/time.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
@@ -110,12 +111,21 @@ class BLINK_COMMON_EXPORT ThrottlingURLLoader
 
   void CancelWithError(int error_code, base::StringPiece custom_reason);
 
+  void CancelWithExtendedError(int error_code,
+                               int extended_reason_code,
+                               base::StringPiece custom_reason);
+
   // Sets the forwarding client to receive all subsequent notifications.
   void set_forwarding_client(network::mojom::URLLoaderClient* client) {
     forwarding_client_ = client;
   }
 
   bool response_intercepted() const { return response_intercepted_; }
+
+  // Indicates a restart did occur due to a Critical-CH HTTP Header.
+  void DidRestartForCriticalClientHint() {
+    critical_ch_restart_time_ = base::TimeTicks::Now();
+  }
 
  private:
   class ForwardingThrottleDelegate;
@@ -318,6 +328,8 @@ class BLINK_COMMON_EXPORT ThrottlingURLLoader
 
   int pending_restart_flags_ = 0;
   bool has_pending_restart_ = false;
+
+  base::TimeTicks critical_ch_restart_time_;
 
   base::WeakPtrFactory<ThrottlingURLLoader> weak_factory_{this};
 };

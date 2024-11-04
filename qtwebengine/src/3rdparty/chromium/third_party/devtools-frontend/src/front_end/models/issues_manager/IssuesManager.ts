@@ -7,24 +7,25 @@ import * as SDK from '../../core/sdk/sdk.js';
 import * as Protocol from '../../generated/protocol.js';
 
 import {AttributionReportingIssue} from './AttributionReportingIssue.js';
+import {BounceTrackingIssue} from './BounceTrackingIssue.js';
 import {ClientHintIssue} from './ClientHintIssue.js';
 import {ContentSecurityPolicyIssue} from './ContentSecurityPolicyIssue.js';
 import {CorsIssue} from './CorsIssue.js';
 import {CrossOriginEmbedderPolicyIssue, isCrossOriginEmbedderPolicyIssue} from './CrossOriginEmbedderPolicyIssue.js';
 import {DeprecationIssue} from './DeprecationIssue.js';
 import {FederatedAuthRequestIssue} from './FederatedAuthRequestIssue.js';
+import {FederatedAuthUserInfoRequestIssue} from './FederatedAuthUserInfoRequestIssue.js';
 import {GenericIssue} from './GenericIssue.js';
 import {HeavyAdIssue} from './HeavyAdIssue.js';
 import {type Issue, type IssueKind} from './Issue.js';
 import {Events} from './IssuesManagerEvents.js';
 import {LowTextContrastIssue} from './LowTextContrastIssue.js';
 import {MixedContentIssue} from './MixedContentIssue.js';
-import {NavigatorUserAgentIssue} from './NavigatorUserAgentIssue.js';
 import {QuirksModeIssue} from './QuirksModeIssue.js';
 import {CookieIssue} from './CookieIssue.js';
 import {SharedArrayBufferIssue} from './SharedArrayBufferIssue.js';
 import {SourceFrameIssuesManager} from './SourceFrameIssuesManager.js';
-import {TrustedWebActivityIssue} from './TrustedWebActivityIssue.js';
+import {StylesheetLoadingIssue} from './StylesheetLoadingIssue.js';
 
 export {Events} from './IssuesManagerEvents.js';
 
@@ -69,10 +70,6 @@ const issueCodeHandlers = new Map<
     SharedArrayBufferIssue.fromInspectorIssue,
   ],
   [
-    Protocol.Audits.InspectorIssueCode.TrustedWebActivityIssue,
-    TrustedWebActivityIssue.fromInspectorIssue,
-  ],
-  [
     Protocol.Audits.InspectorIssueCode.LowTextContrastIssue,
     LowTextContrastIssue.fromInspectorIssue,
   ],
@@ -83,10 +80,6 @@ const issueCodeHandlers = new Map<
   [
     Protocol.Audits.InspectorIssueCode.QuirksModeIssue,
     QuirksModeIssue.fromInspectorIssue,
-  ],
-  [
-    Protocol.Audits.InspectorIssueCode.NavigatorUserAgentIssue,
-    NavigatorUserAgentIssue.fromInspectorIssue,
   ],
   [
     Protocol.Audits.InspectorIssueCode.AttributionReportingIssue,
@@ -107,6 +100,18 @@ const issueCodeHandlers = new Map<
   [
     Protocol.Audits.InspectorIssueCode.FederatedAuthRequestIssue,
     FederatedAuthRequestIssue.fromInspectorIssue,
+  ],
+  [
+    Protocol.Audits.InspectorIssueCode.BounceTrackingIssue,
+    BounceTrackingIssue.fromInspectorIssue,
+  ],
+  [
+    Protocol.Audits.InspectorIssueCode.StylesheetLoadingIssue,
+    StylesheetLoadingIssue.fromInspectorIssue,
+  ],
+  [
+    Protocol.Audits.InspectorIssueCode.FederatedAuthUserInfoRequestIssue,
+    FederatedAuthUserInfoRequestIssue.fromInspectorIssue,
   ],
 ]);
 
@@ -169,8 +174,9 @@ export class IssuesManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
   #filteredIssues = new Map<string, Issue>();
   #issueCounts = new Map<IssueKind, number>();
   #hiddenIssueCount = new Map<IssueKind, number>();
-  #hasSeenTopFrameNavigated = false;
+  #hasSeenPrimaryPageChanged = false;
   #issuesById: Map<string, Issue> = new Map();
+  #issuesByOutermostTarget: WeakMap<SDK.Target.Target, Set<Issue>> = new Map();
 
   constructor(
       private readonly showThirdPartyIssuesSetting?: Common.Settings.Setting<boolean>,
@@ -178,8 +184,9 @@ export class IssuesManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
     super();
     new SourceFrameIssuesManager(this);
     SDK.TargetManager.TargetManager.instance().observeModels(SDK.IssuesModel.IssuesModel, this);
-    SDK.FrameManager.FrameManager.instance().addEventListener(
-        SDK.FrameManager.Events.TopFrameNavigated, this.#onTopFrameNavigated, this);
+    SDK.TargetManager.TargetManager.instance().addModelListener(
+        SDK.ResourceTreeModel.ResourceTreeModel, SDK.ResourceTreeModel.Events.PrimaryPageChanged,
+        this.#onPrimaryPageChanged, this);
     SDK.FrameManager.FrameManager.instance().addEventListener(
         SDK.FrameManager.Events.FrameAddedToTarget, this.#onFrameAddedToTarget, this);
 
@@ -187,6 +194,16 @@ export class IssuesManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
     // a full update when the setting changes to get an up-to-date issues list.
     this.showThirdPartyIssuesSetting?.addChangeListener(() => this.#updateFilteredIssues());
     this.hideIssueSetting?.addChangeListener(() => this.#updateFilteredIssues());
+    SDK.TargetManager.TargetManager.instance().observeTargets(
+        {
+          targetAdded: (target: SDK.Target.Target) => {
+            if (target.outermostTarget() === target) {
+              this.#updateFilteredIssues();
+            }
+          },
+          targetRemoved: (_: SDK.Target.Target) => {},
+        },
+        {scoped: true});
   }
 
   static instance(opts: IssuesManagerCreationOptions = {
@@ -210,37 +227,52 @@ export class IssuesManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
   }
 
   /**
-   * Once we have seen at least one `TopFrameNavigated` event, we can be reasonably sure
+   * Once we have seen at least one `PrimaryPageChanged` event, we can be reasonably sure
    * that we also collected issues that were reported during the navigation to the current
    * page. If we haven't seen a main frame navigated, we might have missed issues that arose
    * during navigation.
    */
   reloadForAccurateInformationRequired(): boolean {
-    return !this.#hasSeenTopFrameNavigated;
+    return !this.#hasSeenPrimaryPageChanged;
   }
 
-  #onTopFrameNavigated(event: Common.EventTarget.EventTargetEvent<{frame: SDK.ResourceTreeModel.ResourceTreeFrame}>):
-      void {
-    const {frame} = event.data;
+  #onPrimaryPageChanged(
+      event: Common.EventTarget.EventTargetEvent<
+          {frame: SDK.ResourceTreeModel.ResourceTreeFrame, type: SDK.ResourceTreeModel.PrimaryPageChangeType}>): void {
+    const {frame, type} = event.data;
     const keptIssues = new Map<string, Issue>();
     for (const [key, issue] of this.#allIssues.entries()) {
       if (issue.isAssociatedWithRequestId(frame.loaderId)) {
         keptIssues.set(key, issue);
+        // Keep issues for prerendered target alive in case of prerender-activation.
+      } else if (
+          (type === SDK.ResourceTreeModel.PrimaryPageChangeType.Activation) &&
+          (frame.resourceTreeModel().target() === issue.model()?.target())) {
+        keptIssues.set(key, issue);
+        // Keep BounceTrackingIssues alive for non-user-initiated navigations.
+      } else if (
+          issue.code() === Protocol.Audits.InspectorIssueCode.BounceTrackingIssue ||
+          issue.code() === Protocol.Audits.InspectorIssueCode.CookieIssue) {
+        const networkManager = frame.resourceTreeModel().target().model(SDK.NetworkManager.NetworkManager);
+        if (networkManager?.requestForLoaderId(frame.loaderId as Protocol.Network.LoaderId)?.hasUserGesture() ===
+            false) {
+          keptIssues.set(key, issue);
+        }
       }
     }
     this.#allIssues = keptIssues;
-    this.#hasSeenTopFrameNavigated = true;
+    this.#hasSeenPrimaryPageChanged = true;
     this.#updateFilteredIssues();
   }
 
   #onFrameAddedToTarget(event: Common.EventTarget.EventTargetEvent<{frame: SDK.ResourceTreeModel.ResourceTreeFrame}>):
       void {
     const {frame} = event.data;
-    // Determining third-party status usually requires the registered domain of the top frame.
+    // Determining third-party status usually requires the registered domain of the outermost frame.
     // When DevTools is opened after navigation has completed, issues may be received
-    // before the top frame is available. Thus, we trigger a recalcuation of third-party-ness
-    // when we attach to the top frame.
-    if (frame.isTopFrame()) {
+    // before the outermost frame is available. Thus, we trigger a recalcuation of third-party-ness
+    // when we attach to the outermost frame.
+    if (frame.isOutermostFrame() && SDK.TargetManager.TargetManager.instance().isInScope(frame.resourceTreeModel())) {
       this.#updateFilteredIssues();
     }
   }
@@ -276,6 +308,15 @@ export class IssuesManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
     }
     this.#allIssues.set(primaryKey, issue);
 
+    const outermostTarget = issuesModel.target().outermostTarget();
+    if (outermostTarget) {
+      let issuesForTarget = this.#issuesByOutermostTarget.get(outermostTarget);
+      if (!issuesForTarget) {
+        issuesForTarget = new Set();
+        this.#issuesByOutermostTarget.set(outermostTarget, issuesForTarget);
+      }
+      issuesForTarget.add(issue);
+    }
     if (this.#issueFilter(issue)) {
       this.#filteredIssues.set(primaryKey, issue);
       this.#issueCounts.set(issue.getKind(), 1 + (this.#issueCounts.get(issue.getKind()) || 0));
@@ -322,6 +363,13 @@ export class IssuesManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
   }
 
   #issueFilter(issue: Issue): boolean {
+    const scopeTarget = SDK.TargetManager.TargetManager.instance().scopeTarget();
+    if (!scopeTarget) {
+      return false;
+    }
+    if (!this.#issuesByOutermostTarget.get(scopeTarget)?.has(issue)) {
+      return false;
+    }
     return this.showThirdPartyIssuesSetting?.get() || !issue.isCausedByThirdParty();
   }
 
@@ -392,7 +440,7 @@ export type EventTypes = {
 
 // @ts-ignore
 globalThis.addIssueForTest = (issue: Protocol.Audits.InspectorIssue): void => {
-  const mainTarget = SDK.TargetManager.TargetManager.instance().mainFrameTarget();
+  const mainTarget = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
   const issuesModel = mainTarget?.model(SDK.IssuesModel.IssuesModel);
   issuesModel?.issueAdded({issue});
 };

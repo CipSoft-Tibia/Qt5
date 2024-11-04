@@ -39,6 +39,8 @@ class PrimaryAccountMutator {
     kSyncConsentAlreadySet = 2,
     // Sign-in is disallowed.
     kSigninNotAllowed = 4,
+    // The primary account cannot be modified.
+    kPrimaryAccountChangeNotAllowed = 5,
   };
 
   PrimaryAccountMutator() = default;
@@ -69,11 +71,18 @@ class PrimaryAccountMutator {
   // (i.e. without implying browser sync consent). Requires that the account
   // is known by the IdentityManager. See README.md for details on the meaning
   // of "unconsented". Returns whether the operation succeeded or not.
+  // On non-ChromeOS platforms, this additionally requires that:
+  //    - setting the primary account is allowed,
+  //    - there is not already a managed primary account set.
   //
   // The account state changes will be recorded in UMA, attributed to the
   // provided `access_point`.
   // TODO(crbug.com/1261772): Don't set a default `access_point`. All callsites
-  // should provide a valid value.
+  //     should provide a valid value.
+  // TODO(crbug.com/1462858): ConsentLevel::kSync is being migrated away from,
+  //     please see ConsentLevel::kSync documentation before adding new calls
+  //     with ConsentLevel::kSync. Also, update this documentation when the
+  //     deprecation process advances.
   virtual PrimaryAccountError SetPrimaryAccount(
       const CoreAccountId& account_id,
       ConsentLevel consent_level,

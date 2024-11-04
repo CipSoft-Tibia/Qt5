@@ -49,9 +49,7 @@ class FakeRTCRtpSenderImpl : public blink::RTCRtpSenderPlatform {
   void SetParameters(Vector<webrtc::RtpEncodingParameters>,
                      absl::optional<webrtc::DegradationPreference>,
                      blink::RTCVoidRequest*) override;
-  void GetStats(RTCStatsReportCallback,
-                const Vector<webrtc::NonStandardGroupId>&,
-                bool is_track_stats_deprecation_trial_enabled) override;
+  void GetStats(RTCStatsReportCallback) override;
   void SetStreams(const Vector<String>& stream_ids) override;
 
  private:
@@ -77,9 +75,7 @@ class FakeRTCRtpReceiverImpl : public RTCRtpReceiverPlatform {
   MediaStreamComponent* Track() const override;
   Vector<String> StreamIds() const override;
   Vector<std::unique_ptr<RTCRtpSource>> GetSources() override;
-  void GetStats(RTCStatsReportCallback,
-                const Vector<webrtc::NonStandardGroupId>&,
-                bool is_track_stats_deprecation_trial_enabled) override;
+  void GetStats(RTCStatsReportCallback) override;
   std::unique_ptr<webrtc::RtpParameters> GetParameters() const override;
   void SetJitterBufferMinimumDelay(
       absl::optional<double> delay_seconds) override;
@@ -110,11 +106,15 @@ class FakeRTCRtpTransceiverImpl : public RTCRtpTransceiverPlatform {
       const override;
   absl::optional<webrtc::RtpTransceiverDirection> FiredDirection()
       const override;
-  webrtc::RTCError SetOfferedRtpHeaderExtensions(
+
+  webrtc::RTCError Stop() override;
+  webrtc::RTCError SetCodecPreferences(
+      Vector<webrtc::RtpCodecCapability>) override;
+  webrtc::RTCError SetHeaderExtensionsToNegotiate(
       Vector<webrtc::RtpHeaderExtensionCapability> header_extensions) override;
-  Vector<webrtc::RtpHeaderExtensionCapability> HeaderExtensionsNegotiated()
+  Vector<webrtc::RtpHeaderExtensionCapability> GetNegotiatedHeaderExtensions()
       const override;
-  Vector<webrtc::RtpHeaderExtensionCapability> HeaderExtensionsToOffer()
+  Vector<webrtc::RtpHeaderExtensionCapability> GetHeaderExtensionsToNegotiate()
       const override;
 
  private:

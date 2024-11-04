@@ -12,8 +12,8 @@
 
 #include "qtprotobuftypes.h"
 
-#include <mutex>
 #include <limits>
+#include <mutex>
 
 QT_BEGIN_NAMESPACE
 
@@ -288,12 +288,9 @@ void qRegisterProtobufTypes()
 {
     qRegisterBaseTypes();
 
+    std::scoped_lock lock(QtProtobuf::registerMutex);
     std::vector<QtProtobuf::RegisterFunction> registrationList;
-    // Move the list to a local variable, emptying the global one.
-    {
-        std::scoped_lock lock(QtProtobuf::registerMutex);
-        registrationList.swap(QtProtobuf::registerFunctions());
-    }
+    registrationList.swap(QtProtobuf::registerFunctions());
 
     for (QtProtobuf::RegisterFunction registerFunc : registrationList)
         registerFunc();

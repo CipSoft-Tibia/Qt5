@@ -53,16 +53,16 @@ void tst_proxy::dataContainingNaNFirstRow()
     graph->addSeries(series);
 
     // X
-    QSurfaceDataArray *array = new QSurfaceDataArray();
-    array->reserve(size);
+    QSurfaceDataArray array;
+    array.reserve(size);
     for (int i = 0; i < size; i++) {
-        QSurfaceDataRow *row = new QSurfaceDataRow(size);
+        QSurfaceDataRow row(size);
         for (int j = 0; j < size; j++) {
-            (*row)[j].setPosition(QVector3D((i == missingRow) ? std::numeric_limits<float>::quiet_NaN()
+            row[j].setPosition(QVector3D((i == missingRow) ? std::numeric_limits<float>::quiet_NaN()
                                                               : static_cast<float>(i),
                                             qSin(static_cast<float>(i)), static_cast<float>(j)));
         }
-        *array << row;
+        array << row;
     }
     proxy->resetArray(array);
     QVERIFY(!qIsNaN(graph->axisX()->min()));
@@ -74,14 +74,14 @@ void tst_proxy::dataContainingNaNFirstRow()
 
     // Y
     for (int i = 0; i < size; i++) {
-        QSurfaceDataRow *row = new QSurfaceDataRow(size);
+        QSurfaceDataRow row(size);
         for (int j = 0; j < size; j++) {
-            (*row)[j].setPosition(QVector3D(static_cast<float>(i),
+            row[j].setPosition(QVector3D(static_cast<float>(i),
                                             (i == missingRow) ? std::numeric_limits<float>::quiet_NaN()
                                                               : qSin(static_cast<float>(i)),
                                              static_cast<float>(j)));
         }
-        *array << row;
+        array << row;
     }
     proxy->resetArray(array);
     QVERIFY(!qIsNaN(graph->axisX()->min()));
@@ -93,14 +93,14 @@ void tst_proxy::dataContainingNaNFirstRow()
 
     // Z
     for (int i = 0; i < size; i++) {
-        QSurfaceDataRow *row = new QSurfaceDataRow(size);
+        QSurfaceDataRow row(size);
         for (int j = 0; j < size; j++) {
-            (*row)[j].setPosition(QVector3D(static_cast<float>(i),
+            row[j].setPosition(QVector3D(static_cast<float>(i),
                                             qSin(static_cast<float>(i)),
                                             (i == missingRow) ? std::numeric_limits<float>::quiet_NaN()
                                                               : static_cast<float>(j)));
         }
-        *array << row;
+        array << row;
     }
     proxy->resetArray(array);
     QVERIFY(!qIsNaN(graph->axisX()->min()));
@@ -127,16 +127,16 @@ void tst_proxy::dataContainingNaNLastRow()
     graph->addSeries(series);
 
     // X
-    QSurfaceDataArray *array = new QSurfaceDataArray();
-    array->reserve(size);
+    QSurfaceDataArray array;
+    array.reserve(size);
     for (int i = 0; i < size; i++) {
-        QSurfaceDataRow *row = new QSurfaceDataRow(size);
+        QSurfaceDataRow row(size);
         for (int j = 0; j < size; j++) {
-            (*row)[j].setPosition(QVector3D((i == missingRow) ? std::numeric_limits<float>::quiet_NaN()
+            row[j].setPosition(QVector3D((i == missingRow) ? std::numeric_limits<float>::quiet_NaN()
                                                               : static_cast<float>(i),
                                             qSin(static_cast<float>(i)), static_cast<float>(j)));
         }
-        *array << row;
+        array << row;
     }
     proxy->resetArray(array);
     QVERIFY(!qIsNaN(graph->axisX()->min()));
@@ -148,14 +148,14 @@ void tst_proxy::dataContainingNaNLastRow()
 
     // Y
     for (int i = 0; i < size; i++) {
-        QSurfaceDataRow *row = new QSurfaceDataRow(size);
+        QSurfaceDataRow row(size);
         for (int j = 0; j < size; j++) {
-            (*row)[j].setPosition(QVector3D(static_cast<float>(i),
+            row[j].setPosition(QVector3D(static_cast<float>(i),
                                             (i == missingRow) ? std::numeric_limits<float>::quiet_NaN()
                                                               : qSin(static_cast<float>(i)),
                                              static_cast<float>(j)));
         }
-        *array << row;
+        array << row;
     }
     proxy->resetArray(array);
     QVERIFY(!qIsNaN(graph->axisX()->min()));
@@ -167,14 +167,14 @@ void tst_proxy::dataContainingNaNLastRow()
 
     // Z
     for (int i = 0; i < size; i++) {
-        QSurfaceDataRow *row = new QSurfaceDataRow(size);
+        QSurfaceDataRow row(size);
         for (int j = 0; j < size; j++) {
-            (*row)[j].setPosition(QVector3D(static_cast<float>(i),
+            row[j].setPosition(QVector3D(static_cast<float>(i),
                                             qSin(static_cast<float>(i)),
                                             (i == missingRow) ? std::numeric_limits<float>::quiet_NaN()
                                                               : static_cast<float>(j)));
         }
-        *array << row;
+        array << row;
     }
     proxy->resetArray(array);
     QVERIFY(!qIsNaN(graph->axisX()->min()));
@@ -200,17 +200,17 @@ void tst_proxy::dataContainingNaNFirstLastRow()
     graph->addSeries(series);
 
     // X
-    QSurfaceDataArray *array = new QSurfaceDataArray();
-    array->reserve(size);
+    QSurfaceDataArray array;
+    array.reserve(size);
     for (int i = 0; i < size; i++) {
         bool missingRow = (i == rowFirst || i == rowLast);
-        QSurfaceDataRow *row = new QSurfaceDataRow(size);
+        QSurfaceDataRow row(size);
         for (int j = 0; j < size; j++) {
-            (*row)[j].setPosition(QVector3D(missingRow ? std::numeric_limits<float>::quiet_NaN()
+            row[j].setPosition(QVector3D(missingRow ? std::numeric_limits<float>::quiet_NaN()
                                                        : static_cast<float>(i),
                                             qSin(static_cast<float>(i)), static_cast<float>(j)));
         }
-        *array << row;
+        array << row;
     }
     proxy->resetArray(array);
     QVERIFY(!qIsNaN(graph->axisX()->min()));
@@ -223,14 +223,14 @@ void tst_proxy::dataContainingNaNFirstLastRow()
     // Y
     for (int i = 0; i < size; i++) {
         bool missingRow = (i == rowFirst || i == rowLast);
-        QSurfaceDataRow *row = new QSurfaceDataRow(size);
+        QSurfaceDataRow row(size);
         for (int j = 0; j < size; j++) {
-            (*row)[j].setPosition(QVector3D(static_cast<float>(i),
+            row[j].setPosition(QVector3D(static_cast<float>(i),
                                             missingRow ? std::numeric_limits<float>::quiet_NaN()
                                                        : qSin(static_cast<float>(i)),
                                              static_cast<float>(j)));
         }
-        *array << row;
+        array << row;
     }
     proxy->resetArray(array);
     QVERIFY(!qIsNaN(graph->axisX()->min()));
@@ -243,14 +243,14 @@ void tst_proxy::dataContainingNaNFirstLastRow()
     // Z
     for (int i = 0; i < size; i++) {
         bool missingRow = (i == rowFirst || i == rowLast);
-        QSurfaceDataRow *row = new QSurfaceDataRow(size);
+        QSurfaceDataRow row(size);
         for (int j = 0; j < size; j++) {
-            (*row)[j].setPosition(QVector3D(static_cast<float>(i),
+            row[j].setPosition(QVector3D(static_cast<float>(i),
                                             qSin(static_cast<float>(i)),
                                             missingRow ? std::numeric_limits<float>::quiet_NaN()
                                                        : static_cast<float>(j)));
         }
-        *array << row;
+        array << row;
     }
     proxy->resetArray(array);
     QVERIFY(!qIsNaN(graph->axisX()->min()));

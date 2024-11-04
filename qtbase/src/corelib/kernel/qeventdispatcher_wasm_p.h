@@ -20,6 +20,7 @@
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qwaitcondition.h>
 
+#include <chrono>
 #include <mutex>
 #include <optional>
 #include <tuple>
@@ -53,7 +54,6 @@ public:
     void wakeUp() override;
 
     static void runOnMainThread(std::function<void(void)> fn);
-    static void runOnMainThreadAsync(std::function<void(void)> fn);
     static void socketSelect(int timeout, int socket, bool waitForRead, bool waitForWrite,
                             bool *selectForRead, bool *selectForWrite, bool *socketDisconnect);
 protected:
@@ -90,6 +90,7 @@ private:
 
     static void run(std::function<void(void)> fn);
     static void runAsync(std::function<void(void)> fn);
+    static void runOnMainThreadAsync(std::function<void(void)> fn);
 
     static QEventDispatcherWasm *g_mainThreadEventDispatcher;
 
@@ -99,7 +100,7 @@ private:
 
     QTimerInfoList *m_timerInfo = new QTimerInfoList();
     long m_timerId = 0;
-    uint64_t m_timerTargetTime = 0;
+    std::chrono::milliseconds m_timerTargetTime{};
 
 #if QT_CONFIG(thread)
     std::mutex m_mutex;

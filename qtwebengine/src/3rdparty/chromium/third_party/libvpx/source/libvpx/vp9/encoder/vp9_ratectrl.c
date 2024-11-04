@@ -1150,8 +1150,9 @@ static int rc_pick_q_and_bounds_one_pass_vbr(const VP9_COMP *cpi,
   if (frame_is_intra_only(cm)) {
     if (oxcf->rc_mode == VPX_Q) {
       int qindex = cq_level;
-      double q = vp9_convert_qindex_to_q(qindex, cm->bit_depth);
-      int delta_qindex = vp9_compute_qdelta(rc, q, q * 0.25, cm->bit_depth);
+      double qstart = vp9_convert_qindex_to_q(qindex, cm->bit_depth);
+      int delta_qindex =
+          vp9_compute_qdelta(rc, qstart, qstart * 0.25, cm->bit_depth);
       active_best_quality = VPXMAX(qindex + delta_qindex, rc->best_quality);
     } else if (rc->this_key_frame_forced) {
       // Handle the special case for key frames forced when we have reached
@@ -1195,7 +1196,7 @@ static int rc_pick_q_and_bounds_one_pass_vbr(const VP9_COMP *cpi,
     } else {
       q = rc->avg_frame_qindex[KEY_FRAME];
     }
-    // For constrained quality dont allow Q less than the cq level
+    // For constrained quality don't allow Q less than the cq level
     if (oxcf->rc_mode == VPX_CQ) {
       if (q < cq_level) q = cq_level;
 
@@ -1206,12 +1207,14 @@ static int rc_pick_q_and_bounds_one_pass_vbr(const VP9_COMP *cpi,
 
     } else if (oxcf->rc_mode == VPX_Q) {
       int qindex = cq_level;
-      double q = vp9_convert_qindex_to_q(qindex, cm->bit_depth);
+      double qstart = vp9_convert_qindex_to_q(qindex, cm->bit_depth);
       int delta_qindex;
       if (cpi->refresh_alt_ref_frame)
-        delta_qindex = vp9_compute_qdelta(rc, q, q * 0.40, cm->bit_depth);
+        delta_qindex =
+            vp9_compute_qdelta(rc, qstart, qstart * 0.40, cm->bit_depth);
       else
-        delta_qindex = vp9_compute_qdelta(rc, q, q * 0.50, cm->bit_depth);
+        delta_qindex =
+            vp9_compute_qdelta(rc, qstart, qstart * 0.50, cm->bit_depth);
       active_best_quality = VPXMAX(qindex + delta_qindex, rc->best_quality);
     } else {
       active_best_quality = get_gf_active_quality(cpi, q, cm->bit_depth);
@@ -1219,11 +1222,12 @@ static int rc_pick_q_and_bounds_one_pass_vbr(const VP9_COMP *cpi,
   } else {
     if (oxcf->rc_mode == VPX_Q) {
       int qindex = cq_level;
-      double q = vp9_convert_qindex_to_q(qindex, cm->bit_depth);
+      double qstart = vp9_convert_qindex_to_q(qindex, cm->bit_depth);
       double delta_rate[FIXED_GF_INTERVAL] = { 0.50, 1.0, 0.85, 1.0,
                                                0.70, 1.0, 0.85, 1.0 };
       int delta_qindex = vp9_compute_qdelta(
-          rc, q, q * delta_rate[cm->current_video_frame % FIXED_GF_INTERVAL],
+          rc, qstart,
+          qstart * delta_rate[cm->current_video_frame % FIXED_GF_INTERVAL],
           cm->bit_depth);
       active_best_quality = VPXMAX(qindex + delta_qindex, rc->best_quality);
     } else {
@@ -1355,7 +1359,7 @@ static void pick_kf_q_bound_two_pass(const VP9_COMP *cpi, int *bottom_index,
       active_best_quality /= 4;
     }
 
-    // Dont allow the active min to be lossless (q0) unlesss the max q
+    // Don't allow the active min to be lossless (q0) unlesss the max q
     // already indicates lossless.
     active_best_quality =
         VPXMIN(active_worst_quality, VPXMAX(1, active_best_quality));
@@ -1453,7 +1457,7 @@ static int rc_pick_q_and_bounds_two_pass(const VP9_COMP *cpi, int *bottom_index,
     } else {
       q = active_worst_quality;
     }
-    // For constrained quality dont allow Q less than the cq level
+    // For constrained quality don't allow Q less than the cq level
     if (oxcf->rc_mode == VPX_CQ) {
       if (q < cq_level) q = cq_level;
     }
@@ -1859,8 +1863,7 @@ void vp9_rc_postencode_update(VP9_COMP *cpi, uint64_t bytes_used) {
     rc->avg_frame_qindex[KEY_FRAME] =
         ROUND_POWER_OF_TWO(3 * rc->avg_frame_qindex[KEY_FRAME] + qindex, 2);
     if (cpi->use_svc) {
-      int i = 0;
-      SVC *svc = &cpi->svc;
+      int i;
       for (i = 0; i < svc->number_temporal_layers; ++i) {
         const int layer = LAYER_IDS_TO_IDX(svc->spatial_layer_id, i,
                                            svc->number_temporal_layers);
@@ -2033,7 +2036,11 @@ int vp9_calc_pframe_target_size_one_pass_vbr(const VP9_COMP *cpi) {
 int vp9_calc_iframe_target_size_one_pass_vbr(const VP9_COMP *cpi) {
   static const int kf_ratio = 25;
   const RATE_CONTROL *rc = &cpi->rc;
-  const int target = rc->avg_frame_bandwidth * kf_ratio;
+  int target = rc->avg_frame_bandwidth;
+  if (target > INT_MAX / kf_ratio)
+    target = INT_MAX;
+  else
+    target = rc->avg_frame_bandwidth * kf_ratio;
   return vp9_rc_clamp_iframe_target_size(cpi, target);
 }
 
@@ -2165,12 +2172,12 @@ int vp9_calc_pframe_target_size_one_pass_cbr(const VP9_COMP *cpi) {
   if (diff > 0) {
     // Lower the target bandwidth for this frame.
     const int pct_low = (int)VPXMIN(diff / one_pct_bits, oxcf->under_shoot_pct);
-    target -= (target * pct_low) / 200;
+    target -= (int)(((int64_t)target * pct_low) / 200);
   } else if (diff < 0) {
     // Increase the target bandwidth for this frame.
     const int pct_high =
         (int)VPXMIN(-diff / one_pct_bits, oxcf->over_shoot_pct);
-    target += (target * pct_high) / 200;
+    target += (int)(((int64_t)target * pct_high) / 200);
   }
   if (oxcf->rc_max_inter_bitrate_pct) {
     const int max_rate =
@@ -2690,7 +2697,7 @@ static void vbr_rate_correction(VP9_COMP *cpi, int *this_frame_target) {
   }
 
   // Fast redistribution of bits arising from massive local undershoot.
-  // Dont do it for kf,arf,gf or overlay frames.
+  // Don't do it for kf,arf,gf or overlay frames.
   if (!frame_is_kf_gf_arf(cpi) && !rc->is_src_frame_alt_ref &&
       rc->vbr_bits_off_target_fast) {
     int one_frame_bits = VPXMAX(rc->avg_frame_bandwidth, *this_frame_target);
@@ -3269,11 +3276,9 @@ int vp9_encodedframe_overshoot(VP9_COMP *cpi, int frame_size, int *q) {
       MODE_INFO **mi = cm->mi_grid_visible;
       int sum_intra_usage = 0;
       int mi_row, mi_col;
-      int tot = 0;
       for (mi_row = 0; mi_row < cm->mi_rows; mi_row++) {
         for (mi_col = 0; mi_col < cm->mi_cols; mi_col++) {
           if (mi[0]->ref_frame[0] == INTRA_FRAME) sum_intra_usage++;
-          tot++;
           mi++;
         }
         mi += 8;

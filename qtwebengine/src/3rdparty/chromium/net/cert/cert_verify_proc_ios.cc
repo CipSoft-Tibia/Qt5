@@ -6,22 +6,24 @@
 
 #include <CommonCrypto/CommonDigest.h>
 
+#include "base/apple/foundation_util.h"
+#include "base/apple/osstatus_logging.h"
+#include "base/apple/scoped_cftyperef.h"
 #include "base/logging.h"
-#include "base/mac/foundation_util.h"
-#include "base/mac/mac_logging.h"
-#include "base/mac/scoped_cftyperef.h"
 #include "base/notreached.h"
 #include "crypto/sha2.h"
 #include "net/base/net_errors.h"
 #include "net/cert/asn1_util.h"
 #include "net/cert/cert_verify_result.h"
+#include "net/cert/crl_set.h"
 #include "net/cert/ct_serialization.h"
 #include "net/cert/known_roots.h"
 #include "net/cert/test_root_certs.h"
 #include "net/cert/x509_certificate.h"
+#include "net/cert/x509_util.h"
 #include "net/cert/x509_util_apple.h"
 
-using base::ScopedCFTypeRef;
+using base::apple::ScopedCFTypeRef;
 
 namespace net {
 
@@ -143,12 +145,11 @@ OSStatus CreateTrustPolicies(ScopedCFTypeRef<CFArrayRef>* policies) {
   if (!local_policies)
     return errSecAllocate;
 
-  SecPolicyRef ssl_policy = SecPolicyCreateBasicX509();
+  base::apple::ScopedCFTypeRef<SecPolicyRef> ssl_policy(
+      SecPolicyCreateBasicX509());
   CFArrayAppendValue(local_policies, ssl_policy);
-  CFRelease(ssl_policy);
-  ssl_policy = SecPolicyCreateSSL(true, nullptr);
+  ssl_policy.reset(SecPolicyCreateSSL(/*server=*/true, /*hostname=*/nullptr));
   CFArrayAppendValue(local_policies, ssl_policy);
-  CFRelease(ssl_policy);
 
   policies->reset(local_policies.release());
   return noErr;
@@ -230,8 +231,8 @@ int BuildAndEvaluateSecTrustRef(CFArrayRef cert_array,
 void GetCertChainInfo(CFArrayRef cert_chain, CertVerifyResult* verify_result) {
   DCHECK_LT(0, CFArrayGetCount(cert_chain));
 
-  base::ScopedCFTypeRef<SecCertificateRef> verified_cert;
-  std::vector<base::ScopedCFTypeRef<SecCertificateRef>> verified_chain;
+  base::apple::ScopedCFTypeRef<SecCertificateRef> verified_cert;
+  std::vector<base::apple::ScopedCFTypeRef<SecCertificateRef>> verified_chain;
   for (CFIndex i = 0, count = CFArrayGetCount(cert_chain); i < count; ++i) {
     SecCertificateRef chain_cert = reinterpret_cast<SecCertificateRef>(
         const_cast<void*>(CFArrayGetValueAtIndex(cert_chain, i)));
@@ -241,7 +242,7 @@ void GetCertChainInfo(CFArrayRef cert_chain, CertVerifyResult* verify_result) {
       verified_chain.emplace_back(chain_cert, base::scoped_policy::RETAIN);
     }
 
-    base::ScopedCFTypeRef<CFDataRef> der_data(
+    base::apple::ScopedCFTypeRef<CFDataRef> der_data(
         SecCertificateCopyData(chain_cert));
     if (!der_data) {
       verify_result->cert_status |= CERT_STATUS_INVALID;
@@ -279,14 +280,16 @@ void GetCertChainInfo(CFArrayRef cert_chain, CertVerifyResult* verify_result) {
 
 }  // namespace
 
-CertVerifyProcIOS::CertVerifyProcIOS() {}
+CertVerifyProcIOS::CertVerifyProcIOS(scoped_refptr<CRLSet> crl_set)
+    : CertVerifyProc(std::move(crl_set)) {}
 
 // static
 CertStatus CertVerifyProcIOS::GetCertFailureStatusFromError(CFErrorRef error) {
   if (!error)
     return CERT_STATUS_INVALID;
 
-  base::ScopedCFTypeRef<CFStringRef> error_domain(CFErrorGetDomain(error));
+  base::apple::ScopedCFTypeRef<CFStringRef> error_domain(
+      CFErrorGetDomain(error));
   CFIndex error_code = CFErrorGetCode(error);
 
   if (error_domain != kCFErrorDomainOSStatus) {
@@ -314,7 +317,8 @@ CertStatus CertVerifyProcIOS::GetCertFailureStatusFromError(CFErrorRef error) {
 CertStatus CertVerifyProcIOS::GetCertFailureStatusFromTrust(SecTrustRef trust) {
   CertStatus reason = 0;
 
-  base::ScopedCFTypeRef<CFArrayRef> properties(SecTrustCopyProperties(trust));
+  base::apple::ScopedCFTypeRef<CFArrayRef> properties(
+      SecTrustCopyProperties(trust));
   if (!properties)
     return CERT_STATUS_INVALID;
 
@@ -394,7 +398,6 @@ int CertVerifyProcIOS::VerifyInternal(
     const std::string& ocsp_response,
     const std::string& sct_list,
     int flags,
-    CRLSet* crl_set,
     const CertificateList& additional_trust_anchors,
     CertVerifyResult* verify_result,
     const NetLogWithSource& net_log) {
@@ -504,6 +507,13 @@ int CertVerifyProcIOS::VerifyInternal(
 
   if (IsCertStatusError(verify_result->cert_status))
     return MapCertStatusToNetError(verify_result->cert_status);
+
+  if (TestRootCerts::HasInstance() &&
+      !verify_result->verified_cert->intermediate_buffers().empty() &&
+      TestRootCerts::GetInstance()->IsKnownRoot(x509_util::CryptoBufferAsSpan(
+          verify_result->verified_cert->intermediate_buffers().back().get()))) {
+    verify_result->is_issued_by_known_root = true;
+  }
 
   LogNameNormalizationMetrics(".IOS", verify_result->verified_cert.get(),
                               verify_result->is_issued_by_known_root);

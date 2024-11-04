@@ -43,7 +43,18 @@ DEFINE_QUICHE_COMMAND_LINE_FLAG(
 DEFINE_QUICHE_COMMAND_LINE_FLAG(
     bool, bring_up_tun, false,
     "If set to true, no URLs need to be specified and instead a TUN device "
-    "is brought up with the assigned IP from the MASQUE CONNECT-IP server");
+    "is brought up with the assigned IP from the MASQUE CONNECT-IP server.");
+
+DEFINE_QUICHE_COMMAND_LINE_FLAG(
+    bool, dns_on_client, false,
+    "If set to true, masque_client will perform DNS for encapsulated URLs and "
+    "send the IP litteral in the CONNECT request. If set to false, "
+    "masque_client send the hostname in the CONNECT request.");
+
+DEFINE_QUICHE_COMMAND_LINE_FLAG(
+    bool, bring_up_tap, false,
+    "If set to true, no URLs need to be specified and instead a TAP device "
+    "is brought up for a MASQUE CONNECT-ETHERNET session.");
 
 namespace quic {
 
@@ -111,7 +122,7 @@ class MasqueTunSession : public MasqueClientSession::EncapsulatedIpSession,
       QUIC_DVLOG(1) << "Ignoring OnEvent fd " << fd << " event mask " << events;
       return;
     }
-    char datagram[1501];
+    char datagram[kMasqueIpPacketBufferSize];
     while (true) {
       ssize_t read_size = read(fd, datagram, sizeof(datagram));
       if (read_size < 0) {
@@ -136,8 +147,73 @@ class MasqueTunSession : public MasqueClientSession::EncapsulatedIpSession,
   int fd_ = -1;
 };
 
+class MasqueTapSession
+    : public MasqueClientSession::EncapsulatedEthernetSession,
+      public QuicSocketEventListener {
+ public:
+  MasqueTapSession(QuicEventLoop* event_loop, MasqueClientSession* session)
+      : event_loop_(event_loop), session_(session) {}
+  ~MasqueTapSession() override = default;
+
+  void CreateInterface(void) {
+    QUIC_LOG(ERROR) << "Bringing up TAP";
+    fd_ = CreateTapInterface();
+    if (fd_ < 0) {
+      QUIC_LOG(FATAL) << "Failed to create TAP interface";
+    }
+    if (!event_loop_->RegisterSocket(fd_, kSocketEventReadable, this)) {
+      QUIC_LOG(FATAL) << "Failed to register TAP fd with the event loop";
+    }
+  }
+
+  // MasqueClientSession::EncapsulatedEthernetSession
+  void ProcessEthernetFrame(absl::string_view frame) override {
+    QUIC_LOG(INFO) << " Received Ethernet frame of length " << frame.length();
+    if (fd_ == -1) {
+      // TAP not open, early return
+      return;
+    }
+    if (write(fd_, frame.data(), frame.size()) == -1) {
+      QUIC_LOG(FATAL) << "Failed to write";
+    }
+  }
+  void CloseEthernetSession(const std::string& details) override {
+    QUIC_LOG(ERROR) << "Was asked to close Ethernet session: " << details;
+  }
+
+  // QuicSocketEventListener
+  void OnSocketEvent(QuicEventLoop* /*event_loop*/, QuicUdpSocketFd fd,
+                     QuicSocketEventMask events) override {
+    if ((events & kSocketEventReadable) == 0) {
+      QUIC_DVLOG(1) << "Ignoring OnEvent fd " << fd << " event mask " << events;
+      return;
+    }
+    char datagram[kMasqueEthernetFrameBufferSize];
+    while (true) {
+      ssize_t read_size = read(fd, datagram, sizeof(datagram));
+      if (read_size < 0) {
+        break;
+      }
+      // Frame received from the TAP. Write it to the MASQUE CONNECT-ETHERNET
+      // session.
+      session_->SendEthernetFrame(absl::string_view(datagram, read_size), this);
+    }
+    if (!event_loop_->SupportsEdgeTriggered()) {
+      if (!event_loop_->RearmSocket(fd, kSocketEventReadable)) {
+        QUIC_BUG(MasqueServerSession_ConnectIp_OnSocketEvent_Rearm)
+            << "Failed to re-arm socket " << fd << " for reading";
+      }
+    }
+  }
+
+ private:
+  QuicEventLoop* event_loop_;
+  MasqueClientSession* session_;
+  std::string local_mac_address_;  // string, uint8_t[6], or new wrapper type?
+  int fd_ = -1;
+};
+
 int RunMasqueClient(int argc, char* argv[]) {
-  quiche::QuicheSystemEventLoop system_event_loop("masque_client");
   const char* usage = "Usage: masque_client [options] <url>";
 
   // The first non-flag argument is the URI template of the MASQUE server.
@@ -148,11 +224,17 @@ int RunMasqueClient(int argc, char* argv[]) {
   std::vector<std::string> urls =
       quiche::QuicheParseCommandLineFlags(usage, argc, argv);
   bool bring_up_tun = quiche::GetQuicheCommandLineFlag(FLAGS_bring_up_tun);
-  if (urls.empty() && !bring_up_tun) {
+  bool bring_up_tap = quiche::GetQuicheCommandLineFlag(FLAGS_bring_up_tap);
+  if (urls.empty() && !bring_up_tun && !bring_up_tap) {
+    quiche::QuichePrintCommandLineFlagHelp(usage);
+    return 1;
+  }
+  if (bring_up_tun && bring_up_tap) {
     quiche::QuichePrintCommandLineFlagHelp(usage);
     return 1;
   }
 
+  quiche::QuicheSystemEventLoop system_event_loop("masque_client");
   const bool disable_certificate_verification =
       quiche::GetQuicheCommandLineFlag(FLAGS_disable_certificate_verification);
   std::unique_ptr<QuicEventLoop> event_loop =
@@ -172,8 +254,8 @@ int RunMasqueClient(int argc, char* argv[]) {
   if (!parsed_uri_template.scheme.is_nonempty() ||
       !parsed_uri_template.host.is_nonempty() ||
       !parsed_uri_template.path.is_nonempty()) {
-    std::cerr << "Failed to parse MASQUE URI template \"" << urls[0] << "\""
-              << std::endl;
+    QUIC_LOG(ERROR) << "Failed to parse MASQUE URI template \"" << urls[0]
+                    << "\"";
     return 1;
   }
   std::string host = uri_template.substr(parsed_uri_template.host.begin,
@@ -191,8 +273,11 @@ int RunMasqueClient(int argc, char* argv[]) {
       masque_mode = MasqueMode::kOpen;
     } else if (mode_string == "connectip" || mode_string == "connect-ip") {
       masque_mode = MasqueMode::kConnectIp;
+    } else if (mode_string == "connectethernet" ||
+               mode_string == "connect-ethernet") {
+      masque_mode = MasqueMode::kConnectEthernet;
     } else {
-      std::cerr << "Invalid masque_mode \"" << mode_string << "\"" << std::endl;
+      QUIC_LOG(ERROR) << "Invalid masque_mode \"" << mode_string << "\"";
       return 1;
     }
   }
@@ -206,7 +291,7 @@ int RunMasqueClient(int argc, char* argv[]) {
   } else if (address_family == 6) {
     address_family_for_lookup = AF_INET6;
   } else {
-    std::cerr << "Invalid address_family " << address_family << std::endl;
+    QUIC_LOG(ERROR) << "Invalid address_family " << address_family;
     return 1;
   }
   std::unique_ptr<MasqueClient> masque_client = MasqueClient::Create(
@@ -215,11 +300,11 @@ int RunMasqueClient(int argc, char* argv[]) {
     return 1;
   }
 
-  std::cerr << "MASQUE is connected " << masque_client->connection_id()
-            << " in " << masque_mode << " mode" << std::endl;
+  QUIC_LOG(INFO) << "MASQUE is connected " << masque_client->connection_id()
+                 << " in " << masque_mode << " mode";
 
   if (bring_up_tun) {
-    std::cerr << "Bringing up tun" << std::endl;
+    QUIC_LOG(INFO) << "Bringing up tun";
     MasqueTunSession tun_session(event_loop.get(),
                                  masque_client->masque_client_session());
     masque_client->masque_client_session()->SendIpPacket(
@@ -229,11 +314,24 @@ int RunMasqueClient(int argc, char* argv[]) {
     }
     QUICHE_NOTREACHED();
   }
+  if (bring_up_tap) {
+    MasqueTapSession tap_session(event_loop.get(),
+                                 masque_client->masque_client_session());
+    tap_session.CreateInterface();
+    while (true) {
+      event_loop->RunEventLoopOnce(QuicTime::Delta::FromMilliseconds(50));
+    }
+    QUICHE_NOTREACHED();
+  }
+
+  const bool dns_on_client =
+      quiche::GetQuicheCommandLineFlag(FLAGS_dns_on_client);
 
   for (size_t i = 1; i < urls.size(); ++i) {
     if (!tools::SendEncapsulatedMasqueRequest(
             masque_client.get(), event_loop.get(), urls[i],
-            disable_certificate_verification, address_family_for_lookup)) {
+            disable_certificate_verification, address_family_for_lookup,
+            dns_on_client)) {
       return 1;
     }
   }

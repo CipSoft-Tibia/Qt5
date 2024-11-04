@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,11 +10,10 @@
 #include <array>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
-#include "absl/types/span.h"
 #include "cast/streaming/clock_drift_smoother.h"
 #include "cast/streaming/compound_rtcp_builder.h"
 #include "cast/streaming/environment.h"
@@ -32,8 +31,7 @@
 #include "platform/base/span.h"
 #include "util/alarm.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 struct EncodedFrame;
 class ReceiverPacketRouter;
@@ -162,7 +160,7 @@ class Receiver : public ReceiverBase {
     // at the Sender. This is computed and assigned when the RTP packet with ID
     // 0 is processed. Add the target playout delay to this to get the target
     // playout time.
-    absl::optional<Clock::time_point> estimated_capture_time;
+    std::optional<Clock::time_point> estimated_capture_time;
 
     PendingFrame();
     ~PendingFrame();
@@ -232,8 +230,7 @@ class Receiver : public ReceiverBase {
   bool is_pli_enabled_;       // Whether picture loss indication is enabled.
 
   // Buffer for serializing/sending RTCP packets.
-  const int rtcp_buffer_capacity_;
-  const std::unique_ptr<uint8_t[]> rtcp_buffer_;
+  std::vector<uint8_t> rtcp_buffer_;
 
   // Schedules tasks to ensure RTCP reports are sent within a bounded interval.
   // Not scheduled until after this Receiver has processed the first packet from
@@ -246,7 +243,7 @@ class Receiver : public ReceiverBase {
   // of playout times for the received frames, as well as ping-pong data bounced
   // back to the Sender in the Receiver Reports. It is nullopt until the first
   // parseable Sender Report is received.
-  absl::optional<SenderReportParser::SenderReportWithId> last_sender_report_;
+  std::optional<SenderReportParser::SenderReportWithId> last_sender_report_;
   Clock::time_point last_sender_report_arrival_time_;
 
   // Tracks the offset between the Receiver's [local] clock and the Sender's
@@ -308,7 +305,6 @@ class Receiver : public ReceiverBase {
   static constexpr std::chrono::milliseconds kNackFeedbackInterval{30};
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_RECEIVER_H_

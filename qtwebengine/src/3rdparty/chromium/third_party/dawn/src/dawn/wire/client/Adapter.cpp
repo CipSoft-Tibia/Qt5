@@ -60,6 +60,36 @@ void Adapter::SetProperties(const WGPUAdapterProperties* properties) {
 
 void Adapter::GetProperties(WGPUAdapterProperties* properties) const {
     *properties = mProperties;
+
+    // Get lengths, with null terminators.
+    size_t vendorNameCLen = strlen(mProperties.vendorName) + 1;
+    size_t architectureCLen = strlen(mProperties.architecture) + 1;
+    size_t nameCLen = strlen(mProperties.name) + 1;
+    size_t driverDescriptionCLen = strlen(mProperties.driverDescription) + 1;
+
+    // Allocate space for all strings.
+    char* ptr = new char[vendorNameCLen + architectureCLen + nameCLen + driverDescriptionCLen];
+
+    properties->vendorName = ptr;
+    memcpy(ptr, mProperties.vendorName, vendorNameCLen);
+    ptr += vendorNameCLen;
+
+    properties->architecture = ptr;
+    memcpy(ptr, mProperties.architecture, architectureCLen);
+    ptr += architectureCLen;
+
+    properties->name = ptr;
+    memcpy(ptr, mProperties.name, nameCLen);
+    ptr += nameCLen;
+
+    properties->driverDescription = ptr;
+    memcpy(ptr, mProperties.driverDescription, driverDescriptionCLen);
+    ptr += driverDescriptionCLen;
+}
+
+void ClientAdapterPropertiesFreeMembers(WGPUAdapterProperties properties) {
+    // This single delete is enough because everything is a single allocation.
+    delete[] properties.vendorName;
 }
 
 void Adapter::RequestDevice(const WGPUDeviceDescriptor* descriptor,
@@ -71,14 +101,25 @@ void Adapter::RequestDevice(const WGPUDeviceDescriptor* descriptor,
         return;
     }
 
-    Device* device = client->Make<Device>();
+    // The descriptor is passed so that the deviceLostCallback can be tracked client-side and called
+    // when the device is lost.
+    Device* device = client->Make<Device>(descriptor);
     uint64_t serial = mRequestDeviceRequests.Add({callback, device->GetWireId(), userdata});
+
+    // Ensure the device lost callback isn't serialized as part of the command, as it cannot be
+    // passed between processes.
+    WGPUDeviceDescriptor wireDescriptor = {};
+    if (descriptor) {
+        wireDescriptor = *descriptor;
+        wireDescriptor.deviceLostCallback = nullptr;
+        wireDescriptor.deviceLostUserdata = nullptr;
+    }
 
     AdapterRequestDeviceCmd cmd;
     cmd.adapterId = GetWireId();
     cmd.requestSerial = serial;
     cmd.deviceObjectHandle = device->GetWireHandle();
-    cmd.descriptor = descriptor;
+    cmd.descriptor = &wireDescriptor;
 
     client->SerializeCommand(cmd);
 }
@@ -125,6 +166,11 @@ bool Adapter::OnRequestDeviceCallback(uint64_t requestSerial,
 
     request.callback(status, ToAPI(device), message, request.userdata);
     return true;
+}
+
+WGPUInstance Adapter::GetInstance() const {
+    dawn::ErrorLog() << "adapter.GetInstance not supported with dawn_wire.";
+    return nullptr;
 }
 
 WGPUDevice Adapter::CreateDevice(const WGPUDeviceDescriptor*) {

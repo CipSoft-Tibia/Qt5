@@ -21,7 +21,7 @@
 
 QT_BEGIN_NAMESPACE
 
-QSvgTinyDocument::QSvgTinyDocument()
+QSvgTinyDocument::QSvgTinyDocument(QtSvg::Options options)
     : QSvgStructureNode(0)
     , m_widthPercent(false)
     , m_heightPercent(false)
@@ -29,6 +29,7 @@ QSvgTinyDocument::QSvgTinyDocument()
     , m_animated(false)
     , m_animationDuration(0)
     , m_fps(30)
+    , m_options(options)
 {
 }
 
@@ -152,7 +153,7 @@ static QByteArray qt_inflateSvgzDataFrom(QIODevice *)
 }
 #endif
 
-QSvgTinyDocument * QSvgTinyDocument::load(const QString &fileName)
+QSvgTinyDocument *QSvgTinyDocument::load(const QString &fileName, QtSvg::Options options)
 {
     QFile file(fileName);
     if (!file.open(QFile::ReadOnly)) {
@@ -167,7 +168,7 @@ QSvgTinyDocument * QSvgTinyDocument::load(const QString &fileName)
     }
 
     QSvgTinyDocument *doc = nullptr;
-    QSvgHandler handler(&file);
+    QSvgHandler handler(&file, options);
     if (handler.ok()) {
         doc = handler.document();
         doc->m_animationDuration = handler.animationDuration();
@@ -179,7 +180,7 @@ QSvgTinyDocument * QSvgTinyDocument::load(const QString &fileName)
     return doc;
 }
 
-QSvgTinyDocument * QSvgTinyDocument::load(const QByteArray &contents)
+QSvgTinyDocument *QSvgTinyDocument::load(const QByteArray &contents, QtSvg::Options options)
 {
     QByteArray svg;
     // Check for gzip magic number and inflate if appropriate
@@ -196,7 +197,7 @@ QSvgTinyDocument * QSvgTinyDocument::load(const QByteArray &contents)
     QBuffer buffer;
     buffer.setData(svg);
     buffer.open(QIODevice::ReadOnly);
-    QSvgHandler handler(&buffer);
+    QSvgHandler handler(&buffer, options);
 
     QSvgTinyDocument *doc = nullptr;
     if (handler.ok()) {
@@ -208,9 +209,9 @@ QSvgTinyDocument * QSvgTinyDocument::load(const QByteArray &contents)
     return doc;
 }
 
-QSvgTinyDocument * QSvgTinyDocument::load(QXmlStreamReader *contents)
+QSvgTinyDocument *QSvgTinyDocument::load(QXmlStreamReader *contents, QtSvg::Options options)
 {
-    QSvgHandler handler(contents);
+    QSvgHandler handler(contents, options);
 
     QSvgTinyDocument *doc = nullptr;
     if (handler.ok()) {
@@ -234,12 +235,7 @@ void QSvgTinyDocument::draw(QPainter *p, const QRectF &bounds)
     //sets default style on the painter
     //### not the most optimal way
     mapSourceToTarget(p, bounds);
-    QPen pen(Qt::NoBrush, 1, Qt::SolidLine, Qt::FlatCap, Qt::SvgMiterJoin);
-    pen.setMiterLimit(4);
-    p->setPen(pen);
-    p->setBrush(Qt::black);
-    p->setRenderHint(QPainter::Antialiasing);
-    p->setRenderHint(QPainter::SmoothPixmapTransform);
+    initPainter(p);
     QList<QSvgNode*>::iterator itr = m_renderers.begin();
     applyStyle(p, m_states);
     while (itr != m_renderers.end()) {
@@ -310,10 +306,9 @@ void QSvgTinyDocument::draw(QPainter *p, const QString &id,
     p->restore();
 }
 
-
 QSvgNode::Type QSvgTinyDocument::type() const
 {
-    return DOC;
+    return Doc;
 }
 
 void QSvgTinyDocument::setWidth(int len, bool percent)
@@ -339,6 +334,11 @@ void QSvgTinyDocument::setViewBox(const QRectF &rect)
     m_implicitViewBox = rect.isNull();
 }
 
+QtSvg::Options QSvgTinyDocument::options() const
+{
+    return m_options;
+}
+
 void QSvgTinyDocument::addSvgFont(QSvgFont *font)
 {
     m_fonts.insert(font->familyName(), font);
@@ -359,7 +359,7 @@ QSvgNode *QSvgTinyDocument::namedNode(const QString &id) const
     return m_namedNodes.value(id);
 }
 
-void QSvgTinyDocument::addNamedStyle(const QString &id, QSvgFillStyleProperty *style)
+void QSvgTinyDocument::addNamedStyle(const QString &id, QSvgPaintStyleProperty *style)
 {
     if (!m_namedStyles.contains(id))
         m_namedStyles.insert(id, style);
@@ -367,7 +367,7 @@ void QSvgTinyDocument::addNamedStyle(const QString &id, QSvgFillStyleProperty *s
         qCWarning(lcSvgHandler) << "Duplicate unique style id:" << id;
 }
 
-QSvgFillStyleProperty *QSvgTinyDocument::namedStyle(const QString &id) const
+QSvgPaintStyleProperty *QSvgTinyDocument::namedStyle(const QString &id) const
 {
     return m_namedStyles.value(id);
 }
@@ -392,7 +392,7 @@ void QSvgTinyDocument::draw(QPainter *p)
     draw(p, QRectF());
 }
 
-void QSvgTinyDocument::draw(QPainter *, QSvgExtraStates &)
+void QSvgTinyDocument::drawCommand(QPainter *, QSvgExtraStates &)
 {
     qCDebug(lcSvgHandler) << "SVG Tiny does not support nested <svg> elements: ignored.";
     return;

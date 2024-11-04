@@ -18,8 +18,10 @@
 #include "ui/display/display_switches.h"
 #include "ui/display/types/display_constants.h"
 #include "ui/platform_window/platform_window.h"
+#include "ui/views/accessible_pane_view.h"
 #include "ui/views/test/views_test_base.h"
 #include "ui/views/widget/desktop_aura/desktop_native_widget_aura.h"
+#include "ui/views/widget/widget_delegate.h"
 #include "ui/views/widget/widget_observer.h"
 
 #if BUILDFLAG(IS_OZONE)
@@ -188,67 +190,6 @@ TEST_F(DesktopWindowTreeHostPlatformTest,
   host_platform->OnWindowStateChanged(ui::PlatformWindowState::kMinimized,
                                       ui::PlatformWindowState::kNormal);
   EXPECT_TRUE(widget->GetNativeWindow()->IsVisible());
-}
-
-// Tests that the minimization information is propagated to the content window.
-TEST_F(DesktopWindowTreeHostPlatformTest,
-       ToggleMinimizePropogateToContentWindowDoesNotHideWithVideoCaptureLock) {
-  std::unique_ptr<Widget> widget = CreateWidgetWithNativeWidget();
-  widget->Show();
-
-  auto* host_platform = DesktopWindowTreeHostPlatform::GetHostForWidget(
-      widget->GetNativeWindow()->GetHost()->GetAcceleratedWidget());
-  ASSERT_TRUE(host_platform);
-
-  EXPECT_TRUE(widget->GetNativeWindow()->IsVisible());
-
-  auto capture_lock =
-      widget->GetNativeWindow()->GetHost()->CreateVideoCaptureLock();
-
-  // Pretend a PlatformWindow enters the minimized state.
-  host_platform->OnWindowStateChanged(ui::PlatformWindowState::kUnknown,
-                                      ui::PlatformWindowState::kMinimized);
-
-  // Should remain visible, because a video capture lock currently exists.
-  EXPECT_TRUE(widget->GetNativeWindow()->IsVisible());
-}
-
-// Tests that content will show the content and restart the compositor if the
-// capture count changes.
-TEST_F(DesktopWindowTreeHostPlatformTest,
-       OnVideoCaptureLocksShowsContentWhenNeeded) {
-  std::unique_ptr<Widget> widget = CreateWidgetWithNativeWidget();
-  widget->Show();
-
-  auto* host_platform = DesktopWindowTreeHostPlatform::GetHostForWidget(
-      widget->GetNativeWindow()->GetHost()->GetAcceleratedWidget());
-  ASSERT_TRUE(host_platform);
-
-  EXPECT_TRUE(widget->GetNativeWindow()->IsVisible());
-
-  // Pretend a PlatformWindow enters the minimized state.
-  host_platform->OnWindowStateChanged(ui::PlatformWindowState::kUnknown,
-                                      ui::PlatformWindowState::kMinimized);
-
-  // Widget should now be not visible.
-  EXPECT_FALSE(widget->GetNativeWindow()->IsVisible());
-
-  // Creating a capture should now make the widget visible.
-  widget->GetNativeWindow()->GetHost()->CreateVideoCaptureLock();
-  EXPECT_TRUE(widget->GetNativeWindow()->IsVisible());
-}
-
-TEST_F(DesktopWindowTreeHostPlatformTest,
-       OnVideoCaptureLocksDoesNotShowContentWhenClosing) {
-  std::unique_ptr<Widget> widget = CreateWidgetWithNativeWidget();
-  widget->Show();
-  EXPECT_TRUE(widget->GetNativeWindow()->IsVisible());
-
-  widget->Close();
-
-  // Creating a video lock should not show the content if the widget is closing.
-  widget->GetNativeWindow()->GetHost()->CreateVideoCaptureLock();
-  EXPECT_FALSE(widget->GetNativeWindow()->IsVisible());
 }
 
 // Tests that the window shape is updated from the
@@ -436,6 +377,99 @@ TEST_F(DesktopWindowTreeHostPlatformTest, MakesParentChildRelationship) {
     EXPECT_NE(host_platform->window_children_.find(host_platform3),
               host_platform->window_children_.end());
   }
+}
+
+class TestWidgetDelegate : public WidgetDelegate {
+ public:
+  TestWidgetDelegate() = default;
+  TestWidgetDelegate(const TestWidgetDelegate&) = delete;
+  TestWidgetDelegate operator=(const TestWidgetDelegate&) = delete;
+  ~TestWidgetDelegate() override = default;
+
+  void GetAccessiblePanes(std::vector<View*>* panes) override {
+    base::ranges::copy(accessible_panes_, std::back_inserter(*panes));
+  }
+
+  void AddAccessiblePane(View* pane) { accessible_panes_.push_back(pane); }
+
+ private:
+  std::vector<View*> accessible_panes_;
+};
+
+TEST_F(DesktopWindowTreeHostPlatformTest, OnRotateFocus) {
+  using Direction = ui::PlatformWindowDelegate::RotateDirection;
+
+  auto delegate = std::make_unique<TestWidgetDelegate>();
+  Widget::InitParams widget_params =
+      CreateParams(Widget::InitParams::TYPE_WINDOW);
+  widget_params.bounds = gfx::Rect(110, 110, 100, 100);
+  widget_params.delegate = delegate.get();
+  widget_params.ownership = Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET;
+  auto widget = std::make_unique<Widget>();
+  widget->Init(std::move(widget_params));
+
+  View* views[2];
+  for (auto*& view : views) {
+    auto child_view = std::make_unique<View>();
+    child_view->SetFocusBehavior(View::FocusBehavior::ALWAYS);
+
+    auto pane = std::make_unique<AccessiblePaneView>();
+    delegate->AddAccessiblePane(pane.get());
+    view = pane->AddChildView(std::move(child_view));
+    widget->GetContentsView()->AddChildView(std::move(pane));
+  }
+  widget->Show();
+  ASSERT_TRUE(widget->IsActive());
+
+  auto* focus_manager = widget->GetFocusManager();
+
+  // Start rotating from start.
+  EXPECT_TRUE(DesktopWindowTreeHostPlatform::RotateFocusForWidget(
+      *widget, Direction::kForward, true));
+  EXPECT_EQ(views[0], focus_manager->GetFocusedView());
+
+  EXPECT_TRUE(DesktopWindowTreeHostPlatform::RotateFocusForWidget(
+      *widget, Direction::kForward, false));
+  EXPECT_EQ(views[1], focus_manager->GetFocusedView());
+
+  EXPECT_TRUE(DesktopWindowTreeHostPlatform::RotateFocusForWidget(
+      *widget, Direction::kBackward, false));
+  EXPECT_EQ(views[0], focus_manager->GetFocusedView());
+
+  // Attempting to rotate again without resetting should notify that we've
+  // reached the end.
+  EXPECT_FALSE(DesktopWindowTreeHostPlatform::RotateFocusForWidget(
+      *widget, Direction::kBackward, false));
+  EXPECT_EQ(views[0], focus_manager->GetFocusedView());
+
+  // Restart rotating from back.
+  EXPECT_TRUE(DesktopWindowTreeHostPlatform::RotateFocusForWidget(
+      *widget, Direction::kBackward, true));
+  EXPECT_EQ(views[1], focus_manager->GetFocusedView());
+}
+
+TEST_F(DesktopWindowTreeHostPlatformTest, CanMaximize) {
+  auto widget = CreateWidgetWithNativeWidget();
+  auto* host_platform = DesktopWindowTreeHostPlatform::GetHostForWidget(
+      widget->GetNativeWindow()->GetHost()->GetAcceleratedWidget());
+
+  widget->widget_delegate()->SetCanMaximize(true);
+  EXPECT_TRUE(host_platform->CanMaximize());
+
+  widget->widget_delegate()->SetCanMaximize(false);
+  EXPECT_FALSE(host_platform->CanMaximize());
+}
+
+TEST_F(DesktopWindowTreeHostPlatformTest, CanFullscreen) {
+  auto widget = CreateWidgetWithNativeWidget();
+  auto* host_platform = DesktopWindowTreeHostPlatform::GetHostForWidget(
+      widget->GetNativeWindow()->GetHost()->GetAcceleratedWidget());
+
+  widget->widget_delegate()->SetCanFullscreen(true);
+  EXPECT_TRUE(host_platform->CanFullscreen());
+
+  widget->widget_delegate()->SetCanFullscreen(false);
+  EXPECT_FALSE(host_platform->CanFullscreen());
 }
 
 }  // namespace views

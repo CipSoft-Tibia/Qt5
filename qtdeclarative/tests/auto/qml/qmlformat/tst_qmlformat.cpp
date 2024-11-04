@@ -1,5 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QDir>
@@ -40,6 +40,11 @@ private Q_SLOTS:
 
     void testBackupFileLimit();
 
+    void testFilesOption_data();
+    void testFilesOption();
+
+    void plainJS_data();
+    void plainJS();
 private:
     QString readTestFile(const QString &path);
     QString runQmlformat(const QString &fileToFormat, QStringList args, bool shouldSucceed = true,
@@ -129,6 +134,15 @@ void TestQmlformat::initTestCase()
     m_invalidFiles << "tests/auto/qml/qqmllanguage/data/nullishCoalescing_RHS_Or.qml";
     m_invalidFiles << "tests/auto/qml/qqmllanguage/data/typeAnnotations.2.qml";
     m_invalidFiles << "tests/auto/qml/qqmlparser/data/disallowedtypeannotations/qmlnestedfunction.qml";
+    m_invalidFiles << "tests/auto/qmlls/utils/data/emptyFile.qml";
+    m_invalidFiles << "tests/auto/qmlls/utils/data/completions/missingRHS.qml";
+    m_invalidFiles << "tests/auto/qmlls/utils/data/completions/missingRHS.parserfail.qml";
+    m_invalidFiles << "tests/auto/qmlls/utils/data/completions/attachedPropertyMissingRHS.qml";
+    m_invalidFiles << "tests/auto/qmlls/utils/data/completions/groupedPropertyMissingRHS.qml";
+    m_invalidFiles << "tests/auto/qmlls/utils/data/completions/afterDots.qml";
+    m_invalidFiles << "tests/auto/qmlls/modules/data/completions/bindingAfterDot.qml";
+    m_invalidFiles << "tests/auto/qmlls/modules/data/completions/defaultBindingAfterDot.qml";
+    m_invalidFiles << "tests/auto/qmlls/utils/data/qualifiedModule.qml";
 
     // Files that get changed:
     // rewrite of import "bla/bla/.." to import "bla"
@@ -150,11 +164,8 @@ void TestQmlformat::initTestCase()
     m_invalidFiles << "tests/auto/qml/qqmlecmascript/data/incrDecrSemicolon2.qml";
 
     // These files are too big
-    m_ignoreFiles << "tests/auto/qmldom/domdata/domitem/longQmlFile.qml";
-    m_ignoreFiles << "tests/auto/qmldom/domdata/domitem/deeplyNested.qml";
-
-    // qmlformat cannot handle deconstructing arguments
-    m_ignoreFiles << "tests/auto/qmldom/domdata/domitem/callExpressions.qml";
+    m_ignoreFiles << "tests/benchmarks/qml/qmldom/data/longQmlFile.qml";
+    m_ignoreFiles << "tests/benchmarks/qml/qmldom/data/deeplyNested.qml";
 }
 
 QStringList TestQmlformat::findFiles(const QDir &d)
@@ -343,15 +354,24 @@ void TestQmlformat::testFormat_data()
     QTest::newRow("ellipsisFunctionArgument")
             << "ellipsisFunctionArgument.qml"
             << "ellipsisFunctionArgument.formatted.qml" << QStringList{} << RunOption::OnCopy;
-    QTest::newRow("arrayEndComma")
-            << "arrayEndComma.qml"
-            << "arrayEndComma.formatted.qml" << QStringList{} << RunOption::OnCopy;
     QTest::newRow("importStatements")
             << "importStatements.qml"
             << "importStatements.formatted.qml" << QStringList{} << RunOption::OnCopy;
+    QTest::newRow("arrayEndComma")
+            << "arrayEndComma.qml"
+            << "arrayEndComma.formatted.qml" << QStringList{} << RunOption::OnCopy;
+    QTest::newRow("escapeChars")
+            << "escapeChars.qml"
+            << "escapeChars.formatted.qml" << QStringList{} << RunOption::OnCopy;
     QTest::newRow("javascriptBlock")
             << "javascriptBlock.qml"
             << "javascriptBlock.formatted.qml" << QStringList{} << RunOption::OnCopy;
+    QTest::newRow("enumWithValues")
+            << "enumWithValues.qml"
+            << "enumWithValues.formatted.qml" << QStringList{} << RunOption::OnCopy;
+    QTest::newRow("typeAnnotatedSignal")
+            << "signal.qml"
+            << "signal.formatted.qml" << QStringList{} << RunOption::OnCopy;
 }
 
 void TestQmlformat::testFormat()
@@ -362,6 +382,59 @@ void TestQmlformat::testFormat()
     QFETCH(RunOption, runOption);
 
     QCOMPARE(runQmlformat(testFile(file), args, true, runOption), readTestFile(fileFormatted));
+}
+
+void TestQmlformat::plainJS_data()
+{
+    QTest::addColumn<QString>("file");
+    QTest::addColumn<QString>("fileFormatted");
+
+    QTest::newRow("simpleStatement") << "simpleJSStatement.js"
+                                     << "simpleJSStatement.formatted.js";
+    QTest::newRow("simpleFunction") << "simpleOnelinerJSFunc.js"
+                                    << "simpleOnelinerJSFunc.formatted.js";
+    QTest::newRow("simpleLoop") << "simpleLoop.js"
+                                << "simpleLoop.formatted.js";
+    QTest::newRow("messyIfStatement") << "messyIfStatement.js"
+                                      << "messyIfStatement.formatted.js";
+    QTest::newRow("lambdaFunctionWithLoop") << "lambdaFunctionWithLoop.js"
+                                            << "lambdaFunctionWithLoop.formatted.js";
+    QTest::newRow("lambdaWithIfElse") << "lambdaWithIfElse.js"
+                                      << "lambdaWithIfElse.formatted.js";
+    QTest::newRow("nestedLambdaWithIfElse") << "lambdaWithIfElseInsideLambda.js"
+                                            << "lambdaWithIfElseInsideLambda.formatted.js";
+    QTest::newRow("twoFunctions") << "twoFunctions.js"
+                                  << "twoFunctions.formatted.js";
+    QTest::newRow("pragma") << "pragma.js"
+                            << "pragma.formatted.js";
+    QTest::newRow("classConstructor") << "class.js"
+                                      << "class.formatted.js";
+    QTest::newRow("legacyDirectives") << "directives.js"
+                                      << "directives.formatted.js";
+    QTest::newRow("legacyDirectivesWithComments") << "directivesWithComments.js"
+                                                  << "directivesWithComments.formatted.js";
+}
+
+void TestQmlformat::plainJS()
+{
+    QFETCH(QString, file);
+    QFETCH(QString, fileFormatted);
+
+    bool wasSuccessful;
+    LineWriterOptions opts;
+#ifdef Q_OS_WIN
+    opts.lineEndings = QQmlJS::Dom::LineWriterOptions::LineEndings::Windows;
+#endif
+    QString output = formatInMemory(testFile(file), &wasSuccessful, opts, WriteOutCheck::None);
+
+    QVERIFY(wasSuccessful && !output.isEmpty());
+
+    // TODO(QTBUG-119404)
+    QEXPECT_FAIL("classConstructor", "see QTBUG-119404", Abort);
+    // TODO(QTBUG-119770)
+    QEXPECT_FAIL("legacyDirectivesWithComments", "see QTBUG-119770", Abort);
+    auto exp = readTestFile(fileFormatted);
+    QCOMPARE(output, readTestFile(fileFormatted));
 }
 
 #if !defined(QTEST_CROSS_COMPILED) // sources not available when cross compiled
@@ -463,6 +536,73 @@ void TestQmlformat::testBackupFileLimit()
         QVERIFY(QFileInfo::exists(tempFile));
         QVERIFY(!QFileInfo::exists(backupFile));
     };
+}
+
+void TestQmlformat::testFilesOption_data()
+{
+    QTest::addColumn<QString>("containerFile");
+    QTest::addColumn<QStringList>("individualFiles");
+
+    QTest::newRow("initial") << "fileListToFormat"
+            << QStringList{"valid1.qml", "invalidEntry:cannot be parsed", "valid2.qml"};
+}
+
+void TestQmlformat::testFilesOption()
+{
+    QFETCH(QString, containerFile);
+    QFETCH(QStringList, individualFiles);
+
+    // Create a temporary directory
+    QTemporaryDir tempDir;
+    tempDir.setAutoRemove(false);
+    QStringList actualFormattedFilesPath;
+
+    // Iterate through files in the source directory and copy them to the temporary directory
+    const auto sourceDir = dataDirectory() + QDir::separator() + "filesOption";
+
+    // Create a file that contains the list of files to be formatted
+    const QString tempFilePath = tempDir.path() + QDir::separator() + containerFile;
+    QFile container(tempFilePath);
+    if (container.open(QIODevice::Text | QIODevice::WriteOnly)) {
+        QTextStream out(&container);
+
+        for (const auto &file : individualFiles) {
+            QString destinationFilePath = tempDir.path() + QDir::separator() + file;
+            if (QFile::copy(sourceDir + QDir::separator() + file, destinationFilePath))
+                actualFormattedFilesPath << destinationFilePath;
+            out << destinationFilePath << "\n";
+        }
+
+        container.close();
+    } else {
+        QFAIL("Cannot create temp test file\n");
+        return;
+    }
+
+    {
+        QProcess process;
+        process.start(m_qmlformatPath, QStringList{"-F", tempFilePath});
+        QVERIFY(process.waitForFinished());
+        QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+    }
+
+    const auto readFile = [](const QString &filePath){
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            qWarning() << "Error on opening the file " << filePath;
+            return QByteArray{};
+        }
+
+        return file.readAll();
+    };
+
+    for (const auto &filePath : actualFormattedFilesPath) {
+        auto expectedFormattedFile = QFileInfo(filePath).fileName();
+        const auto expectedFormattedFilePath = sourceDir + QDir::separator() +
+            expectedFormattedFile.replace(".qml", ".formatted.qml");
+
+        QCOMPARE(readFile(filePath), readFile(expectedFormattedFilePath));
+    }
 }
 
 QString TestQmlformat::runQmlformat(const QString &fileToFormat, QStringList args,

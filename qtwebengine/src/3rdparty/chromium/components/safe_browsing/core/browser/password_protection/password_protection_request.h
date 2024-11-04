@@ -164,6 +164,10 @@ class PasswordProtectionRequest
 
   std::unique_ptr<LoginReputationClientRequest> request_proto_;
 
+  // Used in tests to avoid dispatching a real request. Tests using this must
+  // manually finish the request.
+  bool prevent_initiating_url_loader_for_testing_ = false;
+
  private:
   friend base::RefCountedDeleteOnSequence<PasswordProtectionRequest>;
   friend base::DeleteHelper<PasswordProtectionRequest>;
@@ -171,7 +175,7 @@ class PasswordProtectionRequest
   // Start checking the allowlist.
   void CheckAllowlist();
 
-  static void OnAllowlistCheckDoneOnIO(
+  static void OnAllowlistCheckDoneOnSB(
       scoped_refptr<base::SequencedTaskRunner> ui_task_runner,
       base::WeakPtr<PasswordProtectionRequest> weak_request,
       bool match_allowlist);

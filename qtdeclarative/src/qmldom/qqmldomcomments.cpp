@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmldomcomments_p.h"
 #include "qqmldomoutwriter_p.h"
@@ -190,7 +190,7 @@ A comment has methods to write it out again (write) and expose it to the Dom
 /*!
 \brief Expose attributes to the Dom
 */
-bool Comment::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
+bool Comment::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const
 {
     bool cont = true;
     cont = cont && self.dvValueField(visitor, Fields::rawComment, rawComment());
@@ -235,7 +235,7 @@ Every region has a name, and should be written out using the OutWriter.writeRegi
 startRegion/ EndRegion). Region comments keeps a mapping containing them.
 */
 
-bool CommentedElement::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
+bool CommentedElement::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const
 {
     bool cont = true;
     cont = cont && self.dvWrapField(visitor, Fields::preComments, preComments);
@@ -283,7 +283,7 @@ class RegionRef
 {
 public:
     Path path; // store the MutableDomItem instead?
-    QString regionName;
+    FileLocationRegion regionName;
 };
 
 // internal class to keep a reference either to an AST::Node* or a region of a DomItem and the
@@ -292,8 +292,8 @@ class ElementRef
 {
 public:
     ElementRef(AST::Node *node, quint32 size) : element(node), size(size) { }
-    ElementRef(Path path, QString region, quint32 size)
-        : element(RegionRef { path, region }), size(size)
+    ElementRef(Path path, FileLocationRegion region, quint32 size)
+        : element(RegionRef{ path, region }), size(size)
     {
     }
     operator bool() const
@@ -348,7 +348,7 @@ public:
     AstRangesVisitor() = default;
 
     void addNodeRanges(AST::Node *rootNode);
-    void addItemRanges(DomItem item, FileLocations::Tree itemLocations, Path currentP);
+    void addItemRanges(const DomItem &item, FileLocations::Tree itemLocations, Path currentP);
 
     void throwRecursionDepthError() override { }
 
@@ -378,7 +378,8 @@ void AstRangesVisitor::addNodeRanges(AST::Node *rootNode)
     AST::Node::accept(rootNode, this);
 }
 
-void AstRangesVisitor::addItemRanges(DomItem item, FileLocations::Tree itemLocations, Path currentP)
+void AstRangesVisitor::addItemRanges(
+        const DomItem &item, FileLocations::Tree itemLocations, Path currentP)
 {
     if (!itemLocations) {
         if (item)
@@ -432,12 +433,12 @@ const QSet<int> AstRangesVisitor::kindsToSkip()
 \brief Stores the comments associated with javascript AST::Node pointers
 */
 
-bool AstComments::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
+bool AstComments::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const
 {
     bool cont = self.dvItemField(visitor, Fields::commentedElements, [this, &self]() {
         return self.subMapItem(Map(
                 self.pathFromOwner().field(Fields::commentedElements),
-                [this](DomItem &map, QString key) {
+                [this](const DomItem &map, QString key) {
                     bool ok;
                     // we expose the comments as map just for debugging purposes,
                     // as key we use the address hex value as key (keys must be strings)
@@ -448,7 +449,7 @@ bool AstComments::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
                         return map.wrap(PathEls::Key(key), m_commentedElements[n]);
                     return DomItem();
                 },
-                [this](DomItem &) {
+                [this](const DomItem &) {
                     QSet<QString> res;
                     for (AST::Node *n : m_commentedElements.keys()) {
                         QString name;
@@ -485,9 +486,9 @@ void AstComments::collectComments(MutableDomItem &item)
 Collects and associates comments with javascript AST::Node pointers and MutableDomItem in
 rootItem
 */
-void AstComments::collectComments(std::shared_ptr<Engine> engine, AST::Node *n,
-                                  std::shared_ptr<AstComments> ccomm, MutableDomItem rootItem,
-                                  FileLocations::Tree rootItemLocations)
+void AstComments::collectComments(
+        std::shared_ptr<Engine> engine, AST::Node *n, std::shared_ptr<AstComments> ccomm,
+        const MutableDomItem &rootItem, FileLocations::Tree rootItemLocations)
 {
     if (!n)
         return;
@@ -650,14 +651,11 @@ void AstComments::collectComments(std::shared_ptr<Engine> engine, AST::Node *n,
         if (!commentEl)
             checkInsideEl();
         if (!commentEl) {
-            qCWarning(commentsLog) << "Could not assign comment at" << locationToData(cLoc)
+            qCWarning(commentsLog) << "Could not assign comment at" << sourceLocationToQCborValue(cLoc)
                                    << "adding before root node";
             if (rootItem && (rootItemLocations || !n)) {
-                commentEl.element = RegionRef { Path(), QString() };
-                commentEl.size =
-                        rootItemLocations->info()
-                                .regions.value(QString(), rootItemLocations->info().fullRegion)
-                                .length;
+                commentEl.element = RegionRef{ Path(), MainRegion };
+                commentEl.size = FileLocations::region(rootItemLocations, MainRegion).length;
                 // attach to rootItem
             } else if (n) {
                 commentEl.element = n;
@@ -673,7 +671,7 @@ void AstComments::collectComments(std::shared_ptr<Engine> engine, AST::Node *n,
             else
                 cEl.postComments.append(comment);
         } else if (commentEl.element.index() == 1) {
-            DomItem rComments = rootItem.item()
+            MutableDomItem rComments = rootItem.item()
                                         .path(std::get<1>(commentEl.element).path)
                                         .field(Fields::comments);
             if (RegionComments *rCommentsPtr = rComments.mutableAs<RegionComments>()) {
@@ -728,11 +726,18 @@ QMultiMap<quint32, const QList<Comment> *> AstComments::allCommentsInNode(AST::N
     return v.nodeComments;
 }
 
-bool RegionComments::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
+bool RegionComments::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const
 {
     bool cont = true;
-    if (!regionComments.isEmpty())
-        cont = cont && self.dvWrapField(visitor, Fields::regionComments, regionComments);
+    if (!regionComments.isEmpty()) {
+        cont = cont
+                && self.dvItemField(visitor, Fields::regionComments, [this, &self]() -> DomItem {
+                       const Path pathFromOwner =
+                               self.pathFromOwner().field(Fields::regionComments);
+                       auto map = Map::fromFileRegionMap(pathFromOwner, regionComments);
+                       return self.subMapItem(map);
+                   });
+    }
     return cont;
 }
 

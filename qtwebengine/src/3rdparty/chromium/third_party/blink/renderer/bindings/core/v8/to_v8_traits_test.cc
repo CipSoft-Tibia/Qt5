@@ -69,6 +69,70 @@ TEST(ToV8TraitsTest, Boolean) {
   TEST_TOV8_TRAITS(scope, IDLBoolean, "false", false);
 }
 
+TEST(ToV8TraitsTest, BigInt) {
+  const V8TestingScope scope;
+  uint64_t words[5];
+
+  // 0
+  TEST_TOV8_TRAITS(
+      scope, IDLBigint, "0",
+      BigInt(v8::BigInt::NewFromWords(scope.GetContext(), 0, 0, words)
+                 .ToLocalChecked()));
+  // +/- 1
+  words[0] = 1;
+  TEST_TOV8_TRAITS(
+      scope, IDLBigint, "1",
+      BigInt(v8::BigInt::NewFromWords(scope.GetContext(), 0, 1, words)
+                 .ToLocalChecked()));
+  TEST_TOV8_TRAITS(
+      scope, IDLBigint, "-1",
+      BigInt(v8::BigInt::NewFromWords(scope.GetContext(), 1, 1, words)
+                 .ToLocalChecked()));
+
+  // +/- 2^64
+  words[0] = 0;
+  words[1] = 1;
+  TEST_TOV8_TRAITS(
+      scope, IDLBigint, "18446744073709551616",
+      BigInt(v8::BigInt::NewFromWords(scope.GetContext(), 0, 2, words)
+                 .ToLocalChecked()));
+  TEST_TOV8_TRAITS(
+      scope, IDLBigint, "-18446744073709551616",
+      BigInt(v8::BigInt::NewFromWords(scope.GetContext(), 1, 2, words)
+                 .ToLocalChecked()));
+
+  // +/- 2^128
+  words[0] = 0;
+  words[1] = 0;
+  words[2] = 1;
+  TEST_TOV8_TRAITS(
+      scope, IDLBigint, "340282366920938463463374607431768211456",
+      BigInt(v8::BigInt::NewFromWords(scope.GetContext(), 0, 3, words)
+                 .ToLocalChecked()));
+  TEST_TOV8_TRAITS(
+      scope, IDLBigint, "-340282366920938463463374607431768211456",
+      BigInt(v8::BigInt::NewFromWords(scope.GetContext(), 1, 3, words)
+                 .ToLocalChecked()));
+
+  // +/- 2^320 - 1
+  uint64_t max = std::numeric_limits<uint64_t>::max();
+  for (int i = 0; i < 5; i++) {
+    words[i] = max;
+  }
+  TEST_TOV8_TRAITS(
+      scope, IDLBigint,
+      "213598703592091008239502170616955211460270452235665276994704160782221972"
+      "5780640550022962086936575",
+      BigInt(v8::BigInt::NewFromWords(scope.GetContext(), 0, 5, words)
+                 .ToLocalChecked()));
+  TEST_TOV8_TRAITS(
+      scope, IDLBigint,
+      "-21359870359209100823950217061695521146027045223566527699470416078222197"
+      "25780640550022962086936575",
+      BigInt(v8::BigInt::NewFromWords(scope.GetContext(), 1, 5, words)
+                 .ToLocalChecked()));
+}
+
 TEST(ToV8TraitsTest, Integer) {
   const V8TestingScope scope;
   // Test type matching
@@ -150,8 +214,8 @@ TEST(ToV8TraitsTest, String) {
   // DOMString
   TEST_TOV8_TRAITS(scope, IDLString, "string", string);
   TEST_TOV8_TRAITS(scope, IDLString, "charptrString", charptr_string);
-  TEST_TOV8_TRAITS(scope, IDLStringTreatNullAsEmptyString, "string", string);
-  TEST_TOV8_TRAITS(scope, IDLStringTreatNullAsEmptyString, "charptrString",
+  TEST_TOV8_TRAITS(scope, IDLStringLegacyNullToEmptyString, "string", string);
+  TEST_TOV8_TRAITS(scope, IDLStringLegacyNullToEmptyString, "charptrString",
                    charptr_string);
   // USVString
   TEST_TOV8_TRAITS(scope, IDLUSVString, "string", string);
@@ -161,10 +225,10 @@ TEST(ToV8TraitsTest, String) {
   TEST_TOV8_TRAITS(scope, IDLStringStringContextTrustedHTML, "charptrString",
                    charptr_string);
   TEST_TOV8_TRAITS(scope,
-                   IDLStringStringContextTrustedHTMLTreatNullAsEmptyString,
+                   IDLStringLegacyNullToEmptyStringStringContextTrustedHTML,
                    "string", string);
   TEST_TOV8_TRAITS(scope,
-                   IDLStringStringContextTrustedHTMLTreatNullAsEmptyString,
+                   IDLStringLegacyNullToEmptyStringStringContextTrustedHTML,
                    "charptrString", charptr_string);
   // [StringContext=TrustedScript] DOMString
   TEST_TOV8_TRAITS(scope, IDLStringStringContextTrustedScript, "string",
@@ -172,10 +236,10 @@ TEST(ToV8TraitsTest, String) {
   TEST_TOV8_TRAITS(scope, IDLStringStringContextTrustedScript, "charptrString",
                    charptr_string);
   TEST_TOV8_TRAITS(scope,
-                   IDLStringStringContextTrustedScriptTreatNullAsEmptyString,
+                   IDLStringLegacyNullToEmptyStringStringContextTrustedScript,
                    "string", string);
   TEST_TOV8_TRAITS(scope,
-                   IDLStringStringContextTrustedScriptTreatNullAsEmptyString,
+                   IDLStringLegacyNullToEmptyStringStringContextTrustedScript,
                    "charptrString", charptr_string);
   // [StringContext=TrustedScriptURL] USVString
   TEST_TOV8_TRAITS(scope, IDLUSVStringStringContextTrustedScriptURL, "string",

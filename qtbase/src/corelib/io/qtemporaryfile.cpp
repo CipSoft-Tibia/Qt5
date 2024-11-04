@@ -70,9 +70,8 @@ QTemporaryFileName::QTemporaryFileName(const QString &templateName)
         qfilename.append(".XXXXXX"_L1);
 
     // "Nativify" :-)
-    QFileSystemEntry::NativePath filename = QFileSystemEngine::absoluteName(
-            QFileSystemEntry(qfilename, QFileSystemEntry::FromInternalPath()))
-        .nativeFilePath();
+    QFileSystemEntry::NativePath filename =
+            QFileSystemEntry(QDir::cleanPath(qfilename)).nativeFilePath();
 
     // Find mask in native path
     phPos = filename.size();
@@ -185,8 +184,9 @@ static bool createFileFromTemplate(NativeFileHandle &file, QTemporaryFileName &t
         const DWORD shareMode = (flags & QTemporaryFileEngine::Win32NonShared)
                                 ? 0u : (FILE_SHARE_READ | FILE_SHARE_WRITE);
 
+        const DWORD extraAccessFlags = (flags & QTemporaryFileEngine::Win32NonShared) ? DELETE : 0;
         file = CreateFile((const wchar_t *)path.constData(),
-                GENERIC_READ | GENERIC_WRITE,
+                GENERIC_READ | GENERIC_WRITE | extraAccessFlags,
                 shareMode, NULL, CREATE_NEW,
                 FILE_ATTRIBUTE_NORMAL, NULL);
 
@@ -391,6 +391,14 @@ bool QTemporaryFileEngine::renameOverwrite(const QString &newName)
         QFSFileEngine::close();
         return ok;
     }
+#ifdef Q_OS_WIN
+    if (flags & Win32NonShared) {
+        if (d_func()->nativeRenameOverwrite(newName)) {
+            QFSFileEngine::close();
+            return true;
+        }
+    }
+#endif
     QFSFileEngine::close();
     return QFSFileEngine::renameOverwrite(newName);
 }
@@ -586,15 +594,19 @@ QString QTemporaryFilePrivate::defaultTemplateName()
     be placed into the temporary path as returned by QDir::tempPath().
     If you specify your own filename, a relative file path will not be placed in the
     temporary directory by default, but be relative to the current working directory.
+
+//! [note-about-rename-method]
     It is important to specify the correct directory if the rename() function will be
     called, as QTemporaryFile can only rename files within the same volume / filesystem
     as the temporary file itself was created on.
+//! [note-about-rename-method]
 
-    Specified filenames can contain the following template \c XXXXXX
-    (six upper case "X" characters), which will be replaced by the
-    auto-generated portion of the filename. Note that the template is
-    case sensitive. If the template is not present in the filename,
-    QTemporaryFile appends the generated part to the filename given.
+    The file name (the part after the last directory path separator in the
+    specified file template) can contain the special sequence \c {"XXXXXX"}
+    (at least six upper case \c "X" characters), which will be replaced with
+    the auto-generated portion of the file name. If the file name doesn't
+    contain \c {"XXXXXX"}, QTemporaryFile will append the generated part to the
+    file name. Only the first occurrence of \c {"XXXXXX"} will be considered.
 
     \note On Linux, QTemporaryFile will attempt to create unnamed temporary
     files. If that succeeds, open() will return true but exists() will be
@@ -618,12 +630,17 @@ QTemporaryFile::QTemporaryFile(const QString &templateName)
 
 #else
 /*!
-    Constructs a QTemporaryFile using as file template
-    the application name returned by QCoreApplication::applicationName()
-    (otherwise \c qt_temp) followed by ".XXXXXX".
-    The file is stored in the system's temporary directory, QDir::tempPath().
+    Constructs a QTemporaryFile.
 
-    \sa setFileTemplate(), QDir::tempPath()
+//! [default-file-name-template]
+    \keyword Default File Name Template
+    The default file name template is determined from the application name as
+    returned by QCoreApplication::applicationName() (or \c {"qt_temp"} if the
+    application name is empty), followed by \c {".XXXXXX"}. The file is stored
+    in the system's temporary directory, as returned by QDir::tempPath().
+//! [default-file-name-template]
+
+    \sa setFileTemplate(), fileTemplate(), fileName(), QDir::tempPath()
 */
 QTemporaryFile::QTemporaryFile()
     : QTemporaryFile(nullptr)
@@ -631,20 +648,35 @@ QTemporaryFile::QTemporaryFile()
 }
 
 /*!
-    Constructs a QTemporaryFile with a template filename of \a
-    templateName. Upon opening the temporary file this will be used to create
+    \fn QTemporaryFile::QTemporaryFile(const std::filesystem::path &templateName, QObject *parent)
+    \overload
+    \since 6.7
+*/
+
+/*!
+    Constructs a QTemporaryFile with \a templateName as the file name template.
+
+//! [file-created-on-open]
+    Upon opening the temporary file, \a templateName will be used to create
     a unique filename.
+//! [file-created-on-open]
 
-    If the \a templateName does not contain XXXXXX it will automatically be
-    appended and used as the dynamic portion of the filename.
+//! [dynamic-part-of-filename]
+    If the file name (the part after the last directory path separator in
+    \a templateName) doesn't contain \c {"XXXXXX"}, it will be added
+    automatically.
 
+    \c {"XXXXXX"} will be replaced with the dynamic part of the file name,
+    which is calculated to be unique.
+//! [dynamic-part-of-filename]
+
+//! [filename-relative-or-absolute-path]
     If \a templateName is a relative path, the path will be relative to the
     current working directory. You can use QDir::tempPath() to construct \a
-    templateName if you want use the system's temporary directory. It is
-    important to specify the correct directory if the rename() function will be
-    called, as QTemporaryFile can only rename files within the same volume /
-    filesystem as the temporary file itself was created on.
+    templateName if you want use the system's temporary directory.
+//! [filename-relative-or-absolute-path]
 
+    \include qtemporaryfile.cpp note-about-rename-method
 
     \sa open(), fileTemplate()
 */
@@ -654,10 +686,9 @@ QTemporaryFile::QTemporaryFile(const QString &templateName)
 }
 
 /*!
-    Constructs a QTemporaryFile (with the given \a parent)
-    using as file template the application name returned by QCoreApplication::applicationName()
-    (otherwise \c qt_temp) followed by ".XXXXXX".
-    The file is stored in the system's temporary directory, QDir::tempPath().
+    Constructs a QTemporaryFile with the given \a parent.
+
+    \include qtemporaryfile.cpp default-file-name-template
 
     \sa setFileTemplate()
 */
@@ -667,20 +698,15 @@ QTemporaryFile::QTemporaryFile(QObject *parent)
 }
 
 /*!
-    Constructs a QTemporaryFile with a template filename of \a
-    templateName and the specified \a parent.
-    Upon opening the temporary file this will be used to
-    create a unique filename.
+    Constructs a QTemporaryFile with the specified \a parent, and
+    \a templateName as the file name template.
 
-    If the \a templateName does not contain XXXXXX it will automatically be
-    appended and used as the dynamic portion of the filename.
+    \include qtemporaryfile.cpp file-created-on-open
 
-    If \a templateName is a relative path, the path will be relative to the
-    current working directory. You can use QDir::tempPath() to construct \a
-    templateName if you want use the system's temporary directory. It is
-    important to specify the correct directory if the rename() function will be
-    called, as QTemporaryFile can only rename files within the same volume /
-    filesystem as the temporary file itself was created on.
+    \include qtemporaryfile.cpp dynamic-part-of-filename
+
+    \include qtemporaryfile.cpp filename-relative-or-absolute-path
+    \include qtemporaryfile.cpp note-about-rename-method
 
     \sa open(), fileTemplate()
 */
@@ -764,6 +790,10 @@ void QTemporaryFile::setAutoRemove(bool b)
    afterwards it will contain the fileTemplate() plus
    additional characters to make it unique.
 
+   The file name returned by this method is relative or absolute depending on
+   the file name template used to construct this object (or passed to
+   setFileTemplate()) being relative or absolute, respectively.
+
    \sa fileTemplate()
 */
 
@@ -780,10 +810,13 @@ QString QTemporaryFile::fileName() const
 }
 
 /*!
-  Returns the set file template. The default file template will be
-  called qcoreappname.XXXXXX and be placed in QDir::tempPath().
+    Returns the file name template.
 
-  \sa setFileTemplate()
+    The file name template returned by this method, will be relative or
+    absolute depending on the file name template used to construct this object
+    (or passed to setFileTemplate()) being relative or absolute, respectively.
+
+    \sa setFileTemplate(), fileName(), {Default File Name Template}
 */
 QString QTemporaryFile::fileTemplate() const
 {
@@ -792,25 +825,34 @@ QString QTemporaryFile::fileTemplate() const
 }
 
 /*!
-   Sets the static portion of the file name to \a name. If the file
-   template contains XXXXXX that will automatically be replaced with
-   the unique part of the filename, otherwise a filename will be
-   determined automatically based on the static portion specified.
+    \fn void QTemporaryFile::setFileTemplate(const std::filesystem::path &name)
+    \overload
+    \since 6.7
+*/
 
-    If \a name contains a relative file path, the path will be relative to the
-    current working directory. You can use QDir::tempPath() to construct \a
-    name if you want use the system's temporary directory. It is important to
-    specify the correct directory if the rename() function will be called, as
-    QTemporaryFile can only rename files within the same volume / filesystem as
-    the temporary file itself was created on.
+/*!
+    \fn void QTemporaryFile::setFileTemplate(const QString &templateName)
 
-   \sa fileTemplate()
+    Sets the file name template to \a templateName.
+
+    \include qtemporaryfile.cpp dynamic-part-of-filename
+
+    \include qtemporaryfile.cpp filename-relative-or-absolute-path
+    \include qtemporaryfile.cpp note-about-rename-method
+
+   \sa fileTemplate(), fileName()
 */
 void QTemporaryFile::setFileTemplate(const QString &name)
 {
     Q_D(QTemporaryFile);
     d->templateName = name;
 }
+
+/*!
+    \fn bool QTemporaryFile::rename(const std::filesystem::path &newName)
+    \overload
+    \since 6.7
+*/
 
 /*!
     Renames the current temporary file to \a newName and returns true if it
@@ -860,7 +902,11 @@ bool QTemporaryFile::rename(const QString &newName)
   Works on the given \a fileName rather than an existing QFile
   object.
 */
-
+/*!
+  \fn QTemporaryFile *QTemporaryFile::createNativeFile(const std::filesystem::path &fileName)
+  \overload
+  \since 6.7
+*/
 
 /*!
   If \a file is not already a native file, then a QTemporaryFile is created

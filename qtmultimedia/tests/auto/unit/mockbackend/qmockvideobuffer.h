@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QMOCKVIDEOBUFFER_H
 #define QMOCKVIDEOBUFFER_H
@@ -11,8 +11,6 @@ class QMockVideoBuffer : public QAbstractVideoBuffer
 {
 public:
     QMockVideoBuffer(QImage image) : QAbstractVideoBuffer(QVideoFrame::NoHandle), m_image(image) { }
-
-    QVideoFrame::MapMode mapMode() const override { return m_mapMode; }
 
     MapData map(QVideoFrame::MapMode mode) override
     {

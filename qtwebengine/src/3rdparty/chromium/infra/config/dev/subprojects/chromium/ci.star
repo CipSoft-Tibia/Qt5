@@ -59,9 +59,14 @@ defaults.build_numbers.set(True)
 defaults.builder_group.set("chromium.dev")
 defaults.builderless.set(None)
 defaults.cpu.set(cpu.X86_64)
-defaults.executable.set("recipe:swarming/staging")
+defaults.executable.set("recipe:chromium")
 defaults.execution_timeout.set(3 * time.hour)
 defaults.os.set(os.LINUX_DEFAULT)
+defaults.properties.set({
+    "$build/chromium_swarming": {
+        "verbose": True,
+    },
+})
 defaults.service_account.set(
     "chromium-ci-builder-dev@chops-service-accounts.iam.gserviceaccount.com",
 )
@@ -86,8 +91,14 @@ def ci_builder(*, name, resultdb_bigquery_exports = None, **kwargs):
         **kwargs
     )
 
+###############################################################################
+# NOTE: If you change any of the following builders, please make sure the
+# GCE image roller that watches these builders is similarly up-to-date. See
+# http://shortn/_F1oktuhGEV.
+###############################################################################
+
 ci_builder(
-    name = "android-pie-arm64-rel-swarming",
+    name = "android-pie-arm64-rel-dev",
     builder_spec = builder_config.builder_spec(
         gclient_config = builder_config.gclient_config(
             config = "chromium",
@@ -108,9 +119,24 @@ ci_builder(
     ),
 )
 
+# TODO(crbug.com/1412588): Delete this builder when bionic image rolls are
+# disabled.
 ci_builder(
-    name = "linux-rel-swarming",
+    name = "linux-rel-dev",
     description_html = "Test description. <b>Test HTML</b>.",
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(config = "chromium"),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = ["mb"],
+            build_config = builder_config.build_config.RELEASE,
+        ),
+    ),
+    os = os.LINUX_BIONIC,
+)
+
+ci_builder(
+    name = "linux-rel-jammy-dev",
     builder_spec = builder_config.builder_spec(
         gclient_config = builder_config.gclient_config(config = "chromium"),
         chromium_config = builder_config.chromium_config(
@@ -122,7 +148,7 @@ ci_builder(
 )
 
 ci_builder(
-    name = "linux-ssd-rel-swarming",
+    name = "linux-local-ssd-rel-dev",
     description_html = "Ensures builders are using available local SSDs",
     builder_spec = builder_config.builder_spec(
         gclient_config = builder_config.gclient_config(config = "chromium"),
@@ -136,7 +162,22 @@ ci_builder(
 )
 
 ci_builder(
-    name = "mac-rel-swarming",
+    name = "linux-remote-ssd-rel-dev",
+    description_html = "Ensures builders are using available remote SSDs. See b/279078023 for context.",
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(config = "chromium"),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = ["mb"],
+            build_config = builder_config.build_config.RELEASE,
+        ),
+    ),
+    builderless = False,
+    ssd = True,
+)
+
+ci_builder(
+    name = "mac-rel-dev",
     builder_spec = builder_config.builder_spec(
         gclient_config = builder_config.gclient_config(config = "chromium"),
         chromium_config = builder_config.chromium_config(
@@ -149,7 +190,7 @@ ci_builder(
 )
 
 ci_builder(
-    name = "mac-arm-rel-swarming",
+    name = "mac-arm-rel-dev",
     builder_spec = builder_config.builder_spec(
         gclient_config = builder_config.gclient_config(config = "chromium"),
         chromium_config = builder_config.chromium_config(
@@ -163,7 +204,7 @@ ci_builder(
 )
 
 ci_builder(
-    name = "win-rel-swarming",
+    name = "win-rel-dev",
     builder_spec = builder_config.builder_spec(
         gclient_config = builder_config.gclient_config(config = "chromium"),
         chromium_config = builder_config.chromium_config(
@@ -176,7 +217,7 @@ ci_builder(
 )
 
 ci_builder(
-    name = "win11-rel-swarming",
+    name = "win11-rel-dev",
     builder_spec = builder_config.builder_spec(
         gclient_config = builder_config.gclient_config(config = "chromium"),
         chromium_config = builder_config.chromium_config(

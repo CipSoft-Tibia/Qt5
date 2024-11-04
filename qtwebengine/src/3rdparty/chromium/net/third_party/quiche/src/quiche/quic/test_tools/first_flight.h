@@ -31,7 +31,8 @@ class QUIC_NO_EXPORT DelegatedPacketWriter : public QuicPacketWriter {
     virtual void OnDelegatedPacket(const char* buffer, size_t buf_len,
                                    const QuicIpAddress& self_client_address,
                                    const QuicSocketAddress& peer_client_address,
-                                   PerPacketOptions* options) = 0;
+                                   PerPacketOptions* options,
+                                   const QuicPacketWriterParams& params) = 0;
   };
 
   // |delegate| MUST be valid for the duration of the DelegatedPacketWriter's
@@ -52,6 +53,7 @@ class QUIC_NO_EXPORT DelegatedPacketWriter : public QuicPacketWriter {
   }
   bool SupportsReleaseTime() const override { return false; }
   bool IsBatchMode() const override { return false; }
+  bool SupportsEcn() const override { return false; }
   QuicPacketBuffer GetNextWriteLocation(
       const QuicIpAddress& /*self_address*/,
       const QuicSocketAddress& /*peer_address*/) override {
@@ -62,9 +64,10 @@ class QUIC_NO_EXPORT DelegatedPacketWriter : public QuicPacketWriter {
   WriteResult WritePacket(const char* buffer, size_t buf_len,
                           const QuicIpAddress& self_client_address,
                           const QuicSocketAddress& peer_client_address,
-                          PerPacketOptions* options) override {
+                          PerPacketOptions* options,
+                          const QuicPacketWriterParams& params) override {
     delegate_->OnDelegatedPacket(buffer, buf_len, self_client_address,
-                                 peer_client_address, options);
+                                 peer_client_address, options, params);
     return WriteResult(WRITE_STATUS_OK, buf_len);
   }
 

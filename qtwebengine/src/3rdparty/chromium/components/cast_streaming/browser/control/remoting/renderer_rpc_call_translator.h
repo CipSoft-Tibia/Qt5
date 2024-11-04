@@ -10,8 +10,8 @@
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "components/cast_streaming/public/rpc_call_message_handler.h"
 #include "media/base/renderer.h"
+#include "media/cast/openscreen/rpc_call_message_handler.h"
 #include "media/mojo/mojom/renderer.mojom.h"
 #include "mojo/public/cpp/bindings/associated_receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -25,8 +25,9 @@ namespace cast_streaming::remoting {
 // This class is responsible for translating between
 // openscreen::cast::RpcMessage instances (used by the remoting protocol) and
 // mojo API calls (used locally within this chromium instance).
-class RendererRpcCallTranslator : public media::mojom::RendererClient,
-                                  public RpcRendererCallMessageHandler {
+class RendererRpcCallTranslator
+    : public media::mojom::RendererClient,
+      public media::cast::RpcRendererCallMessageHandler {
  public:
   using RpcMessageProcessor = base::RepeatingCallback<void(
       openscreen::cast::RpcMessenger::Handle handle,
@@ -41,6 +42,8 @@ class RendererRpcCallTranslator : public media::mojom::RendererClient,
                                      media::mojom::Renderer* renderer,
                                      FlushUntilCallback flush_until_cb);
   ~RendererRpcCallTranslator() override;
+
+  void SendFallbackMessage();
 
   // Sets the |handle| to be used for future outgoing RPC calls.
   void set_remote_handle(openscreen::cast::RpcMessenger::Handle handle) {

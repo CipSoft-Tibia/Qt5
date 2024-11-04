@@ -13,9 +13,11 @@ const char kIpPeripheralServicePath[] = "/org/chromium/IpPeripheralService";
 const char kIpPeripheralServiceName[] = "org.chromium.IpPeripheralService";
 
 // Methods.
+const char kGetControlMethod[] = "GetControl";
 const char kGetPanMethod[] = "GetPan";
 const char kGetTiltMethod[] = "GetTilt";
 const char kGetZoomMethod[] = "GetZoom";
+const char kSetControlMethod[] = "SetControl";
 const char kSetPanMethod[] = "SetPan";
 const char kSetTiltMethod[] = "SetTilt";
 const char kSetZoomMethod[] = "SetZoom";

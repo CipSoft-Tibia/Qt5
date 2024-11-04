@@ -37,7 +37,6 @@
 #include "third_party/blink/renderer/core/layout/ng/ng_baseline_utils.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_block_node.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_layout_result.h"
-#include "third_party/blink/renderer/core/layout/order_iterator.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/platform/geometry/layout_point.h"
 #include "third_party/blink/renderer/platform/geometry/layout_unit.h"
@@ -50,7 +49,6 @@ class FlexItem;
 class FlexLine;
 class FlexLayoutAlgorithm;
 class NGFlexLayoutAlgorithm;
-class LayoutBox;
 struct MinMaxSizes;
 struct NGFlexLine;
 
@@ -68,52 +66,6 @@ enum class TransformedWritingMode {
 
 typedef HeapVector<FlexItem, 8> FlexItemVector;
 
-class AutoClearOverrideLogicalHeight {
-  STACK_ALLOCATED();
-
- public:
-  explicit AutoClearOverrideLogicalHeight(LayoutBox* box)
-      : box_(box), old_override_height_(-1) {
-    if (box_ && box_->HasOverrideLogicalHeight()) {
-      old_override_height_ = box_->OverrideLogicalHeight();
-      box_->ClearOverrideLogicalHeight();
-    }
-  }
-  ~AutoClearOverrideLogicalHeight() {
-    if (old_override_height_ != LayoutUnit(-1)) {
-      DCHECK(box_);
-      box_->SetOverrideLogicalHeight(old_override_height_);
-    }
-  }
-
- private:
-  LayoutBox* box_;
-  LayoutUnit old_override_height_;
-};
-
-class AutoClearOverrideLogicalWidth {
-  STACK_ALLOCATED();
-
- public:
-  explicit AutoClearOverrideLogicalWidth(LayoutBox* box)
-      : box_(box), old_override_width_(-1) {
-    if (box_ && box_->HasOverrideLogicalWidth()) {
-      old_override_width_ = box_->OverrideLogicalWidth();
-      box_->ClearOverrideLogicalWidth();
-    }
-  }
-  ~AutoClearOverrideLogicalWidth() {
-    if (old_override_width_ != LayoutUnit(-1)) {
-      DCHECK(box_);
-      box_->SetOverrideLogicalWidth(old_override_width_);
-    }
-  }
-
- private:
-  LayoutBox* box_;
-  LayoutUnit old_override_width_;
-};
-
 class FlexItem {
   DISALLOW_NEW();
 
@@ -125,7 +77,6 @@ class FlexItem {
   //   border/padding.
   //   |min_max_cross_sizes| does include cross_axis_border_padding.
   FlexItem(const FlexLayoutAlgorithm*,
-           LayoutBox*,
            const ComputedStyle& style,
            LayoutUnit flex_base_content_size,
            MinMaxSizes min_max_main_sizes,
@@ -200,8 +151,7 @@ class FlexItem {
 
   const FlexLayoutAlgorithm* algorithm_;
   wtf_size_t line_number_;
-  Member<LayoutBox> box_;
-  const ComputedStyle& style_;
+  Member<const ComputedStyle> style_;
   const LayoutUnit flex_base_content_size_;
   const MinMaxSizes min_max_main_sizes_;
   const absl::optional<MinMaxSizes> min_max_cross_sizes_;
@@ -221,11 +171,6 @@ class FlexItem {
 
   const bool depends_on_min_max_sizes_;
   bool frozen_;
-
-  // Legacy partially relies on FlexLayoutAlgorithm::AlignChildren to determine
-  // if the child is eligible for stretching (specifically, checking for auto
-  // margins). FlexLayoutAlgorithm uses this flag to report back to legacy.
-  bool needs_relayout_for_stretch_;
 
   // The above fields are used by the flex algorithm. The following fields, by
   // contrast, are just convenient storage.
@@ -468,7 +413,6 @@ class CORE_EXPORT FlexLayoutAlgorithm {
 
   void LayoutColumnReverse(LayoutUnit main_axis_content_size,
                            LayoutUnit border_scrollbar_padding_before);
-  bool IsNGFlexBox() const;
 
   FlexItem* FlexItemAtIndex(wtf_size_t line_index, wtf_size_t item_index) const;
 
@@ -486,7 +430,7 @@ class CORE_EXPORT FlexLayoutAlgorithm {
   friend class NGFlexLayoutAlgorithm;
   EOverflow MainAxisOverflowForChild(const LayoutBox& child) const;
 
-  const ComputedStyle* style_;
+  Member<const ComputedStyle> style_;
   const LayoutUnit line_break_length_;
   FlexItemVector all_items_;
   Vector<FlexLine> flex_lines_;

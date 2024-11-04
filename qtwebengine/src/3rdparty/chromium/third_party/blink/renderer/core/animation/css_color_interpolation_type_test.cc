@@ -54,7 +54,7 @@ TEST(CSSColorInterpolationTypeTest, RGBBounds) {
   ASSERT_EQ(255, rgba.Red());
   ASSERT_EQ(255, rgba.Green());
   ASSERT_EQ(255, rgba.Blue());
-  ASSERT_EQ(255, rgba.Alpha());
+  ASSERT_EQ(255, rgba.AlphaAsInteger());
 }
 
 TEST(CSSColorInterpolationTypeTest, RGBToOklab) {
@@ -67,21 +67,18 @@ TEST(CSSColorInterpolationTypeTest, RGBToOklab) {
       CSSColorInterpolationType::CreateInterpolableColor(to_color);
 
   from_color = CSSColorInterpolationType::GetColor(*from);
-  ASSERT_EQ(Color::ColorInterpolationSpace::kSRGB,
+  ASSERT_EQ(Color::ColorSpace::kSRGBLegacy,
             from_color.GetColorInterpolationSpace());
   to_color = CSSColorInterpolationType::GetColor(*to);
-  ASSERT_EQ(Color::ColorInterpolationSpace::kOklab,
-            to_color.GetColorInterpolationSpace());
+  ASSERT_EQ(Color::ColorSpace::kOklab, to_color.GetColorInterpolationSpace());
 
   // This should make both color interpolations spaces oklab
   InterpolableColor::SetupColorInterpolationSpaces(*to, *from);
 
   from_color = CSSColorInterpolationType::GetColor(*from);
-  ASSERT_EQ(Color::ColorInterpolationSpace::kOklab,
-            from_color.GetColorInterpolationSpace());
+  ASSERT_EQ(Color::ColorSpace::kOklab, from_color.GetColorInterpolationSpace());
   to_color = CSSColorInterpolationType::GetColor(*to);
-  ASSERT_EQ(Color::ColorInterpolationSpace::kOklab,
-            to_color.GetColorInterpolationSpace());
+  ASSERT_EQ(Color::ColorSpace::kOklab, to_color.GetColorInterpolationSpace());
 }
 
 TEST(CSSColorInterpolationTypeTest, Oklab) {
@@ -102,28 +99,28 @@ TEST(CSSColorInterpolationTypeTest, Oklab) {
   ASSERT_EQ(100, result_color.Param0());
   ASSERT_EQ(1, result_color.Param1());
   ASSERT_EQ(1, result_color.Param2());
-  ASSERT_EQ(1, result_color.FloatAlpha());
-  ASSERT_EQ(Color::ColorInterpolationSpace::kOklab,
+  ASSERT_EQ(1, result_color.Alpha());
+  ASSERT_EQ(Color::ColorSpace::kOklab,
             result_color.GetColorInterpolationSpace());
 
   from->Interpolate(*to, 0.5, *result);
   result_color = CSSColorInterpolationType::GetColor(*result);
   // Everything is premultiplied.
-  ASSERT_EQ(50, result_color.Param0() * result_color.FloatAlpha());
-  ASSERT_EQ(0.5, result_color.Param1() * result_color.FloatAlpha());
-  ASSERT_EQ(0.5, result_color.Param2() * result_color.FloatAlpha());
-  ASSERT_EQ(0.75, result_color.FloatAlpha());
-  ASSERT_EQ(Color::ColorInterpolationSpace::kOklab,
+  ASSERT_EQ(50, result_color.Param0() * result_color.Alpha());
+  ASSERT_EQ(0.5, result_color.Param1() * result_color.Alpha());
+  ASSERT_EQ(0.5, result_color.Param2() * result_color.Alpha());
+  ASSERT_EQ(0.75, result_color.Alpha());
+  ASSERT_EQ(Color::ColorSpace::kOklab,
             result_color.GetColorInterpolationSpace());
 
   from->Interpolate(*to, 0.75, *result);
   result_color = CSSColorInterpolationType::GetColor(*result);
   // Everything is premultiplied.
-  ASSERT_EQ(25, result_color.Param0() * result_color.FloatAlpha());
-  ASSERT_EQ(0.25, result_color.Param1() * result_color.FloatAlpha());
-  ASSERT_EQ(0.25, result_color.Param2() * result_color.FloatAlpha());
-  ASSERT_EQ(0.625, result_color.FloatAlpha());
-  ASSERT_EQ(Color::ColorInterpolationSpace::kOklab,
+  ASSERT_EQ(25, result_color.Param0() * result_color.Alpha());
+  ASSERT_EQ(0.25, result_color.Param1() * result_color.Alpha());
+  ASSERT_EQ(0.25, result_color.Param2() * result_color.Alpha());
+  ASSERT_EQ(0.625, result_color.Alpha());
+  ASSERT_EQ(Color::ColorSpace::kOklab,
             result_color.GetColorInterpolationSpace());
 
   from->Interpolate(*to, 1, *result);
@@ -131,8 +128,8 @@ TEST(CSSColorInterpolationTypeTest, Oklab) {
   ASSERT_EQ(0, result_color.Param0());
   ASSERT_EQ(0, result_color.Param1());
   ASSERT_EQ(0, result_color.Param2());
-  ASSERT_EQ(0.5, result_color.FloatAlpha());
-  ASSERT_EQ(Color::ColorInterpolationSpace::kOklab,
+  ASSERT_EQ(0.5, result_color.Alpha());
+  ASSERT_EQ(Color::ColorSpace::kOklab,
             result_color.GetColorInterpolationSpace());
 }
 

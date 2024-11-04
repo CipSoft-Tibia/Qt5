@@ -30,10 +30,18 @@ class FeaturePromoHandle;
 // Specifies the parameters for a feature promo and its associated bubble.
 class FeaturePromoSpecification {
  public:
-  // The body text (specified by |bubble_body_string_id|) can have parameters
-  // that can be specified situationally. When specifying these parameters,
-  // use a |StringReplacements| object.
-  using StringReplacements = std::vector<std::u16string>;
+  // Provide different ways to specify parameters for title or body text.
+  struct NoSubstitution {};
+  using StringSubstitutions = std::vector<std::u16string>;
+  using FormatParameters = absl::variant<
+      // No substitutions; use the string as-is (default).
+      NoSubstitution,
+      // Use the following substitutions for the various substitution fields.
+      StringSubstitutions,
+      // Use a single string substitution. Included for convenience.
+      std::u16string,
+      // Specify a number of items in a singular/plural string.
+      int>;
 
   // Optional method that filters a set of potential `elements` to choose and
   // return the anchor element, or null if none of the inputs is appropriate.
@@ -120,9 +128,30 @@ class FeaturePromoSpecification {
   ~FeaturePromoSpecification();
   FeaturePromoSpecification& operator=(FeaturePromoSpecification&& other);
 
+  // Format a localized string with ID `string_id` based on the given
+  // `format_params`.
+  static std::u16string FormatString(int string_id,
+                                     const FormatParameters& format_params);
+
   // Specifies a standard toast promo.
-  // Because toasts are transient, they expect a separate screen reader prompt.
-  // It is recommended that the prompt include an
+  //
+  // Because toasts are transient and time out after a short period, it can be
+  // difficult for screen reader users to navigate to the UI they point to.
+  // Because of this, toasts require a screen reader prompt that is different
+  // from the bubble text. This prompt should fully describe the UI the toast is
+  // pointing to, and may include a single parameter, which is the accelerator
+  // that is used to open/access the UI.
+  //
+  // For example, for a promo for the bookmark star, you might have:
+  // Bubble text: "Click here to bookmark the current tab."
+  // Accessible text: "Press |<ph name="ACCEL">$1<ex>Ctrl+D</ex></ph>| "
+  //                  "to bookmark the current tab"
+  // Accelerator: AcceleratorInfo(IDC_BOOKMARK_THIS_TAB)
+  //
+  // In this case, the system-specific accelerator for IDC_BOOKMARK_THIS_TAB is
+  // retrieved and its text representation is injected into the accessible text
+  // for screen reader users. An empty `AcceleratorInfo()` can be used for cases
+  // where the accessible text does not require an accelerator.
   static FeaturePromoSpecification CreateForToastPromo(
       const base::Feature& feature,
       ui::ElementIdentifier anchor_element_id,
@@ -135,6 +164,15 @@ class FeaturePromoSpecification {
       const base::Feature& feature,
       ui::ElementIdentifier anchor_element_id,
       int body_text_string_id);
+
+  // Specifies a promo with snooze buttons, but with accessible text string id.
+  // See comments from `FeaturePromoSpecification::CreateForToastPromo()`.
+  static FeaturePromoSpecification CreateForSnoozePromo(
+      const base::Feature& feature,
+      ui::ElementIdentifier anchor_element_id,
+      int body_text_string_id,
+      int accessible_text_string_id,
+      AcceleratorInfo accessible_accelerator);
 
   // Specifies a promo that launches a tutorial.
   static FeaturePromoSpecification CreateForTutorialPromo(
@@ -195,7 +233,7 @@ class FeaturePromoSpecification {
   }
   bool in_any_context() const { return in_any_context_; }
   int bubble_body_string_id() const { return bubble_body_string_id_; }
-  const std::u16string& bubble_title_text() const { return bubble_title_text_; }
+  int bubble_title_string_id() const { return bubble_title_string_id_; }
   const gfx::VectorIcon* bubble_icon() const { return bubble_icon_; }
   HelpBubbleArrow bubble_arrow() const { return bubble_arrow_; }
   int screen_reader_string_id() const { return screen_reader_string_id_; }
@@ -258,7 +296,7 @@ class FeaturePromoSpecification {
 
   // Optional text that is displayed at the top of the bubble, in a slightly
   // more prominent font.
-  std::u16string bubble_title_text_;
+  int bubble_title_string_id_ = 0;
 
   // Optional icon that is displayed next to bubble text.
   raw_ptr<const gfx::VectorIcon> bubble_icon_ = nullptr;

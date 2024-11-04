@@ -5,22 +5,29 @@
 #ifndef CONTENT_BROWSER_SHARED_STORAGE_SHARED_STORAGE_WORKLET_HOST_H_
 #define CONTENT_BROWSER_SHARED_STORAGE_SHARED_STORAGE_WORKLET_HOST_H_
 
+#include <stdint.h>
+
+#include <string>
+#include <vector>
+
 #include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "components/services/storage/shared_storage/shared_storage_manager.h"
 #include "content/common/content_export.h"
-#include "content/common/shared_storage_worklet_service.mojom.h"
 #include "mojo/public/cpp/bindings/associated_receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/shared_storage/shared_storage_utils.h"
 #include "third_party/blink/public/mojom/shared_storage/shared_storage.mojom.h"
+#include "third_party/blink/public/mojom/shared_storage/shared_storage_worklet_service.mojom.h"
 #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-forward.h"
 #include "url/origin.h"
 
 namespace content {
 
 class BrowserContext;
+class RenderProcessHost;
 class SharedStorageDocumentServiceImpl;
 class SharedStorageURLLoaderFactoryProxy;
 class SharedStorageWorkletDriver;
@@ -43,21 +50,20 @@ class PageImpl;
 // 2. The keepalive timeout is reached after the worklet's owner document is
 // destroyed.
 class CONTENT_EXPORT SharedStorageWorkletHost
-    : public shared_storage_worklet::mojom::SharedStorageWorkletServiceClient {
+    : public blink::mojom::SharedStorageWorkletServiceClient {
  public:
   using BudgetResult = storage::SharedStorageManager::BudgetResult;
+
+  using KeepAliveFinishedCallback =
+      base::OnceCallback<void(SharedStorageWorkletHost*)>;
 
   enum class AddModuleState {
     kNotInitiated,
     kInitiated,
   };
 
-  using KeepAliveFinishedCallback =
-      base::OnceCallback<void(SharedStorageWorkletHost*)>;
-
-  explicit SharedStorageWorkletHost(
-      std::unique_ptr<SharedStorageWorkletDriver> driver,
-      SharedStorageDocumentServiceImpl& document_service);
+  SharedStorageWorkletHost(std::unique_ptr<SharedStorageWorkletDriver> driver,
+                           SharedStorageDocumentServiceImpl& document_service);
   ~SharedStorageWorkletHost() override;
 
   void AddModuleOnWorklet(
@@ -68,12 +74,16 @@ class CONTENT_EXPORT SharedStorageWorkletHost
       blink::mojom::SharedStorageDocumentService::AddModuleOnWorkletCallback
           callback);
   void RunOperationOnWorklet(const std::string& name,
-                             const std::vector<uint8_t>& serialized_data);
+                             blink::CloneableMessage serialized_data,
+                             bool keep_alive_after_operation,
+                             const absl::optional<std::string>& context_id);
   void RunURLSelectionOperationOnWorklet(
       const std::string& name,
       std::vector<blink::mojom::SharedStorageUrlWithMetadataPtr>
           urls_with_metadata,
-      const std::vector<uint8_t>& serialized_data,
+      blink::CloneableMessage serialized_data,
+      bool keep_alive_after_operation,
+      const absl::optional<std::string>& context_id,
       blink::mojom::SharedStorageDocumentService::
           RunURLSelectionOperationOnWorkletCallback callback);
 
@@ -85,7 +95,7 @@ class CONTENT_EXPORT SharedStorageWorkletHost
   // keep-alive phase.
   void EnterKeepAliveOnDocumentDestroyed(KeepAliveFinishedCallback callback);
 
-  // shared_storage_worklet::mojom::SharedStorageWorkletServiceClient:
+  // blink::mojom::SharedStorageWorkletServiceClient:
   void SharedStorageSet(const std::u16string& key,
                         const std::u16string& value,
                         bool ignore_if_present,
@@ -99,12 +109,10 @@ class CONTENT_EXPORT SharedStorageWorkletHost
   void SharedStorageGet(const std::u16string& key,
                         SharedStorageGetCallback callback) override;
   void SharedStorageKeys(
-      mojo::PendingRemote<
-          shared_storage_worklet::mojom::SharedStorageEntriesListener>
+      mojo::PendingRemote<blink::mojom::SharedStorageEntriesListener>
           pending_listener) override;
   void SharedStorageEntries(
-      mojo::PendingRemote<
-          shared_storage_worklet::mojom::SharedStorageEntriesListener>
+      mojo::PendingRemote<blink::mojom::SharedStorageEntriesListener>
           pending_listener) override;
   void SharedStorageLength(SharedStorageLengthCallback callback) override;
   void SharedStorageRemainingBudget(
@@ -112,6 +120,15 @@ class CONTENT_EXPORT SharedStorageWorkletHost
   void ConsoleLog(const std::string& message) override;
   void RecordUseCounters(
       const std::vector<blink::mojom::WebFeature>& features) override;
+
+  // Returns the process host associated with the worklet. Returns nullptr if
+  // the process has gone (e.g. during shutdown).
+  RenderProcessHost* GetProcessHost() const;
+
+  const GURL& script_source_url() const {
+    CHECK_EQ(add_module_state_, AddModuleState::kInitiated);
+    return script_source_url_;
+  }
 
   const url::Origin& shared_storage_origin_for_testing() const {
     return shared_storage_origin_;
@@ -138,22 +155,29 @@ class CONTENT_EXPORT SharedStorageWorkletHost
       uint32_t index,
       BudgetResult budget_result);
 
+  // Called if `keep_alive_after_operation_` is false, `IsInKeepAlivePhase()` is
+  // false, and `pending_operations_count_` decrements back to 0u. Runs
+  // `on_no_retention_operations_finished_callback_` to close the worklet.
+  virtual void ExpireWorklet();
+
+  // Returns whether the the worklet has entered keep-alive phase. During
+  // keep-alive: the attempt to log console messages will be ignored; and the
+  // completion of the last pending operation will terminate the worklet.
+  bool IsInKeepAlivePhase() const;
+
   base::OneShotTimer& GetKeepAliveTimerForTesting() {
     return keep_alive_timer_;
   }
 
  private:
+  class ScopedDevToolsHandle;
+
   void OnRunURLSelectionOperationOnWorkletScriptExecutionFinished(
       const GURL& urn_uuid,
       base::TimeTicks start_time,
       bool success,
       const std::string& error_message,
       uint32_t index);
-
-  // Returns whether the the worklet has entered keep-alive phase. During
-  // keep-alive: the attempt to log console messages will be ignored; and the
-  // completion of the last pending operation will terminate the worklet.
-  bool IsInKeepAlivePhase() const;
 
   // Run `keep_alive_finished_callback_` to destroy `this`. Called when the last
   // pending operation has finished, or when a timeout is reached after entering
@@ -172,18 +196,25 @@ class CONTENT_EXPORT SharedStorageWorkletHost
   // virtual for testing
   virtual base::TimeDelta GetKeepAliveTimeout() const;
 
-  shared_storage_worklet::mojom::SharedStorageWorkletService*
+  blink::mojom::SharedStorageWorkletService*
   GetAndConnectToSharedStorageWorkletService();
 
   // Binds a receiver to the `PrivateAggregationManager` and returns the
   // `PendingRemote`. If there is no `PrivateAggregationManger`, returns an
   // invalid `PendingRemote`.
-  mojo::PendingRemote<content::mojom::PrivateAggregationHost>
-  MaybeBindPrivateAggregationHost();
+  mojo::PendingRemote<blink::mojom::PrivateAggregationHost>
+  MaybeBindPrivateAggregationHost(
+      const absl::optional<std::string>& context_id);
 
   bool IsSharedStorageAllowed();
 
+  // RAII helper object for talking to `SharedStorageWorkletDevToolsManager`.
+  std::unique_ptr<ScopedDevToolsHandle> devtools_handle_;
+
   AddModuleState add_module_state_ = AddModuleState::kNotInitiated;
+
+  // The URL of the module script. Set when `AddModuleOnWorklet` is invoked.
+  GURL script_source_url_;
 
   // Responsible for initializing the `SharedStorageWorkletService`.
   std::unique_ptr<SharedStorageWorkletDriver> driver_;
@@ -238,6 +269,12 @@ class CONTENT_EXPORT SharedStorageWorkletHost
   // `selectURL()`, or `run()`.
   uint32_t pending_operations_count_ = 0u;
 
+  // Whether or not the lifetime of the worklet should be extended beyond when
+  // the `pending_operations_count_` returns to 0u. If false, the worklet will
+  // be closed as soon as the count next reaches 0U after being positive. This
+  // bool is updated with each call to `run()` or `selectURL()`.
+  bool keep_alive_after_operation_ = true;
+
   // Timer for starting and ending the keep-alive phase.
   base::OneShotTimer keep_alive_timer_;
 
@@ -268,11 +305,10 @@ class CONTENT_EXPORT SharedStorageWorkletHost
   // messages initiated from the worklet (e.g. storage access, console log) to
   // be well ordered with respect to the corresponding request's callback
   // message which will be interpreted as the completion of an operation.
-  mojo::Remote<shared_storage_worklet::mojom::SharedStorageWorkletService>
+  mojo::Remote<blink::mojom::SharedStorageWorkletService>
       shared_storage_worklet_service_;
 
-  mojo::AssociatedReceiver<
-      shared_storage_worklet::mojom::SharedStorageWorkletServiceClient>
+  mojo::AssociatedReceiver<blink::mojom::SharedStorageWorkletServiceClient>
       shared_storage_worklet_service_client_{this};
 
   // The proxy is used to limit the request that the worklet can make, e.g. to

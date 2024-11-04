@@ -48,10 +48,14 @@ class LayerTreeCcWrapper : public LayerTree,
   void UpdateTopControlsVisibleHeight(float height) override;
   void SetNeedsAnimate() override;
   void SetNeedsRedraw() override;
+  void MaybeCompositeNow() override {}
   const scoped_refptr<Layer>& root() const override;
   void SetRoot(scoped_refptr<Layer> root) override;
   void SetFrameSink(std::unique_ptr<FrameSink> sink) override;
   void ReleaseLayerTreeFrameSink() override;
+  std::unique_ptr<ScopedKeepSurfaceAlive> CreateScopedKeepSurfaceAlive(
+      const viz::SurfaceId& surface_id) override;
+  const SurfaceRangesAndCounts& GetSurfaceRangesForTesting() const override;
 
   // cc::LayerTreeHostClient.
   void WillBeginMainFrame() override {}
@@ -64,7 +68,6 @@ class LayerTreeCcWrapper : public LayerTree,
       bool,
       cc::PaintHoldingReason,
       absl::optional<cc::PaintHoldingCommitTrigger>) override {}
-  void OnPauseRenderingChanged(bool) override {}
   void OnCommitRequested() override {}
   void BeginMainFrameNotExpectedSoon() override {}
   void BeginMainFrameNotExpectedUntil(base::TimeTicks time) override {}
@@ -101,6 +104,11 @@ class LayerTreeCcWrapper : public LayerTree,
   void DidSubmitCompositorFrame() override;
   void DidLoseLayerTreeFrameSink() override;
 
+  // Called by `LayerTree::ScopedKeepSurfaceAlive`'s to keep the surface
+  // referenced.
+  void AddSurfaceRange(const viz::SurfaceRange& surface_range);
+  void RemoveSurfaceRange(const viz::SurfaceRange& surface_range);
+
  private:
   friend LayerTree;
   explicit LayerTreeCcWrapper(InitParams init_params);
@@ -110,6 +118,8 @@ class LayerTreeCcWrapper : public LayerTree,
   std::unique_ptr<cc::LayerTreeHost> host_;
 
   scoped_refptr<Layer> root_;
+
+  base::WeakPtrFactory<LayerTreeCcWrapper> weak_factory_{this};
 };
 
 }  // namespace cc::slim

@@ -25,6 +25,10 @@
 #include "content/browser/tracing/tracing_ui.h"
 #endif
 
+#if BUILDFLAG(ENABLE_VR)
+#include "content/browser/xr/webxr_internals/webxr_internals_ui.h"
+#endif
+
 namespace content {
 
 void RegisterContentWebUIConfigs() {
@@ -42,6 +46,10 @@ void RegisterContentWebUIConfigs() {
   map.AddWebUIConfig(std::make_unique<UkmInternalsUIConfig>());
 #if BUILDFLAG(ENABLE_WEBRTC)
   map.AddWebUIConfig(std::make_unique<WebRTCInternalsUIConfig>());
+#endif
+
+#if BUILDFLAG(ENABLE_VR)
+  map.AddWebUIConfig(std::make_unique<WebXrInternalsUIConfig>());
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)

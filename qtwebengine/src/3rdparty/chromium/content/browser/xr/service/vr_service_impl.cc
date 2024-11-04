@@ -15,6 +15,7 @@
 #include "base/metrics/histogram_macros.h"
 #include "base/ranges/algorithm.h"
 #include "base/stl_util.h"
+#include "base/time/time.h"
 #include "base/trace_event/common/trace_event_common.h"
 #include "build/build_config.h"
 #include "components/viz/common/surfaces/frame_sink_id.h"
@@ -23,8 +24,11 @@
 #include "content/browser/xr/service/browser_xr_runtime_impl.h"
 #include "content/browser/xr/service/xr_permission_results.h"
 #include "content/browser/xr/service/xr_runtime_manager_impl.h"
+#include "content/browser/xr/webxr_internals/mojom/webxr_internals.mojom.h"
+#include "content/browser/xr/webxr_internals/webxr_internals_handler_impl.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/permission_controller.h"
+#include "content/public/browser/permission_request_description.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_widget_host.h"
@@ -35,6 +39,7 @@
 #include "device/vr/public/cpp/features.h"
 #include "device/vr/public/cpp/session_mode.h"
 #include "device/vr/public/mojom/vr_service.mojom-shared.h"
+#include "device/vr/public/mojom/xr_session.mojom-shared.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/permissions/permission_utils.h"
 #include "third_party/blink/public/mojom/permissions/permission_status.mojom-shared.h"
@@ -448,6 +453,13 @@ void VRServiceImpl::RequestSession(
   DVLOG(2) << __func__;
   DCHECK(options);
 
+  webxr::mojom::SessionRequestRecordPtr session_request_record =
+      webxr::mojom::SessionRequestRecord::New();
+  session_request_record->options = options->Clone();
+  session_request_record->requested_time = base::Time::Now();
+  runtime_manager_->GetLoggerManager().RecordSessionRequest(
+      std::move(session_request_record));
+
   // Queue the request to get to when initialization has completed.
   if (!initialization_complete_) {
     DVLOG(2) << __func__ << ": initialization not yet complete, defer request";
@@ -457,7 +469,8 @@ void VRServiceImpl::RequestSession(
     return;
   }
 
-  if (runtime_manager_->IsOtherClientPresenting(this)) {
+  if (runtime_manager_->IsOtherClientPresenting(this) ||
+      runtime_manager_->HasPendingImmersiveRequest()) {
     DVLOG(2) << __func__
              << ": can't create sessions while an immersive session exists";
     // Can't create sessions while an immersive session exists.
@@ -510,7 +523,8 @@ void VRServiceImpl::GetPermissionStatus(SessionRequestData request,
   DCHECK_EQ(runtime->GetId(), request.runtime_id);
 
 #if BUILDFLAG(ENABLE_OPENXR)
-  if (request.options->mode == device::mojom::XRSessionMode::kImmersiveAr) {
+  if (request.options->mode == device::mojom::XRSessionMode::kImmersiveAr &&
+      runtime->GetId() == device::mojom::XRDeviceId::OPENXR_DEVICE_ID) {
     DCHECK(
         base::FeatureList::IsEnabled(
             device::features::kOpenXrExtendedFeatureSupport));
@@ -527,7 +541,9 @@ void VRServiceImpl::GetPermissionStatus(SessionRequestData request,
       GetRequiredPermissionsForMode(request.options->mode);
 
   permission_controller->RequestPermissionsFromCurrentDocument(
-      permissions_for_mode, render_frame_host_, true,
+      render_frame_host_,
+      PermissionRequestDescription(permissions_for_mode,
+                                   /*user_gesture=*/true),
       base::BindOnce(&VRServiceImpl::OnPermissionResultsForMode,
                      weak_ptr_factory_.GetWeakPtr(), std::move(request),
                      permissions_for_mode));
@@ -572,7 +588,9 @@ void VRServiceImpl::OnPermissionResultsForMode(
                                         request.optional_features);
 
   permission_controller->RequestPermissionsFromCurrentDocument(
-      permissions_for_features, render_frame_host_, true,
+      render_frame_host_,
+      PermissionRequestDescription(permissions_for_features,
+                                   /* user_gesture = */ true),
       base::BindOnce(&VRServiceImpl::OnPermissionResultsForFeatures,
                      weak_ptr_factory_.GetWeakPtr(), std::move(request),
                      permissions_for_features));
@@ -701,13 +719,29 @@ void VRServiceImpl::DoRequestSession(SessionRequestData request) {
   runtime_options->optional_features.assign(request.optional_features.begin(),
                                             request.optional_features.end());
 
-#if BUILDFLAG(IS_ANDROID) && BUILDFLAG(ENABLE_ARCORE)
-  if (request.runtime_id == device::mojom::XRDeviceId::ARCORE_DEVICE_ID) {
-    runtime_options->render_process_id =
-        render_frame_host_->GetProcess()->GetID();
-    runtime_options->render_frame_id = render_frame_host_->GetRoutingID();
-  }
+  if constexpr (BUILDFLAG(IS_ANDROID)) {
+    bool send_renderer_information = false;
+#if BUILDFLAG(ENABLE_ARCORE)
+    send_renderer_information =
+        send_renderer_information ||
+        request.runtime_id == device::mojom::XRDeviceId::ARCORE_DEVICE_ID;
 #endif
+#if BUILDFLAG(ENABLE_CARDBOARD)
+    send_renderer_information =
+        send_renderer_information ||
+        request.runtime_id == device::mojom::XRDeviceId::CARDBOARD_DEVICE_ID;
+#endif
+#if BUILDFLAG(ENABLE_OPENXR) && BUILDFLAG(IS_ANDROID)
+    send_renderer_information =
+        send_renderer_information ||
+        request.runtime_id == device::mojom::XRDeviceId::OPENXR_DEVICE_ID;
+#endif
+    if (send_renderer_information) {
+      runtime_options->render_process_id =
+          render_frame_host_->GetProcess()->GetID();
+      runtime_options->render_frame_id = render_frame_host_->GetRoutingID();
+    }
+  }
 
   bool use_dom_overlay =
       base::Contains(runtime_options->required_features,

@@ -687,13 +687,6 @@ struct TensorEvaluator<const TensorBroadcastingOp<Broadcast, ArgType>, Device>
   const TensorEvaluator<ArgType, Device>& impl() const { return m_impl; }
 
   Broadcast functor() const { return m_broadcast; }
-#ifdef EIGEN_USE_SYCL
-  // binding placeholder accessors to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(
-      cl::sycl::handler& cgh) const {
-    m_impl.bind(cgh);
-  }
-#endif
  private:
   static constexpr bool IsColMajor =
       static_cast<int>(Layout) == static_cast<int>(ColMajor);

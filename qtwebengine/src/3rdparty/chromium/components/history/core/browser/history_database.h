@@ -20,6 +20,7 @@
 #include "components/history/core/browser/url_database.h"
 #include "components/history/core/browser/visit_annotations_database.h"
 #include "components/history/core/browser/visit_database.h"
+#include "components/history/core/browser/visited_link_database.h"
 #include "components/history/core/browser/visitsegment_database.h"
 #include "sql/database.h"
 #include "sql/init_status.h"
@@ -57,6 +58,7 @@ class HistoryDatabase : public DownloadDatabase,
                         public URLDatabase,
                         public VisitDatabase,
                         public VisitAnnotationsDatabase,
+                        public VisitedLinkDatabase,
                         public VisitSegmentDatabase {
  public:
   // Must call Init() to complete construction. Although it can be created on
@@ -89,9 +91,19 @@ class HistoryDatabase : public DownloadDatabase,
   // Counts the number of unique Hosts visited in the last month.
   int CountUniqueHostsVisitedLastMonth();
 
+  // Gets unique domains (eLTD+1) visited within the time range
+  // [`begin_time`, `end_time`) for local and synced visits sorted in
+  // reverse-chronological order.
+  DomainsVisitedResult GetUniqueDomainsVisited(base::Time begin_time,
+                                               base::Time end_time);
+
   // Counts the number of unique domains (eLTD+1) visited within
   // [`begin_time`, `end_time`).
-  int CountUniqueDomainsVisited(base::Time begin_time, base::Time end_time);
+  // The return value is a pair of (local, all), where "local" only counts
+  // domains that were visited on this device, whereas "all" also counts
+  // foreign/synced visits.
+  std::pair<int, int> CountUniqueDomainsVisited(base::Time begin_time,
+                                                base::Time end_time);
 
   // Call to set the mode on the database to exclusive. The default locking mode
   // is "normal" but we want to run in exclusive mode for slightly better
@@ -198,6 +210,8 @@ class HistoryDatabase : public DownloadDatabase,
   // Returns the sub-database used for storing Sync metadata for History.
   HistorySyncMetadataDatabase* GetHistoryMetadataDB();
 #endif  // !defined(TOOLKIT_QT)
+
+  sql::Database& GetDBForTesting();
 
  private:
 #if BUILDFLAG(IS_ANDROID)

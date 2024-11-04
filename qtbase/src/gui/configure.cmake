@@ -62,6 +62,7 @@ qt_find_package(WrapVulkanHeaders PROVIDED_TARGETS WrapVulkanHeaders::WrapVulkan
     MODULE_NAME gui QMAKE_LIB vulkan MARK_OPTIONAL)
 if((LINUX) OR QT_FIND_ALL_PACKAGES_ALWAYS)
     qt_find_package(Wayland PROVIDED_TARGETS Wayland::Server MODULE_NAME gui QMAKE_LIB wayland_server)
+    qt_find_package(Wayland PROVIDED_TARGETS Wayland::Client MODULE_NAME gui QMAKE_LIB wayland_client)
 endif()
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
     qt_find_package(X11 PROVIDED_TARGETS X11::X11 MODULE_NAME gui QMAKE_LIB xlib)
@@ -142,6 +143,7 @@ if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
 endif()
 qt_add_qmake_lib_dependency(xrender xlib)
 
+qt_find_package(RenderDoc PROVIDED_TARGETS RenderDoc::RenderDoc)
 
 #### Tests
 
@@ -614,6 +616,20 @@ int main(int, char **)
 }
 ")
 
+qt_config_compile_test(renderdoc
+    LIBRARIES
+        RenderDoc::RenderDoc
+    LABEL "RenderDoc header check"
+    CODE
+"#include <renderdoc_app.h>
+int main(int, char **)
+{
+    if (RENDERDOC_Version::eRENDERDOC_API_Version_1_6_0)
+        return 0;
+    return 0;
+}
+")
+
 
 #### Features
 
@@ -666,7 +682,7 @@ qt_feature("system-freetype" PRIVATE
 qt_feature("fontconfig" PUBLIC PRIVATE
     LABEL "Fontconfig"
     AUTODETECT NOT APPLE
-    CONDITION NOT WIN32 AND QT_FEATURE_system_freetype AND Fontconfig_FOUND
+    CONDITION NOT APPLE AND NOT WIN32 AND QT_FEATURE_system_freetype AND Fontconfig_FOUND
 )
 qt_feature_definition("fontconfig" "QT_NO_FONTCONFIG" NEGATE VALUE "1")
 qt_feature("gbm"
@@ -848,7 +864,7 @@ qt_feature("eglfs_rcar" PRIVATE
 )
 qt_feature("eglfs_viv_wl" PRIVATE
     LABEL "EGLFS i.Mx6 Wayland"
-    CONDITION QT_FEATURE_eglfs_viv AND Wayland_FOUND
+    CONDITION QT_FEATURE_eglfs_viv AND TARGET Wayland::Server
 )
 qt_feature("eglfs_openwfd" PRIVATE
     LABEL "EGLFS OpenWFD"
@@ -996,7 +1012,8 @@ qt_feature("system-textmarkdownreader" PUBLIC
 qt_feature("textmarkdownwriter" PUBLIC
     SECTION "Kernel"
     LABEL "MarkdownWriter"
-    PURPOSE "Provides a Markdown (CommonMark) writer"
+    CONDITION QT_FEATURE_regularexpression
+    PURPOSE "Provides a Markdown (CommonMark and GitHub) writer"
 )
 qt_feature("textodfwriter" PUBLIC
     SECTION "Kernel"
@@ -1221,7 +1238,18 @@ qt_feature("undogroup" PUBLIC
     PURPOSE "Provides the ability to cluster QUndoCommands."
     CONDITION QT_FEATURE_undostack
 )
+qt_feature("graphicsframecapture" PRIVATE
+    SECTION "Utilities"
+    LABEL "QGraphicsFrameCapture"
+    PURPOSE "Provides a way to capture a graphic's API calls for a rendered frame."
+    CONDITION TEST_renderdoc OR (MACOS OR IOS)
+)
 qt_feature_definition("undogroup" "QT_NO_UNDOGROUP" NEGATE VALUE "1")
+qt_feature("wayland" PUBLIC
+    SECTION "Platform plugins"
+    LABEL "Wayland"
+    CONDITION TARGET Wayland::Client
+)
 qt_configure_add_summary_section(NAME "Qt Gui")
 qt_configure_add_summary_entry(ARGS "accessibility")
 qt_configure_add_summary_entry(ARGS "freetype")

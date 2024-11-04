@@ -28,10 +28,12 @@
   * \endcode
   */
 
+// IWYU pragma: begin_exports
 #include "src/TensorSymmetry/util/TemplateGroupTheory.h"
 #include "src/TensorSymmetry/Symmetry.h"
 #include "src/TensorSymmetry/StaticSymmetry.h"
 #include "src/TensorSymmetry/DynamicSymmetry.h"
+// IWYU pragma: end_exports
 
 #include "../../../Eigen/src/Core/util/ReenableStupidWarnings.h"
 

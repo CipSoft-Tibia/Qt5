@@ -73,15 +73,18 @@ public:
         : QObjectPrivate(),
           render(0), timer(0),
           fps(30)
-    {}
+    {
+        options = defaultOptions();
+    }
+
     ~QSvgRendererPrivate()
     {
         delete render;
     }
 
-    void startStopTimer()
+    void startOrStopTimer()
     {
-        if (render && render->animated() && fps > 0) {
+        if (animationEnabled && render && render->animated() && fps > 0) {
             ensureTimerCreated();
             timer->start(1000 / fps);
         } else if (timer) {
@@ -100,9 +103,19 @@ public:
 
     static void callRepaintNeeded(QSvgRenderer *const q);
 
+    static QtSvg::Options defaultOptions()
+    {
+        static bool envOk = false;
+        static QtSvg::Options envOpts = QtSvg::Options::fromInt(
+                qEnvironmentVariableIntValue("QT_SVG_DEFAULT_OPTIONS", &envOk));
+        return envOk ? envOpts : QtSvg::Options{};
+    }
+
     QSvgTinyDocument *render;
     QTimer *timer;
     int fps;
+    QtSvg::Options options;
+    bool animationEnabled = true;
 };
 
 /*!
@@ -216,6 +229,34 @@ bool QSvgRenderer::animated() const
 }
 
 /*!
+    \property QSvgRenderer::animationEnabled
+    \brief whether the animation should run, if the SVG is animated
+
+    Setting the property to false stops the animation timer.
+    Setting the property to false starts the animation timer,
+    provided that the SVG contains animated elements.
+
+    If the SVG is not animated, the property will have no effect.
+    Otherwise, the property defaults to true.
+
+    \sa animated()
+
+    \since 6.7
+*/
+bool QSvgRenderer::isAnimationEnabled() const
+{
+    Q_D(const QSvgRenderer);
+    return d->animationEnabled;
+}
+
+void QSvgRenderer::setAnimationEnabled(bool enable)
+{
+    Q_D(QSvgRenderer);
+    d->animationEnabled = enable;
+    d->startOrStopTimer();
+}
+
+/*!
     \property QSvgRenderer::framesPerSecond
     \brief the number of frames per second to be shown
 
@@ -237,7 +278,7 @@ void QSvgRenderer::setFramesPerSecond(int num)
         return;
     }
     d->fps = num;
-    d->startStopTimer();
+    d->startOrStopTimer();
 }
 
 /*!
@@ -275,6 +316,29 @@ void QSvgRenderer::setAspectRatioMode(Qt::AspectRatioMode mode)
     }
 }
 
+/*!
+    \property QSvgRenderer::options
+    \since 6.7
+
+    This property holds a set of QtSvg::Option flags that can be used
+    to enable or disable various features of the parsing and rendering of SVG files.
+
+    Set this property before calling any of the load functions to
+    change the behavior of the QSvgRenderer.
+
+    By default, no flags are set.
+ */
+QtSvg::Options QSvgRenderer::options() const
+{
+    Q_D(const QSvgRenderer);
+    return d->options;
+}
+
+void QSvgRenderer::setOptions(QtSvg::Options flags)
+{
+    Q_D(QSvgRenderer);
+    d->options = flags;
+}
 /*!
   \property QSvgRenderer::currentFrame
   \brief the current frame of the document's animation, or 0 if the document is not animated
@@ -333,12 +397,12 @@ static bool loadDocument(QSvgRenderer *const q,
                          const TInputType &in)
 {
     delete d->render;
-    d->render = QSvgTinyDocument::load(in);
+    d->render = QSvgTinyDocument::load(in, d->options);
     if (d->render && !d->render->size().isValid()) {
         delete d->render;
         d->render = nullptr;
     }
-    d->startStopTimer();
+    d->startOrStopTimer();
 
     //force first update
     QSvgRendererPrivate::callRepaintNeeded(q);

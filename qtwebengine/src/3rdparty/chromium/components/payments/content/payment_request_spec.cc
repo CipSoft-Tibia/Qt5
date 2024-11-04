@@ -337,6 +337,7 @@ bool PaymentRequestSpec::IsAppStoreBillingAlsoRequested() const {
               .empty();
 }
 
+#if !BUILDFLAG(IS_ANDROID)
 bool PaymentRequestSpec::IsPaymentHandlerMinimalHeaderUXEnabled() const {
   // PaymentHandlerMinimalHeaderUX is enabled when both the browser feature
   // (enabled by default) and the blink feature (as indicated in the details)
@@ -345,6 +346,7 @@ bool PaymentRequestSpec::IsPaymentHandlerMinimalHeaderUXEnabled() const {
              features::kPaymentHandlerMinimalHeaderUX) &&
          details_->payment_handler_minimal_header_ux_enabled;
 }
+#endif
 
 base::WeakPtr<PaymentRequestSpec> PaymentRequestSpec::AsWeakPtr() {
   return weak_ptr_factory_.GetWeakPtr();
@@ -352,9 +354,9 @@ base::WeakPtr<PaymentRequestSpec> PaymentRequestSpec::AsWeakPtr() {
 
 const mojom::PaymentDetailsModifierPtr*
 PaymentRequestSpec::GetApplicableModifier(PaymentApp* selected_app) const {
-  if (!selected_app ||
-      !base::FeatureList::IsEnabled(features::kWebPaymentsModifiers))
+  if (!selected_app) {
     return nullptr;
+  }
 
   DCHECK(details_->modifiers);
   for (const auto& modifier : *details_->modifiers) {

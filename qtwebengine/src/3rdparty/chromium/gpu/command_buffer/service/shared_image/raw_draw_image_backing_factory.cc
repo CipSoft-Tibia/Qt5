@@ -28,6 +28,7 @@ RawDrawImageBackingFactory::CreateSharedImage(
     GrSurfaceOrigin surface_origin,
     SkAlphaType alpha_type,
     uint32_t usage,
+    std::string debug_label,
     bool is_thread_safe) {
   DCHECK(is_thread_safe);
   auto texture = std::make_unique<RawDrawImageBacking>(
@@ -44,9 +45,24 @@ RawDrawImageBackingFactory::CreateSharedImage(
     GrSurfaceOrigin surface_origin,
     SkAlphaType alpha_type,
     uint32_t usage,
+    std::string debug_label,
     base::span<const uint8_t> data) {
   NOTREACHED() << "Not supported";
   return nullptr;
+}
+
+std::unique_ptr<SharedImageBacking>
+RawDrawImageBackingFactory::CreateSharedImage(
+    const Mailbox& mailbox,
+    viz::SharedImageFormat format,
+    const gfx::Size& size,
+    const gfx::ColorSpace& color_space,
+    GrSurfaceOrigin surface_origin,
+    SkAlphaType alpha_type,
+    uint32_t usage,
+    std::string debug_label,
+    gfx::GpuMemoryBufferHandle handle) {
+  NOTREACHED_NORETURN();
 }
 
 std::unique_ptr<SharedImageBacking>
@@ -59,7 +75,8 @@ RawDrawImageBackingFactory::CreateSharedImage(
     const gfx::ColorSpace& color_space,
     GrSurfaceOrigin surface_origin,
     SkAlphaType alpha_type,
-    uint32_t usage) {
+    uint32_t usage,
+    std::string debug_label) {
   NOTREACHED() << "Not supported";
   return nullptr;
 }

@@ -1652,6 +1652,7 @@ main(int argc, char *argv[])
 	editor.selected_text = NULL;
 
 	window_set_title(editor.window, "Text Editor");
+	window_set_appid(editor.window, "org.freedesktop.weston.text-editor");
 	window_set_key_handler(editor.window, key_handler);
 	window_set_keyboard_focus_handler(editor.window,
 					  keyboard_focus_handler);

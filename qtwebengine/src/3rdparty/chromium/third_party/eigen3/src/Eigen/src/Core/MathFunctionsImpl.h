@@ -77,26 +77,29 @@ struct generic_reciprocal_newton_step<Packet, 0> {
 template <typename Packet, int Steps>
 struct generic_rsqrt_newton_step {
   static_assert(Steps > 0, "Steps must be at least 1.");
-
-  EIGEN_DEVICE_FUNC static EIGEN_STRONG_INLINE  Packet
+  using Scalar = typename unpacket_traits<Packet>::type;
+  EIGEN_DEVICE_FUNC static EIGEN_STRONG_INLINE Packet
   run(const Packet& a, const Packet& approx_rsqrt) {
-    using Scalar = typename unpacket_traits<Packet>::type;
-    const Packet one_point_five = pset1<Packet>(Scalar(1.5));
-    const Packet minus_half = pset1<Packet>(Scalar(-0.5));
-    
-    // Refine the approximation using one Newton-Raphson step:
-    //   x_{n+1} = x_n * (1.5 + (-0.5 * x_n) * (a * x_n)).
-    // The approximation is expressed this way to avoid over/under-flows.  
-    Packet x_newton  = pmul(approx_rsqrt, pmadd(pmul(minus_half, approx_rsqrt), pmul(a, approx_rsqrt), one_point_five));
-    for (int step = 1; step < Steps; ++step) {
-      x_newton  = pmul(x_newton, pmadd(pmul(minus_half, x_newton), pmul(a, x_newton), one_point_five));
+    constexpr Scalar kMinusHalf = Scalar(-1)/Scalar(2);
+    const Packet cst_minus_half = pset1<Packet>(kMinusHalf);
+    const Packet cst_minus_one = pset1<Packet>(Scalar(-1));
+
+    Packet inv_sqrt = approx_rsqrt;
+    for (int step = 0; step < Steps; ++step) {
+      // Refine the approximation using one Newton-Raphson step:
+      // h_n = (x * inv_sqrt) * inv_sqrt - 1 (so that h_n is nearly 0).
+      // inv_sqrt = inv_sqrt - 0.5 * inv_sqrt * h_n
+      Packet r2 = pmul(a, inv_sqrt);
+      Packet half_r = pmul(inv_sqrt, cst_minus_half);
+      Packet h_n = pmadd(r2, inv_sqrt, cst_minus_one);
+      inv_sqrt = pmadd(half_r, h_n, inv_sqrt);
     }
-    
-    // If approx_rsqrt is 0 or +/-inf, we should return it as is.  Note:
-    // on intel, approx_rsqrt can be inf for small denormal values.
-    const Packet return_approx = por(pcmp_eq(approx_rsqrt, pzero(a)),
-                                     pcmp_eq(pabs(approx_rsqrt), pset1<Packet>(NumTraits<Scalar>::infinity())));
-    return pselect(return_approx, approx_rsqrt, x_newton);
+
+    // If x is NaN, then either:
+    // 1) the input is NaN
+    // 2) zero and infinity were multiplied
+    // In either of these cases, return approx_rsqrt
+    return pselect(pisnan(inv_sqrt), approx_rsqrt, inv_sqrt);
   }
 };
 
@@ -107,7 +110,6 @@ struct generic_rsqrt_newton_step<Packet, 0> {
     return approx_rsqrt;
   }
 };
-
 
 /** \internal Fast sqrt using Newton-Raphson's method.
 

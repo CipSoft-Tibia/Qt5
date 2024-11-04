@@ -107,7 +107,7 @@ static std::optional<QtProtobufPrivate::QtCore::QDate> convert(const QDate &from
 static QTimeZone::Initialization getTimeZoneInitialization(
         QtProtobufPrivate::QtCore::QTimeZone::TimeSpec protoSpec)
 {
-    return protoSpec == QtProtobufPrivate::QtCore::QTimeZone::LocalTime
+    return protoSpec == QtProtobufPrivate::QtCore::QTimeZone::TimeSpec::LocalTime
             ? QTimeZone::LocalTime : QTimeZone::UTC;
 }
 
@@ -149,14 +149,14 @@ static std::optional<QtProtobufPrivate::QtCore::QTimeZone> convert(const QTimeZo
         result.setIanaId(from.id());
 #else
         qInfo() << "Result will be treated like UTC.";
-        result.setTimeSpec(QtProtobufPrivate::QtCore::QTimeZone::UTC);
+        result.setTimeSpec(QtProtobufPrivate::QtCore::QTimeZone::TimeSpec::UTC);
 #endif // QT_CONFIG(timezone)
         break;
     case Qt::LocalTime:
-        result.setTimeSpec(QtProtobufPrivate::QtCore::QTimeZone::LocalTime);
+        result.setTimeSpec(QtProtobufPrivate::QtCore::QTimeZone::TimeSpec::LocalTime);
         break;
     case Qt::UTC:
-        result.setTimeSpec(QtProtobufPrivate::QtCore::QTimeZone::UTC);
+        result.setTimeSpec(QtProtobufPrivate::QtCore::QTimeZone::TimeSpec::UTC);
         break;
     case Qt::OffsetFromUTC:
         result.setOffsetSeconds(from.fixedSecondsAheadOfUtc());

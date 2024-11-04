@@ -7,6 +7,8 @@
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "private/qabstractbutton_p.h"
 
+#include <QtCore/qpointer.h>
+
 QT_REQUIRE_CONFIG(pushbutton);
 
 //
@@ -43,7 +45,7 @@ public:
     QPoint adjustedMenuPosition();
 #endif
     void resetLayoutItemMargins();
-    void _q_popupPressed();
+    void popupPressed();
 #if QT_CONFIG(dialog)
     QDialog *dialogParent() const;
 #else

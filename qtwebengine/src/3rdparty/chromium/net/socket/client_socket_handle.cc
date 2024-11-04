@@ -11,9 +11,9 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/notreached.h"
-#include "base/trace_event/trace_event.h"
 #include "net/base/net_errors.h"
 #include "net/base/trace_constants.h"
+#include "net/base/tracing.h"
 #include "net/log/net_log_event_type.h"
 #include "net/socket/client_socket_pool.h"
 #include "net/socket/connect_job.h"
@@ -24,6 +24,7 @@ ClientSocketHandle::ClientSocketHandle()
     : resolve_error_info_(ResolveErrorInfo(OK)) {}
 
 ClientSocketHandle::~ClientSocketHandle() {
+  weak_factory_.InvalidateWeakPtrs();
   Reset();
 }
 

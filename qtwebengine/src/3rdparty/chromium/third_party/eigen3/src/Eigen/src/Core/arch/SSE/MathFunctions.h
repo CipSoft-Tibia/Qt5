@@ -21,82 +21,8 @@ namespace Eigen {
 
 namespace internal {
 
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet4f plog<Packet4f>(const Packet4f& _x) {
-  return plog_float(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet2d plog<Packet2d>(const Packet2d& _x) {
-  return plog_double(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet4f plog2<Packet4f>(const Packet4f& _x) {
-  return plog2_float(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet2d plog2<Packet2d>(const Packet2d& _x) {
-  return plog2_double(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet4f plog1p<Packet4f>(const Packet4f& _x) {
-  return generic_plog1p(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet4f pexpm1<Packet4f>(const Packet4f& _x) {
-  return generic_expm1(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet4f pexp<Packet4f>(const Packet4f& _x)
-{
-  return pexp_float(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet2d pexp<Packet2d>(const Packet2d& x)
-{
-  return pexp_double(x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet4f psin<Packet4f>(const Packet4f& _x)
-{
-  return psin_float(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet4f pcos<Packet4f>(const Packet4f& _x)
-{
-  return pcos_float(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet4f pacos<Packet4f>(const Packet4f& _x)
-{
-  return pacos_float(_x);
-}
-
-template <> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet2d patan<Packet2d>(const Packet2d& _x) {
-  return patan_double(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet4f pasin<Packet4f>(const Packet4f& _x)
-{
-  return pasin_float(_x);
-}
-
-template<> EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
-Packet4f patan<Packet4f>(const Packet4f& _x)
-{
-  return patan_float(_x);
-}
+EIGEN_INSTANTIATE_GENERIC_MATH_FUNCS_FLOAT(Packet4f)
+EIGEN_INSTANTIATE_GENERIC_MATH_FUNCS_DOUBLE(Packet2d)
 
 // Notice that for newer processors, it is counterproductive to use Newton
 // iteration for square root. In particular, Skylake and Zen2 processors
@@ -126,15 +52,6 @@ template<> EIGEN_STRONG_INLINE Packet4f preciprocal<Packet4f>(const Packet4f& x)
 #endif
 
 #endif
-
-
-
-// Hyperbolic Tangent function.
-template <>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet4f
-ptanh<Packet4f>(const Packet4f& x) {
-  return internal::generic_fast_tanh_float(x);
-}
 
 } // end namespace internal
 

@@ -9,6 +9,8 @@
 
 #include "./InternalHeaderCheck.h"
 
+#include <memory>
+
 namespace Eigen { 
 
 namespace internal {
@@ -54,41 +56,41 @@ namespace internal {
   {
       typedef float scalar_type;
       typedef fftwf_complex complex_type;
-      fftwf_plan m_plan;
-      fftw_plan() :m_plan(NULL) {}
-      ~fftw_plan() {if (m_plan) fftwf_destroy_plan(m_plan);}
+      std::shared_ptr<fftwf_plan_s> m_plan;
+      fftw_plan() = default;
 
+      void set_plan(fftwf_plan p) { m_plan.reset(p, fftwf_destroy_plan); }
       inline
       void fwd(complex_type * dst,complex_type * src,int nfft) {
-          if (m_plan==NULL) m_plan = fftwf_plan_dft_1d(nfft,src,dst, FFTW_FORWARD, FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftwf_execute_dft( m_plan, src,dst);
+          if (m_plan==NULL) set_plan(fftwf_plan_dft_1d(nfft,src,dst, FFTW_FORWARD, FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftwf_execute_dft( m_plan.get(), src,dst);
       }
       inline
       void inv(complex_type * dst,complex_type * src,int nfft) {
-          if (m_plan==NULL) m_plan = fftwf_plan_dft_1d(nfft,src,dst, FFTW_BACKWARD , FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftwf_execute_dft( m_plan, src,dst);
+          if (m_plan==NULL) set_plan(fftwf_plan_dft_1d(nfft,src,dst, FFTW_BACKWARD , FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftwf_execute_dft( m_plan.get(), src,dst);
       }
       inline
       void fwd(complex_type * dst,scalar_type * src,int nfft) {
-          if (m_plan==NULL) m_plan = fftwf_plan_dft_r2c_1d(nfft,src,dst,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftwf_execute_dft_r2c( m_plan,src,dst);
+          if (m_plan==NULL) set_plan(fftwf_plan_dft_r2c_1d(nfft,src,dst,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftwf_execute_dft_r2c( m_plan.get(),src,dst);
       }
       inline
       void inv(scalar_type * dst,complex_type * src,int nfft) {
           if (m_plan==NULL)
-              m_plan = fftwf_plan_dft_c2r_1d(nfft,src,dst,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftwf_execute_dft_c2r( m_plan, src,dst);
+              set_plan(fftwf_plan_dft_c2r_1d(nfft,src,dst,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftwf_execute_dft_c2r( m_plan.get(), src,dst);
       }
 
       inline 
       void fwd2( complex_type * dst,complex_type * src,int n0,int n1) {
-          if (m_plan==NULL) m_plan = fftwf_plan_dft_2d(n0,n1,src,dst,FFTW_FORWARD,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftwf_execute_dft( m_plan, src,dst);
+          if (m_plan==NULL) set_plan(fftwf_plan_dft_2d(n0,n1,src,dst,FFTW_FORWARD,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftwf_execute_dft( m_plan.get(), src,dst);
       }
       inline 
       void inv2( complex_type * dst,complex_type * src,int n0,int n1) {
-          if (m_plan==NULL) m_plan = fftwf_plan_dft_2d(n0,n1,src,dst,FFTW_BACKWARD,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftwf_execute_dft( m_plan, src,dst);
+          if (m_plan==NULL) set_plan(fftwf_plan_dft_2d(n0,n1,src,dst,FFTW_BACKWARD,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftwf_execute_dft( m_plan.get(), src,dst);
       }
 
   };
@@ -97,40 +99,40 @@ namespace internal {
   {
       typedef double scalar_type;
       typedef fftw_complex complex_type;
-      ::fftw_plan m_plan;
-      fftw_plan() :m_plan(NULL) {}
-      ~fftw_plan() {if (m_plan) fftw_destroy_plan(m_plan);}
+      std::shared_ptr<fftw_plan_s> m_plan;
+      fftw_plan() = default;
 
+      void set_plan(::fftw_plan p) { m_plan.reset(p, fftw_destroy_plan); }
       inline
       void fwd(complex_type * dst,complex_type * src,int nfft) {
-          if (m_plan==NULL) m_plan = fftw_plan_dft_1d(nfft,src,dst, FFTW_FORWARD, FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftw_execute_dft( m_plan, src,dst);
+          if (m_plan==NULL) set_plan(fftw_plan_dft_1d(nfft,src,dst, FFTW_FORWARD, FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftw_execute_dft( m_plan.get(), src,dst);
       }
       inline
       void inv(complex_type * dst,complex_type * src,int nfft) {
-          if (m_plan==NULL) m_plan = fftw_plan_dft_1d(nfft,src,dst, FFTW_BACKWARD , FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftw_execute_dft( m_plan, src,dst);
+          if (m_plan==NULL) set_plan(fftw_plan_dft_1d(nfft,src,dst, FFTW_BACKWARD , FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftw_execute_dft( m_plan.get(), src,dst);
       }
       inline
       void fwd(complex_type * dst,scalar_type * src,int nfft) {
-          if (m_plan==NULL) m_plan = fftw_plan_dft_r2c_1d(nfft,src,dst,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftw_execute_dft_r2c( m_plan,src,dst);
+          if (m_plan==NULL) set_plan(fftw_plan_dft_r2c_1d(nfft,src,dst,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftw_execute_dft_r2c( m_plan.get(),src,dst);
       }
       inline
       void inv(scalar_type * dst,complex_type * src,int nfft) {
           if (m_plan==NULL)
-              m_plan = fftw_plan_dft_c2r_1d(nfft,src,dst,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftw_execute_dft_c2r( m_plan, src,dst);
+              set_plan(fftw_plan_dft_c2r_1d(nfft,src,dst,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftw_execute_dft_c2r( m_plan.get(), src,dst);
       }
       inline 
       void fwd2( complex_type * dst,complex_type * src,int n0,int n1) {
-          if (m_plan==NULL) m_plan = fftw_plan_dft_2d(n0,n1,src,dst,FFTW_FORWARD,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftw_execute_dft( m_plan, src,dst);
+          if (m_plan==NULL) set_plan(fftw_plan_dft_2d(n0,n1,src,dst,FFTW_FORWARD,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftw_execute_dft( m_plan.get(), src,dst);
       }
       inline 
       void inv2( complex_type * dst,complex_type * src,int n0,int n1) {
-          if (m_plan==NULL) m_plan = fftw_plan_dft_2d(n0,n1,src,dst,FFTW_BACKWARD,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftw_execute_dft( m_plan, src,dst);
+          if (m_plan==NULL) set_plan(fftw_plan_dft_2d(n0,n1,src,dst,FFTW_BACKWARD,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftw_execute_dft( m_plan.get(), src,dst);
       }
   };
   template <> 
@@ -138,40 +140,40 @@ namespace internal {
   {
       typedef long double scalar_type;
       typedef fftwl_complex complex_type;
-      fftwl_plan m_plan;
-      fftw_plan() :m_plan(NULL) {}
-      ~fftw_plan() {if (m_plan) fftwl_destroy_plan(m_plan);}
+      std::shared_ptr<fftwl_plan_s> m_plan;
+      fftw_plan() = default;
 
+      void set_plan(fftwl_plan p) { m_plan.reset(p, fftwl_destroy_plan); }
       inline
       void fwd(complex_type * dst,complex_type * src,int nfft) {
-          if (m_plan==NULL) m_plan = fftwl_plan_dft_1d(nfft,src,dst, FFTW_FORWARD, FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftwl_execute_dft( m_plan, src,dst);
+          if (m_plan==NULL) set_plan(fftwl_plan_dft_1d(nfft,src,dst, FFTW_FORWARD, FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftwl_execute_dft( m_plan.get(), src,dst);
       }
       inline
       void inv(complex_type * dst,complex_type * src,int nfft) {
-          if (m_plan==NULL) m_plan = fftwl_plan_dft_1d(nfft,src,dst, FFTW_BACKWARD , FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftwl_execute_dft( m_plan, src,dst);
+          if (m_plan==NULL) set_plan(fftwl_plan_dft_1d(nfft,src,dst, FFTW_BACKWARD , FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftwl_execute_dft( m_plan.get(), src,dst);
       }
       inline
       void fwd(complex_type * dst,scalar_type * src,int nfft) {
-          if (m_plan==NULL) m_plan = fftwl_plan_dft_r2c_1d(nfft,src,dst,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftwl_execute_dft_r2c( m_plan,src,dst);
+          if (m_plan==NULL) set_plan(fftwl_plan_dft_r2c_1d(nfft,src,dst,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftwl_execute_dft_r2c( m_plan.get(),src,dst);
       }
       inline
       void inv(scalar_type * dst,complex_type * src,int nfft) {
           if (m_plan==NULL)
-              m_plan = fftwl_plan_dft_c2r_1d(nfft,src,dst,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftwl_execute_dft_c2r( m_plan, src,dst);
+              set_plan(fftwl_plan_dft_c2r_1d(nfft,src,dst,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftwl_execute_dft_c2r( m_plan.get(), src,dst);
       }
       inline 
       void fwd2( complex_type * dst,complex_type * src,int n0,int n1) {
-          if (m_plan==NULL) m_plan = fftwl_plan_dft_2d(n0,n1,src,dst,FFTW_FORWARD,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftwl_execute_dft( m_plan, src,dst);
+          if (m_plan==NULL) set_plan(fftwl_plan_dft_2d(n0,n1,src,dst,FFTW_FORWARD,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftwl_execute_dft( m_plan.get(), src,dst);
       }
       inline 
       void inv2( complex_type * dst,complex_type * src,int n0,int n1) {
-          if (m_plan==NULL) m_plan = fftwl_plan_dft_2d(n0,n1,src,dst,FFTW_BACKWARD,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT);
-          fftwl_execute_dft( m_plan, src,dst);
+          if (m_plan==NULL) set_plan(fftwl_plan_dft_2d(n0,n1,src,dst,FFTW_BACKWARD,FFTW_ESTIMATE|FFTW_PRESERVE_INPUT));
+          fftwl_execute_dft( m_plan.get(), src,dst);
       }
   };
 

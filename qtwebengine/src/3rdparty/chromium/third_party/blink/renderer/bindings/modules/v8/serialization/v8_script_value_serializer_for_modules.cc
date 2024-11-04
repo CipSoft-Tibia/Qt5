@@ -77,9 +77,7 @@ bool V8ScriptValueSerializerForModules::ExtractTransferable(
   if (exception_state.HadException())
     return false;
 
-  if (V8VideoFrame::HasInstance(object, isolate)) {
-    VideoFrame* video_frame =
-        V8VideoFrame::ToImpl(v8::Local<v8::Object>::Cast(object));
+  if (VideoFrame* video_frame = V8VideoFrame::ToWrappable(isolate, object)) {
     VideoFrameTransferList* transfer_list =
         transferables.GetOrCreateTransferList<VideoFrameTransferList>();
     if (transfer_list->video_frames.Contains(video_frame)) {
@@ -93,9 +91,7 @@ bool V8ScriptValueSerializerForModules::ExtractTransferable(
     return true;
   }
 
-  if (V8AudioData::HasInstance(object, isolate)) {
-    AudioData* audio_data =
-        V8AudioData::ToImpl(v8::Local<v8::Object>::Cast(object));
+  if (AudioData* audio_data = V8AudioData::ToWrappable(isolate, object)) {
     AudioDataTransferList* transfer_list =
         transferables.GetOrCreateTransferList<AudioDataTransferList>();
     if (transfer_list->audio_data_collection.Contains(audio_data)) {
@@ -109,29 +105,24 @@ bool V8ScriptValueSerializerForModules::ExtractTransferable(
     return true;
   }
 
-  if (V8MediaStreamTrack::HasInstance(object, isolate) &&
-      RuntimeEnabledFeatures::MediaStreamTrackTransferEnabled(
-          CurrentExecutionContext(isolate))) {
-    MediaStreamTrack* track =
-        V8MediaStreamTrack::ToImpl(v8::Local<v8::Object>::Cast(object));
-    if (transferables.media_stream_tracks.Contains(track)) {
-      exception_state.ThrowDOMException(
-          DOMExceptionCode::kDataCloneError,
-          "MediaStreamTrack at index " + String::Number(object_index) +
-              " is a duplicate of an earlier MediaStreamTrack.");
-      return false;
+  if (MediaStreamTrack* track =
+          V8MediaStreamTrack::ToWrappable(isolate, object)) {
+    if (RuntimeEnabledFeatures::MediaStreamTrackTransferEnabled(
+            CurrentExecutionContext(isolate))) {
+      if (transferables.media_stream_tracks.Contains(track)) {
+        exception_state.ThrowDOMException(
+            DOMExceptionCode::kDataCloneError,
+            "MediaStreamTrack at index " + String::Number(object_index) +
+                " is a duplicate of an earlier MediaStreamTrack.");
+        return false;
+      }
+      transferables.media_stream_tracks.push_back(track);
+      return true;
     }
-    transferables.media_stream_tracks.push_back(track);
-    return true;
   }
 
-  if (V8MediaSourceHandle::HasInstance(object, isolate) &&
-      RuntimeEnabledFeatures::MediaSourceInWorkersEnabled(
-          CurrentExecutionContext(isolate)) &&
-      RuntimeEnabledFeatures::MediaSourceInWorkersUsingHandleEnabled(
-          CurrentExecutionContext(isolate))) {
-    MediaSourceHandleImpl* media_source_handle =
-        V8MediaSourceHandle::ToImpl(v8::Local<v8::Object>::Cast(object));
+  if (MediaSourceHandleImpl* media_source_handle =
+          V8MediaSourceHandle::ToWrappable(isolate, object)) {
     MediaSourceHandleTransferList* transfer_list =
         transferables.GetOrCreateTransferList<MediaSourceHandleTransferList>();
     if (transfer_list->media_source_handles.Contains(media_source_handle)) {
@@ -325,12 +316,6 @@ bool V8ScriptValueSerializerForModules::WriteDOMObject(
   }
   if (auto* media_source_handle =
           dispatcher.ToMostDerived<MediaSourceHandleImpl>()) {
-    if (!(RuntimeEnabledFeatures::MediaSourceInWorkersEnabled(
-              ExecutionContext::From(GetScriptState())) &&
-          RuntimeEnabledFeatures::MediaSourceInWorkersUsingHandleEnabled(
-              ExecutionContext::From(GetScriptState())))) {
-      return false;
-    }
     if (IsForStorage()) {
       exception_state.ThrowDOMException(
           DOMExceptionCode::kDataCloneError,
@@ -394,6 +379,8 @@ uint32_t AlgorithmIdForWireFormat(WebCryptoAlgorithmId id) {
       return kPbkdf2Tag;
     case kWebCryptoAlgorithmIdEd25519:
       return kEd25519Tag;
+    case kWebCryptoAlgorithmIdX25519:
+      return kX25519Tag;
   }
   NOTREACHED() << "Unknown algorithm ID " << id;
   return 0;
@@ -509,10 +496,15 @@ bool V8ScriptValueSerializerForModules::WriteCryptoKey(
     case kWebCryptoKeyAlgorithmParamsTypeNone:
       switch (algorithm.Id()) {
         case kWebCryptoAlgorithmIdEd25519:
-          WriteOneByte(kEd25519KeyTag);
+        case kWebCryptoAlgorithmIdX25519: {
+          CryptoKeySubTag tag = algorithm.Id() == kWebCryptoAlgorithmIdEd25519
+                                    ? kEd25519KeyTag
+                                    : kX25519KeyTag;
+          WriteOneByte(tag);
           WriteUint32(AlgorithmIdForWireFormat(algorithm.Id()));
           WriteUint32(AsymmetricKeyTypeForWireFormat(key.GetType()));
           break;
+        }
         default:
           DCHECK(WebCryptoAlgorithm::IsKdf(algorithm.Id()));
           WriteOneByte(kNoParamsKeyTag);
@@ -687,8 +679,11 @@ bool V8ScriptValueSerializerForModules::WriteMediaStreamTrack(
 
 bool V8ScriptValueSerializerForModules::WriteCropTarget(
     CropTarget* crop_target) {
+  CHECK(crop_target);
+  const String& id = crop_target->GetId();
+  CHECK(!id.empty());
   WriteAndRequireInterfaceTag(kCropTargetTag);
-  WriteUTF8String(crop_target->GetCropId());
+  WriteUTF8String(id);
   return true;
 }
 

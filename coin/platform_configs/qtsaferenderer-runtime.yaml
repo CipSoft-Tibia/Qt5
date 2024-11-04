@@ -37,9 +37,9 @@ Configurations:
     Compiler: 'GCC'
     Platform dependency: 'ubuntu-22.04'
     Features: ['UseConfigure', 'DoNotRunTests', 'DisableTests', 'Axivion_QSR']
-    Configure arguments: '-nomake examples -release -force-debug-info -separate-debug-info -headersclean -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-doubleconversion -no-libudev -bundled-xcb-xinput'
+    Configure arguments: '-nomake examples -release -separate-debug-info -headersclean -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-doubleconversion -no-libudev -bundled-xcb-xinput'
     Environment variables: [
-        'TARGET_CONFIGURE_ARGS=-release -force-debug-info -developer-build -no-warnings-are-errors -nomake examples -qt-harfbuzz -device linux-generic-g++ -device-option "CROSS_COMPILE={{.Env.QEMUARM64_TOOLCHAIN_CROSS_COMPILE}}" -device-option "DISTRO_OPTS=boot2qt" -no-feature-forkfd_pidfd -qtlibinfix TestInfix',
+        'TARGET_CONFIGURE_ARGS=-release -no-warnings-are-errors -nomake examples -qt-harfbuzz -device linux-generic-g++ -device-option "CROSS_COMPILE={{.Env.QEMUARM64_TOOLCHAIN_CROSS_COMPILE}}" -device-option "DISTRO_OPTS=boot2qt" -no-feature-forkfd_pidfd -qtlibinfix TestInfix',
         'TARGET_CMAKE_ARGS=-DCMAKE_TOOLCHAIN_FILE={{.Env.QEMUARM64_TOOLCHAIN_FILE}} -DQT_FORCE_BUILD_TOOLS=ON',
         'QT_YOCTO_ENVSETUP={{.Env.QEMUARM64_TOOLCHAIN_ENVSETUP}}',
         "QT_CMAKE_DIR=/opt/cmake-3.27.7/bin",
@@ -47,5 +47,35 @@ Configurations:
         'GST_PLUGIN_SCANNER={{.Env.QEMUARM64_TOOLCHAIN_SYSROOT}}/usr/libexec/gstreamer-1.0/gst-plugin-scanner',
         'QT_QUICK_BACKEND=software',
     ]
-
+-
+    Id: 'Axivion-qnx-710-arm64-on-linux'
+    Template: 'qtci-linux-Ubuntu-22.04-x86_64-51'
+    Target os: 'QNX_710'
+    Target arch: 'arm64'
+    Compiler: 'GCC'
+    Target compiler: 'QCC'
+    Platform dependency: 'ubuntu-22.04'
+    Features: ['UseConfigure', 'DoNotRunTests', 'DisableTests', 'Axivion_QSR']
+    Environment variables: [
+        'TARGET_CONFIGURE_ARGS=-release -no-dbus -nomake examples -qtlibinfix TestInfix',
+        'TARGET_CMAKE_ARGS=-DCMAKE_TOOLCHAIN_FILE={{.Env.QNX_710}}/qnx-toolchain-aarch64le.cmake -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON',
+    ]
+-
+    Id: "Axivion-integrity-arm64"
+    Template: 'qtci-linux-Ubuntu-22.04-x86_64-51'
+    Compiler: 'GCC'
+    Target os: 'INTEGRITY'
+    Platform dependency: 'ubuntu-22.04'
+    Features: ['UseConfigure', 'DoNotRunTests', 'DisableTests', 'Axivion_QSR', 'VMSize16']
+    Environment variables: [
+        'TARGET_CONFIGURE_ARGS=-nomake examples -device integrity-armv8-SA8155P -no-feature-library -no-feature-printdialog -no-dbus -no-feature-gtk3 -no-feature-glib -no-feature-libudev -qt-harfbuzz -qt-pcre -no-sql-mysql -no-feature-brotli',
+        'TARGET_CMAKE_ARGS=-DCMAKE_TOOLCHAIN_FILE=/home/qt/integrity_toolchain/toolchain.cmake -DCMAKE_C_COMPILER=cxintarm64 -DCMAKE_CXX_COMPILER=cxintarm64 -DBUILD_qtdoc=OFF -DBUILD_qttranslations=OFF -DUNIX=ON --debug-trycompile',
+        'NON_QTBASE_TARGET_CMAKE_ARGS=-DFEATURE_system_webp=OFF -DQT_FEATURE_timezone=OFF',
+        'INTEGRITY_DIR=/home/qt/integrity_toolchain/hlos_dev_boot/apps/ghs_apps_proc/integrity',
+        'INTEGRITY_BSP=platform-sa8155', 'INTEGRITY_BUILD_TARGET=rel',
+        'QC_MULTIMEDIA_INC_DIR=/home/qt/integrity_toolchain/hlos_dev_boot/apps/ghs_apps_proc/qc_bsp/include/amss/multimedia',
+        'GL_INC_DIR=/home/qt/integrity_toolchain/hlos_dev_boot/apps/ghs_apps_proc/qc_bsp/AMSS/multimedia/graphics/include/public',
+        'GL_LIB_DIR=/home/qt/integrity_toolchain/hlos_dev_boot/apps/ghs_apps_proc/qc_bsp/out/rel/libs/base:/home/qt/integrity_toolchain/hlos_dev_boot/apps/ghs_apps_proc/qc_bsp/out/rel/libs/multimedia/display:/home/qt/integrity_toolchain/hlos_dev_boot/apps/ghs_apps_proc/qc_bsp/out/rel/libs/multimedia/graphics:/home/qt/integrity_toolchain/hlos_dev_boot/apps/ghs_apps_proc/qc_bsp/out/rel/libs/platform/:/home/qt/integrity_toolchain/hlos_dev_boot/apps/ghs_apps_proc/qc_bsp/AMSS/multimedia/graphics/opengl/esx/build/integrity/prebuilt/',
+        'PATH=/home/qt/integrity_toolchain/hlos_dev_boot/apps/ghs_apps_proc/comp:$PATH',
+    ]
 

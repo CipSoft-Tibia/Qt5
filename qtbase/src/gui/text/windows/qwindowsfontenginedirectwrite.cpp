@@ -12,10 +12,14 @@
 #include <QtCore/private/qwinregistry_p.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <qpa/qplatformintegration.h>
-#include <QtGui/private/qhighdpiscaling_p.h>
 #include <QtGui/qpainterpath.h>
 
-#include <dwrite_2.h>
+#if QT_CONFIG(directwrite3)
+#  include "qwindowsdirectwritefontdatabase_p.h"
+#  include <dwrite_3.h>
+#else
+#  include <dwrite_2.h>
+#endif
 
 #include <d2d1.h>
 
@@ -158,10 +162,13 @@ static DWRITE_MEASURING_MODE renderModeToMeasureMode(DWRITE_RENDERING_MODE rende
     }
 }
 
-static DWRITE_RENDERING_MODE hintingPreferenceToRenderingMode(const QFontDef &fontDef)
+DWRITE_RENDERING_MODE QWindowsFontEngineDirectWrite::hintingPreferenceToRenderingMode(const QFontDef &fontDef) const
 {
+    if ((fontDef.styleStrategy & QFont::NoAntialias) && glyphFormat != QFontEngine::Format_ARGB)
+        return DWRITE_RENDERING_MODE_ALIASED;
+
     QFont::HintingPreference hintingPreference = QFont::HintingPreference(fontDef.hintingPreference);
-    if (QHighDpiScaling::isActive() && hintingPreference == QFont::PreferDefaultHinting) {
+    if (!qFuzzyCompare(qApp->devicePixelRatio(), 1.0) && hintingPreference == QFont::PreferDefaultHinting) {
         // Microsoft documentation recommends using asymmetric rendering for small fonts
         // at pixel size 16 and less, and symmetric for larger fonts.
         hintingPreference = fontDef.pixelSize > 16.0
@@ -354,7 +361,7 @@ void QWindowsFontEngineDirectWrite::collectMetrics()
         fontFile->Release();
     }
 
-    QByteArray table = getSfntTable(MAKE_TAG('h', 'h', 'e', 'a'));
+    QByteArray table = getSfntTable(QFont::Tag("hhea").value());
     const int advanceWidthMaxLocation = 10;
     if (table.size() >= advanceWidthMaxLocation + int(sizeof(quint16))) {
         quint16 advanceWidthMax = qFromBigEndian<quint16>(table.constData() + advanceWidthMaxLocation);
@@ -480,7 +487,8 @@ void QWindowsFontEngineDirectWrite::recalcAdvances(QGlyphLayout *glyphs, QFontEn
     DWRITE_RENDERING_MODE renderMode = hintingPreferenceToRenderingMode(fontDef);
     bool needsDesignMetrics = shaperFlags & QFontEngine::DesignMetrics;
     if (!needsDesignMetrics && (renderMode == DWRITE_RENDERING_MODE_GDI_CLASSIC
-                             || renderMode == DWRITE_RENDERING_MODE_GDI_NATURAL)) {
+                             || renderMode == DWRITE_RENDERING_MODE_GDI_NATURAL
+                             || renderMode == DWRITE_RENDERING_MODE_ALIASED)) {
         hr = m_directWriteFontFace->GetGdiCompatibleGlyphMetrics(float(fontDef.pixelSize),
                                                                  1.0f,
                                                                  NULL,
@@ -669,7 +677,8 @@ QImage QWindowsFontEngineDirectWrite::alphaMapForGlyph(glyph_t glyph,
 
 bool QWindowsFontEngineDirectWrite::supportsHorizontalSubPixelPositions() const
 {
-    return true;
+    DWRITE_RENDERING_MODE renderMode = hintingPreferenceToRenderingMode(fontDef);
+    return renderMode != DWRITE_RENDERING_MODE_ALIASED;
 }
 
 QFontEngine::Properties QWindowsFontEngineDirectWrite::properties() const
@@ -772,7 +781,10 @@ QImage QWindowsFontEngineDirectWrite::imageForGlyph(glyph_t t,
 
     if (SUCCEEDED(hr)) {
         RECT rect;
-        glyphAnalysis->GetAlphaTextureBounds(DWRITE_TEXTURE_CLEARTYPE_3x1, &rect);
+        glyphAnalysis->GetAlphaTextureBounds(renderMode == DWRITE_RENDERING_MODE_ALIASED
+                                                ? DWRITE_TEXTURE_ALIASED_1x1
+                                                : DWRITE_TEXTURE_CLEARTYPE_3x1,
+                                             &rect);
 
         if (rect.top == rect.bottom || rect.left == rect.right)
             return QImage();
@@ -853,7 +865,8 @@ QImage QWindowsFontEngineDirectWrite::imageForGlyph(glyph_t t,
                                    b,
                                    a,
                                    colorGlyphsAnalysis,
-                                   boundingRect);
+                                   boundingRect,
+                                   renderMode);
                 }
                 colorGlyphsAnalysis->Release();
 
@@ -880,7 +893,8 @@ QImage QWindowsFontEngineDirectWrite::imageForGlyph(glyph_t t,
                            b,
                            a,
                            glyphAnalysis,
-                           boundingRect);
+                           boundingRect,
+                           renderMode);
         }
 
         glyphAnalysis->Release();
@@ -898,7 +912,8 @@ void QWindowsFontEngineDirectWrite::renderGlyphRun(QImage *destination,
                                                    float b,
                                                    float a,
                                                    IDWriteGlyphRunAnalysis *glyphAnalysis,
-                                                   const QRect &boundingRect)
+                                                   const QRect &boundingRect,
+                                                   DWRITE_RENDERING_MODE renderMode)
 {
     const int width = destination->width();
     const int height = destination->height();
@@ -919,12 +934,14 @@ void QWindowsFontEngineDirectWrite::renderGlyphRun(QImage *destination,
         BYTE *alphaValues = alphaValueArray.data();
         memset(alphaValues, 0, size);
 
-        HRESULT hr = glyphAnalysis->CreateAlphaTexture(DWRITE_TEXTURE_CLEARTYPE_3x1,
+        HRESULT hr = glyphAnalysis->CreateAlphaTexture(renderMode == DWRITE_RENDERING_MODE_ALIASED
+                                                               ? DWRITE_TEXTURE_ALIASED_1x1
+                                                               : DWRITE_TEXTURE_CLEARTYPE_3x1,
                                                        &rect,
                                                        alphaValues,
                                                        size);
         if (SUCCEEDED(hr)) {
-            if (destination->hasAlphaChannel()) {
+            if (destination->hasAlphaChannel()) { // Color glyphs
                 for (int y = 0; y < height; ++y) {
                     uint *dest = reinterpret_cast<uint *>(destination->scanLine(y));
                     BYTE *src = alphaValues + width * 3 * y;
@@ -942,7 +959,16 @@ void QWindowsFontEngineDirectWrite::renderGlyphRun(QImage *destination,
                                         qRound(qAlpha(currentRgb) * (1.0 - averageAlpha) + averageAlpha * 255));
                     }
                 }
+            } else if (renderMode == DWRITE_RENDERING_MODE_ALIASED) {
+                for (int y = 0; y < height; ++y) {
+                    uint *dest = reinterpret_cast<uint *>(destination->scanLine(y));
+                    BYTE *src = alphaValues + width * y;
 
+                    for (int x = 0; x < width; ++x) {
+                        int alpha = *(src++);
+                        dest[x] = (alpha << 16) + (alpha << 8) + alpha;
+                    }
+                }
             } else {
                 for (int y = 0; y < height; ++y) {
                     uint *dest = reinterpret_cast<uint *>(destination->scanLine(y));
@@ -1011,6 +1037,27 @@ void QWindowsFontEngineDirectWrite::initFontInfo(const QFontDef &request,
         fontDef.pointSize = fontDef.pixelSize * 72. / dpi;
     else if (fontDef.pixelSize == -1)
         fontDef.pixelSize = qRound(fontDef.pointSize * dpi / 72.);
+
+    m_faceId.variableAxes = request.variableAxisValues;
+
+#if QT_CONFIG(directwrite3)
+    IDWriteFontFace3 *face3 = nullptr;
+    if (SUCCEEDED(m_directWriteFontFace->QueryInterface(__uuidof(IDWriteFontFace3),
+                                                        reinterpret_cast<void **>(&face3)))) {
+        IDWriteLocalizedStrings *names;
+        if (SUCCEEDED(face3->GetFaceNames(&names))) {
+            wchar_t englishLocale[] = L"en-us";
+            fontDef.styleName = QWindowsDirectWriteFontDatabase::localeString(names, englishLocale);
+            names->Release();
+        }
+
+        // Color font
+        if (face3->GetPaletteEntryCount() > 0)
+            glyphFormat = QFontEngine::Format_ARGB;
+
+        face3->Release();
+    }
+#endif
 }
 
 QString QWindowsFontEngineDirectWrite::fontNameSubstitute(const QString &familyName)
@@ -1096,7 +1143,7 @@ glyph_metrics_t QWindowsFontEngineDirectWrite::alphaMapBoundingBox(glyph_t glyph
 
     if (SUCCEEDED(hr)) {
         RECT rect;
-        glyphAnalysis->GetAlphaTextureBounds(DWRITE_TEXTURE_CLEARTYPE_3x1, &rect);
+        glyphAnalysis->GetAlphaTextureBounds(renderMode == DWRITE_RENDERING_MODE_ALIASED ? DWRITE_TEXTURE_ALIASED_1x1 : DWRITE_TEXTURE_CLEARTYPE_3x1, &rect);
         glyphAnalysis->Release();
 
         int margin = glyphMargin(format);

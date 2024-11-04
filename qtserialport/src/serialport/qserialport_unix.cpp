@@ -6,6 +6,7 @@
 #include "qserialport_p.h"
 #include "qserialportinfo_p.h"
 
+#include <QtCore/qdeadlinetimer.h>
 #include <QtCore/qelapsedtimer.h>
 #include <QtCore/qmap.h>
 #include <QtCore/qsocketnotifier.h>
@@ -750,13 +751,15 @@ bool QSerialPortPrivate::readNotification()
 
     buffer.chop(bytesToRead - qMax(readBytes, qint64(0)));
 
-    if (readBytes <= 0) {
+    if (readBytes < 0) {
         QSerialPortErrorInfo error = getSystemError();
         if (error.errorCode != QSerialPort::ResourceError)
             error.errorCode = QSerialPort::ReadError;
         else
             setReadNotificationEnabled(false);
         setError(error);
+        return false;
+    } else if (readBytes == 0) {
         return false;
     }
 
@@ -995,7 +998,7 @@ bool QSerialPortPrivate::waitForReadOrWrite(bool *selectForRead, bool *selectFor
     if (checkWrite)
         pfd.events |= POLLOUT;
 
-    const int ret = qt_poll_msecs(&pfd, 1, msecs);
+    const int ret = qt_safe_poll(&pfd, 1, QDeadlineTimer(msecs));
     if (ret < 0) {
         setError(getSystemError());
         return false;

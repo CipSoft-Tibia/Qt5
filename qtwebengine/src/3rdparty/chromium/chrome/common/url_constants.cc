@@ -144,10 +144,17 @@ const char kDownloadInterruptedLearnMoreURL[] =
 const char kDownloadScanningLearnMoreURL[] =
     "https://support.google.com/chrome/?p=ib_download_blocked";
 
+// Note: This is the same as the above URL. This is done to decouple the URLs,
+// in case the support page is split apart into separate pages in the future.
+const char kDownloadBlockedLearnMoreURL[] =
+    "https://support.google.com/chrome/?p=ib_download_blocked";
+
 const char kExtensionControlledSettingLearnMoreURL[] =
     "https://support.google.com/chrome/?p=ui_settings_api_extension";
 
 const char kExtensionInvalidRequestURL[] = "chrome-extension://invalid/";
+
+const char kFamilyGroupSiteURL[] = "https://families.google.com/families/";
 
 const char kFirstPartySetsLearnMoreURL[] =
     "https://developer.chrome.com/docs/privacy-sandbox/first-party-sets/";
@@ -179,6 +186,9 @@ const char kGooglePhotosURL[] = "https://photos.google.com";
 
 const char kHighEfficiencyModeLearnMoreUrl[] =
     "https://support.google.com/chrome/?p=chrome_memory_saver";
+
+const char kHighEfficiencyModeTabDiscardingHelpUrl[] =
+    "https://support.google.com/chrome/?p=performance_site_exclusion";
 
 const char kLearnMoreReportingURL[] =
     "https://support.google.com/chrome/?p=ui_usagestat";
@@ -229,6 +239,9 @@ const char kPasswordManagerLearnMoreURL[] =
     "https://support.google.com/chrome/?p=settings_password";
 #endif
 
+const char kPasswordManagerImportLearnMoreURL[] =
+    "https://support.google.com/chrome/?p=import-passwords-desktop";
+
 const char kPaymentMethodsURL[] =
     "https://pay.google.com/payments/"
     "home?utm_source=chrome&utm_medium=settings&utm_campaign=chrome-payment#"
@@ -258,6 +271,12 @@ const char kResetProfileSettingsLearnMoreURL[] =
 
 const char kSafeBrowsingHelpCenterURL[] =
     "https://support.google.com/chrome?p=cpn_safe_browsing";
+
+const char kSafeBrowsingHelpCenterUpdatedURL[] =
+    "https://support.google.com/chrome?p=safe_browsing_preferences";
+
+const char kSafeBrowsingInChromeHelpCenterURL[] =
+    "https://support.google.com/chrome?p=safebrowsing_in_chrome";
 
 const char kSafetyTipHelpCenterURL[] =
     "https://support.google.com/chrome/?p=safety_tip";
@@ -366,6 +385,9 @@ const char kChromeOSAssetPath[] = "/usr/share/chromeos-assets/";
 const char kChromeOSCreditsPath[] =
     "/opt/google/chrome/resources/about_os_credits.html";
 
+const char kChromeOSCreditsCompressedPath[] =
+    "/opt/google/chrome/resources/about_os_credits.html.gz";
+
 // TODO(carpenterr): Have a solution for plink mapping in Help App.
 // The magic numbers in this url are the topic and article ids currently
 // required to navigate directly to a help article in the Help App.
@@ -393,6 +415,12 @@ const char kArcPrivacyPolicyPathFormat[] = "arc_tos/%s/privacy_policy.pdf";
 
 const char kEolNotificationURL[] = "https://www.google.com/chromebook/older/";
 
+const char kEolIncentiveNotificationOfferURL[] =
+    "https://www.google.com/chromebook/renew-chromebook-offer";
+
+const char kEolIncentiveNotificationNoOfferURL[] =
+    "https://www.google.com/chromebook/renew-chromebook";
+
 const char kAutoUpdatePolicyURL[] =
     "https://support.google.com/chrome/a?p=auto-update-policy";
 
@@ -418,6 +446,10 @@ const char kLinuxAppsLearnMoreURL[] =
     "https://support.google.com/chromebook?p=chromebook_linuxapps";
 
 const char kNaturalScrollHelpURL[] =
+    "https://support.google.com/chromebook/?p=simple_scrolling";
+
+// TODO(zhangwenyu): Update link once confirmed.
+const char kScrollAccelerationHelpURL[] =
     "https://support.google.com/chromebook/?p=simple_scrolling";
 
 const char kHapticFeedbackHelpURL[] =
@@ -458,6 +490,18 @@ const char kSmartPrivacySettingsLearnMoreURL[] =
 const char kSmbSharesLearnMoreURL[] =
     "https://support.google.com/chromebook?p=network_file_shares";
 
+const char kGoogleDriveCleanUpStorageLearnMoreURL[] =
+    "https://support.google.com/chromebook?p=cleanup_offline_files";
+
+const char kGoogleDriveOfflineLearnMoreURL[] =
+    "https://support.google.com/chromebook?p=my_drive_cbx";
+
+const char kSpeakOnMuteDetectionLearnMoreURL[] =
+    "https://support.google.com/chromebook?p=mic-mute";
+
+const char kGeolocationToggleLearnMoreURL[] =
+    "https://support.google.com/chromebook/answer/142065";
+
 const char kSuggestedContentLearnMoreURL[] =
     "https://support.google.com/chromebook/?p=explorecontent";
 
@@ -470,6 +514,9 @@ const char kWifiSyncLearnMoreURL[] =
 const char kWifiHiddenNetworkURL[] =
     "https://support.google.com/chromebook?p=hidden_networks";
 
+const char kWifiPasspointURL[] =
+    "https://support.google.com/chromebook?p=wifi_passpoint";
+
 const char kNearbyShareLearnMoreURL[] =
     "https://support.google.com/chromebook?p=nearby_share";
 
@@ -478,6 +525,9 @@ extern const char kNearbyShareManageContactsURL[] =
 
 extern const char kFingerprintLearnMoreURL[] =
     "https://support.google.com/chromebook?p=chromebook_fingerprint";
+
+extern const char kRecoveryLearnMoreURL[] =
+    "https://support.google.com/chrome?p=local_data_recovery";
 
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
@@ -490,9 +540,6 @@ const char kMacOsObsoleteURL[] =
 #endif
 
 #if BUILDFLAG(IS_WIN)
-const char kChromeCleanerLearnMoreURL[] =
-    "https://support.google.com/chrome/?p=chrome_cleanup_tool";
-
 const char kWindowsXPVistaDeprecationURL[] =
     "https://chrome.blogspot.com/2015/11/updates-to-chrome-platform-support.html";
 

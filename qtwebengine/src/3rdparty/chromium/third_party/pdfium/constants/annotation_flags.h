@@ -5,7 +5,7 @@
 #ifndef CONSTANTS_ANNOTATION_FLAGS_H_
 #define CONSTANTS_ANNOTATION_FLAGS_H_
 
-#include <cstdint>
+#include <stdint.h>
 
 namespace pdfium {
 namespace annotation_flags {

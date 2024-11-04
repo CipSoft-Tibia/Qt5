@@ -24,18 +24,17 @@ group("build") {
   ]
 }
 
-tsc_output_dir = "$target_gen_dir/tsc"
-select_to_speak_tsc_output_folder = "$tsc_output_dir/select_to_speak"
+tsc_out_dir = "$target_gen_dir/tsc"
+select_to_speak_tsc_out_dir = "$tsc_out_dir/select_to_speak"
 
 # Add typescript files to compile here.
-ts_modules = []
+ts_modules = [ "select_to_speak/select_to_speak_main.ts" ]
 
 # Root dir must be the parent directory so it can reach common.
 ts_library("ts_build") {
-  allow_js = true
   root_dir = "../"
   in_files = ts_modules
-  out_dir = tsc_output_dir
+  out_dir = tsc_out_dir
 
   definitions = []
 }
@@ -47,19 +46,16 @@ run_jsbundler("select_to_speak_copied_files") {
   dest_dir = select_to_speak_out_dir
   deps = [ ":ts_build" ]
   sources = [
+    "$select_to_speak_tsc_out_dir/select_to_speak_main.js",
     "background.html",
     "checked.png",
     "earcons/null_selection.ogg",
     "input_handler.js",
     "metrics_utils.js",
-    "options.css",
-    "options.html",
     "prefs_manager.js",
     "select_to_speak-2x.svg",
     "select_to_speak.js",
     "select_to_speak_constants.js",
-    "select_to_speak_main.js",
-    "select_to_speak_options.js",
     "sts-icon-128.png",
     "sts-icon-16.png",
     "sts-icon-48.png",
@@ -68,7 +64,7 @@ run_jsbundler("select_to_speak_copied_files") {
     "unchecked.png",
   ]
   rewrite_rules = [
-    rebase_path(select_to_speak_tsc_output_folder, root_build_dir) + ":",
+    rebase_path(select_to_speak_tsc_out_dir, root_build_dir) + ":",
     rebase_path(".", root_build_dir) + ":",
     rebase_path(closure_library_dir, root_build_dir) + ":closure",
   ]
@@ -105,7 +101,6 @@ js2gtest("select_to_speak_extjs_tests") {
     "select_to_speak_keystroke_selection_test.js",
     "select_to_speak_mouse_selection_test.js",
     "select_to_speak_navigation_control_test.js",
-    "select_to_speak_options_test.js",
     "select_to_speak_prefs_test.js",
   ]
 
@@ -146,7 +141,6 @@ js_type_check("closure_compile") {
     ":prefs_manager",
     ":select_to_speak",
     ":select_to_speak_constants",
-    ":select_to_speak_options",
     ":tts_manager",
     ":ui_manager",
     "../common:automation_predicate",
@@ -186,16 +180,6 @@ js_library("select_to_speak") {
     "$externs_path/clipboard.js",
     "$externs_path/command_line_private.js",
     "$externs_path/pending.js",
-    "$externs_path/tts.js",
-  ]
-}
-
-js_library("select_to_speak_options") {
-  deps = [ ":prefs_manager" ]
-  externs_list = [
-    "$externs_path/accessibility_private.js",
-    "$externs_path/automation.js",
-    "$externs_path/metrics_private.js",
     "$externs_path/tts.js",
   ]
 }

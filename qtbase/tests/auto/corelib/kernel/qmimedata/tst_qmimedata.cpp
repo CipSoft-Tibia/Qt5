@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -85,6 +85,14 @@ void tst_QMimeData::data() const
     QCOMPARE(mimeData.data("text/markdown"), QByteArray("vikings"));
     QCOMPARE(mimeData.data("text/html"), QByteArray("ninjas"));
     QCOMPARE(mimeData.data("text/plain"), QByteArray("pirates"));
+
+    // URI list
+    QByteArray list = "https://example.com/\r\nhttps://example.net/\r\nhttps://example.org/\r\n";
+    mimeData.setData("text/uri-list", list);
+    QCOMPARE(mimeData.data("text/uri-list"), list);
+
+    mimeData.setData("text/uri-list", list.chopped(2)); // without the ending CRLF
+    QCOMPARE(mimeData.data("text/uri-list"), list);
 }
 
 void tst_QMimeData::formats() const
@@ -310,7 +318,8 @@ void tst_QMimeData::setUrls() const
     QCOMPARE(mimeData.text(), QString("http://qt-project.org\nhttp://www.google.com\n"));
 
     // test and verify that setData doesn't corrupt url content
-    foreach (const QString &format, mimeData.formats()) {
+    const auto allFormats = mimeData.formats();
+    for (const QString &format : allFormats) {
          QVariant before = mimeData.retrieveData(format, QMetaType(QMetaType::QByteArray));
          mimeData.setData(format, mimeData.data(format));
          QVariant after = mimeData.retrieveData(format, QMetaType(QMetaType::QByteArray));

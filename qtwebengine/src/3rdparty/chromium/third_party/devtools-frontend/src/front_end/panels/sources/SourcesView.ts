@@ -16,11 +16,10 @@ import * as UI from '../../ui/legacy/legacy.js';
 import * as Components from './components/components.js';
 import {EditingLocationHistoryManager} from './EditingLocationHistoryManager.js';
 import sourcesViewStyles from './sourcesView.css.js';
-
 import {
+  type EditorSelectedEvent,
   Events as TabbedEditorContainerEvents,
   TabbedEditorContainer,
-  type EditorSelectedEvent,
   type TabbedEditorContainerDelegate,
 } from './TabbedEditorContainer.js';
 import {Events as UISourceCodeFrameEvents, UISourceCodeFrame} from './UISourceCodeFrame.js';
@@ -35,13 +34,18 @@ const UIStrings = {
    */
   runCommand: 'Run command',
   /**
-   *@description Text in Sources View of the Sources panel
+   *@description Text in Sources View of the Sources panel. This sentence follows by a list of actions.
    */
-  dropInAFolderToAddToWorkspace: 'Drop in a folder to add to workspace',
+  workspaceDropInAFolderToSyncSources: 'To sync edits to the workspace, drop a folder with your sources here or:',
+  /**
+   *@description Text in Sources View of the Sources panel.
+   */
+  selectFolder: 'select folder',
   /**
    *@description Accessible label for Sources placeholder view actions list
    */
   sourceViewActions: 'Source View Actions',
+
 };
 const str_ = i18n.i18n.registerUIStrings('panels/sources/SourcesView.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -148,33 +152,40 @@ export class SourcesView extends Common.ObjectWrapper.eventMixin<EventTypes, typ
     const shortcuts = [
       {actionId: 'quickOpen.show', description: i18nString(UIStrings.openFile)},
       {actionId: 'commandMenu.show', description: i18nString(UIStrings.runCommand)},
-      {actionId: 'sources.add-folder-to-workspace', description: i18nString(UIStrings.dropInAFolderToAddToWorkspace)},
+      {
+        actionId: 'sources.add-folder-to-workspace',
+        description: i18nString(UIStrings.workspaceDropInAFolderToSyncSources),
+        isWorkspace: true,
+      },
     ];
 
-    const element = document.createElement('div');
-    const list = element.createChild('div', 'tabbed-pane-placeholder');
+    const list = document.createElement('div');
     list.addEventListener('keydown', this.placeholderOnKeyDown.bind(this), false);
     UI.ARIAUtils.markAsList(list);
-    UI.ARIAUtils.setAccessibleName(list, i18nString(UIStrings.sourceViewActions));
+    UI.ARIAUtils.setLabel(list, i18nString(UIStrings.sourceViewActions));
 
-    for (let i = 0; i < shortcuts.length; i++) {
-      const shortcut = shortcuts[i];
+    for (const shortcut of shortcuts) {
       const shortcutKeyText = UI.ShortcutRegistry.ShortcutRegistry.instance().shortcutTitleForAction(shortcut.actionId);
-      const listItemElement = list.createChild('div');
+      const listItemElement = list.createChild('div', 'tabbed-pane-placeholder-row');
       UI.ARIAUtils.markAsListitem(listItemElement);
-      const row = (listItemElement.createChild('div', 'tabbed-pane-placeholder-row') as HTMLElement);
-      row.tabIndex = -1;
-      UI.ARIAUtils.markAsButton(row);
       if (shortcutKeyText) {
-        row.createChild('div', 'tabbed-pane-placeholder-key').textContent = shortcutKeyText;
-        row.createChild('div', 'tabbed-pane-placeholder-value').textContent = shortcut.description;
-      } else {
-        row.createChild('div', 'tabbed-pane-no-shortcut').textContent = shortcut.description;
+        listItemElement.createChild('span').textContent = shortcutKeyText;
+        listItemElement.createChild('span').textContent = shortcut.description;
       }
+
+      if (shortcut.isWorkspace) {
+        const workspace = listItemElement.createChild('span', 'workspace');
+        workspace.textContent = shortcut.description;
+
+        const browseButton = workspace.createChild('button');
+        browseButton.textContent = i18nString(UIStrings.selectFolder);
+        browseButton.addEventListener('click', this.addFileSystemClicked.bind(this));
+      }
+
       const action = UI.ActionRegistry.ActionRegistry.instance().action(shortcut.actionId);
       if (action) {
         this.placeholderOptionArray.push({
-          element: row,
+          element: listItemElement,
           handler(): void {
             void action.execute();
           },
@@ -182,10 +193,16 @@ export class SourcesView extends Common.ObjectWrapper.eventMixin<EventTypes, typ
       }
     }
 
-    element.appendChild(
-        UI.XLink.XLink.create('https://developer.chrome.com/docs/devtools/workspaces/', 'Learn more about Workspaces'));
+    return list;
+  }
 
-    return element;
+  private async addFileSystemClicked(): Promise<void> {
+    const result = await Persistence.IsolatedFileSystemManager.IsolatedFileSystemManager.instance().addFileSystem();
+    if (!result) {
+      return;
+    }
+    Host.userMetrics.actionTaken(Host.UserMetrics.Action.WorkspaceDropFolder);
+    void UI.ViewManager.ViewManager.instance().showView('navigator-files');
   }
 
   private placeholderOnKeyDown(event: Event): void {
@@ -255,13 +272,13 @@ export class SourcesView extends Common.ObjectWrapper.eventMixin<EventTypes, typ
     }
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([sourcesViewStyles]);
     UI.Context.Context.instance().setFlavor(SourcesView, this);
   }
 
-  willHide(): void {
+  override willHide(): void {
     UI.Context.Context.instance().setFlavor(SourcesView, null);
     super.willHide();
   }
@@ -357,7 +374,7 @@ export class SourcesView extends Common.ObjectWrapper.eventMixin<EventTypes, typ
   }
 
   showSourceLocation(
-      uiSourceCode: Workspace.UISourceCode.UISourceCode, location?: {lineNumber: number, columnNumber?: number}|number,
+      uiSourceCode: Workspace.UISourceCode.UISourceCode, location?: SourceFrame.SourceFrame.RevealPosition,
       omitFocus?: boolean, omitHighlight?: boolean): void {
     const currentFrame = this.currentSourceFrame();
     if (currentFrame) {
@@ -389,8 +406,6 @@ export class SourcesView extends Common.ObjectWrapper.eventMixin<EventTypes, typ
         Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.HEADER_OVERRIDES)) {
       sourceView = new Components.HeadersView.HeadersView(uiSourceCode);
     } else {
-      const mediaType = Common.ResourceType.ResourceType.mimeFromURL(uiSourceCode.url());
-      Host.userMetrics.sourcesPanelFileOpened(mediaType);
       sourceFrame = new UISourceCodeFrame(uiSourceCode);
     }
 
@@ -622,18 +637,20 @@ export class SourcesView extends Common.ObjectWrapper.eventMixin<EventTypes, typ
   }
 
   save(): void {
-    this.saveSourceView(this.visibleView());
+    this.saveSourceFrame(this.currentSourceFrame());
   }
 
   saveAll(): void {
     const sourceFrames = this.editorContainer.fileViews();
-    sourceFrames.forEach(this.saveSourceView.bind(this));
+    sourceFrames.forEach(this.saveSourceFrame.bind(this));
   }
 
-  private saveSourceView(sourceView: UI.Widget.Widget|null): void {
-    if (sourceView instanceof UISourceCodeFrame || sourceView instanceof Components.HeadersView.HeadersView) {
-      sourceView.commitEditing();
+  private saveSourceFrame(sourceFrame: UI.Widget.Widget|null): void {
+    if (!(sourceFrame instanceof UISourceCodeFrame)) {
+      return;
     }
+    const uiSourceCodeFrame = (sourceFrame as UISourceCodeFrame);
+    uiSourceCodeFrame.commitEditing();
   }
 
   toggleBreakpointsActiveState(active: boolean): void {

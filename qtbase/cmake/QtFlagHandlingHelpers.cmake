@@ -40,7 +40,40 @@ function(qt_internal_add_linker_version_script target)
     endif()
 
     if(TEST_ld_version_script)
-        set(contents "Qt_${PROJECT_VERSION_MAJOR}_PRIVATE_API {\n    qt_private_api_tag*;\n")
+        # Create a list of mangled symbol matches for all "std::" symbols. This
+        # list will catch most symbols, but will miss global-namespace symbols
+        # that only have std parameters.
+        # See https://itanium-cxx-abi.github.io/cxx-abi/abi.html#mangle.name for reference
+        set(contents "NonQt {\nlocal:")
+
+        # For types: vtable, VTT, typeinfo, typeinfo name
+        foreach(ptrqualifier "" "P" "PK")       # T, T *, const T * (volatile ignored)
+            string(APPEND contents "\n    _ZT[VTIS]${ptrqualifier}S*;"
+                "_ZT[VTIS]${ptrqualifier}NS*;")
+        endforeach()
+
+        # For functions and variables
+        foreach(special ""
+                "G[VR]"             # guard variables, extended-lifetime references
+                "GTt")              # transaction entry points
+            foreach(cvqualifier "" "[VK]" "VK")     # plain, const|volatile, const volatile
+                string(APPEND contents "\n   ")
+                foreach(refqualifier "" "[RO]")    # plain, & or &&
+                    # For names in the std:: namespace, compression applies
+                    # (https://itanium-cxx-abi.github.io/cxx-abi/abi.html#mangling-compression)
+                    string(APPEND contents
+                        " _Z${special}${cvqualifier}${refqualifier}S*;"     # plain
+                        " _Z${special}N${cvqualifier}${refqualifier}S*;"    # nested name
+                    )
+                endforeach()
+            endforeach()
+        endforeach()
+
+        string(APPEND contents "\n};\nQt_${PROJECT_VERSION_MAJOR}")
+        if(QT_FEATURE_elf_private_full_version)
+            string(APPEND contents ".${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}")
+        endif()
+        string(APPEND contents "_PRIVATE_API { qt_private_api_tag*;\n")
         if(arg_PRIVATE_HEADERS)
             foreach(ph ${arg_PRIVATE_HEADERS})
                 string(APPEND contents "    @FILE:${ph}@\n")
@@ -107,6 +140,12 @@ endfunction()
 
 function(qt_internal_add_link_flags_no_undefined target)
     if (NOT QT_BUILD_SHARED_LIBS OR WASM)
+        return()
+    endif()
+    if (VXWORKS)
+        # VxWorks requires thread_local-related symbols to be found at
+        # runtime, resulting in linker error when no-undefined flag is
+        # set and thread_local is used
         return()
     endif()
     if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
@@ -250,21 +289,21 @@ function(qt_internal_set_exceptions_flags target exceptions_on)
         if(MSVC)
             set(_flag "/EHsc")
             if((MSVC_VERSION GREATER_EQUAL 1929) AND NOT CLANG)
+                # Use the undocumented compiler flag to make our binary smaller on x64.
+                # https://devblogs.microsoft.com/cppblog/making-cpp-exception-handling-smaller-x64/
+                # NOTE: It seems we'll use this new exception handling model unconditionally without
+                # this hack since some unknown MSVC version.
                 set(_flag ${_flag} "/d2FH4")
             endif()
+        else()
+            set(_flag "-fexceptions")
         endif()
     else()
         set(_defs "QT_NO_EXCEPTIONS")
-        if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
+        if(MSVC)
             set(_flag "/EHs-c-" "/wd4530" "/wd4577")
-        elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU|AppleClang|InteLLLVM")
+        else()
             set(_flag "-fno-exceptions")
-        elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-            if (MSVC)
-                set(_flag "/EHs-c-" "/wd4530" "/wd4577")
-            else()
-                set(_flag "-fno-exceptions")
-            endif()
         endif()
     endif()
 
@@ -365,7 +404,7 @@ function(qt_internal_enable_unicode_defines)
         set(no_unicode_condition
             "$<NOT:$<BOOL:$<TARGET_PROPERTY:QT_NO_UNICODE_DEFINES>>>")
         target_compile_definitions(Platform
-            INTERFACE "$<${no_unicode_condition}:UNICODE;_UNICODE>")
+            INTERFACE "$<${no_unicode_condition}:UNICODE$<SEMICOLON>_UNICODE>")
     endif()
 endfunction()
 

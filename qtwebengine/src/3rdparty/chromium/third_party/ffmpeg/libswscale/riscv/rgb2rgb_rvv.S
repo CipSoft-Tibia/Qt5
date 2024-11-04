@@ -21,13 +21,67 @@
 #include "libavutil/riscv/asm.S"
 
 func ff_shuffle_bytes_0321_rvv, zve32x
-        addi    t1, a0, 3
-        addi    t2, a0, 2
-        addi    t3, a0, 1
+        li      t1, 0x00ff00ff
+        j       1f
+endfunc
+
+func ff_shuffle_bytes_2103_rvv, zve32x
+        li      t1, ~0x00ff00ff
 1:
+        not     t2, t1
+        srai    a2, a2, 2
+2:
+        vsetvli t0, a2, e32, m8, ta, ma
+        vle32.v v8, (a0)
+        sub     a2, a2, t0
+        vand.vx v16, v8, t2
+        sh2add  a0, t0, a0
+        vand.vx v8, v8, t1
+        vsrl.vi v24, v16, 16
+        vsll.vi v16, v16, 16
+        vor.vv  v8, v8, v24
+        vor.vv  v8, v16, v8
+        vse32.v v8, (a1)
+        sh2add  a1, t0, a1
+        bnez    a2, 2b
+
+        ret
+endfunc
+
+func ff_shuffle_bytes_1230_rvv, zve32x
+        li      t1, 24
+        li      t2, 8
+        j       3f
+endfunc
+
+func ff_shuffle_bytes_3012_rvv, zve32x
+        li      t1, 8
+        li      t2, 24
+3:
+        srai    a2, a2, 2
+4:
+        vsetvli t0, a2, e32, m8, ta, ma
+        vle32.v v8, (a0)
+        sub     a2, a2, t0
+        vsll.vx v16, v8, t1
+        sh2add  a0, t0, a0
+        vsrl.vx v8, v8, t2
+        vor.vv  v16, v16, v8
+        vse32.v v16, (a1)
+        sh2add  a1, t0, a1
+        bnez    a2, 4b
+
+        ret
+endfunc
+
+func ff_shuffle_bytes_3210_rvv, zve32x
+        addi    t1, a0, 2
+        addi    t2, a0, 1
+        addi    t3, a0, 0
+        addi    a0, a0, 3
         srai    a2, a2, 2
         li      t4, 4
-2:
+1:
         vsetvli    t0, a2, e8, m1, ta, ma
         sub        a2, a2, t0
         vlse8.v    v8, (a0), t4
@@ -40,41 +94,9 @@ func ff_shuffle_bytes_0321_rvv, zve32x
         sh2add     t3, t0, t3
         vsseg4e8.v v8, (a1)
         sh2add     a1, t0, a1
-        bnez       a2, 2b
+        bnez       a2, 1b
 
         ret
-endfunc
-
-func ff_shuffle_bytes_2103_rvv, zve32x
-        addi    t1, a0, 1
-        addi    t2, a0, 0
-        addi    t3, a0, 3
-        addi    a0, a0, 2
-        j       1b
-endfunc
-
-func ff_shuffle_bytes_1230_rvv, zve32x
-        addi    t1, a0, 2
-        addi    t2, a0, 3
-        addi    t3, a0, 0
-        addi    a0, a0, 1
-        j       1b
-endfunc
-
-func ff_shuffle_bytes_3012_rvv, zve32x
-        addi    t1, a0, 0
-        addi    t2, a0, 1
-        addi    t3, a0, 2
-        addi    a0, a0, 3
-        j       1b
-endfunc
-
-func ff_shuffle_bytes_3210_rvv, zve32x
-        addi    t1, a0, 2
-        addi    t2, a0, 1
-        addi    t3, a0, 0
-        addi    a0, a0, 3
-        j       1b
 endfunc
 
 func ff_interleave_bytes_rvv, zve32x
@@ -85,7 +107,7 @@ func ff_interleave_bytes_rvv, zve32x
         mv      t3, a3
         addi    a4, a4, -1
 2:
-        vsetvli    t4, t3, e8, ta, ma
+        vsetvli    t4, t3, e8, m1, ta, ma
         sub        t3, t3, t4
         vle8.v     v8, (t0)
         add        t0, t4, t0

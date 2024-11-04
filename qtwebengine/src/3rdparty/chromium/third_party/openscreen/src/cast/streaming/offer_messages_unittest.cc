@@ -1,10 +1,12 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cast/streaming/offer_messages.h"
 
 #include <limits>
+#include <optional>
+#include <string_view>
 #include <utility>
 
 #include "cast/streaming/rtp_defines.h"
@@ -14,8 +16,7 @@
 
 using ::testing::ElementsAre;
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -101,9 +102,8 @@ constexpr char kValidOffer[] = R"({
   ]
 })";
 
-void ExpectFailureOnParse(
-    absl::string_view body,
-    absl::optional<Error::Code> expected = absl::nullopt) {
+void ExpectFailureOnParse(std::string_view body,
+                          std::optional<Error::Code> expected = std::nullopt) {
   ErrorOr<Json::Value> root = json::Parse(body);
   ASSERT_TRUE(root.is_value()) << root.error();
 
@@ -707,5 +707,4 @@ TEST(OfferTest, FailsIfUnencrypted) {
                        Error::Code::kUnencryptedOffer);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

@@ -18,9 +18,9 @@ qt_internal_find_apple_system_framework(FWAudioToolbox AudioToolbox) # special c
 qt_internal_add_module(Multimedia
     PLUGIN_TYPES multimedia
     SOURCES
-        audio/qaudio.cpp audio/qaudio.h
+        audio/qtaudio.cpp audio/qtaudio.h audio/qaudio.h
         audio/qaudiobuffer.cpp audio/qaudiobuffer.h
-        audio/qaudiodecoder.cpp audio/qaudiodecoder.h
+        audio/qaudiodecoder.cpp audio/qaudiodecoder.h audio/qaudiodecoder_p.h
         audio/qaudiodevice.cpp audio/qaudiodevice.h audio/qaudiodevice_p.h
         audio/qaudioinput.cpp audio/qaudioinput.h
         audio/qaudiooutput.cpp audio/qaudiooutput.h
@@ -37,25 +37,27 @@ qt_internal_add_module(Multimedia
         camera/qcamera.cpp camera/qcamera.h camera/qcamera_p.h
         camera/qcameradevice.cpp camera/qcameradevice.h camera/qcameradevice_p.h
         camera/qimagecapture.cpp camera/qimagecapture.h
+        compat/removed_api.cpp
+        platform/qgstreamer_platformspecificinterface.cpp platform/qgstreamer_platformspecificinterface_p.h
         platform/qplatformaudiodecoder.cpp platform/qplatformaudiodecoder_p.h
         platform/qplatformaudioinput_p.h
         platform/qplatformaudiooutput_p.h
         platform/qplatformaudioresampler_p.h
         platform/qplatformcamera.cpp platform/qplatformcamera_p.h
-        platform/qplatformvideosource.cpp platform/qplatformvideosource_p.h
-        platform/qplatformsurfacecapture.cpp platform/qplatformsurfacecapture_p.h
+        platform/qplatformcapturablewindows_p.h
         platform/qplatformimagecapture.cpp platform/qplatformimagecapture_p.h
         platform/qplatformmediacapture.cpp platform/qplatformmediacapture_p.h
         platform/qplatformmediadevices.cpp platform/qplatformmediadevices_p.h
-        platform/qplatformmediarecorder.cpp platform/qplatformmediarecorder_p.h
         platform/qplatformmediaformatinfo.cpp  platform/qplatformmediaformatinfo_p.h
         platform/qplatformmediaintegration.cpp platform/qplatformmediaintegration_p.h
         platform/qplatformmediaplayer.cpp platform/qplatformmediaplayer_p.h
         platform/qplatformmediaplugin.cpp platform/qplatformmediaplugin_p.h
+        platform/qplatformmediarecorder.cpp platform/qplatformmediarecorder_p.h
+        platform/qplatformsurfacecapture.cpp platform/qplatformsurfacecapture_p.h
         platform/qplatformvideodevices.cpp platform/qplatformvideodevices_p.h
         platform/qplatformvideosink.cpp platform/qplatformvideosink_p.h
+        platform/qplatformvideosource.cpp platform/qplatformvideosource_p.h
         playback/qmediaplayer.cpp playback/qmediaplayer.h playback/qmediaplayer_p.h
-        platform/qplatformcapturablewindows_p.h
         qmediadevices.cpp qmediadevices.h
         qmediaenumdebug.h
         qmediaformat.cpp  qmediaformat.h
@@ -63,9 +65,10 @@ qt_internal_add_module(Multimedia
         qmediastoragelocation.cpp qmediastoragelocation_p.h
         qmediatimerange.cpp qmediatimerange.h
         qmultimediautils.cpp qmultimediautils_p.h
+        qmaybe_p.h
         qtmultimediaglobal.h qtmultimediaglobal_p.h
         qerrorinfo_p.h
-        recording/qmediacapturesession.cpp recording/qmediacapturesession.h
+        recording/qmediacapturesession.cpp recording/qmediacapturesession.h recording/qmediacapturesession_p.h
         recording/qmediarecorder.cpp recording/qmediarecorder.h recording/qmediarecorder_p.h
         recording/qscreencapture.cpp recording/qscreencapture.h
         recording/qwindowcapture.cpp recording/qwindowcapture.h
@@ -81,7 +84,7 @@ qt_internal_add_module(Multimedia
         video/qvideoframeconverter.cpp video/qvideoframeconverter_p.h
         video/qvideoframeformat.cpp video/qvideoframeformat.h
         video/qvideowindow.cpp video/qvideowindow_p.h
-        video/qtvideo_p.h
+        video/qtvideo.cpp video/qtvideo.h
     INCLUDE_DIRECTORIES
         audio
         camera
@@ -100,8 +103,14 @@ qt_internal_add_module(Multimedia
     PRIVATE_MODULE_INTERFACE
         Qt::CorePrivate
         Qt::GuiPrivate
+    NO_PCH_SOURCES
+        compat/removed_api.cpp
     GENERATE_CPP_EXPORTS
 )
+
+qt_internal_extend_target(Multimedia
+    CONDITION LINUX OR ANDROID
+    SOURCES qsymbolsresolveutils.cpp qsymbolsresolveutils_p.h)
 
 qt_internal_add_simd_part(Multimedia SIMD sse2
     SOURCES
@@ -163,7 +172,7 @@ qt_internal_extend_target(Multimedia CONDITION ANDROID
         OpenSLES
 )
 
-if (ANDROID)
+if(ANDROID)
     set_property(TARGET Multimedia APPEND PROPERTY QT_ANDROID_BUNDLED_JAR_DEPENDENCIES
         jar/Qt${QtMultimedia_VERSION_MAJOR}AndroidMultimedia.jar:org.qtproject.qt.android.multimedia.QtAudioDeviceManager
     )
@@ -351,7 +360,7 @@ qt_internal_add_shaders(Multimedia "qtmultimedia_shaders_gl_macos_linear"
         "shaders/rectsampler_bgra_linear.frag.qsb"
 )
 
-if (DEFINED QT_DEFAULT_MEDIA_BACKEND)
+if(DEFINED QT_DEFAULT_MEDIA_BACKEND)
     target_compile_definitions(Multimedia
         PRIVATE QT_DEFAULT_MEDIA_BACKEND="${QT_DEFAULT_MEDIA_BACKEND}")
 endif()

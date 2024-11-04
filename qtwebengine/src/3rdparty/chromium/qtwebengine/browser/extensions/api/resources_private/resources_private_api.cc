@@ -64,8 +64,7 @@ ResourcesPrivateGetStringsFunction::ResourcesPrivateGetStringsFunction() {
 ResourcesPrivateGetStringsFunction::~ResourcesPrivateGetStringsFunction() {}
 
 ExtensionFunction::ResponseAction ResourcesPrivateGetStringsFunction::Run() {
-  std::unique_ptr<get_strings::Params> params(
-      get_strings::Params::Create(args()));
+  auto params = get_strings::Params::Create(args());
   base::Value::Dict dict;
 
   api::resources_private::Component component = params->component;

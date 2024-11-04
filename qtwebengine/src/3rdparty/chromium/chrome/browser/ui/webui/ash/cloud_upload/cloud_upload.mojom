@@ -7,7 +7,8 @@ module ash.cloud_upload.mojom;
 // The selected action when the user closes the dialog.
 enum UserAction {
   kCancel,
-  kSetUpGoogleDrive,
+  kCancelGoogleDrive,
+  kCancelOneDrive,
   kSetUpOneDrive,
   kUploadToGoogleDrive,
   kUploadToOneDrive,
@@ -21,12 +22,33 @@ enum DialogPage {
   kFileHandlerDialog,
   // Set up OneDrive (multi-page).
   kOneDriveSetup,
-  // Set up Google Drive (one-page confirmation screen).
-  kGoogleDriveSetup,
   // Confirm that the user wants to move the file to OneDrive.
   kMoveConfirmationOneDrive,
   // Confirm that the user wants to move the file to Google Drive.
   kMoveConfirmationGoogleDrive,
+
+  // A separate dialog when we're only connecting OneDrive by itself.
+  kConnectToOneDrive,
+};
+
+// Used for metrics to represent each individual page of the dialog, and should
+// be kept in sync with OfficeSetupPage in enums.xml.  These values are
+// persisted to logs. Entries should not be renumbered and numeric values should
+// never be reused.
+enum MetricsRecordedSetupPage {
+  kFileHandlerPage = 0,
+  kMoveConfirmationOneDrive = 1,
+  kMoveConfirmationGoogleDrive = 2,
+  kOneDriveSetupWelcome = 3,
+  kOneDriveSetupPWAInstall = 4,
+  kOneDriveSetupODFSMount = 5,
+  kOneDriveSetupComplete = 6,
+};
+
+// Operation used to upload the source file.
+enum OperationType {
+  kMove,
+  kCopy,
 };
 
 // A local file task that is displayed in the `kFileHandlerDialog` which the
@@ -50,11 +72,14 @@ struct DialogArgs {
 
   // The local file tasks the user can pick from to open the files. Displayed in
   // the `kFileHandlerDialog` dialog.
-  array<DialogTask> tasks;
+  array<DialogTask> local_tasks;
 
-  // True if the setup flow is running for the first time. False if running
-  // fixup flow.
-  bool first_time_setup;
+  // True if the setup flow should end with setting Microsoft 365 as default
+  // handler.
+  bool set_office_as_default_handler;
+
+  // Indicates what operation is used to upload the source file (copy or move).
+  OperationType operation_type;
 };
 
 // Lives in the browser process. A renderer uses this to create a page handler
@@ -94,7 +119,30 @@ interface PageHandler {
   // setup as complete so that it does not need to be started again.
   SetOfficeAsDefaultHandler();
 
-  // Set the preference for whether we should always move office files without
-  // asking the user first.
-  SetAlwaysMoveOfficeFiles(bool always_move);
+  // Get the preference for whether we should always move office files to
+  // Google Drive without asking the user first.
+  GetAlwaysMoveOfficeFilesToDrive() => (bool always_move);
+
+  // Set the preference for whether we should always move office files to
+  // Google Drive without asking the user first.
+  SetAlwaysMoveOfficeFilesToDrive(bool always_move);
+
+  // Get the preference for whether we should always move office files to
+  // OneDrive without asking the user first.
+  GetAlwaysMoveOfficeFilesToOneDrive() => (bool always_move);
+
+  // Set the preference for whether we should always move office files to
+  // OneDrive without asking the user first.
+  SetAlwaysMoveOfficeFilesToOneDrive(bool always_move);
+
+  // Get the preference for whether the move to Drive confirmation dialog has
+  // been shown before.
+  GetOfficeMoveConfirmationShownForDrive() => (bool move_confirmation_shown);
+
+  // Get the preference for whether the move to OneDrive confirmation dialog
+  // has been shown before.
+  GetOfficeMoveConfirmationShownForOneDrive() => (bool move_confirmation_shown);
+
+  // Records the page at which the setup was cancelled.
+  RecordCancel(MetricsRecordedSetupPage page);
 };

@@ -26,8 +26,7 @@ namespace Eigen {
   * \tparam Scalar the scalar type of the input matrices
   * \tparam UpLo_ The triangular part that will be used for the computations. It can be Lower
     *               or Upper. Default is Lower.
-  * \tparam OrderingType_ The ordering method to use, either AMDOrdering<> or NaturalOrdering<>. Default is AMDOrdering<int>,
-  *                       unless EIGEN_MPL2_ONLY is defined, in which case the default is NaturalOrdering<int>.
+  * \tparam OrderingType_ The ordering method to use, either AMDOrdering<> or NaturalOrdering<>. Default is AMDOrdering<int>.
   *
   * \implsparsesolverconcept
   *

@@ -17,10 +17,10 @@
 
 #include <vector>
 
-#include "dawn/native/BindGroupLayout.h"
-
+#include "dawn/common/MutexProtected.h"
 #include "dawn/common/SlabAllocator.h"
 #include "dawn/common/vulkan_platform.h"
+#include "dawn/native/BindGroupLayoutInternal.h"
 #include "dawn/native/vulkan/BindGroupVk.h"
 
 namespace dawn::native {
@@ -47,16 +47,12 @@ VkDescriptorType VulkanDescriptorType(const BindingInfo& bindingInfo);
 // the pools are reused when no longer used. Minimizing the number of descriptor pool allocation
 // is important because creating them can incur GPU memory allocation which is usually an
 // expensive syscall.
-class BindGroupLayout final : public BindGroupLayoutBase {
+class BindGroupLayout final : public BindGroupLayoutInternalBase {
   public:
-    static ResultOrError<Ref<BindGroupLayout>> Create(
-        Device* device,
-        const BindGroupLayoutDescriptor* descriptor,
-        PipelineCompatibilityToken pipelineCompatibilityToken);
+    static ResultOrError<Ref<BindGroupLayout>> Create(Device* device,
+                                                      const BindGroupLayoutDescriptor* descriptor);
 
-    BindGroupLayout(DeviceBase* device,
-                    const BindGroupLayoutDescriptor* descriptor,
-                    PipelineCompatibilityToken pipelineCompatibilityToken);
+    BindGroupLayout(DeviceBase* device, const BindGroupLayoutDescriptor* descriptor);
 
     VkDescriptorSetLayout GetHandle() const;
 
@@ -75,8 +71,8 @@ class BindGroupLayout final : public BindGroupLayoutBase {
 
     VkDescriptorSetLayout mHandle = VK_NULL_HANDLE;
 
-    SlabAllocator<BindGroup> mBindGroupAllocator;
-    Ref<DescriptorSetAllocator> mDescriptorSetAllocator;
+    MutexProtected<SlabAllocator<BindGroup>> mBindGroupAllocator;
+    MutexProtected<Ref<DescriptorSetAllocator>> mDescriptorSetAllocator;
 };
 
 }  // namespace dawn::native::vulkan

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,13 +8,11 @@
 #include <memory>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "osp/impl/quic/quic_connection.h"
 #include "platform/api/time.h"
 #include "platform/base/ip_address.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 // This interface provides a way to make new QUIC connections to endpoints.  It
 // also provides a way to receive incoming QUIC connections (as a server).
@@ -42,7 +40,6 @@ class QuicConnectionFactory : public UdpSocket::Client {
       QuicConnection::Delegate* connection_delegate) = 0;
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_IMPL_QUIC_QUIC_CONNECTION_FACTORY_H_

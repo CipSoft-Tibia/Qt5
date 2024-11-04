@@ -33,7 +33,7 @@
 #include <cstddef>
 #include <ostream>
 
-#include "litehtml/os_types.h"
+#include "os_types.h"
 
 namespace litehtml {
 
@@ -47,15 +47,15 @@ namespace litehtml {
 
 class tstring_view {
 public:
-    using value_type = tchar_t;
+    using value_type = char;
 
-    using pointer = tchar_t*;
+    using pointer = char*;
 
-    using const_pointer = const tchar_t*;
+    using const_pointer = const char*;
 
-    using reference = tchar_t&;
+    using reference = char&;
 
-    using const_reference = const tchar_t&;
+    using const_reference = const char&;
 
     using iterator = const_pointer;
 

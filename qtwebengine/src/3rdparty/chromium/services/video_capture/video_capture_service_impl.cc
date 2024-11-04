@@ -29,10 +29,6 @@
 #include "services/video_capture/virtual_device_enabled_device_factory.h"
 #include "services/viz/public/cpp/gpu/gpu.h"
 
-#if BUILDFLAG(IS_MAC)
-#include "media/capture/video/mac/video_capture_device_factory_mac.h"
-#endif
-
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 #include "media/capture/video/chromeos/camera_app_device_bridge_impl.h"
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
@@ -40,8 +36,15 @@
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
 #include "chromeos/crosapi/mojom/video_capture.mojom.h"
 #include "chromeos/lacros/lacros_service.h"
+#include "media/capture/capture_switches.h"
 #include "services/video_capture/lacros/device_factory_adapter_lacros.h"
 #endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
+#include "media/capture/capture_switches.h"
+#include "media/capture/video/video_capture_gpu_channel_host.h"
+#include "services/viz/public/cpp/gpu/context_provider_command_buffer.h"
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
 
 namespace video_capture {
 
@@ -104,6 +107,127 @@ class VideoCaptureServiceImpl::GpuDependenciesContext {
       this};
 };
 
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
+// Intended usage of this class is to create viz::Gpu in utility process and
+// connect to viz::GpuClient of browser process, which will call to Gpu service.
+// Also, this class holds the viz::ContextProvider to listen and monitor Gpu
+// context lost event. The viz::Gpu and viz::ContextProvider need be created in
+// the main thread of utility process. The |main_task_runner_| is initialized as
+// the default single thread task runner of main thread. The
+// viz::ContextProvider will call BindToCurrentSequence on |main_task_runner_|
+// sequence of main thread. Then, the gpu context lost event will be called in
+// the |main_task_runner_| sequence, which will be notified to the
+// media::VideoCaptureGpuChannelHost.
+class VideoCaptureServiceImpl::VizGpuContextProvider
+    : public viz::ContextLostObserver {
+ public:
+  VizGpuContextProvider(std::unique_ptr<viz::Gpu> viz_gpu)
+      : main_task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
+        viz_gpu_(std::move(viz_gpu)) {
+    if (StartContextProviderIfNeeded()) {
+      media::VideoCaptureGpuChannelHost::GetInstance()
+          .SetGpuMemoryBufferManager(viz_gpu_->GetGpuMemoryBufferManager());
+      media::VideoCaptureGpuChannelHost::GetInstance().SetSharedImageInterface(
+          viz_gpu_->GetGpuChannel()->CreateClientSharedImageInterface());
+    }
+  }
+  ~VizGpuContextProvider() override {
+    // Ensure destroy context provider and not receive callbacks before clear up
+    // |viz_gpu_|
+    if (context_provider_) {
+      context_provider_.reset();
+    }
+  }
+
+  // viz::ContextLostObserver implementation.
+  void OnContextLost() override {
+    context_provider_->RemoveObserver(this);
+    context_provider_.reset();
+
+    bool success = StartContextProviderIfNeeded();
+    // Clear the GPU memory buffer manager if failed.
+    if (!success) {
+      media::VideoCaptureGpuChannelHost::GetInstance()
+          .SetGpuMemoryBufferManager(nullptr);
+      media::VideoCaptureGpuChannelHost::GetInstance().SetSharedImageInterface(
+          nullptr);
+    }
+
+    // Notify context lost after new context ready.
+    media::VideoCaptureGpuChannelHost::GetInstance().OnContextLost();
+  }
+
+ private:
+  bool StartContextProviderIfNeeded() {
+    DCHECK_EQ(context_provider_, nullptr);
+    DCHECK(main_task_runner_->BelongsToCurrentThread());
+
+    if (!viz_gpu_) {
+      return false;
+    }
+
+    scoped_refptr<gpu::GpuChannelHost> gpu_channel_host =
+        viz_gpu_->GetGpuChannel();
+    if (!gpu_channel_host || gpu_channel_host->IsLost()) {
+      gpu_channel_host = viz_gpu_->EstablishGpuChannelSync();
+    }
+
+    if (!gpu_channel_host) {
+      return false;
+    }
+
+    scoped_refptr<viz::ContextProvider> context_provider =
+        base::MakeRefCounted<viz::ContextProviderCommandBuffer>(
+            std::move(gpu_channel_host), 0 /* stream ID */,
+            gpu::SchedulingPriority::kNormal, gpu::kNullSurfaceHandle,
+            GURL(std::string("chrome://gpu/VideoCapture")),
+            false /* automatic flushes */, false /* support locking */,
+            false /* support grcontext */,
+            gpu::SharedMemoryLimits::ForMailboxContext(),
+            gpu::ContextCreationAttribs(),
+            viz::command_buffer_metrics::ContextType::VIDEO_CAPTURE);
+
+    const gpu::ContextResult context_result =
+        context_provider->BindToCurrentSequence();
+    if (context_result != gpu::ContextResult::kSuccess) {
+      LOG(ERROR) << "Bind context provider failed.";
+      return false;
+    }
+
+    context_provider->AddObserver(this);
+    context_provider_ = std::move(context_provider);
+    return true;
+  }
+
+  // Task runner for operating |viz_gpu_| and
+  // |context_provider_| on. This must be the main service thread as the
+  // |viz_gpu_| required.
+  scoped_refptr<base::SingleThreadTaskRunner> main_task_runner_;
+  std::unique_ptr<viz::Gpu> viz_gpu_;
+  scoped_refptr<viz::ContextProvider> context_provider_;
+  base::WeakPtrFactory<VizGpuContextProvider> weak_ptr_factory_{this};
+};
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
+
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+bool ShouldUseVCDFromAsh() {
+  // LacrosService might be null in unit tests.
+  auto* lacros_service = chromeos::LacrosService::Get();
+  if (!lacros_service) {
+    return false;
+  }
+  if (!lacros_service
+           ->IsSupported<crosapi::mojom::VideoCaptureDeviceFactory>()) {
+    return false;
+  }
+  // Fake VCD on Lacros side can be used only when using shared memory. Other
+  // than this use case, try to use VCD on Ash side if possible.
+  auto useLacrosFakeVCD = media::ShouldUseFakeVideoCaptureDeviceFactory() &&
+                          !switches::IsVideoCaptureUseGpuMemoryBufferEnabled();
+  return !useLacrosFakeVCD;
+}
+#endif
+
 VideoCaptureServiceImpl::VideoCaptureServiceImpl(
     mojo::PendingReceiver<mojom::VideoCaptureService> receiver,
     scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner)
@@ -163,6 +287,15 @@ void VideoCaptureServiceImpl::BindControlsForTesting(
 void VideoCaptureServiceImpl::LazyInitializeGpuDependenciesContext() {
   if (!gpu_dependencies_context_)
     gpu_dependencies_context_ = std::make_unique<GpuDependenciesContext>();
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
+  if (switches::IsVideoCaptureUseGpuMemoryBufferEnabled()) {
+    if (!viz_gpu_context_provider_) {
+      viz_gpu_context_provider_ =
+          std::make_unique<VizGpuContextProvider>(std::move(viz_gpu_));
+    }
+  }
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
 }
 
 void VideoCaptureServiceImpl::LazyInitializeDeviceFactory() {
@@ -193,24 +326,32 @@ void VideoCaptureServiceImpl::LazyInitializeDeviceFactory() {
       std::make_unique<crosapi::VideoCaptureDeviceFactoryAsh>(
           device_factory_.get());
 #elif BUILDFLAG(IS_CHROMEOS_LACROS)
-  // LacrosService might be null in unit tests.
-  auto* lacros_service = chromeos::LacrosService::Get();
-
-  // For requests for fake (including file) video capture device factory, we
-  // don't need to forward the request to Ash-Chrome.
-  if (!media::ShouldUseFakeVideoCaptureDeviceFactory() && lacros_service &&
-      lacros_service->IsVideoCaptureDeviceFactoryAvailable()) {
+  // Even though Lacros uses GPU memory by default, the camera stack in
+  // Lacros cannot access GPU memory. Therefore, most of requests are
+  // forwarded to Ash-chrome. Requests will not be forwarded to
+  // Ash-chrome only when any of the following
+  //   1. Video capture system can not communicate with crosapi.
+  //   2. Use fake/file camera with shared memory. This is for CQ tests.
+  if (ShouldUseVCDFromAsh()) {
+    if (media::ShouldUseFakeVideoCaptureDeviceFactory()) {
+      LOG(WARNING) << "Remember to add --use-fake-device-for-media-stream to "
+                      "/etc/chrome_dev.conf to use fake/file camera.";
+    }
     mojo::PendingRemote<crosapi::mojom::VideoCaptureDeviceFactory>
         device_factory_ash;
-    lacros_service->BindVideoCaptureDeviceFactory(
+    chromeos::LacrosService::Get()->BindVideoCaptureDeviceFactory(
         device_factory_ash.InitWithNewPipeAndPassReceiver());
     device_factory_ = std::make_unique<VirtualDeviceEnabledDeviceFactory>(
         std::make_unique<DeviceFactoryAdapterLacros>(
             std::move(device_factory_ash)));
   } else {
-    LOG(WARNING)
-        << "Connected to an older version of ash. Use device factory in "
-           "Lacros-Chrome which is backed by Linux VCD instead of CrOS VCD.";
+    if (media::ShouldUseFakeVideoCaptureDeviceFactory()) {
+      VLOG(1) << "Use fake device factory with shared memory in Lacros-Chrome";
+    } else {
+      LOG(WARNING)
+          << "Connected to an older version of ash. Use device factory in "
+             "Lacros-Chrome which is backed by Linux VCD instead of CrOS VCD.";
+    }
     device_factory_ = std::make_unique<VirtualDeviceEnabledDeviceFactory>(
         std::make_unique<DeviceFactoryImpl>(std::move(video_capture_system)));
   }
@@ -240,6 +381,12 @@ void VideoCaptureServiceImpl::OnLastSourceProviderClientDisconnected() {
 void VideoCaptureServiceImpl::OnGpuInfoUpdate(const CHROME_LUID& luid) {
   LazyInitializeDeviceFactory();
   device_factory_->OnGpuInfoUpdate(luid);
+}
+#endif
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
+void VideoCaptureServiceImpl::SetVizGpu(std::unique_ptr<viz::Gpu> viz_gpu) {
+  viz_gpu_ = std::move(viz_gpu);
 }
 #endif
 

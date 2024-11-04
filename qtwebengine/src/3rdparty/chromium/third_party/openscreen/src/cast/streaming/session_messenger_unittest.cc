@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,7 @@
 #include "platform/test/fake_clock.h"
 #include "platform/test/fake_task_runner.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 using ::testing::ElementsAre;
 
@@ -98,7 +97,7 @@ class SessionMessengerTest : public ::testing::Test {
             kSenderId,
             kReceiverId,
             message_store_.GetErrorCallback(),
-            &task_runner_))
+            task_runner_))
 
   {}
 
@@ -562,7 +561,7 @@ TEST_F(SessionMessengerTest, SenderRejectsMessagesWithoutHandler) {
   SimpleMessagePort port(kReceiverId);
   SenderSessionMessenger messenger(&port, kSenderId, kReceiverId,
                                    message_store_.GetErrorCallback(),
-                                   &task_runner_);
+                                   task_runner_);
 
   port.ReceiveMessage(kReceiverId, kCastWebrtcNamespace, R"({
         "seqNum": 12345,
@@ -603,5 +602,4 @@ TEST_F(SessionMessengerTest, UnknownNamespaceMessagesGetDropped) {
   ASSERT_TRUE(message_store_.receiver_messages.empty());
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

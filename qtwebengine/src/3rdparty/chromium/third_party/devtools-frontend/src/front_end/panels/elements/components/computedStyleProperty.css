@@ -20,10 +20,11 @@
   box-sizing: border-box;
   padding-top: 2px;
   white-space: nowrap;
+  user-select: text;
 }
 
 .computed-style-property:hover {
-  background-color: var(--legacy-focus-bg-color);
+  background-color: var(--sys-color-state-hover-on-subtle);
   cursor: text;
 }
 
@@ -44,7 +45,7 @@
   margin-right: calc(var(--goto-size) / 2);
   display: inline-block;
   vertical-align: text-top;
-  color: var(--webkit-css-property-color, var(--color-syntax-1)); /* stylelint-disable-line plugin/use_theme_colors */ /* See: crbug.com/1152736 for color variable migration. */
+  color: var(--webkit-css-property-color, var(--sys-color-token-property-special)); /* stylelint-disable-line plugin/use_theme_colors */ /* See: crbug.com/1152736 for color variable migration. */
 }
 
 .property-value {

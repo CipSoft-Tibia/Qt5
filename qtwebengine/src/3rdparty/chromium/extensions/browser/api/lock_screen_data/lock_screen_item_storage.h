@@ -13,6 +13,7 @@
 
 #include "base/files/file_path.h"
 #include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
@@ -245,19 +246,6 @@ class LockScreenItemStorage : public ExtensionRegistryObserver {
                         CreateCallback callback,
                         OperationResult result);
 
-  // Callback for data item write operation - it invokes the callback with the
-  // operation result.
-  void OnItemWritten(const base::TimeTicks& start_time,
-                     WriteCallback callback,
-                     OperationResult result);
-
-  // Callback for data item read operation - it invokes the callback with the
-  // operation result.
-  void OnItemRead(const base::TimeTicks& start_time,
-                  ReadCallback callback,
-                  OperationResult result,
-                  std::unique_ptr<std::vector<char>> data);
-
   // Callback for item deletion operation. It removes the item from the cached
   // state and invokes the callback with the operation result.
   void OnItemDeleted(const std::string& extension_id,
@@ -302,14 +290,14 @@ class LockScreenItemStorage : public ExtensionRegistryObserver {
   // run.
   void RunExtensionDataLoadCallbacks(CachedExtensionData* cache_data);
 
-  content::BrowserContext* context_;
+  raw_ptr<content::BrowserContext, ExperimentalAsh> context_;
 
   // The user associated with the primary profile.
   const std::string user_id_;
   const std::string crypto_key_;
-  PrefService* local_state_;
+  raw_ptr<PrefService, ExperimentalAsh> local_state_;
 
-  const base::TickClock* tick_clock_;
+  raw_ptr<const base::TickClock, ExperimentalAsh> tick_clock_;
 
   SessionLockedState session_locked_state_ = SessionLockedState::kUnknown;
 

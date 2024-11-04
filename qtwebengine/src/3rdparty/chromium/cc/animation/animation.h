@@ -90,14 +90,7 @@ class CC_ANIMATION_EXPORT Animation : public base::RefCounted<Animation>,
   }
 
   void AttachElement(ElementId element_id);
-  // Specially designed for a custom property animation on a paint worklet
-  // element. It doesn't require an element id to run on the compositor thread.
-  // However, our compositor animation system requires the element to be on the
-  // property tree in order to keep ticking the animation. Therefore, we use a
-  // reserved element id for this animation so that the compositor animation
-  // system recognize it. We do not use 0 as the element id because 0 is
-  // kInvalidElementId.
-  void AttachNoElement();
+  void AttachPaintWorkletElement();
   void DetachElement();
 
   void AddKeyframeModel(std::unique_ptr<KeyframeModel> keyframe_model);
@@ -121,7 +114,7 @@ class CC_ANIMATION_EXPORT Animation : public base::RefCounted<Animation>,
   // Adds TIME_UPDATED event generated in the current frame to the given
   // animation events.
   virtual void TakeTimeUpdatedEvent(AnimationEvents* events) {}
-  virtual void Tick(base::TimeTicks tick_time);
+  virtual bool Tick(base::TimeTicks tick_time);
   bool IsScrollLinkedAnimation() const;
 
   void AddToTicking();

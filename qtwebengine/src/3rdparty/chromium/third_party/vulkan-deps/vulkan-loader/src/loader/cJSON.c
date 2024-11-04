@@ -37,16 +37,25 @@
 #include "cJSON.h"
 
 #include "allocation.h"
+#include "loader.h"
+#include "log.h"
 
 void *cJSON_malloc(const VkAllocationCallbacks *pAllocator, size_t size) {
-    return loader_alloc(pAllocator, size, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+    return loader_calloc(pAllocator, size, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+}
+
+void *cJSON_malloc_instance_scope(const VkAllocationCallbacks *pAllocator, size_t size) {
+    return loader_calloc(pAllocator, size, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
 }
 
 void cJSON_Free(const VkAllocationCallbacks *pAllocator, void *pMemory) { loader_free(pAllocator, pMemory); }
 
+/*
+// commented out as it is unused - static error code channel requires external locks to be used.
 static const char *ep;
 
 const char *cJSON_GetErrorPtr(void) { return ep; }
+*/
 
 char *cJSON_strdup(const VkAllocationCallbacks *pAllocator, const char *str) {
     size_t len;
@@ -173,7 +182,7 @@ char *print_number(cJSON *item, printbuffer *p) {
             str = ensure(item->pAllocator, p, str_buf_size);
         else
             str = (char *)cJSON_malloc(item->pAllocator, str_buf_size);
-        if (str) strcpy(str, "0");
+        if (str) loader_strncpy(str, str_buf_size, "0", 2);
     } else if (fabs(((double)item->valueint) - d) <= DBL_EPSILON && d <= INT_MAX && d >= INT_MIN) {
         str_buf_size = 21; /* 2^64+1 can be represented in 21 chars. */
         if (p)
@@ -251,7 +260,7 @@ const char *parse_string(cJSON *item, const char *str) {
     int len = 0;
     unsigned uc, uc2;
     if (*str != '\"') {
-        ep = str;
+        // ep = str; // commented out as it is unused
         return 0;
     } /* not a string! */
 
@@ -343,17 +352,18 @@ char *print_string_ptr(const VkAllocationCallbacks *pAllocator, const char *str,
     for (ptr = str; *ptr; ptr++) flag |= ((*ptr > 0 && *ptr < 32) || (*ptr == '\"') || (*ptr == '\\')) ? 1 : 0;
     if (!flag) {
         len = ptr - str;
-        out_buf_size = len + 3;
+        out_buf_size = len + 1;
+        // out_buf_size = len + 3; // Modified to not put quotes around the string
         if (p)
             out = ensure(pAllocator, p, out_buf_size);
         else
-            out = (char *)cJSON_malloc(pAllocator, out_buf_size);
+            out = (char *)cJSON_malloc_instance_scope(pAllocator, out_buf_size);
         if (!out) return 0;
         ptr2 = out;
-        *ptr2++ = '\"';
-        strcpy(ptr2, str);
-        ptr2[len] = '\"';
-        ptr2[len + 1] = 0;
+        // *ptr2++ = '\"'; // Modified to not put quotes around the string
+        loader_strncpy(ptr2, out_buf_size, str, out_buf_size);
+        // ptr2[len] = '\"'; // Modified to not put quotes around the string
+        ptr2[len] = 0;  // ptr2[len + 1] = 0; // Modified to not put quotes around the string
         return out;
     }
 
@@ -362,9 +372,9 @@ char *print_string_ptr(const VkAllocationCallbacks *pAllocator, const char *str,
         if (p)
             out = ensure(pAllocator, p, out_buf_size);
         else
-            out = (char *)cJSON_malloc(pAllocator, out_buf_size);
+            out = (char *)cJSON_malloc_instance_scope(pAllocator, out_buf_size);
         if (!out) return 0;
-        strcpy(out, "\"\"");
+        loader_strncpy(out, out_buf_size, "\"\"", 3);
         return out;
     }
     ptr = str;
@@ -378,16 +388,17 @@ char *print_string_ptr(const VkAllocationCallbacks *pAllocator, const char *str,
         token = *ptr;
     }
 
-    out_buf_size = len + 3;
+    out_buf_size = len + 1;
+    // out_buf_size = len + 3; // Modified to not put quotes around the string
     if (p)
         out = ensure(pAllocator, p, out_buf_size);
     else
-        out = (char *)cJSON_malloc(pAllocator, out_buf_size);
+        out = (char *)cJSON_malloc_instance_scope(pAllocator, out_buf_size);
     if (!out) return 0;
 
     ptr2 = out;
     ptr = str;
-    *ptr2++ = '\"';
+    // *ptr2++ = '\"'; // Modified to not put quotes around the string
     while (*ptr) {
         if ((unsigned char)*ptr > 31 && *ptr != '\"' && *ptr != '\\')
             *ptr2++ = *ptr++;
@@ -421,7 +432,7 @@ char *print_string_ptr(const VkAllocationCallbacks *pAllocator, const char *str,
             }
         }
     }
-    *ptr2++ = '\"';
+    // *ptr2++ = '\"'; // Modified to not put quotes around the string
     *ptr2++ = 0;
     return out;
 }
@@ -447,7 +458,7 @@ cJSON *cJSON_ParseWithOpts(const VkAllocationCallbacks *pAllocator, const char *
                            int require_null_terminated) {
     const char *end = 0;
     cJSON *c = cJSON_New_Item(pAllocator);
-    ep = 0;
+    // ep = 0; // commented out as it is unused
     if (!c) return 0; /* memory fail */
 
     end = parse_value(c, skip(value));
@@ -462,7 +473,7 @@ cJSON *cJSON_ParseWithOpts(const VkAllocationCallbacks *pAllocator, const char *
         end = skip(end);
         if (*end) {
             cJSON_Delete(c);
-            ep = end;
+            // ep = end; // commented out as it is unused
             return 0;
         }
     }
@@ -515,7 +526,7 @@ const char *parse_value(cJSON *item, const char *value) {
         return parse_object(item, value);
     }
 
-    ep = value;
+    // ep = value; // commented out as it is unused
     return 0; /* failure. */
 }
 
@@ -527,17 +538,17 @@ char *print_value(cJSON *item, int depth, int fmt, printbuffer *p) {
         switch ((item->type) & 255) {
             case cJSON_NULL: {
                 out = ensure(item->pAllocator, p, 5);
-                if (out) strcpy(out, "null");
+                if (out) loader_strncpy(out, 5, "null", 5);
                 break;
             }
             case cJSON_False: {
                 out = ensure(item->pAllocator, p, 6);
-                if (out) strcpy(out, "false");
+                if (out) loader_strncpy(out, 6, "false", 6);
                 break;
             }
             case cJSON_True: {
                 out = ensure(item->pAllocator, p, 5);
-                if (out) strcpy(out, "true");
+                if (out) loader_strncpy(out, 5, "true", 5);
                 break;
             }
             case cJSON_Number:
@@ -585,7 +596,7 @@ char *print_value(cJSON *item, int depth, int fmt, printbuffer *p) {
 const char *parse_array(cJSON *item, const char *value) {
     cJSON *child;
     if (*value != '[') {
-        ep = value;
+        // ep = value; // commented out as it is unused
         return 0;
     } /* not an array! */
 
@@ -610,7 +621,7 @@ const char *parse_array(cJSON *item, const char *value) {
     }
 
     if (*value == ']') return value + 1; /* end of array */
-    ep = value;
+    // ep = value; // commented out as it is unused
     return 0; /* malformed. */
 }
 
@@ -631,7 +642,7 @@ char *print_array(cJSON *item, int depth, int fmt, printbuffer *p) {
             out = ensure(item->pAllocator, p, 3);
         else
             out = (char *)cJSON_malloc(item->pAllocator, 3);
-        if (out) strcpy(out, "[]");
+        if (out) loader_strncpy(out, 3, "[]", 3);
         return out;
     }
 
@@ -718,7 +729,7 @@ char *print_array(cJSON *item, int depth, int fmt, printbuffer *p) {
 const char *parse_object(cJSON *item, const char *value) {
     cJSON *child;
     if (*value != '{') {
-        ep = value;
+        // ep = value; // commented out as it is unused
         return 0;
     } /* not an object! */
 
@@ -733,7 +744,7 @@ const char *parse_object(cJSON *item, const char *value) {
     child->string = child->valuestring;
     child->valuestring = 0;
     if (*value != ':') {
-        ep = value;
+        // ep = value; // commented out as it is unused
         return 0;
     }                                                  /* fail! */
     value = skip(parse_value(child, skip(value + 1))); /* skip any spacing, get the value. */
@@ -751,7 +762,7 @@ const char *parse_object(cJSON *item, const char *value) {
         child->string = child->valuestring;
         child->valuestring = 0;
         if (*value != ':') {
-            ep = value;
+            // ep = value; // commented out as it is unused
             return 0;
         }                                                  /* fail! */
         value = skip(parse_value(child, skip(value + 1))); /* skip any spacing, get the value. */
@@ -759,7 +770,7 @@ const char *parse_object(cJSON *item, const char *value) {
     }
 
     if (*value == '}') return value + 1; /* end of array */
-    ep = value;
+    // ep = value; // commented out as it is unused
     return 0; /* malformed. */
 }
 
@@ -892,8 +903,9 @@ char *print_object(cJSON *item, int depth, int fmt, printbuffer *p) {
             ptr += tmplen;
             *ptr++ = ':';
             if (fmt) *ptr++ = '\t';
-            strcpy(ptr, entries[j]);
-            ptr += strlen(entries[j]);
+            size_t entries_size = strlen(entries[j]);
+            loader_strncpy(ptr, len - (ptr - out), entries[j], entries_size);
+            ptr += entries_size;
             if (j != numentries - 1) *ptr++ = ',';
             if (fmt) *ptr++ = '\n';
             *ptr = 0;
@@ -1214,4 +1226,161 @@ void cJSON_Minify(char *json) {
             *into++ = *json++; /* All other characters. */
     }
     *into = 0; /* and null-terminate. */
+}
+
+VkResult loader_get_json(const struct loader_instance *inst, const char *filename, cJSON **json) {
+    FILE *file = NULL;
+    char *json_buf = NULL;
+    size_t len;
+    VkResult res = VK_SUCCESS;
+
+    assert(json != NULL);
+
+    *json = NULL;
+
+#if defined(_WIN32)
+    int filename_utf16_size = MultiByteToWideChar(CP_UTF8, 0, filename, -1, NULL, 0);
+    if (filename_utf16_size > 0) {
+        wchar_t *filename_utf16 = (wchar_t *)loader_stack_alloc(filename_utf16_size * sizeof(wchar_t));
+        if (MultiByteToWideChar(CP_UTF8, 0, filename, -1, filename_utf16, filename_utf16_size) == filename_utf16_size) {
+            errno_t wfopen_error = _wfopen_s(&file, filename_utf16, L"rb");
+            if (0 != wfopen_error) {
+                loader_log(inst, VULKAN_LOADER_ERROR_BIT, 0, "loader_get_json: Failed to open JSON file %s", filename);
+            }
+        }
+    }
+#elif COMMON_UNIX_PLATFORMS
+    file = fopen(filename, "rb");
+#else
+#warning fopen not available on this platform
+#endif
+
+    if (!file) {
+        loader_log(inst, VULKAN_LOADER_ERROR_BIT, 0, "loader_get_json: Failed to open JSON file %s", filename);
+        res = VK_ERROR_INITIALIZATION_FAILED;
+        goto out;
+    }
+    // NOTE: We can't just use fseek(file, 0, SEEK_END) because that isn't guaranteed to be supported on all systems
+    size_t fread_ret_count = 0;
+    do {
+        char buffer[256];
+        fread_ret_count = fread(buffer, 1, 256, file);
+    } while (fread_ret_count == 256 && !feof(file));
+    len = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    json_buf = (char *)loader_instance_heap_calloc(inst, len + 1, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+    if (json_buf == NULL) {
+        loader_log(inst, VULKAN_LOADER_ERROR_BIT, 0,
+                   "loader_get_json: Failed to allocate space for JSON file %s buffer of length %d", filename, len);
+        res = VK_ERROR_OUT_OF_HOST_MEMORY;
+        goto out;
+    }
+    if (fread(json_buf, sizeof(char), len, file) != len) {
+        loader_log(inst, VULKAN_LOADER_ERROR_BIT, 0, "loader_get_json: Failed to read JSON file %s.", filename);
+        res = VK_ERROR_INITIALIZATION_FAILED;
+        goto out;
+    }
+    json_buf[len] = '\0';
+
+    // Can't be a valid json if the string is of length zero
+    if (len == 0) {
+        res = VK_ERROR_INITIALIZATION_FAILED;
+        goto out;
+    }
+    // Parse text from file
+    *json = cJSON_Parse(inst ? &inst->alloc_callbacks : NULL, json_buf);
+    if (*json == NULL) {
+        loader_log(inst, VULKAN_LOADER_ERROR_BIT, 0,
+                   "loader_get_json: Failed to parse JSON file %s, this is usually because something ran out of memory.", filename);
+        res = VK_ERROR_OUT_OF_HOST_MEMORY;
+        goto out;
+    }
+
+out:
+    loader_instance_heap_free(inst, json_buf);
+    if (NULL != file) {
+        fclose(file);
+    }
+    if (res != VK_SUCCESS && *json != NULL) {
+        cJSON_Delete(*json);
+        *json = NULL;
+    }
+
+    return res;
+}
+
+VkResult loader_parse_json_string_to_existing_str(const struct loader_instance *inst, cJSON *object, const char *key,
+                                                  size_t out_str_len, char *out_string) {
+    cJSON *item = cJSON_GetObjectItem(object, key);
+    if (NULL == item) {
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+
+    char *str = cJSON_Print(item);
+    if (str == NULL) {
+        return VK_ERROR_OUT_OF_HOST_MEMORY;
+    }
+    if (NULL != out_string) {
+        loader_strncpy(out_string, out_str_len, str, out_str_len);
+        if (out_str_len > 0) {
+            out_string[out_str_len - 1] = '\0';
+        }
+    }
+    loader_instance_heap_free(inst, str);
+    return VK_SUCCESS;
+}
+
+VkResult loader_parse_json_string(cJSON *object, const char *key, char **out_string) {
+    cJSON *item = cJSON_GetObjectItem(object, key);
+    if (NULL == item) {
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+
+    char *str = cJSON_Print(item);
+    if (str == NULL) {
+        return VK_ERROR_OUT_OF_HOST_MEMORY;
+    }
+    if (NULL != out_string) {
+        *out_string = str;
+    }
+    return VK_SUCCESS;
+}
+VkResult loader_parse_json_array_of_strings(const struct loader_instance *inst, cJSON *object, const char *key,
+                                            struct loader_string_list *string_list) {
+    VkResult res = VK_SUCCESS;
+    cJSON *item = cJSON_GetObjectItem(object, key);
+    if (NULL == item) {
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+
+    uint32_t count = cJSON_GetArraySize(item);
+    if (count == 0) {
+        return VK_SUCCESS;
+    }
+
+    res = create_string_list(inst, count, string_list);
+    if (VK_ERROR_OUT_OF_HOST_MEMORY == res) {
+        goto out;
+    }
+    for (uint32_t i = 0; i < count; i++) {
+        cJSON *element = cJSON_GetArrayItem(item, i);
+        if (element == NULL) {
+            return VK_ERROR_INITIALIZATION_FAILED;
+        }
+        char *out_data = cJSON_Print(element);
+        if (out_data == NULL) {
+            res = VK_ERROR_OUT_OF_HOST_MEMORY;
+            goto out;
+        }
+        res = append_str_to_string_list(inst, string_list, out_data);
+        if (VK_ERROR_OUT_OF_HOST_MEMORY == res) {
+            goto out;
+        }
+    }
+out:
+    if (res == VK_ERROR_OUT_OF_HOST_MEMORY && NULL != string_list->list) {
+        free_string_list(inst, string_list);
+    }
+
+    return res;
 }

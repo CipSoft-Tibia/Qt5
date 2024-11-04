@@ -302,6 +302,18 @@ public:
     inline int errorColumnNumber() const
     { return diagnosticMessage().loc.startColumn; }
 
+    inline bool identifierInsertion() const
+    { return m_enableIdentifierInsertion; }
+
+    inline void enableIdentifierInsertion()
+    { m_enableIdentifierInsertion = true; }
+
+    inline bool incompleteBindings() const
+    { return m_enableIncompleteBindings; }
+
+    inline void enableIncompleteBindings()
+    { m_enableIncompleteBindings = true; }
+
 protected:
     bool parse(int startToken);
 
@@ -322,6 +334,7 @@ protected:
     AST::UiQualifiedId *reparseAsQualifiedId(AST::ExpressionNode *expr);
 
     void pushToken(int token);
+    void pushTokenWithEmptyLocation(int token);
     int lookaheadToken(Lexer *lexer);
 
     static DiagnosticMessage compileError(const SourceLocation &location,
@@ -373,6 +386,7 @@ protected:
     QStringView yytokenraw;
     SourceLocation yylloc;
     SourceLocation yyprevlloc;
+    int yyprevtoken = -1;
 
     SavedToken token_buffer[TOKEN_BUFFER_SIZE];
     SavedToken *first_token = nullptr;
@@ -390,6 +404,8 @@ protected:
     CoverExpressionType coverExpressionType = CE_Invalid;
 
     QList<DiagnosticMessage> diagnostic_messages;
+    bool m_enableIdentifierInsertion = false;
+    bool m_enableIncompleteBindings = false;
 };
 
 } // end of namespace QQmlJS
@@ -465,11 +481,13 @@ AST::UiQualifiedId *Parser::reparseAsQualifiedId(AST::ExpressionNode *expr)
 {
     QVarLengthArray<QStringView, 4> nameIds;
     QVarLengthArray<SourceLocation, 4> locations;
+    QVarLengthArray<SourceLocation, 4> dotLocations;
 
     AST::ExpressionNode *it = expr;
     while (AST::FieldMemberExpression *m = AST::cast<AST::FieldMemberExpression *>(it)) {
         nameIds.append(m->name);
         locations.append(m->identifierToken);
+        dotLocations.append(m->dotToken);
         it = m->base;
     }
 
@@ -481,6 +499,7 @@ AST::UiQualifiedId *Parser::reparseAsQualifiedId(AST::ExpressionNode *expr)
         for (int i = nameIds.size() - 1; i != -1; --i) {
             currentId = new (pool) AST::UiQualifiedId(currentId, nameIds[i]);
             currentId->identifierToken = locations[i];
+            currentId->dotToken = dotLocations[i];
         }
 
         return currentId->finish();
@@ -502,9 +521,19 @@ void Parser::pushToken(int token)
     yytoken = token;
 }
 
+void Parser::pushTokenWithEmptyLocation(int token)
+{
+    pushToken(token);
+    yylloc = yyprevlloc;
+    yylloc.offset += yylloc.length;
+    yylloc.startColumn += yylloc.length;
+    yylloc.length = 0;
+}
+
 int Parser::lookaheadToken(Lexer *lexer)
 {
     if (yytoken < 0) {
+        yyprevtoken = yytoken;
         yytoken = lexer->lex();
         yylval = lexer->tokenValue();
         yytokenspell = lexer->tokenSpell();
@@ -600,6 +629,7 @@ bool Parser::parse(int startToken)
 #endif
         if (action > 0) {
             if (action != ACCEPT_STATE) {
+                yyprevtoken = yytoken;
                 yytoken = -1;
                 sym(1).dval = yylval;
                 stringRef(1) = yytokenspell;
@@ -717,7 +747,8 @@ UiHeaderItemList: UiHeaderItemList UiImport;
 ./
 
 PragmaId: JsIdentifier;
-PragmaValue: JsIdentifier;
+PragmaValue: JsIdentifier
+             | T_STRING_LITERAL;
 
 Semicolon: T_AUTOMATIC_SEMICOLON;
 Semicolon: T_SEMICOLON;
@@ -758,6 +789,7 @@ UiPragma: T_PRAGMA PragmaId T_COLON UiPragmaValueList Semicolon;
         AST::UiPragma *pragma = new (pool) AST::UiPragma(
                 stringRef(2), sym(4).UiPragmaValueList->finish());
         pragma->pragmaToken = loc(1);
+        pragma->colonToken = loc(3);
         pragma->semicolonToken = loc(5);
         sym(1).Node = pragma;
     } break;
@@ -1117,6 +1149,20 @@ case $rule_number:
     } break;
 ./
 
+UiObjectMember: UiQualifiedId Semicolon;
+/.
+    case $rule_number: {
+    if (!m_enableIncompleteBindings) {
+        diagnostic_messages.append(compileError(loc(1), QLatin1String("Incomplete binding, expected token `:` or `{`")));
+        return false;
+    }
+    AST::EmptyStatement *statement = new (pool) AST::EmptyStatement;
+    statement->semicolonToken = loc(2);
+    AST::UiScriptBinding *node = new (pool) AST::UiScriptBinding(sym(1).UiQualifiedId, statement);
+    sym(1).Node = node;
+    } break;
+./
+
 UiPropertyType: T_VAR;
 /.  case $rule_number: Q_FALLTHROUGH(); ./
 UiPropertyType: T_RESERVED_WORD;
@@ -1381,6 +1427,7 @@ UiObjectMemberWithArray: UiPropertyAttributes T_IDENTIFIER T_LT UiPropertyType T
         node->typeToken = loc(4);
         node->identifierToken = loc(6);
         node->semicolonToken = loc(7); // insert a fake ';' before ':'
+        node->colonToken = loc(7);
 
         AST::UiQualifiedId *propertyName = new (pool) AST::UiQualifiedId(stringRef(6));
         propertyName->identifierToken = loc(6);
@@ -1410,6 +1457,7 @@ UiObjectMemberExpressionStatementLookahead: UiPropertyAttributes UiPropertyType 
         node->typeToken = loc(2);
         node->identifierToken = loc(3);
         node->semicolonToken = loc(4); // insert a fake ';' before ':'
+        node->colonToken = loc(4);
 
         AST::UiQualifiedId *propertyName = new (pool) AST::UiQualifiedId(stringRef(3));
         propertyName->identifierToken = loc(3);
@@ -1494,6 +1542,7 @@ UiObjectMember: T_COMPONENT T_IDENTIFIER T_COLON UiObjectDefinition;
         }
         auto inlineComponent = new (pool) AST::UiInlineComponent(stringRef(2), sym(4).UiObjectDefinition);
         inlineComponent->componentToken = loc(1);
+        inlineComponent->identifierToken = loc(2);
         sym(1).Node = inlineComponent;
     } break;
 ./
@@ -2139,7 +2188,9 @@ Initializer: T_EQ AssignmentExpression;
 Initializer_In: T_EQ AssignmentExpression_In;
 /.
 case $rule_number: {
-    sym(1) = sym(2);
+    auto node = new (pool) AST::InitializerExpression(sym(2).Expression);
+    node->equalToken = loc(1);
+    sym(1).Expression = node;
 } break;
 ./
 
@@ -3329,7 +3380,7 @@ BindingElisionElement: ElisionOpt BindingElement;
 BindingProperty: BindingIdentifier InitializerOpt_In;
 /.
     case $rule_number: {
-        AST::StringLiteralPropertyName *name = new (pool) AST::StringLiteralPropertyName(stringRef(1));
+        AST::IdentifierPropertyName *name = new (pool) AST::IdentifierPropertyName(stringRef(1));
         name->propertyNameToken = loc(1);
         // if initializer is an anonymous function expression, we need to assign identifierref as it's name
         if (auto *f = asAnonymousFunctionDefinition(sym(2).Expression))
@@ -4775,35 +4826,26 @@ ExportSpecifier: IdentifierName T_AS IdentifierName;
     if (first_token == last_token) {
         const int errorState = state_stack[tos];
 
+        // automatic insertion of missing identifiers after dots
+        if (yytoken != -1 && m_enableIdentifierInsertion && t_action(errorState, T_IDENTIFIER) && yyprevtoken == T_DOT) {
+#ifdef PARSER_DEBUG
+            qDebug() << "Inserting missing identifier between" << spell[yyprevtoken] << "and"
+                     << spell[yytoken];
+#endif
+            pushTokenWithEmptyLocation(T_IDENTIFIER);
+            action = errorState;
+            goto _Lcheck_token;
+        }
+
+
         // automatic insertion of `;'
         if (yytoken != -1 && ((t_action(errorState, T_AUTOMATIC_SEMICOLON) && lexer->canInsertAutomaticSemicolon(yytoken))
                               || t_action(errorState, T_COMPATIBILITY_SEMICOLON))) {
 #ifdef PARSER_DEBUG
             qDebug() << "Inserting automatic semicolon.";
 #endif
-            SavedToken &tk = token_buffer[0];
-            tk.token = yytoken;
-            tk.dval = yylval;
-            tk.spell = yytokenspell;
-            tk.raw = yytokenraw;
-            tk.loc = yylloc;
-
-            yylloc = yyprevlloc;
-            yylloc.offset += yylloc.length;
-            yylloc.startColumn += yylloc.length;
-            yylloc.length = 0;
-
-            //const QString msg = QCoreApplication::translate("QQmlParser", "Missing `;'");
-            //diagnostic_messages.append(compileError(yyloc, msg, QtWarningMsg));
-
-            first_token = &token_buffer[0];
-            last_token = &token_buffer[1];
-
-            yytoken = T_SEMICOLON;
-            yylval = 0;
-
+            pushTokenWithEmptyLocation(T_SEMICOLON);
             action = errorState;
-
             goto _Lcheck_token;
         }
 

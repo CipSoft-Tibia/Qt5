@@ -17,6 +17,7 @@
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/printing/print_view_manager.h"
+#include "chrome/browser/printing/print_view_manager_base.h"
 #include "chrome/browser/task_manager/web_contents_tags.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_finder.h"
@@ -203,24 +204,26 @@ PrintPreviewDialogController* PrintPreviewDialogController::GetInstance() {
   return g_browser_process->print_preview_dialog_controller();
 }
 
-// static
 void PrintPreviewDialogController::PrintPreview(WebContents* initiator) {
 #if BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  ModuleDatabase::DisableThirdPartyBlocking();
+  PrintViewManagerBase::DisableThirdPartyBlocking();
 #endif
 
-  if (initiator->IsCrashed())
+  if (initiator->IsCrashed()) {
     return;
-
-  PrintPreviewDialogController* dialog_controller = GetInstance();
-  if (!dialog_controller)
-    return;
-  if (!dialog_controller->GetOrCreatePreviewDialog(initiator)) {
-    PrintViewManager* print_view_manager =
-        PrintViewManager::FromWebContents(initiator);
-    if (print_view_manager)
-      print_view_manager->PrintPreviewDone();
   }
+
+  if (!GetOrCreatePreviewDialog(initiator)) {
+    auto* print_view_manager = PrintViewManager::FromWebContents(initiator);
+    if (print_view_manager) {
+      print_view_manager->PrintPreviewDone();
+    }
+  }
+}
+
+WebContents* PrintPreviewDialogController::GetOrCreatePreviewDialogForTesting(
+    WebContents* initiator) {
+  return GetOrCreatePreviewDialog(initiator);
 }
 
 WebContents* PrintPreviewDialogController::GetOrCreatePreviewDialog(
@@ -383,14 +386,7 @@ void PrintPreviewDialogController::OnPreviewDialogNavigated(
       ui::PageTransitionCoreTypeIs(type, ui::PAGE_TRANSITION_AUTO_TOPLEVEL) &&
       !navigation_handle->IsSameDocument()) {
     SaveInitiatorTitle(preview_dialog);
-    return;
   }
-
-  // Cloud print sign-in causes a reload, but other cases should not be reached
-  // here.
-  DCHECK(ui::PageTransitionCoreTypeIs(type, ui::PAGE_TRANSITION_RELOAD));
-  DCHECK(
-      IsPrintPreviewURL(navigation_handle->GetPreviousPrimaryMainFrameURL()));
 }
 
 WebContents* PrintPreviewDialogController::CreatePrintPreviewDialog(

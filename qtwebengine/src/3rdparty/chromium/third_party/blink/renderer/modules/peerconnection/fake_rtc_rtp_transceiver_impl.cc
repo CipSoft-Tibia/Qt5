@@ -102,10 +102,7 @@ void FakeRTCRtpSenderImpl::SetParameters(
   NOTIMPLEMENTED();
 }
 
-void FakeRTCRtpSenderImpl::GetStats(
-    RTCStatsReportCallback,
-    const Vector<webrtc::NonStandardGroupId>&,
-    bool is_track_stats_deprecation_trial_enabled) {
+void FakeRTCRtpSenderImpl::GetStats(RTCStatsReportCallback) {
   NOTIMPLEMENTED();
 }
 
@@ -165,10 +162,7 @@ Vector<std::unique_ptr<RTCRtpSource>> FakeRTCRtpReceiverImpl::GetSources() {
   return {};
 }
 
-void FakeRTCRtpReceiverImpl::GetStats(
-    RTCStatsReportCallback,
-    const Vector<webrtc::NonStandardGroupId>&,
-    bool is_track_stats_deprecation_trial_enabled) {
+void FakeRTCRtpReceiverImpl::GetStats(RTCStatsReportCallback) {
   NOTIMPLEMENTED();
 }
 
@@ -237,18 +231,27 @@ FakeRTCRtpTransceiverImpl::FiredDirection() const {
   return absl::nullopt;
 }
 
-webrtc::RTCError FakeRTCRtpTransceiverImpl::SetOfferedRtpHeaderExtensions(
+webrtc::RTCError FakeRTCRtpTransceiverImpl::Stop() {
+  return webrtc::RTCError::OK();
+}
+
+webrtc::RTCError FakeRTCRtpTransceiverImpl::SetCodecPreferences(
+    Vector<webrtc::RtpCodecCapability>) {
+  return webrtc::RTCError::OK();
+}
+
+webrtc::RTCError FakeRTCRtpTransceiverImpl::SetHeaderExtensionsToNegotiate(
     Vector<webrtc::RtpHeaderExtensionCapability> header_extensions) {
   return webrtc::RTCError(webrtc::RTCErrorType::UNSUPPORTED_OPERATION);
 }
 
 Vector<webrtc::RtpHeaderExtensionCapability>
-FakeRTCRtpTransceiverImpl::HeaderExtensionsNegotiated() const {
+FakeRTCRtpTransceiverImpl::GetNegotiatedHeaderExtensions() const {
   return {};
 }
 
 Vector<webrtc::RtpHeaderExtensionCapability>
-FakeRTCRtpTransceiverImpl::HeaderExtensionsToOffer() const {
+FakeRTCRtpTransceiverImpl::GetHeaderExtensionsToNegotiate() const {
   return {};
 }
 

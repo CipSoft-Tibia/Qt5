@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -51,6 +51,12 @@ class TaskRunner {
   // Return true if the calling thread is the thread that task runner is using
   // to run tasks, false otherwise.
   virtual bool IsRunningOnTaskRunner() = 0;
+
+  // Posts a task to delete `object`.
+  template <class T>
+  void DeleteSoon(const T* object) {
+    PostTask([object] { delete static_cast<const T*>(object); });
+  }
 };
 
 }  // namespace openscreen

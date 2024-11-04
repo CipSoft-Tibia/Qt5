@@ -21,6 +21,7 @@
 #include "components/performance_manager/embedder/performance_manager_lifetime.h"
 #include "components/prefs/pref_service.h"
 #include "components/startup_metric_utils/browser/startup_metric_utils.h"
+#include "components/startup_metric_utils/common/startup_metric_utils.h"
 #include "components/subresource_filter/content/browser/ruleset_service.h"
 #include "components/translate/core/browser/translate_download_manager.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -58,6 +59,7 @@
 #include "components/crash/core/common/crash_key.h"
 #include "components/javascript_dialogs/android/app_modal_dialog_view_android.h"  // nogncheck
 #include "components/javascript_dialogs/app_modal_dialog_manager.h"  // nogncheck
+#include "components/metrics/content/subprocess_metrics_provider.h"
 #include "components/metrics/metrics_service.h"
 #include "components/variations/synthetic_trials_active_group_id_provider.h"
 #include "components/variations/variations_ids_provider.h"
@@ -101,7 +103,8 @@ void PublishSubresourceFilterRulesetFromResourceBundle() {
           IDR_SUBRESOURCE_FILTER_UNINDEXED_RULESET_MANIFEST_JSON);
   auto ruleset_manifest = base::JSONReader::Read(ruleset_manifest_string);
   DCHECK(ruleset_manifest);
-  std::string* content_version = ruleset_manifest->FindStringKey("version");
+  std::string* content_version =
+      ruleset_manifest->GetDict().FindString("version");
 
   // Instruct the RulesetService to obtain the unindexed ruleset data from the
   // ResourceBundle and give it the version of that data.
@@ -171,6 +174,7 @@ int BrowserMainPartsImpl::PreCreateThreads() {
       std::make_unique<crash_reporter::ChildProcessCrashObserver>());
 
   crash_reporter::InitializeCrashKeys();
+  CHECK(metrics::SubprocessMetricsProvider::CreateInstance());
 
   // WebLayer initializes the MetricsService once consent is determined.
   // Determining consent is async and potentially slow. VariationsIdsProvider
@@ -257,11 +261,12 @@ int BrowserMainPartsImpl::PreMainMessageLoopRun() {
   // On Android, retrieve the application start time from Java and record it. On
   // other platforms, the application start time was already recorded in the
   // constructor of ContentMainDelegateImpl.
-  startup_metric_utils::RecordApplicationStartTime(GetApplicationStartTime());
+  startup_metric_utils::GetCommon().RecordApplicationStartTime(
+      GetApplicationStartTime());
 #endif  // BUILDFLAG(IS_ANDROID)
   // Record the time at which the main message loop starts. Must be recorded
   // after application start time (see startup_metric_utils.h).
-  startup_metric_utils::RecordBrowserMainMessageLoopStart(
+  startup_metric_utils::GetBrowser().RecordBrowserMainMessageLoopStart(
       base::TimeTicks::Now(), /* is_first_run */ false);
 
 #if BUILDFLAG(IS_ANDROID)
@@ -293,7 +298,8 @@ void BrowserMainPartsImpl::WillRunMainMessageLoop(
 }
 
 void BrowserMainPartsImpl::OnFirstIdle() {
-  startup_metric_utils::RecordBrowserMainLoopFirstIdle(base::TimeTicks::Now());
+  startup_metric_utils::GetBrowser().RecordBrowserMainLoopFirstIdle(
+      base::TimeTicks::Now());
 }
 
 void BrowserMainPartsImpl::PostMainMessageLoopRun() {

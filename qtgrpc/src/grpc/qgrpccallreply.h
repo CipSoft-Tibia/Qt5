@@ -5,8 +5,13 @@
 #ifndef QGRPCCALLREPLY_H
 #define QGRPCCALLREPLY_H
 
+#include <QtCore/qobject.h>
 #include <QtGrpc/qgrpcoperation.h>
 #include <QtGrpc/qtgrpcglobal.h>
+#include <QtGrpc/qgrpcchanneloperation.h>
+
+#include <memory>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -15,10 +20,8 @@ class Q_GRPC_EXPORT QGrpcCallReply final : public QGrpcOperation
     Q_OBJECT
 
 public:
-    explicit QGrpcCallReply(std::shared_ptr<QAbstractProtobufSerializer> serializer);
+    explicit QGrpcCallReply(std::shared_ptr<QGrpcChannelOperation> channelOperation);
     ~QGrpcCallReply() override;
-
-    void abort() override;
 
     template<typename Func1, typename Func2>
     void subscribe(QObject *receiver, Func1 &&finishCallback, Func2 &&errorCallback,

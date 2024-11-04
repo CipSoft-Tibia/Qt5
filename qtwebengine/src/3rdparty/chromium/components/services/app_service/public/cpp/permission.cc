@@ -22,36 +22,32 @@ APP_ENUM_TO_STRING(PermissionType,
                    kFileHandling)
 APP_ENUM_TO_STRING(TriState, kAllow, kBlock, kAsk)
 
-PermissionValue::PermissionValue(bool bool_value) : value(bool_value) {}
+Permission::Permission(PermissionType permission_type,
+                       PermissionValue value,
+                       bool is_managed,
+                       absl::optional<std::string> details)
+    : permission_type(permission_type),
+      value(std::move(value)),
+      is_managed(is_managed),
+      details(std::move(details)) {}
 
-PermissionValue::PermissionValue(TriState tristate_value)
-    : value(tristate_value) {}
+Permission::~Permission() = default;
 
-PermissionValue::~PermissionValue() = default;
-
-bool PermissionValue::operator==(const PermissionValue& other) const {
-  if (absl::holds_alternative<bool>(value) &&
-      absl::holds_alternative<bool>(other.value)) {
-    return absl::get<bool>(value) == absl::get<bool>(other.value);
-  }
-  if (absl::holds_alternative<TriState>(value) &&
-      absl::holds_alternative<TriState>(other.value)) {
-    return absl::get<TriState>(value) == absl::get<TriState>(other.value);
-  }
-  return false;
+bool Permission::operator==(const Permission& other) const {
+  return permission_type == other.permission_type && value == other.value &&
+         is_managed == other.is_managed && details == other.details;
 }
 
-std::unique_ptr<PermissionValue> PermissionValue::Clone() const {
-  if (absl::holds_alternative<bool>(value)) {
-    return std::make_unique<PermissionValue>(absl::get<bool>(value));
-  }
-  if (absl::holds_alternative<TriState>(value)) {
-    return std::make_unique<PermissionValue>(absl::get<TriState>(value));
-  }
-  return nullptr;
+bool Permission::operator!=(const Permission& other) const {
+  return !(*this == other);
 }
 
-bool PermissionValue::IsPermissionEnabled() const {
+PermissionPtr Permission::Clone() const {
+  return std::make_unique<Permission>(permission_type, value, is_managed,
+                                      details);
+}
+
+bool Permission::IsPermissionEnabled() const {
   if (absl::holds_alternative<bool>(value)) {
     return absl::get<bool>(value);
   }
@@ -61,50 +57,17 @@ bool PermissionValue::IsPermissionEnabled() const {
   return false;
 }
 
-Permission::Permission(PermissionType permission_type,
-                       PermissionValuePtr value,
-                       bool is_managed)
-    : permission_type(permission_type),
-      value(std::move(value)),
-      is_managed(is_managed) {}
-
-Permission::~Permission() = default;
-
-bool Permission::operator==(const Permission& other) const {
-  return permission_type == other.permission_type &&
-         ((!value && !other.value) || (*value == *other.value)) &&
-         is_managed == other.is_managed;
-}
-
-bool Permission::operator!=(const Permission& other) const {
-  return !(*this == other);
-}
-
-PermissionPtr Permission::Clone() const {
-  if (!value) {
-    return nullptr;
-  }
-
-  return std::make_unique<Permission>(permission_type, value->Clone(),
-                                      is_managed);
-}
-
-bool Permission::IsPermissionEnabled() const {
-  return value && value->IsPermissionEnabled();
-}
-
 std::string Permission::ToString() const {
   std::stringstream out;
-  out << " permission type: " << EnumToString(permission_type);
-  out << " value: " << std::endl;
-  if (value) {
-    if (absl::holds_alternative<bool>(value->value)) {
-      out << " bool_value: "
-          << (absl::get<bool>(value->value) ? "true" : "false");
-    } else if (absl::holds_alternative<TriState>(value->value)) {
-      out << " tristate_value: "
-          << EnumToString(absl::get<TriState>(value->value));
-    }
+  out << " permission type: " << EnumToString(permission_type) << std::endl;
+  if (absl::holds_alternative<bool>(value)) {
+    out << " bool_value: " << (absl::get<bool>(value) ? "true" : "false");
+  } else if (absl::holds_alternative<TriState>(value)) {
+    out << " tristate_value: " << EnumToString(absl::get<TriState>(value));
+  }
+  out << std::endl;
+  if (details.has_value()) {
+    out << " details: " << details.value() << std::endl;
   }
   out << " is_managed: " << (is_managed ? "true" : "false") << std::endl;
   return out.str();

@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 
@@ -236,7 +236,7 @@ void tst_QAnimationGroupJob::addChildTwice()
 {
     QAbstractAnimationJob *subGroup;
     QAbstractAnimationJob *subGroup2;
-    auto *parent = new QSequentialAnimationGroupJob();
+    auto parent = std::make_unique<QSequentialAnimationGroupJob>();
 
     subGroup = new QAbstractAnimationJob;
     parent->appendAnimation(subGroup);
@@ -266,7 +266,6 @@ void tst_QAnimationGroupJob::addChildTwice()
     QCOMPARE(parent->children()->first(), subGroup2);
     QCOMPARE(parent->children()->last(), subGroup);
 
-    delete parent;
 }
 
 QTEST_MAIN(tst_QAnimationGroupJob)

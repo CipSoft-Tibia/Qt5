@@ -32,8 +32,10 @@
 #ifndef LIBWESTON_BACKEND_INTERNAL_H
 #define LIBWESTON_BACKEND_INTERNAL_H
 
+struct weston_hdr_metadata_type1;
+
 struct weston_backend {
-	void (*destroy)(struct weston_compositor *compositor);
+	void (*destroy)(struct weston_backend *backend);
 
 	/** Begin a repaint sequence
 	 *
@@ -46,31 +48,25 @@ struct weston_backend {
 	 * Returns an opaque pointer, which the backend may use as private
 	 * data referring to the repaint cycle.
 	 */
-	void * (*repaint_begin)(struct weston_compositor *compositor);
+	void (*repaint_begin)(struct weston_backend *backend);
 
 	/** Cancel a repaint sequence
 	 *
 	 * Cancels a repaint sequence, when an error has occurred during
 	 * one output's repaint; see repaint_begin.
-	 *
-	 * @param repaint_data Data returned by repaint_begin
 	 */
-	void (*repaint_cancel)(struct weston_compositor *compositor,
-			       void *repaint_data);
+	void (*repaint_cancel)(struct weston_backend *backend);
 
 	/** Conclude a repaint sequence
 	 *
 	 * Called on successful completion of a repaint sequence; see
 	 * repaint_begin.
-	 *
-	 * @param repaint_data Data returned by repaint_begin
 	 */
-	int (*repaint_flush)(struct weston_compositor *compositor,
-			     void *repaint_data);
+	int (*repaint_flush)(struct weston_backend *backend);
 
 	/** Allocate a new output
 	 *
-	 * @param compositor The compositor.
+	 * @param backend The backend.
 	 * @param name Name for the new output.
 	 *
 	 * Allocates a new output structure that embeds a weston_output,
@@ -80,12 +76,11 @@ struct weston_backend {
 	 * Must set weston_output members @c destroy, @c enable and @c disable.
 	 */
 	struct weston_output *
-	(*create_output)(struct weston_compositor *compositor,
-			 const char *name);
+	(*create_output)(struct weston_backend *backend, const char *name);
 
 	/** Notify of device addition/removal
 	 *
-	 * @param compositor The compositor.
+	 * @param backend The backend.
 	 * @param device The device that has changed.
 	 * @param added Where it was added (or removed)
 	 *
@@ -93,19 +88,19 @@ struct weston_backend {
 	 * The backend can decide what to do based on whether it is a
 	 * device that it is controlling or not.
 	 */
-	void (*device_changed)(struct weston_compositor *compositor,
+	void (*device_changed)(struct weston_backend *backend,
 			       dev_t device, bool added);
 
 	/** Verifies if the dmabuf can be used directly/scanned-out by the HW.
 	 *
-	 * @param compositor The compositor.
+	 * @param backend The backend.
 	 * @param buffer The dmabuf to verify.
 	 *
 	 * Determines if the buffer can be imported directly by the display
 	 * controller/HW. Back-ends can use this to check if the supplied
 	 * buffer can be scanned-out, as to void importing it into the GPU.
 	 */
-	bool (*can_scanout_dmabuf)(struct weston_compositor *compositor,
+	bool (*can_scanout_dmabuf)(struct weston_backend *backend,
 				   struct linux_dmabuf_buffer *buffer);
 };
 
@@ -142,6 +137,10 @@ weston_head_set_subpixel(struct weston_head *head,
 void
 weston_head_set_transform(struct weston_head *head, uint32_t transform);
 
+void
+weston_head_set_supported_eotf_mask(struct weston_head *head,
+				    uint32_t eotf_mask);
+
 /* weston_output */
 
 void
@@ -155,20 +154,29 @@ void
 weston_output_release(struct weston_output *output);
 
 void
-weston_output_init_zoom(struct weston_output *output);
-
-void
 weston_output_finish_frame(struct weston_output *output,
 			   const struct timespec *stamp,
 			   uint32_t presented_flags);
+
+void
+weston_output_repaint_failed(struct weston_output *output);
+
 int
 weston_output_mode_set_native(struct weston_output *output,
 			      struct weston_mode *mode,
 			      int32_t scale);
+
+struct weston_coord_global
+weston_coord_global_from_output_point(double x, double y,
+				      const struct weston_output *output);
+
 void
-weston_output_transform_coordinate(struct weston_output *output,
-				   double device_x, double device_y,
-				   double *x, double *y);
+weston_region_global_to_output(pixman_region32_t *dst,
+			       struct weston_output *output,
+			       pixman_region32_t *src);
+
+const struct weston_hdr_metadata_type1 *
+weston_output_get_hdr_metadata_type1(const struct weston_output *output);
 
 /* weston_seat */
 
@@ -197,7 +205,7 @@ notify_motion(struct weston_seat *seat, const struct timespec *time,
 	      struct weston_pointer_motion_event *event);
 void
 notify_motion_absolute(struct weston_seat *seat, const struct timespec *time,
-		       double x, double y);
+		       struct weston_coord_global pos);
 void
 notify_modifiers(struct weston_seat *seat, uint32_t serial);
 
@@ -206,7 +214,10 @@ notify_pointer_frame(struct weston_seat *seat);
 
 void
 notify_pointer_focus(struct weston_seat *seat, struct weston_output *output,
-		     double x, double y);
+		     struct weston_coord_global pos);
+
+void
+clear_pointer_focus(struct weston_seat *seat);
 
 /* weston_touch_device */
 
@@ -214,7 +225,7 @@ void
 notify_touch_normalized(struct weston_touch_device *device,
 			const struct timespec *time,
 			int touch_id,
-			double x, double y,
+			const struct weston_coord_global *pos,
 			const struct weston_point2d_device_normalized *norm,
 			int touch_type);
 
@@ -224,9 +235,9 @@ notify_touch_normalized(struct weston_touch_device *device,
  */
 static inline void
 notify_touch(struct weston_touch_device *device, const struct timespec *time,
-	     int touch_id, double x, double y, int touch_type)
+	     int touch_id, const struct weston_coord_global *pos, int touch_type)
 {
-	notify_touch_normalized(device, time, touch_id, x, y, NULL, touch_type);
+	notify_touch_normalized(device, time, touch_id, pos, NULL, touch_type);
 }
 
 void
@@ -244,5 +255,47 @@ void
 notify_touch_calibrator_cancel(struct weston_touch_device *device);
 void
 notify_touch_calibrator_frame(struct weston_touch_device *device);
+
+void
+notify_tablet_added(struct weston_tablet *tablet);
+
+void
+notify_tablet_tool_added(struct weston_tablet_tool *tool);
+
+void
+notify_tablet_tool_proximity_in(struct weston_tablet_tool *tool,
+				const struct timespec *time,
+				struct weston_tablet *tablet);
+void
+notify_tablet_tool_proximity_out(struct weston_tablet_tool *tool,
+				 const struct timespec *time);
+void
+notify_tablet_tool_motion(struct weston_tablet_tool *tool,
+			  const struct timespec *time,
+			  struct weston_coord_global pos);
+void
+notify_tablet_tool_pressure(struct weston_tablet_tool *tool,
+			    const struct timespec *time, uint32_t pressure);
+void
+notify_tablet_tool_distance(struct weston_tablet_tool *tool,
+			    const struct timespec *time, uint32_t distance);
+void
+notify_tablet_tool_tilt(struct weston_tablet_tool *tool,
+			const struct timespec *time,
+			int32_t tilt_x, int32_t tilt_y);
+void
+notify_tablet_tool_button(struct weston_tablet_tool *tool,
+			  const struct timespec *time,
+			  uint32_t button,
+			  uint32_t state);
+void
+notify_tablet_tool_up(struct weston_tablet_tool *tool,
+		      const struct timespec *time);
+void
+notify_tablet_tool_down(struct weston_tablet_tool *tool,
+			const struct timespec *time);
+void
+notify_tablet_tool_frame(struct weston_tablet_tool *tool,
+			 const struct timespec *time);
 
 #endif

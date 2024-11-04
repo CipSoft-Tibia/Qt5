@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "tst_qcoreapplication.h"
 
@@ -9,6 +9,7 @@
 
 #include <private/qabstracteventdispatcher_p.h> // for qGlobalPostedEventsCount()
 #include <private/qcoreapplication_p.h>
+#include <private/qcoreevent_p.h>
 #include <private/qeventloop_p.h>
 #include <private/qthread_p.h>
 
@@ -24,9 +25,12 @@ class EventSpy : public QObject
 
 public:
     QList<int> recordedEvents;
-    bool eventFilter(QObject *, QEvent *event) override
+    std::function<void(QObject *, QEvent *)> eventCallback;
+    bool eventFilter(QObject *target, QEvent *event) override
     {
         recordedEvents.append(event->type());
+        if (eventCallback)
+            eventCallback(target, event);
         return false;
     }
 };
@@ -1061,7 +1065,7 @@ static void createQObjectOnDestruction()
     // QThread) after the last QObject has been destroyed (especially after
     // QCoreApplication has).
 
-#if !defined(QT_QGUIAPPLICATIONTEST) && !defined(Q_OS_WIN)
+#if !defined(QT_QGUIAPPLICATIONTEST) && !defined(Q_OS_WIN) && !defined(Q_OS_VXWORKS)
     // QCoreApplicationData's global static destructor has run and cleaned up
     // the QAdoptedThrad.
     if (theMainThreadIsSet())
@@ -1080,6 +1084,29 @@ static void createQObjectOnDestruction()
     // the QAdoptedThread won't get cleaned up
 }
 Q_DESTRUCTOR_FUNCTION(createQObjectOnDestruction)
+
+void tst_QCoreApplication::testDeleteLaterFromBeforeOutermostEventLoop()
+{
+    int argc = 0;
+    QCoreApplication app(argc, nullptr);
+
+    EventSpy *spy = new EventSpy();
+    QPointer<QObject> spyPointer = spy;
+
+    app.installEventFilter(spy);
+    spy->eventCallback = [spy](QObject *, QEvent *event) {
+        if (event->type() == QEvent::User + 1)
+            spy->deleteLater();
+    };
+
+    QCoreApplication::postEvent(&app, new QEvent(QEvent::Type(QEvent::User + 1)));
+    QCoreApplication::processEvents();
+
+    QEventLoop loop;
+    QTimer::singleShot(0, &loop, &QEventLoop::quit);
+    loop.exec();
+    QVERIFY(!spyPointer);
+}
 
 #ifndef QT_QGUIAPPLICATIONTEST
 QTEST_APPLESS_MAIN(tst_QCoreApplication)

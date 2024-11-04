@@ -17,7 +17,8 @@
 
 #include <QtCore/qglobal.h>
 
-#include <QtQuick3DUtils/private/qtquick3dutilsglobal_p.h>
+#include <ssg/qssgrenderhelpers.h>
+#include <QtQuick3DUtils/private/qssgaosettings_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrhicontext_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendershadercache_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrenderableobjects_p.h>
@@ -42,10 +43,11 @@ public:
     };
     // Input:
 
+    virtual ~QSSGRenderPass();
     virtual void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) = 0;
     virtual void renderPass(QSSGRenderer &renderer) = 0;
     virtual Type passType() const = 0;
-    virtual void release() = 0;
+    virtual void resetForFrame() = 0;
 
     // Output:
 
@@ -60,7 +62,7 @@ public:
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Standalone; }
-    void release() final;
+    void resetForFrame() final;
 
     std::shared_ptr<QSSGRenderShadowMap> shadowMapManager;
     QSSGRenderableObjectList shadowPassObjects;
@@ -78,7 +80,7 @@ public:
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Standalone; }
-    void release() final;
+    void resetForFrame() final;
 
     std::shared_ptr<QSSGRenderReflectionMap> reflectionMapManager;
     QList<QSSGRenderReflectionProbe *> reflectionProbes;
@@ -92,7 +94,7 @@ public:
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Main; }
-    void release() final;
+    void resetForFrame() final;
 
     QSSGRenderableObjectList renderedDepthWriteObjects;
     QSSGRenderableObjectList renderedOpaqueDepthPrepassObjects;
@@ -103,24 +105,14 @@ public:
 class SSAOMapPass : public QSSGRenderPass
 {
 public:
-    struct AmbientOcclusion
-    {
-        float aoStrength = 0.0f;
-        float aoDistance = 5.0f;
-        float aoSoftness = 50.0f;
-        float aoBias = 0.0f;
-        qint32 aoSamplerate = 2;
-        bool aoDither = false;
-    } ambientOcclusion;
-
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Standalone; }
-    void release() final;
+    void resetForFrame() final;
 
     const QSSGRhiRenderableTexture *rhiDepthTexture = nullptr;
     const QSSGRenderCamera *camera = nullptr;
-    AmbientOcclusion ao;
+    QSSGAmbientOcclusionSettings aoSettings;
     QSSGRhiGraphicsPipelineState ps;
     QSSGRhiRenderableTexture *rhiAoTexture = nullptr;
     QSSGRhiShaderPipelinePtr ssaoShaderPipeline;
@@ -132,7 +124,7 @@ public:
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Standalone; }
-    void release() final;
+    void resetForFrame() final;
 
     QSSGRenderableObjectList sortedOpaqueObjects;
     QSSGRenderableObjectList sortedTransparentObjects;
@@ -146,7 +138,7 @@ public:
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Standalone; }
-    void release() final;
+    void resetForFrame() final;
 
     QSSGRhiRenderableTexture *rhiScreenTexture = nullptr;
     QSSGRenderPass *skyboxPass = nullptr;
@@ -163,7 +155,7 @@ public:
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Main; }
-    void release() final;
+    void resetForFrame() final;
 
     QSSGRenderableObjectList sortedScreenTextureObjects;
     const QSSGRhiRenderableTexture *rhiScreenTexture = nullptr;
@@ -173,23 +165,50 @@ public:
 class OpaquePass : public QSSGRenderPass
 {
 public:
+    static void prep(const QSSGRenderContextInterface &ctx,
+                     QSSGLayerRenderData &data,
+                     QSSGPassKey passKey,
+                     QSSGRhiGraphicsPipelineState &ps,
+                     QSSGShaderFeatures shaderFeatures,
+                     QRhiRenderPassDescriptor *rpDesc,
+                     const QSSGRenderableObjectList &sortedOpaqueObjects);
+
+    static void render(const QSSGRenderContextInterface &ctx,
+                       const QSSGRhiGraphicsPipelineState &ps,
+                       const QSSGRenderableObjectList &sortedOpaqueObjects);
+
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Main; }
-    void release() final;
+    void resetForFrame() final;
 
     QSSGRenderableObjectList sortedOpaqueObjects;
     QSSGRhiGraphicsPipelineState ps;
     QSSGShaderFeatures shaderFeatures;
 };
 
+struct QSSGCameraRenderData;
+
 class TransparentPass : public QSSGRenderPass
 {
 public:
+    static void prep(const QSSGRenderContextInterface &ctx,
+                     QSSGLayerRenderData &data,
+                     QSSGPassKey passKey,
+                     QSSGRhiGraphicsPipelineState &ps,
+                     QSSGShaderFeatures shaderFeatures,
+                     QRhiRenderPassDescriptor *rpDesc,
+                     const QSSGRenderableObjectList &sortedTransparentObjects);
+
+    static void render(const QSSGRenderContextInterface &ctx,
+                       const QSSGRhiGraphicsPipelineState &ps,
+                       const QSSGRenderableObjectList &sortedTransparentObjects);
+
+
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Main; }
-    void release() final;
+    void resetForFrame() final;
 
     QSSGRenderableObjectList sortedTransparentObjects;
     QSSGRhiGraphicsPipelineState ps;
@@ -202,7 +221,7 @@ public:
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Main; }
-    void release() final;
+    void resetForFrame() final;
 
     QSSGRenderLayer *layer = nullptr;
     QSSGRhiGraphicsPipelineState ps;
@@ -216,8 +235,9 @@ public:
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Main; }
-    void release() final;
+    void resetForFrame() final;
 
+    QSSGRhiShaderPipelinePtr skyBoxCubeShader;
     QSSGRenderLayer *layer = nullptr;
     QSSGRhiGraphicsPipelineState ps;
     bool skipTonemapping = false;
@@ -229,7 +249,7 @@ public:
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Main; }
-    void release() final;
+    void resetForFrame() final;
 
     QList<QSSGRenderItem2D *> item2Ds;
     QSSGRhiGraphicsPipelineState ps {};
@@ -241,8 +261,9 @@ public:
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Main; }
-    void release() final;
+    void resetForFrame() final;
 
+    QSSGRhiShaderPipelinePtr gridShader;
     QSSGRhiGraphicsPipelineState ps {};
     QSSGRenderLayer *layer = nullptr;
 };
@@ -253,8 +274,9 @@ public:
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Main; }
-    void release() final;
+    void resetForFrame() final;
 
+    QSSGRhiShaderPipelinePtr debugObjectShader;
     QSSGRhiGraphicsPipelineState ps;
 };
 
@@ -266,7 +288,7 @@ public:
     void renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data) final;
     void renderPass(QSSGRenderer &renderer) final;
     Type passType() const final { return Type::Extension; }
-    void release() final;
+    void resetForFrame() final;
 
     bool hasData() const { return extensions.size() != 0; }
 

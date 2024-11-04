@@ -11,11 +11,11 @@
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/ranges/algorithm.h"
+#include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "media/base/bind_to_current_loop.h"
 #include "media/base/limits.h"
 #include "media/capture/video_capture_types.h"
 #include "third_party/blink/public/web/modules/mediastream/media_stream_video_sink.h"
@@ -130,6 +130,10 @@ class MediaStreamVideoTrack::FrameDeliverer
       std::vector<scoped_refptr<media::VideoFrame>> scaled_video_frames,
       base::TimeTicks estimated_capture_time);
 
+  void AsyncGetDeliverableVideoFramesCount(
+      WTF::CrossThreadOnceFunction<void(size_t)>
+          deliverable_video_frames_callback);
+
   // Triggers all registered dropped frame callbacks. Must be called on the
   // video task runner.
   void NotifyFrameDroppedOnVideoTaskRunner();
@@ -210,6 +214,11 @@ class MediaStreamVideoTrack::FrameDeliverer
 
   Vector<VideoIdCallbacks> callbacks_;
   HashMap<VideoSinkId, EncodedVideoFrameInternalCallback> encoded_callbacks_;
+
+  // Frame counter for deliverable frames, only incremented when the track is
+  // enabled (even though a disabled track delivers black frames). Only touched
+  // on the `video_task_runner_`.
+  size_t deliverable_frames_ = 0;
 
   // Callbacks that will be invoked a single time when a crop-version
   // is observed that is at least equal to the key.
@@ -495,6 +504,7 @@ void MediaStreamVideoTrack::FrameDeliverer::DeliverFrameOnVideoTaskRunner(
   scoped_refptr<media::VideoFrame> video_frame;
   if (enabled_) {
     video_frame = std::move(frame);
+    ++deliverable_frames_;
   } else {
     // When disabled, a black video frame is passed along instead. The original
     // frames are dropped.
@@ -516,6 +526,25 @@ void MediaStreamVideoTrack::FrameDeliverer::DeliverFrameOnVideoTaskRunner(
         CrossThreadBindOnce(&MediaStreamVideoTrack::ResetRefreshTimer,
                             media_stream_video_track_));
   }
+}
+
+void MediaStreamVideoTrack::FrameDeliverer::AsyncGetDeliverableVideoFramesCount(
+    WTF::CrossThreadOnceFunction<void(size_t)>
+        deliverable_video_frames_callback) {
+  if (!video_task_runner_->RunsTasksInCurrentSequence()) {
+    PostCrossThreadTask(
+        *video_task_runner_, FROM_HERE,
+        CrossThreadBindOnce(
+            &FrameDeliverer::AsyncGetDeliverableVideoFramesCount,
+            WrapRefCounted(this),
+            std::move(deliverable_video_frames_callback)));
+    return;
+  }
+  DCHECK(video_task_runner_->RunsTasksInCurrentSequence());
+  PostCrossThreadTask(
+      *main_render_task_runner_, FROM_HERE,
+      CrossThreadBindOnce(std::move(deliverable_video_frames_callback),
+                          deliverable_frames_));
 }
 
 void MediaStreamVideoTrack::FrameDeliverer::
@@ -660,10 +689,10 @@ MediaStreamVideoTrack::MediaStreamVideoTrack(
           CrossThreadBindRepeating(&MediaStreamVideoTrack::FrameDeliverer::
                                        NewCropVersionOnVideoTaskRunner,
                                    frame_deliverer_)),
-      media::BindToCurrentLoop(WTF::BindRepeating(
+      base::BindPostTaskToCurrentDefault(WTF::BindRepeating(
           &MediaStreamVideoTrack::SetSizeAndComputedFrameRate,
           weak_factory_.GetWeakPtr())),
-      media::BindToCurrentLoop(
+      base::BindPostTaskToCurrentDefault(
           WTF::BindRepeating(&MediaStreamVideoTrack::set_computed_source_format,
                              weak_factory_.GetWeakPtr())),
       std::move(callback));
@@ -712,10 +741,10 @@ MediaStreamVideoTrack::MediaStreamVideoTrack(
           CrossThreadBindRepeating(&MediaStreamVideoTrack::FrameDeliverer::
                                        NewCropVersionOnVideoTaskRunner,
                                    frame_deliverer_)),
-      media::BindToCurrentLoop(WTF::BindRepeating(
+      base::BindPostTaskToCurrentDefault(WTF::BindRepeating(
           &MediaStreamVideoTrack::SetSizeAndComputedFrameRate,
           weak_factory_.GetWeakPtr())),
-      media::BindToCurrentLoop(
+      base::BindPostTaskToCurrentDefault(
           WTF::BindRepeating(&MediaStreamVideoTrack::set_computed_source_format,
                              weak_factory_.GetWeakPtr())),
       std::move(callback));
@@ -727,6 +756,27 @@ MediaStreamVideoTrack::~MediaStreamVideoTrack() {
   DCHECK(encoded_sinks_.empty());
   Stop();
   DVLOG(3) << "~MediaStreamVideoTrack()";
+}
+
+std::unique_ptr<MediaStreamTrackPlatform>
+MediaStreamVideoTrack::CreateFromComponent(
+    const MediaStreamComponent* component,
+    const String& id) {
+  MediaStreamSource* source = component->Source();
+  DCHECK_EQ(source->GetType(), MediaStreamSource::kTypeVideo);
+  MediaStreamVideoSource* native_source =
+      MediaStreamVideoSource::GetVideoSource(source);
+  DCHECK(native_source);
+  MediaStreamVideoTrack* original_track =
+      MediaStreamVideoTrack::From(component);
+  DCHECK(original_track);
+  return std::make_unique<MediaStreamVideoTrack>(
+      native_source, original_track->adapter_settings(),
+      original_track->noise_reduction(), original_track->is_screencast(),
+      original_track->min_frame_rate(), original_track->pan(),
+      original_track->tilt(), original_track->zoom(),
+      original_track->pan_tilt_zoom_allowed(),
+      MediaStreamVideoSource::ConstraintsOnceCallback(), component->Enabled());
 }
 
 static void AddSinkInternal(Vector<WebMediaStreamSink*>* sinks,
@@ -900,19 +950,24 @@ void MediaStreamVideoTrack::GetSettings(
     settings.aspect_ratio = static_cast<double>(width_) / height_;
   }
 
-  if (frame_rate_.has_value()) {
-    settings.frame_rate = *frame_rate_;
-  }
-
-  absl::optional<media::VideoCaptureFormat> format =
-      source_->GetCurrentFormat();
-  if (format) {
-    if (!frame_rate_.has_value()) {
-      settings.frame_rate = format->frame_rate;
-    }
+  if (absl::optional<media::VideoCaptureFormat> format =
+          source_->GetCurrentFormat()) {
+    // For local capture-based tracks, the frame rate returned by
+    // MediaStreamTrack.getSettings() must be the configured frame rate. In case
+    // of frame rate decimation, the configured frame rate is the decimated
+    // frame rate (i.e., the adapter frame rate). If there is no decimation, the
+    // configured frame rate is the frame rate reported by the device.
+    // Decimation occurs only when the adapter frame rate is lower than the
+    // device frame rate.
+    absl::optional<double> adapter_frame_rate =
+        adapter_settings_.max_frame_rate();
+    settings.frame_rate =
+        (!adapter_frame_rate || *adapter_frame_rate > format->frame_rate)
+            ? format->frame_rate
+            : *adapter_frame_rate;
   } else {
-    // Format is only set for local tracks. For other tracks, use the frame rate
-    // reported through settings callback SetSizeAndComputedFrameRate().
+    // For other tracks, use the computed frame rate reported via
+    // SetSizeAndComputedFrameRate().
     if (computed_frame_rate_)
       settings.frame_rate = *computed_frame_rate_;
   }
@@ -928,6 +983,16 @@ void MediaStreamVideoTrack::GetSettings(
     settings.logical_surface = info->logical_surface;
     settings.cursor = info->cursor;
   }
+}
+
+void MediaStreamVideoTrack::AsyncGetDeliverableVideoFramesCount(
+    base::OnceCallback<void(size_t)> deliverable_video_frames_callback) {
+  DCHECK_CALLED_ON_VALID_THREAD(main_render_thread_checker_);
+  // WTF bindings complain if we don't convert this to a CrossThreadBindOnce,
+  // but note that `deliverable_video_frames_callback` is only called on
+  // `main_render_thread_checker_`. This is effectively a PostTaskAndReply.
+  frame_deliverer_->AsyncGetDeliverableVideoFramesCount(
+      CrossThreadBindOnce(std::move(deliverable_video_frames_callback)));
 }
 
 MediaStreamTrackPlatform::CaptureHandle
@@ -1009,6 +1074,10 @@ void MediaStreamVideoTrack::NotifyConstraintsConfigurationComplete() {
   for (auto* sink : sinks_) {
     sink->OnVideoConstraintsChanged(min_frame_rate_,
                                     adapter_settings_.max_frame_rate());
+  }
+
+  if (is_screencast_) {
+    StartTimerForRequestingFrames();
   }
 }
 

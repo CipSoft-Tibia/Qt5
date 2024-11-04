@@ -9,6 +9,7 @@
 
 #include <AudioToolbox/AudioToolbox.h>
 
+#include "base/apple/scoped_typeref.h"
 #include "base/memory/free_deleter.h"
 #include "media/base/audio_bus.h"
 #include "media/base/audio_decoder.h"
@@ -16,14 +17,16 @@
 #include "media/base/media_export.h"
 
 namespace media {
+
 class AudioBufferMemoryPool;
 class AudioDiscardHelper;
+class MediaLog;
 
 // Audio decoder based on macOS's AudioToolbox API. The AudioToolbox
 // API is required to decode codecs that aren't supported by Chromium.
 class MEDIA_EXPORT AudioToolboxAudioDecoder : public AudioDecoder {
  public:
-  AudioToolboxAudioDecoder();
+  explicit AudioToolboxAudioDecoder(std::unique_ptr<MediaLog> media_log);
 
   AudioToolboxAudioDecoder(const AudioToolboxAudioDecoder&) = delete;
   AudioToolboxAudioDecoder& operator=(const AudioToolboxAudioDecoder&) = delete;
@@ -48,9 +51,12 @@ class MEDIA_EXPORT AudioToolboxAudioDecoder : public AudioDecoder {
     static void Release(AudioConverterRef converter);
   };
   using ScopedAudioConverterRef =
-      base::ScopedTypeRef<AudioConverterRef, ScopedAudioConverterRefTraits>;
+      base::apple::ScopedTypeRef<AudioConverterRef,
+                                 ScopedAudioConverterRefTraits>;
 
-  bool CreateAACDecoder(const AudioDecoderConfig& config);
+  bool CreateDecoder(const AudioDecoderConfig& config);
+
+  std::unique_ptr<MediaLog> media_log_;
 
   // "Converter" for turning encoded samples into raw audio.
   ScopedAudioConverterRef decoder_;

@@ -281,6 +281,8 @@ clickdot_create(struct display *display)
 	clickdot->window = window_create(display);
 	clickdot->widget = window_frame_create(clickdot->window, clickdot);
 	window_set_title(clickdot->window, "Wayland ClickDot");
+	window_set_appid(clickdot->window,
+			"org.freedesktop.weston.wayland-clickdot");
 	clickdot->display = display;
 	clickdot->buffer = NULL;
 

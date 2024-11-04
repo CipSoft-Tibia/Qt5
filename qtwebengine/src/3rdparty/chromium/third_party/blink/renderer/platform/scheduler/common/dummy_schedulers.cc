@@ -13,6 +13,7 @@
 #include "third_party/blink/renderer/platform/scheduler/public/main_thread_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/page_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/web_scheduling_priority.h"
+#include "third_party/blink/renderer/platform/scheduler/public/web_scheduling_queue_type.h"
 #include "third_party/blink/renderer/platform/scheduler/public/web_scheduling_task_queue.h"
 #include "third_party/blink/renderer/platform/scheduler/public/widget_scheduler.h"
 #include "third_party/blink/renderer/platform/wtf/wtf.h"
@@ -100,17 +101,20 @@ class DummyFrameScheduler : public FrameScheduler {
     return WebScopedVirtualTimePauser();
   }
   void DidStartProvisionalLoad() override {}
-  void DidCommitProvisionalLoad(bool, FrameScheduler::NavigationType) override {
-  }
+  void DidCommitProvisionalLoad(bool,
+                                FrameScheduler::NavigationType,
+                                DidCommitProvisionalLoadParams) override {}
   void OnFirstContentfulPaintInMainFrame() override {}
-  void OnFirstMeaningfulPaint() override {}
-  void OnLoad() override {}
+  void OnFirstMeaningfulPaint(base::TimeTicks timestamp) override {}
+  void OnDispatchLoadEvent() override {}
+  void OnMainFrameInteractive() override {}
   bool IsExemptFromBudgetBasedThrottling() const override { return false; }
   std::unique_ptr<blink::mojom::blink::PauseSubresourceLoadingHandle>
   GetPauseSubresourceLoadingHandle() override {
     return nullptr;
   }
   std::unique_ptr<WebSchedulingTaskQueue> CreateWebSchedulingTaskQueue(
+      WebSchedulingQueueType,
       WebSchedulingPriority) override {
     return nullptr;
   }
@@ -165,6 +169,7 @@ class DummyPageScheduler : public PageScheduler {
 
   void OnTitleOrFaviconUpdated() override {}
   void SetPageVisible(bool) override {}
+  bool IsPageVisible() const override { return true; }
   void SetPageFrozen(bool) override {}
   void SetPageBackForwardCached(bool) override {}
   bool IsMainFrameLocal() const override { return true; }
@@ -291,6 +296,8 @@ class DummyWebMainThreadScheduler : public WebThreadScheduler,
     DCHECK(isolate_);
     return isolate_;
   }
+
+  void StartIdlePeriodForTesting() override {}
 
  private:
   v8::Isolate* isolate_ = nullptr;

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,7 +20,7 @@ TEST(TlsWriteBufferTest, CheckBasicFunctionality) {
 
   EXPECT_TRUE(buffer.Push(write_buffer, write_size));
 
-  absl::Span<const uint8_t> readable_data = buffer.GetReadableRegion();
+  ByteView readable_data = buffer.GetReadableRegion();
   ASSERT_EQ(readable_data.size(), write_size);
   for (size_t i = 0; i < readable_data.size(); i++) {
     EXPECT_EQ(readable_data[i], 1);

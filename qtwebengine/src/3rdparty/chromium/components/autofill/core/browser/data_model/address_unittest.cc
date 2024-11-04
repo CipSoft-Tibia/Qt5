@@ -11,7 +11,6 @@
 #include "components/autofill/core/browser/autofill_type.h"
 #include "components/autofill/core/browser/data_model/address.h"
 #include "components/autofill/core/browser/geo/alternative_state_name_map_test_utils.h"
-#include "components/autofill/core/browser/geo/country_names.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -20,10 +19,7 @@ using base::ASCIIToUTF16;
 
 namespace autofill {
 
-class AddressTest : public testing::Test {
- public:
-  AddressTest() { CountryNames::SetLocaleString("en-US"); }
-};
+class AddressTest : public testing::Test {};
 
 // Test that country data can be properly returned as either a country code or a
 // localized country name.
@@ -163,6 +159,13 @@ TEST_F(AddressTest, SetCountry) {
   country = address.GetInfo(AutofillType(ADDRESS_HOME_COUNTRY), "en-US");
   EXPECT_EQ(std::u16string(), address.GetRawInfo(ADDRESS_HOME_COUNTRY));
   EXPECT_EQ(std::u16string(), country);
+
+  // Test incorrect use of country codes (when a country name is passed
+  // as a country code).
+  address.SetInfo(html_type_country_code, u"日本", "ja-JP");
+  country = address.GetInfo(AutofillType(ADDRESS_HOME_COUNTRY), "en-US");
+  EXPECT_EQ(u"JP", address.GetRawInfo(ADDRESS_HOME_COUNTRY));
+  EXPECT_EQ(u"Japan", country);
 }
 
 // Test setting and getting the new structured address tokens
@@ -172,17 +175,11 @@ TEST_F(AddressTest, StructuredAddressTokens) {
   // Set the address tokens.
   address.SetRawInfo(ADDRESS_HOME_STREET_NAME, u"StreetName");
   address.SetRawInfo(ADDRESS_HOME_HOUSE_NUMBER, u"HouseNumber");
-  address.SetRawInfo(ADDRESS_HOME_DEPENDENT_STREET_NAME,
-                     u"DependentStreetName");
-  address.SetRawInfo(ADDRESS_HOME_PREMISE_NAME, u"PremiseNmae");
   address.SetRawInfo(ADDRESS_HOME_SUBPREMISE, u"SubPremise");
 
   // Retrieve the tokens and verify that they are correct.
   EXPECT_EQ(address.GetRawInfo(ADDRESS_HOME_STREET_NAME), u"StreetName");
   EXPECT_EQ(address.GetRawInfo(ADDRESS_HOME_HOUSE_NUMBER), u"HouseNumber");
-  EXPECT_EQ(address.GetRawInfo(ADDRESS_HOME_DEPENDENT_STREET_NAME),
-            u"DependentStreetName");
-  EXPECT_EQ(address.GetRawInfo(ADDRESS_HOME_PREMISE_NAME), u"PremiseNmae");
   EXPECT_EQ(address.GetRawInfo(ADDRESS_HOME_SUBPREMISE), u"SubPremise");
 }
 
@@ -506,7 +503,7 @@ TEST_F(AddressTest, TestGettingTheStructuredAddress) {
   address1.SetRawInfo(ADDRESS_HOME_ZIP, u"12345");
 
   // Get the structured address and verify that it has the same test value set.
-  AddressNode structured_address = address1.GetStructuredAddress();
+  const AddressComponent& structured_address = address1.GetStructuredAddress();
   EXPECT_EQ(structured_address.GetValueForType(ADDRESS_HOME_ZIP), u"12345");
 }
 

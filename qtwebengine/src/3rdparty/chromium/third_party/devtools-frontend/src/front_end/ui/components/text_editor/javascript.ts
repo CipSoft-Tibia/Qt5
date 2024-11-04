@@ -2,9 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as Root from '../../../core/root/root.js';
 import * as SDK from '../../../core/sdk/sdk.js';
 import * as Bindings from '../../../models/bindings/bindings.js';
 import * as JavaScriptMetaData from '../../../models/javascript_metadata/javascript_metadata.js';
+import * as SourceMapScopes from '../../../models/source_map_scopes/source_map_scopes.js';
 import * as CodeMirror from '../../../third_party/codemirror.next/codemirror.next.js';
 import * as UI from '../../legacy/legacy.js';
 
@@ -273,7 +275,8 @@ class PropertyCache {
 
   constructor() {
     const clear = (): void => this.#cache.clear();
-    SDK.ConsoleModel.ConsoleModel.instance().addEventListener(SDK.ConsoleModel.Events.CommandEvaluated, clear);
+    SDK.TargetManager.TargetManager.instance().addModelListener(
+        SDK.ConsoleModel.ConsoleModel, SDK.ConsoleModel.Events.CommandEvaluated, clear);
     UI.Context.Context.instance().addFlavorChangeListener(SDK.RuntimeModel.ExecutionContext, clear);
     SDK.TargetManager.TargetManager.instance().addModelListener(
         SDK.DebuggerModel.DebuggerModel, SDK.DebuggerModel.Events.DebuggerResumed, clear);
@@ -406,10 +409,16 @@ async function completeExpressionInScope(): Promise<CompletionSet> {
     return result;
   }
 
-  const frames =
-      await Promise.all(selectedFrame.scopeChain().map(scope => scope.object().getAllProperties(false, false)));
-  for (const frame of frames) {
-    for (const property of frame.properties || []) {
+  const scopeObjectForScope = (scope: SDK.DebuggerModel.Scope): SDK.RemoteObject.RemoteObject =>
+      // TODO(crbug.com/1444349): Inline into `map` call below when experiment is removed.
+      Root.Runtime.experiments.isEnabled('evaluateExpressionsWithSourceMaps') ?
+      SourceMapScopes.NamesResolver.resolveScopeInObject(scope) :
+      scope.object();
+
+  const scopes = await Promise.all(
+      selectedFrame.scopeChain().map(scope => scopeObjectForScope(scope).getAllProperties(false, false)));
+  for (const scope of scopes) {
+    for (const property of scope.properties || []) {
       result.add({
         label: property.name,
         type: property.value?.type === 'function' ? 'function' : 'variable',

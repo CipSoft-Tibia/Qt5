@@ -2,11 +2,10 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/features.gni")
 import("//ios/web/public/js_messaging/optimize_js.gni")
 
 component("ios") {
-  configs += [ "//build/config/compiler:enable_arc" ]
-
   public_deps = [ ":password_manager_feature_header" ]
 
   deps = [
@@ -17,6 +16,7 @@ component("ios") {
     "//components/autofill/core/common",
     "//components/autofill/ios/browser",
     "//components/autofill/ios/browser:util",
+    "//components/autofill/ios/common",
     "//components/autofill/ios/form_util",
     "//components/autofill/ios/form_util:form_util_feature",
     "//components/password_manager/core/browser",
@@ -38,6 +38,7 @@ component("ios") {
     "ios_password_manager_driver.mm",
     "ios_password_manager_driver_factory.h",
     "ios_password_manager_driver_factory.mm",
+    "password_account_storage_notice_handler.h",
     "password_controller_driver_helper.h",
     "password_controller_driver_helper.mm",
     "password_form_helper.h",
@@ -50,6 +51,7 @@ component("ios") {
     "password_manager_java_script_feature.mm",
     "password_manager_tab_helper.h",
     "password_manager_tab_helper.mm",
+    "password_reuse_detection_manager_client_bridge.h",
     "password_suggestion_helper.h",
     "password_suggestion_helper.mm",
     "shared_password_controller+private.h",
@@ -59,8 +61,6 @@ component("ios") {
 }
 
 source_set("password_manager_feature_header") {
-  configs += [ "//build/config/compiler:enable_arc" ]
-
   deps = [
     "//base",
     "//components/autofill/core/common",
@@ -106,7 +106,6 @@ static_library("test_support") {
 }
 
 source_set("unit_tests") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
   sources = [
     "account_select_fill_data_unittest.cc",
@@ -125,6 +124,7 @@ source_set("unit_tests") {
     "//components/autofill/core/common",
     "//components/autofill/ios/browser",
     "//components/autofill/ios/form_util",
+    "//components/autofill/ios/form_util:form_handler_feature",
     "//components/autofill/ios/form_util:form_util_feature",
     "//components/autofill/ios/form_util:test_support",
     "//components/password_manager/core/browser",
@@ -141,5 +141,22 @@ source_set("unit_tests") {
     "//testing/gmock",
     "//testing/gtest",
     "//third_party/ocmock",
+  ]
+
+  # TODO(crbug.com/1427365): Test currently fails on iOS blink.
+  if (is_ios && use_blink) {
+    sources -= [ "password_form_helper_unittest.mm" ]
+  }
+}
+
+source_set("fake_bulk_leak_check_service") {
+  testonly = true
+  sources = [
+    "fake_bulk_leak_check_service.h",
+    "fake_bulk_leak_check_service.mm",
+  ]
+  deps = [
+    "//base",
+    "//components/password_manager/core/browser",
   ]
 }

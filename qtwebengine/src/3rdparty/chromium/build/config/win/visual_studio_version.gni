@@ -5,11 +5,10 @@
 declare_args() {
   # Path to Visual Studio. If empty, the default is used which is to use the
   # automatic toolchain in depot_tools. If set, you must also set the
-  # visual_studio_version and wdk_path.
+  # visual_studio_version, wdk_path and windows_sdk_version.
   visual_studio_path = ""
 
   # Version of Visual Studio pointed to by the visual_studio_path.
-  # Currently always "2015".
   visual_studio_version = ""
 
   # Directory of the Windows driver kit. If visual_studio_path is empty, this
@@ -21,6 +20,7 @@ declare_args() {
   # installation location.
   windows_sdk_path = "C:\Program Files (x86)\Windows Kits\10"
 
+  # Version of the Windows SDK pointed to by the windows_sdk_path.
   windows_sdk_version = ""
 
   ninja_use_custom_environment_files = true
@@ -38,9 +38,11 @@ if (visual_studio_path == "" && ninja_use_custom_environment_files) {
 } else if (!is_mingw && target_os != "android") {
   assert(visual_studio_version != "",
          "You must set the visual_studio_version if you set the path")
+  assert(windows_sdk_version != "",
+         "You must set the windows_sdk_version if you set the path")
   if (ninja_use_custom_environment_files) {
     assert(wdk_path != "",
            "You must set the wdk_path if you set the visual studio path")
   }
-  visual_studio_runtime_dirs = "\"\""
+  visual_studio_runtime_dirs = []
 }

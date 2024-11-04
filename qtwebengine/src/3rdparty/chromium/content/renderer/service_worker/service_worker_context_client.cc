@@ -14,7 +14,10 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/ranges/algorithm.h"
+#include "base/strings/strcat.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
@@ -22,7 +25,6 @@
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "content/public/common/content_features.h"
-#include "content/public/common/network_service_util.h"
 #include "content/public/common/referrer.h"
 #include "content/public/renderer/content_renderer_client.h"
 #include "content/public/renderer/worker_thread.h"
@@ -70,6 +72,10 @@ namespace {
 
 constexpr char kServiceWorkerContextClientScope[] =
     "ServiceWorkerContextClient";
+
+std::string ComposeAlreadyInstalledString(bool is_starting_installed_worker) {
+  return is_starting_installed_worker ? "AlreadyInstalled" : "NewlyInstalled";
+}
 
 }  // namespace
 
@@ -145,21 +151,19 @@ ServiceWorkerContextClient::ServiceWorkerContextClient(
   blink_interface_registry_ = std::make_unique<BlinkInterfaceRegistryImpl>(
       registry_.GetWeakPtr(), /*associated_interface_registry=*/nullptr);
 
-  if (IsOutOfProcessNetworkService()) {
-    // If the network service crashes, this worker self-terminates, so it can
-    // be restarted later with a connection to the restarted network
-    // service.
-    // Note that the default factory is the network service factory. It's set
-    // on the start worker sequence.
-    network_service_disconnect_handler_holder_.Bind(
-        std::move(subresource_loaders->pending_default_factory()));
-    network_service_disconnect_handler_holder_->Clone(
-        subresource_loaders->pending_default_factory()
-            .InitWithNewPipeAndPassReceiver());
-    network_service_disconnect_handler_holder_.set_disconnect_handler(
-        base::BindOnce(&ServiceWorkerContextClient::StopWorkerOnInitiatorThread,
-                       base::Unretained(this)));
-  }
+  // If the network service crashes, this worker self-terminates, so it can
+  // be restarted later with a connection to the restarted network
+  // service.
+  // Note that the default factory is the network service factory. It's set
+  // on the start worker sequence.
+  network_service_disconnect_handler_holder_.Bind(
+      std::move(subresource_loaders->pending_default_factory()));
+  network_service_disconnect_handler_holder_->Clone(
+      subresource_loaders->pending_default_factory()
+          .InitWithNewPipeAndPassReceiver());
+  network_service_disconnect_handler_holder_.set_disconnect_handler(
+      base::BindOnce(&ServiceWorkerContextClient::StopWorkerOnInitiatorThread,
+                     base::Unretained(this)));
 
   loader_factories_ = base::MakeRefCounted<blink::ChildURLLoaderFactoryBundle>(
       std::make_unique<blink::ChildPendingURLLoaderFactoryBundle>(
@@ -178,6 +182,10 @@ ServiceWorkerContextClient::ServiceWorkerContextClient(
 
 ServiceWorkerContextClient::~ServiceWorkerContextClient() {
   DCHECK(initiator_thread_task_runner_->RunsTasksInCurrentSequence());
+  // Speculative fix on the memory leak.
+  // We ensure `instance_host_` is reset before `initiator_thread_task_runner_`
+  // is shut down (crbug.com/1409993).
+  instance_host_.reset();
 }
 
 void ServiceWorkerContextClient::StartWorkerContextOnInitiatorThread(
@@ -224,6 +232,12 @@ void ServiceWorkerContextClient::WorkerReadyForInspectionOnInitiatorThread(
 
 void ServiceWorkerContextClient::FailedToFetchClassicScript() {
   DCHECK(worker_task_runner_->RunsTasksInCurrentSequence());
+  base::UmaHistogramTimes(
+      base::StrCat(
+          {"ServiceWorker.LoadTopLevelScript.FailedToFetchClassicScript.",
+           ComposeAlreadyInstalledString(is_starting_installed_worker_),
+           ".Time"}),
+      base::TimeTicks::Now() - top_level_script_loading_start_time_);
   TRACE_EVENT_NESTABLE_ASYNC_END1("ServiceWorker", "LOAD_SCRIPT", this,
                                   "Status", "FailedToFetchClassicScript");
   // The caller is responsible for terminating the thread which
@@ -232,6 +246,12 @@ void ServiceWorkerContextClient::FailedToFetchClassicScript() {
 
 void ServiceWorkerContextClient::FailedToFetchModuleScript() {
   DCHECK(worker_task_runner_->RunsTasksInCurrentSequence());
+  base::UmaHistogramTimes(
+      base::StrCat(
+          {"ServiceWorker.LoadTopLevelScript.FailedToFetchModuleScript.",
+           ComposeAlreadyInstalledString(is_starting_installed_worker_),
+           ".Time"}),
+      base::TimeTicks::Now() - top_level_script_loading_start_time_);
   TRACE_EVENT_NESTABLE_ASYNC_END1("ServiceWorker", "LOAD_SCRIPT", this,
                                   "Status", "FailedToFetchModuleScript");
   // The caller is responsible for terminating the thread which
@@ -241,6 +261,12 @@ void ServiceWorkerContextClient::FailedToFetchModuleScript() {
 void ServiceWorkerContextClient::WorkerScriptLoadedOnWorkerThread() {
   DCHECK(worker_task_runner_->RunsTasksInCurrentSequence());
   instance_host_->OnScriptLoaded();
+  base::UmaHistogramTimes(
+      base::StrCat(
+          {"ServiceWorker.LoadTopLevelScript.Succeeded.",
+           ComposeAlreadyInstalledString(is_starting_installed_worker_),
+           ".Time"}),
+      base::TimeTicks::Now() - top_level_script_loading_start_time_);
   TRACE_EVENT_NESTABLE_ASYNC_END0("ServiceWorker", "LOAD_SCRIPT", this);
 }
 
@@ -407,10 +433,9 @@ ServiceWorkerContextClient::CreateWorkerFetchContextOnInitiatorThread() {
 
   blink::WebVector<blink::WebString> web_cors_exempt_header_list(
       cors_exempt_header_list_.size());
-  std::transform(
-      cors_exempt_header_list_.begin(), cors_exempt_header_list_.end(),
-      web_cors_exempt_header_list.begin(),
-      [](const std::string& h) { return blink::WebString::FromLatin1(h); });
+  base::ranges::transform(
+      cors_exempt_header_list_, web_cors_exempt_header_list.begin(),
+      [](const auto& header) { return blink::WebString::FromLatin1(header); });
 
   return blink::WebServiceWorkerFetchContext::Create(
       renderer_preferences_, script_url_, loader_factories_->PassInterface(),
@@ -502,9 +527,10 @@ void ServiceWorkerContextClient::SendWorkerStarted(
   CHECK_LE(start_timing_->script_evaluation_start_time,
            start_timing_->script_evaluation_end_time);
 
-  instance_host_->OnStarted(status, proxy_->FetchHandlerType(),
-                            WorkerThread::GetCurrentId(),
-                            std::move(start_timing_));
+  instance_host_->OnStarted(
+      status, proxy_->FetchHandlerType(), proxy_->HasHidEventHandlers(),
+      proxy_->HasUsbEventHandlers(), WorkerThread::GetCurrentId(),
+      std::move(start_timing_));
 
   TRACE_EVENT_NESTABLE_ASYNC_END0("ServiceWorker", "ServiceWorkerContextClient",
                                   this);
@@ -528,6 +554,13 @@ void ServiceWorkerContextClient::RequestTermination(
     RequestTerminationCallback callback) {
   DCHECK(worker_task_runner_->RunsTasksInCurrentSequence());
   instance_host_->RequestTermination(std::move(callback));
+}
+
+bool ServiceWorkerContextClient::ShouldNotifyServiceWorkerOnWebSocketActivity(
+    v8::Local<v8::Context> context) {
+  return GetContentClient()
+      ->renderer()
+      ->ShouldNotifyServiceWorkerOnWebSocketActivity(context);
 }
 
 void ServiceWorkerContextClient::StopWorkerOnInitiatorThread() {

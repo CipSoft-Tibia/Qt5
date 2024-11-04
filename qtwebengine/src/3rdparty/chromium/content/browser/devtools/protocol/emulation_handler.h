@@ -14,6 +14,10 @@ namespace net {
 class HttpRequestHeaders;
 }  // namespace net
 
+namespace download {
+class DownloadUrlParameters;
+}  // namespace download
+
 namespace content {
 
 class DevToolsAgentHostImpl;
@@ -101,6 +105,8 @@ class EmulationHandler : public DevToolsDomainHandler,
                       bool* accept_language_overridden);
   bool ApplyUserAgentMetadataOverrides(
       absl::optional<blink::UserAgentMetadata>* override_out);
+  void ApplyNetworkOverridesForDownload(
+      download::DownloadUrlParameters* parameters);
 
  private:
   WebContentsImpl* GetWebContents();
@@ -127,6 +133,9 @@ class EmulationHandler : public DevToolsDomainHandler,
   // If |prefers_reduced_motion_| is "reduce", it is used to override the
   // "prefers-reduced-motion" client hint header, when present.
   std::string prefers_reduced_motion_;
+  // If |prefers_reduced_transparency_| is "reduce", it is used to override the
+  // "prefers-reduced-transparency" client hint header, when present.
+  std::string prefers_reduced_transparency_;
 
   RenderFrameHostImpl* host_;
 

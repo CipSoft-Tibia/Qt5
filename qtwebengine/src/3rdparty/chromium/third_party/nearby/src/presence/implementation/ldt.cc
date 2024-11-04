@@ -22,9 +22,8 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include <openssl/aes.h>
-#if USE_RUST_LDT == 1
-#include "third_party/nearby_rust/presence/np_ffi/include/np_ldt.h"
+#ifdef USE_RUST_LDT
+#include "third_party/beto-core/src/nearby/presence/ldt_np_adv_ffi/include/np_ldt.h"
 #else
 #include "presence/implementation/np_ldt.h"
 #endif /* USE_RUST_LDT */
@@ -34,7 +33,7 @@ namespace presence {
 
 namespace {
 // NP LDT library says that 0 is returned when `NpLdtCreate()` fails.
-constexpr NpLdtHandle kInvalidLdtHandle = static_cast<NpLdtHandle>(0);
+constexpr uint64_t kInvalidLdtHandle = 0;
 
 template <class T>
 T FromStringView(absl::string_view data) {
@@ -45,70 +44,47 @@ T FromStringView(absl::string_view data) {
          std::min(sizeof(result.bytes), data.size()));
   return result;
 }
-
-struct AesContext {
-  AES_KEY encryption_key;
-  AES_KEY decryption_key;
-};
-
-NpLdtAesCipherHandle AesCreateCipher(NpLdtAes128Key key) {
-  AesContext* ctx = new AesContext();
-  AES_set_encrypt_key(key.bytes, 128, &ctx->encryption_key);
-  AES_set_decrypt_key(key.bytes, 128, &ctx->decryption_key);
-  // The caller takes ownership and they must call `AesCloseCipher` eventually.
-  return ctx;
-}
-
-int32_t AesCloseCipher(NpLdtAesCipherHandle handle) {
-  AesContext* ctx = reinterpret_cast<AesContext*>(handle);
-  delete ctx;
-  return 0;
-}
-
-void AesEncrypt(NpLdtAesCipherHandle handle, NpLdtAesBlock* block) {
-  AesContext* ctx = reinterpret_cast<AesContext*>(handle);
-  AES_encrypt(block->bytes, block->bytes, &ctx->encryption_key);
-}
-
-void AesDecrypt(NpLdtAesCipherHandle handle, NpLdtAesBlock* block) {
-  AesContext* ctx = reinterpret_cast<AesContext*>(handle);
-  AES_decrypt(block->bytes, block->bytes, &ctx->decryption_key);
-}
-
 }  // namespace
 
 LdtEncryptor::LdtEncryptor(LdtEncryptor&& other)
-    : ldt_handle_(other.ldt_handle_) {
-  other.ldt_handle_ = kInvalidLdtHandle;
+    : ldt_encrypt_handle_(other.ldt_encrypt_handle_),
+      ldt_decrypt_handle_(other.ldt_decrypt_handle_) {
+  other.ldt_encrypt_handle_.handle = kInvalidLdtHandle;
+  other.ldt_decrypt_handle_.handle = kInvalidLdtHandle;
 }
+
 LdtEncryptor::~LdtEncryptor() {
-  if (ldt_handle_ != kInvalidLdtHandle) {
-    NpLdtClose(ldt_handle_);
+  if (ldt_encrypt_handle_.handle != kInvalidLdtHandle) {
+    NpLdtEncryptClose(ldt_encrypt_handle_);
+  }
+  if (ldt_decrypt_handle_.handle != kInvalidLdtHandle) {
+    NpLdtDecryptClose(ldt_decrypt_handle_);
   }
 }
 
 absl::StatusOr<LdtEncryptor> LdtEncryptor::Create(
     absl::string_view key_seed, absl::string_view known_hmac) {
-  NpLdtHandle handle =
-      NpLdtCreate({.create_cipher = AesCreateCipher,
-                   .close_cipher = AesCloseCipher,
-                   .encrypt = AesEncrypt,
-                   .decrypt = AesDecrypt},
-                  FromStringView<NpLdtKeySeed>(key_seed),
-                  FromStringView<NpMetadataKeyHmac>(known_hmac));
-  if (handle == kInvalidLdtHandle) {
+  NpLdtEncryptHandle encrypt_handle =
+      NpLdtEncryptCreate(FromStringView<NpLdtKeySeed>(key_seed));
+  NpLdtDecryptHandle decrypt_handle =
+      NpLdtDecryptCreate(FromStringView<NpLdtKeySeed>(key_seed),
+                         FromStringView<NpMetadataKeyHmac>(known_hmac));
+  if (encrypt_handle.handle == kInvalidLdtHandle) {
     return absl::UnavailableError("Failed to create LDT encryptor");
   }
+  if (decrypt_handle.handle == kInvalidLdtHandle) {
+    return absl::UnavailableError("Failed to create LDT decrypter");
+  }
 
-  return LdtEncryptor(handle);
+  return LdtEncryptor(encrypt_handle, decrypt_handle);
 }
 
 absl::StatusOr<std::string> LdtEncryptor::Encrypt(absl::string_view data,
                                                   absl::string_view salt) {
   std::string encrypted = std::string(data);
-  NP_LDT_RESULT result =
-      NpLdtEncrypt(ldt_handle_, reinterpret_cast<uint8_t*>(encrypted.data()),
-                   encrypted.size(), FromStringView<NpLdtSalt>(salt));
+  NP_LDT_RESULT result = NpLdtEncrypt(
+      ldt_encrypt_handle_, reinterpret_cast<uint8_t*>(encrypted.data()),
+      encrypted.size(), FromStringView<NpLdtSalt>(salt));
   if (result == NP_LDT_SUCCESS) {
     return encrypted;
   }
@@ -120,7 +96,7 @@ absl::StatusOr<std::string> LdtEncryptor::DecryptAndVerify(
     absl::string_view data, absl::string_view salt) {
   std::string encrypted = std::string(data);
   NP_LDT_RESULT result = NpLdtDecryptAndVerify(
-      ldt_handle_, reinterpret_cast<uint8_t*>(encrypted.data()),
+      ldt_decrypt_handle_, reinterpret_cast<uint8_t*>(encrypted.data()),
       encrypted.size(), FromStringView<NpLdtSalt>(salt));
   if (result == NP_LDT_SUCCESS) {
     return encrypted;

@@ -276,7 +276,7 @@ int qstricmp(const char *str1, const char *str2)
                 // yes, find out where
                 uint start = qCountTrailingZeroBits(mask);
                 uint end = sizeof(mask) * 8 - qCountLeadingZeroBits(mask);
-                Q_ASSUME(end >= start);
+                Q_ASSERT(end >= start);
                 offset += start;
                 n = end - start;
                 break;
@@ -685,7 +685,7 @@ QByteArray qCompress(const uchar* data, qsizetype nbytes, int compressionLevel)
         if (nbytes < SingleAllocLimit) {
             // use maximum size
             capacity += compressBound(uLong(nbytes)); // cannot overflow (both times)!
-            return QArrayDataPointer{QTypedArrayData<char>::allocate(capacity)};
+            return QArrayDataPointer<char>(capacity);
         }
 
         // for larger buffers, assume it compresses optimally, and
@@ -695,7 +695,7 @@ QByteArray qCompress(const uchar* data, qsizetype nbytes, int compressionLevel)
                                                          // but use a nearby power-of-two (faster)
         capacity += std::max(qsizetype(compressBound(uLong(SingleAllocLimit))),
                              nbytes / MaxCompressionFactor);
-        return QArrayDataPointer{QTypedArrayData<char>::allocate(capacity, QArrayData::Grow)};
+        return QArrayDataPointer<char>(capacity, 0, QArrayData::Grow);
     }();
 
     if (out.data() == nullptr) // allocation failed
@@ -783,7 +783,7 @@ QByteArray qUncompress(const uchar* data, qsizetype nbytes)
     qsizetype capacity = std::max(qsizetype(expectedSize), // cannot overflow!
                                   nbytes);
 
-    QArrayDataPointer d(QTypedArrayData<char>::allocate(capacity, QArrayData::KeepSize));
+    QArrayDataPointer<char> d(capacity);
     return xxflate(ZLibOp::Decompression, std::move(d), {data + HeaderSize, nbytes - HeaderSize},
                    [] (z_stream *zs) { return inflateInit(zs); },
                    [] (z_stream *zs, size_t) { return inflate(zs, Z_NO_FLUSH); },
@@ -1333,6 +1333,9 @@ QByteArray &QByteArray::operator=(const QByteArray & other) noexcept
     \overload
 
     Assigns \a str to this byte array.
+
+    \a str is assumed to point to a null-terminated string, and its length is
+    determined dynamically.
 */
 
 QByteArray &QByteArray::operator=(const char *str)
@@ -1342,14 +1345,7 @@ QByteArray &QByteArray::operator=(const char *str)
     } else if (!*str) {
         d = DataPointer::fromRawData(&_empty, 0);
     } else {
-        const qsizetype len = qsizetype(strlen(str));
-        const auto capacityAtEnd = d->allocatedCapacity() - d.freeSpaceAtBegin();
-        if (d->needsDetach() || len > capacityAtEnd
-                || (len < size() && len < (capacityAtEnd >> 1)))
-            // ### inefficient! reallocData() does copy the old data and we then overwrite it in the next line
-            reallocData(len, QArrayData::KeepSize);
-        memcpy(d.data(), str, len + 1); // include null terminator
-        d.size = len;
+        assign(str);
     }
     return *this;
 }
@@ -1800,7 +1796,7 @@ QByteArray::QByteArray(const char *data, qsizetype size)
         if (!size) {
             d = DataPointer::fromRawData(&_empty, 0);
         } else {
-            d = DataPointer(Data::allocate(size), size);
+            d = DataPointer(size, size);
             Q_CHECK_PTR(d.data());
             memcpy(d.data(), data, size);
             d.data()[size] = '\0';
@@ -1819,7 +1815,7 @@ QByteArray::QByteArray(qsizetype size, char ch)
     if (size <= 0) {
         d = DataPointer::fromRawData(&_empty, 0);
     } else {
-        d = DataPointer(Data::allocate(size), size);
+        d = DataPointer(size, size);
         Q_CHECK_PTR(d.data());
         memset(d.data(), ch, size);
         d.data()[size] = '\0';
@@ -1835,7 +1831,7 @@ QByteArray::QByteArray(qsizetype size, Qt::Initialization)
     if (size <= 0) {
         d = DataPointer::fromRawData(&_empty, 0);
     } else {
-        d = DataPointer(Data::allocate(size), size);
+        d = DataPointer(size, size);
         Q_CHECK_PTR(d.data());
         d.data()[size] = '\0';
     }
@@ -1924,7 +1920,7 @@ void QByteArray::reallocData(qsizetype alloc, QArrayData::AllocationOption optio
     const bool cannotUseReallocate = d.freeSpaceAtBegin() > 0;
 
     if (d->needsDetach() || cannotUseReallocate) {
-        DataPointer dd(Data::allocate(alloc, option), qMin(alloc, d.size));
+        DataPointer dd(alloc, qMin(alloc, d.size), option);
         Q_CHECK_PTR(dd.data());
         if (dd.size > 0)
             ::memcpy(dd.data(), d.data(), dd.size);
@@ -2044,9 +2040,17 @@ QByteArray &QByteArray::prepend(const QByteArray &ba)
 
 QByteArray &QByteArray::append(const QByteArray &ba)
 {
-    if (size() == 0 && ba.size() > d->freeSpaceAtEnd() && ba.d.isMutable())
-        return (*this = ba);
-    return append(QByteArrayView(ba));
+    if (!ba.isNull()) {
+        if (isNull()) {
+            if (Q_UNLIKELY(!ba.d.isMutable()))
+                assign(ba); // fromRawData, so we do a deep copy
+            else
+                operator=(ba);
+        } else if (ba.size()) {
+            append(QByteArrayView(ba));
+        }
+    }
+    return *this;
 }
 
 /*!
@@ -2133,7 +2137,7 @@ QByteArray& QByteArray::append(char ch)
 */
 
 /*!
-    \fn template <typename InputIterator, if_input_iterator<InputIterator>> QByteArray &QByteArray::assign(InputIterator first, InputIterator last)
+    \fn template <typename InputIterator, QByteArray::if_input_iterator<InputIterator>> QByteArray &QByteArray::assign(InputIterator first, InputIterator last)
     \since 6.6
 
     Replaces the contents of this byte array with a copy of the elements in the
@@ -2561,12 +2565,11 @@ QByteArray &QByteArray::replace(QByteArrayView before, QByteArrayView after)
 
 QByteArray &QByteArray::replace(char before, char after)
 {
-    if (!isEmpty()) {
-        char *i = data();
-        char *e = i + size();
-        for (; i != e; ++i)
-            if (*i == before)
-                * i = after;
+    if (before != after) {
+        if (const auto pos = indexOf(before); pos >= 0) {
+            const auto detachedData = data();
+            std::replace(detachedData + pos, detachedData + size(), before, after);
+        }
     }
     return *this;
 }
@@ -3022,6 +3025,9 @@ bool QByteArray::isLower() const
 */
 
 /*!
+    \fn QByteArray QByteArray::left(qsizetype len) const &
+    \fn QByteArray QByteArray::left(qsizetype len) &&
+
     Returns a byte array that contains the first \a len bytes of this byte
     array.
 
@@ -3036,16 +3042,10 @@ bool QByteArray::isLower() const
     \sa first(), last(), startsWith(), chopped(), chop(), truncate()
 */
 
-QByteArray QByteArray::left(qsizetype len)  const
-{
-    if (len >= size())
-        return *this;
-    if (len < 0)
-        len = 0;
-    return QByteArray(data(), len);
-}
-
 /*!
+    \fn QByteArray QByteArray::right(qsizetype len) const &
+    \fn QByteArray QByteArray::right(qsizetype len) &&
+
     Returns a byte array that contains the last \a len bytes of this byte array.
 
     If you know that \a len cannot be out of bounds, use last() instead in new
@@ -3058,16 +3058,11 @@ QByteArray QByteArray::left(qsizetype len)  const
 
     \sa endsWith(), last(), first(), sliced(), chopped(), chop(), truncate()
 */
-QByteArray QByteArray::right(qsizetype len) const
-{
-    if (len >= size())
-        return *this;
-    if (len < 0)
-        len = 0;
-    return QByteArray(end() - len, len);
-}
 
 /*!
+    \fn QByteArray QByteArray::mid(qsizetype pos, qsizetype len) const &
+    \fn QByteArray QByteArray::mid(qsizetype pos, qsizetype len) &&
+
     Returns a byte array containing \a len bytes from this byte array,
     starting at position \a pos.
 
@@ -3081,7 +3076,7 @@ QByteArray QByteArray::right(qsizetype len) const
     \sa first(), last(), sliced(), chopped(), chop(), truncate()
 */
 
-QByteArray QByteArray::mid(qsizetype pos, qsizetype len) const
+QByteArray QByteArray::mid(qsizetype pos, qsizetype len) const &
 {
     qsizetype p = pos;
     qsizetype l = len;
@@ -3096,13 +3091,33 @@ QByteArray QByteArray::mid(qsizetype pos, qsizetype len) const
     case QContainerImplHelper::Full:
         return *this;
     case QContainerImplHelper::Subset:
-        return QByteArray(d.data() + p, l);
+        return sliced(p, l);
+    }
+    Q_UNREACHABLE_RETURN(QByteArray());
+}
+
+QByteArray QByteArray::mid(qsizetype pos, qsizetype len) &&
+{
+    qsizetype p = pos;
+    qsizetype l = len;
+    using namespace QtPrivate;
+    switch (QContainerImplHelper::mid(size(), &p, &l)) {
+    case QContainerImplHelper::Null:
+        return QByteArray();
+    case QContainerImplHelper::Empty:
+        resize(0);      // keep capacity if we've reserve()d
+        [[fallthrough]];
+    case QContainerImplHelper::Full:
+        return std::move(*this);
+    case QContainerImplHelper::Subset:
+        return std::move(*this).sliced(p, l);
     }
     Q_UNREACHABLE_RETURN(QByteArray());
 }
 
 /*!
-    \fn QByteArray QByteArray::first(qsizetype n) const
+    \fn QByteArray QByteArray::first(qsizetype n) const &
+    \fn QByteArray QByteArray::first(qsizetype n) &&
     \since 6.0
 
     Returns the first \a n bytes of the byte array.
@@ -3116,7 +3131,8 @@ QByteArray QByteArray::mid(qsizetype pos, qsizetype len) const
 */
 
 /*!
-    \fn QByteArray QByteArray::last(qsizetype n) const
+    \fn QByteArray QByteArray::last(qsizetype n) const &
+    \fn QByteArray QByteArray::last(qsizetype n) &&
     \since 6.0
 
     Returns the last \a n bytes of the byte array.
@@ -3130,7 +3146,8 @@ QByteArray QByteArray::mid(qsizetype pos, qsizetype len) const
 */
 
 /*!
-    \fn QByteArray QByteArray::sliced(qsizetype pos, qsizetype n) const
+    \fn QByteArray QByteArray::sliced(qsizetype pos, qsizetype n) const &
+    \fn QByteArray QByteArray::sliced(qsizetype pos, qsizetype n) &&
     \since 6.0
 
     Returns a byte array containing the \a n bytes of this object starting
@@ -3144,9 +3161,18 @@ QByteArray QByteArray::mid(qsizetype pos, qsizetype len) const
 
     \sa first(), last(), chopped(), chop(), truncate()
 */
+QByteArray QByteArray::sliced_helper(QByteArray &a, qsizetype pos, qsizetype n)
+{
+    if (n == 0)
+        return fromRawData(&_empty, 0);
+    DataPointer d = std::move(a.d).sliced(pos, n);
+    d.data()[n] = 0;
+    return QByteArray(std::move(d));
+}
 
 /*!
-    \fn QByteArray QByteArray::sliced(qsizetype pos) const
+    \fn QByteArray QByteArray::sliced(qsizetype pos) const &
+    \fn QByteArray QByteArray::sliced(qsizetype pos) &&
     \since 6.0
     \overload
 
@@ -3159,7 +3185,8 @@ QByteArray QByteArray::mid(qsizetype pos, qsizetype len) const
 */
 
 /*!
-    \fn QByteArray QByteArray::chopped(qsizetype len) const
+    \fn QByteArray QByteArray::chopped(qsizetype len) const &
+    \fn QByteArray QByteArray::chopped(qsizetype len) &&
     \since 5.10
 
     Returns a byte array that contains the leftmost size() - \a len bytes of
@@ -3266,7 +3293,7 @@ void QByteArray::clear()
 QDataStream &operator<<(QDataStream &out, const QByteArray &ba)
 {
     if (ba.isNull() && out.version() >= 6) {
-        out << (quint32)0xffffffff;
+        QDataStream::writeQSizeType(out, -1);
         return out;
     }
     return out.writeBytes(ba.constData(), ba.size());
@@ -3283,15 +3310,21 @@ QDataStream &operator<<(QDataStream &out, const QByteArray &ba)
 QDataStream &operator>>(QDataStream &in, QByteArray &ba)
 {
     ba.clear();
-    quint32 len;
-    in >> len;
-    if (len == 0xffffffff) { // null byte-array
+
+    qint64 size = QDataStream::readQSizeType(in);
+    qsizetype len = size;
+    if (size != len || size < -1) {
+        ba.clear();
+        in.setStatus(QDataStream::SizeLimitExceeded);
+        return in;
+    }
+    if (len == -1) { // null byte-array
         ba = QByteArray();
         return in;
     }
 
-    const quint32 Step = 1024 * 1024;
-    quint32 allocated = 0;
+    constexpr qsizetype Step = 1024 * 1024;
+    qsizetype allocated = 0;
 
     do {
         qsizetype blockSize = qMin(Step, len - allocated);
@@ -3657,9 +3690,7 @@ QByteArray QByteArray::trimmed_helper(QByteArray &a)
 
 QByteArrayView QtPrivate::trimmed(QByteArrayView view) noexcept
 {
-    auto start = view.begin();
-    auto stop = view.end();
-    QStringAlgorithms<QByteArrayView>::trimmed_helper_positions(start, stop);
+    const auto [start, stop] = QStringAlgorithms<QByteArrayView>::trimmed_helper_positions(view);
     return QByteArrayView(start, stop);
 }
 
@@ -3748,10 +3779,9 @@ auto QtPrivate::toSignedInteger(QByteArrayView data, int base) -> ParsedNumber<q
     if (data.isEmpty())
         return {};
 
-    bool ok = false;
-    const auto i = QLocaleData::bytearrayToLongLong(data, base, &ok);
-    if (ok)
-        return ParsedNumber(i);
+    const QSimpleParsedNumber r = QLocaleData::bytearrayToLongLong(data, base);
+    if (r.ok())
+        return ParsedNumber(r.result);
     return {};
 }
 
@@ -3766,10 +3796,9 @@ auto QtPrivate::toUnsignedInteger(QByteArrayView data, int base) -> ParsedNumber
     if (data.isEmpty())
         return {};
 
-    bool ok = false;
-    const auto u = QLocaleData::bytearrayToUnsLongLong(data, base, &ok);
-    if (ok)
-        return ParsedNumber(u);
+    const QSimpleParsedNumber r = QLocaleData::bytearrayToUnsLongLong(data, base);
+    if (r.ok())
+        return ParsedNumber(r.result);
     return {};
 }
 
@@ -4112,12 +4141,12 @@ auto QtPrivate::toFloat(QByteArrayView a) noexcept -> ParsedNumber<float>
 */
 QByteArray QByteArray::toBase64(Base64Options options) const
 {
-    const char alphabet_base64[] = "ABCDEFGH" "IJKLMNOP" "QRSTUVWX" "YZabcdef"
-                                   "ghijklmn" "opqrstuv" "wxyz0123" "456789+/";
-    const char alphabet_base64url[] = "ABCDEFGH" "IJKLMNOP" "QRSTUVWX" "YZabcdef"
-                                      "ghijklmn" "opqrstuv" "wxyz0123" "456789-_";
+    constexpr char alphabet_base64[] = "ABCDEFGH" "IJKLMNOP" "QRSTUVWX" "YZabcdef"
+                                       "ghijklmn" "opqrstuv" "wxyz0123" "456789+/";
+    constexpr char alphabet_base64url[] = "ABCDEFGH" "IJKLMNOP" "QRSTUVWX" "YZabcdef"
+                                          "ghijklmn" "opqrstuv" "wxyz0123" "456789-_";
     const char *const alphabet = options & Base64UrlEncoding ? alphabet_base64url : alphabet_base64;
-    const char padchar = '=';
+    constexpr char padchar = '=';
     qsizetype padlen = 0;
 
     const qsizetype sz = size();
@@ -4229,7 +4258,7 @@ static char *qulltoa2(char *p, qulonglong n, int base)
         base = 10;
     }
 #endif
-    const char b = 'a' - 10;
+    constexpr char b = 'a' - 10;
     do {
         const int c = n % base;
         n /= base;
@@ -4246,7 +4275,7 @@ static char *qulltoa2(char *p, qulonglong n, int base)
 */
 QByteArray &QByteArray::setNum(qlonglong n, int base)
 {
-    const int buffsize = 66; // big enough for MAX_ULLONG in base 2
+    constexpr int buffsize = 66; // big enough for MAX_ULLONG in base 2
     char buff[buffsize];
     char *p;
 
@@ -4271,7 +4300,7 @@ QByteArray &QByteArray::setNum(qlonglong n, int base)
 
 QByteArray &QByteArray::setNum(qulonglong n, int base)
 {
-    const int buffsize = 66; // big enough for MAX_ULLONG in base 2
+    constexpr int buffsize = 66; // big enough for MAX_ULLONG in base 2
     char buff[buffsize];
     char *p = qulltoa2(buff + buffsize, n, base);
 

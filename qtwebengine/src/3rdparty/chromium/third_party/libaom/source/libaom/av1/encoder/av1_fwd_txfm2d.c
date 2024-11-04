@@ -373,16 +373,6 @@ static const int8_t fidtx8_range_mult2[1] = { 2 };
 static const int8_t fidtx16_range_mult2[1] = { 3 };
 static const int8_t fidtx32_range_mult2[1] = { 4 };
 
-#if 0
-const int8_t fwd_idtx_range_row[MAX_TXWH_IDX /*txw_idx*/]
-                               [MAX_TXWH_IDX /*txh_idx*/] = { { 2, 4, 5, 0, 0 },
-                                                              { 3, 4, 5, 6, 0 },
-                                                              { 4, 5, 6, 7, 8 },
-                                                              { 0, 5, 6, 7, 8 },
-                                                              { 0, 0, 7, 8,
-                                                                9 } };
-#endif
-
 static const int8_t *fwd_txfm_range_mult2_list[TXFM_TYPES] = {
   fdct4_range_mult2,  fdct8_range_mult2,   fdct16_range_mult2,
   fdct32_range_mult2, fdct64_range_mult2,  fadst4_range_mult2,
@@ -394,22 +384,20 @@ static INLINE void set_fwd_txfm_non_scale_range(TXFM_2D_FLIP_CFG *cfg) {
   av1_zero(cfg->stage_range_col);
   av1_zero(cfg->stage_range_row);
 
-  const int8_t *range_mult2_col = fwd_txfm_range_mult2_list[cfg->txfm_type_col];
-  if (cfg->txfm_type_col != TXFM_TYPE_INVALID) {
-    int stage_num_col = cfg->stage_num_col;
-    for (int i = 0; i < stage_num_col; ++i)
-      cfg->stage_range_col[i] = (range_mult2_col[i] + 1) >> 1;
-  }
+  const int8_t *const range_mult2_col =
+      fwd_txfm_range_mult2_list[cfg->txfm_type_col];
+  const int stage_num_col = cfg->stage_num_col;
+  // i < MAX_TXFM_STAGE_NUM will quiet -Wstringop-overflow.
+  for (int i = 0; i < stage_num_col && i < MAX_TXFM_STAGE_NUM; ++i)
+    cfg->stage_range_col[i] = (range_mult2_col[i] + 1) >> 1;
 
-  if (cfg->txfm_type_row != TXFM_TYPE_INVALID) {
-    int stage_num_row = cfg->stage_num_row;
-    const int8_t *range_mult2_row =
-        fwd_txfm_range_mult2_list[cfg->txfm_type_row];
-    for (int i = 0; i < stage_num_row; ++i) {
-      cfg->stage_range_row[i] =
-          (range_mult2_col[cfg->stage_num_col - 1] + range_mult2_row[i] + 1) >>
-          1;
-    }
+  const int8_t *const range_mult2_row =
+      fwd_txfm_range_mult2_list[cfg->txfm_type_row];
+  const int stage_num_row = cfg->stage_num_row;
+  // i < MAX_TXFM_STAGE_NUM will quiet -Wstringop-overflow.
+  for (int i = 0; i < stage_num_row && i < MAX_TXFM_STAGE_NUM; ++i) {
+    cfg->stage_range_row[i] =
+        (range_mult2_col[stage_num_col - 1] + range_mult2_row[i] + 1) >> 1;
   }
 }
 
@@ -426,7 +414,9 @@ void av1_get_fwd_txfm_cfg(TX_TYPE tx_type, TX_SIZE tx_size,
   cfg->cos_bit_col = av1_fwd_cos_bit_col[txw_idx][txh_idx];
   cfg->cos_bit_row = av1_fwd_cos_bit_row[txw_idx][txh_idx];
   cfg->txfm_type_col = av1_txfm_type_ls[txh_idx][tx_type_1d_col];
+  assert(cfg->txfm_type_col != TXFM_TYPE_INVALID);
   cfg->txfm_type_row = av1_txfm_type_ls[txw_idx][tx_type_1d_row];
+  assert(cfg->txfm_type_row != TXFM_TYPE_INVALID);
   cfg->stage_num_col = av1_txfm_stage_num_list[cfg->txfm_type_col];
   cfg->stage_num_row = av1_txfm_stage_num_list[cfg->txfm_type_row];
   set_fwd_txfm_non_scale_range(cfg);

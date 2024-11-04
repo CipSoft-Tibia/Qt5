@@ -7,7 +7,6 @@
 
 #include "base/win/pe_image.h"
 
-#include <delayimp.h>
 #include <stddef.h>
 #include <set>
 #include <string>

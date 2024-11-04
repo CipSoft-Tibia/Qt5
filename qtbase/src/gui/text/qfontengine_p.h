@@ -29,13 +29,6 @@ class QFontEngineGlyphCache;
 
 struct QGlyphLayout;
 
-#define MAKE_TAG(ch1, ch2, ch3, ch4) (\
-    (((quint32)(ch1)) << 24) | \
-    (((quint32)(ch2)) << 16) | \
-    (((quint32)(ch3)) << 8) | \
-    ((quint32)(ch4)) \
-   )
-
 // ### this only used in getPointInOutline(), refactor it and then remove these magic numbers
 enum HB_Compat_Error {
     Err_Ok                           = 0x0000,
@@ -127,11 +120,13 @@ public:
     virtual bool getSfntTableData(uint tag, uchar *buffer, uint *length) const;
 
     struct FaceId {
-        FaceId() : index(0), encoding(0) {}
+        FaceId() : index(0), instanceIndex(-1), encoding(0) {}
         QByteArray filename;
         QByteArray uuid;
         int index;
+        int instanceIndex;
         int encoding;
+        QMap<QFont::Tag, float> variableAxes;
     };
     virtual FaceId faceId() const { return FaceId(); }
     enum SynthesizedFlags {
@@ -372,13 +367,18 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(QFontEngine::ShaperFlags)
 
 inline bool operator ==(const QFontEngine::FaceId &f1, const QFontEngine::FaceId &f2)
 {
-    return f1.index == f2.index && f1.encoding == f2.encoding && f1.filename == f2.filename && f1.uuid == f2.uuid;
+    return f1.index == f2.index
+            && f1.encoding == f2.encoding
+            && f1.filename == f2.filename
+            && f1.uuid == f2.uuid
+            && f1.instanceIndex == f2.instanceIndex
+            && f1.variableAxes == f2.variableAxes;
 }
 
 inline size_t qHash(const QFontEngine::FaceId &f, size_t seed = 0)
     noexcept(noexcept(qHash(f.filename)))
 {
-    return qHashMulti(seed, f.filename, f.uuid, f.index, f.encoding);
+    return qHashMulti(seed, f.filename, f.uuid, f.index, f.instanceIndex, f.encoding, f.variableAxes.keys(), f.variableAxes.values());
 }
 
 

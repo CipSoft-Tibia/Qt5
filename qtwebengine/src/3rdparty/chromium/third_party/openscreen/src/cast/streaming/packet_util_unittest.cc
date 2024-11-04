@@ -1,14 +1,13 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cast/streaming/packet_util.h"
 
-#include "absl/types/span.h"
 #include "gtest/gtest.h"
+#include "platform/base/span.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 // Tests that a simple RTCP packet containing only a Sender Report can be
@@ -71,7 +70,7 @@ TEST(PacketUtilTest, InspectsRtcpPacketFromReceiver) {
     EXPECT_EQ(kReceiverSsrc, result.second);
   }
 
-  const absl::Span<const uint8_t> kCompoundCombinations[2][2] = {
+  const ByteView kCompoundCombinations[2][2] = {
       {kReceiverReportPacket, kCastFeedbackPacket},
       {kCastFeedbackPacket, kReceiverReportPacket},
   };
@@ -158,10 +157,7 @@ TEST(PacketUtilTest, InspectsMalformedRtpPacket) {
 
 // Tests that an empty packet is classified as unknown.
 TEST(PacketUtilTest, InspectsEmptyPacket) {
-  const uint8_t kInput[] = {};
-
-  const auto result =
-      InspectPacketForRouting(absl::Span<const uint8_t>(kInput, 0));
+  const auto result = InspectPacketForRouting(ByteView());
   EXPECT_EQ(ApparentPacketType::UNKNOWN, result.first);
 }
 
@@ -181,5 +177,4 @@ TEST(PacketUtilTest, InspectsGarbagePacket) {
 }
 
 }  // namespace
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

@@ -121,8 +121,8 @@ import "testlogger.js" as TestLogger
         name: "CreateBenchmark"
 
         function benchmark_create_component() {
-            var component = Qt.createComponent("item.qml")
-            var obj = component.createObject(top)
+            let component = Qt.createComponent("item.qml")
+            let obj = component.createObject(top)
             obj.destroy()
             component.destroy()
         }
@@ -192,7 +192,7 @@ import "testlogger.js" as TestLogger
         when: windowShown
 
         function test_click() {
-            var item = Qt.createQmlObject("import QtQuick 2.0; Item {}", testCase);
+            let item = Qt.createQmlObject("import QtQuick 2.0; Item {}", testCase);
             verify(item);
 
             // Test item...
@@ -219,7 +219,7 @@ import "testlogger.js" as TestLogger
         when: windowShown
 
         function test_click() {
-            var item = createTemporaryQmlObject("import QtQuick 2.0; Item {}", testCase);
+            let item = createTemporaryQmlObject("import QtQuick 2.0; Item {}", testCase);
             verify(item);
 
             // Test item...
@@ -234,7 +234,7 @@ import "testlogger.js" as TestLogger
 
     \sa {QtTest::SignalSpy}{SignalSpy}, {Qt Quick Test}
 
-    \section1 Separating tests from application logic
+    \section1 Separating Tests from Application Logic
 
     In most cases, you would want to separate your tests from the application
     logic by splitting them into different projects and linking them.
@@ -244,67 +244,100 @@ import "testlogger.js" as TestLogger
     \badcode
     .
     | — CMakeLists.txt
+    | - main.qml
     | — src
-    |  | — main.cpp
-    | — qml
-    |  | — main.qml
-    | — modules
-    |  | — MyModule
-    |     | — MyButton.qml
-    |     | — CMakeLists.txt
+        | — main.cpp
+    | — MyModule
+        | — MyButton.qml
+        | — CMakeLists.txt
     | — tests
-       | — UnitQMLTests
-          | — tst_testqml.qml
-          | — main.cpp
-          | — setup.cpp
-          | — setup.h
+        | — tst_testqml.qml
+        | — main.cpp
+        | — setup.cpp
+        | — setup.h
     \endcode
 
-    Now, to test the \c modules/MyModule/MyButton.qml, create a library for
-    \c MyModule in \c modules/MyModule/CMakeLists.txt and link it to your
+    Now, to test \c MyModule/MyButton.qml, create a library for
+    \c MyModule in \c MyModule/CMakeLists.txt and link it to your
     test project, \c tests/UnitQMLTests/CMakeLists.txt:
 
     \if defined(onlinedocs)
-        \tab {build-qt-app}{tab-cmake-add-library}{modules/MyModule/MyButton.qml}{checked}
-        \tab {build-qt-app}{tab-cmake-link-against-library}{tests/UnitQMLTests/CMakeLists.txt}{}
+        \tab {build-qt-app}{tab-cmake-add-library}{MyModule/CMakeLists.txt}{checked}
+        \tab {build-qt-app}{tab-cmake-link-against-library}{tests/CMakeLists.txt}{}
+        \tab {build-qt-app}{tab-tests_main}{tests/main.cpp}{}
+        \tab {build-qt-app}{tab-tests-setup-cpp}{tests/setup.cpp}{}
+        \tab
+        {build-qt-app}{tab-tests-setup-h}{tests/setup.h}{}
+        \tab {build-qt-app}{tab-project-cmake}{CMakeLists.txt}{}
         \tabcontent {tab-cmake-add-library}
     \else
-        \section1 Add library
+        \section2 Add Library
     \endif
     \dots
-    \snippet modules_MyModule_CMakeLists.txt add library
+    \snippet testApp/MyModule/CMakeLists.txt add library
     \dots
     \if defined(onlinedocs)
         \endtabcontent
         \tabcontent {tab-cmake-link-against-library}
     \else
-        \section1 Link against library
+        \section2 Link Against Library
     \endif
     \dots
-    \snippet tests_UnitQMLTests_CMakeLists.txt link against library
+    \snippet testApp/tests/CMakeLists.txt link against library
+    \dots
+    \if defined(onlinedocs)
+        \endtabcontent
+        \tabcontent {tab-tests_main}
+    \else
+        \section2 Test main.cpp
+    \endif
+    \snippet testApp/tests/main.cpp main
+    \if defined(onlinedocs)
+        \endtabcontent
+        \tabcontent {tab-tests-setup-cpp}
+    \else
+        \section2 Test Setup C++
+    \endif
+    \snippet testApp/tests/setup.cpp setup
+    \if defined(onlinedocs)
+        \endtabcontent
+        \tabcontent {tab-tests-setup-h}
+    \else
+        \section2 Test Setup Header
+    \endif
+    \snippet testApp/tests/setup.h setup
+    \if defined(onlinedocs)
+        \endtabcontent
+        \tabcontent {tab-project-cmake}
+    \else
+        \section2 Project CMakeLists
+    \endif
+    \dots
+    \snippet testApp/CMakeLists.txt project-cmake
     \dots
     \if defined(onlinedocs)
         \endtabcontent
     \endif
 
-    Then, in your \c tests/UnitQMLTests/tst_testqml.qml, you can import your
-    \c modules/MyModule/MyButton.qml:
+
+    Then, in \c tests/tst_testqml.qml, you can import
+    \c MyModule/MyButton.qml:
 
     \if defined(onlinedocs)
-        \tab {test-qml}{tab-qml-import}{tests/UnitQMLTests/tst_testqml.qml}{checked}
-        \tab {test-qml}{tab-qml-my-button}{modules/MyModule/MyButton.qml}{}
+        \tab {test-qml}{tab-qml-import}{tests/tst_testqml.qml}{checked}
+        \tab {test-qml}{tab-qml-my-button}{MyModule/MyButton.qml}{}
         \tabcontent {tab-qml-import}
     \else
-        \section1 Import QML
+        \section2 Import QML
     \endif
-    \snippet tests_UnitQMLTests_tst_testqml.qml import
+    \snippet testApp/tests/tst_testqml.qml import
     \if defined(onlinedocs)
         \endtabcontent
         \tabcontent {tab-qml-my-button}
     \else
-        \section1 Define QML button
+        \section2 Define QML Button
     \endif
-    \snippet modules_MyModule_MyButton.qml define
+    \snippet testApp/MyModule/MyButton.qml define
     \if defined(onlinedocs)
         \endtabcontent
     \endif
@@ -557,7 +590,7 @@ Item {
         if (!expressionFunction())
             wait(0)
 
-        var i = 0
+        let i = 0
         while (i < timeout && !expressionFunction()) {
             wait(50)
             i += 50
@@ -651,7 +684,7 @@ Item {
             throw new Error("QtQuickTest::fail")
         }
 
-        if (timeout !== undefined && typeof(timeout) != "number") {
+        if (timeout !== undefined && typeof(timeout) !== "number") {
             qtest_results.fail("Second argument must be a number; actual type is " + typeof timeout,
                 util.callerFile(), util.callerLine())
             throw new Error("QtQuickTest::fail")
@@ -704,7 +737,7 @@ Item {
             throw new Error("QtQuickTest::fail");
         }
 
-        var object = Qt.createQmlObject(qml, parent, filePath);
+        let object = Qt.createQmlObject(qml, parent, filePath);
         qtest_temporaryObjects.push(object);
         return object;
     }
@@ -745,7 +778,7 @@ Item {
         if (parent === undefined)
             parent = null
 
-        var object = component.createObject(parent, properties ? properties : ({}));
+        let object = component.createObject(parent, properties ? properties : ({}));
         qtest_temporaryObjects.push(object);
         return object;
     }
@@ -756,8 +789,8 @@ Item {
         Destroys all temporary objects that still exist.
     */
     function qtest_destroyTemporaryObjects() {
-        for (var i = 0; i < qtest_temporaryObjects.length; ++i) {
-            var temporaryObject = qtest_temporaryObjects[i];
+        for (let i = 0; i < qtest_temporaryObjects.length; ++i) {
+            let temporaryObject = qtest_temporaryObjects[i];
             // ### the typeof check can be removed when QTBUG-57749 is fixed
             if (temporaryObject && typeof temporaryObject.destroy === "function")
                 temporaryObject.destroy();
@@ -827,27 +860,27 @@ Item {
     // Test suites: http://philrathe.com/tests/equiv
     // Author: Philippe Rathé <prathe@gmail.com>
     function qtest_compareInternal(act, exp) {
-        var success = false;
+        let success = false;
         if (act === exp) {
             success = true; // catch the most you can
         } else if (act === null || exp === null || typeof act === "undefined" || typeof exp === "undefined") {
             success = false; // don't lose time with error prone cases
         } else {
-            var typeExp = qtest_typeof(exp), typeAct = qtest_typeof(act)
+            let typeExp = qtest_typeof(exp), typeAct = qtest_typeof(act)
             if (typeExp !== typeAct) {
                 // allow object vs string comparison (e.g. for colors)
                 // else break on different types
-                if ((typeExp === "string" && (typeAct === "object") || typeAct == "declarativeitem")
-                 || ((typeExp === "object" || typeExp == "declarativeitem") && typeAct === "string")) {
-                    success = (act == exp)
+                if ((typeExp === "string" && (typeAct === "object") || typeAct === "declarativeitem")
+                 || ((typeExp === "object" || typeExp === "declarativeitem") && typeAct === "string")) {
+                    success = (act == exp) // @disable-check M126
                 }
             } else if (typeExp === "string" || typeExp === "boolean" ||
                        typeExp === "null" || typeExp === "undefined") {
                 if (exp instanceof act.constructor || act instanceof exp.constructor) {
                     // to catch short annotaion VS 'new' annotation of act declaration
-                    // e.g. var i = 1;
-                    //      var j = new Number(1);
-                    success = (act == exp)
+                    // e.g. let i = 1;
+                    //      let j = new Number(1);
+                    success = (act == exp) // @disable-check M126
                 } else {
                     success = (act === exp)
                 }
@@ -882,9 +915,9 @@ Item {
 
     /*! \internal */
     function qtest_compareInternalObjects(act, exp) {
-        var i;
-        var eq = true; // unless we can proove it
-        var aProperties = [], bProperties = []; // collection of strings
+        let i;
+        let eq = true; // unless we can proove it
+        let aProperties = [], bProperties = []; // collection of strings
 
         // comparing constructors is more strict than using instanceof
         if (act.constructor !== exp.constructor) {
@@ -903,8 +936,8 @@ Item {
             bProperties.push(i); // collect exp's properties
         }
 
-        if (aProperties.length == 0 && bProperties.length == 0) { // at least a special case for QUrl
-            return eq && (JSON.stringify(act) == JSON.stringify(exp));
+        if (aProperties.length === 0 && bProperties.length === 0) { // at least a special case for QUrl
+            return eq && (JSON.stringify(act) === JSON.stringify(exp));
         }
 
         // Ensures identical properties name
@@ -914,11 +947,11 @@ Item {
 
     /*! \internal */
     function qtest_compareInternalArrays(actual, expected) {
-        if (actual.length != expected.length) {
+        if (actual.length !== expected.length) {
             return false
         }
 
-        for (var i = 0, len = actual.length; i < len; i++) {
+        for (let i = 0, len = actual.length; i < len; i++) {
             if (!qtest_compareInternal(actual[i], expected[i])) {
                 return false
             }
@@ -937,10 +970,10 @@ Item {
         \sa tryCompare(), fuzzyCompare
     */
     function compare(actual, expected, msg) {
-        var act = qtest_results.stringify(actual)
-        var exp = qtest_results.stringify(expected)
+        let act = qtest_results.stringify(actual)
+        let exp = qtest_results.stringify(expected)
 
-        var success = qtest_compareInternal(actual, expected)
+        let success = qtest_compareInternal(actual, expected)
         if (msg === undefined) {
             if (success)
                 msg = "COMPARE()"
@@ -969,7 +1002,7 @@ Item {
         if (delta === undefined)
             qtest_fail("A delta value is required for fuzzyCompare", 2)
 
-        var success = qtest_results.fuzzyCompare(actual, expected, delta)
+        let success = qtest_results.fuzzyCompare(actual, expected, delta)
         if (msg === undefined) {
             if (success)
                 msg = "FUZZYCOMPARE()"
@@ -1007,12 +1040,12 @@ Item {
         For example:
 
         \code
-        var image = grabImage(rect);
+        let image = grabImage(rect);
         compare(image.red(10, 10), 255);
         compare(image.pixel(20, 20), Qt.rgba(255, 0, 0, 255));
 
         rect.width += 10;
-        var newImage = grabImage(rect);
+        let newImage = grabImage(rect);
         verify(!newImage.equals(image));
         \endcode
 
@@ -1023,7 +1056,7 @@ Item {
         example:
 
         \code
-        var image = grabImage(rect);
+        let image = grabImage(rect);
         try {
             compare(image.width, 100);
         } catch (ex) {
@@ -1052,7 +1085,7 @@ Item {
     */
     function findChild(parent, objectName) {
         // First, search the visual item hierarchy.
-        var child = qtest_findVisualChild(parent, objectName);
+        let child = qtest_findVisualChild(parent, objectName);
         if (child)
             return child;
 
@@ -1065,16 +1098,16 @@ Item {
         if (!parent || parent.children === undefined)
             return null;
 
-        for (var i = 0; i < parent.children.length; ++i) {
+        for (let i = 0; i < parent.children.length; ++i) {
             // Is this direct child of ours the child we're after?
-            var child = parent.children[i];
+            let child = parent.children[i];
             if (child.objectName === objectName)
                 return child;
         }
 
-        for (i = 0; i < parent.children.length; ++i) {
+        for (let i = 0; i < parent.children.length; ++i) {
             // Try the direct child's children.
-            child = qtest_findVisualChild(parent.children[i], objectName);
+            let child = qtest_findVisualChild(parent.children[i], objectName);
             if (child)
                 return child;
         }
@@ -1107,18 +1140,18 @@ Item {
         \sa compare(), SignalSpy::wait()
     */
     function tryCompare(obj, prop, ...args) {
-        if (typeof(prop) != "string" && typeof(prop) != "number") {
+        if (typeof(prop) !== "string" && typeof(prop) !== "number") {
             qtest_results.fail("A property name as string or index is required for tryCompare",
                         util.callerFile(), util.callerLine())
             throw new Error("QtQuickTest::fail")
         }
-        if (args.length == 0) {
+        if (args.length === 0) {
             qtest_results.fail("A value is required for tryCompare",
                         util.callerFile(), util.callerLine())
             throw new Error("QtQuickTest::fail")
         }
         let [value, timeout, msg] = args
-        if (timeout !== undefined && typeof(timeout) != "number") {
+        if (timeout !== undefined && typeof(timeout) !== "number") {
             qtest_results.fail("timeout should be a number",
                         util.callerFile(), util.callerLine())
             throw new Error("QtQuickTest::fail")
@@ -1129,15 +1162,15 @@ Item {
             msg = "property " + prop
         if (!qtest_compareInternal(obj[prop], value))
             wait(0)
-        var i = 0
+        let i = 0
         while (i < timeout && !qtest_compareInternal(obj[prop], value)) {
             wait(50)
             i += 50
         }
-        var actual = obj[prop]
-        var act = qtest_results.stringify(actual)
-        var exp = qtest_results.stringify(value)
-        var success = qtest_compareInternal(actual, value)
+        let actual = obj[prop]
+        let act = qtest_results.stringify(actual)
+        let exp = qtest_results.stringify(value)
+        let success = qtest_compareInternal(actual, value)
         if (!qtest_results.compare(success, msg, act, exp, util.callerFile(), util.callerLine()))
             throw new Error("QtQuickTest::fail")
     }
@@ -1373,9 +1406,9 @@ Item {
     function keyPress(key, modifiers, delay) {
         if (modifiers === undefined)
             modifiers = Qt.NoModifier
-        if (delay == undefined)
+        if (delay === undefined)
             delay = -1
-        if (typeof(key) == "string" && key.length == 1) {
+        if (typeof(key) === "string" && key.length === 1) {
             if (!qtest_events.keyPressChar(key, modifiers, delay))
                 qtest_fail("window not shown", 2)
         } else {
@@ -1399,9 +1432,9 @@ Item {
     function keyRelease(key, modifiers, delay) {
         if (modifiers === undefined)
             modifiers = Qt.NoModifier
-        if (delay == undefined)
+        if (delay === undefined)
             delay = -1
-        if (typeof(key) == "string" && key.length == 1) {
+        if (typeof(key) === "string" && key.length === 1) {
             if (!qtest_events.keyReleaseChar(key, modifiers, delay))
                 qtest_fail("window not shown", 2)
         } else {
@@ -1425,9 +1458,9 @@ Item {
     function keyClick(key, modifiers, delay) {
         if (modifiers === undefined)
             modifiers = Qt.NoModifier
-        if (delay == undefined)
+        if (delay === undefined)
             delay = -1
-        if (typeof(key) == "string" && key.length == 1) {
+        if (typeof(key) === "string" && key.length === 1) {
             if (!qtest_events.keyClickChar(key, modifiers, delay))
                 qtest_fail("window not shown", 2)
         } else {
@@ -1480,7 +1513,7 @@ Item {
             button = Qt.LeftButton
         if (modifiers === undefined)
             modifiers = Qt.NoModifier
-        if (delay == undefined)
+        if (delay === undefined)
             delay = -1
         if (x === undefined)
             x = item.width / 2
@@ -1514,7 +1547,7 @@ Item {
             button = Qt.LeftButton
         if (modifiers === undefined)
             modifiers = Qt.NoModifier
-        if (delay == undefined)
+        if (delay === undefined)
             delay = -1
         if (x === undefined)
             x = item.width / 2
@@ -1549,17 +1582,17 @@ Item {
             button = Qt.LeftButton
         if (modifiers === undefined)
             modifiers = Qt.NoModifier
-        if (delay == undefined)
+        if (delay === undefined)
             delay = -1
-        var moveDelay = Math.max(1, delay === -1 ? qtest_events.defaultMouseDelay : delay)
+        let moveDelay = Math.max(1, delay === -1 ? qtest_events.defaultMouseDelay : delay)
 
         // Divide dx and dy to have intermediate mouseMove while dragging
         // Fractions of dx/dy need be superior to the dragThreshold
         // to make the drag works though
-        var intermediateDx = Math.round(dx/3)
+        let intermediateDx = Math.round(dx/3)
         if (Math.abs(intermediateDx) < (util.dragThreshold + 1))
             intermediateDx = 0
-        var intermediateDy = Math.round(dy/3)
+        let intermediateDy = Math.round(dy/3)
         if (Math.abs(intermediateDy) < (util.dragThreshold + 1))
             intermediateDy = 0
 
@@ -1567,14 +1600,14 @@ Item {
 
         // Trigger dragging by dragging past the drag threshold, but making sure to only drag
         // along a certain axis if a distance greater than zero was given for that axis.
-        var dragTriggerXDistance = dx > 0 ? (util.dragThreshold + 1) : 0
-        var dragTriggerYDistance = dy > 0 ? (util.dragThreshold + 1) : 0
-        mouseMove(item, x + dragTriggerXDistance, y + dragTriggerYDistance, moveDelay, button)
+        let dragTriggerXDistance = dx > 0 ? (util.dragThreshold + 1) : 0
+        let dragTriggerYDistance = dy > 0 ? (util.dragThreshold + 1) : 0
+        mouseMove(item, x + dragTriggerXDistance, y + dragTriggerYDistance, moveDelay, button, modifiers)
         if (intermediateDx !== 0 || intermediateDy !== 0) {
-            mouseMove(item, x + intermediateDx, y + intermediateDy, moveDelay, button)
-            mouseMove(item, x + 2*intermediateDx, y + 2*intermediateDy, moveDelay, button)
+            mouseMove(item, x + intermediateDx, y + intermediateDy, moveDelay, button, modifiers)
+            mouseMove(item, x + 2*intermediateDx, y + 2*intermediateDy, moveDelay, button, modifiers)
         }
-        mouseMove(item, x + dx, y + dy, moveDelay, button)
+        mouseMove(item, x + dx, y + dy, moveDelay, button, modifiers)
         mouseRelease(item, x + dx, y + dy, button, modifiers, delay)
     }
 
@@ -1602,7 +1635,7 @@ Item {
             button = Qt.LeftButton
         if (modifiers === undefined)
             modifiers = Qt.NoModifier
-        if (delay == undefined)
+        if (delay === undefined)
             delay = -1
         if (x === undefined)
             x = item.width / 2
@@ -1643,7 +1676,7 @@ Item {
             button = Qt.LeftButton
         if (modifiers === undefined)
             modifiers = Qt.NoModifier
-        if (delay == undefined)
+        if (delay === undefined)
             delay = -1
         if (x === undefined)
             x = item.width / 2
@@ -1670,19 +1703,21 @@ Item {
 
         \sa mousePress(), mouseRelease(), mouseClick(), mouseDoubleClickSequence(), mouseDrag(), mouseWheel()
     */
-    function mouseMove(item, x, y, delay, buttons) {
+    function mouseMove(item, x, y, delay, buttons, modifiers) {
         if (!qtest_verifyItem(item, "mouseMove"))
             return
 
-        if (delay == undefined)
+        if (delay === undefined)
             delay = -1
-        if (buttons == undefined)
+        if (buttons === undefined)
             buttons = Qt.NoButton
+        if (modifiers === undefined)
+            modifiers = Qt.NoModifiers
         if (x === undefined)
             x = item.width / 2
         if (y === undefined)
             y = item.height / 2
-        if (!qtest_events.mouseMove(item, x, y, delay, buttons))
+        if (!qtest_events.mouseMove(item, x, y, delay, buttons, modifiers))
             qtest_fail("window not shown", 2)
     }
 
@@ -1706,15 +1741,15 @@ Item {
         if (!qtest_verifyItem(item, "mouseWheel"))
             return
 
-        if (delay == undefined)
+        if (delay === undefined)
             delay = -1
-        if (buttons == undefined)
+        if (buttons === undefined)
             buttons = Qt.NoButton
         if (modifiers === undefined)
             modifiers = Qt.NoModifier
-        if (xDelta == undefined)
+        if (xDelta === undefined)
             xDelta = 0
-        if (yDelta == undefined)
+        if (yDelta === undefined)
             yDelta = 0
         if (!qtest_events.mouseWheel(item, x, y, buttons, modifiers, xDelta, yDelta, delay))
             qtest_fail("window not shown", 2)
@@ -1751,7 +1786,7 @@ Item {
                 id: test1
 
                 function test_touch() {
-                    var touch = touchEvent(area);
+                    let touch = touchEvent(area);
                     touch.press(0, area, 10, 10);
                     touch.commit();
                     verify(area.touched);
@@ -1896,7 +1931,7 @@ Item {
             qtest_testCaseResult = testCase[prop](arg)
         } catch (e) {
             qtest_testCaseResult = []
-            if (e.message.indexOf("QtQuickTest::") != 0) {
+            if (e.message.indexOf("QtQuickTest::") !== 0) {
                 // Test threw an unrecognized exception - fail.
                 qtest_results.fail("Uncaught exception: " + e.message,
                              e.fileName, e.lineNumber)
@@ -1934,12 +1969,12 @@ Item {
                     break
 
                 // Execute the benchmark function.
-                if (prop.indexOf("benchmark_once_") != 0)
+                if (prop.indexOf("benchmark_once_") !== 0)
                     qtest_results.startBenchmark(TestResult.RepeatUntilValidMeasurement, qtest_results.dataTag)
                 else
                     qtest_results.startBenchmark(TestResult.RunOnce, qtest_results.dataTag)
                 while (!qtest_results.isBenchmarkDone()) {
-                    var success = qtest_runInternal(prop, arg)
+                    let success = qtest_runInternal(prop, arg)
                     qtest_results.finishTestData()
                     if (!success)
                         break
@@ -1983,12 +2018,12 @@ Item {
 
         if (qtest_results.functionsToRun.length > 0) {
             checkNames = true
-            var found = false
+            let found = false
 
             if (name.length > 0) {
-                for (var index in qtest_results.functionsToRun) {
+                for (let index in qtest_results.functionsToRun) {
                     let caseFuncName = qtest_results.functionsToRun[index]
-                    if (caseFuncName.indexOf(name + "::") != 0)
+                    if (caseFuncName.indexOf(name + "::") !== 0)
                         continue
 
                     found = true
@@ -2015,7 +2050,7 @@ Item {
 
         // Run the initTestCase function.
         qtest_results.functionName = "initTestCase"
-        var runTests = true
+        let runTests = true
         if (!qtest_runInternal("initTestCase"))
             runTests = false
         qtest_results.finishTestData()
@@ -2023,27 +2058,27 @@ Item {
         qtest_results.finishTestFunction()
 
         // Run the test methods.
-        var testList = []
+        let testList = []
         if (runTests) {
-            for (var prop in testCase) {
-                if (prop.indexOf("test_") != 0 && prop.indexOf("benchmark_") != 0)
+            for (let prop in testCase) {
+                if (prop.indexOf("test_") !== 0 && prop.indexOf("benchmark_") !== 0)
                     continue
-                var tail = prop.lastIndexOf("_data");
-                if (tail != -1 && tail == (prop.length - 5))
+                let tail = prop.lastIndexOf("_data");
+                if (tail !== -1 && tail === (prop.length - 5))
                     continue
                 testList.push(prop)
             }
             testList.sort()
         }
 
-        for (var index in testList) {
-            var prop = testList[index]
+        for (let index in testList) {
+            let prop = testList[index]
 
             if (checkNames && !(prop in testsToRun))
                 continue
 
-            var datafunc = prop + "_data"
-            var isBenchmark = (prop.indexOf("benchmark_") == 0)
+            let datafunc = prop + "_data"
+            let isBenchmark = (prop.indexOf("benchmark_") === 0)
             qtest_results.functionName = prop
 
             if (!(datafunc in testCase))
@@ -2051,15 +2086,15 @@ Item {
 
             if (datafunc in testCase) {
                 if (qtest_runInternal(datafunc)) {
-                    var table = qtest_testCaseResult
-                    var haveData = false
+                    let table = qtest_testCaseResult
+                    let haveData = false
 
                     let checkTags = (checkNames && testsToRun[prop].length > 0)
 
                     qtest_results.initTestTable()
-                    for (var index in table) {
+                    for (let index in table) {
                         haveData = true
-                        var row = table[index]
+                        let row = table[index]
                         if (!row.tag)
                             row.tag = "row " + index    // Must have something
                         if (checkTags) {
@@ -2106,13 +2141,13 @@ Item {
         // Complain about missing functions that we were supposed to run.
         if (checkNames) {
             let missingTests = []
-            for (var func in testsToRun) {
+            for (let func in testsToRun) {
                 let caseFuncName = name + '::' + func
                 let tags = testsToRun[func]
                 if (tags.length <= 0)
                     missingTests.push(caseFuncName)
                 else
-                    for (var i in tags)
+                    for (let i in tags)
                         missingTests.push(caseFuncName + ':' + tags[i])
             }
             missingTests.sort()
@@ -2137,7 +2172,7 @@ Item {
     }
 
     onWhenChanged: {
-        if (when != qtest_prevWhen) {
+        if (when !== qtest_prevWhen) {
             qtest_prevWhen = when
             if (when)
                 TestSchedule.testCases.push(testCase)

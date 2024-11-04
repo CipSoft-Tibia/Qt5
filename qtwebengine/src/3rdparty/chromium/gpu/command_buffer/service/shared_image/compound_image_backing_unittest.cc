@@ -41,6 +41,7 @@ class TestSharedImageBackingFactory : public SharedImageBackingFactory {
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
       uint32_t usage,
+      std::string debug_label,
       bool is_thread_safe) override {
     if (allocations_should_fail_)
       return nullptr;
@@ -57,7 +58,20 @@ class TestSharedImageBackingFactory : public SharedImageBackingFactory {
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
       uint32_t usage,
+      std::string debug_label,
       base::span<const uint8_t> pixel_data) override {
+    return nullptr;
+  }
+  std::unique_ptr<SharedImageBacking> CreateSharedImage(
+      const Mailbox& mailbox,
+      viz::SharedImageFormat format,
+      const gfx::Size& size,
+      const gfx::ColorSpace& color_space,
+      GrSurfaceOrigin surface_origin,
+      SkAlphaType alpha_type,
+      uint32_t usage,
+      std::string debug_label,
+      gfx::GpuMemoryBufferHandle handle) override {
     return nullptr;
   }
   std::unique_ptr<SharedImageBacking> CreateSharedImage(
@@ -69,7 +83,8 @@ class TestSharedImageBackingFactory : public SharedImageBackingFactory {
       const gfx::ColorSpace& color_space,
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
-      uint32_t usage) override {
+      uint32_t usage,
+      std::string debug_label) override {
     return nullptr;
   }
   bool IsSupported(uint32_t usage,
@@ -140,8 +155,8 @@ class CompoundImageBackingTest : public testing::Test {
     return CompoundImageBacking::CreateSharedMemory(
         &test_factory_, allow_shm_overlays, Mailbox::GenerateForSharedImage(),
         std::move(handle), buffer_format, gfx::BufferPlane::DEFAULT, size,
-        gfx::ColorSpace(), kBottomLeft_GrSurfaceOrigin, kOpaque_SkAlphaType,
-        SHARED_IMAGE_USAGE_DISPLAY_READ);
+        gfx::ColorSpace(), kTopLeft_GrSurfaceOrigin, kOpaque_SkAlphaType,
+        SHARED_IMAGE_USAGE_DISPLAY_READ, "TestLabel");
   }
 
   std::unique_ptr<SharedImageBacking> CreateMultiplanarCompoundBacking(
@@ -159,9 +174,9 @@ class CompoundImageBackingTest : public testing::Test {
 
     return CompoundImageBacking::CreateSharedMemory(
         &test_factory_, allow_shm_overlays, Mailbox::GenerateForSharedImage(),
-        std::move(handle), viz::MultiPlaneFormat::kYUV_420_BIPLANAR, size,
-        gfx::ColorSpace(), kBottomLeft_GrSurfaceOrigin, kOpaque_SkAlphaType,
-        SHARED_IMAGE_USAGE_DISPLAY_READ);
+        std::move(handle), viz::MultiPlaneFormat::kNV12, size,
+        gfx::ColorSpace(), kTopLeft_GrSurfaceOrigin, kOpaque_SkAlphaType,
+        SHARED_IMAGE_USAGE_DISPLAY_READ, "TestLabel");
   }
 
  protected:

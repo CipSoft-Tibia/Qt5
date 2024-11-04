@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtest.h>
 #include <QLibraryInfo>
@@ -152,10 +152,10 @@ void tst_qmlplugindump::plugin()
     QVERIFY2(dumper.waitForStarted(), qPrintable(dumper.errorString()));
     QVERIFY2(dumper.waitForFinished(), qPrintable(dumper.errorString()));
 
-    const QString &result = dumper.readAllStandardOutput();
+    const QByteArray result = dumper.readAllStandardOutput();
     QFile expectedFile(expectedPath);
     QVERIFY2(expectedFile.open(QIODevice::ReadOnly), qPrintable(expectedFile.errorString()));
-    const QString expected = expectedFile.readAll();
+    const QByteArray expected = expectedFile.readAll();
     QCOMPARE(result, expected);
 }
 

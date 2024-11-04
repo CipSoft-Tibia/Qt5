@@ -9,15 +9,20 @@
 
 #include "base/functional/bind.h"
 #include "base/metrics/user_metrics.h"
+#include "components/password_manager/core/browser/affiliation/affiliation_utils.h"
 #include "components/password_manager/core/browser/credential_manager_logger.h"
 #include "components/password_manager/core/browser/credential_manager_pending_request_task.h"
 #include "components/password_manager/core/browser/credential_manager_utils.h"
 #include "components/password_manager/core/browser/form_fetcher_impl.h"
 #include "components/password_manager/core/browser/form_saver.h"
+#include "components/password_manager/core/browser/leak_detection/leak_detection_request_utils.h"
 #include "components/password_manager/core/browser/password_manager_util.h"
 #include "components/password_manager/core/common/password_manager_pref_names.h"
 
 namespace password_manager {
+
+using password_manager_util::GetLoginMatchType;
+using password_manager_util::GetMatchType;
 
 namespace {
 
@@ -54,7 +59,7 @@ void CredentialManagerImpl::Store(const CredentialInfo& credential,
 
   // Check whether a stored password credential was leaked.
   if (credential.type == CredentialType::CREDENTIAL_TYPE_PASSWORD) {
-    leak_delegate_.StartLeakCheck(*form);
+    leak_delegate_.StartLeakCheck(LeakDetectionInitiator::kSignInCheck, *form);
   }
 
   std::string signon_realm = origin.GetURL().spec();
@@ -120,7 +125,7 @@ void CredentialManagerImpl::Get(CredentialMediationRequirement mediation,
     return;
   }
   // Return an empty credential for incognito mode.
-  if (client_->IsIncognito()) {
+  if (client_->IsOffTheRecord()) {
     // Callback with empty credential info.
     std::move(callback).Run(CredentialManagerError::SUCCESS, CredentialInfo());
     LogCredentialManagerGetResult(
@@ -136,24 +141,13 @@ void CredentialManagerImpl::Get(CredentialMediationRequirement mediation,
         metrics_util::CredentialManagerGetResult::kNoneZeroClickOff, mediation);
     return;
   }
-  StoresToQuery stores_to_query = GetAccountPasswordStore()
-                                      ? StoresToQuery::kProfileAndAccountStores
-                                      : StoresToQuery::kProfileStore;
   pending_request_ = std::make_unique<CredentialManagerPendingRequestTask>(
       this, base::BindOnce(&RunGetCallback, std::move(callback)), mediation,
-      include_passwords, federations, stores_to_query);
-  // This will result in a callback to
-  // PendingRequestTask::OnGetPasswordStoreResults().
-  GetProfilePasswordStore()->GetLogins(GetSynthesizedFormForOrigin(),
-                                       pending_request_->GetWeakPtr());
-  if (GetAccountPasswordStore()) {
-    GetAccountPasswordStore()->GetLogins(GetSynthesizedFormForOrigin(),
-                                         pending_request_->GetWeakPtr());
-  }
+      include_passwords, federations, GetSynthesizedFormForOrigin());
 }
 
 bool CredentialManagerImpl::IsZeroClickAllowed() const {
-  return client_->IsAutoSignInEnabled() && !client_->IsIncognito();
+  return client_->IsAutoSignInEnabled() && !client_->IsOffTheRecord();
 }
 
 PasswordFormDigest CredentialManagerImpl::GetSynthesizedFormForOrigin() const {
@@ -231,14 +225,18 @@ void CredentialManagerImpl::OnProvisionalSaveComplete() {
   const PasswordForm& form = form_manager_->GetPendingCredentials();
   DCHECK(client_->IsSavingAndFillingEnabled(form.url));
 
-  if (form_manager_->IsPendingCredentialsPublicSuffixMatch()) {
-    // Having a credential with a PSL match implies there is no credential with
-    // an exactly matching origin and username. In order to avoid showing a save
+  if (form.match_type.has_value()) {
+    // Having PSL or affiliated web match implies there is no credential with an
+    // exactly matching origin and username. In order to avoid showing a save
     // bubble to the user Save() is called directly.
-    form_manager_->Save();
-    return;
+    GetLoginMatchType match_type = GetMatchType(form);
+    if (match_type == GetLoginMatchType::kPSL ||
+        (match_type == GetLoginMatchType::kAffiliated &&
+         !IsValidAndroidFacetURI(form.signon_realm))) {
+      form_manager_->Save();
+      return;
+    }
   }
-
   if (!form.federation_origin.opaque()) {
     // If this is a federated credential, check it against the federated matches
     // produced by the PasswordFormManager. If a match is found, update it and

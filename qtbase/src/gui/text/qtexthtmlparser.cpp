@@ -413,17 +413,17 @@ static const QTextHtmlElement elements[Html_NumElements]= {
     { "var",        Html_var,        QTextHtmlElement::DisplayInline },
 };
 
-static bool operator<(const QString &str, const QTextHtmlElement &e)
+static bool operator<(QStringView str, const QTextHtmlElement &e)
 {
     return str < QLatin1StringView(e.name);
 }
 
-static bool operator<(const QTextHtmlElement &e, const QString &str)
+static bool operator<(const QTextHtmlElement &e, QStringView str)
 {
     return QLatin1StringView(e.name) < str;
 }
 
-static const QTextHtmlElement *lookupElementHelper(const QString &element)
+static const QTextHtmlElement *lookupElementHelper(QStringView element)
 {
     const QTextHtmlElement *start = &elements[0];
     const QTextHtmlElement *end = &elements[Html_NumElements];
@@ -433,7 +433,7 @@ static const QTextHtmlElement *lookupElementHelper(const QString &element)
     return e;
 }
 
-int QTextHtmlParser::lookupElement(const QString &element)
+int QTextHtmlParser::lookupElement(QStringView element)
 {
     const QTextHtmlElement *e = lookupElementHelper(element);
     if (!e)
@@ -1181,7 +1181,7 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
     QCss::ValueExtractor extractor(declarations);
     extractor.extractBox(margin, padding);
 
-    if (id == Html_td || id == Html_th) {
+    auto getBorderValues = [&extractor](qreal *borderWidth, QBrush *borderBrush, QTextFrameFormat::BorderStyle *borderStyles) {
         QCss::BorderStyle cssStyles[4];
         int cssBorder[4];
         QSize cssRadii[4]; // unused
@@ -1193,23 +1193,33 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
         // QCss::BorderWidth parsing below which expects a single value
         // will not work as expected - which in this case does not matter
         // because tableBorder is not relevant for cells.
-        extractor.extractBorder(cssBorder, tableCellBorderBrush, cssStyles, cssRadii);
+        bool hit = extractor.extractBorder(cssBorder, borderBrush, cssStyles, cssRadii);
         for (int i = 0; i < 4; ++i) {
-            tableCellBorderStyle[i] = toQTextFrameFormat(cssStyles[i]);
-            tableCellBorder[i] = static_cast<qreal>(cssBorder[i]);
+            borderStyles[i] = toQTextFrameFormat(cssStyles[i]);
+            borderWidth[i] = static_cast<qreal>(cssBorder[i]);
         }
-    }
+        return hit;
+    };
+
+    if (id == Html_td || id == Html_th)
+        getBorderValues(tableCellBorder, tableCellBorderBrush, tableCellBorderStyle);
 
     for (int i = 0; i < declarations.size(); ++i) {
         const QCss::Declaration &decl = declarations.at(i);
         if (decl.d->values.isEmpty()) continue;
 
         QCss::KnownValue identifier = QCss::UnknownValue;
-        if (decl.d->values.first().type == QCss::Value::KnownIdentifier)
-            identifier = static_cast<QCss::KnownValue>(decl.d->values.first().variant.toInt());
+        if (decl.d->values.constFirst().type == QCss::Value::KnownIdentifier)
+            identifier = static_cast<QCss::KnownValue>(decl.d->values.constFirst().variant.toInt());
 
         switch (decl.d->propertyId) {
-        case QCss::BorderColor: borderBrush = QBrush(decl.colorValue()); break;
+        case QCss::BorderColor: {
+            QBrush bordersBrush[4];
+            decl.brushValues(bordersBrush);
+            if (bordersBrush[0].color().isValid())
+                borderBrush = bordersBrush[0];
+            break;
+        }
         case QCss::BorderStyles:
             if (decl.styleValue() != QCss::BorderStyle_Unknown && decl.styleValue() != QCss::BorderStyle_Native)
                 borderStyle = static_cast<QTextFrameFormat::BorderStyle>(decl.styleValue() - 1);
@@ -1220,6 +1230,19 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
             tableBorder = borders[0];
             }
             break;
+        case QCss::Border: {
+            qreal tblBorder[4];
+            QBrush tblBorderBrush[4];
+            QTextFrameFormat::BorderStyle tblBorderStyle[4];
+            if (getBorderValues(tblBorder, tblBorderBrush, tblBorderStyle)) {
+                tableBorder = tblBorder[0];
+                if (tblBorderBrush[0].color().isValid())
+                    borderBrush = tblBorderBrush[0];
+                if (tblBorderStyle[0] != static_cast<QTextFrameFormat::BorderStyle>(-1))
+                    borderStyle = tblBorderStyle[0];
+            }
+        }
+        break;
         case QCss::BorderCollapse:
             borderCollapse = decl.borderCollapseValue();
             break;
@@ -1233,10 +1256,10 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
             }
             break;
         case QCss::QtBlockIndent:
-            blockFormat.setIndent(decl.d->values.first().variant.toInt());
+            blockFormat.setIndent(decl.d->values.constFirst().variant.toInt());
             break;
         case QCss::QtLineHeightType: {
-            QString lineHeightTypeName = decl.d->values.first().variant.toString();
+            QString lineHeightTypeName = decl.d->values.constFirst().variant.toString();
             QTextBlockFormat::LineHeightTypes lineHeightType;
             if (lineHeightTypeName.compare("proportional"_L1, Qt::CaseInsensitive) == 0)
                 lineHeightType = QTextBlockFormat::ProportionalHeight;
@@ -1265,7 +1288,7 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
                 lineHeightType = QTextBlockFormat::MinimumHeight;
             } else {
                 bool ok;
-                QCss::Value cssValue = decl.d->values.first();
+                QCss::Value cssValue = decl.d->values.constFirst();
                 QString value = cssValue.toString();
                 lineHeight = value.toDouble(&ok);
                 if (ok) {
@@ -1297,19 +1320,19 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
                 hasCssListIndent = true;
             break;
         case QCss::QtParagraphType:
-            if (decl.d->values.first().variant.toString().compare("empty"_L1, Qt::CaseInsensitive) == 0)
+            if (decl.d->values.constFirst().variant.toString().compare("empty"_L1, Qt::CaseInsensitive) == 0)
                 isEmptyParagraph = true;
             break;
         case QCss::QtTableType:
-            if (decl.d->values.first().variant.toString().compare("frame"_L1, Qt::CaseInsensitive) == 0)
+            if (decl.d->values.constFirst().variant.toString().compare("frame"_L1, Qt::CaseInsensitive) == 0)
                 isTextFrame = true;
-            else if (decl.d->values.first().variant.toString().compare("root"_L1, Qt::CaseInsensitive) == 0) {
+            else if (decl.d->values.constFirst().variant.toString().compare("root"_L1, Qt::CaseInsensitive) == 0) {
                 isTextFrame = true;
                 isRootFrame = true;
             }
             break;
         case QCss::QtUserState:
-            userState = decl.d->values.first().variant.toInt();
+            userState = decl.d->values.constFirst().variant.toInt();
             break;
         case QCss::Whitespace:
             switch (identifier) {
@@ -1363,10 +1386,10 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
             setListStyle(decl.d->values);
             break;
         case QCss::QtListNumberPrefix:
-            textListNumberPrefix = decl.d->values.first().variant.toString();
+            textListNumberPrefix = decl.d->values.constFirst().variant.toString();
             break;
         case QCss::QtListNumberSuffix:
-            textListNumberSuffix = decl.d->values.first().variant.toString();
+            textListNumberSuffix = decl.d->values.constFirst().variant.toString();
             break;
         case QCss::TextAlignment:
             switch (identifier) {
@@ -1381,7 +1404,7 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
         {
             if (resourceProvider != nullptr && QTextDocumentPrivate::get(resourceProvider) != nullptr) {
                 bool ok;
-                qint64 searchKey = decl.d->values.first().variant.toLongLong(&ok);
+                qint64 searchKey = decl.d->values.constFirst().variant.toLongLong(&ok);
                 if (ok)
                     applyForegroundImage(searchKey, resourceProvider);
             }
@@ -1594,10 +1617,9 @@ void QTextHtmlParser::applyAttributes(const QStringList &attributes)
                     node->charFormat.setProperty(QTextFormat::FontSizeAdjustment, n);
                 } else if (key == "face"_L1) {
                     if (value.contains(u',')) {
-                        const QStringList values = value.split(u',');
                         QStringList families;
-                        for (const QString &family : values)
-                            families << family.trimmed();
+                        for (auto family : value.tokenize(u','))
+                            families << family.trimmed().toString();
                         node->charFormat.setFontFamilies(families);
                     } else {
                         node->charFormat.setFontFamilies(QStringList(value));
@@ -1698,7 +1720,8 @@ void QTextHtmlParser::applyAttributes(const QStringList &attributes)
                 }
                 break;
             case Html_table:
-                if (key == "border"_L1) {
+                // If table border already set through css style, prefer that one otherwise consider this value
+                if (key == "border"_L1 && !node->tableBorder) {
                     setFloatAttribute(&node->tableBorder, value);
                 } else if (key == "bgcolor"_L1) {
                     QColor c = QColor::fromString(value);
@@ -2080,7 +2103,7 @@ QList<QCss::Declaration> standardDeclarationForNode(const QTextHtmlParserNode &n
         decl.d->propertyId = QCss::FontFamily;
         QList<QCss::Value> values;
         val.type = QCss::Value::String;
-        val.variant = QFontDatabase::systemFont(QFontDatabase::FixedFont).families().first();
+        val.variant = QFontDatabase::systemFont(QFontDatabase::FixedFont).families().constFirst();
         values << val;
         decl.d->values = values;
         decl.d->inheritable = true;

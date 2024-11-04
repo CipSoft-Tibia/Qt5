@@ -32,6 +32,8 @@ struct AV1RateControlRtcConfig {
 
   int width;
   int height;
+  // Flag indicating if the content is screen or not.
+  bool is_screen;
   // 0-63
   int max_quantizer;
   int min_quantizer;
@@ -63,24 +65,47 @@ struct AV1FrameParamsRTC {
   int temporal_layer_id;
 };
 
+struct AV1LoopfilterLevel {
+  int filter_level[2];
+  int filter_level_u;
+  int filter_level_v;
+};
+
+struct AV1CdefInfo {
+  int cdef_strength_y;
+  int cdef_strength_uv;
+  int damping;
+};
+
+struct AV1SegmentationData {
+  const uint8_t *segmentation_map;
+  size_t segmentation_map_size;
+  const int *delta_q;
+  size_t delta_q_size;
+};
+
 class AV1RateControlRTC {
  public:
   static std::unique_ptr<AV1RateControlRTC> Create(
       const AV1RateControlRtcConfig &cfg);
   ~AV1RateControlRTC();
 
-  void UpdateRateControl(const AV1RateControlRtcConfig &rc_cfg);
+  bool UpdateRateControl(const AV1RateControlRtcConfig &rc_cfg);
   // GetQP() needs to be called after ComputeQP() to get the latest QP
   int GetQP() const;
-  signed char *GetCyclicRefreshMap() const;
-  int *GetDeltaQ() const;
+  // GetLoopfilterLevel() needs to be called after ComputeQP()
+  AV1LoopfilterLevel GetLoopfilterLevel() const;
+  // GetCdefInfo() needs to be called after ComputeQP()
+  AV1CdefInfo GetCdefInfo() const;
+  // Returns the segmentation map used for cyclic refresh, based on 4x4 blocks.
+  bool GetSegmentationData(AV1SegmentationData *segmentation_data) const;
   void ComputeQP(const AV1FrameParamsRTC &frame_params);
   // Feedback to rate control with the size of current encoded frame
   void PostEncodeUpdate(uint64_t encoded_frame_size);
 
  private:
   AV1RateControlRTC() = default;
-  void InitRateControl(const AV1RateControlRtcConfig &cfg);
+  bool InitRateControl(const AV1RateControlRtcConfig &cfg);
   AV1_COMP *cpi_;
   int initial_width_;
   int initial_height_;

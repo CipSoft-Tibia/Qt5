@@ -57,7 +57,6 @@ class MockMediaSessionPlayerObserver : public MediaSessionPlayerObserver {
   void OnSetVolumeMultiplier(int player_id, double volume_multiplier) override {
   }
   void OnEnterPictureInPicture(int player_id) override {}
-  void OnExitPictureInPicture(int player_id) override {}
   void OnSetAudioSinkId(int player_id,
                         const std::string& raw_device_id) override {}
   void OnSetMute(int player_id, bool mute) override {}
@@ -82,7 +81,7 @@ class MockMediaSessionPlayerObserver : public MediaSessionPlayerObserver {
   }
 
   media::MediaContentType GetMediaContentType() const override {
-    return media::MediaContentType::Persistent;
+    return media::MediaContentType::kPersistent;
   }
 
   RenderFrameHost* render_frame_host() const override {
@@ -192,15 +191,9 @@ class MediaSessionServiceImplBrowserTest : public ContentBrowserTest {
   std::unique_ptr<MockMediaSessionPlayerObserver> player_;
 };
 
-#if defined(LEAK_SANITIZER)
-// TODO(crbug.com/850870) Plug the leaks.
-#define MAYBE_CrashMessageOnUnload DISABLED_CrashMessageOnUnload
-#else
-#define MAYBE_CrashMessageOnUnload CrashMessageOnUnload
-#endif
 // Two windows from the same BrowserContext.
 IN_PROC_BROWSER_TEST_F(MediaSessionServiceImplBrowserTest,
-                       MAYBE_CrashMessageOnUnload) {
+                       CrashMessageOnUnload) {
   EXPECT_TRUE(
       NavigateToURL(shell(), GetTestUrl("media/session", "embedder.html")));
   // Navigate to a chrome:// URL to avoid render process re-use.
@@ -214,11 +207,7 @@ IN_PROC_BROWSER_TEST_F(MediaSessionServiceImplBrowserTest,
 // observers to wait for the message to be processed on the MediaSessionObserver
 // side.
 
-#if defined(LEAK_SANITIZER)
-// TODO(crbug.com/850870) Plug the leaks.
-#define MAYBE_ResetServiceWhenNavigatingAway \
-  DISABLED_ResetServiceWhenNavigatingAway
-#elif BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
     BUILDFLAG(IS_ANDROID)
 // crbug.com/927234.
 #define MAYBE_ResetServiceWhenNavigatingAway \
@@ -242,23 +231,13 @@ IN_PROC_BROWSER_TEST_F(MediaSessionServiceImplBrowserTest,
   // actions are reset.
   NavigateToURLAndWaitForFinish(shell(), GetTestUrl(".", "title2.html"));
 
-  EXPECT_EQ(blink::mojom::MediaSessionPlaybackState::NONE,
-            GetService()->playback_state());
-  EXPECT_FALSE(GetService()->metadata());
-  EXPECT_EQ(0u, GetService()->actions().size());
+  // The service should be destroyed.
+  EXPECT_EQ(GetService(), nullptr);
 }
 
-#if defined(LEAK_SANITIZER)
-// TODO(crbug.com/850870) Plug the leaks.
-#define MAYBE_DontResetServiceForSameDocumentNavigation \
-  DISABLED_DontResetServiceForSameDocumentNavigation
-#else
 // crbug.com/927234.
-#define MAYBE_DontResetServiceForSameDocumentNavigation \
-  DISABLED_DontResetServiceForSameDocumentNavigation
-#endif
 IN_PROC_BROWSER_TEST_F(MediaSessionServiceImplBrowserTest,
-                       MAYBE_DontResetServiceForSameDocumentNavigation) {
+                       DISABLED_DontResetServiceForSameDocumentNavigation) {
   EXPECT_TRUE(NavigateToURL(shell(), GetTestUrl(".", "title1.html")));
   EnsurePlayer();
 

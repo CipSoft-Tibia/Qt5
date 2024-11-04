@@ -1,6 +1,8 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+qt_internal_skip_sanitizer()
+
 # Skip building qtprotoccommon when not building tools
 if((QT_FEATURE_qtprotobufgen OR QT_FEATURE_qtgrpcgen) AND
     TARGET WrapProtobuf::WrapLibProtoc AND TARGET WrapProtobuf::WrapLibProtobuf)
@@ -29,3 +31,6 @@ elseif(NOT QT_FEATURE_qtprotobufgen AND QT_FORCE_BUILD_TOOLS)
     message(WARNING "You are trying to force build the qtgrpcgen tool, but its dependencies"
         " are missing. The tool build is disabled.")
 endif()
+
+# Needs to be called at the end after all relevant target have created.
+qt_internal_skip_linking_sanitizer()

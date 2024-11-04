@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 namespace dnssd {
 
 TEST(TxtRecordTest, TestCaseInsensitivity) {
@@ -26,11 +25,11 @@ TEST(TxtRecordTest, TestEmptyValue) {
   DnsSdTxtRecord txt;
   EXPECT_TRUE(txt.SetValue("key", std::vector<uint8_t>{}).ok());
   ASSERT_TRUE(txt.GetValue("key").is_value());
-  EXPECT_EQ(txt.GetValue("key").value().get().size(), size_t{0});
+  EXPECT_TRUE(txt.GetValue("key").value().empty());
 
   EXPECT_TRUE(txt.SetValue("key2", "").ok());
   ASSERT_TRUE(txt.GetValue("key2").is_value());
-  EXPECT_EQ(txt.GetValue("key2").value().get().size(), size_t{0});
+  EXPECT_TRUE(txt.GetValue("key2").value().empty());
 }
 
 TEST(TxtRecordTest, TestSetAndGetValue) {
@@ -38,7 +37,7 @@ TEST(TxtRecordTest, TestSetAndGetValue) {
   std::vector<uint8_t> data{'a', 'b', 'c'};
   EXPECT_TRUE(txt.SetValue("key", data).ok());
   ASSERT_TRUE(txt.GetValue("key").is_value());
-  const std::vector<uint8_t>& value = txt.GetValue("key").value();
+  ByteView value = txt.GetValue("key").value();
   ASSERT_EQ(value.size(), size_t{3});
   EXPECT_EQ(value[0], 'a');
   EXPECT_EQ(value[1], 'b');
@@ -47,14 +46,14 @@ TEST(TxtRecordTest, TestSetAndGetValue) {
   std::vector<uint8_t> data2{'a', 'b'};
   EXPECT_TRUE(txt.SetValue("key", data2).ok());
   ASSERT_TRUE(txt.GetValue("key").is_value());
-  const std::vector<uint8_t>& value2 = txt.GetValue("key").value();
+  ByteView value2 = txt.GetValue("key").value();
   EXPECT_EQ(value2.size(), size_t{2});
   EXPECT_EQ(value2[0], 'a');
   EXPECT_EQ(value2[1], 'b');
 
   EXPECT_TRUE(txt.SetValue("key", "abc").ok());
   ASSERT_TRUE(txt.GetValue("key").is_value());
-  const std::vector<uint8_t>& value3 = txt.GetValue("key").value();
+  ByteView value3 = txt.GetValue("key").value();
   ASSERT_EQ(value.size(), size_t{3});
   EXPECT_EQ(value3[0], 'a');
   EXPECT_EQ(value3[1], 'b');
@@ -62,7 +61,7 @@ TEST(TxtRecordTest, TestSetAndGetValue) {
 
   EXPECT_TRUE(txt.SetValue("key", "ab").ok());
   ASSERT_TRUE(txt.GetValue("key").is_value());
-  const std::vector<uint8_t>& value4 = txt.GetValue("key").value();
+  ByteView value4 = txt.GetValue("key").value();
   EXPECT_EQ(value4.size(), size_t{2});
   EXPECT_EQ(value4[0], 'a');
   EXPECT_EQ(value4[1], 'b');
@@ -147,5 +146,4 @@ TEST(TxtRecordTest, TestGetDataWorks) {
 }
 
 }  // namespace dnssd
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

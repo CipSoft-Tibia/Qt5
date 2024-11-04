@@ -4,6 +4,7 @@
 
 import("//build/buildflag_header.gni")
 import("//build/config/chrome_build.gni")
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 
 declare_args() {
@@ -34,12 +35,17 @@ buildflag_header("buildflags") {
 
 static_library("service") {
   sources = [
+    "google_groups_updater_service.cc",
+    "google_groups_updater_service.h",
     "safe_seed_manager.cc",
     "safe_seed_manager.h",
+    "safe_seed_manager_interface.h",
     "ui_string_overrider.cc",
     "ui_string_overrider.h",
     "variations_field_trial_creator.cc",
     "variations_field_trial_creator.h",
+    "variations_field_trial_creator_base.cc",
+    "variations_field_trial_creator_base.h",
     "variations_service.cc",
     "variations_service.h",
     "variations_service_client.cc",
@@ -53,7 +59,9 @@ static_library("service") {
     "//base",
     "//build:branding_buildflags",
     "//build:chromeos_buildflags",
+    "//build/config/chromebox_for_meetings:buildflags",
     "//components/encrypted_messages",
+    "//components/keyed_service/core",
     "//components/language/core/browser",
     "//components/metrics",
     "//components/network_time",
@@ -68,6 +76,13 @@ static_library("service") {
     "//services/network/public/cpp",
     "//ui/base",
   ]
+
+  if (is_chromeos_ash) {
+    deps += [
+      "//chromeos/ash/components/dbus/featured",
+      "//chromeos/ash/components/dbus/featured:proto",
+    ]
+  }
   if (is_qtwebengine) {
     sources -= [
       "variations_field_trial_creator.cc",
@@ -82,6 +97,7 @@ static_library("service") {
 source_set("unit_tests") {
   testonly = true
   sources = [
+    "google_groups_updater_service_unittest.cc",
     "safe_seed_manager_unittest.cc",
     "ui_string_overrider_unittest.cc",
     "variations_field_trial_creator_unittest.cc",
@@ -98,6 +114,7 @@ source_set("unit_tests") {
     "//components/metrics",
     "//components/metrics:test_support",
     "//components/prefs:test_support",
+    "//components/sync_preferences:test_support",
     "//components/variations",
     "//components/variations:test_support",
     "//components/variations/field_trial_config",
@@ -110,4 +127,11 @@ source_set("unit_tests") {
     "//services/network/public/cpp",
     "//testing/gtest",
   ]
+
+  if (is_chromeos_ash) {
+    deps += [
+      "//chromeos/ash/components/dbus/featured",
+      "//chromeos/ash/components/dbus/featured:proto",
+    ]
+  }
 }

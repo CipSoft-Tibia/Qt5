@@ -142,7 +142,7 @@ void CPWL_EditImpl::RefreshState::BeginRefresh() {
 
 void CPWL_EditImpl::RefreshState::Push(const CPVT_WordRange& linerange,
                                        const CFX_FloatRect& rect) {
-  m_NewLineRects.emplace_back(LineRect(linerange, rect));
+  m_NewLineRects.emplace_back(linerange, rect);
 }
 
 void CPWL_EditImpl::RefreshState::NoAnalyse() {
@@ -167,7 +167,7 @@ void CPWL_EditImpl::RefreshState::Add(const CFX_FloatRect& new_rect) {
     if (rect.Contains(new_rect))
       return;
   }
-  m_RefreshRects.emplace_back(CFX_FloatRect(new_rect));
+  m_RefreshRects.push_back(new_rect);
 }
 
 CPWL_EditImpl::UndoStack::UndoStack() = default;
@@ -1232,9 +1232,12 @@ void CPWL_EditImpl::Refresh() {
       if (!m_bNotifyFlag) {
         AutoRestorer<bool> restorer(&m_bNotifyFlag);
         m_bNotifyFlag = true;
-        if (std::vector<CFX_FloatRect>* pRects = m_Refresh.GetRefreshRects()) {
-          for (auto& rect : *pRects)
-            m_pNotify->InvalidateRect(&rect);
+        std::vector<CFX_FloatRect>* pRects = m_Refresh.GetRefreshRects();
+        for (auto& rect : *pRects) {
+          if (!m_pNotify->InvalidateRect(&rect)) {
+            m_pNotify = nullptr;  // Gone, dangling even.
+            break;
+          }
         }
       }
     }
@@ -1302,7 +1305,9 @@ void CPWL_EditImpl::RefreshWordRange(const CPVT_WordRange& wr) {
           AutoRestorer<bool> restorer(&m_bNotifyFlag);
           m_bNotifyFlag = true;
           CFX_FloatRect rcRefresh = VTToEdit(rcWord);
-          m_pNotify->InvalidateRect(&rcRefresh);
+          if (!m_pNotify->InvalidateRect(&rcRefresh)) {
+            m_pNotify = nullptr;  // Gone, dangling even.
+          }
         }
       }
     } else {
@@ -1316,7 +1321,9 @@ void CPWL_EditImpl::RefreshWordRange(const CPVT_WordRange& wr) {
           AutoRestorer<bool> restorer(&m_bNotifyFlag);
           m_bNotifyFlag = true;
           CFX_FloatRect rcRefresh = VTToEdit(rcLine);
-          m_pNotify->InvalidateRect(&rcRefresh);
+          if (!m_pNotify->InvalidateRect(&rcRefresh)) {
+            m_pNotify = nullptr;  // Gone, dangling even.
+          }
         }
       }
 

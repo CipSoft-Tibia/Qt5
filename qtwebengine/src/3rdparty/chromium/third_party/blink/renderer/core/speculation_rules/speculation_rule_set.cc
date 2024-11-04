@@ -5,16 +5,26 @@
 #include "third_party/blink/renderer/core/speculation_rules/speculation_rule_set.h"
 
 #include "base/containers/contains.h"
-#include "base/feature_list.h"
+#include "services/network/public/mojom/no_vary_search.mojom-shared.h"
 #include "services/network/public/mojom/referrer_policy.mojom-shared.h"
+#include "third_party/blink/public/mojom/speculation_rules/speculation_rules.mojom-shared.h"
 #include "third_party/blink/renderer/core/css/style_rule.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/core/frame/web_feature.h"
+#include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/core/inspector/identifiers_factory.h"
+#include "third_party/blink/renderer/core/loader/resource/speculation_rules_resource.h"
+#include "third_party/blink/renderer/core/script/script_element_base.h"
 #include "third_party/blink/renderer/core/speculation_rules/document_rule_predicate.h"
+#include "third_party/blink/renderer/core/speculation_rules/speculation_rules_features.h"
+#include "third_party/blink/renderer/core/speculation_rules/speculation_rules_metrics.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/json/json_parser.h"
 #include "third_party/blink/renderer/platform/json/json_values.h"
+#include "third_party/blink/renderer/platform/network/http_parsers.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/weborigin/security_policy.h"
@@ -23,6 +33,62 @@
 namespace blink {
 
 namespace {
+
+void AddConsoleMessageForSpeculationRuleSetValidation(
+    SpeculationRuleSet& speculation_rule_set,
+    Document& element_document,
+    ScriptElementBase* script_element,
+    SpeculationRulesResource* resource) {
+  // `script_element` and `resource` are mutually exclusive.
+  CHECK(script_element || resource);
+  CHECK(!script_element || !resource);
+
+  if (speculation_rule_set.HasError()) {
+    if (speculation_rule_set.ShouldReportUMAForError()) {
+      CountSpeculationRulesLoadOutcome(
+          script_element ? SpeculationRulesLoadOutcome::kParseErrorInline
+                         : SpeculationRulesLoadOutcome::kParseErrorFetched);
+    }
+    String error_message;
+    if (script_element) {
+      error_message = "While parsing speculation rules: " +
+                      speculation_rule_set.error_message();
+    } else {
+      error_message = "While parsing speculation rules fetched from \"" +
+                      resource->GetResourceRequest().Url().ElidedString() +
+                      "\": " + speculation_rule_set.error_message() + "\".";
+    }
+    auto* console_message = MakeGarbageCollected<ConsoleMessage>(
+        mojom::blink::ConsoleMessageSource::kOther,
+        mojom::blink::ConsoleMessageLevel::kWarning, error_message);
+    if (script_element) {
+      console_message->SetNodes(element_document.GetFrame(),
+                                {script_element->GetDOMNodeId()});
+    }
+    element_document.AddConsoleMessage(console_message);
+  }
+  if (speculation_rule_set.HasWarnings()) {
+    // Only add the first warning message to console.
+    String warning_message;
+    if (script_element) {
+      warning_message = "While parsing speculation rules: " +
+                        speculation_rule_set.warning_messages()[0];
+    } else {
+      warning_message = "While parsing speculation rules fetched from \"" +
+                        resource->GetResourceRequest().Url().ElidedString() +
+                        "\": " + speculation_rule_set.warning_messages()[0] +
+                        "\".";
+    }
+    auto* console_message = MakeGarbageCollected<ConsoleMessage>(
+        mojom::blink::ConsoleMessageSource::kOther,
+        mojom::blink::ConsoleMessageLevel::kWarning, warning_message);
+    if (script_element) {
+      console_message->SetNodes(element_document.GetFrame(),
+                                {script_element->GetDOMNodeId()});
+    }
+    element_document.AddConsoleMessage(console_message);
+  }
+}
 
 // https://html.spec.whatwg.org/C/#valid-browsing-context-name
 bool IsValidContextName(const String& name_or_keyword) {
@@ -63,21 +129,24 @@ void SetParseErrorMessage2(String* out_error, String message) {
 SpeculationRule* ParseSpeculationRule(JSONObject* input,
                                       const KURL& base_url,
                                       ExecutionContext* context,
-                                      String* out_error) {
+                                      String* out_error,
+                                      Vector<String>& out_warnings) {
   // https://wicg.github.io/nav-speculation/speculation-rules.html#parse-a-speculation-rule
 
-  // If input has any key other than "source", "urls", "requires", "target_hint"
-  // and "relative_to", then return null.
-  const char* const kKnownKeys[] = {"source",      "urls",  "requires",
-                                    "target_hint", "where", "relative_to"};
+  // If input has any key other than "source", "urls", "where", "requires",
+  // "target_hint", "referrer_policy", "relative_to", and "eagerness", then
+  // return null.
+  const char* const kKnownKeys[] = {
+      "source",          "urls",       "where", "requires", "target_hint",
+      "referrer_policy", "relative_to"};
   const auto kConditionalKnownKeys = [context]() {
     Vector<const char*, 4> conditional_known_keys;
-    if (RuntimeEnabledFeatures::SpeculationRulesReferrerPolicyKeyEnabled(
-            context)) {
-      conditional_known_keys.push_back("referrer_policy");
-    }
-    if (RuntimeEnabledFeatures::SpeculationRulesEagernessEnabled(context)) {
+    if (speculation_rules::EagernessEnabled(context)) {
       conditional_known_keys.push_back("eagerness");
+    }
+    if (RuntimeEnabledFeatures::SpeculationRulesNoVarySearchHintEnabled(
+            context)) {
+      conditional_known_keys.push_back("expects_no_vary_search");
     }
     return conditional_known_keys;
   }();
@@ -193,10 +262,9 @@ SpeculationRule* ParseSpeculationRule(JSONObject* input,
     // conjunction whose clauses is an empty list.
     if (!input->Get("where")) {
       document_rule_predicate = DocumentRulePredicate::MakeDefaultPredicate();
-    }
-    // Otherwise, set predicate to the result of parsing a document rule
-    // predicate given input["where"] and baseURL.
-    else {
+    } else {
+      // Otherwise, set predicate to the result of parsing a document rule
+      // predicate given input["where"] and baseURL.
       document_rule_predicate = DocumentRulePredicate::Parse(
           input->GetJSONObject("where"), base_url, context,
           IGNORE_EXCEPTION_FOR_TESTING, out_error);
@@ -256,25 +324,16 @@ SpeculationRule* ParseSpeculationRule(JSONObject* input,
                                target_hint_str + "\".");
       return nullptr;
     }
-    // Currently only "_blank" and "_self" are supported.
-    // TODO(https://crbug.com/1354049): Support more browsing context names and
-    // keywords.
-    if (EqualIgnoringASCIICase(target_hint_str, "_blank")) {
-      target_hint = mojom::blink::SpeculationTargetHint::kBlank;
-    } else if (EqualIgnoringASCIICase(target_hint_str, "_self")) {
-      target_hint = mojom::blink::SpeculationTargetHint::kSelf;
-    } else {
-      target_hint = mojom::blink::SpeculationTargetHint::kNoHint;
-    }
+    target_hint =
+        SpeculationRuleSet::SpeculationTargetHintFromString(target_hint_str);
   }
 
+  // Let referrerPolicy be the empty string.
   absl::optional<network::mojom::ReferrerPolicy> referrer_policy;
+  // If input["referrer_policy"] exists:
   JSONValue* referrer_policy_value = input->Get("referrer_policy");
   if (referrer_policy_value) {
-    // Feature gated due to known keys check above.
-    DCHECK(RuntimeEnabledFeatures::SpeculationRulesReferrerPolicyKeyEnabled(
-        context));
-
+    // If input["referrer_policy"] is not a referrer policy, then return null.
     String referrer_policy_str;
     if (!referrer_policy_value->AsString(&referrer_policy_str)) {
       SetParseErrorMessage2(out_error, "A referrer policy must be a string.");
@@ -293,14 +352,15 @@ SpeculationRule* ParseSpeculationRule(JSONObject* input,
         return nullptr;
       }
       DCHECK_NE(referrer_policy_out, network::mojom::ReferrerPolicy::kDefault);
+      // Set referrerPolicy to input["referrer_policy"].
       referrer_policy = referrer_policy_out;
     }
   }
 
-  absl::optional<mojom::blink::SpeculationEagerness> eagerness;
+  mojom::blink::SpeculationEagerness eagerness;
   if (JSONValue* eagerness_value = input->Get("eagerness")) {
     // Feature gated due to known keys check above.
-    DCHECK(RuntimeEnabledFeatures::SpeculationRulesEagernessEnabled(context));
+    DCHECK(speculation_rules::EagernessEnabled(context));
 
     String eagerness_str;
     if (!eagerness_value->AsString(&eagerness_str)) {
@@ -319,29 +379,102 @@ SpeculationRule* ParseSpeculationRule(JSONObject* input,
           out_error, "Eagerness value: \"" + eagerness_str + "\" is invalid.");
       return nullptr;
     }
+
+    UseCounter::Count(context, WebFeature::kSpeculationRulesExplicitEagerness);
+  } else {
+    eagerness = source == "list"
+                    ? mojom::blink::SpeculationEagerness::kEager
+                    : mojom::blink::SpeculationEagerness::kConservative;
   }
+
+  network::mojom::blink::NoVarySearchPtr no_vary_search = nullptr;
+  if (JSONValue* no_vary_search_value = input->Get("expects_no_vary_search")) {
+    CHECK(RuntimeEnabledFeatures::SpeculationRulesNoVarySearchHintEnabled(
+        context));
+    String no_vary_search_str;
+    if (!no_vary_search_value->AsString(&no_vary_search_str)) {
+      SetParseErrorMessage2(out_error,
+                            "expects_no_vary_search's value must be a string.");
+      return nullptr;
+    }
+    // Parse No-Vary-Search hint value.
+    auto no_vary_search_hint = blink::ParseNoVarySearch(no_vary_search_str);
+    CHECK(no_vary_search_hint);
+    if (no_vary_search_hint->is_parse_error()) {
+      const auto& parse_error = no_vary_search_hint->get_parse_error();
+      CHECK_NE(parse_error, network::mojom::NoVarySearchParseError::kOk);
+      if (parse_error !=
+          network::mojom::NoVarySearchParseError::kDefaultValue) {
+        out_warnings.push_back(GetNoVarySearchHintConsoleMessage(parse_error));
+      }
+    } else {
+      UseCounter::Count(context, WebFeature::kSpeculationRulesNoVarySearchHint);
+      no_vary_search = std::move(no_vary_search_hint->get_no_vary_search());
+    }
+  }
+
+  const mojom::blink::SpeculationInjectionWorld world =
+      context->GetCurrentWorld()
+          ? context->GetCurrentWorld()->IsMainWorld()
+                ? mojom::blink::SpeculationInjectionWorld::kMain
+                : mojom::blink::SpeculationInjectionWorld::kIsolated
+          : mojom::blink::SpeculationInjectionWorld::kNone;
 
   return MakeGarbageCollected<SpeculationRule>(
       std::move(urls), document_rule_predicate, requires_anonymous_client_ip,
-      target_hint, referrer_policy, eagerness);
+      target_hint, referrer_policy, eagerness, std::move(no_vary_search),
+      world);
 }
 
 }  // namespace
 
 // ---- SpeculationRuleSet::Source implementation ----
 
-SpeculationRuleSet::Source::Source(const String& source_text,
-                                   Document& document)
+SpeculationRuleSet::Source::Source(base::PassKey<SpeculationRuleSet::Source>,
+                                   const String& source_text,
+                                   Document* document,
+                                   absl::optional<DOMNodeId> node_id,
+                                   absl::optional<KURL> base_url,
+                                   absl::optional<uint64_t> request_id)
     : source_text_(source_text),
-      base_url_(absl::nullopt),
-      document_(document) {}
+      document_(document),
+      node_id_(node_id),
+      base_url_(base_url),
+      request_id_(request_id) {}
 
-SpeculationRuleSet::Source::Source(const String& source_text,
-                                   const KURL& base_url)
-    : source_text_(source_text), base_url_(base_url), document_(nullptr) {}
+SpeculationRuleSet::Source* SpeculationRuleSet::Source::FromInlineScript(
+    const String& source_text,
+    Document& document,
+    DOMNodeId node_id) {
+  return MakeGarbageCollected<Source>(base::PassKey<Source>(), source_text,
+                                      &document, node_id, absl::nullopt,
+                                      absl::nullopt);
+}
+
+SpeculationRuleSet::Source* SpeculationRuleSet::Source::FromRequest(
+    const String& source_text,
+    const KURL& base_url,
+    uint64_t request_id) {
+  return MakeGarbageCollected<Source>(base::PassKey<Source>(), source_text,
+                                      nullptr, absl::nullopt, base_url,
+                                      request_id);
+}
 
 const String& SpeculationRuleSet::Source::GetSourceText() const {
   return source_text_;
+}
+
+const absl::optional<DOMNodeId>& SpeculationRuleSet::Source::GetNodeId() const {
+  return node_id_;
+}
+
+const absl::optional<KURL>& SpeculationRuleSet::Source::GetSourceURL() const {
+  return base_url_;
+}
+
+const absl::optional<uint64_t>& SpeculationRuleSet::Source::GetRequestId()
+    const {
+  return request_id_;
 }
 
 KURL SpeculationRuleSet::Source::GetBaseURL() const {
@@ -359,57 +492,65 @@ void SpeculationRuleSet::Source::Trace(Visitor* visitor) const {
 
 // ---- SpeculationRuleSet implementation ----
 
-namespace {
-
-// If enabled, allows non-standard JSON comments in speculation rules.
-// TODO(crbug.com/1264024): Remove this feature if no issues arose with
-// deprecating it.
-BASE_FEATURE(kSpeculationRulesJSONComments,
-             "SpeculationRulesJSONComments",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-}  // namespace
-
 SpeculationRuleSet::SpeculationRuleSet(base::PassKey<SpeculationRuleSet>,
                                        Source* source)
     : inspector_id_(IdentifiersFactory::CreateIdentifier()), source_(source) {}
 
+void SpeculationRuleSet::SetError(SpeculationRuleSetErrorType error_type,
+                                  String error_message) {
+  // Only the first error will be reported.
+  if (error_type_ != SpeculationRuleSetErrorType::kNoError) {
+    return;
+  }
+
+  error_type_ = error_type;
+  error_message_ = error_message;
+}
+
+void SpeculationRuleSet::SetWarnings(Vector<String> warning_messages) {
+  warning_messages_ = std::move(warning_messages);
+}
+
 // static
 SpeculationRuleSet* SpeculationRuleSet::Parse(Source* source,
-                                              ExecutionContext* context,
-                                              String* out_error) {
+                                              ExecutionContext* context) {
   // https://wicg.github.io/nav-speculation/speculation-rules.html#parse-speculation-rules
 
   const String& source_text = source->GetSourceText();
   const KURL& base_url = source->GetBaseURL();
 
-  // Let parsed be the result of parsing a JSON string to an Infra value given
-  // input.
-  // TODO(crbug.com/1264024): Deprecate JSON comments here, if possible.
-  JSONParseError parse_error;
-  auto parsed = JSONObject::From(
-      base::FeatureList::IsEnabled(kSpeculationRulesJSONComments)
-          ? ParseJSONWithCommentsDeprecated(source_text, &parse_error)
-          : ParseJSON(source_text, &parse_error));
-
-  // If parsed is not a map, then return null.
-  if (!parsed) {
-    SetParseErrorMessage2(out_error,
-                         parse_error.type != JSONParseErrorType::kNoError
-                             ? parse_error.message
-                             : "Parsed JSON must be an object.");
-    return nullptr;
-  }
-
   // Let result be an empty speculation rule set.
   SpeculationRuleSet* result = MakeGarbageCollected<SpeculationRuleSet>(
       base::PassKey<SpeculationRuleSet>(), source);
 
+  // Let parsed be the result of parsing a JSON string to an Infra value given
+  // input.
+  JSONParseError parse_error;
+  auto parsed = JSONObject::From(ParseJSON(source_text, &parse_error));
+
+  // If parsed is not a map, then return an empty rule sets.
+  if (!parsed) {
+    result->SetError(SpeculationRuleSetErrorType::kSourceIsNotJsonObject,
+                     parse_error.type != JSONParseErrorType::kNoError
+                         ? parse_error.message
+                         : "Parsed JSON must be an object.");
+    return result;
+  }
+
   const auto parse_for_action =
       [&](const char* key, HeapVector<Member<SpeculationRule>>& destination,
           bool allow_target_hint) {
-        JSONArray* array = parsed->GetArray(key);
+        // If key doesn't exist, it is not an error and is nop.
+        JSONValue* value = parsed->Get(key);
+        if (!value) {
+          return;
+        }
+
+        JSONArray* array = JSONArray::Cast(value);
         if (!array) {
+          result->SetError(SpeculationRuleSetErrorType::kInvalidRulesSkipped,
+                           "A rule set for a key must be an array: path = [\"" +
+                               String(key) + "\"]");
           return;
         }
 
@@ -417,32 +558,51 @@ SpeculationRuleSet* SpeculationRuleSet::Parse(Source* source,
           // If prefetch/prerenderRule is not a map, then continue.
           JSONObject* input_rule = JSONObject::Cast(array->at(i));
           if (!input_rule) {
-            SetParseErrorMessage2(out_error, "A rule must be an object.");
+            result->SetError(SpeculationRuleSetErrorType::kInvalidRulesSkipped,
+                             "A rule must be an object: path = [\"" +
+                                 String(key) + "\"][" + String::Number(i) +
+                                 "]");
             continue;
           }
 
           // Let rule be the result of parsing a speculation rule given
           // prefetch/prerenderRule and baseURL.
-          SpeculationRule* rule =
-              ParseSpeculationRule(input_rule, base_url, context, out_error);
+          //
+          // TODO(https://crbug.com/1410709): Refactor
+          // ParseSpeculationRule to return
+          // `std::tuple<SpeculationRule*, String, Vector<String>>`.
+          String error_message;
+          Vector<String> warning_messages;
+          SpeculationRule* rule = ParseSpeculationRule(
+              input_rule, base_url, context, &error_message, warning_messages);
 
-          // If rule is null, then continue.
-          if (!rule)
+          // If parse failed for a rule, then ignore it and continue.
+          if (!rule) {
+            result->SetError(SpeculationRuleSetErrorType::kInvalidRulesSkipped,
+                             error_message);
             continue;
+          }
 
           // If rule's target browsing context name hint is not null, then
           // continue.
           if (!allow_target_hint &&
               rule->target_browsing_context_name_hint().has_value()) {
-            SetParseErrorMessage2(
-                out_error, "\"target_hint\" may not be set for " + String(key) +
-                               " rules.");
+            result->SetError(SpeculationRuleSetErrorType::kInvalidRulesSkipped,
+                             "\"target_hint\" may not be set for " +
+                                 String(key) + " rules.");
             continue;
           }
+
+          // Add the warnings and continue
+          result->SetWarnings(std::move(warning_messages));
 
           if (rule->predicate()) {
             result->has_document_rule_ = true;
             result->selectors_.AppendVector(rule->predicate()->GetStyleRules());
+          }
+
+          if (rule->eagerness() != mojom::blink::SpeculationEagerness::kEager) {
+            result->requires_unfiltered_input_ = true;
           }
 
           // Append rule to result's prefetch/prerender rules.
@@ -464,12 +624,60 @@ SpeculationRuleSet* SpeculationRuleSet::Parse(Source* source,
   return result;
 }
 
+bool SpeculationRuleSet::HasError() const {
+  return error_type_ != SpeculationRuleSetErrorType::kNoError;
+}
+
+bool SpeculationRuleSet::HasWarnings() const {
+  return !warning_messages_.empty();
+}
+
+bool SpeculationRuleSet::ShouldReportUMAForError() const {
+  // We report UMAs only if entire parse failed.
+  switch (error_type_) {
+    case SpeculationRuleSetErrorType::kSourceIsNotJsonObject:
+      return true;
+    case SpeculationRuleSetErrorType::kNoError:
+    case SpeculationRuleSetErrorType::kInvalidRulesSkipped:
+      return false;
+  }
+}
+
+// static
+mojom::blink::SpeculationTargetHint
+SpeculationRuleSet::SpeculationTargetHintFromString(
+    const StringView& target_hint_str) {
+  // Currently only "_blank" and "_self" are supported.
+  // TODO(https://crbug.com/1354049): Support more browsing context names and
+  // keywords.
+  if (EqualIgnoringASCIICase(target_hint_str, "_blank")) {
+    return mojom::blink::SpeculationTargetHint::kBlank;
+  } else if (EqualIgnoringASCIICase(target_hint_str, "_self")) {
+    return mojom::blink::SpeculationTargetHint::kSelf;
+  } else {
+    return mojom::blink::SpeculationTargetHint::kNoHint;
+  }
+}
+
 void SpeculationRuleSet::Trace(Visitor* visitor) const {
   visitor->Trace(prefetch_rules_);
   visitor->Trace(prefetch_with_subresources_rules_);
   visitor->Trace(prerender_rules_);
   visitor->Trace(source_);
   visitor->Trace(selectors_);
+}
+
+void SpeculationRuleSet::AddConsoleMessageForValidation(
+    ScriptElementBase& script_element) {
+  AddConsoleMessageForSpeculationRuleSetValidation(
+      *this, script_element.GetDocument(), &script_element, nullptr);
+}
+
+void SpeculationRuleSet::AddConsoleMessageForValidation(
+    Document& document,
+    SpeculationRulesResource& resource) {
+  AddConsoleMessageForSpeculationRuleSetValidation(*this, document, nullptr,
+                                                   &resource);
 }
 
 }  // namespace blink

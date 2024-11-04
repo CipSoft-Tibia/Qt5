@@ -8,6 +8,7 @@
 #include "third_party/blink/public/mojom/speculation_rules/speculation_rules.mojom-blink.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/loader/document_loader.h"
 #include "third_party/blink/renderer/core/speculation_rules/speculation_rule_set.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
@@ -16,8 +17,9 @@
 
 namespace blink {
 
-class SpeculationRuleLoader;
 class HTMLAnchorElement;
+class SpeculationCandidate;
+class SpeculationRuleLoader;
 
 // This corresponds to the document's list of speculation rule sets.
 //
@@ -53,11 +55,19 @@ class CORE_EXPORT DocumentSpeculationRules
                             const AtomicString& new_value);
   void ReferrerPolicyAttributeChanged(HTMLAnchorElement* link);
   void RelAttributeChanged(HTMLAnchorElement* link);
+  void TargetAttributeChanged(HTMLAnchorElement* link);
   void DocumentReferrerPolicyChanged();
   void DocumentBaseURLChanged();
+  void DocumentBaseTargetChanged();
   void LinkMatchedSelectorsUpdated(HTMLAnchorElement* link);
   void LinkGainedOrLostComputedStyle(HTMLAnchorElement* link);
   void DocumentStyleUpdated();
+  void ChildStyleRecalcBlocked(Element* root);
+  void DidStyleChildren(Element* root);
+  void DisplayLockedElementDisconnected(Element* root);
+
+  void DocumentRestoredFromBFCache();
+  void InitiatePreview(const KURL& url);
 
   const HeapVector<Member<StyleRule>>& selectors() { return selectors_; }
 
@@ -70,19 +80,29 @@ class CORE_EXPORT DocumentSpeculationRules
 
   // Requests a future call to UpdateSpeculationCandidates, if none is yet
   // scheduled.
-  void QueueUpdateSpeculationCandidates();
+  void QueueUpdateSpeculationCandidates(bool force_style_update = false);
+
+  // Executes in a microtask after QueueUpdateSpeculationCandidates.
+  void UpdateSpeculationCandidatesMicrotask();
 
   // Pushes the current speculation candidates to the browser, immediately.
+  // Can be entered either through `UpdateSpeculationCandidatesMicrotask` or
+  // `DocumentStyleUpdated`.
   void UpdateSpeculationCandidates();
 
   // Appends all candidates populated from links in the document (based on
   // document rules in all the rule sets).
   void AddLinkBasedSpeculationCandidates(
-      Vector<mojom::blink::SpeculationCandidatePtr>& candidates);
+      HeapVector<Member<SpeculationCandidate>>& candidates);
 
   // Initializes |link_map_| with all links in the document by traversing
   // through the document in shadow-including tree order.
   void InitializeIfNecessary();
+
+  // Helper methods that are used to deal with link/document attribute changes
+  // that could invalidate the list of speculation candidates.
+  void LinkAttributeChanged(HTMLAnchorElement* link);
+  void DocumentPropertyChanged();
 
   // Helper methods to modify |link_map_|.
   void AddLink(HTMLAnchorElement* link);
@@ -93,22 +113,30 @@ class CORE_EXPORT DocumentSpeculationRules
   // Populates |selectors_| and notifies the StyleEngine.
   void UpdateSelectors();
 
-  // Tracks the state of a pending update of speculation candidates
-  // (UpdateSpeculationCandidates); and whether it requires style to be clean.
-  enum class PendingUpdateState {
-    // There is no update queued (either as a microtask or after the next style
-    // update).
-    kNoUpdatePending,
-    // There is a microtask queued to perform an update. A style update will
-    // not run UpdateSpeculationCandidates in this state.
-    kUpdatePending,
-    // An update will be performed after the next style update. We should
-    // never reach this state unless there are 'selector_matches' predicates
-    // present. There will be no microtask queued to perform an update in this
-    // state.
-    kUpdateWithCleanStylePending
+  // Tracks when the next update to speculation candidates is scheduled to
+  // occur. See `SetPendingUpdateState` for details.
+  enum class PendingUpdateState : uint8_t {
+    kNoUpdate = 0,
+
+    // A microtask to run `UpdateSpeculationRulesMicrotask` is queued.
+    // It does not need a forced style update.
+    kMicrotaskQueued,
+
+    // Candidates should be updated the next time the style engine updates
+    // style.
+    kOnNextStyleUpdate,
+
+    // A microtask to run `UpdateSpeculationRulesMicrotask` is queued.
+    // It must update style when it does so.
+    kMicrotaskQueuedWithForcedStyleUpdate,
   };
+  friend std::ostream& operator<<(std::ostream&, const PendingUpdateState&);
   void SetPendingUpdateState(PendingUpdateState state);
+  bool IsMicrotaskQueued() const {
+    return pending_update_state_ == PendingUpdateState::kMicrotaskQueued ||
+           pending_update_state_ ==
+               PendingUpdateState::kMicrotaskQueuedWithForcedStyleUpdate;
+  }
 
   // Checks the RuntimeEnabledFeature to see if the feature is enabled. If the
   // feature is found to be enabled once, it is considered to be enabled for the
@@ -129,10 +157,15 @@ class CORE_EXPORT DocumentSpeculationRules
   // re-traverse the document to find all links when a new ruleset is
   // added/removed.
   HeapHashMap<Member<HTMLAnchorElement>,
-              Vector<mojom::blink::SpeculationCandidatePtr>>
+              Member<HeapVector<Member<SpeculationCandidate>>>>
       matched_links_;
   HeapHashSet<Member<HTMLAnchorElement>> unmatched_links_;
   HeapHashSet<Member<HTMLAnchorElement>> pending_links_;
+
+  // Links with ComputedStyle that wasn't updated after the most recent style
+  // update (due to having a display-locked ancestor).
+  HeapHashSet<Member<HTMLAnchorElement>> stale_links_;
+  HeapHashSet<Member<Element>> elements_blocking_child_style_recalc_;
 
   // Collects every CSS selector from every CSS selector document rule predicate
   // in this document's speculation rules.
@@ -141,8 +174,15 @@ class CORE_EXPORT DocumentSpeculationRules
   bool initialized_ = false;
   bool sent_is_part_of_no_vary_search_trial_ = false;
   bool was_selector_matches_enabled_ = false;
-  PendingUpdateState pending_update_state_ =
-      PendingUpdateState::kNoUpdatePending;
+  PendingUpdateState pending_update_state_ = PendingUpdateState::kNoUpdate;
+
+  // Set to true if the EventHandlerRegistry has recorded this object's need to
+  // observe pointer events.
+  // TODO(crbug.com/1425870): This can be deleted when/if these discrete events
+  // are no longer filtered by default.
+  bool wants_pointer_events_ = false;
+
+  bool first_update_after_restored_from_bfcache_ = false;
 };
 
 }  // namespace blink

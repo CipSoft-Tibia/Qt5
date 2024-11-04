@@ -12,6 +12,7 @@
 #include <qscreen.h>
 #include <qpa/qplatformscreen.h>
 #include <QtCore/QUuid>
+#include <QtCore/QLoggingCategory>
 #include <QtGui/QPainterPath>
 
 #ifndef QT_NO_FREETYPE
@@ -34,6 +35,7 @@
 #include FT_GLYPH_H
 #include FT_MODULE_H
 #include FT_LCD_FILTER_H
+#include FT_MULTIPLE_MASTERS_H
 
 #if defined(FT_CONFIG_OPTIONS_H)
 #include FT_CONFIG_OPTIONS_H
@@ -52,6 +54,8 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcFontMatch)
 
 using namespace Qt::StringLiterals;
 
@@ -111,8 +115,11 @@ public:
 
 QtFreetypeData::~QtFreetypeData()
 {
-    for (QHash<QFontEngine::FaceId, QFreetypeFace *>::ConstIterator iter = faces.cbegin(); iter != faces.cend(); ++iter)
+    for (auto iter = faces.cbegin(); iter != faces.cend(); ++iter) {
         iter.value()->cleanup();
+        if (!iter.value()->ref.deref())
+            delete iter.value();
+    }
     faces.clear();
     FT_Done_FreeType(library);
     library = nullptr;
@@ -209,10 +216,28 @@ QFreetypeFace *QFreetypeFace::getFace(const QFontEngine::FaceId &face_id,
 
     QtFreetypeData *freetypeData = qt_getFreetypeData();
 
-    QFreetypeFace *freetype = freetypeData->faces.value(face_id, nullptr);
-    if (freetype) {
-        freetype->ref.ref();
-    } else {
+    QFreetypeFace *freetype = nullptr;
+    auto it = freetypeData->faces.find(face_id);
+    if (it != freetypeData->faces.end()) {
+        freetype = *it;
+
+        Q_ASSERT(freetype->ref.loadRelaxed() > 0);
+        if (freetype->ref.loadRelaxed() == 1) {
+            // If there is only one reference left to the face, it means it is only referenced by
+            // the cache itself, and thus it is in cleanup state (but the final outside reference
+            // was removed on a different thread so it could not be deleted right away). We then
+            // complete the cleanup and pretend we didn't find it, so that it can be re-created with
+            // the present state.
+            freetype->cleanup();
+            freetypeData->faces.erase(it);
+            delete freetype;
+            freetype = nullptr;
+        } else {
+            freetype->ref.ref();
+        }
+    }
+
+    if (!freetype) {
         const auto deleter = [](QFreetypeFace *f) { delete f; };
         std::unique_ptr<QFreetypeFace, decltype(deleter)> newFreetype(new QFreetypeFace, deleter);
         FT_Face face;
@@ -243,7 +268,23 @@ QFreetypeFace *QFreetypeFace::getFace(const QFontEngine::FaceId &face_id,
         } else if (FT_New_Face(freetypeData->library, face_id.filename, face_id.index, &face)) {
             return nullptr;
         }
+
+#if (FREETYPE_MAJOR*10000 + FREETYPE_MINOR*100 + FREETYPE_PATCH) >= 20900
+        if (face_id.instanceIndex >= 0) {
+            qCDebug(lcFontMatch)
+                    << "Selecting named instance" << (face_id.instanceIndex)
+                    << "in" << face_id.filename;
+            FT_Set_Named_Instance(face, face_id.instanceIndex + 1);
+        }
+#endif
         newFreetype->face = face;
+        newFreetype->mm_var = nullptr;
+        if (FT_IS_NAMED_INSTANCE(newFreetype->face)) {
+            FT_Error ftresult;
+            ftresult = FT_Get_MM_Var(face, &newFreetype->mm_var);
+            if (ftresult != FT_Err_Ok)
+                newFreetype->mm_var = nullptr;
+        }
 
         newFreetype->ref.storeRelaxed(1);
         newFreetype->xsize = 0;
@@ -282,6 +323,25 @@ QFreetypeFace *QFreetypeFace::getFace(const QFontEngine::FaceId &face_id,
             FT_Set_Char_Size(face, newFreetype->face->available_sizes[0].x_ppem, newFreetype->face->available_sizes[0].y_ppem, 0, 0);
 
         FT_Set_Charmap(newFreetype->face, newFreetype->unicode_map);
+
+        if (!face_id.variableAxes.isEmpty()) {
+            FT_MM_Var *var = nullptr;
+            FT_Get_MM_Var(newFreetype->face, &var);
+            if (var != nullptr) {
+                QVarLengthArray<FT_Fixed, 16> coords(var->num_axis);
+                FT_Get_Var_Design_Coordinates(face, var->num_axis, coords.data());
+                for (FT_UInt i = 0; i < var->num_axis; ++i) {
+                    if (const auto tag = QFont::Tag::fromValue(var->axis[i].tag)) {
+                        const auto it = face_id.variableAxes.constFind(*tag);
+                        if (it != face_id.variableAxes.constEnd())
+                            coords[i] = FT_Fixed(*it * 65536);
+                    }
+                }
+                FT_Set_Var_Design_Coordinates(face, var->num_axis, coords.data());
+                FT_Done_MM_Var(qt_getFreetype(), var);
+            }
+        }
+
         QT_TRY {
             freetypeData->faces.insert(face_id, newFreetype.get());
         } QT_CATCH(...) {
@@ -290,6 +350,7 @@ QFreetypeFace *QFreetypeFace::getFace(const QFontEngine::FaceId &face_id,
             QT_RETHROW;
         }
         freetype = newFreetype.release();
+        freetype->ref.ref();
     }
     return freetype;
 }
@@ -297,30 +358,45 @@ QFreetypeFace *QFreetypeFace::getFace(const QFontEngine::FaceId &face_id,
 void QFreetypeFace::cleanup()
 {
     hbFace.reset();
+    if (mm_var && face && face->glyph)
+        FT_Done_MM_Var(face->glyph->library, mm_var);
+    mm_var = nullptr;
     FT_Done_Face(face);
     face = nullptr;
 }
 
 void QFreetypeFace::release(const QFontEngine::FaceId &face_id)
 {
-    if (!ref.deref()) {
-        if (face) {
-            QtFreetypeData *freetypeData = qt_getFreetypeData();
+    Q_UNUSED(face_id);
+    bool deleteThis = !ref.deref();
 
-            cleanup();
-
-            auto it = freetypeData->faces.constFind(face_id);
-            if (it != freetypeData->faces.constEnd())
-                freetypeData->faces.erase(it);
-
-            if (freetypeData->faces.isEmpty()) {
-                FT_Done_FreeType(freetypeData->library);
-                freetypeData->library = nullptr;
+    // If the only reference left over is the cache's reference, we remove it from the cache,
+    // granted that we are on the correct thread. If not, we leave it there to be cleaned out
+    // later. While we are at it, we also purge all left over faces which are only referenced
+    // from the cache.
+    if (face && ref.loadRelaxed() == 1) {
+        QtFreetypeData *freetypeData = qt_getFreetypeData();
+        for (auto it = freetypeData->faces.constBegin(); it != freetypeData->faces.constEnd(); ) {
+            if (it.value()->ref.loadRelaxed() == 1) {
+                it.value()->cleanup();
+                if (it.value() == this)
+                    deleteThis = true; // This face, delete at end of function for safety
+                else
+                    delete it.value();
+                it = freetypeData->faces.erase(it);
+            } else {
+                ++it;
             }
         }
 
-        delete this;
+        if (freetypeData->faces.isEmpty()) {
+            FT_Done_FreeType(freetypeData->library);
+            freetypeData->library = nullptr;
+        }
     }
+
+    if (deleteThis)
+        delete this;
 }
 
 static int computeFaceIndex(const QString &faceFileName, const QString &styleName)
@@ -674,27 +750,32 @@ namespace {
                 fontDef.weight = QFont::Bold;
         }
 
-        bool initFromData(const QByteArray &fontData)
+        bool initFromData(const QByteArray &fontData, const QMap<QFont::Tag, float> &variableAxisValues)
         {
             FaceId faceId;
             faceId.filename = "";
             faceId.index = 0;
             faceId.uuid = QUuid::createUuid().toByteArray();
+            faceId.variableAxes = variableAxisValues;
 
             return init(faceId, true, Format_None, fontData);
         }
     };
 }
 
-QFontEngineFT *QFontEngineFT::create(const QByteArray &fontData, qreal pixelSize, QFont::HintingPreference hintingPreference)
+QFontEngineFT *QFontEngineFT::create(const QByteArray &fontData,
+                                     qreal pixelSize,
+                                     QFont::HintingPreference hintingPreference,
+                                     const QMap<QFont::Tag, float> &variableAxisValues)
 {
     QFontDef fontDef;
     fontDef.pixelSize = pixelSize;
     fontDef.stretch = QFont::Unstretched;
     fontDef.hintingPreference = hintingPreference;
+    fontDef.variableAxisValues = variableAxisValues;
 
     QFontEngineFTRawData *fe = new QFontEngineFTRawData(fontDef);
-    if (!fe->initFromData(fontData)) {
+    if (!fe->initFromData(fontData, variableAxisValues)) {
         delete fe;
         return nullptr;
     }
@@ -747,6 +828,37 @@ bool QFontEngineFT::init(FaceId faceId, bool antialias, GlyphFormat format,
 
 static void dont_delete(void*) {}
 
+static FT_UShort calculateActualWeight(QFreetypeFace *freetypeFace, FT_Face face, QFontEngine::FaceId faceId)
+{
+    FT_MM_Var *var = freetypeFace->mm_var;
+    if (var != nullptr && faceId.instanceIndex >= 0 && FT_UInt(faceId.instanceIndex) < var->num_namedstyles) {
+        for (FT_UInt axis = 0; axis < var->num_axis; ++axis) {
+            if (var->axis[axis].tag == QFont::Tag("wght").value()) {
+                return var->namedstyle[faceId.instanceIndex].coords[axis] >> 16;
+            }
+        }
+    }
+    if (const TT_OS2 *os2 = reinterpret_cast<const TT_OS2 *>(FT_Get_Sfnt_Table(face, ft_sfnt_os2))) {
+        return os2->usWeightClass;
+    }
+
+    return 700;
+}
+
+static bool calculateActualItalic(QFreetypeFace *freetypeFace, FT_Face face, QFontEngine::FaceId faceId)
+{
+    FT_MM_Var *var = freetypeFace->mm_var;
+    if (var != nullptr && faceId.instanceIndex >= 0 && FT_UInt(faceId.instanceIndex) < var->num_namedstyles) {
+        for (FT_UInt axis = 0; axis < var->num_axis; ++axis) {
+            if (var->axis[axis].tag == QFont::Tag("ital").value()) {
+                return (var->namedstyle[faceId.instanceIndex].coords[axis] >> 16) == 1;
+            }
+        }
+    }
+
+    return (face->style_flags & FT_STYLE_FLAG_ITALIC);
+}
+
 bool QFontEngineFT::init(FaceId faceId, bool antialias, GlyphFormat format,
                          QFreetypeFace *freetypeFace)
 {
@@ -770,7 +882,7 @@ bool QFontEngineFT::init(FaceId faceId, bool antialias, GlyphFormat format,
     PS_FontInfoRec psrec;
     // don't assume that type1 fonts are symbol fonts by default
     if (FT_Get_PS_Font_Info(freetype->face, &psrec) == FT_Err_Ok) {
-        symbol = !fontDef.families.isEmpty() && bool(fontDef.families.first().contains("symbol"_L1, Qt::CaseInsensitive));
+        symbol = !fontDef.families.isEmpty() && bool(fontDef.families.constFirst().contains("symbol"_L1, Qt::CaseInsensitive));
     }
 
     freetype->computeSize(fontDef, &xsize, &ysize, &defaultGlyphSet.outline_drawing, &scalableBitmapScaleFactor);
@@ -778,18 +890,18 @@ bool QFontEngineFT::init(FaceId faceId, bool antialias, GlyphFormat format,
     FT_Face face = lockFace();
 
     if (FT_IS_SCALABLE(face)) {
-        bool fake_oblique = (fontDef.style != QFont::StyleNormal) && !(face->style_flags & FT_STYLE_FLAG_ITALIC) && !qEnvironmentVariableIsSet("QT_NO_SYNTHESIZED_ITALIC");
+        bool isItalic = calculateActualItalic(freetype, face, faceId);
+        bool fake_oblique = (fontDef.style != QFont::StyleNormal) && !isItalic && !qEnvironmentVariableIsSet("QT_NO_SYNTHESIZED_ITALIC");
         if (fake_oblique)
             obliquen = true;
         FT_Set_Transform(face, &matrix, nullptr);
         freetype->matrix = matrix;
         // fake bold
         if ((fontDef.weight >= QFont::Bold) && !(face->style_flags & FT_STYLE_FLAG_BOLD) && !FT_IS_FIXED_WIDTH(face)  && !qEnvironmentVariableIsSet("QT_NO_SYNTHESIZED_BOLD")) {
-            if (const TT_OS2 *os2 = reinterpret_cast<const TT_OS2 *>(FT_Get_Sfnt_Table(face, ft_sfnt_os2))) {
-                if (os2->usWeightClass < 700 &&
-                    (fontDef.pixelSize < 64 || qEnvironmentVariableIsSet("QT_NO_SYNTHESIZED_BOLD_LIMIT"))) {
-                    embolden = true;
-                }
+            FT_UShort actualWeight = calculateActualWeight(freetype, face, faceId);
+            if (actualWeight < 700 &&
+                (fontDef.pixelSize < 64 || qEnvironmentVariableIsSet("QT_NO_SYNTHESIZED_BOLD_LIMIT"))) {
+                embolden = true;
             }
         }
         // underline metrics
@@ -1253,7 +1365,7 @@ QFontEngine::Properties QFontEngineFT::properties() const
 {
     Properties p = freetype->properties();
     if (p.postscriptName.isEmpty()) {
-        p.postscriptName = QFontEngine::convertToPostscriptFontFamilyName(fontDef.families.first().toUtf8());
+        p.postscriptName = QFontEngine::convertToPostscriptFontFamilyName(fontDef.families.constFirst().toUtf8());
     }
 
     return freetype->properties();

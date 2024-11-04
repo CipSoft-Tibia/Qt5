@@ -1,126 +1,621 @@
+/**
+The [`TreeFragment.applyChanges`](#common.TreeFragment^applyChanges)
+method expects changed ranges in this format.
+*/
 interface ChangedRange {
+    /**
+    The start of the change in the start document
+    */
     fromA: number;
+    /**
+    The end of the change in the start document
+    */
     toA: number;
+    /**
+    The start of the replacement in the new document
+    */
     fromB: number;
+    /**
+    The end of the replacement in the new document
+    */
     toB: number;
 }
+/**
+Tree fragments are used during [incremental
+parsing](#common.Parser.startParse) to track parts of old trees
+that can be reused in a new parse. An array of fragments is used
+to track regions of an old tree whose nodes might be reused in new
+parses. Use the static
+[`applyChanges`](#common.TreeFragment^applyChanges) method to
+update fragments for document changes.
+*/
 declare class TreeFragment {
+    /**
+    The start of the unchanged range pointed to by this fragment.
+    This refers to an offset in the _updated_ document (as opposed
+    to the original tree).
+    */
     readonly from: number;
+    /**
+    The end of the unchanged range.
+    */
     readonly to: number;
+    /**
+    The tree that this fragment is based on.
+    */
     readonly tree: Tree;
+    /**
+    The offset between the fragment's tree and the document that
+    this fragment can be used against. Add this when going from
+    document to tree positions, subtract it to go from tree to
+    document positions.
+    */
     readonly offset: number;
-    constructor(from: number, to: number, tree: Tree, offset: number, openStart?: boolean, openEnd?: boolean);
+    /**
+    Construct a tree fragment. You'll usually want to use
+    [`addTree`](#common.TreeFragment^addTree) and
+    [`applyChanges`](#common.TreeFragment^applyChanges) instead of
+    calling this directly.
+    */
+    constructor(
+    /**
+    The start of the unchanged range pointed to by this fragment.
+    This refers to an offset in the _updated_ document (as opposed
+    to the original tree).
+    */
+    from: number,
+    /**
+    The end of the unchanged range.
+    */
+    to: number,
+    /**
+    The tree that this fragment is based on.
+    */
+    tree: Tree,
+    /**
+    The offset between the fragment's tree and the document that
+    this fragment can be used against. Add this when going from
+    document to tree positions, subtract it to go from tree to
+    document positions.
+    */
+    offset: number, openStart?: boolean, openEnd?: boolean);
+    /**
+    Whether the start of the fragment represents the start of a
+    parse, or the end of a change. (In the second case, it may not
+    be safe to reuse some nodes at the start, depending on the
+    parsing algorithm.)
+    */
     get openStart(): boolean;
+    /**
+    Whether the end of the fragment represents the end of a
+    full-document parse, or the start of a change.
+    */
     get openEnd(): boolean;
-    static addTree(tree: Tree, fragments?: readonly TreeFragment[], partial?: boolean): TreeFragment[];
+    /**
+    Create a set of fragments from a freshly parsed tree, or update
+    an existing set of fragments by replacing the ones that overlap
+    with a tree with content from the new tree. When `partial` is
+    true, the parse is treated as incomplete, and the resulting
+    fragment has [`openEnd`](#common.TreeFragment.openEnd) set to
+    true.
+    */
+    static addTree(tree: Tree, fragments?: readonly TreeFragment[], partial?: boolean): readonly TreeFragment[];
+    /**
+    Apply a set of edits to an array of fragments, removing or
+    splitting fragments as necessary to remove edited ranges, and
+    adjusting offsets for fragments that moved.
+    */
     static applyChanges(fragments: readonly TreeFragment[], changes: readonly ChangedRange[], minGap?: number): readonly TreeFragment[];
 }
+/**
+Interface used to represent an in-progress parse, which can be
+moved forward piece-by-piece.
+*/
 interface PartialParse {
+    /**
+    Advance the parse state by some amount. Will return the finished
+    syntax tree when the parse completes.
+    */
     advance(): Tree | null;
+    /**
+    The position up to which the document has been parsed. Note
+    that, in multi-pass parsers, this will stay back until the last
+    pass has moved past a given position.
+    */
     readonly parsedPos: number;
+    /**
+    Tell the parse to not advance beyond the given position.
+    `advance` will return a tree when the parse has reached the
+    position. Note that, depending on the parser algorithm and the
+    state of the parse when `stopAt` was called, that tree may
+    contain nodes beyond the position. It is an error to call
+    `stopAt` with a higher position than it's [current
+    value](#common.PartialParse.stoppedAt).
+    */
     stopAt(pos: number): void;
+    /**
+    Reports whether `stopAt` has been called on this parse.
+    */
     readonly stoppedAt: number | null;
 }
+/**
+A superclass that parsers should extend.
+*/
 declare abstract class Parser {
+    /**
+    Start a parse for a single tree. This is the method concrete
+    parser implementations must implement. Called by `startParse`,
+    with the optional arguments resolved.
+    */
     abstract createParse(input: Input, fragments: readonly TreeFragment[], ranges: readonly {
         from: number;
         to: number;
     }[]): PartialParse;
+    /**
+    Start a parse, returning a [partial parse](#common.PartialParse)
+    object. [`fragments`](#common.TreeFragment) can be passed in to
+    make the parse incremental.
+
+    By default, the entire input is parsed. You can pass `ranges`,
+    which should be a sorted array of non-empty, non-overlapping
+    ranges, to parse only those ranges. The tree returned in that
+    case will start at `ranges[0].from`.
+    */
     startParse(input: Input | string, fragments?: readonly TreeFragment[], ranges?: readonly {
         from: number;
         to: number;
     }[]): PartialParse;
+    /**
+    Run a full parse, returning the resulting tree.
+    */
     parse(input: Input | string, fragments?: readonly TreeFragment[], ranges?: readonly {
         from: number;
         to: number;
     }[]): Tree;
 }
+/**
+This is the interface parsers use to access the document. To run
+Lezer directly on your own document data structure, you have to
+write an implementation of it.
+*/
 interface Input {
+    /**
+    The length of the document.
+    */
     readonly length: number;
+    /**
+    Get the chunk after the given position. The returned string
+    should start at `from` and, if that isn't the end of the
+    document, may be of any length greater than zero.
+    */
     chunk(from: number): string;
+    /**
+    Indicates whether the chunks already end at line breaks, so that
+    client code that wants to work by-line can avoid re-scanning
+    them for line breaks. When this is true, the result of `chunk()`
+    should either be a single line break, or the content between
+    `from` and the next line break.
+    */
     readonly lineChunks: boolean;
+    /**
+    Read the part of the document between the given positions.
+    */
     read(from: number, to: number): string;
 }
+/**
+Parse wrapper functions are supported by some parsers to inject
+additional parsing logic.
+*/
 type ParseWrapper = (inner: PartialParse, input: Input, fragments: readonly TreeFragment[], ranges: readonly {
     from: number;
     to: number;
 }[]) => PartialParse;
-
+/**
+Each [node type](#common.NodeType) or [individual tree](#common.Tree)
+can have metadata associated with it in props. Instances of this
+class represent prop names.
+*/
 declare class NodeProp<T> {
+    /**
+    Indicates whether this prop is stored per [node
+    type](#common.NodeType) or per [tree node](#common.Tree).
+    */
     perNode: boolean;
+    /**
+    A method that deserializes a value of this prop from a string.
+    Can be used to allow a prop to be directly written in a grammar
+    file.
+    */
     deserialize: (str: string) => T;
+    /**
+    Create a new node prop type.
+    */
     constructor(config?: {
+        /**
+        The [deserialize](#common.NodeProp.deserialize) function to
+        use for this prop, used for example when directly providing
+        the prop from a grammar file. Defaults to a function that
+        raises an error.
+        */
         deserialize?: (str: string) => T;
+        /**
+        By default, node props are stored in the [node
+        type](#common.NodeType). It can sometimes be useful to directly
+        store information (usually related to the parsing algorithm)
+        in [nodes](#common.Tree) themselves. Set this to true to enable
+        that for this prop.
+        */
         perNode?: boolean;
     });
+    /**
+    This is meant to be used with
+    [`NodeSet.extend`](#common.NodeSet.extend) or
+    [`LRParser.configure`](#lr.ParserConfig.props) to compute
+    prop values for each node type in the set. Takes a [match
+    object](#common.NodeType^match) or function that returns undefined
+    if the node type doesn't get this prop, and the prop's value if
+    it does.
+    */
     add(match: {
         [selector: string]: T;
     } | ((type: NodeType) => T | undefined)): NodePropSource;
+    /**
+    Prop that is used to describe matching delimiters. For opening
+    delimiters, this holds an array of node names (written as a
+    space-separated string when declaring this prop in a grammar)
+    for the node types of closing delimiters that match it.
+    */
     static closedBy: NodeProp<readonly string[]>;
+    /**
+    The inverse of [`closedBy`](#common.NodeProp^closedBy). This is
+    attached to closing delimiters, holding an array of node names
+    of types of matching opening delimiters.
+    */
     static openedBy: NodeProp<readonly string[]>;
+    /**
+    Used to assign node types to groups (for example, all node
+    types that represent an expression could be tagged with an
+    `"Expression"` group).
+    */
     static group: NodeProp<readonly string[]>;
+    /**
+    The hash of the [context](#lr.ContextTracker.constructor)
+    that the node was parsed in, if any. Used to limit reuse of
+    contextual nodes.
+    */
     static contextHash: NodeProp<number>;
+    /**
+    The distance beyond the end of the node that the tokenizer
+    looked ahead for any of the tokens inside the node. (The LR
+    parser only stores this when it is larger than 25, for
+    efficiency reasons.)
+    */
     static lookAhead: NodeProp<number>;
+    /**
+    This per-node prop is used to replace a given node, or part of a
+    node, with another tree. This is useful to include trees from
+    different languages in mixed-language parsers.
+    */
     static mounted: NodeProp<MountedTree>;
 }
+/**
+A mounted tree, which can be [stored](#common.NodeProp^mounted) on
+a tree node to indicate that parts of its content are
+represented by another tree.
+*/
 declare class MountedTree {
+    /**
+    The inner tree.
+    */
     readonly tree: Tree;
+    /**
+    If this is null, this tree replaces the entire node (it will
+    be included in the regular iteration instead of its host
+    node). If not, only the given ranges are considered to be
+    covered by this tree. This is used for trees that are mixed in
+    a way that isn't strictly hierarchical. Such mounted trees are
+    only entered by [`resolveInner`](#common.Tree.resolveInner)
+    and [`enter`](#common.SyntaxNode.enter).
+    */
     readonly overlay: readonly {
         from: number;
         to: number;
     }[] | null;
+    /**
+    The parser used to create this subtree.
+    */
     readonly parser: Parser;
-    constructor(tree: Tree, overlay: readonly {
+    constructor(
+    /**
+    The inner tree.
+    */
+    tree: Tree,
+    /**
+    If this is null, this tree replaces the entire node (it will
+    be included in the regular iteration instead of its host
+    node). If not, only the given ranges are considered to be
+    covered by this tree. This is used for trees that are mixed in
+    a way that isn't strictly hierarchical. Such mounted trees are
+    only entered by [`resolveInner`](#common.Tree.resolveInner)
+    and [`enter`](#common.SyntaxNode.enter).
+    */
+    overlay: readonly {
         from: number;
         to: number;
-    }[] | null, parser: Parser);
+    }[] | null,
+    /**
+    The parser used to create this subtree.
+    */
+    parser: Parser);
 }
+/**
+Type returned by [`NodeProp.add`](#common.NodeProp.add). Describes
+whether a prop should be added to a given node type in a node set,
+and what value it should have.
+*/
 type NodePropSource = (type: NodeType) => null | [NodeProp<any>, any];
+/**
+Each node in a syntax tree has a node type associated with it.
+*/
 declare class NodeType {
+    /**
+    The name of the node type. Not necessarily unique, but if the
+    grammar was written properly, different node types with the
+    same name within a node set should play the same semantic
+    role.
+    */
     readonly name: string;
+    /**
+    The id of this node in its set. Corresponds to the term ids
+    used in the parser.
+    */
     readonly id: number;
+    /**
+    Define a node type.
+    */
     static define(spec: {
+        /**
+        The ID of the node type. When this type is used in a
+        [set](#common.NodeSet), the ID must correspond to its index in
+        the type array.
+        */
         id: number;
+        /**
+        The name of the node type. Leave empty to define an anonymous
+        node.
+        */
         name?: string;
+        /**
+        [Node props](#common.NodeProp) to assign to the type. The value
+        given for any given prop should correspond to the prop's type.
+        */
         props?: readonly ([NodeProp<any>, any] | NodePropSource)[];
+        /**
+        Whether this is a [top node](#common.NodeType.isTop).
+        */
         top?: boolean;
+        /**
+        Whether this node counts as an [error
+        node](#common.NodeType.isError).
+        */
         error?: boolean;
+        /**
+        Whether this node is a [skipped](#common.NodeType.isSkipped)
+        node.
+        */
         skipped?: boolean;
     }): NodeType;
+    /**
+    Retrieves a node prop for this type. Will return `undefined` if
+    the prop isn't present on this node.
+    */
     prop<T>(prop: NodeProp<T>): T | undefined;
+    /**
+    True when this is the top node of a grammar.
+    */
     get isTop(): boolean;
+    /**
+    True when this node is produced by a skip rule.
+    */
     get isSkipped(): boolean;
+    /**
+    Indicates whether this is an error node.
+    */
     get isError(): boolean;
+    /**
+    When true, this node type doesn't correspond to a user-declared
+    named node, for example because it is used to cache repetition.
+    */
     get isAnonymous(): boolean;
+    /**
+    Returns true when this node's name or one of its
+    [groups](#common.NodeProp^group) matches the given string.
+    */
     is(name: string | number): boolean;
+    /**
+    An empty dummy node type to use when no actual type is available.
+    */
     static none: NodeType;
+    /**
+    Create a function from node types to arbitrary values by
+    specifying an object whose property names are node or
+    [group](#common.NodeProp^group) names. Often useful with
+    [`NodeProp.add`](#common.NodeProp.add). You can put multiple
+    names, separated by spaces, in a single property name to map
+    multiple node names to a single value.
+    */
     static match<T>(map: {
         [selector: string]: T;
     }): (node: NodeType) => T | undefined;
 }
+/**
+A node set holds a collection of node types. It is used to
+compactly represent trees by storing their type ids, rather than a
+full pointer to the type object, in a numeric array. Each parser
+[has](#lr.LRParser.nodeSet) a node set, and [tree
+buffers](#common.TreeBuffer) can only store collections of nodes
+from the same set. A set can have a maximum of 2**16 (65536) node
+types in it, so that the ids fit into 16-bit typed array slots.
+*/
 declare class NodeSet {
+    /**
+    The node types in this set, by id.
+    */
     readonly types: readonly NodeType[];
-    constructor(types: readonly NodeType[]);
+    /**
+    Create a set with the given types. The `id` property of each
+    type should correspond to its position within the array.
+    */
+    constructor(
+    /**
+    The node types in this set, by id.
+    */
+    types: readonly NodeType[]);
+    /**
+    Create a copy of this set with some node properties added. The
+    arguments to this method can be created with
+    [`NodeProp.add`](#common.NodeProp.add).
+    */
     extend(...props: NodePropSource[]): NodeSet;
 }
+/**
+Options that control iteration. Can be combined with the `|`
+operator to enable multiple ones.
+*/
 declare enum IterMode {
+    /**
+    When enabled, iteration will only visit [`Tree`](#common.Tree)
+    objects, not nodes packed into
+    [`TreeBuffer`](#common.TreeBuffer)s.
+    */
     ExcludeBuffers = 1,
+    /**
+    Enable this to make iteration include anonymous nodes (such as
+    the nodes that wrap repeated grammar constructs into a balanced
+    tree).
+    */
     IncludeAnonymous = 2,
+    /**
+    By default, regular [mounted](#common.NodeProp^mounted) nodes
+    replace their base node in iteration. Enable this to ignore them
+    instead.
+    */
     IgnoreMounts = 4,
+    /**
+    This option only applies in
+    [`enter`](#common.SyntaxNode.enter)-style methods. It tells the
+    library to not enter mounted overlays if one covers the given
+    position.
+    */
     IgnoreOverlays = 8
 }
+/**
+A piece of syntax tree. There are two ways to approach these
+trees: the way they are actually stored in memory, and the
+convenient way.
+
+Syntax trees are stored as a tree of `Tree` and `TreeBuffer`
+objects. By packing detail information into `TreeBuffer` leaf
+nodes, the representation is made a lot more memory-efficient.
+
+However, when you want to actually work with tree nodes, this
+representation is very awkward, so most client code will want to
+use the [`TreeCursor`](#common.TreeCursor) or
+[`SyntaxNode`](#common.SyntaxNode) interface instead, which provides
+a view on some part of this data structure, and can be used to
+move around to adjacent nodes.
+*/
 declare class Tree {
+    /**
+    The type of the top node.
+    */
     readonly type: NodeType;
+    /**
+    This node's child nodes.
+    */
     readonly children: readonly (Tree | TreeBuffer)[];
+    /**
+    The positions (offsets relative to the start of this tree) of
+    the children.
+    */
     readonly positions: readonly number[];
+    /**
+    The total length of this tree
+    */
     readonly length: number;
-    constructor(type: NodeType, children: readonly (Tree | TreeBuffer)[], positions: readonly number[], length: number, props?: readonly [NodeProp<any> | number, any][]);
+    /**
+    Construct a new tree. See also [`Tree.build`](#common.Tree^build).
+    */
+    constructor(
+    /**
+    The type of the top node.
+    */
+    type: NodeType,
+    /**
+    This node's child nodes.
+    */
+    children: readonly (Tree | TreeBuffer)[],
+    /**
+    The positions (offsets relative to the start of this tree) of
+    the children.
+    */
+    positions: readonly number[],
+    /**
+    The total length of this tree
+    */
+    length: number,
+    /**
+    Per-node [node props](#common.NodeProp) to associate with this node.
+    */
+    props?: readonly [NodeProp<any> | number, any][]);
+    /**
+    The empty tree
+    */
     static empty: Tree;
+    /**
+    Get a [tree cursor](#common.TreeCursor) positioned at the top of
+    the tree. Mode can be used to [control](#common.IterMode) which
+    nodes the cursor visits.
+    */
     cursor(mode?: IterMode): TreeCursor;
+    /**
+    Get a [tree cursor](#common.TreeCursor) pointing into this tree
+    at the given position and side (see
+    [`moveTo`](#common.TreeCursor.moveTo).
+    */
     cursorAt(pos: number, side?: -1 | 0 | 1, mode?: IterMode): TreeCursor;
+    /**
+    Get a [syntax node](#common.SyntaxNode) object for the top of the
+    tree.
+    */
     get topNode(): SyntaxNode;
+    /**
+    Get the [syntax node](#common.SyntaxNode) at the given position.
+    If `side` is -1, this will move into nodes that end at the
+    position. If 1, it'll move into nodes that start at the
+    position. With 0, it'll only enter nodes that cover the position
+    from both sides.
+
+    Note that this will not enter
+    [overlays](#common.MountedTree.overlay), and you often want
+    [`resolveInner`](#common.Tree.resolveInner) instead.
+    */
     resolve(pos: number, side?: -1 | 0 | 1): SyntaxNode;
+    /**
+    Like [`resolve`](#common.Tree.resolve), but will enter
+    [overlaid](#common.MountedTree.overlay) nodes, producing a syntax node
+    pointing into the innermost overlaid tree at the given position
+    (with parent links going through all parent structure, including
+    the host trees).
+    */
     resolveInner(pos: number, side?: -1 | 0 | 1): SyntaxNode;
+    /**
+    Iterate over the tree and its children, calling `enter` for any
+    node that touches the `from`/`to` region (if given) before
+    running over such a node's children, and `leave` (if given) when
+    leaving the node. When `enter` returns `false`, that node will
+    not have its children iterated over (or `leave` called).
+    */
     iterate(spec: {
         enter(node: SyntaxNodeRef): boolean | void;
         leave?(node: SyntaxNodeRef): void;
@@ -128,92 +623,415 @@ declare class Tree {
         to?: number;
         mode?: IterMode;
     }): void;
+    /**
+    Get the value of the given [node prop](#common.NodeProp) for this
+    node. Works with both per-node and per-type props.
+    */
     prop<T>(prop: NodeProp<T>): T | undefined;
+    /**
+    Returns the node's [per-node props](#common.NodeProp.perNode) in a
+    format that can be passed to the [`Tree`](#common.Tree)
+    constructor.
+    */
     get propValues(): readonly [NodeProp<any> | number, any][];
+    /**
+    Balance the direct children of this tree, producing a copy of
+    which may have children grouped into subtrees with type
+    [`NodeType.none`](#common.NodeType^none).
+    */
     balance(config?: {
+        /**
+        Function to create the newly balanced subtrees.
+        */
         makeTree?: (children: readonly (Tree | TreeBuffer)[], positions: readonly number[], length: number) => Tree;
     }): Tree;
+    /**
+    Build a tree from a postfix-ordered buffer of node information,
+    or a cursor over such a buffer.
+    */
     static build(data: BuildData): Tree;
 }
 type BuildData = {
+    /**
+    The buffer or buffer cursor to read the node data from.
+
+    When this is an array, it should contain four values for every
+    node in the tree.
+
+     - The first holds the node's type, as a node ID pointing into
+       the given `NodeSet`.
+     - The second holds the node's start offset.
+     - The third the end offset.
+     - The fourth the amount of space taken up in the array by this
+       node and its children. Since there's four values per node,
+       this is the total number of nodes inside this node (children
+       and transitive children) plus one for the node itself, times
+       four.
+
+    Parent nodes should appear _after_ child nodes in the array. As
+    an example, a node of type 10 spanning positions 0 to 4, with
+    two children, of type 11 and 12, might look like this:
+
+        [11, 0, 1, 4, 12, 2, 4, 4, 10, 0, 4, 12]
+    */
     buffer: BufferCursor | readonly number[];
+    /**
+    The node types to use.
+    */
     nodeSet: NodeSet;
+    /**
+    The id of the top node type.
+    */
     topID: number;
+    /**
+    The position the tree should start at. Defaults to 0.
+    */
     start?: number;
+    /**
+    The position in the buffer where the function should stop
+    reading. Defaults to 0.
+    */
     bufferStart?: number;
+    /**
+    The length of the wrapping node. The end offset of the last
+    child is used when not provided.
+    */
     length?: number;
+    /**
+    The maximum buffer length to use. Defaults to
+    [`DefaultBufferLength`](#common.DefaultBufferLength).
+    */
     maxBufferLength?: number;
+    /**
+    An optional array holding reused nodes that the buffer can refer
+    to.
+    */
     reused?: readonly Tree[];
+    /**
+    The first node type that indicates repeat constructs in this
+    grammar.
+    */
     minRepeatType?: number;
 };
+/**
+This is used by `Tree.build` as an abstraction for iterating over
+a tree buffer. A cursor initially points at the very last element
+in the buffer. Every time `next()` is called it moves on to the
+previous one.
+*/
 interface BufferCursor {
+    /**
+    The current buffer position (four times the number of nodes
+    remaining).
+    */
     pos: number;
+    /**
+    The node ID of the next node in the buffer.
+    */
     id: number;
+    /**
+    The start position of the next node in the buffer.
+    */
     start: number;
+    /**
+    The end position of the next node.
+    */
     end: number;
+    /**
+    The size of the next node (the number of nodes inside, counting
+    the node itself, times 4).
+    */
     size: number;
+    /**
+    Moves `this.pos` down by 4.
+    */
     next(): void;
+    /**
+    Create a copy of this cursor.
+    */
     fork(): BufferCursor;
 }
+/**
+Tree buffers contain (type, start, end, endIndex) quads for each
+node. In such a buffer, nodes are stored in prefix order (parents
+before children, with the endIndex of the parent indicating which
+children belong to it).
+*/
 declare class TreeBuffer {
+    /**
+    The buffer's content.
+    */
     readonly buffer: Uint16Array;
+    /**
+    The total length of the group of nodes in the buffer.
+    */
     readonly length: number;
+    /**
+    The node set used in this buffer.
+    */
     readonly set: NodeSet;
-    constructor(buffer: Uint16Array, length: number, set: NodeSet);
+    /**
+    Create a tree buffer.
+    */
+    constructor(
+    /**
+    The buffer's content.
+    */
+    buffer: Uint16Array,
+    /**
+    The total length of the group of nodes in the buffer.
+    */
+    length: number,
+    /**
+    The node set used in this buffer.
+    */
+    set: NodeSet);
 }
+/**
+The set of properties provided by both [`SyntaxNode`](#common.SyntaxNode)
+and [`TreeCursor`](#common.TreeCursor). Note that, if you need
+an object that is guaranteed to stay stable in the future, you
+need to use the [`node`](#common.SyntaxNodeRef.node) accessor.
+*/
 interface SyntaxNodeRef {
+    /**
+    The start position of the node.
+    */
     readonly from: number;
+    /**
+    The end position of the node.
+    */
     readonly to: number;
+    /**
+    The type of the node.
+    */
     readonly type: NodeType;
+    /**
+    The name of the node (`.type.name`).
+    */
     readonly name: string;
+    /**
+    Get the [tree](#common.Tree) that represents the current node,
+    if any. Will return null when the node is in a [tree
+    buffer](#common.TreeBuffer).
+    */
     readonly tree: Tree | null;
+    /**
+    Retrieve a stable [syntax node](#common.SyntaxNode) at this
+    position.
+    */
     readonly node: SyntaxNode;
+    /**
+    Test whether the node matches a given context.
+    */
     matchContext(context: readonly string[]): boolean;
 }
+/**
+A syntax node provides an immutable pointer to a given node in a
+tree. When iterating over large amounts of nodes, you may want to
+use a mutable [cursor](#common.TreeCursor) instead, which is more
+efficient.
+*/
 interface SyntaxNode extends SyntaxNodeRef {
+    /**
+    The node's parent node, if any.
+    */
     parent: SyntaxNode | null;
+    /**
+    The first child, if the node has children.
+    */
     firstChild: SyntaxNode | null;
+    /**
+    The node's last child, if available.
+    */
     lastChild: SyntaxNode | null;
+    /**
+    The first child that ends after `pos`.
+    */
     childAfter(pos: number): SyntaxNode | null;
+    /**
+    The last child that starts before `pos`.
+    */
     childBefore(pos: number): SyntaxNode | null;
+    /**
+    Enter the child at the given position. If side is -1 the child
+    may end at that position, when 1 it may start there.
+
+    This will by default enter
+    [overlaid](#common.MountedTree.overlay)
+    [mounted](#common.NodeProp^mounted) trees. You can set
+    `overlays` to false to disable that.
+
+    Similarly, when `buffers` is false this will not enter
+    [buffers](#common.TreeBuffer), only [nodes](#common.Tree) (which
+    is mostly useful when looking for props, which cannot exist on
+    buffer-allocated nodes).
+    */
     enter(pos: number, side: -1 | 0 | 1, mode?: IterMode): SyntaxNode | null;
+    /**
+    This node's next sibling, if any.
+    */
     nextSibling: SyntaxNode | null;
+    /**
+    This node's previous sibling.
+    */
     prevSibling: SyntaxNode | null;
+    /**
+    A [tree cursor](#common.TreeCursor) starting at this node.
+    */
     cursor(mode?: IterMode): TreeCursor;
+    /**
+    Find the node around, before (if `side` is -1), or after (`side`
+    is 1) the given position. Will look in parent nodes if the
+    position is outside this node.
+    */
     resolve(pos: number, side?: -1 | 0 | 1): SyntaxNode;
+    /**
+    Similar to `resolve`, but enter
+    [overlaid](#common.MountedTree.overlay) nodes.
+    */
     resolveInner(pos: number, side?: -1 | 0 | 1): SyntaxNode;
+    /**
+    Move the position to the innermost node before `pos` that looks
+    like it is unfinished (meaning it ends in an error node or has a
+    child ending in an error node right at its end).
+    */
     enterUnfinishedNodesBefore(pos: number): SyntaxNode;
+    /**
+    Get a [tree](#common.Tree) for this node. Will allocate one if it
+    points into a buffer.
+    */
     toTree(): Tree;
+    /**
+    Get the first child of the given type (which may be a [node
+    name](#common.NodeType.name) or a [group
+    name](#common.NodeProp^group)). If `before` is non-null, only
+    return children that occur somewhere after a node with that name
+    or group. If `after` is non-null, only return children that
+    occur somewhere before a node with that name or group.
+    */
     getChild(type: string | number, before?: string | number | null, after?: string | number | null): SyntaxNode | null;
+    /**
+    Like [`getChild`](#common.SyntaxNode.getChild), but return all
+    matching children, not just the first.
+    */
     getChildren(type: string | number, before?: string | number | null, after?: string | number | null): SyntaxNode[];
+    /**
+    Test whether the node matches a given context—a sequence of
+    direct parent nodes. Empty strings in the context array act as
+    wildcards, other strings must match the ancestor node's name.
+    */
     matchContext(context: readonly string[]): boolean;
 }
+/**
+A tree cursor object focuses on a given node in a syntax tree, and
+allows you to move to adjacent nodes.
+*/
 declare class TreeCursor implements SyntaxNodeRef {
+    /**
+    The node's type.
+    */
     type: NodeType;
+    /**
+    Shorthand for `.type.name`.
+    */
     get name(): string;
+    /**
+    The start source offset of this node.
+    */
     from: number;
+    /**
+    The end source offset.
+    */
     to: number;
     private stack;
     private bufferNode;
     private yieldNode;
     private yieldBuf;
     private yield;
+    /**
+    Move the cursor to this node's first child. When this returns
+    false, the node has no child, and the cursor has not been moved.
+    */
     firstChild(): boolean;
+    /**
+    Move the cursor to this node's last child.
+    */
     lastChild(): boolean;
+    /**
+    Move the cursor to the first child that ends after `pos`.
+    */
     childAfter(pos: number): boolean;
+    /**
+    Move to the last child that starts before `pos`.
+    */
     childBefore(pos: number): boolean;
+    /**
+    Move the cursor to the child around `pos`. If side is -1 the
+    child may end at that position, when 1 it may start there. This
+    will also enter [overlaid](#common.MountedTree.overlay)
+    [mounted](#common.NodeProp^mounted) trees unless `overlays` is
+    set to false.
+    */
     enter(pos: number, side: -1 | 0 | 1, mode?: IterMode): boolean;
+    /**
+    Move to the node's parent node, if this isn't the top node.
+    */
     parent(): boolean;
+    /**
+    Move to this node's next sibling, if any.
+    */
     nextSibling(): boolean;
+    /**
+    Move to this node's previous sibling, if any.
+    */
     prevSibling(): boolean;
     private atLastNode;
     private move;
+    /**
+    Move to the next node in a
+    [pre-order](https://en.wikipedia.org/wiki/Tree_traversal#Pre-order,_NLR)
+    traversal, going from a node to its first child or, if the
+    current node is empty or `enter` is false, its next sibling or
+    the next sibling of the first parent node that has one.
+    */
     next(enter?: boolean): boolean;
+    /**
+    Move to the next node in a last-to-first pre-order traveral. A
+    node is followed by its last child or, if it has none, its
+    previous sibling or the previous sibling of the first parent
+    node that has one.
+    */
     prev(enter?: boolean): boolean;
+    /**
+    Move the cursor to the innermost node that covers `pos`. If
+    `side` is -1, it will enter nodes that end at `pos`. If it is 1,
+    it will enter nodes that start at `pos`.
+    */
     moveTo(pos: number, side?: -1 | 0 | 1): this;
+    /**
+    Get a [syntax node](#common.SyntaxNode) at the cursor's current
+    position.
+    */
     get node(): SyntaxNode;
+    /**
+    Get the [tree](#common.Tree) that represents the current node, if
+    any. Will return null when the node is in a [tree
+    buffer](#common.TreeBuffer).
+    */
     get tree(): Tree | null;
+    /**
+    Iterate over the current node and all its descendants, calling
+    `enter` when entering a node and `leave`, if given, when leaving
+    one. When `enter` returns `false`, any children of that node are
+    skipped, and `leave` isn't called for it.
+    */
     iterate(enter: (node: SyntaxNodeRef) => boolean | void, leave?: (node: SyntaxNodeRef) => void): void;
+    /**
+    Test whether the current node matches a given context—a sequence
+    of direct parent node names. Empty strings in the context array
+    are treated as wildcards.
+    */
     matchContext(context: readonly string[]): boolean;
 }
 
@@ -377,6 +1195,11 @@ declare abstract class Text implements Iterable<string> {
     When `from` and `to` are given, they should be 1-based line numbers.
     */
     iterLines(from?: number, to?: number): TextIterator;
+    /**
+    Return the document as a string, using newline characters to
+    separate lines.
+    */
+    toString(): string;
     /**
     Convert the document to an array of lines (which can be
     deserialized again via [`Text.of`](https://codemirror.net/6/docs/ref/#state.Text^of)).
@@ -545,7 +1368,7 @@ plain object describing a change (a deletion, insertion, or
 replacement, depending on which fields are present), a [change
 set](https://codemirror.net/6/docs/ref/#state.ChangeSet), or an array of change specs.
 */
-declare type ChangeSpec = {
+type ChangeSpec = {
     from: number;
     to?: number;
     insert?: string | Text;
@@ -772,7 +1595,7 @@ declare class EditorSelection {
     static range(anchor: number, head: number, goalColumn?: number, bidiLevel?: number): SelectionRange;
 }
 
-declare type FacetConfig<Input, Output> = {
+type FacetConfig<Input, Output> = {
     /**
     How to combine the input values into a single output value. When
     not given, the array of input values becomes the output. This
@@ -852,8 +1675,8 @@ declare class Facet<Input, Output = readonly Input[]> {
     from<T extends Input>(field: StateField<T>): Extension;
     from<T>(field: StateField<T>, get: (value: T) => Input): Extension;
 }
-declare type Slot<T> = Facet<any, T> | StateField<T> | "doc" | "selection";
-declare type StateFieldSpec<Value> = {
+type Slot<T> = Facet<any, T> | StateField<T> | "doc" | "selection";
+type StateFieldSpec<Value> = {
     /**
     Creates the initial value for the field when a state is created.
     */
@@ -928,7 +1751,7 @@ providers](https://codemirror.net/6/docs/ref/#state.Facet.of), or objects with a
 `extension` property. Extensions can be nested in arrays
 arbitrarily deep—they will be flattened when processed.
 */
-declare type Extension = {
+type Extension = {
     extension: Extension;
 } | readonly Extension[];
 /**
@@ -1073,7 +1896,10 @@ declare class StateEffect<Value> {
     is<T>(type: StateEffectType<T>): this is StateEffect<T>;
     /**
     Define a new effect type. The type parameter indicates the type
-    of values that his effect holds.
+    of values that his effect holds. It should be a type that
+    doesn't include `undefined`, since that is used in
+    [mapping](https://codemirror.net/6/docs/ref/#state.StateEffect.map) to indicate that an effect is
+    removed.
     */
     static define<Value = null>(spec?: StateEffectSpec<Value>): StateEffectType<Value>;
     /**
@@ -1610,7 +2436,7 @@ Subtype of [`Command`](https://codemirror.net/6/docs/ref/#view.Command) that doe
 to the actual editor view. Mostly useful to define commands that
 can be run and tested outside of a browser environment.
 */
-declare type StateCommand = (target: {
+type StateCommand = (target: {
     state: EditorState;
     dispatch: (transaction: Transaction) => void;
 }) => boolean;
@@ -1738,7 +2564,7 @@ interface RangeCursor<T> {
     */
     to: number;
 }
-declare type RangeSetUpdate<T extends RangeValue> = {
+type RangeSetUpdate<T extends RangeValue> = {
     /**
     An array of ranges to add. If given, this should be sorted by
     `from` position and `startSide` unless
@@ -1817,8 +2643,7 @@ declare class RangeSet<T extends RangeValue> {
     static compare<T extends RangeValue>(oldSets: readonly RangeSet<T>[], newSets: readonly RangeSet<T>[],
     /**
     This indicates how the underlying data changed between these
-    ranges, and is needed to synchronize the iteration. `from` and
-    `to` are coordinates in the _new_ space, after these changes.
+    ranges, and is needed to synchronize the iteration.
     */
     textDiff: ChangeDesc, comparator: RangeComparator<T>,
     /**
@@ -1905,9 +2730,20 @@ type StyleSpec = {
   [propOrSelector: string]: string | number | StyleSpec | null
 }
 
-declare type Attrs = {
+type Attrs = {
     [name: string]: string;
 };
+
+/**
+Basic rectangle type.
+*/
+interface Rect {
+    readonly left: number;
+    readonly right: number;
+    readonly top: number;
+    readonly bottom: number;
+}
+type ScrollStrategy = "nearest" | "start" | "end" | "center";
 
 interface MarkDecorationSpec {
     /**
@@ -2072,6 +2908,14 @@ declare abstract class WidgetType {
     */
     ignoreEvent(event: Event): boolean;
     /**
+    Override the way screen coordinates for positions at/in the
+    widget are found. `pos` will be the offset into the widget, and
+    `side` the side of the position that is being queried—less than
+    zero for before, greater than zero for after, and zero for
+    directly at that position.
+    */
+    coordsAt(dom: HTMLElement, pos: number, side: number): Rect | null;
+    /**
     This is called when the an instance of the widget is removed
     from the editor view.
     */
@@ -2082,7 +2926,7 @@ A decoration set represents a collection of decorated ranges,
 organized for efficient access and mapping. See
 [`RangeSet`](https://codemirror.net/6/docs/ref/#state.RangeSet) for its methods.
 */
-declare type DecorationSet = RangeSet<Decoration>;
+type DecorationSet = RangeSet<Decoration>;
 /**
 The different types of blocks that can occur in an editor view.
 */
@@ -2175,24 +3019,13 @@ declare abstract class Decoration extends RangeValue {
 }
 
 /**
-Basic rectangle type.
-*/
-interface Rect {
-    readonly left: number;
-    readonly right: number;
-    readonly top: number;
-    readonly bottom: number;
-}
-declare type ScrollStrategy = "nearest" | "start" | "end" | "center";
-
-/**
 Command functions are used in key bindings and other types of user
 actions. Given an editor view, they check whether their effect can
 apply to the editor, and if it can, perform it as a side effect
 (which usually means [dispatching](https://codemirror.net/6/docs/ref/#view.EditorView.dispatch) a
 transaction) and return `true`.
 */
-declare type Command = (target: EditorView) => boolean;
+type Command = (target: EditorView) => boolean;
 /**
 This is the interface plugin objects conform to.
 */
@@ -2281,7 +3114,7 @@ interface MeasureRequest<T> {
     */
     key?: any;
 }
-declare type AttrSource = Attrs | ((view: EditorView) => Attrs | null);
+type AttrSource = Attrs | ((view: EditorView) => Attrs | null);
 /**
 View [plugins](https://codemirror.net/6/docs/ref/#view.ViewPlugin) are given instances of this
 class, which describe what happened, whenever the view is updated.
@@ -2370,7 +3203,7 @@ interface MouseSelectionStyle {
     */
     update: (update: ViewUpdate) => boolean | void;
 }
-declare type MakeSelectionStyle = (view: EditorView, event: MouseEvent) => MouseSelectionStyle | null;
+type MakeSelectionStyle = (view: EditorView, event: MouseEvent) => MouseSelectionStyle | null;
 
 /**
 Record used to represent information about a block-level element
@@ -2398,7 +3231,12 @@ declare class BlockInfo {
     The type of element this is. When querying lines, this may be
     an array of all the blocks that make up the line.
     */
-    readonly type: BlockType | readonly BlockInfo[];
+    get type(): BlockType | readonly BlockInfo[];
+    /**
+    If this is a widget block, this will return the widget
+    associated with it.
+    */
+    get widget(): WidgetType | null;
     /**
     The end of the element as a document position.
     */
@@ -2482,7 +3320,7 @@ interface EditorViewConfig extends EditorStateConfig {
     if provided, should probably call the view's [`update`
     method](https://codemirror.net/6/docs/ref/#view.EditorView.update).
     */
-    dispatch?: (tr: Transaction) => void;
+    dispatch?: (tr: Transaction, view: EditorView) => void;
 }
 /**
 An editor view represents the editor's user interface. It holds
@@ -2885,6 +3723,11 @@ declare class EditorView {
     */
     static inputHandler: Facet<(view: EditorView, from: number, to: number, text: string) => boolean, readonly ((view: EditorView, from: number, to: number, text: string) => boolean)[]>;
     /**
+    This facet can be used to provide functions that create effects
+    to be dispatched when the editor's focus state changes.
+    */
+    static focusChangeEffect: Facet<(state: EditorState, focusing: boolean) => StateEffect<any> | null, readonly ((state: EditorState, focusing: boolean) => StateEffect<any> | null)[]>;
+    /**
     By default, the editor assumes all its content has the same
     [text direction](https://codemirror.net/6/docs/ref/#view.Direction). Configure this with a `true`
     value to make it read the text direction of every (rendered)
@@ -3055,7 +3898,7 @@ to hold the appropriate event object type. For unknown events, it
 is inferred to `any`, and should be explicitly set if you want type
 checking.
 */
-declare type DOMEventHandlers<This> = {
+type DOMEventHandlers<This> = {
     [event in keyof DOMEventMap]?: (this: This, event: DOMEventMap[event], view: EditorView) => boolean | void;
 };
 
@@ -3151,7 +3994,7 @@ for a given key, no further handlers are called.
 */
 declare const keymap: Facet<readonly KeyBinding[], readonly (readonly KeyBinding[])[]>;
 
-declare type SelectionConfig = {
+type SelectionConfig = {
     /**
     The length of a full cursor blink cycle, in milliseconds.
     Defaults to 1200. Can be set to 0 to disable blinking.
@@ -3481,7 +4324,7 @@ interface Panel {
 A function that initializes a panel. Used in
 [`showPanel`](https://codemirror.net/6/docs/ref/#view.showPanel).
 */
-declare type PanelConstructor = (view: EditorView) => Panel;
+type PanelConstructor = (view: EditorView) => Panel;
 /**
 Opening a panel is done by providing a constructor function for
 the panel through this facet. (The panel is closed again when its
@@ -3514,7 +4357,7 @@ declare abstract class GutterMarker extends RangeValue {
     */
     destroy(dom: Node): void;
 }
-declare type Handlers$1 = {
+type Handlers$1 = {
     [event: string]: (view: EditorView, line: BlockInfo, event: Event) => boolean;
 };
 interface GutterConfig {
@@ -3537,8 +4380,12 @@ interface GutterConfig {
     */
     lineMarker?: (view: EditorView, line: BlockInfo, otherMarkers: readonly GutterMarker[]) => GutterMarker | null;
     /**
-    If line markers depend on additional state, and should be
-    updated when that changes, pass a predicate here that checks
+    Associate markers with block widgets in the document.
+    */
+    widgetMarker?: (view: EditorView, widget: WidgetType, block: BlockInfo) => GutterMarker | null;
+    /**
+    If line or widget markers depend on additional state, and should
+    be updated when that changes, pass a predicate here that checks
     whether a given view update might change the line markers.
     */
     lineMarkerChange?: null | ((update: ViewUpdate) => boolean);
@@ -3594,100 +4441,477 @@ Create a line number gutter extension.
 */
 declare function lineNumbers(config?: LineNumberConfig): Extension;
 
+/**
+Highlighting tags are markers that denote a highlighting category.
+They are [associated](#highlight.styleTags) with parts of a syntax
+tree by a language mode, and then mapped to an actual CSS style by
+a [highlighter](#highlight.Highlighter).
+
+Because syntax tree node types and highlight styles have to be
+able to talk the same language, CodeMirror uses a mostly _closed_
+[vocabulary](#highlight.tags) of syntax tags (as opposed to
+traditional open string-based systems, which make it hard for
+highlighting themes to cover all the tokens produced by the
+various languages).
+
+It _is_ possible to [define](#highlight.Tag^define) your own
+highlighting tags for system-internal use (where you control both
+the language package and the highlighter), but such tags will not
+be picked up by regular highlighters (though you can derive them
+from standard tags to allow highlighters to fall back to those).
+*/
 declare class Tag {
+    /**
+    The set of this tag and all its parent tags, starting with
+    this one itself and sorted in order of decreasing specificity.
+    */
     readonly set: Tag[];
+    /**
+    Define a new tag. If `parent` is given, the tag is treated as a
+    sub-tag of that parent, and
+    [highlighters](#highlight.tagHighlighter) that don't mention
+    this tag will try to fall back to the parent tag (or grandparent
+    tag, etc).
+    */
     static define(parent?: Tag): Tag;
+    /**
+    Define a tag _modifier_, which is a function that, given a tag,
+    will return a tag that is a subtag of the original. Applying the
+    same modifier to a twice tag will return the same value (`m1(t1)
+    == m1(t1)`) and applying multiple modifiers will, regardless or
+    order, produce the same tag (`m1(m2(t1)) == m2(m1(t1))`).
+
+    When multiple modifiers are applied to a given base tag, each
+    smaller set of modifiers is registered as a parent, so that for
+    example `m1(m2(m3(t1)))` is a subtype of `m1(m2(t1))`,
+    `m1(m3(t1)`, and so on.
+    */
     static defineModifier(): (tag: Tag) => Tag;
 }
+/**
+A highlighter defines a mapping from highlighting tags and
+language scopes to CSS class names. They are usually defined via
+[`tagHighlighter`](#highlight.tagHighlighter) or some wrapper
+around that, but it is also possible to implement them from
+scratch.
+*/
 interface Highlighter {
+    /**
+    Get the set of classes that should be applied to the given set
+    of highlighting tags, or null if this highlighter doesn't assign
+    a style to the tags.
+    */
     style(tags: readonly Tag[]): string | null;
+    /**
+    When given, the highlighter will only be applied to trees on
+    whose [top](#common.NodeType.isTop) node this predicate returns
+    true.
+    */
     scope?(node: NodeType): boolean;
 }
-declare function highlightTree(tree: Tree, highlighter: Highlighter | readonly Highlighter[], putStyle: (from: number, to: number, classes: string) => void, from?: number, to?: number): void;
+/**
+Highlight the given [tree](#common.Tree) with the given
+[highlighter](#highlight.Highlighter).
+*/
+declare function highlightTree(tree: Tree, highlighter: Highlighter | readonly Highlighter[],
+/**
+Assign styling to a region of the text. Will be called, in order
+of position, for any ranges where more than zero classes apply.
+`classes` is a space separated string of CSS classes.
+*/
+putStyle: (from: number, to: number, classes: string) => void,
+/**
+The start of the range to highlight.
+*/
+from?: number,
+/**
+The end of the range.
+*/
+to?: number): void;
+/**
+The default set of highlighting [tags](#highlight.Tag).
+
+This collection is heavily biased towards programming languages,
+and necessarily incomplete. A full ontology of syntactic
+constructs would fill a stack of books, and be impractical to
+write themes for. So try to make do with this set. If all else
+fails, [open an
+issue](https://github.com/codemirror/codemirror.next) to propose a
+new tag, or [define](#highlight.Tag^define) a local custom tag for
+your use case.
+
+Note that it is not obligatory to always attach the most specific
+tag possible to an element—if your grammar can't easily
+distinguish a certain type of element (such as a local variable),
+it is okay to style it as its more general variant (a variable).
+
+For tags that extend some parent tag, the documentation links to
+the parent.
+*/
 declare const tags: {
+    /**
+    A comment.
+    */
     comment: Tag;
+    /**
+    A line [comment](#highlight.tags.comment).
+    */
     lineComment: Tag;
+    /**
+    A block [comment](#highlight.tags.comment).
+    */
     blockComment: Tag;
+    /**
+    A documentation [comment](#highlight.tags.comment).
+    */
     docComment: Tag;
+    /**
+    Any kind of identifier.
+    */
     name: Tag;
+    /**
+    The [name](#highlight.tags.name) of a variable.
+    */
     variableName: Tag;
+    /**
+    A type [name](#highlight.tags.name).
+    */
     typeName: Tag;
+    /**
+    A tag name (subtag of [`typeName`](#highlight.tags.typeName)).
+    */
     tagName: Tag;
+    /**
+    A property or field [name](#highlight.tags.name).
+    */
     propertyName: Tag;
+    /**
+    An attribute name (subtag of [`propertyName`](#highlight.tags.propertyName)).
+    */
     attributeName: Tag;
+    /**
+    The [name](#highlight.tags.name) of a class.
+    */
     className: Tag;
+    /**
+    A label [name](#highlight.tags.name).
+    */
     labelName: Tag;
+    /**
+    A namespace [name](#highlight.tags.name).
+    */
     namespace: Tag;
+    /**
+    The [name](#highlight.tags.name) of a macro.
+    */
     macroName: Tag;
+    /**
+    A literal value.
+    */
     literal: Tag;
+    /**
+    A string [literal](#highlight.tags.literal).
+    */
     string: Tag;
+    /**
+    A documentation [string](#highlight.tags.string).
+    */
     docString: Tag;
+    /**
+    A character literal (subtag of [string](#highlight.tags.string)).
+    */
     character: Tag;
+    /**
+    An attribute value (subtag of [string](#highlight.tags.string)).
+    */
     attributeValue: Tag;
+    /**
+    A number [literal](#highlight.tags.literal).
+    */
     number: Tag;
+    /**
+    An integer [number](#highlight.tags.number) literal.
+    */
     integer: Tag;
+    /**
+    A floating-point [number](#highlight.tags.number) literal.
+    */
     float: Tag;
+    /**
+    A boolean [literal](#highlight.tags.literal).
+    */
     bool: Tag;
+    /**
+    Regular expression [literal](#highlight.tags.literal).
+    */
     regexp: Tag;
+    /**
+    An escape [literal](#highlight.tags.literal), for example a
+    backslash escape in a string.
+    */
     escape: Tag;
+    /**
+    A color [literal](#highlight.tags.literal).
+    */
     color: Tag;
+    /**
+    A URL [literal](#highlight.tags.literal).
+    */
     url: Tag;
+    /**
+    A language keyword.
+    */
     keyword: Tag;
+    /**
+    The [keyword](#highlight.tags.keyword) for the self or this
+    object.
+    */
     self: Tag;
+    /**
+    The [keyword](#highlight.tags.keyword) for null.
+    */
     null: Tag;
+    /**
+    A [keyword](#highlight.tags.keyword) denoting some atomic value.
+    */
     atom: Tag;
+    /**
+    A [keyword](#highlight.tags.keyword) that represents a unit.
+    */
     unit: Tag;
+    /**
+    A modifier [keyword](#highlight.tags.keyword).
+    */
     modifier: Tag;
+    /**
+    A [keyword](#highlight.tags.keyword) that acts as an operator.
+    */
     operatorKeyword: Tag;
+    /**
+    A control-flow related [keyword](#highlight.tags.keyword).
+    */
     controlKeyword: Tag;
+    /**
+    A [keyword](#highlight.tags.keyword) that defines something.
+    */
     definitionKeyword: Tag;
+    /**
+    A [keyword](#highlight.tags.keyword) related to defining or
+    interfacing with modules.
+    */
     moduleKeyword: Tag;
+    /**
+    An operator.
+    */
     operator: Tag;
+    /**
+    An [operator](#highlight.tags.operator) that dereferences something.
+    */
     derefOperator: Tag;
+    /**
+    Arithmetic-related [operator](#highlight.tags.operator).
+    */
     arithmeticOperator: Tag;
+    /**
+    Logical [operator](#highlight.tags.operator).
+    */
     logicOperator: Tag;
+    /**
+    Bit [operator](#highlight.tags.operator).
+    */
     bitwiseOperator: Tag;
+    /**
+    Comparison [operator](#highlight.tags.operator).
+    */
     compareOperator: Tag;
+    /**
+    [Operator](#highlight.tags.operator) that updates its operand.
+    */
     updateOperator: Tag;
+    /**
+    [Operator](#highlight.tags.operator) that defines something.
+    */
     definitionOperator: Tag;
+    /**
+    Type-related [operator](#highlight.tags.operator).
+    */
     typeOperator: Tag;
+    /**
+    Control-flow [operator](#highlight.tags.operator).
+    */
     controlOperator: Tag;
+    /**
+    Program or markup punctuation.
+    */
     punctuation: Tag;
+    /**
+    [Punctuation](#highlight.tags.punctuation) that separates
+    things.
+    */
     separator: Tag;
+    /**
+    Bracket-style [punctuation](#highlight.tags.punctuation).
+    */
     bracket: Tag;
+    /**
+    Angle [brackets](#highlight.tags.bracket) (usually `<` and `>`
+    tokens).
+    */
     angleBracket: Tag;
+    /**
+    Square [brackets](#highlight.tags.bracket) (usually `[` and `]`
+    tokens).
+    */
     squareBracket: Tag;
+    /**
+    Parentheses (usually `(` and `)` tokens). Subtag of
+    [bracket](#highlight.tags.bracket).
+    */
     paren: Tag;
+    /**
+    Braces (usually `{` and `}` tokens). Subtag of
+    [bracket](#highlight.tags.bracket).
+    */
     brace: Tag;
+    /**
+    Content, for example plain text in XML or markup documents.
+    */
     content: Tag;
+    /**
+    [Content](#highlight.tags.content) that represents a heading.
+    */
     heading: Tag;
+    /**
+    A level 1 [heading](#highlight.tags.heading).
+    */
     heading1: Tag;
+    /**
+    A level 2 [heading](#highlight.tags.heading).
+    */
     heading2: Tag;
+    /**
+    A level 3 [heading](#highlight.tags.heading).
+    */
     heading3: Tag;
+    /**
+    A level 4 [heading](#highlight.tags.heading).
+    */
     heading4: Tag;
+    /**
+    A level 5 [heading](#highlight.tags.heading).
+    */
     heading5: Tag;
+    /**
+    A level 6 [heading](#highlight.tags.heading).
+    */
     heading6: Tag;
+    /**
+    A prose separator (such as a horizontal rule).
+    */
     contentSeparator: Tag;
+    /**
+    [Content](#highlight.tags.content) that represents a list.
+    */
     list: Tag;
+    /**
+    [Content](#highlight.tags.content) that represents a quote.
+    */
     quote: Tag;
+    /**
+    [Content](#highlight.tags.content) that is emphasized.
+    */
     emphasis: Tag;
+    /**
+    [Content](#highlight.tags.content) that is styled strong.
+    */
     strong: Tag;
+    /**
+    [Content](#highlight.tags.content) that is part of a link.
+    */
     link: Tag;
+    /**
+    [Content](#highlight.tags.content) that is styled as code or
+    monospace.
+    */
     monospace: Tag;
+    /**
+    [Content](#highlight.tags.content) that has a strike-through
+    style.
+    */
     strikethrough: Tag;
+    /**
+    Inserted text in a change-tracking format.
+    */
     inserted: Tag;
+    /**
+    Deleted text.
+    */
     deleted: Tag;
+    /**
+    Changed text.
+    */
     changed: Tag;
+    /**
+    An invalid or unsyntactic element.
+    */
     invalid: Tag;
+    /**
+    Metadata or meta-instruction.
+    */
     meta: Tag;
+    /**
+    [Metadata](#highlight.tags.meta) that applies to the entire
+    document.
+    */
     documentMeta: Tag;
+    /**
+    [Metadata](#highlight.tags.meta) that annotates or adds
+    attributes to a given syntactic element.
+    */
     annotation: Tag;
+    /**
+    Processing instruction or preprocessor directive. Subtag of
+    [meta](#highlight.tags.meta).
+    */
     processingInstruction: Tag;
+    /**
+    [Modifier](#highlight.Tag^defineModifier) that indicates that a
+    given element is being defined. Expected to be used with the
+    various [name](#highlight.tags.name) tags.
+    */
     definition: (tag: Tag) => Tag;
+    /**
+    [Modifier](#highlight.Tag^defineModifier) that indicates that
+    something is constant. Mostly expected to be used with
+    [variable names](#highlight.tags.variableName).
+    */
     constant: (tag: Tag) => Tag;
+    /**
+    [Modifier](#highlight.Tag^defineModifier) used to indicate that
+    a [variable](#highlight.tags.variableName) or [property
+    name](#highlight.tags.propertyName) is being called or defined
+    as a function.
+    */
     function: (tag: Tag) => Tag;
+    /**
+    [Modifier](#highlight.Tag^defineModifier) that can be applied to
+    [names](#highlight.tags.name) to indicate that they belong to
+    the language's standard environment.
+    */
     standard: (tag: Tag) => Tag;
+    /**
+    [Modifier](#highlight.Tag^defineModifier) that indicates a given
+    [names](#highlight.tags.name) is local to some scope.
+    */
     local: (tag: Tag) => Tag;
+    /**
+    A generic variant [modifier](#highlight.Tag^defineModifier) that
+    can be used to tag language-specific alternative variants of
+    some common tag. It is recommended for themes to define special
+    forms of at least the [string](#highlight.tags.string) and
+    [variable name](#highlight.tags.variableName) tags, since those
+    come up a lot.
+    */
     special: (tag: Tag) => Tag;
 };
 
@@ -4073,7 +5297,7 @@ interface FoldConfig {
 Create an extension that configures code folding.
 */
 declare function codeFolding(config?: FoldConfig): Extension;
-declare type Handlers = {
+type Handlers = {
     [event: string]: (view: EditorView, line: BlockInfo, event: Event) => boolean;
 };
 interface FoldGutterConfig {
@@ -4450,96 +5674,6 @@ declare class StreamLanguage<State> extends Language {
     get allowsNesting(): boolean;
 }
 
-interface CompletionConfig {
-    /**
-    When enabled (defaults to true), autocompletion will start
-    whenever the user types something that can be completed.
-    */
-    activateOnTyping?: boolean;
-    /**
-    By default, when completion opens, the first option is selected
-    and can be confirmed with
-    [`acceptCompletion`](https://codemirror.net/6/docs/ref/#autocomplete.acceptCompletion). When this
-    is set to false, the completion widget starts with no completion
-    selected, and the user has to explicitly move to a completion
-    before you can confirm one.
-    */
-    selectOnOpen?: boolean;
-    /**
-    Override the completion sources used. By default, they will be
-    taken from the `"autocomplete"` [language
-    data](https://codemirror.net/6/docs/ref/#state.EditorState.languageDataAt) (which should hold
-    [completion sources](https://codemirror.net/6/docs/ref/#autocomplete.CompletionSource) or arrays
-    of [completions](https://codemirror.net/6/docs/ref/#autocomplete.Completion)).
-    */
-    override?: readonly CompletionSource[] | null;
-    /**
-    Determines whether the completion tooltip is closed when the
-    editor loses focus. Defaults to true.
-    */
-    closeOnBlur?: boolean;
-    /**
-    The maximum number of options to render to the DOM.
-    */
-    maxRenderedOptions?: number;
-    /**
-    Set this to false to disable the [default completion
-    keymap](https://codemirror.net/6/docs/ref/#autocomplete.completionKeymap). (This requires you to
-    add bindings to control completion yourself. The bindings should
-    probably have a higher precedence than other bindings for the
-    same keys.)
-    */
-    defaultKeymap?: boolean;
-    /**
-    By default, completions are shown below the cursor when there is
-    space. Setting this to true will make the extension put the
-    completions above the cursor when possible.
-    */
-    aboveCursor?: boolean;
-    /**
-    When given, this may return an additional CSS class to add to
-    the completion dialog element.
-    */
-    tooltipClass?: (state: EditorState) => string;
-    /**
-    This can be used to add additional CSS classes to completion
-    options.
-    */
-    optionClass?: (completion: Completion) => string;
-    /**
-    By default, the library will render icons based on the
-    completion's [type](https://codemirror.net/6/docs/ref/#autocomplete.Completion.type) in front of
-    each option. Set this to false to turn that off.
-    */
-    icons?: boolean;
-    /**
-    This option can be used to inject additional content into
-    options. The `render` function will be called for each visible
-    completion, and should produce a DOM node to show. `position`
-    determines where in the DOM the result appears, relative to
-    other added widgets and the standard content. The default icons
-    have position 20, the label position 50, and the detail position
-    80.
-    */
-    addToOptions?: {
-        render: (completion: Completion, state: EditorState) => Node | null;
-        position: number;
-    }[];
-    /**
-    The comparison function to use when sorting completions with the same
-    match score. Defaults to using
-    [`localeCompare`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/localeCompare).
-    */
-    compareCompletions?: (a: Completion, b: Completion) => number;
-    /**
-    By default, commands relating to an open completion only take
-    effect 75 milliseconds after the completion opened, so that key
-    presses made before the user is aware of the tooltip don't go to
-    the tooltip. This option can be used to configure that delay.
-    */
-    interactionDelay?: number;
-}
-
 /**
 Objects type used to represent individual completions.
 */
@@ -4590,6 +5724,39 @@ interface Completion {
     down the list, a positive number moves it up.
     */
     boost?: number;
+    /**
+    Can be used to divide the completion list into sections.
+    Completions in a given section (matched by name) will be grouped
+    together, with a heading above them. Options without section
+    will appear above all sections. A string value is equivalent to
+    a `{name}` object.
+    */
+    section?: string | CompletionSection;
+}
+/**
+Object used to describe a completion
+[section](https://codemirror.net/6/docs/ref/#autocomplete.Completion.section). It is recommended to
+create a shared object used by all the completions in a given
+section.
+*/
+interface CompletionSection {
+    /**
+    The name of the section. If no `render` method is present, this
+    will be displayed above the options.
+    */
+    name: string;
+    /**
+    An optional function that renders the section header. Since the
+    headers are shown inside a list, you should make sure the
+    resulting element has a `display: list-item` style.
+    */
+    header?: (section: CompletionSection) => HTMLElement;
+    /**
+    By default, sections are ordered alphabetically by name. To
+    specify an explicit order, `rank` can be used. Sections with a
+    lower rank will be shown above sections with a higher rank.
+    */
+    rank?: number;
 }
 /**
 An instance of this is passed to completion source functions.
@@ -4729,6 +5896,109 @@ interface CompletionResult {
     completion still applies in the new state.
     */
     update?: (current: CompletionResult, from: number, to: number, context: CompletionContext) => CompletionResult | null;
+}
+
+interface CompletionConfig {
+    /**
+    When enabled (defaults to true), autocompletion will start
+    whenever the user types something that can be completed.
+    */
+    activateOnTyping?: boolean;
+    /**
+    By default, when completion opens, the first option is selected
+    and can be confirmed with
+    [`acceptCompletion`](https://codemirror.net/6/docs/ref/#autocomplete.acceptCompletion). When this
+    is set to false, the completion widget starts with no completion
+    selected, and the user has to explicitly move to a completion
+    before you can confirm one.
+    */
+    selectOnOpen?: boolean;
+    /**
+    Override the completion sources used. By default, they will be
+    taken from the `"autocomplete"` [language
+    data](https://codemirror.net/6/docs/ref/#state.EditorState.languageDataAt) (which should hold
+    [completion sources](https://codemirror.net/6/docs/ref/#autocomplete.CompletionSource) or arrays
+    of [completions](https://codemirror.net/6/docs/ref/#autocomplete.Completion)).
+    */
+    override?: readonly CompletionSource[] | null;
+    /**
+    Determines whether the completion tooltip is closed when the
+    editor loses focus. Defaults to true.
+    */
+    closeOnBlur?: boolean;
+    /**
+    The maximum number of options to render to the DOM.
+    */
+    maxRenderedOptions?: number;
+    /**
+    Set this to false to disable the [default completion
+    keymap](https://codemirror.net/6/docs/ref/#autocomplete.completionKeymap). (This requires you to
+    add bindings to control completion yourself. The bindings should
+    probably have a higher precedence than other bindings for the
+    same keys.)
+    */
+    defaultKeymap?: boolean;
+    /**
+    By default, completions are shown below the cursor when there is
+    space. Setting this to true will make the extension put the
+    completions above the cursor when possible.
+    */
+    aboveCursor?: boolean;
+    /**
+    When given, this may return an additional CSS class to add to
+    the completion dialog element.
+    */
+    tooltipClass?: (state: EditorState) => string;
+    /**
+    This can be used to add additional CSS classes to completion
+    options.
+    */
+    optionClass?: (completion: Completion) => string;
+    /**
+    By default, the library will render icons based on the
+    completion's [type](https://codemirror.net/6/docs/ref/#autocomplete.Completion.type) in front of
+    each option. Set this to false to turn that off.
+    */
+    icons?: boolean;
+    /**
+    This option can be used to inject additional content into
+    options. The `render` function will be called for each visible
+    completion, and should produce a DOM node to show. `position`
+    determines where in the DOM the result appears, relative to
+    other added widgets and the standard content. The default icons
+    have position 20, the label position 50, and the detail position
+    80.
+    */
+    addToOptions?: {
+        render: (completion: Completion, state: EditorState) => Node | null;
+        position: number;
+    }[];
+    /**
+    By default, [info](https://codemirror.net/6/docs/ref/#autocomplet.Completion.info) tooltips are
+    placed to the side of the selected. This option can be used to
+    override that. It will be given rectangles for the list of
+    completions, the selected option, the info element, and the
+    availble [tooltip space](https://codemirror.net/6/docs/ref/#view.tooltips^config.tooltipSpace),
+    and should return style and/or class strings for the info
+    element.
+    */
+    positionInfo?: (view: EditorView, list: Rect, option: Rect, info: Rect, space: Rect) => {
+        style?: string;
+        class?: string;
+    };
+    /**
+    The comparison function to use when sorting completions with the same
+    match score. Defaults to using
+    [`localeCompare`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/localeCompare).
+    */
+    compareCompletions?: (a: Completion, b: Completion) => number;
+    /**
+    By default, commands relating to an open completion only take
+    effect 75 milliseconds after the completion opened, so that key
+    presses made before the user is aware of the tooltip don't go to
+    the tooltip. This option can be used to configure that delay.
+    */
+    interactionDelay?: number;
 }
 
 /**
@@ -4940,6 +6210,31 @@ declare namespace _replit_codemirror_lang_svelte {
 }
 
 /**
+A language provider based on the [Lezer Sass
+parser](https://github.com/lezer-parser/sass), extended with
+highlighting and indentation information.
+*/
+declare const sassLanguage: LRLanguage;
+/**
+Language support for CSS.
+*/
+declare function sass$1(config?: {
+    /**
+    When enabled, support classical indentation-based syntax. Default
+    to false (SCSS syntax).
+    */
+    indented?: boolean;
+}): LanguageSupport;
+
+declare const _codemirror_lang_sass_sassLanguage: typeof sassLanguage;
+declare namespace _codemirror_lang_sass {
+  export {
+    sass$1 as sass,
+    _codemirror_lang_sass_sassLanguage as sassLanguage,
+  };
+}
+
+/**
 Completion source that looks up locally defined names in
 Python code.
 */
@@ -5022,7 +6317,7 @@ declare class Line {
     countIndent(to: number, from?: number, indent?: number): number;
     findColumn(goal: number): number;
 }
-declare type BlockResult = boolean | null;
+type BlockResult = boolean | null;
 declare class BlockContext implements PartialParse {
     readonly parser: MarkdownParser;
     private line;
@@ -5083,7 +6378,7 @@ interface MarkdownConfig {
     remove?: readonly string[];
     wrap?: ParseWrapper;
 }
-declare type MarkdownExtension = MarkdownConfig | readonly MarkdownExtension[];
+type MarkdownExtension = MarkdownConfig | readonly MarkdownExtension[];
 declare class MarkdownParser extends Parser {
     readonly nodeSet: NodeSet;
     createParse(input: Input, fragments: readonly TreeFragment[], ranges: readonly {
@@ -5209,6 +6504,30 @@ declare namespace _codemirror_lang_markdown {
     markdown$1 as markdown,
     _codemirror_lang_markdown_markdownKeymap as markdownKeymap,
     _codemirror_lang_markdown_markdownLanguage as markdownLanguage,
+  };
+}
+
+/**
+A language provider for Less style sheets.
+*/
+declare const lessLanguage: LRLanguage;
+/**
+Property, variable, @-variable, and value keyword completion
+source.
+*/
+declare const lessCompletionSource: CompletionSource;
+/**
+Language support for Less.
+*/
+declare function less$1(): LanguageSupport;
+
+declare const _codemirror_lang_less_lessCompletionSource: typeof lessCompletionSource;
+declare const _codemirror_lang_less_lessLanguage: typeof lessLanguage;
+declare namespace _codemirror_lang_less {
+  export {
+    less$1 as less,
+    _codemirror_lang_less_lessCompletionSource as lessCompletionSource,
+    _codemirror_lang_less_lessLanguage as lessLanguage,
   };
 }
 
@@ -5404,13 +6723,22 @@ Default key bindings for the undo history.
 */
 declare const historyKeymap: readonly KeyBinding[];
 /**
-Move the selection one group or camel-case subword forward.
+Move the selection to the left across one group of word or
+non-word (but also non-space) characters.
 */
-declare const cursorSubwordForward: Command;
+declare const cursorGroupLeft: Command;
 /**
-Move the selection one group or camel-case subword backward.
+Move the selection one group to the right.
 */
-declare const cursorSubwordBackward: Command;
+declare const cursorGroupRight: Command;
+/**
+Move the cursor over the next syntactic element to the left.
+*/
+declare const cursorSyntaxLeft: Command;
+/**
+Move the cursor over the next syntactic element to the right.
+*/
+declare const cursorSyntaxRight: Command;
 /**
 Move the selection to the bracket matching the one it is currently
 on, if any.
@@ -5422,13 +6750,22 @@ head is currently on, if any.
 */
 declare const selectMatchingBracket: StateCommand;
 /**
-Move the selection head one group or camel-case subword forward.
+Move the selection head one [group](https://codemirror.net/6/docs/ref/#commands.cursorGroupLeft) to
+the left.
 */
-declare const selectSubwordForward: Command;
+declare const selectGroupLeft: Command;
 /**
-Move the selection head one group or subword backward.
+Move the selection head one group to the right.
 */
-declare const selectSubwordBackward: Command;
+declare const selectGroupRight: Command;
+/**
+Move the selection head over the next syntactic element to the left.
+*/
+declare const selectSyntaxLeft: Command;
+/**
+Move the selection head over the next syntactic element to the right.
+*/
+declare const selectSyntaxRight: Command;
 /**
 Replace the selection with a newline and indent the newly created
 line(s). If the current line consists only of whitespace, this
@@ -5483,33 +6820,6 @@ property changed to `mac`.)
 declare const standardKeymap: readonly KeyBinding[];
 
 /**
-CSS property and value keyword completion source.
-*/
-declare const cssCompletionSource: CompletionSource;
-
-/**
-A language provider based on the [Lezer CSS
-parser](https://github.com/lezer-parser/css), extended with
-highlighting and indentation information.
-*/
-declare const cssLanguage: LRLanguage;
-/**
-Language support for CSS.
-*/
-declare function css(): LanguageSupport;
-
-declare const index_d$2_css: typeof css;
-declare const index_d$2_cssCompletionSource: typeof cssCompletionSource;
-declare const index_d$2_cssLanguage: typeof cssLanguage;
-declare namespace index_d$2 {
-  export {
-    index_d$2_css as css,
-    index_d$2_cssCompletionSource as cssCompletionSource,
-    index_d$2_cssLanguage as cssLanguage,
-  };
-}
-
-/**
 Type used to specify tags to complete.
 */
 interface TagSpec {
@@ -5549,18 +6859,25 @@ declare function htmlCompletionSourceWith(config: {
     extraGlobalAttributes?: Record<string, null | readonly string[]>;
 }): (context: CompletionContext) => CompletionResult | null;
 
-declare type NestedLang = {
+type NestedLang = {
     tag: string;
     attrs?: (attrs: {
         [attr: string]: string;
     }) => boolean;
     parser: Parser;
 };
-declare type NestedAttr = {
+type NestedAttr = {
     name: string;
     tagName?: string;
     parser: Parser;
 };
+/**
+A language provider based on the [Lezer HTML
+parser](https://github.com/lezer-parser/html), extended with the
+JavaScript and CSS parsers to parse the content of `<script>` and
+`<style>` tags.
+*/
+declare const htmlPlain: LRLanguage;
 /**
 A language provider based on the [Lezer HTML
 parser](https://github.com/lezer-parser/html), extended with the
@@ -5618,6 +6935,7 @@ declare const index_d$1_html: typeof html;
 declare const index_d$1_htmlCompletionSource: typeof htmlCompletionSource;
 declare const index_d$1_htmlCompletionSourceWith: typeof htmlCompletionSourceWith;
 declare const index_d$1_htmlLanguage: typeof htmlLanguage;
+declare const index_d$1_htmlPlain: typeof htmlPlain;
 declare namespace index_d$1 {
   export {
     index_d$1_TagSpec as TagSpec,
@@ -5626,6 +6944,7 @@ declare namespace index_d$1 {
     index_d$1_htmlCompletionSource as htmlCompletionSource,
     index_d$1_htmlCompletionSourceWith as htmlCompletionSourceWith,
     index_d$1_htmlLanguage as htmlLanguage,
+    index_d$1_htmlPlain as htmlPlain,
   };
 }
 
@@ -5775,19 +7094,23 @@ declare function angular(): Promise<typeof _codemirror_lang_angular>;
 declare function clojure(): Promise<StreamLanguage<unknown>>;
 declare function coffeescript(): Promise<StreamLanguage<unknown>>;
 declare function cpp(): Promise<typeof _codemirror_lang_cpp>;
+declare const css: {
+    cssCompletionSource: CompletionSource;
+    cssLanguage: LRLanguage;
+    css(): LanguageSupport;
+};
 declare function dart(): Promise<StreamLanguage<unknown>>;
 declare function gss(): Promise<StreamLanguage<unknown>>;
 declare function go(): Promise<StreamLanguage<unknown>>;
 declare function java(): Promise<typeof _codemirror_lang_java>;
 declare function json(): Promise<typeof _codemirror_lang_json>;
 declare function kotlin(): Promise<StreamLanguage<unknown>>;
-declare function less(): Promise<StreamLanguage<unknown>>;
+declare function less(): Promise<typeof _codemirror_lang_less>;
 declare function markdown(): Promise<typeof _codemirror_lang_markdown>;
 declare function php(): Promise<typeof _codemirror_lang_php>;
 declare function python(): Promise<typeof _codemirror_lang_python>;
-declare function sass(): Promise<StreamLanguage<unknown>>;
+declare function sass(): Promise<typeof _codemirror_lang_sass>;
 declare function scala(): Promise<StreamLanguage<unknown>>;
-declare function scss(): Promise<StreamLanguage<unknown>>;
 declare function shell(): Promise<StreamLanguage<unknown>>;
 declare function svelte(): Promise<typeof _replit_codemirror_lang_svelte>;
 declare function cssStreamParser(): Promise<any>;
@@ -5795,4 +7118,4 @@ declare function vue(): Promise<typeof _codemirror_lang_vue>;
 declare function wast(): Promise<typeof _codemirror_lang_wast>;
 declare function xml(): Promise<typeof _codemirror_lang_xml>;
 
-export { Annotation, AnnotationType, ChangeDesc, ChangeSet, ChangeSpec, Command, Compartment, Completion, CompletionContext, CompletionResult, CompletionSource, Decoration, DecorationSet, EditorSelection, EditorState, EditorStateConfig, EditorView, Extension, Facet, GutterMarker, HighlightStyle, KeyBinding, LRParser, Language, LanguageSupport, Line$1 as Line, MapMode, MatchDecorator, NodeProp, NodeSet, NodeType, Panel, Parser, Prec, Range, RangeSet, RangeSetBuilder, SelectionRange, StateEffect, StateEffectType, StateField, StreamLanguage, StreamParser, StringStream, StyleModule, SyntaxNode, Tag, TagStyle, Text, TextIterator, Tooltip, TooltipView, Transaction, TransactionSpec, Tree, TreeCursor, ViewPlugin, ViewUpdate, WidgetType, acceptCompletion, angular, autocompletion, bracketMatching, clojure, closeBrackets, closeBracketsKeymap, closeCompletion, codeFolding, coffeescript, completeAnyWord, completionStatus, cpp, index_d$2 as css, cssStreamParser, currentCompletions, cursorMatchingBracket, cursorSubwordBackward, cursorSubwordForward, dart, drawSelection, ensureSyntaxTree, foldGutter, foldKeymap, go, gss, gutter, gutters, highlightSelectionMatches, highlightSpecialChars, highlightTree, history, historyKeymap, index_d$1 as html, ifNotIn, indentLess, indentMore, indentOnInput, indentUnit, insertNewlineAndIndent, java, index_d as javascript, json, keymap, kotlin, less, lineNumberMarkers, lineNumbers, markdown, moveCompletionSelection, php, placeholder, python, redo, redoSelection, repositionTooltips, sass, scala, scrollPastEnd, scss, selectMatchingBracket, selectNextOccurrence, selectSubwordBackward, selectSubwordForward, selectedCompletion, selectedCompletionIndex, shell, showPanel, showTooltip, standardKeymap, startCompletion, svelte, syntaxHighlighting, syntaxTree, tags, toggleComment, tooltips, undo, undoSelection, vue, wast, xml };
+export { Annotation, AnnotationType, ChangeDesc, ChangeSet, ChangeSpec, Command, Compartment, Completion, CompletionContext, CompletionResult, CompletionSource, Decoration, DecorationSet, EditorSelection, EditorState, EditorStateConfig, EditorView, Extension, Facet, GutterMarker, HighlightStyle, KeyBinding, LRParser, Language, LanguageSupport, Line$1 as Line, MapMode, MatchDecorator, NodeProp, NodeSet, NodeType, Panel, Parser, Prec, Range, RangeSet, RangeSetBuilder, SelectionRange, StateEffect, StateEffectType, StateField, StreamLanguage, StreamParser, StringStream, StyleModule, SyntaxNode, Tag, TagStyle, Text, TextIterator, Tooltip, TooltipView, Transaction, TransactionSpec, Tree, TreeCursor, ViewPlugin, ViewUpdate, WidgetType, acceptCompletion, angular, autocompletion, bracketMatching, clojure, closeBrackets, closeBracketsKeymap, closeCompletion, codeFolding, coffeescript, completeAnyWord, completionStatus, cpp, css, cssStreamParser, currentCompletions, cursorGroupLeft, cursorGroupRight, cursorMatchingBracket, cursorSyntaxLeft, cursorSyntaxRight, dart, drawSelection, ensureSyntaxTree, foldGutter, foldKeymap, go, gss, gutter, gutters, highlightSelectionMatches, highlightSpecialChars, highlightTree, history, historyKeymap, index_d$1 as html, ifNotIn, indentLess, indentMore, indentOnInput, indentUnit, insertNewlineAndIndent, java, index_d as javascript, json, keymap, kotlin, less, lineNumberMarkers, lineNumbers, markdown, moveCompletionSelection, php, placeholder, python, redo, redoSelection, repositionTooltips, sass, scala, scrollPastEnd, selectGroupLeft, selectGroupRight, selectMatchingBracket, selectNextOccurrence, selectSyntaxLeft, selectSyntaxRight, selectedCompletion, selectedCompletionIndex, shell, showPanel, showTooltip, standardKeymap, startCompletion, svelte, syntaxHighlighting, syntaxTree, tags, toggleComment, tooltips, undo, undoSelection, vue, wast, xml };

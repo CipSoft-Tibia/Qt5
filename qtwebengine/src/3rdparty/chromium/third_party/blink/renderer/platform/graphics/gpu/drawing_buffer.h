@@ -39,6 +39,7 @@
 #include "cc/layers/texture_layer_client.h"
 #include "cc/resources/cross_thread_shared_bitmap.h"
 #include "cc/resources/shared_bitmap_id_registrar.h"
+#include "components/viz/common/resources/shared_image_format.h"
 #include "gpu/GLES2/gl2extchromium.h"
 #include "gpu/command_buffer/client/gles2_interface.h"
 #include "gpu/command_buffer/client/raster_interface.h"
@@ -93,6 +94,9 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
     // Returns true if the DrawingBuffer is currently bound for draw.
     virtual bool DrawingBufferClientIsBoundForDraw() = 0;
     virtual void DrawingBufferClientRestoreScissorTest() = 0;
+    // Interrupt and restore pixel local storage, if it was active.
+    virtual void DrawingBufferClientInterruptPixelLocalStorage() = 0;
+    virtual void DrawingBufferClientRestorePixelLocalStorage() = 0;
     // Restores the mask and clear value for color, depth, and stencil buffers.
     virtual void DrawingBufferClientRestoreMaskAndClearValues() = 0;
     // Assume client knows the GL/WebGL version and restore necessary params
@@ -108,7 +112,8 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
     virtual void DrawingBufferClientRestorePixelPackBufferBinding() = 0;
     virtual bool
     DrawingBufferClientUserAllocatedMultisampledRenderbuffers() = 0;
-    virtual void DrawingBufferClientForceLostContextWithAutoRecovery() = 0;
+    virtual void DrawingBufferClientForceLostContextWithAutoRecovery(
+        const char* reason) = 0;
   };
 
   enum PreserveDrawingBuffer {
@@ -201,7 +206,7 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   // Note that in rare situations on macOS the drawing buffer can be destroyed
   // during the resolve process, specifically during automatic graphics
   // switching. In this scenario this method returns false.
-  bool ResolveAndBindForReadAndDraw();
+  [[nodiscard]] bool ResolveAndBindForReadAndDraw();
 
   bool Multisample() const;
 
@@ -218,8 +223,7 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
 
   void SetIsInHiddenPage(bool);
   void SetFilterQuality(cc::PaintFlags::FilterQuality);
-  void SetHDRConfiguration(gfx::HDRMode hdr_mode,
-                           absl::optional<gfx::HDRMetadata> hdr_metadata);
+  void SetHdrMetadata(const gfx::HDRMetadata& hdr_metadata);
   cc::PaintFlags::FilterQuality FilterQuality() const {
     return filter_quality_;
   }
@@ -344,6 +348,7 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
                 std::unique_ptr<Extensions3DUtil>,
                 Client*,
                 bool discard_framebuffer_supported,
+                bool texture_storage_enabled,
                 bool want_alpha_channel,
                 bool premultiplied_alpha,
                 PreserveDrawingBuffer,
@@ -417,7 +422,7 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
     ColorBuffer(base::WeakPtr<DrawingBuffer> drawing_buffer,
                 const gfx::Size&,
                 const gfx::ColorSpace& color_space,
-                viz::ResourceFormat,
+                viz::SharedImageFormat,
                 SkAlphaType alpha_type,
                 GLenum texture_target,
                 GLuint texture_id,
@@ -438,7 +443,7 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
     base::WeakPtr<DrawingBuffer> drawing_buffer;
     const gfx::Size size;
     const gfx::ColorSpace color_space;
-    const viz::ResourceFormat format;
+    const viz::SharedImageFormat format;
     const SkAlphaType alpha_type;
     const GLenum texture_target;
     const GLuint texture_id;
@@ -457,7 +462,7 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   };
 
   using CopyFunctionRef = base::FunctionRef<bool(const gpu::MailboxHolder&,
-                                                 viz::ResourceFormat,
+                                                 viz::SharedImageFormat,
                                                  SkAlphaType alpha_type,
                                                  const gfx::Size&,
                                                  const gfx::ColorSpace&)>;
@@ -483,8 +488,19 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   // The same as resolveAndBindForReadAndDraw(), but leaves GL state dirty.
   void ResolveMultisampleFramebufferInternal();
 
+  enum DiscardBehavior {
+    // A public entry point is requesting the resolve. Do not discard
+    // framebuffer attachments which would otherwise be considered
+    // transient.
+    kDontDiscard,
+
+    // The compositor is requesting the resolve. Discard framebuffer
+    // attachments which are considered transient.
+    kDiscardAllowed
+  };
+
   // Resolves m_multisampleFBO into m_fbo, if multisampling.
-  void ResolveIfNeeded();
+  void ResolveIfNeeded(DiscardBehavior discardBehavior);
 
   enum CheckForDestructionResult {
     kDestroyedOrLost,
@@ -498,7 +514,8 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   //  - Checks whether the context has been lost
   // If all of the above checks pass, resolves the multisampled
   // renderbuffer if needed.
-  CheckForDestructionResult CheckForDestructionAndChangeAndResolveIfNeeded();
+  CheckForDestructionResult CheckForDestructionAndChangeAndResolveIfNeeded(
+      DiscardBehavior discardBehavior);
 
   bool PrepareTransferableResourceInternal(
       cc::SharedBitmapIdRegistrar* bitmap_registrar,
@@ -600,6 +617,7 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   std::unique_ptr<Extensions3DUtil> extensions_util_;
   gfx::Size size_;
   const bool discard_framebuffer_supported_;
+  const bool texture_storage_enabled_;
 
   // The alpha type that was requested (opaque, premul, or unpremul).
   SkAlphaType requested_alpha_type_;
@@ -608,7 +626,8 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   GLenum requested_format_ = GL_NONE;
 
   // The format with which ColorBuffers used for compositing will be allocated.
-  viz::ResourceFormat color_buffer_format_ = viz::RGBA_8888;
+  viz::SharedImageFormat color_buffer_format_ =
+      viz::SinglePlaneFormat::kRGBA_8888;
 
   Platform::GraphicsInfo graphics_info_;
   const bool using_swap_chain_;
@@ -655,6 +674,7 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   // True if resolveIfNeeded() has been called since the last time
   // markContentsChanged() had been called.
   bool contents_change_resolved_ = false;
+  bool transient_framebuffers_discarded_ = false;
   bool buffer_clear_needed_ = false;
 
   // Whether the client wants a depth or stencil buffer.
@@ -673,8 +693,7 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   bool is_hidden_ = false;
   bool has_eqaa_support = false;
 
-  gfx::HDRMode hdr_mode_ = gfx::HDRMode::kDefault;
-  absl::optional<gfx::HDRMetadata> hdr_metadata_;
+  gfx::HDRMetadata hdr_metadata_;
   cc::PaintFlags::FilterQuality filter_quality_ =
       cc::PaintFlags::FilterQuality::kLow;
 

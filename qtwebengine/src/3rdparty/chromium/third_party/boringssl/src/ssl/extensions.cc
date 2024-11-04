@@ -206,9 +206,7 @@ static bool tls1_check_duplicate_extensions(const CBS *cbs) {
 
 static bool is_post_quantum_group(uint16_t id) {
   switch (id) {
-    case SSL_CURVE_CECPQ2:
-    case SSL_CURVE_X25519KYBER768:
-    case SSL_CURVE_P256KYBER768:
+    case SSL_GROUP_X25519_KYBER768_DRAFT00:
       return true;
     default:
       return false;
@@ -309,9 +307,9 @@ bool ssl_client_hello_get_extension(const SSL_CLIENT_HELLO *client_hello,
 }
 
 static const uint16_t kDefaultGroups[] = {
-    SSL_CURVE_X25519,
-    SSL_CURVE_SECP256R1,
-    SSL_CURVE_SECP384R1,
+    SSL_GROUP_X25519,
+    SSL_GROUP_SECP256R1,
+    SSL_GROUP_SECP384R1,
 };
 
 Span<const uint16_t> tls1_get_grouplist(const SSL_HANDSHAKE *hs) {
@@ -360,61 +358,10 @@ bool tls1_get_shared_group(SSL_HANDSHAKE *hs, uint16_t *out_group_id) {
   return false;
 }
 
-bool tls1_set_curves(Array<uint16_t> *out_group_ids, Span<const int> curves) {
-  Array<uint16_t> group_ids;
-  if (!group_ids.Init(curves.size())) {
-    return false;
-  }
-
-  for (size_t i = 0; i < curves.size(); i++) {
-    if (!ssl_nid_to_group_id(&group_ids[i], curves[i])) {
-      return false;
-    }
-  }
-
-  *out_group_ids = std::move(group_ids);
-  return true;
-}
-
-bool tls1_set_curves_list(Array<uint16_t> *out_group_ids, const char *curves) {
-  // Count the number of curves in the list.
-  size_t count = 0;
-  const char *ptr = curves, *col;
-  do {
-    col = strchr(ptr, ':');
-    count++;
-    if (col) {
-      ptr = col + 1;
-    }
-  } while (col);
-
-  Array<uint16_t> group_ids;
-  if (!group_ids.Init(count)) {
-    return false;
-  }
-
-  size_t i = 0;
-  ptr = curves;
-  do {
-    col = strchr(ptr, ':');
-    if (!ssl_name_to_group_id(&group_ids[i++], ptr,
-                              col ? (size_t)(col - ptr) : strlen(ptr))) {
-      return false;
-    }
-    if (col) {
-      ptr = col + 1;
-    }
-  } while (col);
-
-  assert(i == count);
-  *out_group_ids = std::move(group_ids);
-  return true;
-}
-
 bool tls1_check_group_id(const SSL_HANDSHAKE *hs, uint16_t group_id) {
   if (is_post_quantum_group(group_id) &&
       ssl_protocol_version(hs->ssl) < TLS1_3_VERSION) {
-    // CECPQ2(b) requires TLS 1.3.
+    // Post-quantum "groups" require TLS 1.3.
     return false;
   }
 
@@ -2322,7 +2269,7 @@ bool ssl_setup_key_shares(SSL_HANDSHAKE *hs, uint16_t override_group_id) {
   if (!hs->key_shares[0] ||  //
       !CBB_add_u16(cbb.get(), group_id) ||
       !CBB_add_u16_length_prefixed(cbb.get(), &key_exchange) ||
-      !hs->key_shares[0]->Offer(&key_exchange)) {
+      !hs->key_shares[0]->Generate(&key_exchange)) {
     return false;
   }
 
@@ -2331,7 +2278,7 @@ bool ssl_setup_key_shares(SSL_HANDSHAKE *hs, uint16_t override_group_id) {
     if (!hs->key_shares[1] ||  //
         !CBB_add_u16(cbb.get(), second_group_id) ||
         !CBB_add_u16_length_prefixed(cbb.get(), &key_exchange) ||
-        !hs->key_shares[1]->Offer(&key_exchange)) {
+        !hs->key_shares[1]->Generate(&key_exchange)) {
       return false;
     }
   }
@@ -2363,10 +2310,10 @@ static bool ext_key_share_add_clienthello(const SSL_HANDSHAKE *hs, CBB *out,
 bool ssl_ext_key_share_parse_serverhello(SSL_HANDSHAKE *hs,
                                          Array<uint8_t> *out_secret,
                                          uint8_t *out_alert, CBS *contents) {
-  CBS peer_key;
+  CBS ciphertext;
   uint16_t group_id;
   if (!CBS_get_u16(contents, &group_id) ||
-      !CBS_get_u16_length_prefixed(contents, &peer_key) ||
+      !CBS_get_u16_length_prefixed(contents, &ciphertext) ||
       CBS_len(contents) != 0) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
     *out_alert = SSL_AD_DECODE_ERROR;
@@ -2383,7 +2330,7 @@ bool ssl_ext_key_share_parse_serverhello(SSL_HANDSHAKE *hs,
     key_share = hs->key_shares[1].get();
   }
 
-  if (!key_share->Finish(out_secret, out_alert, peer_key)) {
+  if (!key_share->Decap(out_secret, out_alert, ciphertext)) {
     *out_alert = SSL_AD_INTERNAL_ERROR;
     return false;
   }
@@ -2448,13 +2395,13 @@ bool ssl_ext_key_share_parse_clienthello(SSL_HANDSHAKE *hs, bool *out_found,
 }
 
 bool ssl_ext_key_share_add_serverhello(SSL_HANDSHAKE *hs, CBB *out) {
-  CBB kse_bytes, public_key;
+  CBB entry, ciphertext;
   if (!CBB_add_u16(out, TLSEXT_TYPE_key_share) ||
-      !CBB_add_u16_length_prefixed(out, &kse_bytes) ||
-      !CBB_add_u16(&kse_bytes, hs->new_session->group_id) ||
-      !CBB_add_u16_length_prefixed(&kse_bytes, &public_key) ||
-      !CBB_add_bytes(&public_key, hs->ecdh_public_key.data(),
-                     hs->ecdh_public_key.size()) ||
+      !CBB_add_u16_length_prefixed(out, &entry) ||
+      !CBB_add_u16(&entry, hs->new_session->group_id) ||
+      !CBB_add_u16_length_prefixed(&entry, &ciphertext) ||
+      !CBB_add_bytes(&ciphertext, hs->key_share_ciphertext.data(),
+                     hs->key_share_ciphertext.size()) ||
       !CBB_flush(out)) {
     return false;
   }
@@ -4155,12 +4102,7 @@ bool tls1_verify_channel_id(SSL_HANDSHAKE *hs, const SSLMessage &msg) {
     return false;
   }
 
-  UniquePtr<EC_GROUP> p256(EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1));
-  if (!p256) {
-    OPENSSL_PUT_ERROR(SSL, SSL_R_NO_P256_SUPPORT);
-    return false;
-  }
-
+  const EC_GROUP *p256 = EC_group_p256();
   UniquePtr<ECDSA_SIG> sig(ECDSA_SIG_new());
   UniquePtr<BIGNUM> x(BN_new()), y(BN_new());
   if (!sig || !x || !y) {
@@ -4176,11 +4118,11 @@ bool tls1_verify_channel_id(SSL_HANDSHAKE *hs, const SSLMessage &msg) {
   }
 
   UniquePtr<EC_KEY> key(EC_KEY_new());
-  UniquePtr<EC_POINT> point(EC_POINT_new(p256.get()));
+  UniquePtr<EC_POINT> point(EC_POINT_new(p256));
   if (!key || !point ||
-      !EC_POINT_set_affine_coordinates_GFp(p256.get(), point.get(), x.get(),
-                                           y.get(), nullptr) ||
-      !EC_KEY_set_group(key.get(), p256.get()) ||
+      !EC_POINT_set_affine_coordinates_GFp(p256, point.get(), x.get(), y.get(),
+                                           nullptr) ||
+      !EC_KEY_set_group(key.get(), p256) ||
       !EC_KEY_set_public_key(key.get(), point.get())) {
     return false;
   }

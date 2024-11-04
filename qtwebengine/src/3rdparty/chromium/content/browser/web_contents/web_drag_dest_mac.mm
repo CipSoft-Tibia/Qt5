@@ -7,7 +7,7 @@
 #include <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
 
-#include "base/mac/scoped_nsobject.h"
+#include "base/memory/raw_ptr.h"
 #include "base/ranges/algorithm.h"
 #include "base/strings/sys_string_conversions.h"
 #include "content/browser/renderer_host/render_view_host_impl.h"
@@ -26,7 +26,6 @@
 #include "ui/base/clipboard/clipboard_constants.h"
 #include "ui/base/clipboard/clipboard_util_mac.h"
 #include "ui/base/clipboard/custom_data_helper.h"
-#include "ui/base/cocoa/cocoa_base_utils.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/gfx/geometry/point.h"
 
@@ -103,7 +102,43 @@ void DropCompletionCallback(WebDragDest* drag_dest,
 
 }  // namespace
 
-@implementation WebDragDest
+@implementation WebDragDest {
+  // Our associated WebContentsImpl. Weak reference.
+  raw_ptr<content::WebContentsImpl, DanglingUntriaged> _webContents;
+
+  // Delegate; weak.
+  raw_ptr<content::WebDragDestDelegate, DanglingUntriaged> _delegate;
+
+  // Updated asynchronously during a drag to tell us whether or not we should
+  // allow the drop.
+  NSDragOperation _currentOperation;
+
+  // Tracks the current RenderWidgetHost we're dragging over.
+  base::WeakPtr<content::RenderWidgetHostImpl> _currentRWHForDrag;
+
+  // Keep track of the render view host we're dragging over.  If it changes
+  // during a drag, we need to re-send the DragEnter message.
+  RenderViewHostIdentifier _currentRVH;
+
+  // Tracks the IDs of the source RenderProcessHost and RenderViewHost from
+  // which the current drag originated. These are set in
+  // -setDragStartTrackersForProcess:, and are used to ensure that drag events
+  // do not fire over a cross-site frame (with respect to the source frame) in
+  // the same page (see crbug.com/666858). See
+  // WebContentsViewAura::drag_start_process_id_ for additional information.
+  int _dragStartProcessID;
+  content::GlobalRoutingID _dragStartViewID;
+
+  // The unfiltered data for the current drag, or nullptr if none is in
+  // progress.
+  std::unique_ptr<content::DropData> _dropDataUnfiltered;
+
+  // The data for the current drag, filtered by |currentRWHForDrag_|.
+  std::unique_ptr<content::DropData> _dropDataFiltered;
+
+  // True if the drag has been canceled.
+  bool _canceled;
+}
 
 // |contents| is the WebContentsImpl representing this tab, used to communicate
 // drag&drop messages to WebCore and handle navigation on a successful drop
@@ -149,10 +184,8 @@ void DropCompletionCallback(WebDragDest* drag_dest,
 - (NSPoint)flipWindowPointToScreen:(const NSPoint&)windowPoint
                               view:(NSView*)view {
   DCHECK(view);
-  NSPoint screenPoint =
-      ui::ConvertPointFromWindowToScreen([view window], windowPoint);
-  NSScreen* screen = [[view window] screen];
-  NSRect screenFrame = [screen frame];
+  NSPoint screenPoint = [view.window convertPointToScreen:windowPoint];
+  NSRect screenFrame = view.window.screen.frame;
   screenPoint.y = screenFrame.size.height - screenPoint.y;
   return screenPoint;
 }
@@ -403,7 +436,7 @@ DropData PopulateDropDataFromPasteboard(NSPasteboard* pboard) {
   DropData drop_data;
 
   // https://crbug.com/1016740#c21
-  base::scoped_nsobject<NSArray> types([[pboard types] retain]);
+  NSArray* types = [pboard types];
 
   drop_data.did_originate_from_renderer =
       [types containsObject:ui::kUTTypeChromiumRendererInitiatedDrag];
@@ -412,12 +445,14 @@ DropData PopulateDropDataFromPasteboard(NSPasteboard* pboard) {
 
   // Get URL if possible. To avoid exposing file system paths to web content,
   // filenames in the drag are not converted to file URLs.
-  NSArray<NSString*>* urls;
-  NSArray<NSString*>* titles;
-  if (ui::ClipboardUtil::URLsAndTitlesFromPasteboard(
-          pboard, /*include_files=*/false, &urls, &titles)) {
-    drop_data.url = GURL(base::SysNSStringToUTF8(urls.firstObject));
-    drop_data.url_title = base::SysNSStringToUTF16(titles.firstObject);
+  NSArray<URLAndTitle*>* urls_and_titles =
+      ui::clipboard_util::URLsAndTitlesFromPasteboard(pboard,
+                                                      /*include_files=*/false);
+  if (urls_and_titles.count) {
+    drop_data.url =
+        GURL(base::SysNSStringToUTF8(urls_and_titles.firstObject.URL));
+    drop_data.url_title =
+        base::SysNSStringToUTF16(urls_and_titles.firstObject.title);
   }
 
   // Get plain text.
@@ -434,12 +469,12 @@ DropData PopulateDropDataFromPasteboard(NSPasteboard* pboard) {
     NSString* html = [pboard stringForType:ui::kUTTypeChromiumImageAndHTML];
     drop_data.html = base::SysNSStringToUTF16(html);
   } else if ([types containsObject:NSPasteboardTypeRTF]) {
-    NSString* html = ui::ClipboardUtil::GetHTMLFromRTFOnPasteboard(pboard);
+    NSString* html = ui::clipboard_util::GetHTMLFromRTFOnPasteboard(pboard);
     drop_data.html = base::SysNSStringToUTF16(html);
   }
 
   // Get files.
-  drop_data.filenames = ui::ClipboardUtil::FilesFromPasteboard(pboard);
+  drop_data.filenames = ui::clipboard_util::FilesFromPasteboard(pboard);
 
   // Get custom MIME data.
   if ([types containsObject:ui::kUTTypeChromiumWebCustomData]) {

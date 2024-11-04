@@ -789,6 +789,11 @@ about 80-96 kbps/channel
 @end table
 
 Default value is 0.
+
+@item frame_length
+Set the audio frame length in samples. Default value is the internal
+default of the library. Refer to the library's documentation for information
+about supported values.
 @end table
 
 @subsection Examples
@@ -859,6 +864,13 @@ Enable the encoder to use ABR when set to 1. The @command{lame}
 @option{--abr} sets the target bitrate, while this options only
 tells FFmpeg to use ABR still relies on @option{b} to set bitrate.
 
+@item copyright (@emph{-c})
+Set MPEG audio copyright flag when set to 1. The default value is 0
+(disabled).
+
+@item original (@emph{-o})
+Set MPEG audio original flag when set to 1. The default value is 1
+(enabled).
 @end table
 
 @section libopencore-amrnb
@@ -1948,22 +1960,6 @@ Set global header in the bitstream.
 Set the number of slices, used in parallelized encoding. Default value
 is 0. This is only used when @option{slice_mode} is set to
 @samp{fixed}.
-
-@item slice_mode
-Set slice mode. Can assume one of the following possible values:
-
-@table @samp
-@item fixed
-a fixed number of slices
-@item rowmb
-one slice per row of macroblocks
-@item auto
-automatic number of slices according to number of threads
-@item dyn
-dynamic slicing
-@end table
-
-Default value is @samp{auto}.
 
 @item loopfilter
 Enable loop filter, if set to 1 (automatically enabled). To disable
@@ -3065,6 +3061,20 @@ Video encoders can take input in either of nv12 or yuv420p form
 (some encoders support both, some support only either - in practice,
 nv12 is the safer choice, especially among HW encoders).
 
+@section Microsoft RLE
+
+Microsoft RLE aka MSRLE encoder.
+Only 8-bit palette mode supported.
+Compatible with Windows 3.1 and Windows 95.
+
+@subsection Options
+
+@table @option
+@item g @var{integer}
+Keyframe interval.
+A keyframe is inserted at least every @code{-g} frames, sometimes sooner.
+@end table
+
 @section mpeg2
 
 MPEG-2 video encoder.
@@ -3204,8 +3214,8 @@ recommended value) and do not set a size constraint.
 
 @section QSV Encoders
 
-The family of Intel QuickSync Video encoders (MPEG-2, H.264, HEVC, JPEG/MJPEG
-and VP9)
+The family of Intel QuickSync Video encoders (MPEG-2, H.264, HEVC, JPEG/MJPEG,
+VP9, AV1)
 
 @subsection Ratecontrol Method
 The ratecontrol method is selected as follows:
@@ -3360,7 +3370,7 @@ Supported in h264_qsv.
 Change these value to reset qsv codec's max/min qp configuration.
 
 @item @var{low_delay_brc}
-Supported in h264_qsv and hevc_qsv.
+Supported in h264_qsv, hevc_qsv and av1_qsv.
 Change this value to reset qsv codec's low_delay_brc configuration.
 
 @item @var{framerate}

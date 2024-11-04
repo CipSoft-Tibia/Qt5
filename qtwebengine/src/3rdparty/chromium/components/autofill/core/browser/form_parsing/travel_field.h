@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "base/memory/raw_ptr_exclusion.h"
 #include "components/autofill/core/browser/form_parsing/autofill_scanner.h"
 #include "components/autofill/core/browser/form_parsing/form_field.h"
 #include "components/autofill/core/common/language_code.h"
@@ -29,10 +30,10 @@ class TravelField : public FormField {
 
  private:
   // All of the following fields are optional.
-  AutofillField* passport_;
-  AutofillField* origin_;
-  AutofillField* destination_;
-  AutofillField* flight_;
+  raw_ptr<AutofillField> passport_;
+  raw_ptr<AutofillField> origin_;
+  raw_ptr<AutofillField> destination_;
+  raw_ptr<AutofillField> flight_;
 };
 }  // namespace autofill
 

@@ -69,6 +69,20 @@ enum SecurityType {
   kWpaPsk,
 };
 
+// The network match type for WiFi Passpoint networks.
+enum MatchType {
+  // The Wi-Fi network had no match with Passpoint credentials.
+  kNoMatch,
+  // The WiFi network matched with a set of Passpoint credentials as a provider
+  // home network.
+  kHome,
+  // The WiFI network matched with a set of Passpoint credentials as a provider
+  // roaming network.
+  kRoaming,
+  // The match type of the network is unknown.
+  kUnknown,
+};
+
 // The configuration type for virtual networks.
 enum VpnType {
   // Internal VPN types.
@@ -142,7 +156,10 @@ enum InhibitReason {
   // Inhibited because the EUICC memory is being reset.
   kResettingEuiccMemory,
   // Inhibited because an eSIM profile is being disabled.
-  kDisablingProfile
+  kDisablingProfile,
+  // Inhibited because SM-DS scans are being performed to discover profiles
+  // available for this device.
+  kRequestingAvailableProfiles,
 };
 
 // Always-on VPN operating mode.
@@ -202,6 +219,10 @@ struct CellularStateProperties {
   // String representing the SIM lock type. This will be empty when the SIM
   // is unlocked.
   string sim_lock_type;
+  // True when a SIM has a custom name.
+  bool has_nick_name = false;
+  // String representing the network operator.
+  string network_operator;
 };
 
 struct EthernetStateProperties {
@@ -243,6 +264,9 @@ struct WiFiStateProperties {
   string ssid;
   // Whether the AP has a hidden SSID.
   bool hidden_ssid;
+  // Identifier of the set of Passpoint credentials that populated this Wi-Fi
+  // network.
+  string passpoint_id;
 };
 
 union NetworkTypeStateProperties {
@@ -276,9 +300,6 @@ struct NetworkStateProperties {
   // The proxy mode affecting this network. Includes any settings that affect
   // this network (i.e. global proxy settings are also considered).
   ProxyMode proxy_mode;
-  // Indicates if the DNS queries can be used to monitor user traffic via user
-  // or device identifiers in the secure DNS URI templates.
-  bool dns_queries_monitored;
   // True for visible networks that are blocked / disallowed by policy.
   bool prohibited_by_policy = false;
   OncSource source;
@@ -295,6 +316,8 @@ struct DeviceStateProperties {
   // is provided.
   network.mojom.IPAddress? ipv4_address;
   network.mojom.IPAddress? ipv6_address;
+  // IMEI of the cellular modem. Present only for Cellular device.
+  string? imei;
   // AA:BB formatted MAC address for the device. Use for display purposes only.
   // May be null if no MAC address is available for the device.
   string? mac_address;
@@ -670,6 +693,7 @@ struct ManagedCellularProperties {
   // Note: |sim_locked| field is not part of ONC spec.
   bool sim_locked = false;
   ManagedBoolean? allow_roaming;
+  ManagedBoolean? allow_text_messages;
   ManagedApnList? apn_list;
   ManagedBoolean? auto_connect;
   // List of user-entered custom APN entries. Note: This field is not
@@ -749,6 +773,12 @@ struct ManagedWiFiProperties {
   // True for unshared networks and for shared networks configured by the
   // active user.  Updated whenever the passphrase is modified.
   bool is_configured_by_active_user;
+  // Identifier of the set of Passpoint credentials that populated this service.
+  // Will be used to display the credentials.
+  string? passpoint_id;
+  // Network tier deduced from the match between the Wi-Fi network and the
+  // Passpoint credentials.
+  MatchType passpoint_match_type;
 };
 
 union NetworkTypeManagedProperties {
@@ -933,6 +963,10 @@ struct WireGuardConfigProperties {
   array<WireGuardPeerProperties>? peers;
 };
 
+struct TextMessagesAllowState {
+  bool allow_text_messages;
+};
+
 // Only one of {Cellular|Ethernet|VPN|Wifi}ConfigProperties is allowed.
 // TODO(stevenjb): Make these a union.
 struct CellularConfigProperties {
@@ -942,6 +976,10 @@ struct CellularConfigProperties {
   // If not provided the default allow_roaming behavior will be used for the
   // network.
   RoamingProperties? roaming;
+
+  // If not provided the existing user/policy set behavior
+  // text_message_allow_state will be used.
+  TextMessagesAllowState? text_message_allow_state;
 };
 
 struct EthernetConfigProperties {
@@ -1014,6 +1052,9 @@ struct GlobalPolicy {
   // If false, PIN locking is prohibited.
   bool allow_cellular_sim_lock = true;
 
+  // If true, users will be allowed to turn on cellular hotspot.
+  bool allow_cellular_hotspot = true;
+
   // If true, only cellular networks present in policy may be connected to and
   // no new networks may be added or configured.
   bool allow_only_policy_cellular_networks = false;
@@ -1029,6 +1070,14 @@ struct GlobalPolicy {
   // only WiFi networks present in policy may be connected to and no new
   // networks may be added or configured.
   bool allow_only_policy_wifi_networks_to_connect_if_available = false;
+
+  // Indicates if the DNS queries can be used to monitor user traffic via user
+  // or device identifiers in the secure DNS URI templates.
+  bool dns_queries_monitored = false;
+
+  // Indicates if the deviceReportXDREvents policy is enabled. When enabled
+  // user's network activity will be monitored/reported for system security.
+  bool report_xdr_events_enabled = false;
 
   // List of blocked networks which can not be connected to.
   array<string> blocked_hex_ssids;

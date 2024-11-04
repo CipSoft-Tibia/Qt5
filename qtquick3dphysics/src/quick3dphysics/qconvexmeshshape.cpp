@@ -20,14 +20,30 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-  \qmlproperty url ConvexMeshShape::source
-  This property defines the location of the mesh file used to define the shape. If the
-  mesh is not convex, the convex hull of the mesh will be used. The maximum number of faces
-  and vertices is 255: If the mesh is more detailed than that, it will be simplified.
+    \qmlproperty url ConvexMeshShape::source
+    This property defines the location of the mesh file used to define the shape. If the
+    mesh is not convex, the convex hull of the mesh will be used. The maximum number of faces
+    and vertices is 255: If the mesh is more detailed than that, it will be simplified.
 
-  Internally, ConvexMeshShape converts the mesh to an optimized data structure. This conversion
-  can be done in advance. See the \l{Qt Quick 3D Physics Cooking}{cooking overview documentation}
-  for details.
+    Internally, ConvexMeshShape converts the mesh to an optimized data structure. This conversion
+    can be done in advance. See the \l{Qt Quick 3D Physics Cooking}{cooking overview documentation}
+    for details.
+
+    \note If both the \l{ConvexMeshShape::}{geometry} and \l{ConvexMeshShape::}{source} properties
+    are set then only \l{ConvexMeshShape::}{geometry} will be used.
+    \sa ConvexMeshShape::geometry
+*/
+
+/*!
+    \qmlproperty Geometry ConvexMeshShape::geometry
+    This property defines the geometry of a mesh used to define the shape. If the
+    mesh is not convex, the convex hull of the mesh will be used. The maximum number of faces
+    and vertices is 255: If the mesh is more detailed than that, it will be simplified.
+
+    \note If both the \l{ConvexMeshShape::}{geometry} and \l{ConvexMeshShape::}{source} properties
+    are set then only \l{ConvexMeshShape::}{geometry} will be used.
+    \sa ConvexMeshShape::source
+    \since 6.7
 */
 
 QMeshShape::MeshType QConvexMeshShape::shapeType() const

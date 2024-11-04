@@ -15,39 +15,24 @@
 #ifndef THIRD_PARTY_NEARBY_FASTPAIR_SCANNING_FASTPAIR_FAST_PAIR_SCANNER_IMPL_H_
 #define THIRD_PARTY_NEARBY_FASTPAIR_SCANNING_FASTPAIR_FAST_PAIR_SCANNER_IMPL_H_
 
-#include <map>
 #include <memory>
 #include <set>
 #include <string>
-#include <vector>
 
-#include "fastpair/internal/ble/ble.h"
+#include "fastpair/internal/mediums/mediums.h"
 #include "fastpair/scanning/fastpair/fast_pair_scanner.h"
 #include "internal/base/observer_list.h"
 #include "internal/platform/bluetooth_adapter.h"
-#include "internal/platform/byte_array.h"
-#include "internal/platform/task_runner.h"
+#include "internal/platform/single_thread_executor.h"
+#include "internal/platform/timer_impl.h"
 
 namespace nearby {
 namespace fastpair {
 
 class FastPairScannerImpl : public FastPairScanner {
  public:
-  class Factory {
-   public:
-    static std::shared_ptr<FastPairScanner> Create();
-
-    static void SetFactoryForTesting(Factory* g_test_factory);
-
-   protected:
-    virtual ~Factory();
-    virtual std::shared_ptr<FastPairScanner> CreateInstance() = 0;
-
-   private:
-    static Factory* g_test_factory_;
-  };
-
-  FastPairScannerImpl();
+  explicit FastPairScannerImpl(Mediums& mediums,
+                               SingleThreadExecutor* executor);
   FastPairScannerImpl(const FastPairScannerImpl&) = delete;
   FastPairScannerImpl& operator=(const FastPairScannerImpl&) = delete;
   ~FastPairScannerImpl() override = default;
@@ -55,9 +40,6 @@ class FastPairScannerImpl : public FastPairScanner {
   // FastPairScanner::Observer
   void AddObserver(FastPairScanner::Observer* observer) override;
   void RemoveObserver(FastPairScanner::Observer* observer) override;
-
-  void StartScanning();
-  void StopScanning();
 
   // Fast Pair discovered peripheral callback
   void OnDeviceFound(const BlePeripheral& peripheral);
@@ -67,19 +49,24 @@ class FastPairScannerImpl : public FastPairScanner {
   // Todo(b/267348348): Support Flags to control feature ramp
   bool IsFastPairLowPowerEnabled() const { return false; }
 
-  // For unit test
-  Ble& GetBle() { return ble_; }
+  std::unique_ptr<ScanningSession> StartScanning() override;
+  void StopScanning();
 
  private:
-  std::shared_ptr<TaskRunner> task_runner_;
+  void StartScanningInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(*executor_);
+  // Pauses, and then restarts, scanning for a few seconds to safe power.
+  void PauseScanning() ABSL_EXCLUSIVE_LOCKS_REQUIRED(*executor_);
+  void StartTimer(absl::Duration delay, absl::AnyInvocable<void()> callback)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(*executor_);
+
+  Mediums& mediums_;
+  SingleThreadExecutor* executor_;
+  std::unique_ptr<TimerImpl> timer_ ABSL_GUARDED_BY(*executor_);
 
   // Map of a Bluetooth device address to a set of advertisement data we have
   // seen.
-  absl::flat_hash_map<std::string, std::set<ByteArray>>
+  absl::flat_hash_map<std::string, std::set<std::string>>
       device_address_advertisement_data_map_;
-
-  BluetoothAdapter bluetooth_adapter_;
-  Ble ble_;
   ObserverList<FastPairScanner::Observer> observer_;
 };
 

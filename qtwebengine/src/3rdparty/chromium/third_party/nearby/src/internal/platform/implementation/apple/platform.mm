@@ -14,9 +14,12 @@
 
 #include "internal/platform/implementation/platform.h"
 
+#import <Foundation/Foundation.h>
+
 #include <string>
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "internal/platform/implementation/apple/atomic_boolean.h"
 #include "internal/platform/implementation/apple/atomic_uint32.h"
 #include "internal/platform/implementation/apple/ble.h"
@@ -26,6 +29,7 @@
 #import "internal/platform/implementation/apple/log_message.h"
 #import "internal/platform/implementation/apple/multi_thread_executor.h"
 #include "internal/platform/implementation/apple/mutex.h"
+#include "internal/platform/implementation/apple/preferences_manager.h"
 #import "internal/platform/implementation/apple/scheduled_executor.h"
 #import "internal/platform/implementation/apple/single_thread_executor.h"
 #include "internal/platform/implementation/apple/timer.h"
@@ -40,26 +44,45 @@ namespace api {
 
 std::string ImplementationPlatform::GetCustomSavePath(const std::string& parent_folder,
                                                       const std::string& file_name) {
-  // TODO(b/227535777): This needs to be done correctly, we now have a file name and parent folder,
-  // they should be combined with the custom save path
-  NSString* fileName = ObjCStringFromCppString(file_name);
+  // Collapse any path escaping characters.
+  NSString* parentFolder = [@(parent_folder.c_str()) stringByReplacingOccurrencesOfString:@"../"
+                                                                               withString:@""];
+  NSURL* parentFolderURL = [NSURL fileURLWithPath:parentFolder];
 
-  // TODO(b/227535777): If file name matches an existing file, it will be overwritten. Append a
-  // number until a unique file name is reached 'foobar (2).png'.
+  // The only reserved character in a file name on macOS is the forward-slash. It's unclear if iOS
+  // has any additional restrictions.
+  //
+  // """
+  // In the Finder, filenames containing `/` can be created, but `/` is stored as a colon (:) in the
+  // filesystem, and is shown as such on the command line. Filenames containing `:` created from the
+  // command line are shown with `/` instead of `:` in the Finder, so that it is impossible to
+  //  create a file that the Finder shows as having a `:` in its filename.
+  // """
+  //
+  // See: https://en.wikipedia.org/wiki/Filename
+  NSString* fileName = [@(file_name.c_str()) stringByReplacingOccurrencesOfString:@"/"
+                                                                       withString:@":"];
+  NSString* baseName = [fileName stringByDeletingPathExtension];
+  NSString* extension = [fileName pathExtension];
 
-  return CppStringFromObjCString([NSTemporaryDirectory() stringByAppendingPathComponent:fileName]);
+  NSURL* url = [parentFolderURL URLByAppendingPathComponent:fileName];
+
+  NSInteger index = 1;
+  while ([NSFileManager.defaultManager fileExistsAtPath:url.path]) {
+    index++;
+    NSString* fileName =
+        [NSString stringWithFormat:@"%@ %@.%@", baseName, [@(index) stringValue], extension];
+    url = [parentFolderURL URLByAppendingPathComponent:fileName];
+  }
+
+  return url.path.UTF8String;
 }
 
 std::string ImplementationPlatform::GetDownloadPath(const std::string& parent_folder,
                                                     const std::string& file_name) {
-  // TODO(jfcarroll): This needs to be done correctly, we now have a file name and parent folder,
-  // they should be combined with the default download path
-  NSString* fileName = ObjCStringFromCppString(file_name);
-
-  // TODO(b/227535777): If file name matches an existing file, it will be overwritten. Append a
-  // number until a unique file name is reached 'foobar (2).png'.
-
-  return CppStringFromObjCString([NSTemporaryDirectory() stringByAppendingPathComponent:fileName]);
+  NSString* customSavePath =
+      [NSTemporaryDirectory() stringByAppendingPathComponent:@(parent_folder.c_str())];
+  return GetCustomSavePath(customSavePath.UTF8String, file_name);
 }
 
 OSName ImplementationPlatform::GetCurrentOS() { return OSName::kApple; }
@@ -147,7 +170,7 @@ std::unique_ptr<BleMedium> ImplementationPlatform::CreateBleMedium(api::Bluetoot
 
 std::unique_ptr<ble_v2::BleMedium> ImplementationPlatform::CreateBleV2Medium(
     api::BluetoothAdapter& adapter) {
-  return std::make_unique<apple::BleMedium>(adapter);
+  return std::make_unique<apple::BleMedium>();
 }
 
 std::unique_ptr<ServerSyncMedium> ImplementationPlatform::CreateServerSyncMedium() {
@@ -218,8 +241,8 @@ absl::StatusOr<WebResponse> ImplementationPlatform::SendRequest(const WebRequest
     webResponse.headers.insert({[key UTF8String], [value UTF8String]});
   }
   if (blockData != nil) {
-    webResponse.body = [[[NSString alloc] initWithData:blockData
-                                              encoding:NSUTF8StringEncoding] UTF8String];
+    // Body is not a UTF-8 encoded string and is just using `std::string` as a container for data.
+    webResponse.body = std::string((char *)blockData.bytes, blockData.length);
   }
   return webResponse;
 }
@@ -231,6 +254,12 @@ std::unique_ptr<Timer> ImplementationPlatform::CreateTimer() {
 // TODO(b/261511530): Add implementation.
 std::unique_ptr<nearby::api::DeviceInfo> ImplementationPlatform::CreateDeviceInfo() {
   return std::make_unique<apple::DeviceInfo>();
+}
+
+// TODO(b/261503919): Add implementation.
+std::unique_ptr<nearby::api::PreferencesManager> ImplementationPlatform::CreatePreferencesManager(
+    absl::string_view path) {
+  return std::make_unique<apple::PreferencesManager>(path);
 }
 
 }  // namespace api

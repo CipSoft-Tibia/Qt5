@@ -363,6 +363,8 @@ enum cpuinfo_uarch {
 	cpuinfo_uarch_zen2        = 0x0020010A,
 	/** AMD Zen 3 microarchitecture. */
 	cpuinfo_uarch_zen3        = 0x0020010B,
+	/** AMD Zen 4 microarchitecture. */
+	cpuinfo_uarch_zen4        = 0x0020010C,
 
 	/** NSC Geode and AMD Geode GX and LX. */
 	cpuinfo_uarch_geode  = 0x00200200,
@@ -435,11 +437,15 @@ enum cpuinfo_uarch {
 	cpuinfo_uarch_cortex_x1    = 0x00300501,
 	/** ARM Cortex-X2. */
 	cpuinfo_uarch_cortex_x2    = 0x00300502,
+	/** ARM Cortex-X3. */
+	cpuinfo_uarch_cortex_x3    = 0x00300503,
 
 	/** ARM Cortex-A510. */
 	cpuinfo_uarch_cortex_a510  = 0x00300551,
 	/** ARM Cortex-A710. */
 	cpuinfo_uarch_cortex_a710  = 0x00300571,
+	/** ARM Cortex-A715. */
+	cpuinfo_uarch_cortex_a715  = 0x00300572,
 
 	/** Qualcomm Scorpion. */
 	cpuinfo_uarch_scorpion = 0x00400100,
@@ -500,10 +506,14 @@ enum cpuinfo_uarch {
 	cpuinfo_uarch_lightning = 0x00700109,
 	/** Apple A13 processor (little cores). */
 	cpuinfo_uarch_thunder   = 0x0070010A,
-	/** Apple M1 processor (big cores). */
+	/** Apple A14 / M1 processor (big cores). */
 	cpuinfo_uarch_firestorm = 0x0070010B,
-	/** Apple M1 processor (little cores). */
+	/** Apple A14 / M1 processor (little cores). */
 	cpuinfo_uarch_icestorm  = 0x0070010C,
+	/** Apple A15 / M2 processor (big cores). */
+	cpuinfo_uarch_avalanche = 0x0070010D,
+	/** Apple A15 / M2 processor (little cores). */
+	cpuinfo_uarch_blizzard  = 0x0070010E,
 
 	/** Cavium ThunderX. */
 	cpuinfo_uarch_thunderx = 0x00800100,
@@ -736,6 +746,7 @@ void CPUINFO_ABI cpuinfo_deinitialize(void);
 		bool avx512vpopcntdq;
 		bool avx512vnni;
 		bool avx512bf16;
+		bool avx512fp16;
 		bool avx512vp2intersect;
 		bool avx512_4vnniw;
 		bool avx512_4fmaps;
@@ -1210,6 +1221,14 @@ static inline bool cpuinfo_has_x86_avx512vnni(void) {
 static inline bool cpuinfo_has_x86_avx512bf16(void) {
 	#if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
 		return cpuinfo_isa.avx512bf16;
+	#else
+		return false;
+	#endif
+}
+
+static inline bool cpuinfo_has_x86_avx512fp16(void) {
+	#if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
+		return cpuinfo_isa.avx512fp16;
 	#else
 		return false;
 	#endif

@@ -47,6 +47,7 @@
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "net/traffic_annotation/network_traffic_annotation_test_helper.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/strings/ascii.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/build_info.h"
@@ -68,9 +69,7 @@ inline char AsciifyLow(char x) {
 }
 
 inline char Asciify(char x) {
-  if ((x < 0) || !isprint(x))
-    return '.';
-  return x;
+  return absl::ascii_isprint(static_cast<unsigned char>(x)) ? x : '.';
 }
 
 void DumpData(const char* data, int data_len) {
@@ -429,7 +428,6 @@ SequencedSocketData::SequencedSocketData(const MockConnect& connect,
     : SequencedSocketData(reads, writes) {
   set_connect_data(connect);
 }
-
 MockRead SequencedSocketData::OnRead() {
   CHECK_EQ(IoState::kIdle, read_state_);
   CHECK(!helper_.AllReadDataConsumed())
@@ -1444,8 +1442,8 @@ void MockSSLClientSocket::GetSSLCertRequestInfo(
     cert_request_info->is_proxy = data_->cert_request_info->is_proxy;
     cert_request_info->cert_authorities =
         data_->cert_request_info->cert_authorities;
-    cert_request_info->cert_key_types =
-        data_->cert_request_info->cert_key_types;
+    cert_request_info->signature_algorithms =
+        data_->cert_request_info->signature_algorithms;
   } else {
     cert_request_info->Reset();
   }

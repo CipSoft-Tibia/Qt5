@@ -28,7 +28,6 @@ inline constexpr int kUserDataAuthServiceTimeoutInMs = 5 * 60 * 1000;
 // Methods of the |kUserDataAuthInterface| interface:
 inline constexpr char kIsMounted[] = "IsMounted";
 inline constexpr char kUnmount[] = "Unmount";
-inline constexpr char kMount[] = "Mount";
 inline constexpr char kRemove[] = "Remove";
 inline constexpr char kListKeys[] = "ListKeys";
 inline constexpr char kCheckKey[] = "CheckKey";
@@ -44,8 +43,6 @@ inline constexpr char kNeedsDircryptoMigration[] = "NeedsDircryptoMigration";
 inline constexpr char kGetSupportedKeyPolicies[] = "GetSupportedKeyPolicies";
 inline constexpr char kGetAccountDiskUsage[] = "GetAccountDiskUsage";
 inline constexpr char kStartAuthSession[] = "StartAuthSession";
-inline constexpr char kAddCredentials[] = "AddCredentials";
-inline constexpr char kUpdateCredential[] = "UpdateCredential";
 inline constexpr char kInvalidateAuthSession[] = "InvalidateAuthSession";
 inline constexpr char kExtendAuthSession[] = "ExtendAuthSession";
 inline constexpr char kCreatePersistentUser[] = "CreatePersistentUser";
@@ -58,12 +55,16 @@ inline constexpr char kTerminateAuthFactor[] = "TerminateAuthFactor";
 inline constexpr char kAddAuthFactor[] = "AddAuthFactor";
 inline constexpr char kAuthenticateAuthFactor[] = "AuthenticateAuthFactor";
 inline constexpr char kUpdateAuthFactor[] = "UpdateAuthFactor";
+inline constexpr char kUpdateAuthFactorMetadata[] = "UpdateAuthFactorMetadata";
+inline constexpr char kRelabelAuthFactor[] = "RelabelAuthFactor";
 inline constexpr char kRemoveAuthFactor[] = "RemoveAuthFactor";
 inline constexpr char kListAuthFactors[] = "ListAuthFactors";
 inline constexpr char kGetAuthFactorExtendedInfo[] =
     "GetAuthFactorExtendedInfo";
 inline constexpr char kGetAuthSessionStatus[] = "GetAuthSessionStatus";
 inline constexpr char kGetRecoveryRequest[] = "GetRecoveryRequest";
+inline constexpr char kModifyAuthFactorIntents[] = "ModifyAuthFactorIntents";
+inline constexpr char kCreateVaultkeyset[] = "CreateVaultKeyset";
 
 // Methods of the |kArcQuotaInterface| interface:
 inline constexpr char kGetArcDiskFeatures[] = "GetArcDiskFeatures";
@@ -99,19 +100,22 @@ inline constexpr char kUpdateCurrentUserActivityTimestamp[] =
     "UpdateCurrentUserActivityTimestamp";
 inline constexpr char kGetSanitizedUsername[] = "GetSanitizedUsername";
 inline constexpr char kGetLoginStatus[] = "GetLoginStatus";
-inline constexpr char kGetStatusString[] = "GetStatusString";
 inline constexpr char kLockToSingleUserMountUntilReboot[] =
     "LockToSingleUserMountUntilReboot";
 inline constexpr char kGetRsuDeviceId[] = "GetRsuDeviceId";
-inline constexpr char kCheckHealth[] = "CheckHealth";
 
 // Signals of the |kUserDataAuthInterface| interface:
 inline constexpr char kDircryptoMigrationProgress[] =
     "DircryptoMigrationProgress";
+inline constexpr char kAuthFactorStatusUpdate[] = "AuthFactorStatusUpdate";
 inline constexpr char kLowDiskSpace[] = "LowDiskSpace";
 inline constexpr char kAuthScanResultSignal[] = "AuthScanResult";
 inline constexpr char kAuthEnrollmentProgressSignal[] =
     "AuthEnrollmentProgress";
+inline constexpr char kPrepareAuthFactorProgressSignal[] =
+    "PrepareAuthFactorProgress";
+inline constexpr char kAuthenticateAuthFactorCompletedSignal[] =
+    "AuthenticateAuthFactorCompleted";
 
 }  // namespace user_data_auth
 
@@ -146,6 +150,11 @@ enum MountError {
   MOUNT_ERROR_MOUNT_DMCRYPT_FAILED = 21,
   MOUNT_ERROR_RECOVERY_TRANSIENT = 22,
   MOUNT_ERROR_RECOVERY_FATAL = 23,
+  // A login attempt has led to the user getting locked out (the attempt that
+  // locks them out). If the user attempts to log in while they are locked out,
+  // the error should be set to MOUNT_ERROR_TPM_DEFEND_LOCK.
+  MOUNT_ERROR_CREDENTIAL_LOCKED = 24,
+  MOUNT_ERROR_CREDENTIAL_EXPIRED = 25,
   MOUNT_ERROR_USER_DOES_NOT_EXIST = 32,
   MOUNT_ERROR_TPM_NEEDS_REBOOT = 64,
   // Encrypted in old method, need migration before mounting.

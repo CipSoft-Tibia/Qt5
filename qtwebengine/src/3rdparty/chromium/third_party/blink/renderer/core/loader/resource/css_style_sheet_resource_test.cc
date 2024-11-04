@@ -49,7 +49,7 @@ class CSSStyleSheetResourceTest : public PageTestBase {
     const char kUrl[] = "https://localhost/style.css";
     const KURL css_url(kUrl);
     ResourceResponse response(css_url);
-    response.SetMimeType("style/css");
+    response.SetMimeType(AtomicString("style/css"));
 
     CSSStyleSheetResource* css_resource =
         CSSStyleSheetResource::CreateForTest(css_url, UTF8Encoding());
@@ -67,7 +67,7 @@ TEST_F(CSSStyleSheetResourceTest, DuplicateResourceNotCached) {
   const KURL image_url(kUrl);
   const KURL css_url(kUrl);
   ResourceResponse response(css_url);
-  response.SetMimeType("style/css");
+  response.SetMimeType(AtomicString("style/css"));
 
   // Emulate using <img> to do async stylesheet preloads.
 
@@ -137,8 +137,7 @@ TEST_F(CSSStyleSheetResourceTest,
   contents->CheckLoaded();
   EXPECT_TRUE(contents->IsCacheableForResource());
 
-  contents->EnsureRuleSet(MediaQueryEvaluator(GetDocument().GetFrame()),
-                          kRuleHasNoSpecialState);
+  contents->EnsureRuleSet(MediaQueryEvaluator(GetDocument().GetFrame()));
   EXPECT_TRUE(contents->HasRuleSet());
 
   css_resource->SaveParsedStyleSheet(contents);

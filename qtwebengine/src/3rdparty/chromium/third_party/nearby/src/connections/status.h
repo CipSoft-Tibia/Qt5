@@ -22,6 +22,7 @@ namespace connections {
 
 // Protocol operation result: kSuccess, if operation was successful;
 // descriptive error code otherwise.
+// LINT.IfChange(status_enum)
 struct Status {
   // Status is a struct, so it is possible to pass some context about failure,
   // by adding extra fields to it when necessary, and not change any of the
@@ -33,6 +34,7 @@ struct Status {
     kAlreadyHaveActiveStrategy,
     kAlreadyAdvertising,
     kAlreadyDiscovering,
+    kAlreadyListening,
     kEndpointIoError,
     kEndpointUnknown,
     kConnectionRejected,
@@ -42,6 +44,10 @@ struct Status {
     kBleError,
     kWifiLanError,
     kPayloadUnknown,
+    kReset,
+    kTimeout,
+    kUnknown,
+    kNextValue,
   };
   Value value{kError};
   bool Ok() const { return value == kSuccess; }
@@ -49,6 +55,11 @@ struct Status {
   // Converts the status to a logging-friendly string.
   std::string ToString() const;
 };
+// LINT.ThenChange(
+//     ../sharing/nearby_connections_manager.cc:status_enum,
+//     ../sharing/nearby_connections_types.h:status_enum,
+//     ../sharing/nearby_connections_types_test.cc:status_enum
+// )
 
 inline bool operator==(const Status& a, const Status& b) {
   return a.value == b.value;

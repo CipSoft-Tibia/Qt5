@@ -25,7 +25,7 @@
 #include "components/discardable_memory/public/mojom/discardable_shared_memory_manager.mojom.h"
 #include "components/viz/common/buildflags.h"
 #include "components/viz/host/viz_host_export.h"
-#include "gpu/command_buffer/common/activity_flags.h"
+#include "gpu/command_buffer/common/shm_count.h"
 #include "gpu/config/gpu_domain_guilt.h"
 #include "gpu/ipc/common/gpu_disk_cache_type.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
@@ -194,7 +194,7 @@ class VIZ_HOST_EXPORT GpuHostImpl : public mojom::GpuHost
 #if BUILDFLAG(USE_VIZ_DEBUGGER)
   // Command as a Json string that the visual debugging instance interprets as
   // stream filtering.
-  void FilterVisualDebugStream(base::Value filter_data);
+  void FilterVisualDebugStream(base::Value::Dict filter_data);
 
   // Establishes the connection between the visual debugging instance and the
   // output stream.
@@ -289,7 +289,7 @@ class VIZ_HOST_EXPORT GpuHostImpl : public mojom::GpuHost
       info_collection_gpu_service_remote_;
 #endif
   mojo::Receiver<mojom::GpuHost> gpu_host_receiver_{this};
-  gpu::GpuProcessHostActivityFlags activity_flags_;
+  gpu::GpuProcessHostShmCount use_shader_cache_shm_count_;
 
 #if BUILDFLAG(USE_VIZ_DEBUGGER)
   mojo::Receiver<mojom::VizDebugOutput> viz_debug_output_{this};
@@ -309,6 +309,8 @@ class VIZ_HOST_EXPORT GpuHostImpl : public mojom::GpuHost
 
   std::multimap<int32_t, scoped_refptr<gpu::GpuDiskCache>> client_id_to_caches_;
   std::string shader_prefix_key_;
+
+  const bool shared_bitmap_to_shared_image_flag_;
 
   // These are the channel requests that we have already sent to the GPU
   // service, but haven't heard back about yet.

@@ -217,13 +217,13 @@ void QMimeBinaryProvider::addFileNameMatches(const QString &fileName, QMimeGlobM
     if (fileName.isEmpty())
         return;
     Q_ASSERT(m_cacheFile);
-    const QString lowerFileName = fileName.toLower();
     int numMatches = 0;
     // Check literals (e.g. "Makefile")
     numMatches = matchGlobList(result, m_cacheFile.get(),
                                m_cacheFile->getUint32(PosLiteralListOffset), fileName);
     // Check the very common *.txt cases with the suffix tree
     if (numMatches == 0) {
+        const QString lowerFileName = fileName.toLower();
         const int reverseSuffixTreeOffset = m_cacheFile->getUint32(PosReverseSuffixTreeOffset);
         const int numRoots = m_cacheFile->getUint32(reverseSuffixTreeOffset);
         const int firstRootOffset = m_cacheFile->getUint32(reverseSuffixTreeOffset + 4);
@@ -348,7 +348,7 @@ bool QMimeBinaryProvider::matchMagicRule(QMimeBinaryProvider::CacheFile *cacheFi
     return false;
 }
 
-void QMimeBinaryProvider::findByMagic(const QByteArray &data, int *accuracyPtr, QString *candidate)
+void QMimeBinaryProvider::findByMagic(const QByteArray &data, QMimeMagicResult &result)
 {
     const int magicListOffset = m_cacheFile->getUint32(PosMagicListOffset);
     const int numMatches = m_cacheFile->getUint32(magicListOffset);
@@ -362,11 +362,13 @@ void QMimeBinaryProvider::findByMagic(const QByteArray &data, int *accuracyPtr, 
         if (matchMagicRule(m_cacheFile.get(), numMatchlets, firstMatchletOffset, data)) {
             const int mimeTypeOffset = m_cacheFile->getUint32(off + 4);
             const char *mimeType = m_cacheFile->getCharStar(mimeTypeOffset);
-            *accuracyPtr = m_cacheFile->getUint32(off);
-            // Return the first match. We have no rules for conflicting magic data...
-            // (mime.cache itself is sorted, but what about local overrides with a lower prio?)
-            *candidate = QString::fromLatin1(mimeType);
-            return;
+            const int accuracy = static_cast<int>(m_cacheFile->getUint32(off));
+            if (accuracy > result.accuracy) {
+                result.accuracy = accuracy;
+                result.candidate = QString::fromLatin1(mimeType);
+                // Return the first match, mime.cache is sorted
+                return;
+            }
         }
     }
 }
@@ -455,13 +457,14 @@ void QMimeBinaryProvider::loadMimeTypeList()
         m_mimetypeNames.clear();
         // Unfortunately mime.cache doesn't have a full list of all mimetypes.
         // So we have to parse the plain-text files called "types".
-        QFile file(m_directory + QStringLiteral("/types"));
+        QFile file(m_directory + QStringView(u"/types"));
         if (file.open(QIODevice::ReadOnly)) {
             while (!file.atEnd()) {
-                QByteArray line = file.readLine();
-                if (line.endsWith('\n'))
-                    line.chop(1);
-                m_mimetypeNames.insert(QString::fromLatin1(line));
+                const QByteArray line = file.readLine();
+                auto lineView = QByteArrayView(line);
+                if (lineView.endsWith('\n'))
+                    lineView.chop(1);
+                m_mimetypeNames.insert(QString::fromLatin1(lineView));
             }
         }
     }
@@ -717,14 +720,14 @@ void QMimeXMLProvider::addFileNameMatches(const QString &fileName, QMimeGlobMatc
     m_mimeTypeGlobs.matchingGlobs(fileName, result, filterFunc);
 }
 
-void QMimeXMLProvider::findByMagic(const QByteArray &data, int *accuracyPtr, QString *candidate)
+void QMimeXMLProvider::findByMagic(const QByteArray &data, QMimeMagicResult &result)
 {
     for (const QMimeMagicRuleMatcher &matcher : std::as_const(m_magicMatchers)) {
         if (matcher.matches(data)) {
             const int priority = matcher.priority();
-            if (priority > *accuracyPtr) {
-                *accuracyPtr = priority;
-                *candidate = matcher.mimetype();
+            if (priority > result.accuracy) {
+                result.accuracy = priority;
+                result.candidate = matcher.mimetype();
             }
         }
     }
@@ -733,7 +736,7 @@ void QMimeXMLProvider::findByMagic(const QByteArray &data, int *accuracyPtr, QSt
 void QMimeXMLProvider::ensureLoaded()
 {
     QStringList allFiles;
-    const QString packageDir = m_directory + QStringLiteral("/packages");
+    const QString packageDir = m_directory + QStringView(u"/packages");
     QDir dir(packageDir);
     const QStringList files = dir.entryList(QDir::Files | QDir::NoDotAndDotDot);
     allFiles.reserve(files.size());

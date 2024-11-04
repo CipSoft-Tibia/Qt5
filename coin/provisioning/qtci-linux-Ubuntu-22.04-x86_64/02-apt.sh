@@ -98,6 +98,12 @@ installPackages+=(libgstreamer-plugins-base1.0-dev)
 installPackages+=(libgstreamer-plugins-good1.0-dev)
 installPackages+=(libgstreamer-plugins-bad1.0-dev)
 installPackages+=(libgstreamer-gl1.0-0)
+installPackages+=(gstreamer1.0-libav)
+installPackages+=(gstreamer1.0-plugins-base)
+installPackages+=(gstreamer1.0-plugins-good)
+installPackages+=(gstreamer1.0-plugins-bad)
+installPackages+=(gstreamer1.0-plugins-rtp)
+installPackages+=(gstreamer1.0-plugins-ugly)
 installPackages+=(gir1.2-gst-plugins-base-1.0)
 installPackages+=(gir1.2-gst-plugins-bad-1.0)
 installPackages+=(yasm)
@@ -196,6 +202,7 @@ installPackages+=(ssh)
 installPackages+=(diffstat)
 installPackages+=(binfmt-support)
 installPackages+=(zstd)
+installPackages+=(libzstd-dev)
 installPackages+=(lz4)
 # Vulkan is needed for examples
 installPackages+=(libvulkan-dev)
@@ -218,6 +225,11 @@ installPackages+=(bridge-utils)
 # For Debian packaging
 installPackages+=(sbuild)
 installPackages+=(ubuntu-dev-tools)
+# cifs-utils, for mounting smb drive
+installPackages+=(keyutils)
+installPackages+=(cifs-utils)
+# VxWorks QEMU network setup (tunctl)
+installPackages+=(uml-utilities)
 
 echo "Running update for apt"
 waitLoop
@@ -226,9 +238,12 @@ echo "Installing packages"
 waitLoop
 sudo DEBIAN_FRONTEND=noninteractive apt-get -q -y -o DPkg::Lock::Timeout=300 install "${installPackages[@]}"
 
+# Configure pip
+pip config --user set global.index https://ci-files01-hki.ci.qt.io/input/python_module_cache
+pip config --user set global.extra-index-url https://pypi.org/simple/
+
 source "${BASH_SOURCE%/*}/../common/unix/SetEnvVar.sh"
 # SetEnvVar "PATH" "/usr/lib/nodejs-mozilla/bin:\$PATH"
 
 OpenSSLVersion="$(openssl version |cut -b 9-14)"
 echo "OpenSSL = $OpenSSLVersion" >> ~/versions.txt
-

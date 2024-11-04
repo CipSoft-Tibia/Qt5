@@ -3,8 +3,6 @@
 
 #include "custominputhandler.h"
 
-#include <QtGraphs/Q3DCamera>
-
 CustomInputHandler::CustomInputHandler(QObject *parent) :
     QAbstract3DInputHandler(parent)
 {
@@ -14,7 +12,7 @@ CustomInputHandler::CustomInputHandler(QObject *parent) :
 void CustomInputHandler::mouseMoveEvent(QMouseEvent *event, const QPoint &mousePos)
 {
     Q_UNUSED(event);
-    setInputPosition(mousePos);
+    setInputPosition(mousePos, true);
 }
 //! [0]
 
@@ -22,7 +20,7 @@ void CustomInputHandler::mouseMoveEvent(QMouseEvent *event, const QPoint &mouseP
 void CustomInputHandler::wheelEvent(QWheelEvent *event)
 {
     // Adjust zoom level based on what zoom range we're in.
-    int zoomLevel = scene()->activeCamera()->zoomLevel();
+    int zoomLevel = this->cameraZoomLevel();
     if (zoomLevel > 100)
         zoomLevel += event->angleDelta().y() / 12;
     else if (zoomLevel > 50)
@@ -34,6 +32,6 @@ void CustomInputHandler::wheelEvent(QWheelEvent *event)
     else if (zoomLevel < 10)
         zoomLevel = 10;
 
-    scene()->activeCamera()->setZoomLevel(zoomLevel);
+    this->setCameraZoomLevel(zoomLevel);
 }
 //! [1]

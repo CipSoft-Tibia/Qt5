@@ -82,8 +82,7 @@ CJS_Result CJX_Form::execInitialize(
 CJS_Result CJX_Form::recalculate(
     CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
-  CXFA_EventParam* pEventParam =
-      GetDocument()->GetScriptContext()->GetEventParam();
+  CXFA_EventParam* pEventParam = runtime->GetEventParam();
   if (pEventParam && (pEventParam->m_eType == XFA_EVENT_Calculate ||
                       pEventParam->m_eType == XFA_EVENT_InitCalculate)) {
     return CJS_Result::Success();

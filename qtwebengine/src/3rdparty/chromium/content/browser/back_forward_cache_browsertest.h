@@ -36,6 +36,8 @@ using ReasonsMatcher = testing::Matcher<
     const blink::mojom::BackForwardCacheNotRestoredReasonsPtr&>;
 using SameOriginMatcher = testing::Matcher<
     const blink::mojom::SameOriginBfcacheNotRestoredDetailsPtr&>;
+using BlockingDetailsMatcher =
+    testing::Matcher<const blink::mojom::BlockingDetailsPtr&>;
 
 // Match RenderFrameHostImpl* that are in the BackForwardCache.
 MATCHER(InBackForwardCache, "") {
@@ -148,6 +150,12 @@ class BackForwardCacheBrowserTest
       const std::vector<testing::Matcher<std::string>>& reasons,
       const std::vector<ReasonsMatcher>& children);
 
+  BlockingDetailsMatcher MatchesBlockingDetails(
+      const absl::optional<testing::Matcher<std::string>>& url,
+      const absl::optional<testing::Matcher<std::string>>& function_name,
+      const testing::Matcher<uint64_t>& line,
+      const testing::Matcher<uint64_t>& column);
+
   // Access the tree result of NotRestoredReason for the last main frame
   // navigation.
   BackForwardCacheCanStoreTreeResult* GetTreeResult() {
@@ -157,8 +165,6 @@ class BackForwardCacheBrowserTest
   void InstallUnloadHandlerOnMainFrame();
   void InstallUnloadHandlerOnSubFrame();
   EvalJsResult GetUnloadRunCount();
-
-  bool IsUnloadAllowedToEnterBackForwardCache();
 
   // Adds a blocklisted feature to the document to prevent caching. Currently
   // this means adding a plugin. We expect that plugins will never become
@@ -209,6 +215,15 @@ class HighCacheSizeBackForwardCacheBrowserTest
   // The number 5 was picked since Android ASAN trybot failed to keep more than
   // 6 pages in memory.
   const size_t kBackForwardCacheSize = 5;
+};
+
+// Test that enables the BackForwardCacheAllowUnload flag.
+class BackForwardCacheUnloadBrowserTest : public BackForwardCacheBrowserTest {
+ public:
+  void SetUpCommandLine(base::CommandLine* command_line) override;
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 // An implementation of PageLifecycleStateManager::TestDelegate for testing.

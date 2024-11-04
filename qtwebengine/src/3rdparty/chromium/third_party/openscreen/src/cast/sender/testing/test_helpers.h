@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,8 +16,7 @@ class CastMessage;
 }  // namespace channel
 }  // namespace cast
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 void VerifyAppAvailabilityRequest(const ::cast::channel::CastMessage& message,
                                   const std::string& expected_app_id,
@@ -37,7 +36,6 @@ void VerifyAppAvailabilityRequest(const ::cast::channel::CastMessage& message,
     const std::string& sender_id,
     const std::string& app_id);
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_SENDER_TESTING_TEST_HELPERS_H_

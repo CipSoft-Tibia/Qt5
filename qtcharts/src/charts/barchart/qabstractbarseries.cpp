@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include <QtCharts/QAbstractBarSeries>
 #include <private/qabstractbarseries_p.h>
 #include <QtCharts/QBarSet>
@@ -922,7 +924,8 @@ QList<QLegendMarker*> QAbstractBarSeriesPrivate::createLegendMarkers(QLegend* le
     Q_Q(QAbstractBarSeries);
     QList<QLegendMarker*> markers;
 
-    foreach(QBarSet* set, q->barSets()) {
+    const auto barSets = q->barSets();
+    for (QBarSet *set : barSets) {
         QBarLegendMarker* marker = new QBarLegendMarker(q,set,legend);
         markers << marker;
     }

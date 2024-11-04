@@ -75,7 +75,8 @@ class DEVICE_BLUETOOTH_EXPORT FlossAdminClient : public FlossDBusClient {
   // Initialize the Admin client.
   void Init(dbus::Bus* bus,
             const std::string& service_name,
-            const int adapter_index) override;
+            const int adapter_index,
+            base::OnceClosure on_ready) override;
 
   virtual void SetAllowedServices(
       ResponseCallback<Void> callback,
@@ -117,6 +118,7 @@ class DEVICE_BLUETOOTH_EXPORT FlossAdminClient : public FlossDBusClient {
 
   void OnMethodsExported();
   void HandleCallbackRegistered(DBusResult<uint32_t> result);
+  void HandleCallbackUnregistered(DBusResult<bool> result);
 
   template <typename R, typename... Args>
   void CallAdminMethod(ResponseCallback<R> callback,
@@ -132,6 +134,12 @@ class DEVICE_BLUETOOTH_EXPORT FlossAdminClient : public FlossDBusClient {
   // Exported callbacks for interacting with daemon.
   ExportedCallbackManager<FlossAdminClient> exported_callback_manager_{
       admin::kCallbackInterface};
+
+  // Callback ID used for callbacks registered to this client.
+  absl::optional<uint32_t> callback_id_;
+
+  // Signal when the client is ready to be used.
+  base::OnceClosure on_ready_;
 
   base::WeakPtrFactory<FlossAdminClient> weak_ptr_factory_{this};
 };

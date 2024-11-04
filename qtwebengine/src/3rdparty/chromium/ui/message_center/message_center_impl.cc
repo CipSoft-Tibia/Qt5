@@ -34,6 +34,17 @@
 #endif
 
 namespace message_center {
+namespace {
+
+bool IsNotificationsGroupingEnabled() {
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  return true;
+#else
+  return false;
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+}
+
+}  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 // MessageCenterImpl
@@ -42,12 +53,9 @@ MessageCenterImpl::MessageCenterImpl(
     std::unique_ptr<LockScreenController> lock_screen_controller)
     : lock_screen_controller_(std::move(lock_screen_controller)),
       popup_timers_controller_(std::make_unique<PopupTimersController>(this)),
+      notifications_grouping_enabled_(IsNotificationsGroupingEnabled()),
       stats_collector_(this) {
   notification_list_ = std::make_unique<NotificationList>(this);
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-  notifications_grouping_enabled_ =
-      ash::features::IsNotificationsRefreshEnabled();
-#endif
 }
 
 MessageCenterImpl::~MessageCenterImpl() = default;
@@ -70,6 +78,7 @@ void MessageCenterImpl::AddNotificationBlocker(NotificationBlocker* blocker) {
 
   blocker->AddObserver(this);
   blockers_.push_back(blocker);
+  OnBlockingStateChanged(blocker);
 }
 
 void MessageCenterImpl::RemoveNotificationBlocker(
@@ -81,6 +90,7 @@ void MessageCenterImpl::RemoveNotificationBlocker(
   }
   blocker->RemoveObserver(this);
   blockers_.erase(iter);
+  OnBlockingStateChanged(blocker);
 }
 
 void MessageCenterImpl::OnBlockingStateChanged(NotificationBlocker* blocker) {
@@ -144,6 +154,15 @@ void MessageCenterImpl::SetNotificationExpandState(
   notification_list_->SetNotificationExpandState(id, expand_state);
 }
 
+void MessageCenterImpl::OnSetExpanded(const std::string& id, bool expanded) {
+  scoped_refptr<NotificationDelegate> delegate =
+      notification_list_->GetNotificationDelegate(id);
+
+  if (delegate) {
+    delegate->ExpandStateChanged(expanded);
+  }
+}
+
 void MessageCenterImpl::SetHasMessageCenterView(bool has_message_center_view) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   has_message_center_view_ = has_message_center_view;
@@ -185,15 +204,21 @@ Notification* MessageCenterImpl::FindParentNotification(
   // the same website for the same user. Also make sure to only group
   // notifications from web pages with valid origin urls. For system
   // notifications, currently we only group privacy indicators notification.
+  // For ARC notifications, only group them when the flag
+  // IsRenderArcNotificationsByChromeEnabled() is enabled.
   bool is_privacy_indicators_notification = false;
+  bool render_arc_notifications_by_chrome = false;
 #if BUILDFLAG(IS_CHROMEOS_ASH)
   is_privacy_indicators_notification =
       notification->notifier_id().id == ash::kPrivacyIndicatorsNotifierId;
+  render_arc_notifications_by_chrome =
+      ash::features::IsRenderArcNotificationsByChromeEnabled();
 #endif
 
   if (!is_privacy_indicators_notification &&
       (notification->origin_url().is_empty() ||
-       notification->notifier_id().type != NotifierType::WEB_PAGE)) {
+       notification->notifier_id().type != NotifierType::WEB_PAGE) &&
+      notification->notifier_id().type != NotifierType::ARC_APPLICATION) {
     return nullptr;
   }
 
@@ -201,9 +226,45 @@ Notification* MessageCenterImpl::FindParentNotification(
       notification_list_->GetNotificationsByNotifierId(
           notification->notifier_id());
 
-  // `notifications` keeps notifications ordered with the most recent one in the
-  // front. If we have notifications for this notifier_id we return the last
-  // notification..
+  // Handle ARC notification grouping in Chrome
+  if (notification->notifier_id().type == NotifierType::ARC_APPLICATION) {
+    // If render_arc_notifications_by_chrome flag is not enabled,
+    // use Android grouping and do not apply grouping rules from the chrome
+    // side.
+    if (!render_arc_notifications_by_chrome) {
+      return nullptr;
+    }
+
+    // To stay consistent with Android, ARC notifications with group key
+    // are grouped using notifier_id() where id and group keys are checked.
+    // For ARC notifications without a group key,
+    // only group them when there are more than 4 notifications
+    if (!notification->notifier_id().group_key.has_value()) {
+      if (notifications.size() < 4) {
+        return nullptr;
+      }
+      for (auto* n : notifications) {
+        if (n->group_parent() || n->group_child()) {
+          continue;
+        }
+        n->SetGroupChild();
+      }
+    }
+  }
+
+  auto parent_notification_it = base::ranges::find_if(
+      notifications,
+      [](Notification* notification) { return notification->group_parent(); });
+
+  // If there's already a notification assigned to be the group parent,
+  // returns that notification immediately.
+  if (parent_notification_it != notifications.cend()) {
+    return *parent_notification_it;
+  }
+
+  // Otherwise, the parent notification should be the oldest one. Since
+  // `notifications` keeps notifications ordered with the most recent one in
+  // the front, the oldest one should be the last in the list.
   return notifications.size() ? *notifications.rbegin() : nullptr;
 }
 
@@ -313,9 +374,8 @@ void MessageCenterImpl::UpdateNotification(
   }
 
   auto* old_notification = notification_list_->GetNotificationById(old_id);
-  if (old_notification) {
-    DCHECK(old_notification->notifier_id() == new_notification->notifier_id());
-
+  if (old_notification &&
+      old_notification->notifier_id() == new_notification->notifier_id()) {
     // Copy grouping metadata to the new notification.
     if (old_notification->group_parent()) {
       new_notification->SetGroupParent();
@@ -544,6 +604,17 @@ void MessageCenterImpl::ClickOnSettingsButton(const std::string& id) {
   }
 }
 
+void MessageCenterImpl::ClickOnSnoozeButton(const std::string& id) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  Notification* notification = notification_list_->GetNotificationById(id);
+
+  bool handled_by_delegate =
+      notification && notification_list_->GetNotificationDelegate(id);
+  if (handled_by_delegate) {
+    notification->delegate()->SnoozeButtonClicked();
+  }
+}
+
 void MessageCenterImpl::DisableNotification(const std::string& id) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   Notification* notification = notification_list_->GetNotificationById(id);
@@ -557,7 +628,7 @@ void MessageCenterImpl::DisableNotification(const std::string& id) {
 void MessageCenterImpl::MarkSinglePopupAsShown(const std::string& id,
                                                bool mark_notification_as_read) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  if (!FindVisibleNotificationById(id)) {
+  if (!FindNotificationById(id)) {
     return;
   }
 

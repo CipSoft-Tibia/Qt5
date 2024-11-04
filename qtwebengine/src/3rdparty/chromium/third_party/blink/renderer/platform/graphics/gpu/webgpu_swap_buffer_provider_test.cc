@@ -103,13 +103,15 @@ class WebGPUSwapBufferProviderForTests : public WebGPUSwapBufferProvider {
       scoped_refptr<DawnControlClientHolder> dawn_control_client,
       WGPUTextureUsage usage,
       WGPUTextureFormat format,
-      PredefinedColorSpace color_space)
+      PredefinedColorSpace color_space,
+      const gfx::HDRMetadata& hdr_metadata)
       : WebGPUSwapBufferProvider(client,
                                  dawn_control_client,
                                  device,
                                  usage,
                                  format,
-                                 color_space),
+                                 color_space,
+                                 hdr_metadata),
         alive_(alive),
         client_(client) {
     texture_desc_.nextInChain = nullptr;
@@ -161,7 +163,7 @@ class WebGPUSwapBufferProviderTest : public testing::Test {
 
     provider_ = base::MakeRefCounted<WebGPUSwapBufferProviderForTests>(
         &provider_alive_, &client_, fake_device_, dawn_control_client_, kUsage,
-        kFormat, PredefinedColorSpace::kSRGB);
+        kFormat, PredefinedColorSpace::kSRGB, gfx::HDRMetadata());
   }
 
   void TearDown() override { Platform::UnsetMainThreadTaskRunnerForTesting(); }

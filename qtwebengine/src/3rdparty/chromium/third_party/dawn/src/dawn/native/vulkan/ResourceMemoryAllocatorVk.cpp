@@ -38,6 +38,22 @@ constexpr uint64_t kMaxSizeForSubAllocation = 4ull * 1024ull * 1024ull;  // 4MiB
 // size
 constexpr uint64_t kBuddyHeapsSize = 2 * kMaxSizeForSubAllocation;
 
+bool IsMemoryKindMappable(MemoryKind memoryKind) {
+    switch (memoryKind) {
+        case MemoryKind::LinearReadMappable:
+        case MemoryKind::LinearWriteMappable:
+            return true;
+
+        case MemoryKind::LazilyAllocated:
+        case MemoryKind::Linear:
+        case MemoryKind::Opaque:
+            return false;
+
+        default:
+            UNREACHABLE();
+    }
+}
+
 }  // anonymous namespace
 
 // SingleTypeAllocator is a combination of a BuddyMemoryAllocator and its client and can
@@ -124,7 +140,8 @@ ResourceMemoryAllocator::~ResourceMemoryAllocator() = default;
 
 ResultOrError<ResourceMemoryAllocation> ResourceMemoryAllocator::Allocate(
     const VkMemoryRequirements& requirements,
-    MemoryKind kind) {
+    MemoryKind kind,
+    bool forceDisableSubAllocation) {
     // The Vulkan spec guarantees at least on memory type is valid.
     int memoryType = FindBestTypeIndex(requirements, kind);
     ASSERT(memoryType >= 0);
@@ -134,7 +151,8 @@ ResultOrError<ResourceMemoryAllocation> ResourceMemoryAllocator::Allocate(
     // Sub-allocate non-mappable resources because at the moment the mapped pointer
     // is part of the resource and not the heap, which doesn't match the Vulkan model.
     // TODO(crbug.com/dawn/849): allow sub-allocating mappable resources, maybe.
-    if (requirements.size < kMaxSizeForSubAllocation && kind != MemoryKind::LinearMappable &&
+    if (!forceDisableSubAllocation && requirements.size < kMaxSizeForSubAllocation &&
+        !IsMemoryKindMappable(kind) &&
         !mDevice->IsToggleEnabled(Toggle::DisableResourceSuballocation)) {
         // When sub-allocating, Vulkan requires that we respect bufferImageGranularity. Some
         // hardware puts information on the memory's page table entry and allocating a linear
@@ -164,7 +182,7 @@ ResultOrError<ResourceMemoryAllocation> ResourceMemoryAllocator::Allocate(
     DAWN_TRY_ASSIGN(resourceHeap, mAllocatorsPerType[memoryType]->AllocateResourceHeap(size));
 
     void* mappedPointer = nullptr;
-    if (kind == MemoryKind::LinearMappable) {
+    if (IsMemoryKindMappable(kind)) {
         DAWN_TRY_WITH_CLEANUP(
             CheckVkSuccess(mDevice->fn.MapMemory(mDevice->GetVkDevice(),
                                                  ToBackend(resourceHeap.get())->GetMemory(), 0,
@@ -228,7 +246,7 @@ void ResourceMemoryAllocator::Tick(ExecutionSerial completedSerial) {
 
 int ResourceMemoryAllocator::FindBestTypeIndex(VkMemoryRequirements requirements, MemoryKind kind) {
     const VulkanDeviceInfo& info = mDevice->GetDeviceInfo();
-    bool mappable = kind == MemoryKind::LinearMappable;
+    bool mappable = IsMemoryKindMappable(kind);
 
     // Find a suitable memory type for this allocation
     int bestType = -1;
@@ -256,13 +274,42 @@ int ResourceMemoryAllocator::FindBestTypeIndex(VkMemoryRequirements requirements
             continue;
         }
 
-        // For non-mappable resources, favor device local memory.
+        // For non-mappable resources that can be lazily allocated, favor lazy
+        // allocation (note: this is a more important property than that of
+        // device local memory and hence is checked first).
+        bool currentLazilyAllocated =
+            info.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
+        bool bestLazilyAllocated =
+            info.memoryTypes[bestType].propertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
+        if ((kind == MemoryKind::LazilyAllocated) &&
+            (currentLazilyAllocated != bestLazilyAllocated)) {
+            if (currentLazilyAllocated) {
+                bestType = static_cast<int>(i);
+            }
+            continue;
+        }
+
+        // For non-mappable, non-lazily-allocated resources, favor device local
+        // memory.
         bool currentDeviceLocal =
             info.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         bool bestDeviceLocal =
             info.memoryTypes[bestType].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         if (!mappable && (currentDeviceLocal != bestDeviceLocal)) {
             if (currentDeviceLocal) {
+                bestType = static_cast<int>(i);
+            }
+            continue;
+        }
+
+        // Cached memory is optimal for read-only access from CPU as host memory accesses to
+        // uncached memory are slower than to cached memory.
+        bool currentHostCached =
+            info.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+        bool bestHostCached =
+            info.memoryTypes[bestType].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+        if (kind == MemoryKind::LinearReadMappable && currentHostCached != bestHostCached) {
+            if (currentHostCached) {
                 bestType = static_cast<int>(i);
             }
             continue;

@@ -24,6 +24,10 @@
 #include "base/tracing_buildflags.h"
 #include "build/build_config.h"
 
+#if BUILDFLAG(IS_ANDROID)
+#include <sys/prctl.h>
+#endif
+
 #if BUILDFLAG(ENABLE_BASE_TRACING)
 #include "base/trace_event/memory_allocator_dump.h"  // no-presubmit-check
 #include "base/trace_event/memory_dump_manager.h"    // no-presubmit-check
@@ -38,9 +42,16 @@ namespace {
 constexpr intptr_t kPageMagicCookie = 1;
 
 void* AllocatePages(size_t size_in_pages) {
-  void* data = mmap(nullptr, size_in_pages * base::GetPageSize(),
-                    PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  const size_t length = size_in_pages * base::GetPageSize();
+  void* data = mmap(nullptr, length, PROT_READ | PROT_WRITE,
+                    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   PCHECK(data != MAP_FAILED);
+
+#if BUILDFLAG(IS_ANDROID)
+  prctl(PR_SET_VMA, PR_SET_VMA_ANON_NAME, data, length,
+        "madv-free-discardable");
+#endif
+
   return data;
 }
 
@@ -168,9 +179,7 @@ bool MadvFreeDiscardableMemoryPosix::LockPage(size_t page_index) {
   // the same byte-level representation.
   static_assert(sizeof(intptr_t) == sizeof(std::atomic<intptr_t>),
                 "Incompatible layout of std::atomic.");
-#ifndef TOOLKIT_QT
   DCHECK(std::atomic<intptr_t>{}.is_lock_free());
-#endif
   std::atomic<intptr_t>* page_as_atomic =
       reinterpret_cast<std::atomic<intptr_t>*>(
           static_cast<uint8_t*>(data_) + page_index * base::GetPageSize());
@@ -192,9 +201,7 @@ bool MadvFreeDiscardableMemoryPosix::LockPage(size_t page_index) {
 }
 
 void MadvFreeDiscardableMemoryPosix::UnlockPage(size_t page_index) {
-#ifndef TOOLKIT_QT
   DCHECK(std::atomic<intptr_t>{}.is_lock_free());
-#endif
 
   std::atomic<intptr_t>* page_as_atomic =
       reinterpret_cast<std::atomic<intptr_t>*>(
@@ -327,8 +334,7 @@ bool MadvFreeDiscardableMemoryPosix::Deallocate() {
     ASAN_UNPOISON_MEMORY_REGION(data_, allocated_pages_ * base::GetPageSize());
 #endif  // defined(ADDRESS_SANITIZER)
 
-    int retval = munmap(data_.ExtractAsDangling(),
-                        allocated_pages_ * base::GetPageSize());
+    int retval = munmap(data_, allocated_pages_ * base::GetPageSize());
     PCHECK(!retval);
     data_ = nullptr;
     (*allocator_byte_count_) -= size_in_bytes_;

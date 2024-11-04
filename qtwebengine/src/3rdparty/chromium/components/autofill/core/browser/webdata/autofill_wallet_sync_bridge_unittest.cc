@@ -13,6 +13,7 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/run_loop.h"
+#include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
@@ -24,7 +25,6 @@
 #include "components/autofill/core/browser/data_model/autofill_profile.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
 #include "components/autofill/core/browser/data_model/credit_card_cloud_token_data.h"
-#include "components/autofill/core/browser/geo/country_names.h"
 #include "components/autofill/core/browser/payments/payments_customer_data.h"
 #include "components/autofill/core/browser/test_autofill_clock.h"
 #include "components/autofill/core/browser/webdata/autofill_sync_bridge_test_util.h"
@@ -44,6 +44,7 @@
 #include "components/sync/protocol/entity_metadata.pb.h"
 #include "components/sync/protocol/entity_specifics.pb.h"
 #include "components/sync/protocol/model_type_state.pb.h"
+#include "components/sync/test/mock_commit_queue.h"
 #include "components/sync/test/mock_model_type_change_processor.h"
 #include "components/sync/test/test_matchers.h"
 #include "components/webdata/common/web_database.h"
@@ -81,7 +82,6 @@ const char kCard1ClientTag[] = "Y2FyZDHvv74=";
 const char kCustomerDataClientTag[] = "deadbeef";
 const char kCloudTokenDataClientTag[] = "token";
 
-const char kLocaleString[] = "en-US";
 const base::Time kJune2017 = base::Time::FromDoubleT(1497552271);
 
 const char kDefaultCacheGuid[] = "CacheGuid";
@@ -147,6 +147,45 @@ std::string WalletCreditCardCloudTokenDataSpecificsAsDebugString(
   return output.str();
 }
 
+std::string WalletBankAccountDetailsAsDebugString(
+    const sync_pb::BankAccountDetails& bank_account_details) {
+  std::ostringstream output;
+  output << "[bank_name: " << bank_account_details.bank_name()
+         << "account_number_suffix: "
+         << bank_account_details.account_number_suffix()
+         << "account_type: " << bank_account_details.account_type() << "]";
+  return output.str();
+}
+
+std::string WalletPaymentInstrumentSupportedRailAsDebugString(
+    const sync_pb::PaymentInstrument payment_instrument) {
+  std::vector<base::StringPiece> supported_rails;
+  for (int supported_rail : payment_instrument.supported_rails()) {
+    supported_rails.push_back(
+        sync_pb::PaymentInstrument::SupportedRail_Name(supported_rail));
+  }
+  return base::JoinString(supported_rails, ",");
+}
+
+std::string WalletPaymentInstrumentAsDebugString(
+    const AutofillWalletSpecifics& specifics) {
+  std::ostringstream output;
+  output << "[instrument_id: " << specifics.payment_instrument().instrument_id()
+         << "supported_rails: "
+         << WalletPaymentInstrumentSupportedRailAsDebugString(
+                specifics.payment_instrument())
+         << "display_icon_url: "
+         << specifics.payment_instrument().display_icon_url()
+         << "nickname: " << specifics.payment_instrument().nickname();
+  if (specifics.payment_instrument().instrument_details_case() ==
+      sync_pb::PaymentInstrument::InstrumentDetailsCase::kBankAccount) {
+    output << WalletBankAccountDetailsAsDebugString(
+        specifics.payment_instrument().bank_account());
+  }
+  output << "]";
+  return output.str();
+}
+
 std::string AutofillWalletSpecificsAsDebugString(
     const AutofillWalletSpecifics& specifics) {
   switch (specifics.type()) {
@@ -162,6 +201,9 @@ std::string AutofillWalletSpecificsAsDebugString(
     case sync_pb::AutofillWalletSpecifics_WalletInfoType::
         AutofillWalletSpecifics_WalletInfoType_CREDIT_CARD_CLOUD_TOKEN_DATA:
       return WalletCreditCardCloudTokenDataSpecificsAsDebugString(specifics);
+    case sync_pb::AutofillWalletSpecifics_WalletInfoType::
+        AutofillWalletSpecifics_WalletInfoType_PAYMENT_INSTRUMENT:
+      return WalletPaymentInstrumentAsDebugString(specifics);
     case sync_pb::AutofillWalletSpecifics_WalletInfoType::
         AutofillWalletSpecifics_WalletInfoType_UNKNOWN:
       return "Unknown";
@@ -200,8 +242,8 @@ MATCHER_P2(AddChange, key, data, "") {
     *result_listener << "key " << arg.key() << " does not match expected "
                      << key;
   }
-  if (*arg.data_model() != data) {
-    *result_listener << "data " << *arg.data_model()
+  if (arg.data_model() != data) {
+    *result_listener << "data " << arg.data_model()
                      << " does not match expected " << data;
   }
   return true;
@@ -222,7 +264,6 @@ class AutofillWalletSyncBridgeTest : public testing::Test {
   void SetUp() override {
     // Fix a time for implicitly constructed use_dates in AutofillProfile.
     test_clock_.SetNow(kJune2017);
-    CountryNames::SetLocaleString(kLocaleString);
     ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
     db_.AddTable(&table_);
     db_.Init(temp_dir_.GetPath().AppendASCII("SyncTestWebDatabase"));
@@ -242,7 +283,11 @@ class AutofillWalletSyncBridgeTest : public testing::Test {
 
   void ResetBridge(bool initial_sync_done) {
     ModelTypeState model_type_state;
-    model_type_state.set_initial_sync_done(initial_sync_done);
+    model_type_state.set_initial_sync_state(
+        initial_sync_done
+            ? sync_pb::ModelTypeState_InitialSyncState_INITIAL_SYNC_DONE
+            : sync_pb::
+                  ModelTypeState_InitialSyncState_INITIAL_SYNC_STATE_UNSPECIFIED);
     model_type_state.mutable_progress_marker()->set_data_type_id(
         GetSpecificsFieldNumberFromModelType(syncer::AUTOFILL_WALLET_DATA));
     model_type_state.set_cache_guid(kDefaultCacheGuid);
@@ -266,9 +311,15 @@ class AutofillWalletSyncBridgeTest : public testing::Test {
             }));
     loop.Run();
 
-    // Initialize the processor with initial_sync_done.
+    // ClientTagBasedModelTypeProcessor requires connecting before other
+    // interactions with the worker happen.
+    real_processor_->ConnectSync(
+        std::make_unique<testing::NiceMock<syncer::MockCommitQueue>>());
+
+    // Initialize the processor with the initial sync already done.
     sync_pb::ModelTypeState state;
-    state.set_initial_sync_done(true);
+    state.set_initial_sync_state(
+        sync_pb::ModelTypeState_InitialSyncState_INITIAL_SYNC_DONE);
 
     sync_pb::GarbageCollectionDirective gc_directive;
     gc_directive.set_version_watermark(1);
@@ -411,16 +462,16 @@ TEST_F(AutofillWalletSyncBridgeTest,
   table()->SetServerProfiles({address1, address2});
   CreditCard card1 = test::GetMaskedServerCard();
   // Set the card issuer to Google.
-  card1.set_card_issuer(CreditCard::Issuer::GOOGLE);
+  card1.set_card_issuer(CreditCard::Issuer::kGoogle);
   card1.set_virtual_card_enrollment_state(
-      CreditCard::VirtualCardEnrollmentState::UNENROLLED);
+      CreditCard::VirtualCardEnrollmentState::kUnenrolled);
   card1.set_card_art_url(GURL("https://www.example.com/card.png"));
   CreditCard card2 = test::GetMaskedServerCardAmex();
   CreditCard card_with_nickname = test::GetMaskedServerCardWithNickname();
   card2.set_virtual_card_enrollment_state(
-      CreditCard::VirtualCardEnrollmentState::ENROLLED);
+      CreditCard::VirtualCardEnrollmentState::kEnrolled);
   card2.set_virtual_card_enrollment_type(
-      CreditCard::VirtualCardEnrollmentType::NETWORK);
+      CreditCard::VirtualCardEnrollmentType::kNetwork);
   table()->SetServerCreditCards({card1, card2, card_with_nickname});
   PaymentsCustomerData customer_data{/*customer_id=*/kCustomerDataId};
   table()->SetPaymentsCustomerData(&customer_data);
@@ -506,13 +557,14 @@ TEST_F(AutofillWalletSyncBridgeTest,
 
 // Tests that when a new wallet card and new wallet address are sent by the
 // server, the client only keeps the new data.
-TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_NewWalletAddressAndCard) {
+TEST_F(AutofillWalletSyncBridgeTest,
+       MergeFullSyncData_NewWalletAddressAndCard) {
   // Create one profile and one card on the client.
   AutofillProfile address1 = test::GetServerProfile();
   table()->SetServerProfiles({address1});
   CreditCard card1 = test::GetMaskedServerCard();
   card1.set_virtual_card_enrollment_state(
-      CreditCard::VirtualCardEnrollmentState::UNENROLLED);
+      CreditCard::VirtualCardEnrollmentState::kUnenrolled);
   card1.set_card_art_url(GURL("https://www.example.com/card.png"));
   table()->SetServerCreditCards({card1});
   PaymentsCustomerData customer_data{/*customer_id=*/kCustomerDataId};
@@ -527,7 +579,7 @@ TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_NewWalletAddressAndCard) {
   SetAutofillWalletSpecificsFromServerProfile(address2, &profile_specifics2);
   CreditCard card2 = test::GetMaskedServerCardAmex();
   card2.set_virtual_card_enrollment_state(
-      CreditCard::VirtualCardEnrollmentState::ENROLLED);
+      CreditCard::VirtualCardEnrollmentState::kEnrolled);
   card2.set_card_art_url(GURL("https://www.test.com/card.png"));
   AutofillWalletSpecifics card_specifics2;
   SetAutofillWalletSpecificsFromServerCard(card2, &card_specifics2);
@@ -567,7 +619,7 @@ TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_NewWalletAddressAndCard) {
 // Tests that in initial sync, no metrics are recorded for new addresses and
 // cards.
 TEST_F(AutofillWalletSyncBridgeTest,
-       MergeSyncData_NewWalletAddressAndCardNoMetricsInitialSync) {
+       MergeFullSyncData_NewWalletAddressAndCardNoMetricsInitialSync) {
   ResetProcessor();
   ResetBridge(/*initial_sync_done=*/false);
 
@@ -609,7 +661,8 @@ TEST_F(AutofillWalletSyncBridgeTest,
 
 // Tests that when a new payments customer data is sent by the server, the
 // client only keeps the new data.
-TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_NewPaymentsCustomerData) {
+TEST_F(AutofillWalletSyncBridgeTest,
+       MergeFullSyncData_NewPaymentsCustomerData) {
   // Create one profile, one card, one customer data and one cloud token data
   // entry on the client.
   AutofillProfile address = test::GetServerProfile();
@@ -653,7 +706,7 @@ TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_NewPaymentsCustomerData) {
 
 // Tests that when a new credit card cloud token data is sent by the server,
 // the client only keeps the new data.
-TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_NewCloudTokenData) {
+TEST_F(AutofillWalletSyncBridgeTest, MergeFullSyncData_NewCloudTokenData) {
   AutofillProfile address = test::GetServerProfile();
   table()->SetServerProfiles({address});
   CreditCard card = test::GetMaskedServerCard();
@@ -696,7 +749,7 @@ TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_NewCloudTokenData) {
 
 // Tests that when the server sends no cards or address, the client should
 // delete all it's existing data.
-TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_NoWalletAddressOrCard) {
+TEST_F(AutofillWalletSyncBridgeTest, MergeFullSyncData_NoWalletAddressOrCard) {
   // Create one profile and one card on the client.
   AutofillProfile local_profile = test::GetServerProfile();
   table()->SetServerProfiles({local_profile});
@@ -720,7 +773,7 @@ TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_NoWalletAddressOrCard) {
 
 // Tests that when the server sends no cloud token data, the client should
 // delete all it's existing cloud token data.
-TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_NoCloudTokenData) {
+TEST_F(AutofillWalletSyncBridgeTest, MergeFullSyncData_NoCloudTokenData) {
   // Create one cloud token data on the client.
   CreditCardCloudTokenData cloud_token_data =
       test::GetCreditCardCloudTokenData1();
@@ -737,14 +790,15 @@ TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_NoCloudTokenData) {
 
 // Tests that when the server sends the same data as the client has, nothing
 // changes on the client.
-TEST_F(AutofillWalletSyncBridgeTest,
-       MergeSyncData_SameWalletAddressAndCardAndCustomerDataAndCloudTokenData) {
+TEST_F(
+    AutofillWalletSyncBridgeTest,
+    MergeFullSyncData_SameWalletAddressAndCardAndCustomerDataAndCloudTokenData) {
   // Create one profile and one card on the client.
   AutofillProfile profile = test::GetServerProfile();
   table()->SetServerProfiles({profile});
   CreditCard card = test::GetMaskedServerCard();
   card.set_virtual_card_enrollment_state(
-      CreditCard::VirtualCardEnrollmentState::UNENROLLED);
+      CreditCard::VirtualCardEnrollmentState::kUnenrolled);
   card.set_card_art_url(GURL("https://www.example.com/card.png"));
   table()->SetServerCreditCards({card});
   PaymentsCustomerData customer_data{/*customer_id=*/kCustomerDataId};
@@ -784,7 +838,7 @@ TEST_F(AutofillWalletSyncBridgeTest,
 // Tests that when there are multiple changes happening at the same time, the
 // data from the server is what the client ends up with.
 TEST_F(AutofillWalletSyncBridgeTest,
-       MergeSyncData_AddRemoveAndPreserveWalletAddressAndCard) {
+       MergeFullSyncData_AddRemoveAndPreserveWalletAddressAndCard) {
   // Create two profile and one card on the client.
   AutofillProfile profile = test::GetServerProfile();
   AutofillProfile profile2 = test::GetServerProfile2();
@@ -828,7 +882,8 @@ TEST_F(AutofillWalletSyncBridgeTest,
 
 // Test that all field values for a address sent form the server are copied on
 // the address on the client.
-TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_SetsAllWalletAddressData) {
+TEST_F(AutofillWalletSyncBridgeTest,
+       MergeFullSyncData_SetsAllWalletAddressData) {
   // Create a profile to be synced from the server.
   AutofillProfile profile = test::GetServerProfile();
   AutofillWalletSpecifics profile_specifics;
@@ -882,14 +937,14 @@ TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_SetsAllWalletAddressData) {
 
 // Test that all field values for a card sent from the server are copied on the
 // card on the client.
-TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_SetsAllWalletCardData) {
+TEST_F(AutofillWalletSyncBridgeTest, MergeFullSyncData_SetsAllWalletCardData) {
   // Create a card to be synced from the server.
   CreditCard card = test::GetMaskedServerCard();
   card.SetNickname(u"Grocery card");
   // Set the card issuer to Google.
-  card.set_card_issuer(CreditCard::Issuer::GOOGLE);
+  card.set_card_issuer(CreditCard::Issuer::kGoogle);
   card.set_virtual_card_enrollment_state(
-      CreditCard::VirtualCardEnrollmentState::UNENROLLED);
+      CreditCard::VirtualCardEnrollmentState::kUnenrolled);
   card.set_card_art_url(GURL("https://www.example.com/card.png"));
   AutofillWalletSpecifics card_specifics;
   SetAutofillWalletSpecificsFromServerCard(card, &card_specifics);
@@ -933,7 +988,7 @@ TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_SetsAllWalletCardData) {
 
 // Test that all field values for a cloud token data sent from the server are
 // copied on the client.
-TEST_F(AutofillWalletSyncBridgeTest, MergeSyncData_SetsAllCloudTokenData) {
+TEST_F(AutofillWalletSyncBridgeTest, MergeFullSyncData_SetsAllCloudTokenData) {
   CreditCardCloudTokenData cloud_token_data =
       test::GetCreditCardCloudTokenData1();
   AutofillWalletSpecifics cloud_token_data_specifics;
@@ -972,7 +1027,7 @@ TEST_F(AutofillWalletSyncBridgeTest, LoadMetadataCalled) {
   ResetBridge(/*initial_sync_done=*/true);
 }
 
-TEST_F(AutofillWalletSyncBridgeTest, ApplyStopSyncChanges_ClearAllData) {
+TEST_F(AutofillWalletSyncBridgeTest, ApplyDisableSyncChanges) {
   // Create one profile, one card and one cloud token data on the client.
   AutofillProfile local_profile = test::GetServerProfile();
   table()->SetServerProfiles({local_profile});
@@ -987,9 +1042,9 @@ TEST_F(AutofillWalletSyncBridgeTest, ApplyStopSyncChanges_ClearAllData) {
   EXPECT_CALL(*backend(), NotifyOfAutofillProfileChanged).Times(0);
   EXPECT_CALL(*backend(), NotifyOfCreditCardChanged).Times(0);
 
-  // Passing in a non-null metadata change list indicates to the bridge that
-  // sync is stopping because it was disabled.
-  bridge()->ApplyStopSyncChanges(
+  // ApplyDisableSyncChanges indicates to the bridge that sync is stopping
+  // because it was disabled.
+  bridge()->ApplyDisableSyncChanges(
       std::make_unique<syncer::InMemoryMetadataChangeList>());
 
   // This bridge should not touch the metadata; should get deleted by the
@@ -997,29 +1052,6 @@ TEST_F(AutofillWalletSyncBridgeTest, ApplyStopSyncChanges_ClearAllData) {
   ExpectCountsOfWalletMetadataInDB(/*cards_count=*/1u, /*address_count=*/1u);
 
   EXPECT_TRUE(GetAllLocalData().empty());
-}
-
-TEST_F(AutofillWalletSyncBridgeTest, ApplyStopSyncChanges_KeepData) {
-  // Create one profile, one card and one cloud token data on the client.
-  AutofillProfile local_profile = test::GetServerProfile();
-  table()->SetServerProfiles({local_profile});
-  CreditCard local_card = test::GetMaskedServerCard();
-  table()->SetServerCreditCards({local_card});
-  CreditCardCloudTokenData cloud_token_data =
-      test::GetCreditCardCloudTokenData1();
-  table()->SetCreditCardCloudTokenData({cloud_token_data});
-
-  // We do not write to DB at all, so we should not commit any changes.
-  EXPECT_CALL(*backend(), CommitChanges()).Times(0);
-  EXPECT_CALL(*backend(), NotifyOfMultipleAutofillChanges()).Times(0);
-  EXPECT_CALL(*backend(), NotifyOfAutofillProfileChanged).Times(0);
-  EXPECT_CALL(*backend(), NotifyOfCreditCardChanged).Times(0);
-
-  // Passing in a non-null metadata change list indicates to the bridge that
-  // sync is stopping but the data type is not disabled.
-  bridge()->ApplyStopSyncChanges(/*delete_metadata_change_list=*/nullptr);
-
-  EXPECT_FALSE(GetAllLocalData().empty());
 }
 
 // This test ensures that an int64 -> int conversion bug we encountered is
@@ -1051,19 +1083,19 @@ TEST_F(AutofillWalletSyncBridgeTest, SetWalletCards_LogVirtualMetadataSynced) {
   // Card 1: has virtual cards.
   CreditCard card1 = test::GetMaskedServerCard();
   card1.set_virtual_card_enrollment_state(
-      CreditCard::VirtualCardEnrollmentState::ENROLLED);
+      CreditCard::VirtualCardEnrollmentState::kEnrolled);
   card1.set_server_id("card1_server_id");
   card1.set_card_art_url(GURL("https://www.example.com/card1.png"));
   // Card 2: has virtual cards.
   CreditCard card2 = test::GetMaskedServerCard();
   card2.set_virtual_card_enrollment_state(
-      CreditCard::VirtualCardEnrollmentState::ENROLLED);
+      CreditCard::VirtualCardEnrollmentState::kEnrolled);
   card2.set_server_id("card2_server_id");
   card2.set_card_art_url(GURL("https://www.example.com/card2.png"));
   // Card 3: has no virtual cards
   CreditCard card3 = test::GetMaskedServerCard();
   card3.set_virtual_card_enrollment_state(
-      CreditCard::VirtualCardEnrollmentState::UNENROLLED);
+      CreditCard::VirtualCardEnrollmentState::kUnenrolled);
   card3.set_server_id("card3_server_id");
 
   table()->SetServerCreditCards({card1, card2, card3});
@@ -1080,14 +1112,14 @@ TEST_F(AutofillWalletSyncBridgeTest, SetWalletCards_LogVirtualMetadataSynced) {
   // card.
   AutofillWalletSpecifics card3_specifics;
   card3.set_virtual_card_enrollment_state(
-      CreditCard::VirtualCardEnrollmentState::ENROLLED);
+      CreditCard::VirtualCardEnrollmentState::kEnrolled);
   card3.set_card_art_url(GURL("https://www.example.com/card3.png"));
   SetAutofillWalletSpecificsFromServerCard(card3, &card3_specifics);
   // Card 4: New card enrolled in virtual cards; should log for new card
   AutofillWalletSpecifics card4_specifics;
   CreditCard card4 = test::GetMaskedServerCard();
   card4.set_virtual_card_enrollment_state(
-      CreditCard::VirtualCardEnrollmentState::ENROLLED);
+      CreditCard::VirtualCardEnrollmentState::kEnrolled);
   card4.set_server_id("card4_server_id");
   card4.set_card_art_url(GURL("https://www.example.com/card4.png"));
   SetAutofillWalletSpecificsFromServerCard(card4, &card4_specifics);

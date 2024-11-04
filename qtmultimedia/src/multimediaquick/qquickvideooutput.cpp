@@ -8,9 +8,9 @@
 #include <QtMultimedia/qmediacapturesession.h>
 #include <private/qfactoryloader_p.h>
 #include <QtCore/qloggingcategory.h>
-#include <qvideosink.h>
 #include <QtQuick/QQuickWindow>
 #include <private/qquickwindow_p.h>
+#include <private/qmultimediautils_p.h>
 #include <qsgvideonode_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -103,12 +103,12 @@ QQuickVideoOutput::QQuickVideoOutput(QQuickItem *parent) :
 {
     setFlag(ItemHasContents, true);
 
-    m_sink = new QVideoSink(this);
+    m_sink = new QQuickVideoSink(this);
     qRegisterMetaType<QVideoFrameFormat>();
     connect(m_sink, &QVideoSink::videoFrameChanged, this,
             [this](const QVideoFrame &frame) {
                 setFrame(frame);
-                QMetaObject::invokeMethod(this, "_q_newFrame", frame.size());
+                QMetaObject::invokeMethod(this, &QQuickVideoOutput::_q_newFrame, frame.size());
             },
             Qt::DirectConnection);
 
@@ -169,9 +169,7 @@ void QQuickVideoOutput::_q_newFrame(QSize size)
 {
     update();
 
-    if (!qIsDefaultAspect(m_orientation + m_frameOrientation)) {
-        size.transpose();
-    }
+    size = qRotatedFrameSize(size, m_orientation + m_frameOrientation);
 
     if (m_nativeSize != size) {
         m_nativeSize = size;
@@ -534,7 +532,7 @@ void QQuickVideoOutput::setFrame(const QVideoFrame &frame)
 
     m_videoFormat = frame.surfaceFormat();
     m_frame = frame;
-    m_frameOrientation = frame.rotationAngle();
+    m_frameOrientation = static_cast<int>(frame.rotation());
     m_frameChanged = true;
 }
 

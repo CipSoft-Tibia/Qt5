@@ -79,6 +79,7 @@ void GLShader::setGraphicsContext(GraphicsContext *context)
     if (m_graphicsContext) {
         m_contextConnection = QObject::connect(m_graphicsContext->openGLContext(),
                                                &QOpenGLContext::aboutToBeDestroyed,
+                                               m_graphicsContext->openGLContext(),
                                                [this] { setGraphicsContext(nullptr); });
     }
 }
@@ -332,7 +333,7 @@ void GLShader::initializeUniformBlocks(const std::vector<ShaderUniformBlock> &un
         const std::vector<ShaderUniform>::const_iterator uniformsEnd = m_uniforms.cend();
 
         std::vector<QString>::const_iterator uniformNamesIt = m_uniformsNames.cbegin();
-        const std::vector<QString>::const_iterator uniformNamesEnd = m_attributesNames.cend();
+        const std::vector<QString>::const_iterator uniformNamesEnd = m_uniformsNames.cend();
 
         QHash<QString, ShaderUniform> activeUniformsInBlock;
 

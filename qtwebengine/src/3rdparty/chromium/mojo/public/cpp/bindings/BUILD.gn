@@ -41,7 +41,7 @@ component("bindings_base") {
     "clone_traits.h",
     "connection_group.cc",
     "connection_group.h",
-    "default_construct_traits.h",
+    "default_construct_tag.h",
     "deprecated_interface_types_forward.h",
     "disconnect_reason.h",
     "enum_traits.h",
@@ -59,6 +59,7 @@ component("bindings_base") {
     "lib/bindings_internal.h",
     "lib/buffer.cc",
     "lib/buffer.h",
+    "lib/default_construct_tag_internal.h",
     "lib/handle_serialization.cc",
     "lib/handle_serialization.h",
     "lib/hash_util.h",
@@ -146,6 +147,8 @@ component("bindings") {
     "callback_helpers.h",
     "connection_error_callback.h",
     "connector.h",
+    "direct_receiver.cc",
+    "direct_receiver.h",
     "generic_pending_associated_receiver.cc",
     "generic_pending_associated_receiver.h",
     "generic_pending_receiver.cc",
@@ -246,7 +249,10 @@ component("bindings") {
     "//mojo/public/interfaces/bindings",
   ]
 
-  deps = [ "//ipc:native_handle_type_converters" ]
+  deps = [
+    "//ipc:native_handle_type_converters",
+    "//mojo/core/embedder",
+  ]
 
   defines = [ "IS_MOJO_CPP_BINDINGS_IMPL" ]
 }

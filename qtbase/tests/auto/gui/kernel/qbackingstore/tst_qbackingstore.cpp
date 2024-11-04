@@ -1,9 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qwindow.h>
 #include <qbackingstore.h>
 #include <qpa/qplatformbackingstore.h>
+#include <qpa/qplatformintegration.h>
+#include <private/qguiapplication_p.h>
 #include <qpainter.h>
 
 #include <QTest>
@@ -90,6 +92,11 @@ void tst_QBackingStore::paint()
 
     QRect rect(0, 0, 100, 100);
     backingStore.resize(rect.size());
+
+    // Partial fill of a fresh backingstore should not crash
+    backingStore.beginPaint(QRect(0, 0, 50, 50));
+    backingStore.endPaint();
+    backingStore.flush(rect);
 
     // Two rounds, with flush in between
     for (int i = 0; i < 2; ++i) {
@@ -271,9 +278,9 @@ void tst_QBackingStore::flush()
 
 void tst_QBackingStore::staticContents()
 {
-#if !defined(Q_OS_WIN)
-    QSKIP("Platform does not support static backingstore content");
-#endif
+    const auto *integration = QGuiApplicationPrivate::platformIntegration();
+    if (!integration->hasCapability(QPlatformIntegration::BackingStoreStaticContents))
+        QSKIP("Platform does not support static backingstore content");
 
     QWindow window;
     window.create();

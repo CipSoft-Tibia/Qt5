@@ -3,11 +3,12 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "sensormanager.h"
 #include <QtCore/qcoreapplication.h>
+#include <QtCore/qjnitypes.h>
 
 #include <dlfcn.h>
 
 Q_DECLARE_JNI_CLASS(AndroidContext, "android/content/Context")
-Q_DECLARE_JNI_TYPE(Sensor, "Landroid/hardware/Sensor;")
+Q_DECLARE_JNI_CLASS(Sensor, "android/hardware/Sensor")
 
 SensorManager::SensorManager()
 {

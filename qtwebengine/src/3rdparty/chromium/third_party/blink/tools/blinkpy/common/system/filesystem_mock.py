@@ -432,7 +432,7 @@ class MockFileSystem(object):
         return dot_dot + rel_path
 
     def remove(self, path, retry=True):
-        if self.files[path] is None:
+        if self.files.get(path) is None:
             self._raise_not_found(path)
         self.files[path] = None
         self.written_files[path] = None
@@ -500,13 +500,21 @@ class MockFileSystem(object):
     def patch_builtins(self):
         with contextlib.ExitStack() as stack:
             stack.enter_context(patch('builtins.open', self._open_mock))
+            stack.enter_context(patch('os.sep', self.sep))
+            stack.enter_context(patch('os.path.sep', self.sep))
+            stack.enter_context(patch('os.path.abspath', self.abspath))
+            stack.enter_context(patch('os.path.relpath', self.relpath))
             stack.enter_context(patch('os.path.join', self.join))
             stack.enter_context(patch('os.path.isfile', self.isfile))
             stack.enter_context(patch('os.path.isdir', self.isdir))
+            stack.enter_context(patch('os.path.exists', self.exists))
             stack.enter_context(patch('os.makedirs',
                                       self.maybe_make_directory))
             stack.enter_context(patch('os.replace', self.move))
             stack.enter_context(patch('os.unlink', self.remove))
+            stack.enter_context(
+                patch('tempfile.TemporaryFile',
+                      lambda *args, **kwargs: self.open_text_tempfile()[0]))
             yield
 
 

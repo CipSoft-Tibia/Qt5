@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtQuick
 import QtTest
@@ -858,7 +858,7 @@ TestCase {
         // Ensure that clicked is emitted when no handler is defined for the pressAndHold() signal.
         // Note that even though signal spies aren't considered in QObject::isSignalConnected(),
         // we can't use one here to check for pressAndHold(), because otherwise clicked() won't be emitted.
-        wait(Qt.styleHints.mousePressAndHoldInterval + 100)
+        wait(Application.styleHints.mousePressAndHoldInterval + 100)
         mouseRelease(control)
         compare(clickedSpy.count, 1)
     }

@@ -28,8 +28,8 @@
 #include "core/fxge/fx_font.h"
 #include "core/fxge/scoped_font_transform.h"
 #include "third_party/base/check.h"
+#include "third_party/base/containers/span.h"
 #include "third_party/base/numerics/safe_conversions.h"
-#include "third_party/base/span.h"
 
 #define EM_ADJUST(em, a) (em == 0 ? (a) : (a)*1000 / em)
 
@@ -44,30 +44,6 @@ struct OUTLINE_PARAMS {
   FT_Pos m_CurY;
   float m_CoordUnit;
 };
-
-// TODO(crbug.com/pdfium/1400): When FT_Done_MM_Var() is more likely to be
-// available to all users in the future, remove FreeMMVar() and use
-// FT_Done_MM_Var() directly.
-//
-// Use weak symbols to check if FT_Done_MM_Var() is available at runtime.
-#if !BUILDFLAG(IS_WIN)
-extern "C" __attribute__((weak)) decltype(FT_Done_MM_Var) FT_Done_MM_Var;
-#endif
-
-void FreeMMVar(FXFT_FaceRec* rec, FXFT_MM_VarPtr variation_desc) {
-#if BUILDFLAG(IS_WIN)
-  // Assume `use_system_freetype` GN var is never set on Windows.
-  constexpr bool has_ft_done_mm_var_func = true;
-#else
-  static const bool has_ft_done_mm_var_func = !!FT_Done_MM_Var;
-#endif
-  if (has_ft_done_mm_var_func) {
-    FT_Done_MM_Var(CFX_GEModule::Get()->GetFontMgr()->GetFTLibrary(),
-                   variation_desc);
-  } else {
-    FXFT_Free(rec, variation_desc);
-  }
-}
 
 FX_RECT FXRectFromFTPos(FT_Pos left, FT_Pos top, FT_Pos right, FT_Pos bottom) {
   return FX_RECT(pdfium::base::checked_cast<int32_t>(left),
@@ -418,6 +394,13 @@ int CFX_Font::GetGlyphWidth(uint32_t glyph_index) const {
 int CFX_Font::GetGlyphWidth(uint32_t glyph_index,
                             int dest_width,
                             int weight) const {
+  return GetOrCreateGlyphCache()->GetGlyphWidth(this, glyph_index, dest_width,
+                                                weight);
+}
+
+int CFX_Font::GetGlyphWidthImpl(uint32_t glyph_index,
+                                int dest_width,
+                                int weight) const {
   if (!m_Face)
     return 0;
   if (m_pSubstFont && m_pSubstFont->IsBuiltInGenericFont())
@@ -543,7 +526,7 @@ bool CFX_Font::IsFixedWidth() const {
   return m_Face && FXFT_Is_Face_fixedwidth(m_Face->GetRec()) != 0;
 }
 
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
 bool CFX_Font::IsSubstFontBold() const {
   CFX_SubstFont* subst_font = GetSubstFont();
   return subst_font && subst_font->GetOriginalWeight() >= FXFONT_FW_BOLD;
@@ -630,10 +613,6 @@ absl::optional<FX_RECT> CFX_Font::GetBBox() const {
   return result;
 }
 
-void CFX_Font::AllocSubData(size_t size) {
-  m_pSubData.reset(FX_Alloc(uint8_t, size));
-}
-
 RetainPtr<CFX_GlyphCache> CFX_Font::GetOrCreateGlyphCache() const {
   if (!m_GlyphCache)
     m_GlyphCache = CFX_GEModule::Get()->GetFontCache()->GetGlyphCache(this);
@@ -648,24 +627,23 @@ void CFX_Font::AdjustMMParams(int glyph_index,
                               int dest_width,
                               int weight) const {
   DCHECK(dest_width >= 0);
-  FXFT_MM_VarPtr pMasters = nullptr;
-  FT_Get_MM_Var(m_Face->GetRec(), &pMasters);
-  if (!pMasters)
+  ScopedFXFTMMVar variation_desc(m_Face->GetRec());
+  if (!variation_desc) {
     return;
+  }
 
   FT_Pos coords[2];
-  if (weight == 0)
-    coords[0] = FXFT_Get_MM_Axis_Def(FXFT_Get_MM_Axis(pMasters, 0)) / 65536;
-  else
+  if (weight == 0) {
+    coords[0] = variation_desc.GetAxisDefault(0) / 65536;
+  } else {
     coords[0] = weight;
+  }
 
   if (dest_width == 0) {
-    coords[1] = FXFT_Get_MM_Axis_Def(FXFT_Get_MM_Axis(pMasters, 1)) / 65536;
+    coords[1] = variation_desc.GetAxisDefault(1) / 65536;
   } else {
-    FT_Long min_param =
-        FXFT_Get_MM_Axis_Min(FXFT_Get_MM_Axis(pMasters, 1)) / 65536;
-    FT_Long max_param =
-        FXFT_Get_MM_Axis_Max(FXFT_Get_MM_Axis(pMasters, 1)) / 65536;
+    FT_Long min_param = variation_desc.GetAxisMin(1) / 65536;
+    FT_Long max_param = variation_desc.GetAxisMax(1) / 65536;
     coords[1] = min_param;
     FT_Set_MM_Design_Coordinates(m_Face->GetRec(), 2, coords);
     FT_Load_Glyph(m_Face->GetRec(), glyph_index,
@@ -679,7 +657,6 @@ void CFX_Font::AdjustMMParams(int glyph_index,
     FT_Pos max_width = FXFT_Get_Glyph_HoriAdvance(m_Face->GetRec()) * 1000 /
                        FXFT_Get_Face_UnitsPerEM(m_Face->GetRec());
     if (max_width == min_width) {
-      FreeMMVar(m_Face->GetRec(), pMasters);
       return;
     }
     FT_Pos param = min_param + (max_param - min_param) *
@@ -687,7 +664,6 @@ void CFX_Font::AdjustMMParams(int glyph_index,
                                    (max_width - min_width);
     coords[1] = param;
   }
-  FreeMMVar(m_Face->GetRec(), pMasters);
   FT_Set_MM_Design_Coordinates(m_Face->GetRec(), 2, coords);
 }
 
@@ -790,7 +766,7 @@ int CFX_Font::GetSkewFromAngle(int angle) {
   return kAngleSkew[-angle];
 }
 
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
 CFX_TypeFace* CFX_Font::GetDeviceCache() const {
   return GetOrCreateGlyphCache()->GetDeviceCache(this);
 }

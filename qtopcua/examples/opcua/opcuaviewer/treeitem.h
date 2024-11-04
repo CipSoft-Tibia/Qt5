@@ -4,14 +4,21 @@
 #ifndef TREEITEM_H
 #define TREEITEM_H
 
+#include <qopcuatype.h>
+#include <qopcuareferencedescription.h>
+
 #include <QObject>
-#include <QOpcUaEUInformation>
-#include <QOpcUaNode>
-#include <QOpcUaRange>
 
 #include <memory>
 
 class OpcUaModel;
+
+QT_BEGIN_NAMESPACE
+class QOpcUaEUInformation;
+class QOpcUaLocalizedText;
+class QOpcUaNode;
+class QOpcUaRange;
+QT_END_NAMESPACE
 
 class TreeItem : public QObject
 {
@@ -67,13 +74,15 @@ private:
 template <typename T>
 QString TreeItem::numberArrayToString(const QList<T> &vec) const
 {
-    QString list(QLatin1Char('['));
+    using namespace Qt::Literals::StringLiterals;
+
+    QString list('['_L1);
     for (int i = 0, size = vec.size(); i < size; ++i) {
         if (i)
-            list.append(QLatin1Char(';'));
+            list.append(';'_L1);
         list.append(QString::number(vec.at(i)));
     }
-    list.append(QLatin1Char(']'));
+    list.append(']'_L1);
     return list;
 }
 

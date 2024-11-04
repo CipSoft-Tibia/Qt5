@@ -92,6 +92,7 @@ class CORE_EXPORT HTMLVideoElement final
                          const cc::PaintFlags* paint_flags) const;
 
   bool HasAvailableVideoFrame() const;
+  bool HasReadableVideoFrame() const;
 
   void OnFirstFrame(base::TimeTicks frame_time,
                     size_t bytes_to_first_frame) final;
@@ -112,6 +113,7 @@ class CORE_EXPORT HTMLVideoElement final
 
   // CanvasImageSource implementation
   scoped_refptr<Image> GetSourceImageForCanvas(
+      CanvasResourceProvider::FlushReason,
       SourceImageStatus*,
       const gfx::SizeF&,
       const AlphaDisposition alpha_disposition = kPremultiplyAlpha) override;
@@ -179,7 +181,7 @@ class CORE_EXPORT HTMLVideoElement final
   void ContextDestroyed() final;
 
   bool LayoutObjectIsNeeded(const DisplayStyle&) const override;
-  LayoutObject* CreateLayoutObject(const ComputedStyle&, LegacyLayout) override;
+  LayoutObject* CreateLayoutObject(const ComputedStyle&) override;
   void AttachLayoutTree(AttachContext&) override;
   void UpdatePosterImage();
   void ParseAttribute(const AttributeModificationParams&) override;
@@ -198,7 +200,6 @@ class CORE_EXPORT HTMLVideoElement final
   // Video-specific overrides for part of the media::mojom::MediaPlayer
   // interface, fully implemented in the parent class HTMLMediaElement.
   void RequestEnterPictureInPicture() final;
-  void RequestExitPictureInPicture() final;
   void RequestMediaRemoting() final;
 
   void DidMoveToNewDocument(Document& old_document) override;

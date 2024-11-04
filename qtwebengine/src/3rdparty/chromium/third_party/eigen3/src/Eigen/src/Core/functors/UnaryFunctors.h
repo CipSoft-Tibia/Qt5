@@ -146,6 +146,28 @@ struct functor_traits<scalar_arg_op<Scalar> >
     PacketAccess = packet_traits<Scalar>::HasArg
   };
 };
+
+/** \internal
+  * \brief Template functor to compute the complex argument, returned as a complex type
+  *
+  * \sa class CwiseUnaryOp, Cwise::carg
+  */
+template <typename Scalar>
+struct scalar_carg_op {
+  using result_type = Scalar;
+  EIGEN_DEVICE_FUNC
+  EIGEN_STRONG_INLINE const Scalar operator()(const Scalar& a) const { return Scalar(numext::arg(a)); }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet packetOp(const Packet& a) const {
+    return pcarg(a);
+  }
+};
+template <typename Scalar>
+struct functor_traits<scalar_carg_op<Scalar>> {
+  using RealScalar = typename NumTraits<Scalar>::Real;
+  enum { Cost = functor_traits<scalar_atan2_op<RealScalar>>::Cost, PacketAccess = packet_traits<RealScalar>::HasATan };
+};
+
 /** \internal
   * \brief Template functor to cast a scalar to another type
   *
@@ -156,9 +178,28 @@ struct scalar_cast_op {
   typedef NewType result_type;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const NewType operator() (const Scalar& a) const { return cast<Scalar, NewType>(a); }
 };
+
 template<typename Scalar, typename NewType>
 struct functor_traits<scalar_cast_op<Scalar,NewType> >
 { enum { Cost = is_same<Scalar, NewType>::value ? 0 : NumTraits<NewType>::AddCost, PacketAccess = false }; };
+
+/** \internal
+ * `core_cast_op` serves to distinguish the vectorized implementation from that of the legacy `scalar_cast_op` for backwards
+ * compatibility. The manner in which packet ops are handled is defined by the specialized unary_evaluator:
+ * `unary_evaluator<CwiseUnaryOp<core_cast_op<SrcType, DstType>, ArgType>, IndexBased>` in CoreEvaluators.h
+ * Otherwise, the non-vectorized behavior is identical to that of `scalar_cast_op`
+ */
+template <typename SrcType, typename DstType>
+struct core_cast_op : scalar_cast_op<SrcType, DstType> {};
+
+template <typename SrcType, typename DstType>
+struct functor_traits<core_cast_op<SrcType, DstType>> {
+  using CastingTraits = type_casting_traits<SrcType, DstType>;
+  enum {
+    Cost = is_same<SrcType, DstType>::value ? 0 : NumTraits<DstType>::AddCost,
+    PacketAccess = CastingTraits::VectorizedCast && (CastingTraits::SrcCoeffRatio <= 8)
+  };
+};
 
 /** \internal
   * \brief Template functor to arithmetically shift a scalar right by a number of bits
@@ -600,11 +641,16 @@ struct functor_traits<scalar_tanh_op<Scalar> > {
 template <typename Scalar>
 struct scalar_atanh_op {
   EIGEN_DEVICE_FUNC inline const Scalar operator()(const Scalar& a) const { return numext::atanh(a); }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC inline Packet packetOp(const Packet& x) const { return patanh(x); }
 };
 
 template <typename Scalar>
 struct functor_traits<scalar_atanh_op<Scalar> > {
-  enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
+  enum {
+    Cost = 5 * NumTraits<Scalar>::MulCost,
+    PacketAccess = packet_traits<Scalar>::HasATanh
+  };
 };
 
 /** \internal
@@ -763,7 +809,7 @@ struct functor_traits<scalar_round_op<Scalar> >
 {
   enum {
     Cost = NumTraits<Scalar>::MulCost,
-    PacketAccess = packet_traits<Scalar>::HasRound
+    PacketAccess = packet_traits<Scalar>::HasRound || NumTraits<Scalar>::IsInteger
   };
 };
 
@@ -781,7 +827,7 @@ struct functor_traits<scalar_floor_op<Scalar> >
 {
   enum {
     Cost = NumTraits<Scalar>::MulCost,
-    PacketAccess = packet_traits<Scalar>::HasFloor
+    PacketAccess = packet_traits<Scalar>::HasFloor || NumTraits<Scalar>::IsInteger
   };
 };
 
@@ -799,7 +845,7 @@ struct functor_traits<scalar_rint_op<Scalar> >
 {
   enum {
     Cost = NumTraits<Scalar>::MulCost,
-    PacketAccess = packet_traits<Scalar>::HasRint
+    PacketAccess = packet_traits<Scalar>::HasRint || NumTraits<Scalar>::IsInteger
   };
 };
 
@@ -817,7 +863,7 @@ struct functor_traits<scalar_ceil_op<Scalar> >
 {
   enum {
     Cost = NumTraits<Scalar>::MulCost,
-    PacketAccess = packet_traits<Scalar>::HasCeil
+    PacketAccess = packet_traits<Scalar>::HasCeil || NumTraits<Scalar>::IsInteger
   };
 };
 
@@ -825,22 +871,39 @@ struct functor_traits<scalar_ceil_op<Scalar> >
   * \brief Template functor to compute whether a scalar is NaN
   * \sa class CwiseUnaryOp, ArrayBase::isnan()
   */
-template<typename Scalar> struct scalar_isnan_op {
-  typedef bool result_type;
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE result_type operator() (const Scalar& a) const {
+template<typename Scalar, bool UseTypedPredicate=false>
+struct scalar_isnan_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator() (const Scalar& a) const {
 #if defined(SYCL_DEVICE_ONLY)
     return numext::isnan(a);
 #else
-    return (numext::isnan)(a);
+    return numext::isnan EIGEN_NOT_A_MACRO (a);
 #endif
   }
 };
+
+
 template<typename Scalar>
-struct functor_traits<scalar_isnan_op<Scalar> >
+struct scalar_isnan_op<Scalar, true> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar operator() (const Scalar& a) const {
+#if defined(SYCL_DEVICE_ONLY)
+    return (numext::isnan(a) ? ptrue(a) : pzero(a));
+#else
+    return (numext::isnan EIGEN_NOT_A_MACRO (a)  ? ptrue(a) : pzero(a));
+#endif
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC inline Packet packetOp(const Packet& a) const {
+    return pisnan(a);
+  }
+};
+
+template<typename Scalar, bool UseTypedPredicate>
+struct functor_traits<scalar_isnan_op<Scalar, UseTypedPredicate> >
 {
   enum {
     Cost = NumTraits<Scalar>::MulCost,
-    PacketAccess = false
+    PacketAccess = packet_traits<Scalar>::HasCmp && UseTypedPredicate
   };
 };
 
@@ -891,19 +954,72 @@ struct functor_traits<scalar_isfinite_op<Scalar> >
 };
 
 /** \internal
-  * \brief Template functor to compute the logical not of a boolean
+  * \brief Template functor to compute the logical not of a scalar as if it were a boolean
   *
   * \sa class CwiseUnaryOp, ArrayBase::operator!
   */
-template<typename Scalar> struct scalar_boolean_not_op {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator() (const bool& a) const { return !a; }
+template <typename Scalar>
+struct scalar_boolean_not_op {
+  using result_type = Scalar;
+  // `false` any value `a` that satisfies `a == Scalar(0)`
+  // `true` is the complement of `false`
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar operator()(const Scalar& a) const {
+    return a == Scalar(0) ? Scalar(1) : Scalar(0);
+  }
+  template <typename Packet>
+  EIGEN_STRONG_INLINE Packet packetOp(const Packet& a) const {
+    const Packet cst_one = pset1<Packet>(Scalar(1));
+    Packet not_a = pcmp_eq(a, pzero(a));
+    return pand(not_a, cst_one);
+  }
 };
-template<typename Scalar>
-struct functor_traits<scalar_boolean_not_op<Scalar> > {
-  enum {
-    Cost = NumTraits<bool>::AddCost,
-    PacketAccess = false
-  };
+template <typename Scalar>
+struct functor_traits<scalar_boolean_not_op<Scalar>> {
+  enum { Cost = NumTraits<Scalar>::AddCost, PacketAccess = packet_traits<Scalar>::HasCmp };
+};
+
+template <typename Scalar, bool IsComplex = NumTraits<Scalar>::IsComplex>
+struct bitwise_unary_impl {
+  static constexpr size_t Size = sizeof(Scalar);
+  using uint_t = typename numext::get_integer_by_size<Size>::unsigned_type;
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar run_not(const Scalar& a) {
+    uint_t a_as_uint = numext::bit_cast<uint_t, Scalar>(a);
+    uint_t result = ~a_as_uint;
+    return numext::bit_cast<Scalar, uint_t>(result);
+  }
+};
+
+template <typename Scalar>
+struct bitwise_unary_impl<Scalar, true> {
+  using Real = typename NumTraits<Scalar>::Real;
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar run_not(const Scalar& a) {
+    Real real_result = bitwise_unary_impl<Real>::run_not(numext::real(a));
+    Real imag_result = bitwise_unary_impl<Real>::run_not(numext::imag(a));
+    return Scalar(real_result, imag_result);
+  }
+};
+
+/** \internal
+  * \brief Template functor to compute the bitwise not of a scalar
+  *
+  * \sa class CwiseUnaryOp, ArrayBase::operator~
+ */
+template <typename Scalar>
+struct scalar_bitwise_not_op {
+  EIGEN_STATIC_ASSERT(!NumTraits<Scalar>::RequireInitialization, BITWISE OPERATIONS MAY ONLY BE PERFORMED ON PLAIN DATA TYPES)
+  EIGEN_STATIC_ASSERT((!internal::is_same<Scalar, bool>::value), DONT USE BITWISE OPS ON BOOLEAN TYPES)
+  using result_type = Scalar;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar operator()(const Scalar& a) const {
+    return bitwise_unary_impl<Scalar>::run_not(a);
+  }
+  template <typename Packet>
+  EIGEN_STRONG_INLINE Packet packetOp(const Packet& a) const {
+    return pandnot(ptrue(a), a);
+  }
+};
+template <typename Scalar>
+struct functor_traits<scalar_bitwise_not_op<Scalar>> {
+  enum { Cost = NumTraits<Scalar>::AddCost, PacketAccess = true };
 };
 
 /** \internal

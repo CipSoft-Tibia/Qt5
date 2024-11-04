@@ -10,6 +10,7 @@
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/policy/browser_signin_policy_handler.h"
+#include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "chrome/browser/profiles/profile_shortcut_manager.h"
@@ -18,8 +19,7 @@
 #include "chrome/browser/signin/signin_features.h"
 #include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/ui/managed_ui.h"
-#include "chrome/browser/ui/profile_picker.h"
-#include "chrome/browser/ui/webui/signin/profile_creation_customize_themes_handler.h"
+#include "chrome/browser/ui/profiles/profile_picker.h"
 #include "chrome/browser/ui/webui/signin/profile_picker_handler.h"
 #include "chrome/browser/ui/webui/webui_util.h"
 #include "chrome/common/pref_names.h"
@@ -40,11 +40,12 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui_data_source.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/base/webui/web_ui_util.h"
-#include "ui/webui/mojo_web_ui_controller.h"
 #include "url/gurl.h"
 
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
+#include "chromeos/crosapi/mojom/device_settings_service.mojom.h"
 #include "ui/chromeos/devicetype_utils.h"
 #endif
 
@@ -96,6 +97,15 @@ std::string GetManagedDeviceDisclaimer() {
   return l10n_util::GetStringFUTF8(managed_by_id, base::UTF8ToUTF16(*manager));
 }
 
+int GetMainViewTitleId() {
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  return IDS_PROFILE_PICKER_MAIN_VIEW_TITLE_LACROS;
+#else
+  return ProfilePicker::Shown() ? IDS_PROFILE_PICKER_MAIN_VIEW_TITLE_V2
+                                : IDS_PROFILE_PICKER_MAIN_VIEW_TITLE;
+#endif
+}
+
 void AddStrings(content::WebUIDataSource* html_source) {
   static constexpr webui::LocalizedString kLocalizedStrings[] = {
     {"mainViewSubtitle",
@@ -145,41 +155,14 @@ void AddStrings(content::WebUIDataSource* html_source) {
     },
     {"notNowButtonLabel",
      IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_NOT_NOW_BUTTON_LABEL},
-    {"localProfileCreationTitle",
-     IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_TITLE},
-    {"localProfileCreationCustomizeAvatarLabel",
-     IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_CUSTOMIZE_AVATAR_BUTTON_LABEL},
-    {"localProfileCreationThemeText",
-     IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_THEME_TEXT},
-    {"createProfileNamePlaceholder",
-     IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_INPUT_NAME},
-    {"createDesktopShortcutLabel",
-     IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_SHORTCUT_TEXT},
-    {"createProfileConfirm",
-     IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_DONE},
-    {"defaultAvatarLabel", IDS_DEFAULT_AVATAR_LABEL_26},
-    {"selectAnAvatarDialogTitle",
-     IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_AVATAR_TEXT},
-    {"selectAvatarDoneButtonLabel",
-     IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_AVATAR_DONE},
     {"profileSwitchTitle", IDS_PROFILE_PICKER_PROFILE_SWITCH_TITLE},
     {"profileSwitchSubtitle", IDS_PROFILE_PICKER_PROFILE_SWITCH_SUBTITLE},
     {"switchButtonLabel",
      IDS_PROFILE_PICKER_PROFILE_SWITCH_SWITCH_BUTTON_LABEL},
 
-    // Color picker.
-    {"colorPickerLabel", IDS_NTP_CUSTOMIZE_COLOR_PICKER_LABEL},
-    {"defaultThemeLabel", IDS_NTP_CUSTOMIZE_DEFAULT_LABEL},
-    {"themesContainerLabel",
-     IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_THEME_TEXT},
-    {"thirdPartyThemeDescription", IDS_NTP_CUSTOMIZE_3PT_THEME_DESC},
-    {"uninstallThirdPartyThemeButton", IDS_NTP_CUSTOMIZE_3PT_THEME_UNINSTALL},
-
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
     {"accountSelectionLacrosTitle",
      IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_ACCOUNT_SELECTION_LACROS_TITLE},
-    {"accountSelectionLacrosSubtitle",
-     IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_ACCOUNT_SELECTION_LACROS_SUBTITLE},
     {"accountSelectionLacrosOtherAccountButtonLabel",
      IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_ACCOUNT_SELECTION_LACROS_OTHER_ACCOUNT_BUTTON_LABEL},
     {"lacrosPrimaryProfileDeletionWarningTitle",
@@ -197,14 +180,7 @@ void AddStrings(content::WebUIDataSource* html_source) {
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
 
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-  int main_view_title_id = IDS_PROFILE_PICKER_MAIN_VIEW_TITLE_LACROS;
-#else
-  int main_view_title_id = ProfilePicker::Shown()
-                               ? IDS_PROFILE_PICKER_MAIN_VIEW_TITLE_V2
-                               : IDS_PROFILE_PICKER_MAIN_VIEW_TITLE;
-#endif
-  html_source->AddLocalizedString("mainViewTitle", main_view_title_id);
+  html_source->AddLocalizedString("mainViewTitle", GetMainViewTitleId());
 
   html_source->AddLocalizedString(
       "signInButtonLabel",
@@ -219,6 +195,8 @@ void AddStrings(content::WebUIDataSource* html_source) {
   html_source->AddBoolean("askOnStartup",
                           g_browser_process->local_state()->GetBoolean(
                               prefs::kBrowserShowProfilePickerOnStartup));
+  html_source->AddBoolean("profilesReorderingEnabled",
+                          base::FeatureList::IsEnabled(kProfilesReordering));
   html_source->AddBoolean("signInProfileCreationFlowSupported",
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
                           AccountConsistencyModeManager::IsDiceSignInAllowed());
@@ -235,6 +213,8 @@ void AddStrings(content::WebUIDataSource* html_source) {
   html_source->AddString("managedDeviceDisclaimer",
                          GetManagedDeviceDisclaimer());
 
+  webui::SetupChromeRefresh2023(html_source);
+
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
   std::string remove_warning_profile = l10n_util::GetStringFUTF8(
       IDS_PROFILE_PICKER_REMOVE_WARNING_SIGNED_IN_PROFILE_LACROS,
@@ -243,6 +223,23 @@ void AddStrings(content::WebUIDataSource* html_source) {
       l10n_util::GetStringUTF16(IDS_OS_SETTINGS_PEOPLE_V2));
   html_source->AddString("removeWarningProfileLacros", remove_warning_profile);
   html_source->AddString("deviceType", ui::GetChromeOSDeviceName());
+
+  bool guest_mode_enabled = true;
+  // Device settings may be nullptr in tests.
+  if (crosapi::mojom::DeviceSettings* device_settings =
+          g_browser_process->browser_policy_connector()->GetDeviceSettings()) {
+    if (device_settings->device_guest_mode_enabled ==
+        crosapi::mojom::DeviceSettings::OptionalBool::kFalse) {
+      guest_mode_enabled = false;
+    }
+  }
+  const int account_selection_lacros_subtitle =
+      guest_mode_enabled
+          ? IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_ACCOUNT_SELECTION_LACROS_SUBTITLE_WITH_GUEST
+          : IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_ACCOUNT_SELECTION_LACROS_SUBTITLE;
+  html_source->AddLocalizedString("accountSelectionLacrosSubtitle",
+                                  account_selection_lacros_subtitle);
+
 #endif
 
   // Add policies.
@@ -255,31 +252,21 @@ void AddStrings(content::WebUIDataSource* html_source) {
   html_source->AddBoolean("profileShortcutsEnabled",
                           ProfileShortcutManager::IsFeatureEnabled());
   html_source->AddBoolean("isAskOnStartupAllowed", ask_on_startup_allowed);
-  html_source->AddBoolean(
-      "isLocalProfileCreationDialogEnabled",
-      base::FeatureList::IsEnabled(kSyncPromoAfterSigninIntercept));
 
-  html_source->AddBoolean(
-      "isTangibleSyncEnabled",
-      base::FeatureList::IsEnabled(switches::kTangibleSync));
-
-  html_source->AddResourcePath("images/tangible_sync_style_left_banner.svg",
+  html_source->AddResourcePath("images/left_banner.svg",
                                IDR_SIGNIN_IMAGES_SHARED_LEFT_BANNER_SVG);
-  html_source->AddResourcePath(
-      "images/tangible_sync_style_left_banner_dark.svg",
-      IDR_SIGNIN_IMAGES_SHARED_LEFT_BANNER_DARK_SVG);
-  html_source->AddResourcePath("images/tangible_sync_style_right_banner.svg",
+  html_source->AddResourcePath("images/left_banner_dark.svg",
+                               IDR_SIGNIN_IMAGES_SHARED_LEFT_BANNER_DARK_SVG);
+  html_source->AddResourcePath("images/right_banner.svg",
                                IDR_SIGNIN_IMAGES_SHARED_RIGHT_BANNER_SVG);
-  html_source->AddResourcePath(
-      "images/tangible_sync_style_right_banner_dark.svg",
-      IDR_SIGNIN_IMAGES_SHARED_RIGHT_BANNER_DARK_SVG);
+  html_source->AddResourcePath("images/right_banner_dark.svg",
+                               IDR_SIGNIN_IMAGES_SHARED_RIGHT_BANNER_DARK_SVG);
 }
 
 }  // namespace
 
 ProfilePickerUI::ProfilePickerUI(content::WebUI* web_ui)
-    : ui::MojoWebUIController(web_ui, /*enable_chrome_send=*/true),
-      customize_themes_factory_receiver_(this) {
+    : content::WebUIController(web_ui) {
   Profile* profile = Profile::FromWebUI(web_ui);
   content::WebUIDataSource* html_source =
       content::WebUIDataSource::CreateAndAdd(
@@ -297,6 +284,12 @@ ProfilePickerUI::ProfilePickerUI(content::WebUI* web_ui)
     profile_picker_handler_->EnableStartupMetrics();
   }
 
+  // Setting the title here instead of relying on the one provided from the
+  // page itself makes it available much earlier, and avoids having to fallback
+  // to the one obtained from `NavigationEntry::GetTitleForDisplay()` (which
+  // ends up being the URL) when we try to get it on startup for a11y purposes.
+  web_ui->OverrideTitle(l10n_util::GetStringUTF16(GetMainViewTitleId()));
+
   AddStrings(html_source);
   webui::SetupWebUIDataSource(
       html_source,
@@ -311,28 +304,8 @@ gfx::Size ProfilePickerUI::GetMinimumSize() {
   return gfx::Size(kMinimumPickerSizePx, kMinimumPickerSizePx);
 }
 
-void ProfilePickerUI::BindInterface(
-    mojo::PendingReceiver<
-        customize_themes::mojom::CustomizeThemesHandlerFactory>
-        pending_receiver) {
-  if (customize_themes_factory_receiver_.is_bound()) {
-    customize_themes_factory_receiver_.reset();
-  }
-  customize_themes_factory_receiver_.Bind(std::move(pending_receiver));
-}
-
 ProfilePickerHandler* ProfilePickerUI::GetProfilePickerHandlerForTesting() {
   return profile_picker_handler_;
-}
-
-void ProfilePickerUI::CreateCustomizeThemesHandler(
-    mojo::PendingRemote<customize_themes::mojom::CustomizeThemesClient>
-        pending_client,
-    mojo::PendingReceiver<customize_themes::mojom::CustomizeThemesHandler>
-        pending_handler) {
-  customize_themes_handler_ =
-      std::make_unique<ProfileCreationCustomizeThemesHandler>(
-          std::move(pending_client), std::move(pending_handler));
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(ProfilePickerUI)

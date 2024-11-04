@@ -9,7 +9,7 @@ import * as SDK from '../../../core/sdk/sdk.js';
 import * as LitHtml from '../../../ui/lit-html/lit-html.js';
 import * as Root from '../../../core/root/root.js';
 import * as ReportView from '../../../ui/components/report_view/report_view.js';
-import * as UI from '../../../ui/legacy/legacy.js';
+import * as LegacyWrapper from '../../../ui/components/legacy_wrapper/legacy_wrapper.js';
 import * as Protocol from '../../../generated/protocol.js';
 import * as IconButton from '../../../ui/components/icon_button/icon_button.js';
 import * as ComponentHelpers from '../../../ui/components/helpers/helpers.js';
@@ -143,59 +143,37 @@ const enum ScreenStatusType {
   Result = 'Result',
 }
 
-export class BackForwardCacheViewWrapper extends UI.ThrottledWidget.ThrottledWidget {
-  readonly #bfcacheView: BackForwardCacheView;
+const coordinator = Coordinator.RenderCoordinator.RenderCoordinator.instance();
 
-  constructor(bfcacheView: BackForwardCacheView) {
-    super(true, 1000);
-    this.#bfcacheView = bfcacheView;
-    this.#getMainResourceTreeModel()?.addEventListener(
-        SDK.ResourceTreeModel.Events.MainFrameNavigated, this.update, this);
-    this.#getMainResourceTreeModel()?.addEventListener(
-        SDK.ResourceTreeModel.Events.BackForwardCacheDetailsUpdated, this.update, this);
-    this.contentElement.classList.add('overflow-auto');
-    this.contentElement.appendChild(this.#bfcacheView);
-    this.update();
-  }
+export class BackForwardCacheView extends LegacyWrapper.LegacyWrapper.WrappableComponent {
+  static readonly litTagName = LitHtml.literal`devtools-resources-back-forward-cache-view`;
+  readonly #shadow = this.attachShadow({mode: 'open'});
+  #screenStatus = ScreenStatusType.Result;
+  #nextNodeId = 0;
+  #historyIndex = 0;
 
-  async doUpdate(): Promise<void> {
-    this.#bfcacheView.data = {frame: this.#getMainFrame()};
+  constructor() {
+    super();
+    this.#getMainResourceTreeModel()?.addEventListener(
+        SDK.ResourceTreeModel.Events.PrimaryPageChanged, this.render, this);
+    this.#getMainResourceTreeModel()?.addEventListener(
+        SDK.ResourceTreeModel.Events.BackForwardCacheDetailsUpdated, this.render, this);
   }
 
   #getMainResourceTreeModel(): SDK.ResourceTreeModel.ResourceTreeModel|null {
-    const mainTarget = SDK.TargetManager.TargetManager.instance().mainFrameTarget();
+    const mainTarget = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     return mainTarget?.model(SDK.ResourceTreeModel.ResourceTreeModel) || null;
   }
 
   #getMainFrame(): SDK.ResourceTreeModel.ResourceTreeFrame|null {
     return this.#getMainResourceTreeModel()?.mainFrame || null;
   }
-}
-
-const coordinator = Coordinator.RenderCoordinator.RenderCoordinator.instance();
-
-export interface BackForwardCacheViewData {
-  frame: SDK.ResourceTreeModel.ResourceTreeFrame|null;
-}
-
-export class BackForwardCacheView extends HTMLElement {
-  static readonly litTagName = LitHtml.literal`devtools-resources-back-forward-cache-view`;
-  readonly #shadow = this.attachShadow({mode: 'open'});
-  #frame: SDK.ResourceTreeModel.ResourceTreeFrame|null = null;
-  #screenStatus = ScreenStatusType.Result;
-  #nextNodeId = 0;
-  #historyIndex = 0;
-
   connectedCallback(): void {
+    this.parentElement?.classList.add('overflow-auto');
     this.#shadow.adoptedStyleSheets = [backForwardCacheViewStyles];
   }
 
-  set data(data: BackForwardCacheViewData) {
-    this.#frame = data.frame;
-    void this.#render();
-  }
-
-  async #render(): Promise<void> {
+  override async render(): Promise<void> {
     await coordinator.write('BackForwardCacheView render', () => {
       // Disabled until https://crbug.com/1079231 is fixed.
       // clang-format off
@@ -215,7 +193,7 @@ export class BackForwardCacheView extends HTMLElement {
         SDK.ResourceTreeModel.ResourceTreeModel, SDK.ResourceTreeModel.Events.FrameNavigated,
         this.#renderBackForwardCacheTestResult, this);
     this.#screenStatus = ScreenStatusType.Result;
-    void this.#render();
+    void this.render();
   }
 
   async #onNavigatedAway(): Promise<void> {
@@ -226,7 +204,7 @@ export class BackForwardCacheView extends HTMLElement {
   }
 
   async #waitAndGoBackInHistory(delay: number): Promise<void> {
-    const mainTarget = SDK.TargetManager.TargetManager.instance().mainFrameTarget();
+    const mainTarget = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     const resourceTreeModel = mainTarget?.model(SDK.ResourceTreeModel.ResourceTreeModel);
     const historyResults = await resourceTreeModel?.navigationHistory();
     if (!resourceTreeModel || !historyResults) {
@@ -249,7 +227,7 @@ export class BackForwardCacheView extends HTMLElement {
   async #navigateAwayAndBack(): Promise<void> {
     // Checking BFCache Compatibility
 
-    const mainTarget = SDK.TargetManager.TargetManager.instance().mainFrameTarget();
+    const mainTarget = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     const resourceTreeModel = mainTarget?.model(SDK.ResourceTreeModel.ResourceTreeModel);
     const historyResults = await resourceTreeModel?.navigationHistory();
     if (!resourceTreeModel || !historyResults) {
@@ -257,7 +235,7 @@ export class BackForwardCacheView extends HTMLElement {
     }
     this.#historyIndex = historyResults.currentIndex;
     this.#screenStatus = ScreenStatusType.Running;
-    void this.#render();
+    void this.render();
 
     // This event listener is removed inside of onNavigatedAway().
     SDK.TargetManager.TargetManager.instance().addModelListener(
@@ -272,7 +250,8 @@ export class BackForwardCacheView extends HTMLElement {
   }
 
   #renderMainFrameInformation(): LitHtml.TemplateResult {
-    if (!this.#frame) {
+    const frame = this.#getMainFrame();
+    if (!frame) {
       // clang-format off
       return LitHtml.html`
         <${ReportView.ReportView.ReportKey.litTagName}>
@@ -286,19 +265,19 @@ export class BackForwardCacheView extends HTMLElement {
     }
     const isTestRunning = (this.#screenStatus === ScreenStatusType.Running);
     // Prevent running BFCache test on the DevTools window itself via DevTools on DevTools
-    const isTestingForbidden = this.#frame.url.startsWith('devtools://');
+    const isTestingForbidden = frame.url.startsWith('devtools://');
     // clang-format off
     return LitHtml.html`
-      ${this.#renderBackForwardCacheStatus(this.#frame.backForwardCacheDetails.restoredFromCache)}
+      ${this.#renderBackForwardCacheStatus(frame.backForwardCacheDetails.restoredFromCache)}
       <div class="report-line">
         <div class="report-key">
           ${i18nString(UIStrings.url)}
         </div>
-        <div class="report-value" title=${this.#frame.url}>
-          ${this.#frame.url}
+        <div class="report-value" title=${frame.url}>
+          ${frame.url}
         </div>
       </div>
-      ${this.#maybeRenderFrameTree(this.#frame.backForwardCacheDetails.explanationsTree)}
+      ${this.#maybeRenderFrameTree(frame.backForwardCacheDetails.explanationsTree)}
       <${ReportView.ReportView.ReportSection.litTagName}>
         <${Buttons.Button.Button.litTagName}
           aria-label=${i18nString(UIStrings.runTest)}
@@ -314,8 +293,8 @@ export class BackForwardCacheView extends HTMLElement {
       </${ReportView.ReportView.ReportSection.litTagName}>
       <${ReportView.ReportView.ReportSectionDivider.litTagName}>
       </${ReportView.ReportView.ReportSectionDivider.litTagName}>
-      ${this.#maybeRenderExplanations(this.#frame.backForwardCacheDetails.explanations,
-          this.#frame.backForwardCacheDetails.explanationsTree)}
+      ${this.#maybeRenderExplanations(frame.backForwardCacheDetails.explanations,
+          frame.backForwardCacheDetails.explanationsTree)}
       <${ReportView.ReportView.ReportSection.litTagName}>
         <x-link href="https://web.dev/bfcache/" class="link">
           ${i18nString(UIStrings.learnMore)}
@@ -337,11 +316,11 @@ export class BackForwardCacheView extends HTMLElement {
       return LitHtml.html`
         <div class="text-ellipsis">
           ${node.treeNodeData.iconName ? LitHtml.html`
-            <${IconButton.Icon.Icon.litTagName} class="inline-icon" .data=${{
+            <${IconButton.Icon.Icon.litTagName} class="inline-icon" style="margin-bottom: -3px;" .data=${{
               iconName: node.treeNodeData.iconName,
-              color: 'var(--color-text-secondary)',
-              width: '16px',
-              height: '16px',
+              color: 'var(--icon-default)',
+              width: '20px',
+              height: '20px',
             } as IconButton.Icon.IconData}>
             </${IconButton.Icon.Icon.litTagName}>
           ` : LitHtml.nothing}
@@ -352,8 +331,8 @@ export class BackForwardCacheView extends HTMLElement {
     }
 
     const frameTreeData = this.#buildFrameTreeDataRecursive(explanationTree, {blankCount: 1});
-    // Override the icon for the top frame.
-    frameTreeData.node.treeNodeData.iconName = 'frame-icon';
+    // Override the icon for the outermost frame.
+    frameTreeData.node.treeNodeData.iconName = 'frame';
     let title = '';
     // The translation pipeline does not support nested plurals. We avoid this
     // here by pulling out the logic for one of the plurals into code instead.
@@ -432,7 +411,7 @@ export class BackForwardCacheView extends HTMLElement {
         ...node,
         children: () => Promise.resolve(children),
       };
-      node.treeNodeData.iconName = 'frame-embedded-icon';
+      node.treeNodeData.iconName = 'iframe';
     } else if (!explanationTree.url.length) {
       // If the current node increased the blank count, but it has no children and
       // is therefore not shown, decrement the blank count again.
@@ -449,10 +428,10 @@ export class BackForwardCacheView extends HTMLElement {
           <${ReportView.ReportView.ReportSection.litTagName}>
             <div class="status">
               <${IconButton.Icon.Icon.litTagName} class="inline-icon" .data=${{
-                iconName: 'ic_checkmark_16x16',
-                color: 'green',
-                width: '16px',
-                height: '16px',
+                iconName: 'check-circle',
+                color: 'var(--icon-checkmark-green)',
+                width: '20px',
+                height: '20px',
                 } as IconButton.Icon.IconData}>
               </${IconButton.Icon.Icon.litTagName}>
             </div>
@@ -466,10 +445,10 @@ export class BackForwardCacheView extends HTMLElement {
           <${ReportView.ReportView.ReportSection.litTagName}>
             <div class="status">
               <${IconButton.Icon.Icon.litTagName} class="inline-icon" .data=${{
-                  iconName: 'circled_backslash_icon',
-                  color: 'var(--color-text-secondary)',
-                  width: '16px',
-                  height: '16px',
+                  iconName: 'clear',
+                  color: 'var(--icon-default)',
+                  width: '20px',
+                  height: '20px',
                   } as IconButton.Icon.IconData}>
               </${IconButton.Icon.Icon.litTagName}>
             </div>
@@ -550,8 +529,8 @@ export class BackForwardCacheView extends HTMLElement {
           ${category}
           <div class="help-outline-icon">
             <${IconButton.Icon.Icon.litTagName} class="inline-icon" .data=${{
-              iconName: 'help_outline',
-              color: 'var(--color-text-secondary)',
+              iconName: 'help',
+              color: 'var(--icon-default)',
               width: '16px',
               height: '16px',
               } as IconButton.Icon.IconData} title=${explainerText}>
@@ -612,8 +591,8 @@ export class BackForwardCacheView extends HTMLElement {
           LitHtml.html`
             <div class="circled-exclamation-icon">
               <${IconButton.Icon.Icon.litTagName} class="inline-icon" .data=${{
-                iconName: 'circled_exclamation_icon',
-                color: 'orange',
+                iconName: 'warning',
+                color: 'var(--icon-warning)',
                 width: '16px',
                 height: '16px',
               } as IconButton.Icon.IconData}>

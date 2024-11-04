@@ -136,6 +136,7 @@ class CORE_EXPORT TextControlElement : public HTMLFormControlElementWithState {
   TextControlInnerEditorElement* InnerEditorElement() const {
     return inner_editor_;
   }
+  virtual TextControlInnerEditorElement* EnsureInnerEditorElement() const = 0;
   HTMLElement* CreateInnerEditorElement();
   void DropInnerEditorElement() { inner_editor_ = nullptr; }
 
@@ -154,6 +155,7 @@ class CORE_EXPORT TextControlElement : public HTMLFormControlElementWithState {
   void SetAutofillValue(const String& value,
                         WebAutofillState = WebAutofillState::kAutofilled);
 
+  // A null value indicates that the suggested value should be hidden.
   virtual void SetSuggestedValue(const String& value);
   const String& SuggestedValue() const;
 
@@ -163,7 +165,6 @@ class CORE_EXPORT TextControlElement : public HTMLFormControlElementWithState {
 
  protected:
   TextControlElement(const QualifiedName&, Document&);
-  bool IsPlaceholderEmpty() const;
   virtual void UpdatePlaceholderText() = 0;
   virtual String GetPlaceholderValue() const = 0;
 
@@ -179,7 +180,7 @@ class CORE_EXPORT TextControlElement : public HTMLFormControlElementWithState {
   String ValueWithHardLineBreaks() const;
 
   void CloneNonAttributePropertiesFrom(const Element&,
-                                       CloneChildrenFlag) override;
+                                       NodeCloningData&) override;
 
  private:
   // Used by ComputeSelection() to specify which values are needed.

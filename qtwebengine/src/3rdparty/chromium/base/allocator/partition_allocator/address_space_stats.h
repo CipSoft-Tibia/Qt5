@@ -37,8 +37,8 @@ struct AddressSpaceStats {
   size_t blocklist_hit_count;
 #endif  // BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT)
 #endif  // BUILDFLAG(HAS_64_BIT_POINTERS)
-#if BUILDFLAG(ENABLE_PKEYS)
-  PoolStats pkey_pool_stats;
+#if BUILDFLAG(ENABLE_THREAD_ISOLATION)
+  PoolStats thread_isolated_pool_stats;
 #endif
 };
 
@@ -47,6 +47,7 @@ struct AddressSpaceStats {
 class PA_COMPONENT_EXPORT(PARTITION_ALLOC) AddressSpaceStatsDumper {
  public:
   virtual void DumpStats(const AddressSpaceStats* address_space_stats) = 0;
+  virtual ~AddressSpaceStatsDumper() = default;
 };
 
 }  // namespace partition_alloc

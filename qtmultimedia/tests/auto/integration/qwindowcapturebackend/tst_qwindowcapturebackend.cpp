@@ -1,5 +1,5 @@
 // Copyright (C) 2023 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 // TESTED_COMPONENT=src/multimedia
 
@@ -242,8 +242,8 @@ private slots:
         // Closing the process waits for it to exit
         fixture.m_windowProcess.close();
 
-        const bool captureFailed = QTest::qWaitFor([&] { return !fixture.m_errors.empty(); },
-                                                   static_cast<int>(s_testTimeout.count()));
+        const bool captureFailed =
+                QTest::qWaitFor([&] { return !fixture.m_errors.empty(); }, s_testTimeout);
 
         QVERIFY(captureFailed);
     }

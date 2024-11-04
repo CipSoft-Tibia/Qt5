@@ -67,6 +67,9 @@ template("cast_core_grpc_stub_library") {
       "--out-dir", rebase_path(root_gen_dir , root_build_dir),
       "--proto-in-dir", invoker.proto_in_dir,
     ]
+    if (defined(invoker.import_dirs)) {
+      args += ["--import-dirs", string_join(",", invoker.import_dirs)]
+    }
 
     outputs = [ "${target_gen_dir}/{{source_name_part}}.${cast_core_grpc_suffix}.h" ]
 

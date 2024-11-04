@@ -1,5 +1,5 @@
 // Copyright (C) 2017 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -14,7 +14,6 @@
 
 #include <algorithm>
 #include <functional>
-#include <vector> // for reference
 #include <iostream>
 #include <list>
 #include <set>
@@ -23,10 +22,7 @@
 #include <forward_list>
 #include <unordered_set>
 #include <unordered_map>
-
-#if defined(__cpp_lib_erase_if) && __cpp_lib_erase_if >= 202002L
-#  define STDLIB_HAS_UNIFORM_ERASURE
-#endif
+#include <q20vector.h> // For reference
 
 QT_BEGIN_NAMESPACE
 std::ostream &operator<<(std::ostream &os, const QChar &c)
@@ -400,22 +396,14 @@ private Q_SLOTS:
     void erase_QVarLengthArray() { erase_impl<QVarLengthArray<int>>(); }
     void erase_QString() { erase_impl<QString>(); }
     void erase_QByteArray() { erase_impl<QByteArray>(); }
-    void erase_std_vector() {
-#ifdef STDLIB_HAS_UNIFORM_ERASURE
-        erase_impl<std::vector<int>>();
-#endif
-    }
+    void erase_std_vector() { erase_impl<std::vector<int>>(); }
 
     void erase_if_QList() { erase_if_impl<QList<int>>(); }
     void erase_if_QVarLengthArray() { erase_if_impl<QVarLengthArray<int>>(); }
     void erase_if_QSet() { erase_if_impl<QSet<int>>(); }
     void erase_if_QString() { erase_if_impl<QString>(); }
     void erase_if_QByteArray() { erase_if_impl<QByteArray>(); }
-    void erase_if_std_vector() {
-#ifdef STDLIB_HAS_UNIFORM_ERASURE
-        erase_if_impl<std::vector<int>>();
-#endif
-    }
+    void erase_if_std_vector() { erase_if_impl<std::vector<int>>(); }
     void erase_if_QMap() { erase_if_associative_impl<QMap<int, int>>(); }
     void erase_if_QMultiMap() {erase_if_associative_impl<QMultiMap<int, int>>(); }
     void erase_if_QHash() { erase_if_associative_impl<QHash<int, int>>(); }
@@ -441,6 +429,21 @@ private Q_SLOTS:
     void keyValueRange_QMultiMap() { keyValueRange_impl<QMultiMap<int, int>>(); }
     void keyValueRange_QHash() { keyValueRange_impl<QHash<int, int>>(); }
     void keyValueRange_QMultiHash() { keyValueRange_impl<QMultiHash<int, int>>(); }
+
+private:
+    template <typename Container>
+    void opEqNaN_impl() const;
+
+private Q_SLOTS:
+    void opEqNaN_QList_Float() { opEqNaN_impl<QList<float>>(); }
+    void opEqNaN_QList_Float16() { opEqNaN_impl<QList<qfloat16>>(); }
+    void opEqNaN_QList_Double() { opEqNaN_impl<QList<double>>(); }
+    void opEqNaN_QVarLengthArray_Float() { opEqNaN_impl<QVarLengthArray<float>>(); }
+    void opEqNaN_QVarLengthArray_Float16() { opEqNaN_impl<QVarLengthArray<qfloat16>>(); }
+    void opEqNaN_QVarLengthArray_Double() { opEqNaN_impl<QVarLengthArray<double>>(); }
+    void opEqNaN_QSet_Float() { opEqNaN_impl<QSet<float>>(); }
+    void opEqNaN_QSet_Float16() { opEqNaN_impl<QSet<qfloat16>>(); }
+    void opEqNaN_QSet_Double() { opEqNaN_impl<QSet<double>>(); }
 };
 
 void tst_ContainerApiSymmetry::init()
@@ -776,7 +779,7 @@ void tst_ContainerApiSymmetry::resize_impl() const
     auto c = make<Container>(3);
     QCOMPARE(c.size(), S(3));
     c.resize(4, V(5));
-    QCOMPARE(c.size(), S(4));
+    QCOMPARE(std::size(c), S(4));
     QCOMPARE(c.back(), V(5));
 
     // ctor/resize symmetry:
@@ -990,6 +993,7 @@ void tst_ContainerApiSymmetry::erase_impl() const
     auto c = make<Container>(7); // {1, 2, 3, 4, 5, 6, 7}
     QCOMPARE(c.size(), S(7));
 
+    using q20::erase; // For std::vector
     auto result = erase(c, V(1));
     QCOMPARE(result, S(1));
     QCOMPARE(c.size(), S(6));
@@ -1015,7 +1019,10 @@ void tst_ContainerApiSymmetry::erase_if_impl() const
 
     oldSize = c.size();
     count = 0;
-    auto result = erase_if(c, [&](V i) { ++count; return Conv::toInt(i) % 2 == 0; });
+
+    using q20::erase_if; // For std::vector
+
+    S result = erase_if(c, [&](V i) { ++count; return Conv::toInt(i) % 2 == 0; });
     QCOMPARE(result, S(3));
     QCOMPARE(c.size(), S(4));
     QCOMPARE(count, oldSize);
@@ -1269,6 +1276,17 @@ void tst_ContainerApiSymmetry::keyValueRange_impl() const
     }
     QVERIFY(verify(keys, COUNT));
     QVERIFY(verify(values, COUNT, 2));
+}
+
+template<typename Container>
+void tst_ContainerApiSymmetry::opEqNaN_impl() const
+{
+    using V = typename Container::value_type;
+    static_assert(std::is_floating_point_v<V> || std::is_same_v<V, qfloat16>);
+    const Container lhs {std::numeric_limits<V>::quiet_NaN()};
+    const Container rhs {std::numeric_limits<V>::quiet_NaN()};
+
+    QCOMPARE_NE(lhs, rhs);
 }
 
 QTEST_APPLESS_MAIN(tst_ContainerApiSymmetry)

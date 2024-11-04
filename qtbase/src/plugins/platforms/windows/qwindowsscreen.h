@@ -7,10 +7,9 @@
 #include "qtwindowsglobal.h"
 
 #include <QtCore/qlist.h>
-#include <QtCore/qpair.h>
 #include <QtCore/qscopedpointer.h>
 #include <qpa/qplatformscreen.h>
-#include <qpa/qplatformscreen_p.h>
+#include <QtGui/qscreen_platform.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -42,8 +41,7 @@ struct QWindowsScreenData
     std::optional<int> deviceIndex = std::nullopt;
 };
 
-class QWindowsScreen : public QPlatformScreen
-                     , public QNativeInterface::Private::QWindowsScreen
+class QWindowsScreen : public QPlatformScreen, public QNativeInterface::QWindowsScreen
 {
 public:
 #ifndef QT_NO_CURSOR
@@ -107,6 +105,7 @@ public:
 
     QWindowsScreenManager();
     void initialize();
+    void destroyWindow();
     ~QWindowsScreenManager();
 
     void clearScreens();

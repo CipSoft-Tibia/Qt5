@@ -2,76 +2,117 @@
 // Copyright (C) 2019 Alexey Edelev <semlanik@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtCore/QThread>
-
 #include "qgrpcstream.h"
+
+#include "qgrpcchanneloperation.h"
+
+#include <QtCore/qthread.h>
 
 QT_BEGIN_NAMESPACE
 
 /*!
-    \class QGrpcStream
+    \class QGrpcServerStream
     \inmodule QtGrpc
+    \since 6.7
 
-    \brief The QGrpcStream class implements logic to handle stream communication
-    in the Grpc channel.
+    \brief The QGrpcServerStream class provides the interface to access the
+    server-side gRPC stream functionality from gRPC client side.
+
+    The QGrpcServerStream object is owned by the client object that created it.
 */
 
 /*!
-    \fn void QGrpcStream::messageReceived()
+    \fn void QGrpcServerStream::messageReceived()
 
     The signal is emitted when the stream receives an updated value from server.
 */
 
-QGrpcStream::QGrpcStream(QLatin1StringView method, QByteArrayView arg,
-                         std::shared_ptr<QAbstractProtobufSerializer> serializer)
-    : QGrpcOperation(std::move(serializer)), m_method(method.data(), method.size()),
-      m_arg(arg.toByteArray())
+QGrpcServerStream::QGrpcServerStream(std::shared_ptr<QGrpcChannelOperation> channelOperation)
+    : QGrpcOperation(std::move(channelOperation))
+{
+    QObject::connect(QGrpcOperation::channelOperation(), &QGrpcChannelOperation::dataReady, this,
+                     [this] { emit messageReceived(); });
+}
+
+/*!
+    Destroys the QGrpcServerStream object.
+*/
+QGrpcServerStream::~QGrpcServerStream() = default;
+
+/*!
+    \class QGrpcClientStream
+    \inmodule QtGrpc
+    \since 6.7
+
+    \brief The QGrpcClientStream class provides the interface to access the
+    client-side gRPC stream functionality from gRPC client side.
+*/
+
+/*!
+    \fn template<typename T> void QGrpcClientStream::sendMessage(const T &message)
+
+    Serializes \a message and sends it to the server.
+*/
+
+QGrpcClientStream::QGrpcClientStream(std::shared_ptr<QGrpcChannelOperation> channelOperation)
+    : QGrpcOperation(std::move(channelOperation))
 {
 }
 
 /*!
-    Destroys the QGrpcStream object.
+    Destroys the QGrpcClientStream object.
 */
-QGrpcStream::~QGrpcStream() = default;
+QGrpcClientStream::~QGrpcClientStream() = default;
 
 /*!
-    Cancel this stream and try to abort any call active on any channel
-    in the stream.
+    \internal
+    Sends the serialized \a data to the server.
 */
-void QGrpcStream::abort()
+void QGrpcClientStream::sendMessage(const QByteArray &data)
 {
-    if (thread() != QThread::currentThread())
-        QMetaObject::invokeMethod(this, &QGrpcStream::finished, Qt::BlockingQueuedConnection);
-    else
-        emit finished();
+    emit QGrpcOperation::channelOperation()->sendData(data);
 }
 
 /*!
-    Returns the method for this stream.
+    \class QGrpcBidirStream
+    \inmodule QtGrpc
+    \since 6.7
+
+    \brief The QGrpcBidirStream class provides the interface to access the
+    bidirectional gRPC stream functionality from gRPC client side.
 */
-QLatin1StringView QGrpcStream::method() const
+
+/*!
+    \fn void QGrpcBidirStream::messageReceived()
+
+    The signal is emitted when the stream receives an updated value from server.
+*/
+
+/*!
+    \fn template<typename T> void QGrpcBidirStream::sendMessage(const T &message)
+
+    Serializes \a message and sends it to the server.
+*/
+
+QGrpcBidirStream::QGrpcBidirStream(std::shared_ptr<QGrpcChannelOperation> channelOperation)
+    : QGrpcOperation(std::move(channelOperation))
 {
-    return QLatin1StringView(m_method);
+    QObject::connect(QGrpcOperation::channelOperation(), &QGrpcChannelOperation::dataReady, this,
+                     [this] { emit messageReceived(); });
 }
 
 /*!
-    Returns serialized arguments for this stream.
+    Destroys the QGrpcBidirStream object.
 */
-QByteArrayView QGrpcStream::arg() const
-{
-    return m_arg;
-}
+QGrpcBidirStream::~QGrpcBidirStream() = default;
 
 /*!
-    Sets underlying data field with \a data and emits QGrpcStream::messageReceived signal.
-
-    Should be used by QAbstractGrpcChannel implementations,
-    to update data in a stream and notify clients about stream updates.
+    \internal
+    Sends the serialized \a data to the server.
 */
-void QGrpcStream::updateData(const QByteArray &data)
+void QGrpcBidirStream::sendMessage(const QByteArray &data)
 {
-    setData(QByteArray(data));
-    emit messageReceived();
+    emit QGrpcOperation::channelOperation()->sendData(data);
 }
 
 QT_END_NAMESPACE

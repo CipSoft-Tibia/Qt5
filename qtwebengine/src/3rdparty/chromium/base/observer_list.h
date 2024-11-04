@@ -18,6 +18,7 @@
 #include "base/check.h"
 #include "base/check_op.h"
 #include "base/dcheck_is_on.h"
+#include "base/debug/dump_without_crashing.h"
 #include "base/notreached.h"
 #include "base/observer_list_internal.h"
 #include "base/ranges/algorithm.h"
@@ -133,7 +134,9 @@ class ObserverList {
                          ? std::numeric_limits<size_t>::max()
                          : list->observers_.size()) {
       DCHECK(list);
-      DCHECK(allow_reentrancy || list_.IsOnlyRemainingNode());
+      // TODO(crbug.com/1423093): Turn into CHECK once very prevalent failures
+      // are weeded out.
+      DUMP_WILL_BE_CHECK(allow_reentrancy || list_.IsOnlyRemainingNode());
       // Bind to this sequence when creating the first iterator.
       DCHECK_CALLED_ON_VALID_SEQUENCE(list_->iteration_sequence_checker_);
       EnsureValidIndex();
@@ -261,7 +264,11 @@ class ObserverList {
       live_iterators_.head()->value()->Invalidate();
     if (check_empty) {
       Compact();
-      DCHECK(observers_.empty()) << "\n" << GetObserversCreationStackString();
+      // TODO(crbug.com/1423093): Turn into a CHECK once very prevalent failures
+      // are weeded out.
+      DUMP_WILL_BE_CHECK(observers_.empty())
+          << "\n"
+          << GetObserversCreationStackString();
     }
   }
 
@@ -272,6 +279,8 @@ class ObserverList {
   // Precondition: !HasObserver(obs)
   void AddObserver(ObserverType* obs) {
     DCHECK(obs);
+    // TODO(crbug.com/1423093): Turn this into a CHECK once very prevalent
+    // failures are weeded out.
     if (HasObserver(obs)) {
       NOTREACHED() << "Observers can only be added once!";
       return;

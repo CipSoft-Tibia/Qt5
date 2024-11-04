@@ -23,42 +23,11 @@
 #include "dawn/native/Instance.h"
 #include "dawn/native/Texture.h"
 #include "dawn/platform/DawnPlatform.h"
+#include "tint/tint.h"
 
 // Contains the entry-points into dawn_native
 
 namespace dawn::native {
-
-namespace {
-struct ComboDeprecatedDawnDeviceDescriptor : DeviceDescriptor {
-    explicit ComboDeprecatedDawnDeviceDescriptor(const DawnDeviceDescriptor* deviceDescriptor) {
-        dawn::WarningLog() << "DawnDeviceDescriptor is deprecated. Please use "
-                              "WGPUDeviceDescriptor instead.";
-
-        DeviceDescriptor* desc = this;
-
-        if (deviceDescriptor != nullptr) {
-            desc->nextInChain = &mTogglesDesc;
-            mTogglesDesc.enabledToggles = deviceDescriptor->forceEnabledToggles.data();
-            mTogglesDesc.enabledTogglesCount = deviceDescriptor->forceEnabledToggles.size();
-            mTogglesDesc.disabledToggles = deviceDescriptor->forceDisabledToggles.data();
-            mTogglesDesc.disabledTogglesCount = deviceDescriptor->forceDisabledToggles.size();
-
-            desc->requiredLimits =
-                reinterpret_cast<const RequiredLimits*>(deviceDescriptor->requiredLimits);
-
-            FeaturesInfo featuresInfo;
-            for (const char* featureStr : deviceDescriptor->requiredFeatures) {
-                mRequiredFeatures.push_back(featuresInfo.FeatureNameToAPIEnum(featureStr));
-            }
-            desc->requiredFeatures = mRequiredFeatures.data();
-            desc->requiredFeaturesCount = mRequiredFeatures.size();
-        }
-    }
-
-    DawnTogglesDescriptor mTogglesDesc = {};
-    std::vector<wgpu::FeatureName> mRequiredFeatures = {};
-};
-}  // namespace
 
 const DawnProcTable& GetProcsAutogen();
 
@@ -69,12 +38,6 @@ const DawnProcTable& GetProcs() {
 std::vector<const char*> GetTogglesUsed(WGPUDevice device) {
     return FromAPI(device)->GetTogglesUsed();
 }
-
-// DawnDeviceDescriptor
-
-DawnDeviceDescriptor::DawnDeviceDescriptor() = default;
-
-DawnDeviceDescriptor::~DawnDeviceDescriptor() = default;
 
 // Adapter
 
@@ -126,7 +89,7 @@ std::vector<const char*> Adapter::GetSupportedFeatures() const {
 }
 
 bool Adapter::GetLimits(WGPUSupportedLimits* limits) const {
-    return mImpl->GetLimits(FromAPI(limits));
+    return mImpl->APIGetLimits(FromAPI(limits));
 }
 
 void Adapter::SetUseTieredLimits(bool useTieredLimits) {
@@ -134,16 +97,11 @@ void Adapter::SetUseTieredLimits(bool useTieredLimits) {
 }
 
 bool Adapter::SupportsExternalImages() const {
-    return mImpl->SupportsExternalImages();
+    return mImpl->GetPhysicalDevice()->SupportsExternalImages();
 }
 
 Adapter::operator bool() const {
     return mImpl != nullptr;
-}
-
-WGPUDevice Adapter::CreateDevice(const DawnDeviceDescriptor* deviceDescriptor) {
-    ComboDeprecatedDawnDeviceDescriptor desc(deviceDescriptor);
-    return ToAPI(mImpl->APICreateDevice(&desc));
 }
 
 WGPUDevice Adapter::CreateDevice(const wgpu::DeviceDescriptor* deviceDescriptor) {
@@ -152,13 +110,6 @@ WGPUDevice Adapter::CreateDevice(const wgpu::DeviceDescriptor* deviceDescriptor)
 
 WGPUDevice Adapter::CreateDevice(const WGPUDeviceDescriptor* deviceDescriptor) {
     return ToAPI(mImpl->APICreateDevice(FromAPI(deviceDescriptor)));
-}
-
-void Adapter::RequestDevice(const DawnDeviceDescriptor* descriptor,
-                            WGPURequestDeviceCallback callback,
-                            void* userdata) {
-    ComboDeprecatedDawnDeviceDescriptor desc(descriptor);
-    mImpl->APIRequestDevice(&desc, callback, userdata);
 }
 
 void Adapter::RequestDevice(const wgpu::DeviceDescriptor* descriptor,
@@ -176,18 +127,33 @@ void Adapter::RequestDevice(const WGPUDeviceDescriptor* descriptor,
 }
 
 void Adapter::ResetInternalDeviceForTesting() {
-    mImpl->ResetInternalDeviceForTesting();
+    mImpl->GetPhysicalDevice()->ResetInternalDeviceForTesting();
 }
 
 // AdapterDiscoverOptionsBase
 
-AdapterDiscoveryOptionsBase::AdapterDiscoveryOptionsBase(WGPUBackendType type)
+PhysicalDeviceDiscoveryOptionsBase::PhysicalDeviceDiscoveryOptionsBase(WGPUBackendType type)
     : backendType(type) {}
+
+// DawnInstanceDescriptor
+
+DawnInstanceDescriptor::DawnInstanceDescriptor() {
+    sType = wgpu::SType::DawnInstanceDescriptor;
+}
+
+bool DawnInstanceDescriptor::operator==(const DawnInstanceDescriptor& rhs) const {
+    return (nextInChain == rhs.nextInChain) &&
+           std::tie(additionalRuntimeSearchPathsCount, additionalRuntimeSearchPaths, platform) ==
+               std::tie(rhs.additionalRuntimeSearchPathsCount, rhs.additionalRuntimeSearchPaths,
+                        rhs.platform);
+}
 
 // Instance
 
 Instance::Instance(const WGPUInstanceDescriptor* desc)
-    : mImpl(APICreateInstance(reinterpret_cast<const InstanceDescriptor*>(desc))) {}
+    : mImpl(APICreateInstance(reinterpret_cast<const InstanceDescriptor*>(desc))) {
+    tint::Initialize();
+}
 
 Instance::~Instance() {
     if (mImpl != nullptr) {
@@ -196,21 +162,45 @@ Instance::~Instance() {
     }
 }
 
-void Instance::DiscoverDefaultAdapters() {
-    mImpl->DiscoverDefaultAdapters();
+void Instance::DiscoverDefaultPhysicalDevices() {
+    mImpl->DiscoverDefaultPhysicalDevices();
 }
 
+bool Instance::DiscoverPhysicalDevices(const PhysicalDeviceDiscoveryOptionsBase* options) {
+    return mImpl->DiscoverPhysicalDevices(options);
+}
+
+// Deprecated.
+void Instance::DiscoverDefaultAdapters() {
+    mImpl->DiscoverDefaultPhysicalDevices();
+}
+
+// Deprecated.
 bool Instance::DiscoverAdapters(const AdapterDiscoveryOptionsBase* options) {
-    return mImpl->DiscoverAdapters(options);
+    return mImpl->DiscoverPhysicalDevices(options);
 }
 
 std::vector<Adapter> Instance::GetAdapters() const {
+    dawn::WarningLog() << "GetAdapters() is deprecated. Call EnumerateAdapters(options) instead.";
     // Adapters are owned by mImpl so it is safe to return non RAII pointers to them
     std::vector<Adapter> adapters;
     for (const Ref<AdapterBase>& adapter : mImpl->GetAdapters()) {
         adapters.push_back(Adapter(adapter.Get()));
     }
     return adapters;
+}
+
+std::vector<Adapter> Instance::EnumerateAdapters(const WGPURequestAdapterOptions* options) const {
+    // Adapters are owned by mImpl so it is safe to return non RAII pointers to them
+    std::vector<Adapter> adapters;
+    for (const Ref<AdapterBase>& adapter : mImpl->EnumerateAdapters(FromAPI(options))) {
+        adapters.push_back(Adapter(adapter.Get()));
+    }
+    return adapters;
+}
+
+std::vector<Adapter> Instance::EnumerateAdapters(const wgpu::RequestAdapterOptions* options) const {
+    return EnumerateAdapters(reinterpret_cast<const WGPURequestAdapterOptions*>(options));
 }
 
 const ToggleInfo* Instance::GetToggleInfo(const char* toggleName) {
@@ -239,11 +229,6 @@ void Instance::EnableAdapterBlocklist(bool enable) {
     mImpl->EnableAdapterBlocklist(enable);
 }
 
-// TODO(dawn:1374) Deprecate this once it is passed via the descriptor.
-void Instance::SetPlatform(dawn::platform::Platform* platform) {
-    mImpl->SetPlatform(platform);
-}
-
 uint64_t Instance::GetDeviceCountForTesting() const {
     return mImpl->GetDeviceCountForTesting();
 }
@@ -260,8 +245,8 @@ size_t GetDeprecationWarningCountForTesting(WGPUDevice device) {
     return FromAPI(device)->GetDeprecationWarningCountForTesting();
 }
 
-size_t GetAdapterCountForTesting(WGPUInstance instance) {
-    return FromAPI(instance)->GetAdapters().size();
+size_t GetPhysicalDeviceCountForTesting(WGPUInstance instance) {
+    return FromAPI(instance)->GetPhysicalDeviceCountForTesting();
 }
 
 bool IsTextureSubresourceInitialized(WGPUTexture texture,
@@ -289,6 +274,10 @@ std::vector<const char*> GetProcMapNamesForTesting() {
 
 DAWN_NATIVE_EXPORT bool DeviceTick(WGPUDevice device) {
     return FromAPI(device)->APITick();
+}
+
+DAWN_NATIVE_EXPORT bool InstanceProcessEvents(WGPUInstance instance) {
+    return FromAPI(instance)->APIProcessEvents();
 }
 
 // ExternalImageDescriptor
@@ -320,9 +309,12 @@ uint64_t GetAllocatedSizeForTesting(WGPUBuffer buffer) {
     return FromAPI(buffer)->GetAllocatedSize();
 }
 
-bool BindGroupLayoutBindingsEqualForTesting(WGPUBindGroupLayout a, WGPUBindGroupLayout b) {
-    bool excludePipelineCompatibiltyToken = true;
-    return FromAPI(a)->IsLayoutEqual(FromAPI(b), excludePipelineCompatibiltyToken);
+std::vector<const ToggleInfo*> AllToggleInfos() {
+    return TogglesInfo::AllToggleInfos();
+}
+
+FeatureInfo GetFeatureInfo(wgpu::FeatureName featureName) {
+    return kFeatureNameAndInfoList[FromAPI(featureName)];
 }
 
 }  // namespace dawn::native

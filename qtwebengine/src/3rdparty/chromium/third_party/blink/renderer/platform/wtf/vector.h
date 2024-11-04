@@ -347,7 +347,7 @@ struct VectorTypeOperations {
       static_assert(sizeof(T) == sizeof(char), "size of type should be one");
       static_assert(!Allocator::kIsGarbageCollected,
                     "memset is unsupported for garbage-collected vectors.");
-      memset(dst, val, dst_end - dst);
+      memset(dst, static_cast<unsigned char>(val), dst_end - dst);
     } else if (origin == VectorOperationOrigin::kConstruction) {
       while (dst != dst_end) {
         ConstructTraits::Construct(dst, T(val));
@@ -1084,6 +1084,10 @@ class Vector
  public:
   using ValueType = T;
   using value_type = T;
+  using reference = value_type&;
+  using const_reference = const value_type&;
+  using pointer = value_type*;
+  using const_pointer = const value_type*;
 
   using iterator = T*;
   using const_iterator = const T*;
@@ -1119,13 +1123,19 @@ class Vector
   template <typename Collection,
             // This prevents this constructor from being chosen for e.g.
             // Vector(3).
-            typename =
-                typename std::enable_if<std::is_class<Collection>::value>::type>
+            typename = std::enable_if_t<std::disjunction_v<
+                std::is_same<value_type, typename Collection::value_type>,
+                std::is_constructible<value_type,
+                                      typename Collection::const_reference>>>>
   explicit Vector(const Collection& collection) : Vector() {
     assign(collection);
   }
   // Replaces the vector with items copied from a collection.
-  template <typename Collection>
+  template <typename Collection,
+            typename = std::enable_if_t<std::disjunction_v<
+                std::is_same<value_type, typename Collection::value_type>,
+                std::is_constructible<value_type,
+                                      typename Collection::const_reference>>>>
   void assign(const Collection&);
 
   // Moving.
@@ -1438,7 +1448,7 @@ class Vector
   template <typename U>
   U* ExpandCapacity(wtf_size_t new_min_capacity, U*);
   template <typename U>
-  void AppendSlowCase(U&&);
+  NOINLINE PRESERVE_MOST void AppendSlowCase(U&&);
 
   bool HasInlineBuffer() const {
     return INLINE_CAPACITY && !this->HasOutOfLineBuffer();
@@ -1593,10 +1603,10 @@ operator=(const Vector<T, otherCapacity, Allocator>& other) {
 }
 
 template <typename T, wtf_size_t inlineCapacity, typename Allocator>
-template <typename Collection>
+template <typename Collection, typename SFINAE>
 void Vector<T, inlineCapacity, Allocator>::assign(const Collection& other) {
   static_assert(
-      !std::is_same<Vector<T, inlineCapacity, Allocator>, Collection>::value,
+      !std::is_same_v<Vector<T, inlineCapacity, Allocator>, Collection>,
       "This method is for copying from a collection of a different type.");
 
   {
@@ -1957,7 +1967,8 @@ void Vector<T, inlineCapacity, Allocator>::Append(const U* data,
 
 template <typename T, wtf_size_t inlineCapacity, typename Allocator>
 template <typename U>
-NOINLINE void Vector<T, inlineCapacity, Allocator>::AppendSlowCase(U&& val) {
+NOINLINE PRESERVE_MOST void
+Vector<T, inlineCapacity, Allocator>::AppendSlowCase(U&& val) {
   DCHECK_EQ(size(), capacity());
 
   typename std::remove_reference<U>::type* ptr = &val;

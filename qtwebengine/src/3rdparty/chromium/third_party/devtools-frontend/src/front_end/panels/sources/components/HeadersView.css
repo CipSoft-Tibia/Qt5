@@ -66,8 +66,8 @@
   transition: opacity 200ms;
 }
 
-.row:focus-within .inline-button,
-.row:hover .inline-button {
+.row:focus-within .inline-button:not([hidden]),
+.row:hover .inline-button:not([hidden]) {
   opacity: 100%;
   visibility: visible;
 }
@@ -102,4 +102,16 @@
 .header-name,
 .header-value {
   min-width: min-content;
+}
+
+.link {
+  color: var(--color-link);
+  text-decoration: underline;
+  cursor: pointer;
+  outline-offset: 2px;
+  padding: 0;
+}
+
+.learn-more-row {
+  line-height: 24px;
 }

@@ -43,13 +43,24 @@ struct QDynamicMetaObjectData;
 
 typedef QList<QObject*> QObjectList;
 
+#if QT_CORE_REMOVED_SINCE(6, 7)
 Q_CORE_EXPORT void qt_qFindChildren_helper(const QObject *parent, const QString &name,
                                            const QMetaObject &mo, QList<void *> *list, Qt::FindChildOptions options);
+#endif
+Q_CORE_EXPORT void qt_qFindChildren_helper(const QObject *parent, QAnyStringView name,
+                                           const QMetaObject &mo, QList<void *> *list,
+                                           Qt::FindChildOptions options);
+#if QT_CORE_REMOVED_SINCE(6, 7)
 Q_CORE_EXPORT void qt_qFindChildren_helper(const QObject *parent, const QMetaObject &mo,
                                            QList<void *> *list, Qt::FindChildOptions options);
+#endif
 Q_CORE_EXPORT void qt_qFindChildren_helper(const QObject *parent, const QRegularExpression &re,
                                            const QMetaObject &mo, QList<void *> *list, Qt::FindChildOptions options);
+#if QT_CORE_REMOVED_SINCE(6, 7)
 Q_CORE_EXPORT QObject *qt_qFindChild_helper(const QObject *parent, const QString &name, const QMetaObject &mo, Qt::FindChildOptions options);
+#endif
+Q_CORE_EXPORT QObject *qt_qFindChild_helper(const QObject *parent, QAnyStringView name,
+                                            const QMetaObject &mo, Qt::FindChildOptions options);
 
 class Q_CORE_EXPORT QObjectData
 {
@@ -72,7 +83,8 @@ public:
     uint isQuickItem : 1;
     uint willBeWidget : 1; // for handling widget-specific bits in QObject's ctor
     uint wasWidget : 1; // for properly cleaning up in QObject's dtor
-    uint unused : 21;
+    uint receiveParentEvents: 1;
+    uint unused : 20;
     QAtomicInt postedEvents;
     QDynamicMetaObjectData *metaObject;
     QBindingStorage bindingStorage;
@@ -123,23 +135,30 @@ public:
     bool blockSignals(bool b) noexcept;
 
     QThread *thread() const;
+#if QT_CORE_REMOVED_SINCE(6, 7)
     void moveToThread(QThread *thread);
+#endif
+    bool moveToThread(QThread *thread QT6_DECL_NEW_OVERLOAD_TAIL);
 
     int startTimer(int interval, Qt::TimerType timerType = Qt::CoarseTimer);
     int startTimer(std::chrono::milliseconds time, Qt::TimerType timerType = Qt::CoarseTimer);
     void killTimer(int id);
 
     template<typename T>
-    inline T findChild(const QString &aName = QString(), Qt::FindChildOptions options = Qt::FindChildrenRecursively) const
+    T findChild(QAnyStringView aName, Qt::FindChildOptions options = Qt::FindChildrenRecursively) const
     {
         typedef typename std::remove_cv<typename std::remove_pointer<T>::type>::type ObjType;
+        static_assert(QtPrivate::HasQ_OBJECT_Macro<ObjType>::Value,
+                          "No Q_OBJECT in the class passed to QObject::findChild");
         return static_cast<T>(qt_qFindChild_helper(this, aName, ObjType::staticMetaObject, options));
     }
 
     template<typename T>
-    inline QList<T> findChildren(const QString &aName, Qt::FindChildOptions options = Qt::FindChildrenRecursively) const
+    QList<T> findChildren(QAnyStringView aName, Qt::FindChildOptions options = Qt::FindChildrenRecursively) const
     {
         typedef typename std::remove_cv<typename std::remove_pointer<T>::type>::type ObjType;
+        static_assert(QtPrivate::HasQ_OBJECT_Macro<ObjType>::Value,
+                          "No Q_OBJECT in the class passed to QObject::findChildren");
         QList<T> list;
         qt_qFindChildren_helper(this, aName, ObjType::staticMetaObject,
                                 reinterpret_cast<QList<void *> *>(&list), options);
@@ -147,13 +166,15 @@ public:
     }
 
     template<typename T>
+    T findChild(Qt::FindChildOptions options = Qt::FindChildrenRecursively) const
+    {
+        return findChild<T>({}, options);
+    }
+
+    template<typename T>
     QList<T> findChildren(Qt::FindChildOptions options = Qt::FindChildrenRecursively) const
     {
-        typedef typename std::remove_cv<typename std::remove_pointer<T>::type>::type ObjType;
-        QList<T> list;
-        qt_qFindChildren_helper(this, ObjType::staticMetaObject,
-                                reinterpret_cast<QList<void *> *>(&list), options);
-        return list;
+        return findChildren<T>(QAnyStringView{}, options);
     }
 
 #if QT_CONFIG(regularexpression)
@@ -161,6 +182,8 @@ public:
     inline QList<T> findChildren(const QRegularExpression &re, Qt::FindChildOptions options = Qt::FindChildrenRecursively) const
     {
         typedef typename std::remove_cv<typename std::remove_pointer<T>::type>::type ObjType;
+        static_assert(QtPrivate::HasQ_OBJECT_Macro<ObjType>::Value,
+                          "No Q_OBJECT in the class passed to QObject::findChildren");
         QList<T> list;
         qt_qFindChildren_helper(this, re, ObjType::staticMetaObject,
                                 reinterpret_cast<QList<void *> *>(&list), options);
@@ -240,6 +263,7 @@ public:
                            type, types, &SignalType::Object::staticMetaObject);
     }
 
+#ifndef QT_NO_CONTEXTLESS_CONNECT
     //connect without context
     template <typename Func1, typename Func2>
     static inline QMetaObject::Connection
@@ -247,6 +271,7 @@ public:
     {
         return connect(sender, signal, sender, std::forward<Func2>(slot), Qt::DirectConnection);
     }
+#endif // QT_NO_CONTEXTLESS_CONNECT
 #endif //Q_QDOC
 
     static bool disconnect(const QObject *sender, const char *signal,
@@ -356,7 +381,6 @@ private:
     bool doSetProperty(const char *name, const QVariant *lvalue, QVariant *rvalue);
 
     Q_DISABLE_COPY(QObject)
-    Q_PRIVATE_SLOT(d_func(), void _q_reregisterTimers(void *))
 
 private:
     static QMetaObject::Connection connectImpl(const QObject *sender, void **signal,
@@ -387,6 +411,8 @@ bool QObject::setProperty(const char *name, QVariant &&value)
 template <class T>
 inline T qobject_cast(QObject *object)
 {
+    static_assert(std::is_pointer_v<T>,
+                  "qobject_cast requires to cast towards a pointer type");
     typedef typename std::remove_cv<typename std::remove_pointer<T>::type>::type ObjType;
     static_assert(QtPrivate::HasQ_OBJECT_Macro<ObjType>::Value,
                     "qobject_cast requires the type to have a Q_OBJECT macro");
@@ -396,6 +422,10 @@ inline T qobject_cast(QObject *object)
 template <class T>
 inline T qobject_cast(const QObject *object)
 {
+    static_assert(std::is_pointer_v<T>,
+                  "qobject_cast requires to cast towards a pointer type");
+    static_assert(std::is_const_v<std::remove_pointer_t<T>>,
+                  "qobject_cast cannot cast away constness (use const_cast)");
     typedef typename std::remove_cv<typename std::remove_pointer<T>::type>::type ObjType;
     static_assert(QtPrivate::HasQ_OBJECT_Macro<ObjType>::Value,
                       "qobject_cast requires the type to have a Q_OBJECT macro");
@@ -457,6 +487,7 @@ public:
 
     inline void reblock() noexcept;
     inline void unblock() noexcept;
+    inline void dismiss() noexcept;
 
 private:
     Q_DISABLE_COPY(QSignalBlocker)
@@ -519,6 +550,11 @@ void QSignalBlocker::unblock() noexcept
     if (m_o)
         m_o->blockSignals(m_blocked);
     m_inhibited = true;
+}
+
+void QSignalBlocker::dismiss() noexcept
+{
+    m_o = nullptr;
 }
 
 namespace QtPrivate {

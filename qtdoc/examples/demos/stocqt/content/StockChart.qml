@@ -115,9 +115,9 @@ Rectangle {
         visible: true
         width: parent.width
         height: parent.height
-        scene.activeCamera.zoomLevel: 170
-        scene.activeCamera.maxZoomLevel: 400
-        scene.activeCamera.minZoomLevel: 80
+        cameraZoomLevel: 170
+        maxCameraZoomLevel:  400
+        minCameraZoomLevel:  80
 
         axisX: ValueAxis3D {
             autoAdjustRange: true
@@ -137,7 +137,7 @@ Rectangle {
         }
 
         theme: Theme3D {
-            type: Theme3D.ThemeQt
+            type: Theme3D.Qt
             windowColor: "#101010"
             backgroundEnabled: false
             ambientLightStrength: 1
@@ -215,9 +215,9 @@ Rectangle {
         width: parent.width
         height: parent.height
         visible: false
-        scene.activeCamera.zoomLevel: 140
-        scene.activeCamera.maxZoomLevel: 400
-        scene.activeCamera.minZoomLevel: 80
+        cameraZoomLevel: 140
+        maxCameraZoomLevel:  400
+        minCameraZoomLevel:  80
         orthoProjection: true
 
         valueAxis: ValueAxis3D {
@@ -231,7 +231,7 @@ Rectangle {
         }
 
         theme: Theme3D {
-            type: Theme3D.ThemeQt
+            type: Theme3D.Qt
             windowColor: "#101010"
             backgroundEnabled: false
             ambientLightStrength: 1
@@ -262,9 +262,9 @@ Rectangle {
         width: parent.width
         height: parent.height
         visible: false
-        scene.activeCamera.zoomLevel: 140
-        scene.activeCamera.maxZoomLevel: 400
-        scene.activeCamera.minZoomLevel: 80
+        cameraZoomLevel: 140
+        maxCameraZoomLevel:  400
+        minCameraZoomLevel:  80
         orthoProjection: true
 
         axisX: ValueAxis3D {
@@ -278,7 +278,7 @@ Rectangle {
         }
 
         theme: Theme3D {
-            type: Theme3D.ThemeQt
+            type: Theme3D.Qt
             windowColor: "#101010"
             backgroundEnabled: false
             ambientLightStrength: 1

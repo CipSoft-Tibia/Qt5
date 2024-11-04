@@ -1,8 +1,14 @@
 cmake_minimum_required(VERSION 3.11)
 
 project(litehtml LANGUAGES C CXX)
-include(CTest)
-enable_testing()
+
+
+option(LITEHTML_BUILD_TESTING "enable testing for litehtml" ON)
+
+if(LITEHTML_BUILD_TESTING)
+    include(CTest)
+    enable_testing()
+endif()
 
 # Soname
 # MAJOR is incremented when symbols are removed or changed in an incompatible way
@@ -17,13 +23,11 @@ if(NOT EXTERNAL_GUMBO)
 endif()
 
 set(SOURCE_LITEHTML
-    src/background.cpp
-    src/box.cpp
     src/codepoint.cpp
-    src/context.cpp
     src/css_length.cpp
     src/css_selector.cpp
     src/document.cpp
+    src/document_container.cpp
     src/el_anchor.cpp
     src/el_base.cpp
     src/el_before_after.cpp
@@ -36,7 +40,6 @@ set(SOURCE_LITEHTML
     src/el_font.cpp
     src/el_image.cpp
     src/el_link.cpp
-    src/el_li.cpp
     src/el_para.cpp
     src/el_script.cpp
     src/el_space.cpp
@@ -60,22 +63,33 @@ set(SOURCE_LITEHTML
     src/web_color.cpp
     src/num_cvt.cpp
     src/strtod.cpp
-)
+    src/string_id.cpp
+    src/css_properties.cpp
+    src/line_box.cpp
+    src/css_borders.cpp
+    src/render_item.cpp
+    src/render_block_context.cpp
+    src/render_block.cpp
+    src/render_inline_context.cpp
+    src/render_table.cpp
+    src/render_flex.cpp
+    src/render_image.cpp
+    src/formatting_context.cpp
+    src/flex_item.cpp
+    src/flex_line.cpp)
 
 set(HEADER_LITEHTML
     include/litehtml.h
-    include/litehtml/attributes.h
     include/litehtml/background.h
     include/litehtml/borders.h
-    include/litehtml/box.h
     include/litehtml/codepoint.h
-    include/litehtml/context.h
     include/litehtml/css_length.h
     include/litehtml/css_margins.h
     include/litehtml/css_offsets.h
     include/litehtml/css_position.h
     include/litehtml/css_selector.h
     include/litehtml/document.h
+    include/litehtml/document_container.h
     include/litehtml/el_anchor.h
     include/litehtml/el_base.h
     include/litehtml/el_before_after.h
@@ -112,20 +126,35 @@ set(HEADER_LITEHTML
     include/litehtml/utf8_strings.h
     include/litehtml/web_color.h
     include/litehtml/num_cvt.h
+    include/litehtml/css_properties.h
+    include/litehtml/line_box.h
+    include/litehtml/render_item.h
+    include/litehtml/render_flex.h
+    include/litehtml/render_image.h
+    include/litehtml/render_inline.h
+    include/litehtml/render_table.h
+    include/litehtml/render_inline_context.h
+    include/litehtml/render_block_context.h
+    include/litehtml/render_block.h
+    include/litehtml/master_css.h
+    include/litehtml/string_id.h
+    include/litehtml/formatting_context.h
+    include/litehtml/flex_item.h
+    include/litehtml/flex_line.h
 )
 
 set(TEST_LITEHTML
-    containers/test/container_test.cpp
-    test/codepoint_test.cpp
-    test/contextTest.cpp
     test/cssTest.cpp
-    test/documentTest.cpp
-    test/layoutGlobalTest.cpp
     test/mediaQueryTest.cpp
+    test/codepoint_test.cpp
     test/tstring_view_test.cpp
     test/url_test.cpp
     test/url_path_test.cpp
-    test/webColorTest.cpp
+    test/render_test.cpp
+    containers/test/test_container.cpp
+    containers/test/Font.cpp
+    containers/test/Bitmap.cpp
+    containers/test/lodepng.cpp
 )
 
 set(PROJECT_LIB_VERSION ${PROJECT_MAJOR}.${PROJECT_MINOR}.0)
@@ -147,11 +176,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
 target_include_directories(${PROJECT_NAME} PRIVATE include/${PROJECT_NAME})
 
-option(LITEHTML_UTF8 "Build litehtml with UTF-8 text conversion functions." OFF)
-if (LITEHTML_UTF8)
-  target_compile_definitions(${PROJECT_NAME} PUBLIC LITEHTML_UTF8)
-endif()
-
 # Gumbo
 target_link_libraries(${PROJECT_NAME} PUBLIC gumbo)
 
@@ -166,28 +190,26 @@ install(TARGETS ${PROJECT_NAME}
 install(FILES cmake/litehtmlConfig.cmake DESTINATION lib${LIB_SUFFIX}/cmake/litehtml)
 install(EXPORT litehtmlTargets FILE litehtmlTargets.cmake DESTINATION lib${LIB_SUFFIX}/cmake/litehtml)
 
-# Generate master.css.inc
-function(make_inc src dst)
-    file(READ  ${src} data)
-    file(WRITE ${dst} "R\"##(\n${data})##\"")
-endfunction(make_inc)
-make_inc(include/master.css src/master.css.inc)
-set_source_files_properties(src/master.css.inc PROPERTIES GENERATED TRUE)
-
 # Tests
 
-if (BUILD_TESTING)
-    include(FetchContent)
-    FetchContent_Declare(
-      googletest
-      URL https://github.com/google/googletest/archive/609281088cfefc76f9d0ce82e1ff6c30cc3591e5.zip
-    )
-    # For Windows: Prevent overriding the parent project's compiler/linker settings
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-    FetchContent_GetProperties(googletest)
-    if(NOT googletest_POPULATED)
-      FetchContent_Populate(googletest)
-      add_subdirectory(${googletest_SOURCE_DIR} ${googletest_BINARY_DIR})
+if (LITEHTML_BUILD_TESTING)
+    option(EXTERNAL_GTEST "Use external GoogleTest instead of fetching from GitHub" OFF)
+
+    if (EXTERNAL_GTEST)
+        link_libraries("-Wl,--copy-dt-needed-entries")
+    else()
+        include(FetchContent)
+        FetchContent_Declare(
+          googletest
+          URL https://github.com/google/googletest/archive/609281088cfefc76f9d0ce82e1ff6c30cc3591e5.zip
+        )
+        # For Windows: Prevent overriding the parent project's compiler/linker settings
+        set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+        FetchContent_GetProperties(googletest)
+        if(NOT googletest_POPULATED)
+          FetchContent_Populate(googletest)
+          add_subdirectory(${googletest_SOURCE_DIR} ${googletest_BINARY_DIR})
+        endif()
     endif()
 
     enable_testing()
@@ -197,7 +219,6 @@ if (BUILD_TESTING)
     add_executable(
         ${TEST_NAME}
         ${TEST_LITEHTML}
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/master.css.inc
     )
 
     set_target_properties(${TEST_NAME} PROPERTIES
@@ -220,21 +241,3 @@ if (BUILD_TESTING)
     include(GoogleTest)
     gtest_discover_tests(${TEST_NAME})
 endif()
-
-#     set(TEST_NAME ${PROJECT_NAME}_tests)
-#     add_executable(${TEST_NAME} ${TEST_LITEHTML} ${CMAKE_CURRENT_SOURCE_DIR}/src/master.css.inc)
-#     set_target_properties(${TEST_NAME} PROPERTIES
-#         CXX_STANDARD 11
-#         C_STANDARD 99
-#         PUBLIC_HEADER "${HEADER_LITEHTML}"
-#     )
-#     target_include_directories(${TEST_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/containers)
-#     target_link_libraries(${TEST_NAME} PRIVATE ${PROJECT_NAME})
-#     # tests
-#     add_test(NAME contextTest COMMAND ${TEST_NAME} 1)
-#     add_test(NAME cssTest COMMAND ${TEST_NAME} 2)
-#     add_test(NAME documentTest COMMAND ${TEST_NAME} 3)
-#     add_test(NAME layoutGlobalTest COMMAND ${TEST_NAME} 4)
-#     add_test(NAME mediaQueryTest COMMAND ${TEST_NAME} 5)
-#     add_test(NAME webColorTest COMMAND ${TEST_NAME} 6)
-# endif()

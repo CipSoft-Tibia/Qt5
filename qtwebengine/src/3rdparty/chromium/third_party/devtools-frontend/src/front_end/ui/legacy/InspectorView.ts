@@ -32,6 +32,7 @@ import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Root from '../../core/root/root.js';
+import type * as IconButton from '../components/icon_button/icon_button.js';
 
 import {type ActionDelegate as ActionDelegateInterface} from './ActionRegistration.js';
 import {type Context} from './Context.js';
@@ -43,7 +44,7 @@ import {type Icon} from './Icon.js';
 import {Infobar, Type as InfobarType} from './Infobar.js';
 import {KeyboardShortcut} from './KeyboardShortcut.js';
 import {type Panel} from './Panel.js';
-import {SplitWidget} from './SplitWidget.js';
+import {SplitWidget, ShowMode} from './SplitWidget.js';
 import {Events as TabbedPaneEvents, type EventData, type TabbedPane, type TabbedPaneTabDelegate} from './TabbedPane.js';
 
 import {ToolbarButton} from './Toolbar.js';
@@ -165,14 +166,18 @@ export class InspectorView extends VBox implements ViewLocationResolver {
     this.drawerTabbedPane = this.drawerTabbedLocation.tabbedPane();
     this.drawerTabbedPane.setMinimumSize(0, 27);
     this.drawerTabbedPane.element.classList.add('drawer-tabbed-pane');
-    const closeDrawerButton = new ToolbarButton(i18nString(UIStrings.closeDrawer), 'largeicon-delete');
+    const closeDrawerButton = new ToolbarButton(i18nString(UIStrings.closeDrawer), 'cross');
     closeDrawerButton.addEventListener(ToolbarButton.Events.Click, this.closeDrawer, this);
     this.drawerTabbedPane.addEventListener(TabbedPaneEvents.TabSelected, this.tabSelected, this);
+    const selectedDrawerTab = this.drawerTabbedPane.selectedTabId;
+    if (this.drawerSplitWidget.showMode() !== ShowMode.OnlyMain && selectedDrawerTab) {
+      Host.userMetrics.panelShown(selectedDrawerTab, true);
+    }
     this.drawerTabbedPane.setTabDelegate(this.tabDelegate);
 
     const drawerElement = this.drawerTabbedPane.element;
     ARIAUtils.markAsComplementary(drawerElement);
-    ARIAUtils.setAccessibleName(drawerElement, i18nString(UIStrings.drawer));
+    ARIAUtils.setLabel(drawerElement, i18nString(UIStrings.drawer));
 
     this.drawerSplitWidget.installResizer(this.drawerTabbedPane.headerElement());
     this.drawerSplitWidget.setSidebarWidget(this.drawerTabbedPane);
@@ -194,12 +199,16 @@ export class InspectorView extends VBox implements ViewLocationResolver {
     this.tabbedPane.leftToolbar().element.style.minWidth = allocatedSpace;
     this.tabbedPane.registerRequiredCSS(inspectorViewTabbedPaneStyles);
     this.tabbedPane.addEventListener(TabbedPaneEvents.TabSelected, this.tabSelected, this);
+    const selectedTab = this.tabbedPane.selectedTabId;
+    if (selectedTab) {
+      Host.userMetrics.panelShown(selectedTab, true);
+    }
     this.tabbedPane.setAccessibleName(i18nString(UIStrings.panels));
     this.tabbedPane.setTabDelegate(this.tabDelegate);
 
     const mainHeaderElement = this.tabbedPane.headerElement();
     ARIAUtils.markAsNavigation(mainHeaderElement);
-    ARIAUtils.setAccessibleName(mainHeaderElement, i18nString(UIStrings.mainToolbar));
+    ARIAUtils.setLabel(mainHeaderElement, i18nString(UIStrings.mainToolbar));
 
     // Store the initial selected panel for use in launch histograms
     Host.userMetrics.setLaunchPanel(this.tabbedPane.selectedTabId);
@@ -243,11 +252,11 @@ export class InspectorView extends VBox implements ViewLocationResolver {
     inspectorViewInstance = null;
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     this.element.ownerDocument.addEventListener('keydown', this.keyDownBound, false);
   }
 
-  willHide(): void {
+  override willHide(): void {
     this.element.ownerDocument.removeEventListener('keydown', this.keyDownBound, false);
   }
 
@@ -297,7 +306,7 @@ export class InspectorView extends VBox implements ViewLocationResolver {
     await ViewManager.instance().showView(panelName);
   }
 
-  setPanelIcon(tabId: string, icon: Icon|null): void {
+  setPanelIcon(tabId: string, icon: Icon|IconButton.Icon.Icon|null): void {
     // Find the tabbed location where the panel lives
     const tabbedPane = this.getTabbedPaneForTabId(tabId);
     if (tabbedPane) {
@@ -403,7 +412,7 @@ export class InspectorView extends VBox implements ViewLocationResolver {
     }
   }
 
-  onResize(): void {
+  override onResize(): void {
     GlassPane.containerMoved(this.element);
   }
 

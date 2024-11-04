@@ -24,9 +24,10 @@ class TestUnsentLogStore : public UnsentLogStore {
                        service,
                        kTestPrefName,
                        nullptr,
-                       /*min_log_count=*/3,
-                       /*min_log_bytes=*/1,
-                       /*max_log_size=*/0,
+                       // Set to 3 so logs are not dropped in the test.
+                       UnsentLogStore::UnsentLogStoreLimits{
+                           .min_log_count = 3,
+                       },
                        /*signing_key=*/std::string(),
                        /*logs_event_manager=*/nullptr) {}
   ~TestUnsentLogStore() override = default;
@@ -52,7 +53,8 @@ class MetricsLogStoreTest : public testing::Test {
   ~MetricsLogStoreTest() override {}
 
   MetricsLog* CreateLog(MetricsLog::LogType log_type) {
-    return new MetricsLog("id", 0, log_type, &client_);
+    return new MetricsLog("0a94430b-18e5-43c8-a657-580f7e855ce1", 0, log_type,
+                          &client_);
   }
 
   // Returns the stored number of logs of the given type.
@@ -202,7 +204,7 @@ TEST_F(MetricsLogStoreTest, StoreStagedInitialLog) {
 
 TEST_F(MetricsLogStoreTest, LargeLogDiscarding) {
   // Set the size threshold very low, to verify that it's honored.
-  client_.set_max_ongoing_log_size(1);
+  client_.set_max_ongoing_log_size_bytes(1);
   MetricsLogStore log_store(&pref_service_, client_.GetStorageLimits(),
                             /*signing_key=*/std::string(),
                             /*logs_event_manager=*/nullptr);

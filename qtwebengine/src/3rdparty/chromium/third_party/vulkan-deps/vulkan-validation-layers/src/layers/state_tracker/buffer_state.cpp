@@ -18,10 +18,10 @@
  * limitations under the License.
  */
 #include "state_tracker/buffer_state.h"
-#include "layer_chassis_dispatch.h"
+#include "generated/layer_chassis_dispatch.h"
 #include "state_tracker/state_tracker.h"
 
-static VkExternalMemoryHandleTypeFlags GetExternalHandleType(const VkBufferCreateInfo *create_info) {
+static VkExternalMemoryHandleTypeFlags GetExternalHandleTypes(const VkBufferCreateInfo *create_info) {
     const auto *external_memory_info = LvlFindInChain<VkExternalMemoryBufferCreateInfo>(create_info->pNext);
     return external_memory_info ? external_memory_info->handleTypes : 0;
 }
@@ -32,13 +32,51 @@ static VkMemoryRequirements GetMemoryRequirements(ValidationStateTracker *dev_da
     return result;
 }
 
+static VkBufferUsageFlags2KHR GetBufferUsageFlags(const VkBufferCreateInfo &create_info) {
+    const auto *usage_flags2 = LvlFindInChain<VkBufferUsageFlags2CreateInfoKHR>(create_info.pNext);
+    return usage_flags2 ? usage_flags2->usage : create_info.usage;
+}
+
 BUFFER_STATE::BUFFER_STATE(ValidationStateTracker *dev_data, VkBuffer buff, const VkBufferCreateInfo *pCreateInfo)
     : BINDABLE(buff, kVulkanObjectTypeBuffer, (pCreateInfo->flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) != 0,
-               (pCreateInfo->flags & VK_BUFFER_CREATE_PROTECTED_BIT) == 0, GetExternalHandleType(pCreateInfo)),
+               (pCreateInfo->flags & VK_BUFFER_CREATE_PROTECTED_BIT) == 0, GetExternalHandleTypes(pCreateInfo)),
       safe_create_info(pCreateInfo),
       createInfo(*safe_create_info.ptr()),
-      deviceAddress(0),
       requirements(GetMemoryRequirements(dev_data, buff)),
-      memory_requirements_checked(false),
-      supported_video_profiles(
-          dev_data->video_profile_cache_.Get(dev_data, LvlFindInChain<VkVideoProfileListInfoKHR>(pCreateInfo->pNext))) {}
+      usage(GetBufferUsageFlags(createInfo)),
+      supported_video_profiles(dev_data->video_profile_cache_.Get(dev_data, LvlFindInChain<VkVideoProfileListInfoKHR>(pCreateInfo->pNext))) {
+    if (pCreateInfo->flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) {
+        tracker_.emplace<BindableSparseMemoryTracker>(&requirements,
+                                                      (pCreateInfo->flags & VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT) != 0);
+        SetMemoryTracker(&std::get<BindableSparseMemoryTracker>(tracker_));
+    } else {
+        tracker_.emplace<BindableLinearMemoryTracker>(&requirements);
+        SetMemoryTracker(&std::get<BindableLinearMemoryTracker>(tracker_));
+    }
+}
+
+#ifdef VK_USE_PLATFORM_METAL_EXT
+static bool GetMetalExport(const VkBufferViewCreateInfo *info) {
+    bool retval = false;
+    auto export_metal_object_info = LvlFindInChain<VkExportMetalObjectCreateInfoEXT>(info->pNext);
+    while (export_metal_object_info) {
+        if (export_metal_object_info->exportObjectType == VK_EXPORT_METAL_OBJECT_TYPE_METAL_TEXTURE_BIT_EXT) {
+            retval = true;
+            break;
+        }
+        export_metal_object_info = LvlFindInChain<VkExportMetalObjectCreateInfoEXT>(export_metal_object_info->pNext);
+    }
+    return retval;
+}
+#endif
+
+BUFFER_VIEW_STATE::BUFFER_VIEW_STATE(const std::shared_ptr<BUFFER_STATE> &bf, VkBufferView bv, const VkBufferViewCreateInfo *ci,
+                                     VkFormatFeatureFlags2KHR buf_ff)
+    : BASE_NODE(bv, kVulkanObjectTypeBufferView),
+      create_info(*ci),
+      buffer_state(bf),
+#ifdef VK_USE_PLATFORM_METAL_EXT
+      metal_bufferview_export(GetMetalExport(ci)),
+#endif
+      buf_format_features(buf_ff) {
+}

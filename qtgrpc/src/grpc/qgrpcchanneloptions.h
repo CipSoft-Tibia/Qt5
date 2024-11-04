@@ -4,12 +4,12 @@
 #ifndef QGRPCHANNELOPTIONS_H
 #define QGRPCHANNELOPTIONS_H
 
-#include <QtCore/QUrl>
+#include <QtCore/qurl.h>
 #include <QtGrpc/qgrpcmetadata.h>
 #include <QtGrpc/qtgrpcglobal.h>
 
 #if QT_CONFIG(ssl)
-#  include <QtNetwork/QSslConfiguration>
+#  include <QtNetwork/qsslconfiguration.h>
 #endif
 
 #include <chrono>
@@ -29,18 +29,20 @@ public:
 
     QGrpcChannelOptions(const QGrpcChannelOptions &other);
     QGrpcChannelOptions &operator=(const QGrpcChannelOptions &other);
+    QGrpcChannelOptions(QGrpcChannelOptions &&other) noexcept;
+    QGrpcChannelOptions &operator=(QGrpcChannelOptions &&other) noexcept;
 
     QGrpcChannelOptions &withHost(const QUrl &host);
     QGrpcChannelOptions &withDeadline(std::chrono::milliseconds deadline);
     QGrpcChannelOptions &withMetadata(const QGrpcMetadata &metadata);
 
-    QUrl host() const;
-    std::optional<std::chrono::milliseconds> deadline() const;
-    QGrpcMetadata metadata() const;
+    [[nodiscard]] QUrl host() const noexcept;
+    [[nodiscard]] std::optional<std::chrono::milliseconds> deadline() const noexcept;
+    [[nodiscard]] QGrpcMetadata metadata() const;
 
 #if QT_CONFIG(ssl)
     QGrpcChannelOptions &withSslConfiguration(const QSslConfiguration &sslConfiguration);
-    std::optional<QSslConfiguration> sslConfiguration() const;
+    [[nodiscard]] std::optional<QSslConfiguration> sslConfiguration() const noexcept;
 #endif
 
 private:

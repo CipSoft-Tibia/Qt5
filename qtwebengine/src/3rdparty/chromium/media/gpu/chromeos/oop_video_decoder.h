@@ -29,6 +29,11 @@ class MojoDecoderBufferWriter;
 // Proxy video decoder that connects with an out-of-process
 // video decoder via Mojo. This class should be operated and
 // destroyed on |decoder_task_runner_|.
+//
+// TODO(b/195769334): this class (or most of it) would be unnecessary if the
+// MailboxVideoFrameConverter lived together with the remote decoder in the same
+// process. Then, clients can communicate with that process without the GPU
+// process acting as a proxy.
 class OOPVideoDecoder : public VideoDecoderMixin,
                         public stable::mojom::VideoDecoderClient,
                         public stable::mojom::MediaLog {
@@ -86,13 +91,15 @@ class OOPVideoDecoder : public VideoDecoderMixin,
   bool NeedsTranscryption() override;
 
   // stable::mojom::VideoDecoderClient implementation.
-  void OnVideoFrameDecoded(const scoped_refptr<VideoFrame>& frame,
+  void OnVideoFrameDecoded(stable::mojom::VideoFramePtr frame,
                            bool can_read_without_stalling,
                            const base::UnguessableToken& release_token) final;
   void OnWaiting(WaitingReason reason) final;
 
   // stable::mojom::MediaLog implementation.
   void AddLogRecord(const MediaLogRecord& event) final;
+
+  VideoFrame* UnwrapFrame(const VideoFrame& wrapped_frame);
 
  private:
   OOPVideoDecoder(std::unique_ptr<media::MediaLog> media_log,
@@ -105,11 +112,19 @@ class OOPVideoDecoder : public VideoDecoderMixin,
   void OnInitializeDone(const DecoderStatus& status,
                         bool needs_bitstream_conversion,
                         int32_t max_decode_requests,
-                        VideoDecoderType decoder_type);
+                        VideoDecoderType decoder_type,
+                        bool needs_transcryption);
+
   void OnDecodeDone(uint64_t decode_id,
                     bool is_flush_cb,
                     const DecoderStatus& status);
+  void DeferDecodeCallback(DecodeCB decode_cb, const DecoderStatus& status);
+  void CallDeferredDecodeCallback(DecodeCB decode_cb,
+                                  const DecoderStatus& status);
+  bool HasPendingDecodeCallbacks() const;
+
   void OnResetDone();
+  void CallResetCallback();
 
   void Stop();
 
@@ -120,10 +135,16 @@ class OOPVideoDecoder : public VideoDecoderMixin,
   WaitingCB waiting_cb_ GUARDED_BY_CONTEXT(sequence_checker_);
   uint64_t decode_counter_ GUARDED_BY_CONTEXT(sequence_checker_) = 0;
 
-  // std::map is used to ensure that iterating through |pending_decodes_| is
-  // done in the order in which Decode() is called.
+  // |pending_decodes_| tracks the decode requests that have been sent to the
+  // remote decoder. We use std::map to ensure that iterating through
+  // |pending_decodes_| is done in the order in which Decode() is called.
   std::map<uint64_t, DecodeCB> pending_decodes_
       GUARDED_BY_CONTEXT(sequence_checker_);
+
+  // |num_deferred_decode_cbs_| tracks how many decode callbacks are in the
+  // queue as tasks waiting to be executed. This does not include decode
+  // callbacks awaiting a reply from the remote decoder.
+  uint64_t num_deferred_decode_cbs_ GUARDED_BY_CONTEXT(sequence_checker_) = 0;
 
   bool is_flushing_ GUARDED_BY_CONTEXT(sequence_checker_) = false;
 
@@ -143,6 +164,10 @@ class OOPVideoDecoder : public VideoDecoderMixin,
   //    pending in the queue and |decode_cb| must be called after that." We can
   //    do this by clearing the cache when a flush has been reported to be
   //    completed by the remote decoder.
+  //
+  // 3) Guarantee the following requirement mandated by the
+  //    VideoDecoder::Reset() API: "All pending Decode() requests will be
+  //    finished or aborted before |closure| is called."
   base::TimeDelta current_fake_timestamp_
       GUARDED_BY_CONTEXT(sequence_checker_) = base::Microseconds(0u);
   base::LRUCache<base::TimeDelta, base::TimeDelta>
@@ -163,6 +188,8 @@ class OOPVideoDecoder : public VideoDecoderMixin,
   std::unique_ptr<mojo::Receiver<stable::mojom::StableCdmContext>>
       stable_cdm_context_receiver_ GUARDED_BY_CONTEXT(sequence_checker_);
 #endif  // BUILDFLAG(IS_CHROMEOS)
+  bool initialized_for_protected_content_
+      GUARDED_BY_CONTEXT(sequence_checker_) = false;
 
   VideoDecoderType remote_decoder_type_ GUARDED_BY_CONTEXT(sequence_checker_) =
       VideoDecoderType::kUnknown;
@@ -178,9 +205,28 @@ class OOPVideoDecoder : public VideoDecoderMixin,
   std::unique_ptr<MojoDecoderBufferWriter> mojo_decoder_buffer_writer_
       GUARDED_BY_CONTEXT(sequence_checker_);
 
+  bool can_read_without_stalling_ GUARDED_BY_CONTEXT(sequence_checker_) = false;
+
   // This is to indicate we should perform transcryption before sending the data
   // to the video decoder utility process.
   bool needs_transcryption_ GUARDED_BY_CONTEXT(sequence_checker_) = false;
+
+  // |received_id_to_decoded_frame_map_| and
+  // |generated_id_to_decoded_frame_map_| are maps that allow us to recycle
+  // buffers safely. In the absence of them, the MailboxVideoFrameConverter
+  // would create a SharedImage for every single incoming frame, and it would
+  // destroy the SharedImage every time the client returns the decoded frame. To
+  // avoid this churn, every time we get a decoded frame from the remote
+  // decoder, we check if we already know about the underlying buffer by looking
+  // it up in |received_id_to_decoded_frame_map_|. If we do, we re-use it for
+  // the next stage in the pipeline. If we don't know about it, we insert it in
+  // |received_id_to_decoded_frame_map_| and we change the GpuMemoryBufferId of
+  // the incoming buffer to guarantee its uniqueness within the GPU process (at
+  // least among all clients of media::GetNextGpuMemoryBufferId()).
+  base::flat_map<gfx::GpuMemoryBufferId, scoped_refptr<VideoFrame>>
+      received_id_to_decoded_frame_map_ GUARDED_BY_CONTEXT(sequence_checker_);
+  base::flat_map<gfx::GpuMemoryBufferId, VideoFrame*>
+      generated_id_to_decoded_frame_map_ GUARDED_BY_CONTEXT(sequence_checker_);
 
   SEQUENCE_CHECKER(sequence_checker_);
 

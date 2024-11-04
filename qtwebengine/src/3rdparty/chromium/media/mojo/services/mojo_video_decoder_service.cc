@@ -13,6 +13,7 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/trace_event/trace_event.h"
 #include "base/types/optional_util.h"
 #include "media/base/decoder_buffer.h"
 #include "media/base/media_util.h"
@@ -84,6 +85,13 @@ class VideoFrameHandleReleaserImpl final
       const base::UnguessableToken& release_token,
       const absl::optional<gpu::SyncToken>& release_sync_token) final {
     DVLOG(3) << __func__ << "(" << release_token.ToString() << ")";
+    TRACE_EVENT2("media", "VideoFrameHandleReleaserImpl::ReleaseVideoFrame",
+                 "release_token", release_token.ToString(),
+                 "release_sync_token",
+                 release_sync_token
+                     ? (release_sync_token->ToDebugString() + ", has_data: " +
+                        (release_sync_token->HasData() ? "true" : "false"))
+                     : "null");
     auto it = video_frames_.find(release_token);
     if (it == video_frames_.end()) {
       mojo::ReportBadMessage("Unknown |release_token|.");
@@ -109,7 +117,8 @@ class VideoFrameHandleReleaserImpl final
 
  private:
   // TODO(sandersd): Also track age, so that an overall limit can be enforced.
-  std::map<base::UnguessableToken, scoped_refptr<VideoFrame>> video_frames_;
+  base::flat_map<base::UnguessableToken, scoped_refptr<VideoFrame>>
+      video_frames_;
 };
 
 MojoVideoDecoderService::MojoVideoDecoderService(
@@ -148,6 +157,9 @@ MojoVideoDecoderService::~MojoVideoDecoderService() {
   // the histogram timer below.
   weak_factory_.InvalidateWeakPtrs();
   decoder_.reset();
+
+  mojo_media_client_ = nullptr;
+  mojo_cdm_service_context_ = nullptr;
 }
 
 void MojoVideoDecoderService::GetSupportedConfigs(

@@ -263,7 +263,8 @@ class TestHistoryBackendDelegate : public HistoryBackend::Delegate {
   void NotifyFaviconsChanged(const std::set<GURL>& page_urls,
                              const GURL& icon_url) override {}
   void NotifyURLVisited(const URLRow& url_row,
-                        const VisitRow& visit_row) override {}
+                        const VisitRow& visit_row,
+                        absl::optional<int64_t> local_navigation_id) override {}
   void NotifyURLsModified(const std::vector<URLRow>& changed_urls) override {}
   void NotifyURLsDeleted(DeletionInfo deletion_info) override {}
   void NotifyKeywordSearchTermUpdated(const URLRow& row,
@@ -356,8 +357,8 @@ class TypedURLSyncBridgeTest : public testing::Test {
     ON_CALL(mock_processor_, IsTrackingMetadata()).WillByDefault(Return(true));
     // Set change processor.
     const auto error =
-        bridge()->MergeSyncData(bridge()->CreateMetadataChangeList(),
-                                CreateEntityChangeList(specifics));
+        bridge()->MergeFullSyncData(bridge()->CreateMetadataChangeList(),
+                                    CreateEntityChangeList(specifics));
 
     EXPECT_FALSE(error);
   }
@@ -425,8 +426,8 @@ class TypedURLSyncBridgeTest : public testing::Test {
     std::unique_ptr<MetadataChangeList> metadata_changes =
         bridge()->CreateMetadataChangeList();
 
-    bridge()->ApplySyncChanges(std::move(metadata_changes),
-                               std::move(entity_changes));
+    bridge()->ApplyIncrementalSyncChanges(std::move(metadata_changes),
+                                          std::move(entity_changes));
     return visits;
   }
 
@@ -549,7 +550,7 @@ class TypedURLSyncBridgeTest : public testing::Test {
  protected:
   base::test::SingleThreadTaskEnvironment task_environment_;
   base::ScopedTempDir test_dir_;
-  raw_ptr<MockHistoryBackendClient> history_backend_client_;
+  raw_ptr<MockHistoryBackendClient, DanglingUntriaged> history_backend_client_;
   scoped_refptr<TestHistoryBackendForSync> fake_history_backend_;
   raw_ptr<TypedURLSyncBridge> typed_url_sync_bridge_ = nullptr;
   NiceMock<MockModelTypeChangeProcessor> mock_processor_;
@@ -1767,7 +1768,7 @@ TEST_F(TypedURLSyncBridgeTest, MergeUrlsAfterExpiration) {
 }
 
 // Create a local typed URL with one expired TYPED visit,
-// MergeSyncData should not pass it to sync. And then add a non
+// MergeFullSyncData should not pass it to sync. And then add a non
 // expired visit, OnURLsModified should only send the non expired visit to sync.
 TEST_F(TypedURLSyncBridgeTest, LocalExpiredTypedUrlDoNotSync) {
   URLRow row;

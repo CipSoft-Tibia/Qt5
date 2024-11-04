@@ -49,8 +49,9 @@ class TopDomainPreloadDecoder : public net::extras::PreloadDecoder {
       return false;
 
     TopDomainEntry top_domain;
-    if (!reader->Next(&top_domain.is_top_500))
+    if (!reader->Next(&top_domain.is_top_bucket)) {
       return false;
+    }
     uint32_t skeletontype_value;
     if (!reader->Read(kSkeletonTypeBitLength, &skeletontype_value))
       return false;
@@ -387,15 +388,22 @@ IDNSpoofChecker::Result IDNSpoofChecker::SafeToDisplayAsUnicode(
     return Result::kDeviationCharacters;
   }
 
-  // Disallow Icelandic confusables for domains outside Iceland's ccTLD (.is).
+  // Disallow Icelandic confusables for domains outside Icelandic and Faroese
+  // ccTLD (.is, .fo). Faroese keyboard layout doesn't contain letter ⟨þ⟩, but
+  // we don't separate it here to avoid technical complexity, and because
+  // Faroese speakers are more likely to notice spoofs containing ⟨þ⟩ than other
+  // language speakers.
   if (label_string.length() > 1 && top_level_domain != "is" &&
-      icelandic_characters_.containsSome(label_string))
+      top_level_domain != "fo" &&
+      icelandic_characters_.containsSome(label_string)) {
     return Result::kTLDSpecificCharacters;
+  }
 
   // Disallow Latin Schwa (U+0259) for domains outside Azerbaijan's ccTLD (.az).
   if (label_string.length() > 1 && top_level_domain != "az" &&
-      label_string.indexOf("ə") != -1)
+      label_string.indexOf("ə") != -1) {
     return Result::kTLDSpecificCharacters;
+  }
 
   // Disallow middle dot (U+00B7) when unsafe.
   if (HasUnsafeMiddleDot(label_string, top_level_domain)) {

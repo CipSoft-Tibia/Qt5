@@ -250,10 +250,6 @@ void MailboxToSurfaceBridgeImpl::CreateAndBindContextProvider(
                        attributes.red_size = 8;
                        attributes.green_size = 8;
                        attributes.blue_size = 8;
-                       attributes.stencil_size = 0;
-                       attributes.depth_size = 0;
-                       attributes.samples = 0;
-                       attributes.sample_buffers = 0;
                        attributes.bind_generates_resource = false;
                        if (base::SysInfo::IsLowEndDevice()) {
                          attributes.alpha_size = 0;
@@ -270,6 +266,9 @@ void MailboxToSurfaceBridgeImpl::CreateAndBindContextProvider(
 }
 
 void MailboxToSurfaceBridgeImpl::ResizeSurface(int width, int height) {
+  // Make sure we have the surface.
+  CHECK(surface_handle_);
+
   surface_width_ = width;
   surface_height_ = height;
 
@@ -284,11 +283,6 @@ void MailboxToSurfaceBridgeImpl::ResizeSurface(int width, int height) {
   gl_->ResizeCHROMIUM(surface_width_, surface_height_, 1.f,
                       color_space.AsGLColorSpace(), false);
   gl_->Viewport(0, 0, surface_width_, surface_height_);
-}
-
-bool MailboxToSurfaceBridgeImpl::CopyMailboxToSurfaceAndSwap(
-    const gpu::MailboxHolder& mailbox) {
-  return CopyMailboxToSurfaceAndSwap(mailbox, gfx::Transform());
 }
 
 bool MailboxToSurfaceBridgeImpl::CopyMailboxToSurfaceAndSwap(
@@ -373,9 +367,11 @@ gpu::MailboxHolder MailboxToSurfaceBridgeImpl::CreateSharedImage(
   DCHECK(sii);
 
   gpu::MailboxHolder mailbox_holder;
-  mailbox_holder.mailbox = sii->CreateSharedImage(buffer, nullptr, color_space,
-                                                  kTopLeft_GrSurfaceOrigin,
-                                                  kPremul_SkAlphaType, usage);
+  CHECK_EQ(buffer->GetFormat(), gfx::BufferFormat::RGBA_8888);
+  mailbox_holder.mailbox = sii->CreateSharedImage(
+      viz::SinglePlaneFormat::kRGBA_8888, buffer->GetSize(), color_space,
+      kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType, usage,
+      "WebXrMailboxToSurfaceBridge", buffer->CloneHandle());
   mailbox_holder.sync_token = sii->GenVerifiedSyncToken();
   DCHECK(!gpu::NativeBufferNeedsPlatformSpecificTextureTarget(
       buffer->GetFormat()));

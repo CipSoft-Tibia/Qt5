@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,8 +22,7 @@
 #include "cast/streaming/session_config.h"
 #include "cast/streaming/session_messenger.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class Environment;
 class Receiver;
@@ -138,14 +137,6 @@ class ReceiverSession final : public Environment::SocketSubscriber {
     virtual ~Client();
   };
 
-  // TODO(crbug.com/1220176): Remove type aliases once downstream has been
-  // updated with new type names.
-  using Display = openscreen::cast::Display;
-  using AudioLimits = openscreen::cast::AudioLimits;
-  using VideoLimits = openscreen::cast::VideoLimits;
-  using RemotingPreferences = openscreen::cast::RemotingConstraints;
-  using Preferences = openscreen::cast::ReceiverConstraints;
-
   ReceiverSession(Client* const client,
                   Environment* environment,
                   MessagePort* message_port,
@@ -254,7 +245,6 @@ class ReceiverSession final : public Environment::SocketSubscriber {
   std::unique_ptr<RpcMessenger> rpc_messenger_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_RECEIVER_SESSION_H_

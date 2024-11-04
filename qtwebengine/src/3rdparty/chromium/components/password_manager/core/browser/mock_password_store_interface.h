@@ -25,6 +25,14 @@ class MockPasswordStoreInterface : public PasswordStoreInterface {
               (const PasswordForm&, base::OnceClosure),
               (override));
   MOCK_METHOD(void,
+              UpdateLogins,
+              (const std::vector<PasswordForm>&, base::OnceClosure),
+              (override));
+  MOCK_METHOD(void,
+              AddLogins,
+              (const std::vector<PasswordForm>&, base::OnceClosure),
+              (override));
+  MOCK_METHOD(void,
               UpdateLoginWithPrimaryKey,
               (const PasswordForm&, const PasswordForm&, base::OnceClosure),
               (override));
@@ -69,7 +77,6 @@ class MockPasswordStoreInterface : public PasswordStoreInterface {
   MOCK_METHOD(void, AddObserver, (Observer*), (override));
   MOCK_METHOD(void, RemoveObserver, (Observer*), (override));
   MOCK_METHOD(SmartBubbleStatsStore*, GetSmartBubbleStatsStore, (), (override));
-  MOCK_METHOD(FieldInfoStore*, GetFieldInfoStore, (), (override));
   MOCK_METHOD(std::unique_ptr<syncer::ProxyModelTypeControllerDelegate>,
               CreateSyncControllerDelegate,
               (),

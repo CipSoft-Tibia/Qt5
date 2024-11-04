@@ -7,7 +7,7 @@
 
 #include <memory>
 
-#include "base/memory/raw_ptr_exclusion.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
@@ -97,12 +97,13 @@ class ExtensionRegistrar : public ProcessManagerObserver {
 
   ~ExtensionRegistrar() override;
 
-#if !defined(TOOLKIT_QT)
+  // Called when the associated Profile is going to be destroyed.
+  void Shutdown();
+
   // Adds the extension to the ExtensionRegistry. The extension will be added to
   // the enabled, disabled, blocklisted or blocked set. If the extension is
   // added as enabled, it will be activated.
   void AddExtension(scoped_refptr<const Extension> extension);
-#endif
 
   // Removes |extension| from the extension system by deactivating it if it is
   // enabled and removing references to it from the ExtensionRegistry's
@@ -152,12 +153,10 @@ class ExtensionRegistrar : public ProcessManagerObserver {
   void OnUnpackedExtensionReloadFailed(const base::FilePath& path);
 
  private:
-#if !defined(TOOLKIT_QT)
   // Adds the extension to the appropriate registry set, based on ExtensionPrefs
   // and our |delegate_|. Activates the extension if it's added to the enabled
   // set.
   void AddNewExtension(scoped_refptr<const Extension> extension);
-#endif
 
   // Activates |extension| by marking it enabled and notifying other components
   // about it.
@@ -178,39 +177,22 @@ class ExtensionRegistrar : public ProcessManagerObserver {
   // Returns true on success.
   bool ReplaceReloadedExtension(scoped_refptr<const Extension> extension);
 
-  // Marks the extension ready after URLRequestContexts have been updated on
-  // the IO thread.
-  void OnExtensionRegisteredWithRequestContexts(
-      scoped_refptr<const Extension> extension);
-
   // Upon reloading an extension, spins up its context if necessary.
   void MaybeSpinUpLazyContext(const Extension* extension, bool is_newly_added);
 
   // ProcessManagerObserver overrides
   void OnServiceWorkerRegistered(const WorkerId& worker_id) override;
 
-  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
-  // #union
-  RAW_PTR_EXCLUSION content::BrowserContext* const browser_context_;
+  const raw_ptr<content::BrowserContext> browser_context_;
 
   // Delegate provided in the constructor. Should outlive this object.
-  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
-  // #union
-  RAW_PTR_EXCLUSION Delegate* const delegate_;
+  const raw_ptr<Delegate> delegate_;
 
   // Keyed services we depend on. Cached here for repeated access.
-  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
-  // #union
-  RAW_PTR_EXCLUSION ExtensionSystem* const extension_system_;
-  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
-  // #union
-  RAW_PTR_EXCLUSION ExtensionPrefs* const extension_prefs_;
-  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
-  // #union
-  RAW_PTR_EXCLUSION ExtensionRegistry* const registry_;
-  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
-  // #union
-  RAW_PTR_EXCLUSION RendererStartupHelper* const renderer_helper_;
+  raw_ptr<ExtensionSystem> extension_system_;
+  const raw_ptr<ExtensionPrefs> extension_prefs_;
+  const raw_ptr<ExtensionRegistry> registry_;
+  const raw_ptr<RendererStartupHelper> renderer_helper_;
 
   // Map of DevToolsAgentHost instances that are detached,
   // waiting for an extension to be reloaded.

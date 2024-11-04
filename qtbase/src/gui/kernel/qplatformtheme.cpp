@@ -325,7 +325,7 @@ const QKeyBinding QPlatformThemePrivate::keyBindings[] = {
     {QKeySequence::InsertLineSeparator,     0,          Qt::SHIFT | Qt::Key_Enter,              KB_All},
     {QKeySequence::InsertLineSeparator,     0,          Qt::SHIFT | Qt::Key_Return,             KB_All},
     {QKeySequence::InsertLineSeparator,     0,          Qt::META | Qt::Key_O,                   KB_Mac},
-    {QKeySequence::SaveAs,                  0,          Qt::CTRL | Qt::SHIFT | Qt::Key_S,       KB_Gnome | KB_Mac},
+    {QKeySequence::SaveAs,                  0,          Qt::CTRL | Qt::SHIFT | Qt::Key_S,       KB_All},
     {QKeySequence::Preferences,             0,          Qt::CTRL | Qt::Key_Comma,               KB_Mac},
     {QKeySequence::Quit,                    0,          Qt::CTRL | Qt::Key_Q,                   KB_X11 | KB_Gnome | KB_KDE | KB_Mac},
     {QKeySequence::FullScreen,              1,          Qt::META | Qt::CTRL | Qt::Key_F,        KB_Mac},
@@ -638,7 +638,7 @@ QVariant QPlatformTheme::defaultThemeHint(ThemeHint hint)
     case FlickMaximumVelocity:
         return QVariant(2500);
     case FlickDeceleration:
-        return QVariant(5000);
+        return QVariant(1500);
     case MenuBarFocusOnAltPressRelease:
         return false;
     case MouseCursorTheme:
@@ -647,6 +647,10 @@ QVariant QPlatformTheme::defaultThemeHint(ThemeHint hint)
         return QVariant(QSize(16, 16));
     case UnderlineShortcut:
         return true;
+    case ShowIconsInMenus:
+        return true;
+    case PreferFileIconFromTheme:
+        return false;
     }
 
     return QVariant();

@@ -3,10 +3,11 @@
 
 #include <QtQmlToolingSettings/private/qqmltoolingsettings_p.h>
 
-#include <QtQmlCompiler/private/qqmljsresourcefilemapper_p.h>
 #include <QtQmlCompiler/private/qqmljscompiler_p.h>
 #include <QtQmlCompiler/private/qqmljslinter_p.h>
 #include <QtQmlCompiler/private/qqmljsloggingutils_p.h>
+#include <QtQmlCompiler/private/qqmljsresourcefilemapper_p.h>
+#include <QtQmlCompiler/private/qqmljsutils_p.h>
 
 #include <QtCore/qdebug.h>
 #include <QtCore/qfile.h>
@@ -180,22 +181,6 @@ All warnings can be set to three levels:
             QLatin1String("directory"));
     parser.addOption(pluginPathsOption);
 
-    auto levelToString = [](const QQmlJS::LoggerCategory &category) -> QString {
-        Q_ASSERT(category.isIgnored() || category.level() != QtCriticalMsg);
-        if (category.isIgnored())
-            return QStringLiteral("disable");
-
-        switch (category.level()) {
-        case QtInfoMsg:
-            return QStringLiteral("info");
-        case QtWarningMsg:
-            return QStringLiteral("warning");
-        default:
-            Q_UNREACHABLE();
-            break;
-        }
-    };
-
     auto addCategory = [&](const QQmlJS::LoggerCategory &category) {
         categories.push_back(category);
         if (category.isDefault())
@@ -203,13 +188,14 @@ All warnings can be set to three levels:
         QCommandLineOption option(
                 category.id().name().toString(),
                 category.description()
-                        + QStringLiteral(" (default: %1)").arg(levelToString(category)),
-                QStringLiteral("level"), levelToString(category));
+                        + QStringLiteral(" (default: %1)")
+                                  .arg(QQmlJS::LoggingUtils::levelToString(category)),
+                QStringLiteral("level"), QQmlJS::LoggingUtils::levelToString(category));
         if (category.isIgnored())
             option.setFlags(QCommandLineOption::HiddenFromHelp);
         parser.addOption(option);
         settings.addOption(QStringLiteral("Warnings/") + category.settingsName(),
-                           levelToString(category));
+                           QQmlJS::LoggingUtils::levelToString(category));
     };
 
     for (const auto &category : QQmlJSLogger::defaultCategories()) {
@@ -242,38 +228,7 @@ All warnings can be set to three levels:
     }
 
     auto updateLogLevels = [&]() {
-        for (auto &category : categories) {
-            if (category.isDefault())
-                continue;
-
-            const QString &key = category.id().name().toString();
-            const QString &settingsName = QStringLiteral("Warnings/") + category.settingsName();
-            if (parser.isSet(key) || settings.isSet(settingsName)) {
-                const QString value = parser.isSet(key) ? parser.value(key)
-                                                        : settings.value(settingsName).toString();
-
-                // Do not try to set the levels if it's due to a default config option.
-                // This way we can tell which options have actually been overwritten by the user.
-                if (levelToString(category) == value && !parser.isSet(key))
-                    continue;
-
-                if (value == "disable"_L1) {
-                    category.setLevel(QtCriticalMsg);
-                    category.setIgnored(true);
-                } else if (value == "info"_L1) {
-                    category.setLevel(QtInfoMsg);
-                    category.setIgnored(false);
-                } else if (value == "warning"_L1) {
-                    category.setLevel(QtWarningMsg);
-                    category.setIgnored(false);
-                } else {
-                    qWarning() << "Invalid logging level" << value << "provided for"
-                               << category.id().name().toString()
-                               << "(allowed are: disable, info, warning)";
-                    parser.showHelp(-1);
-                }
-            }
-        }
+        QQmlJS::LoggingUtils::updateLogLevels(categories, settings, &parser);
     };
 
     bool silent = parser.isSet(silentOption);
@@ -295,7 +250,7 @@ All warnings can be set to three levels:
 
     QStringList defaultQmldirFiles;
     if (parser.isSet(qmldirFilesOption)) {
-        defaultQmldirFiles = parser.values(qmldirFilesOption);
+        defaultQmldirFiles = QQmlJSUtils::cleanPaths(parser.values(qmldirFilesOption));
     } else if (!parser.isSet(qmlImportNoDefault)){
         // If nothing given explicitly, use the qmldir file from the current directory.
         QFileInfo qmldirFile(QStringLiteral("qmldir"));
@@ -360,63 +315,61 @@ All warnings can be set to three levels:
     QJsonArray jsonFiles;
 
     for (const QString &filename : positionalArguments) {
-        if (!parser.isSet(ignoreSettings)) {
+        if (!parser.isSet(ignoreSettings))
             settings.search(filename);
-            updateLogLevels();
+        updateLogLevels();
 
-            const QDir fileDir = QFileInfo(filename).absoluteDir();
-            auto addAbsolutePaths = [&](QStringList &list, const QStringList &entries) {
-                for (const QString &file : entries)
-                    list << (QFileInfo(file).isAbsolute() ? file : fileDir.filePath(file));
-            };
+        const QDir fileDir = QFileInfo(filename).absoluteDir();
+        auto addAbsolutePaths = [&](QStringList &list, const QStringList &entries) {
+            for (const QString &file : entries)
+                list << (QFileInfo(file).isAbsolute() ? file : fileDir.filePath(file));
+        };
 
-            resourceFiles = defaultResourceFiles;
+        resourceFiles = defaultResourceFiles;
 
-            addAbsolutePaths(resourceFiles, settings.value(resourceSetting).toStringList());
+        addAbsolutePaths(resourceFiles, settings.value(resourceSetting).toStringList());
 
-            qmldirFiles = defaultQmldirFiles;
-            if (settings.isSet(qmldirFilesSetting)
-                && !settings.value(qmldirFilesSetting).toStringList().isEmpty()) {
-                qmldirFiles = {};
-                addAbsolutePaths(qmldirFiles,
-                                 settings.value(qmldirFilesSetting).toStringList());
-            }
-
-            if (parser.isSet(qmlImportNoDefault)
-                || (settings.isSet(qmlImportNoDefaultSetting)
-                    && settings.value(qmlImportNoDefaultSetting).toBool())) {
-                qmlImportPaths = {};
-            } else {
-                qmlImportPaths = defaultImportPaths;
-            }
-
-            if (parser.isSet(qmlImportPathsOption))
-                qmlImportPaths << parser.values(qmlImportPathsOption);
-
-            addAbsolutePaths(qmlImportPaths, settings.value(qmlImportPathsSetting).toStringList());
-
-            QSet<QString> disabledPlugins;
-
-            if (parser.isSet(pluginsDisable)) {
-                for (const QString &plugin : parser.values(pluginsDisable))
-                    disabledPlugins << plugin.toLower();
-            }
-
-            if (settings.isSet(pluginsDisableSetting)) {
-                for (const QString &plugin : settings.value(pluginsDisableSetting).toStringList())
-                    disabledPlugins << plugin.toLower();
-            }
-
-            linter.setPluginsEnabled(!disabledPlugins.contains("all"));
-
-            if (!linter.pluginsEnabled())
-                continue;
-
-            auto &plugins = linter.plugins();
-
-            for (auto &plugin : plugins)
-                plugin.setEnabled(!disabledPlugins.contains(plugin.name().toLower()));
+        qmldirFiles = defaultQmldirFiles;
+        if (settings.isSet(qmldirFilesSetting)
+            && !settings.value(qmldirFilesSetting).toStringList().isEmpty()) {
+            qmldirFiles = {};
+            addAbsolutePaths(qmldirFiles, settings.value(qmldirFilesSetting).toStringList());
         }
+
+        if (parser.isSet(qmlImportNoDefault)
+            || (settings.isSet(qmlImportNoDefaultSetting)
+                && settings.value(qmlImportNoDefaultSetting).toBool())) {
+            qmlImportPaths = {};
+        } else {
+            qmlImportPaths = defaultImportPaths;
+        }
+
+        if (parser.isSet(qmlImportPathsOption))
+            qmlImportPaths << parser.values(qmlImportPathsOption);
+
+        addAbsolutePaths(qmlImportPaths, settings.value(qmlImportPathsSetting).toStringList());
+
+        QSet<QString> disabledPlugins;
+
+        if (parser.isSet(pluginsDisable)) {
+            for (const QString &plugin : parser.values(pluginsDisable))
+                disabledPlugins << plugin.toLower();
+        }
+
+        if (settings.isSet(pluginsDisableSetting)) {
+            for (const QString &plugin : settings.value(pluginsDisableSetting).toStringList())
+                disabledPlugins << plugin.toLower();
+        }
+
+        linter.setPluginsEnabled(!disabledPlugins.contains("all"));
+
+        if (!linter.pluginsEnabled())
+            continue;
+
+        auto &plugins = linter.plugins();
+
+        for (auto &plugin : plugins)
+            plugin.setEnabled(!disabledPlugins.contains(plugin.name().toLower()));
 
         const bool isFixing = parser.isSet(fixFile);
 

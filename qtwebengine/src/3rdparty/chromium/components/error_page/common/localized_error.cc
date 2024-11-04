@@ -306,7 +306,7 @@ const LocalizedErrorMap net_error_options[] = {
   {net::ERR_BLOCKED_BY_ADMINISTRATOR,
    IDS_ERRORPAGES_HEADING_BLOCKED,
    IDS_ERRORPAGES_SUMMARY_BLOCKED_BY_ADMINISTRATOR,
-   SUGGEST_CONTACT_ADMINISTRATOR,
+   SUGGEST_NONE,
    SHOW_NO_BUTTONS,
   },
   {net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH,
@@ -528,7 +528,8 @@ const char* GetIconClassForError(const std::string& error_domain,
                                  int error_code) {
   return LocalizedError::IsOfflineError(error_domain, error_code)
              ? "icon-offline"
-             : "icon-generic";
+         : error_code == net::ERR_BLOCKED_BY_ADMINISTRATOR ? "icon-info"
+                                                           : "icon-generic";
 }
 
 base::Value::Dict SingleEntryDictionary(base::StringPiece path,
@@ -809,7 +810,7 @@ void AddSuggestionsDetails(int error_code,
         suggestions_details,
         IDS_ERRORPAGES_SUGGESTION_NETWORK_PREDICTION_HEADER,
         IDS_ERRORPAGES_SUGGESTION_NETWORK_PREDICTION_BODY, true);
-    suggestions_details.back().SetStringPath(
+    suggestions_details.back().GetDict().Set(
         "noNetworkPredictionTitle",
         l10n_util::GetStringUTF16(IDS_NETWORK_PREDICTION_ENABLED_DESCRIPTION));
   }
@@ -828,12 +829,12 @@ void AddSuggestionsDetails(int error_code,
         true);
 
     // Custom body string.
-    suggestions_details.back().SetStringPath(
+    suggestions_details.back().GetDict().Set(
         "body", l10n_util::GetStringFUTF16(
                     IDS_ERRORPAGES_SUGGESTION_PROXY_CONFIG_BODY,
                     l10n_util::GetStringUTF16(
                         IDS_ERRORPAGES_SUGGESTION_PROXY_DISABLE_PLATFORM)));
-    suggestions_details.back().SetStringPath(
+    suggestions_details.back().GetDict().Set(
         "proxyTitle",
         l10n_util::GetStringUTF16(IDS_OPTIONS_PROXIES_CONFIGURE_BUTTON));
   }
@@ -1036,7 +1037,9 @@ LocalizedError::PageState LocalizedError::GetPageState(
   std::u16string error_string;
   if (error_domain == Error::kNetErrorDomain) {
     // Non-internationalized error string, for debugging Chrome itself.
-    error_string = base::ASCIIToUTF16(net::ErrorToShortString(error_code));
+    if (error_code != net::ERR_BLOCKED_BY_ADMINISTRATOR) {
+      error_string = base::ASCIIToUTF16(net::ErrorToShortString(error_code));
+    }
   } else if (error_domain == Error::kDnsProbeErrorDomain) {
     std::string ascii_error_string =
         error_page::DnsProbeStatusToString(error_code);

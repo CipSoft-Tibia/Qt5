@@ -219,9 +219,9 @@ class WebRtcVideoDisplayPerfBrowserTest
     // connection(s) are up.
     content::WebContents* webrtc_internals_tab =
         OpenWebrtcInternalsTab(browser());
-    EXPECT_TRUE(content::ExecuteScript(
-        webrtc_internals_tab,
-        "currentGetStatsMethod = OPTION_GETSTATS_LEGACY"));
+    EXPECT_TRUE(
+        content::ExecJs(webrtc_internals_tab,
+                        "currentGetStatsMethod = OPTION_GETSTATS_LEGACY"));
 
     content::WebContents* left_tab =
         OpenPageAndGetUserMediaInNewTabWithConstraints(
@@ -265,9 +265,7 @@ class WebRtcVideoDisplayPerfBrowserTest
     test::SleepInJavascript(left_tab, 5000);
 
     const std::string webrtc_internals_stats_json = ExecuteJavascript(
-        "window.domAutomationController.send("
-        "    JSON.stringify(peerConnectionDataStore));",
-        webrtc_internals_tab);
+        "JSON.stringify(peerConnectionDataStore);", webrtc_internals_tab);
     webrtc_decode_latencies_ =
         ParseGoogMaxDecodeFromWebrtcInternalsTab(webrtc_internals_stats_json);
     chrome::CloseWebContents(browser(), webrtc_internals_tab, false);

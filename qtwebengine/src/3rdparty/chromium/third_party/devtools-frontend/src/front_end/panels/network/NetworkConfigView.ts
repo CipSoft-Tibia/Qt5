@@ -99,7 +99,7 @@ export class NetworkConfigView extends UI.Widget.VBox {
         Common.Settings.Settings.instance().createSetting<Protocol.Emulation.UserAgentMetadata|null>(
             'customUserAgentMetadata', null);
     const userAgentSelectElement = document.createElement('select');
-    UI.ARIAUtils.setAccessibleName(userAgentSelectElement, title);
+    UI.ARIAUtils.setLabel(userAgentSelectElement, title);
 
     const customOverride = {title: i18nString(UIStrings.custom), value: 'custom'};
     userAgentSelectElement.appendChild(new Option(customOverride.title, customOverride.value));
@@ -121,7 +121,7 @@ export class NetworkConfigView extends UI.Widget.VBox {
     UI.Tooltip.Tooltip.install(otherUserAgentElement, userAgentSetting.get());
     otherUserAgentElement.placeholder = i18nString(UIStrings.enterACustomUserAgent);
     otherUserAgentElement.required = true;
-    UI.ARIAUtils.setAccessibleName(otherUserAgentElement, otherUserAgentElement.placeholder);
+    UI.ARIAUtils.setLabel(otherUserAgentElement, otherUserAgentElement.placeholder);
 
     const errorElement = document.createElement('div');
     errorElement.classList.add('network-config-input-validation-error');
@@ -205,7 +205,7 @@ export class NetworkConfigView extends UI.Widget.VBox {
     const section = this.createSection(title, 'network-config-throttling');
     const networkThrottlingSelect = (section.createChild('select', 'chrome-select') as HTMLSelectElement);
     MobileThrottling.ThrottlingManager.throttlingManager().decorateSelectWithNetworkThrottling(networkThrottlingSelect);
-    UI.ARIAUtils.setAccessibleName(networkThrottlingSelect, title);
+    UI.ARIAUtils.setLabel(networkThrottlingSelect, title);
   }
 
   private createUserAgentSection(): void {
@@ -324,6 +324,7 @@ export class NetworkConfigView extends UI.Widget.VBox {
       Deflate: Protocol.Network.ContentEncoding.Deflate,
       Gzip: Protocol.Network.ContentEncoding.Gzip,
       Br: Protocol.Network.ContentEncoding.Br,
+      Zstd: Protocol.Network.ContentEncoding.Zstd,
     };
     for (const encoding of Object.values(contentEncodings)) {
       const label = UI.UIUtils.CheckboxLabel.create(encoding, true);
@@ -349,7 +350,7 @@ export class NetworkConfigView extends UI.Widget.VBox {
       customAcceptedEncodingSetting.set(encodings.join(','));
     }
   }
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([networkConfigViewStyles]);
 

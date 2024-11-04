@@ -1,0 +1,24 @@
+From d895b6b871947baa82c21838bee6e3f5803aaa5b Mon Sep 17 00:00:00 2001
+From: Krzysztof Sommerfeld <krzysztof.sommerfeld@siili.com>
+Date: Thu, 10 Aug 2023 11:28:32 +0200
+Subject: [PATCH] Undefine 'restrict' keyword
+
+Task-number: QTBUG-115777
+Change-Id: Ib06b0b9b2c41be99db0be61fa233c16fcf910565
+---
+
+diff --git a/src/3rdparty/glslang/glslang/Include/Types.h b/src/3rdparty/glslang/glslang/Include/Types.h
+index 6e5ea06..6330354 100644
+--- a/src/3rdparty/glslang/glslang/Include/Types.h
++++ b/src/3rdparty/glslang/glslang/Include/Types.h
+@@ -48,6 +48,10 @@
+ 
+ #include <algorithm>
+ 
++#ifdef restrict
++#undef restrict
++#endif
++
+ namespace QtShaderTools {
+ namespace glslang {
+ 

@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef BTTESTUTIL_P_H
 #define BTTESTUTIL_P_H
@@ -32,7 +32,7 @@ bool androidBluetoothEmulator()
     // on emulator though, not only on CI
     if (QNativeInterface::QAndroidApplication::sdkVersion() >= 31) {
         const auto property = QJniObject::fromString("ro.kernel.qemu");
-        const char sysPropsClass[] = "android.os.SystemProperties";
+        const char sysPropsClass[] = "android/os/SystemProperties";
         const auto isQemu = QJniObject::callStaticObjectMethod<jstring>(
                                         sysPropsClass, "get", property.object<jstring>());
         if (isQemu.toString() == "1")

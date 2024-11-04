@@ -15,7 +15,6 @@
 #include "base/dcheck_is_on.h"
 #include "base/memory/raw_ptr.h"
 #include "base/message_loop/message_pump_type.h"
-#include "base/message_loop/timer_slack.h"
 #include "base/task/sequence_manager/task_queue_impl.h"
 #include "base/task/sequence_manager/task_time_observer.h"
 #include "base/task/sequenced_task_runner.h"
@@ -28,7 +27,6 @@ class MessagePump;
 class TaskObserver;
 
 namespace sequence_manager {
-
 class TimeDomain;
 
 // SequenceManager manages TaskQueues which have different properties
@@ -169,8 +167,11 @@ class BASE_EXPORT SequenceManager {
     raw_ptr<const TickClock, DanglingUntriaged> clock =
         DefaultTickClock::GetInstance();
 
-    // If true, add the timestamp the task got queued to the task.
+    // Whether or not queueing timestamp will be added to tasks.
     bool add_queue_time_to_tasks = false;
+
+    // Whether many tasks may run between each check for native work.
+    bool can_run_tasks_by_batches = false;
 
     PrioritySettings priority_settings = PrioritySettings::CreateDefault();
 
@@ -266,10 +267,6 @@ class BASE_EXPORT SequenceManager {
   // logic at the cost of a potentially worse latency. 1 by default.
   virtual void SetWorkBatchSize(int work_batch_size) = 0;
 
-  // Requests desired timer precision from the OS.
-  // Has no effect on some platforms.
-  virtual void SetTimerSlack(TimerSlack timer_slack) = 0;
-
   // Enables crash keys that can be set in the scope of a task which help
   // to identify the culprit if upcoming work results in a crash.
   // Key names must be thread-specific to avoid races and corrupted crash dumps.
@@ -280,22 +277,10 @@ class BASE_EXPORT SequenceManager {
 
   virtual TaskQueue::QueuePriority GetPriorityCount() const = 0;
 
-  // Creates a task queue with the given type, `spec` and args.
-  // Must be called on the main thread.
-  // TODO(scheduler-dev): SequenceManager should not create TaskQueues.
-  template <typename TaskQueueType, typename... Args>
-  scoped_refptr<TaskQueueType> CreateTaskQueueWithType(
-      const TaskQueue::Spec& spec,
-      Args&&... args) {
-    return WrapRefCounted(new TaskQueueType(CreateTaskQueueImpl(spec), spec,
-                                            std::forward<Args>(args)...));
-  }
-
-  // Creates a vanilla TaskQueue rather than a user type derived from it. This
-  // should be used if you don't wish to sub class TaskQueue.
-  // Must be called on the main thread.
-  virtual scoped_refptr<TaskQueue> CreateTaskQueue(
-      const TaskQueue::Spec& spec) = 0;
+  // Creates a `TaskQueue` and returns a `TaskQueue::Handle`for it. The queue is
+  // owned by the handle and shut down when the handle is destroyed. Must be
+  // called on the main thread.
+  virtual TaskQueue::Handle CreateTaskQueue(const TaskQueue::Spec& spec) = 0;
 
   // Returns true iff this SequenceManager has no immediate work to do. I.e.
   // there are no pending non-delayed tasks or delayed tasks that are due to
@@ -315,12 +300,6 @@ class BASE_EXPORT SequenceManager {
   // SequenceManager task and a yielding to the underlying sequence (e.g., the
   // message pump).
   virtual void PrioritizeYieldingToNative(base::TimeTicks prioritize_until) = 0;
-
-  // Enable periodically yielding to the system message loop every |interval|.
-  // If |interval.is_inf()|, then SequenceManager won't yield to the system
-  // message pump unless it is out of immediate work.
-  // Currently only takes effect on Android.
-  virtual void EnablePeriodicYieldingToNative(base::TimeDelta interval) = 0;
 
   // Adds an observer which reports task execution. Can only be called on the
   // same thread that `this` is running on.
@@ -350,6 +329,9 @@ class BASE_EXPORT SequenceManager::Settings::Builder {
 
   // Whether or not queueing timestamp will be added to tasks.
   Builder& SetAddQueueTimeToTasks(bool add_queue_time_to_tasks);
+
+  // Whether many tasks may run between each check for native work.
+  Builder& SetCanRunTasksByBatches(bool can_run_tasks_by_batches);
 
   Builder& SetPrioritySettings(PrioritySettings settings);
 

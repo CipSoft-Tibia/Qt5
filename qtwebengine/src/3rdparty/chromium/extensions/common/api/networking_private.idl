@@ -27,6 +27,7 @@
 // TODO(stevenjb/pneubeck): Merge the ONC documentation with this document and
 // use it as the ONC specification.
 
+[modernised_enums]
 namespace networkingPrivate {
   enum ActivationStateType {
     Activated, Activating, NotActivated, PartiallyActivated
@@ -324,7 +325,9 @@ namespace networkingPrivate {
     EAPProperties? EAP;
     DOMString? Group;
     long? IKEVersion;
+    DOMString? LocalIdentity;
     DOMString? PSK;
+    DOMString? RemoteIdentity;
     boolean? SaveCredentials;
     DOMString[]? ServerCAPEMs;
     DOMString[]? ServerCARefs;

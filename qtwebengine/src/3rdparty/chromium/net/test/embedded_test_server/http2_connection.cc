@@ -10,7 +10,6 @@
 #include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
-#include "base/strings/abseil_string_conversions.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_piece.h"
 #include "base/task/sequenced_task_runner.h"
@@ -70,8 +69,7 @@ class Http2Connection::DataFrameSource
 
   bool Send(absl::string_view frame_header, size_t payload_length) override {
     std::string concatenated =
-        base::StrCat({base::StringViewToStringPiece(frame_header),
-                      chunks_.front().substr(0, payload_length)});
+        base::StrCat({frame_header, chunks_.front().substr(0, payload_length)});
     const int64_t result = connection_->OnReadyToSend(concatenated);
     // Write encountered error.
     if (result < 0) {
@@ -202,7 +200,7 @@ class Http2Connection::ResponseDelegate : public HttpResponseDelegate {
   std::vector<std::unique_ptr<HttpResponse>> responses_;
   StreamId stream_id_;
   const raw_ptr<Http2Connection> connection_;
-  raw_ptr<DataFrameSource> data_frame_;
+  raw_ptr<DataFrameSource, DanglingUntriaged> data_frame_;
   base::WeakPtrFactory<ResponseDelegate> weak_factory_{this};
 };
 
@@ -364,7 +362,7 @@ http2::adapter::Http2VisitorInterface::OnHeaderResult
 Http2Connection::OnHeaderForStream(http2::adapter::Http2StreamId stream_id,
                                    absl::string_view key,
                                    absl::string_view value) {
-  header_map_[stream_id][key.data()] = value.data();
+  header_map_[stream_id][std::string(key)] = std::string(value);
   return http2::adapter::Http2VisitorInterface::HEADER_OK;
 }
 
@@ -419,7 +417,7 @@ bool Http2Connection::OnDataForStream(StreamId stream_id,
   }
 
   request->second->has_content = true;
-  request->second->content.append(data.data(), data.size());
+  request->second->content.append(data);
   adapter_->MarkDataConsumedForStream(stream_id, data.size());
   return true;
 }

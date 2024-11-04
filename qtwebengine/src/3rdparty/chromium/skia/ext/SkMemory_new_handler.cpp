@@ -44,13 +44,20 @@ void sk_abort_no_print() {
 }
 
 void sk_out_of_memory(void) {
-    SkASSERT(!"sk_out_of_memory");
+    SkDEBUGFAIL("sk_out_of_memory");
     base::TerminateBecauseOutOfMemory(0);
     // Extra safety abort().
     abort();
 }
 
 void* sk_realloc_throw(void* addr, size_t size) {
+    // This is the "normal" behavior of realloc(), but per man malloc(3), POSIX
+    // compliance doesn't require it. Skia does though, starting with
+    // https://skia-review.googlesource.com/c/skia/+/647456.
+    if (size == 0) {
+        sk_free(addr);
+        return nullptr;
+    }
     return throw_on_failure(size, realloc(addr, size));
 }
 

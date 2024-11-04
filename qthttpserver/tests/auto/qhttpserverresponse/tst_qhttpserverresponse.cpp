@@ -6,6 +6,10 @@
 #include <QtCore/qfile.h>
 #include <QtTest/qtest.h>
 
+#if QT_CONFIG(mimetype)
+#include <QtCore/qmimedatabase.h>
+#endif
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::Literals;
@@ -25,86 +29,81 @@ private slots:
 void tst_QHttpServerResponse::mimeTypeDetection_data()
 {
     QTest::addColumn<QString>("content");
-    QTest::addColumn<QByteArray>("mimeType");
 
     QTest::addRow("application/x-zerosize")
-        << QFINDTESTDATA("data/empty")
-        << "application/x-zerosize"_ba;
+        << QFINDTESTDATA("data/empty");
 
     QTest::addRow("text/plain")
-        << QFINDTESTDATA("data/text.plain")
-        << "text/plain"_ba;
+        << QFINDTESTDATA("data/text.plain");
 
     QTest::addRow("text/html")
-        << QFINDTESTDATA("data/text.html")
-        << "text/html"_ba;
+        << QFINDTESTDATA("data/text.html");
 
     QTest::addRow("image/png")
-        << QFINDTESTDATA("data/image.png")
-        << "image/png"_ba;
+        << QFINDTESTDATA("data/image.png");
 
     QTest::addRow("image/jpeg")
-             << QFINDTESTDATA("data/image.jpeg")
-             << "image/jpeg"_ba;
+             << QFINDTESTDATA("data/image.jpeg");
 
     QTest::addRow("image/svg+xml")
-             << QFINDTESTDATA("data/image.svg")
-             << "image/svg+xml"_ba;
+             << QFINDTESTDATA("data/image.svg");
 }
 
 void tst_QHttpServerResponse::mimeTypeDetection()
 {
+#if !QT_CONFIG(mimetype)
+    QSKIP("Test requires QMimeDatabase");
+#else
     QFETCH(QString, content);
-    QFETCH(QByteArray, mimeType);
 
     QFile file(content);
     file.open(QFile::ReadOnly);
-    QHttpServerResponse response(file.readAll());
+    QByteArray data = file.readAll();
+    QHttpServerResponse response(data);
     file.close();
 
-    QCOMPARE(response.mimeType(), mimeType);
+    const QMimeType mimeType = QMimeDatabase().mimeTypeForData(data);
+    QCOMPARE(response.mimeType(), mimeType.name());
+#endif
 }
 
 void tst_QHttpServerResponse::mimeTypeDetectionFromFile_data()
 {
     QTest::addColumn<QString>("content");
-    QTest::addColumn<QByteArray>("mimeType");
 
     QTest::addRow("application/x-zerosize")
-            << QFINDTESTDATA("data/empty")
-            << "application/x-zerosize"_ba;
+            << QFINDTESTDATA("data/empty");
 
     QTest::addRow("text/plain")
-            << QFINDTESTDATA("data/text.plain")
-            << "text/plain"_ba;
+            << QFINDTESTDATA("data/text.plain");
 
     QTest::addRow("text/html")
-            << QFINDTESTDATA("data/text.html")
-            << "text/html"_ba;
+            << QFINDTESTDATA("data/text.html");
 
     QTest::addRow("image/png")
-            << QFINDTESTDATA("data/image.png")
-            << "image/png"_ba;
+            << QFINDTESTDATA("data/image.png");
 
     QTest::addRow("image/jpeg")
-            << QFINDTESTDATA("data/image.jpeg")
-            << "image/jpeg"_ba;
+            << QFINDTESTDATA("data/image.jpeg");
 
     QTest::addRow("image/svg+xml")
-            << QFINDTESTDATA("data/image.svg")
-            << "image/svg+xml"_ba;
+            << QFINDTESTDATA("data/image.svg");
 
     QTest::addRow("application/json")
-            << QFINDTESTDATA("data/application.json")
-            << "application/json"_ba;
+            << QFINDTESTDATA("data/application.json");
 }
 
 void tst_QHttpServerResponse::mimeTypeDetectionFromFile()
 {
+#if !QT_CONFIG(mimetype)
+    QSKIP("Test requires QMimeDatabase");
+#else
     QFETCH(QString, content);
-    QFETCH(QByteArray, mimeType);
+    const QMimeType mimeType = QMimeDatabase().mimeTypeForFile(content);
 
-    QCOMPARE(QHttpServerResponse::fromFile(content).mimeType(), mimeType);
+    const QByteArray responseMimeType = QHttpServerResponse::fromFile(content).mimeType();
+    QCOMPARE(responseMimeType, mimeType.name());
+#endif
 }
 
 void tst_QHttpServerResponse::headers()

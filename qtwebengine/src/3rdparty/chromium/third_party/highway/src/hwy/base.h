@@ -27,7 +27,7 @@
 #if HWY_COMPILER_MSVC
 #include <string.h>  // memcpy
 #endif
-#if HWY_ARCH_X86
+#if HWY_ARCH_X86 && !defined(HWY_NO_LIBCXX)
 #include <atomic>
 #endif
 
@@ -156,7 +156,7 @@
 // Better:
 //   HWY_ASSUME(x == 2);
 //   HWY_ASSUME(y == 3);
-#if defined(__has_cpp_attribute) && __has_cpp_attribute(assume)
+#if HWY_HAS_CPP_ATTRIBUTE(assume)
 #define HWY_ASSUME(expr) [[assume(expr)]]
 #elif HWY_COMPILER_MSVC || HWY_COMPILER_ICC
 #define HWY_ASSUME(expr) __assume(expr)
@@ -175,7 +175,7 @@
 // Compile-time fence to prevent undesirable code reordering. On Clang x86, the
 // typical asm volatile("" : : : "memory") has no effect, whereas atomic fence
 // does, without generating code.
-#if HWY_ARCH_X86
+#if HWY_ARCH_X86 && !defined(HWY_NO_LIBCXX)
 #define HWY_FENCE std::atomic_thread_fence(std::memory_order_acq_rel)
 #else
 // TODO(janwas): investigate alternatives. On ARM, the above generates barriers.
@@ -398,34 +398,49 @@ HWY_API constexpr bool IsSame() {
 }
 
 // Insert into template/function arguments to enable this overload only for
-// vectors of AT MOST this many bits.
+// vectors of exactly, at most (LE), or more than (GT) this many bytes.
 //
-// Note that enabling for exactly 128 bits is unnecessary because a function can
-// simply be overloaded with Vec128<T> and/or Full128<T> tag. Enabling for other
-// sizes (e.g. 64 bit) can be achieved via Simd<T, 8 / sizeof(T), 0>.
-#define HWY_IF_LE128(T, N) hwy::EnableIf<N * sizeof(T) <= 16>* = nullptr
-#define HWY_IF_LE64(T, N) hwy::EnableIf<N * sizeof(T) <= 8>* = nullptr
-#define HWY_IF_LE32(T, N) hwy::EnableIf<N * sizeof(T) <= 4>* = nullptr
-#define HWY_IF_GE32(T, N) hwy::EnableIf<N * sizeof(T) >= 4>* = nullptr
-#define HWY_IF_GE64(T, N) hwy::EnableIf<N * sizeof(T) >= 8>* = nullptr
-#define HWY_IF_GE128(T, N) hwy::EnableIf<N * sizeof(T) >= 16>* = nullptr
-#define HWY_IF_GT128(T, N) hwy::EnableIf<(N * sizeof(T) > 16)>* = nullptr
+// As an example, checking for a total size of 16 bytes will match both
+// Simd<uint8_t, 16, 0> and Simd<uint8_t, 8, 1>.
+#define HWY_IF_V_SIZE(T, kN, bytes) \
+  hwy::EnableIf<kN * sizeof(T) == bytes>* = nullptr
+#define HWY_IF_V_SIZE_LE(T, kN, bytes) \
+  hwy::EnableIf<kN * sizeof(T) <= bytes>* = nullptr
+#define HWY_IF_V_SIZE_GT(T, kN, bytes) \
+  hwy::EnableIf<(kN * sizeof(T) > bytes)>* = nullptr
+
+#define HWY_IF_LANES(kN, lanes) hwy::EnableIf<(kN == lanes)>* = nullptr
+#define HWY_IF_LANES_LE(kN, lanes) hwy::EnableIf<(kN <= lanes)>* = nullptr
+#define HWY_IF_LANES_GT(kN, lanes) hwy::EnableIf<(kN > lanes)>* = nullptr
 
 #define HWY_IF_UNSIGNED(T) hwy::EnableIf<!IsSigned<T>()>* = nullptr
-#define HWY_IF_SIGNED(T) \
-  hwy::EnableIf<IsSigned<T>() && !IsFloat<T>()>* = nullptr
+#define HWY_IF_SIGNED(T)                                                   \
+  hwy::EnableIf<IsSigned<T>() && !IsFloat<T>() && !IsSpecialFloat<T>()>* = \
+      nullptr
 #define HWY_IF_FLOAT(T) hwy::EnableIf<hwy::IsFloat<T>()>* = nullptr
 #define HWY_IF_NOT_FLOAT(T) hwy::EnableIf<!hwy::IsFloat<T>()>* = nullptr
+#define HWY_IF_SPECIAL_FLOAT(T) \
+  hwy::EnableIf<hwy::IsSpecialFloat<T>()>* = nullptr
+#define HWY_IF_NOT_SPECIAL_FLOAT(T) \
+  hwy::EnableIf<!hwy::IsSpecialFloat<T>()>* = nullptr
+#define HWY_IF_NOT_FLOAT_NOR_SPECIAL(T) \
+  hwy::EnableIf<!hwy::IsFloat<T>() && !hwy::IsSpecialFloat<T>()>* = nullptr
 
-#define HWY_IF_LANE_SIZE(T, bytes) \
-  hwy::EnableIf<sizeof(T) == (bytes)>* = nullptr
-#define HWY_IF_NOT_LANE_SIZE(T, bytes) \
+#define HWY_IF_T_SIZE(T, bytes) hwy::EnableIf<sizeof(T) == (bytes)>* = nullptr
+#define HWY_IF_NOT_T_SIZE(T, bytes) \
   hwy::EnableIf<sizeof(T) != (bytes)>* = nullptr
 // bit_array = 0x102 means 1 or 8 bytes. There is no NONE_OF because it sounds
 // too similar. If you want the opposite of this (2 or 4 bytes), ask for those
 // bits explicitly (0x14) instead of attempting to 'negate' 0x102.
-#define HWY_IF_LANE_SIZE_ONE_OF(T, bit_array) \
+#define HWY_IF_T_SIZE_ONE_OF(T, bit_array) \
   hwy::EnableIf<((size_t{1} << sizeof(T)) & (bit_array)) != 0>* = nullptr
+
+// Use instead of HWY_IF_T_SIZE to avoid ambiguity with float/double
+// overloads.
+#define HWY_IF_UI32(T) \
+  hwy::EnableIf<IsSame<T, uint32_t>() || IsSame<T, int32_t>()>* = nullptr
+#define HWY_IF_UI64(T) \
+  hwy::EnableIf<IsSame<T, uint64_t>() || IsSame<T, int64_t>()>* = nullptr
 
 #define HWY_IF_LANES_PER_BLOCK(T, N, LANES) \
   hwy::EnableIf<HWY_MIN(sizeof(T) * N, 16) / sizeof(T) == (LANES)>* = nullptr
@@ -445,6 +460,18 @@ struct RemoveConstT<const T> {
 
 template <class T>
 using RemoveConst = typename RemoveConstT<T>::type;
+
+template <class T>
+struct RemoveRefT {
+  using type = T;
+};
+template <class T>
+struct RemoveRefT<T&> {
+  using type = T;
+};
+
+template <class T>
+using RemoveRef = typename RemoveRefT<T>::type;
 
 //------------------------------------------------------------------------------
 // Type relations
@@ -636,6 +663,12 @@ HWY_API constexpr bool IsFloat() {
   // Cannot use T(1.25) != T(1) for float16_t, which can only be converted to or
   // from a float, not compared.
   return IsSame<T, float>() || IsSame<T, double>();
+}
+
+// These types are often special-cased and not supported in all ops.
+template <typename T>
+HWY_API constexpr bool IsSpecialFloat() {
+  return IsSame<T, float16_t>() || IsSame<T, bfloat16_t>();
 }
 
 template <typename T>
@@ -990,6 +1023,24 @@ HWY_API bfloat16_t BF16FromF32(float f) {
 
 HWY_DLLEXPORT HWY_NORETURN void HWY_FORMAT(3, 4)
     Abort(const char* file, int line, const char* format, ...);
+
+// Prevents the compiler from eliding the computations that led to "output".
+template <class T>
+HWY_API void PreventElision(T&& output) {
+#if HWY_COMPILER_MSVC
+  // MSVC does not support inline assembly anymore (and never supported GCC's
+  // RTL constraints). Self-assignment with #pragma optimize("off") might be
+  // expected to prevent elision, but it does not with MSVC 2015. Type-punning
+  // with volatile pointers generates inefficient code on MSVC 2017.
+  static std::atomic<RemoveRef<T>> dummy;
+  dummy.store(output, std::memory_order_relaxed);
+#else
+  // Works by indicating to the compiler that "output" is being read and
+  // modified. The +r constraint avoids unnecessary writes to memory, but only
+  // works for built-in types (typically FuncOutput).
+  asm volatile("" : "+r"(output) : : "memory");
+#endif
+}
 
 }  // namespace hwy
 

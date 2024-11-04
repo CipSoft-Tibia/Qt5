@@ -16,8 +16,11 @@
 #include "../SpecialFunctions"
 
 #include "../../../Eigen/src/Core/util/DisableStupidWarnings.h"
-#include "src/util/CXX11Meta.h"
-#include "src/util/MaxSizeVector.h"
+
+// IWYU pragma: begin_exports
+#include "../../../Eigen/src/Core/util/Meta.h"
+#include "../../../Eigen/src/Core/util/MaxSizeVector.h"
+// IWYU pragma: end_exports
 
 /** \defgroup CXX11_Tensor_Module Tensor Module
   *
@@ -54,6 +57,7 @@
   #endif
 #endif
 
+// IWYU pragma: begin_exports
 #include "src/Tensor/TensorMacros.h"
 #include "src/Tensor/TensorForwardDeclarations.h"
 #include "src/Tensor/TensorMeta.h"
@@ -130,8 +134,7 @@
 #include "src/Tensor/TensorFixedSize.h"
 #include "src/Tensor/TensorMap.h"
 #include "src/Tensor/TensorRef.h"
-
-
+// IWYU pragma: end_exports
 
 #include "../../../Eigen/src/Core/util/ReenableStupidWarnings.h"
 

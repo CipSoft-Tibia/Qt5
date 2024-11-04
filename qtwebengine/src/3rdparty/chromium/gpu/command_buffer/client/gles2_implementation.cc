@@ -592,7 +592,9 @@ GLenum GLES2Implementation::GetGLError() {
   }
   *result = GL_NO_ERROR;
   helper_->GetError(GetResultShmId(), result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return GL_NO_ERROR;
+  }
   GLenum error = *result;
   if (error == GL_NO_ERROR) {
     error = GetClientSideGLError();
@@ -717,7 +719,9 @@ GLboolean GLES2Implementation::IsEnabled(GLenum cap) {
     }
     *result = 0;
     helper_->IsEnabled(cap, GetResultShmId(), result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return GL_FALSE;
+    }
     state = (*result) != 0;
   }
 
@@ -738,7 +742,9 @@ GLboolean GLES2Implementation::IsEnablediOES(GLenum target, GLuint index) {
     auto result = GetResultAs<Result>();
     *result = 0;
     helper_->IsEnablediOES(target, index, GetResultShmId(), result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return GL_FALSE;
+    }
     state = (*result) != 0;
   }
 
@@ -1357,7 +1363,9 @@ GLuint GLES2Implementation::GetMaxValueInBufferCHROMIUMHelper(GLuint buffer_id,
   *result = 0;
   helper_->GetMaxValueInBufferCHROMIUM(buffer_id, count, type, offset,
                                        GetResultShmId(), result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return 0;
+  }
   return *result;
 }
 
@@ -1660,7 +1668,9 @@ void GLES2Implementation::GetVertexAttribPointerv(GLuint index,
     result->SetNumResults(0);
     helper_->GetVertexAttribPointerv(index, pname, GetResultShmId(),
                                      result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return;
+    }
     result->CopyResult(ptr);
     GPU_CLIENT_LOG_CODE_BLOCK(num_results = result->GetNumResults());
   }
@@ -1735,7 +1745,9 @@ GLint GLES2Implementation::GetAttribLocationHelper(GLuint program,
   *result = -1;
   helper_->GetAttribLocation(program, kResultBucketId, GetResultShmId(),
                              result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return -1;
+  }
   helper_->SetBucketSize(kResultBucketId, 0);
   return *result;
 }
@@ -1763,7 +1775,9 @@ GLint GLES2Implementation::GetUniformLocationHelper(GLuint program,
   *result = -1;
   helper_->GetUniformLocation(program, kResultBucketId, GetResultShmId(),
                               result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return -1;
+  }
   helper_->SetBucketSize(kResultBucketId, 0);
   return *result;
 }
@@ -1796,7 +1810,9 @@ bool GLES2Implementation::GetUniformIndicesHelper(GLuint program,
   result->SetNumResults(0);
   helper_->GetUniformIndices(program, kResultBucketId, GetResultShmId(),
                              result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return false;
+  }
   if (result->GetNumResults() != count) {
     return false;
   }
@@ -1856,7 +1872,9 @@ GLint GLES2Implementation::GetFragDataIndexEXTHelper(GLuint program,
   *result = -1;
   helper_->GetFragDataIndexEXT(program, kResultBucketId, GetResultShmId(),
                                result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return -1;
+  }
   helper_->SetBucketSize(kResultBucketId, 0);
   return *result;
 }
@@ -1885,7 +1903,9 @@ GLint GLES2Implementation::GetFragDataLocationHelper(GLuint program,
   *result = -1;
   helper_->GetFragDataLocation(program, kResultBucketId, GetResultShmId(),
                                result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return -1;
+  }
   helper_->SetBucketSize(kResultBucketId, 0);
   return *result;
 }
@@ -1914,7 +1934,9 @@ GLuint GLES2Implementation::GetUniformBlockIndexHelper(GLuint program,
   *result = GL_INVALID_INDEX;
   helper_->GetUniformBlockIndex(program, kResultBucketId, GetResultShmId(),
                                 result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return GL_INVALID_INDEX;
+  }
   helper_->SetBucketSize(kResultBucketId, 0);
   return *result;
 }
@@ -1959,7 +1981,9 @@ GLuint GLES2Implementation::GetProgramResourceIndexHelper(
   *result = GL_INVALID_INDEX;
   helper_->GetProgramResourceIndex(program, program_interface, kResultBucketId,
                                    GetResultShmId(), result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return GL_INVALID_INDEX;
+  }
   helper_->SetBucketSize(kResultBucketId, 0);
   return *result;
 }
@@ -2004,7 +2028,9 @@ bool GLES2Implementation::GetProgramResourceNameHelper(GLuint program,
     helper_->GetProgramResourceName(program, program_interface, index,
                                     kResultBucketId, GetResultShmId(),
                                     result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return false;
+    }
     success = !!*result;
   }
   if (success) {
@@ -2063,7 +2089,9 @@ bool GLES2Implementation::GetProgramResourceivHelper(GLuint program,
   helper_->GetProgramResourceiv(program, program_interface, index,
                                 kResultBucketId, GetResultShmId(),
                                 result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return false;
+  }
   if (length) {
     *length = result->GetNumResults();
   }
@@ -2135,7 +2163,9 @@ GLint GLES2Implementation::GetProgramResourceLocationHelper(
   helper_->GetProgramResourceLocation(program, program_interface,
                                       kResultBucketId, GetResultShmId(),
                                       result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return -1;
+  }
   helper_->SetBucketSize(kResultBucketId, 0);
   return *result;
 }
@@ -4012,7 +4042,9 @@ bool GLES2Implementation::GetActiveAttribHelper(GLuint program,
   result->success = false;
   helper_->GetActiveAttrib(program, index, kResultBucketId, GetResultShmId(),
                            result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return false;
+  }
   bool success = !!result->success;
   if (success) {
     if (size) {
@@ -4080,7 +4112,9 @@ bool GLES2Implementation::GetActiveUniformHelper(GLuint program,
   result->success = false;
   helper_->GetActiveUniform(program, index, kResultBucketId, GetResultShmId(),
                             result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return false;
+  }
   bool success = !!result->success;
   if (success) {
     if (size) {
@@ -4147,7 +4181,9 @@ bool GLES2Implementation::GetActiveUniformBlockNameHelper(GLuint program,
   *result = 0;
   helper_->GetActiveUniformBlockName(program, index, kResultBucketId,
                                      GetResultShmId(), result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return false;
+  }
   bool success = !!result;
   if (success) {
     // Note: this can invalidate |result|.
@@ -4194,7 +4230,9 @@ bool GLES2Implementation::GetActiveUniformBlockivHelper(GLuint program,
   result->SetNumResults(0);
   helper_->GetActiveUniformBlockiv(program, index, pname, GetResultShmId(),
                                    result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return false;
+  }
   if (result->GetNumResults() > 0) {
     if (params) {
       result->CopyResult(params);
@@ -4251,7 +4289,9 @@ bool GLES2Implementation::GetActiveUniformsivHelper(GLuint program,
   result->SetNumResults(0);
   helper_->GetActiveUniformsiv(program, kResultBucketId, pname,
                                GetResultShmId(), result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return false;
+  }
   bool success = result->GetNumResults() == count;
   if (success) {
     if (params) {
@@ -4327,7 +4367,9 @@ void GLES2Implementation::GetAttachedShaders(GLuint program,
                               transfer_buffer_->GetOffset(result),
                               checked_size);
   int32_t token = helper_->InsertToken();
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return;
+  }
   if (count) {
     *count = result->GetNumResults();
   }
@@ -4369,7 +4411,9 @@ void GLES2Implementation::GetShaderPrecisionFormat(GLenum shadertype,
       result->success = false;
       helper_->GetShaderPrecisionFormat(shadertype, precisiontype,
                                         GetResultShmId(), result.offset());
-      WaitForCmd();
+      if (!WaitForCmd()) {
+        return;
+      }
       if (result->success)
         static_state_.shader_precisions[key] = *result;
     }
@@ -4482,7 +4526,9 @@ bool GLES2Implementation::GetTransformFeedbackVaryingHelper(GLuint program,
   result->success = false;
   helper_->GetTransformFeedbackVarying(program, index, kResultBucketId,
                                        GetResultShmId(), result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return false;
+  }
   if (result->success) {
     if (size) {
       *size = result->size;
@@ -4550,7 +4596,9 @@ void GLES2Implementation::GetUniformfv(GLuint program,
     }
     result->SetNumResults(0);
     helper_->GetUniformfv(program, location, GetResultShmId(), result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return;
+    }
     result->CopyResult(params);
     GPU_CLIENT_LOG_CODE_BLOCK({
       for (int32_t i = 0; i < result->GetNumResults(); ++i) {
@@ -4578,7 +4626,9 @@ void GLES2Implementation::GetUniformiv(GLuint program,
     }
     result->SetNumResults(0);
     helper_->GetUniformiv(program, location, GetResultShmId(), result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return;
+    }
     result->CopyResult(params);
     GPU_CLIENT_LOG_CODE_BLOCK({
       for (int32_t i = 0; i < result->GetNumResults(); ++i) {
@@ -4607,7 +4657,9 @@ void GLES2Implementation::GetUniformuiv(GLuint program,
     result->SetNumResults(0);
     helper_->GetUniformuiv(program, location, GetResultShmId(),
                            result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return;
+    }
     result->CopyResult(params);
     GPU_CLIENT_LOG_CODE_BLOCK({
       for (int32_t i = 0; i < result->GetNumResults(); ++i) {
@@ -4616,6 +4668,183 @@ void GLES2Implementation::GetUniformuiv(GLuint program,
     });
   }
   CheckGLError();
+}
+
+void GLES2Implementation::WritePixelsYUVINTERNAL(
+    const GLbyte* mailbox,
+    GLuint src_size_plane1,
+    GLuint src_size_plane2,
+    GLuint src_size_plane3,
+    GLuint src_size_plane4,
+    GLuint src_width,
+    GLuint src_height,
+    GLuint src_plane_config,
+    GLuint src_subsampling,
+    GLuint src_datatype,
+    GLuint src_row_bytes_plane1,
+    GLuint src_row_bytes_plane2,
+    GLuint src_row_bytes_plane3,
+    GLuint src_row_bytes_plane4,
+    const void* src_pixels_plane1,
+    const void* src_pixels_plane2,
+    const void* src_pixels_plane3,
+    const void* src_pixels_plane4) {
+  CHECK(mailbox);
+  // We have the following stored at offsets from `shm_address`:
+  // 0: stores the destination mailbox,
+  // pixels_offset_plane1: stores source pixels for plane 1,
+  // pixels_offset_plane2: stores source pixels for plane 2,
+  // pixels_offset_plane3: stores source pixels for plane 3,
+  // pixels_offset_plane4: stores source pixels for plane 4
+
+  const int kMaxPlanes = 4;
+  GLuint src_sizes[kMaxPlanes] = {src_size_plane1, src_size_plane2,
+                                  src_size_plane3, src_size_plane4};
+  const void* src_pixels[kMaxPlanes] = {src_pixels_plane1, src_pixels_plane2,
+                                        src_pixels_plane3, src_pixels_plane4};
+
+  GLuint total_size =
+      base::bits::AlignUp(sizeof(gpu::Mailbox), sizeof(uint64_t));
+  for (int plane = 0; plane < kMaxPlanes; plane++) {
+    if (!src_pixels[plane]) {
+      // If pixels don't exist for a plane, we've copied all planes of src
+      // image.
+      CHECK_EQ(src_sizes[plane], 0u);
+      break;
+    }
+    total_size += base::bits::AlignUp(src_sizes[plane],
+                                      static_cast<GLuint>(sizeof(uint64_t)));
+  }
+
+  ScopedMappedMemoryPtr scoped_shared_memory(total_size, helper(),
+                                             mapped_memory_.get());
+  if (!scoped_shared_memory.valid()) {
+    SetGLError(GL_INVALID_OPERATION, "WritePixelsYUV", "size too big");
+    return;
+  }
+
+  GLint shm_id = scoped_shared_memory.shm_id();
+  GLuint shm_offset = scoped_shared_memory.offset();
+  void* address = scoped_shared_memory.address();
+
+  // Copy the mailbox at `address`.
+  GLuint mailbox_offset = 0;
+  memcpy(static_cast<uint8_t*>(address), mailbox, sizeof(gpu::Mailbox));
+
+  GLuint pixel_offsets[kMaxPlanes] = {};
+  // Calculate first plane offset based on mailbox.
+  pixel_offsets[0] =
+      mailbox_offset + static_cast<GLuint>(base::bits::AlignUp(
+                           sizeof(gpu::Mailbox), sizeof(uint64_t)));
+  CHECK(src_pixels[0]);
+  memcpy(static_cast<uint8_t*>(address) + pixel_offsets[0], src_pixels[0],
+         src_sizes[0]);
+
+  for (int plane = 1; plane < kMaxPlanes; plane++) {
+    if (!src_pixels[plane]) {
+      // If pixels don't exist for a plane, we've copied all planes of src
+      // image.
+      break;
+    }
+    // Calculate the offset based on previous plane offset and previous plane
+    // size, and copy pixels for current plane starting at current plane
+    // offset.
+    pixel_offsets[plane] =
+        pixel_offsets[plane - 1] +
+        base::bits::AlignUp(src_sizes[plane - 1],
+                            static_cast<GLuint>(sizeof(uint64_t)));
+    memcpy(static_cast<uint8_t*>(address) + pixel_offsets[plane],
+           src_pixels[plane], src_sizes[plane]);
+  }
+
+  helper_->WritePixelsYUVINTERNAL(
+      src_width, src_height, src_row_bytes_plane1, src_row_bytes_plane2,
+      src_row_bytes_plane3, src_row_bytes_plane4, src_plane_config,
+      src_subsampling, src_datatype, shm_id, shm_offset, pixel_offsets[0],
+      pixel_offsets[1], pixel_offsets[2], pixel_offsets[3]);
+}
+
+GLboolean GLES2Implementation::ReadbackARGBImagePixelsINTERNAL(
+    const GLbyte* mailbox,
+    const void* dst_sk_color_space,
+    GLuint dst_color_space_size,
+    GLuint dst_size,
+    GLuint dst_width,
+    GLuint dst_height,
+    GLuint dst_sk_color_type,
+    GLuint dst_sk_alpha_type,
+    GLuint dst_row_bytes,
+    GLint src_x,
+    GLint src_y,
+    GLint plane_index,
+    void* pixels) {
+  DCHECK(mailbox);
+  // We can't use GetResultAs<>() to store our result because it uses
+  // TransferBuffer under the hood and this function is potentially
+  // asynchronous. Instead, store the result at the beginning of the shared
+  // memory we allocate to transfer pixels.
+  // We have the following stored at offsets from `shm_address`:
+  // 0: stores ReadbackARGBImagePixelsINTERNAL::Result,
+  // color_space_offset: stores destination SkColorSpace,
+  // mailbox_offset: stores the gpu::Mailbox,
+  // pixels_offset: stores the pixels
+  GLuint color_space_offset = base::bits::AlignUp(
+      sizeof(cmds::ReadbackARGBImagePixelsINTERNAL::Result), sizeof(uint64_t));
+
+  // Add the size of the SkColorSpace while maintaining 8-byte alignment.
+  GLuint mailbox_offset = color_space_offset;
+  if (dst_sk_color_space) {
+    mailbox_offset =
+        base::bits::AlignUp(color_space_offset + dst_color_space_size,
+                            static_cast<GLuint>(sizeof(uint64_t)));
+  }
+
+  // Add the size of the mailbox while maintaining 8-byte alignment.
+  GLuint pixels_offset = base::bits::AlignUp(
+      mailbox_offset + sizeof(gpu::Mailbox), sizeof(uint64_t));
+
+  GLuint total_size =
+      pixels_offset +
+      base::bits::AlignUp(dst_size, static_cast<GLuint>(sizeof(uint64_t)));
+
+  ScopedMappedMemoryPtr scoped_shared_memory(total_size, helper(),
+                                             mapped_memory_.get());
+  if (!scoped_shared_memory.valid()) {
+    return GL_FALSE;
+  }
+
+  GLint shm_id = scoped_shared_memory.shm_id();
+  GLuint shm_offset = scoped_shared_memory.offset();
+  void* shm_address = scoped_shared_memory.address();
+
+  // Readback success/failure result is stored at the beginning of the shared
+  // memory region. Client is responsible for initialization so we do so here.
+  auto* readback_result =
+      static_cast<cmds::ReadbackARGBImagePixelsINTERNAL::Result*>(shm_address);
+  *readback_result = 0;
+
+  if (dst_sk_color_space) {
+    // Copy destination color space to the destination color space offset.
+    memcpy(static_cast<uint8_t*>(shm_address) + color_space_offset,
+           dst_sk_color_space, dst_color_space_size);
+  }
+  // Copy shared image mailbox to the mailbox offset.
+  memcpy(static_cast<uint8_t*>(shm_address) + mailbox_offset, mailbox,
+         sizeof(gpu::Mailbox));
+
+  helper_->ReadbackARGBImagePixelsINTERNAL(
+      plane_index, src_x, src_y, dst_width, dst_height, dst_row_bytes,
+      dst_sk_color_type, dst_sk_alpha_type, shm_id, shm_offset,
+      color_space_offset, pixels_offset, mailbox_offset);
+
+  if (!WaitForCmd()) {
+    return GL_FALSE;
+  }
+  if (!*readback_result) {
+    return GL_FALSE;
+  }
+  memcpy(pixels, static_cast<uint8_t*>(shm_address) + pixels_offset, dst_size);
+  return GL_FALSE;
 }
 
 void GLES2Implementation::ReadPixels(GLint xoffset,
@@ -4759,7 +4988,9 @@ void GLES2Implementation::ReadPixels(GLint xoffset,
     helper_->ReadPixels(xoffset, y_index, width, num_rows, format, type,
                         buffer.shm_id(), buffer.offset(), GetResultShmId(),
                         result.offset(), false);
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      break;
+    }
     // If it was not marked as successful exit.
     if (!result->success) {
       break;
@@ -5467,7 +5698,9 @@ void GLES2Implementation::GetVertexAttribfv(GLuint index,
     }
     result->SetNumResults(0);
     helper_->GetVertexAttribfv(index, pname, GetResultShmId(), result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return;
+    }
     result->CopyResult(params);
     GPU_CLIENT_LOG_CODE_BLOCK({
       for (int32_t i = 0; i < result->GetNumResults(); ++i) {
@@ -5500,7 +5733,9 @@ void GLES2Implementation::GetVertexAttribiv(GLuint index,
     }
     result->SetNumResults(0);
     helper_->GetVertexAttribiv(index, pname, GetResultShmId(), result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return;
+    }
     result->CopyResult(params);
     GPU_CLIENT_LOG_CODE_BLOCK({
       for (int32_t i = 0; i < result->GetNumResults(); ++i) {
@@ -5534,7 +5769,9 @@ void GLES2Implementation::GetVertexAttribIiv(GLuint index,
     result->SetNumResults(0);
     helper_->GetVertexAttribIiv(index, pname, GetResultShmId(),
                                 result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return;
+    }
     result->CopyResult(params);
     GPU_CLIENT_LOG_CODE_BLOCK({
       for (int32_t i = 0; i < result->GetNumResults(); ++i) {
@@ -5568,7 +5805,9 @@ void GLES2Implementation::GetVertexAttribIuiv(GLuint index,
     result->SetNumResults(0);
     helper_->GetVertexAttribIuiv(index, pname, GetResultShmId(),
                                  result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return;
+    }
     result->CopyResult(params);
     GPU_CLIENT_LOG_CODE_BLOCK({
       for (int32_t i = 0; i < result->GetNumResults(); ++i) {
@@ -5603,7 +5842,9 @@ GLboolean GLES2Implementation::EnableFeatureCHROMIUM(const char* feature) {
   *result = 0;
   helper_->EnableFeatureCHROMIUM(kResultBucketId, GetResultShmId(),
                                  result.offset());
-  WaitForCmd();
+  if (!WaitForCmd()) {
+    return false;
+  }
   helper_->SetBucketSize(kResultBucketId, 0);
   GPU_CLIENT_LOG("   returned " << GLES2Util::GetStringBool(*result));
   return *result != 0;
@@ -5747,19 +5988,20 @@ void* GLES2Implementation::MapBufferRange(GLenum target,
   unsigned int shm_offset = 0;
   if (!mem) {
     mem = mapped_memory_->Alloc(size, &shm_id, &shm_offset);
-    if (!mem) {
+    auto result = GetResultAs<cmds::MapBufferRange::Result>();
+    if (!mem || !result) {
       SetGLError(GL_OUT_OF_MEMORY, "glMapBufferRange", "out of memory");
       return nullptr;
     }
 
-    typedef cmds::MapBufferRange::Result Result;
-    auto result = GetResultAs<Result>();
     *result = 0;
     helper_->MapBufferRange(target, offset, size, access, shm_id, shm_offset,
                             GetResultShmId(), result.offset());
     // TODO(zmo): For write only mode with MAP_INVALID_*_BIT, we should
     // consider an early return without WaitForCmd(). crbug.com/465804.
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return nullptr;
+    }
     if (*result) {
       const GLbitfield kInvalidateBits =
           GL_MAP_INVALIDATE_BUFFER_BIT | GL_MAP_INVALIDATE_RANGE_BIT;
@@ -6209,7 +6451,6 @@ void GLES2Implementation::BeginQueryEXT(GLenum target, GLuint id) {
 
   switch (target) {
     case GL_COMMANDS_ISSUED_CHROMIUM:
-    case GL_LATENCY_QUERY_CHROMIUM:
     case GL_ASYNC_PIXEL_PACK_COMPLETED_CHROMIUM:
     case GL_GET_ERROR_QUERY_CHROMIUM:
     case GL_PROGRAM_COMPLETION_QUERY_CHROMIUM:
@@ -7036,7 +7277,9 @@ GLenum GLES2Implementation::ClientWaitSync(GLsync sync,
     *result = GL_WAIT_FAILED;
     helper_->ClientWaitSync(ToGLuint(sync), flags, timeout, GetResultShmId(),
                             result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return GL_WAIT_FAILED;
+    }
     localResult = *result;
     GPU_CLIENT_LOG("returned " << localResult);
   }
@@ -7114,7 +7357,9 @@ void GLES2Implementation::GetInternalformativ(GLenum target,
     result->SetNumResults(0);
     helper_->GetInternalformativ(target, format, pname, GetResultShmId(),
                                  result.offset());
-    WaitForCmd();
+    if (!WaitForCmd()) {
+      return;
+    }
     GPU_CLIENT_LOG_CODE_BLOCK({
       for (int32_t i = 0; i < result->GetNumResults(); ++i) {
         GPU_CLIENT_LOG("  " << i << ": " << result->GetData()[i]);

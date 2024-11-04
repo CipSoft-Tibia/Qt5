@@ -334,11 +334,9 @@ void EmbeddedWorkerInstance::Start(
           storage_partition->GetWeakPtr(), params->script_url,
           coep->reporting_endpoint, coep->report_only_reporting_endpoint,
           owner_version_->reporting_source(),
-          // TODO(https://crbug.com/1147281): This is the
-          // NetworkAnonymizationKey of a top-level browsing context, which
-          // shouldn't be use for ServiceWorkers used in iframes.
-          net::NetworkAnonymizationKey::ToDoUseTopFrameOriginAsWell(
-              url::Origin::Create(params->script_url)));
+          owner_version_->key()
+              .ToPartialNetIsolationInfo()
+              .network_anonymization_key());
       coep_reporter_->BindObserver(std::move(reporting_observer_remote));
 
       coep_reporter_->Clone(
@@ -349,7 +347,10 @@ void EmbeddedWorkerInstance::Start(
           coep_reporter_for_subresources.InitWithNewPipeAndPassReceiver());
     }
 
-    owner_version_->InitializeGlobalScope();
+    // Pause initializing global scope (https://crbug.com/1431792).
+    if (!pause_initializing_global_scope_) {
+      owner_version_->InitializeGlobalScope();
+    }
 
     // Register to DevTools and update params accordingly.
     const int routing_id = rph->GetNextRoutingID();
@@ -376,7 +377,7 @@ void EmbeddedWorkerInstance::Start(
     // reaches the 'installed' state.
     if (!params->is_installed) {
       factory_bundle_for_new_scripts = CreateFactoryBundle(
-          rph, routing_id, origin, client_security_state.Clone(),
+          rph, routing_id, owner_version_->key(), client_security_state.Clone(),
           std::move(coep_reporter_for_scripts),
           ContentBrowserClient::URLLoaderFactoryType::kServiceWorkerScript,
           params->devtools_worker_token.ToString());
@@ -388,7 +389,8 @@ void EmbeddedWorkerInstance::Start(
     // service worker terminates itself when the connection breaks, so a new
     // instance can be started.
     factory_bundle_for_renderer = CreateFactoryBundle(
-        rph, routing_id, origin, std::move(client_security_state),
+        rph, routing_id, owner_version_->key(),
+        std::move(client_security_state),
         std::move(coep_reporter_for_subresources),
         ContentBrowserClient::URLLoaderFactoryType::kServiceWorkerSubResource,
         params->devtools_worker_token.ToString());
@@ -404,7 +406,7 @@ void EmbeddedWorkerInstance::Start(
     GetContentClient()
         ->browser()
         ->UpdateEnabledBlinkRuntimeFeaturesInIsolatedWorker(
-            process_manager->browser_context(), params->script_url,
+            context_->wrapper()->browser_context(), params->script_url,
             params->forced_enabled_runtime_features);
   }
   CHECK(params->forced_enabled_runtime_features.empty() ||
@@ -412,10 +414,11 @@ void EmbeddedWorkerInstance::Start(
 
   // TODO(crbug.com/862854): Support changes to blink::RendererPreferences while
   // the worker is running.
-  DCHECK(process_manager->browser_context() || process_manager->IsShutdown());
+  DCHECK(context_->wrapper()->browser_context() ||
+         process_manager->IsShutdown());
   params->renderer_preferences = blink::RendererPreferences();
   GetContentClient()->browser()->UpdateRendererPreferencesForWorker(
-      process_manager->browser_context(), &params->renderer_preferences);
+      context_->wrapper()->browser_context(), &params->renderer_preferences);
 
   {
     // Create a RendererPreferenceWatcher to observe updates in the preferences.
@@ -423,7 +426,7 @@ void EmbeddedWorkerInstance::Start(
     params->preference_watcher_receiver =
         watcher_remote.InitWithNewPipeAndPassReceiver();
     GetContentClient()->browser()->RegisterRendererPreferenceWatcher(
-        process_manager->browser_context(), std::move(watcher_remote));
+        context_->wrapper()->browser_context(), std::move(watcher_remote));
   }
 
   // If we allocated a process, WorkerProcessHandle has to be created before
@@ -488,6 +491,8 @@ void EmbeddedWorkerInstance::Stop() {
   // Discard the info for starting a worker because this worker is going to be
   // stopped.
   inflight_start_info_.reset();
+
+  pause_initializing_global_scope_ = false;
 
   // Don't send the StopWorker message if the StartWorker message hasn't
   // been sent.
@@ -641,6 +646,10 @@ void EmbeddedWorkerInstance::OnScriptLoaded() {
 
   // Renderer side has started to launch the worker thread.
   starting_phase_ = SCRIPT_LOADED;
+
+  for (auto& observer : listener_list_) {
+    observer.OnScriptLoaded();
+  }
 }
 
 void EmbeddedWorkerInstance::OnWorkerVersionInstalled() {
@@ -666,6 +675,8 @@ void EmbeddedWorkerInstance::OnScriptEvaluationStart() {
 void EmbeddedWorkerInstance::OnStarted(
     blink::mojom::ServiceWorkerStartStatus start_status,
     blink::mojom::ServiceWorkerFetchHandlerType fetch_handler_type,
+    bool has_hid_event_handlers,
+    bool has_usb_event_handlers,
     int thread_id,
     blink::mojom::EmbeddedWorkerStartTimingPtr start_timing) {
   TRACE_EVENT0("ServiceWorker", "EmbeddedWorkerInstance::OnStarted");
@@ -702,10 +713,12 @@ void EmbeddedWorkerInstance::OnStarted(
 
   DCHECK_EQ(EmbeddedWorkerStatus::STARTING, status_);
   status_ = EmbeddedWorkerStatus::RUNNING;
+  pause_initializing_global_scope_ = false;
   thread_id_ = thread_id;
   inflight_start_info_.reset();
   for (auto& observer : listener_list_) {
-    observer.OnStarted(start_status, fetch_handler_type);
+    observer.OnStarted(start_status, fetch_handler_type, has_hid_event_handlers,
+                       has_usb_event_handlers);
     // |this| may be destroyed here. Fortunately we know there is only one
     // observer in production code.
   }
@@ -782,7 +795,8 @@ void EmbeddedWorkerInstance::BindHidService(
     return;
   }
   if (hid_delegate->IsServiceWorkerAllowedForOrigin(origin)) {
-    HidService::Create(context_, origin, std::move(receiver));
+    HidService::Create(owner_version_->GetWeakPtr(), origin,
+                       std::move(receiver));
   }
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
@@ -796,7 +810,8 @@ void EmbeddedWorkerInstance::BindUsbService(
     return;
   }
   if (usb_delegate->IsServiceWorkerAllowedForOrigin(origin)) {
-    WebUsbServiceImpl::Create(context_, origin, std::move(receiver));
+    WebUsbServiceImpl::Create(owner_version_->GetWeakPtr(), origin,
+                              std::move(receiver));
   }
 }
 
@@ -813,7 +828,7 @@ std::unique_ptr<blink::PendingURLLoaderFactoryBundle>
 EmbeddedWorkerInstance::CreateFactoryBundle(
     RenderProcessHost* rph,
     int routing_id,
-    const url::Origin& origin,
+    const blink::StorageKey& storage_key,
     network::mojom::ClientSecurityStatePtr client_security_state,
     mojo::PendingRemote<network::mojom::CrossOriginEmbedderPolicyReporter>
         coep_reporter,
@@ -832,12 +847,11 @@ EmbeddedWorkerInstance::CreateFactoryBundle(
     client_security_state = network::mojom::ClientSecurityState::New();
   }
 
+  const url::Origin& origin = storage_key.origin();
+
   network::mojom::URLLoaderFactoryParamsPtr factory_params =
       URLLoaderFactoryParamsHelper::CreateForWorker(
-          rph, origin,
-          net::IsolationInfo::Create(net::IsolationInfo::RequestType::kOther,
-                                     origin, origin,
-                                     net::SiteForCookies::FromOrigin(origin)),
+          rph, origin, storage_key.ToPartialNetIsolationInfo(),
           std::move(coep_reporter),
           static_cast<StoragePartitionImpl*>(rph->GetStoragePartition())
               ->CreateAuthCertObserverForServiceWorker(),
@@ -857,7 +871,8 @@ EmbeddedWorkerInstance::CreateFactoryBundle(
       factory_type, origin, absl::nullopt /* navigation_id */,
       ukm::kInvalidSourceIdObj, &default_factory_receiver,
       &factory_params->header_client, &bypass_redirect_checks,
-      nullptr /* disable_secure_dns */, &factory_params->factory_override);
+      nullptr /* disable_secure_dns */, &factory_params->factory_override,
+      /*navigation_response_task_runner=*/nullptr);
   devtools_instrumentation::WillCreateURLLoaderFactoryForServiceWorker(
       rph, routing_id, &factory_params->factory_override);
 
@@ -914,6 +929,23 @@ EmbeddedWorkerInstance::CreateFactoryBundle(
   }
 
   return factory_bundle;
+}
+
+void EmbeddedWorkerInstance::SetPauseInitializingGlobalScope() {
+  TRACE_EVENT0("ServiceWorker",
+               "EmbeddedWorkerInstance::SetPauseInitializingGlobalScope");
+  CHECK_EQ(EmbeddedWorkerStatus::STOPPED, status_);
+  CHECK(!pause_initializing_global_scope_);
+  pause_initializing_global_scope_ = true;
+}
+
+void EmbeddedWorkerInstance::ResumeInitializingGlobalScope() {
+  TRACE_EVENT0("ServiceWorker",
+               "EmbeddedWorkerInstance::ResumeInitializingGlobalScope");
+  CHECK_EQ(EmbeddedWorkerStatus::STARTING, status_);
+  CHECK(pause_initializing_global_scope_);
+  pause_initializing_global_scope_ = false;
+  owner_version_->InitializeGlobalScope();
 }
 
 void EmbeddedWorkerInstance::OnReportException(
@@ -987,6 +1019,7 @@ void EmbeddedWorkerInstance::ReleaseProcess() {
   // from UpdateForegroundPriority() since we don't want it to be
   // re-added at this stage.
   status_ = EmbeddedWorkerStatus::STOPPING;
+  pause_initializing_global_scope_ = false;
   NotifyForegroundServiceWorkerRemoved();
 
   instance_host_receiver_.reset();

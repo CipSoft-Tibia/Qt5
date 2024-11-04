@@ -87,6 +87,7 @@ void PermissionsClient::TriggerPromptHatsSurveyIfEnabled(
     permissions::PermissionRequestGestureType gesture_type,
     absl::optional<base::TimeDelta> prompt_display_duration,
     bool is_post_prompt,
+    const GURL& gurl,
     base::OnceCallback<void()> hats_shown_callback_) {}
 #endif
 
@@ -158,7 +159,6 @@ infobars::InfoBar* PermissionsClient::MaybeCreateInfoBar(
   return nullptr;
 }
 
-#if BUILDFLAG(IS_ANDROID)
 std::unique_ptr<PermissionsClient::PermissionMessageDelegate>
 PermissionsClient::MaybeCreateMessageUI(
     content::WebContents* web_contents,
@@ -166,7 +166,6 @@ PermissionsClient::MaybeCreateMessageUI(
     base::WeakPtr<PermissionPromptAndroid> prompt) {
   return nullptr;
 }
-#endif
 
 void PermissionsClient::RepromptForAndroidPermissions(
     content::WebContents* web_contents,

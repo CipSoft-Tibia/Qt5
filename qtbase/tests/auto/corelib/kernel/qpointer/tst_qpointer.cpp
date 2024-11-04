@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QRunnable>
@@ -39,15 +39,22 @@ private slots:
 // check that nullptr QPointer construction is Q_CONSTINIT:
 [[maybe_unused]] Q_CONSTINIT static QPointer<QFile> s_file1;
 [[maybe_unused]] Q_CONSTINIT static QPointer<QFile> s_file2 = {};
+[[maybe_unused]] Q_CONSTINIT static QPointer<QFile> s_file3 = nullptr;
+[[maybe_unused]] Q_CONSTINIT static QPointer<QFile> s_file4 = 0; // legacy nullptr
 
 void tst_QPointer::constructors()
 {
+    struct Derived : QObject {};
+    Derived derived;
+
     QPointer<QObject> p1;
     QPointer<QObject> p2(this);
     QPointer<QObject> p3(p2);
+    QPointer<QObject> p4 = &derived;
     QCOMPARE(p1, QPointer<QObject>(0));
     QCOMPARE(p2, QPointer<QObject>(this));
     QCOMPARE(p3, QPointer<QObject>(this));
+    QCOMPARE(p4, &derived);
 }
 
 void tst_QPointer::ctad()

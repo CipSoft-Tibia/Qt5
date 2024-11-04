@@ -14,9 +14,12 @@
 
 #include "dawn/native/CommandBufferStateTracker.h"
 
+#include <limits>
 #include <optional>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
+#include <variant>
 
 #include "dawn/common/Assert.h"
 #include "dawn/common/BitSetIterator.h"
@@ -53,7 +56,7 @@ std::optional<uint32_t> FindFirstUndersizedBuffer(
     return std::nullopt;
 }
 
-struct BufferBindingAliasingResult {
+struct BufferAliasing {
     struct Entry {
         BindGroupIndex bindGroupIndex;
         BindingIndex bindingIndex;
@@ -66,21 +69,45 @@ struct BufferBindingAliasingResult {
     Entry e1;
 };
 
-// TODO(dawn:1642): Find storage texture binding aliasing as well.
+struct TextureAliasing {
+    struct Entry {
+        BindGroupIndex bindGroupIndex;
+        BindingIndex bindingIndex;
+
+        uint32_t baseMipLevel;
+        uint32_t mipLevelCount;
+        uint32_t baseArrayLayer;
+        uint32_t arrayLayerCount;
+    };
+    Entry e0;
+    Entry e1;
+};
+
+using WritableBindingAliasingResult = std::variant<std::monostate, BufferAliasing, TextureAliasing>;
+
 template <typename Return>
 Return FindStorageBufferBindingAliasing(
     const PipelineLayoutBase* pipelineLayout,
     const ityp::array<BindGroupIndex, BindGroupBase*, kMaxBindGroups>& bindGroups,
-    const ityp::array<BindGroupIndex, std::vector<uint32_t>, kMaxBindGroups> dynamicOffsets) {
+    const ityp::array<BindGroupIndex, std::vector<uint32_t>, kMaxBindGroups>& dynamicOffsets) {
+    // If true, returns detailed validation error info. Otherwise simply returns if any binding
+    // aliasing is found.
+    constexpr bool kProduceDetails = std::is_same_v<Return, WritableBindingAliasingResult>;
+
     // Reduce the bindings array first to only preserve storage buffer bindings that could
     // potentially have ranges overlap.
-    // There can at most be 8 storage buffer bindings per shader stage.
-    StackVector<BufferBinding, 8> bindingsToCheck;
+    // There can at most be 8 storage buffer bindings (in default limits) per shader stage.
+    StackVector<BufferBinding, 8> storageBufferBindingsToCheck;
+    StackVector<std::pair<BindGroupIndex, BindingIndex>, 8> bufferBindingIndices;
 
-    StackVector<std::pair<BindGroupIndex, BindingIndex>, 8> bindingIndices;
+    // Reduce the bindings array first to only preserve writable storage texture bindings that could
+    // potentially have ranges overlap.
+    // There can at most be 8 storage texture bindings (in default limits) per shader stage.
+    StackVector<const TextureViewBase*, 8> storageTextureViewsToCheck;
+    StackVector<std::pair<BindGroupIndex, BindingIndex>, 8> textureBindingIndices;
 
     for (BindGroupIndex groupIndex : IterateBitSet(pipelineLayout->GetBindGroupLayoutsMask())) {
-        BindGroupLayoutBase* bgl = bindGroups[groupIndex]->GetLayout();
+        BindGroupLayoutInternalBase* bgl = bindGroups[groupIndex]->GetLayout();
 
         for (BindingIndex bindingIndex{0}; bindingIndex < bgl->GetBufferCount(); ++bindingIndex) {
             const BindingInfo& bindingInfo = bgl->GetBindingInfo(bindingIndex);
@@ -107,55 +134,153 @@ Return FindStorageBufferBindingAliasing(
                 adjustedOffset += dynamicOffsets[groupIndex][static_cast<uint32_t>(bindingIndex)];
             }
 
-            bindingsToCheck->push_back(BufferBinding{
+            storageBufferBindingsToCheck->push_back(BufferBinding{
                 bufferBinding.buffer,
                 adjustedOffset,
                 bufferBinding.size,
             });
 
-            if constexpr (std::is_same_v<Return, std::optional<BufferBindingAliasingResult>>) {
-                bindingIndices->emplace_back(groupIndex, bindingIndex);
+            if constexpr (kProduceDetails) {
+                bufferBindingIndices->emplace_back(groupIndex, bindingIndex);
+            }
+        }
+
+        // TODO(dawn:1642): optimize: precompute start/end range of storage textures bindings.
+        for (BindingIndex bindingIndex{bgl->GetBufferCount()};
+             bindingIndex < bgl->GetBindingCount(); ++bindingIndex) {
+            const BindingInfo& bindingInfo = bgl->GetBindingInfo(bindingIndex);
+
+            if (bindingInfo.bindingType != BindingInfoType::StorageTexture) {
+                continue;
+            }
+
+            switch (bindingInfo.storageTexture.access) {
+                case wgpu::StorageTextureAccess::WriteOnly:
+                case wgpu::StorageTextureAccess::ReadWrite:
+                    break;
+                case wgpu::StorageTextureAccess::ReadOnly:
+                    continue;
+                case wgpu::StorageTextureAccess::Undefined:
+                default:
+                    UNREACHABLE();
+            }
+
+            const TextureViewBase* textureView =
+                bindGroups[groupIndex]->GetBindingAsTextureView(bindingIndex);
+
+            storageTextureViewsToCheck->push_back(textureView);
+
+            if constexpr (kProduceDetails) {
+                textureBindingIndices->emplace_back(groupIndex, bindingIndex);
             }
         }
     }
 
-    // Iterate through each bindings to find if any writable storage bindings aliasing exists.
-    // Given that maxStorageBuffersPerShaderStage is 8,
-    // it doesn't seem too bad to do a nested loop check.
+    // Iterate through each buffer bindings to find if any writable storage bindings aliasing
+    // exists. Given that maxStorageBuffersPerShaderStage is 8, it doesn't seem too bad to do a
+    // nested loop check.
     // TODO(dawn:1642): Maybe do algorithm optimization from O(N^2) to O(N*logN).
-    for (size_t i = 0; i < bindingsToCheck->size(); i++) {
-        const auto& bufferBinding0 = bindingsToCheck[i];
+    for (size_t i = 0; i < storageBufferBindingsToCheck->size(); i++) {
+        const auto& bufferBinding0 = storageBufferBindingsToCheck[i];
 
-        for (size_t j = i + 1; j < bindingsToCheck->size(); j++) {
-            const auto& bufferBinding1 = bindingsToCheck[j];
+        for (size_t j = i + 1; j < storageBufferBindingsToCheck->size(); j++) {
+            const auto& bufferBinding1 = storageBufferBindingsToCheck[j];
 
             if (bufferBinding0.buffer != bufferBinding1.buffer) {
                 continue;
             }
 
-            if (bufferBinding0.offset <= bufferBinding1.offset + bufferBinding1.size - 1 &&
-                bufferBinding1.offset <= bufferBinding0.offset + bufferBinding0.size - 1) {
-                if constexpr (std::is_same_v<Return, bool>) {
+            if (RangesOverlap(
+                    bufferBinding0.offset, bufferBinding0.offset + bufferBinding0.size - 1,
+                    bufferBinding1.offset, bufferBinding1.offset + bufferBinding1.size - 1)) {
+                if constexpr (kProduceDetails) {
+                    return WritableBindingAliasingResult{BufferAliasing{
+                        {bufferBindingIndices[i].first, bufferBindingIndices[i].second,
+                         bufferBinding0.offset, bufferBinding0.size},
+                        {bufferBindingIndices[j].first, bufferBindingIndices[j].second,
+                         bufferBinding1.offset, bufferBinding1.size},
+                    }};
+                } else {
                     return true;
-                } else if constexpr (std::is_same_v<Return,
-                                                    std::optional<BufferBindingAliasingResult>>) {
-                    return BufferBindingAliasingResult{
-                        {bindingIndices[i].first, bindingIndices[i].second, bufferBinding0.offset,
-                         bufferBinding0.size},
-                        {bindingIndices[j].first, bindingIndices[j].second, bufferBinding1.offset,
-                         bufferBinding1.size},
-                    };
                 }
             }
         }
     }
 
-    if constexpr (std::is_same_v<Return, bool>) {
-        return false;
-    } else if constexpr (std::is_same_v<Return, std::optional<BufferBindingAliasingResult>>) {
-        return std::nullopt;
+    // Iterate through each texture views to find if any writable storage bindings aliasing exists.
+    // Given that maxStorageTexturesPerShaderStage is 8,
+    // it doesn't seem too bad to do a nested loop check.
+    // TODO(dawn:1642): Maybe do algorithm optimization from O(N^2) to O(N*logN).
+    for (size_t i = 0; i < storageTextureViewsToCheck->size(); i++) {
+        const TextureViewBase* textureView0 = storageTextureViewsToCheck[i];
+
+        ASSERT(textureView0->GetAspects() == Aspect::Color);
+
+        uint32_t baseMipLevel0 = textureView0->GetBaseMipLevel();
+        uint32_t mipLevelCount0 = textureView0->GetLevelCount();
+        uint32_t baseArrayLayer0 = textureView0->GetBaseArrayLayer();
+        uint32_t arrayLayerCount0 = textureView0->GetLayerCount();
+
+        for (size_t j = i + 1; j < storageTextureViewsToCheck->size(); j++) {
+            const TextureViewBase* textureView1 = storageTextureViewsToCheck[j];
+
+            if (textureView0->GetTexture() != textureView1->GetTexture()) {
+                continue;
+            }
+
+            ASSERT(textureView1->GetAspects() == Aspect::Color);
+
+            uint32_t baseMipLevel1 = textureView1->GetBaseMipLevel();
+            uint32_t mipLevelCount1 = textureView1->GetLevelCount();
+            uint32_t baseArrayLayer1 = textureView1->GetBaseArrayLayer();
+            uint32_t arrayLayerCount1 = textureView1->GetLayerCount();
+
+            if (RangesOverlap(baseMipLevel0, baseMipLevel0 + mipLevelCount0 - 1, baseMipLevel1,
+                              baseMipLevel1 + mipLevelCount1 - 1) &&
+                RangesOverlap(baseArrayLayer0, baseArrayLayer0 + arrayLayerCount0 - 1,
+                              baseArrayLayer1, baseArrayLayer1 + arrayLayerCount1 - 1)) {
+                if constexpr (kProduceDetails) {
+                    return WritableBindingAliasingResult{TextureAliasing{
+                        {textureBindingIndices[i].first, textureBindingIndices[i].second,
+                         baseMipLevel0, mipLevelCount0, baseArrayLayer0, arrayLayerCount0},
+                        {textureBindingIndices[j].first, textureBindingIndices[j].second,
+                         baseMipLevel1, mipLevelCount1, baseArrayLayer1, arrayLayerCount1},
+                    }};
+                } else {
+                    return true;
+                }
+            }
+        }
     }
-    UNREACHABLE();
+
+    if constexpr (kProduceDetails) {
+        return WritableBindingAliasingResult();
+    } else {
+        return false;
+    }
+}
+
+bool TextureViewsMatch(const TextureViewBase* a, const TextureViewBase* b) {
+    ASSERT(a->GetTexture() == b->GetTexture());
+    return a->GetFormat().GetIndex() == b->GetFormat().GetIndex() &&
+           a->GetDimension() == b->GetDimension() && a->GetBaseMipLevel() == b->GetBaseMipLevel() &&
+           a->GetLevelCount() == b->GetLevelCount() &&
+           a->GetBaseArrayLayer() == b->GetBaseArrayLayer() &&
+           a->GetLayerCount() == b->GetLayerCount();
+}
+
+using VectorOfTextureViews = StackVector<const TextureViewBase*, 8>;
+
+bool TextureViewsAllMatch(const VectorOfTextureViews& views) {
+    ASSERT(!views->empty());
+
+    const TextureViewBase* first = views[0];
+    for (size_t i = 1; i < views->size(); ++i) {
+        if (!TextureViewsMatch(first, views[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 }  // namespace
@@ -209,6 +334,43 @@ MaybeError CommandBufferStateTracker::ValidateCanDraw() {
 
 MaybeError CommandBufferStateTracker::ValidateCanDrawIndexed() {
     return ValidateOperation(kDrawIndexedAspects);
+}
+
+MaybeError CommandBufferStateTracker::ValidateNoDifferentTextureViewsOnSameTexture() {
+    // TODO(dawn:1855): Look into optimizations as unordered_map does many allocations
+    std::unordered_map<const TextureBase*, VectorOfTextureViews> textureToViews;
+
+    for (BindGroupIndex groupIndex :
+         IterateBitSet(mLastPipelineLayout->GetBindGroupLayoutsMask())) {
+        BindGroupBase* bindGroup = mBindgroups[groupIndex];
+        BindGroupLayoutInternalBase* bgl = bindGroup->GetLayout();
+
+        for (BindingIndex bindingIndex{0}; bindingIndex < bgl->GetBindingCount(); ++bindingIndex) {
+            const BindingInfo& bindingInfo = bgl->GetBindingInfo(bindingIndex);
+            if (bindingInfo.bindingType != BindingInfoType::Texture &&
+                bindingInfo.bindingType != BindingInfoType::StorageTexture) {
+                continue;
+            }
+
+            const TextureViewBase* textureViewBase =
+                bindGroup->GetBindingAsTextureView(bindingIndex);
+
+            textureToViews[textureViewBase->GetTexture()]->push_back(textureViewBase);
+        }
+    }
+
+    for (const auto& it : textureToViews) {
+        const TextureBase* texture = it.first;
+        const VectorOfTextureViews& views = it.second;
+        DAWN_INVALID_IF(
+            !TextureViewsAllMatch(views),
+            "In compatibility mode, %s must not have different views in a single draw/dispatch "
+            "command. texture views: %s",
+            texture,
+            ityp::span<size_t, const TextureViewBase* const>(views->data(), views->size()));
+    }
+
+    return {};
 }
 
 MaybeError CommandBufferStateTracker::ValidateBufferInRangeForVertexBuffer(uint32_t vertexCount,
@@ -336,6 +498,9 @@ MaybeError CommandBufferStateTracker::ValidateOperation(ValidationAspects requir
 
     DAWN_TRY(CheckMissingAspects(requiredAspects & ~mAspects));
 
+    // Validation for kMaxBindGroupsPlusVertexBuffers is skipped because it is not necessary so far.
+    static_assert(kMaxBindGroups + kMaxVertexBuffers <= kMaxBindGroupsPlusVertexBuffers);
+
     return {};
 }
 
@@ -396,7 +561,7 @@ MaybeError CommandBufferStateTracker::CheckMissingAspects(ValidationAspects aspe
 
     DAWN_INVALID_IF(aspects[VALIDATION_ASPECT_PIPELINE], "No pipeline set.");
 
-    if (DAWN_UNLIKELY(aspects[VALIDATION_ASPECT_INDEX_BUFFER])) {
+    if (aspects[VALIDATION_ASPECT_INDEX_BUFFER]) {
         DAWN_INVALID_IF(!mIndexBufferSet, "Index buffer was not set.");
 
         RenderPipelineBase* lastRenderPipeline = GetRenderPipeline();
@@ -425,6 +590,7 @@ MaybeError CommandBufferStateTracker::CheckMissingAspects(ValidationAspects aspe
     }
 
     if (aspects[VALIDATION_ASPECT_VERTEX_BUFFERS]) {
+        // Try to be helpful by finding one missing vertex buffer to surface in the error message.
         const ityp::bitset<VertexBufferSlot, kMaxVertexBuffers> missingVertexBuffers =
             GetRenderPipeline()->GetVertexBufferSlotsUsed() & ~mVertexBufferSlotsUsed;
         ASSERT(missingVertexBuffers.any());
@@ -435,15 +601,15 @@ MaybeError CommandBufferStateTracker::CheckMissingAspects(ValidationAspects aspe
                                      uint8_t(firstMissing), GetRenderPipeline());
     }
 
-    if (DAWN_UNLIKELY(aspects[VALIDATION_ASPECT_BIND_GROUPS])) {
+    if (aspects[VALIDATION_ASPECT_BIND_GROUPS]) {
         for (BindGroupIndex i : IterateBitSet(mLastPipelineLayout->GetBindGroupLayoutsMask())) {
             ASSERT(HasPipeline());
 
             DAWN_INVALID_IF(mBindgroups[i] == nullptr, "No bind group set at group index %u.",
                             static_cast<uint32_t>(i));
 
-            BindGroupLayoutBase* requiredBGL = mLastPipelineLayout->GetBindGroupLayout(i);
-            BindGroupLayoutBase* currentBGL = mBindgroups[i]->GetLayout();
+            BindGroupLayoutBase* requiredBGL = mLastPipelineLayout->GetFrontendBindGroupLayout(i);
+            BindGroupLayoutBase* currentBGL = mBindgroups[i]->GetFrontendLayout();
 
             DAWN_INVALID_IF(
                 requiredBGL->GetPipelineCompatibilityToken() != PipelineCompatibilityToken(0) &&
@@ -469,44 +635,85 @@ MaybeError CommandBufferStateTracker::CheckMissingAspects(ValidationAspects aspe
                 mBindgroups[i], static_cast<uint32_t>(i), currentBGL, mLastPipeline);
 
             DAWN_INVALID_IF(
-                mLastPipelineLayout->GetBindGroupLayout(i) != mBindgroups[i]->GetLayout(),
+                requiredBGL->GetInternalBindGroupLayout() !=
+                    currentBGL->GetInternalBindGroupLayout(),
                 "Bind group layout %s of pipeline layout %s does not match layout %s of bind "
                 "group %s set at group index %u.",
                 requiredBGL, mLastPipelineLayout, currentBGL, mBindgroups[i],
                 static_cast<uint32_t>(i));
 
-            // TODO(dawn:563): Report which buffer bindings are failing. This requires the ability
-            // to look up the binding index from the packed index.
             std::optional<uint32_t> packedIndex = FindFirstUndersizedBuffer(
                 mBindgroups[i]->GetUnverifiedBufferSizes(), (*mMinBufferSizes)[i]);
             if (packedIndex.has_value()) {
+                // Find the binding index for this packed index.
+                BindingIndex bindingIndex{std::numeric_limits<uint32_t>::max()};
+                mBindgroups[i]->ForEachUnverifiedBufferBindingIndex(
+                    [&](BindingIndex candidateBindingIndex, uint32_t candidatePackedIndex) {
+                        if (candidatePackedIndex == *packedIndex) {
+                            bindingIndex = candidateBindingIndex;
+                        }
+                    });
+                ASSERT(static_cast<uint32_t>(bindingIndex) != std::numeric_limits<uint32_t>::max());
+
+                const auto& bindingInfo = mBindgroups[i]->GetLayout()->GetBindingInfo(bindingIndex);
+                const BufferBinding& bufferBinding =
+                    mBindgroups[i]->GetBindingAsBufferBinding(bindingIndex);
+
+                BindingNumber bindingNumber = bindingInfo.binding;
+                const BufferBase* buffer = bufferBinding.buffer;
+
                 uint64_t bufferSize =
                     mBindgroups[i]->GetUnverifiedBufferSizes()[packedIndex.value()];
                 uint64_t minBufferSize = (*mMinBufferSizes)[i][packedIndex.value()];
+
                 return DAWN_VALIDATION_ERROR(
-                    "Binding sizes are too small for %s set at group index %u. A bound buffer "
-                    "contained %u bytes, but the current pipeline (%s) requires a buffer which is "
-                    "at least %u bytes. (Note that uniform buffer bindings must be a multiple of "
-                    "16 bytes, and as a result may be larger than the associated data in the "
-                    "shader source.)",
-                    mBindgroups[i], static_cast<uint32_t>(i), bufferSize, mLastPipeline,
-                    minBufferSize);
+                    "%s bound with size %u at group %u, binding %u is too small. The pipeline (%s) "
+                    "requires a buffer binding which is at least %u bytes.%s",
+                    buffer, bufferSize, static_cast<uint32_t>(i),
+                    static_cast<uint32_t>(bindingNumber), mLastPipeline, minBufferSize,
+                    (bindingInfo.buffer.type == wgpu::BufferBindingType::Uniform
+                         ? " This binding is a uniform buffer binding. It is padded to a multiple "
+                           "of 16 bytes, and as a result may be larger than the associated data in "
+                           "the shader source."
+                         : ""));
             }
         }
 
-        auto result = FindStorageBufferBindingAliasing<std::optional<BufferBindingAliasingResult>>(
+        auto result = FindStorageBufferBindingAliasing<WritableBindingAliasingResult>(
             mLastPipelineLayout, mBindgroups, mDynamicOffsets);
 
-        if (result) {
+        if (std::holds_alternative<BufferAliasing>(result)) {
+            const auto& a = std::get<BufferAliasing>(result);
             return DAWN_VALIDATION_ERROR(
-                "Writable storage buffer binding found between bind group index %u, binding index "
-                "%u, and bind group index %u, binding index %u, with overlapping ranges (offset: "
-                "%u, size: %u) and (offset: %u, size: %u).",
-                static_cast<uint32_t>(result->e0.bindGroupIndex),
-                static_cast<uint32_t>(result->e0.bindingIndex),
-                static_cast<uint32_t>(result->e1.bindGroupIndex),
-                static_cast<uint32_t>(result->e1.bindingIndex), result->e0.offset, result->e0.size,
-                result->e1.offset, result->e1.size);
+                "Writable storage buffer binding aliasing found between %s set at bind group index "
+                "%u, binding index %u, and %s set at bind group index %u, binding index %u, with "
+                "overlapping ranges (offset: %u, size: %u) and (offset: %u, size: %u) in %s.",
+                mBindgroups[a.e0.bindGroupIndex], static_cast<uint32_t>(a.e0.bindGroupIndex),
+                static_cast<uint32_t>(a.e0.bindingIndex), mBindgroups[a.e1.bindGroupIndex],
+                static_cast<uint32_t>(a.e1.bindGroupIndex),
+                static_cast<uint32_t>(a.e1.bindingIndex), a.e0.offset, a.e0.size, a.e1.offset,
+                a.e1.size,
+                mBindgroups[a.e0.bindGroupIndex]
+                    ->GetBindingAsBufferBinding(a.e0.bindingIndex)
+                    .buffer);
+        } else {
+            ASSERT(std::holds_alternative<TextureAliasing>(result));
+            const auto& a = std::get<TextureAliasing>(result);
+            return DAWN_VALIDATION_ERROR(
+                "Writable storage texture binding aliasing found between %s set at bind group "
+                "index %u, binding index %u, and %s set at bind group index %u, binding index %u, "
+                "with subresources (base mipmap level: %u, mip level count: %u, base array layer: "
+                "%u, array layer count: %u) and (base mipmap level: %u, mip level count: %u, base "
+                "array layer: %u, array layer count: %u) in %s.",
+                mBindgroups[a.e0.bindGroupIndex], static_cast<uint32_t>(a.e0.bindGroupIndex),
+                static_cast<uint32_t>(a.e0.bindingIndex), mBindgroups[a.e1.bindGroupIndex],
+                static_cast<uint32_t>(a.e1.bindGroupIndex),
+                static_cast<uint32_t>(a.e1.bindingIndex), a.e0.baseMipLevel, a.e0.mipLevelCount,
+                a.e0.baseArrayLayer, a.e0.arrayLayerCount, a.e1.baseMipLevel, a.e1.mipLevelCount,
+                a.e1.baseArrayLayer, a.e1.arrayLayerCount,
+                mBindgroups[a.e0.bindGroupIndex]
+                    ->GetBindingAsTextureView(a.e0.bindingIndex)
+                    ->GetTexture());
         }
 
         // The chunk of code above should be similar to the one in |RecomputeLazyAspects|.
@@ -528,6 +735,10 @@ void CommandBufferStateTracker::SetRenderPipeline(RenderPipelineBase* pipeline) 
     SetPipelineCommon(pipeline);
 }
 
+void CommandBufferStateTracker::UnsetBindGroup(BindGroupIndex index) {
+    mBindgroups[index] = nullptr;
+    mAspects.reset(VALIDATION_ASPECT_BIND_GROUPS);
+}
 void CommandBufferStateTracker::SetBindGroup(BindGroupIndex index,
                                              BindGroupBase* bindgroup,
                                              uint32_t dynamicOffsetCount,
@@ -541,6 +752,12 @@ void CommandBufferStateTracker::SetIndexBuffer(wgpu::IndexFormat format, uint64_
     mIndexBufferSet = true;
     mIndexFormat = format;
     mIndexBufferSize = size;
+}
+
+void CommandBufferStateTracker::UnsetVertexBuffer(VertexBufferSlot slot) {
+    mVertexBufferSlotsUsed.set(slot, false);
+    mVertexBufferSizes[slot] = 0;
+    mAspects.reset(VALIDATION_ASPECT_VERTEX_BUFFERS);
 }
 
 void CommandBufferStateTracker::SetVertexBuffer(VertexBufferSlot slot, uint64_t size) {

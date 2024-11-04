@@ -281,7 +281,7 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
     this.setDefaultFocusedElement(this.colorElement);
     this.colorElement.addEventListener('keydown', this.onSliderKeydown.bind(this, positionColor.bind(this)));
     const swatchAriaText = i18nString(UIStrings.pressArrowKeysMessage);
-    UI.ARIAUtils.setAccessibleName(this.colorElement, swatchAriaText);
+    UI.ARIAUtils.setLabel(this.colorElement, swatchAriaText);
     UI.ARIAUtils.markAsApplication(this.colorElement);
     this.colorDragElement = this.colorElement.createChild('div', 'spectrum-sat fill')
                                 .createChild('div', 'spectrum-val fill')
@@ -297,7 +297,8 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
         toggleEyeDropperShortcut[0]?.descriptors.flatMap(descriptor => descriptor.name.split(' + '))[0];
 
     this.colorPickerButton = new UI.Toolbar.ToolbarToggle(
-        i18nString(UIStrings.toggleColorPicker, {PH1: definedShortcutKey || ''}), 'largeicon-eyedropper');
+        i18nString(UIStrings.toggleColorPicker, {PH1: definedShortcutKey || ''}), 'color-picker',
+        'color-picker-filled');
     this.colorPickerButton.setToggled(true);
     this.colorPickerButton.addEventListener(
         UI.Toolbar.ToolbarButton.Events.Click, this.toggleColorPicker.bind(this, undefined));
@@ -308,13 +309,13 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
     this.hueElement = toolsContainer.createChild('div', 'spectrum-hue');
     this.hueElement.tabIndex = 0;
     this.hueElement.addEventListener('keydown', this.onSliderKeydown.bind(this, positionHue.bind(this)));
-    UI.ARIAUtils.setAccessibleName(this.hueElement, i18nString(UIStrings.changeHue));
+    UI.ARIAUtils.setLabel(this.hueElement, i18nString(UIStrings.changeHue));
     UI.ARIAUtils.markAsSlider(this.hueElement, 0, 360);
     this.hueSlider = this.hueElement.createChild('div', 'spectrum-slider');
     this.alphaElement = toolsContainer.createChild('div', 'spectrum-alpha');
     this.alphaElement.tabIndex = 0;
     this.alphaElement.addEventListener('keydown', this.onSliderKeydown.bind(this, positionAlpha.bind(this)));
-    UI.ARIAUtils.setAccessibleName(this.alphaElement, i18nString(UIStrings.changeAlpha));
+    UI.ARIAUtils.setLabel(this.alphaElement, i18nString(UIStrings.changeAlpha));
     UI.ARIAUtils.markAsSlider(this.alphaElement, 0, 1);
     this.alphaElementBackground = this.alphaElement.createChild('div', 'spectrum-alpha-background');
     this.alphaSlider = this.alphaElement.createChild('div', 'spectrum-slider');
@@ -349,7 +350,7 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
 
     const label = this.hexContainer.createChild('div', 'spectrum-text-label');
     label.textContent = i18nString(UIStrings.hex);
-    UI.ARIAUtils.setAccessibleName(this.hexValue, label.textContent);
+    UI.ARIAUtils.setLabel(this.hexValue, label.textContent);
 
     const displaySwitcher = toolsContainer.createChild('button', 'spectrum-display-switcher spectrum-switcher');
     appendSwitcherIcon(displaySwitcher);
@@ -404,14 +405,14 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
     });
 
     this.deleteIconToolbar = new UI.Toolbar.Toolbar('delete-color-toolbar');
-    this.deleteButton = new UI.Toolbar.ToolbarButton('', 'largeicon-trash-bin');
+    this.deleteButton = new UI.Toolbar.ToolbarButton('', 'bin');
     this.deleteIconToolbar.appendToolbarItem(this.deleteButton);
 
     const overlay = this.contentElement.createChild('div', 'spectrum-overlay fill');
     overlay.addEventListener('click', this.togglePalettePanel.bind(this, false));
 
     this.addColorToolbar = new UI.Toolbar.Toolbar('add-color-toolbar');
-    const addColorButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.addToPalette), 'largeicon-add');
+    const addColorButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.addToPalette), 'plus');
     addColorButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.onAddColorMousedown.bind(this));
     addColorButton.element.addEventListener('keydown', this.onAddColorKeydown.bind(this));
     this.addColorToolbar.appendToolbarItem(addColorButton);
@@ -533,7 +534,7 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
 
     function appendSwitcherIcon(parentElement: Element): void {
       const switcherIcon = new IconButton.Icon.Icon();
-      switcherIcon.data = {iconName: 'switcherIcon', color: 'var(--color-text-primary)', width: '16px', height: '16px'};
+      switcherIcon.data = {iconName: 'fold-more', color: 'var(--icon-default)', width: '16px', height: '16px'};
       parentElement.appendChild(switcherIcon);
     }
   }
@@ -571,7 +572,7 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
     const title = this.palettePanel.createChild('div', 'palette-title');
     title.textContent = i18nString(UIStrings.colorPalettes);
     const toolbar = new UI.Toolbar.Toolbar('', this.palettePanel);
-    this.closeButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.returnToColorPicker), 'largeicon-delete');
+    this.closeButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.returnToColorPicker), 'cross');
     this.closeButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.togglePalettePanel.bind(this, false));
     this.closeButton.element.addEventListener('keydown', this.onCloseBtnKeydown.bind(this));
     toolbar.appendToolbarItem(this.closeButton);
@@ -645,7 +646,7 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
       const animationDelay = animate ? i * 100 / palette.colors.length : 0;
       const colorElement = this.createPaletteColor(palette.colors[i], palette.colorNames[i], animationDelay);
       UI.ARIAUtils.markAsButton(colorElement);
-      UI.ARIAUtils.setAccessibleName(colorElement, i18nString(UIStrings.colorS, {PH1: palette.colors[i]}));
+      UI.ARIAUtils.setLabel(colorElement, i18nString(UIStrings.colorS, {PH1: palette.colors[i]}));
       colorElement.tabIndex = -1;
       colorElement.addEventListener(
           'mousedown',
@@ -668,7 +669,7 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
         shadow.style.background = palette.colors[i];
         const tooltipText = i18nString(UIStrings.longclickOrLongpressSpaceToShow, {PH1: palette.colors[i]});
         UI.Tooltip.Tooltip.install(colorElement, tooltipText);
-        UI.ARIAUtils.setAccessibleName(colorElement, tooltipText);
+        UI.ARIAUtils.setLabel(colorElement, tooltipText);
         new UI.UIUtils.LongClickController(
             colorElement, this.showLightnessShades.bind(this, colorElement, palette.colors[i]));
       }
@@ -725,7 +726,7 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
         const shadeElement =
             this.createPaletteColor(shades[i], undefined /* colorName */, i * 200 / shades.length + 100);
         UI.ARIAUtils.markAsButton(shadeElement);
-        UI.ARIAUtils.setAccessibleName(shadeElement, i18nString(UIStrings.colorS, {PH1: shades[i]}));
+        UI.ARIAUtils.setLabel(shadeElement, i18nString(UIStrings.colorS, {PH1: shades[i]}));
         shadeElement.tabIndex = -1;
         shadeElement.addEventListener('mousedown', this.paletteColorSelected.bind(this, shades[i], shades[i], false));
         shadeElement.addEventListener('focus', this.paletteColorSelected.bind(this, shades[i], shades[i], false));
@@ -1197,7 +1198,7 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
       this.textLabels.textContent = spec.label;
 
       for (let i = 0; i < this.textValues.length; ++i) {
-        UI.ARIAUtils.setAccessibleName(
+        UI.ARIAUtils.setLabel(
             this.textValues[i],
             /** R in RGBA */ i18nString(UIStrings.sInS, {
               PH1: this.textLabels.textContent.charAt(i),
@@ -1316,7 +1317,7 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
     this.innerSetColor(color, undefined, undefined /* colorName */, colorFormat, ChangeSource.Input);
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     this.registerCSSFiles([spectrumStyles]);
     this.hueAlphaWidth = this.hueElement.offsetWidth;
     this.slideHelperWidth = this.hueSlider.offsetWidth / 2;
@@ -1341,7 +1342,7 @@ export class Spectrum extends Common.ObjectWrapper.eventMixin<EventTypes, typeof
     }
   }
 
-  willHide(): void {
+  override willHide(): void {
     void this.toggleColorPicker(false);
     if (this.contrastDetails && this.contrastDetailsBackgroundColorPickedToggledBound) {
       this.contrastDetails.removeEventListener(
@@ -1615,10 +1616,10 @@ export class Swatch {
     self.onInvokeElement(this.swatchOverlayElement, this.onCopyText.bind(this));
     this.swatchOverlayElement.addEventListener('mouseout', this.onCopyIconMouseout.bind(this));
     this.swatchOverlayElement.addEventListener('blur', this.onCopyIconMouseout.bind(this));
-    this.swatchCopyIcon = UI.Icon.Icon.create('largeicon-copy', 'copy-color-icon');
+    this.swatchCopyIcon = UI.Icon.Icon.create('copy', 'copy-color-icon');
     UI.Tooltip.Tooltip.install(this.swatchCopyIcon, i18nString(UIStrings.copyColorToClipboard));
     this.swatchOverlayElement.appendChild(this.swatchCopyIcon);
-    UI.ARIAUtils.setAccessibleName(this.swatchOverlayElement, this.swatchCopyIcon.title);
+    UI.ARIAUtils.setLabel(this.swatchOverlayElement, this.swatchCopyIcon.title);
   }
 
   setColor(color: Common.Color.Color, colorString?: string): void {
@@ -1635,14 +1636,14 @@ export class Swatch {
   }
 
   private onCopyText(event: Event): void {
-    this.swatchCopyIcon.setIconType('largeicon-checkmark');
+    this.swatchCopyIcon.setIconType('checkmark');
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.copyText(this.colorString);
     UI.ARIAUtils.setPressed(this.swatchOverlayElement, true);
     event.consume();
   }
 
   private onCopyIconMouseout(): void {
-    this.swatchCopyIcon.setIconType('largeicon-copy');
+    this.swatchCopyIcon.setIconType('copy');
     UI.ARIAUtils.setPressed(this.swatchOverlayElement, false);
   }
 }

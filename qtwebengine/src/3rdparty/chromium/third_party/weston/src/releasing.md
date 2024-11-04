@@ -25,32 +25,26 @@ To make a release of Weston, follow these steps.
        git push
 
 3. Run the `release.sh` script to generate the tarballs, sign and upload them,
-   and generate a release announcement template.  This script can be obtained
-   from X.org's modular package:
+   and generate a release announcement template. This script can be obtained
+   from the Wayland repository:
 
-   https://gitlab.freedesktop.org/xorg/util/modular/blob/master/release.sh
+   https://gitlab.freedesktop.org/wayland/wayland/-/blob/main/release.sh
 
-   The script supports a `--dry-run` option to test it without actually doing a
-   release.  If the script fails on the distcheck step due to a test suite error
-   that can't be fixed for some reason, you can skip testsuite by specifying
-   the `--dist` argument.  Pass `--help` to see other supported options.
+4. Compose the release announcements.  The script will generate a
+   weston-x.y.z.announce file with a list of changes and tags.  Prepend these
+   with a human-readable listing of the most notable changes.  For x.y.0
+   releases, indicate the schedule for the x.y+1.0 release.
 
-       release.sh .
-
-5. Compose the release announcements.  The script will generate *.x.y.z.announce
-   files with a list of changes and tags.  Prepend these with a human-readable
-   listing of the most notable changes.  For x.y.0 releases, indicate the
-   schedule for the x.y+1.0 release.
-
-6. PGP sign the release announcement and send it to
+5. PGP sign the release announcement and send it to
    <wayland-devel@lists.freedesktop.org>.
 
-7. Update `releases.html` in wayland.freedesktop.org with links to tarballs and
-   the release email URL. Copy tarballs produced by `release.sh` to `releases/`.
+6. Update `releases.html` in wayland.freedesktop.org with links to tarballs and
+   the release email URL.
 
    Once satisfied:
 
-       git commit -am "releases: add ${RELEASE_NUMBER} release"
+       git add releases.html releases/weston-${RELEASE_NUMBER}.tar.xz*
+       git commit -m "releases: add weston ${RELEASE_NUMBER} release"
        git push
 
 For x.y.0 releases, also create the release series x.y branch.  The x.y branch

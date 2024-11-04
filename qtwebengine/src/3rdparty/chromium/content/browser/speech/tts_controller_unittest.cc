@@ -104,7 +104,7 @@ class MockTtsPlatformImpl : public TtsPlatform {
   }
 
  private:
-  const raw_ptr<TtsController> controller_;
+  const raw_ptr<TtsController, DanglingUntriaged> controller_;
   bool platform_supported_ = true;
   bool platform_initialized_ = true;
   std::vector<VoiceData> voices_;
@@ -193,7 +193,7 @@ class MockTtsControllerDelegate : public TtsControllerDelegate {
                                         double* volume) override {}
 
  private:
-  BrowserContext* last_browser_context_ = nullptr;
+  raw_ptr<BrowserContext, ExperimentalAsh> last_browser_context_ = nullptr;
   PreferredVoiceIds ids_;
 };
 #endif

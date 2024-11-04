@@ -33,6 +33,8 @@ enum class ZOrderLevel;
 // and move.
 class ShellToplevelWrapper {
  public:
+  using ShapeRects = std::vector<gfx::Rect>;
+
   enum class DecorationMode {
     // Initial mode that the surface has till the first configure event.
     kNone,
@@ -53,11 +55,20 @@ class ShellToplevelWrapper {
   // Initializes the ShellToplevel.
   virtual bool Initialize() = 0;
 
+  // Returns true if `aura_toplevel_` version is equal or newer than `version`.
+  virtual bool IsSupportedOnAuraToplevel(uint32_t version) const = 0;
+
+  // Sets whether the window can be maximized.
+  virtual void SetCanMaximize(bool can_maximize) = 0;
+
   // Sets a native window to maximized state.
   virtual void SetMaximized() = 0;
 
   // Unsets a native window from maximized state.
   virtual void UnSetMaximized() = 0;
+
+  // Sets whether the window can enter fullscreen.
+  virtual void SetCanFullscreen(bool can_fullscreen) = 0;
 
   // Sets a native window to fullscreen state.
   virtual void SetFullscreen() = 0;
@@ -72,6 +83,10 @@ class ShellToplevelWrapper {
   // Whether the shell supports top level immersive status. The deprecated
   // immersive status used to be set on the surface level.
   virtual bool SupportsTopLevelImmersiveStatus() const = 0;
+
+  // Sets the top inset (header) height which is reserved or occupied by the top
+  // window frame.
+  virtual void SetTopInset(int height) = 0;
 #endif
 
   // Sets a native window to minimized state.
@@ -141,9 +156,11 @@ class ShellToplevelWrapper {
   // screen coordinates.
   virtual bool SupportsScreenCoordinates() const = 0;
 
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
   // Enables screen coordinates support. This is no-op if the server does not
   // support the screen coordinates.
   virtual void EnableScreenCoordinates() = 0;
+#endif
 
   // Sets/usets a native window to float state. This places it on top of other
   // windows.
@@ -174,6 +191,15 @@ class ShellToplevelWrapper {
   // feedback.
   virtual void ShowSnapPreview(WaylandWindowSnapDirection snap_direction,
                                bool allow_haptic_feedback) = 0;
+
+  // Sets the persistable window property.
+  virtual void SetPersistable(bool persistable) const = 0;
+
+  // Sets the shape of the toplevel window. If `shape_rects` is null this will
+  // unset the window shape.
+  virtual void SetShape(std::unique_ptr<ShapeRects> shape_rects) = 0;
+
+  virtual void AckRotateFocus(uint32_t serial, uint32_t handled) = 0;
 
   // Casts `this` to XDGToplevelWrapperImpl, if it is of that type.
   virtual XDGToplevelWrapperImpl* AsXDGToplevelWrapper();

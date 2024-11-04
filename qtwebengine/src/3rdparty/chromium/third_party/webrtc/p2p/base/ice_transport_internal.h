@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -24,6 +25,7 @@
 #include "p2p/base/connection.h"
 #include "p2p/base/packet_transport_internal.h"
 #include "p2p/base/port.h"
+#include "p2p/base/stun_dictionary.h"
 #include "p2p/base/transport_description.h"
 #include "rtc_base/network_constants.h"
 #include "rtc_base/system/rtc_export.h"
@@ -228,12 +230,6 @@ enum class IceTransportState {
   STATE_FAILED
 };
 
-// TODO(zhihuang): Remove this once it's no longer used in
-// remoting/protocol/libjingle_transport_factory.cc
-enum IceProtocolType {
-  ICEPROTO_RFC5245  // Standard RFC 5245 version of ICE.
-};
-
 // IceTransportInternal is an internal abstract class that does ICE.
 // Once the public interface is supported,
 // (https://www.w3.org/TR/webrtc/#rtcicetransport)
@@ -255,10 +251,6 @@ class RTC_EXPORT IceTransportInternal : public rtc::PacketTransportInternal {
   virtual void SetIceRole(IceRole role) = 0;
 
   virtual void SetIceTiebreaker(uint64_t tiebreaker) = 0;
-
-  // TODO(zhihuang): Remove this once it's no longer called in
-  // remoting/protocol/libjingle_transport_factory.cc
-  virtual void SetIceProtocolType(IceProtocolType type) {}
 
   virtual void SetIceCredentials(absl::string_view ice_ufrag,
                                  absl::string_view ice_pwd);
@@ -303,6 +295,11 @@ class RTC_EXPORT IceTransportInternal : public rtc::PacketTransportInternal {
   virtual absl::optional<const CandidatePair> GetSelectedCandidatePair()
       const = 0;
 
+  virtual absl::optional<std::reference_wrapper<StunDictionaryWriter>>
+  GetDictionaryWriter() {
+    return absl::nullopt;
+  }
+
   sigslot::signal1<IceTransportInternal*> SignalGatheringState;
 
   // Handles sending and receiving of candidates.
@@ -340,6 +337,37 @@ class RTC_EXPORT IceTransportInternal : public rtc::PacketTransportInternal {
 
   // Invoked when the transport is being destroyed.
   sigslot::signal1<IceTransportInternal*> SignalDestroyed;
+
+  // Invoked when remote dictionary has been updated,
+  // i.e. modifications to attributes from remote ice agent has
+  // reflected in our StunDictionaryView.
+  template <typename F>
+  void AddDictionaryViewUpdatedCallback(const void* tag, F&& callback) {
+    dictionary_view_updated_callback_list_.AddReceiver(
+        tag, std::forward<F>(callback));
+  }
+  void RemoveDictionaryViewUpdatedCallback(const void* tag) {
+    dictionary_view_updated_callback_list_.RemoveReceivers(tag);
+  }
+
+  // Invoked when local dictionary has been synchronized,
+  // i.e. remote ice agent has reported acknowledged updates from us.
+  template <typename F>
+  void AddDictionaryWriterSyncedCallback(const void* tag, F&& callback) {
+    dictionary_writer_synced_callback_list_.AddReceiver(
+        tag, std::forward<F>(callback));
+  }
+  void RemoveDictionaryWriterSyncedCallback(const void* tag) {
+    dictionary_writer_synced_callback_list_.RemoveReceivers(tag);
+  }
+
+ protected:
+  webrtc::CallbackList<IceTransportInternal*,
+                       const StunDictionaryView&,
+                       rtc::ArrayView<uint16_t>>
+      dictionary_view_updated_callback_list_;
+  webrtc::CallbackList<IceTransportInternal*, const StunDictionaryWriter&>
+      dictionary_writer_synced_callback_list_;
 };
 
 }  // namespace cricket

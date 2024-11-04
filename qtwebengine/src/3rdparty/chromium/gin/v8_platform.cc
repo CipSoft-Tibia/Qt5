@@ -14,15 +14,20 @@
 #include "base/location.h"
 #include "base/memory/nonscannable_memory.h"
 #include "base/memory/raw_ptr.h"
+#include "base/no_destructor.h"
 #include "base/system/sys_info.h"
 #include "base/task/post_job.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
 #include "base/task/thread_pool/thread_pool_instance.h"
+#include "base/threading/scoped_blocking_call.h"
+#include "base/threading/scoped_blocking_call_internal.h"
 #include "base/trace_event/trace_event.h"
 #include "base/tracing_buildflags.h"
 #include "build/build_config.h"
 #include "gin/per_isolate_data.h"
+#include "gin/thread_isolation.h"
+#include "gin/v8_platform_thread_isolated_allocator.h"
 #include "v8_platform_page_allocator.h"
 
 namespace gin {
@@ -30,15 +35,6 @@ namespace gin {
 namespace {
 
 base::LazyInstance<V8Platform>::Leaky g_v8_platform = LAZY_INSTANCE_INITIALIZER;
-
-constexpr base::TaskTraits kLowPriorityTaskTraits = {
-    base::TaskPriority::BEST_EFFORT};
-
-constexpr base::TaskTraits kDefaultTaskTraits = {
-    base::TaskPriority::USER_VISIBLE};
-
-constexpr base::TaskTraits kBlockingTaskTraits = {
-    base::TaskPriority::USER_BLOCKING};
 
 void PrintStackTrace() {
   base::debug::StackTrace trace;
@@ -129,6 +125,22 @@ base::LazyInstance<gin::PageAllocator>::Leaky g_page_allocator =
 
 #endif  // BUILDFLAG(USE_PARTITION_ALLOC)
 
+base::TaskPriority ToBaseTaskPriority(v8::TaskPriority priority) {
+  switch (priority) {
+    case v8::TaskPriority::kBestEffort:
+      return base::TaskPriority::BEST_EFFORT;
+    case v8::TaskPriority::kUserVisible:
+      return base::TaskPriority::USER_VISIBLE;
+    case v8::TaskPriority::kUserBlocking:
+      return base::TaskPriority::USER_BLOCKING;
+  }
+}
+
+base::Location ToBaseLocation(const v8::SourceLocation& location) {
+  return base::Location::Current(location.Function(), location.FileName(),
+                                 location.Line());
+}
+
 class JobDelegateImpl : public v8::JobDelegate {
  public:
   explicit JobDelegateImpl(base::JobDelegate* delegate) : delegate_(delegate) {}
@@ -172,18 +184,31 @@ class JobHandleImpl : public v8::JobHandle {
   bool IsValid() override { return !!handle_; }
 
  private:
-  static base::TaskPriority ToBaseTaskPriority(v8::TaskPriority priority) {
-    switch (priority) {
-      case v8::TaskPriority::kBestEffort:
-        return base::TaskPriority::BEST_EFFORT;
-      case v8::TaskPriority::kUserVisible:
-        return base::TaskPriority::USER_VISIBLE;
-      case v8::TaskPriority::kUserBlocking:
-        return base::TaskPriority::USER_BLOCKING;
+  base::JobHandle handle_;
+};
+
+class ScopedBlockingCallImpl : public v8::ScopedBlockingCall {
+ public:
+  explicit ScopedBlockingCallImpl(v8::BlockingType blocking_type)
+      : scoped_blocking_call_(ToBaseBlockingType(blocking_type),
+                              base::internal::UncheckedScopedBlockingCall::
+                                  BlockingCallType::kRegular) {}
+  ~ScopedBlockingCallImpl() override = default;
+
+  ScopedBlockingCallImpl(const ScopedBlockingCallImpl&) = delete;
+  ScopedBlockingCallImpl& operator=(const ScopedBlockingCallImpl&) = delete;
+
+ private:
+  static base::BlockingType ToBaseBlockingType(v8::BlockingType type) {
+    switch (type) {
+      case v8::BlockingType::kMayBlock:
+        return base::BlockingType::MAY_BLOCK;
+      case v8::BlockingType::kWillBlock:
+        return base::BlockingType::WILL_BLOCK;
     }
   }
 
-  base::JobHandle handle_;
+  base::internal::UncheckedScopedBlockingCall scoped_blocking_call_;
 };
 
 }  // namespace
@@ -304,6 +329,15 @@ PageAllocator* V8Platform::GetPageAllocator() {
   return g_page_allocator.Pointer();
 }
 
+#if BUILDFLAG(ENABLE_THREAD_ISOLATION)
+ThreadIsolatedAllocator* V8Platform::GetThreadIsolatedAllocator() {
+  if (!GetThreadIsolationData().Initialized()) {
+    return nullptr;
+  }
+  return GetThreadIsolationData().allocator.get();
+}
+#endif  // BUILDFLAG(ENABLE_THREAD_ISOLATION)
+
 void V8Platform::OnCriticalMemoryPressure() {
 // We only have a reservation on 32-bit Windows systems.
 // TODO(bbudge) Make the #if's in BlinkInitializer match.
@@ -324,9 +358,25 @@ v8::ZoneBackingAllocator* V8Platform::GetZoneBackingAllocator() {
 #endif  // BUILDFLAG(USE_PARTITION_ALLOC)
 
 std::shared_ptr<v8::TaskRunner> V8Platform::GetForegroundTaskRunner(
-    v8::Isolate* isolate) {
+    v8::Isolate* isolate,
+    v8::TaskPriority priority) {
   PerIsolateData* data = PerIsolateData::From(isolate);
-  return data->task_runner();
+  if (!data->low_priority_task_runner()) {
+    return data->task_runner();
+  }
+
+  switch (priority) {
+    case v8::TaskPriority::kUserBlocking:
+      // blink::scheduler::TaskPriority::kDefaultPriority
+      return data->task_runner();
+    case v8::TaskPriority::kUserVisible:
+    case v8::TaskPriority::kBestEffort:
+      // blink::scheduler::TaskPriority::kLowPriority
+      return data->low_priority_task_runner();
+    default:
+      NOTREACHED() << "Unsupported TaskPriority.";
+      return data->task_runner();
+  }
 }
 
 int V8Platform::NumberOfWorkerThreads() {
@@ -335,59 +385,43 @@ int V8Platform::NumberOfWorkerThreads() {
   const size_t num_foreground_workers =
       base::ThreadPoolInstance::Get()
           ->GetMaxConcurrentNonBlockedTasksWithTraitsDeprecated(
-              kBlockingTaskTraits);
+              {base::TaskPriority::USER_BLOCKING});
   DCHECK_GE(num_foreground_workers,
             base::ThreadPoolInstance::Get()
                 ->GetMaxConcurrentNonBlockedTasksWithTraitsDeprecated(
-                    kDefaultTaskTraits));
+                    {base::TaskPriority::USER_VISIBLE}));
   return std::max(1, static_cast<int>(num_foreground_workers));
 }
 
-void V8Platform::CallOnWorkerThread(std::unique_ptr<v8::Task> task) {
-  base::ThreadPool::PostTask(FROM_HERE, kDefaultTaskTraits,
+void V8Platform::PostTaskOnWorkerThreadImpl(
+    v8::TaskPriority priority,
+    std::unique_ptr<v8::Task> task,
+    const v8::SourceLocation& location) {
+  base::ThreadPool::PostTask(ToBaseLocation(location),
+                             {ToBaseTaskPriority(priority)},
                              base::BindOnce(&v8::Task::Run, std::move(task)));
 }
 
-void V8Platform::CallBlockingTaskOnWorkerThread(
-    std::unique_ptr<v8::Task> task) {
-  base::ThreadPool::PostTask(FROM_HERE, kBlockingTaskTraits,
-                             base::BindOnce(&v8::Task::Run, std::move(task)));
-}
-
-void V8Platform::CallLowPriorityTaskOnWorkerThread(
-    std::unique_ptr<v8::Task> task) {
-  base::ThreadPool::PostTask(FROM_HERE, kLowPriorityTaskTraits,
-                             base::BindOnce(&v8::Task::Run, std::move(task)));
-}
-
-void V8Platform::CallDelayedOnWorkerThread(std::unique_ptr<v8::Task> task,
-                                           double delay_in_seconds) {
+void V8Platform::PostDelayedTaskOnWorkerThreadImpl(
+    v8::TaskPriority priority,
+    std::unique_ptr<v8::Task> task,
+    double delay_in_seconds,
+    const v8::SourceLocation& location) {
   base::ThreadPool::PostDelayedTask(
-      FROM_HERE, kDefaultTaskTraits,
+      ToBaseLocation(location), {ToBaseTaskPriority(priority)},
       base::BindOnce(&v8::Task::Run, std::move(task)),
       base::Seconds(delay_in_seconds));
 }
 
-std::unique_ptr<v8::JobHandle> V8Platform::CreateJob(
+std::unique_ptr<v8::JobHandle> V8Platform::CreateJobImpl(
     v8::TaskPriority priority,
-    std::unique_ptr<v8::JobTask> job_task) {
-  base::TaskTraits task_traits;
-  switch (priority) {
-    case v8::TaskPriority::kBestEffort:
-      task_traits = kLowPriorityTaskTraits;
-      break;
-    case v8::TaskPriority::kUserVisible:
-      task_traits = kDefaultTaskTraits;
-      break;
-    case v8::TaskPriority::kUserBlocking:
-      task_traits = kBlockingTaskTraits;
-      break;
-  }
+    std::unique_ptr<v8::JobTask> job_task,
+    const v8::SourceLocation& location) {
   // Ownership of |job_task| is assumed by |worker_task|, while
   // |max_concurrency_callback| uses an unretained pointer.
   auto* job_task_ptr = job_task.get();
   auto handle =
-      base::CreateJob(FROM_HERE, task_traits,
+      base::CreateJob(ToBaseLocation(location), {ToBaseTaskPriority(priority)},
                       base::BindRepeating(
                           [](const std::unique_ptr<v8::JobTask>& job_task,
                              base::JobDelegate* delegate) {
@@ -402,6 +436,11 @@ std::unique_ptr<v8::JobHandle> V8Platform::CreateJob(
                           base::Unretained(job_task_ptr)));
 
   return std::make_unique<JobHandleImpl>(std::move(handle));
+}
+
+std::unique_ptr<v8::ScopedBlockingCall> V8Platform::CreateBlockingScope(
+    v8::BlockingType blocking_type) {
+  return std::make_unique<ScopedBlockingCallImpl>(blocking_type);
 }
 
 bool V8Platform::IdleTasksEnabled(v8::Isolate* isolate) {

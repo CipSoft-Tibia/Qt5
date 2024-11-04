@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include "abstract3drenderer_p.h"
 #include "texturehelper_p.h"
 #include "q3dcamera_p.h"
@@ -1636,7 +1638,7 @@ void Abstract3DRenderer::drawCustomItems(RenderingState state,
                         m_drawer->drawObject(shader, item->mesh(), item->texture());
                     }
                 }
-            } else if (RenderingSelection == state) {
+            } else if (RenderingSelection == state && !volumeDetected) {
                 // Selection render
                 shader->setUniformValue(shader->MVP(), MVPMatrix);
                 QVector4D itemColor = indexToSelectionColor(item->index());

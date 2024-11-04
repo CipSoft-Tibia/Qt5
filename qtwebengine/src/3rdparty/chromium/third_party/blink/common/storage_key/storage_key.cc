@@ -4,7 +4,6 @@
 
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 
-#include <cctype>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -17,6 +16,7 @@
 #include "base/types/optional_util.h"
 #include "net/base/features.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
+#include "third_party/abseil-cpp/absl/strings/ascii.h"
 #include "url/gurl.h"
 
 namespace {
@@ -155,6 +155,11 @@ absl::optional<StorageKey> StorageKey::Deserialize(base::StringPiece in) {
 
   switch (first_attribute.value()) {
     case EncodedAttribute::kTopLevelSite: {
+      // Cross-Origin keys cannot be read if partitioning is off.
+      if (!IsThirdPartyStoragePartitioningEnabled()) {
+        return absl::nullopt;
+      }
+
       // A top-level site is serialized and has only one encoded attribute.
       if (pos_second_caret != std::string::npos) {
         return absl::nullopt;
@@ -206,6 +211,11 @@ absl::optional<StorageKey> StorageKey::Deserialize(base::StringPiece in) {
                         IsThirdPartyStoragePartitioningEnabled());
     }
     case EncodedAttribute::kAncestorChainBit: {
+      // Same-Origin kCrossSite keys cannot be read if partitioning is off.
+      if (!IsThirdPartyStoragePartitioningEnabled()) {
+        return absl::nullopt;
+      }
+
       // An ancestor chain bit is serialized and has only one encoded attribute.
       if (pos_second_caret != std::string::npos) {
         return absl::nullopt;
@@ -224,15 +234,17 @@ absl::optional<StorageKey> StorageKey::Deserialize(base::StringPiece in) {
 
       // The ancestor_chain_bit is the portion beyond the first separator.
       int raw_bit;
-      if (!base::StringToInt(in.substr(pos_first_caret + 2, std::string::npos),
-                             &raw_bit)) {
+      const base::StringPiece raw_bit_substr =
+          in.substr(pos_first_caret + 2, std::string::npos);
+      if (!base::StringToInt(raw_bit_substr, &raw_bit)) {
         return absl::nullopt;
       }
 
       // If the integer conversion results in a value outside the enumerated
-      // indices of [0,1]
-      if (raw_bit < 0 || raw_bit > 1)
+      // indices of [0,1] or trimmed leading 0s we must reject the key.
+      if (raw_bit < 0 || raw_bit > 1 || raw_bit_substr.size() > 1) {
         return absl::nullopt;
+      }
       ancestor_chain_bit = static_cast<blink::mojom::AncestorChainBit>(raw_bit);
 
       // There is no nonce or top level site.
@@ -295,6 +307,12 @@ absl::optional<StorageKey> StorageKey::Deserialize(base::StringPiece in) {
       if (!base::StringToUint64(low_digits, &nonce_low))
         return absl::nullopt;
 
+      // The key is corrupted if there are extra 0s in front of the nonce.
+      if (base::NumberToString(nonce_high) != high_digits ||
+          base::NumberToString(nonce_low) != low_digits) {
+        return absl::nullopt;
+      }
+
       nonce = base::UnguessableToken::Deserialize(nonce_high, nonce_low);
 
       if (!nonce.has_value()) {
@@ -312,6 +330,11 @@ absl::optional<StorageKey> StorageKey::Deserialize(base::StringPiece in) {
     }
     case EncodedAttribute::kTopLevelSiteOpaqueNonceHigh: {
       // An opaque `top_level_site` is serialized.
+
+      // Cross-Origin keys cannot be read if partitioning is off.
+      if (!IsThirdPartyStoragePartitioningEnabled()) {
+        return absl::nullopt;
+      }
 
       // Make sure we found the next separator, it's valid, that it's the
       // correct attribute.
@@ -357,6 +380,12 @@ absl::optional<StorageKey> StorageKey::Deserialize(base::StringPiece in) {
       }
 
       if (!base::StringToUint64(low_digits, &nonce_low)) {
+        return absl::nullopt;
+      }
+
+      // The key is corrupted if there are extra 0s in front of the nonce.
+      if (base::NumberToString(nonce_high) != high_digits ||
+          base::NumberToString(nonce_low) != low_digits) {
         return absl::nullopt;
       }
 
@@ -620,8 +649,7 @@ std::string StorageKey::Serialize() const {
   // Else if storage partitioning is enabled we need to serialize the key to fit
   // one of the following schemes:
   //
-  // Case 1: If the origin matches top_level_site and the ancestor_chain_bit is
-  // kSameSite:
+  // Case 1: If the ancestor_chain_bit is kSameSite or partitioning is disabled:
   //
   // <StorageKey `key`.origin> + "/"
   //
@@ -644,8 +672,7 @@ std::string StorageKey::Serialize() const {
   // `key`.top_level_site.nonce.Low64Bits>  + "^6" + <StorageKey
   // `key`.top_level_site.precursor>
   if (IsThirdPartyStoragePartitioningEnabled() &&
-      (top_level_site_ != net::SchemefulSite(origin_) ||
-       ancestor_chain_bit_ == blink::mojom::AncestorChainBit::kCrossSite)) {
+      ancestor_chain_bit_ == blink::mojom::AncestorChainBit::kCrossSite) {
     if (top_level_site_.opaque()) {
       // Case 4.
       return base::StrCat({
@@ -736,7 +763,10 @@ std::string StorageKey::GetMemoryDumpString(size_t max_length) const {
 
   base::ranges::replace_if(
       memory_dump_str.begin(), memory_dump_str.end(),
-      [](char c) { return !std::isalnum(static_cast<unsigned char>(c)); }, '_');
+      [](char c) {
+        return !absl::ascii_isalnum(static_cast<unsigned char>(c));
+      },
+      '_');
   return memory_dump_str;
 }
 
@@ -749,7 +779,17 @@ const net::SiteForCookies StorageKey::ToNetSiteForCookies() const {
   }
 
   // Otherwise we are in a first party context.
-  return net::SiteForCookies(top_level_site_);
+  return net::SiteForCookies(top_level_site_, origin_.GetFullURL());
+}
+
+const net::IsolationInfo StorageKey::ToPartialNetIsolationInfo() const {
+  url::Origin top_frame_origin =
+      IsFirstPartyContext() ? origin_
+                            : url::Origin::Create(top_level_site_.GetURL());
+  return net::IsolationInfo::Create(net::IsolationInfo::RequestType::kOther,
+                                    top_frame_origin, origin_,
+                                    ToNetSiteForCookies(),
+                                    /*party_context=*/absl::nullopt, nonce_);
 }
 
 // static

@@ -6,6 +6,7 @@
 #define COMPONENTS_VIZ_SERVICE_DISPLAY_EMBEDDER_SKIA_OUTPUT_SURFACE_IMPL_ON_GPU_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -36,10 +37,10 @@
 #include "gpu/ipc/service/image_transport_surface_delegate.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/skia/include/core/SkDeferredDisplayList.h"
 #include "third_party/skia/include/core/SkSurface.h"
 #include "third_party/skia/include/gpu/GrBackendSemaphore.h"
 #include "third_party/skia/include/gpu/GrTypes.h"
+#include "third_party/skia/include/private/chromium/GrDeferredDisplayList.h"
 #include "ui/gfx/gpu_fence_handle.h"
 
 namespace gfx {
@@ -47,19 +48,25 @@ namespace mojom {
 class DelegatedInkPointRenderer;
 }  // namespace mojom
 class ColorSpace;
-}
+}  // namespace gfx
 
 namespace gl {
 class GLSurface;
 class Presenter;
-}
+}  // namespace gl
 
 namespace gpu {
+class DawnContextProvider;
 class DisplayCompositorMemoryAndTaskControllerOnGpu;
 class SharedImageRepresentationFactory;
 class SharedImageFactory;
 class SyncPointClientState;
 }  // namespace gpu
+
+namespace skgpu::graphite {
+class Context;
+class Recording;
+}  // namespace skgpu::graphite
 
 namespace ui {
 #if BUILDFLAG(IS_OZONE)
@@ -71,7 +78,6 @@ namespace viz {
 
 class AsyncReadResultHelper;
 class AsyncReadResultLock;
-class DawnContextProvider;
 class ImageContextImpl;
 class SkiaOutputSurfaceDependency;
 class VulkanContextProvider;
@@ -146,13 +152,15 @@ class SkiaOutputSurfaceImplOnGpu
     return weak_ptr_;
   }
 
-  void Reshape(const SkSurfaceCharacterization& characterization,
+  void Reshape(const SkImageInfo& image_info,
                const gfx::ColorSpace& color_space,
+               int sample_count,
                float device_scale_factor,
                gfx::OverlayTransform transform);
   void FinishPaintCurrentFrame(
-      sk_sp<SkDeferredDisplayList> ddl,
-      sk_sp<SkDeferredDisplayList> overdraw_ddl,
+      sk_sp<GrDeferredDisplayList> ddl,
+      sk_sp<GrDeferredDisplayList> overdraw_ddl,
+      std::unique_ptr<skgpu::graphite::Recording> graphite_recording,
       std::vector<ImageContextImpl*> image_contexts,
       std::vector<gpu::SyncToken> sync_tokens,
       base::OnceClosure on_finished,
@@ -172,16 +180,19 @@ class SkiaOutputSurfaceImplOnGpu
   void SwapBuffersSkipped();
   void EnsureBackbuffer();
   void DiscardBackbuffer();
+  // |update_rect| is in buffer space.
   // If is |is_overlay| is true, the ScopedWriteAccess will be saved and kept
   // open until PostSubmit().
   void FinishPaintRenderPass(
       const gpu::Mailbox& mailbox,
-      sk_sp<SkDeferredDisplayList> ddl,
-      sk_sp<SkDeferredDisplayList> overdraw_ddl,
+      sk_sp<GrDeferredDisplayList> ddl,
+      sk_sp<GrDeferredDisplayList> overdraw_ddl,
+      std::unique_ptr<skgpu::graphite::Recording> graphite_recording,
       std::vector<ImageContextImpl*> image_contexts,
       std::vector<gpu::SyncToken> sync_tokens,
       base::OnceClosure on_finished,
       base::OnceCallback<void(gfx::GpuFenceHandle)> return_release_fence_cb,
+      const gfx::Rect& update_rect,
       bool is_overlay);
   // Deletes resources for RenderPasses in |ids|. Also takes ownership of
   // |images_contexts| and destroys them on GPU thread.
@@ -199,7 +210,6 @@ class SkiaOutputSurfaceImplOnGpu
   void ResetStateOfImages();
   void EndAccessImages(const base::flat_set<ImageContextImpl*>& image_contexts);
 
-  sk_sp<GrContextThreadSafeProxy> GetGrContextThreadSafeProxy();
   size_t max_resource_cache_bytes() const { return max_resource_cache_bytes_; }
   void ReleaseImageContexts(
       std::vector<std::unique_ptr<ExternalUseClient::ImageContext>>
@@ -265,10 +275,11 @@ class SkiaOutputSurfaceImplOnGpu
   void RemoveAsyncReadResultHelperWithLock(AsyncReadResultHelper* helper);
 
   void CreateSharedImage(gpu::Mailbox mailbox,
-                         ResourceFormat format,
+                         SharedImageFormat format,
                          const gfx::Size& size,
                          const gfx::ColorSpace& color_space,
                          uint32_t usage,
+                         std::string debug_label,
                          gpu::SurfaceHandle surface_handle);
   void CreateSolidColorSharedImage(gpu::Mailbox mailbox,
                                    const SkColor4f& color,
@@ -279,11 +290,11 @@ class SkiaOutputSurfaceImplOnGpu
   base::ScopedClosureRunner GetCacheBackBufferCb();
 
  private:
-  struct PlaneAccessData {
-    PlaneAccessData();
-    PlaneAccessData(PlaneAccessData&& other);
-    PlaneAccessData& operator=(PlaneAccessData&& other);
-    ~PlaneAccessData();
+  struct MailboxAccessData {
+    MailboxAccessData();
+    MailboxAccessData(MailboxAccessData&& other);
+    MailboxAccessData& operator=(MailboxAccessData&& other);
+    ~MailboxAccessData();
 
     SkISize size;
     gpu::Mailbox mailbox;
@@ -314,18 +325,39 @@ class SkiaOutputSurfaceImplOnGpu
   void SwapBuffersInternal(absl::optional<OutputSurfaceFrame> frame);
   void PostSubmit(absl::optional<OutputSurfaceFrame> frame);
 
-  GrDirectContext* gr_context() { return context_state_->gr_context(); }
+  GrDirectContext* gr_context() const { return context_state_->gr_context(); }
+
+  skgpu::graphite::Context* graphite_context() const {
+    return context_state_->graphite_context();
+  }
+
+  skgpu::graphite::Recorder* graphite_recorder() const {
+    return context_state_->gpu_main_graphite_recorder();
+  }
 
   bool is_using_vulkan() const {
     return !!vulkan_context_provider_ &&
            gpu_preferences_.gr_context_type == gpu::GrContextType::kVulkan;
   }
-  bool is_using_dawn() const {
-    return !!dawn_context_provider_ &&
-           gpu_preferences_.gr_context_type == gpu::GrContextType::kDawn;
+
+  bool is_using_gl() const {
+    return gpu_preferences_.gr_context_type == gpu::GrContextType::kGL;
   }
 
-  bool is_using_gl() const { return !is_using_vulkan() && !is_using_dawn(); }
+  bool is_using_graphite_dawn() const {
+    return !!dawn_context_provider_ && gpu_preferences_.gr_context_type ==
+                                           gpu::GrContextType::kGraphiteDawn;
+  }
+
+  // Helper for `FlushSurface()` & `FlushContext()` methods, flushes writes
+  // to either the surface if it is non-null or to the context otherwise, using
+  // |end_semaphores| and |end_state|.
+  bool FlushInternal(
+      SkSurface* surface,
+      std::vector<GrBackendSemaphore>& end_semaphores,
+      gpu::SkiaImageRepresentation::ScopedWriteAccess* scoped_write_access,
+      GrGpuFinishedProc finished_proc = nullptr,
+      GrGpuFinishedContext finished_context = nullptr);
 
   // Helper for `CopyOutput()` method, handles the RGBA format.
   void CopyOutputRGBA(SkSurface* surface,
@@ -354,9 +386,10 @@ class SkiaOutputSurfaceImplOnGpu
 
   // Helper for `CopyOutputNV12()` & `CopyOutputRGBA()` methods:
   std::unique_ptr<gpu::SkiaImageRepresentation>
-  CreateSharedImageRepresentationSkia(ResourceFormat resource_format,
+  CreateSharedImageRepresentationSkia(SharedImageFormat format,
                                       const gfx::Size& size,
-                                      const gfx::ColorSpace& color_space);
+                                      const gfx::ColorSpace& color_space,
+                                      base::StringPiece debug_label);
 
   // Helper for `CopyOutputNV12()` & `CopyOutputRGBA()` methods, renders
   // |surface| into |dest_surface|'s canvas, cropping and scaling the results
@@ -370,28 +403,39 @@ class SkiaOutputSurfaceImplOnGpu
 
   // Helper for `CopyOutputNV12()` & `CopyOutputRGBA()` methods, flushes writes
   // to |surface| with |end_semaphores| and |end_state|.
-  bool FlushSurface(SkSurface* surface,
-                    std::vector<GrBackendSemaphore>& end_semaphores,
-                    std::unique_ptr<GrBackendSurfaceMutableState> end_state,
-                    GrGpuFinishedProc finished_proc = nullptr,
-                    GrGpuFinishedContext finished_context = nullptr);
+  bool FlushSurface(
+      SkSurface* surface,
+      std::vector<GrBackendSemaphore>& end_semaphores,
+      gpu::SkiaImageRepresentation::ScopedWriteAccess* scoped_write_access,
+      GrGpuFinishedProc finished_proc = nullptr,
+      GrGpuFinishedContext finished_context = nullptr);
+
+  // Helper for `CopyOutputNV12()` & `CopyOutputRGBA()` methods, flushes writes
+  // to the Skia context with |end_semaphores| and |end_state|.
+  bool FlushContext(
+      std::vector<GrBackendSemaphore>& end_semaphores,
+      gpu::SkiaImageRepresentation::ScopedWriteAccess* scoped_write_access,
+      GrGpuFinishedProc finished_proc = nullptr,
+      GrGpuFinishedContext finished_context = nullptr);
 
   // Creates surfaces needed to store the data in NV12 format.
-  // |plane_access_datas| will be populated with information needed to access
+  // |mailbox_access_datas| will be populated with information needed to access
   // the NV12 planes.
   bool CreateSurfacesForNV12Planes(
       const SkYUVAInfo& yuva_info,
       const gfx::ColorSpace& color_space,
-      std::array<PlaneAccessData, CopyOutputResult::kNV12MaxPlanes>&
-          plane_access_datas);
+      std::array<MailboxAccessData, CopyOutputResult::kNV12MaxPlanes>&
+          mailbox_access_datas,
+      bool is_multiplane);
 
   // Imports surfaces needed to store the data in NV12 format from a blit
-  // request. |plane_access_datas| will be populated with information needed to
-  // access the NV12 planes.
+  // request. |mailbox_access_datas| will be populated with information needed
+  // to access the NV12 planes.
   bool ImportSurfacesForNV12Planes(
       const BlitRequest& blit_request,
-      std::array<PlaneAccessData, CopyOutputResult::kNV12MaxPlanes>&
-          plane_access_datas);
+      std::array<MailboxAccessData, CopyOutputResult::kNV12MaxPlanes>&
+          mailbox_access_datas,
+      bool is_multiplane);
 
   // Helper, blends `BlendBitmap`s set on the |blit_request| over the |canvas|.
   // Used to implement handling of `CopyOutputRequest`s that contain
@@ -424,7 +468,7 @@ class SkiaOutputSurfaceImplOnGpu
   gfx::GpuFenceHandle CreateReleaseFenceForGL();
 
   // Draws `overdraw_ddl` to the target `canvas`.
-  void DrawOverdraw(sk_sp<SkDeferredDisplayList> overdraw_ddl,
+  void DrawOverdraw(sk_sp<GrDeferredDisplayList> overdraw_ddl,
                     SkCanvas& canvas);
 
 #ifdef TOOLKIT_QT
@@ -458,7 +502,7 @@ class SkiaOutputSurfaceImplOnGpu
   std::unique_ptr<gpu::SharedImageRepresentationFactory>
       shared_image_representation_factory_;
   const raw_ptr<VulkanContextProvider> vulkan_context_provider_;
-  const raw_ptr<DawnContextProvider> dawn_context_provider_;
+  const raw_ptr<gpu::DawnContextProvider> dawn_context_provider_;
   const RendererSettings renderer_settings_;
 
   // Should only be run on the client thread with PostTaskToClientThread().
@@ -517,9 +561,7 @@ class SkiaOutputSurfaceImplOnGpu
     base::flat_set<ImageContextImpl*> image_contexts_;
   };
   PromiseImageAccessHelper promise_image_access_helper_{this};
-  base::flat_set<std::pair<ImageContextImpl*,
-                           std::unique_ptr<GrBackendSurfaceMutableState>>>
-      image_contexts_with_end_access_state_;
+  base::flat_set<ImageContextImpl*> image_contexts_to_apply_end_state_;
 
   std::unique_ptr<SkiaOutputDevice> output_device_;
   std::unique_ptr<SkiaOutputDevice::ScopedPaint> scoped_output_device_paint_;
@@ -547,7 +589,7 @@ class SkiaOutputSurfaceImplOnGpu
   SkiaOutputSurface::OverlayList overlays_;
 
   // Micro-optimization to get to issuing GPU SwapBuffers as soon as possible.
-  std::vector<sk_sp<SkDeferredDisplayList>> destroy_after_swap_;
+  std::vector<sk_sp<GrDeferredDisplayList>> destroy_after_swap_;
 
   bool waiting_for_full_damage_ = false;
 
@@ -574,7 +616,7 @@ class SkiaOutputSurfaceImplOnGpu
   // The format that will be used to CreateSolidColorSharedImage(). This should
   // be either RGBA_8888 by default, or BGRA_8888 if the default is not
   // supported on Linux.
-  ResourceFormat solid_color_image_format_ = RGBA_8888;
+  SharedImageFormat solid_color_image_format_ = SinglePlaneFormat::kRGBA_8888;
 
   THREAD_CHECKER(thread_checker_);
 

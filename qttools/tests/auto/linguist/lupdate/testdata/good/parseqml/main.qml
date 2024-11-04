@@ -100,7 +100,7 @@ QtObject {
         //~ quoted " string with spaces "
         qsTr("translation with extras-quoted field");
 
-        // template literals are supported
+	// template literals are supported
         qsTr(`template literal`);
         qsTranslate("TemplateLiteral", 'template literal 2');
     }

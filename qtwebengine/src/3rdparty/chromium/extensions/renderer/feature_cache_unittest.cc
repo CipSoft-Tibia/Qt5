@@ -10,10 +10,10 @@
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_builder.h"
 #include "extensions/common/permissions/permissions_data.h"
-#include "extensions/common/value_builder.h"
 #include "extensions/renderer/bindings/api_binding_test.h"
 #include "extensions/renderer/scoped_web_frame.h"
 #include "extensions/renderer/script_context.h"
+#include "extensions/test/test_context_data.h"
 #include "v8/include/v8.h"
 
 #include "third_party/blink/public/platform/web_data.h"
@@ -36,7 +36,7 @@ bool HasFeature(FeatureCache& cache,
                 const std::string& feature) {
   return base::Contains(
       cache.GetAvailableFeatures(context.context_type, context.extension,
-                                 context.url),
+                                 context.url, TestContextData()),
       feature);
 }
 

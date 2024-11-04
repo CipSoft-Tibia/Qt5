@@ -25,11 +25,9 @@
 
 #pragma once
 
-#include "loader_common.h"
+#include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <vulkan/vulkan_core.h>
 
 /* cJSON Types: */
 #define cJSON_False 0
@@ -93,7 +91,8 @@ cJSON *cJSON_GetObjectItem(cJSON *object, const char *string);
 /* For analysing failed parses. This returns a pointer to the parse error.
  * You'll probably need to look a few chars back to make sense of it. Defined
  * when cJSON_Parse() returns 0. 0 when cJSON_Parse() succeeds. */
-const char *cJSON_GetErrorPtr(void);
+// commented out as its unused and required external locks to work correctly
+// const char *cJSON_GetErrorPtr(void);
 
 /* These calls create a cJSON item of the appropriate type. */
 cJSON *cJSON_CreateNull(const VkAllocationCallbacks *pAllocator);
@@ -154,6 +153,28 @@ void cJSON_Minify(char *json);
 #define cJSON_SetIntValue(object, val) ((object) ? (object)->valueint = (object)->valuedouble = (val) : (val))
 #define cJSON_SetNumberValue(object, val) ((object) ? (object)->valueint = (object)->valuedouble = (val) : (val))
 
-#ifdef __cplusplus
-}
-#endif
+// Helper functions to using JSON
+
+struct loader_instance;
+struct loader_string_list;
+
+// Read a JSON file into a buffer.
+//
+// @return -  A pointer to a cJSON object representing the JSON parse tree.
+//            This returned buffer should be freed by caller.
+VkResult loader_get_json(const struct loader_instance *inst, const char *filename, cJSON **json);
+
+// Given a cJSON object, find the string associated with the key and puts an pre-allocated string into out_string.
+// Length is given by out_str_len, and this function truncates the string with a null terminator if it the provided space isn't
+// large enough.
+VkResult loader_parse_json_string_to_existing_str(const struct loader_instance *inst, cJSON *object, const char *key,
+                                                  size_t out_str_len, char *out_string);
+
+// Given a cJSON object, find the string associated with the key and puts an allocated string into out_string.
+// It is the callers responsibility to free out_string.
+VkResult loader_parse_json_string(cJSON *object, const char *key, char **out_string);
+
+// Given a cJSON object, find the array of strings assocated with they key and writes the count into out_count and data into
+// out_array_of_strings. It is the callers responsibility to free out_array_of_strings.
+VkResult loader_parse_json_array_of_strings(const struct loader_instance *inst, cJSON *object, const char *key,
+                                            struct loader_string_list *string_list);

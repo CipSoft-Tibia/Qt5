@@ -13,7 +13,7 @@
 // limitations under the License.
 
 
-import * as m from 'mithril';
+import m from 'mithril';
 import {Attributes} from 'mithril';
 
 import {assertExists} from '../base/logging';
@@ -37,6 +37,7 @@ import {
 import {
   targetFactoryRegistry,
 } from '../common/recordingV2/target_factory_registry';
+import {raf} from '../core/raf_scheduler';
 
 import {globals} from './globals';
 import {fullscreenModalContainer} from './modal';
@@ -54,6 +55,7 @@ import {AndroidSettings} from './recording/android_settings';
 import {ChromeSettings} from './recording/chrome_settings';
 import {CpuSettings} from './recording/cpu_settings';
 import {GpuSettings} from './recording/gpu_settings';
+import {LinuxPerfSettings} from './recording/linux_perf_settings';
 import {MemorySettings} from './recording/memory_settings';
 import {PowerSettings} from './recording/power_settings';
 import {RecordingSectionAttrs} from './recording/recording_sections';
@@ -112,7 +114,7 @@ function RecordingPlatformSelection() {
           onclick: () => {
             shouldDisplayTargetModal = true;
             fullscreenModalContainer.createNew(addNewTargetModal());
-            globals.rafScheduler.scheduleFullRedraw();
+            raf.scheduleFullRedraw();
           },
         },
         m('button', 'Add new recording target'),
@@ -429,6 +431,12 @@ function recordMenu(routePage: string) {
           m('i.material-icons', 'settings'),
           m('.title', 'Advanced settings'),
           m('.sub', 'Complicated stuff for wizards')));
+  const tracePerfProbe =
+      m('a[href="#!/record/tracePerf"]',
+        m(`li${routePage === 'tracePerf' ? '.active' : ''}`,
+          m('i.material-icons', 'full_stacked_bar_chart'),
+          m('.title', 'Stack Samples'),
+          m('.sub', 'Lightweight stack polling')));
 
   // We only display the probes when we have a valid target, so it's not
   // possible for the target to be undefined here.
@@ -446,6 +454,7 @@ function recordMenu(routePage: string) {
         memoryProbe,
         androidProbe,
         chromeProbe,
+        tracePerfProbe,
         advancedProbe);
   }
 
@@ -455,7 +464,7 @@ function recordMenu(routePage: string) {
         class: controller.getState() > RecordingState.TARGET_INFO_DISPLAYED ?
             'disabled' :
             '',
-        onclick: () => globals.rafScheduler.scheduleFullRedraw(),
+        onclick: () => raf.scheduleFullRedraw(),
       },
       m('header', 'Trace config'),
       m('ul',
@@ -466,7 +475,7 @@ function recordMenu(routePage: string) {
             m('.sub', 'Buffer mode, size and duration'))),
         m('a[href="#!/record/instructions"]',
           m(`li${routePage === 'instructions' ? '.active' : ''}`,
-            m('i.material-icons.rec', 'fiber_manual_record'),
+            m('i.material-icons-filled.rec', 'fiber_manual_record'),
             m('.title', 'Recording command'),
             m('.sub', 'Manually record trace'))),
         PERSIST_CONFIG_FLAG.get() ?
@@ -530,6 +539,7 @@ function getRecordContainer(subpage?: string): m.Vnode<any, any> {
     ['memory', MemorySettings],
     ['android', AndroidSettings],
     ['chrome', ChromeSettings],
+    ['tracePerf', LinuxPerfSettings],
     ['advanced', AdvancedSettings],
   ]);
   for (const [section, component] of settingsSections.entries()) {

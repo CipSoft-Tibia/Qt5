@@ -1,5 +1,5 @@
 // Copyright (C) 2023 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtQuick
 import QtTest
@@ -18,7 +18,10 @@ TestCase {
     property EnumPack_.simpleEnumMessage localEnumMessage2
     property EnumPack_.mixedEnumUsageMessage localMixedEnumMessage2
 
-    function test_1init() {
+    property b shortBName;
+    property a shortAName;
+
+    function initTestCase() {
         localEnumMessage.localEnum = SimpleEnumMessage.LOCAL_ENUM_VALUE3
         localEnumMessage2.localEnum = EnumPack_.SimpleEnumMessage.LOCAL_ENUM_VALUE3
 
@@ -46,6 +49,9 @@ TestCase {
                     SimpleEnumMessage.LOCAL_ENUM_VALUE0,
                     SimpleEnumMessage.LOCAL_ENUM_VALUE1
                 ]
+
+        shortBName.val = A.AVal1
+        shortAName.val = B.BVal0
     }
 
     function test_enumValues_data() {
@@ -164,6 +170,10 @@ TestCase {
                     { tag: "EnumPack_.MixedEnumUsageMessage.LocalEnumMapProtoFieldNumber == 3",
                         field: EnumPack_.MixedEnumUsageMessage.LocalEnumMapProtoFieldNumber,
                         answer: 3 },
+                    { tag: "A.AVal0 == 0", field: A.AVal0, answer: 0 },
+                    { tag: "A.AVal1 == 1", field: A.AVal1, answer: 1 },
+                    { tag: "B.BVal0 == 0", field: B.BVal0, answer: 0 },
+                    { tag: "B.BVal1 == 1", field: B.BVal1, answer: 1 }
                 ]
     }
 

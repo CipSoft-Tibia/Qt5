@@ -26,6 +26,8 @@ QT_REQUIRE_CONFIG(quick_viewtransitions);
 #include <private/qquicktransition_p.h>
 #include <private/qanimationjobutil_p.h>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 class QQuickItem;
@@ -195,7 +197,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickViewTransitionAttached)
 
 #endif // QQUICKITEMVIEWTRANSITION_P_P_H

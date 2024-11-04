@@ -10,9 +10,9 @@
 #include "base/strings/sys_string_conversions.h"
 #import "base/task/single_thread_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
-#include "device/bluetooth/bluetooth_adapter_mac.h"
 #include "device/bluetooth/bluetooth_device_mac.h"
 #include "device/bluetooth/bluetooth_gatt_notify_session.h"
+#include "device/bluetooth/bluetooth_low_energy_adapter_apple.h"
 #include "device/bluetooth/bluetooth_remote_gatt_descriptor_mac.h"
 #include "device/bluetooth/bluetooth_remote_gatt_service_mac.h"
 
@@ -74,13 +74,13 @@ BluetoothRemoteGattCharacteristicMac::BluetoothRemoteGattCharacteristicMac(
     : is_discovery_complete_(false),
       discovery_pending_count_(0),
       gatt_service_(gatt_service),
-      cb_characteristic_(cb_characteristic, base::scoped_policy::RETAIN),
+      cb_characteristic_(cb_characteristic),
       weak_ptr_factory_(this) {
-  uuid_ =
-      BluetoothAdapterMac::BluetoothUUIDWithCBUUID([cb_characteristic_ UUID]);
+  uuid_ = BluetoothLowEnergyAdapterApple::BluetoothUUIDWithCBUUID(
+      [cb_characteristic_ UUID]);
   identifier_ = base::SysNSStringToUTF8(
       [NSString stringWithFormat:@"%s-%p", uuid_.canonical_value().c_str(),
-                                 cb_characteristic_.get()]);
+                                 cb_characteristic_]);
 }
 
 BluetoothRemoteGattCharacteristicMac::~BluetoothRemoteGattCharacteristicMac() {
@@ -171,8 +171,8 @@ void BluetoothRemoteGattCharacteristicMac::WriteRemoteCharacteristic(
   DVLOG(1) << *this << ": Write characteristic.";
   write_characteristic_value_callbacks_ =
       std::make_pair(std::move(callback), std::move(error_callback));
-  base::scoped_nsobject<NSData> nsdata_value(
-      [[NSData alloc] initWithBytes:value.data() length:value.size()]);
+  NSData* nsdata_value = [[NSData alloc] initWithBytes:value.data()
+                                                length:value.size()];
 
   CBCharacteristicWriteType cb_write_type;
   switch (write_type) {
@@ -218,8 +218,8 @@ void BluetoothRemoteGattCharacteristicMac::DeprecatedWriteRemoteCharacteristic(
   DVLOG(1) << *this << ": Write characteristic.";
   write_characteristic_value_callbacks_ =
       std::make_pair(std::move(callback), std::move(error_callback));
-  base::scoped_nsobject<NSData> nsdata_value(
-      [[NSData alloc] initWithBytes:value.data() length:value.size()]);
+  NSData* nsdata_value = [[NSData alloc] initWithBytes:value.data()
+                                                length:value.size()];
   CBCharacteristicWriteType write_type = GetCBWriteType();
   [GetCBPeripheral() writeValue:nsdata_value
               forCharacteristic:cb_characteristic_
@@ -279,7 +279,7 @@ void BluetoothRemoteGattCharacteristicMac::DidUpdateValue(NSError* error) {
           BluetoothDeviceMac::GetGattErrorCodeFromNSError(error);
       DVLOG(1) << *this
                << ": Bluetooth error while reading for characteristic, domain: "
-               << BluetoothAdapterMac::String(error)
+               << BluetoothLowEnergyAdapterApple::String(error)
                << ", error code: " << static_cast<int>(error_code);
       std::move(read_callback)
           .Run(error_code,
@@ -292,7 +292,7 @@ void BluetoothRemoteGattCharacteristicMac::DidUpdateValue(NSError* error) {
   } else if (IsNotifying()) {
     DVLOG(1) << *this << ": Notification arrived.";
     UpdateValue();
-    gatt_service_->GetMacAdapter()->NotifyGattCharacteristicValueChanged(
+    gatt_service_->GetLowEnergyAdapter()->NotifyGattCharacteristicValueChanged(
         this, value_);
   } else {
     // In case of buggy device, nothing should be done if receiving extra
@@ -341,7 +341,7 @@ void BluetoothRemoteGattCharacteristicMac::DidWriteValue(NSError* error) {
         BluetoothDeviceMac::GetGattErrorCodeFromNSError(error);
     DVLOG(1) << *this
              << ": Bluetooth error while writing for characteristic, error: "
-             << BluetoothAdapterMac::String(error)
+             << BluetoothLowEnergyAdapterApple::String(error)
              << ", error code: " << static_cast<int>(error_code);
     std::move(callbacks.second).Run(error_code);
     return;
@@ -369,7 +369,7 @@ void BluetoothRemoteGattCharacteristicMac::DidUpdateNotificationState(
     DVLOG(1) << *this
              << ": Bluetooth error while modifying notification state for "
                 "characteristic, error: "
-             << BluetoothAdapterMac::String(error)
+             << BluetoothLowEnergyAdapterApple::String(error)
              << ", error code: " << static_cast<int>(error_code);
     std::move(reentrant_safe_callbacks.second).Run(error_code);
     return;
@@ -405,7 +405,7 @@ void BluetoothRemoteGattCharacteristicMac::DidDiscoverDescriptors() {
         new BluetoothRemoteGattDescriptorMac(this, cb_descriptor);
     bool result = AddDescriptor(base::WrapUnique(gatt_descriptor_mac));
     DCHECK(result);
-    GetMacAdapter()->NotifyGattDescriptorAdded(gatt_descriptor_mac);
+    GetLowEnergyAdapter()->NotifyGattDescriptorAdded(gatt_descriptor_mac);
     DVLOG(1) << *gatt_descriptor_mac << ": New descriptor.";
   }
 
@@ -415,7 +415,7 @@ void BluetoothRemoteGattCharacteristicMac::DidDiscoverDescriptors() {
     DVLOG(1) << static_cast<BluetoothRemoteGattDescriptorMac&>(*pair.second)
              << ": Removed descriptor.";
     descriptors_.erase(iter);
-    GetMacAdapter()->NotifyGattDescriptorRemoved(pair.second.get());
+    GetLowEnergyAdapter()->NotifyGattDescriptorRemoved(pair.second.get());
   }
   is_discovery_complete_ = discovery_pending_count_ == 0;
 }
@@ -448,9 +448,9 @@ CBCharacteristic* BluetoothRemoteGattCharacteristicMac::GetCBCharacteristic()
   return cb_characteristic_;
 }
 
-BluetoothAdapterMac* BluetoothRemoteGattCharacteristicMac::GetMacAdapter()
-    const {
-  return gatt_service_->GetMacAdapter();
+BluetoothLowEnergyAdapterApple*
+BluetoothRemoteGattCharacteristicMac::GetLowEnergyAdapter() const {
+  return gatt_service_->GetLowEnergyAdapter();
 }
 
 CBPeripheral* BluetoothRemoteGattCharacteristicMac::GetCBPeripheral() const {

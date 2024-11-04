@@ -16,10 +16,11 @@
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/command_buffer/service/memory_tracking.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
-#include "gpu/command_buffer/service/shared_image/d3d_image_backing.h"
+#include "gpu/command_buffer/service/shared_image/d3d_image_backing_factory.h"
+#include "gpu/command_buffer/service/shared_image/d3d_image_utils.h"
 #include "gpu/command_buffer/service/shared_image/dxgi_swap_chain_image_representation.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_backing.h"
-#include "gpu/command_buffer/service/shared_image/shared_image_format_utils.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_format_service_utils.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_manager.h"
 #include "gpu/command_buffer/service/shared_image/skia_gl_image_representation.h"
 #include "third_party/skia/include/core/SkAlphaType.h"
@@ -29,9 +30,19 @@
 #include "ui/gfx/color_space_win.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gl/direct_composition_support.h"
-#include "ui/gl/gl_angle_util_win.h"
 #include "ui/gl/gl_switches.h"
 #include "ui/gl/gl_utils.h"
+
+#if BUILDFLAG(SKIA_USE_DAWN)
+#include "gpu/command_buffer/service/dawn_context_provider.h"
+#include "gpu/command_buffer/service/shared_image/skia_graphite_dawn_image_representation.h"
+#endif
+
+#if BUILDFLAG(USE_DAWN)
+using dawn::native::d3d::ExternalImageDXGI;
+using dawn::native::d3d::ExternalImageDXGIBeginAccessDescriptor;
+using dawn::native::d3d::ExternalImageDXGIFenceDescriptor;
+#endif
 
 namespace gpu {
 namespace {
@@ -40,6 +51,7 @@ const char* kDXGISwapChainImageBackingLabel = "DXGISwapChainImageBacking";
 
 // static
 std::unique_ptr<DXGISwapChainImageBacking> DXGISwapChainImageBacking::Create(
+    Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device,
     const Mailbox& mailbox,
     viz::SharedImageFormat format,
     DXGI_FORMAT internal_format,
@@ -48,9 +60,6 @@ std::unique_ptr<DXGISwapChainImageBacking> DXGISwapChainImageBacking::Create(
     GrSurfaceOrigin surface_origin,
     SkAlphaType alpha_type,
     uint32_t usage) {
-  Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device =
-      gl::QueryD3D11DeviceObjectFromANGLE();
-
   Microsoft::WRL::ComPtr<IDXGIDevice> dxgi_device;
   d3d11_device.As(&dxgi_device);
   DCHECK(dxgi_device);
@@ -120,9 +129,18 @@ std::unique_ptr<DXGISwapChainImageBacking> DXGISwapChainImageBacking::Create(
     }
   }
 
+  // When |format| has no alpha (e.g. RGBX) but |internal_format| does, we wrap
+  // the back buffer in ANGLE as |GL_RGB|. To ensure shaders that sample from
+  // it see an opaque color, it needs to have 1.f in the alpha channel.
+  // When |format| has alpha, we can rely on DirectRenderer to ensure all pixels
+  // are initialized before use.
+  int buffers_need_alpha_initialization_count =
+      !format.HasAlpha() ? desc.BufferCount : 0;
+
   return base::WrapUnique(new DXGISwapChainImageBacking(
       mailbox, format, size, color_space, surface_origin, alpha_type, usage,
-      std::move(d3d11_device), std::move(dxgi_swap_chain)));
+      std::move(d3d11_device), std::move(dxgi_swap_chain),
+      buffers_need_alpha_initialization_count));
 }
 
 DXGISwapChainImageBacking::DXGISwapChainImageBacking(
@@ -134,7 +152,8 @@ DXGISwapChainImageBacking::DXGISwapChainImageBacking(
     SkAlphaType alpha_type,
     uint32_t usage,
     Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device,
-    Microsoft::WRL::ComPtr<IDXGISwapChain1> dxgi_swap_chain)
+    Microsoft::WRL::ComPtr<IDXGISwapChain1> dxgi_swap_chain,
+    int buffers_need_alpha_initialization_count)
     : ClearTrackingSharedImageBacking(
           mailbox,
           format,
@@ -144,9 +163,11 @@ DXGISwapChainImageBacking::DXGISwapChainImageBacking(
           alpha_type,
           usage,
           gfx::BufferSizeForBufferFormat(size, ToBufferFormat(format)),
-          false /* is_thread_safe */),
+          /*is_thread_safe=*/false),
       d3d11_device_(std::move(d3d11_device)),
-      dxgi_swap_chain_(std::move(dxgi_swap_chain)) {
+      dxgi_swap_chain_(std::move(dxgi_swap_chain)),
+      buffers_need_alpha_initialization_count_(
+          buffers_need_alpha_initialization_count) {
   const bool has_scanout = !!(usage & SHARED_IMAGE_USAGE_SCANOUT);
   const bool has_write = !!(usage & SHARED_IMAGE_USAGE_DISPLAY_WRITE);
   DCHECK(has_scanout);
@@ -164,7 +185,8 @@ void DXGISwapChainImageBacking::Update(
   DCHECK(!in_fence);
 }
 
-void DXGISwapChainImageBacking::AddSwapRect(const gfx::Rect& swap_rect) {
+bool DXGISwapChainImageBacking::DidBeginWriteAccess(
+    const gfx::Rect& swap_rect) {
   if (pending_swap_rect_.has_value()) {
     // Force a Present if there's already a pending swap rect. For normal usage
     // of this backing, we normally expect one Skia write access to overlay read
@@ -173,10 +195,65 @@ void DXGISwapChainImageBacking::AddSwapRect(const gfx::Rect& swap_rect) {
     // debugging.
     LOG(WARNING) << "Multiple skia write accesses per overlay access, flushing "
                     "pending swap.";
-    Present(false);
+    if (!Present(false)) {
+      return false;
+    }
   }
 
-  pending_swap_rect_ = swap_rect;
+  gfx::Rect pending_swap_rect = swap_rect;
+
+  absl::optional<SkColor4f> initialize_color;
+
+  // SharedImage allows an incomplete first draw so long as we only read from
+  // the part that we've previously drawn to. However, IDXGISwapChain requires a
+  // full draw on the first |Present1|. To make an incomplete first draw valid,
+  // we'll initialize all the pixels and expand the swap rect.
+  const gfx::Rect full_swap_rect = gfx::Rect(size());
+  if (!IsCleared() && swap_rect != full_swap_rect) {
+#if DCHECK_IS_ON()
+    initialize_color = SkColors::kBlue;
+#else
+    initialize_color = SkColors::kTransparent;
+#endif
+
+    // Ensure that the next swap contains the entire swap chain since we just
+    // cleared it.
+    pending_swap_rect = full_swap_rect;
+  }
+
+  // See comment in |DXGISwapChainImageBacking::Create| for why we need this.
+  if (buffers_need_alpha_initialization_count_ > 0) {
+    // We only need to write the alpha channel, but we clear since it's simpler
+    // and are guaranteed to not have pixels we need to preserve before the
+    // first write to each buffer.
+#if DCHECK_IS_ON()
+    initialize_color = SkColors::kBlue;
+#else
+    initialize_color = SkColors::kBlack;
+#endif
+
+    // We don't need to modify the swap rect in this case since |Present1| will
+    // copy the contents outside the swap rect from the previous buffer and
+    // we've already forced a full swap on the first buffer above.
+  }
+
+  if (initialize_color.has_value()) {
+    // To clear only uninitialized buffers, this must happen after |Present|s of
+    // outstanding draws, including the one above.
+    if (!D3DImageBackingFactory::ClearBackBufferToColor(
+            dxgi_swap_chain_.Get(), initialize_color.value())) {
+      LOG(ERROR) << "Could not initialize back buffer alpha";
+      return false;
+    }
+
+    if (buffers_need_alpha_initialization_count_ > 0) {
+      buffers_need_alpha_initialization_count_--;
+    }
+  }
+
+  pending_swap_rect_ = {pending_swap_rect};
+
+  return true;
 }
 
 bool DXGISwapChainImageBacking::Present(
@@ -246,13 +323,14 @@ DXGISwapChainImageBacking::ProduceOverlay(SharedImageManager* manager,
       manager, this, tracker);
 }
 
-std::unique_ptr<SkiaImageRepresentation> DXGISwapChainImageBacking::ProduceSkia(
+std::unique_ptr<SkiaGaneshImageRepresentation>
+DXGISwapChainImageBacking::ProduceSkiaGanesh(
     SharedImageManager* manager,
     MemoryTypeTracker* tracker,
     scoped_refptr<SharedContextState> context_state) {
-  TRACE_EVENT0("gpu", "DXGISwapChainImageBacking::ProduceSkia");
+  TRACE_EVENT0("gpu", "DXGISwapChainImageBacking::ProduceSkiaGanesh");
 
-  if (!gl_texture_) {
+  if (!gl_texture_holder_) {
     Microsoft::WRL::ComPtr<ID3D11Texture2D> backbuffer_texture;
     HRESULT hr =
         dxgi_swap_chain_->GetBuffer(0, IID_PPV_ARGS(&backbuffer_texture));
@@ -262,19 +340,89 @@ std::unique_ptr<SkiaImageRepresentation> DXGISwapChainImageBacking::ProduceSkia(
       return nullptr;
     }
 
-    gl_texture_ = D3DImageBacking::CreateGLTexture(
+    gl_texture_holder_ = D3DImageBacking::CreateGLTexture(
         format(), size(), color_space(), backbuffer_texture, GL_TEXTURE_2D, 0,
         0, dxgi_swap_chain_);
-    if (!gl_texture_) {
-      LOG(ERROR) << "Failed to create GL texture";
+    if (!gl_texture_holder_) {
+      LOG(ERROR) << "Failed to create GL texture.";
       return nullptr;
     }
   }
 
   return SkiaGLImageRepresentationDXGISwapChain::Create(
       std::make_unique<GLTexturePassthroughDXGISwapChainBufferRepresentation>(
-          manager, this, tracker, gl_texture_),
+          manager, this, tracker, gl_texture_holder_),
       std::move(context_state), manager, this, tracker);
 }
+
+std::unique_ptr<SkiaGraphiteImageRepresentation>
+DXGISwapChainImageBacking::ProduceSkiaGraphite(
+    SharedImageManager* manager,
+    MemoryTypeTracker* tracker,
+    scoped_refptr<SharedContextState> context_state) {
+#if BUILDFLAG(SKIA_USE_DAWN)
+  DCHECK_EQ(context_state->gr_context_type(), GrContextType::kGraphiteDawn);
+
+  auto device = context_state->dawn_context_provider()->GetDevice();
+  if (!external_image_) {
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> backbuffer_texture;
+    HRESULT hr =
+        dxgi_swap_chain_->GetBuffer(0, IID_PPV_ARGS(&backbuffer_texture));
+    if (FAILED(hr)) {
+      DLOG(ERROR) << "GetBuffer(0) failed: "
+                  << logging::SystemErrorCodeToString(hr);
+      return nullptr;
+    }
+
+    D3D11_TEXTURE2D_DESC d3d11_texture_desc;
+    backbuffer_texture->GetDesc(&d3d11_texture_desc);
+
+    external_image_ = CreateDawnExternalImageDXGI(
+        device, usage(), d3d11_texture_desc, backbuffer_texture,
+        /*view_formats=*/{});
+    if (!external_image_) {
+      return nullptr;
+    }
+  }
+
+  auto dawn_representation = std::make_unique<DawnRepresentationDXGISwapChain>(
+      manager, this, tracker, device, wgpu::BackendType::D3D11);
+
+  return SkiaGraphiteDawnImageRepresentation::Create(
+      std::move(dawn_representation), context_state,
+      context_state->gpu_main_graphite_recorder(), manager, this, tracker,
+      /*plane_index=*/0, /*is_yuv_plane=*/false);
+#else
+  NOTREACHED_NORETURN();
+#endif  // BUILDFLAG(SKIA_USE_DAWN)
+}
+
+#if BUILDFLAG(USE_DAWN)
+wgpu::Texture DXGISwapChainImageBacking::BeginAccessDawn(
+    const wgpu::Device& device,
+    wgpu::TextureUsage usage,
+    const gfx::Rect& update_rect) {
+  DidBeginWriteAccess(update_rect);
+
+  CHECK(external_image_);
+  ExternalImageDXGIBeginAccessDescriptor descriptor;
+  descriptor.isInitialized = true;
+  descriptor.isSwapChainTexture = true;
+  descriptor.usage = static_cast<WGPUTextureUsage>(usage);
+  descriptor.waitFences = {};
+
+  wgpu::Texture texture =
+      wgpu::Texture::Acquire(external_image_->BeginAccess(&descriptor));
+
+  return texture;
+}
+
+void DXGISwapChainImageBacking::EndAccessDawn(const wgpu::Device& device,
+                                              wgpu::Texture texture) {
+  ExternalImageDXGIFenceDescriptor descriptor;
+  external_image_->EndAccess(texture.Get(), &descriptor);
+  texture.Destroy();
+}
+#endif  // BUILDFLAG(USE_DAWN)
 
 }  // namespace gpu

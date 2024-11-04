@@ -15,16 +15,21 @@
 #include "dawn/native/Texture.h"
 
 #include <algorithm>
+#include <string>
+#include <utility>
 
 #include "dawn/common/Assert.h"
 #include "dawn/common/Constants.h"
 #include "dawn/common/Math.h"
 #include "dawn/native/Adapter.h"
-#include "dawn/native/ChainUtils_autogen.h"
+#include "dawn/native/ChainUtils.h"
+#include "dawn/native/CommandValidation.h"
 #include "dawn/native/Device.h"
 #include "dawn/native/EnumMaskIterator.h"
 #include "dawn/native/ObjectType_autogen.h"
 #include "dawn/native/PassResourceUsage.h"
+#include "dawn/native/PhysicalDevice.h"
+#include "dawn/native/SharedTextureMemory.h"
 #include "dawn/native/ValidationUtils_autogen.h"
 
 namespace dawn::native {
@@ -177,7 +182,8 @@ MaybeError ValidateSampleCount(const TextureDescriptor* descriptor,
     return {};
 }
 
-MaybeError ValidateTextureViewDimensionCompatibility(const TextureBase* texture,
+MaybeError ValidateTextureViewDimensionCompatibility(const DeviceBase* device,
+                                                     const TextureBase* texture,
                                                      const TextureViewDescriptor* descriptor) {
     DAWN_INVALID_IF(!IsArrayLayerValidForTextureViewDimension(descriptor->dimension,
                                                               descriptor->arrayLayerCount),
@@ -206,8 +212,11 @@ MaybeError ValidateTextureViewDimensionCompatibility(const TextureBase* texture,
                 "(%u) and height (%u) are not equal.",
                 descriptor->dimension, texture, texture->GetSize().width,
                 texture->GetSize().height);
+            DAWN_INVALID_IF(descriptor->dimension == wgpu::TextureViewDimension::CubeArray &&
+                                device->IsCompatibilityMode(),
+                            "A %s texture view for %s is not supported in compatibility mode",
+                            descriptor->dimension, texture);
             break;
-
         case wgpu::TextureViewDimension::e1D:
         case wgpu::TextureViewDimension::e2D:
         case wgpu::TextureViewDimension::e2DArray:
@@ -285,9 +294,11 @@ MaybeError ValidateTextureSize(const DeviceBase* device,
     return {};
 }
 
-MaybeError ValidateTextureUsage(const TextureDescriptor* descriptor,
+MaybeError ValidateTextureUsage(const DeviceBase* device,
+                                const TextureDescriptor* descriptor,
                                 wgpu::TextureUsage usage,
-                                const Format* format) {
+                                const Format* format,
+                                std::optional<wgpu::TextureUsage> allowedSharedTextureMemoryUsage) {
     DAWN_TRY(dawn::native::ValidateTextureUsage(usage));
 
     DAWN_INVALID_IF(usage == wgpu::TextureUsage::None, "The texture usage must not be 0.");
@@ -306,31 +317,121 @@ MaybeError ValidateTextureUsage(const TextureDescriptor* descriptor,
         "format (%s).",
         usage, wgpu::TextureUsage::RenderAttachment, format->format);
 
-    DAWN_INVALID_IF(descriptor->dimension != wgpu::TextureDimension::e2D &&
+    DAWN_INVALID_IF(descriptor->dimension == wgpu::TextureDimension::e1D &&
                         (usage & wgpu::TextureUsage::RenderAttachment),
                     "The texture usage (%s) includes %s, which is incompatible with the texture "
                     "dimension (%s).",
                     usage, wgpu::TextureUsage::RenderAttachment, descriptor->dimension);
+
+    DAWN_INVALID_IF(!device->IsToggleEnabled(Toggle::AllowUnsafeAPIs) &&
+                        descriptor->dimension == wgpu::TextureDimension::e3D &&
+                        (usage & wgpu::TextureUsage::RenderAttachment),
+                    "The texture dimension must not be %s for a render attachment if "
+                    "allow_unsafe_apis is not enabled. See crbug.com/dawn/1020.",
+                    wgpu::TextureDimension::e3D);
 
     DAWN_INVALID_IF(
         !format->supportsStorageUsage && (usage & wgpu::TextureUsage::StorageBinding),
         "The texture usage (%s) includes %s, which is incompatible with the format (%s).", usage,
         wgpu::TextureUsage::StorageBinding, format->format);
 
-    // Only allows simple readonly texture usages.
-    constexpr wgpu::TextureUsage kValidMultiPlanarUsages =
-        wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopySrc;
-    DAWN_INVALID_IF(format->IsMultiPlanar() && !IsSubset(usage, kValidMultiPlanarUsages),
-                    "The texture usage (%s) is incompatible with the multi-planar format (%s).",
-                    usage, format->format);
+    const auto kTransientAttachment = wgpu::TextureUsage::TransientAttachment;
+    if (usage & kTransientAttachment) {
+        DAWN_INVALID_IF(
+            !device->HasFeature(Feature::TransientAttachments),
+            "The texture usage (%s) includes %s, which requires the %s feature to be set", usage,
+            kTransientAttachment, ToAPI(Feature::TransientAttachments));
 
+        const auto kAllowedTransientUsage =
+            kTransientAttachment | wgpu::TextureUsage::RenderAttachment;
+        DAWN_INVALID_IF(usage != kAllowedTransientUsage,
+                        "The texture usage (%s) includes %s, which requires that the texture usage "
+                        "be exactly %s",
+                        usage, kTransientAttachment, kAllowedTransientUsage);
+    }
+
+    if (usage & wgpu::TextureUsage::StorageAttachment) {
+        DAWN_TRY_CONTEXT(ValidateHasPLSFeature(device), "validating usage of %s",
+                         wgpu::TextureUsage::StorageAttachment);
+
+        // TODO(dawn:1704): Validate the constraints on the dimension, format, etc.
+    }
+
+    if (!allowedSharedTextureMemoryUsage) {
+        // Legacy path
+        // TODO(crbug.com/dawn/1795): Remove after migrating all old usages.
+        // Only allows simple readonly texture usages.
+        wgpu::TextureUsage validMultiPlanarUsages =
+            wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopySrc;
+        if (device->HasFeature(Feature::MultiPlanarFormatExtendedUsages)) {
+            validMultiPlanarUsages |= wgpu::TextureUsage::CopyDst;
+        }
+        DAWN_INVALID_IF(format->IsMultiPlanar() && !IsSubset(usage, validMultiPlanarUsages),
+                        "The texture usage (%s) is incompatible with the multi-planar format (%s).",
+                        usage, format->format);
+    } else {
+        DAWN_INVALID_IF(
+            !IsSubset(usage, *allowedSharedTextureMemoryUsage),
+            "The texture usage (%s) is not a subset of the shared texture memory usage (%s).",
+            usage, *allowedSharedTextureMemoryUsage);
+    }
     return {};
+}
+
+// We need to add an internal RenderAttachment usage to some textures that has CopyDst usage as we
+// apply a workaround that writes to them with a render pipeline.
+bool CopyDstNeedsInternalRenderAttachmentUsage(const DeviceBase* device, const Format& format) {
+    // Depth
+    if (format.HasDepth() &&
+        (device->IsToggleEnabled(Toggle::UseBlitForBufferToDepthTextureCopy) ||
+         device->IsToggleEnabled(
+             Toggle::UseBlitForDepthTextureToTextureCopyToNonzeroSubresource))) {
+        return true;
+    }
+    // Stencil
+    if (format.HasStencil() &&
+        device->IsToggleEnabled(Toggle::UseBlitForBufferToStencilTextureCopy)) {
+        return true;
+    }
+    return false;
+}
+
+// We need to add an internal TextureBinding usage to some textures that has CopySrc usage as we
+// apply a workaround that binds them to a compute pipeline for their copy operation.
+bool CopySrcNeedsInternalTextureBindingUsage(const DeviceBase* device, const Format& format) {
+    // Snorm
+    if (format.IsSnorm() && device->IsToggleEnabled(Toggle::UseBlitForSnormTextureToBufferCopy)) {
+        return true;
+    }
+    // BGRA8Unorm
+    if (format.format == wgpu::TextureFormat::BGRA8Unorm &&
+        device->IsToggleEnabled(Toggle::UseBlitForBGRA8UnormTextureToBufferCopy)) {
+        return true;
+    }
+    // Depth
+    if (format.HasDepth() &&
+        (device->IsToggleEnabled(Toggle::UseBlitForDepthTextureToTextureCopyToNonzeroSubresource) ||
+         (format.format == wgpu::TextureFormat::Depth16Unorm &&
+          device->IsToggleEnabled(Toggle::UseBlitForDepth16UnormTextureToBufferCopy)) ||
+         (format.format == wgpu::TextureFormat::Depth32Float &&
+          device->IsToggleEnabled(Toggle::UseBlitForDepth32FloatTextureToBufferCopy)))) {
+        return true;
+    }
+    // Stencil
+    if (format.HasStencil() &&
+        device->IsToggleEnabled(Toggle::UseBlitForStencilTextureToBufferCopy)) {
+        return true;
+    }
+    return false;
 }
 
 }  // anonymous namespace
 
-MaybeError ValidateTextureDescriptor(const DeviceBase* device,
-                                     const TextureDescriptor* descriptor) {
+MaybeError ValidateTextureDescriptor(
+    const DeviceBase* device,
+    const TextureDescriptor* descriptor,
+    AllowMultiPlanarTextureFormat allowMultiPlanar,
+    std::optional<wgpu::TextureUsage> allowedSharedTextureMemoryUsage) {
     DAWN_TRY(ValidateSingleSType(descriptor->nextInChain,
                                  wgpu::SType::DawnTextureInternalUsageDescriptor));
 
@@ -339,10 +440,21 @@ MaybeError ValidateTextureDescriptor(const DeviceBase* device,
 
     DAWN_INVALID_IF(
         internalUsageDesc != nullptr && !device->HasFeature(Feature::DawnInternalUsages),
-        "The internalUsageDesc is not empty while the dawn-internal-usages feature is not enabled");
+        "The internalUsageDesc is not empty while the dawn-internal-usages feature is not "
+        "enabled");
 
     const Format* format;
     DAWN_TRY_ASSIGN(format, device->GetInternalFormat(descriptor->format));
+
+    switch (allowMultiPlanar) {
+        case AllowMultiPlanarTextureFormat::Yes:
+            break;
+        case AllowMultiPlanarTextureFormat::No:
+            DAWN_INVALID_IF(format->IsMultiPlanar(),
+                            "Creation of multiplanar texture format %s is not allowed.",
+                            descriptor->format);
+            break;
+    }
 
     for (uint32_t i = 0; i < descriptor->viewFormatCount; ++i) {
         DAWN_TRY_CONTEXT(
@@ -355,7 +467,8 @@ MaybeError ValidateTextureDescriptor(const DeviceBase* device,
         usage |= internalUsageDesc->internalUsage;
     }
 
-    DAWN_TRY(ValidateTextureUsage(descriptor, usage, format));
+    DAWN_TRY(ValidateTextureUsage(device, descriptor, usage, format,
+                                  std::move(allowedSharedTextureMemoryUsage)));
     DAWN_TRY(ValidateTextureDimension(descriptor->dimension));
     DAWN_TRY(ValidateSampleCount(descriptor, usage, format));
 
@@ -419,7 +532,7 @@ MaybeError ValidateTextureViewDescriptor(const DeviceBase* device,
         descriptor->baseMipLevel, descriptor->mipLevelCount, texture->GetNumMipLevels());
 
     DAWN_TRY(ValidateCanViewTextureAs(device, texture, *viewFormat, descriptor->aspect));
-    DAWN_TRY(ValidateTextureViewDimensionCompatibility(texture, descriptor));
+    DAWN_TRY(ValidateTextureViewDimensionCompatibility(device, texture, descriptor));
 
     return {};
 }
@@ -512,9 +625,9 @@ bool IsValidSampleCount(uint32_t sampleCount) {
 
 // TextureBase
 
-TextureBase::TextureBase(DeviceBase* device,
-                         const TextureDescriptor* descriptor,
-                         TextureState state)
+TextureBase::TextureState::TextureState() : hasAccess(true), destroyed(false) {}
+
+TextureBase::TextureBase(DeviceBase* device, const TextureDescriptor* descriptor)
     : ApiObjectBase(device, descriptor->label),
       mDimension(descriptor->dimension),
       mFormat(device->GetValidInternalFormat(descriptor->format)),
@@ -523,7 +636,6 @@ TextureBase::TextureBase(DeviceBase* device,
       mSampleCount(descriptor->sampleCount),
       mUsage(descriptor->usage),
       mInternalUsage(mUsage),
-      mState(state),
       mFormatEnumForReflection(descriptor->format) {
     uint32_t subresourceCount = mMipLevelCount * GetArrayLayers() * GetAspectCount(mFormat.aspects);
     mIsSubresourceContentInitializedAtIndex = std::vector<bool>(subresourceCount, false);
@@ -544,8 +656,9 @@ TextureBase::TextureBase(DeviceBase* device,
     }
     GetObjectTrackingList()->Track(this);
 
-    // dawn:1569: If a texture with multiple array layers or mip levels is specified as a texture
-    // attachment when this toggle is active, it needs to be given CopyDst usage internally.
+    // dawn:1569: If a texture with multiple array layers or mip levels is specified as a
+    // texture attachment when this toggle is active, it needs to be given CopyDst usage
+    // internally.
     bool applyAlwaysResolveIntoZeroLevelAndLayerToggle =
         device->IsToggleEnabled(Toggle::AlwaysResolveIntoZeroLevelAndLayer) &&
         (GetArrayLayers() > 1 || GetNumMipLevels() > 1) &&
@@ -554,26 +667,18 @@ TextureBase::TextureBase(DeviceBase* device,
         AddInternalUsage(wgpu::TextureUsage::CopyDst);
     }
 
-    if (mFormat.HasStencil() && (mInternalUsage & wgpu::TextureUsage::CopyDst) &&
-        device->IsToggleEnabled(Toggle::UseBlitForBufferToStencilTextureCopy)) {
-        // Add render attachment usage so we can blit to the stencil texture
-        // in a render pass.
-        AddInternalUsage(wgpu::TextureUsage::RenderAttachment);
-    }
-    if (mFormat.HasDepth() && (mInternalUsage & wgpu::TextureUsage::CopyDst) &&
-        device->IsToggleEnabled(Toggle::UseBlitForBufferToDepthTextureCopy)) {
-        // Add render attachment usage so we can blit to the depth texture
-        // in a render pass.
-        AddInternalUsage(wgpu::TextureUsage::RenderAttachment);
-    }
-    if (mFormat.HasDepth() &&
-        device->IsToggleEnabled(Toggle::UseBlitForDepthTextureToTextureCopyToNonzeroSubresource)) {
-        if (mInternalUsage & wgpu::TextureUsage::CopySrc) {
-            AddInternalUsage(wgpu::TextureUsage::TextureBinding);
-        }
-        if (mInternalUsage & wgpu::TextureUsage::CopyDst) {
+    if (mInternalUsage & wgpu::TextureUsage::CopyDst) {
+        if (CopyDstNeedsInternalRenderAttachmentUsage(device, mFormat)) {
             AddInternalUsage(wgpu::TextureUsage::RenderAttachment);
         }
+    }
+    if (mInternalUsage & wgpu::TextureUsage::CopySrc) {
+        if (CopySrcNeedsInternalTextureBindingUsage(device, mFormat)) {
+            AddInternalUsage(wgpu::TextureUsage::TextureBinding);
+        }
+    }
+    if (mInternalUsage & wgpu::TextureUsage::StorageBinding) {
+        AddInternalUsage(kReadOnlyStorageTexture);
     }
 }
 
@@ -584,7 +689,7 @@ static constexpr Format kUnusedFormat;
 TextureBase::TextureBase(DeviceBase* device,
                          const TextureDescriptor* descriptor,
                          ObjectBase::ErrorTag tag)
-    : ApiObjectBase(device, tag),
+    : ApiObjectBase(device, tag, descriptor->label),
       mDimension(descriptor->dimension),
       mFormat(kUnusedFormat),
       mSize(descriptor->size),
@@ -594,7 +699,7 @@ TextureBase::TextureBase(DeviceBase* device,
       mFormatEnumForReflection(descriptor->format) {}
 
 void TextureBase::DestroyImpl() {
-    mState = TextureState::Destroyed;
+    mState.destroyed = true;
 
     // Destroy all of the views associated with the texture as well.
     mTextureViews.Destroy();
@@ -675,9 +780,14 @@ void TextureBase::AddInternalUsage(wgpu::TextureUsage usage) {
     mInternalUsage |= usage;
 }
 
-TextureBase::TextureState TextureBase::GetTextureState() const {
+bool TextureBase::IsDestroyed() const {
     ASSERT(!IsError());
-    return mState;
+    return mState.destroyed;
+}
+
+void TextureBase::SetHasAccess(bool hasAccess) {
+    ASSERT(!IsError());
+    mState.hasAccess = hasAccess;
 }
 
 uint32_t TextureBase::GetSubresourceIndex(uint32_t mipLevel,
@@ -723,14 +833,43 @@ void TextureBase::SetIsSubresourceContentInitialized(bool isInitialized,
 
 MaybeError TextureBase::ValidateCanUseInSubmitNow() const {
     ASSERT(!IsError());
-    DAWN_INVALID_IF(mState == TextureState::Destroyed, "Destroyed texture %s used in a submit.",
+    if (DAWN_UNLIKELY(mState.destroyed || !mState.hasAccess)) {
+        DAWN_INVALID_IF(mState.destroyed, "Destroyed texture %s used in a submit.", this);
+        if (DAWN_UNLIKELY(!mState.hasAccess)) {
+            if (mSharedTextureMemoryState != nullptr) {
+                auto memory = mSharedTextureMemoryState->GetSharedTextureMemory().Promote();
+                if (memory != nullptr) {
+                    return DAWN_VALIDATION_ERROR("%s used in a submit without current access to %s",
+                                                 this, memory.Get());
+                }
+                return DAWN_VALIDATION_ERROR(
+                    "%s used in a submit without current access. It's SharedTextureMemory was "
+                    "already destroyed.",
                     this);
+            }
+            return DAWN_VALIDATION_ERROR("%s used in a submit without current access.", this);
+        }
+    }
+
     return {};
 }
 
 bool TextureBase::IsMultisampledTexture() const {
     ASSERT(!IsError());
     return mSampleCount > 1;
+}
+
+bool TextureBase::CoverFullSubresource(uint32_t mipLevel, const Extent3D& size) const {
+    Extent3D levelSize = GetMipLevelSingleSubresourcePhysicalSize(mipLevel);
+    switch (GetDimension()) {
+        case wgpu::TextureDimension::e1D:
+            return size.width == levelSize.width;
+        case wgpu::TextureDimension::e2D:
+            return size.width == levelSize.width && size.height == levelSize.height;
+        case wgpu::TextureDimension::e3D:
+            return size == levelSize;
+    }
+    DAWN_UNREACHABLE();
 }
 
 Extent3D TextureBase::GetMipLevelSingleSubresourceVirtualSize(uint32_t level) const {
@@ -781,6 +920,14 @@ Extent3D TextureBase::ClampToMipLevelVirtualSize(uint32_t level,
     return {clampedCopyExtentWidth, clampedCopyExtentHeight, extent.depthOrArrayLayers};
 }
 
+Extent3D TextureBase::GetMipLevelSubresourceVirtualSize(uint32_t level) const {
+    Extent3D extent = GetMipLevelSingleSubresourceVirtualSize(level);
+    if (mDimension == wgpu::TextureDimension::e2D) {
+        extent.depthOrArrayLayers = mSize.depthOrArrayLayers;
+    }
+    return extent;
+}
+
 ResultOrError<Ref<TextureViewBase>> TextureBase::CreateView(
     const TextureViewDescriptor* descriptor) {
     return GetDevice()->CreateTextureView(this, descriptor);
@@ -796,9 +943,17 @@ TextureViewBase* TextureBase::APICreateView(const TextureViewDescriptor* descrip
     Ref<TextureViewBase> result;
     if (device->ConsumedError(CreateView(descriptor), &result, "calling %s.CreateView(%s).", this,
                               descriptor)) {
-        return TextureViewBase::MakeError(device);
+        return TextureViewBase::MakeError(device, descriptor ? descriptor->label : nullptr);
     }
     return result.Detach();
+}
+
+bool TextureBase::IsImplicitMSAARenderTextureViewSupported() const {
+    return (GetUsage() & wgpu::TextureUsage::TextureBinding) != 0;
+}
+
+SharedTextureMemoryState* TextureBase::GetSharedTextureMemoryState() const {
+    return mSharedTextureMemoryState.Get();
 }
 
 void TextureBase::APIDestroy() {
@@ -849,20 +1004,38 @@ TextureViewBase::TextureViewBase(TextureBase* texture, const TextureViewDescript
     GetObjectTrackingList()->Track(this);
 }
 
-TextureViewBase::TextureViewBase(DeviceBase* device, ObjectBase::ErrorTag tag)
-    : ApiObjectBase(device, tag), mFormat(kUnusedFormat) {}
+TextureViewBase::TextureViewBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label)
+    : ApiObjectBase(device, tag, label), mFormat(kUnusedFormat) {}
 
 TextureViewBase::~TextureViewBase() = default;
 
 void TextureViewBase::DestroyImpl() {}
 
 // static
-TextureViewBase* TextureViewBase::MakeError(DeviceBase* device) {
-    return new TextureViewBase(device, ObjectBase::kError);
+TextureViewBase* TextureViewBase::MakeError(DeviceBase* device, const char* label) {
+    return new TextureViewBase(device, ObjectBase::kError, label);
 }
 
 ObjectType TextureViewBase::GetType() const {
     return ObjectType::TextureView;
+}
+
+void TextureViewBase::FormatLabel(absl::FormatSink* s) const {
+    s->Append(ObjectTypeAsString(GetType()));
+
+    const std::string& label = GetLabel();
+    if (!label.empty()) {
+        s->Append(absl::StrFormat(" \"%s\"", label));
+    }
+    if (IsError()) {
+        return;
+    }
+
+    const std::string& textureLabel = mTexture->GetLabel();
+    if (!textureLabel.empty()) {
+        s->Append(" of ");
+        GetTexture()->FormatLabel(s);
+    }
 }
 
 const TextureBase* TextureViewBase::GetTexture() const {

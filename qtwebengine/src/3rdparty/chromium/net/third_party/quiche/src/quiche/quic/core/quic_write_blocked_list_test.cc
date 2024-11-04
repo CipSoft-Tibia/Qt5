@@ -23,60 +23,69 @@ constexpr bool kNotIncremental = false;
 
 class QuicWriteBlockedListTest : public QuicTest {
  protected:
+  void SetUp() override {
+    // Delay construction of QuicWriteBlockedList object to allow constructor of
+    // derived test classes to manipulate reloadable flags that are latched in
+    // QuicWriteBlockedList constructor.
+    write_blocked_list_.emplace();
+  }
+
   bool HasWriteBlockedDataStreams() const {
-    return write_blocked_list_.HasWriteBlockedDataStreams();
+    return write_blocked_list_->HasWriteBlockedDataStreams();
   }
 
   bool HasWriteBlockedSpecialStream() const {
-    return write_blocked_list_.HasWriteBlockedSpecialStream();
+    return write_blocked_list_->HasWriteBlockedSpecialStream();
   }
 
   size_t NumBlockedSpecialStreams() const {
-    return write_blocked_list_.NumBlockedSpecialStreams();
+    return write_blocked_list_->NumBlockedSpecialStreams();
   }
 
   size_t NumBlockedStreams() const {
-    return write_blocked_list_.NumBlockedStreams();
+    return write_blocked_list_->NumBlockedStreams();
   }
 
   bool ShouldYield(QuicStreamId id) const {
-    return write_blocked_list_.ShouldYield(id);
+    return write_blocked_list_->ShouldYield(id);
   }
 
-  QuicStreamPriority GetPriorityofStream(QuicStreamId id) const {
-    return write_blocked_list_.GetPriorityofStream(id);
+  QuicStreamPriority GetPriorityOfStream(QuicStreamId id) const {
+    return write_blocked_list_->GetPriorityOfStream(id);
   }
 
-  QuicStreamId PopFront() { return write_blocked_list_.PopFront(); }
+  QuicStreamId PopFront() { return write_blocked_list_->PopFront(); }
 
   void RegisterStream(QuicStreamId stream_id, bool is_static_stream,
-                      const QuicStreamPriority& priority) {
-    write_blocked_list_.RegisterStream(stream_id, is_static_stream, priority);
+                      const HttpStreamPriority& priority) {
+    write_blocked_list_->RegisterStream(stream_id, is_static_stream,
+                                        QuicStreamPriority(priority));
   }
 
   void UnregisterStream(QuicStreamId stream_id) {
-    write_blocked_list_.UnregisterStream(stream_id);
+    write_blocked_list_->UnregisterStream(stream_id);
   }
 
   void UpdateStreamPriority(QuicStreamId stream_id,
-                            const QuicStreamPriority& new_priority) {
-    write_blocked_list_.UpdateStreamPriority(stream_id, new_priority);
+                            const HttpStreamPriority& new_priority) {
+    write_blocked_list_->UpdateStreamPriority(stream_id,
+                                              QuicStreamPriority(new_priority));
   }
 
   void UpdateBytesForStream(QuicStreamId stream_id, size_t bytes) {
-    write_blocked_list_.UpdateBytesForStream(stream_id, bytes);
+    write_blocked_list_->UpdateBytesForStream(stream_id, bytes);
   }
 
   void AddStream(QuicStreamId stream_id) {
-    write_blocked_list_.AddStream(stream_id);
+    write_blocked_list_->AddStream(stream_id);
   }
 
   bool IsStreamBlocked(QuicStreamId stream_id) const {
-    return write_blocked_list_.IsStreamBlocked(stream_id);
+    return write_blocked_list_->IsStreamBlocked(stream_id);
   }
 
  private:
-  QuicWriteBlockedList write_blocked_list_;
+  absl::optional<QuicWriteBlockedList> write_blocked_list_;
 };
 
 TEST_F(QuicWriteBlockedListTest, PriorityOrder) {
@@ -88,14 +97,14 @@ TEST_F(QuicWriteBlockedListTest, PriorityOrder) {
   RegisterStream(1, kStatic, {kV3HighestPriority, kNotIncremental});
   RegisterStream(3, kStatic, {kV3HighestPriority, kNotIncremental});
 
-  EXPECT_EQ(kV3LowestPriority, GetPriorityofStream(40).urgency);
-  EXPECT_EQ(kNotIncremental, GetPriorityofStream(40).incremental);
+  EXPECT_EQ(kV3LowestPriority, GetPriorityOfStream(40).http().urgency);
+  EXPECT_EQ(kNotIncremental, GetPriorityOfStream(40).http().incremental);
 
-  EXPECT_EQ(kV3HighestPriority, GetPriorityofStream(23).urgency);
-  EXPECT_EQ(kIncremental, GetPriorityofStream(23).incremental);
+  EXPECT_EQ(kV3HighestPriority, GetPriorityOfStream(23).http().urgency);
+  EXPECT_EQ(kIncremental, GetPriorityOfStream(23).http().incremental);
 
-  EXPECT_EQ(kV3HighestPriority, GetPriorityofStream(17).urgency);
-  EXPECT_EQ(kNotIncremental, GetPriorityofStream(17).incremental);
+  EXPECT_EQ(kV3HighestPriority, GetPriorityOfStream(17).http().urgency);
+  EXPECT_EQ(kNotIncremental, GetPriorityOfStream(17).http().incremental);
 
   AddStream(40);
   EXPECT_TRUE(IsStreamBlocked(40));
@@ -186,13 +195,80 @@ TEST_F(QuicWriteBlockedListTest, NoDuplicateEntries) {
   EXPECT_FALSE(HasWriteBlockedDataStreams());
 }
 
-TEST_F(QuicWriteBlockedListTest, BatchingWrites) {
+TEST_F(QuicWriteBlockedListTest, IncrementalStreamsRoundRobin) {
   const QuicStreamId id1 = 5;
   const QuicStreamId id2 = 7;
   const QuicStreamId id3 = 9;
-  RegisterStream(id1, kNotStatic, {kV3LowestPriority, kNotIncremental});
-  RegisterStream(id2, kNotStatic, {kV3LowestPriority, kNotIncremental});
-  RegisterStream(id3, kNotStatic, {kV3HighestPriority, kNotIncremental});
+  RegisterStream(id1, kNotStatic, {kV3LowestPriority, kIncremental});
+  RegisterStream(id2, kNotStatic, {kV3LowestPriority, kIncremental});
+  RegisterStream(id3, kNotStatic, {kV3LowestPriority, kIncremental});
+
+  AddStream(id1);
+  AddStream(id2);
+  AddStream(id3);
+
+  EXPECT_EQ(id1, PopFront());
+  const size_t kLargeWriteSize = 1000 * 1000 * 1000;
+  UpdateBytesForStream(id1, kLargeWriteSize);
+  AddStream(id1);
+
+  EXPECT_EQ(id2, PopFront());
+  UpdateBytesForStream(id2, kLargeWriteSize);
+  EXPECT_EQ(id3, PopFront());
+  UpdateBytesForStream(id3, kLargeWriteSize);
+
+  AddStream(id3);
+  AddStream(id2);
+
+  EXPECT_EQ(id1, PopFront());
+  UpdateBytesForStream(id1, kLargeWriteSize);
+  EXPECT_EQ(id3, PopFront());
+  UpdateBytesForStream(id3, kLargeWriteSize);
+  AddStream(id3);
+
+  EXPECT_EQ(id2, PopFront());
+  EXPECT_EQ(id3, PopFront());
+}
+
+class QuicWriteBlockedListParameterizedTest
+    : public QuicWriteBlockedListTest,
+      public ::testing::WithParamInterface<std::tuple<bool, bool>> {
+ protected:
+  QuicWriteBlockedListParameterizedTest()
+      : priority_respect_incremental_(std::get<0>(GetParam())),
+        disable_batch_write_(std::get<1>(GetParam())) {
+    SetQuicReloadableFlag(quic_priority_respect_incremental,
+                          priority_respect_incremental_);
+    SetQuicReloadableFlag(quic_disable_batch_write, disable_batch_write_);
+  }
+
+  const bool priority_respect_incremental_;
+  const bool disable_batch_write_;
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    BatchWrite, QuicWriteBlockedListParameterizedTest,
+    ::testing::Combine(::testing::Bool(), ::testing::Bool()),
+    [](const testing::TestParamInfo<
+        QuicWriteBlockedListParameterizedTest::ParamType>& info) {
+      return absl::StrCat(std::get<0>(info.param) ? "RespectIncrementalTrue"
+                                                  : "RespectIncrementalFalse",
+                          std::get<1>(info.param) ? "DisableBatchWriteTrue"
+                                                  : "DisableBatchWriteFalse");
+    });
+
+// If reloadable_flag_quic_disable_batch_write is false, writes are batched.
+TEST_P(QuicWriteBlockedListParameterizedTest, BatchingWrites) {
+  if (disable_batch_write_) {
+    return;
+  }
+
+  const QuicStreamId id1 = 5;
+  const QuicStreamId id2 = 7;
+  const QuicStreamId id3 = 9;
+  RegisterStream(id1, kNotStatic, {kV3LowestPriority, kIncremental});
+  RegisterStream(id2, kNotStatic, {kV3LowestPriority, kIncremental});
+  RegisterStream(id3, kNotStatic, {kV3HighestPriority, kIncremental});
 
   AddStream(id1);
   AddStream(id2);
@@ -234,6 +310,189 @@ TEST_F(QuicWriteBlockedListTest, BatchingWrites) {
   AddStream(id2);
   EXPECT_EQ(2u, NumBlockedStreams());
   EXPECT_EQ(id1, PopFront());
+}
+
+// If reloadable_flag_quic_disable_batch_write is true, writes are performed
+// round-robin regardless of how little data is written on each stream.
+TEST_P(QuicWriteBlockedListParameterizedTest, RoundRobin) {
+  if (!disable_batch_write_) {
+    return;
+  }
+
+  const QuicStreamId id1 = 5;
+  const QuicStreamId id2 = 7;
+  const QuicStreamId id3 = 9;
+  RegisterStream(id1, kNotStatic, {kV3LowestPriority, kIncremental});
+  RegisterStream(id2, kNotStatic, {kV3LowestPriority, kIncremental});
+  RegisterStream(id3, kNotStatic, {kV3LowestPriority, kIncremental});
+
+  AddStream(id1);
+  AddStream(id2);
+  AddStream(id3);
+
+  EXPECT_EQ(id1, PopFront());
+  AddStream(id1);
+
+  EXPECT_EQ(id2, PopFront());
+  EXPECT_EQ(id3, PopFront());
+
+  AddStream(id3);
+  AddStream(id2);
+
+  EXPECT_EQ(id1, PopFront());
+  EXPECT_EQ(id3, PopFront());
+  AddStream(id3);
+
+  EXPECT_EQ(id2, PopFront());
+  EXPECT_EQ(id3, PopFront());
+}
+
+TEST_P(QuicWriteBlockedListParameterizedTest,
+       NonIncrementalStreamsKeepWriting) {
+  if (!priority_respect_incremental_) {
+    return;
+  }
+
+  const QuicStreamId id1 = 1;
+  const QuicStreamId id2 = 2;
+  const QuicStreamId id3 = 3;
+  const QuicStreamId id4 = 4;
+  RegisterStream(id1, kNotStatic, {kV3LowestPriority, kNotIncremental});
+  RegisterStream(id2, kNotStatic, {kV3LowestPriority, kNotIncremental});
+  RegisterStream(id3, kNotStatic, {kV3LowestPriority, kNotIncremental});
+  RegisterStream(id4, kNotStatic, {kV3HighestPriority, kNotIncremental});
+
+  AddStream(id1);
+  AddStream(id2);
+  AddStream(id3);
+
+  // A non-incremental stream can continue writing as long as it has data.
+  EXPECT_EQ(id1, PopFront());
+  const size_t kLargeWriteSize = 1000 * 1000 * 1000;
+  UpdateBytesForStream(id1, kLargeWriteSize);
+  AddStream(id1);
+
+  EXPECT_EQ(id1, PopFront());
+  UpdateBytesForStream(id1, kLargeWriteSize);
+  AddStream(id1);
+
+  EXPECT_EQ(id1, PopFront());
+  UpdateBytesForStream(id1, kLargeWriteSize);
+  AddStream(id1);
+
+  EXPECT_EQ(id1, PopFront());
+  UpdateBytesForStream(id1, kLargeWriteSize);
+  AddStream(id1);
+
+  // A higher priority stream takes precedence.
+  AddStream(id4);
+  EXPECT_EQ(id4, PopFront());
+
+  // When it is the turn of the lower urgency bucket again, writing of the first
+  // stream will continue.
+  EXPECT_EQ(id1, PopFront());
+  UpdateBytesForStream(id1, kLargeWriteSize);
+
+  // When there is no more data on the first stream, write can start on the
+  // second stream.
+  EXPECT_EQ(id2, PopFront());
+  UpdateBytesForStream(id2, kLargeWriteSize);
+  AddStream(id2);
+
+  // Write continues without limit.
+  EXPECT_EQ(id2, PopFront());
+  UpdateBytesForStream(id2, kLargeWriteSize);
+  AddStream(id2);
+
+  // Stream 1 is not the most recently written one, therefore it gets to the end
+  // of the dequeue.
+  AddStream(id1);
+
+  EXPECT_EQ(id2, PopFront());
+  UpdateBytesForStream(id2, kLargeWriteSize);
+
+  EXPECT_EQ(id3, PopFront());
+  UpdateBytesForStream(id2, kLargeWriteSize);
+  AddStream(id3);
+
+  EXPECT_EQ(id3, PopFront());
+  UpdateBytesForStream(id2, kLargeWriteSize);
+
+  // When there is no data to write either on stream 2 or stream 3, stream 1 can
+  // resume.
+  EXPECT_EQ(id1, PopFront());
+  UpdateBytesForStream(id1, kLargeWriteSize);
+}
+
+TEST_P(QuicWriteBlockedListParameterizedTest,
+       IncrementalAndNonIncrementalStreams) {
+  if (!priority_respect_incremental_) {
+    return;
+  }
+
+  const QuicStreamId id1 = 1;
+  const QuicStreamId id2 = 2;
+  RegisterStream(id1, kNotStatic, {kV3LowestPriority, kNotIncremental});
+  RegisterStream(id2, kNotStatic, {kV3LowestPriority, kIncremental});
+
+  AddStream(id1);
+  AddStream(id2);
+
+  // A non-incremental stream can continue writing as long as it has data.
+  EXPECT_EQ(id1, PopFront());
+  const size_t kSmallWriteSize = 1000;
+  UpdateBytesForStream(id1, kSmallWriteSize);
+  AddStream(id1);
+
+  EXPECT_EQ(id1, PopFront());
+  UpdateBytesForStream(id1, kSmallWriteSize);
+  AddStream(id1);
+
+  EXPECT_EQ(id1, PopFront());
+  UpdateBytesForStream(id1, kSmallWriteSize);
+
+  EXPECT_EQ(id2, PopFront());
+  UpdateBytesForStream(id2, kSmallWriteSize);
+  AddStream(id2);
+  AddStream(id1);
+
+  if (!disable_batch_write_) {
+    // Small writes do not exceed the batch limit.
+    // Writes continue even on an incremental stream.
+    EXPECT_EQ(id2, PopFront());
+    UpdateBytesForStream(id2, kSmallWriteSize);
+    AddStream(id2);
+
+    EXPECT_EQ(id2, PopFront());
+    UpdateBytesForStream(id2, kSmallWriteSize);
+  }
+
+  EXPECT_EQ(id1, PopFront());
+  const size_t kLargeWriteSize = 1000 * 1000 * 1000;
+  UpdateBytesForStream(id1, kLargeWriteSize);
+  AddStream(id1);
+
+  EXPECT_EQ(id1, PopFront());
+  UpdateBytesForStream(id1, kLargeWriteSize);
+  AddStream(id1);
+
+  EXPECT_EQ(id1, PopFront());
+  UpdateBytesForStream(id1, kLargeWriteSize);
+  AddStream(id2);
+  AddStream(id1);
+
+  // When batch writing is disabled, stream 2 immediately yields to stream 1,
+  // which is the non-incremental stream with most recent writes.
+  // When batch writing is enabled, stream 2 only yields to stream 1 after
+  // exceeding the batching limit.
+  if (!disable_batch_write_) {
+    EXPECT_EQ(id2, PopFront());
+    UpdateBytesForStream(id2, kLargeWriteSize);
+    AddStream(id2);
+  }
+
+  EXPECT_EQ(id1, PopFront());
+  UpdateBytesForStream(id1, kLargeWriteSize);
 }
 
 TEST_F(QuicWriteBlockedListTest, Ceding) {
@@ -320,27 +579,27 @@ TEST_F(QuicWriteBlockedListTest, UpdateStreamPriority) {
   RegisterStream(1, kStatic, {2, kNotIncremental});
   RegisterStream(3, kStatic, {kV3HighestPriority, kNotIncremental});
 
-  EXPECT_EQ(kV3LowestPriority, GetPriorityofStream(40).urgency);
-  EXPECT_EQ(kNotIncremental, GetPriorityofStream(40).incremental);
+  EXPECT_EQ(kV3LowestPriority, GetPriorityOfStream(40).http().urgency);
+  EXPECT_EQ(kNotIncremental, GetPriorityOfStream(40).http().incremental);
 
-  EXPECT_EQ(6, GetPriorityofStream(23).urgency);
-  EXPECT_EQ(kIncremental, GetPriorityofStream(23).incremental);
+  EXPECT_EQ(6, GetPriorityOfStream(23).http().urgency);
+  EXPECT_EQ(kIncremental, GetPriorityOfStream(23).http().incremental);
 
-  EXPECT_EQ(kV3HighestPriority, GetPriorityofStream(17).urgency);
-  EXPECT_EQ(kNotIncremental, GetPriorityofStream(17).incremental);
+  EXPECT_EQ(kV3HighestPriority, GetPriorityOfStream(17).http().urgency);
+  EXPECT_EQ(kNotIncremental, GetPriorityOfStream(17).http().incremental);
 
   UpdateStreamPriority(40, {3, kIncremental});
   UpdateStreamPriority(23, {kV3HighestPriority, kNotIncremental});
   UpdateStreamPriority(17, {5, kNotIncremental});
 
-  EXPECT_EQ(3, GetPriorityofStream(40).urgency);
-  EXPECT_EQ(kIncremental, GetPriorityofStream(40).incremental);
+  EXPECT_EQ(3, GetPriorityOfStream(40).http().urgency);
+  EXPECT_EQ(kIncremental, GetPriorityOfStream(40).http().incremental);
 
-  EXPECT_EQ(kV3HighestPriority, GetPriorityofStream(23).urgency);
-  EXPECT_EQ(kNotIncremental, GetPriorityofStream(23).incremental);
+  EXPECT_EQ(kV3HighestPriority, GetPriorityOfStream(23).http().urgency);
+  EXPECT_EQ(kNotIncremental, GetPriorityOfStream(23).http().incremental);
 
-  EXPECT_EQ(5, GetPriorityofStream(17).urgency);
-  EXPECT_EQ(kNotIncremental, GetPriorityofStream(17).incremental);
+  EXPECT_EQ(5, GetPriorityOfStream(17).http().urgency);
+  EXPECT_EQ(kNotIncremental, GetPriorityOfStream(17).http().incremental);
 
   AddStream(40);
   AddStream(23);
@@ -380,13 +639,13 @@ TEST_F(QuicWriteBlockedListTest, UpdateStreamPrioritySameUrgency) {
   RegisterStream(3, kNotStatic, {6, kNotIncremental});
   RegisterStream(4, kNotStatic, {6, kNotIncremental});
 
-  EXPECT_EQ(6, GetPriorityofStream(3).urgency);
-  EXPECT_EQ(kNotIncremental, GetPriorityofStream(3).incremental);
+  EXPECT_EQ(6, GetPriorityOfStream(3).http().urgency);
+  EXPECT_EQ(kNotIncremental, GetPriorityOfStream(3).http().incremental);
 
   UpdateStreamPriority(3, {6, kIncremental});
 
-  EXPECT_EQ(6, GetPriorityofStream(3).urgency);
-  EXPECT_EQ(kIncremental, GetPriorityofStream(3).incremental);
+  EXPECT_EQ(6, GetPriorityOfStream(3).http().urgency);
+  EXPECT_EQ(kIncremental, GetPriorityOfStream(3).http().incremental);
 
   AddStream(3);
   AddStream(4);
@@ -399,13 +658,13 @@ TEST_F(QuicWriteBlockedListTest, UpdateStreamPrioritySameUrgency) {
   RegisterStream(5, kNotStatic, {6, kIncremental});
   RegisterStream(6, kNotStatic, {6, kIncremental});
 
-  EXPECT_EQ(6, GetPriorityofStream(6).urgency);
-  EXPECT_EQ(kIncremental, GetPriorityofStream(6).incremental);
+  EXPECT_EQ(6, GetPriorityOfStream(6).http().urgency);
+  EXPECT_EQ(kIncremental, GetPriorityOfStream(6).http().incremental);
 
   UpdateStreamPriority(6, {6, kNotIncremental});
 
-  EXPECT_EQ(6, GetPriorityofStream(6).urgency);
-  EXPECT_EQ(kNotIncremental, GetPriorityofStream(6).incremental);
+  EXPECT_EQ(6, GetPriorityOfStream(6).http().urgency);
+  EXPECT_EQ(kNotIncremental, GetPriorityOfStream(6).http().incremental);
 
   AddStream(5);
   AddStream(6);

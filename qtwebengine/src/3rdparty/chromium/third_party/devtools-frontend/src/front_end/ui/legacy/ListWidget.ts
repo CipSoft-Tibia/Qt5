@@ -152,11 +152,11 @@ export class ListWidget<T> extends VBox {
 
     const toolbar = new Toolbar('', buttons);
 
-    const editButton = new ToolbarButton(i18nString(UIStrings.editString), 'largeicon-edit');
+    const editButton = new ToolbarButton(i18nString(UIStrings.editString), 'edit');
     editButton.addEventListener(ToolbarButton.Events.Click, onEditClicked.bind(this));
     toolbar.appendToolbarItem(editButton);
 
-    const removeButton = new ToolbarButton(i18nString(UIStrings.removeString), 'largeicon-trash-bin');
+    const removeButton = new ToolbarButton(i18nString(UIStrings.removeString), 'bin');
     removeButton.addEventListener(ToolbarButton.Events.Click, onRemoveClicked.bind(this));
     toolbar.appendToolbarItem(removeButton);
 
@@ -175,7 +175,7 @@ export class ListWidget<T> extends VBox {
     }
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.stopEditing();
   }
@@ -322,8 +322,7 @@ export class Editor<T> {
     const input = (createInput('', type) as HTMLInputElement);
     input.placeholder = title;
     input.addEventListener('input', this.validateControls.bind(this, false), false);
-    input.addEventListener('blur', this.validateControls.bind(this, false), false);
-    ARIAUtils.setAccessibleName(input, title);
+    ARIAUtils.setLabel(input, title);
     this.controlByName.set(name, input);
     this.controls.push(input);
     this.validators.push(validator);
@@ -342,7 +341,7 @@ export class Editor<T> {
     }
     if (title) {
       Tooltip.install(select, title);
-      ARIAUtils.setAccessibleName(select, title);
+      ARIAUtils.setLabel(select, title);
     }
     select.addEventListener('input', this.validateControls.bind(this, false), false);
     select.addEventListener('blur', this.validateControls.bind(this, false), false);

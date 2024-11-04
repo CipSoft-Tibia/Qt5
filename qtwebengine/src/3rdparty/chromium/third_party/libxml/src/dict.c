@@ -62,7 +62,7 @@ typedef unsigned __int32 uint32_t;
 
 #define MAX_HASH_LEN 3
 #define MIN_DICT_SIZE 128
-#define MAX_DICT_HASH 8 * 2048
+#define MAX_DICT_HASH 100000000
 #define WITH_BIG_KEY
 
 #ifdef WITH_BIG_KEY
@@ -354,6 +354,7 @@ found_pool:
 
 #ifdef __clang__
 ATTRIBUTE_NO_SANITIZE("unsigned-integer-overflow")
+ATTRIBUTE_NO_SANITIZE("unsigned-shift-base")
 #endif
 static uint32_t
 xmlDictComputeBigKey(const xmlChar* data, int namelen, int seed) {
@@ -389,6 +390,7 @@ xmlDictComputeBigKey(const xmlChar* data, int namelen, int seed) {
  */
 #ifdef __clang__
 ATTRIBUTE_NO_SANITIZE("unsigned-integer-overflow")
+ATTRIBUTE_NO_SANITIZE("unsigned-shift-base")
 #endif
 static unsigned long
 xmlDictComputeBigQKey(const xmlChar *prefix, int plen,
@@ -654,7 +656,7 @@ xmlDictGrow(xmlDictPtr dict, size_t size) {
 	return(-1);
     if (size < 8)
         return(-1);
-    if (size > 8 * 2048)
+    if (size > MAX_DICT_HASH)
 	return(-1);
 
 #ifdef DICT_DEBUG_PATTERNS

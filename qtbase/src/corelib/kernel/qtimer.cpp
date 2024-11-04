@@ -4,6 +4,7 @@
 
 #include "qtimer.h"
 #include "qtimer_p.h"
+#include "qsingleshottimer_p.h"
 
 #include "qabstracteventdispatcher.h"
 #include "qcoreapplication.h"
@@ -13,6 +14,8 @@
 #include "qobject_p.h"
 #include "qproperty_p.h"
 #include "qthread.h"
+
+using namespace std::chrono_literals;
 
 QT_BEGIN_NAMESPACE
 
@@ -256,90 +259,6 @@ void QTimer::timerEvent(QTimerEvent *e)
     }
 }
 
-class QSingleShotTimer : public QObject
-{
-    Q_OBJECT
-    int timerId = -1;
-public:
-    ~QSingleShotTimer();
-    QSingleShotTimer(int msec, Qt::TimerType timerType, const QObject *r, const char * m);
-    QSingleShotTimer(int msec, Qt::TimerType timerType, const QObject *r, QtPrivate::QSlotObjectBase *slotObj);
-
-    void startTimerForReceiver(int msec, Qt::TimerType timerType, const QObject *receiver);
-
-Q_SIGNALS:
-    void timeout();
-protected:
-    void timerEvent(QTimerEvent *) override;
-};
-
-QSingleShotTimer::QSingleShotTimer(int msec, Qt::TimerType timerType, const QObject *r, const char *member)
-    : QObject(QAbstractEventDispatcher::instance())
-{
-    connect(this, SIGNAL(timeout()), r, member);
-
-    startTimerForReceiver(msec, timerType, r);
-}
-
-QSingleShotTimer::QSingleShotTimer(int msec, Qt::TimerType timerType, const QObject *r, QtPrivate::QSlotObjectBase *slotObj)
-    : QObject(QAbstractEventDispatcher::instance())
-{
-    int signal_index = QMetaObjectPrivate::signalOffset(&staticMetaObject);
-    Q_ASSERT(QMetaObjectPrivate::signal(&staticMetaObject, signal_index).name() == "timeout");
-    QObjectPrivate::connectImpl(this, signal_index, r ? r : this, nullptr, slotObj,
-                                Qt::AutoConnection, nullptr, &staticMetaObject);
-
-    startTimerForReceiver(msec, timerType, r);
-}
-
-QSingleShotTimer::~QSingleShotTimer()
-{
-    if (timerId > 0)
-        killTimer(timerId);
-}
-
-/*
-    Move the timer, and the dispatching and handling of the timer event, into
-    the same thread as where it will be handled, so that it fires reliably even
-    if the thread that set up the timer is busy.
-*/
-void QSingleShotTimer::startTimerForReceiver(int msec, Qt::TimerType timerType, const QObject *receiver)
-{
-    if (receiver && receiver->thread() != thread()) {
-        // Avoid leaking the QSingleShotTimer instance in case the application exits before the timer fires
-        connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &QObject::deleteLater);
-        setParent(nullptr);
-        moveToThread(receiver->thread());
-
-        QDeadlineTimer deadline(std::chrono::milliseconds{msec}, timerType);
-        QMetaObject::invokeMethod(this, [this, deadline, timerType]{
-            if (deadline.hasExpired())
-                emit timeout();
-            else
-                timerId = startTimer(std::chrono::milliseconds{deadline.remainingTime()}, timerType);
-        }, Qt::QueuedConnection);
-    } else {
-        timerId = startTimer(std::chrono::milliseconds{msec}, timerType);
-    }
-}
-
-
-void QSingleShotTimer::timerEvent(QTimerEvent *)
-{
-    // need to kill the timer _before_ we emit timeout() in case the
-    // slot connected to timeout calls processEvents()
-    if (timerId > 0)
-        killTimer(timerId);
-    timerId = -1;
-
-    emit timeout();
-
-    // we would like to use delete later here, but it feels like a
-    // waste to post a new event to handle this event, so we just unset the flag
-    // and explicitly delete...
-    qDeleteInEventHandler(this);
-}
-
 /*!
     \internal
 
@@ -375,15 +294,17 @@ void QTimer::singleShotImpl(int msec, Qt::TimerType timerType,
             deleteReceiver = true;
         }
 
+        auto h = QtPrivate::invokeMethodHelper({});
         QMetaObject::invokeMethodImpl(const_cast<QObject *>(receiver), slotObj,
-                                      Qt::QueuedConnection, nullptr);
+                Qt::QueuedConnection, h.parameterCount(), h.parameters.data(), h.typeNames.data(),
+                h.metaTypes.data());
 
         if (deleteReceiver)
             const_cast<QObject *>(receiver)->deleteLater();
         return;
     }
 
-    new QSingleShotTimer(msec, timerType, receiver, slotObj);
+    new QSingleShotTimer(msec * 1ms, timerType, receiver, slotObj);
 }
 
 /*!
@@ -408,10 +329,7 @@ void QTimer::singleShotImpl(int msec, Qt::TimerType timerType,
 
 void QTimer::singleShot(int msec, const QObject *receiver, const char *member)
 {
-    // coarse timers are worst in their first firing
-    // so we prefer a high precision timer for something that happens only once
-    // unless the timeout is too big, in which case we go for coarse anyway
-    singleShot(msec, msec >= 2000 ? Qt::CoarseTimer : Qt::PreciseTimer, receiver, member);
+    singleShot(msec, defaultTypeFor(msec), receiver, member);
 }
 
 /*! \overload
@@ -442,12 +360,13 @@ void QTimer::singleShot(int msec, Qt::TimerType timerType, const QObject *receiv
                 qWarning("QTimer::singleShot: Invalid slot specification");
                 return;
             }
-            QByteArray methodName(member+1, bracketPosition - 1 - member); // extract method name
-            QMetaObject::invokeMethod(const_cast<QObject *>(receiver), methodName.trimmed().constData(),
+            const auto methodName = QByteArrayView(member + 1, // extract method name
+                                                   bracketPosition - 1 - member).trimmed();
+            QMetaObject::invokeMethod(const_cast<QObject *>(receiver), methodName.toByteArray().constData(),
                                       Qt::QueuedConnection);
             return;
         }
-        (void) new QSingleShotTimer(msec, timerType, receiver, member);
+        (void) new QSingleShotTimer(msec * 1ms, timerType, receiver, member);
     }
 }
 
@@ -526,6 +445,9 @@ void QTimer::singleShot(int msec, Qt::TimerType timerType, const QObject *receiv
     QObject::connect(timer, &QTimer::timeout, timer, slot, Qt::DirectConnection);
     \endcode
 
+    \note This overload is not available when \c {QT_NO_CONTEXTLESS_CONNECT} is
+    defined, instead use the callOnTimeout() overload that takes a context object.
+
     \sa QObject::connect(), timeout()
 */
 
@@ -537,8 +459,10 @@ void QTimer::singleShot(int msec, Qt::TimerType timerType, const QObject *receiv
     Creates a connection from the timeout() signal to \a slot to be placed in a specific
     event loop of \a context, and returns a handle to the connection.
 
-    This method is provided for convenience. It's equivalent to calling
-    \c {QObject::connect(timer, &QTimer::timeout, context, slot, connectionType)}.
+    This method is provided for convenience. It's equivalent to calling:
+    \code
+    QObject::connect(timer, &QTimer::timeout, context, slot, connectionType);
+    \endcode
 
     \sa QObject::connect(), timeout()
 */
@@ -701,5 +625,4 @@ QBindable<Qt::TimerType> QTimer::bindableTimerType()
 
 QT_END_NAMESPACE
 
-#include "qtimer.moc"
 #include "moc_qtimer.cpp"

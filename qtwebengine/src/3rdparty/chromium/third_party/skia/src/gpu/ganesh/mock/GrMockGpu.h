@@ -8,6 +8,7 @@
 #ifndef GrMockGpu_DEFINED
 #define GrMockGpu_DEFINED
 
+#include "include/core/SkTextureCompressionType.h"
 #include "src/core/SkTHash.h"
 #include "src/gpu/ganesh/GrGpu.h"
 #include "src/gpu/ganesh/GrRenderTarget.h"
@@ -27,11 +28,11 @@ public:
     GrThreadSafePipelineBuilder* pipelineBuilder() override;
     sk_sp<GrThreadSafePipelineBuilder> refPipelineBuilder() override;
 
-    GrFence SK_WARN_UNUSED_RESULT insertFence() override { return 0; }
+    [[nodiscard]] GrFence insertFence() override { return 0; }
     bool waitFence(GrFence) override { return true; }
     void deleteFence(GrFence) override {}
 
-    std::unique_ptr<GrSemaphore> SK_WARN_UNUSED_RESULT makeSemaphore(bool isOwned) override {
+    [[nodiscard]] std::unique_ptr<GrSemaphore> makeSemaphore(bool isOwned) override {
         return nullptr;
     }
     std::unique_ptr<GrSemaphore> wrapBackendSemaphore(const GrBackendSemaphore& /* semaphore */,
@@ -154,15 +155,16 @@ private:
         finishedProc(finishedContext);
     }
 
-    GrOpsRenderPass* onGetOpsRenderPass(GrRenderTarget*,
-                                        bool useMSAASurface,
-                                        GrAttachment*,
-                                        GrSurfaceOrigin,
-                                        const SkIRect&,
-                                        const GrOpsRenderPass::LoadAndStoreInfo&,
-                                        const GrOpsRenderPass::StencilLoadAndStoreInfo&,
-                                        const SkTArray<GrSurfaceProxy*, true>& sampledProxies,
-                                        GrXferBarrierFlags renderPassXferBarriers) override;
+    GrOpsRenderPass* onGetOpsRenderPass(
+            GrRenderTarget*,
+            bool useMSAASurface,
+            GrAttachment*,
+            GrSurfaceOrigin,
+            const SkIRect&,
+            const GrOpsRenderPass::LoadAndStoreInfo&,
+            const GrOpsRenderPass::StencilLoadAndStoreInfo&,
+            const skia_private::TArray<GrSurfaceProxy*, true>& sampledProxies,
+            GrXferBarrierFlags renderPassXferBarriers) override;
 
     bool onSubmitToGpu(bool syncCpu) override {
         return true;
@@ -172,7 +174,7 @@ private:
                                               SkISize dimensions, int numStencilSamples) override;
 
     GrBackendFormat getPreferredStencilFormat(const GrBackendFormat&) override {
-        return GrBackendFormat::MakeMock(GrColorType::kUnknown, SkImage::CompressionType::kNone,
+        return GrBackendFormat::MakeMock(GrColorType::kUnknown, SkTextureCompressionType::kNone,
                                          true);
     }
 
@@ -213,7 +215,7 @@ private:
 
     bool compile(const GrProgramDesc&, const GrProgramInfo&) override { return false; }
 
-#if GR_TEST_UTILS
+#if defined(GR_TEST_UTILS)
     bool isTestingOnlyBackendTexture(const GrBackendTexture&) const override;
 
     GrBackendRenderTarget createTestingOnlyBackendRenderTarget(SkISize dimensions,
@@ -230,7 +232,7 @@ private:
     static int NextInternalRenderTargetID();
     static int NextExternalRenderTargetID();
 
-    SkTHashSet<int> fOutstandingTestingOnlyTextureIDs;
+    skia_private::THashSet<int> fOutstandingTestingOnlyTextureIDs;
 
     using INHERITED = GrGpu;
 };

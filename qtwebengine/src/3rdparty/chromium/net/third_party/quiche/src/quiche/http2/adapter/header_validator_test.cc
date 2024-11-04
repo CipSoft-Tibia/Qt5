@@ -247,6 +247,55 @@ TEST(HeaderValidatorTest, RequestHostAndAuthority) {
             v.ValidateSingleHeader("host", "www.bar.com"));
 }
 
+TEST(HeaderValidatorTest, RequestHostAndAuthorityLax) {
+  HeaderValidator v;
+  v.SetAllowDifferentHostAndAuthority();
+  v.StartHeaderBlock();
+  for (Header to_add : kSampleRequestPseudoheaders) {
+    EXPECT_EQ(HeaderValidator::HEADER_OK,
+              v.ValidateSingleHeader(to_add.first, to_add.second));
+  }
+  // Since the option is set, validation succeeds even if "host" and
+  // ":authority" have different values.
+  EXPECT_EQ(HeaderValidator::HEADER_OK,
+            v.ValidateSingleHeader("host", "www.bar.com"));
+}
+
+TEST(HeaderValidatorTest, MethodHasInvalidChar) {
+  HeaderValidator v;
+  v.StartHeaderBlock();
+
+  std::vector<absl::string_view> bad_methods = {
+      "In[]valid{}",   "co,mma", "spac e",     "a@t",    "equals=",
+      "question?mark", "co:lon", "semi;colon", "sla/sh", "back\\slash",
+  };
+
+  std::vector<absl::string_view> good_methods = {
+      "lowercase",   "MiXeDcAsE", "NONCANONICAL", "HASH#",
+      "under_score", "PI|PE",     "Tilde~",       "quote'",
+  };
+
+  for (absl::string_view value : bad_methods) {
+    v.StartHeaderBlock();
+    EXPECT_EQ(HeaderValidator::HEADER_FIELD_INVALID,
+              v.ValidateSingleHeader(":method", value));
+  }
+
+  for (absl::string_view value : good_methods) {
+    v.StartHeaderBlock();
+    EXPECT_EQ(HeaderValidator::HEADER_OK,
+              v.ValidateSingleHeader(":method", value));
+    for (Header to_add : kSampleRequestPseudoheaders) {
+      if (to_add.first == ":method") {
+        continue;
+      }
+      EXPECT_EQ(HeaderValidator::HEADER_OK,
+                v.ValidateSingleHeader(to_add.first, to_add.second));
+    }
+    EXPECT_TRUE(v.FinishHeaderBlock(HeaderType::REQUEST));
+  }
+}
+
 TEST(HeaderValidatorTest, RequestPseudoHeaders) {
   HeaderValidator v;
   for (Header to_skip : kSampleRequestPseudoheaders) {
@@ -434,6 +483,9 @@ TEST(HeaderValidatorTest, InvalidPathPseudoHeader) {
   }
   EXPECT_FALSE(v.FinishHeaderBlock(HeaderType::REQUEST));
 
+  // The remainder of the checks require enabling path validation.
+  v.SetValidatePath();
+
   // A path that does not start with a slash should fail on finish.
   v.StartHeaderBlock();
   for (Header to_add : kSampleRequestPseudoheaders) {
@@ -446,6 +498,64 @@ TEST(HeaderValidatorTest, InvalidPathPseudoHeader) {
     }
   }
   EXPECT_FALSE(v.FinishHeaderBlock(HeaderType::REQUEST));
+
+  // Various valid path characters.
+  for (const absl::string_view c :
+       {"/", "?", "_", "'", "9", "&", "(", "@", ":"}) {
+    const std::string value = absl::StrCat("/shawa", c, "rma");
+
+    HeaderValidator validator;
+    validator.SetValidatePath();
+    validator.StartHeaderBlock();
+    for (Header to_add : kSampleRequestPseudoheaders) {
+      if (to_add.first == ":path") {
+        EXPECT_EQ(HeaderValidator::HEADER_OK,
+                  validator.ValidateSingleHeader(to_add.first, value))
+            << "Problematic char: [" << c << "]";
+      } else {
+        EXPECT_EQ(HeaderValidator::HEADER_OK,
+                  validator.ValidateSingleHeader(to_add.first, to_add.second));
+      }
+    }
+    EXPECT_TRUE(validator.FinishHeaderBlock(HeaderType::REQUEST));
+  }
+
+  // Various invalid path characters.
+  for (const absl::string_view c : {"[", "<", "}", "`", "\\", " ", "\t", "#"}) {
+    const std::string value = absl::StrCat("/shawa", c, "rma");
+
+    HeaderValidator validator;
+    validator.SetValidatePath();
+    validator.StartHeaderBlock();
+    for (Header to_add : kSampleRequestPseudoheaders) {
+      if (to_add.first == ":path") {
+        EXPECT_EQ(HeaderValidator::HEADER_FIELD_INVALID,
+                  validator.ValidateSingleHeader(to_add.first, value));
+      } else {
+        EXPECT_EQ(HeaderValidator::HEADER_OK,
+                  validator.ValidateSingleHeader(to_add.first, to_add.second));
+      }
+    }
+    EXPECT_FALSE(validator.FinishHeaderBlock(HeaderType::REQUEST));
+  }
+
+  // The fragment initial character can be explicitly allowed.
+  {
+    HeaderValidator validator;
+    validator.SetValidatePath();
+    validator.SetAllowFragmentInPath();
+    validator.StartHeaderBlock();
+    for (Header to_add : kSampleRequestPseudoheaders) {
+      if (to_add.first == ":path") {
+        EXPECT_EQ(HeaderValidator::HEADER_OK,
+                  validator.ValidateSingleHeader(to_add.first, "/shawa#rma"));
+      } else {
+        EXPECT_EQ(HeaderValidator::HEADER_OK,
+                  validator.ValidateSingleHeader(to_add.first, to_add.second));
+      }
+    }
+    EXPECT_TRUE(validator.FinishHeaderBlock(HeaderType::REQUEST));
+  }
 }
 
 TEST(HeaderValidatorTest, ResponsePseudoHeaders) {

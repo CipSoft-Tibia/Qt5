@@ -103,12 +103,13 @@ Build options:
   -qtnamespace <name> .. Wrap all Qt library code in 'namespace <name> {...}'.
   -qtlibinfix <infix> .. Rename all libQt6*.so to libQt6*<infix>.so.
 
-  -testcocoon .......... Instrument with the TestCocoon code coverage tool [no]
+  -coverage <tool> ..... Instrument with the code coverage tool.
   -gcov ................ Instrument with the GCov code coverage tool [no]
 
   -trace [backend] ..... Enable instrumentation with tracepoints.
-                         Currently supported backends are 'etw' (Windows) and
-                         'lttng' (Linux), or 'yes' for auto-detection. [no]
+                         Currently supported backends are 'etw' (Windows),
+                         'lttng' (Linux), 'ctf' (Common Trace Format, cross-platform)
+                         or 'yes' for auto-detection. [no]
 
   -sanitize {address|thread|memory|fuzzer-no-link|undefined}
                          Instrument with the specified compiler sanitizer.
@@ -145,7 +146,7 @@ Build options:
   -unity-build ......... Enable Unity (Jumbo) build
   -unity-build-batch-size <int>
                          Maximum number of source files used by the unity build
-                         to create unity source files [8]
+                         to create unity source files [32]
 
   -warnings-are-errors . Treat warnings as errors [no; yes if -developer-build]
 
@@ -163,7 +164,7 @@ Build environment:
 
   -pkg-config .......... Use pkg-config [auto] (Unix only)
 
-  -vcpkg ............... Use vcpkg [yes]
+  -vcpkg ............... Use vcpkg [no]
 
   -D <string> .......... Pass additional preprocessor define
   -I <string> .......... Pass additional include path
@@ -195,6 +196,12 @@ Component selection:
   -skip <repo>[,<repo>]  Exclude one or more entire repositories from the
                          build. The list should be separated with commas.
                          e.g. -skip qtimageformats,qtsvg
+  -skip-tests <repo>[,<repo>] ... Skip building tests for one or more
+                         repositories. The list should be separated with commas.
+                         e.g. -skip-tests qtimageformats,qtsvg
+  -skip-examples <repo>[,<repo>] ... Skip building examples for one or more
+                         repositories. The list should be separated with commas.
+                         e.g. -skip-examples qtimageformats,qtsvg
   -make <part> ......... Add <part> to the list of parts to be built.
                          Specifying this option clears the default list first.
                          (allowed values: libs, tools, examples, tests,
@@ -222,7 +229,6 @@ Core options:
   -doubleconversion .... Select used double conversion library [system/qt/no]
                          No implies use of sscanf_l and snprintf_l (imprecise).
   -glib ................ Enable Glib support [no; auto on Unix]
-  -eventfd ............. Enable eventfd support
   -inotify ............. Enable inotify support
   -icu ................. Enable ICU support [auto]
   -pcre ................ Select used libpcre2 [system/qt/no]

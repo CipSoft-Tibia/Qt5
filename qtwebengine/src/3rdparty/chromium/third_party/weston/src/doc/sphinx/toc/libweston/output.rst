@@ -7,7 +7,7 @@ A :type:`weston_output` determines what part of the global compositor
 coordinate space will be composited into an image and when. That image is
 presented on the attached heads (weston_head).
 
-An output object is resposible for the framebuffer management, damage tracking,
+An output object is responsible for the framebuffer management, damage tracking,
 display timings, and the repaint state machine. Video mode, output scale and
 output transform are properties of an output.
 

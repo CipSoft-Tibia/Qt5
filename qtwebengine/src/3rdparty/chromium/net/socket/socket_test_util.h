@@ -20,6 +20,7 @@
 #include "base/functional/callback.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "build/build_config.h"
@@ -449,7 +450,9 @@ class StaticSocketDataProvider : public SocketDataProvider {
   void Reset() override;
 
   StaticSocketDataHelper helper_;
-  SocketDataPrinter* printer_ = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION SocketDataPrinter* printer_ = nullptr;
   bool paused_ = false;
 };
 
@@ -492,7 +495,7 @@ struct SSLSocketDataProvider {
   SSLInfo ssl_info;
 
   // Result for GetSSLCertRequestInfo().
-  SSLCertRequestInfo* cert_request_info = nullptr;
+  scoped_refptr<SSLCertRequestInfo> cert_request_info;
 
   // Result for GetECHRetryConfigs().
   std::vector<uint8_t> ech_retry_configs;
@@ -944,7 +947,7 @@ class MockSSLClientSocket : public AsyncSocket, public SSLClientSocket {
   bool in_confirm_handshake_ = false;
   NetLogWithSource net_log_;
   std::unique_ptr<StreamSocket> stream_socket_;
-  raw_ptr<SSLSocketDataProvider> data_;
+  raw_ptr<SSLSocketDataProvider, AcrossTasksDanglingUntriaged> data_;
   // Address of the "remote" peer we're connected to.
   IPEndPoint peer_addr_;
 
@@ -1350,8 +1353,10 @@ class MockTaggingClientSocketFactory : public MockClientSocketFactory {
   MockUDPClientSocket* GetLastProducedUDPSocket() const { return udp_socket_; }
 
  private:
-  raw_ptr<MockTaggingStreamSocket> tcp_socket_ = nullptr;
-  raw_ptr<MockUDPClientSocket> udp_socket_ = nullptr;
+  raw_ptr<MockTaggingStreamSocket, AcrossTasksDanglingUntriaged> tcp_socket_ =
+      nullptr;
+  raw_ptr<MockUDPClientSocket, AcrossTasksDanglingUntriaged> udp_socket_ =
+      nullptr;
 };
 
 // Host / port used for SOCKS4 test strings.

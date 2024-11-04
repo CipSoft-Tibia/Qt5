@@ -44,9 +44,16 @@ enum class OptimizationTypeDecision {
   // Guide Service was started, but was not available in time to make a
   // decision.
   kHintFetchStartedButNotAvailableInTime = 10,
+  // A fetch to get the hint for the page load from the remote Optimization
+  // Guide Service was started, but requested optimization type was not
+  // registered.
+  kRequestedUnregisteredType = 11,
+  // A fetch to get the hint for the page load from the remote Optimization
+  // Guide Service was started, but requested URL was invalid.
+  kInvalidURL = 12,
 
   // Add new values above this line.
-  kMaxValue = kHintFetchStartedButNotAvailableInTime,
+  kMaxValue = kInvalidURL,
 };
 
 // The statuses for racing a hints fetch with the current navigation based
@@ -181,6 +188,24 @@ enum class ModelDeliveryEvent {
 
   // Add new values above this line.
   kMaxValue = kModelDownloadDueToModelLoadFailure,
+};
+
+// The various results of an access token request.
+//
+// Keep in sync with OptimizationGuideAccessTokenResult in enums.xml.
+enum class OptimizationGuideAccessTokenResult {
+  kUnknown = 0,
+  // The access token was received successfully.
+  kSuccess = 1,
+  // User was not signed-in.
+  kUserNotSignedIn = 2,
+  // Failed with a transient error.
+  kTransientError = 3,
+  // Failed with a persistent error.
+  kPersistentError = 4,
+
+  // Add new values above this line.
+  kMaxValue = kPersistentError,
 };
 
 }  // namespace optimization_guide

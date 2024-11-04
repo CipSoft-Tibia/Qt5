@@ -457,7 +457,12 @@ void AnimationHost::SetScrollAnimationDurationForTesting(
 }
 
 bool AnimationHost::NeedsTickAnimations() const {
-  return !ticking_animations_.Read(*this).empty();
+  for (auto& animation : ticking_animations_.Read(*this)) {
+    if (!animation->keyframe_effect()->awaiting_deletion()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void AnimationHost::TickMutator(base::TimeTicks monotonic_time,
@@ -527,21 +532,28 @@ bool AnimationHost::TickAnimations(base::TimeTicks monotonic_time,
   // mutator even if there are active scroll animations.
   // The ticking of worklet animations is deferred until draw to ensure that
   // mutator output takes effect in the same impl frame that it was mutated.
-  if (!NeedsTickAnimations())
+  if (is_active_tree && !NeedsTickAnimations()) {
     return false;
+  }
 
   TRACE_EVENT_INSTANT0("cc", "NeedsTickAnimations", TRACE_EVENT_SCOPE_THREAD);
 
   bool animated = false;
+  std::vector<AnimationTimeline*> scroll_timelines;
   for (auto& kv : id_to_timeline_map_.Read(*this)) {
     AnimationTimeline* timeline = kv.second.get();
     if (timeline->IsScrollTimeline()) {
-      animated |= timeline->TickScrollLinkedAnimations(
-          ticking_animations_.Read(*this), scroll_tree, is_active_tree);
+      scroll_timelines.push_back(timeline);
     } else {
       animated |= timeline->TickTimeLinkedAnimations(
-          ticking_animations_.Read(*this), monotonic_time);
+          ticking_animations_.Read(*this), monotonic_time, !is_active_tree);
     }
+  }
+  // Tick the scroll-linked animations last, since a smooth scroll (time-linked)
+  // might update the scroll offset.
+  for (auto* timeline : scroll_timelines) {
+    animated |= timeline->TickScrollLinkedAnimations(
+        ticking_animations_.Read(*this), scroll_tree, is_active_tree);
   }
 
   // TODO(majidvp): At the moment we call this for both active and pending
@@ -781,8 +793,9 @@ void AnimationHost::AddToTicking(scoped_refptr<Animation> animation) {
 void AnimationHost::RemoveFromTicking(scoped_refptr<Animation> animation) {
   auto to_erase =
       base::ranges::find(ticking_animations_.Write(*this), animation);
-  if (to_erase != ticking_animations_.Write(*this).end())
+  if (to_erase != ticking_animations_.Write(*this).end()) {
     ticking_animations_.Write(*this).erase(to_erase);
+  }
 }
 
 const AnimationHost::AnimationsList&
@@ -883,6 +896,21 @@ void AnimationHost::StopThroughputTracking(
   pending_throughput_tracker_infos_.Write(*this).push_back(
       {sequnece_id, false});
   SetNeedsPushProperties();
+}
+
+bool AnimationHost::HasScrollLinkedAnimation(ElementId for_scroller) const {
+  for (auto& animation : ticking_animations_.Read(*this)) {
+    if (auto* timeline = animation->animation_timeline()) {
+      if (timeline->IsLinkedToScroller(for_scroller)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool AnimationHost::IsAutoScrolling() const {
+  return scroll_offset_animations_impl_.Read(*this)->IsAutoScrolling();
 }
 
 }  // namespace cc

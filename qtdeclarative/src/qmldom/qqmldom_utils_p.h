@@ -16,9 +16,16 @@
 //
 
 #include <QtCore/qglobal.h>
-#include "qqmldomitem_p.h"
+#include "qqmldom_fwd_p.h"
+#include "qqmldomconstants_p.h"
+#include <QtQml/private/qqmljssourcelocation_p.h>
+#include <QtCore/qstringlist.h>
+#include <QtCore/qloggingcategory.h>
+#include <QtCore/qcborvalue.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(QQmlJSDomImporting);
 
 template<class... Ts>
 struct qOverloadedVisitor : Ts...
@@ -31,9 +38,15 @@ qOverloadedVisitor(Ts...) -> qOverloadedVisitor<Ts...>;
 namespace QQmlJS {
 namespace Dom {
 
-void createDom(MutableDomItem qmlFile, DomCreationOptions options = None);
+void createDom(MutableDomItem &&qmlFile, DomCreationOptions options = None);
+QStringList resourceFilesFromBuildFolders(const QStringList &buildFolders);
 
-}
+QString fileLocationRegionName(FileLocationRegion region);
+FileLocationRegion fileLocationRegionValue(QStringView region);
+
+QCborValue sourceLocationToQCborValue(SourceLocation loc);
+
+} // namespace Dom
 }; // namespace QQmlJS
 
 QT_END_NAMESPACE

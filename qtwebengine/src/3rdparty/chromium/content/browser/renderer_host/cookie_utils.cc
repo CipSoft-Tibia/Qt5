@@ -11,17 +11,80 @@
 #include "content/public/browser/cookie_access_details.h"
 #include "content/public/common/content_client.h"
 #include "net/cookies/cookie_inclusion_status.h"
+#include "services/metrics/public/cpp/metrics_utils.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
 
 namespace content {
 
 namespace {
 
-void RecordContextDowngradeUKM(RenderFrameHost* rfh,
-                               CookieAccessDetails::Type access_type,
-                               const net::CookieInclusionStatus& status,
-                               const GURL& url) {
-  DCHECK(rfh);
+void RecordPartitionedCookieUseUKM(RenderFrameHost* rfh,
+                                   bool partitioned_cookies_exist) {
+  // Our data collection policy disallows collecting UKMs while prerendering.
+  // See //content/browser/preloading/prerender/README.md and ask the team to
+  // explore options to record data for prerendering pages if we need to
+  // support the case.
+  if (rfh->IsInLifecycleState(RenderFrameHost::LifecycleState::kPrerendering)) {
+    return;
+  }
+  if (!partitioned_cookies_exist) {
+    return;
+  }
+  ukm::SourceId source_id = rfh->GetPageUkmSourceId();
+
+  ukm::builders::PartitionedCookiePresent(source_id)
+      .SetPartitionedCookiePresent(partitioned_cookies_exist)
+      .Record(ukm::UkmRecorder::Get());
+}
+
+void RecordRedirectContextDowngradeUKM(RenderFrameHost* rfh,
+                                       CookieAccessDetails::Type access_type,
+                                       const net::CanonicalCookie& cookie,
+                                       const GURL& url) {
+  CHECK(rfh);
+
+  // Our data collection policy disallows collecting UKMs while prerendering.
+  // See //content/browser/preloading/prerender/README.md and ask the team to
+  // explore options to record data for prerendering pages if we need to
+  // support the case.
+  if (rfh->IsInLifecycleState(RenderFrameHost::LifecycleState::kPrerendering)) {
+    return;
+  }
+
+  ukm::SourceId source_id = rfh->GetPageUkmSourceId();
+
+  int64_t samesite_value = static_cast<int64_t>(cookie.SameSite());
+  if (access_type == CookieAccessDetails::Type::kRead) {
+    base::TimeDelta cookie_age = base::Time::Now() - cookie.CreationDate();
+
+    ukm::builders::SamesiteRedirectContextDowngrade(source_id)
+        .SetSamesiteValueReadPerCookie(samesite_value)
+        .SetAgePerCookie(
+            ukm::GetExponentialBucketMinForUserTiming(cookie_age.InMinutes()))
+        .Record(ukm::UkmRecorder::Get());
+  } else {
+    CHECK(access_type == CookieAccessDetails::Type::kChange);
+    ukm::builders::SamesiteRedirectContextDowngrade(source_id)
+        .SetSamesiteValueWritePerCookie(samesite_value)
+        .Record(ukm::UkmRecorder::Get());
+  }
+}
+
+void RecordSchemefulContextDowngradeUKM(
+    RenderFrameHost* rfh,
+    CookieAccessDetails::Type access_type,
+    const net::CookieInclusionStatus& status,
+    const GURL& url) {
+  CHECK(rfh);
+
+  // Our data collection policy disallows collecting UKMs while prerendering.
+  // See //content/browser/preloading/prerender/README.md and ask the team to
+  // explore options to record data for prerendering pages if we need to
+  // support the case.
+  if (rfh->IsInLifecycleState(RenderFrameHost::LifecycleState::kPrerendering)) {
+    return;
+  }
+
   ukm::SourceId source_id = rfh->GetPageUkmSourceId();
 
   auto downgrade_metric =
@@ -31,7 +94,7 @@ void RecordContextDowngradeUKM(RenderFrameHost* rfh,
         .SetRequestPerCookie(downgrade_metric)
         .Record(ukm::UkmRecorder::Get());
   } else {
-    DCHECK(access_type == CookieAccessDetails::Type::kChange);
+    CHECK(access_type == CookieAccessDetails::Type::kChange);
     ukm::builders::SchemefulSameSiteContextDowngrade(source_id)
         .SetResponsePerCookie(downgrade_metric)
         .Record(ukm::UkmRecorder::Get());
@@ -41,8 +104,6 @@ void RecordContextDowngradeUKM(RenderFrameHost* rfh,
 bool ShouldReportDevToolsIssueForStatus(
     const net::CookieInclusionStatus& status) {
   return status.ShouldWarn() ||
-         status.HasExclusionReason(
-             net::CookieInclusionStatus::EXCLUDE_INVALID_SAMEPARTY) ||
          status.HasExclusionReason(
              net::CookieInclusionStatus::EXCLUDE_DOMAIN_NON_ASCII) ||
          status.HasExclusionReason(
@@ -112,10 +173,6 @@ void EmitCookieWarningsAndMetrics(
   bool breaking_context_downgrade = false;
   bool lax_allow_unsafe_cookies = false;
 
-  bool same_party = false;
-  bool same_party_exclusion_overruled_samesite = false;
-  bool same_party_inclusion_overruled_samesite = false;
-
   bool samesite_cookie_inclusion_changed_by_cross_site_redirect = false;
 
   bool partitioned_cookies_exist = false;
@@ -160,22 +217,6 @@ void EmitCookieWarningsAndMetrics(
               net::CookieInclusionStatus::
                   WARN_SAMESITE_UNSPECIFIED_LAX_ALLOW_UNSAFE);
 
-      same_party = same_party ||
-                   status.HasWarningReason(
-                       net::CookieInclusionStatus::WARN_TREATED_AS_SAMEPARTY);
-
-      same_party_exclusion_overruled_samesite =
-          same_party_exclusion_overruled_samesite ||
-          status.HasWarningReason(
-              net::CookieInclusionStatus::
-                  WARN_SAMEPARTY_EXCLUSION_OVERRULED_SAMESITE);
-
-      same_party_inclusion_overruled_samesite =
-          same_party_inclusion_overruled_samesite ||
-          status.HasWarningReason(
-              net::CookieInclusionStatus::
-                  WARN_SAMEPARTY_INCLUSION_OVERRULED_SAMESITE);
-
       samesite_cookie_inclusion_changed_by_cross_site_redirect =
           samesite_cookie_inclusion_changed_by_cross_site_redirect ||
           status.HasWarningReason(
@@ -198,15 +239,27 @@ void EmitCookieWarningsAndMetrics(
          // usage of the Partitioned attribute.
          !cookie->cookie_or_line->get_cookie().PartitionKey()->nonce());
 
+    RecordPartitionedCookieUseUKM(rfh, partitioned_cookies_exist);
+
     breaking_context_downgrade =
         breaking_context_downgrade ||
-        cookie->access_result.status.HasDowngradeWarning();
+        cookie->access_result.status.HasSchemefulDowngradeWarning();
 
-    if (cookie->access_result.status.HasDowngradeWarning()) {
-      // Unlike with UMA, do not record cookies that have no downgrade warning.
-      RecordContextDowngradeUKM(rfh, cookie_details->type,
-                                cookie->access_result.status,
-                                cookie_details->url);
+    if (cookie->access_result.status.HasSchemefulDowngradeWarning()) {
+      // Unlike with UMA, do not record cookies that have no schemeful downgrade
+      // warning.
+      RecordSchemefulContextDowngradeUKM(rfh, cookie_details->type,
+                                         cookie->access_result.status,
+                                         cookie_details->url);
+    }
+
+    if (status.HasWarningReason(
+            net::CookieInclusionStatus::
+                WARN_CROSS_SITE_REDIRECT_DOWNGRADE_CHANGES_INCLUSION) &&
+        cookie->cookie_or_line->is_cookie()) {
+      RecordRedirectContextDowngradeUKM(rfh, cookie_details->type,
+                                        cookie->cookie_or_line->get_cookie(),
+                                        cookie_details->url);
     }
 
     // In order to anticipate the potential effects of the expiry limit in
@@ -249,23 +302,6 @@ void EmitCookieWarningsAndMetrics(
   if (lax_allow_unsafe_cookies) {
     GetContentClient()->browser()->LogWebFeatureForCurrentPage(
         rfh, blink::mojom::WebFeature::kLaxAllowingUnsafeCookies);
-  }
-
-  if (same_party) {
-    GetContentClient()->browser()->LogWebFeatureForCurrentPage(
-        rfh, blink::mojom::WebFeature::kSamePartyCookieAttribute);
-  }
-
-  if (same_party_exclusion_overruled_samesite) {
-    GetContentClient()->browser()->LogWebFeatureForCurrentPage(
-        rfh,
-        blink::mojom::WebFeature::kSamePartyCookieExclusionOverruledSameSite);
-  }
-
-  if (same_party_inclusion_overruled_samesite) {
-    GetContentClient()->browser()->LogWebFeatureForCurrentPage(
-        rfh,
-        blink::mojom::WebFeature::kSamePartyCookieInclusionOverruledSameSite);
   }
 
   if (samesite_cookie_inclusion_changed_by_cross_site_redirect) {

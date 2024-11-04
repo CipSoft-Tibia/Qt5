@@ -6,7 +6,7 @@
 \ingroup cmake-commands-qtqml
 
 \title qt_add_qml_module
-\target qt6_add_qml_module
+\keyword qt6_add_qml_module
 
 \brief Defines a QML module.
 
@@ -61,6 +61,9 @@ qt_add_qml_module(
 
 See \l {Building a QML application} and \l {Building a reusable QML module}
 for examples that define QML modules.
+
+See \l {QT_QML_GENERATE_QMLLS_INI} for configuring your project such that information about
+QML modules is exposed to the \l{QML Language Server}.
 
 \section1 Description
 
@@ -329,6 +332,8 @@ need to have their \c QT_QML_SINGLETON_TYPE source property set to \c TRUE, to
 ensure that the \c singleton command is written into the
 \l{Module Definition qmldir Files}{qmldir} file. This must be done in addition
 to the QML file containing the \c {pragma Singleton} statement.
+The source property must be set before creating the module the
+singleton belongs to.
 
 See \l{qt_target_qml_sources_example}{qt_target_qml_sources()} for an example on
 how to set the \c QT_QML_SINGLETON_TYPE property.

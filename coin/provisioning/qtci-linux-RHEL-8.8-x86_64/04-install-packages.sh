@@ -8,6 +8,9 @@ set -ex
 # Remove update notifications and packagekit running in the background
 sudo yum -y remove PackageKit gnome-software
 
+# CI: All platforms should have up-to-date packages when new provision is made
+sudo yum -y update
+
 installPackages=()
 installPackages+=(git)
 installPackages+=(zlib-devel)
@@ -26,6 +29,7 @@ installPackages+=(ninja-build)
 installPackages+=(pcre2-devel)
 installPackages+=(double-conversion-devel)
 installPackages+=(zstd)
+installPackages+=(libzstd-devel)
 # update kernel
 installPackages+=(kernel)
 installPackages+=(kernel-tools)
@@ -74,14 +78,17 @@ installPackages+=(gperftools-libs)
 installPackages+=(gperf)
 installPackages+=(alsa-lib-devel)
 installPackages+=(pulseaudio-libs-devel)
+installPackages+=(libdrm-devel)
+installPackages+=(libva-devel)
 installPackages+=(libXtst-devel)
 installPackages+=(libxshmfence-devel)
 installPackages+=(nspr-devel)
 installPackages+=(nss-devel)
 installPackages+=(python3-html5lib)
 installPackages+=(libatomic)
+installPackages+=(mesa-libgbm-devel-21.3.4-1.el8.x86_64)
 # For Android builds
-installPackages+=(java-11-openjdk-devel)
+installPackages+=(java-17-openjdk-devel-17.0.9.0.9)
 # For receiving shasum
 installPackages+=(perl-Digest-SHA)
 # INTEGRITY requirements
@@ -134,21 +141,30 @@ installPackages+=(gcc-c++)
 installPackages+=(make)
 # Open source VMware Tools
 installPackages+=(open-vm-tools)
+# cifs-utils, for mounting smb drive
+installPackages+=(keyutils)
+installPackages+=(cifs-utils)
 
 sudo yum -y install "${installPackages[@]}"
 
 sudo dnf -y module install nodejs:16
 
-sudo /usr/bin/pip3 install dataclasses
-
 # We shouldn't use yum to install virtualenv. The one found from package repo is not
 # working, but we can use installed pip
 sudo pip3 install --upgrade pip
+# Configure pip
+sudo pip config --user set global.index https://ci-files01-hki.ci.qt.io/input/python_module_cache
+sudo pip config --user set global.extra-index-url https://pypi.org/simple/
+
 sudo pip3 install virtualenv wheel
 # Just make sure we have virtualenv to run with python3.8 -m virtualenv
 sudo python3.11 -m pip install virtualenv wheel
 
 sudo /usr/bin/pip3 install wheel
+sudo /usr/bin/pip3 install dataclasses
 
 OpenSSLVersion="$(openssl3 version |cut -b 9-14)"
-echo "OpenSSL = $OpenSSLVersion" >> ~/versions.txt
+echo "System's OpenSSL = $OpenSSLVersion" >> ~/versions.txt
+
+# List all available updates
+sudo yum -y list updates

@@ -15,6 +15,7 @@
 #include "third_party/blink/renderer/core/page/event_with_hit_test_results.h"
 #include "third_party/blink/renderer/core/page/scrolling/scroll_state.h"
 #include "third_party/blink/renderer/core/scroll/scroll_types.h"
+#include "third_party/blink/renderer/core/scroll/scrollable_area.h"
 #include "third_party/blink/renderer/platform/geometry/layout_size.h"
 #include "third_party/blink/renderer/platform/graphics/compositor_element_id.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
@@ -71,14 +72,16 @@ class CORE_EXPORT ScrollManager : public GarbageCollected<ScrollManager>,
   bool LogicalScroll(mojom::blink::ScrollDirection,
                      ui::ScrollGranularity,
                      Node* start_node,
-                     Node* mouse_press_node);
+                     Node* mouse_press_node,
+                     bool scrolling_via_key = false);
 
   // Performs a logical scroll that chains, crossing frames, starting from
   // the given node or a reasonable default (focus/last clicked).
   bool BubblingScroll(mojom::blink::ScrollDirection,
                       ui::ScrollGranularity,
                       Node* starting_node,
-                      Node* mouse_press_node);
+                      Node* mouse_press_node,
+                      bool scrolling_via_key = false);
 
   // TODO(crbug.com/616491): Consider moving all gesture related functions to
   // another class.
@@ -104,6 +107,7 @@ class CORE_EXPORT ScrollManager : public GarbageCollected<ScrollManager>,
 
   // SnapFlingClient implementation.
   bool GetSnapFlingInfoAndSetAnimatingSnapTarget(
+      const gfx::Vector2dF& current_delta,
       const gfx::Vector2dF& natural_displacement,
       gfx::PointF* out_initial_position,
       gfx::PointF* out_target_position) const override;
@@ -128,7 +132,8 @@ class CORE_EXPORT ScrollManager : public GarbageCollected<ScrollManager>,
 
   // Handling of GestureScrollEnd may be deferred if there's an outstanding
   // scroll animation. This is the callback that invokes the deferred operation.
-  void HandleDeferredGestureScrollEnd(const WebGestureEvent& gesture_event);
+  void HandleDeferredGestureScrollEnd(const WebGestureEvent& gesture_event,
+                                      ScrollableArea::ScrollCompletionMode);
 
   WebInputEventResult PassScrollGestureEvent(const WebGestureEvent&,
                                              LayoutObject*);
@@ -203,8 +208,8 @@ class CORE_EXPORT ScrollManager : public GarbageCollected<ScrollManager>,
 
   std::unique_ptr<cc::SnapFlingController> snap_fling_controller_;
 
-  LayoutSize
-      offset_from_resize_corner_;  // In the coords of m_resizeScrollableArea.
+  // In the coords of resize_scrollable_area_.
+  gfx::Vector2d offset_from_resize_corner_;
 };
 
 }  // namespace blink

@@ -34,6 +34,8 @@
 #include <memory>
 #include <utility>
 
+#include "base/auto_reset.h"
+#include "base/unguessable_token.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_scoped_page_pauser.h"
 #include "third_party/blink/public/platform/web_string.h"
@@ -130,7 +132,29 @@ class ClientMessageLoopAdapter : public MainThreadDebugger::ClientMessageLoop {
   }
 
  private:
-  ClientMessageLoopAdapter(
+  // A RAII class that disables input events for frames that belong to the
+  // same browsing context group. Note that this does not support nesting, as
+  // DevTools doesn't require nested pauses.
+  class ScopedInputEventsDisabler {
+   public:
+    explicit ScopedInputEventsDisabler(WebLocalFrameImpl& frame)
+        : browsing_context_group_token_(WebFrame::ToCoreFrame(frame)
+                                            ->GetPage()
+                                            ->BrowsingContextGroupToken()) {
+      WebFrameWidgetImpl::SetIgnoreInputEvents(browsing_context_group_token_,
+                                               true);
+    }
+
+    ~ScopedInputEventsDisabler() {
+      WebFrameWidgetImpl::SetIgnoreInputEvents(browsing_context_group_token_,
+                                               false);
+    }
+
+   private:
+    const base::UnguessableToken browsing_context_group_token_;
+  };
+
+  explicit ClientMessageLoopAdapter(
       std::unique_ptr<Platform::NestedMessageLoopRunner> message_loop)
       : message_loop_(std::move(message_loop)) {
     DCHECK(message_loop_.get());
@@ -213,12 +237,14 @@ class ClientMessageLoopAdapter : public MainThreadDebugger::ClientMessageLoop {
     agent->FlushProtocolNotifications();
 
     // 1. Disable input events.
-    WebFrameWidgetImpl::SetIgnoreInputEvents(true);
+    CHECK(!input_events_disabler_);
+    input_events_disabler_ =
+        std::make_unique<ScopedInputEventsDisabler>(*frame);
     for (auto* const view : WebViewImpl::AllInstances())
       view->GetChromeClient().NotifyPopupOpeningObservers();
 
     // 2. Disable active objects
-    page_pauser_ = WebScopedPagePauser::Create();
+    page_pauser_ = std::make_unique<WebScopedPagePauser>(*frame);
 
     // 3. Process messages until quitNow is called.
     message_loop_->Run();
@@ -241,12 +267,13 @@ class ClientMessageLoopAdapter : public MainThreadDebugger::ClientMessageLoop {
            *running_for_debug_break_kind_ == kNormalPause);
     message_loop_->QuitNow();
     page_pauser_.reset();
-    WebFrameWidgetImpl::SetIgnoreInputEvents(false);
+    input_events_disabler_.reset();
   }
 
   absl::optional<MessageLoopKind> running_for_debug_break_kind_;
   bool running_for_page_wait_ = false;
   std::unique_ptr<Platform::NestedMessageLoopRunner> message_loop_;
+  std::unique_ptr<ScopedInputEventsDisabler> input_events_disabler_;
   std::unique_ptr<WebScopedPagePauser> page_pauser_;
   scoped_refptr<InspectorTaskRunner>
       inspector_task_runner_for_instrumentation_pause_;
@@ -315,7 +342,7 @@ void WebDevToolsAgentImpl::AttachSession(DevToolsSession* session,
   session->CreateAndAppend<InspectorAuditsAgent>(
       network_agent,
       &inspected_frames->Root()->GetPage()->GetInspectorIssueStorage(),
-      inspected_frames);
+      inspected_frames, web_local_frame_impl_->AutofillClient());
 
   session->CreateAndAppend<InspectorMediaAgent>(
       inspected_frames, /*worker_global_scope=*/nullptr);
@@ -483,6 +510,7 @@ void WebDevToolsAgentImpl::DidShowNewWindow() {
   if (!wait_for_debugger_when_shown_)
     return;
   wait_for_debugger_when_shown_ = false;
+  base::AutoReset<bool> is_paused(&is_paused_for_new_window_shown_, true);
   WaitForDebugger();
 }
 
@@ -492,6 +520,10 @@ void WebDevToolsAgentImpl::WaitForDebuggerWhenShown() {
 
 void WebDevToolsAgentImpl::WaitForDebugger() {
   ClientMessageLoopAdapter::PauseForPageWait(web_local_frame_impl_);
+}
+
+bool WebDevToolsAgentImpl::IsPausedForNewWindow() {
+  return is_paused_for_new_window_shown_;
 }
 
 bool WebDevToolsAgentImpl::IsInspectorLayer(const cc::Layer* layer) {

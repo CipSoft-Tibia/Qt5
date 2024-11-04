@@ -23,13 +23,6 @@
 #include <QStandardPaths>
 
 #include <QListView>
-#include <QPdfView>
-#include <QStandardPaths>
-
-#include <QtMath>
-#include <QStandardPaths>
-
-#include <QListView>
 #include <QListWidget>
 #include <QMainWindow>
 #include <QScrollBar>

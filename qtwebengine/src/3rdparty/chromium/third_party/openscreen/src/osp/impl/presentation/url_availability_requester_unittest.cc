@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,8 +20,7 @@
 #include "platform/test/fake_task_runner.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 using ::testing::_;
 using ::testing::Invoke;
@@ -45,21 +44,19 @@ class MockReceiverObserver : public ReceiverObserver {
 
 class UrlAvailabilityRequesterTest : public Test {
  public:
-  UrlAvailabilityRequesterTest() {
-    fake_clock_ = std::make_unique<FakeClock>(
-        Clock::time_point(std::chrono::milliseconds(1298424)));
-    task_runner_ = std::make_unique<FakeTaskRunner>(fake_clock_.get());
-    quic_bridge_ =
-        std::make_unique<FakeQuicBridge>(task_runner_.get(), FakeClock::now);
-    info1_ = {service_id_, friendly_name_, 1, quic_bridge_->kReceiverEndpoint};
+  UrlAvailabilityRequesterTest()
+      : fake_clock_(Clock::time_point(std::chrono::milliseconds(1298424))),
+        task_runner_(&fake_clock_),
+        quic_bridge_(task_runner_, FakeClock::now) {
+    info1_ = {service_id_, friendly_name_, 1, quic_bridge_.kReceiverEndpoint};
   }
 
   void SetUp() override {
     NetworkServiceManager::Create(nullptr, nullptr,
-                                  std::move(quic_bridge_->quic_client),
-                                  std::move(quic_bridge_->quic_server));
+                                  std::move(quic_bridge_.quic_client),
+                                  std::move(quic_bridge_.quic_server));
     availability_watch_ =
-        quic_bridge_->receiver_demuxer->SetDefaultMessageTypeWatch(
+        quic_bridge_.receiver_demuxer->SetDefaultMessageTypeWatch(
             msgs::Type::kPresentationUrlAvailabilityRequest, &mock_callback_);
   }
 
@@ -72,12 +69,12 @@ class UrlAvailabilityRequesterTest : public Test {
   std::unique_ptr<ProtocolConnection> ExpectIncomingConnection() {
     std::unique_ptr<ProtocolConnection> stream;
 
-    EXPECT_CALL(quic_bridge_->mock_server_observer, OnIncomingConnectionMock(_))
+    EXPECT_CALL(quic_bridge_.mock_server_observer, OnIncomingConnectionMock(_))
         .WillOnce(
             Invoke([&stream](std::unique_ptr<ProtocolConnection>& connection) {
               stream = std::move(connection);
             }));
-    quic_bridge_->RunTasksUntilIdle();
+    quic_bridge_.RunTasksUntilIdle();
 
     return stream;
   }
@@ -125,11 +122,11 @@ class UrlAvailabilityRequesterTest : public Test {
     stream->Write(buffer.data(), buffer.size());
   }
 
-  std::unique_ptr<FakeClock> fake_clock_;
-  std::unique_ptr<FakeTaskRunner> task_runner_;
+  FakeClock fake_clock_;
+  FakeTaskRunner task_runner_;
   MockMessageCallback mock_callback_;
   MessageDemuxer::MessageWatch availability_watch_;
-  std::unique_ptr<FakeQuicBridge> quic_bridge_;
+  FakeQuicBridge quic_bridge_;
   UrlAvailabilityRequester listener_{FakeClock::now};
 
   std::string url1_{"https://example.com/foo.html"};
@@ -160,7 +157,7 @@ TEST_F(UrlAvailabilityRequesterTest, AvailableObserverFirst) {
   EXPECT_CALL(mock_observer, OnReceiverAvailable(url1_, service_id_));
   EXPECT_CALL(mock_observer, OnReceiverUnavailable(url1_, service_id_))
       .Times(0);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 }
 
 TEST_F(UrlAvailabilityRequesterTest, AvailableReceiverFirst) {
@@ -184,7 +181,7 @@ TEST_F(UrlAvailabilityRequesterTest, AvailableReceiverFirst) {
   EXPECT_CALL(mock_observer, OnReceiverAvailable(url1_, service_id_));
   EXPECT_CALL(mock_observer, OnReceiverUnavailable(url1_, service_id_))
       .Times(0);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 }
 
 TEST_F(UrlAvailabilityRequesterTest, Unavailable) {
@@ -207,7 +204,7 @@ TEST_F(UrlAvailabilityRequesterTest, Unavailable) {
 
   EXPECT_CALL(mock_observer, OnReceiverAvailable(url1_, service_id_)).Times(0);
   EXPECT_CALL(mock_observer, OnReceiverUnavailable(url1_, service_id_));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 }
 
 TEST_F(UrlAvailabilityRequesterTest, AvailabilityIsCached) {
@@ -230,7 +227,7 @@ TEST_F(UrlAvailabilityRequesterTest, AvailabilityIsCached) {
 
   EXPECT_CALL(mock_observer1, OnReceiverAvailable(url1_, service_id_)).Times(0);
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(url1_, service_id_));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
   MockReceiverObserver mock_observer2;
   EXPECT_CALL(mock_observer2, OnReceiverAvailable(url1_, service_id_)).Times(0);
@@ -258,7 +255,7 @@ TEST_F(UrlAvailabilityRequesterTest, AvailabilityCacheIsTransient) {
 
   EXPECT_CALL(mock_observer1, OnReceiverAvailable(url1_, service_id_)).Times(0);
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(url1_, service_id_));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
   listener_.RemoveObserverUrls({url1_}, &mock_observer1);
   MockReceiverObserver mock_observer2;
@@ -288,7 +285,7 @@ TEST_F(UrlAvailabilityRequesterTest, PartiallyCachedAnswer) {
 
   EXPECT_CALL(mock_observer1, OnReceiverAvailable(url1_, service_id_)).Times(0);
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(url1_, service_id_));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
   MockReceiverObserver mock_observer2;
   EXPECT_CALL(mock_observer2, OnReceiverAvailable(url1_, service_id_)).Times(0);
@@ -296,7 +293,7 @@ TEST_F(UrlAvailabilityRequesterTest, PartiallyCachedAnswer) {
   listener_.AddObserver({url1_, url2_}, &mock_observer2);
 
   ExpectStreamMessage(&mock_callback_, &request);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
   EXPECT_EQ(std::vector<std::string>{url2_}, request.urls);
   SendAvailabilityResponse(
@@ -306,7 +303,7 @@ TEST_F(UrlAvailabilityRequesterTest, PartiallyCachedAnswer) {
 
   EXPECT_CALL(mock_observer2, OnReceiverAvailable(url2_, service_id_)).Times(0);
   EXPECT_CALL(mock_observer2, OnReceiverUnavailable(url2_, service_id_));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 }
 
 TEST_F(UrlAvailabilityRequesterTest, MultipleOverlappingObservers) {
@@ -330,13 +327,13 @@ TEST_F(UrlAvailabilityRequesterTest, MultipleOverlappingObservers) {
   EXPECT_CALL(mock_observer1, OnReceiverAvailable(url1_, service_id_));
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(url1_, service_id_))
       .Times(0);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
   MockReceiverObserver mock_observer2;
   EXPECT_CALL(mock_observer2, OnReceiverAvailable(url1_, service_id_));
   listener_.AddObserver({url1_, url2_}, &mock_observer2);
   ExpectStreamMessage(&mock_callback_, &request);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
   EXPECT_EQ(std::vector<std::string>{url2_}, request.urls);
   SendAvailabilityResponse(
@@ -347,7 +344,7 @@ TEST_F(UrlAvailabilityRequesterTest, MultipleOverlappingObservers) {
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(_, service_id_)).Times(0);
   EXPECT_CALL(mock_observer2, OnReceiverAvailable(_, service_id_)).Times(0);
   EXPECT_CALL(mock_observer2, OnReceiverUnavailable(url2_, service_id_));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 }
 
 TEST_F(UrlAvailabilityRequesterTest, RemoveObserverUrls) {
@@ -371,7 +368,7 @@ TEST_F(UrlAvailabilityRequesterTest, RemoveObserverUrls) {
   EXPECT_CALL(mock_observer1, OnReceiverAvailable(url1_, service_id_));
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(url1_, service_id_))
       .Times(0);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   Mock::VerifyAndClearExpectations(&mock_observer1);
 
   MockReceiverObserver mock_observer2;
@@ -379,7 +376,7 @@ TEST_F(UrlAvailabilityRequesterTest, RemoveObserverUrls) {
   listener_.AddObserver({url1_, url2_}, &mock_observer2);
 
   ExpectStreamMessage(&mock_callback_, &request);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   Mock::VerifyAndClearExpectations(&mock_observer2);
 
   EXPECT_EQ(std::vector<std::string>{url2_}, request.urls);
@@ -392,7 +389,7 @@ TEST_F(UrlAvailabilityRequesterTest, RemoveObserverUrls) {
 
   EXPECT_CALL(mock_observer2, OnReceiverAvailable(_, service_id_)).Times(0);
   EXPECT_CALL(mock_observer2, OnReceiverUnavailable(url2_, service_id_));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   Mock::VerifyAndClearExpectations(&mock_observer1);
   Mock::VerifyAndClearExpectations(&mock_observer2);
 
@@ -404,7 +401,7 @@ TEST_F(UrlAvailabilityRequesterTest, RemoveObserverUrls) {
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(url1_, service_id_))
       .Times(0);
   EXPECT_CALL(mock_observer2, OnReceiverUnavailable(url1_, service_id_));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   Mock::VerifyAndClearExpectations(&mock_observer1);
   Mock::VerifyAndClearExpectations(&mock_observer2);
 }
@@ -432,7 +429,7 @@ TEST_F(UrlAvailabilityRequesterTest, RemoveObserver) {
   EXPECT_CALL(mock_observer1, OnReceiverAvailable(url1_, service_id_));
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(url1_, service_id_))
       .Times(0);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   Mock::VerifyAndClearExpectations(&mock_observer1);
 
   MockReceiverObserver mock_observer2;
@@ -440,7 +437,7 @@ TEST_F(UrlAvailabilityRequesterTest, RemoveObserver) {
   listener_.AddObserver({url1_, url2_}, &mock_observer2);
 
   ExpectStreamMessage(&mock_callback_, &request);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   Mock::VerifyAndClearExpectations(&mock_observer2);
 
   uint64_t url2_watch_id = request.watch_id;
@@ -454,7 +451,7 @@ TEST_F(UrlAvailabilityRequesterTest, RemoveObserver) {
 
   EXPECT_CALL(mock_observer2, OnReceiverAvailable(_, service_id_)).Times(0);
   EXPECT_CALL(mock_observer2, OnReceiverUnavailable(url2_, service_id_));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   Mock::VerifyAndClearExpectations(&mock_observer1);
   Mock::VerifyAndClearExpectations(&mock_observer2);
 
@@ -466,7 +463,7 @@ TEST_F(UrlAvailabilityRequesterTest, RemoveObserver) {
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(url1_, service_id_))
       .Times(0);
   EXPECT_CALL(mock_observer2, OnReceiverUnavailable(url1_, service_id_));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   Mock::VerifyAndClearExpectations(&mock_observer1);
   Mock::VerifyAndClearExpectations(&mock_observer2);
 
@@ -484,7 +481,7 @@ TEST_F(UrlAvailabilityRequesterTest, RemoveObserver) {
 
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(_, service_id_)).Times(0);
   EXPECT_CALL(mock_observer2, OnReceiverUnavailable(_, service_id_)).Times(0);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   Mock::VerifyAndClearExpectations(&mock_observer1);
   Mock::VerifyAndClearExpectations(&mock_observer2);
 }
@@ -511,7 +508,7 @@ TEST_F(UrlAvailabilityRequesterTest, EventUpdate) {
   EXPECT_CALL(mock_observer1, OnReceiverAvailable(url1_, service_id_));
   EXPECT_CALL(mock_observer1, OnReceiverAvailable(url2_, service_id_));
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(_, service_id_)).Times(0);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
   EXPECT_CALL(mock_callback_, OnStreamMessage(_, _, _, _, _, _)).Times(0);
   SendAvailabilityEvent(
@@ -521,7 +518,7 @@ TEST_F(UrlAvailabilityRequesterTest, EventUpdate) {
       stream.get());
 
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(url2_, service_id_));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 }
 
 TEST_F(UrlAvailabilityRequesterTest, RefreshWatches) {
@@ -544,13 +541,13 @@ TEST_F(UrlAvailabilityRequesterTest, RefreshWatches) {
 
   EXPECT_CALL(mock_observer1, OnReceiverAvailable(url1_, service_id_));
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(_, service_id_)).Times(0);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
-  fake_clock_->Advance(std::chrono::seconds(60));
+  fake_clock_.Advance(std::chrono::seconds(60));
 
   ExpectStreamMessage(&mock_callback_, &request);
   listener_.RefreshWatches();
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
   EXPECT_EQ(std::vector<std::string>{url1_}, request.urls);
   SendAvailabilityResponse(
@@ -559,7 +556,7 @@ TEST_F(UrlAvailabilityRequesterTest, RefreshWatches) {
       stream.get());
 
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(url1_, service_id_));
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 }
 
 TEST_F(UrlAvailabilityRequesterTest, ResponseAfterRemoveObserver) {
@@ -584,7 +581,7 @@ TEST_F(UrlAvailabilityRequesterTest, ResponseAfterRemoveObserver) {
   EXPECT_CALL(mock_observer1, OnReceiverAvailable(url1_, service_id_)).Times(0);
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(url1_, service_id_))
       .Times(0);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
   MockReceiverObserver mock_observer2;
   EXPECT_CALL(mock_observer2, OnReceiverAvailable(url1_, service_id_)).Times(0);
@@ -615,7 +612,7 @@ TEST_F(UrlAvailabilityRequesterTest,
   EXPECT_CALL(mock_observer1, OnReceiverAvailable(url1_, service_id_));
   EXPECT_CALL(mock_observer1, OnReceiverUnavailable(url1_, service_id_))
       .Times(0);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 
   listener_.RemoveObserverUrls({url1_}, &mock_observer1);
   listener_.RemoveReceiver(info1_);
@@ -664,15 +661,14 @@ TEST_F(UrlAvailabilityRequesterTest, RemoveObserverInSteps) {
   // immediately, this still went out on the wire.
   ExpectStreamMessage(&mock_callback_, &request);
 
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
   EXPECT_EQ((std::vector<std::string>{url2_}), request.urls);
 
-  fake_clock_->Advance(std::chrono::seconds(60));
+  fake_clock_.Advance(std::chrono::seconds(60));
 
   listener_.RefreshWatches();
   EXPECT_CALL(mock_callback_, OnStreamMessage(_, _, _, _, _, _)).Times(0);
-  quic_bridge_->RunTasksUntilIdle();
+  quic_bridge_.RunTasksUntilIdle();
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

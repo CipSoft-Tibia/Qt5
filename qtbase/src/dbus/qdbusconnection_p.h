@@ -115,9 +115,11 @@ public:
     {
         typedef QList<ObjectTreeNode> DataList;
 
-        inline ObjectTreeNode() : obj(nullptr), flags(0) { }
+        inline ObjectTreeNode() : obj(nullptr) { }
         inline ObjectTreeNode(const QString &n) // intentionally implicit
-            : name(n), obj(nullptr), flags(0) { }
+            : name(n), obj(nullptr)
+        {
+        }
         inline bool operator<(const QString &other) const
             { return name < other; }
         inline bool operator<(QStringView other) const
@@ -131,12 +133,11 @@ public:
             QObject *obj;
             QDBusVirtualObject *treeNode;
         };
-        int flags;
+        QDBusConnection::RegisterOptions flags;
 
         DataList children;
     };
 
-public:
     // typedefs
     typedef QMultiHash<qintptr, Watcher> WatcherHash;
     typedef QHash<int, DBusTimeout *> TimeoutHash;
@@ -157,9 +158,8 @@ public:
     };
     typedef QHash<QString, WatchedServiceData> WatchedServicesHash;
 
-public:
     // public methods are entry points from other objects
-    explicit QDBusConnectionPrivate(QObject *parent = nullptr);
+    QDBusConnectionPrivate();
     ~QDBusConnectionPrivate();
 
     void createBusService();
@@ -177,7 +177,7 @@ public:
                         QObject *obj, const char *member);
 
     bool send(const QDBusMessage &message);
-    QDBusMessage sendWithReply(const QDBusMessage &message, int mode, int timeout = -1);
+    QDBusMessage sendWithReply(const QDBusMessage &message, QDBus::CallMode mode, int timeout = -1);
     QDBusMessage sendWithReplyLocal(const QDBusMessage &message);
     QDBusPendingCallPrivate *sendWithReplyAsync(const QDBusMessage &message, QObject *receiver,
                                                 const char *returnMethod, const char *errorMethod,int timeout = -1);
@@ -225,12 +225,13 @@ private:
     void activateSignal(const SignalHook& hook, const QDBusMessage &msg);
     void activateObject(ObjectTreeNode &node, const QDBusMessage &msg, int pathStartPos);
     bool activateInternalFilters(const ObjectTreeNode &node, const QDBusMessage &msg);
-    bool activateCall(QObject *object, int flags, const QDBusMessage &msg);
+    bool activateCall(QObject *object, QDBusConnection::RegisterOptions flags,
+                      const QDBusMessage &msg);
 
     void sendInternal(QDBusPendingCallPrivate *pcall, void *msg, int timeout);
     void sendError(const QDBusMessage &msg, QDBusError::ErrorType code);
-    void deliverCall(QObject *object, int flags, const QDBusMessage &msg,
-                     const QList<QMetaType> &metaTypes, int slotIdx);
+    void deliverCall(QObject *object, const QDBusMessage &msg, const QList<QMetaType> &metaTypes,
+                     int slotIdx);
 
     SignalHookHash::Iterator removeSignalHookNoLock(SignalHookHash::Iterator it);
     void collectAllObjects(ObjectTreeNode &node, QSet<QObject *> &set);
@@ -241,9 +242,13 @@ private:
 
     void watchForDBusDisconnection();
 
-    void _q_newConnection(QDBusConnectionPrivate *newConnection);
-
     void handleAuthentication();
+
+    bool addSignalHook(const QString &key, const SignalHook &hook);
+    bool removeSignalHook(const QString &key, const SignalHook &hook);
+
+    bool addSignalHookImpl(const QString &key, const SignalHook &hook);
+    bool removeSignalHookImpl(const QString &key, const SignalHook &hook);
 
 protected:
     void timerEvent(QTimerEvent *e) override;
@@ -256,8 +261,6 @@ public slots:
     void socketWrite(qintptr);
     void objectDestroyed(QObject *o);
     void relaySignal(QObject *obj, const QMetaObject *, int signalId, const QVariantList &args);
-    bool addSignalHook(const QString &key, const SignalHook &hook);
-    bool removeSignalHook(const QString &key, const SignalHook &hook);
 
 private slots:
     void serviceOwnerChangedNoLock(const QString &name, const QString &oldOwner, const QString &newOwner);
@@ -269,11 +272,8 @@ signals:
     void dispatchStatusChanged();
     void spyHooksFinished(const QDBusMessage &msg);
     void messageNeedsSending(QDBusPendingCallPrivate *pcall, void *msg, int timeout = -1);
-    bool signalNeedsConnecting(const QString &key, const QDBusConnectionPrivate::SignalHook &hook);
-    bool signalNeedsDisconnecting(const QString &key, const QDBusConnectionPrivate::SignalHook &hook);
     void serviceOwnerChanged(const QString &name, const QString &oldOwner, const QString &newOwner);
     void callWithCallbackFailed(const QDBusError &error, const QDBusMessage &message);
-    void newServerConnection(QDBusConnectionPrivate *newConnection);
 
 public:
     QAtomicInt ref;
@@ -316,7 +316,6 @@ public:
     bool dispatchEnabled;               // protected by the dispatch lock, not the main lock
     bool isAuthenticated;
 
-public:
     // static methods
     static int findSlot(QObject *obj, const QByteArray &normalizedName, QList<QMetaType> &params,
                         QString &errorMsg);
@@ -325,7 +324,6 @@ public:
                             const QString &name, const ArgMatchRules &argMatch, QObject *receiver,
                             const char *signal, int minMIdx, bool buildSignature,
                             QString &errorMsg);
-    static DBusHandlerResult messageFilter(DBusConnection *, DBusMessage *, void *);
     static QDBusCallDeliveryEvent *prepareReply(QDBusConnectionPrivate *target, QObject *object,
                                                 int idx, const QList<QMetaType> &metaTypes,
                                                 const QDBusMessage &msg);

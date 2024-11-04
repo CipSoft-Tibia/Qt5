@@ -42,6 +42,7 @@ if (enable_perfetto_platform_services) {
 }
 
 if (enable_perfetto_trace_processor && enable_perfetto_trace_processor_sqlite) {
+  all_targets += [ "src/cloud_trace_processor" ]
   all_targets += [ "src/trace_processor:trace_processor_shell" ]
 }
 
@@ -113,8 +114,11 @@ if (enable_perfetto_integration_tests) {
     "test:client_api_example",
     "test/stress_test",
   ]
-  if (!is_win) {
-    all_targets += [ "examples/shared_lib:example_shlib_data_source" ]
+  if (!is_win && !is_mac) {
+    all_targets += [
+      "examples/shared_lib:example_shlib_data_source",
+      "examples/shared_lib:example_shlib_track_event",
+    ]
   }
 }
 
@@ -274,10 +278,8 @@ if (build_with_chromium) {
     deps = [
       "src/trace_processor/importers/memory_tracker:graph_processor",
       "src/tracing:client_api",
+      "src/tracing:platform_impl",
       "src/tracing/core",
-
-      # TODO(eseckler): Create a platform for chrome and hook it up somehow.
-      "src/tracing:platform_fake",
     ]
     configs -= [ "//build/config/compiler:chromium_code" ]
     configs += [ "//build/config/compiler:no_chromium_code" ]

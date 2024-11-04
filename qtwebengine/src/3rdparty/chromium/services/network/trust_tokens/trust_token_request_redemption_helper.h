@@ -74,9 +74,9 @@ class TrustTokenRequestRedemptionHelper : public TrustTokenRequestHelper {
 
     // Given a trust token to redeem and parameters to encode in the redemption
     // request, returns a base64-encoded string suitable for attachment in the
-    // Sec-Trust-Token header, or nullopt on error. The exact format of the
-    // redemption request is currently considered an implementation detail of
-    // the underlying cryptographic code.
+    // Sec-Private-State-Token header, or nullopt on error. The exact format of
+    // the redemption request is currently considered an implementation detail
+    // of the underlying cryptographic code.
     //
     // Some representation of  |top_level_origin| is embedded in the redemption
     // request so that a token redemption can be bound to a particular top-level
@@ -85,9 +85,9 @@ class TrustTokenRequestRedemptionHelper : public TrustTokenRequestHelper {
         TrustToken token,
         const url::Origin& top_level_origin) = 0;
 
-    // Given a base64-encoded Sec-Trust-Token redemption response header,
-    // validates and extracts the redemption record (RR) contained in the
-    // header. If successful, returns the RR. Otherwise, returns nullopt.
+    // Given a Sec-Private-State-Token redemption response
+    // header, validates and extracts the redemption record (RR) contained in
+    // the header. If successful, returns the RR. Otherwise, returns nullopt.
     //
     // The Trust Tokens design doc is currently the normative source for the
     // RR's format.
@@ -139,6 +139,7 @@ class TrustTokenRequestRedemptionHelper : public TrustTokenRequestHelper {
   //   or if the (issuer, top-level) pair has no tokens to redeem
   // * kAlreadyExists if the (issuer, top-level) pair already has a current
   //   RR and this helper was not parameterized with |kRefresh|.
+  // * kMissingIssuerKeys if there are no valid keys for the issuer.
   // * kFailedPrecondition if preconditions fail, including receiving a
   //   malformed or otherwise invalid key commitment record from the issuer,
   //   or if |kRefresh| was provided and the request was not initiated

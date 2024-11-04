@@ -1,4 +1,4 @@
-// Copyright 2021 The Chromium Authors
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,17 +8,13 @@
 #include "base/android/jni_android.h"
 #include "base/base_export.h"
 
-namespace base {
-namespace android {
+namespace base::android {
 
 BASE_EXPORT void RecordJankMetrics(
     JNIEnv* env,
-    const base::android::JavaParamRef<jstring>& java_scenario_name,
-    const base::android::JavaParamRef<jlongArray>& java_timestamps_ns,
     const base::android::JavaParamRef<jlongArray>& java_durations_ns,
-    const base::android::JavaParamRef<jlongArray>& java_jank_bursts_ns,
-    jint java_missed_frames);
-
-}  // namespace android
-}  // namespace base
+    const base::android::JavaParamRef<jbooleanArray>& java_jank_status,
+    jlong java_reporting_interval_start_time,
+    jlong java_reporting_interval_duration);
+}  // namespace base::android
 #endif  // BASE_ANDROID_JANK_METRIC_UMA_RECORDER_H_

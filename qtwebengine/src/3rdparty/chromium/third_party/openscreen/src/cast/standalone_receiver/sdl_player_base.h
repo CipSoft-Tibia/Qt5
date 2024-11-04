@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,8 +19,7 @@
 #include "platform/api/time.h"
 #include "platform/base/error.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Common base class that consumes frames from a Receiver, decodes them, and
 // plays them out via the appropriate SDL subsystem. Subclasses implement the
@@ -57,7 +56,7 @@ class SDLPlayerBase : public Receiver::Consumer, public Decoder::Client {
   // player has halted and set |error_status()|. |media_type| should be "audio"
   // or "video" (only used when logging).
   SDLPlayerBase(ClockNowFunctionPtr now_function,
-                TaskRunner* task_runner,
+                TaskRunner& task_runner,
                 Receiver* receiver,
                 const std::string& codec_name,
                 std::function<void()> error_callback,
@@ -175,7 +174,6 @@ class SDLPlayerBase : public Receiver::Consumer, public Decoder::Client {
   static constexpr int kMaxFramesInPipeline = 8;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STANDALONE_RECEIVER_SDL_PLAYER_BASE_H_

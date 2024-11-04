@@ -114,8 +114,8 @@ bool QBackingStoreRhiSupport::create()
         if (QRhi::probe(QRhi::Metal, &params)) {
             rhi = QRhi::create(QRhi::Metal, &params, flags);
         } else {
-            qCDebug(lcQpaBackingStore, "Metal does not seem to be supported. Falling back to OpenGL.");
-            rhi = QRhi::create(QRhi::OpenGLES2, &params, flags);
+            qCDebug(lcQpaBackingStore, "Metal does not seem to be supported");
+            return false;
         }
     }
 #endif
@@ -196,13 +196,14 @@ QRhiSwapChain *QBackingStoreRhiSupport::swapChainForWindow(QWindow *window)
 
 bool QBackingStoreRhiSupportWindowWatcher::eventFilter(QObject *obj, QEvent *event)
 {
-    if (event->type() == QEvent::PlatformSurface
-            && static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed)
+    if (event->type() == QEvent::WindowAboutToChangeInternal
+        || (event->type() == QEvent::PlatformSurface
+            && static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed))
     {
         QWindow *window = qobject_cast<QWindow *>(obj);
         auto it = m_rhiSupport->m_swapchains.find(window);
         if (it != m_rhiSupport->m_swapchains.end()) {
-            qCDebug(lcQpaBackingStore) << "SurfaceAboutToBeDestroyed received for tracked window" << window << "cleaning up swapchain";
+            qCDebug(lcQpaBackingStore) << event << "received for" << window << "- cleaning up swapchain";
             auto data = *it;
             m_rhiSupport->m_swapchains.erase(it);
             data.reset(); // deletes 'this'

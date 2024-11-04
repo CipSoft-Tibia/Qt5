@@ -19,68 +19,107 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "fastpair/common/account_key.h"
+#include "fastpair/common/device_metadata.h"
+#include "fastpair/common/fast_pair_version.h"
 #include "fastpair/common/protocol.h"
 
 namespace nearby {
 namespace fastpair {
 
-enum class DeviceFastPairVersion {
-  kV1,
-  kHigherThanV1,
-};
-
 // Thin class which is used by the higher level components of the Fast Pair
 // system to represent a device.
-struct FastPairDevice {
-  FastPairDevice(std::string model_id, std::string ble_address,
-                 Protocol protocol);
-  FastPairDevice(const FastPairDevice&) = delete;
-  FastPairDevice& operator=(const FastPairDevice&) = delete;
-  FastPairDevice& operator=(FastPairDevice&&) = delete;
-  ~FastPairDevice();
+class FastPairDevice {
+ public:
+  explicit FastPairDevice(Protocol protocol) : protocol_(protocol) {}
+  FastPairDevice(absl::string_view model_id, absl::string_view ble_address,
+                 Protocol protocol)
+      : model_id_(model_id), ble_address_(ble_address), protocol_(protocol) {}
 
-  const std::optional<std::string>& public_address() const {
+  FastPairDevice(const FastPairDevice&) = delete;
+  FastPairDevice(FastPairDevice&&) = default;
+  FastPairDevice& operator=(const FastPairDevice&) = delete;
+  FastPairDevice& operator=(FastPairDevice&&) = default;
+  ~FastPairDevice() = default;
+
+  std::optional<std::string> GetPublicAddress() const {
     return public_address_;
   }
 
-  void set_public_address(const std::string& address) {
-    public_address_ = address;
+  void SetPublicAddress(absl::string_view address) {
+    public_address_ = std::string(address);
   }
 
-  const std::optional<std::string>& display_name() const {
-    return display_name_;
+  std::optional<std::string> GetDisplayName() const { return display_name_; }
+
+  void SetDisplayName(absl::string_view display_name) {
+    display_name_ = std::string(display_name);
   }
 
-  void set_display_name(const std::optional<std::string>& display_name) {
-    display_name_ = display_name;
+  std::optional<DeviceFastPairVersion> GetVersion() const {
+    if (metadata_) {
+      return metadata_->GetFastPairVersion();
+    }
+    return std::nullopt;
   }
 
-  std::optional<DeviceFastPairVersion> version() { return version_; }
+  const AccountKey& GetAccountKey() const { return account_key_; }
 
-  void set_version(std::optional<DeviceFastPairVersion> version) {
-    version_ = version;
+  void SetAccountKey(AccountKey account_key) { account_key_ = account_key; }
+
+  void SetModelId(absl::string_view model_id) {
+    model_id_ = std::string(model_id);
   }
 
-  std::optional<std::vector<uint8_t>> account_key() const {
-    return account_key_;
+  absl::string_view GetModelId() const { return model_id_; }
+
+  void SetBleAddress(absl::string_view address) {
+    ble_address_ = std::string(address);
   }
 
-  void set_account_key(std::vector<uint8_t> account_key) {
-    account_key_ = account_key;
+  absl::string_view GetBleAddress() const { return ble_address_; }
+
+  Protocol GetProtocol() const { return protocol_; }
+
+  void SetMetadata(const DeviceMetadata& metadata) { metadata_ = metadata; }
+
+  const std::optional<DeviceMetadata>& GetMetadata() const { return metadata_; }
+
+  const std::string& GetUniqueId() const {
+    if (public_address_.has_value()) {
+      return *public_address_;
+    }
+    return ble_address_;
   }
 
-  const std::string model_id;
+  void SetShowUiNotification(bool should_show_ui_notification) {
+    should_show_ui_notification_ = should_show_ui_notification;
+  }
 
-  // Bluetooth LE address of the device.
-  const std::string ble_address;
+  std::optional<bool> ShouldShowUiNotification() const {
+    return should_show_ui_notification_;
+  }
 
-  // The Quick Pair protocol implementation that this device belongs to.
-  const Protocol protocol;
+  void StartedPairing(bool started_pairing) {
+    has_started_pairing_ = started_pairing;
+  }
+
+  bool HasStartedPairing() const { return has_started_pairing_; }
 
  private:
+  std::string model_id_;
+
+  // Bluetooth LE address of the device.
+  std::string ble_address_;
+
+  // The Quick Pair protocol implementation that this device belongs to.
+  Protocol protocol_;
+
   // Bluetooth public classic address of the device.
   std::optional<std::string> public_address_;
 
@@ -98,7 +137,11 @@ struct FastPairDevice {
   // Account key which will be saved to the user's account during Fast Pairing
   // for eligible devices (V2 or higher) and used for detecting subsequent
   // pairing scenarios.
-  std::optional<std::vector<uint8_t>> account_key_;
+  AccountKey account_key_;
+
+  std::optional<DeviceMetadata> metadata_;
+  std::optional<bool> should_show_ui_notification_;
+  bool has_started_pairing_ = false;
 };
 
 std::ostream& operator<<(std::ostream& stream, const FastPairDevice& device);

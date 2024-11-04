@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/qglobal.h>
 
@@ -14,6 +14,8 @@
 #include <QtCore/QString>
 #include <QtCore/QStringBuilder>
 #include <QtTest/QTest>
+
+#include <QtCore/q20iterator.h>
 
 #define LITERAL "some literal"
 

@@ -14,9 +14,9 @@ version="7.0.1"
 qtBranch="63x"
 installFolder="/opt"
 squishFolder="$installFolder/squish"
-preBuildCacheUrl="ci-files01-hki.intra.qt.io:/hdd/www/input/squish/jenkins_build/stable"
+preBuildCacheUrl="ci-files01-hki.ci.qt.io:/hdd/www/input/squish/jenkins_build/stable"
 licenseFile=".squish-license"
-licenseUrl="http://ci-files01-hki.intra.qt.io/input/squish/coin/$qtBranch/$licenseFile"
+licenseUrl="http://ci-files01-hki.ci.qt.io/input/squish/coin/$qtBranch/$licenseFile"
 licenseSHA="e84b499a2011f9bb1a6eefc7b2338d7ae770927a"
 if uname -a |grep -q Darwin; then
     compressedFolder="prebuild-squish-$version-$qtBranch-mac.tar.gz"
@@ -32,16 +32,16 @@ sudo mkdir "$mountFolder"
 # Check which platform
 if uname -a |grep -q Darwin; then
     usersGroup="staff"
-    squishLicenseDir="/Users/qt"
+#    squishLicenseDir="/Users/qt"
 elif uname -a |grep -q "el7"; then
     usersGroup="qt"
-    squishLicenseDir="/root"
+#    squishLicenseDir="/root"
 elif uname -a |grep -q "Ubuntu"; then
     usersGroup="users"
-    squishLicenseDir="/home/qt"
+#    squishLicenseDir="/home/qt"
 else
     usersGroup="users"
-    squishLicenseDir="/root"
+#    squishLicenseDir="/root"
 fi
 
 targetFileMount="$mountFolder"/"$compressedFolder"

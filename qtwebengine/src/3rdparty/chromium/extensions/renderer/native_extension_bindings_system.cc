@@ -11,9 +11,13 @@
 #include "base/functional/callback.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/stringprintf.h"
+#include "base/trace_event/typed_macros.h"
+#include "base/tracing/protos/chrome_track_event.pbzero.h"
 #include "components/crx_file/id_util.h"
 #include "content/public/common/content_switches.h"
+#include "content/public/renderer/render_thread.h"
 #include "extensions/common/constants.h"
+#include "extensions/common/context_type_adapter.h"
 #include "extensions/common/extension_api.h"
 #include "extensions/common/extension_messages.h"
 #include "extensions/common/features/feature.h"
@@ -44,9 +48,11 @@
 #include "extensions/renderer/ipc_message_sender.h"
 #include "extensions/renderer/module_system.h"
 #include "extensions/renderer/renderer_extension_registry.h"
+#include "extensions/renderer/renderer_frame_context_data.h"
 #include "extensions/renderer/script_context.h"
 #include "extensions/renderer/script_context_set_iterable.h"
 #include "extensions/renderer/storage_area.h"
+#include "extensions/renderer/trace_util.h"
 #include "extensions/renderer/worker_thread_util.h"
 #include "gin/converter.h"
 #include "gin/data_object_builder.h"
@@ -61,6 +67,8 @@
 #include "v8/include/v8-object.h"
 #include "v8/include/v8-primitive.h"
 #include "v8/include/v8-template.h"
+
+using perfetto::protos::pbzero::ChromeTrackEvent;
 
 namespace extensions {
 
@@ -206,8 +214,16 @@ bool IsAPIFeatureAvailable(v8::Local<v8::Context> context,
 bool ArePromisesAllowed(v8::Local<v8::Context> context) {
   ScriptContext* script_context = GetScriptContextFromV8ContextChecked(context);
   const Extension* extension = script_context->extension();
-  return (extension && extension->manifest_version() >= 3) ||
-         script_context->context_type() == Feature::WEBUI_CONTEXT;
+  if (extension && extension->manifest_version() >= 3) {
+    return true;
+  }
+  if (script_context->context_type() == Feature::WEBUI_CONTEXT) {
+    return true;
+  }
+  if (script_context->context_type() == Feature::WEB_PAGE_CONTEXT) {
+    return true;
+  }
+  return false;
 }
 
 // Instantiates the binding object for the given |name|. |name| must specify a
@@ -278,7 +294,7 @@ v8::Local<v8::Object> CreateFullBinding(
 
   // Look for any bindings that would be on the same object. Any of these would
   // start with the same base name (e.g. 'app') + '.' (since '.' is < x for any
-  // isalpha(x)).
+  // absl::ascii_isalpha(x)).
   std::string upper = root_name + static_cast<char>('.' + 1);
   base::StringPiece last_binding_name;
   // The following loop is a little painful because we have crazy binding names
@@ -498,8 +514,9 @@ void NativeExtensionBindingsSystem::UpdateBindingsForContext(
   v8::HandleScope handle_scope(isolate);
   v8::Local<v8::Context> v8_context = context->v8_context();
   v8::Local<v8::Object> chrome = GetOrCreateChrome(v8_context);
-  if (chrome.IsEmpty())
+  if (chrome.IsEmpty()) {
     return;
+  }
 
   DCHECK(GetBindingsDataFromContext(v8_context));
 
@@ -532,6 +549,7 @@ void NativeExtensionBindingsSystem::UpdateBindingsForContext(
     case Feature::LOCK_SCREEN_EXTENSION_CONTEXT:
     case Feature::OFFSCREEN_EXTENSION_CONTEXT:
     case Feature::UNBLESSED_EXTENSION_CONTEXT:
+    case Feature::USER_SCRIPT_CONTEXT:
     case Feature::CONTENT_SCRIPT_CONTEXT:
     case Feature::WEBUI_CONTEXT:
     case Feature::WEBUI_UNTRUSTED_CONTEXT:
@@ -563,8 +581,9 @@ void NativeExtensionBindingsSystem::UpdateBindingsForContext(
   }
 
   FeatureCache::FeatureNameVector features =
-      feature_cache_.GetAvailableFeatures(context->context_type(),
-                                          context->extension(), context->url());
+      feature_cache_.GetAvailableFeatures(
+          context->context_type(), context->extension(), context->url(),
+          RendererFrameContextData(context->web_frame()));
   base::StringPiece last_accessor;
   for (const std::string& feature : features) {
     // If we've already set up an accessor for the immediate property of the
@@ -593,7 +612,8 @@ void NativeExtensionBindingsSystem::UpdateBindingsForContext(
 
   FeatureCache::FeatureNameVector dev_mode_features =
       feature_cache_.GetDeveloperModeRestrictedFeatures(
-          context->context_type(), context->extension(), context->url());
+          context->context_type(), context->extension(), context->url(),
+          RendererFrameContextData(context->web_frame()));
 
   for (const std::string& feature : dev_mode_features) {
     base::StringPiece accessor_name =
@@ -641,7 +661,6 @@ void NativeExtensionBindingsSystem::HandleResponse(
       request_id, response,
       !success && error.empty() ? "Unknown error." : error,
       std::move(extra_data));
-  ipc_message_sender_->SendOnRequestResponseReceivedIPC(request_id);
 }
 
 IPCMessageSender* NativeExtensionBindingsSystem::GetIPCMessageSender() {
@@ -835,6 +854,12 @@ void NativeExtensionBindingsSystem::SendRequest(
     std::unique_ptr<APIRequestHandler::Request> request,
     v8::Local<v8::Context> context) {
   ScriptContext* script_context = GetScriptContextFromV8ContextChecked(context);
+  CHECK_NE(Feature::UNSPECIFIED_CONTEXT, script_context->context_type())
+      << "Attempting to send a request from an unspecified context type. "
+      << "Request: " << request->method_name
+      << ", Context: " << script_context->GetDebugString();
+  TRACE_RENDERER_EXTENSION_EVENT("NativeExtensionBindingsSystem::SendRequest",
+                                 script_context->GetExtensionID());
 
   GURL url;
   blink::WebLocalFrame* frame = script_context->web_frame();
@@ -848,6 +873,8 @@ void NativeExtensionBindingsSystem::SendRequest(
   params->arguments = std::move(request->arguments_list);
   params->extension_id = script_context->GetExtensionID();
   params->source_url = url;
+  params->context_type =
+      FeatureContextToMojomContext(script_context->context_type());
   params->request_id = request->request_id;
   params->has_callback = request->has_async_response_handler;
   params->user_gesture = request->has_user_gesture;
@@ -855,6 +882,8 @@ void NativeExtensionBindingsSystem::SendRequest(
   params->worker_thread_id = kMainThreadId;
   params->service_worker_version_id =
       blink::mojom::kInvalidServiceWorkerVersionId;
+  CHECK_NE(Feature::UNSPECIFIED_CONTEXT, script_context->context_type())
+      << script_context->GetDebugString();
 
   ipc_message_sender_->SendRequestIPC(script_context, std::move(params));
 }

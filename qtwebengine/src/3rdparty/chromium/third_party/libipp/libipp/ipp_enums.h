@@ -1,14 +1,15 @@
-// Copyright 2019 The Chromium OS Authors. All rights reserved.
+// Copyright 2019 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef LIBIPP_IPP_ENUMS_H_
 #define LIBIPP_IPP_ENUMS_H_
 
-#include "ipp_export.h"  // NOLINT(build/include)
+#include "ipp_export.h"
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace ipp {
 // This is part of libipp library. See ipp.h for information how to use it.
@@ -2631,7 +2632,7 @@ enum class E_notify_events : uint16_t {
   system_stopped = 0x0021
 };
 enum class E_notify_pull_method : uint16_t { ippget = 0x0000 };
-enum class E_operations_supported : uint16_t {
+enum class E_operations_supported : int16_t {
   Print_Job = 0x0002,
   Print_URI = 0x0003,
   Validate_Job = 0x0004,
@@ -3677,7 +3678,7 @@ enum class E_sheet_collate : uint16_t {
   collated = 0x0000,
   uncollated = 0x0001
 };
-enum class E_status_code : uint16_t {
+enum class E_status_code : int16_t {
   successful_ok = 0x0000,
   successful_ok_ignored_or_substituted_attributes = 0x0001,
   successful_ok_conflicting_attributes = 0x0002,
@@ -3905,201 +3906,217 @@ typedef E_uri_security_supported E_xri_security_supported;
 typedef E_y_image_position E_y_image_position_default;
 typedef E_y_image_position E_y_image_position_supported;
 
-IPP_EXPORT std::string ToString(AttrName, int value);
+LIBIPP_EXPORT std::string ToString(AttrName, int value);
 
-IPP_EXPORT std::string ToString(GroupTag v);
-IPP_EXPORT std::string ToString(AttrName v);
-IPP_EXPORT std::string ToString(E_auth_info_required v);
-IPP_EXPORT std::string ToString(E_baling_type v);
-IPP_EXPORT std::string ToString(E_baling_when v);
-IPP_EXPORT std::string ToString(E_binding_reference_edge v);
-IPP_EXPORT std::string ToString(E_binding_type v);
-IPP_EXPORT std::string ToString(E_coating_sides v);
-IPP_EXPORT std::string ToString(E_coating_type v);
-IPP_EXPORT std::string ToString(E_compression v);
-IPP_EXPORT std::string ToString(E_cover_back_supported v);
-IPP_EXPORT std::string ToString(E_cover_type v);
-IPP_EXPORT std::string ToString(E_covering_name v);
-IPP_EXPORT std::string ToString(E_current_page_order v);
-IPP_EXPORT std::string ToString(E_document_digital_signature v);
-IPP_EXPORT std::string ToString(E_document_format_details_supported v);
-IPP_EXPORT std::string ToString(E_document_format_varying_attributes v);
-IPP_EXPORT std::string ToString(E_feed_orientation v);
-IPP_EXPORT std::string ToString(E_finishing_template v);
-IPP_EXPORT std::string ToString(E_finishings v);
-IPP_EXPORT std::string ToString(E_folding_direction v);
-IPP_EXPORT std::string ToString(E_identify_actions v);
-IPP_EXPORT std::string ToString(E_imposition_template v);
-IPP_EXPORT std::string ToString(E_input_orientation_requested v);
-IPP_EXPORT std::string ToString(E_input_quality v);
-IPP_EXPORT std::string ToString(E_input_sides v);
-IPP_EXPORT std::string ToString(E_ipp_features_supported v);
-IPP_EXPORT std::string ToString(E_ipp_versions_supported v);
-IPP_EXPORT std::string ToString(E_job_account_type v);
-IPP_EXPORT std::string ToString(E_job_accounting_output_bin v);
-IPP_EXPORT std::string ToString(E_job_accounting_sheets_type v);
-IPP_EXPORT std::string ToString(E_job_collation_type v);
-IPP_EXPORT std::string ToString(E_job_delay_output_until v);
-IPP_EXPORT std::string ToString(E_job_error_action v);
-IPP_EXPORT std::string ToString(E_job_error_sheet_when v);
-IPP_EXPORT std::string ToString(E_job_hold_until v);
-IPP_EXPORT std::string ToString(E_job_mandatory_attributes v);
-IPP_EXPORT std::string ToString(E_job_password_encryption v);
-IPP_EXPORT std::string ToString(E_job_sheets v);
-IPP_EXPORT std::string ToString(E_job_spooling_supported v);
-IPP_EXPORT std::string ToString(E_job_state v);
-IPP_EXPORT std::string ToString(E_job_state_reasons v);
-IPP_EXPORT std::string ToString(E_laminating_type v);
-IPP_EXPORT std::string ToString(E_material_color v);
-IPP_EXPORT std::string ToString(E_media v);
-IPP_EXPORT std::string ToString(E_media_back_coating v);
-IPP_EXPORT std::string ToString(E_media_grain v);
-IPP_EXPORT std::string ToString(E_media_input_tray_check v);
-IPP_EXPORT std::string ToString(E_media_key v);
-IPP_EXPORT std::string ToString(E_media_pre_printed v);
-IPP_EXPORT std::string ToString(E_media_ready v);
-IPP_EXPORT std::string ToString(E_media_source v);
-IPP_EXPORT std::string ToString(E_media_tooth v);
-IPP_EXPORT std::string ToString(E_media_type v);
-IPP_EXPORT std::string ToString(E_multiple_document_handling v);
-IPP_EXPORT std::string ToString(E_multiple_operation_time_out_action v);
-IPP_EXPORT std::string ToString(E_notify_events v);
-IPP_EXPORT std::string ToString(E_notify_pull_method v);
-IPP_EXPORT std::string ToString(E_operations_supported v);
-IPP_EXPORT std::string ToString(E_page_delivery v);
-IPP_EXPORT std::string ToString(E_pdf_versions_supported v);
-IPP_EXPORT std::string ToString(E_pdl_init_file_supported v);
-IPP_EXPORT std::string ToString(E_pdl_override_supported v);
-IPP_EXPORT std::string ToString(E_presentation_direction_number_up v);
-IPP_EXPORT std::string ToString(E_print_color_mode v);
-IPP_EXPORT std::string ToString(E_print_content_optimize v);
-IPP_EXPORT std::string ToString(E_print_rendering_intent v);
-IPP_EXPORT std::string ToString(E_print_scaling v);
-IPP_EXPORT std::string ToString(E_printer_state v);
-IPP_EXPORT std::string ToString(E_printer_state_reasons v);
-IPP_EXPORT std::string ToString(E_proof_print_supported v);
-IPP_EXPORT std::string ToString(E_pwg_raster_document_sheet_back v);
-IPP_EXPORT std::string ToString(E_pwg_raster_document_type_supported v);
-IPP_EXPORT std::string ToString(E_requested_attributes v);
-IPP_EXPORT std::string ToString(E_save_disposition v);
-IPP_EXPORT std::string ToString(E_separator_sheets_type v);
-IPP_EXPORT std::string ToString(E_sheet_collate v);
-IPP_EXPORT std::string ToString(E_status_code v);
-IPP_EXPORT std::string ToString(E_stitching_method v);
-IPP_EXPORT std::string ToString(E_stitching_reference_edge v);
-IPP_EXPORT std::string ToString(E_trimming_type v);
-IPP_EXPORT std::string ToString(E_trimming_when v);
-IPP_EXPORT std::string ToString(E_uri_authentication_supported v);
-IPP_EXPORT std::string ToString(E_uri_security_supported v);
-IPP_EXPORT std::string ToString(E_which_jobs v);
-IPP_EXPORT std::string ToString(E_x_image_position v);
-IPP_EXPORT std::string ToString(E_xri_authentication v);
-IPP_EXPORT std::string ToString(E_xri_security v);
-IPP_EXPORT std::string ToString(E_y_image_position v);
+LIBIPP_EXPORT std::string ToString(GroupTag v);
+LIBIPP_EXPORT std::string ToString(AttrName v);
+LIBIPP_EXPORT std::string_view ToStrView(AttrName v);
+LIBIPP_EXPORT std::string ToString(E_auth_info_required v);
+LIBIPP_EXPORT std::string ToString(E_baling_type v);
+LIBIPP_EXPORT std::string ToString(E_baling_when v);
+LIBIPP_EXPORT std::string ToString(E_binding_reference_edge v);
+LIBIPP_EXPORT std::string ToString(E_binding_type v);
+LIBIPP_EXPORT std::string ToString(E_coating_sides v);
+LIBIPP_EXPORT std::string ToString(E_coating_type v);
+LIBIPP_EXPORT std::string ToString(E_compression v);
+LIBIPP_EXPORT std::string ToString(E_cover_back_supported v);
+LIBIPP_EXPORT std::string ToString(E_cover_type v);
+LIBIPP_EXPORT std::string ToString(E_covering_name v);
+LIBIPP_EXPORT std::string ToString(E_current_page_order v);
+LIBIPP_EXPORT std::string ToString(E_document_digital_signature v);
+LIBIPP_EXPORT std::string ToString(E_document_format_details_supported v);
+LIBIPP_EXPORT std::string ToString(E_document_format_varying_attributes v);
+LIBIPP_EXPORT std::string ToString(E_feed_orientation v);
+LIBIPP_EXPORT std::string ToString(E_finishing_template v);
+LIBIPP_EXPORT std::string ToString(E_finishings v);
+LIBIPP_EXPORT std::string ToString(E_folding_direction v);
+LIBIPP_EXPORT std::string ToString(E_identify_actions v);
+LIBIPP_EXPORT std::string ToString(E_imposition_template v);
+LIBIPP_EXPORT std::string ToString(E_input_orientation_requested v);
+LIBIPP_EXPORT std::string ToString(E_input_quality v);
+LIBIPP_EXPORT std::string ToString(E_input_sides v);
+LIBIPP_EXPORT std::string ToString(E_ipp_features_supported v);
+LIBIPP_EXPORT std::string ToString(E_ipp_versions_supported v);
+LIBIPP_EXPORT std::string ToString(E_job_account_type v);
+LIBIPP_EXPORT std::string ToString(E_job_accounting_output_bin v);
+LIBIPP_EXPORT std::string ToString(E_job_accounting_sheets_type v);
+LIBIPP_EXPORT std::string ToString(E_job_collation_type v);
+LIBIPP_EXPORT std::string ToString(E_job_delay_output_until v);
+LIBIPP_EXPORT std::string ToString(E_job_error_action v);
+LIBIPP_EXPORT std::string ToString(E_job_error_sheet_when v);
+LIBIPP_EXPORT std::string ToString(E_job_hold_until v);
+LIBIPP_EXPORT std::string ToString(E_job_mandatory_attributes v);
+LIBIPP_EXPORT std::string ToString(E_job_password_encryption v);
+LIBIPP_EXPORT std::string ToString(E_job_sheets v);
+LIBIPP_EXPORT std::string ToString(E_job_spooling_supported v);
+LIBIPP_EXPORT std::string ToString(E_job_state v);
+LIBIPP_EXPORT std::string ToString(E_job_state_reasons v);
+LIBIPP_EXPORT std::string ToString(E_laminating_type v);
+LIBIPP_EXPORT std::string ToString(E_material_color v);
+LIBIPP_EXPORT std::string ToString(E_media v);
+LIBIPP_EXPORT std::string ToString(E_media_back_coating v);
+LIBIPP_EXPORT std::string ToString(E_media_grain v);
+LIBIPP_EXPORT std::string ToString(E_media_input_tray_check v);
+LIBIPP_EXPORT std::string ToString(E_media_key v);
+LIBIPP_EXPORT std::string ToString(E_media_pre_printed v);
+LIBIPP_EXPORT std::string ToString(E_media_ready v);
+LIBIPP_EXPORT std::string ToString(E_media_source v);
+LIBIPP_EXPORT std::string ToString(E_media_tooth v);
+LIBIPP_EXPORT std::string ToString(E_media_type v);
+LIBIPP_EXPORT std::string ToString(E_multiple_document_handling v);
+LIBIPP_EXPORT std::string ToString(E_multiple_operation_time_out_action v);
+LIBIPP_EXPORT std::string ToString(E_notify_events v);
+LIBIPP_EXPORT std::string ToString(E_notify_pull_method v);
+LIBIPP_EXPORT std::string ToString(E_operations_supported v);
+LIBIPP_EXPORT std::string ToString(E_page_delivery v);
+LIBIPP_EXPORT std::string ToString(E_pdf_versions_supported v);
+LIBIPP_EXPORT std::string ToString(E_pdl_init_file_supported v);
+LIBIPP_EXPORT std::string ToString(E_pdl_override_supported v);
+LIBIPP_EXPORT std::string ToString(E_presentation_direction_number_up v);
+LIBIPP_EXPORT std::string ToString(E_print_color_mode v);
+LIBIPP_EXPORT std::string ToString(E_print_content_optimize v);
+LIBIPP_EXPORT std::string ToString(E_print_rendering_intent v);
+LIBIPP_EXPORT std::string ToString(E_print_scaling v);
+LIBIPP_EXPORT std::string ToString(E_printer_state v);
+LIBIPP_EXPORT std::string ToString(E_printer_state_reasons v);
+LIBIPP_EXPORT std::string ToString(E_proof_print_supported v);
+LIBIPP_EXPORT std::string ToString(E_pwg_raster_document_sheet_back v);
+LIBIPP_EXPORT std::string ToString(E_pwg_raster_document_type_supported v);
+LIBIPP_EXPORT std::string ToString(E_requested_attributes v);
+LIBIPP_EXPORT std::string ToString(E_save_disposition v);
+LIBIPP_EXPORT std::string ToString(E_separator_sheets_type v);
+LIBIPP_EXPORT std::string ToString(E_sheet_collate v);
+LIBIPP_EXPORT std::string ToString(E_status_code v);
+LIBIPP_EXPORT std::string ToString(E_stitching_method v);
+LIBIPP_EXPORT std::string ToString(E_stitching_reference_edge v);
+LIBIPP_EXPORT std::string ToString(E_trimming_type v);
+LIBIPP_EXPORT std::string ToString(E_trimming_when v);
+LIBIPP_EXPORT std::string ToString(E_uri_authentication_supported v);
+LIBIPP_EXPORT std::string ToString(E_uri_security_supported v);
+LIBIPP_EXPORT std::string ToString(E_which_jobs v);
+LIBIPP_EXPORT std::string ToString(E_x_image_position v);
+LIBIPP_EXPORT std::string ToString(E_xri_authentication v);
+LIBIPP_EXPORT std::string ToString(E_xri_security v);
+LIBIPP_EXPORT std::string ToString(E_y_image_position v);
 
-IPP_EXPORT bool FromString(const std::string&, AttrName, int* value);
+LIBIPP_EXPORT bool FromString(const std::string&, AttrName, int* value);
 
-IPP_EXPORT bool FromString(const std::string& s, GroupTag* v);
-IPP_EXPORT bool FromString(const std::string& s, AttrName* v);
-IPP_EXPORT bool FromString(const std::string& s, E_auth_info_required* v);
-IPP_EXPORT bool FromString(const std::string& s, E_baling_type* v);
-IPP_EXPORT bool FromString(const std::string& s, E_baling_when* v);
-IPP_EXPORT bool FromString(const std::string& s, E_binding_reference_edge* v);
-IPP_EXPORT bool FromString(const std::string& s, E_binding_type* v);
-IPP_EXPORT bool FromString(const std::string& s, E_coating_sides* v);
-IPP_EXPORT bool FromString(const std::string& s, E_coating_type* v);
-IPP_EXPORT bool FromString(const std::string& s, E_compression* v);
-IPP_EXPORT bool FromString(const std::string& s, E_cover_back_supported* v);
-IPP_EXPORT bool FromString(const std::string& s, E_cover_type* v);
-IPP_EXPORT bool FromString(const std::string& s, E_covering_name* v);
-IPP_EXPORT bool FromString(const std::string& s, E_current_page_order* v);
-IPP_EXPORT bool FromString(const std::string& s,
-                           E_document_digital_signature* v);
-IPP_EXPORT bool FromString(const std::string& s,
-                           E_document_format_details_supported* v);
-IPP_EXPORT bool FromString(const std::string& s,
-                           E_document_format_varying_attributes* v);
-IPP_EXPORT bool FromString(const std::string& s, E_feed_orientation* v);
-IPP_EXPORT bool FromString(const std::string& s, E_finishing_template* v);
-IPP_EXPORT bool FromString(const std::string& s, E_finishings* v);
-IPP_EXPORT bool FromString(const std::string& s, E_folding_direction* v);
-IPP_EXPORT bool FromString(const std::string& s, E_identify_actions* v);
-IPP_EXPORT bool FromString(const std::string& s, E_imposition_template* v);
-IPP_EXPORT bool FromString(const std::string& s,
-                           E_input_orientation_requested* v);
-IPP_EXPORT bool FromString(const std::string& s, E_input_quality* v);
-IPP_EXPORT bool FromString(const std::string& s, E_input_sides* v);
-IPP_EXPORT bool FromString(const std::string& s, E_ipp_features_supported* v);
-IPP_EXPORT bool FromString(const std::string& s, E_ipp_versions_supported* v);
-IPP_EXPORT bool FromString(const std::string& s, E_job_account_type* v);
-IPP_EXPORT bool FromString(const std::string& s,
-                           E_job_accounting_output_bin* v);
-IPP_EXPORT bool FromString(const std::string& s,
-                           E_job_accounting_sheets_type* v);
-IPP_EXPORT bool FromString(const std::string& s, E_job_collation_type* v);
-IPP_EXPORT bool FromString(const std::string& s, E_job_delay_output_until* v);
-IPP_EXPORT bool FromString(const std::string& s, E_job_error_action* v);
-IPP_EXPORT bool FromString(const std::string& s, E_job_error_sheet_when* v);
-IPP_EXPORT bool FromString(const std::string& s, E_job_hold_until* v);
-IPP_EXPORT bool FromString(const std::string& s, E_job_mandatory_attributes* v);
-IPP_EXPORT bool FromString(const std::string& s, E_job_password_encryption* v);
-IPP_EXPORT bool FromString(const std::string& s, E_job_sheets* v);
-IPP_EXPORT bool FromString(const std::string& s, E_job_spooling_supported* v);
-IPP_EXPORT bool FromString(const std::string& s, E_job_state* v);
-IPP_EXPORT bool FromString(const std::string& s, E_job_state_reasons* v);
-IPP_EXPORT bool FromString(const std::string& s, E_laminating_type* v);
-IPP_EXPORT bool FromString(const std::string& s, E_material_color* v);
-IPP_EXPORT bool FromString(const std::string& s, E_media* v);
-IPP_EXPORT bool FromString(const std::string& s, E_media_back_coating* v);
-IPP_EXPORT bool FromString(const std::string& s, E_media_grain* v);
-IPP_EXPORT bool FromString(const std::string& s, E_media_input_tray_check* v);
-IPP_EXPORT bool FromString(const std::string& s, E_media_key* v);
-IPP_EXPORT bool FromString(const std::string& s, E_media_pre_printed* v);
-IPP_EXPORT bool FromString(const std::string& s, E_media_ready* v);
-IPP_EXPORT bool FromString(const std::string& s, E_media_source* v);
-IPP_EXPORT bool FromString(const std::string& s, E_media_tooth* v);
-IPP_EXPORT bool FromString(const std::string& s, E_media_type* v);
-IPP_EXPORT bool FromString(const std::string& s,
-                           E_multiple_document_handling* v);
-IPP_EXPORT bool FromString(const std::string& s,
-                           E_multiple_operation_time_out_action* v);
-IPP_EXPORT bool FromString(const std::string& s, E_notify_events* v);
-IPP_EXPORT bool FromString(const std::string& s, E_notify_pull_method* v);
-IPP_EXPORT bool FromString(const std::string& s, E_operations_supported* v);
-IPP_EXPORT bool FromString(const std::string& s, E_page_delivery* v);
-IPP_EXPORT bool FromString(const std::string& s, E_pdf_versions_supported* v);
-IPP_EXPORT bool FromString(const std::string& s, E_pdl_init_file_supported* v);
-IPP_EXPORT bool FromString(const std::string& s, E_pdl_override_supported* v);
-IPP_EXPORT bool FromString(const std::string& s,
-                           E_presentation_direction_number_up* v);
-IPP_EXPORT bool FromString(const std::string& s, E_print_color_mode* v);
-IPP_EXPORT bool FromString(const std::string& s, E_print_content_optimize* v);
-IPP_EXPORT bool FromString(const std::string& s, E_print_rendering_intent* v);
-IPP_EXPORT bool FromString(const std::string& s, E_print_scaling* v);
-IPP_EXPORT bool FromString(const std::string& s, E_printer_state* v);
-IPP_EXPORT bool FromString(const std::string& s, E_printer_state_reasons* v);
-IPP_EXPORT bool FromString(const std::string& s, E_proof_print_supported* v);
-IPP_EXPORT bool FromString(const std::string& s,
-                           E_pwg_raster_document_sheet_back* v);
-IPP_EXPORT bool FromString(const std::string& s,
-                           E_pwg_raster_document_type_supported* v);
-IPP_EXPORT bool FromString(const std::string& s, E_requested_attributes* v);
-IPP_EXPORT bool FromString(const std::string& s, E_save_disposition* v);
-IPP_EXPORT bool FromString(const std::string& s, E_separator_sheets_type* v);
-IPP_EXPORT bool FromString(const std::string& s, E_sheet_collate* v);
-IPP_EXPORT bool FromString(const std::string& s, E_status_code* v);
-IPP_EXPORT bool FromString(const std::string& s, E_stitching_method* v);
-IPP_EXPORT bool FromString(const std::string& s, E_stitching_reference_edge* v);
-IPP_EXPORT bool FromString(const std::string& s, E_trimming_type* v);
-IPP_EXPORT bool FromString(const std::string& s, E_trimming_when* v);
-IPP_EXPORT bool FromString(const std::string& s,
-                           E_uri_authentication_supported* v);
-IPP_EXPORT bool FromString(const std::string& s, E_uri_security_supported* v);
-IPP_EXPORT bool FromString(const std::string& s, E_which_jobs* v);
-IPP_EXPORT bool FromString(const std::string& s, E_x_image_position* v);
-IPP_EXPORT bool FromString(const std::string& s, E_xri_authentication* v);
-IPP_EXPORT bool FromString(const std::string& s, E_xri_security* v);
-IPP_EXPORT bool FromString(const std::string& s, E_y_image_position* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, GroupTag* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, AttrName* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_auth_info_required* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_baling_type* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_baling_when* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_binding_reference_edge* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_binding_type* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_coating_sides* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_coating_type* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_compression* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_cover_back_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_cover_type* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_covering_name* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_current_page_order* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_document_digital_signature* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_document_format_details_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_document_format_varying_attributes* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_feed_orientation* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_finishing_template* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_finishings* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_folding_direction* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_identify_actions* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_imposition_template* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_input_orientation_requested* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_input_quality* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_input_sides* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_ipp_features_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_ipp_versions_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_job_account_type* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_job_accounting_output_bin* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_job_accounting_sheets_type* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_job_collation_type* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_job_delay_output_until* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_job_error_action* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_job_error_sheet_when* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_job_hold_until* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_job_mandatory_attributes* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_job_password_encryption* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_job_sheets* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_job_spooling_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_job_state* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_job_state_reasons* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_laminating_type* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_material_color* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_media* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_media_back_coating* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_media_grain* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_media_input_tray_check* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_media_key* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_media_pre_printed* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_media_ready* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_media_source* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_media_tooth* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_media_type* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_multiple_document_handling* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_multiple_operation_time_out_action* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_notify_events* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_notify_pull_method* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_operations_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_page_delivery* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_pdf_versions_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_pdl_init_file_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_pdl_override_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_presentation_direction_number_up* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_print_color_mode* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_print_content_optimize* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_print_rendering_intent* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_print_scaling* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_printer_state* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_printer_state_reasons* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_proof_print_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_pwg_raster_document_sheet_back* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_pwg_raster_document_type_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_requested_attributes* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_save_disposition* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_separator_sheets_type* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_sheet_collate* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_status_code* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_stitching_method* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_stitching_reference_edge* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_trimming_type* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_trimming_when* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_uri_authentication_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s,
+                              E_uri_security_supported* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_which_jobs* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_x_image_position* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_xri_authentication* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_xri_security* v);
+LIBIPP_EXPORT bool FromString(const std::string& s, E_y_image_position* v);
 }  // namespace ipp
 
 #endif  //  LIBIPP_IPP_ENUMS_H_

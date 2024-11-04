@@ -178,15 +178,6 @@ weston_log_flight_recorder_write(struct weston_log_subscriber *sub,
 }
 
 static void
-weston_log_flight_recorder_map_memory(struct weston_debug_log_flight_recorder *flight_rec)
-{
-	size_t i = 0;
-
-	for (i = 0; i < flight_rec->rb.size; i++)
-		flight_rec->rb.buf[i] = 0xff;
-}
-
-static void
 weston_log_subscriber_display_flight_rec_data(struct weston_ring_buffer *rb,
 					      FILE *file)
 {
@@ -271,7 +262,7 @@ weston_log_subscriber_create_flight_rec(size_t size)
 	weston_primary_flight_recorder_ring_buffer = &flight_rec->rb;
 
 	/* write some data to the rb such that the memory gets mapped */
-	weston_log_flight_recorder_map_memory(flight_rec);
+	memset(flight_rec->rb.buf, 0xff, flight_rec->rb.size);
 
 	return &flight_rec->base;
 }

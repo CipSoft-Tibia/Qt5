@@ -441,8 +441,7 @@ export class RequestTimingView extends UI.Widget.VBox {
       bar.style.left = left + '%';
       bar.style.right = right + '%';
       bar.textContent = '\u200B';  // Important for 0-time items to have 0 width.
-      UI.ARIAUtils.setAccessibleName(
-          row, i18nString(UIStrings.startedAtS, {PH1: calculator.formatValue(range.start, 2)}));
+      UI.ARIAUtils.setLabel(row, i18nString(UIStrings.startedAtS, {PH1: calculator.formatValue(range.start, 2)}));
       const label = tr.createChild('td').createChild('div', 'network-timing-bar-title');
       label.textContent = i18n.TimeUtilities.secondsToString(duration, true);
 
@@ -645,7 +644,7 @@ export class RequestTimingView extends UI.Widget.VBox {
     }
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     this.request.addEventListener(SDK.NetworkRequest.Events.TimingChanged, this.refresh, this);
     this.request.addEventListener(SDK.NetworkRequest.Events.FinishedLoading, this.refresh, this);
     this.calculator.addEventListener(Events.BoundariesChanged, this.boundaryChanged, this);
@@ -653,7 +652,7 @@ export class RequestTimingView extends UI.Widget.VBox {
     this.refresh();
   }
 
-  willHide(): void {
+  override willHide(): void {
     this.request.removeEventListener(SDK.NetworkRequest.Events.TimingChanged, this.refresh, this);
     this.request.removeEventListener(SDK.NetworkRequest.Events.FinishedLoading, this.refresh, this);
     this.calculator.removeEventListener(Events.BoundariesChanged, this.boundaryChanged, this);

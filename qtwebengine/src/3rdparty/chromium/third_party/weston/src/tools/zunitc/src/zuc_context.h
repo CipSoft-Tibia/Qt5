@@ -42,11 +42,9 @@ struct zuc_context {
 	int repeat;
 	int random;
 	unsigned int seed;
-	bool spawn;
 	bool break_on_failure;
 	bool output_tap;
 	bool output_junit;
-	int fds[2];
 	char *filter;
 
 	struct zuc_slinked *listeners;

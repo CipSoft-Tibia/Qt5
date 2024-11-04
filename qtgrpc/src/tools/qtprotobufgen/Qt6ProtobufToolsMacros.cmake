@@ -12,7 +12,6 @@ macro(_qt_internal_get_protoc_common_options option_args single_args multi_args)
     )
     set(${single_args}
         EXTRA_NAMESPACE
-        EXPORT_MACRO
         QML_URI
     )
 
@@ -27,6 +26,7 @@ macro(_qt_internal_get_protoc_generate_arguments option_args single_args multi_a
         PROTO_FILES_BASE_DIR
         OUTPUT_HEADERS
         OUTPUT_TARGETS
+        EXPORT_MACRO
     )
     set(${multi_args}
         PROTO_FILES
@@ -50,6 +50,11 @@ macro(_qt_internal_get_protoc_options out_var prefix option single multi)
         endif()
     endforeach()
 endmacro()
+
+# Returns the generator target name according to the pre-defined pattern
+function(_qt_internal_get_generator_dep_target_name out_var target generator dep_index)
+    set(${out_var} "${target}_${generator}_deps_${dep_index}" PARENT_SCOPE)
+endfunction()
 
 # The base function that generates rules to call the protoc executable with the custom generator
 # plugin.
@@ -96,7 +101,7 @@ function(_qt_internal_protoc_generate target generator output_directory)
     if(NOT num_deps)
         set(num_deps 0)
     endif()
-    set(deps_target ${target}_${generator}_deps_${num_deps})
+    _qt_internal_get_generator_dep_target_name(deps_target ${target} ${generator} ${num_deps})
     math(EXPR num_deps "${num_deps} + 1")
 
     set(generator_file $<TARGET_FILE:${QT_CMAKE_EXPORT_NAMESPACE}::${generator}>)
@@ -172,6 +177,7 @@ function(_qt_internal_protoc_generate target generator output_directory)
         DEPENDS
             ${QT_CMAKE_EXPORT_NAMESPACE}::${generator}
             ${proto_files}
+            $<TARGET_FILE:WrapProtoc::WrapProtoc>
         COMMENT "Generating QtProtobuf ${target} sources for ${generator}..."
         COMMAND_EXPAND_LISTS
         VERBATIM
@@ -239,6 +245,70 @@ function(_qt_internal_protobuf_package_qml_uri out_uri)
     endif()
     list(GET ARGN 0 qml_uri)
     set(${out_uri} ${qml_uri} PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_protoc_get_export_macro_filename out_filename target)
+    # Export filename is always based on target name.
+    string(TOLOWER "${target}" target_lower)
+    set(${out_filename} "${target_lower}_exports.qpb.h" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_protoc_generate_cpp_exports out_generated_file out_generation_options target
+    export_macro)
+
+    # Add EXPORT_MACRO if the target is a shared library
+    string(TOUPPER "${target}" target_upper)
+    get_target_property(export_macro_previous ${target} _qt_internal_protobuf_export_macro)
+
+    # This is not the first time we enter this function for the target.
+    if(export_macro_previous)
+        if(export_macro AND NOT "${export_macro}" STREQUAL "${export_macro_previous}")
+            message(FATAL_ERROR "EXPORT_MACRO argument doesn't match the one that already"
+                "used for ${target}.\n"
+                "Previous: ${export_macro_previous}\n"
+                "New: ${export_macro}"
+            )
+        endif()
+        set(export_macro "${export_macro_previous}")
+        set(skip_generating TRUE)
+    else()
+        set(skip_generating FALSE)
+    endif()
+
+    if(NOT export_macro)
+        string(MAKE_C_IDENTIFIER "${target_upper}" target_sanitized)
+        set(export_macro "${target_sanitized}")
+    endif()
+
+    string(MAKE_C_IDENTIFIER "${export_macro}" export_macro_sanitized)
+    if(NOT "${export_macro}" STREQUAL "${export_macro_sanitized}")
+        message(FATAL_ERROR "EXPORT_MACRO should be a valid C identifier.")
+    endif()
+
+    _qt_internal_protoc_get_export_macro_filename(export_macro_filename ${target})
+
+    if(skip_generating)
+        # Tell the generator that we have export macro but we don't want to generate exports,
+        # since they were generated in previous qt_add_<protobuf|grpc> call.
+        set(${out_generation_options}
+            "EXPORT_MACRO=${export_macro}:${export_macro_filename}:false")
+
+        # Avoid scheduling the file generating twice
+        set(export_macro_filename "")
+    else()
+        set(${out_generation_options}
+            "EXPORT_MACRO=${export_macro}:${export_macro_filename}:true")
+
+        set_target_properties(${target} PROPERTIES
+            _qt_internal_protobuf_export_macro "${export_macro}")
+
+            # Define this so we can conditionally set the export macro behavior
+        target_compile_definitions(${target}
+            PRIVATE "QT_BUILD_${export_macro}_LIB")
+    endif()
+
+    set(${out_generated_file} "${export_macro_filename}" PARENT_SCOPE)
+    set(${out_generation_options} "${${out_generation_options}}" PARENT_SCOPE)
 endfunction()
 
 # TODO Qt6:
@@ -387,10 +457,6 @@ function(qt6_add_protobuf target)
             )
         endif()
         list(APPEND generation_options "QML_URI=${qml_uri}")
-
-        string(REPLACE "." "_" qml_plugin_base_name "${qml_uri}")
-        list(APPEND qml_sources
-            "${output_directory}/${qml_plugin_base_name}plugin.cpp")
     endif()
 
     if(arg_PROTO_INCLUDES)
@@ -426,15 +492,15 @@ function(qt6_add_protobuf target)
         message(FATAL_ERROR "Unsupported target type '${target_type}'.")
     endif()
 
-    if(is_static OR is_shared)
-        # Add EXPORT_MACRO if the target is, or we will create, a shared library
-        string(TOUPPER "${target}" target_upper)
-        if (is_shared)
-            list(APPEND generation_options "EXPORT_MACRO=${target_upper}")
+    if(is_shared)
+        set(generated_export "")
+        set(generated_export_options "")
+        _qt_internal_protoc_generate_cpp_exports(generated_export generated_export_options
+            ${target} "${arg_EXPORT_MACRO}")
+        if(generated_export)
+            list(APPEND cpp_sources "${output_directory}/${generated_export}")
         endif()
-        # Define this so we can conditionally set the export macro
-        target_compile_definitions(${target}
-            PRIVATE "QT_BUILD_${target_upper}_LIB")
+        list(APPEND generation_options "${generated_export_options}")
     endif()
 
     _qt_internal_protoc_generate(${target} qtprotobufgen "${output_directory}"
@@ -478,14 +544,35 @@ function(qt6_add_protobuf target)
         ${QT_CMAKE_EXPORT_NAMESPACE}::Protobuf
     )
 
+    if(is_shared)
+        _qt_internal_protoc_get_export_macro_filename(export_macro_filename ${target})
+        set(export_macro_file "${output_directory}/${export_macro_filename}")
+    endif()
+
+    set_source_files_properties(${type_registrations} PROPERTIES SKIP_AUTOGEN ON)
     if(is_static OR (WIN32 AND NOT is_executable))
         if(TARGET ${target}_protobuf_registration)
             target_sources(${target}_protobuf_registration PRIVATE ${type_registrations})
         else()
             add_library(${target}_protobuf_registration OBJECT ${type_registrations})
+            if(export_macro_file)
+                target_sources(${target}_protobuf_registration PRIVATE ${export_macro_file})
+            endif()
+
             target_link_libraries(${target}
                 INTERFACE "$<TARGET_OBJECTS:$<TARGET_NAME:${target}_protobuf_registration>>")
             add_dependencies(${target} ${target}_protobuf_registration)
+
+            get_target_property(num_deps ${target} _qt_qtprotobufgen_deps_num)
+            if(num_deps)
+                # foreach includes the last element in the RANGE
+                math(EXPR num_deps "${num_deps} - 1")
+                foreach(i RANGE 0 ${num_deps})
+                    _qt_internal_get_generator_dep_target_name(deps_target ${target}
+                        qtprotobufgen ${i})
+                    add_dependencies(${target}_protobuf_registration ${deps_target})
+                endforeach()
+            endif()
 
             target_include_directories(${target}_protobuf_registration
                 PRIVATE "$<GENEX_EVAL:$<TARGET_PROPERTY:${target},INCLUDE_DIRECTORIES>>")
@@ -507,33 +594,46 @@ function(qt6_add_protobuf target)
         endif()
     else()
         target_sources(${target} PRIVATE ${type_registrations})
+        if(export_macro_file)
+            target_sources(${target} PRIVATE ${export_macro_file})
+        endif()
     endif()
 
     if(arg_QML AND NOT existing_uri)
         string(REPLACE "." "/" qml_module_output_path "${qml_uri}")
         set(qml_module_output_full_path "${CMAKE_CURRENT_BINARY_DIR}/${qml_module_output_path}")
 
+        if(NOT is_executable)
+            set(plugin_options PLUGIN_TARGET "${target}plugin")
+        endif()
+
         qt_policy(SET QTP0001 NEW)
         qt6_add_qml_module(${target}
             URI ${qml_uri}
-            NO_GENERATE_PLUGIN_SOURCE
-            NO_PLUGIN_OPTIONAL
-            PLUGIN_TARGET "${target}plugin"
+            ${plugin_options}
             VERSION 1.0
             OUTPUT_DIRECTORY "${qml_module_output_full_path}"
-        )
-        target_sources(${target}plugin PRIVATE
-            "${output_directory}/${qml_plugin_base_name}plugin.cpp")
-        set_target_properties(${target}plugin
-            PROPERTIES
-                AUTOMOC ON
-        )
-        target_include_directories(${target}plugin PRIVATE ${extra_include_directories})
-        target_link_libraries(${target}plugin PRIVATE
-            ${QT_CMAKE_EXPORT_NAMESPACE}::Protobuf
+            OUTPUT_TARGETS qml_output_targets
         )
 
-        list(APPEND ${arg_OUTPUT_TARGETS} ${target}plugin)
+        if(TARGET ${target}plugin)
+            set_target_properties(${target}plugin
+                PROPERTIES
+                    AUTOMOC ON
+            )
+            target_link_libraries(${target}plugin PRIVATE
+                ${QT_CMAKE_EXPORT_NAMESPACE}::Protobuf
+            )
+        endif()
+
+        if(DEFINED arg_OUTPUT_TARGETS)
+            if(qml_output_targets)
+                list(APPEND ${arg_OUTPUT_TARGETS} ${qml_output_targets})
+            endif()
+            if(TARGET ${target}plugin)
+                list(APPEND ${arg_OUTPUT_TARGETS} "${target}plugin")
+            endif()
+        endif()
     endif()
 
     if(DEFINED arg_OUTPUT_HEADERS)
@@ -541,6 +641,7 @@ function(qt6_add_protobuf target)
     endif()
 
     if(DEFINED arg_OUTPUT_TARGETS)
+        list(REMOVE_DUPLICATES ${arg_OUTPUT_TARGETS})
         set(${arg_OUTPUT_TARGETS} "${${arg_OUTPUT_TARGETS}}" PARENT_SCOPE)
     endif()
 endfunction()

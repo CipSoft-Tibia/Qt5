@@ -40,6 +40,8 @@
 #include "content/public/browser/media_stream_request.h"
 #include "content/public/browser/permission_controller.h"
 #include "media/base/video_facing.h"
+#include "media/capture/mojom/video_capture.mojom.h"
+#include "mojo/public/cpp/bindings/unique_receiver_set.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/mediastream/media_devices.h"
 #include "third_party/blink/public/common/mediastream/media_stream_controls.h"
@@ -130,6 +132,11 @@ class CONTENT_EXPORT MediaStreamManager
   // render processes hosts whose corresponding render processes are requesting
   // logging from webrtcLoggingPrivate API. Safe to call from any thread.
   static void SendMessageToNativeLog(const std::string& message);
+
+  // Returns the current MediaStreamManager instance. This is used to get access
+  // to the getters that return objects owned by MediaStreamManager.
+  // Must be called on the IO thread.
+  static MediaStreamManager* GetInstance();
 
   explicit MediaStreamManager(media::AudioSystem* audio_system);
 
@@ -271,20 +278,6 @@ class CONTENT_EXPORT MediaStreamManager
                   OpenDeviceCallback open_device_cb,
                   DeviceStoppedCallback device_stopped_cb);
 
-  // Finds and returns the device id and group id corresponding to the given
-  // |source_id|. Returns true if there was a raw device id that matched the
-  // given |source_id|, false if nothing matched it and leaves the |device_id|
-  // and |group_id| unchanged.
-  // TODO(guidou): Update to provide a callback-based interface.
-  // See http://crbug.com/648155.
-  bool TranslateSourceIdToDeviceIdAndGroupId(
-      blink::mojom::MediaStreamType stream_type,
-      const std::string& salt,
-      const url::Origin& security_origin,
-      const std::string& source_id,
-      std::string* device_id,
-      absl::optional<std::string>* group_id) const;
-
   // Find |device_id| in the list of |requests_|, and returns its session id,
   // or an empty base::UnguessableToken if not found. Must be called on the IO
   // thread.
@@ -334,42 +327,6 @@ class CONTENT_EXPORT MediaStreamManager
       int renderer_host_id,
       base::RepeatingCallback<void(const std::string&)> callback);
   static void UnregisterNativeLogCallback(int renderer_host_id);
-
-  // Generates a hash of a device's unique ID usable by one
-  // particular security origin.
-  static std::string GetHMACForMediaDeviceID(const std::string& salt,
-                                             const url::Origin& security_origin,
-                                             const std::string& raw_unique_id);
-
-  // Convenience method to check if |device_guid| is an HMAC of
-  // |raw_device_id| for |security_origin|.
-  static bool DoesMediaDeviceIDMatchHMAC(const std::string& salt,
-                                         const url::Origin& security_origin,
-                                         const std::string& device_guid,
-                                         const std::string& raw_unique_id);
-
-  // Convenience method to get the raw device ID from the HMAC |hmac_device_id|
-  // for the given |security_origin| and |salt|. |stream_type| must be
-  // blink::mojom::MediaStreamType::DEVICE_AUDIO_CAPTURE or
-  // blink::mojom::MediaStreamType::DEVICE_VIDEO_CAPTURE. The result will
-  // be returned via |callback| on the given |task_runner|.
-  static void GetMediaDeviceIDForHMAC(
-      blink::mojom::MediaStreamType stream_type,
-      std::string salt,
-      url::Origin security_origin,
-      std::string hmac_device_id,
-      scoped_refptr<base::SequencedTaskRunner> task_runner,
-      base::OnceCallback<void(const absl::optional<std::string>&)> callback);
-  // Overload that allows for a blink::mojom::MediaDeviceType to be specified
-  // instead of a blink::mojom::MediaStreamType. This allows for getting the raw
-  // device ID from the HMAC of an audio output device.
-  static void GetMediaDeviceIDForHMAC(
-      blink::mojom::MediaDeviceType device_type,
-      std::string salt,
-      url::Origin security_origin,
-      std::string hmac_device_id,
-      scoped_refptr<base::SequencedTaskRunner> task_runner,
-      base::OnceCallback<void(const absl::optional<std::string>&)> callback);
 
   // Returns true if the renderer process identified with |render_process_id|
   // is allowed to access |origin|.
@@ -435,6 +392,16 @@ class CONTENT_EXPORT MediaStreamManager
                                       bool is_from_microtask,
                                       bool is_from_timer);
 #endif
+
+  void RegisterDispatcherHost(
+      std::unique_ptr<blink::mojom::MediaStreamDispatcherHost> host,
+      mojo::PendingReceiver<blink::mojom::MediaStreamDispatcherHost> receiver);
+  size_t num_dispatcher_hosts() const { return dispatcher_hosts_.size(); }
+
+  void RegisterVideoCaptureHost(
+      std::unique_ptr<media::mojom::VideoCaptureHost> host,
+      mojo::PendingReceiver<media::mojom::VideoCaptureHost> receiver);
+  size_t num_video_capture_hosts() const { return video_capture_hosts_.size(); }
 
  private:
   friend class MediaStreamManagerTest;
@@ -735,7 +702,7 @@ class CONTENT_EXPORT MediaStreamManager
       const blink::mojom::StreamDevicesSet& new_stream_devices_set,
       DeviceRequest& request);
 
-  bool ShouldUseFakeUIProxy(blink::mojom::MediaStreamType stream_type) const;
+  bool ShouldUseFakeUIProxy(const DeviceRequest& request) const;
 
   std::unique_ptr<MediaStreamUIProxy> MakeFakeUIProxy(
       const std::string& label,
@@ -752,7 +719,8 @@ class CONTENT_EXPORT MediaStreamManager
   const base::TimeDelta conditional_focus_window_;
 #endif
 
-  const raw_ptr<media::AudioSystem> audio_system_;  // not owned
+  const raw_ptr<media::AudioSystem, DanglingUntriaged>
+      audio_system_;  // not owned
   scoped_refptr<AudioInputDeviceManager> audio_input_device_manager_;
   scoped_refptr<VideoCaptureManager> video_capture_manager_;
 
@@ -770,12 +738,18 @@ class CONTENT_EXPORT MediaStreamManager
   // tests / web tests via the command line flag --use-fake-ui-for-media-stream.
   base::RepeatingCallback<std::unique_ptr<FakeMediaStreamUIProxy>(void)>
       fake_ui_factory_;
+
   // The fake UI doesn't work for getUserMedia desktop captures, so in general
   // we won't use it for them, even if fake_ui_factory_ is set (see
   // crbug.com/919485).
   // Some unittests do still require the fake ui to be used for all captures, so
   // set this indicator to true.
   bool use_fake_ui_for_gum_desktop_capture_ = false;
+
+  // If `true`, the fake UI factory is used only for cameras and microphones,
+  // and NOT for any form of screen-capture, regardless if that screen-capture
+  // is getDisplayMedia-driven or getUserMedia-driven.
+  bool use_fake_ui_only_for_camera_and_microphone_ = false;
 
   // Observes changes of captured tabs' CaptureHandleConfig and reports
   // this changes back to their capturers. This object lives on the UI thread
@@ -790,6 +764,10 @@ class CONTENT_EXPORT MediaStreamManager
 
   // Provider of system power change logging to the WebRTC logs.
   MediaStreamPowerLogger power_logger_;
+
+  mojo::UniqueReceiverSet<blink::mojom::MediaStreamDispatcherHost>
+      dispatcher_hosts_;
+  mojo::UniqueReceiverSet<media::mojom::VideoCaptureHost> video_capture_hosts_;
 
   GenerateStreamTestCallback generate_stream_test_callback_;
 };

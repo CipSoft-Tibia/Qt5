@@ -65,7 +65,8 @@ class GPU_GLES2_EXPORT CompoundImageBacking : public SharedImageBacking {
       const gfx::ColorSpace& color_space,
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
-      uint32_t usage);
+      uint32_t usage,
+      std::string debug_label);
 
   // Creates a backing that contains a shared memory backing and GPU backing
   // provided by `gpu_backing_factory`.
@@ -80,7 +81,28 @@ class GPU_GLES2_EXPORT CompoundImageBacking : public SharedImageBacking {
       const gfx::ColorSpace& color_space,
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
-      uint32_t usage);
+      uint32_t usage,
+      std::string debug_label);
+
+  // Creates a backing that contains a shared memory backing and GPU backing
+  // provided by `gpu_backing_factory`. We additionally pass a |buffer_usage|
+  // parameter here in order to create a CPU mappable by creating a shared
+  // memory handle.
+  // TODO(crbug.com/1467670): Remove this method once we figure out the mapping
+  // between SharedImageUsage and BufferUsage and no longer need to use
+  // BufferUsage.
+  static std::unique_ptr<SharedImageBacking> CreateSharedMemory(
+      SharedImageBackingFactory* gpu_backing_factory,
+      bool allow_shm_overlays,
+      const Mailbox& mailbox,
+      viz::SharedImageFormat format,
+      const gfx::Size& size,
+      const gfx::ColorSpace& color_space,
+      GrSurfaceOrigin surface_origin,
+      SkAlphaType alpha_type,
+      uint32_t usage,
+      std::string debug_label,
+      gfx::BufferUsage buffer_usage);
 
   ~CompoundImageBacking() override;
 
@@ -96,22 +118,28 @@ class GPU_GLES2_EXPORT CompoundImageBacking : public SharedImageBacking {
   bool CopyToGpuMemoryBuffer() override;
   gfx::Rect ClearedRect() const override;
   void SetClearedRect(const gfx::Rect& cleared_rect) override;
+  void OnAddSecondaryReference() override;
+  gfx::GpuMemoryBufferHandle GetGpuMemoryBufferHandle() override;
 
  protected:
   // SharedImageBacking implementation.
   std::unique_ptr<DawnImageRepresentation> ProduceDawn(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker,
-      WGPUDevice device,
-      WGPUBackendType backend_type,
-      std::vector<WGPUTextureFormat> view_formats) override;
+      const wgpu::Device& device,
+      wgpu::BackendType backend_type,
+      std::vector<wgpu::TextureFormat> view_formats) override;
   std::unique_ptr<GLTextureImageRepresentation> ProduceGLTexture(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker) override;
   std::unique_ptr<GLTexturePassthroughImageRepresentation>
   ProduceGLTexturePassthrough(SharedImageManager* manager,
                               MemoryTypeTracker* tracker) override;
-  std::unique_ptr<SkiaImageRepresentation> ProduceSkia(
+  std::unique_ptr<SkiaGaneshImageRepresentation> ProduceSkiaGanesh(
+      SharedImageManager* manager,
+      MemoryTypeTracker* tracker,
+      scoped_refptr<SharedContextState> context_state) override;
+  std::unique_ptr<SkiaGraphiteImageRepresentation> ProduceSkiaGraphite(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker,
       scoped_refptr<SharedContextState> context_state) override;
@@ -131,8 +159,11 @@ class GPU_GLES2_EXPORT CompoundImageBacking : public SharedImageBacking {
     ElementHolder& operator=(const ElementHolder& other) = delete;
     ~ElementHolder();
 
-    // Returns the backing. Will invoke `create_callback` to create backing if
+    // Will invoke `create_callback` to create backing if
     // required.
+    void CreateBackingIfNecessary();
+
+    // Returns the backing. Will call `CreateBackingIfNecessary()`.
     SharedImageBacking* GetBacking();
 
     AccessStreamSet access_streams;
@@ -150,9 +181,11 @@ class GPU_GLES2_EXPORT CompoundImageBacking : public SharedImageBacking {
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
       uint32_t usage,
+      std::string debug_label,
       bool allow_shm_overlays,
       std::unique_ptr<SharedMemoryImageBacking> shm_backing,
-      base::WeakPtr<SharedImageBackingFactory> gpu_backing_factory);
+      base::WeakPtr<SharedImageBackingFactory> gpu_backing_factory,
+      absl::optional<gfx::BufferUsage> buffer_usage = absl::nullopt);
 
   base::trace_event::MemoryAllocatorDump* OnMemoryDump(
       const std::string& dump_name,
@@ -179,6 +212,7 @@ class GPU_GLES2_EXPORT CompoundImageBacking : public SharedImageBacking {
   // Runs CreateSharedImage() on `factory` and stores the result in `backing`.
   // If successful this will update the estimated size of compound backing.
   void LazyCreateBacking(base::WeakPtr<SharedImageBackingFactory> factory,
+                         std::string debug_label,
                          std::unique_ptr<SharedImageBacking>& backing);
 
   uint32_t latest_content_id_ = 1;

@@ -15,6 +15,8 @@ static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarNestedEnumMessage(qRegis
 static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarMixedEnumUsageMessage(qRegisterProtobufType<MixedEnumUsageMessage>);
 static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarSimpleFileEnumMessage(qRegisterProtobufType<SimpleFileEnumMessage>);
 static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarStepChildEnumMessage(qRegisterProtobufType<StepChildEnumMessage>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarA(qRegisterProtobufType<A>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarB(qRegisterProtobufType<B>);
 static bool RegisterEnummessagesProtobufTypes = [](){ qRegisterProtobufTypes(); return true; }();
 } // namespace qtprotobufnamespace::tests
 

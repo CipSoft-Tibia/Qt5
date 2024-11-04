@@ -182,7 +182,7 @@ function(qt_internal_add_executable name)
             qt_get_install_target_default_args(
                 OUT_VAR install_targets_default_args
                 CMAKE_CONFIG "${cmake_config}"
-                ALL_CMAKE_CONFIGS "${cmake_configs}"
+                ALL_CMAKE_CONFIGS ${cmake_configs}
                 RUNTIME "${arg_INSTALL_DIRECTORY}"
                 LIBRARY "${arg_INSTALL_DIRECTORY}"
                 BUNDLE "${arg_INSTALL_DIRECTORY}")
@@ -217,7 +217,8 @@ function(qt_internal_add_executable name)
     # This makes the experience of an initial Qt configuration to build and run one single
     # test / executable nicer.
     get_target_property(linked_libs "${name}" LINK_LIBRARIES)
-    if("Qt::Gui" IN_LIST linked_libs AND TARGET qpa_default_plugins)
+    if(linked_libs MATCHES "(^|;)(${QT_CMAKE_EXPORT_NAMESPACE}::|Qt::)?Gui($|;)" AND
+        TARGET qpa_default_plugins)
         add_dependencies("${name}" qpa_default_plugins)
     endif()
 
@@ -390,9 +391,15 @@ function(qt_internal_add_configure_time_executable target)
     if(arg_INSTALL_DIRECTORY)
         set(install_dir "${arg_INSTALL_DIRECTORY}")
     endif()
+
+    set(output_directory_relative "${install_dir}")
     set(output_directory "${QT_BUILD_DIR}/${install_dir}")
+
+    set(target_binary_path_relative
+        "${output_directory_relative}/${configuration_path}${target_binary}")
     set(target_binary_path
         "${output_directory}/${configuration_path}${target_binary}")
+
     get_filename_component(target_binary_path "${target_binary_path}" ABSOLUTE)
 
     if(NOT DEFINED arg_SOURCES)
@@ -521,7 +528,9 @@ function(qt_internal_add_configure_time_executable target)
     add_executable(${QT_CMAKE_EXPORT_NAMESPACE}::${target} ALIAS ${target})
     set_target_properties(${target} PROPERTIES
         _qt_internal_configure_time_target TRUE
-        IMPORTED_LOCATION "${target_binary_path}")
+        _qt_internal_configure_time_target_build_location "${target_binary_path_relative}"
+        IMPORTED_LOCATION "${target_binary_path}"
+    )
 
     if(NOT arg_NO_INSTALL)
         set_target_properties(${target} PROPERTIES

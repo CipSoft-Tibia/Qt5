@@ -48,6 +48,32 @@ public:
     QSvgRenderer *renderer;
 };
 
+// Event listener for ShowEvent/HideEvent on QSvgWidget (which can't just
+// reimplement event() or showEvent()/hideEvent() or eventFilter() in case
+// a subclass doesn't call the base class in those methods)
+// ### Qt 7: remove the event filter; move this logic into showEvent/hideEvent; add event() override
+class QSvgWidgetListener : public QObject
+{
+public:
+    using QObject::QObject;
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override
+    {
+        if (event->type() == QEvent::Show)
+            renderer()->setAnimationEnabled(true);
+        else if (event->type() == QEvent::Hide)
+            renderer()->setAnimationEnabled(false);
+        return QObject::eventFilter(obj, event);
+    }
+
+private:
+    QSvgRenderer *renderer()
+    {
+        return static_cast<QSvgWidgetPrivate *>(QObjectPrivate::get(parent()))->renderer;
+    }
+};
+
 /*!
     Constructs a new SVG display widget with the given \a parent.
 */
@@ -57,6 +83,7 @@ QSvgWidget::QSvgWidget(QWidget *parent)
     d_func()->renderer = new QSvgRenderer(this);
     QObject::connect(d_func()->renderer, SIGNAL(repaintNeeded()),
                      this, SLOT(update()));
+    installEventFilter(new QSvgWidgetListener(this));
 }
 
 /*!
@@ -64,11 +91,9 @@ QSvgWidget::QSvgWidget(QWidget *parent)
     of the specified \a file.
 */
 QSvgWidget::QSvgWidget(const QString &file, QWidget *parent)
-    : QWidget(*new QSvgWidgetPrivate, parent, {})
+    : QSvgWidget(parent)
 {
-    d_func()->renderer = new QSvgRenderer(file, this);
-    QObject::connect(d_func()->renderer, SIGNAL(repaintNeeded()),
-                     this, SLOT(update()));
+    d_func()->renderer->load(file);
 }
 
 /*!
@@ -101,6 +126,38 @@ QSize QSvgWidget::sizeHint() const
         return QSize(128, 64);
 }
 
+/*!
+    \since 6.7
+
+    Returns the options of the widget's renderer.
+
+    \sa setOptions
+ */
+QtSvg::Options QSvgWidget::options() const
+{
+    Q_D(const QSvgWidget);
+    return d->renderer->options();
+}
+
+/*!
+    \since 6.7
+
+    Sets the widget's renderer options to \a options.
+
+    This property holds a set of QtSvg::Option flags that can be used
+    to enable or disable various features of the parsing and rendering
+    of SVG files. It must be set before calling the load function to
+    have any effect.
+
+    By default, no flags are set.
+
+    \sa options
+ */
+void QSvgWidget::setOptions(QtSvg::Options options)
+{
+    Q_D(QSvgWidget);
+    d->renderer->setOptions(options);
+}
 
 /*!
     \reimp
@@ -122,6 +179,8 @@ void QSvgWidget::load(const QString &file)
 {
     Q_D(const QSvgWidget);
     d->renderer->load(file);
+    if (!isVisible())
+        d->renderer->setAnimationEnabled(false);
 }
 
 /*!
@@ -131,6 +190,8 @@ void QSvgWidget::load(const QByteArray &contents)
 {
     Q_D(const QSvgWidget);
     d->renderer->load(contents);
+    if (!isVisible())
+        d->renderer->setAnimationEnabled(false);
 }
 
 QT_END_NAMESPACE

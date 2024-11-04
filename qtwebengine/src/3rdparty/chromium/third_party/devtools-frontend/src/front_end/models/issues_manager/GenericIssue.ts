@@ -40,6 +40,10 @@ const UIStrings = {
    */
   autocompleteAttributePageTitle: 'HTML attribute: autocomplete',
 
+  /**
+   * @description title for CORB explainer.
+   */
+  corbExplainerPageTitle: 'CORB explainer',
 };
 
 const str_ = i18n.i18n.registerUIStrings('models/issues_manager/GenericIssue.ts', UIStrings);
@@ -59,12 +63,21 @@ export class GenericIssue extends Issue {
     this.#issueDetails = issueDetails;
   }
 
+  override requests(): Iterable<Protocol.Audits.AffectedRequest> {
+    if (this.#issueDetails.request) {
+      return [this.#issueDetails.request];
+    }
+    return [];
+  }
+
   getCategory(): IssueCategory {
     return IssueCategory.Generic;
   }
 
   primaryKey(): string {
-    return `${this.code()}-(${this.#issueDetails.frameId})-(${this.#issueDetails.violatingNodeId})`;
+    const requestId = this.#issueDetails.request ? this.#issueDetails.request.requestId : 'no-request';
+    return `${this.code()}-(${this.#issueDetails.frameId})-(${this.#issueDetails.violatingNodeId})-(${
+        this.#issueDetails.violatingNodeAttribute})-(${requestId})`;
   }
 
   getDescription(): MarkdownIssueDescription|null {
@@ -154,6 +167,14 @@ export const genericFormInputAssignedAutocompleteValueToIdOrNameAttributeError =
   }],
 };
 
+export const genericFormInputHasWrongButWellIntendedAutocompleteValue = {
+  file: 'genericFormInputHasWrongButWellIntendedAutocompleteValueError.md',
+  links: [{
+    link: 'https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete#values',
+    linkTitle: i18nLazyString(UIStrings.autocompleteAttributePageTitle),
+  }],
+};
+
 export const genericFormLabelForMatchesNonExistingIdError = {
   file: 'genericFormLabelForMatchesNonExistingIdError.md',
   links: [{
@@ -167,6 +188,14 @@ export const genericFormLabelHasNeitherForNorNestedInput = {
   links: [{
     link: 'https://developer.mozilla.org/en-US/docs/Web/HTML/Element/label',
     linkTitle: i18nLazyString(UIStrings.labelFormlementsPageTitle),
+  }],
+};
+
+export const genericResponseWasBlockedbyORB = {
+  file: 'genericResponseWasBlockedByORB.md',
+  links: [{
+    link: 'https://www.chromium.org/Home/chromium-security/corb-for-developers/',
+    linkTitle: i18nLazyString(UIStrings.corbExplainerPageTitle),
   }],
 };
 
@@ -196,6 +225,14 @@ const issueDescriptions: Map<Protocol.Audits.GenericIssueErrorType, LazyMarkdown
     Protocol.Audits.GenericIssueErrorType.FormLabelHasNeitherForNorNestedInput,
     genericFormLabelHasNeitherForNorNestedInput,
   ],
+  [
+    Protocol.Audits.GenericIssueErrorType.FormInputHasWrongButWellIntendedAutocompleteValueError,
+    genericFormInputHasWrongButWellIntendedAutocompleteValue,
+  ],
+  [
+    Protocol.Audits.GenericIssueErrorType.ResponseWasBlockedByORB,
+    genericResponseWasBlockedbyORB,
+  ],
 ]);
 
 const issueTypes: Map<Protocol.Audits.GenericIssueErrorType, IssueKind> = new Map([
@@ -212,5 +249,6 @@ const issueTypes: Map<Protocol.Audits.GenericIssueErrorType, IssueKind> = new Ma
   ],
   [Protocol.Audits.GenericIssueErrorType.FormLabelForMatchesNonExistingIdError, IssueKind.PageError],
   [Protocol.Audits.GenericIssueErrorType.FormLabelHasNeitherForNorNestedInput, IssueKind.Improvement],
+  [Protocol.Audits.GenericIssueErrorType.FormInputHasWrongButWellIntendedAutocompleteValueError, IssueKind.Improvement],
 
 ]);

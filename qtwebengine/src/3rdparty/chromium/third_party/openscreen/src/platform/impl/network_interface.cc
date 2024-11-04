@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 namespace openscreen {
 
 // Returns an InterfaceInfo associated with the system's loopback interface.
-absl::optional<InterfaceInfo> GetLoopbackInterfaceForTesting() {
+std::optional<InterfaceInfo> GetLoopbackInterfaceForTesting() {
   const std::vector<InterfaceInfo> interfaces = GetNetworkInterfaces();
   auto it = std::find_if(
       interfaces.begin(), interfaces.end(), [](const InterfaceInfo& info) {
@@ -22,7 +22,7 @@ absl::optional<InterfaceInfo> GetLoopbackInterfaceForTesting() {
       });
 
   if (it == interfaces.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   } else {
     return *it;
   }

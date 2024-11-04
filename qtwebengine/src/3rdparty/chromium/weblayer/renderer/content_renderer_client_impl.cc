@@ -8,12 +8,12 @@
 #include "build/build_config.h"
 #include "components/autofill/content/renderer/autofill_agent.h"
 #include "components/autofill/content/renderer/password_autofill_agent.h"
+#include "components/autofill/core/common/autofill_features.h"
 #include "components/content_capture/common/content_capture_features.h"
 #include "components/content_capture/renderer/content_capture_sender.h"
 #include "components/content_settings/renderer/content_settings_agent_impl.h"
 #include "components/error_page/common/error.h"
 #include "components/grit/components_scaled_resources.h"
-#include "components/js_injection/renderer/js_communication.h"
 #include "components/no_state_prefetch/common/prerender_url_loader_throttle.h"
 #include "components/no_state_prefetch/renderer/no_state_prefetch_client.h"
 #include "components/no_state_prefetch/renderer/no_state_prefetch_helper.h"
@@ -147,7 +147,6 @@ void ContentRendererClientImpl::RenderFrameCreated(
   new SpellCheckProvider(render_frame, spellcheck_.get(),
                          local_interface_provider_.get());
 #endif
-  new js_injection::JsCommunication(render_frame);
 
   if (render_frame->IsMainFrame())
     new webapps::WebPageMetadataAgent(render_frame);
@@ -238,6 +237,11 @@ void ContentRendererClientImpl::
 
   if (base::FeatureList::IsEnabled(subresource_filter::kAdTagging)) {
     blink::WebRuntimeFeatures::EnableAdTagging(true);
+  }
+
+  if (base::FeatureList::IsEnabled(
+          autofill::features::kAutofillSharedAutofill)) {
+    blink::WebRuntimeFeatures::EnableSharedAutofill(true);
   }
 }
 

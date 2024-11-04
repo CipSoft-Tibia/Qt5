@@ -31,17 +31,16 @@
 import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
-import * as Root from '../../core/root/root.js';
 import type * as Platform from '../../core/platform/platform.js';
+import * as Root from '../../core/root/root.js';
 import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as Components from '../../ui/legacy/components/utils/utils.js';
 import * as UI from '../../ui/legacy/legacy.js';
+import {PanelUtils} from '../utils/utils.js';
+
 import * as PanelComponents from './components/components.js';
-
-import settingsScreenStyles from './settingsScreen.css.js';
-
 import {type KeybindsSettingsTab} from './KeybindsSettingsTab.js';
-import {highlightElement} from '../utils/utils.js';
+import settingsScreenStyles from './settingsScreen.css.js';
 
 const UIStrings = {
   /**
@@ -231,7 +230,7 @@ export class SettingsScreen extends UI.Widget.VBox implements UI.View.ViewLocati
       this.keybindsTab.onEscapeKeyPressed(event);
     }
   }
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([settingsScreenStyles]);
   }
@@ -258,7 +257,7 @@ abstract class SettingsTab extends UI.Widget.VBox {
       const title = block.createChild('div', 'settings-section-title');
       title.textContent = name;
       UI.ARIAUtils.markAsHeading(title, 2);
-      UI.ARIAUtils.setAccessibleName(block, name);
+      UI.ARIAUtils.setLabel(block, name);
     }
     return block;
   }
@@ -394,7 +393,7 @@ export class GenericSettingsTab extends SettingsTab {
     if (setting instanceof Common.Settings.Setting) {
       const element = this.settingToControl.get(setting);
       if (element) {
-        highlightElement(element);
+        PanelUtils.highlightElement(element);
       }
     }
   }
@@ -403,8 +402,9 @@ export class GenericSettingsTab extends SettingsTab {
 let experimentsSettingsTabInstance: ExperimentsSettingsTab;
 
 export class ExperimentsSettingsTab extends SettingsTab {
-  private experimentsSection: HTMLElement|undefined;
-  private unstableExperimentsSection: HTMLElement|undefined;
+  #experimentsSection: HTMLElement|undefined;
+  #unstableExperimentsSection: HTMLElement|undefined;
+  #inputElement: HTMLInputElement;
   private readonly experimentToControl = new Map<Root.Runtime.Experiment, HTMLElement>();
 
   constructor() {
@@ -414,44 +414,45 @@ export class ExperimentsSettingsTab extends SettingsTab {
 
     const labelElement = filterSection.createChild('label');
     labelElement.textContent = i18nString(UIStrings.filterExperimentsLabel);
-    const inputElement = UI.UIUtils.createInput('', 'text');
-    UI.ARIAUtils.bindLabelToControl(labelElement, inputElement);
-    filterSection.appendChild(inputElement);
-    inputElement.addEventListener('input', () => this.renderExperiments(inputElement.value.toLowerCase()), false);
+    this.#inputElement = UI.UIUtils.createInput('', 'text');
+    UI.ARIAUtils.bindLabelToControl(labelElement, this.#inputElement);
+    filterSection.appendChild(this.#inputElement);
+    this.#inputElement.addEventListener(
+        'input', () => this.renderExperiments(this.#inputElement.value.toLowerCase()), false);
 
-    this.renderExperiments('');
+    this.setFilter('');
   }
 
   private renderExperiments(filterText: string): void {
     this.experimentToControl.clear();
-    if (this.experimentsSection) {
-      this.experimentsSection.remove();
+    if (this.#experimentsSection) {
+      this.#experimentsSection.remove();
     }
-    if (this.unstableExperimentsSection) {
-      this.unstableExperimentsSection.remove();
+    if (this.#unstableExperimentsSection) {
+      this.#unstableExperimentsSection.remove();
     }
     const experiments = Root.Runtime.experiments.allConfigurableExperiments().sort();
     const unstableExperiments = experiments.filter(e => e.unstable && e.title.toLowerCase().includes(filterText));
     const stableExperiments = experiments.filter(e => !e.unstable && e.title.toLowerCase().includes(filterText));
     if (stableExperiments.length) {
-      this.experimentsSection = this.appendSection();
+      this.#experimentsSection = this.appendSection();
       const warningMessage = i18nString(UIStrings.theseExperimentsCouldBeUnstable);
-      this.experimentsSection.appendChild(this.createExperimentsWarningSubsection(warningMessage));
+      this.#experimentsSection.appendChild(this.createExperimentsWarningSubsection(warningMessage));
       for (const experiment of stableExperiments) {
-        this.experimentsSection.appendChild(this.createExperimentCheckbox(experiment));
+        this.#experimentsSection.appendChild(this.createExperimentCheckbox(experiment));
       }
     }
     if (unstableExperiments.length) {
-      this.unstableExperimentsSection = this.appendSection();
+      this.#unstableExperimentsSection = this.appendSection();
       const warningMessage = i18nString(UIStrings.theseExperimentsAreParticularly);
-      this.unstableExperimentsSection.appendChild(this.createExperimentsWarningSubsection(warningMessage));
+      this.#unstableExperimentsSection.appendChild(this.createExperimentsWarningSubsection(warningMessage));
       for (const experiment of unstableExperiments) {
-        this.unstableExperimentsSection.appendChild(this.createExperimentCheckbox(experiment));
+        this.#unstableExperimentsSection.appendChild(this.createExperimentCheckbox(experiment));
       }
     }
     if (!stableExperiments.length && !unstableExperiments.length) {
-      this.experimentsSection = this.appendSection();
-      const warning = this.experimentsSection.createChild('span');
+      this.#experimentsSection = this.appendSection();
+      const warning = this.#experimentsSection.createChild('span');
       warning.textContent = i18nString(UIStrings.noResults);
     }
   }
@@ -477,6 +478,7 @@ export class ExperimentsSettingsTab extends SettingsTab {
 
   private createExperimentCheckbox(experiment: Root.Runtime.Experiment): HTMLParagraphElement {
     const label = UI.UIUtils.CheckboxLabel.create(experiment.title, experiment.isEnabled());
+    label.classList.add('experiment-label');
     const input = label.checkboxElement;
     input.name = experiment.name;
     function listener(): void {
@@ -501,7 +503,7 @@ export class ExperimentsSettingsTab extends SettingsTab {
       link.setAttribute('aria-label', i18nString(UIStrings.learnMore));
 
       const linkIcon = new IconButton.Icon.Icon();
-      linkIcon.data = {iconName: 'help_outline', color: 'var(--color-text-secondary)', width: '16px', height: '16px'};
+      linkIcon.data = {iconName: 'help', color: 'var(--icon-default)', width: '16px', height: '16px'};
       linkIcon.classList.add('link-icon');
       link.prepend(linkIcon);
 
@@ -523,9 +525,14 @@ export class ExperimentsSettingsTab extends SettingsTab {
     if (experiment instanceof Root.Runtime.Experiment) {
       const element = this.experimentToControl.get(experiment);
       if (element) {
-        highlightElement(element);
+        PanelUtils.highlightElement(element);
       }
     }
+  }
+
+  setFilter(filterText: string): void {
+    this.#inputElement.value = filterText;
+    this.#inputElement.dispatchEvent(new Event('input', {'bubbles': true, 'cancelable': true}));
   }
 }
 

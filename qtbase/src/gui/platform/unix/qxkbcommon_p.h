@@ -23,11 +23,11 @@
 
 #include <xkbcommon/xkbcommon.h>
 
+#include <qpa/qplatformkeymapper.h>
+
 #include <memory>
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(lcXkbcommon)
 
 class QEvent;
 class QKeyEvent;
@@ -53,8 +53,10 @@ public:
 
     static Qt::KeyboardModifiers modifiers(struct xkb_state *state, xkb_keysym_t keysym = XKB_KEY_VoidSymbol);
 
-    static QList<int> possibleKeys(xkb_state *state, const QKeyEvent *event,
-                                   bool superAsMeta = false, bool hyperAsMeta = false);
+    static QList<int> possibleKeys(xkb_state *state,
+        const QKeyEvent *event, bool superAsMeta = false, bool hyperAsMeta = false);
+    static QList<QKeyCombination> possibleKeyCombinations(xkb_state *state,
+        const QKeyEvent *event, bool superAsMeta = false, bool hyperAsMeta = false);
 
     static void verifyHasLatinLayout(xkb_keymap *keymap);
     static xkb_keysym_t lookupLatinKeysym(xkb_state *state, xkb_keycode_t keycode);
@@ -63,7 +65,46 @@ public:
         return sym >= 0x20 && sym <= 0xff;
     }
     static bool isKeypad(xkb_keysym_t sym) {
-        return sym >= XKB_KEY_KP_Space && sym <= XKB_KEY_KP_9;
+        switch (sym) {
+        case XKB_KEY_KP_Space:
+        case XKB_KEY_KP_Tab:
+        case XKB_KEY_KP_Enter:
+        case XKB_KEY_KP_F1:
+        case XKB_KEY_KP_F2:
+        case XKB_KEY_KP_F3:
+        case XKB_KEY_KP_F4:
+        case XKB_KEY_KP_Home:
+        case XKB_KEY_KP_Left:
+        case XKB_KEY_KP_Up:
+        case XKB_KEY_KP_Right:
+        case XKB_KEY_KP_Down:
+        case XKB_KEY_KP_Prior:
+        case XKB_KEY_KP_Next:
+        case XKB_KEY_KP_End:
+        case XKB_KEY_KP_Begin:
+        case XKB_KEY_KP_Insert:
+        case XKB_KEY_KP_Delete:
+        case XKB_KEY_KP_Equal:
+        case XKB_KEY_KP_Multiply:
+        case XKB_KEY_KP_Add:
+        case XKB_KEY_KP_Separator:
+        case XKB_KEY_KP_Subtract:
+        case XKB_KEY_KP_Decimal:
+        case XKB_KEY_KP_Divide:
+        case XKB_KEY_KP_0:
+        case XKB_KEY_KP_1:
+        case XKB_KEY_KP_2:
+        case XKB_KEY_KP_3:
+        case XKB_KEY_KP_4:
+        case XKB_KEY_KP_5:
+        case XKB_KEY_KP_6:
+        case XKB_KEY_KP_7:
+        case XKB_KEY_KP_8:
+        case XKB_KEY_KP_9:
+            return true;
+        default:
+            return false;
+        }
     }
 
     static void setXkbContext(QPlatformInputContext *inputContext, struct xkb_context *context);

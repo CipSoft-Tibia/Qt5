@@ -18,8 +18,8 @@
 
 #include <signal.h>
 #include <limits>
+#include <optional>
 
-#include "perfetto/ext/base/optional.h"
 #include "perfetto/ext/tracing/core/trace_writer.h"
 #include "src/profiling/common/proc_cmdline.h"
 #include "src/profiling/common/proc_utils.h"
@@ -163,7 +163,8 @@ void JavaHprofProducer::StopDataSource(DataSourceInstanceID id) {
 
 void JavaHprofProducer::Flush(FlushRequestID flush_id,
                               const DataSourceInstanceID*,
-                              size_t) {
+                              size_t,
+                              FlushFlags) {
   endpoint_->NotifyFlushComplete(flush_id);
 }
 

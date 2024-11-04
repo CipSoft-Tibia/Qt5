@@ -44,8 +44,19 @@ std::string GetUserSID() {
   return sid;
 }
 
-std::string GetPipeName(const std::string& base, bool user_specific) {
-  std::string pipename = "\\\\.\\pipe\\" + base;
+std::string BuildPipeName(const char* prefix,
+                          const std::string& base,
+                          bool user_specific) {
+  std::string pipename = prefix;
+
+  // If the agent is not user-specific, the assumption is that it runs with
+  // administrator privileges.  Create the pipe in a location only available
+  // to administrators.
+  if (!user_specific)
+    pipename += "ProtectedPrefix\\Administrators\\";
+
+  pipename += base;
+
   if (user_specific) {
     std::string sid = GetUserSID();
     if (sid.empty())
@@ -55,6 +66,14 @@ std::string GetPipeName(const std::string& base, bool user_specific) {
   }
 
   return pipename;
+}
+
+std::string GetPipeNameForAgent(const std::string& base, bool user_specific) {
+  return BuildPipeName(kPipePrefixForAgent, base, user_specific);
+}
+
+std::string GetPipeNameForClient(const std::string& base, bool user_specific) {
+  return BuildPipeName(kPipePrefixForClient, base, user_specific);
 }
 
 DWORD CreatePipe(
@@ -116,6 +135,38 @@ DWORD CreatePipe(
   LocalFree(sa.lpSecurityDescriptor);
 
   return err;
+}
+
+bool GetProcessPath(unsigned long pid, std::string* binary_path) {
+  HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (hProc == nullptr) {
+    return false;
+  }
+  
+  char path[MAX_PATH];
+  DWORD size = sizeof(path);
+  DWORD length = QueryFullProcessImageNameA(hProc, /*flags=*/0, path, &size);
+  CloseHandle(hProc);
+  if (length == 0) {
+    return false;
+  }
+
+  *binary_path = path;
+  return true;
+}
+
+ScopedOverlapped::ScopedOverlapped() {
+  memset(&overlapped_, 0, sizeof(overlapped_));
+  overlapped_.hEvent = CreateEvent(/*securityAttr=*/nullptr,
+                                   /*manualReset=*/TRUE,
+                                   /*initialState=*/FALSE,
+                                   /*name=*/nullptr);
+}
+
+ScopedOverlapped::~ScopedOverlapped() {
+  if (overlapped_.hEvent != nullptr) {
+    CloseHandle(overlapped_.hEvent);
+  }
 }
 
 }  // internal

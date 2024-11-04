@@ -208,8 +208,8 @@ void GraphDataGenerator::changeSelectedButtonClicked()
 {
     // Change all selected cells to a random value 1-10
     QVariant value = QVariant::fromValue(QRandomGenerator::global()->bounded(10.0) + 1);
-    QList<QTableWidgetItem *> selectedItems = m_tableWidget->selectedItems();
-    foreach (QTableWidgetItem *item, selectedItems) {
+    const QList<QTableWidgetItem *> selectedItems = m_tableWidget->selectedItems();
+    for (QTableWidgetItem *item : selectedItems) {
         QString oldData = item->data(Qt::DisplayRole).toString();
         item->setData(Qt::DisplayRole,
                       oldData.left(5)
@@ -266,7 +266,7 @@ int main(int argc, char **argv)
     barProxy->setValueRoleReplace(QStringLiteral("\\4"));
     barProxy->setRotationRoleReplace(QStringLiteral("\\5"));
     surfaceProxy->setXPosRole(tableWidget->model()->roleNames().value(Qt::DisplayRole));
-    surfaceProxy->setZPosRole(tableWidget->model()->roleNames().value(Qt::DisplayRole));
+    surfaceProxy->setYPosRole(tableWidget->model()->roleNames().value(Qt::DisplayRole));
     surfaceProxy->setXPosRolePattern(QRegularExpression(QStringLiteral("^(\\d*)\\/(\\d*)\\/\\d*[\\.\\,]?\\d*\\/\\d*[\\.\\,]?\\d*$")));
     surfaceProxy->setXPosRoleReplace(QStringLiteral("\\2"));
     surfaceProxy->setYPosRolePattern(QRegularExpression(QStringLiteral("^\\d*(\\/)(\\d*)\\/(\\d*[\\.\\,]?\\d*)\\/\\d*[\\.\\,]?\\d*$")));

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
 #include <qtconcurrentmedian.h>
 
 #include <QTest>
@@ -48,11 +49,11 @@ void tst_QtConcurrentMedian::median_data()
 
 void tst_QtConcurrentMedian::median()
 {
-    QFETCH(QList<double> , values);
+    QFETCH(const QList<double> , values);
     QFETCH(double, expectedMedian);
 
     QtConcurrent::Median m;
-    foreach (double value, values)
+    for (double value : values)
         m.addValue(value);
     QCOMPARE(m.median(), expectedMedian);
 }

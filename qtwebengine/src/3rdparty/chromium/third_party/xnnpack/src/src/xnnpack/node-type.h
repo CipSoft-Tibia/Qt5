@@ -32,6 +32,8 @@ enum xnn_node_type {
   xnn_node_type_fully_connected,
   xnn_node_type_global_average_pooling_1d,
   xnn_node_type_global_average_pooling_2d,
+  xnn_node_type_global_sum_pooling_1d,
+  xnn_node_type_global_sum_pooling_2d,
   xnn_node_type_hardswish,
   xnn_node_type_leaky_relu,
   xnn_node_type_max_pooling_2d,
@@ -52,5 +54,6 @@ enum xnn_node_type {
   xnn_node_type_static_slice,
   xnn_node_type_static_transpose,
   xnn_node_type_subtract,
+  xnn_node_type_tanh,
   xnn_node_type_unpooling_2d,
 };

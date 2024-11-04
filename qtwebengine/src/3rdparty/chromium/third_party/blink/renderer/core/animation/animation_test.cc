@@ -1167,7 +1167,8 @@ TEST_P(AnimationAnimationTestNoCompositing,
 
 TEST_P(AnimationAnimationTestNoCompositing, AttachedAnimations) {
   // Prevent |element| from being collected by |CollectAllGarbageForTesting|.
-  Persistent<Element> element = GetDocument().CreateElementForBinding("foo");
+  Persistent<Element> element =
+      GetDocument().CreateElementForBinding(AtomicString("foo"));
 
   Timing timing;
   auto* keyframe_effect = MakeGarbageCollected<KeyframeEffect>(
@@ -1547,6 +1548,24 @@ TEST_P(AnimationAnimationTestCompositing, InfiniteDurationAnimation) {
             animation->CheckCanStartAnimationOnCompositor(nullptr));
 }
 
+TEST_P(AnimationAnimationTestCompositing, ZeroPlaybackSpeed) {
+  ResetWithCompositedAnimation();
+  EXPECT_EQ(CompositorAnimations::kNoFailure,
+            animation->CheckCanStartAnimationOnCompositor(nullptr));
+
+  animation->updatePlaybackRate(0.0);
+  EXPECT_TRUE(CompositorAnimations::kInvalidAnimationOrEffect |
+              animation->CheckCanStartAnimationOnCompositor(nullptr));
+
+  animation->updatePlaybackRate(1.0E-120);
+  EXPECT_TRUE(CompositorAnimations::kInvalidAnimationOrEffect |
+              animation->CheckCanStartAnimationOnCompositor(nullptr));
+
+  animation->updatePlaybackRate(0.0001);
+  EXPECT_EQ(CompositorAnimations::kNoFailure,
+            animation->CheckCanStartAnimationOnCompositor(nullptr));
+}
+
 // crbug.com/1149012
 // Regression test to ensure proper restart logic for composited animations on
 // relative transforms after a size change. In this test, the transform depends
@@ -1739,6 +1758,7 @@ TEST_P(AnimationAnimationTestCompositing,
 
   UpdateAllLifecyclePhasesForTest();
   scroll_animation->play();
+  scroll_animation->SetDeferredStartTimeForTesting();
   EXPECT_EQ(scroll_animation->CheckCanStartAnimationOnCompositor(nullptr),
             CompositorAnimations::kNoFailure);
 }
@@ -1806,11 +1826,11 @@ TEST_P(AnimationAnimationTestCompositing,
 
   UpdateAllLifecyclePhasesForTest();
   const double TEST_START_PERCENT = 10;
+  scroll_animation->play();
   scroll_animation->setStartTime(
       MakeGarbageCollected<V8CSSNumberish>(
           CSSUnitValues::percent(TEST_START_PERCENT)),
       ASSERT_NO_EXCEPTION);
-  scroll_animation->play();
   EXPECT_EQ(scroll_animation->CheckCanStartAnimationOnCompositor(nullptr),
             CompositorAnimations::kNoFailure);
   UpdateAllLifecyclePhasesForTest();
@@ -1822,8 +1842,13 @@ TEST_P(AnimationAnimationTestCompositing,
           ->GetCompositorAnimation()
           ->CcAnimation()
           ->GetKeyframeModel(cc::TargetProperty::OPACITY);
-  EXPECT_EQ(keyframe_model->start_time() - base::TimeTicks(),
-            base::Seconds(TEST_START_PERCENT));
+
+  double timeline_duration_ms =
+      scroll_timeline->GetDuration()->InMillisecondsF();
+  double start_time_ms =
+      (keyframe_model->start_time() - base::TimeTicks()).InMillisecondsF();
+  double progress_percent = (start_time_ms / timeline_duration_ms) * 100;
+  EXPECT_NEAR(progress_percent, TEST_START_PERCENT, 1e-3);
   EXPECT_EQ(keyframe_model->time_offset(), base::TimeDelta());
 }
 
@@ -1861,8 +1886,8 @@ TEST_P(AnimationAnimationTestNoCompositing, ScrollLinkedAnimationCreation) {
   scroll_animation->play();
 
   // Verify start and current times in Pending state.
-  EXPECT_TIME(0, GetStartTimePercent(scroll_animation));
-  EXPECT_TIME(20, GetCurrentTimePercent(scroll_animation));
+  EXPECT_FALSE(StartTimeIsSet(scroll_animation));
+  EXPECT_FALSE(CurrentTimeIsSet(scroll_animation));
 
   UpdateAllLifecyclePhasesForTest();
   // Verify start and current times in Playing state.
@@ -1895,7 +1920,9 @@ TEST_P(AnimationAnimationTestCompositing,
 
   auto* scroller =
       To<LayoutBoxModelObject>(GetLayoutObjectByElementId("scroller"));
-  ASSERT_TRUE(scroller->UsesCompositedScrolling());
+  if (!RuntimeEnabledFeatures::CompositeScrollAfterPaintEnabled()) {
+    ASSERT_TRUE(scroller->UsesCompositedScrolling());
+  }
 
   // Create ScrollTimeline
   ScrollTimelineOptions* options = ScrollTimelineOptions::Create();
@@ -2238,7 +2265,7 @@ TEST_P(AnimationPendingAnimationsTest,
 
 TEST_P(AnimationAnimationTestCompositing,
        ScrollLinkedAnimationNotCompositedIfSourceIsNotComposited) {
-  GetDocument().GetSettings()->SetPreferCompositingToLCDTextEnabled(false);
+  SetPreferCompositingToLCDText(false);
   SetBodyInnerHTML(R"HTML(
     <style>
       #scroller { overflow: scroll; width: 100px; height: 100px; }
@@ -2296,6 +2323,7 @@ TEST_P(AnimationAnimationTestCompositing,
 
   UpdateAllLifecyclePhasesForTest();
   scroll_animation->play();
+  scroll_animation->SetDeferredStartTimeForTesting();
   EXPECT_EQ(scroll_animation->CheckCanStartAnimationOnCompositor(nullptr),
             CompositorAnimations::kTimelineSourceHasInvalidCompositingState);
 }
@@ -2348,15 +2376,18 @@ TEST_P(AnimationAnimationTestCompositing, MAYBE_ContentVisibleDisplayLockTest) {
   ASSERT_TRUE(!!animation);
   EXPECT_FALSE(animation->IsInDisplayLockedSubtree());
 
-  inner->setAttribute(html_names::kStyleAttr, "content-visibility: hidden");
+  inner->setAttribute(html_names::kStyleAttr,
+                      AtomicString("content-visibility: hidden"));
   RunDocumentLifecycle();
   EXPECT_TRUE(animation->IsInDisplayLockedSubtree());
 
-  inner->setAttribute(html_names::kStyleAttr, "content-visibility: visible");
+  inner->setAttribute(html_names::kStyleAttr,
+                      AtomicString("content-visibility: visible"));
   RunDocumentLifecycle();
   EXPECT_FALSE(animation->IsInDisplayLockedSubtree());
 
-  outer->setAttribute(html_names::kStyleAttr, "content-visibility: hidden");
+  outer->setAttribute(html_names::kStyleAttr,
+                      AtomicString("content-visibility: hidden"));
   RunDocumentLifecycle();
   EXPECT_TRUE(animation->IsInDisplayLockedSubtree());
 
@@ -2447,7 +2478,7 @@ TEST_P(AnimationAnimationTestCompositing, HiddenAnimationsTickWhenVisible) {
 
   // The no-effect animation doesn't count. The one animation is
   // AnimationAnimationTestCompositing::animation_.
-  EXPECT_EQ(1u, animation->timeline()->AnimationsNeedingUpdateCount());
+  EXPECT_EQ(1u, animation->TimelineInternal()->AnimationsNeedingUpdateCount());
 
   // The next effect change should be at the end because the animation does not
   // tick while hidden.
@@ -2455,7 +2486,8 @@ TEST_P(AnimationAnimationTestCompositing, HiddenAnimationsTickWhenVisible) {
                    animation->TimeToEffectChange().value());
 
   Element* visibility = GetElementById("visibility");
-  visibility->setAttribute(html_names::kStyleAttr, "visibility: visible;");
+  visibility->setAttribute(html_names::kStyleAttr,
+                           AtomicString("visibility: visible;"));
   RunDocumentLifecycle();
 
   // The animation should run on the compositor after the properties are
@@ -2465,7 +2497,7 @@ TEST_P(AnimationAnimationTestCompositing, HiddenAnimationsTickWhenVisible) {
       CompositorAnimations::kNoFailure);
   EXPECT_FALSE(animation->CompositorPropertyAnimationsHaveNoEffectForTesting());
   EXPECT_FALSE(animation->AnimationHasNoEffect());
-  EXPECT_EQ(2u, animation->timeline()->AnimationsNeedingUpdateCount());
+  EXPECT_EQ(2u, animation->TimelineInternal()->AnimationsNeedingUpdateCount());
 
   // The next effect change should be at the end because the animation is
   // running on the compositor.

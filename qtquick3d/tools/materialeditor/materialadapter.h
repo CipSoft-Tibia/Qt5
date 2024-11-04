@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef MATERIALADAPTER_H
 #define MATERIALADAPTER_H
@@ -11,7 +11,7 @@
 
 #include <QtQml/qqmlregistration.h>
 
-#include <QtQuick3DUtils/private/qssgrenderbasetypes_p.h>
+#include <ssg/qssgrenderbasetypes.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendercustommaterial_p.h>
 
 #include <QtQuick3D/private/qquick3dcustommaterial_p.h>
@@ -141,7 +141,6 @@ private:
     QString m_vertexShader;
     ShaderBuildMessage m_vertexMsg;
     ShaderBuildMessage m_fragmentMsg;
-    bool m_ready = false;
     bool m_unsavedChanges = true;
     QUrl m_materialSaveFile;
     QPointer<QQuick3DNode> m_rootNode;

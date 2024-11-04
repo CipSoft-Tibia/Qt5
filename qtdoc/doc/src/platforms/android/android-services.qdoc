@@ -1,10 +1,10 @@
-// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page android-services.html
 \title Android Services
-\ingroup androidplatform
+\ingroup android-platform-extra-topics
 \preliminary
 \brief Provides information about Android Services support in Qt.
 \previouspage android-manifest-file-configuration.html
@@ -102,11 +102,12 @@ You can start the service in the following ways:
         The you can call it from C++ using the following JNI call:
 
         \code
+        const QJniObject context(QNativeInterface::QAndroidApplication::context());
         QJniObject::callStaticMethod<void>(
             "org/qtproject/example/qtandroidservice/QtAndroidService",
             "startQtAndroidService",
             "(Landroid/content/Context;)V",
-            QtAndroid::androidActivity().object());
+            context.object());
         \endcode
 \endlist
 
@@ -381,10 +382,10 @@ an then register the broadcast receiver by calling the method
 QJniEnvironment env;
 jclass javaClass = env.findClass("org/qtproject/example/qtandroidservice/ActivityUtils");
 QJniObject classObject(javaClass);
-
+const QJniObject context(QNativeInterface::QAndroidApplication::context());
 classObject.callMethod<void>("registerServiceBroadcastReceiver",
                              "(Landroid/content/Context;)V",
-                             QtAndroid::androidContext().object());
+                             context.object());
 \endcode
 
 \section2 Using Qt Remote Objects

@@ -10,8 +10,8 @@
 #include "build/chromeos_buildflags.h"
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/browser/webrtc/webrtc_content_browsertest_base.h"
+#include "content/public/browser/network_service_util.h"
 #include "content/public/common/content_switches.h"
-#include "content/public/common/network_service_util.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
 #include "content/public/test/content_browser_test_utils.h"
@@ -48,14 +48,14 @@ class MAYBE_WebRtcBrowserTest : public WebRtcContentBrowserTestBase {
 
  protected:
   // Convenience function since most peerconnection-call.html tests just load
-  // the page, kick off some javascript and wait for the title to change to OK.
+  // the page, and execute some javascript.
   void MakeTypicalPeerConnectionCall(const std::string& javascript) {
     MakeTypicalCall(javascript, "/media/peerconnection-call.html");
   }
 
   void SetConfigurationTest(const std::string& javascript) {
-    // This doesn't actually "make a call", it just loads the page, executes
-    // the javascript and waits for "OK".
+    // This doesn't actually "make a call", it just loads the page, and executes
+    // the javascript, expecting no errors to be thrown.
     MakeTypicalCall(javascript, "/media/peerconnection-setConfiguration.html");
   }
 };

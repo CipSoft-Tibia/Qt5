@@ -1,6 +1,6 @@
 AC_PREREQ([2.64])
 AC_INIT([HarfBuzz],
-        [5.3.1],
+        [7.3.0],
         [https://github.com/harfbuzz/harfbuzz/issues/new],
         [harfbuzz],
         [http://harfbuzz.org/])
@@ -45,7 +45,7 @@ AC_SUBST(HB_VERSION)
 
 # Libtool version
 m4_define([hb_version_int],
-	  m4_eval(hb_version_major*10000 + hb_version_minor*100 + hb_version_micro))
+	  m4_eval(60000 + hb_version_major*100 + hb_version_minor*10 + hb_version_micro))
 HB_LIBTOOL_VERSION_INFO=hb_version_int:0:hb_version_int
 AC_SUBST(HB_LIBTOOL_VERSION_INFO)
 
@@ -68,7 +68,7 @@ GTK_DOC_CHECK([1.15],[--flavour no-tmpl])
 ])
 
 # Functions and headers
-AC_CHECK_FUNCS(atexit mprotect sysconf getpagesize mmap isatty newlocale uselocale)
+AC_CHECK_FUNCS(atexit mprotect sysconf getpagesize mmap isatty newlocale uselocale sincosf)
 AC_CHECK_HEADERS(unistd.h sys/mman.h stdbool.h xlocale.h)
 
 # Compiler flags
@@ -417,6 +417,28 @@ AM_CONDITIONAL(HAVE_CORETEXT, $have_coretext)
 
 dnl ===========================================================================
 
+AC_ARG_WITH(wasm,
+	[AS_HELP_STRING([--with-wasm=@<:@yes/no/auto@:>@],
+			[Use the wasm-micro-runtime library @<:@default=no@:>@])],,
+	[with_wasm=no])
+have_wasm=false
+if test "x$with_wasm" = "xyes" -o "x$with_wasm" = "xauto"; then
+	AC_CHECK_HEADERS(wasm_export.h, have_wasm=true)
+fi
+if test "x$with_wasm" = "xyes" -a "x$have_wasm" != "xtrue"; then
+	AC_MSG_ERROR([wasm support requested but not found])
+fi
+if $have_wasm; then
+	WASM_CFLAGS=
+	WASM_LIBS="-liwasm"
+	AC_SUBST(WASM_CFLAGS)
+	AC_SUBST(WASM_LIBS)
+	AC_DEFINE(HAVE_WASM, 1, [Have wasm-micro-runtime library])
+fi
+AM_CONDITIONAL(HAVE_WASM, $have_wasm)
+
+dnl ===========================================================================
+
 AC_CONFIG_FILES([
 Makefile
 src/Makefile
@@ -478,6 +500,7 @@ Platform shapers (not normally needed):
 	DirectWrite:		${have_directwrite}
 	GDI:			${have_gdi}
 	Uniscribe:		${have_uniscribe}
+	WebAssembly:		${have_wasm}
 
 Other features:
 	Documentation:		${enable_gtk_doc}

@@ -3,20 +3,27 @@
 # found in the LICENSE file.
 
 import optparse
+import textwrap
 
+from blinkpy.common.system.log_testing import LoggingTestCase
 from blinkpy.tool.commands.optimize_baselines import OptimizeBaselines
 from blinkpy.tool.commands.rebaseline_unittest import BaseTestCase
 
 
-class TestOptimizeBaselines(BaseTestCase):
+class TestOptimizeBaselines(BaseTestCase, LoggingTestCase):
     command_constructor = OptimizeBaselines
+
+    def setUp(self):
+        BaseTestCase.setUp(self)
+        LoggingTestCase.setUp(self)
 
     def _write_test_file(self, port, path, contents):
         abs_path = self.tool.filesystem.join(port.web_tests_dir(), path)
         self.tool.filesystem.write_text_file(abs_path, contents)
 
-    def setUp(self):
-        super(TestOptimizeBaselines, self).setUp()
+    def _exists(self, port, path: str):
+        abs_path = self.tool.filesystem.join(port.web_tests_dir(), path)
+        return self.tool.filesystem.exists(abs_path)
 
     def test_optimize_all_suffixes_by_default(self):
         test_port = self.tool.port_factory.get('test')
@@ -33,29 +40,127 @@ class TestOptimizeBaselines(BaseTestCase):
         self._write_test_file(test_port, 'another/test-expected.png',
                               'result A png')
 
-        self.command.execute(
+        exit_code = self.command.execute(
             optparse.Values({
                 'suffixes': 'txt,wav,png',
                 'all_tests': False,
-                'no_modify_git': True,
-                'platform': 'test-mac-mac10.10'
+                'platform': 'test-mac-mac10.10',
+                'check': False,
+                'test_name_file': None,
             }), ['another/test.html'], self.tool)
 
+        self.assertEqual(exit_code or 0, 0)
         self.assertFalse(
-            self.tool.filesystem.exists(
-                self.tool.filesystem.join(
-                    test_port.web_tests_dir(),
-                    'platform/mac/another/test-expected.txt')))
+            self._exists(
+                test_port,
+                'platform/test-mac-mac10.10/another/test-expected.txt'))
         self.assertFalse(
-            self.tool.filesystem.exists(
-                self.tool.filesystem.join(
-                    test_port.web_tests_dir(),
-                    'platform/mac/another/test-expected.png')))
+            self._exists(
+                test_port,
+                'platform/test-mac-mac10.10/another/test-expected.png'))
+        self.assertTrue(self._exists(test_port, 'another/test-expected.txt'))
+        self.assertTrue(self._exists(test_port, 'another/test-expected.png'))
+
+    def test_execute_with_test_name_file(self):
+        test_port = self.tool.port_factory.get('test')
+        self._write_test_file(test_port, 'optimized.html', 'Dummy contents')
+        self._write_test_file(test_port, 'skipped.html', 'Dummy contents')
+        self._write_test_file(
+            test_port, 'platform/test-mac-mac10.10/optimized-expected.txt',
+            'result A')
+        self._write_test_file(
+            test_port, 'platform/test-mac-mac10.10/skipped-expected.txt',
+            'result A')
+        self._write_test_file(test_port, 'optimized-expected.txt', 'result A')
+        self._write_test_file(test_port, 'skipped-expected.txt', 'result A')
+        test_name_file = self.tool.filesystem.mktemp()
+        self.tool.filesystem.write_text_file(
+            test_name_file,
+            textwrap.dedent("""\
+                optimized.html
+                # This is allowed but will log a warning.
+                does-not-exist.html
+                """))
+        exit_code = self.command.execute(
+            optparse.Values({
+                'suffixes': 'txt',
+                'all_tests': False,
+                'platform': None,
+                'check': False,
+                'verbose': False,
+                'test_name_file': test_name_file,
+            }), [], self.tool)
+
+        self.assertEqual(exit_code or 0, 0)
+        self.assertIn(
+            "WARNING: 'does-not-exist.html' does not represent any tests "
+            'and may be misspelled.\n', self.logMessages())
+        self.assertFalse(
+            self._exists(test_port,
+                         'platform/test-mac-mac10.10/optimized-expected.txt'))
         self.assertTrue(
-            self.tool.filesystem.exists(
-                self.tool.filesystem.join(test_port.web_tests_dir(),
-                                          'another/test-expected.txt')))
-        self.assertTrue(
-            self.tool.filesystem.exists(
-                self.tool.filesystem.join(test_port.web_tests_dir(),
-                                          'another/test-expected.png')))
+            self._exists(test_port,
+                         'platform/test-mac-mac10.10/skipped-expected.txt'))
+        self.assertTrue(self._exists(test_port, 'optimized-expected.txt'))
+        self.assertTrue(self._exists(test_port, 'skipped-expected.txt'))
+
+    def test_check_optimal(self):
+        test_port = self.tool.port_factory.get('test')
+        self._write_test_file(test_port, 'another/test.html',
+                              'Dummy test contents')
+        self._write_test_file(
+            test_port, 'platform/test-mac-mac10.10/another/test-expected.txt',
+            'result A')
+        self._write_test_file(test_port, 'another/test-expected.txt',
+                              'result B')
+        fs_before = dict(self.tool.filesystem.files)
+
+        exit_code = self.command.execute(
+            optparse.Values({
+                'suffixes': 'txt',
+                'all_tests': False,
+                'platform': 'test-mac-mac10.10',
+                'check': True,
+                'verbose': False,
+                'test_name_file': None,
+            }), ['another/test.html'], self.tool)
+
+        self.assertEqual(exit_code or 0, 0)
+        self.assertEqual(fs_before, self.tool.filesystem.files)
+        self.assertLog([
+            'INFO: Checking another/test.html (txt)\n',
+            'INFO: All baselines are optimal.\n',
+        ])
+
+    def test_check_nonoptimal(self):
+        test_port = self.tool.port_factory.get('test')
+        self._write_test_file(test_port, 'another/test.html',
+                              'Dummy test contents')
+        self._write_test_file(
+            test_port, 'platform/test-mac-mac10.10/another/test-expected.txt',
+            'result A')
+        self._write_test_file(test_port, 'another/test-expected.txt',
+                              'result A')
+        fs_before = dict(self.tool.filesystem.files)
+
+        exit_code = self.command.execute(
+            optparse.Values({
+                'suffixes': 'txt',
+                'all_tests': False,
+                'platform': 'test-mac-mac10.10',
+                'check': True,
+                'verbose': False,
+                'test_name_file': None,
+            }), ['another/test.html'], self.tool)
+
+        self.assertNotEqual(exit_code or 0, 0)
+        self.assertEqual(fs_before, self.tool.filesystem.files)
+        self.assertLog([
+            'INFO: Checking another/test.html (txt)\n',
+            'INFO:   Can remove /mock-checkout/third_party/blink/web_tests/'
+            'platform/test-mac-mac10.10/another/test-expected.txt '
+            '(redundant)\n',
+            'WARNING: Some baselines require further optimization.\n',
+            'WARNING: Rerun `optimize-baselines` without `--check` to fix '
+            'these issues.\n',
+        ])

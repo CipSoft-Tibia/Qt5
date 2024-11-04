@@ -17,6 +17,7 @@
 #include "content/public/test/content_browser_test.h"
 #include "content/public/test/content_browser_test_utils.h"
 #include "media/base/media_switches.h"
+#include "media/capture/capture_switches.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
@@ -81,13 +82,14 @@ class WebRtcVideoCaptureSharedDeviceBrowserTest : public ContentBrowserTest {
     const std::string javascript_to_execute = base::StringPrintf(
         kStartVideoCaptureAndVerify, kVideoSize.width(), kVideoSize.height());
     // Start video capture and wait until it started rendering
-    ASSERT_EQ("OK", EvalJs(shell(), javascript_to_execute,
-                           EXECUTE_SCRIPT_USE_MANUAL_REPLY));
+    ASSERT_TRUE(ExecJs(shell(), javascript_to_execute));
   }
 
  protected:
   void SetUpCommandLine(base::CommandLine* command_line) override {
     command_line->AppendSwitch(switches::kUseFakeUIForMediaStream);
+    command_line->AppendSwitch(
+        switches::kDisableVideoCaptureUseGpuMemoryBuffer);
   }
 
   void SetUp() override {

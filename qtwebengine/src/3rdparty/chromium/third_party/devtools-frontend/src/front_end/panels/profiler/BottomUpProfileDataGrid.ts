@@ -33,22 +33,22 @@
 // because a root node can represent itself AND an ancestor.
 
 import * as Platform from '../../core/platform/platform.js';
-import type * as SDK from '../../core/sdk/sdk.js';
 import type * as UI from '../../ui/legacy/legacy.js';
 
 import {ProfileDataGridNode, ProfileDataGridTree, type Formatter} from './ProfileDataGrid.js';
 import {type TopDownProfileDataGridTree} from './TopDownProfileDataGrid.js';
+import type * as CPUProfile from '../../models/cpu_profile/cpu_profile.js';
 
 export interface NodeInfo {
-  ancestor: SDK.ProfileTreeModel.ProfileNode;
-  focusNode: SDK.ProfileTreeModel.ProfileNode;
+  ancestor: CPUProfile.ProfileTreeModel.ProfileNode;
+  focusNode: CPUProfile.ProfileTreeModel.ProfileNode;
   totalAccountedFor: boolean;
 }
 
 export class BottomUpProfileDataGridNode extends ProfileDataGridNode {
   remainingNodeInfos: NodeInfo[]|undefined;
 
-  constructor(profileNode: SDK.ProfileTreeModel.ProfileNode, owningTree: TopDownProfileDataGridTree) {
+  constructor(profileNode: CPUProfile.ProfileTreeModel.ProfileNode, owningTree: TopDownProfileDataGridTree) {
     super(profileNode, owningTree, profileNode.parent !== null && Boolean(profileNode.parent.parent));
     this.remainingNodeInfos = [];
   }
@@ -138,7 +138,7 @@ export class BottomUpProfileDataGridNode extends ProfileDataGridNode {
     }
   }
 
-  restore(): void {
+  override restore(): void {
     super.restore();
 
     if (!this.children.length) {
@@ -146,16 +146,16 @@ export class BottomUpProfileDataGridNode extends ProfileDataGridNode {
     }
   }
 
-  merge(child: ProfileDataGridNode, shouldAbsorb: boolean): void {
+  override merge(child: ProfileDataGridNode, shouldAbsorb: boolean): void {
     this.self -= child.self;
     super.merge(child, shouldAbsorb);
   }
 
-  populateChildren(): void {
+  override populateChildren(): void {
     BottomUpProfileDataGridNode.sharedPopulate(this);
   }
 
-  willHaveChildren(profileNode: SDK.ProfileTreeModel.ProfileNode): boolean {
+  willHaveChildren(profileNode: CPUProfile.ProfileTreeModel.ProfileNode): boolean {
     // In bottom up mode, our parents are our children since we display an inverted tree.
     // However, we don't want to show the very top parent since it is redundant.
     return Boolean(profileNode.parent && profileNode.parent.parent);
@@ -163,12 +163,12 @@ export class BottomUpProfileDataGridNode extends ProfileDataGridNode {
 }
 
 export class BottomUpProfileDataGridTree extends ProfileDataGridTree {
-  deepSearch: boolean;
+  override deepSearch: boolean;
   remainingNodeInfos: NodeInfo[]|undefined;
 
   constructor(
       formatter: Formatter, searchableView: UI.SearchableView.SearchableView,
-      rootProfileNode: SDK.ProfileTreeModel.ProfileNode, total: number) {
+      rootProfileNode: CPUProfile.ProfileTreeModel.ProfileNode, total: number) {
     super(formatter, searchableView, total);
     this.deepSearch = false;
 
@@ -184,7 +184,7 @@ export class BottomUpProfileDataGridTree extends ProfileDataGridTree {
       const profileNodes = profileNodeGroups[++profileNodeGroupIndex];
       const count = profileNodes.length;
 
-      const profileNodeUIDValues = new WeakMap<SDK.ProfileTreeModel.ProfileNode, number>();
+      const profileNodeUIDValues = new WeakMap<CPUProfile.ProfileTreeModel.ProfileNode, number>();
 
       for (let index = 0; index < count; ++index) {
         const profileNode = profileNodes[index];
@@ -240,7 +240,7 @@ export class BottomUpProfileDataGridTree extends ProfileDataGridTree {
   /**
    * When focusing, we keep the entire callstack up to this ancestor.
    */
-  focus(profileDataGridNode: ProfileDataGridNode): void {
+  override focus(profileDataGridNode: ProfileDataGridNode): void {
     if (!profileDataGridNode) {
       return;
     }
@@ -265,7 +265,7 @@ export class BottomUpProfileDataGridTree extends ProfileDataGridTree {
     this.total = profileDataGridNode.total;
   }
 
-  exclude(profileDataGridNode: ProfileDataGridNode): void {
+  override exclude(profileDataGridNode: ProfileDataGridNode): void {
     if (!profileDataGridNode) {
       return;
     }
@@ -293,7 +293,7 @@ export class BottomUpProfileDataGridTree extends ProfileDataGridTree {
     }
   }
 
-  populateChildren(): void {
+  override populateChildren(): void {
     BottomUpProfileDataGridNode.sharedPopulate(this);
   }
 }

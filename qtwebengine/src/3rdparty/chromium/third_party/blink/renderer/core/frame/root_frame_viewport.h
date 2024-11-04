@@ -114,7 +114,7 @@ class CORE_EXPORT RootFrameViewport final
   void UpdateCompositorScrollAnimations() override;
   void CancelProgrammaticScrollAnimation() override;
   mojom::blink::ScrollBehavior ScrollBehaviorStyle() const override;
-  mojom::blink::ColorScheme UsedColorScheme() const override;
+  mojom::blink::ColorScheme UsedColorSchemeScrollbars() const override;
   void ClearScrollableArea() override;
   LayoutBox* GetLayoutBox() const override;
   gfx::QuadF LocalToVisibleContentQuad(const gfx::QuadF&,
@@ -130,8 +130,6 @@ class CORE_EXPORT RootFrameViewport final
   bool SetTargetSnapAreaElementIds(cc::TargetSnapAreaElementIds) override;
   bool SnapContainerDataNeedsUpdate() const override;
   void SetSnapContainerDataNeedsUpdate(bool) override;
-  bool NeedsResnap() const override;
-  void SetNeedsResnap(bool) override;
   absl::optional<gfx::PointF> GetSnapPositionAndSetTarget(
       const cc::SnapSelectionStrategy& strategy) override;
 
@@ -146,6 +144,14 @@ class CORE_EXPORT RootFrameViewport final
 
   bool HasPendingHistoryRestoreScrollOffset() override {
     return !!pending_view_state_;
+  }
+
+  // A sequence of UserScrolls may occur close enough to each other (e.g.
+  // repeated keypresses) to produce a single scroll.
+  // This function returns true if any UserScroll in a sequence of
+  // UserScrolls applies a non-zero scroll delta to the LayoutViewport.
+  bool ScrollAffectsLayoutViewport() {
+    return user_scroll_sequence_affects_layout_viewport_;
   }
 
  private:
@@ -178,6 +184,7 @@ class CORE_EXPORT RootFrameViewport final
   Member<ScrollableArea> layout_viewport_;
   absl::optional<HistoryItem::ViewState> pending_view_state_;
   bool should_restore_scroll_;
+  bool user_scroll_sequence_affects_layout_viewport_ = false;
 };
 
 template <>

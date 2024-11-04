@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,20 +16,18 @@
 #include "platform/api/task_runner.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 const char kMirroringDisplayName[] = "Chrome Mirroring";
 const char kRemotingRpcNamespace[] = "urn:x-cast:com.google.cast.remoting";
 
-MirroringApplication::MirroringApplication(TaskRunner* task_runner,
+MirroringApplication::MirroringApplication(TaskRunner& task_runner,
                                            const IPAddress& interface_address,
                                            ApplicationAgent* agent)
     : task_runner_(task_runner),
       interface_address_(interface_address),
       app_ids_(GetCastStreamingAppIds()),
       agent_(agent) {
-  OSP_DCHECK(task_runner_);
   OSP_DCHECK(agent_);
   agent_->RegisterApplication(this);
 }
@@ -50,13 +48,18 @@ bool MirroringApplication::Launch(const std::string& app_id,
     return false;
   }
 
+#if defined(MAC_OSX)
   wake_lock_ = ScopedWakeLock::Create(task_runner_);
+#endif  // defined(MAC_OSX)
   environment_ = std::make_unique<Environment>(
       &Clock::now, task_runner_,
       IPEndpoint{interface_address_, kDefaultCastStreamingPort});
+#if defined(CAST_STANDALONE_RECEIVER_HAVE_EXTERNAL_LIBS)
   controller_ =
       std::make_unique<StreamingPlaybackController>(task_runner_, this);
-
+#else
+  controller_ = std::make_unique<StreamingPlaybackController>(this);
+#endif  // defined(CAST_STANDALONE_RECEIVER_HAVE_EXTERNAL_LIBS)
   ReceiverConstraints constraints;
   constraints.video_codecs.insert(constraints.video_codecs.begin(),
                                   {VideoCodec::kAv1, VideoCodec::kVp9});
@@ -92,5 +95,4 @@ void MirroringApplication::OnPlaybackError(StreamingPlaybackController*,
   agent_->StopApplicationIfRunning(this);  // ApplicationAgent calls Stop().
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

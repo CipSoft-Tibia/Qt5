@@ -22,7 +22,6 @@
 #include "ui/views/bubble/bubble_border.h"
 #include "ui/views/bubble/bubble_frame_view.h"
 #include "ui/views/buildflags.h"
-#include "ui/views/controls/button/label_button.h"
 #include "ui/views/layout/layout_provider.h"
 #include "ui/views/style/platform_style.h"
 #include "ui/views/views_features.h"
@@ -33,8 +32,16 @@
 
 namespace views {
 
-// Debug information for https://crbug.com/1215247.
-int g_instance_count = 0;
+namespace {
+
+bool HasCallback(
+    const absl::variant<base::OnceClosure, base::RepeatingCallback<bool()>>&
+        callback) {
+  return absl::visit(
+      [](const auto& variant) { return static_cast<bool>(variant); }, callback);
+}
+
+}  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 // DialogDelegate::Params:
@@ -45,8 +52,6 @@ DialogDelegate::Params::~Params() = default;
 // DialogDelegate:
 
 DialogDelegate::DialogDelegate() {
-  ++g_instance_count;
-
   WidgetDelegate::RegisterWindowWillCloseCallback(
       base::BindOnce(&DialogDelegate::WindowWillClose, base::Unretained(this)));
 }
@@ -141,28 +146,62 @@ std::u16string DialogDelegate::GetDialogButtonLabel(
              : l10n_util::GetStringUTF16(IDS_APP_CLOSE);
 }
 
+ui::ButtonStyle DialogDelegate::GetDialogButtonStyle(
+    ui::DialogButton button) const {
+  absl::optional<ui::ButtonStyle> style = GetParams().button_styles[button];
+  if (style.has_value()) {
+    return *style;
+  }
+
+  return GetIsDefault(button) ? ui::ButtonStyle::kProminent
+                              : ui::ButtonStyle::kDefault;
+}
+
+bool DialogDelegate::GetIsDefault(ui::DialogButton button) const {
+  return GetDefaultDialogButton() == button &&
+         (button != ui::DIALOG_BUTTON_CANCEL ||
+          PlatformStyle::kDialogDefaultButtonCanBeCancel);
+}
+
 bool DialogDelegate::IsDialogButtonEnabled(ui::DialogButton button) const {
   return params_.enabled_buttons & button;
 }
 
+bool DialogDelegate::ShouldIgnoreButtonPressedEventHandling(
+    View* button,
+    const ui::Event& event) const {
+  return false;
+}
+
 bool DialogDelegate::Cancel() {
   DCHECK(!already_started_close_);
-  if (cancel_callback_)
-    RunCloseCallback(std::move(cancel_callback_));
+  if (HasCallback(cancel_callback_)) {
+    return RunCloseCallback(cancel_callback_);
+  }
   return true;
 }
 
 bool DialogDelegate::Accept() {
   DCHECK(!already_started_close_);
-  if (accept_callback_)
-    RunCloseCallback(std::move(accept_callback_));
+  if (HasCallback(accept_callback_)) {
+    return RunCloseCallback(accept_callback_);
+  }
   return true;
 }
 
-void DialogDelegate::RunCloseCallback(base::OnceClosure callback) {
+bool DialogDelegate::RunCloseCallback(
+    absl::variant<base::OnceClosure, base::RepeatingCallback<bool()>>&
+        callback) {
   DCHECK(!already_started_close_);
-  already_started_close_ = true;
-  std::move(callback).Run();
+  if (absl::holds_alternative<base::OnceClosure>(callback)) {
+    already_started_close_ = true;
+    absl::get<base::OnceClosure>(std::move(callback)).Run();
+  } else {
+    already_started_close_ =
+        absl::get<base::RepeatingCallback<bool()>>(callback).Run();
+  }
+
+  return already_started_close_;
 }
 
 View* DialogDelegate::GetInitiallyFocusedView() {
@@ -205,11 +244,18 @@ void DialogDelegate::WindowWillClose() {
   if (already_started_close_)
     return;
 
-  bool new_callback_present =
-      close_callback_ || cancel_callback_ || accept_callback_;
+  const bool new_callback_present = close_callback_ ||
+                                    HasCallback(cancel_callback_) ||
+                                    HasCallback(accept_callback_);
 
-  if (close_callback_)
-    RunCloseCallback(std::move(close_callback_));
+  if (close_callback_) {
+    // `RunCloseCallback` takes a non-const reference to this variant to support
+    // the accept and cancel callbacks. It doesn't make sense to be storing a
+    // variant for close callbacks, so we construct the variant here instead.
+    absl::variant<base::OnceClosure, base::RepeatingCallback<bool()>>
+        close_callback_wrapped(std::move(close_callback_));
+    RunCloseCallback(close_callback_wrapped);
+  }
 
   if (new_callback_present)
     return;
@@ -271,13 +317,13 @@ BubbleFrameView* DialogDelegate::GetBubbleFrameView() const {
   return view ? static_cast<BubbleFrameView*>(view->frame_view()) : nullptr;
 }
 
-views::LabelButton* DialogDelegate::GetOkButton() const {
+views::MdTextButton* DialogDelegate::GetOkButton() const {
   DCHECK(GetWidget()) << "Don't call this before OnWidgetInitialized";
   auto* client = GetDialogClientView();
   return client ? client->ok_button() : nullptr;
 }
 
-views::LabelButton* DialogDelegate::GetCancelButton() const {
+views::MdTextButton* DialogDelegate::GetCancelButton() const {
   DCHECK(GetWidget()) << "Don't call this before OnWidgetInitialized";
   auto* client = GetDialogClientView();
   return client ? client->cancel_button() : nullptr;
@@ -317,8 +363,8 @@ void DialogDelegate::DialogModelChanged() {
     observer.OnDialogChanged();
 }
 
-void DialogDelegate::TriggerInputProtection() {
-  GetDialogClientView()->TriggerInputProtection();
+void DialogDelegate::TriggerInputProtection(bool force_early) {
+  GetDialogClientView()->TriggerInputProtection(force_early);
 }
 
 void DialogDelegate::SetDefaultButton(int button) {
@@ -353,11 +399,30 @@ void DialogDelegate::SetButtonLabel(ui::DialogButton button,
   DialogModelChanged();
 }
 
+void DialogDelegate::SetButtonStyle(ui::DialogButton button,
+                                    absl::optional<ui::ButtonStyle> style) {
+  if (params_.button_styles[button] == style) {
+    return;
+  }
+  params_.button_styles[button] = style;
+  DialogModelChanged();
+}
+
 void DialogDelegate::SetAcceptCallback(base::OnceClosure callback) {
   accept_callback_ = std::move(callback);
 }
 
+void DialogDelegate::SetAcceptCallbackWithClose(
+    base::RepeatingCallback<bool()> callback) {
+  accept_callback_ = std::move(callback);
+}
+
 void DialogDelegate::SetCancelCallback(base::OnceClosure callback) {
+  cancel_callback_ = std::move(callback);
+}
+
+void DialogDelegate::SetCancelCallbackWithClose(
+    base::RepeatingCallback<bool()> callback) {
   cancel_callback_ = std::move(callback);
 }
 
@@ -390,15 +455,6 @@ void DialogDelegate::AcceptDialog() {
   if (already_started_close_ || !Accept())
     return;
 
-  // Check for Accept() deleting `this` but returning false. Empirically the
-  // steady state instance count with no dialogs open is zero, so if it's back
-  // to zero `this` is deleted https://crbug.com/1215247
-  if (g_instance_count <= 0) {
-    // LOG(FATAL) instead of CHECK() to put the widget name into a crash key.
-    // See "Product Data" in the crash tool if a crash report shows this line.
-    LOG(FATAL) << last_widget_name;
-  }
-
   already_started_close_ = true;
   GetWidget()->CloseWithReason(
       views::Widget::ClosedReason::kAcceptButtonClicked);
@@ -419,9 +475,7 @@ void DialogDelegate::CancelDialog() {
       views::Widget::ClosedReason::kCancelButtonClicked);
 }
 
-DialogDelegate::~DialogDelegate() {
-  --g_instance_count;
-}
+DialogDelegate::~DialogDelegate() = default;
 
 ax::mojom::Role DialogDelegate::GetAccessibleWindowRole() {
   return ax::mojom::Role::kDialog;
@@ -437,7 +491,8 @@ int DialogDelegate::GetCornerRadius() const {
 #endif
   if (params_.corner_radius)
     return *params_.corner_radius;
-  return LayoutProvider::Get()->GetCornerRadiusMetric(views::Emphasis::kMedium);
+  return LayoutProvider::Get()->GetCornerRadiusMetric(
+      views::ShapeContextTokens::kDialogRadius);
 }
 
 std::unique_ptr<View> DialogDelegate::DisownFootnoteView() {

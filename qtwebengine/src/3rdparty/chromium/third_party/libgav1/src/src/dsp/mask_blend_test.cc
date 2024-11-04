@@ -427,6 +427,7 @@ void MaskBlendTest<bitdepth, Pixel>::Test(const char* const digest,
       if (bitdepth != 8) {
         ASSERT_EQ(func_8bpp_, nullptr);
       }
+      ASSERT_NE(func_, nullptr);
       func_(source1_, source2_, src_2_stride, mask_, mask_stride, width, height,
             dest_, kDestStride);
     }

@@ -29,6 +29,44 @@
 
 namespace content {
 
+// An observer that waits for the service worker to be running.
+class WorkerRunningStatusObserver : public ServiceWorkerContextObserver {
+ public:
+  explicit WorkerRunningStatusObserver(ServiceWorkerContext* context) {
+    scoped_context_observation_.Observe(context);
+  }
+
+  WorkerRunningStatusObserver(const WorkerRunningStatusObserver&) = delete;
+  WorkerRunningStatusObserver& operator=(const WorkerRunningStatusObserver&) =
+      delete;
+
+  ~WorkerRunningStatusObserver() override = default;
+
+  int64_t version_id() { return version_id_; }
+
+  void WaitUntilRunning() {
+    if (version_id_ == blink::mojom::kInvalidServiceWorkerVersionId) {
+      run_loop_.Run();
+    }
+  }
+
+  void OnVersionStartedRunning(
+      int64_t version_id,
+      const ServiceWorkerRunningInfo& running_info) override {
+    version_id_ = version_id;
+
+    if (run_loop_.running()) {
+      run_loop_.Quit();
+    }
+  }
+
+ private:
+  base::RunLoop run_loop_;
+  base::ScopedObservation<ServiceWorkerContext, ServiceWorkerContextObserver>
+      scoped_context_observation_{this};
+  int64_t version_id_ = blink::mojom::kInvalidServiceWorkerVersionId;
+};
+
 class ServiceWorkerProcessBrowserTest
     : public ContentBrowserTest,
       public ::testing::WithParamInterface<bool> {
@@ -108,6 +146,7 @@ class ServiceWorkerProcessBrowserTest
   }
 
   ServiceWorkerContextWrapper* wrapper() { return wrapper_.get(); }
+  ServiceWorkerContext* public_context() { return wrapper(); }
 
   WebContentsImpl* web_contents() {
     return static_cast<WebContentsImpl*>(shell()->web_contents());
@@ -137,8 +176,10 @@ IN_PROC_BROWSER_TEST_P(ServiceWorkerProcessBrowserTest,
   RegisterServiceWorker();
 
   // Navigate to a page in the service worker's scope.
+  WorkerRunningStatusObserver observer(public_context());
   ASSERT_TRUE(NavigateToURL(
       shell(), embedded_test_server()->GetURL("/service_worker/empty.html")));
+  observer.WaitUntilRunning();
 
   // The page and service worker should be in the same process.
   int page_process_id = current_frame_host()->GetProcess()->GetID();
@@ -147,35 +188,6 @@ IN_PROC_BROWSER_TEST_P(ServiceWorkerProcessBrowserTest,
   int worker_process_id = GetServiceWorkerProcessId();
   EXPECT_EQ(page_process_id, worker_process_id);
 }
-
-namespace {
-
-// ContentBrowserClient that skips assigning a site URL for a given scheme.
-class DontAssignSiteContentBrowserClient
-    : public ContentBrowserTestContentBrowserClient {
- public:
-  // Any visit to |scheme_to_skip| will not cause the site to be assigned to the
-  // SiteInstance. This requires setting it as an empty document scheme.
-  explicit DontAssignSiteContentBrowserClient(const std::string& scheme_to_skip)
-      : scheme_to_skip_(scheme_to_skip) {
-    url::AddEmptyDocumentScheme(scheme_to_skip.c_str());
-  }
-
-  DontAssignSiteContentBrowserClient(
-      const DontAssignSiteContentBrowserClient&) = delete;
-  DontAssignSiteContentBrowserClient& operator=(
-      const DontAssignSiteContentBrowserClient&) = delete;
-
-  bool ShouldAssignSiteForURL(const GURL& url) override {
-    return url.scheme() != scheme_to_skip_;
-  }
-
- private:
-  std::string scheme_to_skip_;
-  url::ScopedSchemeRegistryForTests scheme_registry_;
-};
-
-}  // namespace
 
 // Tests whether a service worker and navigation share the same process in the
 // special case where the service worker starts before the navigation starts,
@@ -186,9 +198,13 @@ class DontAssignSiteContentBrowserClient
 // https://crbug.com/1012143.
 IN_PROC_BROWSER_TEST_P(ServiceWorkerProcessBrowserTest,
                        NavigateFromUnassignedSiteInstance) {
-  // Set up an empty page scheme whose URLs will have no site assigned.
-  DontAssignSiteContentBrowserClient content_browser_client("siteless");
+  // Set up an empty page scheme whose URLs will have no site assigned. This
+  // requires setting it as an empty document scheme.
+  url::ScopedSchemeRegistryForTests scheme_registry;
+  url::AddEmptyDocumentScheme("siteless");
+
   GURL empty_site_url = GURL("siteless://test");
+  EXPECT_FALSE(SiteInstance::ShouldAssignSiteForURL(empty_site_url));
 
   // Register the service worker.
   RegisterServiceWorker();

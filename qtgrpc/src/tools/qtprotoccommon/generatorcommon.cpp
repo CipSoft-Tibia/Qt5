@@ -52,15 +52,18 @@ std::string_view getInitializerByFieldType(FieldDescriptor::Type type)
 }
 } // namespace
 
+std::set<std::string> common::m_extraNamespacedFiles;
+
 /*
     Constructs a C++ namespace from the full protobuf descriptor name. E.g. for
     the message descriptor "test.protobuf.MessageType" the function
     returns "test::protobuf", if the separator is "::".
 */
 std::string common::getFullNamespace(std::string_view fullDescriptorName,
-                                     std::string_view separator)
+                                     std::string_view separator,
+                                     bool extraScope)
 {
-    std::string output = Options::instance().extraNamespace();
+    std::string output = (extraScope) ? Options::instance().extraNamespace() : "";
     std::string::size_type nameIndex = fullDescriptorName.rfind('.');
     if (nameIndex == std::string::npos)
         return output;
@@ -270,8 +273,8 @@ TypeMap common::produceEnumTypeMap(const EnumDescriptor *type, const Descriptor 
     exportMacro = common::buildExportMacro(exportMacro);
 
     std::string initializer = scopeName + "::" + common::qualifiedCppName(type->value(0)->name());
-    return { { "classname", enumGadget },
-             { "classname_low_case", utils::deCapitalizeAsciiName(enumGadget) },
+    return { { "classname", name },
+             { "classname_low_case", utils::deCapitalizeAsciiName(name) },
              { "type", name },
              { "full_type", fullName },
              { "scope_type", scopeName },
@@ -314,21 +317,6 @@ TypeMap common::produceSimpleTypeMap(FieldDescriptor::Type type)
     if (type != FieldDescriptor::TYPE_STRING && type != FieldDescriptor::TYPE_BYTES)
         fullListName = CommonTemplates::QtProtobufNamespace() + "::"s + listName;
     std::string scopeListName = fullListName;
-
-    std::string qmlAliasType;
-    switch (type) {
-    case FieldDescriptor::TYPE_INT32:
-    case FieldDescriptor::TYPE_SFIXED32:
-        qmlAliasType = "int";
-        break;
-    case FieldDescriptor::TYPE_FIXED32:
-        qmlAliasType = "unsigned int";
-        break;
-    default:
-        qmlAliasType = fullName;
-        break;
-    }
-
     const std::string initializer(getInitializerByFieldType(type));
     return { { "type", name },
              { "full_type", fullName },
@@ -339,7 +327,6 @@ TypeMap common::produceSimpleTypeMap(FieldDescriptor::Type type)
              { "scope_namespaces", namespaces },
              { "qml_package", qmlPackage },
              { "property_type", fullName },
-             { "qml_alias_type", qmlAliasType },
              { "property_list_type", fullListName },
              { "getter_type", fullName },
              { "setter_type", fullName },
@@ -355,10 +342,24 @@ MethodMap common::produceMethodMap(const MethodDescriptor *method, const std::st
     methodNameUpper[0] = static_cast<char>(utils::toAsciiUpper(methodNameUpper[0]));
     inputTypeName = utils::replace(inputTypeName, ".", "::");
     outputTypeName = utils::replace(outputTypeName, ".", "::");
-    return { { "classname", scope },          { "return_type", outputTypeName },
+
+    std::string streamType;
+    if (method->client_streaming() && method->server_streaming()) {
+        streamType = "QGrpcBidirStream";
+    } else if (method->server_streaming()) {
+        streamType = "QGrpcServerStream";
+    } else if (method->client_streaming()) {
+        streamType = "QGrpcClientStream";
+    }
+
+    return { { "classname", scope },
+             { "return_type", outputTypeName },
              { "classname_low_case", utils::deCapitalizeAsciiName(scope) },
-             { "method_name", methodName },   { "method_name_upper", methodNameUpper },
-             { "param_type", inputTypeName }, { "param_name", "arg" },
+             { "method_name", methodName },
+             { "method_name_upper", methodNameUpper },
+             { "param_type", inputTypeName },
+             { "param_name", "arg" },
+             { "stream_type", streamType },
              { "return_name", "ret" } };
 }
 
@@ -399,6 +400,27 @@ TypeMap common::produceClientTypeMap(const ServiceDescriptor *service, const Des
              { "scope_type", scopeName },
              { "scope_namespaces", scopeNamespaces },
              { "parent_class", "QAbstractGrpcClient" },
+             { "export_macro", exportMacro } };
+}
+
+TypeMap common::produceQmlClientTypeMap(const ServiceDescriptor *service, const Descriptor *scope)
+{
+    const std::string name = "QmlClient";
+    const std::string fullName = "QmlClient";
+    const std::string serviceName = service->name();
+    const std::string exportMacro = common::buildExportMacro(Options::instance().exportMacro());
+
+    const std::string namespaces = getFullNamespace(service, "::");
+    const std::string scopeNamespaces = getScopeNamespace(namespaces,
+                                                          getFullNamespace(scope, "::"));
+
+    return { { "classname", name },
+             { "classname_low_case", utils::deCapitalizeAsciiName(name) },
+             { "full_type", fullName },
+             { "scope_type", serviceName },
+             { "service_name", serviceName },
+             { "scope_namespaces", scopeNamespaces },
+             { "parent_class", "Client" },
              { "export_macro", exportMacro } };
 }
 
@@ -527,6 +549,9 @@ PropertyMap common::producePropertyMap(const FieldDescriptor *field, const Descr
                 qualifiedCppName(qualifiedQmlName(field->containing_oneof()->name()));
         propertyMap["optional_property_name_cap"] =
                 utils::capitalizeAsciiName(field->containing_oneof()->name());
+    } else if (common::isOptionalField(field)) {
+        propertyMap["optional_property_name"] = propertyName;
+        propertyMap["optional_property_name_cap"] = propertyNameCap;
     }
 
     if (field->is_map()) {
@@ -568,6 +593,17 @@ bool common::isOneofField(const FieldDescriptor *field)
 #endif
 }
 
+bool common::isOptionalField(const FieldDescriptor *field)
+{
+#ifdef HAVE_PROTOBUF_SYNC_PIPER
+    bool hasOptional = field->has_presence() && !field->real_containing_oneof();
+#else
+    bool hasOptional = field->file()->syntax() == FileDescriptor::SYNTAX_PROTO2
+        && field->is_optional() && !field->containing_oneof();
+#endif
+    return field->type() != FieldDescriptor::TYPE_MESSAGE && hasOptional;
+}
+
 bool common::isLocalEnum(const EnumDescriptor *type, const Descriptor *scope)
 {
     assert(type != nullptr);
@@ -596,6 +632,12 @@ bool common::hasQmlAlias(const FieldDescriptor *field)
                 || field->type() == FieldDescriptor::TYPE_SFIXED32
                 || field->type() == FieldDescriptor::TYPE_FIXED32)
             && Options::instance().hasQml();
+}
+
+bool common::hasNestedTypes(const Descriptor *type)
+{
+    return common::hasNestedMessages(type) || type->enum_type_count() > 0
+            || Options::instance().generateFieldEnum() || type->oneof_decl_count() > 0;
 }
 
 void common::iterateMessages(const FileDescriptor *file,
@@ -694,8 +736,22 @@ std::string common::collectFieldFlags(const FieldDescriptor *field)
     if (common::isOneofField(field))
         writeFlag("Oneof");
 
+    if (common::isOptionalField(field))
+        writeFlag("Optional");
+
     if (flags.empty())
         writeFlag("NoFlags");
 
     return flags;
+}
+
+bool common::isExtraNamespacedFile(const std::string &file)
+{
+    return m_extraNamespacedFiles.find(file) != m_extraNamespacedFiles.end();
+}
+
+void common::setExtraNamespacedFiles(const std::set<std::string> &files)
+{
+    if (!files.empty() && files != m_extraNamespacedFiles)
+        m_extraNamespacedFiles = files;
 }

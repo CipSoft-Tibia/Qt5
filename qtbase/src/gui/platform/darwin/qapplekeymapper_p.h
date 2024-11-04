@@ -19,6 +19,8 @@
 #include <Carbon/Carbon.h>
 #endif
 
+#include <qpa/qplatformkeymapper.h>
+
 #include <QtCore/QList>
 #include <QtCore/QHash>
 #include <QtGui/QKeyEvent>
@@ -27,13 +29,12 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_GUI_EXPORT QAppleKeyMapper
+class Q_GUI_EXPORT QAppleKeyMapper : public QPlatformKeyMapper
 {
 public:
-    static Qt::KeyboardModifiers queryKeyboardModifiers();
-    QList<int> possibleKeys(const QKeyEvent *event) const;
-    static Qt::Key fromNSString(Qt::KeyboardModifiers qtMods, NSString *characters,
-                                NSString *charactersIgnoringModifiers, QString &text);
+    Qt::KeyboardModifiers queryKeyboardModifiers() const override;
+    QList<QKeyCombination> possibleKeyCombinations(const QKeyEvent *event) const override;
+
 #ifdef Q_OS_MACOS
     static Qt::KeyboardModifiers fromCocoaModifiers(NSEventModifierFlags cocoaModifiers);
     static NSEventModifierFlags toCocoaModifiers(Qt::KeyboardModifiers);
@@ -41,6 +42,9 @@ public:
     static QChar toCocoaKey(Qt::Key key);
     static Qt::Key fromCocoaKey(QChar keyCode);
 #else
+    static Qt::Key fromNSString(Qt::KeyboardModifiers qtMods, NSString *characters,
+                            NSString *charactersIgnoringModifiers, QString &text);
+
     static Qt::Key fromUIKitKey(NSString *keyCode);
     static Qt::KeyboardModifiers fromUIKitModifiers(ulong uikitModifiers);
     static ulong toUIKitModifiers(Qt::KeyboardModifiers);

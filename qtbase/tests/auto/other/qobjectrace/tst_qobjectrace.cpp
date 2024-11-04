@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QtCore>
@@ -318,9 +318,6 @@ private:
 
 void tst_QObjectRace::blockingQueuedDestroyRace()
 {
-#if !QT_CONFIG(cxx11_future)
-    QSKIP("This test requires QThread::create");
-#else
     enum { MinIterations = 100, MinTime = 3000, WaitTime = 25 };
 
     BlockingQueuedDestroyRaceObject sender;
@@ -366,7 +363,6 @@ void tst_QObjectRace::blockingQueuedDestroyRace()
 
         thread->wait();
     }
-#endif
 }
 
 static QAtomicInteger<unsigned> countedStructObjectsCount;

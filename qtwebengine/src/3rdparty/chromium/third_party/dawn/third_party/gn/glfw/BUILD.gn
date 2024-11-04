@@ -130,6 +130,7 @@ static_library("glfw") {
       "Xrandr",
     ]
   }
+
   # No wayland support for GLFW in GN builds.
   if (dawn_use_x11) {
     if (is_linux) {
@@ -155,6 +156,12 @@ static_library("glfw") {
       "${glfw_dir}/src/cocoa_window.m",
       "${glfw_dir}/src/nsgl_context.m",
     ]
+
+    # If a "build with ARC" config is present, remove it.
+    if (filter_include(configs, [ "//build/config/compiler:enable_arc" ]) !=
+        []) {
+      configs -= [ "//build/config/compiler:enable_arc" ]
+    }
 
     frameworks = [
       "Cocoa.framework",

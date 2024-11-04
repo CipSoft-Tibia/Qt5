@@ -97,8 +97,9 @@ TEST_F(SelectionControllerTest, setNonDirectionalSelectionIfNeeded) {
   SetBodyContent(body_content);
   ShadowRoot* shadow_root = SetShadowContent(shadow_content, "host");
 
-  Node* top = GetDocument().getElementById("top")->firstChild();
-  Node* bottom = shadow_root->getElementById("bottom")->firstChild();
+  Node* top = GetDocument().getElementById(AtomicString("top"))->firstChild();
+  Node* bottom =
+      shadow_root->getElementById(AtomicString("bottom"))->firstChild();
 
   // top to bottom
   SetNonDirectionalSelectionIfNeeded(SelectionInFlatTree::Builder()
@@ -227,7 +228,7 @@ TEST_F(SelectionControllerTest, AdjustSelectionWithTrailingWhitespace) {
   SetBodyContent(
       "<input type=checkbox>"
       "<div style='user-select:none'>abc</div>");
-  Element* const input = GetDocument().QuerySelector("input");
+  Element* const input = GetDocument().QuerySelector(AtomicString("input"));
 
   const SelectionInFlatTree& selection = ExpandWithGranularity(
       SelectionInFlatTree::Builder()
@@ -518,6 +519,56 @@ TEST_F(SelectionControllerTest, Scroll) {
   Node* line8_node = line8.AnchorNode();
   EXPECT_EQ(line8_node->nodeName(), "#text");
   EXPECT_EQ(line8_node->textContent(), "x");
+}
+
+// http://crbug.com/1372847
+TEST_F(SelectionControllerTest, AdjustSelectionByUserSelectWithInput) {
+  SetBodyContent(R"HTML(
+    <div style="user-select: none;">
+      <div id="one" style="user-select: text;">11</div>
+      <input type="text" value="input"/>
+    </div>
+    <div id="two">22</div>)HTML");
+
+  Element* one = GetDocument().getElementById(AtomicString("one"));
+  Element* input = GetDocument().QuerySelector(AtomicString("input"));
+
+  const SelectionInFlatTree& selection =
+      ExpandWithGranularity(SelectionInFlatTree::Builder()
+                                .Collapse(PositionInFlatTree(one, 0))
+                                .Build(),
+                            TextGranularity::kParagraph);
+  SelectionInFlatTree adjust_selection =
+      AdjustSelectionByUserSelect(one, selection);
+  EXPECT_EQ(adjust_selection.Base(),
+            PositionInFlatTree::FirstPositionInNode(*one));
+  EXPECT_EQ(adjust_selection.Extent(), PositionInFlatTree::BeforeNode(*input));
+}
+
+// http://crbug.com/1410448
+TEST_F(SelectionControllerTest, AdjustSelectionByUserSelectWithSpan) {
+  SetBodyContent(R"HTML(
+    <div id="div" style="user-select:none">
+      <span id="one" style="user-select:text">
+        <span style="user-select:text">Hel</span>lo
+      </span>
+      <span style="user-select:text"> lo </span>
+      <span id="two" style="user-select:text">there</span></div>)HTML");
+
+  Element* div = GetDocument().getElementById(AtomicString("div"));
+  Element* one = GetDocument().getElementById(AtomicString("one"));
+  Element* two = GetDocument().getElementById(AtomicString("two"));
+
+  const SelectionInFlatTree& selection =
+      ExpandWithGranularity(SelectionInFlatTree::Builder()
+                                .Collapse(PositionInFlatTree(one, 0))
+                                .Build(),
+                            TextGranularity::kParagraph);
+  SelectionInFlatTree adjust_selection =
+      AdjustSelectionByUserSelect(one, selection);
+  EXPECT_EQ(adjust_selection.Base(), PositionInFlatTree(div, 0));
+  EXPECT_EQ(adjust_selection.Extent(),
+            PositionInFlatTree::LastPositionInNode(*two->firstChild()));
 }
 
 }  // namespace blink

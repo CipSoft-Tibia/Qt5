@@ -13,7 +13,7 @@
 
 #include "core/fxcrt/retain_ptr.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
 class CPDF_ExpIntFunc;
 class CPDF_Object;
@@ -48,11 +48,11 @@ class CPDF_Function {
                     float ymin,
                     float ymax) const;
 
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
   const CPDF_SampledFunc* ToSampledFunc() const;
   const CPDF_ExpIntFunc* ToExpIntFunc() const;
   const CPDF_StitchFunc* ToStitchFunc() const;
-#endif  // _SKIA_SUPPORT_
+#endif  // defined(_SKIA_SUPPORT_)
 
  protected:
   explicit CPDF_Function(Type type);

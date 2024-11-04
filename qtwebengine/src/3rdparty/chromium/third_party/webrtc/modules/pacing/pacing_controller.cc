@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/match.h"
 #include "modules/pacing/bitrate_prober.h"
 #include "modules/pacing/interval_budget.h"
@@ -67,6 +68,8 @@ PacingController::PacingController(Clock* clock,
           IsEnabled(field_trials_, "WebRTC-Pacer-IgnoreTransportOverhead")),
       fast_retransmissions_(
           IsEnabled(field_trials_, "WebRTC-Pacer-FastRetransmissions")),
+      keyframe_flushing_(
+          IsEnabled(field_trials_, "WebRTC-Pacer-KeyframeFlushing")),
       transport_overhead_per_packet_(DataSize::Zero()),
       send_burst_interval_(TimeDelta::Zero()),
       last_timestamp_(clock_->CurrentTime()),
@@ -188,6 +191,21 @@ void PacingController::EnqueuePacket(std::unique_ptr<RtpPacketToSend> packet) {
       << "SetPacingRate must be called before InsertPacket.";
   RTC_CHECK(packet->packet_type());
 
+  if (keyframe_flushing_ &&
+      packet->packet_type() == RtpPacketMediaType::kVideo &&
+      packet->is_key_frame() && packet->is_first_packet_of_frame() &&
+      !packet_queue_.HasKeyframePackets(packet->Ssrc())) {
+    // First packet of a keyframe (and no keyframe packets currently in the
+    // queue). Flush any pending packets currently in the queue for that stream
+    // in order to get the new keyframe out as quickly as possible.
+    packet_queue_.RemovePacketsForSsrc(packet->Ssrc());
+    absl::optional<uint32_t> rtx_ssrc =
+        packet_sender_->GetRtxSsrcForMedia(packet->Ssrc());
+    if (rtx_ssrc) {
+      packet_queue_.RemovePacketsForSsrc(*rtx_ssrc);
+    }
+  }
+
   prober_.OnIncomingPacket(DataSize::Bytes(packet->payload_size()));
 
   const Timestamp now = CurrentTime();
@@ -273,9 +291,9 @@ TimeDelta PacingController::UpdateTimeAndGetElapsed(Timestamp now) {
   TimeDelta elapsed_time = now - last_process_time_;
   last_process_time_ = now;
   if (elapsed_time > kMaxElapsedTime) {
-    RTC_LOG(LS_WARNING) << "Elapsed time (" << elapsed_time.ms()
-                        << " ms) longer than expected, limiting to "
-                        << kMaxElapsedTime.ms();
+    RTC_LOG(LS_WARNING) << "Elapsed time (" << ToLogString(elapsed_time)
+                        << ") longer than expected, limiting to "
+                        << ToLogString(kMaxElapsedTime);
     elapsed_time = kMaxElapsedTime;
   }
   return elapsed_time;
@@ -357,6 +375,9 @@ Timestamp PacingController::NextSendTime() const {
 }
 
 void PacingController::ProcessPackets() {
+  absl::Cleanup cleanup = [packet_sender = packet_sender_] {
+    packet_sender->OnBatchComplete();
+  };
   const Timestamp now = CurrentTime();
   Timestamp target_send_time = now;
 
@@ -550,12 +571,6 @@ DataSize PacingController::PaddingToAdd(DataSize recommended_probe_size,
 
   if (congested_) {
     // Don't add padding if congested, even if requested for probing.
-    return DataSize::Zero();
-  }
-
-  if (!seen_first_packet_) {
-    // We can not send padding unless a normal packet has first been sent. If
-    // we do, timestamps get messed up.
     return DataSize::Zero();
   }
 

@@ -9,10 +9,10 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "base/containers/contains.h"
-#include "base/cxx17_backports.h"
 #include "base/debug/dump_without_crashing.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/observer_list.h"
@@ -20,6 +20,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/timer/elapsed_timer.h"
+#include "base/trace_event/common/trace_event_common.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/traced_value.h"
 #include "build/build_config.h"
@@ -44,6 +45,7 @@
 #include "components/viz/service/display/display_resource_provider_skia.h"
 #include "components/viz/service/display/display_resource_provider_software.h"
 #include "components/viz/service/display/display_scheduler.h"
+#include "components/viz/service/display/display_utils.h"
 #include "components/viz/service/display/null_renderer.h"
 #include "components/viz/service/display/output_surface.h"
 #include "components/viz/service/display/renderer_utils.h"
@@ -276,10 +278,12 @@ void Display::PresentationGroupTiming::AddPresentationHelper(
 void Display::PresentationGroupTiming::OnDraw(
     base::TimeTicks frame_time,
     base::TimeTicks draw_start_timestamp,
-    base::flat_set<base::PlatformThreadId> thread_ids) {
+    base::flat_set<base::PlatformThreadId> thread_ids,
+    HintSession::BoostType boost_type) {
   frame_time_ = frame_time;
   draw_start_timestamp_ = draw_start_timestamp;
   thread_ids_ = std::move(thread_ids);
+  boost_type_ = boost_type;
 }
 
 void Display::PresentationGroupTiming::OnSwap(gfx::SwapTimings timings,
@@ -297,7 +301,8 @@ void Display::PresentationGroupTiming::OnSwap(gfx::SwapTimings timings,
   }
   // Can be nullptr in unittests.
   if (scheduler) {
-    scheduler->ReportFrameTime(frame_latency, std::move(thread_ids_));
+    scheduler->ReportFrameTime(frame_latency, std::move(thread_ids_),
+                               draw_start_timestamp_, boost_type_);
   }
 }
 
@@ -465,6 +470,10 @@ void Display::Resize(const gfx::Size& size) {
   damage_tracker_->DisplayResized();
 }
 
+void Display::SetOutputSurfaceClipRect(const gfx::Rect& clip_rect) {
+  renderer_->SetOutputSurfaceClipRect(clip_rect);
+}
+
 void Display::InvalidateCurrentSurfaceId() {
   current_surface_id_ = SurfaceId();
   // Force a gc as the display may not be visible (gc occurs after drawing,
@@ -605,33 +614,65 @@ void Display::OnContextLost() {
 }
 
 namespace {
+
+DBG_FLAG_FBOOL("frame.debug.non_root_passes", debug_non_root_passes)
+
 void DebugDrawFrame(const AggregatedFrame& frame) {
-  if (!VizDebugger::GetInstance()->IsEnabled())
+  bool is_debugger_connected = false;
+  DBG_CONNECTED_OR_TRACING(is_debugger_connected);
+  if (!is_debugger_connected) {
     return;
+  }
 
-  auto& root_render_pass = *frame.render_pass_list.back();
-  DBG_LOG_OPT("frame.root.numquads", DBG_OPT_BLUE, "Num root quads=%d",
-              static_cast<int>(root_render_pass.quad_list.size()));
-  DBG_DRAW_RECT_OPT("frame.root.damage", DBG_OPT_RED,
-                    root_render_pass.damage_rect);
+  for (auto& render_pass : frame.render_pass_list) {
+    if (render_pass != frame.render_pass_list.back() &&
+        !debug_non_root_passes()) {
+      continue;
+    }
 
-  for (auto* quad : root_render_pass.quad_list) {
-    auto& transform = quad->shared_quad_state->quad_to_target_transform;
-    auto display_rect = transform.MapRect(gfx::RectF(quad->rect));
-    DBG_DRAW_TEXT_OPT("frame.root.material", DBG_OPT_GREEN,
-                      display_rect.origin(),
-                      base::NumberToString(static_cast<int>(quad->material)));
-    DBG_DRAW_TEXT_OPT("frame.root.display_rect", DBG_OPT_GREEN,
-                      display_rect.origin(), display_rect.ToString());
-    DBG_DRAW_TEXT_OPT(
-        "frame.root.resource_id", DBG_OPT_RED, display_rect.origin(),
-        base::NumberToString(quad->resources.ids[0].GetUnsafeValue()));
-    DBG_DRAW_RECT("frame.root.quad", display_rect);
+    DBG_DRAW_RECT_OPT("frame.render_pass.output_rect", DBG_OPT_BLUE,
+                      render_pass->output_rect);
+    DBG_DRAW_RECT_OPT("frame.render_pass.damage", DBG_OPT_RED,
+                      render_pass->damage_rect);
+
+    DBG_LOG_OPT("frame.render_pass.meta", DBG_OPT_BLUE,
+                "Render pass id=%" PRIu64
+                ", output_rect=(%s), damage_rect=(%s), "
+                "quad_list.size=%zu",
+                render_pass->id.value(),
+                render_pass->output_rect.ToString().c_str(),
+                render_pass->damage_rect.ToString().c_str(),
+                render_pass->quad_list.size());
+    DBG_LOG_OPT(
+        "frame.render_pass.transform_to_root_target", DBG_OPT_BLUE,
+        "Render pass transform=%s",
+        render_pass->transform_to_root_target.ToDecomposedString().c_str());
+
+    for (auto* quad : render_pass->quad_list) {
+      auto* sqs = quad->shared_quad_state;
+      auto& transform = sqs->quad_to_target_transform;
+      auto display_rect = transform.MapRect(gfx::RectF(quad->rect));
+      DBG_DRAW_TEXT_OPT("frame.render_pass.material", DBG_OPT_GREEN,
+                        display_rect.origin(),
+                        base::NumberToString(static_cast<int>(quad->material)));
+      DBG_DRAW_TEXT_OPT(
+          "frame.render_pass.layer_id", DBG_OPT_BLUE, display_rect.origin(),
+          base::StringPrintf("%u:%u", sqs->layer_namespace_id, sqs->layer_id));
+      DBG_DRAW_TEXT_OPT("frame.render_pass.display_rect", DBG_OPT_GREEN,
+                        display_rect.origin(), display_rect.ToString());
+      DBG_DRAW_TEXT_OPT(
+          "frame.render_pass.resource_id", DBG_OPT_RED, display_rect.origin(),
+          base::NumberToString(quad->resources.ids[0].GetUnsafeValue()));
+
+      DBG_DRAW_RECT("frame.render_pass.quad", display_rect);
+    }
   }
 }
 
 void DebugDrawFrameVisible(const AggregatedFrame& frame) {
-  if (!VizDebugger::GetInstance()->IsEnabled()) {
+  bool is_debugger_connected = false;
+  DBG_CONNECTED_OR_TRACING(is_debugger_connected);
+  if (!is_debugger_connected) {
     return;
   }
 
@@ -656,9 +697,6 @@ void DebugDrawFrameVisible(const AggregatedFrame& frame) {
 void VisualDebuggerSync(gfx::OverlayTransform current_display_transform,
                         gfx::Size current_surface_size,
                         int64_t last_presented_trace_id) {
-  if (!VizDebugger::GetInstance()->IsEnabled())
-    return;
-
   const gfx::Transform display_transform = gfx::OverlayTransformToTransform(
       current_display_transform, gfx::SizeF(current_surface_size));
   current_surface_size =
@@ -666,6 +704,10 @@ void VisualDebuggerSync(gfx::OverlayTransform current_display_transform,
           display_transform, gfx::Rect(current_surface_size))
           .size();
 
+  TRACE_EVENT2(TRACE_DISABLED_BY_DEFAULT("viz.visual_debugger"),
+               "visual_debugger_sync", "last_presented_trace_id",
+               last_presented_trace_id, "display_size",
+               current_surface_size.ToString());
   VizDebugger::GetInstance()->CompleteFrame(
       last_presented_trace_id, current_surface_size, base::TimeTicks::Now());
 }
@@ -895,8 +937,13 @@ bool Display::DrawAndSwap(const DrawAndSwapParams& params) {
         thread_ids.insert(surface_thread_ids.begin(), surface_thread_ids.end());
       }
     }
+
+    HintSession::BoostType boost_type = HintSession::BoostType::kDefault;
+    if (IsScroll(frame.latency_info)) {
+      boost_type = HintSession::BoostType::kScrollBoost;
+    }
     presentation_group_timing.OnDraw(params.frame_time, draw_timer->Begin(),
-                                     std::move(thread_ids));
+                                     std::move(thread_ids), boost_type);
 
     for (const auto& surface_id : aggregator_->previous_contained_surfaces()) {
       surface = surface_manager_->GetSurfaceForId(surface_id);
@@ -941,6 +988,9 @@ bool Display::DrawAndSwap(const DrawAndSwapParams& params) {
     if (scheduler_)
       scheduler_->DidSwapBuffers();
     pending_swaps_++;
+
+    UMA_HISTOGRAM_COUNTS_100("Compositing.Display.PendingSwaps",
+                             pending_swaps_);
 
     renderer_->SwapBuffers(std::move(swap_frame_data));
   } else {
@@ -1168,7 +1218,7 @@ base::TimeDelta Display::GetEstimatedDisplayDrawTime(base::TimeDelta interval,
     // We do not want the deadline adjustmens to exceed a default of 1/3 VSync,
     // as we would not give other processes enough time to produce content. So
     // this would make high latency situations worse.
-    return base::clamp(
+    return std::clamp(
         draw_time_without_scheduling_waits_.Percentile(percentile),
         kMinEstimatedDisplayDrawTime, default_estimate);
   }
@@ -1243,11 +1293,10 @@ void Display::RemoveOverdrawQuads(AggregatedFrame* frame) {
       // Skip quad if it is a AggregatedRenderPassDrawQuad because it is a
       // special type of DrawQuad where the visible_rect of shared quad state is
       // not entirely covered by draw quads in it.
-      if (quad->material == DrawQuad::Material::kAggregatedRenderPass) {
+      if (auto* rpdq = quad->DynamicCast<AggregatedRenderPassDrawQuad>()) {
         // A RenderPass with backdrop filters may apply to a quad underlying
         // RenderPassQuad. These regions should be tracked so that correctly
         // handle splitting and occlusion of the underlying quad.
-        auto* rpdq = AggregatedRenderPassDrawQuad::MaterialCast(*quad);
         auto it = backdrop_filter_rects.find(rpdq->render_pass_id);
         if (it != backdrop_filter_rects.end()) {
           backdrop_filters_in_target_space.Union(it->second);
@@ -1469,6 +1518,11 @@ void Display::InitDelegatedInkPointRendererReceiver(
                      /*create_if_necessary=*/true)) {
     ink_renderer->InitMessagePipeline(std::move(pending_receiver));
   }
+}
+
+void Display::ResetDisplayClientForTesting(DisplayClient* old_client) {
+  CHECK_EQ(client_, old_client);
+  client_ = nullptr;
 }
 
 }  // namespace viz

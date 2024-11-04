@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,7 @@
 
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 bool ServiceInfo::operator==(const ServiceInfo& other) const {
   return (service_id == other.service_id &&
@@ -43,5 +42,14 @@ bool ServiceInfo::Update(std::string new_friendly_name,
   return changed;
 }
 
-}  // namespace osp
-}  // namespace openscreen
+std::string ServiceInfo::ToString() const {
+  std::stringstream ss;
+  ss << "ServiceInfo{service_id=\"" << service_id << ", \"friendly_name=\""
+     << friendly_name
+     << "\", network_interface_index=" << network_interface_index
+     << ", v4_endpoint=\"" << v4_endpoint.ToString() << ", v6_endpoint=\""
+     << v6_endpoint.ToString() << "\"}";
+  return ss.str();
+}
+
+}  // namespace openscreen::osp

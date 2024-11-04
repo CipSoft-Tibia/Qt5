@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore>
 #include <QTest>
@@ -101,13 +101,9 @@ void qtimer_vs_qmetaobject::bench_data()
 
 void qtimer_vs_qmetaobject::benchBackgroundThread()
 {
-#if !QT_CONFIG(cxx11_future)
-    QSKIP("This test requires QThread::create");
-#else
     QScopedPointer<QThread> thread(QThread::create([this]() { bench(); }));
     thread->start();
     QVERIFY(thread->wait());
-#endif
 }
 
 QTEST_MAIN(qtimer_vs_qmetaobject)

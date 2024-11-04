@@ -124,10 +124,12 @@ struct QPropertyObserverPointer;
 
 class QUntypedPropertyData
 {
-public:
-    // sentinel to check whether a class inherits QUntypedPropertyData
-    struct InheritsQUntypedPropertyData {};
 };
+
+namespace QtPrivate {
+template <typename T>
+using IsUntypedPropertyData = std::enable_if_t<std::is_base_of_v<QUntypedPropertyData, T>, bool>;
+}
 
 template <typename T>
 class QPropertyData;

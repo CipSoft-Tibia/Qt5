@@ -18,7 +18,6 @@ namespace autofill {
 struct AutocompleteAttributeTestcase {
   base::StringPiece autocomplete;
   absl::optional<AutocompleteParsingResult> expected_result;
-  int max_length = 0;
 };
 
 class AutocompleteAttributeProcessingUtilTest
@@ -33,13 +32,6 @@ const AutocompleteAttributeTestcase kAutocompleteTestcases[]{
     {"autofill", {{"", HtmlFieldMode::kNone, HtmlFieldType::kUnrecognized}}},
     // autocomplete=off is ignored completely.
     {"off", absl::nullopt},
-
-    // Rationalization based on the field's max_length is done.
-    {"cc-exp-year",
-     {{"", HtmlFieldMode::kNone, HtmlFieldType::kCreditCardExpYear}}},
-    {"cc-exp-year",
-     {{"", HtmlFieldMode::kNone, HtmlFieldType::kCreditCardExp2DigitYear}},
-     /*max_length=*/2},
 
     // Type hints:
     // They are parsed and validated, but otherwise unused. Type hints are only
@@ -98,12 +90,33 @@ TEST_P(AutocompleteAttributeProcessingUtilTest, ParseAutocompleteAttribute) {
 
   FormFieldData field;
   field.autocomplete_attribute = std::string(test.autocomplete);
-  if (test.max_length)
-    field.max_length = test.max_length;
 
-  auto result = ParseAutocompleteAttribute(field.autocomplete_attribute,
-                                           field.max_length);
+  auto result = ParseAutocompleteAttribute(field.autocomplete_attribute);
   EXPECT_EQ(result, test.expected_result);
+}
+
+TEST_F(AutocompleteAttributeProcessingUtilTest,
+       IsAutocompleteTypeWrongButWellIntended_FalseOnIgnoredValues) {
+  EXPECT_FALSE(IsAutocompleteTypeWrongButWellIntended("on"));
+  EXPECT_FALSE(IsAutocompleteTypeWrongButWellIntended("off"));
+  EXPECT_FALSE(IsAutocompleteTypeWrongButWellIntended("false"));
+}
+
+TEST_F(
+    AutocompleteAttributeProcessingUtilTest,
+    IsAutocompleteTypeWrongButWellIntended_FalseOnSubstringMatchWithKnownValue) {
+  EXPECT_FALSE(IsAutocompleteTypeWrongButWellIntended("new-password"));
+  EXPECT_FALSE(IsAutocompleteTypeWrongButWellIntended("one-time-code"));
+}
+
+TEST_F(AutocompleteAttributeProcessingUtilTest,
+       IsAutocompleteTypeWrongButWellIntended_TrueOnPossibleTypo) {
+  EXPECT_TRUE(IsAutocompleteTypeWrongButWellIntended("familyname"));
+}
+
+TEST_F(AutocompleteAttributeProcessingUtilTest,
+       IsAutocompleteTypeWrongButWellIntended_FalseOnDisableKeywordFound) {
+  EXPECT_FALSE(IsAutocompleteTypeWrongButWellIntended("off-familyname"));
 }
 
 }  // namespace autofill

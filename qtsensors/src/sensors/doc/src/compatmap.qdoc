@@ -136,6 +136,135 @@
 
     \endraw
 
+    \raw DocBook
+<db:informaltable cellpadding="2" cellspacing="1" border="1" width="90%">
+    <db:tbody>
+    <db:tr>
+        <db:td>Color</db:td>
+        <db:td>Explanation</db:td>
+    </db:tr>
+    <db:tr>
+        <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+        <db:td>The sensor is supported.</db:td>
+    </db:tr>
+    <db:tr>
+        <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+        <db:td>The sensor is not supported.</db:td>
+    </db:tr>
+    </db:tbody>
+    </db:informaltable>
+
+
+    <db:informaltable cellpadding="2" cellspacing="1" border="1" rules="all" width="90%">
+    <db:tbody>
+    <db:tr>
+    <db:td><db:emphasis role="bold">Feature</db:emphasis></db:td>
+    <db:td><db:emphasis role="bold">Android</db:emphasis></db:td>
+    <db:td><db:emphasis role="bold">Linux</db:emphasis></db:td>
+    <db:td><db:emphasis role="bold">iOS</db:emphasis></db:td>
+    <db:td><db:emphasis role="bold">Windows</db:emphasis></db:td>
+    <db:td><db:emphasis role="bold">Generic</db:emphasis></db:td>
+    </db:tr>
+    <db:tr>
+    <db:td>Accelerometer</db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    </db:tr>
+    <db:tr>
+    <db:td>Ambient Light Sensor</db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    </db:tr>
+    <db:tr>
+    <db:td>Ambient Temperature Sensor</db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    </db:tr>
+    <db:tr>
+    <db:td>Compass</db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    </db:tr>
+    <db:tr>
+    <db:td>Gyroscope</db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    </db:tr>
+    <db:tr>
+    <db:td>Light Sensor</db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    </db:tr>
+    <db:tr>
+    <db:td>Magnetometer</db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    </db:tr>
+    <db:tr>
+    <db:td>Orientation Sensor</db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    </db:tr>
+    <db:tr>
+    <db:td>Pressure Sensor</db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    </db:tr>
+    <db:tr>
+    <db:td>Proximity Sensor</db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    </db:tr>
+    <db:tr>
+    <db:td>Rotation Sensor</db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    </db:tr>
+    <db:tr>
+    <db:td>Tilt Sensor</db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    <db:td  class="bgcolor-gray" ><?dbhtml bgcolor="gray" ?><?dbfo bgcolor="gray" ?></db:td>
+    <db:td  class="bgcolor-green" ><?dbhtml bgcolor="green" ?><?dbfo bgcolor="green" ?></db:td>
+    </db:tr>
+    </db:tbody>
+    </db:informaltable>
+    \endraw
+
     In addition to the table above, each sensor type might support specific features. For example,
     a magnetometer might support returning geo values. See QSensor::isFeatureSupported() for
     additional details.

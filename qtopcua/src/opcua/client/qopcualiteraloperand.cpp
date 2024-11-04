@@ -11,7 +11,7 @@ QT_BEGIN_NAMESPACE
     \inmodule QtOpcUa
     \brief The OPC UA LiteralOperand type.
 
-    The LiteralOperand is defined in OPC-UA part 4, 7.4.4.3.
+    The LiteralOperand is defined in OPC UA 1.05 part 4, 7.7.4.3.
     It contains a literal value that is to be used as operand.
 */
 class QOpcUaLiteralOperandData : public QSharedData
@@ -101,5 +101,25 @@ void QOpcUaLiteralOperand::setValue(const QVariant &value)
 {
     data->value = value;
 }
+
+/*!
+    \fn bool QOpcUaLiteralOperand::operator==(const QOpcUaLiteralOperand &lhs,
+                                              const QOpcUaLiteralOperand &rhs)
+    \since 6.7
+
+    Returns \c true if \a lhs has the same value as \a rhs.
+*/
+bool comparesEqual(const QOpcUaLiteralOperand &lhs, const QOpcUaLiteralOperand &rhs) noexcept
+{
+    return lhs.value() == rhs.value() && lhs.type() == rhs.type();
+}
+
+/*!
+    \fn bool QOpcUaLiteralOperand::operator!=(const QOpcUaLiteralOperand &lhs,
+                                              const QOpcUaLiteralOperand &rhs)
+    \since 6.7
+
+    Returns \c true if \a lhs has a different value than \a rhs.
+*/
 
 QT_END_NAMESPACE

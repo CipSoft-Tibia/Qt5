@@ -7,6 +7,10 @@
 
 namespace ash {
 
+void FakeAppLaunchSplashScreenHandler::SetDelegate(Delegate* delegate) {
+  delegate_ = delegate;
+}
+
 void FakeAppLaunchSplashScreenHandler::Show(KioskAppManagerBase::App app_data) {
   last_app_data_ = app_data;
 }
@@ -16,25 +20,15 @@ void FakeAppLaunchSplashScreenHandler::ShowErrorMessage(
   error_message_type_ = error;
 }
 
-bool FakeAppLaunchSplashScreenHandler::IsNetworkReady() {
-  return network_ready_;
-}
-
-bool FakeAppLaunchSplashScreenHandler::IsNetworkRequired() const {
-  return network_required_;
-}
-
 KioskAppLaunchError::Error
 FakeAppLaunchSplashScreenHandler::GetErrorMessageType() const {
   return error_message_type_;
 }
 
-void FakeAppLaunchSplashScreenHandler::SetNetworkReady(bool ready) {
-  network_ready_ = ready;
-}
-
-void FakeAppLaunchSplashScreenHandler::SetNetworkRequired() {
-  network_required_ = true;
+void FakeAppLaunchSplashScreenHandler::FinishNetworkConfig() {
+  if (delegate_) {
+    delegate_->OnNetworkConfigFinished();
+  }
 }
 
 void FakeAppLaunchSplashScreenHandler::UpdateAppLaunchState(

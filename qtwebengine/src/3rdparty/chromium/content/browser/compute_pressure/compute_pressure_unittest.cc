@@ -18,6 +18,7 @@
 #include "content/test/test_web_contents.h"
 #include "services/device/public/cpp/test/scoped_pressure_manager_overrider.h"
 #include "services/device/public/mojom/pressure_manager.mojom.h"
+#include "services/device/public/mojom/pressure_update.mojom.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/permissions_policy/permissions_policy.h"
@@ -26,31 +27,28 @@
 
 namespace content {
 
-using device::mojom::PressureFactor;
+using device::mojom::PressureSource;
 using device::mojom::PressureState;
 using device::mojom::PressureStatus;
 using device::mojom::PressureUpdate;
 
 namespace {
 
-constexpr base::TimeDelta kSampleInterval = base::Seconds(1);
-
 // Synchronous proxy to a device::mojom::PressureManager.
 class PressureManagerSync {
  public:
   explicit PressureManagerSync(device::mojom::PressureManager* manager)
-      : manager_(*manager) {
-    DCHECK(manager);
-  }
+      : manager_(raw_ref<device::mojom::PressureManager>::from_ptr(manager)) {}
   ~PressureManagerSync() = default;
 
   PressureManagerSync(const PressureManagerSync&) = delete;
   PressureManagerSync& operator=(const PressureManagerSync&) = delete;
 
   PressureStatus AddClient(
-      mojo::PendingRemote<device::mojom::PressureClient> client) {
+      mojo::PendingRemote<device::mojom::PressureClient> client,
+      PressureSource source) {
     base::test::TestFuture<PressureStatus> future;
-    manager_->AddClient(std::move(client), future.GetCallback());
+    manager_->AddClient(std::move(client), source, future.GetCallback());
     return future.Get();
   }
 
@@ -58,7 +56,7 @@ class PressureManagerSync {
   // The reference is immutable, so accessing it is thread-safe. The referenced
   // device::mojom::PressureManager implementation is called synchronously,
   // so it's acceptable to rely on its own thread-safety checks.
-  const raw_ref<device::mojom::PressureManager> manager_;
+  const raw_ref<device::mojom::PressureManager, DanglingUntriaged> manager_;
 };
 
 // Test double for PressureClient that records all updates.
@@ -90,7 +88,7 @@ class FakePressureClient : public device::mojom::PressureClient {
 
   void SetNextUpdateCallback(base::OnceClosure callback) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-    DCHECK(!update_callback_) << " already called before update received";
+    CHECK(!update_callback_) << " already called before update received";
 
     update_callback_ = std::move(callback);
   }
@@ -136,11 +134,7 @@ class FakePressureClient : public device::mojom::PressureClient {
 
 class ComputePressureTest : public RenderViewHostImplTestHarness {
  public:
-  ComputePressureTest() {
-    scoped_feature_list_.InitAndEnableFeature(
-        blink::features::kComputePressure);
-  }
-
+  ComputePressureTest() = default;
   ~ComputePressureTest() override = default;
 
   ComputePressureTest(const ComputePressureTest&) = delete;
@@ -180,8 +174,6 @@ class ComputePressureTest : public RenderViewHostImplTestHarness {
   const GURL kTestUrl{"https://example.com/compute_pressure.html"};
   const GURL kInsecureUrl{"http://example.com/compute_pressure.html"};
 
-  base::test::ScopedFeatureList scoped_feature_list_;
-
   mojo::Remote<device::mojom::PressureManager> pressure_manager_;
   std::unique_ptr<PressureManagerSync> pressure_manager_sync_;
   std::unique_ptr<device::ScopedPressureManagerOverrider>
@@ -190,61 +182,25 @@ class ComputePressureTest : public RenderViewHostImplTestHarness {
 
 TEST_F(ComputePressureTest, AddClient) {
   FakePressureClient client;
-  ASSERT_EQ(
-      pressure_manager_sync_->AddClient(client.BindNewPipeAndPassRemote()),
-      PressureStatus::kOk);
+  ASSERT_EQ(pressure_manager_sync_->AddClient(client.BindNewPipeAndPassRemote(),
+                                              PressureSource::kCpu),
+            PressureStatus::kOk);
 
   const base::Time time = base::Time::Now();
-  PressureUpdate update(PressureState::kNominal, {PressureFactor::kThermal},
-                        time);
+  PressureUpdate update(PressureSource::kCpu, PressureState::kNominal, time);
   pressure_manager_overrider_->UpdateClients(update);
   client.WaitForUpdate();
   ASSERT_EQ(client.updates().size(), 1u);
   EXPECT_EQ(client.updates()[0], update);
 }
 
-TEST_F(ComputePressureTest, UpdatePressureFactors) {
-  FakePressureClient client;
-  ASSERT_EQ(
-      pressure_manager_sync_->AddClient(client.BindNewPipeAndPassRemote()),
-      PressureStatus::kOk);
-
-  const base::Time time = base::Time::Now();
-  PressureUpdate update1(PressureState::kNominal,
-                         {PressureFactor::kPowerSupply}, time);
-
-  pressure_manager_overrider_->UpdateClients(update1);
-  client.WaitForUpdate();
-  ASSERT_EQ(client.updates().size(), 1u);
-  EXPECT_EQ(client.updates()[0], update1);
-  client.updates().clear();
-
-  PressureUpdate update2(
-      PressureState::kCritical,
-      {PressureFactor::kThermal, PressureFactor::kPowerSupply},
-      time + kSampleInterval);
-  pressure_manager_overrider_->UpdateClients(update2);
-  client.WaitForUpdate();
-  ASSERT_EQ(client.updates().size(), 1u);
-  EXPECT_EQ(client.updates()[0], update2);
-  client.updates().clear();
-
-  PressureUpdate update3(PressureState::kCritical, {PressureFactor::kThermal},
-                         time + kSampleInterval * 2);
-  pressure_manager_overrider_->UpdateClients(update3);
-  client.WaitForUpdate();
-  ASSERT_EQ(client.updates().size(), 1u);
-  EXPECT_EQ(client.updates()[0], update3);
-  client.updates().clear();
-}
-
 TEST_F(ComputePressureTest, AddClientNotSupported) {
   pressure_manager_overrider_->set_is_supported(false);
 
   FakePressureClient client;
-  EXPECT_EQ(
-      pressure_manager_sync_->AddClient(client.BindNewPipeAndPassRemote()),
-      PressureStatus::kNotSupported);
+  EXPECT_EQ(pressure_manager_sync_->AddClient(client.BindNewPipeAndPassRemote(),
+                                              PressureSource::kCpu),
+            PressureStatus::kNotSupported);
 }
 
 TEST_F(ComputePressureTest, InsecureOrigin) {

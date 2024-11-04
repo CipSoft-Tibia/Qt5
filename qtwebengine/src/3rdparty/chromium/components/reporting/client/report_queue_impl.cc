@@ -30,6 +30,7 @@
 #include "components/reporting/storage/storage_module_interface.h"
 #include "components/reporting/util/status.h"
 #include "components/reporting/util/statusor.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace reporting {
 namespace {
@@ -43,9 +44,11 @@ constexpr int64_t kTime2122 = 4'796'668'800'000'000;
 // thread pool (no synchronization expected).
 void AddRecordToStorage(scoped_refptr<StorageModuleInterface> storage,
                         Priority priority,
+                        WrappedRateLimiter::AsyncAcquireCb acquire_cb,
                         std::string dm_token,
                         Destination destination,
                         int64_t reserved_space,
+                        absl::optional<SourceInfo> source_info,
                         ReportQueue::RecordProducer record_producer,
                         StorageModuleInterface::EnqueueCallback callback) {
   // Generate record data.
@@ -63,9 +66,28 @@ void AddRecordToStorage(scoped_refptr<StorageModuleInterface> storage,
     record.set_reserved_space(reserved_space);
   }
 
+  // Additional record augmentation for keeping local record copy.
+  // Note: that must be done before calling `storage->AddRecord` below,
+  // because later the handler might call it with no need to set this flag.
+  switch (destination) {
+    case LOG_UPLOAD:
+      // It would be better to base the decision on `upload_settings` presence
+      // in the event, but that would require protobuf reflecion, that is not
+      // included in Chromium build. So instead we just use `destination`.
+      record.set_needs_local_unencrypted_copy(true);
+      break;
+    default:  // Do nothing.
+      break;
+  }
+
   // |record| with no DM token is assumed to be associated with device DM token
   if (!dm_token.empty()) {
     *record.mutable_dm_token() = std::move(dm_token);
+  }
+
+  // Augment source info if available.
+  if (source_info.has_value()) {
+    *record.mutable_source_info() = std::move(source_info.value());
   }
 
   // Calculate timestamp in microseconds - to match Spanner expectations.
@@ -88,13 +110,40 @@ void AddRecordToStorage(scoped_refptr<StorageModuleInterface> storage,
     return;
   }
   record.set_timestamp_us(time_since_epoch_us);
-  if (!record_result.ok()) {
-    std::move(callback).Run(record_result.status());
+
+  const auto record_size = record.ByteSizeLong();
+
+  // Prepare `Storage::AddRecord` as a callback.
+  auto add_record_cb = base::BindOnce(&StorageModuleInterface::AddRecord,
+                                      storage, priority, std::move(record));
+
+  // Rate-limit event, if required.
+  if (!acquire_cb) {
+    // No rate limiter, just add resulting Record to the storage.
+    std::move(add_record_cb).Run(std::move(callback));
     return;
   }
 
-  // Add resulting Record to the storage.
-  storage->AddRecord(priority, std::move(record), std::move(callback));
+  // Add Record only if rate limiter approves.
+  acquire_cb.Run(
+      record_size,
+      base::BindOnce(
+          [](size_t record_size,
+             base::OnceCallback<void(StorageModuleInterface::EnqueueCallback
+                                         callback)> add_record_cb,
+             StorageModuleInterface::EnqueueCallback callback, bool acquired) {
+            if (!acquired) {
+              std::move(callback).Run(
+                  Status(error::OUT_OF_RANGE,
+                         base::StrCat({"Event size ",
+                                       base::NumberToString(record_size),
+                                       " rejected by rate limiter"})));
+              return;
+            }
+            // Add resulting Record to the storage.
+            std::move(add_record_cb).Run(std::move(callback));
+          },
+          record_size, std::move(add_record_cb), std::move(callback)));
 }
 }  // namespace
 
@@ -133,8 +182,9 @@ void ReportQueueImpl::AddProducedRecord(RecordProducer record_producer,
   base::ThreadPool::PostTask(
       FROM_HERE, {base::TaskPriority::BEST_EFFORT},
       base::BindOnce(&AddRecordToStorage, storage_, priority,
-                     config_->dm_token(), config_->destination(),
-                     config_->reserved_space(), std::move(record_producer),
+                     config_->is_event_allowed_cb(), config_->dm_token(),
+                     config_->destination(), config_->reserved_space(),
+                     config_->source_info(), std::move(record_producer),
                      std::move(callback)));
 }
 
@@ -145,8 +195,7 @@ void ReportQueueImpl::Flush(Priority priority, FlushCallback callback) {
 base::OnceCallback<void(StatusOr<std::unique_ptr<ReportQueue>>)>
 ReportQueueImpl::PrepareToAttachActualQueue() const {
   NOTREACHED();
-  return base::BindOnce(
-      [](StatusOr<std::unique_ptr<ReportQueue>>) { NOTREACHED(); });
+  return base::DoNothing();
 }
 
 // Implementation of SpeculativeReportQueueImpl::PendingRecordProducer
@@ -235,7 +284,8 @@ void SpeculativeReportQueueImpl::AddProducedRecord(
       FROM_HERE,
       base::BindOnce(&SpeculativeReportQueueImpl::MaybeEnqueueRecordProducer,
                      weak_ptr_factory_.GetWeakPtr(), priority,
-                     std::move(callback), std::move(record_producer)));
+                     base::BindPostTaskToCurrentDefault(std::move(callback)),
+                     std::move(record_producer)));
 }
 
 void SpeculativeReportQueueImpl::MaybeEnqueueRecordProducer(
@@ -266,7 +316,7 @@ void SpeculativeReportQueueImpl::MaybeEnqueueRecordProducer(
 
 void SpeculativeReportQueueImpl::EnqueuePendingRecordProducers() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(actual_report_queue_.has_value());
+  CHECK(actual_report_queue_.has_value());
   if (pending_record_producers_.empty()) {
     return;
   }

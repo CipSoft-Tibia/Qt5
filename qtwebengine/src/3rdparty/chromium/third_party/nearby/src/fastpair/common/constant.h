@@ -22,16 +22,9 @@ namespace fastpair {
 
 // Bluetooth Uuid
 constexpr char kServiceId[] = "Fast Pair";
-constexpr char kFastPairServiceUuid[] = "0000FE2C-0000-1000-8000-00805F9B34FB";
-const char kKeyBasedPairingCharacteristicUuidV1[] = "1234";
-const char kKeyBasedPairingCharacteristicUuidV2[] =
-    "FE2C1234-8366-4814-8EB0-01DE32100BEA";
-const char kPasskeyCharacteristicUuidV1[] = "1235";
-const char kPasskeyCharacteristicUuidV2[] =
-    "FE2C1235-8366-4814-8EB0-01DE32100BEA";
-const char kAccountKeyCharacteristicUuidV1[] = "1236";
-const char kAccountKeyCharacteristicUuidV2[] =
-    "FE2C1236-8366-4814-8EB0-01DE32100BEA";
+
+constexpr char kRfcommUuid[] = "df21fe2c-2515-4fdb-8886-f12c4d67927c";
+constexpr int kAccountKeySize = 16;
 
 // Key pair
 constexpr int kSharedSecretKeyByteSize = 16;
@@ -67,9 +60,11 @@ constexpr uint8_t kKeyBasedPairingType = 0x00;
 constexpr uint8_t kInitialOrSubsequentFlags = 0x00;
 constexpr uint8_t kRetroactiveFlags = 0x10;
 
-// GATT connection
-constexpr int kMaxNumGattConnectionAttempts = 3;
-constexpr int kGattOperationTimeout = 15;
+// Battery Info
+constexpr int kBatteryChargingMask = 0b10000000;
+constexpr int kBatteryPercentageMask = 0b01111111;
+constexpr int kBatteryIsChargingByte = 0b11111111;
+constexpr int kBatteryNotChargingByte = 0b01111111;
 
 }  // namespace fastpair
 }  // namespace nearby

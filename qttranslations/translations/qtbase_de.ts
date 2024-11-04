@@ -2039,6 +2039,10 @@ Möchten Sie die Datei trotzdem löschen?</translation>
         <translation>&apos;%1&apos; ist keine gültige ELF-Objektdatei (%2)</translation>
     </message>
     <message>
+        <source>unimplemented: PN_XNUM program headers</source>
+        <translation>nicht implementiert: PN_XNUM-Programm-Header</translation>
+    </message>
+    <message>
         <source>program header table extends past the end of the file</source>
         <translation>Die Programm-Header-Tabelle geht über das Dateiende hinaus</translation>
     </message>
@@ -3977,8 +3981,20 @@ Bitte deaktivieren Sie eine der beiden.</translation>
         <translation>Die Eingabeumleitung konnte nicht zum Lesen geöffnet werden</translation>
     </message>
     <message>
-        <source>childProcessModifier() function threw an exception</source>
-        <translation>die childProcessModifier()-Funktion hat eine Ausnahme ausgelöst</translation>
+        <source>Child process modifier threw an exception: %1</source>
+        <translation>Der Kindprozess-Modifizier-Callback hat eine Ausnahme ausgelöst: %1</translation>
+    </message>
+    <message>
+        <source>Child process modifier reported error: %1</source>
+        <translation>Der Kindprozess-Modifizier-Callback hat einen Fehler gemeldet: %1</translation>
+    </message>
+    <message>
+        <source>Child process modifier reported error: %1: %2</source>
+        <translation>Der Kindprozess-Modifizier-Callback hat einen Fehler gemeldet: %1: %2</translation>
+    </message>
+    <message>
+        <source>Child process set up failed: %1: %2</source>
+        <translation>Die Einrichtung des Kindprozesses ist fehlgeschlagen: %1: %2</translation>
     </message>
     <message>
         <source>Could not open output redirection for writing</source>
@@ -6809,6 +6825,14 @@ Role of an accessible object</extracomment>
     <message>
         <source>Application Data</source>
         <translation>Anwendungsdaten</translation>
+    </message>
+    <message>
+        <source>State</source>
+        <translation>Statusdaten</translation>
+    </message>
+    <message>
+        <source>Shared State</source>
+        <translation>Gemeinsame Statusdaten</translation>
     </message>
     <message>
         <source>Application Configuration</source>

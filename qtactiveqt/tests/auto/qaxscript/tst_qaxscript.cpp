@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QtTest/QtTest>
@@ -16,6 +16,8 @@ private slots:
     void call();
     void scriptReturnValue();
     void scriptOutParameters();
+    void error_data();
+    void error();
 };
 
 void tst_QAxScript::call()
@@ -95,6 +97,66 @@ void tst_QAxScript::scriptOutParameters()
     QCOMPARE(results.at(0), "The Qt Company");
     QCOMPARE(results.at(1), "ActiveQt");
     QCOMPARE(results.at(2), 650);
+}
+
+void tst_QAxScript::error_data()
+{
+    QTest::addColumn<QString>("scriptCode");
+    QTest::addColumn<QString>("language");
+    QTest::addColumn<int>("expectedErrorCode");
+    QTest::addColumn<QString>("expectedDescription");
+    QTest::addColumn<int>("expectedSourcePosition");
+    QTest::addColumn<QString>("expectedSourceText");
+
+    QTest::addRow("JS syntax error")
+        << "function foo {}"
+        << "JScript"
+        << 0 << "Expected '('" << 0 << "function foo {}";
+
+    QTest::addRow("VB syntax error")
+        << "Funktion test"
+        << "VBScript"
+        << 0 << "Type mismatch: 'Funktion'" << 0 << "";
+}
+
+void tst_QAxScript::error()
+{
+    QFETCH(QString, scriptCode);
+    QFETCH(QString, language);
+    QFETCH(int, expectedErrorCode);
+    QFETCH(QString, expectedDescription);
+    QFETCH(int, expectedSourcePosition);
+    QFETCH(QString, expectedSourceText);
+
+    QAxScriptManager scriptManager;
+    QAxScript script(u"Test"_s, &scriptManager);
+
+    QAxScript *actualScript = nullptr;
+    int actualCode;
+    QString actualDescription;
+    int actualSourcePosition;
+    QString actualSourceText;
+
+    connect(&scriptManager, &QAxScriptManager::error,
+            this, [&](QAxScript *script){
+        actualScript = script;
+    });
+
+    connect(&script, &QAxScript::error,
+            this, [&](int code, const QString &description, int sourcePosition, const QString &sourceText){
+        actualCode = code;
+        actualDescription = description;
+        actualSourcePosition = sourcePosition;
+        actualSourceText = sourceText.trimmed();
+    });
+
+    script.load(scriptCode, language);
+
+    QCOMPARE(actualScript, &script);
+    QCOMPARE(actualCode, expectedErrorCode);
+    QCOMPARE(actualDescription, expectedDescription);
+    QCOMPARE(actualSourcePosition, expectedSourcePosition);
+    QCOMPARE(actualSourceText, expectedSourceText);
 }
 
 QTEST_MAIN(tst_QAxScript)

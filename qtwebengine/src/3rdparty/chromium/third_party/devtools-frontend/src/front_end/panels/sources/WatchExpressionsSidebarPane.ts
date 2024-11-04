@@ -110,12 +110,11 @@ export class WatchExpressionsSidebarPane extends UI.ThrottledWidget.ThrottledWid
     this.watchExpressionsSetting =
         Common.Settings.Settings.instance().createLocalSetting<string[]>('watchExpressions', []);
 
-    this.addButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.addWatchExpression), 'largeicon-add');
+    this.addButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.addWatchExpression), 'plus');
     this.addButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, _event => {
       void this.addButtonClicked();
     });
-    this.refreshButton =
-        new UI.Toolbar.ToolbarButton(i18nString(UIStrings.refreshWatchExpressions), 'largeicon-refresh');
+    this.refreshButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.refreshWatchExpressions), 'refresh');
     this.refreshButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.update, this);
 
     this.contentElement.classList.add('watch-expressions');
@@ -143,7 +142,7 @@ export class WatchExpressionsSidebarPane extends UI.ThrottledWidget.ThrottledWid
     return [this.addButton, this.refreshButton];
   }
 
-  focus(): void {
+  override focus(): void {
     if (this.hasFocus()) {
       return;
     }
@@ -174,7 +173,7 @@ export class WatchExpressionsSidebarPane extends UI.ThrottledWidget.ThrottledWid
     this.createWatchExpression(null).startEditing();
   }
 
-  async doUpdate(): Promise<void> {
+  override async doUpdate(): Promise<void> {
     this.linkifier.reset();
     this.contentElement.removeChildren();
     this.treeOutline.removeChildren();
@@ -287,7 +286,7 @@ export class WatchExpressionsSidebarPane extends UI.ThrottledWidget.ThrottledWid
 
     contextMenu.debugSection().appendAction('sources.add-to-watch');
   }
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.treeOutline.registerCSSFiles([watchExpressionsSidebarPaneStyles]);
     this.registerCSSFiles([watchExpressionsSidebarPaneStyles, objectValueStyles]);
@@ -355,11 +354,6 @@ export class WatchExpression extends Common.ObjectWrapper.ObjectWrapper<EventTyp
           silent: true,
           returnByValue: false,
           generatePreview: false,
-          allowUnsafeEvalBlockedByCSP: undefined,
-          disableBreaks: undefined,
-          replMode: undefined,
-          throwOnSideEffect: undefined,
-          timeout: undefined,
         },
         /* userGesture */ false,
         /* awaitPromise */ false);
@@ -461,7 +455,7 @@ export class WatchExpression extends Common.ObjectWrapper.ObjectWrapper<EventTyp
   private createWatchExpressionHeader(
       expressionValue?: SDK.RemoteObject.RemoteObject, exceptionDetails?: Protocol.Runtime.ExceptionDetails): Element {
     const headerElement = this.element.createChild('div', 'watch-expression-header');
-    const deleteButton = UI.Icon.Icon.create('smallicon-cross', 'watch-expression-delete-button');
+    const deleteButton = UI.Icon.Icon.create('cross', 'watch-expression-delete-button');
     this.resizeObserver = new ResizeObserver(entries => {
       entries.forEach(entry => {
         // 55 serves as a width threshold here (in px)

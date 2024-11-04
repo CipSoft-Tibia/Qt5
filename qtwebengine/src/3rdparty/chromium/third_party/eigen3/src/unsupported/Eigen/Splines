@@ -26,9 +26,11 @@ namespace Eigen
 
 #include "../../Eigen/src/Core/util/DisableStupidWarnings.h"
 
+// IWYU pragma: begin_exports
 #include "src/Splines/SplineFwd.h"
 #include "src/Splines/Spline.h"
 #include "src/Splines/SplineFitting.h"
+// IWYU pragma: end_exports
 
 #include "../../Eigen/src/Core/util/ReenableStupidWarnings.h"
 

@@ -27,6 +27,8 @@ dawn_component("platform") {
     "DawnPlatform.cpp",
     "WorkerThread.cpp",
     "WorkerThread.h",
+    "metrics/HistogramMacros.cpp",
+    "metrics/HistogramMacros.h",
     "tracing/EventTracer.cpp",
     "tracing/EventTracer.h",
     "tracing/TraceEvent.h",

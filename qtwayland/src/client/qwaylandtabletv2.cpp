@@ -13,16 +13,6 @@ namespace QtWaylandClient {
 QWaylandTabletManagerV2::QWaylandTabletManagerV2(QWaylandDisplay *display, uint id, uint version)
     : zwp_tablet_manager_v2(display->wl_registry(), id, qMin(version, uint(1)))
 {
-    // Create tabletSeats for all seats.
-    // This only works if we get the manager after all seats
-    const auto seats = display->inputDevices();
-    for (auto *seat : seats)
-        createTabletSeat(seat);
-}
-
-QWaylandTabletSeatV2 *QWaylandTabletManagerV2::createTabletSeat(QWaylandInputDevice *seat)
-{
-    return new QWaylandTabletSeatV2(this, seat);
 }
 
 QWaylandTabletSeatV2::QWaylandTabletSeatV2(QWaylandTabletManagerV2 *manager, QWaylandInputDevice *seat)
@@ -148,7 +138,9 @@ void QWaylandTabletToolV2::zwp_tablet_tool_v2_removed()
 void QWaylandTabletToolV2::zwp_tablet_tool_v2_proximity_in(uint32_t serial, zwp_tablet_v2 *tablet, wl_surface *surface)
 {
     Q_UNUSED(tablet);
-    Q_UNUSED(serial);
+
+    m_tabletSeat->seat()->mSerial = serial;
+
     if (Q_UNLIKELY(!surface)) {
         qCDebug(lcQpaWayland) << "Ignoring zwp_tablet_tool_v2_proximity_v2 with no surface";
         return;
@@ -166,6 +158,8 @@ void QWaylandTabletToolV2::zwp_tablet_tool_v2_proximity_out()
 void QWaylandTabletToolV2::zwp_tablet_tool_v2_down(uint32_t serial)
 {
     m_pending.down = true;
+
+    m_tabletSeat->seat()->mSerial = serial;
 
     if (m_pending.proximitySurface) {
         if (QWaylandWindow *window = m_pending.proximitySurface->waylandWindow()) {
@@ -225,7 +219,8 @@ static Qt::MouseButton mouseButtonFromTablet(uint button)
 
 void QWaylandTabletToolV2::zwp_tablet_tool_v2_button(uint32_t serial, uint32_t button, uint32_t state)
 {
-    Q_UNUSED(serial);
+    m_tabletSeat->seat()->mSerial = serial;
+
     Qt::MouseButton mouseButton = mouseButtonFromTablet(button);
     if (state == button_state_pressed)
         m_pending.buttons |= mouseButton;
@@ -262,9 +257,11 @@ void QWaylandTabletToolV2::zwp_tablet_tool_v2_frame(uint32_t time)
         qreal tangentialPressure = m_pending.slider;
         qreal rotation = m_pending.rotation;
         int z = int(m_pending.distance);
-        QWindowSystemInterface::handleTabletEvent(window, timestamp, localPosition, globalPosition,
-                                                  int(m_tabletDevice), int(m_pointerType), buttons, pressure,
-                                                  xTilt, yTilt, tangentialPressure, rotation, z, m_uid);
+
+        QWindowSystemInterface::handleTabletEvent(
+                window, timestamp, localPosition, globalPosition, int(m_tabletDevice),
+                int(m_pointerType), buttons, pressure, xTilt, yTilt, tangentialPressure, rotation,
+                z, m_uid, m_tabletSeat->seat()->modifiers());
     }
 
     if (!m_pending.proximitySurface && m_applied.enteredSurface) {

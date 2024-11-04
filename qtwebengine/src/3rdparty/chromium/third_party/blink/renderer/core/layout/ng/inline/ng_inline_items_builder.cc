@@ -11,7 +11,6 @@
 #include "third_party/blink/renderer/core/html/html_area_element.h"
 #include "third_party/blink/renderer/core/layout/layout_inline.h"
 #include "third_party/blink/renderer/core/layout/layout_text.h"
-#include "third_party/blink/renderer/core/layout/ng/inline/layout_ng_text.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_item_span.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_node.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_node_data.h"
@@ -196,8 +195,8 @@ NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::BoxInfo::BoxInfo(
     : style(*item.Style()),
       item_index(item_index),
       should_create_box_fragment(item.ShouldCreateBoxFragment()),
-      text_metrics(style.GetFontHeight()) {
-  DCHECK(&style);
+      text_metrics(style->GetFontHeight()) {
+  DCHECK(style);
 }
 
 // True if this inline box should create a box fragment when it has |child|.
@@ -206,7 +205,7 @@ bool NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::BoxInfo::
     ShouldCreateBoxFragmentForChild(const BoxInfo& child) const {
   // When a child inline box has margins, the parent has different width/height
   // from the union of children.
-  const ComputedStyle& child_style = child.style;
+  const ComputedStyle& child_style = *child.style;
   if (child_style.MayHaveMargin())
     return true;
 
@@ -290,6 +289,24 @@ void NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::
 }
 
 template <typename OffsetMappingBuilder>
+inline void
+NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::DidAppendForcedBreak() {
+  // Bisecting available widths can't handle multiple logical paragraphs, so
+  // forced break should disable it. See `NGParagraphLineBreaker`.
+  is_bisect_line_break_disabled_ = true;
+}
+
+template <typename OffsetMappingBuilder>
+inline void
+NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::DidAppendTextReusing(
+    const NGInlineItem& item) {
+  is_block_level_ &= item.IsBlockLevel();
+  if (item.IsForcedLineBreak()) {
+    DidAppendForcedBreak();
+  }
+}
+
+template <typename OffsetMappingBuilder>
 bool NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendTextReusing(
     const NGInlineNodeData& original_data,
     LayoutText* layout_text) {
@@ -306,9 +323,9 @@ bool NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendTextReusing(
   // TODO(layout-dev): This could likely be optimized further.
   // TODO(layout-dev): Handle cases where the old items are not consecutive.
   const ComputedStyle& new_style = layout_text->StyleRef();
-  const bool collapse_spaces = new_style.CollapseWhiteSpace();
+  const bool collapse_spaces = new_style.ShouldCollapseWhiteSpaces();
   const bool preserve_newlines =
-      new_style.PreserveNewline() && LIKELY(!is_text_combine_);
+      new_style.ShouldPreserveBreaks() && LIKELY(!is_text_combine_);
   if (NGInlineItem* last_item = LastItemToCollapseWith(items_)) {
     if (collapse_spaces) {
       switch (last_item->EndCollapseType()) {
@@ -436,7 +453,7 @@ bool NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendTextReusing(
     // itself may be reused.
     if (item.StartOffset() == start) {
       items_->push_back(item);
-      is_block_level_ &= item.IsBlockLevel();
+      DidAppendTextReusing(item);
       continue;
     }
 
@@ -466,7 +483,7 @@ bool NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendTextReusing(
 #endif
 
     items_->push_back(adjusted_item);
-    is_block_level_ &= adjusted_item.IsBlockLevel();
+    DidAppendTextReusing(adjusted_item);
   }
   return true;
 }
@@ -545,9 +562,9 @@ void NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendText(
 
   if (text_chunk_offsets_ && AppendTextChunks(string, *layout_object))
     return;
-  if (!style.CollapseWhiteSpace()) {
+  if (style.ShouldPreserveWhiteSpaces()) {
     AppendPreserveWhitespace(string, &style, layout_object);
-  } else if (style.PreserveNewline() && !should_not_preserve_newline) {
+  } else if (style.ShouldPreserveBreaks() && !should_not_preserve_newline) {
     AppendPreserveNewline(string, &style, layout_object);
   } else {
     AppendCollapseWhitespace(string, &style, layout_object);
@@ -562,7 +579,7 @@ bool NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendTextChunks(
   if (iter == text_chunk_offsets_->end())
     return false;
   const ComputedStyle& style = layout_text.StyleRef();
-  const bool should_collapse_space = style.CollapseWhiteSpace();
+  const bool should_collapse_space = style.ShouldCollapseWhiteSpaces();
   unsigned start = 0;
   for (unsigned offset : iter->value) {
     DCHECK_LE(offset, string.length());
@@ -797,7 +814,7 @@ bool NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::
   if (UNLIKELY(is_text_combine_))
     return false;
   // Check if we are at a preserved space character and auto-wrap is enabled.
-  if (style.CollapseWhiteSpace() || !style.ShouldWrapLine() ||
+  if (style.ShouldCollapseWhiteSpaces() || !style.ShouldWrapLine() ||
       !string.length() || index >= string.length() ||
       string[index] != kSpaceCharacter) {
     return false;
@@ -877,6 +894,7 @@ void NGInlineItemsBuilderTemplate<
             layout_object);
         item.SetTextType(NGTextType::kFlowControl);
         start = end;
+        is_score_line_break_disabled_ = true;
         continue;
       }
       // ZWNJ splits item, but it should be text.
@@ -955,6 +973,8 @@ void NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendForcedBreak(
       AppendOpaque(NGInlineItem::kBidiControl, bidi.enter, layout_object);
     }
   }
+
+  DidAppendForcedBreak();
 }
 
 template <typename OffsetMappingBuilder>
@@ -1034,7 +1054,7 @@ void NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendAtomicInline(
   RestoreTrailingCollapsibleSpaceIfRemoved();
   Append(NGInlineItem::kAtomicInline, kObjectReplacementCharacter,
          layout_object);
-  has_ruby_ = has_ruby_ || layout_object->IsRubyRun();
+  has_ruby_ = has_ruby_ || layout_object->IsRubyColumn();
 
   // When this atomic inline is inside of an inline box, the height of the
   // inline box can be different from the height of the atomic inline. Ensure
@@ -1067,6 +1087,11 @@ void NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendBlockInInline(
     if (auto* parent = To<LayoutInline>(layout_object->Parent()))
       parent->SetShouldCreateBoxFragment();
   }
+
+  // Block-in-inline produces 3 logical paragraphs. It requires to bisect
+  // block-in-inline, before it and after it separately. See
+  // `NGParagraphLineBreaker`.
+  is_bisect_line_break_disabled_ = true;
 }
 
 template <typename OffsetMappingBuilder>
@@ -1074,6 +1099,11 @@ void NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::AppendFloating(
     LayoutObject* layout_object) {
   AppendOpaque(NGInlineItem::kFloating, kObjectReplacementCharacter,
                layout_object);
+  has_floats_ = true;
+  // Floats/exclusions require computing line heights, which is currently
+  // skipped during the bisect. See `NGParagraphLineBreaker`.
+  is_bisect_line_break_disabled_ = true;
+  // `NGScoreLineBreaker` supports "simple" floats. See`NGLineWidths`.
 }
 
 template <typename OffsetMappingBuilder>
@@ -1253,8 +1283,9 @@ void NGInlineItemsBuilderTemplate<OffsetMappingBuilder>::EnterBlock(
                      kPopDirectionalFormattingCharacter);
   }
 
-  if (style->Display() == EDisplay::kListItem && style->ListStyleType())
+  if (style->IsDisplayListItem() && style->ListStyleType()) {
     is_block_level_ = false;
+  }
 }
 
 template <typename OffsetMappingBuilder>
@@ -1399,10 +1430,17 @@ void NGInlineItemsBuilderTemplate<
   // |SegmentText()| will analyze the text and reset |is_bidi_enabled_| if it
   // doesn't contain any RTL characters.
   data->is_bidi_enabled_ = MayBeBidiEnabled();
+  data->has_floats_ = has_floats_;
   data->has_initial_letter_box_ = has_initial_letter_box_;
   data->has_ruby_ = has_ruby_;
   data->is_block_level_ = IsBlockLevel();
   data->changes_may_affect_earlier_lines_ = HasUnicodeBidiPlainText();
+  data->is_bisect_line_break_disabled_ = is_bisect_line_break_disabled_;
+  data->is_score_line_break_disabled_ = is_score_line_break_disabled_;
+
+#if DCHECK_IS_ON()
+  data->CheckConsistency();
+#endif
 }
 
 template <typename OffsetMappingBuilder>
@@ -1411,6 +1449,10 @@ void NGInlineItemsBuilderTemplate<
   DCHECK(!items_->empty());
   DCHECK(!has_initial_letter_box_);
   has_initial_letter_box_ = true;
+  // Floats/exclusions require computing line heights, which is currently
+  // skipped during the bisect. See `NGParagraphLineBreaker`.
+  is_bisect_line_break_disabled_ = true;
+  is_score_line_break_disabled_ = true;
 }
 
 template <typename OffsetMappingBuilder>

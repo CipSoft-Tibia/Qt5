@@ -63,6 +63,7 @@
 #include <QtGui/qtransform.h>
 #include <QtGui/qcursor.h>
 
+#include <QtCore/qdir.h>
 #include <QtCore/qsize.h>
 #include <QtCore/qlibraryinfo.h>
 #include <QtCore/qbuffer.h>
@@ -77,6 +78,8 @@
 #include <QtXml/qdom.h>
 
 #include <algorithm>
+
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
@@ -116,6 +119,21 @@ static QString fileDialogFilters(const QString &extension)
     return QDesignerActions::tr("Designer UI files (*.%1);;All Files (*)").arg(extension);
 }
 
+static QString fixResourceFileBackupPath(const QDesignerFormWindowInterface *fwi,
+                                         const QDir& backupDir);
+
+static QByteArray formWindowContents(const QDesignerFormWindowInterface *fw,
+                                     std::optional<QDir> alternativeDir = {})
+{
+    QString contents = alternativeDir.has_value()
+        ? fixResourceFileBackupPath(fw, alternativeDir.value()) : fw->contents();
+    if (auto *fwb = qobject_cast<const qdesigner_internal::FormWindowBase *>(fw)) {
+        if (fwb->lineTerminatorMode() == qdesigner_internal::FormWindowBase::CRLFLineTerminator)
+            contents.replace(u'\n', "\r\n"_L1);
+    }
+    return contents.toUtf8();
+}
+
 QFileDialog *createSaveAsDialog(QWidget *parent, const QString &dir, const QString &extension)
 {
     auto result = new QFileDialog(parent, QDesignerActions::tr("Save Form As"),
@@ -139,19 +157,26 @@ QDesignerActions::QDesignerActions(QDesignerWorkbench *workbench)
       m_windowActions(createActionGroup(this)),
       m_toolActions(createActionGroup(this, true)),
       m_editWidgetsAction(new QAction(tr("Edit Widgets"), this)),
-      m_newFormAction(new QAction(qdesigner_internal::createIconSet(u"filenew.png"_s),
+      m_newFormAction(new QAction(qdesigner_internal::createIconSet(QIcon::ThemeIcon::DocumentNew,
+                                                                    "filenew.png"_L1),
                                   tr("&New..."), this)),
-      m_openFormAction(new QAction(qdesigner_internal::createIconSet(u"fileopen.png"_s),
+      m_openFormAction(new QAction(qdesigner_internal::createIconSet(QIcon::ThemeIcon::DocumentOpen,
+                                                                     "fileopen.png"_L1),
                                    tr("&Open..."), this)),
-      m_saveFormAction(new QAction(qdesigner_internal::createIconSet(u"filesave.png"_s),
+      m_saveFormAction(new QAction(qdesigner_internal::createIconSet(QIcon::ThemeIcon::DocumentSave,
+                                                                     "filesave.png"_L1),
                                    tr("&Save"), this)),
-      m_saveFormAsAction(new QAction(tr("Save &As..."), this)),
+      m_saveFormAsAction(new QAction(QIcon::fromTheme(QIcon::ThemeIcon::DocumentSaveAs),
+                                     tr("Save &As..."), this)),
       m_saveAllFormsAction(new QAction(tr("Save A&ll"), this)),
       m_saveFormAsTemplateAction(new QAction(tr("Save As &Template..."), this)),
-      m_closeFormAction(new QAction(tr("&Close"), this)),
+      m_closeFormAction(new QAction(QIcon::fromTheme(QIcon::ThemeIcon::WindowClose),
+                                    tr("&Close"), this)),
       m_savePreviewImageAction(new QAction(tr("Save &Image..."), this)),
-      m_printPreviewAction(new QAction(tr("&Print..."), this)),
-      m_quitAction(new QAction(tr("&Quit"), this)),
+      m_printPreviewAction(new QAction(QIcon::fromTheme(QIcon::ThemeIcon::DocumentPrint),
+                                       tr("&Print..."), this)),
+      m_quitAction(new QAction(QIcon::fromTheme(QIcon::ThemeIcon::ApplicationExit),
+                               tr("&Quit"), this)),
       m_viewCppCodeAction(new QAction(tr("View &C++ Code..."), this)),
       m_viewPythonCodeAction(new QAction(tr("View &Python Code..."), this)),
       m_minimizeAction(new QAction(tr("&Minimize"), this)),
@@ -161,21 +186,6 @@ QDesignerActions::QDesignerActions(QDesignerWorkbench *workbench)
       m_preferencesAction(new QAction(tr("Preferences..."), this)),
       m_appFontAction(new QAction(tr("Additional Fonts..."), this))
 {
-#if defined (Q_OS_UNIX) && !defined(Q_OS_MACOS)
-    m_newFormAction->setIcon(QIcon::fromTheme(u"document-new"_s,
-                                              m_newFormAction->icon()));
-    m_openFormAction->setIcon(QIcon::fromTheme(u"document-open"_s,
-                                               m_openFormAction->icon()));
-    m_saveFormAction->setIcon(QIcon::fromTheme(u"document-save"_s,
-                                               m_saveFormAction->icon()));
-    m_saveFormAsAction->setIcon(QIcon::fromTheme(u"document-save-as"_s,
-                                                 m_saveFormAsAction->icon()));
-    m_printPreviewAction->setIcon(QIcon::fromTheme(u"document-print"_s,
-                                                   m_printPreviewAction->icon()));
-    m_closeFormAction->setIcon(QIcon::fromTheme(u"window-close"_s, m_closeFormAction->icon()));
-    m_quitAction->setIcon(QIcon::fromTheme(u"application-exit"_s, m_quitAction->icon()));
-#endif
-
     Q_ASSERT(m_core != nullptr);
     qdesigner_internal::QDesignerFormWindowManager *ifwm = qobject_cast<qdesigner_internal::QDesignerFormWindowManager *>(m_core->formWindowManager());
     Q_ASSERT(ifwm);
@@ -495,14 +505,14 @@ QAction *QDesignerActions::createRecentFilesMenu()
     }
     updateRecentFileActions();
     m_recentMenu->addSeparator();
-    act = new QAction(QIcon::fromTheme(u"edit-clear"_s),
+    act = new QAction(QIcon::fromTheme(QIcon::ThemeIcon::EditClear),
                       tr("Clear &Menu"), this);
     act->setObjectName(u"__qt_action_clear_menu_"_s);
     connect(act, &QAction::triggered, this, &QDesignerActions::clearRecentFiles);
     m_recentFilesActions->addAction(act);
     m_recentMenu->addAction(act);
 
-    act = new QAction(QIcon::fromTheme(u"document-open-recent"_s),
+    act = new QAction(QIcon::fromTheme(QIcon::ThemeIcon::DocumentOpenRecent),
                       tr("&Recent Forms"), this);
     act->setMenu(m_recentMenu.get());
     return act;
@@ -799,11 +809,6 @@ bool QDesignerActions::writeOutForm(QDesignerFormWindowInterface *fw, const QStr
             QMessageBox::information(fw->window(), tr("Qt Designer"), problems.join("<br>"_L1));
     }
 
-    QString contents = fw->contents();
-    if (qdesigner_internal::FormWindowBase *fwb = qobject_cast<qdesigner_internal::FormWindowBase *>(fw)) {
-        if (fwb->lineTerminatorMode() == qdesigner_internal::FormWindowBase::CRLFLineTerminator)
-            contents.replace('\n'_L1, "\r\n"_L1);
-    }
     m_workbench->updateBackup(fw);
 
     QSaveFile f(saveFile);
@@ -837,7 +842,7 @@ bool QDesignerActions::writeOutForm(QDesignerFormWindowInterface *fw, const QStr
         }
         // loop back around...
     }
-    f.write(contents.toUtf8());
+    f.write(formWindowContents(fw));
     if (!f.commit()) {
         QMessageBox box(QMessageBox::Warning, tr("Save Form"),
                         tr("Could not write file"),
@@ -1032,16 +1037,13 @@ void QDesignerActions::backupForms()
         return;
 
 
-    QStringList tmpFiles;
     QMap<QString, QString> backupMap;
     QDir backupDir(m_backupPath);
     for (int i = 0; i < count; ++i) {
         QDesignerFormWindow *fw = m_workbench->formWindow(i);
         QDesignerFormWindowInterface *fwi = fw->editor();
 
-        QString formBackupName;
-        QTextStream(&formBackupName) << m_backupPath << QDir::separator()
-                                     << "backup" << i << ".bak";
+        QString formBackupName = m_backupPath + "/backup"_L1 + QString::number(i) + ".bak"_L1;
 
         QString fwn = QDir::toNativeSeparators(fwi->fileName());
         if (fwn.isEmpty())
@@ -1049,42 +1051,26 @@ void QDesignerActions::backupForms()
 
         backupMap.insert(fwn, formBackupName);
 
-        QFile file(formBackupName.replace(m_backupPath, m_backupTmpPath));
-        if (file.open(QFile::WriteOnly)){
-            QString contents = fixResourceFileBackupPath(fwi, backupDir);
-            if (qdesigner_internal::FormWindowBase *fwb = qobject_cast<qdesigner_internal::FormWindowBase *>(fwi)) {
-                if (fwb->lineTerminatorMode() == qdesigner_internal::FormWindowBase::CRLFLineTerminator)
-                    contents.replace('\n'_L1, "\r\n"_L1);
-            }
-            const QByteArray utf8Array = contents.toUtf8();
-            if (file.write(utf8Array, utf8Array.size()) != utf8Array.size()) {
-                backupMap.remove(fwn);
-                qdesigner_internal::designerWarning(tr("The backup file %1 could not be written.").arg(file.fileName()));
-            } else
-                tmpFiles.append(formBackupName);
-
-            file.close();
+        bool ok = false;
+        QSaveFile file(formBackupName);
+        if (file.open(QFile::WriteOnly)) {
+            file.write(formWindowContents(fw->editor(), backupDir));
+            ok = file.commit();
+        }
+        if (!ok) {
+            backupMap.remove(fwn);
+            qdesigner_internal::designerWarning(tr("The backup file %1 could not be written: %2").
+                                                arg(QDir::toNativeSeparators(file.fileName()),
+                                                    file.errorString()));
         }
     }
-    if(!tmpFiles.isEmpty()) {
-        const QStringList backupFiles = backupDir.entryList(QDir::Files);
-        for (const QString &backupFile : backupFiles)
-            backupDir.remove(backupFile);
 
-        for (const QString &tmpName : std::as_const(tmpFiles)) {
-            QString name(tmpName);
-            name.replace(m_backupTmpPath, m_backupPath);
-            QFile tmpFile(tmpName);
-            if (!tmpFile.copy(name))
-                qdesigner_internal::designerWarning(tr("The backup file %1 could not be written.").arg(name));
-            tmpFile.remove();
-        }
-
+    if (!backupMap.isEmpty())
         m_settings.setBackup(backupMap);
-    }
 }
 
-QString QDesignerActions::fixResourceFileBackupPath(QDesignerFormWindowInterface *fwi, const QDir& backupDir)
+static QString fixResourceFileBackupPath(const QDesignerFormWindowInterface *fwi,
+                                         const QDir& backupDir)
 {
     const QString content = fwi->contents();
     QDomDocument domDoc(u"backup"_s);
@@ -1162,27 +1148,16 @@ void QDesignerActions::setWindowListSeparatorVisible(bool visible)
 
 bool QDesignerActions::ensureBackupDirectories() {
 
-    if (m_backupPath.isEmpty()) {
-        // create names
+    if (m_backupPath.isEmpty()) // create names
         m_backupPath = qdesigner_internal::dataDirectory() + u"/backup"_s;
-        m_backupTmpPath = m_backupPath + u"/tmp"_s;
-    }
 
     // ensure directories
     const QDir backupDir(m_backupPath);
-    const QDir backupTmpDir(m_backupTmpPath);
 
     if (!backupDir.exists()) {
         if (!backupDir.mkpath(m_backupPath)) {
             qdesigner_internal::designerWarning(tr("The backup directory %1 could not be created.")
                                                 .arg(QDir::toNativeSeparators(m_backupPath)));
-            return false;
-        }
-    }
-    if (!backupTmpDir.exists()) {
-        if (!backupTmpDir.mkpath(m_backupTmpPath)) {
-            qdesigner_internal::designerWarning(tr("The temporary backup directory %1 could not be created.")
-                                                .arg(QDir::toNativeSeparators(m_backupTmpPath)));
             return false;
         }
     }

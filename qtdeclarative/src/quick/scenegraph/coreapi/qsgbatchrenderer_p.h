@@ -798,7 +798,8 @@ private:
     bool ensurePipelineState(Element *e, const ShaderManager::Shader *sms, bool depthPostPass = false);
     QRhiTexture *dummyTexture();
     void updateMaterialDynamicData(ShaderManager::Shader *sms, QSGMaterialShader::RenderState &renderState,
-                                   QSGMaterial *material, const Batch *batch, Element *e, int ubufOffset, int ubufRegionSize);
+                                   QSGMaterial *material, const Batch *batch, Element *e, int ubufOffset, int ubufRegionSize,
+                                   char *directUpdatePtr);
     void updateMaterialStaticData(ShaderManager::Shader *sms, QSGMaterialShader::RenderState &renderState,
                                   QSGMaterial *material, Batch *batch, bool *gstateChanged);
     void checkLineWidth(QSGGeometry *g);
@@ -857,6 +858,9 @@ private:
     QDataBuffer<Element *> m_elementsToDelete;
     QDataBuffer<Element *> m_tmpAlphaElements;
     QDataBuffer<Element *> m_tmpOpaqueElements;
+
+    QDataBuffer<QRhiBuffer *> m_vboPool;
+    QDataBuffer<QRhiBuffer *> m_iboPool;
 
     uint m_rebuild;
     qreal m_zRange;

@@ -115,7 +115,7 @@ export class SharedStorageModel extends SDK.SDKModel.SDKModel<EventTypes> implem
     this.#enabled = false;
   }
 
-  dispose(): void {
+  override dispose(): void {
     this.disable();
   }
 
@@ -223,11 +223,21 @@ export class SharedStorageModel extends SDK.SDKModel.SDKModel<EventTypes> implem
 
   interestGroupAccessed(_event: Protocol.Storage.InterestGroupAccessedEvent): void {
   }
+
+  storageBucketCreatedOrUpdated(_event: Protocol.Storage.StorageBucketCreatedOrUpdatedEvent): void {
+  }
+
+  storageBucketDeleted(_event: Protocol.Storage.StorageBucketDeletedEvent): void {
+  }
+
+  attributionReportingSourceRegistered(_event: Protocol.Storage.AttributionReportingSourceRegisteredEvent): void {
+  }
 }
 
 SDK.SDKModel.SDKModel.register(SharedStorageModel, {capabilities: SDK.Target.Capability.Storage, autostart: false});
 
-export const enum Events {
+// eslint-disable-next-line rulesdir/const_enum
+export enum Events {
   SharedStorageAccess = 'SharedStorageAccess',
   SharedStorageAdded = 'SharedStorageAdded',
   SharedStorageRemoved = 'SharedStorageRemoved',

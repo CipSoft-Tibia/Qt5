@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 source_set("update_client") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "ios_chrome_update_query_params_delegate.h",
     "ios_chrome_update_query_params_delegate.mm",
@@ -12,7 +11,7 @@ source_set("update_client") {
     "//base",
     "//components/update_client",
     "//components/version_info",
-    "//ios/chrome/browser/application_context",
+    "//ios/chrome/browser/shared/model/application_context",
     "//ios/chrome/common",
   ]
 }

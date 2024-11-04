@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 source_set("ssl") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "captive_portal_metrics.cc",
     "captive_portal_metrics.h",
@@ -27,11 +26,11 @@ source_set("ssl") {
     "//components/security_state/ios",
     "//components/strings",
     "//components/url_formatter",
-    "//ios/chrome/browser/application_context",
-    "//ios/chrome/browser/browser_state",
     "//ios/chrome/browser/safe_browsing",
+    "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/browser_state",
+    "//ios/chrome/browser/shared/ui/util",
     "//ios/chrome/browser/tabs",
-    "//ios/chrome/browser/ui/util",
     "//ios/chrome/browser/web",
     "//ios/chrome/browser/web_state_list:agents",
     "//ios/components/security_interstitials",
@@ -46,7 +45,6 @@ source_set("ssl") {
 }
 
 source_set("unit_tests") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
   sources = [ "ios_ssl_error_handler_unittest.mm" ]
   deps = [
@@ -54,7 +52,7 @@ source_set("unit_tests") {
     "//base/test:test_support",
     "//components/security_interstitials/core",
     "//components/security_state/core",
-    "//ios/chrome/browser/browser_state:test_support",
+    "//ios/chrome/browser/shared/model/browser_state:test_support",
     "//ios/components/security_interstitials",
     "//ios/web",
     "//ios/web/public/security",

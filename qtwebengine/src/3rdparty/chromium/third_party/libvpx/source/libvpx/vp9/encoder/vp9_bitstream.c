@@ -169,8 +169,8 @@ static void pack_mb_tokens(vpx_writer *w, TOKENEXTRA **tp,
         vpx_write_bit(w, p->extra & 1);
       } else {  // t >= TWO_TOKEN && t < EOB_TOKEN
         const struct vp9_token *const a = &vp9_coef_encodings[t];
-        const int v = a->value;
-        const int n = a->len;
+        int v = a->value;
+        int n = a->len;
         const int e = p->extra;
         vpx_write(w, 1, context_tree[2]);
         vp9_write_tree(w, vp9_coef_con_tree,
@@ -179,8 +179,8 @@ static void pack_mb_tokens(vpx_writer *w, TOKENEXTRA **tp,
         if (t >= CATEGORY1_TOKEN) {
           const vp9_extra_bit *const b = &extra_bits[t];
           const unsigned char *pb = b->prob;
-          int v = e >> 1;
-          int n = b->len;  // number of bits in v, assumed nonzero
+          v = e >> 1;
+          n = b->len;  // number of bits in v, assumed nonzero
           do {
             const int bb = (v >> --n) & 1;
             vpx_write(w, bb, *pb++);
@@ -599,7 +599,6 @@ static void update_coef_probs_common(vpx_writer *const bc, VP9_COMP *cpi,
               for (t = 0; t < entropy_nodes_update; ++t) {
                 vpx_prob newp = new_coef_probs[i][j][k][l][t];
                 vpx_prob *oldp = old_coef_probs[i][j][k][l] + t;
-                const vpx_prob upd = DIFF_UPDATE_PROB;
                 int64_t s;
                 int u = 0;
                 if (t == PIVOT_NODE)
@@ -963,18 +962,28 @@ void vp9_bitstream_encode_tiles_buffer_dealloc(VP9_COMP *const cpi) {
   }
 }
 
+static int encode_tiles_buffer_alloc_size(VP9_COMP *const cpi) {
+  VP9_COMMON *const cm = &cpi->common;
+  const int image_bps =
+      (8 + 2 * (8 >> (cm->subsampling_x + cm->subsampling_y))) *
+      (1 + (cm->bit_depth > 8));
+  const int64_t size =
+      (int64_t)cpi->oxcf.width * cpi->oxcf.height * image_bps / 8;
+  return (int)size;
+}
+
 static void encode_tiles_buffer_alloc(VP9_COMP *const cpi) {
   VP9_COMMON *const cm = &cpi->common;
   int i;
   const size_t worker_data_size =
       cpi->num_workers * sizeof(*cpi->vp9_bitstream_worker_data);
-  CHECK_MEM_ERROR(cm, cpi->vp9_bitstream_worker_data,
+  CHECK_MEM_ERROR(&cm->error, cpi->vp9_bitstream_worker_data,
                   vpx_memalign(16, worker_data_size));
   memset(cpi->vp9_bitstream_worker_data, 0, worker_data_size);
   for (i = 1; i < cpi->num_workers; ++i) {
     cpi->vp9_bitstream_worker_data[i].dest_size =
-        cpi->oxcf.width * cpi->oxcf.height;
-    CHECK_MEM_ERROR(cm, cpi->vp9_bitstream_worker_data[i].dest,
+        encode_tiles_buffer_alloc_size(cpi);
+    CHECK_MEM_ERROR(&cm->error, cpi->vp9_bitstream_worker_data[i].dest,
                     vpx_malloc(cpi->vp9_bitstream_worker_data[i].dest_size));
   }
 }
@@ -988,8 +997,8 @@ static size_t encode_tiles_mt(VP9_COMP *cpi, uint8_t *data_ptr) {
   int tile_col = 0;
 
   if (!cpi->vp9_bitstream_worker_data ||
-      cpi->vp9_bitstream_worker_data[1].dest_size >
-          (cpi->oxcf.width * cpi->oxcf.height)) {
+      cpi->vp9_bitstream_worker_data[1].dest_size !=
+          encode_tiles_buffer_alloc_size(cpi)) {
     vp9_bitstream_encode_tiles_buffer_dealloc(cpi);
     encode_tiles_buffer_alloc(cpi);
   }

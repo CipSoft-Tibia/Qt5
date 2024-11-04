@@ -19,7 +19,7 @@
 #pragma once
 #include "state_tracker/device_memory_state.h"
 #include "state_tracker/buffer_state.h"
-#include "layer_chassis_dispatch.h"
+#include "generated/layer_chassis_dispatch.h"
 
 class ACCELERATION_STRUCTURE_STATE : public BINDABLE {
   public:
@@ -30,7 +30,10 @@ class ACCELERATION_STRUCTURE_STATE : public BINDABLE {
           build_scratch_memory_requirements(
               GetMemReqs(device, as, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_NV)),
           update_scratch_memory_requirements(
-              GetMemReqs(device, as, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_UPDATE_SCRATCH_NV)) {}
+              GetMemReqs(device, as, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_UPDATE_SCRATCH_NV)),
+          tracker_(&memory_requirements) {
+              BINDABLE::SetMemoryTracker(&tracker_);
+    }
     ACCELERATION_STRUCTURE_STATE(const ACCELERATION_STRUCTURE_STATE &rh_obj) = delete;
 
     VkAccelerationStructureNV acceleration_structure() const { return handle_.Cast<VkAccelerationStructureNV>(); }
@@ -45,7 +48,6 @@ class ACCELERATION_STRUCTURE_STATE : public BINDABLE {
     const VkMemoryRequirements memory_requirements;
     const VkMemoryRequirements build_scratch_memory_requirements;
     const VkMemoryRequirements update_scratch_memory_requirements;
-    const VkMemoryRequirements *const memory_requirements_pointer = &memory_requirements;
     uint64_t opaque_handle = 0;
     bool memory_requirements_checked = false;
     bool build_scratch_memory_requirements_checked = false;
@@ -62,16 +64,14 @@ class ACCELERATION_STRUCTURE_STATE : public BINDABLE {
         DispatchGetAccelerationStructureMemoryRequirementsNV(device, &req_info, &requirements);
         return requirements.memoryRequirements;
     }
+    BindableLinearMemoryTracker tracker_;
 };
-
-using ACCELERATION_STRUCTURE_STATE_LINEAR =
-    MEMORY_TRACKED_RESOURCE_STATE<ACCELERATION_STRUCTURE_STATE, BindableLinearMemoryTracker>;
 
 class ACCELERATION_STRUCTURE_STATE_KHR : public BASE_NODE {
   public:
     ACCELERATION_STRUCTURE_STATE_KHR(VkAccelerationStructureKHR as, const VkAccelerationStructureCreateInfoKHR *ci,
-                                     std::shared_ptr<BUFFER_STATE> &&buf_state)
-        : BASE_NODE(as, kVulkanObjectTypeAccelerationStructureKHR), create_infoKHR(ci), buffer_state(buf_state) {}
+                                     std::shared_ptr<BUFFER_STATE> &&buf_state, VkDeviceAddress address)
+        : BASE_NODE(as, kVulkanObjectTypeAccelerationStructureKHR), create_infoKHR(ci), buffer_state(buf_state), address(address) {}
     ACCELERATION_STRUCTURE_STATE_KHR(const ACCELERATION_STRUCTURE_STATE_KHR &rh_obj) = delete;
 
     VkAccelerationStructureKHR acceleration_structure() const { return handle_.Cast<VkAccelerationStructureKHR>(); }
@@ -106,6 +106,7 @@ class ACCELERATION_STRUCTURE_STATE_KHR : public BASE_NODE {
     bool built = false;
     uint64_t opaque_handle = 0;
     std::shared_ptr<BUFFER_STATE> buffer_state;
+    VkDeviceAddress address;
 };
 
 // Safe struct that spans NV and KHR VkRayTracingPipelineCreateInfo structures.

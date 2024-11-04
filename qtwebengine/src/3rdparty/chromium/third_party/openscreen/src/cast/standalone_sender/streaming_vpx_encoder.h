@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -57,7 +57,7 @@ class Sender;
 class StreamingVpxEncoder : public StreamingVideoEncoder {
  public:
   StreamingVpxEncoder(const Parameters& params,
-                      TaskRunner* task_runner,
+                      TaskRunner& task_runner,
                       std::unique_ptr<Sender> sender);
 
   ~StreamingVpxEncoder();
@@ -81,6 +81,8 @@ class StreamingVpxEncoder : public StreamingVideoEncoder {
   struct WorkUnit {
     VpxImageUniquePtr image;
     Clock::duration duration;
+    Clock::time_point capture_begin_time;
+    Clock::time_point capture_end_time;
     Clock::time_point reference_time;
     RtpTimeTicks rtp_timestamp;
     std::function<void(Stats)> stats_callback;

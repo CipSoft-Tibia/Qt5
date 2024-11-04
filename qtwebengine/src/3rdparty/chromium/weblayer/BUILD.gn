@@ -3,12 +3,14 @@
 # found in the LICENSE file.
 import("//components/captive_portal/core/features.gni")
 
+import("//build/config/cronet/config.gni")
 import("//build/config/features.gni")
 import("//build/config/locales.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 import("//build/config/ui.gni")
 import("//build/config/win/console_app.gni")
 import("//build/config/win/manifest.gni")
+import("//components/services/screen_ai/buildflags/features.gni")
 import("//components/spellcheck/spellcheck_build_features.gni")
 import("//device/vr/buildflags/buildflags.gni")
 import("//gpu/vulkan/features.gni")
@@ -21,7 +23,9 @@ import("//tools/grit/repack.gni")
 import("//tools/v8_context_snapshot/v8_context_snapshot.gni")
 if (is_android) {
   import("//build/config/android/config.gni")
+  import("//build/config/android/jni.gni")
   import("//build/config/android/rules.gni")
+  import("//build/config/features.gni")
   import("//components/safe_browsing/buildflags.gni")
 } else if (is_mac) {
   import("//build/apple/tweak_info_plist.gni")
@@ -31,6 +35,8 @@ if (is_android) {
   import("//ui/gl/features.gni")
   import("//v8/gni/v8.gni")
 }
+
+assert(!is_cronet_build)
 
 source_set("android_descriptors") {
   sources = [ "browser/android_descriptors.h" ]
@@ -51,7 +57,9 @@ if (is_android) {
       "enable_arcore=$enable_arcore",
       "enable_pdf=$enable_pdf",
       "enable_print_preview=$enable_print_preview",
+      "enable_screen_ai_service=$enable_screen_ai_service",
       "enable_vr=$enable_vr",
+      "use_blink=$use_blink",
     ]
 
     # components_strings contains strings from all components. WebLayer
@@ -179,6 +187,11 @@ source_set("weblayer_lib_base") {
     "browser/bluetooth/weblayer_bluetooth_delegate_impl_client.h",
     "browser/browser_context_impl.cc",
     "browser/browser_context_impl.h",
+    "browser/browser_fragment_impl.cc",
+    "browser/browser_fragment_impl.h",
+    "browser/browser_fragment_list.cc",
+    "browser/browser_fragment_list.h",
+    "browser/browser_fragment_list_observer.h",
     "browser/browser_impl.cc",
     "browser/browser_impl.h",
     "browser/browser_list.cc",
@@ -230,8 +243,6 @@ source_set("weblayer_lib_base") {
     "browser/i18n_util.h",
     "browser/insecure_form_controller_client.cc",
     "browser/insecure_form_controller_client.h",
-    "browser/js_communication/web_message_host_factory_wrapper.cc",
-    "browser/js_communication/web_message_host_factory_wrapper.h",
     "browser/navigation_controller_impl.cc",
     "browser/navigation_controller_impl.h",
     "browser/navigation_entry_data.cc",
@@ -362,11 +373,6 @@ source_set("weblayer_lib_base") {
     "public/fullscreen_delegate.h",
     "public/google_account_access_token_fetch_delegate.h",
     "public/google_accounts_delegate.h",
-    "public/js_communication/web_message.cc",
-    "public/js_communication/web_message.h",
-    "public/js_communication/web_message_host.h",
-    "public/js_communication/web_message_host_factory.h",
-    "public/js_communication/web_message_reply_proxy.h",
     "public/main.h",
     "public/navigation.h",
     "public/navigation_controller.h",
@@ -402,6 +408,7 @@ source_set("weblayer_lib_base") {
     "//components/autofill/content/renderer",
     "//components/autofill/core/browser",
     "//components/autofill/core/common",
+    "//components/autofill/core/common:features",
     "//components/background_fetch",
     "//components/background_sync",
     "//components/base32",
@@ -413,6 +420,7 @@ source_set("weblayer_lib_base") {
     "//components/content_capture/browser",
     "//components/content_capture/common",
     "//components/content_capture/renderer",
+    "//components/content_relationship_verification",
     "//components/content_settings/browser",
     "//components/content_settings/common:mojom",
     "//components/content_settings/common:mojom",
@@ -421,7 +429,6 @@ source_set("weblayer_lib_base") {
     "//components/crash/content/browser",
     "//components/crash/core/app",
     "//components/crash/core/common",
-    "//components/digital_asset_links",
     "//components/download/content/factory",
     "//components/download/content/public",
     "//components/download/public/background_service:public",
@@ -439,9 +446,6 @@ source_set("weblayer_lib_base") {
     "//components/heavy_ad_intervention",
     "//components/infobars/content",
     "//components/infobars/core",
-    "//components/js_injection/browser",
-    "//components/js_injection/common:common_mojom",
-    "//components/js_injection/renderer",
     "//components/keyed_service/content",
     "//components/language/core/browser",
     "//components/leveldb_proto",
@@ -469,6 +473,7 @@ source_set("weblayer_lib_base") {
     "//components/prefs",
     "//components/profile_metrics",
     "//components/reduce_accept_language/browser",
+    "//components/safe_browsing:buildflags",
     "//components/safe_browsing/content/browser",
     "//components/safe_browsing/content/browser:client_side_detection",
     "//components/safe_browsing/content/browser/web_ui",
@@ -489,7 +494,7 @@ source_set("weblayer_lib_base") {
     "//components/site_isolation",
     "//components/spellcheck:buildflags",
     "//components/ssl_errors",
-    "//components/startup_metric_utils/browser",
+    "//components/startup_metric_utils",
     "//components/strings",
     "//components/subresource_filter/content/browser",
     "//components/subresource_filter/content/renderer",
@@ -517,7 +522,6 @@ source_set("weblayer_lib_base") {
     "//components/webdata_services",
     "//components/webrtc",
     "//content:content_resources",
-    "//content:dev_ui_content_resources",
     "//content/public/app",
     "//content/public/browser",
     "//content/public/child",
@@ -609,8 +613,6 @@ source_set("weblayer_lib_base") {
       "browser/bluetooth/weblayer_bluetooth_scanning_prompt_android_delegate.h",
       "browser/browser_list_proxy.cc",
       "browser/browser_list_proxy.h",
-      "browser/component_updater/client_side_phishing_component_loader_policy.cc",
-      "browser/component_updater/client_side_phishing_component_loader_policy.h",
       "browser/component_updater/registration.cc",
       "browser/component_updater/registration.h",
       "browser/content_view_render_view.cc",
@@ -637,10 +639,6 @@ source_set("weblayer_lib_base") {
       "browser/infobar_container_android.h",
       "browser/javascript_tab_modal_dialog_manager_delegate_android.cc",
       "browser/javascript_tab_modal_dialog_manager_delegate_android.h",
-      "browser/js_communication/web_message_host_factory_proxy.cc",
-      "browser/js_communication/web_message_host_factory_proxy.h",
-      "browser/js_communication/web_message_reply_proxy_impl.cc",
-      "browser/js_communication/web_message_reply_proxy_impl.h",
       "browser/media/local_presentation_manager_factory.cc",
       "browser/media/local_presentation_manager_factory.h",
       "browser/media/media_router_factory.cc",
@@ -717,7 +715,6 @@ source_set("weblayer_lib_base") {
       "//components/browser_ui/client_certificate/android",
       "//components/browser_ui/contacts_picker/android",
       "//components/browser_ui/photo_picker/android",
-      "//components/browser_ui/settings/android",
       "//components/browser_ui/share/android",
       "//components/browser_ui/site_settings/android",
       "//components/browser_ui/sms/android",
@@ -741,6 +738,7 @@ source_set("weblayer_lib_base") {
       "//components/location/android:settings",
       "//components/media_router/browser",
       "//components/metrics",
+      "//components/metrics:content",
       "//components/minidump_uploader",
       "//components/navigation_interception",
       "//components/page_info/android",
@@ -755,6 +753,7 @@ source_set("weblayer_lib_base") {
       "//components/safe_browsing/core/browser:verdict_cache_manager",
       "//components/safe_browsing/core/browser/db:allowlist_checker_client",
       "//components/safe_browsing/core/browser/db:database_manager",
+      "//components/safe_browsing/core/browser/hashprefix_realtime:hash_realtime_utils",
       "//components/safe_browsing/core/browser/realtime:policy_engine",
       "//components/safe_browsing/core/browser/realtime:url_lookup_service",
       "//components/safe_browsing/core/common",
@@ -773,6 +772,7 @@ source_set("weblayer_lib_base") {
       "//services/resource_coordinator/public/cpp/memory_instrumentation:browser",
       "//ui/android",
       "//url:gurl_android",
+      "//weblayer/browser/java:base_module_jni",
       "//weblayer/browser/java:jni",
     ]
 
@@ -844,32 +844,6 @@ if (is_android) {
     ]
   }
 
-  # Lib used in standalone WebView which allows manual JNI registration.
-  static_library("weblayer_lib_webview") {
-    public_deps = [ ":weblayer_lib_base" ]
-    deps = [
-      "//base",
-      "//weblayer/browser/java:jni",
-      "//weblayer/browser/java:weblayer_jni_registration($default_toolchain)",
-    ]
-    sources = [
-      "browser/web_view_compatibility_helper_impl.cc",
-      "browser/web_view_compatibility_helper_impl.h",
-    ]
-    defines = [ "WEBLAYER_MANUAL_JNI_REGISTRATION" ]
-
-    # Explicit dependency required for JNI registration to be able to
-    # find the native side functions.
-    if (is_component_build) {
-      deps += [
-        "//components/browser_ui/photo_picker/android",
-        "//device/gamepad",
-        "//media/midi",
-        "//ui/events/devices",
-      ]
-    }
-  }
-
   static_library("weblayer_lib_webview_test") {
     testonly = true
     public_deps = [ ":weblayer_lib_base" ]
@@ -877,13 +851,7 @@ if (is_android) {
       ":weblayer_android_test_jni_impl",
       "//base",
       "//weblayer/browser/java:jni",
-      "//weblayer/browser/java:weblayer_jni_registration($default_toolchain)",
     ]
-    sources = [
-      "browser/web_view_compatibility_helper_impl.cc",
-      "browser/web_view_compatibility_helper_impl.h",
-    ]
-    defines = [ "WEBLAYER_MANUAL_JNI_REGISTRATION" ]
 
     # Explicit dependency required for JNI registration to be able to
     # find the native side functions.
@@ -901,24 +869,20 @@ if (is_android) {
   static_library("weblayer_lib") {
     public_deps = [ ":weblayer_lib_base" ]
     deps = [ "//weblayer/browser/java:jni" ]
-    sources = [
-      "browser/web_view_compatibility_helper_impl.cc",
-      "browser/web_view_compatibility_helper_impl.h",
-    ]
   }
 
-  shared_library("libweblayer_test") {
+  shared_library_with_jni("libweblayer_test") {
     testonly = true
     sources = [ "app/entry_point.cc" ]
     deps = [
       ":weblayer_lib_webview_test",
       "//base",
-      "//components/android_autofill/browser/test_support:component_autofill_provider_native_test_support",
+      "//components/android_autofill/browser/test_support:native",
       "//content/public/app",
-      "//weblayer/browser/java:test_weblayer_jni_registration($default_toolchain)",
     ]
     configs -= [ "//build/config/android:hide_all_but_jni_onload" ]
     configs += [ "//build/config/android:hide_all_but_jni" ]
+    java_targets = [ "//weblayer/shell/android:weblayer_support_apk" ]
   }
 } else {
   source_set("weblayer_lib") {

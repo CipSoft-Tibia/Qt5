@@ -1,5 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtQuick 2.4
 import QtTest 1.1
@@ -28,16 +28,16 @@ Item {
         anchors.fill: parent
         property var paintContext: null
 
-        function paint() {
+        function doPaint() {
             paintContext.fillStyle = Qt.rgba(1, 0, 0, 1);
             paintContext.fillRect(0, 0, width, height);
-            requestAnimationFrame(paint);
+            requestAnimationFrame(doPaint);
         }
 
         onAvailableChanged: {
             if (available) {
                 paintContext = getContext("2d")
-                requestAnimationFrame(paint);
+                requestAnimationFrame(doPaint);
             }
         }
     }

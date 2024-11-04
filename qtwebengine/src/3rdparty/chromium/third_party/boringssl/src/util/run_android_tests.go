@@ -233,13 +233,14 @@ func detectOptionsFromCMake() error {
 		fmt.Printf("Detected ABI %q from CMakeCache.txt.\n", *abi)
 	}
 	if *apiLevel == 0 {
-		apiLevelStr, ok := cmakeVars["ANDROID_NATIVE_API_LEVEL"]
+		apiLevelStr, ok := cmakeVars["ANDROID_PLATFORM"]
 		if !ok {
-			return errors.New("ANDROID_NATIVE_API_LEVEL not found in CMakeCache.txt")
+			return errors.New("ANDROID_PLATFORM not found in CMakeCache.txt")
 		}
+		apiLevelStr = strings.TrimPrefix(apiLevelStr, "android-")
 		var err error
 		if *apiLevel, err = strconv.Atoi(apiLevelStr); err != nil {
-			return fmt.Errorf("error parsing ANDROID_NATIVE_API_LEVEL: %s", err)
+			return fmt.Errorf("error parsing ANDROID_PLATFORM: %s", err)
 		}
 		fmt.Printf("Detected API level %d from CMakeCache.txt.\n", *apiLevel)
 	}
@@ -309,6 +310,20 @@ func main() {
 			"BUILDING.md",
 		)
 
+		err := filepath.Walk("pki/testdata/", func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.Mode().IsRegular() {
+				files = append(files, path)
+			}
+			return nil
+		})
+		if err != nil {
+			fmt.Printf("Can't walk pki/testdata: %s\n", err)
+			os.Exit(1)
+		}
+
 		tests, err := testconfig.ParseTestConfig("util/all_tests.json")
 		if err != nil {
 			fmt.Printf("Failed to parse input: %s\n", err)
@@ -370,6 +385,7 @@ func main() {
 	if _, err := os.Stat(filepath.Join(*buildDir, "crypto/libcrypto.so")); err == nil {
 		libraries = []string{
 			"libboringssl_gtest.so",
+			"libpki.so",
 			"crypto/libcrypto.so",
 			"decrepit/libdecrepit.so",
 			"ssl/libssl.so",

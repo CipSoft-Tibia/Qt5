@@ -30,6 +30,7 @@ export interface Layer {
   scrollRects(): Protocol.LayerTree.ScrollRect[];
   stickyPositionConstraint(): StickyPositionConstraint|null;
   gpuMemoryUsage(): number;
+  requestCompositingReasons(): Promise<string[]>;
   requestCompositingReasonIds(): Promise<string[]>;
   drawsContent(): boolean;
   snapshots(): Promise<SnapshotWithRect|null>[];

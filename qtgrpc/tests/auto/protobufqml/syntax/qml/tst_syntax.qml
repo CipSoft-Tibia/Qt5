@@ -22,7 +22,7 @@ TestCase {
     property priorMessageUnderscoreField underScoreMsg;
     property lowerCaseMessageName lowerCaseMsg;
 
-    function test_1init() {
+    function initTestCase() {
         underscore_name.testField = -7
         underscoreName.testField = 100
         msgUnderscoreName.underScoreMessageField = 100

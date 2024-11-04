@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,8 +15,7 @@ extern "C" {
 #include <memory>
 #include <utility>
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Macro that, for an AVFoo, generates code for:
 //
@@ -60,7 +59,6 @@ DEFINE_AV_UNIQUE_PTR(AVFrame, av_frame_alloc, av_frame_free(&obj));
 // sender.
 #define _LIBAVUTIL_OLD_CHANNEL_LAYOUT (LIBAVUTIL_VERSION_MAJOR < 57)
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STANDALONE_RECEIVER_AVCODEC_GLUE_H_

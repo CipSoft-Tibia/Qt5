@@ -4,6 +4,8 @@
 
 #include "content/browser/attribution_reporting/attribution_os_level_manager_android.h"
 
+#include <jni.h>
+
 #include <iterator>
 #include <set>
 #include <string>
@@ -12,13 +14,25 @@
 
 #include "base/android/jni_array.h"
 #include "base/android/scoped_java_ref.h"
-#include "base/atomic_sequence_num.h"
+#include "base/barrier_closure.h"
+#include "base/check.h"
+#include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/location.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/ranges/algorithm.h"
 #include "base/sequence_checker.h"
+#include "base/task/task_traits.h"
+#include "base/task/thread_pool.h"
 #include "base/time/time.h"
-#include "components/attribution_reporting/os_support.mojom-shared.h"
+#include "base/timer/elapsed_timer.h"
+#include "content/browser/attribution_reporting/attribution_input_event.h"
+#include "content/browser/attribution_reporting/attribution_os_level_manager.h"
+#include "content/browser/attribution_reporting/attribution_reporting.mojom.h"
+#include "content/browser/attribution_reporting/os_registration.h"
+#include "content/browser/browser_thread_impl.h"
 #include "content/public/android/content_jni_headers/AttributionOsLevelManager_jni.h"
+#include "content/public/browser/browser_thread.h"
 #include "content/public/browser/browsing_data_filter_builder.h"
 #include "url/android/gurl_android.h"
 #include "url/gurl.h"
@@ -27,6 +41,8 @@
 namespace content {
 
 namespace {
+
+using ApiState = ::content::AttributionOsLevelManager::ApiState;
 
 int GetDeletionMode(bool delete_rate_limit_data) {
   // See
@@ -54,7 +70,7 @@ int GetMatchBehavior(BrowsingDataFilterBuilder::Mode mode) {
   }
 }
 
-attribution_reporting::mojom::OsSupport ConvertToOsSupport(int value) {
+ApiState ConvertToApiState(int value) {
   // See
   // https://developer.android.com/reference/androidx/privacysandbox/ads/adservices/measurement/MeasurementManager
   // for constant values.
@@ -63,19 +79,49 @@ attribution_reporting::mojom::OsSupport ConvertToOsSupport(int value) {
 
   switch (value) {
     case kMeasurementApiStateDisabled:
-      return attribution_reporting::mojom::OsSupport::kDisabled;
+      return ApiState::kDisabled;
     case kMeasurementApiStateEnabled:
-      return attribution_reporting::mojom::OsSupport::kEnabled;
+      return ApiState::kEnabled;
     default:
-      return attribution_reporting::mojom::OsSupport::kDisabled;
+      return ApiState::kDisabled;
+  }
+}
+
+void GetMeasurementApiStatus() {
+  base::ElapsedThreadTimer timer;
+  Java_AttributionOsLevelManager_getMeasurementApiStatus(
+      base::android::AttachCurrentThread());
+  if (timer.is_supported()) {
+    base::UmaHistogramTimes("Conversions.GetMeasurementStatusTime",
+                            timer.Elapsed());
   }
 }
 
 }  // namespace
 
+static void JNI_AttributionOsLevelManager_OnMeasurementStateReturned(
+    JNIEnv* env,
+    jint state) {
+  ApiState api_state = ConvertToApiState(state);
+
+  if (BrowserThread::CurrentlyOn(BrowserThread::UI)) {
+    AttributionOsLevelManager::SetApiState(api_state);
+    return;
+  }
+
+  GetUIThreadTaskRunner({})->PostTask(
+      FROM_HERE,
+      base::BindOnce(&AttributionOsLevelManager::SetApiState, api_state));
+}
+
 AttributionOsLevelManagerAndroid::AttributionOsLevelManagerAndroid() {
   jobj_ = Java_AttributionOsLevelManager_Constructor(
       base::android::AttachCurrentThread(), reinterpret_cast<intptr_t>(this));
+
+  if (AttributionOsLevelManager::ShouldInitializeApiState()) {
+    base::ThreadPool::CreateSequencedTaskRunner({base::MayBlock()})
+        ->PostTask(FROM_HERE, base::BindOnce(&GetMeasurementApiStatus));
+  }
 }
 
 AttributionOsLevelManagerAndroid::~AttributionOsLevelManagerAndroid() {
@@ -84,17 +130,42 @@ AttributionOsLevelManagerAndroid::~AttributionOsLevelManagerAndroid() {
       base::android::AttachCurrentThread(), jobj_);
 }
 
-void AttributionOsLevelManagerAndroid::RegisterAttributionSource(
-    const GURL& registration_url,
-    const url::Origin& top_level_origin,
-    bool is_debug_key_allowed) {
+void AttributionOsLevelManagerAndroid::Register(OsRegistration registration,
+                                                bool is_debug_key_allowed,
+                                                RegisterCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   JNIEnv* env = base::android::AttachCurrentThread();
-  Java_AttributionOsLevelManager_registerAttributionSource(
-      env, jobj_, url::GURLAndroid::FromNativeGURL(env, registration_url),
-      url::GURLAndroid::FromNativeGURL(env, top_level_origin.GetURL()),
-      is_debug_key_allowed);
+
+  attribution_reporting::mojom::RegistrationType type = registration.GetType();
+  auto registration_url =
+      url::GURLAndroid::FromNativeGURL(env, registration.registration_url);
+  auto top_level_origin = url::GURLAndroid::FromNativeGURL(
+      env, registration.top_level_origin.GetURL());
+  absl::optional<AttributionInputEvent> input_event = registration.input_event;
+
+  int request_id = next_callback_id_++;
+  pending_registration_callbacks_.emplace(
+      request_id, base::BindOnce(std::move(callback), std::move(registration)));
+
+  switch (type) {
+    case attribution_reporting::mojom::RegistrationType::kSource:
+      DCHECK(input_event.has_value());
+      if (AttributionOsLevelManager::ShouldUseOsWebSource()) {
+        Java_AttributionOsLevelManager_registerWebAttributionSource(
+            env, jobj_, request_id, registration_url, top_level_origin,
+            is_debug_key_allowed, input_event->input_event);
+      } else {
+        Java_AttributionOsLevelManager_registerAttributionSource(
+            env, jobj_, request_id, registration_url, input_event->input_event);
+      }
+      break;
+    case attribution_reporting::mojom::RegistrationType::kTrigger:
+      Java_AttributionOsLevelManager_registerWebAttributionTrigger(
+          env, jobj_, request_id, registration_url, top_level_origin,
+          is_debug_key_allowed);
+      break;
+  }
 }
 
 void AttributionOsLevelManagerAndroid::ClearData(
@@ -115,8 +186,7 @@ void AttributionOsLevelManagerAndroid::ClearData(
         return url::GURLAndroid::FromNativeGURL(env, origin.GetURL());
       });
 
-  static base::AtomicSequenceNumber g_request_id_counter;
-  int request_id = g_request_id_counter.GetNext();
+  int request_id = next_callback_id_++;
   pending_data_deletion_callbacks_.emplace(request_id, std::move(done));
 
   Java_AttributionOsLevelManager_deleteRegistrations(
@@ -128,13 +198,18 @@ void AttributionOsLevelManagerAndroid::ClearData(
       GetDeletionMode(delete_rate_limit_data), GetMatchBehavior(mode));
 }
 
-attribution_reporting::mojom::OsSupport
-AttributionOsLevelManagerAndroid::GetOsSupport() {
+void AttributionOsLevelManagerAndroid::OnRegistrationCompleted(JNIEnv* env,
+                                                               jint request_id,
+                                                               bool success) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  return ConvertToOsSupport(
-      Java_AttributionOsLevelManager_getMeasurementApiStatus(
-          base::android::AttachCurrentThread(), jobj_));
+  auto it = pending_registration_callbacks_.find(request_id);
+  if (it == pending_registration_callbacks_.end()) {
+    return;
+  }
+
+  std::move(it->second).Run(success);
+  pending_registration_callbacks_.erase(it);
 }
 
 void AttributionOsLevelManagerAndroid::OnDataDeletionCompleted(

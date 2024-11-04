@@ -5,10 +5,12 @@
 #include "build/build_config.h"
 #include "gpu/vulkan/buildflags.h"
 
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_context.h"
 #include "ui/gl/gl_display.h"
 #include "ui/gl/gl_surface.h"
+#endif
 
 #if BUILDFLAG(IS_LINUX)
 #if BUILDFLAG(IS_OZONE)
@@ -48,9 +50,6 @@ bool GLSurfaceGLX::IsCreateContextES2ProfileSupported() {
   return false;
 }
 bool GLSurfaceGLX::IsCreateContextSupported() {
-  return false;
-}
-bool GLSurfaceGLX::InitializeExtensionSettingsOneOff() {
   return false;
 }
 } // namespace gl

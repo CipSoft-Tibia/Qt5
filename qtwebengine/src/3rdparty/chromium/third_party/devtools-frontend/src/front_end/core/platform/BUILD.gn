@@ -39,6 +39,7 @@ devtools_pre_built("dcheck") {
 devtools_module("platform") {
   sources = [
     "DevToolsPath.ts",
+    "Timing.ts",
     "UIString.ts",
     "UserVisibleError.ts",
     "array-utilities.ts",
@@ -48,6 +49,7 @@ devtools_module("platform") {
     "keyboard-utilities.ts",
     "map-utilities.ts",
     "number-utilities.ts",
+    "promise-utilities.ts",
     "set-utilities.ts",
     "string-utilities.ts",
     "typescript-utilities.ts",

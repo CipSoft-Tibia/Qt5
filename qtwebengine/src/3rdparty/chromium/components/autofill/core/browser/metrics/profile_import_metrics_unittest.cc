@@ -53,9 +53,8 @@ void TestAddressProfileImportCountrySpecificFieldRequirements(
 
 }  // namespace
 
-class AutofillProfileImportMetricsTest
-    : public metrics::AutofillMetricsBaseTest,
-      public testing::Test {
+class AutofillProfileImportMetricsTest : public AutofillMetricsBaseTest,
+                                         public testing::Test {
  public:
   void SetUp() override { SetUpHelper(); }
   void TearDown() override { TearDownHelper(); }
@@ -81,9 +80,9 @@ TEST_F(AutofillProfileImportMetricsTest, ProfileImportStatus_NoImport) {
   using Metric = AddressProfileImportStatusMetric;
   EXPECT_THAT(
       histogram_tester.GetAllSamples("Autofill.AddressProfileImportStatus"),
-      BucketsAre(Bucket(Metric::REGULAR_IMPORT, 0),
-                 Bucket(Metric::NO_IMPORT, 1),
-                 Bucket(Metric::SECTION_UNION_IMPORT, 0)));
+      BucketsAre(Bucket(Metric::kRegularImport, 0),
+                 Bucket(Metric::kNoImport, 1),
+                 Bucket(Metric::kSectionUnionImport, 0)));
 }
 
 // Test that the ProfileImportStatus logs a regular import.
@@ -106,45 +105,17 @@ TEST_F(AutofillProfileImportMetricsTest, ProfileImportStatus_RegularImport) {
   using Metric = AddressProfileImportStatusMetric;
   EXPECT_THAT(
       histogram_tester.GetAllSamples("Autofill.AddressProfileImportStatus"),
-      BucketsAre(Bucket(Metric::REGULAR_IMPORT, 1),
-                 Bucket(Metric::NO_IMPORT, 0),
-                 Bucket(Metric::SECTION_UNION_IMPORT, 0)));
-}
-
-// Test that the ProfileImportStatus logs a section union mport.
-TEST_F(AutofillProfileImportMetricsTest, ProfileImportStatus_UnionImport) {
-  // Set up our form data.
-  FormData form = GetAndAddSeenForm(
-      {.description_for_logging = "ProfileImportStatus_UnionImport",
-       .fields = {
-           {.role = NAME_FULL, .value = u"Elvis Aaron Presley"},
-           {.role = ADDRESS_HOME_LINE1, .value = u"3734 Elvis Presley Blvd."},
-           {.role = ADDRESS_HOME_ZIP, .value = u"37373"},
-           {.role = ADDRESS_HOME_COUNTRY, .value = u"USA"},
-           {.role = PHONE_HOME_CITY_AND_NUMBER, .value = u"2345678901"},
-           {.role = ADDRESS_HOME_CITY,
-            .value = u"New York",
-            .autocomplete_attribute = "section-billing locality"},
-           // Add the last field of the form into a new section.
-           {.role = ADDRESS_HOME_STATE,
-            .value = u"CA",
-            .autocomplete_attribute = "section-shipping address-level1"}}});
-
-  FillTestProfile(form);
-  base::HistogramTester histogram_tester;
-  SubmitForm(form);
-  using Metric = AddressProfileImportStatusMetric;
-  EXPECT_THAT(
-      histogram_tester.GetAllSamples("Autofill.AddressProfileImportStatus"),
-      BucketsAre(Bucket(Metric::REGULAR_IMPORT, 0),
-                 Bucket(Metric::NO_IMPORT, 0),
-                 Bucket(Metric::SECTION_UNION_IMPORT, 1)));
+      BucketsAre(Bucket(Metric::kRegularImport, 1),
+                 Bucket(Metric::kNoImport, 0),
+                 Bucket(Metric::kSectionUnionImport, 0)));
 }
 
 // Test that the ProfileImportRequirements are all counted as fulfilled for a
 // 'perfect' profile import.
 TEST_F(AutofillProfileImportMetricsTest,
        ProfileImportRequirements_AllFulfilled) {
+  base::test::ScopedFeatureList features;
+  features.InitAndEnableFeature(features::kAutofillRequireNameForProfileImport);
   // Set up our form data.
   FormData form = GetAndAddSeenForm(
       {.description_for_logging = "ProfileImportRequirements_AllFulfilled",
@@ -189,7 +160,7 @@ TEST_F(AutofillProfileImportMetricsTest,
       {AddressImportRequirements::kLine1RequirementViolated, false},
       {AddressImportRequirements::kZipOrStateRequirementFulfilled, true},
       {AddressImportRequirements::kZipOrStateRequirementViolated, false},
-      {AddressImportRequirements::kNameRequirementFulfilled, false},
+      {AddressImportRequirements::kNameRequirementFulfilled, true},
       {AddressImportRequirements::kNameRequirementViolated, false}};
 
   TestAddressProfileImportRequirements(&histogram_tester, expectations);
@@ -271,6 +242,8 @@ TEST_F(AutofillProfileImportMetricsTest,
 // 'perfect' profile import.
 TEST_F(AutofillProfileImportMetricsTest,
        ProfileImportRequirements_AllFulfilledForNonStateCountry) {
+  base::test::ScopedFeatureList features;
+  features.InitAndEnableFeature(features::kAutofillRequireNameForProfileImport);
   // Set up our form data.
   FormData form = test::GetFormData(
       {.description_for_logging =
@@ -323,7 +296,7 @@ TEST_F(AutofillProfileImportMetricsTest,
       {AddressImportRequirements::kLine1RequirementViolated, false},
       {AddressImportRequirements::kZipOrStateRequirementFulfilled, true},
       {AddressImportRequirements::kZipOrStateRequirementViolated, false},
-      {AddressImportRequirements::kNameRequirementFulfilled, false},
+      {AddressImportRequirements::kNameRequirementFulfilled, true},
       {AddressImportRequirements::kNameRequirementViolated, false}};
 
   TestAddressProfileImportRequirements(&histogram_tester, expectations);
@@ -337,6 +310,8 @@ TEST_F(AutofillProfileImportMetricsTest,
 // completely filled profile but with invalid values.
 TEST_F(AutofillProfileImportMetricsTest,
        ProfileImportRequirements_FilledButInvalidZipEmailAndState) {
+  base::test::ScopedFeatureList features;
+  features.InitAndEnableFeature(features::kAutofillRequireNameForProfileImport);
   // Set up our form data.
   test::FormDescription form_description = {
       .description_for_logging =
@@ -384,7 +359,7 @@ TEST_F(AutofillProfileImportMetricsTest,
       {AddressImportRequirements::kLine1RequirementViolated, false},
       {AddressImportRequirements::kZipOrStateRequirementFulfilled, true},
       {AddressImportRequirements::kZipOrStateRequirementViolated, false},
-      {AddressImportRequirements::kNameRequirementFulfilled, false},
+      {AddressImportRequirements::kNameRequirementFulfilled, true},
       {AddressImportRequirements::kNameRequirementViolated, false}};
 
   TestAddressProfileImportRequirements(&histogram_tester, expectations);
@@ -399,6 +374,8 @@ TEST_F(AutofillProfileImportMetricsTest,
 // profile with multiple email addresses.
 TEST_F(AutofillProfileImportMetricsTest,
        ProfileImportRequirements_NonUniqueEmail) {
+  base::test::ScopedFeatureList features;
+  features.InitAndEnableFeature(features::kAutofillRequireNameForProfileImport);
   // Set up our form data.
   FormData form = test::GetFormData(
       {.description_for_logging = "ProfileImportRequirements_NonUniqueEmail",
@@ -455,7 +432,7 @@ TEST_F(AutofillProfileImportMetricsTest,
       {AddressImportRequirements::kLine1RequirementViolated, false},
       {AddressImportRequirements::kZipOrStateRequirementFulfilled, true},
       {AddressImportRequirements::kZipOrStateRequirementViolated, false},
-      {AddressImportRequirements::kNameRequirementFulfilled, false},
+      {AddressImportRequirements::kNameRequirementFulfilled, true},
       {AddressImportRequirements::kNameRequirementViolated, false}};
 
   TestAddressProfileImportRequirements(&histogram_tester, expectations);

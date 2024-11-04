@@ -57,6 +57,7 @@ public final class DynamicColor {
   public final Function<DynamicScheme, Double> hue;
   public final Function<DynamicScheme, Double> chroma;
   public final Function<DynamicScheme, Double> tone;
+  public final Function<DynamicScheme, Double> opacity;
 
   public final Function<DynamicScheme, DynamicColor> background;
   public final Function<DynamicScheme, Double> toneMinContrast;
@@ -99,6 +100,7 @@ public final class DynamicColor {
       Function<DynamicScheme, Double> hue,
       Function<DynamicScheme, Double> chroma,
       Function<DynamicScheme, Double> tone,
+      Function<DynamicScheme, Double> opacity,
       Function<DynamicScheme, DynamicColor> background,
       Function<DynamicScheme, Double> toneMinContrast,
       Function<DynamicScheme, Double> toneMaxContrast,
@@ -106,6 +108,7 @@ public final class DynamicColor {
     this.hue = hue;
     this.chroma = chroma;
     this.tone = tone;
+    this.opacity = opacity;
     this.background = background;
     this.toneMinContrast = toneMinContrast;
     this.toneMaxContrast = toneMaxContrast;
@@ -243,6 +246,7 @@ public final class DynamicColor {
         scheme -> palette.apply(scheme).getHue(),
         scheme -> palette.apply(scheme).getChroma(),
         tone,
+        null,
         background,
         scheme -> toneMinContrastDefault(tone, background, scheme, toneDeltaConstraint),
         scheme -> toneMaxContrastDefault(tone, background, scheme, toneDeltaConstraint),
@@ -250,7 +254,13 @@ public final class DynamicColor {
   }
 
   public int getArgb(DynamicScheme scheme) {
-    return getHct(scheme).toInt();
+    final int argb = getHct(scheme).toInt();
+    if (opacity == null) {
+      return argb;
+    }
+    final double percentage = opacity.apply(scheme);
+    final int alpha = MathUtils.clampInt(0, 255, (int) Math.round(percentage * 255));
+    return (argb & 0x00ffffff) | (alpha << 24);
   }
 
   public Hct getHct(DynamicScheme scheme) {
@@ -274,7 +284,8 @@ public final class DynamicColor {
     return answer;
   }
 
-  double getTone(DynamicScheme scheme) {
+  /** Returns the tone in HCT, ranging from 0 to 100, of the resolved color given scheme. */
+  public double getTone(DynamicScheme scheme) {
     double answer = tone.apply(scheme);
 
     final boolean decreasingContrast = scheme.contrastLevel < 0.0;
@@ -291,21 +302,21 @@ public final class DynamicColor {
     double maxRatio = Contrast.RATIO_MAX;
     if (bgDynamicColor != null) {
       final boolean bgHasBg =
-          bgDynamicColor.background != null && bgDynamicColor.background.apply(scheme) == null;
+          bgDynamicColor.background != null && bgDynamicColor.background.apply(scheme) != null;
       final double standardRatio =
           Contrast.ratioOfTones(tone.apply(scheme), bgDynamicColor.tone.apply(scheme));
       if (decreasingContrast) {
         final double minContrastRatio =
             Contrast.ratioOfTones(
                 toneMinContrast.apply(scheme), bgDynamicColor.toneMinContrast.apply(scheme));
-        minRatio = bgHasBg ? 1.0 : minContrastRatio;
+        minRatio = bgHasBg ? minContrastRatio : 1.0;
         maxRatio = standardRatio;
       } else {
         final double maxContrastRatio =
             Contrast.ratioOfTones(
                 toneMaxContrast.apply(scheme), bgDynamicColor.toneMaxContrast.apply(scheme));
-        minRatio = !bgHasBg ? 1.0 : min(maxContrastRatio, standardRatio);
-        maxRatio = !bgHasBg ? 21.0 : max(maxContrastRatio, standardRatio);
+        minRatio = bgHasBg ? min(maxContrastRatio, standardRatio) : 1.0;
+        maxRatio = bgHasBg ? max(maxContrastRatio, standardRatio) : 21.0;
       }
     }
 
@@ -517,7 +528,7 @@ public final class DynamicColor {
    * Given a background tone, find a foreground tone, while ensuring they reach a contrast ratio
    * that is as close to ratio as possible.
    */
-  static double contrastingTone(double bgTone, double ratio) {
+  public static double contrastingTone(double bgTone, double ratio) {
     final double lighterTone = Contrast.lighterUnsafe(bgTone, ratio);
     final double darkerTone = Contrast.darkerUnsafe(bgTone, ratio);
     final double lighterRatio = Contrast.ratioOfTones(lighterTone, bgTone);
@@ -548,7 +559,7 @@ public final class DynamicColor {
    * Adjust a tone down such that white has 4.5 contrast, if the tone is reasonably close to
    * supporting it.
    */
-  static double enableLightForeground(double tone) {
+  public static double enableLightForeground(double tone) {
     if (tonePrefersLightForeground(tone) && !toneAllowsLightForeground(tone)) {
       return 49.0;
     }
@@ -561,13 +572,16 @@ public final class DynamicColor {
    *
    * <p>T60 used as to create the smallest discontinuity possible when skipping down to T49 in order
    * to ensure light foregrounds.
+   *
+   * <p>Since `tertiaryContainer` in dark monochrome scheme requires a tone of 60, it should not be
+   * adjusted. Therefore, 60 is excluded here.
    */
-  static boolean tonePrefersLightForeground(double tone) {
-    return Math.round(tone) <= 60;
+  public static boolean tonePrefersLightForeground(double tone) {
+    return Math.round(tone) < 60;
   }
 
   /** Tones less than ~T50 always permit white at 4.5 contrast. */
-  static boolean toneAllowsLightForeground(double tone) {
+  public static boolean toneAllowsLightForeground(double tone) {
     return Math.round(tone) <= 49;
   }
 }

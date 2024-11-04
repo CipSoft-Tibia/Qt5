@@ -415,7 +415,7 @@ QT_END_NAMESPACE
 
 QT_BEGIN_NAMESPACE
 
-template <> struct QConcatenable<QStringRef> : private QAbstractConcatenable
+template <> struct QConcatenable<QStringRef>
 {
     typedef QStringRef type;
     typedef QString ConvertTo;

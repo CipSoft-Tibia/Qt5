@@ -44,7 +44,6 @@ static enum xnn_status create_binary_elementwise_nd(
     uint32_t flags,
     const void* params,
     size_t params_size,
-    uint32_t datatype_init_flags,
     enum xnn_operator_type operator_type,
     const struct xnn_binary_elementwise_subconfig* binary_elementwise_subconfig,
     xnn_operator_t* binary_elementwise_op_out)
@@ -59,12 +58,6 @@ static enum xnn_status create_binary_elementwise_nd(
     xnn_log_error("failed to create %s operator: XNNPACK is not initialized",
       xnn_operator_type_to_string(operator_type));
     return xnn_status_uninitialized;
-  }
-
-  if ((xnn_params.init_flags & datatype_init_flags) != datatype_init_flags) {
-    xnn_log_error("failed to create %s operator: operations on data type are not supported",
-      xnn_operator_type_to_string(operator_type));
-    return xnn_status_unsupported_hardware;
   }
 
   xnn_operator_t binary_elementwise_op = xnn_allocate_zero_simd_memory(sizeof(struct xnn_operator));
@@ -133,7 +126,6 @@ static enum xnn_status create_binary_elementwise_nd_f16(
     flags,
     &params,
     sizeof(params),
-    XNN_INIT_FLAG_F16,
     operator_type,
     &config->minmax,
     binary_elementwise_op_out);
@@ -174,16 +166,16 @@ static enum xnn_status create_binary_elementwise_nd_f32(
     return xnn_status_invalid_parameter;
   }
 
-  const bool linear_activation = (output_max == INFINITY) && (output_min == -output_max);
-  const struct xnn_binary_elementwise_subconfig* binary_elementwise_subconfig = &config->minmax;
-  if (linear_activation && config->linear.op_ukernel != NULL) {
-    binary_elementwise_subconfig = &config->linear;
-  }
-
   if (config == NULL) {
     xnn_log_error("failed to create %s operator: unsupported hardware configuration",
       xnn_operator_type_to_string(operator_type));
     return xnn_status_unsupported_hardware;
+  }
+
+  const bool linear_activation = (output_max == INFINITY) && (output_min == -output_max);
+  const struct xnn_binary_elementwise_subconfig* binary_elementwise_subconfig = &config->minmax;
+  if (linear_activation && config->linear.op_ukernel != NULL) {
+    binary_elementwise_subconfig = &config->linear;
   }
 
   union xnn_f32_minmax_params params;
@@ -194,7 +186,6 @@ static enum xnn_status create_binary_elementwise_nd_f32(
     flags,
     &params,
     sizeof(params),
-    XNN_INIT_FLAG_F32,
     operator_type,
     binary_elementwise_subconfig,
     binary_elementwise_op_out);
@@ -279,7 +270,6 @@ enum xnn_status xnn_create_add_nd_qs8(
     flags,
     &params,
     sizeof(params),
-    XNN_INIT_FLAG_QS8,
     xnn_operator_type_add_nd_qs8,
     &qs8_vadd_config->minmax,
     add_op_out);
@@ -364,7 +354,6 @@ enum xnn_status xnn_create_add_nd_qu8(
     flags,
     &params,
     sizeof(params),
-    XNN_INIT_FLAG_QU8,
     xnn_operator_type_add_nd_qu8,
     &qu8_vadd_config->minmax,
     add_op_out);
@@ -444,7 +433,6 @@ enum xnn_status xnn_create_maximum_nd_f16(
     flags,
     NULL,
     0,
-    XNN_INIT_FLAG_F16,
     xnn_operator_type_maximum_nd_f16,
     &f16_vmax_config->minmax,
     maximum_op_out);
@@ -469,7 +457,6 @@ enum xnn_status xnn_create_maximum_nd_f32(
     flags,
     &params,
     sizeof(params),
-    XNN_INIT_FLAG_F32,
     xnn_operator_type_maximum_nd_f32,
     &f32_vmax_config->minmax,
     maximum_op_out);
@@ -488,7 +475,6 @@ enum xnn_status xnn_create_minimum_nd_f16(
     flags,
     NULL,
     0,
-    XNN_INIT_FLAG_F16,
     xnn_operator_type_minimum_nd_f16,
     &f16_vmin_config->minmax,
     minimum_op_out);
@@ -513,7 +499,6 @@ enum xnn_status xnn_create_minimum_nd_f32(
     flags,
     &params,
     sizeof(params),
-    XNN_INIT_FLAG_F32,
     xnn_operator_type_minimum_nd_f32,
     &f32_vmin_config->minmax,
     minimum_op_out);
@@ -621,7 +606,6 @@ enum xnn_status xnn_create_multiply_nd_qs8(
     flags,
     &params,
     sizeof(params),
-    XNN_INIT_FLAG_QS8,
     xnn_operator_type_multiply_nd_qs8,
     &qs8_vmul_config->minmax,
     multiply_op_out);
@@ -698,7 +682,6 @@ enum xnn_status xnn_create_multiply_nd_qu8(
     flags,
     &params,
     sizeof(params),
-    XNN_INIT_FLAG_QU8,
     xnn_operator_type_multiply_nd_qu8,
     &qu8_vmul_config->minmax,
     multiply_op_out);
@@ -718,7 +701,6 @@ enum xnn_status xnn_create_squared_difference_nd_f16(
     flags,
     NULL,
     0,
-    XNN_INIT_FLAG_F16,
     xnn_operator_type_squared_difference_nd_f16,
     &f16_vqsrdiff_config->minmax,
     squared_difference_op_out);
@@ -743,7 +725,6 @@ enum xnn_status xnn_create_squared_difference_nd_f32(
     flags,
     &params,
     sizeof(params),
-    XNN_INIT_FLAG_F32,
     xnn_operator_type_squared_difference_nd_f32,
     &f32_vsqrdiff_config->minmax,
     squared_difference_op_out);
@@ -858,7 +839,6 @@ enum xnn_status xnn_create_subtract_nd_qs8(
     flags,
     &params,
     sizeof(params),
-    XNN_INIT_FLAG_QS8,
     xnn_operator_type_subtract_nd_qs8,
     &qs8_vadd_config->minmax,
     subtract_op_out);
@@ -943,7 +923,6 @@ enum xnn_status xnn_create_subtract_nd_qu8(
     flags,
     &params,
     sizeof(params),
-    XNN_INIT_FLAG_QU8,
     xnn_operator_type_subtract_nd_qu8,
     &qu8_vadd_config->minmax,
     subtract_op_out);
@@ -1114,38 +1093,38 @@ static enum xnn_status setup_binary_elementwise_nd(
     if (compressed_output_shape[4] == 1) {
       if (compressed_output_shape[3] == 1) {
         if (compressed_output_shape[2] == 1) {
-          binary_elementwise_op->compute.type = xnn_parallelization_type_1d;
-          binary_elementwise_op->compute.task_1d = (pthreadpool_task_1d_t) xnn_compute_elementwise_binary_1d;
-          binary_elementwise_op->compute.range[0] = compressed_output_shape[1];
+          binary_elementwise_op->compute[0].type = xnn_parallelization_type_1d;
+          binary_elementwise_op->compute[0].task_1d = (pthreadpool_task_1d_t) xnn_compute_elementwise_binary_1d;
+          binary_elementwise_op->compute[0].range[0] = compressed_output_shape[1];
         } else {
-          binary_elementwise_op->compute.type = xnn_parallelization_type_2d;
-          binary_elementwise_op->compute.task_2d = (pthreadpool_task_2d_t) xnn_compute_elementwise_binary_2d;
-          binary_elementwise_op->compute.range[0] = compressed_output_shape[2];
-          binary_elementwise_op->compute.range[1] = compressed_output_shape[1];
+          binary_elementwise_op->compute[0].type = xnn_parallelization_type_2d;
+          binary_elementwise_op->compute[0].task_2d = (pthreadpool_task_2d_t) xnn_compute_elementwise_binary_2d;
+          binary_elementwise_op->compute[0].range[0] = compressed_output_shape[2];
+          binary_elementwise_op->compute[0].range[1] = compressed_output_shape[1];
         }
       } else {
-        binary_elementwise_op->compute.type = xnn_parallelization_type_3d;
-        binary_elementwise_op->compute.task_3d = (pthreadpool_task_3d_t) xnn_compute_elementwise_binary_3d;
-        binary_elementwise_op->compute.range[0] = compressed_output_shape[3];
-        binary_elementwise_op->compute.range[1] = compressed_output_shape[2];
-        binary_elementwise_op->compute.range[2] = compressed_output_shape[1];
+        binary_elementwise_op->compute[0].type = xnn_parallelization_type_3d;
+        binary_elementwise_op->compute[0].task_3d = (pthreadpool_task_3d_t) xnn_compute_elementwise_binary_3d;
+        binary_elementwise_op->compute[0].range[0] = compressed_output_shape[3];
+        binary_elementwise_op->compute[0].range[1] = compressed_output_shape[2];
+        binary_elementwise_op->compute[0].range[2] = compressed_output_shape[1];
       }
     } else {
-      binary_elementwise_op->compute.type = xnn_parallelization_type_4d;
-      binary_elementwise_op->compute.task_4d = (pthreadpool_task_4d_t) xnn_compute_elementwise_binary_4d;
-      binary_elementwise_op->compute.range[0] = compressed_output_shape[4];
-      binary_elementwise_op->compute.range[1] = compressed_output_shape[3];
-      binary_elementwise_op->compute.range[2] = compressed_output_shape[2];
-      binary_elementwise_op->compute.range[3] = compressed_output_shape[1];
+      binary_elementwise_op->compute[0].type = xnn_parallelization_type_4d;
+      binary_elementwise_op->compute[0].task_4d = (pthreadpool_task_4d_t) xnn_compute_elementwise_binary_4d;
+      binary_elementwise_op->compute[0].range[0] = compressed_output_shape[4];
+      binary_elementwise_op->compute[0].range[1] = compressed_output_shape[3];
+      binary_elementwise_op->compute[0].range[2] = compressed_output_shape[2];
+      binary_elementwise_op->compute[0].range[3] = compressed_output_shape[1];
     }
   } else {
-    binary_elementwise_op->compute.type = xnn_parallelization_type_5d;
-    binary_elementwise_op->compute.task_5d = (pthreadpool_task_5d_t) xnn_compute_elementwise_binary_5d;
-    binary_elementwise_op->compute.range[0] = compressed_output_shape[5];
-    binary_elementwise_op->compute.range[1] = compressed_output_shape[4];
-    binary_elementwise_op->compute.range[2] = compressed_output_shape[3];
-    binary_elementwise_op->compute.range[3] = compressed_output_shape[2];
-    binary_elementwise_op->compute.range[4] = compressed_output_shape[1];
+    binary_elementwise_op->compute[0].type = xnn_parallelization_type_5d;
+    binary_elementwise_op->compute[0].task_5d = (pthreadpool_task_5d_t) xnn_compute_elementwise_binary_5d;
+    binary_elementwise_op->compute[0].range[0] = compressed_output_shape[5];
+    binary_elementwise_op->compute[0].range[1] = compressed_output_shape[4];
+    binary_elementwise_op->compute[0].range[2] = compressed_output_shape[3];
+    binary_elementwise_op->compute[0].range[3] = compressed_output_shape[2];
+    binary_elementwise_op->compute[0].range[4] = compressed_output_shape[1];
   }
   binary_elementwise_op->state = xnn_run_state_ready;
 
@@ -1174,7 +1153,7 @@ static enum xnn_status setup_binary_elementwise_nd_f16(
     input1,
     input2,
     output,
-    1 /* log2(sizeof(uint16_t)) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_HALF,
     &binary_elementwise_op->params.f16_minmax, sizeof(binary_elementwise_op->params.f16_minmax),
     &binary_elementwise_op->params.f16_minmax, sizeof(binary_elementwise_op->params.f16_minmax),
     num_threads);
@@ -1197,7 +1176,7 @@ static enum xnn_status setup_binary_elementwise_nd_f32(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    2 /* log2(sizeof(float)) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
     &binary_elementwise_op->params.f32_minmax, sizeof(binary_elementwise_op->params.f32_minmax),
     &binary_elementwise_op->params.f32_minmax, sizeof(binary_elementwise_op->params.f32_minmax),
     num_threads);
@@ -1250,7 +1229,7 @@ static enum xnn_status run_binary_elementwise_nd(
   const void* input1,
   const void* input2,
   void* output,
-  uint32_t setup_log2_element_size,
+  uint32_t log2_element_size,
   size_t params_offset,
   size_t setup_params_size,
   size_t rparams_offset,
@@ -1280,7 +1259,7 @@ static enum xnn_status run_binary_elementwise_nd(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    setup_log2_element_size,
+    log2_element_size,
     setup_params, setup_params_size,
     setup_reversed_params, setup_reversed_params_size,
     pthreadpool_get_threads_count(threadpool));
@@ -1349,7 +1328,7 @@ static enum xnn_status run_binary_elementwise_nd_f32(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    2 /* log2(sizeof(float)) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
     offsetof(struct xnn_operator, params.f32_minmax), sizeof(params),
     offsetof(struct xnn_operator, params.f32_minmax), sizeof(params),
     binary_elementwise_subconfig,
@@ -1415,8 +1394,6 @@ enum xnn_status xnn_run_maximum_nd_f32(
   const float* input1,
   const float* input2,
   float* output,
-  float output_min,
-  float output_max,
   uint32_t flags,
   pthreadpool_t threadpool)
 {
@@ -1432,18 +1409,14 @@ enum xnn_status xnn_run_maximum_nd_f32(
     f32_vmax_config->init.f32_default(&params);
   }
 
-  const bool linear_activation = (output_max == INFINITY) && (output_min == -output_max);
   const struct xnn_binary_elementwise_subconfig* binary_elementwise_subconfig = &f32_vmax_config->minmax;
-  if (linear_activation && f32_vmax_config->linear.op_ukernel != NULL) {
-    binary_elementwise_subconfig = &f32_vmax_config->linear;
-  }
 
   return run_binary_elementwise_nd(
     xnn_operator_type_maximum_nd_f32,
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    2 /* log2(sizeof(float)) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
     offsetof(struct xnn_operator, params.f32_minmax), sizeof(params),
     offsetof(struct xnn_operator, params.f32_minmax), sizeof(params),
     binary_elementwise_subconfig,
@@ -1461,8 +1434,6 @@ enum xnn_status xnn_run_minimum_nd_f32(
   const float* input1,
   const float* input2,
   float* output,
-  float output_min,
-  float output_max,
   uint32_t flags,
   pthreadpool_t threadpool)
 {
@@ -1477,18 +1448,14 @@ enum xnn_status xnn_run_minimum_nd_f32(
   if (f32_vmin_config->init.f32_default != NULL) {
     f32_vmin_config->init.f32_default(&params);
   }
-  const bool linear_activation = (output_max == INFINITY) && (output_min == -output_max);
   const struct xnn_binary_elementwise_subconfig* binary_elementwise_subconfig = &f32_vmin_config->minmax;
-  if (linear_activation && f32_vmin_config->linear.op_ukernel != NULL) {
-    binary_elementwise_subconfig = &f32_vmin_config->linear;
-  }
 
   return run_binary_elementwise_nd(
     xnn_operator_type_minimum_nd_f32,
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    2 /* log2(sizeof(float)) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
     offsetof(struct xnn_operator, params.f32_minmax), sizeof(params),
     offsetof(struct xnn_operator, params.f32_minmax), sizeof(params),
     binary_elementwise_subconfig,
@@ -1554,32 +1521,9 @@ enum xnn_status xnn_run_squared_difference_nd_f32(
   const float* input1,
   const float* input2,
   float* output,
-  float output_min,
-  float output_max,
   uint32_t flags,
   pthreadpool_t threadpool)
 {
-  if (isnan(output_min)) {
-    xnn_log_error(
-      "failed to run %s operator with NaN output lower bound: lower bound must be non-NaN",
-      xnn_operator_type_to_string(xnn_operator_type_squared_difference_nd_f32));
-    return xnn_status_invalid_parameter;
-  }
-
-  if (isnan(output_max)) {
-      xnn_log_error(
-        "failed to run %s operator with NaN output upper bound: upper bound must be non-NaN",
-        xnn_operator_type_to_string(xnn_operator_type_squared_difference_nd_f32));
-      return xnn_status_invalid_parameter;
-    }
-
-  if (output_min >= output_max) {
-      xnn_log_error(
-        "failed to run %s operator with [%.7g, %.7g] output range: lower bound must be below upper bound",
-        xnn_operator_type_to_string(xnn_operator_type_squared_difference_nd_f32), output_min, output_max);
-      return xnn_status_invalid_parameter;
-    }
-
   const struct xnn_binary_elementwise_config* f32_vsqrdiff_config = xnn_init_f32_vsqrdiff_config();
   if (f32_vsqrdiff_config == NULL) {
     xnn_log_error("failed to create %s operator: unsupported hardware configuration",
@@ -1592,18 +1536,14 @@ enum xnn_status xnn_run_squared_difference_nd_f32(
     f32_vsqrdiff_config->init.f32_default(&params);
   }
 
-  const bool linear_activation = (output_max == INFINITY) && (output_min == -output_max);
   const struct xnn_binary_elementwise_subconfig* binary_elementwise_subconfig = &f32_vsqrdiff_config->minmax;
-  if (linear_activation && f32_vsqrdiff_config->linear.op_ukernel != NULL) {
-    binary_elementwise_subconfig = &f32_vsqrdiff_config->linear;
-  }
 
   return run_binary_elementwise_nd(
     xnn_operator_type_squared_difference_nd_f32,
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    2 /* log2(sizeof(float)) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
     offsetof(struct xnn_operator, params.f32_minmax), sizeof(params),
     offsetof(struct xnn_operator, params.f32_minmax), sizeof(params),
     binary_elementwise_subconfig,
@@ -1700,7 +1640,7 @@ enum xnn_status xnn_run_add_nd_qs8(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    0 /* log2(sizeof(int8_t)) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
     offsetof(struct xnn_operator, params.qs8_add), sizeof(params.qs8_add),
     offsetof(struct xnn_operator, params.qs8_radd),  sizeof(params.qs8_radd),
     &qs8_vadd_config->minmax,
@@ -1791,7 +1731,7 @@ enum xnn_status xnn_run_multiply_nd_qs8(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    0 /* log2(sizeof(int8_t)) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
     offsetof(struct xnn_operator, params.qs8_mul), sizeof(params.qs8_mul),
     offsetof(struct xnn_operator, params.qs8_rmul),  sizeof(params.qs8_rmul),
     &qs8_vmul_config->minmax,
@@ -1887,7 +1827,7 @@ enum xnn_status xnn_run_subtract_nd_qs8(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    0 /* log2(sizeof(int8_t)) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
     offsetof(struct xnn_operator, params.qs8_add), sizeof(params.qs8_add),
     offsetof(struct xnn_operator, params.qs8_radd),  sizeof(params.qs8_radd),
     &qs8_vadd_config->minmax,
@@ -1983,7 +1923,7 @@ enum xnn_status xnn_run_add_nd_qu8(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    0 /* log2(sizeof(uint8_t)) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
     offsetof(struct xnn_operator, params.qu8_add), sizeof(params.qu8_add),
     offsetof(struct xnn_operator, params.qu8_radd),  sizeof(params.qu8_radd),
     &qu8_vadd_config->minmax,
@@ -2073,7 +2013,7 @@ enum xnn_status xnn_run_multiply_nd_qu8(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    0 /* log2(sizeof(uint8_t)) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
     offsetof(struct xnn_operator, params.qu8_mul), sizeof(params.qu8_mul),
     offsetof(struct xnn_operator, params.qu8_rmul),  sizeof(params.qu8_rmul),
     &qu8_vmul_config->minmax,
@@ -2170,7 +2110,7 @@ enum xnn_status xnn_run_subtract_nd_qu8(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    0 /* log2(sizeof(uint8_t)) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
     offsetof(struct xnn_operator, params.qu8_add), sizeof(params.qu8_add),
     offsetof(struct xnn_operator, params.qu8_radd),  sizeof(params.qu8_radd),
     &qu8_vadd_config->minmax,
@@ -2196,7 +2136,7 @@ enum xnn_status xnn_setup_add_nd_qs8(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    0 /* log2(sizeof(int8_t))) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
     &add_op->params.qs8_add, sizeof(add_op->params.qs8_add),
     &add_op->params.qs8_radd, sizeof(add_op->params.qs8_radd),
     pthreadpool_get_threads_count(threadpool));
@@ -2218,7 +2158,7 @@ enum xnn_status xnn_setup_add_nd_qu8(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    0 /* log2(sizeof(uint8_t))) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
     &add_op->params.qu8_add, sizeof(add_op->params.qu8_add),
     &add_op->params.qu8_radd, sizeof(add_op->params.qu8_radd),
     pthreadpool_get_threads_count(threadpool));
@@ -2392,7 +2332,7 @@ enum xnn_status xnn_setup_multiply_nd_qs8(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    0 /* log2(sizeof(int8_t))) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
     &multiply_op->params.qs8_mul, sizeof(multiply_op->params.qs8_mul),
     &multiply_op->params.qs8_rmul, sizeof(multiply_op->params.qs8_rmul),
     pthreadpool_get_threads_count(threadpool));
@@ -2414,7 +2354,7 @@ enum xnn_status xnn_setup_multiply_nd_qu8(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    0 /* log2(sizeof(uint8_t))) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
     &multiply_op->params.qu8_mul, sizeof(multiply_op->params.qu8_mul),
     &multiply_op->params.qu8_rmul, sizeof(multiply_op->params.qu8_rmul),
     pthreadpool_get_threads_count(threadpool));
@@ -2512,7 +2452,7 @@ enum xnn_status xnn_setup_subtract_nd_qs8(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    0 /* log2(sizeof(int8_t))) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
     &subtract_op->params.qs8_add, sizeof(subtract_op->params.qs8_add),
     &subtract_op->params.qs8_radd, sizeof(subtract_op->params.qs8_radd),
     pthreadpool_get_threads_count(threadpool));
@@ -2534,7 +2474,7 @@ enum xnn_status xnn_setup_subtract_nd_qu8(
     num_input1_dims, input1_shape,
     num_input2_dims, input2_shape,
     input1, input2, output,
-    0 /* log2(sizeof(uint8_t))) */,
+    /*log2_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
     &subtract_op->params.qu8_add, sizeof(subtract_op->params.qu8_add),
     &subtract_op->params.qu8_radd, sizeof(subtract_op->params.qu8_radd),
     pthreadpool_get_threads_count(threadpool));

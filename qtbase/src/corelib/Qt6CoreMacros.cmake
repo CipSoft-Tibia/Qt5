@@ -612,7 +612,10 @@ endfunction()
 function(_qt_internal_create_executable target)
     if(ANDROID)
         list(REMOVE_ITEM ARGN "WIN32" "MACOSX_BUNDLE")
+        cmake_policy(PUSH)
+        __qt_internal_set_cmp0156()
         add_library("${target}" MODULE ${ARGN})
+        cmake_policy(POP)
         # On our qmake builds we do don't compile the executables with
         # visibility=hidden. Not having this flag set will cause the
         # executable to have main() hidden and can then no longer be loaded
@@ -626,7 +629,10 @@ function(_qt_internal_create_executable target)
         qt6_android_apply_arch_suffix("${target}")
         set_property(TARGET "${target}" PROPERTY _qt_is_android_executable TRUE)
     else()
+        cmake_policy(PUSH)
+        __qt_internal_set_cmp0156()
         add_executable("${target}" ${ARGN})
+        cmake_policy(POP)
     endif()
 
     _qt_internal_disable_autorcc_zstd_when_not_supported("${target}")
@@ -683,6 +689,7 @@ function(_qt_internal_finalize_executable target)
     if(EMSCRIPTEN)
         _qt_internal_wasm_add_target_helpers("${target}")
         _qt_internal_add_wasm_extra_exported_methods("${target}")
+        _qt_internal_set_wasm_export_name("${target}")
     endif()
     if(IOS)
         _qt_internal_finalize_ios_app("${target}")
@@ -765,6 +772,7 @@ function(qt6_finalize_target target)
     endif()
 
     _qt_internal_expose_deferred_files_to_ide(${target})
+    _qt_internal_finalize_source_groups(${target})
     get_target_property(target_type ${target} TYPE)
     get_target_property(is_android_executable "${target}" _qt_is_android_executable)
 
@@ -787,6 +795,55 @@ function(qt6_finalize_target target)
     endif()
 
     set_target_properties(${target} PROPERTIES _qt_is_finalized TRUE)
+endfunction()
+
+function(_qt_internal_finalize_source_groups target)
+    if(NOT ("${CMAKE_GENERATOR}" STREQUAL "Xcode"
+         OR "${CMAKE_GENERATOR}" MATCHES "^Visual Studio"))
+        return()
+    endif()
+
+    get_target_property(sources ${target} SOURCES)
+    if(NOT sources)
+        return()
+    endif()
+
+    get_target_property(source_dir ${target} SOURCE_DIR)
+    get_target_property(binary_dir ${target} BINARY_DIR)
+
+    get_property(generated_source_group GLOBAL PROPERTY AUTOGEN_SOURCE_GROUP)
+    if(NOT generated_source_group)
+        set(generated_source_group "Source Files/Generated")
+    endif()
+
+    foreach(source IN LISTS sources)
+        string(GENEX_STRIP "${source}" source)
+
+        if(IS_ABSOLUTE ${source})
+            set(source_file_path "${source}")
+        else()
+            # Resolve absolute path. Can't use LOCATION, as that
+            # will error out if the file doesn't exist :(
+            get_filename_component(source_file_path "${source}"
+                ABSOLUTE BASE_DIR "${source_dir}")
+            if(NOT EXISTS ${source_file_path})
+                # Likely generated file, will end up in build dir
+                get_filename_component(source_file_path "${source}"
+                    ABSOLUTE BASE_DIR "${binary_dir}")
+            endif()
+        endif()
+
+        # Include qml files in "Source Files". Can not be done via regex,
+        # due to https://gitlab.kitware.com/cmake/cmake/-/issues/25597
+        if(${source_file_path} MATCHES "\\.qml$")
+            source_group("Source Files" FILES ${source_file_path})
+        endif()
+
+        get_source_file_property(is_generated "${source_file_path}" GENERATED)
+        if(${is_generated})
+            source_group(${generated_source_group} FILES ${source_file_path})
+        endif()
+    endforeach()
 endfunction()
 
 function(_qt_internal_darwin_permission_finalizer target)
@@ -970,6 +1027,150 @@ function(_qt_internal_get_target_autogen_build_dir target out_var)
     endif()
 endfunction()
 
+function(_qt_internal_should_install_metatypes target)
+    set(args_option
+        INTERNAL_INSTALL
+    )
+    set(args_single
+        OUT_VAR
+    )
+    set(args_multi
+    )
+
+    cmake_parse_arguments(arg
+        "${args_option}"
+        "${args_single}"
+        "${args_multi}" ${ARGN})
+
+    # Check whether the generated json file needs to be installed.
+    # Executable metatypes.json files should not be installed. Qt non-prefix builds should also
+    # not install the files.
+    set(should_install FALSE)
+
+    get_target_property(target_type ${target} TYPE)
+    if(NOT target_type STREQUAL "EXECUTABLE" AND arg_INTERNAL_INSTALL)
+        set(should_install TRUE)
+    endif()
+    set(${arg_OUT_VAR} "${should_install}" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_get_metatypes_install_dir internal_install_dir arch_data_dir out_var)
+    # Automatically fill default install args when not specified.
+    if(NOT internal_install_dir)
+        # INSTALL_ARCHDATADIR is not set when QtBuildInternals is not loaded
+        # (when not doing a Qt build). Default to a hardcoded location for user
+        # projects (will likely be wrong).
+        if(arch_data_dir)
+            set(install_dir "${arch_data_dir}/metatypes")
+        else()
+            set(install_dir "lib/metatypes")
+        endif()
+    else()
+        set(install_dir "${internal_install_dir}")
+    endif()
+    set(${out_var} "${install_dir}" PARENT_SCOPE)
+endfunction()
+
+# Propagates the build time metatypes file via INTERFACE_SOURCES (using $<BUILD_INTERFACE>)
+# and saves the path and file name in properties, so that they can be queryied in the qml api
+# implementation for the purpose of duplicating a qml module backing library's metatypes in its
+# associated plugin. This is required for qmltyperegistrar to get the full set of foreign types
+# when projects link to the plugin and not the backing library.
+function(_qt_internal_assign_build_metatypes_files_and_properties target)
+    get_target_property(existing_meta_types_file ${target} INTERFACE_QT_META_TYPES_BUILD_FILE)
+    if (existing_meta_types_file)
+        return()
+    endif()
+
+    set(args_option
+    )
+    set(args_single
+        METATYPES_FILE_NAME
+        METATYPES_FILE_PATH
+    )
+    set(args_multi
+    )
+
+    cmake_parse_arguments(arg
+        "${args_option}"
+        "${args_single}"
+        "${args_multi}" ${ARGN})
+
+    if(NOT arg_METATYPES_FILE_NAME)
+        message(FATAL_ERROR "METATYPES_FILE_NAME must be specified")
+    endif()
+
+    if(NOT arg_METATYPES_FILE_PATH)
+        message(FATAL_ERROR "METATYPES_FILE_PATH must be specified")
+    endif()
+
+    set(metatypes_file_name "${arg_METATYPES_FILE_NAME}")
+    set(metatypes_file_path "${arg_METATYPES_FILE_PATH}")
+
+    # Set up consumption of files via INTERFACE_SOURCES.
+    set(consumes_metatypes "$<BOOL:$<TARGET_PROPERTY:QT_CONSUMES_METATYPES>>")
+    set(metatypes_file_genex_build
+        "$<BUILD_INTERFACE:$<${consumes_metatypes}:${metatypes_file_path}>>"
+    )
+    target_sources(${target} INTERFACE ${metatypes_file_genex_build})
+
+    set_target_properties(${target} PROPERTIES
+        INTERFACE_QT_MODULE_HAS_META_TYPES YES
+        # The property name is a bit misleading, it's not wrapped in a genex.
+        INTERFACE_QT_META_TYPES_BUILD_FILE "${metatypes_file_path}"
+        INTERFACE_QT_META_TYPES_FILE_NAME "${metatypes_file_name}"
+    )
+endfunction()
+
+# Same as above, but with $<INSTALL_INTERFACE>.
+function(_qt_internal_assign_install_metatypes_files_and_properties target)
+    get_target_property(existing_meta_types_file ${target} INTERFACE_QT_META_TYPES_INSTALL_FILE)
+    if (existing_meta_types_file)
+        return()
+    endif()
+
+    set(args_option
+    )
+    set(args_single
+        INSTALL_DIR
+    )
+    set(args_multi
+    )
+
+    cmake_parse_arguments(arg
+        "${args_option}"
+        "${args_single}"
+        "${args_multi}" ${ARGN})
+
+
+    get_target_property(metatypes_file_name "${target}" INTERFACE_QT_META_TYPES_FILE_NAME)
+
+    if(NOT metatypes_file_name)
+        message(FATAL_ERROR "INTERFACE_QT_META_TYPES_FILE_NAME of target ${target} is empty")
+    endif()
+
+    if(NOT arg_INSTALL_DIR)
+        message(FATAL_ERROR "INSTALL_DIR must be specified")
+    endif()
+
+    # Set up consumption of files via INTERFACE_SOURCES.
+    set(consumes_metatypes "$<BOOL:$<TARGET_PROPERTY:QT_CONSUMES_METATYPES>>")
+
+    set(install_dir "${arg_INSTALL_DIR}")
+
+    set(metatypes_file_install_path "${install_dir}/${metatypes_file_name}")
+    set(metatypes_file_install_path_genex "$<INSTALL_PREFIX>/${metatypes_file_install_path}")
+    set(metatypes_file_genex_install
+        "$<INSTALL_INTERFACE:$<${consumes_metatypes}:${metatypes_file_install_path_genex}>>"
+    )
+    target_sources(${target} INTERFACE ${metatypes_file_genex_install})
+
+    set_target_properties(${target} PROPERTIES
+        INTERFACE_QT_META_TYPES_INSTALL_FILE "${metatypes_file_install_path}"
+    )
+endfunction()
+
+
 function(qt6_extract_metatypes target)
 
     get_target_property(existing_meta_types_file ${target} INTERFACE_QT_META_TYPES_BUILD_FILE)
@@ -1050,8 +1251,15 @@ function(qt6_extract_metatypes target)
 
         set (use_dep_files FALSE)
         if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.17") # Requires automoc changes present only in 3.17
-            if(CMAKE_GENERATOR STREQUAL "Ninja" OR CMAKE_GENERATOR STREQUAL "Ninja Multi-Config")
-                set(use_dep_files TRUE)
+            if(CMAKE_GENERATOR STREQUAL "Ninja" OR
+               CMAKE_GENERATOR STREQUAL "Ninja Multi-Config" OR
+               (CMAKE_GENERATOR MATCHES "Makefiles" AND
+                CMAKE_VERSION VERSION_GREATER_EQUAL "3.28"))
+                if(DEFINED QT_USE_CMAKE_DEPFILES)
+                    set(use_dep_files ${QT_USE_CMAKE_DEPFILES})
+                else()
+                    set(use_dep_files TRUE)
+                endif()
             endif()
         endif()
 
@@ -1185,7 +1393,7 @@ function(qt6_extract_metatypes target)
         VERBATIM
     )
 
-    if(CMAKE_GENERATOR MATCHES " Makefiles" OR CMAKE_GENERATOR MATCHES "^Visual Studio")
+    if(CMAKE_GENERATOR MATCHES " Makefiles")
         # Work around https://gitlab.kitware.com/cmake/cmake/-/issues/19005 to trigger the command
         # that generates ${metatypes_file}.
         add_custom_command(
@@ -1215,52 +1423,42 @@ function(qt6_extract_metatypes target)
         PROPERTIES HEADER_FILE_ONLY TRUE
     )
 
-    set_target_properties(${target} PROPERTIES
-        INTERFACE_QT_MODULE_HAS_META_TYPES YES
-        INTERFACE_QT_META_TYPES_BUILD_FILE "${metatypes_file}"
-    )
-
-    # Set up consumption of files via INTERFACE_SOURCES.
-    set(consumes_metatypes "$<BOOL:$<TARGET_PROPERTY:QT_CONSUMES_METATYPES>>")
-    set(metatypes_file_genex_build
-        "$<BUILD_INTERFACE:$<${consumes_metatypes}:${metatypes_file}>>"
-    )
-    target_sources(${target} INTERFACE ${metatypes_file_genex_build})
-
     if(arg_OUTPUT_FILES)
         set(${arg_OUTPUT_FILES} "${metatypes_file}" PARENT_SCOPE)
     endif()
 
-    # Check whether the generated json file needs to be installed.
-    # Executable metatypes.json files should not be installed. Qt non-prefix builds should also
-    # not install the files.
-    set(should_install FALSE)
+    # Propagate the build time metatypes file.
+    _qt_internal_assign_build_metatypes_files_and_properties(
+        "${target}"
+        METATYPES_FILE_NAME "${metatypes_file_name}"
+        METATYPES_FILE_PATH "${metatypes_file}"
+    )
 
-    if(NOT target_type STREQUAL "EXECUTABLE" AND arg___QT_INTERNAL_INSTALL)
-        set(should_install TRUE)
-    endif()
-
-    # Automatically fill default install args when not specified.
-    if(NOT arg___QT_INTERNAL_INSTALL_DIR)
-        # INSTALL_ARCHDATADIR is not set when QtBuildInternals is not loaded
-        # (when not doing a Qt build). Default to a hardcoded location for user
-        # projects (will likely be wrong).
-        if(INSTALL_ARCHDATADIR)
-            set(install_dir "${INSTALL_ARCHDATADIR}/metatypes")
-        else()
-            set(install_dir "lib/metatypes")
-        endif()
+    if(arg___QT_INTERNAL_INSTALL)
+        set(internal_install_option "INTERNAL_INSTALL")
     else()
-        set(install_dir "${arg___QT_INTERNAL_INSTALL_DIR}")
+        set(internal_install_option "")
     endif()
+
+    # TODO: Clean up Qt-specific installation not to happen in the public api.
+    # Check whether the metatype files should be installed.
+    _qt_internal_should_install_metatypes("${target}"
+        ${internal_install_option}
+        OUT_VAR should_install
+    )
 
     if(should_install)
-        set(metatypes_file_install_path "${install_dir}/${metatypes_file_name}")
-        set(metatypes_file_install_path_genex "$<INSTALL_PREFIX>/${metatypes_file_install_path}")
-        set(metatypes_file_genex_install
-            "$<INSTALL_INTERFACE:$<${consumes_metatypes}:${metatypes_file_install_path_genex}>>"
+        _qt_internal_get_metatypes_install_dir(
+            "${arg___QT_INTERNAL_INSTALL_DIR}"
+            "${INSTALL_ARCHDATADIR}"
+            install_dir
         )
-        target_sources(${target} INTERFACE ${metatypes_file_genex_install})
+
+        # Propagate the install time metatypes file.
+        _qt_internal_assign_install_metatypes_files_and_properties(
+            "${target}"
+            INSTALL_DIR "${install_dir}"
+        )
         install(FILES "${metatypes_file}" DESTINATION "${install_dir}")
     endif()
 endfunction()
@@ -1752,15 +1950,28 @@ function(__qt_propagate_generated_resource target resource_name generated_source
         math(EXPR resource_count "${resource_count} + 1")
         set_target_properties(${target} PROPERTIES _qt_generated_resource_target_count ${resource_count})
 
+        __qt_internal_generate_init_resource_source_file(
+            resource_init_file ${target} ${resource_name})
+
         set(resource_target "${target}_resources_${resource_count}")
-        add_library("${resource_target}" OBJECT "${generated_source_code}")
+        add_library("${resource_target}" OBJECT "${resource_init_file}")
         set_target_properties(${resource_target} PROPERTIES
             AUTOMOC FALSE
             AUTOUIC FALSE
             AUTORCC FALSE
         )
+        # Needed so that qtsymbolmacros.h and its dependent headers are already created / syncqt'ed.
+        if(TARGET Core_sync_headers)
+            set(headers_available_target "Core_sync_headers")
+        else()
+            set(headers_available_target "${QT_CMAKE_EXPORT_NAMESPACE}::Core")
+        endif()
+        add_dependencies(${resource_target} ${headers_available_target})
         target_compile_definitions("${resource_target}" PRIVATE
             "$<TARGET_PROPERTY:${QT_CMAKE_EXPORT_NAMESPACE}::Core,INTERFACE_COMPILE_DEFINITIONS>"
+        )
+        target_include_directories("${resource_target}" PRIVATE
+            "$<TARGET_PROPERTY:${QT_CMAKE_EXPORT_NAMESPACE}::Core,INTERFACE_INCLUDE_DIRECTORIES>"
         )
         _qt_internal_set_up_static_runtime_library("${resource_target}")
 
@@ -1780,7 +1991,7 @@ function(__qt_propagate_generated_resource target resource_name generated_source
         #    .rcc/qrc_qprintdialog.cpp
         file(RELATIVE_PATH generated_cpp_file_relative_path
             "${CMAKE_CURRENT_BINARY_DIR}"
-            "${generated_source_code}")
+            "${resource_init_file}")
         set_property(TARGET ${resource_target} APPEND PROPERTY
             _qt_resource_generated_cpp_relative_path "${generated_cpp_file_relative_path}")
 
@@ -1794,8 +2005,39 @@ function(__qt_propagate_generated_resource target resource_name generated_source
         set(${output_generated_target} "${resource_target}" PARENT_SCOPE)
     else()
         set(${output_generated_target} "" PARENT_SCOPE)
-        target_sources(${target} PRIVATE ${generated_source_code})
     endif()
+
+    target_sources(${target} PRIVATE ${generated_source_code})
+endfunction()
+
+function(__qt_internal_sanitize_resource_name out_var name)
+    # The sanitized output should match RCCResourceLibrary::writeInitializer()'s
+    # isAsciiLetterOrNumber-based substituion.
+    # MAKE_C_IDENTIFIER matches that, it replaces non-alphanumeric chars with underscores.
+    string(MAKE_C_IDENTIFIER "${name}" sanitized_resource_name)
+    set(${out_var} "${sanitized_resource_name}" PARENT_SCOPE)
+endfunction()
+
+function(__qt_internal_generate_init_resource_source_file out_var target resource_name)
+    set(template_file "${__qt_core_macros_module_base_dir}/Qt6CoreResourceInit.in.cpp")
+
+    # Gets replaced in the template
+    __qt_internal_sanitize_resource_name(RESOURCE_NAME "${resource_name}")
+    set(resource_init_path "${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qrc_${resource_name}_init.cpp")
+
+    configure_file("${template_file}" "${resource_init_path}" @ONLY)
+
+    set(scope_args "")
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.18")
+        set(scope_args TARGET_DIRECTORY ${target})
+    endif()
+    set_source_files_properties(${resource_init_path} ${scope_args} PROPERTIES
+        SKIP_AUTOGEN TRUE
+        SKIP_UNITY_BUILD_INCLUSION TRUE
+        SKIP_PRECOMPILE_HEADERS TRUE
+    )
+
+    set(${out_var} "${resource_init_path}" PARENT_SCOPE)
 endfunction()
 
 # Make file visible in IDEs.
@@ -1975,8 +2217,9 @@ function(_qt_internal_process_resource target resourceName)
         endif()
         return()
     endif()
-    set(generatedResourceFile "${CMAKE_CURRENT_BINARY_DIR}/.rcc/${resourceName}.qrc")
+    set(generatedResourceFile "${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/${resourceName}.qrc")
     _qt_internal_expose_source_file_to_ide(${target} ${generatedResourceFile})
+    set_source_files_properties(${generatedResourceFile} PROPERTIES GENERATED TRUE)
 
     # Generate .qrc file:
 
@@ -2071,9 +2314,9 @@ function(_qt_internal_process_resource target resourceName)
             endif()
         endif()
     elseif(rcc_BIG_RESOURCES)
-        set(generatedOutfile "${CMAKE_CURRENT_BINARY_DIR}/.rcc/qrc_${resourceName}_tmp.cpp")
+        set(generatedOutfile "${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qrc_${resourceName}_tmp.cpp")
     else()
-        set(generatedOutfile "${CMAKE_CURRENT_BINARY_DIR}/.rcc/qrc_${resourceName}.cpp")
+        set(generatedOutfile "${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qrc_${resourceName}.cpp")
     endif()
 
     set(pass_msg)
@@ -2128,7 +2371,7 @@ function(_qt_internal_process_resource target resourceName)
     if(rcc_BIG_RESOURCES)
         set(pass1OutputFile ${generatedOutfile})
         set(generatedOutfile
-            "${CMAKE_CURRENT_BINARY_DIR}/.rcc/qrc_${resourceName}${CMAKE_CXX_OUTPUT_EXTENSION}")
+            "${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qrc_${resourceName}${CMAKE_CXX_OUTPUT_EXTENSION}")
         _qt_internal_add_rcc_pass2(
             RESOURCE_NAME ${resourceName}
             RCC_OPTIONS ${rccArgsAllPasses}
@@ -2391,14 +2634,39 @@ function(_qt_internal_add_library target)
     # This in contrast to CMake which defaults to STATIC.
     if(NOT arg_STATIC AND NOT arg_SHARED AND NOT arg_MODULE AND NOT arg_INTERFACE
             AND NOT arg_OBJECT)
-        if(QT6_IS_SHARED_LIBS_BUILD)
-            set(type_to_create SHARED)
+        if(DEFINED BUILD_SHARED_LIBS AND NOT QT_BUILDING_QT AND NOT QT_BUILD_STANDALONE_TESTS)
+            __qt_internal_setup_policy(QTP0003 "6.7.0"
+                "BUILD_SHARED_LIBS is set to ${BUILD_SHARED_LIBS} but it has no effect on\
+                default library type created by Qt CMake API commands. The default library type\
+                is set to the Qt build type.\
+                This behavior can be changed by setting QTP0003 to NEW.\
+                Check https://doc.qt.io/qt-6/qt-cmake-policy-qtp0003.html for policy details."
+            )
+            qt6_policy(GET QTP0003 build_shared_libs_policy)
         else()
-            set(type_to_create STATIC)
+            set(build_shared_libs_policy "")
+        endif()
+
+        if(build_shared_libs_policy STREQUAL "NEW" OR QT_BUILDING_QT OR QT_BUILD_STANDALONE_TESTS)
+            if(BUILD_SHARED_LIBS OR (NOT DEFINED BUILD_SHARED_LIBS AND QT6_IS_SHARED_LIBS_BUILD))
+                set(type_to_create SHARED)
+            else()
+                set(type_to_create STATIC)
+            endif()
+        else()
+            if(QT6_IS_SHARED_LIBS_BUILD)
+                set(type_to_create SHARED)
+            else()
+                set(type_to_create STATIC)
+            endif()
         endif()
     endif()
 
+    cmake_policy(PUSH)
+    __qt_internal_set_cmp0156()
     add_library(${target} ${type_to_create} ${arg_UNPARSED_ARGUMENTS})
+    cmake_policy(POP)
+
     _qt_internal_disable_autorcc_zstd_when_not_supported("${target}")
     _qt_internal_set_up_static_runtime_library(${target})
 
@@ -2600,6 +2868,22 @@ function(_qt_internal_setup_deploy_support)
         set(target ${aliased_target})
     endif()
 
+    # Generate deployment information for each target if the CMake version is recent enough.
+    # The call is deferred to have all targets of the projects available.
+    if(CMAKE_VERSION GREATER_EQUAL "3.19.0")
+        if(is_multi_config)
+            set(targets_file "${deploy_impl_dir}/QtDeployTargets-$<CONFIG>.cmake")
+        else()
+            set(targets_file "${deploy_impl_dir}/QtDeployTargets.cmake")
+        endif()
+        cmake_language(EVAL CODE
+            "cmake_language(DEFER
+                DIRECTORY [[${CMAKE_SOURCE_DIR}]]
+                CALL _qt_internal_write_target_deploy_info [[${targets_file}]])"
+        )
+        _qt_internal_add_deploy_support("${targets_file}")
+    endif()
+
     # Make sure to look under the Qt bin dir with find_program, rather than randomly picking up
     # a deployqt tool in the system.
     # QT6_INSTALL_PREFIX is not set during Qt build, so add the hints conditionally.
@@ -2709,7 +2993,30 @@ function(_qt_internal_setup_deploy_support)
     else()
         set(qt_paths_ext "")
     endif()
-    set(target_qtpaths_path "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_BINS}/qtpaths${qt_paths_ext}")
+
+
+
+    set(target_qtpaths_path "")
+    set(qtpaths_prefix "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_BINS}")
+    get_property(qt_major_version TARGET "${target}" PROPERTY INTERFACE_QT_MAJOR_VERSION)
+    if(qt_major_version)
+        set(target_qtpaths_with_major_version_path
+            "${qtpaths_prefix}/qtpaths${qt_major_version}${qt_paths_ext}")
+        if(EXISTS "${target_qtpaths_with_major_version_path}")
+            set(target_qtpaths_path "${target_qtpaths_with_major_version_path}")
+        endif()
+    endif()
+
+    if(NOT target_qtpaths_path)
+        set(target_qtpaths_path_without_version "${qtpaths_prefix}/qtpaths${qt_paths_ext}")
+        if(EXISTS "${target_qtpaths_path_without_version}")
+            set(target_qtpaths_path "${target_qtpaths_path_without_version}")
+        endif()
+    endif()
+
+    if(NOT target_qtpaths_path)
+        message(DEBUG "No qtpaths executable found for deployment purposes.")
+    endif()
 
     file(GENERATE OUTPUT "${QT_DEPLOY_SUPPORT}" CONTENT
 "cmake_minimum_required(VERSION 3.16...3.21)
@@ -2718,6 +3025,9 @@ function(_qt_internal_setup_deploy_support)
 # consistent set of prefix-relative destinations.
 if(NOT QT_DEPLOY_BIN_DIR)
     set(QT_DEPLOY_BIN_DIR \"${CMAKE_INSTALL_BINDIR}\")
+endif()
+if(NOT QT_DEPLOY_LIBEXEC_DIR)
+    set(QT_DEPLOY_LIBEXEC_DIR \"${CMAKE_INSTALL_LIBEXECDIR}\")
 endif()
 if(NOT QT_DEPLOY_LIB_DIR)
     set(QT_DEPLOY_LIB_DIR \"${CMAKE_INSTALL_LIBDIR}\")
@@ -2769,7 +3079,7 @@ set(__QT_DEPLOY_QT_DEBUG_POSTFIX \"${QT6_DEBUG_POSTFIX}\")
 
 # Define the CMake commands to be made available during deployment.
 set(__qt_deploy_support_files
-    \"$<JOIN:$<TARGET_PROPERTY:${target},_qt_deploy_support_files>,\"
+    \"$<JOIN:$<TARGET_GENEX_EVAL:${target},$<TARGET_PROPERTY:${target},_qt_deploy_support_files>>,\"
     \">\"
 )
 foreach(__qt_deploy_support_file IN LISTS __qt_deploy_support_files)
@@ -2779,6 +3089,142 @@ endforeach()
 unset(__qt_deploy_support_file)
 unset(__qt_deploy_support_files)
 ")
+endfunction()
+
+# Write deployment information for the targets of the project.
+function(_qt_internal_write_target_deploy_info out_file)
+    set(targets "")
+    set(dynamic_target_types EXECUTABLE SHARED_LIBRARY MODULE_LIBRARY)
+    _qt_internal_collect_buildsystem_targets(targets
+        "${CMAKE_SOURCE_DIR}" INCLUDE ${dynamic_target_types} STATIC_LIBRARY)
+    set(content "")
+    foreach(target IN LISTS targets)
+        set(var_prefix "__QT_DEPLOY_TARGET_${target}")
+        string(APPEND content "set(${var_prefix}_FILE $<TARGET_FILE:${target}>)\n")
+        get_target_property(target_type ${target} TYPE)
+        string(APPEND content "set(${var_prefix}_TYPE ${target_type})\n")
+        if(WIN32 AND CMAKE_VERSION GREATER_EQUAL "3.21"
+            AND target_type IN_LIST dynamic_target_types)
+            string(APPEND content
+                "set(${var_prefix}_RUNTIME_DLLS $<TARGET_RUNTIME_DLLS:${target}>)\n")
+        endif()
+    endforeach()
+    file(GENERATE OUTPUT "${out_file}" CONTENT "${content}")
+endfunction()
+
+function(_qt_internal_is_examples_deployment_supported_in_current_config out_var out_var_reason)
+    # Deployment API doesn't work when examples / tests are built in-tree of a prefix qt build.
+    if(QT_BUILDING_QT AND QT_WILL_INSTALL AND NOT QT_INTERNAL_BUILD_STANDALONE_PARTS)
+        set(deployment_supported FALSE)
+        set(not_supported_reason "PREFIX_BUILD")
+    else()
+        set(deployment_supported TRUE)
+        set(not_supported_reason "")
+    endif()
+
+    set(${out_var} "${deployment_supported}" PARENT_SCOPE)
+    set(${out_var_reason} "${not_supported_reason}" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_should_skip_deployment_api out_var out_var_reason)
+    set(skip_deployment FALSE)
+    _qt_internal_is_examples_deployment_supported_in_current_config(
+        deployment_supported
+        not_supported_reason
+    )
+
+    # Allow opting out of deployment, so that we can add deployment api to all our examples,
+    # but only run it in the CI for a select few, to avoid the overhead of deploying all examples.
+    if(QT_INTERNAL_SKIP_DEPLOYMENT OR (NOT deployment_supported))
+        set(skip_deployment TRUE)
+    endif()
+
+    set(reason "")
+    if(NOT deployment_supported)
+        set(reason "${not_supported_reason}")
+    elseif(QT_INTERNAL_SKIP_DEPLOYMENT)
+        set(reason "SKIP_REQUESTED")
+    endif()
+
+    set(${out_var} "${skip_deployment}" PARENT_SCOPE)
+    set(${out_var_reason} "${reason}" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_should_skip_post_build_deployment_api out_var out_var_reason)
+    set(skip_deployment FALSE)
+    set(deployment_supported TRUE)
+
+    # Allow opting out of deployment, so that we can add deployment api to all our examples,
+    # but only run it in the CI for a select few, to avoid the overhead of deploying all examples.
+    if(QT_INTERNAL_SKIP_DEPLOYMENT OR (NOT deployment_supported))
+        set(skip_deployment TRUE)
+    endif()
+
+    set(reason "")
+    if(NOT deployment_supported)
+        set(reason "REASON_UNSPECIFIED")
+    elseif(QT_INTERNAL_SKIP_DEPLOYMENT)
+        set(reason "SKIP_REQUESTED")
+    endif()
+
+    set(${out_var} "${skip_deployment}" PARENT_SCOPE)
+    set(${out_var_reason} "${reason}" PARENT_SCOPE)
+endfunction()
+
+# Generate a deploy script that does nothing aside from showing a warning message.
+# The warning can be hidden by setting the QT_INTERNAL_HIDE_NO_OP_DEPLOYMENT_WARNING variable.
+function(_qt_internal_generate_no_op_deploy_script)
+    set(no_value_options
+    )
+    set(single_value_options
+        FUNCTION_NAME
+        NAME
+        OUTPUT_SCRIPT
+        SKIP_REASON
+        TARGET
+    )
+    set(multi_value_options
+    )
+
+    cmake_parse_arguments(PARSE_ARGV 0 arg
+        "${no_value_options}" "${single_value_options}" "${multi_value_options}"
+    )
+
+    if(NOT arg_OUTPUT_SCRIPT)
+        message(FATAL_ERROR "No OUTPUT_SCRIPT option specified")
+    endif()
+    if(NOT arg_FUNCTION_NAME)
+        message(FATAL_ERROR "No FUNCTION_NAME option specified")
+    endif()
+
+    set(generate_args "")
+    if(arg_NAME)
+        list(APPEND generate_args NAME "${arg_NAME}")
+    endif()
+    if(arg_TARGET)
+        list(APPEND generate_args TARGET "${arg_TARGET}")
+    endif()
+
+    set(function_name "${arg_FUNCTION_NAME}")
+
+    # The empty space is required, otherwise
+    set(content "
+message(DEBUG \"Running no-op deployment script because QT_INTERNAL_SKIP_DEPLOYMENT was ON.\")
+")
+    if(NOT QT_INTERNAL_HIDE_NO_OP_DEPLOYMENT_WARNING AND arg_SKIP_REASON STREQUAL "PREFIX_BUILD")
+        set(content "
+message(STATUS \"${function_name}(TARGET ${arg_TARGET}) is a no-op for prefix \"
+\"non-standalone builds due to various issues. Consider using a -no-prefix build \"
+\"or qt-internal-configure-tests or qt-internal-configure-examples if you want deployment to run.\")
+")
+    endif()
+
+    qt6_generate_deploy_script(
+        ${generate_args}
+        OUTPUT_SCRIPT deploy_script
+        CONTENT "${content}")
+
+    set("${arg_OUTPUT_SCRIPT}" "${deploy_script}" PARENT_SCOPE)
 endfunction()
 
 # We basically mirror CMake's policy setup
@@ -2849,8 +3295,11 @@ macro(qt6_standard_project_setup)
         set(__qt_sps_args_single
             REQUIRES
             SUPPORTS_UP_TO
+            I18N_SOURCE_LANGUAGE
         )
-        set(__qt_sps_args_multi)
+        set(__qt_sps_args_multi
+            I18N_TRANSLATED_LANGUAGES
+        )
         cmake_parse_arguments(__qt_sps_arg
             "${__qt_sps_args_option}"
             "${__qt_sps_args_single}"
@@ -2948,6 +3397,30 @@ macro(qt6_standard_project_setup)
             if("${__qt_autogen_targets_folder}" STREQUAL "")
                 set_property(GLOBAL PROPERTY AUTOGEN_TARGETS_FOLDER ${__qt_qt_targets_folder})
             endif()
+        endif()
+
+        # Hide generated files in dedicated folder. Unfortunately we can't use a
+        # top level "Generated Files" folder for this, as CMake will then put the
+        # folder first in the list of folders, whereas we want to keep Sources and
+        # Headers front and center. See also _qt_internal_finalize_source_groups
+        set_property(GLOBAL PROPERTY AUTOGEN_SOURCE_GROUP "Source Files/Generated")
+
+        # Treat metatypes JSON files as generated. We propagate these INTERFACE_SOURCES,
+        # due to CMake's lack of a generic mechanism for property inheritance (see
+        # https://gitlab.kitware.com/cmake/cmake/-/issues/20416), but we don't want
+        # them to clutter up the user's project.
+        source_group("Source Files/Generated" REGULAR_EXPRESSION "(_metatypes\\.json)$")
+
+        # I18N support.
+        if(DEFINED __qt_sps_arg_I18N_TRANSLATED_LANGUAGES
+                AND NOT DEFINED QT_I18N_TRANSLATED_LANGUAGES)
+            set(QT_I18N_TRANSLATED_LANGUAGES ${__qt_sps_arg_I18N_TRANSLATED_LANGUAGES})
+        endif()
+        if(NOT DEFINED __qt_sps_arg_I18N_SOURCE_LANGUAGE)
+            set(__qt_sps_arg_I18N_SOURCE_LANGUAGE en)
+        endif()
+        if(NOT DEFINED QT_I18N_SOURCE_LANGUAGE)
+            set(QT_I18N_SOURCE_LANGUAGE ${__qt_sps_arg_I18N_SOURCE_LANGUAGE})
         endif()
     endif()
 endmacro()
@@ -3090,6 +3563,7 @@ function(qt6_generate_deploy_app_script)
     )
     set(qt_deploy_runtime_dependencies_options
         # These options are forwarded as is to qt_deploy_runtime_dependencies.
+        DEPLOY_TOOL_OPTIONS
         PRE_INCLUDE_REGEXES
         PRE_EXCLUDE_REGEXES
         POST_INCLUDE_REGEXES
@@ -3129,6 +3603,9 @@ function(qt6_generate_deploy_app_script)
         message(FATAL_ERROR "OUTPUT_SCRIPT must be specified")
     endif()
 
+    get_target_property(is_bundle ${arg_TARGET} MACOSX_BUNDLE)
+
+    set(unsupported_platform_extra_message "")
     if(QT6_IS_SHARED_LIBS_BUILD)
         set(qt_build_type_string "shared Qt libs")
     else()
@@ -3137,6 +3614,12 @@ function(qt6_generate_deploy_app_script)
 
     if(CMAKE_CROSSCOMPILING)
         string(APPEND qt_build_type_string ", cross-compiled")
+    endif()
+
+    if(NOT is_bundle)
+        string(APPEND qt_build_type_string ", non-bundle app")
+        set(unsupported_platform_extra_message
+            "Executable targets have to be app bundles to use this command on Apple platforms.")
     endif()
 
     set(generate_args
@@ -3159,15 +3642,16 @@ function(qt6_generate_deploy_app_script)
         endif()
     endforeach()
 
-    if(APPLE AND NOT IOS AND QT6_IS_SHARED_LIBS_BUILD)
-        # TODO: Handle non-bundle applications if possible.
-        get_target_property(is_bundle ${arg_TARGET} MACOSX_BUNDLE)
-        if(NOT is_bundle)
-            message(FATAL_ERROR
-                "Executable targets have to be app bundles to use this command "
-                "on Apple platforms."
-            )
-        endif()
+    _qt_internal_should_skip_deployment_api(skip_deployment skip_reason)
+    if(skip_deployment)
+        _qt_internal_generate_no_op_deploy_script(
+            FUNCTION_NAME "qt6_generate_deploy_app_script"
+            SKIP_REASON "${skip_reason}"
+            ${generate_args}
+        )
+    elseif(APPLE AND NOT IOS AND QT6_IS_SHARED_LIBS_BUILD AND is_bundle)
+        # TODO: Consider handling non-bundle applications in the future using the generic cmake
+        # runtime dependency feature.
         qt6_generate_deploy_script(${generate_args}
             CONTENT "
 qt6_deploy_runtime_dependencies(
@@ -3196,19 +3680,22 @@ ${common_deploy_args})
 
     elseif(NOT arg_NO_UNSUPPORTED_PLATFORM_ERROR AND NOT QT_INTERNAL_NO_UNSUPPORTED_PLATFORM_ERROR)
         # Currently we don't deploy runtime dependencies if cross-compiling or using a static Qt.
-        # We also don't do it if targeting Linux, but we could provide an option to do
-        # so if we had a deploy tool or purely CMake-based deploy implementation.
         # Error out by default unless the project opted out of the error.
         # This provides us a migration path in the future without breaking compatibility promises.
         message(FATAL_ERROR
             "Support for installing runtime dependencies is not implemented for "
-            "this target platform (${CMAKE_SYSTEM_NAME}, ${qt_build_type_string})."
+            "this target platform (${CMAKE_SYSTEM_NAME}, ${qt_build_type_string}). "
+            ${unsupported_platform_extra_message}
         )
     else()
-        qt6_generate_deploy_script(${generate_args}
-            CONTENT "
-_qt_internal_show_skip_runtime_deploy_message(\"${qt_build_type_string}\")
-")
+        set(skip_message
+            "_qt_internal_show_skip_runtime_deploy_message(\"${qt_build_type_string}\"")
+        if(unsupported_platform_extra_message)
+            string(APPEND skip_message
+                "\n    EXTRA_MESSAGE \"${unsupported_platform_extra_message}\"")
+        endif()
+        string(APPEND skip_message "\n)")
+        qt6_generate_deploy_script(${generate_args} CONTENT "${skip_message}")
     endif()
 
     set(${arg_OUTPUT_SCRIPT} "${deploy_script}" PARENT_SCOPE)

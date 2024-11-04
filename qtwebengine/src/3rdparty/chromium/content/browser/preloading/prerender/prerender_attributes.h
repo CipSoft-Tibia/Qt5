@@ -8,11 +8,13 @@
 #include <string>
 
 #include "content/common/content_export.h"
+#include "content/public/browser/preloading.h"
 #include "content/public/browser/prerender_trigger_type.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/referrer.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "third_party/blink/public/mojom/navigation/navigation_params.mojom.h"
+#include "third_party/blink/public/mojom/speculation_rules/speculation_rules.mojom-shared.h"
 #include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
 #include "ui/base/page_transition_types.h"
 
@@ -25,6 +27,7 @@ struct CONTENT_EXPORT PrerenderAttributes {
       PrerenderTriggerType trigger_type,
       const std::string& embedder_histogram_suffix,
       Referrer referrer,
+      absl::optional<blink::mojom::SpeculationEagerness> eagerness,
       absl::optional<url::Origin> initiator_origin,
       int initiator_process_id,
       base::WeakPtr<WebContents> initiator_web_contents,
@@ -33,7 +36,10 @@ struct CONTENT_EXPORT PrerenderAttributes {
       ukm::SourceId initiator_ukm_id,
       ui::PageTransition transition_type,
       absl::optional<base::RepeatingCallback<bool(const GURL&)>>
-          url_match_predicate);
+          url_match_predicate,
+      // TODO(crbug/1384419): use pattern other than default parameter.
+      const absl::optional<base::UnguessableToken>&
+          initiator_devtools_navigation_token = absl::nullopt);
 
   ~PrerenderAttributes();
   PrerenderAttributes(const PrerenderAttributes&);
@@ -52,6 +58,10 @@ struct CONTENT_EXPORT PrerenderAttributes {
   std::string embedder_histogram_suffix;
 
   Referrer referrer;
+
+  // Records the eagerness of the corresponding speculation rule.
+  // This is absl::nullopt when prerendering is initiated by the browser.
+  absl::optional<blink::mojom::SpeculationEagerness> eagerness;
 
   // This is absl::nullopt when prerendering is initiated by the browser
   // (not by a renderer using Speculation Rules API).
@@ -77,11 +87,20 @@ struct CONTENT_EXPORT PrerenderAttributes {
 
   ui::PageTransition transition_type;
 
+  // If the caller wants to override the default holdback processing, they can
+  // set this. Otherwise, it will be computed as part of
+  // PrerenderHostRegistry::CreateAndStartHost.
+  PreloadingHoldbackStatus holdback_status_override =
+      PreloadingHoldbackStatus::kUnspecified;
+
   // Triggers can specify their own predicate judging whether two URLs are
   // considered as pointing to the same destination. The URLs must be in
   // same-origin.
   absl::optional<base::RepeatingCallback<bool(const GURL&)>>
       url_match_predicate;
+
+  // This is absl::nullopt when prerendering is initiated by the browser.
+  absl::optional<base::UnguessableToken> initiator_devtools_navigation_token;
 
   // Serialises this struct into a trace.
   void WriteIntoTrace(perfetto::TracedValue trace_context) const;

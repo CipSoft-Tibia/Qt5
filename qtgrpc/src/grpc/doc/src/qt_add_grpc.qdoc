@@ -18,6 +18,7 @@ Usually \c qtgrpcgen is invoked through the \c qt_add_grpc CMake macro.
         PROTO_FILES <file> ...
         [COPY_COMMENTS]
         [GENERATE_PACKAGE_SUBFOLDERS]
+        [QML]
         [EXTRA_NAMESPACE <namespace>]
         [EXPORT_MACRO <infix>]
         [PROTO_INCLUDES <path> ...]
@@ -77,6 +78,7 @@ target to the protobuf one:
         Since gRPC supports a client-server architecture, \c CLIENT or
         \c SERVER source code may be generated.
         \note for Qt 6.5 only \c CLIENT source code generation is supported.
+    \include qtgrpcgen-options.qdocinc 0
     \include qtprotoccommon-options.qdocinc 0
     \include qtprotogen-cmake-options.qdocinc 0
 \endlist

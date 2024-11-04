@@ -32,25 +32,21 @@ class Queue;
 
 class Device final : public ObjectBase {
   public:
-    explicit Device(const ObjectBaseParams& params);
+    explicit Device(const ObjectBaseParams& params, const WGPUDeviceDescriptor* descriptor);
     ~Device() override;
 
     void SetUncapturedErrorCallback(WGPUErrorCallback errorCallback, void* errorUserdata);
     void SetLoggingCallback(WGPULoggingCallback errorCallback, void* errorUserdata);
     void SetDeviceLostCallback(WGPUDeviceLostCallback errorCallback, void* errorUserdata);
     void InjectError(WGPUErrorType type, const char* message);
-    bool PopErrorScope(WGPUErrorCallback callback, void* userdata);
+    void PopErrorScope(WGPUErrorCallback callback, void* userdata);
     WGPUBuffer CreateBuffer(const WGPUBufferDescriptor* descriptor);
-    WGPUBuffer CreateErrorBuffer(const WGPUBufferDescriptor* descriptor);
     void CreateComputePipelineAsync(WGPUComputePipelineDescriptor const* descriptor,
                                     WGPUCreateComputePipelineAsyncCallback callback,
                                     void* userdata);
     void CreateRenderPipelineAsync(WGPURenderPipelineDescriptor const* descriptor,
                                    WGPUCreateRenderPipelineAsyncCallback callback,
                                    void* userdata);
-    WGPUQuerySet CreateQuerySet(const WGPUQuerySetDescriptor* descriptor);
-    WGPUTexture CreateTexture(const WGPUTextureDescriptor* descriptor);
-    WGPUTexture CreateErrorTexture(const WGPUTextureDescriptor* descriptor);
 
     void HandleError(WGPUErrorType errorType, const char* message);
     void HandleLogging(WGPULoggingType loggingType, const char* message);
@@ -69,7 +65,6 @@ class Device final : public ObjectBase {
     void SetLimits(const WGPUSupportedLimits* limits);
     void SetFeatures(const WGPUFeatureName* features, uint32_t featuresCount);
 
-    WGPUAdapter GetAdapter();  // Not implemented in the wire.
     WGPUQueue GetQueue();
 
     void CancelCallbacksForDisconnect() override;

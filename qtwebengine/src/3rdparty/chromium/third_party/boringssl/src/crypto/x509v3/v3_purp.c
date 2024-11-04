@@ -95,7 +95,7 @@ static int check_purpose_timestamp_sign(const X509_PURPOSE *xp, const X509 *x,
 static int no_check(const X509_PURPOSE *xp, const X509 *x, int ca);
 static int ocsp_helper(const X509_PURPOSE *xp, const X509 *x, int ca);
 
-static int xp_cmp(const X509_PURPOSE **a, const X509_PURPOSE **b);
+static int xp_cmp(const X509_PURPOSE *const *a, const X509_PURPOSE *const *b);
 static void xptable_free(X509_PURPOSE *p);
 
 static X509_PURPOSE xstandard[] = {
@@ -126,7 +126,7 @@ static X509_PURPOSE xstandard[] = {
 
 static STACK_OF(X509_PURPOSE) *xptable = NULL;
 
-static int xp_cmp(const X509_PURPOSE **a, const X509_PURPOSE **b) {
+static int xp_cmp(const X509_PURPOSE *const *a, const X509_PURPOSE *const *b) {
   return (*a)->purpose - (*b)->purpose;
 }
 
@@ -177,10 +177,9 @@ X509_PURPOSE *X509_PURPOSE_get0(int idx) {
   return sk_X509_PURPOSE_value(xptable, idx - X509_PURPOSE_COUNT);
 }
 
-int X509_PURPOSE_get_by_sname(char *sname) {
-  int i;
+int X509_PURPOSE_get_by_sname(const char *sname) {
   X509_PURPOSE *xptmp;
-  for (i = 0; i < X509_PURPOSE_get_count(); i++) {
+  for (int i = 0; i < X509_PURPOSE_get_count(); i++) {
     xptmp = X509_PURPOSE_get0(i);
     if (!strcmp(xptmp->sname, sname)) {
       return i;
@@ -201,7 +200,6 @@ int X509_PURPOSE_get_by_id(int purpose) {
     return -1;
   }
 
-  sk_X509_PURPOSE_sort(xptable);
   if (!sk_X509_PURPOSE_find(xptable, &idx, &tmp)) {
     return -1;
   }
@@ -210,8 +208,7 @@ int X509_PURPOSE_get_by_id(int purpose) {
 
 int X509_PURPOSE_add(int id, int trust, int flags,
                      int (*ck)(const X509_PURPOSE *, const X509 *, int),
-                     char *name, char *sname, void *arg) {
-  int idx;
+                     const char *name, const char *sname, void *arg) {
   X509_PURPOSE *ptmp;
   char *name_dup, *sname_dup;
 
@@ -220,7 +217,7 @@ int X509_PURPOSE_add(int id, int trust, int flags,
   // This will always be set for application modified trust entries
   flags |= X509_PURPOSE_DYNAMIC_NAME;
   // Get existing entry if any
-  idx = X509_PURPOSE_get_by_id(id);
+  int idx = X509_PURPOSE_get_by_id(id);
   // Need a new entry
   if (idx == -1) {
     if (!(ptmp = OPENSSL_malloc(sizeof(X509_PURPOSE)))) {
@@ -267,6 +264,10 @@ int X509_PURPOSE_add(int id, int trust, int flags,
 
   // If its a new entry manage the dynamic table
   if (idx == -1) {
+    // TODO(davidben): This should be locked. Alternatively, remove the dynamic
+    // registration mechanism entirely. The trouble is there no way to pass in
+    // the various parameters into an |X509_VERIFY_PARAM| directly. You can only
+    // register it in the global table and get an ID.
     if (!xptable && !(xptable = sk_X509_PURPOSE_new(xp_cmp))) {
       xptable_free(ptmp);
       return 0;
@@ -275,6 +276,7 @@ int X509_PURPOSE_add(int id, int trust, int flags,
       xptable_free(ptmp);
       return 0;
     }
+    sk_X509_PURPOSE_sort(xptable);
   }
   return 1;
 }

@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "dawn/common/Constants.h"
+#include "dawn/common/ityp_span.h"
 #include "dawn/native/Buffer.h"
 #include "dawn/native/CommandBuffer.h"
 #include "dawn/native/CommandEncoder.h"
@@ -135,7 +136,10 @@ struct SubmittedWorkDone : TrackTaskCallback {
                       WGPUQueueWorkDoneCallback callback,
                       void* userdata)
         : TrackTaskCallback(platform), mCallback(callback), mUserdata(userdata) {}
-    void Finish() override {
+    ~SubmittedWorkDone() override = default;
+
+  private:
+    void FinishImpl() override {
         ASSERT(mCallback != nullptr);
         ASSERT(mSerial != kMaxExecutionSerial);
         TRACE_EVENT1(mPlatform, General, "Queue::SubmittedWorkDone::Finished", "serial",
@@ -143,27 +147,30 @@ struct SubmittedWorkDone : TrackTaskCallback {
         mCallback(WGPUQueueWorkDoneStatus_Success, mUserdata);
         mCallback = nullptr;
     }
-    void HandleDeviceLoss() override {
+    void HandleDeviceLossImpl() override {
         ASSERT(mCallback != nullptr);
         mCallback(WGPUQueueWorkDoneStatus_DeviceLost, mUserdata);
         mCallback = nullptr;
     }
-    void HandleShutDown() override { HandleDeviceLoss(); }
-    ~SubmittedWorkDone() override = default;
+    void HandleShutDownImpl() override { HandleDeviceLossImpl(); }
 
-  private:
     WGPUQueueWorkDoneCallback mCallback = nullptr;
     void* mUserdata;
 };
 
 class ErrorQueue : public QueueBase {
   public:
-    explicit ErrorQueue(DeviceBase* device) : QueueBase(device, ObjectBase::kError) {}
+    explicit ErrorQueue(DeviceBase* device, const char* label)
+        : QueueBase(device, ObjectBase::kError, label) {}
 
   private:
     MaybeError SubmitImpl(uint32_t commandCount, CommandBufferBase* const* commands) override {
         UNREACHABLE();
     }
+    bool HasPendingCommands() const override { UNREACHABLE(); }
+    ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials() override { UNREACHABLE(); }
+    void ForceEventualFlushOfCommands() override { UNREACHABLE(); }
+    MaybeError WaitForIdleForDestruction() override { UNREACHABLE(); }
 };
 }  // namespace
 
@@ -176,7 +183,8 @@ void TrackTaskCallback::SetFinishedSerial(ExecutionSerial serial) {
 QueueBase::QueueBase(DeviceBase* device, const QueueDescriptor* descriptor)
     : ApiObjectBase(device, descriptor->label) {}
 
-QueueBase::QueueBase(DeviceBase* device, ObjectBase::ErrorTag tag) : ApiObjectBase(device, tag) {}
+QueueBase::QueueBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label)
+    : ApiObjectBase(device, tag, label) {}
 
 QueueBase::~QueueBase() {
     ASSERT(mTasksInFlight.Empty());
@@ -185,8 +193,8 @@ QueueBase::~QueueBase() {
 void QueueBase::DestroyImpl() {}
 
 // static
-QueueBase* QueueBase::MakeError(DeviceBase* device) {
-    return new ErrorQueue(device);
+QueueBase* QueueBase::MakeError(DeviceBase* device, const char* label) {
+    return new ErrorQueue(device, label);
 }
 
 ObjectType QueueBase::GetType() const {
@@ -194,11 +202,16 @@ ObjectType QueueBase::GetType() const {
 }
 
 void QueueBase::APISubmit(uint32_t commandCount, CommandBufferBase* const* commands) {
-    SubmitInternal(commandCount, commands);
+    MaybeError result = SubmitInternal(commandCount, commands);
 
+    // Destroy the command buffers even if SubmitInternal failed. (crbug.com/dawn/1863)
     for (uint32_t i = 0; i < commandCount; ++i) {
         commands[i]->Destroy();
     }
+
+    DAWN_UNUSED(GetDevice()->ConsumedError(
+        std::move(result), "calling %s.Submit(%s)", this,
+        ityp::span<uint32_t, CommandBufferBase* const>(commands, commandCount)));
 }
 
 void QueueBase::APIOnSubmittedWorkDone(uint64_t signalValue,
@@ -207,7 +220,8 @@ void QueueBase::APIOnSubmittedWorkDone(uint64_t signalValue,
     // The error status depends on the type of error so we let the validation function choose it
     WGPUQueueWorkDoneStatus status;
     if (GetDevice()->ConsumedError(ValidateOnSubmittedWorkDone(signalValue, &status))) {
-        callback(status, userdata);
+        GetDevice()->GetCallbackTaskManager()->AddCallbackTask(
+            [callback, status, userdata] { callback(status, userdata); });
         return;
     }
 
@@ -226,16 +240,16 @@ void QueueBase::APIOnSubmittedWorkDone(uint64_t signalValue,
 
 void QueueBase::TrackTask(std::unique_ptr<TrackTaskCallback> task, ExecutionSerial serial) {
     // If the task depends on a serial which is not submitted yet, force a flush.
-    if (serial > GetDevice()->GetLastSubmittedCommandSerial()) {
-        GetDevice()->ForceEventualFlushOfCommands();
+    if (serial > GetLastSubmittedCommandSerial()) {
+        ForceEventualFlushOfCommands();
     }
 
-    ASSERT(serial <= GetDevice()->GetScheduledWorkDoneSerial());
+    ASSERT(serial <= GetScheduledWorkDoneSerial());
 
     // If the serial indicated command has been completed, the task will be moved to callback task
     // manager.
-    if (serial <= GetDevice()->GetCompletedCommandSerial()) {
-        task->SetFinishedSerial(GetDevice()->GetCompletedCommandSerial());
+    if (serial <= GetCompletedCommandSerial()) {
+        task->SetFinishedSerial(GetCompletedCommandSerial());
         GetDevice()->GetCallbackTaskManager()->AddCallbackTask(std::move(task));
     } else {
         mTasksInFlight.Enqueue(std::move(task), serial);
@@ -243,8 +257,8 @@ void QueueBase::TrackTask(std::unique_ptr<TrackTaskCallback> task, ExecutionSeri
 }
 
 void QueueBase::TrackTaskAfterEventualFlush(std::unique_ptr<TrackTaskCallback> task) {
-    GetDevice()->ForceEventualFlushOfCommands();
-    TrackTask(std::move(task), GetDevice()->GetScheduledWorkDoneSerial());
+    ForceEventualFlushOfCommands();
+    TrackTask(std::move(task), GetScheduledWorkDoneSerial());
 }
 
 void QueueBase::Tick(ExecutionSerial finishedSerial) {
@@ -272,7 +286,8 @@ void QueueBase::Tick(ExecutionSerial finishedSerial) {
 
 void QueueBase::HandleDeviceLoss() {
     for (auto& task : mTasksInFlight.IterateAll()) {
-        task->HandleDeviceLoss();
+        task->OnDeviceLoss();
+        GetDevice()->GetCallbackTaskManager()->AddCallbackTask(std::move(task));
     }
     mTasksInFlight.Clear();
 }
@@ -281,7 +296,10 @@ void QueueBase::APIWriteBuffer(BufferBase* buffer,
                                uint64_t bufferOffset,
                                const void* data,
                                size_t size) {
-    GetDevice()->ConsumedError(WriteBuffer(buffer, bufferOffset, data, size));
+    DAWN_UNUSED(
+        GetDevice()->ConsumedError(WriteBuffer(buffer, bufferOffset, data, size),
+                                   "calling %s.WriteBuffer(%s, (%d bytes), data, (%d bytes))", this,
+                                   buffer, bufferOffset, size));
 }
 
 MaybeError QueueBase::WriteBuffer(BufferBase* buffer,
@@ -322,8 +340,10 @@ void QueueBase::APIWriteTexture(const ImageCopyTexture* destination,
                                 size_t dataSize,
                                 const TextureDataLayout* dataLayout,
                                 const Extent3D* writeSize) {
-    GetDevice()->ConsumedError(
-        WriteTextureInternal(destination, data, dataSize, *dataLayout, writeSize));
+    DAWN_UNUSED(GetDevice()->ConsumedError(
+        WriteTextureInternal(destination, data, dataSize, *dataLayout, writeSize),
+        "calling %s.WriteTexture(%s, (%u bytes), %s, %s)", this, destination, dataSize, dataLayout,
+        writeSize));
 }
 
 MaybeError QueueBase::WriteTextureInternal(const ImageCopyTexture* destination,
@@ -389,16 +409,16 @@ void QueueBase::APICopyTextureForBrowser(const ImageCopyTexture* source,
                                          const ImageCopyTexture* destination,
                                          const Extent3D* copySize,
                                          const CopyTextureForBrowserOptions* options) {
-    GetDevice()->ConsumedError(
-        CopyTextureForBrowserInternal(source, destination, copySize, options));
+    DAWN_UNUSED(GetDevice()->ConsumedError(
+        CopyTextureForBrowserInternal(source, destination, copySize, options)));
 }
 
 void QueueBase::APICopyExternalTextureForBrowser(const ImageCopyExternalTexture* source,
                                                  const ImageCopyTexture* destination,
                                                  const Extent3D* copySize,
                                                  const CopyTextureForBrowserOptions* options) {
-    GetDevice()->ConsumedError(
-        CopyExternalTextureForBrowserInternal(source, destination, copySize, options));
+    DAWN_UNUSED(GetDevice()->ConsumedError(
+        CopyExternalTextureForBrowserInternal(source, destination, copySize, options)));
 }
 
 MaybeError QueueBase::CopyTextureForBrowserInternal(const ImageCopyTexture* source,
@@ -533,24 +553,24 @@ MaybeError QueueBase::ValidateWriteTexture(const ImageCopyTexture* destination,
     return {};
 }
 
-void QueueBase::SubmitInternal(uint32_t commandCount, CommandBufferBase* const* commands) {
+MaybeError QueueBase::SubmitInternal(uint32_t commandCount, CommandBufferBase* const* commands) {
     DeviceBase* device = GetDevice();
-    if (device->ConsumedError(device->ValidateIsAlive())) {
-        // If device is lost, don't let any commands be submitted
-        return;
-    }
+
+    // If device is lost, don't let any commands be submitted
+    DAWN_TRY(device->ValidateIsAlive());
 
     TRACE_EVENT0(device->GetPlatform(), General, "Queue::Submit");
     if (device->IsValidationEnabled()) {
-        if (device->ConsumedError(ValidateSubmit(commandCount, commands))) {
-            return;
-        }
+        DAWN_TRY(ValidateSubmit(commandCount, commands));
     }
     ASSERT(!IsError());
 
-    if (device->ConsumedError(SubmitImpl(commandCount, commands))) {
-        return;
-    }
+    DAWN_TRY(SubmitImpl(commandCount, commands));
+
+    // Call Tick() to flush pending work.
+    DAWN_TRY(device->Tick());
+
+    return {};
 }
 
 }  // namespace dawn::native

@@ -266,11 +266,6 @@ void CPDFXFA_Context::DeletePage(int page_index) {
     m_XFAPageList[page_index].Reset();
 }
 
-uint32_t CPDFXFA_Context::GetUserPermissions() const {
-  // See https://bugs.chromium.org/p/pdfium/issues/detail?id=499
-  return 0xFFFFFFFF;
-}
-
 bool CPDFXFA_Context::ContainsExtensionForm() const {
   return m_FormType == FormType::kXFAFull ||
          m_FormType == FormType::kXFAForeground;
@@ -421,6 +416,7 @@ void CPDFXFA_Context::SendPostSaveToXFADoc() {
   while (CXFA_Node* pNode = it.MoveToNext()) {
     CXFA_EventParam preParam;
     preParam.m_eType = XFA_EVENT_PostSave;
+    preParam.m_bTargeted = false;
     pWidgetHandler->ProcessEvent(pNode, &preParam);
   }
   pXFADocView->UpdateDocView();
@@ -441,6 +437,7 @@ void CPDFXFA_Context::SendPreSaveToXFADoc(
   while (CXFA_Node* pNode = it.MoveToNext()) {
     CXFA_EventParam preParam;
     preParam.m_eType = XFA_EVENT_PreSave;
+    preParam.m_bTargeted = false;
     pWidgetHandler->ProcessEvent(pNode, &preParam);
   }
   pXFADocView->UpdateDocView();

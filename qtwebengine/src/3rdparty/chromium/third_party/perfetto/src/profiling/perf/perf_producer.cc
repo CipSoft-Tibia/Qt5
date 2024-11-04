@@ -16,8 +16,10 @@
 
 #include "src/profiling/perf/perf_producer.h"
 
+#include <optional>
 #include <random>
 #include <utility>
+#include <vector>
 
 #include <unistd.h>
 
@@ -26,7 +28,9 @@
 
 #include "perfetto/base/logging.h"
 #include "perfetto/base/task_runner.h"
+#include "perfetto/ext/base/file_utils.h"
 #include "perfetto/ext/base/metatrace.h"
+#include "perfetto/ext/base/string_utils.h"
 #include "perfetto/ext/base/utils.h"
 #include "perfetto/ext/base/weak_ptr.h"
 #include "perfetto/ext/tracing/core/basic_types.h"
@@ -78,6 +82,35 @@ constexpr char kDataSourceName[] = "linux.perf";
 
 size_t NumberOfCpus() {
   return static_cast<size_t>(sysconf(_SC_NPROCESSORS_CONF));
+}
+
+std::vector<uint32_t> GetOnlineCpus() {
+  size_t cpu_count = NumberOfCpus();
+  if (cpu_count == 0) {
+    return {};
+  }
+
+  static constexpr char kOnlineValue[] = "1\n";
+  std::vector<uint32_t> online_cpus;
+  online_cpus.reserve(cpu_count);
+  for (uint32_t cpu = 0; cpu < cpu_count; ++cpu) {
+    std::string res;
+    base::StackString<1024> path("/sys/devices/system/cpu/cpu%u/online", cpu);
+    if (!base::ReadFile(path.c_str(), &res)) {
+      // Always consider CPU 0 to be online if the "online" file does not exist
+      // for it. There seem to be several assumptions in the kernel which make
+      // CPU 0 special so this is a pretty safe bet.
+      if (cpu != 0) {
+        return {};
+      }
+      res = kOnlineValue;
+    }
+    if (res != kOnlineValue) {
+      continue;
+    }
+    online_cpus.push_back(cpu);
+  }
+  return online_cpus;
 }
 
 int32_t ToBuiltinClock(int32_t clockid) {
@@ -379,7 +412,7 @@ void PerfProducer::StartDataSource(DataSourceInstanceID ds_id,
   // Unlikely: handle a callstack sampling option that shares a random decision
   // between all data sources within a tracing session. Instead of introducing
   // session-scoped data, we replicate the decision in each per-DS EventConfig.
-  base::Optional<ProcessSharding> process_sharding;
+  std::optional<ProcessSharding> process_sharding;
   uint32_t shard_count =
       event_config_pb.callstack_sampling().scope().process_shard_count();
   if (shard_count > 0) {
@@ -387,17 +420,22 @@ void PerfProducer::StartDataSource(DataSourceInstanceID ds_id,
         GetOrChooseCallstackProcessShard(tracing_session_id, shard_count);
   }
 
-  base::Optional<EventConfig> event_config = EventConfig::Create(
+  std::optional<EventConfig> event_config = EventConfig::Create(
       event_config_pb, config, process_sharding, tracepoint_id_lookup);
   if (!event_config.has_value()) {
     PERFETTO_ELOG("PerfEventConfig rejected.");
     return;
   }
 
-  size_t num_cpus = NumberOfCpus();
+  std::vector<uint32_t> online_cpus = GetOnlineCpus();
+  if (online_cpus.empty()) {
+    PERFETTO_ELOG("No online CPUs found.");
+    return;
+  }
+
   std::vector<EventReader> per_cpu_readers;
-  for (uint32_t cpu = 0; cpu < num_cpus; cpu++) {
-    base::Optional<EventReader> event_reader =
+  for (uint32_t cpu : online_cpus) {
+    std::optional<EventReader> event_reader =
         EventReader::ConfigureEvents(cpu, event_config.value());
     if (!event_reader.has_value()) {
       PERFETTO_ELOG("Failed to set up perf events for cpu%" PRIu32
@@ -523,7 +561,8 @@ void PerfProducer::StopDataSource(DataSourceInstanceID ds_id) {
 // the SMB.
 void PerfProducer::Flush(FlushRequestID flush_id,
                          const DataSourceInstanceID* data_source_ids,
-                         size_t num_data_sources) {
+                         size_t num_data_sources,
+                         FlushFlags) {
   // Flush metatracing if requested.
   for (size_t i = 0; i < num_data_sources; i++) {
     auto ds_id = data_source_ids[i];
@@ -632,7 +671,7 @@ bool PerfProducer::ReadAndParsePerCpuBuffer(EventReader* reader,
   };
 
   for (uint64_t i = 0; i < max_samples; i++) {
-    base::Optional<ParsedSample> sample =
+    std::optional<ParsedSample> sample =
         reader->ReadUntilSample(records_lost_callback);
     if (!sample) {
       return false;  // caught up to the writer
@@ -1082,7 +1121,7 @@ void PerfProducer::PurgeDataSource(DataSourceInstanceID ds_id) {
 // * reuse a choice made previously by a data source within this tracing
 //   session. The config option requires that all data sources within one config
 //   have the same shard count.
-base::Optional<ProcessSharding> PerfProducer::GetOrChooseCallstackProcessShard(
+std::optional<ProcessSharding> PerfProducer::GetOrChooseCallstackProcessShard(
     uint64_t tracing_session_id,
     uint32_t shard_count) {
   for (auto& it : data_sources_) {

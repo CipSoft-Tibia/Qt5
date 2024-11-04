@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,13 @@
 
 #include <vector>
 
-#include "absl/types/span.h"
 #include "cast/streaming/frame_crypto.h"
 #include "cast/streaming/frame_id.h"
 #include "cast/streaming/rtcp_common.h"
 #include "cast/streaming/rtp_packet_parser.h"
+#include "platform/base/span.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Used by a Receiver to collect the parts of a frame, track what is
 // missing/complete, and assemble a complete frame.
@@ -61,7 +60,7 @@ class FrameCollector {
  private:
   struct PayloadChunk {
     std::vector<uint8_t> buffer;
-    absl::Span<const uint8_t> payload;  // Once set, is within |buffer.data()|.
+    ByteView payload;  // Once set, is within |buffer.data()|.
 
     PayloadChunk();
     ~PayloadChunk();
@@ -84,7 +83,6 @@ class FrameCollector {
   std::vector<PayloadChunk> chunks_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_FRAME_COLLECTOR_H_

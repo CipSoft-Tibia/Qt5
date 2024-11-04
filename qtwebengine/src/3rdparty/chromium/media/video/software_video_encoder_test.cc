@@ -28,6 +28,12 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/libyuv/include/libyuv.h"
 
+#if BUILDFLAG(USE_PROPRIETARY_CODECS)
+#include "media/filters/h264_to_annex_b_bitstream_converter.h"
+#include "media/formats/mp4/box_definitions.h"
+#include "media/video/h264_parser.h"
+#endif
+
 #if BUILDFLAG(ENABLE_OPENH264)
 #include "media/video/openh264_video_encoder.h"
 #endif
@@ -112,6 +118,7 @@ class SoftwareVideoEncoderTest
   }
 
   void RunUntilIdle() { task_environment_.RunUntilIdle(); }
+  void RunUntilQuit() { task_environment_.RunUntilQuit(); }
 
   scoped_refptr<VideoFrame> CreateI420Frame(gfx::Size size,
                                             uint32_t color,
@@ -215,6 +222,7 @@ class SoftwareVideoEncoderTest
   }
 
   VideoEncoder::EncoderStatusCB ValidatingStatusCB(
+      bool quit_run_loop_on_call = false,
       base::Location loc = FROM_HERE) {
     struct CallEnforcer {
       bool called = false;
@@ -225,7 +233,7 @@ class SoftwareVideoEncoderTest
     };
     auto enforcer = std::make_unique<CallEnforcer>();
     enforcer->location = loc.ToString();
-    return base::BindLambdaForTesting(
+    auto check_callback = base::BindLambdaForTesting(
         [enforcer{std::move(enforcer)}](EncoderStatus s) {
           EXPECT_TRUE(s.is_ok())
               << " Callback created: " << enforcer->location
@@ -233,6 +241,12 @@ class SoftwareVideoEncoderTest
               << " Error: " << s.message();
           enforcer->called = true;
         });
+
+    if (quit_run_loop_on_call) {
+      return std::move(check_callback).Then(task_environment_.QuitClosure());
+    } else {
+      return check_callback;
+    }
   }
 
   VideoDecoder::DecodeCB DecoderStatusCB(base::Location loc = FROM_HERE) {
@@ -307,6 +321,16 @@ class SoftwareVideoEncoderTest
                                           : PIXEL_FORMAT_I420;
   }
 
+  std::pair<int, int> GetQpRange(VideoCodec codec) {
+    switch (codec) {
+      case media::VideoCodec::kAV1:
+      case media::VideoCodec::kVP9:
+        return {0, 63};
+      default:
+        return {0, 0};
+    }
+  }
+
  protected:
   VideoCodec codec_;
   VideoCodecProfile profile_;
@@ -351,10 +375,12 @@ TEST_P(SoftwareVideoEncoderTest, InitializeAndFlush) {
       });
 
   encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
-                       std::move(output_cb), ValidatingStatusCB());
-  RunUntilIdle();
-  encoder_->Flush(ValidatingStatusCB());
-  RunUntilIdle();
+                       std::move(output_cb),
+                       ValidatingStatusCB(
+                           /* quit_run_loop_on_call */ true));
+  RunUntilQuit();
+  encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
   EXPECT_FALSE(output_called) << "Output callback shouldn't be called";
 }
 
@@ -373,17 +399,20 @@ TEST_P(SoftwareVideoEncoderTest, ForceAllKeyFrames) {
       });
 
   encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
-                       std::move(output_cb), ValidatingStatusCB());
-  RunUntilIdle();
+                       std::move(output_cb),
+                       ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
 
   for (int i = 0; i < frames; i++) {
     auto timestamp = i * frame_duration;
     auto frame = CreateFrame(options.frame_size, pixel_format_, timestamp);
-    encoder_->Encode(frame, true, ValidatingStatusCB());
+    encoder_->Encode(frame, VideoEncoder::EncodeOptions(true),
+                     ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+    RunUntilQuit();
   }
 
-  encoder_->Flush(ValidatingStatusCB());
-  RunUntilIdle();
+  encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
   EXPECT_EQ(outputs_count, frames);
 }
 
@@ -400,18 +429,22 @@ TEST_P(SoftwareVideoEncoderTest, ResizeFrames) {
       });
 
   encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
-                       std::move(output_cb), ValidatingStatusCB());
-  RunUntilIdle();
+                       std::move(output_cb),
+                       ValidatingStatusCB(/* quit_run_loop_on_call */ true));
 
+  RunUntilQuit();
   auto frame1 = CreateFrame(gfx::Size(320, 200), pixel_format_, 0 * sec);
   auto frame2 = CreateFrame(gfx::Size(800, 600), pixel_format_, 1 * sec);
   auto frame3 = CreateFrame(gfx::Size(720, 1280), pixel_format_, 2 * sec);
-  encoder_->Encode(frame1, false, ValidatingStatusCB());
-  encoder_->Encode(frame2, false, ValidatingStatusCB());
-  encoder_->Encode(frame3, false, ValidatingStatusCB());
+  encoder_->Encode(frame1, VideoEncoder::EncodeOptions(false),
+                   ValidatingStatusCB());
+  encoder_->Encode(frame2, VideoEncoder::EncodeOptions(false),
+                   ValidatingStatusCB());
+  encoder_->Encode(frame3, VideoEncoder::EncodeOptions(false),
+                   ValidatingStatusCB());
 
-  encoder_->Flush(ValidatingStatusCB());
-  RunUntilIdle();
+  encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
   EXPECT_EQ(outputs_count, 3);
 }
 
@@ -436,21 +469,66 @@ TEST_P(SoftwareVideoEncoderTest, OutputCountEqualsFrameCount) {
       });
 
   encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
-                       std::move(output_cb), ValidatingStatusCB());
+                       std::move(output_cb),
+                       ValidatingStatusCB(/* quit_run_loop_on_call */ true));
 
-  RunUntilIdle();
+  RunUntilQuit();
   uint32_t color = 0x964050;
   for (int frame_index = 0; frame_index < total_frames_count; frame_index++) {
     auto timestamp = frame_index * frame_duration;
     auto frame =
         CreateFrame(options.frame_size, pixel_format_, timestamp, color);
     color = (color << 1) + frame_index;
-    encoder_->Encode(frame, false, ValidatingStatusCB());
-    RunUntilIdle();
+    encoder_->Encode(frame, VideoEncoder::EncodeOptions(false),
+                     ValidatingStatusCB());
   }
 
-  encoder_->Flush(ValidatingStatusCB());
-  RunUntilIdle();
+  encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
+  EXPECT_EQ(outputs_count, total_frames_count);
+}
+
+TEST_P(SoftwareVideoEncoderTest, PerFrameQpEncoding) {
+  VideoEncoder::Options options;
+  options.frame_size = gfx::Size(320, 200);
+  options.bitrate = Bitrate::ExternalRateControl();
+  options.framerate = 25;
+  auto qp_range = GetQpRange(codec_);
+  if (qp_range.first == qp_range.second) {
+    GTEST_SKIP() << "Per frame QP control is not supported.";
+  }
+  int total_frames_count = qp_range.second - qp_range.first + 1;
+  int outputs_count = 0;
+
+  auto frame_duration = base::Seconds(1.0 / options.framerate.value());
+
+  VideoEncoder::OutputCB output_cb = base::BindLambdaForTesting(
+      [&](VideoEncoderOutput output,
+          absl::optional<VideoEncoder::CodecDescription> desc) {
+        EXPECT_NE(output.data, nullptr);
+        outputs_count++;
+      });
+
+  encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
+                       std::move(output_cb),
+                       ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+
+  RunUntilQuit();
+  uint32_t color = 0x964050;
+  int qp = qp_range.first;
+  for (int frame_index = 0; frame_index < total_frames_count; frame_index++) {
+    auto timestamp = frame_index * frame_duration;
+    auto frame =
+        CreateFrame(options.frame_size, pixel_format_, timestamp, color);
+    color = (color << 1) + frame_index;
+    VideoEncoder::EncodeOptions encode_options(false);
+    encode_options.quantizer = qp;
+    qp++;
+    encoder_->Encode(frame, encode_options, ValidatingStatusCB());
+  }
+
+  encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
   EXPECT_EQ(outputs_count, total_frames_count);
 }
 
@@ -488,8 +566,9 @@ TEST_P(SoftwareVideoEncoderTest, EncodeAndDecode) {
   PrepareDecoder(options.frame_size, std::move(decoder_output_cb));
 
   encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
-                       std::move(encoder_output_cb), ValidatingStatusCB());
-  RunUntilIdle();
+                       std::move(encoder_output_cb),
+                       ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
 
   uint32_t color = 0x964050;
   for (int frame_index = 0; frame_index < total_frames_count; frame_index++) {
@@ -498,11 +577,13 @@ TEST_P(SoftwareVideoEncoderTest, EncodeAndDecode) {
         CreateFrame(options.frame_size, pixel_format_, timestamp, color);
     frames_to_encode.push_back(frame);
     color = (color << 1) + frame_index;
-    encoder_->Encode(frame, false, ValidatingStatusCB());
-    RunUntilIdle();
+    encoder_->Encode(frame, VideoEncoder::EncodeOptions(false),
+                     ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+    RunUntilQuit();
   }
 
-  encoder_->Flush(ValidatingStatusCB());
+  encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
   DecodeAndWaitForStatus(DecoderBuffer::CreateEOSBuffer());
   EXPECT_EQ(decoded_frames.size(), frames_to_encode.size());
   for (auto i = 0u; i < decoded_frames.size(); i++) {
@@ -542,8 +623,9 @@ TEST_P(SVCVideoEncoderTest, EncodeClipTemporalSvc) {
       });
 
   encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
-                       std::move(encoder_output_cb), ValidatingStatusCB());
-  RunUntilIdle();
+                       std::move(encoder_output_cb),
+                       ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
 
   uint32_t color = 0x964050;
   for (auto frame_index = 0u; frame_index < total_frames_count; frame_index++) {
@@ -552,12 +634,13 @@ TEST_P(SVCVideoEncoderTest, EncodeClipTemporalSvc) {
         CreateFrame(options.frame_size, pixel_format_, timestamp, color);
     color = (color << 1) + frame_index;
     frames_to_encode.push_back(frame);
-    encoder_->Encode(frame, false, ValidatingStatusCB());
-    RunUntilIdle();
+    encoder_->Encode(frame, VideoEncoder::EncodeOptions(false),
+                     ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+    RunUntilQuit();
   }
 
-  encoder_->Flush(ValidatingStatusCB());
-  RunUntilIdle();
+  encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
   EXPECT_EQ(chunks.size(), total_frames_count);
 
   int num_temporal_layers = 1;
@@ -612,6 +695,63 @@ TEST_P(SVCVideoEncoderTest, EncodeClipTemporalSvc) {
   }
 }
 
+TEST_P(SVCVideoEncoderTest, ChangeLayers) {
+  VideoEncoder::Options options;
+  options.frame_size = gfx::Size(640, 480);
+  options.bitrate = Bitrate::ConstantBitrate(1000000u);  // 1Mbps
+  options.framerate = 25;
+  options.scalability_mode = GetParam().scalability_mode;
+  std::vector<scoped_refptr<VideoFrame>> frames_to_encode;
+
+  std::vector<VideoEncoderOutput> chunks;
+  size_t total_frames_count = 80;
+
+  // Encoder all frames with 3 temporal layers and put all outputs in |chunks|
+  auto frame_duration = base::Seconds(1.0 / options.framerate.value());
+
+  VideoEncoder::OutputCB encoder_output_cb = base::BindLambdaForTesting(
+      [&](VideoEncoderOutput output,
+          absl::optional<VideoEncoder::CodecDescription> desc) {
+        chunks.push_back(std::move(output));
+      });
+
+  encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
+                       std::move(encoder_output_cb),
+                       ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
+
+  uint32_t color = 0x964050;
+  for (auto frame_index = 0u; frame_index < total_frames_count; frame_index++) {
+    auto timestamp = frame_index * frame_duration;
+
+    const bool reconfigure = (frame_index == total_frames_count / 2);
+    if (reconfigure) {
+      encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+      RunUntilQuit();
+
+      // Ask encoder to change SVC mode, empty output callback
+      // means the encoder should keep the old one.
+      options.scalability_mode = SVCScalabilityMode::kL1T1;
+      encoder_->ChangeOptions(
+          options, VideoEncoder::OutputCB(),
+          ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+      RunUntilQuit();
+    }
+
+    auto frame =
+        CreateFrame(options.frame_size, pixel_format_, timestamp, color);
+    color = (color << 1) + frame_index;
+    frames_to_encode.push_back(frame);
+    encoder_->Encode(frame, VideoEncoder::EncodeOptions(false),
+                     ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+    RunUntilQuit();
+  }
+
+  encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
+  EXPECT_EQ(chunks.size(), total_frames_count);
+}
+
 TEST_P(H264VideoEncoderTest, ReconfigureWithResize) {
   VideoEncoder::Options options;
   gfx::Size size1(320, 200), size2(400, 240);
@@ -637,8 +777,9 @@ TEST_P(H264VideoEncoderTest, ReconfigureWithResize) {
       });
 
   encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
-                       std::move(encoder_output_cb), ValidatingStatusCB());
-  RunUntilIdle();
+                       std::move(encoder_output_cb),
+                       ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
 
   uint32_t color = 0x0080FF;
   for (auto frame_index = 0u; frame_index < total_frames_count; frame_index++) {
@@ -646,25 +787,27 @@ TEST_P(H264VideoEncoderTest, ReconfigureWithResize) {
     const bool reconfigure = (frame_index == total_frames_count / 2);
 
     if (reconfigure) {
-      encoder_->Flush(ValidatingStatusCB());
-      RunUntilIdle();
+      encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+      RunUntilQuit();
 
       // Ask encoder to change encoded resolution, empty output callback
       // means the encoder should keep the old one.
       options.frame_size = size2;
-      encoder_->ChangeOptions(options, VideoEncoder::OutputCB(),
-                              ValidatingStatusCB());
-      RunUntilIdle();
+      encoder_->ChangeOptions(
+          options, VideoEncoder::OutputCB(),
+          ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+      RunUntilQuit();
     }
 
     auto frame =
         CreateFrame(options.frame_size, pixel_format_, timestamp, color);
     frames_to_encode.push_back(frame);
-    encoder_->Encode(frame, false, ValidatingStatusCB());
-    RunUntilIdle();
+    encoder_->Encode(frame, VideoEncoder::EncodeOptions(false),
+                     ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+    RunUntilQuit();
   }
-  encoder_->Flush(ValidatingStatusCB());
-  RunUntilIdle();
+  encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
 
   EXPECT_EQ(chunks.size(), total_frames_count);
   gfx::Size current_size;
@@ -715,6 +858,21 @@ TEST_P(H264VideoEncoderTest, ReconfigureWithResize) {
 }
 #endif  // ENABLE_FFMPEG_VIDEO_DECODERS
 
+#if BUILDFLAG(USE_PROPRIETARY_CODECS)
+VideoCodecProfile ProfileIDToVideoCodecProfile(int profile) {
+  switch (profile) {
+    case H264SPS::kProfileIDCBaseline:
+      return H264PROFILE_BASELINE;
+    case H264SPS::kProfileIDCMain:
+      return H264PROFILE_MAIN;
+    case H264SPS::kProfileIDCHigh:
+      return H264PROFILE_HIGH;
+    default:
+      return VIDEO_CODEC_PROFILE_UNKNOWN;
+  }
+}
+#endif
+
 TEST_P(H264VideoEncoderTest, AvcExtraData) {
   int outputs_count = 0;
   VideoEncoder::Options options;
@@ -725,10 +883,21 @@ TEST_P(H264VideoEncoderTest, AvcExtraData) {
       [&](VideoEncoderOutput output,
           absl::optional<VideoEncoder::CodecDescription> desc) {
         switch (outputs_count) {
-          case 0:
+          case 0: {
             // First frame should have extra_data
             EXPECT_TRUE(desc.has_value());
+
+#if BUILDFLAG(USE_PROPRIETARY_CODECS)
+            H264ToAnnexBBitstreamConverter converter;
+            mp4::AVCDecoderConfigurationRecord avc_config;
+            bool parse_ok = converter.ParseConfiguration(
+                desc->data(), desc->size(), &avc_config);
+            EXPECT_TRUE(parse_ok);
+            EXPECT_EQ(profile_, ProfileIDToVideoCodecProfile(
+                                    avc_config.profile_indication));
+#endif  // BUILDFLAG(USE_PROPRIETARY_CODECS)
             break;
+          }
           case 1:
             // Regular non-key frame shouldn't have extra_data
             EXPECT_FALSE(desc.has_value());
@@ -744,18 +913,25 @@ TEST_P(H264VideoEncoderTest, AvcExtraData) {
       });
 
   encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
-                       std::move(output_cb), ValidatingStatusCB());
-  RunUntilIdle();
+                       std::move(output_cb),
+                       ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
 
   auto frame1 = CreateFrame(options.frame_size, pixel_format_, 0 * sec);
   auto frame2 = CreateFrame(options.frame_size, pixel_format_, 1 * sec);
   auto frame3 = CreateFrame(options.frame_size, pixel_format_, 2 * sec);
-  encoder_->Encode(frame1, false, ValidatingStatusCB());
-  encoder_->Encode(frame2, false, ValidatingStatusCB());
-  encoder_->Encode(frame3, true, ValidatingStatusCB());
+  encoder_->Encode(frame1, VideoEncoder::EncodeOptions(false),
+                   ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
+  encoder_->Encode(frame2, VideoEncoder::EncodeOptions(false),
+                   ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
+  encoder_->Encode(frame3, VideoEncoder::EncodeOptions(true),
+                   ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
 
-  encoder_->Flush(ValidatingStatusCB());
-  RunUntilIdle();
+  encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
   EXPECT_EQ(outputs_count, 3);
 }
 
@@ -783,18 +959,25 @@ TEST_P(H264VideoEncoderTest, AnnexB) {
       });
 
   encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
-                       std::move(output_cb), ValidatingStatusCB());
-  RunUntilIdle();
+                       std::move(output_cb),
+                       ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
 
   auto frame1 = CreateFrame(options.frame_size, pixel_format_, 0 * sec);
   auto frame2 = CreateFrame(options.frame_size, pixel_format_, 1 * sec);
   auto frame3 = CreateFrame(options.frame_size, pixel_format_, 2 * sec);
-  encoder_->Encode(frame1, false, ValidatingStatusCB());
-  encoder_->Encode(frame2, false, ValidatingStatusCB());
-  encoder_->Encode(frame3, true, ValidatingStatusCB());
+  encoder_->Encode(frame1, VideoEncoder::EncodeOptions(false),
+                   ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
+  encoder_->Encode(frame2, VideoEncoder::EncodeOptions(false),
+                   ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
+  encoder_->Encode(frame3, VideoEncoder::EncodeOptions(true),
+                   ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
 
-  encoder_->Flush(ValidatingStatusCB());
-  RunUntilIdle();
+  encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
   EXPECT_EQ(outputs_count, 3);
 }
 
@@ -825,8 +1008,9 @@ TEST_P(H264VideoEncoderTest, EncodeAndDecodeWithConfig) {
       });
 
   encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
-                       std::move(encoder_output_cb), ValidatingStatusCB());
-  RunUntilIdle();
+                       std::move(encoder_output_cb),
+                       ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
 
   uint32_t color = 0x964050;
   for (auto frame_index = 0u; frame_index < total_frames_count; frame_index++) {
@@ -835,11 +1019,12 @@ TEST_P(H264VideoEncoderTest, EncodeAndDecodeWithConfig) {
     auto frame =
         CreateFrame(options.frame_size, pixel_format_, timestamp, color);
     frames_to_encode.push_back(frame);
-    encoder_->Encode(frame, key_frame, ValidatingStatusCB());
-    RunUntilIdle();
+    encoder_->Encode(frame, VideoEncoder::EncodeOptions(key_frame),
+                     ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+    RunUntilQuit();
   }
-  encoder_->Flush(ValidatingStatusCB());
-  RunUntilIdle();
+  encoder_->Flush(ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+  RunUntilQuit();
 
   EXPECT_EQ(chunks.size(), total_frames_count);
   for (auto& chunk : chunks) {
@@ -886,7 +1071,10 @@ std::string PrintTestParams(
 #if BUILDFLAG(ENABLE_OPENH264)
 SwVideoTestParams kH264Params[] = {
     {VideoCodec::kH264, H264PROFILE_BASELINE, PIXEL_FORMAT_I420},
-    {VideoCodec::kH264, H264PROFILE_BASELINE, PIXEL_FORMAT_XRGB}};
+    {VideoCodec::kH264, H264PROFILE_BASELINE, PIXEL_FORMAT_XRGB},
+    {VideoCodec::kH264, H264PROFILE_MAIN, PIXEL_FORMAT_I420},
+    {VideoCodec::kH264, H264PROFILE_HIGH, PIXEL_FORMAT_I420},
+};
 
 INSTANTIATE_TEST_SUITE_P(H264Specific,
                          H264VideoEncoderTest,
@@ -905,6 +1093,10 @@ SwVideoTestParams kH264SVCParams[] = {
     {VideoCodec::kH264, H264PROFILE_BASELINE, PIXEL_FORMAT_I420,
      SVCScalabilityMode::kL1T2},
     {VideoCodec::kH264, H264PROFILE_BASELINE, PIXEL_FORMAT_I420,
+     SVCScalabilityMode::kL1T3},
+    {VideoCodec::kH264, H264PROFILE_MAIN, PIXEL_FORMAT_I420,
+     SVCScalabilityMode::kL1T3},
+    {VideoCodec::kH264, H264PROFILE_HIGH, PIXEL_FORMAT_I420,
      SVCScalabilityMode::kL1T3}};
 
 INSTANTIATE_TEST_SUITE_P(H264TemporalSvc,

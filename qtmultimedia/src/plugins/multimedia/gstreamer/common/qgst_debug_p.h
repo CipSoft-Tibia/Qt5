@@ -23,13 +23,17 @@ QT_BEGIN_NAMESPACE
 class QGstreamerMessage;
 
 QDebug operator<<(QDebug, const QGstCaps &);
-QDebug operator<<(QDebug, const QGstStructure &);
+QDebug operator<<(QDebug, const QGstStructureView &);
 QDebug operator<<(QDebug, const QGstElement &);
 QDebug operator<<(QDebug, const QGstPad &);
 QDebug operator<<(QDebug, const QGString &);
 QDebug operator<<(QDebug, const QGValue &);
 QDebug operator<<(QDebug, const QGstreamerMessage &);
 QDebug operator<<(QDebug, const QUniqueGErrorHandle &);
+QDebug operator<<(QDebug, const QUniqueGStringHandle &);
+QDebug operator<<(QDebug, const QGstStreamCollectionHandle &);
+QDebug operator<<(QDebug, const QGstStreamHandle &);
+QDebug operator<<(QDebug, const QGstTagListHandle &);
 
 QDebug operator<<(QDebug, const GstCaps *);
 QDebug operator<<(QDebug, const GstVideoInfo *);
@@ -42,15 +46,29 @@ QDebug operator<<(QDebug, const GstMessage *);
 QDebug operator<<(QDebug, const GstTagList *);
 QDebug operator<<(QDebug, const GstQuery *);
 QDebug operator<<(QDebug, const GstEvent *);
+QDebug operator<<(QDebug, const GstPadTemplate *);
+QDebug operator<<(QDebug, const GstStreamCollection *);
+QDebug operator<<(QDebug, const GstStream *);
 
 QDebug operator<<(QDebug, GstState);
 QDebug operator<<(QDebug, GstStateChange);
 QDebug operator<<(QDebug, GstStateChangeReturn);
 QDebug operator<<(QDebug, GstMessageType);
 QDebug operator<<(QDebug, GstPadDirection);
+QDebug operator<<(QDebug, GstStreamStatusType);
+QDebug operator<<(QDebug, GstStreamType);
 
 QDebug operator<<(QDebug, const GValue *);
 QDebug operator<<(QDebug, const GError *);
+
+struct QCompactGstMessageAdaptor
+{
+    explicit QCompactGstMessageAdaptor(const QGstreamerMessage &m);
+    explicit QCompactGstMessageAdaptor(GstMessage *m);
+    GstMessage *msg;
+};
+
+QDebug operator<<(QDebug, const QCompactGstMessageAdaptor &);
 
 QT_END_NAMESPACE
 

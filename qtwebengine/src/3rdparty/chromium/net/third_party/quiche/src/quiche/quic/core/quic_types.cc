@@ -431,6 +431,35 @@ std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
+QUICHE_EXPORT std::string QuicPriorityTypeToString(QuicPriorityType type) {
+  switch (type) {
+    case quic::QuicPriorityType::kHttp:
+      return "HTTP (RFC 9218)";
+    case quic::QuicPriorityType::kWebTransport:
+      return "WebTransport (W3C API)";
+  }
+  return "(unknown)";
+}
+QUIC_EXPORT_PRIVATE std::ostream& operator<<(std::ostream& os,
+                                             QuicPriorityType type) {
+  os << QuicPriorityTypeToString(type);
+  return os;
+}
+
+std::string EcnCodepointToString(QuicEcnCodepoint ecn) {
+  switch (ecn) {
+    case ECN_NOT_ECT:
+      return "Not-ECT";
+    case ECN_ECT0:
+      return "ECT(0)";
+    case ECN_ECT1:
+      return "ECT(1)";
+    case ECN_CE:
+      return "CE";
+  }
+  return "";  // Handle compilation on windows for invalid enums
+}
+
 #undef RETURN_STRING_LITERAL  // undef for jumbo builds
 
 }  // namespace quic

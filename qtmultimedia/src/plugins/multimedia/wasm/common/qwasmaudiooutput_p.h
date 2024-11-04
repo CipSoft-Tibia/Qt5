@@ -51,6 +51,7 @@ public:
 
     void setSource(const QUrl &url);
     void setSource(QIODevice *stream);
+    void setVideoElement(emscripten::val videoElement);
 
 Q_SIGNALS:
     void readyChanged(bool);
@@ -62,10 +63,13 @@ Q_SIGNALS:
     void statusChanged(QMediaPlayer::MediaStatus status);
     void sizeChange(qint32 width, qint32 height);
     void metaDataLoaded();
+    void seekableChanged(bool seekable);
 
 private:
     void doElementCallbacks();
     void createAudioElement(const std::string &id);
+
+    emscripten::val videoElement();
 
     QScopedPointer<QWasmAudioSink> m_sink;
     QScopedPointer<qstdweb::EventCallback> m_playEvent;
@@ -84,6 +88,7 @@ private:
     QString m_source;
     QIODevice *m_audioIODevice = nullptr;
     emscripten::val m_audio = emscripten::val::undefined();
+    emscripten::val m_videoElement = emscripten::val::undefined();
     QMediaPlayer::MediaStatus m_currentMediaStatus;
     qreal m_currentBufferedValue;
 };

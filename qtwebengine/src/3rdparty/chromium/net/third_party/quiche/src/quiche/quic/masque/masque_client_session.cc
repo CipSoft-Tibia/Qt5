@@ -32,7 +32,8 @@ using ::quiche::AddressRequestCapsule;
 using ::quiche::RouteAdvertisementCapsule;
 
 constexpr uint64_t kConnectIpPayloadContextId = 0;
-}
+constexpr uint64_t kConnectEthernetPayloadContextId = 0;
+}  // namespace
 
 MasqueClientSession::MasqueClientSession(
     MasqueMode masque_mode, const std::string& uri_template,
@@ -68,6 +69,13 @@ MasqueClientSession::GetOrCreateConnectUdpClientState(
     }
   }
   // No CONNECT-UDP request found, create a new one.
+  std::string target_host;
+  auto it = fake_addresses_.find(target_server_address.host().ToPackedString());
+  if (it != fake_addresses_.end()) {
+    target_host = it->second;
+  } else {
+    target_host = target_server_address.host().ToString();
+  }
 
   url::Parsed parsed_uri_template;
   url::ParseStandardURL(uri_template_.c_str(), uri_template_.length(),
@@ -85,7 +93,7 @@ MasqueClientSession::GetOrCreateConnectUdpClientState(
                                          parsed_uri_template.query.len));
   }
   absl::flat_hash_map<std::string, std::string> parameters;
-  parameters["target_host"] = target_server_address.host().ToString();
+  parameters["target_host"] = target_host;
   parameters["target_port"] = absl::StrCat(target_server_address.port());
   std::string expanded_path;
   absl::flat_hash_set<std::string> vars_found;
@@ -94,7 +102,8 @@ MasqueClientSession::GetOrCreateConnectUdpClientState(
   if (!expanded || vars_found.find("target_host") == vars_found.end() ||
       vars_found.find("target_port") == vars_found.end()) {
     QUIC_DLOG(ERROR) << "Failed to expand URI template \"" << uri_template_
-                     << "\" for " << target_server_address;
+                     << "\" for " << target_host << " port "
+                     << target_server_address.port();
     return nullptr;
   }
 
@@ -106,7 +115,8 @@ MasqueClientSession::GetOrCreateConnectUdpClientState(
       &canonicalized_path_output, &canonicalized_path_component);
   if (!canonicalized || !canonicalized_path_component.is_nonempty()) {
     QUIC_DLOG(ERROR) << "Failed to canonicalize URI template \""
-                     << uri_template_ << "\" for " << target_server_address;
+                     << uri_template_ << "\" for " << target_host << " port "
+                     << target_server_address.port();
     return nullptr;
   }
   std::string canonicalized_path(
@@ -124,10 +134,10 @@ MasqueClientSession::GetOrCreateConnectUdpClientState(
   std::string scheme = url.scheme();
   std::string authority = url.HostPort();
 
-  QUIC_DLOG(INFO) << "Sending CONNECT-UDP request for " << target_server_address
-                  << " on stream " << stream->id() << " scheme=\"" << scheme
-                  << "\" authority=\"" << authority << "\" path=\""
-                  << canonicalized_path << "\"";
+  QUIC_DLOG(INFO) << "Sending CONNECT-UDP request for " << target_host
+                  << " port " << target_server_address.port() << " on stream "
+                  << stream->id() << " scheme=\"" << scheme << "\" authority=\""
+                  << authority << "\" path=\"" << canonicalized_path << "\"";
 
   // Send the request.
   spdy::Http2HeaderBlock headers;
@@ -195,6 +205,54 @@ MasqueClientSession::GetOrCreateConnectIpClientState(
   return &connect_ip_client_states_.back();
 }
 
+const MasqueClientSession::ConnectEthernetClientState*
+MasqueClientSession::GetOrCreateConnectEthernetClientState(
+    MasqueClientSession::EncapsulatedEthernetSession*
+        encapsulated_ethernet_session) {
+  for (const ConnectEthernetClientState& client_state :
+       connect_ethernet_client_states_) {
+    if (client_state.encapsulated_ethernet_session() ==
+        encapsulated_ethernet_session) {
+      // Found existing CONNECT-ETHERNET request.
+      return &client_state;
+    }
+  }
+  // No CONNECT-ETHERNET request found, create a new one.
+  QuicSpdyClientStream* stream = CreateOutgoingBidirectionalStream();
+  if (stream == nullptr) {
+    // Stream flow control limits prevented us from opening a new stream.
+    QUIC_DLOG(ERROR) << "Failed to open CONNECT-ETHERNET stream";
+    return nullptr;
+  }
+
+  QuicUrl url(uri_template_);
+  std::string scheme = url.scheme();
+  std::string authority = url.HostPort();
+  std::string path = "/.well-known/masque/ethernet/";
+
+  QUIC_DLOG(INFO) << "Sending CONNECT-ETHERNET request on stream "
+                  << stream->id() << " scheme=\"" << scheme << "\" authority=\""
+                  << authority << "\" path=\"" << path << "\"";
+
+  // Send the request.
+  spdy::Http2HeaderBlock headers;
+  headers[":method"] = "CONNECT";
+  headers[":protocol"] = "connect-ethernet";
+  headers[":scheme"] = scheme;
+  headers[":authority"] = authority;
+  headers[":path"] = path;
+  size_t bytes_sent =
+      stream->SendRequest(std::move(headers), /*body=*/"", /*fin=*/false);
+  if (bytes_sent == 0) {
+    QUIC_DLOG(ERROR) << "Failed to send CONNECT-ETHERNET request";
+    return nullptr;
+  }
+
+  connect_ethernet_client_states_.push_back(
+      ConnectEthernetClientState(stream, encapsulated_ethernet_session, this));
+  return &connect_ethernet_client_states_.back();
+}
+
 void MasqueClientSession::SendIpPacket(
     absl::string_view packet,
     MasqueClientSession::EncapsulatedIpSession* encapsulated_ip_session) {
@@ -223,6 +281,39 @@ void MasqueClientSession::SendIpPacket(
 
   QUIC_DVLOG(1) << "Sent encapsulated IP packet of length " << packet.size()
                 << " with stream ID " << connect_ip->stream()->id()
+                << " and got message status "
+                << MessageStatusToString(message_status);
+}
+
+void MasqueClientSession::SendEthernetFrame(
+    absl::string_view frame, MasqueClientSession::EncapsulatedEthernetSession*
+                                 encapsulated_ethernet_session) {
+  const ConnectEthernetClientState* connect_ethernet =
+      GetOrCreateConnectEthernetClientState(encapsulated_ethernet_session);
+  if (connect_ethernet == nullptr) {
+    QUIC_DLOG(ERROR) << "Failed to create CONNECT-ETHERNET request";
+    return;
+  }
+
+  std::string http_payload;
+  http_payload.resize(
+      QuicDataWriter::GetVarInt62Len(kConnectEthernetPayloadContextId) +
+      frame.size());
+  QuicDataWriter writer(http_payload.size(), http_payload.data());
+  if (!writer.WriteVarInt62(kConnectEthernetPayloadContextId)) {
+    QUIC_BUG(IP context write fail)
+        << "Failed to write CONNECT-ETHERNET context ID";
+    return;
+  }
+  if (!writer.WriteStringPiece(frame)) {
+    QUIC_BUG(IP packet write fail) << "Failed to write CONNECT-ETHERNET frame";
+    return;
+  }
+  MessageStatus message_status =
+      SendHttp3Datagram(connect_ethernet->stream()->id(), http_payload);
+
+  QUIC_DVLOG(1) << "Sent encapsulated Ethernet frame of length " << frame.size()
+                << " with stream ID " << connect_ethernet->stream()->id()
                 << " and got message status "
                 << MessageStatusToString(message_status);
 }
@@ -277,6 +368,24 @@ void MasqueClientSession::CloseConnectIpStream(
                       << it->stream()->id();
       auto* stream = it->stream();
       it = connect_ip_client_states_.erase(it);
+      if (!stream->write_side_closed()) {
+        stream->Reset(QUIC_STREAM_CANCELLED);
+      }
+    } else {
+      ++it;
+    }
+  }
+}
+
+void MasqueClientSession::CloseConnectEthernetStream(
+    EncapsulatedEthernetSession* encapsulated_ethernet_session) {
+  for (auto it = connect_ethernet_client_states_.begin();
+       it != connect_ethernet_client_states_.end();) {
+    if (it->encapsulated_ethernet_session() == encapsulated_ethernet_session) {
+      QUIC_DLOG(INFO) << "Removing CONNECT-ETHERNET state for stream ID "
+                      << it->stream()->id();
+      auto* stream = it->stream();
+      it = connect_ethernet_client_states_.erase(it);
       if (!stream->write_side_closed()) {
         stream->Reset(QUIC_STREAM_CANCELLED);
       }
@@ -492,5 +601,83 @@ bool MasqueClientSession::ConnectIpClientState::OnRouteAdvertisementCapsule(
 }
 
 void MasqueClientSession::ConnectIpClientState::OnHeadersWritten() {}
+
+// ConnectEthernetClientState
+
+MasqueClientSession::ConnectEthernetClientState::ConnectEthernetClientState(
+    QuicSpdyClientStream* stream,
+    EncapsulatedEthernetSession* encapsulated_ethernet_session,
+    MasqueClientSession* masque_session)
+    : stream_(stream),
+      encapsulated_ethernet_session_(encapsulated_ethernet_session),
+      masque_session_(masque_session) {
+  QUICHE_DCHECK_NE(masque_session_, nullptr);
+  this->stream()->RegisterHttp3DatagramVisitor(this);
+}
+
+MasqueClientSession::ConnectEthernetClientState::~ConnectEthernetClientState() {
+  if (stream() != nullptr) {
+    stream()->UnregisterHttp3DatagramVisitor();
+  }
+}
+
+MasqueClientSession::ConnectEthernetClientState::ConnectEthernetClientState(
+    MasqueClientSession::ConnectEthernetClientState&& other) {
+  *this = std::move(other);
+}
+
+MasqueClientSession::ConnectEthernetClientState&
+MasqueClientSession::ConnectEthernetClientState::operator=(
+    MasqueClientSession::ConnectEthernetClientState&& other) {
+  stream_ = other.stream_;
+  encapsulated_ethernet_session_ = other.encapsulated_ethernet_session_;
+  masque_session_ = other.masque_session_;
+  other.stream_ = nullptr;
+  if (stream() != nullptr) {
+    stream()->ReplaceHttp3DatagramVisitor(this);
+  }
+  return *this;
+}
+
+void MasqueClientSession::ConnectEthernetClientState::OnHttp3Datagram(
+    QuicStreamId stream_id, absl::string_view payload) {
+  QUICHE_DCHECK_EQ(stream_id, stream()->id());
+  QuicDataReader reader(payload);
+  uint64_t context_id;
+  if (!reader.ReadVarInt62(&context_id)) {
+    QUIC_DLOG(ERROR) << "Failed to read context ID";
+    return;
+  }
+  if (context_id != kConnectEthernetPayloadContextId) {
+    QUIC_DLOG(ERROR) << "Ignoring HTTP Datagram with unexpected context ID "
+                     << context_id;
+    return;
+  }
+  absl::string_view http_payload = reader.ReadRemainingPayload();
+  encapsulated_ethernet_session_->ProcessEthernetFrame(http_payload);
+  QUIC_DVLOG(1) << "Sent " << http_payload.size()
+                << " ETHERNET bytes to connection for stream ID " << stream_id;
+}
+
+// End ConnectEthernetClientState
+
+quiche::QuicheIpAddress MasqueClientSession::GetFakeAddress(
+    absl::string_view hostname) {
+  quiche::QuicheIpAddress address;
+  uint8_t address_bytes[16] = {0xFD};
+  quiche::QuicheRandom::GetInstance()->RandBytes(&address_bytes[1],
+                                                 sizeof(address_bytes) - 1);
+  address.FromPackedString(reinterpret_cast<const char*>(address_bytes),
+                           sizeof(address_bytes));
+  std::string address_bytes_string(reinterpret_cast<const char*>(address_bytes),
+                                   sizeof(address_bytes));
+  fake_addresses_[address_bytes_string] = std::string(hostname);
+  return address;
+}
+
+void MasqueClientSession::RemoveFakeAddress(
+    const quiche::QuicheIpAddress& fake_address) {
+  fake_addresses_.erase(fake_address.ToPackedString());
+}
 
 }  // namespace quic

@@ -285,6 +285,7 @@ int main(int argc, char *argv[])
 	smoke.window = window_create(d);
 	smoke.widget = window_add_widget(smoke.window, &smoke);
 	window_set_title(smoke.window, "smoke");
+	window_set_appid(smoke.window, "org.freedesktop.weston.smoke");
 
 	window_set_buffer_type(smoke.window, WINDOW_BUFFER_TYPE_SHM);
 	clock_gettime(CLOCK_MONOTONIC, &ts);

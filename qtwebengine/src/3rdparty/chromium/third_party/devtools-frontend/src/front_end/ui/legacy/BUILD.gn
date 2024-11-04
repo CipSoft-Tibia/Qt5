@@ -16,6 +16,7 @@ generate_css("css_files") {
 
 generate_css("legacy_css_files") {
   sources = [
+    "applicationColorTokens.css",
     "checkboxTextLabel.css",
     "closeButton.css",
     "confirmDialog.css",
@@ -49,6 +50,7 @@ generate_css("legacy_css_files") {
     "textButton.css",
     "textPrompt.css",
     "themeColors.css",
+    "tokens.css",
     "toolbar.css",
     "treeoutline.css",
     "viewContainers.css",
@@ -59,8 +61,10 @@ generate_css("legacy_css_files") {
 
 copy_to_gen("copy_stylesheets_for_server") {
   sources = [
+    "applicationColorTokens.css",
     "inspectorCommon.css",
     "themeColors.css",
+    "tokens.css",
   ]
 }
 
@@ -163,6 +167,7 @@ devtools_entrypoint("bundle") {
     "../../models/extensions:*",
     "../../models/persistence:*",
     "../components/data_grid:*",
+    "../components/legacy_wrapper:*",
     "../components/linear_memory_inspector:*",
     "../components/markdown_view:*",
 

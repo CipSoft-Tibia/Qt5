@@ -2,6 +2,7 @@ Name: zlib
 Short Name: zlib
 URL: http://zlib.net/
 Security Critical: yes
+Shipped: yes
 License: Custom license
 License File: LICENSE
 License Android Compatible: yes

@@ -6,6 +6,7 @@
 
 #include "base/functional/function_ref.h"
 #include "base/test/values_test_util.h"
+#include "base/time/time.h"
 #include "base/types/expected.h"
 #include "base/values.h"
 #include "components/attribution_reporting/filters.h"
@@ -45,18 +46,21 @@ TEST(AggregatableDedupKeyTest, FromJSON) {
       {
           "dedup_key_wrong_type",
           R"json({"deduplication_key":123})json",
-          AggregatableDedupKey(),
+          base::unexpected(
+              TriggerRegistrationError::kAggregatableDedupKeyValueInvalid),
       },
       {
           "dedup_key_invalid",
           R"json({"deduplication_key":"abc"})json",
-          AggregatableDedupKey(),
+          base::unexpected(
+              TriggerRegistrationError::kAggregatableDedupKeyValueInvalid),
       },
       {
           "filters_valid",
-          R"json({"filters":{"a":["b"]}})json",
+          R"json({"filters":{"a":["b"], "_lookback_window": 1}})json",
           AggregatableDedupKeyWith([](AggregatableDedupKey& key) {
-            key.filters.positive = *Filters::Create({{"a", {"b"}}});
+            key.filters.positive = {*FilterConfig::Create(
+                {{{"a", {"b"}}}}, /*lookback_window=*/base::Seconds(1))};
           }),
       },
       {
@@ -66,9 +70,10 @@ TEST(AggregatableDedupKeyTest, FromJSON) {
       },
       {
           "not_filters_valid",
-          R"json({"not_filters":{"a":["b"]}})json",
+          R"json({"not_filters":{"a":["b"], "_lookback_window": 1}})json",
           AggregatableDedupKeyWith([](AggregatableDedupKey& key) {
-            key.filters.negative = *Filters::Create({{"a", {"b"}}});
+            key.filters.negative = {*FilterConfig::Create(
+                {{{"a", {"b"}}}}, /*lookback_window=*/base::Seconds(1))};
           }),
       },
       {
@@ -97,12 +102,12 @@ TEST(AggregatableDedupKeyTest, ToJson) {
       {
           AggregatableDedupKey(
               /*dedup_key=*/3,
-              FilterPair{.positive = *Filters::Create({{"a", {}}}),
-                         .negative = *Filters::Create({{"b", {}}})}),
+              FilterPair(/*positive=*/{*FilterConfig::Create({{"a", {}}})},
+                         /*negative=*/{*FilterConfig::Create({{"b", {}}})})),
           R"json({
             "deduplication_key": "3",
-            "filters": {"a": []},
-            "not_filters": {"b": []}
+            "filters": [{"a": []}],
+            "not_filters": [{"b": []}]
           })json",
       },
   };

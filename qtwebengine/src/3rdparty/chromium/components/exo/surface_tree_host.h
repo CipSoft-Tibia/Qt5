@@ -9,12 +9,13 @@
 #include <set>
 
 #include "base/containers/queue.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "components/exo/layer_tree_frame_sink_holder.h"
 #include "components/exo/surface.h"
 #include "components/exo/surface_delegate.h"
 #include "components/viz/common/gpu/context_lost_observer.h"
-#include "components/viz/common/quads/compositor_frame_metadata.h"
+#include "components/viz/common/quads/compositor_frame.h"
+#include "components/viz/common/surfaces/frame_sink_id.h"
 #include "ui/display/display_observer.h"
 #include "ui/display/types/display_constants.h"
 #include "ui/gfx/geometry/rect.h"
@@ -34,9 +35,12 @@ class LayerTreeFrameSinkHolder;
 // tree is hosted in the |host_window_|.
 class SurfaceTreeHost : public SurfaceDelegate,
                         public display::DisplayObserver,
+                        public ui::LayerOwner::Observer,
                         public viz::ContextLostObserver {
  public:
   explicit SurfaceTreeHost(const std::string& window_name);
+  SurfaceTreeHost(const std::string& window_name,
+                  std::unique_ptr<aura::Window> host_window);
 
   SurfaceTreeHost(const SurfaceTreeHost&) = delete;
   SurfaceTreeHost& operator=(const SurfaceTreeHost&) = delete;
@@ -81,6 +85,11 @@ class SurfaceTreeHost : public SurfaceDelegate,
 
   using PresentationCallbacks = std::list<Surface::PresentationCallback>;
 
+  base::queue<std::list<Surface::FrameCallback>>&
+  GetFrameCallbacksForTesting() {
+    return frame_callbacks_;
+  }
+
   base::flat_map<uint32_t, PresentationCallbacks>&
   GetActivePresentationCallbacksForTesting() {
     return active_presentation_callbacks_;
@@ -120,6 +129,7 @@ class SurfaceTreeHost : public SurfaceDelegate,
   void Pin(bool trusted) override {}
   void Unpin() override {}
   void SetSystemModal(bool system_modal) override {}
+  void SetTopInset(int height) override {}
   SecurityDelegate* GetSecurityDelegate() override;
 
   // display::DisplayObserver:
@@ -137,6 +147,21 @@ class SurfaceTreeHost : public SurfaceDelegate,
 
   void SubmitCompositorFrameForTesting(viz::CompositorFrame frame);
 
+  using LayerTreeFrameSinkHolderFactory =
+      base::RepeatingCallback<std::unique_ptr<LayerTreeFrameSinkHolder>()>;
+
+  // It should only be used at initialization time before any frames are
+  // submitted.
+  void SetLayerTreeFrameSinkHolderFactoryForTesting(
+      LayerTreeFrameSinkHolderFactory frame_sink_holder_factory);
+
+  // Creates a LayerTreeFrameSink for the |host_window_|.
+  std::unique_ptr<cc::mojo_embedder::AsyncLayerTreeFrameSink>
+  CreateLayerTreeFrameSink();
+
+  // Overridden from ui::LayerOwner::Observer
+  void OnLayerRecreated(ui::Layer* old_layer) override;
+
  protected:
   void UpdateDisplayOnTree();
 
@@ -152,26 +177,71 @@ class SurfaceTreeHost : public SurfaceDelegate,
   // need to be released back to the client.
   void SubmitEmptyCompositorFrame();
 
-  // Update the host window's size to cover sufaces that must be visible and
+  // Updates the host window's size to cover surfaces that must be visible and
   // not clipped.
-  virtual void UpdateHostWindowBounds();
+  // It also updates root surface origin accordingly to the origin.
+  void UpdateHostWindowSizeAndRootSurfaceOrigin();
 
   bool client_submits_surfaces_in_pixel_coordinates() const {
     return client_submits_surfaces_in_pixel_coordinates_;
   }
 
- private:
-  viz::CompositorFrame PrepareToSubmitCompositorFrame();
+  bool bounds_is_dirty() const { return bounds_is_dirty_; }
 
-  void HandleContextLost();
+  void set_bounds_is_dirty(bool bounds_is_dirty) {
+    bounds_is_dirty_ = bounds_is_dirty;
+  }
 
   // If the client has submitted a scale factor, we use that. Otherwise we use
   // the host window's layer's scale factor.
-  float GetScaleFactor();
+  virtual float GetScaleFactor() const;
+  virtual float GetPendingScaleFactor() const;
+
+  bool HasDoubleBufferedPendingScaleFactor() const;
+
+  // Sets the appropriate transform for the given scale factor.
+  // NOTE: This should only be done if the client submits in pixel coordinates.
+  void SetScaleFactorTransform(float scale_factor);
+
+  // Once a configure is acknowledged, accept the parent portion of the
+  // local_surface_id from the |host_window_|.
+  void UpdateLocalSurfaceIdFromParent(
+      const viz::LocalSurfaceId& parent_local_surface_id);
+
+  // Changes the local_surface_id as the viz::Surface property will change.
+  void AllocateLocalSurfaceId();
+
+  // If local_surface_id is newer than |host_window_|'s ui layer, push the
+  // current local_surface_id to |host_window_| and its ui layer to produce a
+  // different SurfaceDrawQuad.
+  void MaybeActivateSurface();
+
+  // Returns the primary SurfaceId.
+  viz::SurfaceId GetSurfaceId() const;
+
+ private:
+  void InitHostWindow(const std::string& window_name);
+
+  viz::CompositorFrame PrepareToSubmitCompositorFrame();
+
+  // The local_surface_id that the |frame_sink_| is submitting with, it should
+  // never be older than the local_surface_id of |host_window_|'s layer.
+  const viz::LocalSurfaceId& GetCurrentLocalSurfaceId() const;
+
+  void HandleContextLost();
 
   void CleanUpCallbacks();
 
-  Surface* root_surface_ = nullptr;
+  float CalculateScaleFactor(const absl::optional<float>& scale_factor) const;
+
+  std::unique_ptr<LayerTreeFrameSinkHolder> CreateLayerTreeFrameSinkHolder();
+
+  // The FrameSinkId associated with this.
+  viz::FrameSinkId frame_sink_id_;
+  std::unique_ptr<viz::ChildLocalSurfaceIdAllocator>
+      child_local_surface_id_allocator_;
+
+  raw_ptr<Surface, ExperimentalAsh> root_surface_ = nullptr;
 
   // Position of root surface relative to topmost, leftmost sub-surface. The
   // host window should be translated by the negation of this vector.
@@ -179,6 +249,7 @@ class SurfaceTreeHost : public SurfaceDelegate,
 
   std::unique_ptr<aura::Window> host_window_;
   std::unique_ptr<LayerTreeFrameSinkHolder> layer_tree_frame_sink_holder_;
+  LayerTreeFrameSinkHolderFactory frame_sink_holder_factory_;
 
   // This queue contains lists the callbacks to notify the client when it is a
   // good time to start producing a new frame. Each list corresponds to a
@@ -212,9 +283,11 @@ class SurfaceTreeHost : public SurfaceDelegate,
 
   bool client_submits_surfaces_in_pixel_coordinates_ = false;
 
-  SecurityDelegate* security_delegate_ = nullptr;
+  raw_ptr<SecurityDelegate, ExperimentalAsh> security_delegate_ = nullptr;
 
   std::set<gpu::SyncToken> prev_frame_verified_tokens_;
+
+  bool bounds_is_dirty_ = true;
 
   base::WeakPtrFactory<SurfaceTreeHost> weak_ptr_factory_{this};
 };

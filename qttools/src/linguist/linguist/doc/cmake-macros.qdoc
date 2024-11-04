@@ -20,7 +20,7 @@ find_package(Qt6 REQUIRED COMPONENTS LinguistTools)
 \ingroup cmake-commands-qtlinguisttools
 
 \title qt_add_translation
-\target qt6_add_translation
+\keyword qt6_add_translation
 
 \summary {Compiles Qt Linguist .ts files into .qm files.}
 
@@ -75,7 +75,7 @@ sub-directory:
 \ingroup cmake-commands-qtlinguisttools
 
 \title qt_create_translation
-\target qt6_create_translation
+\keyword qt6_create_translation
 
 \summary {Sets up the Qt Linguist translation toolchain.}
 
@@ -129,7 +129,7 @@ files in the build directory:
 \ingroup cmake-commands-qtlinguisttools
 
 \title qt_add_lupdate
-\target qt6_add_lupdate
+\keyword qt6_add_lupdate
 
 \summary {Add targets to generate or update Qt Linguist .ts files.}
 
@@ -139,6 +139,19 @@ files in the build directory:
 
 \section1 Synopsis
 
+Since 6.7:
+\badcode
+qt_add_lupdate(TS_FILES file1.ts [file2.ts ...]
+               [PLURALS_TS_FILE file.ts]
+               [SOURCE_TARGETS target1 [target2 ...]]
+               [SOURCES source1.cpp [sources2.cpp ...]]
+               [INCLUDE_DIRECTORIES directory1 [directory2 ...]]
+               [LUPDATE_TARGET target-name]
+               [NO_GLOBAL_TARGET]
+               [OPTIONS ...])
+\endcode
+
+Since 6.2 (deprecated):
 \badcode
 qt_add_lupdate(target TS_FILES file1.ts [file2.ts ...]
                [SOURCES source1.cpp [sources2.cpp ...]]
@@ -151,11 +164,20 @@ qt_add_lupdate(target TS_FILES file1.ts [file2.ts ...]
 
 \section1 Description
 
-Creates a target \c{${target}_lupdate} to generate or update Qt Linguist \c{.ts}
+Creates a custom target to generate or update Qt Linguist \c{.ts}
 files with \l{lupdate}.
 
-The parameter \c{target} is an existing executable or library target that
-contains sources with translatable strings.
+The name of that custom target defaults to \c{${PROJECT_NAME}_lupdate}. Further
+calls of \c qt_add_lupdate will create target names with an increasing number
+appended. The custom target name can be specified with the \c LUPDATE_TARGET
+option.
+
+With the \c{SOURCE_TARGETS} argument you can specify a list of targets that
+contain sources with translatable strings. If \c{SOURCE_TARGETS} is not
+specified, you can specify \c{SOURCES}, which is described below. If neither
+\c{SOURCE_TARGETS} nor \c{SOURCES} is given, the command
+\l{qt6_collect_translation_source_targets}{qt_collect_translation_source_targets}
+is called to retrieve the list of targets.
 
 The \c{.ts} files must be specified with the argument \c{TS_FILES}.
 
@@ -166,15 +188,11 @@ This function is designed to be used in conjunction with
 //! [sources-and-include-dirs]
 \section1 Sources and Include Directories
 
-By default, \c{qt_add_lupdate} extracts the source files and include directories
-from the given target and passes them to \c{lupdate}.
+With \c{SOURCES} you can explicitly specify additional source files that contain
+translatable strings.
 
-With \c{SOURCES} you can explicitly specify source files that contain
-translatable strings. This turns off the automatic extraction of source files
-from the target.
-
-You can use \c{INCLUDE_DIRECTORIES} to explicitly specify include directories.
-This turns off the automatic extraction of include directories from the target.
+You can use \c{INCLUDE_DIRECTORIES} to explicitly specify include directories
+for those source files.
 //! [sources-and-include-dirs]
 
 \section1 Options
@@ -194,12 +212,40 @@ Pass \c{NO_GLOBAL_TARGET} to \c{qt_add_lupdate} to prevent this behavior.
 The name of this target can be overridden by setting the variable
 \c{QT_GLOBAL_LUPDATE_TARGET} before calling \c{qt_add_lupdate}.
 
+//! [plurals-ts-file]
+\section1 Plural Forms
+
+\l QT_I18N_SOURCE_LANGUAGE specifies the language in which the source code
+strings are written. For handling plural forms correctly, create an additional
+\c{.ts} file for that language that only contains translatable strings for
+plural forms. See \l{Handle Plural Forms} for details.
+
+With \c PLURALS_TS_FILE you can specify the \c{.ts} file for the source
+language. This file will only contain plural forms.
+//! [plurals-ts-file]
+
+\section1 Deprecated Command Signature
+
+Older versions of \c qt_add_lupdate took a target as the first argument. This is
+deprecated. Use the \c SOURCE_TARGETS argument instead.
+
 \section1 Examples
 
 Add the targets \c{myapp_lupdate} and \c{update_translations} for updating the
 \c{.ts} file of an application \c{myapp}.
 
 \snippet cmake-macros/examples.cmake qt_add_lupdate
+
+You can specify the name of the created target by passing the \c LUPDATE_TARGET
+argument:
+
+\badcode
+qt_add_lupdate(
+    LUPDATE_TARGET update_application_translations
+    TS_FILES myapp_de.ts
+    PLURALS_TS_FILE myapp_en.ts
+)
+\endcode
 */
 
 /*!
@@ -207,7 +253,7 @@ Add the targets \c{myapp_lupdate} and \c{update_translations} for updating the
 \ingroup cmake-commands-qtlinguisttools
 
 \title qt_add_lrelease
-\target qt6_add_lrelease
+\keyword qt6_add_lrelease
 
 \summary {Add targets to transform Qt Linguist .ts files into .qm files.}
 
@@ -217,6 +263,17 @@ Add the targets \c{myapp_lupdate} and \c{update_translations} for updating the
 
 \section1 Synopsis
 
+Since 6.7:
+\badcode
+qt_add_lrelease(TS_FILES file1.ts [file2.ts ...]
+                [LRELEASE_TARGET target-name]
+                [EXCLUDE_FROM_ALL]
+                [NO_GLOBAL_TARGET]
+                [QM_FILES_OUTPUT_VARIABLE variable-name]
+                [OPTIONS ...])
+\endcode
+
+Since 6.2 (deprecated):
 \badcode
 qt_add_lrelease(target TS_FILES file1.ts [file2.ts ...]
                 [NO_TARGET_DEPENDENCY]
@@ -232,11 +289,14 @@ target directory scope requires at least CMake version 3.18.
 
 \section1 Description
 
-Creates a target \c{${target}_lrelease} to transform \c{.ts} files into \c{.qm}
-files with \l{lrelease}.
+Creates a custom command to transform \c{.ts} files into \c{.qm} files with
+\l{lrelease}.
 
-The parameter \c{target} is an existing executable or library target that
-contains sources with translatable strings.
+The execution of the custom command is driven by a custom target that is built
+by default. The name of that custom target defaults to
+\c{${PROJECT_NAME}_lrelease}. Further calls of \c qt_add_lrelease will create
+target names with an increasing number appended. The custom target name can be
+specified with the \c LRELEASE_TARGET option.
 
 The \c{.ts} files must be specified with the argument \c{TS_FILES}.
 
@@ -268,10 +328,11 @@ that.
 
 \section1 Build by Default
 
-By default, the command makes \c{${target}} depend on \c{${target}_lrelease}.
-This ensures that the \c{.qm} files are always up-to-date when \c{${target}} is
-built. This behavior can be turned off with \c{NO_TARGET_DEPENDENCY}. In this
-case, the user must build the \c{${target}_lrelease} target manually.
+By default, the command creates a custom target that is added to the default
+build target. This ensures that the \c{.qm} files are always up-to-date when the
+project is built. This behavior can be turned off with the \c{EXCLUDE_FROM_ALL}
+argument. In this case, the user must build the \c{${PROJECT_NAME}_lrelease}
+target manually.
 
 \section1 Umbrella Target
 
@@ -284,13 +345,37 @@ Pass \c{NO_GLOBAL_TARGET} to \c{qt_add_lrelease} to prevent this behavior.
 The name of this target can be overridden by setting the variable
 \c{QT_GLOBAL_LRELEASE_TARGET} before calling \c{qt_add_lrelease}.
 
+\section1 Deprecated Command Signature
+
+Older versions of \c qt_add_lrelease took a target as the first argument. This
+is still possible but deprecated.
+
 \section1 Examples
 
-Add the targets \c{myapp_lrelease} and \c{update_translations} for updating the
-\c{.ts} file of an application \c{myapp}. Also, install the generated \c{.qm}
-files.
+Add the targets \c{myapp_lrelease} and \c{release_translations} for transforming
+the given \c{.ts} files into \c{.qm} files. Also, install the generated \c{.qm}
+files. The target \c{myapp_lrelease} is built by default.
 
-\snippet cmake-macros/examples.cmake qt_add_lrelease_install
+\badcode
+project(myapp)
+...
+qt_add_lrelease(
+    TS_FILES myapp_de.ts myapp_fr.ts
+    QM_FILES_OUTPUT_VARIABLE qm_files
+)
+install(FILES ${qm_files} DESTINATION "translations")
+\endcode
+
+You can specify the name of the created target by passing the \c LRELEASE_TARGET
+argument:
+
+\badcode
+qt_add_lrelease(
+    LRELEASE_TARGET create_myapp_qm_files
+    TS_FILES myapp_de.ts myapp_fr.ts
+    QM_FILES_OUTPUT_VARIABLE qm_files
+)
+\endcode
 */
 
 /*!
@@ -298,7 +383,7 @@ files.
 \ingroup cmake-commands-qtlinguisttools
 
 \title qt_add_translations
-\target qt6_add_translations
+\keyword qt6_add_translations
 
 \summary {Add targets to update and transform Qt Linguist .ts files into .qm files.}
 
@@ -308,6 +393,29 @@ files.
 
 \section1 Synopsis
 
+Since Qt 6.7:
+\badcode
+qt_add_translations([target]
+                    [TARGETS target1 [target2...]]
+                    [SOURCE_TARGETS target1 [target2...]]
+                    [TS_FILE_BASE name]
+                    [TS_FILE_DIR directory]
+                    [TS_FILES file1.ts [file2.ts ...]]
+                    [PLURALS_TS_FILE file.ts]
+                    [NO_GENERATE_PLURALS_TS_FILE]
+                    [RESOURCE_PREFIX prefix]
+                    [OUTPUT_TARGETS variable-name]
+                    [QM_FILES_OUTPUT_VARIABLE variable-name]
+                    [SOURCES source1.cpp [sources2.cpp ...]]
+                    [INCLUDE_DIRECTORIES directory1 [directory2 ...]]
+                    [LUPDATE_TARGET target-name]
+                    [LUPDATE_OPTIONS ...]
+                    [LRELEASE_TARGET target-name]
+                    [LRELEASE_OPTIONS ...]
+                    [IMMEDIATE_CALL])
+\endcode
+
+Since Qt 6.2 (deprecated):
 \badcode
 qt_add_translations(target TS_FILES file1.ts [file2.ts ...]
                     [RESOURCE_PREFIX prefix]
@@ -321,8 +429,6 @@ qt_add_translations(target TS_FILES file1.ts [file2.ts ...]
 
 \versionlessCMakeCommandsNote qt6_add_translations()
 
-\preliminarycmakecommand
-
 \warning Calling \c qt_add_translations in a directory scope different than the
 target directory scope requires at least CMake version 3.18.
 
@@ -333,24 +439,104 @@ into \c{.qm} files. This function is a convenience wrapper around
 \l{qt6_add_lupdate}{qt_add_lupdate} and \l{qt6_add_lrelease}{qt_add_lrelease}
 and aims to offer the most common usage of both functions with one call.
 
-The parameter \c{target} is an existing executable or library target that
-contains sources with translatable strings. This function will create the
-targets \c{${target}_lupdate}, \c{${target}_lrelease}, \c{update_translations}
-and \c{release_translations}. The latter targets are umbrella targets that build
-all \c{${target}_lupdate} and \c{${target}}_lrelease targets.
+The parameter \c TARGETS specifies a list of targets that intend to load the
+generated \c{.qm} files at run time. If there's only one such target, you may
+directly pass the target's name as the first argument.
 
-\c{${target}_lrelease} is built automatically whenever \c{${target}} needs to be
-built.
+The parameter \c SOURCE_TARGETS specifies a list of executable or library
+targets that contain sources with translatable strings. From the sources of
+these targets, \c{.ts} files will be created.
 
-The \c{.ts} files must be specified with the argument \c{TS_FILES}.
+If \c SOURCE_TARGETS is not given, targets are automatically gathered by calling
+\l{qt6_collect_translation_source_targets}{qt_collect_translation_source_targets}
+at the end of the directory scope of \c{PROJECT_SOURCE_DIR}. This functionality
+requires CMake 3.19 or newer. This functionality can be turned off with the
+argument \c{IMMEDIATE_CALL}.
+
+This function will create the target \c{update_translations} that scans all
+source files with \c lupdate and creates and updates the \c{.ts} files.
+
+This function will create the target \c{release_translations} that generates the
+\c{.qm} files from the \c{.ts} files. This target is built by default.
+
+The \c{.ts} files may be specified with the argument \c{TS_FILES}, but it's more
+convenient to let \c qt_add_translations figure out the file paths
+automatically. See \l{Automatic Determination of .ts File Paths} for
+details.
 
 \include cmake-macros.qdoc sources-and-include-dirs
 
+\section1 Automatic Determination of .ts File Paths
+
+The paths of the \c{.ts} files that are used as input for \c qt_add_translations
+can be automatically determined if \l{QT_I18N_TRANSLATED_LANGUAGES} has been
+set. This variable can be conveniently set with \l qt_standard_project_setup.
+
+The following project setup is usually enough:
+
+\snippet cmake-macros/examples.cmake auto_determine_ts_file_paths
+
+This will create the files \c{myproject_de.ts} and \c{myproject_fr.ts} in the
+project's source directory.
+
+By default, the \c{.ts} files are created in \c{CMAKE_CURRENT_SOURCE_DIR}. You
+can change the location by passing a different directory with the \c TS_FILE_DIR
+argument.
+
+By default, the \c{.ts} file names are constructed from \c{PROJECT_NAME}. You
+can specify a different base name with the \c{TS_FILE_BASE} argument.
+
+\note \c TS_FILE_DIR and \c TS_FILE_BASE have no effect for explicitly specified
+\c{.ts} files.
+
+\include cmake-macros.qdoc plurals-ts-file
+
+A plurals-only \c{.ts} is automatically generated unless the option \c
+NO_GENERATE_PLURALS_TS_FILE is specified.
+
+For example,
+\badcode
+project(myapp)
+qt_standard_project_setup(
+    I18N_SOURCE_LANGUAGE en         # optional - this is the default
+    I18N_TRANSLATED_LANGUAGES de
+)
+qt_add_executable(myapp ...)
+...
+qt_add_translations(myapp)
+\endcode
+creates the full translation file \c{myapp_de.ts} and the plurals-only file
+\c{myapp_en.ts}.
+
+If you need a full translation of the source language, add it to
+\l{QT_I18N_TRANSLATED_LANGUAGES}
+
+For example,
+\badcode
+project(myapp)
+qt_standard_project_setup(I18N_TRANSLATED_LANGUAGES en de)
+qt_add_executable(myapp ...)
+...
+qt_add_translations(myapp)
+\endcode
+creates the full translation files
+\list
+\li \c{myapp_en.ts}
+\li \c{myapp_de.ts}
+\endlist
+
 \section1 Options
+
+You can specify the name of the custom target that calls lupdate with the \c
+LUPDATE_TARGET option. Likewise, \c LRELEASE_TARGET controls the name of the
+custom target that drives the call to \c lrelease.
 
 You can set additional options for \l{lupdate} and \l{lrelease} with
 \c{LUPDATE_OPTIONS} and \c{LRELEASE_OPTIONS}. You can find possible options in
 the \l{lupdate options} and \l{lrelease options}.
+
+For example, to use \l{Text ID based translations}{ID based translations}, you
+need to pass \c{LRELEASE_OPTIONS -idbased} to \c qt_add_translations.
 
 By default, the \c{.qm} files will be placed in the current build directory
 (\c{CMAKE_CURRENT_BINARY_DIR}). To change this, you can set \c{OUTPUT_LOCATION}
@@ -364,8 +550,8 @@ in a \c{translations} directory below the current build directory.
 \section1 Embedding Generated .qm Files in Resources
 
 By default, the generated \c{.qm} files are embedded in a Qt resource that will
-be linked into \c{${target}}. The files in the resource are accessible under the
-resource prefix \c{"/i18n"}.
+be linked into the targets passed with \c{TARGETS}. The files in the resource
+are accessible under the resource prefix \c{"/i18n"}.
 
 You can set the resource prefix with \c{RESOURCE_PREFIX}.
 
@@ -373,27 +559,198 @@ In a static Qt build, when a resource target is created, additional targets can
 be created. You can instruct \c{qt_add_translations} to store these targets in a
 variable, by passing \c{OUTPUT_TARGETS <variable-name>}.
 
+If \c OUTPUT_TARGETS is used, either \c IMMEDIATE_CALL or \c SOURCE_TARGETS must
+be specified.
+
 The automatic resource embedding can be turned off by giving the
 \c{QM_FILES_OUTPUT_VARIABLE} option, followed by the name of a variable in which
 the command should store the list of generated \c{.qm} files.
 
+\section1 \c{qt_add_translations} before Qt 6.7
+
+Before Qt 6.7, this command accepted only one target as the first argument. This
+target was used for both, extracting translatable sources and embedding \c{.qm}
+files.
+
+Since Qt 6.7, the target in the first argument is not used for source extraction
+anymore.
+
 \section1 Examples
 
-Add a German translation to a target \c{super_calc} using
+Add a German and a French translation to the target \c{frogger} using
 \c{qt_add_translations}:
 
 \snippet cmake-macros/examples.cmake qt_add_translations_default
 
-This is roughly equivalent to the following:
+This will create the \c{.ts} files \c{frogger_de.ts} and \c{frogger_fr.ts} in
+the source directory. \l lupdate sees the source files of all targets that are
+eligible for translation, according to the rules of \l
+qt_collect_translation_source_targets.
+
+The \c{.qm} files that are created from the \c{.ts} files
+are embedded in the \c frogger_game target under the resource prefix \c{"i18n"}.
+
+The \c qt_add_translations call in the above example is roughly equivalent to
+the following:
 
 \snippet cmake-macros/examples.cmake qt_lupdate_lrelease
 
-Add a Norwegian translation to \c{frogger_game} with a custom resource prefix:
+\section2 Excluding directories, targets, and sources
+
+You can exclude targets and directories from the automatic collection of source
+targets. The following excludes the target \c helper_lib and everything under
+the \c tests directory. See the \l{directory property
+QT_EXCLUDE_FROM_TRANSLATION} and the \l{target property
+QT_EXCLUDE_FROM_TRANSLATION}.
+
+\badcode
+# <project_root>/CMakeLists.txt
+qt_add_translations(frogger_game)
+\endcode
+
+\badcode
+# <project_root>/src/helper_lib/CMakeLists.txt
+qt_add_library(helper_lib STATIC helpers.cpp)
+set_property(TARGET helper_lib PROPERTY QT_EXCLUDE_FROM_TRANSLATION ON)
+\endcode
+
+\badcode
+# <project_root>/tests/CMakeLists.txt
+add_subdirectory(behavior_tests)
+add_subdirectory(physics_tests)
+set_directory_properties(PROPERTIES QT_EXCLUDE_FROM_TRANSLATION ON)
+\endcode
+
+In the following example, we exclude source files that are part of the \c
+frogger_game target using the \l QT_EXCLUDE_SOURCES_FROM_TRANSLATION target
+property:
+
+\badcode
+qt_add_executable(frogger_game
+    main.cpp
+    3rdparty/jumpsim.cpp
+    3rdparty/frogmath.cpp
+)
+set_property(TARGET frogger_game
+    PROPERTY QT_EXCLUDE_SOURCES_FROM_TRANSLATION "3rdparty/*"
+)
+\endcode
+
+\section2 Explicit specification of source targets
+
+If you don't want to use the automatic collection of source targets you can
+specify the source targets explicitly:
+
+\snippet cmake-macros/examples.cmake qt_add_translations_explicit_source_targets
+
+\section2 Custom resource prefix
+
+Now, let's embed the \c{.qm} files in \c frogger_game and \c
+frogger_level_editor and set a custom resource prefix.
 
 \snippet cmake-macros/examples.cmake qt_add_translations_resource_prefix
 
-Add a Finnish translation to \c{business_logic}, and install the generated
-\c{.qm} files:
+\section2 Installing .qm files
+
+Instead of embedding the \c{.qm} files we can install them as regular files:
 
 \snippet cmake-macros/examples.cmake qt_add_translations_install
+
+\section2 Influencing the names of the .ts files
+
+Place the \c{.ts} files in a \c translations directory and change the base name
+to \c frogger_i18n:
+
+\badcode
+qt_standard_project_setup(I18N_TRANSLATED_LANGUAGES de fr)
+...
+qt_add_translations(frogger
+    TS_FILE_BASE froggo
+    TS_FILE_DIR translations
+)
+\endcode
+
+This creates the following files
+\list
+\li \c translations/froggo_de.ts
+\li \c translations/froggo_fr.ts
+\endlist
+
+You can also specify the paths explicitly:
+\badcode
+qt_add_translations(frogger
+    TS_FILES translations/froggo_de.ts translations/froggo_fr.ts
+)
+\endcode
+
+*/
+
+/*!
+\page qtlinguist-cmake-qt-collect-targets-for-translation.html
+\ingroup cmake-commands-qtlinguisttools
+
+\title qt_collect_translation_source_targets
+\keyword qt6_collect_translation_source_targets
+
+\summary {Collects targets that are eligible for translation.}
+
+\include cmake-find-package-linguisttools.qdocinc
+
+\cmakecommandsince 6.7
+
+\section1 Synopsis
+
+\badcode
+qt_collect_translation_source_targets(out_var [DIRECTORY path])
+\endcode
+
+\versionlessCMakeCommandsNote qt6_collect_translation_source_targets()
+
+\section1 Description
+
+Collect targets that are eligible for translation in the given \c DIRECTORY and
+all subdirectories. If \c DIRECTORY is not specified, start the target
+collection at \c{CMAKE_CURRENT_SOURCE_DIR}.
+
+The command stores the list of targets in the variable that is specified as
+first argument.
+
+\section1 Excluding targets from translation
+
+By default, all non-imported executable and library targets are eligible for
+translation.
+
+Single targets can be excluded by setting the \l{target property
+QT_EXCLUDE_FROM_TRANSLATION}.
+
+Targets below a certain directory can be excluded by setting the \l{directory
+property QT_EXCLUDE_FROM_TRANSLATION}.
+
+\section1 When to call this command
+
+The \c qt_collect_translation_source_targets command reads the
+\l{https://cmake.org/cmake/help/latest/prop_dir/BUILDSYSTEM_TARGETS.html}{BUILDSYSTEM_TARGETS}
+directory properties. As a consequence, it only collects targets that already
+have been created. Targets that are created after \c
+qt_collect_translation_source_targets has been called are not collected.
+
+To collect all targets of the build system, call \c
+qt_collect_translation_source_targets at the end of the top-level \c
+CMakeLists.txt or use \c{cmake_language(DEFER CALL)} to set up i18n at the end
+of the top-level directory scope.
+
+\section1 Examples
+
+Use the result of \c qt_collect_translation_source_targets as input for \c
+qt_add_lupdate.
+
+\snippet cmake-macros/examples.cmake qt_collect_translation_source_targets
+
+With CMake 3.19 and above, you can collect the source targets at the end of the
+directory scope. This way, \c qt_collect_translation_source_targets can be
+called before all targets have been defined. However, you need to exclude the
+tests by setting the directory property \l{directory property
+QT_EXCLUDE_FROM_TRANSLATION}{QT_EXCLUDE_FROM_TRANSLATION} to \c{ON}.
+
+\snippet cmake-macros/examples.cmake qt_collect_translation_source_targets_deferred
 */

@@ -42,12 +42,15 @@
 #include <qpa/qplatformbackingstore.h>
 #include <QtGui/private/qbackingstorerhisupport_p.h>
 
+#include <QtCore/qpointer.h>
+
 #include <vector>
 #include <memory>
 
 QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(lcWidgetPainting);
+Q_DECLARE_LOGGING_CATEGORY(lcWidgetShowHide);
 
 // Extra QWidget data
 //  - to minimize memory usage for members that are seldom used.
@@ -72,10 +75,6 @@ class QUpdateLaterEvent : public QEvent
 public:
     explicit QUpdateLaterEvent(const QRegion& paintRegion)
         : QEvent(UpdateLater), m_region(paintRegion)
-    {
-    }
-
-    ~QUpdateLaterEvent()
     {
     }
 
@@ -109,7 +108,7 @@ struct QTLWExtra {
     QRect frameStrut;
     QRect normalGeometry; // used by showMin/maximized/FullScreen
     Qt::WindowFlags savedFlags; // Save widget flags while showing fullscreen
-    QScreen *initialScreen; // Screen when passing a QDesktop[Screen]Widget as parent.
+    QPointer<QScreen> initialScreen; // Screen when passing a QDesktop[Screen]Widget as parent.
 
     std::vector<std::unique_ptr<QPlatformTextureList>> widgetTextures;
 
@@ -371,6 +370,8 @@ public:
     void showChildren(bool spontaneous);
     void hideChildren(bool spontaneous);
     void setParent_sys(QWidget *parent, Qt::WindowFlags);
+    void reparentWidgetWindows(QWidget *parentWithWindow, Qt::WindowFlags windowFlags = {});
+    void reparentWidgetWindowChildren(QWidget *parentWithWindow);
     void scroll_sys(int dx, int dy);
     void scroll_sys(int dx, int dy, const QRect &r);
     void deactivateWidgetCleanup();
@@ -383,6 +384,7 @@ public:
     void show_sys();
     void hide_sys();
     void hide_helper();
+    bool isExplicitlyHidden() const;
     void _q_showIfNotHidden();
     void setVisible(bool);
 
@@ -730,6 +732,7 @@ public:
     uint usesRhiFlush : 1;
     uint childrenHiddenByWState : 1;
     uint childrenShownByExpose : 1;
+    uint dontSetExplicitShowHide : 1;
 
     // *************************** Platform specific ************************************
 #if defined(Q_OS_WIN)
@@ -741,6 +744,7 @@ public:
 
     bool stealKeyboardGrab(bool grab);
     bool stealMouseGrab(bool grab);
+    bool hasChildWithFocusPolicy(Qt::FocusPolicy policy, const QWidget *excludeChildrenOf = nullptr) const;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QWidgetPrivate::DrawWidgetFlags)

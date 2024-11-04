@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qmockimagecapture.h>
 #include <qmockcamera.h>
@@ -25,7 +25,7 @@ int QMockImageCapture::capture(const QString &fileName)
         m_fileName = fileName;
         m_captureRequest++;
         emit readyForCaptureChanged(m_ready = false);
-        QTimer::singleShot(5, this, SLOT(captured()));
+        QTimer::singleShot(5, this, &QMockImageCapture::captured);
         return m_captureRequest;
     } else {
         emit error(-1, QImageCapture::NotReadyError,
@@ -40,7 +40,7 @@ void QMockImageCapture::captured()
     emit imageCaptured(m_captureRequest, QImage());
 
     QMediaMetaData metaData;
-    metaData.insert(QMediaMetaData::Author, QString::fromUtf8("Author"));
+    metaData.insert(QMediaMetaData::Author, QStringLiteral("Author"));
     metaData.insert(QMediaMetaData::Date, QDateTime(QDate(2021, 1, 1), QTime()));
 
     emit imageMetadataAvailable(m_captureRequest, metaData);

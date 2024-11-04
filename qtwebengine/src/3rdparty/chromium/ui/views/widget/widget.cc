@@ -27,6 +27,7 @@
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/models/image_model.h"
 #include "ui/base/resource/resource_bundle.h"
+#include "ui/color/color_provider_manager.h"
 #include "ui/compositor/compositor.h"
 #include "ui/compositor/layer.h"
 #include "ui/display/screen.h"
@@ -34,6 +35,7 @@
 #include "ui/events/event_utils.h"
 #include "ui/gfx/image/image_skia.h"
 #include "ui/views/controls/menu/menu_controller.h"
+#include "ui/views/drag_controller.h"
 #include "ui/views/event_monitor.h"
 #include "ui/views/focus/focus_manager.h"
 #include "ui/views/focus/focus_manager_factory.h"
@@ -423,6 +425,10 @@ void Widget::Init(InitParams params) {
         std::make_unique<SublevelManager>(this, params.sublevel);
   }
 
+  if (params.native_theme) {
+    native_theme_ = params.native_theme;
+  }
+
   internal::NativeWidgetPrivate* native_widget_raw_ptr =
       CreateNativeWidget(params, this)->AsNativeWidgetPrivate();
   native_widget_ = native_widget_raw_ptr->GetWeakPtr();
@@ -499,13 +505,12 @@ void Widget::ShowEmojiPanel() {
 // Unconverted methods (see header) --------------------------------------------
 
 gfx::NativeView Widget::GetNativeView() const {
-  return native_widget_ ? native_widget_->GetNativeView()
-                        : gfx::kNullNativeView;
+  return native_widget_ ? native_widget_->GetNativeView() : gfx::NativeView();
 }
 
 gfx::NativeWindow Widget::GetNativeWindow() const {
   return native_widget_ ? native_widget_->GetNativeWindow()
-                        : gfx::kNullNativeWindow;
+                        : gfx::NativeWindow();
 }
 
 void Widget::AddObserver(WidgetObserver* observer) {
@@ -953,8 +958,19 @@ void Widget::SetOpacity(float opacity) {
 }
 
 void Widget::SetAspectRatio(const gfx::SizeF& aspect_ratio) {
-  if (native_widget_)
-    native_widget_->SetAspectRatio(aspect_ratio);
+  if (!native_widget_) {
+    return;
+  }
+
+  // The aspect ratio affects the client view only, so figure out how much of
+  // the widget isn't taken up by the client view.
+  gfx::Size excluded_margin;
+  if (non_client_view() && non_client_view()->frame_view()) {
+    excluded_margin =
+        non_client_view()->bounds().size() -
+        non_client_view()->frame_view()->GetBoundsForClientView().size();
+  }
+  native_widget_->SetAspectRatio(aspect_ratio, excluded_margin);
 }
 
 void Widget::FlashFrame(bool flash) {
@@ -984,8 +1000,7 @@ const ui::ThemeProvider* Widget::GetThemeProvider() const {
                                               : nullptr;
 }
 
-ui::ColorProviderManager::ThemeInitializerSupplier* Widget::GetCustomTheme()
-    const {
+ui::ColorProviderKey::ThemeInitializerSupplier* Widget::GetCustomTheme() const {
   return nullptr;
 }
 
@@ -1031,6 +1046,10 @@ void Widget::RunShellDrag(View* view,
 
   for (WidgetObserver& observer : observers_)
     observer.OnWidgetDragWillStart(this);
+
+  if (view && view->drag_controller()) {
+    view->drag_controller()->OnWillStartDragForView(view);
+  }
 
   WidgetDeletionObserver widget_deletion_observer(this);
   native_widget_->RunShellDrag(view, std::move(data), location, operation,
@@ -1194,21 +1213,6 @@ bool Widget::ShouldWindowContentsBeTransparent() const {
                         : false;
 }
 
-void Widget::DebugToggleFrameType() {
-  if (!native_widget_)
-    return;
-
-  if (frame_type_ == FrameType::kDefault) {
-    frame_type_ = ShouldUseNativeFrame() ? FrameType::kForceCustom
-                                         : FrameType::kForceNative;
-  } else {
-    frame_type_ = frame_type_ == FrameType::kForceCustom
-                      ? FrameType::kForceNative
-                      : FrameType::kForceCustom;
-  }
-  FrameTypeChanged();
-}
-
 void Widget::FrameTypeChanged() {
   if (native_widget_)
     native_widget_->FrameTypeChanged();
@@ -1331,7 +1335,7 @@ std::unique_ptr<Widget::PaintAsActiveLock> Widget::LockPaintAsActive() {
   const bool was_paint_as_active = ShouldPaintAsActive();
   ++paint_as_active_refcount_;
   if (ShouldPaintAsActive() != was_paint_as_active) {
-    paint_as_active_callbacks_.Notify();
+    NotifyPaintAsActiveChanged();
     if (parent() && !parent_paint_as_active_lock_)
       parent_paint_as_active_lock_ = parent()->LockPaintAsActive();
   }
@@ -1368,15 +1372,34 @@ void Widget::OnParentShouldPaintAsActiveChanged() {
   // this->ShouldPaintAsActive() changes iff the native widget is
   // inactive and there's no lock on this widget.
   if (!(native_widget_active_ || paint_as_active_refcount_))
-    paint_as_active_callbacks_.Notify();
+    NotifyPaintAsActiveChanged();
+}
+
+void Widget::NotifyPaintAsActiveChanged() {
+  paint_as_active_callbacks_.Notify();
+  if (native_widget_) {
+    native_widget_->PaintAsActiveChanged();
+  }
 }
 
 void Widget::SetNativeTheme(ui::NativeTheme* native_theme) {
+  // If `native_theme_` has been set for testing ensure the theme instance is
+  // not reset.
+  if (native_theme_set_for_testing_) {
+    return;
+  }
+
+  const bool is_update = native_theme_ && (native_theme_ != native_theme);
   native_theme_ = native_theme;
   native_theme_observation_.Reset();
   if (native_theme)
     native_theme_observation_.Observe(native_theme);
-  ThemeChanged();
+
+  if (is_update) {
+    OnNativeThemeUpdated(native_theme);
+  } else {
+    ThemeChanged();
+  }
 }
 
 int Widget::GetX() const {
@@ -1506,7 +1529,7 @@ bool Widget::OnNativeWidgetActivationChanged(bool active) {
   // Notify controls (e.g. LabelButton) and children widgets about the
   // paint-as-active change.
   if (ShouldPaintAsActive() != was_paint_as_active)
-    paint_as_active_callbacks_.Notify();
+    NotifyPaintAsActiveChanged();
 
   return true;
 }
@@ -1753,6 +1776,13 @@ void Widget::OnMouseEvent(ui::MouseEvent* event) {
       }
       return;
 
+    case ui::ET_MOUSE_ENTERED:
+      last_mouse_event_was_move_ = false;
+      if (root_view) {
+        root_view->OnMouseEntered(*event);
+      }
+      return;
+
     case ui::ET_MOUSE_EXITED:
       last_mouse_event_was_move_ = false;
       if (root_view)
@@ -1943,21 +1973,43 @@ void Widget::OnNativeThemeUpdated(ui::NativeTheme* observed_theme) {
   ThemeChanged();
 }
 
+void Widget::SetColorModeOverride(
+    absl::optional<ui::ColorProviderKey::ColorMode> color_mode) {
+  color_mode_override_ = color_mode;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Widget, ui::ColorProviderSource:
 
-ui::ColorProviderManager::Key Widget::GetColorProviderKey() const {
-  ui::ColorProviderManager::Key key =
-      GetNativeTheme()->GetColorProviderKey(GetCustomTheme());
+ui::ColorProviderKey Widget::GetColorProviderKey() const {
+  // Generally all Widgets should inherit the key of their parent, falling back
+  // to the key set by the NativeTheme otherwise.
+  // TODO(crbug.com/1455535): `parent_` does not always resolve to the logical
+  // parent as expected here (e.g. bubbles). This should be addressed and the
+  // use of parent_ below replaced with something like GetLogicalParent().
+  ui::ColorProviderKey key =
+      parent_ ? parent_->GetColorProviderKey()
+              : GetNativeTheme()->GetColorProviderKey(GetCustomTheme());
+
+  // Widgets may have specific overrides set on the Widget itself that should
+  // apply specifically to themselves and their children, apply these here.
 #if BUILDFLAG(IS_CHROMEOS_ASH)
   key.elevation_mode = background_elevation_;
 #endif
+  if (color_mode_override_.has_value()) {
+    key.color_mode = color_mode_override_.value();
+  }
+
   return key;
 }
 
 const ui::ColorProvider* Widget::GetColorProvider() const {
   return ui::ColorProviderManager::Get().GetColorProviderFor(
       GetColorProviderKey());
+}
+
+ui::ColorProviderKey Widget::GetColorProviderKeyForTesting() const {
+  return GetColorProviderKey();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2137,7 +2189,7 @@ void Widget::UnlockPaintAsActive() {
     parent_paint_as_active_lock_.reset();
 
   if (ShouldPaintAsActive() != was_paint_as_active)
-    paint_as_active_callbacks_.Notify();
+    NotifyPaintAsActiveChanged();
 }
 
 void Widget::ClearFocusFromWidget() {

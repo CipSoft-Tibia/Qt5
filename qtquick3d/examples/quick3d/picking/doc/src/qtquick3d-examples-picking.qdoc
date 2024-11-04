@@ -5,7 +5,7 @@
     \example picking
     \ingroup quick3d-examples
     \title Qt Quick 3D - Picking example
-    \examplecategory {Data Visualization & 3D}
+    \examplecategory {3D}
     \brief Demonstrates picking of models.
 
     This example demonstrates picking. There are 3 different animated models which can be picked.
@@ -42,7 +42,7 @@
 
     \snippet picking/main.qml pick result
 
-    If the result has a \l {PickResult::objectHit}{target object}, we go through the
+    If the result has a \l {pickResult::objectHit}{target object}, we go through the
     specifics of the result, and display them in the text field at the top of the application
     view.
 

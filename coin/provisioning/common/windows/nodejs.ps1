@@ -19,7 +19,7 @@ $package = "C:\Windows\temp\nodejs-$version.7z"
 $targetFolder = "C:\Utils"
 $installFolder = "C:\Utils\node-v$version-win-$arch"
 $externalUrl = "https://nodejs.org/dist/v$version/node-v$version-win-$arch.7z"
-$internalUrl = "http://ci-files01-hki.intra.qt.io/input/windows/node-v$version-win-$arch.7z"
+$internalUrl = "http://ci-files01-hki.ci.qt.io/input/windows/node-v$version-win-$arch.7z"
 
 Write-Host "Installing Node.js"
 Download $externalUrl $internalUrl $package

@@ -126,8 +126,8 @@ void CJX_EventPseudoModel::newText(v8::Isolate* pIsolate,
   if (bSetting)
     return;
 
-  CFXJSE_Engine* pScriptContext = GetDocument()->GetScriptContext();
-  CXFA_EventParam* pEventParam = pScriptContext->GetEventParam();
+  CXFA_EventParam* pEventParam =
+      GetDocument()->GetScriptContext()->GetEventParam();
   if (!pEventParam)
     return;
 
@@ -201,8 +201,7 @@ void CJX_EventPseudoModel::target(v8::Isolate* pIsolate,
 CJS_Result CJX_EventPseudoModel::emit(
     CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
-  CFXJSE_Engine* pScriptContext = GetDocument()->GetScriptContext();
-  CXFA_EventParam* pEventParam = pScriptContext->GetEventParam();
+  CXFA_EventParam* pEventParam = runtime->GetEventParam();
   if (!pEventParam)
     return CJS_Result::Success();
 
@@ -210,15 +209,14 @@ CJS_Result CJX_EventPseudoModel::emit(
   if (!pNotify)
     return CJS_Result::Success();
 
-  pNotify->HandleWidgetEvent(pEventParam->m_pTarget, pEventParam);
+  pNotify->HandleWidgetEvent(runtime->GetEventTarget(), pEventParam);
   return CJS_Result::Success();
 }
 
 CJS_Result CJX_EventPseudoModel::reset(
     CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
-  CFXJSE_Engine* pScriptContext = GetDocument()->GetScriptContext();
-  CXFA_EventParam* pEventParam = pScriptContext->GetEventParam();
+  CXFA_EventParam* pEventParam = runtime->GetEventParam();
   if (pEventParam)
     *pEventParam = CXFA_EventParam();
 
@@ -266,8 +264,7 @@ void CJX_EventPseudoModel::Property(v8::Isolate* pIsolate,
                      bSetting);
       break;
     case XFA_Event::NewText:
-      NOTREACHED();
-      break;
+      NOTREACHED_NORETURN();
     case XFA_Event::PreviousContentType:
       StringProperty(pIsolate, pValue, &pEventParam->m_wsPrevContentType,
                      bSetting);
@@ -309,7 +306,6 @@ void CJX_EventPseudoModel::Property(v8::Isolate* pIsolate,
                      bSetting);
       break;
     case XFA_Event::Target:
-    default:
       break;
   }
 }

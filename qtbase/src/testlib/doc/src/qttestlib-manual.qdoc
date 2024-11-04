@@ -61,7 +61,7 @@
 
     You can use a Qt Creator wizard to create a project that contains Qt tests
     and build and run them directly from Qt Creator. For more information, see
-    \l {Qt Creator: Running Autotests}{Running Autotests}.
+    \l {Qt Creator: Build and Run Tests}.
 
     \section1 Creating a Test
 
@@ -348,6 +348,16 @@
     Disables the crash handler on Unix platforms.
     On Windows, it re-enables the Windows Error Reporting dialog, which is
     turned off by default. This is useful for debugging crashes.
+    \li \c -repeat \e n \br
+    Run the testsuite n times or until the test fails. Useful for finding
+    flaky tests. If negative, the tests are repeated forever. This is intended
+    as a developer tool, and is only supported with the plain text logger.
+    \li \c -skipblacklisted \br
+    Skip the blacklisted tests. This option is intended to allow more accurate
+    measurement of test coverage by preventing blacklisted tests from inflating
+    coverage statistics. When not measuring test coverage, it is recommended to
+    execute blacklisted tests to reveal any changes in their results, such as
+    a new crash or the issue that caused blacklisting being resolved.
 
     \li \c -platform \e name \br
     This command line argument applies to all Qt applications, but might be
@@ -573,7 +583,5 @@
     \li \l {Chapter 6: Skipping Tests with QSKIP}{Skipping Tests}
     \endlist
 
-    \note You can build and execute the tests from each chapter using the
-    available source code, which is linked to at the end of each chapter.
 
 */

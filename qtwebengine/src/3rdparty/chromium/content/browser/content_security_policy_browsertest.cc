@@ -5,6 +5,8 @@
 #include <tuple>
 
 #include "base/files/file_path.h"
+#include "base/memory/raw_ref.h"
+#include "base/notreached.h"
 #include "base/path_service.h"
 #include "base/threading/thread_restrictions.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
@@ -13,6 +15,7 @@
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_paths.h"
 #include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
 #include "content/public/test/content_browser_test.h"
 #include "content/public/test/content_browser_test_content_browser_client.h"
 #include "content/public/test/content_browser_test_utils.h"
@@ -22,6 +25,8 @@
 #include "net/base/filename_util.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
+#include "net/test/spawned_test_server/spawned_test_server.h"
+#include "net/test/test_data_directory.h"
 
 namespace content {
 
@@ -166,43 +171,55 @@ IN_PROC_BROWSER_TEST_F(ContentSecurityPolicyBrowserTest, FileURLs) {
   struct {
     const char* csp;
     std::string element_name;
-    const GURL::Replacements& document_host;
-    const GURL::Replacements& element_host;
+    const raw_ref<const GURL::Replacements, ExperimentalAsh> document_host;
+    const raw_ref<const GURL::Replacements, ExperimentalAsh> element_host;
     bool expect_allowed;
   } test_cases[] = {
-      {"img-src 'none'", "img", none, none, false},
-      {"img-src file:", "img", none, none, true},
-      {"img-src 'self'", "img", none, none, true},
-      {"img-src 'none'", "img", none, add_localhost, false},
-      {"img-src file:", "img", none, add_localhost, true},
-      {"img-src 'self'", "img", none, add_localhost, true},
-      {"img-src 'none'", "img", add_localhost, none, false},
-      {"img-src file:", "img", add_localhost, none, true},
-      {"img-src 'self'", "img", add_localhost, none, true},
-      {"img-src 'none'", "img", add_localhost, add_localhost, false},
-      {"img-src file:", "img", add_localhost, add_localhost, true},
-      {"img-src 'self'", "img", add_localhost, add_localhost, true},
-      {"frame-src 'none'", "iframe", none, none, false},
-      {"frame-src file:", "iframe", none, none, true},
-      {"frame-src 'self'", "iframe", none, none, true},
-      {"frame-src 'none'", "iframe", none, add_localhost, false},
-      {"frame-src file:", "iframe", none, add_localhost, true},
+      {"img-src 'none'", "img", raw_ref(none), raw_ref(none), false},
+      {"img-src file:", "img", raw_ref(none), raw_ref(none), true},
+      {"img-src 'self'", "img", raw_ref(none), raw_ref(none), true},
+      {"img-src 'none'", "img", raw_ref(none), raw_ref(add_localhost), false},
+      {"img-src file:", "img", raw_ref(none), raw_ref(add_localhost), true},
+      {"img-src 'self'", "img", raw_ref(none), raw_ref(add_localhost), true},
+      {"img-src 'none'", "img", raw_ref(add_localhost), raw_ref(none), false},
+      {"img-src file:", "img", raw_ref(add_localhost), raw_ref(none), true},
+      {"img-src 'self'", "img", raw_ref(add_localhost), raw_ref(none), true},
+      {"img-src 'none'", "img", raw_ref(add_localhost), raw_ref(add_localhost),
+       false},
+      {"img-src file:", "img", raw_ref(add_localhost), raw_ref(add_localhost),
+       true},
+      {"img-src 'self'", "img", raw_ref(add_localhost), raw_ref(add_localhost),
+       true},
+      {"frame-src 'none'", "iframe", raw_ref(none), raw_ref(none), false},
+      {"frame-src file:", "iframe", raw_ref(none), raw_ref(none), true},
+      {"frame-src 'self'", "iframe", raw_ref(none), raw_ref(none), true},
+      {"frame-src 'none'", "iframe", raw_ref(none), raw_ref(add_localhost),
+       false},
+      {"frame-src file:", "iframe", raw_ref(none), raw_ref(add_localhost),
+       true},
       // TODO(antoniosartori): The following one behaves differently than
       // img-src.
-      {"frame-src 'self'", "iframe", none, add_localhost, true},
-      {"frame-src 'none'", "iframe", add_localhost, none, false},
-      {"frame-src file:", "iframe", add_localhost, none, true},
+      {"frame-src 'self'", "iframe", raw_ref(none), raw_ref(add_localhost),
+       true},
+      {"frame-src 'none'", "iframe", raw_ref(add_localhost), raw_ref(none),
+       false},
+      {"frame-src file:", "iframe", raw_ref(add_localhost), raw_ref(none),
+       true},
       // TODO(antoniosartori): The following one behaves differently than
       // img-src.
-      {"frame-src 'self'", "iframe", add_localhost, none, true},
-      {"frame-src 'none'", "iframe", add_localhost, add_localhost, false},
-      {"frame-src file:", "iframe", add_localhost, add_localhost, true},
-      {"frame-src 'self'", "iframe", add_localhost, add_localhost, true},
+      {"frame-src 'self'", "iframe", raw_ref(add_localhost), raw_ref(none),
+       true},
+      {"frame-src 'none'", "iframe", raw_ref(add_localhost),
+       raw_ref(add_localhost), false},
+      {"frame-src file:", "iframe", raw_ref(add_localhost),
+       raw_ref(add_localhost), true},
+      {"frame-src 'self'", "iframe", raw_ref(add_localhost),
+       raw_ref(add_localhost), true},
   };
 
   for (const auto& test_case : test_cases) {
     GURL document_url = net::FilePathToFileURL(TestFilePath("hello.html"))
-                            .ReplaceComponents(test_case.document_host);
+                            .ReplaceComponents(*test_case.document_host);
 
     // On windows, if `document_url` contains the host part "localhost", the
     // actual committed URL does not. So we omit EXPECT_TRUE and ignore the
@@ -211,7 +228,7 @@ IN_PROC_BROWSER_TEST_F(ContentSecurityPolicyBrowserTest, FileURLs) {
 
     GURL element_url = net::FilePathToFileURL(TestFilePath(
         test_case.element_name == "iframe" ? "empty.html" : "blank.jpg"));
-    element_url = element_url.ReplaceComponents(test_case.element_host);
+    element_url = element_url.ReplaceComponents(*test_case.element_host);
     TestNavigationObserver load_observer(shell()->web_contents());
 
     EXPECT_TRUE(
@@ -379,13 +396,17 @@ IN_PROC_BROWSER_TEST_F(ContentSecurityPolicyIsolatedAppBrowserTest, Src) {
     std::string path;
     std::string expectation;
   } test_cases[] = {
-      // Only same-origin content can be loaded by default.
+      // Cross-origin HTTPS images and media are allowed (but need a
+      // Cross-Origin-Resource-Policy header, and will error otherwise)
       {"img", kHttps, kAppHost, "/single_face.jpg", "allowed"},
-      {"img", kHttps, kNonAppHost, "/single_face.jpg", "violation"},
+      {"img", kHttps, kNonAppHost, "/single_face.jpg", "error"},
+      {"img", kHttps, kNonAppHost, "/single_face_corp.jpg", "allowed"},
       {"audio", kHttps, kAppHost, "/media/bear.flac", "allowed"},
-      {"audio", kHttps, kNonAppHost, "/media/bear.flac", "violation"},
-      {"video", kHttps, kAppHost, "/media/bear.ogv", "allowed"},
-      {"video", kHttps, kNonAppHost, "/media/bear.obv", "violation"},
+      {"audio", kHttps, kNonAppHost, "/media/bear.flac", "error"},
+      {"audio", kHttps, kNonAppHost, "/media/bear_corp.flac", "allowed"},
+      {"video", kHttps, kAppHost, "/media/bear.webm", "allowed"},
+      {"video", kHttps, kNonAppHost, "/media/bear.webm", "error"},
+      {"video", kHttps, kNonAppHost, "/media/bear_corp.webm", "allowed"},
       // Plugins are disabled.
       {"embed", kHttps, kAppHost, "/single_face.jpg", "violation"},
       // Iframes can contain cross-origin HTTPS content.
@@ -395,6 +416,9 @@ IN_PROC_BROWSER_TEST_F(ContentSecurityPolicyIsolatedAppBrowserTest, Src) {
       // Script tags must be same-origin.
       {"script", kHttps, kAppHost, "/result_queue.js", "allowed"},
       {"script", kHttps, kNonAppHost, "/result_queue.js", "violation"},
+      // Stylesheets must be same-origin as per style-src CSP.
+      {"link", kHttps, kAppHost, "/empty-style.css", "allowed"},
+      {"link", kHttps, kNonAppHost, "/empty-style.css", "violation"},
   };
 
   for (const auto& test_case : test_cases) {
@@ -418,9 +442,17 @@ IN_PROC_BROWSER_TEST_F(ContentSecurityPolicyIsolatedAppBrowserTest, Src) {
         });
 
         let element = document.createElement($1);
-        // Not all elements being tested require Trusted Types, but
-        // passing src through the policy for all elements works.
-        element.src = policy.createScriptURL($2);
+
+        if($1 === 'link') {
+          // Stylesheets require `rel` and `href` instead of `src` to work.
+          element.rel = 'stylesheet';
+          element.href = $2;
+        } else {
+          // Not all elements being tested require Trusted Types, but passing
+          // src through the policy for all non-stylesheet elements works.
+          element.src = policy.createScriptURL($2);
+        }
+
         element.addEventListener('canplay', () => resolve('allowed'));
         element.addEventListener('load', () => resolve('allowed'));
         element.addEventListener('error', e => resolve('error'));
@@ -483,5 +515,98 @@ IN_PROC_BROWSER_TEST_F(ContentSecurityPolicyIsolatedAppBrowserTest, Wasm) {
     })
   )"));
 }
+
+IN_PROC_BROWSER_TEST_F(ContentSecurityPolicyIsolatedAppBrowserTest,
+                       UnsafeInlineStyleSrc) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(),
+      https_server()->GetURL(kAppHost, "/cross-origin-isolated.html")));
+
+  EXPECT_EQ("none", EvalJs(shell(), R"(
+    new Promise(async (resolve) => {
+      document.addEventListener('securitypolicyviolation', e => {
+        resolve('violation');
+      });
+
+      try {
+        document.body.setAttribute("style", "display: none;");
+        const bodyStyles = window.getComputedStyle(document.body);
+        resolve(bodyStyles.getPropertyValue("display"));
+      } catch (e) {
+        resolve('exception: ' + e);
+      }
+    })
+  )"));
+}
+
+struct WebSocketTestParam {
+  net::SpawnedTestServer::Type type;
+  std::string expected_result;
+};
+
+class ContentSecurityPolicyIsolatedAppWebSocketBrowserTest
+    : public ContentSecurityPolicyIsolatedAppBrowserTest,
+      public testing::WithParamInterface<WebSocketTestParam> {};
+
+// Disabled on Android, since we have problems starting up the WebSocket test
+// server on the host.
+//
+// TODO(crbug.com/1448866): Enable the test after solving the WebSocket server
+// issue.
+#if BUILDFLAG(IS_ANDROID)
+#define MAYBE_CheckCsp DISABLED_CheckCsp
+#else
+#define MAYBE_CheckCsp CheckCsp
+#endif
+IN_PROC_BROWSER_TEST_P(ContentSecurityPolicyIsolatedAppWebSocketBrowserTest,
+                       MAYBE_CheckCsp) {
+  auto websocket_test_server = std::make_unique<net::SpawnedTestServer>(
+      GetParam().type, net::GetWebSocketTestDataDirectory());
+  ASSERT_TRUE(websocket_test_server->Start());
+
+  EXPECT_TRUE(NavigateToURL(
+      shell(),
+      https_server()->GetURL(kAppHost, "/cross-origin-isolated.html")));
+
+  // The |websocket_url| will echo the message we send to it.
+  GURL websocket_url = websocket_test_server->GetURL("echo-with-no-extension");
+
+  EXPECT_EQ(GetParam().expected_result,
+            EvalJs(shell(), JsReplace(R"(
+    new Promise(async (resolve) => {
+      document.addEventListener('securitypolicyviolation', e => {
+        resolve('violation');
+      });
+
+      try {
+        new WebSocket($1).onopen = () => resolve('allowed');
+      } catch (e) {
+        resolve('exception: ' + e);
+      }
+    })
+  )",
+                                      websocket_url)));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    /* no prefix */,
+    ContentSecurityPolicyIsolatedAppWebSocketBrowserTest,
+    ::testing::Values(
+        WebSocketTestParam{.type = net::SpawnedTestServer::TYPE_WS,
+                           .expected_result = "violation"},
+        WebSocketTestParam{.type = net::SpawnedTestServer::TYPE_WSS,
+                           .expected_result = "allowed"}),
+    [](const testing::TestParamInfo<
+        ContentSecurityPolicyIsolatedAppWebSocketBrowserTest::ParamType>& info)
+        -> std::string {
+      switch (info.param.type) {
+        case net::SpawnedTestServer::TYPE_WS:
+          return "Ws";
+        case net::SpawnedTestServer::TYPE_WSS:
+          return "Wss";
+        default:
+          NOTREACHED_NORETURN();
+      }
+    });
 
 }  // namespace content

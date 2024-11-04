@@ -31,6 +31,8 @@
 #include <stdint.h>
 #include <errno.h>
 #include <assert.h>
+#include <stdarg.h>
+#include <stdio.h>
 
 /* Convert string to integer
  *
@@ -66,6 +68,37 @@ safe_strtoint(const char *str, int32_t *value)
 	*value = (int32_t)ret;
 
 	return true;
+}
+
+/**
+ * Exactly like asprintf(), but sets *str_out to NULL if it fails.
+ *
+ * If str_out is NULL, does nothing.
+ */
+static inline void __attribute__ ((format (printf, 2, 3)))
+str_printf(char **str_out, const char *fmt, ...)
+{
+	char *msg;
+	va_list ap;
+	int ret;
+
+	if (!str_out)
+		return;
+
+	va_start(ap, fmt);
+	ret = vasprintf(&msg, fmt, ap);
+	va_end(ap);
+
+	if (ret >= 0)
+		*str_out = msg;
+	else
+		*str_out = NULL;
+}
+
+static inline const char *
+yesno(bool cond)
+{
+	return cond ? "yes" : "no";
 }
 
 #endif /* WESTON_STRING_HELPERS_H */

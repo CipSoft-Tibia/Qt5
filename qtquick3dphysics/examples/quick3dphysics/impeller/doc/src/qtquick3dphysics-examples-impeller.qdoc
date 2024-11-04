@@ -5,7 +5,7 @@
     \example impeller
     \ingroup quick3dphysics-examples
     \title Qt Quick 3D Physics - Impeller Example
-    \examplecategory {Data Visualization & 3D}
+    \examplecategory {3D}
     \brief Demonstrates using trigger bodies and collision info.
     \image impeller-example.jpg
 

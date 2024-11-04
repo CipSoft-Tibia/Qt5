@@ -25,6 +25,7 @@
 
 #include "src/Core/util/DisableStupidWarnings.h"
 
+// IWYU pragma: begin_exports
 #include "src/SparseLU/SparseLU_Structs.h"
 #include "src/SparseLU/SparseLU_SupernodalMatrix.h"
 #include "src/SparseLU/SparseLUImpl.h"
@@ -42,6 +43,7 @@
 #include "src/SparseLU/SparseLU_pruneL.h"
 #include "src/SparseLU/SparseLU_Utils.h"
 #include "src/SparseLU/SparseLU.h"
+// IWYU pragma: end_exports
 
 #include "src/Core/util/ReenableStupidWarnings.h"
 

@@ -52,14 +52,9 @@
  *      $QTDIR may be used as a placeholder for the "qtdir" configuration property (see @qtdir), for instance:
  *          "source": "$QTDIR/plugins/imageformats/libqjpeg.so"
  *
- * @return Promise<{
- *             instance: EmscriptenModule,
- *             exitStatus?: { text: string, code?: number, crashed: bool }
- *         }>
+ * @return Promise<instance: EmscriptenModule>
  *      The promise is resolved when the module has been instantiated and its main function has been
- *      called. The returned exitStatus is defined if the application crashed or exited immediately
- *      after its entry function has been called. Otherwise, config.onExit will get called at a
- *      later time when (and if) the application exits.
+ *      called.
  *
  * @see https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/emscripten for
  *      EmscriptenModule
@@ -68,12 +63,15 @@ async function qtLoad(config)
 {
     const throwIfEnvUsedButNotExported = (instance, config) =>
     {
-        const environment = config.environment;
+        const environment = config.qt.environment;
         if (!environment || Object.keys(environment).length === 0)
             return;
-        const isEnvExported = typeof instance.ENV === 'object';
-        if (!isEnvExported)
-            throw new Error('ENV must be exported if environment variables are passed');
+        const descriptor = Object.getOwnPropertyDescriptor(instance, 'ENV');
+        const isEnvExported = typeof descriptor.value === 'object';
+        if (!isEnvExported) {
+            throw new Error('ENV must be exported if environment variables are passed, ' +
+                            'add it to the QT_WASM_EXTRA_EXPORTED_METHODS CMake target property');
+        }
     };
 
     const throwIfFsUsedButNotExported = (instance, config) =>
@@ -91,7 +89,7 @@ async function qtLoad(config)
     if (typeof config.qt !== 'object')
         throw new Error('config.qt is required, expected an object');
     if (typeof config.qt.entryFunction !== 'function')
-        config.qt.entryFunction = window.createQtAppInstance;
+        throw new Error('config.qt.entryFunction is required, expected a function');
 
     config.qt.qtdir ??= 'qt';
     config.qt.preload ??= [];
@@ -100,6 +98,12 @@ async function qtLoad(config)
     delete config.qt.containerElements;
     config.qtFontDpi = config.qt.fontDpi;
     delete config.qt.fontDpi;
+
+    // Make Emscripten not call main(); this gives us more control over
+    // the startup sequence.
+    const originalNoInitialRun = config.noInitialRun;
+    const originalArguments = config.arguments;
+    config.noInitialRun = true;
 
     // Used for rejecting a failed load's promise where emscripten itself does not allow it,
     // like in instantiateWasm below. This allows us to throw in case of a load error instead of
@@ -167,25 +171,32 @@ async function qtLoad(config)
         return originalLocatedFilename;
     }
 
+    let onExitCalled = false;
     const originalOnExit = config.onExit;
     config.onExit = code => {
         originalOnExit?.();
-        config.qt.onExit?.({
-            code,
-            crashed: false
-        });
+
+        if (!onExitCalled) {
+            onExitCalled = true;
+            config.qt.onExit?.({
+                code,
+                crashed: false
+            });
+        }
     }
 
     const originalOnAbort = config.onAbort;
     config.onAbort = text =>
     {
         originalOnAbort?.();
-
-        aborted = true;
-        config.qt.onExit?.({
-            text,
-            crashed: true
-        });
+        
+        if (!onExitCalled) {
+            onExitCalled = true;
+            config.qt.onExit?.({
+                text,
+                crashed: true
+            });
+        }
     };
 
     const fetchPreloadFiles = async () => {
@@ -210,11 +221,25 @@ async function qtLoad(config)
     try {
         instance = await Promise.race(
             [circuitBreaker, config.qt.entryFunction(config)]);
+
+        // Call main after creating the instance. We've opted into manually
+        // calling main() by setting noInitialRun in the config. Thie Works around
+        // issue where Emscripten suppresses all exceptions thrown during main.
+        if (!originalNoInitialRun)
+            instance.callMain(originalArguments);
     } catch (e) {
-        config.qt.onExit?.({
-            text: e.message,
-            crashed: true
-        });
+        // If this is the exception thrown by app.exec() then that is a normal
+        // case and we suppress it.
+        if (e == "unwind") // not much to go on
+            return;
+
+        if (!onExitCalled) {
+            onExitCalled = true;
+            config.qt.onExit?.({
+                text: e.message,
+                crashed: true
+            });
+        }
         throw e;
     }
 

@@ -12,6 +12,7 @@
 #include "base/functional/callback.h"
 #include "base/logging.h"
 #include "base/no_destructor.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/types/expected.h"
 #include "dbus/bus.h"
 #include "dbus/exported_object.h"
@@ -24,6 +25,7 @@
 namespace floss {
 
 extern DEVICE_BLUETOOTH_EXPORT int kDBusTimeoutMs;
+extern DEVICE_BLUETOOTH_EXPORT int kAdapterEnabledTimeoutMs;
 
 // TODO(b/189499077) - Expose via floss package
 extern DEVICE_BLUETOOTH_EXPORT const char kAdapterService[];
@@ -32,6 +34,7 @@ extern DEVICE_BLUETOOTH_EXPORT const char kManagerService[];
 extern DEVICE_BLUETOOTH_EXPORT const char kAdapterLoggingObjectFormat[];
 extern DEVICE_BLUETOOTH_EXPORT const char kAdapterObjectFormat[];
 extern DEVICE_BLUETOOTH_EXPORT const char kBatteryManagerObjectFormat[];
+extern DEVICE_BLUETOOTH_EXPORT const char kBluetoothTelephonyFormat[];
 extern DEVICE_BLUETOOTH_EXPORT const char kGattObjectFormat[];
 extern DEVICE_BLUETOOTH_EXPORT const char kManagerObject[];
 extern DEVICE_BLUETOOTH_EXPORT const char kMediaObjectFormat[];
@@ -40,6 +43,7 @@ extern DEVICE_BLUETOOTH_EXPORT const char kAdapterInterface[];
 extern DEVICE_BLUETOOTH_EXPORT const char kAdapterLoggingInterface[];
 extern DEVICE_BLUETOOTH_EXPORT const char kAdminInterface[];
 extern DEVICE_BLUETOOTH_EXPORT const char kBatteryManagerInterface[];
+extern DEVICE_BLUETOOTH_EXPORT const char kBluetoothTelephonyInterface[];
 extern DEVICE_BLUETOOTH_EXPORT const char kExperimentalInterface[];
 extern DEVICE_BLUETOOTH_EXPORT const char kGattInterface[];
 extern DEVICE_BLUETOOTH_EXPORT const char kManagerInterface[];
@@ -60,13 +64,16 @@ extern DEVICE_BLUETOOTH_EXPORT const char kRemoveBond[];
 extern DEVICE_BLUETOOTH_EXPORT const char kGetRemoteType[];
 extern DEVICE_BLUETOOTH_EXPORT const char kGetRemoteClass[];
 extern DEVICE_BLUETOOTH_EXPORT const char kGetRemoteAppearance[];
+extern DEVICE_BLUETOOTH_EXPORT const char kGetRemoteVendorProductInfo[];
 extern DEVICE_BLUETOOTH_EXPORT const char kGetConnectionState[];
 extern DEVICE_BLUETOOTH_EXPORT const char kGetRemoteUuids[];
 extern DEVICE_BLUETOOTH_EXPORT const char kGetBondState[];
 extern DEVICE_BLUETOOTH_EXPORT const char kConnectAllEnabledProfiles[];
 extern DEVICE_BLUETOOTH_EXPORT const char kDisconnectAllEnabledProfiles[];
 extern DEVICE_BLUETOOTH_EXPORT const char kRegisterCallback[];
+extern DEVICE_BLUETOOTH_EXPORT const char kUnregisterCallback[];
 extern DEVICE_BLUETOOTH_EXPORT const char kRegisterConnectionCallback[];
+extern DEVICE_BLUETOOTH_EXPORT const char kUnregisterConnectionCallback[];
 extern DEVICE_BLUETOOTH_EXPORT const char kRegisterScanner[];
 extern DEVICE_BLUETOOTH_EXPORT const char kUnregisterScanner[];
 extern DEVICE_BLUETOOTH_EXPORT const char kRegisterScannerCallback[];
@@ -80,6 +87,9 @@ extern DEVICE_BLUETOOTH_EXPORT const char kSetPin[];
 extern DEVICE_BLUETOOTH_EXPORT const char kSetPasskey[];
 extern DEVICE_BLUETOOTH_EXPORT const char kGetBondedDevices[];
 extern DEVICE_BLUETOOTH_EXPORT const char kGetConnectedDevices[];
+extern DEVICE_BLUETOOTH_EXPORT const char kSdpSearch[];
+extern DEVICE_BLUETOOTH_EXPORT const char kCreateSdpRecord[];
+extern DEVICE_BLUETOOTH_EXPORT const char kRemoveSdpRecord[];
 
 extern DEVICE_BLUETOOTH_EXPORT const char kOnAdapterPropertyChanged[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnAddressChanged[];
@@ -87,16 +97,24 @@ extern DEVICE_BLUETOOTH_EXPORT const char kOnNameChanged[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnDiscoverableChanged[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnDeviceFound[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnDeviceCleared[];
+extern DEVICE_BLUETOOTH_EXPORT const char kOnDevicePropertiesChanged[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnDiscoveringChanged[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnSspRequest[];
+extern DEVICE_BLUETOOTH_EXPORT const char kOnPinDisplay[];
+extern DEVICE_BLUETOOTH_EXPORT const char kOnPinRequest[];
 
 extern DEVICE_BLUETOOTH_EXPORT const char kOnBondStateChanged[];
+extern DEVICE_BLUETOOTH_EXPORT const char kOnSdpSearchComplete[];
+extern DEVICE_BLUETOOTH_EXPORT const char kOnSdpRecordCreated[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnDeviceConnected[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnDeviceDisconnected[];
 
 extern DEVICE_BLUETOOTH_EXPORT const char kOnScannerRegistered[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnScanResult[];
-extern DEVICE_BLUETOOTH_EXPORT const char kOnScanResultLost[];
+extern DEVICE_BLUETOOTH_EXPORT const char kOnAdvertisementFound[];
+// TODO(b/269343922): Rename this to OnAdvertisementLost for better symmetry
+// with OnAdvertisementFound.
+extern DEVICE_BLUETOOTH_EXPORT const char kOnAdvertisementLost[];
 }  // namespace adapter
 
 namespace manager {
@@ -118,15 +136,21 @@ extern DEVICE_BLUETOOTH_EXPORT const char kOnDefaultAdapterChanged[];
 
 namespace socket_manager {
 extern DEVICE_BLUETOOTH_EXPORT const char kRegisterCallback[];
+extern DEVICE_BLUETOOTH_EXPORT const char kUnregisterCallback[];
 extern DEVICE_BLUETOOTH_EXPORT const char kListenUsingInsecureL2capChannel[];
+extern DEVICE_BLUETOOTH_EXPORT const char kListenUsingInsecureL2capLeChannel[];
 extern DEVICE_BLUETOOTH_EXPORT const char
     kListenUsingInsecureRfcommWithServiceRecord[];
 extern DEVICE_BLUETOOTH_EXPORT const char kListenUsingL2capChannel[];
+extern DEVICE_BLUETOOTH_EXPORT const char kListenUsingL2capLeChannel[];
+extern DEVICE_BLUETOOTH_EXPORT const char kListenUsingRfcomm[];
 extern DEVICE_BLUETOOTH_EXPORT const char kListenUsingRfcommWithServiceRecord[];
 extern DEVICE_BLUETOOTH_EXPORT const char kCreateInsecureL2capChannel[];
+extern DEVICE_BLUETOOTH_EXPORT const char kCreateInsecureL2capLeChannel[];
 extern DEVICE_BLUETOOTH_EXPORT const char
     kCreateInsecureRfcommSocketToServiceRecord[];
 extern DEVICE_BLUETOOTH_EXPORT const char kCreateL2capChannel[];
+extern DEVICE_BLUETOOTH_EXPORT const char kCreateL2capLeChannel[];
 extern DEVICE_BLUETOOTH_EXPORT const char kCreateRfcommSocketToServiceRecord[];
 extern DEVICE_BLUETOOTH_EXPORT const char kAccept[];
 extern DEVICE_BLUETOOTH_EXPORT const char kClose[];
@@ -191,6 +215,7 @@ extern DEVICE_BLUETOOTH_EXPORT const char kServerSendNotification[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnServerRegistered[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnServerConnectionState[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnServerServiceAdded[];
+extern DEVICE_BLUETOOTH_EXPORT const char kOnServerServiceRemoved[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnServerCharacteristicReadRequest[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnServerDescriptorReadRequest[];
 extern DEVICE_BLUETOOTH_EXPORT const char kOnServerCharacteristicWriteRequest[];
@@ -202,6 +227,7 @@ extern DEVICE_BLUETOOTH_EXPORT const char kOnServerSubrateChange[];
    //
 namespace advertiser {
 extern DEVICE_BLUETOOTH_EXPORT const char kRegisterCallback[];
+extern DEVICE_BLUETOOTH_EXPORT const char kUnregisterCallback[];
 extern DEVICE_BLUETOOTH_EXPORT const char kStartAdvertisingSet[];
 extern DEVICE_BLUETOOTH_EXPORT const char kStopAdvertisingSet[];
 extern DEVICE_BLUETOOTH_EXPORT const char kGetOwnAddress[];
@@ -230,10 +256,15 @@ extern DEVICE_BLUETOOTH_EXPORT const char kOnPeriodicAdvertisingEnabled[];
 namespace battery_manager {
 extern DEVICE_BLUETOOTH_EXPORT const char kCallbackInterface[];
 extern DEVICE_BLUETOOTH_EXPORT const char kRegisterBatteryCallback[];
+extern DEVICE_BLUETOOTH_EXPORT const char kUnregisterBatteryCallback[];
 extern DEVICE_BLUETOOTH_EXPORT const char kGetBatteryInformation[];
 
 extern DEVICE_BLUETOOTH_EXPORT const char kOnBatteryInfoUpdated[];
 }  // namespace battery_manager
+
+namespace bluetooth_telephony {
+extern DEVICE_BLUETOOTH_EXPORT const char kSetPhoneOpsEnabled[];
+}  // namespace bluetooth_telephony
 
 namespace experimental {
 extern DEVICE_BLUETOOTH_EXPORT const char kSetLLPrivacy[];
@@ -305,28 +336,38 @@ using DBusResult = base::expected<T, Error>;
 template <typename T>
 using ResponseCallback = base::OnceCallback<void(DBusResult<T>)>;
 
-// A Weakly Owned ResponseCallback<T>. The main usecase for this is to have
-// a weak pointer available for |PostDelayedTask|, where deleting the main
+// A Weakly Owned base::OnceCallback<void(T)>. The main usecase for this is to
+// have a weak pointer available for |PostDelayedTask|, where deleting the main
 // object will automatically cancel the posted task.
 template <typename T>
 class WeaklyOwnedCallback {
  public:
-  explicit WeaklyOwnedCallback(ResponseCallback<T> cb) : cb_(std::move(cb)) {}
+  explicit WeaklyOwnedCallback(base::OnceCallback<void(T)> cb)
+      : cb_(std::move(cb)) {}
   ~WeaklyOwnedCallback() = default;
 
-  static std::unique_ptr<WeaklyOwnedCallback> Create(ResponseCallback<T> cb) {
+  static std::unique_ptr<WeaklyOwnedCallback> Create(
+      base::OnceCallback<void(T)> cb) {
     return std::make_unique<WeaklyOwnedCallback>(std::move(cb));
   }
 
-  // If the callback hasn't been executed, run it and return true. Otherwise
-  // false.
-  bool Run(DBusResult<T> ret) {
+  // Creates a pointer to the callback which will run automatically after
+  // |timeout_ms| with given return value unless the callback is deleted.
+  static std::unique_ptr<WeaklyOwnedCallback> CreateWithTimeout(
+      base::OnceCallback<void(T)> cb,
+      int timeout_ms,
+      T error_ret) {
+    std::unique_ptr<WeaklyOwnedCallback> self = Create(std::move(cb));
+    self->PostDelayed(timeout_ms, error_ret);
+
+    return self;
+  }
+
+  // If the callback hasn't been executed, run it.
+  void Run(T ret) {
     if (cb_) {
       std::move(cb_).Run(std::move(ret));
-      return true;
     }
-
-    return false;
   }
 
   base::WeakPtr<WeaklyOwnedCallback> GetWeakPtr() const {
@@ -334,9 +375,21 @@ class WeaklyOwnedCallback {
   }
 
  private:
-  ResponseCallback<T> cb_;
+  void PostDelayed(int timeout_ms, T error_ret) {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+        FROM_HERE,
+        base::BindOnce(&WeaklyOwnedCallback<T>::Run,
+                       weak_ptr_factory_.GetWeakPtr(), error_ret),
+        base::Milliseconds(timeout_ms));
+  }
+
+  base::OnceCallback<void(T)> cb_;
   base::WeakPtrFactory<WeaklyOwnedCallback> weak_ptr_factory_{this};
 };
+
+// A Weakly Owned ResponseCallback<T>.
+template <typename T>
+using WeaklyOwnedResponseCallback = WeaklyOwnedCallback<DBusResult<T>>;
 
 struct DBusTypeInfo {
   const std::string dbus_signature;
@@ -403,6 +456,7 @@ class DEVICE_BLUETOOTH_EXPORT FlossDBusClient {
     kJniEnvironmentError,
     kJniThreadAttachError,
     kWakelockError,
+    kTimeout,
   };
 
   enum class BluetoothTransport {
@@ -437,6 +491,9 @@ class DEVICE_BLUETOOTH_EXPORT FlossDBusClient {
 
   // Convert adapter number to battery_manager object path.
   static dbus::ObjectPath GenerateBatteryManagerPath(int adapter_index);
+
+  // Convert adapter number to bluetooth_telephony object path.
+  static dbus::ObjectPath GenerateBluetoothTelephonyPath(int adapter_index);
 
   // Convert adapter number to admin object path.
   static dbus::ObjectPath GenerateAdminPath(int adapter_index);
@@ -744,8 +801,8 @@ class DEVICE_BLUETOOTH_EXPORT FlossDBusClient {
     dbus::ObjectProxy* object_proxy =
         bus->GetObjectProxy(service_name, object_path);
     if (!object_proxy) {
-      LOG(ERROR) << "Object proxy does not exist when trying to call "
-                 << method_name;
+      VLOG(1) << "Object proxy does not exist when trying to call "
+              << method_name;
       std::move(callback).Run(base::unexpected(
           Error(std::string(kErrorDBus), "Invalid object proxy")));
       return;
@@ -759,16 +816,18 @@ class DEVICE_BLUETOOTH_EXPORT FlossDBusClient {
     object_proxy->CallMethodWithErrorResponse(
         &method_call, kDBusTimeoutMs,
         base::BindOnce(&FlossDBusClient::DefaultResponseWithCallback<R>,
-                       base::Unretained(this), std::move(callback)));
+                       weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
   }
 
   FlossDBusClient(const FlossDBusClient&) = delete;
   FlossDBusClient& operator=(const FlossDBusClient&) = delete;
 
-  // Common init signature for all clients.
+  // Common init signature for all clients. |on_ready| should be called once the
+  // client is ready to be used.
   virtual void Init(dbus::Bus* bus,
                     const std::string& bluetooth_service_name,
-                    const int adapter_index) = 0;
+                    const int adapter_index,
+                    base::OnceClosure on_ready) = 0;
 
  protected:
   // Convert a dbus::ErrorResponse into a floss::Error struct.
@@ -813,6 +872,9 @@ class DEVICE_BLUETOOTH_EXPORT FlossDBusClient {
   void DefaultResponse(const std::string& caller,
                        dbus::Response* response,
                        dbus::ErrorResponse* error_response);
+
+ private:
+  base::WeakPtrFactory<FlossDBusClient> weak_ptr_factory_{this};
 };
 
 // Utility to keep a property that takes care of getting the initial value,
@@ -855,7 +917,7 @@ class FlossProperty {
   // |update_callback| - Caller can provide this to be notified when there are
   //                     updates.
   void Init(FlossDBusClient* client,
-            raw_ptr<dbus::Bus> bus,
+            dbus::Bus* bus,
             const std::string& service_name,
             const dbus::ObjectPath& path,
             const dbus::ObjectPath& callback_path,
@@ -866,6 +928,10 @@ class FlossProperty {
     client->CallMethod(base::BindOnce(&FlossProperty::OnGetInitialValue,
                                       weak_ptr_factory_.GetWeakPtr()),
                        bus, service_name, interface_, path, getter_);
+
+    if (!on_update_) {
+      return;
+    }
 
     // Listen for property updates.
     dbus::ExportedObject* exported_object =
@@ -922,12 +988,14 @@ class FlossProperty {
   const char* interface_;
   const char* callback_interface_;
 
-  // Method names.
+  // Method name to call to Floss daemon to get property value.
   const char* getter_;
+  // Method name called by Floss daemon to us to notify updates.
+  // Null means the property value never changes.
   const char* on_update_;
 
   // Keeps the property value.
-  T value_;
+  T value_ = T();
 
   // To update caller when property is updated.
   base::RepeatingCallback<void(const T&)> update_callback_;

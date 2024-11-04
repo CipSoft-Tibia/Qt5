@@ -4,7 +4,6 @@
 
 #include "ui/views/interaction/element_tracker_views.h"
 
-#include <algorithm>
 #include <list>
 #include <map>
 #include <memory>
@@ -15,6 +14,7 @@
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
+#include "base/ranges/algorithm.h"
 #include "base/scoped_multi_source_observation.h"
 #include "base/scoped_observation.h"
 #include "ui/base/interaction/element_identifier.h"
@@ -133,9 +133,8 @@ class ElementTrackerViews::ElementDataViews : public ViewObserver,
 
   ViewList GetAllViews() {
     ViewList result;
-    std::transform(view_data_lookup_.begin(), view_data_lookup_.end(),
-                   std::back_inserter(result),
-                   [](const auto& pr) { return pr.first; });
+    base::ranges::transform(view_data_lookup_, std::back_inserter(result),
+                            &ViewDataMap::value_type::first);
     return result;
   }
 
@@ -152,6 +151,7 @@ class ElementTrackerViews::ElementDataViews : public ViewObserver,
   };
 
   using ViewDataList = std::list<ViewData>;
+  using ViewDataMap = std::map<View*, ViewDataList::iterator>;
 
   // ViewObserver:
   void OnViewVisibilityChanged(View* observed_view,
@@ -225,7 +225,7 @@ class ElementTrackerViews::ElementDataViews : public ViewObserver,
   const raw_ptr<ElementTrackerViews> tracker_;
   const ui::ElementIdentifier id_;
   ViewDataList view_data_;
-  std::map<View*, ViewDataList::iterator> view_data_lookup_;
+  ViewDataMap view_data_lookup_;
   base::ScopedMultiSourceObservation<View, ViewObserver> view_observer_{this};
 };
 
@@ -278,14 +278,20 @@ class ElementTrackerViews::WidgetTracker : public WidgetObserver {
     tracker_->widget_trackers_.erase(widget_);
   }
 
-  const base::raw_ptr<ElementTrackerViews> tracker_;
-  const base::raw_ptr<Widget> widget_;
+  const raw_ptr<ElementTrackerViews> tracker_;
+  const raw_ptr<Widget> widget_;
   bool visible_ = false;
   base::ScopedObservation<Widget, WidgetObserver> observation_{this};
 };
 
 ElementTrackerViews::ElementTrackerViews() = default;
 ElementTrackerViews::~ElementTrackerViews() = default;
+
+// static
+void ElementTrackerViews::SetContextOverrideCallback(
+    ContextOverrideCallback callback) {
+  GetContextOverrideCallback() = callback;
+}
 
 // static
 ElementTrackerViews* ElementTrackerViews::GetInstance() {
@@ -301,7 +307,13 @@ ui::ElementContext ElementTrackerViews::GetContextForView(View* view) {
 
 // static
 ui::ElementContext ElementTrackerViews::GetContextForWidget(Widget* widget) {
-  return ui::ElementContext(widget->GetPrimaryWindowWidget());
+  auto* const primary = widget->GetPrimaryWindowWidget();
+  if (auto& callback = GetContextOverrideCallback()) {
+    if (ui::ElementContext context = callback.Run(primary)) {
+      return context;
+    }
+  }
+  return ui::ElementContext(primary);
 }
 
 TrackedElementViews* ElementTrackerViews::GetElementForView(
@@ -409,6 +421,13 @@ void ElementTrackerViews::NotifyViewActivated(ui::ElementIdentifier element_id,
   const auto it = element_data_.find(element_id);
   DCHECK(it != element_data_.end());
   it->second.NotifyViewActivated(view);
+}
+
+// static
+ElementTrackerViews::ContextOverrideCallback&
+ElementTrackerViews::GetContextOverrideCallback() {
+  static base::NoDestructor<ContextOverrideCallback> callback;
+  return *callback.get();
 }
 
 void ElementTrackerViews::MaybeTrackWidget(Widget* widget) {

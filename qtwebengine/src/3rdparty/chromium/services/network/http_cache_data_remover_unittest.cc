@@ -124,8 +124,9 @@ class HttpCacheDataRemoverTest : public testing::Test {
     request_info.method = "GET";
     request_info.network_isolation_key =
         net::NetworkIsolationKey(kOrigin, kOrigin);
-    request_info.network_anonymization_key = net::NetworkAnonymizationKey(
-        net::SchemefulSite(kOrigin), net::SchemefulSite(kOrigin));
+    request_info.network_anonymization_key =
+        net::NetworkAnonymizationKey::CreateSameSite(
+            net::SchemefulSite(kOrigin));
     return *cache_->GenerateCacheKeyForRequest(&request_info);
   }
 
@@ -178,7 +179,7 @@ class HttpCacheDataRemoverTest : public testing::Test {
   RAW_PTR_EXCLUSION disk_cache::Backend* backend_ = nullptr;
 
  private:
-  raw_ptr<net::HttpCache> cache_;
+  raw_ptr<net::HttpCache, DanglingUntriaged> cache_;
 };
 
 class HttpCacheDataRemoverSplitCacheTest : public HttpCacheDataRemoverTest {

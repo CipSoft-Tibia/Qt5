@@ -95,14 +95,14 @@ private:
                                      const QHttpServerRequest &request) {
             if constexpr (ViewTraits::Arguments::Last::IsRequest::Value) {
                 if constexpr (ViewTraits::Arguments::Count == 2)
-                    return std::move(viewHandler(std::move(resp), request));
+                    return viewHandler(std::move(resp), request);
                 else
                     static_assert(dependent_false_v<ViewTraits>);
             } else if constexpr (ViewTraits::Arguments::Last::IsResponse::Value) {
                 if constexpr (ViewTraits::Arguments::Count == 1)
-                    return std::move(viewHandler(std::move(resp)));
+                    return viewHandler(std::move(resp));
                 else if constexpr (ViewTraits::Arguments::Count == 2)
-                    return std::move(viewHandler(request, std::move(resp)));
+                    return viewHandler(request, std::move(resp));
                 else
                     static_assert(dependent_false_v<ViewTraits>);
             } else {

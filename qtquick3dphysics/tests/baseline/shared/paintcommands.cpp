@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include "paintcommands.h"
 
 #include <qdir.h>
@@ -745,8 +745,8 @@ void PaintCommands::runCommand(const QString &scriptLine)
         return;
     }
     QString firstWord = scriptLine.section(separators, 0, 0);
-    QList<int> indices = s_commandHash.values(firstWord);
-    foreach(int idx, indices) {
+    const QList<int> indices = s_commandHash.values(firstWord);
+    for (int idx : indices) {
         PaintCommandInfos command = s_commandInfoTable.at(idx);
         Q_ASSERT(command.regExp.isValid());
         QRegularExpressionMatch match = command.regExp.match(scriptLine);

@@ -2,25 +2,19 @@ Version: 2
 Module only: True
 Configurations:
 -
-    Template: 'qtci-windows-10_22H2-x86_64-51'
+    Template: 'qtci-windows-10_22H2-x86_64-52'
     Compiler: 'MSVC2019'
     Features: ['Packaging', 'Sccache', 'DebugAndRelease']
     Configure arguments: ''
     Environment variables: []
     Environment script: ['%ProgramFiles(x86)%\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat', 'amd64']
 -
-    Template: 'qtci-windows-10-x86-4'
+    Template: 'qtci-windows-10_22H2-x86_64-52'
     Compiler: 'MSVC2019'
     Features: ['Packaging', 'Sccache', 'DebugAndRelease', 'DisableTests']
     Configure arguments: ''
     Environment variables: []
-    Environment script: ['%ProgramFiles%\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat', 'x86']
--
-    Template: 'qtci-linux-RHEL-8.6-x86_64-50'
-    Compiler: 'GCC'
-    Features: ['Packaging', 'Sccache', 'DebugAndRelease']
-    Configure arguments: ''
-    Environment variables: []
+    Environment script: ['%ProgramFiles(x86)%\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat', 'amd64']
 -
     Template: 'qtci-linux-RHEL-8.8-x86_64-50'
     Compiler: 'GCC'
@@ -28,13 +22,7 @@ Configurations:
     Configure arguments: ''
     Environment variables: []
 -
-    Template: 'qtci-linux-RHEL-9.2-x86_64-51'
-    Compiler: 'GCC'
-    Features: ['Qt5', 'Sccache', 'DebugAndRelease']
-    Configure arguments: ''
-    Environment variables: []
--
-    Template: 'qtci-macos-11-x86_64-106'
+    Template: 'qtci-macos-14-arm-106'
     Compiler: 'Clang'
     Features: ['Packaging', 'Sccache', 'DebugAndRelease']
     Configure arguments: ''

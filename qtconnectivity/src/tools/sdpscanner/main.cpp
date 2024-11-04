@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/QByteArray>
 #include <QtCore/QDebug>
@@ -60,7 +60,8 @@ static void parseAttributeValues(sdp_data_t *data, int indentation, QByteArray &
         xmlOutput.append(snBuffer);
         break;
     case SDP_UINT64:
-        qsnprintf(snBuffer, BUFFER_SIZE, "<uint64 value=\"0x%016x\"/>\n", data->val.uint64);
+        qsnprintf(snBuffer, BUFFER_SIZE, "<uint64 value=\"0x%016llx\"/>\n",
+                      qulonglong(data->val.uint64));
         xmlOutput.append(snBuffer);
         break;
     case SDP_UINT128:
@@ -83,7 +84,8 @@ static void parseAttributeValues(sdp_data_t *data, int indentation, QByteArray &
         xmlOutput.append(snBuffer);
         break;
     case SDP_INT64:
-        qsnprintf(snBuffer, BUFFER_SIZE, "<int64 value=\"%d\"/>/n", data->val.int64);
+        qsnprintf(snBuffer, BUFFER_SIZE, "<int64 value=\"%lld\"/>/n",
+                      qlonglong(data->val.int64));
         xmlOutput.append(snBuffer);
         break;
     case SDP_INT128:

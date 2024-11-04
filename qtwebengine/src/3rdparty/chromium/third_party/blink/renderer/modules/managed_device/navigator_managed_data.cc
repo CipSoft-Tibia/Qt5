@@ -39,7 +39,8 @@ NavigatorManagedData* NavigatorManagedData::managed(Navigator& navigator) {
 }
 
 NavigatorManagedData::NavigatorManagedData(Navigator& navigator)
-    : Supplement<Navigator>(navigator),
+    : ActiveScriptWrappable<NavigatorManagedData>({}),
+      Supplement<Navigator>(navigator),
       device_api_service_(navigator.DomWindow()),
       managed_configuration_service_(navigator.DomWindow()),
       configuration_observer_(this, navigator.DomWindow()) {}
@@ -59,7 +60,7 @@ bool NavigatorManagedData::HasPendingActivity() const {
 }
 
 void NavigatorManagedData::Trace(Visitor* visitor) const {
-  EventTargetWithInlineData::Trace(visitor);
+  EventTarget::Trace(visitor);
   ActiveScriptWrappable::Trace(visitor);
   Supplement<Navigator>::Trace(visitor);
 
@@ -260,8 +261,7 @@ void NavigatorManagedData::AddedEventListener(
     return;
   }
 
-  EventTargetWithInlineData::AddedEventListener(event_type,
-                                                registered_listener);
+  EventTarget::AddedEventListener(event_type, registered_listener);
   if (event_type == event_type_names::kManagedconfigurationchange) {
     if (!configuration_observer_.is_bound()) {
       GetManagedConfigurationService()->SubscribeToManagedConfiguration(
@@ -275,8 +275,7 @@ void NavigatorManagedData::AddedEventListener(
 void NavigatorManagedData::RemovedEventListener(
     const AtomicString& event_type,
     const RegisteredEventListener& registered_listener) {
-  EventTargetWithInlineData::RemovedEventListener(event_type,
-                                                  registered_listener);
+  EventTarget::RemovedEventListener(event_type, registered_listener);
   if (!HasEventListeners())
     StopObserving();
 }

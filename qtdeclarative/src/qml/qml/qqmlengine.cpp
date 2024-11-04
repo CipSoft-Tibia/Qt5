@@ -21,6 +21,7 @@
 #include <QtCore/qstandardpaths.h>
 #include <QtCore/qmetaobject.h>
 #include <QDebug>
+#include <private/qqmlcomponent_p.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qcryptographichash.h>
 #include <QtCore/qdir.h>
@@ -61,6 +62,8 @@
 #endif // Q_OS_WIN
 
 QT_BEGIN_NAMESPACE
+
+void qml_register_types_QML();
 
 /*!
   \qmltype QtObject
@@ -251,11 +254,8 @@ void QQmlPrivate::qdeclarativeelement_destructor(QObject *o)
 QQmlData::QQmlData(Ownership ownership)
     : ownMemory(ownership == OwnsMemory), indestructible(true), explicitIndestructibleSet(false),
       hasTaintedV4Object(false), isQueuedForDeletion(false), rootObjectInCreation(false),
-      hasInterceptorMetaObject(false), hasVMEMetaObject(false), hasConstWrapper(false),
-      bindingBitsArraySize(InlineBindingArraySize), notifyList(nullptr),
-      bindings(nullptr), signalHandlers(nullptr), nextContextObject(nullptr), prevContextObject(nullptr),
-      lineNumber(0), columnNumber(0), jsEngineId(0),
-      guards(nullptr), extendedData(nullptr)
+      hasInterceptorMetaObject(false), hasVMEMetaObject(false), hasConstWrapper(false), dummy(0),
+      bindingBitsArraySize(InlineBindingArraySize)
 {
     memset(bindingBitsValue, 0, sizeof(bindingBitsValue));
     init();
@@ -471,84 +471,8 @@ void QQmlEnginePrivate::init()
     Q_Q(QQmlEngine);
 
     if (baseModulesUninitialized) {
-        // Named builtins
-        qmlRegisterType<void>("QML", 1, 0, "void");
-
-        const int varId = qmlRegisterType<QVariant>("QML", 1, 0, "var");
-        QQmlMetaType::registerTypeAlias(varId, QLatin1String("variant"));
-        qmlRegisterAnonymousSequentialContainer<QList<QVariant>>("QML", 1);
-
-        qmlRegisterType<QObject>("QML", 1, 0, "QtObject");
-        qmlRegisterType<QQmlComponent>("QML", 1, 0, "Component");
-
-        qmlRegisterType<int>("QML", 1, 0, "int");
-        qmlRegisterAnonymousSequentialContainer<QList<int>>("QML", 1);
-
-        const int realId = qmlRegisterType<double>("QML", 1, 0, "real");
-        QQmlMetaType::registerTypeAlias(realId, QLatin1String("double"));
-        qmlRegisterAnonymousSequentialContainer<QList<double>>("QML", 1);
-
-        qmlRegisterType<QString>("QML", 1, 0, "string");
-        qmlRegisterAnonymousSequentialContainer<QList<QString>>("QML", 1);
-
-        qmlRegisterType<bool>("QML", 1, 0, "bool");
-        qmlRegisterAnonymousSequentialContainer<QList<bool>>("QML", 1);
-
-        qmlRegisterType<QDateTime>("QML", 1, 0, "date");
-        qmlRegisterAnonymousSequentialContainer<QList<QDateTime>>("QML", 1);
-
-        qmlRegisterType<QUrl>("QML", 1, 0, "url");
-        qmlRegisterAnonymousSequentialContainer<QList<QUrl>>("QML", 1);
-
-#if QT_CONFIG(regularexpression)
-        qmlRegisterType<QRegularExpression>("QML", 1, 0, "regexp");
-        qmlRegisterAnonymousSequentialContainer<QList<QRegularExpression>>("QML", 1);
-#else
-        qmlRegisterType<void>("QML", 1, 0, "regexp");
-#endif
-
-        // Anonymous builtins
-        qmlRegisterAnonymousType<std::nullptr_t>("QML", 1);
-        qmlRegisterAnonymousType<QVariantMap>("QML", 1);
-
-        qmlRegisterAnonymousType<QJSValue>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<QJSValue>>("QML", 1);
-
-        qmlRegisterAnonymousType<qint8>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<qint8>>("QML", 1);
-
-        qmlRegisterAnonymousType<quint8>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<quint8>>("QML", 1);
-
-        qmlRegisterAnonymousType<short>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<short>>("QML", 1);
-
-        qmlRegisterAnonymousType<ushort>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<ushort>>("QML", 1);
-
-        qmlRegisterAnonymousType<uint>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<uint>>("QML", 1);
-
-        qmlRegisterAnonymousType<qlonglong>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<qlonglong>>("QML", 1);
-
-        qmlRegisterAnonymousType<qulonglong>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<qulonglong>>("QML", 1);
-
-        qmlRegisterAnonymousType<float>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<float>>("QML", 1);
-
-        qmlRegisterAnonymousType<QChar>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<QChar>>("QML", 1);
-
-        qmlRegisterAnonymousType<QDate>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<QDate>>("QML", 1);
-
-        qmlRegisterAnonymousType<QTime>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<QTime>>("QML", 1);
-
-        qmlRegisterAnonymousType<QByteArray>("QML", 1);
-        qmlRegisterAnonymousSequentialContainer<QList<QByteArray>>("QML", 1);
+        // Register builtins
+        qml_register_types_QML();
 
         // No need to specifically register those.
         static_assert(std::is_same_v<QStringList, QList<QString>>);
@@ -558,6 +482,9 @@ void QQmlEnginePrivate::init()
         qRegisterMetaType<QQmlComponent::Status>();
         qRegisterMetaType<QList<QObject*> >();
         qRegisterMetaType<QQmlBinding*>();
+
+        // Protect the module: We don't want any URL interceptor to mess with the builtins.
+        qmlProtectModule("QML", 1);
 
         QQmlData::init();
         baseModulesUninitialized = false;
@@ -574,7 +501,7 @@ void QQmlEnginePrivate::init()
   \inmodule QtQml
   \brief The QQmlEngine class provides an environment for instantiating QML components.
 
-  A QQmlEngine is used to manage \l{components}{QQmlComponent} and objects created from
+  A QQmlEngine is used to manage \l{QQmlComponent}{components} and objects created from
   them and execute their bindings and functions. QQmlEngine also inherits from
   \l{QJSEngine} which allows seamless integration between your QML components and
   JavaScript code.
@@ -1887,13 +1814,12 @@ QJSValue QQmlEnginePrivate::singletonInstance<QJSValue>(const QQmlType &type)
 {
     Q_Q(QQmlEngine);
 
-    QJSValue value = singletonInstances.value(type);
-    if (!value.isUndefined()) {
-        return value;
-    }
-
-    QQmlType::SingletonInstanceInfo *siinfo = type.singletonInstanceInfo();
+    QQmlType::SingletonInstanceInfo::ConstPtr siinfo = type.singletonInstanceInfo();
     Q_ASSERT(siinfo != nullptr);
+
+    QJSValue value = singletonInstances.value(siinfo);
+    if (!value.isUndefined())
+        return value;
 
     if (siinfo->scriptCallback) {
         value = siinfo->scriptCallback(q, q);
@@ -1903,7 +1829,7 @@ QJSValue QQmlEnginePrivate::singletonInstance<QJSValue>(const QQmlType &type)
             // should behave identically to QML singleton types.
             q->setContextForObject(o, new QQmlContext(q->rootContext(), q));
         }
-        singletonInstances.convertAndInsert(v4engine(), type, &value);
+        singletonInstances.convertAndInsert(v4engine(), siinfo, &value);
 
     } else if (siinfo->qobjectCallback) {
         QObject *o = siinfo->qobjectCallback(q, q);
@@ -1932,7 +1858,7 @@ QJSValue QQmlEnginePrivate::singletonInstance<QJSValue>(const QQmlType &type)
         }
 
         value = q->newQObject(o);
-        singletonInstances.convertAndInsert(v4engine(), type, &value);
+        singletonInstances.convertAndInsert(v4engine(), siinfo, &value);
     } else if (!siinfo->url.isEmpty()) {
         QQmlComponent component(q, siinfo->url, QQmlComponent::PreferSynchronous);
         if (component.isError()) {
@@ -1942,8 +1868,26 @@ QJSValue QQmlEnginePrivate::singletonInstance<QJSValue>(const QQmlType &type)
             return QJSValue(QJSValue::UndefinedValue);
         }
         QObject *o = component.beginCreate(q->rootContext());
+        auto *compPriv = QQmlComponentPrivate::get(&component);
+        if (compPriv->state.hasUnsetRequiredProperties()) {
+            /* We would only get the errors from the component after (complete)Create.
+                We can't call create, as we need to convertAndInsert before completeCreate (otherwise
+                tst_qqmllanguage::compositeSingletonCircular fails).
+                On the other hand, we don't want to call cnovertAndInsert if we have an error
+                So create the unset required component errors manually.
+            */
+            delete o;
+            const auto requiredProperties = compPriv->state.requiredProperties();
+            QList<QQmlError> errors (requiredProperties->size());
+            for (const auto &reqProp: *requiredProperties)
+                errors.push_back(QQmlComponentPrivate::unsetRequiredPropertyToQQmlError(reqProp));
+            warning(errors);
+            v4engine()->throwError(QLatin1String("Due to the preceding error(s), Singleton \"%1\" could not be loaded.").arg(QString::fromUtf8(type.typeName())));
+            return QJSValue(QJSValue::UndefinedValue);
+        }
+
         value = q->newQObject(o);
-        singletonInstances.convertAndInsert(v4engine(), type, &value);
+        singletonInstances.convertAndInsert(v4engine(), siinfo, &value);
         component.completeCreate();
     }
 
@@ -2216,7 +2160,4 @@ bool LoadHelper::couldFindModule() const
 
 QT_END_NAMESPACE
 
-#include "moc_qqmlengine_p.cpp"
-
 #include "moc_qqmlengine.cpp"
-

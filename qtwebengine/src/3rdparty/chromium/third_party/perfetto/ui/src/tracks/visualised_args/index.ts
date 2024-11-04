@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
+import m from 'mithril';
 
 import {Actions} from '../../common/actions';
-import {PluginContext} from '../../common/plugin_api';
 import {globals} from '../../frontend/globals';
 import {NewTrackArgs, Track} from '../../frontend/track';
 import {TrackButton, TrackButtonAttrs} from '../../frontend/track_panel';
+import {Plugin, PluginContext, PluginInfo} from '../../public';
 import {
   ChromeSliceTrack,
   ChromeSliceTrackController,
@@ -65,12 +65,14 @@ export class VisualisedArgsTrack extends ChromeSliceTrack {
   }
 }
 
-function activate(ctx: PluginContext) {
-  ctx.registerTrackController(VisualisedArgsTrackController);
-  ctx.registerTrack(VisualisedArgsTrack);
+class VisualisedArgsPlugin implements Plugin {
+  onActivate(ctx: PluginContext): void {
+    ctx.registerTrackController(VisualisedArgsTrackController);
+    ctx.registerTrack(VisualisedArgsTrack);
+  }
 }
 
-export const plugin = {
+export const plugin: PluginInfo = {
   pluginId: 'perfetto.VisualisedArgs',
-  activate,
+  plugin: VisualisedArgsPlugin,
 };

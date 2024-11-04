@@ -8,7 +8,6 @@
   padding: 0;
 }
 
-.tree-outline li.has-warning,
 .tree-outline li.not-parsed-ok {
   margin-left: 0;
 }
@@ -17,7 +16,6 @@
   background-color: var(--color-match-highlight);
 }
 
-.tree-outline li.has-warning .exclamation-mark,
 .tree-outline li.not-parsed-ok .exclamation-mark {
   display: inline-block;
   position: relative;
@@ -114,10 +112,14 @@ ol.expanded {
   display: none !important; /* stylelint-disable-line declaration-no-important */
 }
 
-.overloaded:not(.has-ignorable-error),
-.inactive,
+.overloaded:not(.has-ignorable-error, .invalid-property-value),
+.inactive:not(.invalid-property-value),
 .disabled,
-.not-parsed-ok:not(.has-ignorable-error) {
+.not-parsed-ok:not(.has-ignorable-error, .invalid-property-value) {
+  text-decoration: line-through;
+}
+
+.not-parsed-ok.invalid-property-value .value {
   text-decoration: line-through;
 }
 
@@ -156,14 +158,21 @@ ol.expanded {
   transform: scale(0.9);
 }
 
-.hint {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  margin: auto auto auto 3px;
+.hint-wrapper {
+  align-items: center;
   display: inline-block;
+  margin-left: 3px;
+  max-height: 13px;
+  max-width: 13px;
+  vertical-align: middle;
+}
+
+.hint {
   cursor: pointer;
-  transform: scale(0.9);
+  display: block;
+  position: relative;
+  left: -1.5px;
+  top: -1.5px;
 }
 
 .has-ignorable-error {
@@ -239,7 +248,7 @@ ol.expanded {
   user-select: none;
   margin-left: -6px;
   margin-right: 2px;
-  margin-bottom: -2px;
+  margin-bottom: -4px;
 }
 
 .tree-outline li:not(.parent) .expand-icon {

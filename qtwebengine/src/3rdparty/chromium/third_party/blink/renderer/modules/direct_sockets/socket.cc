@@ -35,10 +35,8 @@ CreateDOMExceptionCodeAndMessageFromNetErrorCode(int32_t net_error) {
     case net::ERR_ACCESS_DENIED:
       return {DOMExceptionCode::kInvalidAccessError,
               "Access to the requested host is blocked."};
-    case net::ERR_BLOCKED_BY_RESPONSE:
-      return {
-          DOMExceptionCode::kInvalidAccessError,
-          "Access to the requested host is blocked by cross-origin policy."};
+    case net::ERR_NETWORK_ACCESS_DENIED:
+      return {DOMExceptionCode::kInvalidAccessError, "Firewall error."};
     default:
       return {DOMExceptionCode::kNetworkError, "Network Error."};
   }
@@ -96,9 +94,18 @@ bool Socket::CheckContextAndPermissions(ScriptState* script_state,
     return false;
   }
 
-  if (!ExecutionContext::From(script_state)
-           ->IsFeatureEnabled(
-               mojom::blink::PermissionsPolicyFeature::kDirectSockets)) {
+  ExecutionContext* execution_context = ExecutionContext::From(script_state);
+  if (!execution_context->IsIsolatedContext() ||
+      !execution_context->IsFeatureEnabled(
+          mojom::blink::PermissionsPolicyFeature::kCrossOriginIsolated)) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kNotAllowedError,
+        "Frame is not sufficiently isolated to use Direct Sockets.");
+    return false;
+  }
+
+  if (!execution_context->IsFeatureEnabled(
+          mojom::blink::PermissionsPolicyFeature::kDirectSockets)) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kNotAllowedError,
         "Permissions-Policy: direct-sockets are disabled.");

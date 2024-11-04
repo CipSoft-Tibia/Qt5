@@ -1,5 +1,5 @@
 # Copyright (C) 2022 The Qt Company Ltd.
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 if(NOT TARGET Qt6::Widgets)
     return()
@@ -15,6 +15,7 @@ add_subdirectory(graphicsview)
 add_subdirectory(itemviews)
 add_subdirectory(layouts)
 add_subdirectory(painting)
+add_subdirectory(rhi)
 add_subdirectory(richtext)
 add_subdirectory(tools)
 add_subdirectory(touch)

@@ -78,6 +78,12 @@ installPackages+=(libasound2-dev)
 installPackages+=(libgstreamer1.0-dev)
 installPackages+=(libgstreamer-plugins-base1.0-dev)
 installPackages+=(libgstreamer-plugins-bad1.0-dev)
+installPackages+=(gstreamer1.0-libav)
+installPackages+=(gstreamer1.0-plugins-base)
+installPackages+=(gstreamer1.0-plugins-good)
+installPackages+=(gstreamer1.0-plugins-bad)
+installPackages+=(gstreamer1.0-plugins-rtp)
+installPackages+=(gstreamer1.0-plugins-ugly)
 installPackages+=(libgstreamer-gl1.0-0)
 installPackages+=(gir1.2-gst-plugins-base-1.0)
 installPackages+=(gir1.2-gst-plugins-bad-1.0)
@@ -163,6 +169,7 @@ installPackages+=(ssh)
 installPackages+=(diffstat)
 installPackages+=(binfmt-support)
 installPackages+=(zstd)
+installPackages+=(libzstd-dev)
 # Vulkan is needed for examples
 installPackages+=(libvulkan-dev)
 # Needed for qtdltlogging
@@ -246,6 +253,9 @@ echo "Installing packages"
 waitLoop
 sudo DEBIAN_FRONTEND=noninteractive apt-get -q -y install "${installPackages[@]}"
 sudo DEBIAN_FRONTEND=noninteractive apt-get -q -y install cmake apt-cacher-ng -t bullseye-backports
+
+# Disable keyring password prompt
+keyring --disable
 
 # SetEnvVar "PATH" "/usr/lib/nodejs-mozilla/bin:\$PATH"
 

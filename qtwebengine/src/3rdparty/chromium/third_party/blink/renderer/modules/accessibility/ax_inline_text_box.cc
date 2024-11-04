@@ -39,8 +39,8 @@
 #include "third_party/blink/renderer/core/editing/markers/document_marker_controller.h"
 #include "third_party/blink/renderer/core/editing/position.h"
 #include "third_party/blink/renderer/core/highlight/highlight.h"
-#include "third_party/blink/renderer/core/layout/api/line_layout_api_shim.h"
 #include "third_party/blink/renderer/core/layout/layout_text.h"
+#include "third_party/blink/renderer/core/layout/ng/inline/ng_abstract_inline_text_box.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_node.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_offset_mapping.h"
 #include "third_party/blink/renderer/modules/accessibility/ax_object_cache_impl.h"
@@ -52,10 +52,14 @@
 
 namespace blink {
 
-AXInlineTextBox::AXInlineTextBox(
-    scoped_refptr<AbstractInlineTextBox> inline_text_box,
-    AXObjectCacheImpl& ax_object_cache)
-    : AXObject(ax_object_cache), inline_text_box_(std::move(inline_text_box)) {}
+AXInlineTextBox::AXInlineTextBox(NGAbstractInlineTextBox* inline_text_box,
+                                 AXObjectCacheImpl& ax_object_cache)
+    : AXObject(ax_object_cache), inline_text_box_(inline_text_box) {}
+
+void AXInlineTextBox::Trace(Visitor* visitor) const {
+  visitor->Trace(inline_text_box_);
+  AXObject::Trace(visitor);
+}
 
 void AXInlineTextBox::GetRelativeBounds(AXObject** out_container,
                                         gfx::RectF& out_bounds_in_container,
@@ -118,7 +122,7 @@ void AXInlineTextBox::GetWordBoundaries(Vector<int>& word_starts,
     return;
   }
 
-  Vector<AbstractInlineTextBox::WordBoundaries> boundaries;
+  Vector<NGAbstractInlineTextBox::WordBoundaries> boundaries;
   inline_text_box_->GetWordBoundaries(boundaries);
   word_starts.reserve(boundaries.size());
   word_ends.reserve(boundaries.size());
@@ -181,13 +185,13 @@ ax::mojom::blink::WritingDirection AXInlineTextBox::GetTextDirection() const {
     return AXObject::GetTextDirection();
 
   switch (inline_text_box_->GetDirection()) {
-    case AbstractInlineTextBox::kLeftToRight:
+    case NGAbstractInlineTextBox::kLeftToRight:
       return ax::mojom::blink::WritingDirection::kLtr;
-    case AbstractInlineTextBox::kRightToLeft:
+    case NGAbstractInlineTextBox::kRightToLeft:
       return ax::mojom::blink::WritingDirection::kRtl;
-    case AbstractInlineTextBox::kTopToBottom:
+    case NGAbstractInlineTextBox::kTopToBottom:
       return ax::mojom::blink::WritingDirection::kTtb;
-    case AbstractInlineTextBox::kBottomToTop:
+    case NGAbstractInlineTextBox::kBottomToTop:
       return ax::mojom::blink::WritingDirection::kBtt;
   }
 
@@ -202,7 +206,11 @@ Node* AXInlineTextBox::GetNode() const {
 }
 
 Document* AXInlineTextBox::GetDocument() const {
-  return ParentObject() ? ParentObject()->GetDocument() : nullptr;
+  return CachedParentObject() ? CachedParentObject()->GetDocument() : nullptr;
+}
+
+NGAbstractInlineTextBox* AXInlineTextBox::GetInlineTextBox() const {
+  return inline_text_box_;
 }
 
 AXObject* AXInlineTextBox::NextOnLine() const {
@@ -212,11 +220,9 @@ AXObject* AXInlineTextBox::NextOnLine() const {
   if (inline_text_box_->IsLast())
     return ParentObject()->NextOnLine();
 
-  scoped_refptr<AbstractInlineTextBox> next_on_line =
-      inline_text_box_->NextOnLine();
-  if (next_on_line)
-    return AXObjectCache().GetOrCreate(next_on_line.get(), nullptr);
-
+  if (NGAbstractInlineTextBox* next_on_line = inline_text_box_->NextOnLine()) {
+    return AXObjectCache().GetOrCreate(next_on_line, nullptr);
+  }
   return nullptr;
 }
 
@@ -227,10 +233,10 @@ AXObject* AXInlineTextBox::PreviousOnLine() const {
   if (inline_text_box_->IsFirst())
     return ParentObject()->PreviousOnLine();
 
-  scoped_refptr<AbstractInlineTextBox> previous_on_line =
+  NGAbstractInlineTextBox* previous_on_line =
       inline_text_box_->PreviousOnLine();
   if (previous_on_line)
-    return AXObjectCache().GetOrCreate(previous_on_line.get(), nullptr);
+    return AXObjectCache().GetOrCreate(previous_on_line, nullptr);
 
   return nullptr;
 }
@@ -377,7 +383,10 @@ void AXInlineTextBox::Init(AXObject* parent) {
       << "Unexpected parent of inline text box: " << parent->RoleValue();
   DCHECK(parent->CanHaveChildren())
       << "Parent cannot have children: " << parent->ToString(true, true);
-  SetParent(parent);
+  // Don't call SetParent(), which calls SetAncestorsHaveDirtyDescendants(),
+  // because once inline textboxes are loaded for the parent text, it's never
+  // necessary to again recompute this part of the tree.
+  parent_ = parent;
   UpdateCachedAttributeValuesIfNeeded(false);
 }
 

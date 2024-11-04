@@ -93,8 +93,7 @@ class TestRunner:
       if test_result.reason:
         print(f'Failure reason: {test_result.reason}')
       if test_result.log:
-        decoded_log = bytes.decode(test_result.log, errors='backslashreplace')
-        print(f'Test output:\n{decoded_log}')
+        print(f'Test output:\n{test_result.log}')
       for artifact in test_result.image_artifacts:
         if artifact.skia_gold_status == result_types.FAIL:
           print(f'Failed Skia Gold: {artifact.image_path}')
@@ -200,19 +199,6 @@ class TestRunner:
         default=False,
         help='When flag is on, skia gold tests will be run.')
 
-    # TODO: Remove when pdfium recipe stops passing this argument
-    parser.add_argument(
-        '--gold_properties',
-        default='',
-        help='Key value pairs that are written to the top level of the JSON '
-        'file that is ingested by Gold.')
-
-    # TODO: Remove when pdfium recipe stops passing this argument
-    parser.add_argument(
-        '--gold_ignore_hashes',
-        default='',
-        help='Path to a file with MD5 hashes we wish to ignore.')
-
     parser.add_argument(
         '--regenerate_expected',
         action='store_true',
@@ -235,6 +221,11 @@ class TestRunner:
         'when image comparison fails.')
 
     parser.add_argument(
+        '--use-renderer',
+        choices=('agg', 'gdi', 'skia'),
+        help='Forces the renderer to use.')
+
+    parser.add_argument(
         'inputted_file_paths',
         nargs='*',
         help='Path to test files to run, relative to '
@@ -252,7 +243,11 @@ class TestRunner:
       print(f"FAILURE: Can't find test executable '{pdfium_test_path}'")
       print('Use --build-dir to specify its location.')
       return 1
-    self.per_process_config.InitializeFeatures(pdfium_test_path)
+
+    error_message = self.per_process_config.InitializeFeatures(pdfium_test_path)
+    if error_message:
+      print('FAILURE:', error_message)
+      return 1
 
     self.per_process_state = _PerProcessState(self.per_process_config)
     shutil.rmtree(self.per_process_state.working_dir, ignore_errors=True)
@@ -431,14 +426,16 @@ class _PerProcessConfig:
     delete_output_on_success: Whether to delete output on success.
     enforce_expected_images: Whether to enforce expected images.
     options: The dictionary of command line options.
-    features: The list of features supported by `pdfium_test`.
+    features: The set of features supported by `pdfium_test`.
+    rendering_option: The renderer to use (agg, gdi, or skia).
   """
   test_dir: str
   test_type: str
   delete_output_on_success: bool = False
   enforce_expected_images: bool = False
   options: dict = None
-  features: list = None
+  features: set = None
+  rendering_option: str = None
 
   def NewFinder(self):
     return common.DirectoryFinder(self.options.build_dir)
@@ -449,7 +446,25 @@ class _PerProcessConfig:
   def InitializeFeatures(self, pdfium_test_path):
     output = subprocess.check_output([pdfium_test_path, '--show-config'],
                                      timeout=TEST_TIMEOUT)
-    self.features = output.decode('utf-8').strip().split(',')
+    self.features = set(output.decode('utf-8').strip().split(','))
+
+    if 'SKIA' in self.features:
+      self.rendering_option = 'skia'
+    else:
+      self.rendering_option = 'agg'
+
+    if self.options.use_renderer == 'agg':
+      self.rendering_option = 'agg'
+    elif self.options.use_renderer == 'gdi':
+      if 'GDI' not in self.features:
+        return 'pdfium_test does not support the GDI renderer'
+      self.rendering_option = 'gdi'
+    elif self.options.use_renderer == 'skia':
+      if 'SKIA' not in self.features:
+        return 'pdfium_test does not support the Skia renderer'
+      self.rendering_option = 'skia'
+
+    return None
 
 
 class _PerProcessState:
@@ -475,9 +490,10 @@ class _PerProcessState:
 
     self.test_suppressor = suppressor.Suppressor(
         finder, self.features, self.options.disable_javascript,
-        self.options.disable_xfa)
-    self.image_differ = pngdiffer.PNGDiffer(finder, self.features,
-                                            self.options.reverse_byte_order)
+        self.options.disable_xfa, config.rendering_option)
+    self.image_differ = pngdiffer.PNGDiffer(finder,
+                                            self.options.reverse_byte_order,
+                                            config.rendering_option)
 
     self.process_name = multiprocessing.current_process().name
     self.skia_tester = None
@@ -539,6 +555,10 @@ class _TestCaseRunner:
     return _per_process_state.test_suppressor.IsImageDiffSuppressed(
         self.input_filename)
 
+  def GetImageMatchingAlgorithm(self):
+    return _per_process_state.test_suppressor.GetImageMatchingAlgorithm(
+        self.input_filename)
+
   def RunCommand(self, command, stdout=None):
     """Runs a test command.
 
@@ -594,6 +614,7 @@ class _TestCaseRunner:
         test_result.log = run_result.stdout
       else:
         test_result.log = run_result.stderr
+      test_result.log = test_result.log.decode(errors='backslashreplace')
     return test_result
 
   def GenerateAndTest(self, test_function):
@@ -609,9 +630,11 @@ class _TestCaseRunner:
       return
     if self.IsResultSuppressed() or self.IsImageDiffSuppressed():
       return
-    _per_process_state.image_differ.Regenerate(self.input_filename,
-                                               self.source_dir,
-                                               self.working_dir)
+    _per_process_state.image_differ.Regenerate(
+        self.input_filename,
+        self.source_dir,
+        self.working_dir,
+        image_matching_algorithm=self.GetImageMatchingAlgorithm())
 
   def Generate(self):
     input_event_path = os.path.join(self.source_dir, f'{self.test_id}.evt')
@@ -672,7 +695,9 @@ class _TestCaseRunner:
 
     if txt_data:
       return self.test_case.NewResult(
-          result_types.FAIL, log=txt_data, reason=f'{txt_path} should be empty')
+          result_types.FAIL,
+          log=txt_data.decode(errors='backslashreplace'),
+          reason=f'{txt_path} should be empty')
 
     return self.test_case.NewResult(result_types.PASS)
 
@@ -708,6 +733,9 @@ class _TestCaseRunner:
     if self.options.reverse_byte_order:
       cmd_to_run.append('--reverse-byte-order')
 
+    if self.options.use_renderer:
+      cmd_to_run.append(f'--use-renderer={self.options.use_renderer}')
+
     cmd_to_run.append(self.pdf_path)
 
     with BytesIO() as command_output:
@@ -727,7 +755,10 @@ class _TestCaseRunner:
 
     if self.actual_images:
       image_diffs = _per_process_state.image_differ.ComputeDifferences(
-          self.input_filename, self.source_dir, self.working_dir)
+          self.input_filename,
+          self.source_dir,
+          self.working_dir,
+          image_matching_algorithm=self.GetImageMatchingAlgorithm())
       if image_diffs:
         test_result.status = result_types.FAIL
         test_result.reason = 'Images differ'
@@ -745,7 +776,7 @@ class _TestCaseRunner:
 
         for artifact in test_result.image_artifacts:
           artifact.image_diff = diff_map.get(artifact.image_path)
-        test_result.log = ''.join(diff_log).encode()
+        test_result.log = ''.join(diff_log)
 
     elif _per_process_state.enforce_expected_images:
       if not self.IsImageDiffSuppressed():

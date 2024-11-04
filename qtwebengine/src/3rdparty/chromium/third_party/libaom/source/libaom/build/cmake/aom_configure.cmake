@@ -13,8 +13,6 @@ if(AOM_BUILD_CMAKE_AOM_CONFIGURE_CMAKE_)
 endif() # AOM_BUILD_CMAKE_AOM_CONFIGURE_CMAKE_
 set(AOM_BUILD_CMAKE_AOM_CONFIGURE_CMAKE_ 1)
 
-include(FindGit)
-include(FindPerl)
 include(FindThreads)
 
 include("${AOM_ROOT}/build/cmake/aom_config_defaults.cmake")
@@ -155,54 +153,65 @@ if(NOT MSVC)
 endif()
 
 if(AOM_TARGET_CPU STREQUAL "x86" OR AOM_TARGET_CPU STREQUAL "x86_64")
-  find_program(AS_EXECUTABLE yasm $ENV{YASM_PATH})
-  if(NOT AS_EXECUTABLE OR ENABLE_NASM)
-    unset(AS_EXECUTABLE CACHE)
-    find_program(AS_EXECUTABLE nasm $ENV{NASM_PATH})
-    if(AS_EXECUTABLE)
-      test_nasm()
-    endif()
+  find_program(CMAKE_ASM_NASM_COMPILER yasm $ENV{YASM_PATH})
+  if(NOT CMAKE_ASM_NASM_COMPILER OR ENABLE_NASM)
+    unset(CMAKE_ASM_NASM_COMPILER CACHE)
+    find_program(CMAKE_ASM_NASM_COMPILER nasm $ENV{NASM_PATH})
   endif()
 
-  if(NOT AS_EXECUTABLE)
+  include(CheckLanguage)
+  check_language(ASM_NASM)
+  if(CMAKE_ASM_NASM_COMPILER)
+    get_asm_obj_format("objformat")
+    unset(CMAKE_ASM_NASM_OBJECT_FORMAT)
+    set(CMAKE_ASM_NASM_OBJECT_FORMAT ${objformat})
+    enable_language(ASM_NASM)
+    if(CMAKE_ASM_NASM_COMPILER_ID STREQUAL "NASM")
+      test_nasm()
+    endif()
+    # Xcode requires building the objects manually, so pass the object format
+    # flag.
+    if(XCODE)
+      set(AOM_AS_FLAGS -f ${objformat} ${AOM_AS_FLAGS})
+    endif()
+  else()
     message(
       FATAL_ERROR
         "Unable to find assembler. Install 'yasm' or 'nasm.' "
         "To build without optimizations, add -DAOM_TARGET_CPU=generic to "
         "your cmake command line.")
   endif()
-  get_asm_obj_format("objformat")
-  set(AOM_AS_FLAGS -f ${objformat} ${AOM_AS_FLAGS})
   string(STRIP "${AOM_AS_FLAGS}" AOM_AS_FLAGS)
 elseif(AOM_TARGET_CPU MATCHES "arm")
   if(AOM_TARGET_SYSTEM STREQUAL "Darwin")
-    set(AS_EXECUTABLE as)
+    set(CMAKE_ASM_COMPILER as)
     set(AOM_AS_FLAGS -arch ${AOM_TARGET_CPU} -isysroot ${CMAKE_OSX_SYSROOT})
   elseif(AOM_TARGET_SYSTEM STREQUAL "Windows")
-    if(NOT AS_EXECUTABLE)
-      set(AS_EXECUTABLE ${CMAKE_C_COMPILER} -c -mimplicit-it=always)
+    if(NOT CMAKE_ASM_COMPILER)
+      set(CMAKE_ASM_COMPILER ${CMAKE_C_COMPILER} -c -mimplicit-it=always)
     endif()
   else()
-    if(NOT AS_EXECUTABLE)
-      set(AS_EXECUTABLE as)
+    if(NOT CMAKE_ASM_COMPILER)
+      set(CMAKE_ASM_COMPILER as)
     endif()
   endif()
-  find_program(as_executable_found ${AS_EXECUTABLE})
-  if(NOT as_executable_found)
+  include(CheckLanguage)
+  check_language(ASM)
+  if(NOT CMAKE_ASM_COMPILER)
     message(
       FATAL_ERROR
         "Unable to find assembler and optimizations are enabled."
-        "Searched for ${AS_EXECUTABLE}. Install it, add it to your path, or "
-        "set the assembler directly by adding -DAS_EXECUTABLE=<assembler path> "
-        "to your CMake command line."
+        "Searched for ${CMAKE_ASM_COMPILER}. Install it, add it to your path,"
+        "or set the assembler directly by adding "
+        "-DCMAKE_ASM_COMPILER=<assembler path> to your CMake command line."
         "To build without optimizations, add -DAOM_TARGET_CPU=generic to your "
         "cmake command line.")
   endif()
+  enable_language(ASM)
   string(STRIP "${AOM_AS_FLAGS}" AOM_AS_FLAGS)
 endif()
 
 if(CONFIG_ANALYZER)
-  include(FindwxWidgets)
   find_package(wxWidgets REQUIRED adv base core)
   include(${wxWidgets_USE_FILE})
 endif()
@@ -230,9 +239,8 @@ if(AOM_TARGET_SYSTEM STREQUAL "Windows")
   # The default _WIN32_WINNT value in MinGW is 0x0502 (Windows XP with SP2). Set
   # it to 0x0601 (Windows 7).
   add_compiler_flag_if_supported("-D_WIN32_WINNT=0x0601")
-  # Prevent windows.h from defining the min and max macros. This allows us to
-  # use std::min and std::max.
-  add_compiler_flag_if_supported("-DNOMINMAX")
+  # Quiet warnings related to fopen, printf, etc.
+  add_compiler_flag_if_supported("-D_CRT_SECURE_NO_WARNINGS")
 endif()
 
 #
@@ -248,7 +256,7 @@ aom_get_inline("INLINE")
 set(HAVE_PTHREAD_H ${CMAKE_USE_PTHREADS_INIT})
 aom_check_source_compiles("unistd_check" "#include <unistd.h>" HAVE_UNISTD_H)
 
-if(NOT MSVC)
+if(NOT WIN32)
   aom_push_var(CMAKE_REQUIRED_LIBRARIES "m")
   aom_check_c_compiles("fenv_check" "#define _GNU_SOURCE
                         #include <fenv.h>
@@ -291,6 +299,9 @@ endif()
 
 # Test compiler flags.
 if(MSVC)
+  # It isn't possible to specify C99 conformance for MSVC. MSVC doesn't support
+  # C++ standards modes earlier than C++14.
+  add_cxx_flag_if_supported("/std:c++14")
   add_compiler_flag_if_supported("/W3")
 
   # Disable MSVC warnings that suggest making code non-portable.
@@ -300,7 +311,16 @@ if(MSVC)
   endif()
 else()
   require_c_flag("-std=c99" YES)
-  require_cxx_flag_nomsvc("-std=c++11" YES)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
+     AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU"
+     AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    # Microsoft's C++ Standard Library requires C++14 as it's MSVC's default and
+    # minimum supported C++ version. If Clang is using this Standard Library
+    # implementation, it cannot target C++11.
+    require_cxx_flag_nomsvc("-std=c++14" YES)
+  else()
+    require_cxx_flag_nomsvc("-std=c++11" YES)
+  endif()
   add_compiler_flag_if_supported("-Wall")
   add_compiler_flag_if_supported("-Wdisabled-optimization")
   add_compiler_flag_if_supported("-Wextra")
@@ -321,11 +341,13 @@ else()
   add_c_flag_if_supported("-Wimplicit-function-declaration")
   add_compiler_flag_if_supported("-Wlogical-op")
   add_compiler_flag_if_supported("-Wpointer-arith")
+  add_compiler_flag_if_supported("-Wshadow")
   add_compiler_flag_if_supported("-Wshorten-64-to-32")
   add_compiler_flag_if_supported("-Wsign-compare")
   add_compiler_flag_if_supported("-Wstring-conversion")
   add_compiler_flag_if_supported("-Wtype-limits")
   add_compiler_flag_if_supported("-Wuninitialized")
+  add_compiler_flag_if_supported("-Wunreachable-code-aggressive")
   add_compiler_flag_if_supported("-Wunused")
   add_compiler_flag_if_supported("-Wvla")
   add_cxx_flag_if_supported("-Wc++14-extensions")
@@ -336,7 +358,7 @@ else()
 
     # This combination has more stack overhead, so we account for it by
     # providing higher stack limit than usual.
-    add_c_flag_if_supported("-Wstack-usage=170000")
+    add_c_flag_if_supported("-Wstack-usage=285000")
     add_cxx_flag_if_supported("-Wstack-usage=270000")
   elseif(CONFIG_RD_DEBUG) # Another case where higher stack usage is expected.
     add_c_flag_if_supported("-Wstack-usage=135000")
@@ -350,9 +372,6 @@ else()
     # Disable no optimization warning when compiling with sanitizers
     add_compiler_flag_if_supported("-Wno-disabled-optimization")
   endif()
-
-  # Add -Wshadow only for C files to avoid massive gtest warning spam.
-  add_c_flag_if_supported("-Wshadow")
 
   # Add -Wundef only for C files to avoid massive gtest warning spam.
   add_c_flag_if_supported("-Wundef")
@@ -422,6 +441,7 @@ if(NOT GIT_FOUND)
   message("--- Git missing, version will be read from CHANGELOG.")
 endif()
 
+string(TIMESTAMP year "%Y")
 configure_file("${AOM_ROOT}/build/cmake/aom_config.c.template"
                "${AOM_CONFIG_DIR}/config/aom_config.c")
 

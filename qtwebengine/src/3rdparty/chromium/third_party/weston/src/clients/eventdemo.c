@@ -47,6 +47,7 @@
 
 /** window title */
 static char *title = "EventDemo";
+static char *appid = "org.freedesktop.weston.eventdemo";
 
 /** window width */
 static int width = 500;
@@ -350,8 +351,6 @@ axis_discrete_handler(struct widget *widget, struct input *input,
  * \param widget widget
  * \param input input device that caused the motion event
  * \param time time the event happened
- * \param x absolute x position
- * \param y absolute y position
  * \param x x position relative to the window
  * \param y y position relative to the window
  * \param data user data associated to the window
@@ -400,6 +399,7 @@ eventdemo_create(struct display *d)
 	} else {
 		e->widget = window_frame_create(e->window, e);
 		window_set_title(e->window, title);
+		window_set_appid(e->window, appid);
 	}
 	e->display = d;
 

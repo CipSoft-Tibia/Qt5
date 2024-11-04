@@ -33,13 +33,9 @@ namespace internal {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE packet_type                   \
       pload##AlignedType<packet_type>(                                \
           const typename unpacket_traits<packet_type>::type* from) {  \
-    using scalar = typename unpacket_traits<packet_type>::type;       \
-    typedef cl::sycl::multi_ptr<                                      \
-        const scalar, cl::sycl::access::address_space::generic_space, \
-        cl::sycl::access::decorated::no>                              \
-        multi_ptr;                                                    \
+   auto ptr = cl::sycl::address_space_cast<cl::sycl::access::address_space::generic_space, cl::sycl::access::decorated::no>(from);\
     packet_type res{};                                                \
-    res.load(0, multi_ptr(from));                                     \
+    res.load(0, ptr);                                     \
     return res;                                                       \
   }
 
@@ -54,11 +50,8 @@ SYCL_PLOAD(cl::sycl::cl_double2, )
   template <>                                                   \
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE void pstore##alignment( \
       scalar* to, const packet_type& from) {                    \
-    typedef cl::sycl::multi_ptr<                                \
-        scalar, cl::sycl::access::address_space::generic_space, \
-        cl::sycl::access::decorated::no>                        \
-        multi_ptr;                                              \
-    from.store(0, multi_ptr(to));                               \
+    auto ptr = cl::sycl::address_space_cast<cl::sycl::access::address_space::generic_space, cl::sycl::access::decorated::no>(to);\
+    from.store(0, ptr);                               \
   }
 
 SYCL_PSTORE(float, cl::sycl::cl_float4, )
@@ -369,60 +362,6 @@ inline cl::sycl::cl_double2 pblend(
   return cl::sycl::select(thenPacket, elsePacket, condition);
 }
 #endif  // SYCL_DEVICE_ONLY
-
-template <typename packet_type, int Alignment, typename T>
-EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE packet_type
-ploadt_ro(const Eigen::TensorSycl::internal::RangeAccess<
-          cl::sycl::access::mode::read_write, T>& from) {
-  return ploadt_ro<packet_type, Alignment>(from.get_pointer());
-}
-
-#define SYCL_PLOAD(Alignment, AlignedType)                              \
-  template <typename packet_type>                                       \
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE packet_type pload##AlignedType( \
-      const Eigen::TensorSycl::internal::RangeAccess<                   \
-          cl::sycl::access::mode::read_write,                           \
-          typename unpacket_traits<packet_type>::type>                  \
-          from) {                                                       \
-    return ploadt_ro<packet_type, Alignment>(from);                     \
-  }
-SYCL_PLOAD(Unaligned, u)
-SYCL_PLOAD(Aligned, )
-#undef SYCL_PLOAD
-
-template <typename packet_type, int Alignment>
-EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE packet_type
-ploadt(const Eigen::TensorSycl::internal::RangeAccess<
-       cl::sycl::access::mode::read_write,
-       typename unpacket_traits<packet_type>::type>& from) {
-  return ploadt<packet_type, Alignment>(from.get_pointer());
-}
-
-#define SYCL_PSTORE(alignment)                                  \
-  template <typename packet_type>                               \
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE void pstore##alignment( \
-      const Eigen::TensorSycl::internal::RangeAccess<           \
-          cl::sycl::access::mode::read_write,                   \
-          typename unpacket_traits<packet_type>::type>& to,     \
-      const packet_type& from) {                                \
-    pstore##alignment(to.get_pointer(), from);                  \
-  }
-
-// global space
-SYCL_PSTORE()
-SYCL_PSTORE(u)
-
-#undef SYCL_PSTORE
-
-template <typename scalar, typename packet_type, int Alignment>
-EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE void pstoret(
-    Eigen::TensorSycl::internal::RangeAccess<
-        cl::sycl::access::mode::read_write,
-        typename unpacket_traits<packet_type>::type>
-        to,
-    const packet_type& from) {
-  pstoret<scalar, packet_type, Alignment>(to.get_pointer(), from);
-}
 
 }  // end namespace internal
 

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@
 #include "util/enum_name_table.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 constexpr EnumNameTable<AudioCodec, 3> kAudioCodecNames{
@@ -33,7 +32,7 @@ const char* CodecToString(AudioCodec codec) {
   return GetEnumName(kAudioCodecNames, codec).value();
 }
 
-ErrorOr<AudioCodec> StringToAudioCodec(absl::string_view name) {
+ErrorOr<AudioCodec> StringToAudioCodec(std::string_view name) {
   return GetEnum(kAudioCodecNames, name);
 }
 
@@ -41,9 +40,8 @@ const char* CodecToString(VideoCodec codec) {
   return GetEnumName(kVideoCodecNames, codec).value();
 }
 
-ErrorOr<VideoCodec> StringToVideoCodec(absl::string_view name) {
+ErrorOr<VideoCodec> StringToVideoCodec(std::string_view name) {
   return GetEnum(kVideoCodecNames, name);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

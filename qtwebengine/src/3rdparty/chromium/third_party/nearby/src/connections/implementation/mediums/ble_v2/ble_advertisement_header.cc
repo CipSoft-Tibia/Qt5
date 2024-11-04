@@ -1,4 +1,4 @@
-// Copyright 2020 Google LLC
+// Copyright 2020-2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,8 +20,11 @@
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "connections/implementation/flags/nearby_connections_feature_flags.h"
+#include "internal/flags/nearby_flags.h"
 #include "internal/platform/base64_utils.h"
 #include "internal/platform/base_input_stream.h"
+#include "internal/platform/byte_array.h"
 #include "internal/platform/logging.h"
 
 namespace nearby {
@@ -57,10 +60,27 @@ BleAdvertisementHeader::BleAdvertisementHeader(
   ByteArray advertisement_header_bytes =
       Base64Utils::Decode(ble_advertisement_header_bytes.AsStringView());
   if (advertisement_header_bytes.Empty()) {
-    NEARBY_LOG(
-        ERROR,
-        "Cannot deserialize BLEAdvertisementHeader: failed Base64 decoding");
-    return;
+    if (NearbyFlags::GetInstance().GetBoolFlag(
+            config_package_nearby::nearby_connections_feature::kEnableBleV2)) {
+      // The BLE advertisement header is not encoded in base64, but still try to
+      // parse it as raw bytes.
+      if (ble_advertisement_header_bytes.size() ==
+              kMinAdvertisementHeaderLength ||
+          ble_advertisement_header_bytes.size() ==
+              kMinAdvertisementHeaderLength + 2) {
+        advertisement_header_bytes = ble_advertisement_header_bytes;
+      } else {
+        NEARBY_LOG(WARNING,
+                   "Cannot deserialize BLEAdvertisementHeader. Invalid "
+                   "advertising data.");
+        return;
+      }
+    } else {
+      NEARBY_LOG(
+          ERROR,
+          "Cannot deserialize BLEAdvertisementHeader: failed Base64 decoding");
+      return;
+    }
   }
 
   if (advertisement_header_bytes.size() < kMinAdvertisementHeaderLength) {
@@ -138,8 +158,12 @@ BleAdvertisementHeader::operator ByteArray() const {
                                  std::string(advertisement_hash_),
                                  std::string(psm_bytes));
   // clang-format on
-
-  return ByteArray(Base64Utils::Encode(ByteArray(std::move(out))));
+  if (NearbyFlags::GetInstance().GetBoolFlag(
+          config_package_nearby::nearby_connections_feature::kEnableBleV2)) {
+    return ByteArray(std::move(out));
+  } else {
+    return ByteArray(Base64Utils::Encode(ByteArray(std::move(out))));
+  }
 }
 
 bool BleAdvertisementHeader::operator==(

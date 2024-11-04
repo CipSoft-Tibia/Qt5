@@ -6,16 +6,6 @@ import("//build/config/freetype/freetype.gni")
 import("../../pdfium.gni")
 import("../../testing/test.gni")
 
-config("fxge_warnings") {
-  visibility = [ ":*" ]
-  if (is_clang) {
-    cflags = [
-      # http://code.google.com/p/pdfium/issues/detail?id=188
-      "-Wno-switch",
-    ]
-  }
-}
-
 source_set("fxge") {
   sources = [
     "agg/fx_agg_driver.cpp",
@@ -119,7 +109,6 @@ source_set("fxge") {
   ]
 
   configs += [
-    ":fxge_warnings",
     "../../:pdfium_strict_config",
     "../../:pdfium_noshorten_config",
   ]
@@ -128,6 +117,8 @@ source_set("fxge") {
     "../../third_party:fx_agg",
     "../fxcrt",
   ]
+
+  public_deps = []
 
   if (is_component_build || use_system_freetype) {
     # ft_adobe_glyph_list is not exported from the Freetype shared library so we
@@ -143,8 +134,11 @@ source_set("fxge") {
   }
 
   if (pdf_use_skia) {
-    sources += [ "skia/fx_skia_device.cpp" ]
-    deps += [ "//skia" ]
+    sources += [
+      "skia/cfx_dibbase_skia.cpp",
+      "skia/fx_skia_device.cpp",
+    ]
+    public_deps += [ "//skia" ]
   }
 
   if (is_android) {
@@ -182,8 +176,6 @@ source_set("fxge") {
     sources += [
       "cfx_windowsrenderdevice.cpp",
       "cfx_windowsrenderdevice.h",
-      "dib/cfx_dibextractor.cpp",
-      "dib/cfx_dibextractor.h",
       "win32/cfx_psfonttracker.cpp",
       "win32/cfx_psfonttracker.h",
       "win32/cfx_psrenderer.cpp",
@@ -213,6 +205,7 @@ source_set("fxge") {
 
 pdfium_unittest_source_set("unittests") {
   sources = [
+    "cfx_defaultrenderdevice_unittest.cpp",
     "cfx_folderfontinfo_unittest.cpp",
     "cfx_fontmapper_unittest.cpp",
     "cfx_path_unittest.cpp",
@@ -244,6 +237,8 @@ pdfium_embeddertest_source_set("embeddertests") {
     deps += [
       ":fxge",
       "../../fpdfsdk",
+      "../fpdfapi/page",
+      "../fpdfapi/render",
       "//skia",
     ]
   }

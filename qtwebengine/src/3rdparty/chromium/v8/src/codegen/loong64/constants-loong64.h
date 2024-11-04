@@ -71,7 +71,6 @@ const uint32_t kFCSRExceptionCauseMask = kFCSRCauseMask ^ kFCSRInexactCauseMask;
 
 // Actual value of root register is offset from the root array's start
 // to take advantage of negative displacement values.
-// TODO(sigurds): Choose best value.
 constexpr int kRootRegisterBias = 256;
 
 // Helper functions for converting between register numbers and names.
@@ -921,7 +920,7 @@ class Instruction : public InstructionGetters<InstructionBase> {
   // reference to an instruction is to convert a pointer. There is no way
   // to allocate or create instances of class Instruction.
   // Use the At(pc) function to create references to Instruction.
-  static Instruction* At(byte* pc) {
+  static Instruction* At(uint8_t* pc) {
     return reinterpret_cast<Instruction*>(pc);
   }
 

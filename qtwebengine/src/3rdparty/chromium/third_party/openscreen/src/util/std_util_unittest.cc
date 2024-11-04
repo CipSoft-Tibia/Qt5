@@ -1,4 +1,4 @@
-// Copyright 2021 The Chromium Authors. All rights reserved.
+// Copyright 2021 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,6 +29,15 @@ TEST(StdUtilTest, Join) {
   EXPECT_EQ("bronze,silver,gold", Join(medals, ","));
   EXPECT_EQ("bronzeandsilverandgold", Join(medals, "and"));
   EXPECT_EQ("", Join(std::vector<std::string>({""}), ","));
+}
+
+TEST(StdUtilTest, RemoveWhitespace) {
+  std::string portland = "Portland";
+  EXPECT_EQ("Portland", RemoveWhitespace(portland));
+
+  std::string fancy_portland = "  Po\f\v\tr\t\ntla  n\r\nd\t\t  ";
+  RemoveWhitespace(fancy_portland);
+  EXPECT_EQ("Portland", fancy_portland);
 }
 
 TEST(StdUtilTest, RemoveValueFromMap) {

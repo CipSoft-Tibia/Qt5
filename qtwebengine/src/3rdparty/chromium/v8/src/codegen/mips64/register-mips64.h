@@ -114,6 +114,13 @@ int ToNumber(Register reg);
 
 Register ToRegister(int num);
 
+// Assign |source| value to |no_reg| and return the |source|'s previous value.
+inline Register ReassignRegister(Register& source) {
+  Register result = source;
+  source = Register::no_reg();
+  return result;
+}
+
 // Returns the number of padding slots needed for stack pointer alignment.
 constexpr int ArgumentPaddingSlots(int argument_count) {
   // No argument padding required.
@@ -301,7 +308,6 @@ constexpr Register kJavaScriptCallTargetRegister = kJSFunctionRegister;
 constexpr Register kJavaScriptCallNewTargetRegister = a3;
 constexpr Register kJavaScriptCallExtraArg1Register = a2;
 
-constexpr Register kOffHeapTrampolineRegister = at;
 constexpr Register kRuntimeCallFunctionRegister = a1;
 constexpr Register kRuntimeCallArgCountRegister = a0;
 constexpr Register kRuntimeCallArgvRegister = a2;

@@ -31,21 +31,23 @@
 #include "launcher-util.h"
 #include "launcher-impl.h"
 
+#include <errno.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <linux/input.h>
 
 static const struct launcher_interface *ifaces[] = {
+#ifdef HAVE_LIBSEAT
+	&launcher_libseat_iface,
+#endif
 #ifdef HAVE_SYSTEMD_LOGIN
 	&launcher_logind_iface,
 #endif
-	&launcher_weston_launch_iface,
-	&launcher_direct_iface,
 	NULL,
 };
 
 WL_EXPORT struct weston_launcher *
-weston_launcher_connect(struct weston_compositor *compositor, int tty,
+weston_launcher_connect(struct weston_compositor *compositor,
 			const char *seat_id, bool sync_drm)
 {
 	const struct launcher_interface **it;
@@ -54,7 +56,8 @@ weston_launcher_connect(struct weston_compositor *compositor, int tty,
 		const struct launcher_interface *iface = *it;
 		struct weston_launcher *launcher;
 
-		if (iface->connect(&launcher, compositor, tty, seat_id, sync_drm) == 0)
+		weston_log("Trying %s launcher...\n", iface->name);
+		if (iface->connect(&launcher, compositor, seat_id, sync_drm) == 0)
 			return launcher;
 	}
 
@@ -103,10 +106,12 @@ switch_vt_binding(struct weston_keyboard *keyboard,
 WL_EXPORT void
 weston_setup_vt_switch_bindings(struct weston_compositor *compositor)
 {
+	int ret;
 	uint32_t key;
 	struct weston_launcher *launcher = compositor->launcher;
 
-	if (launcher->iface->get_vt(launcher) <= 0)
+	ret = launcher->iface->get_vt(launcher);
+	if (ret < 0 && ret != -ENOSYS)
 		return;
 
 	if (compositor->vt_switching == false)

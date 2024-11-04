@@ -13,7 +13,6 @@
 #include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
-#include "base/guid.h"
 #include "base/json/json_reader.h"
 #include "base/json/string_escape.h"
 #include "base/metrics/histogram_functions.h"
@@ -28,6 +27,7 @@
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
+#include "base/uuid.h"
 #include "base/values.h"
 #include "build/build_config.h"
 #if !defined(TOOLKIT_QT)
@@ -40,8 +40,8 @@
 #endif  // !defined(TOOLKIT_QT)
 #include "chrome/browser/devtools/url_constants.h"
 #if !defined(TOOLKIT_QT)
+#include "chrome/browser/extensions/extension_management.h"
 #include "chrome/browser/extensions/extension_service.h"
-#include "chrome/browser/extensions/extension_util.h"
 #endif  // !defined(TOOLKIT_QT)
 #include "chrome/browser/profiles/profile.h"
 #if !defined(TOOLKIT_QT)
@@ -66,7 +66,7 @@
 #if !defined(TOOLKIT_QT)
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
-#include "components/sync/driver/sync_service.h"
+#include "components/sync/service/sync_service.h"
 #include "components/sync_preferences/pref_service_syncable.h"
 #endif  // !defined(TOOLKIT_QT)
 #include "components/zoom/page_zoom.h"
@@ -94,17 +94,18 @@
 #if !defined(TOOLKIT_QT)
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_system.h"
+#include "extensions/browser/extension_util.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/permissions/permissions_data.h"
 #endif  // !defined(TOOLKIT_QT)
 #include "google_apis/google_api_keys.h"
 #include "ipc/ipc_channel.h"
+#include "net/base/load_flags.h"
 #include "net/base/net_errors.h"
 #include "net/base/url_util.h"
 #include "net/http/http_response_headers.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "services/network/public/cpp/resource_request.h"
-#include "services/network/public/cpp/simple_url_loader.h"
 #include "services/network/public/cpp/simple_url_loader_stream_consumer.h"
 #include "services/network/public/cpp/wrapper_shared_url_loader_factory.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
@@ -380,6 +381,20 @@ std::string SanitizeFrontendQueryParam(
 
   if (key == "targetType" && value == "tab")
     return value;
+
+  if (key == "consolePaste" && value == "blockwebui") {
+    return value;
+  }
+
+  if (key == "noJavaScriptCompletion" && value == "true") {
+    return value;
+  }
+
+#if defined(AIDA_SCOPE)
+  if (key == "enableAida" && value == "true") {
+    return value;
+  }
+#endif
 
   return std::string();
 }
@@ -818,6 +833,17 @@ void DevToolsUIBindings::SetIsDocked(DispatchCallback callback,
   delegate_->SetIsDocked(dock_requested);
   std::move(callback).Run(nullptr);
 }
+
+#if defined(AIDA_SCOPE)
+void DevToolsUIBindings::OnAidaConverstaionResponse(
+    DispatchCallback callback,
+    const std::string& response) {
+  base::Value::Dict response_dict;
+  response_dict.Set("response", response);
+  auto response_value = base::Value(std::move(response_dict));
+  std::move(callback).Run(&response_value);
+}
+#endif
 
 void DevToolsUIBindings::InspectElementCompleted() {
   delegate_->InspectElementCompleted();
@@ -1275,7 +1301,7 @@ void DevToolsUIBindings::RegisterPreference(const std::string& name,
 }
 
 void DevToolsUIBindings::GetPreferences(DispatchCallback callback) {
-  base::Value settings = settings_.Get();
+  base::Value settings = base::Value(settings_.Get());
   std::move(callback).Run(&settings);
 }
 
@@ -1371,6 +1397,23 @@ void DevToolsUIBindings::DispatchProtocolMessageFromDevToolsFrontend(
     return;
   agent_host_->DispatchProtocolMessage(
       this, base::as_bytes(base::make_span(message)));
+}
+
+void DevToolsUIBindings::RecordCountHistogram(const std::string& name,
+                                              int sample,
+                                              int min,
+                                              int exclusive_max,
+                                              int buckets) {
+  if (!frontend_host_) {
+    return;
+  }
+
+  if (!(min <= sample && sample < exclusive_max && buckets >= 3)) {
+    frontend_host_->BadMessageReceived();
+    return;
+  }
+
+  base::UmaHistogramCustomCounts(name, sample, min, exclusive_max, buckets);
 }
 
 void DevToolsUIBindings::RecordEnumeratedHistogram(const std::string& name,
@@ -1577,6 +1620,9 @@ void DevToolsUIBindings::AddDevToolsExtensionsToClient() {
   base::Value::List results;
   base::Value::List component_extension_origins;
   bool have_user_installed_devtools_extensions = false;
+  extensions::ExtensionManagement* management =
+      extensions::ExtensionManagementFactory::GetForBrowserContext(
+          web_contents_->GetBrowserContext());
   for (const scoped_refptr<const extensions::Extension>& extension :
        registry->enabled_extensions()) {
     if (extensions::Manifest::IsComponentLocation(extension->location())) {
@@ -1599,6 +1645,19 @@ void DevToolsUIBindings::AddDevToolsExtensionsToClient() {
         web_contents_->GetPrimaryMainFrame()->GetProcess()->GetID(),
         url::Origin::Create(extension->url()));
 
+    base::Value::List runtime_allowed_hosts;
+    std::vector<std::string> allowed_hosts =
+        management->GetPolicyAllowedHosts(extension.get()).ToStringVector();
+    for (auto& host : allowed_hosts) {
+      runtime_allowed_hosts.Append(std::move(host));
+    }
+    base::Value::List runtime_blocked_hosts;
+    std::vector<std::string> blocked_hosts =
+        management->GetPolicyBlockedHosts(extension.get()).ToStringVector();
+    for (auto& host : blocked_hosts) {
+      runtime_blocked_hosts.Append(std::move(host));
+    }
+
     base::Value::Dict extension_info;
     extension_info.Set("startPage", url.spec());
     extension_info.Set("name", extension->name());
@@ -1607,6 +1666,11 @@ void DevToolsUIBindings::AddDevToolsExtensionsToClient() {
                            extensions::mojom::APIPermissionID::kExperimental));
     extension_info.Set("allowFileAccess", extensions::util::AllowFileAccess(
                                               extension->id(), profile_));
+    extension_info.Set(
+        "hostsPolicy",
+        base::Value::Dict()
+            .Set("runtimeAllowedHosts", std::move(runtime_allowed_hosts))
+            .Set("runtimeBlockedHosts", std::move(runtime_blocked_hosts)));
     results.Append(std::move(extension_info));
 
     if (!(extensions::Manifest::IsPolicyLocation(extension->location()) ||
@@ -1678,6 +1742,23 @@ void DevToolsUIBindings::CanShowSurvey(DispatchCallback callback,
   std::move(callback).Run(&response);
 #endif  // !defined(TOOLKIT_QT)
 }
+
+#if defined(AIDA_SCOPE)
+void DevToolsUIBindings::DoAidaConversation(DispatchCallback callback,
+                                            const std::string& request) {
+  if (!aida_client_) {
+    aida_client_ = std::make_unique<AidaClient>(
+        profile_, DevToolsWindow::AsDevToolsWindow(web_contents_)
+                      ->GetInspectedWebContents()
+                      ->GetPrimaryMainFrame()
+                      ->GetStoragePartition()
+                      ->GetURLLoaderFactoryForBrowserProcess());
+  }
+  aida_client_->DoConversation(
+      request, base::BindOnce(&DevToolsUIBindings::OnAidaConverstaionResponse,
+                              base::Unretained(this), std::move(callback)));
+}
+#endif
 
 void DevToolsUIBindings::SetDelegate(Delegate* delegate) {
   delegate_.reset(delegate);
@@ -1782,8 +1863,9 @@ void DevToolsUIBindings::ReadyToCommitNavigation(
   auto it = extensions_api_.find(origin);
   if (it == extensions_api_.end())
     return;
-  std::string script = base::StringPrintf("%s(\"%s\")", it->second.c_str(),
-                                          base::GenerateGUID().c_str());
+  std::string script = base::StringPrintf(
+      "%s(\"%s\")", it->second.c_str(),
+      base::Uuid::GenerateRandomV4().AsLowercaseString().c_str());
   content::DevToolsFrontendHost::SetupExtensionsAPI(frame, script);
 #endif  //! defined(TOOLKIT_QT)
 }

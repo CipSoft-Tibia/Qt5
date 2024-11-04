@@ -28,6 +28,7 @@
 #include "src/dsp/dsp.h"
 #include "src/dsp/x86/common_sse4.h"
 #include "src/utils/common.h"
+#include "src/utils/compiler_attributes.h"
 
 namespace libgav1 {
 namespace dsp {
@@ -254,6 +255,10 @@ void Convolve2D_SSE4_1(const void* LIBGAV1_RESTRICT const reference,
   alignas(16) uint16_t
       intermediate_result[kMaxSuperBlockSizeInPixels *
                           (kMaxSuperBlockSizeInPixels + kSubPixelTaps - 1)];
+#if LIBGAV1_MSAN
+  // Quiet msan warnings. Set with random non-zero value to aid in debugging.
+  memset(intermediate_result, 0x33, sizeof(intermediate_result));
+#endif
   const int intermediate_height = height + vertical_taps - 1;
 
   const ptrdiff_t src_stride = reference_stride;
@@ -617,6 +622,10 @@ void ConvolveCompound2D_SSE4_1(
   alignas(16) uint16_t
       intermediate_result[kMaxSuperBlockSizeInPixels *
                           (kMaxSuperBlockSizeInPixels + kSubPixelTaps - 1)];
+#if LIBGAV1_MSAN
+  // Quiet msan warnings. Set with random non-zero value to aid in debugging.
+  memset(intermediate_result, 0x33, sizeof(intermediate_result));
+#endif
 
   // Horizontal filter.
   // Filter types used for width <= 4 are different from those for width > 4.
@@ -1157,6 +1166,10 @@ void ConvolveScale2D_SSE4_1(const void* LIBGAV1_RESTRICT const reference,
   alignas(16) int16_t
       intermediate_result[kIntermediateAllocWidth *
                           (2 * kIntermediateAllocWidth + kSubPixelTaps)];
+#if LIBGAV1_MSAN
+  // Quiet msan warnings. Set with random non-zero value to aid in debugging.
+  memset(intermediate_result, 0x44, sizeof(intermediate_result));
+#endif
   const int num_vert_taps = dsp::GetNumTapsInFilter(vert_filter_index);
   const int intermediate_height =
       (((height - 1) * step_y + (1 << kScaleSubPixelBits) - 1) >>

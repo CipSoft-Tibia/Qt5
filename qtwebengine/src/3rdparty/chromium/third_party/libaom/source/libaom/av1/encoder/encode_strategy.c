@@ -717,13 +717,14 @@ void setup_mi(AV1_COMP *const cpi, YV12_BUFFER_CONFIG *src) {
 // to av1_encode() except that tpl is not performed.
 static int denoise_and_encode(AV1_COMP *const cpi, uint8_t *const dest,
                               EncodeFrameInput *const frame_input,
-                              EncodeFrameParams *const frame_params,
+                              const EncodeFrameParams *const frame_params,
                               EncodeFrameResults *const frame_results) {
 #if CONFIG_COLLECT_COMPONENT_TIMING
   if (cpi->oxcf.pass == 2) start_timing(cpi, denoise_and_encode_time);
 #endif
   const AV1EncoderConfig *const oxcf = &cpi->oxcf;
   AV1_COMMON *const cm = &cpi->common;
+
   GF_GROUP *const gf_group = &cpi->ppi->gf_group;
   FRAME_UPDATE_TYPE update_type =
       get_frame_update_type(&cpi->ppi->gf_group, cpi->gf_frame_index);
@@ -744,9 +745,10 @@ static int denoise_and_encode(AV1_COMP *const cpi, uint8_t *const dest,
                                !frame_params->show_existing_frame &&
                                !is_lossless_requested(&oxcf->rc_cfg);
       if (allow_kf_filtering) {
-        const double y_noise_level = av1_estimate_noise_from_single_plane(
-            frame_input->source, 0, cm->seq_params->bit_depth,
-            NOISE_ESTIMATION_EDGE_THRESHOLD);
+        double y_noise_level = 0.0;
+        av1_estimate_noise_level(
+            frame_input->source, &y_noise_level, AOM_PLANE_Y, AOM_PLANE_Y,
+            cm->seq_params->bit_depth, NOISE_ESTIMATION_EDGE_THRESHOLD);
         apply_filtering = y_noise_level > 0;
       } else {
         apply_filtering = 0;
@@ -994,18 +996,30 @@ void av1_get_ref_frames(RefFrameMapPair ref_frame_map_pairs[REF_FRAMES],
 #if !CONFIG_REALTIME_ONLY
   if (cpi->use_ducky_encode &&
       cpi->ducky_encode_info.frame_info.gop_mode == DUCKY_ENCODE_GOP_MODE_RCL) {
-    int valid_rf_idx = 0;
     for (int rf = LAST_FRAME; rf < REF_FRAMES; ++rf) {
       if (cpi->ppi->gf_group.ref_frame_list[gf_index][rf] != INVALID_IDX) {
         remapped_ref_idx[rf - LAST_FRAME] =
             cpi->ppi->gf_group.ref_frame_list[gf_index][rf];
+      }
+    }
+
+    int valid_rf_idx = 0;
+    static const int ref_frame_type_order[REF_FRAMES - LAST_FRAME] = {
+      GOLDEN_FRAME,  ALTREF_FRAME, LAST_FRAME, BWDREF_FRAME,
+      ALTREF2_FRAME, LAST2_FRAME,  LAST3_FRAME
+    };
+    for (int i = 0; i < REF_FRAMES - LAST_FRAME; i++) {
+      int rf = ref_frame_type_order[i];
+      if (remapped_ref_idx[rf - LAST_FRAME] != INVALID_IDX) {
         valid_rf_idx = remapped_ref_idx[rf - LAST_FRAME];
+        break;
       }
     }
 
     for (int i = 0; i < REF_FRAMES; ++i) {
-      if (remapped_ref_idx[i] == INVALID_IDX)
+      if (remapped_ref_idx[i] == INVALID_IDX) {
         remapped_ref_idx[i] = valid_rf_idx;
+      }
     }
 
     return;
@@ -1349,6 +1363,35 @@ int av1_encode_strategy(AV1_COMP *const cpi, size_t *const size,
     }
     frame_params.show_existing_frame &= allow_show_existing(cpi, *frame_flags);
 
+    // Special handling to reset 'show_existing_frame' in case of dropped
+    // frames.
+    if (oxcf->rc_cfg.drop_frames_water_mark &&
+        (gf_group->update_type[cpi->gf_frame_index] == OVERLAY_UPDATE ||
+         gf_group->update_type[cpi->gf_frame_index] == INTNL_OVERLAY_UPDATE)) {
+      // During the encode of an OVERLAY_UPDATE/INTNL_OVERLAY_UPDATE frame, loop
+      // over the gf group to check if the corresponding
+      // ARF_UPDATE/INTNL_ARF_UPDATE frame was dropped.
+      int cur_disp_idx = gf_group->display_idx[cpi->gf_frame_index];
+      for (int idx = 0; idx < cpi->gf_frame_index; idx++) {
+        if (cur_disp_idx == gf_group->display_idx[idx]) {
+          assert(IMPLIES(
+              gf_group->update_type[cpi->gf_frame_index] == OVERLAY_UPDATE,
+              gf_group->update_type[idx] == ARF_UPDATE));
+          assert(IMPLIES(gf_group->update_type[cpi->gf_frame_index] ==
+                             INTNL_OVERLAY_UPDATE,
+                         gf_group->update_type[idx] == INTNL_ARF_UPDATE));
+          // Reset show_existing_frame and set cpi->is_dropped_frame to true if
+          // the frame was dropped during its first encode.
+          if (gf_group->is_frame_dropped[idx]) {
+            frame_params.show_existing_frame = 0;
+            assert(!cpi->is_dropped_frame);
+            cpi->is_dropped_frame = true;
+          }
+          break;
+        }
+      }
+    }
+
     // Reset show_existing_alt_ref decision to 0 after it is used.
     if (gf_group->update_type[cpi->gf_frame_index] == OVERLAY_UPDATE) {
       cpi->ppi->show_existing_alt_ref = 0;
@@ -1385,7 +1428,8 @@ int av1_encode_strategy(AV1_COMP *const cpi, size_t *const size,
 
   // Source may be changed if temporal filtered later.
   frame_input.source = &source->img;
-  if (cpi->ppi->use_svc && last_source != NULL)
+  if ((cpi->ppi->use_svc || cpi->rc.prev_frame_is_dropped) &&
+      last_source != NULL)
     av1_svc_set_last_source(cpi, &frame_input, &last_source->img);
   else
     frame_input.last_source = last_source != NULL ? &last_source->img : NULL;
@@ -1615,6 +1659,15 @@ int av1_encode_strategy(AV1_COMP *const cpi, size_t *const size,
     cm->quant_params.using_qmatrix = oxcf->q_cfg.using_qm;
   }
 
+  const int is_intra_frame = frame_params.frame_type == KEY_FRAME ||
+                             frame_params.frame_type == INTRA_ONLY_FRAME;
+  FeatureFlags *const features = &cm->features;
+  if (!is_stat_generation_stage(cpi) &&
+      (oxcf->pass == AOM_RC_ONE_PASS || oxcf->pass >= AOM_RC_SECOND_PASS) &&
+      is_intra_frame) {
+    av1_set_screen_content_options(cpi, features);
+  }
+
 #if CONFIG_REALTIME_ONLY
   if (av1_encode(cpi, dest, &frame_input, &frame_params, &frame_results) !=
       AOM_CODEC_OK) {
@@ -1678,13 +1731,15 @@ int av1_encode_strategy(AV1_COMP *const cpi, size_t *const size,
         is_frame_droppable(&cpi->ppi->rtc_ref, &ext_flags->refresh_frame);
   }
 
-  // For SVC: keep track of the (unscaled) source corresponding to the
-  // refresh of LAST reference (base temporal layer- TL0). Copy only for the
+  // For SVC, or when frame-dropper is enabled:
+  // keep track of the (unscaled) source corresponding to the refresh of LAST
+  // reference (base temporal layer - TL0). Copy only for the
   // top spatial enhancement layer so all spatial layers of the next
   // superframe have last_source to be aligned with previous TL0 superframe.
   // Avoid cases where resolution changes for unscaled source (top spatial
-  // layer).
-  if (cpi->ppi->use_svc &&
+  // layer). Only needs to be done for frame that are encoded (size > 0).
+  if (*size > 0 &&
+      (cpi->ppi->use_svc || cpi->oxcf.rc_cfg.drop_frames_water_mark > 0) &&
       cpi->svc.spatial_layer_id == cpi->svc.number_spatial_layers - 1 &&
       cpi->svc.temporal_layer_id == 0 &&
       cpi->unscaled_source->y_width == cpi->svc.source_last_TL0.y_width &&

@@ -213,6 +213,8 @@ void QQmlJSTypeDescriptionReader::readComponent(UiObjectDefinition *ast)
                 scope->setIsSingleton(readBoolBinding(script));
             } else if (name == QLatin1String("isCreatable")) {
                 scope->setCreatableFlag(readBoolBinding(script));
+            } else if (name == QLatin1String("isStructured")) {
+                scope->setStructuredFlag(readBoolBinding(script));
             } else if (name == QLatin1String("isComposite")) {
                 scope->setIsComposite(readBoolBinding(script));
             } else if (name == QLatin1String("hasCustomParser")) {
@@ -233,6 +235,8 @@ void QQmlJSTypeDescriptionReader::readComponent(UiObjectDefinition *ast)
                 }
             } else if (name == QLatin1String("extension")) {
                 scope->setExtensionTypeName(readStringBinding(script));
+            } else if (name == QLatin1String("extensionIsJavaScript")) {
+                scope->setExtensionIsJavaScript(readBoolBinding(script));
             } else if (name == QLatin1String("extensionIsNamespace")) {
                 scope->setExtensionIsNamespace(readBoolBinding(script));
             } else if (name == QLatin1String("deferredNames")) {
@@ -243,8 +247,9 @@ void QQmlJSTypeDescriptionReader::readComponent(UiObjectDefinition *ast)
                 addWarning(script->firstSourceLocation(),
                            tr("Expected only name, prototype, defaultProperty, attachedType, "
                               "valueType, exports, interfaces, isSingleton, isCreatable, "
-                              "isComposite, hasCustomParser, exportMetaObjectRevisions, "
-                              "deferredNames, and immediateNames in script bindings, not \"%1\".")
+                              "isStructured, isComposite, hasCustomParser, "
+                              "exportMetaObjectRevisions, deferredNames, and immediateNames "
+                              "in script bindings, not \"%1\".")
                            .arg(name));
             }
         } else {
@@ -294,31 +299,40 @@ void QQmlJSTypeDescriptionReader::readSignalOrMethod(
             } else if (name == QLatin1String("revision")) {
                 metaMethod.setRevision(readIntBinding(script));
             } else if (name == QLatin1String("isCloned")) {
-                metaMethod.setIsCloned(true);
+                metaMethod.setIsCloned(readBoolBinding(script));
             } else if (name == QLatin1String("isConstructor")) {
-                metaMethod.setIsConstructor(true);
-
                 // The constructors in the moc json output are ordered the same
                 // way as the ones in the metaobject. qmltyperegistrar moves them into
                 // the same list as the other members, but maintains their order.
-                metaMethod.setConstructorIndex(
+                if (readBoolBinding(script)) {
+                    metaMethod.setIsConstructor(true);
+                    metaMethod.setConstructorIndex(
                             QQmlJSMetaMethod::RelativeFunctionIndex(m_currentCtorIndex++));
-
+                }
             } else if (name == QLatin1String("isJavaScriptFunction")) {
-                metaMethod.setIsJavaScriptFunction(true);
+                metaMethod.setIsJavaScriptFunction(readBoolBinding(script));
             } else if (name == QLatin1String("isList")) {
                 auto metaReturnType = metaMethod.returnValue();
-                metaReturnType.setIsList(true);
+                metaReturnType.setIsList(readBoolBinding(script));
                 metaMethod.setReturnValue(metaReturnType);
             } else if (name == QLatin1String("isPointer")) {
                 // TODO: We don't need this information. We can probably drop all isPointer members
                 //       once we make sure that the type information is always complete. The
                 //       description of the type being referenced has access semantics after all.
+                auto metaReturnType = metaMethod.returnValue();
+                metaReturnType.setIsPointer(readBoolBinding(script));
+                metaMethod.setReturnValue(metaReturnType);
+            } else if (name == QLatin1String("isConstant")) {
+                auto metaReturnType = metaMethod.returnValue();
+                metaReturnType.setTypeQualifier(readBoolBinding(script)
+                                                        ? QQmlJSMetaParameter::Const
+                                                        : QQmlJSMetaParameter::NonConst);
+                metaMethod.setReturnValue(metaReturnType);
             } else {
                 addWarning(script->firstSourceLocation(),
-                           tr("Expected only name, type, revision, isPointer, isList, "
-                              "isCloned, isConstructor, and "
-                              "isJavaScriptFunction in script bindings."));
+                           tr("Expected only name, type, revision, isPointer, isConstant, "
+                              "isList, isCloned, isConstructor, and isJavaScriptFunction "
+                              "in script bindings."));
             }
         } else {
             addWarning(member->firstSourceLocation(),
@@ -422,13 +436,13 @@ void QQmlJSTypeDescriptionReader::readEnum(UiObjectDefinition *ast, const QQmlJS
             metaEnum.setIsFlag(readBoolBinding(script));
         } else if (name == QLatin1String("values")) {
             readEnumValues(script, &metaEnum);
-        } else if (name == QLatin1String("scoped")) {
-            metaEnum.setScoped(readBoolBinding(script));
+        } else if (name == QLatin1String("isScoped")) {
+            metaEnum.setIsScoped(readBoolBinding(script));
         } else if (name == QLatin1String("type")) {
             metaEnum.setTypeName(readStringBinding(script));
         } else {
             addWarning(script->firstSourceLocation(),
-                       tr("Expected only name, alias, isFlag, values, scoped, or type."));
+                       tr("Expected only name, alias, isFlag, values, isScoped, or type."));
         }
     }
 

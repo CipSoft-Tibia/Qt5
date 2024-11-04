@@ -16,3 +16,18 @@ extern class JSIteratorFilterHelper extends JSIteratorHelper {
   predicate: Callable;
   counter: Number;
 }
+
+extern class JSIteratorTakeHelper extends JSIteratorHelper {
+  remaining: Number;
+}
+
+extern class JSIteratorDropHelper extends JSIteratorHelper {
+  remaining: Number;
+}
+
+extern class JSIteratorFlatMapHelper extends JSIteratorHelper {
+  mapper: Callable;
+  counter: Number;
+  innerIterator: iterator::IteratorRecord;
+  innerAlive: Boolean;
+}

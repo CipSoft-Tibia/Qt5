@@ -7,12 +7,15 @@
 
 #include "bench/Benchmark.h"
 #include "include/core/SkCanvas.h"
+#include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/GrDirectContext.h"
+
+using namespace skia_private;
 
 class CreateBackendTextureBench : public Benchmark {
 private:
     SkString fName;
-    SkTArray<GrBackendTexture> fBackendTextures;
+    TArray<GrBackendTexture> fBackendTextures;
     GrMipmapped fMipmapped;
 
 public:
@@ -28,7 +31,7 @@ private:
     void onDraw(int loops, SkCanvas* canvas) override {
         auto context = canvas->recordingContext()->asDirectContext();
 
-        fBackendTextures.reserve_back(loops);
+        fBackendTextures.reserve_exact(fBackendTextures.size() + loops);
 
         static const int kSize = 16;
         for (int i = 0; i < loops; ++i) {

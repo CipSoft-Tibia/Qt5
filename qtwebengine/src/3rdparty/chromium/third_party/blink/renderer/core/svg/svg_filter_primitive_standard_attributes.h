@@ -70,10 +70,14 @@ class SVGFilterPrimitiveStandardAttributes : public SVGElement {
   void SvgAttributeChanged(const SvgAttributeChangedParams&) override;
   void ChildrenChanged(const ChildrenChange&) override;
 
+  SVGAnimatedPropertyBase* PropertyFromAttribute(
+      const QualifiedName& attribute_name) const override;
+  void SynchronizeAllSVGAttributes() const override;
+
  private:
   bool IsFilterEffect() const final { return true; }
 
-  LayoutObject* CreateLayoutObject(const ComputedStyle&, LegacyLayout) override;
+  LayoutObject* CreateLayoutObject(const ComputedStyle&) override;
   bool LayoutObjectIsNeeded(const DisplayStyle&) const final;
 
   Member<SVGAnimatedLength> x_;

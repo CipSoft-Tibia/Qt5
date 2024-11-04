@@ -12,47 +12,53 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
-
-import {fromNs, timeToCode} from '../common/time';
+import m from 'mithril';
 
 import {globals} from './globals';
-import {Panel} from './panel';
+import {DetailsShell} from './widgets/details_shell';
+import {DurationWidget} from './widgets/duration';
+import {GridLayout} from './widgets/grid_layout';
+import {Section} from './widgets/section';
+import {Timestamp} from './widgets/timestamp';
+import {Tree, TreeNode} from './widgets/tree';
 
-interface CounterDetailsPanelAttrs {}
-
-export class CounterDetailsPanel extends Panel<CounterDetailsPanelAttrs> {
+export class CounterDetailsPanel implements m.ClassComponent {
   view() {
     const counterInfo = globals.counterDetails;
     if (counterInfo && counterInfo.startTime &&
         counterInfo.name !== undefined && counterInfo.value !== undefined &&
         counterInfo.delta !== undefined && counterInfo.duration !== undefined) {
       return m(
-          '.details-panel',
-          m('.details-panel-heading', m('h2', `Counter Details`)),
-          m(
-              '.details-table',
-              [m('table',
-                 [
-                   m('tr', m('th', `Name`), m('td', `${counterInfo.name}`)),
-                   m('tr',
-                     m('th', `Start time`),
-                     m('td', `${timeToCode(counterInfo.startTime)}`)),
-                   m('tr',
-                     m('th', `Value`),
-                     m('td', `${counterInfo.value.toLocaleString()}`)),
-                   m('tr',
-                     m('th', `Delta`),
-                     m('td', `${counterInfo.delta.toLocaleString()}`)),
-                   m('tr',
-                     m('th', `Duration`),
-                     m('td', `${timeToCode(fromNs(counterInfo.duration))}`)),
-                 ])],
-              ));
+          DetailsShell,
+          {title: 'Counter', description: `${counterInfo.name}`},
+          m(GridLayout,
+            m(
+                Section,
+                {title: 'Properties'},
+                m(
+                    Tree,
+                    m(TreeNode, {left: 'Name', right: `${counterInfo.name}`}),
+                    m(TreeNode, {
+                      left: 'Start time',
+                      right: m(Timestamp, {ts: counterInfo.startTime}),
+                    }),
+                    m(TreeNode, {
+                      left: 'Value',
+                      right: `${counterInfo.value.toLocaleString()}`,
+                    }),
+                    m(TreeNode, {
+                      left: 'Delta',
+                      right: `${counterInfo.delta.toLocaleString()}`,
+                    }),
+                    m(TreeNode, {
+                      left: 'Duration',
+                      right: m(DurationWidget, {dur: counterInfo.duration}),
+                    }),
+                    ),
+                )),
+      );
     } else {
-      return m(
-          '.details-panel',
-          m('.details-panel-heading', m('h2', `Counter Details`)));
+      return m(DetailsShell, {title: 'Counter', description: 'Loading...'});
     }
   }
 

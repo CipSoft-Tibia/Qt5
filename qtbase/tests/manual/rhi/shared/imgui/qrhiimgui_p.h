@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QRHIIMGUI_P_H
 #define QRHIIMGUI_P_H
@@ -45,7 +45,12 @@ public:
     StaticRenderData sf;
     FrameRenderData f;
 
-    void prepare(QRhi *rhi, QRhiRenderTarget *rt, QRhiCommandBuffer *cb, const QMatrix4x4 &mvp, float opacity);
+    void prepare(QRhi *rhi,
+                 QRhiRenderTarget *rt,
+                 QRhiCommandBuffer *cb,
+                 const QMatrix4x4 &mvp,
+                 float opacity = 1.0f,
+                 float hdrWhiteLevelMultiplierOrZeroForSDRsRGB = 0.0f);
     void render();
     void releaseResources();
 

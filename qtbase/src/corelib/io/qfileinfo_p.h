@@ -122,7 +122,7 @@ public:
     }
 
     uint getFileFlags(QAbstractFileEngine::FileFlags) const;
-    QDateTime &getFileTime(QAbstractFileEngine::FileTime) const;
+    QDateTime &getFileTime(QFile::FileTime) const;
     QString getFileName(QAbstractFileEngine::FileName) const;
     QString getFileOwner(QAbstractFileEngine::FileOwner own) const;
 
@@ -133,7 +133,7 @@ public:
 
     mutable QString fileNames[QAbstractFileEngine::NFileNames];
     mutable QString fileOwners[2];  // QAbstractFileEngine::FileOwner: OwnerUser and OwnerGroup
-    mutable QDateTime fileTimes[4]; // QAbstractFileEngine::FileTime: BirthTime, MetadataChangeTime, ModificationTime, AccessTime
+    mutable QDateTime fileTimes[4]; // QFile::FileTime: FileBirthTime, FileMetadataChangeTime, FileModificationTime, FileAccessTime
 
     mutable uint cachedFlags : 30;
     bool const isDefaultConstructed : 1; // QFileInfo is a default constructed instance
@@ -146,8 +146,8 @@ public:
     { if (cache_enabled) cachedFlags |= c; }
 
     template <typename Ret, typename FSLambda, typename EngineLambda>
-    Ret checkAttribute(Ret defaultValue, QFileSystemMetaData::MetaDataFlags fsFlags, const FSLambda &fsLambda,
-                       const EngineLambda &engineLambda) const
+    Ret checkAttribute(Ret defaultValue, QFileSystemMetaData::MetaDataFlags fsFlags,
+                       FSLambda fsLambda, EngineLambda engineLambda) const
     {
         if (isDefaultConstructed)
             return defaultValue;
@@ -161,10 +161,10 @@ public:
     }
 
     template <typename Ret, typename FSLambda, typename EngineLambda>
-    Ret checkAttribute(QFileSystemMetaData::MetaDataFlags fsFlags, const FSLambda &fsLambda,
-                       const EngineLambda &engineLambda) const
+    Ret checkAttribute(QFileSystemMetaData::MetaDataFlags fsFlags, FSLambda fsLambda,
+                       EngineLambda engineLambda) const
     {
-        return checkAttribute(Ret(), fsFlags, fsLambda, engineLambda);
+        return checkAttribute(Ret(), std::move(fsFlags), std::move(fsLambda), engineLambda);
     }
 };
 

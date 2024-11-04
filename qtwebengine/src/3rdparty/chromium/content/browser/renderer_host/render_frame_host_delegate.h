@@ -92,6 +92,10 @@ class ScreenOrientation;
 }
 }  // namespace device
 
+namespace network::mojom {
+class SharedDictionaryAccessDetails;
+}  // namespace network::mojom
+
 namespace ui {
 class ClipboardFormatType;
 }
@@ -129,6 +133,8 @@ class CONTENT_EXPORT RenderFrameHostDelegate {
 
   using JavaScriptDialogCallback =
       content::JavaScriptDialogManager::DialogClosedCallback;
+
+  using ClipboardPasteData = content::ClipboardPasteData;
 
   // This is used to give the delegate a chance to filter IPC messages.
   virtual bool OnMessageReceived(RenderFrameHostImpl* render_frame_host,
@@ -210,6 +216,11 @@ class CONTENT_EXPORT RenderFrameHostDelegate {
   // times for the same frame. Does not include frames activated by the
   // same-origin visibility heuristic, see `UserActivationState` for details.
   virtual void DidReceiveUserActivation(
+      RenderFrameHostImpl* render_frame_host) {}
+
+  // Called when a RenderFrameHost gets a successful web authn assertion
+  // request.
+  virtual void WebAuthnAssertionRequestSucceeded(
       RenderFrameHostImpl* render_frame_host) {}
 
   // Binds a DisplayCutoutHost object associated to |render_frame_host|.
@@ -322,6 +333,17 @@ class CONTENT_EXPORT RenderFrameHostDelegate {
       bool is_fullscreen,
       blink::mojom::FullscreenOptionsPtr options);
 
+#if defined(USE_AURA)
+  // Request to maximize window.
+  virtual void Maximize() {}
+
+  // Request to minimize window.
+  virtual void Minimize() {}
+
+  // Request to restore window.
+  virtual void Restore() {}
+#endif
+
 #if BUILDFLAG(IS_ANDROID)
   // Updates information to determine whether a user gesture should carryover to
   // future navigations. This is needed so navigations within a certain
@@ -361,12 +383,6 @@ class CONTENT_EXPORT RenderFrameHostDelegate {
 
   // Called by when |source_rfh| advances focus to a RenderFrameProxyHost.
   virtual void OnAdvanceFocus(RenderFrameHostImpl* source_rfh) {}
-
-  // Creates a WebUI object for a frame navigating to |url|. If no WebUI
-  // applies, returns null.
-  virtual std::unique_ptr<WebUIImpl> CreateWebUIForRenderFrameHost(
-      RenderFrameHostImpl* frame_host,
-      const GURL& url);
 
   // Called by |frame| to notify that it has received an update on focused
   // element. |bounds_in_root_view| is the rectangle containing the element that
@@ -533,7 +549,7 @@ class CONTENT_EXPORT RenderFrameHostDelegate {
   virtual void IsClipboardPasteContentAllowed(
       const GURL& url,
       const ui::ClipboardFormatType& data_type,
-      const std::string& data,
+      ClipboardPasteData clipboard_paste_data,
       IsClipboardPasteContentAllowedCallback callback);
 
   // Notified when the main frame of `source` adjusts the page scale.
@@ -594,6 +610,12 @@ class CONTENT_EXPORT RenderFrameHostDelegate {
   virtual void OnCookiesAccessed(RenderFrameHostImpl* render_frame_host,
                                  const CookieAccessDetails& details) {}
 
+  virtual void OnTrustTokensAccessed(RenderFrameHostImpl* render_frame_host,
+                                     const TrustTokenAccessDetails& details) {}
+  virtual void OnSharedDictionaryAccessed(
+      RenderFrameHostImpl* render_frame_host,
+      const network::mojom::SharedDictionaryAccessDetails& details) {}
+
   // Notified that the renderer responded after calling GetSavableResourceLinks.
   virtual void SavableResourceLinksResponse(
       RenderFrameHostImpl* source,
@@ -622,9 +644,15 @@ class CONTENT_EXPORT RenderFrameHostDelegate {
   virtual void UpdateWindowPreferredSize(const gfx::Size& pref_size) {}
 
   // Returns the list of top-level RenderFrameHosts hosting active documents
-  // that belong to the same browsing context group as |render_frame_host|.
+  // that belong to the same browsing context group as `render_frame_host`.
   virtual std::vector<RenderFrameHostImpl*>
   GetActiveTopLevelDocumentsInBrowsingContextGroup(
+      RenderFrameHostImpl* render_frame_host);
+
+  // Returns the list of top-level RenderFrameHosts hosting active documents
+  // that belong to the same CoopRelatedGroup as `render_frame_host`.
+  virtual std::vector<RenderFrameHostImpl*>
+  GetActiveTopLevelDocumentsInCoopRelatedGroup(
       RenderFrameHostImpl* render_frame_host);
 
   // Returns the PrerenderHostRegistry to start/cancel prerendering. This

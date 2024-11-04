@@ -11,20 +11,25 @@
 #include <QtQml/QQmlContext>
 #include <QtWebView/QtWebView>
 
+using namespace Qt::StringLiterals;
+
 // Workaround: As of Qt 5.4 QtQuick does not expose QUrl::fromUserInput.
-class Utils : public QObject {
+class Utils : public QObject
+{
     Q_OBJECT
 public:
-    Utils(QObject *parent = nullptr) : QObject(parent) { }
-    Q_INVOKABLE static QUrl fromUserInput(const QString& userInput);
+    using QObject::QObject;
+
+    Q_INVOKABLE static QUrl fromUserInput(const QString &userInput);
 };
 
-QUrl Utils::fromUserInput(const QString& userInput)
+QUrl Utils::fromUserInput(const QString &userInput)
 {
-    if (userInput.isEmpty())
-        return QUrl::fromUserInput("about:blank");
-    const QUrl result = QUrl::fromUserInput(userInput);
-    return result.isValid() ? result : QUrl::fromUserInput("about:blank");
+    if (!userInput.isEmpty()) {
+        if (const QUrl result = QUrl::fromUserInput(userInput); result.isValid())
+            return result;
+    }
+    return QUrl::fromUserInput("about:blank"_L1);
 }
 
 #include "main.moc"
@@ -42,17 +47,16 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(QGuiApplication::applicationDisplayName());
     parser.addHelpOption();
     parser.addVersionOption();
-    parser.addPositionalArgument("url", "The initial URL to open.");
-    QStringList arguments = app.arguments();
-    parser.process(arguments);
-    const QString initialUrl = parser.positionalArguments().isEmpty() ?
-        QStringLiteral("https://www.qt.io") : parser.positionalArguments().first();
+    parser.addPositionalArgument("url"_L1, "The initial URL to open."_L1);
+    parser.process(QCoreApplication::arguments());
+    const QString initialUrl = parser.positionalArguments().value(0, "https://www.qt.io"_L1);
 
     QQmlApplicationEngine engine;
     QQmlContext *context = engine.rootContext();
-    context->setContextProperty(QStringLiteral("utils"), new Utils(&engine));
-    context->setContextProperty(QStringLiteral("initialUrl"),
+    context->setContextProperty("utils"_L1, new Utils(&engine));
+    context->setContextProperty("initialUrl"_L1,
                                 Utils::fromUserInput(initialUrl));
+
     QRect geometry = QGuiApplication::primaryScreen()->availableGeometry();
     if (!QGuiApplication::styleHints()->showIsFullScreen()) {
         const QSize size = geometry.size() * 4 / 5;
@@ -60,12 +64,13 @@ int main(int argc, char *argv[])
         const QPoint pos = geometry.topLeft() + QPoint(offset.width(), offset.height());
         geometry = QRect(pos, size);
     }
-    context->setContextProperty(QStringLiteral("initialX"), geometry.x());
-    context->setContextProperty(QStringLiteral("initialY"), geometry.y());
-    context->setContextProperty(QStringLiteral("initialWidth"), geometry.width());
-    context->setContextProperty(QStringLiteral("initialHeight"), geometry.height());
 
-    engine.load(QUrl(QStringLiteral("qrc:/main.qml")));
+    engine.setInitialProperties(QVariantMap{{"x"_L1, geometry.x()},
+                                            {"y"_L1, geometry.y()},
+                                            {"width"_L1, geometry.width()},
+                                            {"height"_L1, geometry.height()}});
+
+    engine.load(QUrl("qrc:/main.qml"_L1));
     if (engine.rootObjects().isEmpty())
         return -1;
 

@@ -79,12 +79,18 @@ public Q_SLOTS:
     void toggleAxisTitleFixed(int enabled);
     void renderToImage();
     void togglePolar(int enable);
-    void toggleStatic(int enable);
+    void toggleLegacy(int enable);
     void toggleOrtho(int enable);
     void setCameraTargetX(int value);
     void setCameraTargetY(int value);
     void setCameraTargetZ(int value);
     void setGraphMargin(int value);
+    void setXAxisSegemntCount(int count);
+    void setYAxisSegemntCount(int count);
+    void setZAxisSegemntCount(int count);
+    void setXAxisSubsegemntCount(int count);
+    void setYAxisSubsegemntCount(int count);
+    void setZAxisSubsegemntCount(int count);
 
 Q_SIGNALS:
     void shadowQualityChanged(int quality);

@@ -20,7 +20,11 @@ cc_library(
     ],
     visibility = [
         "//connections:__subpackages__",
+        "//fastpair:__subpackages__",
         "//location/nearby/analytics/cpp:__subpackages__",
+        "//location/nearby/cpp/experiments:__subpackages__",
+        "//location/nearby/cpp/sharing:__subpackages__",
+        "//third_party/nearby/sharing:__subpackages__",
     ],
     deps = ["@com_google_protobuf//:protobuf"],
 )

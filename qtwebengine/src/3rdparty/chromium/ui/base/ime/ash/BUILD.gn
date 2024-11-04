@@ -64,6 +64,7 @@ jumbo_component("ash") {
   defines = [ "IS_UI_BASE_IME_ASH_IMPL" ]
 
   public_deps = [
+    "//third_party/abseil-cpp:absl",
     "//ui/base/ime",
     "//url",
   ]
@@ -71,6 +72,7 @@ jumbo_component("ash") {
   deps = [
     ":ime_types",
     ":typing_session_manager",
+    "//ash/constants",
     "//build:branding_buildflags",
     "//chromeos/ash/components/system",
     "//chromeos/ash/services/ime/public/mojom",

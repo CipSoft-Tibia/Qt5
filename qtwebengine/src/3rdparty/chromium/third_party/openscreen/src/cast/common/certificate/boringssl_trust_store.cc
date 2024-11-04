@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,6 +15,7 @@
 #include <chrono>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
@@ -24,8 +25,7 @@
 #include "util/crypto/pem_helpers.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 // -------------------------------------------------------------------------
@@ -68,14 +68,6 @@ inline bssl::UniquePtr<X509> MakeTrustAnchor(const std::vector<uint8_t>& data) {
 }
 
 constexpr static int32_t kMinRsaModulusLengthBits = 2048;
-
-// TODO(davidben): Switch this to bssl::UniquePtr after
-// https://boringssl-review.googlesource.com/c/boringssl/+/46105 lands.
-struct FreeNameConstraints {
-  void operator()(NAME_CONSTRAINTS* nc) { NAME_CONSTRAINTS_free(nc); }
-};
-using NameConstraintsPtr =
-    std::unique_ptr<NAME_CONSTRAINTS, FreeNameConstraints>;
 
 // Stores intermediate state while attempting to find a valid certificate chain
 // from a set of trusted certificates to a target certificate.  Together, a
@@ -149,7 +141,7 @@ Error::Code VerifyCertificateChain(const std::vector<CertPathStep>& path,
   // Default max path length is the number of intermediate certificates.
   int max_pathlen = path.size() - 2;
 
-  std::vector<NameConstraintsPtr> path_name_constraints;
+  std::vector<bssl::UniquePtr<NAME_CONSTRAINTS>> path_name_constraints;
   Error::Code error = Error::Code::kNone;
   uint32_t i = step_index;
   for (; i < path.size() - 1; ++i) {
@@ -193,16 +185,15 @@ Error::Code VerifyCertificateChain(const std::vector<CertPathStep>& path,
     }
 
     if (basic_constraints->pathlen) {
-      if (basic_constraints->pathlen->length != 1) {
+      uint64_t pathlen;
+      if (!ASN1_INTEGER_get_uint64(&pathlen, basic_constraints->pathlen) ||
+          // Historically, this function rejected any basic constraints
+          // extensions where the pathLenConstraint exceeded 0xff.
+          pathlen > 0xff) {
         return Error::Code::kErrCertsVerifyGeneric;
-      } else {
-        const int pathlen = *basic_constraints->pathlen->data;
-        if (pathlen < 0) {
-          return Error::Code::kErrCertsVerifyGeneric;
-        }
-        if (pathlen < max_pathlen) {
-          max_pathlen = pathlen;
-        }
+      }
+      if (static_cast<int>(pathlen) < max_pathlen) {
+        max_pathlen = pathlen;
       }
     }
 
@@ -229,7 +220,7 @@ Error::Code VerifyCertificateChain(const std::vector<CertPathStep>& path,
     }
 
     int critical;
-    NameConstraintsPtr nc{reinterpret_cast<NAME_CONSTRAINTS*>(
+    bssl::UniquePtr<NAME_CONSTRAINTS> nc{reinterpret_cast<NAME_CONSTRAINTS*>(
         X509_get_ext_d2i(issuer, NID_name_constraints, &critical, nullptr))};
     if (!nc && critical != -1) {
       // X509_get_ext_d2i's error handling is a little confusing. See
@@ -244,25 +235,18 @@ Error::Code VerifyCertificateChain(const std::vector<CertPathStep>& path,
     // Check that any policy mappings present are _not_ the anyPolicy OID.  Even
     // though we don't otherwise handle policies, this is required by RFC 5280
     // 6.1.4(a).
-    //
-    // TODO(davidben): Switch to bssl::UniquePtr once
-    // https://boringssl-review.googlesource.com/c/boringssl/+/46104 has landed.
-    auto* policy_mappings = reinterpret_cast<POLICY_MAPPINGS*>(
-        X509_get_ext_d2i(issuer, NID_policy_mappings, nullptr, nullptr));
+    bssl::UniquePtr<POLICY_MAPPINGS> policy_mappings(
+        reinterpret_cast<POLICY_MAPPINGS*>(
+            X509_get_ext_d2i(issuer, NID_policy_mappings, nullptr, nullptr)));
     if (policy_mappings) {
       const ASN1_OBJECT* any_policy = OBJ_nid2obj(NID_any_policy);
-      for (const POLICY_MAPPING* policy_mapping : policy_mappings) {
+      for (const POLICY_MAPPING* policy_mapping : policy_mappings.get()) {
         const bool either_matches =
             ((OBJ_cmp(policy_mapping->issuerDomainPolicy, any_policy) == 0) ||
              (OBJ_cmp(policy_mapping->subjectDomainPolicy, any_policy) == 0));
         if (either_matches) {
-          error = Error::Code::kErrCertsVerifyGeneric;
-          break;
+          return Error::Code::kErrCertsVerifyGeneric;
         }
-      }
-      sk_POLICY_MAPPING_free(policy_mappings);
-      if (error != Error::Code::kNone) {
-        return error;
       }
     }
 
@@ -331,7 +315,7 @@ X509* ParseX509Der(const std::string& der) {
 
 // static
 std::unique_ptr<TrustStore> TrustStore::CreateInstanceFromPemFile(
-    absl::string_view file_path) {
+    std::string_view file_path) {
   std::vector<std::string> der_certs = ReadCertificatesFromPemFile(file_path);
   std::vector<bssl::UniquePtr<X509>> certs;
   certs.reserve(der_certs.size());
@@ -550,5 +534,4 @@ BoringSSLTrustStore::FindCertificatePath(
   return result_path;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

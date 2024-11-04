@@ -49,7 +49,7 @@ public class ExternalNavigationDelegateImpl implements ExternalNavigationDelegat
 
     @Override
     public boolean shouldDisableExternalIntentRequestsForUrl(GURL url) {
-        return false;
+        return !mTab.getBrowser().isExternalIntentsEnabled();
     }
 
     @Override
@@ -169,5 +169,10 @@ public class ExternalNavigationDelegateImpl implements ExternalNavigationDelegat
         // navigations have been allowed to leave the browser on the initial navigation, so we need
         // to maintain that behavior.
         return false;
+    }
+
+    @Override
+    public String getSelfScheme() {
+        return null;
     }
 }

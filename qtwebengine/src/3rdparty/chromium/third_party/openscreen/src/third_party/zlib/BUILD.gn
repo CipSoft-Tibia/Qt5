@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -11,13 +11,15 @@ config("zlib_internal_config") {
   cflags = [
     "-Wno-implicit-function-declaration",
     "-Wno-implicit-fallthrough",
-  ]
+    "-Wno-strict-prototypes",
 
-  # TODO(issuetracker.google.com/202964797): Switch to Chromium's clang version
-  # to eliminate version mismatch issues.
-  if (!is_mac) {
-    cflags += [ "-Wno-deprecated-non-prototype" ]
-  }
+    # Tracked upstream as https://github.com/madler/zlib/issues/633.
+    "-Wno-deprecated-non-prototype",
+
+    # TODO(issuetracker.google.com/202964797): Switch to Chromium's clang version
+    # to eliminate version mismatch issues.
+    "-Wno-unknown-warning-option",
+  ]
 }
 
 static_library("zlib") {

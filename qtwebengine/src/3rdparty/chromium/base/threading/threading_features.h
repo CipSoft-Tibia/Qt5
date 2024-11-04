@@ -23,7 +23,7 @@ extern const BASE_EXPORT FeatureParam<double>
     kOptimizedRealtimeThreadingMacBusy;
 extern const BASE_EXPORT FeatureParam<double>
     kOptimizedRealtimeThreadingMacBusyLimit;
-extern const BASE_EXPORT Feature kUseThreadQoSMac;
+extern const BASE_EXPORT Feature kUserInteractiveCompositingMac;
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -31,6 +31,7 @@ BASE_EXPORT BASE_DECLARE_FEATURE(kAboveNormalCompositingBrowserWin);
 #endif
 
 BASE_EXPORT BASE_DECLARE_FEATURE(kEnableHangWatcher);
+BASE_EXPORT BASE_DECLARE_FEATURE(kEnableHangWatcherInZygoteChildren);
 
 }  // namespace base
 

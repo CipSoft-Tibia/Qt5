@@ -545,7 +545,8 @@ TEST_P(QuicServerSessionBaseTest, BandwidthEstimates) {
   if (!VersionUsesHttp3(transport_version())) {
     session_->RegisterStreamPriority(
         QuicUtils::GetHeadersStreamId(transport_version()),
-        /*is_static=*/true, QuicStreamPriority());
+        /*is_static=*/true,
+        QuicStreamPriority::Default(session_->priority_type()));
   }
 
   // Set some initial bandwidth values.
@@ -603,7 +604,8 @@ TEST_P(QuicServerSessionBaseTest, BandwidthEstimates) {
       QuicPacketNumber(1) + kMinPacketsBetweenServerConfigUpdates,
       PACKET_4BYTE_PACKET_NUMBER, nullptr, 1000, false, false);
   sent_packet_manager->OnPacketSent(&packet, now, NOT_RETRANSMISSION,
-                                    HAS_RETRANSMITTABLE_DATA, true);
+                                    HAS_RETRANSMITTABLE_DATA, true,
+                                    ECN_NOT_ECT);
 
   if (GetQuicRestartFlag(
           quic_enable_sending_bandwidth_estimate_when_network_idle_v2)) {

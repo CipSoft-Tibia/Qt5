@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtGlobal>
@@ -8,7 +8,7 @@
 
 #include <algorithm>
 
-#if defined(Q_OS_UNIX) && !defined(Q_OS_INTEGRITY)
+#if defined(Q_OS_UNIX) && !defined(Q_OS_INTEGRITY) && !defined(Q_OS_VXWORKS)
 #  include <unistd.h>
 #  include <sys/types.h>
 #  include <sys/wait.h>
@@ -49,6 +49,10 @@ private:
 #ifdef QT_NO_PRINTER
 void tst_QPrinterInfo::initTestCase()
 {
+#ifdef Q_OS_ANDROID
+    if (QNativeInterface::QAndroidApplication::sdkVersion() == 33)
+        QSKIP("Is flaky on Android 13 / RHEL 8.6 and 8.8 (QTQAINFRA-5606)");
+#endif
     QSKIP("This test requires printing support");
 }
 

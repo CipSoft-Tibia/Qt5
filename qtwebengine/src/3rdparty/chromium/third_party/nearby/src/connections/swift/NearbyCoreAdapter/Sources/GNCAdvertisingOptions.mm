@@ -14,8 +14,7 @@
 
 #import "connections/swift/NearbyCoreAdapter/Sources/Public/NearbyCoreAdapter/GNCAdvertisingOptions.h"
 
-#import <Foundation/Foundation.h>
-
+#import "connections/swift/NearbyCoreAdapter/Sources/Public/NearbyCoreAdapter/GNCSupportedMediums.h"
 #import "connections/swift/NearbyCoreAdapter/Sources/Public/NearbyCoreAdapter/GNCStrategy.h"
 
 @implementation GNCAdvertisingOptions
@@ -24,6 +23,8 @@
   self = [super init];
   if (self) {
     _strategy = strategy;
+    _autoUpgradeBandwidth = YES;
+    _mediums = [[GNCSupportedMediums alloc] initWithAllMediumsEnabled];
   }
   return self;
 }

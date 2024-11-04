@@ -15,13 +15,6 @@
 
 namespace ui {
 
-namespace {
-// A function to call when focus changes, for testing only.
-base::LazyInstance<base::RepeatingClosure>::DestructorAtExit
-    g_focus_change_callback_for_testing = LAZY_INSTANCE_INITIALIZER;
-
-}  // namespace
-
 // static
 AXTreeManagerMap& AXTreeManager::GetMap() {
   static base::NoDestructor<AXTreeManagerMap> map;
@@ -55,9 +48,15 @@ AXTreeManager* AXTreeManager::ForChildTree(const AXNode& parent_node) {
 }
 
 // static
+base::RepeatingClosure& AXTreeManager::GetFocusChangeCallbackForTesting() {
+  static base::NoDestructor<base::RepeatingClosure>
+      g_focus_change_callback_for_testing;
+  return *g_focus_change_callback_for_testing;
+}
+
 void AXTreeManager::SetFocusChangeCallbackForTesting(
     base::RepeatingClosure callback) {
-  g_focus_change_callback_for_testing.Get() = std::move(callback);
+  GetFocusChangeCallbackForTesting() = std::move(callback);
 }
 
 AXTreeManager::AXTreeManager()
@@ -81,8 +80,9 @@ AXTreeManager::AXTreeManager(std::unique_ptr<AXTree> tree)
 }
 
 void AXTreeManager::FireFocusEvent(AXNode* node) {
-  if (g_focus_change_callback_for_testing.Get())
-    g_focus_change_callback_for_testing.Get().Run();
+  if (GetFocusChangeCallbackForTesting()) {
+    GetFocusChangeCallbackForTesting().Run();
+  }
 }
 
 AXNode* AXTreeManager::RetargetForEvents(AXNode* node,
@@ -143,6 +143,10 @@ AXTreeID AXTreeManager::GetParentTreeID() const {
   return ax_tree_ ? ax_tree_->data().parent_tree_id : AXTreeIDUnknown();
 }
 
+bool AXTreeManager::IsPlatformTreeManager() const {
+  return false;
+}
+
 AXNode* AXTreeManager::GetRoot() const {
   return ax_tree_ ? ax_tree_->root() : nullptr;
 }
@@ -164,31 +168,38 @@ void AXTreeManager::SetLastFocusedNode(AXNode* node) {
 #if defined(AX_FAIL_FAST_BUILD)
   static auto* const ax_crash_key_focus = base::debug::AllocateCrashKeyString(
       "ax_focus", base::debug::CrashKeySize::Size256);
+#endif
   static auto* const ax_crash_key_focus_top_frame =
       base::debug::AllocateCrashKeyString("ax_focus_top_frame",
                                           base::debug::CrashKeySize::Size256);
   static auto* const ax_crash_key_focus_frame =
       base::debug::AllocateCrashKeyString("ax_focus_frame",
                                           base::debug::CrashKeySize::Size256);
-#endif
   if (node) {
-#if defined(AX_FAIL_FAST_BUILD)
     std::ostringstream node_info_focus, node_info_top_frame, node_info_frame;
+
+    // Only set specific focused node info in fail fast builds, in order to
+    // avoid extra processing for every focus move.
+#if defined(AX_FAIL_FAST_BUILD)
     node_info_focus << node;
-    if (node->GetManager() && node->GetManager()->GetRootManager()) {
-      node_info_top_frame << node->GetManager()->GetRootManager()->GetRoot();
-      if (!node->GetManager()->IsRoot()) {
-        // There is a parent manager, so provide frame root info as well.
-        node_info_frame << node->GetManager()->GetRoot();
+    base::debug::SetCrashKeyString(ax_crash_key_focus, node_info_focus.str());
+#endif
+
+    // Only set frame url crash keys if the tree id has changed.
+    DCHECK(node->GetManager());
+    if (node->GetManager()->GetTreeID() != last_focused_node_tree_id_) {
+      if (node->GetManager() && node->GetManager()->GetRootManager()) {
+        node_info_top_frame << node->GetManager()->GetRootManager()->GetRoot();
+        base::debug::SetCrashKeyString(ax_crash_key_focus_top_frame,
+                                       node_info_top_frame.str());
+        if (!node->GetManager()->IsRoot()) {
+          // There is a parent manager, so provide frame root info as well.
+          node_info_frame << node->GetManager()->GetRoot();
+          base::debug::SetCrashKeyString(ax_crash_key_focus_frame,
+                                         node_info_frame.str());
+        }
       }
     }
-    base::debug::SetCrashKeyString(ax_crash_key_focus, node_info_focus.str());
-    base::debug::SetCrashKeyString(ax_crash_key_focus_top_frame,
-                                   node_info_top_frame.str());
-    base::debug::SetCrashKeyString(ax_crash_key_focus_frame,
-                                   node_info_frame.str());
-#endif
-    DCHECK(node->GetManager());
 
     last_focused_node_id_ = node->id();
     last_focused_node_tree_id_ = node->GetManager()->GetTreeID();
@@ -197,9 +208,9 @@ void AXTreeManager::SetLastFocusedNode(AXNode* node) {
   } else {
 #if defined(AX_FAIL_FAST_BUILD)
     base::debug::ClearCrashKeyString(ax_crash_key_focus);
+#endif
     base::debug::ClearCrashKeyString(ax_crash_key_focus_top_frame);
     base::debug::ClearCrashKeyString(ax_crash_key_focus_frame);
-#endif
     last_focused_node_id_.reset();
     last_focused_node_tree_id_.reset();
   }
@@ -220,8 +231,9 @@ AXNode* AXTreeManager::GetLastFocusedNode() {
 
 AXTreeManager::~AXTreeManager() {
   AXNode* parent = nullptr;
-  if (connected_to_parent_tree_node_)
+  if (connected_to_parent_tree_node_) {
     parent = GetParentNodeFromParentTree();
+  }
 
   // Fire any events that need to be fired when tree nodes get deleted. For
   // example, events that fire every time "OnSubtreeWillBeDeleted" is called.
@@ -360,6 +372,7 @@ void AXTreeManager::ParentConnectionChanged(AXNode* parent) {
   }
   connected_to_parent_tree_node_ = true;
 
+  parent->tree()->NotifyChildTreeConnectionChanged(parent, ax_tree_.get());
   UpdateAttributesOnParent(parent);
   AXTreeManager* parent_manager = parent->GetManager();
   parent = parent_manager->RetargetForEvents(

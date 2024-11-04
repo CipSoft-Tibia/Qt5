@@ -12,6 +12,7 @@
 
 #include <xnnpack.h>
 #include <xnnpack/allocator.h>
+#include <xnnpack/config.h>
 #include <xnnpack/log.h>
 #include <xnnpack/math.h>
 #include <xnnpack/node-type.h>
@@ -755,11 +756,13 @@ bool xnn_subgraph_rewrite_for_fp16(xnn_subgraph_t subgraph)
       case xnn_node_type_sigmoid:
       case xnn_node_type_softmax:
       case xnn_node_type_static_constant_pad:
+      case xnn_node_type_static_slice:
       case xnn_node_type_static_reshape:
       case xnn_node_type_static_resize_bilinear_2d:
       case xnn_node_type_static_transpose:
       case xnn_node_type_square:
       case xnn_node_type_square_root:
+      case xnn_node_type_tanh:
         break;
       default:
         xnn_log_warning("FP16 rewrite aborted: node #%" PRIu32 " (%s) is not supported for FP16 inference",
@@ -880,6 +883,8 @@ bool xnn_subgraph_rewrite_for_fp16(xnn_subgraph_t subgraph)
       if (xnn_value_is_static(value)) {
         const size_t num_elements = xnn_shape_multiply_all_dims(&value->shape);
         xnn_run_convert_nc_f32_f16(1, 1, 1, num_elements, value->data, value->fp16_temp_data, 0, NULL);
+        // Remember pointer to the original fp32 data, nodes like convolution need fp32 weights/biases.
+        value->fp32_data = value->data;
         value->data = value->fp16_temp_data;
         value->fp16_temp_data = NULL;
         value->datatype = xnn_datatype_fp16;
@@ -970,6 +975,8 @@ bool xnn_subgraph_rewrite_for_fp16(xnn_subgraph_t subgraph)
       }
     }
   }
+
+  xnn_log_info("XNNPACK has switched to FP16 inference mode!");
 
   return true;
 
@@ -1219,25 +1226,29 @@ enum xnn_status xnn_subgraph_optimize(
     xnn_subgraph_fusion(subgraph);
   }
 
-  if ((flags & XNN_FLAG_FORCE_FP16_INFERENCE) && !(xnn_params.init_flags & XNN_INIT_FLAG_F16)) {
+  const struct xnn_hardware_config* hardware_config = xnn_init_hardware_config();
+  if (hardware_config == NULL) {
+    xnn_log_error("failed to get hardware config");
+    return xnn_status_unsupported_hardware;
+  }
+
+  if ((flags & XNN_FLAG_FORCE_FP16_INFERENCE) && (!xnn_is_f16_compatible_config(hardware_config))) {
     xnn_log_error("failed to force FP16 inference: hardware supports neither native nor emulated FP16 operators");
     return xnn_status_unsupported_hardware;
   }
-  #ifndef XNN_NO_F16_OPERATORS
-    const bool try_native_fp16 =
-      (flags & XNN_FLAG_HINT_FP16_INFERENCE) && (xnn_params.init_flags & XNN_INIT_FLAG_F16_NATIVE);
-    const bool force_fp16 = (flags & XNN_FLAG_FORCE_FP16_INFERENCE);
-    if (try_native_fp16 || force_fp16) {
-      const bool fp16_rewrite_succeeded = xnn_subgraph_rewrite_for_fp16(subgraph);
-      if (force_fp16 && !fp16_rewrite_succeeded) {
-        xnn_log_error("failed to force FP16 inference: subgraph is incompatible with FP16 operators");
-        return xnn_status_unsupported_parameter;
-      }
+  const bool try_native_fp16 =
+    (flags & XNN_FLAG_HINT_FP16_INFERENCE) && xnn_is_f16_supported_natively(hardware_config);
+  const bool force_fp16 = (flags & XNN_FLAG_FORCE_FP16_INFERENCE);
+  if (try_native_fp16 || force_fp16) {
+    const bool fp16_rewrite_succeeded = xnn_subgraph_rewrite_for_fp16(subgraph);
+    if (force_fp16 && !fp16_rewrite_succeeded) {
+      xnn_log_error("failed to force FP16 inference: subgraph is incompatible with FP16 operators");
+      return xnn_status_unsupported_parameter;
     }
-  #endif  // XNN_NO_F16_OPERATORS
+  }
 
   #if XNN_ENABLE_SPARSE
-    if ((flags & XNN_FLAG_HINT_SPARSE_INFERENCE) && (xnn_params.init_flags & XNN_INIT_FLAG_CHW_OPT)) {
+    if ((flags & XNN_FLAG_HINT_SPARSE_INFERENCE) && (xnn_is_f16_chw_compatible_config(hardware_config))) {
       xnn_subgraph_rewrite_for_nchw(subgraph);
     }
   #endif
@@ -1255,18 +1266,16 @@ enum xnn_status xnn_delete_subgraph(
     }
 
     if (subgraph->values != NULL) {
-      #ifndef XNN_NO_F16_OPERATORS
-        // Release the dynamic allocations created during FP16 rewrite, if the subgraph still has ownership of them.
-        for (uint32_t i = 0; i < subgraph->num_values; i++) {
-          struct xnn_value* value = &subgraph->values[i];
-          if (value->fp16_compatible && value->data != NULL) {
-            XNN_PRAGMA_CLANG("clang diagnostic push")
-            XNN_PRAGMA_CLANG("clang diagnostic ignored \"-Wcast-qual\"")
-            xnn_release_memory((void*)value->data);
-            XNN_PRAGMA_CLANG("clang diagnostic pop")
-          }
+      // Release the dynamic allocations created during FP16 rewrite, if the subgraph still has ownership of them.
+      for (uint32_t i = 0; i < subgraph->num_values; i++) {
+        struct xnn_value* value = &subgraph->values[i];
+        if (value->fp16_compatible && value->data != NULL) {
+          XNN_PRAGMA_CLANG("clang diagnostic push")
+          XNN_PRAGMA_CLANG("clang diagnostic ignored \"-Wcast-qual\"")
+          xnn_release_memory((void*)value->data);
+          XNN_PRAGMA_CLANG("clang diagnostic pop")
         }
-      #endif  // XNN_NO_F16_OPERATORS
+      }
 
       memset(subgraph->values, 0, sizeof(struct xnn_value) * subgraph->num_values);
       xnn_release_memory(subgraph->values);

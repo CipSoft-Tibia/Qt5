@@ -49,12 +49,12 @@ GalaxyData::GalaxyData(Q3DScatter *scatter,
     m_maxy(-9999.0),
     m_filtered(false)
 {
-    m_graph->activeTheme()->setType(Q3DTheme::ThemeEbony);
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQualityLow);
+    m_graph->activeTheme()->setType(Q3DTheme::Theme::Ebony);
+    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::Low);
 
     m_graph->axisX()->setRange(-25000.0f, 25000.0f);
     m_graph->axisZ()->setRange(-25000.0f, 25000.0f);
-    m_graph->setOptimizationHints(QAbstract3DGraph::OptimizationDefault);
+    m_graph->setOptimizationHint(QAbstract3DGraph::OptimizationHint::Default);
     m_graph->activeTheme()->setBackgroundColor(QColor(31, 31, 31));
     m_graph->activeTheme()->setWindowColor(QColor(31, 31, 31));
     m_graph->activeTheme()->setLabelBackgroundColor(QColor(31, 31, 31));
@@ -206,22 +206,22 @@ void GalaxyData::createSeries()
 {
     QScatterDataProxy *proxyNormal = new QScatterDataProxy;
     m_normalSeries = new QScatter3DSeries(proxyNormal);
-    m_normalSeries->setMesh(QAbstract3DSeries::MeshPoint);
+    m_normalSeries->setMesh(QAbstract3DSeries::Mesh::Point);
     m_graph->addSeries(m_normalSeries);
 
     QScatterDataProxy *proxyDust = new QScatterDataProxy;
     m_dustSeries = new QScatter3DSeries(proxyDust);
-    m_dustSeries->setMesh(QAbstract3DSeries::MeshPoint);
+    m_dustSeries->setMesh(QAbstract3DSeries::Mesh::Point);
     m_graph->addSeries(m_dustSeries);
 
     QScatterDataProxy *proxyH2 = new QScatterDataProxy;
     m_H2Series = new QScatter3DSeries(proxyH2);
-    m_H2Series->setMesh(QAbstract3DSeries::MeshPoint);
+    m_H2Series->setMesh(QAbstract3DSeries::Mesh::Point);
     m_graph->addSeries(m_H2Series);
 
     QScatterDataProxy *proxyFiltered = new QScatterDataProxy;
     m_filteredSeries = new QScatter3DSeries(proxyFiltered);
-    m_filteredSeries->setMesh(QAbstract3DSeries::MeshCube);
+    m_filteredSeries->setMesh(QAbstract3DSeries::Mesh::Cube);
     m_graph->addSeries(m_filteredSeries);
 
 }
@@ -240,7 +240,7 @@ void GalaxyData::createNormalDataView()
     }
 
     m_normalSeries->dataProxy()->resetArray(dataArray);
-    m_normalSeries->setMesh(QAbstract3DSeries::MeshPoint);
+    m_normalSeries->setMesh(QAbstract3DSeries::Mesh::Point);
     m_normalSeries->setBaseColor(Qt::white);
 
     dataArray = new QScatterDataArray;
@@ -255,7 +255,7 @@ void GalaxyData::createNormalDataView()
     }
 
     m_dustSeries->dataProxy()->resetArray(dataArray);
-    m_dustSeries->setMesh(QAbstract3DSeries::MeshPoint);
+    m_dustSeries->setMesh(QAbstract3DSeries::Mesh::Point);
     m_dustSeries->setBaseColor(QColor(131, 111, 255));
 
     dataArray = new QScatterDataArray;
@@ -271,7 +271,7 @@ void GalaxyData::createNormalDataView()
     }
 
     m_H2Series->dataProxy()->resetArray(dataArray);
-    m_H2Series->setMesh(QAbstract3DSeries::MeshPoint);
+    m_H2Series->setMesh(QAbstract3DSeries::Mesh::Point);
     m_H2Series->setBaseColor(Qt::red);
 }
 
@@ -318,7 +318,7 @@ void GalaxyData::createFilteredView()
     }
 
     m_filteredSeries->dataProxy()->resetArray(dataArray);
-    m_filteredSeries->setMesh(QAbstract3DSeries::MeshCube);
+    m_filteredSeries->setMesh(QAbstract3DSeries::Mesh::Cube);
     m_filteredSeries->setItemSize(0.1f);
 
     m_graph->axisY()->setRange(0.0f, float(max + 1));
@@ -400,7 +400,7 @@ void GalaxyData::setFilteredEnabled(bool enabled)
         gr.setColorAt(1.0, Qt::red);
 
         m_filteredSeries->setBaseGradient(gr);
-        m_filteredSeries->setColorStyle(Q3DTheme::ColorStyleRangeGradient);
+        m_filteredSeries->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
 
         m_normalSeries->setVisible(false);
 
@@ -408,7 +408,7 @@ void GalaxyData::setFilteredEnabled(bool enabled)
 
         m_filteredSeries->setVisible(true);
     } else {
-        m_normalSeries->setColorStyle(Q3DTheme::ColorStyleUniform);
+        m_normalSeries->setColorStyle(Q3DTheme::ColorStyle::Uniform);
         m_graph->axisY()->setRange(-1.0f, 1.0f);
         m_normalSeries->setItemSize(0.0f);
 
@@ -418,15 +418,6 @@ void GalaxyData::setFilteredEnabled(bool enabled)
 
         m_normalSeries->setVisible(true);
     }
-}
-
-
-void GalaxyData::setStaticEnabled(bool enabled)
-{
-    if (enabled)
-        m_graph->setOptimizationHints(QAbstract3DGraph::OptimizationDefault);
-    else
-        m_graph->setOptimizationHints(QAbstract3DGraph::OptimizationLegacy);
 }
 
 void GalaxyData::setStarsVisible(bool enabled)

@@ -11,34 +11,18 @@
 #include "base/strings/stringprintf.h"
 #include "base/values.h"
 #include "chrome/browser/extensions/extension_service.h"
-#include "components/version_info/channel.h"
+#include "chrome/common/extensions/api/mdns.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/extension_function.h"
 #include "extensions/browser/extension_host.h"
 #include "extensions/browser/extension_registry.h"
-#include "extensions/common/features/feature_channel.h"
 #include "extensions/common/mojom/event_dispatcher.mojom.h"
 
 namespace extensions {
 
 namespace mdns = api::mdns;
-
-namespace {
-
-// Allowlisted mDNS service types.
-const char kCastServiceType[] = "_googlecast._tcp.local";
-const char kPrivetServiceType[] = "_privet._tcp.local";
-const char kTestServiceType[] = "_testing._tcp.local";
-
-bool IsServiceTypeAllowlisted(const std::string& service_type) {
-  return service_type == kCastServiceType ||
-         service_type == kPrivetServiceType ||
-         service_type == kTestServiceType;
-}
-
-}  // namespace
 
 using DnsSdRegistry = media_router::DnsSdRegistry;
 
@@ -71,8 +55,9 @@ BrowserContextKeyedAPIFactory<MDnsAPI>* MDnsAPI::GetFactoryInstance() {
 
 void MDnsAPI::SetDnsSdRegistryForTesting(DnsSdRegistry* dns_sd_registry) {
   dns_sd_registry_ = dns_sd_registry;
-  if (dns_sd_registry_)
+  if (dns_sd_registry_) {
     dns_sd_registry_->AddObserver(this);
+  }
 }
 
 void MDnsAPI::ForceDiscovery() {
@@ -195,20 +180,12 @@ const extensions::EventListenerMap::ListenerList& MDnsAPI::GetEventListeners() {
       .GetEventListenersByName(mdns::OnServiceList::kEventName);
 }
 
-bool MDnsAPI::IsMDnsAllowed(const std::string& extension_id,
-                            const std::string& service_type) const {
+bool MDnsAPI::IsMDnsAllowed(const std::string& extension_id) const {
   const extensions::Extension* extension =
       ExtensionRegistry::Get(browser_context_)
           ->enabled_extensions()
           .GetByID(extension_id);
-  if (!extension)
-    return false;
-
-  if (GetCurrentChannel() == version_info::Channel::DEV &&
-      extension->is_extension()) {
-    return true;
-  }
-  return extension->is_platform_app() || IsServiceTypeAllowlisted(service_type);
+  return extension;
 }
 
 void MDnsAPI::GetValidOnServiceListListeners(
@@ -221,20 +198,23 @@ void MDnsAPI::GetValidOnServiceListListeners(
     const std::string* service_type =
         filter->FindString(kEventFilterServiceTypeKey);
     if (!service_type || service_type->empty() ||
-        !base::IsStringASCII(*service_type))
+        !base::IsStringASCII(*service_type)) {
       continue;
+    }
 
     // Match service type when filter isn't ""
-    if (!service_type_filter.empty() && service_type_filter != *service_type)
+    if (!service_type_filter.empty() && service_type_filter != *service_type) {
       continue;
+    }
 
-    // Don't listen for services associated only with disabled extensions
-    // or non-allowlisted, non-platform-app extensions.
-    if (!IsMDnsAllowed(listener->extension_id(), *service_type))
+    // Don't listen for services associated only with disabled extensions.
+    if (!IsMDnsAllowed(listener->extension_id())) {
       continue;
+    }
 
-    if (extension_ids)
+    if (extension_ids) {
       extension_ids->insert(listener->extension_id());
+    }
     if (service_type_counts) {
       (*service_type_counts)[*service_type]++;
     }
@@ -260,21 +240,16 @@ void MDnsAPI::WriteToConsole(const std::string& service_type,
   for (const std::string& extension_id : extension_ids) {
     extensions::ExtensionHost* host =
         extensions::ProcessManager::Get(browser_context_)
-        ->GetBackgroundHostForExtension(extension_id);
-    content::RenderFrameHost* rfh =
+            ->GetBackgroundHostForExtension(extension_id);
+    content::RenderFrameHost* render_frame_host =
         host ? host->host_contents()->GetPrimaryMainFrame() : nullptr;
-    if (rfh)
-      rfh->AddMessageToConsole(level, logged_message);
+    if (render_frame_host) {
+      render_frame_host->AddMessageToConsole(level, logged_message);
+    }
   }
 }
 
-MdnsForceDiscoveryFunction::MdnsForceDiscoveryFunction() {
-}
-
-MdnsForceDiscoveryFunction::~MdnsForceDiscoveryFunction() {
-}
-
-AsyncApiFunction::ResponseAction MdnsForceDiscoveryFunction::Run() {
+ExtensionFunction::ResponseAction MdnsForceDiscoveryFunction::Run() {
   MDnsAPI* api = MDnsAPI::Get(browser_context());
   if (!api) {
     return RespondNow(Error("Unknown error."));

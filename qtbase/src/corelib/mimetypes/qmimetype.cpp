@@ -191,16 +191,16 @@ QString QMimeType::comment() const
 {
     const auto localeComments = QMimeDatabasePrivate::instance()->localeComments(d->name);
 
-    QStringList languageList = QLocale().uiLanguages();
-    qsizetype defaultIndex = languageList.indexOf(u"en-US"_s);
+    QStringList languageList = QLocale().uiLanguages(QLocale::TagSeparator::Underscore);
+    qsizetype defaultIndex = languageList.indexOf(u"en_US"_s);
 
     // Include the default locale as fall-back.
     if (defaultIndex >= 0) {
         // en_US is generally the default, and may be omitted from the
         // overtly-named locales in the MIME type's data (QTBUG-105007).
-        ++defaultIndex; // Skip over en-US.
-        // That's typically followed by en-Latn-US and en (in that order):
-        if (defaultIndex < languageList.size() && languageList.at(defaultIndex) == u"en-Latn-US")
+        ++defaultIndex; // Skip over en_US.
+        // That's typically followed by en_Latn_US and en (in that order):
+        if (defaultIndex < languageList.size() && languageList.at(defaultIndex) == u"en_Latn_US")
             ++defaultIndex;
         if (defaultIndex < languageList.size() && languageList.at(defaultIndex) == u"en")
             ++defaultIndex;
@@ -211,9 +211,7 @@ QString QMimeType::comment() const
     languageList.insert(defaultIndex, u"default"_s);
 
     for (const QString &language : std::as_const(languageList)) {
-            // uiLanguages() uses '-' as separator, MIME database uses '_'
-        const QString lang
-            = language == "C"_L1 ? u"en_US"_s : QString(language).replace(u'-', u'_');
+        const QString lang = language == "C"_L1 ? u"en_US"_s : language;
         QString comm = localeComments.value(lang);
         if (!comm.isEmpty())
             return comm;
@@ -442,14 +440,8 @@ QString QMimeType::filterString() const
     const QStringList patterns = globPatterns();
     QString filter;
 
-    if (!patterns.empty()) {
-        filter += comment() + " ("_L1;
-        for (int i = 0; i < patterns.size(); ++i) {
-            if (i != 0)
-                filter += u' ';
-            filter += patterns.at(i);
-        }
-        filter +=  u')';
+    if (!patterns.isEmpty()) {
+        filter = comment() + " ("_L1 + patterns.join(u' ') + u')';
     }
 
     return filter;

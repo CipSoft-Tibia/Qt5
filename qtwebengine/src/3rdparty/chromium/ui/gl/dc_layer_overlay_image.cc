@@ -4,27 +4,37 @@
 
 #include "ui/gl/dc_layer_overlay_image.h"
 
-#if BUILDFLAG(IS_WIN)
 #include <d3d11.h>
 #include <dcomp.h>
-#include <dxgi.h>
 #include <unknwn.h>
-#endif
 
 #include "base/notreached.h"
 
 namespace gl {
 
+const char* DCLayerOverlayTypeToString(DCLayerOverlayType overlay_type) {
+  switch (overlay_type) {
+    case DCLayerOverlayType::kNV12Texture:
+      return "NV12Texture";
+    case DCLayerOverlayType::kNV12Pixmap:
+      return "NV12Pixmap";
+    case DCLayerOverlayType::kDCompVisualContent:
+      return "DCompVisualContent";
+    case DCLayerOverlayType::kDCompSurfaceProxy:
+      return "DCompSurfaceProxy";
+  }
+
+  NOTREACHED_NORETURN();
+}
+
 DCLayerOverlayImage::DCLayerOverlayImage(
     const gfx::Size& size,
     Microsoft::WRL::ComPtr<ID3D11Texture2D> nv12_texture,
-    size_t array_slice,
-    Microsoft::WRL::ComPtr<IDXGIKeyedMutex> keyed_mutex)
+    size_t array_slice)
     : type_(DCLayerOverlayType::kNV12Texture),
       size_(size),
       nv12_texture_(std::move(nv12_texture)),
-      texture_array_slice_(array_slice),
-      keyed_mutex_(std::move(keyed_mutex)) {}
+      texture_array_slice_(array_slice) {}
 
 DCLayerOverlayImage::DCLayerOverlayImage(const gfx::Size& size,
                                          const uint8_t* nv12_pixmap,

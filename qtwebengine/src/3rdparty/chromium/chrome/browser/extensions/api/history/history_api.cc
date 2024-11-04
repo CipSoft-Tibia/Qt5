@@ -27,9 +27,9 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/api/history.h"
-#include "chrome/common/pref_names.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/history/core/browser/history_types.h"
+#include "components/history/core/common/pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "extensions/browser/event_router.h"
 #include "extensions/browser/extension_system_provider.h"
@@ -122,6 +122,8 @@ VisitItem GetVisitItem(const history::VisitRow& row) {
   }
 
   visit_item.transition = transition;
+
+  visit_item.is_local = row.originator_cache_guid.empty();
 
   return visit_item;
 }
@@ -251,8 +253,8 @@ HistoryFunctionWithCallback::HistoryFunctionWithCallback() {}
 HistoryFunctionWithCallback::~HistoryFunctionWithCallback() {}
 
 ExtensionFunction::ResponseAction HistoryGetVisitsFunction::Run() {
-  std::unique_ptr<GetVisits::Params> params(GetVisits::Params::Create(args()));
-  EXTENSION_FUNCTION_VALIDATE(params.get());
+  absl::optional<GetVisits::Params> params = GetVisits::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
 
   GURL url;
   std::string error;
@@ -282,8 +284,8 @@ void HistoryGetVisitsFunction::QueryComplete(history::QueryURLResult result) {
 }
 
 ExtensionFunction::ResponseAction HistorySearchFunction::Run() {
-  std::unique_ptr<Search::Params> params(Search::Params::Create(args()));
-  EXTENSION_FUNCTION_VALIDATE(params.get());
+  absl::optional<Search::Params> params = Search::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
 
   std::u16string search_text = base::UTF8ToUTF16(params->query.text);
 
@@ -320,8 +322,8 @@ void HistorySearchFunction::SearchComplete(history::QueryResults results) {
 }
 
 ExtensionFunction::ResponseAction HistoryAddUrlFunction::Run() {
-  std::unique_ptr<AddUrl::Params> params(AddUrl::Params::Create(args()));
-  EXTENSION_FUNCTION_VALIDATE(params.get());
+  absl::optional<AddUrl::Params> params = AddUrl::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
 
   GURL url;
   std::string error;
@@ -336,8 +338,8 @@ ExtensionFunction::ResponseAction HistoryAddUrlFunction::Run() {
 }
 
 ExtensionFunction::ResponseAction HistoryDeleteUrlFunction::Run() {
-  std::unique_ptr<DeleteUrl::Params> params(DeleteUrl::Params::Create(args()));
-  EXTENSION_FUNCTION_VALIDATE(params.get());
+  absl::optional<DeleteUrl::Params> params = DeleteUrl::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
 
   std::string error;
   if (!VerifyDeleteAllowed(&error))
@@ -367,9 +369,9 @@ ExtensionFunction::ResponseAction HistoryDeleteUrlFunction::Run() {
 }
 
 ExtensionFunction::ResponseAction HistoryDeleteRangeFunction::Run() {
-  std::unique_ptr<DeleteRange::Params> params(
-      DeleteRange::Params::Create(args()));
-  EXTENSION_FUNCTION_VALIDATE(params.get());
+  absl::optional<DeleteRange::Params> params =
+      DeleteRange::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
 
   std::string error;
   if (!VerifyDeleteAllowed(&error))

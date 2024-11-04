@@ -10,8 +10,6 @@
 #include "build/build_config.h"
 #include "cc/test/pixel_comparator.h"
 #include "cc/test/pixel_test_utils.h"
-#include "components/viz/common/resources/resource_format.h"
-#include "components/viz/common/resources/resource_format_utils.h"
 #include "components/viz/common/resources/resource_sizes.h"
 #include "components/viz/common/resources/shared_image_format.h"
 #include "gpu/command_buffer/common/mailbox.h"
@@ -20,9 +18,10 @@
 #include "gpu/command_buffer/service/shared_context_state.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_backing.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_factory.h"
-#include "gpu/command_buffer/service/shared_image/shared_image_format_utils.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_format_service_utils.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_manager.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_test_base.h"
 #include "gpu/command_buffer/service/texture_manager.h"
 #include "gpu/config/gpu_driver_bug_workarounds.h"
 #include "gpu/config/gpu_feature_info.h"
@@ -31,84 +30,17 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/skia/include/core/SkBitmap.h"
-#include "third_party/skia/include/core/SkPromiseImageTexture.h"
 #include "third_party/skia/include/gpu/GrBackendSemaphore.h"
 #include "third_party/skia/include/gpu/GrBackendSurface.h"
+#include "third_party/skia/include/private/chromium/GrPromiseImageTexture.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/gpu_memory_buffer.h"
-#include "ui/gl/gl_surface.h"
-#include "ui/gl/gl_utils.h"
-#include "ui/gl/init/gl_factory.h"
 #include "ui/gl/progress_reporter.h"
 
 using testing::AtLeast;
 
 namespace gpu {
 namespace {
-
-// Allocate a bitmap for each plane filled with red pixels. RED_8 format will be
-// filled with FF repeating and RG_88 format will be filled with FF00 repeating.
-// `added_stride` is a multiplier that allocates bytePerPixel * added_stride
-// extra bytes per row.
-std::vector<SkBitmap> AllocateRedBitmaps(viz::SharedImageFormat format,
-                                         const gfx::Size& size,
-                                         SkAlphaType alpha_type,
-                                         size_t added_stride) {
-  int num_planes = format.NumberOfPlanes();
-  std::vector<SkBitmap> bitmaps(num_planes);
-
-  for (int plane = 0; plane < num_planes; ++plane) {
-    SkColorType color_type = ToClosestSkColorType(true, format, plane);
-    gfx::Size plane_size = format.GetPlaneSize(plane, size);
-
-    SkImageInfo info = SkImageInfo::Make(
-        plane_size.width(), plane_size.height(), color_type, alpha_type);
-    const size_t stride =
-        info.minRowBytes() + added_stride * info.bytesPerPixel();
-
-    auto& bitmap = bitmaps[plane];
-    bitmap.allocPixels(info, stride);
-    bitmap.eraseColor(SK_ColorRED);
-  }
-  return bitmaps;
-}
-
-std::vector<SkPixmap> GetSkPixmaps(const std::vector<SkBitmap>& bitmaps) {
-  std::vector<SkPixmap> pixmaps;
-  for (auto& bitmap : bitmaps) {
-    pixmaps.push_back(bitmap.pixmap());
-  }
-  return pixmaps;
-}
-
-bool IsGLSupported(viz::SharedImageFormat format) {
-  return format.is_single_plane() && !format.IsLegacyMultiplanar() &&
-         format != viz::SinglePlaneFormat::kBGR_565;
-}
-
-void CreateSharedContext(const GpuDriverBugWorkarounds& workarounds,
-                         scoped_refptr<gl::GLSurface>& surface,
-                         scoped_refptr<gl::GLContext>& context,
-                         scoped_refptr<SharedContextState>& context_state,
-                         scoped_refptr<gles2::FeatureInfo>& feature_info) {
-  surface =
-      gl::init::CreateOffscreenGLSurface(gl::GetDefaultDisplay(), gfx::Size());
-  ASSERT_TRUE(surface);
-  context =
-      gl::init::CreateGLContext(nullptr, surface.get(), gl::GLContextAttribs());
-  ASSERT_TRUE(context);
-  bool result = context->MakeCurrent(surface.get());
-  ASSERT_TRUE(result);
-
-  scoped_refptr<gl::GLShareGroup> share_group = new gl::GLShareGroup();
-  feature_info =
-      base::MakeRefCounted<gles2::FeatureInfo>(workarounds, GpuFeatureInfo());
-  context_state = base::MakeRefCounted<SharedContextState>(
-      std::move(share_group), surface, context,
-      false /* use_virtualized_gl_contexts */, base::DoNothing());
-  context_state->InitializeGrContext(GpuPreferences(), workarounds, nullptr);
-  context_state->InitializeGL(GpuPreferences(), feature_info);
-}
 
 class MockProgressReporter : public gl::ProgressReporter {
  public:
@@ -119,21 +51,14 @@ class MockProgressReporter : public gl::ProgressReporter {
   MOCK_METHOD0(ReportProgress, void());
 };
 
-class GLTextureImageBackingFactoryTestBase : public testing::Test {
+class GLTextureImageBackingFactoryTestBase : public SharedImageTestBase {
  public:
-  explicit GLTextureImageBackingFactoryTestBase(bool is_thread_safe)
-      : shared_image_manager_(
-            std::make_unique<SharedImageManager>(is_thread_safe)) {}
-  ~GLTextureImageBackingFactoryTestBase() override {
-    // |context_state_| must be destroyed on its own context.
-    context_state_->MakeCurrent(surface_.get(), true /* needs_gl */);
-  }
+  GLTextureImageBackingFactoryTestBase() = default;
+  ~GLTextureImageBackingFactoryTestBase() override = default;
 
-  void SetUpBase(const GpuDriverBugWorkarounds& workarounds,
-                 bool for_cpu_upload_usage) {
-    scoped_refptr<gles2::FeatureInfo> feature_info;
-    CreateSharedContext(workarounds, surface_, context_, context_state_,
-                        feature_info);
+  void SetUpBase(bool for_cpu_upload_usage) {
+    ASSERT_NO_FATAL_FAILURE(InitializeContext(GrContextType::kGL));
+    auto* feature_info = context_state_->feature_info();
 
     // Check if platform should support various formats.
     supports_r_rg_ =
@@ -153,22 +78,11 @@ class GLTextureImageBackingFactoryTestBase : public testing::Test {
     supports_ar30_ = feature_info->feature_flags().chromium_image_ar30;
     supports_ab30_ = feature_info->feature_flags().chromium_image_ab30;
 
-    GpuPreferences preferences;
-    preferences.use_passthrough_cmd_decoder = use_passthrough();
+    supports_bgra_ = feature_info->feature_flags().ext_texture_format_bgra8888;
+
     backing_factory_ = std::make_unique<GLTextureImageBackingFactory>(
-        preferences, workarounds, context_state_->feature_info(),
+        gpu_preferences_, gpu_workarounds_, context_state_->feature_info(),
         &progress_reporter_, for_cpu_upload_usage);
-
-    memory_type_tracker_ = std::make_unique<MemoryTypeTracker>(nullptr);
-    shared_image_representation_factory_ =
-        std::make_unique<SharedImageRepresentationFactory>(
-            shared_image_manager_.get(), nullptr);
-  }
-
-  bool use_passthrough() const {
-    return gles2::UsePassthroughCommandDecoder(
-               base::CommandLine::ForCurrentProcess()) &&
-           gles2::PassthroughCommandDecoderSupported();
   }
 
   bool IsFormatSupport(viz::SharedImageFormat format) const {
@@ -178,51 +92,48 @@ class GLTextureImageBackingFactoryTestBase : public testing::Test {
         return false;
       }
       return supports_r_rg_;
-    } else if (format == viz::SinglePlaneFormat::kR_8 ||
-               format == viz::SinglePlaneFormat::kRG_88) {
+    }
+    if (format == viz::SinglePlaneFormat::kR_8 ||
+        format == viz::SinglePlaneFormat::kRG_88) {
       return supports_r_rg_;
-    } else if (format == viz::SinglePlaneFormat::kR_16 ||
-               format == viz::SinglePlaneFormat::kRG_1616) {
+    }
+    if (format == viz::SinglePlaneFormat::kR_16 ||
+        format == viz::SinglePlaneFormat::kRG_1616) {
       return supports_rg16_;
-    } else if (format == viz::SinglePlaneFormat::kRGBA_F16) {
+    }
+    if (format == viz::SinglePlaneFormat::kRGBA_F16) {
       return supports_rgba_f16_;
-    } else if (format == viz::SinglePlaneFormat::kBGRA_1010102 ||
-               format == viz::SinglePlaneFormat::kRGBA_1010102) {
+    }
+    if (format == viz::SinglePlaneFormat::kBGRA_1010102 ||
+        format == viz::SinglePlaneFormat::kRGBA_1010102) {
       return supports_ar30_ || supports_ab30_;
-    } else if (format == viz::SinglePlaneFormat::kETC1) {
+    }
+    if (format == viz::SinglePlaneFormat::kETC1) {
       return supports_etc1_;
     }
+    if (format == viz::SinglePlaneFormat::kBGRA_8888) {
+      return supports_bgra_;
+    }
+
     return true;
   }
 
  protected:
   ::testing::NiceMock<MockProgressReporter> progress_reporter_;
-  scoped_refptr<gl::GLSurface> surface_;
-  scoped_refptr<gl::GLContext> context_;
-  scoped_refptr<SharedContextState> context_state_;
-  std::unique_ptr<GLTextureImageBackingFactory> backing_factory_;
-  std::unique_ptr<SharedImageManager> shared_image_manager_;
-  std::unique_ptr<MemoryTypeTracker> memory_type_tracker_;
-  std::unique_ptr<SharedImageRepresentationFactory>
-      shared_image_representation_factory_;
   bool supports_r_rg_ = false;
   bool supports_rg16_ = false;
   bool supports_rgba_f16_ = false;
   bool supports_etc1_ = false;
   bool supports_ar30_ = false;
   bool supports_ab30_ = false;
+  bool supports_bgra_ = false;
 };
 
 // Non-parameterized tests.
 class GLTextureImageBackingFactoryTest
     : public GLTextureImageBackingFactoryTestBase {
  public:
-  GLTextureImageBackingFactoryTest()
-      : GLTextureImageBackingFactoryTestBase(false) {}
-  void SetUp() override {
-    GpuDriverBugWorkarounds workarounds;
-    SetUpBase(workarounds, /*for_cpu_upload_usage=*/false);
-  }
+  void SetUp() override { SetUpBase(/*for_cpu_upload_usage=*/false); }
 };
 
 // SharedImageFormat parameterized tests.
@@ -244,12 +155,7 @@ class GLTextureImageBackingFactoryWithUploadTest
     : public GLTextureImageBackingFactoryTestBase,
       public testing::WithParamInterface<viz::SharedImageFormat> {
  public:
-  GLTextureImageBackingFactoryWithUploadTest()
-      : GLTextureImageBackingFactoryTestBase(false) {}
-  void SetUp() override {
-    GpuDriverBugWorkarounds workarounds;
-    SetUpBase(workarounds, /*for_cpu_upload_usage=*/true);
-  }
+  void SetUp() override { SetUpBase(/*for_cpu_upload_usage=*/true); }
   viz::SharedImageFormat get_format() { return GetParam(); }
 };
 
@@ -257,8 +163,7 @@ using GLTextureImageBackingFactoryWithReadbackTest =
     GLTextureImageBackingFactoryWithUploadTest;
 
 TEST_F(GLTextureImageBackingFactoryTest, InvalidFormat) {
-  auto format = viz::SharedImageFormat::SinglePlane(
-      viz::ResourceFormat::YUV_420_BIPLANAR);
+  auto format = viz::LegacyMultiPlaneFormat::kNV12;
   gfx::Size size(256, 256);
   uint32_t usage = SHARED_IMAGE_USAGE_GLES2;
   bool supported = backing_factory_->CanCreateSharedImage(
@@ -286,16 +191,15 @@ TEST_F(GLTextureImageBackingFactoryTest, EstimatedSize) {
 
   auto backing = backing_factory_->CreateSharedImage(
       mailbox, format, surface_handle, size, color_space, surface_origin,
-      alpha_type, usage, false /* is_thread_safe */);
+      alpha_type, usage, "TestLabel", /*is_thread_safe=*/false);
   ASSERT_TRUE(backing);
 
   size_t backing_estimated_size = backing->GetEstimatedSize();
   EXPECT_GT(backing_estimated_size, 0u);
 
   std::unique_ptr<SharedImageRepresentationFactoryRef> shared_image =
-      shared_image_manager_->Register(std::move(backing),
-                                      memory_type_tracker_.get());
-  EXPECT_EQ(backing_estimated_size, memory_type_tracker_->GetMemRepresented());
+      shared_image_manager_.Register(std::move(backing), &memory_type_tracker_);
+  EXPECT_EQ(backing_estimated_size, memory_type_tracker_.GetMemRepresented());
 
   shared_image.reset();
 }
@@ -310,20 +214,21 @@ TEST_F(GLTextureImageBackingFactoryTest, TexImageTexStorageEquivalence) {
                            use_passthrough(), gles2::DisallowedFeatures());
   const gles2::Validators* validators = feature_info->validators();
 
-  for (int i = 0; i <= viz::RESOURCE_FORMAT_MAX; ++i) {
-    auto format = viz::SharedImageFormat::SinglePlane(
-        static_cast<viz::ResourceFormat>(i));
-    if (!IsGLSupported(format) || format.IsCompressed())
+  for (auto format : viz::SinglePlaneFormat::kAll) {
+    if (format == viz::SinglePlaneFormat::kBGR_565 || format.IsCompressed()) {
       continue;
-    int storage_format = TextureStorageFormat(
-        format, feature_info->feature_flags().angle_rgbx_internal_format);
+    }
 
-    int image_gl_format = GLDataFormat(format);
+    GLFormatDesc format_desc = ToGLFormatDesc(
+        format, /*plane_index=*/0,
+        feature_info->feature_flags().angle_rgbx_internal_format);
+    int storage_format = format_desc.storage_internal_format;
+    int image_gl_format = format_desc.data_format;
     int storage_gl_format =
         gles2::TextureManager::ExtractFormatFromStorageFormat(storage_format);
     EXPECT_EQ(image_gl_format, storage_gl_format);
 
-    int image_gl_type = GLDataType(format);
+    int image_gl_type = format_desc.data_type;
     int storage_gl_type =
         gles2::TextureManager::ExtractTypeFromStorageFormat(storage_format);
 
@@ -336,7 +241,7 @@ TEST_F(GLTextureImageBackingFactoryTest, TexImageTexStorageEquivalence) {
     }
 
     // confirm that we support TexStorage2D only if we support TexImage2D:
-    int image_internal_format = GLInternalFormat(format);
+    int image_internal_format = format_desc.image_internal_format;
     bool supports_tex_image =
         validators->texture_internal_format.IsValid(image_internal_format) &&
         validators->texture_format.IsValid(image_gl_format) &&
@@ -373,6 +278,14 @@ TEST_P(GLTextureImageBackingFactoryWithFormatTest, Basic) {
     GTEST_SKIP();
   }
 
+#if BUILDFLAG(IS_IOS)
+  if (format == viz::SinglePlaneFormat::kBGRA_1010102) {
+    // Just like Mac, producing SkSurface for BGRA_1010102 fails on iOS
+    // (crbug.com/1100975)
+    GTEST_SKIP();
+  }
+#endif  // BUILDFLAG(IS_IOS)
+
   EXPECT_CALL(progress_reporter_, ReportProgress).Times(AtLeast(1));
   auto mailbox = Mailbox::GenerateForSharedImage();
   gfx::Size size(256, 256);
@@ -389,7 +302,7 @@ TEST_P(GLTextureImageBackingFactoryWithFormatTest, Basic) {
 
   auto backing = backing_factory_->CreateSharedImage(
       mailbox, format, surface_handle, size, color_space, surface_origin,
-      alpha_type, usage, false /* is_thread_safe */);
+      alpha_type, usage, "TestLabel", /*is_thread_safe=*/false);
   ASSERT_TRUE(backing);
 
   // Check clearing.
@@ -400,13 +313,12 @@ TEST_P(GLTextureImageBackingFactoryWithFormatTest, Basic) {
 
   // First, validate via a GLTextureImageRepresentation.
   std::unique_ptr<SharedImageRepresentationFactoryRef> shared_image =
-      shared_image_manager_->Register(std::move(backing),
-                                      memory_type_tracker_.get());
+      shared_image_manager_.Register(std::move(backing), &memory_type_tracker_);
   EXPECT_TRUE(shared_image);
   GLenum expected_target = GL_TEXTURE_2D;
   if (!use_passthrough()) {
     auto gl_representation =
-        shared_image_representation_factory_->ProduceGLTexture(mailbox);
+        shared_image_representation_factory_.ProduceGLTexture(mailbox);
     EXPECT_TRUE(gl_representation);
     auto* texture = gl_representation->GetTexture(/*plane_index=*/0);
     EXPECT_TRUE(texture->service_id());
@@ -421,7 +333,7 @@ TEST_P(GLTextureImageBackingFactoryWithFormatTest, Basic) {
   // Next, validate a GLTexturePassthroughImageRepresentation.
   if (use_passthrough()) {
     auto gl_representation =
-        shared_image_representation_factory_->ProduceGLTexturePassthrough(
+        shared_image_representation_factory_.ProduceGLTexturePassthrough(
             mailbox);
     EXPECT_TRUE(gl_representation);
     auto texture = gl_representation->GetTexturePassthrough(/*plane_index=*/0);
@@ -435,7 +347,7 @@ TEST_P(GLTextureImageBackingFactoryWithFormatTest, Basic) {
   }
 
   // Finally, validate a SkiaImageRepresentation.
-  auto skia_representation = shared_image_representation_factory_->ProduceSkia(
+  auto skia_representation = shared_image_representation_factory_.ProduceSkia(
       mailbox, context_state_.get());
   EXPECT_TRUE(skia_representation);
   std::vector<GrBackendSemaphore> begin_semaphores;
@@ -521,19 +433,18 @@ TEST_P(GLTextureImageBackingFactoryInitialDataTest, InitialData) {
 
   auto backing = backing_factory_->CreateSharedImage(
       mailbox, format, size, color_space, surface_origin, alpha_type, usage,
-      initial_data);
+      "TestLabel", initial_data);
   ASSERT_TRUE(backing);
   EXPECT_TRUE(backing->IsCleared());
 
   // Validate via a GLTextureImageRepresentation(Passthrough).
   std::unique_ptr<SharedImageRepresentationFactoryRef> shared_image =
-      shared_image_manager_->Register(std::move(backing),
-                                      memory_type_tracker_.get());
+      shared_image_manager_.Register(std::move(backing), &memory_type_tracker_);
   EXPECT_TRUE(shared_image);
   GLenum expected_target = GL_TEXTURE_2D;
   if (!use_passthrough()) {
     auto gl_representation =
-        shared_image_representation_factory_->ProduceGLTexture(mailbox);
+        shared_image_representation_factory_.ProduceGLTexture(mailbox);
     EXPECT_TRUE(gl_representation);
     EXPECT_TRUE(gl_representation->GetTexture()->service_id());
     EXPECT_EQ(expected_target, gl_representation->GetTexture()->target());
@@ -544,7 +455,7 @@ TEST_P(GLTextureImageBackingFactoryInitialDataTest, InitialData) {
     gl_representation.reset();
   } else {
     auto gl_representation =
-        shared_image_representation_factory_->ProduceGLTexturePassthrough(
+        shared_image_representation_factory_.ProduceGLTexturePassthrough(
             mailbox);
     EXPECT_TRUE(gl_representation);
     EXPECT_TRUE(gl_representation->GetTexturePassthrough()->service_id());
@@ -603,21 +514,23 @@ TEST_P(GLTextureImageBackingFactoryWithUploadTest, UploadFromMemory) {
 
   auto backing = backing_factory_->CreateSharedImage(
       mailbox, format, surface_handle, size, color_space, surface_origin,
-      alpha_type, usage, /*is_thread_safe=*/false);
+      alpha_type, usage, "TestLabel", /*is_thread_safe=*/false);
   ASSERT_TRUE(backing);
 
   // Upload from bitmap with expected stride.
   {
     std::vector<SkBitmap> bitmaps =
-        AllocateRedBitmaps(format, size, alpha_type, /*added_stride=*/0);
+        AllocateRedBitmaps(format, size, /*added_stride=*/0);
     EXPECT_TRUE(backing->UploadFromMemory(GetSkPixmaps(bitmaps)));
+    EXPECT_EQ(glGetError(), static_cast<GLenum>(GL_NO_ERROR));
   }
 
   // Upload from bitmap with larger than expected stride.
   {
     std::vector<SkBitmap> bitmaps =
-        AllocateRedBitmaps(format, size, alpha_type, /*added_stride=*/25);
+        AllocateRedBitmaps(format, size, /*added_stride=*/25);
     EXPECT_TRUE(backing->UploadFromMemory(GetSkPixmaps(bitmaps)));
+    EXPECT_EQ(glGetError(), static_cast<GLenum>(GL_NO_ERROR));
   }
 }
 
@@ -643,14 +556,15 @@ TEST_P(GLTextureImageBackingFactoryWithReadbackTest, ReadbackToMemory) {
 
   auto backing = backing_factory_->CreateSharedImage(
       mailbox, format, surface_handle, size, color_space, surface_origin,
-      alpha_type, usage, /*is_thread_safe=*/false);
+      alpha_type, usage, "TestLabel", /*is_thread_safe=*/false);
   ASSERT_TRUE(backing);
 
   std::vector<SkBitmap> src_bitmaps =
-      AllocateRedBitmaps(format, size, alpha_type, /*added_stride=*/0);
+      AllocateRedBitmaps(format, size, /*added_stride=*/0);
 
   // Upload from bitmap with expected stride.
   ASSERT_TRUE(backing->UploadFromMemory(GetSkPixmaps(src_bitmaps)));
+  EXPECT_EQ(glGetError(), static_cast<GLenum>(GL_NO_ERROR));
 
   const int num_planes = format.NumberOfPlanes();
 
@@ -666,6 +580,7 @@ TEST_P(GLTextureImageBackingFactoryWithReadbackTest, ReadbackToMemory) {
 
     std::vector<SkPixmap> pixmaps = GetSkPixmaps(readback_bitmaps);
     ASSERT_TRUE(backing->ReadbackToMemory(pixmaps));
+    EXPECT_EQ(glGetError(), static_cast<GLenum>(GL_NO_ERROR));
 
     for (int plane = 0; plane < num_planes; ++plane) {
       EXPECT_TRUE(cc::MatchesBitmap(readback_bitmaps[plane], src_bitmaps[plane],
@@ -686,6 +601,7 @@ TEST_P(GLTextureImageBackingFactoryWithReadbackTest, ReadbackToMemory) {
 
     std::vector<SkPixmap> pixmaps = GetSkPixmaps(readback_bitmaps);
     ASSERT_TRUE(backing->ReadbackToMemory(pixmaps));
+    EXPECT_EQ(glGetError(), static_cast<GLenum>(GL_NO_ERROR));
 
     for (int plane = 0; plane < num_planes; ++plane) {
       EXPECT_TRUE(cc::MatchesBitmap(readback_bitmaps[plane], src_bitmaps[plane],
@@ -728,8 +644,9 @@ const auto kSharedImageFormats =
                       viz::SinglePlaneFormat::kR_16,
                       viz::SinglePlaneFormat::kRG_1616,
                       viz::SinglePlaneFormat::kRGBA_F16,
-                      viz::MultiPlaneFormat::kYUV_420_BIPLANAR,
-                      viz::MultiPlaneFormat::kYVU_420);
+                      viz::MultiPlaneFormat::kNV12,
+                      viz::MultiPlaneFormat::kYV12,
+                      viz::MultiPlaneFormat::kI420);
 
 INSTANTIATE_TEST_SUITE_P(,
                          GLTextureImageBackingFactoryWithFormatTest,
@@ -747,8 +664,9 @@ const auto kReadbackFormats =
                       viz::SinglePlaneFormat::kRG_88,
                       viz::SinglePlaneFormat::kRGBX_8888,
                       viz::SinglePlaneFormat::kBGRX_8888,
-                      viz::MultiPlaneFormat::kYUV_420_BIPLANAR,
-                      viz::MultiPlaneFormat::kYVU_420);
+                      viz::MultiPlaneFormat::kNV12,
+                      viz::MultiPlaneFormat::kYV12,
+                      viz::MultiPlaneFormat::kI420);
 
 INSTANTIATE_TEST_SUITE_P(,
                          GLTextureImageBackingFactoryWithReadbackTest,

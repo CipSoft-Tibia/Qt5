@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "cast/common/public/message_port.h"
 #include "cast/streaming/answer_messages.h"
@@ -22,8 +21,7 @@
 #include "util/flat_map.h"
 #include "util/weak_ptr.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // A message port interface designed specifically for use by the Receiver
 // and Sender session classes.
@@ -65,7 +63,7 @@ class SenderSessionMessenger final : public SessionMessenger {
                          std::string source_id,
                          std::string receiver_id,
                          ErrorCallback cb,
-                         TaskRunner* task_runner);
+                         TaskRunner& task_runner);
 
   // Set receiver message handler. Note that this should only be
   // applied for messages that don't have sequence numbers, like RPC
@@ -91,7 +89,7 @@ class SenderSessionMessenger final : public SessionMessenger {
   void OnError(Error error) override;
 
  private:
-  TaskRunner* const task_runner_;
+  TaskRunner& task_runner_;
 
   // This messenger should only be connected to one receiver, so |receiver_id_|
   // should not change.
@@ -136,7 +134,6 @@ class ReceiverSessionMessenger final : public SessionMessenger {
   FlatMap<SenderMessage::Type, RequestCallback> callbacks_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_SESSION_MESSENGER_H_

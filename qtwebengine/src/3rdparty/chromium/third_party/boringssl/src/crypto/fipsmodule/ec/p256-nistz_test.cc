@@ -43,9 +43,11 @@ TEST(P256_NistzTest, SelectW5) {
   // Fill a table with some garbage input.
   alignas(64) P256_POINT table[16];
   for (size_t i = 0; i < 16; i++) {
-    OPENSSL_memset(table[i].X, 3 * i, sizeof(table[i].X));
-    OPENSSL_memset(table[i].Y, 3 * i + 1, sizeof(table[i].Y));
-    OPENSSL_memset(table[i].Z, 3 * i + 2, sizeof(table[i].Z));
+    OPENSSL_memset(table[i].X, static_cast<uint8_t>(3 * i), sizeof(table[i].X));
+    OPENSSL_memset(table[i].Y, static_cast<uint8_t>(3 * i + 1),
+                   sizeof(table[i].Y));
+    OPENSSL_memset(table[i].Z, static_cast<uint8_t>(3 * i + 2),
+                   sizeof(table[i].Z));
   }
 
   for (int i = 0; i <= 16; i++) {
@@ -73,8 +75,9 @@ TEST(P256_NistzTest, SelectW7) {
   // Fill a table with some garbage input.
   alignas(64) P256_POINT_AFFINE table[64];
   for (size_t i = 0; i < 64; i++) {
-    OPENSSL_memset(table[i].X, 2 * i, sizeof(table[i].X));
-    OPENSSL_memset(table[i].Y, 2 * i + 1, sizeof(table[i].Y));
+    OPENSSL_memset(table[i].X, static_cast<uint8_t>(2 * i), sizeof(table[i].X));
+    OPENSSL_memset(table[i].Y, static_cast<uint8_t>(2 * i + 1),
+                   sizeof(table[i].Y));
   }
 
   for (int i = 0; i <= 64; i++) {
@@ -106,13 +109,10 @@ TEST(P256_NistzTest, BEEU) {
   }
 #endif
 
-  bssl::UniquePtr<EC_GROUP> group(
-      EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1));
-  ASSERT_TRUE(group);
-
+  const EC_GROUP *group = EC_group_p256();
   BN_ULONG order_words[P256_LIMBS];
   ASSERT_TRUE(
-      bn_copy_words(order_words, P256_LIMBS, EC_GROUP_get0_order(group.get())));
+      bn_copy_words(order_words, P256_LIMBS, EC_GROUP_get0_order(group)));
 
   BN_ULONG in[P256_LIMBS], out[P256_LIMBS];
   EC_SCALAR in_scalar, out_scalar, result;
@@ -151,9 +151,9 @@ TEST(P256_NistzTest, BEEU) {
     // Calculate out*in and confirm that it equals one, modulo the order.
     OPENSSL_memcpy(in_scalar.words, in, sizeof(in));
     OPENSSL_memcpy(out_scalar.words, out, sizeof(out));
-    ec_scalar_to_montgomery(group.get(), &in_scalar, &in_scalar);
-    ec_scalar_to_montgomery(group.get(), &out_scalar, &out_scalar);
-    ec_scalar_mul_montgomery(group.get(), &result, &in_scalar, &out_scalar);
+    ec_scalar_to_montgomery(group, &in_scalar, &in_scalar);
+    ec_scalar_to_montgomery(group, &out_scalar, &out_scalar);
+    ec_scalar_mul_montgomery(group, &result, &in_scalar, &out_scalar);
 
     EXPECT_EQ(0, OPENSSL_memcmp(kOneMont, &result, sizeof(kOneMont)));
 
@@ -194,7 +194,7 @@ static std::string FieldElementToString(const BN_ULONG a[P256_LIMBS]) {
   std::string ret;
   for (size_t i = P256_LIMBS-1; i < P256_LIMBS; i--) {
     char buf[2 * BN_BYTES + 1];
-    BIO_snprintf(buf, sizeof(buf), BN_HEX_FMT2, a[i]);
+    snprintf(buf, sizeof(buf), BN_HEX_FMT2, a[i]);
     ret += buf;
   }
   return ret;

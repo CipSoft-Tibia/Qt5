@@ -52,7 +52,7 @@ enum class ProfileSignout {
   kForceSignoutAlwaysAllowedForTest = 11,
   // User cleared account cookies when there's no sync consent, which has caused
   // sign out.
-  kUserDeletedAccountCookies = 12,
+  // Deprecated (re-numbered in M114): kUserDeletedAccountCookies = 12,
   // Signout triggered by MobileIdentityConsistency rollback.
   // Deprecated: kMobileIdentityConsistencyRollback = 13,
   // Sign-out when the account id migration to Gaia ID did not finish,
@@ -81,9 +81,21 @@ enum class ProfileSignout {
   kGaiaCookieUpdated = 22,
   // Profile Signout during reconciliation.
   kAccountReconcilorReconcile = 23,
+  // Signin manager updates the unconsented primary account.
+  kSigninManagerUpdateUPA = 24,
+  // User cleared account cookies when there's no sync consent, which has caused
+  // sign out.
+  kUserDeletedAccountCookies = 25,
+  // User tapped 'Undo' in a snackbar that is shown right after sign-in through
+  // promo in bookmarks and reading list page. (iOS only).
+  kUserTappedUndoRightAfterSignIn = 26,
+  // User has signed-in previously for the sole purpose of enabling history sync
+  // (eg. using history sync promo in recent tabs), but declined history sync
+  // eventually.
+  kUserDeclinedHistorySyncAfterDedicatedSignIn = 27,
 
   // Keep this as the last enum.
-  kMaxValue = kAccountReconcilorReconcile
+  kMaxValue = kUserDeclinedHistorySyncAfterDedicatedSignIn
 };
 
 // Enum values used for use with "AutoLogin.Reverse" histograms.
@@ -114,38 +126,6 @@ enum AccessPointAction {
   HISTOGRAM_MAX
 };
 
-// Enum values used with the "Signin.OneClickConfirmation" histogram, which
-// tracks the actions used in the OneClickConfirmation bubble.
-enum ConfirmationUsage {
-  HISTOGRAM_CONFIRM_SHOWN,
-  HISTOGRAM_CONFIRM_OK,
-  HISTOGRAM_CONFIRM_RETURN,
-  HISTOGRAM_CONFIRM_ADVANCED,
-  HISTOGRAM_CONFIRM_CLOSE,
-  HISTOGRAM_CONFIRM_ESCAPE,
-  HISTOGRAM_CONFIRM_UNDO,
-  HISTOGRAM_CONFIRM_LEARN_MORE,
-  HISTOGRAM_CONFIRM_LEARN_MORE_OK,
-  HISTOGRAM_CONFIRM_LEARN_MORE_RETURN,
-  HISTOGRAM_CONFIRM_LEARN_MORE_ADVANCED,
-  HISTOGRAM_CONFIRM_LEARN_MORE_CLOSE,
-  HISTOGRAM_CONFIRM_LEARN_MORE_ESCAPE,
-  HISTOGRAM_CONFIRM_LEARN_MORE_UNDO,
-  HISTOGRAM_CONFIRM_MAX
-};
-
-// TODO(gogerald): right now, gaia server needs to distinguish the source from
-// signin_metrics::SOURCE_START_PAGE, signin_metrics::SOURCE_SETTINGS and the
-// others to show advanced sync setting, remove them after switching to Minute
-// Maid sign in flow.
-// This was previously used in Signin.SigninSource UMA histogram, but no longer
-// used after having below AccessPoint and Reason related histograms.
-enum Source {
-  SOURCE_START_PAGE = 0,  // This must be first.
-  SOURCE_SETTINGS = 3,
-  SOURCE_OTHERS = 13,
-};
-
 // Enum values which enumerates all access points where sign in could be
 // initiated. Not all of them exist on all platforms. They are used with
 // "Signin.SigninStartedAccessPoint" and "Signin.SigninCompletedAccessPoint"
@@ -156,6 +136,7 @@ enum Source {
 enum class AccessPoint : int {
   ACCESS_POINT_START_PAGE = 0,
   ACCESS_POINT_NTP_LINK = 1,
+  // Access point from the three dot app menu.
   ACCESS_POINT_MENU = 2,
   ACCESS_POINT_SETTINGS = 3,
   ACCESS_POINT_SUPERVISED_USER = 4,
@@ -168,7 +149,7 @@ enum class AccessPoint : int {
   ACCESS_POINT_USER_MANAGER = 11,
   ACCESS_POINT_DEVICES_PAGE = 12,
   ACCESS_POINT_CLOUD_PRINT = 13,
-  ACCESS_POINT_CONTENT_AREA = 14,
+  // ACCESS_POINT_CONTENT_AREA = 14, no longer used.
   ACCESS_POINT_SIGNIN_PROMO = 15,
   ACCESS_POINT_RECENT_TABS = 16,
   // This should never have been used to get signin URL.
@@ -199,12 +180,26 @@ enum class AccessPoint : int {
   ACCESS_POINT_NTP_SIGNED_OUT_ICON = 41,
   ACCESS_POINT_NTP_FEED_CARD_MENU_PROMO = 42,
   ACCESS_POINT_NTP_FEED_BOTTOM_PROMO = 43,
-  // TODO(crbug.com/1261772): Not a real access point, as this is an internal
-  // component. We should replace its usage with actual access points once we
-  // find ways to attribute the changes accurately.
   ACCESS_POINT_DESKTOP_SIGNIN_MANAGER = 44,
-
+  // Access point for the "For You" First Run Experience on Desktop. See
+  // go/for-you-fre or launch/4223982 for more info.
   ACCESS_POINT_FOR_YOU_FRE = 45,
+  // Access point for Cormorant (Creator Feed) on Android only when the "Follow"
+  // button is tapped while in a signed-out state.
+  ACCESS_POINT_CREATOR_FEED_FOLLOW = 46,
+  // Access point for the reading list sign-in promo (launch/4231282).
+  ACCESS_POINT_READING_LIST = 47,
+  // Access point for the reauth info bar.
+  ACCESS_POINT_REAUTH_INFO_BAR = 48,
+  // Access point for the consistency service.
+  ACCESS_POINT_ACCOUNT_CONSISTENCY_SERVICE = 49,
+  // Access point for the search companion sign-in promo.
+  ACCESS_POINT_SEARCH_COMPANION = 50,
+  // Access point for the IOS Set Up List on the NTP.
+  ACCESS_POINT_SET_UP_LIST = 51,
+  // Access point for the local password migration warning on Android.
+  ACCESS_POINT_PASSWORD_MIGRATION_WARNING_ANDROID = 52,
+
   // Add values above this line with a corresponding label to the
   // "SigninAccessPoint" enum in tools/metrics/histograms/enums.xml
   ACCESS_POINT_MAX,  // This must be last.
@@ -307,7 +302,19 @@ enum class AccountConsistencyPromoAction : int {
   SUPPRESSED_ALREADY_SIGNED_IN = 18,
   // AuthenticationFlow failed to sign-in.
   SIGN_IN_FAILED = 19,
-  kMaxValue = SIGN_IN_FAILED,
+  // The promo was shown to the user, with no existing on-device account. (i.e.
+  // the no-account menu was shown)
+  SHOWN_WITH_NO_DEVICE_ACCOUNT = 20,
+  // User tapped on "Sign In…" in the no-account menu of the bottom sheet,
+  // starting an add-account flow.
+  ADD_ACCOUNT_STARTED_WITH_NO_DEVICE_ACCOUNT = 21,
+  // User successfully added an account after tapping "Sign In…" from the
+  // no-account menu.
+  ADD_ACCOUNT_COMPLETED_WITH_NO_DEVICE_ACCOUNT = 22,
+  // User started with the bottom sheet without a device-account, and signed in
+  // to chrome by finishing the add-account and sign-in flows.
+  SIGNED_IN_WITH_NO_DEVICE_ACCOUNT = 23,
+  kMaxValue = SIGNED_IN_WITH_NO_DEVICE_ACCOUNT,
 };
 #endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 
@@ -467,23 +474,6 @@ enum class FetchAccountCapabilitiesFromSystemLibraryResult {
   kMaxValue = kErrorUnexpectedValue
 };
 
-// Enum values used for "Signin.SyncConsentScreen.DataRowClicked"
-// histogram, which records that a user tapped on an entry in TangibleSync
-// These values are persisted to logs. Entries should not be renumbered and
-// numeric values should never be reused.
-// TODO(crbug.com/1373063): use this enum in java
-// GENERATED_JAVA_ENUM_PACKAGE: org.chromium.components.signin.metrics
-enum class SigninSyncConsentDataRow {
-  // The bookmark row is tapped.
-  kBookmarksRowTapped = 0,
-  // The Autofill row is tapped.
-  kAutofillRowTapped = 1,
-  // The "History and more" row is tapped.
-  kHistoryRowTapped = 2,
-  // Always the last enumerated type.
-  kMaxValue = kHistoryRowTapped,
-};
-
 // -----------------------------------------------------------------------------
 // Histograms
 // -----------------------------------------------------------------------------
@@ -578,9 +568,11 @@ void RecordRefreshTokenUpdatedFromSource(bool refresh_token_is_valid,
 // Records the source that revoked a refresh token.
 void RecordRefreshTokenRevokedFromSource(SourceForRefreshTokenOperation source);
 
+#if BUILDFLAG(IS_IOS)
 // Records the account type when the user signs in.
 void RecordSigninAccountType(signin::ConsentLevel consent_level,
                              bool is_managed_account);
+#endif
 
 // -----------------------------------------------------------------------------
 // User actions
@@ -589,13 +581,17 @@ void RecordSigninAccountType(signin::ConsentLevel consent_level,
 // Records corresponding sign in user action for an access point.
 void RecordSigninUserActionForAccessPoint(AccessPoint access_point);
 
+// Records corresponding sign out user action.
+void RecordSignoutUserAction(bool force_clear_data);
+
 // Records |Signin_Impression_From*| user action.
 void RecordSigninImpressionUserActionForAccessPoint(AccessPoint access_point);
 
-#if BUILDFLAG(IS_IOS)
-// Records |Signin.AccountConsistencyPromoAction| histogram.
-void RecordConsistencyPromoUserAction(AccountConsistencyPromoAction action);
-#endif  // BUILDFLAG(IS_IOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+// Records |Signin.AccountConsistencyPromoAction.{PromoEvent}| histogram.
+void RecordConsistencyPromoUserAction(AccountConsistencyPromoAction action,
+                                      AccessPoint access_point);
+#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 
 }  // namespace signin_metrics
 

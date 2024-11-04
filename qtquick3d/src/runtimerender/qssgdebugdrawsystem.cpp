@@ -127,21 +127,23 @@ void QSSGDebugDrawSystem::recordRenderDebugObjects(QSSGRhiContext *rhiCtx,
                                                    QRhiShaderResourceBindings *srb,
                                                    QRhiRenderPassDescriptor *rpDesc)
 {
-    ps->ia.inputLayout.setAttributes({
+    auto &ia = QSSGRhiInputAssemblerStatePrivate::get(*ps);
+    ia.inputLayout.setAttributes({
                                          { 0, 0, QRhiVertexInputAttribute::Float3, 0 },
                                          { 0, 1, QRhiVertexInputAttribute::Float3, 3 * sizeof(float) }
                                      });
-    ps->ia.inputs << QSSGRhiInputAssemblerState::PositionSemantic
+    ia.inputs << QSSGRhiInputAssemblerState::PositionSemantic
                   << QSSGRhiInputAssemblerState::ColorSemantic;
-    ps->ia.inputLayout.setBindings({6 * sizeof(float)});
-    ps->ia.topology = QRhiGraphicsPipeline::Lines;
-    ps->depthWriteEnable = true;
-    ps->depthTestEnable = true;
+    ia.inputLayout.setBindings({6 * sizeof(float)});
+    ia.topology = QRhiGraphicsPipeline::Lines;
+    ps->flags |= QSSGRhiGraphicsPipelineState::Flag::DepthWriteEnabled;
+    ps->flags |= QSSGRhiGraphicsPipelineState::Flag::DepthTestEnabled;
     ps->cullMode = QRhiGraphicsPipeline::None;
 
+    QSSGRhiContextPrivate *rhiCtxD = QSSGRhiContextPrivate::get(rhiCtx);
     QRhiCommandBuffer *cb = rhiCtx->commandBuffer();
     if (m_indexSize > 0) {
-        auto graphicsPipeline = rhiCtx->pipeline(QSSGGraphicsPipelineStateKey::create(*ps, rpDesc, srb), rpDesc, srb);
+        auto graphicsPipeline = rhiCtxD->pipeline(*ps, rpDesc, srb);
         cb->setGraphicsPipeline(graphicsPipeline);
         cb->setShaderResources(srb);
         cb->setViewport(ps->viewport);
@@ -154,8 +156,8 @@ void QSSGDebugDrawSystem::recordRenderDebugObjects(QSSGRhiContext *rhiCtx,
 
     // Points
     if (m_pointsSize > 0) {
-        ps->ia.topology = QRhiGraphicsPipeline::Points;
-        auto graphicsPipeline = rhiCtx->pipeline(QSSGGraphicsPipelineStateKey::create(*ps, rpDesc, srb), rpDesc, srb);
+        ia.topology = QRhiGraphicsPipeline::Points;
+        auto graphicsPipeline = rhiCtxD->pipeline(*ps, rpDesc, srb);
         cb->setGraphicsPipeline(graphicsPipeline);
         cb->setShaderResources(srb);
         cb->setViewport(ps->viewport);

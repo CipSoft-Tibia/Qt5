@@ -43,13 +43,12 @@ CJS_Result CJX_Tree::resolveNode(
     return CJS_Result::Failure(JSMessage::kParamError);
 
   WideString wsExpression = runtime->ToWideString(params[0]);
-  CFXJSE_Engine* pScriptContext = GetDocument()->GetScriptContext();
   CXFA_Object* pRefNode = GetXFAObject();
   if (pRefNode->GetElementType() == XFA_Element::Xfa)
-    pRefNode = pScriptContext->GetThisObject();
+    pRefNode = runtime->GetThisObject();
 
   absl::optional<CFXJSE_Engine::ResolveResult> maybeResult =
-      pScriptContext->ResolveObjects(
+      runtime->ResolveObjects(
           ToNode(pRefNode), wsExpression.AsStringView(),
           Mask<XFA_ResolveFlag>{
               XFA_ResolveFlag::kChildren, XFA_ResolveFlag::kAttributes,
@@ -59,9 +58,8 @@ CJS_Result CJX_Tree::resolveNode(
     return CJS_Result::Success(runtime->NewNull());
 
   if (maybeResult.value().type == CFXJSE_Engine::ResolveResult::Type::kNodes) {
-    return CJS_Result::Success(
-        GetDocument()->GetScriptContext()->GetOrCreateJSBindingFromMap(
-            maybeResult.value().objects.front().Get()));
+    return CJS_Result::Success(runtime->GetOrCreateJSBindingFromMap(
+        maybeResult.value().objects.front().Get()));
   }
 
   if (!maybeResult.value().script_attribute.callback ||
@@ -86,14 +84,13 @@ CJS_Result CJX_Tree::resolveNodes(
 
   CXFA_Object* refNode = GetXFAObject();
   if (refNode->GetElementType() == XFA_Element::Xfa)
-    refNode = GetDocument()->GetScriptContext()->GetThisObject();
+    refNode = runtime->GetThisObject();
 
-  CFXJSE_Engine* pScriptContext = GetDocument()->GetScriptContext();
   const Mask<XFA_ResolveFlag> kFlags = {
       XFA_ResolveFlag::kChildren, XFA_ResolveFlag::kAttributes,
       XFA_ResolveFlag::kProperties, XFA_ResolveFlag::kParent,
       XFA_ResolveFlag::kSiblings};
-  return CJS_Result::Success(ResolveNodeList(pScriptContext->GetIsolate(),
+  return CJS_Result::Success(ResolveNodeList(runtime->GetIsolate(),
                                              runtime->ToWideString(params[0]),
                                              kFlags, ToNode(refNode)));
 }

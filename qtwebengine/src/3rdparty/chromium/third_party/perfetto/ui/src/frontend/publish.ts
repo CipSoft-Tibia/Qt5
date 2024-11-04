@@ -23,12 +23,15 @@ import {
 } from '../common/logs';
 import {MetricResult} from '../common/metric_data';
 import {CurrentSearchResults, SearchSummary} from '../common/search_data';
+import {raf} from '../core/raf_scheduler';
 
 import {
   CounterDetails,
   CpuProfileDetails,
   FlamegraphDetails,
   Flow,
+  FtracePanelData,
+  FtraceStat,
   globals,
   QuantizedLoad,
   SliceDetails,
@@ -49,16 +52,21 @@ export function publishOverviewData(
       globals.overviewStore.get(key)!.push(value);
     }
   }
-  globals.rafScheduler.scheduleRedraw();
+  raf.scheduleRedraw();
+}
+
+export function clearOverviewData() {
+  globals.overviewStore.clear();
+  raf.scheduleRedraw();
 }
 
 export function publishTrackData(args: {id: string, data: {}}) {
   globals.setTrackData(args.id, args.data);
   if ([LogExistsKey, LogBoundsKey, LogEntriesKey].includes(args.id)) {
     const data = globals.trackDataStore.get(LogExistsKey) as LogExists;
-    if (data && data.exists) globals.rafScheduler.scheduleFullRedraw();
+    if (data && data.exists) raf.scheduleFullRedraw();
   } else {
-    globals.rafScheduler.scheduleRedraw();
+    raf.scheduleRedraw();
   }
 }
 
@@ -87,8 +95,8 @@ export function publishCpuProfileDetails(details: CpuProfileDetails) {
   globals.publishRedraw();
 }
 
-export function publishHasFtrace(hasFtrace: boolean) {
-  globals.hasFtrace = hasFtrace;
+export function publishFtraceCounters(counters: FtraceStat[]) {
+  globals.ftraceCounters = counters;
   globals.publishRedraw();
 }
 
@@ -102,7 +110,7 @@ export function publishLoading(numQueuedQueries: number) {
   globals.numQueuedQueries = numQueuedQueries;
   // TODO(hjd): Clean up loadingAnimation given that this now causes a full
   // redraw anyways. Also this should probably just go via the global state.
-  globals.rafScheduler.scheduleFullRedraw();
+  raf.scheduleFullRedraw();
 }
 
 export function publishBufferUsage(args: {percentage: number}) {
@@ -194,5 +202,10 @@ export function publishConnectedFlows(connectedFlows: Flow[]) {
     }
   }
 
+  globals.publishRedraw();
+}
+
+export function publishFtracePanelData(data: FtracePanelData) {
+  globals.ftracePanelData = data;
   globals.publishRedraw();
 }

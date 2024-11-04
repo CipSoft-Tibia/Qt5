@@ -35,11 +35,14 @@ class CrossOriginReadBlockingChecker {
     kBlocked_ShouldNotReport,
     kNetError
   };
+  // The caller needs to guarantee that `orb_state`'s lifetime is at least as
+  // long as the lifetime of `CrossOriginReadBlockingChecker`.  `orb_state`
+  // needs to be non-null.
   CrossOriginReadBlockingChecker(
       const network::ResourceRequest& request,
       const network::mojom::URLResponseHead& response,
       const storage::BlobDataHandle& blob_data_handle,
-      network::corb::PerFactoryState& corb_state,
+      network::corb::PerFactoryState* corb_state,
       base::OnceCallback<void(Result)> callback);
 
   CrossOriginReadBlockingChecker(const CrossOriginReadBlockingChecker&) =

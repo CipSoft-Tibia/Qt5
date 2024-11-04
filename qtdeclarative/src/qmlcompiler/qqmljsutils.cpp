@@ -80,7 +80,10 @@ QQmlJSUtils::ResolvedAlias QQmlJSUtils::resolveAlias(const QQmlJSTypeResolver *t
 {
     return ::resolveAlias(
             [&](const QString &id, const QQmlJSScope::ConstPtr &referrer) {
-                return typeResolver->scopeForId(id, referrer);
+                const QQmlJSRegisterContent content = typeResolver->scopedType(referrer, id);
+                if (content.variant() == QQmlJSRegisterContent::ObjectById)
+                    return content.type();
+                return QQmlJSScope::ConstPtr();
             },
             property, owner, visitor);
 }
@@ -204,24 +207,16 @@ QQmlJSUtils::sourceDirectoryPath(const QQmlJSImporter *importer, const QString &
     Utility method that checks if one of the registers is var, and the other can be
     efficiently compared to it
 */
-bool canStrictlyCompareWithVar(const QQmlJSTypeResolver *typeResolver,
-                               const QQmlJSRegisterContent &lhsContent,
-                               const QQmlJSRegisterContent &rhsContent)
+bool canStrictlyCompareWithVar(
+        const QQmlJSTypeResolver *typeResolver, const QQmlJSScope::ConstPtr &lhsType,
+        const QQmlJSScope::ConstPtr &rhsType)
 {
     Q_ASSERT(typeResolver);
-    const auto varType = typeResolver->varType();
-    const auto nullType = typeResolver->nullType();
-    const auto voidType = typeResolver->voidType();
 
-    // Use containedType() because nullptr is not a stored type.
-    const auto lhsType = typeResolver->containedType(lhsContent);
-    const auto rhsType = typeResolver->containedType(rhsContent);
-
-    return (typeResolver->equals(lhsType, varType)
-            && (typeResolver->equals(rhsType, nullType) || typeResolver->equals(rhsType, voidType)))
-            || (typeResolver->equals(rhsType, varType)
-                && (typeResolver->equals(lhsType, nullType)
-                    || typeResolver->equals(lhsType, voidType)));
+    const QQmlJSScope::ConstPtr varType = typeResolver->varType();
+    const bool leftIsVar = typeResolver->equals(lhsType, varType);
+    const bool righttIsVar = typeResolver->equals(rhsType, varType);
+    return leftIsVar != righttIsVar;
 }
 
 /*! \internal
@@ -229,13 +224,11 @@ bool canStrictlyCompareWithVar(const QQmlJSTypeResolver *typeResolver,
     Utility method that checks if one of the registers is qobject, and the other can be
     efficiently compared to it
 */
-bool canCompareWithQObject(const QQmlJSTypeResolver *typeResolver,
-                           const QQmlJSRegisterContent &lhsContent,
-                           const QQmlJSRegisterContent &rhsContent)
+bool canCompareWithQObject(
+        const QQmlJSTypeResolver *typeResolver, const QQmlJSScope::ConstPtr &lhsType,
+        const QQmlJSScope::ConstPtr &rhsType)
 {
     Q_ASSERT(typeResolver);
-    const auto lhsType = typeResolver->containedType(lhsContent);
-    const auto rhsType = typeResolver->containedType(rhsContent);
     return (lhsType->isReferenceType()
             && (rhsType->isReferenceType()
                 || typeResolver->equals(rhsType, typeResolver->nullType())))
@@ -249,13 +242,11 @@ bool canCompareWithQObject(const QQmlJSTypeResolver *typeResolver,
     Utility method that checks if both sides are QUrl type. In future, that might be extended to
     support comparison with other types i.e QUrl vs string
 */
-bool canCompareWithQUrl(const QQmlJSTypeResolver *typeResolver,
-                        const QQmlJSRegisterContent &lhsContent,
-                        const QQmlJSRegisterContent &rhsContent)
+bool canCompareWithQUrl(
+        const QQmlJSTypeResolver *typeResolver, const QQmlJSScope::ConstPtr &lhsType,
+        const QQmlJSScope::ConstPtr &rhsType)
 {
     Q_ASSERT(typeResolver);
-    const auto lhsType = typeResolver->containedType(lhsContent);
-    const auto rhsType = typeResolver->containedType(rhsContent);
     return typeResolver->equals(lhsType, typeResolver->urlType())
             && typeResolver->equals(rhsType, typeResolver->urlType());
 }

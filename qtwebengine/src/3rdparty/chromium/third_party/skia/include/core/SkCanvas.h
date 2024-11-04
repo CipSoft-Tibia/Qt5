@@ -74,15 +74,6 @@ namespace skgpu::graphite { class Recorder; }
 namespace sktext::gpu { class Slug; }
 namespace SkRecords { class Draw; }
 
-#if defined(SK_BUILD_FOR_ANDROID_FRAMEWORK) && SK_SUPPORT_GPU
-class GrBackendRenderTarget;
-#endif
-
-// TODO:
-// This is not ideal but Chrome is depending on a forward decl of GrSlug here.
-// It should be removed once Chrome has migrated to sktext::gpu::Slug.
-using GrSlug = sktext::gpu::Slug;
-
 /** \class SkCanvas
     SkCanvas provides an interface for drawing, and how the drawing is clipped and transformed.
     SkCanvas contains a stack of SkMatrix and clip values.
@@ -290,15 +281,6 @@ public:
     */
     SkSurfaceProps getTopProps() const;
 
-    /** Triggers the immediate execution of all pending draw operations.
-        If SkCanvas is associated with GPU surface, resolves all pending GPU operations.
-        If SkCanvas is associated with raster surface, has no effect; raster draw
-        operations are never deferred.
-
-        DEPRECATED: Replace usage with GrDirectContext::flush()
-    */
-    void flush();
-
     /** Gets the size of the base or root layer in global canvas coordinates. The
         origin of the base layer is always (0,0). The area available for drawing may be
         smaller (due to clipping or saveLayer).
@@ -323,19 +305,20 @@ public:
     */
     sk_sp<SkSurface> makeSurface(const SkImageInfo& info, const SkSurfaceProps* props = nullptr);
 
-    /** Returns GPU context of the GPU surface associated with SkCanvas.
+    /** Returns Ganesh context of the GPU surface associated with SkCanvas.
 
         @return  GPU context, if available; nullptr otherwise
 
         example: https://fiddle.skia.org/c/@Canvas_recordingContext
      */
-    virtual GrRecordingContext* recordingContext();
+    virtual GrRecordingContext* recordingContext() const;
+
 
     /** Returns Recorder for the GPU surface associated with SkCanvas.
 
         @return  Recorder, if available; nullptr otherwise
      */
-    virtual skgpu::graphite::Recorder* recorder();
+    virtual skgpu::graphite::Recorder* recorder() const;
 
     /** Sometimes a canvas is owned by a surface. If it is, getSurface() will return a bare
      *  pointer to that surface, else this will return nullptr.
@@ -1991,11 +1974,11 @@ public:
     */
     void drawVertices(const sk_sp<SkVertices>& vertices, SkBlendMode mode, const SkPaint& paint);
 
-#if defined(SK_ENABLE_SKSL)
     /**
         Experimental, under active development, and subject to change without notice.
 
-        Draws a mesh using a user-defined specification (see SkMeshSpecification).
+        Draws a mesh using a user-defined specification (see SkMeshSpecification). Requires
+        a GPU backend or SkSL to be compiled in.
 
         SkBlender is ignored if SkMesh's specification does not output fragment shader color.
         Otherwise, it combines
@@ -2012,7 +1995,6 @@ public:
         @param paint     specifies the SkShader, used as SkVertices texture, may be nullptr
     */
     void drawMesh(const SkMesh& mesh, sk_sp<SkBlender> blender, const SkPaint& paint);
-#endif
 
     /** Draws a Coons patch: the interpolation of four cubics with shared corners,
         associating a color, and optionally a texture SkPoint, with each corner.
@@ -2183,12 +2165,6 @@ public:
 
     ///////////////////////////////////////////////////////////////////////////
 
-#if defined(SK_BUILD_FOR_ANDROID_FRAMEWORK) && SK_SUPPORT_GPU
-    // These methods exist to support WebView in Android Framework.
-    SkIRect topLayerBounds() const;
-    GrBackendRenderTarget topLayerBackendRenderTarget() const;
-#endif
-
     /**
      *  Returns the global clip as a region. If the clip contains AA, then only the bounds
      *  of the clip may be returned.
@@ -2207,7 +2183,6 @@ protected:
     virtual bool onAccessTopLayerPixels(SkPixmap* pixmap);
     virtual SkImageInfo onImageInfo() const;
     virtual bool onGetProps(SkSurfaceProps* props, bool top) const;
-    virtual void onFlush();
 
     // Subclass save/restore notifiers.
     // Overriders should call the corresponding INHERITED method up the inheritance chain.
@@ -2273,9 +2248,7 @@ protected:
 
     virtual void onDrawVerticesObject(const SkVertices* vertices, SkBlendMode mode,
                                       const SkPaint& paint);
-#ifdef SK_ENABLE_SKSL
     virtual void onDrawMesh(const SkMesh&, sk_sp<SkBlender>, const SkPaint&);
-#endif
     virtual void onDrawAnnotation(const SkRect& rect, const char key[], SkData* value);
     virtual void onDrawShadowRec(const SkPath&, const SkDrawShadowRec&);
 
@@ -2300,16 +2273,14 @@ protected:
 
     virtual void onDiscard();
 
-#if (SK_SUPPORT_GPU || defined(SK_GRAPHITE_ENABLED))
-    /** Experimental
+    /**
      */
     virtual sk_sp<sktext::gpu::Slug> onConvertGlyphRunListToSlug(
             const sktext::GlyphRunList& glyphRunList, const SkPaint& paint);
 
-    /** Experimental
+    /**
      */
     virtual void onDrawSlug(const sktext::gpu::Slug* slug);
-#endif
 
 private:
 
@@ -2322,8 +2293,8 @@ private:
     // notify our surface (if we have one) that we are about to draw, so it
     // can perform copy-on-write or invalidate any cached images
     // returns false if the copy failed
-    bool SK_WARN_UNUSED_RESULT predrawNotify(bool willOverwritesEntireSurface = false);
-    bool SK_WARN_UNUSED_RESULT predrawNotify(const SkRect*, const SkPaint*, ShaderOverrideOpacity);
+    [[nodiscard]] bool predrawNotify(bool willOverwritesEntireSurface = false);
+    [[nodiscard]] bool predrawNotify(const SkRect*, const SkPaint*, ShaderOverrideOpacity);
 
     enum class CheckForOverwrite : bool {
         kNo = false,
@@ -2423,7 +2394,7 @@ private:
         fSurfaceBase = sb;
     }
     friend class SkSurface_Base;
-    friend class SkSurface_Gpu;
+    friend class SkSurface_Ganesh;
 
     SkIRect fClipRestrictionRect = SkIRect::MakeEmpty();
     int fClipRestrictionSaveCount = -1;
@@ -2457,19 +2428,18 @@ private:
     SkCanvas& operator=(SkCanvas&&) = delete;
     SkCanvas& operator=(const SkCanvas&) = delete;
 
-#if (SK_SUPPORT_GPU || defined(SK_GRAPHITE_ENABLED))
     friend class sktext::gpu::Slug;
-    /** Experimental
+    friend class SkPicturePlayback;
+    /**
      * Convert a SkTextBlob to a sktext::gpu::Slug using the current canvas state.
      */
     sk_sp<sktext::gpu::Slug> convertBlobToSlug(const SkTextBlob& blob, SkPoint origin,
                                                const SkPaint& paint);
 
-    /** Experimental
+    /**
      * Draw an sktext::gpu::Slug given the current canvas state.
      */
     void drawSlug(const sktext::gpu::Slug* slug);
-#endif
 
     /** Experimental
      *  Saves the specified subset of the current pixels in the current layer,
@@ -2573,8 +2543,6 @@ private:
     void validateClip() const;
 
     std::unique_ptr<sktext::GlyphRunBuilder> fScratchGlyphRunBuilder;
-
-    using INHERITED = SkRefCnt;
 };
 
 /** \class SkAutoCanvasRestore

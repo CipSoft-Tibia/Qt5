@@ -10,7 +10,6 @@
 
 #include "base/compiler_specific.h"
 #include "base/containers/flat_map.h"
-#include "base/cxx17_backports.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
@@ -19,7 +18,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "ui/accessibility/ax_enums.mojom.h"
-#include "ui/accessibility/ax_node_data.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/events/event.h"
@@ -89,10 +87,6 @@ int ScrollBar::GetPosition() const {
 
 ///////////////////////////////////////////////////////////////////////////////
 // ScrollBar, View implementation:
-
-void ScrollBar::GetAccessibleNodeData(ui::AXNodeData* node_data) {
-  node_data->role = ax::mojom::Role::kScrollBar;
-}
 
 bool ScrollBar::OnMousePressed(const ui::MouseEvent& event) {
   if (event.IsOnlyLeftMouseButton())
@@ -401,6 +395,7 @@ ScrollBar::ScrollBar(bool is_horiz)
       repeater_(base::BindRepeating(&ScrollBar::TrackClicked,
                                     base::Unretained(this))) {
   set_context_menu_controller(this);
+  SetAccessibilityProperties(ax::mojom::Role::kScrollBar);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -456,8 +451,14 @@ int ScrollBar::CalculateThumbPosition(int contents_scroll_offset) const {
   // simple division can be rounded and there could be 1 pixel gap even when the
   // contents scroll down to the bottom. See crbug.com/244671.
   int thumb_max = GetTrackSize() - thumb_->GetLength();
-  if (contents_scroll_offset + viewport_size_ == contents_size_)
+  if (contents_scroll_offset + viewport_size_ == contents_size_) {
     return thumb_max;
+  }
+  // Avoid dividing by zero if contents and viewport are the same size. See
+  // crbug.com/1447967.
+  if (viewport_size_ == contents_size_) {
+    return 0;
+  }
   return (contents_scroll_offset * thumb_max) /
          (contents_size_ - viewport_size_);
 }
@@ -477,7 +478,7 @@ int ScrollBar::CalculateContentsOffset(float thumb_position,
 
 void ScrollBar::SetContentsScrollOffset(int contents_scroll_offset) {
   contents_scroll_offset_ =
-      base::clamp(contents_scroll_offset, GetMinPosition(), GetMaxPosition());
+      std::clamp(contents_scroll_offset, GetMinPosition(), GetMaxPosition());
 }
 
 ScrollBar::ScrollAmount ScrollBar::DetermineScrollAmountByKeyCode(

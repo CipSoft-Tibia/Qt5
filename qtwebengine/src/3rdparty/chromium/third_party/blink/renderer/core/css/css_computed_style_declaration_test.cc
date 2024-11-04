@@ -27,10 +27,11 @@ TEST_F(CSSComputedStyleDeclarationTest, CleanAncestorsNoRecalc) {
   UpdateAllLifecyclePhasesForTest();
   EXPECT_FALSE(GetDocument().NeedsLayoutTreeUpdate());
 
-  GetDocument().getElementById("dirty")->setAttribute("style", "color:pink");
+  GetElementById("dirty")->setAttribute(html_names::kStyleAttr,
+                                        AtomicString("color:pink"));
   EXPECT_TRUE(GetDocument().NeedsLayoutTreeUpdate());
 
-  Element* target = GetDocument().getElementById("target");
+  Element* target = GetDocument().getElementById(AtomicString("target"));
   auto* computed = MakeGarbageCollected<CSSComputedStyleDeclaration>(target);
 
   EXPECT_EQ("rgb(0, 128, 0)",
@@ -46,7 +47,7 @@ TEST_F(CSSComputedStyleDeclarationTest, CleanShadowAncestorsNoRecalc) {
     <div id=host></div>
   )HTML");
 
-  Element* host = GetDocument().getElementById("host");
+  Element* host = GetDocument().getElementById(AtomicString("host"));
 
   ShadowRoot& shadow_root =
       host->AttachShadowRootInternal(ShadowRootType::kOpen);
@@ -57,10 +58,11 @@ TEST_F(CSSComputedStyleDeclarationTest, CleanShadowAncestorsNoRecalc) {
   UpdateAllLifecyclePhasesForTest();
   EXPECT_FALSE(GetDocument().NeedsLayoutTreeUpdate());
 
-  GetDocument().getElementById("dirty")->setAttribute("style", "color:pink");
+  GetElementById("dirty")->setAttribute(html_names::kStyleAttr,
+                                        AtomicString("color:pink"));
   EXPECT_TRUE(GetDocument().NeedsLayoutTreeUpdate());
 
-  Element* target = shadow_root.getElementById("target");
+  Element* target = shadow_root.getElementById(AtomicString("target"));
   auto* computed = MakeGarbageCollected<CSSComputedStyleDeclaration>(target);
 
   EXPECT_EQ("rgb(0, 128, 0)",
@@ -85,9 +87,9 @@ TEST_F(CSSComputedStyleDeclarationTest, AdjacentInvalidation) {
 
   EXPECT_FALSE(GetDocument().NeedsLayoutTreeUpdate());
 
-  Element* a = GetDocument().getElementById("a");
-  Element* b = GetDocument().getElementById("b");
-  Element* c = GetDocument().getElementById("c");
+  Element* a = GetDocument().getElementById(AtomicString("a"));
+  Element* b = GetDocument().getElementById(AtomicString("b"));
+  Element* c = GetDocument().getElementById(AtomicString("c"));
 
   EXPECT_FALSE(GetDocument().NeedsLayoutTreeUpdate());
   EXPECT_FALSE(GetDocument().NeedsLayoutTreeUpdateForNode(*a));
@@ -99,7 +101,7 @@ TEST_F(CSSComputedStyleDeclarationTest, AdjacentInvalidation) {
   EXPECT_EQ("rgb(255, 0, 0)",
             computed->GetPropertyValue(CSSPropertyID::kColor));
 
-  a->classList().Add("test");
+  a->classList().Add(AtomicString("test"));
 
   EXPECT_TRUE(GetDocument().NeedsLayoutTreeUpdate());
   EXPECT_TRUE(GetDocument().NeedsLayoutTreeUpdateForNode(*a));
@@ -130,7 +132,7 @@ TEST_F(CSSComputedStyleDeclarationTest, SVGBlockSizeLayoutDependent) {
     </svg>
   )HTML");
 
-  Element* rect = GetDocument().QuerySelector("rect");
+  Element* rect = GetDocument().QuerySelector(AtomicString("rect"));
   auto* computed = MakeGarbageCollected<CSSComputedStyleDeclaration>(rect);
 
   EXPECT_EQ("400px", computed->GetPropertyValue(CSSPropertyID::kBlockSize));
@@ -149,7 +151,7 @@ TEST_F(CSSComputedStyleDeclarationTest, SVGInlineSizeLayoutDependent) {
     </svg>
   )HTML");
 
-  Element* rect = GetDocument().QuerySelector("rect");
+  Element* rect = GetDocument().QuerySelector(AtomicString("rect"));
   auto* computed = MakeGarbageCollected<CSSComputedStyleDeclaration>(rect);
 
   EXPECT_EQ("400px", computed->GetPropertyValue(CSSPropertyID::kInlineSize));
@@ -160,13 +162,8 @@ TEST_F(CSSComputedStyleDeclarationTest, SVGInlineSizeLayoutDependent) {
   EXPECT_FALSE(rect->GetLayoutObject()->NeedsLayout());
 }
 
-TEST_F(CSSComputedStyleDeclarationTest, UseCountComputedAnimationDelayZero) {
-  // Disable CSSScrollTimeline, because kAnimationDelay is not supposed to be
-  // reachable when this feature is enabled, and we have DCHECKs which enforce
-  // this. (We expect kAlternativeAnimationDelay if CSSScrollTimeline
-  // enabled).
-  ScopedCSSScrollTimelineForTest scroll_timeline_feature(false);
-
+TEST_F(CSSComputedStyleDeclarationTest, UseCountDurationZero) {
+  ScopedScrollTimelineForTest scroll_timeline_feature(false);
   GetDocument().body()->setInnerHTML(R"HTML(
     <style>
       div {
@@ -178,85 +175,37 @@ TEST_F(CSSComputedStyleDeclarationTest, UseCountComputedAnimationDelayZero) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  Element* div = GetDocument().getElementById("div");
+  Element* div = GetDocument().getElementById(AtomicString("div"));
   ASSERT_TRUE(div);
   auto* style = MakeGarbageCollected<CSSComputedStyleDeclaration>(div);
 
   // There is no animation property specified at all, so getting the computed
   // value should not trigger the counter.
-  EXPECT_TRUE(style->GetPropertyCSSValue(CSSPropertyID::kAnimationDelay));
+  EXPECT_TRUE(style->GetPropertyCSSValue(CSSPropertyID::kAnimationDuration));
   EXPECT_FALSE(GetDocument().IsUseCounted(
-      WebFeature::kCSSGetComputedAnimationDelayZero));
+      WebFeature::kCSSGetComputedAnimationDurationZero));
+  EXPECT_TRUE(style->GetPropertyCSSValue(CSSPropertyID::kWebkitFontSmoothing));
+  EXPECT_FALSE(GetDocument().IsUseCounted(
+      WebFeature::kCSSGetComputedWebkitFontSmoothingAnimationDurationZero));
 
-  // Set some animation (without an explicit delay).
-  div->SetInlineStyleProperty(CSSPropertyID::kAnimation, "anim linear");
+  // Set some animation with zero duration.
+  div->SetInlineStyleProperty(CSSPropertyID::kAnimation, "anim 0s linear");
   UpdateAllLifecyclePhasesForTest();
-  // It should remain uncounted until we retrieve the computed value.
+
+  // Duration should remain uncounted until we retrieve the computed value.
   EXPECT_FALSE(GetDocument().IsUseCounted(
-      WebFeature::kCSSGetComputedAnimationDelayZero));
-  EXPECT_TRUE(style->GetPropertyCSSValue(CSSPropertyID::kAnimationDelay));
+      WebFeature::kCSSGetComputedAnimationDurationZero));
+  EXPECT_TRUE(style->GetPropertyCSSValue(CSSPropertyID::kAnimationDuration));
   EXPECT_TRUE(GetDocument().IsUseCounted(
-      WebFeature::kCSSGetComputedAnimationDelayZero));
-  // Accessing kAnimation should also set the counter.
-  GetDocument().ClearUseCounterForTesting(
-      WebFeature::kCSSGetComputedAnimationDelayZero);
-  EXPECT_TRUE(style->GetPropertyCSSValue(CSSPropertyID::kAnimation));
+      WebFeature::kCSSGetComputedAnimationDurationZero));
+
+  // Font smoothing count should remain uncounted until we retrieve the computed
+  // value.
+  EXPECT_FALSE(GetDocument().IsUseCounted(
+      WebFeature::kCSSGetComputedWebkitFontSmoothingAnimationDurationZero));
+  EXPECT_TRUE(style->GetPropertyCSSValue(CSSPropertyID::kWebkitFontSmoothing));
   EXPECT_TRUE(GetDocument().IsUseCounted(
-      WebFeature::kCSSGetComputedAnimationDelayZero));
-
-  // Use-counter should not trigger when there's a non-zero duration.
-  GetDocument().ClearUseCounterForTesting(
-      WebFeature::kCSSGetComputedAnimationDelayZero);
-  div->SetInlineStyleProperty(CSSPropertyID::kAnimation, "anim linear 1s");
-  UpdateAllLifecyclePhasesForTest();
-  EXPECT_FALSE(GetDocument().IsUseCounted(
-      WebFeature::kCSSGetComputedAnimationDelayZero));
-  EXPECT_TRUE(style->GetPropertyCSSValue(CSSPropertyID::kAnimationDelay));
-  EXPECT_FALSE(GetDocument().IsUseCounted(
-      WebFeature::kCSSGetComputedAnimationDelayZero));
-}
-
-TEST_F(CSSComputedStyleDeclarationTest,
-       UseCountComputedAlternativeAnimationDelayZero) {
-  ScopedCSSScrollTimelineForTest scroll_timeline_feature(true);
-
-  GetDocument().body()->setInnerHTML(R"HTML(
-    <style>
-      div {
-        color: green;
-        /* No animation here. */
-      }
-    </style>
-    <div id=div></div>
-  )HTML");
-  UpdateAllLifecyclePhasesForTest();
-
-  Element* div = GetDocument().getElementById("div");
-  ASSERT_TRUE(div);
-  auto* style = MakeGarbageCollected<CSSComputedStyleDeclaration>(div);
-
-  // There is no animation property specified at all, so getting the computed
-  // value should not trigger the counter.
-  EXPECT_TRUE(style->GetPropertyCSSValue(CSSPropertyID::kAlternativeAnimation));
-  EXPECT_TRUE(
-      style->GetPropertyCSSValue(CSSPropertyID::kAlternativeAnimationDelay));
-  EXPECT_FALSE(GetDocument().IsUseCounted(
-      WebFeature::kCSSGetComputedAnimationDelayZero));
-
-  // Set some animation (without an explicit delay). We should not count for
-  // -alternative-animation[-delay], because those properties are only in
-  // use when 'CSSScrollTimeline' is enabled (which is the feature that would
-  // ship the change that this use-counter is for in the first place).
-  div->SetInlineStyleProperty(CSSPropertyID::kAlternativeAnimation,
-                              "anim linear");
-  UpdateAllLifecyclePhasesForTest();
-  EXPECT_FALSE(GetDocument().IsUseCounted(
-      WebFeature::kCSSGetComputedAnimationDelayZero));
-  EXPECT_TRUE(style->GetPropertyCSSValue(CSSPropertyID::kAlternativeAnimation));
-  EXPECT_TRUE(
-      style->GetPropertyCSSValue(CSSPropertyID::kAlternativeAnimationDelay));
-  EXPECT_FALSE(GetDocument().IsUseCounted(
-      WebFeature::kCSSGetComputedAnimationDelayZero));
+      WebFeature::kCSSGetComputedWebkitFontSmoothingAnimationDurationZero));
 }
 
 }  // namespace blink

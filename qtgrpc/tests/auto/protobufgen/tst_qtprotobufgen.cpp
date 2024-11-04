@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -14,9 +14,6 @@
 
 using namespace Qt::StringLiterals;
 
-[[maybe_unused]] const QLatin1StringView
-qmlProtobufTypeRegistration("qtprotobufnamespace_testsplugin.cpp");
-[[maybe_unused]] const QLatin1StringView protobufQmlPlugin("_uri_testplugin.cpp");
 const QLatin1StringView cppExtension(".qpb.cpp");
 const QLatin1StringView headerExtension(".qpb.h");
 const QLatin1StringView cppRegistrationsExtension("_protobuftyperegistrations.cpp");
@@ -107,6 +104,35 @@ QByteArray msgCannotReadFile(const QFile &file)
     return result.toLocal8Bit();
 }
 
+void compareTwoFiles(const QString &expectedFileName, const QString &actualFileName)
+{
+    QFile expectedResultFile(expectedFileName);
+    QFile generatedFile(actualFileName);
+
+    QVERIFY2(expectedResultFile.exists(), qPrintable(expectedResultFile.fileName()));
+    QVERIFY2(generatedFile.exists(), qPrintable(expectedResultFile.fileName()));
+
+    QVERIFY2(expectedResultFile.open(QIODevice::ReadOnly | QIODevice::Text),
+             msgCannotReadFile(expectedResultFile).constData());
+    QVERIFY2(generatedFile.open(QIODevice::ReadOnly | QIODevice::Text),
+             msgCannotReadFile(generatedFile).constData());
+
+    QByteArray expectedData = expectedResultFile.readAll();
+    QByteArray generatedData = generatedFile.readAll();
+
+    expectedResultFile.close();
+    generatedFile.close();
+
+    if (hash(expectedData).toHex() != hash(generatedData).toHex()) {
+        const QString diff = doCompare(splitToLines(generatedData),
+                                       splitToLines(expectedData));
+        QCOMPARE_GT(diff.size(), 0); // Hashes can only differ if content does.
+        QFAIL(qPrintable(diff));
+    }
+    // Ensure we do see a failure, even in the unlikely case of a hash collision:
+    QVERIFY(generatedData == expectedData);
+}
+
 bool containsString(const QStringList &list, const QString &comment)
 {
     return std::any_of(list.cbegin(), list.cend(),
@@ -150,6 +176,8 @@ private slots:
     void cmdLineGeneratedFile();
     void cmdLineGeneratedNoOptions_data();
     void cmdLineGeneratedNoOptions();
+    void cmdLineInvalidExportMacro_data();
+    void cmdLineInvalidExportMacro();
 
     void cleanupTestCase();
 
@@ -176,9 +204,10 @@ void tst_qtprotobufgen::initTestCase()
 
     QDir testOutputBaseDir(QCoreApplication::applicationDirPath());
     testOutputBaseDir.mkdir(QLatin1StringView("cmd_line_generation"));
-    QLatin1StringView folders[] = {"comments"_L1, "extra-namespace"_L1,
-                                   "fieldenum"_L1, "folder"_L1,
-                                    "qml-no-package"_L1, "no-options"_L1};
+    QLatin1StringView folders[] = {
+        "comments"_L1,       "extra-namespace"_L1, "fieldenum"_L1,           "folder"_L1,
+        "qml-no-package"_L1, "no-options"_L1,      "invalid_export_macro"_L1
+    };
     for (QLatin1StringView folder : folders)
         testOutputBaseDir.mkdir("cmd_line_generation/"_L1 + folder);
 
@@ -199,8 +228,9 @@ void tst_qtprotobufgen::cmakeGeneratedFile_data()
     QTest::addColumn<QString>("folder");
     QTest::addColumn<QString>("extension");
 
-    const QLatin1StringView extensions[]
-            = {cppRegistrationsExtension, cppExtension, headerExtension};
+    const QLatin1StringView extensions[] = {cppExtension,
+                                            headerExtension,
+                                            cppRegistrationsExtension};
 
     for (const auto extension : extensions) {
         QTest::addRow("repeatednonpackedmessages%s", extension.data())
@@ -228,6 +258,11 @@ void tst_qtprotobufgen::cmakeGeneratedFile_data()
                 << "/folder/qtprotobufnamespace/tests/"
                 << QString(extension);
 
+        QTest::addRow("optional%s", extension.data())
+                << "optional"
+                << "/folder/qtprotobufnamespace/optional/tests/"
+                << QString(extension);
+
         QTest::addRow("repeatedmessages%s", extension.data())
                 << "repeatedmessages"
                 << "/folder/qtprotobufnamespace/tests/"
@@ -242,6 +277,16 @@ void tst_qtprotobufgen::cmakeGeneratedFile_data()
                 << "extranamespace"
                 << "/extra-namespace/"
                 << QString(extension);
+
+        QTest::addRow("custom-exports/basicmessages%s", extension.data())
+            << "basicmessages"
+            << "/custom-exports/"
+            << QString(extension);
+
+        QTest::addRow("no-exports/basicmessages%s", extension.data())
+            << "basicmessages"
+            << "/no-exports/"
+            << QString(extension);
 #ifdef HAVE_QML
         QTest::addRow("nopackage%s", extension.data())
                 << "nopackage"
@@ -249,15 +294,24 @@ void tst_qtprotobufgen::cmakeGeneratedFile_data()
                 << QString(extension);
 #endif
     }
-#ifdef HAVE_QML
-    QTest::addRow("nopackage%s", protobufQmlPlugin.data())
-            << "nopackage"
-            << "/qml-no-package/"
-            << QString(protobufQmlPlugin);
 
+    //Check the generating of cpp export files
+    QTest::addRow("cpp-exports")
+        << "tst_qtprotobufgen_gen_exports.qpb.h"
+        << "/folder/"
+        << QString();
+
+    QTest::addRow("custom-cpp-exports")
+        << "tst_qtprotobufgen_custom_exports_gen_exports.qpb.h"
+        << "/custom-exports/"
+        << QString();
+
+
+#ifdef HAVE_QML
     const QLatin1StringView qmlExtensions[]
-            = {cppRegistrationsExtension, cppExtension,
-               headerExtension};
+            = {cppExtension,
+               headerExtension,
+               cppRegistrationsExtension};
 
     for (const auto extension : qmlExtensions) {
         QTest::addRow("enummessages%s with QML option", extension.data())
@@ -269,12 +323,11 @@ void tst_qtprotobufgen::cmakeGeneratedFile_data()
                 << "basicmessages"
                 << "/qmlgen/"
                 << QString(extension);
+        QTest::addRow("oneofmessages%s with QML option", extension.data())
+                << "oneofmessages"
+                << "/qmlgen/"
+                << QString(extension);
     }
-
-    QTest::addRow("QML plugin file: %s", qmlProtobufTypeRegistration.data())
-            << ""
-            << "/qmlgen/"
-            << QString(qmlProtobufTypeRegistration);
 #endif
 }
 
@@ -284,32 +337,8 @@ void tst_qtprotobufgen::cmakeGeneratedFile()
     QFETCH(QString, folder);
     QFETCH(QString, extension);
 
-    QFile expectedResultFile(m_expectedResult + folder + fileName + extension);
-    QFile generatedFile(m_cmakeGenerated + folder + fileName + extension);
-
-    QVERIFY2(expectedResultFile.exists(), qPrintable(expectedResultFile.fileName()));
-    QVERIFY2(generatedFile.exists(), qPrintable(expectedResultFile.fileName()));
-
-    QVERIFY2(expectedResultFile.open(QIODevice::ReadOnly | QIODevice::Text),
-             msgCannotReadFile(expectedResultFile).constData());
-    QVERIFY2(generatedFile.open(QIODevice::ReadOnly | QIODevice::Text),
-             msgCannotReadFile(generatedFile).constData());
-
-    QByteArray expectedData = expectedResultFile.readAll();
-    QByteArray generatedData = generatedFile.readAll();
-
-    expectedResultFile.close();
-    generatedFile.close();
-
-    if (hash(expectedData).toHex() != hash(generatedData).toHex())
-    {
-        const QString diff = doCompare(splitToLines(generatedData),
-                                       splitToLines(expectedData));
-        QCOMPARE_GT(diff.size(), 0); // Hashes can only differ if content does.
-        QFAIL(qPrintable(diff));
-    }
-    // Ensure we do see a failure, even in the unlikely case of a hash collision:
-    QVERIFY(generatedData == expectedData);
+    const QString filePath = folder + fileName + extension;
+    compareTwoFiles(m_expectedResult + filePath, m_cmakeGenerated + filePath);
 }
 
 void tst_qtprotobufgen::cmdLineGeneratedFile_data()
@@ -319,9 +348,10 @@ void tst_qtprotobufgen::cmdLineGeneratedFile_data()
     QTest::addColumn<QString>("folder");
     QTest::addColumn<QString>("extension");
     QTest::addColumn<QString>("generatedFolderStructure");
+    QTest::addColumn<QString>("exportMacro");
 
     const QLatin1StringView extensions[]
-            = {cppRegistrationsExtension, cppExtension, headerExtension};
+            = {cppExtension, headerExtension, cppRegistrationsExtension};
 
     for (const auto extension : extensions) {
         QTest::addRow("basicmessages%s", extension.data())
@@ -329,66 +359,70 @@ void tst_qtprotobufgen::cmdLineGeneratedFile_data()
                 << "GENERATE_PACKAGE_SUBFOLDERS"
                 << "/folder/"
                 << QString(extension)
-                << "qtprotobufnamespace/tests/";
+                << "qtprotobufnamespace/tests/"
+                << "EXPORT_MACRO=TST_QTPROTOBUFGEN_GEN";
 
         QTest::addRow("mapmessages%s", extension.data())
                 << "mapmessages"
                 << "GENERATE_PACKAGE_SUBFOLDERS"
                 << "/folder/"
                 << QString(extension)
-                << "qtprotobufnamespace/tests/";
+                << "qtprotobufnamespace/tests/"
+                << "EXPORT_MACRO=TST_QTPROTOBUFGEN_GEN";
 
         QTest::addRow("oneofmessages%s", extension.data())
                 << "oneofmessages"
                 << "GENERATE_PACKAGE_SUBFOLDERS"
                 << "/folder/"
                 << QString(extension)
-                << "qtprotobufnamespace/tests/";
+                << "qtprotobufnamespace/tests/"
+                << "EXPORT_MACRO=TST_QTPROTOBUFGEN_GEN";
+
+        QTest::addRow("optional%s", extension.data())
+                << "optional"
+                << "GENERATE_PACKAGE_SUBFOLDERS"
+                << "/folder/"
+                << QString(extension)
+                << "qtprotobufnamespace/optional/tests/"
+                << "EXPORT_MACRO=TST_QTPROTOBUFGEN_GEN";
 
         QTest::addRow("repeatedmessages%s", extension.data())
                 << "repeatedmessages"
                 << "GENERATE_PACKAGE_SUBFOLDERS"
                 << "/folder/"
                 << QString(extension)
-                << "qtprotobufnamespace/tests/";
+                << "qtprotobufnamespace/tests/"
+                << "EXPORT_MACRO=TST_QTPROTOBUFGEN_GEN";
 
         QTest::addRow("annotation%s", extension.data())
                 << "annotation"
                 << "COPY_COMMENTS"
                 << "/comments/"
                 << QString(extension)
-                << "";
+                << "" << "";
 
         QTest::addRow("fieldindexrange%s", extension.data())
                 << "fieldindexrange"
                 << ""
                 << "/fieldenum/"
                 << QString(extension)
-                << "";
+                << "" << "";
 
         QTest::addRow("extranamespace%s", extension.data())
                 << "extranamespace"
                 << "EXTRA_NAMESPACE=MyTopLevelNamespace"
                 << "/extra-namespace/"
                 << QString(extension)
-                << "";
+                << "" << "";
 #ifdef HAVE_QML
         QTest::addRow("nopackage%s", extension.data())
                 << "nopackage"
                 << "QML_URI=nopackage.uri.test;EXPORT_MACRO=TST_QTPROTOBUFGEN_NOPACKAGE_QML_GEN"
                 << "/qml-no-package/"
                 << QString(extension)
-                << "";
+                << "" << "";
 #endif
     }
-#ifdef HAVE_QML
-    QTest::addRow("nopackage%s", protobufQmlPlugin.data())
-            << "nopackage"
-            << "QML_URI=nopackage.uri.test;EXPORT_MACRO=TST_QTPROTOBUFGEN_NOPACKAGE_QML_GEN"
-            << "/qml-no-package/"
-            << QString(protobufQmlPlugin)
-            << "";
-#endif
 }
 
 void tst_qtprotobufgen::cmdLineGeneratedFile()
@@ -398,20 +432,29 @@ void tst_qtprotobufgen::cmdLineGeneratedFile()
     QFETCH(QString, folder);
     QFETCH(QString, extension);
     QFETCH(QString, generatedFolderStructure);
+    QFETCH(QString, exportMacro);
 
     QProcess process;
     process.setWorkingDirectory(m_commandLineGenerated);
-
     /* Call command:
          protoc --plugin=protoc-gen-qtprotobuf=<path/to/bin/>qtprotobufgen \
          --qtprotobuf_opt=<option> \
          --qtprotobuf_out=<output_dir> [-I/extra/proto/include/path] <protofile>.proto */
-    process.startCommand(protocolBufferCompiler + QString(" ")
-                         + protocGenQtprotobufKey + m_protobufgen
-                         + optKey + generatingOption
-                         + outputKey + m_commandLineGenerated + folder
-                         + includeKey + m_protoFiles
-                         + " " + fileName + ".proto" + allow_proto3_optional);
+    if (exportMacro.isEmpty()) {
+        process.startCommand(protocolBufferCompiler + QString(" ")
+                             + protocGenQtprotobufKey + m_protobufgen
+                             + optKey + generatingOption
+                             + outputKey + m_commandLineGenerated + folder
+                             + includeKey + m_protoFiles
+                             + " " + fileName + ".proto" + allow_proto3_optional);
+    } else {
+        process.startCommand(protocolBufferCompiler + QString(" ")
+                             + protocGenQtprotobufKey + m_protobufgen
+                             + optKey + generatingOption + ";" + exportMacro
+                             + outputKey + m_commandLineGenerated + folder
+                             + includeKey + m_protoFiles
+                             + " " + fileName + ".proto" + allow_proto3_optional);
+    }
 
     QVERIFY2(process.waitForStarted(), msgProcessStartFailed(process).constData());
     if (!process.waitForFinished()) {
@@ -421,33 +464,8 @@ void tst_qtprotobufgen::cmdLineGeneratedFile()
     QVERIFY2(process.exitStatus() == QProcess::NormalExit, msgProcessCrashed(process).constData());
     QVERIFY2(process.exitCode() == 0, msgProcessFailed(process).constData());
 
-    QString filePath = folder + generatedFolderStructure;
-    QFile expectedResultFile(m_expectedResult + filePath + fileName  + extension);
-    QFile generatedFile(m_commandLineGenerated + filePath + fileName + extension);
-
-    QVERIFY(generatedFile.exists());
-    QVERIFY(expectedResultFile.exists());
-
-    QVERIFY2(expectedResultFile.open(QIODevice::ReadOnly | QIODevice::Text),
-             msgCannotReadFile(expectedResultFile).constData());
-    QVERIFY2(generatedFile.open(QIODevice::ReadOnly | QIODevice::Text),
-             msgCannotReadFile(generatedFile).constData());
-
-    QByteArray expectedData = expectedResultFile.readAll();
-    QByteArray generatedData = generatedFile.readAll();
-
-    expectedResultFile.close();
-    generatedFile.close();
-
-    if (hash(expectedData).toHex() != hash(generatedData).toHex())
-    {
-        const QString diff = doCompare(splitToLines(generatedData),
-                                       splitToLines(expectedData));
-        QCOMPARE_GT(diff.size(), 0); // Hashes can only differ if content does.
-        QFAIL(qPrintable(diff));
-    }
-    // Ensure we do see a failure, even in the unlikely case of a hash collision:
-    QVERIFY(generatedData == expectedData);
+    const QString filePath = folder + generatedFolderStructure + fileName  + extension;
+    compareTwoFiles(m_expectedResult + filePath, m_commandLineGenerated + filePath);
 }
 
 void tst_qtprotobufgen::cmdLineGeneratedNoOptions_data()
@@ -457,7 +475,7 @@ void tst_qtprotobufgen::cmdLineGeneratedNoOptions_data()
     QTest::addColumn<QString>("extension");
 
     const QLatin1StringView extensions[]
-            = {cppRegistrationsExtension, cppExtension, headerExtension};
+            = {cppExtension, headerExtension, cppRegistrationsExtension};
 
     for (const auto extension : extensions) {
         QTest::addRow("annotation%s", extension.data())
@@ -487,6 +505,11 @@ void tst_qtprotobufgen::cmdLineGeneratedNoOptions_data()
 
         QTest::addRow("oneofmessages%s", extension.data())
                 << "oneofmessages"
+                << "/no-options/"
+                << QString(extension);
+
+        QTest::addRow("optional%s", extension.data())
+                << "optional"
                 << "/no-options/"
                 << QString(extension);
 
@@ -533,32 +556,41 @@ void tst_qtprotobufgen::cmdLineGeneratedNoOptions()
     QVERIFY2(process.exitStatus() == QProcess::NormalExit, msgProcessCrashed(process).constData());
     QVERIFY2(process.exitCode() == 0, msgProcessFailed(process).constData());
 
-    QFile expectedResultFile(m_expectedResult + folder + fileName  + extension);
-    QFile generatedFile(m_commandLineGenerated + folder + fileName + extension);
+    const QString filePath = folder + fileName  + extension;
+    compareTwoFiles(m_expectedResult + filePath, m_commandLineGenerated + filePath);
+}
 
-    QVERIFY(generatedFile.exists());
-    QVERIFY(expectedResultFile.exists());
+void tst_qtprotobufgen::cmdLineInvalidExportMacro_data()
+{
+    QTest::addColumn<QString>("exportMacro");
+    QTest::addColumn<int>("result");
 
-    QVERIFY2(expectedResultFile.open(QIODevice::ReadOnly | QIODevice::Text),
-             msgCannotReadFile(expectedResultFile).constData());
-    QVERIFY2(generatedFile.open(QIODevice::ReadOnly | QIODevice::Text),
-             msgCannotReadFile(generatedFile).constData());
+    QTest::addRow("contains_dash") << "TST_QTPROTOBUFGEN-FAIL" << 1;
+    QTest::addRow("contains_number_first") << "1Not_ALLoWeD" << 1;
+}
 
-    QByteArray expectedData = expectedResultFile.readAll();
-    QByteArray generatedData = generatedFile.readAll();
+void tst_qtprotobufgen::cmdLineInvalidExportMacro()
+{
+    QFETCH(QString, exportMacro);
+    QFETCH(int, result);
 
-    expectedResultFile.close();
-    generatedFile.close();
+    QString folder = "/invalid_export_macro/";
+    QString fileName = "basicmessages";
+    QString exportMacroCmd = "EXPORT_MACRO=" + exportMacro;
 
-    if (hash(expectedData).toHex() != hash(generatedData).toHex())
-    {
-        const QString diff = doCompare(splitToLines(generatedData),
-                                       splitToLines(expectedData));
-        QCOMPARE_GT(diff.size(), 0); // Hashes can only differ if content does.
-        QFAIL(qPrintable(diff));
+    QProcess process;
+    process.setWorkingDirectory(m_commandLineGenerated);
+    process.startCommand(protocolBufferCompiler + QString(" ") + protocGenQtprotobufKey
+                         + m_protobufgen + optKey + ";" + exportMacroCmd
+                         + outputKey + m_commandLineGenerated + folder + includeKey + m_protoFiles
+                         + " " + fileName + ".proto" + allow_proto3_optional);
+    QVERIFY2(process.waitForStarted(), msgProcessStartFailed(process).constData());
+    if (!process.waitForFinished()) {
+        process.kill();
+        QFAIL(msgProcessTimeout(process).constData());
     }
-    // Ensure we do see a failure, even in the unlikely case of a hash collision:
-    QVERIFY(generatedData == expectedData);
+    QVERIFY2(process.exitStatus() == QProcess::NormalExit, msgProcessCrashed(process).constData());
+    QVERIFY2(process.exitCode() == result, msgProcessFailed(process).constData());
 }
 
 void tst_qtprotobufgen::cleanupTestCase()

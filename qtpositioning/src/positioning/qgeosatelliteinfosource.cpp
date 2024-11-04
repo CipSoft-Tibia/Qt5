@@ -214,7 +214,7 @@ QGeoSatelliteInfoSource *QGeoSatelliteInfoSource::createSource(const QString &so
 QGeoSatelliteInfoSource *QGeoSatelliteInfoSource::createDefaultSource(const QVariantMap &parameters, QObject *parent)
 {
     const QList<QCborMap> plugins = QGeoPositionInfoSourcePrivate::pluginsSorted();
-    foreach (const QCborMap &obj, plugins) {
+    for (const QCborMap &obj : plugins) {
         if (obj.value(QStringLiteral("Satellite")).isBool()
                 && obj.value(QStringLiteral("Satellite")).toBool())
         {

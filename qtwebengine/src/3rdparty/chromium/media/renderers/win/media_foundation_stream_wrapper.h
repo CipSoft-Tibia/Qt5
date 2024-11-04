@@ -25,14 +25,6 @@ namespace media {
 
 namespace {
 
-struct MediaFoundationSubsampleEntry {
-  MediaFoundationSubsampleEntry(SubsampleEntry entry)
-      : clear_bytes(entry.clear_bytes), cipher_bytes(entry.cypher_bytes) {}
-  MediaFoundationSubsampleEntry() = default;
-  DWORD clear_bytes = 0;
-  DWORD cipher_bytes = 0;
-};
-
 struct PendingInputBuffer {
   PendingInputBuffer(DemuxerStream::Status status,
                      scoped_refptr<media::DecoderBuffer> buffer);
@@ -128,8 +120,6 @@ class MediaFoundationStreamWrapper
 
  protected:
   HRESULT GenerateStreamDescriptor();
-  HRESULT GenerateSampleFromDecoderBuffer(DecoderBuffer* buffer,
-                                          IMFSample** sample_out);
   HRESULT ServiceSampleRequest(IUnknown* token, DecoderBuffer* buffer)
       EXCLUSIVE_LOCKS_REQUIRED(lock_);
   // Returns true when a sample request has been serviced.

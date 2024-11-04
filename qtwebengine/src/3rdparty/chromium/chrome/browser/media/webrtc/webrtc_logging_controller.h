@@ -25,6 +25,7 @@
 #else
 #include "qtwebengine/common/media/webrtc_logging.mojom.h"
 #endif
+#include "content/public/browser/browser_context.h"
 #include "content/public/browser/render_process_host.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -150,6 +151,10 @@ class WebRtcLoggingController
       std::vector<chrome::mojom::WebRtcLoggingMessagePtr> messages) override;
   void OnStopped() override;
 
+  // Checks whether WebRTC text-logs is permitted by
+  // the relevant policy (prefs::kWebRtcTextLogCollectionAllowed).
+  static bool IsWebRtcTextLogAllowed(content::BrowserContext* browser_context);
+
  private:
   friend class base::RefCounted<WebRtcLoggingController>;
 
@@ -196,6 +201,8 @@ class WebRtcLoggingController
       bool success,
       const std::string& error_message);
 
+  content::BrowserContext* GetBrowserContext() const;
+
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   // Grants the render process access to the 'WebRTC Logs' directory, and
   // invokes |callback| with the ids necessary to create a DirectoryEntry
@@ -236,7 +243,7 @@ class WebRtcLoggingController
 
   // A pointer to the log uploader that's shared for all browser contexts.
   // Ownership lies with the browser process.
-  const raw_ptr<WebRtcLogUploader> log_uploader_;
+  const raw_ptr<WebRtcLogUploader, LeakedDanglingUntriaged> log_uploader_;
 
   // Web app id used for statistics. Created as the hash of the value of a
   // "client" meta data key, if exists. 0 means undefined, and is the hash of

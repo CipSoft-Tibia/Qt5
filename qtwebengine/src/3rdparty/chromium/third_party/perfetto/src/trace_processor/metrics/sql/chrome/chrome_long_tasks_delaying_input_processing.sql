@@ -35,7 +35,7 @@ SELECT RUN_METRIC(
 -- Needed for calculating chrome input to browser intervals.
 -- Input IPCs are not necessarily always long tasks, hence a new slice name.
 DROP TABLE IF EXISTS chrome_input_to_browser_intervals_long_tasks;
-CREATE TABLE chrome_input_to_browser_intervals_long_tasks
+CREATE PERFETTO TABLE chrome_input_to_browser_intervals_long_tasks
 AS
 SELECT
   (SELECT ts FROM slice WHERE id = window_start_id) AS window_start_ts,
@@ -44,11 +44,11 @@ SELECT
   window_end_id,
   blocked_gesture,
   cis.upid,
-  GET_SCROLL_TYPE(blocked_gesture, lts.interface_name) AS scroll_type
+  GET_SCROLL_TYPE(blocked_gesture, lts.task_name) AS scroll_type
 FROM chrome_input_to_browser_interval_slice_ids cis
 LEFT JOIN (
   SELECT
-    m.interface_name,
+    m.task_name,
     m.id,
     upid,
     s.ts,

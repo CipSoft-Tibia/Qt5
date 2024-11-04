@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-load("//lib/builders.star", "cpu", "goma", "os", "reclient")
+load("//lib/builders.star", "cpu", "os", "reclient")
 load("//lib/try.star", "try_")
 
 try_.defaults.set(
@@ -97,7 +97,6 @@ gpu_android_builder(
         "ci/Android Release (Nexus 5X)",
     ],
     pool = "luci.chromium.gpu.android.nexus5x.try",
-    goma_backend = goma.backend.RBE_PROD,
 )
 
 def gpu_chromeos_builder(*, name, **kwargs):
@@ -122,6 +121,14 @@ gpu_chromeos_builder(
     name = "gpu-fyi-try-chromeos-kevin",
     mirrors = [
         "ci/ChromeOS FYI Release (kevin)",
+    ],
+    pool = "luci.chromium.gpu.chromeos.kevin.try",
+)
+
+gpu_chromeos_builder(
+    name = "gpu-fyi-try-chromeos-skylab-kevin",
+    mirrors = [
+        "ci/ChromeOS FYI Release Skylab (kevin)",
     ],
     pool = "luci.chromium.gpu.chromeos.kevin.try",
 )
@@ -223,7 +230,6 @@ gpu_linux_builder(
         "ci/Linux Debug (NVIDIA)",
     ],
     pool = "luci.chromium.gpu.linux.nvidia.try",
-    goma_backend = goma.backend.RBE_PROD,
 )
 
 gpu_linux_builder(
@@ -233,7 +239,6 @@ gpu_linux_builder(
         "ci/Linux Release (NVIDIA)",
     ],
     pool = "luci.chromium.gpu.linux.nvidia.try",
-    goma_backend = goma.backend.RBE_PROD,
 )
 
 def gpu_mac_builder(*, name, **kwargs):
@@ -299,7 +304,7 @@ gpu_mac_builder(
         "ci/Mac FYI Experimental Release (Apple M1)",
     ],
     pool = "luci.chromium.gpu.mac.arm64.apple.m1.try",
-    goma_backend = goma.backend.RBE_PROD,
+    reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CQ,
 )
 
 gpu_mac_builder(
@@ -308,6 +313,17 @@ gpu_mac_builder(
         "ci/GPU FYI Mac arm64 Builder",
         "ci/Mac FYI Release (Apple M1)",
     ],
+    pool = "luci.chromium.gpu.mac.arm64.apple.m1.try",
+)
+
+gpu_mac_builder(
+    name = "gpu-fyi-try-mac-arm64-apple-m2-retina-rel",
+    mirrors = [
+        "ci/GPU FYI Mac arm64 Builder",
+        "ci/Mac FYI Retina Release (Apple M2)",
+    ],
+    # TODO(crbug.com/1435476): Switch to a dedicated M2 pool once we have
+    # allocated machines.
     pool = "luci.chromium.gpu.mac.arm64.apple.m1.try",
 )
 
@@ -356,7 +372,6 @@ gpu_mac_builder(
     pool = "luci.chromium.gpu.mac.retina.nvidia.try",
     # This bot has one machine backing its tests at the moment.
     # If it gets more, the modified execution_timeout should be removed.
-    # See crbug.com/853307 for more context.
     execution_timeout = 12 * time.hour,
 )
 
@@ -385,7 +400,7 @@ gpu_mac_builder(
         "ci/Mac Debug (Intel)",
     ],
     pool = "luci.chromium.gpu.mac.mini.intel.try",
-    goma_backend = goma.backend.RBE_PROD,
+    reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CQ,
 )
 
 def gpu_win_builder(*, name, **kwargs):

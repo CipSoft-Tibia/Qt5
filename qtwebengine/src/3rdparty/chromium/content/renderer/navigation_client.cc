@@ -36,22 +36,25 @@ void NavigationClient::CommitNavigation(
     blink::mojom::ControllerServiceWorkerInfoPtr controller_service_worker_info,
     blink::mojom::ServiceWorkerContainerInfoForClientPtr container_info,
     mojo::PendingRemote<network::mojom::URLLoaderFactory>
-        prefetch_loader_factory,
-    mojo::PendingRemote<network::mojom::URLLoaderFactory> topics_loader_factory,
+        subresource_proxying_loader_factory,
+    mojo::PendingRemote<network::mojom::URLLoaderFactory>
+        keep_alive_loader_factory,
     const blink::DocumentToken& document_token,
     const base::UnguessableToken& devtools_navigation_token,
     const absl::optional<blink::ParsedPermissionsPolicy>& permissions_policy,
     blink::mojom::PolicyContainerPtr policy_container,
     mojo::PendingRemote<blink::mojom::CodeCacheHost> code_cache_host,
+    mojo::PendingRemote<blink::mojom::ResourceCache> resource_cache,
     mojom::CookieManagerInfoPtr cookie_manager_info,
     mojom::StorageInfoPtr storage_info,
     CommitNavigationCallback callback) {
   DCHECK(blink::IsRequestDestinationFrame(common_params->request_destination));
 
-  // TODO(ahemery): The reset should be done when the navigation did commit
-  // (meaning at a later stage). This is not currently possible because of
-  // race conditions leading to the early deletion of NavigationRequest would
-  // unexpectedly abort the ongoing navigation. Remove when the races are fixed.
+  // TODO(https://crbug.com/1467502): The reset should be done when the
+  // navigation did commit (meaning at a later stage). This is not currently
+  // possible because of race conditions leading to the early deletion of
+  // NavigationRequest would unexpectedly abort the ongoing navigation. Remove
+  // when the races are fixed.
   ResetDisconnectionHandler();
   render_frame_->CommitNavigation(
       std::move(common_params), std::move(commit_params),
@@ -59,11 +62,12 @@ void NavigationClient::CommitNavigation(
       std::move(url_loader_client_endpoints), std::move(subresource_loaders),
       std::move(subresource_overrides),
       std::move(controller_service_worker_info), std::move(container_info),
-      std::move(prefetch_loader_factory), std::move(topics_loader_factory),
-      document_token, devtools_navigation_token, permissions_policy,
+      std::move(subresource_proxying_loader_factory),
+      std::move(keep_alive_loader_factory), document_token,
+      devtools_navigation_token, permissions_policy,
       std::move(policy_container), std::move(code_cache_host),
-      std::move(cookie_manager_info), std::move(storage_info),
-      std::move(callback));
+      std::move(resource_cache), std::move(cookie_manager_info),
+      std::move(storage_info), std::move(callback));
 }
 
 void NavigationClient::CommitFailedNavigation(
@@ -116,6 +120,11 @@ void NavigationClient::SetUpRendererInitiatedNavigation(
                  base::BindOnce(
                      &NavigationClient::NotifyNavigationCancellationWindowEnded,
                      weak_ptr_factory_.GetWeakPtr()));
+}
+
+void NavigationClient::ResetWithoutCancelling() {
+  navigation_client_receiver_.ResetWithReason(
+      mojom::NavigationClient::kResetForSwap, "");
 }
 
 void NavigationClient::NotifyNavigationCancellationWindowEnded() {

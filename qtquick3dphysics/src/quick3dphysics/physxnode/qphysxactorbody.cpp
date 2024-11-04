@@ -167,10 +167,37 @@ void QPhysXActorBody::buildShapes(QPhysXWorld * /*physX*/)
             physXShape->setFlag(physx::PxShapeFlag::eTRIGGER_SHAPE, true);
         }
 
+        { // Setup filtering
+            physx::PxFilterData filterData;
+            filterData.word0 = frontendNode->filterGroup();
+            filterData.word1 = frontendNode->filterIgnoreGroups();
+            physXShape->setSimulationFilterData(filterData);
+        }
+
         shapes.push_back(physXShape);
         physXShape->setLocalPose(getPhysXLocalTransform(collisionShape));
         body->attachShape(*physXShape);
     }
+
+    // Filters are always clean after building shapes
+    setFiltersDirty(false);
+}
+
+void QPhysXActorBody::updateFilters()
+{
+    if (!filtersDirty())
+        return;
+
+    // Go through all shapes and set the filter group and mask.
+    // TODO: What about shared shapes on several actors?
+    for (auto &physXShape : shapes) {
+        physx::PxFilterData filterData;
+        filterData.word0 = frontendNode->filterGroup();
+        filterData.word1 = frontendNode->filterIgnoreGroups();
+        physXShape->setSimulationFilterData(filterData);
+    }
+
+    setFiltersDirty(false);
 }
 
 QT_END_NAMESPACE

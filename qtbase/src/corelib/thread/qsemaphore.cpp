@@ -149,7 +149,7 @@ template <bool IsTimed> bool
 futexSemaphoreTryAcquire_loop(QBasicAtomicInteger<quintptr> &u, quintptr curValue, quintptr nn,
                               QDeadlineTimer timer)
 {
-    qint64 remainingTime = IsTimed ? timer.remainingTimeNSecs() : -1;
+    using namespace std::chrono;
     int n = int(unsigned(nn));
 
     // we're called after one testAndSet, so start by waiting first
@@ -166,8 +166,8 @@ futexSemaphoreTryAcquire_loop(QBasicAtomicInteger<quintptr> &u, quintptr curValu
             }
         }
 
-        if (IsTimed && remainingTime > 0) {
-            bool timedout = !futexWait(*ptr, curValue, remainingTime);
+        if (IsTimed) {
+            bool timedout = !futexWait(*ptr, curValue, timer);
             if (timedout)
                 return false;
         } else {
@@ -175,8 +175,6 @@ futexSemaphoreTryAcquire_loop(QBasicAtomicInteger<quintptr> &u, quintptr curValu
         }
 
         curValue = u.loadAcquire();
-        if (IsTimed)
-            remainingTime = timer.remainingTimeNSecs();
 
         // try to acquire
         while (futexAvailCounter(curValue) >= n) {
@@ -186,7 +184,7 @@ futexSemaphoreTryAcquire_loop(QBasicAtomicInteger<quintptr> &u, quintptr curValu
         }
 
         // not enough tokens available, put us to wait
-        if (remainingTime == 0)
+        if (IsTimed && timer.hasExpired())
             return false;
     }
 }
@@ -251,14 +249,31 @@ futexSemaphoreTryAcquire(QBasicAtomicInteger<quintptr> &u, int n, T timeout)
     return false;
 }
 
-class QSemaphorePrivate {
+namespace QtSemaphorePrivate {
+using namespace QtPrivate;
+struct Layout1
+{
+    alignas(IdealMutexAlignment) std::mutex mutex;
+    qsizetype avail = 0;
+    alignas(IdealMutexAlignment) std::condition_variable cond;
+};
+
+struct Layout2
+{
+    alignas(IdealMutexAlignment) std::mutex mutex;
+    alignas(IdealMutexAlignment) std::condition_variable cond;
+    qsizetype avail = 0;
+};
+
+// Choose Layout1 if it is smaller than Layout2. That happens for platforms
+// where sizeof(mutex) is 64.
+using Members = std::conditional_t<sizeof(Layout1) <= sizeof(Layout2), Layout1, Layout2>;
+} // namespace QtSemaphorePrivate
+
+class QSemaphorePrivate : public QtSemaphorePrivate::Members
+{
 public:
-    explicit QSemaphorePrivate(int n) : avail(n) { }
-
-    QtPrivate::mutex mutex;
-    QtPrivate::condition_variable cond;
-
-    int avail;
+    explicit QSemaphorePrivate(qsizetype n) { avail = n; }
 };
 
 /*!
@@ -379,16 +394,15 @@ void QSemaphore::release(int n)
             //    its acquisition anyway, so it has to wait;
             // 2) it did not see the new counter value, in which case its
             //    futexWait will fail.
-            if (futexHasWaiterCount) {
-                futexWakeAll(*futexLow32(&u));
+            futexWakeAll(*futexLow32(&u));
+            if (futexHasWaiterCount)
                 futexWakeAll(*futexHigh32(&u));
-            } else {
-                futexWakeAll(u);
-            }
         }
         return;
     }
 
+    // Keep mutex locked until after notify_all() lest another thread acquire()s
+    // the semaphore once d->avail == 0 and then destroys it, leaving `d` dangling.
     const auto locker = qt_scoped_lock(d->mutex);
     d->avail += n;
     d->cond.notify_all();

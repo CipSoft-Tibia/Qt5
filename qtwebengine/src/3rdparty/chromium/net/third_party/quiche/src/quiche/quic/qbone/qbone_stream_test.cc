@@ -71,7 +71,7 @@ class MockQuicSession : public QboneSessionBase {
     write_blocked_streams()->RegisterStream(
         stream_id,
         /* is_static_stream = */ false,
-        QuicStreamPriority{3, QuicStreamPriority::kDefaultIncremental});
+        QuicStreamPriority::Default(priority_type()));
   }
 
   // The session take ownership of the stream.
@@ -101,7 +101,8 @@ class DummyPacketWriter : public QuicPacketWriter {
   WriteResult WritePacket(const char* buffer, size_t buf_len,
                           const QuicIpAddress& self_address,
                           const QuicSocketAddress& peer_address,
-                          PerPacketOptions* options) override {
+                          PerPacketOptions* options,
+                          const QuicPacketWriterParams& params) override {
     return WriteResult(WRITE_STATUS_ERROR, 0);
   }
 
@@ -121,6 +122,8 @@ class DummyPacketWriter : public QuicPacketWriter {
   bool SupportsReleaseTime() const override { return false; }
 
   bool IsBatchMode() const override { return false; }
+
+  bool SupportsEcn() const override { return false; }
 
   QuicPacketBuffer GetNextWriteLocation(
       const QuicIpAddress& self_address,

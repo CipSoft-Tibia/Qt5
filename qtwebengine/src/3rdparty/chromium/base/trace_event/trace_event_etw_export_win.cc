@@ -258,8 +258,8 @@ uint64_t TraceEventETWExport::CategoryGroupToKeyword(
   const TraceCategory* category = TraceCategory::FromStatePtr(category_state);
   StringPiece category_group_name = category->name();
 
-  CStringTokenizer category_group_tokens(category_group_name.begin(),
-                                         category_group_name.end(), ",");
+  CStringTokenizer category_group_tokens(&*category_group_name.begin(),
+                                         &*category_group_name.end(), ",");
   while (category_group_tokens.GetNext()) {
     StringPiece category_group_token = category_group_tokens.token_piece();
 
@@ -426,8 +426,8 @@ bool TraceEventETWExport::IsCategoryGroupEnabled(
   if (!instance->etw_provider_->IsEnabled())
     return false;
 
-  CStringTokenizer category_group_tokens(category_group_name.begin(),
-                                         category_group_name.end(), ",");
+  CStringTokenizer category_group_tokens(&*category_group_name.begin(),
+                                         &*category_group_name.end(), ",");
   while (category_group_tokens.GetNext()) {
     StringPiece category_group_token = category_group_tokens.token_piece();
     if (instance->IsCategoryEnabled(category_group_token)) {

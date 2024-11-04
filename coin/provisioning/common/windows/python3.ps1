@@ -19,10 +19,10 @@ $package = "C:\Windows\temp\python-$version.exe"
 if ( $archVer -eq 64 ) {
     Write-Host "Installing 64 bit Python"
     $externalUrl = "https://www.python.org/ftp/python/$version/python-$version-amd64.exe"
-    $internalUrl = "http://ci-files01-hki.intra.qt.io/input/windows/python-$version-amd64.exe"
+    $internalUrl = "http://ci-files01-hki.ci.qt.io/input/windows/python-$version-amd64.exe"
 } else {
     $externalUrl = "https://www.python.org/ftp/python/$version/python-$version.exe"
-    $internalUrl = "http://ci-files01-hki.intra.qt.io/input/windows/python-$version.exe"
+    $internalUrl = "http://ci-files01-hki.ci.qt.io/input/windows/python-$version.exe"
 }
 
 Write-Host "Fetching from URL..."
@@ -60,6 +60,9 @@ if (IsProxyEnabled) {
 Write-Host "Upgrade pip3 to the latest version available."
 Run-Executable "$install_path\python.exe" "-m pip install --upgrade pip"
 
+Write-Host "Configure pip"
+Run-Executable "$install_path\python.exe" "-m pip config --user set global.index https://ci-files01-hki.ci.qt.io/input/python_module_cache"
+Run-Executable "$install_path\python.exe" "-m pip config --user set global.extra-index-url https://pypi.org/simple/"
 Run-Executable "$install_path\Scripts\pip3.exe" "$pip_args install virtualenv wheel html5lib"
 
 # Install PyPDF2 for QSR documentation

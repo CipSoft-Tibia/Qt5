@@ -46,10 +46,10 @@ Q_CONSTINIT static QBasicMutex g_pendingRunnablesMutex;
 QT_DEFINE_NATIVE_INTERFACE(QAndroidApplication);
 
 /*!
-    \fn jobject QNativeInterface::QAndroidApplication::context()
+    \fn QJniObject QNativeInterface::QAndroidApplication::context()
 
-    Returns the Android context as a \c jobject. The context is an \c Activity
-    if the main activity object is valid. Otherwise, the context is a \c Service.
+    Returns the Android context as a \c QJniObject. The context is an \c Activity
+    if the most recently started activity object is valid. Otherwise, the context is a \c Service.
 
     \since 6.2
 */
@@ -68,7 +68,7 @@ QtJniTypes::Context QNativeInterface::QAndroidApplication::context()
 */
 bool QNativeInterface::QAndroidApplication::isActivityContext()
 {
-    return QtAndroidPrivate::activity();
+    return QtAndroidPrivate::activity().isValid();
 }
 
 /*!
@@ -94,8 +94,7 @@ int QNativeInterface::QAndroidApplication::sdkVersion()
 */
 void QNativeInterface::QAndroidApplication::hideSplashScreen(int duration)
 {
-    QJniObject::callStaticMethod<void>("org/qtproject/qt/android/QtNative",
-                                       "hideSplashScreen", "(I)V", duration);
+    QtAndroidPrivate::activity().callMethod<void>("hideSplashScreen", duration);
 }
 
 /*!

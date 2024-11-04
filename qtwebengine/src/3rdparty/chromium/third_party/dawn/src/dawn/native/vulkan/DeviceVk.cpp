@@ -18,12 +18,11 @@
 #include "dawn/common/NonCopyable.h"
 #include "dawn/common/Platform.h"
 #include "dawn/native/BackendConnection.h"
-#include "dawn/native/ChainUtils_autogen.h"
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/Error.h"
 #include "dawn/native/ErrorData.h"
 #include "dawn/native/Instance.h"
 #include "dawn/native/VulkanBackend.h"
-#include "dawn/native/vulkan/AdapterVk.h"
 #include "dawn/native/vulkan/BackendVk.h"
 #include "dawn/native/vulkan/BindGroupLayoutVk.h"
 #include "dawn/native/vulkan/BindGroupVk.h"
@@ -31,6 +30,7 @@
 #include "dawn/native/vulkan/CommandBufferVk.h"
 #include "dawn/native/vulkan/ComputePipelineVk.h"
 #include "dawn/native/vulkan/FencedDeleter.h"
+#include "dawn/native/vulkan/PhysicalDeviceVk.h"
 #include "dawn/native/vulkan/PipelineCacheVk.h"
 #include "dawn/native/vulkan/PipelineLayoutVk.h"
 #include "dawn/native/vulkan/QuerySetVk.h"
@@ -50,10 +50,12 @@ namespace dawn::native::vulkan {
 namespace {
 
 // Destroy the semaphore when out of scope.
-class ScopedSignalSemaphore : public NonMovable {
+class ScopedSignalSemaphore : public NonCopyable {
   public:
     ScopedSignalSemaphore(Device* device, VkSemaphore semaphore)
         : mDevice(device), mSemaphore(semaphore) {}
+    ScopedSignalSemaphore(ScopedSignalSemaphore&& other)
+        : mDevice(other.mDevice), mSemaphore(std::exchange(other.mSemaphore, VK_NULL_HANDLE)) {}
     ~ScopedSignalSemaphore() {
         if (mSemaphore != VK_NULL_HANDLE) {
             mDevice->GetFencedDeleter()->DeleteWhenUnused(mSemaphore);
@@ -88,7 +90,7 @@ void DestroyCommandPoolAndBuffer(const VulkanFunctions& fn,
 }  // namespace
 
 // static
-ResultOrError<Ref<Device>> Device::Create(Adapter* adapter,
+ResultOrError<Ref<Device>> Device::Create(AdapterBase* adapter,
                                           const DeviceDescriptor* descriptor,
                                           const TogglesState& deviceToggles) {
     Ref<Device> device = AcquireRef(new Device(adapter, descriptor, deviceToggles));
@@ -96,28 +98,28 @@ ResultOrError<Ref<Device>> Device::Create(Adapter* adapter,
     return device;
 }
 
-Device::Device(Adapter* adapter,
+Device::Device(AdapterBase* adapter,
                const DeviceDescriptor* descriptor,
                const TogglesState& deviceToggles)
     : DeviceBase(adapter, descriptor, deviceToggles), mDebugPrefix(GetNextDeviceDebugPrefix()) {}
 
 MaybeError Device::Initialize(const DeviceDescriptor* descriptor) {
     // Copy the adapter's device info to the device so that we can change the "knobs"
-    mDeviceInfo = ToBackend(GetAdapter())->GetDeviceInfo();
+    mDeviceInfo = ToBackend(GetPhysicalDevice())->GetDeviceInfo();
 
     // Initialize the "instance" procs of our local function table.
     VulkanFunctions* functions = GetMutableFunctions();
-    *functions = ToBackend(GetAdapter())->GetVulkanInstance()->GetFunctions();
+    *functions = ToBackend(GetPhysicalDevice())->GetVulkanInstance()->GetFunctions();
 
     // Two things are crucial if device initialization fails: the function pointers to destroy
     // objects, and the fence deleter that calls these functions. Do not do anything before
     // these two are set up, so that a failed initialization doesn't cause a crash in
     // DestroyImpl()
     {
-        VkPhysicalDevice physicalDevice = ToBackend(GetAdapter())->GetPhysicalDevice();
+        VkPhysicalDevice vkPhysicalDevice = ToBackend(GetPhysicalDevice())->GetVkPhysicalDevice();
 
         VulkanDeviceKnobs usedDeviceKnobs = {};
-        DAWN_TRY_ASSIGN(usedDeviceKnobs, CreateDevice(physicalDevice));
+        DAWN_TRY_ASSIGN(usedDeviceKnobs, CreateDevice(vkPhysicalDevice));
         *static_cast<VulkanDeviceKnobs*>(&mDeviceInfo) = usedDeviceKnobs;
 
         DAWN_TRY(functions->LoadDeviceProcs(mVkDevice, mDeviceInfo));
@@ -139,7 +141,7 @@ MaybeError Device::Initialize(const DeviceDescriptor* descriptor) {
 
     SetLabelImpl();
 
-    ToBackend(GetAdapter())->GetVulkanInstance()->StartListeningForDeviceMessages(this);
+    ToBackend(GetPhysicalDevice())->GetVulkanInstance()->StartListeningForDeviceMessages(this);
 
     return DeviceBase::Initialize(Queue::Create(this, &descriptor->defaultQueue));
 }
@@ -152,10 +154,9 @@ ResultOrError<Ref<BindGroupBase>> Device::CreateBindGroupImpl(
     const BindGroupDescriptor* descriptor) {
     return BindGroup::Create(this, descriptor);
 }
-ResultOrError<Ref<BindGroupLayoutBase>> Device::CreateBindGroupLayoutImpl(
-    const BindGroupLayoutDescriptor* descriptor,
-    PipelineCompatibilityToken pipelineCompatibilityToken) {
-    return BindGroupLayout::Create(this, descriptor, pipelineCompatibilityToken);
+ResultOrError<Ref<BindGroupLayoutInternalBase>> Device::CreateBindGroupLayoutImpl(
+    const BindGroupLayoutDescriptor* descriptor) {
+    return BindGroupLayout::Create(this, descriptor);
 }
 ResultOrError<Ref<BufferBase>> Device::CreateBufferImpl(const BufferDescriptor* descriptor) {
     return Buffer::Create(this, descriptor);
@@ -190,12 +191,8 @@ ResultOrError<Ref<ShaderModuleBase>> Device::CreateShaderModuleImpl(
     return ShaderModule::Create(this, descriptor, parseResult, compilationMessages);
 }
 ResultOrError<Ref<SwapChainBase>> Device::CreateSwapChainImpl(
-    const SwapChainDescriptor* descriptor) {
-    return OldSwapChain::Create(this, descriptor);
-}
-ResultOrError<Ref<NewSwapChainBase>> Device::CreateSwapChainImpl(
     Surface* surface,
-    NewSwapChainBase* previousSwapChain,
+    SwapChainBase* previousSwapChain,
     const SwapChainDescriptor* descriptor) {
     return SwapChain::Create(this, surface, previousSwapChain, descriptor);
 }
@@ -221,10 +218,15 @@ void Device::InitializeRenderPipelineAsyncImpl(Ref<RenderPipelineBase> renderPip
     RenderPipeline::InitializeAsync(std::move(renderPipeline), callback, userdata);
 }
 
+ResultOrError<wgpu::TextureUsage> Device::GetSupportedSurfaceUsageImpl(
+    const Surface* surface) const {
+    return SwapChain::GetSupportedSurfaceUsage(this, surface);
+}
+
 MaybeError Device::TickImpl() {
     RecycleCompletedCommands();
 
-    ExecutionSerial completedSerial = GetCompletedCommandSerial();
+    ExecutionSerial completedSerial = GetQueue()->GetCompletedCommandSerial();
 
     for (Ref<DescriptorSetAllocator>& allocator :
          mDescriptorAllocatorsPendingDeallocation.IterateUpTo(completedSerial)) {
@@ -245,14 +247,14 @@ MaybeError Device::TickImpl() {
 }
 
 VkInstance Device::GetVkInstance() const {
-    return ToBackend(GetAdapter())->GetVulkanInstance()->GetVkInstance();
+    return ToBackend(GetPhysicalDevice())->GetVulkanInstance()->GetVkInstance();
 }
 const VulkanDeviceInfo& Device::GetDeviceInfo() const {
     return mDeviceInfo;
 }
 
 const VulkanGlobalInfo& Device::GetGlobalInfo() const {
-    return ToBackend(GetAdapter())->GetVulkanInstance()->GetGlobalInfo();
+    return ToBackend(GetPhysicalDevice())->GetVulkanInstance()->GetGlobalInfo();
 }
 
 VkDevice Device::GetVkDevice() const {
@@ -263,7 +265,7 @@ uint32_t Device::GetGraphicsQueueFamily() const {
     return mQueueFamily;
 }
 
-VkQueue Device::GetQueue() const {
+VkQueue Device::GetVkQueue() const {
     return mQueue;
 }
 
@@ -313,11 +315,13 @@ MaybeError Device::SubmitPendingCommands() {
             fn, &mRecordingContext, mRecordingContext.mappableBuffersForEagerTransition);
     }
 
-    ScopedSignalSemaphore scopedSignalSemaphore(this, VK_NULL_HANDLE);
-    if (mRecordingContext.externalTexturesForEagerTransition.size() > 0) {
-        // Create an external semaphore for all external textures that have been used in the pending
-        // submit.
-        DAWN_TRY_ASSIGN(*scopedSignalSemaphore.InitializeInto(),
+    std::vector<ScopedSignalSemaphore> externalTextureSemaphores;
+    for (size_t i = 0; i < mRecordingContext.externalTexturesForEagerTransition.size(); ++i) {
+        // Create an external semaphore for each external textures that have been used in the
+        // pending submit.
+        auto& externalTextureSemaphore =
+            externalTextureSemaphores.emplace_back(this, VK_NULL_HANDLE);
+        DAWN_TRY_ASSIGN(*externalTextureSemaphore.InitializeInto(),
                         mExternalSemaphoreService->CreateExportableSemaphore());
     }
 
@@ -335,6 +339,10 @@ MaybeError Device::SubmitPendingCommands() {
     std::vector<VkPipelineStageFlags> dstStageMasks(mRecordingContext.waitSemaphores.size(),
                                                     VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 
+    for (auto& externalTextureSemaphore : externalTextureSemaphores) {
+        mRecordingContext.signalSemaphores.push_back(externalTextureSemaphore.Get());
+    }
+
     VkSubmitInfo submitInfo;
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.pNext = nullptr;
@@ -343,8 +351,8 @@ MaybeError Device::SubmitPendingCommands() {
     submitInfo.pWaitDstStageMask = dstStageMasks.data();
     submitInfo.commandBufferCount = mRecordingContext.commandBufferList.size();
     submitInfo.pCommandBuffers = mRecordingContext.commandBufferList.data();
-    submitInfo.signalSemaphoreCount = (scopedSignalSemaphore.Get() == VK_NULL_HANDLE ? 0 : 1);
-    submitInfo.pSignalSemaphores = AsVkArray(scopedSignalSemaphore.InitializeInto());
+    submitInfo.signalSemaphoreCount = mRecordingContext.signalSemaphores.size();
+    submitInfo.pSignalSemaphores = AsVkArray(mRecordingContext.signalSemaphores.data());
 
     VkFence fence = VK_NULL_HANDLE;
     DAWN_TRY_ASSIGN(fence, GetUnusedFence());
@@ -361,7 +369,7 @@ MaybeError Device::SubmitPendingCommands() {
     for (VkSemaphore semaphore : mRecordingContext.waitSemaphores) {
         mDeleter->DeleteWhenUnused(semaphore);
     }
-    IncrementLastSubmittedCommandSerial();
+    GetQueue()->IncrementLastSubmittedCommandSerial();
     ExecutionSerial lastSubmittedSerial = GetLastSubmittedCommandSerial();
     mFencesInFlight.emplace(fence, lastSubmittedSerial);
 
@@ -371,23 +379,19 @@ MaybeError Device::SubmitPendingCommands() {
         mCommandsInFlight.Enqueue(submittedCommands, lastSubmittedSerial);
     }
 
-    if (mRecordingContext.externalTexturesForEagerTransition.size() > 0) {
+    auto externalTextureSemaphoreIter = externalTextureSemaphores.begin();
+    for (auto* texture : mRecordingContext.externalTexturesForEagerTransition) {
         // Export the signal semaphore.
         ExternalSemaphoreHandle semaphoreHandle;
-        DAWN_TRY_ASSIGN(semaphoreHandle,
-                        mExternalSemaphoreService->ExportSemaphore(scopedSignalSemaphore.Get()));
+        DAWN_TRY_ASSIGN(semaphoreHandle, mExternalSemaphoreService->ExportSemaphore(
+                                             externalTextureSemaphoreIter->Get()));
+        ++externalTextureSemaphoreIter;
 
         // Update all external textures, eagerly transitioned in the submit, with the exported
-        // handle, and the duplicated handles.
-        bool first = true;
-        for (auto* texture : mRecordingContext.externalTexturesForEagerTransition) {
-            ExternalSemaphoreHandle handle =
-                (first ? semaphoreHandle
-                       : mExternalSemaphoreService->DuplicateHandle(semaphoreHandle));
-            first = false;
-            texture->UpdateExternalSemaphoreHandle(handle);
-        }
+        // handles.
+        texture->UpdateExternalSemaphoreHandle(semaphoreHandle);
     }
+    DAWN_ASSERT(externalTextureSemaphoreIter == externalTextureSemaphores.end());
 
     mRecordingContext = CommandRecordingContext();
     DAWN_TRY(PrepareRecordingContext());
@@ -395,7 +399,7 @@ MaybeError Device::SubmitPendingCommands() {
     return {};
 }
 
-ResultOrError<VulkanDeviceKnobs> Device::CreateDevice(VkPhysicalDevice physicalDevice) {
+ResultOrError<VulkanDeviceKnobs> Device::CreateDevice(VkPhysicalDevice vkPhysicalDevice) {
     VulkanDeviceKnobs usedKnobs = {};
 
     // Default to asking for all avilable known extensions.
@@ -440,31 +444,23 @@ ResultOrError<VulkanDeviceKnobs> Device::CreateDevice(VkPhysicalDevice physicalD
         // Always request all the features from VK_EXT_subgroup_size_control when available.
         usedKnobs.subgroupSizeControlFeatures = mDeviceInfo.subgroupSizeControlFeatures;
         featuresChain.Add(&usedKnobs.subgroupSizeControlFeatures);
-
-        mComputeSubgroupSize = FindComputeSubgroupSize();
     }
 
     if (mDeviceInfo.HasExt(DeviceExt::ZeroInitializeWorkgroupMemory)) {
         ASSERT(usedKnobs.HasExt(DeviceExt::ZeroInitializeWorkgroupMemory));
 
-        usedKnobs.zeroInitializeWorkgroupMemoryFeatures.sType =
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ZERO_INITIALIZE_WORKGROUP_MEMORY_FEATURES_KHR;
-
         // Always allow initializing workgroup memory with OpConstantNull when available.
         // Note that the driver still won't initialize workgroup memory unless the workgroup
         // variable is explicitly initialized with OpConstantNull.
-        usedKnobs.zeroInitializeWorkgroupMemoryFeatures.shaderZeroInitializeWorkgroupMemory =
-            VK_TRUE;
+        usedKnobs.zeroInitializeWorkgroupMemoryFeatures =
+            mDeviceInfo.zeroInitializeWorkgroupMemoryFeatures;
         featuresChain.Add(&usedKnobs.zeroInitializeWorkgroupMemoryFeatures);
     }
 
     if (mDeviceInfo.HasExt(DeviceExt::ShaderIntegerDotProduct)) {
         ASSERT(usedKnobs.HasExt(DeviceExt::ShaderIntegerDotProduct));
 
-        usedKnobs.shaderIntegerDotProductFeatures.sType =
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES;
-
-        usedKnobs.shaderIntegerDotProductFeatures.shaderIntegerDotProduct = VK_TRUE;
+        usedKnobs.shaderIntegerDotProductFeatures = mDeviceInfo.shaderIntegerDotProductFeatures;
         featuresChain.Add(&usedKnobs.shaderIntegerDotProductFeatures);
     }
 
@@ -473,42 +469,38 @@ ResultOrError<VulkanDeviceKnobs> Device::CreateDevice(VkPhysicalDevice physicalD
     }
 
     if (HasFeature(Feature::TextureCompressionBC)) {
-        ASSERT(ToBackend(GetAdapter())->GetDeviceInfo().features.textureCompressionBC == VK_TRUE);
+        ASSERT(ToBackend(GetPhysicalDevice())->GetDeviceInfo().features.textureCompressionBC ==
+               VK_TRUE);
         usedKnobs.features.textureCompressionBC = VK_TRUE;
     }
 
     if (HasFeature(Feature::TextureCompressionETC2)) {
-        ASSERT(ToBackend(GetAdapter())->GetDeviceInfo().features.textureCompressionETC2 == VK_TRUE);
+        ASSERT(ToBackend(GetPhysicalDevice())->GetDeviceInfo().features.textureCompressionETC2 ==
+               VK_TRUE);
         usedKnobs.features.textureCompressionETC2 = VK_TRUE;
     }
 
     if (HasFeature(Feature::TextureCompressionASTC)) {
-        ASSERT(ToBackend(GetAdapter())->GetDeviceInfo().features.textureCompressionASTC_LDR ==
-               VK_TRUE);
+        ASSERT(
+            ToBackend(GetPhysicalDevice())->GetDeviceInfo().features.textureCompressionASTC_LDR ==
+            VK_TRUE);
         usedKnobs.features.textureCompressionASTC_LDR = VK_TRUE;
     }
 
     if (HasFeature(Feature::PipelineStatisticsQuery)) {
-        ASSERT(ToBackend(GetAdapter())->GetDeviceInfo().features.pipelineStatisticsQuery ==
+        ASSERT(ToBackend(GetPhysicalDevice())->GetDeviceInfo().features.pipelineStatisticsQuery ==
                VK_TRUE);
         usedKnobs.features.pipelineStatisticsQuery = VK_TRUE;
     }
 
     if (HasFeature(Feature::DepthClipControl)) {
-        const VulkanDeviceInfo& deviceInfo = ToBackend(GetAdapter())->GetDeviceInfo();
-        ASSERT(deviceInfo.HasExt(DeviceExt::DepthClipEnable) &&
-               deviceInfo.depthClipEnableFeatures.depthClipEnable == VK_TRUE);
-
         usedKnobs.features.depthClamp = VK_TRUE;
-        usedKnobs.depthClipEnableFeatures.depthClipEnable = VK_TRUE;
-        featuresChain.Add(&usedKnobs.depthClipEnableFeatures,
-                          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLIP_ENABLE_FEATURES_EXT);
     }
 
     // TODO(dawn:1510, tint:1473): After implementing a transform to handle the pipeline input /
     // output if necessary, relax the requirement of storageInputOutput16.
     if (HasFeature(Feature::ShaderF16)) {
-        const VulkanDeviceInfo& deviceInfo = ToBackend(GetAdapter())->GetDeviceInfo();
+        const VulkanDeviceInfo& deviceInfo = ToBackend(GetPhysicalDevice())->GetDeviceInfo();
         ASSERT(deviceInfo.HasExt(DeviceExt::ShaderFloat16Int8) &&
                deviceInfo.shaderFloat16Int8Features.shaderFloat16 == VK_TRUE &&
                deviceInfo.HasExt(DeviceExt::_16BitStorage) &&
@@ -525,6 +517,28 @@ ResultOrError<VulkanDeviceKnobs> Device::CreateDevice(VkPhysicalDevice physicalD
                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES_KHR);
         featuresChain.Add(&usedKnobs._16BitStorageFeatures,
                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES);
+    }
+
+    if (HasFeature(Feature::DualSourceBlending)) {
+        usedKnobs.features.dualSrcBlend = VK_TRUE;
+    }
+
+    if (mDeviceInfo.HasExt(DeviceExt::Robustness2)) {
+        ASSERT(usedKnobs.HasExt(DeviceExt::Robustness2));
+
+        usedKnobs.robustness2Features = mDeviceInfo.robustness2Features;
+        featuresChain.Add(&usedKnobs.robustness2Features);
+    }
+
+    if (HasFeature(Feature::ChromiumExperimentalSubgroupUniformControlFlow)) {
+        ASSERT(
+            usedKnobs.HasExt(DeviceExt::ShaderSubgroupUniformControlFlow) &&
+            mDeviceInfo.shaderSubgroupUniformControlFlowFeatures.shaderSubgroupUniformControlFlow ==
+                VK_TRUE);
+
+        usedKnobs.shaderSubgroupUniformControlFlowFeatures =
+            mDeviceInfo.shaderSubgroupUniformControlFlowFeatures;
+        featuresChain.Add(&usedKnobs.shaderSubgroupUniformControlFlowFeatures);
     }
 
     // Find a universal queue family
@@ -582,36 +596,10 @@ ResultOrError<VulkanDeviceKnobs> Device::CreateDevice(VkPhysicalDevice physicalD
         createInfo.pEnabledFeatures = &usedKnobs.features;
     }
 
-    DAWN_TRY(CheckVkSuccess(fn.CreateDevice(physicalDevice, &createInfo, nullptr, &mVkDevice),
+    DAWN_TRY(CheckVkSuccess(fn.CreateDevice(vkPhysicalDevice, &createInfo, nullptr, &mVkDevice),
                             "vkCreateDevice"));
 
     return usedKnobs;
-}
-
-uint32_t Device::FindComputeSubgroupSize() const {
-    if (!mDeviceInfo.HasExt(DeviceExt::SubgroupSizeControl)) {
-        return 0;
-    }
-
-    const VkPhysicalDeviceSubgroupSizeControlPropertiesEXT& ext =
-        mDeviceInfo.subgroupSizeControlProperties;
-
-    if (ext.minSubgroupSize == ext.maxSubgroupSize) {
-        return 0;
-    }
-
-    // At the moment, only Intel devices support varying subgroup sizes and 16, which is the
-    // next value after the minimum of 8, is the sweet spot according to [1]. Hence the
-    // following heuristics, which may need to be adjusted in the future for other
-    // architectures, or if a specific API is added to let client code select the size..
-    //
-    // [1] https://bugs.freedesktop.org/show_bug.cgi?id=108875
-    uint32_t subgroupSize = ext.minSubgroupSize * 2;
-    if (subgroupSize <= ext.maxSubgroupSize) {
-        return subgroupSize;
-    } else {
-        return ext.minSubgroupSize;
-    }
 }
 
 void Device::GatherQueueFromDevice() {
@@ -664,7 +652,7 @@ ResultOrError<ExecutionSerial> Device::CheckAndUpdateCompletedSerials() {
 
         mUnusedFences.push_back(fence);
 
-        ASSERT(fenceSerial > GetCompletedCommandSerial());
+        ASSERT(fenceSerial > GetQueue()->GetCompletedCommandSerial());
         mFencesInFlight.pop();
     }
     return fenceSerial;
@@ -756,10 +744,10 @@ ResultOrError<CommandPoolAndBuffer> Device::BeginVkCommandBuffer() {
 }
 
 void Device::RecycleCompletedCommands() {
-    for (auto& commands : mCommandsInFlight.IterateUpTo(GetCompletedCommandSerial())) {
+    for (auto& commands : mCommandsInFlight.IterateUpTo(GetQueue()->GetCompletedCommandSerial())) {
         mUnusedCommands.push_back(commands);
     }
-    mCommandsInFlight.ClearUpTo(GetCompletedCommandSerial());
+    mCommandsInFlight.ClearUpTo(GetQueue()->GetCompletedCommandSerial());
 }
 
 MaybeError Device::CopyFromStagingToBufferImpl(BufferBase* source,
@@ -816,7 +804,8 @@ MaybeError Device::CopyFromStagingToTextureImpl(const BufferBase* source,
         // Since texture has been overwritten, it has been "initialized"
         dst.texture->SetIsSubresourceContentInitialized(true, range);
     } else {
-        ToBackend(dst.texture)->EnsureSubresourceContentInitialized(recordingContext, range);
+        DAWN_TRY(
+            ToBackend(dst.texture)->EnsureSubresourceContentInitialized(recordingContext, range));
     }
     // Insert pipeline barrier to ensure correct ordering with previous memory operations on the
     // texture.
@@ -852,8 +841,8 @@ MaybeError Device::ImportExternalImage(const ExternalImageDescriptorVk* descript
                     "External semaphore usage not supported");
 
     DAWN_INVALID_IF(!mExternalMemoryService->SupportsImportMemory(
-                        VulkanImageFormat(this, textureDescriptor->format), VK_IMAGE_TYPE_2D,
-                        VK_IMAGE_TILING_OPTIMAL,
+                        descriptor->GetType(), VulkanImageFormat(this, textureDescriptor->format),
+                        VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL,
                         VulkanImageUsage(usage, GetValidInternalFormat(textureDescriptor->format)),
                         VK_IMAGE_CREATE_ALIAS_BIT_KHR),
                     "External memory usage not supported");
@@ -861,8 +850,8 @@ MaybeError Device::ImportExternalImage(const ExternalImageDescriptorVk* descript
     // Import the external image's memory
     external_memory::MemoryImportParams importParams;
     DAWN_TRY_ASSIGN(importParams, mExternalMemoryService->GetMemoryImportParams(descriptor, image));
-    DAWN_TRY_ASSIGN(*outAllocation,
-                    mExternalMemoryService->ImportMemory(memoryHandle, importParams, image));
+    DAWN_TRY_ASSIGN(*outAllocation, mExternalMemoryService->ImportMemory(
+                                        descriptor->GetType(), memoryHandle, importParams, image));
 
     // Import semaphores we have to wait on before using the texture
     for (const ExternalSemaphoreHandle& handle : waitHandles) {
@@ -908,12 +897,20 @@ TextureBase* Device::CreateTextureWrappingVulkanImage(
     if (ConsumedError(ValidateIsAlive())) {
         return nullptr;
     }
-    if (ConsumedError(ValidateTextureDescriptor(this, textureDescriptor))) {
+    if (ConsumedError(ValidateTextureDescriptor(this, textureDescriptor,
+                                                AllowMultiPlanarTextureFormat::Yes))) {
         return nullptr;
     }
     if (ConsumedError(ValidateVulkanImageCanBeWrapped(this, textureDescriptor),
                       "validating that a Vulkan image can be wrapped with %s.",
                       textureDescriptor)) {
+        return nullptr;
+    }
+    if (GetValidInternalFormat(textureDescriptor->format).IsMultiPlanar() &&
+        !descriptor->isInitialized) {
+        bool consumed = ConsumedError(DAWN_VALIDATION_ERROR(
+            "External textures with multiplanar formats must be initialized."));
+        DAWN_UNUSED(consumed);
         return nullptr;
     }
 
@@ -950,7 +947,7 @@ TextureBase* Device::CreateTextureWrappingVulkanImage(
 }
 
 uint32_t Device::GetComputeSubgroupSize() const {
-    return mComputeSubgroupSize;
+    return ToBackend(GetPhysicalDevice())->GetDefaultComputeSubgroupSize();
 }
 
 void Device::OnDebugMessage(std::string message) {
@@ -958,7 +955,8 @@ void Device::OnDebugMessage(std::string message) {
 }
 
 MaybeError Device::CheckDebugLayerAndGenerateErrors() {
-    if (!GetAdapter()->GetInstance()->IsBackendValidationEnabled() || mDebugMessages.empty()) {
+    if (!GetPhysicalDevice()->GetInstance()->IsBackendValidationEnabled() ||
+        mDebugMessages.empty()) {
         return {};
     }
 
@@ -970,7 +968,7 @@ MaybeError Device::CheckDebugLayerAndGenerateErrors() {
 }
 
 void Device::AppendDebugLayerMessages(ErrorData* error) {
-    if (!GetAdapter()->GetInstance()->IsBackendValidationEnabled()) {
+    if (!GetPhysicalDevice()->GetInstance()->IsBackendValidationEnabled()) {
         return;
     }
 
@@ -981,7 +979,8 @@ void Device::AppendDebugLayerMessages(ErrorData* error) {
 }
 
 void Device::CheckDebugMessagesAfterDestruction() const {
-    if (!GetAdapter()->GetInstance()->IsBackendValidationEnabled() || mDebugMessages.empty()) {
+    if (!GetPhysicalDevice()->GetInstance()->IsBackendValidationEnabled() ||
+        mDebugMessages.empty()) {
         return;
     }
 
@@ -1016,7 +1015,7 @@ MaybeError Device::WaitForIdleForDestruction() {
     while (!mFencesInFlight.empty()) {
         VkFence fence = mFencesInFlight.front().first;
         ExecutionSerial fenceSerial = mFencesInFlight.front().second;
-        ASSERT(fenceSerial > GetCompletedCommandSerial());
+        ASSERT(fenceSerial > GetQueue()->GetCompletedCommandSerial());
 
         VkResult result = VkResult::WrapUnsafe(VK_TIMEOUT);
         do {
@@ -1066,7 +1065,7 @@ void Device::DestroyImpl() {
     // Enough of the Device's initialization happened that we can now do regular robust
     // deinitialization.
 
-    ToBackend(GetAdapter())->GetVulkanInstance()->StopListeningForDeviceMessages(this);
+    ToBackend(GetPhysicalDevice())->GetVulkanInstance()->StopListeningForDeviceMessages(this);
 
     // Immediately tag the recording context as unused so we don't try to submit it in Tick.
     mRecordingContext.needsSubmit = false;
@@ -1079,6 +1078,7 @@ void Device::DestroyImpl() {
         fn.DestroySemaphore(mVkDevice, semaphore, nullptr);
     }
     mRecordingContext.waitSemaphores.clear();
+    mRecordingContext.signalSemaphores.clear();
 
     // Some commands might still be marked as in-flight if we shut down because of a device
     // loss. Recycle them as unused so that we free them below.
@@ -1102,7 +1102,7 @@ void Device::DestroyImpl() {
     }
     mUnusedFences.clear();
 
-    ExecutionSerial completedSerial = GetCompletedCommandSerial();
+    ExecutionSerial completedSerial = GetQueue()->GetCompletedCommandSerial();
     for (Ref<DescriptorSetAllocator>& allocator :
          mDescriptorAllocatorsPendingDeallocation.IterateUpTo(completedSerial)) {
         allocator->FinishDeallocation(completedSerial);

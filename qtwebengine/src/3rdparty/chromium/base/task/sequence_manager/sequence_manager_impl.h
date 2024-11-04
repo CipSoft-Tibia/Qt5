@@ -33,6 +33,7 @@
 #include "base/task/sequence_manager/enqueue_order.h"
 #include "base/task/sequence_manager/enqueue_order_generator.h"
 #include "base/task/sequence_manager/sequence_manager.h"
+#include "base/task/sequence_manager/task_queue.h"
 #include "base/task/sequence_manager/task_queue_impl.h"
 #include "base/task/sequence_manager/task_queue_selector.h"
 #include "base/task/sequence_manager/thread_controller.h"
@@ -134,15 +135,12 @@ class BASE_EXPORT SequenceManagerImpl
   void ReclaimMemory() override;
   bool GetAndClearSystemIsQuiescentBit() override;
   void SetWorkBatchSize(int work_batch_size) override;
-  void SetTimerSlack(TimerSlack timer_slack) override;
   void EnableCrashKeys(const char* async_stack_crash_key) override;
   const MetricRecordingSettings& GetMetricRecordingSettings() const override;
   size_t GetPendingTaskCountForTesting() const override;
-  scoped_refptr<TaskQueue> CreateTaskQueue(
-      const TaskQueue::Spec& spec) override;
+  TaskQueue::Handle CreateTaskQueue(const TaskQueue::Spec& spec) override;
   std::string DescribeAllPendingTasks() const override;
   void PrioritizeYieldingToNative(base::TimeTicks prioritize_until) override;
-  void EnablePeriodicYieldingToNative(base::TimeDelta interval) override;
   void AddTaskObserver(TaskObserver* task_observer) override;
   void RemoveTaskObserver(TaskObserver* task_observer) override;
   absl::optional<WakeUp> GetNextDelayedWakeUp() const override;
@@ -194,10 +192,6 @@ class BASE_EXPORT SequenceManagerImpl
   // Unregisters a TaskQueue previously created by |NewTaskQueue()|.
   // No tasks will run on this queue after this call.
   void UnregisterTaskQueueImpl(
-      std::unique_ptr<internal::TaskQueueImpl> task_queue);
-
-  // Schedule a call to UnregisterTaskQueueImpl as soon as it's safe to do so.
-  void ShutdownTaskQueueGracefully(
       std::unique_ptr<internal::TaskQueueImpl> task_queue);
 
   scoped_refptr<const AssociatedThreadId> associated_thread() const {
@@ -339,11 +333,8 @@ class BASE_EXPORT SequenceManagerImpl
     TimeTicks next_time_to_reclaim_memory;
 
     // List of task queues managed by this SequenceManager.
-    // - active_queues contains queues that are still running tasks.
-    //   Most often they are owned by relevant TaskQueues, but
-    //   queues_to_gracefully_shutdown_ are included here too.
-    // - queues_to_gracefully_shutdown contains queues which should be deleted
-    //   when they become empty.
+    // - active_queues contains queues that are still running tasks, which are
+    //   are owned by relevant TaskQueues.
     // - queues_to_delete contains soon-to-be-deleted queues, because some
     //   internal scheduling code does not expect queues to be pulled
     //   from underneath.
@@ -351,16 +342,16 @@ class BASE_EXPORT SequenceManagerImpl
     std::set<internal::TaskQueueImpl*> active_queues;
 
     std::map<internal::TaskQueueImpl*, std::unique_ptr<internal::TaskQueueImpl>>
-        queues_to_gracefully_shutdown;
-    std::map<internal::TaskQueueImpl*, std::unique_ptr<internal::TaskQueueImpl>>
         queues_to_delete;
 
     bool task_was_run_on_quiescence_monitored_queue = false;
     bool nesting_observer_registered_ = false;
 
-    // Due to nested runloops more than one task can be executing concurrently.
-    // Note that this uses std::deque for pointer stability, since pointers to
-    // objects in this container are stored in TLS.
+    // Use std::deque() so that references returned by SelectNextTask() remain
+    // valid until the matching call to DidRunTask(), even when nested RunLoops
+    // cause tasks to be pushed on the stack in-between. This is needed because
+    // references are kept in local variables by calling code between
+    // SelectNextTask()/DidRunTask().
     std::deque<ExecutingTask> task_execution_stack;
 
     raw_ptr<Observer> observer = nullptr;  // NOT OWNED

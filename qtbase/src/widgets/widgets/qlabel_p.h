@@ -33,6 +33,9 @@
 #include "qmenu.h"
 #endif
 
+#include <QtCore/qpointer.h>
+
+#include <array>
 #include <optional>
 
 QT_BEGIN_NAMESPACE
@@ -50,12 +53,12 @@ public:
     QSize sizeForWidth(int w) const;
 
 #if QT_CONFIG(movie)
-    void _q_movieUpdated(const QRect&);
-    void _q_movieResized(const QSize&);
+    void movieUpdated(const QRect &rect);
+    void movieResized(const QSize &size);
 #endif
 #ifndef QT_NO_SHORTCUT
     void updateShortcut();
-    void _q_buddyDeleted();
+    void buddyDeleted();
 #endif
     inline bool needTextControl() const {
         Q_Q(const QLabel);
@@ -70,7 +73,7 @@ public:
     void ensureTextControl() const;
     void sendControlEvent(QEvent *e);
 
-    void _q_linkHovered(const QString &link);
+    void linkHovered(const QString &link);
 
     QRectF layoutRect() const;
     QRect documentRect() const;
@@ -91,6 +94,7 @@ public:
 #endif
 #if QT_CONFIG(movie)
     QPointer<QMovie> movie;
+    std::array<QMetaObject::Connection, 2> movieConnections;
 #endif
     mutable QWidgetTextControl *control;
     mutable QTextCursor shortcutCursor;

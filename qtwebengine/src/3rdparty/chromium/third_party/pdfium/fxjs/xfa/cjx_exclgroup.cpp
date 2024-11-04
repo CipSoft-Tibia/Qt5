@@ -109,9 +109,7 @@ CJS_Result CJX_ExclGroup::selectedMember(
   if (!pReturnNode)
     return CJS_Result::Success(runtime->NewNull());
 
-  return CJS_Result::Success(
-      GetDocument()->GetScriptContext()->GetOrCreateJSBindingFromMap(
-          pReturnNode));
+  return CJS_Result::Success(runtime->GetOrCreateJSBindingFromMap(pReturnNode));
 }
 
 void CJX_ExclGroup::defaultValue(v8::Isolate* pIsolate,

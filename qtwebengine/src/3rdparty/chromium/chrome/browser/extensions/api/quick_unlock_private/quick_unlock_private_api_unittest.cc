@@ -7,12 +7,14 @@
 #include "chrome/browser/extensions/api/quick_unlock_private/quick_unlock_private_api.h"
 
 #include <memory>
+#include <utility>
 
 #include "ash/constants/ash_features.h"
 #include "ash/constants/ash_pref_names.h"
 #include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/no_destructor.h"
 #include "base/run_loop.h"
@@ -22,8 +24,8 @@
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
+#include "chrome/browser/ash/login/easy_unlock/easy_unlock_service.h"
 #include "chrome/browser/ash/login/easy_unlock/easy_unlock_service_factory.h"
-#include "chrome/browser/ash/login/easy_unlock/easy_unlock_service_regular.h"
 #include "chrome/browser/ash/login/quick_unlock/auth_token.h"
 #include "chrome/browser/ash/login/quick_unlock/pin_backend.h"
 #include "chrome/browser/ash/login/quick_unlock/pin_storage_prefs.h"
@@ -43,6 +45,8 @@
 #include "chromeos/ash/components/dbus/userdataauth/fake_userdataauth_client.h"
 #include "chromeos/ash/components/login/auth/fake_extended_authenticator.h"
 #include "chromeos/ash/components/login/auth/public/cryptohome_key_constants.h"
+#include "chromeos/ash/components/osauth/impl/auth_parts_impl.h"
+#include "chromeos/ash/components/osauth/impl/auth_session_storage_impl.h"
 #include "chromeos/ash/services/device_sync/public/cpp/fake_device_sync_client.h"
 #include "chromeos/ash/services/multidevice_setup/public/cpp/fake_multidevice_setup_client.h"
 #include "chromeos/ash/services/secure_channel/public/cpp/client/fake_secure_channel_client.h"
@@ -85,7 +89,7 @@ constexpr char kInvalidToken[] = "invalid";
 constexpr char kValidPassword[] = "valid";
 constexpr char kInvalidPassword[] = "invalid";
 
-class FakeEasyUnlockService : public ash::EasyUnlockServiceRegular {
+class FakeEasyUnlockService : public ash::EasyUnlockService {
  public:
   FakeEasyUnlockService(
       Profile* profile,
@@ -93,19 +97,15 @@ class FakeEasyUnlockService : public ash::EasyUnlockServiceRegular {
       ash::secure_channel::FakeSecureChannelClient* fake_secure_channel_client,
       ash::multidevice_setup::FakeMultiDeviceSetupClient*
           fake_multidevice_setup_client)
-      : ash::EasyUnlockServiceRegular(profile,
-                                      fake_secure_channel_client,
-                                      fake_device_sync_client,
-                                      fake_multidevice_setup_client) {}
+      : ash::EasyUnlockService(profile,
+                               fake_secure_channel_client,
+                               fake_device_sync_client,
+                               fake_multidevice_setup_client) {}
 
   FakeEasyUnlockService(const FakeEasyUnlockService&) = delete;
   FakeEasyUnlockService& operator=(const FakeEasyUnlockService&) = delete;
 
   ~FakeEasyUnlockService() override {}
-
-  // ash::EasyUnlockServiceRegular:
-  void InitializeInternal() override {}
-  void ShutdownInternal() override {}
 };
 
 std::unique_ptr<KeyedService> CreateEasyUnlockServiceForTest(
@@ -205,6 +205,10 @@ class QuickUnlockPrivateUnitTest
     fake_user_manager_ = fake_user_manager.get();
     scoped_user_manager_ = std::make_unique<user_manager::ScopedUserManager>(
         std::move(fake_user_manager));
+    auth_parts_ = ash::AuthPartsImpl::CreateTestInstance();
+    auth_parts_->SetAuthSessionStorage(
+        std::make_unique<ash::AuthSessionStorageImpl>(
+            ash::UserDataAuthClient::Get()));
 
     ExtensionApiUnittest::SetUp();
 
@@ -265,8 +269,14 @@ class QuickUnlockPrivateUnitTest
           ash::AuthFactorsConfiguration());
     }
 
-    token_ = ash::quick_unlock::QuickUnlockFactory::GetForProfile(profile)
-                 ->CreateAuthToken(auth_token_user_context_);
+    if (ash::features::ShouldUseAuthSessionStorage()) {
+      token_ = ash::AuthSessionStorage::Get()->Store(
+          std::make_unique<ash::UserContext>(auth_token_user_context_));
+    } else {
+      token_ = ash::quick_unlock::QuickUnlockFactory::GetForProfile(profile)
+                   ->CreateAuthToken(auth_token_user_context_);
+    }
+
     base::RunLoop().RunUntilIdle();
 
     return profile;
@@ -315,7 +325,8 @@ class QuickUnlockPrivateUnitTest
     absl::optional<base::Value> result =
         RunFunction(std::move(func), std::move(params));
     EXPECT_TRUE(result);
-    auto token_info = quick_unlock_private::TokenInfo::FromValue(*result);
+    auto token_info =
+        quick_unlock_private::TokenInfo::FromValueDeprecated(*result);
     EXPECT_TRUE(token_info);
     return token_info;
   }
@@ -426,9 +437,10 @@ class QuickUnlockPrivateUnitTest
     absl::optional<base::Value> result = RunFunction(
         base::MakeRefCounted<QuickUnlockPrivateCheckCredentialFunction>(),
         std::move(params));
+    EXPECT_TRUE(result->is_dict());
 
     CredentialCheck function_result;
-    EXPECT_TRUE(CredentialCheck::Populate(*result, &function_result));
+    EXPECT_TRUE(CredentialCheck::Populate(result->GetDict(), function_result));
     return function_result;
   }
 
@@ -441,9 +453,11 @@ class QuickUnlockPrivateUnitTest
         RunFunction(base::MakeRefCounted<
                         QuickUnlockPrivateGetCredentialRequirementsFunction>(),
                     std::move(params));
+    EXPECT_TRUE(result->is_dict());
 
     CredentialRequirements function_result;
-    EXPECT_TRUE(CredentialRequirements::Populate(*result, &function_result));
+    EXPECT_TRUE(
+        CredentialRequirements::Populate(result->GetDict(), function_result));
 
     EXPECT_EQ(function_result.min_length, expected_pin_min_length);
     EXPECT_EQ(function_result.max_length, expected_pin_max_length);
@@ -638,7 +652,9 @@ class QuickUnlockPrivateUnitTest
   }
 
   base::test::ScopedFeatureList feature_list_;
-  sync_preferences::TestingPrefServiceSyncable* test_pref_service_;
+  raw_ptr<sync_preferences::TestingPrefServiceSyncable,
+          DanglingUntriaged | ExperimentalAsh>
+      test_pref_service_;
 
  private:
   // Runs the given |func| with the given |params|.
@@ -649,7 +665,7 @@ class QuickUnlockPrivateUnitTest
         api_test_utils::RunFunctionWithDelegateAndReturnSingleResult(
             std::move(func), std::move(params),
             std::make_unique<ExtensionFunctionDispatcher>(profile()),
-            api_test_utils::NONE);
+            api_test_utils::FunctionMode::kNone);
     base::RunLoop().RunUntilIdle();
     return result;
   }
@@ -660,7 +676,8 @@ class QuickUnlockPrivateUnitTest
     base::RunLoop().RunUntilIdle();
     auto dispatcher = std::make_unique<ExtensionFunctionDispatcher>(profile());
     api_test_utils::RunFunction(func.get(), std::move(params),
-                                std::move(dispatcher), api_test_utils::NONE);
+                                std::move(dispatcher),
+                                api_test_utils::FunctionMode::kNone);
     EXPECT_TRUE(func->GetResultListForTest()->empty());
     base::RunLoop().RunUntilIdle();
     return func->GetError();
@@ -674,7 +691,9 @@ class QuickUnlockPrivateUnitTest
     expect_modes_changed_ = false;
   }
 
-  ash::FakeChromeUserManager* fake_user_manager_ = nullptr;
+  std::unique_ptr<ash::AuthPartsImpl> auth_parts_;
+  raw_ptr<ash::FakeChromeUserManager, ExperimentalAsh> fake_user_manager_ =
+      nullptr;
   std::unique_ptr<user_manager::ScopedUserManager> scoped_user_manager_;
   QuickUnlockPrivateSetModesFunction::ModesChangedEventHandler
       modes_changed_handler_;
@@ -691,8 +710,12 @@ TEST_P(QuickUnlockPrivateUnitTest, GetAuthTokenValid) {
 
   ash::quick_unlock::QuickUnlockStorage* quick_unlock_storage =
       ash::quick_unlock::QuickUnlockFactory::GetForProfile(profile());
-  EXPECT_EQ(token_info->token,
-            quick_unlock_storage->GetAuthToken()->Identifier());
+  if (ash::features::ShouldUseAuthSessionStorage()) {
+    EXPECT_TRUE(ash::AuthSessionStorage::Get()->IsValid(token_info->token));
+  } else {
+    EXPECT_EQ(token_info->token,
+              quick_unlock_storage->GetAuthToken()->Identifier());
+  }
   EXPECT_EQ(token_info->lifetime_seconds,
             ash::quick_unlock::AuthToken::kTokenExpiration.InSeconds());
 }

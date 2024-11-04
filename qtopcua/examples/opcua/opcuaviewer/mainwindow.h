@@ -4,11 +4,9 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <QItemSelection>
-#include <QMainWindow>
 #include <QOpcUaClient>
 #include <QOpcUaHistoryData>
-#include <QOpcUaProvider>
+#include <QMainWindow>
 
 class OpcUaModel;
 
@@ -16,6 +14,8 @@ QT_BEGIN_NAMESPACE
 namespace Ui {
 class MainWindow;
 }
+class QOpcUaGenericStructHandler;
+class QOpcUaProvider;
 QT_END_NAMESPACE
 
 class MainWindow : public QMainWindow
@@ -36,6 +36,7 @@ private slots:
     void clientConnected();
     void clientDisconnected();
     void namespacesArrayUpdated(const QStringList &namespaceArray);
+    void handleGenericStructHandlerInitFinished(bool success);
     void clientError(QOpcUaClient::ClientError);
     void clientState(QOpcUaClient::ClientState);
     void showErrorDialog(QOpcUaErrorState *errorState);
@@ -54,6 +55,7 @@ private:
     OpcUaModel *mOpcUaModel;
     QOpcUaProvider *mOpcUaProvider;
     QOpcUaClient *mOpcUaClient = nullptr;
+    QScopedPointer<QOpcUaGenericStructHandler> mGenericStructHandler;
     QList<QOpcUaEndpointDescription> mEndpointList;
     bool mClientConnected = false;
     QOpcUaApplicationIdentity m_identity;

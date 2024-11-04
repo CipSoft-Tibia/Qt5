@@ -104,6 +104,10 @@
         <translation>Fehlerhafter Status der Medien-Session.</translation>
     </message>
     <message>
+        <source>Invalid stream data.</source>
+        <translation>Ungültige Daten aus Datenstrom.</translation>
+    </message>
+    <message>
         <source>Media session serious error.</source>
         <translation>Kritischer Fehler der Medien-Session.</translation>
     </message>
@@ -521,13 +525,6 @@
     <message>
         <source>No camera available.</source>
         <translation>Es ist keine Kamera verfügbar.</translation>
-    </message>
-</context>
-<context>
-    <name>QV4L2Camera</name>
-    <message>
-        <source>Camera is in use.</source>
-        <translation>Kamera bereits in Verwendung.</translation>
     </message>
 </context>
 </TS>

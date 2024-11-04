@@ -8,6 +8,7 @@
 #include <QtCore/qstack.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qloggingcategory.h>
+#include <QtQml/private/qqmlsignalnames_p.h>
 
 #include <private/qqmljsutils_p.h>
 
@@ -269,7 +270,7 @@ bool QmltcVisitor::visit(QQmlJS::AST::UiPublicMember *publicMember)
             owner->addOwnProperty(property);
         }
 
-        const QString notifyName = name + u"Changed"_s;
+        const QString notifyName = QQmlSignalNames::propertyNameToChangedSignalName(name);
         // also check that notify is already a method of the scope
         {
             auto owningScope = m_savedBindingOuterScope ? m_savedBindingOuterScope : m_currentScope;
@@ -673,20 +674,21 @@ void QmltcVisitor::checkNamesAndTypes(const QQmlJSScope::ConstPtr &type)
         u"case"_s,
         u"catch"_s,
         u"char"_s,
-        u"char8_t"_s,
         u"char16_t"_s,
         u"char32_t"_s,
+        u"char8_t"_s,
         u"class"_s,
-        u"compl"_s,
-        u"concept"_s,
-        u"const"_s,
-        u"consteval"_s,
-        u"constexpr"_s,
-        u"const_cast"_s,
-        u"continue"_s,
         u"co_await"_s,
         u"co_return"_s,
         u"co_yield"_s,
+        u"compl"_s,
+        u"concept"_s,
+        u"const"_s,
+        u"const_cast"_s,
+        u"consteval"_s,
+        u"constexpr"_s,
+        u"constinit"_s,
+        u"continue"_s,
         u"decltype"_s,
         u"default"_s,
         u"delete"_s,
@@ -754,6 +756,7 @@ void QmltcVisitor::checkNamesAndTypes(const QQmlJSScope::ConstPtr &type)
         u"xor"_s,
         u"xor_eq"_s,
     };
+    Q_ASSERT(std::is_sorted(std::begin(cppKeywords), std::end(cppKeywords)));
 
     const auto isReserved = [&](QStringView word) {
         if (word.startsWith(QChar(u'_')) && word.size() >= 2

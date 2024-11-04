@@ -34,17 +34,17 @@ TlsWebServer::TlsWebServer(Handler h, const QSslConfiguration &config, QObject *
     QSslServer(parent),
     handler(h)
 {
-    connect(this, &QSslServer::pendingConnectionAvailable, [this]() {
+    connect(this, &QSslServer::pendingConnectionAvailable, this, [this]() {
         auto socket = nextPendingConnection();
         Q_ASSERT(socket);
         auto sslSocket = qobject_cast<QSslSocket *>(socket);
         Q_ASSERT(sslSocket);
         connect(socket, &QTcpSocket::disconnected, socket, &QTcpSocket::deleteLater);
-        connect(sslSocket, &QSslSocket::sslErrors, [sslSocket](const QList<QSslError> &errors) {
+        connect(sslSocket, &QSslSocket::sslErrors, this, [sslSocket](const QList<QSslError> &errors) {
             qDebug() << errors;
             sslSocket->ignoreSslErrors();
         });
-        connect(socket, &QTcpSocket::readyRead, [this, socket]() {
+        connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
             if (!clients.contains(socket))
                 clients[socket].port = serverPort();
 
@@ -89,7 +89,7 @@ TlsWebServer::TlsWebServer(Handler h, const QSslConfiguration &config, QObject *
             }
         });
     });
-    connect(this, &QSslServer::sslErrors, [this](QSslSocket *s, const QList<QSslError> &errors) {
+    connect(this, &QSslServer::sslErrors, this, [this](QSslSocket *s, const QList<QSslError> &errors) {
         bool hasOnlyExpectedErrors = true;
         for (const auto &err : errors)
             hasOnlyExpectedErrors &= expectedSslErrors.contains(err.error());

@@ -5,23 +5,29 @@
 #ifndef CONTENT_BROWSER_ATTRIBUTION_REPORTING_ATTRIBUTION_STORAGE_H_
 #define CONTENT_BROWSER_ATTRIBUTION_REPORTING_ATTRIBUTION_STORAGE_H_
 
+#include <memory>
+#include <set>
 #include <vector>
 
 #include "base/functional/callback_forward.h"
-#include "base/time/time.h"
 #include "content/browser/attribution_reporting/attribution_report.h"
-#include "content/browser/attribution_reporting/store_source_result.mojom-forward.h"
-#include "content/common/content_export.h"
 #include "content/public/browser/attribution_data_model.h"
 #include "content/public/browser/storage_partition.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
+namespace base {
+class Time;
+}  // namespace base
+
 namespace content {
 
+class AttributionStorageDelegate;
 class AttributionTrigger;
 class CreateReportResult;
 class StorableSource;
 class StoredSource;
+
+struct StoreSourceResult;
 
 // This class provides an interface for persisting attribution data to
 // disk, and performing queries on it. AttributionStorage should initialize
@@ -29,37 +35,6 @@ class StoredSource;
 // properly should result in no-ops.
 class AttributionStorage {
  public:
-  struct CONTENT_EXPORT StoreSourceResult {
-    explicit StoreSourceResult(
-        attribution_reporting::mojom::StoreSourceResult status,
-        absl::optional<base::Time> min_fake_report_time = absl::nullopt,
-        absl::optional<int> max_destinations_per_source_site_reporting_origin =
-            absl::nullopt,
-        absl::optional<int> max_sources_per_origin = absl::nullopt);
-
-    ~StoreSourceResult();
-
-    StoreSourceResult(const StoreSourceResult&);
-    StoreSourceResult(StoreSourceResult&&);
-
-    StoreSourceResult& operator=(const StoreSourceResult&);
-    StoreSourceResult& operator=(StoreSourceResult&&);
-
-    attribution_reporting::mojom::StoreSourceResult status;
-
-    // The earliest report time for any fake reports stored alongside the
-    // source, if any.
-    absl::optional<base::Time> min_fake_report_time;
-
-    // Only populated in case of
-    // `attribution_reporting::mojom::StoreSourceResult::kInsufficientUniqueDestinationCapacity`.
-    absl::optional<int> max_destinations_per_source_site_reporting_origin;
-
-    // Only populated in case of
-    // `attribution_reporting::mojom::StoreSourceResult::kInsufficientSourceCapacity`.
-    absl::optional<int> max_sources_per_origin;
-  };
-
   virtual ~AttributionStorage() = default;
 
   // When adding a new method, also add it to
@@ -84,10 +59,7 @@ class AttributionStorage {
   // a negative number for no limit. Reports are shuffled before being returned.
   virtual std::vector<AttributionReport> GetAttributionReports(
       base::Time max_report_time,
-      int limit = -1,
-      AttributionReport::Types report_types = {
-          AttributionReport::Type::kEventLevel,
-          AttributionReport::Type::kAggregatableAttribution}) = 0;
+      int limit = -1) = 0;
 
   // Returns the first report time strictly after `time`.
   virtual absl::optional<base::Time> GetNextReportTime(base::Time time) = 0;
@@ -105,10 +77,10 @@ class AttributionStorage {
   // a negative number for no limit.
   virtual std::vector<StoredSource> GetActiveSources(int limit = -1) = 0;
 
-  // Returns all distinct reporting_origins as DataKeys for the
+  // Returns all distinct reporting origins for the
   // Browsing Data Model. Partial data will still be returned
   // in the event of an error.
-  virtual std::vector<AttributionDataModel::DataKey> GetAllDataKeys() = 0;
+  virtual std::set<AttributionDataModel::DataKey> GetAllDataKeys() = 0;
 
   // Deletes all data in storage for storage keys matching the provided
   // reporting origin in the data key.
@@ -148,6 +120,8 @@ class AttributionStorage {
                          base::Time delete_end,
                          StoragePartition::StorageKeyMatcherFunction filter,
                          bool delete_rate_limit_data = true) = 0;
+
+  virtual void SetDelegate(std::unique_ptr<AttributionStorageDelegate>) = 0;
 };
 
 }  // namespace content

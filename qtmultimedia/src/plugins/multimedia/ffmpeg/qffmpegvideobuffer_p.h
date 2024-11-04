@@ -33,12 +33,11 @@ public:
     QFFmpegVideoBuffer(AVFrameUPtr frame, AVRational pixelAspectRatio = { 1, 1 });
     ~QFFmpegVideoBuffer() override;
 
-    QVideoFrame::MapMode mapMode() const override;
     MapData map(QVideoFrame::MapMode mode) override;
     void unmap() override;
 
     virtual std::unique_ptr<QVideoFrameTextures> mapTextures(QRhi *) override;
-    virtual quint64 textureHandle(int plane) const override;
+    virtual quint64 textureHandle(QRhi *rhi, int plane) const override;
 
     QVideoFrameFormat::PixelFormat pixelFormat() const;
     QSize size() const;

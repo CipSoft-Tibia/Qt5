@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/qloggingcategory.h>
 #include <QtTest/qtest.h>
@@ -304,6 +304,7 @@ bool FileDialogTestHelper::openDialog()
 
 void tst_QQuickFileDialogImpl::defaults()
 {
+    QTest::failOnWarning(QRegularExpression(".*"));
     FileDialogTestHelper dialogHelper(this, "fileDialog.qml");
     QVERIFY2(dialogHelper.isWindowInitialized(), dialogHelper.failureMessage());
     QVERIFY(dialogHelper.waitForWindowActive());

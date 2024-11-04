@@ -10,6 +10,7 @@
 #include "./InternalHeaderCheck.h"
 
 #include <complex>
+#include <memory>
 
 namespace Eigen {
 namespace internal {
@@ -38,7 +39,7 @@ inline MKL_Complex8* complex_cast(const std::complex<float>* p) {
  * Array of type MKL_LONG otherwise. Lengths of each dimension for a
  * multi-dimensional transform.
  */
-inline void configure_descriptor(DFTI_DESCRIPTOR_HANDLE* handl,
+inline void configure_descriptor(std::shared_ptr<DFTI_DESCRIPTOR>& handl,
                                  enum DFTI_CONFIG_VALUE precision,
                                  enum DFTI_CONFIG_VALUE forward_domain,
                                  MKL_LONG dimension, MKL_LONG* sizes) {
@@ -46,25 +47,28 @@ inline void configure_descriptor(DFTI_DESCRIPTOR_HANDLE* handl,
                dimension == 2 &&
                    "Transformation dimension must be less than 3.");
 
+  DFTI_DESCRIPTOR_HANDLE res = nullptr;
   if (dimension == 1) {
-    RUN_OR_ASSERT(DftiCreateDescriptor(handl, precision, forward_domain,
+    RUN_OR_ASSERT(DftiCreateDescriptor(&res, precision, forward_domain,
                                        dimension, *sizes),
                   "DftiCreateDescriptor failed.")
+    handl.reset(res, [](DFTI_DESCRIPTOR_HANDLE handle) { DftiFreeDescriptor(&handle); });
     if (forward_domain == DFTI_REAL) {
       // Set CCE storage
-      RUN_OR_ASSERT(DftiSetValue(*handl, DFTI_CONJUGATE_EVEN_STORAGE,
+      RUN_OR_ASSERT(DftiSetValue(handl.get(), DFTI_CONJUGATE_EVEN_STORAGE,
                                  DFTI_COMPLEX_COMPLEX),
                     "DftiSetValue failed.")
     }
   } else {
     RUN_OR_ASSERT(
-        DftiCreateDescriptor(handl, precision, DFTI_COMPLEX, dimension, sizes),
+        DftiCreateDescriptor(&res, precision, DFTI_COMPLEX, dimension, sizes),
         "DftiCreateDescriptor failed.")
+    handl.reset(res, [](DFTI_DESCRIPTOR_HANDLE handle) { DftiFreeDescriptor(&handle); });
   }
 
-  RUN_OR_ASSERT(DftiSetValue(*handl, DFTI_PLACEMENT, DFTI_NOT_INPLACE),
+  RUN_OR_ASSERT(DftiSetValue(handl.get(), DFTI_PLACEMENT, DFTI_NOT_INPLACE),
                 "DftiSetValue failed.")
-  RUN_OR_ASSERT(DftiCommitDescriptor(*handl), "DftiCommitDescriptor failed.")
+  RUN_OR_ASSERT(DftiCommitDescriptor(handl.get()), "DftiCommitDescriptor failed.")
 }
 
 template <typename T>
@@ -75,62 +79,59 @@ struct plan<float> {
   typedef float scalar_type;
   typedef MKL_Complex8 complex_type;
 
-  DFTI_DESCRIPTOR_HANDLE m_plan;
+  std::shared_ptr<DFTI_DESCRIPTOR> m_plan;
 
-  plan() : m_plan(0) {}
-  ~plan() {
-    if (m_plan) DftiFreeDescriptor(&m_plan);
-  };
+  plan() = default;
 
   enum DFTI_CONFIG_VALUE precision = DFTI_SINGLE;
 
   inline void forward(complex_type* dst, complex_type* src, MKL_LONG nfft) {
     if (m_plan == 0) {
-      configure_descriptor(&m_plan, precision, DFTI_COMPLEX, 1, &nfft);
+      configure_descriptor(m_plan, precision, DFTI_COMPLEX, 1, &nfft);
     }
-    RUN_OR_ASSERT(DftiComputeForward(m_plan, src, dst),
+    RUN_OR_ASSERT(DftiComputeForward(m_plan.get(), src, dst),
                   "DftiComputeForward failed.")
   }
 
   inline void inverse(complex_type* dst, complex_type* src, MKL_LONG nfft) {
     if (m_plan == 0) {
-      configure_descriptor(&m_plan, precision, DFTI_COMPLEX, 1, &nfft);
+      configure_descriptor(m_plan, precision, DFTI_COMPLEX, 1, &nfft);
     }
-    RUN_OR_ASSERT(DftiComputeBackward(m_plan, src, dst),
+    RUN_OR_ASSERT(DftiComputeBackward(m_plan.get(), src, dst),
                   "DftiComputeBackward failed.")
   }
 
   inline void forward(complex_type* dst, scalar_type* src, MKL_LONG nfft) {
     if (m_plan == 0) {
-      configure_descriptor(&m_plan, precision, DFTI_REAL, 1, &nfft);
+      configure_descriptor(m_plan, precision, DFTI_REAL, 1, &nfft);
     }
-    RUN_OR_ASSERT(DftiComputeForward(m_plan, src, dst),
+    RUN_OR_ASSERT(DftiComputeForward(m_plan.get(), src, dst),
                   "DftiComputeForward failed.")
   }
 
   inline void inverse(scalar_type* dst, complex_type* src, MKL_LONG nfft) {
     if (m_plan == 0) {
-      configure_descriptor(&m_plan, precision, DFTI_REAL, 1, &nfft);
+      configure_descriptor(m_plan, precision, DFTI_REAL, 1, &nfft);
     }
-    RUN_OR_ASSERT(DftiComputeBackward(m_plan, src, dst),
+    RUN_OR_ASSERT(DftiComputeBackward(m_plan.get(), src, dst),
                   "DftiComputeBackward failed.")
   }
 
   inline void forward2(complex_type* dst, complex_type* src, int n0, int n1) {
     if (m_plan == 0) {
       MKL_LONG sizes[2] = {n0, n1};
-      configure_descriptor(&m_plan, precision, DFTI_COMPLEX, 2, sizes);
+      configure_descriptor(m_plan, precision, DFTI_COMPLEX, 2, sizes);
     }
-    RUN_OR_ASSERT(DftiComputeForward(m_plan, src, dst),
+    RUN_OR_ASSERT(DftiComputeForward(m_plan.get(), src, dst),
                   "DftiComputeForward failed.")
   }
 
   inline void inverse2(complex_type* dst, complex_type* src, int n0, int n1) {
     if (m_plan == 0) {
       MKL_LONG sizes[2] = {n0, n1};
-      configure_descriptor(&m_plan, precision, DFTI_COMPLEX, 2, sizes);
+      configure_descriptor(m_plan, precision, DFTI_COMPLEX, 2, sizes);
     }
-    RUN_OR_ASSERT(DftiComputeBackward(m_plan, src, dst),
+    RUN_OR_ASSERT(DftiComputeBackward(m_plan.get(), src, dst),
                   "DftiComputeBackward failed.")
   }
 };
@@ -140,62 +141,59 @@ struct plan<double> {
   typedef double scalar_type;
   typedef MKL_Complex16 complex_type;
 
-  DFTI_DESCRIPTOR_HANDLE m_plan;
+  std::shared_ptr<DFTI_DESCRIPTOR> m_plan;
 
-  plan() : m_plan(0) {}
-  ~plan() {
-    if (m_plan) DftiFreeDescriptor(&m_plan);
-  };
+  plan() = default;
 
   enum DFTI_CONFIG_VALUE precision = DFTI_DOUBLE;
 
   inline void forward(complex_type* dst, complex_type* src, MKL_LONG nfft) {
     if (m_plan == 0) {
-      configure_descriptor(&m_plan, precision, DFTI_COMPLEX, 1, &nfft);
+      configure_descriptor(m_plan, precision, DFTI_COMPLEX, 1, &nfft);
     }
-    RUN_OR_ASSERT(DftiComputeForward(m_plan, src, dst),
+    RUN_OR_ASSERT(DftiComputeForward(m_plan.get(), src, dst),
                   "DftiComputeForward failed.")
   }
 
   inline void inverse(complex_type* dst, complex_type* src, MKL_LONG nfft) {
     if (m_plan == 0) {
-      configure_descriptor(&m_plan, precision, DFTI_COMPLEX, 1, &nfft);
+      configure_descriptor(m_plan, precision, DFTI_COMPLEX, 1, &nfft);
     }
-    RUN_OR_ASSERT(DftiComputeBackward(m_plan, src, dst),
+    RUN_OR_ASSERT(DftiComputeBackward(m_plan.get(), src, dst),
                   "DftiComputeBackward failed.")
   }
 
   inline void forward(complex_type* dst, scalar_type* src, MKL_LONG nfft) {
     if (m_plan == 0) {
-      configure_descriptor(&m_plan, precision, DFTI_REAL, 1, &nfft);
+      configure_descriptor(m_plan, precision, DFTI_REAL, 1, &nfft);
     }
-    RUN_OR_ASSERT(DftiComputeForward(m_plan, src, dst),
+    RUN_OR_ASSERT(DftiComputeForward(m_plan.get(), src, dst),
                   "DftiComputeForward failed.")
   }
 
   inline void inverse(scalar_type* dst, complex_type* src, MKL_LONG nfft) {
     if (m_plan == 0) {
-      configure_descriptor(&m_plan, precision, DFTI_REAL, 1, &nfft);
+      configure_descriptor(m_plan, precision, DFTI_REAL, 1, &nfft);
     }
-    RUN_OR_ASSERT(DftiComputeBackward(m_plan, src, dst),
+    RUN_OR_ASSERT(DftiComputeBackward(m_plan.get(), src, dst),
                   "DftiComputeBackward failed.")
   }
 
   inline void forward2(complex_type* dst, complex_type* src, int n0, int n1) {
     if (m_plan == 0) {
       MKL_LONG sizes[2] = {n0, n1};
-      configure_descriptor(&m_plan, precision, DFTI_COMPLEX, 2, sizes);
+      configure_descriptor(m_plan, precision, DFTI_COMPLEX, 2, sizes);
     }
-    RUN_OR_ASSERT(DftiComputeForward(m_plan, src, dst),
+    RUN_OR_ASSERT(DftiComputeForward(m_plan.get(), src, dst),
                   "DftiComputeForward failed.")
   }
 
   inline void inverse2(complex_type* dst, complex_type* src, int n0, int n1) {
     if (m_plan == 0) {
       MKL_LONG sizes[2] = {n0, n1};
-      configure_descriptor(&m_plan, precision, DFTI_COMPLEX, 2, sizes);
+      configure_descriptor(m_plan, precision, DFTI_COMPLEX, 2, sizes);
     }
-    RUN_OR_ASSERT(DftiComputeBackward(m_plan, src, dst),
+    RUN_OR_ASSERT(DftiComputeBackward(m_plan.get(), src, dst),
                   "DftiComputeBackward failed.")
   }
 };

@@ -4,12 +4,32 @@
 
 'use strict';
 
+/**
+ * @fileoverview
+ * Constants, utilities, and objects for DOM access.
+ */
+
+/** @enum {string} Keys in query string and names of input elements. */
+const STATE_KEY = {
+  LOAD_URL: 'load_url',
+  BEFORE_URL: 'before_url',
+  BYTE_UNIT: 'byteunit',
+  METHOD_COUNT: 'method_count',
+  MIN_SIZE: 'min_size',
+  GROUP_BY: 'group_by',
+  INCLUDE: 'include',
+  EXCLUDE: 'exclude',
+  TYPE: 'type',
+  FLAG_FILTER: 'flag_filter',
+  FOCUS: 'focus',
+};
+
 /** Utilities for working with the DOM */
 const dom = {
   /**
    * Creates a document fragment from the given nodes.
    * @param {Iterable<Node>} nodes
-   * @return {DocumentFragment}
+   * @return {!DocumentFragment}
    */
   createFragment(nodes) {
     const fragment = document.createDocumentFragment();
@@ -40,6 +60,32 @@ const dom = {
     if (className)
       element.className = className;
     return element;
+  },
+  /**
+   * Schedule a one-time |task| call on next animation frame when |node| is
+   * added to the DOM, or if |node| is already in the DOM.
+   * @param {!Node} node
+   * @param {!function(): *} task
+   */
+  onNodeAdded(node, task) {
+    if (document.contains(node)) {
+      requestAnimationFrame(task);
+      return;
+    }
+    let found = false;
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.contains(node)) {
+            observer.disconnect();
+            found = true;
+            requestAnimationFrame(task);
+            return;
+          }
+        }
+      }
+    });
+    observer.observe(document, {subtree: true, childList: true});
   },
 };
 
@@ -138,14 +184,14 @@ class MainElements {
         /** @type {!HTMLDivElement} */ (this.query('#div-diff-status-icons'));
 
     /** @public {!HTMLDivElement} */
-    this.divMetricsIcons =
-        /** @type {!HTMLDivElement} */ (this.query('#div-metrics-icons'));
+    this.divMiscIcons =
+        /** @type {!HTMLDivElement} */ (this.query('#div-misc-icons'));
 
-    /** @type {!HTMLTemplateElement} Template for groups in the symbol tree. */
+    /** @type {!HTMLTemplateElement} Template for groups in the Symbol Tree. */
     this.tmplSymbolTreeGroup = /** @type {!HTMLTemplateElement} */ (
         this.query('#tmpl-symbol-tree-group'));
 
-    /** @type {!HTMLTemplateElement} Template for leaves in the symbol tree. */
+    /** @type {!HTMLTemplateElement} Template for leaves in the Symbol Tree. */
     this.tmplSymbolTreeLeaf = /** @type {!HTMLTemplateElement} */ (
         this.query('#tmpl-symbol-tree-leaf'));
 
@@ -157,11 +203,11 @@ class MainElements {
     this.ulSymbolTree =
         /** @type {!HTMLUListElement} */ (this.query('#ul-symbol-tree'));
 
-    /** @type {!HTMLTemplateElement} Template for groups in the metrics tree. */
+    /** @type {!HTMLTemplateElement} Template for groups in the Metrics Tree. */
     this.tmplMetricsTreeGroup = /** @type {!HTMLTemplateElement} */ (
         this.query('#tmpl-metrics-tree-group'));
 
-    /** @type {!HTMLTemplateElement} Template for leaves in the metrics tree. */
+    /** @type {!HTMLTemplateElement} Template for leaves in the Metrics Tree. */
     this.tmplMetricsTreeLeaf = /** @type {!HTMLTemplateElement} */ (
         this.query('#tmpl-metrics-tree-leaf'));
 
@@ -177,13 +223,25 @@ class MainElements {
     this.divNoSymbolsMsg =
         /** @type {!HTMLDivElement} */ (this.query('#div-no-symbols-msg'));
 
+    /**
+     * @type {!HTMLTemplateElement} Template for groups in the Metadata Tree.
+     */
+    this.tmplMetadataTreeGroup = /** @type {!HTMLTemplateElement} */ (
+        this.query('#tmpl-metadata-tree-group'));
+
+    /**
+     * @type {!HTMLTemplateElement} Template for leaves in the Metadata Tree.
+     */
+    this.tmplMetadataTreeLeaf = /** @type {!HTMLTemplateElement} */ (
+        this.query('#tmpl-metadata-tree-leaf'));
+
     /** @public {!HTMLDivElement} */
     this.divMetadataView =
         /** @type {!HTMLDivElement} */ (this.query('#div-metadata-view'));
 
-    /** @public {!HTMLPreElement} */
-    this.preMetadataContent =
-        /** @type {!HTMLPreElement} */ (this.query('#pre-metadata-content'));
+    /** @type {!HTMLUListElement} */
+    this.ulMetadataTree =
+        /** @type {!HTMLUListElement} */ (this.query('#ul-metadata-tree'));
 
     /** @public {!HTMLDivElement} */
     this.divInfocardArtifact =

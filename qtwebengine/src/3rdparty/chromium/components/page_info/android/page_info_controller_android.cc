@@ -84,13 +84,6 @@ void PageInfoControllerAndroid::RecordPageInfoAction(
       static_cast<PageInfo::PageInfoAction>(action));
 }
 
-void PageInfoControllerAndroid::SetAboutThisSiteShown(
-    JNIEnv* env,
-    const JavaParamRef<jobject>& obj,
-    jboolean was_about_this_site_shown) {
-  presenter_->SetAboutThisSiteShown(was_about_this_site_shown);
-}
-
 void PageInfoControllerAndroid::UpdatePermissions(
     JNIEnv* env,
     const JavaParamRef<jobject>& obj) {
@@ -107,11 +100,6 @@ void PageInfoControllerAndroid::SetIdentityInfo(
       env, controller_jobject_,
       ConvertUTF16ToJavaString(env, security_description->summary),
       ConvertUTF16ToJavaString(env, security_description->details));
-}
-
-void PageInfoControllerAndroid::SetCookieInfo(
-    const CookieInfoList& cookie_info_list) {
-  NOTIMPLEMENTED();
 }
 
 void PageInfoControllerAndroid::SetPageFeatureInfo(

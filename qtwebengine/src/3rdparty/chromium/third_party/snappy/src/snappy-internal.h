@@ -31,6 +31,8 @@
 #ifndef THIRD_PARTY_SNAPPY_SNAPPY_INTERNAL_H_
 #define THIRD_PARTY_SNAPPY_SNAPPY_INTERNAL_H_
 
+#include <utility>
+
 #include "snappy-stubs-internal.h"
 
 #if SNAPPY_HAVE_SSSE3
@@ -230,8 +232,9 @@ static inline std::pair<size_t, bool> FindMatchLength(const char* s1,
       uint64_t xorval = a1 ^ a2;
       int shift = Bits::FindLSBSetNonZero64(xorval);
       size_t matched_bytes = shift >> 3;
+      uint64_t a3 = UNALIGNED_LOAD64(s2 + 4);
 #ifndef __x86_64__
-      *data = UNALIGNED_LOAD64(s2 + matched_bytes);
+      a2 = static_cast<uint32_t>(xorval) == 0 ? a3 : a2;
 #else
       // Ideally this would just be
       //
@@ -242,19 +245,21 @@ static inline std::pair<size_t, bool> FindMatchLength(const char* s1,
       // use a conditional move (it's tuned to cut data dependencies). In this
       // case there is a longer parallel chain anyway AND this will be fairly
       // unpredictable.
-      uint64_t a3 = UNALIGNED_LOAD64(s2 + 4);
       asm("testl %k2, %k2\n\t"
           "cmovzq %1, %0\n\t"
           : "+r"(a2)
-          : "r"(a3), "r"(xorval));
-      *data = a2 >> (shift & (3 * 8));
+          : "r"(a3), "r"(xorval)
+          : "cc");
 #endif
+      *data = a2 >> (shift & (3 * 8));
       return std::pair<size_t, bool>(matched_bytes, true);
     } else {
       matched = 8;
       s2 += 8;
     }
   }
+  SNAPPY_PREFETCH(s1 + 64);
+  SNAPPY_PREFETCH(s2 + 64);
 
   // Find out how long the match is. We loop over the data 64 bits at a
   // time until we find a 64-bit block that doesn't match; then we find
@@ -270,16 +275,17 @@ static inline std::pair<size_t, bool> FindMatchLength(const char* s1,
       uint64_t xorval = a1 ^ a2;
       int shift = Bits::FindLSBSetNonZero64(xorval);
       size_t matched_bytes = shift >> 3;
-#ifndef __x86_64__
-      *data = UNALIGNED_LOAD64(s2 + matched_bytes);
-#else
       uint64_t a3 = UNALIGNED_LOAD64(s2 + 4);
+#ifndef __x86_64__
+      a2 = static_cast<uint32_t>(xorval) == 0 ? a3 : a2;
+#else
       asm("testl %k2, %k2\n\t"
           "cmovzq %1, %0\n\t"
           : "+r"(a2)
-          : "r"(a3), "r"(xorval));
-      *data = a2 >> (shift & (3 * 8));
+          : "r"(a3), "r"(xorval)
+          : "cc");
 #endif
+      *data = a2 >> (shift & (3 * 8));
       matched += matched_bytes;
       assert(matched >= 8);
       return std::pair<size_t, bool>(matched, false);

@@ -17,7 +17,7 @@ import "extension_install.proto";
 // Almost all the fields should be populated on every upload. (The only
 // exception is some fields in the stability section that are only uploaded
 // once per browsing session, usually shortly after startup.)
-// Next tag: 43
+// Next tag: 46
 message SystemProfileProto {
   // The time when the client was compiled/linked, in seconds since the epoch.
   optional int64 build_timestamp = 1;
@@ -169,6 +169,7 @@ message SystemProfileProto {
     // - 'Linux' (includes ChromeOS prior to 07/2020)
     // - 'iOS' (iOS versions >= 9)
     // - 'iPhone OS' (iOS versions <= 8)
+    // - 'iPadOS'
     // - 'Mac OS X'
     optional string name = 1;
 
@@ -266,7 +267,7 @@ message SystemProfileProto {
   optional OS os = 5;
 
   // Information on the user's hardware.
-  // Next tag: 27
+  // Next tag: 28
   message Hardware {
     // OS CPU architecture. Common options are: x86, x86_64, arm64, armv7,
     // armv7l, armv8l and aarch64.
@@ -413,22 +414,23 @@ message SystemProfileProto {
     // Logged on ChromeOS only.
     optional bool internal_display_supports_touch = 14;
 
-    // Internal storage device information on ChromeOS.
-    // TODO(dlunev): Expand comment about which milestone this
-    // started to be logged on once the client code is submitted.
+    // Internal storage device information on ChromeOS. Added in M94.
     // Next tag: 9
     message InternalStorageDevice {
-      // Id of the storage device manufcaturer.
-      // Can be vendor_id(32bit), oemid(16bit) etc. depending on the device
-      // type.
+      // Id of the storage device manufacturer.
+      // Can be vendor_id (for NVMe, 32bit), manfid (for eMMC, 16bit, since
+      // M113), oemid (for eMMC, 16bit, before M113), JEDEC manfid (for UFS,
+      // 16bit) etc. depending on the device type.
       optional uint32 vendor_id = 1;
 
       // Id of the storage device product.
-      // Can be product_id(32bit), PNM(48bit) etc. depending on the device type.
+      // Can be product_id (for NVMe, 32bit), PNM (for eMMC, 48bit), hashed
+      // model name (for UFS, 32bit) etc. depending on the device type.
       optional uint64 product_id = 2;
 
       // Revision of the storage device product.
-      // Can be PCIe rev(8bit), PRV(8bit) etc. depending on the device type.
+      // Can be PCIe rev (for NVMe, 8bit), PRV(for eMMC, 8bit) etc. depending on
+      // the device type.
       optional uint32 revision = 3;
 
       // Storage Device model. Comes from /sys/block/<device>/device/model.
@@ -496,6 +498,10 @@ message SystemProfileProto {
     // Firmware version of the TPM on the device. This field is only filled in
     // on ChromeOS devices (both CrOS and LaCrOS platforms).
     optional uint64 tpm_firmware_version = 26;
+
+    // RW Firmware version of the TPM on the device. This field is only filled
+    // in on ChromeOS devices.
+    optional string tpm_rw_firmware_version = 27;
   }
   optional Hardware hardware = 6;
 
@@ -712,7 +718,7 @@ message SystemProfileProto {
   optional bool client_id_was_used_for_trial_assignment = 33;
 
   // The unhashed client_id for this report. This is a uuid in its canonical
-  // textual represetnation in the form 8-4-4-4-12 for a total of 36 characters.
+  // textual representation in the form 8-4-4-4-12 for a total of 36 characters.
   // Used to simulate field trial assignments for the client.
   optional string client_uuid = 34;
 
@@ -1150,6 +1156,36 @@ message SystemProfileProto {
 
   optional AppPackageNameAllowlistFilter app_package_name_allowlist_filter = 42;
 
+  enum ClientSideSamplingStatus {
+    // Default value, no conclusion can be drawn.
+    SAMPLING_UNKNOWN = 0;
+    // Client-side sampling was applied.
+    SAMPLING_APPLIED = 1;
+    // Client-side sampling was not applied.
+    SAMPLING_NOT_APPLIED = 2;
+  }
+
+  // Specifies whether sampling was applied on the client. Older clients will
+  // not set this field, which will result in the default value of UNKNOWN.
+  optional ClientSideSamplingStatus client_side_sampling_status = 43;
+
+  enum MetricsFilteringStatus {
+    // Not expected to be reported explicitly, used when the field was not set.
+    METRICS_UNKNOWN = 0;
+    // Client is reporting all recorded histograms and user actions.
+    METRICS_ALL = 1;
+    // Client is reporting only a chosen set of histogrms and user actions.
+    // The semantics of METRICS_ONLY_CRITICAL may vary by platform and evolve
+    // over time.
+    METRICS_ONLY_CRITICAL = 2;
+  }
+
+  // Specifies whether metrics filtering was applied on the client. Metrics
+  // filtering applies to both histograms and user actions. The chosen metrics
+  // to filter may vary by platform and evolve over time. Older clients will not
+  // set this field, which will result in the default value of METRICS_UNKNOWN.
+  optional MetricsFilteringStatus metrics_filtering_status = 44;
+
   // The package which installed Chrome, as reported by
   // PackageManager.getInstallerPackageName().
   enum InstallerPackage {
@@ -1202,8 +1238,29 @@ message SystemProfileProto {
     enum CustomizationFacet {
       UNDEFINED = 0;
       CLOUD_GAMING_DEVICE = 1;
+      FEATURE_AWARE_DEVICE = 2;
     }
     repeated CustomizationFacet customization_facet = 3 [packed = true];
   }
   optional DemoModeDimensions demo_mode_dimensions = 41;
+
+  // LTSChannel indicates whether ChromeOS is running an lts channel.
+  // https://chromium.googlesource.com/chromiumos/docs/+/HEAD/releases.md#channels
+  enum LTSChannel {
+    // This field was not set.
+    LTS_CHANNEL_UNKNOWN = 0;
+    // ChromeOS is running stable-channel and not lts.
+    LTS_CHANNEL_STABLE = 1;
+    // ChromeOS is running ltc-channel.
+    LTS_CHANNEL_LTC = 2;
+    // ChromeOS is running lts-channel.
+    LTS_CHANNEL_LTS = 3;
+  }
+
+  // Report whether ChromeOS is running ltc or lts channel.
+  // Instead of extending the Channel enum, we report stable-channel and use
+  // this separate field to filter out for ltc or lts. Most UMA users are not
+  // aware of the existence of lts and we would lose monitoring for many Chrome
+  // features.
+  optional LTSChannel lts_channel = 45;
 }

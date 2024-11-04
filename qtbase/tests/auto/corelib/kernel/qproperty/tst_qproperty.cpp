@@ -1,5 +1,5 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QObject>
 #include <QSignalSpy>
@@ -29,6 +29,7 @@ class tst_QProperty : public QObject
 {
     Q_OBJECT
 private slots:
+    void inheritQUntypedPropertyData();
     void functorBinding();
     void basicDependencies();
     void multipleDependencies();
@@ -107,7 +108,62 @@ private slots:
 
     void propertyAdaptorBinding();
     void propertyUpdateViaSignaledProperty();
+
+    void derefFromObserver();
 };
+
+namespace {
+template <class T>
+constexpr auto isDerivedFromQUntypedPropertyData = std::is_base_of_v<QUntypedPropertyData, T>;
+
+template <typename Property>
+constexpr auto isDerivedFromQUntypedPropertyDataFunc(const Property &property)
+{
+    Q_UNUSED(property);
+    return isDerivedFromQUntypedPropertyData<Property>;
+}
+
+template <typename Property>
+constexpr auto isDerivedFromQUntypedPropertyDataFunc(Property *property)
+{
+    Q_UNUSED(property);
+    return isDerivedFromQUntypedPropertyData<Property>;
+}
+} // namespace
+
+void tst_QProperty::inheritQUntypedPropertyData()
+{
+    class propertyPublic : public QUntypedPropertyData
+    {
+    };
+    class propertyPrivate : private QUntypedPropertyData
+    {
+    };
+
+    // Compile time test
+    static_assert(isDerivedFromQUntypedPropertyData<propertyPublic>);
+    static_assert(isDerivedFromQUntypedPropertyData<propertyPrivate>);
+    static_assert(isDerivedFromQUntypedPropertyData<QPropertyData<int>>);
+    static_assert(isDerivedFromQUntypedPropertyData<QProperty<int>>);
+
+    // Run time test
+    propertyPublic _propertyPublic;
+    propertyPrivate _propertyPrivate;
+    QPropertyData<int> qpropertyData;
+    QProperty<int> qproperty;
+    std::unique_ptr<propertyPublic> _propertyPublicPtr{ new propertyPublic };
+    std::unique_ptr<propertyPrivate> _propertyPrivatePtr{ new propertyPrivate };
+    std::unique_ptr<QPropertyData<int>> qpropertyDataPtr{ new QPropertyData<int> };
+    std::unique_ptr<QProperty<int>> qpropertyPtr{ new QProperty<int> };
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(_propertyPublic));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(_propertyPrivate));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(qpropertyData));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(qproperty));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(_propertyPublicPtr.get()));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(_propertyPrivatePtr.get()));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(qpropertyDataPtr.get()));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(qpropertyPtr.get()));
+}
 
 void tst_QProperty::functorBinding()
 {
@@ -261,6 +317,7 @@ void tst_QProperty::bindingAfterUse()
 
 void tst_QProperty::bindingFunctionDtorCalled()
 {
+    DtorCounter::counter = 0;
     DtorCounter dc;
     {
         QProperty<int> prop;
@@ -2475,6 +2532,47 @@ void tst_QProperty::propertyUpdateViaSignaledProperty()
     rootTrigger.setValue(4);
     QCOMPARE(o.bindable1(), 4);
     QCOMPARE(o.bindable2(), 36);
+}
+
+void tst_QProperty::derefFromObserver()
+{
+    int triggered = 0;
+    QProperty<int> source(11);
+
+    DtorCounter::counter = 0;
+    DtorCounter dc;
+
+    QProperty<int> target([&triggered, &source, dc]() mutable {
+        dc.shouldIncrement = true;
+        return ++triggered + source.value();
+    });
+    QCOMPARE(triggered, 1);
+
+    {
+        auto propObserver = std::make_unique<QPropertyObserver>();
+        QPropertyObserverPointer propObserverPtr { propObserver.get() };
+        propObserverPtr.setBindingToNotify(QPropertyBindingPrivate::get(target.binding()));
+
+        QBindingObserverPtr bindingPtr(propObserver.get());
+
+        QCOMPARE(triggered, 1);
+        source = 25;
+        QCOMPARE(triggered, 2);
+        QCOMPARE(target, 27);
+
+        target.setBinding([]() { return 8; });
+        QCOMPARE(target, 8);
+
+        // The QBindingObserverPtr still holds on to the binding.
+        QCOMPARE(dc.counter, 0);
+    }
+
+    // The binding is actually gone now.
+    QCOMPARE(dc.counter, 1);
+
+    source = 26;
+    QCOMPARE(triggered, 2);
+    QCOMPARE(target, 8);
 }
 
 QTEST_MAIN(tst_QProperty);

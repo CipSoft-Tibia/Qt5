@@ -19,9 +19,12 @@
 #include "qquickimplicitsizeitem_p_p.h"
 #include "qquicktextutil_p.h"
 
+#include <QtQuick/private/qquicktextselection_p.h>
+
 #include <QtQml/qqml.h>
 #include <QtCore/qlist.h>
 #include <private/qlazilyallocated_p.h>
+#include <private/qquicktextdocument_p.h>
 
 #if QT_CONFIG(accessibility)
 #include <QtGui/qaccessible.h>
@@ -31,9 +34,9 @@
 
 QT_BEGIN_NAMESPACE
 class QTextLayout;
-class QQuickTextDocumentWithImageResources;
+class QQuickPixmap;
 class QQuickTextControl;
-class QQuickTextNode;
+class QSGInternalTextNode;
 class QQuickTextNodeEngine;
 
 class Q_QUICK_PRIVATE_EXPORT QQuickTextEditPrivate : public QQuickImplicitSizeItemPrivate
@@ -48,9 +51,9 @@ public:
 
     struct Node {
         explicit Node(int startPos = std::numeric_limits<int>::max(),
-                      QQuickTextNode *node = nullptr)
-            : m_startPos(startPos), m_node(node), m_dirty(false) { }
-        QQuickTextNode* textNode() const { return m_node; }
+                      QSGInternalTextNode *node = nullptr)
+            : m_startPos(startPos), m_node(node) { }
+        QSGInternalTextNode *textNode() const { return m_node; }
         void moveStartPos(int delta) { Q_ASSERT(m_startPos + delta > 0); m_startPos += delta; }
         int startPos() const { return m_startPos; }
         void setDirty() { m_dirty = true; }
@@ -58,8 +61,8 @@ public:
 
     private:
         int m_startPos;
-        QQuickTextNode* m_node;
-        bool m_dirty;
+        QSGInternalTextNode *m_node;
+        bool m_dirty = false;
 
 #ifndef QT_NO_DEBUG_STREAM
         friend QDebug Q_QUICK_PRIVATE_EXPORT operator<<(QDebug, const Node &);
@@ -70,11 +73,11 @@ public:
     struct ExtraData {
         ExtraData();
 
-        qreal padding;
-        qreal topPadding;
-        qreal leftPadding;
-        qreal rightPadding;
-        qreal bottomPadding;
+        qreal padding = 0;
+        qreal topPadding = 0;
+        qreal leftPadding = 0;
+        qreal rightPadding = 0;
+        qreal bottomPadding = 0;
         bool explicitTopPadding : 1;
         bool explicitLeftPadding : 1;
         bool explicitRightPadding : 1;
@@ -85,24 +88,12 @@ public:
 
 
     QQuickTextEditPrivate()
-        : color(QRgb(0xFF000000)), selectionColor(QRgb(0xFF000080)), selectedTextColor(QRgb(0xFFFFFFFF))
-        , textMargin(0.0), xoff(0), yoff(0)
-        , font(sourceFont), cursorComponent(nullptr), cursorItem(nullptr), document(nullptr), control(nullptr)
-        , quickDocument(nullptr), lastSelectionStart(0), lastSelectionEnd(0), lineCount(0)
-        , hAlign(QQuickTextEdit::AlignLeft), vAlign(QQuickTextEdit::AlignTop)
-        , format(QQuickTextEdit::PlainText), wrapMode(QQuickTextEdit::NoWrap)
-        , renderType(QQuickTextUtil::textRenderType<QQuickTextEdit>())
-        , contentDirection(Qt::LayoutDirectionAuto)
-        , mouseSelectionMode(QQuickTextEdit::SelectCharacters)
-#if QT_CONFIG(im)
-        , inputMethodHints(Qt::ImhNone)
-#endif
-        , updateType(UpdatePaintNode)
-        , dirty(false), richText(false), cursorVisible(false), cursorPending(false)
+        : dirty(false), richText(false), cursorVisible(false), cursorPending(false)
         , focusOnPress(true), persistentSelection(false), requireImplicitWidth(false)
         , selectByMouse(true), canPaste(false), canPasteValid(false), hAlignImplicit(true)
         , textCached(true), inLayout(false), selectByKeyboard(false), selectByKeyboardSet(false)
-        , hadSelection(false), markdownText(false), inResize(false)
+        , hadSelection(false), markdownText(false), inResize(false), ownsDocument(false)
+        , containsUnscalableGlyphs(false)
     {
 #if QT_CONFIG(accessibility)
         QAccessible::installActivationObserver(this);
@@ -123,6 +114,7 @@ public:
 
     void resetInputMethod();
     void updateDefaultTextOption();
+    void onDocumentStatusChanged();
     void relayoutDocument();
     bool determineHorizontalAlignment();
     bool setHAlign(QQuickTextEdit::HAlignment, bool forceAlign = false);
@@ -138,8 +130,8 @@ public:
 
     void setNativeCursorEnabled(bool) {}
     void handleFocusEvent(QFocusEvent *event);
-    void addCurrentTextNodeToRoot(QQuickTextNodeEngine *, QSGTransformNode *, QQuickTextNode*, TextNodeIterator&, int startPos);
-    QQuickTextNode* createTextNode();
+    void addCurrentTextNodeToRoot(QQuickTextNodeEngine *, QSGTransformNode *, QSGInternalTextNode *, TextNodeIterator&, int startPos);
+    QSGInternalTextNode* createTextNode();
 
 #if QT_CONFIG(im)
     Qt::InputMethodHints effectiveInputMethodHints() const;
@@ -159,33 +151,36 @@ public:
     bool isImplicitResizeEnabled() const;
     void setImplicitResizeEnabled(bool enabled);
 
-    QColor color;
-    QColor selectionColor;
-    QColor selectedTextColor;
+    QColor color = QRgb(0xFF000000);
+    QColor selectionColor = QRgb(0xFF000080);
+    QColor selectedTextColor = QRgb(0xFFFFFFFF);
 
     QSizeF contentSize;
 
-    qreal textMargin;
-    qreal xoff;
-    qreal yoff;
+    qreal textMargin = 0;
+    qreal xoff = 0;
+    qreal yoff = 0;
 
     QString text;
     QUrl baseUrl;
     QFont sourceFont;
     QFont font;
 
-    QQmlComponent* cursorComponent;
-    QQuickItem* cursorItem;
-    QQuickTextDocumentWithImageResources *document;
-    QQuickTextControl *control;
-    QQuickTextDocument *quickDocument;
+    QQmlComponent* cursorComponent = nullptr;
+    QQuickItem* cursorItem = nullptr;
+    QTextDocument *document = nullptr;
+    QQuickTextControl *control = nullptr;
+    QQuickTextDocument *quickDocument = nullptr;
+    mutable QQuickTextSelection *cursorSelection = nullptr;
     QList<Node> textNodeMap;
+    QList<QQuickPixmap *> pixmapsInProgress;
 
-    int lastSelectionStart;
-    int lastSelectionEnd;
-    int lineCount;
+    int lastSelectionStart = 0;
+    int lastSelectionEnd = 0;
+    int lineCount = 0;
     int firstBlockInViewport = -1;   // can be wrong after scrolling sometimes
     int firstBlockPastViewport = -1; // only for the autotest
+    int renderedBlockCount = -1;     // only for the autotest
     QRectF renderedRegion;
 
     enum UpdateType {
@@ -195,17 +190,17 @@ public:
         UpdateAll
     };
 
-    QQuickTextEdit::HAlignment hAlign;
-    QQuickTextEdit::VAlignment vAlign;
-    QQuickTextEdit::TextFormat format;
-    QQuickTextEdit::WrapMode wrapMode;
-    QQuickTextEdit::RenderType renderType;
-    Qt::LayoutDirection contentDirection;
-    QQuickTextEdit::SelectionMode mouseSelectionMode;
+    QQuickTextEdit::HAlignment hAlign = QQuickTextEdit::AlignLeft;
+    QQuickTextEdit::VAlignment vAlign = QQuickTextEdit::AlignTop;
+    QQuickTextEdit::TextFormat format = QQuickTextEdit::PlainText;
+    QQuickTextEdit::WrapMode wrapMode = QQuickTextEdit::NoWrap;
+    QQuickTextEdit::RenderType renderType = QQuickTextUtil::textRenderType<QQuickTextEdit>();
+    Qt::LayoutDirection contentDirection = Qt::LayoutDirectionAuto;
+    QQuickTextEdit::SelectionMode mouseSelectionMode = QQuickTextEdit::SelectCharacters;
 #if QT_CONFIG(im)
-    Qt::InputMethodHints inputMethodHints;
+    Qt::InputMethodHints inputMethodHints = Qt::ImhNone;
 #endif
-    UpdateType updateType;
+    UpdateType updateType = UpdatePaintNode;
 
     bool dirty : 1;
     bool richText : 1;
@@ -225,6 +220,8 @@ public:
     bool hadSelection : 1;
     bool markdownText : 1;
     bool inResize : 1;
+    bool ownsDocument : 1;
+    bool containsUnscalableGlyphs : 1;
 
     static const int largeTextSizeThreshold;
 };

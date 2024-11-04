@@ -349,7 +349,7 @@ QGeoPositionInfoSource *QGeoPositionInfoSource::createDefaultSource(QObject *par
 QGeoPositionInfoSource *QGeoPositionInfoSource::createDefaultSource(const QVariantMap &parameters, QObject *parent)
 {
     const QList<QCborMap> plugins = QGeoPositionInfoSourcePrivate::pluginsSorted();
-    foreach (const QCborMap &obj, plugins) {
+    for (const QCborMap &obj : plugins) {
         if (obj.value(QStringLiteral("Position")).isBool()
                 && obj.value(QStringLiteral("Position")).toBool()) {
             QGeoPositionInfoSource *source = QGeoPositionInfoSourcePrivate::createSourceReal(obj, parameters, parent);

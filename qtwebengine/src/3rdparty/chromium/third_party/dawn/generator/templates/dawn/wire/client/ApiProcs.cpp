@@ -42,7 +42,7 @@ namespace dawn::wire::client {
             {% if Suffix in client_handwritten_commands %}
                 static
             {% endif %}
-            {{as_cType(method.return_type.name)}} Client{{Suffix}}(
+            {{as_cReturnType(method.return_type)}} Client{{Suffix}}(
                 {{-cType}} cSelf
                 {%- for arg in method.arguments -%}
                     , {{as_annotated_cType(arg)}}
@@ -58,7 +58,23 @@ namespace dawn::wire::client {
 
                     //* For object creation, store the object ID the client will use for the result.
                     {% if method.return_type.category == "object" %}
-                        auto* returnObject = self->GetClient()->Make<{{method.return_type.name.CamelCase()}}>();
+                        {% set ReturnObj = method.return_type.name.CamelCase() %}
+
+                        {{ReturnObj}}* returnObject;
+                        if constexpr (std::is_constructible_v<
+                            {{- ReturnObj}}, const ObjectBaseParams&
+                            {%- for arg in method.arguments -%}
+                                , decltype({{as_varName(arg.name)}})
+                            {%- endfor -%}
+                        >) {
+                            returnObject = self->GetClient()->Make<{{ReturnObj}}>(
+                                {%- for arg in method.arguments -%}
+                                    {% if not loop.first %}, {% endif %}{{as_varName(arg.name)}}
+                                {%- endfor -%}
+                            );
+                        } else {
+                            returnObject = self->GetClient()->Make<{{ReturnObj}}>();
+                        }
                         cmd.result = returnObject->GetWireHandle();
                     {% endif %}
 
@@ -160,16 +176,27 @@ namespace dawn::wire::client {
     }
 
     {% set Prefix = metadata.proc_table_prefix %}
-    static {{Prefix}}ProcTable gProcTable = {
+
+    template <typename... MemberPtrPairs>
+    constexpr {{Prefix}}ProcTable MakeProcTable(int, MemberPtrPairs... pairs) {
+        {{Prefix}}ProcTable procs = {};
+        ([&](auto& pair){
+            procs.*(pair.first) = pair.second;
+        }(pairs), ...);
+        return procs;
+    }
+
+    static {{Prefix}}ProcTable gProcTable = MakeProcTable(
+        /* unused */ 0
         {% for function in by_category["function"] %}
-            Client{{as_cppType(function.name)}},
+            , std::make_pair(&{{Prefix}}ProcTable::{{as_varName(function.name)}}, Client{{as_cppType(function.name)}})
         {% endfor %}
         {% for type in by_category["object"] %}
             {% for method in c_methods(type) %}
-                Client{{as_MethodSuffix(type.name, method.name)}},
+                , std::make_pair(&{{Prefix}}ProcTable::{{as_varName(type.name, method.name)}}, Client{{as_MethodSuffix(type.name, method.name)}})
             {% endfor %}
         {% endfor %}
-    };
+    );
 
     const {{Prefix}}ProcTable& GetProcs() {
         return gProcTable;

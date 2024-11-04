@@ -50,11 +50,17 @@ const char kLogNetLog[] = "log-net-log";
 // description of their meanings.
 const char kNetLogCaptureMode[] = "net-log-capture-mode";
 
+// Sets the maximum size, in megabytes. The log file can grow to before older
+// data is overwritten. Do not use this flag if you want an unlimited file size.
+const char kNetLogMaxSizeMb[] = "net-log-max-size-mb";
+
 // Causes SSL key material to be logged to the specified file for debugging
 // purposes. See
 // https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/Key_Log_Format
 // for the format.
 const char kSSLKeyLogFile[] = "ssl-key-log-file";
+
+const char kTestThirdPartyCookiePhaseout[] = "test-third-party-cookie-phaseout";
 
 // Treat given (insecure) origins as secure origins. Multiple origins can be
 // supplied as a comma-separated list. For the definition of secure contexts,
@@ -66,8 +72,8 @@ const char kSSLKeyLogFile[] = "ssl-key-log-file";
 const char kUnsafelyTreatInsecureOriginAsSecure[] =
     "unsafely-treat-insecure-origin-as-secure";
 
-// Manually sets additional Trust Tokens key commitments in the network service
-// to the given value, which should be a JSON dictionary satisfying the
+// Manually sets additional Private State Tokens key commitments in the network
+// service to the given value, which should be a JSON dictionary satisfying the
 // requirements of TrustTokenKeyCommitmentParser::ParseMultipleIssuers.
 //
 // These keys are available in addition to keys provided by the most recent call
@@ -81,7 +87,7 @@ const char kUnsafelyTreatInsecureOriginAsSecure[] =
 // keys were overwritten some time after startup when the component updater
 // runs.
 const char kAdditionalTrustTokenKeyCommitments[] =
-    "additional-trust-token-key-commitments";
+    "additional-private-state-token-key-commitments";
 
 // Allows the manual specification of a First-Party Set, as a comma-separated
 // list of origins. The first origin in the list is treated as the owner of the
@@ -111,5 +117,12 @@ const char kUseFirstPartySet[] = "use-first-party-set";
 // And the Web Platform Test RFC #72 behind it:
 // https://github.com/web-platform-tests/rfcs/blob/master/rfcs/address_space_overrides.md
 const char kIpAddressSpaceOverrides[] = "ip-address-space-overrides";
+
+// Enables running high priority tasks in the network services using
+// ThreadDelegate::GetHighPriorityTaskRunner().
+const char kNetworkServiceScheduler[] = "network-service-scheduler";
+
+// Enables register the empty network service in utility process.
+const char kRegisterEmptyNetworkService[] = "register-empty-network-service";
 
 }  // namespace network::switches

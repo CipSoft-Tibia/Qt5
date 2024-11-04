@@ -1,7 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QSignalSpy>
@@ -46,6 +45,8 @@
 #if defined(Q_OS_LINUX) || defined(Q_OS_WIN) || defined(SO_NREAD)
 #  define RELIABLE_BYTES_AVAILABLE
 #endif
+
+using namespace Qt::StringLiterals;
 
 Q_DECLARE_METATYPE(QHostAddress)
 
@@ -375,7 +376,8 @@ void tst_QUdpSocket::broadcasting()
     const char *message[] = {"Yo mista", "", "Yo", "Wassap"};
 
     QList<QHostAddress> broadcastAddresses;
-    foreach (QNetworkInterface iface, QNetworkInterface::allInterfaces()) {
+    const auto ifaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface &iface : ifaces) {
         if ((iface.flags() & QNetworkInterface::CanBroadcast)
             && iface.flags() & QNetworkInterface::IsUp) {
             for (int i=0;i<iface.addressEntries().size();i++) {
@@ -403,7 +405,7 @@ void tst_QUdpSocket::broadcasting()
             for (int k = 0; k < 4; k++) {
                 broadcastSocket.writeDatagram(message[i], strlen(message[i]),
                     QHostAddress::Broadcast, serverPort);
-                foreach (QHostAddress addr, broadcastAddresses)
+                for (const QHostAddress &addr : std::as_const(broadcastAddresses))
                     broadcastSocket.writeDatagram(message[i], strlen(message[i]), addr, serverPort);
             }
             QTestEventLoop::instance().enterLoop(15);
@@ -1233,11 +1235,12 @@ void tst_QUdpSocket::multicastTtlOption_data()
     QTest::addColumn<int>("ttl");
     QTest::addColumn<int>("expected");
 
-    QList<QHostAddress> addresses;
-    addresses += QHostAddress(QHostAddress::AnyIPv4);
-    addresses += QHostAddress(QHostAddress::AnyIPv6);
+    const QHostAddress addresses[] = {
+        QHostAddress(QHostAddress::AnyIPv4),
+        QHostAddress(QHostAddress::AnyIPv6),
+    };
 
-    foreach (const QHostAddress &address, addresses) {
+    for (const QHostAddress &address : addresses) {
         const QByteArray addressB = address.toString().toLatin1();
         QTest::newRow((addressB + " 0").constData()) << address << 0 << 0;
         QTest::newRow((addressB + " 1").constData()) << address << 1 << 1;
@@ -1279,11 +1282,12 @@ void tst_QUdpSocket::multicastLoopbackOption_data()
     QTest::addColumn<int>("loopback");
     QTest::addColumn<int>("expected");
 
-    QList<QHostAddress> addresses;
-    addresses += QHostAddress(QHostAddress::AnyIPv4);
-    addresses += QHostAddress(QHostAddress::AnyIPv6);
+    const QHostAddress addresses[] = {
+        QHostAddress(QHostAddress::AnyIPv4),
+        QHostAddress(QHostAddress::AnyIPv6),
+    };
 
-    foreach (const QHostAddress &address, addresses) {
+    for (const QHostAddress &address : addresses) {
         const QByteArray addressB = address.toString().toLatin1();
         QTest::newRow((addressB + " 0").constData()) << address << 0 << 0;
         QTest::newRow((addressB + " 1").constData()) << address << 1 << 1;
@@ -1383,11 +1387,12 @@ void tst_QUdpSocket::setMulticastInterface_data()
 {
     QTest::addColumn<QNetworkInterface>("iface");
     QTest::addColumn<QHostAddress>("address");
-    QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
-    foreach (const QNetworkInterface &iface, interfaces) {
+    const QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface &iface : interfaces) {
         if ((iface.flags() & QNetworkInterface::IsUp) == 0)
             continue;
-        foreach (const QNetworkAddressEntry &entry, iface.addressEntries()) {
+        const auto entries = iface.addressEntries();
+        for (const QNetworkAddressEntry &entry : entries) {
             const QByteArray testName = iface.name().toLatin1() + ':' + entry.ip().toString().toLatin1();
             QTest::newRow(testName.constData()) << iface << entry.ip();
         }
@@ -1491,15 +1496,16 @@ void tst_QUdpSocket::multicast()
     if (!joinResult)
         return;
 
-    QList<QByteArray> datagrams = QList<QByteArray>()
-                                  << QByteArray("0123")
-                                  << QByteArray("4567")
-                                  << QByteArray("89ab")
-                                  << QByteArray("cdef");
+    const QByteArray datagrams[] = {
+        "0123"_ba,
+        "4567"_ba,
+        "89ab"_ba,
+        "cdef"_ba,
+    };
 
     QUdpSocket sender;
     sender.bind();
-    foreach (const QByteArray &datagram, datagrams) {
+    for (const QByteArray &datagram : datagrams) {
         QNetworkDatagram dgram(datagram, groupAddress, receiver.localPort());
         dgram.setInterfaceIndex(interfaceForGroup(groupAddress).index());
         QCOMPARE(int(sender.writeDatagram(dgram)),
@@ -1592,7 +1598,8 @@ void tst_QUdpSocket::linkLocalIPv6()
     QList <QHostAddress> addresses;
     QSet <QString> scopes;
     QHostAddress localMask("fe80::");
-    foreach (const QNetworkInterface& iface, QNetworkInterface::allInterfaces()) {
+    const auto ifaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface &iface : ifaces) {
         //Windows preallocates link local addresses to interfaces that are down.
         //These may or may not work depending on network driver
         if (iface.flags() & QNetworkInterface::IsUp) {
@@ -1607,7 +1614,8 @@ void tst_QUdpSocket::linkLocalIPv6()
                 continue;
 #endif
 
-            foreach (QNetworkAddressEntry addressEntry, iface.addressEntries()) {
+            const auto entries = iface.addressEntries();
+            for (const QNetworkAddressEntry &addressEntry : entries) {
                 QHostAddress addr(addressEntry.ip());
                 if (!addr.scopeId().isEmpty() && addr.isInSubnet(localMask, 64)) {
                     scopes << addr.scopeId();
@@ -1622,7 +1630,7 @@ void tst_QUdpSocket::linkLocalIPv6()
 
     QList <QUdpSocket*> sockets;
     quint16 port = 0;
-    foreach (const QHostAddress& addr, addresses) {
+    for (const QHostAddress &addr : std::as_const(addresses)) {
         QUdpSocket *s = new QUdpSocket;
         QVERIFY2(s->bind(addr, port), addr.toString().toLatin1()
                  + '/' + QByteArray::number(port) + ": " + qPrintable(s->errorString()));
@@ -1631,7 +1639,7 @@ void tst_QUdpSocket::linkLocalIPv6()
     }
 
     QByteArray testData("hello");
-    foreach (QUdpSocket *s, sockets) {
+    for (QUdpSocket *s : std::as_const(sockets)) {
         QUdpSocket neutral;
         QVERIFY(neutral.bind(QHostAddress(QHostAddress::AnyIPv6)));
         QSignalSpy neutralReadSpy(&neutral, SIGNAL(readyRead()));
@@ -1657,9 +1665,8 @@ void tst_QUdpSocket::linkLocalIPv6()
         QCOMPARE(dgram.data(), testData);
 
         //sockets bound to other interfaces shouldn't have received anything
-        foreach (QUdpSocket *s2, sockets) {
+        for (QUdpSocket *s2 : std::as_const(sockets))
             QCOMPARE((int)s2->bytesAvailable(), 0);
-        }
 
         //Sending to the same address with different scope should normally fail
         //However it will pass if there is a route between two interfaces,
@@ -1678,7 +1685,8 @@ void tst_QUdpSocket::linkLocalIPv4()
 
     QList <QHostAddress> addresses;
     QHostAddress localMask("169.254.0.0");
-    foreach (const QNetworkInterface& iface, QNetworkInterface::allInterfaces()) {
+    const auto ifaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface &iface : ifaces) {
         //Windows preallocates link local addresses to interfaces that are down.
         //These may or may not work depending on network driver (they do not work for the Bluetooth PAN driver)
         if (iface.flags() & QNetworkInterface::IsUp) {
@@ -1692,7 +1700,8 @@ void tst_QUdpSocket::linkLocalIPv4()
             if (iface.name().startsWith("utun"))
                 continue;
 #endif
-            foreach (QNetworkAddressEntry addr, iface.addressEntries()) {
+            const auto entries = iface.addressEntries();
+            for (const QNetworkAddressEntry &addr : entries) {
                 if (addr.ip().isInSubnet(localMask, 16)) {
                     addresses << addr.ip();
                     qDebug() << "Found IPv4 link local address" << addr.ip();
@@ -1705,7 +1714,7 @@ void tst_QUdpSocket::linkLocalIPv4()
 
     QList <QUdpSocket*> sockets;
     quint16 port = 0;
-    foreach (const QHostAddress& addr, addresses) {
+    for (const QHostAddress &addr : std::as_const(addresses)) {
         QUdpSocket *s = new QUdpSocket;
         QVERIFY2(s->bind(addr, port), qPrintable(s->errorString()));
         port = s->localPort(); //bind same port, different networks
@@ -1716,7 +1725,7 @@ void tst_QUdpSocket::linkLocalIPv4()
     QVERIFY(neutral.bind(QHostAddress(QHostAddress::AnyIPv4)));
 
     QByteArray testData("hello");
-    foreach (QUdpSocket *s, sockets) {
+    for (QUdpSocket *s : std::as_const(sockets)) {
         QVERIFY(s->writeDatagram(testData, s->localAddress(), neutral.localPort()));
         QVERIFY2(neutral.waitForReadyRead(10000), QtNetworkSettings::msgSocketError(neutral).constData());
 
@@ -1748,9 +1757,8 @@ void tst_QUdpSocket::linkLocalIPv4()
         QCOMPARE(dgram.data(), testData);
 
         //sockets bound to other interfaces shouldn't have received anything
-        foreach (QUdpSocket *s2, sockets) {
+        for (QUdpSocket *s2 : std::as_const(sockets))
             QCOMPARE((int)s2->bytesAvailable(), 0);
-        }
     }
     qDeleteAll(sockets);
 }
@@ -1969,7 +1977,7 @@ void tst_QUdpSocket::readyReadConnectionThrottling()
 
     semaphore.release();
     constexpr qsizetype MaxCount = 500;
-    QVERIFY2(QTest::qWaitFor([&] { return count >= MaxCount; }, 10'000),
+    QVERIFY2(QTest::qWaitFor([&] { return count >= MaxCount; }, 10s),
              QByteArray::number(count).constData());
 }
 

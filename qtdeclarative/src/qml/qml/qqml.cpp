@@ -6,21 +6,22 @@
 #include <QtQml/qqmlprivate.h>
 
 #include <private/qjsvalue_p.h>
+#include <private/qqmlbuiltinfunctions_p.h>
+#include <private/qqmlcomponent_p.h>
 #include <private/qqmlengine_p.h>
+#include <private/qqmlfinalizer_p.h>
+#include <private/qqmlloggingcategory_p.h>
 #include <private/qqmlmetatype_p.h>
 #include <private/qqmlmetatypedata_p.h>
 #include <private/qqmltype_p_p.h>
 #include <private/qqmltypemodule_p.h>
-#include <private/qqmlcomponent_p.h>
 #include <private/qqmltypewrapper_p.h>
 #include <private/qqmlvaluetypewrapper_p.h>
+#include <private/qv4dateobject_p.h>
+#include <private/qv4errorobject_p.h>
+#include <private/qv4identifiertable_p.h>
 #include <private/qv4lookup_p.h>
 #include <private/qv4qobjectwrapper_p.h>
-#include <private/qv4identifiertable_p.h>
-#include <private/qv4errorobject_p.h>
-#include <private/qqmlbuiltinfunctions_p.h>
-#include <private/qqmlfinalizer_p.h>
-#include <private/qqmlloggingcategory_p.h>
 
 #include <QtCore/qmutex.h>
 
@@ -151,9 +152,10 @@ void QQmlPrivate::qmlRegistrationWarning(
 {
     switch (warning) {
     case UnconstructibleType:
-        qWarning()
+        qWarning().nospace()
                 << metaType.name()
-                << "is neither a QObject, nor default- and copy-constructible, nor uncreatable."
+                << " is neither a default constructible QObject, nor a default- "
+                << "and copy-constructible Q_GADGET, nor marked as uncreatable.\n"
                 << "You should not use it as a QML type.";
         break;
     case UnconstructibleSingleton:
@@ -335,7 +337,24 @@ void qmlUnregisterModuleImport(const char *uri, int moduleMajor,
 //From qqml.h
 int qmlTypeId(const char *uri, int versionMajor, int versionMinor, const char *qmlName)
 {
-    return QQmlMetaType::typeId(uri, QTypeRevision::fromVersion(versionMajor, versionMinor), qmlName);
+    auto revision = QTypeRevision::fromVersion(versionMajor, versionMinor);
+    int id =  QQmlMetaType::typeId(uri, revision, qmlName);
+    if (id != -1)
+        return id;
+    /* If the module hasn't been imported yet, we might not have the id of a
+       singleton at this point. To obtain it, we need an engine in order to
+       to do the resolution steps.
+       This is expensive, but we assume that users don't constantly query invalid
+       Types; internal code should use QQmlMetaType API.
+    */
+    QQmlEngine engine;
+    auto *enginePriv = QQmlEnginePrivate::get(&engine);
+    auto loadHelper = QQml::makeRefPointer<LoadHelper>(&enginePriv->typeLoader, uri);
+    auto type = loadHelper->resolveType(qmlName).type;
+    if (type.availableInVersion(revision))
+        return type.index();
+    else
+        return -1;
 }
 
 static bool checkSingletonInstance(QQmlEngine *engine, QObject *instance)
@@ -475,13 +494,280 @@ static void uniqueRevisions(QVector<QTypeRevision> *revisions, QTypeRevision def
     revisions->erase(it, revisions->end());
 }
 
+static QQmlType::SingletonInstanceInfo::ConstPtr singletonInstanceInfo(
+        const QQmlPrivate::RegisterSingletonType &type)
+{
+    QQmlType::SingletonInstanceInfo::Ptr siinfo = QQmlType::SingletonInstanceInfo::create();
+    siinfo->scriptCallback = type.scriptApi;
+    siinfo->qobjectCallback = type.qObjectApi;
+    siinfo->typeName = type.typeName;
+    return QQmlType::SingletonInstanceInfo::ConstPtr(
+            siinfo.take(), QQmlType::SingletonInstanceInfo::ConstPtr::Adopt);
+}
+
+static QQmlType::SingletonInstanceInfo::ConstPtr singletonInstanceInfo(
+        const QQmlPrivate::RegisterCompositeSingletonType &type)
+{
+    QQmlType::SingletonInstanceInfo::Ptr siinfo = QQmlType::SingletonInstanceInfo::create();
+    siinfo->url = QQmlTypeLoader::normalize(type.url);
+    siinfo->typeName = type.typeName;
+    return QQmlType::SingletonInstanceInfo::ConstPtr(
+            siinfo.take(), QQmlType::SingletonInstanceInfo::ConstPtr::Adopt);
+}
+
+static int finalizeType(const QQmlType &dtype)
+{
+    if (!dtype.isValid())
+        return -1;
+
+    QQmlMetaType::registerUndeletableType(dtype);
+    return dtype.index();
+}
+
+using ElementNames = QVarLengthArray<const char *, 8>;
+static ElementNames classElementNames(const QMetaObject *metaObject)
+{
+    Q_ASSERT(metaObject);
+    const char *key = "QML.Element";
+
+    const int offset = metaObject->classInfoOffset();
+    const int start = metaObject->classInfoCount() + offset - 1;
+
+    ElementNames elementNames;
+
+    for (int i = start; i >= offset; --i) {
+        const QMetaClassInfo classInfo = metaObject->classInfo(i);
+        if (qstrcmp(key, classInfo.name()) == 0) {
+            const char *elementName = classInfo.value();
+
+            if (qstrcmp(elementName, "auto") == 0) {
+                const char *strippedClassName = metaObject->className();
+                for (const char *c = strippedClassName; *c != '\0'; c++) {
+                    if (*c == ':')
+                        strippedClassName = c + 1;
+                }
+                elementName = strippedClassName;
+            } else if (qstrcmp(elementName, "anonymous") == 0) {
+                if (elementNames.isEmpty())
+                    elementNames.push_back(nullptr);
+                else if (elementNames[0] != nullptr)
+                    qWarning() << metaObject->className() << "is both anonymous and named";
+                continue;
+            }
+
+            if (!elementNames.isEmpty() && elementNames[0] == nullptr) {
+                qWarning() << metaObject->className() << "is both anonymous and named";
+                elementNames[0] = elementName;
+            } else {
+                elementNames.push_back(elementName);
+            }
+        }
+    }
+
+    return elementNames;
+}
+
+struct AliasRegistrar
+{
+    AliasRegistrar(const ElementNames *elementNames) : elementNames(elementNames) {}
+
+    void registerAliases(int typeId)
+    {
+        if (elementNames) {
+            for (int i = 1, end = elementNames->length(); i < end; ++i)
+                otherNames.append(QString::fromUtf8(elementNames->at(i)));
+            elementNames = nullptr;
+        }
+
+        for (const QString &otherName : std::as_const(otherNames))
+            QQmlMetaType::registerTypeAlias(typeId, otherName);
+    }
+
+private:
+    const ElementNames *elementNames;
+    QVarLengthArray<QString, 8> otherNames;
+};
+
+
+static void doRegisterTypeAndRevisions(
+        const QQmlPrivate::RegisterTypeAndRevisions &type,
+        const ElementNames &elementNames)
+{
+    using namespace QQmlPrivate;
+
+    const bool isValueType = !(type.typeId.flags() & QMetaType::PointerToQObject);
+    const bool creatable = (elementNames[0] != nullptr || isValueType)
+            && boolClassInfo(type.classInfoMetaObject, "QML.Creatable", true);
+
+    QString noCreateReason;
+    ValueTypeCreationMethod creationMethod = ValueTypeCreationMethod::None;
+
+    if (!creatable) {
+        noCreateReason = QString::fromUtf8(
+                classInfo(type.classInfoMetaObject, "QML.UncreatableReason"));
+        if (noCreateReason.isEmpty())
+            noCreateReason = QLatin1String("Type cannot be created in QML.");
+    } else if (isValueType) {
+        const char *method = classInfo(type.classInfoMetaObject, "QML.CreationMethod");
+        if (qstrcmp(method, "structured") == 0)
+            creationMethod = ValueTypeCreationMethod::Structured;
+        else if (qstrcmp(method, "construct") == 0)
+            creationMethod = ValueTypeCreationMethod::Construct;
+    }
+
+    RegisterType typeRevision = {
+        QQmlPrivate::RegisterType::CurrentVersion,
+        type.typeId,
+        type.listId,
+        creatable ? type.objectSize : 0,
+        nullptr,
+        nullptr,
+        noCreateReason,
+        type.createValueType,
+        type.uri,
+        type.version,
+        nullptr,
+        type.metaObject,
+        type.attachedPropertiesFunction,
+        type.attachedPropertiesMetaObject,
+        type.parserStatusCast,
+        type.valueSourceCast,
+        type.valueInterceptorCast,
+        type.extensionObjectCreate,
+        type.extensionMetaObject,
+        nullptr,
+        QTypeRevision(),
+        type.structVersion > 0 ? type.finalizerCast : -1,
+        creationMethod
+    };
+
+    QQmlPrivate::RegisterSequentialContainer sequenceRevision = {
+        0,
+        type.uri,
+        type.version,
+        nullptr,
+        type.listId,
+        type.structVersion > 1 ? type.listMetaSequence : QMetaSequence(),
+        QTypeRevision(),
+    };
+
+    const QTypeRevision added = revisionClassInfo(
+            type.classInfoMetaObject, "QML.AddedInVersion",
+            QTypeRevision::fromVersion(type.version.majorVersion(), 0));
+    const QTypeRevision removed = revisionClassInfo(
+            type.classInfoMetaObject, "QML.RemovedInVersion");
+    const QList<QTypeRevision> furtherRevisions = revisionClassInfos(type.classInfoMetaObject,
+                                                                     "QML.ExtraVersion");
+
+    auto revisions = prepareRevisions(type.metaObject, added) + furtherRevisions;
+    if (type.attachedPropertiesMetaObject)
+        revisions += availableRevisions(type.attachedPropertiesMetaObject);
+    uniqueRevisions(&revisions, type.version, added);
+
+    AliasRegistrar aliasRegistrar(&elementNames);
+    for (QTypeRevision revision : revisions) {
+        if (revision.hasMajorVersion() && revision.majorVersion() > type.version.majorVersion())
+            break;
+
+        assignVersions(&typeRevision, revision, type.version);
+
+        // When removed or before added, we still add revisions, but anonymous ones
+        if (typeRevision.version < added
+                || (removed.isValid() && !(typeRevision.version < removed))) {
+            typeRevision.elementName = nullptr;
+            typeRevision.create = nullptr;
+            typeRevision.userdata = nullptr;
+        } else {
+            typeRevision.elementName = elementNames[0];
+            typeRevision.create = creatable ? type.create : nullptr;
+            typeRevision.userdata = type.userdata;
+        }
+
+        typeRevision.customParser = type.customParserFactory();
+        const int id = qmlregister(TypeRegistration, &typeRevision);
+        if (type.qmlTypeIds)
+            type.qmlTypeIds->append(id);
+
+        if (typeRevision.elementName)
+            aliasRegistrar.registerAliases(id);
+
+        if (sequenceRevision.metaSequence != QMetaSequence()) {
+            sequenceRevision.version = typeRevision.version;
+            sequenceRevision.revision = typeRevision.revision;
+            const int id = QQmlPrivate::qmlregister(
+                    QQmlPrivate::SequentialContainerRegistration, &sequenceRevision);
+            if (type.qmlTypeIds)
+                type.qmlTypeIds->append(id);
+        }
+    }
+}
+
+static void doRegisterSingletonAndRevisions(
+        const QQmlPrivate::RegisterSingletonTypeAndRevisions &type,
+        const ElementNames &elementNames)
+{
+    using namespace QQmlPrivate;
+
+    RegisterSingletonType revisionRegistration = {
+        0,
+        type.uri,
+        type.version,
+        elementNames[0],
+        nullptr,
+        type.qObjectApi,
+        type.instanceMetaObject,
+        type.typeId,
+        type.extensionObjectCreate,
+        type.extensionMetaObject,
+        QTypeRevision()
+    };
+    const QQmlType::SingletonInstanceInfo::ConstPtr siinfo
+            = singletonInstanceInfo(revisionRegistration);
+
+    const QTypeRevision added = revisionClassInfo(
+            type.classInfoMetaObject, "QML.AddedInVersion",
+            QTypeRevision::fromVersion(type.version.majorVersion(), 0));
+    const QTypeRevision removed = revisionClassInfo(
+            type.classInfoMetaObject, "QML.RemovedInVersion");
+    const QList<QTypeRevision> furtherRevisions = revisionClassInfos(type.classInfoMetaObject,
+                                                                     "QML.ExtraVersion");
+
+    auto revisions = prepareRevisions(type.instanceMetaObject, added) + furtherRevisions;
+    uniqueRevisions(&revisions, type.version, added);
+
+    AliasRegistrar aliasRegistrar(&elementNames);
+    for (QTypeRevision revision : std::as_const(revisions)) {
+        if (revision.hasMajorVersion() && revision.majorVersion() > type.version.majorVersion())
+            break;
+
+        assignVersions(&revisionRegistration, revision, type.version);
+
+        // When removed or before added, we still add revisions, but anonymous ones
+        if (revisionRegistration.version < added
+            || (removed.isValid() && !(revisionRegistration.version < removed))) {
+            revisionRegistration.typeName = nullptr;
+            revisionRegistration.qObjectApi = nullptr;
+        } else {
+            revisionRegistration.typeName = elementNames[0];
+            revisionRegistration.qObjectApi = type.qObjectApi;
+        }
+
+        const int id = finalizeType(
+                QQmlMetaType::registerSingletonType(revisionRegistration, siinfo));
+        if (type.qmlTypeIds)
+            type.qmlTypeIds->append(id);
+
+        if (revisionRegistration.typeName)
+            aliasRegistrar.registerAliases(id);
+    }
+}
+
 /*
 This method is "over generalized" to allow us to (potentially) register more types of things in
 the future without adding exported symbols.
 */
 int QQmlPrivate::qmlregister(RegistrationType type, void *data)
 {
-    QQmlType dtype;
     switch (type) {
     case AutoParentRegistration:
         return QQmlMetaType::registerAutoParentFunction(
@@ -491,160 +777,29 @@ int QQmlPrivate::qmlregister(RegistrationType type, void *data)
                 *reinterpret_cast<RegisterQmlUnitCacheHook *>(data));
     case TypeAndRevisionsRegistration: {
         const RegisterTypeAndRevisions &type = *reinterpret_cast<RegisterTypeAndRevisions *>(data);
-        const char *elementName = (type.structVersion > 1 && type.forceAnonymous)
-                ? nullptr
-                : classElementName(type.classInfoMetaObject);
-        const bool isValueType = !(type.typeId.flags() & QMetaType::PointerToQObject);
-        const bool creatable = (elementName != nullptr || isValueType)
-                && boolClassInfo(type.classInfoMetaObject, "QML.Creatable", true);
-
-        QString noCreateReason;
-        ValueTypeCreationMethod creationMethod = ValueTypeCreationMethod::None;
-
-        if (!creatable) {
-            noCreateReason = QString::fromUtf8(
-                        classInfo(type.classInfoMetaObject, "QML.UncreatableReason"));
-            if (noCreateReason.isEmpty())
-                noCreateReason = QLatin1String("Type cannot be created in QML.");
-        } else if (isValueType) {
-            const char *method = classInfo(type.classInfoMetaObject, "QML.CreationMethod");
-            if (qstrcmp(method, "structured") == 0)
-                creationMethod = ValueTypeCreationMethod::Structured;
-            else if (qstrcmp(method, "construct") == 0)
-                creationMethod = ValueTypeCreationMethod::Construct;
-        }
-
-        RegisterType typeRevision = {
-            QQmlPrivate::RegisterType::CurrentVersion,
-            type.typeId,
-            type.listId,
-            creatable ? type.objectSize : 0,
-            nullptr,
-            nullptr,
-            noCreateReason,
-            type.createValueType,
-            type.uri,
-            type.version,
-            nullptr,
-            type.metaObject,
-            type.attachedPropertiesFunction,
-            type.attachedPropertiesMetaObject,
-            type.parserStatusCast,
-            type.valueSourceCast,
-            type.valueInterceptorCast,
-            type.extensionObjectCreate,
-            type.extensionMetaObject,
-            nullptr,
-            QTypeRevision(),
-            type.structVersion > 0 ? type.finalizerCast : -1,
-            creationMethod
-        };
-
-        QQmlPrivate::RegisterSequentialContainer sequenceRevision = {
-            0,
-            type.uri,
-            type.version,
-            nullptr,
-            type.listId,
-            type.structVersion > 1 ? type.listMetaSequence : QMetaSequence(),
-            QTypeRevision(),
-        };
-
-        const QTypeRevision added = revisionClassInfo(
-                    type.classInfoMetaObject, "QML.AddedInVersion",
-                    QTypeRevision::fromVersion(type.version.majorVersion(), 0));
-        const QTypeRevision removed = revisionClassInfo(
-                    type.classInfoMetaObject, "QML.RemovedInVersion");
-        const QList<QTypeRevision> furtherRevisions = revisionClassInfos(type.classInfoMetaObject,
-                                                                        "QML.ExtraVersion");
-
-        auto revisions = prepareRevisions(type.metaObject, added) + furtherRevisions;
-        if (type.attachedPropertiesMetaObject)
-            revisions += availableRevisions(type.attachedPropertiesMetaObject);
-        uniqueRevisions(&revisions, type.version, added);
-
-        for (QTypeRevision revision : revisions) {
-            if (revision.hasMajorVersion() && revision.majorVersion() > type.version.majorVersion())
-                break;
-
-            assignVersions(&typeRevision, revision, type.version);
-
-            // When removed or before added, we still add revisions, but anonymous ones
-            if (typeRevision.version < added
-                    || (removed.isValid() && !(typeRevision.version < removed))) {
-                typeRevision.elementName = nullptr;
-                typeRevision.create = nullptr;
-                typeRevision.userdata = nullptr;
+        if (type.structVersion > 1 && type.forceAnonymous) {
+            doRegisterTypeAndRevisions(type, {nullptr});
+        } else {
+            const ElementNames names = classElementNames(type.classInfoMetaObject);
+            if (names.isEmpty()) {
+                qWarning().nospace() << "Missing QML.Element class info for "
+                                     << type.classInfoMetaObject->className();
             } else {
-                typeRevision.elementName = elementName;
-                typeRevision.create = creatable ? type.create : nullptr;
-                typeRevision.userdata = type.userdata;
+                doRegisterTypeAndRevisions(type, names);
             }
 
-            typeRevision.customParser = type.customParserFactory();
-            const int id = qmlregister(TypeRegistration, &typeRevision);
-            if (type.qmlTypeIds)
-                type.qmlTypeIds->append(id);
-
-            if (sequenceRevision.metaSequence != QMetaSequence()) {
-                sequenceRevision.version = typeRevision.version;
-                sequenceRevision.revision = typeRevision.revision;
-                const int id = QQmlPrivate::qmlregister(
-                            QQmlPrivate::SequentialContainerRegistration, &sequenceRevision);
-                if (type.qmlTypeIds)
-                    type.qmlTypeIds->append(id);
-            }
         }
         break;
     }
     case SingletonAndRevisionsRegistration: {
         const RegisterSingletonTypeAndRevisions &type
                 = *reinterpret_cast<RegisterSingletonTypeAndRevisions *>(data);
-        const char *elementName = classElementName(type.classInfoMetaObject);
-        RegisterSingletonType revisionRegistration = {
-            0,
-            type.uri,
-            type.version,
-            elementName,
-            nullptr,
-            type.qObjectApi,
-            type.instanceMetaObject,
-            type.typeId,
-            type.extensionObjectCreate,
-            type.extensionMetaObject,
-            QTypeRevision()
-        };
-
-        const QTypeRevision added = revisionClassInfo(
-                    type.classInfoMetaObject, "QML.AddedInVersion",
-                    QTypeRevision::fromVersion(type.version.majorVersion(), 0));
-        const QTypeRevision removed = revisionClassInfo(
-                    type.classInfoMetaObject, "QML.RemovedInVersion");
-        const QList<QTypeRevision> furtherRevisions = revisionClassInfos(type.classInfoMetaObject,
-                                                                        "QML.ExtraVersion");
-
-        auto revisions = prepareRevisions(type.instanceMetaObject, added) + furtherRevisions;
-        uniqueRevisions(&revisions, type.version, added);
-
-        for (QTypeRevision revision : std::as_const(revisions)) {
-            if (revision.hasMajorVersion() && revision.majorVersion() > type.version.majorVersion())
-                break;
-
-            assignVersions(&revisionRegistration, revision, type.version);
-
-            // When removed or before added, we still add revisions, but anonymous ones
-            if (revisionRegistration.version < added
-                    || (removed.isValid() && !(revisionRegistration.version < removed))) {
-                revisionRegistration.typeName = nullptr;
-                revisionRegistration.qObjectApi = nullptr;
-            } else {
-                revisionRegistration.typeName = elementName;
-                revisionRegistration.qObjectApi = type.qObjectApi;
-            }
-
-            const int id = qmlregister(SingletonRegistration, &revisionRegistration);
-            if (type.qmlTypeIds)
-                type.qmlTypeIds->append(id);
+        const ElementNames names = classElementNames(type.classInfoMetaObject);
+        if (names.isEmpty()) {
+            qWarning().nospace() << "Missing QML.Element class info for "
+                                 << type.classInfoMetaObject->className();
+        } else {
+            doRegisterSingletonAndRevisions(type, names);
         }
         break;
     }
@@ -683,32 +838,30 @@ int QQmlPrivate::qmlregister(RegistrationType type, void *data)
         break;
     }
     case TypeRegistration:
-        dtype = QQmlMetaType::registerType(*reinterpret_cast<RegisterType *>(data));
-        break;
+        return finalizeType(
+                QQmlMetaType::registerType(*reinterpret_cast<RegisterType *>(data)));
     case InterfaceRegistration:
-        dtype = QQmlMetaType::registerInterface(*reinterpret_cast<RegisterInterface *>(data));
-        break;
+        return finalizeType(
+                QQmlMetaType::registerInterface(*reinterpret_cast<RegisterInterface *>(data)));
     case SingletonRegistration:
-        dtype = QQmlMetaType::registerSingletonType(*reinterpret_cast<RegisterSingletonType *>(data));
-        break;
+        return finalizeType(QQmlMetaType::registerSingletonType(
+                *reinterpret_cast<RegisterSingletonType *>(data),
+                singletonInstanceInfo(*reinterpret_cast<RegisterSingletonType *>(data))));
     case CompositeRegistration:
-        dtype = QQmlMetaType::registerCompositeType(*reinterpret_cast<RegisterCompositeType *>(data));
-        break;
+        return finalizeType(QQmlMetaType::registerCompositeType(
+                *reinterpret_cast<RegisterCompositeType *>(data)));
     case CompositeSingletonRegistration:
-        dtype = QQmlMetaType::registerCompositeSingletonType(*reinterpret_cast<RegisterCompositeSingletonType *>(data));
-        break;
+        return finalizeType(QQmlMetaType::registerCompositeSingletonType(
+                *reinterpret_cast<RegisterCompositeSingletonType *>(data),
+                singletonInstanceInfo(*reinterpret_cast<RegisterCompositeSingletonType *>(data))));
     case SequentialContainerRegistration:
-        dtype = QQmlMetaType::registerSequentialContainer(*reinterpret_cast<RegisterSequentialContainer *>(data));
-        break;
+        return finalizeType(QQmlMetaType::registerSequentialContainer(
+                *reinterpret_cast<RegisterSequentialContainer *>(data)));
     default:
         return -1;
     }
 
-    if (!dtype.isValid())
-        return -1;
-
-    QQmlMetaType::registerUndeletableType(dtype);
-    return dtype.index();
+    return -1;
 }
 
 void QQmlPrivate::qmlunregister(RegistrationType type, quintptr data)
@@ -813,7 +966,13 @@ QObject *AOTCompiledContext::thisObject() const
 
 QQmlEngine *AOTCompiledContext::qmlEngine() const
 {
-    return qmlContext ? qmlContext->engine() : nullptr;
+    return engine->handle()->qmlEngine();
+}
+
+static QQmlPropertyCapture *propertyCapture(const AOTCompiledContext *aotContext)
+{
+    QQmlEngine *engine = aotContext->qmlEngine();
+    return engine ? QQmlEnginePrivate::get(aotContext->qmlEngine())->propertyCapture : nullptr;
 }
 
 QJSValue AOTCompiledContext::jsMetaType(int index) const
@@ -836,37 +995,25 @@ void AOTCompiledContext::setReturnValueUndefined() const
     }
 }
 
-static QQmlPropertyCapture *propertyCapture(const QQmlContextData *qmlContext)
-{
-    if (!qmlContext)
-        return nullptr;
-
-    QQmlEngine *engine = qmlContext->engine();
-    Q_ASSERT(engine);
-    QQmlEnginePrivate *ep = QQmlEnginePrivate::get(engine);
-    Q_ASSERT(ep);
-    return ep->propertyCapture;
-}
-
 static void captureFallbackProperty(
         QObject *object, int coreIndex, int notifyIndex, bool isConstant,
-        const QQmlContextData *qmlContext)
+        const AOTCompiledContext *aotContext)
 {
     if (isConstant)
         return;
 
-    if (QQmlPropertyCapture *capture = propertyCapture(qmlContext))
+    if (QQmlPropertyCapture *capture = propertyCapture(aotContext))
         capture->captureProperty(object, coreIndex, notifyIndex);
 }
 
 static void captureObjectProperty(
         QObject *object, const QQmlPropertyCache *propertyCache,
-        const QQmlPropertyData *property, QQmlContextData *qmlContext)
+        const QQmlPropertyData *property, const AOTCompiledContext *aotContext)
 {
     if (property->isConstant())
         return;
 
-    if (QQmlPropertyCapture *capture = propertyCapture(qmlContext))
+    if (QQmlPropertyCapture *capture = propertyCapture(aotContext))
         capture->captureProperty(object, propertyCache, property);
 }
 
@@ -881,75 +1028,141 @@ static bool inherits(const QQmlPropertyCache *descendent, const QQmlPropertyCach
 
 enum class ObjectPropertyResult { OK, NeedsInit, Deleted };
 
-template<bool StrictType = false>
-ObjectPropertyResult loadObjectProperty(
-        QV4::Lookup *l, QObject *object, void *target, QQmlContextData *qmlContext)
+struct ObjectPropertyQmlData
+{
+    QQmlData *qmlData;
+    ObjectPropertyResult result;
+};
+
+template<bool StrictType>
+ObjectPropertyQmlData findObjectPropertyQmlData(QV4::Lookup *l, QObject *object)
 {
     QQmlData *qmlData = QQmlData::get(object);
     if (!qmlData)
-        return ObjectPropertyResult::NeedsInit;
+        return {qmlData, ObjectPropertyResult::NeedsInit};
     if (qmlData->isQueuedForDeletion)
-        return ObjectPropertyResult::Deleted;
+        return {qmlData, ObjectPropertyResult::Deleted};
     Q_ASSERT(!QQmlData::wasDeleted(object));
     const QQmlPropertyCache *propertyCache = l->qobjectLookup.propertyCache;
     if (StrictType) {
         if (qmlData->propertyCache.data() != propertyCache)
-            return ObjectPropertyResult::NeedsInit;
+            return {qmlData, ObjectPropertyResult::NeedsInit};
     } else if (!inherits(qmlData->propertyCache.data(), propertyCache)) {
-        return ObjectPropertyResult::NeedsInit;
+        return {qmlData, ObjectPropertyResult::NeedsInit};
     }
-    const QQmlPropertyData *property = l->qobjectLookup.propertyData;
+    return {qmlData, ObjectPropertyResult::OK};
+}
 
-    const int coreIndex = property->coreIndex();
-    if (qmlData->hasPendingBindingBit(coreIndex))
-        qmlData->flushPendingBinding(coreIndex);
+template<bool StrictType = false>
+ObjectPropertyResult loadObjectProperty(
+        QV4::Lookup *l, QObject *object, void *target, const AOTCompiledContext *aotContext)
+{
+    const ObjectPropertyQmlData data = findObjectPropertyQmlData<StrictType>(l, object);
+    if (data.result != ObjectPropertyResult::OK)
+        return data.result;
 
-    captureObjectProperty(object, propertyCache, property, qmlContext);
-    property->readProperty(object, target);
+    const QQmlPropertyData *propertyData = l->qobjectLookup.propertyData;
+    const int coreIndex = propertyData->coreIndex();
+    if (data.qmlData->hasPendingBindingBit(coreIndex))
+        data.qmlData->flushPendingBinding(coreIndex);
+
+    captureObjectProperty(object, l->qobjectLookup.propertyCache, propertyData, aotContext);
+    propertyData->readProperty(object, target);
     return ObjectPropertyResult::OK;
 }
 
-static ObjectPropertyResult loadFallbackProperty(
-        QV4::Lookup *l, QObject *object, void *target, QQmlContextData *qmlContext)
+template<bool StrictType = false>
+ObjectPropertyResult writeBackObjectProperty(QV4::Lookup *l, QObject *object, void *source)
+{
+    const ObjectPropertyQmlData data = findObjectPropertyQmlData<StrictType>(l, object);
+    if (data.result != ObjectPropertyResult::OK)
+        return data.result;
+
+    l->qobjectLookup.propertyData->writeProperty(object, source, {});
+    return ObjectPropertyResult::OK;
+}
+
+struct FallbackPropertyQmlData
+{
+    QQmlData *qmlData;
+    const QMetaObject *metaObject;
+    ObjectPropertyResult result;
+};
+
+static FallbackPropertyQmlData findFallbackPropertyQmlData(QV4::Lookup *l, QObject *object)
 {
     QQmlData *qmlData = QQmlData::get(object);
     if (qmlData && qmlData->isQueuedForDeletion)
-        return ObjectPropertyResult::Deleted;
+        return {qmlData, nullptr, ObjectPropertyResult::Deleted};
 
     Q_ASSERT(!QQmlData::wasDeleted(object));
 
     const QMetaObject *metaObject
             = reinterpret_cast<const QMetaObject *>(l->qobjectFallbackLookup.metaObject - 1);
     if (!metaObject || metaObject != object->metaObject())
-        return ObjectPropertyResult::NeedsInit;
+        return {qmlData, nullptr, ObjectPropertyResult::NeedsInit};
+
+    return {qmlData, metaObject, ObjectPropertyResult::OK};
+}
+
+static ObjectPropertyResult loadFallbackProperty(
+        QV4::Lookup *l, QObject *object, void *target, const AOTCompiledContext *aotContext)
+{
+    const FallbackPropertyQmlData data = findFallbackPropertyQmlData(l, object);
+    if (data.result != ObjectPropertyResult::OK)
+        return data.result;
 
     const int coreIndex = l->qobjectFallbackLookup.coreIndex;
-    if (qmlData && qmlData->hasPendingBindingBit(coreIndex))
-        qmlData->flushPendingBinding(coreIndex);
+    if (data.qmlData && data.qmlData->hasPendingBindingBit(coreIndex))
+        data.qmlData->flushPendingBinding(coreIndex);
 
     captureFallbackProperty(object, coreIndex, l->qobjectFallbackLookup.notifyIndex,
-                            l->qobjectFallbackLookup.isConstant, qmlContext);
+                            l->qobjectFallbackLookup.isConstant, aotContext);
 
     void *a[] = { target, nullptr };
-    metaObject->metacall(object, QMetaObject::ReadProperty, coreIndex, a);
+    data.metaObject->metacall(object, QMetaObject::ReadProperty, coreIndex, a);
+
+    return ObjectPropertyResult::OK;
+}
+
+static ObjectPropertyResult writeBackFallbackProperty(QV4::Lookup *l, QObject *object, void *source)
+{
+    const FallbackPropertyQmlData data = findFallbackPropertyQmlData(l, object);
+    if (data.result != ObjectPropertyResult::OK)
+        return data.result;
+
+    void *a[] = { source, nullptr };
+    data.metaObject->metacall(
+            object, QMetaObject::WriteProperty, l->qobjectFallbackLookup.coreIndex, a);
 
     return ObjectPropertyResult::OK;
 }
 
 ObjectPropertyResult loadObjectAsVariant(
-        QV4::Lookup *l, QObject *object, void *target, QQmlContextData *qmlContext)
+        QV4::Lookup *l, QObject *object, void *target, const AOTCompiledContext *aotContext)
 {
     QVariant *variant = static_cast<QVariant *>(target);
     const QMetaType propType = l->qobjectLookup.propertyData->propType();
     if (propType == QMetaType::fromType<QVariant>())
-        return loadObjectProperty<true>(l, object, variant, qmlContext);
+        return loadObjectProperty<true>(l, object, variant, aotContext);
 
     *variant = QVariant(propType);
-    return loadObjectProperty<true>(l, object, variant->data(), qmlContext);
+    return loadObjectProperty<true>(l, object, variant->data(), aotContext);
+}
+
+ObjectPropertyResult writeBackObjectAsVariant(QV4::Lookup *l, QObject *object, void *source)
+{
+    QVariant *variant = static_cast<QVariant *>(source);
+    const QMetaType propType = l->qobjectLookup.propertyData->propType();
+    if (propType == QMetaType::fromType<QVariant>())
+        return writeBackObjectProperty<true>(l, object, variant);
+
+    Q_ASSERT(variant->metaType() == propType);
+    return writeBackObjectProperty<true>(l, object, variant->data());
 }
 
 ObjectPropertyResult loadFallbackAsVariant(
-        QV4::Lookup *l, QObject *object, void *target, QQmlContextData *qmlContext)
+        QV4::Lookup *l, QObject *object, void *target, const AOTCompiledContext *aotContext)
 {
     const QMetaObject *metaObject
             = reinterpret_cast<const QMetaObject *>(l->qobjectFallbackLookup.metaObject - 1);
@@ -958,27 +1171,34 @@ ObjectPropertyResult loadFallbackAsVariant(
     QVariant *variant = static_cast<QVariant *>(target);
     const QMetaType propType = metaObject->property(l->qobjectFallbackLookup.coreIndex).metaType();
     if (propType == QMetaType::fromType<QVariant>())
-        return loadFallbackProperty(l, object, variant, qmlContext);
+        return loadFallbackProperty(l, object, variant, aotContext);
 
     *variant = QVariant(propType);
-    return loadFallbackProperty(l, object, variant->data(), qmlContext);
+    return loadFallbackProperty(l, object, variant->data(), aotContext);
+}
+
+ObjectPropertyResult writeBackFallbackAsVariant(QV4::Lookup *l, QObject *object, void *source)
+{
+    const QMetaObject *metaObject
+            = reinterpret_cast<const QMetaObject *>(l->qobjectFallbackLookup.metaObject - 1);
+    Q_ASSERT(metaObject);
+
+    QVariant *variant = static_cast<QVariant *>(source);
+    const QMetaType propType = metaObject->property(l->qobjectFallbackLookup.coreIndex).metaType();
+    if (propType == QMetaType::fromType<QVariant>())
+        return writeBackFallbackProperty(l, object, variant);
+
+    Q_ASSERT(variant->metaType() == propType);
+    return writeBackFallbackProperty(l, object, variant->data());
 }
 
 template<bool StrictType, typename Op>
 static ObjectPropertyResult changeObjectProperty(QV4::Lookup *l, QObject *object, Op op)
 {
-    const QQmlData *qmlData = QQmlData::get(object);
-    if (!qmlData)
-        return ObjectPropertyResult::NeedsInit;
-    if (qmlData->isQueuedForDeletion)
-        return ObjectPropertyResult::Deleted;
-    Q_ASSERT(!QQmlData::wasDeleted(object));
-    if (StrictType) {
-        if (qmlData->propertyCache.data() != l->qobjectLookup.propertyCache)
-            return ObjectPropertyResult::NeedsInit;
-    } else if (!inherits(qmlData->propertyCache.data(), l->qobjectLookup.propertyCache)) {
-        return ObjectPropertyResult::NeedsInit;
-    }
+    const ObjectPropertyQmlData data = findObjectPropertyQmlData<StrictType>(l, object);
+    if (data.result != ObjectPropertyResult::OK)
+        return data.result;
+
     const QQmlPropertyData *property = l->qobjectLookup.propertyData;
     QQmlPropertyPrivate::removeBinding(object, QQmlPropertyIndex(property->coreIndex()));
     op(property);
@@ -1011,20 +1231,14 @@ static ObjectPropertyResult storeObjectProperty(QV4::Lookup *l, QObject *object,
 template<typename Op>
 static ObjectPropertyResult changeFallbackProperty(QV4::Lookup *l, QObject *object, Op op)
 {
-    const QQmlData *qmlData = QQmlData::get(object);
-    if (qmlData && qmlData->isQueuedForDeletion)
-        return ObjectPropertyResult::Deleted;
-    Q_ASSERT(!QQmlData::wasDeleted(object));
-
-    const QMetaObject *metaObject
-            = reinterpret_cast<const QMetaObject *>(l->qobjectFallbackLookup.metaObject - 1);
-    if (!metaObject || metaObject != object->metaObject())
-        return ObjectPropertyResult::NeedsInit;
+    const FallbackPropertyQmlData data = findFallbackPropertyQmlData(l, object);
+    if (data.result != ObjectPropertyResult::OK)
+        return data.result;
 
     const int coreIndex = l->qobjectFallbackLookup.coreIndex;
     QQmlPropertyPrivate::removeBinding(object, QQmlPropertyIndex(coreIndex));
 
-    op(metaObject, coreIndex);
+    op(data.metaObject, coreIndex);
     return ObjectPropertyResult::OK;
 }
 
@@ -1283,7 +1497,7 @@ bool AOTCompiledContext::captureLookup(uint index, QObject *object) const
             || l->getter == QV4::Lookup::getterQObjectAsVariant) {
         const QQmlPropertyData *property = l->qobjectLookup.propertyData;
         QQmlData::flushPendingBinding(object, property->coreIndex());
-        captureObjectProperty(object, l->qobjectLookup.propertyCache, property, qmlContext);
+        captureObjectProperty(object, l->qobjectLookup.propertyCache, property, this);
         return true;
     }
 
@@ -1293,7 +1507,7 @@ bool AOTCompiledContext::captureLookup(uint index, QObject *object) const
         QQmlData::flushPendingBinding(object, coreIndex);
         captureFallbackProperty(
                     object, coreIndex, l->qobjectFallbackLookup.notifyIndex,
-                    l->qobjectFallbackLookup.isConstant, qmlContext);
+                    l->qobjectFallbackLookup.isConstant, this);
         return true;
     }
 
@@ -1307,7 +1521,7 @@ bool AOTCompiledContext::captureQmlContextPropertyLookup(uint index) const
             && l->qmlContextPropertyGetter == QV4::QQmlContextWrapper::lookupContextObjectProperty) {
         const QQmlPropertyData *property = l->qobjectLookup.propertyData;
         QQmlData::flushPendingBinding(qmlScopeObject, property->coreIndex());
-        captureObjectProperty(qmlScopeObject, l->qobjectLookup.propertyCache, property, qmlContext);
+        captureObjectProperty(qmlScopeObject, l->qobjectLookup.propertyCache, property, this);
         return true;
     }
 
@@ -1315,7 +1529,7 @@ bool AOTCompiledContext::captureQmlContextPropertyLookup(uint index) const
         const int coreIndex = l->qobjectFallbackLookup.coreIndex;
         QQmlData::flushPendingBinding(qmlScopeObject, coreIndex);
         captureFallbackProperty(qmlScopeObject, coreIndex, l->qobjectFallbackLookup.notifyIndex,
-                                l->qobjectFallbackLookup.isConstant, qmlContext);
+                                l->qobjectFallbackLookup.isConstant, this);
         return true;
     }
 
@@ -1324,7 +1538,7 @@ bool AOTCompiledContext::captureQmlContextPropertyLookup(uint index) const
 
 void AOTCompiledContext::captureTranslation() const
 {
-    if (QQmlPropertyCapture *capture = propertyCapture(qmlContext))
+    if (QQmlPropertyCapture *capture = propertyCapture(this))
         capture->captureTranslation();
 }
 
@@ -1514,7 +1728,25 @@ QVariant AOTCompiledContext::constructValueType(
         int ctorIndex, void *ctorArg) const
 {
     return QQmlValueTypeProvider::constructValueType(
-                resultMetaType, resultMetaObject, ctorIndex, ctorArg);
+            resultMetaType, resultMetaObject, ctorIndex, ctorArg);
+}
+
+QDateTime AOTCompiledContext::constructDateTime(double timestamp) const
+{
+    return QV4::DateObject::timestampToDateTime(timestamp);
+}
+
+QDateTime AOTCompiledContext::constructDateTime(const QString &string) const
+{
+    return QV4::DateObject::stringToDateTime(string, engine->handle());
+}
+
+QDateTime AOTCompiledContext::constructDateTime(
+        double year, double month, double day, double hours,
+        double minutes, double seconds, double msecs) const
+{
+    return constructDateTime(QV4::DateObject::componentsToTimestamp(
+            year, month, day, hours, minutes, seconds, msecs, engine->handle()));
 }
 
 bool AOTCompiledContext::callQmlContextPropertyLookup(
@@ -1670,11 +1902,17 @@ bool AOTCompiledContext::loadScopeObjectPropertyLookup(uint index, void *target)
 {
     QV4::Lookup *l = compilationUnit->runtimeLookups + index;
 
+    if (!qmlScopeObject) {
+        engine->handle()->throwReferenceError(
+                compilationUnit->runtimeStrings[l->nameIndex]->toQString());
+        return false;
+    }
+
     ObjectPropertyResult result = ObjectPropertyResult::NeedsInit;
     if (l->qmlContextPropertyGetter == QV4::QQmlContextWrapper::lookupScopeObjectProperty)
-        result = loadObjectProperty(l, qmlScopeObject, target, qmlContext);
+        result = loadObjectProperty(l, qmlScopeObject, target, this);
     else if (l->qmlContextPropertyGetter == QV4::QQmlContextWrapper::lookupScopeFallbackProperty)
-        result = loadFallbackProperty(l, qmlScopeObject, target, qmlContext);
+        result = loadFallbackProperty(l, qmlScopeObject, target, this);
     else
         return false;
 
@@ -1686,6 +1924,29 @@ bool AOTCompiledContext::loadScopeObjectPropertyLookup(uint index, void *target)
                     QStringLiteral("Cannot read property '%1' of null")
                     .arg(compilationUnit->runtimeStrings[l->nameIndex]->toQString()));
         return false;
+    case ObjectPropertyResult::OK:
+        return true;
+    }
+
+    Q_UNREACHABLE_RETURN(false);
+}
+
+bool AOTCompiledContext::writeBackScopeObjectPropertyLookup(uint index, void *source) const
+{
+    QV4::Lookup *l = compilationUnit->runtimeLookups + index;
+
+    ObjectPropertyResult result = ObjectPropertyResult::NeedsInit;
+    if (l->qmlContextPropertyGetter == QV4::QQmlContextWrapper::lookupScopeObjectProperty)
+        result = writeBackObjectProperty(l, qmlScopeObject, source);
+    else if (l->qmlContextPropertyGetter == QV4::QQmlContextWrapper::lookupScopeFallbackProperty)
+        result = writeBackFallbackProperty(l, qmlScopeObject, source);
+    else
+        return false;
+
+    switch (result) {
+    case ObjectPropertyResult::NeedsInit:
+        return false;
+    case ObjectPropertyResult::Deleted: // Silently omit the write back. Same as interpreter
     case ObjectPropertyResult::OK:
         return true;
     }
@@ -1836,14 +2097,8 @@ bool AOTCompiledContext::loadTypeLookup(uint index, void *target) const
 
     const QV4::Heap::QQmlTypeWrapper *typeWrapper = static_cast<const QV4::Heap::QQmlTypeWrapper *>(
                 l->qmlTypeLookup.qmlTypeWrapper);
-    QQmlEnginePrivate *ep = QQmlEnginePrivate::get(qmlEngine());
 
     QMetaType metaType = typeWrapper->type().typeId();
-    if (!metaType.isValid()) {
-        metaType = ep->typeLoader.getType(typeWrapper->type().sourceUrl())
-                ->compilationUnit()->typeIds.id;
-    }
-
     *static_cast<const QMetaObject **>(target)
             = QQmlMetaType::metaObjectForType(metaType).metaObject();
     return true;
@@ -1857,7 +2112,6 @@ void AOTCompiledContext::initLoadTypeLookup(uint index, uint importNamespace) co
 
 bool AOTCompiledContext::getObjectLookup(uint index, QObject *object, void *target) const
 {
-
     QV4::Lookup *l = compilationUnit->runtimeLookups + index;
     const auto doThrow = [&]() {
         engine->handle()->throwTypeError(
@@ -1871,13 +2125,13 @@ bool AOTCompiledContext::getObjectLookup(uint index, QObject *object, void *targ
 
     ObjectPropertyResult result = ObjectPropertyResult::NeedsInit;
     if (l->getter == QV4::Lookup::getterQObject)
-        result = loadObjectProperty(l, object, target, qmlContext);
+        result = loadObjectProperty(l, object, target, this);
     else if (l->getter == QV4::Lookup::getterFallback)
-        result = loadFallbackProperty(l, object, target, qmlContext);
+        result = loadFallbackProperty(l, object, target, this);
     else if (l->getter == QV4::Lookup::getterQObjectAsVariant)
-        result = loadObjectAsVariant(l, object, target, qmlContext);
+        result = loadObjectAsVariant(l, object, target, this);
     else if (l->getter == QV4::Lookup::getterFallbackAsVariant)
-        result = loadFallbackAsVariant(l, object, target, qmlContext);
+        result = loadFallbackAsVariant(l, object, target, this);
     else
         return false;
 
@@ -1886,6 +2140,35 @@ bool AOTCompiledContext::getObjectLookup(uint index, QObject *object, void *targ
         return doThrow();
     case ObjectPropertyResult::NeedsInit:
         return false;
+    case ObjectPropertyResult::OK:
+        return true;
+    }
+
+    Q_UNREACHABLE_RETURN(false);
+}
+
+bool AOTCompiledContext::writeBackObjectLookup(uint index, QObject *object, void *source) const
+{
+    QV4::Lookup *l = compilationUnit->runtimeLookups + index;
+    if (!object)
+        return true;
+
+    ObjectPropertyResult result = ObjectPropertyResult::NeedsInit;
+    if (l->getter == QV4::Lookup::getterQObject)
+        result = writeBackObjectProperty(l, object, source);
+    else if (l->getter == QV4::Lookup::getterFallback)
+        result = writeBackFallbackProperty(l, object, source);
+    else if (l->getter == QV4::Lookup::getterQObjectAsVariant)
+        result = writeBackObjectAsVariant(l, object, source);
+    else if (l->getter == QV4::Lookup::getterFallbackAsVariant)
+        result = writeBackFallbackAsVariant(l, object, source);
+    else
+        return false;
+
+    switch (result) {
+    case ObjectPropertyResult::NeedsInit:
+        return false;
+    case ObjectPropertyResult::Deleted: // Silently omit the write back
     case ObjectPropertyResult::OK:
         return true;
     }
@@ -1936,6 +2219,25 @@ bool AOTCompiledContext::getValueLookup(uint index, void *value, void *target) c
     metaObject->d.static_metacall(
                 reinterpret_cast<QObject*>(value), QMetaObject::ReadProperty,
                 l->qgadgetLookup.coreIndex, args);
+    return true;
+}
+
+bool AOTCompiledContext::writeBackValueLookup(uint index, void *value, void *source) const
+{
+    Q_ASSERT(value);
+
+    QV4::Lookup *l = compilationUnit->runtimeLookups + index;
+    if (l->getter != QV4::QQmlValueTypeWrapper::lookupGetter)
+        return false;
+
+    const QMetaObject *metaObject
+            = reinterpret_cast<const QMetaObject *>(l->qgadgetLookup.metaObject - 1);
+    Q_ASSERT(metaObject);
+
+    void *args[] = { source, nullptr };
+    metaObject->d.static_metacall(
+            reinterpret_cast<QObject*>(value), QMetaObject::WriteProperty,
+            l->qgadgetLookup.coreIndex, args);
     return true;
 }
 

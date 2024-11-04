@@ -141,6 +141,8 @@ APIs, the following requirements need to be satisfied:
 
     b. The user is the device owner (the first user of the device).
 
+    c. The user is in Shimless RMA flow.
+
 2. The PWA UI associated with the Telemetry extension must be opened for the
 extension to have access to APIs.
 
@@ -298,6 +300,8 @@ For information around configuration of certain cros-config values please visit:
 1. [Customization Guide - OEM Name](add_oem_name.md)
 
 2. [Customization Guide - Fingerprint Diagnostics](fingerprint_diag.md)
+
+3. [Telemetry Extension API overview](api_overview.md)
 
 # FAQs
 

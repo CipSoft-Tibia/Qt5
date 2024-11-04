@@ -1,0 +1,146 @@
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+/*!
+\page qtgrpcclientinterceptor-caching.html
+\ingroup qtgrpc-client-interceptor
+\title QGrpcClientInterceptor caching example
+
+\section1 Caching Interceptor
+The Caching Interceptor can be a versatile tool for improving the performance of your Qt GRPC connections.
+By creating a custom interceptor, you can tailor the caching behavior to meet the specific requirements of your application.
+
+\section1 Creating a Caching Interceptor
+To create a Caching Interceptor, you'll need to subclass QGrpcClientInterceptor
+and override the appropriate interception method(s) to incorporate the caching functionality.
+
+\section2 Prerequisites
+To establish what types can be processed by our interceptor,
+let's say our .proto file is:
+\badcode
+syntax = "proto3";
+
+message SimpleStringMessage {
+    string testFieldString = 6;
+}
+
+service TestService {
+    rpc testMethod(SimpleStringMessage) returns (SimpleStringMessage) {}
+    rpc testMethodServerStream(SimpleStringMessage) returns (stream SimpleStringMessage) {}
+}
+\endcode
+We will also quickly establish what \c MyCacheStorage API looks like:
+    \list
+        \li \c insert() method, can insert a new entry to the cache
+        (in our case the entries will be stored as QString)
+        \li \c insert_or_append() method, similar to \c insert(), but it will append the data
+        if the entry for the \c method, and \c service already exists,
+        and it's not finalized yet - this will be used to cache streamed responses.
+        \li \c find(), this method finds entry with \c method and \c service keys.
+        \li \c finalize(), the method finalizes the entry in the cache,
+        for stream use-case, calling that method means the full response has been cached.
+    \endlist
+
+\section2 CachingInterceptor implementation
+
+Here's an example of a simple caching interceptor:
+\code
+class CachingInterceptor : public QGrpcClientInterceptor
+{
+protected:
+    void interceptCall(std::shared_ptr<QGrpcChannelOperation> operation,
+                                                  std::shared_ptr<QGrpcCallReply> response,
+                                                  QGrpcInterceptorContinuation<QGrpcCallReply> &continuation) override
+    {
+        // Intercept the response
+        QObject::connect(response.get(), &QGrpcCallReply::finished, this,
+                             [operation, response] {
+                                SimpleStringMessage mess = response->read<SimpleStringMessage>();
+                                cache.insert(operation->method(), operation->service(), mess.testFieldString());
+                             });
+        // Deserialize the request
+        SimpleStringMessage deserializedArg;
+        if (!operation->serializer()->deserialize(&deserializedArg, operation->arg())) {
+            qError() << "Deserialization of arg failed.";
+            return;
+        }
+        std::optional<QString> cachedStr = cache.find(operation->method(), operation->service(), deserializedArg);
+        if (cachedStr) {
+            // Serialize cached response
+            SimpleStringMessage val;
+            val.setTestFieldString(cachedStr);
+            const auto serializedValue = operation->serializer()->serialize<SimpleStringMessage>(&val);
+            emit operation->dataReady(serializedValue);
+            emit operation->finished();
+            // Set server metadata cached field
+            auto metadata = operation->serverMetadata();
+            metadata.insert({ "cached", "true" });
+            operation->setServerMetadata(metadata);
+            return;
+        }
+        continuation(std::move(response), operation);
+    }
+
+    void interceptServerStream(std::shared_ptr<QGrpcChannelOperation> operation,
+                                                  std::shared_ptr<QGrpcServerStream> stream,
+                                                  QGrpcInterceptorContinuation<QGrpcServerStream> &continuation) override
+    {
+        // Intercept the response
+        QObject::connect(stream.get(), &QGrpcServerStream::messageReceived, this,
+                             [operation, stream] {
+                                SimpleStringMessage mess = stream->read<SimpleStringMessage>();
+                                cache.insert_or_append(operation->method(), operation->service(), mess.testFieldString());
+                             });
+        QObject::connect(stream.get(), &QGrpcServerStream::finished, this,
+                             [operation] {
+                                cache.finalize(operation->method(), operation->service());
+                             });
+        // Deserialize the request
+        SimpleStringMessage deserializedArg;
+        if (!operation->serializer()->deserialize(&deserializedArg, operation->arg())) {
+            qError() << "Deserialization of arg failed.";
+            return;
+        }
+        std::optional<QString> cachedStr = cache.find(operation->method(), operation->service(), deserializedArg);
+        if (cachedStr) {
+            // Serialize cached response
+            SimpleStringMessage val;
+            val.setTestFieldString(cachedStr);
+            const auto serializedValue = operation->serializer()->serialize<SimpleStringMessage>(&val);
+            emit operation->dataReady(serializedValue);
+            emit operation->finished();
+            // Set server metadata cached field
+            auto metadata = operation->serverMetadata();
+            metadata.insert({ "cached", "true" });
+            operation->setServerMetadata(metadata);
+            return;
+        }
+        continuation(std::move(response), operation);
+    }
+
+    MyCacheStorage<QString> cache;
+};
+\endcode
+
+Both \c interceptCall() and \c interceptServerStream() methods in the CachingInterceptor class
+intercept Qt GRPC calls and streams, implementing a caching mechanism for responses.
+They both establish connections to handle incoming messages and attempt to deserialize
+request arguments. Both methods check for cached responses and, if found, serialize, and emit
+correct signals to set the response data. The methods, if the response was found in the cache,
+set the server metadata key \c cached to \c true.
+
+The key difference lies in how they handle server streaming interactions and cache finalization:
+\c interceptCall() primarily relies on the response's finished signal for caching,
+while \c interceptServerStream() employs connections to both the server stream's messageReceived
+and finished signals for comprehensive handling of streaming interactions and cache finalization,
+this way, the \c interceptServerStream() returns cached response, only if the full stream was cached.
+
+\section1 Registering the Caching Interceptor
+Next, you'll need to register the Caching Interceptor with the QGrpcClientInterceptorManager.
+This ensures that it becomes part of the interceptor chain.
+\code
+QGrpcClientInterceptorManager manager;
+auto cachingInterceptor = std::make_shared<CachingInterceptor>();
+manager.registerInterceptor(cachingInterceptor);
+\endcode
+*/

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,8 +16,7 @@
 #include "cast/streaming/environment.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 using clock_operators::operator<<;
 
@@ -34,6 +33,7 @@ SimulatedCapturer::SimulatedCapturer(Environment* environment,
                                      Clock::time_point start_time,
                                      Observer* observer)
     : format_context_(MakeUniqueAVFormatContext(path)),
+      now_(environment->now_function()),
       media_type_(media_type),
       start_time_(start_time),
       observer_(observer),
@@ -104,7 +104,7 @@ void SimulatedCapturer::SetPlaybackRate(double rate) {
 void SimulatedCapturer::SetAdditionalDecoderParameters(
     AVCodecContext* decoder_context) {}
 
-absl::optional<Clock::duration> SimulatedCapturer::ProcessDecodedFrame(
+std::optional<Clock::duration> SimulatedCapturer::ProcessDecodedFrame(
     const AVFrame& frame) {
   return Clock::duration::zero();
 }
@@ -138,6 +138,8 @@ void SimulatedCapturer::StartDecodingNextFrame() {
   if (!playback_rate_is_non_zero_) {
     return;
   }
+
+  capture_begin_time_ = now_();
   const int read_frame_result =
       av_read_frame(format_context_.get(), packet_.get());
   if (read_frame_result < 0) {
@@ -218,21 +220,22 @@ void SimulatedCapturer::ConsumeNextDecodedFrame() {
   }
   last_frame_timestamp_ = frame_timestamp;
 
-  Clock::time_point capture_time = start_time_ + frame_timestamp;
+  Clock::time_point reference_time = start_time_ + frame_timestamp;
   const auto delay_adjustment_or_null = ProcessDecodedFrame(*decoded_frame_);
   if (!delay_adjustment_or_null) {
     av_frame_unref(decoded_frame_.get());
     return;  // Stop. Fatal error occurred.
   }
-  capture_time += *delay_adjustment_or_null;
+  reference_time += *delay_adjustment_or_null;
 
   next_task_.Schedule(
-      [this, capture_time] {
-        DeliverDataToClient(*decoded_frame_, capture_time);
+      [this, reference_time] {
+        DeliverDataToClient(*decoded_frame_, capture_begin_time_, now_(),
+                            reference_time);
         av_frame_unref(decoded_frame_.get());
         ConsumeNextDecodedFrame();
       },
-      capture_time);
+      reference_time);
 }
 
 SimulatedAudioCapturer::Client::~Client() = default;
@@ -325,16 +328,16 @@ bool SimulatedAudioCapturer::EnsureResamplerIsInitializedFor(
   return true;
 }
 
-absl::optional<Clock::duration> SimulatedAudioCapturer::ProcessDecodedFrame(
+std::optional<Clock::duration> SimulatedAudioCapturer::ProcessDecodedFrame(
     const AVFrame& frame) {
   if (!EnsureResamplerIsInitializedFor(frame)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const int64_t num_leftover_input_samples =
       swr_get_delay(resampler_.get(), input_sample_rate_);
   OSP_DCHECK_GE(num_leftover_input_samples, 0);
-  const Clock::duration capture_time_adjustment = -ToApproximateClockDuration(
+  const Clock::duration reference_time_adjustment = -ToApproximateClockDuration(
       num_leftover_input_samples, AVRational{1, input_sample_rate_});
 
   const int64_t num_output_samples_desired =
@@ -351,21 +354,24 @@ absl::optional<Clock::duration> SimulatedAudioCapturer::ProcessDecodedFrame(
     resampled_audio_.clear();
     swr_close(resampler_.get());
     OnError("swr_convert", num_samples_converted_or_error);
-    return absl::nullopt;  // Capturer is now halted.
+    return std::nullopt;  // Capturer is now halted.
   }
   resampled_audio_.resize(num_channels_ * num_samples_converted_or_error);
 
-  return capture_time_adjustment;
+  return reference_time_adjustment;
 }
 
 void SimulatedAudioCapturer::DeliverDataToClient(
     const AVFrame& unused,
-    Clock::time_point capture_time) {
+    Clock::time_point capture_begin_time,
+    Clock::time_point capture_end_time,
+    Clock::time_point reference_time) {
   if (resampled_audio_.empty()) {
     return;
   }
   client_->OnAudioData(resampled_audio_.data(),
-                       resampled_audio_.size() / num_channels_, capture_time);
+                       resampled_audio_.size() / num_channels_,
+                       capture_begin_time, capture_end_time, reference_time);
   resampled_audio_.clear();
 }
 
@@ -404,9 +410,11 @@ void SimulatedVideoCapturer::SetAdditionalDecoderParameters(
 
 void SimulatedVideoCapturer::DeliverDataToClient(
     const AVFrame& frame,
-    Clock::time_point capture_time) {
-  client_->OnVideoFrame(frame, capture_time);
+    Clock::time_point capture_begin_time,
+    Clock::time_point capture_end_time,
+    Clock::time_point reference_time) {
+  client_->OnVideoFrame(frame, capture_begin_time, capture_end_time,
+                        reference_time);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

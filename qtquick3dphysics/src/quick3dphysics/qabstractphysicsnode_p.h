@@ -43,6 +43,10 @@ class Q_QUICK3DPHYSICS_EXPORT QAbstractPhysicsNode : public QQuick3DNode
                        sendTriggerReportsChanged REVISION(6, 5))
     Q_PROPERTY(bool receiveTriggerReports READ receiveTriggerReports WRITE setReceiveTriggerReports
                        NOTIFY receiveTriggerReportsChanged REVISION(6, 5))
+    Q_PROPERTY(int filterGroup READ filterGroup WRITE setfilterGroup NOTIFY filterGroupChanged
+                       REVISION(6, 7))
+    Q_PROPERTY(int filterIgnoreGroups READ filterIgnoreGroups WRITE setFilterIgnoreGroups NOTIFY
+                       filterIgnoreGroupsChanged REVISION(6, 7));
 
     QML_NAMED_ELEMENT(PhysicsNode)
     QML_UNCREATABLE("abstract interface")
@@ -74,6 +78,12 @@ public:
 
     virtual QAbstractPhysXNode *createPhysXBackend() = 0;
 
+    Q_REVISION(6, 7) int filterGroup() const;
+    Q_REVISION(6, 7) void setfilterGroup(int newfilterGroup);
+
+    Q_REVISION(6, 7) int filterIgnoreGroups() const;
+    Q_REVISION(6, 7) void setFilterIgnoreGroups(int newFilterIgnoreGroups);
+
 private Q_SLOTS:
     void onShapeDestroyed(QObject *object);
     void onShapeNeedsRebuild(QObject *object);
@@ -87,6 +97,8 @@ Q_SIGNALS:
     Q_REVISION(6, 5) void receiveTriggerReportsChanged(float receiveTriggerReports);
     Q_REVISION(6, 5) void enteredTriggerBody(QAbstractPhysicsNode *body);
     Q_REVISION(6, 5) void exitedTriggerBody(QAbstractPhysicsNode *body);
+    Q_REVISION(6, 7) void filterGroupChanged();
+    Q_REVISION(6, 7) void filterIgnoreGroupsChanged();
 
 private:
     static void qmlAppendShape(QQmlListProperty<QAbstractCollisionShape> *list,
@@ -103,6 +115,9 @@ private:
     bool m_sendTriggerReports = false;
     bool m_receiveTriggerReports = false;
     bool m_hasStaticShapes = false;
+    int m_filterGroup = 0;
+    int m_filterIgnoreGroups = 0;
+    bool m_filtersDirty = false;
 
     friend class QAbstractPhysXNode;
     friend class QPhysicsWorld; // for register/deregister TODO: cleaner mechanism

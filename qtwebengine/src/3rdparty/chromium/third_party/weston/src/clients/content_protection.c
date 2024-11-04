@@ -123,7 +123,7 @@ draw_content(cairo_surface_t *surface, int x, int y, int width, int height,
 	cairo_fill(cr);
 
 	cairo_set_source_rgba(cr, 0, 0, 0, 1.0);
-	cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
+	cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL,
 			       CAIRO_FONT_WEIGHT_NORMAL);
 	cairo_set_font_size(cr, 15);
 	if (type == WESTON_PROTECTED_SURFACE_TYPE_HDCP_0)
@@ -263,7 +263,7 @@ buttons_redraw_handler(struct widget *widget, void *data)
 	cairo_fill(cr);
 
 	cairo_set_source_rgba(cr, 0, 0, 0, 1.0);
-	cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
+	cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL,
 			       CAIRO_FONT_WEIGHT_NORMAL);
 	cairo_set_font_size(cr, 10);
 	cairo_move_to(cr, allocation.x + 5, allocation.y + 15);
@@ -367,7 +367,9 @@ int main(int argc, char *argv[])
 	pc_player->enforced = create_button(pc_player, str_type_enforced);
 	pc_player->relaxed = create_button(pc_player, str_type_relaxed);
 
-	window_set_title(pc_player->window, "Player");
+	window_set_title(pc_player->window, "Weston Content Protection");
+	window_set_appid(pc_player->window,
+			 "org.freedesktop.weston.weston-content-protection");
 	widget_set_redraw_handler(pc_player->widget, redraw_handler);
 	widget_set_resize_handler(pc_player->widget, resize_handler);
 	window_schedule_resize(pc_player->window, WIDTH, HEIGHT);

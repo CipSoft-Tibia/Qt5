@@ -182,6 +182,8 @@ SPVTOOLS_OPT_SRC_FILES := \
 		source/opt/strip_debug_info_pass.cpp \
 		source/opt/strip_nonsemantic_info_pass.cpp \
 		source/opt/struct_cfg_analysis.cpp \
+		source/opt/switch_descriptorset_pass.cpp \
+		source/opt/trim_capabilities_pass.cpp \
 		source/opt/type_manager.cpp \
 		source/opt/types.cpp \
 		source/opt/unify_const_pass.cpp \
@@ -311,9 +313,9 @@ define gen_spvtools_build_version_inc
 $(call generate-file-dir,$(1)/dummy_filename)
 $(1)/build-version.inc: \
         $(LOCAL_PATH)/utils/update_build_version.py \
-        $(LOCAL_PATH)
+        $(LOCAL_PATH)/CHANGES
 		@$(HOST_PYTHON) $(LOCAL_PATH)/utils/update_build_version.py \
-		                $(LOCAL_PATH) $(1)/build-version.inc
+		                $(LOCAL_PATH)/CHANGES $(1)/build-version.inc
 		@echo "[$(TARGET_ARCH_ABI)] Generate       : build-version.inc <= CHANGES"
 $(LOCAL_PATH)/source/software_version.cpp: $(1)/build-version.inc
 endef
@@ -340,7 +342,7 @@ LOCAL_C_INCLUDES := \
 		$(SPVTOOLS_OUT_PATH)
 LOCAL_EXPORT_C_INCLUDES := \
 		$(LOCAL_PATH)/include
-LOCAL_CXXFLAGS:=-std=c++11 -fno-exceptions -fno-rtti -Werror
+LOCAL_CXXFLAGS:=-std=c++17 -fno-exceptions -fno-rtti -Werror
 LOCAL_SRC_FILES:= $(SPVTOOLS_SRC_FILES)
 include $(BUILD_STATIC_LIBRARY)
 
@@ -351,7 +353,7 @@ LOCAL_C_INCLUDES := \
 		$(LOCAL_PATH)/source \
 		$(SPVHEADERS_LOCAL_PATH)/include \
 		$(SPVTOOLS_OUT_PATH)
-LOCAL_CXXFLAGS:=-std=c++11 -fno-exceptions -fno-rtti -Werror
+LOCAL_CXXFLAGS:=-std=c++17 -fno-exceptions -fno-rtti -Werror
 LOCAL_STATIC_LIBRARIES:=SPIRV-Tools
 LOCAL_SRC_FILES:= $(SPVTOOLS_OPT_SRC_FILES)
 include $(BUILD_STATIC_LIBRARY)

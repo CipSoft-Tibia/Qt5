@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 
+#include "base/containers/enum_set.h"
 #include "base/containers/flat_set.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
@@ -17,6 +18,7 @@
 #include "components/performance_manager/graph/node_base.h"
 #include "components/performance_manager/public/freezing/freezing.h"
 #include "components/performance_manager/public/graph/page_node.h"
+#include "components/performance_manager/public/resource_attribution/resource_contexts.h"
 #include "components/performance_manager/public/web_contents_proxy.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
@@ -28,6 +30,16 @@ class FrozenFrameAggregatorAccess;
 class PageAggregatorAccess;
 class PageLoadTrackerAccess;
 class SiteDataAccess;
+
+// The starting state of various boolean properties of the PageNode.
+enum class PagePropertyFlag {
+  kIsVisible,  // initializes PageNode::IsVisible()
+  kMin = kIsVisible,
+  kIsAudible,  // initializes PageNode::IsAudible()
+  kMax = kIsAudible,
+};
+using PagePropertyFlags = base::
+    EnumSet<PagePropertyFlag, PagePropertyFlag::kMin, PagePropertyFlag::kMax>;
 
 class PageNodeImpl
     : public PublicNodeImpl<PageNodeImpl, PageNode>,
@@ -44,8 +56,7 @@ class PageNodeImpl
   PageNodeImpl(const WebContentsProxy& contents_proxy,
                const std::string& browser_context_id,
                const GURL& visible_url,
-               bool is_visible,
-               bool is_audible,
+               PagePropertyFlags initial_properties,
                base::TimeTicks visibility_change_time,
                PageState page_state);
 
@@ -60,6 +71,7 @@ class PageNodeImpl
   const WebContentsProxy& contents_proxy() const;
 
   void SetType(PageType type);
+  void SetIsFocused(bool is_focused);
   void SetIsVisible(bool is_visible);
   void SetIsAudible(bool is_audible);
   void SetLoadingState(LoadingState loading_state);
@@ -82,6 +94,11 @@ class PageNodeImpl
   // page node.
   base::TimeDelta TimeSinceLastVisibilityChange() const;
 
+  // Returns the time since the last audible change, or nullopt if the node has
+  // never been audible. If the node was audible on creation, returns the
+  // creation time.
+  absl::optional<base::TimeDelta> TimeSinceLastAudibleChange() const;
+
   // Returns the current main frame node (if there is one), otherwise returns
   // any of the potentially multiple main frames that currently exist. If there
   // are no main frames at the moment, returns nullptr.
@@ -91,8 +108,10 @@ class PageNodeImpl
   const std::string& browser_context_id() const;
   FrameNodeImpl* opener_frame_node() const;
   FrameNodeImpl* embedder_frame_node() const;
+  resource_attribution::PageContext resource_context() const;
   EmbeddingType embedding_type() const;
   PageType type() const;
+  bool is_focused() const;
   bool is_visible() const;
   bool is_audible() const;
   LoadingState loading_state() const;
@@ -101,8 +120,6 @@ class PageNodeImpl
   bool is_holding_weblock() const;
   bool is_holding_indexeddb_lock() const;
   const base::flat_set<FrameNodeImpl*>& main_frame_nodes() const;
-  base::TimeTicks usage_estimate_time() const;
-  uint64_t private_footprint_kb_estimate() const;
   const GURL& main_frame_url() const;
   int64_t navigation_id() const;
   const std::string& contents_mime_type() const;
@@ -120,9 +137,6 @@ class PageNodeImpl
                                             EmbeddingType embedder_type);
   void ClearEmbedderFrameNodeAndEmbeddingType();
 
-  void set_usage_estimate_time(base::TimeTicks usage_estimate_time);
-  void set_private_footprint_kb_estimate(
-      uint64_t private_footprint_kb_estimate);
   void set_has_nonempty_beforeunload(bool has_nonempty_beforeunload);
   void set_freezing_vote(absl::optional<freezing::FreezingVote> freezing_vote);
   void set_page_state(PageState page_state);
@@ -212,11 +226,15 @@ class PageNodeImpl
   const std::string& GetBrowserContextID() const override;
   const FrameNode* GetOpenerFrameNode() const override;
   const FrameNode* GetEmbedderFrameNode() const override;
+  resource_attribution::PageContext GetResourceContext() const override;
   EmbeddingType GetEmbeddingType() const override;
   PageType GetType() const override;
+  bool IsFocused() const override;
   bool IsVisible() const override;
   base::TimeDelta GetTimeSinceLastVisibilityChange() const override;
   bool IsAudible() const override;
+  absl::optional<base::TimeDelta> GetTimeSinceLastAudibleChange()
+      const override;
   LoadingState GetLoadingState() const override;
   ukm::SourceId GetUkmSourceID() const override;
   LifecycleState GetLifecycleState() const override;
@@ -229,6 +247,7 @@ class PageNodeImpl
   bool VisitMainFrameNodes(const FrameNodeVisitor& visitor) const override;
   const base::flat_set<const FrameNode*> GetMainFrameNodes() const override;
   const GURL& GetMainFrameUrl() const override;
+  uint64_t EstimateMainFramePrivateFootprintSize() const override;
   bool HadFormInteraction() const override;
   bool HadUserEdits() const override;
   const WebContentsProxy& GetContentsProxy() const override;
@@ -264,16 +283,14 @@ class PageNodeImpl
   // The last time at which the page visibility changed.
   base::TimeTicks visibility_change_time_ GUARDED_BY_CONTEXT(sequence_checker_);
 
+  // The last time at which the audible property changed, or nullopt if the node
+  // has never been audible.
+  absl::optional<base::TimeTicks> audible_change_time_
+      GUARDED_BY_CONTEXT(sequence_checker_);
+
   // The last time at which a main frame navigation was committed.
   base::TimeTicks navigation_committed_time_
       GUARDED_BY_CONTEXT(sequence_checker_);
-
-  // The time the most recent resource usage estimate applies to.
-  base::TimeTicks usage_estimate_time_ GUARDED_BY_CONTEXT(sequence_checker_);
-
-  // The most current memory footprint estimate.
-  uint64_t private_footprint_kb_estimate_
-      GUARDED_BY_CONTEXT(sequence_checker_) = 0;
 
   // Indicates whether or not this page has a non-empty beforeunload handler.
   // This is an aggregation of the same value on each frame in the page's frame
@@ -299,6 +316,11 @@ class PageNodeImpl
   // The unique ID of the browser context that this page belongs to.
   const std::string browser_context_id_;
 
+  // The unique token that identifies this PageNode for resource attribution.
+  // A new token is generated by PageContext's default constructor when a
+  // PageNode is created.
+  const resource_attribution::PageContext resource_context_;
+
   // The opener of this page, if there is one.
   raw_ptr<FrameNodeImpl> opener_frame_node_
       GUARDED_BY_CONTEXT(sequence_checker_) = nullptr;
@@ -318,6 +340,10 @@ class PageNodeImpl
       &PageNodeObserver::OnTypeChanged>
       type_ GUARDED_BY_CONTEXT(sequence_checker_){PageType::kUnknown};
 
+  // Whether or not the page is focused. Driven by browser instrumentation.
+  ObservedProperty::NotifiesOnlyOnChanges<bool,
+                                          &PageNodeObserver::OnIsFocusedChanged>
+      is_focused_ GUARDED_BY_CONTEXT(sequence_checker_){false};
   // Whether or not the page is visible. Driven by browser instrumentation.
   // Initialized on construction.
   ObservedProperty::NotifiesOnlyOnChanges<bool,

@@ -15,7 +15,6 @@ buildflag_header("buildflags") {
 
 if (ios_enable_credential_provider_extension) {
   source_set("credential_provider") {
-    configs += [ "//build/config/compiler:enable_arc" ]
     sources = [
       "archivable_credential+password_form.h",
       "archivable_credential+password_form.mm",
@@ -43,9 +42,10 @@ if (ios_enable_credential_provider_extension) {
       "//components/password_manager/core/common:features",
       "//components/prefs:prefs",
       "//components/signin/public/identity_manager",
-      "//ios/chrome/browser/browser_state",
+      "//components/sync/base",
       "//ios/chrome/browser/favicon",
       "//ios/chrome/browser/passwords",
+      "//ios/chrome/browser/shared/model/browser_state",
       "//ios/chrome/browser/signin",
       "//ios/chrome/browser/signin:system_identity",
       "//ios/chrome/browser/sync",
@@ -63,7 +63,6 @@ if (ios_enable_credential_provider_extension) {
   }
 
   source_set("unit_tests") {
-    configs += [ "//build/config/compiler:enable_arc" ]
     testonly = true
     sources = [
       "archivable_credential+password_form_unittest.mm",
@@ -75,15 +74,16 @@ if (ios_enable_credential_provider_extension) {
       ":credential_provider",
       "//base/test:test_support",
       "//components/autofill/core/common",
+      "//components/favicon/core",
       "//components/password_manager/core/browser:test_support",
       "//components/password_manager/core/common",
       "//components/prefs",
       "//components/prefs:test_support",
       "//components/variations:test_support",
-      "//ios/chrome/browser/application_context",
-      "//ios/chrome/browser/browser_state:test_support",
       "//ios/chrome/browser/favicon",
       "//ios/chrome/browser/history",
+      "//ios/chrome/browser/shared/model/application_context",
+      "//ios/chrome/browser/shared/model/browser_state:test_support",
       "//ios/chrome/browser/signin",
       "//ios/chrome/browser/signin:fake_system_identity",
       "//ios/chrome/browser/signin:fake_system_identity_manager",

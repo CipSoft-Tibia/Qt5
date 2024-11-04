@@ -148,7 +148,7 @@ QGrpcStatus::~QGrpcStatus() = default;
     \property QGrpcStatus::code
     \brief QGrpcStatus::StatusCode received for prior gRPC call.
 */
-QGrpcStatus::StatusCode QGrpcStatus::code() const
+QGrpcStatus::StatusCode QGrpcStatus::code() const noexcept
 {
     return dPtr->m_code;
 }
@@ -157,7 +157,7 @@ QGrpcStatus::StatusCode QGrpcStatus::code() const
     \property QGrpcStatus::message
     \brief Status message received for prior gRPC call.
 */
-QString QGrpcStatus::message() const
+QString QGrpcStatus::message() const noexcept
 {
     return dPtr->m_message;
 }

@@ -27,7 +27,7 @@
 #error the token SCALAR must be defined to compile this file
 #endif
 
-#include "../Eigen/src/misc/blas.h"
+#include "blas.h"
 
 #define NOTR    0
 #define TR      1

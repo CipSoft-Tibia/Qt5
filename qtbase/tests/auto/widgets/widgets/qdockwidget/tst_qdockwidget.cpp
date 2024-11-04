@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QSignalSpy>
@@ -95,6 +95,20 @@ private:
     void createFloatingTabs(QMainWindow* &MainWindow, QPointer<QWidget> &cent,
                             QPointer<QDockWidget> &d1, QPointer<QDockWidget> &d2,
                             QList<int> &path1, QList<int> &path2) const;
+
+#if defined(Q_OS_DARWIN) || defined(Q_OS_ANDROID) || defined(Q_OS_QNX)
+#define qCreateFloatingTabs(mainWindow, centralWidget, d1, d2, path1, path2)\
+    mainWindow = nullptr;\
+    Q_UNUSED(path1);\
+    Q_UNUSED(path2);\
+    QSKIP("Platform not supported");
+#else
+#define qCreateFloatingTabs(mainWindow, centralWidget, d1, d2, path1, path2)\
+    createFloatingTabs(mainWindow, centralWidget, d1, d2, path1, path2);\
+    std::unique_ptr<QMainWindow> up_mainWindow(mainWindow);\
+    if (!platformSupportingRaise)\
+        QSKIP("Platform not supporting raise(). Floating tab based tests will fail.")
+#endif
 
     static inline QPoint dragPoint(QDockWidget* dockWidget);
     static inline QPoint home1(QMainWindow* MainWindow)
@@ -447,6 +461,23 @@ void tst_QDockWidget::setFloating()
     dw.setFloating(dw.isFloating());
     QCOMPARE(spy.size(), 0);
     spy.clear();
+
+#if defined(QT_BUILD_INTERNAL) && !defined(Q_OS_WIN)
+    // Check that setFloating() reparents the dock widget to the main window,
+    // in case it has a QDockWidgetGroupWindow parent
+    QPointer<QDockWidget> d1;
+    QPointer<QDockWidget> d2;
+    QPointer<QWidget> cent;
+    QMainWindow* mainWindow;
+    QList<int> path1;
+    QList<int> path2;
+    qCreateFloatingTabs(mainWindow, cent, d1, d2, path1, path2);
+    QVERIFY(qobject_cast<QDockWidgetGroupWindow *>(d1->parentWidget()));
+    QVERIFY(qobject_cast<QDockWidgetGroupWindow *>(d2->parentWidget()));
+    d1->setFloating(true);
+    QTRY_COMPARE(mainWindow, d1->parentWidget());
+    QTRY_COMPARE(mainWindow, d2->parentWidget());
+#endif // defined(QT_BUILD_INTERNAL) && !defined(Q_OS_WIN)
 }
 
 void tst_QDockWidget::allowedAreas()
@@ -716,6 +747,9 @@ void tst_QDockWidget::updateTabBarOnVisibilityChanged()
     QCOMPARE(tabBar->currentIndex(), 0);
 
     QCOMPARE(mw.tabifiedDockWidgets(dw2), {dw3});
+
+    mw.removeDockWidget(dw3);
+    QCOMPARE(mw.tabifiedDockWidgets(dw2).count(), 0);
 }
 
 Q_DECLARE_METATYPE(Qt::DockWidgetArea)
@@ -1396,7 +1430,7 @@ void tst_QDockWidget::createFloatingTabs(QMainWindow* &mainWindow, QPointer<QWid
     // Test will fail if platform doesn't support raise.
     mainWindow->windowHandle()->handle()->raise();
     if (!platformSupportingRaise)
-        QSKIP("Platform not supporting raise(). Floating tab based tests will fail.");
+        return;
 
     // remember paths to d1 and d2
     QMainWindowLayout* layout = qobject_cast<QMainWindowLayout *>(mainWindow->layout());
@@ -1440,8 +1474,7 @@ void tst_QDockWidget::floatingTabs()
     QMainWindow* mainWindow;
     QList<int> path1;
     QList<int> path2;
-    createFloatingTabs(mainWindow, cent, d1, d2, path1, path2);
-    std::unique_ptr<QMainWindow> up_mainWindow(mainWindow);
+    qCreateFloatingTabs(mainWindow, cent, d1, d2, path1, path2);
 
     QCOMPARE(mainWindow->tabifiedDockWidgets(d1), {d2});
     QCOMPARE(mainWindow->tabifiedDockWidgets(d2), {d1});
@@ -1494,9 +1527,13 @@ void tst_QDockWidget::floatingTabs()
     QTest::mouseClick(floatButton, Qt::LeftButton, Qt::KeyboardModifiers(), pos1);
     QTest::qWait(waitingTime);
 
-    // d1 must be floating again, while d2 is still in its GroupWindow
+    // d1 and d2 must be floating again
     QTRY_VERIFY(d1->isFloating());
-    QTRY_VERIFY(!d2->isFloating());
+    QTRY_VERIFY(d2->isFloating());
+
+    // d2 was the active tab, so d1 was not visible
+    QTRY_VERIFY(d1->isVisible());
+    QTRY_VERIFY(d2->isVisible());
 
     // Plug back into dock areas
     qCDebug(lcTestDockWidget) << "*** test plugging back to dock areas ***";
@@ -1559,8 +1596,7 @@ void tst_QDockWidget::deleteFloatingTabWithSingleDockWidget()
     QMainWindow* mainWindow;
     QList<int> path1;
     QList<int> path2;
-    createFloatingTabs(mainWindow, cent, d1, d2, path1, path2);
-    std::unique_ptr<QMainWindow> up_mainWindow(mainWindow);
+    qCreateFloatingTabs(mainWindow, cent, d1, d2, path1, path2);
 
     switch (removalReason) {
     case ChildRemovalReason::Destroyed:
@@ -1661,7 +1697,7 @@ void tst_QDockWidget::hideAndShow()
     unplugAndResize(mainWindow, d1, home1(mainWindow), size1(mainWindow));
     unplugAndResize(mainWindow, d2, home2(mainWindow), size2(mainWindow));
 
-     // Check hiding of undocked widgets
+    // Check hiding of undocked widgets
     qCDebug(lcTestDockWidget) << "Hiding mainWindow with unplugged dock widgets" << mainWindow;
     mainWindow->hide();
     QTRY_VERIFY(!mainWindow->isVisible());
@@ -1669,6 +1705,16 @@ void tst_QDockWidget::hideAndShow()
     QTRY_VERIFY(d2->isVisible());
     d1->hide();
     d2->hide();
+    QTRY_VERIFY(!d1->isVisible());
+    QTRY_VERIFY(!d2->isVisible());
+
+
+    // Check floating, hidden dock widgets remain hidden, when their state is restored
+    qCDebug(lcTestDockWidget) << "Restoring state of unplugged, hidden dock widgets" << mainWindow;
+    const QByteArray state = mainWindow->saveState();
+    mainWindow->restoreState(state);
+    mainWindow->show();
+    QVERIFY(QTest::qWaitForWindowExposed(mainWindow));
     QTRY_VERIFY(!d1->isVisible());
     QTRY_VERIFY(!d2->isVisible());
 
@@ -1685,6 +1731,9 @@ void tst_QDockWidget::closeAndDelete()
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Test skipped on Wayland.");
 #ifdef QT_BUILD_INTERNAL
+    if (QSysInfo::productType() == "rhel")
+        QSKIP("Memory leak on RHEL 9.2 QTBUG-124559", TestFailMode::Abort);
+
     // Create a mainwindow with a central widget and two dock widgets
     QPointer<QDockWidget> d1;
     QPointer<QDockWidget> d2;
@@ -1979,6 +2028,7 @@ void tst_QDockWidget::saveAndRestore()
     QCOMPARE(d1->isFloating(), isFloating1);
     QCOMPARE(d2->isFloating(), isFloating2);
 
+#undef qCreateFloatingTabs
 #endif // QT_BUILD_INTERNAL
 }
 

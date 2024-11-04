@@ -37,5 +37,5 @@ navigation.qmltypespage = "Qt Quick Dialogs QML Types"
 
 tagfile                 = qtquickdialogs.tags
 
-# Fail the documentation build if there are more warnings than the limit
+# Enforce zero documentation warnings
 warninglimit = 0

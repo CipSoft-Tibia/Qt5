@@ -73,7 +73,8 @@ template <typename Traits>
 DecoderTemplate<Traits>::DecoderTemplate(ScriptState* script_state,
                                          const InitType* init,
                                          ExceptionState& exception_state)
-    : ReclaimableCodec(ReclaimableCodec::CodecType::kDecoder,
+    : ActiveScriptWrappable<DecoderTemplate<Traits>>({}),
+      ReclaimableCodec(ReclaimableCodec::CodecType::kDecoder,
                        ExecutionContext::From(script_state)),
       script_state_(script_state),
       state_(V8CodecState::Enum::kUnconfigured),
@@ -259,15 +260,7 @@ void DecoderTemplate<Traits>::ProcessRequests() {
     Request* request = requests_.front();
 
     // Skip processing for requests that are canceled by a recent reset().
-    if (request->reset_generation != reset_generation_) {
-      if (request->resolver) {
-        request->resolver.Release()->Reject(MakeGarbageCollected<DOMException>(
-            DOMExceptionCode::kAbortError,
-            shutting_down_
-                ? (shutting_down_due_to_error_ ? "Aborted due to error"
-                                               : "Aborted due to close()")
-                : "Aborted due to reset()"));
-      }
+    if (MaybeAbortRequest(request)) {
       requests_.pop_front();
       continue;
     }
@@ -341,15 +334,23 @@ void DecoderTemplate<Traits>::ContinueConfigureWithGpuFactories(
   DCHECK(request);
   DCHECK_EQ(request->type, Request::Type::kConfigure);
 
+  if (IsClosed()) {
+    return;
+  }
+
   gpu_factories_ = gpu_factories;
 
-  if (request->reset_generation != reset_generation_)
+  if (MaybeAbortRequest(request)) {
+    DCHECK_EQ(request, pending_request_);
+    pending_request_.Release()->EndTracing();
     return;
+  }
+
   if (!decoder()) {
     decoder_ = Traits::CreateDecoder(*ExecutionContext::From(script_state_),
                                      gpu_factories_.value(), logger_->log());
     if (!decoder()) {
-      Shutdown(logger_->MakeException(
+      Shutdown(logger_->MakeOperationError(
           "Internal error: Could not create decoder.",
           media::DecoderStatus::Codes::kFailedToCreateDecoder));
       return;
@@ -386,9 +387,9 @@ bool DecoderTemplate<Traits>::ProcessDecodeRequest(Request* request) {
   DCHECK_GT(num_pending_decodes_, 0u);
 
   if (!decoder()) {
-    Shutdown(
-        logger_->MakeException("Decoding error: no decoder found.",
-                               media::DecoderStatus::Codes::kNotInitialized));
+    Shutdown(logger_->MakeEncodingError(
+        "Decoding error: no decoder found.",
+        media::DecoderStatus::Codes::kNotInitialized));
     return false;
   }
 
@@ -401,10 +402,11 @@ bool DecoderTemplate<Traits>::ProcessDecodeRequest(Request* request) {
   // The request may be invalid, if so report that now.
   if (!request->decoder_buffer || request->decoder_buffer->data_size() == 0) {
     if (request->status.is_ok()) {
-      Shutdown(logger_->MakeException("Null or empty decoder buffer.",
-                                      media::DecoderStatus::Codes::kFailed));
+      Shutdown(
+          logger_->MakeEncodingError("Null or empty decoder buffer.",
+                                     media::DecoderStatus::Codes::kFailed));
     } else {
-      Shutdown(logger_->MakeException("Decoder error.", request->status));
+      Shutdown(logger_->MakeEncodingError("Decoder error.", request->status));
     }
 
     return false;
@@ -606,22 +608,15 @@ void DecoderTemplate<Traits>::OnFlushDone(media::DecoderStatus status) {
          pending_request_->type == Request::Type::kFlush);
 
   if (!status.is_ok()) {
-    Shutdown(logger_->MakeException("Error during flush.", status));
+    Shutdown(logger_->MakeEncodingError("Error during flush.", status));
     return;
   }
 
   // If reset() has been called during the Flush(), we can skip reinitialization
   // since the client is required to do so manually.
   const bool is_flush = pending_request_->type == Request::Type::kFlush;
-  if (is_flush && pending_request_->reset_generation != reset_generation_) {
-    pending_request_->EndTracing();
-
-    // We must reject the Promise for consistency in the behavior of reset().
-    // It's also possible that we already dropped outputs, so the flush() may be
-    // incomplete despite finishing successfully.
-    pending_request_.Release()->resolver.Release()->Reject(
-        MakeGarbageCollected<DOMException>(DOMExceptionCode::kAbortError,
-                                           "Aborted due to reset()"));
+  if (is_flush && MaybeAbortRequest(pending_request_)) {
+    pending_request_.Release()->EndTracing();
     ProcessRequests();
     return;
   }
@@ -663,7 +658,7 @@ void DecoderTemplate<Traits>::OnInitializeDone(media::DecoderStatus status) {
     } else {
       error_message = "Decoder initialization error.";
     }
-    Shutdown(logger_->MakeException(error_message, status));
+    Shutdown(logger_->MakeOperationError(error_message, status));
     return;
   }
 
@@ -707,7 +702,7 @@ void DecoderTemplate<Traits>::OnDecodeDone(uint32_t id,
 
   if (!status.is_ok() &&
       status.code() != media::DecoderStatus::Codes::kAborted) {
-    Shutdown(logger_->MakeException("Decoding error.", std::move(status)));
+    Shutdown(logger_->MakeEncodingError("Decoding error.", std::move(status)));
     return;
   }
 
@@ -748,8 +743,9 @@ void DecoderTemplate<Traits>::OnOutput(uint32_t reset_generation,
   auto output_or_error = MakeOutput(std::move(output), context);
 
   if (!output_or_error.has_value()) {
-    Shutdown(logger_->MakeException("Error creating output from decoded data",
-                                    std::move(output_or_error).error()));
+    Shutdown(
+        logger_->MakeEncodingError("Error creating output from decoded data",
+                                   std::move(output_or_error).error()));
     return;
   }
 
@@ -824,7 +820,7 @@ void DecoderTemplate<Traits>::Trace(Visitor* visitor) const {
   visitor->Trace(requests_);
   visitor->Trace(pending_request_);
   visitor->Trace(pending_decodes_);
-  EventTargetWithInlineData::Trace(visitor);
+  EventTarget::Trace(visitor);
   ExecutionContextLifecycleObserver::Trace(visitor);
   ReclaimableCodec::Trace(visitor);
 }
@@ -852,6 +848,24 @@ template <typename Traits>
 bool DecoderTemplate<Traits>::HasPendingActivity() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return pending_request_ || !requests_.empty();
+}
+
+template <typename Traits>
+bool DecoderTemplate<Traits>::MaybeAbortRequest(Request* request) const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (request->reset_generation == reset_generation_) {
+    return false;
+  }
+
+  if (request->resolver) {
+    request->resolver.Release()->Reject(MakeGarbageCollected<DOMException>(
+        DOMExceptionCode::kAbortError,
+        shutting_down_
+            ? (shutting_down_due_to_error_ ? "Aborted due to error"
+                                           : "Aborted due to close()")
+            : "Aborted due to reset()"));
+  }
+  return true;
 }
 
 template <typename Traits>

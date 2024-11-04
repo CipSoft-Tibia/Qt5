@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,7 @@
 
 #include <algorithm>
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 ReceiverList::ReceiverList() = default;
 ReceiverList::~ReceiverList() = default;
@@ -28,13 +27,16 @@ Error ReceiverList::OnReceiverChanged(const ServiceInfo& info) {
   return Error::None();
 }
 
-Error ReceiverList::OnReceiverRemoved(const ServiceInfo& info) {
+ErrorOr<ServiceInfo> ReceiverList::OnReceiverRemoved(const ServiceInfo& info) {
+  // All of the removed service infos should be equivalent, so just return the
+  // first one.
+  ServiceInfo out = info;
   const auto it = std::remove(receivers_.begin(), receivers_.end(), info);
   if (it == receivers_.end())
     return Error::Code::kItemNotFound;
 
   receivers_.erase(it, receivers_.end());
-  return Error::None();
+  return out;
 }
 
 Error ReceiverList::OnAllReceiversRemoved() {
@@ -43,5 +45,4 @@ Error ReceiverList::OnAllReceiversRemoved() {
   return empty ? Error::Code::kItemNotFound : Error::None();
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

@@ -46,7 +46,7 @@ IteratorRecord IteratorBuiltinsAssembler::GetIterator(TNode<Context> context,
 
     Label get_next(this), if_notobject(this, Label::kDeferred);
     GotoIf(TaggedIsSmi(iterator), &if_notobject);
-    Branch(IsJSReceiver(CAST(iterator)), &get_next, &if_notobject);
+    Branch(JSAnyIsNotPrimitive(CAST(iterator)), &get_next, &if_notobject);
 
     BIND(&if_notobject);
     CallRuntime(Runtime::kThrowSymbolIteratorInvalid, context);
@@ -91,7 +91,7 @@ TNode<JSReceiver> IteratorBuiltinsAssembler::IteratorStep(
   // Generic iterator result case:
   {
     // 3. If Type(result) is not Object, throw a TypeError exception.
-    GotoIfNot(IsJSReceiverMap(result_map), &if_notobject);
+    GotoIfNot(JSAnyIsNotPrimitiveMap(result_map), &if_notobject);
 
     // IteratorComplete
     // 2. Return ToBoolean(? Get(iterResult, "done")).
@@ -250,7 +250,8 @@ TF_BUILTIN(IterableToFixedArrayForWasm, IteratorBuiltinsAssembler) {
 
   FillFixedArrayFromIterable(context, iterable, iterator_fn, &values);
 
-  GotoIf(WordEqual(SmiUntag(expected_length), values.var_length()->value()),
+  GotoIf(WordEqual(PositiveSmiUntag(expected_length),
+                   values.var_length()->value()),
          &done);
   Return(CallRuntime(
       Runtime::kThrowTypeError, context,
@@ -383,10 +384,10 @@ void IteratorBuiltinsAssembler::FastIterableToList(
         iterable, context, &string_maybe_fast_call, &check_map);
 
     BIND(&string_maybe_fast_call);
-    const TNode<IntPtrT> length = LoadStringLengthAsWord(CAST(iterable));
+    const TNode<Uint32T> length = LoadStringLengthAsWord32(CAST(iterable));
     // Use string length as conservative approximation of number of codepoints.
     GotoIf(
-        IntPtrGreaterThan(length, IntPtrConstant(JSArray::kMaxFastArrayLength)),
+        Uint32GreaterThan(length, Uint32Constant(JSArray::kMaxFastArrayLength)),
         slow);
     *var_result = CAST(CallBuiltin(Builtin::kStringToList, context, iterable));
     Goto(&done);

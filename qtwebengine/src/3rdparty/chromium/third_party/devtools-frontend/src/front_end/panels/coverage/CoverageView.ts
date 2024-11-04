@@ -77,6 +77,20 @@ const UIStrings = {
    */
   clickTheRecordButtonSToStart: 'Click the record button {PH1} to start capturing coverage.',
   /**
+   *@description Message in the Coverage View explaining that DevTools could not capture coverage.
+   */
+  bfcacheNoCapture: 'Could not capture coverage info because the page was served from the back/forward cache.',
+  /**
+   *@description  Message in the Coverage View explaining that DevTools could not capture coverage.
+   */
+  activationNoCapture: 'Could not capture coverage info because the page was prerendered in the background.',
+  /**
+   *@description  Message in the Coverage View prompting the user to reload the page.
+   *@example {reload button icon} PH1
+   */
+  reloadPrompt: 'Click the reload button {PH1} to reload and get coverage.',
+
+  /**
    *@description Footer message in Coverage View of the Coverage tab
    *@example {300k used, 600k unused} PH1
    *@example {500k used, 800k unused} PH2
@@ -94,12 +108,11 @@ const UIStrings = {
 const str_ = i18n.i18n.registerUIStrings('panels/coverage/CoverageView.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 
-let coverageViewInstance: CoverageView;
+let coverageViewInstance: CoverageView|undefined;
 
 export class CoverageView extends UI.Widget.VBox {
   private model: CoverageModel|null;
   private decorationManager: CoverageDecorationManager|null;
-  private resourceTreeModel: SDK.ResourceTreeModel.ResourceTreeModel|null;
   private readonly coverageTypeComboBox: UI.Toolbar.ToolbarComboBox;
   private readonly coverageTypeComboBoxSetting: Common.Settings.Setting<number>;
   private toggleRecordAction: UI.ActionRegistration.Action;
@@ -116,6 +129,8 @@ export class CoverageView extends UI.Widget.VBox {
   private readonly contentScriptsCheckbox: UI.Toolbar.ToolbarSettingCheckbox;
   private readonly coverageResultsElement: HTMLElement;
   private readonly landingPage: UI.Widget.VBox;
+  private readonly bfcacheReloadPromptPage: UI.Widget.VBox;
+  private readonly activationReloadPromptPage: UI.Widget.VBox;
   private listView: CoverageListView;
   private readonly statusToolbarElement: HTMLElement;
   private statusMessageElement: HTMLElement;
@@ -125,7 +140,6 @@ export class CoverageView extends UI.Widget.VBox {
 
     this.model = null;
     this.decorationManager = null;
-    this.resourceTreeModel = null;
 
     const toolbarContainer = this.contentElement.createChild('div', 'coverage-toolbar-container');
     const toolbar = new UI.Toolbar.Toolbar('coverage-toolbar', toolbarContainer);
@@ -155,7 +169,7 @@ export class CoverageView extends UI.Widget.VBox {
     this.toggleRecordButton = UI.Toolbar.Toolbar.createActionButton(this.toggleRecordAction);
     toolbar.appendToolbarItem(this.toggleRecordButton);
 
-    const mainTarget = SDK.TargetManager.TargetManager.instance().mainFrameTarget();
+    const mainTarget = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     const mainTargetSupportsRecordOnReload = mainTarget && mainTarget.model(SDK.ResourceTreeModel.ResourceTreeModel);
     this.inlineReloadButton = null;
     if (mainTargetSupportsRecordOnReload) {
@@ -166,12 +180,12 @@ export class CoverageView extends UI.Widget.VBox {
       this.toggleRecordButton.setEnabled(false);
       this.toggleRecordButton.setVisible(false);
     }
-    this.clearButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.clearAll), 'largeicon-clear');
+    this.clearButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.clearAll), 'clear');
     this.clearButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.clear.bind(this));
     toolbar.appendToolbarItem(this.clearButton);
 
     toolbar.appendSeparator();
-    this.saveButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.export), 'largeicon-download');
+    this.saveButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.export), 'download');
     this.saveButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, _event => {
       void this.exportReport();
     });
@@ -223,6 +237,9 @@ export class CoverageView extends UI.Widget.VBox {
 
     this.coverageResultsElement = this.contentElement.createChild('div', 'coverage-results');
     this.landingPage = this.buildLandingPage();
+    this.bfcacheReloadPromptPage = this.buildReloadPromptPage(i18nString(UIStrings.bfcacheNoCapture), 'bfcache-page');
+    this.activationReloadPromptPage =
+        this.buildReloadPromptPage(i18nString(UIStrings.activationNoCapture), 'prerender-page');
     this.listView = new CoverageListView(this.isVisible.bind(this, false));
 
     this.statusToolbarElement = this.contentElement.createChild('div', 'coverage-toolbar-summary');
@@ -235,6 +252,10 @@ export class CoverageView extends UI.Widget.VBox {
       coverageViewInstance = new CoverageView();
     }
     return coverageViewInstance;
+  }
+
+  static removeInstance(): void {
+    coverageViewInstance = undefined;
   }
 
   private buildLandingPage(): UI.Widget.VBox {
@@ -253,6 +274,22 @@ export class CoverageView extends UI.Widget.VBox {
     message.classList.add('message');
     widget.contentElement.appendChild(message);
     widget.element.classList.add('landing-page');
+    return widget;
+  }
+
+  private buildReloadPromptPage(message: Common.UIString.LocalizedString, className: string): UI.Widget.VBox {
+    const widget = new UI.Widget.VBox();
+    const reasonDiv = document.createElement('div');
+    reasonDiv.classList.add('message');
+    reasonDiv.textContent = message;
+    widget.contentElement.appendChild(reasonDiv);
+    this.inlineReloadButton =
+        UI.UIUtils.createInlineButton(UI.Toolbar.Toolbar.createActionButtonForId('coverage.reload'));
+    const messageElement =
+        i18n.i18n.getFormatLocalizedString(str_, UIStrings.reloadPrompt, {PH1: this.inlineReloadButton});
+    messageElement.classList.add('message');
+    widget.contentElement.appendChild(messageElement);
+    widget.element.classList.add(className);
     return widget;
   }
 
@@ -324,7 +361,7 @@ export class CoverageView extends UI.Widget.VBox {
     }
 
     this.reset();
-    const mainTarget = SDK.TargetManager.TargetManager.instance().mainFrameTarget();
+    const mainTarget = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (!mainTarget) {
       return;
     }
@@ -346,14 +383,12 @@ export class CoverageView extends UI.Widget.VBox {
       return;
     }
     this.selectCoverageType(Boolean(jsCoveragePerBlock));
-
     this.model.addEventListener(Events.CoverageUpdated, this.onCoverageDataReceived, this);
-    this.resourceTreeModel =
+    const resourceTreeModel =
         mainTarget.model(SDK.ResourceTreeModel.ResourceTreeModel) as SDK.ResourceTreeModel.ResourceTreeModel | null;
-    if (this.resourceTreeModel) {
-      this.resourceTreeModel.addEventListener(
-          SDK.ResourceTreeModel.Events.MainFrameNavigated, this.onMainFrameNavigated, this);
-    }
+    SDK.TargetManager.TargetManager.instance().addModelListener(
+        SDK.ResourceTreeModel.ResourceTreeModel, SDK.ResourceTreeModel.Events.PrimaryPageChanged,
+        this.onPrimaryPageChanged, this);
     this.decorationManager = new CoverageDecorationManager(this.model as CoverageModel);
     this.toggleRecordAction.setToggled(true);
     this.clearButton.setEnabled(false);
@@ -377,8 +412,8 @@ export class CoverageView extends UI.Widget.VBox {
     if (hadFocus && !reloadButtonFocused) {
       this.listView.focus();
     }
-    if (reload && this.resourceTreeModel) {
-      this.resourceTreeModel.reloadPage();
+    if (reload && resourceTreeModel) {
+      resourceTreeModel.reloadPage();
     } else {
       void this.model.startPolling();
     }
@@ -390,11 +425,9 @@ export class CoverageView extends UI.Widget.VBox {
   }
 
   async stopRecording(): Promise<void> {
-    if (this.resourceTreeModel) {
-      this.resourceTreeModel.removeEventListener(
-          SDK.ResourceTreeModel.Events.MainFrameNavigated, this.onMainFrameNavigated, this);
-      this.resourceTreeModel = null;
-    }
+    SDK.TargetManager.TargetManager.instance().removeModelListener(
+        SDK.ResourceTreeModel.ResourceTreeModel, SDK.ResourceTreeModel.Events.PrimaryPageChanged,
+        this.onPrimaryPageChanged, this);
     if (this.hasFocus()) {
       this.listView.focus();
     }
@@ -415,14 +448,55 @@ export class CoverageView extends UI.Widget.VBox {
   }
 
   processBacklog(): void {
-    this.model && this.model.processJSBacklog();
+    this.model && void this.model.processJSBacklog();
   }
 
-  private onMainFrameNavigated(): void {
-    this.model && this.model.reset();
+  private async onPrimaryPageChanged(
+      event: Common.EventTarget.EventTargetEvent<
+          {frame: SDK.ResourceTreeModel.ResourceTreeFrame, type: SDK.ResourceTreeModel.PrimaryPageChangeType}>):
+      Promise<void> {
+    const frame = event.data.frame;
+    const coverageModel = frame.resourceTreeModel().target().model(CoverageModel);
+    if (!coverageModel) {
+      return;
+    }
+    // If the primary page target has changed (due to MPArch activation), switch to new CoverageModel.
+    if (this.model !== coverageModel) {
+      if (this.model) {
+        await this.model.stop();
+        this.model.removeEventListener(Events.CoverageUpdated, this.onCoverageDataReceived, this);
+      }
+      this.model = coverageModel;
+      const success = await this.model.start(this.isBlockCoverageSelected());
+      if (!success) {
+        return;
+      }
+
+      this.model.addEventListener(Events.CoverageUpdated, this.onCoverageDataReceived, this);
+      this.decorationManager = new CoverageDecorationManager(this.model as CoverageModel);
+    }
+
+    if (this.bfcacheReloadPromptPage.isShowing()) {
+      this.bfcacheReloadPromptPage.detach();
+      this.listView.show(this.coverageResultsElement);
+    }
+    if (this.activationReloadPromptPage.isShowing()) {
+      this.activationReloadPromptPage.detach();
+      this.listView.show(this.coverageResultsElement);
+    }
+    if (frame.backForwardCacheDetails.restoredFromCache) {
+      this.listView.detach();
+      this.bfcacheReloadPromptPage.show(this.coverageResultsElement);
+    }
+    if (event.data.type === SDK.ResourceTreeModel.PrimaryPageChangeType.Activation) {
+      this.listView.detach();
+      this.activationReloadPromptPage.show(this.coverageResultsElement);
+    }
+
+    this.model.reset();
     this.decorationManager && this.decorationManager.reset();
     this.listView.reset();
-    this.model && this.model.startPolling();
+    void this.model.startPolling();
   }
 
   private updateViews(updatedEntries: CoverageInfo[]): void {
@@ -511,7 +585,7 @@ export class CoverageView extends UI.Widget.VBox {
     if (!accepted) {
       return;
     }
-    this.model && this.model.exportReport(fos);
+    this.model && await this.model.exportReport(fos);
   }
 
   selectCoverageItemByUrl(url: string): void {
@@ -519,7 +593,7 @@ export class CoverageView extends UI.Widget.VBox {
   }
 
   static readonly EXTENSION_BINDINGS_URL_PREFIX = 'extensions::';
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([coverageViewStyles]);
   }
@@ -549,12 +623,23 @@ export class ActionDelegate implements UI.ActionRegistration.ActionDelegate {
   }
 
   private innerHandleAction(coverageView: CoverageView, actionId: string): void {
+    let target = null;
+    let resourceTreeModel = null;
     switch (actionId) {
       case 'coverage.toggle-recording':
         coverageView.toggleRecording();
         break;
       case 'coverage.start-with-reload':
         void coverageView.startRecording({reload: true, jsCoveragePerBlock: coverageView.isBlockCoverageSelected()});
+        break;
+      case 'coverage.reload':
+        target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+        if (target) {
+          resourceTreeModel = target.model(SDK.ResourceTreeModel.ResourceTreeModel);
+          if (resourceTreeModel) {
+            resourceTreeModel.reloadPage();
+          }
+        }
         break;
       default:
         console.assert(false, `Unknown action: ${actionId}`);

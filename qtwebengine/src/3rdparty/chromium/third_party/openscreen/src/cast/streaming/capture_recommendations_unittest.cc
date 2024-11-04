@@ -1,18 +1,18 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cast/streaming/capture_recommendations.h"
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "cast/streaming/answer_messages.h"
 #include "cast/streaming/resolution.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "util/chrono_helpers.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace capture_recommendations {
 namespace {
 
@@ -25,28 +25,28 @@ const Recommendations kDefaultRecommendations{
 const DisplayDescription kEmptyDescription{};
 
 const DisplayDescription kValidOnlyResolution{
-    Dimensions{1024, 768, SimpleFraction{60, 1}}, absl::nullopt, absl::nullopt};
+    Dimensions{1024, 768, SimpleFraction{60, 1}}, std::nullopt, std::nullopt};
 
-const DisplayDescription kValidOnlyAspectRatio{absl::nullopt, AspectRatio{4, 3},
-                                               absl::nullopt};
+const DisplayDescription kValidOnlyAspectRatio{std::nullopt, AspectRatio{4, 3},
+                                               std::nullopt};
 
 const DisplayDescription kValidOnlyAspectRatioSixteenNine{
-    absl::nullopt, AspectRatio{16, 9}, absl::nullopt};
+    std::nullopt, AspectRatio{16, 9}, std::nullopt};
 
-const DisplayDescription kValidOnlyVariable{absl::nullopt, absl::nullopt,
+const DisplayDescription kValidOnlyVariable{std::nullopt, std::nullopt,
                                             AspectRatioConstraint::kVariable};
 
-const DisplayDescription kInvalidOnlyFixed{absl::nullopt, absl::nullopt,
+const DisplayDescription kInvalidOnlyFixed{std::nullopt, std::nullopt,
                                            AspectRatioConstraint::kFixed};
 
-const DisplayDescription kValidFixedAspectRatio{
-    absl::nullopt, AspectRatio{4, 3}, AspectRatioConstraint::kFixed};
+const DisplayDescription kValidFixedAspectRatio{std::nullopt, AspectRatio{4, 3},
+                                                AspectRatioConstraint::kFixed};
 
 const DisplayDescription kValidVariableAspectRatio{
-    absl::nullopt, AspectRatio{4, 3}, AspectRatioConstraint::kVariable};
+    std::nullopt, AspectRatio{4, 3}, AspectRatioConstraint::kVariable};
 
 const DisplayDescription kValidFixedMissingAspectRatio{
-    Dimensions{1024, 768, SimpleFraction{60, 1}}, absl::nullopt,
+    Dimensions{1024, 768, SimpleFraction{60, 1}}, std::nullopt,
     AspectRatioConstraint::kFixed};
 
 const DisplayDescription kValidDisplayFhd{
@@ -285,5 +285,4 @@ TEST(CaptureRecommendationsTest, UsesIntersectionOfDisplayAndConstraints) {
 }
 
 }  // namespace capture_recommendations
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

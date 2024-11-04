@@ -14,7 +14,6 @@
 #include <QtCore/qfutureinterface.h>
 #include <QtCore/qthreadpool.h>
 #include <QtCore/qexception.h>
-#include <QtCore/qpointer.h>
 #include <QtCore/qpromise.h>
 
 #include <memory>
@@ -288,6 +287,7 @@ using IsForwardIterable =
 template<typename Function, typename ResultType, typename ParentResultType>
 class Continuation
 {
+    Q_DISABLE_COPY_MOVE(Continuation)
 public:
     template<typename F = Function>
     Continuation(F &&func, const QFuture<ParentResultType> &f, QPromise<ResultType> &&p)
@@ -589,9 +589,6 @@ void Continuation<Function, ResultType, ParentResultType>::create(F &&func,
     f->d.setContinuation(ContinuationWrapper(std::move(continuation)), fi.d);
 }
 
-// defined in qfutureinterface.cpp:
-Q_CORE_EXPORT void watchContinuationImpl(const QObject *context, QSlotObjectBase *slotObj,
-                                         QFutureInterfaceBase &fi);
 template <typename Continuation>
 void watchContinuation(const QObject *context, Continuation &&c, QFutureInterfaceBase &fi)
 {

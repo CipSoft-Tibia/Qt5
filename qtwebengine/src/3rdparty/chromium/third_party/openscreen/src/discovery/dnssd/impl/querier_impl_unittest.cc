@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,11 +10,10 @@
 
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "absl/types/optional.h"
 #include "discovery/common/testing/mock_reporting_client.h"
 #include "discovery/dnssd/impl/conversion_layer.h"
 #include "discovery/dnssd/testing/fake_network_interface_config.h"
-#include "discovery/mdns/mdns_records.h"
+#include "discovery/mdns/public/mdns_records.h"
 #include "discovery/mdns/testing/mdns_test_util.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -23,8 +22,7 @@
 #include "util/osp_logging.h"
 #include "util/std_util.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 namespace {
 
 NetworkInterfaceIndex kNetworkInterface = 0;
@@ -93,7 +91,7 @@ class QuerierImplTesting : public QuerierImpl {
  public:
   QuerierImplTesting()
       : QuerierImpl(&mock_service_,
-                    &task_runner_,
+                    task_runner_,
                     &reporting_client_,
                     &network_config_),
         clock_(Clock::now()),
@@ -136,21 +134,21 @@ class QuerierImplTesting : public QuerierImpl {
 class DnsSdQuerierImplTest : public testing::Test {
  public:
   DnsSdQuerierImplTest()
-      : querier(std::make_unique<QuerierImplTesting>()),
-        ptr_domain(DomainName{"_service", "_udp", domain}),
-        name(DomainName{instance, "_service", "_udp", domain}),
-        name2(DomainName{instance2, "_service", "_udp", domain}) {
-    EXPECT_FALSE(querier->IsQueryRunning(service));
+      : querier_(std::make_unique<QuerierImplTesting>()),
+        ptr_domain_(DomainName{"_service", "_udp", domain_}),
+        name_(DomainName{instance_, "_service", "_udp", domain_}),
+        name2_(DomainName{instance2_, "_service", "_udp", domain_}) {
+    EXPECT_FALSE(querier_->IsQueryRunning(service_));
 
-    EXPECT_CALL(querier->service(),
+    EXPECT_CALL(querier_->service(),
                 StartQuery(_, DnsType::kANY, DnsClass::kANY, _))
         .Times(1);
-    querier->StartQuery(service, &callback);
-    EXPECT_TRUE(querier->IsQueryRunning(service));
-    testing::Mock::VerifyAndClearExpectations(&querier->service());
+    querier_->StartQuery(service_, &callback_);
+    EXPECT_TRUE(querier_->IsQueryRunning(service_));
+    testing::Mock::VerifyAndClearExpectations(&querier_->service());
 
-    EXPECT_TRUE(querier->IsQueryRunning(service));
-    testing::Mock::VerifyAndClearExpectations(&querier->service());
+    EXPECT_TRUE(querier_->IsQueryRunning(service_));
+    testing::Mock::VerifyAndClearExpectations(&querier_->service());
   }
 
  protected:
@@ -178,7 +176,7 @@ class DnsSdQuerierImplTest : public testing::Test {
     MdnsRecord a = GetFakeARecord(service_domain);
     MdnsRecord aaaa = GetFakeAAAARecord(service_domain);
 
-    auto result = querier->OnRecordChanged(ptr, RecordChangedEvent::kCreated);
+    auto result = querier_->OnRecordChanged(ptr, RecordChangedEvent::kCreated);
     ValidateRecordChangeStartsQuery(result, service_domain, 1);
 
     // NOTE: This verbose iterator handling is used to avoid gcc failures.
@@ -191,33 +189,33 @@ class DnsSdQuerierImplTest : public testing::Test {
     service_id.append(std::move(service_name))
         .append(".")
         .append(std::move(service_protocol));
-    ASSERT_TRUE(querier->IsQueryRunning(service_id));
+    ASSERT_TRUE(querier_->IsQueryRunning(service_id));
 
-    result = querier->OnRecordChanged(srv, RecordChangedEvent::kCreated);
+    result = querier_->OnRecordChanged(srv, RecordChangedEvent::kCreated);
     EXPECT_EQ(result.size(), size_t{0});
 
-    result = querier->OnRecordChanged(a, RecordChangedEvent::kCreated);
+    result = querier_->OnRecordChanged(a, RecordChangedEvent::kCreated);
     EXPECT_EQ(result.size(), size_t{0});
 
-    result = querier->OnRecordChanged(aaaa, RecordChangedEvent::kCreated);
+    result = querier_->OnRecordChanged(aaaa, RecordChangedEvent::kCreated);
     EXPECT_EQ(result.size(), size_t{0});
 
     EXPECT_CALL(*cb, OnEndpointCreated(_)).Times(1);
-    result = querier->OnRecordChanged(txt, RecordChangedEvent::kCreated);
+    result = querier_->OnRecordChanged(txt, RecordChangedEvent::kCreated);
     EXPECT_EQ(result.size(), size_t{0});
     testing::Mock::VerifyAndClearExpectations(cb);
   }
 
-  std::string instance = "instance";
-  std::string instance2 = "instance2";
-  std::string service = "_service._udp";
-  std::string service2 = "_service2._udp";
-  std::string domain = "local";
-  StrictMock<MockCallback> callback;
-  std::unique_ptr<QuerierImplTesting> querier;
-  DomainName ptr_domain;
-  DomainName name;
-  DomainName name2;
+  std::string instance_ = "instance";
+  std::string instance2_ = "instance2";
+  std::string service_ = "_service._udp";
+  std::string service2_ = "_service2._udp";
+  std::string domain_ = "local";
+  StrictMock<MockCallback> callback_;
+  std::unique_ptr<QuerierImplTesting> querier_;
+  DomainName ptr_domain_;
+  DomainName name_;
+  DomainName name2_;
 
  private:
   void ValidateRecordChangeResult(
@@ -244,92 +242,92 @@ class DnsSdQuerierImplTest : public testing::Test {
 
 TEST_F(DnsSdQuerierImplTest, TestStartStopQueryCallsMdnsQueries) {
   DomainName other_service_id(
-      DomainName{instance2, "_service2", "_udp", domain});
+      DomainName{instance2_, "_service2", "_udp", domain_});
 
   StrictMock<MockCallback> callback2;
-  EXPECT_FALSE(querier->IsQueryRunning(service2));
+  EXPECT_FALSE(querier_->IsQueryRunning(service2_));
 
-  EXPECT_CALL(querier->service(),
+  EXPECT_CALL(querier_->service(),
               StartQuery(_, DnsType::kANY, DnsClass::kANY, _))
       .Times(1);
-  querier->StartQuery(service2, &callback2);
-  EXPECT_TRUE(querier->IsQueryRunning(service2));
+  querier_->StartQuery(service2_, &callback2);
+  EXPECT_TRUE(querier_->IsQueryRunning(service2_));
 
-  EXPECT_CALL(querier->service(),
+  EXPECT_CALL(querier_->service(),
               StopQuery(_, DnsType::kANY, DnsClass::kANY, _))
       .Times(1);
-  querier->StopQuery(service2, &callback2);
-  EXPECT_FALSE(querier->IsQueryRunning(service2));
+  querier_->StopQuery(service2_, &callback2);
+  EXPECT_FALSE(querier_->IsQueryRunning(service2_));
 }
 
 TEST_F(DnsSdQuerierImplTest, TestStartDuplicateQueryFiresCallbacksWhenAble) {
   StrictMock<MockCallback> callback2;
-  CreateServiceInstance(name, &callback);
+  CreateServiceInstance(name_, &callback_);
 
   EXPECT_CALL(callback2, OnEndpointCreated(_)).Times(1);
-  querier->StartQuery(service, &callback2);
+  querier_->StartQuery(service_, &callback2);
   testing::Mock::VerifyAndClearExpectations(&callback2);
 }
 
 TEST_F(DnsSdQuerierImplTest, TestStopQueryStopsTrackingRecords) {
-  CreateServiceInstance(name, &callback);
+  CreateServiceInstance(name_, &callback_);
 
-  DomainName ptr_domain(++name.labels().begin(), name.labels().end());
-  EXPECT_CALL(querier->service(),
+  DomainName ptr_domain(++name_.labels().begin(), name_.labels().end());
+  EXPECT_CALL(querier_->service(),
               StopQuery(ptr_domain, DnsType::kANY, DnsClass::kANY, _))
       .Times(1);
-  EXPECT_CALL(querier->service(),
-              StopQuery(name, DnsType::kANY, DnsClass::kANY, _))
+  EXPECT_CALL(querier_->service(),
+              StopQuery(name_, DnsType::kANY, DnsClass::kANY, _))
       .Times(1);
-  querier->StopQuery(service, &callback);
-  EXPECT_FALSE(querier->IsDomainTracked(ptr_domain));
-  EXPECT_FALSE(querier->IsDomainTracked(name));
-  EXPECT_EQ(querier->GetTrackedDomainCount(), size_t{0});
-  testing::Mock::VerifyAndClearExpectations(&callback);
+  querier_->StopQuery(service_, &callback_);
+  EXPECT_FALSE(querier_->IsDomainTracked(ptr_domain));
+  EXPECT_FALSE(querier_->IsDomainTracked(name_));
+  EXPECT_EQ(querier_->GetTrackedDomainCount(), size_t{0});
+  testing::Mock::VerifyAndClearExpectations(&callback_);
 
-  EXPECT_CALL(querier->service(),
+  EXPECT_CALL(querier_->service(),
               StartQuery(_, DnsType::kANY, DnsClass::kANY, _))
       .Times(1);
-  querier->StartQuery(service, &callback);
-  EXPECT_TRUE(querier->IsQueryRunning(service));
+  querier_->StartQuery(service_, &callback_);
+  EXPECT_TRUE(querier_->IsQueryRunning(service_));
 }
 
 TEST_F(DnsSdQuerierImplTest, TestStopNonexistantQueryHasNoEffect) {
   StrictMock<MockCallback> callback2;
-  querier->StopQuery(service, &callback2);
+  querier_->StopQuery(service_, &callback2);
 }
 
 TEST_F(DnsSdQuerierImplTest, TestAFollowingAAAAFiresSecondCallback) {
-  MdnsRecord ptr = GetFakePtrRecord(name);
-  MdnsRecord srv = GetFakeSrvRecord(name);
-  MdnsRecord txt = GetFakeTxtRecord(name);
-  MdnsRecord a = GetFakeARecord(name);
-  MdnsRecord aaaa = GetFakeAAAARecord(name);
+  MdnsRecord ptr = GetFakePtrRecord(name_);
+  MdnsRecord srv = GetFakeSrvRecord(name_);
+  MdnsRecord txt = GetFakeTxtRecord(name_);
+  MdnsRecord a = GetFakeARecord(name_);
+  MdnsRecord aaaa = GetFakeAAAARecord(name_);
 
   std::vector<DnsSdInstanceEndpoint> endpoints;
-  auto changes = querier->OnRecordChanged(ptr, RecordChangedEvent::kCreated);
-  ValidateRecordChangeStartsQuery(changes, name, 1);
+  auto changes = querier_->OnRecordChanged(ptr, RecordChangedEvent::kCreated);
+  ValidateRecordChangeStartsQuery(changes, name_, 1);
 
-  changes = querier->OnRecordChanged(srv, RecordChangedEvent::kCreated);
+  changes = querier_->OnRecordChanged(srv, RecordChangedEvent::kCreated);
   EXPECT_EQ(changes.size(), size_t{0});
-  changes = querier->OnRecordChanged(txt, RecordChangedEvent::kCreated);
+  changes = querier_->OnRecordChanged(txt, RecordChangedEvent::kCreated);
   EXPECT_EQ(changes.size(), size_t{0});
 
-  EXPECT_CALL(callback, OnEndpointCreated(_))
+  EXPECT_CALL(callback_, OnEndpointCreated(_))
       .WillOnce([&endpoints](const DnsSdInstanceEndpoint& ep) mutable {
         endpoints.push_back(ep);
       });
-  changes = querier->OnRecordChanged(aaaa, RecordChangedEvent::kCreated);
+  changes = querier_->OnRecordChanged(aaaa, RecordChangedEvent::kCreated);
   EXPECT_EQ(changes.size(), size_t{0});
-  testing::Mock::VerifyAndClearExpectations(&callback);
+  testing::Mock::VerifyAndClearExpectations(&callback_);
 
-  EXPECT_CALL(callback, OnEndpointUpdated(_))
+  EXPECT_CALL(callback_, OnEndpointUpdated(_))
       .WillOnce([&endpoints](const DnsSdInstanceEndpoint& ep) mutable {
         endpoints.push_back(ep);
       });
-  changes = querier->OnRecordChanged(a, RecordChangedEvent::kCreated);
+  changes = querier_->OnRecordChanged(a, RecordChangedEvent::kCreated);
   EXPECT_EQ(changes.size(), size_t{0});
-  testing::Mock::VerifyAndClearExpectations(&callback);
+  testing::Mock::VerifyAndClearExpectations(&callback_);
 
   ASSERT_EQ(endpoints.size(), size_t{2});
   DnsSdInstanceEndpoint& created = endpoints[0];
@@ -348,106 +346,106 @@ TEST_F(DnsSdQuerierImplTest, TestAFollowingAAAAFiresSecondCallback) {
 
 TEST_F(DnsSdQuerierImplTest, TestGenerateTwoRecordsCallsCallbackTwice) {
   DomainName third{"android", "local"};
-  MdnsRecord ptr1 = GetFakePtrRecord(name);
-  MdnsRecord srv1 = GetFakeSrvRecord(name, third);
-  MdnsRecord txt1 = GetFakeTxtRecord(name);
-  MdnsRecord ptr2 = GetFakePtrRecord(name2);
-  MdnsRecord srv2 = GetFakeSrvRecord(name2, third);
-  MdnsRecord txt2 = GetFakeTxtRecord(name2);
+  MdnsRecord ptr1 = GetFakePtrRecord(name_);
+  MdnsRecord srv1 = GetFakeSrvRecord(name_, third);
+  MdnsRecord txt1 = GetFakeTxtRecord(name_);
+  MdnsRecord ptr2 = GetFakePtrRecord(name2_);
+  MdnsRecord srv2 = GetFakeSrvRecord(name2_, third);
+  MdnsRecord txt2 = GetFakeTxtRecord(name2_);
   MdnsRecord a = GetFakeARecord(third);
 
-  auto changes = querier->OnRecordChanged(ptr1, RecordChangedEvent::kCreated);
-  ValidateRecordChangeStartsQuery(changes, name, 1);
+  auto changes = querier_->OnRecordChanged(ptr1, RecordChangedEvent::kCreated);
+  ValidateRecordChangeStartsQuery(changes, name_, 1);
 
-  changes = querier->OnRecordChanged(srv1, RecordChangedEvent::kCreated);
+  changes = querier_->OnRecordChanged(srv1, RecordChangedEvent::kCreated);
   ValidateRecordChangeStartsQuery(changes, third, 1);
 
-  changes = querier->OnRecordChanged(txt1, RecordChangedEvent::kCreated);
+  changes = querier_->OnRecordChanged(txt1, RecordChangedEvent::kCreated);
   EXPECT_EQ(changes.size(), size_t{0});
 
-  changes = querier->OnRecordChanged(ptr2, RecordChangedEvent::kCreated);
-  ValidateRecordChangeStartsQuery(changes, name2, 1);
+  changes = querier_->OnRecordChanged(ptr2, RecordChangedEvent::kCreated);
+  ValidateRecordChangeStartsQuery(changes, name2_, 1);
 
-  changes = querier->OnRecordChanged(srv2, RecordChangedEvent::kCreated);
+  changes = querier_->OnRecordChanged(srv2, RecordChangedEvent::kCreated);
   EXPECT_EQ(changes.size(), size_t{0});
 
-  changes = querier->OnRecordChanged(txt2, RecordChangedEvent::kCreated);
+  changes = querier_->OnRecordChanged(txt2, RecordChangedEvent::kCreated);
   EXPECT_EQ(changes.size(), size_t{0});
 
-  EXPECT_CALL(callback, OnEndpointCreated(_)).Times(2);
-  changes = querier->OnRecordChanged(a, RecordChangedEvent::kCreated);
+  EXPECT_CALL(callback_, OnEndpointCreated(_)).Times(2);
+  changes = querier_->OnRecordChanged(a, RecordChangedEvent::kCreated);
   EXPECT_EQ(changes.size(), size_t{0});
-  testing::Mock::VerifyAndClearExpectations(&callback);
+  testing::Mock::VerifyAndClearExpectations(&callback_);
 
-  EXPECT_CALL(callback, OnEndpointDeleted(_)).Times(2);
-  changes = querier->OnRecordChanged(a, RecordChangedEvent::kExpired);
+  EXPECT_CALL(callback_, OnEndpointDeleted(_)).Times(2);
+  changes = querier_->OnRecordChanged(a, RecordChangedEvent::kExpired);
   EXPECT_EQ(changes.size(), size_t{0});
 }
 
 TEST_F(DnsSdQuerierImplTest, TestCreateDeletePtrRecordResults) {
-  const auto ptr = GetFakePtrRecord(name);
+  const auto ptr = GetFakePtrRecord(name_);
 
-  auto result = querier->OnRecordChanged(ptr, RecordChangedEvent::kCreated);
-  ValidateRecordChangeStartsQuery(result, name, 1);
+  auto result = querier_->OnRecordChanged(ptr, RecordChangedEvent::kCreated);
+  ValidateRecordChangeStartsQuery(result, name_, 1);
 
-  result = querier->OnRecordChanged(ptr, RecordChangedEvent::kExpired);
-  ValidateRecordChangeStopsQuery(result, name, 1);
+  result = querier_->OnRecordChanged(ptr, RecordChangedEvent::kExpired);
+  ValidateRecordChangeStopsQuery(result, name_, 1);
 }
 
 TEST_F(DnsSdQuerierImplTest, CallbackCalledWhenPtrDeleted) {
-  MdnsRecord ptr = GetFakePtrRecord(name);
-  MdnsRecord srv = GetFakeSrvRecord(name, name2);
-  MdnsRecord txt = GetFakeTxtRecord(name);
-  MdnsRecord a = GetFakeARecord(name2);
+  MdnsRecord ptr = GetFakePtrRecord(name_);
+  MdnsRecord srv = GetFakeSrvRecord(name_, name2_);
+  MdnsRecord txt = GetFakeTxtRecord(name_);
+  MdnsRecord a = GetFakeARecord(name2_);
 
-  auto changes = querier->OnRecordChanged(ptr, RecordChangedEvent::kCreated);
-  ValidateRecordChangeStartsQuery(changes, name, 1);
+  auto changes = querier_->OnRecordChanged(ptr, RecordChangedEvent::kCreated);
+  ValidateRecordChangeStartsQuery(changes, name_, 1);
 
-  changes = querier->OnRecordChanged(srv, RecordChangedEvent::kCreated);
-  ValidateRecordChangeStartsQuery(changes, name2, 1);
+  changes = querier_->OnRecordChanged(srv, RecordChangedEvent::kCreated);
+  ValidateRecordChangeStartsQuery(changes, name2_, 1);
 
-  changes = querier->OnRecordChanged(txt, RecordChangedEvent::kCreated);
+  changes = querier_->OnRecordChanged(txt, RecordChangedEvent::kCreated);
   EXPECT_EQ(changes.size(), size_t{0});
 
-  EXPECT_CALL(callback, OnEndpointCreated(_));
-  changes = querier->OnRecordChanged(a, RecordChangedEvent::kCreated);
+  EXPECT_CALL(callback_, OnEndpointCreated(_));
+  changes = querier_->OnRecordChanged(a, RecordChangedEvent::kCreated);
   EXPECT_EQ(changes.size(), size_t{0});
 
-  EXPECT_CALL(callback, OnEndpointDeleted(_));
-  changes = querier->OnRecordChanged(ptr, RecordChangedEvent::kExpired);
-  ValidateRecordChangeStopsQuery(changes, name, 2);
-  ValidateRecordChangeStopsQuery(changes, name2, 2);
+  EXPECT_CALL(callback_, OnEndpointDeleted(_));
+  changes = querier_->OnRecordChanged(ptr, RecordChangedEvent::kExpired);
+  ValidateRecordChangeStopsQuery(changes, name_, 2);
+  ValidateRecordChangeStopsQuery(changes, name2_, 2);
 }
 
 TEST_F(DnsSdQuerierImplTest, HardRefresh) {
-  MdnsRecord ptr = GetFakePtrRecord(name);
-  MdnsRecord srv = GetFakeSrvRecord(name, name2);
-  MdnsRecord txt = GetFakeTxtRecord(name);
-  MdnsRecord a = GetFakeARecord(name2);
+  MdnsRecord ptr = GetFakePtrRecord(name_);
+  MdnsRecord srv = GetFakeSrvRecord(name_, name2_);
+  MdnsRecord txt = GetFakeTxtRecord(name_);
+  MdnsRecord a = GetFakeARecord(name2_);
 
-  querier->OnRecordChanged(ptr, RecordChangedEvent::kCreated);
-  querier->OnRecordChanged(srv, RecordChangedEvent::kCreated);
-  querier->OnRecordChanged(txt, RecordChangedEvent::kCreated);
+  querier_->OnRecordChanged(ptr, RecordChangedEvent::kCreated);
+  querier_->OnRecordChanged(srv, RecordChangedEvent::kCreated);
+  querier_->OnRecordChanged(txt, RecordChangedEvent::kCreated);
 
-  EXPECT_CALL(callback, OnEndpointCreated(_));
-  querier->OnRecordChanged(a, RecordChangedEvent::kCreated);
-  testing::Mock::VerifyAndClearExpectations(&callback);
+  EXPECT_CALL(callback_, OnEndpointCreated(_));
+  querier_->OnRecordChanged(a, RecordChangedEvent::kCreated);
+  testing::Mock::VerifyAndClearExpectations(&callback_);
 
-  EXPECT_CALL(querier->service(),
-              StopQuery(ptr_domain, DnsType::kANY, DnsClass::kANY, _))
+  EXPECT_CALL(querier_->service(),
+              StopQuery(ptr_domain_, DnsType::kANY, DnsClass::kANY, _))
       .Times(1);
-  EXPECT_CALL(querier->service(),
-              StopQuery(name, DnsType::kANY, DnsClass::kANY, _))
+  EXPECT_CALL(querier_->service(),
+              StopQuery(name_, DnsType::kANY, DnsClass::kANY, _))
       .Times(1);
-  EXPECT_CALL(querier->service(),
-              StopQuery(name2, DnsType::kANY, DnsClass::kANY, _))
+  EXPECT_CALL(querier_->service(),
+              StopQuery(name2_, DnsType::kANY, DnsClass::kANY, _))
       .Times(1);
-  EXPECT_CALL(querier->service(), ReinitializeQueries(_)).Times(1);
-  EXPECT_CALL(querier->service(),
-              StartQuery(ptr_domain, DnsType::kANY, DnsClass::kANY, _))
+  EXPECT_CALL(querier_->service(), ReinitializeQueries(_)).Times(1);
+  EXPECT_CALL(querier_->service(),
+              StartQuery(ptr_domain_, DnsType::kANY, DnsClass::kANY, _))
       .Times(1);
-  querier->ReinitializeQueries(service);
-  testing::Mock::VerifyAndClearExpectations(querier.get());
+  querier_->ReinitializeQueries(service_);
+  testing::Mock::VerifyAndClearExpectations(querier_.get());
 }
 
 // Edge Cases
@@ -458,7 +456,7 @@ TEST_F(DnsSdQuerierImplTest, HardRefresh) {
 // bad actor or a misbehaving publisher is present on the network. To simplify
 // these tests, the DnsDataGraph object will be mocked.
 TEST_F(DnsSdQuerierImplTest, ErrorsOnlyAfterChangesAreLogged) {
-  MockDnsDataGraph& mock_graph = querier->GetMockedGraph();
+  MockDnsDataGraph& mock_graph = querier_->GetMockedGraph();
   std::vector<ErrorOr<DnsSdInstanceEndpoint>> before_changes{};
   std::vector<ErrorOr<DnsSdInstanceEndpoint>> after_changes{};
   after_changes.emplace_back(Error::Code::kItemNotFound);
@@ -469,19 +467,19 @@ TEST_F(DnsSdQuerierImplTest, ErrorsOnlyAfterChangesAreLogged) {
   EXPECT_CALL(mock_graph, CreateEndpoints(_, _))
       .WillOnce(Return(ByMove(std::move(before_changes))))
       .WillOnce(Return(ByMove(std::move(after_changes))));
-  EXPECT_CALL(querier->reporting_client(), OnRecoverableError(_)).Times(3);
+  EXPECT_CALL(querier_->reporting_client(), OnRecoverableError(_)).Times(3);
 
   // Call to apply record changes. The specifics are unimportant.
   EXPECT_CALL(mock_graph, ApplyDataRecordChange(_, _, _, _))
       .WillOnce(Return(Error::None()));
 
   // Call with any record. The mocks make the specifics unimportant.
-  querier->OnRecordChanged(GetFakePtrRecord(name),
-                           RecordChangedEvent::kCreated);
+  querier_->OnRecordChanged(GetFakePtrRecord(name_),
+                            RecordChangedEvent::kCreated);
 }
 
 TEST_F(DnsSdQuerierImplTest, ErrorsOnlyBeforeChangesNotLogged) {
-  MockDnsDataGraph& mock_graph = querier->GetMockedGraph();
+  MockDnsDataGraph& mock_graph = querier_->GetMockedGraph();
   std::vector<ErrorOr<DnsSdInstanceEndpoint>> before_changes{};
   before_changes.emplace_back(Error::Code::kItemNotFound);
   before_changes.emplace_back(Error::Code::kItemNotFound);
@@ -498,12 +496,12 @@ TEST_F(DnsSdQuerierImplTest, ErrorsOnlyBeforeChangesNotLogged) {
       .WillOnce(Return(Error::None()));
 
   // Call with any record. The mocks make the specifics unimportant.
-  querier->OnRecordChanged(GetFakePtrRecord(name),
-                           RecordChangedEvent::kCreated);
+  querier_->OnRecordChanged(GetFakePtrRecord(name_),
+                            RecordChangedEvent::kCreated);
 }
 
 TEST_F(DnsSdQuerierImplTest, ErrorsBeforeAndAfterChangesNotLogged) {
-  MockDnsDataGraph& mock_graph = querier->GetMockedGraph();
+  MockDnsDataGraph& mock_graph = querier_->GetMockedGraph();
   std::vector<ErrorOr<DnsSdInstanceEndpoint>> before_changes{};
   before_changes.emplace_back(Error::Code::kItemNotFound);
   before_changes.emplace_back(Error::Code::kItemNotFound);
@@ -523,12 +521,12 @@ TEST_F(DnsSdQuerierImplTest, ErrorsBeforeAndAfterChangesNotLogged) {
       .WillOnce(Return(Error::None()));
 
   // Call with any record. The mocks make the specifics unimportant.
-  querier->OnRecordChanged(GetFakePtrRecord(name),
-                           RecordChangedEvent::kCreated);
+  querier_->OnRecordChanged(GetFakePtrRecord(name_),
+                            RecordChangedEvent::kCreated);
 }
 
 TEST_F(DnsSdQuerierImplTest, OrderOfErrorsDoesNotAffectResults) {
-  MockDnsDataGraph& mock_graph = querier->GetMockedGraph();
+  MockDnsDataGraph& mock_graph = querier_->GetMockedGraph();
   std::vector<ErrorOr<DnsSdInstanceEndpoint>> before_changes{};
   before_changes.emplace_back(Error::Code::kIndexOutOfBounds);
   before_changes.emplace_back(Error::Code::kItemAlreadyExists);
@@ -546,15 +544,15 @@ TEST_F(DnsSdQuerierImplTest, OrderOfErrorsDoesNotAffectResults) {
   EXPECT_CALL(mock_graph, CreateEndpoints(_, _))
       .WillOnce(Return(ByMove(std::move(before_changes))))
       .WillOnce(Return(ByMove(std::move(after_changes))));
-  EXPECT_CALL(querier->reporting_client(), OnRecoverableError(_)).Times(1);
+  EXPECT_CALL(querier_->reporting_client(), OnRecoverableError(_)).Times(1);
 
   // Call to apply record changes. The specifics are unimportant.
   EXPECT_CALL(mock_graph, ApplyDataRecordChange(_, _, _, _))
       .WillOnce(Return(Error::None()));
 
   // Call with any record. The mocks make the specifics unimportant.
-  querier->OnRecordChanged(GetFakePtrRecord(name),
-                           RecordChangedEvent::kCreated);
+  querier_->OnRecordChanged(GetFakePtrRecord(name_),
+                            RecordChangedEvent::kCreated);
 }
 
 TEST_F(DnsSdQuerierImplTest, ResultsWithMultipleAddressRecordsHandled) {
@@ -575,7 +573,7 @@ TEST_F(DnsSdQuerierImplTest, ResultsWithMultipleAddressRecordsHandled) {
   DnsSdInstanceEndpoint instance5("instance1", "_service3._udp", "local", {},
                                   kNetworkInterface, {endpointe});
 
-  MockDnsDataGraph& mock_graph = querier->GetMockedGraph();
+  MockDnsDataGraph& mock_graph = querier_->GetMockedGraph();
   std::vector<ErrorOr<DnsSdInstanceEndpoint>> before_changes{};
   before_changes.emplace_back(instance4);
   before_changes.emplace_back(instance2);
@@ -589,17 +587,17 @@ TEST_F(DnsSdQuerierImplTest, ResultsWithMultipleAddressRecordsHandled) {
   EXPECT_CALL(mock_graph, CreateEndpoints(_, _))
       .WillOnce(Return(ByMove(std::move(before_changes))))
       .WillOnce(Return(ByMove(std::move(after_changes))));
-  EXPECT_CALL(callback, OnEndpointCreated(instance1));
-  EXPECT_CALL(callback, OnEndpointUpdated(instance5));
-  EXPECT_CALL(callback, OnEndpointDeleted(instance2));
+  EXPECT_CALL(callback_, OnEndpointCreated(instance1));
+  EXPECT_CALL(callback_, OnEndpointUpdated(instance5));
+  EXPECT_CALL(callback_, OnEndpointDeleted(instance2));
 
   // Call to apply record changes. The specifics are unimportant.
   EXPECT_CALL(mock_graph, ApplyDataRecordChange(_, _, _, _))
       .WillOnce(Return(Error::None()));
 
   // Call with any record. The mocks make the specifics unimportant.
-  querier->OnRecordChanged(GetFakePtrRecord(name),
-                           RecordChangedEvent::kCreated);
+  querier_->OnRecordChanged(GetFakePtrRecord(name_),
+                            RecordChangedEvent::kCreated);
 }
 
 TEST_F(DnsSdQuerierImplTest, MixOfErrorsAndSuccessesHandledCorrectly) {
@@ -615,7 +613,7 @@ TEST_F(DnsSdQuerierImplTest, MixOfErrorsAndSuccessesHandledCorrectly) {
                                   kNetworkInterface,
                                   {{{127, 0, 0, 1}, 80}, {{127, 0, 0, 2}, 80}});
 
-  MockDnsDataGraph& mock_graph = querier->GetMockedGraph();
+  MockDnsDataGraph& mock_graph = querier_->GetMockedGraph();
   std::vector<ErrorOr<DnsSdInstanceEndpoint>> before_changes{};
   before_changes.emplace_back(Error::Code::kIndexOutOfBounds);
   before_changes.emplace_back(instance2);
@@ -639,19 +637,18 @@ TEST_F(DnsSdQuerierImplTest, MixOfErrorsAndSuccessesHandledCorrectly) {
   EXPECT_CALL(mock_graph, CreateEndpoints(_, _))
       .WillOnce(Return(ByMove(std::move(before_changes))))
       .WillOnce(Return(ByMove(std::move(after_changes))));
-  EXPECT_CALL(querier->reporting_client(), OnRecoverableError(_)).Times(1);
-  EXPECT_CALL(callback, OnEndpointCreated(instance3));
-  EXPECT_CALL(callback, OnEndpointUpdated(instance5));
-  EXPECT_CALL(callback, OnEndpointDeleted(instance2));
+  EXPECT_CALL(querier_->reporting_client(), OnRecoverableError(_)).Times(1);
+  EXPECT_CALL(callback_, OnEndpointCreated(instance3));
+  EXPECT_CALL(callback_, OnEndpointUpdated(instance5));
+  EXPECT_CALL(callback_, OnEndpointDeleted(instance2));
 
   // Call to apply record changes. The specifics are unimportant.
   EXPECT_CALL(mock_graph, ApplyDataRecordChange(_, _, _, _))
       .WillOnce(Return(Error::None()));
 
   // Call with any record. The mocks make the specifics unimportant.
-  querier->OnRecordChanged(GetFakePtrRecord(name),
-                           RecordChangedEvent::kCreated);
+  querier_->OnRecordChanged(GetFakePtrRecord(name_),
+                            RecordChangedEvent::kCreated);
 }
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

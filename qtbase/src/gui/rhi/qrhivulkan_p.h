@@ -162,6 +162,7 @@ struct QVkRenderPassDescriptor : public QRhiRenderPassDescriptor
     QVarLengthArray<VkAttachmentReference, 8> resolveRefs;
     QVarLengthArray<VkSubpassDependency, 2> subpassDeps;
     bool hasDepthStencil = false;
+    uint32_t multiViewCount = 0;
     VkAttachmentReference dsRef;
     QVector<quint32> serializedFormatData;
     QRhiVulkanRenderPassNativeHandles nativeHandlesStruct;
@@ -178,6 +179,7 @@ struct QVkRenderTargetData
     int colorAttCount = 0;
     int dsAttCount = 0;
     int resolveAttCount = 0;
+    int multiViewCount = 0;
     QRhiRenderTargetAttachmentTracker::ResIdList currentResIdList;
     static const int MAX_COLOR_ATTACHMENTS = 8;
 };
@@ -570,6 +572,7 @@ struct QVkSwapChain : public QRhiSwapChain
 
     QRhiCommandBuffer *currentFrameCommandBuffer() override;
     QRhiRenderTarget *currentFrameRenderTarget() override;
+    QRhiRenderTarget *currentFrameRenderTarget(StereoTargetBuffer targetBuffer) override;
 
     QSize surfacePixelSize() override;
     bool isFormatSupported(Format f) override;
@@ -584,6 +587,7 @@ struct QVkSwapChain : public QRhiSwapChain
     QWindow *window = nullptr;
     QSize pixelSize;
     bool supportsReadback = false;
+    bool stereo = false;
     VkSwapchainKHR sc = VK_NULL_HANDLE;
     int bufferCount = 0;
     VkSurfaceKHR surface = VK_NULL_HANDLE;
@@ -595,6 +599,7 @@ struct QVkSwapChain : public QRhiSwapChain
     QVarLengthArray<VkPresentModeKHR, 8> supportedPresentationModes;
     VkDeviceMemory msaaImageMem = VK_NULL_HANDLE;
     QVkSwapChainRenderTarget rtWrapper;
+    QVkSwapChainRenderTarget rtWrapperRight;
     QVkCommandBuffer cbWrapper;
 
     struct ImageResources {
@@ -873,6 +878,7 @@ public:
         bool tessellation = false;
         bool geometryShader = false;
         bool nonFillPolygonMode = false;
+        bool multiView = false;
         QVersionNumber apiVersion;
     } caps;
 

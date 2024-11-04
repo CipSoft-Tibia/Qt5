@@ -46,7 +46,6 @@
 #include "third_party/blink/renderer/bindings/core/v8/sanitize_script_errors.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/execution_context/security_context.h"
-#include "third_party/blink/renderer/core/frame/dom_timer_coordinator.h"
 #include "third_party/blink/renderer/core/frame/web_feature_forward.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 #include "third_party/blink/renderer/platform/heap_observer_set.h"
@@ -139,21 +138,13 @@ class CORE_EXPORT ExecutionContext : public Supplementable<ExecutionContext>,
                                      public UseCounter,
                                      public FeatureContext {
  public:
+  ExecutionContext(const ExecutionContext&) = delete;
+  ExecutionContext& operator=(const ExecutionContext&) = delete;
+
   void Trace(Visitor*) const override;
 
   static ExecutionContext* From(const ScriptState*);
   static ExecutionContext* From(v8::Local<v8::Context>);
-
-  // Returns the ExecutionContext of the current realm.
-  static ExecutionContext* ForCurrentRealm(
-      const v8::FunctionCallbackInfo<v8::Value>&);
-  static ExecutionContext* ForCurrentRealm(
-      const v8::PropertyCallbackInfo<v8::Value>&);
-  // Returns the ExecutionContext of the relevant realm for the receiver object.
-  static ExecutionContext* ForRelevantRealm(
-      const v8::FunctionCallbackInfo<v8::Value>&);
-  static ExecutionContext* ForRelevantRealm(
-      const v8::PropertyCallbackInfo<v8::Value>&);
 
   // Returns the CodeCacheHost interface associated with the execution
   // context. This could return nullptr if there is no CodeCacheHost associated
@@ -174,7 +165,12 @@ class CORE_EXPORT ExecutionContext : public Supplementable<ExecutionContext>,
   virtual bool IsPaintWorkletGlobalScope() const { return false; }
   virtual bool IsThreadedWorkletGlobalScope() const { return false; }
   virtual bool IsShadowRealmGlobalScope() const { return false; }
+  virtual bool IsSharedStorageWorkletGlobalScope() const { return false; }
   virtual bool IsJSExecutionForbidden() const { return false; }
+
+  // Notifies the execution context that new web socket activity (such as
+  // sending or receiving a message) has happened.
+  virtual void NotifyWebSocketActivity() {}
 
   // TODO(crbug.com/1335924) Change this method to be pure-virtual and each
   // derivative explicitly override it.
@@ -228,15 +224,6 @@ class CORE_EXPORT ExecutionContext : public Supplementable<ExecutionContext>,
 
   virtual HttpsState GetHttpsState() const = 0;
 
-  // Gets the DOMTimerCoordinator which maintains the "active timer
-  // list" of tasks created by setTimeout and setInterval. The
-  // DOMTimerCoordinator is owned by the ExecutionContext and should
-  // not be used after the ExecutionContext is destroyed.
-  DOMTimerCoordinator* Timers() {
-    DCHECK(!IsWorkletGlobalScope());
-    return &timers_;
-  }
-
   virtual ResourceFetcher* Fetcher() = 0;
 
   SecurityContext& GetSecurityContext() { return security_context_; }
@@ -268,7 +255,7 @@ class CORE_EXPORT ExecutionContext : public Supplementable<ExecutionContext>,
   bool is_in_back_forward_cache() const { return is_in_back_forward_cache_; }
 
   void SetLifecycleState(mojom::FrameLifecycleState);
-  void NotifyContextDestroyed();
+  virtual void NotifyContextDestroyed();
 
   using ConsoleLogger::AddConsoleMessage;
 
@@ -304,7 +291,7 @@ class CORE_EXPORT ExecutionContext : public Supplementable<ExecutionContext>,
   SecureContextMode GetSecureContextMode() const {
     return security_context_.GetSecureContextMode();
   }
-  bool IsSecureContext() const {
+  virtual bool IsSecureContext() const {
     return GetSecureContextMode() == SecureContextMode::kSecureContext;
   }
   bool IsSecureContext(String& error_message) const;
@@ -422,9 +409,6 @@ class CORE_EXPORT ExecutionContext : public Supplementable<ExecutionContext>,
   // the future.
   bool CheckSharedArrayBufferTransferAllowedAndReport();
 
-  // Reports first usage of `navigator.userAgent` and related getters
-  void ReportNavigatorUserAgentAccess();
-
   virtual ukm::UkmRecorder* UkmRecorder() = 0;
   virtual ukm::SourceId UkmSourceID() const = 0;
 
@@ -490,9 +474,7 @@ class CORE_EXPORT ExecutionContext : public Supplementable<ExecutionContext>,
   virtual bool HasStorageAccess() const { return false; }
 
  protected:
-  explicit ExecutionContext(v8::Isolate* isolate, Agent*);
-  ExecutionContext(const ExecutionContext&) = delete;
-  ExecutionContext& operator=(const ExecutionContext&) = delete;
+  ExecutionContext(v8::Isolate* isolate, Agent* agent, bool is_window = false);
   ~ExecutionContext() override;
 
   // Resetting the Agent is only necessary for a special case related to the
@@ -529,15 +511,12 @@ class CORE_EXPORT ExecutionContext : public Supplementable<ExecutionContext>,
 
   bool has_filed_shared_array_buffer_transfer_issue_ = false;
   bool has_filed_shared_array_buffer_creation_issue_ = false;
-  bool has_filed_navigator_user_agent_issue_ = false;
 
   bool is_in_request_animation_frame_ = false;
 
   Member<PublicURLManager> public_url_manager_;
 
   const Member<ContentSecurityPolicyDelegate> csp_delegate_;
-
-  DOMTimerCoordinator timers_;
 
   // Counter that keeps track of how many window interaction calls are allowed
   // for this ExecutionContext. Callers are expected to call

@@ -15,17 +15,18 @@
 #include "dawn/native/Surface.h"
 
 #include "dawn/common/Platform.h"
-#include "dawn/native/ChainUtils_autogen.h"
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/Instance.h"
 #include "dawn/native/SwapChain.h"
 
-#if DAWN_PLATFORM_IS(WINDOWS)
+#if defined(DAWN_USE_WINDOWS_UI)
 #include <windows.ui.core.h>
 #include <windows.ui.xaml.controls.h>
-#endif  // DAWN_PLATFORM_IS(WINDOWS)
+#endif  // defined(DAWN_USE_WINDOWS_UI)
 
 #if defined(DAWN_USE_X11)
 #include "dawn/common/xlib_with_undefs.h"
+#include "dawn/native/X11Functions.h"
 #endif  // defined(DAWN_USE_X11)
 
 namespace dawn::native {
@@ -64,8 +65,7 @@ absl::FormatConvertResult<absl::FormatConversionCharSet::kString> AbslFormatConv
 bool InheritsFromCAMetalLayer(void* obj);
 #endif  // defined(DAWN_ENABLE_BACKEND_METAL)
 
-MaybeError ValidateSurfaceDescriptor(const InstanceBase* instance,
-                                     const SurfaceDescriptor* descriptor) {
+MaybeError ValidateSurfaceDescriptor(InstanceBase* instance, const SurfaceDescriptor* descriptor) {
     DAWN_INVALID_IF(descriptor->nextInChain == nullptr,
                     "Surface cannot be created with %s. nextInChain is not specified.", descriptor);
 
@@ -99,7 +99,6 @@ MaybeError ValidateSurfaceDescriptor(const InstanceBase* instance,
     }
 #endif  // DAWN_PLATFORM_IS(ANDROID)
 
-#if DAWN_PLATFORM_IS(WINDOWS)
 #if DAWN_PLATFORM_IS(WIN32)
     const SurfaceDescriptorFromWindowsHWND* hwndDesc = nullptr;
     FindInChain(descriptor->nextInChain, &hwndDesc);
@@ -108,6 +107,7 @@ MaybeError ValidateSurfaceDescriptor(const InstanceBase* instance,
         return {};
     }
 #endif  // DAWN_PLATFORM_IS(WIN32)
+#if defined(DAWN_USE_WINDOWS_UI)
     const SurfaceDescriptorFromWindowsCoreWindow* coreWindowDesc = nullptr;
     FindInChain(descriptor->nextInChain, &coreWindowDesc);
     if (coreWindowDesc) {
@@ -130,7 +130,7 @@ MaybeError ValidateSurfaceDescriptor(const InstanceBase* instance,
                         "Invalid SwapChainPanel");
         return {};
     }
-#endif  // DAWN_PLATFORM_IS(WINDOWS)
+#endif  // defined(DAWN_USE_WINDOWS_UI)
 
 #if defined(DAWN_USE_WAYLAND)
     const SurfaceDescriptorFromWaylandSurface* waylandDesc = nullptr;
@@ -152,11 +152,15 @@ MaybeError ValidateSurfaceDescriptor(const InstanceBase* instance,
         // returns a status code. If the window is bad the call return a status of zero. We
         // need to set a temporary X11 error handler while doing this because the default
         // X11 error handler exits the program on any error.
-        XErrorHandler oldErrorHandler = XSetErrorHandler([](Display*, XErrorEvent*) { return 0; });
+        const X11Functions* x11 = instance->GetOrLoadX11Functions();
+        DAWN_INVALID_IF(!x11->IsX11Loaded(), "Couldn't load libX11.");
+
+        XErrorHandler oldErrorHandler =
+            x11->xSetErrorHandler([](Display*, XErrorEvent*) { return 0; });
         XWindowAttributes attributes;
-        int status = XGetWindowAttributes(reinterpret_cast<Display*>(xDesc->display), xDesc->window,
-                                          &attributes);
-        XSetErrorHandler(oldErrorHandler);
+        int status = x11->xGetWindowAttributes(reinterpret_cast<Display*>(xDesc->display),
+                                               xDesc->window, &attributes);
+        x11->xSetErrorHandler(oldErrorHandler);
 
         DAWN_INVALID_IF(status == 0, "Invalid X Window");
         return {};
@@ -205,15 +209,15 @@ Surface::Surface(InstanceBase* instance, const SurfaceDescriptor* descriptor)
         mHInstance = hwndDesc->hinstance;
         mHWND = hwndDesc->hwnd;
     } else if (coreWindowDesc) {
-#if DAWN_PLATFORM_IS(WINDOWS)
+#if defined(DAWN_USE_WINDOWS_UI)
         mType = Type::WindowsCoreWindow;
         mCoreWindow = static_cast<IUnknown*>(coreWindowDesc->coreWindow);
-#endif  // DAWN_PLATFORM_IS(WINDOWS)
+#endif  // defined(DAWN_USE_WINDOWS_UI)
     } else if (swapChainPanelDesc) {
-#if DAWN_PLATFORM_IS(WINDOWS)
+#if defined(DAWN_USE_WINDOWS_UI)
         mType = Type::WindowsSwapChainPanel;
         mSwapChainPanel = static_cast<IUnknown*>(swapChainPanelDesc->swapChainPanel);
-#endif  // DAWN_PLATFORM_IS(WINDOWS)
+#endif  // defined(DAWN_USE_WINDOWS_UI)
     } else if (xDesc) {
         mType = Type::XlibWindow;
         mXDisplay = xDesc->display;
@@ -230,12 +234,12 @@ Surface::~Surface() {
     }
 }
 
-NewSwapChainBase* Surface::GetAttachedSwapChain() {
+SwapChainBase* Surface::GetAttachedSwapChain() {
     ASSERT(!IsError());
     return mSwapChain.Get();
 }
 
-void Surface::SetAttachedSwapChain(NewSwapChainBase* swapChain) {
+void Surface::SetAttachedSwapChain(SwapChainBase* swapChain) {
     ASSERT(!IsError());
     mSwapChain = swapChain;
 }
@@ -285,7 +289,7 @@ void* Surface::GetHWND() const {
 IUnknown* Surface::GetCoreWindow() const {
     ASSERT(!IsError());
     ASSERT(mType == Type::WindowsCoreWindow);
-#if DAWN_PLATFORM_IS(WINDOWS)
+#if defined(DAWN_USE_WINDOWS_UI)
     return mCoreWindow.Get();
 #else
     return nullptr;
@@ -295,7 +299,7 @@ IUnknown* Surface::GetCoreWindow() const {
 IUnknown* Surface::GetSwapChainPanel() const {
     ASSERT(!IsError());
     ASSERT(mType == Type::WindowsSwapChainPanel);
-#if DAWN_PLATFORM_IS(WINDOWS)
+#if defined(DAWN_USE_WINDOWS_UI)
     return mSwapChainPanel.Get();
 #else
     return nullptr;

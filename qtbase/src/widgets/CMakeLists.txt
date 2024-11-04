@@ -20,6 +20,7 @@ qt_internal_add_module(Widgets
         kernel/qlayout.cpp kernel/qlayout.h kernel/qlayout_p.h
         kernel/qlayoutengine.cpp kernel/qlayoutengine_p.h
         kernel/qlayoutitem.cpp kernel/qlayoutitem.h
+        kernel/qrhiwidget.cpp kernel/qrhiwidget.h kernel/qrhiwidget_p.h
         kernel/qsizepolicy.cpp kernel/qsizepolicy.h
         kernel/qstackedlayout.cpp kernel/qstackedlayout.h
         kernel/qstandardgestures.cpp kernel/qstandardgestures_p.h
@@ -51,7 +52,9 @@ qt_internal_add_module(Widgets
         widgets/qframe.cpp widgets/qframe.h widgets/qframe_p.h
         widgets/qwidgetanimator.cpp widgets/qwidgetanimator_p.h
     DEFINES
+        QT_NO_CONTEXTLESS_CONNECT
         QT_NO_USING_NAMESPACE
+        QT_NO_FOREACH
     INCLUDE_DIRECTORIES
         dialogs
     LIBRARIES
@@ -80,6 +83,7 @@ set(qstyle_resource_files
     "styles/images/cdr-128.png"
     "styles/images/cdr-16.png"
     "styles/images/cdr-32.png"
+    "styles/images/cleartext-128.png"
     "styles/images/cleartext-16.png"
     "styles/images/cleartext-32.png"
     "styles/images/closedock-10.png"
@@ -90,6 +94,9 @@ set(qstyle_resource_files
     "styles/images/closedock-64.png"
     "styles/images/computer-16.png"
     "styles/images/computer-32.png"
+    "styles/images/critical-128.png"
+    "styles/images/critical-16.png"
+    "styles/images/critical-32.png"
     "styles/images/desktop-16.png"
     "styles/images/desktop-32.png"
     "styles/images/dirclosed-128.png"
@@ -113,6 +120,12 @@ set(qstyle_resource_files
     "styles/images/filecontents-128.png"
     "styles/images/filecontents-16.png"
     "styles/images/filecontents-32.png"
+    "styles/images/filedialog_end-128.png"
+    "styles/images/filedialog_end-16.png"
+    "styles/images/filedialog_end-32.png"
+    "styles/images/filedialog_start-128.png"
+    "styles/images/filedialog_start-16.png"
+    "styles/images/filedialog_start-32.png"
     "styles/images/fileinfo-128.png"
     "styles/images/fileinfo-16.png"
     "styles/images/fileinfo-32.png"
@@ -128,21 +141,31 @@ set(qstyle_resource_files
     "styles/images/harddrive-128.png"
     "styles/images/harddrive-16.png"
     "styles/images/harddrive-32.png"
+    "styles/images/information-128.png"
+    "styles/images/information-16.png"
+    "styles/images/information-32.png"
     "styles/images/left-128.png"
     "styles/images/left-16.png"
     "styles/images/left-32.png"
+    "styles/images/media-pause-128.png"
     "styles/images/media-pause-16.png"
     "styles/images/media-pause-32.png"
+    "styles/images/media-play-128.png"
     "styles/images/media-play-16.png"
     "styles/images/media-play-32.png"
+    "styles/images/media-seek-backward-128.png"
     "styles/images/media-seek-backward-16.png"
     "styles/images/media-seek-backward-32.png"
+    "styles/images/media-seek-forward-128.png"
     "styles/images/media-seek-forward-16.png"
     "styles/images/media-seek-forward-32.png"
+    "styles/images/media-skip-backward-128.png"
     "styles/images/media-skip-backward-16.png"
     "styles/images/media-skip-backward-32.png"
+    "styles/images/media-skip-forward-128.png"
     "styles/images/media-skip-forward-16.png"
     "styles/images/media-skip-forward-32.png"
+    "styles/images/media-stop-128.png"
     "styles/images/media-stop-16.png"
     "styles/images/media-stop-32.png"
     "styles/images/media-volume-16.png"
@@ -162,6 +185,9 @@ set(qstyle_resource_files
     "styles/images/parentdir-128.png"
     "styles/images/parentdir-16.png"
     "styles/images/parentdir-32.png"
+    "styles/images/question-128.png"
+    "styles/images/question-16.png"
+    "styles/images/question-32.png"
     "styles/images/refresh-24.png"
     "styles/images/refresh-32.png"
     "styles/images/right-128.png"
@@ -179,12 +205,15 @@ set(qstyle_resource_files
     "styles/images/standardbutton-close-128.png"
     "styles/images/standardbutton-close-16.png"
     "styles/images/standardbutton-close-32.png"
-    "styles/images/standardbutton-closetab-32.png"
+    "styles/images/standardbutton-closetab-128.png"
     "styles/images/standardbutton-closetab-16.png"
-    "styles/images/standardbutton-closetab-down-32.png"
+    "styles/images/standardbutton-closetab-32.png"
+    "styles/images/standardbutton-closetab-down-128.png"
     "styles/images/standardbutton-closetab-down-16.png"
-    "styles/images/standardbutton-closetab-hover-32.png"
+    "styles/images/standardbutton-closetab-down-32.png"
+    "styles/images/standardbutton-closetab-hover-128.png"
     "styles/images/standardbutton-closetab-hover-16.png"
+    "styles/images/standardbutton-closetab-hover-32.png"
     "styles/images/standardbutton-delete-128.png"
     "styles/images/standardbutton-delete-16.png"
     "styles/images/standardbutton-delete-32.png"
@@ -223,14 +252,17 @@ set(qstyle_resource_files
     "styles/images/titlebar-unshade-16.png"
     "styles/images/titlebar-unshade-32.png"
     "styles/images/titlebar-unshade-48.png"
+    "styles/images/toolbar-ext-h-128.png"
     "styles/images/toolbar-ext-h-16.png"
     "styles/images/toolbar-ext-h-32.png"
     "styles/images/toolbar-ext-h-8.png"
+    "styles/images/toolbar-ext-h-rtl-128.png"
     "styles/images/toolbar-ext-h-rtl-16.png"
     "styles/images/toolbar-ext-h-rtl-32.png"
     "styles/images/toolbar-ext-h-rtl-8.png"
     "styles/images/toolbar-ext-v-10.png"
     "styles/images/toolbar-ext-v-20.png"
+    "styles/images/toolbar-ext-v-80.png"
     "styles/images/toolbar-ext-v-5.png"
     "styles/images/trash-128.png"
     "styles/images/trash-16.png"
@@ -244,6 +276,9 @@ set(qstyle_resource_files
     "styles/images/viewlist-128.png"
     "styles/images/viewlist-16.png"
     "styles/images/viewlist-32.png"
+    "styles/images/warning-128.png"
+    "styles/images/warning-16.png"
+    "styles/images/warning-32.png"
 )
 
 qt_internal_add_resource(Widgets "qstyle"
@@ -290,6 +325,36 @@ qt_internal_add_resource(Widgets "qstyle1"
         "styles"
     FILES
         ${qstyle1_resource_files}
+)
+
+set(qstyle_resource_fusion_files
+    "styles/images/fusion_closedock-10.png"
+    "styles/images/fusion_closedock-16.png"
+    "styles/images/fusion_closedock-20.png"
+    "styles/images/fusion_closedock-32.png"
+    "styles/images/fusion_closedock-48.png"
+    "styles/images/fusion_closedock-64.png"
+    "styles/images/fusion_normalizedockup_10.png"
+    "styles/images/fusion_normalizedockup-16.png"
+    "styles/images/fusion_normalizedockup_20.png"
+    "styles/images/fusion_normalizedockup-32.png"
+    "styles/images/fusion_normalizedockup_48.png"
+    "styles/images/fusion_normalizedockup_64.png"
+    "styles/images/fusion_titlebar-min-10.png"
+    "styles/images/fusion_titlebar-min-16.png"
+    "styles/images/fusion_titlebar-min-20.png"
+    "styles/images/fusion_titlebar-min-32.png"
+    "styles/images/fusion_titlebar-min-48.png"
+    "styles/images/fusion_titlebar-min-64.png"
+)
+
+qt_internal_add_resource(Widgets "qstyle_fusion"
+    PREFIX
+        "/qt-project.org/styles/fusionstyle"
+    BASE
+        "styles"
+    FILES
+        ${qstyle_resource_fusion_files}
 )
 
 if(QT_FEATURE_reduce_relocations AND UNIX AND GCC)

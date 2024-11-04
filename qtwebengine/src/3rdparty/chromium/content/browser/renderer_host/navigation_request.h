@@ -7,51 +7,49 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/debug/crash_logging.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_forward.h"
 #include "base/memory/raw_ptr.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/memory/safe_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_util.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "build/build_config.h"
-#include "content/browser/browsing_topics/browsing_topics_url_loader_service.h"
 #include "content/browser/fenced_frame/fenced_frame_url_mapping.h"
 #include "content/browser/loader/navigation_url_loader_delegate.h"
+#include "content/browser/loader/subresource_proxying_url_loader_service.h"
 #include "content/browser/navigation_subresource_loader_params.h"
-#include "content/browser/preloading/prerender/prerender_host.h"
+#include "content/browser/renderer_host/browsing_context_group_swap.h"
 #include "content/browser/renderer_host/commit_deferring_condition_runner.h"
 #include "content/browser/renderer_host/cross_origin_opener_policy_status.h"
 #include "content/browser/renderer_host/navigation_controller_impl.h"
-#include "content/browser/renderer_host/navigation_entry_impl.h"
 #include "content/browser/renderer_host/navigation_policy_container_builder.h"
 #include "content/browser/renderer_host/navigation_throttle_runner.h"
 #include "content/browser/renderer_host/navigation_type.h"
-#include "content/browser/renderer_host/policy_container_host.h"
-#include "content/browser/renderer_host/render_frame_host_csp_context.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
-#include "content/browser/renderer_host/should_swap_browsing_instance.h"
-#include "content/browser/renderer_host/subframe_history_navigation_throttle.h"
 #include "content/browser/site_instance_impl.h"
+#include "content/browser/webui/web_ui_controller_factory_registry.h"
+#include "content/browser/webui/web_ui_impl.h"
 #include "content/common/content_export.h"
 #include "content/common/navigation_client.mojom-forward.h"
-#include "content/public/browser/allow_service_worker_result.h"
 #include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/navigation_throttle.h"
-#include "content/public/browser/peak_gpu_memory_tracker.h"
 #include "content/public/browser/prerender_trigger_type.h"
 #include "content/public/browser/render_process_host_observer.h"
 #include "content/public/browser/weak_document_ptr.h"
+#include "content/public/browser/web_ui_controller.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "mojo/public/cpp/bindings/pending_associated_remote.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/system/data_pipe.h"
+#include "mojo/public/cpp/system/simple_watcher.h"
 #include "net/base/isolation_info.h"
 #include "net/base/proxy_server.h"
 #include "net/dns/public/resolve_error_info.h"
@@ -59,16 +57,16 @@
 #include "services/network/public/cpp/content_security_policy/csp_context.h"
 #include "services/network/public/mojom/blocked_by_response_reason.mojom-shared.h"
 #include "services/network/public/mojom/content_security_policy.mojom.h"
+#include "services/network/public/mojom/shared_dictionary_access_observer.mojom.h"
+#include "services/network/public/mojom/trust_token_access_observer.mojom-shared.h"
 #include "services/network/public/mojom/web_sandbox_flags.mojom-shared.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/blink/public/common/frame/view_transition_state.h"
-#include "third_party/blink/public/common/navigation/impression.h"
 #include "third_party/blink/public/common/runtime_feature_state/runtime_feature_state_context.h"
 #include "third_party/blink/public/common/tokens/tokens.h"
+#include "third_party/blink/public/mojom/lcp_critical_path_predictor/lcp_critical_path_predictor.mojom.h"
 #include "third_party/blink/public/mojom/loader/mixed_content.mojom-forward.h"
 #include "third_party/blink/public/mojom/navigation/navigation_initiator_activation_and_ad_status.mojom.h"
 #include "third_party/blink/public/mojom/navigation/navigation_params.mojom-forward.h"
-#include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -76,12 +74,6 @@
 #include "base/android/scoped_java_ref.h"
 #include "content/browser/android/navigation_handle_proxy.h"
 #endif
-
-namespace base {
-namespace trace_event {
-class TracedValue;
-}  // namespace trace_event
-}  // namespace base
 
 namespace network {
 struct URLLoaderCompletionStatus;
@@ -94,16 +86,15 @@ class CompositorLock;
 namespace content {
 
 class CrossOriginEmbedderPolicyReporter;
-class SubresourceWebBundleNavigationInfo;
-class FrameNavigationEntry;
 class FrameTreeNode;
-class NavigationURLLoader;
 class NavigationUIData;
+class NavigationURLLoader;
 class NavigatorDelegate;
 class PrefetchedSignedExchangeCache;
+class PrerenderHostRegistry;
+class RenderFrameHostCSPContext;
 class ServiceWorkerMainResourceHandle;
-class SiteInfo;
-struct SubresourceLoaderParams;
+class SubframeHistoryNavigationThrottle;
 
 // The primary implementation of NavigationHandle.
 //
@@ -116,7 +107,9 @@ class CONTENT_EXPORT NavigationRequest
       public FencedFrameURLMapping::MappingResultObserver,
       public mojom::NavigationRendererCancellationListener,
       private RenderProcessHostObserver,
-      private network::mojom::CookieAccessObserver {
+      private network::mojom::CookieAccessObserver,
+      private network::mojom::TrustTokenAccessObserver,
+      private network::mojom::SharedDictionaryAccessObserver {
  public:
   // Keeps track of the various stages of a NavigationRequest.
   // To see what state transitions are allowed, see |SetState|.
@@ -219,8 +212,6 @@ class CONTENT_EXPORT NavigationRequest
       blink::mojom::CommonNavigationParamsPtr common_params,
       blink::mojom::CommitNavigationParamsPtr commit_params,
       bool was_opener_suppressed,
-      const blink::LocalFrameToken* initiator_frame_token,
-      int initiator_process_id,
       const std::string& extra_headers,
       FrameNavigationEntry* frame_entry,
       NavigationEntryImpl* entry,
@@ -228,7 +219,9 @@ class CONTENT_EXPORT NavigationRequest
       std::unique_ptr<NavigationUIData> navigation_ui_data,
       const absl::optional<blink::Impression>& impression,
       bool is_pdf,
-      bool is_embedder_initiated_fenced_frame_navigation = false);
+      bool is_embedder_initiated_fenced_frame_navigation = false,
+      absl::optional<std::u16string> embedder_shared_storage_context =
+          absl::nullopt);
 
   // Creates a request for either a browser-initiated navigation or a
   // renderer-initiated navigation.  Normally, renderer-initiated navigations
@@ -249,7 +242,7 @@ class CONTENT_EXPORT NavigationRequest
       blink::mojom::CommitNavigationParamsPtr commit_params,
       bool browser_initiated,
       bool was_opener_suppressed,
-      const blink::LocalFrameToken* initiator_frame_token,
+      const absl::optional<blink::LocalFrameToken>& initiator_frame_token,
       int initiator_process_id,
       const std::string& extra_headers,
       FrameNavigationEntry* frame_entry,
@@ -261,7 +254,9 @@ class CONTENT_EXPORT NavigationRequest
           initiator_activation_and_ad_status,
       bool is_pdf,
       bool is_embedder_initiated_fenced_frame_navigation = false,
-      bool is_container_initiated = false);
+      bool is_container_initiated = false,
+      absl::optional<std::u16string> embedder_shared_storage_context =
+          absl::nullopt);
 
   // Creates a request for a renderer-initiated navigation.
   static std::unique_ptr<NavigationRequest> CreateRendererInitiated(
@@ -303,8 +298,6 @@ class CONTENT_EXPORT NavigationRequest
       const std::vector<GURL>& redirects,
       const GURL& original_url,
       std::unique_ptr<CrossOriginEmbedderPolicyReporter> coep_reporter,
-      std::unique_ptr<SubresourceWebBundleNavigationInfo>
-          subresource_web_bundle_navigation_info,
       int http_response_code);
 
   static NavigationRequest* From(NavigationHandle* handle);
@@ -378,6 +371,11 @@ class CONTENT_EXPORT NavigationRequest
                         const std::string& header_value) override;
   void SetCorsExemptRequestHeader(const std::string& header_name,
                                   const std::string& header_value) override;
+  void SetLCPPNavigationHint(
+      const blink::mojom::LCPCriticalPathPredictorNavigationTimeHint& hint)
+      override;
+  const blink::mojom::LCPCriticalPathPredictorNavigationTimeHintPtr&
+  GetLCPPNavigationHint() override;
   const net::HttpResponseHeaders* GetResponseHeaders() override;
   net::HttpResponseInfo::ConnectionInfo GetConnectionInfo() override;
   const absl::optional<net::SSLInfo>& GetSSLInfo() override;
@@ -407,7 +405,7 @@ class CONTENT_EXPORT NavigationRequest
   const absl::optional<blink::Impression>& GetImpression() override;
   const absl::optional<blink::LocalFrameToken>& GetInitiatorFrameToken()
       override;
-  int GetInitiatorProcessID() override;
+  int GetInitiatorProcessId() override;
   const absl::optional<url::Origin>& GetInitiatorOrigin() override;
   const absl::optional<GURL>& GetInitiatorBaseUrl() override;
   const std::vector<std::string>& GetDnsAliases() override;
@@ -421,6 +419,7 @@ class CONTENT_EXPORT NavigationRequest
   bool IsServedFromBackForwardCache() override;
   void SetIsOverridingUserAgent(bool override_ua) override;
   void SetSilentlyIgnoreErrors() override;
+  network::mojom::WebSandboxFlags SandboxFlagsInitiator() override;
   network::mojom::WebSandboxFlags SandboxFlagsInherited() override;
   network::mojom::WebSandboxFlags SandboxFlagsToCommit() override;
   bool IsWaitingToCommit() override;
@@ -429,6 +428,7 @@ class CONTENT_EXPORT NavigationRequest
   void WriteIntoTrace(perfetto::TracedProto<TraceProto> context) const override;
   bool SetNavigationTimeout(base::TimeDelta timeout) override;
   void SetAllowCookiesFromBrowser(bool allow_cookies_from_browser) override;
+  void GetResponseBody(ResponseBodyCallback callback) override;
   PrerenderTriggerType GetPrerenderTriggerType() override;
   std::string GetPrerenderEmbedderHistogramSuffix() override;
 #if BUILDFLAG(IS_ANDROID)
@@ -436,9 +436,13 @@ class CONTENT_EXPORT NavigationRequest
 #endif
   base::SafeRef<NavigationHandle> GetSafeRef() override;
   bool ExistingDocumentWasDiscarded() const override;
+  blink::RuntimeFeatureStateContext& GetMutableRuntimeFeatureStateContext()
+      override;
+  // End of NavigationHandle implementation.
 
-  // mojom::NavigationRendererCancellationListener implementation
+  // mojom::NavigationRendererCancellationListener implementation:
   void RendererCancellationWindowEnded() override;
+  // End of mojom::NavigationRendererCancellationListener implementation.
 
   void RegisterCommitDeferringConditionForTesting(
       std::unique_ptr<CommitDeferringCondition> condition);
@@ -692,6 +696,10 @@ class CONTENT_EXPORT NavigationRequest
     ready_to_commit_callback_for_testing_ = std::move(callback);
   }
 
+  // Whether this navigation is queued, waiting for an existing pending commit
+  // RenderFrameHost to finish navigating.
+  bool IsQueued() const { return !!resume_commit_closure_; }
+
   void set_renderer_cancellation_window_ended_callback(
       base::OnceClosure callback) {
     DCHECK(!renderer_cancellation_window_ended());
@@ -712,9 +720,9 @@ class CONTENT_EXPORT NavigationRequest
   // default value if |timeout| is zero.
   static void SetCommitTimeoutForTesting(const base::TimeDelta& timeout);
 
-  RenderFrameHostImpl* rfh_restored_from_back_forward_cache() {
-    return rfh_restored_from_back_forward_cache_.get();
-  }
+  // Returns the `rfh_restored_from_back_forward_cache_` if the navigation is
+  // a BFCache restore, or nullptr otherwise.
+  RenderFrameHostImpl* GetRenderFrameHostRestoredFromBackForwardCache() const;
 
   // The NavigatorDelegate to notify/query for various navigation events. This
   // is always the WebContents.
@@ -737,15 +745,6 @@ class CONTENT_EXPORT NavigationRequest
   // CreateForCommit().
   bool IsNavigationStarted() const;
 
-  // Restart the navigation restoring the page from the back-forward cache
-  // as a regular non-bfcached history navigation.
-  //
-  // The restart itself is asychronous as it's dangerous to restart navigation
-  // with arbitrary state on the stack (another navigation might be starting,
-  // so this function only posts the actual task to do all the work (see
-  // RestartBackForwardCachedNavigationImpl);
-  void RestartBackForwardCachedNavigation();
-
   std::unique_ptr<PeakGpuMemoryTracker> TakePeakGpuMemoryTracker();
 
   std::unique_ptr<NavigationEarlyHintsManager> TakeEarlyHintsManager();
@@ -761,8 +760,23 @@ class CONTENT_EXPORT NavigationRequest
     return response_should_be_rendered_;
   }
 
-  // Must only be called after ReadyToCommitNavigation().
-  network::mojom::ClientSecurityStatePtr BuildClientSecurityState();
+  // Returns the `ClientSecurityState` we should pass to
+  // `NavigationURLLoaderFactory`.
+  //
+  // For subresource requests the `ClientSecurityState` is passed through
+  // `URLLoaderFactoryParams`, since each request client has a dedicated
+  // factory. That does not work for navigation requests because they all share
+  // a common factory, so each request is tagged with a `ClientSecurityState` to
+  // use instead.
+  network::mojom::ClientSecurityStatePtr
+  BuildClientSecurityStateForNavigationFetch();
+
+  // Returns the `ClientSecurityState` to be used for subresource fetches by the
+  // document we are navigating to.
+  //
+  // Must only be called after `ReadyToCommitNavigation()`.
+  network::mojom::ClientSecurityStatePtr
+  BuildClientSecurityStateForCommittedDocument();
 
   bool ua_change_requires_reload() const { return ua_change_requires_reload_; }
 
@@ -796,6 +810,12 @@ class CONTENT_EXPORT NavigationRequest
   // Must only be called after ReadyToCommitNavigation().
   blink::mojom::PolicyContainerPtr CreatePolicyContainerForBlink();
 
+  // Returns a new refptr to this navigation's PolicyContainerHost.
+  //
+  // Must only be called after ReadyToCommitNavigation().
+  // It is invalid to call after `TakePolicyContainerHost()`.
+  scoped_refptr<PolicyContainerHost> GetPolicyContainerHost();
+
   // Moves this navigation's PolicyContainerHost out of this instance.
   //
   // Must only be called after ReadyToCommitNavigation().
@@ -812,6 +832,8 @@ class CONTENT_EXPORT NavigationRequest
   // and same-document navigations and to
   // RenderFrameHost::FromID(GetPreviousRenderFrameHostId())
   //     ->GetPageUkmSourceId() for main-frame cross-document navigations.
+  // Note: If this method is called on a prerender navigation, it will return
+  // ukm::kInvalidSourceId due to our data collection policy.
   ukm::SourceId GetPreviousPageUkmSourceId();
 
   void OnServiceWorkerAccessed(const GURL& scope,
@@ -823,6 +845,20 @@ class CONTENT_EXPORT NavigationRequest
   [[nodiscard]] std::vector<
       mojo::PendingReceiver<network::mojom::CookieAccessObserver>>
   TakeCookieObservers();
+
+  // Take all Trust Token observers associated with this navigation.
+  // Typically this is called when navigation commits to move these observers to
+  // the committed document.
+  [[nodiscard]] std::vector<
+      mojo::PendingReceiver<network::mojom::TrustTokenAccessObserver>>
+  TakeTrustTokenObservers();
+
+  // Take all shared dictionary observers associated with this navigation.
+  // Typically this is called when navigation commits to move these observers to
+  // the committed document.
+  [[nodiscard]] std::vector<
+      mojo::PendingReceiver<network::mojom::SharedDictionaryAccessObserver>>
+  TakeSharedDictionaryAccessObservers();
 
   // Returns the coop status information relevant to the current navigation.
   CrossOriginOpenerPolicyStatus& coop_status() { return coop_status_; }
@@ -919,14 +955,6 @@ class CONTENT_EXPORT NavigationRequest
   // proceeding.
   bool IsWaitingForBeforeUnload();
 
-  // If the response is loaded from a WebBundle, returns the URL of the
-  // WebBundle. Otherwise, returns an empty URL.
-  GURL GetWebBundleURL();
-  // Creates a SubresourceWebBundleNavigationInfo if the response is loaded from
-  // a WebBundle.
-  std::unique_ptr<SubresourceWebBundleNavigationInfo>
-  GetSubresourceWebBundleNavigationInfo();
-
   // Returns the original request url:
   // - If this navigation resulted in an error page, this will return the URL
   // of the page that failed to load.
@@ -968,6 +996,45 @@ class CONTENT_EXPORT NavigationRequest
     return prerender_navigation_state_->prerender_main_frame_replication_state;
   }
 
+  // Origin-keyed Agent Cluster (OAC) state needs to be tracked for origins that
+  // opt-in or opt-out, so that a given origin is treated consistently within a
+  // given BrowsingInstance. This ensures that foo.example.com will have the
+  // same OAC state in a BrowsingInstance even if multiple documents in the
+  // origin have different headers.
+  //
+  // This function ensures that this OAC state is tracked in cases where it is
+  // not handled elsewhere. For example, OAC origins that end up in origin-keyed
+  // processes already track their OAC state during SiteInstance creation.
+  // However, SiteInstance does not track origin state in the following cases,
+  // which this function handles:
+  //
+  // 1) If process isolation for OAC is disabled (e.g., on low-memory Android
+  // devices), the origin will use a site-keyed SiteInstance that does not
+  // record OAC state for the origin.
+  //
+  // 2) If the origin has no header but ends up with OAC-by-default (and
+  // kOriginKeyedProcessesByDefault is not enabled), the origin will use a
+  // site-keyed SiteInstance.
+  //
+  // 3) If the origin opts-out of OAC using a header, it will use a site-keyed
+  // SiteInstance.
+  //
+  // 4)If the origin opts-in to OAC using a header, but it is first placed in a
+  // speculative RenderFrameHost before the header is received, it creates a
+  // SiteInfo with default isolation and an origin-keyed process (by default).
+  // In this case, the origin was not tracked when the SiteInstance was created,
+  // and needs to be tracked later when the opt-in header is observed.
+  //
+  // In all of these cases, this function updates the BrowsingInstance to keep
+  // track of the OAC state for this NavigationRequest's origin.
+  //
+  // TODO(wjmaclean): Cases 1 and 2 will not be necessary once we use
+  // origin-keyed SiteInstances within a site-keyed process, via
+  // SiteInstanceGroup. Cases 3 and 4 will still be needed at that point, but
+  // might become simpler.
+  void AddOriginAgentClusterStateIfNecessary(
+      const IsolationContext& isolation_context);
+
   // Store a console message, which will be sent to the final RenderFrameHost
   // immediately after requesting the navigation to commit.
   //
@@ -992,12 +1059,22 @@ class CONTENT_EXPORT NavigationRequest
     return prerender_frame_tree_node_id_.value();
   }
 
+  const absl::optional<FencedFrameProperties>& GetFencedFrameProperties()
+      const {
+    return fenced_frame_properties_;
+  }
+
   // Compute and return the `FencedFrameProperties` that this
   // `NavigationRequest` acts under, i.e. the properties attached to this
-  // `NavigationRequest` if present, or the properties attached to the fenced
-  // frame root (if present) otherwise.
-  const absl::optional<FencedFrameProperties>& ComputeFencedFrameProperties()
-      const;
+  // `NavigationRequest` if present.
+  // Otherwise, returns the fenced frame properties associated with the given
+  // source. See `FrameTreeNode::GetFencedFrameProperties()` on how fenced
+  // frame properties are obtained for different sources.
+  // TODO(crbug.com/1355857): Once navigation support for urn::uuid in iframes
+  // is deprecated, remove the parameter `node_source`.
+  const absl::optional<FencedFrameProperties>& ComputeFencedFrameProperties(
+      FencedFramePropertiesNodeSource node_source =
+          FencedFramePropertiesNodeSource::kClosestAncestor) const;
 
   const absl::optional<base::UnguessableToken> ComputeFencedFrameNonce() const;
 
@@ -1009,10 +1086,11 @@ class CONTENT_EXPORT NavigationRequest
   // Empties this instance's vector.
   std::vector<blink::mojom::WebFeature> TakeWebFeaturesToLog();
 
-  void set_topics_url_loader_service_bind_context(
-      base::WeakPtr<BrowsingTopicsURLLoaderService::BindContext> bind_context) {
-    DCHECK(!topics_url_loader_service_bind_context_);
-    topics_url_loader_service_bind_context_ = bind_context;
+  void set_subresource_proxying_url_loader_service_bind_context(
+      base::WeakPtr<SubresourceProxyingURLLoaderService::BindContext>
+          bind_context) {
+    DCHECK(!subresource_proxying_url_loader_service_bind_context_);
+    subresource_proxying_url_loader_service_bind_context_ = bind_context;
   }
 
   // Helper for logging crash keys related to a NavigationRequest (e.g.
@@ -1068,18 +1146,13 @@ class CONTENT_EXPORT NavigationRequest
   // for a ViewTransition.
   void SetViewTransitionState(blink::ViewTransitionState view_transition_state);
 
-  // Returns a mutable reference to a blink::RuntimeFeatureStateContext object,
-  // which exposes the getters and setters for Blink Runtime-Enabled Features to
-  // the browser process. Any feature set using the RuntimeFeatureStateContext
-  // before navigation commit will be communicated back to the renderer process.
+  // Returns a const reference to a blink::RuntimeFeatureStateContext (RFSC)
+  // object. Once the commit params are sent to the renderer we no longer allow
+  // write access to the RFSC, but read access is still available.
   //
-  // This function should not be called once the navigation has been committed.
-  // NOTE: these feature changes will apply to the "to-be-created" document.
-  blink::RuntimeFeatureStateContext& GetMutableRuntimeFeatureStateContext();
-
-  // Returns a const reference to a blink::RuntimeFeatureStateContext object.
-  // Once the commit params are sent to the renderer we no longer allow write
-  // access to the RFSC, but read access is still available.
+  // Note: This method has another
+  // version, `GetMutableRuntimeFeatureStateContext()`, accessible via
+  // NavigationHandle and will return a mutable reference to the RFSC.
   const blink::RuntimeFeatureStateContext& GetRuntimeFeatureStateContext();
 
   BrowsingContextGroupSwap browsing_context_group_swap() const {
@@ -1112,7 +1185,10 @@ class CONTENT_EXPORT NavigationRequest
 
   // For subframe NavigationRequests, these set and return the main frame's
   // NavigationRequest token, in the case that the main frame returns it from
-  // GetNavigationTokenForDeferringSubframes().
+  // GetNavigationTokenForDeferringSubframes(). Note that by the time
+  // `main_frame_same_document_history_token()` is called, the NavigationRequest
+  // represented by that token may have already finished and been deleted, so
+  // any attempt to lookup based on this token must null-check the request.
   void set_main_frame_same_document_history_token(
       absl::optional<base::UnguessableToken> token) {
     main_frame_same_document_navigation_token_ = token;
@@ -1138,6 +1214,77 @@ class CONTENT_EXPORT NavigationRequest
     return std::move(cookie_change_listener_);
   }
 
+  // Returns true if there is a speculative RFH that has a pending commit
+  // cross-document navigation, and this NavigationRequest is not a pending
+  // commit NavigationRequest itself. This means that this navigation should be
+  // queued (i.e. wait for the pending commit navigation to finish committing),
+  // before continuing and creating a new speculative RFH to commit in, so that
+  // it won't cause the existing pending commit RFH to be deleted. This function
+  // should only be called for navigations that are owned by the FrameTreeNode
+  // (i.e. it hasn't moved to the RenderFrameHost that it will commit in yet),
+  // as only those navigations can be queued.
+  bool ShouldQueueDueToExistingPendingCommitRFH() const;
+
+  void set_resume_commit_closure(base::OnceClosure closure) {
+    resume_commit_closure_ = std::move(closure);
+  }
+
+  // Records metrics for `GetFrameHostForNavigation()` attempts that failed due
+  // to this `NavigationRequest` being in the pending commit state.
+  // `commit_attempt` should be true if `GetFrameHostForNavigation()` failed
+  // when trying to get a RenderFrameHost when committing a navigation.
+  void RecordMetricsForBlockedGetFrameHostAttempt(bool commit_attempt);
+
+  // Creates a WebUI object for this navigation and saves it in `web_ui_`. Later
+  // on, the WebUI created will be moved to `frame_host` (if `frame_host` is
+  // null, it means a RenderFrameHost has not been picked for the navigation).
+  void CreateWebUIIfNeeded(RenderFrameHostImpl* frame_host);
+
+  bool HasWebUI() { return !!web_ui_; }
+
+  WebUIImpl* web_ui() { return web_ui_.get(); }
+
+  std::unique_ptr<WebUIImpl> TakeWebUI() {
+    CHECK(HasWebUI());
+    return std::move(web_ui_);
+  }
+
+  bool shared_storage_writable() const { return shared_storage_writable_; }
+
+  enum ErrorPageProcess {
+    kNotErrorPage,
+    kPostCommitErrorPage,
+    kCurrentProcess,
+    kDestinationProcess,
+    kIsolatedProcess
+  };
+  // Helper to determine whether a navigation is committing an error page and
+  // should stay in the current process (kCurrentProcess), the destination
+  // URL's process (kDestinationProcess), an isolated process
+  // (kIsolatedProcess), or is a post-commit error page that does not have any
+  // specific process requirements and goes through the "normal navigation"
+  // path. Returns kNotErrorPage if the navigation is not anerror page
+  // navigation.
+  ErrorPageProcess ComputeErrorPageProcess();
+
+  // This describes the reason for performing an early RenderFrameHost swap, if
+  // any. This enum is used in UMA histograms, so existing values should be
+  // neither reordered nor removed.
+  enum class EarlyRenderFrameHostSwapType {
+    kNone = 0,
+    kInitialFrame = 1,
+    kCrashedFrame = 2,
+    kMaxValue = kCrashedFrame,
+  };
+
+  // Remember if this navigation triggered an early swap of a speculative
+  // RenderFrameHost to become a current RenderFrameHost prior to the
+  // navigation commit, and if so, what triggered it.
+  void set_early_render_frame_host_swap_type(
+      EarlyRenderFrameHostSwapType type) {
+    early_render_frame_host_swap_type_ = type;
+  }
+
  private:
   friend class NavigationRequestTest;
 
@@ -1161,13 +1308,16 @@ class CONTENT_EXPORT NavigationRequest
       mojo::PendingAssociatedRemote<mojom::NavigationClient> navigation_client,
       scoped_refptr<PrefetchedSignedExchangeCache>
           prefetched_signed_exchange_cache,
-      base::WeakPtr<RenderFrameHostImpl> rfh_restored_from_back_forward_cache,
+      absl::optional<base::SafeRef<RenderFrameHostImpl>>
+          rfh_restored_from_back_forward_cache,
       int initiator_process_id,
       bool was_opener_suppressed,
       bool is_pdf,
       bool is_embedder_initiated_fenced_frame_navigation = false,
       mojo::PendingReceiver<mojom::NavigationRendererCancellationListener>
-          renderer_cancellation_listener = mojo::NullReceiver());
+          renderer_cancellation_listener = mojo::NullReceiver(),
+      absl::optional<std::u16string> embedder_shared_storage_context =
+          absl::nullopt);
 
   // Checks if this navigation may activate a prerendered page. If it's
   // possible, schedules to start running CommitDeferringConditions for
@@ -1200,16 +1350,6 @@ class CONTENT_EXPORT NavigationRequest
   // Origin-Agent-Cluster header, and if so opts in the origin to be isolated.
   void CheckForIsolationOptIn(const GURL& url);
 
-  // Use to manually set Origin-keyed Agent Cluster (OAC) isolation state in
-  // the event that process-isolation isn't being used for OAC, or
-  // OAC-by-default means that we're tracking explicit opt-out requests (which
-  // by definition are same-process).
-  // TODO(wjmaclean): When we switch to using separate SiteInstances even for
-  // same-process OAC, then this function can be removed.
-  void AddSameProcessOriginAgentClusterStateIfNecessary(
-      const IsolationContext& isolation_context,
-      const GURL& url);
-
   // Returns whether this navigation request is requesting opt-in
   // origin-isolation.
   bool IsOriginAgentClusterOptInRequested();
@@ -1219,12 +1359,13 @@ class CONTENT_EXPORT NavigationRequest
   // AreOriginAgentClustersEnabledByDefault() is false.
   bool IsOriginAgentClusterOptOutRequested();
 
-  // Returns whether defaulting to origin-keyed agent cluster (without
-  // necessarily an origin-keyed process) is enabled.
-  bool AreOriginAgentClustersEnabledByDefault() const;
-
-  // Returns whether this navigation request should use an origin-keyed
-  // agent cluster (but not an origin-keyed process).
+  // Returns whether this NavigationRequest should use an origin-keyed agent
+  // cluster, specifically in cases where no Origin-Agent-Cluster header has
+  // been observed, either because no response has yet been received or because
+  // it had no such header. (Returns false if the header is observed.)
+  //
+  // Note that an origin-keyed process may be used if this returns true, if
+  // kOriginKeyedProcessesByDefault is enabled.
   bool IsIsolationImplied();
 
   // The Origin-Agent-Cluster end result is determined early in the lifecycle of
@@ -1255,6 +1396,23 @@ class CONTENT_EXPORT NavigationRequest
   CreateNavigationEarlyHintsManagerParams(
       const network::mojom::EarlyHints& early_hints) override;
 
+  // Selecting a `RenderFrameHost` to commit a navigation may occasionally fail.
+  // When this happens, the navigation will bind a closure to continue the
+  // navigation and assign it to `resume_commit_closure_`. This closure may run
+  // even when it is still not possible to proceed; see the comment on the
+  // `resume_commit_closure_` field for the full details.
+
+  // Corresponds to navigations committing from `OnResponseStarted()`:
+  void SelectFrameHostForOnResponseStarted(
+      network::mojom::URLLoaderClientEndpointsPtr url_loader_client_endpoints,
+      bool is_download,
+      absl::optional<SubresourceLoaderParams> subresource_loader_params);
+  void SelectFrameHostForOnRequestFailedInternal(
+      bool exists_in_cache,
+      bool skip_throttles,
+      const absl::optional<std::string>& error_page_content);
+  void SelectFrameHostForCrossDocumentNavigationWithNoUrlLoader();
+
   // To be called whenever a navigation request fails. If |skip_throttles| is
   // true, the registered NavigationThrottle(s) won't get a chance to intercept
   // NavigationThrottle::WillFailRequest. It should be used when a request
@@ -1266,15 +1424,6 @@ class CONTENT_EXPORT NavigationRequest
       bool skip_throttles,
       const absl::optional<std::string>& error_page_content,
       bool collapse_frame);
-
-  // Helper to determine whether an error page for the provided error code
-  // should stay in the current process.
-  enum ErrorPageProcess {
-    kCurrentProcess,
-    kDestinationProcess,
-    kIsolatedProcess
-  };
-  ErrorPageProcess ComputeErrorPageProcess(int net_error);
 
   // Called when the NavigationThrottles have been checked by the
   // NavigationHandle.
@@ -1423,20 +1572,22 @@ class CONTENT_EXPORT NavigationRequest
   // renderer process.
   void UpdateCommitNavigationParamsHistory();
 
-  // Called when the renderer requesting a navigation cancellation, or because
-  // the renderer crashed.
-  void OnRendererRequestedNavigationCancellation();
+  // The disconnect handler for the NavigationClient Mojo interface; used as a
+  // signal to potentially cancel navigations, e.g. when the renderer replaces
+  // an existing NavigationClient connection with a new one or when the renderer
+  // process crashes.
+  void OnNavigationClientDisconnected(uint32_t reason,
+                                      const std::string& description);
 
   // Binds the given error_handler to be called when an interface disconnection
   // happens on the renderer side.
   void HandleInterfaceDisconnection(
-      mojo::AssociatedRemote<mojom::NavigationClient>*,
-      base::OnceClosure error_handler);
+      mojo::AssociatedRemote<mojom::NavigationClient>&);
 
   // When called, this NavigationRequest will no longer interpret the interface
   // disconnection on the renderer side as an AbortNavigation.
-  // TODO(ahemery): remove this function when NavigationRequest properly handles
-  // interface disconnection in all cases.
+  // TODO(https://crbug.com/1467502): remove this function when
+  // NavigationRequest properly handles interface disconnection in all cases.
   void IgnoreInterfaceDisconnection();
 
   // Sets ID of the RenderProcessHost we expect the navigation to commit in.
@@ -1577,9 +1728,6 @@ class CONTENT_EXPORT NavigationRequest
   // true.
   void SetSourceSiteInstanceToInitiatorIfNeeded();
 
-  // See RestartBackForwardCachedNavigation.
-  void RestartBackForwardCachedNavigationImpl();
-
   void ForceEnableOriginTrials(const std::vector<std::string>& trials) override;
 
   void CreateCoepReporter(StoragePartition* storage_partition);
@@ -1622,10 +1770,29 @@ class CONTENT_EXPORT NavigationRequest
   CreateCookieAccessObserver();
 
   // network::mojom::CookieAccessObserver:
-  void OnCookiesAccessed(
-      network::mojom::CookieAccessDetailsPtr details) override;
+  void OnCookiesAccessed(std::vector<network::mojom::CookieAccessDetailsPtr>
+                             details_vector) override;
   void Clone(mojo::PendingReceiver<network::mojom::CookieAccessObserver>
                  observer) override;
+
+  mojo::PendingRemote<network::mojom::TrustTokenAccessObserver>
+  CreateTrustTokenAccessObserver();
+
+  // network::mojom::TrustTokenAccessObserver:
+  void OnTrustTokensAccessed(
+      network::mojom::TrustTokenAccessDetailsPtr details) override;
+  void Clone(mojo::PendingReceiver<network::mojom::TrustTokenAccessObserver>
+                 observer) override;
+
+  mojo::PendingRemote<network::mojom::SharedDictionaryAccessObserver>
+  CreateSharedDictionaryAccessObserver();
+
+  // network::mojom::SharedDictionaryAccessObserver:
+  void OnSharedDictionaryAccessed(
+      network::mojom::SharedDictionaryAccessDetailsPtr details) override;
+  void Clone(
+      mojo::PendingReceiver<network::mojom::SharedDictionaryAccessObserver>
+          observer) override;
 
   // Convenience function to return the NavigationControllerImpl this
   // NavigationRequest is in.
@@ -1727,6 +1894,18 @@ class CONTENT_EXPORT NavigationRequest
   // a network response yet, or when going to an "about:blank" page.
   absl::optional<WebExposedIsolationInfo> ComputeWebExposedIsolationInfo();
 
+  // Computes whether the navigation is for a document that should live in a
+  // BrowsingInstance only containing other documents with the same COOP value
+  // set by the same origin. This is the case if this document or its top-level
+  // document sets COOP: same-origin or COOP: restrict-properties. If it is a
+  // top-level document, simply return its origin, otherwise inherit the
+  // top-level document value.
+  //
+  // If the return value is nullopt, it indicates that neither COOP: same-origin
+  // nor COOP: restrict-properties were used for this document or for its parent
+  // in the case of a subframe.
+  absl::optional<url::Origin> ComputeCommonCoopOrigin();
+
   // Assign an invalid frame tree node id to `prerender_frame_tree_node_id_`.
   // Called as soon as when we are certain that this navigation won't activate a
   // prerendered page. This is needed because `IsPrerenderedPageActivation()`,
@@ -1758,9 +1937,11 @@ class CONTENT_EXPORT NavigationRequest
     return common_params_->download_policy;
   }
 
-  // Called on FrameTreeNode's NavigationRequest (if any) when another
-  // NavigationRequest associated with the same FrameTreeNode is destroyed.
-  void ResumeCommitIfNeeded();
+  // Called on FrameTreeNode's queued NavigationRequest (if any) when another
+  // NavigationRequest associated with the same FrameTreeNode is destroyed and
+  // the queued NavigationRequest can be resumed. Will post a task to run the
+  // `resume_commit_closure_` asynchronously.
+  void PostResumeCommitTask();
 
   // Used to detect if the page being navigated to is participating in the
   // related deprecation trial and recording that in NavigationControllerImpl.
@@ -1788,8 +1969,19 @@ class CONTENT_EXPORT NavigationRequest
   // Returns the `StoragePartition` based on the config from the `site_info_`.
   StoragePartition* GetStoragePartitionWithCurrentSiteInfo();
 
+  // Passes the response body contents to the original caller using the stored
+  // callback once the body has been successfully read from its corresponding
+  // data pipe.
+  void OnResponseBodyReady(MojoResult result);
+
+  // Helper to record early RenderFrameHost swap metrics at the end of a
+  // navigation.
+  void RecordEarlyRenderFrameHostSwapMetrics();
+
   // Never null. The pointee node owns this navigation request instance.
-  FrameTreeNode* const frame_tree_node_;
+  // This field is not a raw_ptr because of incompatibilities with tracing
+  // (TRACE_EVENT*), perfetto::TracedDictionary::Add and gmock/EXPECT_THAT.
+  RAW_PTR_EXCLUSION FrameTreeNode* const frame_tree_node_;
 
   // Used for short-lived NavigationRequest created at DidCommit time for the
   // purpose of committing navigation that were not driven by the browser
@@ -1808,7 +2000,9 @@ class CONTENT_EXPORT NavigationRequest
   // picked for failed Back/Forward Cache restores.
   // Invariant: At least one of |loader_| or |render_frame_host_| is
   // null/absl::nullopt.
-  absl::optional<base::SafeRef<RenderFrameHostImpl>> render_frame_host_;
+  absl::optional<
+      base::SafeRef<RenderFrameHostImpl, base::SafeRefDanglingUntriaged>>
+      render_frame_host_;
 
   // Initialized on creation of the NavigationRequest. Sent to the renderer when
   // the navigation is ready to commit.
@@ -1956,7 +2150,7 @@ class CONTENT_EXPORT NavigationRequest
 
   // The NavigationClient interface used to commit the navigation. For now, this
   // is only used for same-site renderer-initiated navigation.
-  // TODO(clamy, ahemery): Extend to all types of navigation.
+  // TODO(https://crbug.com/1467502): Extend to all types of navigation.
   mojo::AssociatedRemote<mojom::NavigationClient> commit_navigation_client_;
 
   // If set, any redirects to HTTP for this navigation will be upgraded to
@@ -2091,16 +2285,14 @@ class CONTENT_EXPORT NavigationRequest
   // modified during the redirect phase.
   std::vector<std::string> removed_request_headers_;
 
-  // A WeakPtr for the RenderFrameHost that is being restored from the
-  // back/forward cache. This can be null if this navigation is not restoring a
-  // page from the back/forward cache, or if the RenderFrameHost to restore was
-  // evicted and destroyed after the NavigationRequest was created.
-  base::WeakPtr<RenderFrameHostImpl> rfh_restored_from_back_forward_cache_;
+  // The RenderFrameHost that is being restored from the back/forward cache.
+  // This can be null if this navigation is not restoring a page from the
+  // back/forward cache.
+  absl::optional<base::SafeRef<RenderFrameHostImpl>>
+      rfh_restored_from_back_forward_cache_;
 
   // Whether the navigation is for restoring a page from the back/forward cache
-  // or not. Note that this can be true even when
-  // `rfh_restored_from_back_forward_cache_` is null, if the RenderFrameHost to
-  // restore was evicted and destroyed after the NavigationRequest was created.
+  // or not.
   const bool is_back_forward_cache_restore_;
 
   // These are set to the values from the FrameNavigationEntry this
@@ -2128,6 +2320,10 @@ class CONTENT_EXPORT NavigationRequest
   // only valid in conjunction with it.
   const int initiator_process_id_ = ChildProcessHost::kInvalidUniqueID;
 
+  // The sandbox flags of the navigation's initiator, if any.
+  // WebSandboxFlags::kNone otherwise.
+  const network::mojom::WebSandboxFlags sandbox_flags_initiator_;
+
   // Whether a navigation in a new window had the opener suppressed. False if
   // the navigation is not in a new window. Can only be true for renderer
   // initiated navigations which use `CreateBrowserInitiated()`.
@@ -2142,10 +2338,6 @@ class CONTENT_EXPORT NavigationRequest
   // True if the NavigationThrottles are running an event, the request then can
   // be cancelled for deferring.
   bool processing_navigation_throttle_ = false;
-
-  // True if we are restarting this navigation request as the RenderFrameHost
-  // was evicted.
-  bool restarting_back_forward_cached_navigation_ = false;
 
   // Holds the required CSP for this navigation. This will be moved into
   // the RenderFrameHost at DidCommitNavigation time.
@@ -2210,6 +2402,16 @@ class CONTENT_EXPORT NavigationRequest
   // made by this navigation.
   mojo::ReceiverSet<network::mojom::CookieAccessObserver> cookie_observers_;
 
+  // Observers listening to Trust Token access notifications for the network
+  // requests made by this navigation.
+  mojo::ReceiverSet<network::mojom::TrustTokenAccessObserver>
+      trust_token_observers_;
+
+  // Observers listening to shared dictionary access notifications for the
+  // network requests made by this navigation.
+  mojo::ReceiverSet<network::mojom::SharedDictionaryAccessObserver>
+      shared_dictionary_observers_;
+
   OriginAgentClusterEndResult origin_agent_cluster_end_result_ =
       OriginAgentClusterEndResult::kNotRequestedAndNotOriginKeyed;
 
@@ -2267,9 +2469,10 @@ class CONTENT_EXPORT NavigationRequest
   // They have some default values and get updated via inheritance or network
   // responses/redirects. Finally they get passed down to the
   // RenderFrameHostImpl at commit time.
-  // TODO(ahemery, titouan): Move some elements to the policy container or
-  // rework inheritance.
-  // https://crbug.com/1154729
+  //
+  // The policy to apply to private network requests for subresources of the
+  // document we are navigating to. Influenced by the document's policy
+  // container, origin, and `ContentBrowserClient`.
   network::mojom::PrivateNetworkRequestPolicy private_network_request_policy_ =
       network::mojom::PrivateNetworkRequestPolicy::kWarn;
 
@@ -2331,6 +2534,14 @@ class CONTENT_EXPORT NavigationRequest
   // frame properties will not be stored in the fenced frame root.
   absl::optional<FencedFrameProperties> fenced_frame_properties_;
 
+  // For fenced frames, any contextual string that was written by the embedder
+  // via `blink::FencedFrameConfig::setSharedStorageContext()` to be later
+  // retrieved only inside an eligible shared storage worklet in the fenced
+  // frame via `sharedStorage.context`. absl:nullopt if this request is not for
+  // a fenced frame or if the context string wasn't set prior to this
+  // navigation.
+  absl::optional<std::u16string> embedder_shared_storage_context_;
+
   // Prerender2:
   // The type to trigger prerendering. The value is valid only when Prerender2
   // is enabled.
@@ -2347,13 +2558,26 @@ class CONTENT_EXPORT NavigationRequest
   // reset.
   bool force_new_browsing_instance_ = false;
 
-  // A WeakPtr for the BindContext associated with topics loader factory for the
-  // committing document. This will be set in `CommitNavigation()`, and can
-  // become null if the corresponding factory is destroyed. Upon
-  // `DidCommitNavigation()`, `topics_url_loader_service_bind_context_` will
-  // be notified with the committed document.
-  base::WeakPtr<BrowsingTopicsURLLoaderService::BindContext>
-      topics_url_loader_service_bind_context_;
+  // Whether the ongoing navigation resource request is eligible for topics
+  // calculation. This is set before the initial request and each subsequent
+  // redirect. If `topics_eligible_` is true, the request headers will contain
+  // the "Sec-Browsing-Topics" header, and if the corresponding response headers
+  // contain "Observe-Browsing-Topics: ?1", a topic observation will be stored.
+  bool topics_eligible_ = false;
+
+  // Whether or not the request is eligible to write to shared storage from
+  // response headers. See
+  // https://github.com/WICG/shared-storage#from-response-headers
+  bool shared_storage_writable_ = false;
+
+  // A WeakPtr for the BindContext associated with the browser routing loader
+  // factory for the committing document. This will be set in
+  // `CommitNavigation()`, and can become null if the corresponding factory is
+  // destroyed. Upon `DidCommitNavigation()`,
+  // `subresource_proxying_url_loader_service_bind_context_` will be notified
+  // with the committed document.
+  base::WeakPtr<SubresourceProxyingURLLoaderService::BindContext>
+      subresource_proxying_url_loader_service_bind_context_;
 
   scoped_refptr<NavigationOrDocumentHandle> navigation_or_document_handle_;
 
@@ -2386,20 +2610,31 @@ class CONTENT_EXPORT NavigationRequest
 
   // If the browser has asked the renderer to commit the navigation in a
   // speculative RenderFrameHost, but the renderer has not yet responded, a
-  // subsequent navigation request will be suspended if it also reaches the
-  // ready to commit state. A suspended navigation should populate this field
-  // with a closure that resumes committing the navigation when run.
+  // subsequent navigation request will be queued when it is about to pick its
+  // final RenderFrameHost, to avoid deleting the previous navigation's pending
+  // commit RenderFrameHost. A queued navigation should populate this field with
+  // a closure that resumes committing the navigation when run.
   //
-  // 1. The closure should always be bound with a `WeakPtr` receiver. To avoid
-  //    weird reentrancy bugs, it will be run as a non-nested posted task, which
-  //    means the original NavigationRequest could already be deleted by the
-  //    time the closure runs.
-  // 2. The closure may run spuriously, i.e. it may be invoked even if a
-  //    speculative RenderFrameHost is still in the pending commit state and
-  //    still preventing any other navigations from committing. If this happens,
-  //    the closure should re-queue itself. For more background, please see the
-  //    comments in the implementation of `ResumeCommitIfNeeded()`.
+  // The closure should always be bound with a `WeakPtr` receiver. To avoid
+  // weird reentrancy bugs, it will be run as a non-nested posted task, which
+  // means the original NavigationRequest could already be deleted by the
+  // time the closure runs.
   base::OnceClosure resume_commit_closure_;
+
+  // Metrics for measuring the impact of navigation queueing. Note that while
+  // `resume_commit_closure_` is set on the navigation that was *blocked*, these
+  // metrics are set on the NavigationRequest that is *blocking*.
+  struct PendingCommitMetrics {
+    // When this `NavigationRequest` caused its speculative RenderFrameHost to
+    // enter pending commit.
+    base::TimeTicks start_time;
+    // How many `GetFrameHostForNavigation()` calls failed in total.
+    int blocked_count = 0;
+    // How many `GetFrameHostForNavigation()` calls failed when trying to assign
+    // a final `RenderFrameHost` for commit.
+    int blocked_commit_count = 0;
+  };
+  PendingCommitMetrics pending_commit_metrics_;
 
   // Records whether the new document will commit inside another BrowsingContext
   // group as a result of this navigation, and for what reason. Deciding whether
@@ -2446,6 +2681,35 @@ class CONTENT_EXPORT NavigationRequest
   // See `RenderFrameHostImpl::CookieChangeListener`.
   std::unique_ptr<RenderFrameHostImpl::CookieChangeListener>
       cookie_change_listener_;
+
+  // LCP Critical Path Predictor managed hint data those were already available
+  // at the time of navigation. The hint is passed along to the renderer process
+  // on commit along with the other navigation params.
+  blink::mojom::LCPCriticalPathPredictorNavigationTimeHint lcpp_hint_;
+
+  // The WebUI object to be used for this navigation. When a RenderFrameHost has
+  // been picked for the navigation, the WebUI object will be moved to be owned
+  // by the RenderFrameHost.
+  std::unique_ptr<WebUIImpl> web_ui_;
+
+  // Returns whether this navigation is currently deferred.
+  bool IsDeferred();
+
+  // The watcher used to asynchronously read the response body from the data
+  // pipe. Once the response body is read, it is passed to the original caller
+  // using the stored callback. This is instantiated when a response body is
+  // requested and destroyed upon returning the response body.
+  std::unique_ptr<mojo::SimpleWatcher> response_body_watcher_;
+  ResponseBodyCallback response_body_callback_;
+  // Used to confirm that any NavigationThrottle that calls `GetResponseBody()`
+  // becomes deferred.
+  bool was_get_response_body_called_ = false;
+
+  // Used to prevent re-entrancy into `Resume()`.
+  bool is_resuming_ = false;
+
+  EarlyRenderFrameHostSwapType early_render_frame_host_swap_type_ =
+      EarlyRenderFrameHostSwapType::kNone;
 
   base::WeakPtrFactory<NavigationRequest> weak_factory_{this};
 };

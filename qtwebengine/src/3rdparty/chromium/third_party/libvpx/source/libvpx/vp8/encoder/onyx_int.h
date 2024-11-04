@@ -360,7 +360,7 @@ typedef struct VP8_COMP {
   /* GF interval chosen when we coded the last GF */
   int current_gf_interval;
 
-  /* Total bits overspent becasue of GF boost (cumulative) */
+  /* Total bits overspent because of GF boost (cumulative) */
   int gf_overspend_bits;
 
   /* Used in the few frames following a GF to recover the extra bits
@@ -731,26 +731,6 @@ void vp8_tokenize_mb(VP8_COMP *, MACROBLOCK *, TOKENEXTRA **);
 
 void vp8_set_speed_features(VP8_COMP *cpi);
 
-#if CONFIG_DEBUG
-#define CHECK_MEM_ERROR(lval, expr)                                         \
-  do {                                                                      \
-    assert(cpi->common.error.setjmp);                                       \
-    (lval) = (expr);                                                        \
-    if (!(lval))                                                            \
-      vpx_internal_error(&cpi->common.error, VPX_CODEC_MEM_ERROR,           \
-                         "Failed to allocate " #lval " at %s:%d", __FILE__, \
-                         __LINE__);                                         \
-  } while (0)
-#else
-#define CHECK_MEM_ERROR(lval, expr)                               \
-  do {                                                            \
-    assert(cpi->common.error.setjmp);                             \
-    (lval) = (expr);                                              \
-    if (!(lval))                                                  \
-      vpx_internal_error(&cpi->common.error, VPX_CODEC_MEM_ERROR, \
-                         "Failed to allocate " #lval);            \
-  } while (0)
-#endif
 #ifdef __cplusplus
 }  // extern "C"
 #endif

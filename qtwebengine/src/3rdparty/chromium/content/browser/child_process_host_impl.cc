@@ -41,7 +41,7 @@
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #include "base/linux_util.h"
 #elif BUILDFLAG(IS_MAC)
-#include "base/mac/foundation_util.h"
+#include "base/apple/foundation_util.h"
 #include "content/browser/mac_helpers.h"
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
@@ -87,7 +87,7 @@ base::FilePath ChildProcessHost::GetChildPath(int flags) {
 #if BUILDFLAG(IS_MAC)
   std::string child_base_name = child_path.BaseName().value();
 
-  if (flags != CHILD_NORMAL && base::mac::AmIBundled()) {
+  if (flags != CHILD_NORMAL && base::apple::AmIBundled()) {
     // This is a specialized helper, with the |child_path| at
     // ../Framework.framework/Versions/X/Helpers/Chromium Helper.app/Contents/
     // MacOS/Chromium Helper. Go back up to the "Helpers" directory to select
@@ -101,8 +101,8 @@ base::FilePath ChildProcessHost::GetChildPath(int flags) {
     } else if (flags == CHILD_PLUGIN) {
       child_base_name += kMacHelperSuffix_plugin;
     } else if (flags > CHILD_EMBEDDER_FIRST) {
-      return GetContentClient()->browser()->GetChildProcessPath(flags,
-                                                                child_path);
+      child_base_name +=
+          GetContentClient()->browser()->GetChildProcessSuffix(flags);
     } else {
       NOTREACHED();
     }

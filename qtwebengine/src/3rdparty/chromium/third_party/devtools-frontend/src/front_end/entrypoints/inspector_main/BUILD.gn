@@ -10,6 +10,7 @@ import("../visibility.gni")
 generate_css("css_files") {
   sources = [
     "nodeIcon.css",
+    "outermostTargetSelector.css",
     "renderingOptions.css",
   ]
 }
@@ -17,6 +18,7 @@ generate_css("css_files") {
 devtools_module("inspector_main") {
   sources = [
     "InspectorMain.ts",
+    "OutermostTargetSelector.ts",
     "RenderingOptions.ts",
   ]
 
@@ -28,6 +30,7 @@ devtools_module("inspector_main") {
     "../../core/sdk:bundle",
     "../../generated:protocol",
     "../../panels/mobile_throttling:bundle",
+    "../../ui/components/icon_button:bundle",
     "../../ui/legacy:bundle",
     "../../ui/legacy/components/utils:bundle",
   ]

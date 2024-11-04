@@ -8,7 +8,7 @@
 #include "base/notreached.h"
 #include "base/time/time.h"
 #include "components/safe_browsing/core/browser/hashprefix_realtime/hash_realtime_utils.h"
-#include "components/safe_browsing/core/common/proto/safebrowsingv5_alpha1.pb.h"
+#include "components/safe_browsing/core/common/proto/safebrowsingv5.pb.h"
 
 namespace safe_browsing {
 
@@ -28,17 +28,21 @@ HashRealTimeCache::FullHashesAndDetails::FullHashesAndDetails() = default;
 HashRealTimeCache::FullHashesAndDetails::~FullHashesAndDetails() = default;
 
 std::unordered_map<std::string, std::vector<V5::FullHash>>
-HashRealTimeCache::SearchCache(
-    const std::set<std::string>& hash_prefixes) const {
+HashRealTimeCache::SearchCache(const std::set<std::string>& hash_prefixes,
+                               bool skip_logging) const {
   std::unordered_map<std::string, std::vector<V5::FullHash>> results;
   for (const auto& hash_prefix : hash_prefixes) {
     auto cached_result_it = cache_.find(hash_prefix);
     if (cached_result_it != cache_.end() &&
         cached_result_it->second.expiration_time > base::Time::Now()) {
       results[hash_prefix] = cached_result_it->second.full_hash_and_details;
-      LogCacheHitOrMiss(/*is_hit=*/true);
+      if (!skip_logging) {
+        LogCacheHitOrMiss(/*is_hit=*/true);
+      }
     } else {
-      LogCacheHitOrMiss(/*is_hit=*/false);
+      if (!skip_logging) {
+        LogCacheHitOrMiss(/*is_hit=*/false);
+      }
     }
   }
   return results;
@@ -66,7 +70,7 @@ void HashRealTimeCache::CacheSearchHashesResponse(
     V5::FullHash full_hash_to_store;
     full_hash_to_store.set_full_hash(fh.full_hash());
     for (const auto& fhd : fh.full_hash_details()) {
-      if (hash_realtime_utils::IsThreatTypeRelevant(fhd.threat_type())) {
+      if (hash_realtime_utils::IsHashDetailRelevant(fhd)) {
         auto* fhd_to_store = full_hash_to_store.add_full_hash_details();
         fhd_to_store->set_threat_type(fhd.threat_type());
         for (auto i = 0; i < fhd.attributes_size(); ++i) {

@@ -20,12 +20,12 @@ Item {
 
     Theme3D {
         id: firstTheme
-        type: Theme3D.ThemeQt
+        type: Theme3D.Theme.Qt
     }
 
     Theme3D {
         id: secondTheme
-        type: Theme3D.ThemeEbony
+        type: Theme3D.Theme.Ebony
     }
 
     Item {
@@ -36,7 +36,7 @@ Item {
             id: barGraph
             anchors.fill: parent
             selectionMode: AbstractGraph3D.SelectionItemAndRow
-            scene.activeCamera.cameraPreset: Camera3D.CameraPresetIsometricLeftHigh
+            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeftHigh
             theme: firstTheme
             valueAxis.labelFormat: "%d\u00B0C"
 

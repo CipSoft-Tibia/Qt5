@@ -1,6 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR
-// GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qaudiooutput.h>
 #include <qaudiodevice.h>
@@ -92,7 +91,7 @@ QAudioOutput::~QAudioOutput()
     using a logarithmic scale will produce linear changes in perceived \l{loudness},
     which is what a user would normally expect from a volume control.
 
-    See \l {QAudio::convertVolume()}{QtMultimedia.convertVolume()}
+    See \l {QtAudio::convertVolume()}{QtMultimedia.convertVolume()}
     for more details.
 */
 
@@ -110,7 +109,7 @@ QAudioOutput::~QAudioOutput()
     using a logarithmic scale will produce linear changes in perceived loudness,
     which is what a user would normally expect from a volume control.
 
-    \sa QAudio::convertVolume()
+    \sa QtAudio::convertVolume()
 */
 float QAudioOutput::volume() const
 {

@@ -911,12 +911,6 @@ static vpx_codec_err_t vp8e_encode(vpx_codec_alg_priv_t *ctx,
     }
   }
 
-  if (setjmp(ctx->cpi->common.error.jmp)) {
-    ctx->cpi->common.error.setjmp = 0;
-    vpx_clear_system_state();
-    return VPX_CODEC_CORRUPT_FRAME;
-  }
-
   /* Initialize the encoder instance on the first frame*/
   if (!res && ctx->cpi) {
     unsigned int lib_flags;
@@ -926,6 +920,13 @@ static vpx_codec_err_t vp8e_encode(vpx_codec_alg_priv_t *ctx,
     unsigned char *cx_data;
     unsigned char *cx_data_end;
     int comp_data_state = 0;
+
+    if (setjmp(ctx->cpi->common.error.jmp)) {
+      ctx->cpi->common.error.setjmp = 0;
+      vpx_clear_system_state();
+      return VPX_CODEC_CORRUPT_FRAME;
+    }
+    ctx->cpi->common.error.setjmp = 1;
 
     /* Set up internal flags */
     if (ctx->base.init_flags & VPX_CODEC_USE_PSNR) {
@@ -961,8 +962,6 @@ static vpx_codec_err_t vp8e_encode(vpx_codec_alg_priv_t *ctx,
     cx_data_sz = ctx->cx_data_sz;
     cx_data_end = ctx->cx_data + cx_data_sz;
     lib_flags = 0;
-
-    ctx->cpi->common.error.setjmp = 1;
 
     while (cx_data_sz >= ctx->cx_data_sz / 2) {
       comp_data_state = vp8_get_compressed_data(
@@ -1059,6 +1058,7 @@ static vpx_codec_err_t vp8e_encode(vpx_codec_alg_priv_t *ctx,
         }
       }
     }
+    ctx->cpi->common.error.setjmp = 0;
   }
 
   return res;
@@ -1224,8 +1224,8 @@ static vpx_codec_err_t vp8e_set_scalemode(vpx_codec_alg_priv_t *ctx,
   if (data) {
     int res;
     vpx_scaling_mode_t scalemode = *(vpx_scaling_mode_t *)data;
-    res = vp8_set_internal_size(ctx->cpi, (VPX_SCALING)scalemode.h_scaling_mode,
-                                (VPX_SCALING)scalemode.v_scaling_mode);
+    res = vp8_set_internal_size(ctx->cpi, scalemode.h_scaling_mode,
+                                scalemode.v_scaling_mode);
 
     if (!res) {
       /*force next frame a key frame to effect scaling mode */
@@ -1292,8 +1292,8 @@ static vpx_codec_enc_cfg_map_t vp8e_usage_cfg_map[] = {
         0,  /* rc_resize_allowed */
         1,  /* rc_scaled_width */
         1,  /* rc_scaled_height */
-        60, /* rc_resize_down_thresold */
-        30, /* rc_resize_up_thresold */
+        60, /* rc_resize_down_thresh */
+        30, /* rc_resize_up_thresh */
 
         VPX_VBR,     /* rc_end_usage */
         { NULL, 0 }, /* rc_twopass_stats_in */

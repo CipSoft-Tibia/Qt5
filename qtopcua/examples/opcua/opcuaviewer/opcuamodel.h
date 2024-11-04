@@ -4,24 +4,28 @@
 #ifndef OPCUAMODEL_H
 #define OPCUAMODEL_H
 
-#include "treeitem.h"
-
 #include <QAbstractItemModel>
-#include <QOpcUaClient>
-#include <QOpcUaNode>
 
 #include <memory>
 
 class TreeItem;
 
+QT_BEGIN_NAMESPACE
+class QOpcUaClient;
+class QOpcUaGenericStructHandler;
+QT_END_NAMESPACE
+
 class OpcUaModel : public QAbstractItemModel
 {
     Q_OBJECT
 public:
-    OpcUaModel(QObject *parent = nullptr);
+    explicit OpcUaModel(QObject *parent = nullptr);
+    ~OpcUaModel();
 
     void setOpcUaClient(QOpcUaClient *);
+    void setGenericStructHandler(QOpcUaGenericStructHandler *handler);
     QOpcUaClient* opcUaClient() const;
+    QOpcUaGenericStructHandler *genericStructHandler() const;
 
     QVariant data(const QModelIndex &index, int role) const override;
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
@@ -32,6 +36,7 @@ public:
 
 private:
     QOpcUaClient *mOpcUaClient = nullptr;
+    QOpcUaGenericStructHandler *mGenericStructHandler = nullptr;
     std::unique_ptr<TreeItem> mRootItem;
 
     friend class TreeItem;

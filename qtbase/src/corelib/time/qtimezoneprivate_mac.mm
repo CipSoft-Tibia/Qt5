@@ -19,7 +19,8 @@ QT_BEGIN_NAMESPACE
 /*
     Private
 
-    OS X system implementation
+    Darwin system implementation
+    https://developer.apple.com/documentation/foundation/nstimezone
 */
 
 // Create the system default time zone
@@ -111,7 +112,7 @@ QString QMacTimeZonePrivate::displayName(QTimeZone::TimeType timeType,
             style = NSTimeZoneNameStyleStandard;
         break;
     case QTimeZone::OffsetName :
-        // Unreachable
+        Q_UNREACHABLE();
         break;
     }
 
@@ -147,7 +148,7 @@ int QMacTimeZonePrivate::daylightTimeOffset(qint64 atMSecsSinceEpoch) const
 
 bool QMacTimeZonePrivate::hasDaylightTime() const
 {
-    // TODO No Mac API, assume if has transitions
+    // TODO Scan transitions for one after which isDaylightSavingTimeForDate is true.
     return hasTransitions();
 }
 
@@ -202,7 +203,7 @@ QTimeZonePrivate::Data QMacTimeZonePrivate::nextTransition(qint64 afterMSecsSinc
 QTimeZonePrivate::Data QMacTimeZonePrivate::previousTransition(qint64 beforeMSecsSinceEpoch) const
 {
     // The native API only lets us search forward, so we need to find an early-enough start:
-    const NSTimeInterval lowerBound = std::numeric_limits<NSTimeInterval>::lowest();
+    constexpr NSTimeInterval lowerBound = std::numeric_limits<NSTimeInterval>::lowest();
     const qint64 endSecs = beforeMSecsSinceEpoch / 1000;
     const int year = 366 * 24 * 3600; // a (long) year, in seconds
     NSTimeInterval prevSecs = endSecs; // sentinel for later check

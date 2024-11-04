@@ -30,6 +30,7 @@
 
 #include "base/logging.h"
 #include "build/build_config.h"
+#include "cc/paint/color_filter.h"
 #include "components/paint_preview/common/paint_preview_tracker.h"
 #include "skia/ext/platform_canvas.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -47,13 +48,11 @@
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/wtf/math_extras.h"
 #include "third_party/skia/include/core/SkAnnotation.h"
-#include "third_party/skia/include/core/SkColorFilter.h"
 #include "third_party/skia/include/core/SkData.h"
 #include "third_party/skia/include/core/SkRRect.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
 #include "third_party/skia/include/pathops/SkPathOps.h"
 #include "third_party/skia/include/utils/SkNullCanvas.h"
-#include "ui/base/ui_base_features.h"
 #include "ui/gfx/geometry/point_conversions.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rect_conversions.h"
@@ -219,7 +218,7 @@ unsigned GraphicsContext::SaveCount() const {
 #endif
 
 void GraphicsContext::SetInDrawingRecorder(bool val) {
-  // Nested drawing recorers are not allowed.
+  // Nested drawing recorders are not allowed.
   DCHECK(!val || !in_drawing_recorder_);
   in_drawing_recorder_ = val;
 }
@@ -261,7 +260,7 @@ void GraphicsContext::BeginLayer(SkBlendMode xfermode) {
   BeginLayer(flags);
 }
 
-void GraphicsContext::BeginLayer(sk_sp<SkColorFilter> color_filter) {
+void GraphicsContext::BeginLayer(sk_sp<cc::ColorFilter> color_filter) {
   cc::PaintFlags flags;
   flags.setColorFilter(std::move(color_filter));
   BeginLayer(flags);
@@ -301,6 +300,7 @@ void GraphicsContext::BeginRecording() {
 }
 
 PaintRecord GraphicsContext::EndRecording() {
+  canvas_->SetPrintingMetafile(nullptr);
   canvas_ = nullptr;
   return paint_recorder_.finishRecordingAsPicture();
 }
@@ -542,29 +542,6 @@ void GraphicsContext::DrawLineForText(const gfx::PointF& pt,
           GetRectForTextLine(pt, width, RoundDownThickness(StrokeThickness())));
       DrawRect(r, flags, auto_dark_mode);
     }
-  }
-}
-
-// Draws a filled rectangle with a stroked border.
-void GraphicsContext::DrawRect(const gfx::Rect& rect,
-                               const AutoDarkMode& auto_dark_mode) {
-  if (rect.IsEmpty())
-    return;
-
-  SkRect sk_rect = gfx::RectToSkRect(rect);
-  if (ImmutableState()->FillColor().Alpha())
-    DrawRect(sk_rect, ImmutableState()->FillFlags(), auto_dark_mode);
-
-  if (ImmutableState()->GetStrokeData().Style() != kNoStroke &&
-      ImmutableState()->StrokeColor().Alpha()) {
-    // Stroke a width: 1 inset border
-    cc::PaintFlags flags(ImmutableState()->FillFlags());
-    flags.setColor(StrokeColor().toSkColor4f());
-    flags.setStyle(cc::PaintFlags::kStroke_Style);
-    flags.setStrokeWidth(1);
-
-    sk_rect.inset(0.5f, 0.5f);
-    DrawRect(sk_rect, flags, auto_dark_mode);
   }
 }
 

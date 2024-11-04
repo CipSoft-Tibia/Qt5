@@ -36,7 +36,7 @@ typedef OffscreenCanvasRenderingContext2DOrWebGLRenderingContextOrWebGL2Renderin
 class ScriptState;
 
 class CORE_EXPORT OffscreenCanvas final
-    : public EventTargetWithInlineData,
+    : public EventTarget,
       public ImageBitmapSource,
       public CanvasRenderingContextHost,
       public CanvasResourceDispatcherClient {
@@ -44,9 +44,7 @@ class CORE_EXPORT OffscreenCanvas final
   USING_PRE_FINALIZER(OffscreenCanvas, Dispose);
 
  public:
-  static OffscreenCanvas* Create(ExecutionContext*,
-                                 unsigned width,
-                                 unsigned height);
+  static OffscreenCanvas* Create(ScriptState*, unsigned width, unsigned height);
 
   OffscreenCanvas(ExecutionContext*, const gfx::Size&);
   ~OffscreenCanvas() override;
@@ -114,7 +112,7 @@ class CORE_EXPORT OffscreenCanvas final
 
   // CanvasRenderingContextHost implementation.
   void PreFinalizeFrame() override {}
-  void PostFinalizeFrame() override {}
+  void PostFinalizeFrame(CanvasResourceProvider::FlushReason) override {}
   void DetachContext() override { context_ = nullptr; }
   CanvasRenderingContext* RenderingContext() const override { return context_; }
 
@@ -161,6 +159,7 @@ class CORE_EXPORT OffscreenCanvas final
 
   // CanvasImageSource implementation
   scoped_refptr<Image> GetSourceImageForCanvas(
+      CanvasResourceProvider::FlushReason,
       SourceImageStatus*,
       const gfx::SizeF&,
       const AlphaDisposition alpha_disposition = kPremultiplyAlpha) final;
@@ -256,7 +255,6 @@ class CORE_EXPORT OffscreenCanvas final
 
   SkIRect current_frame_damage_rect_;
 
-  bool needs_matrix_clip_restore_ = false;
   bool needs_push_frame_ = false;
   bool inside_worker_raf_ = false;
 

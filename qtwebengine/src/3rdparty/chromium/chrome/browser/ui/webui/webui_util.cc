@@ -10,6 +10,7 @@
 #include "content/public/browser/web_ui_data_source.h"
 #include "services/network/public/mojom/content_security_policy.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/base/webui/web_ui_util.h"
 #include "ui/resources/grit/webui_resources.h"
 
@@ -61,6 +62,9 @@ void SetupWebUIDataSource(content::WebUIDataSource* source,
   source->AddResourcePath("", default_resource);
 }
 
+// There is another method, ash::EnableTrustedTypesCSP, used by ash-only WebUIs.
+// When adding a new policy here, consider whether to add it to that method as
+// well, as these methods should remain mostly the same.
 void EnableTrustedTypesCSP(content::WebUIDataSource* source) {
   source->OverrideContentSecurityPolicy(
       network::mojom::CSPDirectiveName::RequireTrustedTypesFor,
@@ -84,6 +88,12 @@ void AddLocalizedString(content::WebUIDataSource* source,
   std::u16string str = l10n_util::GetStringUTF16(id);
   base::Erase(str, '&');
   source->AddString(message, str);
+}
+
+void SetupChromeRefresh2023(content::WebUIDataSource* source) {
+  source->AddString(
+      "chromeRefresh2023Attribute",
+      features::IsChromeWebuiRefresh2023() ? "chrome-refresh-2023" : "");
 }
 
 #if defined(TOOLKIT_VIEWS)

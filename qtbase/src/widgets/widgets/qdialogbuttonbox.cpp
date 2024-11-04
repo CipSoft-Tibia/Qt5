@@ -16,6 +16,8 @@
 #include "qdialogbuttonbox.h"
 #include "qdialogbuttonbox_p.h"
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -645,12 +647,12 @@ void QDialogButtonBox::clear()
     d->standardButtonHash.clear();
     for (int i = 0; i < NRoles; ++i) {
         QList<QAbstractButton *> &list = d->buttonLists[i];
-        while (list.size()) {
-            QAbstractButton *button = list.takeAt(0);
+        for (auto button : std::as_const(list)) {
             QObjectPrivate::disconnect(button, &QAbstractButton::destroyed,
                                        d, &QDialogButtonBoxPrivate::handleButtonDestroyed);
             delete button;
         }
+        list.clear();
     }
 }
 
@@ -816,8 +818,8 @@ void QDialogButtonBox::setStandardButtons(StandardButtons buttons)
 {
     Q_D(QDialogButtonBox);
     // Clear out all the old standard buttons, then recreate them.
-    qDeleteAll(d->standardButtonHash.keyBegin(), d->standardButtonHash.keyEnd());
-    d->standardButtonHash.clear();
+    const auto toDelete = std::exchange(d->standardButtonHash, {});
+    qDeleteAll(toDelete.keyBegin(), toDelete.keyEnd());
 
     d->createStandardButtons(buttons);
 }
@@ -1027,8 +1029,10 @@ void QDialogButtonBoxPrivate::ensureFirstAcceptIsDefault()
         // focus proxy/first button stealing the default button status
         // immediately when the button box is focused, which is not what
         // we want. Account for this by explicitly making the firstAcceptButton
-        // focused as well, unless an explicit focus widget has been set.
-        if (dialog && !dialog->focusWidget())
+        // focused as well, unless an explicit focus widget has been set, or
+        // a dialog child has Qt::StrongFocus.
+        if (dialog && !(QWidgetPrivate::get(dialog)->hasChildWithFocusPolicy(Qt::StrongFocus, q)
+                        || dialog->focusWidget()))
             firstAcceptButton->setFocus();
     }
 }

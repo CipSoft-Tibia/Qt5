@@ -616,7 +616,7 @@ Se asumirá una forma simple universal.</translation>
     </message>
     <message>
         <source>Mark item as done and move to the next unfinished item</source>
-        <translation>Marca un elemento como terminado y se muele al siguiente elemento no terminado</translation>
+        <translation>Marca un elemento como terminado y se mueve al siguiente elemento no terminado</translation>
     </message>
     <message>
         <source>Mark this item as done and move to the next unfinished item.</source>

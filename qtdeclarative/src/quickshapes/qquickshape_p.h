@@ -38,7 +38,7 @@ public:
 class Q_QUICKSHAPES_PRIVATE_EXPORT QQuickShapeGradient : public QQuickGradient
 {
     Q_OBJECT
-    Q_PROPERTY(SpreadMode spread READ spread WRITE setSpread NOTIFY spreadChanged FINAL)
+    Q_PROPERTY(SpreadMode spread READ spread WRITE setSpread NOTIFY spreadChanged)
     Q_CLASSINFO("DefaultProperty", "stops")
 
     QML_NAMED_ELEMENT(ShapeGradient)
@@ -68,10 +68,10 @@ private:
 class Q_QUICKSHAPES_PRIVATE_EXPORT QQuickShapeLinearGradient : public QQuickShapeGradient
 {
     Q_OBJECT
-    Q_PROPERTY(qreal x1 READ x1 WRITE setX1 NOTIFY x1Changed FINAL)
-    Q_PROPERTY(qreal y1 READ y1 WRITE setY1 NOTIFY y1Changed FINAL)
-    Q_PROPERTY(qreal x2 READ x2 WRITE setX2 NOTIFY x2Changed FINAL)
-    Q_PROPERTY(qreal y2 READ y2 WRITE setY2 NOTIFY y2Changed FINAL)
+    Q_PROPERTY(qreal x1 READ x1 WRITE setX1 NOTIFY x1Changed)
+    Q_PROPERTY(qreal y1 READ y1 WRITE setY1 NOTIFY y1Changed)
+    Q_PROPERTY(qreal x2 READ x2 WRITE setX2 NOTIFY x2Changed)
+    Q_PROPERTY(qreal y2 READ y2 WRITE setY2 NOTIFY y2Changed)
     Q_CLASSINFO("DefaultProperty", "stops")
     QML_NAMED_ELEMENT(LinearGradient)
     QML_ADDED_IN_VERSION(1, 0)
@@ -102,12 +102,12 @@ private:
 class Q_QUICKSHAPES_PRIVATE_EXPORT QQuickShapeRadialGradient : public QQuickShapeGradient
 {
     Q_OBJECT
-    Q_PROPERTY(qreal centerX READ centerX WRITE setCenterX NOTIFY centerXChanged FINAL)
-    Q_PROPERTY(qreal centerY READ centerY WRITE setCenterY NOTIFY centerYChanged FINAL)
-    Q_PROPERTY(qreal centerRadius READ centerRadius WRITE setCenterRadius NOTIFY centerRadiusChanged FINAL)
-    Q_PROPERTY(qreal focalX READ focalX WRITE setFocalX NOTIFY focalXChanged FINAL)
-    Q_PROPERTY(qreal focalY READ focalY WRITE setFocalY NOTIFY focalYChanged FINAL)
-    Q_PROPERTY(qreal focalRadius READ focalRadius WRITE setFocalRadius NOTIFY focalRadiusChanged FINAL)
+    Q_PROPERTY(qreal centerX READ centerX WRITE setCenterX NOTIFY centerXChanged)
+    Q_PROPERTY(qreal centerY READ centerY WRITE setCenterY NOTIFY centerYChanged)
+    Q_PROPERTY(qreal centerRadius READ centerRadius WRITE setCenterRadius NOTIFY centerRadiusChanged)
+    Q_PROPERTY(qreal focalX READ focalX WRITE setFocalX NOTIFY focalXChanged)
+    Q_PROPERTY(qreal focalY READ focalY WRITE setFocalY NOTIFY focalYChanged)
+    Q_PROPERTY(qreal focalRadius READ focalRadius WRITE setFocalRadius NOTIFY focalRadiusChanged)
     Q_CLASSINFO("DefaultProperty", "stops")
     QML_NAMED_ELEMENT(RadialGradient)
     QML_ADDED_IN_VERSION(1, 0)
@@ -151,9 +151,9 @@ private:
 class Q_QUICKSHAPES_PRIVATE_EXPORT QQuickShapeConicalGradient : public QQuickShapeGradient
 {
     Q_OBJECT
-    Q_PROPERTY(qreal centerX READ centerX WRITE setCenterX NOTIFY centerXChanged FINAL)
-    Q_PROPERTY(qreal centerY READ centerY WRITE setCenterY NOTIFY centerYChanged FINAL)
-    Q_PROPERTY(qreal angle READ angle WRITE setAngle NOTIFY angleChanged FINAL)
+    Q_PROPERTY(qreal centerX READ centerX WRITE setCenterX NOTIFY centerXChanged)
+    Q_PROPERTY(qreal centerY READ centerY WRITE setCenterY NOTIFY centerYChanged)
+    Q_PROPERTY(qreal angle READ angle WRITE setAngle NOTIFY angleChanged)
     Q_CLASSINFO("DefaultProperty", "stops")
     QML_NAMED_ELEMENT(ConicalGradient)
     QML_ADDED_IN_VERSION(1, 0)
@@ -184,18 +184,19 @@ class Q_QUICKSHAPES_PRIVATE_EXPORT QQuickShapePath : public QQuickPath
 {
     Q_OBJECT
 
-    Q_PROPERTY(QColor strokeColor READ strokeColor WRITE setStrokeColor NOTIFY strokeColorChanged FINAL)
-    Q_PROPERTY(qreal strokeWidth READ strokeWidth WRITE setStrokeWidth NOTIFY strokeWidthChanged FINAL)
-    Q_PROPERTY(QColor fillColor READ fillColor WRITE setFillColor NOTIFY fillColorChanged FINAL)
-    Q_PROPERTY(FillRule fillRule READ fillRule WRITE setFillRule NOTIFY fillRuleChanged FINAL)
-    Q_PROPERTY(JoinStyle joinStyle READ joinStyle WRITE setJoinStyle NOTIFY joinStyleChanged FINAL)
-    Q_PROPERTY(int miterLimit READ miterLimit WRITE setMiterLimit NOTIFY miterLimitChanged FINAL)
-    Q_PROPERTY(CapStyle capStyle READ capStyle WRITE setCapStyle NOTIFY capStyleChanged FINAL)
-    Q_PROPERTY(StrokeStyle strokeStyle READ strokeStyle WRITE setStrokeStyle NOTIFY strokeStyleChanged FINAL)
-    Q_PROPERTY(qreal dashOffset READ dashOffset WRITE setDashOffset NOTIFY dashOffsetChanged FINAL)
-    Q_PROPERTY(QVector<qreal> dashPattern READ dashPattern WRITE setDashPattern NOTIFY dashPatternChanged FINAL)
-    Q_PROPERTY(QQuickShapeGradient *fillGradient READ fillGradient WRITE setFillGradient RESET resetFillGradient FINAL)
-    Q_PROPERTY(QSizeF scale READ scale WRITE setScale NOTIFY scaleChanged REVISION(1, 14) FINAL)
+    Q_PROPERTY(QColor strokeColor READ strokeColor WRITE setStrokeColor NOTIFY strokeColorChanged)
+    Q_PROPERTY(qreal strokeWidth READ strokeWidth WRITE setStrokeWidth NOTIFY strokeWidthChanged)
+    Q_PROPERTY(QColor fillColor READ fillColor WRITE setFillColor NOTIFY fillColorChanged)
+    Q_PROPERTY(FillRule fillRule READ fillRule WRITE setFillRule NOTIFY fillRuleChanged)
+    Q_PROPERTY(JoinStyle joinStyle READ joinStyle WRITE setJoinStyle NOTIFY joinStyleChanged)
+    Q_PROPERTY(int miterLimit READ miterLimit WRITE setMiterLimit NOTIFY miterLimitChanged)
+    Q_PROPERTY(CapStyle capStyle READ capStyle WRITE setCapStyle NOTIFY capStyleChanged)
+    Q_PROPERTY(StrokeStyle strokeStyle READ strokeStyle WRITE setStrokeStyle NOTIFY strokeStyleChanged)
+    Q_PROPERTY(qreal dashOffset READ dashOffset WRITE setDashOffset NOTIFY dashOffsetChanged)
+    Q_PROPERTY(QVector<qreal> dashPattern READ dashPattern WRITE setDashPattern NOTIFY dashPatternChanged)
+    Q_PROPERTY(QQuickShapeGradient *fillGradient READ fillGradient WRITE setFillGradient RESET resetFillGradient)
+    Q_PROPERTY(QSizeF scale READ scale WRITE setScale NOTIFY scaleChanged REVISION(1, 14))
+    Q_PROPERTY(PathHints pathHints READ pathHints WRITE setPathHints NOTIFY pathHintsChanged REVISION(6, 7) FINAL)
     QML_NAMED_ELEMENT(ShapePath)
     QML_ADDED_IN_VERSION(1, 0)
 
@@ -225,6 +226,18 @@ public:
         DashLine = Qt::DashLine
     };
     Q_ENUM(StrokeStyle)
+
+    enum PathHint {
+        PathLinear = 0x1,
+        PathQuadratic = 0x2,
+        PathConvex = 0x4,
+        PathFillOnRight = 0x8,
+        PathSolid = 0x10,
+        PathNonIntersecting = 0x20,
+        PathNonOverlappingControlPointTriangles = 0x40
+    };
+    Q_DECLARE_FLAGS(PathHints, PathHint)
+    Q_FLAG(PathHints)
 
     QQuickShapePath(QObject *parent = nullptr);
     ~QQuickShapePath();
@@ -263,6 +276,9 @@ public:
     void setFillGradient(QQuickShapeGradient *gradient);
     void resetFillGradient();
 
+    PathHints pathHints() const;
+    void setPathHints(PathHints newPathHints);
+
 Q_SIGNALS:
     void shapePathChanged();
     void strokeColorChanged();
@@ -276,6 +292,8 @@ Q_SIGNALS:
     void dashOffsetChanged();
     void dashPatternChanged();
 
+    Q_REVISION(6, 7) void pathHintsChanged();
+
 private:
     Q_DISABLE_COPY(QQuickShapePath)
     Q_DECLARE_PRIVATE(QQuickShapePath)
@@ -285,14 +303,17 @@ private:
 class Q_QUICKSHAPES_PRIVATE_EXPORT QQuickShape : public QQuickItem
 {
     Q_OBJECT
-    Q_PROPERTY(RendererType rendererType READ rendererType NOTIFY rendererChanged FINAL)
-    Q_PROPERTY(bool asynchronous READ asynchronous WRITE setAsynchronous NOTIFY asynchronousChanged FINAL)
-    Q_PROPERTY(bool vendorExtensionsEnabled READ vendorExtensionsEnabled WRITE setVendorExtensionsEnabled NOTIFY vendorExtensionsEnabledChanged FINAL)
+    Q_PROPERTY(RendererType rendererType READ rendererType NOTIFY rendererChanged)
+    Q_PROPERTY(bool asynchronous READ asynchronous WRITE setAsynchronous NOTIFY asynchronousChanged)
+    Q_PROPERTY(bool vendorExtensionsEnabled READ vendorExtensionsEnabled WRITE setVendorExtensionsEnabled NOTIFY vendorExtensionsEnabledChanged)
     Q_PROPERTY(RendererType preferredRendererType READ preferredRendererType
                WRITE setPreferredRendererType NOTIFY preferredRendererTypeChanged REVISION(6, 6) FINAL)
-    Q_PROPERTY(Status status READ status NOTIFY statusChanged FINAL)
-    Q_PROPERTY(ContainsMode containsMode READ containsMode WRITE setContainsMode NOTIFY containsModeChanged REVISION(1, 11) FINAL)
+    Q_PROPERTY(Status status READ status NOTIFY statusChanged)
+    Q_PROPERTY(ContainsMode containsMode READ containsMode WRITE setContainsMode NOTIFY containsModeChanged REVISION(1, 11))
     Q_PROPERTY(QRectF boundingRect READ boundingRect NOTIFY boundingRectChanged REVISION(6, 6) FINAL)
+    Q_PROPERTY(FillMode fillMode READ fillMode WRITE setFillMode NOTIFY fillModeChanged REVISION(6, 7) FINAL)
+    Q_PROPERTY(HAlignment horizontalAlignment READ horizontalAlignment WRITE setHorizontalAlignment NOTIFY horizontalAlignmentChanged REVISION(6, 7) FINAL)
+    Q_PROPERTY(VAlignment verticalAlignment READ verticalAlignment WRITE setVerticalAlignment NOTIFY verticalAlignmentChanged REVISION(6, 7) FINAL)
 
     Q_PROPERTY(QQmlListProperty<QObject> data READ data)
     Q_CLASSINFO("DefaultProperty", "data")
@@ -322,6 +343,23 @@ public:
     };
     Q_ENUM(ContainsMode)
 
+    enum FillMode {
+        NoResize,
+        PreserveAspectFit,
+        PreserveAspectCrop,
+        Stretch
+    };
+    Q_ENUM(FillMode)
+
+    enum HAlignment { AlignLeft = Qt::AlignLeft,
+                      AlignRight = Qt::AlignRight,
+                      AlignHCenter = Qt::AlignHCenter };
+    Q_ENUM(HAlignment)
+    enum VAlignment { AlignTop = Qt::AlignTop,
+                      AlignBottom = Qt::AlignBottom,
+                      AlignVCenter = Qt::AlignVCenter };
+    Q_ENUM(VAlignment)
+
     QQuickShape(QQuickItem *parent = nullptr);
     ~QQuickShape();
 
@@ -347,6 +385,15 @@ public:
 
     QQmlListProperty<QObject> data();
 
+    Q_REVISION(6, 7) FillMode fillMode() const;
+    Q_REVISION(6, 7) void setFillMode(FillMode newFillMode);
+
+    Q_REVISION(6, 7) HAlignment horizontalAlignment() const;
+    Q_REVISION(6, 7) void setHorizontalAlignment(HAlignment newHorizontalAlignment);
+
+    Q_REVISION(6, 7) VAlignment verticalAlignment() const;
+    Q_REVISION(6, 7) void setVerticalAlignment(VAlignment newVerticalAlignment);
+
 protected:
     QSGNode *updatePaintNode(QSGNode *node, UpdatePaintNodeData *) override;
     void updatePolish() override;
@@ -363,6 +410,10 @@ Q_SIGNALS:
     Q_REVISION(6, 6) void boundingRectChanged();
     Q_REVISION(1, 11) void containsModeChanged();
 
+    Q_REVISION(6, 7) void fillModeChanged();
+    Q_REVISION(6, 7) void horizontalAlignmentChanged();
+    Q_REVISION(6, 7) void verticalAlignmentChanged();
+
 private:
     Q_DISABLE_COPY(QQuickShape)
     Q_DECLARE_PRIVATE(QQuickShape)
@@ -370,7 +421,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickShape)
 
 #endif // QQUICKSHAPE_P_H

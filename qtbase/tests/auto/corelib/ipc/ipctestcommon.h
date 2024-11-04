@@ -1,7 +1,12 @@
 // Copyright (C) 2022 Intel Corporation.
 
+#pragma once
+
 #include <QtTest/QTest>
 #include <QtCore/QNativeIpcKey>
+
+#include <cstdio>
+#include <memory>
 
 namespace IpcTestCommon {
 static QList<QNativeIpcKey::Type> supportedKeyTypes;
@@ -62,7 +67,7 @@ template<> inline char *toString(const QNativeIpcKey::Type &type)
         return qstrdup("Invalid");
 
     char buf[32];
-    qsnprintf(buf, sizeof(buf), "%u", unsigned(type));
+    std::snprintf(buf, sizeof(buf), "%u", qToUnderlying(type));
     return qstrdup(buf);
 }
 
@@ -71,12 +76,11 @@ template<> inline char *toString(const QNativeIpcKey &key)
     if (!key.isValid())
         return qstrdup("<invalid>");
 
-    const char *type = toString(key.type());
-    const char *text = toString(key.nativeKey());
+    using UP = std::unique_ptr<char[]>;
+    const auto type = UP{toString(key.type())};
+    const auto text = UP{toString(key.nativeKey())};
     char buf[256];
-    qsnprintf(buf, sizeof(buf), "QNativeIpcKey(%s, %s)", text, type);
-    delete[] type;
-    delete[] text;
+    std::snprintf(buf, sizeof(buf), "QNativeIpcKey(%s, %s)", text.get(), type.get());
     return qstrdup(buf);
 }
 } // namespace QTest

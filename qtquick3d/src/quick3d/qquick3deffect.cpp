@@ -3,7 +3,7 @@
 
 #include "qquick3deffect_p.h"
 
-#include <QtQuick3DRuntimeRender/private/qssgrendercontextcore_p.h>
+#include <ssg/qssgrendercontextcore.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendereffect_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgshadermaterialadapter_p.h>
 #include <QtQuick3DUtils/private/qssgutils_p.h>
@@ -575,10 +575,14 @@ QSSGRenderGraphObject *QQuick3DEffect::updateSpatialNode(QSSGRenderGraphObject *
     if (m_dirtyAttributes & Dirty::EffectChainDirty)
         shadersMayChange = true;
 
-    const bool fullUpdate = newBackendNode || effectNode->incompleteBuildTimeObject;
+    const bool fullUpdate = newBackendNode || effectNode->incompleteBuildTimeObject || (m_dirtyAttributes & Dirty::TextureDirty);
 
     if (fullUpdate || shadersMayChange) {
         markAllDirty();
+
+        // Need to clear the old list with properties and textures first.
+        effectNode->properties.clear();
+        effectNode->textureProperties.clear();
 
         QMetaMethod propertyDirtyMethod;
         const int idx = metaObject()->indexOfSlot("onPropertyDirty()");
@@ -665,6 +669,9 @@ QSSGRenderGraphObject *QQuick3DEffect::updateSpatialNode(QSSGRenderGraphObject *
                 texProp.verticalClampType = tex->verticalTiling() == QQuick3DTexture::Repeat ? QSSGRenderTextureCoordOp::Repeat
                                                                                              : (tex->verticalTiling() == QQuick3DTexture::ClampToEdge ? QSSGRenderTextureCoordOp::ClampToEdge
                                                                                                                                                       : QSSGRenderTextureCoordOp::MirroredRepeat);
+                texProp.zClampType = tex->depthTiling() == QQuick3DTexture::Repeat ? QSSGRenderTextureCoordOp::Repeat
+                        : (tex->depthTiling() == QQuick3DTexture::ClampToEdge)     ? QSSGRenderTextureCoordOp::ClampToEdge
+                                                                           : QSSGRenderTextureCoordOp::MirroredRepeat;
             }
 
             if (tex && QQuick3DObjectPrivate::get(tex)->type == QQuick3DObjectPrivate::Type::ImageCube)

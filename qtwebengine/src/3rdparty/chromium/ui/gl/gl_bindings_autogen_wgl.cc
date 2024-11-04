@@ -124,8 +124,10 @@ HGLRC WGLApiBase::wglCreateContextFn(HDC hdc) {
 HGLRC WGLApiBase::wglCreateContextAttribsARBFn(HDC hDC,
                                                HGLRC hShareContext,
                                                const int* attribList) {
-  return driver_->fn.wglCreateContextAttribsARBFn(hDC, hShareContext,
-                                                  attribList);
+  return driver_->fn.wglCreateContextAttribsARBFn
+             ? driver_->fn.wglCreateContextAttribsARBFn(hDC, hShareContext,
+                                                        attribList)
+             : nullptr;
 }
 
 HGLRC WGLApiBase::wglCreateLayerContextFn(HDC hdc, int iLayerPlane) {

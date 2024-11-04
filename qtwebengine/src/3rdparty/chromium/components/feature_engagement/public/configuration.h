@@ -16,6 +16,9 @@
 
 namespace feature_engagement {
 
+// Max number of days for storing client side event data, ~10 years.
+constexpr uint32_t kMaxStoragePeriod = 365 * 10;
+
 // A ComparatorType describes the relationship between two numbers.
 enum ComparatorType {
   ANY = 0,  // Will always yield true.
@@ -68,7 +71,8 @@ struct EventConfig {
   // Search for this event within this window.
   uint32_t window;
 
-  // Store client side data related to events for this minimum this long.
+  // Store client side data related to events for this minimum this long,
+  // see the `kMaxStoragePeriod` constant for the max supported value.
   uint32_t storage;
 };
 
@@ -101,6 +105,9 @@ struct SessionRateImpact {
   absl::optional<std::vector<std::string>> affected_features;
 };
 
+bool operator==(const SessionRateImpact& lhs, const SessionRateImpact& rhs);
+std::ostream& operator<<(std::ostream& os, const SessionRateImpact& impact);
+
 // BlockedBy describes which features the |blocked_by| of a given
 // FeatureConfig should affect. It can affect either |ALL| (default), |NONE|,
 // or an |EXPLICIT| list of the features. In the latter case, a list of affected
@@ -125,6 +132,9 @@ struct BlockedBy {
   absl::optional<std::vector<std::string>> affected_features;
 };
 
+bool operator==(const BlockedBy& lhs, const BlockedBy& rhs);
+std::ostream& operator<<(std::ostream& os, const BlockedBy& impact);
+
 // Blocking describes which features the |blocking| of a given FeatureConfig
 // should affect. It can affect either |ALL| (default) or |NONE|.
 struct Blocking {
@@ -142,6 +152,9 @@ struct Blocking {
   Type type{Type::ALL};
 };
 
+bool operator==(const Blocking& lhs, const Blocking& rhs);
+std::ostream& operator<<(std::ostream& os, const Blocking& impact);
+
 // A SnoozeParams describes the parameters for snoozable options of in-product
 // help.
 struct SnoozeParams {
@@ -156,8 +169,8 @@ struct SnoozeParams {
   ~SnoozeParams();
 };
 
-bool operator==(const SessionRateImpact& lhs, const SessionRateImpact& rhs);
-std::ostream& operator<<(std::ostream& os, const SessionRateImpact& impact);
+bool operator==(const SnoozeParams& lhs, const SnoozeParams& rhs);
+std::ostream& operator<<(std::ostream& os, const SnoozeParams& impact);
 
 // A FeatureConfig contains all the configuration for a given feature.
 struct FeatureConfig {
@@ -167,7 +180,7 @@ struct FeatureConfig {
   ~FeatureConfig();
 
   // Whether the configuration has been successfully parsed.
-  bool valid;
+  bool valid = false;
 
   // The configuration for a particular event that will be searched for when
   // counting how many times a particular feature has been used.

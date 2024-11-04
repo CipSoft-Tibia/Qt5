@@ -13,12 +13,14 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "extensions/browser/extension_function.h"
+#include "extensions/common/features/feature.h"
 #include "extensions/common/mojom/frame.mojom.h"
 #include "ipc/ipc_sender.h"
 
 namespace content {
 class BrowserContext;
 class RenderFrameHost;
+class RenderProcessHost;
 class WebContents;
 }
 
@@ -26,7 +28,6 @@ namespace extensions {
 
 class Extension;
 class ExtensionAPI;
-class ProcessMap;
 class WindowController;
 
 // ExtensionFunctionDispatcher receives requests to execute functions from
@@ -81,14 +82,13 @@ class ExtensionFunctionDispatcher {
   // Message handlers.
   // Dispatches a request for service woker and the response is sent to the
   // corresponding render process in an ExtensionMsg_ResponseWorker message.
-  void DispatchForServiceWorker(const mojom::RequestParams& params,
+  void DispatchForServiceWorker(mojom::RequestParamsPtr params,
                                 int render_process_id);
 
   // Called when an ExtensionFunction is done executing, after it has sent
   // a response (if any) to the extension.
-  void OnExtensionFunctionCompleted(const Extension* extension,
-                                    bool is_from_service_worker,
-                                    const char* name);
+  void OnExtensionFunctionCompleted(
+      const ExtensionFunction& extension_function);
 
   // See the Delegate class for documentation on these methods.
   // TODO(devlin): None of these belong here. We should kill
@@ -104,11 +104,10 @@ class ExtensionFunctionDispatcher {
 
   // Adds a function object to the set of objects waiting for
   // responses from the renderer.
-  void AddWorkerResponseTarget(ExtensionFunction* func);
+  void AddResponseTarget(ExtensionFunction* func);
 
-  // Processes a Service Worker response from a renderer.
-  void ProcessServiceWorkerResponse(int request_id,
-                                    int64_t service_worker_version_id);
+  // Processes a response ack from a renderer.
+  void ProcessResponseAck(const base::Uuid& request_uuid);
 
   base::WeakPtr<ExtensionFunctionDispatcher> AsWeakPtr() {
     return weak_ptr_factory_.GetWeakPtr();
@@ -138,22 +137,24 @@ class ExtensionFunctionDispatcher {
       const Extension* extension,
       int requesting_process_id,
       bool is_worker_request,
-      const GURL* rfh_url,
-      const ProcessMap& process_map,
+      const GURL* render_frame_host_url,
+      Feature::Context context_type,
       ExtensionAPI* api,
-      ExtensionFunction::ResponseCallback callback);
+      ExtensionFunction::ResponseCallback callback,
+      content::RenderFrameHost* render_frame_host);
 
   void DispatchWithCallbackInternal(
       const mojom::RequestParams& params,
       content::RenderFrameHost* render_frame_host,
-      int render_process_id,
+      content::RenderProcessHost& render_process_host,
       ExtensionFunction::ResponseCallback callback);
 
   void RemoveWorkerCallbacksForProcess(int render_process_id);
 
-  raw_ptr<content::BrowserContext, DanglingUntriaged> browser_context_;
+  raw_ptr<content::BrowserContext, AcrossTasksDanglingUntriaged>
+      browser_context_;
 
-  raw_ptr<Delegate, DanglingUntriaged> delegate_;
+  raw_ptr<Delegate, AcrossTasksDanglingUntriaged> delegate_;
 
   // This map doesn't own either the keys or the values. When a RenderFrameHost
   // instance goes away, the corresponding entry in this map (if exists) will be
@@ -173,7 +174,7 @@ class ExtensionFunctionDispatcher {
   // The set of ExtensionFunction instances waiting for responses from
   // the renderer. These are removed once the response is processed.
   // The lifetimes of the instances are managed by the instances themselves.
-  std::set<ExtensionFunction*> worker_response_targets_;
+  std::set<ExtensionFunction*> response_targets_;
 
   base::WeakPtrFactory<ExtensionFunctionDispatcher> weak_ptr_factory_{this};
 };

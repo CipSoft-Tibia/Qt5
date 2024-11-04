@@ -9,6 +9,7 @@
 
 #include <QtWidgets/qstyle.h>
 
+#include <QtCore/qcompare.h>
 #include <QtCore/qregularexpression.h>
 #include <QtCore/qdebug.h>
 
@@ -22,8 +23,6 @@ namespace qdesigner_internal {
 
 // Data structure containing form dialog data providing comparison
 struct FormWindowData {
-    bool equals(const FormWindowData&) const;
-
     void fromFormWindow(FormWindowBase* fw);
     void applyToFormWindow(FormWindowBase* fw) const;
 
@@ -45,10 +44,11 @@ struct FormWindowData {
     Grid grid;
     bool idBasedTranslations{false};
     bool connectSlotsByName{true};
-};
 
-inline bool operator==(const FormWindowData &fd1, const FormWindowData &fd2) { return fd1.equals(fd2); }
-inline bool operator!=(const FormWindowData &fd1, const FormWindowData &fd2) { return !fd1.equals(fd2); }
+    friend bool comparesEqual(const FormWindowData &lhs,
+                              const FormWindowData &rhs) noexcept;
+    Q_DECLARE_EQUALITY_COMPARABLE(FormWindowData)
+};
 
 QDebug operator<<(QDebug str, const  FormWindowData &d)
 {
@@ -63,21 +63,21 @@ QDebug operator<<(QDebug str, const  FormWindowData &d)
     return str;
 }
 
-bool FormWindowData::equals(const FormWindowData &rhs) const
+bool comparesEqual(const FormWindowData &lhs, const FormWindowData &rhs) noexcept
 {
-    return layoutDefaultEnabled   == rhs.layoutDefaultEnabled &&
-           defaultMargin          == rhs.defaultMargin &&
-           defaultSpacing         == rhs.defaultSpacing &&
-           layoutFunctionsEnabled == rhs.layoutFunctionsEnabled &&
-           marginFunction         == rhs.marginFunction &&
-           spacingFunction        == rhs.spacingFunction &&
-           pixFunction            == rhs.pixFunction  &&
-           author                 == rhs.author &&
-           includeHints           == rhs.includeHints &&
-           hasFormGrid            == rhs.hasFormGrid &&
-           grid                   == rhs.grid &&
-           idBasedTranslations    == rhs.idBasedTranslations &&
-           connectSlotsByName     == rhs.connectSlotsByName;
+    return lhs.layoutDefaultEnabled   == rhs.layoutDefaultEnabled &&
+           lhs.defaultMargin          == rhs.defaultMargin &&
+           lhs.defaultSpacing         == rhs.defaultSpacing &&
+           lhs.layoutFunctionsEnabled == rhs.layoutFunctionsEnabled &&
+           lhs.marginFunction         == rhs.marginFunction &&
+           lhs.spacingFunction        == rhs.spacingFunction &&
+           lhs.pixFunction            == rhs.pixFunction  &&
+           lhs.author                 == rhs.author &&
+           lhs.includeHints           == rhs.includeHints &&
+           lhs.hasFormGrid            == rhs.hasFormGrid &&
+           lhs.grid                   == rhs.grid &&
+           lhs.idBasedTranslations    == rhs.idBasedTranslations &&
+           lhs.connectSlotsByName     == rhs.connectSlotsByName;
 }
 
 void FormWindowData::fromFormWindow(FormWindowBase* fw)
@@ -143,7 +143,7 @@ void FormWindowData::applyToFormWindow(FormWindowBase* fw) const
 
 FormWindowSettings::FormWindowSettings(QDesignerFormWindowInterface *parent) :
     QDialog(parent),
-    m_ui(new ::Ui::FormWindowSettings),
+    m_ui(new QT_PREPEND_NAMESPACE(Ui)::FormWindowSettings),
     m_formWindow(qobject_cast<FormWindowBase*>(parent)),
     m_oldData(new FormWindowData)
 {

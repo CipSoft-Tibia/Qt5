@@ -4,6 +4,8 @@
 
 #include "src/compiler/wasm-inlining.h"
 
+#include <cinttypes>
+
 #include "src/compiler/all-nodes.h"
 #include "src/compiler/compiler-source-position-table.h"
 #include "src/compiler/node-matchers.h"
@@ -32,8 +34,8 @@ Reduction WasmInliner::Reduce(Node* node) {
   if (v8_flags.trace_wasm_inlining) PrintF(__VA_ARGS__)
 
 void WasmInliner::Trace(Node* call, int inlinee, const char* decision) {
-  TRACE("[function %d: considering node %d, call to %d: %s]\n", function_index_,
-        call->id(), inlinee, decision);
+  TRACE("[function %d: considering node %d, call to %d: %s]\n",
+        data_.func_index, call->id(), inlinee, decision);
 }
 
 int WasmInliner::GetCallCount(Node* call) {
@@ -41,15 +43,14 @@ int WasmInliner::GetCallCount(Node* call) {
   return mcgraph()->GetCallCount(call->id());
 }
 
-// TODO(12166): Save inlined frames for trap/--trace-wasm purposes. Consider
-//              tail calls.
+// TODO(12166): Save inlined frames for trap/--trace-wasm purposes.
 Reduction WasmInliner::ReduceCall(Node* call) {
   DCHECK(call->opcode() == IrOpcode::kCall ||
          call->opcode() == IrOpcode::kTailCall);
 
   if (seen_.find(call) != seen_.end()) {
-    TRACE("function %d: have already seen node %d, skipping\n", function_index_,
-          call->id());
+    TRACE("[function %d: have already seen node %d, skipping]\n",
+          data_.func_index, call->id());
     return NoChange();
   }
   seen_.insert(call);
@@ -59,8 +60,8 @@ Reduction WasmInliner::ReduceCall(Node* call) {
                                      ? IrOpcode::kRelocatableInt32Constant
                                      : IrOpcode::kRelocatableInt64Constant;
   if (callee->opcode() != reloc_opcode) {
-    TRACE("[function %d: considering node %d... not a relocatable constant]\n",
-          function_index_, call->id());
+    TRACE("[function %d: node %d: not a relocatable constant]\n",
+          data_.func_index, call->id());
     return NoChange();
   }
   auto info = OpParameter<RelocatablePtrConstantInfo>(callee->op());
@@ -88,7 +89,8 @@ Reduction WasmInliner::ReduceCall(Node* call) {
 
   CHECK_LT(inlinee_index, module()->functions.size());
   const wasm::WasmFunction* inlinee = &module()->functions[inlinee_index];
-  base::Vector<const byte> function_bytes = wire_bytes_->GetCode(inlinee->code);
+  base::Vector<const uint8_t> function_bytes =
+      data_.wire_bytes_storage->GetCode(inlinee->code);
 
   int call_count = GetCallCount(call);
 
@@ -103,7 +105,7 @@ Reduction WasmInliner::ReduceCall(Node* call) {
     return NoChange();
   }
 
-  Trace(call, inlinee_index, "adding to inlining candidates!");
+  Trace(call, inlinee_index, "adding to inlining candidates");
 
   CandidateInfo candidate{call, inlinee_index, call_count,
                           function_bytes.length()};
@@ -112,30 +114,34 @@ Reduction WasmInliner::ReduceCall(Node* call) {
   return NoChange();
 }
 
-bool SmallEnoughToInline(size_t current_graph_size, uint32_t candidate_size) {
+bool SmallEnoughToInline(size_t current_graph_size, uint32_t candidate_size,
+                         size_t initial_graph_size) {
   if (candidate_size > v8_flags.wasm_inlining_max_size) {
     return false;
   }
-  if (WasmInliner::graph_size_allows_inlining(current_graph_size +
-                                              candidate_size)) {
+  if (WasmInliner::graph_size_allows_inlining(
+          current_graph_size + candidate_size, initial_graph_size)) {
     return true;
   }
   // For truly tiny functions, let's be a bit more generous.
   return candidate_size <= 12 &&
-         WasmInliner::graph_size_allows_inlining(current_graph_size - 100);
+         WasmInliner::graph_size_allows_inlining(current_graph_size - 100,
+                                                 initial_graph_size);
 }
 
 void WasmInliner::Trace(const CandidateInfo& candidate, const char* decision) {
   TRACE(
       "  [function %d: considering candidate {@%d, index=%d, count=%d, "
-      "size=%d}: %s]\n",
-      function_index_, candidate.node->id(), candidate.inlinee_index,
-      candidate.call_count, candidate.wire_byte_size, decision);
+      "size=%d, score=%" PRId64 "}: %s]\n",
+      data_.func_index, candidate.node->id(), candidate.inlinee_index,
+      candidate.call_count, candidate.wire_byte_size, candidate.score(),
+      decision);
 }
 
 void WasmInliner::Finalize() {
-  TRACE("function %d %s: going though inlining candidates...\n",
-        function_index_, debug_name_);
+  TRACE("[function %d (%s): %s]\n", data_.func_index, debug_name_,
+        inlining_candidates_.empty() ? "no inlining candidates"
+                                     : "going through inlining candidates");
   if (inlining_candidates_.empty()) return;
   while (!inlining_candidates_.empty()) {
     CandidateInfo candidate = inlining_candidates_.top();
@@ -148,7 +154,8 @@ void WasmInliner::Finalize() {
     // We could build the candidate's graph first and consider its node count,
     // but it turns out that wire byte size and node count are quite strongly
     // correlated, at about 1.16 nodes per wire byte (measured for J2Wasm).
-    if (!SmallEnoughToInline(current_graph_size_, candidate.wire_byte_size)) {
+    if (!SmallEnoughToInline(current_graph_size_, candidate.wire_byte_size,
+                             initial_graph_size_)) {
       Trace(candidate, "not enough inlining budget");
       continue;
     }
@@ -169,8 +176,8 @@ void WasmInliner::Finalize() {
     }
 #endif
 
-    base::Vector<const byte> function_bytes =
-        wire_bytes_->GetCode(inlinee->code);
+    base::Vector<const uint8_t> function_bytes =
+        data_.wire_bytes_storage->GetCode(inlinee->code);
 
     const wasm::FunctionBody inlinee_body{inlinee->sig, inlinee->code.offset(),
                                           function_bytes.begin(),
@@ -179,9 +186,8 @@ void WasmInliner::Finalize() {
     // If the inlinee was not validated before, do that now.
     if (V8_UNLIKELY(
             !module()->function_was_validated(candidate.inlinee_index))) {
-      wasm::WasmFeatures unused_detected_features;
-      if (ValidateFunctionBody(env_->enabled_features, module(),
-                               &unused_detected_features, inlinee_body)
+      if (ValidateFunctionBody(env_->enabled_features, module(), detected_,
+                               inlinee_body)
               .failed()) {
         Trace(candidate, "function is invalid");
         // At this point we cannot easily raise a compilation error any more.
@@ -193,45 +199,53 @@ void WasmInliner::Finalize() {
       module()->set_function_validated(candidate.inlinee_index);
     }
 
-    wasm::WasmFeatures detected;
     std::vector<WasmLoopInfo> inlinee_loop_infos;
     wasm::DanglingExceptions dangling_exceptions;
 
     size_t subgraph_min_node_id = graph()->NodeCount();
     Node* inlinee_start;
     Node* inlinee_end;
+    SourcePosition caller_pos =
+        data_.source_positions->GetSourcePosition(candidate.node);
+    inlining_positions_->push_back(
+        {static_cast<int>(candidate.inlinee_index), caller_pos});
+    int inlining_position_id =
+        static_cast<int>(inlining_positions_->size()) - 1;
     WasmGraphBuilder builder(env_, zone(), mcgraph_, inlinee_body.sig,
-                             source_positions_);
+                             data_.source_positions);
+    builder.set_inlining_id(inlining_position_id);
     {
       Graph::SubgraphScope scope(graph());
-      wasm::DecodeResult result = wasm::BuildTFGraph(
-          zone()->allocator(), env_->enabled_features, module(), &builder,
-          &detected, inlinee_body, &inlinee_loop_infos, &dangling_exceptions,
-          node_origins_, candidate.inlinee_index,
-          NodeProperties::IsExceptionalCall(call)
-              ? wasm::kInlinedHandledCall
-              : wasm::kInlinedNonHandledCall);
-      CHECK(result.ok());
+      wasm::BuildTFGraph(zone()->allocator(), env_->enabled_features, module(),
+                         &builder, detected_, inlinee_body, &inlinee_loop_infos,
+                         &dangling_exceptions, data_.node_origins,
+                         candidate.inlinee_index, data_.assumptions,
+                         NodeProperties::IsExceptionalCall(call)
+                             ? wasm::kInlinedHandledCall
+                             : wasm::kInlinedNonHandledCall);
       inlinee_start = graph()->start();
       inlinee_end = graph()->end();
     }
 
     size_t additional_nodes = graph()->NodeCount() - subgraph_min_node_id;
-    Trace(candidate, "inlining!");
+    Trace(candidate, "inlining");
     current_graph_size_ += additional_nodes;
     DCHECK_GE(function_inlining_count_[candidate.inlinee_index], 0);
     function_inlining_count_[candidate.inlinee_index]++;
 
     if (call->opcode() == IrOpcode::kCall) {
       InlineCall(call, inlinee_start, inlinee_end, inlinee->sig,
-                 subgraph_min_node_id, &dangling_exceptions);
+                 &dangling_exceptions);
     } else {
       InlineTailCall(call, inlinee_start, inlinee_end);
     }
     call->Kill();
-    loop_infos_->insert(loop_infos_->end(), inlinee_loop_infos.begin(),
-                        inlinee_loop_infos.end());
-    // Returning after only one inlining has been tried and found worse.
+    data_.loop_infos->insert(data_.loop_infos->end(),
+                             inlinee_loop_infos.begin(),
+                             inlinee_loop_infos.end());
+    // Returning after inlining, so that new calls in the inlined body are added
+    // to the candidates list and prioritized if they have a higher score.
+    return;
   }
 }
 
@@ -292,7 +306,6 @@ void WasmInliner::InlineTailCall(Node* call, Node* callee_start,
 
 void WasmInliner::InlineCall(Node* call, Node* callee_start, Node* callee_end,
                              const wasm::FunctionSig* inlinee_sig,
-                             size_t subgraph_min_node_id,
                              wasm::DanglingExceptions* dangling_exceptions) {
   DCHECK_EQ(call->opcode(), IrOpcode::kCall);
 
@@ -322,6 +335,19 @@ void WasmInliner::InlineCall(Node* call, Node* callee_start, Node* callee_end,
         // inlinee. It will then be handled like any other return.
         auto descriptor = CallDescriptorOf(input->op());
         NodeProperties::ChangeOp(input, common()->Call(descriptor));
+
+        DCHECK_GT(input->op()->EffectOutputCount(), 0);
+        DCHECK_GT(input->op()->ControlOutputCount(), 0);
+        Node* effect = input;
+        Node* control = input;
+        if (is_exceptional_call) {
+          // Remember dangling exception (will be connected later).
+          Node* if_exception = graph()->NewNode(
+              mcgraph()->common()->IfException(), input, control);
+          dangling_exceptions->Add(if_exception, if_exception, if_exception);
+          control = graph()->NewNode(mcgraph()->common()->IfSuccess(), input);
+        }
+
         int return_arity = static_cast<int>(inlinee_sig->return_count());
         NodeVector return_inputs(zone());
         // The first input of a return node is always the 0 constant.
@@ -337,7 +363,7 @@ void WasmInliner::InlineCall(Node* call, Node* callee_start, Node* callee_end,
         } else if (return_arity > 1) {
           for (int i = 0; i < return_arity; i++) {
             Node* ith_projection =
-                graph()->NewNode(common()->Projection(i), input, input);
+                graph()->NewNode(common()->Projection(i), input, control);
             // Similarly here we have to type the call's projections.
             NodeProperties::SetType(
                 ith_projection,
@@ -348,12 +374,8 @@ void WasmInliner::InlineCall(Node* call, Node* callee_start, Node* callee_end,
         }
 
         // Add effect and control inputs.
-        return_inputs.push_back(input->op()->EffectOutputCount() > 0
-                                    ? input
-                                    : NodeProperties::GetEffectInput(input));
-        return_inputs.push_back(input->op()->ControlOutputCount() > 0
-                                    ? input
-                                    : NodeProperties::GetControlInput(input));
+        return_inputs.push_back(effect);
+        return_inputs.push_back(control);
 
         Node* ret = graph()->NewNode(common()->Return(return_arity),
                                      static_cast<int>(return_inputs.size()),

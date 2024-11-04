@@ -7,6 +7,7 @@
 #include "base/files/file_path.h"
 #include "base/memory/raw_ptr.h"
 #include "base/path_service.h"
+#include "base/strings/string_util.h"
 #include "base/values.h"
 #include "content/public/test/browser_task_environment.h"
 #include "content/public/test/test_utils.h"
@@ -57,8 +58,9 @@ base::FilePath ToFirstLetterUppercasePath(const base::FilePath& path) {
   // Note: if there are no lowercase letters in |path|, this method returns
   // |path|.
   for (auto& c : path_copy) {
-    if (std::islower(c)) {
-      c = base::ToUpperASCII(c);
+    const auto upper_c = base::ToUpperASCII(c);
+    if (upper_c != c) {
+      c = upper_c;
       break;
     }
   }
@@ -205,10 +207,10 @@ class ContentVerifierTest : public ExtensionsTest {
   // Create a test extension with a content script and possibly a background
   // page or background script.
   scoped_refptr<Extension> CreateTestExtension() {
-    base::Value::Dict manifest;
-    manifest.Set("name", "Dummy Extension");
-    manifest.Set("version", "1");
-    manifest.Set("manifest_version", 2);
+    auto manifest = base::Value::Dict()
+                        .Set("name", "Dummy Extension")
+                        .Set("version", "1")
+                        .Set("manifest_version", 2);
 
     if (background_manifest_type_ ==
         BackgroundManifestType::kBackgroundScript) {

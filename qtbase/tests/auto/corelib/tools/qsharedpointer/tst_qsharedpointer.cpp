@@ -1,7 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
 // Copyright (C) 2021 Klarälvdalens Datakonsult AB.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #define QT_SHAREDPOINTER_TRACK_POINTERS
 #include "qsharedpointer.h"
@@ -57,8 +57,10 @@ private slots:
     void weakQObjectFromSharedPointer();
     void objectCast();
     void objectCastStdSharedPtr();
+    void objectCastFailureNoLeak();
     void differentPointers();
     void virtualBaseDifferentPointers();
+    void virtualBaseWeakPointerConversions();
 #ifndef QTEST_NO_RTTI
     void dynamicCast();
     void dynamicCastDifferentPointers();
@@ -91,6 +93,7 @@ private slots:
     void invalidConstructs_data();
     void invalidConstructs();
 #endif
+    void ownerComparisons();
 
     // let invalidConstructs be the last test, because it's the slowest;
     // add new tests above this block
@@ -1107,6 +1110,21 @@ void tst_QSharedPointer::objectCast()
     safetyCheck();
 }
 
+void tst_QSharedPointer::objectCastFailureNoLeak()
+{
+    // verify that a failing object cast doesn't keep the original object alive
+    auto ptr = QSharedPointer<QObject>::create();
+    auto qptr = QPointer(ptr.data());
+    auto ptr2 = ptr.objectCast<tst_QSharedPointer>();
+
+    QVERIFY(ptr);
+    QVERIFY(qptr);
+    QVERIFY(!ptr2);
+
+    ptr.reset();
+    QVERIFY(!ptr);
+    QVERIFY(!qptr);
+}
 
 void tst_QSharedPointer::objectCastStdSharedPtr()
 {
@@ -1289,6 +1307,67 @@ void tst_QSharedPointer::virtualBaseDifferentPointers()
 
         QWeakPointer<Data> wptr3 = std::move(wptr);
         QVERIFY(wptr3.toStrongRef().isNull());
+    }
+    safetyCheck();
+}
+
+void tst_QSharedPointer::virtualBaseWeakPointerConversions()
+{
+    struct Base { virtual ~Base() = default; };
+    struct Derived : virtual Base {};
+
+    {
+        QSharedPointer<Derived> d(new Derived);
+        QSharedPointer<const Base> cb = d;
+        QCOMPARE(cb, d);
+        QCOMPARE(cb.get(), d.get());
+    }
+    safetyCheck();
+
+    {
+        QSharedPointer<Derived> d(new Derived);
+        QWeakPointer<const Base> wcb = d;
+        QCOMPARE(wcb, d);
+        QCOMPARE(wcb.lock().get(), d.get());
+    }
+    safetyCheck();
+
+    {
+        QSharedPointer<Derived> d(new Derived);
+        QWeakPointer<Derived> wd = d;
+        QCOMPARE(wd, d);
+        QCOMPARE(wd.lock().get(), d.get());
+        QWeakPointer<const Base> wcb = wd;
+        QCOMPARE(wcb, wd);
+        QCOMPARE(wcb.lock().get(), d.get());
+    }
+    safetyCheck();
+
+    {
+        auto raw = new Derived;
+        QSharedPointer<Derived> d(raw);
+        QSharedPointer<const Base> cb = std::move(d);
+        QCOMPARE(d, nullptr);
+        QCOMPARE(cb.get(), raw);
+    }
+    safetyCheck();
+
+    {
+        QSharedPointer<Derived> d(new Derived);
+        QWeakPointer<const Base> wcb = std::move(d);
+        QCOMPARE(wcb, d);
+        QCOMPARE(wcb.lock().get(), d.get());
+    }
+    safetyCheck();
+
+    {
+        QSharedPointer<Derived> d(new Derived);
+        QWeakPointer<Derived> wd = std::move(d);
+        QCOMPARE(wd, d);
+        QCOMPARE(wd.lock().get(), d.get());
+        QWeakPointer<const Base> wcb = std::move(wd);
+        QCOMPARE(wd, nullptr);
+        QCOMPARE(wcb.lock().get(), d.get());
     }
     safetyCheck();
 }
@@ -2839,6 +2918,141 @@ void tst_QSharedPointer::overloads()
     sharedOverloaded.test();
     Overloaded<QWeakPointer> weakOverloaded;
     weakOverloaded.test();
+}
+
+void tst_QSharedPointer::ownerComparisons()
+{
+    using SP = QSharedPointer<int>;
+    using WP = QWeakPointer<int>;
+
+#define CHECK_EQ(a, b) \
+    do { \
+        QVERIFY(a.owner_equal(b)); \
+        QVERIFY(b.owner_equal(a)); \
+        QVERIFY(!a.owner_before(b)); \
+        QVERIFY(!b.owner_before(a)); \
+        QVERIFY(a.owner_hash() == b.owner_hash()); \
+    } while (false)
+
+#define CHECK_NOT_EQ(a, b) \
+    do { \
+        QVERIFY(!a.owner_equal(b)); \
+        QVERIFY(!b.owner_equal(a)); \
+        QVERIFY(a.owner_before(b) || b.owner_before(a)); \
+    } while (false)
+
+    // null
+    {
+        SP sp1;
+        SP sp2;
+        WP wp1 = sp1;
+        WP wp2;
+
+        CHECK_EQ(sp1, sp1);
+        CHECK_EQ(sp1, sp2);
+        CHECK_EQ(sp1, wp1);
+        CHECK_EQ(sp2, wp2);
+        CHECK_EQ(wp1, wp1);
+        CHECK_EQ(wp1, wp2);
+        CHECK_EQ(wp2, wp2);
+    }
+
+    // same owner
+    {
+        SP sp1 = SP::create(123);
+        SP sp2 = sp1;
+        WP wp1 = sp1;
+        SP wp2 = sp2;
+
+        CHECK_EQ(sp1, sp1);
+        CHECK_EQ(sp1, sp2);
+        CHECK_EQ(sp1, wp1);
+        CHECK_EQ(sp2, wp2);
+        CHECK_EQ(wp1, wp1);
+        CHECK_EQ(wp1, wp2);
+    }
+
+    // owning vs null
+    {
+        SP sp1 = SP::create(123);
+        SP sp2;
+        WP wp1 = sp1;
+        WP wp2 = sp2;
+
+        CHECK_EQ(sp1, sp1);
+        CHECK_NOT_EQ(sp1, sp2);
+        CHECK_EQ(sp1, wp1);
+        CHECK_EQ(sp2, wp2);
+        CHECK_EQ(wp1, wp1);
+        CHECK_NOT_EQ(wp1, wp2);
+    }
+
+    // different owners
+    {
+        SP sp1 = SP::create(123);
+        SP sp2 = SP::create(456);
+        WP wp1 = sp1;
+        WP wp2 = sp2;
+
+        CHECK_EQ(sp1, sp1);
+        CHECK_NOT_EQ(sp1, sp2);
+        CHECK_EQ(sp1, wp1);
+        CHECK_EQ(sp2, wp2);
+        CHECK_EQ(wp1, wp1);
+        CHECK_NOT_EQ(wp1, wp2);
+    }
+
+    // reset vs. null
+    {
+        SP sp1 = SP::create(123);
+        SP sp2;
+        WP wp1 = sp1;
+        WP wp2;
+
+        CHECK_EQ(sp1, sp1);
+        CHECK_NOT_EQ(sp1, sp2);
+        CHECK_EQ(sp1, wp1);
+        CHECK_NOT_EQ(sp1, wp2);
+        CHECK_EQ(wp1, wp1);
+        CHECK_NOT_EQ(wp1, wp2);
+
+        sp1.reset();
+
+        CHECK_EQ(sp1, sp1);
+        CHECK_EQ(sp1, sp2);
+        CHECK_NOT_EQ(sp1, wp1);
+        CHECK_EQ(sp2, wp2);
+        CHECK_EQ(wp1, wp1);
+        CHECK_NOT_EQ(wp1, wp2);
+    }
+
+    // expired weak pointers
+    {
+        WP wp1 = SP::create(123);
+        WP wp2;
+
+        CHECK_EQ(wp1, wp1);
+        CHECK_NOT_EQ(wp1, wp2);
+    }
+
+    {
+        WP wp1 = SP::create(123);
+        WP wp2 = wp1;
+
+        CHECK_EQ(wp1, wp1);
+        CHECK_EQ(wp1, wp2);
+    }
+
+    {
+        WP wp1 = SP::create(123);
+        WP wp2 = SP::create(456);
+
+        CHECK_EQ(wp1, wp1);
+        CHECK_EQ(wp2, wp2);
+        CHECK_NOT_EQ(wp1, wp2);
+    }
+#undef CHECK_EQ
+#undef CHECK_NOT_EQ
 }
 
 QTEST_MAIN(tst_QSharedPointer)

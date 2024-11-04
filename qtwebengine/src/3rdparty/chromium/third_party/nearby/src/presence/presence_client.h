@@ -15,14 +15,13 @@
 #ifndef THIRD_PARTY_NEARBY_PRESENCE_PRESENCE_CLIENT_H_
 #define THIRD_PARTY_NEARBY_PRESENCE_PRESENCE_CLIENT_H_
 
-#include <functional>
-#include <memory>
-#include <vector>
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "internal/platform/borrowable.h"
 #include "presence/broadcast_request.h"
 #include "presence/data_types.h"
+#include "presence/presence_device.h"
 #include "presence/scan_request.h"
 
 namespace nearby {
@@ -37,11 +36,7 @@ class PresenceClient {
  public:
   using BorrowablePresenceService = ::nearby::Borrowable<PresenceService*>;
 
-  explicit PresenceClient(BorrowablePresenceService service)
-      : service_(service) {}
-  PresenceClient(const PresenceClient&) = delete;
-  PresenceClient(PresenceClient&&) = default;
-  PresenceClient& operator=(const PresenceClient&) = delete;
+  virtual ~PresenceClient() = default;
 
   // Starts a Nearby Presence scan and registers `ScanCallback`
   // which will be invoked when a matching `PresenceDevice` is detected,
@@ -54,12 +49,12 @@ class PresenceClient {
   // `ScanRequest` contains the options like scan power mode
   // and type; the filters including credentials, actions and extended
   // properties.
-  absl::StatusOr<ScanSessionId> StartScan(ScanRequest scan_request,
-                                          ScanCallback callback);
+  virtual absl::StatusOr<ScanSessionId> StartScan(ScanRequest scan_request,
+                                          ScanCallback callback) = 0;
 
   // Terminates the scan session. Does nothing if the session is already
   // terminated.
-  void StopScan(ScanSessionId session_id);
+  virtual void StopScan(ScanSessionId session_id) = 0;
 
   // Starts a Nearby Presence broadcast and registers `BroadcastCallback`
   // which will be invoked after broadcast is started.
@@ -71,15 +66,17 @@ class PresenceClient {
   // `BroadcastRequest` contains the options like tx_power,
   // the credential info like salt and private credential, the actions and
   // extended properties.
-  absl::StatusOr<BroadcastSessionId> StartBroadcast(
-      BroadcastRequest broadcast_request, BroadcastCallback callback);
+  virtual absl::StatusOr<BroadcastSessionId> StartBroadcast(
+      BroadcastRequest broadcast_request, BroadcastCallback callback) = 0;
 
   // Terminates a broadcast session. Does nothing if the session is already
   // terminated.
-  void StopBroadcast(BroadcastSessionId session_id);
+  virtual void StopBroadcast(BroadcastSessionId session_id) = 0;
 
- private:
-  BorrowablePresenceService service_;
+  // Returns the local PresenceDevice describing the current device's actions,
+  // connectivity info and unique identifier for use in Connections and
+  // Presence.
+  virtual std::optional<PresenceDevice> GetLocalDevice() = 0;
 };
 
 }  // namespace presence

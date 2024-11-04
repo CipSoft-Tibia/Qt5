@@ -29,6 +29,7 @@ QT_REQUIRE_CONFIG(quick_itemview);
 #include <QtQmlModels/private/qqmldelegatemodel_p.h>
 #include <QtQmlModels/private/qqmlchangeset_p.h>
 
+#include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -144,9 +145,14 @@ public:
     void mirrorChange() override;
 
     FxViewItem *createItem(int modelIndex,QQmlIncubator::IncubationMode incubationMode = QQmlIncubator::AsynchronousIfNested);
+    bool releaseCurrentItem(QQmlInstanceModel::ReusableFlag reusableFlag)
+    {
+        auto oldCurrentItem = std::exchange(currentItem, nullptr);
+        return releaseItem(oldCurrentItem, reusableFlag);
+    }
     virtual bool releaseItem(FxViewItem *item, QQmlInstanceModel::ReusableFlag reusableFlag);
 
-    QQuickItem *createHighlightItem() const;
+    QQuickItem *createHighlightItem();
     QQuickItem *createComponentItem(QQmlComponent *component, qreal zValue, bool createDefault = false) const;
     virtual void initializeComponentItem(QQuickItem *) const;
 

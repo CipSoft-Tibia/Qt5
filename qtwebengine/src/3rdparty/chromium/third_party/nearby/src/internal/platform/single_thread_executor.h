@@ -24,7 +24,7 @@ namespace nearby {
 // queue.
 //
 // https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Executors.html#newSingleThreadExecutor--
-class ABSL_LOCKABLE SingleThreadExecutor final : public SubmittableExecutor {
+class ABSL_LOCKABLE SingleThreadExecutor : public SubmittableExecutor {
  public:
   using Platform = api::ImplementationPlatform;
   SingleThreadExecutor()
@@ -33,6 +33,15 @@ class ABSL_LOCKABLE SingleThreadExecutor final : public SubmittableExecutor {
   SingleThreadExecutor(SingleThreadExecutor&&) = default;
   SingleThreadExecutor& operator=(SingleThreadExecutor&&) = default;
 };
+
+// Moves the object to `executor` and destroys it there.
+// This pattern is useful when there are some tasks running on `executor` that
+// hold a reference to `object`. The tasks will complete before `object` is
+// destroyed.
+template <typename T>
+void DestroyOnExecutor(T object, SingleThreadExecutor* executor) {
+  executor->Execute([object = std::move(object)] {});
+}
 
 }  // namespace nearby
 

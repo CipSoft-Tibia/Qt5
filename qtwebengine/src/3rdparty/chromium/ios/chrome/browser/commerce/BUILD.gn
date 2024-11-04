@@ -17,16 +17,15 @@ source_set("commerce") {
     "//components/payments/core:core",
     "//components/prefs:prefs",
     "//components/unified_consent:unified_consent",
-    "//ios/chrome/browser/application_context",
-    "//ios/chrome/browser/browser_state",
     "//ios/chrome/browser/optimization_guide",
-    "//ios/chrome/browser/prefs:pref_names",
+    "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/browser_state",
+    "//ios/chrome/browser/shared/model/prefs:pref_names",
+    "//ios/chrome/browser/shared/public/features",
     "//ios/chrome/browser/signin:signin",
-    "//ios/chrome/browser/ui:feature_flags",
     "//ios/web",
     "//ios/web/public",
   ]
-  configs += [ "//build/config/compiler:enable_arc" ]
 }
 
 static_library("shopping_service") {
@@ -44,17 +43,17 @@ static_library("shopping_service") {
     "//components/keyed_service/ios",
     "//components/leveldb_proto",
     "//components/prefs",
-    "//ios/chrome/browser/application_context",
-    "//ios/chrome/browser/bookmarks",
-    "//ios/chrome/browser/browser_state",
+    "//ios/chrome/browser/bookmarks/model",
+    "//ios/chrome/browser/history",
     "//ios/chrome/browser/optimization_guide",
     "//ios/chrome/browser/power_bookmarks",
+    "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/browser_state",
     "//ios/chrome/browser/signin:signin",
+    "//ios/chrome/browser/sync",
     "//ios/web",
     "//services/network/public/cpp",
   ]
-
-  configs += [ "//build/config/compiler:enable_arc" ]
 }
 
 static_library("session_proto_db") {
@@ -70,12 +69,9 @@ static_library("session_proto_db") {
     "//components/session_proto_db:session_proto_db",
     "//ios/web/public:public",
   ]
-
-  configs += [ "//build/config/compiler:enable_arc" ]
 }
 
 source_set("unit_tests") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
   sources = [
     "price_alert_util_unittest.mm",
@@ -92,19 +88,19 @@ source_set("unit_tests") {
     "//components/optimization_guide/core:test_support",
     "//components/sync_preferences:test_support",
     "//components/unified_consent:unified_consent",
-    "//ios/chrome/browser/application_context",
-    "//ios/chrome/browser/browser_state:test_support",
     "//ios/chrome/browser/commerce:session_proto_db",
     "//ios/chrome/browser/optimization_guide:optimization_guide",
     "//ios/chrome/browser/optimization_guide:unit_tests",
-    "//ios/chrome/browser/prefs:pref_names",
+    "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/browser_state:test_support",
+    "//ios/chrome/browser/shared/model/prefs:pref_names",
+    "//ios/chrome/browser/shared/public/features",
     "//ios/chrome/browser/signin:fake_system_identity",
     "//ios/chrome/browser/signin:fake_system_identity_manager",
     "//ios/chrome/browser/signin:signin",
     "//ios/chrome/browser/signin:test_support",
     "//ios/chrome/browser/sync",
     "//ios/chrome/browser/sync:test_support",
-    "//ios/chrome/browser/ui:feature_flags",
     "//ios/chrome/test:test_support",
     "//ios/web/public:public",
     "//ios/web/public/test:test",

@@ -48,7 +48,6 @@
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/input/keyboard_event_manager.h"
-#include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
@@ -208,10 +207,10 @@ void WebAXObject::Serialize(ui::AXNodeData* node_data,
   private_->Serialize(node_data, accessibility_mode);
 }
 
-void WebAXObject::InvalidateSerializerSubtree() const {
+void WebAXObject::MarkSerializerSubtreeDirty() const {
   if (IsDetached())
     return;
-  private_->AXObjectCache().InvalidateSerializerSubtree(*private_);
+  private_->AXObjectCache().MarkSerializerSubtreeDirty(*private_);
 }
 
 void WebAXObject::MarkAXObjectDirtyWithDetails(
@@ -225,16 +224,11 @@ void WebAXObject::MarkAXObjectDirtyWithDetails(
       private_.Get(), subtree, event_from, event_from_action, event_intents);
 }
 
-bool WebAXObject::IsInClientTree() {
-  if (IsDetached())
-    return false;
-  return private_->AXObjectCache().IsInClientTree(*private_);
-}
-
 void WebAXObject::OnLoadInlineTextBoxes() const {
   if (IsDetached())
     return;
-  private_->AXObjectCache().OnLoadInlineTextBoxes(*private_);
+
+  private_->LoadInlineTextBoxes();
 }
 
 BLINK_EXPORT void WebAXObject::SetImageAsDataNodeId(
@@ -285,13 +279,6 @@ bool WebAXObject::IsClickable() const {
          action != ax::mojom::blink::DefaultActionVerb::kClickAncestor;
 }
 
-bool WebAXObject::IsControl() const {
-  if (IsDetached())
-    return false;
-
-  return private_->IsControl();
-}
-
 bool WebAXObject::IsFocused() const {
   if (IsDetached())
     return false;
@@ -299,32 +286,11 @@ bool WebAXObject::IsFocused() const {
   return private_->IsFocused();
 }
 
-bool WebAXObject::IsLineBreakingObject() const {
-  if (IsDetached())
-    return false;
-
-  return private_->IsLineBreakingObject();
-}
-
-bool WebAXObject::IsLinked() const {
-  if (IsDetached())
-    return false;
-
-  return private_->IsLinked();
-}
-
 bool WebAXObject::IsModal() const {
   if (IsDetached())
     return false;
 
   return private_->IsModal();
-}
-
-bool WebAXObject::IsAtomicTextField() const {
-  if (IsDetached())
-    return false;
-
-  return private_->IsAtomicTextField();
 }
 
 bool WebAXObject::IsOffScreen() const {
@@ -348,24 +314,6 @@ bool WebAXObject::IsVisited() const {
   return private_->IsVisited();
 }
 
-WebString WebAXObject::AccessKey() const {
-  if (IsDetached())
-    return WebString();
-
-  return WebString(private_->AccessKey());
-}
-
-// Deprecated.
-void WebAXObject::ColorValue(int& r, int& g, int& b) const {
-  if (IsDetached())
-    return;
-
-  unsigned color = private_->ColorValue();
-  r = (color >> 16) & 0xFF;
-  g = (color >> 8) & 0xFF;
-  b = color & 0xFF;
-}
-
 unsigned WebAXObject::ColorValue() const {
   if (IsDetached())
     return 0;
@@ -379,13 +327,6 @@ WebAXObject WebAXObject::AriaActiveDescendant() const {
     return WebAXObject();
 
   return WebAXObject(private_->ActiveDescendant());
-}
-
-WebAXObject WebAXObject::ErrorMessage() const {
-  if (IsDetached())
-    return WebAXObject();
-
-  return WebAXObject(private_->ErrorMessage());
 }
 
 bool WebAXObject::IsEditable() const {
@@ -414,13 +355,6 @@ WebString WebAXObject::LiveRegionStatus() const {
     return WebString();
 
   return private_->LiveRegionStatus();
-}
-
-bool WebAXObject::ContainerLiveRegionAtomic() const {
-  if (IsDetached())
-    return false;
-
-  return private_->ContainerLiveRegionAtomic();
 }
 
 bool WebAXObject::AriaOwns(WebVector<WebAXObject>& owns_elements) const {
@@ -483,14 +417,15 @@ WebAXObject WebAXObject::HitTest(const gfx::Point& point) const {
     return WebAXObject(hit);
 
   if (private_->GetBoundsInFrameCoordinates().Contains(
-          LayoutPoint(contents_point)))
+          PhysicalOffset(contents_point))) {
     return *this;
+  }
 
   return WebAXObject();
 }
 
 gfx::Rect WebAXObject::GetBoundsInFrameCoordinates() const {
-  LayoutRect rect = private_->GetBoundsInFrameCoordinates();
+  PhysicalRect rect = private_->GetBoundsInFrameCoordinates();
   return ToEnclosingRect(rect);
 }
 
@@ -603,15 +538,6 @@ void WebAXObject::Selection(bool& is_selection_backward,
   } else {
     focus_offset = extent.ChildIndex();
   }
-}
-
-bool WebAXObject::SetSelected(bool selected) const {
-  if (IsDetached())
-    return false;
-
-  ScopedActionAnnotator annotater(private_.Get(),
-                                  ax::mojom::blink::Action::kSetSelection);
-  return private_->RequestSetSelectedAction(selected);
 }
 
 bool WebAXObject::SetSelection(const WebAXObject& anchor_object,
@@ -904,13 +830,6 @@ ax::mojom::SortDirection WebAXObject::SortDirection() const {
   return private_->GetSortDirection();
 }
 
-void WebAXObject::LoadInlineTextBoxes() const {
-  if (IsDetached())
-    return;
-
-  private_->LoadInlineTextBoxes();
-}
-
 WebAXObject WebAXObject::NextOnLine() const {
   if (IsDetached())
     return WebAXObject();
@@ -1008,7 +927,9 @@ bool WebAXObject::ScrollToMakeVisible() const {
 
   ScopedActionAnnotator annotater(
       private_.Get(), ax::mojom::blink::Action::kScrollToMakeVisible);
-  return private_->RequestScrollToMakeVisibleAction();
+  ui::AXActionData action_data;
+  action_data.action = ax::mojom::blink::Action::kScrollToMakeVisible;
+  return private_->PerformAction(action_data);
 }
 
 bool WebAXObject::ScrollToMakeVisibleWithSubFocus(
@@ -1039,6 +960,7 @@ bool WebAXObject::ScrollToMakeVisibleWithSubFocus(
       visible_horizontal_behavior, horizontal_behavior, horizontal_behavior};
   blink::mojom::blink::ScrollAlignment blink_vertical_scroll_alignment = {
       visible_vertical_behavior, vertical_behavior, vertical_behavior};
+
   return private_->RequestScrollToMakeVisibleWithSubFocusAction(
       subfocus, blink_horizontal_scroll_alignment,
       blink_vertical_scroll_alignment);
@@ -1148,6 +1070,7 @@ WebAXObject WebAXObject::FromWebDocumentFocused(
   CheckLayoutClean(document);
 #endif
   auto* cache = To<AXObjectCacheImpl>(document->ExistingAXObjectCache());
+  cache->UpdateAXForAllDocuments();
   return cache ? WebAXObject(cache->FocusedObject()) : WebAXObject();
 }
 

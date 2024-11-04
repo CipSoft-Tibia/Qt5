@@ -35,12 +35,13 @@ function(qt_generate_qmake_libraries_pri_content module_name output_root_dir out
                 endif()
                 list(APPEND seen_targets ${lib_target})
                 get_target_property(lib_target_type ${lib_target} TYPE)
-                if(lib_target_type STREQUAL "INTERFACE_LIBRARY")
+                if(lib_target_type MATCHES "^(INTERFACE|UNKNOWN)_LIBRARY")
                     get_target_property(iface_libs ${lib_target} INTERFACE_LINK_LIBRARIES)
                     if(iface_libs)
                         list(PREPEND lib_targets ${iface_libs})
                     endif()
-                else()
+                endif()
+                if(NOT lib_target_type STREQUAL "INTERFACE_LIBRARY")
                     list(APPEND lib_libs "$<TARGET_LINKER_FILE:${lib_target}>")
                 endif()
                 list(APPEND lib_libdir  "$<TARGET_PROPERTY:${lib_target},INTERFACE_LINK_DIRECTORIES>")
@@ -57,7 +58,7 @@ function(qt_generate_qmake_libraries_pri_content module_name output_root_dir out
                 list(APPEND lib_defines "$<TARGET_PROPERTY:${lib_target},INTERFACE_COMPILE_DEFINITIONS>")
             else()
                 if(lib_target MATCHES "/([^/]+).framework$")
-                    list(APPEND lib_libs "-framework" "${CMAKE_MATCH_1}")
+                    list(APPEND lib_libs "-framework ${CMAKE_MATCH_1}")
                 else()
                     list(APPEND lib_libs "${lib_target}")
                 endif()
@@ -781,8 +782,23 @@ QT_PATCH_VERSION = ${PROJECT_VERSION_PATCH}
 
     if(APPLE)
         list(APPEND extra_statements "QT_MAC_SDK_VERSION = ${QT_MAC_SDK_VERSION}")
-        list(APPEND extra_statements
-             "QMAKE_MACOSX_DEPLOYMENT_TARGET = ${CMAKE_OSX_DEPLOYMENT_TARGET}")
+        if(NOT CMAKE_SYSTEM_NAME OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            # macOS
+            list(APPEND extra_statements
+                "QMAKE_MACOSX_DEPLOYMENT_TARGET = ${CMAKE_OSX_DEPLOYMENT_TARGET}")
+            list(APPEND extra_statements
+                 "QT_MAC_SDK_VERSION_MIN = ${QT_SUPPORTED_MIN_MACOS_SDK_VERSION}")
+            list(APPEND extra_statements
+                 "QT_MAC_SDK_VERSION_MAX = ${QT_SUPPORTED_MAX_MACOS_SDK_VERSION}")
+        elseif(CMAKE_SYSTEM_NAME STREQUAL iOS)
+            list(APPEND extra_statements
+                "QMAKE_IOS_DEPLOYMENT_TARGET = ${CMAKE_OSX_DEPLOYMENT_TARGET}")
+            list(APPEND extra_statements
+                 "QT_MAC_SDK_VERSION_MIN = ${QT_SUPPORTED_MIN_IOS_SDK_VERSION}")
+            list(APPEND extra_statements
+                 "QT_MAC_SDK_VERSION_MAX = ${QT_SUPPORTED_MAX_IOS_SDK_VERSION}")
+        endif()
+
         if (CMAKE_OSX_ARCHITECTURES)
             list(APPEND architectures "${CMAKE_OSX_ARCHITECTURES}")
             string (REPLACE ";" " " architectures "${architectures}")
@@ -791,8 +807,6 @@ QT_PATCH_VERSION = ${PROJECT_VERSION_PATCH}
         endif()
         list(APPEND extra_statements "QT_ARCHS = ${architectures}")
     endif()
-
-    list(APPEND extra_statements "QT_EDITION = Open Source")
 
     if(WASM)
         list(APPEND extra_statements

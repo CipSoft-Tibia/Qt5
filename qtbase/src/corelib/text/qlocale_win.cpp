@@ -159,6 +159,7 @@ private:
 
     SubstitutionType substitution();
     QString substituteDigits(QString &&string);
+    QString correctDigits(QString &&string);
     QString yearFix(int year, int fakeYear, QString &&formatted);
 
     static QString winToQtFormat(QStringView sys_fmt);
@@ -232,25 +233,25 @@ QSystemLocalePrivate::SubstitutionType QSystemLocalePrivate::substitution()
     if (substitutionType == SUnknown) {
         wchar_t buf[8];
         if (!getLocaleInfo(LOCALE_IDIGITSUBSTITUTION, buf, 8)) {
-            substitutionType = QSystemLocalePrivate::SNever;
+            substitutionType = SNever;
             return substitutionType;
         }
         if (buf[0] == '1')
-            substitutionType = QSystemLocalePrivate::SNever;
+            substitutionType = SNever;
         else if (buf[0] == '0')
-            substitutionType = QSystemLocalePrivate::SContext;
+            substitutionType = SContext;
         else if (buf[0] == '2')
-            substitutionType = QSystemLocalePrivate::SAlways;
+            substitutionType = SAlways;
         else {
             wchar_t digits[11]; // See zeroDigit() for why 11.
             if (!getLocaleInfo(LOCALE_SNATIVEDIGITS, digits, 11)) {
-                substitutionType = QSystemLocalePrivate::SNever;
+                substitutionType = SNever;
                 return substitutionType;
             }
             if (buf[0] == digits[0] + 2)
-                substitutionType = QSystemLocalePrivate::SAlways;
+                substitutionType = SAlways;
             else
-                substitutionType = QSystemLocalePrivate::SNever;
+                substitutionType = SNever;
         }
     }
     return substitutionType;
@@ -289,6 +290,11 @@ QString QSystemLocalePrivate::substituteDigits(QString &&string)
         break;
     }
     return std::move(string);
+}
+
+QString QSystemLocalePrivate::correctDigits(QString &&string)
+{
+    return substitution() == SAlways ? substituteDigits(std::move(string)) : std::move(string);
 }
 
 QVariant QSystemLocalePrivate::zeroDigit()
@@ -370,40 +376,37 @@ QVariant QSystemLocalePrivate::dayName(int day, QLocale::FormatType type)
     if (day < 1 || day > 7)
         return {};
 
-    static const LCTYPE short_day_map[]
+    static constexpr LCTYPE short_day_map[]
         = { LOCALE_SABBREVDAYNAME1, LOCALE_SABBREVDAYNAME2,
             LOCALE_SABBREVDAYNAME3, LOCALE_SABBREVDAYNAME4, LOCALE_SABBREVDAYNAME5,
             LOCALE_SABBREVDAYNAME6, LOCALE_SABBREVDAYNAME7 };
 
-    static const LCTYPE long_day_map[]
+    static constexpr LCTYPE long_day_map[]
         = { LOCALE_SDAYNAME1, LOCALE_SDAYNAME2,
             LOCALE_SDAYNAME3, LOCALE_SDAYNAME4, LOCALE_SDAYNAME5,
             LOCALE_SDAYNAME6, LOCALE_SDAYNAME7 };
 
-    static const LCTYPE narrow_day_map[]
+    static constexpr LCTYPE narrow_day_map[]
         = { LOCALE_SSHORTESTDAYNAME1, LOCALE_SSHORTESTDAYNAME2,
             LOCALE_SSHORTESTDAYNAME3, LOCALE_SSHORTESTDAYNAME4,
             LOCALE_SSHORTESTDAYNAME5, LOCALE_SSHORTESTDAYNAME6,
             LOCALE_SSHORTESTDAYNAME7 };
 
-    day -= 1;
-
-    if (type == QLocale::LongFormat)
-        return nullIfEmpty(getLocaleInfo(long_day_map[day]).toString());
-    if (type == QLocale::NarrowFormat)
-        return nullIfEmpty(getLocaleInfo(narrow_day_map[day]).toString());
-    return nullIfEmpty(getLocaleInfo(short_day_map[day]).toString());
+    return nullIfEmpty(getLocaleInfo(
+                           (type == QLocale::LongFormat ? long_day_map
+                            : type == QLocale::NarrowFormat ? narrow_day_map
+                            : short_day_map)[day - 1]).toString());
 }
 
 QVariant QSystemLocalePrivate::standaloneMonthName(int month, QLocale::FormatType type)
 {
-    static const LCTYPE short_month_map[]
+    static constexpr LCTYPE short_month_map[]
         = { LOCALE_SABBREVMONTHNAME1, LOCALE_SABBREVMONTHNAME2, LOCALE_SABBREVMONTHNAME3,
             LOCALE_SABBREVMONTHNAME4, LOCALE_SABBREVMONTHNAME5, LOCALE_SABBREVMONTHNAME6,
             LOCALE_SABBREVMONTHNAME7, LOCALE_SABBREVMONTHNAME8, LOCALE_SABBREVMONTHNAME9,
             LOCALE_SABBREVMONTHNAME10, LOCALE_SABBREVMONTHNAME11, LOCALE_SABBREVMONTHNAME12 };
 
-    static const LCTYPE long_month_map[]
+    static constexpr LCTYPE long_month_map[]
         = { LOCALE_SMONTHNAME1, LOCALE_SMONTHNAME2, LOCALE_SMONTHNAME3,
             LOCALE_SMONTHNAME4, LOCALE_SMONTHNAME5, LOCALE_SMONTHNAME6,
             LOCALE_SMONTHNAME7, LOCALE_SMONTHNAME8, LOCALE_SMONTHNAME9,
@@ -433,10 +436,7 @@ QVariant QSystemLocalePrivate::monthName(int month, QLocale::FormatType type)
     wchar_t buf[255];
     if (getDateFormat(flags, &st, format, buf, 255) > 2) {
         // Elide the two digits of day number
-        QString text = QString::fromWCharArray(buf + 2);
-        if (substitution() == SAlways)
-            text = substituteDigits(std::move(text));
-        return nullIfEmpty(std::move(text));
+        return nullIfEmpty(correctDigits(QString::fromWCharArray(buf + 2)));
     }
     return {};
 }
@@ -468,7 +468,7 @@ QString QSystemLocalePrivate::yearFix(int year, int fakeYear, QString &&formatte
         return std::move(formatted).replace(tail.toString(), sign + trueYear.last(2));
     }
 
-    // Localized digits, perhaps ?
+    // Localized digits (regardless of SAlways), perhaps ?
     // First call to substituteDigits() ensures zero is initialized:
     trueYear = substituteDigits(std::move(trueYear));
     if (zero != u'0') {
@@ -513,9 +513,7 @@ QVariant QSystemLocalePrivate::toString(QDate date, QLocale::FormatType type)
         QString text = QString::fromWCharArray(buf);
         if (fixup)
             text = yearFix(year, st.wYear, std::move(text));
-        if (substitution() == SAlways)
-            text = substituteDigits(std::move(text));
-        return nullIfEmpty(std::move(text));
+        return nullIfEmpty(correctDigits(std::move(text)));
     }
     return {};
 }
@@ -536,12 +534,8 @@ QVariant QSystemLocalePrivate::toString(QTime time, QLocale::FormatType type)
     auto formatStr = reinterpret_cast<const wchar_t *>(format.isEmpty() ? nullptr : format.utf16());
 
     wchar_t buf[255];
-    if (getTimeFormat(flags, &st, formatStr, buf, int(std::size(buf)))) {
-        QString text = QString::fromWCharArray(buf);
-        if (substitution() == SAlways)
-            text = substituteDigits(std::move(text));
-        return nullIfEmpty(std::move(text));
-    }
+    if (getTimeFormat(flags, &st, formatStr, buf, int(std::size(buf))))
+        return nullIfEmpty(correctDigits(QString::fromWCharArray(buf)));
     return {};
 }
 
@@ -701,10 +695,7 @@ QVariant QSystemLocalePrivate::toCurrencyString(const QSystemLocale::CurrencyToS
                             pformat, out.data(), out.size());
     }
 
-    value = QString::fromWCharArray(out.data());
-    if (substitution() == SAlways)
-        value = substituteDigits(std::move(value));
-    return nullIfEmpty(std::move(value));
+    return nullIfEmpty(correctDigits(QString::fromWCharArray(out.data())));
 }
 
 QVariant QSystemLocalePrivate::uiLanguages()
@@ -837,7 +828,7 @@ QLocale QSystemLocale::fallbackLocale() const
     return QLocale(QString::fromLatin1(getWinLocaleName()));
 }
 
-QVariant QSystemLocale::query(QueryType type, QVariant in) const
+QVariant QSystemLocale::query(QueryType type, QVariant &&in) const
 {
     QSystemLocalePrivate *d = systemLocalePrivate();
     switch(type) {
@@ -921,7 +912,7 @@ QVariant QSystemLocale::query(QueryType type, QVariant in) const
     case CurrencySymbol:
         return d->currencySymbol(QLocale::CurrencySymbolFormat(in.toUInt()));
     case CurrencyToString:
-        return d->toCurrencyString(in.value<QSystemLocale::CurrencyToStringArgument>());
+        return d->toCurrencyString(in.value<CurrencyToStringArgument>());
     case UILanguages:
         return d->uiLanguages();
     case LocaleChanged:

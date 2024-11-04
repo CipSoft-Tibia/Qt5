@@ -15,6 +15,8 @@
 #ifndef CORE_INTERNAL_MEDIUMS_WEBRTC_STUB_H_
 #define CORE_INTERNAL_MEDIUMS_WEBRTC_STUB_H_
 
+#ifdef NO_WEBRTC
+
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -29,14 +31,13 @@
 namespace nearby {
 namespace connections {
 namespace mediums {
-// Callback that is invoked when a new connection is accepted.
-struct AcceptedConnectionCallback {
-  std::function<void(WebRtcSocketWrapper socket)> accepted_cb =
-      [](WebRtcSocketWrapper) {};
-};
+
 // Entry point for connecting a data channel between two devices via WebRtc.
 class WebRtc {
  public:
+  // Callback that is invoked when a new connection is accepted.
+  using AcceptedConnectionCallback =
+      absl::AnyInvocable<void(WebRtcSocketWrapper socket)>;
   WebRtc();
   ~WebRtc();
 
@@ -76,5 +77,7 @@ class WebRtc {
 }  // namespace mediums
 }  // namespace connections
 }  // namespace nearby
+
+#endif
 
 #endif  // CORE_INTERNAL_MEDIUMS_WEBRTC_STUB_H_

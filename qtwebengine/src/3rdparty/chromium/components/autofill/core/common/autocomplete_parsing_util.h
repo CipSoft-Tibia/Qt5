@@ -42,23 +42,25 @@ bool operator!=(const AutocompleteParsingResult& a,
                 const AutocompleteParsingResult& b);
 
 absl::optional<AutocompleteParsingResult> ParseAutocompleteAttribute(
-    base::StringPiece autocomplete_attribute,
-    uint64_t field_max_length);
+    base::StringPiece autocomplete_attribute);
+
+// Checks if `autocomplete_attribute` could not be recognized but was
+// nonetheless found as well intended. This will therefore return true for
+// values such as "first-name", "last-name" and "password".
+bool IsAutocompleteTypeWrongButWellIntended(
+    base::StringPiece autocomplete_attribute);
 
 // Checks if `autocomplete` is one of "on", "off" or "false". These values are
 // currently ignored by Autofill.
 bool ShouldIgnoreAutocompleteAttribute(base::StringPiece autocomplete);
 
 // Parses `value` as an HTML field type and converts it to the corresponding
-// HtmlFieldType, if it is supposed by Autofill. Rationalization based on the
-// `field` is done.
+// HtmlFieldType, if it is supposed by Autofill.
 // HtmlFieldType::kUnspecified is returned if `value` is empty, or if
 // `value` is supposed to be ignored by
 // `kAutofillIgnoreUnmappableAutocompleteValues`. Otherwise
 // HtmlFieldType::kUnrecognized is returned.
-HtmlFieldType FieldTypeFromAutocompleteAttributeValue(
-    std::string value,
-    uint64_t field_max_length);
+HtmlFieldType FieldTypeFromAutocompleteAttributeValue(std::string value);
 
 }  // namespace autofill
 

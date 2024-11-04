@@ -56,9 +56,13 @@ class CORE_EXPORT HTMLFormControlElementWithState
 
   void DispatchInputEvent();
   void DispatchChangeEvent();
+  void DispatchCancelEvent();
 
  protected:
+  // Flag that denotes whether the user made some manual modifications to the
+  // field since page load.
   bool user_has_edited_the_field_ = false;
+
   HTMLFormControlElementWithState(const QualifiedName& tag_name, Document&);
 
   void FinishParsingChildren() override;

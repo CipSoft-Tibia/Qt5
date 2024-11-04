@@ -143,7 +143,7 @@ QNmeaRealTimeReader::QNmeaRealTimeReader(QNmeaPositionInfoSourcePrivate *sourceP
     if (pushDelay >= 0) {
         m_timer.setSingleShot(true);
         m_timer.setInterval(pushDelay);
-        m_timer.connect(&m_timer, &QTimer::timeout, [this]() {
+        m_timer.connect(&m_timer, &QTimer::timeout, &m_timer, [this]() {
            this->notifyNewUpdate();
         });
     }

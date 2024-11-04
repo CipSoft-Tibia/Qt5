@@ -8,13 +8,12 @@
 #ifndef ToolUtils_DEFINED
 #define ToolUtils_DEFINED
 
+#include "include/codec/SkEncodedImageFormat.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkData.h"
-#include "include/core/SkEncodedImageFormat.h"
 #include "include/core/SkFont.h"
 #include "include/core/SkFontStyle.h"
 #include "include/core/SkFontTypes.h"
-#include "include/core/SkImageEncoder.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkPixmap.h"
 #include "include/core/SkRect.h"
@@ -31,9 +30,11 @@
 #include "src/base/SkTInternalLList.h"
 #include "tools/SkMetaData.h"
 
-#ifdef SK_GRAPHITE_ENABLED
+#if defined(SK_GRAPHITE)
 #include "include/gpu/graphite/Recorder.h"
 #endif
+
+#include <functional>
 
 class SkBitmap;
 class SkCanvas;
@@ -105,7 +106,7 @@ bool equal_pixels(const SkImage* a, const SkImage* b);
 sk_sp<SkShader> create_checkerboard_shader(SkColor c1, SkColor c2, int size);
 
 /** Draw a checkerboard pattern in the current canvas, restricted to
-    the current clip, using SkXfermode::kSrc_Mode. */
+    the current clip, using SkBlendMode::kSrc. */
 void draw_checkerboard(SkCanvas* canvas, SkColor color1, SkColor color2, int checkSize);
 
 /** Make it easier to create a bitmap-based checkerboard */
@@ -117,6 +118,34 @@ sk_sp<SkImage> create_checkerboard_image(int w, int h, SkColor c1, SkColor c2, i
 inline void draw_checkerboard(SkCanvas* canvas) {
     ToolUtils::draw_checkerboard(canvas, 0xFF999999, 0xFF666666, 8);
 }
+
+class HilbertGenerator {
+public:
+    HilbertGenerator(float desiredSize, float desiredLineWidth, int desiredDepth);
+
+    // Draw a Hilbert curve into the canvas w/ a gradient along its length
+    void draw(SkCanvas* canvas);
+
+private:
+    void turn90(bool turnLeft);
+    void line(SkCanvas* canvas);
+    void recursiveDraw(SkCanvas* canvas, int curDepth, bool turnLeft);
+    SkColor4f getColor(float curLen);
+
+    const float fDesiredSize;
+    const int fDesiredDepth;
+    const float fSegmentLength;            // length of a line segment
+    const float fDesiredLineWidth;
+
+    SkRect fActualBounds;
+
+    // The "turtle" state
+    SkPoint fCurPos;
+    int fCurDir;
+
+    const float fExpectedLen;
+    float fCurLen;
+};
 
 /** Create pixmaps to initialize a 32x32 image w/ or w/o mipmaps.
  *  Returns the number of levels (either 1 or 6). The mipmap levels will be colored as
@@ -223,8 +252,8 @@ public:
     static uint32_t      GetID(TopoTestNode* node) { return node->id(); }
 
     // Helper functions for TopoSortBench & TopoSortTest
-    static void AllocNodes(SkTArray<sk_sp<ToolUtils::TopoTestNode>>* graph, int num) {
-        graph->reserve_back(num);
+    static void AllocNodes(skia_private::TArray<sk_sp<ToolUtils::TopoTestNode>>* graph, int num) {
+        graph->reserve_exact(graph->size() + num);
 
         for (int i = 0; i < num; ++i) {
             graph->push_back(sk_sp<TopoTestNode>(new TopoTestNode(i)));
@@ -232,7 +261,7 @@ public:
     }
 
 #ifdef SK_DEBUG
-    static void Print(const SkTArray<TopoTestNode*>& graph) {
+    static void Print(const skia_private::TArray<TopoTestNode*>& graph) {
         for (int i = 0; i < graph.size(); ++i) {
             SkDebugf("%d, ", graph[i]->id());
         }
@@ -261,11 +290,8 @@ private:
     SkTDArray<uint32_t>      fTargets;
 };
 
-template <typename T>
-inline bool EncodeImageToFile(const char* path, const T& src, SkEncodedImageFormat f, int q) {
-    SkFILEWStream file(path);
-    return file.isValid() && SkEncodeImage(&file, src, f, q);
-}
+bool EncodeImageToPngFile(const char* path, const SkBitmap& src);
+bool EncodeImageToPngFile(const char* path, const SkPixmap& src);
 
 bool copy_to(SkBitmap* dst, SkColorType dstCT, const SkBitmap& src);
 void copy_to_g8(SkBitmap* dst, const SkBitmap& src);
@@ -317,7 +343,7 @@ using PathSniffCallback = void(const SkMatrix&, const SkPath&, const SkPaint&);
 // Supported file formats are .svg and .skp.
 void sniff_paths(const char filepath[], std::function<PathSniffCallback>);
 
-#if SK_SUPPORT_GPU
+#if defined(SK_GANESH)
 sk_sp<SkImage> MakeTextureImage(SkCanvas* canvas, sk_sp<SkImage> orig);
 #endif
 
@@ -353,7 +379,7 @@ private:
     static constexpr size_t kAxisVarsSize = 3;
 };
 
-#ifdef SK_GRAPHITE_ENABLED
+#if defined(SK_GRAPHITE)
 skgpu::graphite::RecorderOptions CreateTestingRecorderOptions();
 #endif
 

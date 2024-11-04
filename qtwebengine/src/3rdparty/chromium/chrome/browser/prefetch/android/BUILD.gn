@@ -38,16 +38,21 @@ android_library("java") {
     "//third_party/androidx:androidx_preference_preference_java",
     "//third_party/androidx:androidx_vectordrawable_vectordrawable_java",
   ]
-  srcjar_deps = [ ":preload_pages_state_generated_enum" ]
-  annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
+  srcjar_deps = [
+    ":jni_headers",
+    ":preload_pages_state_generated_enum",
+  ]
+
   resources_package = "org.chromium.chrome.browser.prefetch.settings"
 }
 
 android_library("javatests") {
   testonly = true
+  resources_package = "org.chromium.chrome.browser.prefetch.settings"
   sources = [ "java/src/org/chromium/chrome/browser/prefetch/settings/PreloadPagesSettingsFragmentTest.java" ]
   deps = [
     ":java",
+    ":java_resources",
     "//base:base_java_test_support",
     "//chrome/android:chrome_java",
     "//chrome/browser/feedback/android:java",
@@ -64,9 +69,10 @@ android_library("javatests") {
     "//components/user_prefs/android:java",
     "//content/public/test/android:content_java_test_support",
     "//third_party/android_deps:espresso_java",
-    "//third_party/android_support_test_runner:runner_java",
+    "//third_party/androidx:androidx_fragment_fragment_java",
     "//third_party/androidx:androidx_preference_preference_java",
     "//third_party/androidx:androidx_test_runner_java",
+    "//third_party/hamcrest:hamcrest_java",
     "//third_party/junit",
     "//third_party/mockito:mockito_java",
   ]

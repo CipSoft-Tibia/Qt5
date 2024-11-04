@@ -21,6 +21,8 @@
 
 #include <private/qabstractwebview_p.h>
 
+#include <QtCore/qpointer.h>
+
 #if defined(Q_OS_IOS) && defined(__OBJC__)
 #include <UIKit/UIGestureRecognizer.h>
 

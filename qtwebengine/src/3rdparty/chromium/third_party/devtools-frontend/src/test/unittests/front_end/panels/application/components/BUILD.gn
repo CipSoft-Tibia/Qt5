@@ -8,6 +8,7 @@ ts_library("components") {
   testonly = true
   sources = [
     "BackForwardCacheView_test.ts",
+    "BounceTrackingMitigationsView_test.ts",
     "EndpointsGrid_test.ts",
     "FrameDetailsView_test.ts",
     "InterestGroupAccessGrid_test.ts",
@@ -17,6 +18,7 @@ ts_library("components") {
     "SharedStorageAccessGrid_test.ts",
     "SharedStorageMetadataView_test.ts",
     "StackTrace_test.ts",
+    "StorageMetadataView_test.ts",
     "TrustTokensView_test.ts",
   ]
 

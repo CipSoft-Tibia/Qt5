@@ -30,6 +30,7 @@ constexpr int kResizeBehaviorNone = 0;
 constexpr int kResizeBehaviorCanResize = 1 << 0;
 constexpr int kResizeBehaviorCanMaximize = 1 << 1;
 constexpr int kResizeBehaviorCanMinimize = 1 << 2;
+constexpr int kResizeBehaviorCanFullscreen = 1 << 3;
 
 // A value used to represent an unassigned workspace for `kWindowWorkspaceKey`.
 constexpr int kWindowWorkspaceUnassignedWorkspace = -1;
@@ -82,12 +83,20 @@ AURA_EXPORT extern const WindowProperty<bool>* const kConstrainedWindowKey;
 // A property key to store if a window was created by a user gesture.
 AURA_EXPORT extern const WindowProperty<bool>* const kCreatedByUserGesture;
 
+// A property key to indicate the uuid of the desk this window belongs to.
+AURA_EXPORT extern const WindowProperty<std::string*>* const kDeskUuidKey;
+
 // A property key to indicate that a window should show that it deserves
 // attention.
 AURA_EXPORT extern const WindowProperty<bool>* const kDrawAttentionKey;
 
 // A property key to store the focus client on the window.
 AURA_EXPORT extern const WindowProperty<FocusClient*>* const kFocusClientKey;
+
+// A property key to store the headless window bounds. This lets
+// RenderWidgetHostViewAura find the requested headless window bounds which may
+// be different from platform window bounds.
+AURA_EXPORT extern const WindowProperty<gfx::Rect*>* const kHeadlessBoundsKey;
 
 // A property key to store the host window of a window. This lets
 // WebContentsViews find the windows that should constrain NPAPI plugins.
@@ -157,6 +166,10 @@ AURA_EXPORT extern const WindowProperty<int64_t>* const
 // from the current window show state.
 AURA_EXPORT extern const WindowProperty<ui::WindowShowState>* const
     kRestoreShowStateKey;
+
+// A property key to store the raster scale. This affects the scale that exo
+// windows are rasterized at. Currently, this only applies for lacros windows.
+AURA_EXPORT extern const WindowProperty<float>* const kRasterScale;
 
 // A property key to indicate if a window is currently being restored. Normally
 // restoring a window equals to changing window's state to normal window state.

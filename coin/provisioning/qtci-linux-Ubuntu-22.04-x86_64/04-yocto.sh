@@ -11,7 +11,7 @@ source "${BASH_SOURCE%/*}/../common/unix/DownloadURL.sh"
 # shellcheck source=../common/unix/SetEnvVar.sh
 source "${BASH_SOURCE%/*}/../common/unix/SetEnvVar.sh"
 
-primaryBaseUrlPath="http://ci-files01-hki.intra.qt.io/input/boot2qt/gatesgarth"
+primaryBaseUrlPath="http://ci-files01-hki.ci.qt.io/input/boot2qt/gatesgarth"
 altBaseUrlPath="http://download.qt.io/development_releases/prebuilt/boot2qt/gatesgarth"
 
 echo "Installing Yocto toolchain for 32-bit b2qt ARMV7..."
@@ -99,9 +99,11 @@ else
     exit 1
 fi
 
-echo "Yocto ARMv7 toolchain = $versionARM" >> ~/versions.txt
-echo "Yocto ARM64 toolchain = $versionARM64" >> ~/versions.txt
-echo "Yocto MIPS64 toolchain = $versionMIPS64" >> ~/versions.txt
+cat << EOB >> ~/versions.txt
+Yocto ARMv7 toolchain = $versionARM
+Yocto ARM64 toolchain = $versionARM64
+Yocto MIPS64 toolchain = $versionMIPS64
+EOB
 
 # List qt user in qemu toolchain sysroots
 sudo sh -c "grep ^qt /etc/passwd >> $yoctoLocationARMv7/sysroots/$sysrootARMv7/etc/passwd"
@@ -111,8 +113,9 @@ sudo sh -c "grep ^qt /etc/group >> $yoctoLocationARM64/sysroots/$sysrootARM64/et
 
 # Fix mdns to support both docker and network tests
 # See also https://bugreports.qt.io/browse/QTBUG-106013
-sudo sh -c "sed -i '/^hosts:/s/.*/hosts:          files myhostname mdns_minimal [NOTFOUND=return] dns mdns4/'   $yoctoLocationARMv7/sysroots/$sysrootARMv7/etc/nsswitch.conf"
-sudo sh -c "sed -i '/^hosts:/s/.*/hosts:          files myhostname mdns_minimal [NOTFOUND=return] dns mdns4/'   $yoctoLocationARM64/sysroots/$sysrootARM64/etc/nsswitch.conf"
+sudo sed -i '/^hosts:/s/.*/hosts:          files myhostname mdns_minimal [NOTFOUND=return] mdns4 dns/'  \
+    $yoctoLocationARMv7/sysroots/$sysrootARMv7/etc/nsswitch.conf \
+    $yoctoLocationARM64/sysroots/$sysrootARM64/etc/nsswitch.conf
 
 # Install qemu binfmt for 32bit and 64bit arm architectures
 sudo update-binfmts --package qemu-arm --install arm $yoctoLocationARMv7/sysroots/x86_64-pokysdk-linux/usr/bin/qemu-arm \

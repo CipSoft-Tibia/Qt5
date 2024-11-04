@@ -15,7 +15,7 @@
 #include "chrome/browser/enterprise/connectors/connectors_prefs.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/test/base/testing_profile.h"
-#include "components/os_crypt/os_crypt_mocker.h"
+#include "components/os_crypt/sync/os_crypt_mocker.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/test/browser_task_environment.h"
@@ -81,7 +81,8 @@ class DownloadsHandlerTest : public testing::Test {
   raw_ptr<DownloadCoreService> service_;
   raw_ptr<content::MockDownloadManager>
       download_manager_;  // Owned by |profile_|.
-  raw_ptr<ChromeDownloadManagerDelegate> chrome_download_manager_delegate_;
+  raw_ptr<ChromeDownloadManagerDelegate, DanglingUntriaged>
+      chrome_download_manager_delegate_;
 
   bool connection_policy_enabled_;
   std::string account_name_, account_login_, folder_name_, folder_id_;

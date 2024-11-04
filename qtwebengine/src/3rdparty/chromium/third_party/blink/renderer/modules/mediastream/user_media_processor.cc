@@ -620,7 +620,7 @@ void UserMediaProcessor::SetupAudioInput() {
 
   TrackControls& audio_controls = stream_controls->audio;
   audio_controls.stream_type =
-      (request->MediaRequestType() == UserMediaRequestType::kDisplayMediaSet)
+      (request->MediaRequestType() == UserMediaRequestType::kAllScreensMedia)
           ? MediaStreamType::NO_SERVICE
           : request->AudioMediaStreamType();
 
@@ -1986,6 +1986,9 @@ void UserMediaProcessor::OnLocalSourceStopped(
 void UserMediaProcessor::StopLocalSource(MediaStreamSource* source,
                                          bool notify_dispatcher) {
   WebPlatformMediaStreamSource* source_impl = source->GetPlatformSource();
+  if (!source_impl) {
+    return;
+  }
   SendLogMessage(base::StringPrintf(
       "StopLocalSource({session_id=%s})",
       source_impl->device().session_id().ToString().c_str()));

@@ -955,11 +955,12 @@ const IDNTestCase kIdnCases[] = {
     // U+05D7 can look like Latin n in many fonts.
     {"xn--ceba.com", u"\u05d7\u05d7.com", kUnsafe},
 
-    // U+00FE (þ) and U+00F0 (ð) are only allowed under the .is TLD.
+    // U+00FE (þ) and U+00F0 (ð) are only allowed under the .is and .fo TLDs.
     {"xn--acdef-wva.com", u"a\u00fecdef.com", kUnsafe},
     {"xn--mnpqr-jta.com", u"mn\u00f0pqr.com", kUnsafe},
     {"xn--acdef-wva.is", u"a\u00fecdef.is", kSafe},
     {"xn--mnpqr-jta.is", u"mn\u00f0pqr.is", kSafe},
+    {"xn--mnpqr-jta.fo", u"mn\u00f0pqr.fo", kSafe},
 
     // U+0259 (ə) is only allowed under the .az TLD.
     {"xn--xample-vyc.com", u"\u0259xample.com", kUnsafe},
@@ -1253,7 +1254,7 @@ TEST_P(IDNSpoofCheckerTest, GetSimilarTopDomain) {
     const TopDomainEntry entry =
         IDNSpoofChecker().GetSimilarTopDomain(test_case.hostname);
     EXPECT_EQ(test_case.expected_top_domain, entry.domain);
-    EXPECT_FALSE(entry.is_top_500);
+    EXPECT_FALSE(entry.is_top_bucket);
   }
 }
 
@@ -1262,21 +1263,21 @@ TEST_P(IDNSpoofCheckerTest, LookupSkeletonInTopDomains) {
     TopDomainEntry entry =
         IDNSpoofChecker().LookupSkeletonInTopDomains("d4OOO.corn");
     EXPECT_EQ("d4000.com", entry.domain);
-    EXPECT_TRUE(entry.is_top_500);
+    EXPECT_TRUE(entry.is_top_bucket);
     EXPECT_EQ(entry.skeleton_type, SkeletonType::kFull);
   }
   {
     TopDomainEntry entry = IDNSpoofChecker().LookupSkeletonInTopDomains(
         "d4OOOcorn", SkeletonType::kSeparatorsRemoved);
     EXPECT_EQ("d4000.com", entry.domain);
-    EXPECT_TRUE(entry.is_top_500);
+    EXPECT_TRUE(entry.is_top_bucket);
     EXPECT_EQ(entry.skeleton_type, SkeletonType::kSeparatorsRemoved);
   }
   {
     TopDomainEntry entry =
         IDNSpoofChecker().LookupSkeletonInTopDomains("digklrno68.corn");
     EXPECT_EQ("digklmo68.com", entry.domain);
-    EXPECT_FALSE(entry.is_top_500);
+    EXPECT_FALSE(entry.is_top_bucket);
     EXPECT_EQ(entry.skeleton_type, SkeletonType::kFull);
   }
 }
@@ -1287,14 +1288,14 @@ TEST(IDNSpoofCheckerNoFixtureTest, LookupSkeletonInTopDomains) {
     TopDomainEntry entry =
         IDNSpoofChecker().LookupSkeletonInTopDomains("google.corn");
     EXPECT_EQ("google.com", entry.domain);
-    EXPECT_TRUE(entry.is_top_500);
+    EXPECT_TRUE(entry.is_top_bucket);
     EXPECT_EQ(entry.skeleton_type, SkeletonType::kFull);
   }
   {
     TopDomainEntry entry = IDNSpoofChecker().LookupSkeletonInTopDomains(
         "googlecorn", SkeletonType::kSeparatorsRemoved);
     EXPECT_EQ("google.com", entry.domain);
-    EXPECT_TRUE(entry.is_top_500);
+    EXPECT_TRUE(entry.is_top_bucket);
     EXPECT_EQ(entry.skeleton_type, SkeletonType::kSeparatorsRemoved);
   }
   {
@@ -1303,7 +1304,7 @@ TEST(IDNSpoofCheckerNoFixtureTest, LookupSkeletonInTopDomains) {
     TopDomainEntry entry =
         IDNSpoofChecker().LookupSkeletonInTopDomains("google.sk");
     EXPECT_EQ("google.sk", entry.domain);
-    EXPECT_FALSE(entry.is_top_500);
+    EXPECT_FALSE(entry.is_top_bucket);
     EXPECT_EQ(entry.skeleton_type, SkeletonType::kFull);
   }
 }
@@ -1321,7 +1322,7 @@ TEST(IDNSpoofCheckerNoFixtureTest, UnsafeIDNToUnicodeWithDetails) {
     // The top domain that |punycode| matched to, if any.
     const char* const expected_matching_domain;
     // If true, the matching top domain is expected to be in top 500.
-    const bool expected_is_top_500;
+    const bool expected_is_top_bucket;
     const IDNSpoofChecker::Result expected_spoof_check_result;
   } kTestCases[] = {
       {// An ASCII, top domain.
@@ -1357,8 +1358,8 @@ TEST(IDNSpoofCheckerNoFixtureTest, UnsafeIDNToUnicodeWithDetails) {
     EXPECT_EQ(test_case.expected_has_idn, result.has_idn_component);
     EXPECT_EQ(test_case.expected_matching_domain,
               result.matching_top_domain.domain);
-    EXPECT_EQ(test_case.expected_is_top_500,
-              result.matching_top_domain.is_top_500);
+    EXPECT_EQ(test_case.expected_is_top_bucket,
+              result.matching_top_domain.is_top_bucket);
     EXPECT_EQ(test_case.expected_spoof_check_result, result.spoof_check_result);
   }
 }

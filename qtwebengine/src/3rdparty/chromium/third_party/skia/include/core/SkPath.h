@@ -32,6 +32,7 @@ class SkRRect;
 class SkWStream;
 enum class SkPathConvexity;
 enum class SkPathFirstDirection;
+struct SkPathVerbAnalysis;
 
 // WIP -- define this locally, and fix call-sites to use SkPathBuilder (skbug.com/9000)
 //#define SK_HIDE_PATH_EDIT_METHODS
@@ -1247,8 +1248,16 @@ public:
         the last contour or start a new contour.
     */
     enum AddPathMode {
-        kAppend_AddPathMode, //!< appended to destination unaltered
-        kExtend_AddPathMode, //!< add line if prior contour is not closed
+        /** Contours are appended to the destination path as new contours.
+        */
+        kAppend_AddPathMode,
+        /** Extends the last contour of the destination path with the first countour
+            of the source path, connecting them with a line.  If the last contour is
+            closed, a new empty contour starting at its start point is extended instead.
+            If the destination path is empty, the result is the source path.
+            The last path of the result is closed only if the last path of the source is.
+        */
+        kExtend_AddPathMode,
     };
 
     /** Appends src to SkPath, offset by (dx, dy).
@@ -1873,6 +1882,16 @@ private:
      *        this path should be discarded after calling shrinkToFit().
      */
     void shrinkToFit();
+
+    // Creates a new Path after the supplied arguments have been validated by
+    // sk_path_analyze_verbs().
+    static SkPath MakeInternal(const SkPathVerbAnalysis& analsis,
+                               const SkPoint points[],
+                               const uint8_t verbs[],
+                               int verbCount,
+                               const SkScalar conics[],
+                               SkPathFillType fillType,
+                               bool isVolatile);
 
     friend class SkAutoPathBoundsUpdate;
     friend class SkAutoDisableOvalCheck;

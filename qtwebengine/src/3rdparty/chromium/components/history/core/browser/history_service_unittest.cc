@@ -38,10 +38,12 @@
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
+#include "base/test/test_future.h"
 #include "components/history/core/browser/features.h"
 #include "components/history/core/browser/history_backend.h"
 #include "components/history/core/browser/history_database_params.h"
 #include "components/history/core/browser/history_db_task.h"
+#include "components/history/core/browser/history_types.h"
 #include "components/history/core/test/database_test_utils.h"
 #include "components/history/core/test/test_history_database.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -782,6 +784,16 @@ void AddPageInThePast(HistoryService* history,
   AddPageAtTime(history, url_spec, time_in_the_past);
 }
 
+// Helper to add a synced page at a specified day in the past.
+void AddSyncedPageInThePast(HistoryService* history,
+                            const std::string& url_spec,
+                            int days_back) {
+  base::Time time_in_the_past = base::Time::Now() - base::Days(days_back);
+  history->AddPage(GURL(url_spec), time_in_the_past, 0, 0, GURL(),
+                   history::RedirectList(), ui::PAGE_TRANSITION_LINK,
+                   history::SOURCE_SYNCED, false);
+}
+
 // Helper to add a page with specified days back in the past.
 base::Time GetTimeInThePast(base::Time base_time,
                             int days_back,
@@ -809,12 +821,12 @@ int GetMonthlyHostCountHelper(HistoryService* history,
   return count;
 }
 
-DomainDiversityResults GetDomainDiversityHelper(
-    HistoryService* history,
-    base::Time begin_time,
-    base::Time end_time,
-    DomainMetricBitmaskType metric_type_bitmask,
-    base::CancelableTaskTracker* tracker) {
+std::pair<DomainDiversityResults, DomainDiversityResults>
+GetDomainDiversityHelper(HistoryService* history,
+                         base::Time begin_time,
+                         base::Time end_time,
+                         DomainMetricBitmaskType metric_type_bitmask,
+                         base::CancelableTaskTracker* tracker) {
   base::RunLoop run_loop;
   base::TimeDelta dst_rounding_offset = base::Hours(4);
 
@@ -826,10 +838,11 @@ DomainDiversityResults GetDomainDiversityHelper(
                          .InDaysFloored();
   }
 
-  DomainDiversityResults results;
+  std::pair<DomainDiversityResults, DomainDiversityResults> results;
   history->GetDomainDiversity(
       end_time, number_of_days, metric_type_bitmask,
-      base::BindLambdaForTesting([&](DomainDiversityResults result) {
+      base::BindLambdaForTesting([&](std::pair<DomainDiversityResults,
+                                               DomainDiversityResults> result) {
         results = result;
         run_loop.Quit();
       }),
@@ -924,26 +937,33 @@ TEST_F(HistoryServiceTest, GetDomainDiversityShortBasetimeRange) {
   AddPageAtTime(history, "http://ak/", GetTimeInThePast(query_time, 1, 14));
 
   // Should return empty result if `begin_time` == `end_time`.
-  DomainDiversityResults res = GetDomainDiversityHelper(
+  auto [local_res, all_res] = GetDomainDiversityHelper(
       history, query_time, query_time,
       history::kEnableLast1DayMetric | history::kEnableLast7DayMetric |
           history::kEnableLast28DayMetric,
       &tracker_);
-  EXPECT_EQ(0u, res.size());
+  EXPECT_EQ(0u, local_res.size());
+  EXPECT_EQ(0u, all_res.size());
 
   // Metrics will be computed for each of the 4 continuous midnights.
-  res = GetDomainDiversityHelper(
+  std::tie(local_res, all_res) = GetDomainDiversityHelper(
       history, GetTimeInThePast(query_time, 4, 0), query_time,
       history::kEnableLast1DayMetric | history::kEnableLast7DayMetric |
           history::kEnableLast28DayMetric,
       &tracker_);
 
-  ASSERT_EQ(4u, res.size());
+  ASSERT_EQ(4u, local_res.size());
+  ASSERT_EQ(4u, all_res.size());
 
-  TestDomainMetricSet(res[0], 1, 2, 2);
-  TestDomainMetricSet(res[1], 2, 2, 2);
-  TestDomainMetricSet(res[2], 0, 0, 0);
-  TestDomainMetricSet(res[3], 0, 0, 0);
+  TestDomainMetricSet(local_res[0], 1, 2, 2);
+  TestDomainMetricSet(local_res[1], 2, 2, 2);
+  TestDomainMetricSet(local_res[2], 0, 0, 0);
+  TestDomainMetricSet(local_res[3], 0, 0, 0);
+
+  TestDomainMetricSet(all_res[0], 1, 2, 2);
+  TestDomainMetricSet(all_res[1], 2, 2, 2);
+  TestDomainMetricSet(all_res[2], 0, 0, 0);
+  TestDomainMetricSet(all_res[3], 0, 0, 0);
 }
 
 TEST_F(HistoryServiceTest, GetDomainDiversityLongBasetimeRange) {
@@ -974,21 +994,30 @@ TEST_F(HistoryServiceTest, GetDomainDiversityLongBasetimeRange) {
   AddPageAtTime(history, "https://www.google.com/",
                 GetTimeInThePast(query_time, 1, 13));
 
-  DomainDiversityResults res = GetDomainDiversityHelper(
+  auto [local_res, all_res] = GetDomainDiversityHelper(
       history, GetTimeInThePast(query_time, 10, 12), query_time,
       history::kEnableLast1DayMetric | history::kEnableLast7DayMetric |
           history::kEnableLast28DayMetric,
       &tracker_);
   // Only up to seven days will be considered.
-  ASSERT_EQ(7u, res.size());
+  ASSERT_EQ(7u, local_res.size());
+  ASSERT_EQ(7u, all_res.size());
 
-  TestDomainMetricSet(res[0], 2, 3, 5);
-  TestDomainMetricSet(res[1], 1, 2, 4);
-  TestDomainMetricSet(res[2], 0, 1, 3);
-  TestDomainMetricSet(res[3], 0, 2, 4);
-  TestDomainMetricSet(res[4], 0, 2, 4);
-  TestDomainMetricSet(res[5], 0, 2, 4);
-  TestDomainMetricSet(res[6], 1, 2, 4);
+  TestDomainMetricSet(local_res[0], 2, 3, 5);
+  TestDomainMetricSet(local_res[1], 1, 2, 4);
+  TestDomainMetricSet(local_res[2], 0, 1, 3);
+  TestDomainMetricSet(local_res[3], 0, 2, 4);
+  TestDomainMetricSet(local_res[4], 0, 2, 4);
+  TestDomainMetricSet(local_res[5], 0, 2, 4);
+  TestDomainMetricSet(local_res[6], 1, 2, 4);
+
+  TestDomainMetricSet(all_res[0], 2, 3, 5);
+  TestDomainMetricSet(all_res[1], 1, 2, 4);
+  TestDomainMetricSet(all_res[2], 0, 1, 3);
+  TestDomainMetricSet(all_res[3], 0, 2, 4);
+  TestDomainMetricSet(all_res[4], 0, 2, 4);
+  TestDomainMetricSet(all_res[5], 0, 2, 4);
+  TestDomainMetricSet(all_res[6], 1, 2, 4);
 }
 
 TEST_F(HistoryServiceTest, GetDomainDiversityBitmaskTest) {
@@ -1005,31 +1034,233 @@ TEST_F(HistoryServiceTest, GetDomainDiversityBitmaskTest) {
   AddPageAtTime(history, "http://www.chromium.com/",
                 GetTimeInThePast(query_time, 1, 4));
 
-  DomainDiversityResults res = GetDomainDiversityHelper(
+  auto [local_res, all_res] = GetDomainDiversityHelper(
       history, GetTimeInThePast(query_time, 7, 12), query_time,
       history::kEnableLast1DayMetric | history::kEnableLast7DayMetric,
       &tracker_);
-  ASSERT_EQ(7u, res.size());
+  ASSERT_EQ(7u, local_res.size());
+  ASSERT_EQ(7u, all_res.size());
 
-  TestDomainMetricSet(res[0], 1, 2, -1);
-  TestDomainMetricSet(res[1], 0, 1, -1);
-  TestDomainMetricSet(res[2], 0, 1, -1);
-  TestDomainMetricSet(res[3], 0, 1, -1);
-  TestDomainMetricSet(res[4], 0, 1, -1);
-  TestDomainMetricSet(res[5], 0, 1, -1);
-  TestDomainMetricSet(res[6], 1, 1, -1);
+  TestDomainMetricSet(local_res[0], 1, 2, -1);
+  TestDomainMetricSet(local_res[1], 0, 1, -1);
+  TestDomainMetricSet(local_res[2], 0, 1, -1);
+  TestDomainMetricSet(local_res[3], 0, 1, -1);
+  TestDomainMetricSet(local_res[4], 0, 1, -1);
+  TestDomainMetricSet(local_res[5], 0, 1, -1);
+  TestDomainMetricSet(local_res[6], 1, 1, -1);
 
-  res = GetDomainDiversityHelper(
+  TestDomainMetricSet(all_res[0], 1, 2, -1);
+  TestDomainMetricSet(all_res[1], 0, 1, -1);
+  TestDomainMetricSet(all_res[2], 0, 1, -1);
+  TestDomainMetricSet(all_res[3], 0, 1, -1);
+  TestDomainMetricSet(all_res[4], 0, 1, -1);
+  TestDomainMetricSet(all_res[5], 0, 1, -1);
+  TestDomainMetricSet(all_res[6], 1, 1, -1);
+
+  std::tie(local_res, all_res) = GetDomainDiversityHelper(
       history, GetTimeInThePast(query_time, 6, 12), query_time,
       history::kEnableLast28DayMetric | history::kEnableLast7DayMetric,
       &tracker_);
 
-  ASSERT_EQ(6u, res.size());
-  TestDomainMetricSet(res[0], -1, 2, 3);
-  TestDomainMetricSet(res[1], -1, 1, 2);
-  TestDomainMetricSet(res[2], -1, 1, 2);
-  TestDomainMetricSet(res[3], -1, 1, 2);
-  TestDomainMetricSet(res[4], -1, 1, 2);
-  TestDomainMetricSet(res[5], -1, 1, 2);
+  ASSERT_EQ(6u, local_res.size());
+  ASSERT_EQ(6u, all_res.size());
+
+  TestDomainMetricSet(local_res[0], -1, 2, 3);
+  TestDomainMetricSet(local_res[1], -1, 1, 2);
+  TestDomainMetricSet(local_res[2], -1, 1, 2);
+  TestDomainMetricSet(local_res[3], -1, 1, 2);
+  TestDomainMetricSet(local_res[4], -1, 1, 2);
+  TestDomainMetricSet(local_res[5], -1, 1, 2);
+
+  TestDomainMetricSet(all_res[0], -1, 2, 3);
+  TestDomainMetricSet(all_res[1], -1, 1, 2);
+  TestDomainMetricSet(all_res[2], -1, 1, 2);
+  TestDomainMetricSet(all_res[3], -1, 1, 2);
+  TestDomainMetricSet(all_res[4], -1, 1, 2);
+  TestDomainMetricSet(all_res[5], -1, 1, 2);
 }
+
+// Gets unique local and synced domains visited and the last visited domain
+// within a time range.
+TEST_F(HistoryServiceTest, GetUniqueDomainsVisited) {
+  base::Time base_time = base::Time::Now();
+  HistoryService* history = history_service_.get();
+  ASSERT_TRUE(history);
+
+  // Add local visits to history database at specific days back.
+  AddPageInThePast(history, "http://www.test1.com/", 1);
+  AddPageInThePast(history, "http://www.test2.com/test", 2);
+  AddPageInThePast(history, "http://www.test2.com/", 3);
+  AddPageInThePast(history, "http://www.test3.com/", 4);
+
+  // Add synced visits to history database at specific days back.
+  AddSyncedPageInThePast(history, "http://www.test3.com/", 3);
+  AddSyncedPageInThePast(history, "http://www.test4.com/", 5);
+
+  {
+    // DomainsVisitedResult should be empty when no domains in range.
+    base::test::TestFuture<DomainsVisitedResult> future;
+
+    history->GetUniqueDomainsVisited(
+        /*begin_time=*/base_time - base::Days(10),
+        /*end_time=*/base_time - base::Days(5), future.GetCallback(),
+        &tracker_);
+
+    DomainsVisitedResult result = future.Take();
+
+    EXPECT_EQ(0u, result.locally_visited_domains.size());
+    EXPECT_EQ(0u, result.all_visited_domains.size());
+  }
+
+  {
+    // DomainsVisitedResult should include unique domains in range in
+    // reverse-chronological order.
+    base::test::TestFuture<DomainsVisitedResult> future;
+
+    history->GetUniqueDomainsVisited(
+        /*begin_time=*/base_time - base::Days(2), /*end_time=*/base_time,
+        future.GetCallback(), &tracker_);
+
+    std::vector<std::string> expectedLocalResult({"test1.com", "test2.com"});
+    std::vector<std::string> expectedSyncedResult({"test1.com", "test2.com"});
+
+    DomainsVisitedResult result = future.Take();
+
+    EXPECT_EQ(expectedLocalResult, result.locally_visited_domains);
+    EXPECT_EQ(expectedSyncedResult, result.all_visited_domains);
+  }
+
+  {
+    // DomainsVisitedResult should not include duplicate domains in range.
+    base::test::TestFuture<DomainsVisitedResult> future;
+
+    history->GetUniqueDomainsVisited(
+        /*begin_time=*/base_time - base::Days(4), /*end_time=*/base_time,
+        future.GetCallback(), &tracker_);
+
+    std::vector<std::string> expectedLocalResult(
+        {"test1.com", "test2.com", "test3.com"});
+    std::vector<std::string> expectedSyncedResult(
+        {"test1.com", "test2.com", "test3.com"});
+
+    DomainsVisitedResult result = future.Take();
+
+    EXPECT_EQ(expectedLocalResult, result.locally_visited_domains);
+    EXPECT_EQ(expectedSyncedResult, result.all_visited_domains);
+  }
+
+  {
+    // local domains should not include synced visits in range.
+    base::test::TestFuture<DomainsVisitedResult> future;
+
+    history->GetUniqueDomainsVisited(
+        /*begin_time=*/base_time - base::Days(5), /*end_time=*/base_time,
+        future.GetCallback(), &tracker_);
+
+    std::vector<std::string> expectedLocalResult(
+        {"test1.com", "test2.com", "test3.com"});
+    std::vector<std::string> expectedSyncedResult(
+        {"test1.com", "test2.com", "test3.com", "test4.com"});
+
+    DomainsVisitedResult result = future.Take();
+
+    EXPECT_EQ(expectedLocalResult, result.locally_visited_domains);
+    EXPECT_EQ(expectedSyncedResult, result.all_visited_domains);
+  }
+}
+
+namespace {
+
+class AddSyncedVisitTask : public HistoryDBTask {
+ public:
+  AddSyncedVisitTask(base::RunLoop* run_loop,
+                     const GURL& url,
+                     const VisitRow& visit)
+      : run_loop_(run_loop), url_(url), visit_(visit) {}
+
+  AddSyncedVisitTask(const AddSyncedVisitTask&) = delete;
+  AddSyncedVisitTask& operator=(const AddSyncedVisitTask&) = delete;
+
+  ~AddSyncedVisitTask() override = default;
+
+  bool RunOnDBThread(HistoryBackend* backend, HistoryDatabase* db) override {
+    VisitID visit_id = backend->AddSyncedVisit(
+        url_, u"Title", /*hidden=*/false, visit_, absl::nullopt, absl::nullopt);
+    EXPECT_NE(visit_id, kInvalidVisitID);
+    LOG(ERROR) << "Added visit!";
+    return true;
+  }
+
+  void DoneRunOnMainThread() override { run_loop_->QuitWhenIdle(); }
+
+ private:
+  raw_ptr<base::RunLoop> run_loop_;
+
+  GURL url_;
+  VisitRow visit_;
+};
+
+}  // namespace
+
+TEST_F(HistoryServiceTest, GetDomainDiversityLocalVsSynced) {
+  HistoryService* history = history_service_.get();
+  ASSERT_TRUE(history);
+
+  base::Time query_time = base::Time::Now();
+
+  // Make sure `query_time` is at least some time past the midnight so that
+  // some domain visits can be inserted between `query_time` and midnight
+  // for testing.
+  query_time =
+      std::max(query_time.LocalMidnight() + base::Minutes(10), query_time);
+
+  // Add a regular local visit.
+  history->AddPage(GURL("https://www.local.com/"),
+                   GetTimeInThePast(query_time, /*days_back=*/1,
+                                    /*hours_since_midnight=*/12),
+                   0, 0, GURL(), history::RedirectList(),
+                   ui::PAGE_TRANSITION_LINK, history::SOURCE_BROWSED, false);
+
+  // Add a legacy-style synced visit, as it would be created by TYPED_URLS sync.
+  // This has SOURCE_SYNCED but otherwise looks mostly like a local visit.
+  history->AddPage(GURL("https://www.synced-legacy.com/"),
+                   GetTimeInThePast(query_time, /*days_back=*/1,
+                                    /*hours_since_midnight=*/13),
+                   0, 0, GURL(), history::RedirectList(),
+                   ui::PAGE_TRANSITION_LINK, history::SOURCE_SYNCED, false);
+
+  // Add a new-style synced visit, as it would be created by HISTORY sync. The
+  // API to do this isn't exposed in HistoryService (only HistoryBackend).
+  {
+    VisitRow visit;
+    visit.visit_time = GetTimeInThePast(query_time, /*days_back=*/1,
+                                        /*hours_since_midnight=*/14);
+    visit.originator_cache_guid = "some_originator";
+    visit.transition = ui::PageTransitionFromInt(
+        ui::PAGE_TRANSITION_LINK | ui::PAGE_TRANSITION_CHAIN_START |
+        ui::PAGE_TRANSITION_CHAIN_END);
+    visit.is_known_to_sync = true;
+
+    base::RunLoop run_loop;
+    history->ScheduleDBTask(
+        FROM_HERE,
+        std::make_unique<AddSyncedVisitTask>(
+            &run_loop, GURL("https://www.synced.com/"), visit),
+        &tracker_);
+    run_loop.Run();
+  }
+
+  auto [local_res, all_res] = GetDomainDiversityHelper(
+      history, GetTimeInThePast(query_time, 1, 0), query_time,
+      history::kEnableLast1DayMetric, &tracker_);
+
+  ASSERT_EQ(1u, local_res.size());
+  ASSERT_EQ(1u, all_res.size());
+
+  // The "local" result should only count the local visit.
+  TestDomainMetricSet(local_res[0], 1, -1, -1);
+  // The "all" result should also include synced visits.
+  TestDomainMetricSet(all_res[0], 3, -1, -1);
+}
+
 }  // namespace history

@@ -8,10 +8,26 @@
     \brief Provides QML types to use timelines and keyframes to animate Qt Quick
     user interfaces.
 
+    \section1 QtQuick.Timeline import
+
     To import the QML types into your application, use the following import
     statement in your .qml file:
 
     \qml
     import QtQuick.Timeline
     \endqml
+
+    \generatelist qmltypesbymodule QtQuick.Timeline
+
+
+    \section1 QtQuick.Timeline.BlendTrees import
+
+    The \BlendTrees submodule provides QML types for blending multiple
+    \l {TimelineAnimation}s together, creating new dynamic animations.
+
+    \include qtquicktimelineblendtrees-module-qml.qdoc usage
+
+    \generatelist qmltypesbymodule QtQuick.Timeline.BlendTrees
+
+    \noautolist
 */

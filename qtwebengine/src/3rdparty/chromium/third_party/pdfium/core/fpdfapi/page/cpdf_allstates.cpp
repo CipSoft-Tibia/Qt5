@@ -16,8 +16,8 @@
 #include "core/fpdfapi/parser/cpdf_array.h"
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/fpdf_parser_utility.h"
+#include "core/fxcrt/bytestring.h"
 #include "core/fxge/cfx_graphstatedata.h"
-#include "third_party/base/cxx17_backports.h"
 
 CPDF_AllStates::CPDF_AllStates() = default;
 
@@ -25,6 +25,7 @@ CPDF_AllStates::~CPDF_AllStates() = default;
 
 void CPDF_AllStates::Copy(const CPDF_AllStates& src) {
   CopyStates(src);
+  m_GraphicsResourceNames = src.m_GraphicsResourceNames;
   m_TextMatrix = src.m_TextMatrix;
   m_ParentMatrix = src.m_ParentMatrix;
   m_CTM = src.m_CTM;
@@ -115,11 +116,11 @@ void CPDF_AllStates::ProcessExtGS(const CPDF_Dictionary* pGS,
       }
       case FXBSTR_ID('C', 'A', 0, 0):
         m_GeneralState.SetStrokeAlpha(
-            pdfium::clamp(pObject->GetNumber(), 0.0f, 1.0f));
+            std::clamp(pObject->GetNumber(), 0.0f, 1.0f));
         break;
       case FXBSTR_ID('c', 'a', 0, 0):
         m_GeneralState.SetFillAlpha(
-            pdfium::clamp(pObject->GetNumber(), 0.0f, 1.0f));
+            std::clamp(pObject->GetNumber(), 0.0f, 1.0f));
         break;
       case FXBSTR_ID('O', 'P', 0, 0):
         m_GeneralState.SetStrokeOP(!!pObject->GetInteger());

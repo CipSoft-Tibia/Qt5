@@ -85,7 +85,8 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
     \target apple-usage-description
 
     Each permission you request must be accompanied by a so called
-    \e {usage description} string in the application's \c Info.plist
+    \e {usage description} string in the application's
+    \l{Information Property List Files}{\c Info.plist}
     file, describing why the application needs to access the given
     permission. For example:
 
@@ -96,6 +97,10 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
 
     The relevant usage description keys are described in the documentation
     for each permission type.
+
+    To ensure the relevant permission backend is included with your
+    application, please \l{Information Property List Files}
+    {point the build system to your custom \c Info.plist}.
 
     \sa {Information Property List Files}.
 
@@ -132,8 +137,8 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
         \li Request the minimal set of permissions needed. For example, if you only
         need access to the microphone, do \e not request camera permission just in case.
         Use the properties of individual permission types to limit the permission scope
-        even further, for example QContactsPermission::setReadOnly() to request read
-        only access.
+        even further, for example \l{QContactsPermission::setAccessMode()}
+        to request read only access.
 
         \li Request permissions in response to specific actions by the user. For example,
         defer requesting microphone permission until the user presses the button to record
@@ -226,7 +231,7 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
 */
 
 /*!
-    \fn template <typename T, if_permission<T>> QPermission::QPermission(const T &type)
+    \fn template <typename T, QPermission::if_permission<T>> QPermission::QPermission(const T &type)
 
     Constructs a permission from the given \l{typed permission} \a type.
 
@@ -240,7 +245,7 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
 */
 
 /*!
-    \fn template <typename T, if_permission<T>> std::optional<T> QPermission::value() const
+    \fn template <typename T, QPermission::if_permission<T>> std::optional<T> QPermission::value() const
 
     Returns the \l{typed permission} of type \c T, or \c{std::nullopt} if this
     QPermission object doesn't contain one.

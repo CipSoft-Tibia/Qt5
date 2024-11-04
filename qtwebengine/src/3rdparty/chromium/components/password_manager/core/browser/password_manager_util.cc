@@ -14,10 +14,12 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/notreached.h"
 #include "base/ranges/algorithm.h"
 #include "base/strings/strcat.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
+#include "build/blink_buildflags.h"
 #include "build/build_config.h"
 #include "components/autofill/core/browser/autofill_client.h"
 #include "components/autofill/core/browser/logging/log_manager.h"
@@ -26,6 +28,7 @@
 #include "components/password_manager/core/browser/affiliation/affiliation_utils.h"
 #include "components/password_manager/core/browser/credentials_cleaner.h"
 #include "components/password_manager/core/browser/credentials_cleaner_runner.h"
+#include "components/password_manager/core/browser/features/password_features.h"
 #include "components/password_manager/core/browser/http_credentials_cleaner.h"
 #include "components/password_manager/core/browser/old_google_credentials_cleaner.h"
 #include "components/password_manager/core/browser/password_bubble_experiment.h"
@@ -43,8 +46,8 @@
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
-#include "components/sync/driver/sync_service.h"
-#include "components/sync/driver/sync_user_settings.h"
+#include "components/sync/service/sync_service.h"
+#include "components/sync/service/sync_user_settings.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "url/url_util.h"
 
@@ -62,7 +65,7 @@ std::tuple<int, base::Time, int> GetPriorityProperties(
 }
 
 // Consider the following properties:
-// 1. Match strength for the original form (Exact > Web Affiliations > PSL).
+// 1. Match strength for the original form (Exact > Affiliations > PSL).
 // 2. Last time used. Most recent is better.
 // 3. Account vs. profile store. Account is better.
 bool IsBetterMatch(const PasswordForm* lhs, const PasswordForm* rhs) {
@@ -83,6 +86,81 @@ void IncreaseDomainLevel(const std::string& full_domain,
   main_domain = std::string(ending_pos.base(), full_domain.end());
 }
 
+// An implementation of the disjoint-set data structure
+// (https://en.wikipedia.org/wiki/Disjoint-set_data_structure). This
+// implementation uses the path compression and union by rank optimizations,
+// achieving near-constant runtime on all operations.
+//
+// This data structure allows to keep track of disjoin sets. Constructor accepts
+// number of elements and initially each element represent an individual set.
+// Later by calling MergeSets corresponding sets are merged together.
+// Example usage:
+//   DisjointSet disjoint_set(5);
+//   disjoint_set.GetDisjointSets(); // Returns {{0}, {1}, {2}, {3}, {4}}
+//   disjoint_set.MergeSets(0, 2);
+//   disjoint_set.GetDisjointSets(); // Returns {{0, 2}, {1}, {3}, {4}}
+//   disjoint_set.MergeSets(2, 4);
+//   disjoint_set.GetDisjointSets(); // Returns {{0, 2, 4}, {1}, {3}}
+class DisjointSet {
+ public:
+  explicit DisjointSet(size_t size) : parent_id_(size), ranks_(size, 0) {
+    for (size_t i = 0; i < size; i++) {
+      parent_id_[i] = i;
+    }
+  }
+
+  // Merges two sets based on their rank. Set with higher rank becomes a parent
+  // for another set.
+  void MergeSets(int set1, int set2) {
+    set1 = GetRoot(set1);
+    set2 = GetRoot(set2);
+    if (set1 == set2) {
+      return;
+    }
+
+    // Update parent based on rank.
+    if (ranks_[set1] > ranks_[set2]) {
+      parent_id_[set2] = set1;
+    } else {
+      parent_id_[set1] = set2;
+      // if ranks were equal increment by one new root's rank.
+      if (ranks_[set1] == ranks_[set2]) {
+        ranks_[set2]++;
+      }
+    }
+  }
+
+  // Returns disjoin sets after merging. It's guarantee that the result will
+  // hold all elements.
+  std::vector<std::vector<int>> GetDisjointSets() {
+    std::vector<std::vector<int>> disjoint_sets(parent_id_.size());
+    for (size_t i = 0; i < parent_id_.size(); i++) {
+      // Append all elements to the root.
+      int root = GetRoot(i);
+      disjoint_sets[root].push_back(i);
+    }
+    // Clear empty sets.
+    base::EraseIf(disjoint_sets, [](const auto& set) { return set.empty(); });
+    return disjoint_sets;
+  }
+
+ private:
+  // Returns root for a given element.
+  int GetRoot(int index) {
+    if (index == parent_id_[index]) {
+      return index;
+    }
+    // To speed up future lookups flatten the tree along the way.
+    return parent_id_[index] = GetRoot(parent_id_[index]);
+  }
+
+  // Vector where element at i'th position holds a parent for i.
+  std::vector<int> parent_id_;
+
+  // Upper bound depth of a tree for i'th element.
+  std::vector<size_t> ranks_;
+};
+
 }  // namespace
 
 // Update |credential| to reflect usage.
@@ -93,7 +171,7 @@ void UpdateMetadataForUsage(PasswordForm* credential) {
 
   // Remove alternate usernames. At this point we assume that we have found
   // the right username.
-  credential->all_possible_usernames.clear();
+  credential->all_alternative_usernames.clear();
 }
 
 password_manager::SyncState GetPasswordSyncState(
@@ -111,10 +189,12 @@ password_manager::SyncState GetPasswordSyncState(
 
   DCHECK(base::FeatureList::IsEnabled(
       password_manager::features::kEnablePasswordsAccountStorage));
-  // Account passwords are enabled only for users with normal encryption at
-  // the moment. Data types won't become active for non-sync users with custom
-  // passphrase.
-  return password_manager::SyncState::kAccountPasswordsActiveNormalEncryption;
+
+  return sync_service->GetUserSettings()->IsUsingExplicitPassphrase()
+             ? password_manager::SyncState::
+                   kAccountPasswordsActiveWithCustomPassphrase
+             : password_manager::SyncState::
+                   kAccountPasswordsActiveNormalEncryption;
 }
 
 void TrimUsernameOnlyCredentials(
@@ -162,9 +242,9 @@ bool ShowAllSavedPasswordsContextMenuEnabled(
 
   password_manager::PasswordManagerClient* client =
       password_manager->GetClient();
-  if (!client ||
-      !client->IsFillingFallbackEnabled(driver->GetLastCommittedURL()))
+  if (!client || !client->IsFillingEnabled(driver->GetLastCommittedURL())) {
     return false;
+  }
 
   return true;
 }
@@ -212,14 +292,14 @@ void RemoveUselessCredentials(
         network_context_getter) {
   DCHECK(cleaning_tasks_runner);
 
-#if !BUILDFLAG(IS_IOS)
+#if BUILDFLAG(USE_BLINK)
   // Can be null for some unittests.
   if (!network_context_getter.is_null()) {
     cleaning_tasks_runner->MaybeAddCleaningTask(
         std::make_unique<password_manager::HttpCredentialCleaner>(
             store, network_context_getter, prefs));
   }
-#endif  // !BUILDFLAG(IS_IOS)
+#endif  // BUILDFLAG(USE_BLINK)
 
   // TODO(crbug.com/450621): Remove this when enough number of clients switch
   // to the new version of Chrome.
@@ -250,31 +330,43 @@ base::StringPiece GetSignonRealmWithProtocolExcluded(const PasswordForm& form) {
 }
 
 GetLoginMatchType GetMatchType(const password_manager::PasswordForm& form) {
-  if (password_manager::IsValidAndroidFacetURI(form.signon_realm)) {
-    DCHECK(form.is_affiliation_based_match);
-    DCHECK(!form.is_public_suffix_match);
+  CHECK(form.match_type.has_value());
+  if (form.match_type.value() == PasswordForm::MatchType::kExact) {
     return GetLoginMatchType::kExact;
   }
-  if (form.is_affiliation_based_match)
-    return GetLoginMatchType::kAffiliated;
 
-  return form.is_public_suffix_match ? GetLoginMatchType::kPSL
-                                     : GetLoginMatchType::kExact;
+  if (static_cast<int>(form.match_type.value() &
+                       PasswordForm::MatchType::kAffiliated)) {
+    return GetLoginMatchType::kAffiliated;
+  }
+
+  if (static_cast<int>(form.match_type.value() &
+                       PasswordForm::MatchType::kPSL)) {
+    return GetLoginMatchType::kPSL;
+  }
+
+  if (static_cast<int>(form.match_type.value() &
+                       PasswordForm::MatchType::kGrouped) &&
+      base::FeatureList::IsEnabled(
+          password_manager::features::kFillingAcrossGroupedSites)) {
+    // TODO(crbug.com/1432264): Update after proper handling of grouped matches
+    // is implemented.
+    return GetLoginMatchType::kAffiliated;
+  }
+
+  NOTREACHED_NORETURN();
 }
 
 void FindBestMatches(
     const std::vector<const PasswordForm*>& non_federated_matches,
     PasswordForm::Scheme scheme,
     std::vector<const PasswordForm*>* non_federated_same_scheme,
-    std::vector<const PasswordForm*>* best_matches,
-    const PasswordForm** preferred_match) {
+    std::vector<const PasswordForm*>* best_matches) {
   DCHECK(base::ranges::none_of(non_federated_matches,
                                &PasswordForm::blocked_by_user));
   DCHECK(non_federated_same_scheme);
   DCHECK(best_matches);
-  DCHECK(preferred_match);
 
-  *preferred_match = nullptr;
   best_matches->clear();
   non_federated_same_scheme->clear();
 
@@ -315,8 +407,6 @@ void FindBestMatches(
       it->second.push_back(match);
     }
   }
-
-  *preferred_match = *non_federated_same_scheme->begin();
 }
 
 const PasswordForm* FindFormByUsername(
@@ -417,9 +507,8 @@ bool ShouldBiometricAuthenticationForFillingToggleBeVisible(
 
 bool ShouldShowBiometricAuthenticationBeforeFillingPromo(
     password_manager::PasswordManagerClient* client) {
-  return client && client->GetBiometricAuthenticator() &&
-         client->GetBiometricAuthenticator()->CanAuthenticate(
-             device_reauth::BiometricAuthRequester::kAutofillSuggestion) &&
+  return client && client->GetDeviceAuthenticator() &&
+         client->GetDeviceAuthenticator()->CanAuthenticateWithBiometrics() &&
          base::FeatureList::IsEnabled(
              password_manager::features::kBiometricAuthenticationForFilling) &&
          !client->GetPrefs()->GetBoolean(
@@ -427,8 +516,7 @@ bool ShouldShowBiometricAuthenticationBeforeFillingPromo(
 }
 #endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
-bool CanUseBiometricAuth(device_reauth::BiometricAuthenticator* authenticator,
-                         device_reauth::BiometricAuthRequester requester,
+bool CanUseBiometricAuth(device_reauth::DeviceAuthenticator* authenticator,
                          password_manager::PasswordManagerClient* client) {
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   if (!client || !client->GetLocalStatePrefs() || !client->GetPrefs() ||
@@ -438,7 +526,7 @@ bool CanUseBiometricAuth(device_reauth::BiometricAuthenticator* authenticator,
   return client->GetPasswordFeatureManager()
       ->IsBiometricAuthenticationBeforeFillingEnabled();
 #else
-  return authenticator && authenticator->CanAuthenticate(requester) &&
+  return authenticator && authenticator->CanAuthenticateWithBiometrics() &&
          base::FeatureList::IsEnabled(
              password_manager::features::kBiometricTouchToFill);
 #endif
@@ -526,6 +614,56 @@ std::string GetExtendedTopLevelDomain(
   return main_domain;
 }
 
+std::vector<password_manager::GroupedFacets> MergeRelatedGroups(
+    const base::flat_set<std::string>& psl_extensions,
+    const std::vector<password_manager::GroupedFacets>& groups) {
+  DisjointSet unions(groups.size());
+  std::map<std::string, int> main_domain_to_group;
+
+  for (size_t i = 0; i < groups.size(); i++) {
+    for (auto& facet : groups[i].facets) {
+      if (facet.uri.IsValidAndroidFacetURI()) {
+        continue;
+      }
+
+      // If domain is empty - compute it manually.
+      std::string main_domain =
+          facet.main_domain.empty()
+              ? GetExtendedTopLevelDomain(
+                    GURL(facet.uri.potentially_invalid_spec()), psl_extensions)
+              : facet.main_domain;
+
+      if (main_domain.empty()) {
+        continue;
+      }
+
+      auto it = main_domain_to_group.find(main_domain);
+      if (it == main_domain_to_group.end()) {
+        main_domain_to_group[main_domain] = i;
+        continue;
+      }
+      unions.MergeSets(i, it->second);
+    }
+  }
+
+  std::vector<password_manager::GroupedFacets> result;
+  for (const auto& merged_groups : unions.GetDisjointSets()) {
+    password_manager::GroupedFacets group;
+    for (int group_id : merged_groups) {
+      // Move all the elements into a new vector.
+      group.facets.insert(group.facets.end(), groups[group_id].facets.begin(),
+                          groups[group_id].facets.end());
+      // Use non-empty name for a combined group.
+      if (!groups[group_id].branding_info.icon_url.is_empty()) {
+        group.branding_info = groups[group_id].branding_info;
+      }
+    }
+
+    result.push_back(std::move(group));
+  }
+  return result;
+}
+
 bool IsNumeric(char16_t c) {
   return '0' <= c && c <= '9';
 }
@@ -544,6 +682,13 @@ bool IsUppercaseLetter(char16_t c) {
 
 bool IsSpecialSymbol(char16_t c) {
   return base::Contains(kSpecialSymbols, c);
+}
+
+bool IsSingleUsernameType(autofill::ServerFieldType type) {
+  return type == autofill::SINGLE_USERNAME ||
+         (type == autofill::SINGLE_USERNAME_FORGOT_PASSWORD &&
+          base::FeatureList::IsEnabled(
+              password_manager::features::kForgotPasswordFormSupport));
 }
 
 }  // namespace password_manager_util

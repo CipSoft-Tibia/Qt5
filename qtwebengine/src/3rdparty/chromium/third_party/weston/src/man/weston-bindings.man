@@ -33,29 +33,29 @@ Kill active window
 Maximize active window
 .P
 .RE
-.B mod + PageUp, mod + PageDown
+.B mod + Shift + KEY_LEFT
 .RS 4
-Zoom desktop in (or out)
+Make the active window tiled left.
+.P
+.RE
+.B mod + Shift + KEY_RIGHT
+.RS 4
+Make the active window tiled right.
+.P
+.RE
+.B mod + Shift + KEY_UP
+.RS 4
+Make the active window tiled top.
+.P
+.RE
+.B mod + Shift + KEY_DOWN
+.RS 4
+Make the active window tiled bottom.
 .P
 .RE
 .B mod + Tab
 .RS 4
 Switch active window
-.P
-.RE
-.B mod + Up, mod + Down
-.RS 4
-Increment/decrement active workspace number, if there are multiple
-.P
-.RE
-.B mod + Shift + Up, mod + Shift + Down
-.RS 4
-Move active window to the succeeding/preceding workspace, if possible
-.P
-.RE
-.B mod + F1/F2/F3/F4/F5/F6
-.RS 4
-Jump to the numbered workspace, if it exists
 .P
 .RE
 .B Ctrl + Alt + Backspace
@@ -126,11 +126,41 @@ The combination \fBmod + Shift + Space\fR begins a debug binding. Debug
 bindings are completed by pressing an additional key. For example, pressing
 F may toggle texture mesh wireframes with the GL renderer.
 (In fact, most debug effects can be disabled again by repeating the command.)
-Debug bindings are often tied to specific backends.
+Debug bindings are often tied to specific backends. Below are the debug bindings available.
+
+.RS
+- KEY_D :
+.RS 4
+Subscribe for flight recorder.
+.RE
+- KEY_C : 
+.RS 4
+Enable/Disable cursor planes.
+.RE
+- KEY_V :
+.RS 4
+Enable/Disable overlay planes.
+.RE
+- KEY_Q :
+.RS 4
+Start VAAPI recorder.
+.RE
+- KEY_S : 
+.RS 4
+Enable fragment debugging for gl-renderer.
+.RE
+- KEY_F :
+.RS 4
+Enable fan debugging for gl-renderer.
+.RE
+- KEY_R :
+.RS 4
+Enable repaint debugging for Pixman.
+.RE
+.RE
 
 .SH "SEE ALSO"
 .BR weston (1),
-.BR weston-launch (1),
 .BR weston-drm (7),
 .BR weston.ini (5),
 .BR xkeyboard-config (7)

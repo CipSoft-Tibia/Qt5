@@ -7,8 +7,6 @@
 
 #include "base/task/single_thread_task_runner.h"
 #include "components/viz/common/surfaces/parent_local_surface_id_allocator.h"
-#include "mojo/public/cpp/bindings/associated_receiver.h"
-#include "mojo/public/cpp/bindings/associated_remote.h"
 #include "services/network/public/mojom/web_sandbox_flags.mojom-blink-forward.h"
 #include "third_party/blink/public/common/frame/frame_visual_properties.h"
 #include "third_party/blink/public/mojom/frame/frame_owner_properties.mojom-blink-forward.h"
@@ -21,6 +19,8 @@
 #include "third_party/blink/renderer/core/frame/child_frame_compositor.h"
 #include "third_party/blink/renderer/core/frame/frame.h"
 #include "third_party/blink/renderer/core/frame/remote_frame_view.h"
+#include "third_party/blink/renderer/platform/mojo/heap_mojo_associated_receiver.h"
+#include "third_party/blink/renderer/platform/mojo/heap_mojo_associated_remote.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 
 namespace cc {
@@ -220,6 +220,8 @@ class CORE_EXPORT RemoteFrame final : public Frame,
       const base::UnguessableToken& devtools_frame_token,
       mojom::blink::RemoteFrameInterfacesFromBrowserPtr remote_frame_interfaces)
       override;
+  void CreateRemoteChildren(
+      Vector<mojom::blink::CreateRemoteChildParamsPtr> params) override;
 
   // Called only when this frame has a local frame owner.
   gfx::Size GetOutermostMainFrameSize() const override;
@@ -300,11 +302,12 @@ class CORE_EXPORT RemoteFrame final : public Frame,
   // Whether the frame is considered to be an ad frame by Ad Tagging.
   bool is_ad_frame_;
 
-  mojo::AssociatedRemote<mojom::blink::RemoteFrameHost>
-      remote_frame_host_remote_;
-  mojo::AssociatedReceiver<mojom::blink::RemoteFrame> receiver_{this};
-  mojo::AssociatedReceiver<mojom::blink::RemoteMainFrame> main_frame_receiver_{
-      this};
+  HeapMojoAssociatedRemote<mojom::blink::RemoteFrameHost>
+      remote_frame_host_remote_{nullptr};
+  HeapMojoAssociatedReceiver<mojom::blink::RemoteFrame, RemoteFrame> receiver_{
+      this, nullptr};
+  HeapMojoAssociatedReceiver<mojom::blink::RemoteMainFrame, RemoteFrame>
+      main_frame_receiver_{this, nullptr};
   scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
 };
 

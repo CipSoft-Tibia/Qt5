@@ -11,9 +11,9 @@ source "${BASH_SOURCE%/*}/../unix/InstallFromCompressedFileFromURL.sh"
 # shellcheck source=../unix/SetEnvVar.sh
 source "${BASH_SOURCE%/*}/../unix/SetEnvVar.sh"
 
-version="n6.1.1"
+version="n7.0.2"
 url_public="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/$version.tar.gz"
-sha1="59e0c3c4cc48e9c60073495f8c045329bb21f446"
+sha1="e017c72dd84a9bac1519eaa33c203b82dd850bc0"
 url_cached="http://ci-files01-hki.ci.qt.io/input/ffmpeg/$version.tar.gz"
 ffmpeg_name="FFmpeg-$version"
 
@@ -54,7 +54,7 @@ build_ffmpeg_android() {
 
   api_version=24
 
-  ndk_root=/opt/android/android-ndk-r25b
+  ndk_root=$ANDROID_NDK_ROOT_DEFAULT
   if uname -a |grep -q "Darwin"; then
     ndk_host=darwin-x86_64
   else
@@ -66,11 +66,8 @@ build_ffmpeg_android() {
   sysroot=${toolchain}/sysroot
   cxx=${toolchain_bin}/${target_toolchain_arch}${api_version}-clang++
   cc=${toolchain_bin}/${target_toolchain_arch}${api_version}-clang
-  ld=${toolchain_bin}/ld
   ar=${toolchain_bin}/llvm-ar
   ranlib=${toolchain_bin}/llvm-ranlib
-  nm=${toolchain_bin}/llvm-nm
-  strip=${toolchain_bin}/llvm-strip
 
   ffmpeg_config_options=$(cat "${BASH_SOURCE%/*}/../shared/ffmpeg_config_options.txt")
   ffmpeg_config_options+=" --enable-cross-compile --target-os=android --enable-jni --enable-mediacodec --enable-openssl --enable-pthreads --enable-neon --disable-asm --disable-indev=android_camera"
@@ -82,7 +79,8 @@ build_ffmpeg_android() {
   sudo mkdir -p "$build_dir"
   pushd "$build_dir"
 
-  sudo $ffmpeg_source_dir/configure $ffmpeg_config_options --prefix="$target_dir"
+  # shellcheck disable=SC2086
+  sudo "$ffmpeg_source_dir/configure" $ffmpeg_config_options --prefix="$target_dir"
 
   sudo make install -j4
   popd

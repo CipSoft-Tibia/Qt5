@@ -1,9 +1,11 @@
-// Copyright 2021 The Chromium Authors. All rights reserved.
+// Copyright 2023 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as WebVitalsTimeline from './WebVitalsTimeline.js';
+import * as Breadcrumbs from './Breadcrumbs.js';
+import * as BreadcrumbsUI from './BreadcrumbsUI.js';
 
 export {
-  WebVitalsTimeline,
+  Breadcrumbs,
+  BreadcrumbsUI,
 };

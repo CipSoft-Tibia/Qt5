@@ -1,24 +1,4 @@
-# Vulkan Ecosystem Components
-
-This project provides the Khronos official Vulkan validation layers for Windows, Linux, Android, and MacOS.
-
-## Default branch changed to 'main' (January 23, 2023)
-
-As discussed in https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/5084, the default branch of this repository is now 'main'. This change should be largely transparent to repository users, since github rewrites many references to the old 'master' branch to 'main'. However, if you have a checked-out local clone, you may wish to take the following steps as recommended by github:
-
-```sh
-git branch -m master main
-git fetch origin
-git branch -u origin/main main
-git remote set-head origin -a
-```
-
-## CI Build Status
-
-![Build Status](https://github.com/KhronosGroup/Vulkan-ValidationLayers/actions/workflows/build_windows.yml/badge.svg)
-![Build Status](https://github.com/KhronosGroup/Vulkan-ValidationLayers/actions/workflows/build_linux.yml/badge.svg)
-![Build Status](https://github.com/KhronosGroup/Vulkan-ValidationLayers/actions/workflows/build_macos.yml/badge.svg)
-![Build Status](https://github.com/KhronosGroup/Vulkan-ValidationLayers/actions/workflows/build_android.yml/badge.svg)
+# Vulkan Validation Layers (VVL)
 
 ## Introduction
 
@@ -27,11 +7,19 @@ a Vulkan driver. Applications have full control and responsibility for correct o
 how Vulkan is used can result in a crash. This project provides Vulkan validation layers that can be enabled
 to assist development by enabling developers to verify their applications correct use of the Vulkan API.
 
-This repository contains both the [*Validation Layers*](layers/) source as well as [*Tests*](tests/) for them.
+## Community Assistance
+
+Before submitting an issue to the validation layers or reaching out to the developers it may be prudent to reach out to the community first.
+These resources can be helpful to refine your issue, work out an application/driver bug, etc.
+
+- Discord: https://discord.com/invite/vulkan
+- Reddit: https://www.reddit.com/r/vulkan
+- Stackoverflow: https://stackoverflow.com/questions/tagged/vulkan
+- Slack: https://khr.io/slack
 
 ## Contact Information
 * @KhronosGroup/VVL-CODEOWNERS
-* VVL-CODEOWNERS members can also be found on the [Khronos Slack](https://khr.io/slack)
+* VVL-CODEOWNERS can also be found on aforementioned Slack channel for direct contact.
 
 ## Info
 * [BUILD.md](BUILD.md) - Instructions for building the Validation Layers
@@ -47,7 +35,7 @@ Updates to the `Vulkan-ValidationLayers` repository which correspond to a new Vu
 
 **Note**: Marked version releases have undergone thorough testing but do not imply the same quality level as SDK tags. SDK tags follow the `sdk-<`_`version`_`>.<`_`patch`_`>` format (e.g., `sdk-1.1.92.0`).
 
-This scheme was adopted following the 1.1.96 Vulkan specification release.
+This scheme was adopted following the `1.1.96` Vulkan specification release.
 
 ## License
 This work is released as open source under a Apache-style license from Khronos including a Khronos copyright.

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "dawn/native/BackendConnection.h"
+#include "dawn/native/Instance.h"
 
 namespace dawn::native {
 
@@ -25,11 +26,6 @@ wgpu::BackendType BackendConnection::GetType() const {
 
 InstanceBase* BackendConnection::GetInstance() const {
     return mInstance;
-}
-
-ResultOrError<std::vector<Ref<AdapterBase>>> BackendConnection::DiscoverAdapters(
-    const AdapterDiscoveryOptionsBase* options) {
-    return DAWN_VALIDATION_ERROR("DiscoverAdapters not implemented for this backend.");
 }
 
 }  // namespace dawn::native

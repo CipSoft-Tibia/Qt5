@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,7 @@
 #include "util/big_endian.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 // static
 // Decodes a varUint, expecting it to follow the encoding format described here:
@@ -85,12 +84,10 @@ MessageDemuxer::MessageWatch::MessageWatch(MessageDemuxer* parent,
       message_type_(message_type) {}
 
 MessageDemuxer::MessageWatch::MessageWatch(
-    MessageDemuxer::MessageWatch&& other) noexcept
-    : parent_(other.parent_),
-      is_default_(other.is_default_),
-      endpoint_id_(other.endpoint_id_),
-      message_type_(other.message_type_) {
-  other.parent_ = nullptr;
+    MessageDemuxer::MessageWatch&& other) noexcept {
+  // Although all fields are POD, this does not use the default implementation.
+  // See `operator=` for details.
+  *this = std::move(other);
 }
 
 MessageDemuxer::MessageWatch::~MessageWatch() {
@@ -109,6 +106,9 @@ MessageDemuxer::MessageWatch::~MessageWatch() {
 
 MessageDemuxer::MessageWatch& MessageDemuxer::MessageWatch::operator=(
     MessageWatch&& other) noexcept {
+  // Although all fields are POD, this does not use the default `operator=`
+  // implementation because it is important that exactly one of `this` or
+  // `other` refers to `parent_`, so that the destructor behaves correctly.
   using std::swap;
   swap(parent_, other.parent_);
   swap(is_default_, other.is_default_);
@@ -237,7 +237,8 @@ MessageDemuxer::HandleStreamBufferResult MessageDemuxer::HandleStreamBufferLoop(
   return result;
 }
 
-// TODO(rwkeane) Use absl::Span for the buffer
+// TODO(issuetracker.google.com/281741443): Use openscreen::Span for the
+// |buffer|.
 MessageDemuxer::HandleStreamBufferResult MessageDemuxer::HandleStreamBuffer(
     uint64_t endpoint_id,
     uint64_t connection_id,
@@ -285,5 +286,4 @@ void StopWatching(MessageDemuxer::MessageWatch* watch) {
   *watch = MessageDemuxer::MessageWatch();
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

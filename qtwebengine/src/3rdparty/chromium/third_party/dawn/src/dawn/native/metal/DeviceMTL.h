@@ -34,7 +34,6 @@
 namespace dawn::native::metal {
 
 struct KalmanInfo;
-struct ExternalImageMTLSharedEventDescriptor;
 
 class Device final : public DeviceBase {
   public:
@@ -49,19 +48,15 @@ class Device final : public DeviceBase {
     MaybeError TickImpl() override;
 
     id<MTLDevice> GetMTLDevice();
-    id<MTLCommandQueue> GetMTLQueue();
 
+    // TODO(dawn:1413) Use the metal::Queue directly instead of this proxy method.
     CommandRecordingContext* GetPendingCommandContext(
         Device::SubmitMode submitMode = Device::SubmitMode::Normal);
-    MaybeError SubmitPendingCommandBuffer();
-
-    void ExportLastSignaledEvent(ExternalImageMTLSharedEventDescriptor* desc);
 
     Ref<Texture> CreateTextureWrappingIOSurface(
         const ExternalImageDescriptor* descriptor,
         IOSurfaceRef ioSurface,
         std::vector<MTLSharedEventAndSignalValue> waitEvents);
-    void WaitForCommandsToBeScheduled();
 
     MaybeError CopyFromStagingToBufferImpl(BufferBase* source,
                                            uint64_t sourceOffset,
@@ -78,14 +73,14 @@ class Device final : public DeviceBase {
 
     float GetTimestampPeriodInNS() const override;
 
+    bool IsResolveTextureBlitWithDrawSupported() const override;
+
     bool UseCounterSamplingAtCommandBoundary() const;
     bool UseCounterSamplingAtStageBoundary() const;
 
     // Get a MTLBuffer that can be used as a mock in a no-op blit encoder based on filling this
     // single-byte buffer
     id<MTLBuffer> GetMockBlitMtlBuffer();
-
-    void ForceEventualFlushOfCommands() override;
 
   private:
     Device(AdapterBase* adapter,
@@ -95,9 +90,8 @@ class Device final : public DeviceBase {
 
     ResultOrError<Ref<BindGroupBase>> CreateBindGroupImpl(
         const BindGroupDescriptor* descriptor) override;
-    ResultOrError<Ref<BindGroupLayoutBase>> CreateBindGroupLayoutImpl(
-        const BindGroupLayoutDescriptor* descriptor,
-        PipelineCompatibilityToken pipelineCompatibilityToken) override;
+    ResultOrError<Ref<BindGroupLayoutInternalBase>> CreateBindGroupLayoutImpl(
+        const BindGroupLayoutDescriptor* descriptor) override;
     ResultOrError<Ref<BufferBase>> CreateBufferImpl(const BufferDescriptor* descriptor) override;
     ResultOrError<Ref<CommandBufferBase>> CreateCommandBuffer(
         CommandEncoder* encoder,
@@ -112,10 +106,8 @@ class Device final : public DeviceBase {
         ShaderModuleParseResult* parseResult,
         OwnedCompilationMessages* compilationMessages) override;
     ResultOrError<Ref<SwapChainBase>> CreateSwapChainImpl(
-        const SwapChainDescriptor* descriptor) override;
-    ResultOrError<Ref<NewSwapChainBase>> CreateSwapChainImpl(
         Surface* surface,
-        NewSwapChainBase* previousSwapChain,
+        SwapChainBase* previousSwapChain,
         const SwapChainDescriptor* descriptor) override;
     ResultOrError<Ref<TextureBase>> CreateTextureImpl(const TextureDescriptor* descriptor) override;
     ResultOrError<Ref<TextureViewBase>> CreateTextureViewImpl(
@@ -132,25 +124,17 @@ class Device final : public DeviceBase {
                                            WGPUCreateRenderPipelineAsyncCallback callback,
                                            void* userdata) override;
 
+    ResultOrError<wgpu::TextureUsage> GetSupportedSurfaceUsageImpl(
+        const Surface* surface) const override;
+
+    ResultOrError<Ref<SharedTextureMemoryBase>> ImportSharedTextureMemoryImpl(
+        const SharedTextureMemoryDescriptor* descriptor) override;
+    ResultOrError<Ref<SharedFenceBase>> ImportSharedFenceImpl(
+        const SharedFenceDescriptor* descriptor) override;
+
     void DestroyImpl() override;
-    MaybeError WaitForIdleForDestruction() override;
-    bool HasPendingCommands() const override;
-    ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials() override;
 
     NSPRef<id<MTLDevice>> mMtlDevice;
-    NSPRef<id> mMtlSharedEvent = nil;  // MTLSharedEvent not available until macOS 10.14+.
-    NSPRef<id<MTLCommandQueue>> mCommandQueue;
-
-    CommandRecordingContext mCommandContext;
-
-    // The completed serial is updated in a Metal completion handler that can be fired on a
-    // different thread, so it needs to be atomic.
-    std::atomic<uint64_t> mCompletedSerial;
-
-    // mLastSubmittedCommands will be accessed in a Metal schedule handler that can be fired on
-    // a different thread so we guard access to it with a mutex.
-    std::mutex mLastSubmittedCommandsMutex;
-    NSPRef<id<MTLCommandBuffer>> mLastSubmittedCommands;
 
     // The current estimation of timestamp period
     float mTimestampPeriod = 1.0f;

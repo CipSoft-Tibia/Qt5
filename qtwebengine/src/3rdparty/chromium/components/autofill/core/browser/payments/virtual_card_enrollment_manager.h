@@ -7,6 +7,7 @@
 
 #include <string>
 
+#include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "components/autofill/core/browser/autofill_client.h"
@@ -100,9 +101,9 @@ class VirtualCardEnrollmentManager {
 
   using RiskAssessmentFunction = base::OnceCallback<void(
       uint64_t obfuscated_gaia_id,
-      raw_ptr<PrefService> user_prefs,
+      PrefService* user_prefs,
       base::OnceCallback<void(const std::string&)> callback,
-      const raw_ptr<content::WebContents> web_contents,
+      content::WebContents* web_contents,
       gfx::Rect window_bounds)>;
 
   using VirtualCardEnrollmentFieldsLoadedCallback = base::OnceCallback<void(
@@ -132,7 +133,7 @@ class VirtualCardEnrollmentManager {
       // to then be used for loading risk data. Otherwise it will always be
       // nullptr, and we should load risk data through |autofill_client_| as we
       // have access to web contents.
-      const raw_ptr<PrefService> user_prefs = nullptr,
+      PrefService* user_prefs = nullptr,
       // Callback that will be run in the Android settings page use cases. It
       // will take in a |callback|, |obfuscated_gaia_id|, and |user_prefs| that
       // will end up being passed into the overloaded risk_util::LoadRiskData()
@@ -250,6 +251,9 @@ class VirtualCardEnrollmentManager {
   absl::optional<VirtualCardEnrollmentUpdateResponseCallback>
       virtual_card_enrollment_update_response_callback_;
 
+  // Cancels the entire Virtual Card enrollment process.
+  void OnVirtualCardEnrollmentBubbleCancelled();
+
  private:
   friend class VirtualCardEnrollmentManagerTest;
   FRIEND_TEST_ALL_PREFIXES(VirtualCardEnrollmentManagerTest,
@@ -267,13 +271,11 @@ class VirtualCardEnrollmentManager {
   FRIEND_TEST_ALL_PREFIXES(VirtualCardEnrollmentManagerTest,
                            StrikeDatabase_BubbleCanceled);
   FRIEND_TEST_ALL_PREFIXES(VirtualCardEnrollmentManagerTest,
+                           StrikeDatabase_EnrollmentAttemptFailed);
+  FRIEND_TEST_ALL_PREFIXES(VirtualCardEnrollmentManagerTest,
                            StrikeDatabase_SettingsPageNotBlocked);
   FRIEND_TEST_ALL_PREFIXES(VirtualCardEnrollmentManagerTest,
                            VirtualCardEnrollmentFields_LastShow);
-  FRIEND_TEST_ALL_PREFIXES(VirtualCardEnrollmentManagerTest,
-                           RequiredDelaySinceLastStrike_ExpOn);
-  FRIEND_TEST_ALL_PREFIXES(VirtualCardEnrollmentManagerTest,
-                           RequiredDelaySinceLastStrike_ExpOff);
 
   // Called once the risk data is loaded. The |risk_data| will be used with
   // |state_|'s |virtual_card_enrollment_fields|'s |credit_card|'s
@@ -327,9 +329,6 @@ class VirtualCardEnrollmentManager {
       const payments::PaymentsClient::GetDetailsForEnrollmentResponseDetails&
           get_details_for_enrollment_response_details);
 
-  // Cancels the entire Virtual Card Enrollment process.
-  void OnVirtualCardEnrollmentBubbleCancelled();
-
   FRIEND_TEST_ALL_PREFIXES(VirtualCardEnrollmentManagerTest, Enroll);
   FRIEND_TEST_ALL_PREFIXES(VirtualCardEnrollmentManagerTest,
                            OnDidGetDetailsForEnrollResponse);
@@ -345,13 +344,12 @@ class VirtualCardEnrollmentManager {
                            UpstreamAnimationSync_ResponseFirst);
 
   // The associated personal data manager, used to save and load personal data
-  // to/from the web database. Weak reference. May be nullptr, which indicates
-  // OTR.
-  raw_ptr<PersonalDataManager> personal_data_manager_;
+  // to/from the web database.
+  const raw_ptr<PersonalDataManager> personal_data_manager_;
 
   // The associated |payments_client_| that is used for all requests to the
   // server.
-  raw_ptr<payments::PaymentsClient> payments_client_;
+  const raw_ptr<payments::PaymentsClient> payments_client_;
 
   // The database that is used to count instrument_id-keyed strikes to suppress
   // prompting users to enroll in virtual cards.

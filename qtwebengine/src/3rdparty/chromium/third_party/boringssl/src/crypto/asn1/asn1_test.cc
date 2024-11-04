@@ -28,8 +28,10 @@
 #include <openssl/err.h>
 #include <openssl/mem.h>
 #include <openssl/obj.h>
+#include <openssl/pem.h>
 #include <openssl/span.h>
 #include <openssl/time.h>
+#include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
 #include "../test/test_util.h"
@@ -39,45 +41,6 @@
 #include <thread>
 #endif
 
-
-// kTag128 is an ASN.1 structure with a universal tag with number 128.
-static const uint8_t kTag128[] = {
-    0x1f, 0x81, 0x00, 0x01, 0x00,
-};
-
-// kTag258 is an ASN.1 structure with a universal tag with number 258.
-static const uint8_t kTag258[] = {
-    0x1f, 0x82, 0x02, 0x01, 0x00,
-};
-
-static_assert(V_ASN1_NEG_INTEGER == 258,
-              "V_ASN1_NEG_INTEGER changed. Update kTag258 to collide with it.");
-
-// kTagOverflow is an ASN.1 structure with a universal tag with number 2^35-1,
-// which will not fit in an int.
-static const uint8_t kTagOverflow[] = {
-    0x1f, 0xff, 0xff, 0xff, 0xff, 0x7f, 0x01, 0x00,
-};
-
-TEST(ASN1Test, LargeTags) {
-  const uint8_t *p = kTag258;
-  bssl::UniquePtr<ASN1_TYPE> obj(d2i_ASN1_TYPE(NULL, &p, sizeof(kTag258)));
-  EXPECT_FALSE(obj) << "Parsed value with illegal tag" << obj->type;
-  ERR_clear_error();
-
-  p = kTagOverflow;
-  obj.reset(d2i_ASN1_TYPE(NULL, &p, sizeof(kTagOverflow)));
-  EXPECT_FALSE(obj) << "Parsed value with tag overflow" << obj->type;
-  ERR_clear_error();
-
-  p = kTag128;
-  obj.reset(d2i_ASN1_TYPE(NULL, &p, sizeof(kTag128)));
-  ASSERT_TRUE(obj);
-  EXPECT_EQ(128, obj->type);
-  const uint8_t kZero = 0;
-  EXPECT_EQ(Bytes(&kZero, 1), Bytes(obj->value.asn1_string->data,
-                                    obj->value.asn1_string->length));
-}
 
 // |obj| and |i2d_func| require different template parameters because C++ may
 // deduce, say, |ASN1_STRING*| via |obj| and |const ASN1_STRING*| via
@@ -105,6 +68,71 @@ void TestSerialize(T obj, int (*i2d_func)(U a, uint8_t **pp),
   ASSERT_EQ(len, static_cast<int>(expected.size()));
   EXPECT_EQ(ptr, buf.data() + buf.size());
   EXPECT_EQ(Bytes(expected), Bytes(buf));
+}
+
+// Historically, unknown universal tags were represented in |ASN1_TYPE| as
+// |ASN1_STRING|s with the type matching the tag number. This can collide with
+// |V_ASN_NEG|, which was one of the causes of CVE-2016-2108. We now represent
+// unsupported values with |V_ASN1_OTHER|, but retain the |V_ASN1_MAX_UNIVERSAL|
+// limit.
+TEST(ASN1Test, UnknownTags) {
+  // kTag258 is an ASN.1 structure with a universal tag with number 258.
+  static const uint8_t kTag258[] = {0x1f, 0x82, 0x02, 0x01, 0x00};
+  static_assert(
+      V_ASN1_NEG_INTEGER == 258,
+      "V_ASN1_NEG_INTEGER changed. Update kTag258 to collide with it.");
+  const uint8_t *p = kTag258;
+  bssl::UniquePtr<ASN1_TYPE> obj(d2i_ASN1_TYPE(NULL, &p, sizeof(kTag258)));
+  EXPECT_FALSE(obj) << "Parsed value with illegal tag" << obj->type;
+  ERR_clear_error();
+
+  // kTagOverflow is an ASN.1 structure with a universal tag with number 2^35-1,
+  // which will not fit in an int.
+  static const uint8_t kTagOverflow[] = {0x1f, 0xff, 0xff, 0xff,
+                                         0xff, 0x7f, 0x01, 0x00};
+  p = kTagOverflow;
+  obj.reset(d2i_ASN1_TYPE(NULL, &p, sizeof(kTagOverflow)));
+  EXPECT_FALSE(obj) << "Parsed value with tag overflow" << obj->type;
+  ERR_clear_error();
+
+  // kTag128 is an ASN.1 structure with a universal tag with number 128. It
+  // should be parsed as |V_ASN1_OTHER|.
+  static const uint8_t kTag128[] = {0x1f, 0x81, 0x00, 0x01, 0x00};
+  p = kTag128;
+  obj.reset(d2i_ASN1_TYPE(NULL, &p, sizeof(kTag128)));
+  ASSERT_TRUE(obj);
+  EXPECT_EQ(V_ASN1_OTHER, obj->type);
+  EXPECT_EQ(Bytes(kTag128), Bytes(obj->value.asn1_string->data,
+                                  obj->value.asn1_string->length));
+  TestSerialize(obj.get(), i2d_ASN1_TYPE, kTag128);
+
+  // The historical in-memory representation of |kTag128| was for both
+  // |obj->type| and |obj->value.asn1_string->type| to be 128. This is no
+  // longer used but is still accepted by the encoder.
+  //
+  // TODO(crbug.com/boringssl/412): The encoder should reject it. However, it is
+  // still needed to support some edge cases in |ASN1_PRINTABLE|. When that is
+  // fixed, test that we reject it.
+  obj.reset(ASN1_TYPE_new());
+  ASSERT_TRUE(obj);
+  obj->type = 128;
+  obj->value.asn1_string = ASN1_STRING_type_new(128);
+  ASSERT_TRUE(obj->value.asn1_string);
+  const uint8_t zero = 0;
+  ASSERT_TRUE(ASN1_STRING_set(obj->value.asn1_string, &zero, sizeof(zero)));
+  TestSerialize(obj.get(), i2d_ASN1_TYPE, kTag128);
+
+  // If a tag is known, but has the wrong constructed bit, it should be
+  // rejected, not placed in |V_ASN1_OTHER|.
+  static const uint8_t kConstructedOctetString[] = {0x24, 0x00};
+  p = kConstructedOctetString;
+  obj.reset(d2i_ASN1_TYPE(nullptr, &p, sizeof(kConstructedOctetString)));
+  EXPECT_FALSE(obj);
+
+  static const uint8_t kPrimitiveSequence[] = {0x10, 0x00};
+  p = kPrimitiveSequence;
+  obj.reset(d2i_ASN1_TYPE(nullptr, &p, sizeof(kPrimitiveSequence)));
+  EXPECT_FALSE(obj);
 }
 
 static bssl::UniquePtr<BIGNUM> BIGNUMPow2(unsigned bit) {
@@ -552,8 +580,10 @@ TEST(ASN1Test, Boolean) {
       {0x81, 0x01, 0x00},
       // Element is constructed.
       {0x21, 0x01, 0x00},
-      // TODO(https://crbug.com/boringssl/354): Reject non-DER encodings of TRUE
-      // and test this.
+      // Not a DER encoding of TRUE.
+      {0x01, 0x01, 0x01},
+      // Non-minimal tag length.
+      {0x01, 0x81, 0x01, 0xff},
   };
   for (const auto &invalid : kInvalidBooleans) {
     SCOPED_TRACE(Bytes(invalid));
@@ -690,6 +720,8 @@ TEST(ASN1Test, ParseASN1Object) {
       {0x86, 0x03, 0x2b, 0x65, 0x70},
       // Element is constructed.
       {0x26, 0x03, 0x2b, 0x65, 0x70},
+      // Non-minimal tag length.
+      {0x06, 0x81, 0x03, 0x2b, 0x65, 0x70},
   };
   for (const auto &invalid : kInvalidObjects) {
     SCOPED_TRACE(Bytes(invalid));
@@ -1068,6 +1100,32 @@ TEST(ASN1Test, TimeSetString) {
   EXPECT_EQ(V_ASN1_GENERALIZEDTIME, ASN1_STRING_type(s.get()));
   EXPECT_EQ("19700101000000Z", ASN1StringToStdString(s.get()));
 
+  // |ASN1_TIME_set_string_X509| behaves similarly except it additionally
+  // converts GeneralizedTime to UTCTime if it fits.
+  ASSERT_TRUE(ASN1_TIME_set_string_X509(s.get(), "700101000000Z"));
+  EXPECT_EQ(V_ASN1_UTCTIME, ASN1_STRING_type(s.get()));
+  EXPECT_EQ("700101000000Z", ASN1StringToStdString(s.get()));
+
+  ASSERT_TRUE(ASN1_TIME_set_string_X509(s.get(), "19700101000000Z"));
+  EXPECT_EQ(V_ASN1_UTCTIME, ASN1_STRING_type(s.get()));
+  EXPECT_EQ("700101000000Z", ASN1StringToStdString(s.get()));
+
+  ASSERT_TRUE(ASN1_TIME_set_string_X509(s.get(), "19500101000000Z"));
+  EXPECT_EQ(V_ASN1_UTCTIME, ASN1_STRING_type(s.get()));
+  EXPECT_EQ("500101000000Z", ASN1StringToStdString(s.get()));
+
+  ASSERT_TRUE(ASN1_TIME_set_string_X509(s.get(), "19491231235959Z"));
+  EXPECT_EQ(V_ASN1_GENERALIZEDTIME, ASN1_STRING_type(s.get()));
+  EXPECT_EQ("19491231235959Z", ASN1StringToStdString(s.get()));
+
+  ASSERT_TRUE(ASN1_TIME_set_string_X509(s.get(), "20491231235959Z"));
+  EXPECT_EQ(V_ASN1_UTCTIME, ASN1_STRING_type(s.get()));
+  EXPECT_EQ("491231235959Z", ASN1StringToStdString(s.get()));
+
+  ASSERT_TRUE(ASN1_TIME_set_string_X509(s.get(), "20500101000000Z"));
+  EXPECT_EQ(V_ASN1_GENERALIZEDTIME, ASN1_STRING_type(s.get()));
+  EXPECT_EQ("20500101000000Z", ASN1StringToStdString(s.get()));
+
   // Invalid inputs are rejected.
   EXPECT_FALSE(ASN1_UTCTIME_set_string(s.get(), "nope"));
   EXPECT_FALSE(ASN1_UTCTIME_set_string(s.get(), "19700101000000Z"));
@@ -1079,11 +1137,26 @@ TEST(ASN1Test, TimeSetString) {
   // to anything.
   EXPECT_TRUE(ASN1_UTCTIME_set_string(nullptr, "700101000000Z"));
   EXPECT_TRUE(ASN1_TIME_set_string(nullptr, "700101000000Z"));
+  EXPECT_TRUE(ASN1_TIME_set_string_X509(nullptr, "700101000000Z"));
   EXPECT_TRUE(ASN1_GENERALIZEDTIME_set_string(nullptr, "19700101000000Z"));
   EXPECT_TRUE(ASN1_TIME_set_string(nullptr, "19700101000000Z"));
+  EXPECT_TRUE(ASN1_TIME_set_string_X509(nullptr, "19700101000000Z"));
+  // Test an input |ASN1_TIME_set_string_X509| won't convert to UTCTime.
+  EXPECT_TRUE(ASN1_GENERALIZEDTIME_set_string(nullptr, "20500101000000Z"));
+  EXPECT_TRUE(ASN1_TIME_set_string(nullptr, "20500101000000Z"));
+  EXPECT_TRUE(ASN1_TIME_set_string_X509(nullptr, "20500101000000Z"));
   EXPECT_FALSE(ASN1_UTCTIME_set_string(nullptr, "nope"));
   EXPECT_FALSE(ASN1_GENERALIZEDTIME_set_string(nullptr, "nope"));
   EXPECT_FALSE(ASN1_TIME_set_string(nullptr, "nope"));
+  EXPECT_FALSE(ASN1_TIME_set_string_X509(nullptr, "nope"));
+
+  // Timezone offsets are not allowed by DER.
+  EXPECT_FALSE(ASN1_UTCTIME_set_string(nullptr, "700101000000-0400"));
+  EXPECT_FALSE(ASN1_TIME_set_string(nullptr, "700101000000-0400"));
+  EXPECT_FALSE(ASN1_TIME_set_string_X509(nullptr, "700101000000-0400"));
+  EXPECT_FALSE(ASN1_GENERALIZEDTIME_set_string(nullptr, "19700101000000-0400"));
+  EXPECT_FALSE(ASN1_TIME_set_string(nullptr, "19700101000000-0400"));
+  EXPECT_FALSE(ASN1_TIME_set_string_X509(nullptr, "19700101000000-0400"));
 }
 
 TEST(ASN1Test, AdjTime) {
@@ -2209,10 +2282,24 @@ TEST(ASN1Test, GetObject) {
   EXPECT_EQ(0x80, ASN1_get_object(&ptr, &length, &tag, &tag_class,
                                   sizeof(kTruncated)));
 
+  // Indefinite-length encoding is not allowed in DER.
   static const uint8_t kIndefinite[] = {0x30, 0x80, 0x00, 0x00};
   ptr = kIndefinite;
   EXPECT_EQ(0x80, ASN1_get_object(&ptr, &length, &tag, &tag_class,
                                   sizeof(kIndefinite)));
+
+  // DER requires lengths be minimally-encoded. This should be {0x30, 0x00}.
+  static const uint8_t kNonMinimal[] = {0x30, 0x81, 0x00};
+  ptr = kNonMinimal;
+  EXPECT_EQ(0x80, ASN1_get_object(&ptr, &length, &tag, &tag_class,
+                                  sizeof(kNonMinimal)));
+
+  // This should be {0x04, 0x81, 0x80, ...}.
+  std::vector<uint8_t> non_minimal = {0x04, 0x82, 0x00, 0x80};
+  non_minimal.resize(non_minimal.size() + 0x80);
+  ptr = non_minimal.data();
+  EXPECT_EQ(0x80, ASN1_get_object(&ptr, &length, &tag, &tag_class,
+                                  non_minimal.size()));
 }
 
 template <typename T>
@@ -2655,6 +2742,157 @@ TEST(ASN1Test, DoublyTagged) {
   ASSERT_TRUE(obj->oct);
   EXPECT_EQ(ASN1_STRING_length(obj->oct), 0);
   TestSerialize(obj.get(), i2d_DOUBLY_TAGGED, kTrueEmpty);
+}
+
+#define CHOICE_TYPE_OCT 0
+#define CHOICE_TYPE_BOOL 1
+
+struct CHOICE_TYPE {
+  int type;
+  union {
+    ASN1_OCTET_STRING *oct;
+    ASN1_BOOLEAN b;
+  } value;
+};
+
+DECLARE_ASN1_FUNCTIONS(CHOICE_TYPE)
+ASN1_CHOICE(CHOICE_TYPE) = {
+    ASN1_SIMPLE(CHOICE_TYPE, value.oct, ASN1_OCTET_STRING),
+    ASN1_SIMPLE(CHOICE_TYPE, value.b, ASN1_BOOLEAN),
+} ASN1_CHOICE_END(CHOICE_TYPE)
+IMPLEMENT_ASN1_FUNCTIONS(CHOICE_TYPE)
+
+struct OPTIONAL_CHOICE {
+  CHOICE_TYPE *choice;
+};
+
+DECLARE_ASN1_FUNCTIONS(OPTIONAL_CHOICE)
+ASN1_SEQUENCE(OPTIONAL_CHOICE) = {
+    ASN1_OPT(OPTIONAL_CHOICE, choice, CHOICE_TYPE),
+} ASN1_SEQUENCE_END(OPTIONAL_CHOICE)
+IMPLEMENT_ASN1_FUNCTIONS(OPTIONAL_CHOICE)
+
+TEST(ASN1Test, OptionalChoice) {
+  std::unique_ptr<OPTIONAL_CHOICE, decltype(&OPTIONAL_CHOICE_free)> obj(
+      nullptr, OPTIONAL_CHOICE_free);
+
+  // Value omitted.
+  static const uint8_t kOmitted[] = {0x30, 0x00};
+  const uint8_t *inp = kOmitted;
+  obj.reset(d2i_OPTIONAL_CHOICE(nullptr, &inp, sizeof(kOmitted)));
+  ASSERT_TRUE(obj);
+  EXPECT_FALSE(obj->choice);
+  TestSerialize(obj.get(), i2d_OPTIONAL_CHOICE, kOmitted);
+
+  // Value is present as an OCTET STRING.
+  static const uint8_t kOct[] = {0x30, 0x02, 0x04, 0x00};
+  inp = kOct;
+  obj.reset(d2i_OPTIONAL_CHOICE(nullptr, &inp, sizeof(kOct)));
+  ASSERT_TRUE(obj);
+  ASSERT_TRUE(obj->choice);
+  ASSERT_EQ(obj->choice->type, CHOICE_TYPE_OCT);
+  ASSERT_TRUE(obj->choice->value.oct);
+  EXPECT_EQ(ASN1_STRING_length(obj->choice->value.oct), 0);
+  TestSerialize(obj.get(), i2d_OPTIONAL_CHOICE, kOct);
+
+  // Value is present as TRUE.
+  static const uint8_t kTrue[] = {0x30, 0x03, 0x01, 0x01, 0xff};
+  inp = kTrue;
+  obj.reset(d2i_OPTIONAL_CHOICE(nullptr, &inp, sizeof(kTrue)));
+  ASSERT_TRUE(obj);
+  ASSERT_TRUE(obj->choice);
+  ASSERT_EQ(obj->choice->type, CHOICE_TYPE_BOOL);
+  EXPECT_EQ(obj->choice->value.b, ASN1_BOOLEAN_TRUE);
+  TestSerialize(obj.get(), i2d_OPTIONAL_CHOICE, kTrue);
+}
+
+struct EMBED_X509 {
+  X509 *x509;
+  X509 *x509_opt;
+  STACK_OF(X509) *x509_seq;
+};
+
+DECLARE_ASN1_FUNCTIONS(EMBED_X509)
+ASN1_SEQUENCE(EMBED_X509) = {
+    ASN1_SIMPLE(EMBED_X509, x509, X509),
+    ASN1_EXP_OPT(EMBED_X509, x509_opt, X509, 0),
+    ASN1_IMP_SEQUENCE_OF_OPT(EMBED_X509, x509_seq, X509, 1),
+} ASN1_SEQUENCE_END(EMBED_X509)
+IMPLEMENT_ASN1_FUNCTIONS(EMBED_X509)
+
+// Test that X.509 types defined in this library can be embedded into other
+// types, as we rewrite them away from the templating system.
+TEST(ASN1Test, EmbedX509) {
+  // Set up a test certificate.
+  static const char kTestCert[] = R"(
+-----BEGIN CERTIFICATE-----
+MIIBzzCCAXagAwIBAgIJANlMBNpJfb/rMAkGByqGSM49BAEwRTELMAkGA1UEBhMC
+QVUxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoMGEludGVybmV0IFdpZGdp
+dHMgUHR5IEx0ZDAeFw0xNDA0MjMyMzIxNTdaFw0xNDA1MjMyMzIxNTdaMEUxCzAJ
+BgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5l
+dCBXaWRnaXRzIFB0eSBMdGQwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATmK2ni
+v2Wfl74vHg2UikzVl2u3qR4NRvvdqakendy6WgHn1peoChj5w8SjHlbifINI2xYa
+HPUdfvGULUvPciLBo1AwTjAdBgNVHQ4EFgQUq4TSrKuV8IJOFngHVVdf5CaNgtEw
+HwYDVR0jBBgwFoAUq4TSrKuV8IJOFngHVVdf5CaNgtEwDAYDVR0TBAUwAwEB/zAJ
+BgcqhkjOPQQBA0gAMEUCIQDyoDVeUTo2w4J5m+4nUIWOcAZ0lVfSKXQA9L4Vh13E
+BwIgfB55FGohg/B6dGh5XxSZmmi08cueFV7mHzJSYV51yRQ=
+-----END CERTIFICATE-----
+)";
+  bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(kTestCert, sizeof(kTestCert)));
+  ASSERT_TRUE(bio);
+  bssl::UniquePtr<X509> cert(PEM_read_bio_X509(bio.get(), nullptr, nullptr, nullptr));
+  ASSERT_TRUE(cert);
+  uint8_t *cert_der = nullptr;
+  int cert_len = i2d_X509(cert.get(), &cert_der);
+  ASSERT_GT(cert_len, 0);
+  bssl::UniquePtr<uint8_t> free_cert_der(cert_der);
+
+  std::unique_ptr<EMBED_X509, decltype(&EMBED_X509_free)> obj(nullptr,
+                                                              EMBED_X509_free);
+
+  // Test only the first field present.
+  bssl::ScopedCBB cbb;
+  ASSERT_TRUE(CBB_init(cbb.get(), 64));
+  CBB seq;
+  ASSERT_TRUE(CBB_add_asn1(cbb.get(), &seq, CBS_ASN1_SEQUENCE));
+  ASSERT_TRUE(CBB_add_bytes(&seq, cert_der, cert_len));
+  ASSERT_TRUE(CBB_flush(cbb.get()));
+  const uint8_t *ptr = CBB_data(cbb.get());
+  obj.reset(d2i_EMBED_X509(nullptr, &ptr, CBB_len(cbb.get())));
+  ASSERT_TRUE(obj);
+  ASSERT_TRUE(obj->x509);
+  EXPECT_EQ(X509_cmp(obj->x509, cert.get()), 0);
+  EXPECT_FALSE(obj->x509_opt);
+  EXPECT_FALSE(obj->x509_seq);
+  TestSerialize(obj.get(), i2d_EMBED_X509,
+                {CBB_data(cbb.get()), CBB_len(cbb.get())});
+
+  // Test all fields present.
+  cbb.Reset();
+  ASSERT_TRUE(CBB_init(cbb.get(), 64));
+  ASSERT_TRUE(CBB_add_asn1(cbb.get(), &seq, CBS_ASN1_SEQUENCE));
+  ASSERT_TRUE(CBB_add_bytes(&seq, cert_der, cert_len));
+  CBB child;
+  ASSERT_TRUE(CBB_add_asn1(
+      &seq, &child, CBS_ASN1_CONTEXT_SPECIFIC | CBS_ASN1_CONSTRUCTED | 0));
+  ASSERT_TRUE(CBB_add_bytes(&child, cert_der, cert_len));
+  ASSERT_TRUE(CBB_add_asn1(
+      &seq, &child, CBS_ASN1_CONTEXT_SPECIFIC | CBS_ASN1_CONSTRUCTED | 1));
+  ASSERT_TRUE(CBB_add_bytes(&child, cert_der, cert_len));
+  ASSERT_TRUE(CBB_add_bytes(&child, cert_der, cert_len));
+  ASSERT_TRUE(CBB_flush(cbb.get()));
+  ptr = CBB_data(cbb.get());
+  obj.reset(d2i_EMBED_X509(nullptr, &ptr, CBB_len(cbb.get())));
+  ASSERT_TRUE(obj);
+  ASSERT_TRUE(obj->x509);
+  EXPECT_EQ(X509_cmp(obj->x509, cert.get()), 0);
+  ASSERT_TRUE(obj->x509_opt);
+  EXPECT_EQ(X509_cmp(obj->x509_opt, cert.get()), 0);
+  ASSERT_EQ(sk_X509_num(obj->x509_seq), 2u);
+  EXPECT_EQ(X509_cmp(sk_X509_value(obj->x509_seq, 0), cert.get()), 0);
+  EXPECT_EQ(X509_cmp(sk_X509_value(obj->x509_seq, 1), cert.get()), 0);
+  TestSerialize(obj.get(), i2d_EMBED_X509,
+                {CBB_data(cbb.get()), CBB_len(cbb.get())});
 }
 
 #endif  // !WINDOWS || !SHARED_LIBRARY

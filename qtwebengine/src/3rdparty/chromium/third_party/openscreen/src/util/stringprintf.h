@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,8 @@
 
 #include <ostream>
 #include <string>
+
+#include "platform/base/span.h"
 
 namespace openscreen {
 
@@ -26,7 +28,8 @@ namespace openscreen {
     OSP_CHECK_PRINTF_ARGS(1, 2);
 
 // Returns a hex string representation of the given |bytes|.
-std::string HexEncode(const uint8_t* bytes, std::size_t len);
+std::string HexEncode(const uint8_t* bytes, size_t len);
+std::string HexEncode(ByteView bytes);
 
 }  // namespace openscreen
 

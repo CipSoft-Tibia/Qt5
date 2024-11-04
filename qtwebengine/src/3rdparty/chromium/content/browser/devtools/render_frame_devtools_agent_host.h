@@ -16,6 +16,7 @@
 #include "content/public/browser/render_process_host_observer.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "net/base/net_errors.h"
+#include "services/network/public/mojom/content_security_policy.mojom.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -38,6 +39,13 @@ class CONTENT_EXPORT RenderFrameDevToolsAgentHost
       private WebContentsObserver,
       private RenderProcessHostObserver {
  public:
+  // Returns true when DevTools was ever attached to any RenderFrameHost.
+  // TODO(https://crbug.com/1434900): Remove this method after the experiment
+  // associated with the bug entry.
+  static bool WasEverAttachedToAnyFrame();
+
+  static bool IsDebuggerAttached(WebContents* web_contents);
+
   static void AddAllAgentHosts(DevToolsAgentHost::List* result);
 
   // Returns appropriate agent host for given frame tree node, traversing
@@ -70,6 +78,8 @@ class CONTENT_EXPORT RenderFrameDevToolsAgentHost
       delete;
 
   static void AttachToWebContents(WebContents* web_contents);
+  static bool ShouldAllowSession(RenderFrameHost* frame_host,
+                                 DevToolsSession* session);
 
   FrameTreeNode* frame_tree_node() { return frame_tree_node_; }
 
@@ -79,6 +89,8 @@ class CONTENT_EXPORT RenderFrameDevToolsAgentHost
   void DidCreateFencedFrame(FencedFrame* fenced_frame);
 
   // DevToolsAgentHost overrides.
+  // TODO(caseq): remove (Dis)connectWebContents() on frame targets once
+  // front-end uses tab target mode.
   void DisconnectWebContents() override;
   void ConnectWebContents(WebContents* web_contents) override;
   BrowserContext* GetBrowserContext() override;
@@ -102,6 +114,8 @@ class CONTENT_EXPORT RenderFrameDevToolsAgentHost
   cross_origin_embedder_policy(const std::string& id) override;
   absl::optional<network::CrossOriginOpenerPolicy> cross_origin_opener_policy(
       const std::string& id) override;
+  absl::optional<std::vector<network::mojom::ContentSecurityPolicyHeader>>
+  content_security_policy(const std::string& id) override;
 
   // This is used to enable compatibility shims, including disabling some
   // features that are incompatible with older clients.
@@ -124,9 +138,12 @@ class CONTENT_EXPORT RenderFrameDevToolsAgentHost
   bool AttachSession(DevToolsSession* session, bool acquire_wake_lock) override;
   void DetachSession(DevToolsSession* session) override;
   void InspectElement(RenderFrameHost* frame_host, int x, int y) override;
+  void GetUniqueFormControlId(int node_id,
+                              GetUniqueFormControlIdCallback callback) override;
   void UpdateRendererChannel(bool force) override;
   protocol::TargetAutoAttacher* auto_attacher() override;
   std::string GetSubtype() override;
+  RenderProcessHost* GetProcessHost() override;
 
   // WebContentsObserver overrides.
   void DidStartNavigation(NavigationHandle* navigation_handle) override;
@@ -148,8 +165,6 @@ class CONTENT_EXPORT RenderFrameDevToolsAgentHost
   void UpdateFrameHost(RenderFrameHostImpl* frame_host);
   void ChangeFrameHostAndObservedProcess(RenderFrameHostImpl* frame_host);
   void UpdateFrameAlive();
-
-  bool ShouldAllowSession(DevToolsSession* session);
 
 #if BUILDFLAG(IS_ANDROID)
   device::mojom::WakeLock* GetWakeLock();

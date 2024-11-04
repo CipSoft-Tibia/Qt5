@@ -50,12 +50,17 @@ class WebThemeEngineDefault : public WebThemeEngine {
   WebThemeEngine::SystemColorInfoState GetSystemColorInfo() override;
   bool UpdateColorProviders(const ui::RendererColorMap& light_colors,
                             const ui::RendererColorMap& dark_colors) override;
+  void EmulateForcedColors(bool is_dark_theme) override;
 
  protected:
   const ui::ColorProvider* GetColorProviderForPainting(
       mojom::ColorScheme color_scheme) const;
 
  private:
+  void SetEmulateForcedColors(bool emulate_forced_colors) {
+    emulate_forced_colors_ = emulate_forced_colors;
+  }
+  bool emulate_forced_colors_ = false;
   // These providers are kept in sync with ColorProviders in the browser and
   // will be updated when the theme changes.
   // TODO(crbug.com/1251637): Currently these reflect the ColorProviders
@@ -64,6 +69,10 @@ class WebThemeEngineDefault : public WebThemeEngine {
   // hosting Page.
   ui::ColorProvider light_color_provider_;
   ui::ColorProvider dark_color_provider_;
+
+  // This provider is used when forced color emulation is enabled, overriding
+  // the light or dark color providers.
+  ui::ColorProvider emulated_forced_colors_provider_;
 };
 
 }  // namespace blink

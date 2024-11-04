@@ -1,6 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // Copyright (C) 2019 Alexey Edelev <semlanik@gmail.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "simplechatengine.h"
 
@@ -57,7 +57,7 @@ void SimpleChatEngine::login(const QString &name, const QString &password)
 
     // ![1]
     auto stream = m_client->streamMessageList(qtgrpc::examples::chat::None());
-    QObject::connect(stream.get(), &QGrpcStream::errorOccurred, this,
+    QObject::connect(stream.get(), &QGrpcServerStream::errorOccurred, this,
                      [this, stream](const QGrpcStatus &status) {
                          qCritical()
                                  << "Stream error(" << status.code() << "):" << status.message();
@@ -69,19 +69,20 @@ void SimpleChatEngine::login(const QString &name, const QString &password)
                          }
                      });
 
-    QObject::connect(stream.get(), &QGrpcStream::finished, this,
+    QObject::connect(stream.get(), &QGrpcServerStream::finished, this,
                      [this, stream]() { setState(Disconnected); });
 
-    QObject::connect(
-            stream.get(), &QGrpcStream::messageReceived, this, [this, name, password, stream]() {
-                if (m_userName != name) {
-                    m_userName = name;
-                    m_password = password;
-                    emit userNameChanged();
-                }
-                setState(Connected);
-                m_messages.append(stream->read<qtgrpc::examples::chat::ChatMessages>().messages());
-            });
+    QObject::connect(stream.get(), &QGrpcServerStream::messageReceived, this,
+                     [this, name, password, stream]() {
+                         if (m_userName != name) {
+                             m_userName = name;
+                             m_password = password;
+                             emit userNameChanged();
+                         }
+                         setState(Connected);
+                         m_messages.append(
+                                 stream->read<qtgrpc::examples::chat::ChatMessages>().messages());
+                     });
     // ![1]
 }
 
@@ -90,7 +91,7 @@ void SimpleChatEngine::sendMessage(const QString &content)
     // ![2]
     qtgrpc::examples::chat::ChatMessage msg;
     msg.setContent(content.toUtf8());
-    msg.setType(qtgrpc::examples::chat::ChatMessage::Text);
+    msg.setType(qtgrpc::examples::chat::ChatMessage::ContentType::Text);
     msg.setTimestamp(QDateTime::currentMSecsSinceEpoch());
     msg.setFrom(m_userName);
     m_client->sendMessage(msg);
@@ -150,7 +151,7 @@ void SimpleChatEngine::sendImageFromClipboard()
 
     qtgrpc::examples::chat::ChatMessage msg;
     msg.setContent(imgData);
-    msg.setType(qtgrpc::examples::chat::ChatMessage::Image);
+    msg.setType(qtgrpc::examples::chat::ChatMessage::ContentType::Image);
     msg.setTimestamp(QDateTime::currentMSecsSinceEpoch());
     msg.setFrom(m_userName);
     m_client->sendMessage(msg);

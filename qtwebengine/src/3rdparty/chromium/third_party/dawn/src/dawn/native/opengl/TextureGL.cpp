@@ -15,6 +15,7 @@
 #include "dawn/native/opengl/TextureGL.h"
 
 #include <limits>
+#include <utility>
 
 #include "dawn/common/Assert.h"
 #include "dawn/common/Constants.h"
@@ -170,11 +171,22 @@ void AllocateTexture(const OpenGLFunctions& gl,
 
 // Texture
 
+// static
+ResultOrError<Ref<Texture>> Texture::Create(Device* device, const TextureDescriptor* descriptor) {
+    Ref<Texture> texture = AcquireRef(new Texture(device, descriptor));
+    if (device->IsToggleEnabled(Toggle::NonzeroClearResourcesOnCreationForTesting)) {
+        DAWN_TRY(
+            texture->ClearTexture(texture->GetAllSubresources(), TextureBase::ClearValue::NonZero));
+    }
+    return std::move(texture);
+}
+
 Texture::Texture(Device* device, const TextureDescriptor* descriptor)
-    : Texture(device, descriptor, 0, TextureState::OwnedInternal) {
+    : Texture(device, descriptor, 0) {
     const OpenGLFunctions& gl = device->GetGL();
 
     gl.GenTextures(1, &mHandle);
+    mOwnsHandle = true;
     uint32_t levels = GetNumMipLevels();
 
     const GLFormat& glFormat = GetGLFormat();
@@ -186,11 +198,6 @@ Texture::Texture(Device* device, const TextureDescriptor* descriptor)
     // The texture is not complete if it uses mipmapping and not all levels up to
     // MAX_LEVEL have been defined.
     gl.TexParameteri(mTarget, GL_TEXTURE_MAX_LEVEL, levels - 1);
-
-    if (GetDevice()->IsToggleEnabled(Toggle::NonzeroClearResourcesOnCreationForTesting)) {
-        GetDevice()->ConsumedError(
-            ClearTexture(GetAllSubresources(), TextureBase::ClearValue::NonZero));
-    }
 }
 
 void Texture::Touch() {
@@ -201,11 +208,8 @@ uint32_t Texture::GetGenID() const {
     return mGenID;
 }
 
-Texture::Texture(Device* device,
-                 const TextureDescriptor* descriptor,
-                 GLuint handle,
-                 TextureState state)
-    : TextureBase(device, descriptor, state), mHandle(handle) {
+Texture::Texture(Device* device, const TextureDescriptor* descriptor, GLuint handle)
+    : TextureBase(device, descriptor), mHandle(handle) {
     mTarget = TargetForTexture(descriptor);
 }
 
@@ -213,7 +217,7 @@ Texture::~Texture() {}
 
 void Texture::DestroyImpl() {
     TextureBase::DestroyImpl();
-    if (GetTextureState() == TextureState::OwnedInternal) {
+    if (mOwnsHandle) {
         const OpenGLFunctions& gl = ToBackend(GetDevice())->GetGL();
         gl.DeleteTextures(1, &mHandle);
         mHandle = 0;
@@ -366,7 +370,7 @@ MaybeError Texture::ClearTexture(const SubresourceRange& range,
             constexpr std::array<GLbyte, MAX_TEXEL_SIZE> kClearColorDataBytes255 = {
                 -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 
-            wgpu::TextureComponentType baseType = GetFormat().GetAspectInfo(Aspect::Color).baseType;
+            TextureComponentType baseType = GetFormat().GetAspectInfo(Aspect::Color).baseType;
 
             const GLFormat& glFormat = GetGLFormat();
             for (uint32_t level = range.baseMipLevel; level < range.baseMipLevel + range.levelCount;
@@ -401,23 +405,23 @@ MaybeError Texture::ClearTexture(const SubresourceRange& range,
                     gl.Disable(GL_SCISSOR_TEST);
                     gl.ColorMask(true, true, true, true);
 
-                    auto DoClear = [&]() {
+                    auto DoClear = [&] {
                         switch (baseType) {
-                            case wgpu::TextureComponentType::Float: {
+                            case TextureComponentType::Float: {
                                 gl.ClearBufferfv(GL_COLOR, 0,
                                                  clearValue == TextureBase::ClearValue::Zero
                                                      ? kClearColorDataFloat0.data()
                                                      : kClearColorDataFloat1.data());
                                 break;
                             }
-                            case wgpu::TextureComponentType::Uint: {
+                            case TextureComponentType::Uint: {
                                 gl.ClearBufferuiv(GL_COLOR, 0,
                                                   clearValue == TextureBase::ClearValue::Zero
                                                       ? kClearColorDataUint0.data()
                                                       : kClearColorDataUint1.data());
                                 break;
                             }
-                            case wgpu::TextureComponentType::Sint: {
+                            case TextureComponentType::Sint: {
                                 gl.ClearBufferiv(GL_COLOR, 0,
                                                  reinterpret_cast<const GLint*>(
                                                      clearValue == TextureBase::ClearValue::Zero
@@ -425,9 +429,6 @@ MaybeError Texture::ClearTexture(const SubresourceRange& range,
                                                          : kClearColorDataUint1.data()));
                                 break;
                             }
-
-                            case wgpu::TextureComponentType::DepthComparison:
-                                UNREACHABLE();
                         }
                     };
 
@@ -498,7 +499,7 @@ MaybeError Texture::ClearTexture(const SubresourceRange& range,
 
         // Fill the buffer with clear color
         memset(srcBuffer->GetMappedRange(0, bufferSize), clearColor, bufferSize);
-        srcBuffer->Unmap();
+        DAWN_TRY(srcBuffer->Unmap());
 
         gl.BindBuffer(GL_PIXEL_UNPACK_BUFFER, srcBuffer->GetHandle());
         for (uint32_t level = range.baseMipLevel; level < range.baseMipLevel + range.levelCount;
@@ -539,13 +540,14 @@ MaybeError Texture::ClearTexture(const SubresourceRange& range,
     return {};
 }
 
-void Texture::EnsureSubresourceContentInitialized(const SubresourceRange& range) {
+MaybeError Texture::EnsureSubresourceContentInitialized(const SubresourceRange& range) {
     if (!GetDevice()->IsToggleEnabled(Toggle::LazyClearResourceOnFirstUse)) {
-        return;
+        return {};
     }
     if (!IsSubresourceContentInitialized(range)) {
-        GetDevice()->ConsumedError(ClearTexture(range, TextureBase::ClearValue::Zero));
+        DAWN_TRY(ClearTexture(range, TextureBase::ClearValue::Zero));
     }
+    return {};
 }
 
 // TextureView
@@ -556,7 +558,7 @@ TextureView::TextureView(TextureBase* texture, const TextureViewDescriptor* desc
                                             texture->GetSampleCount());
 
     // Texture could be destroyed by the time we make a view.
-    if (GetTexture()->GetTextureState() == Texture::TextureState::Destroyed) {
+    if (GetTexture()->IsDestroyed()) {
         return;
     }
 

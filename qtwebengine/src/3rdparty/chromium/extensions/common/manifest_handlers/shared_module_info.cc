@@ -10,6 +10,7 @@
 #include <memory>
 #include <utility>
 
+#include "base/containers/contains.h"
 #include "base/lazy_instance.h"
 #include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
@@ -99,9 +100,7 @@ bool SharedModuleInfo::IsExportAllowedByAllowlist(const Extension* extension,
   const SharedModuleInfo& info = GetSharedModuleInfo(extension);
   if (info.export_allowlist_.empty())
     return true;
-  if (info.export_allowlist_.find(other_id) != info.export_allowlist_.end())
-    return true;
-  return false;
+  return base::Contains(info.export_allowlist_, other_id);
 }
 
 // static
@@ -132,7 +131,7 @@ SharedModuleHandler::~SharedModuleHandler() = default;
 bool SharedModuleHandler::Parse(Extension* extension, std::u16string* error) {
   ManifestKeys2 manifest_keys;
   if (!ManifestKeys2::ParseFromDictionary(
-          extension->manifest()->available_values(), &manifest_keys, error)) {
+          extension->manifest()->available_values(), manifest_keys, *error)) {
     return false;
   }
 

@@ -21,8 +21,7 @@
 #include "../../InternalHeaderCheck.h"
 
 #if !defined(EIGEN_USE_AVX512_GEMM_KERNELS)
-// Disable new AVX512 kernels by default.
-#define EIGEN_USE_AVX512_GEMM_KERNELS 0
+#define EIGEN_USE_AVX512_GEMM_KERNELS 1
 #endif
 
 #define SECOND_FETCH (32)
@@ -641,7 +640,7 @@ class gemm_class {
     }
   }
 
-  template <int uk, int max_b_unroll, int a_unroll, int b_unroll, bool ktail, bool fetch_x, bool c_fetch>
+  template <int uk, int max_b_unroll, int a_unroll, int b_unroll, bool ktail, bool fetch_x, bool c_fetch, bool no_a_preload = false>
   EIGEN_ALWAYS_INLINE void innerkernel_1uk(const Scalar *&aa, const Scalar *const &ao, const Scalar *const &bo,
                                            Scalar *&co2, int &fetchA_idx, int &fetchB_idx) {
     const int um_vecs = div_up(a_unroll, nelems_in_cache_line);
@@ -655,8 +654,8 @@ class gemm_class {
     if (max_b_unroll >= 8)
       innerkernel_1pow<uk, 8, 0, um_vecs, b_unroll, ktail, fetch_x, c_fetch>(aa, ao, bo, co2, fetchA_idx, fetchB_idx);
 
-    // Load A after pow-loop.
-    load_a<0, um_vecs, uk, a_unroll, ktail>(ao);
+    // Load A after pow-loop. Skip this at the end to prevent running over the buffer
+    if (!no_a_preload) load_a<0, um_vecs, uk, a_unroll, ktail>(ao);
   }
 
   /*  Inner kernel loop structure.
@@ -698,7 +697,7 @@ class gemm_class {
    *  bo += b_unroll * kfactor;
    */
 
-  template <int a_unroll, int b_unroll, int k_factor, int max_b_unroll, int max_k_factor, bool c_fetch>
+  template <int a_unroll, int b_unroll, int k_factor, int max_b_unroll, int max_k_factor, bool c_fetch, bool no_a_preload = false>
   EIGEN_ALWAYS_INLINE void innerkernel(const Scalar *&aa, const Scalar *&ao, const Scalar *&bo, Scalar *&co2) {
     int fetchA_idx = 0;
     int fetchB_idx = 0;
@@ -707,18 +706,19 @@ class gemm_class {
     const bool ktail = k_factor == 1;
 
     static_assert(k_factor <= 4 && k_factor > 0, "innerkernel maximum k_factor supported is 4");
+    static_assert(no_a_preload == false || (no_a_preload == true && k_factor == 1), "skipping a preload only allowed when k unroll is 1");
 
     if (k_factor > 0)
-      innerkernel_1uk<0, max_b_unroll, a_unroll, b_unroll, ktail, fetch_x, c_fetch>(aa, ao, bo, co2, fetchA_idx,
+      innerkernel_1uk<0, max_b_unroll, a_unroll, b_unroll, ktail, fetch_x, c_fetch, no_a_preload>(aa, ao, bo, co2, fetchA_idx,
                                                                                     fetchB_idx);
     if (k_factor > 1)
-      innerkernel_1uk<1, max_b_unroll, a_unroll, b_unroll, ktail, fetch_x, c_fetch>(aa, ao, bo, co2, fetchA_idx,
+      innerkernel_1uk<1, max_b_unroll, a_unroll, b_unroll, ktail, fetch_x, c_fetch, no_a_preload>(aa, ao, bo, co2, fetchA_idx,
                                                                                     fetchB_idx);
     if (k_factor > 2)
-      innerkernel_1uk<2, max_b_unroll, a_unroll, b_unroll, ktail, fetch_x, c_fetch>(aa, ao, bo, co2, fetchA_idx,
+      innerkernel_1uk<2, max_b_unroll, a_unroll, b_unroll, ktail, fetch_x, c_fetch, no_a_preload>(aa, ao, bo, co2, fetchA_idx,
                                                                                     fetchB_idx);
     if (k_factor > 3)
-      innerkernel_1uk<3, max_b_unroll, a_unroll, b_unroll, ktail, fetch_x, c_fetch>(aa, ao, bo, co2, fetchA_idx,
+      innerkernel_1uk<3, max_b_unroll, a_unroll, b_unroll, ktail, fetch_x, c_fetch, no_a_preload>(aa, ao, bo, co2, fetchA_idx,
                                                                                     fetchB_idx);
 
     // Advance A/B pointers after uk-loop.
@@ -729,7 +729,7 @@ class gemm_class {
   template <int a_unroll, int b_unroll, int max_b_unroll>
   EIGEN_ALWAYS_INLINE void kloop(const Scalar *&aa, const Scalar *&ao, const Scalar *&bo, Scalar *&co1, Scalar *&co2) {
     const int um_vecs = div_up(a_unroll, nelems_in_cache_line);
-    if (!use_less_a_regs)
+    if (!use_less_a_regs && k > 1)
       a_loads<0, 2, 0, um_vecs, a_unroll>(ao);
     else
       a_loads<0, 1, 0, um_vecs, a_unroll>(ao);
@@ -743,7 +743,13 @@ class gemm_class {
 
     // Unrolling k-loop by a factor of 4.
     const int max_k_factor = 4;
-    Index loop_count = k / max_k_factor;
+    Index kRem = k % max_k_factor;
+    Index k_ = k - kRem;
+    if (k_ >= max_k_factor) {
+      k_ -= max_k_factor;
+      kRem += max_k_factor;
+    }
+    Index loop_count = k_ / max_k_factor;
 
     if (loop_count > 0) {
 #ifdef SECOND_FETCH
@@ -771,10 +777,13 @@ class gemm_class {
     }
 
     // k-loop remainder handling.
-    loop_count = k % max_k_factor;
-    while (loop_count > 0) {
+    loop_count = kRem;
+    while (loop_count > 1) {
       innerkernel<a_unroll, b_unroll, 1, max_b_unroll, max_k_factor, 0>(aa, ao, bo, co2);
       loop_count--;
+    }
+    if (loop_count > 0) {
+      innerkernel<a_unroll, b_unroll, 1, max_b_unroll, max_k_factor, 0, true>(aa, ao, bo, co2);
     }
 
     // Update C matrix.

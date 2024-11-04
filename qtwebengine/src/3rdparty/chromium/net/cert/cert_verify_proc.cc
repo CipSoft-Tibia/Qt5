@@ -51,7 +51,7 @@
 #include "third_party/boringssl/src/include/openssl/pool.h"
 #include "url/url_canon.h"
 
-#if BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(USE_NSS_CERTS) || BUILDFLAG(IS_MAC) || \
+#if BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(USE_NSS_CERTS) || \
     BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
 #include "net/cert/cert_verify_proc_builtin.h"
 #endif
@@ -64,10 +64,6 @@
 #include "net/cert/cert_verify_proc_android.h"
 #elif BUILDFLAG(IS_IOS)
 #include "net/cert/cert_verify_proc_ios.h"
-#elif BUILDFLAG(IS_MAC)
-#include "net/cert/cert_verify_proc_mac.h"
-#elif BUILDFLAG(IS_WIN)
-#include "net/cert/cert_verify_proc_win.h"
 #endif
 
 namespace net {
@@ -230,10 +226,8 @@ void BestEffortCheckOCSP(const std::string& raw_response,
   }
 
   verify_result->revocation_status = CheckOCSP(
-      raw_response, std::string_view(cert_der.data(), cert_der.size()),
-      std::string_view(issuer_der.data(), issuer_der.size()),
-      base::Time::Now().ToTimeT(), kMaxRevocationLeafUpdateAge.InSeconds(),
-      &verify_result->response_status);
+      raw_response, cert_der, issuer_der, base::Time::Now().ToTimeT(),
+      kMaxRevocationLeafUpdateAge.InSeconds(), &verify_result->response_status);
 }
 
 // Records details about the most-specific trust anchor in |hashes|, which is
@@ -375,13 +369,14 @@ void RecordTrustAnchorHistogram(const HashValueVector& spki_hashes,
   return true;
 }
 
-base::Value CertVerifyParams(X509Certificate* cert,
-                             const std::string& hostname,
-                             const std::string& ocsp_response,
-                             const std::string& sct_list,
-                             int flags,
-                             CRLSet* crl_set,
-                             const CertificateList& additional_trust_anchors) {
+base::Value::Dict CertVerifyParams(
+    X509Certificate* cert,
+    const std::string& hostname,
+    const std::string& ocsp_response,
+    const std::string& sct_list,
+    int flags,
+    CRLSet* crl_set,
+    const CertificateList& additional_trust_anchors) {
   base::Value::Dict dict;
   dict.Set("certificates", NetLogX509CertificateList(cert));
   if (!ocsp_response.empty()) {
@@ -409,24 +404,22 @@ base::Value CertVerifyParams(X509Certificate* cert,
     dict.Set("additional_trust_anchors", std::move(certs));
   }
 
-  return base::Value(std::move(dict));
+  return dict;
 }
 
 }  // namespace
 
-#if !(BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS))
+#if !(BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_LINUX) || \
+      BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(CHROME_ROOT_STORE_ONLY))
 // static
 scoped_refptr<CertVerifyProc> CertVerifyProc::CreateSystemVerifyProc(
-    scoped_refptr<CertNetFetcher> cert_net_fetcher) {
+    scoped_refptr<CertNetFetcher> cert_net_fetcher,
+    scoped_refptr<CRLSet> crl_set) {
 #if BUILDFLAG(IS_ANDROID)
   return base::MakeRefCounted<CertVerifyProcAndroid>(
-      std::move(cert_net_fetcher));
+      std::move(cert_net_fetcher), std::move(crl_set));
 #elif BUILDFLAG(IS_IOS)
-  return base::MakeRefCounted<CertVerifyProcIOS>();
-#elif BUILDFLAG(IS_MAC)
-  return base::MakeRefCounted<CertVerifyProcMac>();
-#elif BUILDFLAG(IS_WIN)
-  return base::MakeRefCounted<CertVerifyProcWin>();
+  return base::MakeRefCounted<CertVerifyProcIOS>(std::move(crl_set));
 #else
 #error Unsupported platform
 #endif
@@ -436,8 +429,10 @@ scoped_refptr<CertVerifyProc> CertVerifyProc::CreateSystemVerifyProc(
 #if BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(USE_NSS_CERTS)
 // static
 scoped_refptr<CertVerifyProc> CertVerifyProc::CreateBuiltinVerifyProc(
-    scoped_refptr<CertNetFetcher> cert_net_fetcher) {
+    scoped_refptr<CertNetFetcher> cert_net_fetcher,
+    scoped_refptr<CRLSet> crl_set) {
   return CreateCertVerifyProcBuiltin(std::move(cert_net_fetcher),
+                                     std::move(crl_set),
                                      CreateSslSystemTrustStore());
 }
 #endif
@@ -445,15 +440,22 @@ scoped_refptr<CertVerifyProc> CertVerifyProc::CreateBuiltinVerifyProc(
 #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
 // static
 scoped_refptr<CertVerifyProc> CertVerifyProc::CreateBuiltinWithChromeRootStore(
-    scoped_refptr<CertNetFetcher> cert_net_fetcher) {
+    scoped_refptr<CertNetFetcher> cert_net_fetcher,
+    scoped_refptr<CRLSet> crl_set,
+    const ChromeRootStoreData* root_store_data) {
+  std::unique_ptr<TrustStoreChrome> chrome_root =
+      root_store_data ? std::make_unique<TrustStoreChrome>(*root_store_data)
+                      : std::make_unique<TrustStoreChrome>();
   return CreateCertVerifyProcBuiltin(
-      std::move(cert_net_fetcher),
-      CreateSslSystemTrustStoreChromeRoot(
-          std::make_unique<net::TrustStoreChrome>()));
+      std::move(cert_net_fetcher), std::move(crl_set),
+      CreateSslSystemTrustStoreChromeRoot(std::move(chrome_root)));
 }
 #endif
 
-CertVerifyProc::CertVerifyProc() = default;
+CertVerifyProc::CertVerifyProc(scoped_refptr<CRLSet> crl_set)
+    : crl_set_(std::move(crl_set)) {
+  CHECK(crl_set_);
+}
 
 CertVerifyProc::~CertVerifyProc() = default;
 
@@ -462,13 +464,15 @@ int CertVerifyProc::Verify(X509Certificate* cert,
                            const std::string& ocsp_response,
                            const std::string& sct_list,
                            int flags,
-                           CRLSet* crl_set,
                            const CertificateList& additional_trust_anchors,
                            CertVerifyResult* verify_result,
                            const NetLogWithSource& net_log) {
+  CHECK(cert);
+  CHECK(verify_result);
+
   net_log.BeginEvent(NetLogEventType::CERT_VERIFY_PROC, [&] {
     return CertVerifyParams(cert, hostname, ocsp_response, sct_list, flags,
-                            crl_set, additional_trust_anchors);
+                            crl_set(), additional_trust_anchors);
   });
   // CertVerifyProc's contract allows ::VerifyInternal() to wait on File I/O
   // (such as the Windows registry or smart cards on all platforms) or may re-
@@ -482,10 +486,10 @@ int CertVerifyProc::Verify(X509Certificate* cert,
   verify_result->Reset();
   verify_result->verified_cert = cert;
 
-  DCHECK(crl_set);
-  int rv =
-      VerifyInternal(cert, hostname, ocsp_response, sct_list, flags, crl_set,
-                     additional_trust_anchors, verify_result, net_log);
+  int rv = VerifyInternal(cert, hostname, ocsp_response, sct_list, flags,
+                          additional_trust_anchors, verify_result, net_log);
+
+  CHECK(verify_result->verified_cert);
 
   // Check for mismatched signature algorithms and unknown signature algorithms
   // in the chain. Also fills in the has_* booleans for the digest algorithms
@@ -509,26 +513,26 @@ int CertVerifyProc::Verify(X509Certificate* cert,
   }
 
   // Check to see if the connection is being intercepted.
-  if (crl_set) {
-    for (const auto& hash : verify_result->public_key_hashes) {
-      if (hash.tag() != HASH_VALUE_SHA256)
-        continue;
-      if (!crl_set->IsKnownInterceptionKey(base::StringPiece(
-              reinterpret_cast<const char*>(hash.data()), hash.size())))
-        continue;
-
-      if (verify_result->cert_status & CERT_STATUS_REVOKED) {
-        // If the chain was revoked, and a known MITM was present, signal that
-        // with a more meaningful error message.
-        verify_result->cert_status |= CERT_STATUS_KNOWN_INTERCEPTION_BLOCKED;
-        rv = MapCertStatusToNetError(verify_result->cert_status);
-      } else {
-        // Otherwise, simply signal informatively. Both statuses are not set
-        // simultaneously.
-        verify_result->cert_status |= CERT_STATUS_KNOWN_INTERCEPTION_DETECTED;
-      }
-      break;
+  for (const auto& hash : verify_result->public_key_hashes) {
+    if (hash.tag() != HASH_VALUE_SHA256) {
+      continue;
     }
+    if (!crl_set()->IsKnownInterceptionKey(base::StringPiece(
+            reinterpret_cast<const char*>(hash.data()), hash.size()))) {
+      continue;
+    }
+
+    if (verify_result->cert_status & CERT_STATUS_REVOKED) {
+      // If the chain was revoked, and a known MITM was present, signal that
+      // with a more meaningful error message.
+      verify_result->cert_status |= CERT_STATUS_KNOWN_INTERCEPTION_BLOCKED;
+      rv = MapCertStatusToNetError(verify_result->cert_status);
+    } else {
+      // Otherwise, simply signal informatively. Both statuses are not set
+      // simultaneously.
+      verify_result->cert_status |= CERT_STATUS_KNOWN_INTERCEPTION_DETECTED;
+    }
+    break;
   }
 
   std::vector<std::string> dns_names, ip_addrs;
@@ -735,11 +739,6 @@ bool CertVerifyProc::HasNameConstraintsViolation(
       ".tf",  // Terres australes et antarctiques françaises
   };
 
-  static constexpr base::StringPiece kDomainsIndiaCCA[] = {
-      ".gov.in",   ".nic.in",    ".ac.in", ".rbi.org.in", ".bankofindia.co.in",
-      ".ncode.in", ".tcs.co.in",
-  };
-
   static constexpr base::StringPiece kDomainsTest[] = {
       ".example.com",
   };
@@ -759,45 +758,15 @@ bool CertVerifyProc::HasNameConstraintsViolation(
       // C=FR, ST=France, L=Paris, O=PM/SGDN, OU=DCSSI,
       // CN=IGC/A/emailAddress=igca@sgdn.pm.gouv.fr
       //
-      // net/data/ssl/blocklist/b9bea7860a962ea3611dab97ab6da3e21c1068b97d55575ed0e11279c11c8932.pem
+      // net/data/ssl/name_constrained/b9bea7860a962ea3611dab97ab6da3e21c1068b97d55575ed0e11279c11c8932.pem
       {
           {{0x86, 0xc1, 0x3a, 0x34, 0x08, 0xdd, 0x1a, 0xa7, 0x7e, 0xe8, 0xb6,
             0x94, 0x7c, 0x03, 0x95, 0x87, 0x72, 0xf5, 0x31, 0x24, 0x8c, 0x16,
             0x27, 0xbe, 0xfb, 0x2c, 0x4f, 0x4b, 0x04, 0xd0, 0x44, 0x96}},
           kDomainsANSSI,
       },
-      // C=IN, O=India PKI, CN=CCA India 2007
-      // Expires: July 4th 2015.
-      //
-      // net/data/ssl/blocklist/f375e2f77a108bacc4234894a9af308edeca1acd8fbde0e7aaa9634e9daf7e1c.pem
-      {
-          {{0x7e, 0x6a, 0xcd, 0x85, 0x3c, 0xac, 0xc6, 0x93, 0x2e, 0x9b, 0x51,
-            0x9f, 0xda, 0xd1, 0xbe, 0xb5, 0x15, 0xed, 0x2a, 0x2d, 0x00, 0x25,
-            0xcf, 0xd3, 0x98, 0xc3, 0xac, 0x1f, 0x0d, 0xbb, 0x75, 0x4b}},
-          kDomainsIndiaCCA,
-      },
-      // C=IN, O=India PKI, CN=CCA India 2011
-      // Expires: March 11 2016.
-      //
-      // net/data/ssl/blocklist/2d66a702ae81ba03af8cff55ab318afa919039d9f31b4d64388680f81311b65a.pem
-      {
-          {{0x42, 0xa7, 0x09, 0x84, 0xff, 0xd3, 0x99, 0xc4, 0xea, 0xf0, 0xe7,
-            0x02, 0xa4, 0x4b, 0xef, 0x2a, 0xd8, 0xa7, 0x9b, 0x8b, 0xf4, 0x64,
-            0x8f, 0x6b, 0xb2, 0x10, 0xe1, 0x23, 0xfd, 0x07, 0x57, 0x93}},
-          kDomainsIndiaCCA,
-      },
-      // C=IN, O=India PKI, CN=CCA India 2014
-      // Expires: March 5 2024.
-      //
-      // net/data/ssl/blocklist/60109bc6c38328598a112c7a25e38b0f23e5a7511cb815fb64e0c4ff05db7df7.pem
-      {
-          {{0x9c, 0xf4, 0x70, 0x4f, 0x3e, 0xe5, 0xa5, 0x98, 0x94, 0xb1, 0x6b,
-            0xf0, 0x0c, 0xfe, 0x73, 0xd5, 0x88, 0xda, 0xe2, 0x69, 0xf5, 0x1d,
-            0xe6, 0x6a, 0x4b, 0xa7, 0x74, 0x46, 0xee, 0x2b, 0xd1, 0xf7}},
-          kDomainsIndiaCCA,
-      },
       // Not a real certificate - just for testing.
-      // net/data/ssl/certificates/name_constraint_*.pem
+      // net/data/ssl/certificates/name_constrained_key.pem
       {
           {{0xa2, 0x2a, 0x88, 0x82, 0xba, 0x0c, 0xae, 0x9d, 0xf2, 0xc4, 0x5b,
             0x15, 0xa6, 0x1e, 0xfd, 0xfd, 0x19, 0x6b, 0xb1, 0x09, 0x19, 0xfd,
@@ -890,5 +859,22 @@ bool CertVerifyProc::HasTooLongValidity(const X509Certificate& cert) {
 
   return false;
 }
+
+CertVerifyProcFactory::ImplParams::ImplParams() {
+  crl_set = net::CRLSet::BuiltinCRLSet();
+#if BUILDFLAG(CHROME_ROOT_STORE_OPTIONAL)
+  use_chrome_root_store =
+      base::FeatureList::IsEnabled(net::features::kChromeRootStoreUsed);
+#endif
+}
+
+CertVerifyProcFactory::ImplParams::~ImplParams() = default;
+
+CertVerifyProcFactory::ImplParams::ImplParams(const ImplParams&) = default;
+CertVerifyProcFactory::ImplParams& CertVerifyProcFactory::ImplParams::operator=(
+    const ImplParams& other) = default;
+CertVerifyProcFactory::ImplParams::ImplParams(ImplParams&&) = default;
+CertVerifyProcFactory::ImplParams& CertVerifyProcFactory::ImplParams::operator=(
+    ImplParams&& other) = default;
 
 }  // namespace net

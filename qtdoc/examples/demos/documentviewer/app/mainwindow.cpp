@@ -47,6 +47,11 @@ MainWindow::MainWindow(QWidget *parent) :
         connect(ui->actionRecent, &QAction::triggered, button, &QToolButton::showMenu);
 }
 
+bool MainWindow::hasPlugins() const
+{
+    return m_factory ? !m_factory->viewers().isEmpty() : false;
+}
+
 MainWindow::~MainWindow()
 {
     saveSettings();
@@ -83,10 +88,15 @@ bool MainWindow::openFile(const QString &fileName)
         return false;
     }
 
-    ui->actionPrint->setEnabled(m_viewer->hasContent());
-    connect(m_viewer, &AbstractViewer::printingEnabledChanged, ui->actionPrint, &QAction::setEnabled);
-    connect(ui->actionPrint, &QAction::triggered, m_viewer, &AbstractViewer::print);
-    connect(m_viewer, &AbstractViewer::showMessage, statusBar(), &QStatusBar::showMessage);
+    for (const QMetaObject::Connection &connection : m_viewerConnections)
+        disconnect(connection);
+
+    m_viewerConnections = {
+        connect(m_viewer, &AbstractViewer::printingEnabledChanged, ui->actionPrint,
+                &QAction::setEnabled),
+        connect(ui->actionPrint, &QAction::triggered, m_viewer, &AbstractViewer::print),
+        connect(m_viewer, &AbstractViewer::showMessage, statusBar(), &QStatusBar::showMessage)
+    };
 
     m_viewer->initViewer(ui->actionBack, ui->actionForward, ui->menuHelp->menuAction(), ui->tabWidget);
     restoreViewerSettings();

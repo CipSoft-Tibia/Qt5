@@ -26,6 +26,8 @@ package {
 cc_defaults {
     name: "libswiftshadervk_llvm_defaults",
 
+    host_supported: true,
+
     header_libs: [
         "swiftshader_platform_headers",
     ],
@@ -49,7 +51,7 @@ cc_defaults {
     ],
 
     static_libs: [
-        "libLLVM10_swiftshader",
+        "libLLVM16_swiftshader",
     ],
 
     shared_libs: [
@@ -68,6 +70,9 @@ cc_library_static {
     name: "libswiftshadervk_llvm_debug",
     vendor: true,
     defaults: [ "libswiftshadervk_llvm_defaults" ],
+    cflags: [
+        "-UNDEBUG",
+    ],
 }
 
 genrule {
@@ -79,6 +84,7 @@ genrule {
 
 cc_defaults {
     name: "libvk_swiftshader_defaults",
+    host_supported: true,
     vendor: true,
 
     defaults: [ "swiftshader_common" ],
@@ -88,11 +94,6 @@ cc_defaults {
         "-D__STDC_LIMIT_MACROS",
         "-D__STDC_CONSTANT_MACROS",
         "-D__STDC_FORMAT_MACROS",
-        "-DHAVE_GRALLOC1",
-        "-DHAVE_GRALLOC3",
-        "-DHAVE_GRALLOC4",
-        // FIXME: Use <android/api-level.h> instead?
-        "-DANDROID_PLATFORM_SDK_VERSION=10000",
         "-Wno-implicit-fallthrough",
         "-Wno-unused-parameter",
         "-Wno-unused-local-typedef",
@@ -113,8 +114,6 @@ cc_defaults {
     ],
 
     local_include_dirs: [ "Vulkan" ],
-
-    version_script: "Vulkan/android_vk_swiftshader.lds",
 
     generated_headers: [ "commit_header" ],
 
@@ -140,12 +139,25 @@ cc_defaults {
             static_libs: [
                 "libarect",
             ],
+            cflags: [
+                "-DHAVE_GRALLOC1",
+                "-DHAVE_GRALLOC3",
+                "-DHAVE_GRALLOC4",
+                // FIXME: Use <android/api-level.h> instead?
+                "-DANDROID_PLATFORM_SDK_VERSION=10000",
+            ],
+            version_script: "Vulkan/android_vk_swiftshader.lds",
+        },
+        host: {
+            version_script: "Vulkan/android_host_vk_swiftshader.lds",
         },
     },
 }
 
 cc_library_static {
     name: "swiftshader_debug",
+
+    host_supported: true,
 
     vendor_available: true,
 
@@ -171,7 +183,6 @@ cc_defaults {
 
     cflags: [
         "-DLOG_TAG=\"swiftshader\"",
-        "-DSWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER",
         "-DSWIFTSHADER_ENABLE_ASTC",  // TODO(b/150130101)
         //"-DSWIFTSHADER_DEVICE_MEMORY_REPORT",
     ],
@@ -180,7 +191,6 @@ cc_defaults {
         "System/Build.cpp",
         "System/Configurator.cpp",
         "System/CPUID.cpp",
-        "System/GrallocAndroid.cpp",
         "System/Half.cpp",
         "System/Linux/MemFd.cpp",
         "System/Math.cpp",
@@ -190,7 +200,41 @@ cc_defaults {
         "System/Timer.cpp",
         "Device/*.cpp",
         "Pipeline/*.cpp",
-        "Vulkan/*.cpp",
+        "Vulkan/libVulkan.cpp",
+        "Vulkan/main.cpp",
+        "Vulkan/VkBuffer.cpp",
+        "Vulkan/VkBufferView.cpp",
+        "Vulkan/VkCommandBuffer.cpp",
+        "Vulkan/VkCommandPool.cpp",
+        "Vulkan/VkDebugUtilsMessenger.cpp",
+        "Vulkan/VkDescriptorPool.cpp",
+        "Vulkan/VkDescriptorSet.cpp",
+        "Vulkan/VkDescriptorSetLayout.cpp",
+        "Vulkan/VkDescriptorUpdateTemplate.cpp",
+        "Vulkan/VkDevice.cpp",
+        "Vulkan/VkDeviceMemory.cpp",
+        "Vulkan/VkDeviceMemoryExternalHost.cpp",
+        "Vulkan/VkFormat.cpp",
+        "Vulkan/VkFramebuffer.cpp",
+        "Vulkan/VkGetProcAddress.cpp",
+        "Vulkan/VkImage.cpp",
+        "Vulkan/VkImageView.cpp",
+        "Vulkan/VkInstance.cpp",
+        "Vulkan/VkMemory.cpp",
+        "Vulkan/VkPhysicalDevice.cpp",
+        "Vulkan/VkPipelineCache.cpp",
+        "Vulkan/VkPipeline.cpp",
+        "Vulkan/VkPipelineLayout.cpp",
+        "Vulkan/VkPromotedExtensions.cpp",
+        "Vulkan/VkQueryPool.cpp",
+        "Vulkan/VkQueue.cpp",
+        "Vulkan/VkRenderPass.cpp",
+        "Vulkan/VkSampler.cpp",
+        "Vulkan/VkSemaphore.cpp",
+        "Vulkan/VkShaderModule.cpp",
+        "Vulkan/VkSpecializationInfo.cpp",
+        "Vulkan/VkStringify.cpp",
+        "Vulkan/VkTimelineSemaphore.cpp",
         "WSI/HeadlessSurfaceKHR.cpp",
         "WSI/VkSurfaceKHR.cpp",
     ],
@@ -206,15 +250,46 @@ cc_defaults {
         "external/swiftshader/third_party/SPIRV-Headers/include",
         "external/swiftshader/include",
     ],
+
+    target: {
+        android: {
+            srcs: [
+                "System/GrallocAndroid.cpp",
+                "Vulkan/VkDeviceMemoryExternalAndroid.cpp",
+            ],
+            cflags: [
+                "-DSWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER",
+            ],
+        },
+        host: {
+            srcs: [
+                "WSI/VkSwapchainKHR.cpp",
+            ],
+            cflags: [
+                "-DSWIFTSHADER_EXTERNAL_MEMORY_OPAQUE_FD",
+                // Allocations which may be mapped into a KVM based virtual
+                // machine must be page aligned.
+                "-DSWIFTSHADER_DEVICE_MEMORY_ALLOCATION_ALIGNMENT=4096",
+            ],
+        },
+    },
 }
 
 cc_library_shared {
     name: "vulkan.pastel",
 
     static_libs: [
-        "libswiftshadervk_llvm_debug",
-        "libLLVM10_swiftshader",
+        "libswiftshadervk_llvm",
+        "libLLVM16_swiftshader",
     ],
+
+    target: {
+        host: {
+            strip: {
+                keep_symbols_and_debug_frame: true,
+            },
+        },
+    },
 
     defaults: [
         "libvk_swiftshader_common_defaults",
@@ -227,7 +302,7 @@ cc_library_shared {
 
     static_libs: [
         "libswiftshadervk_llvm_debug",
-        "libLLVM10_swiftshader_debug",
+        "libLLVM16_swiftshader_debug",
     ],
 
     cflags: [
@@ -240,5 +315,12 @@ cc_library_shared {
     defaults: [
         "libvk_swiftshader_common_defaults",
         "libvk_swiftshader_defaults",
+    ],
+}
+
+filegroup {
+    name: "swiftshader_icd_json_template",
+    srcs: [
+        "Vulkan/vk_swiftshader_icd.json.tmpl",
     ],
 }

@@ -13,6 +13,7 @@
 #include "base/containers/cxx20_erase.h"
 #include "base/containers/queue.h"
 #include "base/logging.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/observer_list.h"
 #include "base/ranges/algorithm.h"
 #include "base/task/sequenced_task_runner.h"
@@ -34,6 +35,15 @@ namespace viz {
 namespace {
 
 constexpr base::TimeDelta kExpireInterval = base::Seconds(10);
+
+SurfaceObserver::HandleInteraction GetHandleInteraction(
+    const CompositorFrameMetadata& metadata) {
+  if (metadata.is_handling_interaction) {
+    return SurfaceObserver::HandleInteraction::kYes;
+  } else {
+    return SurfaceObserver::HandleInteraction::kNo;
+  }
+}
 
 }  // namespace
 
@@ -138,7 +148,7 @@ void SurfaceManager::MarkSurfaceForDestruction(const SurfaceId& surface_id) {
   DCHECK(surface_map_.count(surface_id));
   for (auto& observer : observer_list_)
     observer.OnSurfaceMarkedForDestruction(surface_id);
-  surfaces_to_destroy_.insert(surface_id);
+  surfaces_to_destroy_.emplace(surface_id, base::TimeTicks::Now());
 }
 
 void SurfaceManager::InvalidateFrameSinkId(const FrameSinkId& frame_sink_id) {
@@ -189,13 +199,13 @@ void SurfaceManager::GarbageCollectSurfaces() {
   }
 
   SurfaceIdSet reachable_surfaces = GetLiveSurfaces();
-  std::vector<SurfaceId> surfaces_to_delete;
+  base::flat_map<SurfaceId, base::TimeTicks> surfaces_to_delete;
 
   // Delete all destroyed and unreachable surfaces.
   for (auto iter = surfaces_to_destroy_.begin();
        iter != surfaces_to_destroy_.end();) {
-    if (reachable_surfaces.count(*iter) == 0) {
-      surfaces_to_delete.push_back(*iter);
+    if (reachable_surfaces.count(iter->first) == 0) {
+      surfaces_to_delete.insert(*iter);
       iter = surfaces_to_destroy_.erase(iter);
     } else {
       ++iter;
@@ -203,8 +213,12 @@ void SurfaceManager::GarbageCollectSurfaces() {
   }
 
   // ~Surface() draw callback could modify |surfaces_to_destroy_|.
-  for (const SurfaceId& surface_id : surfaces_to_delete)
-    DestroySurfaceInternal(surface_id);
+  for (const auto& iter : surfaces_to_delete) {
+    base::TimeDelta delta = base::TimeTicks::Now() - iter.second;
+    UMA_HISTOGRAM_TIMES(
+        "Compositing.SurfaceManager.MarkForDestructionToDestroy", delta);
+    DestroySurfaceInternal(iter.first);
+  }
 
   // Run another pass over surfaces_to_delete, all of which have just been
   // deleted, making sure they are not present in |surfaces_to_destroy_|. This
@@ -214,8 +228,9 @@ void SurfaceManager::GarbageCollectSurfaces() {
   // GarbageCollectSurfaces re-entrancy, which is exercised in tests and is
   // hard to prove can't happen in the wild. Evaluate whether we should allow
   // re-entrancy, and if not just remove here.
-  for (const SurfaceId& surface_id : surfaces_to_delete)
-    surfaces_to_destroy_.erase(surface_id);
+  for (const auto& iter : surfaces_to_delete) {
+    surfaces_to_destroy_.erase(iter.first);
+  }
 
   MaybeGarbageCollectAllocationGroups();
 }
@@ -442,12 +457,14 @@ Surface* SurfaceManager::GetSurfaceForId(const SurfaceId& surface_id) const {
   return it->second.get();
 }
 
-bool SurfaceManager::SurfaceModified(const SurfaceId& surface_id,
-                                     const BeginFrameAck& ack) {
+bool SurfaceManager::SurfaceModified(
+    const SurfaceId& surface_id,
+    const BeginFrameAck& ack,
+    SurfaceObserver::HandleInteraction handle_interaction) {
   CHECK(thread_checker_.CalledOnValidThread());
   bool changed = false;
   for (auto& observer : observer_list_)
-    changed |= observer.OnSurfaceDamaged(surface_id, ack);
+    changed |= observer.OnSurfaceDamaged(surface_id, ack, handle_interaction);
   return changed;
 }
 
@@ -466,7 +483,8 @@ void SurfaceManager::OnSurfaceHasNewUncommittedFrame(Surface* surface) {
 void SurfaceManager::SurfaceActivated(Surface* surface) {
   // Trigger a display frame if necessary.
   const CompositorFrameMetadata& metadata = surface->GetActiveFrameMetadata();
-  if (!SurfaceModified(surface->surface_id(), metadata.begin_frame_ack)) {
+  if (!SurfaceModified(surface->surface_id(), metadata.begin_frame_ack,
+                       GetHandleInteraction(metadata))) {
     TRACE_EVENT_INSTANT0("viz", "Damage not visible.",
                          TRACE_EVENT_SCOPE_THREAD);
     surface->SendAckToClient();

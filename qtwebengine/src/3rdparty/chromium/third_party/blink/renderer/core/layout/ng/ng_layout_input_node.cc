@@ -111,13 +111,7 @@ bool NGLayoutInputNode::IsPaginatedRoot() const {
   if (!IsBlock())
     return false;
   const auto* view = DynamicTo<LayoutNGView>(box_.Get());
-  if (!view || !view->IsFragmentationContextRoot())
-    return false;
-  if (const LayoutObject* child = view->FirstChild()) {
-    if (child->ForceLegacyLayout())
-      return false;
-  }
-  return true;
+  return view && view->IsFragmentationContextRoot();
 }
 
 NGBlockNode NGLayoutInputNode::ListMarkerBlockNodeIfListItem() const {
@@ -136,13 +130,29 @@ void NGLayoutInputNode::IntrinsicSize(
     return;
 
   IntrinsicSizingInfo legacy_sizing_info;
-
   To<LayoutReplaced>(box_.Get())
       ->ComputeIntrinsicSizingInfo(legacy_sizing_info);
-  if (!*computed_inline_size && legacy_sizing_info.has_width)
-    *computed_inline_size = LayoutUnit(legacy_sizing_info.size.width());
-  if (!*computed_block_size && legacy_sizing_info.has_height)
-    *computed_block_size = LayoutUnit(legacy_sizing_info.size.height());
+
+  absl::optional<LayoutUnit> intrinsic_inline_size =
+      legacy_sizing_info.has_width
+          ? absl::make_optional(
+                LayoutUnit::FromFloatRound(legacy_sizing_info.size.width()))
+          : absl::nullopt;
+  absl::optional<LayoutUnit> intrinsic_block_size =
+      legacy_sizing_info.has_height
+          ? absl::make_optional(
+                LayoutUnit::FromFloatRound(legacy_sizing_info.size.height()))
+          : absl::nullopt;
+  if (!IsHorizontalWritingMode(Style().GetWritingMode())) {
+    std::swap(intrinsic_inline_size, intrinsic_block_size);
+  }
+
+  if (!*computed_inline_size) {
+    *computed_inline_size = intrinsic_inline_size;
+  }
+  if (!*computed_block_size) {
+    *computed_block_size = intrinsic_block_size;
+  }
 }
 
 NGLayoutInputNode NGLayoutInputNode::NextSibling() const {

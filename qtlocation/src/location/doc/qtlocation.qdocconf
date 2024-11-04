@@ -28,7 +28,18 @@ qhp.QtLocation.subprojects.examples.selectors = fake:example
 
 tagfile                 = ../../../doc/qtlocation/qtlocation.tags
 
-depends += qtcore qtdoc qtgui qtwidgets qtquick qtquickcontrols qtqml qtqmlmodels qtnetwork qtpositioning qtlinguist
+depends += qtcore \
+           qtdoc \
+           qtgui \
+           qtwidgets \
+           qtquick \
+           qtquickcontrols \
+           qtqml \
+           qtqmlmodels \
+           qtnetwork \
+           qtpositioning \
+           qtlinguist \
+           qtcmake
 
 headerdirs  +=  ..
 
@@ -50,5 +61,5 @@ manifestmeta.highlighted.names = \
     "QtLocation/Map Viewer (QML)" \
     "QtLocation/Places Map (QML)"
 
-# Fail the documentation build when warnings get introduced
+# Enforce zero documentation warnings
 warninglimit = 0

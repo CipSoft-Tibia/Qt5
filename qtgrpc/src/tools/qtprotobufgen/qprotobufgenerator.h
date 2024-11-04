@@ -24,10 +24,6 @@ class QProtobufGenerator : public qtprotoccommon::GeneratorBase
 public:
     QProtobufGenerator();
     ~QProtobufGenerator();
-    bool GenerateAll(const std::vector<const ::google::protobuf::FileDescriptor *> &files,
-                     const std::string &parameter,
-                     ::google::protobuf::compiler::GeneratorContext *generatorContext,
-                     std::string *error) const override;
     bool Generate(const ::google::protobuf::FileDescriptor *file,
                   const std::string &parameter,
                   ::google::protobuf::compiler::GeneratorContext *generatorContext,
@@ -39,11 +35,6 @@ private:
                         ::google::protobuf::compiler::GeneratorContext *generatorContext) const;
     void GenerateSources(const ::google::protobuf::FileDescriptor *file,
                          ::google::protobuf::compiler::GeneratorContext *generatorContext) const;
-    void GenerateQmlPluginSource(const ::google::protobuf::FileDescriptor *file,
-                                 std::shared_ptr<google::protobuf::io::Printer> printer) const;
-    void GenerateQmlPluginIntro(::google::protobuf::io::Printer *printer,
-                                const std::set<std::string> &headersContainer,
-                                const std::string &packageName) const;
 };
 } // namespace QtProtobuf
 

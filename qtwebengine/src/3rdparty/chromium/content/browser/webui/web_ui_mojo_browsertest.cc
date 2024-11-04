@@ -105,6 +105,32 @@ class WebUITsMojoTestCacheImpl : public mojom::WebUITsMojoTestCache {
     std::move(callback).Run(std::move(items));
   }
 
+  void Echo(absl::optional<bool> optional_bool,
+            absl::optional<uint8_t> optional_uint8,
+            absl::optional<mojom::TestEnum> optional_enum,
+            mojom::OptionalNumericsStructPtr optional_numerics,
+            EchoCallback callback) override {
+    std::move(callback).Run(
+        optional_bool.has_value() ? absl::make_optional(!optional_bool.value())
+                                  : absl::nullopt,
+        optional_uint8.has_value()
+            ? absl::make_optional(~optional_uint8.value())
+            : absl::nullopt,
+        optional_enum.has_value() ? absl::make_optional(mojom::TestEnum::kTwo)
+                                  : absl::nullopt,
+        mojom::OptionalNumericsStruct::New(
+            optional_numerics->optional_bool.has_value()
+                ? absl::make_optional(!optional_numerics->optional_bool.value())
+                : absl::nullopt,
+            optional_numerics->optional_uint8.has_value()
+                ? absl::make_optional(
+                      ~optional_numerics->optional_uint8.value())
+                : absl::nullopt,
+            optional_numerics->optional_enum.has_value()
+                ? absl::make_optional(mojom::TestEnum::kTwo)
+                : absl::nullopt));
+  }
+
  private:
   mojo::Receiver<mojom::WebUITsMojoTestCache> receiver_;
   std::map<GURL, std::string> cache_;
@@ -324,26 +350,18 @@ IN_PROC_BROWSER_TEST_P(WebUIMojoTest, EndToEndCommunication) {
   GURL kTestUrl(GetWebUIURL(GetMojoWebUiHost() + "/?cache"));
   const std::string kTestScript = "runTest();";
   EXPECT_TRUE(NavigateToURL(shell(), kTestUrl));
-  EXPECT_EQ(true, EvalJs(shell()->web_contents(), kTestScript,
-                         EXECUTE_SCRIPT_USE_MANUAL_REPLY));
+  EXPECT_EQ(true, EvalJs(shell()->web_contents(), kTestScript));
 
   // Check that a second shell works correctly.
   Shell* other_shell = CreateBrowser();
   EXPECT_TRUE(NavigateToURL(other_shell, kTestUrl));
-  EXPECT_EQ(true, EvalJs(other_shell->web_contents(), kTestScript,
-                         EXECUTE_SCRIPT_USE_MANUAL_REPLY));
+  EXPECT_EQ(true, EvalJs(other_shell->web_contents(), kTestScript));
 
-  // We expect two independent chrome://foo tabs/shells to use a separate
-  // process.
-  EXPECT_NE(shell()->web_contents()->GetPrimaryMainFrame()->GetProcess(),
-            other_shell->web_contents()->GetPrimaryMainFrame()->GetProcess());
-
-  // Close the second shell and wait until its process exits.
-  RenderProcessHostWatcher process_watcher(
-      other_shell->web_contents()->GetPrimaryMainFrame()->GetProcess(),
-      RenderProcessHostWatcher::WATCH_FOR_PROCESS_EXIT);
+  // Close the second shell and wait until the second shell exits.
+  RenderFrameHostWrapper wrapper(
+      other_shell->web_contents()->GetPrimaryMainFrame());
   other_shell->Close();
-  process_watcher.Wait();
+  EXPECT_TRUE(wrapper.WaitUntilRenderFrameDeleted());
 
   // Check that a third shell works correctly, even if we force it to share a
   // process with the first shell, by forcing an artificially low process
@@ -354,8 +372,7 @@ IN_PROC_BROWSER_TEST_P(WebUIMojoTest, EndToEndCommunication) {
   EXPECT_TRUE(NavigateToURL(other_shell, kTestUrl));
   EXPECT_EQ(shell()->web_contents()->GetPrimaryMainFrame()->GetProcess(),
             other_shell->web_contents()->GetPrimaryMainFrame()->GetProcess());
-  EXPECT_EQ(true, EvalJs(other_shell->web_contents(), kTestScript,
-                         EXECUTE_SCRIPT_USE_MANUAL_REPLY));
+  EXPECT_EQ(true, EvalJs(other_shell->web_contents(), kTestScript));
 }
 
 // Disabled due to flakiness: crbug.com/860385.

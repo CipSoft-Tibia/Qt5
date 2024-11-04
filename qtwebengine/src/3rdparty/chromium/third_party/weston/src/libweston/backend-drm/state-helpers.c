@@ -31,9 +31,9 @@
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
-#include <drm_fourcc.h>
 
 #include "drm-internal.h"
+#include "shared/weston-drm-fourcc.h"
 
 /**
  * Allocate a new, empty, plane state.
@@ -48,7 +48,12 @@ drm_plane_state_alloc(struct drm_output_state *state_output,
 	state->output_state = state_output;
 	state->plane = plane;
 	state->in_fence_fd = -1;
+	state->rotation = drm_rotation_from_output_transform(plane,
+							     WL_OUTPUT_TRANSFORM_NORMAL);
+	assert(state->rotation);
 	state->zpos = DRM_PLANE_ZPOS_INVALID_PLANE;
+	state->alpha = (plane->alpha_max < DRM_PLANE_ALPHA_OPAQUE) ?
+		       plane->alpha_max : DRM_PLANE_ALPHA_OPAQUE;
 
 	/* Here we only add the plane state to the desired link, and not
 	 * set the member. Having an output pointer set means that the
@@ -73,6 +78,8 @@ drm_plane_state_alloc(struct drm_output_state *state_output,
 void
 drm_plane_state_free(struct drm_plane_state *state, bool force)
 {
+	struct drm_device *device;
+
 	if (!state)
 		return;
 
@@ -81,18 +88,24 @@ drm_plane_state_free(struct drm_plane_state *state, bool force)
 	state->output_state = NULL;
 	state->in_fence_fd = -1;
 	state->zpos = DRM_PLANE_ZPOS_INVALID_PLANE;
+	state->alpha = DRM_PLANE_ALPHA_OPAQUE;
 
 	/* Once the damage blob has been submitted, it is refcounted internally
 	 * by the kernel, which means we can safely discard it.
 	 */
 	if (state->damage_blob_id != 0) {
-		drmModeDestroyPropertyBlob(state->plane->backend->drm.fd,
+		device = state->plane->device;
+
+		drmModeDestroyPropertyBlob(device->drm.fd,
 					   state->damage_blob_id);
 		state->damage_blob_id = 0;
 	}
 
 	if (force || state != state->plane->state_cur) {
 		drm_fb_unref(state->fb);
+		weston_buffer_reference(&state->fb_ref.buffer, NULL,
+					BUFFER_WILL_NOT_BE_ACCESSED);
+		weston_buffer_release_reference(&state->fb_ref.release, NULL);
 		free(state);
 	}
 }
@@ -117,6 +130,10 @@ drm_plane_state_duplicate(struct drm_output_state *state_output,
 	 */
 	dst->damage_blob_id = 0;
 	wl_list_init(&dst->link);
+	/* Don't copy the fence, it may no longer be valid and waiting for it
+	 * again is not necessary
+	 */
+	dst->in_fence_fd = -1;
 
 	wl_list_for_each_safe(old, tmp, &state_output->plane_list, link) {
 		/* Duplicating a plane state into the same output state, so
@@ -128,8 +145,31 @@ drm_plane_state_duplicate(struct drm_output_state *state_output,
 	}
 
 	wl_list_insert(&state_output->plane_list, &dst->link);
-	if (src->fb)
+
+	/* Take a reference on the src framebuffer; if it wraps a client
+	 * buffer, then we must also transfer the reference on the client
+	 * buffer. */
+	if (src->fb) {
+		struct weston_buffer *buffer;
+
 		dst->fb = drm_fb_ref(src->fb);
+		memset(&dst->fb_ref, 0, sizeof(dst->fb_ref));
+
+		if (src->fb->type == BUFFER_CLIENT ||
+		    src->fb->type == BUFFER_DMABUF) {
+			buffer = src->fb_ref.buffer.buffer;
+		} else {
+			buffer = NULL;
+		}
+		weston_buffer_reference(&dst->fb_ref.buffer, buffer,
+					buffer ? BUFFER_MAY_BE_ACCESSED :
+					         BUFFER_WILL_NOT_BE_ACCESSED);
+		weston_buffer_release_reference(&dst->fb_ref.release,
+						src->fb_ref.release.buffer_release);
+	} else {
+		assert(!src->fb_ref.buffer.buffer);
+		assert(!src->fb_ref.release.buffer_release);
+	}
 	dst->output_state = state_output;
 	dst->complete = false;
 
@@ -174,17 +214,25 @@ drm_plane_state_put_back(struct drm_plane_state *state)
  * a given plane.
  */
 bool
-drm_plane_state_coords_for_view(struct drm_plane_state *state,
-				struct weston_view *ev, uint64_t zpos)
+drm_plane_state_coords_for_paint_node(struct drm_plane_state *state,
+				      struct weston_paint_node *node,
+				      uint64_t zpos)
 {
 	struct drm_output *output = state->output;
+	struct weston_view *ev = node->view;
 	struct weston_buffer *buffer = ev->surface->buffer_ref.buffer;
-	pixman_region32_t dest_rect, src_rect;
-	pixman_box32_t *box, tbox;
+	pixman_region32_t dest_rect;
+	pixman_box32_t *box;
+	struct weston_coord corners[2];
 	float sxf1, syf1, sxf2, syf2;
+	uint16_t min_alpha = state->plane->alpha_min;
+	uint16_t max_alpha = state->plane->alpha_max;
 
-	if (!drm_view_transform_supported(ev, &output->base))
+	if (!drm_paint_node_transform_supported(node, state->plane))
 		return false;
+
+	assert(node->valid_transform);
+	state->rotation = drm_rotation_from_output_transform(state->plane, node->transform);
 
 	/* Update the base weston_plane co-ordinates. */
 	box = pixman_region32_extents(&ev->transform.boundingbox);
@@ -197,42 +245,43 @@ drm_plane_state_coords_for_view(struct drm_plane_state *state,
 	pixman_region32_init(&dest_rect);
 	pixman_region32_intersect(&dest_rect, &ev->transform.boundingbox,
 				  &output->base.region);
-	pixman_region32_translate(&dest_rect, -output->base.x, -output->base.y);
+	weston_region_global_to_output(&dest_rect, &output->base, &dest_rect);
+
 	box = pixman_region32_extents(&dest_rect);
-	tbox = weston_transformed_rect(output->base.width,
-				       output->base.height,
-				       output->base.transform,
-				       output->base.current_scale,
-				       *box);
-	state->dest_x = tbox.x1;
-	state->dest_y = tbox.y1;
-	state->dest_w = tbox.x2 - tbox.x1;
-	state->dest_h = tbox.y2 - tbox.y1;
+
+	state->dest_x = box->x1;
+	state->dest_y = box->y1;
+	state->dest_w = box->x2 - box->x1;
+	state->dest_h = box->y2 - box->y1;
+
+	/* Now calculate the source rectangle, by transforming the destination
+	 * rectangle by the output to buffer matrix. */
+	corners[0] = weston_matrix_transform_coord(
+		&node->output_to_buffer_matrix,
+		weston_coord(box->x1, box->y1));
+	corners[1] = weston_matrix_transform_coord(
+		&node->output_to_buffer_matrix,
+		weston_coord(box->x2, box->y2));
+	sxf1 = corners[0].x;
+	syf1 = corners[0].y;
+	sxf2 = corners[1].x;
+	syf2 = corners[1].y;
 	pixman_region32_fini(&dest_rect);
 
-	/* Now calculate the source rectangle, by finding the extents of the
-	 * view, and working backwards to source co-ordinates. */
-	pixman_region32_init(&src_rect);
-	pixman_region32_intersect(&src_rect, &ev->transform.boundingbox,
-				  &output->base.region);
-	box = pixman_region32_extents(&src_rect);
-	weston_view_from_global_float(ev, box->x1, box->y1, &sxf1, &syf1);
-	weston_surface_to_buffer_float(ev->surface, sxf1, syf1, &sxf1, &syf1);
-	weston_view_from_global_float(ev, box->x2, box->y2, &sxf2, &syf2);
-	weston_surface_to_buffer_float(ev->surface, sxf2, syf2, &sxf2, &syf2);
-	pixman_region32_fini(&src_rect);
+	/* Make sure that our post-transform coordinates are in the
+	 * right order.
+	 */
+	if (sxf1 > sxf2) {
+		float temp = sxf1;
 
-	/* Buffer transforms may mean that x2 is to the left of x1, and/or that
-	 * y2 is above y1. */
-	if (sxf2 < sxf1) {
-		double tmp = sxf1;
 		sxf1 = sxf2;
-		sxf2 = tmp;
+		sxf2 = temp;
 	}
-	if (syf2 < syf1) {
-		double tmp = syf1;
+	if (syf1 > syf2) {
+		float temp = syf1;
+
 		syf1 = syf2;
-		syf2 = tmp;
+		syf2 = temp;
 	}
 
 	/* Shift from S23.8 wl_fixed to U16.16 KMS fixed-point encoding. */
@@ -257,6 +306,12 @@ drm_plane_state_coords_for_view(struct drm_plane_state *state,
 
 	/* apply zpos if available */
 	state->zpos = zpos;
+
+	/* The alpha of the view is normalized to alpha value range
+	 * [min_alpha, max_alpha] that got from drm. The alpha value would
+	 * never exceed max_alpha if ev->alpha <= 1.0.
+	 */
+	state->alpha = min_alpha + (uint16_t)round((max_alpha - min_alpha) * ev->alpha);
 
 	return true;
 }
@@ -406,11 +461,11 @@ drm_output_state_free(struct drm_output_state *state)
  * Allocate a new, empty, 'pending state' structure to be used across a
  * repaint cycle or similar.
  *
- * @param backend DRM backend
+ * @param device DRM device
  * @returns Newly-allocated pending state structure
  */
 struct drm_pending_state *
-drm_pending_state_alloc(struct drm_backend *backend)
+drm_pending_state_alloc(struct drm_device *device)
 {
 	struct drm_pending_state *ret;
 
@@ -418,7 +473,7 @@ drm_pending_state_alloc(struct drm_backend *backend)
 	if (!ret)
 		return NULL;
 
-	ret->backend = backend;
+	ret->device = device;
 	wl_list_init(&ret->output_list);
 
 	return ret;

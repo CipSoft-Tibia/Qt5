@@ -7,7 +7,9 @@
 
 #include <stdint.h>
 
+#include "ash/focus_cycler.h"
 #include "ash/shell_observer.h"
+#include "base/memory/raw_ptr.h"
 #include "chromeos/ui/base/window_state_type.h"
 #include "components/exo/surface.h"
 #include "components/exo/surface_observer.h"
@@ -31,7 +33,7 @@ class ShellSurfaceBase;
 namespace wayland {
 class SerialTracker;
 
-constexpr uint32_t kZAuraShellVersion = 50;
+constexpr uint32_t kZAuraShellVersion = 58;
 
 // Adds bindings to the Aura Shell. Normally this implies Ash on ChromeOS
 // builds. On non-ChromeOS builds the protocol provides access to Aura windowing
@@ -83,6 +85,7 @@ class AuraSurface : public SurfaceObserver,
                    const base::TimeDelta& show_delay,
                    const base::TimeDelta& hide_delay);
   void HideTooltip();
+  void SetAccessibilityId(int id);
 
   // Overridden from SurfaceObserver:
   void OnSurfaceDestroying(Surface* surface) override;
@@ -109,8 +112,8 @@ class AuraSurface : public SurfaceObserver,
       const aura::Window::OcclusionState occlusion_state);
 
  private:
-  Surface* surface_;
-  wl_resource* const resource_;
+  raw_ptr<Surface, ExperimentalAsh> surface_;
+  const raw_ptr<wl_resource, ExperimentalAsh> resource_;
 
   // Tooltip text sent from Lacros.
   // This is kept here since it should out-live ShowTooltip() scope.
@@ -126,6 +129,7 @@ class AuraToplevel {
  public:
   AuraToplevel(ShellSurface* shell_surface,
                SerialTracker* const serial_tracker,
+               SerialTracker* const rotation_serial_tracker,
                wl_resource* aura_toplevel_resource,
                wl_resource* xdg_toplevel_resource);
 
@@ -149,6 +153,7 @@ class AuraToplevel {
   void SetSnapSecondary(float snap_ratio);
   void IntentToSnap(uint32_t snap_direction);
   void UnsetSnap();
+  void SetTopInset(int top_inset);
 
   void OnConfigure(const gfx::Rect& bounds,
                    chromeos::WindowStateType state_type,
@@ -162,11 +167,21 @@ class AuraToplevel {
   void Deactivate();
   void SetFullscreenMode(uint32_t mode);
   void SetScaleFactor(float scale_factor);
+  void SetPersistable(bool persistable);
+  void SetShape(absl::optional<cc::Region> shape);
+  void AckRotateFocus(uint32_t serial, uint32_t handled);
+  void OnRotatePaneFocus(uint32_t serial,
+                         ash::FocusCycler::Direction direction,
+                         bool restart);
+  void SetCanMaximize(bool can_maximize);
+  void SetCanFullscreen(bool can_fullscreen);
 
-  ShellSurface* shell_surface_;
-  SerialTracker* const serial_tracker_;
-  wl_resource* xdg_toplevel_resource_;
-  wl_resource* aura_toplevel_resource_;
+  raw_ptr<ShellSurface, DanglingUntriaged | ExperimentalAsh> shell_surface_;
+  const raw_ptr<SerialTracker, ExperimentalAsh> serial_tracker_;
+  const raw_ptr<SerialTracker, ExperimentalAsh> rotation_serial_tracker_;
+  raw_ptr<wl_resource, DanglingUntriaged | ExperimentalAsh>
+      xdg_toplevel_resource_;
+  raw_ptr<wl_resource, ExperimentalAsh> aura_toplevel_resource_;
   bool supports_window_bounds_ = false;
 
   base::WeakPtrFactory<AuraToplevel> weak_ptr_factory_{this};
@@ -185,7 +200,7 @@ class AuraPopup {
   void SetScaleFactor(float scale_factor);
 
  private:
-  ShellSurfaceBase* shell_surface_;
+  raw_ptr<ShellSurfaceBase, DanglingUntriaged> shell_surface_;
 };
 
 class AuraOutput : public WaylandDisplayObserver {
@@ -210,8 +225,8 @@ class AuraOutput : public WaylandDisplayObserver {
   virtual void SendLogicalTransform(int32_t transform);
 
  private:
-  wl_resource* const resource_;
-  WaylandDisplayHandler* display_handler_;
+  const raw_ptr<wl_resource, ExperimentalAsh> resource_;
+  raw_ptr<WaylandDisplayHandler, ExperimentalAsh> display_handler_;
 };
 
 }  // namespace wayland

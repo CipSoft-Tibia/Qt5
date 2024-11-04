@@ -30,7 +30,7 @@
 #include "components/user_prefs/user_prefs.h"
 #include "components/variations/scoped_variations_ids_provider.h"
 #include "content/public/browser/browser_context.h"
-#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/navigation_throttle.h"
 #include "content/public/browser/render_process_host.h"
@@ -154,7 +154,8 @@ class SafeBrowsingTriggeredPopupBlockerTestBase
   variations::ScopedVariationsIdsProvider scoped_variations_ids_provider_{
       variations::VariationsIdsProvider::Mode::kUseSignedInState};
   scoped_refptr<FakeSafeBrowsingDatabaseManager> fake_safe_browsing_database_;
-  raw_ptr<SafeBrowsingTriggeredPopupBlocker> popup_blocker_ = nullptr;
+  raw_ptr<SafeBrowsingTriggeredPopupBlocker, DanglingUntriaged> popup_blocker_ =
+      nullptr;
   std::unique_ptr<content::TestNavigationThrottleInserter> throttle_inserter_;
   sync_preferences::TestingPrefServiceSyncable pref_service_;
   scoped_refptr<HostContentSettingsMap> settings_map_;

@@ -20,10 +20,22 @@
 namespace MyTopLevelNamespace::qtprotobufnamespace::tests {
 class EmptyMessage;
 using EmptyMessageRepeated = QList<EmptyMessage>;
+namespace EmptyMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace EmptyMessage_QtProtobufNested
+
 class SimpleStringMessage;
 using SimpleStringMessageRepeated = QList<SimpleStringMessage>;
+namespace SimpleStringMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleStringMessage_QtProtobufNested
+
 class ComplexMessage;
 using ComplexMessageRepeated = QList<ComplexMessage>;
+namespace ComplexMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace ComplexMessage_QtProtobufNested
+
 
 class EmptyMessage_QtProtobufData;
 class EmptyMessage : public QProtobufMessage
@@ -33,6 +45,7 @@ class EmptyMessage : public QProtobufMessage
     Q_DECLARE_PROTOBUF_SERIALIZERS(EmptyMessage)
 
 public:
+    using QtProtobufFieldEnum = EmptyMessage_QtProtobufNested::QtProtobufFieldEnum;
     EmptyMessage();
     ~EmptyMessage();
     EmptyMessage(const EmptyMessage &other);
@@ -46,6 +59,10 @@ public:
 private:
     QExplicitlySharedDataPointer<EmptyMessage_QtProtobufData> dptr;
 };
+namespace EmptyMessage_QtProtobufNested {
+Q_NAMESPACE
+
+} // namespace EmptyMessage_QtProtobufNested
 
 class SimpleStringMessage_QtProtobufData;
 class SimpleStringMessage : public QProtobufMessage
@@ -56,11 +73,7 @@ class SimpleStringMessage : public QProtobufMessage
     Q_PROPERTY(QString testFieldString READ testFieldString WRITE setTestFieldString SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldStringProtoFieldNumber = 6,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleStringMessage_QtProtobufNested::QtProtobufFieldEnum;
     SimpleStringMessage();
     ~SimpleStringMessage();
     SimpleStringMessage(const SimpleStringMessage &other);
@@ -77,6 +90,15 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleStringMessage_QtProtobufData> dptr;
 };
+namespace SimpleStringMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestFieldStringProtoFieldNumber = 6,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleStringMessage_QtProtobufNested
 
 class ComplexMessage_QtProtobufData;
 class ComplexMessage : public QProtobufMessage
@@ -88,12 +110,7 @@ class ComplexMessage : public QProtobufMessage
     Q_PROPERTY(MyTopLevelNamespace::qtprotobufnamespace::tests::SimpleStringMessage *testComplexField_p READ testComplexField_p WRITE setTestComplexField_p SCRIPTABLE false)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldIntProtoFieldNumber = 1,
-        TestComplexFieldProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = ComplexMessage_QtProtobufNested::QtProtobufFieldEnum;
     ComplexMessage();
     ~ComplexMessage();
     ComplexMessage(const ComplexMessage &other);
@@ -105,7 +122,10 @@ public:
 
     QtProtobuf::int32 testFieldInt() const;
 
-    SimpleStringMessage &testComplexField() const;
+    bool hasTestComplexField() const;
+    SimpleStringMessage &testComplexField();
+    const SimpleStringMessage &testComplexField() const;
+    void clearTestComplexField();
     void setTestFieldInt(const QtProtobuf::int32 &testFieldInt);
     void setTestComplexField(const SimpleStringMessage &testComplexField);
     static void registerTypes();
@@ -115,6 +135,16 @@ private:
     void setTestComplexField_p(SimpleStringMessage *testComplexField);
     QExplicitlySharedDataPointer<ComplexMessage_QtProtobufData> dptr;
 };
+namespace ComplexMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestFieldIntProtoFieldNumber = 1,
+    TestComplexFieldProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace ComplexMessage_QtProtobufNested
 } // namespace MyTopLevelNamespace::qtprotobufnamespace::tests
 
 Q_DECLARE_METATYPE(MyTopLevelNamespace::qtprotobufnamespace::tests::EmptyMessage)

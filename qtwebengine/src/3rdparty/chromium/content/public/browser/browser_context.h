@@ -65,11 +65,10 @@ namespace perfetto {
 template <typename>
 class TracedProto;
 
-namespace protos {
-namespace pbzero {
+namespace protos::pbzero {
 class ChromeBrowserContext;
-}
-}  // namespace protos
+}  // namespace protos::pbzero
+
 }  // namespace perfetto
 
 namespace content {
@@ -303,11 +302,6 @@ class CONTENT_EXPORT BrowserContext : public base::SupportsUserData {
   virtual std::unique_ptr<download::InProgressDownloadManager>
   RetrieveInProgressDownloadManager();
 
-  // Utility function useful for embedders. Only needs to be called if
-  // 1) The embedder needs to use a new salt, and
-  // 2) The embedder saves its salt across restarts.
-  static std::string CreateRandomMediaDeviceIDSalt();
-
   using TraceProto = perfetto::protos::pbzero::ChromeBrowserContext;
   // Write a representation of this object into tracing proto.
   // rvalue ensure that the this method can be called without having access
@@ -402,10 +396,6 @@ class CONTENT_EXPORT BrowserContext : public base::SupportsUserData {
   // Returns the BrowsingDataRemoverDelegate for this context. This will be
   // called once per context. It's valid to return nullptr.
   virtual BrowsingDataRemoverDelegate* GetBrowsingDataRemoverDelegate() = 0;
-
-  // Returns a random salt string that is used for creating media device IDs.
-  // Default implementation uses the BrowserContext's UniqueId.
-  virtual std::string GetMediaDeviceIDSalt();
 
 #if defined(TOOLKIT_QT) && BUILDFLAG(ENABLE_SPELLCHECK)
   // Inform about not working dictionary for given language

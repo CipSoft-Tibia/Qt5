@@ -47,7 +47,7 @@
 #if defined(V8_USE_EXTERNAL_STARTUP_DATA) && BUILDFLAG(IS_ANDROID)
 #include "base/android/apk_assets.h"
 #elif BUILDFLAG(IS_MAC)
-#include "base/mac/foundation_util.h"
+#include "base/apple/foundation_util.h"
 #endif
 
 namespace gin {
@@ -123,7 +123,7 @@ void GetV8FilePath(const char* file_name, base::FilePath* path_out) {
   *path_out =
       base::FilePath(FILE_PATH_LITERAL("assets")).AppendASCII(file_name);
 #elif BUILDFLAG(IS_MAC) && !defined(TOOLKIT_QT)
-  *path_out = base::mac::PathForFrameworkBundleResource(file_name);
+  *path_out = base::apple::PathForFrameworkBundleResource(file_name);
 #else
   base::FilePath data_path;
   bool r = base::PathService::Get(base::DIR_ASSETS, &data_path);
@@ -242,14 +242,17 @@ void SetFlags(IsolateHolder::ScriptMode mode,
                          "--no-compact-code-space-with-stack");
   SetV8FlagsIfOverridden(features::kV8CompactWithStack, "--compact-with-stack",
                          "--no-compact-with-stack");
-  SetV8FlagsIfOverridden(features::kV8CrashOnEvacuationFailure,
-                         "--crash-on-aborted-evacuation",
-                         "--no-crash-on-aborted-evacuation");
   SetV8FlagsIfOverridden(features::kV8OptimizeJavascript, "--opt", "--no-opt");
   SetV8FlagsIfOverridden(features::kV8FlushBytecode, "--flush-bytecode",
                          "--no-flush-bytecode");
   SetV8FlagsIfOverridden(features::kV8FlushBaselineCode,
                          "--flush-baseline-code", "--no-flush-baseline-code");
+  SetV8FlagsIfOverridden(features::kV8FlushCodeBasedOnTabVisibility,
+                         "--flush-code-based-on-tab-visibility",
+                         "--no-flush-code-based-on-tab-visibility");
+  SetV8FlagsIfOverridden(features::kV8FlushCodeBasedOnTime,
+                         "--flush-code-based-on-time",
+                         "--no-flush-code-based-on-time");
   SetV8FlagsIfOverridden(features::kV8OffThreadFinalization,
                          "--finalize-streaming-on-background",
                          "--no-finalize-streaming-on-background");
@@ -259,6 +262,9 @@ void SetFlags(IsolateHolder::ScriptMode mode,
         static_cast<int>(
             features::kV8MemoryReducerStartDelay.Get().InMilliseconds()));
   }
+  SetV8FlagsIfOverridden(features::kV8ConcurrentMarkingHighPriorityThreads,
+                         "--concurrent-marking-high-priority-threads",
+                         "--no-concurrent-marking-high-priority-threads");
   SetV8FlagsIfOverridden(features::kV8LazyFeedbackAllocation,
                          "--lazy-feedback-allocation",
                          "--no-lazy-feedback-allocation");
@@ -283,9 +289,17 @@ void SetFlags(IsolateHolder::ScriptMode mode,
   SetV8FlagsIfOverridden(features::kV8MegaDomIC, "--mega-dom-ic",
                          "--no-mega-dom-ic");
   SetV8FlagsIfOverridden(features::kV8Maglev, "--maglev", "--no-maglev");
+  if (base::FeatureList::IsEnabled(features::kV8MemoryReducer)) {
+    SetV8FlagsFormatted("--memory-reducer-gc-count=%i",
+                        features::kV8MemoryReducerGCCount.Get());
+  }
+  SetV8FlagsIfOverridden(features::kV8MinorMC, "--minor-ms", "--no-minor-ms");
+  SetV8FlagsIfOverridden(features::kV8MinorMS, "--minor-ms", "--no-minor-ms");
   SetV8FlagsIfOverridden(features::kV8Sparkplug, "--sparkplug",
                          "--no-sparkplug");
   SetV8FlagsIfOverridden(features::kV8Turbofan, "--turbofan", "--no-turbofan");
+  SetV8FlagsIfOverridden(features::kV8Turboshaft, "--turboshaft",
+                         "--no-turboshaft");
   SetV8FlagsIfOverridden(features::kV8ConcurrentSparkplug,
                          "--concurrent-sparkplug", "--no-concurrent-sparkplug");
   SetV8FlagsIfOverridden(features::kV8SparkplugNeedsShortBuiltinCalls,
@@ -298,6 +312,12 @@ void SetFlags(IsolateHolder::ScriptMode mode,
                          "--no-write-protect-code-memory");
   SetV8FlagsIfOverridden(features::kV8SlowHistograms, "--slow-histograms",
                          "--no-slow-histograms");
+  SetV8FlagsIfOverridden(features::kV8SingleThreadedGCInBackground,
+                         "--single-threaded-gc-in-background",
+                         "--no-single-threaded-gc-in-background");
+  SetV8FlagsIfOverridden(features::kV8MidtierRegallocFallback,
+                         "--turbo-use-mid-tier-regalloc-for-huge-functions",
+                         "--no-turbo-use-mid-tier-regalloc-for-huge-functions");
 
   if (base::FeatureList::IsEnabled(features::kV8ConcurrentSparkplug)) {
     if (int max_threads = features::kV8ConcurrentSparkplugMaxThreads.Get()) {
@@ -311,6 +331,12 @@ void SetFlags(IsolateHolder::ScriptMode mode,
   if (base::FeatureList::IsEnabled(features::kV8FlushBytecode)) {
     if (int old_age = features::kV8FlushBytecodeOldAge.Get()) {
       SetV8FlagsFormatted("--bytecode-old-age=%i", old_age);
+    }
+  }
+
+  if (base::FeatureList::IsEnabled(features::kV8FlushCodeBasedOnTime)) {
+    if (int old_time = features::kV8FlushCodeOldTime.Get()) {
+      SetV8FlagsFormatted("--bytecode-old-time=%i", old_time);
     }
   }
 
@@ -330,6 +356,10 @@ void SetFlags(IsolateHolder::ScriptMode mode,
                            "--no-slow-histograms");
   }
 
+  SetV8FlagsIfOverridden(features::kV8IgnitionElideRedundantTdzChecks,
+                         "--ignition-elide-redundant-tdz-checks",
+                         "--no-ignition-elide-redundant-tdz-checks");
+
   // JavaScript language features.
   SetV8FlagsIfOverridden(features::kJavaScriptSymbolAsWeakMapKey,
                          "--harmony-symbol-as-weakmap-key",
@@ -348,6 +378,12 @@ void SetFlags(IsolateHolder::ScriptMode mode,
   SetV8FlagsIfOverridden(features::kJavaScriptRegExpUnicodeSets,
                          "--harmony-regexp-unicode-sets",
                          "--no-harmony-regexp-unicode-sets");
+  SetV8FlagsIfOverridden(features::kJavaScriptJsonParseWithSource,
+                         "--harmony-json-parse-with-source",
+                         "--no-harmony-json-parse-with-source");
+  SetV8FlagsIfOverridden(features::kJavaScriptArrayBufferTransfer,
+                         "--harmony-rab-gsab-transfer",
+                         "--no-harmony-rab-gsab-transfer");
 
   if (IsolateHolder::kStrictMode == mode) {
     SetV8Flags("--use_strict");
@@ -357,11 +393,21 @@ void SetFlags(IsolateHolder::ScriptMode mode,
                          "--use-libm-trig-functions",
                          "--no-use-libm-trig-functions");
 
+  SetV8FlagsIfOverridden(features::kJavaScriptCompileHintsMagic,
+                         "--compile-hints-magic", "--no-compile-hints-magic");
+
+  SetV8FlagsIfOverridden(features::kJavaScriptIteratorHelpers,
+                         "--harmony-iterator-helpers",
+                         "--no-harmony-iterator-helpers");
+
   // WebAssembly features.
 
   SetV8FlagsIfOverridden(features::kWebAssemblyTailCall,
                          "--experimental-wasm-return-call",
                          "--no-experimental-wasm-return-call");
+  SetV8FlagsIfOverridden(features::kWebAssemblyInlining,
+                         "--experimental-wasm-inlining",
+                         "--no-experimental-wasm-inlining");
 
   if (js_command_line_flags.empty())
     return;

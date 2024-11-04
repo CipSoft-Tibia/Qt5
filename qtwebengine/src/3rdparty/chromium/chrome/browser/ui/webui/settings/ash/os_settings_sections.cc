@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/webui/settings/ash/os_settings_sections.h"
 
+#include "ash/constants/ash_features.h"
 #include "base/containers/contains.h"
 #include "build/branding_buildflags.h"
 #include "chrome/browser/profiles/profile.h"
@@ -26,6 +27,7 @@
 #include "chrome/browser/ui/webui/settings/ash/privacy_section.h"
 #include "chrome/browser/ui/webui/settings/ash/reset_section.h"
 #include "chrome/browser/ui/webui/settings/ash/search_section.h"
+#include "chrome/browser/ui/webui/settings/ash/system_preferences_section.h"
 #include "chromeos/ash/components/phonehub/phone_hub_manager.h"
 
 namespace ash::settings {
@@ -39,8 +41,6 @@ OsSettingsSections::OsSettingsSections(
     SearchTagRegistry* search_tag_registry,
     multidevice_setup::MultiDeviceSetupClient* multidevice_setup_client,
     phonehub::PhoneHubManager* phone_hub_manager,
-    syncer::SyncService* sync_service,
-    SupervisedUserService* supervised_user_service,
     KerberosCredentialsManager* kerberos_credentials_manager,
     ArcAppListPrefs* arc_app_list_prefs,
     signin::IdentityManager* identity_manager,
@@ -68,9 +68,8 @@ OsSettingsSections::OsSettingsSections(
           phone_hub_manager, android_sms_service, prefs, eche_app_manager));
 
   AddSection(mojom::Section::kPeople,
-             std::make_unique<PeopleSection>(
-                 profile, search_tag_registry, sync_service,
-                 supervised_user_service, identity_manager, prefs));
+             std::make_unique<PeopleSection>(profile, search_tag_registry,
+                                             identity_manager, prefs));
 
   AddSection(mojom::Section::kDevice, std::make_unique<DeviceSection>(
                                           profile, search_tag_registry, prefs));
@@ -78,9 +77,6 @@ OsSettingsSections::OsSettingsSections(
   AddSection(mojom::Section::kPersonalization,
              std::make_unique<PersonalizationSection>(
                  profile, search_tag_registry, prefs));
-
-  AddSection(mojom::Section::kSearchAndAssistant,
-             std::make_unique<SearchSection>(profile, search_tag_registry));
 
   AddSection(mojom::Section::kApps, std::make_unique<AppsSection>(
                                         profile, search_tag_registry, prefs,
@@ -90,16 +86,9 @@ OsSettingsSections::OsSettingsSections(
       mojom::Section::kCrostini,
       std::make_unique<CrostiniSection>(profile, search_tag_registry, prefs));
 
-  AddSection(mojom::Section::kDateAndTime,
-             std::make_unique<DateTimeSection>(profile, search_tag_registry));
-
   AddSection(
       mojom::Section::kPrivacyAndSecurity,
       std::make_unique<PrivacySection>(profile, search_tag_registry, prefs));
-
-  AddSection(
-      mojom::Section::kLanguagesAndInput,
-      std::make_unique<LanguagesSection>(profile, search_tag_registry, prefs));
 
   AddSection(mojom::Section::kFiles,
              std::make_unique<FilesSection>(profile, search_tag_registry));
@@ -112,9 +101,6 @@ OsSettingsSections::OsSettingsSections(
              std::make_unique<AccessibilitySection>(
                  profile, search_tag_registry, prefs));
 
-  AddSection(mojom::Section::kReset,
-             std::make_unique<ResetSection>(profile, search_tag_registry));
-
   AddSection(mojom::Section::kAboutChromeOs,
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
              std::make_unique<AboutSection>(profile, search_tag_registry, prefs)
@@ -126,6 +112,25 @@ OsSettingsSections::OsSettingsSections(
   AddSection(mojom::Section::kKerberos,
              std::make_unique<KerberosSection>(profile, search_tag_registry,
                                                kerberos_credentials_manager));
+
+  if (ash::features::IsOsSettingsRevampWayfindingEnabled()) {
+    AddSection(mojom::Section::kSystemPreferences,
+               std::make_unique<SystemPreferencesSection>(
+                   profile, search_tag_registry, prefs));
+  } else {
+    AddSection(mojom::Section::kDateAndTime,
+               std::make_unique<DateTimeSection>(profile, search_tag_registry));
+
+    AddSection(mojom::Section::kLanguagesAndInput,
+               std::make_unique<LanguagesSection>(profile, search_tag_registry,
+                                                  prefs));
+
+    AddSection(mojom::Section::kReset,
+               std::make_unique<ResetSection>(profile, search_tag_registry));
+
+    AddSection(mojom::Section::kSearchAndAssistant,
+               std::make_unique<SearchSection>(profile, search_tag_registry));
+  }
 }
 
 OsSettingsSections::OsSettingsSections() = default;

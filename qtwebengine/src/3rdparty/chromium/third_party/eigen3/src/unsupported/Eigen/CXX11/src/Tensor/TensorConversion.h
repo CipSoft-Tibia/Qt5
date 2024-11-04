@@ -442,12 +442,6 @@ struct TensorEvaluator<const TensorConversionOp<TargetType, ArgType>, Device>
 
   /// required by sycl in order to extract the sycl accessor
   const TensorEvaluator<ArgType, Device>& impl() const { return m_impl; }
-#ifdef EIGEN_USE_SYCL
-  // binding placeholder accessors to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_impl.bind(cgh);
-  }
-#endif
 
  protected:
   TensorEvaluator<ArgType, Device> m_impl;

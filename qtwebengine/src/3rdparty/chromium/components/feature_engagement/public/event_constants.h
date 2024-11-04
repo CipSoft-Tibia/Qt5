@@ -6,6 +6,7 @@
 #define COMPONENTS_FEATURE_ENGAGEMENT_PUBLIC_EVENT_CONSTANTS_H_
 
 #include "build/build_config.h"
+#include "components/feature_engagement/public/feature_constants.h"
 
 namespace feature_engagement {
 
@@ -29,13 +30,8 @@ extern const char kReadingListItemAdded[];
 extern const char kReadingListMenuOpened[];
 // Bookmark star button was clicked opening the menu.
 extern const char kBookmarkStarMenuOpened[];
-
-// All conditions for reopen closed tab IPH were met. Since this IPH needs to
-// track user events (opening/closing tabs, focusing the omnibox, etc) on the
-// second level, it must be done manually.
-extern const char kReopenTabConditionsMet[];
-// The user reopened a previously closed tab.
-extern const char kTabReopened[];
+// Customize chrome was opened.
+extern const char kCustomizeChromeOpened[];
 
 // A tab with playing media was sent to the background.
 extern const char kMediaBackgrounded[];
@@ -85,6 +81,15 @@ extern const char kHighEfficiencyDialogShown[];
 // The user clicked on the performance menu item
 extern const char kPerformanceMenuItemActivated[];
 
+// Extensions menu is opened when any extension has access to the current site.
+extern const char kExtensionsMenuOpenedWhileExtensionHasAccess[];
+
+// Th user clicked the extensions request access button in the toolbar.
+extern const char kExtensionsRequestAccessButtonClicked[];
+
+// The user has opened the cookie controls bubble.
+extern const char kCookieControlsBubbleShown[];
+
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
 
@@ -129,6 +134,15 @@ extern const char kPriceNotificationsUsed[];
 // The user has been shown a default browser promo.
 extern const char kDefaultBrowserPromoShown[];
 
+// The Password Manager widget promo was triggered.
+extern const char kPasswordManagerWidgetPromoTriggered[];
+
+// The Password Manager widget was used.
+extern const char kPasswordManagerWidgetPromoUsed[];
+
+// The Password Manager widget promo was closed.
+extern const char kPasswordManagerWidgetPromoClosed[];
+
 // The user has taken an action that is a criterion towards becoming eligible to
 // be shown the blue dot default browser promo.
 extern const char kBlueDotPromoCriterionMet[];
@@ -160,6 +174,28 @@ extern const char kBlueDotPromoOverflowMenuDismissed[];
 // The user has dismissed the blue dot default browser promo on the settings
 // row.
 extern const char kBlueDotPromoSettingsDismissed[];
+
+// The user snoozed the Credential Provider Extension Promo
+extern const char kCredentialProviderExtensionPromoSnoozed[];
+
+// The user opened an url from omnibox.
+extern const char kOpenUrlFromOmnibox[];
+
+// The new tab toolbar item is used.
+extern const char kNewTabToolbarItemUsed[];
+
+// The tab grid toolbar item is used.
+extern const char kTabGridToolbarItemUsed[];
+
+// The history item on overflow menu is used.
+extern const char kHistoryOnOverflowMenuUsed[];
+
+// The share item on the toolbar is used.
+extern const char kShareToolbarItemUsed[];
+
+// The user has met a condition that makes the default browser video promo
+// eligible to be displayed.
+extern const char kDefaultBrowserVideoPromoConditionsMet[];
 
 #endif  // BUILDFLAG(IS_IOS)
 

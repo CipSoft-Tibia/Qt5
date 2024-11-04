@@ -10,6 +10,7 @@
 #include "mojo/public/cpp/bindings/remote.h"
 #include "net/base/completion_once_callback.h"
 #include "net/cert/cert_verify_result.h"
+#include "net/cert/crl_set.h"
 #include "services/cert_verifier/cert_net_url_loader/cert_net_fetcher_url_loader.h"
 #include "services/cert_verifier/cert_verifier_service_factory.h"
 #include "services/network/public/mojom/cert_verifier_service.mojom.h"
@@ -82,15 +83,18 @@ void ReconnectURLLoaderFactory(
 CertVerifierServiceImpl::CertVerifierServiceImpl(
     std::unique_ptr<net::CertVerifierWithUpdatableProc> verifier,
     mojo::PendingReceiver<mojom::CertVerifierService> receiver,
+    mojo::PendingRemote<mojom::CertVerifierServiceClient> client,
     scoped_refptr<CertNetFetcherURLLoader> cert_net_fetcher)
     : verifier_(std::move(verifier)),
       receiver_(this, std::move(receiver)),
+      client_(std::move(client)),
       cert_net_fetcher_(std::move(cert_net_fetcher)) {
   // base::Unretained is safe because |this| owns |receiver_|, so deleting
   // |this| will prevent |receiver_| from calling this callback.
   receiver_.set_disconnect_handler(
       base::BindRepeating(&CertVerifierServiceImpl::OnDisconnectFromService,
                           base::Unretained(this)));
+  verifier_->AddObserver(this);
 }
 
 // Note: this object owns the underlying CertVerifier, which owns all of the
@@ -98,6 +102,7 @@ CertVerifierServiceImpl::CertVerifierServiceImpl(
 // mojo::Remote<CertVerifierRequest> objects, so destroying this object cancels
 // the verifications and all the callbacks.
 CertVerifierServiceImpl::~CertVerifierServiceImpl() {
+  verifier_->RemoveObserver(this);
   if (cert_net_fetcher_)
     cert_net_fetcher_->Shutdown();
 }
@@ -127,16 +132,14 @@ void CertVerifierServiceImpl::SetCertVerifierServiceFactory(
   service_factory_impl_ = std::move(service_factory_impl);
 }
 
-void CertVerifierServiceImpl::UpdateChromeRootStoreData(
-    const net::ChromeRootStoreData* root_store_data) {
-  verifier_->UpdateChromeRootStoreData(cert_net_fetcher_, root_store_data);
+void CertVerifierServiceImpl::UpdateVerifierData(
+    const net::CertVerifyProcFactory::ImplParams& impl_params) {
+  verifier_->UpdateVerifyProcData(cert_net_fetcher_, impl_params);
 }
 
 void CertVerifierServiceImpl::Verify(
     const net::CertVerifier::RequestParams& params,
-    uint32_t netlog_source_type,
-    uint32_t netlog_source_id,
-    base::TimeTicks netlog_source_start_time,
+    const net::NetLogSource& net_log_source,
     mojo::PendingRemote<mojom::CertVerifierRequest> cert_verifier_request) {
   DVLOG(3) << "Received certificate validation request for hostname: "
            << params.hostname();
@@ -155,24 +158,14 @@ void CertVerifierServiceImpl::Verify(
       base::BindOnce(&CertVerifyResultHelper::CompleteCertVerifierRequest,
                      std::move(result_helper));
 
-  if (netlog_source_type >=
-      static_cast<uint32_t>(net::NetLogSourceType::COUNT)) {
-    // Note that netlog_source_id is not checked here. It is valid to pass a
-    // unbound NetLogWithSource into CertVerifier::Verify. If that occurs
-    // the netlog_source_id passed through mojo will be kInvalidId and the
-    // NetLogWithSource::Make below will in turn create an unbound
-    // NetLogWithSource.
-    receiver_.ReportBadMessage("invalid NetLogSource");
-    return;
-  }
+  // Note it is valid to pass a unbound NetLogWithSource into
+  // CertVerifier::Verify. If that occurs the net_log_source.id passed through
+  // mojo will be kInvalidId and the NetLogWithSource::Make below will in turn
+  // create an unbound NetLogWithSource.
   int net_err = verifier_->Verify(
       params, result.get(), std::move(callback),
       result_helper_ptr->local_request(),
-      net::NetLogWithSource::Make(
-          net::NetLog::Get(),
-          net::NetLogSource(
-              static_cast<net::NetLogSourceType>(netlog_source_type),
-              netlog_source_id, netlog_source_start_time)));
+      net::NetLogWithSource::Make(net::NetLog::Get(), net_log_source));
   if (net_err == net::ERR_IO_PENDING) {
     // If this request is to be completely asynchronously, give the callback
     // ownership of our mojom::CertVerifierRequest and net::CertVerifyResult.
@@ -185,6 +178,10 @@ void CertVerifierServiceImpl::Verify(
         std::move(cert_verifier_request));
     remote->Complete(*result, net_err);
   }
+}
+
+void CertVerifierServiceImpl::OnCertVerifierChanged() {
+  client_->OnCertVerifierChanged();
 }
 
 void CertVerifierServiceImpl::OnDisconnectFromService() {

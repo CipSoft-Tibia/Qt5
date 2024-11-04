@@ -117,13 +117,13 @@ namespace internal {
 
 // NOTE: This helper is kept for backward compatibility with previous code specializing
 //       this internal::significant_decimals_impl structure. In the future we should directly
-//       call digits10() which has been introduced in July 2016 in 3.3.
+//       call max_digits10().
 template<typename Scalar>
 struct significant_decimals_impl
 {
   static inline int run()
   {
-    return NumTraits<Scalar>::digits10();
+    return NumTraits<Scalar>::max_digits10();
   }
 };
 
@@ -251,6 +251,11 @@ std::ostream & operator <<
  const DenseBase<Derived> & m)
 {
   return internal::print_matrix(s, m.eval(), EIGEN_DEFAULT_IO_FORMAT);
+}
+
+template <typename Derived>
+std::ostream& operator<<(std::ostream& s, const DiagonalBase<Derived>& m) {
+  return internal::print_matrix(s, m.derived(), EIGEN_DEFAULT_IO_FORMAT);
 }
 
 } // end namespace Eigen

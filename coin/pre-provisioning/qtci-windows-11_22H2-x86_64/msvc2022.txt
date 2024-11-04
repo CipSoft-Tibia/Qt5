@@ -62,7 +62,7 @@ Windows Universal C Runtime
 ############################################################
 ### Visual Studio 2022 build tools ###
 
- Visual studio 2022 build tools version 17.3.5 was installed manually using installer: "http://ci-files01-hki.intra.qt.io/input/windows/vs_BuildTools_msvc2022.exe"
+ Visual studio 2022 build tools version 17.3.5 was installed manually using installer: "http://ci-files01-hki.ci.qt.io/input/windows/vs_BuildTools_msvc2022.exe"
   * Only default installation, no additional selections
  Visual Studio 2022 build tools were updated to 17.6.4 vith Visual Studio Installer
   * Some of the installed framework versions are out of support and do not get any security updates

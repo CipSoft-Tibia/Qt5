@@ -20,13 +20,15 @@
 #include "chrome/browser/extensions/api/passwords_private/passwords_private_delegate.h"
 #include "chrome/browser/extensions/api/passwords_private/passwords_private_utils.h"
 #include "chrome/browser/ui/passwords/settings/password_manager_porter.h"
+#include "chrome/browser/web_applications/web_app_install_manager_observer.h"
 #include "chrome/common/extensions/api/passwords_private.h"
-#include "components/device_reauth/biometric_authenticator.h"
+#include "components/device_reauth/device_authenticator.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/password_manager/core/browser/export/password_manager_exporter.h"
 #include "components/password_manager/core/browser/password_access_authenticator.h"
 #include "components/password_manager/core/browser/password_account_storage_settings_watcher.h"
 #include "components/password_manager/core/browser/reauth_purpose.h"
+#include "components/password_manager/core/browser/sharing/recipients_fetcher.h"
 #include "components/password_manager/core/browser/ui/credential_ui_entry.h"
 #include "components/password_manager/core/browser/ui/export_progress_status.h"
 #include "components/password_manager/core/browser/ui/saved_passwords_presenter.h"
@@ -39,12 +41,21 @@ namespace content {
 class WebContents;
 }
 
+namespace web_app {
+class WebAppInstallManager;
+}
+
+namespace password_manager {
+class RecipientsFetcher;
+}
+
 namespace extensions {
 
 // Concrete PasswordsPrivateDelegate implementation.
 class PasswordsPrivateDelegateImpl
     : public PasswordsPrivateDelegate,
-      public password_manager::SavedPasswordsPresenter::Observer {
+      public password_manager::SavedPasswordsPresenter::Observer,
+      public web_app::WebAppInstallManagerObserver {
  public:
   explicit PasswordsPrivateDelegateImpl(Profile* profile);
 
@@ -65,10 +76,9 @@ class PasswordsPrivateDelegateImpl
                    const std::u16string& note,
                    bool use_account_store,
                    content::WebContents* web_contents) override;
-  absl::optional<int> ChangeSavedPassword(
-      int id,
-      const api::passwords_private::ChangeSavedPasswordParams& params) override;
-  void RemoveSavedPassword(
+  bool ChangeCredential(
+      const api::passwords_private::PasswordUiEntry& credential) override;
+  void RemoveCredential(
       int id,
       api::passwords_private::PasswordStoreSet from_stores) override;
   void RemovePasswordException(int id) override;
@@ -82,13 +92,18 @@ class PasswordsPrivateDelegateImpl
                                  content::WebContents* web_contents) override;
   void MovePasswordsToAccount(const std::vector<int>& ids,
                               content::WebContents* web_contents) override;
+  void FetchFamilyMembers(FetchFamilyResultsCallback callback) override;
+  void SharePassword(int id, const ShareRecipients& recipients) override;
   void ImportPasswords(api::passwords_private::PasswordStoreSet to_store,
                        ImportResultsCallback results_callback,
                        content::WebContents* web_contents) override;
+  void ContinueImport(const std::vector<int>& selected_ids,
+                      ImportResultsCallback results_callback,
+                      content::WebContents* web_contents) override;
+  void ResetImporter(bool delete_file) override;
   void ExportPasswords(
       base::OnceCallback<void(const std::string&)> accepted_callback,
       content::WebContents* web_contents) override;
-  void CancelExportPasswords() override;
   api::passwords_private::ExportProgressStatus GetExportProgressStatus()
       override;
   bool IsOptedInForAccountStorage() override;
@@ -103,10 +118,7 @@ class PasswordsPrivateDelegateImpl
       const api::passwords_private::PasswordUiEntry& credential) override;
   bool UnmuteInsecureCredential(
       const api::passwords_private::PasswordUiEntry& credential) override;
-  void RecordChangePasswordFlowStarted(
-      const api::passwords_private::PasswordUiEntry& credential) override;
   void StartPasswordCheck(StartPasswordCheckCallback callback) override;
-  void StopPasswordCheck() override;
   api::passwords_private::PasswordCheckStatus GetPasswordCheckStatus() override;
   password_manager::InsecureCredentialsManager* GetInsecureCredentialsManager()
       override;
@@ -135,13 +147,26 @@ class PasswordsPrivateDelegateImpl
       std::unique_ptr<PasswordManagerPorterInterface> porter) {
     password_manager_porter_ = std::move(porter);
   }
+
+  void SetRecipientsFetcherForTesting(
+      std::unique_ptr<password_manager::RecipientsFetcher>
+          sharing_password_recipients_fetcher) {
+    sharing_password_recipients_fetcher_ =
+        std::move(sharing_password_recipients_fetcher);
+  }
+
 #endif  // defined(UNIT_TEST)
 
  private:
   ~PasswordsPrivateDelegateImpl() override;
 
   // password_manager::SavedPasswordsPresenter::Observer implementation.
-  void OnSavedPasswordsChanged() override;
+  void OnSavedPasswordsChanged(
+      const password_manager::PasswordStoreChangeList& changes) override;
+
+  // web_app::WebAppInstallManagerObserver implementation.
+  void OnWebAppInstalledWithOsHooks(const web_app::AppId& app_id) override;
+  void OnWebAppInstallManagerDestroyed() override;
 
   // Called after the lists are fetched. Once both lists have been set, the
   // class is considered initialized and any queued functions (which could
@@ -182,6 +207,11 @@ class PasswordsPrivateDelegateImpl
       content::WebContents* web_contents,
       bool authenticated);
 
+  // Callback for ContinueImport() after authentication check.
+  void OnImportPasswordsAuthResult(ImportResultsCallback results_callback,
+                                   const std::vector<int>& selected_ids,
+                                   bool authenticated);
+
   void OnAccountStorageOptInStateChanged();
 
   // Decides whether an authentication check is successful. Passes the result
@@ -192,6 +222,11 @@ class PasswordsPrivateDelegateImpl
       password_manager::ReauthPurpose purpose,
       password_manager::PasswordAccessAuthenticator::AuthResultCallback
           callback);
+
+  void OnFetchingFamilyMembersCompleted(
+      FetchFamilyResultsCallback callback,
+      std::vector<password_manager::RecipientInfo> recipients_info,
+      password_manager::FetchFamilyMembersRequestStatus request_status);
 
   // Records user action and emits histogram values for retrieving |entry|.
   void EmitHistogramsForCredentialAccess(
@@ -204,7 +239,8 @@ class PasswordsPrivateDelegateImpl
   // Invokes PasswordsPrivateEventRouter::OnPasswordManagerAuthTimeout().
   void OsReauthTimeoutCall();
 
-  void AuthenticateWithBiometrics(
+  // Authenticate the user using os-authentication.
+  void AuthenticateUser(
       const std::u16string& message,
       password_manager::PasswordAccessAuthenticator::AuthResultCallback
           callback);
@@ -254,8 +290,15 @@ class PasswordsPrivateDelegateImpl
   // NativeWindow for the window where the API was called.
   raw_ptr<content::WebContents> web_contents_;
 
-  // Biometric authenticator used to authenticate user on Mac in settings.
-  scoped_refptr<device_reauth::BiometricAuthenticator> biometric_authenticator_;
+  // Device authenticator used to authenticate users in settings.
+  scoped_refptr<device_reauth::DeviceAuthenticator> device_authenticator_;
+
+  base::ScopedObservation<web_app::WebAppInstallManager,
+                          web_app::WebAppInstallManagerObserver>
+      install_manager_observation_{this};
+
+  std::unique_ptr<password_manager::RecipientsFetcher>
+      sharing_password_recipients_fetcher_;
 
   base::WeakPtrFactory<PasswordsPrivateDelegateImpl> weak_ptr_factory_{this};
 };

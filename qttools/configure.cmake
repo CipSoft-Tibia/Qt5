@@ -42,7 +42,7 @@ endif()
 qt_feature("assistant" PRIVATE
     LABEL "Qt Assistant"
     PURPOSE "Qt Assistant is a tool for viewing on-line documentation in Qt help file format."
-    CONDITION TARGET Qt::Widgets AND QT_FEATURE_png AND QT_FEATURE_pushbutton AND QT_FEATURE_toolbutton AND (sqlite_plugin_available OR QT_BUILD_SHARED_LIBS)
+    CONDITION TARGET Qt::Widgets AND TARGET Qt::Network AND QT_FEATURE_png AND QT_FEATURE_pushbutton AND QT_FEATURE_toolbutton AND (sqlite_plugin_available OR QT_BUILD_SHARED_LIBS)
 )
 qt_feature("clang" PRIVATE
     LABEL "libclang found"
@@ -51,16 +51,16 @@ qt_feature("clang" PRIVATE
 qt_feature("qdoc" PRIVATE
     LABEL "QDoc"
     PURPOSE "QDoc is Qt's documentation generator for C++ and QML projects."
-    CONDITION TARGET Qt::QmlPrivate AND QT_FEATURE_clang AND QT_FEATURE_clangcpp AND QT_FEATURE_commandlineparser AND QT_FEATURE_thread
+    CONDITION TARGET Qt::QmlPrivate AND QT_FEATURE_clang AND QT_FEATURE_commandlineparser AND QT_FEATURE_thread AND QT_LIB_CLANG_VERSION VERSION_GREATER_EQUAL QDOC_MINIMUM_CLANG_VERSION
 )
 qt_feature("clangcpp" PRIVATE
     LABEL "Clang-based lupdate parser"
-    CONDITION QT_FEATURE_clang
+    CONDITION QT_FEATURE_clang AND (NOT MSVC OR MSVC_VERSION LESS "1939" OR QT_LIB_CLANG_VERSION_MAJOR GREATER_EQUAL "16")
 )
 qt_feature("designer" PRIVATE
     LABEL "Qt Designer"
     PURPOSE "Qt Designer is the Qt tool for designing and building graphical user interfaces (GUIs) with Qt Widgets. You can compose and customize your windows or dialogs in a what-you-see-is-what-you-get (WYSIWYG) manner, and test them using different styles and resolutions."
-    CONDITION TARGET Qt::Widgets AND QT_FEATURE_png AND QT_FEATURE_pushbutton AND QT_FEATURE_toolbutton
+    CONDITION TARGET Qt::Widgets AND TARGET Qt::Network AND QT_FEATURE_png AND QT_FEATURE_pushbutton AND QT_FEATURE_toolbutton
 )
 qt_feature("distancefieldgenerator" PRIVATE
     LABEL "Qt Distance Field Generator"
@@ -128,7 +128,7 @@ Other than clang's libraries, you may need to install another package, such as c
 file is in place, the configure script may be able to detect your system-installed libraries without further environment variables.
 On macOS, you can use Homebrew's llvm package.
 You will also need to set the FEATURE_clang CMake variable to ON to re-evaluate this check."
-    CONDITION NOT QT_FEATURE_clang OR NOT QT_FEATURE_clangcpp
+    CONDITION NOT QT_FEATURE_clang
 )
 qt_configure_add_report_entry(
     TYPE WARNING
@@ -142,7 +142,24 @@ qt_configure_add_report_entry(
 )
 qt_configure_add_report_entry(
     TYPE WARNING
-    MESSAGE "Clang-based lupdate parser will not be available. LLVM and Clang C++ libraries have not been found.
+    MESSAGE "QDoc will not be compiled because it requires libclang ${QDOC_MINIMUM_CLANG_VERSION} or newer."
+    CONDITION QT_LIB_CLANG_VERSION VERSION_LESS QDOC_MINIMUM_CLANG_VERSION
+)
+qt_configure_add_report_entry(
+    TYPE WARNING
+    MESSAGE "Clang-based lupdate parser will not be available. Suitable LLVM and Clang C++ libraries have not been found.
 You will need to set the FEATURE_clangcpp CMake variable to ON to re-evaluate this check."
     CONDITION NOT QT_FEATURE_clangcpp
+)
+
+qt_configure_add_report_entry(
+    TYPE WARNING
+    MESSAGE "Qt Assistant will not be compiled because it requires Qt Network."
+    CONDITION NOT QT_FEATURE_assistant AND NOT TARGET Qt::Network
+)
+
+qt_configure_add_report_entry(
+    TYPE WARNING
+    MESSAGE "Qt Designer will not be compiled because it requires Qt Network."
+    CONDITION NOT QT_FEATURE_designer AND NOT TARGET Qt::Network
 )

@@ -117,7 +117,7 @@ class PLATFORM_EXPORT Gradient : public RefCounted<Gradient> {
                     const SkMatrix& local_matrix,
                     const ImageDrawOptions& draw_options);
   void SetColorInterpolationSpace(
-      Color::ColorInterpolationSpace color_space_interpolation_space,
+      Color::ColorSpace color_space_interpolation_space,
       Color::HueInterpolationMethod hue_interpolation_method) {
     color_space_interpolation_space_ = color_space_interpolation_space;
     hue_interpolation_method_ = hue_interpolation_method;
@@ -146,6 +146,10 @@ class PLATFORM_EXPORT Gradient : public RefCounted<Gradient> {
   SkGradientShader::Interpolation ResolveSkInterpolation() const;
 
   void SortStopsIfNecessary() const;
+  // If a color parameter is "none", the gradient should interpolate as if that
+  // stop is not there for that parameter.
+  // https://www.w3.org/TR/css-color-4/#interpolation-missing
+  void ResolveNoneParametersForColorStops();
   void FillSkiaStops(ColorBuffer&, OffsetBuffer&) const;
   bool HasNonLegacyColor() const;
 
@@ -155,15 +159,15 @@ class PLATFORM_EXPORT Gradient : public RefCounted<Gradient> {
   const DegenerateHandling degenerate_handling_;
 
   mutable Vector<ColorStop, 2> stops_;
+  bool color_stops_have_none_parameters_ = false;
   mutable bool stops_sorted_;
   bool is_dark_mode_enabled_ = false;
   std::unique_ptr<DarkModeFilter> dark_mode_filter_;
 
   mutable sk_sp<PaintShader> cached_shader_;
-  mutable sk_sp<SkColorFilter> color_filter_;
+  mutable sk_sp<cc::ColorFilter> color_filter_;
 
-  Color::ColorInterpolationSpace color_space_interpolation_space_ =
-      Color::ColorInterpolationSpace::kNone;
+  Color::ColorSpace color_space_interpolation_space_ = Color::ColorSpace::kNone;
   Color::HueInterpolationMethod hue_interpolation_method_ =
       Color::HueInterpolationMethod::kShorter;
 };

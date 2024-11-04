@@ -44,7 +44,7 @@ class NET_EXPORT SiteForCookies {
   SiteForCookies(const SiteForCookies& other);
   SiteForCookies(SiteForCookies&& other);
 
-  explicit SiteForCookies(const SchemefulSite& schemeful_site);
+  explicit SiteForCookies(const SchemefulSite& schemeful_site, const GURL first_party_url = GURL());
 
   ~SiteForCookies();
 

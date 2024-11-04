@@ -53,8 +53,10 @@ bool CpuFeatures::SupportsOptimizer() { return true; }
 void RelocInfo::apply(intptr_t delta) {
   DCHECK_EQ(kApplyMask, (RelocInfo::ModeMask(RelocInfo::CODE_TARGET) |
                          RelocInfo::ModeMask(RelocInfo::INTERNAL_REFERENCE) |
-                         RelocInfo::ModeMask(RelocInfo::OFF_HEAP_TARGET)));
-  if (IsCodeTarget(rmode_) || IsOffHeapTarget(rmode_)) {
+                         RelocInfo::ModeMask(RelocInfo::OFF_HEAP_TARGET) |
+                         RelocInfo::ModeMask(RelocInfo::WASM_STUB_CALL)));
+  if (IsCodeTarget(rmode_) || IsOffHeapTarget(rmode_) ||
+      IsWasmStubCall(rmode_)) {
     base::WriteUnalignedValue(pc_,
                               base::ReadUnalignedValue<int32_t>(pc_) - delta);
   } else if (IsInternalReference(rmode_)) {
@@ -65,7 +67,7 @@ void RelocInfo::apply(intptr_t delta) {
 }
 
 Address RelocInfo::target_address() {
-  DCHECK(IsCodeTarget(rmode_) || IsWasmCall(rmode_));
+  DCHECK(IsCodeTarget(rmode_) || IsWasmCall(rmode_) || IsWasmStubCall(rmode_));
   return Assembler::target_address_at(pc_, constant_pool_);
 }
 
@@ -78,7 +80,7 @@ Address RelocInfo::constant_pool_entry_address() { UNREACHABLE(); }
 
 int RelocInfo::target_address_size() { return Assembler::kSpecialTargetSize; }
 
-HeapObject RelocInfo::target_object(PtrComprCageBase cage_base) {
+Tagged<HeapObject> RelocInfo::target_object(PtrComprCageBase cage_base) {
   DCHECK(IsCodeTarget(rmode_) || IsFullEmbeddedObject(rmode_));
   return HeapObject::cast(Object(ReadUnalignedValue<Address>(pc_)));
 }
@@ -88,16 +90,12 @@ Handle<HeapObject> RelocInfo::target_object_handle(Assembler* origin) {
   return Handle<HeapObject>::cast(ReadUnalignedValue<Handle<Object>>(pc_));
 }
 
-void RelocInfo::set_target_object(Heap* heap, HeapObject target,
-                                  WriteBarrierMode write_barrier_mode,
+void RelocInfo::set_target_object(Tagged<HeapObject> target,
                                   ICacheFlushMode icache_flush_mode) {
   DCHECK(IsCodeTarget(rmode_) || IsFullEmbeddedObject(rmode_));
   WriteUnalignedValue(pc_, target.ptr());
   if (icache_flush_mode != SKIP_ICACHE_FLUSH) {
     FlushInstructionCache(pc_, sizeof(Address));
-  }
-  if (!host().is_null() && !v8_flags.disable_write_barriers) {
-    WriteBarrierForCode(host(), this, target, write_barrier_mode);
   }
 }
 
@@ -222,9 +220,9 @@ void Assembler::set_target_address_at(Address pc, Address constant_pool,
 }
 
 void Assembler::deserialization_set_special_target_at(
-    Address instruction_payload, InstructionStream code, Address target) {
+    Address instruction_payload, Tagged<Code> code, Address target) {
   set_target_address_at(instruction_payload,
-                        !code.is_null() ? code.constant_pool() : kNullAddress,
+                        !code.is_null() ? code->constant_pool() : kNullAddress,
                         target);
 }
 
@@ -248,11 +246,11 @@ void Assembler::emit_disp(Label* L, Displacement::Type type) {
 }
 
 void Assembler::emit_near_disp(Label* L) {
-  byte disp = 0x00;
+  uint8_t disp = 0x00;
   if (L->is_near_linked()) {
     int offset = L->near_link_pos() - pc_offset();
     DCHECK(is_int8(offset));
-    disp = static_cast<byte>(offset & 0xFF);
+    disp = static_cast<uint8_t>(offset & 0xFF);
   }
   L->link_to(pc_offset(), Label::kNear);
   *pc_++ = disp;

@@ -10,6 +10,7 @@
 #include "base/check.h"
 #include "base/functional/callback.h"
 #include "content/public/common/drop_data.h"
+#include "ui/gfx/native_widget_types.h"
 
 namespace content {
 
@@ -17,7 +18,7 @@ WebContentsViewDelegate::~WebContentsViewDelegate() {
 }
 
 gfx::NativeWindow WebContentsViewDelegate::GetNativeWindow() {
-  return nullptr;
+  return gfx::NativeWindow();
 }
 
 WebDragDestDelegate* WebContentsViewDelegate::GetDragDestDelegate() {
@@ -52,7 +53,7 @@ bool WebContentsViewDelegate::TakeFocus(bool reverse) {
   return false;
 }
 
-void* WebContentsViewDelegate::CreateRenderWidgetHostViewDelegate(
+void* WebContentsViewDelegate::GetDelegateForHost(
     RenderWidgetHost* render_widget_host,
     bool is_popup) {
   return nullptr;

@@ -20,7 +20,7 @@
 
 class SkExecutor;
 
-#if SK_SUPPORT_GPU
+#if defined(SK_GANESH)
 struct SK_API GrContextOptions {
     enum class Enable {
         /** Forces an option to be disabled. */
@@ -261,13 +261,7 @@ struct SK_API GrContextOptions {
      * If true, then add 1 pixel padding to all glyph masks in the atlas to support bi-lerp
      * rendering of all glyphs. This must be set to true to use Slugs.
      */
-    #if defined(SK_EXPERIMENTAL_SIMULATE_DRAWGLYPHRUNLIST_WITH_SLUG) || \
-        defined(SK_EXPERIMENTAL_SIMULATE_DRAWGLYPHRUNLIST_WITH_SLUG_SERIALIZE) || \
-        defined(SK_EXPERIMENTAL_SIMULATE_DRAWGLYPHRUNLIST_WITH_SLUG_STRIKE_SERIALIZE)
-    bool fSupportBilerpFromGlyphAtlas = true;
-    #else
     bool fSupportBilerpFromGlyphAtlas = false;
-    #endif
 
     /**
      * Uses a reduced variety of shaders. May perform less optimally in steady state but can reduce
@@ -289,7 +283,16 @@ struct SK_API GrContextOptions {
      */
     bool fAlwaysUseTexStorageWhenAvailable = false;
 
-#if GR_TEST_UTILS
+    /**
+     * Optional callback that can be passed into the GrDirectContext which will be called when the
+     * GrDirectContext is about to be destroyed. When this call is made, it will be safe for the
+     * client to delete the GPU backend context that is backing the GrDirectContext. The
+     * GrDirectContextDestroyedContext will be passed back to the client in the callback.
+     */
+    GrDirectContextDestroyedContext fContextDeleteContext = nullptr;
+    GrDirectContextDestroyedProc fContextDeleteProc = nullptr;
+
+#if defined(GR_TEST_UTILS)
     /**
      * Private options that are only meant for testing within Skia's tools.
      */

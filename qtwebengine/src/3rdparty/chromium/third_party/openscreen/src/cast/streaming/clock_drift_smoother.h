@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,7 @@
 
 #include "platform/api/time.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Tracks the jitter and drift between clocks, providing a smoothed offset.
 // Internally, a Simple IIR filter is used to maintain a running average that
@@ -52,7 +51,6 @@ class ClockDriftSmoother {
   double estimated_tick_offset_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_CLOCK_DRIFT_SMOOTHER_H_

@@ -8,7 +8,9 @@
 #include <string>
 
 #include "base/functional/callback.h"
-#include "components/segmentation_platform/internal/selection/cached_result_writer.h"
+#include "base/memory/raw_ref.h"
+#include "components/segmentation_platform/internal/database/cached_result_writer.h"
+#include "components/segmentation_platform/internal/scheduler/execution_service.h"
 #include "components/segmentation_platform/internal/selection/segment_result_provider.h"
 #include "components/segmentation_platform/public/result.h"
 
@@ -24,8 +26,8 @@ class SegmentResultProvider;
 // invalid.
 class ResultRefreshManager {
  public:
-  ResultRefreshManager(const std::vector<std::unique_ptr<Config>>& configs,
-                       std::unique_ptr<CachedResultWriter> cached_result_writer,
+  ResultRefreshManager(const ConfigHolder* config_holder,
+                       CachedResultWriter* cached_result_writer,
                        const PlatformOptions& platform_options);
 
   ~ResultRefreshManager();
@@ -44,24 +46,30 @@ class ResultRefreshManager {
   // expired.
   void RefreshModelResults(
       std::map<std::string, std::unique_ptr<SegmentResultProvider>>
-          result_providers);
+          result_providers,
+      ExecutionService* execution_service);
+
+  // This is triggered when model info is updated. This ensures model execution,
+  // updating prefs and database if required on model update.
+  void OnModelUpdated(proto::SegmentInfo* segment_info,
+                      ExecutionService* execution_service);
 
  private:
   // Gives result for the model based on `run_model`. If `run_model` is false,
   // tries to get the result from database, else tries to get the result by
   // executing model. It also saves to the result to database after model
   // execution.
-  void GetCachedResultOrRunModel(SegmentResultProvider* segment_result_provider,
-                                 Config* config,
-                                 bool run_model);
+  void GetCachedResultOrRunModel(const Config* config,
+                                 ExecutionService* execution_service);
+
   void OnGetCachedResultOrRunModel(
       SegmentResultProvider* segment_result_provider,
-      Config* config,
-      bool run_model,
+      const Config* config,
+      ExecutionService* execution_service,
       std::unique_ptr<SegmentResultProvider::SegmentResult> result);
 
   // Configs for all registered clients.
-  const std::vector<std::unique_ptr<Config>>& configs_;
+  const raw_ptr<const ConfigHolder> config_holder_;
 
   // Stores `SegmentResultProvider` for all clients.
   std::map<std::string, std::unique_ptr<SegmentResultProvider>>
@@ -69,7 +77,7 @@ class ResultRefreshManager {
 
   // Delegate to write results for all clients to prefs if previous results are
   // not present or invalid.
-  std::unique_ptr<CachedResultWriter> cached_result_writer_;
+  const raw_ptr<CachedResultWriter, DanglingUntriaged> cached_result_writer_;
 
   // Platform options indicating whether to force refresh results or not.
   const PlatformOptions platform_options_;

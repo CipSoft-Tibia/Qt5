@@ -303,6 +303,7 @@ main(int argc, char *argv[])
 	box.window = window_create(d);
 	box.widget = window_add_widget(box.window, &box);
 	window_set_title(box.window, "Scaler Test Box");
+	window_set_appid(box.window, "org.freedesktop.weston.scaler-test-box");
 	window_set_buffer_scale(box.window, BUFFER_SCALE);
 
 	widget_set_resize_handler(box.widget, resize_handler);
@@ -315,6 +316,11 @@ main(int argc, char *argv[])
 
 	display_set_user_data(box.display, &box);
 	display_set_global_handler(box.display, global_handler);
+
+	if (box.mode != MODE_NO_VIEWPORT && !box.viewport) {
+		fprintf(stderr, "compositor doesn't support viewporter\n");
+		return -1;
+	}
 
 	display_run(d);
 

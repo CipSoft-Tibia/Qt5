@@ -229,6 +229,7 @@ const base::FeatureParam<std::string> kPersistentHistogramsStorage{
     kPersistentHistogramStorageMappedFile};
 
 const char kBrowserMetricsName[] = "BrowserMetrics";
+const char kDeferredBrowserMetricsName[] = "DeferredBrowserMetrics";
 
 void InstantiatePersistentHistograms(const base::FilePath& metrics_dir,
                                      bool persistent_histograms_enabled,
@@ -275,10 +276,15 @@ void PersistentHistogramsCleanup(const base::FilePath& metrics_dir) {
       base::Seconds(kSpareFileCreateDelaySeconds));
 
 #if BUILDFLAG(IS_WIN)
+  // Post a best effort task that will delete files. Unlike SKIP_ON_SHUTDOWN,
+  // which will block on the deletion if the task already started,
+  // CONTINUE_ON_SHUTDOWN will not block shutdown on the task completing. It's
+  // not a *necessity* to delete the files the same session they are "detected".
+  // On shutdown, the deletion will be interrupted.
   base::ThreadPool::PostDelayedTask(
       FROM_HERE,
-      {base::MayBlock(), base::TaskPriority::LOWEST,
-       base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
+      {base::MayBlock(), base::TaskPriority::BEST_EFFORT,
+       base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN},
       base::BindOnce(&DeleteOldWindowsTempFiles, metrics_dir),
       kDeleteOldWindowsTempFilesDelay);
 #endif  // BUILDFLAG(IS_WIN)
@@ -290,4 +296,22 @@ void InstantiatePersistentHistogramsWithFeaturesAndCleanup(
       metrics_dir, base::FeatureList::IsEnabled(kPersistentHistogramsFeature),
       kPersistentHistogramsStorage.Get());
   PersistentHistogramsCleanup(metrics_dir);
+}
+
+bool DeferBrowserMetrics(const base::FilePath& metrics_dir) {
+  base::GlobalHistogramAllocator* allocator =
+      base::GlobalHistogramAllocator::Get();
+
+  if (!allocator || !allocator->HasPersistentLocation()) {
+    return false;
+  }
+
+  base::FilePath deferred_metrics_dir =
+      metrics_dir.AppendASCII(kDeferredBrowserMetricsName);
+
+  if (!base::CreateDirectory(deferred_metrics_dir)) {
+    return false;
+  }
+
+  return allocator->MovePersistentFile(deferred_metrics_dir);
 }

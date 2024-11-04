@@ -1,5 +1,5 @@
 // Copyright (C) 2020 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/qcborstream.h>
 #include <QTest>
@@ -88,7 +88,7 @@ template<> char *toString<QCborStreamReader::Type>(const QCborStreamReader::Type
 QT_END_NAMESPACE
 
 // Get the data from TinyCBOR (see src/3rdparty/tinycbor/tests/parser/data.cpp)
-#include "data.cpp"
+#include "parser/data.cpp"
 
 void tst_QCborStreamReader::initTestCase_data()
 {
@@ -657,6 +657,7 @@ void tst_QCborStreamReader::strings()
         QCOMPARE(reader.currentStringChunkSize(), qsizetype(reader.length()));
 
     int chunks = 0;
+    QByteArray fullString;
     forever {
         QCborStreamReader::StringResult<QByteArray> controlData;
         if (reader.isString()) {
@@ -667,6 +668,7 @@ void tst_QCborStreamReader::strings()
             controlData = controlReader.readByteArray();
         }
         QVERIFY(controlData.status != QCborStreamReader::Error);
+        fullString += controlData.data;
 
         for (int i = 0; i < 10; ++i) {
             // this call must work several times with the same result
@@ -689,6 +691,43 @@ void tst_QCborStreamReader::strings()
 
     if (!isChunked)
         QCOMPARE(chunks, 1);
+
+    // Now re-do and compare with toString() and toByteArray(), against
+    // the control data we calculated above
+    reader.reset();
+    QVERIFY(reader.isString() || reader.isByteArray());
+    if (reader.isByteArray()) {
+        QByteArray prefix("some prefix");
+        QByteArray ba = prefix;
+        QVERIFY(reader.readAndAppendToByteArray(ba));
+        QCOMPARE(ba, prefix + fullString);
+    } else {
+        QString prefix("some prefix");
+        QString str = prefix;
+        QVERIFY(reader.readAndAppendToString(str));
+        QCOMPARE(str, prefix + QString::fromUtf8(fullString));
+    }
+
+    // Re-do again using the UTF-8 interface.
+    reader.reset();
+    QVERIFY(reader.isString() || reader.isByteArray());
+    if (reader.isString()) {
+        QByteArray prefix("some prefix");
+        QByteArray utf8 = prefix;
+        QVERIFY(reader.readAndAppendToUtf8String(utf8));
+        QCOMPARE(utf8, prefix + fullString);
+
+        reader.reset();
+        fullString = prefix;
+        forever {
+            auto r = reader.readUtf8String();
+            QCOMPARE_NE(r.status, QCborStreamReader::Error);
+            fullString += r.data;
+            if (r.status == QCborStreamReader::EndOfString)
+                break;
+        }
+        QCOMPARE(fullString, utf8);
+    }
 }
 
 void tst_QCborStreamReader::tags_data()
@@ -908,6 +947,52 @@ void tst_QCborStreamReader::validation()
     reader.reset();
     QVERIFY(!reader.next());
     QCOMPARE(reader.lastError(), error);
+
+    // check toString() and toByteArray() too
+    if (reader.isString() || reader.isByteArray()) {
+        reader.reset();
+        if (reader.isString()) {
+            QString prefix = "some prefix";
+            QString str = prefix;
+            QVERIFY(!reader.readAndAppendToString(str));
+            QVERIFY(str.startsWith(prefix));    // but may have decoded some
+        } else if (reader.isByteArray()) {
+            QByteArray prefix = "some prefix";
+            QByteArray ba = prefix;
+            QVERIFY(!reader.readAndAppendToByteArray(ba));
+            QVERIFY(ba.startsWith(prefix));     // but may have decoded some
+        }
+        QCOMPARE(reader.lastError(), error);
+
+        reader.reset();
+        if (reader.isString())
+            QVERIFY(reader.readAllString().isNull());
+        else
+            QVERIFY(reader.readAllByteArray().isNull());
+    }
+
+    reader.reset();
+
+    // and the UTF-8 API
+    if (reader.isString()) {
+        QByteArray prefix = "some prefix";
+        QByteArray ba = prefix;
+        QVERIFY(!reader.readAndAppendToUtf8String(ba));
+        QVERIFY(ba.startsWith(prefix));     // but may have decoded some
+        QCOMPARE(reader.lastError(), error);
+
+        reader.reset();
+        QVERIFY(reader.readAllUtf8String().isNull());
+
+        reader.reset();
+        auto r = reader.readUtf8String();
+        for ( ; r.status == QCborStreamReader::Ok; r = reader.readUtf8String()) {
+            // while the data is valid...
+            QVERIFY(!r.data.isNull());
+        }
+        QCOMPARE_NE(r.status, QCborStreamReader::EndOfString);
+        QCOMPARE(reader.lastError(), error);
+    }
 }
 
 void tst_QCborStreamReader::hugeDeviceValidation_data()
@@ -927,6 +1012,10 @@ void tst_QCborStreamReader::hugeDeviceValidation()
         QSKIP("This test tries to allocate a huge memory buffer,"
               " which Address Sanitizer flags as a problem");
 #endif
+#if defined(Q_OS_WASM)
+   QSKIP("This test tries to allocate a huge memory buffer,"
+              " causes problem on WebAssembly platform which has limited resources.");
+#endif // Q_OS_WASM
 
     QFETCH(QSharedPointer<QIODevice>, device);
     QFETCH(CborError, expectedError);

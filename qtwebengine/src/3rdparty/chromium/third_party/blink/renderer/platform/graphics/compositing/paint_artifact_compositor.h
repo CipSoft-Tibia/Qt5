@@ -18,9 +18,11 @@
 #include "third_party/blink/renderer/platform/graphics/compositing/pending_layer.h"
 #include "third_party/blink/renderer/platform/graphics/compositing/property_tree_manager.h"
 #include "third_party/blink/renderer/platform/graphics/compositing_reasons.h"
+#include "third_party/blink/renderer/platform/graphics/lcd_text_preference.h"
 #include "third_party/blink/renderer/platform/graphics/paint/geometry_mapper.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_chunk_subset.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_controller.h"
+#include "third_party/blink/renderer/platform/graphics/paint/transform_paint_property_node.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
@@ -39,34 +41,6 @@ class JSONObject;
 class SynthesizedClip;
 
 using CompositorScrollCallbacks = cc::ScrollCallbacks;
-
-// This enum is used for histograms and should not be renumbered (see:
-// PaintArtifactCompositorUpdateReason in tools/metrics/histograms/enums.xml).
-enum class PaintArtifactCompositorUpdateReason {
-  kTest = 0,
-  kPaintArtifactCompositorNeedsFullUpdateChunksChanged = 1,
-  kPaintArtifactCompositorNeedsFullUpdateAfterPaintingChunk = 2,
-  kPaintArtifactCompositorPrefersLCDText = 3,
-  kLocalFrameViewUpdateLayerDebugInfo = 4,
-  kLocalFrameViewBenchmarking = 5,
-  kDisplayLockContextNeedsPaintArtifactCompositorUpdate = 6,
-  kViewTransitionNotifyChanges = 7,
-  kFrameCaretSetVisible = 8,
-  kFrameCaretPaint = 9,
-  kInspectorOverlayAgentDisableFrameOverlay = 10,
-  kLinkHighlightImplNeedsCompositingUpdate = 11,
-  kPaintLayerScrollableAreaUpdateScrollOffset = 12,
-  kPaintPropertyTreeBuilderPaintPropertyChanged = 13,
-  kPaintPropertyTreeBuilderHasFixedPositionObjects = 14,
-  kPaintPropertyTreeBulderNonStackingContextScroll = 15,
-  kVisualViewportPaintPropertyTreeBuilderUpdate = 16,
-  kVideoPainterPaintReplaced = 17,
-  kPaintPropertyTreeBuilderPaintPropertyChangedOnlyNonRerasterValues = 18,
-  kPaintPropertyTreeBuilderPaintPropertyChangedOnlySimpleValues = 19,
-  kPaintPropertyTreeBuilderPaintPropertyChangedOnlyValues = 20,
-  kPaintPropertyTreeBuilderPaintPropertyAddedOrRemoved = 21,
-  kCount = 22
-};
 
 class LayerListBuilder {
  public:
@@ -160,10 +134,17 @@ class PLATFORM_EXPORT PaintArtifactCompositor final
   // noncomposited nodes, and is used for Scroll Unification to generate scroll
   // nodes for noncomposited scrollers to complete the compositor's scroll
   // property tree.
+  //
+  // |anchor_position_scrollers| is the set of scroll nodes whose scroll
+  // offset contributes to any anchor position scroll translation (namely, whose
+  // id is snapshotted in an AnchorPositionScrollData). This is needed only when
+  // ScrollUnification is disabled.
   void Update(
       scoped_refptr<const PaintArtifact> artifact,
       const ViewportProperties& viewport_properties,
       const Vector<const TransformPaintPropertyNode*>& scroll_translation_nodes,
+      const Vector<const TransformPaintPropertyNode*>&
+          anchor_position_scrollers,
       Vector<std::unique_ptr<cc::ViewTransitionRequest>> requests);
 
   // Fast-path update where the painting of existing composited layers changed,
@@ -196,6 +177,10 @@ class PLATFORM_EXPORT PaintArtifactCompositor final
   bool DirectlySetScrollOffset(CompositorElementId,
                                const gfx::PointF& scroll_offset);
 
+  uint32_t GetMainThreadScrollingReasons(const ScrollPaintPropertyNode&) const;
+  // Returns true if the scroll node is currently composited in cc.
+  bool UsesCompositedScrolling(const ScrollPaintPropertyNode&) const;
+
   // The root layer of the tree managed by this object.
   cc::Layer* RootLayer() const { return root_layer_.get(); }
 
@@ -220,11 +205,11 @@ class PLATFORM_EXPORT PaintArtifactCompositor final
   // do not affect compositing can use a fast-path in |UpdateRepaintedLayers|
   // (see comment above that function for more information), and should not call
   // SetNeedsUpdate.
-  void SetNeedsUpdate(PaintArtifactCompositorUpdateReason reason);
+  void SetNeedsUpdate() { needs_update_ = true; }
   bool NeedsUpdate() const { return needs_update_; }
   void ClearNeedsUpdateForTesting() { needs_update_ = false; }
 
-  void SetPrefersLCDText(bool);
+  void SetLCDTextPreference(LCDTextPreference);
 
   // There is no mechanism for doing a paint lifecycle phase without running
   // PaintArtifactCompositor::Update so this is exposed so tests can check the
@@ -252,9 +237,19 @@ class PLATFORM_EXPORT PaintArtifactCompositor final
 
   size_t ApproximateUnsharedMemoryUsage() const;
 
-  void SetScrollbarNeedsDisplay(CompositorElementId element_id);
+  // Invalidates the scrollbar layer. Returns true if the scrollbar layer is
+  // found by `element_id`.
+  bool SetScrollbarNeedsDisplay(CompositorElementId element_id);
+
+  bool ShouldAlwaysUpdateOnScroll() const {
+    return should_always_update_on_scroll_;
+  }
 
  private:
+  void UpdateCompositorViewportProperties(const ViewportProperties&,
+                                          PropertyTreeManager&,
+                                          cc::LayerTreeHost*);
+
   // Collects the PaintChunks into groups which will end up in the same
   // cc layer. This is the entry point of the layerization algorithm.
   void CollectPendingLayers(scoped_refptr<const PaintArtifact>);
@@ -305,6 +300,14 @@ class PLATFORM_EXPORT PaintArtifactCompositor final
       CompositorElementId& mask_isolation_id,
       CompositorElementId& mask_effect_id) final;
 
+  bool NeedsCompositedScrolling(
+      const TransformPaintPropertyNode& scroll_translation) const final;
+  bool ComputeNeedsCompositedScrolling(
+      const PaintArtifact&,
+      Vector<PaintChunk>::const_iterator chunk_cursor) const;
+  PendingLayer::CompositingType ChunkCompositingType(const PaintArtifact&,
+                                                     const PaintChunk&) const;
+
   static void UpdateRenderSurfaceForEffects(
       cc::EffectTree&,
       const cc::LayerList&,
@@ -314,7 +317,7 @@ class PLATFORM_EXPORT PaintArtifactCompositor final
 
   CompositingReasons GetCompositingReasons(
       const PendingLayer& layer,
-      const PendingLayer* previous_layer) const;
+      const PropertyTreeState& previous_layer_state) const;
 
   void UpdateDebugInfo() const;
 
@@ -323,9 +326,10 @@ class PLATFORM_EXPORT PaintArtifactCompositor final
 
   bool tracks_raster_invalidations_;
   bool needs_update_ = true;
-  PreviousUpdateType previous_update_for_testing_ = PreviousUpdateType::kNone;
   bool layer_debug_info_enabled_ = false;
-  bool prefers_lcd_text_ = false;
+  bool should_always_update_on_scroll_ = false;
+  PreviousUpdateType previous_update_for_testing_ = PreviousUpdateType::kNone;
+  LCDTextPreference lcd_text_preference_ = LCDTextPreference::kIgnored;
 
   scoped_refptr<cc::Layer> root_layer_;
   struct SynthesizedClipEntry {
@@ -338,6 +342,11 @@ class PLATFORM_EXPORT PaintArtifactCompositor final
   using PendingLayers = Vector<PendingLayer, 0>;
   class OldPendingLayerMatcher;
   PendingLayers pending_layers_;
+
+  // Scroll translation nodes of the PaintArtifact that are painted.
+  // This member variable is only used in PaintArtifactCompositor::Update.
+  // The value indicates if the scroll should be composited.
+  HashMap<const TransformPaintPropertyNode*, bool> painted_scroll_translations_;
 
   friend class StubChromeClientForCAP;
   friend class PaintArtifactCompositorTest;

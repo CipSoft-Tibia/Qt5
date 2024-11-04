@@ -151,7 +151,7 @@ export class ScreencastView extends UI.Widget.VBox implements SDK.OverlayModel.H
     this.glassPaneElement =
         this.canvasContainerElement.createChild('div', 'screencast-glasspane fill hidden') as HTMLElement;
     this.canvasElement = this.canvasContainerElement.createChild('canvas') as HTMLCanvasElement;
-    UI.ARIAUtils.setAccessibleName(this.canvasElement, i18nString(UIStrings.screencastViewOfDebugTarget));
+    UI.ARIAUtils.setLabel(this.canvasElement, i18nString(UIStrings.screencastViewOfDebugTarget));
     this.canvasElement.tabIndex = 0;
     this.canvasElement.addEventListener('mousedown', this.handleMouseEvent.bind(this), false);
     this.canvasElement.addEventListener('mouseup', this.handleMouseEvent.bind(this), false);
@@ -188,12 +188,12 @@ export class ScreencastView extends UI.Widget.VBox implements SDK.OverlayModel.H
     this.updateGlasspane();
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     this.startCasting();
     this.registerCSSFiles([screencastViewStyles]);
   }
 
-  willHide(): void {
+  override willHide(): void {
     this.stopCasting();
   }
 
@@ -376,7 +376,7 @@ export class ScreencastView extends UI.Widget.VBox implements SDK.OverlayModel.H
     };
   }
 
-  onResize(): void {
+  override onResize(): void {
     if (this.deferredCasting) {
       clearTimeout(this.deferredCasting);
       delete this.deferredCasting;
@@ -656,14 +656,14 @@ export class ScreencastView extends UI.Widget.VBox implements SDK.OverlayModel.H
     this.navigationBar = this.element.createChild('div', 'screencast-navigation') as HTMLElement;
     this.navigationBack = this.navigationBar.createChild('button', 'back') as HTMLButtonElement;
     this.navigationBack.disabled = true;
-    UI.ARIAUtils.setAccessibleName(this.navigationBack, i18nString(UIStrings.back));
+    UI.ARIAUtils.setLabel(this.navigationBack, i18nString(UIStrings.back));
     this.navigationForward = this.navigationBar.createChild('button', 'forward') as HTMLButtonElement;
     this.navigationForward.disabled = true;
-    UI.ARIAUtils.setAccessibleName(this.navigationForward, i18nString(UIStrings.forward));
+    UI.ARIAUtils.setLabel(this.navigationForward, i18nString(UIStrings.forward));
     this.navigationReload = this.navigationBar.createChild('button', 'reload');
-    UI.ARIAUtils.setAccessibleName(this.navigationReload, i18nString(UIStrings.reload));
+    UI.ARIAUtils.setLabel(this.navigationReload, i18nString(UIStrings.reload));
     this.navigationUrl = UI.UIUtils.createInput() as HTMLInputElement;
-    UI.ARIAUtils.setAccessibleName(this.navigationUrl, i18nString(UIStrings.addressBar));
+    UI.ARIAUtils.setLabel(this.navigationUrl, i18nString(UIStrings.addressBar));
     this.navigationBar.appendChild(this.navigationUrl);
     this.navigationUrl.type = 'text';
     this.navigationProgressBar = new ProgressTracker(
@@ -676,7 +676,7 @@ export class ScreencastView extends UI.Widget.VBox implements SDK.OverlayModel.H
       this.navigationUrl.addEventListener('keyup', this.navigationUrlKeyUp.bind(this), true);
       void this.requestNavigationHistory();
       this.resourceTreeModel.addEventListener(
-          SDK.ResourceTreeModel.Events.MainFrameNavigated, this.requestNavigationHistoryEvent, this);
+          SDK.ResourceTreeModel.Events.PrimaryPageChanged, this.requestNavigationHistoryEvent, this);
       this.resourceTreeModel.addEventListener(
           SDK.ResourceTreeModel.Events.CachedResourcesLoaded, this.requestNavigationHistoryEvent, this);
     }
@@ -712,13 +712,8 @@ export class ScreencastView extends UI.Widget.VBox implements SDK.OverlayModel.H
     if (!url.match(SCHEME_REGEX)) {
       url = 'http://' + url;
     }
-
-    // Perform decodeURI in case the user enters an encoded string
-    // decodeURI has no effect on strings that are already decoded
-    // encodeURI ensures an encoded URL is always passed to the backend
-    // This allows the input field to support both encoded and decoded URLs
     if (this.resourceTreeModel) {
-      void this.resourceTreeModel.navigate(encodeURI(decodeURI(url)) as Platform.DevToolsPath.UrlString);
+      void this.resourceTreeModel.navigate(url as Platform.DevToolsPath.UrlString);
     }
     this.canvasElement.focus();
   }
@@ -774,7 +769,7 @@ export class ProgressTracker {
     this.element = element;
     if (resourceTreeModel) {
       resourceTreeModel.addEventListener(
-          SDK.ResourceTreeModel.Events.MainFrameNavigated, this.onMainFrameNavigated, this);
+          SDK.ResourceTreeModel.Events.PrimaryPageChanged, this.onPrimaryPageChanged, this);
       resourceTreeModel.addEventListener(SDK.ResourceTreeModel.Events.Load, this.onLoad, this);
     }
     if (networkManager) {
@@ -787,7 +782,7 @@ export class ProgressTracker {
     this.maxDisplayedProgress = 0;
   }
 
-  private onMainFrameNavigated(): void {
+  private onPrimaryPageChanged(): void {
     this.requestIds = new Map();
     this.startedRequests = 0;
     this.finishedRequests = 0;

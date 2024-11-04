@@ -5,13 +5,15 @@
 #include "content/browser/renderer_host/render_widget_host_view_mac.h"
 
 #include <Cocoa/Cocoa.h>
+#include <Foundation/Foundation.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <tuple>
 
+#include "base/apple/scoped_cftyperef.h"
+#include "base/apple/scoped_nsautorelease_pool.h"
 #include "base/command_line.h"
 #include "base/containers/queue.h"
-#include "base/mac/scoped_nsautorelease_pool.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
@@ -136,24 +138,22 @@ using testing::_;
 @property(readonly) NSString* replacementString;
 @end
 
-@implementation FakeTextCheckingResult {
-  base::scoped_nsobject<NSString> _replacementString;
-}
+@implementation FakeTextCheckingResult
+
 @synthesize range = _range;
+@synthesize replacementString = _replacementString;
 
 + (FakeTextCheckingResult*)resultWithRange:(NSRange)range
                          replacementString:(NSString*)replacementString {
-  FakeTextCheckingResult* result =
-      [[[FakeTextCheckingResult alloc] init] autorelease];
+  FakeTextCheckingResult* result = [[FakeTextCheckingResult alloc] init];
   result->_range = range;
-  result->_replacementString.reset([replacementString retain]);
+  result->_replacementString = replacementString;
   return result;
 }
 
 - (id)copyWithZone:(NSZone*)zone {
-  return
-      [[FakeTextCheckingResult resultWithRange:self.range
-                             replacementString:self.replacementString] retain];
+  return [FakeTextCheckingResult resultWithRange:self.range
+                               replacementString:self.replacementString];
 }
 
 - (NSString*)replacementString {
@@ -161,39 +161,44 @@ using testing::_;
 }
 @end
 
+using SpellCheckerCompletionHandlerType = void (
+    ^)(NSInteger sequenceNumber, NSArray<NSTextCheckingResult*>* candidates);
+
 @interface FakeSpellChecker : NSObject
-@property NSInteger sequenceNumber;
+@property(readonly) NSInteger lastAssignedSequenceNumber;
+@property(readonly) NSDictionary<NSNumber*, SpellCheckerCompletionHandlerType>*
+    completionHandlers;
 @end
 
 @implementation FakeSpellChecker {
-  base::mac::ScopedBlock<void (^)(NSInteger sequenceNumber,
-                                  NSArray<NSTextCheckingResult*>* candidates)>
-      _lastCompletionHandler;
+  NSMutableDictionary* __strong _completionHandlers;
 }
-@synthesize sequenceNumber = _sequenceNumber;
+
+@synthesize lastAssignedSequenceNumber = _lastAssignedSequenceNumber;
+@synthesize completionHandlers = _completionHandlers;
+
+- (instancetype)init {
+  if (self = [super init]) {
+    _completionHandlers = [NSMutableDictionary dictionary];
+  }
+  return self;
+}
 
 - (NSInteger)
-requestCandidatesForSelectedRange:(NSRange)selectedRange
-                         inString:(NSString*)stringToCheck
-                            types:(NSTextCheckingTypes)checkingTypes
-                          options:
-                              (nullable NSDictionary<NSTextCheckingOptionKey,
-                                                     id>*)options
-           inSpellDocumentWithTag:(NSInteger)tag
-                completionHandler:
-                    (void (^__nullable)(NSInteger sequenceNumber,
-                                        NSArray<NSTextCheckingResult*>*
-                                            candidates))completionHandler
-    NS_AVAILABLE_MAC(10_12_2) {
-  _sequenceNumber += 1;
-  _lastCompletionHandler.reset([completionHandler copy]);
-  return _sequenceNumber;
-}
-
-- (base::mac::ScopedBlock<void (^)(NSInteger sequenceNumber,
-                                   NSArray<NSTextCheckingResult*>* candidates)>)
-    takeCompletionHandler {
-  return std::move(_lastCompletionHandler);
+    requestCandidatesForSelectedRange:(NSRange)selectedRange
+                             inString:(NSString*)stringToCheck
+                                types:(NSTextCheckingTypes)checkingTypes
+                              options:(nullable
+                                           NSDictionary<NSTextCheckingOptionKey,
+                                                        id>*)options
+               inSpellDocumentWithTag:(NSInteger)tag
+                    completionHandler:
+                        (void (^__nullable)(NSInteger sequenceNumber,
+                                            NSArray<NSTextCheckingResult*>*
+                                                candidates))completionHandler {
+  _lastAssignedSequenceNumber += 1;
+  _completionHandlers[@(_lastAssignedSequenceNumber)] = completionHandler;
+  return _lastAssignedSequenceNumber;
 }
 
 @end
@@ -235,14 +240,14 @@ blink::WebPointerProperties::PointerType GetPointerType(
 NSEvent* MockTabletEventWithParams(CGEventType type,
                                    bool is_entering_proximity,
                                    NSPointingDeviceType device_type) {
-  CGEventRef cg_event = CGEventCreate(NULL);
+  base::apple::ScopedCFTypeRef<CGEventRef> cg_event(
+      CGEventCreate(/*source=*/nullptr));
   CGEventSetType(cg_event, type);
   CGEventSetIntegerValueField(cg_event, kCGTabletProximityEventEnterProximity,
                               is_entering_proximity);
   CGEventSetIntegerValueField(cg_event, kCGTabletProximityEventPointerType,
                               device_type);
   NSEvent* event = [NSEvent eventWithCGEvent:cg_event];
-  CFRelease(cg_event);
   return event;
 }
 
@@ -256,8 +261,8 @@ NSEvent* MockMouseEventWithParams(CGEventType mouse_type,
   // an NSEvent, below, flips the location back to bottom left origin.
   CGPoint cg_location =
       CGPointMake(location.x, NSHeight(NSScreen.screens[0].frame) - location.y);
-  CGEventRef cg_event =
-      CGEventCreateMouseEvent(NULL, mouse_type, cg_location, button);
+  base::apple::ScopedCFTypeRef<CGEventRef> cg_event(CGEventCreateMouseEvent(
+      /*source=*/nullptr, mouse_type, cg_location, button));
   CGEventSetIntegerValueField(cg_event, kCGMouseEventSubtype, subtype);
   CGEventSetIntegerValueField(cg_event, kCGTabletProximityEventEnterProximity,
                               is_entering_proximity);
@@ -269,7 +274,6 @@ NSEvent* MockMouseEventWithParams(CGEventType mouse_type,
       base::Time::kNanosecondsPerMicrosecond;
   CGEventSetTimestamp(cg_event, timestamp);
   NSEvent* event = [NSEvent eventWithCGEvent:cg_event];
-  CFRelease(cg_event);
   return event;
 }
 
@@ -398,8 +402,9 @@ void GenerateCompositionRectArray(const gfx::Point& origin,
   output->clear();
 
   base::queue<int> break_point_queue;
-  for (size_t i = 0; i < break_points.size(); ++i)
-    break_point_queue.push(break_points[i]);
+  for (unsigned long break_point : break_points) {
+    break_point_queue.push(break_point);
+  }
   break_point_queue.push(length);
   size_t next_break_point = break_point_queue.front();
   break_point_queue.pop();
@@ -432,12 +437,12 @@ gfx::Rect GetExpectedRect(const gfx::Point& origin,
 // should correspond to a method in |MockPhaseMethods| that returns the desired
 // phase.
 NSEvent* MockScrollWheelEventWithPhase(SEL mockPhaseSelector, int32_t delta) {
-  CGEventRef cg_event = CGEventCreateScrollWheelEvent(
-      nullptr, kCGScrollEventUnitLine, 1, delta, 0);
+  base::apple::ScopedCFTypeRef<CGEventRef> cg_event(
+      CGEventCreateScrollWheelEvent(
+          /*source=*/nullptr, kCGScrollEventUnitLine, 1, delta, 0));
   CGEventTimestamp timestamp = 0;
   CGEventSetTimestamp(cg_event, timestamp);
   NSEvent* event = [NSEvent eventWithCGEvent:cg_event];
-  CFRelease(cg_event);
   method_setImplementation(
       class_getInstanceMethod([NSEvent class], @selector(phase)),
       [MockPhaseMethods instanceMethodForSelector:mockPhaseSelector]);
@@ -449,12 +454,12 @@ NSEvent* MockScrollWheelEventWithMomentumPhase(SEL mockPhaseSelector,
   // Create a fake event with phaseNone. This is for resetting the phase info
   // of CGEventRef.
   MockScrollWheelEventWithPhase(@selector(phaseNone), 0);
-  CGEventRef cg_event = CGEventCreateScrollWheelEvent(
-      nullptr, kCGScrollEventUnitLine, 1, delta, 0);
+  base::apple::ScopedCFTypeRef<CGEventRef> cg_event(
+      CGEventCreateScrollWheelEvent(
+          /*source=*/nullptr, kCGScrollEventUnitLine, 1, delta, 0));
   CGEventTimestamp timestamp = 0;
   CGEventSetTimestamp(cg_event, timestamp);
   NSEvent* event = [NSEvent eventWithCGEvent:cg_event];
-  CFRelease(cg_event);
   method_setImplementation(
       class_getInstanceMethod([NSEvent class], @selector(momentumPhase)),
       [MockPhaseMethods instanceMethodForSelector:mockPhaseSelector]);
@@ -491,20 +496,22 @@ class RenderWidgetHostViewMacTest : public RenderViewHostImplTestHarness {
     process_host_ =
         std::make_unique<MockRenderProcessHost>(browser_context_.get());
     process_host_->Init();
-    site_instance_group_ = base::WrapRefCounted(new SiteInstanceGroup(
-        SiteInstanceImpl::NextBrowsingInstanceId(), process_host_.get()));
+    site_instance_group_ =
+        base::WrapRefCounted(SiteInstanceGroup::CreateForTesting(
+            browser_context_.get(), process_host_.get()));
     host_ = std::make_unique<MockRenderWidgetHostImpl>(
         &delegate_, site_instance_group_->GetSafeRef(),
         process_host_->GetNextRoutingID(),
         /*for_frame_widget=*/true);
     host_->set_owner_delegate(&mock_owner_delegate_);
     rwhv_mac_ = new RenderWidgetHostViewMac(host_.get());
-    rwhv_cocoa_.reset([rwhv_mac_->GetInProcessNSView() retain]);
+    rwhv_cocoa_ = rwhv_mac_->GetInProcessNSView();
 
-    window_.reset([[CocoaTestHelperWindow alloc] init]);
-    window_.get().pretendIsKeyWindow = YES;
-    [[window_ contentView] addSubview:rwhv_cocoa_];
-    [rwhv_cocoa_ setFrame:[window_ contentView].bounds];
+    window_ = [[CocoaTestHelperWindow alloc] init];
+    window_.releasedWhenClosed = NO;
+    window_.pretendIsKeyWindow = YES;
+    [window_.contentView addSubview:rwhv_cocoa_];
+    [rwhv_cocoa_ setFrame:window_.contentView.bounds];
 
     base::RunLoop().RunUntilIdle();
     process_host_->sink().ClearMessages();
@@ -512,7 +519,7 @@ class RenderWidgetHostViewMacTest : public RenderViewHostImplTestHarness {
 
   void TearDown() override {
     ui::SetEventTickClockForTesting(nullptr);
-    rwhv_cocoa_.reset();
+    rwhv_cocoa_ = nil;
     // RenderWidgetHostImpls with an owner delegate are not expected to be self-
     // deleting.
     host_->ShutdownAndDestroyWidget(/*also_delete=*/false);
@@ -550,13 +557,13 @@ class RenderWidgetHostViewMacTest : public RenderViewHostImplTestHarness {
   scoped_refptr<SiteInstanceGroup> site_instance_group_;
   testing::NiceMock<MockRenderWidgetHostOwnerDelegate> mock_owner_delegate_;
   std::unique_ptr<MockRenderWidgetHostImpl> host_;
-  raw_ptr<RenderWidgetHostViewMac> rwhv_mac_ = nullptr;
-  base::scoped_nsobject<RenderWidgetHostViewCocoa> rwhv_cocoa_;
-  base::scoped_nsobject<CocoaTestHelperWindow> window_;
+  raw_ptr<RenderWidgetHostViewMac, DanglingUntriaged> rwhv_mac_ = nullptr;
+  RenderWidgetHostViewCocoa* __strong rwhv_cocoa_;
+  CocoaTestHelperWindow* __strong window_;
 
  private:
   // This class isn't derived from PlatformTest.
-  base::mac::ScopedNSAutoreleasePool pool_;
+  base::apple::ScopedNSAutoreleasePool pool_;
 
   base::SimpleTestTickClock mock_clock_;
 };
@@ -566,16 +573,16 @@ TEST_F(RenderWidgetHostViewMacTest, Basic) {
 
 TEST_F(RenderWidgetHostViewMacTest, AcceptsFirstResponder) {
   // The RWHVCocoa should normally accept first responder status.
-  EXPECT_TRUE([rwhv_cocoa_.get() acceptsFirstResponder]);
+  EXPECT_TRUE(rwhv_cocoa_.acceptsFirstResponder);
 }
 
 // This test verifies that RenderWidgetHostViewCocoa's implementation of
 // NSTextInputClientConformance conforms to requirements.
 TEST_F(RenderWidgetHostViewMacTest, NSTextInputClientConformance) {
-  EXPECT_NSEQ(NSMakeRange(0, 0), [rwhv_cocoa_ selectedRange]);
+  EXPECT_NSEQ(NSMakeRange(0, 0), rwhv_cocoa_.selectedRange);
 
   rwhv_mac_->SelectionChanged(u"llo, world!", 2, gfx::Range(5, 10));
-  EXPECT_NSEQ(NSMakeRange(5, 5), [rwhv_cocoa_ selectedRange]);
+  EXPECT_NSEQ(NSMakeRange(5, 5), rwhv_cocoa_.selectedRange);
 
   NSRange actualRange = NSMakeRange(1u, 2u);
   NSAttributedString* actualString = [rwhv_cocoa_
@@ -732,8 +739,8 @@ TEST_F(RenderWidgetHostViewMacTest, UpdateCompositionSinglelineCase) {
 
   // If the firstRectForCharacterRange is failed in renderer, empty rect vector
   // is sent. Make sure this does not crash.
-  rwhv_mac_->ImeCompositionRangeChanged(gfx::Range(10, 12),
-                                        std::vector<gfx::Rect>());
+  rwhv_mac_->ImeCompositionRangeChanged(
+      gfx::Range(10, 12), std::vector<gfx::Rect>(), absl::nullopt);
   EXPECT_FALSE(rwhv_mac_->GetCachedFirstRectForCharacterRange(
       gfx::Range(10, 11), &rect, nullptr));
 
@@ -747,7 +754,8 @@ TEST_F(RenderWidgetHostViewMacTest, UpdateCompositionSinglelineCase) {
                                kCompositionLength,
                                std::vector<size_t>(),
                                &composition_bounds);
-  rwhv_mac_->ImeCompositionRangeChanged(kCompositionRange, composition_bounds);
+  rwhv_mac_->ImeCompositionRangeChanged(kCompositionRange, composition_bounds,
+                                        absl::nullopt);
 
   // Out of range requests will return caret position.
   EXPECT_FALSE(rwhv_mac_->GetCachedFirstRectForCharacterRange(
@@ -805,7 +813,8 @@ TEST_F(RenderWidgetHostViewMacTest, UpdateCompositionMultilineCase) {
                                kCompositionLength,
                                break_points,
                                &composition_bounds);
-  rwhv_mac_->ImeCompositionRangeChanged(kCompositionRange, composition_bounds);
+  rwhv_mac_->ImeCompositionRangeChanged(kCompositionRange, composition_bounds,
+                                        absl::nullopt);
 
   // Range doesn't contain line breaking point.
   gfx::Range range;
@@ -890,7 +899,7 @@ TEST_F(RenderWidgetHostViewMacTest, CompositionEventAfterDestroy) {
   const gfx::Rect composition_bounds(0, 0, 30, 40);
   const gfx::Range range(0, 1);
   rwhv_mac_->ImeCompositionRangeChanged(
-      range, std::vector<gfx::Rect>(1, composition_bounds));
+      range, std::vector<gfx::Rect>(1, composition_bounds), absl::nullopt);
 
   NSRange actual_range = NSMakeRange(0, 0);
 
@@ -928,7 +937,7 @@ TEST_F(RenderWidgetHostViewMacTest, BlurAndFocusOnSetActive) {
   [window_ makeFirstResponder:nil];
   testing::Mock::VerifyAndClearExpectations(host_.get());
 
-  // |SetActive()| shoud not focus if view is not first responder.
+  // |SetActive()| should not focus if view is not first responder.
   EXPECT_CALL(*host_, Focus()).Times(0);
   rwhv_mac_->SetActive(true);
   testing::Mock::VerifyAndClearExpectations(host_.get());
@@ -1109,9 +1118,9 @@ TEST_F(RenderWidgetHostViewMacTest, SendMouseMoveOnShowingContextMenu) {
 TEST_F(RenderWidgetHostViewMacTest,
        IgnoreEmptyUnhandledWheelEventWithWheelGestures) {
   // Add a delegate to the view.
-  base::scoped_nsobject<MockRenderWidgetHostViewMacDelegate> view_delegate(
-      [[MockRenderWidgetHostViewMacDelegate alloc] init]);
-  rwhv_mac_->SetDelegate(view_delegate.get());
+  MockRenderWidgetHostViewMacDelegate* view_delegate =
+      [[MockRenderWidgetHostViewMacDelegate alloc] init];
+  rwhv_mac_->SetDelegate(view_delegate);
 
   // Send an initial wheel event for scrolling by 3 lines.
   NSEvent* event1 = MockScrollWheelEventWithPhase(@selector(phaseBegan), 3);
@@ -1137,8 +1146,8 @@ TEST_F(RenderWidgetHostViewMacTest,
   events.clear();
 
   // Check that the view delegate got an unhandled wheel event.
-  ASSERT_EQ(YES, view_delegate.get().unhandledWheelEventReceived);
-  view_delegate.get().unhandledWheelEventReceived = NO;
+  ASSERT_EQ(YES, view_delegate.unhandledWheelEventReceived);
+  view_delegate.unhandledWheelEventReceived = NO;
 
   // Send another wheel event, this time for scrolling by 0 lines (empty event).
   NSEvent* event2 = MockScrollWheelEventWithPhase(@selector(phaseChanged), 0);
@@ -1150,10 +1159,10 @@ TEST_F(RenderWidgetHostViewMacTest,
   events.clear();
 
   // Check that the view delegate ignored the empty unhandled wheel event.
-  ASSERT_EQ(NO, view_delegate.get().unhandledWheelEventReceived);
+  ASSERT_EQ(NO, view_delegate.unhandledWheelEventReceived);
 
   // Delete the view while |view_delegate| is still in scope.
-  rwhv_cocoa_.reset();
+  rwhv_cocoa_ = nil;
 }
 
 // Tests setting background transparency. See also (disabled on Mac)
@@ -1241,9 +1250,8 @@ TEST_F(RenderWidgetHostViewMacTest,
   TestBrowserContext browser_context;
   MockRenderProcessHost process_host(&browser_context);
   process_host.Init();
-  scoped_refptr<SiteInstanceGroup> site_instance_group =
-      base::WrapRefCounted(new SiteInstanceGroup(
-          SiteInstanceImpl::NextBrowsingInstanceId(), &process_host));
+  scoped_refptr<SiteInstanceGroup> site_instance_group = base::WrapRefCounted(
+      SiteInstanceGroup::CreateForTesting(&browser_context, &process_host));
   MockRenderWidgetHostDelegate delegate;
   int32_t routing_id = process_host.GetNextRoutingID();
   auto host = std::make_unique<MockRenderWidgetHostImpl>(
@@ -1306,9 +1314,8 @@ TEST_F(RenderWidgetHostViewMacTest,
   TestBrowserContext browser_context;
   MockRenderProcessHost process_host(&browser_context);
   process_host.Init();
-  scoped_refptr<SiteInstanceGroup> site_instance_group =
-      base::WrapRefCounted(new SiteInstanceGroup(
-          SiteInstanceImpl::NextBrowsingInstanceId(), &process_host));
+  scoped_refptr<SiteInstanceGroup> site_instance_group = base::WrapRefCounted(
+      SiteInstanceGroup::CreateForTesting(&browser_context, &process_host));
   MockRenderWidgetHostDelegate delegate;
   int32_t routing_id = process_host.GetNextRoutingID();
   auto host = std::make_unique<MockRenderWidgetHostImpl>(
@@ -1368,9 +1375,8 @@ TEST_F(RenderWidgetHostViewMacTest,
   MockRenderProcessHost process_host(&browser_context);
   process_host.Init();
   MockRenderWidgetHostDelegate delegate;
-  scoped_refptr<SiteInstanceGroup> site_instance_group =
-      base::WrapRefCounted(new SiteInstanceGroup(
-          SiteInstanceImpl::NextBrowsingInstanceId(), &process_host));
+  scoped_refptr<SiteInstanceGroup> site_instance_group = base::WrapRefCounted(
+      SiteInstanceGroup::CreateForTesting(&browser_context, &process_host));
   int32_t routing_id = process_host.GetNextRoutingID();
   auto host = std::make_unique<MockRenderWidgetHostImpl>(
       &delegate, site_instance_group->GetSafeRef(), routing_id,
@@ -1672,12 +1678,12 @@ TEST_F(RenderWidgetHostViewMacTest, SelectedText) {
 // for pages with multiple RWHVs.
 class InputMethodMacTest : public RenderWidgetHostViewMacTest {
  public:
-  InputMethodMacTest() {}
+  InputMethodMacTest() = default;
 
   InputMethodMacTest(const InputMethodMacTest&) = delete;
   InputMethodMacTest& operator=(const InputMethodMacTest&) = delete;
 
-  ~InputMethodMacTest() override {}
+  ~InputMethodMacTest() override = default;
 
   void SetUp() override {
     RenderWidgetHostViewMacTest::SetUp();
@@ -1687,9 +1693,9 @@ class InputMethodMacTest : public RenderWidgetHostViewMacTest {
     child_process_host_ =
         std::make_unique<MockRenderProcessHost>(child_browser_context_.get());
     child_process_host_->Init();
-    child_site_instance_group_ = base::WrapRefCounted(
-        new SiteInstanceGroup(site_instance_group_->browsing_instance_id(),
-                              child_process_host_.get()));
+    child_site_instance_group_ =
+        base::WrapRefCounted(SiteInstanceGroup::CreateForTesting(
+            site_instance_group_.get(), child_process_host_.get()));
     child_widget_ = std::make_unique<MockRenderWidgetHostImpl>(
         &delegate_, child_site_instance_group_->GetSafeRef(),
         child_process_host_->GetNextRoutingID(), /*for_frame_widget=*/false);
@@ -1721,9 +1727,7 @@ class InputMethodMacTest : public RenderWidgetHostViewMacTest {
   }
   RenderWidgetHostViewMac* tab_view() { return rwhv_mac_; }
   RenderWidgetHostImpl* tab_widget() { return host_.get(); }
-  RenderWidgetHostViewCocoa* tab_GetInProcessNSView() {
-    return rwhv_cocoa_.get();
-  }
+  RenderWidgetHostViewCocoa* tab_GetInProcessNSView() { return rwhv_cocoa_; }
 
   NSCandidateListTouchBarItem* candidate_list_item() {
     return [tab_GetInProcessNSView().touchBar
@@ -1734,7 +1738,7 @@ class InputMethodMacTest : public RenderWidgetHostViewMacTest {
   std::unique_ptr<MockRenderProcessHost> child_process_host_;
   scoped_refptr<SiteInstanceGroup> child_site_instance_group_;
   std::unique_ptr<MockRenderWidgetHostImpl> child_widget_;
-  raw_ptr<TestRenderWidgetHostView> child_view_;
+  raw_ptr<TestRenderWidgetHostView, DanglingUntriaged> child_view_;
 
  private:
   std::unique_ptr<TestBrowserContext> child_browser_context_;
@@ -1768,8 +1772,7 @@ TEST_F(InputMethodMacTest, UnmarkText) {
 // to a set composition IPC for the corresponding active widget.
 TEST_F(InputMethodMacTest, SetMarkedText) {
   // Some values for the call to setMarkedText.
-  base::scoped_nsobject<NSString> text(
-      [[NSString alloc] initWithString:@"sample text"]);
+  NSString* text = @"sample text";
   NSRange selectedRange = NSMakeRange(0, 4);
   NSRange replacementRange = NSMakeRange(0, 1);
 
@@ -1796,12 +1799,105 @@ TEST_F(InputMethodMacTest, SetMarkedText) {
   EXPECT_EQ("SetComposition", GetMessageNames(events));
 }
 
+// This test makes sure that selectedRange and markedRange are updated correctly
+// in various scenarios.
+TEST_F(InputMethodMacTest, MarkedRangeSelectedRange) {
+  if (!base::FeatureList::IsEnabled(features::kMacImeLiveConversionFix)) {
+    return;
+  }
+  // If the replacement range is valid, the range should be replaced with the
+  // new text.
+  {
+    NSString* text = @"sample text";
+    NSRange selectedRange = NSMakeRange(2, 4);
+    NSRange replacementRange = NSMakeRange(1, 1);
+
+    SetTextInputType(tab_view(), ui::TEXT_INPUT_TYPE_TEXT);
+    EXPECT_EQ(tab_widget(), text_input_manager()->GetActiveWidget());
+    [tab_GetInProcessNSView() setMarkedText:text
+                              selectedRange:selectedRange
+                           replacementRange:replacementRange];
+
+    NSRange actualSelectedRange = [tab_GetInProcessNSView() selectedRange];
+    NSRange actualMarkedRange = [tab_GetInProcessNSView() markedRange];
+
+    EXPECT_EQ((signed)actualMarkedRange.location, 1);
+    EXPECT_EQ((signed)actualMarkedRange.length, 11);
+    EXPECT_EQ((signed)actualSelectedRange.location, 3);
+    EXPECT_EQ((signed)actualSelectedRange.length, 4);
+  }
+
+  // If the text is empty, the marked range should be reset and the selection
+  // should be collapsed to the begining of the old marked range.
+  {
+    NSString* text = @"";
+    NSRange selectedRange = NSMakeRange(0, 0);
+    NSRange replacementRange = NSMakeRange(NSNotFound, 0);
+
+    EXPECT_EQ(tab_widget(), text_input_manager()->GetActiveWidget());
+    [tab_GetInProcessNSView() setMarkedText:text
+                              selectedRange:selectedRange
+                           replacementRange:replacementRange];
+
+    NSRange actualSelectedRange = [tab_GetInProcessNSView() selectedRange];
+    NSRange actualMarkedRange = [tab_GetInProcessNSView() markedRange];
+
+    EXPECT_EQ((signed)actualMarkedRange.location, (signed)NSNotFound);
+    EXPECT_EQ((signed)actualMarkedRange.length, 0);
+    EXPECT_EQ((signed)actualSelectedRange.location, 1);
+    EXPECT_EQ((signed)actualSelectedRange.length, 0);
+  }
+
+  // If no marked range and no replacement range, the current selection should
+  // be replaced.
+  {
+    NSString* text = @"sample2";
+    NSRange selectedRange = NSMakeRange(3, 2);
+    NSRange replacementRange = NSMakeRange(NSNotFound, 0);
+
+    SetTextInputType(tab_view(), ui::TEXT_INPUT_TYPE_TEXT);
+    EXPECT_EQ(tab_widget(), text_input_manager()->GetActiveWidget());
+    [tab_GetInProcessNSView() setMarkedText:text
+                              selectedRange:selectedRange
+                           replacementRange:replacementRange];
+
+    NSRange actualSelectedRange = [tab_GetInProcessNSView() selectedRange];
+    NSRange actualMarkedRange = [tab_GetInProcessNSView() markedRange];
+
+    EXPECT_EQ((signed)actualMarkedRange.location, 1);
+    EXPECT_EQ((signed)actualMarkedRange.length, 7);
+    EXPECT_EQ((signed)actualSelectedRange.location, 4);
+    EXPECT_EQ((signed)actualSelectedRange.length, 2);
+  }
+
+  // If the marked range is valid and there is no replacement range, the current
+  // marked range should be replaced.
+  {
+    NSString* text = @"new";
+    NSRange selectedRange = NSMakeRange(2, 1);
+    NSRange replacementRange = NSMakeRange(NSNotFound, 0);
+
+    SetTextInputType(tab_view(), ui::TEXT_INPUT_TYPE_TEXT);
+    EXPECT_EQ(tab_widget(), text_input_manager()->GetActiveWidget());
+    [tab_GetInProcessNSView() setMarkedText:text
+                              selectedRange:selectedRange
+                           replacementRange:replacementRange];
+
+    NSRange actualSelectedRange = [tab_GetInProcessNSView() selectedRange];
+    NSRange actualMarkedRange = [tab_GetInProcessNSView() markedRange];
+
+    EXPECT_EQ((signed)actualMarkedRange.location, 1);
+    EXPECT_EQ((signed)actualMarkedRange.length, 3);
+    EXPECT_EQ((signed)actualSelectedRange.location, 3);
+    EXPECT_EQ((signed)actualSelectedRange.length, 1);
+  }
+}
+
 // This test verifies that calling insertText on the cocoa view will lead to a
 // commit text IPC sent to the active widget.
 TEST_F(InputMethodMacTest, InsertText) {
   // Some values for the call to insertText.
-  base::scoped_nsobject<NSString> text(
-      [[NSString alloc] initWithString:@"sample text"]);
+  NSString* text = @"sample text";
   NSRange replacementRange = NSMakeRange(0, 1);
 
   // Make the child view active and then call insertText with some values. We
@@ -1827,8 +1923,7 @@ TEST_F(InputMethodMacTest, InsertText) {
 // lead to a finish composing text IPC for a the corresponding active widget.
 TEST_F(InputMethodMacTest, FinishComposingText) {
   // Some values for the call to setMarkedText.
-  base::scoped_nsobject<NSString> text(
-      [[NSString alloc] initWithString:@"sample text"]);
+  NSString* text = @"sample text";
   NSRange selectedRange = NSMakeRange(0, 4);
   NSRange replacementRange = NSMakeRange(0, 1);
 
@@ -1894,8 +1989,7 @@ TEST_F(InputMethodMacTest, SecurePasswordInput) {
 // always lead to a call to cancelComposition on the cocoa view.
 TEST_F(InputMethodMacTest, ImeCancelCompositionForAllViews) {
   // Some values for the call to setMarkedText.
-  base::scoped_nsobject<NSString> text(
-      [[NSString alloc] initWithString:@"sample text"]);
+  NSString* text = @"sample text";
   NSRange selectedRange = NSMakeRange(0, 1);
   NSRange replacementRange = NSMakeRange(0, 1);
 
@@ -1903,34 +1997,33 @@ TEST_F(InputMethodMacTest, ImeCancelCompositionForAllViews) {
   [tab_GetInProcessNSView() setMarkedText:text
                             selectedRange:selectedRange
                          replacementRange:replacementRange];
-  EXPECT_TRUE([tab_GetInProcessNSView() hasMarkedText]);
+  EXPECT_TRUE(tab_GetInProcessNSView().hasMarkedText);
   child_view_->ImeCancelComposition();
-  EXPECT_FALSE([tab_GetInProcessNSView() hasMarkedText]);
+  EXPECT_FALSE(tab_GetInProcessNSView().hasMarkedText);
 
   // Repeat for the tab's view.
   [tab_GetInProcessNSView() setMarkedText:text
                             selectedRange:selectedRange
                          replacementRange:replacementRange];
-  EXPECT_TRUE([tab_GetInProcessNSView() hasMarkedText]);
+  EXPECT_TRUE(tab_GetInProcessNSView().hasMarkedText);
   tab_view()->ImeCancelComposition();
-  EXPECT_FALSE([tab_GetInProcessNSView() hasMarkedText]);
+  EXPECT_FALSE(tab_GetInProcessNSView().hasMarkedText);
 }
 
 // This test verifies that calling FocusedNodeChanged() on
 // RenderWidgetHostViewMac calls cancelComposition on the Cocoa view.
 TEST_F(InputMethodMacTest, FocusedNodeChanged) {
   // Some values for the call to setMarkedText.
-  base::scoped_nsobject<NSString> text(
-      [[NSString alloc] initWithString:@"sample text"]);
+  NSString* text = @"sample text";
   NSRange selectedRange = NSMakeRange(0, 1);
   NSRange replacementRange = NSMakeRange(0, 1);
 
   [tab_GetInProcessNSView() setMarkedText:text
                             selectedRange:selectedRange
                          replacementRange:replacementRange];
-  EXPECT_TRUE([tab_GetInProcessNSView() hasMarkedText]);
+  EXPECT_TRUE(tab_GetInProcessNSView().hasMarkedText);
   tab_view()->FocusedNodeChanged(true, gfx::Rect());
-  EXPECT_FALSE([tab_GetInProcessNSView() hasMarkedText]);
+  EXPECT_FALSE(tab_GetInProcessNSView().hasMarkedText);
 }
 
 // This test verifies that when a RenderWidgetHostView changes its
@@ -2013,10 +2106,9 @@ TEST_F(InputMethodMacTest, TouchBarTextSuggestionsPresence) {
 
 TEST_F(InputMethodMacTest, TouchBarTextSuggestionsReplacement) {
   base::test::ScopedFeatureList feature_list;
-  base::scoped_nsobject<FakeSpellChecker> spellChecker(
-      [[FakeSpellChecker alloc] init]);
+  FakeSpellChecker* spellChecker = [[FakeSpellChecker alloc] init];
   tab_GetInProcessNSView().spellCheckerForTesting =
-      static_cast<NSSpellChecker*>(spellChecker.get());
+      static_cast<NSSpellChecker*>(spellChecker);
 
   SetTextInputType(tab_view(), ui::TEXT_INPUT_TYPE_TEXT);
   EXPECT_NSNE(nil, candidate_list_item());
@@ -2031,27 +2123,31 @@ TEST_F(InputMethodMacTest, TouchBarTextSuggestionsReplacement) {
   // Change the selection once; requests completions from the spell checker.
   tab_view()->SelectionChanged(kOriginalString, 3, gfx::Range(3, 3));
 
-  NSInteger firstSequenceNumber = [spellChecker sequenceNumber];
-  auto firstCompletionHandler = [spellChecker takeCompletionHandler];
+  NSInteger firstSequenceNumber = spellChecker.lastAssignedSequenceNumber;
+  SpellCheckerCompletionHandlerType firstCompletionHandler =
+      spellChecker.completionHandlers[@(firstSequenceNumber)];
 
-  EXPECT_NE(nil, (id)firstCompletionHandler.get());
+  EXPECT_NE(nil, firstCompletionHandler);
   EXPECT_EQ(0U, candidate_list_item().candidates.count);
 
   // Instead of replying right away, change the selection again!
   tab_view()->SelectionChanged(kOriginalString, 3, gfx::Range(5, 5));
 
-  EXPECT_NE(firstSequenceNumber, [spellChecker sequenceNumber]);
+  NSInteger secondSequenceNumber = spellChecker.lastAssignedSequenceNumber;
+  SpellCheckerCompletionHandlerType secondCompletionHandler =
+      spellChecker.completionHandlers[@(secondSequenceNumber)];
+
+  EXPECT_NE(firstSequenceNumber, secondSequenceNumber);
 
   // Make sure that calling the stale completion handler is a no-op.
-  firstCompletionHandler.get()(
-      firstSequenceNumber, @[ static_cast<NSTextCheckingResult*>(fakeResult) ]);
+  firstCompletionHandler(firstSequenceNumber,
+                         @[ static_cast<NSTextCheckingResult*>(fakeResult) ]);
   base::RunLoop().RunUntilIdle();
   EXPECT_EQ(0U, candidate_list_item().candidates.count);
 
   // But calling the current handler should work.
-  [spellChecker takeCompletionHandler].get()(
-      [spellChecker sequenceNumber],
-      @[ static_cast<NSTextCheckingResult*>(fakeResult) ]);
+  secondCompletionHandler(secondSequenceNumber,
+                          @[ static_cast<NSTextCheckingResult*>(fakeResult) ]);
   base::RunLoop().RunUntilIdle();
   EXPECT_EQ(1U, candidate_list_item().candidates.count);
 
@@ -2070,10 +2166,9 @@ TEST_F(InputMethodMacTest, TouchBarTextSuggestionsReplacement) {
 
 TEST_F(InputMethodMacTest, TouchBarTextSuggestionsNotRequestedForPasswords) {
   base::test::ScopedFeatureList feature_list;
-  base::scoped_nsobject<FakeSpellChecker> spellChecker(
-      [[FakeSpellChecker alloc] init]);
+  FakeSpellChecker* spellChecker = [[FakeSpellChecker alloc] init];
   tab_GetInProcessNSView().spellCheckerForTesting =
-      static_cast<NSSpellChecker*>(spellChecker.get());
+      static_cast<NSSpellChecker*>(spellChecker);
 
   SetTextInputType(tab_view(), ui::TEXT_INPUT_TYPE_PASSWORD);
   EXPECT_NSNE(nil, candidate_list_item());
@@ -2084,7 +2179,7 @@ TEST_F(InputMethodMacTest, TouchBarTextSuggestionsNotRequestedForPasswords) {
   // Change the selection once; completions should *not* be requested.
   tab_view()->SelectionChanged(kOriginalString, 3, gfx::Range(3, 3));
 
-  EXPECT_EQ(0U, [spellChecker sequenceNumber]);
+  EXPECT_EQ(0U, spellChecker.lastAssignedSequenceNumber);
 }
 
 // https://crbug.com/893038: There exist code paths which set the selection
@@ -2092,37 +2187,29 @@ TEST_F(InputMethodMacTest, TouchBarTextSuggestionsNotRequestedForPasswords) {
 // practice, but this has caused crashes in the field.
 TEST_F(InputMethodMacTest, TouchBarTextSuggestionsInvalidSelection) {
   base::test::ScopedFeatureList feature_list;
-  base::scoped_nsobject<FakeSpellChecker> spellChecker(
-      [[FakeSpellChecker alloc] init]);
+  FakeSpellChecker* spellChecker = [[FakeSpellChecker alloc] init];
   tab_GetInProcessNSView().spellCheckerForTesting =
-      static_cast<NSSpellChecker*>(spellChecker.get());
+      static_cast<NSSpellChecker*>(spellChecker);
 
   SetTextInputType(tab_view(), ui::TEXT_INPUT_TYPE_TEXT);
-  candidate_list_item().allowsCollapsing = NO;
 
-  if (auto completionHandler = [spellChecker takeCompletionHandler]) {
-    completionHandler.get()([spellChecker sequenceNumber], @[]);
+  NSInteger firstSequenceNumber = spellChecker.lastAssignedSequenceNumber;
+  SpellCheckerCompletionHandlerType firstCompletionHandler =
+      spellChecker.completionHandlers[@(firstSequenceNumber)];
+
+  if (firstSequenceNumber) {
+    firstCompletionHandler(firstSequenceNumber, @[]);
     base::RunLoop().RunUntilIdle();
   }
 
-    FakeTextCheckingResult* fakeResult =
-        [FakeTextCheckingResult resultWithRange:NSMakeRange(0, 3)
-                              replacementString:@"foo"];
+  const std::u16string kOriginalString = u"abcxxxghi";
 
-    const std::u16string kOriginalString = u"abcxxxghi";
+  tab_view()->SelectionChanged(kOriginalString, 3, gfx::Range::InvalidRange());
 
-    tab_view()->SelectionChanged(kOriginalString, 3,
-                                 gfx::Range::InvalidRange());
-
-    if (auto completionHandler = [spellChecker takeCompletionHandler]) {
-      completionHandler.get()(
-          [spellChecker sequenceNumber],
-          @[ static_cast<NSTextCheckingResult*>(fakeResult) ]);
-      base::RunLoop().RunUntilIdle();
-    }
-
-    EXPECT_NE(nil, candidate_list_item().candidates);
-    EXPECT_EQ(0U, candidate_list_item().candidates.count);
+  NSInteger secondSequenceNumber = spellChecker.lastAssignedSequenceNumber;
+  // If the selection changed to a bogus value, expect the machinery to have
+  // bailed out early and not ended up requesting suggestions.
+  EXPECT_EQ(firstSequenceNumber, secondSequenceNumber);
 }
 
 // This test verifies that in AutoResize mode a child-allocated
@@ -2219,14 +2306,15 @@ TEST_F(RenderWidgetHostViewMacTest, AccessibilityParentTest) {
   NSView* view = rwhv_mac_->GetInProcessNSView();
 
   // NSBox so it participates in the a11y hierarchy.
-  base::scoped_nsobject<NSView> parent_view([[NSBox alloc] init]);
-  base::scoped_nsobject<NSView> accessibility_parent([[NSView alloc] init]);
-  base::scoped_nsobject<NSWindow> window([[NSWindow alloc]
+  NSView* parent_view = [[NSBox alloc] init];
+  NSView* accessibility_parent = [[NSView alloc] init];
+  NSWindow* window = [[NSWindow alloc]
       initWithContentRect:NSMakeRect(0, 0, 512, 512)
                 styleMask:NSWindowStyleMaskResizable | NSWindowStyleMaskTitled
                   backing:NSBackingStoreBuffered
-                    defer:NO]);
-  [[window contentView] addSubview:accessibility_parent];
+                    defer:NO];
+  window.releasedWhenClosed = NO;
+  [window.contentView addSubview:accessibility_parent];
 
   [parent_view addSubview:view];
   EXPECT_NSEQ([view accessibilityParent], parent_view);

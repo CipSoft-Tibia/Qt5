@@ -47,7 +47,7 @@ static INLINE int32x4_t half_btf_neon_m(const int32_t *w0, const int32x4_t *n0,
   return x;
 }
 
-#if defined(__aarch64__)
+#if AOM_ARCH_AARCH64
 #define TRANSPOSE_4X4(x0, x1, x2, x3, y0, y1, y2, y3)         \
   do {                                                        \
     int32x4x2_t swap_low = vtrnq_s32(x0, x1);                 \
@@ -79,7 +79,7 @@ static INLINE int32x4_t half_btf_neon_m(const int32_t *w0, const int32x4_t *n0,
     y3 = vextq_s32(swap_low.val[1],                                      \
                    vextq_s32(swap_high.val[1], swap_high.val[1], 2), 2); \
   } while (0)
-#endif  // (__aarch64__)
+#endif  // AOM_ARCH_AARCH64
 
 static INLINE void transpose_4x4(const int32x4_t *in, int32x4_t *out) {
   TRANSPOSE_4X4(in[0], in[1], in[2], in[3], out[0], out[1], out[2], out[3]);
@@ -2350,37 +2350,30 @@ void av1_fadst4_new_neon(const int32x4_t *input, int32x4_t *output,
   cospi = cospi_arr(cos_bit);
   for (col = 0; col < col_num; col++) {
     // stage 0;
-    int32_t stage_idx = 0;
     int j;
     for (j = 0; j < 4; ++j) {
       buf0[j] = input[j * col_num + col];
     }
 
     // stage 1
-    stage_idx++;
     buf1[0] = buf0[3];
     buf1[1] = buf0[0];
     buf1[2] = buf0[1];
     buf1[3] = buf0[2];
 
     // stage 2
-    stage_idx++;
-
     btf_32_neon_type0(cospi[8], cospi[56], buf1[0], buf1[1], buf0[0], buf0[1],
                       v_cos_bit);
     btf_32_neon_type0(cospi[40], cospi[24], buf1[2], buf1[3], buf0[2], buf0[3],
                       v_cos_bit);
 
     // stage 3
-    stage_idx++;
     buf1[0] = vaddq_s32(buf0[0], buf0[2]);
     buf1[2] = vsubq_s32(buf0[0], buf0[2]);
     buf1[1] = vaddq_s32(buf0[1], buf0[3]);
     buf1[3] = vsubq_s32(buf0[1], buf0[3]);
 
     // stage 4
-    stage_idx++;
-
     cospi = cospi_arr(cos_bit);
     buf0[0] = buf1[0];
     buf0[1] = buf1[1];
@@ -2389,7 +2382,6 @@ void av1_fadst4_new_neon(const int32x4_t *input, int32x4_t *output,
                       v_cos_bit);
 
     // stage 5
-    stage_idx++;
     buf1[0] = buf0[0];
     buf1[1] = vnegq_s32(buf0[2]);
     buf1[2] = buf0[3];
@@ -3894,9 +3886,9 @@ typedef void (*TxfmFuncNEON)(int32x4_t *input, int32x4_t *output,
 
 static INLINE TxfmFuncNEON fwd_txfm_type_to_func(TXFM_TYPE txfm_type) {
   switch (txfm_type) {
-    case TXFM_TYPE_DCT32: return fdct32_new_neon; break;
-    case TXFM_TYPE_DCT64: return fdct64_new_neon; break;
-    case TXFM_TYPE_IDENTITY32: return idtx32x32_neon; break;
+    case TXFM_TYPE_DCT32: return fdct32_new_neon;
+    case TXFM_TYPE_DCT64: return fdct64_new_neon;
+    case TXFM_TYPE_IDENTITY32: return idtx32x32_neon;
     default: assert(0);
   }
   return NULL;

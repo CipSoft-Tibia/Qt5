@@ -23,6 +23,7 @@
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fpdfapi/parser/cpdf_stream_acc.h"
+#include "core/fxcrt/fixed_uninit_data_vector.h"
 #include "core/fxcrt/fx_codepage.h"
 #include "core/fxcrt/fx_memory.h"
 #include "core/fxcrt/fx_safe_types.h"
@@ -31,8 +32,7 @@
 #include "core/fxge/fx_font.h"
 #include "third_party/base/check.h"
 #include "third_party/base/check_op.h"
-#include "third_party/base/cxx17_backports.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
 namespace {
 
@@ -141,7 +141,7 @@ int FTPosToCBoxInt(FT_Pos pos) {
   // Boundary values to avoid integer overflow when multiplied by 1000.
   constexpr FT_Pos kMinCBox = -2147483;
   constexpr FT_Pos kMaxCBox = 2147483;
-  return static_cast<int>(pdfium::clamp(pos, kMinCBox, kMaxCBox));
+  return static_cast<int>(std::clamp(pos, kMinCBox, kMaxCBox));
 }
 
 #if !BUILDFLAG(IS_WIN)
@@ -159,13 +159,13 @@ bool IsValidEmbeddedCharcodeFromUnicodeCharset(CIDSet charset) {
   }
 }
 
-wchar_t EmbeddedUnicodeFromCharcode(const FXCMAP_CMap* pEmbedMap,
+wchar_t EmbeddedUnicodeFromCharcode(const fxcmap::CMap* pEmbedMap,
                                     CIDSet charset,
                                     uint32_t charcode) {
   if (!IsValidEmbeddedCharcodeFromUnicodeCharset(charset))
     return 0;
 
-  uint16_t cid = CIDFromCharCode(pEmbedMap, charcode);
+  uint16_t cid = fxcmap::CIDFromCharCode(pEmbedMap, charcode);
   if (!cid)
     return 0;
 
@@ -174,7 +174,7 @@ wchar_t EmbeddedUnicodeFromCharcode(const FXCMAP_CMap* pEmbedMap,
   return cid < map.size() ? map[cid] : 0;
 }
 
-uint32_t EmbeddedCharcodeFromUnicode(const FXCMAP_CMap* pEmbedMap,
+uint32_t EmbeddedCharcodeFromUnicode(const fxcmap::CMap* pEmbedMap,
                                      CIDSet charset,
                                      wchar_t unicode) {
   if (!IsValidEmbeddedCharcodeFromUnicodeCharset(charset))
@@ -184,7 +184,7 @@ uint32_t EmbeddedCharcodeFromUnicode(const FXCMAP_CMap* pEmbedMap,
       CPDF_FontGlobals::GetInstance()->GetEmbeddedToUnicode(charset);
   for (uint32_t i = 0; i < map.size(); ++i) {
     if (map[i] == unicode) {
-      uint32_t charCode = CharCodeFromCID(pEmbedMap, i);
+      uint32_t charCode = fxcmap::CharCodeFromCID(pEmbedMap, i);
       if (charCode)
         return charCode;
     }
@@ -660,18 +660,22 @@ int CPDF_CIDFont::GetGlyphIndex(uint32_t unicode, bool* pVertGlyph) {
 
   static constexpr uint32_t kGsubTag =
       CFX_FontMapper::MakeTag('G', 'S', 'U', 'B');
-  if (!m_Font.GetSubData()) {
-    unsigned long length = 0;
-    int error = FT_Load_Sfnt_Table(face, kGsubTag, 0, nullptr, &length);
-    if (!error)
-      m_Font.AllocSubData(length);
-  }
-  int error =
-      FT_Load_Sfnt_Table(face, kGsubTag, 0, m_Font.GetSubData(), nullptr);
-  if (error || !m_Font.GetSubData())
+  unsigned long length = 0;
+  int error = FT_Load_Sfnt_Table(face, kGsubTag, 0, nullptr, &length);
+  if (error || !length) {
     return index;
+  }
 
-  m_pTTGSUBTable = std::make_unique<CFX_CTTGSUBTable>(m_Font.GetSubData());
+  FixedUninitDataVector<uint8_t> sub_data(length);
+  error = FT_Load_Sfnt_Table(face, kGsubTag, 0, sub_data.writable_span().data(),
+                             nullptr);
+  if (error) {
+    return index;
+  }
+
+  // CFX_CTTGSUBTable parses the data and stores all the values in its structs.
+  // It does not store pointers into `sub_data`.
+  m_pTTGSUBTable = std::make_unique<CFX_CTTGSUBTable>(sub_data.span());
   return GetVerticalGlyph(index, pVertGlyph);
 }
 
@@ -883,10 +887,12 @@ const uint8_t* CPDF_CIDFont::GetCIDTransform(uint16_t cid) const {
   if (m_Charset != CIDSET_JAPAN1 || m_pFontFile)
     return nullptr;
 
-  const auto* pEnd = kJapan1VerticalCIDs + std::size(kJapan1VerticalCIDs);
+  const auto* pBegin = std::begin(kJapan1VerticalCIDs);
+  const auto* pEnd = std::end(kJapan1VerticalCIDs);
   const auto* pTransform = std::lower_bound(
-      kJapan1VerticalCIDs, pEnd, cid,
+      pBegin, pEnd, cid,
       [](const CIDTransform& entry, uint16_t cid) { return entry.cid < cid; });
+
   return (pTransform < pEnd && cid == pTransform->cid) ? &pTransform->a
                                                        : nullptr;
 }

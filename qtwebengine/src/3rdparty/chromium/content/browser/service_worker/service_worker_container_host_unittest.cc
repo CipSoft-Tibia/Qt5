@@ -33,6 +33,7 @@
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/origin_util.h"
+#include "content/public/test/back_forward_cache_util.h"
 #include "content/public/test/browser_task_environment.h"
 #include "content/public/test/test_utils.h"
 #include "content/test/test_content_browser_client.h"
@@ -331,7 +332,7 @@ class ServiceWorkerContainerHostTest : public testing::Test {
   BrowserTaskEnvironment task_environment_;
 
   std::unique_ptr<EmbeddedWorkerTestHelper> helper_;
-  raw_ptr<ServiceWorkerContextCore> context_;
+  raw_ptr<ServiceWorkerContextCore, DanglingUntriaged> context_;
   scoped_refptr<ServiceWorkerRegistration> registration1_;
   scoped_refptr<ServiceWorkerRegistration> registration2_;
   scoped_refptr<ServiceWorkerRegistration> registration3_;
@@ -392,7 +393,7 @@ TEST_F(ServiceWorkerContainerHostTest, MatchRegistration) {
   container_host->RemoveMatchingRegistration(registration1_.get());
   ASSERT_EQ(nullptr, container_host->MatchRegistration());
 
-  // SetDocumentUrl sets all of matching registrations
+  // UpdateUrls sets all of matching registrations
   container_host->UpdateUrls(
       GURL("https://www.example.com/example1"),
       url::Origin::Create(GURL("https://www.example.com/example1")),
@@ -402,7 +403,7 @@ TEST_F(ServiceWorkerContainerHostTest, MatchRegistration) {
   container_host->RemoveMatchingRegistration(registration2_.get());
   ASSERT_EQ(registration1_, container_host->MatchRegistration());
 
-  // SetDocumentUrl with another origin also updates matching registrations
+  // UpdateUrls with another origin also updates matching registrations
   container_host->UpdateUrls(
       GURL("https://other.example.com/example"),
       url::Origin::Create(GURL("https://other.example.com/example")),
@@ -516,6 +517,11 @@ TEST_F(ServiceWorkerContainerHostTest, UpdateUrls_CorrectStorageKey) {
   const GURL url3("https://origin3.example.com/sw.js");
   const blink::StorageKey key3 =
       blink::StorageKey::CreateFirstParty(url::Origin::Create(url3));
+  const GURL url4("https://origin3.example.com/sw.js");
+  const GURL url4_top_level_site("https://other.com/");
+  const blink::StorageKey key4 = blink::StorageKey::Create(
+      url::Origin::Create(url4), net::SchemefulSite(url4_top_level_site),
+      blink::mojom::AncestorChainBit::kCrossSite, true);
 
   base::WeakPtr<ServiceWorkerContainerHost> container_host =
       CreateContainerHost(url1);
@@ -531,6 +537,10 @@ TEST_F(ServiceWorkerContainerHostTest, UpdateUrls_CorrectStorageKey) {
   container_host_for_service_worker->UpdateUrls(url3, url::Origin::Create(url3),
                                                 key3);
   EXPECT_EQ(key3, container_host_for_service_worker->key());
+
+  container_host_for_service_worker->UpdateUrls(
+      url4, url::Origin::Create(url4_top_level_site), key4);
+  EXPECT_EQ(key4, container_host_for_service_worker->key());
 }
 
 TEST_F(ServiceWorkerContainerHostTest,
@@ -735,7 +745,7 @@ TEST_F(ServiceWorkerContainerHostTest,
   SetBrowserClientForTesting(old_browser_client);
 }
 
-TEST_F(ServiceWorkerContainerHostTest, AllowsServiceWorker) {
+TEST_F(ServiceWorkerContainerHostTest, AllowServiceWorker) {
   // Create an active version.
   scoped_refptr<ServiceWorkerVersion> version =
       base::MakeRefCounted<ServiceWorkerVersion>(
@@ -1274,11 +1284,9 @@ class ServiceWorkerContainerHostTestWithBackForwardCache
  public:
   ServiceWorkerContainerHostTestWithBackForwardCache() {
     scoped_feature_list_.InitWithFeaturesAndParameters(
-        {{features::kBackForwardCache, {{}}},
-         {features::kBackForwardCacheTimeToLiveControl,
-          {{"time_to_live_seconds", "3600"}}}},
-        // Allow BackForwardCache for all devices regardless of their memory.
-        /*disabled_features=*/{features::kBackForwardCacheMemoryControls});
+        GetDefaultEnabledBackForwardCacheFeaturesForTesting(
+            /*ignore_outstanding_network_request=*/false),
+        GetDefaultDisabledBackForwardCacheFeaturesForTesting());
   }
 
  private:

@@ -31,8 +31,8 @@ macro(libgav1_set_build_definitions)
   # passed to libtool.
   #
   # We set LIBGAV1_SOVERSION = [c-a].a.r
-  set(LT_CURRENT 0)
-  set(LT_REVISION 1)
+  set(LT_CURRENT 1)
+  set(LT_REVISION 0)
   set(LT_AGE 0)
   math(EXPR LIBGAV1_SOVERSION_MAJOR "${LT_CURRENT} - ${LT_AGE}")
   set(LIBGAV1_SOVERSION "${LIBGAV1_SOVERSION_MAJOR}.${LT_AGE}.${LT_REVISION}")
@@ -141,7 +141,7 @@ macro(libgav1_set_build_definitions)
   endif()
 
   if(NOT LIBGAV1_MAX_BITDEPTH)
-    set(LIBGAV1_MAX_BITDEPTH 10)
+    set(LIBGAV1_MAX_BITDEPTH 12)
   elseif(NOT LIBGAV1_MAX_BITDEPTH EQUAL 8
          AND NOT LIBGAV1_MAX_BITDEPTH EQUAL 10
          AND NOT LIBGAV1_MAX_BITDEPTH EQUAL 12)

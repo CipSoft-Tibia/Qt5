@@ -80,8 +80,7 @@ class CORE_EXPORT StyleColor {
     Color Resolve(const Color& current_color) const;
 
    private:
-    Color::ColorInterpolationSpace color_interpolation_space_ =
-        Color::ColorInterpolationSpace::kNone;
+    Color::ColorSpace color_interpolation_space_ = Color::ColorSpace::kNone;
     Color::HueInterpolationMethod hue_interpolation_method_ =
         Color::HueInterpolationMethod::kShorter;
     ColorOrUnresolvedColorMix color1_;
@@ -192,6 +191,10 @@ class CORE_EXPORT StyleColor {
  private:
   CSSValueID EffectiveColorKeyword() const;
 };
+
+// For debugging only.
+CORE_EXPORT std::ostream& operator<<(std::ostream& stream,
+                                     const StyleColor& color);
 
 }  // namespace blink
 

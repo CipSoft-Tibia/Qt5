@@ -93,7 +93,7 @@ export class AdbOverWebUsb implements Adb {
 
   async getPairedDevices() {
     try {
-      return navigator.usb.getDevices();
+      return await navigator.usb.getDevices();
     } catch (e) {  // WebUSB not available.
       return Promise.resolve([]);
     }
@@ -537,7 +537,7 @@ export class AdbMsgImpl implements AdbMsg {
   }
 
   // A brief description of the message can be found here:
-  // https://android.googlesource.com/platform/system/core/+/master/adb/protocol.txt
+  // https://android.googlesource.com/platform/system/core/+/main/adb/protocol.txt
   //
   // struct amessage {
   //     uint32_t command;    // command identifier constant
@@ -586,7 +586,7 @@ export class AdbMsgImpl implements AdbMsg {
 
 
 function base64StringToArray(s: string) {
-  const decoded = atob(s.replace(/-/g, '+').replace(/_/g, '/'));
+  const decoded = atob(s.replaceAll('-', '+').replaceAll('_', '/'));
   return [...decoded].map((char) => char.charCodeAt(0));
 }
 

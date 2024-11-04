@@ -11,6 +11,7 @@ import * as DataGrid from '../../ui/legacy/components/data_grid/data_grid.js';
 import * as PerfUI from '../../ui/legacy/components/perf_ui/perf_ui.js';
 import * as Components from '../../ui/legacy/components/utils/utils.js';
 import type * as Protocol from '../../generated/protocol.js';
+import type * as CPUProfile from '../../models/cpu_profile/cpu_profile.js';
 
 import type * as SDK from '../../core/sdk/sdk.js';
 import * as UI from '../../ui/legacy/legacy.js';
@@ -108,7 +109,7 @@ const UIStrings = {
 const str_ = i18n.i18n.registerUIStrings('panels/profiler/ProfileView.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 export class ProfileView extends UI.View.SimpleView implements UI.SearchableView.Searchable {
-  profileInternal: SDK.ProfileTreeModel.ProfileTreeModel|null;
+  profileInternal: CPUProfile.ProfileTreeModel.ProfileTreeModel|null;
   searchableViewInternal: UI.SearchableView.SearchableView;
   dataGrid: DataGrid.DataGrid.DataGridImpl<unknown>;
   viewSelectComboBox: UI.Toolbar.ToolbarComboBox;
@@ -208,17 +209,15 @@ export class ProfileView extends UI.View.SimpleView implements UI.SearchableView
     this.viewSelectComboBox =
         new UI.Toolbar.ToolbarComboBox(this.changeView.bind(this), i18nString(UIStrings.profileViewMode));
 
-    this.focusButton =
-        new UI.Toolbar.ToolbarButton(i18nString(UIStrings.focusSelectedFunction), 'largeicon-visibility');
+    this.focusButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.focusSelectedFunction), 'eye');
     this.focusButton.setEnabled(false);
     this.focusButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.focusClicked, this);
 
-    this.excludeButton =
-        new UI.Toolbar.ToolbarButton(i18nString(UIStrings.excludeSelectedFunction), 'largeicon-delete');
+    this.excludeButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.excludeSelectedFunction), 'cross');
     this.excludeButton.setEnabled(false);
     this.excludeButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.excludeClicked, this);
 
-    this.resetButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.restoreAllFunctions), 'largeicon-refresh');
+    this.resetButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.restoreAllFunctions), 'refresh');
     this.resetButton.setEnabled(false);
     this.resetButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.resetClicked, this);
 
@@ -238,7 +237,7 @@ export class ProfileView extends UI.View.SimpleView implements UI.SearchableView
     return table;
   }
 
-  setProfile(profile: SDK.ProfileTreeModel.ProfileTreeModel): void {
+  setProfile(profile: CPUProfile.ProfileTreeModel.ProfileTreeModel): void {
     this.profileInternal = profile;
     this.bottomUpProfileDataGridTree = null;
     this.topDownProfileDataGridTree = null;
@@ -246,7 +245,7 @@ export class ProfileView extends UI.View.SimpleView implements UI.SearchableView
     this.refresh();
   }
 
-  profile(): SDK.ProfileTreeModel.ProfileTreeModel|null {
+  profile(): CPUProfile.ProfileTreeModel.ProfileTreeModel|null {
     return this.profileInternal;
   }
 
@@ -274,7 +273,7 @@ export class ProfileView extends UI.View.SimpleView implements UI.SearchableView
     }
   }
 
-  focus(): void {
+  override focus(): void {
     if (this.flameChart) {
       this.flameChart.focus();
     } else {
@@ -293,7 +292,7 @@ export class ProfileView extends UI.View.SimpleView implements UI.SearchableView
     this.flameChart.selectRange(timeLeft, timeRight);
   }
 
-  async toolbarItems(): Promise<UI.Toolbar.ToolbarItem[]> {
+  override async toolbarItems(): Promise<UI.Toolbar.ToolbarItem[]> {
     return [this.viewSelectComboBox, this.focusButton, this.excludeButton, this.resetButton];
   }
 
@@ -301,7 +300,7 @@ export class ProfileView extends UI.View.SimpleView implements UI.SearchableView
     if (!this.bottomUpProfileDataGridTree) {
       this.bottomUpProfileDataGridTree = new BottomUpProfileDataGridTree(
           this.nodeFormatter, this.searchableViewInternal,
-          (this.profileInternal as SDK.ProfileTreeModel.ProfileTreeModel).root, this.adjustedTotal);
+          (this.profileInternal as CPUProfile.ProfileTreeModel.ProfileTreeModel).root, this.adjustedTotal);
     }
     return this.bottomUpProfileDataGridTree;
   }
@@ -310,7 +309,7 @@ export class ProfileView extends UI.View.SimpleView implements UI.SearchableView
     if (!this.topDownProfileDataGridTree) {
       this.topDownProfileDataGridTree = new TopDownProfileDataGridTree(
           this.nodeFormatter, this.searchableViewInternal,
-          (this.profileInternal as SDK.ProfileTreeModel.ProfileTreeModel).root, this.adjustedTotal);
+          (this.profileInternal as CPUProfile.ProfileTreeModel.ProfileTreeModel).root, this.adjustedTotal);
     }
     return this.topDownProfileDataGridTree;
   }
@@ -323,7 +322,7 @@ export class ProfileView extends UI.View.SimpleView implements UI.SearchableView
     }
   }
 
-  willHide(): void {
+  override willHide(): void {
     this.currentSearchResultIndex = -1;
   }
 
@@ -581,19 +580,19 @@ export class WritableProfileHeader extends ProfileHeader implements Common.Strin
   async close(): Promise<void> {
   }
 
-  dispose(): void {
+  override dispose(): void {
     this.removeTempFile();
   }
 
-  createSidebarTreeElement(panel: DataDisplayDelegate): ProfileSidebarTreeElement {
+  override createSidebarTreeElement(panel: DataDisplayDelegate): ProfileSidebarTreeElement {
     return new ProfileSidebarTreeElement(panel, this, 'profile-sidebar-tree-item');
   }
 
-  canSaveToFile(): boolean {
+  override canSaveToFile(): boolean {
     return !this.fromFile() && Boolean(this.protocolProfileInternal);
   }
 
-  async saveToFile(): Promise<void> {
+  override async saveToFile(): Promise<void> {
     const fileOutputStream = new Bindings.FileUtils.FileOutputStream();
     if (!this.fileName) {
       const now = Platform.DateUtilities.toISO8601Compact(new Date());
@@ -613,7 +612,7 @@ export class WritableProfileHeader extends ProfileHeader implements Common.Strin
     void fileOutputStream.close();
   }
 
-  async loadFromFile(file: File): Promise<Error|null> {
+  override async loadFromFile(file: File): Promise<Error|null> {
     this.updateStatus(i18nString(UIStrings.loading), true);
     const fileReader = new Bindings.FileUtils.ChunkedFileReader(file, 10000000, this.onChunkTransferred.bind(this));
     this.jsonifiedProfile = '';

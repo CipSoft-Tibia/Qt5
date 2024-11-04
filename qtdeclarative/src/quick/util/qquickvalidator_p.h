@@ -27,7 +27,7 @@ QT_BEGIN_NAMESPACE
 class Q_QUICK_PRIVATE_EXPORT QQuickIntValidator : public QIntValidator
 {
     Q_OBJECT
-    Q_PROPERTY(QString locale READ localeName WRITE setLocaleName RESET resetLocaleName NOTIFY localeNameChanged FINAL)
+    Q_PROPERTY(QString locale READ localeName WRITE setLocaleName RESET resetLocaleName NOTIFY localeNameChanged)
     QML_NAMED_ELEMENT(IntValidator)
     QML_ADDED_IN_VERSION(2, 0)
 public:
@@ -44,7 +44,7 @@ Q_SIGNALS:
 class Q_QUICK_PRIVATE_EXPORT QQuickDoubleValidator : public QDoubleValidator
 {
     Q_OBJECT
-    Q_PROPERTY(QString locale READ localeName WRITE setLocaleName RESET resetLocaleName NOTIFY localeNameChanged FINAL)
+    Q_PROPERTY(QString locale READ localeName WRITE setLocaleName RESET resetLocaleName NOTIFY localeNameChanged)
     QML_NAMED_ELEMENT(DoubleValidator)
     QML_ADDED_IN_VERSION(2, 0)
 public:
@@ -60,14 +60,5 @@ Q_SIGNALS:
 #endif
 
 QT_END_NAMESPACE
-
-#if QT_CONFIG(validator)
-QML_DECLARE_TYPE(QValidator)
-QML_DECLARE_TYPE(QQuickIntValidator)
-QML_DECLARE_TYPE(QQuickDoubleValidator)
-#if QT_CONFIG(regularexpression)
-QML_DECLARE_TYPE(QRegularExpressionValidator)
-#endif
-#endif
 
 #endif // QQUICKVALIDATOR_P_H

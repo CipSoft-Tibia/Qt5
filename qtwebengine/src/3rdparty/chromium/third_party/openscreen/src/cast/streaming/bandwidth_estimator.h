@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,7 @@
 
 #include "platform/api/time.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Tracks send attempts and successful receives, and then computes a total
 // network bandwith estimate.
@@ -164,7 +163,6 @@ class BandwidthEstimator {
   FlowTracker feedback_history_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_BANDWIDTH_ESTIMATOR_H_

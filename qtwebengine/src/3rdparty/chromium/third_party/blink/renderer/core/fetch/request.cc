@@ -7,6 +7,7 @@
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/network/public/cpp/request_destination.h"
 #include "services/network/public/cpp/request_mode.h"
+#include "services/network/public/mojom/attribution.mojom-blink.h"
 #include "services/network/public/mojom/ip_address_space.mojom-blink.h"
 #include "services/network/public/mojom/trust_tokens.mojom-blink.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -20,18 +21,19 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_abort_signal.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_blob.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_form_data.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_private_token.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_readable_stream.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_request_init.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_trust_token.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_request_usvstring.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_url_search_params.h"
 #include "third_party/blink/renderer/core/dom/abort_signal.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/core/fetch/attribution_reporting_to_mojom.h"
 #include "third_party/blink/renderer/core/fetch/blob_bytes_consumer.h"
 #include "third_party/blink/renderer/core/fetch/body_stream_buffer.h"
 #include "third_party/blink/renderer/core/fetch/fetch_manager.h"
 #include "third_party/blink/renderer/core/fetch/form_data_bytes_consumer.h"
-#include "third_party/blink/renderer/core/fetch/trust_token_issuance_authorization.h"
+#include "third_party/blink/renderer/core/fetch/request_util.h"
 #include "third_party/blink/renderer/core/fetch/trust_token_to_mojom.h"
 #include "third_party/blink/renderer/core/fileapi/blob.h"
 #include "third_party/blink/renderer/core/fileapi/public_url_manager.h"
@@ -94,6 +96,8 @@ FetchRequestData* CreateCopyOfFetchRequestDataForFetch(
   request->SetPriority(original->Priority());
   request->SetKeepalive(original->Keepalive());
   request->SetBrowsingTopics(original->BrowsingTopics());
+  request->SetAdAuctionHeaders(original->AdAuctionHeaders());
+  request->SetSharedStorageWritable(original->SharedStorageWritable());
   request->SetIsHistoryNavigation(original->IsHistoryNavigation());
   if (original->URLLoaderFactory()) {
     mojo::PendingRemote<network::mojom::blink::URLLoaderFactory> factory_clone;
@@ -103,6 +107,10 @@ FetchRequestData* CreateCopyOfFetchRequestDataForFetch(
   }
   request->SetWindowId(original->WindowId());
   request->SetTrustTokenParams(original->TrustTokenParams());
+  request->SetAttributionReportingEligibility(
+      original->AttributionReportingEligibility());
+  request->SetServiceWorkerRaceNetworkRequestToken(
+      original->ServiceWorkerRaceNetworkRequestToken());
 
   // When a new request is created from another the destination is always reset
   // to be `kEmpty`.  In order to facilitate some later checks when a service
@@ -124,8 +132,9 @@ static bool AreAnyMembersPresent(const RequestInit* init) {
          init->hasTargetAddressSpace() || init->hasCredentials() ||
          init->hasCache() || init->hasRedirect() || init->hasIntegrity() ||
          init->hasKeepalive() || init->hasBrowsingTopics() ||
+         init->hasAdAuctionHeaders() || init->hasSharedStorageWritable() ||
          init->hasPriority() || init->hasSignal() || init->hasDuplex() ||
-         init->hasTrustToken();
+         init->hasPrivateToken() || init->hasAttributionReporting();
 }
 
 static BodyStreamBuffer* ExtractBody(ScriptState* script_state,
@@ -138,8 +147,7 @@ static BodyStreamBuffer* ExtractBody(ScriptState* script_state,
   ExecutionContext* execution_context = ExecutionContext::From(script_state);
   v8::Isolate* isolate = script_state->GetIsolate();
 
-  if (V8Blob::HasInstance(body, isolate)) {
-    Blob* blob = V8Blob::ToImpl(body.As<v8::Object>());
+  if (Blob* blob = V8Blob::ToWrappable(isolate, body)) {
     return_buffer = BodyStreamBuffer::Create(
         script_state,
         MakeGarbageCollected<BlobBytesConsumer>(execution_context,
@@ -182,9 +190,8 @@ static BodyStreamBuffer* ExtractBody(ScriptState* script_state,
         script_state,
         MakeGarbageCollected<FormDataBytesConsumer>(array_buffer_view),
         nullptr /* AbortSignal */, /*cached_metadata_handler=*/nullptr);
-  } else if (V8FormData::HasInstance(body, isolate)) {
-    scoped_refptr<EncodedFormData> form_data =
-        V8FormData::ToImpl(body.As<v8::Object>())->EncodeMultiPartFormData();
+  } else if (FormData* form = V8FormData::ToWrappable(isolate, body)) {
+    scoped_refptr<EncodedFormData> form_data = form->EncodeMultiPartFormData();
     // Here we handle formData->boundary() as a C-style string. See
     // FormDataEncoder::generateUniqueBoundaryString.
     content_type = AtomicString("multipart/form-data; boundary=") +
@@ -194,20 +201,21 @@ static BodyStreamBuffer* ExtractBody(ScriptState* script_state,
         MakeGarbageCollected<FormDataBytesConsumer>(execution_context,
                                                     std::move(form_data)),
         nullptr /* AbortSignal */, /*cached_metadata_handler=*/nullptr);
-  } else if (V8URLSearchParams::HasInstance(body, isolate)) {
+  } else if (URLSearchParams* url_search_params =
+                 V8URLSearchParams::ToWrappable(isolate, body)) {
     scoped_refptr<EncodedFormData> form_data =
-        V8URLSearchParams::ToImpl(body.As<v8::Object>())->ToEncodedFormData();
+        url_search_params->ToEncodedFormData();
     return_buffer = BodyStreamBuffer::Create(
         script_state,
         MakeGarbageCollected<FormDataBytesConsumer>(execution_context,
                                                     std::move(form_data)),
         nullptr /* AbortSignal */, /*cached_metadata_handler=*/nullptr);
     content_type = "application/x-www-form-urlencoded;charset=UTF-8";
-  } else if (RuntimeEnabledFeatures::FetchUploadStreamingEnabled(
-                 execution_context) &&
-             V8ReadableStream::HasInstance(body, isolate)) {
-    ReadableStream* readable_stream =
-        V8ReadableStream::ToImpl(body.As<v8::Object>());
+  } else if (ReadableStream* readable_stream =
+                 V8ReadableStream::ToWrappable(isolate, body);
+             readable_stream &&
+             RuntimeEnabledFeatures::FetchUploadStreamingEnabled(
+                 execution_context)) {
     // This is implemented in Request::CreateRequestWithRequestOrString():
     //   "If the |keepalive| flag is set, then throw a TypeError."
 
@@ -427,19 +435,14 @@ Request* Request::CreateRequestWithRequestOrString(
   // - "If |mode| is "navigate", throw a TypeError."
   // - "If |mode| is non-null, set |request|'s mode to |mode|."
   if (init->hasMode()) {
-    if (init->mode() == "navigate") {
+    network::mojom::RequestMode mode = V8RequestModeToMojom(init->mode());
+    if (mode == network::mojom::RequestMode::kNavigate) {
       exception_state.ThrowTypeError(
           "Cannot construct a Request with a RequestInit whose mode member is "
           "set as 'navigate'.");
       return nullptr;
     }
-    if (init->mode() == "same-origin") {
-      request->SetMode(network::mojom::RequestMode::kSameOrigin);
-    } else if (init->mode() == "no-cors") {
-      request->SetMode(network::mojom::RequestMode::kNoCors);
-    } else if (init->mode() == "cors") {
-      request->SetMode(network::mojom::RequestMode::kCors);
-    }
+    request->SetMode(mode);
   } else {
     // |inputRequest| is directly checked here instead of setting and
     // checking |fallbackMode| as specified in the spec.
@@ -549,6 +552,33 @@ Request* Request::CreateRequestWithRequestOrString(
     }
   }
 
+  if (init->hasAdAuctionHeaders()) {
+    if (!execution_context->IsSecureContext()) {
+      exception_state.ThrowDOMException(
+          DOMExceptionCode::kNotAllowedError,
+          "adAuctionHeaders: ad auction operations are only available in "
+          "secure contexts.");
+      return nullptr;
+    }
+
+    request->SetAdAuctionHeaders(init->adAuctionHeaders());
+  }
+
+  if (init->hasSharedStorageWritable()) {
+    if (!execution_context->IsSecureContext()) {
+      exception_state.ThrowTypeError(
+          "sharedStorageWritable: sharedStorage operations are only available"
+          " in secure contexts.");
+      return nullptr;
+    }
+    request->SetSharedStorageWritable(init->sharedStorageWritable());
+    if (init->sharedStorageWritable()) {
+      UseCounter::Count(
+          execution_context,
+          mojom::blink::WebFeature::kSharedStorageAPI_Fetch_Attribute);
+    }
+  }
+
   // "If |init|'s method member is present, let |method| be it and run these
   // substeps:"
   if (init->hasMethod()) {
@@ -575,13 +605,14 @@ Request* Request::CreateRequestWithRequestOrString(
     signal = init->signal();
   }
 
-  if (init->hasTrustToken()) {
+  if (init->hasPrivateToken()) {
     UseCounter::Count(ExecutionContext::From(script_state),
                       mojom::blink::WebFeature::kTrustTokenFetch);
 
     network::mojom::blink::TrustTokenParams params;
-    if (!ConvertTrustTokenToMojom(*init->trustToken(), &exception_state,
-                                  &params)) {
+    if (!ConvertTrustTokenToMojomAndCheckPermissions(
+            *init->privateToken(), execution_context, &exception_state,
+            &params)) {
       // Whenever parsing the trustToken argument fails, we expect a suitable
       // exception to be thrown.
       DCHECK(exception_state.HadException());
@@ -595,36 +626,45 @@ Request* Request::CreateRequestWithRequestOrString(
       return nullptr;
     }
 
-    if ((params.operation == TrustTokenOperationType::kRedemption ||
-         params.operation == TrustTokenOperationType::kSigning) &&
-        !execution_context->IsFeatureEnabled(
-            mojom::blink::PermissionsPolicyFeature::kTrustTokenRedemption)) {
-      exception_state.ThrowTypeError(
-          "trustToken: Redemption ('token-redemption') and signing "
-          "('send-redemption-record') operations require that the "
-          "trust-token-redemption "
-          "Permissions Policy feature be enabled.");
-      return nullptr;
-    }
-
-    if (params.operation == TrustTokenOperationType::kIssuance &&
-        !IsTrustTokenIssuanceAvailableInExecutionContext(*execution_context)) {
-      exception_state.ThrowTypeError(
-          "trustToken: Issuance ('token-request') is disabled except in "
-          "contexts with the TrustTokens Origin Trial enabled.");
-      return nullptr;
-    }
-
     request->SetTrustTokenParams(std::move(params));
+  }
+
+  if (init->hasAttributionReporting()) {
+    if (!execution_context->IsSecureContext()) {
+      exception_state.ThrowTypeError(
+          "attributionReporting: Attribution Reporting operations are only "
+          "available in secure contexts.");
+      return nullptr;
+    }
+
+    request->SetAttributionReportingEligibility(
+        ConvertAttributionReportingRequestOptionsToMojom(
+            *init->attributionReporting(), *execution_context,
+            exception_state));
+  }
+
+  AbortSignal* request_signal = nullptr;
+  if (RuntimeEnabledFeatures::AbortSignalAnyEnabled()) {
+    // "Let  signals  be [|signal|] if  signal  is non-null; otherwise []."
+    HeapVector<Member<AbortSignal>> signals;
+    if (signal) {
+      signals.push_back(signal);
+    }
+    // "Set |r|'s signal to the result of creating a new  dependent abort signal
+    // from |signals|".
+    request_signal = MakeGarbageCollected<AbortSignal>(script_state, signals);
+  } else {
+    request_signal =
+        MakeGarbageCollected<AbortSignal>(ExecutionContext::From(script_state));
+    // "If |signal| is not null, then make |r|’s signal follow |signal|."
+    if (signal) {
+      request_signal->Follow(script_state, signal);
+    }
   }
 
   // "Let |r| be a new Request object associated with |request| and a new
   // Headers object whose guard is "request"."
-  Request* r = Request::Create(script_state, request);
-
-  // "If |signal| is not null, then make |r|’s signal follow |signal|."
-  if (signal)
-    r->signal_->Follow(script_state, signal);
+  Request* r = Request::Create(script_state, request, request_signal);
 
   // "If |r|'s request's mode is "no-cors", run these substeps:
   if (r->GetRequest()->Mode() == network::mojom::RequestMode::kNoCors) {
@@ -694,7 +734,7 @@ Request* Request::CreateRequestWithRequestOrString(
     // From "extract a body":
     // - If the keepalive flag is set, then throw a TypeError.
     if (init->hasKeepalive() && init->keepalive() &&
-        V8ReadableStream::HasInstance(init_body, script_state->GetIsolate())) {
+        V8ReadableStream::HasInstance(script_state->GetIsolate(), init_body)) {
       exception_state.ThrowTypeError(
           "Keepalive request cannot have a ReadableStream body.");
       return nullptr;
@@ -826,8 +866,10 @@ Request* Request::Create(ScriptState* script_state,
                                           exception_state);
 }
 
-Request* Request::Create(ScriptState* script_state, FetchRequestData* request) {
-  return MakeGarbageCollected<Request>(script_state, request);
+Request* Request::Create(ScriptState* script_state,
+                         FetchRequestData* request,
+                         AbortSignal* signal) {
+  return MakeGarbageCollected<Request>(script_state, request, signal);
 }
 
 Request* Request::Create(
@@ -837,7 +879,9 @@ Request* Request::Create(
   FetchRequestData* data =
       FetchRequestData::Create(script_state, std::move(fetch_api_request),
                                for_service_worker_fetch_event);
-  return MakeGarbageCollected<Request>(script_state, data);
+  auto* signal =
+      MakeGarbageCollected<AbortSignal>(ExecutionContext::From(script_state));
+  return MakeGarbageCollected<Request>(script_state, data, signal);
 }
 
 absl::optional<network::mojom::CredentialsMode> Request::ParseCredentialsMode(
@@ -859,15 +903,15 @@ Request::Request(ScriptState* script_state,
     : Body(ExecutionContext::From(script_state)),
       request_(request),
       headers_(headers),
-      signal_(signal) {
-}
+      signal_(signal) {}
 
-Request::Request(ScriptState* script_state, FetchRequestData* request)
+Request::Request(ScriptState* script_state,
+                 FetchRequestData* request,
+                 AbortSignal* signal)
     : Request(script_state,
               request,
               Headers::Create(request->HeaderList()),
-              MakeGarbageCollected<AbortSignal>(
-                  ExecutionContext::From(script_state))) {
+              signal) {
   headers_->SetGuard(Headers::kRequestGuard);
 }
 
@@ -1009,9 +1053,17 @@ Request* Request::clone(ScriptState* script_state,
     return nullptr;
   Headers* headers = Headers::Create(request->HeaderList());
   headers->SetGuard(headers_->GetGuard());
-  auto* signal =
-      MakeGarbageCollected<AbortSignal>(ExecutionContext::From(script_state));
-  signal->Follow(script_state, signal_);
+  AbortSignal* signal = nullptr;
+  if (RuntimeEnabledFeatures::AbortSignalAnyEnabled()) {
+    HeapVector<Member<AbortSignal>> signals;
+    CHECK(signal_);
+    signals.push_back(signal_);
+    signal = MakeGarbageCollected<AbortSignal>(script_state, signals);
+  } else {
+    signal =
+        MakeGarbageCollected<AbortSignal>(ExecutionContext::From(script_state));
+    signal->Follow(script_state, signal_);
+  }
   return MakeGarbageCollected<Request>(script_state, request, headers, signal);
 }
 
@@ -1098,7 +1150,6 @@ network::mojom::RequestMode Request::GetRequestMode() const {
 
 void Request::Trace(Visitor* visitor) const {
   ScriptWrappable::Trace(visitor);
-  ActiveScriptWrappable<Request>::Trace(visitor);
   Body::Trace(visitor);
   visitor->Trace(request_);
   visitor->Trace(headers_);

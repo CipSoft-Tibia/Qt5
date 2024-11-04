@@ -1,7 +1,13 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "testserver.h"
+
+#include "generated/namespace_qtopcuatestmodel_generated.h"
+#include "generated/types_qtopcuatestmodel_generated.h"
+#include "generated/types_qtopcuatestmodel_generated_handling.h"
+#include "generated/qtopcuatestmodel_nodeids.h"
+
 #include "qopen62541utils.h"
 #include "qopen62541valueconverter.h"
 #include <QtOpcUa/qopcuatype.h>
@@ -10,6 +16,7 @@
 #include <QtCore/QLoggingCategory>
 #include <QDir>
 #include <QFile>
+#include <QMap>
 
 #include <cstring>
 
@@ -234,9 +241,10 @@ bool TestServer::init()
     success = createInsecureServerConfig(m_config);
 #endif
 
+    m_config->maxReferencesPerNode = 10;
+
     m_gathering = UA_HistoryDataGathering_Default(1);
     m_config->historyDatabase = UA_HistoryDatabase_default(m_gathering);
-
 
     if (!success || !m_config)
         return false;
@@ -751,6 +759,172 @@ UA_NodeId TestServer::addNodeWithFixedTimestamp(const UA_NodeId &folder, const Q
     return resultId;
 }
 
+UA_StatusCode TestServer::addServerStatusTypeTestNodes(const UA_NodeId &parent)
+{
+    const auto createTestValue = [](int index) -> UA_ServerStatusDataType {
+        UA_ServerStatusDataType s;
+        UA_ServerStatusDataType_init(&s);
+
+        const UA_DateTime testDateTime = UA_DATETIME_UNIX_EPOCH + 1691996809123 * UA_DATETIME_MSEC;
+
+        s.currentTime = testDateTime + index * UA_DATETIME_MSEC;
+        s.startTime = testDateTime + index * UA_DATETIME_MSEC;
+        s.secondsTillShutdown = 23;
+        s.shutdownReason = UA_LOCALIZEDTEXT_ALLOC("en", "ShutdownReason");
+        s.state = UA_SERVERSTATE_TEST;
+        s.buildInfo.buildDate = testDateTime + index * UA_DATETIME_MSEC;
+        s.buildInfo.buildNumber = UA_STRING_ALLOC("BuildNumber");
+        s.buildInfo.manufacturerName = UA_STRING_ALLOC("ManufacturerName");
+        s.buildInfo.productName = UA_STRING_ALLOC("ProductName");
+        s.buildInfo.productUri = UA_STRING_ALLOC("ProductUri");
+        s.buildInfo.softwareVersion = UA_STRING_ALLOC("SoftwareVersion");
+
+        return s;
+    };
+
+    {
+        UA_NodeId variableNodeId = Open62541Utils::nodeIdFromQString("ns=3;s=ServerStatusScalar");
+
+        auto value = UA_ServerStatusDataType_new();
+        *value = createTestValue(0);
+        auto var = UA_Variant();
+        UA_Variant_init(&var);
+        UA_Variant_setScalar(&var, value, &UA_TYPES[UA_TYPES_SERVERSTATUSDATATYPE]);
+
+        UA_VariableAttributes attr = UA_VariableAttributes_default;
+        attr.value = var;
+        attr.valueRank = UA_VALUERANK_SCALAR;
+        attr.displayName = UA_LOCALIZEDTEXT_ALLOC("en-US", "ServerStatusScalar");
+        attr.dataType = attr.value.type->typeId;
+        attr.accessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
+
+        UA_QualifiedName variableName;
+        variableName.namespaceIndex = variableNodeId.namespaceIndex;
+        variableName.name = UA_STRING_STATIC("ServerStatusScalar");
+
+        UA_NodeId resultId;
+        UA_StatusCode result = UA_Server_addVariableNode(m_server,
+                                                         variableNodeId,
+                                                         parent,
+                                                         UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+                                                         variableName,
+                                                         UA_NODEID_NULL,
+                                                         attr,
+                                                         nullptr,
+                                                         &resultId);
+
+        UA_NodeId_clear(&variableNodeId);
+        UA_VariableAttributes_clear(&attr);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qWarning() << "Could not add scalar server status variable";
+            return result;
+        }
+    }
+
+    {
+        UA_NodeId variableNodeId = Open62541Utils::nodeIdFromQString("ns=3;s=ServerStatusArray");
+
+        auto value = static_cast<UA_ServerStatusDataType *>(UA_Array_new(2, &UA_TYPES[UA_TYPES_SERVERSTATUSDATATYPE]));
+        for (int i = 0; i < 2; ++i)
+            value[i] = createTestValue(i);
+        auto var = UA_Variant();
+        UA_Variant_init(&var);
+        UA_Variant_setArray(&var, value, 2, &UA_TYPES[UA_TYPES_SERVERSTATUSDATATYPE]);
+
+        UA_VariableAttributes attr = UA_VariableAttributes_default;
+        attr.value = var;
+        attr.valueRank = UA_VALUERANK_ONE_DIMENSION;
+        quint32 arrayDimensions[] = { 0 };
+        attr.arrayDimensionsSize = 1;
+        attr.arrayDimensions = arrayDimensions;
+        attr.displayName = UA_LOCALIZEDTEXT_ALLOC("en-US", "ServerStatusArray");
+        attr.dataType = attr.value.type->typeId;
+        attr.accessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
+
+        UA_QualifiedName variableName;
+        variableName.namespaceIndex = variableNodeId.namespaceIndex;
+        variableName.name = UA_STRING_STATIC("ServerStatusArray");
+
+        UA_NodeId resultId;
+        UA_StatusCode result = UA_Server_addVariableNode(m_server,
+                                                         variableNodeId,
+                                                         parent,
+                                                         UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+                                                         variableName,
+                                                         UA_NODEID_NULL,
+                                                         attr,
+                                                         nullptr,
+                                                         &resultId);
+
+        attr.arrayDimensionsSize = 0;
+        attr.arrayDimensions = nullptr;
+
+        UA_NodeId_clear(&variableNodeId);
+        UA_VariableAttributes_clear(&attr);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qWarning() << "Could not add array server status variable:" << UA_StatusCode_name(result);
+            return result;
+        }
+    }
+
+    {
+        UA_NodeId variableNodeId = Open62541Utils::nodeIdFromQString("ns=3;s=ServerStatusMultiDimensionalArray");
+
+        auto value = static_cast<UA_ServerStatusDataType *>(UA_Array_new(4, &UA_TYPES[UA_TYPES_SERVERSTATUSDATATYPE]));
+        for (int i = 0; i < 4; ++i)
+            value[i] = createTestValue(i);
+        auto var = UA_Variant();
+        UA_Variant_init(&var);
+        UA_Variant_setArray(&var, value, 4, &UA_TYPES[UA_TYPES_SERVERSTATUSDATATYPE]);
+
+        quint32 arrayDimensions[] = { 2, 2 };
+
+        var.arrayDimensionsSize = 2;
+        var.arrayDimensions = arrayDimensions;
+
+        UA_VariableAttributes attr = UA_VariableAttributes_default;
+        attr.value = var;
+        attr.valueRank = UA_VALUERANK_TWO_DIMENSIONS;
+        attr.arrayDimensionsSize = 2;
+        attr.arrayDimensions = arrayDimensions;
+        attr.displayName = UA_LOCALIZEDTEXT_ALLOC("en-US", "ServerStatusMultiDimensionalArray");
+        attr.dataType = attr.value.type->typeId;
+        attr.accessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
+
+        UA_QualifiedName variableName;
+        variableName.namespaceIndex = variableNodeId.namespaceIndex;
+        variableName.name = UA_STRING_STATIC("ServerStatusMultiDimensionalArray");
+
+        UA_NodeId resultId;
+        UA_StatusCode result = UA_Server_addVariableNode(m_server,
+                                                         variableNodeId,
+                                                         parent,
+                                                         UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+                                                         variableName,
+                                                         UA_NODEID_NULL,
+                                                         attr,
+                                                         nullptr,
+                                                         &resultId);
+
+        attr.arrayDimensionsSize = 0;
+        attr.arrayDimensions = nullptr;
+        attr.value.arrayDimensionsSize = 0;
+        attr.value.arrayDimensions = nullptr;
+
+        UA_NodeId_clear(&variableNodeId);
+        UA_VariableAttributes_clear(&attr);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qWarning() << "Could not add multi dimensional array server status variable:" << UA_StatusCode_name(result);
+            return result;
+        }
+    }
+
+    return UA_STATUSCODE_GOOD;
+}
+
 // The event test methods are based on the open62541 tutorial_server_events.c example
 UA_StatusCode TestServer::generateEventCallback(UA_Server *server,
                                                 const UA_NodeId *sessionId, void *sessionHandle,
@@ -824,6 +998,106 @@ UA_StatusCode TestServer::generateEventCallback(UA_Server *server,
     return ret;
 }
 
+void TestServer::readHistoryEventCallback(UA_Server *server, void *hdbContext, const UA_NodeId *sessionId, void *sessionContext,
+                                   const UA_RequestHeader *requestHeader, const UA_ReadEventDetails *historyReadDetails,
+                                   UA_TimestampsToReturn timestampsToReturn, UA_Boolean releaseContinuationPoints,
+                                   size_t nodesToReadSize, const UA_HistoryReadValueId *nodesToRead, UA_HistoryReadResponse *response,
+                                   UA_HistoryEvent * const * const historyData)
+{
+    Q_UNUSED(server)
+    Q_UNUSED(hdbContext)
+    Q_UNUSED(sessionId)
+    Q_UNUSED(sessionContext)
+    Q_UNUSED(requestHeader)
+    Q_UNUSED(timestampsToReturn)
+    Q_UNUSED(releaseContinuationPoints)
+
+    QMap<UA_DateTime, UA_LocalizedText> historyEvents {
+        { UA_DateTime_fromUnixTime(1694153836 - 120 * 60), UA_LocalizedText{UA_STRING_STATIC("en"), UA_STRING_STATIC("Message 1")}},
+        { UA_DateTime_fromUnixTime(1694153836 - 60 * 60), UA_LocalizedText{UA_STRING_STATIC("en"), UA_STRING_STATIC("Message 2")}},
+        { UA_DateTime_fromUnixTime(1694153836), UA_LocalizedText{UA_STRING_STATIC("en"), UA_STRING_STATIC("Message 3")}}
+    };
+
+    const auto historian1Id = QStringLiteral("ns=2;s=EventHistorian");
+    const auto historian2Id = QStringLiteral("ns=2;s=EventHistorian2");
+
+    for (size_t i = 0; i < nodesToReadSize; ++i) {
+        const auto idToRead = QOpen62541ValueConverter::scalarToQt<QString, UA_NodeId>(&nodesToRead[i].nodeId);
+
+        if (idToRead != historian1Id && idToRead != historian2Id) {
+            response->results[i].statusCode = UA_STATUSCODE_BADNODEIDINVALID;
+            continue;
+        }
+
+        if (releaseContinuationPoints)
+            continue;
+
+        QMap<UA_DateTime, UA_LocalizedText> eventsToReturn;
+        UA_DateTime continuationPoint = 0;
+
+        UA_DateTime providedContinuationPoint = 0;
+        if (nodesToRead[i].continuationPoint.length) {
+            if (nodesToRead[i].continuationPoint.length == sizeof(UA_DateTime)) {
+                providedContinuationPoint = *reinterpret_cast<UA_DateTime *>(nodesToRead[i].continuationPoint.data);
+            } else {
+                response->results[i].statusCode = UA_STATUSCODE_BADCONTINUATIONPOINTINVALID;
+                continue;
+            }
+        }
+
+        const auto isHistorian2 = QOpen62541ValueConverter::scalarToQt<QString, UA_NodeId>(&nodesToRead[i].nodeId) == historian2Id;
+
+        for (auto it = historyEvents.constBegin(); it != historyEvents.constEnd(); ++it) {
+            if (isHistorian2 && it.key() == UA_DateTime_fromUnixTime(1694153836))
+                break;
+
+            if (providedContinuationPoint && it.key() < providedContinuationPoint)
+                continue;
+
+            if (it.key() < historyReadDetails->startTime || it.key() > historyReadDetails->endTime)
+                continue;
+
+            if (eventsToReturn.size() && eventsToReturn.size() == historyReadDetails->numValuesPerNode) {
+                continuationPoint = it.key();
+                break;
+            }
+
+            eventsToReturn.insert(it.key(), it.value());
+        }
+
+        historyData[i]->eventsSize = eventsToReturn.size();
+        historyData[i]->events = static_cast<UA_HistoryEventFieldList *>(UA_Array_new(eventsToReturn.size(), &UA_TYPES[UA_TYPES_HISTORYEVENTFIELDLIST]));
+
+        for (int j = 0; j < eventsToReturn.size(); ++j) {
+            historyData[i]->events[j].eventFieldsSize = historyReadDetails->filter.selectClausesSize;
+            historyData[i]->events[j].eventFields = static_cast<UA_Variant *>(
+                UA_Array_new(historyData[i]->events[j].eventFieldsSize, &UA_TYPES[UA_TYPES_VARIANT]));
+
+            for (size_t k = 0; k < historyReadDetails->filter.selectClausesSize; ++k) {
+                if (historyReadDetails->filter.selectClauses[k].browsePathSize != 1)
+                    continue;
+
+                const auto timeName = UA_QualifiedName{0, UA_STRING_STATIC("Time")};
+                const auto messageName = UA_QualifiedName{0, UA_STRING_STATIC("Message")};
+                auto path = historyReadDetails->filter.selectClauses[k].browsePath;
+
+                if (UA_QualifiedName_equal(path, &timeName)) {
+                    UA_Variant_setScalarCopy(&historyData[i]->events[j].eventFields[k], &eventsToReturn.keys().at(j), &UA_TYPES[UA_TYPES_DATETIME]);
+                } else if (UA_QualifiedName_equal(path, &messageName)) {
+                    UA_Variant_setScalarCopy(&historyData[i]->events[j].eventFields[k], &eventsToReturn.values().at(j), &UA_TYPES[UA_TYPES_LOCALIZEDTEXT]);
+                }
+            }
+        }
+
+        if (continuationPoint) {
+            response->results[i].continuationPoint.length = sizeof(UA_DateTime);
+            auto dt = UA_DateTime_new();
+            *dt = continuationPoint;
+            response->results[i].continuationPoint.data = reinterpret_cast<UA_Byte *>(dt);
+        }
+    }
+}
+
 UA_StatusCode TestServer::run(volatile bool *running)
 {
     return UA_Server_run(m_server, running);
@@ -872,6 +1146,282 @@ UA_StatusCode TestServer::addEventTrigger(const UA_NodeId &parent)
     UA_Argument_clear(&severityArgument);
 
     return result;
+}
+
+static UA_DataTypeArray customTypes = {
+    nullptr,
+    UA_TYPES_QTOPCUATESTMODEL_COUNT,
+    &UA_TYPES_QTOPCUATESTMODEL[0]
+};
+
+// This method must be called after the other test namespaces have been added
+UA_StatusCode TestServer::addEncoderTestModel()
+{
+    auto result = namespace_qtopcuatestmodel_generated(m_server);
+
+    if (result != UA_STATUSCODE_GOOD)
+        return result;
+
+    auto config = UA_Server_getConfig(m_server);
+    customTypes.next = config->customDataTypes;
+    config->customDataTypes = &customTypes;
+
+    {
+        UA_QtTestStructType data;
+        UA_QtTestStructType_init(&data);
+
+        data.enumMember = UA_QTTESTENUMERATION_FIRSTOPTION;
+        data.int64ArrayMemberSize = 3;
+        data.int64ArrayMember = static_cast<UA_Int64 *>(UA_Array_new(3, &UA_TYPES[UA_TYPES_INT64]));
+        data.int64ArrayMember[0] = std::numeric_limits<qint64>::max();
+        data.int64ArrayMember[1] = std::numeric_limits<qint64>::max() - 1;
+        data.int64ArrayMember[2] = std::numeric_limits<qint64>::min();
+
+        data.stringMember = UA_STRING_ALLOC("TestString");
+        data.localizedTextMember = UA_LOCALIZEDTEXT_ALLOC("en", "TestText");
+        data.qualifiedNameMember = UA_QUALIFIEDNAME_ALLOC(1, "TestName");
+
+        data.nestedStructMember.doubleSubtypeMember = 42;
+
+        data.nestedStructArrayMemberSize = 2;
+        data.nestedStructArrayMember = static_cast<UA_QtInnerTestStructType *>(
+            UA_Array_new(2, &UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_QTINNERTESTSTRUCTTYPE]));
+
+        data.nestedStructArrayMember[0].doubleSubtypeMember = 23.0;
+        data.nestedStructArrayMember[1].doubleSubtypeMember = 42.0;
+
+        UA_Variant var;
+        UA_Variant_init(&var);
+        UA_Variant_setScalarCopy(&var, &data, &UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_QTTESTSTRUCTTYPE]);
+
+        result = UA_Server_writeValue(m_server, UA_NODEID_NUMERIC(4, UA_QTOPCUATESTMODELID_DECODERTESTNODES_NESTEDSTRUCT), var);
+        UA_Variant_clear(&var);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qWarning() << "Failed to write nested struct node";
+            return result;
+        }
+    }
+
+    {
+        UA_QtTestUnionType data;
+        UA_QtTestUnionType_init(&data);
+
+        data.switchField = UA_QTTESTUNIONTYPESWITCH_MEMBER1;
+        data.fields.member1 = 42;
+
+        UA_Variant var;
+        UA_Variant_init(&var);
+        UA_Variant_setScalarCopy(&var, &data, &UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_QTTESTUNIONTYPE]);
+
+        result = UA_Server_writeValue(m_server, UA_NODEID_NUMERIC(4, UA_QTOPCUATESTMODELID_DECODERTESTNODES_UNIONWITHFIRSTMEMBER), var);
+        UA_Variant_clear(&var);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qWarning() << "Failed to write union struct node";
+            return result;
+        }
+    }
+
+    {
+        UA_QtTestUnionType data;
+        UA_QtTestUnionType_init(&data);
+
+        data.switchField = UA_QTTESTUNIONTYPESWITCH_MEMBER2;
+        data.fields.member2.doubleSubtypeMember = 23.0;
+
+        UA_Variant var;
+        UA_Variant_init(&var);
+        UA_Variant_setScalarCopy(&var, &data, &UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_QTTESTUNIONTYPE]);
+
+        result = UA_Server_writeValue(m_server, UA_NODEID_NUMERIC(4, UA_QTOPCUATESTMODELID_DECODERTESTNODES_UNIONWITHSECONDMEMBER), var);
+        UA_Variant_clear(&var);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qWarning() << "Failed to write union struct node";
+            return result;
+        }
+    }
+
+    {
+        UA_QtStructWithOptionalFieldType data;
+        UA_QtStructWithOptionalFieldType_init(&data);
+
+        data.mandatoryMember =  42.0;
+        data.optionalMember = UA_Double_new();
+        *data.optionalMember = 23.0;
+
+        UA_Variant var;
+        UA_Variant_init(&var);
+        UA_Variant_setScalarCopy(&var, &data, &UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_QTSTRUCTWITHOPTIONALFIELDTYPE]);
+
+        result = UA_Server_writeValue(m_server, UA_NODEID_NUMERIC(4, UA_QTOPCUATESTMODELID_DECODERTESTNODES_STRUCTWITHOPTIONALFIELD), var);
+        UA_Variant_clear(&var);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qWarning() << "Failed to write optional field struct node";
+            return result;
+        }
+    }
+
+    {
+        UA_QtStructWithOptionalFieldType data;
+        UA_QtStructWithOptionalFieldType_init(&data);
+
+        data.mandatoryMember =  42.0;
+
+        UA_Variant var;
+        UA_Variant_init(&var);
+        UA_Variant_setScalarCopy(&var, &data, &UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_QTSTRUCTWITHOPTIONALFIELDTYPE]);
+
+        result = UA_Server_writeValue(m_server, UA_NODEID_NUMERIC(4, UA_QTOPCUATESTMODELID_DECODERTESTNODES_STRUCTWIHOUTOPTIONALFIELD), var);
+        UA_Variant_clear(&var);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qWarning() << "Failed to write optional field struct node";
+            return result;
+        }
+    }
+
+    {
+        auto data = UA_QtTestStructWithDiagnosticInfo_new();
+
+        data->diagnosticInfoMember.hasSymbolicId = true;
+        data->diagnosticInfoMember.symbolicId = 1;
+        data->diagnosticInfoMember.hasNamespaceUri = true;
+        data->diagnosticInfoMember.namespaceUri = 2;
+        data->diagnosticInfoMember.hasLocalizedText = true;
+        data->diagnosticInfoMember.localizedText = 3;
+        data->diagnosticInfoMember.hasLocale = true;
+        data->diagnosticInfoMember.locale = 4;
+        data->diagnosticInfoMember.hasAdditionalInfo = true;
+        data->diagnosticInfoMember.additionalInfo = UA_STRING_ALLOC("My additional info");
+        data->diagnosticInfoMember.hasInnerStatusCode = true;
+        data->diagnosticInfoMember.innerStatusCode = UA_STATUSCODE_BADINTERNALERROR;
+        data->diagnosticInfoMember.hasInnerDiagnosticInfo = true;
+
+        data->diagnosticInfoMember.innerDiagnosticInfo = UA_DiagnosticInfo_new();
+        data->diagnosticInfoMember.innerDiagnosticInfo->hasAdditionalInfo = true;
+        data->diagnosticInfoMember.innerDiagnosticInfo->additionalInfo = UA_STRING_ALLOC("My inner additional info");
+
+        data->diagnosticInfoArrayMemberSize = 2;
+        data->diagnosticInfoArrayMember = static_cast<UA_DiagnosticInfo *>(UA_Array_new(2, &UA_TYPES[UA_TYPES_DIAGNOSTICINFO]));
+
+        UA_DiagnosticInfo_copy(&data->diagnosticInfoMember, &data->diagnosticInfoArrayMember[0]);
+
+        data->diagnosticInfoArrayMember[1].hasLocale = true;
+        data->diagnosticInfoArrayMember[1].locale = 1;
+        data->diagnosticInfoArrayMember[1].hasInnerStatusCode = true;
+        data->diagnosticInfoArrayMember[1].innerStatusCode = UA_STATUSCODE_BADTYPEMISMATCH;
+
+        UA_Variant var;
+        UA_Variant_init(&var);
+        UA_Variant_setScalar(&var, data, &UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_QTTESTSTRUCTWITHDIAGNOSTICINFO]);
+
+        result = UA_Server_writeValue(m_server, UA_NODEID_NUMERIC(4, UA_QTOPCUATESTMODELID_DECODERTESTNODES_STRUCTWITHDIAGNOSTICINFO), var);
+        UA_Variant_clear(&var);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qWarning() << "Failed to write diagnostic info field struct node";
+            return result;
+        }
+    }
+
+    {
+        auto data = UA_QtTestStructWithDataValue_new();
+
+        auto stringArray = static_cast<UA_String *>(UA_Array_new(4, &UA_TYPES[UA_TYPES_STRING]));
+        stringArray[0] = UA_STRING_ALLOC("TestString 1");
+        stringArray[1] = UA_STRING_ALLOC("TestString 2");
+        stringArray[2] = UA_STRING_ALLOC("TestString 3");
+        stringArray[3] = UA_STRING_ALLOC("TestString 4");
+        UA_Variant_setArray(&data->dataValueMember.value, stringArray, 4, &UA_TYPES[UA_TYPES_STRING]);
+
+        data->dataValueMember.value.arrayLength = 4;
+        data->dataValueMember.value.arrayDimensions = static_cast<quint32 *>(UA_Array_new(2, &UA_TYPES[UA_TYPES_UINT32]));
+        data->dataValueMember.value.arrayDimensions[0] = 2;
+        data->dataValueMember.value.arrayDimensions[1] = 2;
+        data->dataValueMember.value.arrayDimensionsSize = 2;
+
+        data->dataValueMember.hasValue = true;
+        data->dataValueMember.status = UA_STATUSCODE_BADINTERNALERROR;
+        data->dataValueMember.hasStatus = true;
+        data->dataValueMember.serverTimestamp = UA_DateTime_fromUnixTime(1698655307);
+        data->dataValueMember.hasServerTimestamp = true;
+        data->dataValueMember.sourceTimestamp = UA_DateTime_fromUnixTime(1698655306);
+        data->dataValueMember.hasSourceTimestamp = true;
+        data->dataValueMember.serverPicoseconds = 23;
+        data->dataValueMember.hasServerPicoseconds = true;
+        data->dataValueMember.sourcePicoseconds = 42;
+        data->dataValueMember.hasSourcePicoseconds = true;
+
+        const quint64 num = 42;
+        UA_Variant_setScalarCopy(&data->variantMember, &num, &UA_TYPES[UA_TYPES_UINT64]);
+
+        UA_Variant var;
+        UA_Variant_init(&var);
+        UA_Variant_setScalar(&var, data, &UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_QTTESTSTRUCTWITHDATAVALUE]);
+
+        result = UA_Server_writeValue(m_server, UA_NODEID_NUMERIC(4, UA_QTOPCUATESTMODELID_DECODERTESTNODES_STRUCTWITHDATAVALUE), var);
+        UA_Variant_clear(&var);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qWarning() << "Failed to write data value field struct node";
+            return result;
+        }
+    }
+
+    return result;
+}
+
+UA_StatusCode TestServer::addUnreadableVariableNode(const UA_NodeId &parent)
+{
+    UA_VariableAttributes attr = UA_VariableAttributes_default;
+    attr.value = QOpen62541ValueConverter::toOpen62541Variant(42, QOpcUa::Int32);
+    attr.displayName = UA_LOCALIZEDTEXT_ALLOC("en-US", "VariableWithoutReadPermission");
+    attr.dataType = attr.value.type->typeId;
+    attr.accessLevel = UA_ACCESSLEVELMASK_WRITE; // Write only
+
+    UA_QualifiedName variableName;
+    variableName.namespaceIndex = parent.namespaceIndex;
+    variableName.name = attr.displayName.text;
+
+    auto nodeId = UA_NODEID_STRING_ALLOC(parent.namespaceIndex, "VariableWithoutReadPermission");
+    UA_StatusCode result = UA_Server_addVariableNode(m_server,
+                                                     nodeId,
+                                                     parent,
+                                                     UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+                                                     variableName,
+                                                     UA_NODEID_NULL,
+                                                     attr,
+                                                     nullptr,
+                                                     nullptr);
+    UA_NodeId_clear(&nodeId);
+    UA_VariableAttributes_clear(&attr);
+    return result;
+}
+
+UA_StatusCode TestServer::addEventHistorian(const UA_NodeId &parent)
+{
+    UA_ObjectAttributes attr = UA_ObjectAttributes_default;
+    attr.eventNotifier = UA_EVENTNOTIFIER_SUBSCRIBE_TO_EVENT | UA_EVENTNOTIFIER_HISTORY_READ;
+    attr.description = UA_LocalizedText{UA_STRING_STATIC("en"),
+                                        UA_STRING_STATIC("This node does not conform to part 11 of the OPC UA specification"
+                                                         "and only supports the event history unit tests scenario")};
+
+    UA_NodeId objectId = UA_NODEID_STRING_ALLOC(2, "EventHistorian");
+    auto result = UA_Server_addObjectNode(m_server, objectId, parent, UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+                                          UA_QualifiedName{2, UA_STRING_STATIC("EventHistorian")},
+                                          UA_NODEID_NUMERIC(0, UA_NS0ID_BASEOBJECTTYPE), attr, this, nullptr);
+
+    if (result != UA_STATUSCODE_GOOD) {
+        qWarning() << "Failed to add event historian object:" << UA_StatusCode_name(result);
+        return result;
+    }
+
+    m_config->historyDatabase.readEvent = readHistoryEventCallback;
+
+    return UA_STATUSCODE_GOOD;
 }
 
 QT_END_NAMESPACE

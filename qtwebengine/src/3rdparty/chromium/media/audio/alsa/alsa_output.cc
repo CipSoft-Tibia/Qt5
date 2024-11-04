@@ -43,9 +43,10 @@
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/free_deleter.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/default_tick_clock.h"
-#include "base/trace_event/trace_event.h"
+#include "base/trace_event/typed_macros.h"
 #include "media/audio/alsa/alsa_util.h"
 #include "media/audio/alsa/alsa_wrapper.h"
 #include "media/audio/alsa/audio_manager_alsa.h"
@@ -132,8 +133,8 @@ std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
-static const SampleFormat kSampleFormat = kSampleFormatS16;
-static const snd_pcm_format_t kAlsaSampleFormat = SND_PCM_FORMAT_S16;
+static const SampleFormat kSampleFormatAO = kSampleFormatS16;
+static const snd_pcm_format_t kAlsaSampleFormatAO = SND_PCM_FORMAT_S16;
 
 const char AlsaPcmOutputStream::kDefaultDevice[] = "default";
 const char AlsaPcmOutputStream::kAutoSelectDevice[] = "";
@@ -148,13 +149,13 @@ AlsaPcmOutputStream::AlsaPcmOutputStream(const std::string& device_name,
                                          AlsaWrapper* wrapper,
                                          AudioManagerBase* manager)
     : requested_device_name_(device_name),
-      pcm_format_(kAlsaSampleFormat),
+      pcm_format_(kAlsaSampleFormatAO),
       channels_(params.channels()),
       channel_layout_(params.channel_layout()),
       sample_rate_(params.sample_rate()),
-      bytes_per_sample_(SampleFormatToBytesPerChannel(kSampleFormat)),
-      bytes_per_frame_(params.GetBytesPerFrame(kSampleFormat)),
-      packet_size_(params.GetBytesPerBuffer(kSampleFormat)),
+      bytes_per_sample_(SampleFormatToBytesPerChannel(kSampleFormatAO)),
+      bytes_per_frame_(params.GetBytesPerFrame(kSampleFormatAO)),
+      packet_size_(params.GetBytesPerBuffer(kSampleFormatAO)),
       latency_(std::max(
           base::Microseconds(kMinLatencyMicros),
           AudioTimestampHelper::FramesToTime(params.frames_per_buffer() * 2,
@@ -361,6 +362,14 @@ void AlsaPcmOutputStream::SetTickClockForTesting(
 
 void AlsaPcmOutputStream::BufferPacket(bool* source_exhausted) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  TRACE_EVENT("audio", "AlsaPcmOutputStream::BufferPacket",
+              [&](perfetto::EventContext ctx) {
+                auto* event =
+                    ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>();
+                auto* data = event->set_linux_alsa_output();
+                data->set_forward_bytes(buffer_->forward_bytes());
+                data->set_sample_rate(sample_rate_);
+              });
 
   // If stopped, simulate a 0-length packet.
   if (stop_stream_) {
@@ -435,6 +444,7 @@ void AlsaPcmOutputStream::BufferPacket(bool* source_exhausted) {
 
 void AlsaPcmOutputStream::WritePacket() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  TRACE_EVENT("audio", "AlsaPcmOutputStream::WritePacket");
 
   // If the device is in error, just eat the bytes.
   if (stop_stream_) {
@@ -494,6 +504,7 @@ void AlsaPcmOutputStream::WritePacket() {
 
 void AlsaPcmOutputStream::WriteTask() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  TRACE_EVENT("audio", "AlsaPcmOutputStream::WriteTask");
 
   if (stop_stream_)
     return;
@@ -599,6 +610,12 @@ std::string AlsaPcmOutputStream::FindDeviceForChannels(uint32_t channels) {
 }
 
 snd_pcm_sframes_t AlsaPcmOutputStream::GetCurrentDelay() {
+  TRACE_EVENT_BEGIN(TRACE_DISABLED_BY_DEFAULT("audio"),
+                    "AlsaPcmOutputStream::GetCurrentDelay");
+  // Intermediate values saved for tracing.
+  absl::optional<snd_pcm_sframes_t> pcm_delay;
+  absl::optional<snd_pcm_sframes_t> available_frames;
+
   snd_pcm_sframes_t delay = -1;
   // Don't query ALSA's delay if we have underrun since it'll be jammed at some
   // non-zero value and potentially even negative!
@@ -619,6 +636,7 @@ snd_pcm_sframes_t AlsaPcmOutputStream::GetCurrentDelay() {
         LOG(ERROR) << "Failed querying delay: " << wrapper_->StrError(error);
       }
     }
+    pcm_delay = delay;
   }
 
   // snd_pcm_delay() sometimes returns crazy values.  In this case return delay
@@ -628,13 +646,26 @@ snd_pcm_sframes_t AlsaPcmOutputStream::GetCurrentDelay() {
   // clip if delay is truly crazy (> 10x expected).
   if (delay < 0 ||
       static_cast<snd_pcm_uframes_t>(delay) > alsa_buffer_frames_ * 10) {
-    delay = alsa_buffer_frames_ - GetAvailableFrames();
+    available_frames = GetAvailableFrames();
+    delay = alsa_buffer_frames_ - *available_frames;
   }
 
   if (delay < 0) {
     delay = 0;
   }
-
+  TRACE_EVENT_END(
+      TRACE_DISABLED_BY_DEFAULT("audio"), [&](perfetto::EventContext ctx) {
+        auto* event = ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>();
+        auto* data = event->set_linux_alsa_output();
+        data->set_getcurrentdelay_alsa_buffer_frames(alsa_buffer_frames_);
+        data->set_getcurrentdelay_final_delay_frames(delay);
+        if (pcm_delay) {
+          data->set_getcurrentdelay_pcm_delay_frames(*pcm_delay);
+        }
+        if (available_frames) {
+          data->set_getcurrentdelay_available_frames(*available_frames);
+        }
+      });
   return delay;
 }
 
@@ -788,10 +819,20 @@ AlsaPcmOutputStream::InternalState AlsaPcmOutputStream::state() {
 int AlsaPcmOutputStream::RunDataCallback(base::TimeDelta delay,
                                          base::TimeTicks delay_timestamp,
                                          AudioBus* audio_bus) {
-  TRACE_EVENT0("audio", "AlsaPcmOutputStream::RunDataCallback");
+  TRACE_EVENT(
+      "audio", "AlsaPcmOutputStream::RunDataCallback",
+      [&](perfetto::EventContext ctx) {
+        auto* event = ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>();
+        auto* data = event->set_linux_alsa_output();
+        data->set_source_request_playout_delay_us(delay.InMicroseconds());
+      });
 
-  if (source_callback_)
-    return source_callback_->OnMoreData(delay, delay_timestamp, {}, audio_bus);
+  if (source_callback_) {
+    UMA_HISTOGRAM_COUNTS_1000("Media.Audio.Render.SystemDelay",
+                              delay.InMilliseconds());
+    return source_callback_->OnMoreData(BoundedDelay(delay), delay_timestamp,
+                                        {}, audio_bus);
+  }
 
   return 0;
 }

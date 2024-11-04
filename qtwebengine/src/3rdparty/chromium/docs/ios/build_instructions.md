@@ -199,7 +199,7 @@ In addition to that, you need a different provisioning profile for each
 test application. Those provisioning profile will have a bundle identifier
 matching the following pattern `${prefix}.gtest.${test-suite-name}` where
 `${test-suite-name}` is the name of the test suite with underscores changed
-to dashes (e.g. `base_unittests` app will use `${prefix}.gest.base-unittests`
+to dashes (e.g. `base_unittests` app will use `${prefix}.gtest.base-unittests`
 as bundle identifier).
 
 To be able to run the EarlGrey tests on a device, you'll need two provisioning
@@ -327,6 +327,23 @@ Go to "Preferences > Components" tab in Xcode to install other simulator images
 (this is the location the setting is in Xcode 9.2; it may be different in other
 version of the tool).
 
+### Remote debugging with DevTools (on Blink for iOS)
+
+Developers are able to remotely use DevTools in a host machine (e.g. Mac) and
+inspect `content_shell` for development.
+
+On the simulator, one just needs to pass the `--remote-debugging-port=9222`
+argument for `content_shell` and in the host machine access it via
+`chrome://inspect`. It is possible to change the default port listening (9222)
+and configure another one via the  "Configure…" button and then "Target
+discovery settings" dialog.
+
+To use DevTools in the remote device it is necessary to also pass the remote
+debugging address argument to `content-shell` so any address could bind for
+debugging: ` --remote-debugging-address=0.0.0.0 --remote-debugging-port=9222`.
+Then in the host machine one needs to configure the IP address of the device in
+the "Target discovery settings" dialog e.g. `192.168.0.102:9222`.
+
 ## Update your checkout
 
 To update an existing checkout, you can run
@@ -413,7 +430,7 @@ debugging and follow them.
 If you use `xcode-select` to switch between multiple version of Xcode,
 you will have to follow the same steps.
 
-### Improving performance of `git status`
+### Improving performance of git commands
 
 #### Increase the vnode cache size
 
@@ -445,7 +462,7 @@ Or edit the file directly.
 
 #### Configure git to use an untracked cache
 
-If `git --version` reports 2.8 or higher, try running
+Try running
 
 ```shell
 $ git update-index --test-untracked-cache
@@ -458,10 +475,15 @@ If the output ends with `OK`, then the following may also improve performance of
 $ git config core.untrackedCache true
 ```
 
-If `git --version` reports 2.6 or higher, but below 2.8, you can instead run
+#### Configure git to use fsmonitor
+
+You can significantly speed up git by using [fsmonitor.](https://github.blog/2022-06-29-improve-git-monorepo-performance-with-a-file-system-monitor/)
+You should enable fsmonitor in large repos, such as Chromium and v8. Enabling
+it globally will launch many processes and probably isn't worthwhile. The
+command to enable fsmonitor in the current repo is:
 
 ```shell
-$ git update-index --untracked-cache
+$ git config core.fsmonitor true
 ```
 
 ### Xcode license agreement

@@ -2,8 +2,8 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QSSGN_RENDERQSSGDER_TYPES_H
-#define QSSGN_RENDERQSSGDER_TYPES_H
+#ifndef QSSGRENDERBASETYPES_P_H
+#define QSSGRENDERBASETYPES_P_H
 
 //
 //  W A R N I N G
@@ -382,4 +382,4 @@ public:
 
 QT_END_NAMESPACE
 
-#endif
+#endif // QSSGRENDERBASETYPES_P_H

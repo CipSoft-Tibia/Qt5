@@ -6,24 +6,23 @@ package org.qtproject.qt.android;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.drawable.Drawable;
-import android.os.Build;
-import android.text.ClipboardManager;
+import android.content.ClipboardManager;
 import android.text.Html;
 import android.text.Spanned;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
+import android.view.Window;
 import android.widget.Button;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.util.ArrayList;
 
@@ -41,7 +40,7 @@ class ButtonStruct implements View.OnClickListener
         m_text = Html.fromHtml(text);
     }
     QtMessageDialogHelper m_dialog;
-    private int m_id;
+    private final int m_id;
     Spanned m_text;
 
     @Override
@@ -58,7 +57,7 @@ public class QtMessageDialogHelper
         m_activity = activity;
     }
 
-
+    @UsedFromNativeCode
     public void setStandardIcon(int icon)
     {
         m_standardIcon = icon;
@@ -70,262 +69,242 @@ public class QtMessageDialogHelper
         if (m_standardIcon == 0)
             return null;
 
-        try {
-            TypedValue typedValue = new TypedValue();
-            m_theme.resolveAttribute(android.R.attr.alertDialogIcon, typedValue, true);
-            return m_activity.getResources().getDrawable(typedValue.resourceId,
-                                                         m_activity.getTheme());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
         // Information, Warning, Critical, Question
         switch (m_standardIcon)
         {
             case 1: // Information
-                try {
-                    return m_activity.getResources().getDrawable(android.R.drawable.ic_dialog_info,
-                                                                 m_activity.getTheme());
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-                break;
+                return m_activity.getResources().getDrawable(android.R.drawable.ic_dialog_info,
+                        m_activity.getTheme());
             case 2: // Warning
-//                try {
-//                    return Class.forName("android.R$drawable").getDeclaredField("stat_sys_warning").getInt(null);
-//                } catch (Exception e) {
-//                    e.printStackTrace();
-//                }
-//                break;
+                return m_activity.getResources().getDrawable(android.R.drawable.stat_sys_warning,
+                        m_activity.getTheme());
             case 3: // Critical
-                try {
-                    return m_activity.getResources().getDrawable(android.R.drawable.ic_dialog_alert,
-                                                                 m_activity.getTheme());
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-                break;
+                return m_activity.getResources().getDrawable(android.R.drawable.ic_dialog_alert,
+                        m_activity.getTheme());
             case 4: // Question
-                try {
-                    return m_activity.getResources().getDrawable(android.R.drawable.ic_menu_help,
-                                                                 m_activity.getTheme());
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-                break;
+                return m_activity.getResources().getDrawable(android.R.drawable.ic_menu_help,
+                        m_activity.getTheme());
         }
         return null;
     }
 
+    @UsedFromNativeCode
     public void setTile(String title)
     {
         m_title = Html.fromHtml(title);
     }
 
+    @UsedFromNativeCode
     public void setText(String text)
     {
         m_text = Html.fromHtml(text);
     }
 
+    @UsedFromNativeCode
     public void setInformativeText(String informativeText)
     {
         m_informativeText = Html.fromHtml(informativeText);
     }
 
+    @UsedFromNativeCode
     public void setDetailedText(String text)
     {
         m_detailedText = Html.fromHtml(text);
     }
 
+    @UsedFromNativeCode
     public void addButton(int id, String text)
     {
         if (m_buttonsList == null)
-            m_buttonsList = new ArrayList<ButtonStruct>();
+            m_buttonsList = new ArrayList<>();
         m_buttonsList.add(new ButtonStruct(this, id, text));
     }
 
-    private Drawable getStyledDrawable(String drawable) throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException
+    private Drawable getStyledDrawable(int id)
     {
-        int[] attrs = {Class.forName("android.R$attr").getDeclaredField(drawable).getInt(null)};
+        int[] attrs = { id };
         final TypedArray a = m_theme.obtainStyledAttributes(attrs);
         Drawable d = a.getDrawable(0);
         a.recycle();
         return  d;
     }
 
-
+    @UsedFromNativeCode
     public void show(long handler)
     {
         m_handler = handler;
-        m_activity.runOnUiThread( new Runnable() {
-            @Override
-            public void run() {
-                if (m_dialog != null && m_dialog.isShowing())
-                    m_dialog.dismiss();
+        m_activity.runOnUiThread(() -> {
+            if (m_dialog != null && m_dialog.isShowing())
+                m_dialog.dismiss();
 
-                m_dialog = new AlertDialog.Builder(m_activity).create();
-                m_theme = m_dialog.getWindow().getContext().getTheme();
+            m_dialog = new AlertDialog.Builder(m_activity).create();
+            Window window = m_dialog.getWindow();
+            if (window != null)
+                m_theme = window.getContext().getTheme();
+            else
+                Log.w(QtTAG, "show(): cannot set theme from null window!");
 
-                if (m_title != null)
-                    m_dialog.setTitle(m_title);
-                m_dialog.setOnCancelListener( new DialogInterface.OnCancelListener() {
-                    @Override
-                    public void onCancel(DialogInterface dialogInterface) {
-                        QtNativeDialogHelper.dialogResult(handler(), -1);
-                    }
-                });
-                m_dialog.setCancelable(m_buttonsList == null);
-                m_dialog.setCanceledOnTouchOutside(m_buttonsList == null);
-                m_dialog.setIcon(getIconDrawable());
-                ScrollView scrollView = new ScrollView(m_activity);
-                RelativeLayout dialogLayout = new RelativeLayout(m_activity);
-                int id = 1;
-                View lastView = null;
-                View.OnLongClickListener copyText = new View.OnLongClickListener() {
-                    @Override
-                    public boolean onLongClick(View view) {
-                        TextView tv = (TextView)view;
-                        if (tv != null) {
-                            ClipboardManager cm = (android.text.ClipboardManager) m_activity.getSystemService(Context.CLIPBOARD_SERVICE);
-                            cm.setText(tv.getText());
-                        }
-                        return true;
-                    }
-                };
-                if (m_text != null)
-                {
-                    TextView view = new TextView(m_activity);
-                    view.setId(id++);
-                    view.setOnLongClickListener(copyText);
-                    view.setLongClickable(true);
+            if (m_title != null)
+                m_dialog.setTitle(m_title);
+            m_dialog.setOnCancelListener(dialogInterface -> QtNativeDialogHelper.dialogResult(handler(), -1));
+            m_dialog.setCancelable(m_buttonsList == null);
+            m_dialog.setCanceledOnTouchOutside(m_buttonsList == null);
+            m_dialog.setIcon(getIconDrawable());
+            ScrollView scrollView = new ScrollView(m_activity);
+            RelativeLayout dialogLayout = new RelativeLayout(m_activity);
+            int id = 1;
+            View lastView = null;
+            View.OnLongClickListener copyText = view -> {
+                TextView tv = (TextView)view;
+                if (tv != null) {
+                    ClipboardManager cm = (ClipboardManager) m_activity.getSystemService(
+                            Context.CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(ClipData.newPlainText(tv.getText(), tv.getText()));
+                }
+                return true;
+            };
+            if (m_text != null)
+            {
+                TextView view = new TextView(m_activity);
+                view.setId(id++);
+                view.setOnLongClickListener(copyText);
+                view.setLongClickable(true);
 
-                    view.setText(m_text);
-                    view.setTextAppearance(m_activity, android.R.style.TextAppearance_Medium);
+                view.setText(m_text);
+                view.setTextAppearance(android.R.style.TextAppearance_Medium);
 
-                    RelativeLayout.LayoutParams layout = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
-                    layout.setMargins(16, 8, 16, 8);
+                RelativeLayout.LayoutParams layout = new RelativeLayout.LayoutParams(
+                        RelativeLayout.LayoutParams.MATCH_PARENT,
+                        RelativeLayout.LayoutParams.WRAP_CONTENT);
+                layout.setMargins(16, 8, 16, 8);
+                layout.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+                dialogLayout.addView(view, layout);
+                lastView = view;
+            }
+
+            if (m_informativeText != null)
+            {
+                TextView view= new TextView(m_activity);
+                view.setId(id++);
+                view.setOnLongClickListener(copyText);
+                view.setLongClickable(true);
+
+                view.setText(m_informativeText);
+                view.setTextAppearance(android.R.style.TextAppearance_Medium);
+
+                RelativeLayout.LayoutParams layout = new RelativeLayout.LayoutParams(
+                        RelativeLayout.LayoutParams.MATCH_PARENT,
+                        RelativeLayout.LayoutParams.WRAP_CONTENT);
+                layout.setMargins(16, 8, 16, 8);
+                if (lastView != null)
+                    layout.addRule(RelativeLayout.BELOW, lastView.getId());
+                else
                     layout.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-                    dialogLayout.addView(view, layout);
-                    lastView = view;
-                }
+                dialogLayout.addView(view, layout);
+                lastView = view;
+            }
 
-                if (m_informativeText != null)
+            if (m_detailedText != null)
+            {
+                TextView view= new TextView(m_activity);
+                view.setId(id++);
+                view.setOnLongClickListener(copyText);
+                view.setLongClickable(true);
+
+                view.setText(m_detailedText);
+                view.setTextAppearance(android.R.style.TextAppearance_Small);
+
+                RelativeLayout.LayoutParams layout = new RelativeLayout.LayoutParams(
+                        RelativeLayout.LayoutParams.MATCH_PARENT,
+                        RelativeLayout.LayoutParams.WRAP_CONTENT);
+                layout.setMargins(16, 8, 16, 8);
+                if (lastView != null)
+                    layout.addRule(RelativeLayout.BELOW, lastView.getId());
+                else
+                    layout.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+                dialogLayout.addView(view, layout);
+                lastView = view;
+            }
+
+            if (m_buttonsList != null)
+            {
+                LinearLayout buttonsLayout = new LinearLayout(m_activity);
+                buttonsLayout.setOrientation(LinearLayout.HORIZONTAL);
+                buttonsLayout.setId(id++);
+                boolean firstButton = true;
+                for (ButtonStruct button: m_buttonsList)
                 {
-                    TextView view= new TextView(m_activity);
-                    view.setId(id++);
-                    view.setOnLongClickListener(copyText);
-                    view.setLongClickable(true);
-
-                    view.setText(m_informativeText);
-                    view.setTextAppearance(m_activity, android.R.style.TextAppearance_Medium);
-
-                    RelativeLayout.LayoutParams layout = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
-                    layout.setMargins(16, 8, 16, 8);
-                    if (lastView != null)
-                        layout.addRule(RelativeLayout.BELOW, lastView.getId());
-                    else
-                        layout.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-                    dialogLayout.addView(view, layout);
-                    lastView = view;
-                }
-
-                if (m_detailedText != null)
-                {
-                    TextView view= new TextView(m_activity);
-                    view.setId(id++);
-                    view.setOnLongClickListener(copyText);
-                    view.setLongClickable(true);
-
-                    view.setText(m_detailedText);
-                    view.setTextAppearance(m_activity, android.R.style.TextAppearance_Small);
-
-                    RelativeLayout.LayoutParams layout = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
-                    layout.setMargins(16, 8, 16, 8);
-                    if (lastView != null)
-                        layout.addRule(RelativeLayout.BELOW, lastView.getId());
-                    else
-                        layout.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-                    dialogLayout.addView(view, layout);
-                    lastView = view;
-                }
-
-                if (m_buttonsList != null)
-                {
-                    LinearLayout buttonsLayout = new LinearLayout(m_activity);
-                    buttonsLayout.setOrientation(LinearLayout.HORIZONTAL);
-                    buttonsLayout.setId(id++);
-                    boolean firstButton = true;
-                    for (ButtonStruct button: m_buttonsList)
-                    {
-                        Button bv;
-                        try {
-                            bv = new Button(m_activity, null, Class.forName("android.R$attr").getDeclaredField("borderlessButtonStyle").getInt(null));
-                        } catch (Exception e) {
-                            bv = new Button(m_activity);
-                            e.printStackTrace();
-                        }
-
-                        bv.setText(button.m_text);
-                        bv.setOnClickListener(button);
-                        if (!firstButton) // first button
-                        {
-                            LinearLayout.LayoutParams layout = null;
-                            View spacer = new View(m_activity);
-                            try {
-                                layout = new LinearLayout.LayoutParams(1, RelativeLayout.LayoutParams.MATCH_PARENT);
-                                spacer.setBackgroundDrawable(getStyledDrawable("dividerVertical"));
-                                buttonsLayout.addView(spacer, layout);
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }
-                        LinearLayout.LayoutParams layout = null;
-                        layout = new LinearLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT, 1.0f);
-                        buttonsLayout.addView(bv, layout);
-                        firstButton = false;
-                    }
-
+                    Button bv;
                     try {
-                        View horizontalDevider = new View(m_activity);
-                        horizontalDevider.setId(id++);
-                        horizontalDevider.setBackgroundDrawable(getStyledDrawable("dividerHorizontal"));
-                        RelativeLayout.LayoutParams relativeParams = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, 1);
-                        relativeParams.setMargins(0, 10, 0, 0);
-                        if (lastView != null) {
-                            relativeParams.addRule(RelativeLayout.BELOW, lastView.getId());
-                        }
-                        else
-                            relativeParams.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-                        dialogLayout.addView(horizontalDevider, relativeParams);
-                        lastView = horizontalDevider;
+                        bv = new Button(m_activity, null, android.R.attr.borderlessButtonStyle);
                     } catch (Exception e) {
+                        bv = new Button(m_activity);
                         e.printStackTrace();
                     }
-                    RelativeLayout.LayoutParams relativeParams = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+
+                    bv.setText(button.m_text);
+                    bv.setOnClickListener(button);
+                    if (!firstButton) // first button
+                    {
+                        View spacer = new View(m_activity);
+                        try {
+                            LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(1,
+                                    RelativeLayout.LayoutParams.MATCH_PARENT);
+                            spacer.setBackground(getStyledDrawable(android.R.attr.dividerVertical));
+                            buttonsLayout.addView(spacer, layout);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(
+                            RelativeLayout.LayoutParams.MATCH_PARENT,
+                            RelativeLayout.LayoutParams.WRAP_CONTENT, 1.0f);
+                    buttonsLayout.addView(bv, layout);
+                    firstButton = false;
+                }
+
+                try {
+                    View horizontalDivider = new View(m_activity);
+                    horizontalDivider.setId(id);
+                    horizontalDivider.setBackground(getStyledDrawable(
+                            android.R.attr.dividerHorizontal));
+                    RelativeLayout.LayoutParams relativeParams = new RelativeLayout.LayoutParams(
+                            RelativeLayout.LayoutParams.MATCH_PARENT, 1);
+                    relativeParams.setMargins(0, 10, 0, 0);
                     if (lastView != null) {
                         relativeParams.addRule(RelativeLayout.BELOW, lastView.getId());
                     }
                     else
                         relativeParams.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-                    relativeParams.setMargins(2, 0, 2, 0);
-                    dialogLayout.addView(buttonsLayout, relativeParams);
+                    dialogLayout.addView(horizontalDivider, relativeParams);
+                    lastView = horizontalDivider;
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-                scrollView.addView(dialogLayout);
-                m_dialog.setView(scrollView);
-                m_dialog.show();
+                RelativeLayout.LayoutParams relativeParams = new RelativeLayout.LayoutParams(
+                        RelativeLayout.LayoutParams.MATCH_PARENT,
+                        RelativeLayout.LayoutParams.WRAP_CONTENT);
+                if (lastView != null) {
+                    relativeParams.addRule(RelativeLayout.BELOW, lastView.getId());
+                }
+                else
+                    relativeParams.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+                relativeParams.setMargins(2, 0, 2, 0);
+                dialogLayout.addView(buttonsLayout, relativeParams);
             }
+            scrollView.addView(dialogLayout);
+            m_dialog.setView(scrollView);
+            m_dialog.show();
         });
     }
 
+    @UsedFromNativeCode
     public void hide()
     {
-        m_activity.runOnUiThread( new Runnable() {
-            @Override
-            public void run() {
-                if (m_dialog != null && m_dialog.isShowing())
-                    m_dialog.dismiss();
-                reset();
-            }
+        m_activity.runOnUiThread(() -> {
+            if (m_dialog != null && m_dialog.isShowing())
+                m_dialog.dismiss();
+            reset();
         });
     }
 
@@ -346,7 +325,8 @@ public class QtMessageDialogHelper
         m_handler = 0;
     }
 
-    private Activity m_activity;
+    private static final String QtTAG = "QtMessageDialogHelper";
+    private final Activity m_activity;
     private int m_standardIcon = 0;
     private Spanned m_title, m_text, m_informativeText, m_detailedText;
     private ArrayList<ButtonStruct> m_buttonsList;

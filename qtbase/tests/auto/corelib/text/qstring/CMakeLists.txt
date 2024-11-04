@@ -1,6 +1,12 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(tst_qstring LANGUAGES CXX)
+    find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
+endif()
+
 if(NOT QT_FEATURE_doubleconversion AND NOT QT_FEATURE_system_doubleconversion)
     list(APPEND tst_qstring_extra_defines QT_NO_DOUBLECONVERSION)
 endif()
@@ -15,6 +21,7 @@ endif()
 
 foreach(test tst_qstring tst_qstring_restricted_ascii tst_qstring_no_cast_from_ascii)
     qt_internal_add_test(${test}
+        NO_BATCH
         SOURCES
             tst_qstring.cpp
             ${tst_qstring_extra_sources}

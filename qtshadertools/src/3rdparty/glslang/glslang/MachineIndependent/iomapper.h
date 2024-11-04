@@ -33,8 +33,6 @@
 // POSSIBILITY OF SUCH DAMAGE.
 //
 
-#if !defined(GLSLANG_WEB) && !defined(GLSLANG_ANGLE)
-
 #ifndef _IOMAPPER_INCLUDED
 #define _IOMAPPER_INCLUDED
 
@@ -45,6 +43,7 @@
 //
 // A reflection database and its interface, consistent with the OpenGL API reflection queries.
 //
+
 namespace QtShaderTools {
 class TInfoSink;
 
@@ -55,6 +54,7 @@ struct TVarEntryInfo {
     long long id;
     TIntermSymbol* symbol;
     bool live;
+    bool upgradedToPushConstant;
     int newBinding;
     int newSet;
     int newLocation;
@@ -63,6 +63,7 @@ struct TVarEntryInfo {
     EShLanguage stage;
 
     void clearNewAssignments() {
+        upgradedToPushConstant = false;
         newBinding = -1;
         newSet = -1;
         newLocation = -1;
@@ -358,5 +359,3 @@ private:
 } // namespace QtShaderTools
 
 #endif // _IOMAPPER_INCLUDED
-
-#endif // !GLSLANG_WEB && !GLSLANG_ANGLE

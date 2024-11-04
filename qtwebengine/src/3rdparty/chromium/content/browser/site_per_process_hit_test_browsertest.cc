@@ -824,24 +824,6 @@ class SitePerProcessHitTestBrowserTest : public SitePerProcessBrowserTestBase {
 #endif
 };
 
-// This tests the kInputTargetClientHighPriority finch experiment where we
-// upgrade the TaskQueue priority for InputTargetClient methods.
-class SitePerProcessHitTestTaskPriorityBrowserTest
-    : public SitePerProcessHitTestBrowserTest {
- public:
-  SitePerProcessHitTestTaskPriorityBrowserTest() = default;
-
- protected:
-  void SetUpCommandLine(base::CommandLine* command_line) override {
-    SitePerProcessBrowserTestBase::SetUpCommandLine(command_line);
-    feature_list_.InitAndEnableFeature(
-        blink::features::kInputTargetClientHighPriority);
-  }
-
- private:
-  base::test::ScopedFeatureList feature_list_;
-};
-
 //
 // SitePerProcessHighDPIHitTestBrowserTest
 //
@@ -4481,6 +4463,73 @@ IN_PROC_BROWSER_TEST_F(SitePerProcessHitTestBrowserTest,
               set_cursor_interceptor->cursor());
   }
 }
+
+// Regression test for https://crbug.com/1454515. An OOPIF
+// scrolled away from the main document should not allow
+// large cursors to intersect browser UI.
+IN_PROC_BROWSER_TEST_F(SitePerProcessHitTestBrowserTest,
+                       LargeCursorRemovedInScrolledOOPIF) {
+  GURL url(R"(data:text/html,
+    <iframe id='iframe'
+            style ='position:absolute; top: 0px'
+            width=1000px height=1000px>
+    </iframe>)");
+  EXPECT_TRUE(NavigateToURL(shell(), url));
+
+  // The large-cursor.html document has a custom cursor that is 120x120 with a
+  // hotspot on the bottom right corner.
+  NavigateIframeToURL(shell()->web_contents(), "iframe",
+                      embedded_test_server()->GetURL("/large-cursor.html"));
+
+  auto* web_contents = static_cast<WebContentsImpl*>(shell()->web_contents());
+  FrameTreeNode* root = web_contents->GetPrimaryFrameTree().root();
+
+  FrameTreeNode* child_node = root->child_at(0);
+  EXPECT_NE(shell()->web_contents()->GetSiteInstance(),
+            child_node->current_frame_host()->GetSiteInstance());
+
+  WaitForHitTestData(child_node->current_frame_host());
+
+  RenderWidgetHostViewBase* root_view = static_cast<RenderWidgetHostViewBase*>(
+      root->current_frame_host()->GetRenderWidgetHost()->GetView());
+  RenderWidgetHostImpl* rwh_child =
+      root->child_at(0)->current_frame_host()->GetRenderWidgetHost();
+  RenderWidgetHostViewBase* child_view =
+      static_cast<RenderWidgetHostViewBase*>(rwh_child->GetView());
+
+  auto* router = web_contents->GetInputEventRouter();
+
+  // Scroll the main frame.
+  gfx::Rect initial_child_view_bounds = child_view->GetViewBounds();
+  EXPECT_TRUE(ExecJs(root, "window.scrollTo(0, 10);"));
+  // Wait until the OOPIF positions have been updated in the browser process.
+  while (true) {
+    base::RunLoop run_loop;
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+        FROM_HERE, run_loop.QuitClosure(), TestTimeouts::tiny_timeout());
+    run_loop.Run();
+    if (initial_child_view_bounds.y() ==
+        child_view->GetViewBounds().y() + 10)
+      break;
+  }
+
+  // A cursor should not be shown when the main frame is scrolled
+  // and the iframe is outside the root view's visible viewport.
+  blink::WebMouseEvent mouse_event(
+      blink::WebInputEvent::Type::kMouseMove,
+      blink::WebInputEvent::kNoModifiers,
+      blink::WebInputEvent::GetStaticTimeStampForTests());
+  SetWebEventPositions(&mouse_event, gfx::Point(300, 115), root_view);
+  auto set_cursor_interceptor =
+      std::make_unique<SetCursorInterceptor>(rwh_child);
+  RouteMouseEventAndWaitUntilDispatch(router, root_view, child_view,
+                                      &mouse_event);
+  // We should see a new cursor come in that replaces the large one.
+  set_cursor_interceptor->Wait();
+  EXPECT_TRUE(set_cursor_interceptor->cursor().has_value());
+  EXPECT_EQ(ui::mojom::CursorType::kPointer,
+            set_cursor_interceptor->cursor());
+}
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if defined(USE_AURA)
@@ -5553,12 +5602,10 @@ IN_PROC_BROWSER_TEST_F(SitePerProcessHitTestBrowserTest,
                                               rwhv_child);
 
   // Ensure the child frame saw the wheel event.
-  ASSERT_EQ(false,
-            EvalJs(child_frame_host,
-                   "handlerPromise.then(function(e) {"
-                   "  window.domAutomationController.send(e.defaultPrevented);"
-                   "});",
-                   EXECUTE_SCRIPT_USE_MANUAL_REPLY));
+  ASSERT_EQ(false, EvalJs(child_frame_host,
+                          "handlerPromise.then(function(e) {"
+                          "  return e.defaultPrevented;"
+                          "});"));
 
   scale_observer.WaitForPageScaleUpdate();
 }
@@ -5683,12 +5730,10 @@ IN_PROC_BROWSER_TEST_F(SitePerProcessHitTestBrowserTest,
                             ui::LatencyInfo(ui::SourceEventType::WHEEL));
 
   // Ensure the child frame saw the wheel event.
-  EXPECT_EQ(false,
-            EvalJs(child_frame_host,
-                   "handlerPromise.then(function(e) {"
-                   "  window.domAutomationController.send(e.defaultPrevented);"
-                   "});",
-                   EXECUTE_SCRIPT_USE_MANUAL_REPLY));
+  EXPECT_EQ(false, EvalJs(child_frame_host,
+                          "handlerPromise.then(function(e) {"
+                          "  return e.defaultPrevented;"
+                          "});"));
 
   // TODO(mcnee): Support double-tap zoom gesture for OOPIFs. For now, we
   // only test that any scale change still happens in the main frame when
@@ -6747,13 +6792,6 @@ IN_PROC_BROWSER_TEST_F(SitePerProcessHitTestBrowserTest, HitTestClippedFrame) {
 
 // Verify InputTargetClient works within an OOPIF process.
 IN_PROC_BROWSER_TEST_F(SitePerProcessHitTestBrowserTest, HitTestNestedFrames) {
-  HitTestNestedFramesHelper(shell(), embedded_test_server());
-}
-
-// Test that the InputTargetClient interface works as expected even when Running
-// a TaskPriority finch experiment.
-IN_PROC_BROWSER_TEST_F(SitePerProcessHitTestTaskPriorityBrowserTest,
-                       SmokeTestInputTargetClientTaskPriority) {
   HitTestNestedFramesHelper(shell(), embedded_test_server());
 }
 

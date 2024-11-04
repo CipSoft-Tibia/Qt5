@@ -13,6 +13,7 @@
 #include "device/gamepad/public/mojom/gamepad.mojom.h"
 #include "media/mojo/mojom/media_player.mojom.h"
 #include "services/network/public/mojom/restricted_cookie_manager.mojom.h"
+#include "third_party/blink/public/mojom/blob/blob_url_store.mojom.h"
 #include "third_party/blink/public/mojom/broadcastchannel/broadcast_channel.mojom.h"
 #include "third_party/blink/public/mojom/cache_storage/cache_storage.mojom.h"
 #include "third_party/blink/public/mojom/clipboard/clipboard.mojom.h"
@@ -20,6 +21,9 @@
 #include "third_party/blink/public/mojom/frame/back_forward_cache_controller.mojom.h"
 #include "third_party/blink/public/mojom/frame/frame.mojom.h"
 #include "third_party/blink/public/mojom/indexeddb/indexeddb.mojom.h"
+#if BUILDFLAG(IS_MAC)
+#include "third_party/blink/public/mojom/input/text_input_host.mojom.h"
+#endif
 #include "third_party/blink/public/mojom/loader/code_cache.mojom.h"
 #include "third_party/blink/public/mojom/manifest/manifest_observer.mojom.h"
 #include "third_party/blink/public/mojom/media/renderer_audio_output_stream_factory.mojom.h"
@@ -78,6 +82,15 @@ void RegisterNonAssociatedPoliciesForSameOriginPrerendering(
   // since we wait for a response from code cache when loading resources.
   map.SetNonAssociatedPolicy<blink::mojom::CodeCacheHost>(
       MojoBinderNonAssociatedPolicy::kGrant);
+
+#if BUILDFLAG(IS_MAC)
+  // Set policy to Grant for TextInputHost.
+  // This is used to return macOS IME sync call results to the browser process,
+  // and will hang entire Chrome if paused.
+  // This is a prospective fix added for crbug.com/1480850
+  map.SetNonAssociatedPolicy<blink::mojom::TextInputHost>(
+      MojoBinderNonAssociatedPolicy::kGrant);
+#endif
 }
 
 // Register policies for channel-associated interfaces registered in
@@ -120,6 +133,10 @@ void RegisterChannelAssociatedPoliciesForSameOriginPrerendering(
   // they active documents (see RenderFrameHostImpl::EnterFullscreen), so it is
   // safe to allow a prerendered document to use it.
   map.SetAssociatedPolicy<blink::mojom::DisplayCutoutHost>(
+      MojoBinderAssociatedPolicy::kGrant);
+
+  // Prerendering pages are allowed to create urls for blobs.
+  map.SetAssociatedPolicy<blink::mojom::BlobURLStore>(
       MojoBinderAssociatedPolicy::kGrant);
 }
 

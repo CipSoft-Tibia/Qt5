@@ -33,13 +33,23 @@ AXScreenAIAnnotatorFactory::AXScreenAIAnnotatorFactory()
     : ProfileKeyedServiceFactory(
           "AXScreenAIAnnotator",
           // Incognito profiles should use their own instance.
-          ProfileSelections::BuildForRegularAndIncognito()) {}
+          ProfileSelections::Builder()
+              .WithRegular(ProfileSelection::kOwnInstance)
+              // TODO(crbug.com/1418376): Check if this service is needed in
+              // Guest mode.
+              .WithGuest(ProfileSelection::kOwnInstance)
+              .Build()) {}
 
 AXScreenAIAnnotatorFactory::~AXScreenAIAnnotatorFactory() = default;
 
 KeyedService* AXScreenAIAnnotatorFactory::BuildServiceInstanceFor(
     content::BrowserContext* context) const {
   return new screen_ai::AXScreenAIAnnotator(context);
+}
+
+// static
+void AXScreenAIAnnotatorFactory::EnsureFactoryBuilt() {
+  AXScreenAIAnnotatorFactory::GetInstance();
 }
 
 }  // namespace screen_ai

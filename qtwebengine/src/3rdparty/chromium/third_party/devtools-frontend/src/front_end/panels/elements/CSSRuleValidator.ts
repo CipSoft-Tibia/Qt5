@@ -4,6 +4,7 @@
 
 import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
+import * as SDK from '../../core/sdk/sdk.js';
 
 import {
   buildPropertyDefinitionText,
@@ -51,6 +52,17 @@ const UIStrings = {
    */
   ruleViolatedByParentElementRuleFix:
       'Try setting the {EXISTING_PARENT_ELEMENT_RULE} property on the parent to {TARGET_PARENT_ELEMENT_RULE}.',
+
+  /**
+   *@description The warning text shown in Elements panel when font-variation-settings don't match allowed values
+   *@example {wdth} PH1
+   *@example {100} PH2
+   *@example {10} PH3
+   *@example {20} PH4
+   *@example {Arial} PH5
+   */
+  fontVariationSettingsWarning:
+      'Value for setting “{PH1}” {PH2} is outside the supported range [{PH3}, {PH4}] for font-family “{PH5}”.',
 };
 const str_ = i18n.i18n.registerUIStrings('panels/elements/CSSRuleValidator.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -101,7 +113,7 @@ export abstract class CSSRuleValidator {
 
   abstract getHint(
       propertyName: string, computedStyles?: Map<string, string>, parentComputedStyles?: Map<string, string>,
-      nodeName?: string): Hint|undefined;
+      nodeName?: string, fontFaces?: Array<SDK.CSSFontFace.CSSFontFace>): Hint|undefined;
 }
 
 export class AlignContentValidator extends CSSRuleValidator {
@@ -109,7 +121,7 @@ export class AlignContentValidator extends CSSRuleValidator {
     super(['align-content']);
   }
 
-  getMetricType(): Host.UserMetrics.CSSHintType {
+  override getMetricType(): Host.UserMetrics.CSSHintType {
     return Host.UserMetrics.CSSHintType.AlignContent;
   }
 
@@ -145,7 +157,7 @@ export class FlexItemValidator extends CSSRuleValidator {
     super(['flex', 'flex-basis', 'flex-grow', 'flex-shrink']);
   }
 
-  getMetricType(): Host.UserMetrics.CSSHintType {
+  override getMetricType(): Host.UserMetrics.CSSHintType {
     return Host.UserMetrics.CSSHintType.FlexItem;
   }
 
@@ -178,7 +190,7 @@ export class FlexContainerValidator extends CSSRuleValidator {
     super(['flex-direction', 'flex-flow', 'flex-wrap']);
   }
 
-  getMetricType(): Host.UserMetrics.CSSHintType {
+  override getMetricType(): Host.UserMetrics.CSSHintType {
     return Host.UserMetrics.CSSHintType.FlexContainer;
   }
 
@@ -220,7 +232,7 @@ export class GridContainerValidator extends CSSRuleValidator {
     ]);
   }
 
-  getMetricType(): Host.UserMetrics.CSSHintType {
+  override getMetricType(): Host.UserMetrics.CSSHintType {
     return Host.UserMetrics.CSSHintType.GridContainer;
   }
 
@@ -261,7 +273,7 @@ export class GridItemValidator extends CSSRuleValidator {
     ]);
   }
 
-  getMetricType(): Host.UserMetrics.CSSHintType {
+  override getMetricType(): Host.UserMetrics.CSSHintType {
     return Host.UserMetrics.CSSHintType.GridItem;
   }
 
@@ -299,7 +311,7 @@ export class FlexOrGridItemValidator extends CSSRuleValidator {
     ]);
   }
 
-  getMetricType(): Host.UserMetrics.CSSHintType {
+  override getMetricType(): Host.UserMetrics.CSSHintType {
     return Host.UserMetrics.CSSHintType.FlexOrGridItem;
   }
 
@@ -339,7 +351,7 @@ export class FlexGridValidator extends CSSRuleValidator {
     ]);
   }
 
-  getMetricType(): Host.UserMetrics.CSSHintType {
+  override getMetricType(): Host.UserMetrics.CSSHintType {
     return Host.UserMetrics.CSSHintType.FlexGrid;
   }
 
@@ -381,7 +393,7 @@ export class MulticolFlexGridValidator extends CSSRuleValidator {
     ]);
   }
 
-  getMetricType(): Host.UserMetrics.CSSHintType {
+  override getMetricType(): Host.UserMetrics.CSSHintType {
     return Host.UserMetrics.CSSHintType.MulticolFlexGrid;
   }
 
@@ -421,7 +433,7 @@ export class PaddingValidator extends CSSRuleValidator {
     ]);
   }
 
-  getMetricType(): Host.UserMetrics.CSSHintType {
+  override getMetricType(): Host.UserMetrics.CSSHintType {
     return Host.UserMetrics.CSSHintType.Padding;
   }
 
@@ -468,7 +480,7 @@ export class PositionValidator extends CSSRuleValidator {
     ]);
   }
 
-  getMetricType(): Host.UserMetrics.CSSHintType {
+  override getMetricType(): Host.UserMetrics.CSSHintType {
     return Host.UserMetrics.CSSHintType.Position;
   }
 
@@ -504,7 +516,7 @@ export class ZIndexValidator extends CSSRuleValidator {
     ]);
   }
 
-  getMetricType(): Host.UserMetrics.CSSHintType {
+  override getMetricType(): Host.UserMetrics.CSSHintType {
     return Host.UserMetrics.CSSHintType.ZIndex;
   }
 
@@ -548,7 +560,7 @@ export class SizingValidator extends CSSRuleValidator {
     ]);
   }
 
-  getMetricType(): Host.UserMetrics.CSSHintType {
+  override getMetricType(): Host.UserMetrics.CSSHintType {
     return Host.UserMetrics.CSSHintType.Sizing;
   }
 
@@ -582,18 +594,80 @@ export class SizingValidator extends CSSRuleValidator {
   }
 }
 
+/**
+ * Checks that font variation settings are applicable to the actual font.
+ */
+export class FontVariationSettingsValidator extends CSSRuleValidator {
+  constructor() {
+    super([
+      'font-variation-settings',
+    ]);
+  }
+
+  override getMetricType(): Host.UserMetrics.CSSHintType {
+    return Host.UserMetrics.CSSHintType.FontVariationSettings;
+  }
+
+  getHint(
+      propertyName: string, computedStyles?: Map<string, string>, parentComputedStyles?: Map<string, string>,
+      nodeName?: string, fontFaces?: Array<SDK.CSSFontFace.CSSFontFace>): Hint|undefined {
+    if (!computedStyles) {
+      return;
+    }
+    const value = computedStyles.get('font-variation-settings');
+    if (!value) {
+      return;
+    }
+    const fontFamily = computedStyles.get('font-family');
+    if (!fontFamily) {
+      return;
+    }
+    const fontFamilies = new Set<string>(SDK.CSSPropertyParser.parseFontFamily(fontFamily));
+    const matchingFontFaces = (fontFaces || []).filter(f => fontFamilies.has(f.getFontFamily()));
+    const variationSettings = SDK.CSSPropertyParser.parseFontVariationSettings(value);
+    const warnings = [];
+    for (const elementSetting of variationSettings) {
+      for (const font of matchingFontFaces) {
+        const fontSetting = font.getVariationAxisByTag(elementSetting.tag);
+        if (!fontSetting) {
+          continue;
+        }
+        if (elementSetting.value < fontSetting.minValue || elementSetting.value > fontSetting.maxValue) {
+          warnings.push(i18nString(UIStrings.fontVariationSettingsWarning, {
+            PH1: elementSetting.tag,
+            PH2: elementSetting.value,
+            PH3: fontSetting.minValue,
+            PH4: fontSetting.maxValue,
+            PH5: font.getFontFamily(),
+          }));
+        }
+      }
+    }
+
+    if (!warnings.length) {
+      return;
+    }
+
+    return new Hint(
+        warnings.join(' '),
+        '',
+    );
+  }
+}
+
 const CSS_RULE_VALIDATORS = [
   AlignContentValidator,
   FlexContainerValidator,
   FlexGridValidator,
   FlexItemValidator,
+  FlexOrGridItemValidator,
+  FontVariationSettingsValidator,
   GridContainerValidator,
   GridItemValidator,
-  FlexOrGridItemValidator,
-  SizingValidator,
   MulticolFlexGridValidator,
   PaddingValidator,
   PositionValidator,
+  SizingValidator,
   ZIndexValidator,
 ];
 

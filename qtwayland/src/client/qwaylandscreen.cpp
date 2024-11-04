@@ -105,12 +105,19 @@ QString QWaylandScreen::model() const
 QRect QWaylandScreen::geometry() const
 {
     if (zxdg_output_v1::isInitialized()) {
-        return mXdgGeometry;
-    } else {
-        // Scale geometry for QScreen. This makes window and screen
-        // geometry be in the same coordinate system.
-        return QRect(mGeometry.topLeft(), mGeometry.size() / mScale);
+
+        // Workaround for Gnome bug
+        // https://gitlab.gnome.org/GNOME/mutter/-/issues/2631
+        // which sends an incorrect xdg geometry
+        const bool xdgGeometryIsBogus = mScale > 1 && mXdgGeometry.size() == mGeometry.size();
+
+        if (!xdgGeometryIsBogus) {
+            return mXdgGeometry;
+        }
     }
+    // Scale geometry for QScreen. This makes window and screen
+    // geometry be in the same coordinate system.
+    return QRect(mGeometry.topLeft(), mGeometry.size() / mScale);
 }
 
 int QWaylandScreen::depth() const
@@ -231,6 +238,35 @@ QWaylandScreen *QWaylandScreen::fromWlOutput(::wl_output *output)
     return nullptr;
 }
 
+Qt::ScreenOrientation QWaylandScreen::toScreenOrientation(int wlTransform,
+                                                          Qt::ScreenOrientation fallback) const
+{
+    auto orientation = fallback;
+    bool isPortrait = mGeometry.height() > mGeometry.width();
+    switch (wlTransform) {
+    case WL_OUTPUT_TRANSFORM_NORMAL:
+        orientation = isPortrait ? Qt::PortraitOrientation : Qt::LandscapeOrientation;
+        break;
+    case WL_OUTPUT_TRANSFORM_90:
+        orientation = isPortrait ? Qt::InvertedLandscapeOrientation : Qt::PortraitOrientation;
+        break;
+    case WL_OUTPUT_TRANSFORM_180:
+        orientation = isPortrait ? Qt::InvertedPortraitOrientation : Qt::InvertedLandscapeOrientation;
+        break;
+    case WL_OUTPUT_TRANSFORM_270:
+        orientation = isPortrait ? Qt::LandscapeOrientation : Qt::InvertedPortraitOrientation;
+        break;
+    // Ignore these ones, at least for now
+    case WL_OUTPUT_TRANSFORM_FLIPPED:
+    case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+    case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+    case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+        break;
+    }
+
+    return orientation;
+}
+
 void QWaylandScreen::output_mode(uint32_t flags, int width, int height, int refresh)
 {
     if (!(flags & WL_OUTPUT_MODE_CURRENT))
@@ -282,29 +318,11 @@ void QWaylandScreen::output_done()
 void QWaylandScreen::updateOutputProperties()
 {
     if (mTransform >= 0) {
-        bool isPortrait = mGeometry.height() > mGeometry.width();
-        switch (mTransform) {
-            case WL_OUTPUT_TRANSFORM_NORMAL:
-                m_orientation = isPortrait ? Qt::PortraitOrientation : Qt::LandscapeOrientation;
-                break;
-            case WL_OUTPUT_TRANSFORM_90:
-                m_orientation = isPortrait ? Qt::InvertedLandscapeOrientation : Qt::PortraitOrientation;
-                break;
-            case WL_OUTPUT_TRANSFORM_180:
-                m_orientation = isPortrait ? Qt::InvertedPortraitOrientation : Qt::InvertedLandscapeOrientation;
-                break;
-            case WL_OUTPUT_TRANSFORM_270:
-                m_orientation = isPortrait ? Qt::LandscapeOrientation : Qt::InvertedPortraitOrientation;
-                break;
-            // Ignore these ones, at least for now
-            case WL_OUTPUT_TRANSFORM_FLIPPED:
-            case WL_OUTPUT_TRANSFORM_FLIPPED_90:
-            case WL_OUTPUT_TRANSFORM_FLIPPED_180:
-            case WL_OUTPUT_TRANSFORM_FLIPPED_270:
-                break;
+        auto newOrientation = toScreenOrientation(mTransform, m_orientation);
+        if (m_orientation != newOrientation) {
+            m_orientation = newOrientation;
+            QWindowSystemInterface::handleScreenOrientationChange(screen(), m_orientation);
         }
-
-        QWindowSystemInterface::handleScreenOrientationChange(screen(), m_orientation);
         mTransform = -1;
     }
 
@@ -328,7 +346,7 @@ void QWaylandScreen::zxdg_output_v1_logical_size(int32_t width, int32_t height)
 void QWaylandScreen::zxdg_output_v1_done()
 {
     if (Q_UNLIKELY(mWaylandDisplay->xdgOutputManager()->version() >= 3))
-        qWarning(lcQpaWayland) << "zxdg_output_v1.done received on version 3 or newer, this is most likely a bug in the compositor";
+        qCWarning(lcQpaWayland) << "zxdg_output_v1.done received on version 3 or newer, this is most likely a bug in the compositor";
 
     mProcessedEvents |= XdgOutputDoneEvent;
     if (mInitialized)
@@ -340,7 +358,7 @@ void QWaylandScreen::zxdg_output_v1_done()
 void QWaylandScreen::zxdg_output_v1_name(const QString &name)
 {
     if (Q_UNLIKELY(mInitialized))
-        qWarning(lcQpaWayland) << "zxdg_output_v1.name received after output has been initialized, this is most likely a bug in the compositor";
+        qCWarning(lcQpaWayland) << "zxdg_output_v1.name received after output has been initialized, this is most likely a bug in the compositor";
 
     mOutputName = name;
     mProcessedEvents |= XdgOutputNameEvent;

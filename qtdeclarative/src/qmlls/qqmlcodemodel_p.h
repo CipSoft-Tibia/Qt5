@@ -20,6 +20,7 @@
 
 #include <QObject>
 #include <QHash>
+#include <QtCore/qfilesystemwatcher.h>
 #include <QtQmlDom/private/qqmldomitem_p.h>
 #include <QtQmlCompiler/private/qqmljsscope_p.h>
 #include <QtQmlToolingSettings/private/qqmltoolingsettings_p.h>
@@ -50,7 +51,7 @@ public:
     std::optional<int> scopeVersion;
     QDateTime scopeDependenciesLoadTime;
     bool scopeDependenciesChanged = false;
-    QQmlJSScope::Ptr scope = {};
+    QQmlJSScope::ConstPtr scope;
     QDebug dump(QDebug dbg, DumpOptions dump = DumpOption::NoCode);
 };
 
@@ -101,6 +102,9 @@ public:
     void setBuildPathsForRootUrl(QByteArray url, const QStringList &paths);
     void removeRootUrls(const QList<QByteArray> &urls);
     QQmlToolingSettings *settings();
+    QStringList findFilePathsFromFileNames(const QStringList &fileNames) const;
+    static QStringList fileNamesToWatch(const QQmlJS::Dom::DomItem &qmlFile);
+    void disableCMakeCalls();
 Q_SIGNALS:
     void updatedSnapshot(const QByteArray &url);
 private:
@@ -116,6 +120,12 @@ private:
     void openUpdateStart();
     void openUpdateEnd();
     void openUpdate(const QByteArray &);
+
+    static bool callCMakeBuild(const QStringList &buildPaths);
+    void addFileWatches(const QQmlJS::Dom::DomItem &qmlFile);
+    enum CMakeStatus { RequiresInitialization, HasCMake, DoesNotHaveCMake };
+    void initializeCMakeStatus(const QString &);
+
     mutable QMutex m_mutex;
     State m_state = State::Running;
     int m_lastIndexProgress = 0;
@@ -134,6 +144,11 @@ private:
     QHash<QString, QByteArray> m_path2url;
     QHash<QByteArray, OpenDocument> m_openDocuments;
     QQmlToolingSettings *m_settings;
+    QFileSystemWatcher m_cppFileWatcher;
+    bool m_rebuildRequired = true; // always trigger a rebuild on start
+    CMakeStatus m_cmakeStatus = RequiresInitialization;
+private slots:
+    void onCppFileChanged(const QString &);
 };
 
 } // namespace QmlLsp

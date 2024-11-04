@@ -5,6 +5,9 @@
 #ifndef QABSTRACTPROTOBUFSERIALIZER_H
 #define QABSTRACTPROTOBUFSERIALIZER_H
 
+#include <QtCore/qbytearray.h>
+#include <QtCore/qbytearrayview.h>
+
 #include <QtProtobuf/qtprotobufglobal.h>
 #include <QtProtobuf/qtprotobuftypes.h>
 #include <QtProtobuf/qprotobufmessage.h>
@@ -13,15 +16,19 @@
 
 QT_BEGIN_NAMESPACE
 
+namespace QtProtobuf {
+class Any;
+}
+
 class Q_PROTOBUF_EXPORT QAbstractProtobufSerializer
 {
-
 public:
     enum DeserializationError {
         NoError,
         InvalidHeaderError,
         NoDeserializerError,
         UnexpectedEndOfStreamError,
+        InvalidFormatError,
     };
 
     template<typename T>
@@ -69,6 +76,8 @@ private:
     bool doDeserialize(QProtobufMessage *message,
                        const QtProtobufPrivate::QProtobufPropertyOrdering &ordering,
                        QByteArrayView data) const;
+
+    friend class QtProtobuf::Any;
 };
 
 QT_END_NAMESPACE

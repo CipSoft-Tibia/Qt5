@@ -19,12 +19,15 @@
 
 #include <QtDesigner/abstractformwindow.h>
 
+#include <QtCore/qcompare.h>
+#include <QtCore/qhash.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qshareddata.h>
-#include <QtCore/qmap.h>
 #include <QtWidgets/qmainwindow.h>
 #include <QtGui/qicon.h>
 #include <QtGui/qpixmap.h>
+
+#include <map>
 
 QT_BEGIN_NAMESPACE
 
@@ -60,17 +63,20 @@ template <class IntType>
 class MetaEnum
 {
 public:
-    using KeyToValueMap = QMap<QString, IntType>;
+    enum SerializationMode { FullyQualified,
+                             Qualified }; // Qt pre 6.7 without enum name
 
-    MetaEnum(const QString &name, const QString &scope, const QString &separator);
+    using KeyToValueMap = std::map<QString, IntType, std::less<>>;
+
+    MetaEnum(const QString &enumName, const QString &scope, const QString &separator);
     MetaEnum() = default;
     void addKey(IntType value, const QString &name);
 
     QString valueToKey(IntType value, bool *ok = nullptr) const;
     // Ignorant of scopes.
-    IntType keyToValue(QString key, bool *ok = nullptr) const;
+    IntType keyToValue(QStringView key, bool *ok = nullptr) const;
 
-    const QString &name() const      { return m_name; }
+    const QString &enumName() const  { return m_enumName; }
     const QString &scope() const     { return m_scope; }
     const QString &separator() const { return m_separator; }
 
@@ -78,10 +84,10 @@ public:
     const KeyToValueMap &keyToValueMap() const { return m_keyToValueMap; }
 
 protected:
-    void appendQualifiedName(const QString &key, QString &target) const;
+    void appendQualifiedName(const QString &key, SerializationMode sm, QString &target) const;
 
 private:
-    QString m_name;
+    QString m_enumName;
     QString m_scope;
     QString m_separator;
     KeyToValueMap m_keyToValueMap;
@@ -89,8 +95,8 @@ private:
 };
 
 template <class IntType>
-MetaEnum<IntType>::MetaEnum(const QString &name, const QString &scope, const QString &separator) :
-    m_name(name),
+MetaEnum<IntType>::MetaEnum(const QString &enumName, const QString &scope, const QString &separator) :
+      m_enumName(enumName),
     m_scope(scope),
     m_separator(separator)
 {
@@ -99,39 +105,48 @@ MetaEnum<IntType>::MetaEnum(const QString &name, const QString &scope, const QSt
 template <class IntType>
 void MetaEnum<IntType>::addKey(IntType value, const QString &name)
 {
-    m_keyToValueMap.insert(name, value);
+    m_keyToValueMap.insert({name, value});
     m_keys.append(name);
 }
 
 template <class IntType>
 QString MetaEnum<IntType>::valueToKey(IntType value, bool *ok) const
 {
-    const QString rc = m_keyToValueMap.key(value);
+    QString rc;
+    for (auto it = m_keyToValueMap.begin(), end = m_keyToValueMap.end(); it != end; ++it)  {
+        if (it->second == value) {
+            rc = it->first;
+            break;
+        }
+    }
     if (ok)
         *ok = !rc.isEmpty();
     return rc;
 }
 
 template <class IntType>
-IntType MetaEnum<IntType>::keyToValue(QString key, bool *ok) const
+IntType MetaEnum<IntType>::keyToValue(QStringView key, bool *ok) const
 {
     const auto lastSep = key.lastIndexOf(m_separator);
     if (lastSep != -1)
-        key.remove(0, lastSep + m_separator.size());
+        key = key.sliced(lastSep + m_separator.size());
     const auto it = m_keyToValueMap.find(key);
-    const bool found = it != m_keyToValueMap.constEnd();
+    const bool found = it != m_keyToValueMap.end();
     if (ok)
         *ok = found;
-    return found ? it.value() : IntType(0);
+    return found ? it->second : IntType(0);
 }
 
 template <class IntType>
-void MetaEnum<IntType>::appendQualifiedName(const QString &key, QString &target) const
+void MetaEnum<IntType>::appendQualifiedName(const QString &key, SerializationMode sm,
+                                            QString &target) const
 {
     if (!m_scope.isEmpty()) {
         target += m_scope;
         target += m_separator;
     }
+    if (sm == FullyQualified)
+        target += m_enumName + m_separator;
     target += key;
 }
 
@@ -143,7 +158,6 @@ public:
     DesignerMetaEnum(const QString &name, const QString &scope, const QString &separator);
     DesignerMetaEnum() = default;
 
-    enum SerializationMode { FullyQualified, NameOnly };
     QString toString(int value, SerializationMode sm, bool *ok = nullptr) const;
 
     QString messageToStringFailed(int value) const;
@@ -160,10 +174,10 @@ public:
 class QDESIGNER_SHARED_EXPORT DesignerMetaFlags : public MetaEnum<uint>
 {
 public:
-    DesignerMetaFlags(const QString &name, const QString &scope, const QString &separator);
+    explicit DesignerMetaFlags(const QString &enumName, const QString &scope,
+                               const QString &separator);
     DesignerMetaFlags() = default;
 
-    enum SerializationMode { FullyQualified, NameOnly };
     QString toString(int value, SerializationMode sm) const;
     QStringList flags(int value) const;
 
@@ -201,10 +215,6 @@ public:
     PropertySheetPixmapValue(const QString &path);
     PropertySheetPixmapValue();
 
-    bool operator==(const PropertySheetPixmapValue &other) const { return compare(other) == 0; }
-    bool operator!=(const PropertySheetPixmapValue &other) const { return compare(other) != 0; }
-    bool operator<(const PropertySheetPixmapValue &other) const  { return compare(other) <  0; }
-
     // Check where a pixmap comes from
     enum PixmapSource { LanguageResourcePixmap , ResourcePixmap, FilePixmap };
     static PixmapSource getPixmapSource(QDesignerFormEditorInterface *core, const QString & path);
@@ -214,9 +224,18 @@ public:
     QString path() const;
     void setPath(const QString &path); // passing the empty path resets the pixmap
 
-    int compare(const PropertySheetPixmapValue &other) const;
-
 private:
+    friend size_t qHash(const PropertySheetPixmapValue &p, size_t seed = 0) noexcept
+    {
+        return qHash(p.m_path, seed);
+    }
+    friend bool comparesEqual(const PropertySheetPixmapValue &lhs,
+                              const PropertySheetPixmapValue &rhs) noexcept
+    {
+        return lhs.m_path == rhs.m_path;
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(PropertySheetPixmapValue)
+
     QString m_path;
 };
 
@@ -227,20 +246,21 @@ class PropertySheetIconValueData;
 class QDESIGNER_SHARED_EXPORT PropertySheetIconValue
 {
  public:
-    PropertySheetIconValue(const PropertySheetPixmapValue &pixmap);
+    explicit PropertySheetIconValue(const PropertySheetPixmapValue &pixmap);
     PropertySheetIconValue();
     ~PropertySheetIconValue();
-    PropertySheetIconValue(const PropertySheetIconValue &);
+    PropertySheetIconValue(const PropertySheetIconValue &) noexcept;
     PropertySheetIconValue &operator=(const PropertySheetIconValue &);
-
-    bool operator==(const PropertySheetIconValue &other) const { return equals(other); }
-    bool operator!=(const PropertySheetIconValue &other) const { return !equals(other); }
-    bool operator<(const PropertySheetIconValue &other) const;
+    PropertySheetIconValue(PropertySheetIconValue &&) noexcept;
+    PropertySheetIconValue &operator=(PropertySheetIconValue &&) noexcept;
 
     bool isEmpty() const;
 
     QString theme() const;
     void setTheme(const QString &);
+
+    int themeEnum() const;
+    void setThemeEnum(int e);
 
     PropertySheetPixmapValue pixmap(QIcon::Mode mode, QIcon::State state) const;
     void setPixmap(QIcon::Mode mode, QIcon::State state, const PropertySheetPixmapValue &path); // passing the empty path resets the pixmap
@@ -253,13 +273,21 @@ class QDESIGNER_SHARED_EXPORT PropertySheetIconValue
     PropertySheetIconValue themed() const;
     PropertySheetIconValue unthemed() const;
 
-    using ModeStateKey = QPair<QIcon::Mode, QIcon::State>;
+    using ModeStateKey = std::pair<QIcon::Mode, QIcon::State>;
     using ModeStateToPixmapMap = QMap<ModeStateKey, PropertySheetPixmapValue>;
 
     const ModeStateToPixmapMap &paths() const;
 
 private:
-    bool equals(const PropertySheetIconValue &rhs) const;
+    friend QDESIGNER_SHARED_EXPORT
+    size_t qHash(const PropertySheetIconValue &p, size_t seed) noexcept;
+    friend size_t qHash(const PropertySheetIconValue &p) noexcept
+    { return qHash(p, 0); }
+    friend QDESIGNER_SHARED_EXPORT
+    bool comparesEqual(const PropertySheetIconValue &lhs,
+                       const PropertySheetIconValue &rhs) noexcept;
+    Q_DECLARE_EQUALITY_COMPARABLE(PropertySheetIconValue)
+
     QSharedDataPointer<PropertySheetIconValueData> m_data;
 };
 
@@ -275,7 +303,7 @@ public:
 signals:
     void reloaded();
 private:
-    mutable QMap<PropertySheetPixmapValue, QPixmap> m_cache;
+    mutable QHash<PropertySheetPixmapValue, QPixmap> m_cache;
     friend class FormWindowBase;
 };
 
@@ -289,7 +317,7 @@ public:
 signals:
     void reloaded();
 private:
-    mutable QMap<PropertySheetIconValue, QIcon> m_cache;
+    mutable QHash<PropertySheetIconValue, QIcon> m_cache;
     DesignerPixmapCache *m_pixmapCache;
     friend class FormWindowBase;
 };
@@ -301,7 +329,6 @@ protected:
     PropertySheetTranslatableData(bool translatable = true,
                                   const QString &disambiguation = QString(),
                                   const QString &comment = QString());
-    bool equals(const PropertySheetTranslatableData &rhs) const;
 
 public:
     bool translatable() const                { return m_translatable; }
@@ -314,6 +341,16 @@ public:
     void setId(const QString &id)            { m_id = id; }
 
 private:
+    friend bool comparesEqual(const PropertySheetTranslatableData &lhs,
+                              const PropertySheetTranslatableData &rhs) noexcept
+    {
+        return lhs.m_translatable == rhs.m_translatable
+            && lhs.m_disambiguation == rhs.m_disambiguation
+            && lhs.m_comment == rhs.m_comment
+            && lhs.m_id == rhs.m_id;
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(PropertySheetTranslatableData)
+
     bool m_translatable;
     QString m_disambiguation;
     QString m_comment;
@@ -327,14 +364,18 @@ public:
     PropertySheetStringValue(const QString &value = QString(), bool translatable = true,
                              const QString &disambiguation = QString(), const QString &comment = QString());
 
-    bool operator==(const PropertySheetStringValue &other) const { return equals(other); }
-    bool operator!=(const PropertySheetStringValue &other) const { return !equals(other); }
-
     QString value() const;
     void setValue(const QString &value);
 
 private:
-    bool equals(const PropertySheetStringValue &rhs) const;
+    friend bool comparesEqual(const PropertySheetStringValue &lhs,
+                              const PropertySheetStringValue &rhs) noexcept
+    {
+        const PropertySheetTranslatableData &upLhs = lhs;
+        const PropertySheetTranslatableData &upRhs = rhs;
+        return lhs.m_value == rhs.m_value && upLhs == upRhs;
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(PropertySheetStringValue)
 
     QString m_value;
 };
@@ -348,14 +389,18 @@ public:
                                  const QString &disambiguation = QString(),
                                  const QString &comment = QString());
 
-    bool operator==(const PropertySheetStringListValue &other) const { return equals(other); }
-    bool operator!=(const PropertySheetStringListValue &other) const { return !equals(other); }
-
     QStringList value() const;
     void setValue(const QStringList &value);
 
 private:
-    bool equals(const PropertySheetStringListValue &rhs) const;
+    friend bool comparesEqual(const PropertySheetStringListValue &lhs,
+                              const PropertySheetStringListValue &rhs) noexcept
+    {
+        const PropertySheetTranslatableData &upLhs = lhs;
+        const PropertySheetTranslatableData &upRhs = rhs;
+        return lhs.m_value == rhs.m_value && upLhs == upRhs;
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(PropertySheetStringListValue)
 
     QStringList m_value;
 };
@@ -373,9 +418,6 @@ public:
                                   const QString &disambiguation = QString(),
                                   const QString &comment = QString());
 
-    bool operator==(const PropertySheetKeySequenceValue &other) const { return equals(other); }
-    bool operator!=(const PropertySheetKeySequenceValue &other) const { return !equals(other); }
-
     QKeySequence value() const;
     void setValue(const QKeySequence &value);
     QKeySequence::StandardKey standardKey() const;
@@ -383,7 +425,15 @@ public:
     bool isStandardKey() const;
 
 private:
-    bool equals(const PropertySheetKeySequenceValue &rhs) const;
+    friend bool comparesEqual(const PropertySheetKeySequenceValue &lhs,
+                              const PropertySheetKeySequenceValue &rhs) noexcept
+    {
+        const PropertySheetTranslatableData &upLhs = lhs;
+        const PropertySheetTranslatableData &upRhs = rhs;
+        return lhs.m_value == rhs.m_value && lhs.m_standardKey == rhs.m_standardKey
+            && upLhs == upRhs;
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(PropertySheetKeySequenceValue)
 
     QKeySequence m_value;
     QKeySequence::StandardKey m_standardKey;

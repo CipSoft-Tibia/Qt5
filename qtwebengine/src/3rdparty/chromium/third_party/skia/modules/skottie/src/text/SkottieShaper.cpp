@@ -10,13 +10,17 @@
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFontMetrics.h"
 #include "include/core/SkFontMgr.h"
+#include "include/private/base/SkTArray.h"
 #include "include/private/base/SkTPin.h"
 #include "include/private/base/SkTemplates.h"
 #include "modules/skshaper/include/SkShaper.h"
-#include "modules/skunicode/include/SkUnicode.h"
 #include "src/base/SkTLazy.h"
 #include "src/base/SkUTF.h"
 #include "src/core/SkFontPriv.h"
+
+#ifdef SK_UNICODE_AVAILABLE
+#include "modules/skunicode/include/SkUnicode.h"
+#endif
 
 #include <algorithm>
 #include <limits.h>
@@ -416,10 +420,10 @@ private:
     AutoSTMalloc<64, SkGlyphID>          fLineGlyphs;
     AutoSTMalloc<64, SkPoint>            fLinePos;
     AutoSTMalloc<64, uint32_t>           fLineClusters;
-    SkSTArray<16, skottie::Shaper::RunRec> fLineRuns;
+    STArray<16, skottie::Shaper::RunRec> fLineRuns;
     size_t                                 fLineGlyphCount = 0;
 
-    SkSTArray<64, float, true>             fAdvanceBuffer;
+    STArray<64, float, true> fAdvanceBuffer;
 
     SkPoint  fCurrentPosition{ 0, 0 };
     SkPoint  fOffset{ 0, 0 };

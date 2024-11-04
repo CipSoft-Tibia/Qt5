@@ -21,7 +21,6 @@
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/network/sent_packet.h"
-#include "rtc_base/third_party/sigslot/sigslot.h"
 #include "rtc_base/time_utils.h"  // for TimeMillis
 
 #if defined(WEBRTC_POSIX)
@@ -61,8 +60,7 @@ Socket* AsyncTCPSocketBase::ConnectSocket(
   return owned_socket.release();
 }
 
-AsyncTCPSocketBase::AsyncTCPSocketBase(Socket* socket,
-                                       size_t max_packet_size)
+AsyncTCPSocketBase::AsyncTCPSocketBase(Socket* socket, size_t max_packet_size)
     : socket_(socket),
       max_insize_(max_packet_size),
       max_outsize_(max_packet_size) {

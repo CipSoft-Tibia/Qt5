@@ -49,7 +49,7 @@ void tst_theme::construct()
     QVERIFY(theme);
     delete theme;
 
-    theme = new Q3DTheme(Q3DTheme::ThemeEbony);
+    theme = new Q3DTheme(Q3DTheme::Theme::Ebony);
     QVERIFY(theme);
     QCOMPARE(theme->ambientLightStrength(), 0.5f);
     QCOMPARE(theme->backgroundColor(), QColor(Qt::black));
@@ -60,11 +60,10 @@ void tst_theme::construct()
     QCOMPARE(theme->baseGradients().size(), 5);
     QCOMPARE(theme->baseGradients().at(0).stops().at(1).second, QColor(Qt::white));
     QCOMPARE(theme->baseGradients().at(4).stops().at(1).second, QColor(QRgb(0x6b6b6b)));
-    QCOMPARE(theme->colorStyle(), Q3DTheme::ColorStyleUniform);
+    QCOMPARE(theme->colorStyle(), Q3DTheme::ColorStyle::Uniform);
     QCOMPARE(theme->font(), QFont("Arial"));
     QCOMPARE(theme->isGridEnabled(), true);
     QCOMPARE(theme->gridLineColor(), QColor(QRgb(0x35322f)));
-    QCOMPARE(theme->highlightLightStrength(), 5.0f);
     QCOMPARE(theme->labelBackgroundColor(), QColor(0x00, 0x00, 0x00, 0xcd));
     QCOMPARE(theme->isLabelBackgroundEnabled(), true);
     QCOMPARE(theme->isLabelBorderEnabled(), false);
@@ -76,7 +75,7 @@ void tst_theme::construct()
     QCOMPARE(theme->shadowStrength(), 25.0f);
     QCOMPARE(theme->singleHighlightColor(), QColor(QRgb(0xf5dc0d)));
     QCOMPARE(theme->singleHighlightGradient().stops().at(1).second, QColor(QRgb(0xf5dc0d)));
-    QCOMPARE(theme->type(), Q3DTheme::ThemeEbony);
+    QCOMPARE(theme->type(), Q3DTheme::Theme::Ebony);
     QCOMPARE(theme->windowColor(), QColor(Qt::black));
     delete theme;
 }
@@ -93,11 +92,10 @@ void tst_theme::initialProperties()
     QCOMPARE(m_theme->baseGradients().size(), 1);
     QCOMPARE(m_theme->baseGradients().at(0).stops().at(0).second, QColor(Qt::black));
     QCOMPARE(m_theme->baseGradients().at(0).stops().at(1).second, QColor(Qt::white));
-    QCOMPARE(m_theme->colorStyle(), Q3DTheme::ColorStyleUniform);
+    QCOMPARE(m_theme->colorStyle(), Q3DTheme::ColorStyle::Uniform);
     QCOMPARE(m_theme->font(), QFont());
     QCOMPARE(m_theme->isGridEnabled(), true);
     QCOMPARE(m_theme->gridLineColor(), QColor(Qt::white));
-    QCOMPARE(m_theme->highlightLightStrength(), 7.5f);
     QCOMPARE(m_theme->labelBackgroundColor(), QColor(Qt::gray));
     QCOMPARE(m_theme->isLabelBackgroundEnabled(), true);
     QCOMPARE(m_theme->isLabelBorderEnabled(), true);
@@ -109,7 +107,7 @@ void tst_theme::initialProperties()
     QCOMPARE(m_theme->shadowStrength(), 25.0f);
     QCOMPARE(m_theme->singleHighlightColor(), QColor(Qt::red));
     QCOMPARE(m_theme->singleHighlightGradient().stops(), QLinearGradient().stops());
-    QCOMPARE(m_theme->type(), Q3DTheme::ThemeUserDefined);
+    QCOMPARE(m_theme->type(), Q3DTheme::Theme::UserDefined);
     QCOMPARE(m_theme->windowColor(), QColor(Qt::black));
 }
 
@@ -128,17 +126,16 @@ void tst_theme::initializeProperties()
     QList<QLinearGradient> basegradients;
     basegradients << gradient1 << gradient2;
 
-    m_theme->setType(Q3DTheme::ThemeQt); // We'll override default values with the following setters
+    m_theme->setType(Q3DTheme::Theme::Qt); // We'll override default values with the following setters
     m_theme->setAmbientLightStrength(0.3f);
     m_theme->setBackgroundColor(QColor(Qt::red));
     m_theme->setBackgroundEnabled(false);
     m_theme->setBaseColors(basecolors);
     m_theme->setBaseGradients(basegradients);
-    m_theme->setColorStyle(Q3DTheme::ColorStyleRangeGradient);
+    m_theme->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
     m_theme->setFont(QFont("Arial"));
     m_theme->setGridEnabled(false);
     m_theme->setGridLineColor(QColor(Qt::green));
-    m_theme->setHighlightLightStrength(5.0f);
     m_theme->setLabelBackgroundColor(QColor(Qt::gray));
     m_theme->setLabelBackgroundEnabled(false);
     m_theme->setLabelBorderEnabled(false);
@@ -161,11 +158,10 @@ void tst_theme::initializeProperties()
     QCOMPARE(m_theme->baseGradients().size(), 2);
     QCOMPARE(m_theme->baseGradients().at(0), gradient1);
     QCOMPARE(m_theme->baseGradients().at(0), gradient2);
-    QCOMPARE(m_theme->colorStyle(), Q3DTheme::ColorStyleRangeGradient);
+    QCOMPARE(m_theme->colorStyle(), Q3DTheme::ColorStyle::RangeGradient);
     QCOMPARE(m_theme->font(), QFont("Arial"));
     QCOMPARE(m_theme->isGridEnabled(), false);
     QCOMPARE(m_theme->gridLineColor(), QColor(Qt::green));
-    QCOMPARE(m_theme->highlightLightStrength(), 5.0f);
     QCOMPARE(m_theme->labelBackgroundColor(), QColor(Qt::gray));
     QCOMPARE(m_theme->isLabelBackgroundEnabled(), false);
     QCOMPARE(m_theme->isLabelBorderEnabled(), false);
@@ -177,7 +173,7 @@ void tst_theme::initializeProperties()
     QCOMPARE(m_theme->shadowStrength(), 50.0f);
     QCOMPARE(m_theme->singleHighlightColor(), QColor(Qt::darkRed));
     QCOMPARE(m_theme->singleHighlightGradient(), gradient4);
-    QCOMPARE(m_theme->type(), Q3DTheme::ThemeQt);
+    QCOMPARE(m_theme->type(), Q3DTheme::Theme::Qt);
     QCOMPARE(m_theme->windowColor(), QColor(Qt::darkYellow));
 }
 
@@ -187,11 +183,6 @@ void tst_theme::invalidProperties()
     QCOMPARE(m_theme->ambientLightStrength(), 0.25f);
     m_theme->setAmbientLightStrength(1.1f);
     QCOMPARE(m_theme->ambientLightStrength(), 0.25f);
-
-    m_theme->setHighlightLightStrength(-1.0f);
-    QCOMPARE(m_theme->highlightLightStrength(), 7.5f);
-    m_theme->setHighlightLightStrength(10.1f);
-    QCOMPARE(m_theme->highlightLightStrength(), 7.5f);
 
     m_theme->setLightStrength(-1.0f);
     QCOMPARE(m_theme->lightStrength(), 5.0f);

@@ -1,11 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "osp/public/service_publisher.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 ServicePublisher::Metrics::Metrics() = default;
 ServicePublisher::Metrics::~Metrics() = default;
@@ -27,5 +26,4 @@ void ServicePublisher::SetConfig(const Config& config) {
 ServicePublisher::ServicePublisher(Observer* observer)
     : state_(State::kStopped), observer_(observer) {}
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

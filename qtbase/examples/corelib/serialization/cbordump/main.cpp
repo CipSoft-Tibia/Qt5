@@ -445,7 +445,7 @@ void CborDumper::dumpOneDetailed(int nestingLevel)
         if (cborNumberSize(value) != actualSize)
             printf(" (overlong)");
     };
-    auto print = [=](const char *descr, const char *fmt, ...) {
+    auto print = [&](const char *descr, const char *fmt, ...) {
         qint64 prevOffset = offset;
         offset = reader.currentOffset();
         if (prevOffset == offset)
@@ -479,7 +479,7 @@ void CborDumper::dumpOneDetailed(int nestingLevel)
         return print(descr, "%a", d);
     };
 
-    auto printString = [=](const char *descr) {
+    auto printString = [&](const char *descr) {
         constexpr qsizetype ChunkSizeLimit = std::numeric_limits<int>::max();
         QByteArray indent(nestingLevel * 2, ' ');
         const char *chunkStr = (reader.isLengthKnown() ? "" : "chunk ");

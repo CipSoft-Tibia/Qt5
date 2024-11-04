@@ -17,6 +17,7 @@
 #include "qglobal.h"
 
 #include <QtCore/QJniObject>
+#include <QtCore/qjnitypes.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -24,8 +25,8 @@ Q_DECLARE_JNI_CLASS(QtNfc, "org/qtproject/qt/android/nfc/QtNfc")
 Q_DECLARE_JNI_CLASS(QtNfcBroadcastReceiver, "org/qtproject/qt/android/nfc/QtNfcBroadcastReceiver")
 
 Q_DECLARE_JNI_TYPE(StringArray, "[Ljava/lang/String;")
-Q_DECLARE_JNI_TYPE(Intent, "Landroid/content/Intent;")
-Q_DECLARE_JNI_TYPE(Parcellable, "Landroid/os/Parcelable;")
+Q_DECLARE_JNI_CLASS(Intent, "android/content/Intent")
+Q_DECLARE_JNI_CLASS(Parcellable, "android/os/Parcelable")
 
 Q_DECLARE_JNI_CLASS(NdefMessage, "android/nfc/NdefMessage")
 

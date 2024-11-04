@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Utility for checking and processing licensing information in third_party
@@ -17,19 +17,20 @@ from __future__ import print_function
 
 import argparse
 import codecs
-import json
+import logging
 import os
 import shutil
 import re
 import subprocess
 import sys
 import tempfile
+from typing import List
 
 # TODO(issuetracker.google.com/173766869): Remove Python2 checks/compatibility.
 if sys.version_info.major == 2:
-    from cgi import escape
+    import cgi as html
 else:
-    from html import escape
+    import html
 
 _REPOSITORY_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 
@@ -50,13 +51,34 @@ SPECIAL_CASES = {
         "Name": "gtest",
         "URL": "http://code.google.com/p/googletest",
         "License": "BSD",
+        "Shipped": "no",
+    },
+    os.path.join('third_party', 'clang-format'): {
+        "Name": "clang format",
+        "URL":
+        "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format",
+        "Shipped": "no",
+        "License": "Apache 2.0",
         "License File": "NOT_SHIPPED",
     },
 }
 
-# Special value for 'License File' field used to indicate that the license file
-# should not be used in about:credits.
+# The delimiter used to separate license files specified in the 'License File'
+# field.
+LICENSE_FILE_DELIMITER = ","
+
+# Deprecated special value for 'License File' field used to indicate
+# that the library is not shipped so the license file should not be used in
+# about:credits.
+# This value is still supported, but the preferred method is to set the
+# 'Shipped' field to 'no' in the library's README.chromium/README.openscreen.
 NOT_SHIPPED = "NOT_SHIPPED"
+
+# Valid values for the 'Shipped' field used to indicate whether the library is
+# shipped and consequently whether the license file should be used in
+# about:credits.
+YES = "yes"
+NO = "no"
 
 
 def MakeDirectory(dir_path):
@@ -98,21 +120,28 @@ def AbsolutePath(path, filename, root):
     return None
 
 
-def ParseDir(path, root, require_license_file=True, optional_keys=None):
+def ParseDir(path,
+             root,
+             require_license_file=True,
+             optional_keys=None,
+             enable_warnings=False):
     """Examine a third_party/foo component and extract its metadata."""
     # Parse metadata fields out of README.chromium.
     # We examine "LICENSE" for the license file by default.
     metadata = {
-        "License File": "LICENSE",  # Relative path to license text.
+        "License File": ["LICENSE"],  # Relative paths to license text.
         "Name": None,  # Short name (for header on about:credits).
         "URL": None,  # Project home page.
         "License": None,  # Software license.
+        "Shipped": None,  # Whether the package is in the shipped product.
     }
 
     if optional_keys is None:
         optional_keys = []
 
+    readme_path = ""
     if path in SPECIAL_CASES:
+        readme_path = f"licenses.py SPECIAL_CASES entry for {path}"
         metadata.update(SPECIAL_CASES[path])
     else:
         # Try to find README.chromium.
@@ -132,7 +161,37 @@ def ParseDir(path, root, require_license_file=True, optional_keys=None):
             for key in list(metadata.keys()) + optional_keys:
                 field = key + ": "
                 if line.startswith(field):
-                    metadata[key] = line[len(field):]
+                    value = line[len(field):]
+                    # Multiple license files can be specified.
+                    if key == "License File":
+                        licenses = value.split(LICENSE_FILE_DELIMITER)
+                        metadata[key] = [
+                            license.strip() for license in licenses
+                        ]
+                    else:
+                        metadata[key] = value
+
+    if enable_warnings:
+        # Check for the deprecated special value in the "License File" field.
+        if NOT_SHIPPED in metadata["License File"]:
+            logging.warning(f"{readme_path} is using deprecated {NOT_SHIPPED} "
+                            "value in 'License File' field - remove this and "
+                            f"instead specify 'Shipped: {NO}'.")
+
+            # Check the "Shipped" and "License File" fields do not contradict.
+            if metadata["Shipped"] == YES:
+                logging.warning(
+                    f"Contradictory metadata for {readme_path} - "
+                    f"'Shipped: {YES}' but 'License File' includes "
+                    f"'{NOT_SHIPPED}'")
+
+    # If the "Shipped" field isn't present, set it based on the value of the
+    # "License File" field.
+    if not metadata["Shipped"]:
+        shipped = YES
+        if NOT_SHIPPED in metadata["License File"]:
+            shipped = NO
+        metadata["Shipped"] = shipped
 
     # Check that all expected metadata is present.
     errors = []
@@ -141,28 +200,59 @@ def ParseDir(path, root, require_license_file=True, optional_keys=None):
             errors.append("couldn't find '" + key + "' line "
                           "in README file or licenses.py SPECIAL_CASES")
 
-    # Special-case modules that aren't in the shipping product, so don't need
-    # their license in about:credits.
-    if metadata["License File"] != NOT_SHIPPED:
-        # Check that the license file exists.
-        for filename in (metadata["License File"], "COPYING"):
-            license_path = AbsolutePath(path, filename, root)
-            if license_path is not None:
-                break
-
-        if require_license_file and not license_path:
-            errors.append(
-                "License file not found. "
-                "Either add a file named LICENSE, "
-                "import upstream's COPYING if available, "
-                "or add a 'License File:' line to README.chromium or "
-                "README.openscreen with the appropriate path.")
-        metadata["License File"] = license_path
+    # For the modules that are in the shipping product, we need their license in
+    # about:credits, so update the license files to be the full paths.
+    license_paths = process_license_files(root, path, metadata["License File"])
+    if (metadata["Shipped"] == YES and require_license_file
+            and not license_paths):
+        errors.append("License file not found. "
+                      "Either add a file named LICENSE, "
+                      "import upstream's COPYING if available, "
+                      "or add a 'License File:' line to README.chromium or "
+                      "README.openscreen with the appropriate paths.")
+    metadata["License File"] = license_paths
 
     if errors:
         raise LicenseError("Errors in %s:\n %s\n" %
                            (path, ";\n ".join(errors)))
     return metadata
+
+
+def process_license_files(
+    root: str,
+    path: str,
+    license_files: List[str],
+) -> List[str]:
+    """
+    Convert a list of license file paths which were specified in a
+    README.chromium / README.openscreen to be absolute paths based on the source
+    root.
+
+    Args:
+        root: the repository source root.
+        path: the relative path from root.
+        license_files: list of values specified in the 'License File' field.
+
+    Returns: absolute paths to license files that exist.
+    """
+    license_paths = []
+    for file_path in license_files:
+        if file_path == NOT_SHIPPED:
+            continue
+
+        license_path = AbsolutePath(path, file_path, root)
+        # Check that the license file exists.
+        if license_path is not None:
+            license_paths.append(license_path)
+
+    # If there are no license files at all, check for the COPYING license file.
+    if not license_paths:
+        license_path = AbsolutePath(path, "COPYING", root)
+        # Check that the license file exists.
+        if license_path is not None:
+            license_paths.append(license_path)
+
+    return license_paths
 
 
 def ContainsFiles(path, root):
@@ -297,7 +387,7 @@ def ScanThirdPartyDirs(root=None):
     errors = []
     for path in sorted(third_party_dirs):
         try:
-            metadata = ParseDir(path, root)
+            ParseDir(path, root, enable_warnings=True)
         except LicenseError as e:
             errors.append((path, e.args[0]))
             continue
@@ -311,7 +401,8 @@ def GenerateCredits(file_template_file,
                     target_os,
                     gn_out_dir,
                     gn_target,
-                    depfile=None):
+                    depfile=None,
+                    enable_warnings=False):
     """Generate about:credits."""
 
     def EvaluateTemplate(template, env, escape=True):
@@ -319,15 +410,20 @@ def GenerateCredits(file_template_file,
         dictionary of expansions."""
         for key, val in env.items():
             if escape:
-                val = escape(val)
+                val = html.escape(val)
             template = template.replace('{{%s}}' % key, val)
         return template
 
     def MetadataToTemplateEntry(metadata, entry_template):
+        licenses = []
+        for filepath in metadata['License File']:
+            licenses.append(codecs.open(filepath, encoding='utf-8').read())
+        license_content = '\n\n'.join(licenses)
+
         env = {
             'name': metadata['Name'],
             'url': metadata['URL'],
-            'license': open(metadata['License File']).read(),
+            'license': license_content,
         }
         return {
             'name': metadata['Name'],
@@ -346,13 +442,24 @@ def GenerateCredits(file_template_file,
         third_party_dirs = FindThirdPartyDirs(PRUNE_PATHS, _REPOSITORY_ROOT)
 
     if not file_template_file:
-        file_template_file = os.path.join(_REPOSITORY_ROOT, 'components',
-                                          'about_ui', 'resources',
-                                          'about_credits.tmpl')
+        # Note: this path assumes the repo root follows the form
+        # chromium/src/third_party/openscreen/src
+        file_template_file = os.path.abspath(
+            os.path.join(_REPOSITORY_ROOT, '..', '..', '..', 'components',
+                         'about_ui', 'resources', 'about_credits.tmpl'))
+    if not os.path.exists(file_template_file):
+        raise FileNotFoundError(
+            f'about:credits template not found at {file_template_file}')
+
     if not entry_template_file:
-        entry_template_file = os.path.join(_REPOSITORY_ROOT, 'components',
-                                           'about_ui', 'resources',
-                                           'about_credits_entry.tmpl')
+        # Note: this path assumes the repo root follows the form
+        # chromium/src/third_party/openscreen/src
+        entry_template_file = os.path.abspath(
+            os.path.join(_REPOSITORY_ROOT, '..', '..', '..', 'components',
+                         'about_ui', 'resources', 'about_credits_entry.tmpl'))
+    if not os.path.exists(entry_template_file):
+        raise FileNotFoundError(
+            f'about:credits entry template not found at {entry_template_file}')
 
     entry_template = open(entry_template_file).read()
     entries = []
@@ -360,7 +467,8 @@ def GenerateCredits(file_template_file,
     chromium_license_metadata = {
         'Name': 'The Chromium Project',
         'URL': 'http://www.chromium.org',
-        'License File': os.path.join(_REPOSITORY_ROOT, 'LICENSE')
+        'Shipped': 'yes',
+        'License File': [os.path.join(_REPOSITORY_ROOT, 'LICENSE')],
     }
     entries.append(
         MetadataToTemplateEntry(chromium_license_metadata, entry_template))
@@ -368,11 +476,13 @@ def GenerateCredits(file_template_file,
     entries_by_name = {}
     for path in third_party_dirs:
         try:
-            metadata = ParseDir(path, _REPOSITORY_ROOT)
+            metadata = ParseDir(path,
+                                _REPOSITORY_ROOT,
+                                enable_warnings=enable_warnings)
         except LicenseError:
             # TODO(phajdan.jr): Convert to fatal error (http://crbug.com/39240).
             continue
-        if metadata['License File'] == NOT_SHIPPED:
+        if metadata['Shipped'] == NO:
             continue
 
         new_entry = MetadataToTemplateEntry(metadata, entry_template)
@@ -416,7 +526,9 @@ def GenerateCredits(file_template_file,
         # added. This is still not perfect, as it will fail if no build files
         # are changed, but a new README.* / LICENSE is added. This shouldn't
         # happen in practice however.
-        license_file_list = (entry['license_file'] for entry in entries)
+        license_file_list = []
+        for entry in entries:
+            license_file_list.extend(entry['license_file'])
         license_file_list = (os.path.relpath(p) for p in license_file_list)
         license_file_list = sorted(set(license_file_list))
         WriteDepfile(depfile, output_file, license_file_list + ['build.ninja'])
@@ -436,7 +548,8 @@ def _ReadFile(path):
         return f.read()
 
 
-def GenerateLicenseFile(output_file, gn_out_dir, gn_target, target_os):
+def GenerateLicenseFile(output_file, gn_out_dir, gn_target, target_os,
+                        enable_warnings):
     """Generate a plain-text LICENSE file which can be used when you ship a part
     of Chromium code (specified by gn_target) as a stand-alone library
     (e.g., //ios/web_view).
@@ -453,13 +566,16 @@ def GenerateLicenseFile(output_file, gn_out_dir, gn_target, target_os):
     for directory in sorted(third_party_dirs):
         metadata = ParseDir(directory,
                             _REPOSITORY_ROOT,
-                            require_license_file=True)
-        license_file = metadata['License File']
-        if license_file and license_file != NOT_SHIPPED:
+                            require_license_file=True,
+                            enable_warnings=enable_warnings)
+        shipped = metadata['Shipped']
+        license_files = metadata['License File']
+        if shipped == YES and license_files:
             content.append('-' * 20)
             content.append(directory.split(os.sep)[-1])
             content.append('-' * 20)
-            content.append(_ReadFile(license_file))
+            for license_file in license_files:
+                content.append(_ReadFile(license_file))
 
     content_text = '\n'.join(content)
 
@@ -481,6 +597,10 @@ def main():
                         help='GN output directory for scanning dependencies.')
     parser.add_argument('--gn-target',
                         help='GN target to scan for dependencies.')
+    parser.add_argument('--enable-warnings',
+                        action='store_true',
+                        help='Enables warning logs when processing directory '
+                        'metadata for credits or license file generation.')
     parser.add_argument('command',
                         choices=['help', 'scan', 'credits', 'license_file'])
     parser.add_argument('output_file', nargs='?')
@@ -494,12 +614,14 @@ def main():
     elif args.command == 'credits':
         if not GenerateCredits(args.file_template, args.entry_template,
                                args.output_file, args.target_os,
-                               args.gn_out_dir, args.gn_target, args.depfile):
+                               args.gn_out_dir, args.gn_target, args.depfile,
+                               args.enable_warnings):
             return 1
     elif args.command == 'license_file':
         try:
             GenerateLicenseFile(args.output_file, args.gn_out_dir,
-                                args.gn_target, args.target_os)
+                                args.gn_target, args.target_os,
+                                args.enable_warnings)
         except LicenseError as e:
             print("Failed to parse README file: {}".format(e))
             return 1

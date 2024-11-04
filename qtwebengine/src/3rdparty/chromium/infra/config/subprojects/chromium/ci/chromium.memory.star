@@ -23,6 +23,7 @@ ci.defaults.set(
     reclient_instance = reclient.instance.DEFAULT_TRUSTED,
     reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CI,
     service_account = ci.DEFAULT_SERVICE_ACCOUNT,
+    shadow_service_account = ci.DEFAULT_SHADOW_SERVICE_ACCOUNT,
 )
 
 consoles.console_view(
@@ -62,7 +63,6 @@ linux_memory_builder(
         ),
         build_gs_bucket = "chromium-memory-archive",
     ),
-    os = os.LINUX_BIONIC,
     ssd = True,
     console_view_entry = consoles.console_view_entry(
         category = "linux|asan lsan",
@@ -91,7 +91,6 @@ linux_memory_builder(
         ),
         build_gs_bucket = "chromium-memory-archive",
     ),
-    os = os.LINUX_BIONIC,
     console_view_entry = consoles.console_view_entry(
         category = "linux|asan lsan",
         short_name = "tst",
@@ -258,6 +257,8 @@ linux_memory_builder(
         build_gs_bucket = "chromium-memory-archive",
     ),
     cores = 16,
+    # At this time, MSan is only compatibly with Focal. See
+    # //docs/linux/instrumented_libraries.md.
     os = os.LINUX_FOCAL,
     ssd = True,
     console_view_entry = consoles.console_view_entry(
@@ -288,6 +289,8 @@ linux_memory_builder(
         ),
         build_gs_bucket = "chromium-memory-archive",
     ),
+    # At this time, MSan is only compatibly with Focal. See
+    # //docs/linux/instrumented_libraries.md.
     os = os.LINUX_FOCAL,
     console_view_entry = consoles.console_view_entry(
         category = "cros|msan",
@@ -315,6 +318,8 @@ linux_memory_builder(
         ),
         build_gs_bucket = "chromium-memory-archive",
     ),
+    # At this time, MSan is only compatibly with Focal. See
+    # //docs/linux/instrumented_libraries.md.
     os = os.LINUX_FOCAL,
     ssd = True,
     console_view_entry = consoles.console_view_entry(
@@ -343,6 +348,8 @@ linux_memory_builder(
         ),
         build_gs_bucket = "chromium-memory-archive",
     ),
+    # At this time, MSan is only compatibly with Focal. See
+    # //docs/linux/instrumented_libraries.md.
     os = os.LINUX_FOCAL,
     console_view_entry = consoles.console_view_entry(
         category = "linux|msan",
@@ -532,6 +539,8 @@ ci.builder(
         ),
         build_gs_bucket = "chromium-memory-archive",
     ),
+    # At this time, MSan is only compatibly with Focal. See
+    # //docs/linux/instrumented_libraries.md.
     os = os.LINUX_FOCAL,
     console_view_entry = consoles.console_view_entry(
         category = "linux|webkit",

@@ -12,9 +12,6 @@ enum Annotation {
   // Indicates that the visited URL was added to the bookmarks or was already
   // bookmarked.
   kBookmarked,
-  // Indicates that the visited URL was added to a tab group or was already in a
-  // tab group.
-  kTabGrouped,
   // Indicates that the visited URL was the search results page of the default
   // search provider.
   kSearchResultsPage,
@@ -33,6 +30,22 @@ struct SearchQuery {
   string query;
   // URL of the search query page.
   url.mojom.Url url;
+};
+
+/**
+ * The following enum must be kept in sync with their respective source in
+ * components/history/core/browser/history_types.h.
+ */
+
+// A cluster's visit's interaction state.
+enum InteractionState {
+  // The default state of visits. Visible in both zero-state and searches.
+  kDefault = 0,
+  // User has marked the visit hidden. Hidden in all surfaces.
+  kHidden = 1,
+  // User has dismissed the visit with positive intent. Hidden in the
+  // zero-state but still searchable.
+  kDone = 2,
 };
 
 /**
@@ -85,9 +98,6 @@ struct URLVisit {
   // Annotations for this visit.
   array<Annotation> annotations;
 
-  // The image URL associated with this visit.
-  url.mojom.Url? image_url;
-
   // Set to true for visits known to Chrome Sync, which can be:
   //  1. Remote visits that have been synced to the local machine.
   //  2. Local visits that have been sent to Sync.
@@ -97,6 +107,9 @@ struct URLVisit {
   // visible in production, and used for development only. Disabled by default,
   // but can be enabled by the 'JourneysUserVisibleDebug' flag.
   map<string, string> debug_info;
+
+  // Whether there is a URL-keyed image for this visit.
+  bool has_url_keyed_image;
 };
 
 // Represents a cluster of visits generated from device history by the browser
@@ -110,9 +123,12 @@ struct Cluster {
   // "top visit" if the UI needs to specially display a "top visit".
   array<URLVisit> visits;
 
-  // An optional label for the whole cluster. If this is not defined or empty,
-  // the first visit should be displayed prominently instead.
-  string? label;
+  // A label for the whole cluster.
+  string label;
+
+  // If the whole cluster is opened in a new tab group, this should be used as
+  // the tab group name.
+  string? tab_group_name;
 
   // The positions within `label` that match the search terms. Used for bolding
   // in the WebUI.

@@ -519,7 +519,7 @@ class JacobiSVD : public SVDBase<JacobiSVD<MatrixType_, Options_> > {
   typedef typename Base::Scalar Scalar;
   typedef typename Base::RealScalar RealScalar;
   typedef typename Base::Index Index;
-  enum {
+  enum : int {
     Options = Options_,
     QRPreconditioner = internal::get_qr_preconditioner(Options),
     RowsAtCompileTime = Base::RowsAtCompileTime,
@@ -625,6 +625,7 @@ class JacobiSVD : public SVDBase<JacobiSVD<MatrixType_, Options_> > {
   using Base::computeV;
   using Base::rows;
   using Base::cols;
+  using Base::diagSize;
   using Base::rank;
 
  private:
@@ -632,13 +633,11 @@ class JacobiSVD : public SVDBase<JacobiSVD<MatrixType_, Options_> > {
   JacobiSVD& compute_impl(const MatrixType& matrix, unsigned int computationOptions);
 
  protected:
-  using Base::m_cols;
   using Base::m_computationOptions;
   using Base::m_computeFullU;
   using Base::m_computeFullV;
   using Base::m_computeThinU;
   using Base::m_computeThinV;
-  using Base::m_diagSize;
   using Base::m_info;
   using Base::m_isAllocated;
   using Base::m_isInitialized;
@@ -646,7 +645,6 @@ class JacobiSVD : public SVDBase<JacobiSVD<MatrixType_, Options_> > {
   using Base::m_matrixV;
   using Base::m_nonzeroSingularValues;
   using Base::m_prescribedThreshold;
-  using Base::m_rows;
   using Base::m_singularValues;
   using Base::m_usePrescribedThreshold;
   using Base::ShouldComputeThinU;
@@ -671,18 +669,18 @@ class JacobiSVD : public SVDBase<JacobiSVD<MatrixType_, Options_> > {
 };
 
 template <typename MatrixType, int Options>
-void JacobiSVD<MatrixType, Options>::allocate(Index rows, Index cols, unsigned int computationOptions) {
-  if (Base::allocate(rows, cols, computationOptions)) return;
+void JacobiSVD<MatrixType, Options>::allocate(Index rows_, Index cols_, unsigned int computationOptions_) {
+  if (Base::allocate(rows_, cols_, computationOptions_)) return;
 
   eigen_assert(!(ShouldComputeThinU && int(QRPreconditioner) == int(FullPivHouseholderQRPreconditioner)) &&
                !(ShouldComputeThinU && int(QRPreconditioner) == int(FullPivHouseholderQRPreconditioner)) &&
                "JacobiSVD: can't compute thin U or thin V with the FullPivHouseholderQR preconditioner. "
                "Use the ColPivHouseholderQR preconditioner instead.");
 
-  m_workMatrix.resize(m_diagSize, m_diagSize);
-  if(m_cols>m_rows)   m_qr_precond_morecols.allocate(*this);
-  if(m_rows>m_cols)   m_qr_precond_morerows.allocate(*this);
-  if(m_rows!=m_cols)  m_scaledMatrix.resize(rows,cols);
+  m_workMatrix.resize(diagSize(), diagSize());
+  if(cols()>rows())   m_qr_precond_morecols.allocate(*this);
+  if(rows()>cols())   m_qr_precond_morerows.allocate(*this);
+  if(rows()!=cols())  m_scaledMatrix.resize(rows(),cols());
 }
 
 template <typename MatrixType, int Options>
@@ -704,13 +702,14 @@ JacobiSVD<MatrixType, Options>& JacobiSVD<MatrixType, Options>::compute_impl(con
   if (!(numext::isfinite)(scale)) {
     m_isInitialized = true;
     m_info = InvalidInput;
+    m_nonzeroSingularValues = 0;
     return *this;
   }
   if(numext::is_exactly_zero(scale)) scale = RealScalar(1);
   
   /*** step 1. The R-SVD step: we use a QR decomposition to reduce to the case of a square matrix */
 
-  if(m_rows!=m_cols)
+  if(rows() != cols())
   {
     m_scaledMatrix = matrix / scale;
     m_qr_precond_morecols.run(*this, m_scaledMatrix);
@@ -718,11 +717,11 @@ JacobiSVD<MatrixType, Options>& JacobiSVD<MatrixType, Options>::compute_impl(con
   }
   else
   {
-    m_workMatrix = matrix.block(0,0,m_diagSize,m_diagSize) / scale;
-    if(m_computeFullU) m_matrixU.setIdentity(m_rows,m_rows);
-    if(m_computeThinU) m_matrixU.setIdentity(m_rows,m_diagSize);
-    if(m_computeFullV) m_matrixV.setIdentity(m_cols,m_cols);
-    if(m_computeThinV) m_matrixV.setIdentity(m_cols, m_diagSize);
+    m_workMatrix = matrix.template topLeftCorner<DiagSizeAtCompileTime,DiagSizeAtCompileTime>(diagSize(),diagSize()) / scale;
+    if(m_computeFullU) m_matrixU.setIdentity(rows(),rows());
+    if(m_computeThinU) m_matrixU.setIdentity(rows(),diagSize());
+    if(m_computeFullV) m_matrixV.setIdentity(cols(),cols());
+    if(m_computeThinV) m_matrixV.setIdentity(cols(),diagSize());
   }
 
   /*** step 2. The main Jacobi SVD iteration. ***/
@@ -735,7 +734,7 @@ JacobiSVD<MatrixType, Options>& JacobiSVD<MatrixType, Options>::compute_impl(con
 
     // do a sweep: for all index pairs (p,q), perform SVD of the corresponding 2x2 sub-matrix
 
-    for(Index p = 1; p < m_diagSize; ++p)
+    for(Index p = 1; p < diagSize(); ++p)
     {
       for(Index q = 0; q < p; ++q)
       {
@@ -770,7 +769,7 @@ JacobiSVD<MatrixType, Options>& JacobiSVD<MatrixType, Options>::compute_impl(con
 
   /*** step 3. The work matrix is now diagonal, so ensure it's positive so its diagonal entries are the singular values ***/
 
-  for(Index i = 0; i < m_diagSize; ++i)
+  for(Index i = 0; i < diagSize(); ++i)
   {
     // For a complex matrix, some diagonal coefficients might note have been
     // treated by svd_precondition_2x2_block_to_be_real, and the imaginary part
@@ -794,11 +793,11 @@ JacobiSVD<MatrixType, Options>& JacobiSVD<MatrixType, Options>::compute_impl(con
 
   /*** step 4. Sort singular values in descending order and compute the number of nonzero singular values ***/
 
-  m_nonzeroSingularValues = m_diagSize;
-  for(Index i = 0; i < m_diagSize; i++)
+  m_nonzeroSingularValues = diagSize();
+  for(Index i = 0; i < diagSize(); i++)
   {
     Index pos;
-    RealScalar maxRemainingSingularValue = m_singularValues.tail(m_diagSize-i).maxCoeff(&pos);
+    RealScalar maxRemainingSingularValue = m_singularValues.tail(diagSize()-i).maxCoeff(&pos);
     if(numext::is_exactly_zero(maxRemainingSingularValue))
     {
       m_nonzeroSingularValues = i;

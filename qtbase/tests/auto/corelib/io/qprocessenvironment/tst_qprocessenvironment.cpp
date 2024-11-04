@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QObject>
@@ -252,6 +252,9 @@ void tst_QProcessEnvironment::caseSensitivity()
 
 void tst_QProcessEnvironment::systemEnvironment()
 {
+#ifdef Q_OS_VXWORKS
+    QSKIP("VxWorks do not have PATH environment variable");
+#endif
     static const char envname[] = "THIS_ENVIRONMENT_VARIABLE_HOPEFULLY_DOESNT_EXIST";
     QByteArray path = qgetenv("PATH");
     QByteArray nonexistant = qgetenv(envname);

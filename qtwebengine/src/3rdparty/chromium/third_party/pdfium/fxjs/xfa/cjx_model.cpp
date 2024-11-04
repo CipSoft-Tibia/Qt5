@@ -65,11 +65,7 @@ CJS_Result CJX_Model::createNode(
     if (pNewNode->GetPacketType() == XFA_PacketType::Datasets)
       pNewNode->CreateXMLMappingNode();
   }
-
-  v8::Local<v8::Value> value =
-      GetDocument()->GetScriptContext()->GetOrCreateJSBindingFromMap(pNewNode);
-
-  return CJS_Result::Success(value);
+  return CJS_Result::Success(runtime->GetOrCreateJSBindingFromMap(pNewNode));
 }
 
 CJS_Result CJX_Model::isCompatibleNS(

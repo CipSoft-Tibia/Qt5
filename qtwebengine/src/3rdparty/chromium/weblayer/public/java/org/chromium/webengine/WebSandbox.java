@@ -26,6 +26,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 
 import org.chromium.webengine.interfaces.IBooleanCallback;
 import org.chromium.webengine.interfaces.ICookieManagerDelegate;
+import org.chromium.webengine.interfaces.IProfileManagerDelegate;
 import org.chromium.webengine.interfaces.IStringCallback;
 import org.chromium.webengine.interfaces.ITabManagerDelegate;
 import org.chromium.webengine.interfaces.IWebEngineDelegate;
@@ -39,7 +40,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Handle to the browsing Sandbox. Must be created asynchronously.
+ * Handle to the browsing sandbox. Must be created asynchronously.
  */
 public class WebSandbox {
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -59,11 +60,19 @@ public class WebSandbox {
 
     private static final String DEFAULT_PROFILE_NAME = "DefaultProfile";
 
+    @Nullable
     private static WebSandbox sInstance;
+
+    @NonNull
     private IWebSandboxService mWebSandboxService;
 
+    @NonNull
     private SandboxConnection mConnection;
 
+    @NonNull
+    private ProfileManager mProfileManager;
+
+    @NonNull
     private Map<String, WebEngine> mActiveWebEngines = new HashMap<String, WebEngine>();
 
     private static class SandboxConnection implements ServiceConnection {
@@ -125,8 +134,10 @@ public class WebSandbox {
             try {
                 mWebSandboxService.initializeBrowserProcess(new IWebSandboxCallback.Stub() {
                     @Override
-                    public void onBrowserProcessInitialized() {
-                        sInstance = new WebSandbox(SandboxConnection.this, mWebSandboxService);
+                    public void onBrowserProcessInitialized(
+                            IProfileManagerDelegate profileManagerDelegate) {
+                        sInstance = new WebSandbox(
+                                SandboxConnection.this, mWebSandboxService, profileManagerDelegate);
 
                         mCompleter.set(sInstance);
                         mCompleter = null;
@@ -201,15 +212,17 @@ public class WebSandbox {
         public void onServiceDisconnected(ComponentName name) {}
     }
 
-    private WebSandbox(SandboxConnection connection, IWebSandboxService service) {
+    private WebSandbox(SandboxConnection connection, IWebSandboxService service,
+            IProfileManagerDelegate profileManagerDelegate) {
         mConnection = connection;
         mWebSandboxService = service;
+        mProfileManager = new ProfileManager(profileManagerDelegate);
     }
 
     /**
      * Asynchronously creates a handle to the web sandbox after initializing the
      * browser process.
-     * @param context The application context.
+     * @param context The Android Context.
      */
     @NonNull
     public static ListenableFuture<WebSandbox> create(@NonNull Context context) {
@@ -240,6 +253,10 @@ public class WebSandbox {
                 ContextCompat.getMainExecutor(applicationContext));
     }
 
+    /**
+     * Returns a ListenableFuture that resolves to whether a WebSandbox is available.
+     * @param context The Android Context.
+     */
     @NonNull
     public static ListenableFuture<Boolean> isAvailable(@NonNull Context context) {
         ThreadCheck.ensureOnUiThread();
@@ -260,6 +277,10 @@ public class WebSandbox {
                 ContextCompat.getMainExecutor(applicationContext));
     }
 
+    /**
+     * Returns a ListenableFuture that resolves to the version of the provider.
+     * @param context The Android Context.
+     */
     @NonNull
     public static ListenableFuture<String> getVersion(@NonNull Context context) {
         ThreadCheck.ensureOnUiThread();
@@ -280,6 +301,10 @@ public class WebSandbox {
                 ContextCompat.getMainExecutor(applicationContext));
     }
 
+    /**
+     * Returns a ListenableFuture that resolves to the package name of the provider.
+     * @param context The Android Context.
+     */
     @NonNull
     public static ListenableFuture<String> getProviderPackageName(@NonNull Context context) {
         ThreadCheck.ensureOnUiThread();
@@ -340,7 +365,7 @@ public class WebSandbox {
     /**
      * Asynchronously creates a new WebEngine with default Profile.
      */
-    @Nullable
+    @NonNull
     public ListenableFuture<WebEngine> createWebEngine() {
         ThreadCheck.ensureOnUiThread();
         return createWebEngine(createNewTag());
@@ -348,9 +373,11 @@ public class WebSandbox {
 
     /**
      * Asynchronously creates a new WebEngine with default Profile and gives it a {@code tag}.
+     *
+     * @param tag The tag to be associated with the WebEngine instance.
      */
-    @Nullable
-    public ListenableFuture<WebEngine> createWebEngine(String tag) {
+    @NonNull
+    public ListenableFuture<WebEngine> createWebEngine(@NonNull String tag) {
         ThreadCheck.ensureOnUiThread();
         if (mActiveWebEngines.containsKey(tag)) {
             throw new IllegalArgumentException("Tag already associated with a WebEngine");
@@ -365,35 +392,44 @@ public class WebSandbox {
 
     /**
      * Asynchronously creates a new WebEngine based on {@code params}.
+     * @param params The configuration parameters for the WebEngine instance.
      */
-    @Nullable
-    public ListenableFuture<WebEngine> createWebEngine(WebEngineParams params) {
+    @NonNull
+    public ListenableFuture<WebEngine> createWebEngine(@NonNull WebEngineParams params) {
         ThreadCheck.ensureOnUiThread();
         return createWebEngine(params, createNewTag());
     }
 
     /**
      * Asynchronously creates a new WebEngine based on {@code params} and gives it a {@code tag}.
+     *
+     * @param params The configuration parameters for the WebEngine instance.
+     * @param tag The tag to be associated with the WebEngine instance.
      */
-    public ListenableFuture<WebEngine> createWebEngine(WebEngineParams params, String tag) {
+    @NonNull
+    public ListenableFuture<WebEngine> createWebEngine(
+            @NonNull WebEngineParams params, @NonNull String tag) {
+        ThreadCheck.ensureOnUiThread();
         if (mActiveWebEngines.containsKey(tag)) {
             throw new IllegalArgumentException("Tag already associated with a WebEngine");
         }
         if (mWebSandboxService == null) {
             throw new IllegalStateException("WebSandbox has been destroyed");
         }
-        ListenableFuture<WebEngine> futureWebEngine =
+        ListenableFuture<WebEngine> webEngineFuture =
                 CallbackToFutureAdapter.getFuture(completer -> {
                     mWebSandboxService.createWebEngineDelegate(
                             params.getParcelable(), new WebEngineDelegateClient(completer, tag));
 
                     return "WebEngineClient Future";
                 });
-        return futureWebEngine;
+        return webEngineFuture;
     }
 
     /**
      * Enables or disables DevTools remote debugging.
+     *
+     * @param enabled Whether remote debugging should be enabled or not.
      */
     public void setRemoteDebuggingEnabled(boolean enabled) {
         ThreadCheck.ensureOnUiThread();
@@ -433,9 +469,6 @@ public class WebSandbox {
      * Returns the WebEngine with the given tag, or null if no WebEngine exists with this tag.
      *
      * @param tag the name of the WebEngine.
-     *
-     * @return WebEgine with the given tag.
-     *
      */
     @Nullable
     public WebEngine getWebEngine(String tag) {
@@ -445,6 +478,7 @@ public class WebSandbox {
     /**
      * Returns all active {@link WebEngine}.
      */
+    @NonNull
     public Collection<WebEngine> getWebEngines() {
         return mActiveWebEngines.values();
     }
@@ -453,12 +487,18 @@ public class WebSandbox {
         return mWebSandboxService == null;
     }
 
+    /**
+     * Shuts down the WebEngine and closes the sandbox connection.
+     */
     public void shutdown() {
         if (isShutdown()) {
             // WebSandbox was already shut down.
             return;
         }
         mWebSandboxService = null;
+
+        mProfileManager.invalidate();
+        mProfileManager = null;
 
         for (WebEngine engine : mActiveWebEngines.values()) {
             // This will shut down the WebEngine, its fragment, and remove {@code engine} from
@@ -468,5 +508,10 @@ public class WebSandbox {
         mActiveWebEngines.clear();
 
         mConnection.unbind();
+    }
+
+    @NonNull
+    public ProfileManager getProfileManager() {
+        return mProfileManager;
     }
 }

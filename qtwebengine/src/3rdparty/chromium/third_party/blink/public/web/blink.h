@@ -97,6 +97,10 @@ BLINK_EXPORT void DecommitFreeableMemory();
 BLINK_EXPORT void MemoryPressureNotificationToWorkerThreadIsolates(
     v8::MemoryPressureLevel);
 
+// Send isolate background/foreground notification to worker thread isolates.
+BLINK_EXPORT void IsolateInBackgroundNotification();
+BLINK_EXPORT void IsolateInForegroundNotification();
+
 // Logs stats. Intended to be called during shutdown.
 BLINK_EXPORT void LogStatsDuringShutdown();
 
@@ -129,6 +133,7 @@ BLINK_EXPORT void SetIsCrossOriginIsolated(bool value);
 //
 // TODO(mkwst): We need a specification for this restriction.
 BLINK_EXPORT void SetIsIsolatedContext(bool value);
+BLINK_EXPORT bool IsIsolatedContext();
 
 // Set a list of CORS exempt headers. This list is used for fetching resources
 // from frames.

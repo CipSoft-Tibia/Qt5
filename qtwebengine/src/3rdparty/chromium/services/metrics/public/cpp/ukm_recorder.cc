@@ -16,6 +16,10 @@ namespace ukm {
 
 BASE_FEATURE(kUkmFeature, "Ukm", base::FEATURE_ENABLED_BY_DEFAULT);
 
+BASE_FEATURE(kUkmReduceAddEntryIPC,
+             "UkmReduceAddEntryIPC",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 UkmRecorder::UkmRecorder() = default;
 
 UkmRecorder::~UkmRecorder() = default;
@@ -47,14 +51,6 @@ ukm::SourceId UkmRecorder::GetSourceIdForWebApkManifestUrl(
     const GURL& manifest_url) {
   return UkmRecorder::GetSourceIdFromScopeImpl(manifest_url,
                                                SourceIdType::WEBAPK_ID);
-}
-
-// static
-ukm::SourceId UkmRecorder::GetSourceIdForDesktopWebAppStartUrl(
-    base::PassKey<web_app::DesktopWebAppUkmRecorder>,
-    const GURL& start_url) {
-  return UkmRecorder::GetSourceIdFromScopeImpl(
-      start_url, SourceIdType::DESKTOP_WEB_APP_ID);
 }
 
 // static

@@ -4,14 +4,18 @@
 
 #include "content/browser/shared_storage/shared_storage_worklet_host.h"
 
+#include <stdint.h>
+
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "base/check.h"
 #include "base/metrics/histogram_functions.h"
-#include "components/services/storage/shared_storage/public/mojom/shared_storage.mojom.h"
 #include "components/services/storage/shared_storage/shared_storage_manager.h"
-#include "content/browser/attribution_reporting/attribution_data_host_manager.h"
+#include "content/browser/attribution_reporting/attribution_manager.h"
 #include "content/browser/devtools/devtools_instrumentation.h"
+#include "content/browser/devtools/shared_storage_worklet_devtools_manager.h"
 #include "content/browser/fenced_frame/fenced_frame_reporter.h"
 #include "content/browser/private_aggregation/private_aggregation_budget_key.h"
 #include "content/browser/private_aggregation/private_aggregation_host.h"
@@ -22,12 +26,17 @@
 #include "content/browser/shared_storage/shared_storage_url_loader_factory_proxy.h"
 #include "content/browser/shared_storage/shared_storage_worklet_driver.h"
 #include "content/browser/shared_storage/shared_storage_worklet_host_manager.h"
-#include "content/common/private_aggregation_features.h"
-#include "content/common/private_aggregation_host.mojom.h"
 #include "content/common/renderer.mojom.h"
 #include "content/public/browser/browser_context.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/shared_storage/shared_storage_utils.h"
+#include "third_party/blink/public/mojom/private_aggregation/private_aggregation_host.mojom.h"
+#include "third_party/blink/public/mojom/shared_storage/shared_storage_worklet_service.mojom.h"
 #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom.h"
+#include "third_party/blink/public/mojom/worker/worklet_global_scope_creation_params.mojom.h"
+#include "url/origin.h"
 
 namespace content {
 
@@ -47,6 +56,7 @@ using GetResult = storage::SharedStorageManager::GetResult;
 SharedStorageURNMappingResult CreateSharedStorageURNMappingResult(
     StoragePartition* storage_partition,
     BrowserContext* browser_context,
+    PageImpl* page,
     const url::Origin& shared_storage_origin,
     std::vector<blink::mojom::SharedStorageUrlWithMetadataPtr>
         urls_with_metadata,
@@ -56,12 +66,16 @@ SharedStorageURNMappingResult CreateSharedStorageURNMappingResult(
   DCHECK(!failed_due_to_no_budget);
   DCHECK_GT(urls_with_metadata.size(), 0u);
   DCHECK_LT(index, urls_with_metadata.size());
+  DCHECK(page);
 
   double budget_to_charge = std::log2(urls_with_metadata.size());
 
   // If we are running out of budget, consider this mapping to be failed. Use
   // the default URL, and there's no need to further charge the budget.
-  if (budget_to_charge > 0.0 && budget_to_charge > budget_remaining) {
+  if (budget_to_charge > 0.0 &&
+      (budget_to_charge > budget_remaining ||
+       !page->CheckAndMaybeDebitSelectURLBudgets(shared_storage_origin,
+                                                 budget_to_charge))) {
     failed_due_to_no_budget = true;
     index = 0;
     budget_to_charge = 0.0;
@@ -73,8 +87,7 @@ SharedStorageURNMappingResult CreateSharedStorageURNMappingResult(
   if (!urls_with_metadata[index]->reporting_metadata.empty()) {
     fenced_frame_reporter = FencedFrameReporter::CreateForSharedStorage(
         storage_partition->GetURLLoaderFactoryForBrowserProcess(),
-        AttributionDataHostManager::FromBrowserContext(browser_context),
-        urls_with_metadata[index]->reporting_metadata);
+        browser_context, urls_with_metadata[index]->reporting_metadata);
   }
   return SharedStorageURNMappingResult(
       mapped_url,
@@ -84,6 +97,50 @@ SharedStorageURNMappingResult CreateSharedStorageURNMappingResult(
 }
 
 }  // namespace
+
+class SharedStorageWorkletHost::ScopedDevToolsHandle
+    : blink::mojom::WorkletDevToolsHost {
+ public:
+  explicit ScopedDevToolsHandle(SharedStorageWorkletHost& owner)
+      : owner_(owner), devtools_token_(base::UnguessableToken::Create()) {
+    SharedStorageWorkletDevToolsManager::GetInstance()->WorkletCreated(
+        owner, devtools_token_);
+  }
+
+  ScopedDevToolsHandle(const ScopedDevToolsHandle&) = delete;
+  ScopedDevToolsHandle& operator=(const ScopedDevToolsHandle&) = delete;
+
+  ~ScopedDevToolsHandle() override {
+    SharedStorageWorkletDevToolsManager::GetInstance()->WorkletDestroyed(
+        *owner_);
+  }
+
+  // blink::mojom::WorkletDevToolsHost:
+  void OnReadyForInspection(
+      mojo::PendingRemote<blink::mojom::DevToolsAgent> agent_remote,
+      mojo::PendingReceiver<blink::mojom::DevToolsAgentHost>
+          agent_host_receiver) override {
+    SharedStorageWorkletDevToolsManager::GetInstance()
+        ->WorkletReadyForInspection(*owner_, std::move(agent_remote),
+                                    std::move(agent_host_receiver));
+  }
+
+  const base::UnguessableToken& devtools_token() const {
+    return devtools_token_;
+  }
+
+  mojo::PendingRemote<blink::mojom::WorkletDevToolsHost>
+  BindNewPipeAndPassRemote() {
+    return host_.BindNewPipeAndPassRemote();
+  }
+
+ private:
+  raw_ref<SharedStorageWorkletHost> owner_;
+
+  mojo::Receiver<blink::mojom::WorkletDevToolsHost> host_{this};
+
+  const base::UnguessableToken devtools_token_;
+};
 
 SharedStorageWorkletHost::SharedStorageWorkletHost(
     std::unique_ptr<SharedStorageWorkletDriver> driver,
@@ -140,7 +197,7 @@ SharedStorageWorkletHost::~SharedStorageWorkletHost() {
         page_->fenced_frame_urls_map()
             .OnSharedStorageURNMappingResultDetermined(
                 urn_uuid, CreateSharedStorageURNMappingResult(
-                              storage_partition_, browser_context_,
+                              storage_partition_, browser_context_, page_.get(),
                               shared_storage_origin_, std::move(it->second),
                               /*index=*/0, /*budget_remaining=*/0.0,
                               failed_due_to_no_budget));
@@ -174,6 +231,9 @@ void SharedStorageWorkletHost::AddModuleOnWorklet(
   }
 
   add_module_state_ = AddModuleState::kInitiated;
+  script_source_url_ = script_source_url;
+
+  devtools_handle_ = std::make_unique<ScopedDevToolsHandle>(*this);
 
   mojo::PendingRemote<network::mojom::URLLoaderFactory> url_loader_factory;
 
@@ -191,12 +251,17 @@ void SharedStorageWorkletHost::AddModuleOnWorklet(
 
 void SharedStorageWorkletHost::RunOperationOnWorklet(
     const std::string& name,
-    const std::vector<uint8_t>& serialized_data) {
+    blink::CloneableMessage serialized_data,
+    bool keep_alive_after_operation,
+    const absl::optional<std::string>& context_id) {
   // This function is invoked from `document_service_`. Thus both `page_` and
   // `document_service_` should be valid.
   DCHECK(page_);
   DCHECK(document_service_);
   IncrementPendingOperationsCount();
+
+  DCHECK(keep_alive_after_operation_);
+  keep_alive_after_operation_ = keep_alive_after_operation;
 
   if (add_module_state_ != AddModuleState::kInitiated) {
     OnRunOperationOnWorkletFinished(
@@ -209,7 +274,8 @@ void SharedStorageWorkletHost::RunOperationOnWorklet(
   }
 
   GetAndConnectToSharedStorageWorkletService()->RunOperation(
-      name, serialized_data,
+      name, std::move(serialized_data),
+      MaybeBindPrivateAggregationHost(context_id),
       base::BindOnce(&SharedStorageWorkletHost::OnRunOperationOnWorkletFinished,
                      weak_ptr_factory_.GetWeakPtr(), base::TimeTicks::Now()));
 }
@@ -218,7 +284,9 @@ void SharedStorageWorkletHost::RunURLSelectionOperationOnWorklet(
     const std::string& name,
     std::vector<blink::mojom::SharedStorageUrlWithMetadataPtr>
         urls_with_metadata,
-    const std::vector<uint8_t>& serialized_data,
+    blink::CloneableMessage serialized_data,
+    bool keep_alive_after_operation,
+    const absl::optional<std::string>& context_id,
     blink::mojom::SharedStorageDocumentService::
         RunURLSelectionOperationOnWorkletCallback callback) {
   if (add_module_state_ != AddModuleState::kInitiated) {
@@ -227,6 +295,16 @@ void SharedStorageWorkletHost::RunURLSelectionOperationOnWorklet(
         "sharedStorage.worklet.addModule() has to be called before "
         "sharedStorage.selectURL().",
         /*result_config=*/absl::nullopt);
+    return;
+  }
+
+  // TODO(https://crbug.com/1473742): `page_` can somehow be null.
+  if (!page_) {
+    std::move(callback).Run(
+        /*success=*/false, /*error_message=*/
+        "Internal error: page does not exist.",
+        /*result_config=*/absl::nullopt);
+    base::debug::DumpWithoutCrashing();
     return;
   }
 
@@ -252,6 +330,9 @@ void SharedStorageWorkletHost::RunURLSelectionOperationOnWorklet(
   GURL urn_uuid = pending_urn_uuid.value();
   IncrementPendingOperationsCount();
 
+  DCHECK(keep_alive_after_operation_);
+  keep_alive_after_operation_ = keep_alive_after_operation;
+
   std::vector<GURL> urls;
   for (const auto& url_with_metadata : urls_with_metadata)
     urls.emplace_back(url_with_metadata->url);
@@ -272,7 +353,8 @@ void SharedStorageWorkletHost::RunURLSelectionOperationOnWorklet(
   shared_storage_worklet_host_manager_->NotifyUrnUuidGenerated(urn_uuid);
 
   GetAndConnectToSharedStorageWorkletService()->RunURLSelectionOperation(
-      name, urls, serialized_data,
+      name, urls, std::move(serialized_data),
+      MaybeBindPrivateAggregationHost(context_id),
       base::BindOnce(
           &SharedStorageWorkletHost::
               OnRunURLSelectionOperationOnWorkletScriptExecutionFinished,
@@ -472,9 +554,9 @@ void SharedStorageWorkletHost::SharedStorageGet(
   DCHECK(add_module_state_ == AddModuleState::kInitiated);
 
   if (!IsSharedStorageAllowed()) {
-    std::move(callback).Run(
-        shared_storage_worklet::mojom::SharedStorageGetStatus::kError,
-        /*error_message=*/kSharedStorageDisabledMessage, /*value=*/{});
+    std::move(callback).Run(blink::mojom::SharedStorageGetStatus::kError,
+                            /*error_message=*/kSharedStorageDisabledMessage,
+                            /*value=*/{});
     return;
   }
 
@@ -492,7 +574,7 @@ void SharedStorageWorkletHost::SharedStorageGet(
         if (result.result == OperationResult::kNotFound ||
             result.result == OperationResult::kExpired) {
           std::move(callback).Run(
-              shared_storage_worklet::mojom::SharedStorageGetStatus::kNotFound,
+              blink::mojom::SharedStorageGetStatus::kNotFound,
               /*error_message=*/"sharedStorage.get() could not find key",
               /*value=*/{});
           return;
@@ -500,14 +582,13 @@ void SharedStorageWorkletHost::SharedStorageGet(
 
         if (result.result != OperationResult::kSuccess) {
           std::move(callback).Run(
-              shared_storage_worklet::mojom::SharedStorageGetStatus::kError,
+              blink::mojom::SharedStorageGetStatus::kError,
               /*error_message=*/"sharedStorage.get() failed", /*value=*/{});
           return;
         }
 
-        std::move(callback).Run(
-            shared_storage_worklet::mojom::SharedStorageGetStatus::kSuccess,
-            /*error_message=*/{}, /*value=*/result.data);
+        std::move(callback).Run(blink::mojom::SharedStorageGetStatus::kSuccess,
+                                /*error_message=*/{}, /*value=*/result.data);
       },
       std::move(callback));
 
@@ -516,14 +597,13 @@ void SharedStorageWorkletHost::SharedStorageGet(
 }
 
 void SharedStorageWorkletHost::SharedStorageKeys(
-    mojo::PendingRemote<
-        shared_storage_worklet::mojom::SharedStorageEntriesListener>
+    mojo::PendingRemote<blink::mojom::SharedStorageEntriesListener>
         pending_listener) {
   DCHECK(add_module_state_ == AddModuleState::kInitiated);
 
   if (!IsSharedStorageAllowed()) {
-    mojo::Remote<shared_storage_worklet::mojom::SharedStorageEntriesListener>
-        listener(std::move(pending_listener));
+    mojo::Remote<blink::mojom::SharedStorageEntriesListener> listener(
+        std::move(pending_listener));
     listener->DidReadEntries(
         /*success=*/false, kSharedStorageDisabledMessage,
         /*entries=*/{}, /*has_more_entries=*/false, /*total_queued_to_send=*/0);
@@ -542,14 +622,13 @@ void SharedStorageWorkletHost::SharedStorageKeys(
 }
 
 void SharedStorageWorkletHost::SharedStorageEntries(
-    mojo::PendingRemote<
-        shared_storage_worklet::mojom::SharedStorageEntriesListener>
+    mojo::PendingRemote<blink::mojom::SharedStorageEntriesListener>
         pending_listener) {
   DCHECK(add_module_state_ == AddModuleState::kInitiated);
 
   if (!IsSharedStorageAllowed()) {
-    mojo::Remote<shared_storage_worklet::mojom::SharedStorageEntriesListener>
-        listener(std::move(pending_listener));
+    mojo::Remote<blink::mojom::SharedStorageEntriesListener> listener(
+        std::move(pending_listener));
     listener->DidReadEntries(
         /*success=*/false, kSharedStorageDisabledMessage,
         /*entries=*/{}, /*has_more_entries=*/false, /*total_queued_to_send=*/0);
@@ -672,6 +751,10 @@ void SharedStorageWorkletHost::RecordUseCounters(
   }
 }
 
+RenderProcessHost* SharedStorageWorkletHost::GetProcessHost() const {
+  return driver_->GetProcessHost();
+}
+
 void SharedStorageWorkletHost::OnAddModuleOnWorkletFinished(
     blink::mojom::SharedStorageDocumentService::AddModuleOnWorkletCallback
         callback,
@@ -753,9 +836,9 @@ void SharedStorageWorkletHost::OnRunURLSelectionOperationOnWorkletFinished(
     bool failed_due_to_no_budget = false;
     SharedStorageURNMappingResult mapping_result =
         CreateSharedStorageURNMappingResult(
-            storage_partition_, browser_context_, shared_storage_origin_,
-            std::move(urls_with_metadata), index, budget_result.bits,
-            failed_due_to_no_budget);
+            storage_partition_, browser_context_, page_.get(),
+            shared_storage_origin_, std::move(urls_with_metadata), index,
+            budget_result.bits, failed_due_to_no_budget);
 
     if (document_service_) {
       DCHECK(!IsInKeepAlivePhase());
@@ -792,6 +875,18 @@ void SharedStorageWorkletHost::OnRunURLSelectionOperationOnWorkletFinished(
       "Storage.SharedStorage.Document.Timing.SelectURL.ExecutedInWorklet",
       base::TimeTicks::Now() - start_time);
   DecrementPendingOperationsCount();
+}
+
+void SharedStorageWorkletHost::ExpireWorklet() {
+  // `this` is not in keep-alive.
+  DCHECK(document_service_);
+  DCHECK(shared_storage_worklet_host_manager_);
+
+  // This will remove this worklet host from the manager.
+  shared_storage_worklet_host_manager_->ExpireWorkletHostForDocumentService(
+      document_service_.get());
+
+  // Do not add code after this. SharedStorageWorkletHost has been destroyed.
 }
 
 bool SharedStorageWorkletHost::IsInKeepAlivePhase() const {
@@ -834,17 +929,25 @@ void SharedStorageWorkletHost::DecrementPendingOperationsCount() {
   // and completed.
   last_operation_finished_time_ = base::TimeTicks::Now();
 
-  if (!IsInKeepAlivePhase())
+  if (!IsInKeepAlivePhase() && keep_alive_after_operation_) {
     return;
+  }
 
-  FinishKeepAlive(/*timeout_reached=*/false);
+  if (IsInKeepAlivePhase()) {
+    FinishKeepAlive(/*timeout_reached=*/false);
+    return;
+  }
+
+  ExpireWorklet();
+
+  // Do not add code after here. The worklet will be closed.
 }
 
 base::TimeDelta SharedStorageWorkletHost::GetKeepAliveTimeout() const {
   return kKeepAliveTimeout;
 }
 
-shared_storage_worklet::mojom::SharedStorageWorkletService*
+blink::mojom::SharedStorageWorkletService*
 SharedStorageWorkletHost::GetAndConnectToSharedStorageWorkletService() {
   DCHECK(document_service_);
 
@@ -853,39 +956,47 @@ SharedStorageWorkletHost::GetAndConnectToSharedStorageWorkletService() {
         document_service_->render_frame_host().IsFeatureEnabled(
             blink::mojom::PermissionsPolicyFeature::kPrivateAggregation);
 
-    driver_->StartWorkletService(
-        shared_storage_worklet_service_.BindNewPipeAndPassReceiver());
+    auto global_scope_creation_params =
+        blink::mojom::WorkletGlobalScopeCreationParams::New(
+            script_source_url_, devtools_handle_->devtools_token(),
+            devtools_handle_->BindNewPipeAndPassRemote());
 
+    driver_->StartWorkletService(
+        shared_storage_worklet_service_.BindNewPipeAndPassReceiver(),
+        std::move(global_scope_creation_params));
+
+    auto embedder_context = static_cast<RenderFrameHostImpl&>(
+                                document_service_->render_frame_host())
+                                .frame_tree_node()
+                                ->GetEmbedderSharedStorageContextIfAllowed();
     shared_storage_worklet_service_->Initialize(
         shared_storage_worklet_service_client_.BindNewEndpointAndPassRemote(),
-        private_aggregation_permissions_policy_allowed,
-        MaybeBindPrivateAggregationHost());
+        private_aggregation_permissions_policy_allowed, embedder_context);
   }
 
   return shared_storage_worklet_service_.get();
 }
 
-mojo::PendingRemote<content::mojom::PrivateAggregationHost>
-SharedStorageWorkletHost::MaybeBindPrivateAggregationHost() {
+mojo::PendingRemote<blink::mojom::PrivateAggregationHost>
+SharedStorageWorkletHost::MaybeBindPrivateAggregationHost(
+    const absl::optional<std::string>& context_id) {
   DCHECK(browser_context_);
 
-  if (!base::FeatureList::IsEnabled(content::kPrivateAggregationApi) ||
-      !content::kPrivateAggregationApiEnabledInSharedStorage.Get()) {
-    return mojo::PendingRemote<content::mojom::PrivateAggregationHost>();
+  if (!blink::ShouldDefinePrivateAggregationInSharedStorage()) {
+    return mojo::PendingRemote<blink::mojom::PrivateAggregationHost>();
   }
 
   PrivateAggregationManager* private_aggregation_manager =
       PrivateAggregationManager::GetManager(*browser_context_);
   DCHECK(private_aggregation_manager);
 
-  mojo::PendingRemote<content::mojom::PrivateAggregationHost>
+  mojo::PendingRemote<blink::mojom::PrivateAggregationHost>
       pending_pa_host_remote;
-  if (!private_aggregation_manager->BindNewReceiver(
-          shared_storage_origin_, main_frame_origin_,
-          PrivateAggregationBudgetKey::Api::kSharedStorage,
-          pending_pa_host_remote.InitWithNewPipeAndPassReceiver())) {
-    return mojo::PendingRemote<content::mojom::PrivateAggregationHost>();
-  }
+  bool success = private_aggregation_manager->BindNewReceiver(
+      shared_storage_origin_, main_frame_origin_,
+      PrivateAggregationBudgetKey::Api::kSharedStorage, context_id,
+      pending_pa_host_remote.InitWithNewPipeAndPassReceiver());
+  CHECK(success);
 
   return pending_pa_host_remote;
 }

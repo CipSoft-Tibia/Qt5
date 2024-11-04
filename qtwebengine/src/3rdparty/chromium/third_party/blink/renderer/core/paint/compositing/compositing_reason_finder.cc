@@ -21,7 +21,9 @@
 #include "third_party/blink/renderer/core/page/scrolling/top_document_root_scroller_controller.h"
 #include "third_party/blink/renderer/core/paint/paint_layer.h"
 #include "third_party/blink/renderer/core/paint/paint_layer_scrollable_area.h"
+#include "third_party/blink/renderer/core/paint/transform_utils.h"
 #include "third_party/blink/renderer/core/svg/svg_element.h"
+#include "third_party/blink/renderer/core/view_transition/view_transition.h"
 #include "third_party/blink/renderer/core/view_transition/view_transition_utils.h"
 
 namespace blink {
@@ -29,6 +31,10 @@ namespace blink {
 namespace {
 
 bool ShouldPreferCompositingForLayoutView(const LayoutView& layout_view) {
+  if (layout_view.GetFrame()->IsLocalRoot()) {
+    return true;
+  }
+
   auto has_direct_compositing_reasons = [](const LayoutObject* object) -> bool {
     return object &&
            CompositingReasonFinder::
@@ -106,8 +112,9 @@ CompositingReasons CompositingReasonsFor3DTransform(
     // In theory this should operate on fragment sizes, but using the box size
     // is probably good enough for a use counter.
     auto& box = To<LayoutBox>(layout_object);
+    const PhysicalRect reference_box = ComputeReferenceBox(box);
     gfx::Transform matrix;
-    style.ApplyTransform(matrix, box.Size(),
+    style.ApplyTransform(matrix, &box, reference_box,
                          ComputedStyle::kIncludeTransformOperations,
                          ComputedStyle::kExcludeTransformOrigin,
                          ComputedStyle::kExcludeMotionPath,
@@ -151,7 +158,7 @@ CompositingReasons CompositingReasonsFor3DSceneLeaf(
     return CompositingReason::kNone;
   }
 
-  if (layout_object.IsForElement() && !layout_object.StyleRef().Preserves3D()) {
+  if (!layout_object.IsAnonymous() && !layout_object.StyleRef().Preserves3D()) {
     const LayoutObject* parent_object =
         layout_object.NearestAncestorForElement();
     if (parent_object && parent_object->StyleRef().Preserves3D()) {
@@ -218,8 +225,11 @@ CompositingReasons CompositingReasonsForViewportScrollEffect(
   if (RuntimeEnabledFeatures::FixedElementsDontOverscrollEnabled() &&
       frame->GetPage()->GetVisualViewport().GetOverscrollType() ==
           OverscrollType::kTransform) {
-    reasons |=
-        CompositingReason::kFixedPosition | CompositingReason::kUndoOverscroll;
+    reasons |= CompositingReason::kFixedPosition;
+    if (!To<LayoutBox>(layout_object)
+             .HasAnchorPositionScrollTranslationAffectedByViewportScrolling()) {
+      reasons |= CompositingReason::kUndoOverscroll;
+    }
   }
 
   if (layout_object.StyleRef().IsFixedToBottom()) {
@@ -247,8 +257,9 @@ CompositingReasons CompositingReasonsForScrollDependentPosition(
         reasons |= CompositingReason::kFixedPosition;
     }
 
-    if (box->HasAnchorScrollTranslation())
-      reasons |= CompositingReason::kAnchorScroll;
+    if (box->HasAnchorPositionScrollTranslation()) {
+      reasons |= CompositingReason::kAnchorPosition;
+    }
   }
 
   // Don't promote sticky position elements that cannot move with scrolls.
@@ -314,11 +325,9 @@ CompositingReasonFinder::DirectReasonsForPaintPropertiesExceptScrolling(
       reasons |= CompositingReason::kPreserve3DWith3DDescendants;
   }
 
-  if (layer->IsRootLayer() && object.GetFrame()->IsLocalRoot())
-    reasons |= CompositingReason::kRoot;
-
-  if (RequiresCompositingForRootScroller(*layer))
+  if (RequiresCompositingForRootScroller(object)) {
     reasons |= CompositingReason::kRootScroller;
+  }
 
   reasons |= CompositingReasonsForScrollDependentPosition(
       *layer, container_for_fixed_position);
@@ -350,6 +359,13 @@ CompositingReasonFinder::DirectReasonsForPaintPropertiesExceptScrolling(
     // view or the view transition elements that we are transitioning.
     if (transition->NeedsViewTransitionEffectNode(object)) {
       reasons |= CompositingReason::kViewTransitionElement;
+    }
+  }
+
+  if (RuntimeEnabledFeatures::ElementCaptureEnabled()) {
+    auto* element = DynamicTo<Element>(object.GetNode());
+    if (element && element->GetRegionCaptureCropId()) {
+      reasons |= CompositingReason::kElementCapture;
     }
   }
 
@@ -457,16 +473,16 @@ CompositingReasons CompositingReasonFinder::CompositingReasonsForAnimation(
 }
 
 bool CompositingReasonFinder::RequiresCompositingForRootScroller(
-    const PaintLayer& layer) {
+    const LayoutObject& object) {
   // The root scroller needs composited scrolling layers even if it doesn't
   // actually have scrolling since CC has these assumptions baked in for the
   // viewport. Because this is only needed for CC, we can skip it if
   // compositing is not enabled.
-  const auto& settings = *layer.GetLayoutObject().GetDocument().GetSettings();
-  if (!settings.GetAcceleratedCompositingEnabled())
+  if (!object.GetFrame()->GetSettings()->GetAcceleratedCompositingEnabled()) {
     return false;
+  }
 
-  return layer.GetLayoutObject().IsGlobalRootScroller();
+  return object.IsGlobalRootScroller();
 }
 
 }  // namespace blink

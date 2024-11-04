@@ -20,14 +20,14 @@ namespace qdesigner_internal {
 TemplateOptionsWidget::TemplateOptionsWidget(QDesignerFormEditorInterface *core, QWidget *parent) :
     QWidget(parent),
     m_core(core),
-    m_ui(new Ui::TemplateOptionsWidget)
+    m_ui(new QT_PREPEND_NAMESPACE(qdesigner_internal)::Ui::TemplateOptionsWidget)
 {
     m_ui->setupUi(this);
 
     m_ui->m_addTemplatePathButton->setIcon(
-            qdesigner_internal::createIconSet(u"plus.png"_s));
+            qdesigner_internal::createIconSet("plus.png"_L1));
     m_ui->m_removeTemplatePathButton->setIcon(
-            qdesigner_internal::createIconSet(u"minus.png"_s));
+            qdesigner_internal::createIconSet("minus.png"_L1));
 
     connect(m_ui->m_templatePathListWidget, &QListWidget::itemSelectionChanged,
             this, &TemplateOptionsWidget::templatePathSelectionChanged);

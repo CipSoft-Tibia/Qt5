@@ -11,8 +11,8 @@
 #include <string>
 #include <utility>
 
-#include "base/containers/flat_map.h"
 #include "base/logging.h"
+#include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
@@ -35,6 +35,12 @@ constexpr char kMultipleDisplayIdsCollisionDetected[] =
 // A list of property names that are blocked from issuing a full display
 // configuration (modeset) via a udev display CHANGE event.
 const char* kBlockedEventsByTriggerProperty[] = {"Content Protection"};
+
+struct DrmDisplayParams {
+  scoped_refptr<DrmDevice> drm;
+  std::unique_ptr<HardwareDisplayControllerInfo> display_info;
+  raw_ptr<display::DisplaySnapshot, ExperimentalAsh> snapshot;
+};
 
 class DisplayComparator {
  public:
@@ -131,7 +137,8 @@ void DrmGpuDisplayManager::SetDisplaysConfiguredCallback(
 MovableDisplaySnapshots DrmGpuDisplayManager::GetDisplays() {
   std::vector<std::unique_ptr<DrmDisplay>> old_displays;
   old_displays.swap(displays_);
-  MovableDisplaySnapshots params_list;
+  std::vector<DrmDisplayParams> displays_to_create;
+  MovableDisplaySnapshots display_snapshots;
 
   const DrmDeviceVector& devices = drm_device_manager_->GetDrmDevices();
   size_t device_index = 0;
@@ -147,43 +154,38 @@ MovableDisplaySnapshots DrmGpuDisplayManager::GetDisplays() {
 
     // Receiving a signal that DRM state was updated. Need to reset the plane
     // manager's resource cache since IDs may have changed.
-    drm->plane_manager()->ResetConnectorsCache(drm->GetResources());
+    base::flat_set<uint32_t> valid_connector_ids =
+        drm->plane_manager()->ResetConnectorsCacheAndGetValidIds(
+            drm->GetResources());
+
+    // Create new DisplaySnapshots and resolve display ID collisions.
     auto display_infos = GetDisplayInfosAndUpdateCrtcs(*drm);
-    for (const auto& display_info : display_infos) {
-      auto it = base::ranges::find_if(
-          old_displays,
-          DisplayComparator(drm, display_info->crtc()->crtc_id,
-                            display_info->connector()->connector_id));
-      std::unique_ptr<DrmDisplay> current_drm_display;
-      if (it != old_displays.end()) {
-        current_drm_display = std::move(*it);
-        old_displays.erase(it);
-      } else {
-        current_drm_display = std::make_unique<DrmDisplay>(drm);
-      }
 
-      // Create list of supported drm formats and modifiers
-      display::DrmFormatsAndModifiers drm_formats_and_modifiers;
-      for (uint32_t format : drm->plane_manager()->GetSupportedFormats()) {
-        std::vector<uint64_t> modifiers =
-            drm->plane_manager()->GetFormatModifiers(
-                display_info->crtc()->crtc_id, format);
-        drm_formats_and_modifiers.emplace(format, modifiers);
-      }
+    // Make sure that the display infos we got have valid connector IDs.
+    // If not, we need to remove the display info from the list. This removes
+    // any zombie connectors.
+    display_infos.erase(
+        std::remove_if(display_infos.begin(), display_infos.end(),
+                       [&valid_connector_ids](const auto& display_info) {
+                         return std::find(
+                                    valid_connector_ids.begin(),
+                                    valid_connector_ids.end(),
+                                    display_info->connector()->connector_id) ==
+                                valid_connector_ids.end();
+                       }),
+        display_infos.end());
 
-      // Create the new DisplaySnapshot and resolve display ID collisions.
-      std::unique_ptr<display::DisplaySnapshot> current_display_snapshot =
-          CreateDisplaySnapshot(
-              *drm, display_info.get(), static_cast<uint8_t>(device_index),
-              current_drm_display->origin(), drm_formats_and_modifiers);
+    for (auto& display_info : display_infos) {
+      display_snapshots.emplace_back(CreateDisplaySnapshot(
+          *drm, display_info.get(), static_cast<uint8_t>(device_index)));
 
+      display::DisplaySnapshot* current_display_snapshot =
+          display_snapshots.back().get();
       const auto colliding_display_snapshot_iter = edid_id_collision_map.find(
           current_display_snapshot->edid_display_id());
       if (colliding_display_snapshot_iter != edid_id_collision_map.end()) {
         collision_detected = true;
 
-        // Resolve collisions by adding each colliding display's connector index
-        // to its display ID.
         current_display_snapshot->AddIndexToDisplayId();
 
         display::DisplaySnapshot* colliding_display_snapshot =
@@ -192,29 +194,43 @@ MovableDisplaySnapshots DrmGpuDisplayManager::GetDisplays() {
         edid_id_collision_map[colliding_display_snapshot->edid_display_id()] =
             colliding_display_snapshot;
       }
-
-      // Do not use |display_info| beyond this point, since some of its internal
-      // references will be surrendered.
-      current_drm_display->Update(display_info.get(),
-                                  current_display_snapshot.get());
-
-      // Update the map with the new (or potentially resolved) display snapshot.
       edid_id_collision_map[current_display_snapshot->edid_display_id()] =
-          current_display_snapshot.get();
-      params_list.push_back(std::move(current_display_snapshot));
-      displays_.push_back(std::move(current_drm_display));
+          current_display_snapshot;
+
+      // Ownership of |display_info| is handed over.
+      displays_to_create.push_back(
+          {drm, std::move(display_info), current_display_snapshot});
     }
     device_index++;
   }
 
-  const bool multiple_connected_displays = params_list.size() > 1;
+  // Create a new DrmDisplay with each of the corresponding display info and
+  // display snapshot. Note: do not use |display_infos| beyond this point,
+  // since some of the objects' internal references will be surrendered.
+  for (const DrmDisplayParams& params : displays_to_create) {
+    // If the DrmDisplay was present previously, copy its origin to the
+    // corresponding DisplaySnapshot before creating a new DrmDisplay.
+    auto old_drm_display_it = base::ranges::find_if(
+        old_displays,
+        DisplayComparator(params.drm, params.display_info->crtc()->crtc_id,
+                          params.display_info->connector()->connector_id));
+    if (old_drm_display_it != old_displays.end()) {
+      params.snapshot->set_origin(old_drm_display_it->get()->origin());
+      old_displays.erase(old_drm_display_it);
+    }
+
+    displays_.emplace_back(std::make_unique<DrmDisplay>(
+        params.drm, params.display_info.get(), *params.snapshot));
+  }
+
+  const bool multiple_connected_displays = display_snapshots.size() > 1;
   if (multiple_connected_displays) {
     base::UmaHistogramBoolean(kMultipleDisplayIdsCollisionDetected,
                               collision_detected);
   }
 
   NotifyScreenManager(displays_, old_displays);
-  return params_list;
+  return display_snapshots;
 }
 
 bool DrmGpuDisplayManager::TakeDisplayControl() {
@@ -256,6 +272,19 @@ bool DrmGpuDisplayManager::ShouldDisplayEventTriggerConfiguration(
     if (drm->device_path().value().find(event_dev_path) == std::string::npos)
       continue;
 
+    // Get the connector's ID and convert it to an int.
+    const std::string connector_id_str =
+        GetEventPropertyByKey("CONNECTOR", event_props);
+    if (connector_id_str.empty()) {
+      break;
+    }
+    uint32_t connector_id;
+    {
+      const bool conversion_success =
+          base::StringToUint(connector_id_str, &connector_id);
+      DCHECK(conversion_success);
+    }
+
     // Get the trigger property's ID and convert to an int.
     const std::string trigger_prop_id_str =
         GetEventPropertyByKey("PROPERTY", event_props);
@@ -263,15 +292,27 @@ bool DrmGpuDisplayManager::ShouldDisplayEventTriggerConfiguration(
       break;
 
     uint32_t trigger_prop_id;
-    const bool conversion_success =
-        base::StringToUint(trigger_prop_id_str, &trigger_prop_id);
-    DCHECK(conversion_success);
+    {
+      const bool conversion_success =
+          base::StringToUint(trigger_prop_id_str, &trigger_prop_id);
+      DCHECK(conversion_success);
+    }
+
+    ScopedDrmObjectPropertyPtr property_values(
+        drm->GetObjectProperties(connector_id, DRM_MODE_OBJECT_CONNECTOR));
+    DCHECK(property_values);
 
     // Fetch the name of the property from the device.
     ScopedDrmPropertyPtr drm_property(drm->GetProperty(trigger_prop_id));
     DCHECK(drm_property);
+    const std::string enum_value =
+        GetEnumNameForProperty(*drm_property, *property_values);
+    DCHECK(!enum_value.empty());
+
     trigger_prop_log =
-        "[trigger property: " + std::string(drm_property->name) + "] ";
+        "[CONNECTOR:" + connector_id_str +
+        "] trigger property: " + std::string(drm_property->name) + "=" +
+        enum_value + ", ";
     for (const char* blocked_prop : kBlockedEventsByTriggerProperty) {
       if (strcmp(drm_property->name, blocked_prop) == 0) {
         VLOG(1) << log_prefix << trigger_prop_log

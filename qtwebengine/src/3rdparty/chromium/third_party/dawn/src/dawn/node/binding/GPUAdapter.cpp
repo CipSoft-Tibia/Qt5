@@ -21,40 +21,11 @@
 #include "src/dawn/node/binding/Converter.h"
 #include "src/dawn/node/binding/Errors.h"
 #include "src/dawn/node/binding/Flags.h"
+#include "src/dawn/node/binding/GPUAdapterInfo.h"
 #include "src/dawn/node/binding/GPUDevice.h"
 #include "src/dawn/node/binding/GPUSupportedFeatures.h"
 #include "src/dawn/node/binding/GPUSupportedLimits.h"
-
-namespace {
-// TODO(amaiorano): Move to utility header
-std::vector<std::string> Split(const std::string& s, char delim) {
-    if (s.empty()) {
-        return {};
-    }
-
-    std::vector<std::string> result;
-    const size_t lastIndex = s.length() - 1;
-    size_t startIndex = 0;
-    size_t i = startIndex;
-
-    while (i <= lastIndex) {
-        if (s[i] == delim) {
-            auto token = s.substr(startIndex, i - startIndex);
-            if (!token.empty()) {  // Discard empty tokens
-                result.push_back(token);
-            }
-            startIndex = i + 1;
-        } else if (i == lastIndex) {
-            auto token = s.substr(startIndex, i - startIndex + 1);
-            if (!token.empty()) {  // Discard empty tokens
-                result.push_back(token);
-            }
-        }
-        ++i;
-    }
-    return result;
-}
-}  // namespace
+#include "src/dawn/node/binding/TogglesLoader.h"
 
 #define FOR_EACH_LIMIT(X)                        \
     X(maxTextureDimension1D)                     \
@@ -123,7 +94,15 @@ interop::Interface<interop::GPUSupportedLimits> GPUAdapter::getLimits(Napi::Env 
 }
 
 bool GPUAdapter::getIsFallbackAdapter(Napi::Env) {
-    UNIMPLEMENTED();
+    WGPUAdapterProperties adapterProperties = {};
+    adapter_.GetProperties(&adapterProperties);
+    return adapterProperties.adapterType == WGPUAdapterType_CPU;
+}
+
+bool GPUAdapter::getIsCompatibilityMode(Napi::Env) {
+    WGPUAdapterProperties adapterProperties = {};
+    adapter_.GetProperties(&adapterProperties);
+    return adapterProperties.compatibilityMode;
 }
 
 interop::Promise<interop::Interface<interop::GPUDevice>> GPUAdapter::requestDevice(
@@ -146,6 +125,10 @@ interop::Promise<interop::Interface<interop::GPUDevice>> GPUAdapter::requestDevi
 
         requiredFeatures.emplace_back(feature);
     }
+    if (!conv(desc.label, descriptor.label)) {
+        Napi::Error::New(env, "invalid value for label").ThrowAsJavaScriptException();
+        return promise;
+    }
 
     wgpu::RequiredLimits limits;
 #define COPY_LIMIT(LIMIT)                                        \
@@ -161,41 +144,18 @@ interop::Promise<interop::Interface<interop::GPUDevice>> GPUAdapter::requestDevi
         return promise;
     }
 
-    // Propogate enabled/disabled dawn features
-    // Note: DawnTogglesDescriptor::enabledToggles and disabledToggles are vectors of 'const char*',
-    // so we make sure the parsed strings survive the CreateDevice() call by storing them on the
-    // stack.
-    std::vector<std::string> enabledTogglesString;
-    std::vector<std::string> disabledTogglesString;
-    std::vector<const char*> enabledToggles;
-    std::vector<const char*> disabledToggles;
-    if (auto values = flags_.Get("enable-dawn-features")) {
-        enabledTogglesString = Split(*values, ',');
-        for (auto& t : enabledTogglesString) {
-            enabledToggles.emplace_back(t.c_str());
-        }
-    }
-    if (auto values = flags_.Get("disable-dawn-features")) {
-        disabledTogglesString = Split(*values, ',');
-        for (auto& t : disabledTogglesString) {
-            disabledToggles.emplace_back(t.c_str());
-        }
-    }
-
-    desc.requiredFeaturesCount = requiredFeatures.size();
+    desc.requiredFeatureCount = requiredFeatures.size();
     desc.requiredFeatures = requiredFeatures.data();
     desc.requiredLimits = &limits;
 
-    DawnTogglesDescriptor deviceTogglesDesc = {};
+    // Propagate enabled/disabled dawn features
+    TogglesLoader togglesLoader(flags_);
+    DawnTogglesDescriptor deviceTogglesDesc = togglesLoader.GetDescriptor();
     desc.nextInChain = &deviceTogglesDesc;
-    deviceTogglesDesc.enabledTogglesCount = enabledToggles.size();
-    deviceTogglesDesc.enabledToggles = enabledToggles.data();
-    deviceTogglesDesc.disabledTogglesCount = disabledToggles.size();
-    deviceTogglesDesc.disabledToggles = disabledToggles.data();
 
     auto wgpu_device = adapter_.CreateDevice(&desc);
     if (wgpu_device) {
-        promise.Resolve(interop::GPUDevice::Create<GPUDevice>(env, env, wgpu_device));
+        promise.Resolve(interop::GPUDevice::Create<GPUDevice>(env, env, desc, wgpu_device));
     } else {
         promise.Reject(binding::Errors::OperationError(env, "failed to create device"));
     }
@@ -203,9 +163,15 @@ interop::Promise<interop::Interface<interop::GPUDevice>> GPUAdapter::requestDevi
 }
 
 interop::Promise<interop::Interface<interop::GPUAdapterInfo>> GPUAdapter::requestAdapterInfo(
-    Napi::Env,
+    Napi::Env env,
     std::vector<std::string> unmaskHints) {
-    UNIMPLEMENTED();
+    interop::Promise<interop::Interface<interop::GPUAdapterInfo>> promise(env, PROMISE_INFO);
+
+    WGPUAdapterProperties adapterProperties = {};
+    adapter_.GetProperties(&adapterProperties);
+
+    promise.Resolve(interop::GPUAdapterInfo::Create<GPUAdapterInfo>(env, adapterProperties));
+    return promise;
 }
 
 }  // namespace wgpu::binding

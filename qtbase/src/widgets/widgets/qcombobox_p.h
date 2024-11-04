@@ -27,7 +27,6 @@
 #include "QtGui/qpainter.h"
 #include "QtWidgets/qstyle.h"
 #include "QtWidgets/qstyleoption.h"
-#include "QtCore/qpair.h"
 #include "QtCore/qtimer.h"
 #include "private/qwidget_p.h"
 #include "QtCore/qpointer.h"
@@ -381,7 +380,7 @@ public:
     std::array<QMetaObject::Connection, 8> modelConnections;
     QAbstractItemModel *model = nullptr;
     QLineEdit *lineEdit = nullptr;
-    QComboBoxPrivateContainer *container = nullptr;
+    QPointer<QComboBoxPrivateContainer> container;
 #ifdef Q_OS_MAC
     QPlatformMenu *m_platformMenu = nullptr;
 #endif

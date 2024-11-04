@@ -50,7 +50,6 @@ class MODULES_EXPORT BlinkAXTreeSource
   AXObject* GetParent(AXObject* node) const override;
   void SerializeNode(AXObject* node, ui::AXNodeData* out_data) const override;
   bool IsIgnored(AXObject* node) const override;
-  bool IsValid(AXObject* node) const override;
   bool IsEqual(AXObject* node1, AXObject* node2) const override;
   AXObject* GetNull() const override;
   std::string GetDebugString(AXObject* node) const override;
@@ -66,8 +65,6 @@ class MODULES_EXPORT BlinkAXTreeSource
     max_image_data_size_ = max_size;
   }
 
-  void set_exclude_offscreen(bool exclude) { exclude_offscreen_ = exclude; }
-
   // Ignore code that limits based on the protocol (like https, file, etc.)
   // to enable tests to run.
   static void IgnoreProtocolChecksForTesting();
@@ -75,8 +72,6 @@ class MODULES_EXPORT BlinkAXTreeSource
   void Trace(Visitor*) const;
 
   void OnLoadInlineTextBoxes(AXObject& obj);
-  // Query or update a set of IDs for which we should load inline text boxes.
-  bool ShouldLoadInlineTextBoxes(const AXObject* obj) const;
 
   AXObject* GetPluginRoot();
 
@@ -98,9 +93,6 @@ class MODULES_EXPORT BlinkAXTreeSource
 
   AXObject* GetFocusedObject() const;
 
-  // A set of IDs for which we should always load inline text boxes.
-  WTF::HashSet<int32_t> load_inline_text_boxes_ids_;
-
   // The ID of the object to fetch image data for.
   int image_data_node_id_ = -1;
 
@@ -110,15 +102,10 @@ class MODULES_EXPORT BlinkAXTreeSource
   // for debugging.
   bool image_annotation_debugging_ = false;
 
-  // If true, excludes nodes and their entire subtrees if they're entirely
-  // offscreen. This is only meant to be used when snapshotting the
-  // accessibility tree.
-  bool exclude_offscreen_ = false;
-
   Member<AXObjectCacheImpl> ax_object_cache_;
 
-  // These are updated when calling |Freeze|.
   bool frozen_ = false;
+  // TODO(accessibility) If caching these does not improv perf, remove these.
   Member<AXObject> root_ = nullptr;
   Member<AXObject> focus_ = nullptr;
 

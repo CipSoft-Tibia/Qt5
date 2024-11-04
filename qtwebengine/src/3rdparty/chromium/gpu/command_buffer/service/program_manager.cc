@@ -11,6 +11,7 @@
 #include <limits>
 #include <memory>
 #include <set>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -422,8 +423,8 @@ void Program::Reset() {
   max_uniform_name_length_ = 0;
   max_attrib_name_length_ = 0;
   attrib_infos_.clear();
-  uniform_infos_.clear();
   uniform_locations_.clear();
+  uniform_infos_.clear();
   program_output_infos_.clear();
   sampler_indices_.clear();
   attrib_location_to_index_map_.clear();
@@ -597,7 +598,7 @@ void Program::UpdateBaseInstanceUniformLocation() {
 
 std::string Program::ProcessLogInfo(const std::string& log) {
   std::string output;
-  re2::StringPiece input(log);
+  std::string_view input(log);
   std::string prior_log;
   std::string hashed_name;
   while (RE2::Consume(&input,
@@ -614,7 +615,8 @@ std::string Program::ProcessLogInfo(const std::string& log) {
       output += hashed_name;
   }
 
-  return output + std::string(input);
+  output.append(input);
+  return output;
 }
 
 void Program::UpdateLogInfo() {

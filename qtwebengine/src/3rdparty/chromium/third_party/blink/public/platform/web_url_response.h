@@ -32,6 +32,7 @@
 #define THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_URL_RESPONSE_H_
 
 #include <memory>
+#include <vector>
 
 #include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
@@ -46,12 +47,13 @@
 #include "third_party/blink/public/platform/web_vector.h"
 
 namespace network {
-class TriggerAttestation;
+class TriggerVerification;
 namespace mojom {
 enum class AlternateProtocolUsage;
 enum class FetchResponseSource;
 enum class FetchResponseType : int32_t;
 enum class IPAddressSpace : int32_t;
+enum class PrivateNetworkAccessPreflightResult;
 class URLResponseHead;
 class LoadTimingInfo;
 }  // namespace mojom
@@ -111,8 +113,8 @@ class BLINK_PLATFORM_EXPORT WebURLResponse {
 
   void SetConnectionReused(bool);
 
-  void SetTriggerAttestation(
-      const absl::optional<network::TriggerAttestation>&);
+  void SetTriggerVerifications(
+      const std::vector<network::TriggerVerification>&);
 
   void SetLoadTiming(const network::mojom::LoadTimingInfo&);
 
@@ -182,6 +184,9 @@ class BLINK_PLATFORM_EXPORT WebURLResponse {
   network::mojom::FetchResponseSource GetServiceWorkerResponseSource() const;
   void SetServiceWorkerResponseSource(network::mojom::FetchResponseSource);
 
+  // Flag whether a shared dictionary was used to decompress the response body.
+  void SetDidUseSharedDictionary(bool);
+
   // https://fetch.spec.whatwg.org/#concept-response-type
   void SetType(network::mojom::FetchResponseType);
   network::mojom::FetchResponseType GetType() const;
@@ -223,6 +228,13 @@ class BLINK_PLATFORM_EXPORT WebURLResponse {
 
   network::mojom::IPAddressSpace ClientAddressSpace() const;
   void SetClientAddressSpace(network::mojom::IPAddressSpace);
+
+  // Information about any preflight sent for this resource.
+  // TODO(https://crbug.com/1268378): Remove this once preflights are enforced.
+  network::mojom::PrivateNetworkAccessPreflightResult
+  PrivateNetworkAccessPreflightResult() const;
+  void SetPrivateNetworkAccessPreflightResult(
+      network::mojom::PrivateNetworkAccessPreflightResult);
 
   // ALPN negotiated protocol of the socket which fetched this resource.
   bool WasAlpnNegotiated() const;

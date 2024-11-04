@@ -55,11 +55,13 @@
 
 #include "../../Eigen/src/Core/util/DisableStupidWarnings.h"
 
+// IWYU pragma: begin_exports
 #include "src/MatrixFunctions/MatrixExponential.h"
 #include "src/MatrixFunctions/MatrixFunction.h"
 #include "src/MatrixFunctions/MatrixSquareRoot.h"
 #include "src/MatrixFunctions/MatrixLogarithm.h"
 #include "src/MatrixFunctions/MatrixPower.h"
+// IWYU pragma: end_exports
 
 #include "../../Eigen/src/Core/util/ReenableStupidWarnings.h"
 

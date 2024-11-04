@@ -51,15 +51,19 @@ Q_LOGGING_CATEGORY(QQSHAPE_LOG_TIME_DIRTY_SYNC, "qt.shape.time.sync")
     rendered, so applying a very high scale to the shape may show artifacts where it is visible
     that the curves are represented by a sequence of smaller, straight lines.
 
-    \note Qt Quick Shapes relies on multi-sampling for anti-aliasing. This can be enabled for the
-    entire application or window using the corresponding settings in QSurfaceFormat. It can also
-    be enabled for only the shape, by setting its \l{Item::layer.enabled}{layer.enabled} property to
-    true and then adjusting the \l{Item::layer.samples}{layer.samples} property. In the latter case,
-    multi-sampling will not be applied to the entire scene, but the shape will be rendered via an
-    intermediate off-screen buffer.
+    \note By default, Qt Quick Shapes relies on multi-sampling for anti-aliasing. This can be
+    enabled for the entire application or window using the corresponding settings in QSurfaceFormat.
+    It can also be enabled for only the shape, by setting its \l{Item::layer.enabled}{layer.enabled}
+    property to true and then adjusting the \l{Item::layer.samples}{layer.samples} property. In the
+    latter case, multi-sampling will not be applied to the entire scene, but the shape will be
+    rendered via an intermediate off-screen buffer. Alternatively, the
+    \l{QtQuick.Shapes::Shape::preferredRendererType}{preferredRendererType} property can be set
+    to \c{Shape.CurveRenderer}. This has anti-aliasing built in and generally renders the shapes
+    at a higher quality, but at some additional performance cost.
 
     For further information, the \l{Qt Quick Examples - Shapes}{Shapes example} shows how to
-    implement different types of shapes, fills and strokes.
+    implement different types of shapes, fills and strokes, and the \l{Weather Forecast Example}
+    shows examples of different ways shapes might be useful in a user interface.
 */
 
 void QQuickShapes_initializeModule()
@@ -145,7 +149,7 @@ QQuickShapeStrokeFillParams::QQuickShapeStrokeFillParams()
 
     \image visualpath-code-example.png
 
-    \sa {Qt Quick Examples - Shapes}, Shape
+    \sa {Qt Quick Examples - Shapes}, {Weather Forecast Example}, Shape
  */
 
 QQuickShapePathPrivate::QQuickShapePathPrivate()
@@ -515,6 +519,57 @@ void QQuickShapePath::resetFillGradient()
 }
 
 /*!
+    \qmlproperty PathHints QtQuick.Shapes::ShapePath::pathHints
+    \since 6.7
+
+    This property describes characteristics of the shape. If set, these hints may allow
+    optimized rendering. By default, no hints are set. It can be a combination of the following
+    values:
+
+    \value ShapePath.PathLinear
+        The path only has straight lines, no curves.
+    \value ShapePath.PathQuadratic
+        The path does not have any cubic curves: only lines and quadratic Bezier curves.
+    \value ShapePath.PathConvex
+        The path does not have any dents or holes. All straight lines between two points
+        inside the shape will be completely inside the shape.
+    \value ShapePath.PathFillOnRight
+        The path follows the TrueType convention where outlines around solid fill have their
+        control points ordered clockwise, and outlines around holes in the shape have their
+        control points ordered counter-clockwise.
+    \value ShapePath.PathSolid
+        The path has no holes, or mathematically speaking it is \e{simply connected}.
+    \value ShapePath.PathNonIntersecting
+        The path outline does not cross itself.
+    \value ShapePath.PathNonOverlappingControlPointTriangles
+        The triangles defined by the curve control points do not overlap with each other,
+        or with any of the line segments. Also, no line segments intersect.
+        This implies \c PathNonIntersecting.
+
+    Not all hints are logically independent, but the dependencies are not enforced.
+    For example, \c PathIsLinear implies \c PathIsQuadratic, but it is valid to have \c PathIsLinear
+    without \c PathIsQuadratic.
+
+    The pathHints property describes a set of statements known to be true; the absence of a hint
+    does not necessarily mean that the corresponding statement is false.
+*/
+
+QQuickShapePath::PathHints QQuickShapePath::pathHints() const
+{
+    Q_D(const QQuickShapePath);
+    return d->pathHints;
+}
+
+void QQuickShapePath::setPathHints(PathHints newPathHints)
+{
+     Q_D(QQuickShapePath);
+    if (d->pathHints == newPathHints)
+        return;
+    d->pathHints = newPathHints;
+    emit pathHintsChanged();
+}
+
+/*!
     \qmltype Shape
     //! \instantiates QQuickShape
     \inqmlmodule QtQuick.Shapes
@@ -622,7 +677,7 @@ void QQuickShapePath::resetFillGradient()
 
     \endlist
 
-    \sa {Qt Quick Examples - Shapes}, Path, PathMove, PathLine, PathQuad, PathCubic, PathArc, PathSvg
+    \sa {Qt Quick Examples - Shapes}, {Weather Forecast Example}, Path, PathMove, PathLine, PathQuad, PathCubic, PathArc, PathSvg
 */
 
 QQuickShapePrivate::QQuickShapePrivate()
@@ -641,6 +696,8 @@ void QQuickShapePrivate::_q_shapePathChanged()
     spChanged = true;
     q->polish();
     emit q->boundingRectChanged();
+    auto br = q->boundingRect();
+    q->setImplicitSize(br.right(), br.bottom());
 }
 
 void QQuickShapePrivate::setStatus(QQuickShape::Status newStatus)
@@ -650,6 +707,18 @@ void QQuickShapePrivate::setStatus(QQuickShape::Status newStatus)
         status = newStatus;
         emit q->statusChanged();
     }
+}
+
+qreal QQuickShapePrivate::getImplicitWidth() const
+{
+    Q_Q(const QQuickShape);
+    return q->boundingRect().right();
+}
+
+qreal QQuickShapePrivate::getImplicitHeight() const
+{
+    Q_Q(const QQuickShape);
+    return q->boundingRect().bottom();
 }
 
 QQuickShape::QQuickShape(QQuickItem *parent)
@@ -683,7 +752,7 @@ QQuickShape::~QQuickShape()
            with the \c software backend.
 
     \value Shape.CurveRenderer
-           Experimental GPU-based renderer, added as technology preview in Qt 6.6.
+           GPU-based renderer that aims to preserve curvature at any scale.
            In contrast to \c Shape.GeometryRenderer, curves are not approximated by short straight
            lines. Instead, curves are rendered using a specialized fragment shader. This improves
            visual quality and avoids re-tesselation performance hit when zooming. Also,
@@ -694,23 +763,11 @@ QQuickShape::~QQuickShape()
     with the \c software backend. In that case, \c Shape.SoftwareRenderer will be used.
     \c Shape.CurveRenderer may be requested using the \l preferredRendererType property.
 
-    Note that \c Shape.CurveRenderer is currently regarded as experimental. The enum name of
-    this renderer may change in future versions of Qt, and some shapes may render incorrectly.
-    Among the known limitations are:
-    \list 1
-      \li Only quadratic curves are inherently supported. Cubic curves will be approximated by
-          quadratic curves.
-      \li Shapes where elements intersect are not rendered correctly. The \l [QML] {Path::simplify}
-          {Path.simplify} property may be used to remove self-intersections from such shapes, but
-          may incur a performance cost and reduced visual quality.
-      \li Shapes that span a large numerical range, such as a long string of text, may have
-          issues. Consider splitting these shapes into multiple ones, for instance by making
-          a \l PathText for each individual word.
-      \li If the shape is being rendered into a Qt Quick 3D scene, the
-          \c GL_OES_standard_derivatives extension to OpenGL is required when the OpenGL
-          RHI backend is in use (this is available by default on OpenGL ES 3 and later, but
-          optional in OpenGL ES 2).
-    \endlist
+    \note The \c Shape.CurveRenderer will approximate cubic curves with quadratic ones and may
+    therefore diverge slightly from the mathematically correct visualization of the shape. In
+    addition, if the shape is being rendered into a Qt Quick 3D scene and the OpenGL backend for
+    RHI is active, the \c GL_OES_standard_derivatives extension to OpenGL is required (this is
+    available by default on OpenGL ES 3 and later, but optional in OpenGL ES 2.)
 */
 
 QQuickShape::RendererType QQuickShape::rendererType() const
@@ -733,9 +790,6 @@ QQuickShape::RendererType QQuickShape::rendererType() const
     \c Shape.SoftwareRenderer can currently not be selected without running the scenegraph with
     the \c software backend, in which case it will be selected regardless of the
     \c preferredRendererType.
-
-    \note This API is considered tech preview and may change or be removed in future versions of
-    Qt.
 
     See \l rendererType for more information on the implications.
 */
@@ -768,14 +822,13 @@ void QQuickShape::setPreferredRendererType(QQuickShape::RendererType preferredTy
     emit preferredRendererTypeChanged();
 }
 
-
 /*!
     \qmlproperty bool QtQuick.Shapes::Shape::asynchronous
 
-    When rendererType is \c Shape.GeometryRenderer, the input path is
-    triangulated on the CPU during the polishing phase of the Shape. This is
-    potentially expensive. To offload this work to separate worker threads,
-    set this property to \c true.
+    When rendererType is \c Shape.GeometryRenderer or \c Shape.CurveRenderer, a certain amount of
+    preprocessing of the input path is performed on the CPU during the polishing phase of the
+    Shape. This is potentially expensive. To offload this work to separate worker threads, set this
+    property to \c true.
 
     When enabled, making a Shape visible will not wait for the content to
     become available. Instead, the GUI/main thread is not blocked and the
@@ -813,7 +866,9 @@ QRectF QQuickShape::boundingRect() const
     Q_D(const QQuickShape);
     QRectF brect;
     for (QQuickShapePath *path : d->sp) {
-        brect = brect.united(path->path().boundingRect());
+        qreal pw = path->strokeColor().alpha() ? path->strokeWidth() : 0;
+        qreal d = path->capStyle() == QQuickShapePath::SquareCap ? pw * M_SQRT1_2 : pw / 2;
+        brect = brect.united(path->path().boundingRect().adjusted(-d, -d, d, d));
     }
 
     return brect;
@@ -921,6 +976,80 @@ bool QQuickShape::contains(const QPointF &point) const
         }
     }
     return false;
+}
+
+/*!
+    \qmlproperty enumeration QtQuick.Shapes::Shape::fillMode
+    \since QtQuick.Shapes 6.7
+
+     Set this property to define what happens when the path has a different size
+     than the item.
+
+    \value Shape.NoResize           the shape is rendered at its native size, independent of the size of the item. This is the default
+    \value Shape.Stretch            the shape is scaled to fit the item, changing the aspect ratio if necessary.
+                                    Note that non-uniform scaling may cause reduced quality of anti-aliasing when using the curve renderer
+    \value Shape.PreserveAspectFit  the shape is scaled uniformly to fit inside the item
+    \value Shape.PreserveAspectCrop the shape is scaled uniformly to fill the item fully, extending outside the item if necessary.
+                                    Note that this only actually crops the content if \l clip is true
+*/
+
+QQuickShape::FillMode QQuickShape::fillMode() const
+{
+    Q_D(const QQuickShape);
+    return d->fillMode;
+}
+
+void QQuickShape::setFillMode(FillMode newFillMode)
+{
+    Q_D(QQuickShape);
+    if (d->fillMode == newFillMode)
+        return;
+    d->fillMode = newFillMode;
+    emit fillModeChanged();
+}
+
+/*!
+    \qmlproperty enumeration QtQuick.Shapes::Shape::horizontalAlignment
+    \qmlproperty enumeration QtQuick.Shapes::Shape::verticalAlignment
+    \since 6.7
+
+    Sets the horizontal and vertical alignment of the shape within the item.
+    By default, the shape is aligned with \c{(0,0)} on the top left corner.
+
+    The valid values for \c horizontalAlignment are \c Shape.AlignLeft,
+    \c Shape.AlignRight and \c Shape.AlignHCenter. The valid values for
+    \c verticalAlignment are \c Shape.AlignTop, \c Shape.AlignBottom and
+    \c Shape.AlignVCenter.
+*/
+
+QQuickShape::HAlignment QQuickShape::horizontalAlignment() const
+{
+    Q_D(const QQuickShape);
+    return d->horizontalAlignment;
+}
+
+void QQuickShape::setHorizontalAlignment(HAlignment newHorizontalAlignment)
+{
+    Q_D(QQuickShape);
+    if (d->horizontalAlignment == newHorizontalAlignment)
+        return;
+    d->horizontalAlignment = newHorizontalAlignment;
+    emit horizontalAlignmentChanged();
+}
+
+QQuickShape::VAlignment QQuickShape::verticalAlignment() const
+{
+    Q_D(const QQuickShape);
+    return d->verticalAlignment;
+}
+
+void QQuickShape::setVerticalAlignment(VAlignment newVerticalAlignment)
+{
+    Q_D(QQuickShape);
+    if (d->verticalAlignment == newVerticalAlignment)
+        return;
+    d->verticalAlignment = newVerticalAlignment;
+    emit verticalAlignmentChanged();
 }
 
 static void vpe_append(QQmlListProperty<QObject> *property, QObject *obj)
@@ -1053,6 +1182,41 @@ QSGNode *QQuickShape::updatePaintNode(QSGNode *node, UpdatePaintNodeData *)
         }
         if (d->renderer)
             d->renderer->updateNode();
+
+        // TODO: only add transform node when needed (and then make sure static_cast is safe)
+        QMatrix4x4 fillModeTransform;
+        qreal xScale = 1.0;
+        qreal yScale = 1.0;
+
+        if (d->fillMode != NoResize) {
+            xScale = width() / implicitWidth();
+            yScale = height() / implicitHeight();
+
+            if (d->fillMode == PreserveAspectFit)
+                xScale = yScale = qMin(xScale, yScale);
+            else if (d->fillMode == PreserveAspectCrop)
+                xScale = yScale = qMax(xScale, yScale);
+            fillModeTransform.scale(xScale, yScale);
+        }
+        if (d->horizontalAlignment != AlignLeft || d->verticalAlignment != AlignTop) {
+            qreal tx = 0;
+            qreal ty = 0;
+            qreal w = xScale * implicitWidth();
+            qreal h = yScale * implicitHeight();
+            if (d->horizontalAlignment == AlignRight)
+                tx = width() - w;
+            else if (d->horizontalAlignment == AlignHCenter)
+                tx = (width() - w) / 2;
+            if (d->verticalAlignment == AlignBottom)
+                ty = height() - h;
+            else if (d->verticalAlignment == AlignVCenter)
+                ty = (height() - h) / 2;
+            fillModeTransform.translate(tx / xScale, ty / yScale);
+        }
+
+        QSGTransformNode *transformNode = static_cast<QSGTransformNode *>(node);
+        if (fillModeTransform != transformNode->matrix())
+            transformNode->setMatrix(fillModeTransform);
     }
     return node;
 }
@@ -1126,27 +1290,32 @@ QSGNode *QQuickShapePrivate::createNode()
     if (!ri)
         return node;
 
+    QSGNode *pathNode = nullptr;
     switch (ri->graphicsApi()) {
     case QSGRendererInterface::Software:
-        node = new QQuickShapeSoftwareRenderNode(q);
+        pathNode = new QQuickShapeSoftwareRenderNode(q);
         static_cast<QQuickShapeSoftwareRenderer *>(renderer)->setNode(
-                    static_cast<QQuickShapeSoftwareRenderNode *>(node));
+                    static_cast<QQuickShapeSoftwareRenderNode *>(pathNode));
         break;
     default:
         if (QSGRendererInterface::isApiRhiBased(ri->graphicsApi())) {
             if (rendererType == QQuickShape::CurveRenderer) {
-                node = new QSGNode;
-                static_cast<QQuickShapeCurveRenderer *>(renderer)->setRootNode(node);
+                pathNode = new QSGNode;
+                static_cast<QQuickShapeCurveRenderer *>(renderer)->setRootNode(pathNode);
             } else {
-                node = new QQuickShapeGenericNode;
+                pathNode = new QQuickShapeGenericNode;
                 static_cast<QQuickShapeGenericRenderer *>(renderer)->setRootNode(
-                    static_cast<QQuickShapeGenericNode *>(node));
+                    static_cast<QQuickShapeGenericNode *>(pathNode));
             }
         } else {
             qWarning("No path backend for this graphics API yet");
         }
         break;
     }
+
+    // TODO: only create transform node when needed
+    node = new QSGTransformNode;
+    node->appendChildNode(pathNode);
 
     return node;
 }
@@ -1605,112 +1774,6 @@ void QQuickShapeConicalGradient::setAngle(qreal v)
         emit angleChanged();
         emit updated();
     }
-}
-
-static void generateGradientColorTable(const QQuickShapeGradientCacheKey &gradient,
-                                       uint *colorTable, int size, float opacity)
-{
-    int pos = 0;
-    const QGradientStops &s = gradient.stops;
-    Q_ASSERT(!s.isEmpty());
-    const bool colorInterpolation = true;
-
-    uint alpha = qRound(opacity * 256);
-    uint current_color = ARGB_COMBINE_ALPHA(s[0].second.rgba(), alpha);
-    qreal incr = 1.0 / qreal(size);
-    qreal fpos = 1.5 * incr;
-    colorTable[pos++] = ARGB2RGBA(qPremultiply(current_color));
-
-    while (fpos <= s.first().first) {
-        colorTable[pos] = colorTable[pos - 1];
-        pos++;
-        fpos += incr;
-    }
-
-    if (colorInterpolation)
-        current_color = qPremultiply(current_color);
-
-    const int sLast = s.size() - 1;
-    for (int i = 0; i < sLast; ++i) {
-        qreal delta = 1/(s[i+1].first - s[i].first);
-        uint next_color = ARGB_COMBINE_ALPHA(s[i + 1].second.rgba(), alpha);
-        if (colorInterpolation)
-            next_color = qPremultiply(next_color);
-
-        while (fpos < s[i+1].first && pos < size) {
-            int dist = int(256 * ((fpos - s[i].first) * delta));
-            int idist = 256 - dist;
-            if (colorInterpolation)
-                colorTable[pos] = ARGB2RGBA(INTERPOLATE_PIXEL_256(current_color, idist, next_color, dist));
-            else
-                colorTable[pos] = ARGB2RGBA(qPremultiply(INTERPOLATE_PIXEL_256(current_color, idist, next_color, dist)));
-            ++pos;
-            fpos += incr;
-        }
-        current_color = next_color;
-    }
-
-    uint last_color = ARGB2RGBA(qPremultiply(ARGB_COMBINE_ALPHA(s[sLast].second.rgba(), alpha)));
-    for ( ; pos < size; ++pos)
-        colorTable[pos] = last_color;
-
-    colorTable[size-1] = last_color;
-}
-
-QQuickShapeGradientCache::~QQuickShapeGradientCache()
-{
-    qDeleteAll(m_textures);
-}
-
-QQuickShapeGradientCache *QQuickShapeGradientCache::cacheForRhi(QRhi *rhi)
-{
-    static QHash<QRhi *, QQuickShapeGradientCache *> caches;
-    auto it = caches.constFind(rhi);
-    if (it != caches.constEnd())
-        return *it;
-
-    QQuickShapeGradientCache *cache = new QQuickShapeGradientCache;
-    rhi->addCleanupCallback([cache](QRhi *rhi) {
-        caches.remove(rhi);
-        delete cache;
-    });
-    caches.insert(rhi, cache);
-    return cache;
-}
-
-QSGTexture *QQuickShapeGradientCache::get(const QQuickShapeGradientCacheKey &grad)
-{
-    QSGPlainTexture *tx = m_textures[grad];
-    if (!tx) {
-        static const int W = 1024; // texture size is 1024x1
-        QImage gradTab(W, 1, QImage::Format_RGBA8888_Premultiplied);
-        if (!grad.stops.isEmpty())
-            generateGradientColorTable(grad, reinterpret_cast<uint *>(gradTab.bits()), W, 1.0f);
-        else
-            gradTab.fill(Qt::black);
-        tx = new QSGPlainTexture;
-        tx->setImage(gradTab);
-        switch (grad.spread) {
-        case QQuickShapeGradient::PadSpread:
-            tx->setHorizontalWrapMode(QSGTexture::ClampToEdge);
-            tx->setVerticalWrapMode(QSGTexture::ClampToEdge);
-            break;
-        case QQuickShapeGradient::RepeatSpread:
-            tx->setHorizontalWrapMode(QSGTexture::Repeat);
-            tx->setVerticalWrapMode(QSGTexture::Repeat);
-            break;
-        case QQuickShapeGradient::ReflectSpread:
-            tx->setHorizontalWrapMode(QSGTexture::MirroredRepeat);
-            tx->setVerticalWrapMode(QSGTexture::MirroredRepeat);
-            break;
-        default:
-            qWarning("Unknown gradient spread mode %d", grad.spread);
-            break;
-        }
-        tx->setFiltering(QSGTexture::Linear);
-        m_textures[grad] = tx;
-    }
-    return tx;
 }
 
 QT_END_NAMESPACE

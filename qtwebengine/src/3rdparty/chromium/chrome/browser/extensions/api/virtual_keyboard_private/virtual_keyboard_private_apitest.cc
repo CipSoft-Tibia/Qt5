@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "ash/public/cpp/clipboard_history_controller.h"
+#include "base/containers/flat_map.h"
 #include "base/path_service.h"
 #include "chrome/browser/ash/login/lock/screen_locker_tester.h"
 #include "chrome/browser/extensions/extension_apitest.h"
@@ -31,7 +32,7 @@ void CopyBitmapItem() {
 }
 
 void CopyFileItem() {
-  const std::unordered_map<std::u16string, std::u16string> input_data = {
+  const base::flat_map<std::u16string, std::u16string> input_data = {
       {u"fs/sources", u"/path/to/My%20File.txt"}};
   base::Pickle input_data_pickle;
   ui::WriteCustomDataToPickle(input_data, &input_data_pickle);
@@ -69,9 +70,9 @@ class VirtualKeyboardPrivateApiTest : public extensions::ExtensionApiTest {
     // Then copy the selected part to clipboard.
     auto* web_contents = browser()->tab_strip_model()->GetActiveWebContents();
     content::BoundingBoxUpdateWaiter select_waiter(web_contents);
-    ASSERT_TRUE(ExecuteScript(web_contents, "selectPart1();"));
+    ASSERT_TRUE(ExecJs(web_contents, "selectPart1();"));
     select_waiter.Wait();
-    ASSERT_TRUE(ExecuteScript(web_contents, "copyToClipboard();"));
+    ASSERT_TRUE(ExecJs(web_contents, "copyToClipboard();"));
     base::RunLoop().RunUntilIdle();
   }
 };

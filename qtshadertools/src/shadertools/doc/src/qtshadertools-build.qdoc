@@ -170,6 +170,21 @@ qt6_add_shaders(exampleapp "exampleapp_shaders"
     evaluation stage.
     \cmakeoptionsince 6.5
 
+    \li \c VIEW_COUNT - This option specifies the number of views a vertex
+    shader is used with. When working with multiview (GL_OVR_multiview2,
+    VK_KHR_multiview, D3D12 view instancing, etc.), always specify the correct
+    VIEW_COUNT with a value >= 2 for the relevant shaders in order to enable
+    generating correct GLSL shader code. Note however that setting VIEW_COUNT
+    should be avoided for vertex shaders that do not rely on multiview, since
+    setting the value effectively makes the generated GLSL code
+    multiview-dependent. To overcome this, group the vertex shaders accordingly
+    into multiple qt_add_shaders() calls. Setting \c VIEW_COUNT automatically
+    injects a preprocessor define,
+    \c{QSHADER_VIEW_COUNT}, with the same value into the shader source code.
+    In addition, the \c{#extension GL_EXT_multiview : require} line is injected
+    automatically when a view count of 2 or greater is set.
+    \cmakeoptionsince 6.7
+
     \endlist
 
     The most commonly overridden setting is \c GLSL. For example, if the

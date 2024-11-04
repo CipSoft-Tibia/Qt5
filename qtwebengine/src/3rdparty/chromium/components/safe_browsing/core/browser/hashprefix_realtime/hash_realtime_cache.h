@@ -6,7 +6,7 @@
 #define COMPONENTS_SAFE_BROWSING_CORE_BROWSER_HASHPREFIX_REALTIME_HASH_REALTIME_CACHE_H_
 
 #include "base/time/time.h"
-#include "components/safe_browsing/core/common/proto/safebrowsingv5_alpha1.pb.h"
+#include "components/safe_browsing/core/common/proto/safebrowsingv5.pb.h"
 
 namespace safe_browsing {
 
@@ -33,9 +33,14 @@ class HashRealTimeCache {
 
   // Returns a map, where the key is a requested hash prefix and the value is
   // the matching result in the cache. If a requested hash prefix was not in the
-  // cache (or has expired), then it is not in the returned map.
+  // cache (or has expired), then it is not in the returned map. |skip_logging|
+  // specifies whether metric logging should be skipped when this function is
+  // called.
+  // TODO(crbug.com/1432308): [Also TODO(thefrog)] Remove |skip_logging|
+  // parameter after investigation is complete.
   std::unordered_map<std::string, std::vector<V5::FullHash>> SearchCache(
-      const std::set<std::string>& hash_prefixes) const;
+      const std::set<std::string>& hash_prefixes,
+      bool skip_logging) const;
 
   // Adds the responses to the cache.
   void CacheSearchHashesResponse(

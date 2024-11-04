@@ -40,7 +40,7 @@ class COMPONENT_EXPORT(NETWORK_CPP) ResponseAnalyzer {
   //
   // The caller needs to guarantee that `state` lives as long as the
   // ResponseAnalyzer (or longer).
-  static std::unique_ptr<ResponseAnalyzer> Create(PerFactoryState& state);
+  static std::unique_ptr<ResponseAnalyzer> Create(PerFactoryState* state);
 
   // Decision for what to do with the HTTP response being analyzed.
   enum class Decision {
@@ -67,10 +67,12 @@ class COMPONENT_EXPORT(NETWORK_CPP) ResponseAnalyzer {
   // renderer). This is generally true for
   // network::ResourceRequest::request_initiator within NetworkService (see the
   // enforcement in CorsURLLoaderFactory::IsValidRequest).
-  virtual Decision Init(const GURL& request_url,
-                        const absl::optional<url::Origin>& request_initiator,
-                        mojom::RequestMode request_mode,
-                        const network::mojom::URLResponseHead& response) = 0;
+  virtual Decision Init(
+      const GURL& request_url,
+      const absl::optional<url::Origin>& request_initiator,
+      mojom::RequestMode request_mode,
+      mojom::RequestDestination request_destination_from_renderer,
+      const network::mojom::URLResponseHead& response) = 0;
 
   // The Sniff method should be called if an earlier call to Init (or Sniff)
   // returned Decision::kSniffMore.  This method will attempt to calculate the

@@ -252,7 +252,7 @@ enum xnn_status xnn_define_channelwise_quantized_tensor_value(
 }
 
 size_t xnn_shape_multiply_all_dims(
-  const struct xnn_shape shape[XNN_MIN_ELEMENTS(1)])
+  const struct xnn_shape shape[ XNN_MIN_ELEMENTS(1)])
 {
   size_t batch_size = 1;
   for (size_t i = 0; i < shape->num_dims; i++) {
@@ -262,7 +262,7 @@ size_t xnn_shape_multiply_all_dims(
 }
 
 size_t xnn_shape_multiply_batch_dims(
-  const struct xnn_shape shape[XNN_MIN_ELEMENTS(1)],
+  const struct xnn_shape shape[ XNN_MIN_ELEMENTS(1)],
   size_t num_nonbatch_dims)
 {
   size_t batch_size = 1;
@@ -273,7 +273,7 @@ size_t xnn_shape_multiply_batch_dims(
 }
 
 size_t xnn_shape_multiply_non_channel_dims(
-  const struct xnn_shape shape[XNN_MIN_ELEMENTS(1)])
+  const struct xnn_shape shape[ XNN_MIN_ELEMENTS(1)])
 {
   size_t batch_size = 1;
   for (size_t i = 0; i + 1 < shape->num_dims; i++) {

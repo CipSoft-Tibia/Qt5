@@ -136,7 +136,7 @@ static int vp9_frame_alloc(AVCodecContext *avctx, VP9Frame *f)
         const AVHWAccel *hwaccel = avctx->hwaccel;
         av_assert0(!f->hwaccel_picture_private);
         if (hwaccel->frame_priv_data_size) {
-            f->hwaccel_priv_buf = av_buffer_allocz(hwaccel->frame_priv_data_size);
+            f->hwaccel_priv_buf = ff_hwaccel_frame_priv_alloc(avctx, hwaccel);
             if (!f->hwaccel_priv_buf)
                 goto fail;
             f->hwaccel_picture_private = f->hwaccel_priv_buf->data;
@@ -237,6 +237,13 @@ static int update_size(AVCodecContext *avctx, int w, int h)
         case AV_PIX_FMT_YUV444P:
         case AV_PIX_FMT_YUV444P10:
         case AV_PIX_FMT_YUV444P12:
+#if CONFIG_VP9_VAAPI_HWACCEL
+            *fmtp++ = AV_PIX_FMT_VAAPI;
+#endif
+            break;
+        case AV_PIX_FMT_GBRP:
+        case AV_PIX_FMT_GBRP10:
+        case AV_PIX_FMT_GBRP12:
 #if CONFIG_VP9_VAAPI_HWACCEL
             *fmtp++ = AV_PIX_FMT_VAAPI;
 #endif
@@ -1606,7 +1613,10 @@ static int vp9_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if ((ret = vp9_frame_alloc(avctx, &s->s.frames[CUR_FRAME])) < 0)
         return ret;
     f = s->s.frames[CUR_FRAME].tf.f;
-    f->key_frame = s->s.h.keyframe;
+    if (s->s.h.keyframe)
+        f->flags |= AV_FRAME_FLAG_KEY;
+    else
+        f->flags &= ~AV_FRAME_FLAG_KEY;
     f->pict_type = (s->s.h.keyframe || s->s.h.intraonly) ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
 
     if (s->s.frames[REF_FRAME_SEGMAP].tf.f->buf[0] &&
@@ -1791,6 +1801,9 @@ static void vp9_decode_flush(AVCodecContext *avctx)
         vp9_frame_unref(avctx, &s->s.frames[i]);
     for (i = 0; i < 8; i++)
         ff_thread_release_ext_buffer(avctx, &s->s.refs[i]);
+
+    if (avctx->hwaccel && avctx->hwaccel->flush)
+        avctx->hwaccel->flush(avctx);
 }
 
 static av_cold int vp9_decode_init(AVCodecContext *avctx)

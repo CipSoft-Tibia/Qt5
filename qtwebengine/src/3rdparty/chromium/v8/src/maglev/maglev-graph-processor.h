@@ -40,12 +40,21 @@ namespace maglev {
 //   // overloading as appropriate to group node processing.
 //   void Process(FooNode* node, const ProcessingState& state) {}
 //
-template <typename NodeProcessor, bool visit_dead_nodes = false>
+template <typename NodeProcessor, bool visit_identity_nodes = false>
 class GraphProcessor;
+
+enum class ProcessResult {
+  kContinue,  // Process exited normally, and the following processors will be
+              // called on the node.
+  kRemove     // Remove the current node from the graph (and do not call the
+              // following processors).
+};
 
 class ProcessingState {
  public:
-  explicit ProcessingState(BlockConstIterator block_it) : block_it_(block_it) {}
+  explicit ProcessingState(BlockConstIterator block_it,
+                           NodeIterator* node_it = nullptr)
+      : block_it_(block_it), node_it_(node_it) {}
 
   // Disallow copies, since the underlying frame states stay mutable.
   ProcessingState(const ProcessingState&) = delete;
@@ -54,11 +63,17 @@ class ProcessingState {
   BasicBlock* block() const { return *block_it_; }
   BasicBlock* next_block() const { return *(block_it_ + 1); }
 
+  NodeIterator* node_it() const {
+    DCHECK_NOT_NULL(node_it_);
+    return node_it_;
+  }
+
  private:
   BlockConstIterator block_it_;
+  NodeIterator* node_it_;
 };
 
-template <typename NodeProcessor, bool visit_dead_nodes>
+template <typename NodeProcessor, bool visit_identity_nodes>
 class GraphProcessor {
  public:
   template <typename... Args>
@@ -82,6 +97,10 @@ class GraphProcessor {
       node_processor_.Process(constant, GetCurrentState());
       USE(index);
     }
+    for (const auto& [index, constant] : graph->tagged_index()) {
+      node_processor_.Process(constant, GetCurrentState());
+      USE(index);
+    }
     for (const auto& [index, constant] : graph->int32()) {
       node_processor_.Process(constant, GetCurrentState());
       USE(index);
@@ -89,9 +108,6 @@ class GraphProcessor {
     for (const auto& [index, constant] : graph->float64()) {
       node_processor_.Process(constant, GetCurrentState());
       USE(index);
-    }
-    if (graph_->nan()) {
-      node_processor_.Process(graph_->nan(), GetCurrentState());
     }
     for (const auto& [address, constant] : graph->external_references()) {
       node_processor_.Process(constant, GetCurrentState());
@@ -109,10 +125,15 @@ class GraphProcessor {
         }
       }
 
-      for (node_it_ = block->nodes().begin(); node_it_ != block->nodes().end();
-           ++node_it_) {
+      for (node_it_ = block->nodes().begin();
+           node_it_ != block->nodes().end();) {
         Node* node = *node_it_;
-        ProcessNodeBase(node, GetCurrentState());
+        ProcessResult result = ProcessNodeBase(node, GetCurrentState());
+        if (V8_UNLIKELY(result == ProcessResult::kRemove)) {
+          node_it_ = block->nodes().RemoveAt(node_it_);
+        } else {
+          ++node_it_;
+        }
       }
 
       ProcessNodeBase(block->control_node(), GetCurrentState());
@@ -125,16 +146,21 @@ class GraphProcessor {
   const NodeProcessor& node_processor() const { return node_processor_; }
 
  private:
-  ProcessingState GetCurrentState() { return ProcessingState(block_it_); }
+  ProcessingState GetCurrentState() {
+    return ProcessingState(block_it_, &node_it_);
+  }
 
-  void ProcessNodeBase(NodeBase* node, const ProcessingState& state) {
-    if (!visit_dead_nodes && node->is_dead()) return;
+  ProcessResult ProcessNodeBase(NodeBase* node, const ProcessingState& state) {
     switch (node->opcode()) {
-#define CASE(OPCODE)                                      \
-  case Opcode::k##OPCODE:                                 \
-    PreProcess(node->Cast<OPCODE>(), state);              \
-    node_processor_.Process(node->Cast<OPCODE>(), state); \
-    break;
+#define CASE(OPCODE)                                        \
+  case Opcode::k##OPCODE:                                   \
+    if constexpr (!visit_identity_nodes &&                  \
+                  Opcode::k##OPCODE == Opcode::kIdentity) { \
+      return ProcessResult::kContinue;                      \
+    }                                                       \
+    PreProcess(node->Cast<OPCODE>(), state);                \
+    return node_processor_.Process(node->Cast<OPCODE>(), state);
+
       NODE_BASE_LIST(CASE)
 #undef CASE
     }
@@ -145,7 +171,7 @@ class GraphProcessor {
   NodeProcessor node_processor_;
   Graph* graph_;
   BlockConstIterator block_it_;
-  NodeConstIterator node_it_;
+  NodeIterator node_it_;
 };
 
 // A NodeProcessor that wraps multiple NodeProcessors, and forwards to each of
@@ -159,7 +185,9 @@ class NodeMultiProcessor<> {
   void PreProcessGraph(Graph* graph) {}
   void PostProcessGraph(Graph* graph) {}
   void PreProcessBasicBlock(BasicBlock* block) {}
-  void Process(NodeBase* node, const ProcessingState& state) {}
+  ProcessResult Process(NodeBase* node, const ProcessingState& state) {
+    return ProcessResult::kContinue;
+  }
 };
 
 template <typename Processor, typename... Processors>
@@ -177,9 +205,12 @@ class NodeMultiProcessor<Processor, Processors...>
       : Base(std::forward<Args>(processors)...) {}
 
   template <typename Node>
-  void Process(Node* node, const ProcessingState& state) {
-    processor_.Process(node, state);
-    Base::Process(node, state);
+  ProcessResult Process(Node* node, const ProcessingState& state) {
+    if (V8_UNLIKELY(processor_.Process(node, state) ==
+                    ProcessResult::kRemove)) {
+      return ProcessResult::kRemove;
+    }
+    return Base::Process(node, state);
   }
   void PreProcessGraph(Graph* graph) {
     processor_.PreProcessGraph(graph);

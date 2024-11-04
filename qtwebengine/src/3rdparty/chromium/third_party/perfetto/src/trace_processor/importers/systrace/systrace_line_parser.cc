@@ -64,7 +64,7 @@ util::Status SystraceLineParser::ParseLine(const SystraceLine& line) {
       ThreadNamePriority::kFtrace);
 
   if (!line.tgid_str.empty() && line.tgid_str != "-----") {
-    base::Optional<uint32_t> tgid = base::StringToUInt32(line.tgid_str);
+    std::optional<uint32_t> tgid = base::StringToUInt32(line.tgid_str);
     if (tgid) {
       context_->process_tracker->UpdateThread(line.pid, tgid.value());
     }
@@ -116,7 +116,7 @@ util::Status SystraceLineParser::ParseLine(const SystraceLine& line) {
         line.ts, line.pid, line.args_str.c_str());
   } else if (line.event_name == "sched_waking") {
     auto comm = args["comm"];
-    base::Optional<uint32_t> wakee_pid = base::StringToUInt32(args["pid"]);
+    std::optional<uint32_t> wakee_pid = base::StringToUInt32(args["pid"]);
     if (!wakee_pid.has_value()) {
       return util::Status("Could not convert wakee_pid");
     }
@@ -129,8 +129,8 @@ util::Status SystraceLineParser::ParseLine(const SystraceLine& line) {
         line.ts, wakee_utid, utid);
 
   } else if (line.event_name == "cpu_frequency") {
-    base::Optional<uint32_t> event_cpu = base::StringToUInt32(args["cpu_id"]);
-    base::Optional<double> new_state = base::StringToDouble(args["state"]);
+    std::optional<uint32_t> event_cpu = base::StringToUInt32(args["cpu_id"]);
+    std::optional<double> new_state = base::StringToDouble(args["state"]);
     if (!event_cpu.has_value()) {
       return util::Status("Could not convert event cpu");
     }
@@ -142,8 +142,8 @@ util::Status SystraceLineParser::ParseLine(const SystraceLine& line) {
         cpufreq_name_id_, event_cpu.value());
     context_->event_tracker->PushCounter(line.ts, new_state.value(), track);
   } else if (line.event_name == "cpu_idle") {
-    base::Optional<uint32_t> event_cpu = base::StringToUInt32(args["cpu_id"]);
-    base::Optional<double> new_state = base::StringToDouble(args["state"]);
+    std::optional<uint32_t> event_cpu = base::StringToUInt32(args["cpu_id"]);
+    std::optional<double> new_state = base::StringToDouble(args["state"]);
     if (!event_cpu.has_value()) {
       return util::Status("Could not convert event cpu");
     }
@@ -216,8 +216,8 @@ util::Status SystraceLineParser::ParseLine(const SystraceLine& line) {
     std::string clock_name_str = args["name"] + subtitle;
     StringId clock_name =
         context_->storage->InternString(base::StringView(clock_name_str));
-    TrackId track =
-        context_->track_tracker->InternGlobalCounterTrack(clock_name);
+    TrackId track = context_->track_tracker->InternGlobalCounterTrack(
+        TrackTracker::Group::kClockFrequency, clock_name);
     context_->event_tracker->PushCounter(line.ts, rate.value(), track);
   } else if (line.event_name == "workqueue_execute_start") {
     auto split = base::SplitString(line.args_str, "function ");
@@ -232,8 +232,8 @@ util::Status SystraceLineParser::ParseLine(const SystraceLine& line) {
     std::string thermal_zone = args["thermal_zone"] + " Temperature";
     StringId track_name =
         context_->storage->InternString(base::StringView(thermal_zone));
-    TrackId track =
-        context_->track_tracker->InternGlobalCounterTrack(track_name);
+    TrackId track = context_->track_tracker->InternGlobalCounterTrack(
+        TrackTracker::Group::kThermals, track_name);
     auto temp = base::StringToInt32(args["temp"]);
     if (!temp.has_value()) {
       return util::Status("Could not convert temp");
@@ -243,8 +243,8 @@ util::Status SystraceLineParser::ParseLine(const SystraceLine& line) {
     std::string type = args["type"] + " Cooling Device";
     StringId track_name =
         context_->storage->InternString(base::StringView(type));
-    TrackId track =
-        context_->track_tracker->InternGlobalCounterTrack(track_name);
+    TrackId track = context_->track_tracker->InternGlobalCounterTrack(
+        TrackTracker::Group::kThermals, track_name);
     auto target = base::StringToDouble(args["target"]);
     if (!target.has_value()) {
       return util::Status("Could not convert target");
@@ -261,7 +261,7 @@ util::Status SystraceLineParser::ParseLine(const SystraceLine& line) {
       return util::Status("sched_blocked_reason: could not parse io_wait");
     }
     ThreadStateTracker::GetOrCreate(context_)->PushBlockedReason(
-        wakee_utid, static_cast<bool>(*io_wait), base::nullopt);
+        wakee_utid, static_cast<bool>(*io_wait), std::nullopt);
   } else if (line.event_name == "rss_stat") {
     // Format: rss_stat: size=8437760 member=1 curr=1 mm_id=2824390453
     auto size = base::StringToInt64(args["size"]);
@@ -274,9 +274,9 @@ util::Status SystraceLineParser::ParseLine(const SystraceLine& line) {
     if (!member.has_value()) {
       return util::Status("rss_stat: could not parse member");
     }
-    base::Optional<bool> curr;
+    std::optional<bool> curr;
     if (!opt_curr.has_value()) {
-      curr = base::make_optional(static_cast<bool>(*opt_curr));
+      curr = std::make_optional(static_cast<bool>(*opt_curr));
     }
     rss_stat_tracker_.ParseRssStat(line.ts, line.pid, *size, *member, curr,
                                    mm_id);

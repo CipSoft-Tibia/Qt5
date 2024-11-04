@@ -267,7 +267,8 @@ bool HttpUtil::ParseRetryAfterHeader(const std::string& retry_after_string,
   base::Time time;
   base::TimeDelta interval;
 
-  if (net::ParseUint32(retry_after_string, &seconds)) {
+  if (net::ParseUint32(retry_after_string, ParseIntFormat::NON_NEGATIVE,
+                       &seconds)) {
     interval = base::Seconds(seconds);
   } else if (base::Time::FromUTCString(retry_after_string.c_str(), &time)) {
     interval = time - now;
@@ -303,6 +304,7 @@ const char* const kForbiddenHeaderFields[] = {
     "keep-alive",
     "origin",
     "referer",
+    "set-cookie",
     "te",
     "trailer",
     "transfer-encoding",
@@ -352,11 +354,6 @@ bool HttpUtil::IsSafeHeader(base::StringPiece name, base::StringPiece value) {
   for (const char* field : kForbiddenHeaderFields) {
     if (base::EqualsCaseInsensitiveASCII(name, field))
       return false;
-  }
-
-  if (base::FeatureList::IsEnabled(features::kBlockSetCookieHeader) &&
-      base::EqualsCaseInsensitiveASCII(name, "set-cookie")) {
-    return false;
   }
 
   if (base::FeatureList::IsEnabled(features::kBlockNewForbiddenHeaders)) {

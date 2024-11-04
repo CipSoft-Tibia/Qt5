@@ -13,6 +13,7 @@
 #include "base/allocator/partition_allocator/partition_alloc_base/compiler_specific.h"
 #include "base/allocator/partition_allocator/partition_alloc_base/component_export.h"
 #include "base/allocator/partition_allocator/partition_alloc_base/debug/debugging_buildflags.h"
+#include "base/allocator/partition_allocator/partition_alloc_base/thread_annotations.h"
 #include "base/allocator/partition_allocator/partition_alloc_config.h"
 
 namespace partition_alloc {
@@ -34,52 +35,28 @@ static_assert(kAlignment <= 16,
               "PartitionAlloc doesn't support a fundamental alignment larger "
               "than 16 bytes.");
 
-constexpr bool ThreadSafe = true;
-
-template <bool thread_safe>
 struct SlotSpanMetadata;
-
-#if (BUILDFLAG(PA_DCHECK_IS_ON) ||                    \
-     BUILDFLAG(ENABLE_BACKUP_REF_PTR_SLOW_CHECKS)) && \
-    BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT)
-PA_COMPONENT_EXPORT(PARTITION_ALLOC)
-void CheckThatSlotOffsetIsZero(uintptr_t address);
-#endif
+class PA_LOCKABLE Lock;
 
 // This type trait verifies a type can be used as a pointer offset.
 //
 // We support pointer offsets in signed (ptrdiff_t) or unsigned (size_t) values.
 // Smaller types are also allowed.
 template <typename Z>
-static constexpr bool offset_type =
+static constexpr bool is_offset_type =
     std::is_integral_v<Z> && sizeof(Z) <= sizeof(ptrdiff_t);
-
-template <typename Z, typename = std::enable_if_t<offset_type<Z>, void>>
-struct PtrDelta {
-  Z delta_in_bytes;
-#if PA_CONFIG(USE_OOB_POISON)
-  // Size of the element type referenced by the pointer
-  size_t type_size;
-#endif
-
-  constexpr PtrDelta(Z delta_in_bytes, size_t type_size)
-      : delta_in_bytes(delta_in_bytes)
-#if PA_CONFIG(USE_OOB_POISON)
-        ,
-        type_size(type_size)
-#endif
-  {
-  }
-};
 
 }  // namespace internal
 
 class PartitionStatsDumper;
 
-template <bool thread_safe = internal::ThreadSafe>
 struct PartitionRoot;
 
-using ThreadSafePartitionRoot = PartitionRoot<internal::ThreadSafe>;
+namespace internal {
+// Declare PartitionRootLock() for thread analysis. Its implementation
+// is defined in partition_root.h.
+Lock& PartitionRootLock(PartitionRoot*);
+}  // namespace internal
 
 }  // namespace partition_alloc
 

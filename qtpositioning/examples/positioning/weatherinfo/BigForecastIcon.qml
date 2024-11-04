@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import QtQuick
+import QtQuick.Effects
 
 Item {
     id: current
@@ -12,34 +13,52 @@ Item {
     property real smallSide: (current.width < current.height ? current.width : current.height)
 
     Text {
+        id: text1
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
         text: current.topText
-        font.pointSize: 28
-        anchors {
-            top: current.top
-            left: current.left
-            topMargin: 5
-            leftMargin: 5
-        }
+        font.pixelSize: 64
+        color: "white"
+    }
+
+    MultiEffect {
+        source: text1
+        anchors.fill: text1
+        shadowEnabled: true
+        shadowBlur: 0.5
+        shadowHorizontalOffset: 0
+        shadowVerticalOffset: 2
+        shadowOpacity: 0.6
     }
 
     WeatherIcon {
+        id: img
+        anchors.top: text1.bottom
+        anchors.topMargin: 5
+        anchors.horizontalCenter: parent.horizontalCenter
         weatherIcon: current.weatherIcon
-        anchors.centerIn: parent
-        anchors.verticalCenterOffset: -15
-        width: current.smallSide
-        height: current.smallSide
+        width: current.smallSide * 0.5
+        height: current.smallSide * 0.5
     }
 
     Text {
+        id: text2
+        anchors.top: img.bottom
+        anchors.topMargin: 5
+        anchors.horizontalCenter: parent.horizontalCenter
         text: current.bottomText
-        font.pointSize: 23
-        wrapMode: Text.WordWrap
-        width: parent.width
-        horizontalAlignment: Text.AlignRight
-        anchors {
-            bottom: current.bottom
-            right: current.right
-            rightMargin: 5
-        }
+        font.pixelSize: 32
+        horizontalAlignment: Text.AlignHCenter
+        color: "white"
+    }
+
+    MultiEffect {
+        source: text2
+        anchors.fill: text2
+        shadowEnabled: true
+        shadowBlur: 0.5
+        shadowHorizontalOffset: 0
+        shadowVerticalOffset: 2
+        shadowOpacity: 0.6
     }
 }

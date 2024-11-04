@@ -96,9 +96,9 @@ UI.ViewManager.registerViewExtension({
 
 UI.ActionRegistration.registerActionExtension({
   actionId: 'live-heap-profile.toggle-recording',
-  iconClass: UI.ActionRegistration.IconClass.LARGEICON_START_RECORDING,
+  iconClass: UI.ActionRegistration.IconClass.START_RECORDING,
   toggleable: true,
-  toggledIconClass: UI.ActionRegistration.IconClass.LARGEICON_STOP_RECORDING,
+  toggledIconClass: UI.ActionRegistration.IconClass.STOP_RECORDING,
   toggleWithRedColor: true,
   async loadActionDelegate() {
     const Profiler = await loadProfilerModule();
@@ -120,7 +120,7 @@ UI.ActionRegistration.registerActionExtension({
 
 UI.ActionRegistration.registerActionExtension({
   actionId: 'live-heap-profile.start-with-reload',
-  iconClass: UI.ActionRegistration.IconClass.LARGEICON_REFRESH,
+  iconClass: UI.ActionRegistration.IconClass.REFRESH,
   async loadActionDelegate() {
     const Profiler = await loadProfilerModule();
     return Profiler.LiveHeapProfileView.ActionDelegate.instance();
@@ -133,10 +133,10 @@ UI.ActionRegistration.registerActionExtension({
 UI.ActionRegistration.registerActionExtension({
   actionId: 'profiler.heap-toggle-recording',
   category: UI.ActionRegistration.ActionCategory.MEMORY,
-  iconClass: UI.ActionRegistration.IconClass.LARGEICON_START_RECORDING,
+  iconClass: UI.ActionRegistration.IconClass.START_RECORDING,
   title: i18nLazyString(UIStrings.startStopRecording),
   toggleable: true,
-  toggledIconClass: UI.ActionRegistration.IconClass.LARGEICON_STOP_RECORDING,
+  toggledIconClass: UI.ActionRegistration.IconClass.STOP_RECORDING,
   toggleWithRedColor: true,
   contextTypes() {
     return maybeRetrieveContextTypes(Profiler => [Profiler.HeapProfilerPanel.HeapProfilerPanel]);

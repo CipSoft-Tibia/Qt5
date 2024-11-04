@@ -1,5 +1,5 @@
 # Copyright (C) 2023 The Qt Company Ltd.
-# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+# SPDX-License-Identifier: BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.16)
 
@@ -12,7 +12,7 @@ project(QtGraphs
 )
 
 find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals)
-find_package(Qt6 ${PROJECT_VERSION} CONFIG OPTIONAL_COMPONENTS Core Quick Gui Widgets QuickTest QuickWidgets Test Quick3D)
+find_package(Qt6 ${PROJECT_VERSION} CONFIG OPTIONAL_COMPONENTS Core Quick Gui Widgets QuickTest QuickWidgets Test Quick3D QuickShapesPrivate)
 
 macro(assertTargets)
     foreach(qtTarget IN ITEMS ${ARGN})
@@ -23,6 +23,6 @@ macro(assertTargets)
     endforeach()
 endmacro()
 
-assertTargets(Gui Widgets Quick QuickTest QuickWidgets Test Quick3D)
+assertTargets(Gui Widgets Quick QuickTest QuickWidgets Test)
 
 qt_build_repo()

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,13 +19,13 @@
 #include "gtest/gtest.h"
 #include "json/writer.h"  // Included to teach gtest how to pretty-print.
 #include "platform/api/time.h"
+#include "platform/base/span.h"
 #include "platform/test/fake_task_runner.h"
 #include "platform/test/paths.h"
 #include "testing/util/read_file.h"
 #include "util/json/json_serialization.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 using ::cast::channel::CastMessage;
@@ -55,9 +55,8 @@ class TestCredentialsProvider final
         dir + "/device_chain.pem", dir + "/device_tls.pem");
   }
 
-  absl::Span<const uint8_t> GetCurrentTlsCertAsDer() final {
-    return absl::Span<uint8_t>(creds_.tls_cert_der);
-  }
+  ByteView GetCurrentTlsCertAsDer() final { return creds_.tls_cert_der; }
+
   const DeviceCredentials& GetCurrentDeviceCredentials() final {
     return creds_.device_creds;
   }
@@ -247,7 +246,7 @@ class ApplicationAgentTest : public ::testing::Test {
   FakeCastSocketPair socket_pair_;
   StrictMock<FakeApplication> idle_app_{"E8C28D3C", "Backdrop"};
   TestCredentialsProvider creds_;
-  ApplicationAgent agent_{&task_runner_, &creds_};
+  ApplicationAgent agent_{task_runner_, &creds_};
 };
 
 TEST_F(ApplicationAgentTest, JustConnectsWithoutDoingAnything) {}
@@ -656,5 +655,4 @@ TEST_F(ApplicationAgentTest, AllowsVirtualConnectionsToApp) {
 }
 
 }  // namespace
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

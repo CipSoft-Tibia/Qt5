@@ -73,6 +73,7 @@ devtools_module("network") {
     "../../models/issues_manager:bundle",
     "../../models/logs:bundle",
     "../../models/text_utils:bundle",
+    "../../models/trace:bundle",
     "../../models/workspace:bundle",
     "../../panels/elements:bundle",
     "../../panels/mobile_throttling:bundle",
@@ -138,5 +139,8 @@ devtools_entrypoint("meta") {
     "./forward:bundle",
   ]
 
-  visibility = [ "../../entrypoints/*" ]
+  visibility = [
+    "../../../test/unittests/front_end/panels/network/*",
+    "../../entrypoints/*",
+  ]
 }

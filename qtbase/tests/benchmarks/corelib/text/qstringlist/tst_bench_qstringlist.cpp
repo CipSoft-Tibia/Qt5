@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QStringList>
 #include <QTest>
@@ -7,6 +7,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+using namespace Qt::StringLiterals;
 
 class tst_QStringList: public QObject
 {
@@ -18,6 +20,11 @@ private slots:
 
     void removeDuplicates() const;
     void removeDuplicates_data() const;
+
+    void filter_data() const;
+    void filter() const;
+    void filter_stringMatcher_data() const { filter_data(); }
+    void filter_stringMatcher() const;
 
     void split_qlist_qbytearray() const;
     void split_qlist_qbytearray_data() const { return split_data(); }
@@ -128,6 +135,39 @@ void tst_QStringList::removeDuplicates_data() const
     QTest::addRow("long-dup-0.50") << (l + l);
     QTest::addRow("long-dup-0.66") << (l + l + l);
     QTest::addRow("long-dup-0.75") << (l + l + l + l);
+}
+
+void tst_QStringList::filter_data() const
+{
+    QTest::addColumn<QStringList>("list");
+    QTest::addColumn<QStringList>("expected");
+
+    for (int i : {10, 20, 30, 40, 50, 70, 80, 100, 300, 500, 700, 900, 10'000}) {
+        QStringList list = populateList(i, u"A rather long string to test QStringMatcher"_s);
+        list.append(u"Horse and cart from old"_s);
+        QTest::addRow("list%d", i) << list << QStringList(u"Horse and cart from old"_s);
+    }
+}
+
+void tst_QStringList::filter() const
+{
+    QFETCH(QStringList, list);
+    QFETCH(QStringList, expected);
+
+    QBENCHMARK {
+        QCOMPARE(list.filter(u"Horse and cart from old", Qt::CaseSensitive), expected);
+    }
+}
+
+void tst_QStringList::filter_stringMatcher() const
+{
+    QFETCH(QStringList, list);
+    QFETCH(QStringList, expected);
+
+    const QStringMatcher matcher(u"Horse and cart from old", Qt::CaseSensitive);
+    QBENCHMARK {
+        QCOMPARE(list.filter(matcher), expected);
+    }
 }
 
 void tst_QStringList::split_data() const

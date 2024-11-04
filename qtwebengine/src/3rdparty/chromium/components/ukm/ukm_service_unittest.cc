@@ -4,7 +4,6 @@
 
 #include "components/ukm/ukm_service.h"
 
-#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -17,12 +16,16 @@
 #include "base/hash/hash.h"
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/metrics_hashes.h"
+#include "base/ranges/algorithm.h"
+#include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
 #include "base/test/test_simple_task_runner.h"
+#include "base/test/to_vector.h"
 #include "base/threading/platform_thread.h"
 #include "base/time/time.h"
 #include "components/metrics/cloned_install_detector.h"
@@ -36,14 +39,19 @@
 #include "components/metrics/unsent_log_store.h"
 #include "components/prefs/testing_pref_service.h"
 #include "components/ukm/observers/ukm_consent_state_observer.h"
+#include "components/ukm/test_ukm_recorder.h"
 #include "components/ukm/ukm_entry_filter.h"
 #include "components/ukm/ukm_pref_names.h"
 #include "components/ukm/ukm_recorder_impl.h"
+#include "components/ukm/ukm_recorder_observer.h"
 #include "components/ukm/unsent_log_store_metrics_impl.h"
+#include "services/metrics/public/cpp/mojo_ukm_recorder.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
 #include "services/metrics/public/cpp/ukm_entry_builder.h"
+#include "services/metrics/public/cpp/ukm_recorder.h"
 #include "services/metrics/public/cpp/ukm_source.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
+#include "services/metrics/ukm_recorder_factory_impl.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/metrics_proto/ukm/report.pb.h"
@@ -136,8 +144,10 @@ Report GetPersistedReport(TestingPrefServiceSimple& prefs) {
   metrics::UnsentLogStore result_unsent_log_store(
       std::make_unique<UnsentLogStoreMetricsImpl>(), &prefs,
       prefs::kUkmUnsentLogStore, /*metadata_pref_name=*/nullptr,
-      /*min_log_count=*/3, /*min_log_bytes=*/1000,
-      /*max_log_size=*/0,
+      // Set to 3 so logs are not dropped in the test.
+      metrics::UnsentLogStore::UnsentLogStoreLimits{
+          .min_log_count = 3,
+      },
       /*signing_key=*/std::string(),
       /*logs_event_manager=*/nullptr);
 
@@ -259,6 +269,31 @@ class UkmServiceTest : public testing::Test,
       task_runner_current_default_handle_;
 };
 
+class UkmReduceAddEntryIpcTest : public testing::Test {
+ public:
+  UkmReduceAddEntryIpcTest() {
+    UkmService::RegisterPrefs(prefs_.registry());
+    ClearPrefs();
+    scoped_feature_list_.InitAndEnableFeature(ukm::kUkmReduceAddEntryIPC);
+  }
+
+  UkmReduceAddEntryIpcTest(const UkmReduceAddEntryIpcTest&) = delete;
+  UkmReduceAddEntryIpcTest& operator=(const UkmReduceAddEntryIpcTest&) = delete;
+
+  void ClearPrefs() {
+    prefs_.ClearPref(prefs::kUkmClientId);
+    prefs_.ClearPref(prefs::kUkmSessionId);
+    prefs_.ClearPref(prefs::kUkmUnsentLogStore);
+  }
+
+ protected:
+  TestingPrefServiceSimple prefs_;
+  metrics::TestMetricsServiceClient client_;
+  base::test::ScopedFeatureList scoped_feature_list_;
+
+ private:
+  base::test::TaskEnvironment task_environment;
+};
 }  // namespace
 
 INSTANTIATE_TEST_SUITE_P(All,
@@ -296,7 +331,7 @@ TEST_P(UkmServiceTest, EnableDisableSchedule) {
   EXPECT_FALSE(task_runner_->HasPendingTask());
   service.Initialize();
   EXPECT_FALSE(task_runner_->HasPendingTask());
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
   EXPECT_TRUE(task_runner_->HasPendingTask());
   service.DisableReporting();
@@ -311,7 +346,7 @@ TEST_P(UkmServiceTest, PersistAndPurge) {
   EXPECT_EQ(GetPersistedLogCount(), 0);
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   SourceId id = GetAllowlistedSourceId(0);
@@ -334,7 +369,7 @@ TEST_P(UkmServiceTest, Purge) {
   EXPECT_EQ(GetPersistedLogCount(), 0);
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   // Record some data
@@ -602,7 +637,7 @@ TEST_P(UkmServiceTest, SourceSerialization) {
   EXPECT_EQ(GetPersistedLogCount(), 0);
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   UkmSource::NavigationData navigation_data;
@@ -632,7 +667,7 @@ TEST_P(UkmServiceTest, AddEntryWithEmptyMetrics) {
   ASSERT_EQ(0, GetPersistedLogCount());
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   SourceId id = GetAllowlistedSourceId(0);
@@ -660,7 +695,7 @@ TEST_P(UkmServiceTest, MetricsProviderTest) {
   EXPECT_FALSE(provider->provide_system_profile_metrics_called());
 
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(MSBB));
+  service.UpdateRecording({MSBB});
   service.EnableReporting();
 
   service.Flush(metrics::MetricsLogsEventManager::CreateReason::kUnknown);
@@ -689,7 +724,7 @@ TEST_P(UkmServiceTest, SystemProfileTest) {
   service.Initialize();
 
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   SourceId id = GetAllowlistedSourceId(0);
@@ -733,7 +768,7 @@ TEST_P(UkmServiceTest, AddUserDemograhicsWhenAvailableAndFeatureEnabled) {
   EXPECT_EQ(0, number_of_invocations);
 
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   SourceId id = GetAllowlistedSourceId(0);
@@ -766,7 +801,7 @@ TEST_P(UkmServiceTest,
   service.Initialize();
 
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   SourceId id = GetAllowlistedSourceId(0);
@@ -797,7 +832,7 @@ TEST_P(UkmServiceTest, DontAddUserDemograhicsWhenFeatureDisabled) {
   service.Initialize();
 
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   SourceId id = GetAllowlistedSourceId(0);
@@ -819,7 +854,7 @@ TEST_P(UkmServiceTest, LogsRotation) {
   EXPECT_EQ(GetPersistedLogCount(), 0);
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   EXPECT_EQ(0, service.report_count());
@@ -860,7 +895,7 @@ TEST_P(UkmServiceTest, LogsUploadedOnlyWhenHavingSourcesOrEntries) {
   EXPECT_EQ(GetPersistedLogCount(), 0);
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   EXPECT_TRUE(task_runner_->HasPendingTask());
@@ -910,7 +945,7 @@ TEST_P(UkmServiceTest, RecordRedirectedUrl) {
   EXPECT_EQ(GetPersistedLogCount(), 0);
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   SourceId id = GetAllowlistedSourceId(0);
@@ -941,7 +976,7 @@ TEST_P(UkmServiceTest, RecordSessionId) {
   EXPECT_EQ(0, GetPersistedLogCount());
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   auto id = GetAllowlistedSourceId(0);
@@ -963,7 +998,7 @@ TEST_P(UkmServiceTest, SourceSize) {
   EXPECT_EQ(0, GetPersistedLogCount());
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   // Add a large number of sources, more than the hardcoded max.
@@ -987,7 +1022,7 @@ TEST_P(UkmServiceTest, PurgeMidUpload) {
   EXPECT_EQ(GetPersistedLogCount(), 0);
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   auto id = GetAllowlistedSourceId(0);
@@ -1010,7 +1045,7 @@ TEST_P(UkmServiceTest, SourceURLLength) {
   EXPECT_EQ(0, GetPersistedLogCount());
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   auto id = GetAllowlistedSourceId(0);
@@ -1039,7 +1074,7 @@ TEST_P(UkmServiceTest, UnreferencedNonAllowlistedSources) {
   EXPECT_EQ(0, GetPersistedLogCount());
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   // Record with Allowlisted ID to allowlist the URL.
@@ -1133,7 +1168,7 @@ TEST_P(UkmServiceTest, NonAllowlistedUrls) {
     ASSERT_EQ(GetPersistedLogCount(), 0);
     service.Initialize();
     task_runner_->RunUntilIdle();
-    service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+    service.UpdateRecording({UkmConsentType::MSBB});
     service.EnableReporting();
 
     // Record with allowlisted ID to allowlist the URL.
@@ -1212,8 +1247,7 @@ TEST_P(UkmServiceTest, AllowlistIdType) {
     EXPECT_EQ(0, GetPersistedLogCount());
     service.Initialize();
     task_runner_->RunUntilIdle();
-    service.UpdateRecording(
-        UkmConsentState(UkmConsentType::MSBB, UkmConsentType::APPS));
+    service.UpdateRecording({UkmConsentType::MSBB, UkmConsentType::APPS});
     service.EnableReporting();
 
     SourceId id = ConvertSourceIdToAllowlistedType(
@@ -1276,8 +1310,7 @@ TEST_P(UkmServiceTest, SupportedSchemes) {
   EXPECT_EQ(GetPersistedLogCount(), 0);
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(
-      UkmConsentState(UkmConsentType::MSBB, UkmConsentType::EXTENSIONS));
+  service.UpdateRecording({UkmConsentType::MSBB, UkmConsentType::EXTENSIONS});
   service.EnableReporting();
 
   int64_t id_counter = 1;
@@ -1333,7 +1366,7 @@ TEST_P(UkmServiceTest, SupportedSchemesNoExtensions) {
   EXPECT_EQ(GetPersistedLogCount(), 0);
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   int64_t id_counter = 1;
@@ -1370,7 +1403,7 @@ TEST_P(UkmServiceTest, SanitizeUrlAuthParams) {
   EXPECT_EQ(0, GetPersistedLogCount());
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   auto id = GetAllowlistedSourceId(0);
@@ -1411,8 +1444,7 @@ TEST_P(UkmServiceTest, SanitizeChromeUrlParams) {
     EXPECT_EQ(0, GetPersistedLogCount());
     service.Initialize();
     task_runner_->RunUntilIdle();
-    service.UpdateRecording(
-        UkmConsentState(UkmConsentType::MSBB, UkmConsentType::EXTENSIONS));
+    service.UpdateRecording({UkmConsentType::MSBB, UkmConsentType::EXTENSIONS});
     service.EnableReporting();
 
     auto id = GetAllowlistedSourceId(0);
@@ -1435,7 +1467,7 @@ TEST_P(UkmServiceTest, MarkSourceForDeletion) {
   EXPECT_EQ(0, GetPersistedLogCount());
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   // Seed some dummy sources.
@@ -1485,8 +1517,8 @@ TEST_P(UkmServiceTest, PurgeNonCarriedOverSources) {
   EXPECT_EQ(0, GetPersistedLogCount());
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(
-      UkmConsentType::MSBB, UkmConsentType::APPS, UkmConsentType::EXTENSIONS));
+  service.UpdateRecording(
+      {UkmConsentType::MSBB, UkmConsentType::APPS, UkmConsentType::EXTENSIONS});
   service.EnableReporting();
   service.SetIsWebstoreExtensionCallback(
       base::BindRepeating(&TestIsWebstoreExtension));
@@ -1551,7 +1583,7 @@ TEST_P(UkmServiceTest, IdentifiabilityMetricsDontExplode) {
   ASSERT_EQ(0, GetPersistedLogCount());
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   SourceId id = GetAllowlistedSourceId(0);
@@ -1587,7 +1619,7 @@ TEST_P(UkmServiceTest, FilterCanRemoveMetrics) {
   ASSERT_EQ(0, GetPersistedLogCount());
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   SourceId id = GetAllowlistedSourceId(0);
@@ -1624,14 +1656,9 @@ TEST_P(UkmServiceTest, FilterRejectsEvent) {
       if (entry->event_hash == kTestEvent1EntryNameHash)
         return true;
 
-      std::vector<uint64_t> filtered_metrics;
-      filtered_metrics.resize(entry->metrics.size());
-      std::transform(entry->metrics.begin(), entry->metrics.end(),
-                     filtered_metrics.begin(),
-                     [](decltype(entry->metrics)::value_type value) {
-                       return value.first;
-                     });
-      filtered_metric_hashes->replace(std::move(filtered_metrics));
+      filtered_metric_hashes->replace(base::test::ToVector(
+          entry->metrics, &decltype(entry->metrics)::value_type::first));
+
       // Note that the event still contains metrics.
       return false;
     }
@@ -1644,7 +1671,7 @@ TEST_P(UkmServiceTest, FilterRejectsEvent) {
   ASSERT_EQ(0, GetPersistedLogCount());
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+  service.UpdateRecording({UkmConsentType::MSBB});
   service.EnableReporting();
 
   SourceId id = GetAllowlistedSourceId(0);
@@ -1686,7 +1713,7 @@ TEST_P(UkmServiceTest, PruneUnseenFirst) {
     EXPECT_EQ(0, GetPersistedLogCount());
     service.Initialize();
     task_runner_->RunUntilIdle();
-    service.UpdateRecording(UkmConsentState(UkmConsentType::MSBB));
+    service.UpdateRecording({UkmConsentType::MSBB});
     service.EnableReporting();
 
     // Create 5 allowlisted ids. Allowlisted ids (like APP_ID) will not be
@@ -1797,8 +1824,7 @@ TEST_P(UkmServiceTest, PruneAppIDLast) {
     EXPECT_EQ(0, GetPersistedLogCount());
     service.Initialize();
     task_runner_->RunUntilIdle();
-    service.UpdateRecording(
-        UkmConsentState(UkmConsentType::MSBB, UkmConsentType::APPS));
+    service.UpdateRecording({UkmConsentType::MSBB, UkmConsentType::APPS});
     service.EnableReporting();
 
     // Create 5 sources. We set source 0 and 4 to be APP_ID Sources, where
@@ -1952,8 +1978,6 @@ class UkmServiceTestWithIndependentAppKM
     prefs_.ClearPref(prefs::kUkmClientId);
     prefs_.ClearPref(prefs::kUkmSessionId);
     prefs_.ClearPref(prefs::kUkmUnsentLogStore);
-
-    scoped_feature_list_.InitAndEnableFeature({kAppMetricsOnlyRelyOnAppSync});
   }
 
   int GetPersistedLogCount() { return ukm::GetPersistedLogCount(prefs_); }
@@ -1966,7 +1990,6 @@ class UkmServiceTestWithIndependentAppKM
   scoped_refptr<base::TestSimpleTaskRunner> task_runner_;
   base::SingleThreadTaskRunner::CurrentDefaultHandle
       task_runner_current_default_handle_;
-  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 }  // namespace
@@ -1990,7 +2013,7 @@ TEST_P(UkmServiceTestWithIndependentAppKM, RejectWhenNotConsented) {
   EXPECT_EQ(0, GetPersistedLogCount());
   service.Initialize();
   task_runner_->RunUntilIdle();
-  service.UpdateRecording(UkmConsentState(consent));
+  service.UpdateRecording({consent});
   service.EnableReporting();
 
   std::vector<SourceId> source_ids;
@@ -2047,8 +2070,6 @@ class UkmServiceTestWithIndependentAppKMFullConsent
     prefs_.ClearPref(prefs::kUkmClientId);
     prefs_.ClearPref(prefs::kUkmSessionId);
     prefs_.ClearPref(prefs::kUkmUnsentLogStore);
-
-    scoped_feature_list_.InitAndEnableFeature({kAppMetricsOnlyRelyOnAppSync});
   }
 
   int GetPersistedLogCount() { return ukm::GetPersistedLogCount(prefs_); }
@@ -2061,7 +2082,6 @@ class UkmServiceTestWithIndependentAppKMFullConsent
   scoped_refptr<base::TestSimpleTaskRunner> task_runner_;
   base::SingleThreadTaskRunner::CurrentDefaultHandle
       task_runner_current_default_handle_;
-  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 }  // namespace
@@ -2133,4 +2153,239 @@ INSTANTIATE_TEST_SUITE_P(
 
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
+class MockUkmRecorder : public ukm::UkmRecorder {
+ public:
+  MockUkmRecorder() = default;
+  ~MockUkmRecorder() override = default;
+
+  MOCK_METHOD(void, AddEntry, (mojom::UkmEntryPtr entry), (override));
+  MOCK_METHOD(void,
+              UpdateSourceURL,
+              (SourceId source_id, const GURL& url),
+              (override));
+
+  MOCK_METHOD(void,
+              UpdateAppURL,
+              (SourceId source_id, const GURL& url, const AppType app_type),
+              (override));
+
+  MOCK_METHOD(void,
+              RecordNavigation,
+              (SourceId source_id,
+               const UkmSource::NavigationData& navigation_data),
+              (override));
+
+  MOCK_METHOD(void,
+              MarkSourceForDeletion,
+              (ukm::SourceId source_id),
+              (override));
+};
+
+TEST_F(UkmReduceAddEntryIpcTest, RecordingEnabled) {
+  ASSERT_TRUE(base::FeatureList::IsEnabled(ukm::kUkmReduceAddEntryIPC));
+
+  base::RunLoop run_loop;
+  UkmService service(&prefs_, &client_,
+                     std::make_unique<MockDemographicMetricsProvider>());
+  // Initialize UkmService.
+  service.Initialize();
+
+  ukm::UkmEntryBuilder builder(ukm::NoURLSourceId(),
+                               "Event.ScrollUpdate.Touch");
+  builder.SetMetric("TimeToScrollUpdateSwapBegin", 17);
+
+  // Custom UkmRecorder to intercept messages to and from UkmService to clients.
+  MockUkmRecorder mock_recorder;
+  mojo::Remote<ukm::mojom::UkmRecorderFactory> factory;
+  metrics::UkmRecorderFactoryImpl::Create(&mock_recorder,
+                                          factory.BindNewPipeAndPassReceiver());
+
+  // MojoUkmRecorder (client).
+  auto mojo_recorder = MojoUkmRecorder::Create(*factory);
+
+  service.EnableRecording();
+  run_loop.RunUntilIdle();
+
+  // Since UkmObservers list is empty, the final decision regarding sending the
+  // AddEntry IPC from clients to UkmService depends on recording being
+  // enabled/disabled.
+  EXPECT_CALL(mock_recorder, AddEntry).Times(1);
+
+  builder.Record(mojo_recorder.get());
+  run_loop.RunUntilIdle();
+}
+
+TEST_F(UkmReduceAddEntryIpcTest, RecordingDisabled) {
+  ASSERT_TRUE(base::FeatureList::IsEnabled(ukm::kUkmReduceAddEntryIPC));
+
+  base::RunLoop run_loop;
+  ukm::UkmEntryBuilder builder(ukm::NoURLSourceId(),
+                               "Event.ScrollUpdate.Touch");
+  builder.SetMetric("TimeToScrollUpdateSwapBegin", 17);
+
+  UkmService service(&prefs_, &client_,
+                     std::make_unique<MockDemographicMetricsProvider>());
+  // Initialize UkmService.
+  service.Initialize();
+
+  // Custom UkmRecorder to intercept messages to and from UkmService to clients.
+  MockUkmRecorder mock_recorder;
+  mojo::Remote<ukm::mojom::UkmRecorderFactory> factory;
+  metrics::UkmRecorderFactoryImpl::Create(&mock_recorder,
+                                          factory.BindNewPipeAndPassReceiver());
+
+  // MojoUkmRecorder (client).
+  auto mojo_recorder = MojoUkmRecorder::Create(*factory);
+
+  service.DisableRecording();
+  run_loop.RunUntilIdle();
+
+  // Since UkmObservers list is empty, the final decision regarding sending the
+  // AddEntry IPC from clients to UkmService depends on recording being
+  // enabled/disabled.
+  EXPECT_CALL(mock_recorder, AddEntry).Times(0);
+
+  builder.Record(mojo_recorder.get());
+  run_loop.RunUntilIdle();
+}
+
+TEST_F(UkmReduceAddEntryIpcTest, AddRemoveUkmObserver) {
+  ASSERT_TRUE(base::FeatureList::IsEnabled(ukm::kUkmReduceAddEntryIPC));
+
+  base::RunLoop run_loop;
+  UkmService service(&prefs_, &client_,
+                     std::make_unique<MockDemographicMetricsProvider>());
+  // Initialize UkmService.
+  service.Initialize();
+
+  // Custom UkmRecorder to intercept messages to and from UkmService to clients.
+  MockUkmRecorder mock_recorder;
+  mojo::Remote<ukm::mojom::UkmRecorderFactory> factory;
+  metrics::UkmRecorderFactoryImpl::Create(&mock_recorder,
+                                          factory.BindNewPipeAndPassReceiver());
+
+  // MojoUkmRecorder (client).
+  auto mojo_recorder = MojoUkmRecorder::Create(*factory);
+
+  // Recording Disabled.
+  service.DisableRecording();
+  run_loop.RunUntilIdle();
+
+  mojom::UkmEntryPtr observed_ukm_entry;
+
+  // UkmRecorderObservers with different event hashes. If an entry is seen at
+  // client where event_hash matches with one from observers, we need to send
+  // AddEntry IPC even if recording is disabled.
+  UkmRecorderObserver obs1, obs2;
+  base::flat_set<uint64_t> events1 = {
+      base::HashMetricName("Event.ScrollUpdate.Touch")};
+  service.AddUkmRecorderObserver(events1, &obs1);
+  base::flat_set<uint64_t> events2 = {
+      base::HashMetricName("Event.ScrollBegin.Wheel")};
+  service.AddUkmRecorderObserver(events2, &obs2);
+  run_loop.RunUntilIdle();
+
+  {
+    // This event is being observed by UkmRecorderObserver obs1. Hence, even
+    // when UKM recording has been disabled, the event needs to be sent to
+    // browser process.
+    ukm::UkmEntryBuilder builder(ukm::NoURLSourceId(),
+                                 "Event.ScrollUpdate.Touch");
+    builder.SetMetric("TimeToScrollUpdateSwapBegin", 17);
+    builder.SetMetric("IsMainThread", 21);
+    auto expected_ukm_entry = builder.GetEntryForTesting();
+    // We expect this event will not be filtered at client,i.e., MojoUkmRecorder
+    // and the mock method AddEntry would be called once.
+    EXPECT_CALL(mock_recorder, AddEntry)
+        .Times(1)
+        .WillOnce(testing::Invoke([&](mojom::UkmEntryPtr entry) {
+          observed_ukm_entry = std::move(entry);
+        }));
+
+    builder.Record(mojo_recorder.get());
+    run_loop.RunUntilIdle();
+    // Expects the UkmEntry seen at both sent(MojoUkmRecorder) and
+    // receive(MockUkmRecorder) to be same.
+    EXPECT_EQ(expected_ukm_entry, observed_ukm_entry);
+  }
+  {
+    // This event is not being observed by any of UkmRecorderObservers and since
+    // UKM recording has been disabled, the event will not be sent to browser
+    // process.
+    ukm::UkmEntryBuilder builder2(ukm::NoURLSourceId(), "Download.Interrupted");
+    builder2.SetMetric("BytesWasted", 10);
+    // Expect 0 calls to MockUkmRecorer::AddEntry since the UKM event will be
+    // filtered out at the client.
+    EXPECT_CALL(mock_recorder, AddEntry).Times(0);
+    builder2.Record(mojo_recorder.get());
+    run_loop.RunUntilIdle();
+  }
+  {
+    // This event is being observed by UkmRecorderObserver obs2. Hence, even
+    // when UKM recording has been disabled, the event needs to be sent to
+    // browser process.
+    ukm::UkmEntryBuilder builder3(ukm::NoURLSourceId(),
+                                  "Event.ScrollBegin.Wheel");
+    builder3.SetMetric("TimeToScrollUpdateSwapBegin", 25);
+    auto expected_ukm_entry = builder3.GetEntryForTesting();
+
+    EXPECT_CALL(mock_recorder, AddEntry)
+        .Times(1)
+        .WillOnce(testing::Invoke([&](mojom::UkmEntryPtr entry) {
+          observed_ukm_entry = std::move(entry);
+        }));
+    builder3.Record(mojo_recorder.get());
+    run_loop.RunUntilIdle();
+    EXPECT_EQ(expected_ukm_entry, observed_ukm_entry);
+  }
+  // Remove UkmRecorderObserver obs1.
+  service.RemoveUkmRecorderObserver(&obs1);
+  run_loop.RunUntilIdle();
+  {
+    // This event is not being observed by any of the UkmRecorderObservers now,
+    // and since UKM recording is disabled, it will be filtered out.
+    ukm::UkmEntryBuilder builder4(ukm::NoURLSourceId(),
+                                  "Event.ScrollUpdate.Touch");
+    builder4.SetMetric("TimeToScrollUpdateSwapBegin", 17);
+    // Expect 0 calls to MockUkmRecorer::AddEntry since the UKM event will be
+    // filtered out at the client, because of UKM recording being disabled.
+    EXPECT_CALL(mock_recorder, AddEntry).Times(0);
+    builder4.Record(mojo_recorder.get());
+    run_loop.RunUntilIdle();
+  }
+}
+
+TEST_F(UkmReduceAddEntryIpcTest, MultipleDelegates) {
+  ASSERT_TRUE(base::FeatureList::IsEnabled(ukm::kUkmReduceAddEntryIPC));
+
+  base::RunLoop run_loop;
+  ukm::UkmEntryBuilder builder(ukm::NoURLSourceId(),
+                               "Event.ScrollUpdate.Touch");
+  builder.SetMetric("TimeToScrollUpdateSwapBegin", 17);
+
+  UkmService service(&prefs_, &client_,
+                     std::make_unique<MockDemographicMetricsProvider>());
+  // Initialize UkmService.
+  service.Initialize();
+  MockUkmRecorder mock_recorder;
+  mojo::Remote<ukm::mojom::UkmRecorderFactory> factory;
+  metrics::UkmRecorderFactoryImpl::Create(&mock_recorder,
+                                          factory.BindNewPipeAndPassReceiver());
+
+  // MojoUkmRecorder (client).
+  auto mojo_recorder = MojoUkmRecorder::Create(*factory);
+
+  // Disabled recording but having multiple delegates will default clients
+  // sending all AddEntry IPCs to the browser.
+  service.DisableRecording();
+  run_loop.RunUntilIdle();
+
+  ukm::TestAutoSetUkmRecorder test_recorder;
+  run_loop.RunUntilIdle();
+
+  EXPECT_CALL(mock_recorder, AddEntry).Times(1);
+
+  builder.Record(mojo_recorder.get());
+  run_loop.RunUntilIdle();
+}
 }  // namespace ukm

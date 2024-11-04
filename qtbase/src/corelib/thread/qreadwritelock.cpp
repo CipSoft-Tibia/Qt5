@@ -8,7 +8,6 @@
 
 #include "qthread.h"
 #include "qreadwritelock_p.h"
-#include "qelapsedtimer.h"
 #include "private/qfreelist_p.h"
 #include "private/qlocking_p.h"
 
@@ -411,7 +410,7 @@ void QReadWriteLock::unlock()
     }
 }
 
-bool QReadWriteLockPrivate::lockForRead(std::unique_lock<QtPrivate::mutex> &lock, QDeadlineTimer timeout)
+bool QReadWriteLockPrivate::lockForRead(std::unique_lock<std::mutex> &lock, QDeadlineTimer timeout)
 {
     Q_ASSERT(!mutex.try_lock()); // mutex must be locked when entering this function
 
@@ -432,7 +431,7 @@ bool QReadWriteLockPrivate::lockForRead(std::unique_lock<QtPrivate::mutex> &lock
     return true;
 }
 
-bool QReadWriteLockPrivate::lockForWrite(std::unique_lock<QtPrivate::mutex> &lock, QDeadlineTimer timeout)
+bool QReadWriteLockPrivate::lockForWrite(std::unique_lock<std::mutex> &lock, QDeadlineTimer timeout)
 {
     Q_ASSERT(!mutex.try_lock()); // mutex must be locked when entering this function
 

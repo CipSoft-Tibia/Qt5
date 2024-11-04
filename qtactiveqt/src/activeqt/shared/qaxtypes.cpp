@@ -212,6 +212,19 @@ static QByteArray msgOutParameterNotSupported(const QByteArray &type)
         } \
     }
 
+static qsizetype columnCount2D(const QVariantList &list)
+{
+    if (!list.isEmpty()) {
+        const auto &firstElement = list.at(0);
+        const auto type = firstElement.typeId();
+        if (type != QMetaType::QString && type != QMetaType::QByteArray
+            && firstElement.canConvert<QVariantList>()) {
+            return firstElement.toList().size();
+        }
+    }
+    return 0;
+}
+
 bool QVariantToVARIANT(const QVariant &var, VARIANT &arg, const QByteArray &typeName, bool out)
 {
     QVariant qvar = var;
@@ -429,36 +442,28 @@ bool QVariantToVARIANT(const QVariant &var, VARIANT &arg, const QByteArray &type
                 break;
             }
             SAFEARRAY *array = nullptr;
-            bool is2D = false;
             // If the first element in the array is a list the whole list is
             // treated as a 2D array. The column count is taken from the 1st element.
-            if (count) {
-                QVariantList col = list.at(0).toList();
-                qsizetype maxColumns = col.size();
-                if (maxColumns) {
-                    is2D = true;
-                    SAFEARRAYBOUND rgsabound[2] = { {0, 0}, {0, 0} };
-                    rgsabound[0].cElements = count;
-                    rgsabound[1].cElements = maxColumns;
-                    array = SafeArrayCreate(VT_VARIANT, 2, rgsabound);
-                    LONG rgIndices[2];
-                    for (LONG i = 0; i < count; ++i) {
-                        rgIndices[0] = i;
-                        QVariantList columns = list.at(i).toList();
-                        qsizetype columnCount = qMin(maxColumns, columns.size());
-                        for (LONG j = 0;  j < columnCount; ++j) {
-                            const QVariant &elem = columns.at(j);
-                            VariantInit(&variant);
-                            QVariantToVARIANT(elem, variant, elem.typeName());
-                            rgIndices[1] = j;
-                            SafeArrayPutElement(array, rgIndices, pElement);
-                            clearVARIANT(&variant);
-                        }
+            if (qsizetype maxColumns = columnCount2D(list)) {
+                SAFEARRAYBOUND rgsabound[2] = { {0, 0}, {0, 0} };
+                rgsabound[0].cElements = count;
+                rgsabound[1].cElements = maxColumns;
+                array = SafeArrayCreate(VT_VARIANT, 2, rgsabound);
+                LONG rgIndices[2];
+                for (LONG i = 0; i < count; ++i) {
+                    rgIndices[0] = i;
+                    QVariantList columns = list.at(i).toList();
+                    qsizetype columnCount = qMin(maxColumns, columns.size());
+                    for (LONG j = 0;  j < columnCount; ++j) {
+                        const QVariant &elem = columns.at(j);
+                        VariantInit(&variant);
+                        QVariantToVARIANT(elem, variant, elem.typeName());
+                        rgIndices[1] = j;
+                        SafeArrayPutElement(array, rgIndices, pElement);
+                        clearVARIANT(&variant);
                     }
-
                 }
-            }
-            if (!is2D) {
+            } else {
                 array = SafeArrayCreateVector(vt, 0, count);
                 for (LONG index = 0; index < count; ++index) {
                     QVariant elem = list.at(index);

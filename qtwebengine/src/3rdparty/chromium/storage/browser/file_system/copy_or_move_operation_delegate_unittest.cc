@@ -113,7 +113,7 @@ class TestValidatorFactory : public CopyOrMoveFileValidatorFactory {
                                   ResultCallback result_callback) override {
       base::File::Error result = write_result_;
       std::string unsafe = dest_platform_path.BaseName().AsUTF8Unsafe();
-      if (unsafe.find(reject_string_) != std::string::npos) {
+      if (base::Contains(unsafe, reject_string_)) {
         result = base::File::FILE_ERROR_SECURITY;
       }
       // Post the result since a real validator must do work asynchronously.
@@ -292,8 +292,8 @@ class CopyOrMoveOperationTestHelper {
 
   ~CopyOrMoveOperationTestHelper() {
     file_system_context_ = nullptr;
-    quota_manager_ = nullptr;
     quota_manager_proxy_ = nullptr;
+    quota_manager_ = nullptr;
     task_environment_.RunUntilIdle();
   }
 
@@ -653,8 +653,8 @@ class CopyOrMoveOperationTestHelper {
   base::test::TaskEnvironment task_environment_;
 
   scoped_refptr<FileSystemContext> file_system_context_;
-  scoped_refptr<MockQuotaManagerProxy> quota_manager_proxy_;
   scoped_refptr<MockQuotaManager> quota_manager_;
+  scoped_refptr<MockQuotaManagerProxy> quota_manager_proxy_;
 };
 
 }  // namespace
@@ -1472,9 +1472,9 @@ TEST(CopyOrMoveOperationDelegateTest, StopRecursionOnCopyError) {
 }
 
 TEST(CopyOrMoveOperationDelegateTest, RemoveDestFileOnCopyError) {
-  FileSystemOperation::CopyOrMoveOptionSet options(
+  FileSystemOperation::CopyOrMoveOptionSet options = {
       storage::FileSystemOperation::CopyOrMoveOption::
-          kRemovePartiallyCopiedFilesOnError);
+          kRemovePartiallyCopiedFilesOnError};
   CopyOrMoveOperationDelegateTestHelper helper(
       "http://foo", kFileSystemTypePersistent, kFileSystemTypePersistent,
       options);
@@ -1512,9 +1512,9 @@ TEST(CopyOrMoveOperationDelegateTest, RemoveDestFileOnCopyError) {
 
 TEST(CopyOrMoveOperationDelegateTest,
      RemoveDestFileOnCrossFilesystemMoveError) {
-  FileSystemOperation::CopyOrMoveOptionSet options(
+  FileSystemOperation::CopyOrMoveOptionSet options = {
       storage::FileSystemOperation::CopyOrMoveOption::
-          kRemovePartiallyCopiedFilesOnError);
+          kRemovePartiallyCopiedFilesOnError};
   // Removing destination files on Move errors applies only to cross-filesystem
   // moves.
   CopyOrMoveOperationDelegateTestHelper helper(

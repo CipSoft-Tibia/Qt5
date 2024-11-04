@@ -16,7 +16,7 @@
 <translation id="2903070246402204397"><ph name="EXTENSION_NAME" /> (የቅጥያ መታወቂያ «<ph name="EXTENSION_ID" />») በአስተዳዳሪው ታግዷል። <ph name="ADMIN_INFO" /></translation>
 <translation id="2988488679308982380">ጥቅል መጫን አልተቻለም፦ «<ph name="ERROR_CODE" />»</translation>
 <translation id="3115238746683532089">ያልታወቀ ምርት <ph name="PRODUCT_ID" /> ከ<ph name="VENDOR_ID" /> ሻጭ (ተከታታይ ቁጥር <ph name="SERIAL_NUMBER" />)</translation>
-<translation id="3144135466825225871">የcrx ፋይል መተካት አልተቻለም። ፋይሉ ስራ ላይ እየዋለ ከሆነ ያረጋግጡ።</translation>
+<translation id="3144135466825225871">የcrx ፋይል መተካት አልተቻለም። ፋይሉ ሥራ ላይ እየዋለ ከሆነ ያረጋግጡ።</translation>
 <translation id="3163201441334626963">ያልታወቀ ምርት <ph name="PRODUCT_ID" /> ከ<ph name="VENDOR_ID" /> ሻጭ</translation>
 <translation id="3302709122321372472">ለይዘት ስክሪፕት ሲ ኤስ ኤስ «<ph name="RELATIVE_PATH" />» መጫን አልተቻለም።</translation>
 <translation id="3369521687965833290">ቅጥያ መበተን አይቻልም።  አንድ ቅጥያ ደህንነቱ በተጠበቀ መልኩ ለመበተን በአንጻፊ ፊደሉ የሚጀምርና መገጣጠሚያ፣ የማፈናጠጫ ነጥብ ወይም ተምሳሌታዊ መጠሪያ ያልያዘ ወደ የመገለጫ ማውጫዎ የሚወስድ ዱካ መኖር አለበት።  እንደዚህ ያሉ ዱካዎች ለመገለጫዎ የሉም።</translation>
@@ -31,9 +31,9 @@
 <translation id="471800408830181311">የግላዊ ቁልፍን ውጤት ማውጣት አልተሳካም።</translation>
 <translation id="4811956658694082538">የመገልገያ ሂደት ስለተጨናገፈ ጥቅሉን መጫን አልተቻለም። Chromeን እንደገና አስጀምረው እንደገና ይሞክሩት።</translation>
 <translation id="4988792151665380515">ህዝባዊ ቁልፍን መላክ አልተሳካም።</translation>
-<translation id="5026754133087629784">የድር እይታ፦ <ph name="WEBVIEW_TAG_NAME" /></translation>
+<translation id="5026754133087629784">የድር ዕይታ፦ <ph name="WEBVIEW_TAG_NAME" /></translation>
 <translation id="5098647635849512368">ለማሸግ ወደ አቃፊው የሚወስደው ትክክለኛ ዱካውን ማግኘት አልተቻለም።</translation>
-<translation id="5356315618422219272">የመተግበሪያ እይታ፦ <ph name="APPVIEW_TAG_NAME" /></translation>
+<translation id="5356315618422219272">የመተግበሪያ ዕይታ፦ <ph name="APPVIEW_TAG_NAME" /></translation>
 <translation id="5436430103864390185">ቅርጽ ያላቸው መስኮቶች አይደገፉም።</translation>
 <translation id="5456409301717116725">ይህ ቅጥያ የቁልፍ ፋይል «<ph name="KEY_PATH" />»ን ያካትታል። ይህንን ማድረግ ላይፈልጉ ይችላሉ።</translation>
 <translation id="5486326529110362464">ለግላዊ ቁልፍ የሚገባ እሴት መኖር አለበት።</translation>

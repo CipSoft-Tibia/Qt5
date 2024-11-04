@@ -570,14 +570,17 @@ struct CpuVirtualizationInfo {
 
 // Information related to a particular logical CPU.
 //
-// NextMinVersion: 1, NextIndex: 7
+// NextMinVersion: 2, NextIndex: 8
 [Stable]
 struct LogicalCpuInfo {
-  // The max CPU clock speed in kHz.
+  // The max CPU clock speed in kHz. The value will be 0 on devices that don't
+  // support CPU frequency scaling.
   uint32 max_clock_speed_khz@0;
-  // Maximum frequency the CPU is allowed to run at, by policy.
+  // Maximum frequency the CPU is allowed to run at, by policy. The value will
+  // be 0 on devices that don't support CPU frequency scaling.
   uint32 scaling_max_frequency_khz@1;
-  // Current frequency the CPU is running at.
+  // Current frequency the CPU is running at. The value will be 0 on devices
+  // that don't support CPU frequency scaling.
   uint32 scaling_current_frequency_khz@2;
   // Time spent in user mode since last boot. USER_HZ can be converted to
   // seconds with the conversion factor given by sysconf(_SC_CLK_TCK).
@@ -590,6 +593,8 @@ struct LogicalCpuInfo {
   uint64 idle_time_user_hz@5;
   // Information about the logical CPU's time in various C-states.
   array<CpuCStateInfo> c_states@6;
+  // The core number this logical CPU corresponds to.
+  [MinVersion=1] uint32 core_id@7;
 };
 
 // Information about a CPU's C-states.
@@ -752,9 +757,9 @@ union StatefulPartitionResult {
 // NextMinVersion: 1, NextIndex: 4
 [Stable]
 struct StatefulPartitionInfo {
-  // Available space for user data storage in the device in bytes.
+  // Available space in bytes for stateful partition.
   uint64 available_space@0;
-  // Total space for user data storage in the device in bytes.
+  // Total space in bytes for stateful partition.
   uint64 total_space@1;
   // File system on stateful partition. e.g. ext4.
   string filesystem@2;
@@ -875,7 +880,7 @@ union SystemResult {
 
 // System Information.
 //
-// NextMinVersion: 1, NextIndex: 3
+// NextMinVersion: 2, NextIndex: 4
 [Stable]
 struct SystemInfo {
   // The info related to the OS.
@@ -885,6 +890,8 @@ struct SystemInfo {
   // The info from DMI (x86 only). The info from here should only be used for
   // logging and debugging.
   DmiInfo? dmi_info@2;
+  // The info related to Intel Platform Service Record (PSR).
+  [MinVersion=1] PsrInfo? psr_info@3;
 };
 
 // The OS information.
@@ -1014,6 +1021,101 @@ struct DmiInfo {
   string? product_version@9;
   // The system vendor name.
   string? sys_vendor@10;
+};
+
+// Platform Service Record (PSR) event.
+//
+// NextMinVersion: 1: NextIndex 3
+[Stable]
+struct PsrEvent {
+  // PSR event types.
+  //
+  // NextMinVersion: 2, NextIndex: 11
+  [Stable, Extensible]
+  enum EventType {
+    // An enum value not defined in this version of the enum definition.
+    [Default] kUnmappedEnumField = 0,
+    // Log has started.
+    kLogStart = 1,
+    // Log has ended.
+    kLogEnd = 2,
+    // CSME recovery
+    kCsmeRecovery = 3,
+    // Protected real-time counter failure.
+    kPrtcFailure = 4,
+    // Secure Version Number increased.
+    kSvnIncrease = 5,
+    // Missing event file.
+    [MinVersion=1] kMissing = 6,
+    // Invalid event.
+    [MinVersion=1] kInvalid = 7,
+    // Entered into CSME DAM state.
+    [MinVersion=1] kCsmeDamState = 8,
+    // CSME Unlocked state for debugging.
+    [MinVersion=1] kCsmeUnlockState = 9,
+    // FW Version Changed.
+    [MinVersion=1] kFwVersionChanged = 10,
+  };
+  EventType type@0;
+
+  // Time of occurrence.
+  uint32 time@1;
+  // Event data.
+  uint32 data@2;
+};
+
+// Platform Service Record (PSR) information.
+//
+// NextMinVersion: 2, NextIndex: 16
+[Stable]
+struct PsrInfo {
+  // The PSR log state.
+  //
+  // NextMinVersion: 1, NextIndex: 4
+  [Stable, Extensible]
+  enum LogState {
+    // An enum value not defined in this version of the enum definition.
+    [Default] kUnmappedEnumField = 0,
+    // PSR logging was not started yet.
+    kNotStarted = 1,
+    // PSR logging was started and currently running.
+    kStarted = 2,
+    // PSR logging was stopped due to some critical event.
+    kStopped = 3,
+  };
+  LogState log_state@0;
+
+  // PSR UUID.
+  string uuid@1;
+  // Platform UPID.
+  string upid@2;
+  // Logging start date in UNIX time.
+  uint32 log_start_date@3;
+  // OEM's name, ex: Panasonic.
+  string oem_name@4;
+  // OEM's make, ex: Toughbook.
+  string oem_make@5;
+  // OEM's model, ex: 55.
+  string oem_model@6;
+  // Country of device origin.
+  string manufacture_country@7;
+  // Additional OEM data.
+  string oem_data@8;
+  // All the counters will never be reset unless the FW is reflashed.
+  // Cumulative number of seconds at S0.
+  uint32 uptime_seconds@9;
+  // Cumulative number of S0->S5.
+  uint32 s5_counter@10;
+  // Cumulative number of S0->S4.
+  uint32 s4_counter@11;
+  // Cumulative number of S0->S3.
+  uint32 s3_counter@12;
+  // Cumulative number of warm resets (soft reboots).
+  uint32 warm_reset_counter@13;
+  // First 100 PSR events that have been saved.
+  array<PsrEvent> events@14;
+  // Is PSR supported.
+  [MinVersion=1] bool is_supported@15;
 };
 
 // Network probe result. Can either be populated with the NetworkHealthSnapshot
@@ -1184,10 +1286,11 @@ union BootPerformanceResult {
 
 // Boot performance information.
 //
-// NextMinVersion: 2, NextIndex: 6
+// NextMinVersion: 3, NextIndex: 11
 [Stable]
 struct BootPerformanceInfo {
-  // Total time since power on to login screen prompt.
+  // Total time of [power on, boot up complete], a.k.a. boot up time.
+  // Boot up complete event is fired when login screen is shown.
   double boot_up_seconds@0;
   // The timestamp when power on.
   double boot_up_timestamp@1;
@@ -1201,6 +1304,16 @@ struct BootPerformanceInfo {
   string shutdown_reason@4;
   // TPM initialization time.
   [MinVersion=1] NullableDouble? tpm_initialization_seconds@5;
+  // Total time of [power on, jump to kernel], a.k.a. firmware time.
+  [MinVersion=2] double? power_on_to_kernel_seconds@6;
+  // Total time of [jump to kernel, pre start up], a.k.a. kernel time.
+  [MinVersion=2] double? kernel_to_pre_startup_seconds@7;
+  // Total time of [jump to kernel, post start up].
+  [MinVersion=2] double? kernel_to_post_startup_seconds@8;
+  // Total time of [start up, chrome exec], a.k.a. system time.
+  [MinVersion=2] double? startup_to_chrome_exec_seconds@9;
+  // Total time of [chrome exec, login screen prompt], a.k.a. chrome time.
+  [MinVersion=2] double? chrome_exec_to_login_seconds@10;
 };
 
 // Bus probe result. Can either be populated with the BusDevice or an error
@@ -1604,9 +1717,9 @@ union DisplayResult {
 [Stable]
 struct DisplayInfo {
   // Embedded display info.
-  EmbeddedDisplayInfo edp_info@0;
+  EmbeddedDisplayInfo embedded_display@0;
   // External display info.
-  [MinVersion=1] array<ExternalDisplayInfo>? dp_infos@1;
+  [MinVersion=1] array<ExternalDisplayInfo>? external_displays@1;
 };
 
 // NextMinVersion: 3, NextIndex: 15

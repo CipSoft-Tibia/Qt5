@@ -1,5 +1,5 @@
 // Copyright (C) 2023 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
@@ -27,8 +27,8 @@ void MainWindow::updateSampleText()
     for (int i = 0; i < ui->lwFeatures->count(); ++i) {
         QListWidgetItem *it = ui->lwFeatures->item(i);
         if (it->checkState() != Qt::PartiallyChecked) {
-            QByteArray ba = it->text().toLatin1();
-            font.setFeature(ba, !!it->checkState());
+            if (const auto maybeTag = QFont::Tag::fromString(it->text().toLatin1()))
+                font.setFeature(*maybeTag, !!it->checkState());
         }
     }
 

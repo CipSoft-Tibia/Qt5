@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,12 @@
 #define OSP_IMPL_QUIC_TESTING_FAKE_QUIC_CONNECTION_H_
 
 #include <map>
+#include <memory>
 #include <vector>
 
 #include "osp/impl/quic/quic_connection.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 class FakeQuicConnectionFactoryBridge;
 
@@ -74,7 +74,6 @@ class FakeQuicConnection final : public QuicConnection {
   std::map<uint64_t, FakeQuicStream*> streams_;
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_IMPL_QUIC_TESTING_FAKE_QUIC_CONNECTION_H_

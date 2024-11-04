@@ -213,6 +213,7 @@ void FDCT4x4_2D_LP(const int16_t *input, int16_t *output, int stride) {
   _mm_storeu_si128((__m128i *)(output + 2 * 4), in1);
 }
 
+#if CONFIG_INTERNAL_STATS
 void FDCT8x8_2D(const int16_t *input, tran_low_t *output, int stride) {
   int pass;
   // Constants
@@ -522,6 +523,7 @@ void FDCT8x8_2D(const int16_t *input, tran_low_t *output, int stride) {
     store_output(&in7, (output + 7 * 8));
   }
 }
+#endif  // CONFIG_INTERNAL_STATS
 
 #undef ADD_EPI16
 #undef SUB_EPI16

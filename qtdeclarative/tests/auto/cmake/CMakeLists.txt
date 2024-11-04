@@ -111,6 +111,20 @@ if(TARGET Qt::Qml)
         _qt_internal_test_expect_pass(qmlquery)
     endif()
     _qt_internal_test_expect_fail(test_internal_singleton)
+
+    # Make sure that we don't attempt to run binary when crosscompiling
+    if(NOT CMAKE_CROSSCOMPILING)
+        set(test_static_qml_module_extra_args BINARY test_static_qml_module)
+    else()
+        set(test_static_qml_module_extra_args "")
+    endif()
+    _qt_internal_test_expect_pass(test_static_qml_module ${test_static_qml_module_extra_args})
+    _qt_internal_test_expect_pass(test_javascript_files TESTNAME cmake_test_javascript_files)
+    set_tests_properties(cmake_test_javascript_files PROPERTIES
+        FAIL_REGULAR_EXPRESSION "(Good\.js|good\.js|Included\.js|Excluded\.js|Good\.mjs) is not an ECMAScript module"
+        PASS_REGULAR_EXPRESSION "Bad\.js is not an ECMAScript module"
+    )
+
 endif()
 
 if(TARGET Qt::Quick)
@@ -122,6 +136,12 @@ if(TARGET Qt::Quick)
                 BINARY cmake_test
             )
         endif()
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.19")
+            _qt_internal_test_expect_pass(test_generate_qmlls_ini BINARY tst_generate_qmlls_ini)
+        endif()
+        _qt_internal_test_expect_pass(
+                   test_link_qml_module_without_target
+            BINARY test_link_qml_module_without_target)
     endif()
     if(NOT QT6_IS_SHARED_LIBS_BUILD)
         _qt_internal_test_expect_pass(test_import_static_shapes_plugin_resources

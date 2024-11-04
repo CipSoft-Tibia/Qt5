@@ -55,8 +55,8 @@ both `libavcodec` and `libavcodec-dev`.
 For AV1 support, it is advised that most Linux users compile and install
 `libaom` from source, using the instructions at
 https://aomedia.googlesource.com/aom/ Older versions found in many package
-management systems have blocking performance issues, causing AV1 encoding to be
-completely unusable.
+management systems are not compatible with the Open Screen Library because of
+API compatibility and performance issues.
 
 To to enable AV1 support, also add the following to your GN args:
 
@@ -67,6 +67,9 @@ have_libaom=true
 Note that AV1 support is configured separately from the other standalone
 libraries and the `have_libaom` flag is not necessary to run the standalone
 demo.
+
+TODO(mfoltz): Describe how to set `libaom_lib_dirs` and `libaom_include_dirs`
+for your libaom install.
 
 ## Standalone Sender
 

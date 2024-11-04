@@ -6,6 +6,7 @@
 
 #include "base/test/scoped_feature_list.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_testing.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
 #include "third_party/blink/renderer/core/testing/sim/sim_test.h"
@@ -13,16 +14,12 @@
 
 namespace blink {
 
-class FenceTest : private ScopedFencedFramesForTest,
-                  private ScopedPrivateAggregationApiFledgeExtensionsForTest,
-                  public SimTest {
+class FenceTest : private ScopedFencedFramesForTest, public SimTest {
  public:
-  FenceTest()
-      : ScopedFencedFramesForTest(true),
-        ScopedPrivateAggregationApiFledgeExtensionsForTest(true) {
+  FenceTest() : ScopedFencedFramesForTest(true) {
     scoped_feature_list_.InitWithFeatures(
-        {blink::features::kFencedFrames,
-         blink::features::kPrivateAggregationApiFledgeExtensions},
+        {{blink::features::kFencedFrames},
+         {blink::features::kPrivateAggregationApi}},
         /*disabled_features=*/{});
   }
 

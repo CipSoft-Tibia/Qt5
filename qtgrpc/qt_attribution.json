@@ -33,8 +33,8 @@
         "Id": "gRPC",
         "Name": "gRPC",
         "QDocModule": "qtgrpc",
-        "QtUsage": "Used in the native gRPC channel implementation, examples and tests.",
-        "QtParts": ["libs", "tools", "examples" ],
+        "QtUsage": "Used in the gRPC examples and tests.",
+        "QtParts": [ "examples" ],
 
         "SecurityCritical": false,
         "Homepage": "https://grpc.io",

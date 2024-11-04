@@ -7,6 +7,7 @@
 #include <QObject>
 
 #include <qpa/qplatformclipboard.h>
+#include <private/qstdweb_p.h>
 #include <QMimeData>
 
 #include <emscripten/bind.h>
@@ -37,6 +38,7 @@ public:
     ProcessKeyboardResult processKeyboard(const KeyEvent &event);
     static void installEventHandlers(const emscripten::val &target);
     bool hasClipboardApi();
+    void sendClipboardData(emscripten::val event);
 
 private:
     void initClipboardPermissions();

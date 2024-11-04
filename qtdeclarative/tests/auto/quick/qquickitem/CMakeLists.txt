@@ -7,6 +7,12 @@
 ## tst_qquickitem Test:
 #####################################################################
 
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(tst_qquickitem LANGUAGES CXX)
+    find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
+endif()
+
 # Collect test data
 file(GLOB_RECURSE test_data_glob
     RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
@@ -30,8 +36,6 @@ qt_internal_add_test(tst_qquickitem
 #####################################################################
 
 qt_internal_extend_target(tst_qquickitem CONDITION TARGET Qt::Widgets
-    DEFINES
-        TEST_QTBUG_60123
     LIBRARIES
         Qt::Widgets
 )

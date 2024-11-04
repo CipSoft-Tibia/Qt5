@@ -78,7 +78,8 @@ void CullRect::ApplyTransform(const TransformPaintPropertyNode& transform) {
 
 bool CullRect::ApplyScrollTranslation(
     const TransformPaintPropertyNode& root_transform,
-    const TransformPaintPropertyNode& scroll_translation) {
+    const TransformPaintPropertyNode& scroll_translation,
+    bool disable_expansion) {
   const auto* scroll = scroll_translation.ScrollNode();
   DCHECK(scroll);
 
@@ -88,9 +89,20 @@ bool CullRect::ApplyScrollTranslation(
 
   ApplyTransform(scroll_translation);
 
-  // Don't expand for non-composited scrolling.
-  if (!scroll_translation.HasDirectCompositingReasons())
+  if (disable_expansion) {
     return false;
+  }
+  if (RuntimeEnabledFeatures::CompositeScrollAfterPaintEnabled()) {
+    // kNotPreferred is used for selects/inputs which don't benefit from
+    // composited scrolling.
+    if (scroll->GetCompositedScrollingPreference() ==
+        CompositedScrollingPreference::kNotPreferred) {
+      return false;
+    }
+  } else if (!scroll_translation.HasDirectCompositingReasons()) {
+    // Don't expand for non-composited scrolling.
+    return false;
+  }
 
   // We create scroll node for the root scroller even it's not scrollable.
   // Don't expand in the case.
@@ -132,7 +144,8 @@ bool CullRect::ApplyPaintProperties(
     const PropertyTreeState& root,
     const PropertyTreeState& source,
     const PropertyTreeState& destination,
-    const absl::optional<CullRect>& old_cull_rect) {
+    const absl::optional<CullRect>& old_cull_rect,
+    bool disable_expansion) {
   // The caller should check this before calling this function.
   DCHECK_NE(source, destination);
 
@@ -176,7 +189,8 @@ bool CullRect::ApplyPaintProperties(
     // |destination|. Map infinite rect from the root.
     *this = Infinite();
     return root != destination &&
-           ApplyPaintProperties(root, root, destination, old_cull_rect);
+           ApplyPaintProperties(root, root, destination, old_cull_rect,
+                                disable_expansion);
   }
 
   // These are either the source transform/clip or the last scroll
@@ -220,7 +234,8 @@ bool CullRect::ApplyPaintProperties(
     }
 
     // We only keep the expanded status of the last scroll translation.
-    expanded = ApplyScrollTranslation(root.Transform(), *scroll_translation);
+    expanded = ApplyScrollTranslation(root.Transform(), *scroll_translation,
+                                      disable_expansion);
     last_transform = scroll_translation;
   }
 
@@ -266,7 +281,7 @@ bool CullRect::ApplyPaintProperties(
     }
   }
 
-  if (last_transform != &destination.Transform() &&
+  if (!disable_expansion && last_transform != &destination.Transform() &&
       destination.Transform().RequiresCullRectExpansion()) {
     // Direct compositing reasons such as will-change transform can cause the
     // content to move arbitrarily, so there is no exact cull rect. Instead of
@@ -354,7 +369,8 @@ bool CullRect::HasScrolledEnough(
     const gfx::Vector2dF& delta,
     const TransformPaintPropertyNode& scroll_translation) {
   if (!scroll_translation.ScrollNode() ||
-      !scroll_translation.HasDirectCompositingReasons()) {
+      (!RuntimeEnabledFeatures::CompositeScrollAfterPaintEnabled() &&
+       !scroll_translation.HasDirectCompositingReasons())) {
     return !delta.IsZero();
   }
   if (std::abs(delta.x()) < kChangedEnoughMinimumDistance &&

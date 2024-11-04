@@ -14,16 +14,18 @@
 
 #include "dawn/native/metal/ShaderModuleMTL.h"
 
-#include "dawn/native/BindGroupLayout.h"
+#include "dawn/native/BindGroupLayoutInternal.h"
 #include "dawn/native/CacheRequest.h"
 #include "dawn/native/Serializable.h"
 #include "dawn/native/TintUtils.h"
 #include "dawn/native/metal/DeviceMTL.h"
 #include "dawn/native/metal/PipelineLayoutMTL.h"
 #include "dawn/native/metal/RenderPipelineMTL.h"
+#include "dawn/native/metal/UtilsMetal.h"
 #include "dawn/native/stream/BlobSource.h"
 #include "dawn/native/stream/ByteVectorSink.h"
 #include "dawn/platform/DawnPlatform.h"
+#include "dawn/platform/metrics/HistogramMacros.h"
 #include "dawn/platform/tracing/TraceEvent.h"
 
 #include <tint/tint.h>
@@ -33,23 +35,25 @@
 namespace dawn::native::metal {
 namespace {
 
-using OptionalVertexPullingTransformConfig = std::optional<tint::transform::VertexPulling::Config>;
+using OptionalVertexPullingTransformConfig =
+    std::optional<tint::ast::transform::VertexPulling::Config>;
 
-#define MSL_COMPILATION_REQUEST_MEMBERS(X)                                                  \
-    X(SingleShaderStage, stage)                                                             \
-    X(const tint::Program*, inputProgram)                                                   \
-    X(tint::transform::BindingRemapper::BindingPoints, bindingPoints)                       \
-    X(tint::transform::MultiplanarExternalTexture::BindingsMap, externalTextureBindings)    \
-    X(OptionalVertexPullingTransformConfig, vertexPullingTransformConfig)                   \
-    X(std::optional<tint::transform::SubstituteOverride::Config>, substituteOverrideConfig) \
-    X(LimitsForCompilationRequest, limits)                                                  \
-    X(std::string, entryPointName)                                                          \
-    X(uint32_t, sampleMask)                                                                 \
-    X(bool, emitVertexPointSize)                                                            \
-    X(bool, isRobustnessEnabled)                                                            \
-    X(bool, disableSymbolRenaming)                                                          \
-    X(bool, disableWorkgroupInit)                                                           \
-    X(CacheKey::UnsafeUnkeyedValue<dawn::platform::Platform*>, tracePlatform)
+#define MSL_COMPILATION_REQUEST_MEMBERS(X)                                                       \
+    X(SingleShaderStage, stage)                                                                  \
+    X(const tint::Program*, inputProgram)                                                        \
+    X(tint::ArrayLengthFromUniformOptions, arrayLengthFromUniform)                               \
+    X(tint::BindingRemapperOptions, bindingRemapper)                                             \
+    X(tint::ExternalTextureOptions, externalTextureOptions)                                      \
+    X(OptionalVertexPullingTransformConfig, vertexPullingTransformConfig)                        \
+    X(std::optional<tint::ast::transform::SubstituteOverride::Config>, substituteOverrideConfig) \
+    X(LimitsForCompilationRequest, limits)                                                       \
+    X(std::string, entryPointName)                                                               \
+    X(uint32_t, sampleMask)                                                                      \
+    X(bool, emitVertexPointSize)                                                                 \
+    X(bool, isRobustnessEnabled)                                                                 \
+    X(bool, disableSymbolRenaming)                                                               \
+    X(bool, disableWorkgroupInit)                                                                \
+    X(CacheKey::UnsafeUnkeyedValue<dawn::platform::Platform*>, platform)
 
 DAWN_MAKE_CACHE_REQUEST(MslCompilationRequest, MSL_COMPILATION_REQUEST_MEMBERS);
 #undef MSL_COMPILATION_REQUEST_MEMBERS
@@ -110,12 +114,16 @@ ResultOrError<CacheResult<MslCompilation>> TranslateToMSL(
     errorStream << "Tint MSL failure:" << std::endl;
 
     // Remap BindingNumber to BindingIndex in WGSL shader
-    using BindingRemapper = tint::transform::BindingRemapper;
-    using BindingPoint = tint::transform::BindingPoint;
-    BindingRemapper::BindingPoints bindingPoints;
+    using BindingPoint = tint::BindingPoint;
+
+    tint::BindingRemapperOptions bindingRemapper;
+    bindingRemapper.allow_collisions = true;
+
+    tint::ArrayLengthFromUniformOptions arrayLengthFromUniform;
+    arrayLengthFromUniform.ubo_binding = {0, kBufferLengthBufferSlot};
 
     for (BindGroupIndex group : IterateBitSet(layout->GetBindGroupLayoutsMask())) {
-        const BindGroupLayoutBase::BindingMap& bindingMap =
+        const BindGroupLayoutInternalBase::BindingMap& bindingMap =
             layout->GetBindGroupLayout(group)->GetBindingMap();
         for (const auto [bindingNumber, bindingIndex] : bindingMap) {
             const BindingInfo& bindingInfo =
@@ -131,14 +139,22 @@ ResultOrError<CacheResult<MslCompilation>> TranslateToMSL(
                                          static_cast<uint32_t>(bindingNumber)};
             BindingPoint dstBindingPoint{0, shaderIndex};
             if (srcBindingPoint != dstBindingPoint) {
-                bindingPoints.emplace(srcBindingPoint, dstBindingPoint);
+                bindingRemapper.binding_points.emplace(srcBindingPoint, dstBindingPoint);
+            }
+
+            // Use the ShaderIndex as the indices for the buffer size lookups in the array length
+            // uniform transform. This is used to compute the size of variable length arrays in
+            // storage buffers.
+            if (bindingInfo.buffer.type == wgpu::BufferBindingType::Storage ||
+                bindingInfo.buffer.type == wgpu::BufferBindingType::ReadOnlyStorage ||
+                bindingInfo.buffer.type == kInternalStorageBufferBinding) {
+                arrayLengthFromUniform.bindpoint_to_size_index.emplace(dstBindingPoint,
+                                                                       dstBindingPoint.binding);
             }
         }
     }
 
-    auto externalTextureBindings = BuildExternalTextureTransformBindings(layout);
-
-    std::optional<tint::transform::VertexPulling::Config> vertexPullingTransformConfig;
+    std::optional<tint::ast::transform::VertexPulling::Config> vertexPullingTransformConfig;
     if (stage == SingleShaderStage::Vertex &&
         device->IsToggleEnabled(Toggle::MetalEnableVertexPulling)) {
         vertexPullingTransformConfig =
@@ -152,12 +168,17 @@ ResultOrError<CacheResult<MslCompilation>> TranslateToMSL(
                                          static_cast<uint8_t>(slot)};
             BindingPoint dstBindingPoint{0, metalIndex};
             if (srcBindingPoint != dstBindingPoint) {
-                bindingPoints.emplace(srcBindingPoint, dstBindingPoint);
+                bindingRemapper.binding_points.emplace(srcBindingPoint, dstBindingPoint);
             }
+
+            // Use the ShaderIndex as the indices for the buffer size lookups in the array
+            // length uniform transform.
+            arrayLengthFromUniform.bindpoint_to_size_index.emplace(dstBindingPoint,
+                                                                   dstBindingPoint.binding);
         }
     }
 
-    std::optional<tint::transform::SubstituteOverride::Config> substituteOverrideConfig;
+    std::optional<tint::ast::transform::SubstituteOverride::Config> substituteOverrideConfig;
     if (!programmableStage.metadata->overrides.empty()) {
         substituteOverrideConfig = BuildSubstituteOverridesTransformConfig(programmableStage);
     }
@@ -165,8 +186,8 @@ ResultOrError<CacheResult<MslCompilation>> TranslateToMSL(
     MslCompilationRequest req = {};
     req.stage = stage;
     req.inputProgram = programmableStage.module->GetTintProgram();
-    req.bindingPoints = std::move(bindingPoints);
-    req.externalTextureBindings = std::move(externalTextureBindings);
+    req.bindingRemapper = std::move(bindingRemapper);
+    req.externalTextureOptions = BuildExternalTextureTransformBindings(layout);
     req.vertexPullingTransformConfig = std::move(vertexPullingTransformConfig);
     req.substituteOverrideConfig = std::move(substituteOverrideConfig);
     req.entryPointName = programmableStage.entryPoint.c_str();
@@ -176,7 +197,8 @@ ResultOrError<CacheResult<MslCompilation>> TranslateToMSL(
         renderPipeline->GetPrimitiveTopology() == wgpu::PrimitiveTopology::PointList;
     req.isRobustnessEnabled = device->IsRobustnessEnabled();
     req.disableSymbolRenaming = device->IsToggleEnabled(Toggle::DisableSymbolRenaming);
-    req.tracePlatform = UnsafeUnkeyedValue(device->GetPlatform());
+    req.platform = UnsafeUnkeyedValue(device->GetPlatform());
+    req.arrayLengthFromUniform = std::move(arrayLengthFromUniform);
 
     const CombinedLimits& limits = device->GetLimits();
     req.limits = LimitsForCompilationRequest::Create(limits.v1);
@@ -185,62 +207,48 @@ ResultOrError<CacheResult<MslCompilation>> TranslateToMSL(
     DAWN_TRY_LOAD_OR_RUN(
         mslCompilation, device, std::move(req), MslCompilation::FromBlob,
         [](MslCompilationRequest r) -> ResultOrError<MslCompilation> {
-            tint::transform::Manager transformManager;
-            tint::transform::DataMap transformInputs;
+            tint::ast::transform::Manager transformManager;
+            tint::ast::transform::DataMap transformInputs;
 
             // We only remap bindings for the target entry point, so we need to strip all other
             // entry points to avoid generating invalid bindings for them.
             // Run before the renamer so that the entry point name matches `entryPointName` still.
-            transformManager.Add<tint::transform::SingleEntryPoint>();
-            transformInputs.Add<tint::transform::SingleEntryPoint::Config>(r.entryPointName);
+            transformManager.Add<tint::ast::transform::SingleEntryPoint>();
+            transformInputs.Add<tint::ast::transform::SingleEntryPoint::Config>(r.entryPointName);
 
             // Needs to run before all other transforms so that they can use builtin names safely.
-            transformManager.Add<tint::transform::Renamer>();
+            transformManager.Add<tint::ast::transform::Renamer>();
             if (r.disableSymbolRenaming) {
                 // We still need to rename MSL reserved keywords
-                transformInputs.Add<tint::transform::Renamer::Config>(
-                    tint::transform::Renamer::Target::kMslKeywords);
-            }
-
-            if (!r.externalTextureBindings.empty()) {
-                transformManager.Add<tint::transform::MultiplanarExternalTexture>();
-                transformInputs.Add<tint::transform::MultiplanarExternalTexture::NewBindingPoints>(
-                    std::move(r.externalTextureBindings));
+                transformInputs.Add<tint::ast::transform::Renamer::Config>(
+                    tint::ast::transform::Renamer::Target::kMslKeywords);
             }
 
             if (r.vertexPullingTransformConfig) {
-                transformManager.Add<tint::transform::VertexPulling>();
-                transformInputs.Add<tint::transform::VertexPulling::Config>(
+                transformManager.Add<tint::ast::transform::VertexPulling>();
+                transformInputs.Add<tint::ast::transform::VertexPulling::Config>(
                     std::move(r.vertexPullingTransformConfig).value());
             }
 
             if (r.substituteOverrideConfig) {
                 // This needs to run after SingleEntryPoint transform which removes unused overrides
                 // for current entry point.
-                transformManager.Add<tint::transform::SubstituteOverride>();
-                transformInputs.Add<tint::transform::SubstituteOverride::Config>(
+                transformManager.Add<tint::ast::transform::SubstituteOverride>();
+                transformInputs.Add<tint::ast::transform::SubstituteOverride::Config>(
                     std::move(r.substituteOverrideConfig).value());
             }
 
-            if (r.isRobustnessEnabled) {
-                transformManager.Add<tint::transform::Robustness>();
-            }
-            transformManager.Add<BindingRemapper>();
-            transformInputs.Add<BindingRemapper::Remappings>(std::move(r.bindingPoints),
-                                                             BindingRemapper::AccessControls{},
-                                                             /* mayCollide */ true);
-
             tint::Program program;
-            tint::transform::DataMap transformOutputs;
+            tint::ast::transform::DataMap transformOutputs;
             {
-                TRACE_EVENT0(r.tracePlatform.UnsafeGetValue(), General, "RunTransforms");
+                TRACE_EVENT0(r.platform.UnsafeGetValue(), General, "RunTransforms");
                 DAWN_TRY_ASSIGN(program,
                                 RunTransforms(&transformManager, r.inputProgram, transformInputs,
                                               &transformOutputs, nullptr));
             }
 
             std::string remappedEntryPointName;
-            if (auto* data = transformOutputs.Get<tint::transform::Renamer::Data>()) {
+            if (auto* data = transformOutputs.Get<tint::ast::transform::Renamer::Data>()) {
                 auto it = data->remappings.find(r.entryPointName);
                 if (it != data->remappings.end()) {
                     remappedEntryPointName = it->second;
@@ -261,37 +269,44 @@ ResultOrError<CacheResult<MslCompilation>> TranslateToMSL(
                                                program, remappedEntryPointName.data(), r.limits));
             }
 
-            tint::writer::msl::Options options;
+            tint::msl::writer::Options options;
+            options.disable_robustness = !r.isRobustnessEnabled;
             options.buffer_size_ubo_index = kBufferLengthBufferSlot;
             options.fixed_sample_mask = r.sampleMask;
             options.disable_workgroup_init = r.disableWorkgroupInit;
             options.emit_vertex_point_size = r.emitVertexPointSize;
-            TRACE_EVENT0(r.tracePlatform.UnsafeGetValue(), General, "tint::writer::msl::Generate");
-            auto result = tint::writer::msl::Generate(&program, options);
-            DAWN_INVALID_IF(!result.success, "An error occured while generating MSL: %s.",
-                            result.error);
+            options.array_length_from_uniform = r.arrayLengthFromUniform;
+            options.binding_remapper_options = r.bindingRemapper;
+            options.external_texture_options = r.externalTextureOptions;
+
+            TRACE_EVENT0(r.platform.UnsafeGetValue(), General, "tint::msl::writer::Generate");
+            auto result = tint::msl::writer::Generate(&program, options);
+            DAWN_INVALID_IF(!result, "An error occured while generating MSL: %s.",
+                            result.Failure());
 
             // Metal uses Clang to compile the shader as C++14. Disable everything in the -Wall
             // category. -Wunused-variable in particular comes up a lot in generated code, and some
             // (old?) Metal drivers accidentally treat it as a MTLLibraryErrorCompileError instead
             // of a warning.
-            result.msl = R"(
+            auto msl = std::move(result->msl);
+            msl = R"(
                 #ifdef __clang__
                 #pragma clang diagnostic ignored "-Wall"
                 #endif
-            )" + result.msl;
+            )" + msl;
 
             auto workgroupAllocations =
-                std::move(result.workgroup_allocations[remappedEntryPointName]);
+                std::move(result->workgroup_allocations.at(remappedEntryPointName));
             return MslCompilation{{
-                std::move(result.msl),
+                std::move(msl),
                 std::move(remappedEntryPointName),
-                result.needs_storage_buffer_sizes,
-                result.has_invariant_attribute,
+                result->needs_storage_buffer_sizes,
+                result->has_invariant_attribute,
                 std::move(workgroupAllocations),
                 localSize,
             }};
-        });
+        },
+        "Metal.CompileShaderToMSL");
 
     if (device->IsToggleEnabled(Toggle::DumpShaders)) {
         std::ostringstream dumpedMsg;
@@ -340,6 +355,8 @@ MaybeError ShaderModule::CreateFunction(SingleShaderStage stage,
             (*compileOptions).preserveInvariance = true;
         }
     }
+    (*compileOptions).fastMathEnabled = true;
+
     auto mtlDevice = ToBackend(GetDevice())->GetMTLDevice();
     NSError* error = nullptr;
 
@@ -366,6 +383,9 @@ MaybeError ShaderModule::CreateFunction(SingleShaderStage stage,
         out->function = AcquireNSPRef([*library newFunctionWithName:name.Get()]);
     }
 
+    std::ostringstream labelStream;
+    labelStream << GetLabel() << "::" << entryPointName;
+    SetDebugName(GetDevice(), out->function.Get(), "Dawn_ShaderModule", labelStream.str());
     GetDevice()->GetBlobCache()->EnsureStored(mslCompilation);
 
     if (GetDevice()->IsToggleEnabled(Toggle::MetalEnableVertexPulling) &&

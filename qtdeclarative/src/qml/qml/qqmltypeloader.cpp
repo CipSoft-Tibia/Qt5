@@ -971,6 +971,7 @@ QQmlRefPointer<QQmlTypeData> QQmlTypeLoader::getType(const QUrl &unNormalizedUrl
         // this was started Asynchronous, but we need to force Synchronous
         // completion now (if at all possible with this type of URL).
 
+#if QT_CONFIG(thread)
         if (!m_thread->isThisThread()) {
             // this only works when called directly from the UI thread, but not
             // when recursively called on the QML thread via resolveTypes()
@@ -979,6 +980,7 @@ QQmlRefPointer<QQmlTypeData> QQmlTypeLoader::getType(const QUrl &unNormalizedUrl
                 m_thread->waitForNextMessage();
             }
         }
+#endif
     }
 
     return typeData;
@@ -1338,15 +1340,29 @@ void QQmlTypeLoader::trimCache()
             // typeData->m_compiledData may be set early on in the proccess of loading a file, so
             // it's important to check the general loading status of the typeData before making any
             // other decisions.
-            if (typeData->count() == 1 && (typeData->isError() || typeData->isComplete())
-                    && (!typeData->m_compiledData || typeData->m_compiledData->count() == 1)) {
-                // There are no live objects of this type
-                iter.value()->release();
-                iter = m_typeCache.erase(iter);
-                deletedOneType = true;
-            } else {
+            if (typeData->count() != 1 || (!typeData->isError() && !typeData->isComplete())) {
                 ++iter;
+                continue;
             }
+
+            const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit
+                = typeData->m_compiledData;
+            if (compilationUnit) {
+                if (compilationUnit->count()
+                        > QQmlMetaType::countInternalCompositeTypeSelfReferences(
+                              compilationUnit) + 1) {
+                    ++iter;
+                    continue;
+                }
+
+                QQmlMetaType::unregisterInternalCompositeType(compilationUnit);
+                Q_ASSERT(compilationUnit->count() == 1);
+            }
+
+            // There are no live objects of this type
+            iter.value()->release();
+            iter = m_typeCache.erase(iter);
+            deletedOneType = true;
         }
 
         if (!deletedOneType)

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,7 +24,7 @@ class AlarmTest : public testing::Test {
  private:
   FakeClock clock_{Clock::now()};
   FakeTaskRunner task_runner_{&clock_};
-  Alarm alarm_{&FakeClock::now, &task_runner_};
+  Alarm alarm_{&FakeClock::now, task_runner_};
 };
 
 TEST_F(AlarmTest, RunsTaskAsClockAdvances) {
@@ -73,7 +73,7 @@ TEST_F(AlarmTest, CancelsTaskWhenGoingOutOfScope) {
 
   Clock::time_point actual_run_time{};
   {
-    Alarm scoped_alarm(&FakeClock::now, task_runner());
+    Alarm scoped_alarm(&FakeClock::now, *task_runner());
     const Clock::time_point alarm_time = FakeClock::now() + kDelay;
     scoped_alarm.Schedule([&]() { actual_run_time = FakeClock::now(); },
                           alarm_time);

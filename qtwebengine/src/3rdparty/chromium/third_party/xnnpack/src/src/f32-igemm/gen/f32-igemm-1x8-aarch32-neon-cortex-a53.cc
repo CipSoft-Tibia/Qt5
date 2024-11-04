@@ -87,10 +87,12 @@ void Generator::generate(bool prefetch, size_t max_mr, size_t nc_mod_nr, size_t 
   // Load initial bias from w into accumulators
   vldm(mem[r9]++, {d16-d19}); // Bias
   vmov_i32(q10, 0); // second set of C for pipelining VMLA
+  if (prefetch) {
+    pld(mem[r9]); // Prefetch B
+  }
   vmov_i32(q11, 0);
 
   if (prefetch) {
-    pld(mem[r9, 0]); // Prefetch B
     pld(mem[r9, 64]);
     pld(mem[r9, 128]);
     pld(mem[r9, 192]);
@@ -215,6 +217,9 @@ void Generator::perform_post_operations(
   size_t num_post_operations,
   const xnn_post_operation* post_operations)
 {
+  if (num_post_operations == 0) {
+    return;
+  }
   ldr(r0, mem[sp, 52]);  // params
   for (size_t i = 0; i < num_post_operations; i++) {
     switch (post_operations[i].op_type) {

@@ -11,6 +11,8 @@
 
 namespace blink {
 
+struct LogicalRect;
+
 // A group of columns, that are laid out in the inline progression direction,
 // all with the same column height.
 //
@@ -66,7 +68,7 @@ class CORE_EXPORT MultiColumnFragmentainerGroup {
   // a guess (i.e. when there are no usable constraints).
   bool IsLogicalHeightKnown() const { return is_logical_height_known_; }
 
-  LayoutSize OffsetFromColumnSet() const;
+  LogicalOffset OffsetFromColumnSet() const;
 
   // Return the block offset from the enclosing fragmentation context, if
   // nested. In the coordinate space of the enclosing fragmentation context.
@@ -103,11 +105,10 @@ class CORE_EXPORT MultiColumnFragmentainerGroup {
   LayoutUnit LogicalHeightInFlowThreadAt(unsigned column_index) const;
 
   void ResetColumnHeight();
-  bool RecalculateColumnHeight(LayoutMultiColumnSet&);
 
-  LayoutSize FlowThreadTranslationAtOffset(LayoutUnit,
-                                           LayoutBox::PageBoundaryRule,
-                                           CoordinateSpaceConversion) const;
+  PhysicalOffset FlowThreadTranslationAtOffset(LayoutUnit,
+                                               LayoutBox::PageBoundaryRule,
+                                               CoordinateSpaceConversion) const;
   LayoutUnit ColumnLogicalTopForOffset(LayoutUnit offset_in_flow_thread) const;
 
   // If SnapToColumnPolicy is SnapToColumn, visualPointToFlowThreadPoint() won't
@@ -120,16 +121,16 @@ class CORE_EXPORT MultiColumnFragmentainerGroup {
   // rectangle, we'll get to the beginning of the next column. This is behavior
   // that positionForPoint() depends on.
   enum SnapToColumnPolicy { kDontSnapToColumn, kSnapToColumn };
-  LayoutPoint VisualPointToFlowThreadPoint(
-      const LayoutPoint& visual_point,
+  LogicalOffset VisualPointToFlowThreadPoint(
+      const LogicalOffset& visual_point,
       SnapToColumnPolicy = kDontSnapToColumn) const;
 
-  LayoutRect FragmentsBoundingBox(
-      const LayoutRect& bounding_box_in_flow_thread) const;
+  PhysicalRect FragmentsBoundingBox(
+      const PhysicalRect& bounding_box_in_flow_thread) const;
 
-  LayoutRect FlowThreadPortionRectAt(unsigned column_index) const;
+  PhysicalRect FlowThreadPortionRectAt(unsigned column_index) const;
 
-  LayoutRect FlowThreadPortionOverflowRectAt(unsigned column_index) const;
+  PhysicalRect FlowThreadPortionOverflowRectAt(unsigned column_index) const;
 
   // Get the first and the last column intersecting the specified block range.
   // Note that |logicalBottomInFlowThread| is an exclusive endpoint.
@@ -139,13 +140,7 @@ class CORE_EXPORT MultiColumnFragmentainerGroup {
       unsigned& first_column,
       unsigned& last_column) const;
 
-  // Get the first and the last column intersecting the specified visual
-  // rectangle.
-  void ColumnIntervalForVisualRect(const LayoutRect&,
-                                   unsigned& first_column,
-                                   unsigned& last_column) const;
-
-  LayoutRect CalculateOverflow() const;
+  LogicalRect CalculateOverflow() const;
 
   unsigned ColumnIndexAtOffset(LayoutUnit offset_in_flow_thread,
                                LayoutBox::PageBoundaryRule) const;
@@ -168,21 +163,15 @@ class CORE_EXPORT MultiColumnFragmentainerGroup {
   void Trace(Visitor*) const;
 
  private:
-  LayoutUnit HeightAdjustedForRowOffset(LayoutUnit height) const;
-  LayoutUnit CalculateMaxColumnHeight() const;
-  void SetAndConstrainColumnHeight(LayoutUnit);
-
-  LayoutUnit RebalanceColumnHeightIfNeeded() const;
-
-  LayoutRect ColumnRectAt(unsigned column_index) const;
+  LogicalRect ColumnRectAt(unsigned column_index) const;
   LayoutUnit LogicalTopInFlowThreadAt(unsigned column_index) const {
     return logical_top_in_flow_thread_ + column_index * ColumnLogicalHeight();
   }
-
+  LogicalRect LogicalFlowThreadPortionRectAt(unsigned column_index) const;
   // Return the column that the specified visual point belongs to. Only the
   // coordinate on the column progression axis is relevant. Every point belongs
   // to a column, even if said point is not inside any of the columns.
-  unsigned ColumnIndexAtVisualPoint(const LayoutPoint& visual_point) const;
+  unsigned ColumnIndexAtVisualPoint(const LogicalOffset& visual_point) const;
 
   unsigned UnclampedActualColumnCount() const;
 
@@ -196,9 +185,6 @@ class CORE_EXPORT MultiColumnFragmentainerGroup {
   // in this group, with the difference that, while the logical height can be
   // 0, the height of a column must be >= 1px.
   LayoutUnit logical_height_;
-
-  // Maximum logical height allowed.
-  LayoutUnit max_logical_height_;
 
   bool is_logical_height_known_ = false;
 };

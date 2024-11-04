@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtest.h>
 #include <QQmlEngine>
@@ -55,6 +55,7 @@ void tst_qqmlitemmodels::modelIndex()
         QCOMPARE(object->property("parent").toModelIndex(), index.parent());
         QCOMPARE(object->property("model").value<QAbstractItemModel *>(), index.model());
         QCOMPARE(object->property("internalId").toULongLong(), index.internalId());
+        QCOMPARE(object->property("displayData"), index.data(Qt::DisplayRole));
 
         if (i < 3) {
             index = model.index(2 + i, 4 - i, index);
@@ -79,6 +80,7 @@ void tst_qqmlitemmodels::persistentModelIndex()
         QCOMPARE(object->property("parent").toModelIndex(), index.parent());
         QCOMPARE(object->property("model").value<QAbstractItemModel *>(), index.model());
         QCOMPARE(object->property("internalId").toULongLong(), index.internalId());
+        QCOMPARE(object->property("displayData"), index.data(Qt::DisplayRole));
 
         if (i < 2) {
             index = model.index(2 + i, 4 - i, index);

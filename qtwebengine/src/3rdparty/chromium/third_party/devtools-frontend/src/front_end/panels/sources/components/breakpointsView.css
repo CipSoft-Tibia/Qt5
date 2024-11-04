@@ -35,7 +35,7 @@ input {
 }
 
 details {
-  border-top: 1px solid var(--color-details-hairline);
+  border-top: 1px solid var(--sys-color-divider);
 }
 
 details:not(.active) {
@@ -58,19 +58,19 @@ details > summary:hover {
 details > summary::before {
   display: block;
   user-select: none;
-  -webkit-mask-image: var(--image-file-treeoutlineTriangles);
-  -webkit-mask-size: 32px 24px;
-  -webkit-mask-position: 0 0;
-  background-color: var(--color-text-secondary);
+  -webkit-mask-image: var(--image-file-triangle-right);
+  background-color: var(--icon-default);
   content: "";
-  height: 12px;
-  min-width: 10px;
-  max-width: 10px;
+  height: 14px;
+  min-width: 14px;
+  max-width: 14px;
+  margin-left: -4px;
   overflow: hidden;
+  transition: transform 200ms;
 }
 
 details[open] > summary::before {
-  -webkit-mask-position: -16px 0;
+  transform: rotate(90deg);
 }
 
 .group-header {
@@ -143,7 +143,7 @@ summary:hover button {
 }
 
 button:hover devtools-icon {
-  --icon-color: var(--color-text-primary);
+  --icon-color: var(--icon-default-hover);
 }
 
 .type-indicator {
@@ -248,10 +248,15 @@ input:disabled + span {
   margin-left: 6px;
 }
 
+.pause-on-caught-exceptions > .checkbox-label > span,
+.pause-on-uncaught-exceptions > .checkbox-label > span {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 .pause-on-uncaught-exceptions,
 .pause-on-caught-exceptions {
-  display: flex;
-  align-items: center;
   line-height: 13px;
   height: 18px;
   padding-right: 8px;

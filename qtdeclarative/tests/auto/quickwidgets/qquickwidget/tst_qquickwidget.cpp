@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtest.h>
 #include <qtesttouch.h>
@@ -14,6 +14,7 @@
 #include <QtQuick/private/qquicktaphandler_p.h>
 #include <QtQuickTemplates2/private/qquickbutton_p.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/visualtestutils_p.h>
 #include <QtGui/QWindow>
 #include <QtGui/QScreen>
 #include <QtGui/QImage>
@@ -142,6 +143,7 @@ private slots:
     void focusPreserved();
     void accessibilityHandlesViewChange();
     void cleanupRhi();
+    void dontRecreateRootElementOnWindowChange();
 
 private:
     QPointingDevice *device = QTest::createTouchDevice();
@@ -991,8 +993,7 @@ void tst_qquickwidget::focusOnClickInProxyWidget()
 
 void tst_qquickwidget::focusPreserved()
 {
-    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
-        QSKIP("Window Activation is not supported.");
+    SKIP_IF_NO_WINDOW_ACTIVATION
     if (QGuiApplication::platformName() == "android")
         QSKIP("Test doesn't exit cleanly on Android and generates many warnings - QTBUG-112696");
 
@@ -1083,9 +1084,6 @@ public:
 
 void tst_qquickwidget::cleanupRhi()
 {
-#ifdef Q_OS_ANDROID
-    QSKIP("This test crashes on Android (QTBUG-121133)");
-#endif
     CreateDestroyWidget topLevel;
     QQuickWidget quickWidget(&topLevel);
     quickWidget.setSource(testFileUrl("rectangle.qml"));
@@ -1094,6 +1092,21 @@ void tst_qquickwidget::cleanupRhi()
 
     topLevel.destroy();
     topLevel.create();
+}
+
+void tst_qquickwidget::dontRecreateRootElementOnWindowChange()
+{
+    auto *quickWidget = new QQuickWidget();
+    quickWidget->setSource(testFileUrl("rectangle.qml"));
+    QObject *item = quickWidget->rootObject();
+
+    bool wasDestroyed = false;
+    QObject::connect(item, &QObject::destroyed, this, [&] { wasDestroyed = true; });
+
+    QEvent event(QEvent::WindowChangeInternal);
+    QCoreApplication::sendEvent(quickWidget, &event);
+
+    QVERIFY(!wasDestroyed);
 }
 
 QTEST_MAIN(tst_qquickwidget)

@@ -8,6 +8,7 @@ import * as Platform from '../../core/platform/platform.js';
 import * as Root from '../../core/root/root.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as TextUtils from '../../models/text_utils/text_utils.js';
+import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as DataGrid from '../../ui/legacy/components/data_grid/data_grid.js';
 import * as Components from '../../ui/legacy/components/utils/utils.js';
 import * as UI from '../../ui/legacy/legacy.js';
@@ -276,7 +277,7 @@ export class CSSOverviewCompletedView extends UI.Panel.PanelWithSidebar {
     this.#sideBar.addItem(i18nString(UIStrings.fontInfo), 'font-info');
     this.#sideBar.addItem(i18nString(UIStrings.unusedDeclarations), 'unused-declarations');
     this.#sideBar.addItem(i18nString(UIStrings.mediaQueries), 'media-queries');
-    this.#sideBar.select('summary');
+    this.#sideBar.select('summary', false);
 
     this.#sideBar.addEventListener(SidebarEvents.ItemSelected, this.#sideBarItemSelected, this);
     this.#sideBar.addEventListener(SidebarEvents.Reset, this.#sideBarReset, this);
@@ -287,7 +288,7 @@ export class CSSOverviewCompletedView extends UI.Panel.PanelWithSidebar {
     this.#data = null;
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.#mainContainer.registerCSSFiles([cssOverviewCompletedViewStyles]);
     this.registerCSSFiles([cssOverviewCompletedViewStyles]);
@@ -314,7 +315,7 @@ export class CSSOverviewCompletedView extends UI.Panel.PanelWithSidebar {
 
     section.scrollIntoView();
     // Set focus for keyboard invoked event
-    if (!data.isMouseEvent) {
+    if (!data.isMouseEvent && data.key === 'Enter') {
       const focusableElement: HTMLElement|null = section.querySelector('button, [tabindex="0"]');
       focusableElement?.focus();
     }
@@ -330,7 +331,7 @@ export class CSSOverviewCompletedView extends UI.Panel.PanelWithSidebar {
     this.#elementContainer.closeTabs();
     this.#viewMap = new Map();
     CSSOverviewCompletedView.pushedNodes.clear();
-    this.#sideBar.select('summary');
+    this.#sideBar.select('summary', false);
   }
 
   #onClick(evt: Event): void {
@@ -744,13 +745,15 @@ export class CSSOverviewCompletedView extends UI.Panel.PanelWithSidebar {
 
     const showAPCA = Root.Runtime.experiments.isEnabled('APCA');
 
-    const blockFragment = UI.Fragment.Fragment.build`<li>
-      <button
-        title="${i18nString(UIStrings.textColorSOverSBackgroundResults, {
+    const title = i18nString(UIStrings.textColorSOverSBackgroundResults, {
       PH1: color,
       PH2: backgroundColor,
       PH3: issues.length,
-    })}"
+    });
+
+    const blockFragment = UI.Fragment.Fragment.build`<li>
+      <button
+        title="${title}" aria-label="${title}"
         data-type="contrast" data-key="${key}" data-section="contrast" class="block" $="color">
         Text
       </button>
@@ -767,23 +770,23 @@ export class CSSOverviewCompletedView extends UI.Panel.PanelWithSidebar {
     if (showAPCA) {
       const apca = (blockFragment.$('apca') as HTMLElement);
       if (minContrastIssue.thresholdsViolated.apca) {
-        apca.appendChild(UI.Icon.Icon.create('smallicon-no'));
+        apca.appendChild(createClearIcon());
       } else {
-        apca.appendChild(UI.Icon.Icon.create('smallicon-checkmark-square'));
+        apca.appendChild(createCheckIcon());
       }
       apca.classList.remove('hidden');
     } else {
       const aa = (blockFragment.$('aa') as HTMLElement);
       if (minContrastIssue.thresholdsViolated.aa) {
-        aa.appendChild(UI.Icon.Icon.create('smallicon-no'));
+        aa.appendChild(createClearIcon());
       } else {
-        aa.appendChild(UI.Icon.Icon.create('smallicon-checkmark-square'));
+        aa.appendChild(createCheckIcon());
       }
       const aaa = (blockFragment.$('aaa') as HTMLElement);
       if (minContrastIssue.thresholdsViolated.aaa) {
-        aaa.appendChild(UI.Icon.Icon.create('smallicon-no'));
+        aaa.appendChild(createClearIcon());
       } else {
-        aaa.appendChild(UI.Icon.Icon.create('smallicon-checkmark-square'));
+        aaa.appendChild(createCheckIcon());
       }
       aa.classList.remove('hidden');
       aaa.classList.remove('hidden');
@@ -799,8 +802,9 @@ export class CSSOverviewCompletedView extends UI.Panel.PanelWithSidebar {
 
   #colorsToFragment(section: string, color: string): UI.Fragment.Fragment|undefined {
     const blockFragment = UI.Fragment.Fragment.build`<li>
-      <button data-type="color" data-color="${color}" data-section="${section}" class="block" $="color"></button>
-      <div class="block-title color-text" title=${color}>${color}</div>
+      <button title=${color} data-type="color" data-color="${color}"
+        data-section="${section}" class="block" $="color"></button>
+      <div class="block-title color-text">${color}</div>
     </li>`;
 
     const block = (blockFragment.$('color') as HTMLElement);
@@ -1064,7 +1068,7 @@ export class ElementNode extends DataGrid.SortableDataGrid.SortableDataGridNode<
     this.#cssModel = cssModel;
   }
 
-  createCell(columnId: string): HTMLElement {
+  override createCell(columnId: string): HTMLElement {
     // Nodes.
     const frontendNode = this.#frontendNode;
     if (columnId === 'nodeId') {
@@ -1079,12 +1083,13 @@ export class ElementNode extends DataGrid.SortableDataGrid.SortableDataGridNode<
         cell.textContent = '';
         (link as HTMLElement).dataset.backendNodeId = frontendNode.backendNodeId().toString();
         cell.appendChild(link);
-        const button = document.createElement('button');
-        button.classList.add('show-element');
-        UI.Tooltip.Tooltip.install(button, i18nString(UIStrings.showElement));
-        button.tabIndex = 0;
-        button.onclick = (): Promise<void> => frontendNode.scrollIntoView();
-        cell.appendChild(button);
+        const showNodeIcon = new IconButton.Icon.Icon();
+        showNodeIcon.data = {iconName: 'select-element', color: 'var(--icon-show-element)', width: '16px'};
+        showNodeIcon.classList.add('show-element');
+        UI.Tooltip.Tooltip.install(showNodeIcon, i18nString(UIStrings.showElement));
+        showNodeIcon.tabIndex = 0;
+        showNodeIcon.onclick = (): Promise<void> => frontendNode.scrollIntoView();
+        cell.appendChild(showNodeIcon);
       });
       return cell;
     }
@@ -1129,22 +1134,22 @@ export class ElementNode extends DataGrid.SortableDataGrid.SortableDataGridNode<
       if (showAPCA) {
         container.append(UI.Fragment.Fragment.build`<span>${i18nString(UIStrings.apca)}</span>`.element());
         if (this.data.thresholdsViolated.apca) {
-          container.appendChild(UI.Icon.Icon.create('smallicon-no'));
+          container.appendChild(createClearIcon());
         } else {
-          container.appendChild(UI.Icon.Icon.create('smallicon-checkmark-square'));
+          container.appendChild(createCheckIcon());
         }
       } else {
         container.append(UI.Fragment.Fragment.build`<span>${i18nString(UIStrings.aa)}</span>`.element());
         if (this.data.thresholdsViolated.aa) {
-          container.appendChild(UI.Icon.Icon.create('smallicon-no'));
+          container.appendChild(createClearIcon());
         } else {
-          container.appendChild(UI.Icon.Icon.create('smallicon-checkmark-square'));
+          container.appendChild(createCheckIcon());
         }
         container.append(UI.Fragment.Fragment.build`<span>${i18nString(UIStrings.aaa)}</span>`.element());
         if (this.data.thresholdsViolated.aaa) {
-          container.appendChild(UI.Icon.Icon.create('smallicon-no'));
+          container.appendChild(createClearIcon());
         } else {
-          container.appendChild(UI.Icon.Icon.create('smallicon-checkmark-square'));
+          container.appendChild(createCheckIcon());
         }
       }
       cell.appendChild(contrastFragment.element());
@@ -1166,4 +1171,16 @@ export class ElementNode extends DataGrid.SortableDataGrid.SortableDataGridNode<
     const matchingSelectorLocation = new SDK.CSSModel.CSSLocation(styleSheetHeader, lineNumber, columnNumber);
     return linkifier.linkifyCSSLocation(matchingSelectorLocation);
   }
+}
+
+function createClearIcon(): IconButton.Icon.Icon {
+  const icon = new IconButton.Icon.Icon();
+  icon.data = {iconName: 'clear', color: 'var(--icon-error)', width: '14px', height: '14px'};
+  return icon;
+}
+
+function createCheckIcon(): IconButton.Icon.Icon {
+  const icon = new IconButton.Icon.Icon();
+  icon.data = {iconName: 'checkmark', color: 'var(--icon-checkmark-green)', width: '14px', height: '14px'};
+  return icon;
 }

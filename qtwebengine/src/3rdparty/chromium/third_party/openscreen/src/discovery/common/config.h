@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,7 @@
 
 #include "platform/base/interface_info.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
 // This struct provides parameters needed to initialize the discovery pipeline.
 struct Config {
@@ -83,7 +82,6 @@ struct Config {
   bool ignore_nsec_responses = false;
 };
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery
 
 #endif  // DISCOVERY_COMMON_CONFIG_H_

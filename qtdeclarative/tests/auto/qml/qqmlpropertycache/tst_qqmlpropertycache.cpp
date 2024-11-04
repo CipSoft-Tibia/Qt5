@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtest.h>
 #include <private/qqmlpropertycache_p.h>
@@ -8,6 +8,7 @@
 #include <QtQml/qqmlcomponent.h>
 #include <private/qmetaobjectbuilder_p.h>
 #include <private/qqmlcontextdata_p.h>
+#include <private/qqmlpropertycachecreator_p.h>
 #include <QCryptographicHash>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 
@@ -34,6 +35,8 @@ private slots:
     void derivedGadgetMethod();
     void restrictRegistrationVersion();
     void rejectOverriddenFinal();
+    void overriddenSignals();
+    void duplicateIdsAndGeneralizedGroupProperties();
 
 private:
     QQmlEngine engine;
@@ -162,6 +165,19 @@ Q_SIGNALS:
     void propertyDChanged();
     Q_REVISION(1) void propertyEChanged();
     void signalB();
+};
+
+class OverriddenSignal : public BaseObject
+{
+    Q_OBJECT
+public:
+    OverriddenSignal(QObject *parent = nullptr) : BaseObject(parent) {}
+
+    Q_INVOKABLE void propertyAChanged() {  ++propertyAChangedCalled; }
+    int propertyAChangedCalled = 0;
+
+Q_SIGNALS:
+    void signalA();
 };
 
 const QQmlPropertyData *cacheProperty(const QQmlPropertyCache::ConstPtr &cache, const char *name)
@@ -705,6 +721,72 @@ void tst_qqmlpropertycache::rejectOverriddenFinal()
 
     // Cannot call the method overridding a final property
     QCOMPARE(o->property("c").toInt(), 0);
+}
+
+void tst_qqmlpropertycache::overriddenSignals()
+{
+    qmlRegisterTypesAndRevisions<BaseObject>("Test.PropertyCache", 3);
+    QQmlEngine engine;
+
+    QQmlComponent c1(&engine, testFileUrl("overriddenSignal.qml"));
+    QVERIFY2(!c1.isError(), qPrintable(c1.errorString()));
+
+    QScopedPointer<QObject> o(c1.create());
+
+    // the propertyAChanged _signal_ is sent once (initially).
+    QCOMPARE(o->property("a").toInt(), 1);
+
+    // signalA() is invoked once as signal, and the other time as method since both are C++.
+    QCOMPARE(o->property("b").toInt(), 1);
+
+    OverriddenSignal *derived = new OverriddenSignal(o.data());
+
+    // Does call our overridden method, since that is defined in C++
+    QCOMPARE(derived->propertyAChangedCalled, 0);
+    o->setProperty("obj", QVariant::fromValue(derived));
+    QCOMPARE(derived->propertyAChangedCalled, 1);
+
+    o->setProperty("obj2", QVariant::fromValue(derived));
+
+    // the propertyAChanged _signal_ is sent once (initially).
+    QCOMPARE(o->property("a").toInt(), 1);
+
+    // We get to receive both signalA() signals since we only match by name.
+    QCOMPARE(o->property("b").toInt(), 2);
+
+    // We shouldn't be allowed to define such things in QML, though.
+
+    const QUrl c2Url = testFileUrl("qmlOverriddenSignal.qml");
+    QTest::ignoreMessage(
+            QtWarningMsg,
+            qPrintable(c2Url.toString() + QLatin1String(
+                            ":6:14: Duplicate method name: "
+                            "invalid override of property change signal or superclass signal")));
+    QQmlComponent c2(&engine, c2Url);
+    // Should be an error, but we can't enforce it yet.
+
+    const QUrl c3Url = testFileUrl("qmlOverriddenSignal2.qml");
+    QTest::ignoreMessage(
+            QtWarningMsg,
+            qPrintable(c3Url.toString() + QLatin1String(
+                            ":5:12: Duplicate signal name: "
+                            "invalid override of property change signal or superclass signal")));
+    QQmlComponent c3(&engine, c3Url);
+    // Should be an error, but we can't enforce it yet.
+}
+
+void tst_qqmlpropertycache::duplicateIdsAndGeneralizedGroupProperties()
+{
+    QQmlEngine engine;
+    QQmlComponent c(&engine, testFileUrl("duplicateIdsAndGeneralizedGroupProperties.qml"));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+
+    QTest::ignoreMessage(QtDebugMsg, "1 true true true");
+    QTest::ignoreMessage(QtDebugMsg, "2 false true true");
+    QTest::ignoreMessage(QtDebugMsg, "3 false false true");
+    QTest::ignoreMessage(QtDebugMsg, "4 false false false");
+
+    QScopedPointer<QObject> o(c.create());
 }
 
 QTEST_MAIN(tst_qqmlpropertycache)

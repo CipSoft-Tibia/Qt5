@@ -42,6 +42,7 @@
 #include "third_party/blink/renderer/platform/graphics/graphics_context_state_saver.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_canvas.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
+#include "third_party/blink/renderer/platform/text/writing_mode.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/native_theme/native_theme.h"
 
@@ -102,18 +103,15 @@ bool ThemePainter::Paint(const LayoutObject& o,
   if (part == kButtonPart) {
     if (IsA<HTMLButtonElement>(element)) {
       UseCounter::Count(doc, WebFeature::kCSSValueAppearanceButtonForButton);
-    } else if (IsA<HTMLInputElement>(element) &&
-               To<HTMLInputElement>(element).IsTextButton()) {
+    } else if (auto* input_element = DynamicTo<HTMLInputElement>(element);
+               input_element && input_element->IsTextButton()) {
       // Text buttons (type=button, reset, submit) has
       // -webkit-appearance:push-button by default.
       UseCounter::Count(doc,
                         WebFeature::kCSSValueAppearanceButtonForOtherButtons);
-    } else if (IsA<HTMLInputElement>(element) &&
-               To<HTMLInputElement>(element).type() ==
-                   input_type_names::kColor) {
-      //  'button' for input[type=color], of which default appearance is
-      // 'square-button', is not deprecated.
     }
+    //  'button' for input[type=color], of which default appearance is
+    // 'square-button', is not deprecated.
   }
 
   // Call the appropriate paint method based off the appearance value.
@@ -305,9 +303,17 @@ void ThemePainter::PaintSliderTicks(const LayoutObject& o,
 
   ControlPart part = o.StyleRef().EffectiveAppearance();
   // We don't support ticks on alternate sliders like MediaVolumeSliders.
-  if (part != kSliderHorizontalPart && part != kSliderVerticalPart)
+  if (!(part == kSliderHorizontalPart ||
+        (part == kSliderVerticalPart &&
+         RuntimeEnabledFeatures::
+             NonStandardAppearanceValueSliderVerticalEnabled()))) {
     return;
-  bool is_horizontal = part == kSliderHorizontalPart;
+  }
+  bool is_horizontal =
+      part == kSliderHorizontalPart &&
+      !(RuntimeEnabledFeatures::
+            FormControlsVerticalWritingModeSupportEnabled() &&
+        !IsHorizontalWritingMode(o.StyleRef().GetWritingMode()));
 
   gfx::Size thumb_size;
   LayoutObject* thumb_layout_object =

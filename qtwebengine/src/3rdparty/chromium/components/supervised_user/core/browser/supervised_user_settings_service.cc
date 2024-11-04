@@ -9,6 +9,7 @@
 #include <set>
 #include <utility>
 
+#include "base/feature_list.h"
 #include "base/functional/callback.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
@@ -21,6 +22,7 @@
 #include "base/values.h"
 #include "components/prefs/json_pref_store.h"
 #include "components/prefs/pref_filter.h"
+#include "components/supervised_user/core/common/features.h"
 #include "components/supervised_user/core/common/supervised_user_constants.h"
 #include "components/sync/model/sync_change.h"
 #include "components/sync/model/sync_change_processor.h"
@@ -94,12 +96,12 @@ SupervisedUserSettingsService::~SupervisedUserSettingsService() {}
 
 void SupervisedUserSettingsService::Init(
     base::FilePath profile_path,
-    base::SequencedTaskRunner* sequenced_task_runner,
+    scoped_refptr<base::SequencedTaskRunner> sequenced_task_runner,
     bool load_synchronously) {
   base::FilePath path =
       profile_path.Append(supervised_user::kSupervisedUserSettingsFilename);
   PersistentPrefStore* store = new JsonPrefStore(
-      path, std::unique_ptr<PrefFilter>(), sequenced_task_runner);
+      path, std::unique_ptr<PrefFilter>(), std::move(sequenced_task_runner));
   Init(store);
   if (load_synchronously) {
     store_->ReadPrefs();
@@ -138,7 +140,7 @@ void SupervisedUserSettingsService::RecordLocalWebsiteApproval(
   // Write the sync setting.
   std::string setting_key = MakeSplitSettingKey(
       supervised_user::kContentPackManualBehaviorHosts, host);
-  SaveItem(setting_key, std::make_unique<base::Value>(true));
+  SaveItem(setting_key, base::Value(true));
 
   // Now notify subscribers of the updates.
   website_approval_callback_list_.Notify(setting_key);
@@ -150,12 +152,26 @@ SupervisedUserSettingsService::SubscribeForShutdown(
   return shutdown_callback_list_.Add(callback);
 }
 
+bool SupervisedUserSettingsService::IsCustomPassphraseAllowed() const {
+  return !active_;
+}
+
 void SupervisedUserSettingsService::SetActive(bool active) {
   active_ = active;
 
   if (active_) {
+// TODO(b/290004926): Modifying `prefs::kSigninAllowed` causes check failures on
+// iOS.
+#if !BUILDFLAG(IS_IOS)
     // Child account supervised users must be signed in.
     SetLocalSetting(supervised_user::kSigninAllowed, base::Value(true));
+#endif  // !BUILDFLAG(IS_IOS)
+
+    if (base::FeatureList::IsEnabled(
+            supervised_user::kSupervisedPrefsControlledBySupervisedStore)) {
+      SetLocalSetting(supervised_user::kSigninAllowedOnNextStartup,
+                      base::Value(true));
+    }
 
     // Always allow cookies, to avoid website compatibility issues.
     SetLocalSetting(supervised_user::kCookiesAlwaysAllowed, base::Value(true));
@@ -163,7 +179,12 @@ void SupervisedUserSettingsService::SetActive(bool active) {
     // SafeSearch and GeolocationDisabled are controlled at the account level,
     // so don't override them client-side.
   } else {
+// TODO(b/290004926): Modifying `prefs::kSigninAllowed` causes check failures on
+// iOS.
+#if !BUILDFLAG(IS_IOS)
     RemoveLocalSetting(supervised_user::kSigninAllowed);
+#endif  // !BUILDFLAG(IS_IOS)
+
     RemoveLocalSetting(supervised_user::kCookiesAlwaysAllowed);
     RemoveLocalSetting(supervised_user::kForceSafeSearch);
     RemoveLocalSetting(supervised_user::kGeolocationDisabled);
@@ -194,7 +215,7 @@ std::string SupervisedUserSettingsService::MakeSplitSettingKey(
 
 void SupervisedUserSettingsService::SaveItem(
     const std::string& key,
-    std::unique_ptr<base::Value> value) {
+    base::Value value) {
   // Update the value in our local dict, and push the changes to sync.
   std::string key_suffix = key;
   base::Value::Dict* dict = nullptr;
@@ -203,7 +224,7 @@ void SupervisedUserSettingsService::SaveItem(
     dict = GetDictionaryAndSplitKey(&key_suffix);
     DCHECK(GetQueuedItems()->empty());
     SyncChangeList change_list;
-    SyncData data = CreateSyncDataForSetting(key, *value);
+    SyncData data = CreateSyncDataForSetting(key, value);
     SyncChange::SyncChangeType change_type = dict->Find(key_suffix)
                                                  ? SyncChange::ACTION_UPDATE
                                                  : SyncChange::ACTION_ADD;
@@ -217,7 +238,7 @@ void SupervisedUserSettingsService::SaveItem(
     base::RecordAction(UserMetricsAction("ManagedUsers_UploadItem_Queued"));
     dict = GetQueuedItems();
   }
-  dict->Set(key_suffix, base::Value::FromUniquePtrValue(std::move(value)));
+  dict->Set(key_suffix,std::move(value));
 
   // Now notify subscribers of the updates.
   // For simplicity and consistency with ProcessSyncChanges() we notify both
@@ -375,7 +396,7 @@ SyncDataList SupervisedUserSettingsService::GetAllSyncDataForTesting(
   for (const auto it : *GetSplitSettings()) {
     const base::Value& split_setting = it.second;
     DCHECK(split_setting.is_dict());
-    for (const auto jt : split_setting.DictItems()) {
+    for (const auto jt : split_setting.GetDict()) {
       data.push_back(CreateSyncDataForSetting(
           MakeSplitSettingKey(it.first, jt.first), jt.second));
     }

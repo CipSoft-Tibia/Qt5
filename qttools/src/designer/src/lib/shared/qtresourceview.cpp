@@ -43,15 +43,15 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-static const char elementResourceData[] = "resource";
-static const char typeAttribute[] = "type";
-static const char typeImage[] = "image";
-static const char typeStyleSheet[] = "stylesheet";
-static const char typeOther[] = "other";
-static const char fileAttribute[] = "file";
-static const char qrvSplitterPosition[] = "SplitterPosition";
-static const char qrvGeometry[] = "Geometry";
-static const char ResourceViewDialogC[] = "ResourceDialog";
+static constexpr auto elementResourceData = "resource"_L1;
+static constexpr auto typeAttribute = "type"_L1;
+static constexpr auto typeImage = "image"_L1;
+static constexpr auto typeStyleSheet = "stylesheet"_L1;
+static constexpr auto typeOther = "other"_L1;
+static constexpr auto fileAttribute = "file"_L1;
+static constexpr auto qrvSplitterPosition = "SplitterPosition"_L1;
+static constexpr auto qrvGeometry = "Geometry"_L1;
+static constexpr auto ResourceViewDialogC = "ResourceDialog"_L1;
 
 // ---------------- ResourceListWidget: A list widget that has drag enabled
 class ResourceListWidget : public QListWidget {
@@ -174,7 +174,7 @@ void QtResourceViewPrivate::restoreSettings()
     QDesignerSettingsInterface *settings = m_core->settingsManager();
     settings->beginGroup(m_settingsKey);
 
-    m_splitter->restoreState(settings->value(QLatin1StringView(qrvSplitterPosition)).toByteArray());
+    m_splitter->restoreState(settings->value(qrvSplitterPosition).toByteArray());
     settings->endGroup();
 }
 
@@ -186,7 +186,7 @@ void QtResourceViewPrivate::saveSettings()
     QDesignerSettingsInterface *settings = m_core->settingsManager();
     settings->beginGroup(m_settingsKey);
 
-    settings->setValue(QLatin1StringView(qrvSplitterPosition), m_splitter->saveState());
+    settings->setValue(qrvSplitterPosition, m_splitter->saveState());
     settings->endGroup();
 }
 
@@ -356,15 +356,15 @@ void QtResourceViewPrivate::createPaths()
         }
     }
 
-    QQueue<QPair<QString, QTreeWidgetItem *> > pathToParentItemQueue;
-    pathToParentItemQueue.enqueue(qMakePair(root, static_cast<QTreeWidgetItem *>(nullptr)));
+    QQueue<std::pair<QString, QTreeWidgetItem *>> pathToParentItemQueue;
+    pathToParentItemQueue.enqueue(std::make_pair(root, static_cast<QTreeWidgetItem *>(nullptr)));
     while (!pathToParentItemQueue.isEmpty()) {
-        QPair<QString, QTreeWidgetItem *> pathToParentItem = pathToParentItemQueue.dequeue();
+        std::pair<QString, QTreeWidgetItem *> pathToParentItem = pathToParentItemQueue.dequeue();
         const QString path = pathToParentItem.first;
         QTreeWidgetItem *item = createPath(path, pathToParentItem.second);
         const QStringList subPaths = m_pathToSubPaths.value(path);
         for (const QString &subPath : subPaths)
-            pathToParentItemQueue.enqueue(qMakePair(subPath, item));
+            pathToParentItemQueue.enqueue(std::make_pair(subPath, item));
     }
 }
 
@@ -530,16 +530,16 @@ QtResourceView::QtResourceView(QDesignerFormEditorInterface *core, QWidget *pare
 {
     d_ptr->q_ptr = this;
 
-    QIcon editIcon = QIcon::fromTheme(u"document-properties"_s,
-                                      qdesigner_internal::createIconSet(u"edit.png"_s));
+    QIcon editIcon = qdesigner_internal::createIconSet(QIcon::ThemeIcon::DocumentProperties,
+                                                       "edit.png"_L1);
     d_ptr->m_editResourcesAction = new QAction(editIcon, tr("Edit Resources..."), this);
     d_ptr->m_toolBar->addAction(d_ptr->m_editResourcesAction);
     connect(d_ptr->m_editResourcesAction, &QAction::triggered,
             this, [this] { d_ptr->slotEditResources(); });
     d_ptr->m_editResourcesAction->setEnabled(false);
 
-    QIcon refreshIcon = QIcon::fromTheme(u"view-refresh"_s,
-                                         qdesigner_internal::createIconSet(u"reload.png"_s));
+    QIcon refreshIcon = qdesigner_internal::createIconSet(QIcon::ThemeIcon::ViewRefresh,
+                                                          "reload.png"_L1);
     d_ptr->m_reloadResourcesAction = new QAction(refreshIcon, tr("Reload"), this);
 
     d_ptr->m_toolBar->addAction(d_ptr->m_reloadResourcesAction);
@@ -548,8 +548,8 @@ QtResourceView::QtResourceView(QDesignerFormEditorInterface *core, QWidget *pare
     d_ptr->m_reloadResourcesAction->setEnabled(false);
 
 #if QT_CONFIG(clipboard)
-    QIcon copyIcon = QIcon::fromTheme(u"edit-copy"_s,
-                                      qdesigner_internal::createIconSet(u"editcopy.png"_s));
+    QIcon copyIcon = qdesigner_internal::createIconSet(QIcon::ThemeIcon::EditCopy,
+                                                       "editcopy.png"_L1);
     d_ptr->m_copyResourcePathAction = new QAction(copyIcon, tr("Copy Path"), this);
     connect(d_ptr->m_copyResourcePathAction, &QAction::triggered,
             this, [this] { d_ptr->slotCopyResourcePath(); });
@@ -718,19 +718,19 @@ bool QtResourceView::dragEnabled() const
 QString QtResourceView::encodeMimeData(ResourceType resourceType, const QString &path)
 {
     QDomDocument doc;
-    QDomElement elem = doc.createElement(QLatin1StringView(elementResourceData));
+    QDomElement elem = doc.createElement(elementResourceData);
     switch (resourceType) {
     case ResourceImage:
-        elem.setAttribute(QLatin1StringView(typeAttribute), QLatin1StringView(typeImage));
+        elem.setAttribute(typeAttribute, typeImage);
         break;
     case ResourceStyleSheet:
-        elem.setAttribute(QLatin1StringView(typeAttribute), QLatin1StringView(typeStyleSheet));
+        elem.setAttribute(typeAttribute, typeStyleSheet);
         break;
     case ResourceOther:
-        elem.setAttribute(QLatin1StringView(typeAttribute), QLatin1StringView(typeOther));
+        elem.setAttribute(typeAttribute, typeOther);
         break;
     }
-    elem.setAttribute(QLatin1StringView(fileAttribute), path);
+    elem.setAttribute(fileAttribute, path);
     doc.appendChild(elem);
     return doc.toString();
 }
@@ -743,7 +743,7 @@ bool QtResourceView::decodeMimeData(const QMimeData *md, ResourceType *t, QStrin
 bool QtResourceView::decodeMimeData(const QString &text, ResourceType *t, QString *file)
 {
 
-    static auto docElementName = QLatin1StringView(elementResourceData);
+    static auto docElementName = elementResourceData;
     static const QString docElementString = u'<' + docElementName;
 
     if (text.isEmpty() || text.indexOf(docElementString) == -1)
@@ -758,18 +758,18 @@ bool QtResourceView::decodeMimeData(const QString &text, ResourceType *t, QStrin
         return false;
 
     if (t) {
-        const QString typeAttr = QLatin1StringView(typeAttribute);
+        const QString typeAttr = typeAttribute;
         if (domElement.hasAttribute (typeAttr)) {
-            const QString typeValue = domElement.attribute(typeAttr, QLatin1StringView(typeOther));
-            if (typeValue == QLatin1StringView(typeImage)) {
+            const QString typeValue = domElement.attribute(typeAttr, typeOther);
+            if (typeValue == typeImage) {
                 *t = ResourceImage;
             } else {
-                *t = typeValue == QLatin1StringView(typeStyleSheet) ? ResourceStyleSheet : ResourceOther;
+                *t = typeValue == typeStyleSheet ? ResourceStyleSheet : ResourceOther;
             }
         }
     }
     if (file) {
-        const QString fileAttr = QLatin1StringView(fileAttribute);
+        const QString fileAttr = fileAttribute;
         if (domElement.hasAttribute(fileAttr)) {
             *file = domElement.attribute(fileAttr, QString());
         } else {
@@ -802,7 +802,7 @@ QtResourceViewDialogPrivate::QtResourceViewDialogPrivate(QDesignerFormEditorInte
     m_view(new QtResourceView(core)),
     m_box(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel))
 {
-    m_view->setSettingsKey(QLatin1StringView(ResourceViewDialogC));
+    m_view->setSettingsKey(ResourceViewDialogC);
 }
 
 // ------------ QtResourceViewDialog
@@ -824,9 +824,9 @@ QtResourceViewDialog::QtResourceViewDialog(QDesignerFormEditorInterface *core, Q
     d_ptr->m_view->setResourceModel(core->resourceModel());
 
     QDesignerSettingsInterface *settings = core->settingsManager();
-    settings->beginGroup(QLatin1StringView(ResourceViewDialogC));
+    settings->beginGroup(ResourceViewDialogC);
 
-    const QVariant geometry = settings->value(QLatin1StringView(qrvGeometry));
+    const QVariant geometry = settings->value(qrvGeometry);
     if (geometry.metaType().id() == QMetaType::QByteArray) // Used to be a QRect up until 5.4.0, QTBUG-43374.
         restoreGeometry(geometry.toByteArray());
 
@@ -836,9 +836,9 @@ QtResourceViewDialog::QtResourceViewDialog(QDesignerFormEditorInterface *core, Q
 QtResourceViewDialog::~QtResourceViewDialog()
 {
     QDesignerSettingsInterface *settings = d_ptr->m_core->settingsManager();
-    settings->beginGroup(QLatin1StringView(ResourceViewDialogC));
+    settings->beginGroup(ResourceViewDialogC);
 
-    settings->setValue(QLatin1StringView(qrvGeometry), saveGeometry());
+    settings->setValue(qrvGeometry, saveGeometry());
 
     settings->endGroup();
 }

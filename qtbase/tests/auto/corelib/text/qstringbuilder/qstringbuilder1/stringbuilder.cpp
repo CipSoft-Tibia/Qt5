@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 // Do not include anything in this file. We are being #included in the unnamed namespace
 // with a bunch of defines that may break other legitimate code.
@@ -44,6 +44,7 @@ template <> QString toQString(const char16_t &c) { return QChar(c); }
 template <typename T> QByteArray toQByteArray(const T &t);
 
 template <> QByteArray toQByteArray(const QByteArray &b) { return b; }
+template <> QByteArray toQByteArray(const QByteArrayView &bav) { return bav.toByteArray(); }
 template <> QByteArray toQByteArray(char * const &p) { return p; }
 template <size_t N> QByteArray toQByteArray(const char (&a)[N]) { return a; }
 template <> QByteArray toQByteArray(const char &c) { return QByteArray(&c, 1); }
@@ -78,7 +79,7 @@ void checkItWorksWithFreeSpaceAtBegin(const String &chunk, const Separator &sepa
 }
 
 template <typename String>
-void checkNullVsEmpty(const String &empty, const char *failureReason = nullptr)
+void checkNullVsEmpty(const String &empty)
 {
     String a;
     String b;
@@ -92,12 +93,156 @@ void checkNullVsEmpty(const String &empty, const char *failureReason = nullptr)
     QVERIFY(!d.isNull());
     result = a P d;
     QVERIFY(result.isEmpty());
-    if (failureReason)
-        QEXPECT_FAIL("", failureReason, Continue);
     QVERIFY(!result.isNull());
 
     result = a P a P a;
-    QVERIFY(!result.isNull());
+    QVERIFY(result.isNull());
+}
+
+namespace CheckAuto {
+// T is cvref-qualified, using universal reference deduction rules.
+template <typename T> struct Helper;
+
+// These specializations forward to the non-const ones, and add const on top.
+template <typename T> struct Helper<const T>
+{
+    static const T create() { return Helper<T>::create(); }
+    static const T createNull() { return Helper<T>::createNull(); }
+};
+template <typename T> struct Helper<const T &>
+{
+    static const T &create() { return Helper<T &>::create(); }
+    static const T &createNull() { return Helper<T &>::createNull(); }
+};
+
+template <> struct Helper<QString>
+{
+    static QString create() { return QString::fromUtf8("QString rvalue"); }
+    static QString createNull() { return QString(); }
+};
+
+template <> struct Helper<QString &>
+{
+    static QString &create() { static QString s = QString::fromUtf8("QString lvalue"); return s; }
+    static QString &createNull() { static QString s; return s; }
+};
+
+template <> struct Helper<QStringView>
+{
+    static QStringView create() { return QStringView(u"QStringView rvalue"); }
+    static QStringView createNull() { return QStringView(); }
+};
+
+template <> struct Helper<QStringView &>
+{
+    static QStringView &create() { static QStringView s = u"QStringView lvalue"; return s; }
+    static QStringView &createNull() { static QStringView s; return s; }
+};
+
+template <> struct Helper<QByteArray>
+{
+    static QByteArray create() { return QByteArray("QByteArray rvalue"); }
+    static QByteArray createNull() { return QByteArray(); }
+};
+
+template <> struct Helper<QByteArray &>
+{
+    static QByteArray &create() { static QByteArray ba = QByteArray("QByteArray lvalue"); return ba; }
+    static QByteArray &createNull() { static QByteArray ba; return ba; }
+};
+
+template <> struct Helper<QByteArrayView>
+{
+    static QByteArrayView create() { return QByteArrayView("QByteArrayView rvalue"); }
+    static QByteArrayView createNull() { return QByteArrayView(); }
+};
+
+template <> struct Helper<QByteArrayView &>
+{
+    static QByteArrayView &create() { static QByteArrayView ba = "QByteArrayView lvalue"; return ba; }
+    static QByteArrayView &createNull() { static QByteArrayView ba; return ba; }
+};
+
+template <> struct Helper<const char *>
+{
+    static const char *create() { return "const char * rvalue"; }
+    static const char *createNull() { return ""; }
+};
+
+template <> struct Helper<const char *&>
+{
+    static const char *&create() { static const char *s = "const char * lvalue"; return s; }
+    static const char *&createNull() { static const char *s = ""; return s; }
+};
+
+template <typename String1, typename String2, typename Result>
+void checkAutoImpl3()
+{
+    {
+        auto result = Helper<String1>::create() P Helper<String2>::create();
+        Result expected = result;
+        QCOMPARE(result, expected);
+    }
+    {
+        auto result = Helper<String2>::create() P Helper<String1>::create();
+        Result expected = result;
+        QCOMPARE(result, expected);
+    }
+    {
+        auto result = Helper<String1>::create() P Helper<String2>::create() P Helper<String1>::create();
+        Result expected = result;
+        QCOMPARE(result, expected);
+    }
+    {
+        auto result = Helper<String2>::create() P Helper<String1>::create() P Helper<String2>::create();
+        Result expected = result;
+        QCOMPARE(result, expected);
+    }
+    {
+        auto result = Helper<String1>::createNull() P Helper<String2>::create();
+        Result expected = result;
+        QCOMPARE(result, expected);
+    }
+    {
+        auto result = Helper<String1>::createNull() P Helper<String2>::createNull();
+        Result expected = result;
+        QCOMPARE(result, expected);
+    }
+}
+
+template <typename String1, typename String2, typename Result>
+void checkAutoImpl2()
+{
+    checkAutoImpl3<String1  , String2  , Result>();
+    checkAutoImpl3<String1 &, String2  , Result>();
+    checkAutoImpl3<String1  , String2 &, Result>();
+    checkAutoImpl3<String1 &, String2 &, Result>();
+}
+
+template <typename String1, typename String2, typename Result>
+void checkAutoImpl()
+{
+    checkAutoImpl2<      String1,       String2, Result>();
+    checkAutoImpl2<const String1,       String2, Result>();
+    checkAutoImpl2<      String1, const String2, Result>();
+    checkAutoImpl2<const String1, const String2, Result>();
+}
+
+} // namespace CheckAuto
+
+void checkAuto()
+{
+    CheckAuto::checkAutoImpl<QString, QString, QString>();
+    CheckAuto::checkAutoImpl<QString, QStringView, QString>();
+
+    CheckAuto::checkAutoImpl<QByteArray, QByteArray, QByteArray>();
+    CheckAuto::checkAutoImpl<QByteArray, const char *, QByteArray>();
+    CheckAuto::checkAutoImpl<QByteArray, QByteArrayView, QByteArray>();
+
+#ifndef QT_NO_CAST_FROM_ASCII
+    CheckAuto::checkAutoImpl<QString, const char *, QString>();
+    CheckAuto::checkAutoImpl<QString, QByteArray, QString>();
+#endif
 }
 
 void runScenario()
@@ -117,17 +262,16 @@ void runScenario()
 
 #define CHECK(QorP, a1, a2) \
     do { \
-        DO(QorP, a1, a2); \
-        DO(QorP, a2, a1); \
+        QCOMPARE(QString(a1 QorP a2), toQString(a1).append(toQString(a2))); \
+        QCOMPARE(QString(a2 QorP a1), toQString(a2).append(toQString(a1))); \
     } while (0)
-
-#define DO(QorP, a1, a2) \
-    QCOMPARE(QString(a1 QorP a2), \
-             toQString(a1).append(toQString(a2))) \
-    /* end */
 
     CHECK(P, l1string, l1string);
     CHECK(P, l1string, string);
+    CHECK(P, l1string, QString(string));
+    CHECK(Q, l1string, string);
+    CHECK(Q, l1string, QString(string));
+
     CHECK(Q, l1string, stringview);
     CHECK(P, l1string, lchar);
     CHECK(P, l1string, qchar);
@@ -138,20 +282,48 @@ void runScenario()
     CHECK(Q, l1string, u16charstar);
 
     CHECK(P, string, string);
+    CHECK(P, string, QString(string));
+    CHECK(P, QString(string), QString(string));
+    CHECK(Q, string, string);
+    CHECK(Q, string, QString(string));
+    CHECK(Q, QString(string), QString(string));
+
+    CHECK(P, string, stringview);
+    CHECK(P, QString(string), stringview);
     CHECK(Q, string, stringview);
+    CHECK(Q, QString(string), stringview);
+
     CHECK(P, string, lchar);
+    CHECK(P, QString(string), lchar);
+    CHECK(Q, string, lchar);
+    CHECK(Q, QString(string), lchar);
+
     CHECK(P, string, qchar);
+    CHECK(P, QString(string), qchar);
     CHECK(P, string, special);
+    CHECK(P, QString(string), special);
     CHECK(P, string, QStringLiteral(LITERAL));
+    CHECK(P, QString(string), QStringLiteral(LITERAL));
+    CHECK(Q, string, qchar);
+    CHECK(Q, QString(string), qchar);
+    CHECK(Q, string, special);
+    CHECK(Q, QString(string), special);
+    CHECK(Q, string, QStringLiteral(LITERAL));
+    CHECK(Q, QString(string), QStringLiteral(LITERAL));
+
     CHECK(Q, string, u16char);
+    CHECK(Q, QString(string), u16char);
     CHECK(Q, string, u16chararray);
+    CHECK(Q, QString(string), u16chararray);
     CHECK(Q, string, u16charstar);
+    CHECK(Q, QString(string), u16charstar);
 
     CHECK(Q, stringview, stringview);
     CHECK(Q, stringview, lchar);
     CHECK(Q, stringview, qchar);
     CHECK(Q, stringview, special);
     CHECK(P, stringview, QStringLiteral(LITERAL));
+    CHECK(Q, stringview, QStringLiteral(LITERAL));
     CHECK(Q, stringview, u16char);
     CHECK(Q, stringview, u16chararray);
     CHECK(Q, stringview, u16charstar);
@@ -191,21 +363,36 @@ void runScenario()
 
     // CHECK(Q, u16charstar, u16charstar);     // BUILTIN <-> BUILTIN cat't be overloaded
 
-#undef DO
+#undef CHECK
 
-#define DO(QorP, a1, a2) \
-    QCOMPARE(QByteArray(a1 QorP a2), \
-             toQByteArray(a1).append(toQByteArray(a2))) \
-    /* end */
+#define CHECK(QorP, a1, a2) \
+    do { \
+        QCOMPARE(QByteArray(a1 QorP a2), toQByteArray(a1).append(toQByteArray(a2))); \
+        QCOMPARE(QByteArray(a2 QorP a1), toQByteArray(a2).append(toQByteArray(a1))); \
+    } while (0)
 
     QByteArray bytearray = stringview.toUtf8();
+    QByteArrayView baview = QByteArrayView(bytearray).mid(0, bytearray.size() - 2);
     char *charstar = bytearray.data();
     char chararray[3] = { 'H', 'i', '\0' };
     const char constchararray[3] = { 'H', 'i', '\0' };
     char achar = 'a';
+    char embedded_NULs[16] = { 'H', 'i' };
+    const char const_embedded_NULs[16] = { 'H', 'i' };
 
     CHECK(P, bytearray, bytearray);
+    CHECK(P, QByteArray(bytearray), bytearray);
+    CHECK(P, QByteArray(bytearray), QByteArray(bytearray));
+    CHECK(P, bytearray, baview);
+    CHECK(P, QByteArray(bytearray), baview);
     CHECK(P, bytearray, charstar);
+    CHECK(Q, bytearray, bytearray);
+    CHECK(Q, QByteArray(bytearray), bytearray);
+    CHECK(Q, QByteArray(bytearray), QByteArray(bytearray));
+    CHECK(Q, bytearray, baview);
+    CHECK(Q, QByteArray(bytearray), baview);
+    CHECK(Q, bytearray, charstar);
+
 #ifndef Q_CC_MSVC // see QTBUG-65359
     CHECK(P, bytearray, chararray);
 #else
@@ -213,6 +400,35 @@ void runScenario()
 #endif
     CHECK(P, bytearray, constchararray);
     CHECK(P, bytearray, achar);
+    CHECK(Q, bytearray, constchararray);
+    CHECK(Q, bytearray, achar);
+    CHECK(Q, bytearray, embedded_NULs);
+    CHECK(Q, bytearray, const_embedded_NULs);
+
+    CHECK(Q, baview, bytearray);
+    CHECK(Q, baview, charstar);
+    CHECK(Q, baview, chararray);
+    CHECK(Q, baview, constchararray);
+    CHECK(Q, baview, achar);
+    CHECK(Q, baview, embedded_NULs);
+    CHECK(Q, baview, const_embedded_NULs);
+
+    // Check QString/QByteArray consistency when appending const char[] with embedded NULs:
+    {
+        const QByteArray ba = baview Q embedded_NULs;
+        QEXPECT_FAIL("", "QTBUG-117321", Continue);
+        QCOMPARE(ba.size(), baview.size() + q20::ssize(embedded_NULs) - 1);
+
+#ifndef QT_NO_CAST_FROM_ASCII
+        const auto l1s = QLatin1StringView{baview}; // l1string != baview
+
+        const QString s = l1s Q embedded_NULs;
+        QCOMPARE(s.size(), l1s.size() + q20::ssize(embedded_NULs) - 1);
+
+        QEXPECT_FAIL("", "QTBUG-117321", Continue);
+        QCOMPARE(s, ba);
+#endif
+    }
 
     //CHECK(Q, charstar, charstar);     // BUILTIN <-> BUILTIN cat't be overloaded
     //CHECK(Q, charstar, chararray);
@@ -223,7 +439,6 @@ void runScenario()
 
     //CHECK(Q, achar, achar);           // BUILTIN <-> BUILTIN cat't be overloaded
 
-#undef DO
 #undef CHECK
 
     QString r2(QLatin1String(LITERAL LITERAL));
@@ -381,7 +596,10 @@ void runScenario()
 
     // null vs. empty
     checkNullVsEmpty(QStringLiteral(""));
-    checkNullVsEmpty(QByteArrayLiteral(""), "QTBUG-114238: inconsistent isEmpty/isNull between QString and QByteArray concatenation");
+    checkNullVsEmpty(QByteArrayLiteral(""));
+
+    // auto
+    checkAuto();
 
     checkItWorksWithFreeSpaceAtBegin(QByteArray(UTF8_LITERAL), "1234");
     if (QTest::currentTestFailed())

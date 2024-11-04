@@ -14,38 +14,34 @@
 namespace policy {
 namespace features {
 
-// Enable force installed Chrome apps policy migration.
-POLICY_EXPORT BASE_DECLARE_FEATURE(kDefaultChromeAppsMigration);
+// Enable detection/upload Crowdstrike Agent signals with security
+// events.
+POLICY_EXPORT BASE_DECLARE_FEATURE(kCrowdstrikeSignalReporting);
 
-// Enable reporting Login events to the reporting connector when the Password
-// Manager detects that the user logged in to a web page.
-POLICY_EXPORT BASE_DECLARE_FEATURE(kLoginEventReporting);
-
-// Enable reporting password leaks to the reporting connector when the Password
-// Manager's Leak Detector has found some compromised credentials.
-POLICY_EXPORT BASE_DECLARE_FEATURE(kPasswordBreachEventReporting);
-
-// Enable the UserCloudSigninRestrictionPolicyFetcher to get the
-// ManagedAccountsSigninRestriction policy for a dasher account.
-POLICY_EXPORT BASE_DECLARE_FEATURE(
-    kEnableUserCloudSigninRestrictionPolicyFetcher);
-
-// Enable MetricsReportingEnabled policy to alter MetricsReportingState on
-// Android.
-POLICY_EXPORT BASE_DECLARE_FEATURE(
-    kActivateMetricsReportingEnabledPolicyAndroid);
-
-// Causes the DMToken to be deleted (rather than invalidated) when a browser is
-// deleted from CBCM.
-POLICY_EXPORT BASE_DECLARE_FEATURE(kDmTokenDeletion);
+// Enable the policy test page at chrome://policy/test.
+POLICY_EXPORT BASE_DECLARE_FEATURE(kEnablePolicyTestPage);
 
 #if BUILDFLAG(IS_ANDROID)
+// Enable comma-separated strings for list policies on Android.
+// Enabled by default, to be used as a kill switch.
+POLICY_EXPORT BASE_DECLARE_FEATURE(
+    kListPoliciesAcceptCommaSeparatedStringsAndroid);
+
 // Enable logging and chrome://policy/logs page on Android.
 POLICY_EXPORT BASE_DECLARE_FEATURE(kPolicyLogsPageAndroid);
+
+// Enable SafeSitesFilterBehavior policy on Android.
+POLICY_EXPORT BASE_DECLARE_FEATURE(kSafeSitesFilterBehaviorPolicyAndroid);
 #endif  // BUILDFLAG(IS_ANDROID)
 
-// Prevent policies set by a single source from being treated as merged.
-POLICY_EXPORT BASE_DECLARE_FEATURE(kPolicyMergeMultiSource);
+#if BUILDFLAG(IS_IOS)
+// Enable logging and chrome://policy/logs page on IOS.
+POLICY_EXPORT BASE_DECLARE_FEATURE(kPolicyLogsPageIOS);
+#endif  // BUILDFLAG(IS_IOS)
+
+#if !BUILDFLAG(IS_IOS) || !BUILDFLAG(IS_ANDROID)
+POLICY_EXPORT BASE_DECLARE_FEATURE(kPolicyLogsPageDesktop);
+#endif  // !BUILDFLAG(IS_IOS) || !!BUILDFLAG(IS_ANDROID)
 
 }  // namespace features
 }  // namespace policy

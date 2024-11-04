@@ -4,9 +4,8 @@
 #ifndef OPCUAMACHINEBACKEND_H
 #define OPCUAMACHINEBACKEND_H
 
-#include <QtOpcUa>
-
-#include <QObject>
+#include <QOpcUaClient>
+#include <QOpcUaNode>
 
 class OpcUaMachineBackend : public QObject
 {
@@ -17,7 +16,7 @@ public:
     enum class MachineState : quint32 {
         Idle,
         Pumping,
-        Flushing
+        Flushing,
     };
     Q_ENUM(MachineState)
 

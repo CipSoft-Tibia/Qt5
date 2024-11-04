@@ -204,6 +204,25 @@ bool SiteIsolationPolicy::IsOriginAgentClusterEnabled() {
 }
 
 // static
+bool SiteIsolationPolicy::AreOriginAgentClustersEnabledByDefault(
+    BrowserContext* browser_context) {
+  // OriginAgentClusters are enabled by default if OriginAgentCluster and
+  // kOriginAgentClusterDefaultEnabled are enabled, and if there is no
+  // enterprise policy forbidding it.
+  // This also returns true if kOriginKeyedProcessesByDefault is enabled,
+  // because it depends on having OriginAgentClusters by default. This can be
+  // handled here because this function is the only place that
+  // kOriginAgentClusterDefaultEnabled is directly checked.
+  return IsOriginAgentClusterEnabled() &&
+         (base::FeatureList::IsEnabled(
+              blink::features::kOriginAgentClusterDefaultEnabled) ||
+          base::FeatureList::IsEnabled(
+              features::kOriginKeyedProcessesByDefault)) &&
+         !GetContentClient()->browser()->ShouldDisableOriginAgentClusterDefault(
+             browser_context);
+}
+
+// static
 bool SiteIsolationPolicy::IsSiteIsolationForCOOPEnabled() {
   // If the user has explicitly enabled site isolation for COOP sites from the
   // command line, honor this regardless of policies that may disable site
@@ -238,11 +257,6 @@ bool SiteIsolationPolicy::ShouldPersistIsolatedCOOPSites() {
 
   return features::kSiteIsolationForCrossOriginOpenerPolicyShouldPersistParam
       .Get();
-}
-
-// static
-bool SiteIsolationPolicy::IsSiteIsolationForGuestsEnabled() {
-  return base::FeatureList::IsEnabled(features::kSiteIsolationForGuests);
 }
 
 // static

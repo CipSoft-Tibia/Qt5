@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -189,16 +189,16 @@ Error StreamSocketPosix::Listen(int max_backlog_size) {
   return Error::None();
 }
 
-absl::optional<IPEndpoint> StreamSocketPosix::remote_address() const {
+std::optional<IPEndpoint> StreamSocketPosix::remote_address() const {
   if ((state_ != TcpSocketState::kConnected) || !remote_address_) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return remote_address_.value();
 }
 
-absl::optional<IPEndpoint> StreamSocketPosix::local_address() const {
+std::optional<IPEndpoint> StreamSocketPosix::local_address() const {
   if (!local_address_.has_value()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return local_address_.value().endpoint();
 }

@@ -67,7 +67,19 @@ DECLARE_HEAP_OBJECT(QQmlValueTypeWrapper, ReferenceObject) {
 
     const QMetaObject *metaObject() const { return m_metaObject; }
 
-    void setData(const void *data);
+    void setData(const void *data)
+    {
+        const QMetaType type = metaType();
+        void *gadget = gadgetPtr();
+        if (gadget) {
+            type.destruct(gadget);
+        } else {
+            gadget = ::operator new(type.sizeOf());
+            setGadgetPtr(gadget);
+        }
+        type.construct(gadget, data);
+    }
+
     QVariant toVariant() const;
 
     void *storagePointer();
@@ -108,6 +120,17 @@ public:
             ExecutionEngine *engine, const void *, const QMetaObject *metaObject, QMetaType type);
 
     QVariant toVariant() const;
+
+    template<typename ValueType>
+    ValueType *cast()
+    {
+        if (QMetaType::fromType<ValueType>() != d()->metaType())
+            return nullptr;
+        if (d()->isReference() && !readReferenceValue())
+            return nullptr;
+        return static_cast<ValueType *>(d()->gadgetPtr());
+    }
+
     bool toGadget(void *data) const;
     bool isEqual(const QVariant& value) const;
     int typeId() const;

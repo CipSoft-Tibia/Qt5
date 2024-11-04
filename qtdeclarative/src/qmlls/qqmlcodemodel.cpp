@@ -1,13 +1,16 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlcodemodel_p.h"
 #include "qtextdocument_p.h"
+#include "qqmllsutils_p.h"
 
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qthreadpool.h>
 #include <QtCore/qlibraryinfo.h>
+#include <QtCore/qprocess.h>
+#include <QtCore/qdiriterator.h>
 #include <QtQmlDom/private/qqmldomtop_p.h>
 
 #include <memory>
@@ -89,8 +92,20 @@ QQmlCodeModel::QQmlCodeModel(QObject *parent, QQmlToolingSettings *settings)
 {
 }
 
+/*!
+\internal
+Disable the functionality that uses CMake, and remove the already watched paths if there are some.
+*/
+void QQmlCodeModel::disableCMakeCalls()
+{
+    m_cmakeStatus = DoesNotHaveCMake;
+    m_cppFileWatcher.removePaths(m_cppFileWatcher.files());
+    QObject::disconnect(&m_cppFileWatcher, &QFileSystemWatcher::fileChanged, nullptr, nullptr);
+}
+
 QQmlCodeModel::~QQmlCodeModel()
 {
+    QObject::disconnect(&m_cppFileWatcher, &QFileSystemWatcher::fileChanged, nullptr, nullptr);
     while (true) {
         bool shouldWait;
         {
@@ -184,11 +199,12 @@ void QQmlCodeModel::indexDirectory(const QString &path, int depthLeft)
         DomCreationOptions options;
         options.setFlag(DomCreationOption::WithScriptExpressions);
         options.setFlag(DomCreationOption::WithSemanticAnalysis);
+        options.setFlag(DomCreationOption::WithRecovery);
         FileToLoad fileToLoad =
                 FileToLoad::fromFileSystem(newCurrent.ownerAs<DomEnvironment>(), fPath, options);
         if (!fileToLoad.canonicalPath().isEmpty()) {
             newCurrent.loadBuiltins();
-            newCurrent.loadFile(fileToLoad, [](Path, DomItem &, DomItem &) {}, {});
+            newCurrent.loadFile(fileToLoad, [](Path, const DomItem &, const DomItem &) {}, {});
             newCurrent.loadPendingDependencies();
             newCurrent.commitToBase(m_validEnv.ownerAs<DomEnvironment>());
         }
@@ -410,24 +426,182 @@ void QQmlCodeModel::openUpdateEnd()
     qCDebug(codeModelLog) << "openUpdateEnd";
 }
 
+/*!
+\internal
+Performs initialization for m_cmakeStatus, including testing for CMake on the current system.
+*/
+void QQmlCodeModel::initializeCMakeStatus(const QString &pathForSettings)
+{
+    if (m_settings) {
+        const QString cmakeCalls = u"no-cmake-calls"_s;
+        m_settings->search(pathForSettings);
+        if (m_settings->isSet(cmakeCalls) && m_settings->value(cmakeCalls).toBool()) {
+            qWarning() << "Disabling CMake calls via .qmlls.ini setting.";
+            m_cmakeStatus = DoesNotHaveCMake;
+            return;
+        }
+    }
+
+    QProcess process;
+    process.setProgram(u"cmake"_s);
+    process.setArguments({ u"--version"_s });
+    process.start();
+    process.waitForFinished();
+    m_cmakeStatus = process.exitCode() == 0 ? HasCMake : DoesNotHaveCMake;
+
+    if (m_cmakeStatus == DoesNotHaveCMake) {
+        qWarning() << "Disabling CMake calls because CMake was not found.";
+        return;
+    }
+
+    QObject::connect(&m_cppFileWatcher, &QFileSystemWatcher::fileChanged, this,
+                     &QQmlCodeModel::onCppFileChanged);
+}
+
+/*!
+\internal
+For each build path that is a also a CMake build path, call CMake with \l cmakeBuildCommand to
+generate/update the .qmltypes, qmldir and .qrc files.
+It is assumed here that the number of build folders is usually no more than one, so execute the
+CMake builds one at a time.
+
+If CMake cannot be executed, false is returned. This may happen when CMake does not exist on the
+current system, when the target executed by CMake does not exist (for example when something else
+than qt_add_qml_module is used to setup the module in CMake), or the when the CMake build itself
+fails.
+*/
+bool QQmlCodeModel::callCMakeBuild(const QStringList &buildPaths)
+{
+    bool success = true;
+    for (const auto &path : buildPaths) {
+        if (!QFileInfo::exists(path + u"/.cmake"_s))
+            continue;
+
+        QProcess process;
+        const auto command = QQmlLSUtils::cmakeBuildCommand(path);
+        process.setProgram(command.first);
+        process.setArguments(command.second);
+        qCDebug(codeModelLog) << "Running" << process.program() << process.arguments();
+        process.start();
+
+        // TODO: run process concurrently instead of blocking qmlls
+        success &= process.waitForFinished();
+        success &= (process.exitCode() == 0);
+        qCDebug(codeModelLog) << process.program() << process.arguments() << "terminated with"
+                              << process.exitCode();
+    }
+    return success;
+}
+
+/*!
+\internal
+Iterate the entire source directory to find all C++ files that have their names in fileNames, and
+return all the found file paths.
+
+This is an overapproximation and might find unrelated files with the same name.
+*/
+QStringList QQmlCodeModel::findFilePathsFromFileNames(const QStringList &fileNames) const
+{
+    QStringList result;
+    for (const auto &rootUrl : m_rootUrls) {
+        const QString rootDir = QUrl(QString::fromUtf8(rootUrl)).toLocalFile();
+
+        if (rootDir.isEmpty())
+            continue;
+
+        qCDebug(codeModelLog) << "Searching for files to watch in workspace folder" << rootDir;
+        QDirIterator it(rootDir, fileNames, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            QFileInfo info = it.nextFileInfo();
+            result << info.absoluteFilePath();
+        }
+    }
+    return result;
+}
+
+/*!
+\internal
+Find all C++ file names (not path, for file paths call \l findFilePathsFromFileNames on the result
+of this method) that this qmlFile relies on.
+*/
+QStringList QQmlCodeModel::fileNamesToWatch(const DomItem &qmlFile)
+{
+    const QmlFile *file = qmlFile.as<QmlFile>();
+    if (!file)
+        return {};
+
+    auto resolver = file->typeResolver();
+    if (!resolver)
+        return {};
+
+    auto types = resolver->importedTypes();
+
+    QStringList result;
+    for (const auto &type : types) {
+        if (!type.scope || type.scope->isComposite())
+            continue;
+
+        const QString filePath = QFileInfo(type.scope->filePath()).fileName();
+        result << filePath;
+    }
+
+    return result;
+}
+
+/*!
+\internal
+Add watches for all C++ files that this qmlFile relies on, so a rebuild can be triggered when they
+are modified.
+*/
+void QQmlCodeModel::addFileWatches(const DomItem &qmlFile)
+{
+    const auto filesToWatch = fileNamesToWatch(qmlFile);
+    const QStringList filepathsToWatch = findFilePathsFromFileNames(filesToWatch);
+    const auto unwatchedPaths = m_cppFileWatcher.addPaths(filepathsToWatch);
+    if (!unwatchedPaths.isEmpty()) {
+        qCDebug(codeModelLog) << "Cannot watch paths" << unwatchedPaths << "from requested"
+                              << filepathsToWatch;
+    }
+}
+
+void QQmlCodeModel::onCppFileChanged(const QString &)
+{
+    m_rebuildRequired = true;
+}
+
 void QQmlCodeModel::newDocForOpenFile(const QByteArray &url, int version, const QString &docText)
 {
     qCDebug(codeModelLog) << "updating doc" << url << "to version" << version << "("
                           << docText.size() << "chars)";
+
+    const QString fPath = url2Path(url, UrlLookup::ForceLookup);
+    if (m_cmakeStatus == RequiresInitialization)
+        initializeCMakeStatus(fPath);
+
     DomItem newCurrent = m_currentEnv.makeCopy(DomItem::CopyOption::EnvConnected).item();
     QStringList loadPaths = buildPathsForFileUrl(url);
+
+    if (m_cmakeStatus == HasCMake && !loadPaths.isEmpty() && m_rebuildRequired) {
+        callCMakeBuild(loadPaths);
+        m_rebuildRequired = false;
+    }
+
     loadPaths.append(QLibraryInfo::path(QLibraryInfo::QmlImportsPath));
     if (std::shared_ptr<DomEnvironment> newCurrentPtr = newCurrent.ownerAs<DomEnvironment>()) {
         newCurrentPtr->setLoadPaths(loadPaths);
     }
-    QString fPath = url2Path(url, UrlLookup::ForceLookup);
     Path p;
-    DomCreationOptions options;
-    options.setFlag(DomCreationOption::WithScriptExpressions);
-    options.setFlag(DomCreationOption::WithSemanticAnalysis);
+    const DomCreationOptions options = DomCreationOptions{}
+            | DomCreationOption::WithScriptExpressions | DomCreationOption::WithSemanticAnalysis
+            | DomCreationOption::WithRecovery;
     newCurrent.loadFile(
             FileToLoad::fromMemory(newCurrent.ownerAs<DomEnvironment>(), fPath, docText, options),
-            [&p](Path, DomItem &, DomItem &newValue) { p = newValue.fileObject().canonicalPath(); },
+            [&p, this](Path, const DomItem &, const DomItem &newValue) {
+                const DomItem file = newValue.fileObject();
+                p = file.canonicalPath();
+                if (m_cmakeStatus == HasCMake)
+                    addFileWatches(file);
+            },
             {});
     newCurrent.loadPendingDependencies();
     if (p) {
@@ -589,7 +763,7 @@ QStringList QQmlCodeModel::buildPathsForFileUrl(const QByteArray &url)
         QString dirName = d.dirName();
         QDateTime lastModified;
         while (d.cdUp() && --iDir > 0) {
-            for (const QFileInfo &fInfo : d.entryInfoList(QDir::Dirs)) {
+            for (const QFileInfo &fInfo : d.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
                 if (fInfo.completeBaseName() == u"build"
                     || fInfo.completeBaseName().startsWith(u"build-%1"_s.arg(dirName))) {
                     if (iDir > 1)
@@ -612,7 +786,7 @@ QStringList QQmlCodeModel::buildPathsForFileUrl(const QByteArray &url)
         res += bPath;
         if (QFile::exists(bPath + u"/_deps") && bPath.split(u"/_deps/"_s).size() < maxDeps) {
             QDir d(bPath + u"/_deps");
-            for (const QFileInfo &fInfo : d.entryInfoList(QDir::Dirs))
+            for (const QFileInfo &fInfo : d.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot))
                 buildPaths.append(fInfo.absoluteFilePath());
         }
     }

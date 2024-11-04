@@ -23,19 +23,15 @@ Q_DECLARE_JNI_CLASS(QtAudioDeviceManager,
 
 QAndroidMediaDevices::QAndroidMediaDevices() : QPlatformMediaDevices()
 {
-    QJniObject::callStaticMethod<void>(QtJniTypes::className<QtJniTypes::QtAudioDeviceManager>(),
-                                      "registerAudioHeadsetStateReceiver",
-                                      QNativeInterface::QAndroidApplication::context());
+   QtJniTypes::QtAudioDeviceManager::callStaticMethod<void>("registerAudioHeadsetStateReceiver");
 }
 
 QAndroidMediaDevices::~QAndroidMediaDevices()
 {
-    // Object of QAndroidMediaDevices type is static. Unregistering will happend only when closing
-    // the application. In such case it is probably not needed, but let's leave it for
-    // compatibility with Android documentation
-    QJniObject::callStaticMethod<void>(QtJniTypes::className<QtJniTypes::QtAudioDeviceManager>(),
-                                      "unregisterAudioHeadsetStateReceiver",
-                                      QNativeInterface::QAndroidApplication::context());
+   // Object of QAndroidMediaDevices type is static. Unregistering will happend only when closing
+   // the application. In such case it is probably not needed, but let's leave it for
+   // compatibility with Android documentation
+   QtJniTypes::QtAudioDeviceManager::callStaticMethod<void>("unregisterAudioHeadsetStateReceiver");
 }
 
 QList<QAudioDevice> QAndroidMediaDevices::audioInputs() const

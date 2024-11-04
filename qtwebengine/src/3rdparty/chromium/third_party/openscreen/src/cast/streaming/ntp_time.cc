@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,7 @@
 
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -52,5 +51,4 @@ Clock::time_point NtpTimeConverter::ToLocalTime(NtpTimestamp timestamp) const {
   return seconds_since_start + remainder;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

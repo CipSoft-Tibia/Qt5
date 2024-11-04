@@ -9,6 +9,8 @@
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
 #include <QtGui/QImage>
+#include <QCommandLineParser>
+#include <QScopeGuard>
 
 #include "PxPhysicsAPI.h"
 #include "cooking/PxCooking.h"
@@ -23,18 +25,15 @@ bool tryReadMesh(QFile *file, QSSGMesh::Mesh &mesh)
     return mesh.isValid();
 }
 
-bool tryReadImage(const char *inputPath, QImage &image)
+bool tryReadImage(const QString &inputPath, QImage &image)
 {
     image = QImage(inputPath);
     return image.format() != QImage::Format_Invalid;
 }
 
-bool cookMeshes(const char *inputPath, QSSGMesh::Mesh &mesh)
+bool cookMeshes(const QString &inputPath, QSSGMesh::Mesh &mesh, physx::PxCooking *cooking)
 {
-    physx::PxDefaultErrorCallback defaultErrorCallback;
-    physx::PxDefaultAllocator defaultAllocatorCallback;
-    auto foundation = PxCreateFoundation(PX_PHYSICS_VERSION, defaultAllocatorCallback, defaultErrorCallback);
-    auto cooking = PxCreateCooking(PX_PHYSICS_VERSION, *foundation, physx::PxCookingParams(physx::PxTolerancesScale()));
+    Q_ASSERT(cooking);
 
     const int vStride = mesh.vertexBuffer().stride;
     const int vCount = mesh.vertexBuffer().data.size() / vStride;
@@ -66,7 +65,7 @@ bool cookMeshes(const char *inputPath, QSSGMesh::Mesh &mesh)
 
         physx::PxDefaultMemoryOutputStream buf;
         if (!cooking->cookTriangleMesh(triangleDesc, buf, &result)) {
-            std::cerr << "Could not cook triangle mesh.";
+            std::cerr << "Error: could not cook triangle mesh '" << inputPath.toStdString() << "'." << std::endl;
             return false;
         }
 
@@ -78,14 +77,14 @@ bool cookMeshes(const char *inputPath, QSSGMesh::Mesh &mesh)
         auto outputFile = QFile(output);
 
         if (!outputFile.open(QIODevice::WriteOnly)) {
-            std::cerr << "Could not open " << output.toStdString() << "for writing.";
+            std::cerr << "Error: could not open '" << output.toStdString() << "' for writing." << std::endl;
             return false;
         }
 
         outputFile.write(reinterpret_cast<char *>(buf.getData()), buf.getSize());
         outputFile.close();
 
-        std::cout << "Success: wrote triangle mesh '" << output.toStdString() << "'" << std::endl;
+        std::cout << "Success: wrote triangle mesh '" << output.toStdString() << "'." << std::endl;
     }
 
     { // Convex mesh
@@ -107,7 +106,7 @@ bool cookMeshes(const char *inputPath, QSSGMesh::Mesh &mesh)
 
         physx::PxDefaultMemoryOutputStream buf;
         if (!cooking->cookConvexMesh(convexDesc, buf, &result)) {
-            std::cerr << "Could not cook convex mesh.";
+            std::cerr << "Error: could not cook convex mesh '" << inputPath.toStdString() << "'." << std::endl;
             return false;
         }
 
@@ -119,25 +118,22 @@ bool cookMeshes(const char *inputPath, QSSGMesh::Mesh &mesh)
         auto outputFile = QFile(output);
 
         if (!outputFile.open(QIODevice::WriteOnly)) {
-            std::cerr << "Could not open " << output.toStdString() << "for writing.";
+            std::cerr << "Error: could not open '" << output.toStdString() << "' for writing." << std::endl;
             return false;
         }
 
         outputFile.write(reinterpret_cast<char *>(buf.getData()), buf.getSize());
         outputFile.close();
 
-        std::cout << "Success: wrote convex mesh '" << output.toStdString() << "'" << std::endl;
+        std::cout << "Success: wrote convex mesh '" << output.toStdString() << "'." << std::endl;
     }
 
     return true;
 }
 
-bool cookHeightfield(const char *inputPath, QImage &heightMap)
+bool cookHeightfield(const QString &inputPath, QImage &heightMap, physx::PxCooking *cooking)
 {
-    physx::PxDefaultErrorCallback defaultErrorCallback;
-    physx::PxDefaultAllocator defaultAllocatorCallback;
-    auto foundation = PxCreateFoundation(PX_PHYSICS_VERSION, defaultAllocatorCallback, defaultErrorCallback);
-    auto cooking = PxCreateCooking(PX_PHYSICS_VERSION, *foundation, physx::PxCookingParams(physx::PxTolerancesScale()));
+    Q_ASSERT(cooking);
 
     int numRows = heightMap.height();
     int numCols = heightMap.width();
@@ -159,7 +155,7 @@ bool cookHeightfield(const char *inputPath, QImage &heightMap)
 
     physx::PxDefaultMemoryOutputStream buf;
     if (!(numRows && numCols && cooking->cookHeightField(hfDesc, buf))) {
-        std::cerr << "Could not create height field from " << inputPath << std::endl;
+        std::cerr << "Could not create height field from '" << inputPath.toStdString() << "'." << std::endl;
         return false;
     }
 
@@ -167,7 +163,7 @@ bool cookHeightfield(const char *inputPath, QImage &heightMap)
     auto outputFile = QFile(output);
 
     if (!outputFile.open(QIODevice::WriteOnly)) {
-        std::cerr << "Could not open " << output.toStdString() << "for writing.";
+        std::cerr << "Could not open '" << output.toStdString() << "' for writing." << std::endl;
         return false;
     }
 
@@ -180,31 +176,55 @@ bool cookHeightfield(const char *inputPath, QImage &heightMap)
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2) {
-        qDebug() << "Invalid number of arguments provided. Usage: cooker input.mesh";
-        return -1;
-    }
+    QCoreApplication app(argc, argv);
+    QCoreApplication::setApplicationName("cooker");
+    QCoreApplication::setApplicationVersion("6.5.7");
 
-    const char *inputPath = argv[1];
+    QCommandLineParser parser;
+    parser.setApplicationDescription(
+            "A commandline utility for pre-cooking meshes for use with the QtQuick3DPhysics module.");
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.addPositionalArgument("input",
+                                 "The input file(s). Accepts either a .mesh created by QtQuick3D's balsam"
+                                 " or a Qt compatible image file. The output filename will be of the format"
+                                 " input.cooked.{cvx/tri/hf}. The filename suffixes .cvx, .tri, and .hf"
+                                 " mean it is a convex mesh, a triangle mesh or a heightfield.");
+    parser.process(app);
 
-    QFile *file = new QFile(inputPath);
-    if (!file->open(QIODevice::ReadOnly)) {
-        delete file;
-        std::cerr << "Could not open input file '" << inputPath << "'" << std::endl;
-        return -1;
-    }
+    const QStringList args = parser.positionalArguments();
+    if (args.isEmpty())
+        parser.showHelp(0);
 
-    QImage image;
-    QSSGMesh::Mesh mesh;
-    if (tryReadImage(inputPath, image)) {
-        if (!cookHeightfield(inputPath, image))
+    physx::PxDefaultErrorCallback defaultErrorCallback;
+    physx::PxDefaultAllocator defaultAllocatorCallback;
+    auto foundation = PxCreateFoundation(PX_PHYSICS_VERSION, defaultAllocatorCallback, defaultErrorCallback);
+    auto cooking = PxCreateCooking(PX_PHYSICS_VERSION, *foundation, physx::PxCookingParams(physx::PxTolerancesScale()));
+    auto cleanup = qScopeGuard([&] {
+        cooking->release();
+        foundation->release();
+    });
+
+    for (const QString &inputPath : args) {
+        QFile *file = new QFile(inputPath);
+        if (!file->open(QIODevice::ReadOnly)) {
+            delete file;
+            std::cerr << "Error: could not open input file '" << inputPath.toStdString() << "'" << std::endl;
             return -1;
-    } else if (tryReadMesh(file, mesh)) {
-        if (!cookMeshes(inputPath, mesh))
+        }
+
+        QImage image;
+        QSSGMesh::Mesh mesh;
+        if (tryReadImage(inputPath, image)) {
+            if (!cookHeightfield(inputPath, image, cooking))
+                return -1;
+        } else if (tryReadMesh(file, mesh)) {
+            if (!cookMeshes(inputPath, mesh, cooking))
+                return -1;
+        } else {
+            std::cerr << "Error: failed to read mesh or image from file '" << inputPath.toStdString() << "'" << std::endl;
             return -1;
-    } else {
-        std::cerr << "Failed to read mesh or image from file '" << inputPath << "'" << std::endl;
-        return -1;
+        }
     }
 
     return 0;

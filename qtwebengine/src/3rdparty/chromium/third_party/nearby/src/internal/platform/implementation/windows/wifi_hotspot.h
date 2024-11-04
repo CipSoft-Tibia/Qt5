@@ -17,18 +17,20 @@
 
 // Windows headers
 #include <windows.h>
+#include <winsock2.h>
 #include <wlanapi.h>
 
 // Standard C/C++ headers
-
+#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
 
 // Nearby connections headers
-#include "internal/platform/cancellation_flag_listener.h"
+#include "absl/strings/string_view.h"
 #include "internal/platform/implementation/wifi_hotspot.h"
 #include "internal/platform/implementation/windows/scheduled_executor.h"
+#include "internal/platform/implementation/windows/submittable_executor.h"
 
 // WinRT headers
 #include "absl/types/optional.h"
@@ -91,12 +93,13 @@ using ::winrt::Windows::Networking::Sockets::
 
 // WifiHotspotSocket wraps the socket functions to read and write stream.
 // In WiFi HOTSPOT, A WifiHotspotSocket will be passed to
-// StartAcceptingConnections's call back when StreamSocketListener got connect.
-// When call API to connect to remote WiFi Hotspot service, also will return a
-// WifiHotspotSocket to caller.
+// StartAcceptingConnections's callback when Winsock Server Socket(or
+// StreamSocketListener) receives a new connection. When call API to connect to
+// remote WiFi Hotspot service, also will return a WifiHotspotSocket to caller.
 class WifiHotspotSocket : public api::WifiHotspotSocket {
  public:
   explicit WifiHotspotSocket(StreamSocket socket);
+  explicit WifiHotspotSocket(SOCKET socket);
   WifiHotspotSocket(const WifiHotspotSocket&) = default;
   WifiHotspotSocket(WifiHotspotSocket&&) = default;
   ~WifiHotspotSocket() override;
@@ -121,10 +124,12 @@ class WifiHotspotSocket : public api::WifiHotspotSocket {
   Exception Close() override;
 
  private:
+  enum class SocketType { kWinRTSocket = 0, kWin32Socket };
   // A simple wrapper to handle input stream of socket
   class SocketInputStream : public InputStream {
    public:
-    SocketInputStream(IInputStream input_stream);
+    explicit SocketInputStream(IInputStream input_stream);
+    explicit SocketInputStream(SOCKET socket);
     ~SocketInputStream() override = default;
 
     ExceptionOr<ByteArray> Read(std::int64_t size) override;
@@ -133,12 +138,15 @@ class WifiHotspotSocket : public api::WifiHotspotSocket {
 
    private:
     IInputStream input_stream_{nullptr};
+    SOCKET socket_ = INVALID_SOCKET;
+    SocketType socket_type_ = SocketType::kWinRTSocket;
   };
 
   // A simple wrapper to handle output stream of socket
   class SocketOutputStream : public OutputStream {
    public:
-    SocketOutputStream(IOutputStream output_stream);
+    explicit SocketOutputStream(IOutputStream output_stream);
+    explicit SocketOutputStream(SOCKET socket);
     ~SocketOutputStream() override = default;
 
     Exception Write(const ByteArray& data) override;
@@ -147,9 +155,12 @@ class WifiHotspotSocket : public api::WifiHotspotSocket {
 
    private:
     IOutputStream output_stream_{nullptr};
+    SOCKET socket_ = INVALID_SOCKET;
+    SocketType socket_type_ = SocketType::kWinRTSocket;
   };
 
   // Internal properties
+  SOCKET stream_soket_winsock_ = INVALID_SOCKET;
   StreamSocket stream_soket_{nullptr};
   SocketInputStream input_stream_{nullptr};
   SocketOutputStream output_stream_{nullptr};
@@ -194,22 +205,40 @@ class WifiHotspotServerSocket : public api::WifiHotspotServerSocket {
   bool listen();
 
  private:
+  static constexpr int kSocketEventsCount = 2;
+  static constexpr int kSocketEventListen = 0;
+  static constexpr int kSocketEventClose = 1;
+
   // The listener is accepting incoming connections
   fire_and_forget Listener_ConnectionReceived(
       StreamSocketListener listener,
       StreamSocketListenerConnectionReceivedEventArgs const& args);
+  bool SetupServerSocketWinRT();
+  bool SetupServerSocketWinSock();
 
-  // Retrieves IP addresses from local machine
-  std::vector<std::string> GetIpAddresses() const;
-  std::string GetHotspotIpAddresses() const;
+  // Retrieves hotspot IP address from local machine
+  std::string GetHotspotIpAddress() const;
+
+  void SocketErrorNotice(absl::string_view reason);
 
   mutable absl::Mutex mutex_;
   absl::CondVar cond_;
+  SubmittableExecutor submittable_executor_;
 
   std::deque<StreamSocket> pending_sockets_ ABSL_GUARDED_BY(mutex_);
   StreamSocketListener stream_socket_listener_{nullptr};
   winrt::event_token listener_event_token_{};
 
+  std::deque<SOCKET> pending_client_sockets_ ABSL_GUARDED_BY(mutex_);
+  SOCKET listen_socket_ = INVALID_SOCKET;
+  SOCKET client_socket_ = INVALID_SOCKET;
+
+  // closesocket cannot trigger FD_CLOSE on listener socket. In order to avoid
+  // blocking in WSAWaitForMultipleEvents, we use a socket event to trigger
+  // WSAWaitForMultipleEvents safely.
+  // The socket_events_ has 2 events, the first one is to handle normal socket
+  // event, and the second one is to handle event to close the socket manually.
+  WSAEVENT socket_events_[kSocketEventsCount];
   // Close notifier
   absl::AnyInvocable<void()> close_notifier_ = nullptr;
 
@@ -308,10 +337,6 @@ class WifiHotspotMedium : public api::WifiHotspotMedium {
 
   // Scheduled task for connection timeout.
   std::shared_ptr<api::Cancelable> connection_timeout_ = nullptr;
-
-  // Listener to connect cancellation.
-  std::unique_ptr<nearby::CancellationFlagListener>
-      connection_cancellation_listener_ = nullptr;
 };
 
 }  // namespace windows

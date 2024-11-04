@@ -115,16 +115,38 @@ enum GscVersion {
 enum RoVerificationStatus {
   // Not triggered by RO verification.
   RO_STATUS_NOT_TRIGGERED = 0;
-  // Triggered by RO verification, and it passed.
-  RO_STATUS_PASS = 1;
+  // Triggered by RO verification, and it passed but didn't verify the GBB.
+  RO_STATUS_PASS_UNVERIFIED_GBB = 1;
   // Triggered by RO verification, and it failed.
   RO_STATUS_FAIL = 2;
   // RO verification is not supported. (deprecated)
   RO_STATUS_UNSUPPORTED = 3;
-  // RO verification is not supported but triggered
+  // RO verification is not supported but triggered.
   RO_STATUS_UNSUPPORTED_NOT_TRIGGERED = 4;
-  // RO verification is not supported and not triggered
+  // RO verification is not supported and not triggered.
   RO_STATUS_UNSUPPORTED_TRIGGERED = 5;
+  // Triggered by RO verification, and it passed.
+  RO_STATUS_PASS = 6;
+  // Triggered by RO verification, and it is still in progress.
+  RO_STATUS_IN_PROGRESS = 7;
+  // The following are RO verification V2 status.
+  RO_STATUS_V2_SUCCESS = 20;
+  RO_STATUS_V2_FAILED_VERIFICATION = 21;
+  RO_STATUS_V2_INCONSISTENT_GSCVD = 22;
+  RO_STATUS_V2_INCONSISTENT_KEYBLOCK = 23;
+  RO_STATUS_V2_INCONSISTENT_KEY = 24;
+  RO_STATUS_V2_SPI_READ = 25;
+  RO_STATUS_V2_UNSUPPORTED_CRYPTO_ALGORITHM = 26;
+  RO_STATUS_V2_VERSION_MISMATCH = 27;
+  RO_STATUS_V2_OUT_OF_MEMORY = 28;
+  RO_STATUS_V2_INTERNAL = 29;
+  RO_STATUS_V2_TOO_BIG = 30;
+  RO_STATUS_V2_MISSING_GSCVD = 31;
+  RO_STATUS_V2_BOARD_ID_MISMATCH = 32;
+  RO_STATUS_V2_SETTING_NOT_PROVISIONED = 33;
+  RO_STATUS_V2_NON_ZERO_GBB_FLAGS = 36;
+  RO_STATUS_V2_WRONG_ROOT_KEY = 37;
+  RO_STATUS_V2_UNKNOWN = 255;
 }
 
 // Tracks the expected policy for a particular NVRAM space.
@@ -172,10 +194,7 @@ message LocalData {
 }
 
 // The format of the ownership taken signal payload.
-message OwnershipTakenSignal {
-  // A copy of LocalData right before sending the signal.
-  optional LocalData local_data = 1;
-}
+message OwnershipTakenSignal {}
 
 ////////////////////////////////////////////////////////////////////////////////
 // A series of request and reply messages for the NVRAM interface methods.
@@ -324,6 +343,8 @@ message GetVersionInfoReply {
   optional bytes vendor_specific = 7;
   // The GSC version.
   optional GscVersion gsc_version = 8;
+  // The RW firmware version.
+  optional string rw_version = 9;
 }
 
 message GetSupportedFeaturesRequest {}

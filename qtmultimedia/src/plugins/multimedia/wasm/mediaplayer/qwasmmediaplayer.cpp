@@ -59,6 +59,8 @@ void QWasmMediaPlayer::initVideo()
             &QWasmMediaPlayer::onMediaStatusChanged);
     connect(m_videoOutput, &QWasmVideoOutput::metaDataLoaded, this,
             &QWasmMediaPlayer::videoMetaDataChanged);
+    connect(m_videoOutput, &QWasmVideoOutput::seekableChanged, this,
+            &QWasmMediaPlayer::seekableMediaChanged);
 
     setVideoAvailable(true);
 }
@@ -204,17 +206,19 @@ const QIODevice *QWasmMediaPlayer::mediaStream() const
 
 void QWasmMediaPlayer::setMedia(const QUrl &mediaContent, QIODevice *stream)
 {
+    qCDebug(lcMediaPlayer) << Q_FUNC_INFO << mediaContent << stream;
     QMimeDatabase db;
 
     if (mediaContent.isEmpty()) {
         if (stream) {
             m_mediaStream = stream;
-            if (db.mimeTypeForData(stream).name().contains("video")) {
-                setVideoAvailable(true);
-                m_videoOutput->setSource(m_mediaStream);
-            }  else {
+            qCDebug(lcMediaPlayer) << db.mimeTypeForData(stream).name();
+            if (db.mimeTypeForData(stream).name().contains("audio")) {
                 setAudioAvailable(true);
                 m_audioOutput->setSource(m_mediaStream);
+            }  else { // treat octet-stream as video
+                setVideoAvailable(true);
+                m_videoOutput->setSource(m_mediaStream);
             }
         } else {
 
@@ -222,12 +226,13 @@ void QWasmMediaPlayer::setMedia(const QUrl &mediaContent, QIODevice *stream)
         }
     } else {
         QString sourceFile = mediaContent.toLocalFile();
-        if (db.mimeTypeForFile(QFileInfo(sourceFile)).name().contains("video")) {
-                setVideoAvailable(true);
-            m_videoOutput->setSource(mediaContent);
-        } else {
+        qCDebug(lcMediaPlayer) << db.mimeTypeForFile(QFileInfo(sourceFile)).name();
+        if (db.mimeTypeForFile(QFileInfo(sourceFile)).name().contains("audio")) {
             setAudioAvailable(true);
             m_audioOutput->setSource(mediaContent);
+        } else { // treat octet-stream as video
+            setVideoAvailable(true);
+            m_videoOutput->setSource(mediaContent);
         }
     }
 
@@ -246,6 +251,9 @@ void QWasmMediaPlayer::setVideoSink(QVideoSink *sink)
 
     initVideo();
     m_videoOutput->setSurface(sink);
+    setVideoAvailable(true);
+    if (isAudioAvailable() && m_audioOutput)
+        m_audioOutput->setVideoElement(m_videoOutput->currentVideoElement());
 }
 
 void QWasmMediaPlayer::setAudioOutput(QPlatformAudioOutput *output)
@@ -256,6 +264,7 @@ void QWasmMediaPlayer::setAudioOutput(QPlatformAudioOutput *output)
     if (m_audioOutput)
         m_audioOutput->q->disconnect(this);
     m_audioOutput = static_cast<QWasmAudioOutput *>(output);
+    setAudioAvailable(true);
 }
 
 void QWasmMediaPlayer::updateAudioDevice()
@@ -461,6 +470,11 @@ void QWasmMediaPlayer::onMediaStatusChanged(QMediaPlayer::MediaStatus status)
 void QWasmMediaPlayer::videoMetaDataChanged()
 {
     metaDataChanged();
+}
+
+void QWasmMediaPlayer::seekableMediaChanged(bool seekable)
+{
+    seekableChanged(seekable);
 }
 
 QT_END_NAMESPACE

@@ -114,7 +114,7 @@ class MenuRunnerTest : public ViewsTestBase {
 
  private:
   // Owned by menu_runner_.
-  raw_ptr<views::TestMenuItemView> menu_item_view_ = nullptr;
+  raw_ptr<views::TestMenuItemView, DanglingUntriaged> menu_item_view_ = nullptr;
 
   std::unique_ptr<TestMenuDelegate> menu_delegate_;
   std::unique_ptr<MenuRunner> menu_runner_;
@@ -199,7 +199,8 @@ TEST_F(MenuRunnerTest, NonLatinMnemonic) {
   EXPECT_TRUE(runner->IsRunning());
 
   ui::test::EventGenerator generator(GetContext(), owner()->GetNativeWindow());
-  ui::KeyEvent key_press(0x062f, ui::VKEY_N, ui::DomCode::NONE, 0);
+  ui::KeyEvent key_press =
+      ui::KeyEvent::FromCharacter(0x062f, ui::VKEY_N, ui::DomCode::NONE, 0);
   generator.Dispatch(&key_press);
   views::test::WaitForMenuClosureAnimation();
   EXPECT_FALSE(runner->IsRunning());
@@ -364,7 +365,7 @@ class MenuLauncherEventHandler : public ui::EventHandler {
   }
 
   raw_ptr<MenuRunner> runner_;
-  raw_ptr<Widget> owner_;
+  raw_ptr<Widget, DanglingUntriaged> owner_;
 };
 
 }  // namespace
@@ -414,8 +415,8 @@ class MenuRunnerWidgetTest : public MenuRunnerTest {
   }
 
  private:
-  raw_ptr<Widget> widget_ = nullptr;
-  raw_ptr<EventCountView> event_count_view_ = nullptr;
+  raw_ptr<Widget, DanglingUntriaged> widget_ = nullptr;
+  raw_ptr<EventCountView, DanglingUntriaged> event_count_view_ = nullptr;
   std::unique_ptr<MenuLauncherEventHandler> consumer_;
 };
 
@@ -424,9 +425,8 @@ class MenuRunnerWidgetTest : public MenuRunnerTest {
 TEST_F(MenuRunnerWidgetTest, WidgetDoesntTakeCapture) {
   AddMenuLauncherEventHandler(owner());
 
-  EXPECT_EQ(gfx::kNullNativeView,
-            internal::NativeWidgetPrivate::GetGlobalCapture(
-                widget()->GetNativeView()));
+  EXPECT_EQ(gfx::NativeView(), internal::NativeWidgetPrivate::GetGlobalCapture(
+                                   widget()->GetNativeView()));
   auto generator(EventGeneratorForWidget(widget()));
   generator->MoveMouseTo(widget()->GetClientAreaBoundsInScreen().CenterPoint());
   // Implicit capture should not be held by |widget|.
@@ -595,7 +595,8 @@ class MenuRunnerDestructionTest : public MenuRunnerTest {
 
  private:
   // Not owned
-  raw_ptr<ReleaseRefTestViewsDelegate> test_views_delegate_ = nullptr;
+  raw_ptr<ReleaseRefTestViewsDelegate, DanglingUntriaged> test_views_delegate_ =
+      nullptr;
 };
 
 base::WeakPtr<internal::MenuRunnerImpl>
@@ -605,9 +606,8 @@ MenuRunnerDestructionTest::MenuRunnerAsWeakPtr(
 }
 
 void MenuRunnerDestructionTest::SetUp() {
-  auto test_views_delegate = std::make_unique<ReleaseRefTestViewsDelegate>();
-  test_views_delegate_ = test_views_delegate.get();
-  set_views_delegate(std::move(test_views_delegate));
+  test_views_delegate_ =
+      set_views_delegate(std::make_unique<ReleaseRefTestViewsDelegate>());
   MenuRunnerTest::SetUp();
   InitMenuViews();
 }

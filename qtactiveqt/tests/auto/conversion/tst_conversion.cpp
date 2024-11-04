@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "comutil_p.h"
 #include "testutil_p.h"
@@ -18,6 +18,8 @@
 using Microsoft::WRL::ComPtr;
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 class tst_Conversion : public QObject
 {
@@ -174,6 +176,11 @@ void tst_Conversion::conversion_data()
         << qvar << uint(VT_DATE | VT_BYREF) << typeName << ByReference;
     QTest::newRow("datetime-out")
         << qvar << uint(VT_DATE | VT_BYREF) << typeName << OutParameter;
+
+    // QTBUG-122762; do not create a 2-dimensional array from a string (sequence).
+    qvar = QVariant(QVariantList{QVariant(QString("test"_L1)), QVariant(42)});
+    QTest::newRow("list")
+            << qvar << uint(VT_VARIANT | VT_ARRAY | VT_BYREF) << typeName << OutParameter;
 }
 
 void tst_Conversion::conversion()

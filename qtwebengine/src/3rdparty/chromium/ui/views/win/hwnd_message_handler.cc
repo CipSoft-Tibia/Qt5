@@ -32,7 +32,7 @@
 #include "services/tracing/public/cpp/perfetto/macros.h"
 #include "third_party/perfetto/protos/perfetto/trace/track_event/chrome_window_handle_event_info.pbzero.h"
 #include "third_party/skia/include/core/SkPath.h"
-#include "ui/accessibility/accessibility_switches.h"
+#include "ui/accessibility/accessibility_features.h"
 #include "ui/accessibility/platform/ax_fragment_root_win.h"
 #include "ui/accessibility/platform/ax_platform_node_win.h"
 #include "ui/accessibility/platform/ax_system_caret_win.h"
@@ -108,17 +108,17 @@ class MoveLoopMouseWatcher {
   void Unhook();
 
   // HWNDMessageHandler that created us.
-  raw_ptr<HWNDMessageHandler, DanglingUntriaged> host_;
+  raw_ptr<HWNDMessageHandler, AcrossTasksDanglingUntriaged> host_;
 
   // Should the window be hidden when escape is pressed?
   const bool hide_on_escape_;
 
   // Did we get a mouse up?
-  bool got_mouse_up_;
+  bool got_mouse_up_ = false;
 
   // Hook identifiers.
-  HHOOK mouse_hook_;
-  HHOOK key_hook_;
+  HHOOK mouse_hook_ = nullptr;
+  HHOOK key_hook_ = nullptr;
 };
 
 // static
@@ -126,11 +126,7 @@ MoveLoopMouseWatcher* MoveLoopMouseWatcher::instance_ = nullptr;
 
 MoveLoopMouseWatcher::MoveLoopMouseWatcher(HWNDMessageHandler* host,
                                            bool hide_on_escape)
-    : host_(host),
-      hide_on_escape_(hide_on_escape),
-      got_mouse_up_(false),
-      mouse_hook_(nullptr),
-      key_hook_(nullptr) {
+    : host_(host), hide_on_escape_(hide_on_escape) {
   // Only one instance can be active at a time.
   if (instance_)
     instance_->Unhook();
@@ -323,6 +319,19 @@ gfx::Rect ScaleWindowBoundsMaybe(HWND hwnd, const gfx::Rect& bounds) {
   return bounds;
 }
 
+// Returns true if the window is arranged via Snap. For example, the browser
+// window is snapped via buttons shown when the mouse is hovered over window
+// maximize button.
+bool IsWindowArranged(HWND window) {
+  // IsWindowArranged() is not a part of any header file.
+  // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-iswindowarranged
+  using IsWindowArrangedFuncType = BOOL(WINAPI*)(HWND);
+  static const auto is_window_arranged_func =
+      reinterpret_cast<IsWindowArrangedFuncType>(
+          base::win::GetUser32FunctionPointer("IsWindowArranged"));
+  return is_window_arranged_func ? is_window_arranged_func(window) : false;
+}
+
 }  // namespace
 
 // A scoping class that prevents a window from being able to redraw in response
@@ -373,7 +382,6 @@ class HWNDMessageHandler::ScopedRedrawLock {
   explicit ScopedRedrawLock(HWNDMessageHandler* owner)
       : owner_(owner),
         hwnd_(owner_->hwnd()),
-        cancel_unlock_(false),
         should_lock_(owner_->IsVisible() && !owner->HasChildRenderingWindow() &&
                      ::IsWindow(hwnd_) && !owner_->IsHeadless() &&
                      (!(GetWindowLong(hwnd_, GWL_STYLE) & WS_CAPTION))) {
@@ -398,7 +406,7 @@ class HWNDMessageHandler::ScopedRedrawLock {
   // The owner's HWND, cached to avoid action after window destruction.
   HWND hwnd_;
   // A flag indicating that the unlock operation was canceled.
-  bool cancel_unlock_;
+  bool cancel_unlock_ = false;
   // If false, don't use redraw lock.
   const bool should_lock_;
 };
@@ -473,21 +481,21 @@ void HWNDMessageHandler::Init(HWND parent,
   // according to the scale factor.
   if (headless_mode) {
     if (initial_bounds_valid_) {
-      headless_mode_window_->bounds = bounds;
+      SetHeadlessWindowBounds(bounds);
     } else {
       // If initial window bounds were not provided, use the newly created
       // platform window size or fall back to the default headless window size
       // as the last resort.
       RECT window_rect;
       if (GetWindowRect(hwnd(), &window_rect)) {
-        headless_mode_window_->bounds = gfx::Rect(window_rect);
+        SetHeadlessWindowBounds(gfx::Rect(window_rect));
       } else {
         // Even if the window rectangle cannot be retrieved, there is still a
         // chance that ScreenWin::GetScaleFactorForHWND() will be able to figure
         // out the scale factor.
         constexpr gfx::Rect kDefaultHeadlessBounds(800, 600);
-        headless_mode_window_->bounds =
-            ScaleWindowBoundsMaybe(hwnd(), kDefaultHeadlessBounds);
+        SetHeadlessWindowBounds(
+            ScaleWindowBoundsMaybe(hwnd(), kDefaultHeadlessBounds));
       }
     }
   }
@@ -517,8 +525,9 @@ void HWNDMessageHandler::Init(HWND parent,
   // then ask element B for its fragment root, without having sent WM_GETOBJECT
   // to element B's window.
   // So we create the fragment root now to ensure it's ready if asked for.
-  if (::switches::IsExperimentalAccessibilityPlatformUIAEnabled())
+  if (::features::IsUiaProviderEnabled()) {
     ax_fragment_root_ = std::make_unique<ui::AXFragmentRootWin>(hwnd(), this);
+  }
 
   // Disable pen flicks (http://crbug.com/506977)
   base::win::DisableFlicks(hwnd());
@@ -711,7 +720,9 @@ void HWNDMessageHandler::SetSize(const gfx::Size& size) {
   // window size was updated.
   if (IsHeadless()) {
     bool size_changed = headless_mode_window_->bounds.size() != size;
-    headless_mode_window_->bounds.set_size(size);
+    gfx::Rect bounds = headless_mode_window_->bounds;
+    bounds.set_size(size);
+    SetHeadlessWindowBounds(bounds);
     if (size_changed) {
       delegate_->HandleClientSizeChanged(GetClientAreaBounds().size());
     }
@@ -1014,7 +1025,12 @@ void HWNDMessageHandler::FlashFrame(bool flash) {
 }
 
 void HWNDMessageHandler::ClearNativeFocus() {
-  ::SetFocus(hwnd());
+  // Headless windows don't get native focus, so just pretend we grabbed one.
+  if (IsHeadless()) {
+    delegate_->HandleNativeFocus(0);
+  } else {
+    ::SetFocus(hwnd());
+  }
 }
 
 void HWNDMessageHandler::SetCapture() {
@@ -1076,6 +1092,17 @@ void HWNDMessageHandler::FrameTypeChanged() {
     PerformDwmTransition();
 }
 
+void HWNDMessageHandler::PaintAsActiveChanged() {
+  if (!delegate_->HasNonClientView() || !delegate_->CanActivate() ||
+      !delegate_->HasFrame() ||
+      (delegate_->GetFrameMode() == FrameMode::CUSTOM_DRAWN)) {
+    return;
+  }
+
+  DefWindowProcWithRedrawLock(WM_NCACTIVATE, delegate_->ShouldPaintAsActive(),
+                              0);
+}
+
 void HWNDMessageHandler::SetWindowIcons(const gfx::ImageSkia& window_icon,
                                         const gfx::ImageSkia& app_icon) {
   if (!window_icon.isNull()) {
@@ -1125,11 +1152,16 @@ void HWNDMessageHandler::SetFullscreen(bool fullscreen,
     PerformDwmTransition();
 }
 
-void HWNDMessageHandler::SetAspectRatio(float aspect_ratio) {
+void HWNDMessageHandler::SetAspectRatio(float aspect_ratio,
+                                        const gfx::Size& excluded_margin) {
   // If the aspect ratio is not in the valid range, do nothing.
   DCHECK_GT(aspect_ratio, 0.0f);
 
   aspect_ratio_ = aspect_ratio;
+
+  // Convert to pixels.
+  excluded_margin_ =
+      display::win::ScreenWin::DIPToScreenSize(hwnd(), excluded_margin);
 
   // When the aspect ratio is set, size the window to adhere to it. This keeps
   // the same origin point as the original window.
@@ -1494,7 +1526,12 @@ void HWNDMessageHandler::SetInitialFocus() {
   if (!(GetWindowLong(hwnd(), GWL_EXSTYLE) & WS_EX_TRANSPARENT) &&
       !(GetWindowLong(hwnd(), GWL_EXSTYLE) & WS_EX_NOACTIVATE)) {
     // The window does not get keyboard messages unless we focus it.
-    SetFocus(hwnd());
+    // Headless windows don't get native focus, so just pretend we grabbed one.
+    if (IsHeadless()) {
+      delegate_->HandleNativeFocus(0);
+    } else {
+      ::SetFocus(hwnd());
+    }
   }
 }
 
@@ -1714,20 +1751,6 @@ void HWNDMessageHandler::ResetWindowRegion(bool force, bool redraw) {
   }
 }
 
-void HWNDMessageHandler::UpdateDwmNcRenderingPolicy() {
-  if (IsFullscreen())
-    return;
-
-  DWMNCRENDERINGPOLICY policy =
-      custom_window_region_.is_valid() ||
-              delegate_->GetFrameMode() == FrameMode::CUSTOM_DRAWN
-          ? DWMNCRP_DISABLED
-          : DWMNCRP_ENABLED;
-
-  DwmSetWindowAttribute(hwnd(), DWMWA_NCRENDERING_POLICY, &policy,
-                        sizeof(DWMNCRENDERINGPOLICY));
-}
-
 LRESULT HWNDMessageHandler::DefWindowProcWithRedrawLock(UINT message,
                                                         WPARAM w_param,
                                                         LPARAM l_param) {
@@ -1903,6 +1926,13 @@ void HWNDMessageHandler::OnDisplayChange(UINT bits_per_pixel,
                                          const gfx::Size& screen_size) {
   TRACE_EVENT0("ui", "HWNDMessageHandler::OnDisplayChange");
 
+  // Typically, in the case of display changes, ScreenWin's OnDisplayChange
+  // handler will get called first, but sometimes it doesn't. This catches
+  // that case, when monitors are added or removed, without a lot of extra
+  // updates of the global ScreenWin DisplayInfos state. See
+  // https://crbug.com/1413940 for more info.
+  display::win::ScreenWin::UpdateDisplayInfosIfNeeded();
+
   base::WeakPtr<HWNDMessageHandler> ref(msg_handler_weak_factory_.GetWeakPtr());
   delegate_->HandleDisplayChange();
 
@@ -2053,8 +2083,7 @@ LRESULT HWNDMessageHandler::OnGetObject(UINT message,
       delegate_->GetNativeViewAccessible()) {
     // Expose either the UIA or the MSAA implementation, but not both, depending
     // on the state of the feature flag.
-    if (is_uia_request &&
-        ::switches::IsExperimentalAccessibilityPlatformUIAEnabled()) {
+    if (is_uia_request && ::features::IsUiaProviderEnabled()) {
       // Retrieve UIA object for the root view.
       Microsoft::WRL::ComPtr<IRawElementProviderSimple> root;
       ax_fragment_root_->GetNativeViewAccessible()->QueryInterface(
@@ -2140,7 +2169,11 @@ LRESULT HWNDMessageHandler::OnKeyEvent(UINT message,
 }
 
 void HWNDMessageHandler::OnKillFocus(HWND focused_window) {
-  delegate_->HandleNativeBlur(focused_window);
+  // Headless windows are believed to always have focus, so avoid
+  // reporting native focus changes.
+  if (!IsHeadless()) {
+    delegate_->HandleNativeBlur(focused_window);
+  }
   SetMsgHandled(FALSE);
 }
 
@@ -2728,7 +2761,11 @@ LRESULT HWNDMessageHandler::OnSetCursor(UINT message,
 }
 
 void HWNDMessageHandler::OnSetFocus(HWND last_focused_window) {
-  delegate_->HandleNativeFocus(last_focused_window);
+  // Headless windows are believed to always have focus, so avoid
+  // reporting native focus changes.
+  if (!IsHeadless()) {
+    delegate_->HandleNativeFocus(last_focused_window);
+  }
   SetMsgHandled(FALSE);
 }
 
@@ -2782,6 +2819,11 @@ void HWNDMessageHandler::OnSizing(UINT param, RECT* rect) {
   if (!aspect_ratio_.has_value())
     return;
 
+  // Validate the window edge param because we are seeing DCHECKs caused by
+  // invalid values. See https://crbug.com/1418231.
+  if (param < WMSZ_LEFT || param > WMSZ_BOTTOMRIGHT) {
+    return;
+  }
   gfx::Rect window_rect(*rect);
   SizeWindowToAspectRatio(param, &window_rect);
 
@@ -3032,8 +3074,12 @@ void HWNDMessageHandler::OnWindowPosChanging(WINDOWPOS* window_pos) {
       const bool fullscreen_without_hack =
           IsFullscreen() && !background_fullscreen_hack_;
 
-      if (same_monitor && (incorrect_maximized_bounds ||
-                           fullscreen_without_hack || work_area_changed)) {
+      // If the browser window is arranged by Snap, then we should not change
+      // its position but let Windows do it.
+      if (same_monitor &&
+          (incorrect_maximized_bounds || fullscreen_without_hack ||
+           work_area_changed) &&
+          !IsWindowArranged(hwnd())) {
         // A rect for the monitor we're on changed.  Normally Windows notifies
         // us about this (and thus we're reaching here due to the SetWindowPos()
         // call in OnSettingChange() above), but with some software (e.g.
@@ -3494,21 +3540,10 @@ LRESULT HWNDMessageHandler::HandlePointerEventTypeTouchOrNonClient(
   return 0;
 }
 
-LRESULT HWNDMessageHandler::HandlePointerEventTypePenClient(UINT message,
-                                                            WPARAM w_param,
-                                                            LPARAM l_param) {
-  UINT32 pointer_id = GET_POINTERID_WPARAM(w_param);
-  using GetPointerPenInfoFn = BOOL(WINAPI*)(UINT32, POINTER_PEN_INFO*);
-  POINTER_PEN_INFO pointer_pen_info;
-  static const auto get_pointer_pen_info =
-      reinterpret_cast<GetPointerPenInfoFn>(
-          base::win::GetUser32FunctionPointer("GetPointerPenInfo"));
-  if (!get_pointer_pen_info ||
-      !get_pointer_pen_info(pointer_id, &pointer_pen_info)) {
-    SetMsgHandled(FALSE);
-    return -1;
-  }
-
+LRESULT HWNDMessageHandler::HandlePointerEventTypePen(
+    UINT message,
+    UINT32 pointer_id,
+    POINTER_PEN_INFO pointer_pen_info) {
   POINT client_point = pointer_pen_info.pointerInfo.ptPixelLocationRaw;
   ScreenToClient(hwnd(), &client_point);
   gfx::Point point = gfx::Point(client_point.x, client_point.y);
@@ -3538,6 +3573,19 @@ LRESULT HWNDMessageHandler::HandlePointerEventTypePenClient(UINT message,
   return 0;
 }
 
+LRESULT HWNDMessageHandler::HandlePointerEventTypePenClient(UINT message,
+                                                            WPARAM w_param,
+                                                            LPARAM l_param) {
+  UINT32 pointer_id = GET_POINTERID_WPARAM(w_param);
+  POINTER_PEN_INFO pointer_pen_info;
+  if (!GetPointerPenInfo(pointer_id, &pointer_pen_info)) {
+    SetMsgHandled(FALSE);
+    return -1;
+  }
+
+  return HandlePointerEventTypePen(message, pointer_id, pointer_pen_info);
+}
+
 bool HWNDMessageHandler::IsSynthesizedMouseMessage(unsigned int message,
                                                    int message_time,
                                                    LPARAM l_param) {
@@ -3560,34 +3608,11 @@ bool HWNDMessageHandler::IsSynthesizedMouseMessage(unsigned int message,
 }
 
 void HWNDMessageHandler::PerformDwmTransition() {
+  CHECK(IsFrameSystemDrawn());
+
   dwm_transition_desired_ = false;
-
-  UpdateDwmNcRenderingPolicy();
-  // Don't redraw the window here, because we need to hide and show the window
-  // which will also trigger a redraw.
-  ResetWindowRegion(true, false);
-  // The non-client view needs to update too.
   delegate_->HandleFrameChanged();
-  // This calls DwmExtendFrameIntoClientArea which must be called when DWM
-  // composition state changes.
-  UpdateDwmFrame();
-
-  if (IsVisible() && IsFrameSystemDrawn()) {
-    // For some reason, we need to hide the window after we change from a custom
-    // frame to a native frame.  If we don't, the client area will be filled
-    // with black.  This seems to be related to an interaction between DWM and
-    // SetWindowRgn, but the details aren't clear. Additionally, we need to
-    // specify SWP_NOZORDER here, otherwise if you have multiple chrome windows
-    // open they will re-appear with a non-deterministic Z-order.
-    // Note: caused http://crbug.com/895855, where a laptop lid close+reopen
-    // puts window in the background but acts like a foreground window. Fixed by
-    // not calling this unless DWM composition actually changes. Finally, since
-    // we don't want windows stealing focus if they're not already active, we
-    // set SWP_NOACTIVATE.
-    UINT flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
-    SetWindowPos(hwnd(), nullptr, 0, 0, 0, 0, flags | SWP_HIDEWINDOW);
-    SetWindowPos(hwnd(), nullptr, 0, 0, 0, 0, flags | SWP_SHOWWINDOW);
-  }
+  SendFrameChanged();
 }
 
 void HWNDMessageHandler::UpdateDwmFrame() {
@@ -3714,7 +3739,7 @@ void HWNDMessageHandler::SetBoundsInternal(const gfx::Rect& bounds_in_pixels,
   // In headless update the expected window bounds and notify the delegate
   // pretending the platform window size has been changed.
   if (IsHeadless()) {
-    headless_mode_window_->bounds = bounds_in_pixels;
+    SetHeadlessWindowBounds(bounds_in_pixels);
     if (old_size != bounds_in_pixels.size() || force_size_changed) {
       delegate_->HandleClientSizeChanged(GetClientAreaBounds().size());
     }
@@ -3782,8 +3807,9 @@ void HWNDMessageHandler::SizeWindowToAspectRatio(UINT param,
   if (!max_window_size.IsEmpty())
     max_size_param = max_window_size;
 
-  gfx::SizeRectToAspectRatio(GetWindowResizeEdge(param), aspect_ratio_.value(),
-                             min_window_size, max_size_param, window_rect);
+  gfx::SizeRectToAspectRatioWithExcludedMargin(
+      GetWindowResizeEdge(param), aspect_ratio_.value(), min_window_size,
+      max_size_param, excluded_margin_, *window_rect);
 }
 
 POINT HWNDMessageHandler::GetCursorPos() const {
@@ -3794,6 +3820,15 @@ POINT HWNDMessageHandler::GetCursorPos() const {
   ::GetCursorPos(&cursor_pos);
 
   return cursor_pos;
+}
+
+void HWNDMessageHandler::SetHeadlessWindowBounds(const gfx::Rect& bounds) {
+  DCHECK(IsHeadless());
+
+  if (headless_mode_window_->bounds != bounds) {
+    headless_mode_window_->bounds = bounds;
+    delegate_->HandleHeadlessWindowBoundsChanged(bounds);
+  }
 }
 
 }  // namespace views

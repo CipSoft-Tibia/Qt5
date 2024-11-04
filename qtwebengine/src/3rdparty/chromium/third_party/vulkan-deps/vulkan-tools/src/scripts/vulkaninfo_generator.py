@@ -81,7 +81,7 @@ std::string to_hex_str(Printer &p, const T i) {
 
 # used in the .cpp code
 structures_to_gen = ['VkExtent3D', 'VkExtent2D', 'VkPhysicalDeviceLimits', 'VkPhysicalDeviceFeatures', 'VkPhysicalDeviceSparseProperties',
-                     'VkSurfaceCapabilitiesKHR', 'VkSurfaceFormatKHR', 'VkLayerProperties', 'VkPhysicalDeviceToolProperties']
+                     'VkSurfaceCapabilitiesKHR', 'VkSurfaceFormatKHR', 'VkLayerProperties', 'VkPhysicalDeviceToolProperties', 'VkFormatProperties']
 enums_to_gen = ['VkResult', 'VkFormat', 'VkPresentModeKHR',
                 'VkPhysicalDeviceType', 'VkImageTiling']
 flags_to_gen = ['VkSurfaceTransformFlagsKHR', 'VkCompositeAlphaFlagsKHR', 'VkSurfaceCounterFlagsEXT', 'VkQueueFlags',
@@ -475,8 +475,12 @@ def PrintFlags(bitmask, name):
 def PrintFlagBits(bitmask):
     return f"""void Dump{bitmask.name}(Printer &p, std::string name, {bitmask.name} value) {{
     auto strings = {bitmask.name}GetStrings(value);
-    if (strings.size() > 0)
-        p.PrintKeyString(name, strings.at(0));
+    if (strings.size() > 0) {{
+        if (p.Type() == OutputType::json)
+            p.PrintKeyString(name, std::string("VK_") + strings.at(0));
+        else
+            p.PrintKeyString(name, strings.at(0));
+    }}
 }}
 """
 
@@ -500,7 +504,7 @@ def PrintBitMaskToString(bitmask, name, gen):
     for v in bitmask.options:
         out += f"    if ({v.name} & value) {{\n"
         out += f'        if (is_first) {{ is_first = false; }} else {{ out += " | "; }}\n'
-        out += f'        out += "{str(v.name).strip("VK_").strip("_BIT")}";\n'
+        out += f'        out += "{str(v.name)[3:]}";\n'
         out += f"    }}\n"
     out += f"    return out;\n"
     out += f"}}\n"
@@ -563,15 +567,17 @@ def PrintStructure(struct, types_to_gen, structure_names, aliases):
                 out += f'        for (uint32_t i = 0; i < {v.arrayLength}; i++) {{ p.PrintElement(obj.{v.name}[i]); }}\n'
                 out += f"    }}\n"
             else:  # dynamic array length based on other member
-                out += f'    ArrayWrapper arr(p,"{v.name}", obj.' + v.arrayLength + ');\n'
-                out += f"    for (uint32_t i = 0; i < obj.{v.arrayLength}; i++) {{\n"
+                out += f"    {{\n"
+                out += f'        ArrayWrapper arr(p,"{v.name}", obj.' + v.arrayLength + ');\n'
+                out += f"        for (uint32_t i = 0; i < obj.{v.arrayLength}; i++) {{\n"
                 if v.typeID in types_to_gen:
-                    out += f"        if (obj.{v.name} != nullptr) {{\n"
-                    out += f"            p.SetElementIndex(i);\n"
-                    out += f'            Dump{v.typeID}(p, "{v.name}", obj.{v.name}[i]);\n'
-                    out += f"        }}\n"
+                    out += f"            if (obj.{v.name} != nullptr) {{\n"
+                    out += f"                p.SetElementIndex(i);\n"
+                    out += f'                Dump{v.typeID}(p, "{v.name}", obj.{v.name}[i]);\n'
+                    out += f"            }}\n"
                 else:
-                    out += f"        p.PrintElement(obj.{v.name}[i]);\n"
+                    out += f"            p.PrintElement(obj.{v.name}[i]);\n"
+                out += f"        }}\n"
                 out += f"    }}\n"
         elif v.typeID == "VkBool32":
             out += f'    p.PrintKeyBool("{v.name}", static_cast<bool>(obj.{v.name}));\n'
@@ -583,6 +589,8 @@ def PrintStructure(struct, types_to_gen, structure_names, aliases):
             out += f'    p.PrintKeyValue("{v.name}", obj.{v.name});\n'
         elif v.name not in names_to_ignore:
             # if it is an enum/flag/bitmask
+            if v.typeID in ['VkFormatFeatureFlags', 'VkFormatFeatureFlags2']:
+                out += '    p.SetOpenDetails();\n' # special case so that feature flags are open in html output
             out += f'    Dump{v.typeID}(p, "{v.name}", obj.{v.name});\n'
 
     if struct.name in ["VkPhysicalDeviceLimits", "VkPhysicalDeviceSparseProperties"]:
@@ -636,13 +644,13 @@ def PrintChainStruct(listName, structures, all_structures, chain_details):
         out += AddGuardHeader(s)
         if s.sTypeName is not None:
             out += f"    {s.name} {s.name[2:]}{{}};\n"
-            # Specific versions of drivers have an incorrect definition of the size of this struct.
+            # Specific versions of drivers have an incorrect definition of the size of these structs.
             # We need to artificially pad the structure it just so the driver doesn't write out of bounds and
             # into other structures that are adjacent. This bug comes from the in-development version of
             # the extension having a larger size than the final version, so older drivers try to write to
             # members which don't exist.
-            if s.sTypeName == "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_FEATURES":
-                out += "    char padding[64];\n"
+            if s.name in ['VkPhysicalDeviceShaderIntegerDotProductFeatures', 'VkPhysicalDeviceHostImageCopyFeaturesEXT']:
+                out += f"    char {s.name}_padding[64];\n"
         out += AddGuardFooter(s)
     out += f"    void initialize_chain() noexcept {{\n"
     for s in structs_to_print:

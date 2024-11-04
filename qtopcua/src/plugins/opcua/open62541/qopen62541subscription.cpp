@@ -10,9 +10,6 @@
 #include "qopen62541utils.h"
 #include <private/qopcuanode_p.h>
 
-#include "qopcuaelementoperand.h"
-#include "qopcualiteraloperand.h"
-#include "qopcuaattributeoperand.h"
 #include "qopcuacontentfilterelementresult.h"
 
 #include <QtCore/qloggingcategory.h>
@@ -122,18 +119,17 @@ bool QOpen62541Subscription::removeOnServer()
 
 void QOpen62541Subscription::modifyMonitoring(quint64 handle, QOpcUa::NodeAttribute attr, QOpcUaMonitoringParameters::Parameter item, QVariant value)
 {
-    QOpcUaMonitoringParameters p;
-    p.setStatusCode(QOpcUa::UaStatusCode::BadNotImplemented);
-
     MonitoredItem *monItem = getItemForAttribute(handle, attr);
     if (!monItem) {
         qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Could not modify parameter" << item << "there are no monitored items";
+        QOpcUaMonitoringParameters p;
         p.setStatusCode(QOpcUa::UaStatusCode::BadAttributeIdInvalid);
         emit m_backend->monitoringStatusChanged(handle, attr, item, p);
         return;
     }
 
-    p = monItem->parameters;
+    QOpcUaMonitoringParameters p = monItem->parameters;
+    p.setStatusCode(QOpcUa::UaStatusCode::BadNotImplemented);
 
     // SetPublishingMode service
     if (item == QOpcUaMonitoringParameters::Parameter::PublishingEnabled) {
@@ -205,6 +201,88 @@ void QOpen62541Subscription::modifyMonitoring(quint64 handle, QOpcUa::NodeAttrib
         return;
     }
 
+    // SetTriggering service
+    if (item == QOpcUaMonitoringParameters::Parameter::TriggeredItemIds) {
+        if (!value.canConvert<QSet<quint32>>()) {
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Could not modify triggering item id, value is not a set of quint32";
+            p.setStatusCode(QOpcUa::UaStatusCode::BadTypeMismatch);
+            emit m_backend->monitoringStatusChanged(handle, attr, item, p);
+            return;
+        }
+
+        auto triggeredItemIds = value.value<QSet<quint32>>();
+
+        UA_SetTriggeringRequest triggeringReq;
+        UA_SetTriggeringRequest_init(&triggeringReq);
+        triggeringReq.subscriptionId = m_subscriptionId;
+        triggeringReq.triggeringItemId = monItem->monitoredItemId;
+
+        QList<quint32> itemsToRemove;
+        QList<quint32> itemsToAdd;
+
+        if (triggeredItemIds.isEmpty() && !monItem->parameters.triggeredItemIds().isEmpty()) {
+            itemsToRemove = monItem->parameters.triggeredItemIds().values();
+        } else if (!triggeredItemIds.isEmpty()) {
+            itemsToAdd = triggeredItemIds.values();
+            itemsToRemove = monItem->parameters.triggeredItemIds().subtract(triggeredItemIds).values();
+        }
+
+        if (itemsToAdd.isEmpty() && itemsToRemove.isEmpty()) {
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Nothing to do for TriggeredItemIds";
+            p.setStatusCode(QOpcUa::UaStatusCode::Good);
+            emit m_backend->monitoringStatusChanged(handle, attr, item, p);
+            return;
+        }
+
+        if (!itemsToAdd.isEmpty()) {
+            triggeringReq.linksToAddSize = itemsToAdd.size();
+            triggeringReq.linksToAdd = itemsToAdd.data();
+        }
+
+        if (!itemsToRemove.isEmpty()) {
+            triggeringReq.linksToRemoveSize = itemsToRemove.size();
+            triggeringReq.linksToRemove = itemsToRemove.data();
+        }
+
+        auto triggeringRes = UA_Client_MonitoredItems_setTriggering(m_backend->m_uaclient, triggeringReq);
+
+        QHash<quint32, QOpcUa::UaStatusCode> failedItems;
+
+        if (triggeringRes.responseHeader.serviceResult != UA_STATUSCODE_GOOD) {
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Modifying TriggeredItemIds failed with"
+                                                  << UA_StatusCode_name(triggeringRes.responseHeader.serviceResult);
+
+            for (const auto &entry : itemsToAdd)
+                failedItems[entry] = QOpcUa::UaStatusCode(triggeringRes.responseHeader.serviceResult);
+            p.setFailedTriggeredItemsStatus(failedItems);
+            p.setStatusCode(QOpcUa::UaStatusCode(triggeringRes.responseHeader.serviceResult));
+            emit m_backend->monitoringStatusChanged(handle, attr, item, p);
+            UA_SetTriggeringResponse_clear(&triggeringRes);
+            return;
+        }
+
+        for (size_t i = 0; i < triggeringRes.addResultsSize; ++i) {
+            if (triggeringRes.addResults[i] != UA_STATUSCODE_GOOD) {
+                qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to add trigger link" << triggeringReq.triggeringItemId
+                                                      << "->" << itemsToAdd.at(i) << "on subscription" << m_subscriptionId
+                                                      << "with status"
+                                                      << UA_StatusCode_name(triggeringRes.addResults[i]);
+                failedItems.insert(itemsToAdd.at(i), QOpcUa::UaStatusCode(triggeringRes.addResults[i]));
+                triggeredItemIds.remove(itemsToAdd.at(i));
+            }
+        }
+
+        UA_SetTriggeringResponse_clear(&triggeringRes);
+
+        monItem->parameters.setTriggeredItemIds(triggeredItemIds);
+        p.setStatusCode(QOpcUa::UaStatusCode::Good);
+        p.setTriggeredItemIds(triggeredItemIds);
+        p.setFailedTriggeredItemsStatus(failedItems);
+        emit m_backend->monitoringStatusChanged(handle, attr, item, p);
+
+        return;
+    }
+
     if (modifySubscriptionParameters(handle, attr, item, value))
         return;
     if (modifyMonitoredItemParameters(handle, attr, item, value))
@@ -260,6 +338,60 @@ bool QOpen62541Subscription::addAttributeMonitoredItem(quint64 handle, QOpcUa::N
         return false;
     }
 
+    QSet<quint32> successfulTriggerLinks;
+    QHash<quint32, QOpcUa::UaStatusCode> failedTriggerLinks;
+    if (!settings.triggeredItemIds().isEmpty()) {
+        auto triggeredItems = settings.triggeredItemIds().values();
+
+        UA_SetTriggeringRequest req;
+        UA_SetTriggeringRequest_init(&req);
+        req.subscriptionId = m_subscriptionId;
+        req.triggeringItemId = res.monitoredItemId;
+        req.linksToAddSize = triggeredItems.size();
+        req.linksToAdd = triggeredItems.data();
+
+        auto triggeringRes = UA_Client_MonitoredItems_setTriggering(m_backend->m_uaclient, req);
+
+        if (triggeringRes.responseHeader.serviceResult != UA_STATUSCODE_GOOD) {
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Could not set triggering item it for" << attr << "of node" << Open62541Utils::nodeIdToQString(id) << ":"
+                                                  << UA_StatusCode_name(triggeringRes.responseHeader.serviceResult);
+
+            // Remove the new monitored item
+            UA_DeleteMonitoredItemsRequest deleteRequest;
+            UA_DeleteMonitoredItemsRequest_init(&deleteRequest);
+            deleteRequest.subscriptionId = m_subscriptionId;
+            deleteRequest.monitoredItemIdsSize = 1;
+            deleteRequest.monitoredItemIds = &res.monitoredItemId;
+            UA_Client_MonitoredItems_delete(m_backend->m_uaclient, deleteRequest);
+
+            for (const auto &entry : triggeredItems)
+                failedTriggerLinks.insert(entry, QOpcUa::UaStatusCode(triggeringRes.responseHeader.serviceResult));
+
+            QOpcUaMonitoringParameters s;
+            s.setStatusCode(static_cast<QOpcUa::UaStatusCode>(triggeringRes.responseHeader.serviceResult));
+            s.setFailedTriggeredItemsStatus(failedTriggerLinks);
+            emit m_backend->monitoringEnableDisable(handle, attr, true, s);
+
+            UA_SetTriggeringResponse_clear(&triggeringRes);
+
+            return false;
+        }
+
+        for (size_t i = 0; i < triggeringRes.addResultsSize; ++i) {
+            if (triggeringRes.addResults[i] == UA_STATUSCODE_GOOD) {
+                successfulTriggerLinks.insert(triggeredItems.at(i));
+            } else {
+                qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to add trigger link" << res.monitoredItemId
+                                                      << "->" << triggeredItems.at(i) << "on subscription" << m_subscriptionId
+                                                      << "with status"
+                                                      << UA_StatusCode_name(triggeringRes.addResults[i]);
+                failedTriggerLinks.insert(triggeredItems.at(i), QOpcUa::UaStatusCode(triggeringRes.addResults[i]));
+            }
+        }
+
+        UA_SetTriggeringResponse_clear(&triggeringRes);
+    }
+
     MonitoredItem *temp = new MonitoredItem(handle, attr, res.monitoredItemId);
     m_nodeHandleToItemMapping[handle][attr] = temp;
     m_itemIdToItemMapping[res.monitoredItemId] = temp;
@@ -273,6 +405,8 @@ bool QOpen62541Subscription::addAttributeMonitoredItem(quint64 handle, QOpcUa::N
     s.setSamplingInterval(res.revisedSamplingInterval);
     s.setQueueSize(res.revisedQueueSize);
     s.setMonitoredItemId(res.monitoredItemId);
+    s.setTriggeredItemIds(successfulTriggerLinks);
+    s.setFailedTriggeredItemsStatus(failedTriggerLinks);
     temp->parameters = s;
     temp->clientHandle = m_clientHandle;
 
@@ -303,10 +437,10 @@ bool QOpen62541Subscription::removeAttributeMonitoredItem(quint64 handle, QOpcUa
         qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Could not remove monitored item" << item->monitoredItemId << "from subscription" << m_subscriptionId << ":" << UA_StatusCode_name(res);
 
     m_itemIdToItemMapping.remove(item->monitoredItemId);
-    auto it = m_nodeHandleToItemMapping.find(handle);
+    const auto it = m_nodeHandleToItemMapping.find(handle);
     it->remove(attr);
     if (it->empty())
-        m_nodeHandleToItemMapping.erase(it);
+        m_nodeHandleToItemMapping.remove(it.key());
 
     delete item;
 
@@ -336,7 +470,7 @@ void QOpen62541Subscription::monitoredValueUpdated(UA_UInt32 monId, UA_DataValue
         res.setServerTimestamp(QOpen62541ValueConverter::scalarToQt<QDateTime, UA_DateTime>(&value->serverTimestamp));
     if (value->hasSourceTimestamp)
         res.setSourceTimestamp(QOpen62541ValueConverter::scalarToQt<QDateTime, UA_DateTime>(&value->sourceTimestamp));
-    res.setStatusCode(QOpcUa::UaStatusCode::Good);
+    res.setStatusCode(value->hasStatus ? QOpcUa::UaStatusCode(value->status) : QOpcUa::UaStatusCode::Good);
     emit m_backend->dataChangeOccurred(item.value()->handle, res);
 }
 
@@ -405,7 +539,7 @@ UA_ExtensionObject QOpen62541Subscription::createFilter(const QVariant &filterDa
     }
 
     if (filterData.canConvert<QOpcUaMonitoringParameters::EventFilter>()) {
-        createEventFilter(filterData.value<QOpcUaMonitoringParameters::EventFilter>(), &obj);
+        Open62541Utils::createEventFilter(filterData.value<QOpcUaMonitoringParameters::EventFilter>(), &obj);
         return obj;
     }
 
@@ -424,138 +558,6 @@ void QOpen62541Subscription::createDataChangeFilter(const QOpcUaMonitoringParame
     out->encoding = UA_EXTENSIONOBJECT_DECODED;
     out->content.decoded.type = &UA_TYPES[UA_TYPES_DATACHANGEFILTER];
     out->content.decoded.data = uaFilter;
-}
-
-void QOpen62541Subscription::createEventFilter(const QOpcUaMonitoringParameters::EventFilter &filter, UA_ExtensionObject *out)
-{
-    UA_EventFilter *uaFilter = UA_EventFilter_new();
-    UA_EventFilter_init(uaFilter);
-    out->encoding = UA_EXTENSIONOBJECT_DECODED;
-    out->content.decoded.data = uaFilter;
-    out->content.decoded.type = &UA_TYPES[UA_TYPES_EVENTFILTER];
-
-    convertSelectClause(filter, &uaFilter->selectClauses, &uaFilter->selectClausesSize);
-    if (!convertWhereClause(filter, &uaFilter->whereClause))
-        UA_ExtensionObject_clear(out);
-}
-
-bool QOpen62541Subscription::convertSelectClause(const QOpcUaMonitoringParameters::EventFilter &filter,
-                                                 UA_SimpleAttributeOperand **selectClauses, size_t *size)
-{
-    if (!filter.selectClauses().isEmpty()) {
-        UA_SimpleAttributeOperand *select = static_cast<UA_SimpleAttributeOperand *>(
-                    UA_Array_new(filter.selectClauses().size(), &UA_TYPES[UA_TYPES_SIMPLEATTRIBUTEOPERAND]));
-
-        for (int i = 0; i < filter.selectClauses().size(); ++i) {
-            UA_SimpleAttributeOperand_init(&select[i]);
-            if (!filter.selectClauses().at(i).typeId().isEmpty())
-                select[i].typeDefinitionId = Open62541Utils::nodeIdFromQString(filter.selectClauses().at(i).typeId());
-            select[i].browsePathSize = filter.selectClauses().at(i).browsePath().size();
-            if (select[i].browsePathSize) {
-                select[i].browsePath = static_cast<UA_QualifiedName *>(
-                            UA_Array_new(select[i].browsePathSize, &UA_TYPES[UA_TYPES_QUALIFIEDNAME]));
-                for (size_t j = 0; j < select[i].browsePathSize; ++j)
-                    QOpen62541ValueConverter::scalarFromQt<UA_QualifiedName, QOpcUaQualifiedName>(
-                                filter.selectClauses().at(i).browsePath().at(j), &select[i].browsePath[j]);
-            }
-            if (!filter.selectClauses().at(i).indexRange().isEmpty())
-                QOpen62541ValueConverter::scalarFromQt<UA_String, QString>(filter.selectClauses().at(i).indexRange(),
-                                                                           &select[i].indexRange);
-            select[i].attributeId = QOpen62541ValueConverter::toUaAttributeId(filter.selectClauses().at(i).attributeId());
-        }
-
-        *selectClauses = select;
-        *size = filter.selectClauses().size();
-
-        return true;
-    }
-
-    *selectClauses = nullptr;
-    *size = 0;
-    return true;
-}
-
-bool QOpen62541Subscription::convertWhereClause(const QOpcUaMonitoringParameters::EventFilter &filter, UA_ContentFilter *result)
-{
-    if (!filter.whereClause().isEmpty()) {
-        result->elementsSize = filter.whereClause().size();
-        result->elements = static_cast<UA_ContentFilterElement *>(
-                    UA_Array_new(filter.whereClause().size(), &UA_TYPES[UA_TYPES_CONTENTFILTERELEMENT]));
-        for (int i = 0; i < filter.whereClause().size(); ++i) {
-            UA_ContentFilterElement_init(&result->elements[i]);
-            result->elements[i].filterOperator = static_cast<UA_FilterOperator>(filter.whereClause().at(i).filterOperator());
-            result->elements[i].filterOperandsSize = filter.whereClause().at(i).filterOperands().size();
-            result->elements[i].filterOperands = static_cast<UA_ExtensionObject *>(
-                        UA_Array_new(filter.whereClause().at(i).filterOperands().size(), &UA_TYPES[UA_TYPES_EXTENSIONOBJECT]));
-            for (int j = 0; j < filter.whereClause().at(i).filterOperands().size(); ++j) {
-                UA_ExtensionObject_init(&result->elements[i].filterOperands[j]);
-                result->elements[i].filterOperands[j].encoding = UA_EXTENSIONOBJECT_DECODED;
-                const QVariant currentOperand = filter.whereClause().at(i).filterOperands().at(j);
-                if (currentOperand.canConvert<QOpcUaElementOperand>()) {
-                    UA_ElementOperand *op = UA_ElementOperand_new();
-                    UA_ElementOperand_init(op);
-                    op->index = currentOperand.value<QOpcUaElementOperand>().index();
-                    result->elements[i].filterOperands[j].content.decoded.data = op;
-                    result->elements[i].filterOperands[j].content.decoded.type = &UA_TYPES[UA_TYPES_ELEMENTOPERAND];
-                } else if (currentOperand.canConvert<QOpcUaLiteralOperand>()) {
-                    UA_LiteralOperand *op = UA_LiteralOperand_new();
-                    UA_LiteralOperand_init(op);
-                    QOpcUaLiteralOperand litOp = currentOperand.value<QOpcUaLiteralOperand>();
-                    op->value = QOpen62541ValueConverter::toOpen62541Variant(litOp.value(), litOp.type());
-                    result->elements[i].filterOperands[j].content.decoded.data = op;
-                    result->elements[i].filterOperands[j].content.decoded.type = &UA_TYPES[UA_TYPES_LITERALOPERAND];
-                } else if (currentOperand.canConvert<QOpcUaSimpleAttributeOperand>()) {
-                    UA_SimpleAttributeOperand *op = UA_SimpleAttributeOperand_new();
-                    UA_SimpleAttributeOperand_init(op);
-                    QOpcUaSimpleAttributeOperand operand = currentOperand.value<QOpcUaSimpleAttributeOperand>();
-                    op->attributeId = QOpen62541ValueConverter::toUaAttributeId(operand.attributeId());
-                    QOpen62541ValueConverter::scalarFromQt<UA_String, QString>(operand.indexRange(), &op->indexRange);
-                    if (!operand.typeId().isEmpty())
-                        op->typeDefinitionId = Open62541Utils::nodeIdFromQString(operand.typeId());
-                    op->browsePathSize = operand.browsePath().size();
-                    op->browsePath = static_cast<UA_QualifiedName *>(UA_Array_new(operand.browsePath().size(),
-                                                                                  &UA_TYPES[UA_TYPES_QUALIFIEDNAME]));
-                    for (int k = 0; k < operand.browsePath().size(); ++k)
-                        QOpen62541ValueConverter::scalarFromQt<UA_QualifiedName, QOpcUaQualifiedName>(
-                                    operand.browsePath().at(k), &op->browsePath[k]);
-                    result->elements[i].filterOperands[j].content.decoded.data = op;
-                    result->elements[i].filterOperands[j].content.decoded.type = &UA_TYPES[UA_TYPES_SIMPLEATTRIBUTEOPERAND];
-                } else if (currentOperand.canConvert<QOpcUaAttributeOperand>()) {
-                    UA_AttributeOperand *op = UA_AttributeOperand_new();
-                    UA_AttributeOperand_init(op);
-                    QOpcUaAttributeOperand operand = currentOperand.value<QOpcUaAttributeOperand>();
-                    op->attributeId = QOpen62541ValueConverter::toUaAttributeId(operand.attributeId());
-                    QOpen62541ValueConverter::scalarFromQt<UA_String, QString>(operand.indexRange(), &op->indexRange);
-                    op->alias = UA_STRING_ALLOC(operand.alias().toUtf8().constData());
-                    if (!operand.nodeId().isEmpty())
-                        op->nodeId = Open62541Utils::nodeIdFromQString(operand.nodeId());
-                    op->browsePath.elementsSize = operand.browsePath().size();
-                    op->browsePath.elements = static_cast<UA_RelativePathElement *>(
-                                UA_Array_new(operand.browsePathRef().size(), &UA_TYPES[UA_TYPES_RELATIVEPATHELEMENT]));
-
-                    for (int k = 0; k < operand.browsePathRef().size(); ++k) {
-                        UA_RelativePathElement_init(&op->browsePath.elements[k]);
-                        op->browsePath.elements[k].includeSubtypes = operand.browsePath().at(k).includeSubtypes();
-                        op->browsePath.elements[k].isInverse = operand.browsePath().at(k).isInverse();
-                        if (!operand.browsePath().at(k).referenceTypeId().isEmpty())
-                            op->browsePath.elements[k].referenceTypeId = Open62541Utils::nodeIdFromQString(
-                                        operand.browsePath().at(k).referenceTypeId());
-                        QOpen62541ValueConverter::scalarFromQt<UA_QualifiedName, QOpcUaQualifiedName>(
-                                    operand.browsePath().at(k).targetName(), &op->browsePath.elements[k].targetName);
-                    }
-
-                    result->elements[i].filterOperands[j].content.decoded.data = op;
-                    result->elements[i].filterOperands[j].content.decoded.type = &UA_TYPES[UA_TYPES_ATTRIBUTEOPERAND];
-                } else {
-                    qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Unknown filter operand type for event filter" <<
-                                                             filter.whereClause().at(i).filterOperands().at(j).typeName();
-                    UA_ContentFilter_clear(result);
-                    return false;
-                }
-            }
-        }
-    }
-    return true;
 }
 
 QOpcUaEventFilterResult QOpen62541Subscription::convertEventFilterResult(UA_ExtensionObject *obj)
@@ -586,8 +588,6 @@ QOpcUaEventFilterResult QOpen62541Subscription::convertEventFilterResult(UA_Exte
 
 bool QOpen62541Subscription::modifySubscriptionParameters(quint64 nodeHandle, QOpcUa::NodeAttribute attr, const QOpcUaMonitoringParameters::Parameter &item, const QVariant &value)
 {
-    QOpcUaMonitoringParameters p;
-
     UA_ModifySubscriptionRequest req;
     UA_ModifySubscriptionRequest_init(&req);
     req.subscriptionId = m_subscriptionId;
@@ -604,6 +604,7 @@ bool QOpen62541Subscription::modifySubscriptionParameters(quint64 nodeHandle, QO
         req.requestedPublishingInterval = value.toDouble(&ok);
         if (!ok) {
             qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Could not modify PublishingInterval, value is not a double";
+            QOpcUaMonitoringParameters p;
             p.setStatusCode(QOpcUa::UaStatusCode::BadTypeMismatch);
             emit m_backend->monitoringStatusChanged(nodeHandle, attr, item, p);
             return true;
@@ -615,6 +616,7 @@ bool QOpen62541Subscription::modifySubscriptionParameters(quint64 nodeHandle, QO
         req.requestedLifetimeCount = value.toUInt(&ok);
         if (!ok) {
             qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Could not modify LifetimeCount, value is not an integer";
+            QOpcUaMonitoringParameters p;
             p.setStatusCode(QOpcUa::UaStatusCode::BadTypeMismatch);
             emit m_backend->monitoringStatusChanged(nodeHandle, attr, item, p);
             return true;
@@ -626,6 +628,7 @@ bool QOpen62541Subscription::modifySubscriptionParameters(quint64 nodeHandle, QO
         req.requestedMaxKeepAliveCount = value.toUInt(&ok);
         if (!ok) {
             qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Could not modify MaxKeepAliveCount, value is not an integer";
+            QOpcUaMonitoringParameters p;
             p.setStatusCode(QOpcUa::UaStatusCode::BadTypeMismatch);
             emit m_backend->monitoringStatusChanged(nodeHandle, attr, item, p);
             return true;
@@ -637,6 +640,7 @@ bool QOpen62541Subscription::modifySubscriptionParameters(quint64 nodeHandle, QO
         req.priority = value.toUInt(&ok);
         if (!ok) {
             qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Could not modify Priority, value is not an integer";
+            QOpcUaMonitoringParameters p;
             p.setStatusCode(QOpcUa::UaStatusCode::BadTypeMismatch);
             emit m_backend->monitoringStatusChanged(nodeHandle, attr, item, p);
             return true;
@@ -648,6 +652,7 @@ bool QOpen62541Subscription::modifySubscriptionParameters(quint64 nodeHandle, QO
         req.maxNotificationsPerPublish = value.toUInt(&ok);
         if (!ok) {
             qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Could not modify MaxNotificationsPerPublish, value is not an integer";
+            QOpcUaMonitoringParameters p;
             p.setStatusCode(QOpcUa::UaStatusCode::BadTypeMismatch);
             emit m_backend->monitoringStatusChanged(nodeHandle, attr, item, p);
             return true;
@@ -663,6 +668,7 @@ bool QOpen62541Subscription::modifySubscriptionParameters(quint64 nodeHandle, QO
         UA_ModifySubscriptionResponse res = UA_Client_Subscriptions_modify(m_backend->m_uaclient, req);
 
         if (res.responseHeader.serviceResult != UA_STATUSCODE_GOOD) {
+            QOpcUaMonitoringParameters p;
             p.setStatusCode(static_cast<QOpcUa::UaStatusCode>(res.responseHeader.serviceResult));
             emit m_backend->monitoringStatusChanged(nodeHandle, attr, item, p);
         } else {
@@ -682,6 +688,7 @@ bool QOpen62541Subscription::modifySubscriptionParameters(quint64 nodeHandle, QO
             if (item == QOpcUaMonitoringParameters::Parameter::MaxNotificationsPerPublish)
                 m_maxNotificationsPerPublish = value.toUInt();
 
+            QOpcUaMonitoringParameters p;
             p.setStatusCode(QOpcUa::UaStatusCode::Good);
             p.setPublishingInterval(m_interval);
             p.setLifetimeCount(m_lifetimeCount);

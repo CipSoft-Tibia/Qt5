@@ -156,6 +156,7 @@ class RasterImplementationTest : public testing::Test {
           .Times(AtLeast(1));
       // The client should be unset.
       EXPECT_CALL(*gpu_control_, SetGpuControlClient(nullptr)).Times(1);
+      EXPECT_CALL(*gpu_control_, CancelAllQueries()).Times(1);
       gl_.reset();
     }
 
@@ -306,7 +307,7 @@ class RasterImplementationTest : public testing::Test {
   raw_ptr<MockClientGpuControl> gpu_control_;
   raw_ptr<RasterCmdHelper> helper_;
   raw_ptr<MockTransferBuffer> transfer_buffer_;
-  raw_ptr<RasterImplementation> gl_;
+  raw_ptr<RasterImplementation, DanglingUntriaged> gl_;
   raw_ptr<CommandBufferEntry> commands_;
 };
 

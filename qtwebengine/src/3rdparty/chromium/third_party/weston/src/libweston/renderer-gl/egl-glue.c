@@ -31,6 +31,7 @@
 
 #include "shared/helpers.h"
 #include "shared/platform.h"
+#include "shared/string-helpers.h"
 
 #include "gl-renderer.h"
 #include "gl-renderer-internal.h"
@@ -391,12 +392,10 @@ explain_egl_config_criteria(EGLint egl_surface_type,
 EGLConfig
 gl_renderer_get_egl_config(struct gl_renderer *gr,
 			   EGLint egl_surface_type,
-			   const uint32_t *drm_formats,
-			   unsigned drm_formats_count)
+			   const struct pixel_format_info *const *formats,
+			   unsigned formats_count)
 {
 	EGLConfig egl_config;
-	const struct pixel_format_info *pinfo[16];
-	unsigned pinfo_count;
 	unsigned i;
 	char *what;
 	EGLint config_attribs[] = {
@@ -408,27 +407,17 @@ gl_renderer_get_egl_config(struct gl_renderer *gr,
 		EGL_NONE
 	};
 
-	assert(drm_formats_count < ARRAY_LENGTH(pinfo));
-	drm_formats_count = MIN(drm_formats_count, ARRAY_LENGTH(pinfo));
-
-	for (pinfo_count = 0, i = 0; i < drm_formats_count; i++) {
-		pinfo[pinfo_count] = pixel_format_get_info(drm_formats[i]);
-		if (!pinfo[pinfo_count]) {
-			weston_log("Bad/unknown DRM format code 0x%08x.\n",
-				   drm_formats[i]);
-			continue;
-		}
-		pinfo_count++;
-	}
+	for (i = 0; i < formats_count; i++)
+		assert(formats[i]);
 
 	if (egl_config_is_compatible(gr, gr->egl_config, egl_surface_type,
-				     pinfo, pinfo_count))
+				     formats, formats_count))
 		return gr->egl_config;
 
-	if (egl_choose_config(gr, config_attribs, pinfo, pinfo_count,
+	if (egl_choose_config(gr, config_attribs, formats, formats_count,
 			      &egl_config) < 0) {
 		what = explain_egl_config_criteria(egl_surface_type,
-						   pinfo, pinfo_count);
+						   formats, formats_count);
 		weston_log("No EGLConfig matches %s.\n", what);
 		free(what);
 		log_all_egl_configs(gr->egl_display);
@@ -443,7 +432,7 @@ gl_renderer_get_egl_config(struct gl_renderer *gr,
 	if (gr->egl_config != EGL_NO_CONFIG_KHR &&
 	    egl_config != gr->egl_config) {
 		what = explain_egl_config_criteria(egl_surface_type,
-						   pinfo, pinfo_count);
+						   formats, formats_count);
 		weston_log("Found an EGLConfig matching %s but it is not usable"
 			   " because neither EGL_KHR_no_config_context nor "
 			   "EGL_MESA_configless_context are supported by EGL.\n",
@@ -453,6 +442,47 @@ gl_renderer_get_egl_config(struct gl_renderer *gr,
 	}
 
 	return egl_config;
+}
+
+static void
+gl_renderer_set_egl_device(struct gl_renderer *gr)
+{
+	EGLAttrib attrib;
+	const char *extensions;
+
+	assert(gr->has_device_query);
+
+	if (!gr->query_display_attrib(gr->egl_display, EGL_DEVICE_EXT, &attrib)) {
+		weston_log("failed to get EGL device\n");
+		gl_renderer_print_egl_error_state();
+		return;
+	}
+
+	gr->egl_device = (EGLDeviceEXT) attrib;
+
+	extensions = gr->query_device_string(gr->egl_device, EGL_EXTENSIONS);
+	if (!extensions) {
+		weston_log("failed to get EGL extensions\n");
+		return;
+	}
+
+	gl_renderer_log_extensions(gr, "EGL device extensions", extensions);
+
+	/* Try to query the render node using EGL_DRM_RENDER_NODE_FILE_EXT */
+	if (weston_check_egl_extension(extensions, "EGL_EXT_device_drm_render_node"))
+		gr->drm_device = gr->query_device_string(gr->egl_device,
+							 EGL_DRM_RENDER_NODE_FILE_EXT);
+
+	/* The extension is not supported by the Mesa version of the system or
+	 * the query failed. Fallback to EGL_DRM_DEVICE_FILE_EXT */
+	if (!gr->drm_device && weston_check_egl_extension(extensions, "EGL_EXT_device_drm"))
+		gr->drm_device = gr->query_device_string(gr->egl_device,
+							 EGL_DRM_DEVICE_FILE_EXT);
+
+	if (gr->drm_device)
+		weston_log("Using rendering device: %s\n", gr->drm_device);
+	else
+		weston_log("warning: failed to query rendering device from EGL\n");
 }
 
 int
@@ -483,6 +513,9 @@ gl_renderer_setup_egl_display(struct gl_renderer *gr,
 		weston_log("failed to initialize display\n");
 		goto fail;
 	}
+
+	if (gr->has_device_query)
+		gl_renderer_set_egl_device(gr);
 
 	return 0;
 
@@ -531,8 +564,15 @@ gl_renderer_setup_egl_client_extensions(struct gl_renderer *gr)
 		return 0;
 	}
 
-	gl_renderer_log_extensions("EGL client extensions",
-				   extensions);
+	gl_renderer_log_extensions(gr, "EGL client extensions", extensions);
+
+	if (weston_check_egl_extension(extensions, "EGL_EXT_device_query")) {
+		gr->query_display_attrib =
+			(void *) eglGetProcAddress("eglQueryDisplayAttribEXT");
+		gr->query_device_string =
+			(void *) eglGetProcAddress("eglQueryDeviceStringEXT");
+		gr->has_device_query = true;
+	}
 
 	if (weston_check_egl_extension(extensions, "EGL_EXT_platform_base")) {
 		gr->get_platform_display =
@@ -544,8 +584,10 @@ gl_renderer_setup_egl_client_extensions(struct gl_renderer *gr)
 		weston_log("warning: EGL_EXT_platform_base not supported.\n");
 
 		/* Surfaceless is unusable without platform_base extension */
-		if (gr->platform == EGL_PLATFORM_SURFACELESS_MESA)
+		if (gr->platform == EGL_PLATFORM_SURFACELESS_MESA) {
+			weston_log("Error: EGL surfaceless platform cannot be used.\n");
 			return -1;
+		}
 
 		return 0;
 	}
@@ -565,6 +607,7 @@ gl_renderer_setup_egl_client_extensions(struct gl_renderer *gr)
 	/* at this point we definitely have some platform extensions but
 	 * haven't found the supplied platform, so chances are it's
 	 * not supported. */
+	weston_log("Error: EGL does not support %s platform.\n", extension_suffix);
 
 	return -1;
 }
@@ -688,6 +731,26 @@ gl_renderer_setup_egl_extensions(struct weston_compositor *ec)
 		weston_log("warning: Disabling explicit synchronization due"
 			   "to missing EGL_KHR_wait_sync extension\n");
 	}
+
+	weston_log("EGL features:\n");
+	weston_log_continue(STAMP_SPACE "EGL Wayland extension: %s\n",
+			    yesno(gr->has_bind_display));
+	weston_log_continue(STAMP_SPACE "context priority: %s\n",
+			    yesno(gr->has_context_priority));
+	weston_log_continue(STAMP_SPACE "buffer age: %s\n",
+			    yesno(gr->has_egl_buffer_age));
+	weston_log_continue(STAMP_SPACE "partial update: %s\n",
+			    yesno(gr->has_egl_partial_update));
+	weston_log_continue(STAMP_SPACE "swap buffers with damage: %s\n",
+			    yesno(gr->swap_buffers_with_damage));
+	weston_log_continue(STAMP_SPACE "configless context: %s\n",
+			    yesno(gr->has_configless_context));
+	weston_log_continue(STAMP_SPACE "surfaceless context: %s\n",
+			    yesno(gr->has_surfaceless_context));
+	weston_log_continue(STAMP_SPACE "dmabuf support: %s\n",
+			    gr->has_dmabuf_import ?
+			    (gr->has_dmabuf_import_modifiers ? "modifiers" : "legacy") :
+			    "no");
 
 	return 0;
 }

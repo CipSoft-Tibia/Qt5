@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,12 +11,11 @@
 #include <memory>
 #include <vector>
 
-#include "absl/types/span.h"
 #include "cast/common/channel/proto/cast_channel.pb.h"
 #include "platform/base/error.h"
+#include "platform/base/span.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace message_serialization {
 
 // Serializes |message_proto| into |message_data|.
@@ -33,10 +32,9 @@ struct DeserializeResult {
 // read.  Returns a parsed CastMessage if a message was received in its
 // entirety, and an error otherwise.  The result also contains the number of
 // bytes consumed from |input| when a parse succeeds.
-ErrorOr<DeserializeResult> TryDeserialize(absl::Span<const uint8_t> input);
+ErrorOr<DeserializeResult> TryDeserialize(ByteView input);
 
 }  // namespace message_serialization
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_CHANNEL_MESSAGE_FRAMER_H_

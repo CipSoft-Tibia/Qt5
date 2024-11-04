@@ -73,11 +73,11 @@ NGGridRangeBuilder::NGGridRangeBuilder(
                         : placement_data.row_start_offset),
       must_sort_grid_lines_(false),
       explicit_tracks_((track_direction == kForColumns)
-                           ? grid_style.GridTemplateColumns().TrackList()
-                           : grid_style.GridTemplateRows().TrackList()),
+                           ? grid_style.GridTemplateColumns().track_list
+                           : grid_style.GridTemplateRows().track_list),
       implicit_tracks_((track_direction == kForColumns)
-                           ? grid_style.GridAutoColumns().NGTrackList()
-                           : grid_style.GridAutoRows().NGTrackList()) {
+                           ? grid_style.GridAutoColumns()
+                           : grid_style.GridAutoRows()) {
   // The implicit track list should have only one repeater, if any.
   DCHECK_LE(implicit_tracks_.RepeaterCount(), 1u);
   DCHECK_NE(auto_repetitions_, kNotFound);
@@ -93,8 +93,13 @@ NGGridRangeBuilder::NGGridRangeBuilder(
     const wtf_size_t repeater_track_count =
         explicit_tracks_.RepeatCount(i, auto_repetitions_) *
         explicit_tracks_.RepeatSize(i);
-    DCHECK_NE(repeater_track_count, 0u);
 
+    // Subgrids can have zero auto repetitions.
+    if (explicit_tracks_.IsSubgriddedAxis() && repeater_track_count == 0) {
+      continue;
+    }
+
+    DCHECK_NE(repeater_track_count, 0u);
     start_lines_.emplace_back(current_repeater_start_line);
     current_repeater_start_line += repeater_track_count;
     end_lines_.emplace_back(current_repeater_start_line);
@@ -108,10 +113,12 @@ NGGridRangeBuilder::NGGridRangeBuilder(
   // In order to guarantee that such columns are included, if the last repeater
   // from the explicit grid ended before the end of the named grid area, add an
   // extra repeater to fulfill the named grid area's span.
-  const wtf_size_t named_grid_area_end_line =
-      start_offset_ + ((track_direction == kForColumns)
-                           ? grid_style.NamedGridAreaColumnCount()
-                           : grid_style.NamedGridAreaRowCount());
+  wtf_size_t named_grid_area_end_line = start_offset_;
+  if (const auto& grid_template_areas = grid_style.GridTemplateAreas()) {
+    named_grid_area_end_line += (track_direction == kForColumns)
+                                    ? grid_template_areas->column_count
+                                    : grid_template_areas->row_count;
+  }
 
   if (current_repeater_start_line < named_grid_area_end_line) {
     start_lines_.emplace_back(current_repeater_start_line);
@@ -226,8 +233,13 @@ NGGridRangeVector NGGridRangeBuilder::FinalizeRanges() {
     DCHECK_GT(range.track_count, 0u);
 
     // Compute current repeater's index, size, and offset.
+    // TODO(ethavar): Simplify this logic.
     range.begin_set_index = current_set_index;
-    if (current_explicit_repeater_index != kNotFound) {
+    if (explicit_tracks_.IsSubgriddedAxis()) {
+      // Subgridded axis specified on standalone grid, use 'auto'.
+      range.repeater_index = kNotFound;
+      range.repeater_offset = 0u;
+    } else if (current_explicit_repeater_index != kNotFound) {
       current_repeater_size =
           explicit_tracks_.RepeatSize(current_explicit_repeater_index);
 
@@ -371,12 +383,10 @@ NGGridSet::NGGridSet(wtf_size_t track_count,
       track_size(track_definition),
       fit_content_limit(kIndefiniteSize) {
   if (track_size.IsFitContent()) {
-    DCHECK(track_size.FitContentTrackBreadth().IsLength());
-
     // Argument for 'fit-content' is a <percentage> that couldn't be resolved to
     // a definite <length>, normalize to 'minmax(auto, max-content)'.
     if (is_available_size_indefinite &&
-        track_size.FitContentTrackBreadth().length().IsPercent()) {
+        track_size.FitContentTrackBreadth().IsPercent()) {
       track_size = GridTrackSize(Length::Auto(), Length::MaxContent());
     }
   } else {
@@ -384,9 +394,9 @@ NGGridSet::NGGridSet(wtf_size_t track_count,
     // definitions from https://drafts.csswg.org/css-grid-2/#algo-terms.
     bool is_unresolvable_percentage_min_function =
         is_available_size_indefinite &&
-        track_size.MinTrackBreadth().HasPercentage();
+        track_size.MinTrackBreadth().IsPercentOrCalc();
 
-    GridLength normalized_min_track_sizing_function =
+    Length normalized_min_track_sizing_function =
         (is_unresolvable_percentage_min_function ||
          track_size.HasFlexMinTrackBreadth())
             ? Length::Auto()
@@ -394,9 +404,9 @@ NGGridSet::NGGridSet(wtf_size_t track_count,
 
     bool is_unresolvable_percentage_max_function =
         is_available_size_indefinite &&
-        track_size.MaxTrackBreadth().HasPercentage();
+        track_size.MaxTrackBreadth().IsPercentOrCalc();
 
-    GridLength normalized_max_track_sizing_function =
+    Length normalized_max_track_sizing_function =
         (is_unresolvable_percentage_max_function ||
          track_size.HasAutoMaxTrackBreadth())
             ? Length::Auto()
@@ -411,7 +421,7 @@ NGGridSet::NGGridSet(wtf_size_t track_count,
 
 double NGGridSet::FlexFactor() const {
   DCHECK(track_size.HasFlexMaxTrackBreadth());
-  return track_size.MaxTrackBreadth().Flex() * track_count;
+  return track_size.MaxTrackBreadth().GetFloatValue() * track_count;
 }
 
 LayoutUnit NGGridSet::BaseSize() const {
@@ -456,36 +466,19 @@ bool NGGridSet::IsGrowthLimitLessThanBaseSize() const {
   return growth_limit != kIndefiniteSize && growth_limit < base_size;
 }
 
-NGGridLayoutTrackCollection::NGGridLayoutTrackCollection(
-    const NGGridLayoutTrackCollection& other,
-    const NGBoxStrut& subgrid_border_scrollbar_padding,
-    const NGBoxStrut& subgrid_margins)
-    : NGGridLayoutTrackCollection(other) {
-  const bool is_for_columns = track_direction_ == kForColumns;
-
-  sets_geometry_start_offset_ += is_for_columns ? subgrid_margins.inline_start
-                                                : subgrid_margins.block_start;
-  start_extra_margin_ =
-      sets_geometry_start_offset_ +
-      (is_for_columns ? subgrid_border_scrollbar_padding.inline_start
-                      : subgrid_border_scrollbar_padding.block_start);
-
-  end_extra_margin_ += is_for_columns
-                           ? subgrid_margins.inline_end +
-                                 subgrid_border_scrollbar_padding.inline_end
-                           : subgrid_margins.block_end +
-                                 subgrid_border_scrollbar_padding.block_end;
-}
-
 bool NGGridLayoutTrackCollection::operator==(
     const NGGridLayoutTrackCollection& other) const {
   return gutter_size_ == other.gutter_size_ &&
-         sets_geometry_start_offset_ == other.sets_geometry_start_offset_ &&
-         start_extra_margin_ == other.start_extra_margin_ &&
-         end_extra_margin_ == other.end_extra_margin_ &&
+         track_direction_ == other.track_direction_ &&
+         accumulated_gutter_size_delta_ ==
+             other.accumulated_gutter_size_delta_ &&
+         accumulated_start_extra_margin_ ==
+             other.accumulated_start_extra_margin_ &&
+         accumulated_end_extra_margin_ == other.accumulated_end_extra_margin_ &&
          baselines_.has_value() == other.baselines_.has_value() &&
          (!baselines_ || (baselines_->major == other.baselines_->major &&
                           baselines_->minor == other.baselines_->minor)) &&
+         last_indefinite_index_ == other.last_indefinite_index_ &&
          ranges_ == other.ranges_ && sets_geometry_ == other.sets_geometry_;
 }
 
@@ -542,18 +535,7 @@ wtf_size_t NGGridLayoutTrackCollection::GetSetCount() const {
 LayoutUnit NGGridLayoutTrackCollection::GetSetOffset(
     wtf_size_t set_index) const {
   DCHECK_LT(set_index, sets_geometry_.size());
-
-  // This extra margin is added to set offsets within a subgrid to account for
-  // its accumulated margin, border, scrollbar, padding, and gutter size.
-  LayoutUnit extra_margin;
-
-  if (!set_index)
-    extra_margin = start_extra_margin_;
-  else if (set_index == sets_geometry_.size() - 1)
-    extra_margin = -end_extra_margin_;
-
-  return sets_geometry_[set_index].offset + extra_margin -
-         sets_geometry_start_offset_;
+  return sets_geometry_[set_index].offset;
 }
 
 wtf_size_t NGGridLayoutTrackCollection::GetSetTrackCount(
@@ -562,15 +544,36 @@ wtf_size_t NGGridLayoutTrackCollection::GetSetTrackCount(
   return sets_geometry_[set_index + 1].track_count;
 }
 
+LayoutUnit NGGridLayoutTrackCollection::StartExtraMargin(
+    wtf_size_t set_index) const {
+  return set_index ? accumulated_gutter_size_delta_ / 2
+                   : accumulated_start_extra_margin_;
+}
+
+LayoutUnit NGGridLayoutTrackCollection::EndExtraMargin(
+    wtf_size_t set_index) const {
+  return (set_index < sets_geometry_.size() - 1)
+             ? accumulated_gutter_size_delta_ / 2
+             : accumulated_end_extra_margin_;
+}
+
 LayoutUnit NGGridLayoutTrackCollection::MajorBaseline(
     wtf_size_t set_index) const {
-  DCHECK(baselines_ && set_index < baselines_->major.size());
+  if (!baselines_) {
+    return LayoutUnit::Min();
+  }
+
+  DCHECK_LT(set_index, baselines_->major.size());
   return baselines_->major[set_index];
 }
 
 LayoutUnit NGGridLayoutTrackCollection::MinorBaseline(
     wtf_size_t set_index) const {
-  DCHECK(baselines_ && set_index < baselines_->minor.size());
+  if (!baselines_) {
+    return LayoutUnit::Min();
+  }
+
+  DCHECK_LT(set_index, baselines_->minor.size());
   return baselines_->minor[set_index];
 }
 
@@ -605,47 +608,197 @@ LayoutUnit NGGridLayoutTrackCollection::ComputeSetSpanSize(
       .ClampNegativeToZero();
 }
 
+bool NGGridLayoutTrackCollection::IsSpanningIndefiniteSet(
+    wtf_size_t begin_set_index,
+    wtf_size_t end_set_index) const {
+  if (last_indefinite_index_.empty()) {
+    return false;
+  }
+
+  DCHECK_LT(begin_set_index, end_set_index);
+  DCHECK_LT(end_set_index, last_indefinite_index_.size());
+  const wtf_size_t last_indefinite_index =
+      last_indefinite_index_[end_set_index];
+
+  return last_indefinite_index != kNotFound &&
+         begin_set_index <= last_indefinite_index;
+}
+
 NGGridLayoutTrackCollection
-NGGridLayoutTrackCollection::CreateSubgridCollection(
+NGGridLayoutTrackCollection::CreateSubgridTrackCollection(
     wtf_size_t begin_range_index,
     wtf_size_t end_range_index,
-    GridTrackSizingDirection subgrid_track_direction) const {
+    LayoutUnit subgrid_gutter_size,
+    const NGBoxStrut& subgrid_margin,
+    const NGBoxStrut& subgrid_border_scrollbar_padding,
+    GridTrackSizingDirection subgrid_track_direction,
+    bool is_opposite_direction_in_root_grid) const {
   DCHECK_LE(begin_range_index, end_range_index);
   DCHECK_LT(end_range_index, ranges_.size());
 
-  NGGridLayoutTrackCollection subgrid_collection(subgrid_track_direction);
-  subgrid_collection.ranges_.ReserveInitialCapacity(end_range_index + 1 -
-                                                    begin_range_index);
+  NGGridLayoutTrackCollection subgrid_track_collection(subgrid_track_direction);
 
-  const wtf_size_t start_line_offset = ranges_[begin_range_index].start_line;
   const wtf_size_t begin_set_index = ranges_[begin_range_index].begin_set_index;
-
-  for (wtf_size_t i = begin_range_index; i <= end_range_index; ++i) {
-    NGGridRange translated_range = ranges_[i];
-    translated_range.start_line -= start_line_offset;
-    translated_range.begin_set_index -= begin_set_index;
-    subgrid_collection.ranges_.emplace_back(std::move(translated_range));
-  }
-
   const wtf_size_t end_set_index = ranges_[end_range_index].begin_set_index +
                                    ranges_[end_range_index].set_count;
 
-  DCHECK_LT(begin_set_index, end_set_index);
   DCHECK_LT(end_set_index, sets_geometry_.size());
+  DCHECK_LT(begin_set_index, end_set_index);
 
-  const wtf_size_t set_span_size = end_set_index - begin_set_index;
-  const auto first_set_offset = sets_geometry_[begin_set_index].offset;
+  // Copy and translate the ranges in the subgrid's span.
+  {
+    auto& subgrid_properties = subgrid_track_collection.properties_;
+    auto& subgrid_ranges = subgrid_track_collection.ranges_;
 
-  subgrid_collection.sets_geometry_.ReserveInitialCapacity(set_span_size + 1);
-  subgrid_collection.sets_geometry_.emplace_back(/* offset */ LayoutUnit(),
-                                                 /* track_count */ 0);
+    const wtf_size_t range_count = end_range_index - begin_range_index;
+    wtf_size_t current_begin_set_index = 0;
+    wtf_size_t current_start_line = 0;
 
-  for (wtf_size_t i = begin_set_index + 1; i <= end_set_index; ++i) {
-    subgrid_collection.sets_geometry_.emplace_back(
-        sets_geometry_[i].offset - first_set_offset,
-        sets_geometry_[i].track_count);
+    subgrid_ranges.ReserveInitialCapacity(range_count + 1);
+
+    for (wtf_size_t i = 0; i <= range_count; ++i) {
+      // Opposite direction subgrids need to iterate backwards.
+      const wtf_size_t current_index = is_opposite_direction_in_root_grid
+                                           ? end_range_index - i
+                                           : begin_range_index + i;
+
+      auto& subgrid_translated_range =
+          subgrid_ranges.emplace_back(ranges_[current_index]);
+      subgrid_translated_range.begin_set_index = current_begin_set_index;
+      current_begin_set_index += subgrid_translated_range.set_count;
+
+      subgrid_translated_range.start_line = current_start_line;
+      current_start_line += subgrid_translated_range.track_count;
+
+      subgrid_properties |= subgrid_translated_range.properties;
+    }
   }
 
+  const wtf_size_t set_span_size = end_set_index - begin_set_index;
+
+  // Copy the sets geometry and adjust its offsets to accommodate the subgrid's
+  // margin, border, scrollbar, padding, and gutter size.
+  const auto subgrid_gutter_size_delta = subgrid_gutter_size - gutter_size_;
+
+  const bool is_for_columns = subgrid_track_direction == kForColumns;
+  const auto subgrid_margin_start =
+      is_for_columns ? subgrid_margin.inline_start : subgrid_margin.block_start;
+
+  const auto subgrid_border_scrollbar_padding_start =
+      is_for_columns ? subgrid_border_scrollbar_padding.inline_start
+                     : subgrid_border_scrollbar_padding.block_start;
+
+  const auto subgrid_margin_border_scrollbar_padding_start =
+      subgrid_margin_start + subgrid_border_scrollbar_padding_start;
+  const auto subgrid_margin_border_scrollbar_padding_end =
+      is_for_columns ? subgrid_margin.inline_end +
+                           subgrid_border_scrollbar_padding.inline_end
+                     : subgrid_margin.block_end +
+                           subgrid_border_scrollbar_padding.block_end;
+
+  // Accumulate the extra margin from the spanned sets in the parent track
+  // collection and this subgrid's margins and gutter size delta.
+  {
+    subgrid_track_collection.accumulated_gutter_size_delta_ =
+        subgrid_gutter_size_delta + accumulated_gutter_size_delta_;
+
+    auto& subgrid_sets_geometry = subgrid_track_collection.sets_geometry_;
+    subgrid_sets_geometry.ReserveInitialCapacity(set_span_size + 1);
+    subgrid_sets_geometry.emplace_back(
+        /* offset */ subgrid_border_scrollbar_padding_start);
+
+    // Opposite direction subgrids adjust extra margin from the opposite side.
+    subgrid_track_collection.accumulated_start_extra_margin_ =
+        subgrid_margin_border_scrollbar_padding_start +
+        (is_opposite_direction_in_root_grid
+             ? EndExtraMargin(end_set_index)
+             : StartExtraMargin(begin_set_index));
+
+    subgrid_track_collection.accumulated_end_extra_margin_ =
+        subgrid_margin_border_scrollbar_padding_end +
+        (is_opposite_direction_in_root_grid ? StartExtraMargin(begin_set_index)
+                                            : EndExtraMargin(end_set_index));
+
+    // Opposite direction subgrids iterate backwards.
+    const wtf_size_t first_set_index =
+        is_opposite_direction_in_root_grid ? end_set_index : begin_set_index;
+    LayoutUnit first_set_offset = sets_geometry_[first_set_index].offset;
+
+    if (is_opposite_direction_in_root_grid) {
+      first_set_offset -= subgrid_margin_start;
+    } else {
+      first_set_offset += subgrid_margin_start;
+    }
+
+    for (wtf_size_t i = 1; i < set_span_size; ++i) {
+      // Opposite direction subgrids need to iterate backwards.
+      const wtf_size_t current_index = is_opposite_direction_in_root_grid
+                                           ? end_set_index - i
+                                           : begin_set_index + i;
+      auto& set =
+          subgrid_sets_geometry.emplace_back(sets_geometry_[current_index]);
+      if (is_opposite_direction_in_root_grid) {
+        set.offset = first_set_offset - set.offset;
+
+        // Opposite direction subgrids take their offset from the current index,
+        // but their track counts from the subsequent index.
+        const wtf_size_t next_index = current_index + 1;
+        DCHECK_LT(next_index, sets_geometry_.size());
+        set.track_count = sets_geometry_[next_index].track_count;
+      } else {
+        set.offset -= first_set_offset;
+      }
+      DCHECK_GT(set.track_count, 0U);
+      set.offset += subgrid_gutter_size_delta / 2;
+    }
+    const wtf_size_t last_set_index =
+        is_opposite_direction_in_root_grid ? begin_set_index : end_set_index;
+    auto& last_set =
+        subgrid_sets_geometry.emplace_back(sets_geometry_[last_set_index]);
+
+    if (is_opposite_direction_in_root_grid) {
+      last_set.offset = first_set_offset - last_set.offset;
+      // Opposite direction subgrids take their offset from the current index,
+      // but their track counts from the subsequent index.
+      const wtf_size_t next_index = last_set_index + 1;
+      DCHECK_LT(next_index, sets_geometry_.size());
+      last_set.track_count = sets_geometry_[next_index].track_count;
+    } else {
+      last_set.offset -= first_set_offset;
+    }
+    last_set.offset +=
+        subgrid_gutter_size_delta - subgrid_margin_border_scrollbar_padding_end;
+    DCHECK_GT(last_set.track_count, 0U);
+  }
+
+  // Copy the last indefinite indices in the subgrid's span.
+  if (!last_indefinite_index_.empty()) {
+    auto& subgrid_last_indefinite_index =
+        subgrid_track_collection.last_indefinite_index_;
+
+    subgrid_last_indefinite_index.ReserveInitialCapacity(set_span_size + 1);
+    subgrid_last_indefinite_index.push_back(kNotFound);
+
+    wtf_size_t last_indefinite_index = kNotFound;
+    for (wtf_size_t i = 0; i < set_span_size; ++i) {
+      // Opposite direction subgrids need to iterate backwards.
+      const wtf_size_t current_index = is_opposite_direction_in_root_grid
+                                           ? end_set_index - i - 1
+                                           : begin_set_index + i;
+
+      DCHECK_LT(current_index + 1, last_indefinite_index_.size());
+
+      // Map the last indefinite index from the parent track collection by
+      // looking for a change in subsequent entries.
+      if (last_indefinite_index_[current_index + 1] !=
+          last_indefinite_index_[current_index]) {
+        last_indefinite_index = i;
+      }
+      subgrid_last_indefinite_index.push_back(last_indefinite_index);
+    }
+  }
+
+  // Copy the major and minor baselines in the subgrid's span.
   if (baselines_ && !baselines_->major.empty()) {
     DCHECK_LE(end_set_index, baselines_->major.size());
     DCHECK_LE(end_set_index, baselines_->minor.size());
@@ -654,19 +807,35 @@ NGGridLayoutTrackCollection::CreateSubgridCollection(
     subgrid_baselines.major.ReserveInitialCapacity(set_span_size);
     subgrid_baselines.minor.ReserveInitialCapacity(set_span_size);
 
-    for (wtf_size_t i = begin_set_index; i < end_set_index; ++i) {
-      subgrid_baselines.major.emplace_back(baselines_->major[i]);
-      subgrid_baselines.minor.emplace_back(baselines_->minor[i]);
+    // Adjust the baselines to accommodate the subgrid extra margins.
+    for (wtf_size_t i = 0; i < set_span_size; ++i) {
+      LayoutUnit major_adjust =
+          (i == 0) ? subgrid_margin_border_scrollbar_padding_start
+                   : subgrid_gutter_size_delta / 2;
+      LayoutUnit minor_adjust =
+          (i == set_span_size - 1) ? subgrid_margin_border_scrollbar_padding_end
+                                   : subgrid_gutter_size_delta / 2;
+      if (is_opposite_direction_in_root_grid) {
+        std::swap(major_adjust, minor_adjust);
+      }
+      const wtf_size_t current_index = is_opposite_direction_in_root_grid
+                                           ? end_set_index - i - 1
+                                           : begin_set_index + i;
+      subgrid_baselines.major.emplace_back(baselines_->major[current_index] -
+                                           major_adjust);
+      subgrid_baselines.minor.emplace_back(baselines_->minor[current_index] -
+                                           minor_adjust);
     }
-    subgrid_collection.baselines_ = std::move(subgrid_baselines);
+
+    if (is_opposite_direction_in_root_grid) {
+      std::swap(subgrid_baselines.major, subgrid_baselines.minor);
+    }
+
+    subgrid_track_collection.baselines_ = std::move(subgrid_baselines);
   }
 
-  subgrid_collection.gutter_size_ = gutter_size_;
-  subgrid_collection.sets_geometry_start_offset_ =
-      subgrid_collection.start_extra_margin_ = start_extra_margin_;
-  subgrid_collection.end_extra_margin_ = end_extra_margin_;
-
-  return subgrid_collection;
+  subgrid_track_collection.gutter_size_ = subgrid_gutter_size;
+  return subgrid_track_collection;
 }
 
 bool NGGridLayoutTrackCollection::HasFlexibleTrack() const {
@@ -704,7 +873,7 @@ NGGridSizingTrackCollection::NGGridSizingTrackCollection(
     }
   }
 
-  last_indefinite_indices_.ReserveInitialCapacity(set_count + 1);
+  last_indefinite_index_.ReserveInitialCapacity(set_count + 1);
   sets_geometry_.ReserveInitialCapacity(set_count + 1);
   sets_.ReserveInitialCapacity(set_count);
 }
@@ -736,21 +905,6 @@ NGGridSizingTrackCollection::GetSetIterator(wtf_size_t begin_set_index,
   return SetIterator(this, begin_set_index, end_set_index);
 }
 
-bool NGGridSizingTrackCollection::IsSpanningIndefiniteSet(
-    wtf_size_t begin_set_index,
-    wtf_size_t end_set_index) const {
-  if (last_indefinite_indices_.empty())
-    return false;
-
-  DCHECK_LT(begin_set_index, end_set_index);
-  DCHECK_LT(end_set_index, last_indefinite_indices_.size());
-  const wtf_size_t last_indefinite_index =
-      last_indefinite_indices_[end_set_index];
-
-  return last_indefinite_index != kNotFound &&
-         begin_set_index <= last_indefinite_index;
-}
-
 LayoutUnit NGGridSizingTrackCollection::TotalTrackSize() const {
   if (sets_.empty())
     return LayoutUnit();
@@ -761,49 +915,40 @@ LayoutUnit NGGridSizingTrackCollection::TotalTrackSize() const {
   return total_track_size - gutter_size_;
 }
 
-void NGGridSizingTrackCollection::CacheDefiniteSetsGeometry(
-    LayoutUnit grid_available_size) {
-  DCHECK(sets_geometry_.empty() && last_indefinite_indices_.empty());
+void NGGridSizingTrackCollection::CacheDefiniteSetsGeometry() {
+  DCHECK(sets_geometry_.empty() && last_indefinite_index_.empty());
 
-  LayoutUnit current_set_offset;
-  last_indefinite_indices_.push_back(kNotFound);
-  sets_geometry_.emplace_back(current_set_offset, /* track_count */ 0);
+  LayoutUnit first_set_offset;
+  last_indefinite_index_.push_back(kNotFound);
+  sets_geometry_.emplace_back(first_set_offset);
 
   for (const auto& set : sets_) {
-    const auto& track_size = set.track_size;
-
-    if (track_size.IsDefinite()) {
-      DCHECK(!track_size.MinTrackBreadth().HasPercentage() ||
-             grid_available_size != kIndefiniteSize);
-
-      LayoutUnit fixed_breadth = MinimumValueForLength(
-          track_size.MinTrackBreadth().length(), grid_available_size);
-
-      current_set_offset += (fixed_breadth + gutter_size_) * set.track_count;
-      last_indefinite_indices_.push_back(last_indefinite_indices_.back());
+    if (set.track_size.IsDefinite()) {
+      first_set_offset += set.base_size + gutter_size_ * set.track_count;
+      last_indefinite_index_.push_back(last_indefinite_index_.back());
     } else {
-      last_indefinite_indices_.push_back(last_indefinite_indices_.size() - 1);
+      last_indefinite_index_.push_back(last_indefinite_index_.size() - 1);
     }
 
-    DCHECK_LE(sets_geometry_.back().offset, current_set_offset);
-    sets_geometry_.emplace_back(current_set_offset, set.track_count);
+    DCHECK_LE(sets_geometry_.back().offset, first_set_offset);
+    sets_geometry_.emplace_back(first_set_offset, set.track_count);
   }
 }
 
 void NGGridSizingTrackCollection::CacheInitializedSetsGeometry(
     LayoutUnit first_set_offset) {
-  last_indefinite_indices_.Shrink(0);
+  last_indefinite_index_.Shrink(0);
   sets_geometry_.Shrink(0);
 
-  last_indefinite_indices_.push_back(kNotFound);
-  sets_geometry_.emplace_back(first_set_offset, /* track_count */ 0);
+  last_indefinite_index_.push_back(kNotFound);
+  sets_geometry_.emplace_back(first_set_offset);
 
   for (const auto& set : sets_) {
     if (set.growth_limit == kIndefiniteSize) {
-      last_indefinite_indices_.push_back(last_indefinite_indices_.size() - 1);
+      last_indefinite_index_.push_back(last_indefinite_index_.size() - 1);
     } else {
       first_set_offset += set.growth_limit + gutter_size_ * set.track_count;
-      last_indefinite_indices_.push_back(last_indefinite_indices_.back());
+      last_indefinite_index_.push_back(last_indefinite_index_.back());
     }
 
     DCHECK_LE(sets_geometry_.back().offset, first_set_offset);
@@ -816,10 +961,10 @@ void NGGridSizingTrackCollection::FinalizeSetsGeometry(
     LayoutUnit override_gutter_size) {
   gutter_size_ = override_gutter_size;
 
-  last_indefinite_indices_.Shrink(0);
+  last_indefinite_index_.Shrink(0);
   sets_geometry_.Shrink(0);
 
-  sets_geometry_.emplace_back(first_set_offset, /* track_count */ 0);
+  sets_geometry_.emplace_back(first_set_offset);
 
   for (const auto& set : sets_) {
     first_set_offset += set.BaseSize() + gutter_size_ * set.track_count;
@@ -860,14 +1005,17 @@ void NGGridSizingTrackCollection::SetMinorBaseline(
 }
 
 void NGGridSizingTrackCollection::BuildSets(const ComputedStyle& grid_style,
-                                            LayoutUnit grid_available_size) {
+                                            LayoutUnit grid_available_size,
+                                            LayoutUnit gutter_size) {
   const bool is_for_columns = track_direction_ == kForColumns;
+  gutter_size_ = gutter_size;
 
-  BuildSets(is_for_columns ? grid_style.GridTemplateColumns().TrackList()
-                           : grid_style.GridTemplateRows().TrackList(),
-            is_for_columns ? grid_style.GridAutoColumns().NGTrackList()
-                           : grid_style.GridAutoRows().NGTrackList(),
-            grid_available_size == kIndefiniteSize);
+  BuildSets(
+      is_for_columns ? grid_style.GridTemplateColumns().track_list
+                     : grid_style.GridTemplateRows().track_list,
+      is_for_columns ? grid_style.GridAutoColumns() : grid_style.GridAutoRows(),
+      grid_available_size == kIndefiniteSize);
+  InitializeSets(grid_available_size);
 }
 
 void NGGridSizingTrackCollection::BuildSets(
@@ -922,10 +1070,12 @@ void NGGridSizingTrackCollection::BuildSets(
     };
 
     if (range.repeater_index == kNotFound) {
-      // The only case where a range doesn't have a repeater index is when the
-      // range is in the implicit grid and there are no auto track definitions;
-      // fill the entire range with a single set of 'auto' tracks.
-      DCHECK(range.IsImplicit());
+      // The only cases where a range doesn't have a repeater index are when the
+      // range is in the implicit grid and there are no auto track definitions,
+      // or when 'subgrid' is specified on a track definition but it's not a
+      // child of a grid (and thus not a subgrid); in both cases, fill the
+      // entire range with a single set of 'auto' tracks.
+      DCHECK(range.IsImplicit() || explicit_track_list.IsSubgriddedAxis());
       CacheSetProperties(sets_.emplace_back(range.track_count));
     } else {
       const auto& specified_track_list =
@@ -984,23 +1134,23 @@ void NGGridSizingTrackCollection::InitializeSets(
 
     if (track_size.IsFitContent()) {
       // Indefinite lengths cannot occur, as they must be normalized to 'auto'.
-      DCHECK(!track_size.FitContentTrackBreadth().HasPercentage() ||
+      DCHECK(!track_size.FitContentTrackBreadth().IsPercentOrCalc() ||
              grid_available_size != kIndefiniteSize);
 
       LayoutUnit fit_content_argument = MinimumValueForLength(
-          track_size.FitContentTrackBreadth().length(), grid_available_size);
+          track_size.FitContentTrackBreadth(), grid_available_size);
       set.fit_content_limit = fit_content_argument * set.track_count;
     }
 
     if (track_size.HasFixedMaxTrackBreadth()) {
-      DCHECK(!track_size.MaxTrackBreadth().HasPercentage() ||
+      DCHECK(!track_size.MaxTrackBreadth().IsPercentOrCalc() ||
              grid_available_size != kIndefiniteSize);
 
       // A fixed sizing function: Resolve to an absolute length and use that
       // size as the track’s initial growth limit; if the growth limit is less
       // than the base size, increase the growth limit to match the base size.
       LayoutUnit fixed_max_breadth = MinimumValueForLength(
-          track_size.MaxTrackBreadth().length(), grid_available_size);
+          track_size.MaxTrackBreadth(), grid_available_size);
       set.growth_limit = fixed_max_breadth * set.track_count;
     } else {
       // An intrinsic or flexible sizing function: Use an initial growth limit
@@ -1009,13 +1159,13 @@ void NGGridSizingTrackCollection::InitializeSets(
     }
 
     if (track_size.HasFixedMinTrackBreadth()) {
-      DCHECK(!track_size.MinTrackBreadth().HasPercentage() ||
+      DCHECK(!track_size.MinTrackBreadth().IsPercentOrCalc() ||
              grid_available_size != kIndefiniteSize);
 
       // A fixed sizing function: Resolve to an absolute length and use that
       // size as the track’s initial base size.
       LayoutUnit fixed_min_breadth = MinimumValueForLength(
-          track_size.MinTrackBreadth().length(), grid_available_size);
+          track_size.MinTrackBreadth(), grid_available_size);
       set.InitBaseSize(fixed_min_breadth * set.track_count);
     } else {
       // An intrinsic sizing function: Use an initial base size of zero.

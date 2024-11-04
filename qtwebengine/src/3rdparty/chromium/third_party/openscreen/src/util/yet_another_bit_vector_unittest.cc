@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,8 @@
 #include <algorithm>
 
 #include "absl/algorithm/container.h"
-#include "absl/types/span.h"
 #include "gtest/gtest.h"
+#include "platform/base/span.h"
 
 namespace openscreen {
 namespace {
@@ -27,10 +27,10 @@ const int kTestSizes[] = {0,  1,  2,  3,  5,  7,  11, 13, 17,  19,
 
 // Returns a subspan of |kTestSizes| that contains all values in the range
 // [first,last].
-absl::Span<const int> GetTestSizesInRange(int first, int last) {
+Span<const int> GetTestSizesInRange(int first, int last) {
   const auto begin = absl::c_lower_bound(kTestSizes, first);
   const auto end = absl::c_upper_bound(kTestSizes, last);
-  return absl::Span<const int>(&*begin, std::distance(begin, end));
+  return Span<const int>(&*begin, std::distance(begin, end));
 }
 
 // Returns true if an infinitely-repeating |pattern| has a bit set at the given

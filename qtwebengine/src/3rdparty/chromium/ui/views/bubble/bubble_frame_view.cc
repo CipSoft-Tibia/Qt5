@@ -15,6 +15,7 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/resource/resource_bundle.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
 #include "ui/compositor/layer.h"
@@ -102,6 +103,17 @@ BubbleFrameView::BubbleFrameView(const gfx::Insets& title_margins,
   main_image_->SetVisible(false);
   subtitle_->SetVisible(false);
 
+  auto minimize = CreateMinimizeButton(base::BindRepeating(
+      [](BubbleFrameView* view, const ui::Event& event) {
+        if (view->input_protector_.IsPossiblyUnintendedInteraction(event))
+          return;
+        view->GetWidget()->Minimize();
+      },
+      this));
+  minimize->SetProperty(views::kElementIdentifierKey, kMinimizeButtonElementId);
+  minimize->SetVisible(false);
+  minimize_ = AddChildView(std::move(minimize));
+
   auto close = CreateCloseButton(base::BindRepeating(
       [](BubbleFrameView* view, const ui::Event& event) {
         if (view->input_protector_.IsPossiblyUnintendedInteraction(event))
@@ -110,18 +122,9 @@ BubbleFrameView::BubbleFrameView(const gfx::Insets& title_margins,
             Widget::ClosedReason::kCloseButtonClicked);
       },
       this));
+  close->SetProperty(views::kElementIdentifierKey, kCloseButtonElementId);
   close->SetVisible(false);
   close_ = AddChildView(std::move(close));
-
-  auto minimize = CreateMinimizeButton(base::BindRepeating(
-      [](BubbleFrameView* view, const ui::Event& event) {
-        if (view->input_protector_.IsPossiblyUnintendedInteraction(event))
-          return;
-        view->GetWidget()->Minimize();
-      },
-      this));
-  minimize->SetVisible(false);
-  minimize_ = AddChildView(std::move(minimize));
 
   auto progress_indicator = std::make_unique<ProgressBar>(
       kProgressIndicatorHeight, /*allow_round_corner=*/false);
@@ -144,7 +147,9 @@ std::unique_ptr<Label> BubbleFrameView::CreateDefaultTitleLabel(
 std::unique_ptr<Button> BubbleFrameView::CreateCloseButton(
     Button::PressedCallback callback) {
   auto close_button = CreateVectorImageButtonWithNativeTheme(
-      std::move(callback), vector_icons::kCloseRoundedIcon);
+      std::move(callback), features::IsChromeRefresh2023()
+                               ? vector_icons::kCloseChromeRefreshIcon
+                               : vector_icons::kCloseRoundedIcon);
   close_button->SetTooltipText(l10n_util::GetStringUTF16(IDS_APP_CLOSE));
   close_button->SetAccessibleName(l10n_util::GetStringUTF16(IDS_APP_CLOSE));
   close_button->SizeToPreferredSize();
@@ -457,6 +462,7 @@ void BubbleFrameView::Layout() {
 
   const gfx::Rect contents_bounds = GetContentsBounds();
 
+  // Lay out the progress bar.
   progress_indicator_->SetBounds(contents_bounds.x(), contents_bounds.y(),
                                  contents_bounds.width(),
                                  kProgressIndicatorHeight);
@@ -464,59 +470,65 @@ void BubbleFrameView::Layout() {
   gfx::Rect bounds = contents_bounds;
   bounds.Inset(title_margins_);
 
-  int header_bottom = 0;
-  int header_height = GetHeaderHeightForFrameWidth(contents_bounds.width());
-  if (header_height > 0) {
-    header_view_->SetBounds(contents_bounds.x(), contents_bounds.y(),
-                            contents_bounds.width(), header_height);
-    bounds.Inset(gfx::Insets::TLBR(header_height, 0, 0, 0));
-    header_bottom = header_view_->bounds().bottom();
+  // Lay out the close and the minimize button.
+  gfx::Point buttons_top_right;
+  if (GetButtonsPositioning() == ButtonsPositioning::kOnFrameEdge) {
+    // The buttons are positioned on the upper trailing corner of the bubble.
+    const int buttons_on_frame_edge_margin =
+        LayoutProvider::Get()->GetDistanceMetric(DISTANCE_CLOSE_BUTTON_MARGIN);
+    buttons_top_right =
+        gfx::Point(contents_bounds.right() - buttons_on_frame_edge_margin,
+                   contents_bounds.y() + buttons_on_frame_edge_margin);
+  } else {
+    CHECK_EQ(GetButtonsPositioning(), ButtonsPositioning::kInTitleRow);
+    // The buttons are positioned at the end of the title row.
+    buttons_top_right = gfx::Point(bounds.right(), bounds.y());
   }
-
-  // Only account for footnote_container_'s height if it's visible, because
-  // content_margins_ adds extra padding even if all child views are invisible.
-  if (footnote_container_ && footnote_container_->GetVisible()) {
-    const int width = contents_bounds.width();
-    const int height = footnote_container_->GetHeightForWidth(width);
-    footnote_container_->SetBounds(
-        contents_bounds.x(), contents_bounds.bottom() - height, width, height);
-  }
-
-  NonClientFrameView::Layout();
-
-  if (bounds.IsEmpty()) {
-    return;
-  }
-
-  // The buttons are positioned somewhat closer to the edge of the bubble.
-  const int close_margin =
-      LayoutProvider::Get()->GetDistanceMetric(DISTANCE_CLOSE_BUTTON_MARGIN);
-  const int button_y = contents_bounds.y() + close_margin;
-  int button_right = contents_bounds.right() - close_margin;
-  int title_label_right = bounds.right();
+  gfx::Rect buttons_rect(buttons_top_right, gfx::Size());
   for (Button* button : {close_, minimize_}) {
-    if (!button->GetVisible())
+    if (!button->GetVisible()) {
       continue;
-    button->SetPosition(gfx::Point(button_right - button->width(), button_y));
-    button_right -= button->width();
-    button_right -= LayoutProvider::Get()->GetDistanceMetric(
-        DISTANCE_RELATED_BUTTON_HORIZONTAL);
-    // Only reserve space if the button extends over the header.
-    if (button->bounds().bottom() > header_bottom) {
-      title_label_right =
-          std::min(title_label_right, button->x() - close_margin);
     }
+    // Add spacing between buttons.
+    if (button == minimize_) {
+      buttons_rect.Outset(
+          gfx::Outsets::TLBR(0,
+                             LayoutProvider::Get()->GetDistanceMetric(
+                                 DISTANCE_RELATED_BUTTON_HORIZONTAL),
+                             0, 0));
+    }
+    button->SetPosition(
+        gfx::Point(buttons_rect.x() - button->width(), buttons_rect.y()));
+    buttons_rect.Union(button->bounds());
+  }
+  // Add a left margin that equals the right margin.
+  buttons_rect.Outset(gfx::Outsets::TLBR(
+      0, contents_bounds.right() - buttons_rect.right(), 0, 0));
+
+  // Lay out the header.
+  gfx::Rect header_rect = contents_bounds;
+  header_rect.set_height(GetHeaderHeightForFrameWidth(contents_bounds.width()));
+  if (header_rect.height() > 0) {
+    header_view_->SetBoundsRect(header_rect);
+    bounds.Inset(gfx::Insets::TLBR(header_rect.height(), 0, 0, 0));
   }
 
+  // Lay out the title.
   gfx::Size title_icon_pref_size(title_icon_->GetPreferredSize());
   const int title_icon_padding =
       title_icon_pref_size.width() > 0 ? title_margins_.left() : 0;
   const int title_label_x = bounds.x() + title_icon_pref_size.width() +
                             title_icon_padding + GetMainImageLeftInsets();
+  int title_label_right = bounds.right();
+  if (!buttons_rect.IsEmpty() && buttons_rect.bottom() > header_rect.bottom()) {
+    title_label_right = std::min(title_label_right, buttons_rect.x());
+  }
 
   // TODO(tapted): Layout() should skip more surrounding code when !HasTitle().
   // Currently DCHECKs fail since title_insets is 0 when there is no title.
-  if (DCHECK_IS_ON() && HasTitle()) {
+  // Skip checking if bounds is empty, as async bounds setting during bubble
+  // creation may cause unreliable layout results.
+  if (DCHECK_IS_ON() && HasTitle() && !bounds.IsEmpty()) {
     const gfx::Insets title_insets =
         GetTitleLabelInsetsFromFrame() + GetInsets();
     DCHECK_EQ(title_insets.left(), title_label_x);
@@ -539,6 +551,19 @@ void BubbleFrameView::Layout() {
 
   main_image_->SetBounds(0, 0, main_image_->GetPreferredSize().width(),
                          main_image_->GetPreferredSize().height());
+
+  // Lay out the footnote.
+  // Only account for footnote_container_'s height if it's visible, because
+  // content_margins_ adds extra padding even if all child views are invisible.
+  if (footnote_container_ && footnote_container_->GetVisible()) {
+    const int width = contents_bounds.width();
+    const int height = footnote_container_->GetHeightForWidth(width);
+    footnote_container_->SetBounds(
+        contents_bounds.x(), contents_bounds.bottom() - height, width, height);
+  }
+
+  // Lay out the client view.
+  NonClientFrameView::Layout();
 }
 
 void BubbleFrameView::OnThemeChanged() {
@@ -728,6 +753,11 @@ gfx::Rect BubbleFrameView::GetUpdatedWindowBounds(
     bool adjust_to_fit_available_bounds) {
   gfx::Size size(GetFrameSizeForClientSize(client_size));
 
+  // Save these values; if the arrow changes as a result of mirroring (or
+  // un-mirroring) the border will need to be repainted.
+  const auto old_arrow = bubble_border_->arrow();
+  const auto old_offset = bubble_border_->arrow_offset();
+
   if (adjust_to_fit_available_bounds &&
       BubbleBorder::has_arrow(delegate_arrow)) {
     // Get the desired bubble bounds without adjustment.
@@ -739,32 +769,46 @@ gfx::Rect BubbleFrameView::GetUpdatedWindowBounds(
         preferred_arrow_adjustment_ == PreferredArrowAdjustment::kOffset) {
       const bool mirror_vertical =
           BubbleBorder::is_arrow_on_horizontal(delegate_arrow);
-      MirrorArrowIfOutOfBounds(mirror_vertical, anchor_rect, size,
-                               GetAvailableAnchorWindowBounds());
+      if (use_anchor_window_bounds_) {
+        MirrorArrowIfOutOfBounds(mirror_vertical, anchor_rect, size,
+                                 GetAvailableAnchorWindowBounds());
+      }
       MirrorArrowIfOutOfBounds(mirror_vertical, anchor_rect, size,
                                GetAvailableScreenBounds(anchor_rect));
-      OffsetArrowIfOutOfBounds(anchor_rect, size,
-                               GetAvailableAnchorWindowBounds());
+      if (use_anchor_window_bounds_) {
+        OffsetArrowIfOutOfBounds(anchor_rect, size,
+                                 GetAvailableAnchorWindowBounds());
+      }
       OffsetArrowIfOutOfBounds(anchor_rect, size,
                                GetAvailableScreenBounds(anchor_rect));
     } else {
-      MirrorArrowIfOutOfBounds(true, anchor_rect, size,
-                               GetAvailableAnchorWindowBounds());
+      if (use_anchor_window_bounds_) {
+        MirrorArrowIfOutOfBounds(true, anchor_rect, size,
+                                 GetAvailableAnchorWindowBounds());
+      }
       MirrorArrowIfOutOfBounds(true, anchor_rect, size,
                                GetAvailableScreenBounds(anchor_rect));
-      MirrorArrowIfOutOfBounds(false, anchor_rect, size,
-                               GetAvailableAnchorWindowBounds());
+      if (use_anchor_window_bounds_) {
+        MirrorArrowIfOutOfBounds(false, anchor_rect, size,
+                                 GetAvailableAnchorWindowBounds());
+      }
       MirrorArrowIfOutOfBounds(false, anchor_rect, size,
                                GetAvailableScreenBounds(anchor_rect));
     }
   }
 
-  // Calculate the bounds with the arrow in its updated location and offset.
+  // Check to see if any of the positioning values have changed.
+  if (bubble_border_->arrow() != old_arrow ||
+      bubble_border_->arrow_offset() != old_offset) {
+    InvalidateLayout();
+    SchedulePaint();
+  }
+
   return bubble_border_->GetBounds(anchor_rect, size);
 }
 
 void BubbleFrameView::UpdateInputProtectorTimeStamp() {
-  input_protector_.UpdateViewShownTimeStamp();
+  input_protector_.MaybeUpdateViewProtectedTimeStamp();
 }
 
 void BubbleFrameView::ResetViewShownTimeStampForTesting() {
@@ -853,9 +897,6 @@ void BubbleFrameView::MirrorArrowIfOutOfBounds(
     if (GetOverflowLength(available_bounds, mirror_bounds, vertical) >=
         GetOverflowLength(available_bounds, window_bounds, vertical)) {
       bubble_border_->set_arrow(arrow);
-    } else {
-      InvalidateLayout();
-      SchedulePaint();
     }
   }
 }
@@ -908,8 +949,6 @@ void BubbleFrameView::OffsetArrowIfOutOfBounds(
   // to the left, and that means negative offset.
   bubble_border_->set_arrow_offset(bubble_border_->arrow_offset() -
                                    offscreen_adjust);
-  if (offscreen_adjust)
-    SchedulePaint();
 }
 
 int BubbleFrameView::GetFrameWidthForClientWidth(int client_width) const {
@@ -956,17 +995,57 @@ bool BubbleFrameView::HasTitle() const {
          title_icon_->GetPreferredSize().height() > 0;
 }
 
+BubbleFrameView::ButtonsPositioning BubbleFrameView::GetButtonsPositioning()
+    const {
+  if (!features::IsChromeRefresh2023()) {
+    return ButtonsPositioning::kOnFrameEdge;
+  }
+
+  // Positions the buttons in the title row when there's no header row.
+  return HasTitle() && !(header_view_ && header_view_->GetVisible())
+             ? ButtonsPositioning::kInTitleRow
+             : ButtonsPositioning::kOnFrameEdge;
+}
+
+bool BubbleFrameView::TitleRowHasButtons() const {
+  return GetButtonsPositioning() == ButtonsPositioning::kInTitleRow &&
+         (GetWidget()->widget_delegate()->ShouldShowCloseButton() ||
+          GetWidget()->widget_delegate()->CanMinimize());
+}
+
 gfx::Insets BubbleFrameView::GetTitleLabelInsetsFromFrame() const {
   int header_height = GetHeaderHeightForFrameWidth(GetContentsBounds().width());
   int insets_right = 0;
-  if (GetWidget()->widget_delegate()->ShouldShowCloseButton()) {
-    const int close_margin =
-        LayoutProvider::Get()->GetDistanceMetric(DISTANCE_CLOSE_BUTTON_MARGIN);
-    // Note: |close_margin| is not applied on the bottom of the icon.
-    int close_height = close_margin + close_->height();
-    // Only reserve space if the close button extends over the header.
-    if (close_height > header_height)
-      insets_right = 2 * close_margin + close_->width();
+  if (GetButtonsPositioning() == ButtonsPositioning::kOnFrameEdge) {
+    if (GetWidget()->widget_delegate()->ShouldShowCloseButton()) {
+      const int close_margin = LayoutProvider::Get()->GetDistanceMetric(
+          DISTANCE_CLOSE_BUTTON_MARGIN);
+      // Note: |close_margin| is not applied on the bottom of the icon.
+      int close_height = close_margin + close_->height();
+      // Only reserve space if the close button extends over the header.
+      if (close_height > header_height) {
+        insets_right = 2 * close_margin + close_->width();
+      }
+    }
+  } else {
+    CHECK_EQ(GetButtonsPositioning(), ButtonsPositioning::kInTitleRow);
+    // Reserve space for buttons only when they exist in the title row.
+    if (TitleRowHasButtons()) {
+      int buttons_count =
+          GetWidget()->widget_delegate()->ShouldShowCloseButton() +
+          GetWidget()->widget_delegate()->CanMinimize();
+      // Add button width.
+      insets_right = close_->width() * buttons_count;
+      // Add spacing around buttons.
+      if (buttons_count > 0) {
+        insets_right += title_margins_.right() * 2;
+      }
+      // Add spacing between buttons.
+      if (buttons_count == 2) {
+        insets_right += LayoutProvider::Get()->GetDistanceMetric(
+            DISTANCE_RELATED_BUTTON_HORIZONTAL);
+      }
+    }
   }
 
   if (!HasTitle())
@@ -987,6 +1066,7 @@ gfx::Insets BubbleFrameView::GetClientInsetsForFrameWidth(
   int header_height = GetHeaderHeightForFrameWidth(frame_width);
   int close_height = 0;
   if (!ExtendClientIntoTitle() &&
+      GetButtonsPositioning() == ButtonsPositioning::kOnFrameEdge &&
       GetWidget()->widget_delegate()->ShouldShowCloseButton()) {
     const int close_margin =
         LayoutProvider::Get()->GetDistanceMetric(DISTANCE_CLOSE_BUTTON_MARGIN);
@@ -1057,5 +1137,9 @@ ADD_PROPERTY_METADATA(BubbleBorder::Arrow, Arrow)
 ADD_PROPERTY_METADATA(bool, DisplayVisibleArrow)
 ADD_PROPERTY_METADATA(SkColor, BackgroundColor, ui::metadata::SkColorConverter)
 END_METADATA
+
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(BubbleFrameView,
+                                      kMinimizeButtonElementId);
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(BubbleFrameView, kCloseButtonElementId);
 
 }  // namespace views

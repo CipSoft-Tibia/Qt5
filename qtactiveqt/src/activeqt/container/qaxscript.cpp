@@ -35,6 +35,9 @@ static QList<QAxEngineDescriptor> engines;
 class QAxScriptManagerPrivate
 {
 public:
+    void updateScript(QAxScript*);
+    QAxScript *scriptForFunction(QString &function) const;
+
     QHash<QString, QAxScript*> scriptDict;
     QHash<QString, QAxBase*> objectDict;
 };
@@ -641,8 +644,11 @@ script_engine(nullptr)
 {
     if (manager) {
         manager->d->scriptDict.insert(name, this);
-        connect(this, SIGNAL(error(int,QString,int,QString)),
-            manager, SLOT(scriptError(int,QString,int,QString)));
+
+        connect(this, &QAxScript::error, script_manager,
+                [this](int code, const QString &description, int sourcePosition, const QString &sourceText){
+            emit script_manager->error(this, code, description, sourcePosition, sourceText);
+        });
     }
 
 #ifndef QT_NO_QAXSCRIPT
@@ -795,7 +801,7 @@ void QAxScript::updateObjects()
     if (!script_manager)
         return;
 
-    script_manager->updateScript(this);
+    script_manager->d->updateScript(this);
 }
 
 /*! \internal
@@ -977,7 +983,9 @@ void QAxScriptManager::addObject(QAxBase *object)
         return;
 
     d->objectDict.insert(name, object);
-    connect(obj, SIGNAL(destroyed(QObject*)), this, SLOT(objectDestroyed(QObject*)));
+    QObject::connect(obj, &QObject::destroyed, this, [this](QObject *o){
+        d->objectDict.take(o->objectName());
+    });
 }
 
 /*! \fn void QAxScriptManager::addObject(QObject *object)
@@ -1126,7 +1134,7 @@ QVariant QAxScriptManager::call(const QString &function, const QVariant &var1,
 QVariant QAxScriptManager::call(const QString &function, QList<QVariant> &arguments)
 {
     QString signature = function;
-    QAxScript *s = scriptForFunction(signature);
+    QAxScript *s = d->scriptForFunction(signature);
     if (!s) {
 #ifdef QT_CHECK_STATE
         qWarning("QAxScriptManager::call: No script provides function %s, or this function\n"
@@ -1207,18 +1215,17 @@ QString QAxScriptManager::scriptFileFilter()
 */
 
 /*!
-    \fn QAxScript *QAxScriptManager::scriptForFunction(QString &function) const
     \internal
 
     Returns a pointer to the first QAxScript that knows
     about \a function, or nullptr if this function is unknown. \a function
     is changed to the callable signature.
 */
-QAxScript *QAxScriptManager::scriptForFunction(QString &function) const
+QAxScript *QAxScriptManagerPrivate::scriptForFunction(QString &function) const
 {
     const auto startPrototype = function.indexOf(u'(');
 
-    for (const auto &script : d->scriptDict) {
+    for (const auto &script : scriptDict) {
         const QMetaObject *mo = script->scriptEngine()->metaObject();
         for (int i = mo->methodOffset(); i < mo->methodCount(); ++i) {
             const QMetaMethod slot(mo->method(i));
@@ -1247,29 +1254,12 @@ QAxScript *QAxScriptManager::scriptForFunction(QString &function) const
 /*!
     \internal
 */
-void QAxScriptManager::updateScript(QAxScript *script)
+void QAxScriptManagerPrivate::updateScript(QAxScript *script)
 {
     if (QAxScriptEngine *engine = script->scriptEngine()) {
-        for (auto it = d->objectDict.constBegin(), end = d->objectDict.constEnd(); it != end; ++it)
+        for (auto it = objectDict.constBegin(), end = objectDict.constEnd(); it != end; ++it)
             engine->addItem(it.key());
     }
-}
-
-/*!
-    \internal
-*/
-void QAxScriptManager::objectDestroyed(QObject *o)
-{
-    d->objectDict.take(o->objectName());
-}
-
-/*!
-    \internal
-*/
-void QAxScriptManager::scriptError(int code, const QString &desc, int spos, const QString &stext)
-{
-    QAxScript *source = qobject_cast<QAxScript*>(sender());
-    emit error(source, code, desc, spos, stext);
 }
 
 QT_END_NAMESPACE

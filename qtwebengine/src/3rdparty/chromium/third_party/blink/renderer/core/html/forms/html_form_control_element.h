@@ -93,7 +93,6 @@ class CORE_EXPORT HTMLFormControlElement : public HTMLElement,
     DISALLOW_NEW();
     WeakMember<HTMLElement> popover;
     PopoverTriggerAction action;
-    QualifiedName attribute_name;
     void Trace(Visitor* visitor) const { visitor->Trace(popover); }
   };
 
@@ -102,15 +101,19 @@ class CORE_EXPORT HTMLFormControlElement : public HTMLElement,
     kSupported,
   };
 
-  // Retrieves the element pointed to by 'popovertoggletarget',
-  // 'popovershowtarget', and/or 'popoverhidetarget' content attributes, if any,
-  // and only if this form control element supports popover triggering.
+  // Retrieves the popover target element and triggering behavior.
   PopoverTargetElement popoverTargetElement();
   virtual PopoverTriggerSupport SupportsPopoverTriggering() const {
     return PopoverTriggerSupport::kNone;
   }
+  // The IDL reflections:
+  AtomicString popoverTargetAction() const;
+  void setPopoverTargetAction(const AtomicString& value);
 
   void DefaultEventHandler(Event&) override;
+
+  void SetHovered(bool hovered) override;
+  void HandlePopoverInvokerHovered(bool hovered);
 
   // Getter and setter for the PII type of the element derived from the autofill
   // field semantic prediction.
@@ -155,7 +158,7 @@ class CORE_EXPORT HTMLFormControlElement : public HTMLElement,
   String NameForAutofill() const;
 
   void CloneNonAttributePropertiesFrom(const Element&,
-                                       CloneChildrenFlag) override;
+                                       NodeCloningData&) override;
 
   FormAssociated* ToFormAssociatedOrNull() override { return this; }
   void AssociateWith(HTMLFormElement*) override;
@@ -168,6 +171,10 @@ class CORE_EXPORT HTMLFormControlElement : public HTMLElement,
   }
 
   int32_t GetAxId() const;
+
+  void SetInteractedSinceLastFormSubmit(bool);
+  bool MatchesUserInvalidPseudo();
+  bool MatchesUserValidPseudo();
 
  protected:
   HTMLFormControlElement(const QualifiedName& tag_name, Document&);
@@ -202,6 +209,8 @@ class CORE_EXPORT HTMLFormControlElement : public HTMLElement,
   bool prevent_highlighting_of_autofilled_fields_ : 1;
 
   bool blocks_form_submission_ : 1;
+
+  bool interacted_since_last_form_submit_ : 1;
 };
 
 template <>

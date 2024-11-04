@@ -206,7 +206,7 @@ map_calibrator(struct weston_touch_calibrator *calibrator)
 	calibrator->view->is_mapped = true;
 
 	calibrator->surface->output = calibrator->output;
-	calibrator->surface->is_mapped = true;
+	weston_surface_map(calibrator->surface);
 
 	weston_output_schedule_repaint(calibrator->output);
 
@@ -286,7 +286,8 @@ touch_calibrator_convert(struct wl_client *client,
 	struct weston_output *output;
 	struct weston_surface *surface;
 	uint32_t version;
-	struct weston_vector p = { { 0.0, 0.0, 0.0, 1.0 } };
+	struct weston_coord_surface ps;
+	struct weston_coord_global pg;
 	struct weston_point2d_device_normalized norm;
 
 	version = wl_resource_get_version(resource);
@@ -328,10 +329,11 @@ touch_calibrator_convert(struct wl_client *client,
 	/* Convert from surface-local coordinates into global, from global
 	 * into output-raw, do perspective division and normalize.
 	 */
-	weston_view_to_global_float(calibrator->view, x, y, &p.f[0], &p.f[1]);
-	weston_matrix_transform(&output->matrix, &p);
-	norm.x = p.f[0] / (p.f[3] * output->current_mode->width);
-	norm.y = p.f[1] / (p.f[3] * output->current_mode->height);
+	ps = weston_coord_surface(x, y, calibrator->view->surface);
+	pg = weston_coord_surface_to_global(calibrator->view, ps);
+	pg.c = weston_matrix_transform_coord(&output->matrix, pg.c);
+	norm.x = pg.c.x / output->current_mode->width;
+	norm.y = pg.c.y / output->current_mode->height;
 
 	if (!normalized_is_valid(&norm)) {
 		wl_resource_post_error(resource,
@@ -672,6 +674,16 @@ bind_touch_calibration(struct wl_client *client,
 							device->syspath, name);
 		}
 	}
+}
+
+void
+weston_compositor_destroy_touch_calibrator(struct weston_compositor *ec)
+{
+	/* TODO: handle weston_compositor::touch_calibrator destruction
+	 * see
+	 * https://gitlab.freedesktop.org/wayland/weston/-/merge_requests/819#note_1345191
+	 */
+	weston_layer_fini(&ec->calibrator_layer);
 }
 
 /** Advertise touch_calibration support

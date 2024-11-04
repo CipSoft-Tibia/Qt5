@@ -126,7 +126,9 @@ class BrowserChildProcessHostImpl
       std::unique_ptr<ChildProcessLauncherFileData> file_data,
       bool terminate_on_shutdown);
 
-  static void HistogramBadMessageTerminated(ProcessType process_type);
+#if !BUILDFLAG(IS_ANDROID)
+  void SetProcessPriority(base::Process::Priority priority);
+#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_ANDROID)
   void EnableWarmUpConnection();
@@ -203,7 +205,7 @@ class BrowserChildProcessHostImpl
   mojo::Receiver<memory_instrumentation::mojom::CoordinatorConnector>
       coordinator_connector_receiver_{this};
 
-  std::unique_ptr<ChildProcessLauncher> child_process_;
+  std::unique_ptr<ChildProcessLauncher> child_process_launcher_;
 
 #if BUILDFLAG(IS_WIN)
   // Watches to see if the child process exits before the IPC channel has

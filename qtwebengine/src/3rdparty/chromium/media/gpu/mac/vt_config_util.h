@@ -8,6 +8,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreMedia/CoreMedia.h>
 
+#include "base/apple/scoped_cftyperef.h"
 #include "media/base/video_codecs.h"
 #include "media/base/video_color_space.h"
 #include "media/gpu/media_gpu_export.h"
@@ -16,7 +17,7 @@
 
 namespace media {
 
-MEDIA_GPU_EXPORT CFMutableDictionaryRef
+MEDIA_GPU_EXPORT base::apple::ScopedCFTypeRef<CFDictionaryRef>
 CreateFormatExtensions(CMVideoCodecType codec_type,
                        VideoCodecProfile profile,
                        const VideoColorSpace& color_space,

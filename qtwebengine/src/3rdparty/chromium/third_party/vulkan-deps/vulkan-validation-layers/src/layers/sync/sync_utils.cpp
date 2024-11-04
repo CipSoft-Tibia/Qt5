@@ -16,8 +16,7 @@
  */
 #include "sync/sync_utils.h"
 #include "state_tracker/state_tracker.h"
-#include "sync_validation_types.h"
-#include "enum_flag_bits.h"
+#include "generated/enum_flag_bits.h"
 
 namespace sync_utils {
 static constexpr uint32_t kNumPipelineStageBits = sizeof(VkPipelineStageFlags2KHR) * 8;
@@ -40,12 +39,12 @@ VkPipelineStageFlags2KHR DisabledPipelineStages(const DeviceFeatures &features) 
         result |= VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT;
     }
     if (!features.mesh_shader_features.meshShader) {
-        result |= VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV;
+        result |= VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT;
     }
     if (!features.mesh_shader_features.taskShader) {
-        result |= VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV;
+        result |= VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT;
     }
-    if (!features.fragment_shading_rate_features.pipelineFragmentShadingRate &&
+    if (!features.fragment_shading_rate_features.attachmentFragmentShadingRate &&
         !features.shading_rate_image_features.shadingRateImage) {
         result |= VK_PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
     }
@@ -161,56 +160,6 @@ VkPipelineStageFlags2KHR WithLaterPipelineStages(VkPipelineStageFlags2KHR stage_
     return stage_mask | RelatedPipelineStages(stage_mask, syncLogicallyLaterStages());
 }
 
-int GetGraphicsPipelineStageLogicalOrdinal(VkPipelineStageFlags2KHR flag) {
-    const auto &rec = syncStageOrder().find(flag);
-    if (rec == syncStageOrder().end()) {
-        return -1;
-    }
-    return rec->second;
-}
-
-// The following two functions technically have O(N^2) complexity, but it's for a value of O that's largely
-// stable and also rather tiny - this could definitely be rejigged to work more efficiently, but the impact
-// on runtime is currently negligible, so it wouldn't gain very much.
-// If we add a lot more graphics pipeline stages, this set of functions should be rewritten to accomodate.
-VkPipelineStageFlags2KHR GetLogicallyEarliestGraphicsPipelineStage(VkPipelineStageFlags2KHR inflags) {
-    VkPipelineStageFlags2KHR earliest_bit = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    int earliest_bit_order = GetGraphicsPipelineStageLogicalOrdinal(earliest_bit);
-
-    inflags = ExpandPipelineStages(inflags);
-    for (std::size_t i = 0; i < kNumPipelineStageBits; ++i) {
-        VkPipelineStageFlags2KHR current_flag = (inflags & 0x1ull) << i;
-        if (current_flag) {
-            int new_order = GetGraphicsPipelineStageLogicalOrdinal(current_flag);
-            if (new_order != -1 && new_order < earliest_bit_order) {
-                earliest_bit_order = new_order;
-                earliest_bit = current_flag;
-            }
-        }
-        inflags = inflags >> 1;
-    }
-    return earliest_bit;
-}
-
-VkPipelineStageFlags2KHR GetLogicallyLatestGraphicsPipelineStage(VkPipelineStageFlags2KHR inflags) {
-    VkPipelineStageFlags2KHR latest_bit = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    int latest_bit_order = GetGraphicsPipelineStageLogicalOrdinal(latest_bit);
-
-    inflags = ExpandPipelineStages(inflags);
-    for (std::size_t i = 0; i < kNumPipelineStageBits; ++i) {
-        VkPipelineStageFlags2KHR current_flag = (inflags & 0x1ull) << i;
-        if (current_flag) {
-            int new_order = GetGraphicsPipelineStageLogicalOrdinal(current_flag);
-            if (new_order != -1 && new_order > latest_bit_order) {
-                latest_bit_order = new_order;
-                latest_bit = current_flag;
-            }
-        }
-        inflags = inflags >> 1;
-    }
-    return latest_bit;
-}
-
 // helper to extract the union of the stage masks in all of the barriers
 ExecScopes GetGlobalStageMasks(const VkDependencyInfoKHR &dep_info) {
     ExecScopes result{};
@@ -239,7 +188,7 @@ std::string StringPipelineStageFlags(VkPipelineStageFlags2KHR mask) {
     if (sync1_mask) {
         return string_VkPipelineStageFlags(sync1_mask);
     }
-    return string_VkPipelineStageFlags2KHR(mask);
+    return string_VkPipelineStageFlags2(mask);
 }
 
 std::string StringAccessFlags(VkAccessFlags2KHR mask) {
@@ -247,7 +196,101 @@ std::string StringAccessFlags(VkAccessFlags2KHR mask) {
     if (sync1_mask) {
         return string_VkAccessFlags(sync1_mask);
     }
-    return string_VkAccessFlags2KHR(mask);
+    return string_VkAccessFlags2(mask);
+}
+
+ShaderStageAccesses GetShaderStageAccesses(VkShaderStageFlagBits shader_stage) {
+    static const std::map<VkShaderStageFlagBits, ShaderStageAccesses> map = {
+        // clang-format off
+        {VK_SHADER_STAGE_VERTEX_BIT, {
+            SYNC_VERTEX_SHADER_SHADER_SAMPLED_READ,
+            SYNC_VERTEX_SHADER_SHADER_STORAGE_READ,
+            SYNC_VERTEX_SHADER_SHADER_STORAGE_WRITE,
+            SYNC_VERTEX_SHADER_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, {
+            SYNC_TESSELLATION_CONTROL_SHADER_SHADER_SAMPLED_READ,
+            SYNC_TESSELLATION_CONTROL_SHADER_SHADER_STORAGE_READ,
+            SYNC_TESSELLATION_CONTROL_SHADER_SHADER_STORAGE_WRITE,
+            SYNC_TESSELLATION_CONTROL_SHADER_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, {
+            SYNC_TESSELLATION_EVALUATION_SHADER_SHADER_SAMPLED_READ,
+            SYNC_TESSELLATION_EVALUATION_SHADER_SHADER_STORAGE_READ,
+            SYNC_TESSELLATION_EVALUATION_SHADER_SHADER_STORAGE_WRITE,
+            SYNC_TESSELLATION_EVALUATION_SHADER_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_GEOMETRY_BIT, {
+            SYNC_GEOMETRY_SHADER_SHADER_SAMPLED_READ,
+            SYNC_GEOMETRY_SHADER_SHADER_STORAGE_READ,
+            SYNC_GEOMETRY_SHADER_SHADER_STORAGE_WRITE,
+            SYNC_GEOMETRY_SHADER_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_FRAGMENT_BIT, {
+            SYNC_FRAGMENT_SHADER_SHADER_SAMPLED_READ,
+            SYNC_FRAGMENT_SHADER_SHADER_STORAGE_READ,
+            SYNC_FRAGMENT_SHADER_SHADER_STORAGE_WRITE,
+            SYNC_FRAGMENT_SHADER_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_COMPUTE_BIT, {
+            SYNC_COMPUTE_SHADER_SHADER_SAMPLED_READ,
+            SYNC_COMPUTE_SHADER_SHADER_STORAGE_READ,
+            SYNC_COMPUTE_SHADER_SHADER_STORAGE_WRITE,
+            SYNC_COMPUTE_SHADER_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_RAYGEN_BIT_KHR, {
+            SYNC_RAY_TRACING_SHADER_SHADER_SAMPLED_READ,
+            SYNC_RAY_TRACING_SHADER_SHADER_STORAGE_READ,
+            SYNC_RAY_TRACING_SHADER_SHADER_STORAGE_WRITE,
+            SYNC_RAY_TRACING_SHADER_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_ANY_HIT_BIT_KHR, {
+            SYNC_RAY_TRACING_SHADER_SHADER_SAMPLED_READ,
+            SYNC_RAY_TRACING_SHADER_SHADER_STORAGE_READ,
+            SYNC_RAY_TRACING_SHADER_SHADER_STORAGE_WRITE,
+            SYNC_RAY_TRACING_SHADER_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, {
+            SYNC_RAY_TRACING_SHADER_SHADER_SAMPLED_READ,
+            SYNC_RAY_TRACING_SHADER_SHADER_STORAGE_READ,
+            SYNC_RAY_TRACING_SHADER_SHADER_STORAGE_WRITE,
+            SYNC_RAY_TRACING_SHADER_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_MISS_BIT_KHR, {
+            SYNC_RAY_TRACING_SHADER_SHADER_SAMPLED_READ,
+            SYNC_RAY_TRACING_SHADER_SHADER_STORAGE_READ,
+            SYNC_RAY_TRACING_SHADER_SHADER_STORAGE_WRITE,
+            SYNC_RAY_TRACING_SHADER_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_INTERSECTION_BIT_KHR, {
+            SYNC_RAY_TRACING_SHADER_SHADER_SAMPLED_READ,
+            SYNC_RAY_TRACING_SHADER_SHADER_STORAGE_READ,
+            SYNC_RAY_TRACING_SHADER_SHADER_STORAGE_WRITE,
+            SYNC_RAY_TRACING_SHADER_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_CALLABLE_BIT_KHR, {
+            SYNC_RAY_TRACING_SHADER_SHADER_SAMPLED_READ,
+            SYNC_RAY_TRACING_SHADER_SHADER_STORAGE_READ,
+            SYNC_RAY_TRACING_SHADER_SHADER_STORAGE_WRITE,
+            SYNC_RAY_TRACING_SHADER_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_TASK_BIT_EXT, {
+            SYNC_TASK_SHADER_EXT_SHADER_SAMPLED_READ,
+            SYNC_TASK_SHADER_EXT_SHADER_STORAGE_READ,
+            SYNC_TASK_SHADER_EXT_SHADER_STORAGE_WRITE,
+            SYNC_TASK_SHADER_EXT_UNIFORM_READ
+        }},
+        {VK_SHADER_STAGE_MESH_BIT_EXT, {
+            SYNC_MESH_SHADER_EXT_SHADER_SAMPLED_READ,
+            SYNC_MESH_SHADER_EXT_SHADER_STORAGE_READ,
+            SYNC_MESH_SHADER_EXT_SHADER_STORAGE_WRITE,
+            SYNC_MESH_SHADER_EXT_UNIFORM_READ
+        }},
+        // clang-format on
+    };
+    auto it = map.find(shader_stage);
+    assert(it != map.end());
+    return it->second;
 }
 
 }  // namespace sync_utils

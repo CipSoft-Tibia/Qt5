@@ -34,13 +34,15 @@
     \skipto syntax = "proto3";
     \printuntil
 
-    The client application binds on the \c localhost with port
+    The client application connects to the \c localhost with port
     \c 50051:
-    \snippet magic8ball/clientservice.cpp 0
+    \quotefromfile magic8ball/Main.qml
+    \skipto id: channelOptions
+    \printuntil host: "http://localhost:50051"
 
     And sends a request to the server part:
-    \quotefromfile magic8ball/clientservice.cpp
-    \skipto void ClientService::sendRequest()
+    \quotefromfile magic8ball/Main.qml
+    \skipto function sendRequest()
     \printuntil }
 
     Click the \uicontrol {Ask question} button to send

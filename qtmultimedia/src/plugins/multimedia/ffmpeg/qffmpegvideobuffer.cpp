@@ -5,12 +5,15 @@
 #include "private/qvideotexturehelper_p.h"
 #include "private/qmultimediautils_p.h"
 #include "qffmpeghwaccel_p.h"
+#include "qloggingcategory.h"
 
 extern "C" {
 #include <libavutil/pixdesc.h>
 #include <libavutil/hdr_dynamic_metadata.h>
 #include <libavutil/mastering_display_metadata.h>
 }
+
+QT_BEGIN_NAMESPACE
 
 static bool isFrameFlipped(const AVFrame& frame) {
     for (int i = 0; i < AV_NUM_DATA_POINTERS && frame.data[i]; ++i) {
@@ -21,7 +24,7 @@ static bool isFrameFlipped(const AVFrame& frame) {
     return false;
 }
 
-QT_BEGIN_NAMESPACE
+static Q_LOGGING_CATEGORY(qLcFFmpegVideoBuffer, "qt.multimedia.ffmpeg.videobuffer");
 
 QFFmpegVideoBuffer::QFFmpegVideoBuffer(AVFrameUPtr frame, AVRational pixelAspectRatio)
     : QAbstractVideoBuffer(QVideoFrame::NoHandle),
@@ -157,17 +160,12 @@ float QFFmpegVideoBuffer::maxNits()
         // TODO: Longer term we might want to also support HDR10+ dynamic metadata
         if (sd->type == AV_FRAME_DATA_MASTERING_DISPLAY_METADATA) {
             auto *data = reinterpret_cast<AVMasteringDisplayMetadata *>(sd->data);
-            auto maybeLum = QFFmpeg::mul(10'000., data->max_luminance);
+            auto maybeLum = QFFmpeg::mul(qreal(10'000.), data->max_luminance);
             if (maybeLum)
                 maxNits = float(maybeLum.value());
         }
     }
     return maxNits;
-}
-
-QVideoFrame::MapMode QFFmpegVideoBuffer::mapMode() const
-{
-    return m_mode;
 }
 
 QAbstractVideoBuffer::MapData QFFmpegVideoBuffer::map(QVideoFrame::MapMode mode)
@@ -196,12 +194,27 @@ QAbstractVideoBuffer::MapData QFFmpegVideoBuffer::map(QVideoFrame::MapMode mode)
         mapData.bytesPerLine[i] = m_swFrame->linesize[i];
         mapData.size[i] = mapData.bytesPerLine[i]*desc->heightForPlane(m_swFrame->height, i);
     }
+
+    if ((mode & QVideoFrame::WriteOnly) != 0 && m_hwFrame) {
+        m_type = QVideoFrame::NoHandle;
+        m_hwFrame.reset();
+        if (m_textures) {
+            qCDebug(qLcFFmpegVideoBuffer)
+                    << "Mapping of FFmpeg video buffer with write mode when "
+                       "textures have been created. Visual artifacts might "
+                       "happen if the frame is still in the rendering pipeline";
+            m_textures.reset();
+        }
+    }
+
     return mapData;
 }
 
 void QFFmpegVideoBuffer::unmap()
 {
-    // nothing to do here for SW buffers
+    // nothing to do here for SW buffers.
+    // Set NotMapped mode to ensure map/unmap/mapMode consisteny.
+    m_mode = QVideoFrame::NotMapped;
 }
 
 std::unique_ptr<QVideoFrameTextures> QFFmpegVideoBuffer::mapTextures(QRhi *)
@@ -224,9 +237,9 @@ std::unique_ptr<QVideoFrameTextures> QFFmpegVideoBuffer::mapTextures(QRhi *)
     return {};
 }
 
-quint64 QFFmpegVideoBuffer::textureHandle(int plane) const
+quint64 QFFmpegVideoBuffer::textureHandle(QRhi *rhi, int plane) const
 {
-    return m_textures ? m_textures->textureHandle(plane) : 0;
+    return m_textures ? m_textures->textureHandle(rhi, plane) : 0;
 }
 
 QVideoFrameFormat::PixelFormat QFFmpegVideoBuffer::pixelFormat() const

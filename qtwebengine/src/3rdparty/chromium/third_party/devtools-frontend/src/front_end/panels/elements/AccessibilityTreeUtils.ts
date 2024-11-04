@@ -55,11 +55,11 @@ export async function getNodeAndAncestorsFromDOMNode(domNode: SDK.DOMModel.DOMNo
     throw Error('Could not retrieve accessibility node for inspected DOM node');
   }
 
-  const topFrameId = SDK.FrameManager.FrameManager.instance().getTopFrame()?.id;
-  if (!topFrameId) {
+  const outermostFrameId = SDK.FrameManager.FrameManager.instance().getOutermostFrame()?.id;
+  if (!outermostFrameId) {
     return result;
   }
-  while (frameId !== topFrameId) {
+  while (frameId !== outermostFrameId) {
     const node = await SDK.FrameManager.FrameManager.instance().getFrame(frameId)?.getOwnerDOMNodeOrDocument();
     if (!node) {
       break;
@@ -118,7 +118,8 @@ export function accessibilityNodeRenderer(node: AXTreeNode): LitHtml.TemplateRes
   const role = sdkNode.role()?.value || '';
   const properties = sdkNode.properties() || [];
   const ignored = sdkNode.ignored();
-  return LitHtml.html`<${tag} .data=${{name, role, ignored, properties} as Data}></${tag}>`;
+  const id = getNodeId(sdkNode);
+  return LitHtml.html`<${tag} .data=${{name, role, ignored, properties, id} as Data}></${tag}>`;
 }
 
 export function getNodeId(node: SDK.AccessibilityModel.AccessibilityNode): string {

@@ -383,6 +383,7 @@ template<> struct AssignmentKind<DenseShape,SkewSymmetricShape> { typedef SkewSy
 template< typename DstXprType, typename SrcXprType, typename Functor>
 struct Assignment<DstXprType, SrcXprType, Functor, SkewSymmetric2Dense>
 {
+  EIGEN_DEVICE_FUNC
   static void run(DstXprType &dst, const SrcXprType &src, const internal::assign_op<typename DstXprType::Scalar,typename SrcXprType::Scalar> &/*func*/)
   {
     if((dst.rows()!=3) || (dst.cols()!=3)) {
@@ -397,10 +398,11 @@ struct Assignment<DstXprType, SrcXprType, Functor, SkewSymmetric2Dense>
     dst(1, 2) = -v(0);
     dst(2, 1) = v(0);
   }
-  
+  EIGEN_DEVICE_FUNC
   static void run(DstXprType &dst, const SrcXprType &src, const internal::add_assign_op<typename DstXprType::Scalar,typename SrcXprType::Scalar> &/*func*/)
   { dst.vector() += src.vector(); }
-  
+
+  EIGEN_DEVICE_FUNC
   static void run(DstXprType &dst, const SrcXprType &src, const internal::sub_assign_op<typename DstXprType::Scalar,typename SrcXprType::Scalar> &/*func*/)
   { dst.vector() -= src.vector(); }
 };

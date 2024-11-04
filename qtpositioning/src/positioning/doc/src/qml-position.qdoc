@@ -81,9 +81,9 @@ time stamp of each NMEA sentence to produce a "replay" of the recorded data.
 
 See the \l {Qt Positioning NMEA plugin}{plugin description} for usage examples.
 
-\section2 SatelliteInfo Example
+\section2 Satellite Info Example
 
-The \l {satelliteinfo}{SatelliteInfo Example} uses the \l PositionSource
+The \l {Satellite Info} example uses the \l PositionSource
 and \l SatelliteSource QML types to get the satellite information relevant to
 the current location.
 

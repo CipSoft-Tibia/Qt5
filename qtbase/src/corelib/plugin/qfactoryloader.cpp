@@ -62,22 +62,8 @@ struct QFactoryLoaderIidSearch
 {
     QLatin1StringView iid;
     bool matchesIid = false;
-    QFactoryLoaderIidSearch(QLatin1StringView iid) : iid(iid) {}
-
-    static QString readString(QCborStreamReader &reader)
-    {
-        QString result;
-        if (!reader.isLengthKnown())
-            return result;
-        auto r = reader.readString();
-        if (r.status != QCborStreamReader::Ok)
-            return result;
-        result = std::move(r.data);
-        r = reader.readString();
-        if (r.status != QCborStreamReader::EndOfString)
-            result = QString();
-        return result;
-    }
+    QFactoryLoaderIidSearch(QLatin1StringView iid) : iid(iid)
+    { Q_ASSERT(!iid.isEmpty()); }
 
     static IterationResult::Result skip(QCborStreamReader &reader)
     {
@@ -90,13 +76,52 @@ struct QFactoryLoaderIidSearch
     {
         if (key != QtPluginMetaDataKeys::IID)
             return skip(reader);
-        matchesIid = (readString(reader) == iid);
+        matchesIid = (reader.readAllString() == iid);
         return IterationResult::FinishedSearch;
     }
-    IterationResult::Result operator()(const QCborValue &, QCborStreamReader &reader)
+    IterationResult::Result operator()(QUtf8StringView, QCborStreamReader &reader)
     {
         return skip(reader);
     }
+};
+
+struct QFactoryLoaderMetaDataKeysExtractor : QFactoryLoaderIidSearch
+{
+    QCborArray keys;
+    QFactoryLoaderMetaDataKeysExtractor(QLatin1StringView iid)
+        : QFactoryLoaderIidSearch(iid)
+    {}
+
+    IterationResult::Result operator()(QtPluginMetaDataKeys key, QCborStreamReader &reader)
+    {
+        if (key == QtPluginMetaDataKeys::IID) {
+            QFactoryLoaderIidSearch::operator()(key, reader);
+            return IterationResult::ContinueSearch;
+        }
+        if (key != QtPluginMetaDataKeys::MetaData)
+            return skip(reader);
+
+        if (!matchesIid)
+            return IterationResult::FinishedSearch;
+        if (!reader.isMap() || !reader.isLengthKnown())
+            return IterationResult::InvalidHeaderItem;
+        if (!reader.enterContainer())
+            return IterationResult::ParsingError;
+        while (reader.isValid()) {
+            // the metadata is JSON, so keys are all strings
+            QByteArray key = reader.readAllUtf8String();
+            if (key == "Keys") {
+                if (!reader.isArray() || !reader.isLengthKnown())
+                    return IterationResult::InvalidHeaderItem;
+                keys = QCborValue::fromCbor(reader).toArray();
+                break;
+            }
+            skip(reader);
+        }
+        // warning: we may not have finished iterating over the header
+        return IterationResult::FinishedSearch;
+    }
+    using QFactoryLoaderIidSearch::operator();
 };
 } // unnamed namespace
 
@@ -129,11 +154,13 @@ template <typename F> static IterationResult iterateInPluginMetaData(QByteArrayV
             if (!reader.next())
                 return reader.lastError();
             r = f(key, reader);
-        } else {
-            QCborValue key = QCborValue::fromCbor(reader);
-            if (key.isInvalid())
+        } else if (reader.isString()) {
+            QByteArray key = reader.readAllUtf8String();
+            if (key.isNull())
                 return reader.lastError();
-            r = f(key, reader);
+            r = f(QUtf8StringView(key), reader);
+        } else {
+            return IterationResult::InvalidTopLevelItem;
         }
 
         if (QCborError e = reader.lastError())
@@ -156,24 +183,35 @@ static bool isIidMatch(QByteArrayView raw, QLatin1StringView iid)
 
 bool QPluginParsedMetaData::parse(QByteArrayView raw)
 {
-    QPluginMetaData::Header header;
-    Q_ASSERT(raw.size() >= qsizetype(sizeof(header)));
-    memcpy(&header, raw.data(), sizeof(header));
-    if (Q_UNLIKELY(header.version > QPluginMetaData::CurrentMetaDataVersion))
+    QCborMap map;
+    auto r = iterateInPluginMetaData(raw, [&](const auto &key, QCborStreamReader &reader) {
+        QCborValue item = QCborValue::fromCbor(reader);
+        if (item.isInvalid())
+            return IterationResult::ParsingError;
+        if constexpr (std::is_enum_v<std::decay_t<decltype(key)>>)
+            map[int(key)] = item;
+        else
+            map[QString::fromUtf8(key)] = item;
+        return IterationResult::ContinueSearch;
+    });
+
+    switch (r.result) {
+    case IterationResult::FinishedSearch:
+    case IterationResult::ContinueSearch:
+        break;
+
+    // parse errors
+    case IterationResult::ParsingError:
+        return setError(QFactoryLoader::tr("Metadata parsing error: %1").arg(r.error.toString()));
+    case IterationResult::InvalidMetaDataVersion:
         return setError(QFactoryLoader::tr("Invalid metadata version"));
-
-    // use fromRawData to keep QCborStreamReader from copying
-    raw = raw.sliced(sizeof(header));
-    QByteArray ba = QByteArray::fromRawData(raw.data(), raw.size());
-    QCborParserError err;
-    QCborValue metadata = QCborValue::fromCbor(ba, &err);
-
-    if (err.error != QCborError::NoError)
-        return setError(QFactoryLoader::tr("Metadata parsing error: %1").arg(err.error.toString()));
-    if (!metadata.isMap())
+    case IterationResult::InvalidTopLevelItem:
+    case IterationResult::InvalidHeaderItem:
         return setError(QFactoryLoader::tr("Unexpected metadata contents"));
-    QCborMap map = metadata.toMap();
-    metadata = {};
+    }
+
+    // header was validated
+    auto header = qFromUnaligned<QPluginMetaData::Header>(raw.data());
 
     DecodedArchRequirements archReq =
             header.version == 0 ? decodeVersion0ArchRequirements(header.plugin_arch_requirements)
@@ -471,6 +509,35 @@ QFactoryLoader::MetaDataList QFactoryLoader::metaData() const
         metaData.append(std::move(parsed));
     }
 
+    // other portions of the code will cast to int (e.g., keyMap())
+    Q_ASSERT(metaData.size() <= std::numeric_limits<int>::max());
+    return metaData;
+}
+
+QList<QCborArray> QFactoryLoader::metaDataKeys() const
+{
+    Q_D(const QFactoryLoader);
+    QList<QCborArray> metaData;
+#if QT_CONFIG(library)
+    QMutexLocker locker(&d->mutex);
+    for (const auto &library : d->libraries) {
+        const QCborValue md = library->metaData.value(QtPluginMetaDataKeys::MetaData);
+        metaData.append(md["Keys"_L1].toArray());
+    }
+#endif
+
+    QLatin1StringView iid(d->iid.constData(), d->iid.size());
+    const auto staticPlugins = QPluginLoader::staticPlugins();
+    for (const QStaticPlugin &plugin : staticPlugins) {
+        QByteArrayView pluginData(static_cast<const char *>(plugin.rawMetaData),
+                                  plugin.rawMetaDataSize);
+        QFactoryLoaderMetaDataKeysExtractor extractor{ iid };
+        iterateInPluginMetaData(pluginData, extractor);
+        if (extractor.matchesIid)
+            metaData += std::move(extractor.keys);
+    }
+
+    // other portions of the code will cast to int (e.g., keyMap())
     Q_ASSERT(metaData.size() <= std::numeric_limits<int>::max());
     return metaData;
 }
@@ -515,10 +582,9 @@ QObject *QFactoryLoader::instance(int index) const
 QMultiMap<int, QString> QFactoryLoader::keyMap() const
 {
     QMultiMap<int, QString> result;
-    const QList<QPluginParsedMetaData> metaDataList = metaData();
+    const QList<QCborArray> metaDataList = metaDataKeys();
     for (int i = 0; i < int(metaDataList.size()); ++i) {
-        const QCborMap metaData = metaDataList.at(i).value(QtPluginMetaDataKeys::MetaData).toMap();
-        const QCborArray keys = metaData.value("Keys"_L1).toArray();
+        const QCborArray &keys = metaDataList[i];
         for (QCborValueConstRef key : keys)
             result.insert(i, key.toString());
     }
@@ -527,10 +593,9 @@ QMultiMap<int, QString> QFactoryLoader::keyMap() const
 
 int QFactoryLoader::indexOf(const QString &needle) const
 {
-    const QList<QPluginParsedMetaData> metaDataList = metaData();
+    const QList<QCborArray> metaDataList = metaDataKeys();
     for (int i = 0; i < int(metaDataList.size()); ++i) {
-        const QCborMap metaData = metaDataList.at(i).value(QtPluginMetaDataKeys::MetaData).toMap();
-        const QCborArray keys = metaData.value("Keys"_L1).toArray();
+        const QCborArray &keys = metaDataList[i];
         for (QCborValueConstRef key : keys) {
             if (key.toString().compare(needle, Qt::CaseInsensitive) == 0)
                 return i;

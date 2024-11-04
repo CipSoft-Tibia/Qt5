@@ -13,6 +13,7 @@ module ash.cros_healthd.mojom;
 import "chromeos/ash/services/cros_healthd/private/mojom/cros_healthd_internal.mojom";
 import "chromeos/ash/services/cros_healthd/public/mojom/cros_healthd_diagnostics.mojom";
 import "chromeos/ash/services/cros_healthd/public/mojom/cros_healthd_events.mojom";
+import "chromeos/ash/services/cros_healthd/public/mojom/cros_healthd_exception.mojom";
 import "chromeos/ash/services/cros_healthd/public/mojom/cros_healthd_probe.mojom";
 import "chromeos/ash/services/cros_healthd/public/mojom/nullable_primitives.mojom";
 import "chromeos/ash/services/cros_healthd/public/mojom/wilco_ec.mojom";
@@ -24,7 +25,6 @@ import "chromeos/services/network_health/public/mojom/network_health.mojom";
 // network-related implementations to the cros_healthd daemon.
 //
 // NextMinVersion: 2, NextIndex: 7
-[Stable]
 interface CrosHealthdServiceFactory {
   // Returns a bound interface to the diagnostics service.
   GetDiagnosticsService@0(pending_receiver<CrosHealthdDiagnosticsService> service);
@@ -54,7 +54,7 @@ interface CrosHealthdServiceFactory {
 
 // Diagnostics interface exposed by the cros_healthd daemon.
 //
-// NextMinVersion: 10, NextIndex: 45
+// NextMinVersion: 14, NextIndex: 48
 [Stable]
 interface CrosHealthdDiagnosticsService {
   // Returns an array of all diagnostic routines that the platform supports.
@@ -350,10 +350,17 @@ interface CrosHealthdDiagnosticsService {
   // The availability of this routine can be determined by checking that
   // kMemory is returned by GetAvailableRoutines.
   //
+  // The request:
+  // * |max_testing_mem_kib| - An optional uint32 to specify at most how much of
+  //                           the memory should be tested. If the value is
+  //                           null, memory test will run with as much memory as
+  //                           possible.
+  //
   // The response:
   // * |response| - contains a unique identifier and status for the created
   //                routine.
-  RunMemoryRoutine@16() => (RunRoutineResponse response);
+  RunMemoryRoutine@16([MinVersion=10] uint32? max_testing_mem_kib)
+      => (RunRoutineResponse response);
 
   // Requests that the LanConnectivity routine is created and started on the
   // platform. This routine checks whether the device is connected to a LAN.
@@ -610,8 +617,9 @@ interface CrosHealthdDiagnosticsService {
   // The response:
   // * |response| - contains a unique identifier and status for the created
   //                routine.
-  [MinVersion=5] RunLedLitUpRoutine@37(LedName name, LedColor color,
-    pending_remote<LedLitUpRoutineReplier> replier)
+  [MinVersion=5] DEPRECATED_RunLedLitUpRoutine@37(DEPRECATED_LedName name,
+    DEPRECATED_LedColor color,
+    pending_remote<DEPRECATED_LedLitUpRoutineReplier> replier)
         => (RunRoutineResponse response);
 
   // Requests that the EmmcLifetime routine is created and started on the
@@ -721,11 +729,49 @@ interface CrosHealthdDiagnosticsService {
   //                routine.
   [MinVersion=9] RunBluetoothPairingRoutine@44(string peripheral_id)
       => (RunRoutineResponse response);
+
+  // Requests that the PowerButton routine is created and started on the
+  // platform. This routine checks the functionality of the power button. The
+  // routine passes if a power button event is received before the timeout.
+  // Otherwise, the routine fails.
+  // The availability of this routine can be determined by checking that
+  // kPowerButton is returned by GetAvailableRoutines.
+  //
+  // The request:
+  // * |timeout_seconds| - length of time, in seconds, to listen to the power
+  //                       button events. Range: [1, 600].
+  //
+  // The response:
+  // * |response| - contains a unique identifier and status for the created
+  //                routine.
+  [MinVersion=11] RunPowerButtonRoutine@45(uint32 timeout_seconds)
+      => (RunRoutineResponse response);
+
+  // Requests that the AudioDriver routine is created and started on the
+  // platform. This routine checks whether there is any errors about the audio
+  // driver.
+  // The availability of this routine can be determined by checking that
+  // kAudioDriver is returned by GetAvailableRoutines.
+  //
+  // The response:
+  // * |response| - contains a unique identifier and status for the created
+  //                routine.
+  [MinVersion=12] RunAudioDriverRoutine@46() => (RunRoutineResponse response);
+
+  // Requests that the UfsLifetime routine is created and started on the
+  // platform. This routine checks the UFS drive's life time.
+  // The availability of this routine can be determined by checking that
+  // kUfsLifetime is returned by GetAvailableRoutines.
+  //
+  // The response:
+  // * |response| - contains a unique identifier and status for the created
+  //                routine.
+  [MinVersion=13] RunUfsLifetimeRoutine@47() => (RunRoutineResponse response);
 };
 
 // Event interface exposed by the cros_healthd daemon.
 //
-// NextMinVersion: 3, NextIndex: 8
+// NextMinVersion: 4, NextIndex: 9
 [Stable]
 interface CrosHealthdEventService {
   // Adds an observer to be notified on Bluetooth events. The caller can remove
@@ -733,21 +779,23 @@ interface CrosHealthdEventService {
   //
   // The request:
   // * |observer| - Bluetooth observer to be added to cros_healthd.
-  AddBluetoothObserver@0(pending_remote<CrosHealthdBluetoothObserver> observer);
+  DEPRECATED_AddBluetoothObserver@0(
+      pending_remote<CrosHealthdBluetoothObserver> observer);
 
   // Adds an observer to be notified on lid events. The caller can remove the
   // observer created by this call by closing their end of the message pipe.
   //
   // The request:
   // * |observer| - lid observer to be added to cros_healthd.
-  AddLidObserver@1(pending_remote<CrosHealthdLidObserver> observer);
+  DEPRECATED_AddLidObserver@1(pending_remote<CrosHealthdLidObserver> observer);
 
   // Adds an observer to be notified on power events. The caller can remove the
   // observer created by this call by closing their end of the message pipe.
   //
   // The request:
   // * |observer| - power observer to be added to cros_healthd.
-  AddPowerObserver@2(pending_remote<CrosHealthdPowerObserver> observer);
+  DEPRECATED_AddPowerObserver@2(
+      pending_remote<CrosHealthdPowerObserver> observer);
 
   // Adds an observer to be notified on network events. The caller can remove
   // the observer created by this call by closing their end of the message pipe.
@@ -763,7 +811,8 @@ interface CrosHealthdEventService {
   //
   // The request:
   // * |observer| - audio observer to be added to cros_healthd.
-  AddAudioObserver@4(pending_remote<CrosHealthdAudioObserver> observer);
+  DEPRECATED_AddAudioObserver@4(
+      pending_remote<CrosHealthdAudioObserver> observer);
 
   // Adds an observer to be notified on Thunderbolt events. The caller can
   // remove the observer created by this call by closing their end of the
@@ -771,7 +820,7 @@ interface CrosHealthdEventService {
   //
   // The request:
   // * |observer| - Thunderbolt observer to be added to cros_healthd.
-  AddThunderboltObserver@5(
+  DEPRECATED_AddThunderboltObserver@5(
       pending_remote<CrosHealthdThunderboltObserver> observer);
 
   // Adds an observer to be notified on USB events. The caller can remove the
@@ -779,7 +828,7 @@ interface CrosHealthdEventService {
   //
   // The request:
   // * |observer| - USB observer to be added to cros_healthd.
-  [MinVersion=1] AddUsbObserver@6(
+  [MinVersion=1] DEPRECATED_AddUsbObserver@6(
       pending_remote<CrosHealthdUsbObserver> observer);
 
   // Adds an observer to be notified on events. The caller can remove the
@@ -791,6 +840,17 @@ interface CrosHealthdEventService {
   [MinVersion=2] AddEventObserver@7(
       EventCategoryEnum category,
       pending_remote<EventObserver> observer);
+
+  // Checks whether an event is supported. It does the same support status check
+  // as in `AddEventObserver()` and returns immediately after the check.
+  //
+  // The request:
+  // * |category| - Event category to check.
+  //
+  // The response:
+  // * |status| - See the documentation of `SupportStatus`.
+  [MinVersion=3] IsEventSupported@8(
+      EventCategoryEnum category) => (SupportStatus status);
 };
 
 // Probe interface exposed by the cros_healthd daemon.
@@ -838,7 +898,7 @@ interface CrosHealthdProbeService {
   // * |multiple_process_info| - Information about the requested processes and
   //                             errors if any occurred and not skipped.
   [MinVersion=1] ProbeMultipleProcessInfo@2(array<uint32>? process_ids,
-    bool ignore_single_process_error)
+                                            bool ignore_single_process_error)
     => (MultipleProcessResult multiple_process_info);
 };
 

@@ -16,6 +16,7 @@
 //
 
 #include <QtCore/qglobal.h>
+#include <QtCore/qloggingcategory.h>
 #include <QtCore/qpointer.h>
 
 #include <QtQml/qqmllist.h>
@@ -25,24 +26,40 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_DECLARE_LOGGING_CATEGORY(lcIncompatibleElement)
+
 namespace QV4 {
 
 namespace Heap {
 
-struct QmlListWrapper : Object {
-    void init();
+struct QmlListWrapper : Object
+{
+    void init(QMetaType propertyType);
+    void init(QObject *object, int propertyId, QMetaType propertyType);
+    void init(QObject *object, const QQmlListProperty<QObject> &list, QMetaType propertyType);
     void destroy();
-    QV4QPointer<QObject> object;
 
-    QQmlListProperty<QObject> &property() {
-        return *reinterpret_cast<QQmlListProperty<QObject>*>(propertyData);
+    QObject *object() const { return m_object.data(); }
+    QMetaType propertyType() const { return QMetaType(m_propertyType); }
+    QMetaType elementType() const { return QQmlMetaType::listValueType(propertyType()); }
+
+    const QQmlListProperty<QObject> *property() const
+    {
+        return reinterpret_cast<const QQmlListProperty<QObject>*>(m_propertyData);
     }
 
-    // interface instead of QMetaType to keep class a POD
-    const QtPrivate::QMetaTypeInterface *propertyType;
+    QQmlListProperty<QObject> *property()
+    {
+        return reinterpret_cast<QQmlListProperty<QObject>*>(m_propertyData);
+    }
 
 private:
-    void *propertyData[sizeof(QQmlListProperty<QObject>)/sizeof(void*)];
+    void *m_propertyData[sizeof(QQmlListProperty<QObject>)/sizeof(void*)];
+
+    QV4QPointer<QObject> m_object;
+
+    // interface instead of QMetaType to keep class a POD
+    const QtPrivate::QMetaTypeInterface *m_propertyType;
 };
 
 }
@@ -56,6 +73,7 @@ struct Q_QML_EXPORT QmlListWrapper : Object
 
     static ReturnedValue create(ExecutionEngine *engine, QObject *object, int propId, QMetaType propType);
     static ReturnedValue create(ExecutionEngine *engine, const QQmlListProperty<QObject> &prop, QMetaType propType);
+    static ReturnedValue create(ExecutionEngine *engine, QMetaType propType);
 
     QVariant toVariant() const;
     QQmlListReference toListReference() const;

@@ -25,7 +25,7 @@
 }
 
 .property-name {
-  color: var(--color-syntax-1);
+  color: var(--sys-color-token-property-special);
 }
 
 .property-value {
@@ -69,7 +69,7 @@
 }
 
 .button devtools-icon {
-  --icon-color: var(--color-text-secondary);
+  --icon-color: var(--icon-default);
 }
 
 .button.selected {
@@ -77,5 +77,5 @@
 }
 
 .button.selected devtools-icon {
-  --icon-color: var(--color-primary);
+  --icon-color: var(--icon-toggled);
 }

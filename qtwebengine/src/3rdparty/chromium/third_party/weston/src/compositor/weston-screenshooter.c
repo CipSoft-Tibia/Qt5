@@ -1,5 +1,6 @@
 /*
  * Copyright © 2008-2011 Kristian Høgsberg
+ * Copyright 2022 Collabora, Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -30,91 +31,23 @@
 
 #include <libweston/libweston.h>
 #include "weston.h"
-#include "weston-screenshooter-server-protocol.h"
 #include "shared/helpers.h"
-#include <libweston/weston-log.h>
 
 struct screenshooter {
 	struct weston_compositor *ec;
-	struct wl_global *global;
 	struct wl_client *client;
-	struct weston_process process;
-	struct wl_listener destroy_listener;
+	struct wl_listener client_destroy_listener;
+	struct wl_listener compositor_destroy_listener;
 	struct weston_recorder *recorder;
+	struct wl_listener authorization;
 };
 
 static void
-screenshooter_done(void *data, enum weston_screenshooter_outcome outcome)
-{
-	struct wl_resource *resource = data;
-
-	switch (outcome) {
-	case WESTON_SCREENSHOOTER_SUCCESS:
-		weston_screenshooter_send_done(resource);
-		break;
-	case WESTON_SCREENSHOOTER_NO_MEMORY:
-		wl_resource_post_no_memory(resource);
-		break;
-	default:
-		break;
-	}
-}
-
-static void
-screenshooter_shoot(struct wl_client *client,
-		    struct wl_resource *resource,
-		    struct wl_resource *output_resource,
-		    struct wl_resource *buffer_resource)
-{
-	struct weston_output *output =
-		weston_head_from_resource(output_resource)->output;
-	struct weston_buffer *buffer =
-		weston_buffer_from_resource(buffer_resource);
-
-	if (buffer == NULL) {
-		wl_resource_post_no_memory(resource);
-		return;
-	}
-
-	weston_screenshooter_shoot(output, buffer, screenshooter_done, resource);
-}
-
-struct weston_screenshooter_interface screenshooter_implementation = {
-	screenshooter_shoot
-};
-
-static void
-bind_shooter(struct wl_client *client,
-	     void *data, uint32_t version, uint32_t id)
-{
-	struct screenshooter *shooter = data;
-	struct wl_resource *resource;
-	bool debug_enabled =
-		weston_compositor_is_debug_protocol_enabled(shooter->ec);
-
-	resource = wl_resource_create(client,
-				      &weston_screenshooter_interface, 1, id);
-
-	if (!debug_enabled && !shooter->client) {
-		wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
-				       "screenshooter failed: permission denied. "\
-				       "Debug protocol must be enabled");
-		return;
-	} else if (!debug_enabled && client != shooter->client) {
-		wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
-				       "screenshooter failed: permission denied.");
-		return;
-	}
-
-	wl_resource_set_implementation(resource, &screenshooter_implementation,
-				       data, NULL);
-}
-
-static void
-screenshooter_sigchld(struct weston_process *process, int status)
+screenshooter_client_destroy(struct wl_listener *listener, void *data)
 {
 	struct screenshooter *shooter =
-		container_of(process, struct screenshooter, process);
+		container_of(listener, struct screenshooter,
+			     client_destroy_listener);
 
 	shooter->client = NULL;
 }
@@ -126,6 +59,9 @@ screenshooter_binding(struct weston_keyboard *keyboard,
 	struct screenshooter *shooter = data;
 	char *screenshooter_exe;
 
+	/* Don't start a screenshot whilst we already have one in progress */
+	if (shooter->client)
+		return;
 
 	screenshooter_exe = wet_get_bindir_path("weston-screenshooter");
 	if (!screenshooter_exe) {
@@ -133,11 +69,16 @@ screenshooter_binding(struct weston_keyboard *keyboard,
 		return;
 	}
 
-	if (!shooter->client)
-		shooter->client = weston_client_launch(shooter->ec,
-					&shooter->process,
-					screenshooter_exe, screenshooter_sigchld);
+	shooter->client = weston_client_start(shooter->ec,
+					      screenshooter_exe);
 	free(screenshooter_exe);
+
+	if (!shooter->client)
+		return;
+
+	shooter->client_destroy_listener.notify = screenshooter_client_destroy;
+	wl_client_add_destroy_listener(shooter->client,
+				       &shooter->client_destroy_listener);
 }
 
 static void
@@ -165,14 +106,26 @@ recorder_binding(struct weston_keyboard *keyboard, const struct timespec *time,
 }
 
 static void
+authorize_screenshooter(struct wl_listener *l,
+			struct weston_output_capture_attempt *att)
+{
+	struct screenshooter *shooter = wl_container_of(l, shooter,
+							authorization);
+
+	if (shooter->client && att->who->client == shooter->client)
+		att->authorized = true;
+}
+
+static void
 screenshooter_destroy(struct wl_listener *listener, void *data)
 {
 	struct screenshooter *shooter =
-		container_of(listener, struct screenshooter, destroy_listener);
+		container_of(listener, struct screenshooter,
+			     compositor_destroy_listener);
 
-	wl_list_remove(&shooter->destroy_listener.link);
+	wl_list_remove(&shooter->compositor_destroy_listener.link);
+	wl_list_remove(&shooter->authorization.link);
 
-	wl_global_destroy(shooter->global);
 	free(shooter);
 }
 
@@ -187,14 +140,15 @@ screenshooter_create(struct weston_compositor *ec)
 
 	shooter->ec = ec;
 
-	shooter->global = wl_global_create(ec->wl_display,
-					   &weston_screenshooter_interface, 1,
-					   shooter, bind_shooter);
 	weston_compositor_add_key_binding(ec, KEY_S, MODIFIER_SUPER,
 					  screenshooter_binding, shooter);
 	weston_compositor_add_key_binding(ec, KEY_R, MODIFIER_SUPER,
 					  recorder_binding, shooter);
 
-	shooter->destroy_listener.notify = screenshooter_destroy;
-	wl_signal_add(&ec->destroy_signal, &shooter->destroy_listener);
+	shooter->compositor_destroy_listener.notify = screenshooter_destroy;
+	wl_signal_add(&ec->destroy_signal,
+		      &shooter->compositor_destroy_listener);
+
+	weston_compositor_add_screenshot_authority(ec, &shooter->authorization,
+						   authorize_screenshooter);
 }

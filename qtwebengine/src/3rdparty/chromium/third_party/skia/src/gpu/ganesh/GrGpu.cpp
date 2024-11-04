@@ -8,6 +8,7 @@
 
 #include "src/gpu/ganesh/GrGpu.h"
 
+#include "include/core/SkTextureCompressionType.h"
 #include "include/gpu/GrBackendSemaphore.h"
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/GrDirectContext.h"
@@ -33,6 +34,8 @@
 #include "src/gpu/ganesh/GrTextureProxyPriv.h"
 #include "src/gpu/ganesh/GrTracing.h"
 #include "src/sksl/SkSLCompiler.h"
+
+using namespace skia_private;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -275,8 +278,8 @@ sk_sp<GrTexture> GrGpu::createCompressedTexture(SkISize dimensions,
     }
 
     // TODO: expand CompressedDataIsCorrect to work here too
-    SkImage::CompressionType compressionType = GrBackendFormatToCompressionType(format);
-    if (compressionType == SkImage::CompressionType::kNone) {
+    SkTextureCompressionType compressionType = GrBackendFormatToCompressionType(format);
+    if (compressionType == SkTextureCompressionType::kNone) {
         return nullptr;
     }
 
@@ -678,7 +681,7 @@ void GrGpu::didWriteToSurface(GrSurface* surface, GrSurfaceOrigin origin, const 
 }
 
 void GrGpu::executeFlushInfo(SkSpan<GrSurfaceProxy*> proxies,
-                             SkSurface::BackendSurfaceAccess access,
+                             SkSurfaces::BackendSurfaceAccess access,
                              const GrFlushInfo& info,
                              const skgpu::MutableTextureState* newState) {
     TRACE_EVENT0("skia.gpu", TRACE_FUNC);
@@ -721,7 +724,7 @@ void GrGpu::executeFlushInfo(SkSpan<GrSurfaceProxy*> proxies,
     // time we have multiple proxies is if we are flushing a yuv SkImage which won't have state
     // updates anyways.
     SkASSERT(!newState || proxies.size() == 1);
-    SkASSERT(!newState || access == SkSurface::BackendSurfaceAccess::kNoAccess);
+    SkASSERT(!newState || access == SkSurfaces::BackendSurfaceAccess::kNoAccess);
     this->prepareSurfacesForBackendAccessAndStateUpdates(proxies, access, newState);
 }
 
@@ -733,7 +736,7 @@ GrOpsRenderPass* GrGpu::getOpsRenderPass(
         const SkIRect& bounds,
         const GrOpsRenderPass::LoadAndStoreInfo& colorInfo,
         const GrOpsRenderPass::StencilLoadAndStoreInfo& stencilInfo,
-        const SkTArray<GrSurfaceProxy*, true>& sampledProxies,
+        const TArray<GrSurfaceProxy*, true>& sampledProxies,
         GrXferBarrierFlags renderPassXferBarriers) {
 #if SK_HISTOGRAMS_ENABLED
     fCurrentSubmitRenderPassCount++;
@@ -809,7 +812,7 @@ void GrGpu::dumpJSON(SkJSONWriter* writer) const {
 void GrGpu::dumpJSON(SkJSONWriter* writer) const { }
 #endif
 
-#if GR_TEST_UTILS
+#if defined(GR_TEST_UTILS)
 
 #if GR_GPU_STATS
 
@@ -843,7 +846,7 @@ void GrGpu::Stats::dump(SkString* out) {
 #endif
 }
 
-void GrGpu::Stats::dumpKeyValuePairs(SkTArray<SkString>* keys, SkTArray<double>* values) {
+void GrGpu::Stats::dumpKeyValuePairs(TArray<SkString>* keys, TArray<double>* values) {
     keys->push_back(SkString("render_passes"));
     values->push_back(fRenderPasses);
     keys->push_back(SkString("reordered_dags_over_budget"));
@@ -851,10 +854,10 @@ void GrGpu::Stats::dumpKeyValuePairs(SkTArray<SkString>* keys, SkTArray<double>*
 }
 
 #endif // GR_GPU_STATS
-#endif // GR_TEST_UTILS
+#endif // defined(GR_TEST_UTILS)
 
 bool GrGpu::CompressedDataIsCorrect(SkISize dimensions,
-                                    SkImage::CompressionType compressionType,
+                                    SkTextureCompressionType compressionType,
                                     GrMipmapped mipmapped,
                                     const void* data,
                                     size_t length) {
@@ -919,8 +922,8 @@ GrBackendTexture GrGpu::createCompressedBackendTexture(SkISize dimensions,
         return {};
     }
 
-    SkImage::CompressionType compressionType = GrBackendFormatToCompressionType(format);
-    if (compressionType == SkImage::CompressionType::kNone) {
+    SkTextureCompressionType compressionType = GrBackendFormatToCompressionType(format);
+    if (compressionType == SkTextureCompressionType::kNone) {
         // Uncompressed formats must go through the createBackendTexture API
         return {};
     }
@@ -950,8 +953,8 @@ bool GrGpu::updateCompressedBackendTexture(const GrBackendTexture& backendTextur
 
     GrBackendFormat format = backendTexture.getBackendFormat();
 
-    SkImage::CompressionType compressionType = GrBackendFormatToCompressionType(format);
-    if (compressionType == SkImage::CompressionType::kNone) {
+    SkTextureCompressionType compressionType = GrBackendFormatToCompressionType(format);
+    if (compressionType == SkTextureCompressionType::kNone) {
         // Uncompressed formats must go through the createBackendTexture API
         return false;
     }

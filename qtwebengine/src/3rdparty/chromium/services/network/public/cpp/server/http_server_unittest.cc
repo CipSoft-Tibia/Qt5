@@ -177,8 +177,10 @@ class HttpServerTest : public testing::Test, public HttpServer::Delegate {
   void SetUp() override {
     int net_error = net::ERR_FAILED;
     base::RunLoop run_loop;
+    auto options = network::mojom::TCPServerSocketOptions::New();
+    options->backlog = 1;
     factory_.CreateTCPServerSocket(
-        net::IPEndPoint(net::IPAddress::IPv6Localhost(), 0), 1 /* backlog */,
+        net::IPEndPoint(net::IPAddress::IPv6Localhost(), 0), std::move(options),
         TRAFFIC_ANNOTATION_FOR_TESTS,
         server_socket_.InitWithNewPipeAndPassReceiver(),
         base::BindOnce(
@@ -196,6 +198,15 @@ class HttpServerTest : public testing::Test, public HttpServer::Delegate {
     EXPECT_EQ(net::OK, net_error);
 
     server_ = std::make_unique<HttpServer>(std::move(server_socket_), this);
+  }
+
+  void TearDown() override {
+    // There might be pending tasks, such as destroying connections, wait until
+    // their completion.
+    base::RunLoop run_loop;
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, run_loop.QuitClosure());
+    run_loop.Run();
   }
 
   void OnConnect(int connection_id) override {

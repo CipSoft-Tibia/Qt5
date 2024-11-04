@@ -17,6 +17,7 @@
 #include <qpa/qplatformnativeinterface.h>
 #include <qpa/qplatformtheme.h>
 #include <qpa/qplatformintegration.h>
+#include <qpa/qplatformkeymapper.h>
 
 #include <QtCore/QAbstractEventDispatcher>
 #include <QtCore/QFileInfo>
@@ -104,6 +105,7 @@
 #include <limits>
 
 QT_BEGIN_NAMESPACE
+Q_LOGGING_CATEGORY(lcVirtualKeyboard, "qt.gui.virtualkeyboard");
 
 using namespace Qt::StringLiterals;
 using namespace QtMiscUtils;
@@ -829,7 +831,7 @@ QWindow *QGuiApplication::modalWindow()
     CHECK_QAPP_INSTANCE(nullptr)
     if (QGuiApplicationPrivate::self->modalWindowList.isEmpty())
         return nullptr;
-    return QGuiApplicationPrivate::self->modalWindowList.first();
+    return QGuiApplicationPrivate::self->modalWindowList.constFirst();
 }
 
 static void updateBlockedStatusRecursion(QWindow *window, bool shouldBeBlocked)
@@ -1354,6 +1356,11 @@ static void init_platform(const QString &pluginNamesWithArguments, const QString
     fontSmoothingGamma = platformIntegration->styleHint(QPlatformIntegration::FontSmoothingGamma).toReal();
     QCoreApplication::setAttribute(Qt::AA_DontShowShortcutsInContextMenus,
         !QGuiApplication::styleHints()->showShortcutsInContextMenus());
+
+    if (const auto *platformTheme = QGuiApplicationPrivate::platformTheme()) {
+        QCoreApplication::setAttribute(Qt::AA_DontShowIconsInMenus,
+            !platformTheme->themeHint(QPlatformTheme::ShowIconsInMenus).toBool());
+    }
 }
 
 static void init_plugins(const QList<QByteArray> &pluginList)
@@ -1847,7 +1854,7 @@ Qt::KeyboardModifiers QGuiApplication::queryKeyboardModifiers()
 {
     CHECK_QAPP_INSTANCE(Qt::KeyboardModifiers{})
     QPlatformIntegration *pi = QGuiApplicationPrivate::platformIntegration();
-    return pi->queryKeyboardModifiers();
+    return pi->keyMapper()->queryKeyboardModifiers();
 }
 
 /*!
@@ -2026,6 +2033,7 @@ bool QGuiApplication::event(QEvent *e)
                 return true;
             }
         }
+        break;
     default:
         break;
     }
@@ -2059,6 +2067,59 @@ bool QGuiApplicationPrivate::processNativeEvent(QWindow *window, const QByteArra
     return window->nativeEvent(eventType, message, result);
 }
 
+bool QGuiApplicationPrivate::isUsingVirtualKeyboard()
+{
+    static const bool usingVirtualKeyboard = getenv("QT_IM_MODULE") == QByteArray("qtvirtualkeyboard");
+    return usingVirtualKeyboard;
+}
+
+// If a virtual keyboard exists, forward mouse event
+bool QGuiApplicationPrivate::maybeForwardEventToVirtualKeyboard(QEvent *e)
+{
+    if (!isUsingVirtualKeyboard()) {
+        qCDebug(lcVirtualKeyboard) << "Virtual keyboard not supported.";
+        return false;
+    }
+
+    static QPointer<QWindow> virtualKeyboard;
+    const QEvent::Type type = e->type();
+    Q_ASSERT(type == QEvent::MouseButtonPress || type == QEvent::MouseButtonRelease);
+    const auto me = static_cast<QMouseEvent *>(e);
+    const QPointF posF = me->globalPosition();
+    const QPoint pos = posF.toPoint();
+
+    // Is there a visible virtual keyboard at event position?
+    if (!virtualKeyboard) {
+        if (QWindow *win = QGuiApplication::topLevelAt(pos);
+            win->inherits("QtVirtualKeyboard::InputView")) {
+            virtualKeyboard = win;
+        } else {
+            qCDebug(lcVirtualKeyboard) << "Virtual keyboard supported, but inactive.";
+            return false;
+        }
+    }
+
+    Q_ASSERT(virtualKeyboard);
+    const bool virtualKeyboardUnderMouse = virtualKeyboard->isVisible()
+                                           && virtualKeyboard->geometry().contains(pos);
+
+    if (!virtualKeyboardUnderMouse) {
+        qCDebug(lcVirtualKeyboard) << type << "at" << pos << "is outside geometry"
+                                   << virtualKeyboard->geometry() << "of" << virtualKeyboard.data();
+        return false;
+    }
+
+    QMouseEvent vkbEvent(type, virtualKeyboard->mapFromGlobal(pos), pos,
+                         me->button(), me->buttons(), me->modifiers(),
+                         me->pointingDevice());
+
+    QGuiApplication::sendEvent(virtualKeyboard, &vkbEvent);
+    qCDebug(lcVirtualKeyboard) << "Forwarded" << type << "to" << virtualKeyboard.data()
+                               << "at" << pos;
+
+    return true;
+}
+
 void Q_TRACE_INSTRUMENT(qtgui) QGuiApplicationPrivate::processWindowSystemEvent(QWindowSystemInterfacePrivate::WindowSystemEvent *e)
 {
     Q_TRACE_PARAM_REPLACE(QWindowSystemInterfacePrivate::WindowSystemEvent *, int);
@@ -2086,8 +2147,8 @@ void Q_TRACE_INSTRUMENT(qtgui) QGuiApplicationPrivate::processWindowSystemEvent(
     case QWindowSystemInterfacePrivate::Leave:
         QGuiApplicationPrivate::processLeaveEvent(static_cast<QWindowSystemInterfacePrivate::LeaveEvent *>(e));
         break;
-    case QWindowSystemInterfacePrivate::ActivatedWindow:
-        QGuiApplicationPrivate::processActivatedEvent(static_cast<QWindowSystemInterfacePrivate::ActivatedWindowEvent *>(e));
+    case QWindowSystemInterfacePrivate::FocusWindow:
+        QGuiApplicationPrivate::processFocusWindowEvent(static_cast<QWindowSystemInterfacePrivate::FocusWindowEvent *>(e));
         break;
     case QWindowSystemInterfacePrivate::WindowStateChanged:
         QGuiApplicationPrivate::processWindowStateChangedEvent(static_cast<QWindowSystemInterfacePrivate::WindowStateChangedEvent *>(e));
@@ -2226,7 +2287,7 @@ void QGuiApplicationPrivate::processMouseEvent(QWindowSystemInterfacePrivate::Mo
         QWindowSystemInterfacePrivate::MouseEvent moveEvent(window, e->timestamp,
             e->localPos, e->globalPos, e->buttons ^ button, e->modifiers, Qt::NoButton,
             e->nonClientArea ? QEvent::NonClientAreaMouseMove : QEvent::MouseMove,
-            e->source, e->nonClientArea);
+            e->source, e->nonClientArea, device, e->eventPointId);
         if (e->synthetic())
             moveEvent.flags |= QWindowSystemInterfacePrivate::WindowSystemEvent::Synthetic;
         processMouseEvent(&moveEvent); // mouse move excluding state change
@@ -2245,6 +2306,9 @@ void QGuiApplicationPrivate::processMouseEvent(QWindowSystemInterfacePrivate::Mo
     QPointF localPoint = e->localPos;
     bool doubleClick = false;
     auto persistentEPD = devPriv->pointById(0);
+
+    if (e->synthetic(); auto *originalDeviceEPD = devPriv->queryPointById(e->eventPointId))
+        QMutableEventPoint::update(originalDeviceEPD->eventPoint, persistentEPD->eventPoint);
 
     if (mouseMove) {
         QGuiApplicationPrivate::lastCursorPosition = globalPoint;
@@ -2510,10 +2574,10 @@ void QGuiApplicationPrivate::processLeaveEvent(QWindowSystemInterfacePrivate::Le
     QCoreApplication::sendSpontaneousEvent(e->leave.data(), &event);
 }
 
-void QGuiApplicationPrivate::processActivatedEvent(QWindowSystemInterfacePrivate::ActivatedWindowEvent *e)
+void QGuiApplicationPrivate::processFocusWindowEvent(QWindowSystemInterfacePrivate::FocusWindowEvent *e)
 {
     QWindow *previous = QGuiApplicationPrivate::focus_window;
-    QWindow *newFocus = e->activated.data();
+    QWindow *newFocus = e->focused.data();
 
     if (previous == newFocus)
         return;
@@ -3013,7 +3077,7 @@ void QGuiApplicationPrivate::processTouchEvent(QWindowSystemInterfacePrivate::To
         }
         // If we somehow still don't have a window, we can't deliver this touchpoint.  (should never happen)
         if (Q_UNLIKELY(!window)) {
-            qCWarning(lcPtrDispatch) << "skipping" << &tempPt << ": no target window";
+            qCDebug(lcPtrDispatch) << "skipping" << &tempPt << ": no target window";
             continue;
         }
         QMutableEventPoint::update(tempPt, ep);
@@ -3119,7 +3183,8 @@ void QGuiApplicationPrivate::processTouchEvent(QWindowSystemInterfacePrivate::To
                         }
                         // All touch events that are not accepted by the application will be translated to
                         // left mouse button events instead (see AA_SynthesizeMouseForUnhandledTouchEvents docs).
-                        // TODO why go through QPA?  Why not just send a QMouseEvent right from here?
+                        // Sending a QPA event (rather than simply sending a QMouseEvent) takes care of
+                        // side-effects such as double-click synthesis.
                         QWindowSystemInterfacePrivate::MouseEvent fake(window, e->timestamp,
                                                                        window->mapFromGlobal(touchPoint->globalPosition().toPoint()),
                                                                        touchPoint->globalPosition(),
@@ -3129,7 +3194,8 @@ void QGuiApplicationPrivate::processTouchEvent(QWindowSystemInterfacePrivate::To
                                                                        mouseEventType,
                                                                        Qt::MouseEventSynthesizedByQt,
                                                                        false,
-                                                                       device);
+                                                                       device,
+                                                                       touchPoint->id());
                         fake.flags |= QWindowSystemInterfacePrivate::WindowSystemEvent::Synthetic;
                         processMouseEvent(&fake);
                     }
@@ -3505,7 +3571,8 @@ bool QGuiApplicationPrivate::setPalette(const QPalette &palette)
 */
 QPalette QGuiApplicationPrivate::basePalette() const
 {
-    return platformTheme() ? *platformTheme()->palette() : Qt::gray;
+    const auto pf = platformTheme();
+    return pf && pf->palette() ? *pf->palette() : Qt::gray;
 }
 
 void QGuiApplicationPrivate::handlePaletteChanged(const char *className)
@@ -3672,9 +3739,13 @@ void QGuiApplicationPrivate::notifyWindowIconChanged()
 
     The default is \c true.
 
-    If this property is \c true, the applications quits when the last visible
-    \l{Primary and Secondary Windows}{primary window} (i.e. top level window
-    with no transient parent) is closed.
+    If this property is \c true, the application will attempt to
+    quit when the last visible \l{Primary and Secondary Windows}{primary window}
+    (i.e. top level window with no transient parent) is closed.
+
+    Note that attempting a quit may not necessarily result in the
+    application quitting, for example if there still are active
+    QEventLoopLocker instances, or the QEvent::Quit event is ignored.
 
     \sa quit(), QWindow::close()
  */
@@ -3730,7 +3801,13 @@ bool QGuiApplicationPrivate::lastWindowClosed() const
 
 bool QGuiApplicationPrivate::canQuitAutomatically()
 {
-    if (quitOnLastWindowClosed && !lastWindowClosed())
+    // The automatic quit functionality is triggered by
+    // both QEventLoopLocker and maybeLastWindowClosed.
+    // Although the former is a QCoreApplication feature
+    // we don't want to quit the application when there
+    // are open windows, regardless of whether the app
+    // also quits automatically on maybeLastWindowClosed.
+    if (!lastWindowClosed())
         return false;
 
     return QCoreApplicationPrivate::canQuitAutomatically();
@@ -4384,7 +4461,7 @@ void *QGuiApplication::resolveInterface(const char *name, int revision) const
 #if QT_CONFIG(xcb)
     QT_NATIVE_INTERFACE_RETURN_IF(QX11Application, platformNativeInterface());
 #endif
-#if defined(Q_OS_UNIX)
+#if QT_CONFIG(wayland)
     QT_NATIVE_INTERFACE_RETURN_IF(QWaylandApplication, platformNativeInterface());
 #endif
 

@@ -9,7 +9,6 @@
 #include "base/containers/unique_ptr_adapters.h"
 #include "base/files/file_path.h"
 #include "base/functional/callback_forward.h"
-#include "base/guid.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/task/bind_post_task.h"
@@ -18,11 +17,13 @@
 #include "base/threading/sequence_bound.h"
 #include "base/types/pass_key.h"
 #include "base/unguessable_token.h"
+#include "base/uuid.h"
 #include "components/download/public/common/quarantine_connection.h"
 #include "components/services/storage/public/mojom/file_system_access_context.mojom.h"
 #include "content/browser/blob_storage/chrome_blob_storage_context.h"
 #include "content/browser/file_system_access/file_system_access.pb.h"
-#include "content/browser/file_system_access/file_system_access_write_lock_manager.h"
+#include "content/browser/file_system_access/file_system_access_lock_manager.h"
+#include "content/browser/file_system_access/file_system_access_watcher_manager.h"
 #include "content/browser/file_system_access/file_system_chooser.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/file_system_access_entry_factory.h"
@@ -42,6 +43,7 @@
 #include "third_party/blink/public/mojom/file_system_access/file_system_access_file_delegate_host.mojom.h"
 #include "third_party/blink/public/mojom/file_system_access/file_system_access_file_writer.mojom.h"
 #include "third_party/blink/public/mojom/file_system_access/file_system_access_manager.mojom.h"
+#include "third_party/blink/public/mojom/file_system_access/file_system_access_observer_host.mojom.h"
 #include "third_party/blink/public/mojom/permissions/permission_status.mojom.h"
 
 namespace blink {
@@ -126,7 +128,6 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
   // blink::mojom::FileSystemAccessManager:
   void GetSandboxedFileSystem(GetSandboxedFileSystemCallback callback) override;
   void ChooseEntries(blink::mojom::FilePickerOptionsPtr options,
-                     blink::mojom::CommonFilePickerOptionsPtr common_options,
                      ChooseEntriesCallback callback) override;
   void GetFileHandleFromToken(
       mojo::PendingRemote<blink::mojom::FileSystemAccessTransferToken> token,
@@ -140,6 +141,9 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
       mojo::PendingRemote<blink::mojom::FileSystemAccessDataTransferToken>
           token,
       GetEntryFromDataTransferTokenCallback token_resolved_callback) override;
+  void BindObserverHost(
+      mojo::PendingReceiver<blink::mojom::FileSystemAccessObserverHost>
+          host_receiver) override;
 
   // storage::mojom::FileSystemAccessContext:
   void SerializeHandle(
@@ -181,29 +185,55 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
   CreateDirectoryHandle(const BindingContext& context,
                         const storage::FileSystemURL& url,
                         const SharedHandleState& handle_state);
-  // Attempts to take a write lock on `url`. The lock is released when the
-  // returned object is destroyed.
-  scoped_refptr<FileSystemAccessWriteLockManager::WriteLock> TakeWriteLock(
+
+  // Attempts to take a lock of `lock_type` on `url`. Returns the lock if
+  // successful. The lock is released when the returned object is destroyed.
+  scoped_refptr<FileSystemAccessLockManager::Lock> TakeLock(
       const storage::FileSystemURL& url,
-      FileSystemAccessWriteLockManager::WriteLockType lock_type);
+      FileSystemAccessLockManager::LockType lock_type);
+
+  // Creates a new shared lock type for testing.
+  [[nodiscard]] FileSystemAccessLockManager::LockType
+  CreateSharedLockTypeForTesting() const;
+
+  // Gets the exclusive lock type.
+  [[nodiscard]] FileSystemAccessLockManager::LockType GetExclusiveLockType()
+      const;
+
+  // Gets the shared lock type for SyncAccessHandle's `readonly` mode.
+  [[nodiscard]] FileSystemAccessLockManager::LockType GetSAHReadOnlyLockType()
+      const;
+
+  // Gets the shared lock type for SyncAccessHandle's `readwrite-unsafe` mode.
+  [[nodiscard]] FileSystemAccessLockManager::LockType
+  GetSAHReadwriteUnsafeLockType() const;
+
+  // Gets the shared lock type for WritableFileStream's default `siloed` mode.
+  [[nodiscard]] FileSystemAccessLockManager::LockType GetWFSSiloedLockType()
+      const;
+
+  // Gets the `ancestor_lock_type_` for testing.
+  [[nodiscard]] FileSystemAccessLockManager::LockType
+  GetAncestorLockTypeForTesting() const;
 
   // Creates a new FileSystemAccessFileWriterImpl for a given target and
   // swap file URLs. Assumes the passed in URLs are valid and represent files.
   mojo::PendingRemote<blink::mojom::FileSystemAccessFileWriter>
-  CreateFileWriter(
-      const BindingContext& binding_context,
-      const storage::FileSystemURL& url,
-      const storage::FileSystemURL& swap_url,
-      scoped_refptr<FileSystemAccessWriteLockManager::WriteLock> lock,
-      const SharedHandleState& handle_state,
-      bool auto_close);
+  CreateFileWriter(const BindingContext& binding_context,
+                   const storage::FileSystemURL& url,
+                   const storage::FileSystemURL& swap_url,
+                   scoped_refptr<FileSystemAccessLockManager::Lock> lock,
+                   scoped_refptr<FileSystemAccessLockManager::Lock> swap_lock,
+                   const SharedHandleState& handle_state,
+                   bool auto_close);
   // Returns a weak pointer to a newly created FileSystemAccessFileWriterImpl.
   // Useful for tests
   base::WeakPtr<FileSystemAccessFileWriterImpl> CreateFileWriter(
       const BindingContext& binding_context,
       const storage::FileSystemURL& url,
       const storage::FileSystemURL& swap_url,
-      scoped_refptr<FileSystemAccessWriteLockManager::WriteLock> lock,
+      scoped_refptr<FileSystemAccessLockManager::Lock> lock,
+      scoped_refptr<FileSystemAccessLockManager::Lock> swap_lock,
       const SharedHandleState& handle_state,
       mojo::PendingReceiver<blink::mojom::FileSystemAccessFileWriter> receiver,
       bool has_transient_user_activation,
@@ -221,7 +251,7 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
           blink::mojom::FileSystemAccessCapacityAllocationHost>
           capacity_allocation_host_receiver,
       int64_t file_size,
-      scoped_refptr<FileSystemAccessWriteLockManager::WriteLock> lock,
+      scoped_refptr<FileSystemAccessLockManager::Lock> lock,
       base::ScopedClosureRunner on_close_callback);
 
   // Create a transfer token for a specific file or directory.
@@ -274,6 +304,11 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
     return permission_context_;
   }
 
+  FileSystemAccessWatcherManager& watcher_manager() {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    return watcher_manager_;
+  }
+
   bool is_off_the_record() const { return off_the_record_; }
 
   void SetPermissionContextForTesting(
@@ -311,9 +346,9 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
       FileSystemAccessPermissionContext::HandleType handle_type,
       FileSystemAccessPermissionContext::UserAction user_action);
 
-  // Return a stable unique ID of the FileSystemHandle in GUID version 4 format.
-  base::GUID GetUniqueId(const FileSystemAccessFileHandleImpl& file);
-  base::GUID GetUniqueId(const FileSystemAccessDirectoryHandleImpl& directory);
+  // Return a stable unique ID of the FileSystemHandle in UUID version 4 format.
+  base::Uuid GetUniqueId(const FileSystemAccessFileHandleImpl& file);
+  base::Uuid GetUniqueId(const FileSystemAccessDirectoryHandleImpl& directory);
 
   // Creates a FileSystemURL which corresponds `path`, which must
   // correspond to a "real" file path and not a virtual path in a sandboxed file
@@ -401,16 +436,13 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
   void ResolveDefaultDirectory(
       const BindingContext& context,
       blink::mojom::FilePickerOptionsPtr options,
-      blink::mojom::CommonFilePickerOptionsPtr common_options,
       ChooseEntriesCallback callback,
-      FileSystemAccessTransferTokenImpl* resolved_starting_directory_token);
-  void SetDefaultPathAndShowPicker(
-      const BindingContext& context,
-      blink::mojom::FilePickerOptionsPtr options,
-      blink::mojom::CommonFilePickerOptionsPtr common_options,
-      base::FilePath default_directory,
-      ChooseEntriesCallback callback,
-      bool default_directory_exists);
+      FileSystemAccessTransferTokenImpl* resolved_directory_token);
+  void SetDefaultPathAndShowPicker(const BindingContext& context,
+                                   blink::mojom::FilePickerOptionsPtr options,
+                                   base::FilePath default_directory,
+                                   ChooseEntriesCallback callback,
+                                   bool default_directory_exists);
   void DidOpenSandboxedFileSystem(const BindingContext& binding_context,
                                   GetSandboxedFileSystemCallback callback,
                                   const storage::FileSystemURL& root,
@@ -543,7 +575,7 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
   const scoped_refptr<ChromeBlobStorageContext> blob_context_;
   base::SequenceBound<storage::FileSystemOperationRunner> operation_runner_
       GUARDED_BY_CONTEXT(sequence_checker_);
-  raw_ptr<FileSystemAccessPermissionContext, DanglingUntriaged>
+  raw_ptr<FileSystemAccessPermissionContext, AcrossTasksDanglingUntriaged>
       permission_context_ GUARDED_BY_CONTEXT(sequence_checker_);
 
   // All the mojo receivers for this FileSystemAccessManager itself. Keeps
@@ -556,11 +588,14 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
   mojo::ReceiverSet<storage::mojom::FileSystemAccessContext>
       internals_receivers_ GUARDED_BY_CONTEXT(sequence_checker_);
 
-  // The `write_lock_manager_` manager should be destroyed after
-  // `writer_receivers_` and `access_handle_host_receivers_`. The write locks
-  // held by file writers and access handles dereference the lock manager on
-  // destruction, so it should outlive them.
-  std::unique_ptr<FileSystemAccessWriteLockManager> write_lock_manager_
+  // The `lock_manager_` manager should be destroyed after `writer_receivers_`
+  // and `access_handle_host_receivers_`. The locks held by file writers and
+  // access handles dereference the lock manager on destruction, so it should
+  // outlive them.
+  std::unique_ptr<FileSystemAccessLockManager> lock_manager_
+      GUARDED_BY_CONTEXT(sequence_checker_);
+
+  FileSystemAccessWatcherManager watcher_manager_
       GUARDED_BY_CONTEXT(sequence_checker_);
 
   // All the receivers for file and directory handles that have references to
@@ -596,29 +631,26 @@ class CONTENT_EXPORT FileSystemAccessManagerImpl
   // that works behind a flag. Persist handle IDs such that they're stable
   // across browsing sessions.
   std::map<storage::FileSystemURL,
-           base::GUID,
+           base::Uuid,
            storage::FileSystemURL::Comparator>
       file_ids_ GUARDED_BY_CONTEXT(sequence_checker_);
   std::map<storage::FileSystemURL,
-           base::GUID,
+           base::Uuid,
            storage::FileSystemURL::Comparator>
       directory_ids_ GUARDED_BY_CONTEXT(sequence_checker_);
 
   absl::optional<FileSystemChooser::ResultEntry>
       auto_file_picker_result_for_test_ GUARDED_BY_CONTEXT(sequence_checker_);
 
-  // TODO(https://crbug.com/1396116): Remove this hack when removing the
-  // `kFileSystemURLComparatorsTreatOpaqueOriginAsNoOrigin` feature flag.
-  //
-  // A StorageKey containing an arbitrary, unique, randomly-generated opaque
-  // origin. ChromeOS file system backends run security checks on the assumption
-  // that all FileSystemURLs of non-sandboxed file systems must have an opaque
-  // origin. Using a default-constructed StorageKey will create a random nonce,
-  // making origin comparison checks between two FileSystemURLs with
-  // default-constructed StorageKeys fail. Always using this StorageKey ensures
-  // that FileSystemURL::operator== will always return true for two
-  // FileSystemURLs which point to the same file.
-  blink::StorageKey opaque_origin_for_non_sandboxed_filesystemurls_;
+  // The shared lock type for SyncAccessHandle's `readonly` mode.
+  FileSystemAccessLockManager::LockType sah_read_only_lock_type_ =
+      lock_manager_->CreateSharedLockType();
+  // The shared lock type for SyncAccessHandle's `readwrite-unsafe` mode.
+  FileSystemAccessLockManager::LockType sah_readwrite_unsafe_lock_type_ =
+      lock_manager_->CreateSharedLockType();
+  // The shared lock type for WritableFileStream's default `siloed` mode.
+  FileSystemAccessLockManager::LockType wfs_siloed_lock_type_ =
+      lock_manager_->CreateSharedLockType();
 
   base::WeakPtrFactory<FileSystemAccessManagerImpl> weak_factory_
       GUARDED_BY_CONTEXT(sequence_checker_){this};

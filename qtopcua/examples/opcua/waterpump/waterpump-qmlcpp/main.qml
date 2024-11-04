@@ -3,7 +3,6 @@
 
 import QtQuick
 import QtQuick.Window
-import QtQuick.Controls
 import QtQuick.Layouts
 
 Window {
@@ -18,10 +17,13 @@ Window {
         anchors.margins: 10
         anchors.fill: parent
         spacing: 45
+
         ServerControl {}
+
         TankSimulation {
             Layout.fillHeight: true
         }
+
         Text {
             id: messageText
             font.pointSize: 10

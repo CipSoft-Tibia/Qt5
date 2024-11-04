@@ -171,7 +171,7 @@ const GpuControlList::More kMoreForEntry5_572251052Exception0 = {
     GpuControlList::kDontCare,  // subpixel_font_rendering
 };
 
-const int kFeatureListForGpuManagerTestingEntry6[11] = {
+const int kFeatureListForGpuManagerTestingEntry6[12] = {
     GPU_FEATURE_TYPE_ACCELERATED_2D_CANVAS,
     GPU_FEATURE_TYPE_ACCELERATED_WEBGL,
     GPU_FEATURE_TYPE_ACCELERATED_VIDEO_DECODE,
@@ -180,9 +180,10 @@ const int kFeatureListForGpuManagerTestingEntry6[11] = {
     GPU_FEATURE_TYPE_ACCELERATED_WEBGL2,
     GPU_FEATURE_TYPE_ANDROID_SURFACE_CONTROL,
     GPU_FEATURE_TYPE_ACCELERATED_GL,
-    GPU_FEATURE_TYPE_METAL,
     GPU_FEATURE_TYPE_VULKAN,
     GPU_FEATURE_TYPE_CANVAS_OOP_RASTERIZATION,
+    GPU_FEATURE_TYPE_ACCELERATED_WEBGPU,
+    GPU_FEATURE_TYPE_SKIA_GRAPHITE,
 };
 
 const GpuControlList::More kMoreForEntry6_572251052 = {

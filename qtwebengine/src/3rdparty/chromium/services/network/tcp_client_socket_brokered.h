@@ -98,8 +98,6 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) TCPClientSocketBrokered
   int SetSendBufferSize(int32_t size) override;
 
  private:
-  int OpenSocketForBind(const net::IPEndPoint& address);
-
   void DidCompleteOpenForBind(const net::IPEndPoint& address,
                               std::unique_ptr<net::TCPSocket> new_socket,
                               net::Error result);
@@ -120,12 +118,16 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) TCPClientSocketBrokered
   raw_ptr<net::NetworkQualityEstimator> network_quality_estimator_
       GUARDED_BY_CONTEXT(sequence_checker_);
 
-  raw_ptr<net::NetLog> net_log_ GUARDED_BY_CONTEXT(sequence_checker_);
-
-  const net::NetLogSource source_ GUARDED_BY_CONTEXT(sequence_checker_);
+  const net::NetLogWithSource net_log_source_
+      GUARDED_BY_CONTEXT(sequence_checker_);
 
   // State to track whether socket is currently attempting to connect.
   bool is_connect_in_progress_ GUARDED_BY_CONTEXT(sequence_checker_) = false;
+
+  // Local IP address and port we are bound to. Set to NULL if Bind()
+  // wasn't called (in that case OS chooses address/port).
+  std::unique_ptr<net::IPEndPoint> bind_address_
+      GUARDED_BY_CONTEXT(sequence_checker_) = nullptr;
 
   BeforeConnectCallback before_connect_callback_;
 

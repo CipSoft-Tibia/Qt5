@@ -68,7 +68,7 @@ QT_BEGIN_NAMESPACE
     starting position to find which models intersect with the ray. In
     Qt Quick 3D, the ray is normally sent from the view using 2D coordinates
     resulting from a touch or mouse event. If a model was hit by the ray,
-    \l {PickResult} will be returned with a handle to the model and information
+    \l {pickResult} will be returned with a handle to the model and information
     about where the ray hit the model. For models that use
     \l {QQuick3DGeometry}{custom geometry}, the picking is less accurate than
     for static mesh data, as picking is only done against the model's
@@ -82,7 +82,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmltype bounds
+    \qmlvaluetype bounds
     \inqmlmodule QtQuick3D
     \since 5.15
     \brief Specifies the bounds of a model.
@@ -585,7 +585,7 @@ void QQuick3DModel::setGeometry(QQuick3DGeometry *geometry)
 
     if (m_geometry) {
         m_geometryConnection
-                = QObject::connect(m_geometry, &QQuick3DGeometry::geometryNodeDirty, [this]() {
+                = QObject::connect(m_geometry, &QQuick3DGeometry::geometryNodeDirty, this, [this]() {
             markDirty(GeometryDirty);
         });
     }
@@ -1026,7 +1026,7 @@ void QQuick3DModel::qmlClearMaterials(QQmlListProperty<QQuick3DMaterial> *list)
                 mat.refed = false;
             }
         }
-        mat.material->disconnect(self, SLOT(onMaterialDestroyed(QObject*)));
+        disconnect(mat.material, &QQuick3DMaterial::destroyed, self, &QQuick3DModel::onMaterialDestroyed);
     }
     self->m_materials.clear();
     self->markDirty(QQuick3DModel::MaterialsDirty);
@@ -1103,7 +1103,7 @@ void QQuick3DModel::qmlClearMorphTargets(QQmlListProperty<QQuick3DMorphTarget> *
     for (const auto &morph : std::as_const(self->m_morphTargets)) {
         if (morph->parentItem() == nullptr)
             QQuick3DObjectPrivate::get(morph)->derefSceneManager();
-        morph->disconnect(self, SLOT(onMorphTargetDestroyed(QObject*)));
+        disconnect(morph, &QQuick3DMorphTarget::destroyed, self, &QQuick3DModel::onMorphTargetDestroyed);
     }
     self->m_morphTargets.clear();
     self->m_numMorphAttribs = 0;

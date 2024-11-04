@@ -30,7 +30,8 @@ void BindGroup::DestroyImpl() {
 
 // static
 Ref<BindGroup> BindGroup::Create(Device* device, const BindGroupDescriptor* descriptor) {
-    return ToBackend(descriptor->layout)->AllocateBindGroup(device, descriptor);
+    return ToBackend(descriptor->layout->GetInternalBindGroupLayout())
+        ->AllocateBindGroup(device, descriptor);
 }
 
 }  // namespace dawn::native::metal

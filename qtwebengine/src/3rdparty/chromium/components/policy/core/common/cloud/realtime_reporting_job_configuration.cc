@@ -115,7 +115,7 @@ void RealtimeReportingJobConfiguration::OnBeforeRetryInternal(
     auto* events = payload_.FindList(kEventListKey);
     // Only keep the elements that temporarily failed their uploads.
     events->EraseIf([&failedIds](const base::Value& entry) {
-      auto* id = entry.FindStringKey(kEventIdKey);
+      auto* id = entry.GetDict().FindString(kEventIdKey);
       return id && failedIds.find(*id) == failedIds.end();
     });
   }
@@ -129,11 +129,14 @@ std::set<std::string> RealtimeReportingJobConfiguration::GetFailedUploadIds(
     const std::string& response_body) const {
   std::set<std::string> failedIds;
   absl::optional<base::Value> response = base::JSONReader::Read(response_body);
-  base::Value response_value = response ? std::move(*response) : base::Value();
-  base::Value* failedUploads = response_value.FindListKey(kFailedUploadsKey);
+  if (!response || !response->is_dict()) {
+    return failedIds;
+  }
+  base::Value::List* failedUploads =
+      response->GetDict().FindList(kFailedUploadsKey);
   if (failedUploads) {
-    for (const auto& failedUpload : failedUploads->GetList()) {
-      auto* id = failedUpload.FindStringKey(kEventIdKey);
+    for (const auto& failedUpload : *failedUploads) {
+      auto* id = failedUpload.GetDict().FindString(kEventIdKey);
       if (id) {
         failedIds.insert(*id);
       }

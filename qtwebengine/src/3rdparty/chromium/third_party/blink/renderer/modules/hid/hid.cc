@@ -96,9 +96,9 @@ HID* HID::hid(NavigatorBase& navigator) {
 }
 
 HID::HID(NavigatorBase& navigator)
-    : ExecutionContextLifecycleObserver(navigator.GetExecutionContext()),
-      Supplement<NavigatorBase>(navigator),
-      service_(navigator.GetExecutionContext()) {
+    : Supplement<NavigatorBase>(navigator),
+      service_(navigator.GetExecutionContext()),
+      receiver_(this, navigator.GetExecutionContext()) {
   auto* context = GetExecutionContext();
   if (context) {
     feature_handle_for_scheduler_ = context->GetScheduler()->RegisterFeature(
@@ -120,13 +120,9 @@ const AtomicString& HID::InterfaceName() const {
   return event_target_names::kHID;
 }
 
-void HID::ContextDestroyed() {
-  CloseServiceConnection();
-}
-
 void HID::AddedEventListener(const AtomicString& event_type,
                              RegisteredEventListener& listener) {
-  EventTargetWithInlineData::AddedEventListener(event_type, listener);
+  EventTarget::AddedEventListener(event_type, listener);
 
   if (event_type != event_type_names::kConnect &&
       event_type != event_type_names::kDisconnect) {
@@ -174,7 +170,8 @@ ScriptPromise HID::getDevices(ScriptState* script_state,
     return ScriptPromise();
   }
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   get_devices_promises_.insert(resolver);
 
   EnsureServiceConnection();
@@ -206,7 +203,8 @@ ScriptPromise HID::requestDevice(ScriptState* script_state,
     return ScriptPromise();
   }
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
   request_device_promises_.insert(resolver);
 
@@ -321,7 +319,7 @@ void HID::EnsureServiceConnection() {
   service_.set_disconnect_handler(
       WTF::BindOnce(&HID::CloseServiceConnection, WrapWeakPersistent(this)));
   DCHECK(!receiver_.is_bound());
-  service_->RegisterClient(receiver_.BindNewEndpointAndPassRemote());
+  service_->RegisterClient(receiver_.BindNewEndpointAndPassRemote(task_runner));
 }
 
 void HID::CloseServiceConnection() {
@@ -392,8 +390,8 @@ void HID::Trace(Visitor* visitor) const {
   visitor->Trace(get_devices_promises_);
   visitor->Trace(request_device_promises_);
   visitor->Trace(device_cache_);
-  EventTargetWithInlineData::Trace(visitor);
-  ExecutionContextLifecycleObserver::Trace(visitor);
+  visitor->Trace(receiver_);
+  EventTarget::Trace(visitor);
   Supplement<NavigatorBase>::Trace(visitor);
 }
 

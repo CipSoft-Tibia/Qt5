@@ -37,5 +37,13 @@ imagedirs               = images
 depends                 += qtdoc qtqml qtquick qtcore qtgui qmake qtcmake
 
 navigation.landingpage = "Qt Linguist Manual"
+navigation.toctitles = \
+    "Release managers" \
+    "Translators" \
+    "Developers" \
+        "Examples" \
 
+navigation.toctitles.inclusive = true
+
+# Enforce zero documentation warnings
 warninglimit = 0

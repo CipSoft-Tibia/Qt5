@@ -1,5 +1,5 @@
 // Copyright (C) 2020 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtEndian>
@@ -25,7 +25,6 @@ public:
 protected:
     qint64 readData(char *data, qint64 maxlen) override;
     qint64 writeData(const char *, qint64) override { return -1; }
-};
 };
 
 qint64 LargeIODevice::readData(char *data, qint64 maxlen)
@@ -118,3 +117,4 @@ void addValidationHugeDevice(qsizetype byteArrayInvalid, qsizetype stringInvalid
     addSize("4GB", quint64(1) << 32);
     addSize("max", std::numeric_limits<qint64>::max() - sizeof(buf));
 }
+} // namespace

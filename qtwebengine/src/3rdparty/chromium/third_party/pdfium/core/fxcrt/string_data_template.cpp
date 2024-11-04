@@ -10,6 +10,7 @@
 
 #include <new>
 
+#include "core/fxcrt/fx_memcpy_wrappers.h"
 #include "core/fxcrt/fx_memory.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "third_party/base/check.h"
@@ -21,7 +22,7 @@ namespace fxcrt {
 template <typename CharType>
 StringDataTemplate<CharType>* StringDataTemplate<CharType>::Create(
     size_t nLen) {
-  DCHECK_GT(nLen, 0);
+  DCHECK_GT(nLen, 0u);
 
   // Calculate space needed for the fixed portion of the struct plus the
   // NUL char that is not included in |m_nAllocLength|.
@@ -57,7 +58,7 @@ StringDataTemplate<CharType>* StringDataTemplate<CharType>::Create(
 template <typename CharType>
 void StringDataTemplate<CharType>::Release() {
   if (--m_nRefs <= 0)
-    FX_Free(this);
+    FX_StringFree(this);
 }
 
 template <typename CharType>
@@ -71,9 +72,9 @@ void StringDataTemplate<CharType>::CopyContents(
 template <typename CharType>
 void StringDataTemplate<CharType>::CopyContents(const CharType* pStr,
                                                 size_t nLen) {
-  DCHECK_GE(nLen, 0);
+  DCHECK_GE(nLen, 0u);
   DCHECK_LE(nLen, m_nAllocLength);
-  memcpy(m_String, pStr, nLen * sizeof(CharType));
+  FXSYS_memcpy(m_String, pStr, nLen * sizeof(CharType));
   m_String[nLen] = 0;
 }
 
@@ -81,10 +82,10 @@ template <typename CharType>
 void StringDataTemplate<CharType>::CopyContentsAt(size_t offset,
                                                   const CharType* pStr,
                                                   size_t nLen) {
-  DCHECK_GE(offset, 0);
-  DCHECK_GE(nLen, 0);
+  DCHECK_GE(offset, 0u);
+  DCHECK_GE(nLen, 0u);
   DCHECK_LE(offset + nLen, m_nAllocLength);
-  memcpy(m_String + offset, pStr, nLen * sizeof(CharType));
+  FXSYS_memcpy(m_String + offset, pStr, nLen * sizeof(CharType));
   m_String[offset + nLen] = 0;
 }
 
@@ -92,7 +93,7 @@ template <typename CharType>
 StringDataTemplate<CharType>::StringDataTemplate(size_t dataLen,
                                                  size_t allocLen)
     : m_nDataLength(dataLen), m_nAllocLength(allocLen) {
-  DCHECK_GE(dataLen, 0);
+  DCHECK_GE(dataLen, 0u);
   DCHECK_LE(dataLen, allocLen);
   m_String[dataLen] = 0;
 }

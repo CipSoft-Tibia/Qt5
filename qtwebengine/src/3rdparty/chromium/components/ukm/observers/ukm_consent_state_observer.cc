@@ -10,11 +10,16 @@
 #include "base/containers/contains.h"
 #include "base/feature_list.h"
 #include "base/metrics/histogram_functions.h"
+#include "components/metrics/metrics_switches.h"
 #include "components/sync/base/model_type.h"
-#include "components/sync/driver/sync_service.h"
-#include "components/sync/driver/sync_service_utils.h"
+#include "components/sync/service/sync_service.h"
+#include "components/sync/service/sync_service_utils.h"
 #include "components/unified_consent/url_keyed_data_collection_consent_helper.h"
 #include "google_apis/gaia/google_service_auth_error.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chromeos/components/kiosk/kiosk_utils.h"  // nogncheck
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 using unified_consent::UrlKeyedDataCollectionConsentHelper;
 
@@ -22,7 +27,15 @@ namespace ukm {
 namespace {
 
 bool CanUploadUkmForType(syncer::SyncService* sync_service,
-                         syncer::ModelType model_type) {
+                         syncer::ModelType model_type,
+                         bool msbb_consent) {
+#if BUILDFLAG(IS_CHROMEOS)
+  // Enable uploading of UKM for Kiosk only if MSBB consent is set.
+  if (chromeos::IsKioskSession()) {
+    return msbb_consent;
+  }
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
   switch (GetUploadToGoogleState(sync_service, model_type)) {
     case syncer::UploadState::NOT_ACTIVE:
       return false;
@@ -35,10 +48,6 @@ bool CanUploadUkmForType(syncer::SyncService* sync_service,
   }
 }
 }  // namespace
-
-BASE_FEATURE(kAppMetricsOnlyRelyOnAppSync,
-             "AppMetricsOnlyRelyOnAppSync",
-             base::FEATURE_DISABLED_BY_DEFAULT);
 
 UkmConsentStateObserver::UkmConsentStateObserver() = default;
 
@@ -61,7 +70,6 @@ void UkmConsentStateObserver::ProfileState::SetConsentType(
   consent_state.Put(type);
 }
 
-// static
 UkmConsentStateObserver::ProfileState UkmConsentStateObserver::GetProfileState(
     syncer::SyncService* sync_service,
     UrlKeyedDataCollectionConsentHelper* consent_helper) {
@@ -69,21 +77,38 @@ UkmConsentStateObserver::ProfileState UkmConsentStateObserver::GetProfileState(
   DCHECK(consent_helper);
   ProfileState state;
 
-  const bool msbb_consent = consent_helper->IsEnabled();
+  const bool msbb_consent =
+      consent_helper->IsEnabled() || metrics::IsMsbbSettingForcedOnForUkm();
 
-  if (msbb_consent)
+  if (msbb_consent) {
     state.SetConsentType(MSBB);
+  }
 
   if (msbb_consent &&
-      CanUploadUkmForType(sync_service, syncer::ModelType::EXTENSIONS)) {
+      CanUploadUkmForType(sync_service, syncer::ModelType::EXTENSIONS,
+                          msbb_consent)) {
     state.SetConsentType(EXTENSIONS);
   }
 
-  if ((msbb_consent ||
-       base::FeatureList::IsEnabled(kAppMetricsOnlyRelyOnAppSync)) &&
-      CanUploadUkmForType(sync_service, syncer::ModelType::APPS)) {
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  const bool app_sync_consent =
+      CanUploadUkmForType(sync_service, syncer::ModelType::APPS,
+                          msbb_consent) ||
+      // Demo mode is a special managed guest session that doesn't support
+      // AppKM. To support AppKM an exception needs to be made within UKM.
+      IsDeviceInDemoMode();
+
+  if (app_sync_consent) {
     state.SetConsentType(APPS);
   }
+#else
+  // This separation isn't actually needed for non-ChromeOS devices. But for
+  // clarity it is added.
+  if (msbb_consent && CanUploadUkmForType(sync_service, syncer::ModelType::APPS,
+                                          msbb_consent)) {
+    state.SetConsentType(APPS);
+  }
+#endif
 
   return state;
 }
@@ -173,7 +198,7 @@ void UkmConsentStateObserver::UpdateProfileState(
   ProfileState state = GetProfileState(sync, consent_helper);
 
   // Trigger a total purge of all local UKM data if the current state no longer
-  // allows tracking UKM.
+  // allows recording of UKMs.
   bool total_purge = previous_state.IsUkmConsented() && !state.IsUkmConsented();
 
   base::UmaHistogramBoolean("UKM.ConsentObserver.Purge", total_purge);
@@ -206,5 +231,15 @@ bool UkmConsentStateObserver::IsUkmAllowedForAllProfiles() {
 UkmConsentState UkmConsentStateObserver::GetUkmConsentState() {
   return ukm_consent_state_;
 }
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+void UkmConsentStateObserver::SetIsDemoMode(bool is_device_in_demo_mode) {
+  is_device_in_demo_mode_ = is_device_in_demo_mode;
+}
+
+bool UkmConsentStateObserver::IsDeviceInDemoMode() {
+  return is_device_in_demo_mode_;
+}
+#endif
 
 }  // namespace ukm

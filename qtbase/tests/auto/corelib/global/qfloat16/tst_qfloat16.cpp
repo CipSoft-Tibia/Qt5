@@ -1,11 +1,13 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2016 by Southwest Research Institute (R)
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QFloat16>
 #include <QMetaType>
 #include <QTextStream>
+
+#include <private/qcomparisontesthelper_p.h>
 
 #include <math.h>
 
@@ -18,6 +20,10 @@ class tst_qfloat16: public QObject
     Q_OBJECT
 
 private slots:
+    void compareCompiles();
+    void relationalOperatorsAreConstexpr();
+    void ordering_data();
+    void ordering();
     void fuzzyCompare_data();
     void fuzzyCompare();
     void fuzzyIsNull_data();
@@ -46,6 +52,187 @@ private slots:
     void dataStream();
     void textStream();
 };
+
+void tst_qfloat16::compareCompiles()
+{
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, float>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, double>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, long double>();
+#if QFLOAT16_IS_NATIVE
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, qfloat16::NativeType>();
+#endif
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, int>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, qint8>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, quint8>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, qint16>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, quint16>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, char16_t>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, long>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, unsigned long>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, wchar_t>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, qint32>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, quint32>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, qint64>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, quint64>();
+#ifdef QT_SUPPORTS_INT128
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, qint128>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, quint128>();
+#endif
+}
+
+void tst_qfloat16::relationalOperatorsAreConstexpr()
+{
+#if QFLOAT16_IS_NATIVE
+
+#define CHECK_CONSTEXPR(Type) \
+    do { \
+        constexpr qfloat16 lhs = qfloat16(0.0f); \
+        constexpr Type rhs = 1; \
+        static_assert(lhs < rhs); \
+        static_assert(rhs >= lhs); \
+    } while (false)
+
+    CHECK_CONSTEXPR(qfloat16);
+    CHECK_CONSTEXPR(float);
+    CHECK_CONSTEXPR(double);
+    CHECK_CONSTEXPR(long double);
+    CHECK_CONSTEXPR(qfloat16::NativeType);
+    CHECK_CONSTEXPR(qint8);
+    CHECK_CONSTEXPR(quint8);
+    CHECK_CONSTEXPR(qint16);
+    CHECK_CONSTEXPR(quint16);
+    CHECK_CONSTEXPR(qint32);
+    CHECK_CONSTEXPR(quint32);
+    CHECK_CONSTEXPR(long);
+    CHECK_CONSTEXPR(unsigned long);
+    CHECK_CONSTEXPR(qint64);
+    CHECK_CONSTEXPR(quint64);
+#ifdef QT_SUPPORTS_INT128
+    CHECK_CONSTEXPR(qint128);
+    CHECK_CONSTEXPR(quint128);
+#endif
+
+#undef CHECK_CONSTEXPR
+
+#else
+    QSKIP("This check is only relevant for native float16 types");
+#endif // QFLOAT16_IS_NATIVE
+}
+
+void tst_qfloat16::ordering_data()
+{
+    QTest::addColumn<float>("left");
+    QTest::addColumn<float>("right");
+
+    auto row = [](float left, float right) {
+        QTest::addRow("%f_vs_%f", left, right) << left << right;
+    };
+
+    row(0.0f, 0.0f);
+    row(0.000001f, 0.0f);
+    row(0.0f, 0.000001f);
+    row(-1.000001f, 1.000001f);
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    row(nan, nan);
+    row(nan, inf);
+    row(inf, nan);
+    row(-inf, nan);
+    row(nan, -inf);
+    row(-inf, inf);
+    row(inf, -inf);
+    row(-inf, 0.0f);
+    row(0.0f, inf);
+    row(0.0f, nan);
+    row(nan, 0.0f);
+    row(2.0f, 314.159f);
+    row(-314.159f, 2.0f);
+    row(-2.0f, 314.159f);
+    row(nan, 314.159f);
+    row(-314.159f, inf);
+    row(-inf, 314.159f);
+    row(2.0f, -inf);
+    row(-2.0f, nan);
+    row(-inf, -2.0f);
+
+    // testing with values outside qfloat16 range
+    row(0.0f, 13e5f);
+    // generateRow(inf, 13e5f); // fails qfloat16 vs qfloat16 and qfloat16 vs int (QTBUG-118193)
+    row(0.0f, -13e5f);
+    // generateRow(-inf, -13e5f); // fails qfloat16 vs qfloat16 and qfloat16 vs int (QTBUG-118193)
+}
+
+void tst_qfloat16::ordering()
+{
+    QFETCH(float, left);
+    QFETCH(float, right);
+
+    const auto expectedOrder = Qt::compareThreeWay(left, right);
+    const auto lhs = qfloat16(left);
+
+#define POSTCHECK(msg) \
+    if (QTest::currentTestFailed()) { qDebug(msg); return; }
+
+#define CHECK_FP(RHS) \
+    do { \
+        QTestPrivate::testAllComparisonOperators(lhs, static_cast<RHS>(right), expectedOrder); \
+        POSTCHECK("qfloat16 vs " #RHS " comparison failed") \
+    } while (false) \
+    /* END */
+
+    CHECK_FP(qfloat16);
+    CHECK_FP(float);
+    CHECK_FP(double);
+    CHECK_FP(long double);
+
+#undef CHECK_FP
+
+    auto check_int = [=](auto rhs) {
+        // check that we're in range before converting, otherwise
+        // [conv.fpint]/1 says it would be UB
+        using RHS = decltype(rhs);
+        if (right > double(std::numeric_limits<RHS>::max()))
+            return;
+        if (auto min = std::numeric_limits<RHS>::min(); min != 0 && right < double(min))
+            return;
+        rhs = RHS(right);
+        const auto expectedRes = Qt::compareThreeWay(left, rhs);
+        QTestPrivate::testAllComparisonOperators(lhs, rhs, expectedRes);
+    };
+#define CHECK_INT(RHS) \
+    do { \
+        check_int(static_cast<RHS>(0)); \
+        POSTCHECK("qfloat16 vs " #RHS " comparison failed") \
+    } while (false) \
+    /* END */
+
+    if (qIsFinite(right)) {
+        CHECK_INT(int);
+        CHECK_INT(qint8);
+        CHECK_INT(signed char);
+        CHECK_INT(qint16);
+        CHECK_INT(qint32);
+        CHECK_INT(qint64);
+#ifdef QT_SUPPORTS_INT128
+        CHECK_INT(qint128);
+#endif
+        if (right >= 0) {
+            CHECK_INT(unsigned int);
+            CHECK_INT(quint8);
+            CHECK_INT(unsigned char);
+            CHECK_INT(quint16);
+            CHECK_INT(quint32);
+            CHECK_INT(quint64);
+    #ifdef QT_SUPPORTS_INT128
+            CHECK_INT(quint128);
+    #endif
+        }
+    }
+
+#undef CHECK_INT
+#undef POSTCHECK
+}
 
 void tst_qfloat16::fuzzyCompare_data()
 {
@@ -536,12 +723,16 @@ void tst_qfloat16::properties()
 #if QT_CONFIG(signaling_nan)
     QVERIFY(Bounds::has_signaling_NaN);
 #endif
+    QT_WARNING_PUSH
+    QT_WARNING_DISABLE_DEPRECATED // has_denorm is deprecated in C++23
 #if !defined(Q_CC_GHS)
     QCOMPARE(Bounds::has_denorm, std::denorm_present);
 #else
     // For GHS compiler the "denorm_indeterminite" is the expected return value.
     QCOMPARE(Bounds::has_denorm, std::denorm_indeterminate);
 #endif // Q_CC_GHS
+    QT_WARNING_POP
+
     QCOMPARE(Bounds::round_style, std::round_to_nearest);
     QCOMPARE(Bounds::radix, 2);
     // Untested: has_denorm_loss

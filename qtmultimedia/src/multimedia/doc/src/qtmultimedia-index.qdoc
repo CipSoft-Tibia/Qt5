@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtmultimedia-index.html
@@ -47,6 +47,9 @@
         find_package(Qt6 REQUIRED COMPONENTS Multimedia)
         target_link_libraries(my_project PRIVATE Qt6::Multimedia)
    \endcode
+
+   See \l {Building Qt Multimedia from sources} for guidance on building
+   Qt Multimedia from sources.
 
     \section1 Overviews and important topics
 
@@ -187,8 +190,21 @@
     In this release the \l {http://ffmpeg.org}{FFmpeg framework} is set as the
     default backend on Windows, macOS, Android, and Linux except Yocto distribution.
 
-    The version shipped with Qt binary packages is \b{FFmpeg 6.1} and is tested
+    The version shipped with Qt binary packages is \b{FFmpeg 6.1.1} and is tested
     by the maintainers.
+
+    \note On the Windows and macOS platforms, Qt's FFmpeg media backend
+    uses dynamic linking to the FFmpeg libraries. Windows and macOS
+    applications must therefore bundle FFmpeg binaries in their
+    installer, and make them visible to the application at runtime. On
+    Windows, we recommend to store the FFmpeg dlls in the same directory
+    as the application's executable file, because this guarantees that
+    the correct build of FFmpeg is being used if multiple versions are
+    available on the system. All necessary FFmpeg libraries are shipped
+    with the Qt Online Installer and are automatically deployed if the
+    windeployqt or macdeployqt tools are used to create the deployment.
+    Applications can also deploy their own build of FFmpeg, as long as
+    the FFmpeg major version matches the version used by Qt.
 
     \note See \l{Licenses and Attributions} regarding what components are removed
     in the package shipped by Qt.
@@ -243,7 +259,7 @@
 
     \section2 Target platform notes
     The following pages list issues for specific target platforms that are not
-    related to the multimedia backed.
+    related to the multimedia backend.
 
     \list
       \li \l{Qt Multimedia on macOS and iOS}{macOS and iOS}

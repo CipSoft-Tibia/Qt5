@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium OS Authors. All rights reserved.
+// Copyright 2019 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,18 +16,14 @@
 
 namespace ipp {
 
-// Some constants from the IPP specification [rfc8010].
+// Some constants from the IPP specification [rfc8010] (section 3.2).
+// begin-attribute-group-tag is from the range 0x00-0x0f without 0x03.
+// value-tag is from the range 0x10-0xff.
 constexpr uint8_t end_of_attributes_tag = 0x03;
 constexpr uint8_t max_begin_attribute_group_tag = 0x0f;
-constexpr uint8_t min_out_of_band_value_tag = 0x10;
-constexpr uint8_t max_out_of_band_value_tag = 0x1f;
-constexpr uint8_t min_attribute_syntax_tag = 0x20;
-constexpr uint8_t max_attribute_syntax_tag = 0x5f;
 constexpr uint8_t begCollection_value_tag = 0x34;
 constexpr uint8_t endCollection_value_tag = 0x37;
 constexpr uint8_t memberAttrName_value_tag = 0x4a;
-constexpr uint8_t textWithoutLanguage_value_tag = 0x41;
-constexpr uint8_t nameWithoutLanguage_value_tag = 0x42;
 
 // Helper to match signed integer type basing on number of bytes.
 template <size_t BytesCount>
@@ -127,27 +123,41 @@ bool ParseUnsignedInteger(const uint8_t** ptr, OutInt* out_val) {
   return true;
 }
 
-// Helper for writing unsigned integer to given address.
-template <typename UnsignedInt>
-inline void WriteAsBytes(UnsignedInt uval, uint8_t* ptr) {
-  for (auto ptr2 = ptr + sizeof(UnsignedInt) - 1; ptr2 >= ptr; --ptr2) {
+// Write unsigned integer to next BytesCount bytes with the most
+// significant byte coming first and shifts |ptr| accordingly.
+// BytesCount must equal sizeof(Integer).
+// Integer must be one of the following: uint8_t, uint16_t, uint32_t,
+// uint64_t.
+template <size_t BytesCount, typename Integer>
+inline void WriteUnsigned(uint8_t** ptr, Integer uval) {
+  // given type must by unsigned integer
+  static_assert(std::is_integral<Integer>::value, "integral expected");
+  static_assert(std::is_unsigned<Integer>::value, "unsigned integral expected");
+  static_assert(sizeof(Integer) == BytesCount, "invalid size of integer");
+  // save as a sequence of bytes starting from the last one
+  for (auto ptr2 = *ptr + sizeof(Integer) - 1; ptr2 >= *ptr; --ptr2) {
     *ptr2 = uval & 0xffu;
     uval >>= 8;
   }
+  // move the pointer
+  *ptr += sizeof(Integer);
 }
 template <>
-inline void WriteAsBytes<uint8_t>(uint8_t uval, uint8_t* ptr) {
-  *ptr = uval;
+inline void WriteUnsigned<1, uint8_t>(uint8_t** ptr, uint8_t uval) {
+  **ptr = uval;
+  ++*ptr;
 }
 
-// Write signed integer to next sizeof(Integer) bytes with two's-complement
+// Write signed integer to next BytesCount bytes with two's-complement
 // binary encoding and shifts |ptr| accordingly.
+// BytesCount must equal sizeof(Integer).
 // Integer must be one of the following: int8_t, int16_t, int32_t, int64_t.
-template <typename Integer>
+template <size_t BytesCount, typename Integer>
 void WriteInteger(uint8_t** ptr, Integer val) {
   // given type must by signed integer
   static_assert(std::is_integral<Integer>::value, "integral expected");
   static_assert(std::is_signed<Integer>::value, "signed integral expected");
+  static_assert(sizeof(Integer) == BytesCount, "invalid size of integer");
   // finds corresponding unsigned type
   typedef typename std::make_unsigned<Integer>::type UnsignedInteger;
   // save as two's-complement binary encoding
@@ -165,30 +175,7 @@ void WriteInteger(uint8_t** ptr, Integer val) {
     ++uval;
   }
   // write value starting from the last byte
-  WriteAsBytes(uval, *ptr);
-  *ptr += sizeof(Integer);
-}
-
-// Write integer to next BytesCount bytes and shifts the pointer ptr
-// accordingly. Two's-complement binary encoding is used.
-// returns false <=> given value is out of range (ptr is not shifted)
-// returns true <=> given value was written and ptr was shifted by BytesCount
-template <size_t BytesCount, typename InputInt>
-bool WriteInteger(uint8_t** ptr, InputInt const& val) {
-  // given type must be integer
-  static_assert(std::is_integral<InputInt>::value, "integral expected");
-  // verify
-  typedef typename IntegerBySize<BytesCount>::type Integer;
-  if (val < 0) {
-    if (static_cast<int64_t>(val) < std::numeric_limits<Integer>::min())
-      return false;
-  } else {
-    if (static_cast<int64_t>(val) > std::numeric_limits<Integer>::max())
-      return false;
-  }
-  // write
-  WriteInteger<Integer>(ptr, val);
-  return true;
+  WriteUnsigned<BytesCount>(ptr, uval);
 }
 
 }  // namespace ipp

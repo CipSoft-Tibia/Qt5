@@ -27,18 +27,18 @@ bar = { version = "3", features = [ "spaceships" ] }
 
 To generate `BUILD.gn` files for all third-party crates, and find missing
 transitive dependencies to download, use the `gnrt` tool:
-1. Build `gnrt` to run on host machine, e.g. `ninja -C out/Default gnrt`.
-1. Change directory to the root src/ dir of Chromium.
-2. Run `gnrt` with the `gen` action: e.g. `out/Default/gnrt gen`.
 
-This will generate a `BUILD.gn` file for each third-party crate and apply the
-patch at `//third_party/rust/gnrt_build_patch`. The `BUILD.gn` file changes
-will be visible in `git status` and can be added with `git add`.
+1. Change directory to the root `src/` dir of Chromium.
+1. Run `vpython3 ./tools/crates/run_gnrt.py gen` to build and run gnrt with the `gen` action.
 
-The `gnrt_build_patch` file allows fixing generated build rules as well as
-adding missing `BUILD.gn` files which result from bugs. The patch should *only*
-contain `BUILD.gn` file changes. [Other patches](#patching-third-party-crates)
-should be placed in a crate's `patches` subdirectory.
+Or, to directly build gnrt:
+
+1. Change directory to the root `src/` dir of Chromium.
+1. Build `gnrt` to run on host machine: `cargo build --release --manifest-path tools/crates/gnrt/Cargo.toml --target-dir out/gnrt`.
+1. Run `gnrt` with the `gen` action: `out/gnrt/release/gnrt gen`.
+
+This will generate a `BUILD.gn` file for each third-party crate. The `BUILD.gn`
+file changes will be visible in `git status` and can be added with `git add`.
 
 # Downloading missing third-party crates
 
@@ -72,16 +72,17 @@ patched with a couple of changes:
 
 To update a crate "foo" to the latest version you must just re-import it at this
 time. To update from version "1.2.0" to "1.3.2":
-1. Build `gnrt` before making any changes to `//third_party/rust`.
+1. Build `gnrt` before making any changes to `//third_party/rust`: `cargo build
+   --release --manifest-path tools/crates/gnrt/Cargo.toml --target-dir
+   out/gnrt`.
 1. Remove the `//third_party/rust/foo/v1/crate` directory, which contains the
-upstream code.
-1. Re-download the crate at the new version with `out/<conf>/gnrt download foo
-   1.3.2`.
+   upstream code.
+1. Re-download the crate at the new version with `out/gnrt/release/gnrt download
+   foo 1.3.2`.
 1. If there are any, re-apply local patches with
-`for i in $(find third_party/rust/foo/v1/patches/*); do patch -p1 < $i; done`
-1. Run `out/<conf>/gnrt gen` to re-generate all third-party `BUILD.gn` files.
-1. Re-build `gnrt` and `gnrt_unittests`. Run `gnrt` and ensure the `BUILD.gn`
-outputs are the same as before. Run `gnrt_unittests`.
+   `for i in $(find third_party/rust/foo/v1/patches/*); do patch -p1 < $i; done`
+1. Run `out/gnrt/release/gnrt gen` to re-generate all third-party `BUILD.gn` files.
+1. Build `all_rust` to verify things are working.
 
 # Directory structure for third-party crates
 
@@ -101,3 +102,26 @@ The directory structure for a crate "foo" version 3.4.2 is:
                     0001-Edit-the-Cargo-toml.diff
                     0002-Other-changes.diff
 ```
+
+# Generating `BUILD.gn` files for stdlib crates
+
+### Simple way:
+
+Run `tools/rust/gnrt_stdlib.py`.
+
+### Longer way
+
+This requires Rust to be installed and available in your system, typically
+through [https://rustup.rs](https://rustup.rs).
+
+To generate `BUILD.gn` files for the crates with the `gnrt` tool:
+1. Change directory to the root `src/` dir of Chromium.
+1. Build `gnrt` to run on host machine: `cargo build --release --manifest-path
+   tools/crates/gnrt/Cargo.toml --target-dir out/gnrt`.
+1. Ensure you have a checkout of the Rust source tree in `third_party/rust-src`
+   which can be done with `tools/rust/build_rust.py --sync-for-gnrt`.
+1. Run `gnrt` with the `gen` action:
+   `out/gnrt/release/gnrt gen --for-std third_party/rust-src`.
+
+This will generate the `//build/rust/std/rules/BUILD.gn` file, with the changes
+visible in `git status` and can be added with `git add`.

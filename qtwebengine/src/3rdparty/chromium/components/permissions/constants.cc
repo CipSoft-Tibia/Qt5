@@ -10,6 +10,9 @@ namespace permissions {
 const char kChooserBluetoothOverviewURL[] =
     "https://support.google.com/chrome?p=bluetooth";
 
+const char kEmbeddedContentHelpCenterURL[] =
+    "https://support.google.com/chrome/?p=embedded_content";
+
 #if !BUILDFLAG(IS_ANDROID)
 // The key in `Product Specific String Data` under which the disposition of the
 // permission prompt is recorded in the prompt HaTS survey.
@@ -33,8 +36,17 @@ const char kPermissionsPromptSurveyRequestTypeKey[] = "RequestType";
 extern const char kPermissionsPromptSurveyDisplayTimeKey[] =
     "SurveyDisplayTime";
 
-// The key in `Product Specific Bits Data` under which whether the prompt was
-// triggered by a user gestured is recorded in the prompt HaTS survey.
+// The key in `Product Specific String Data` under which the 'one time prompts
+// decided' count bucket of the user taking the prompt HaTS survey is recorded.
+extern const char kPermissionPromptSurveyOneTimePromptsDecidedBucketKey[] =
+    "OneTimePromptsDecidedBucket";
+
+// The key in `Product Specific String Data` under which the URL on which the
+// prompt HaTS survey was triggered is recorded.
+extern const char kPermissionPromptSurveyUrlKey[] = "PromptSurveyUrl";
+
+// The key in `Product Specific Bits Data` under which whether the prompt
+// was triggered by a user gestured is recorded in the prompt HaTS survey.
 const char kPermissionsPromptSurveyHadGestureKey[] = "HadGesture";
 
 // The key in `Product Specific String Data` under which the release channel on
@@ -51,6 +63,4 @@ const char kPermissionsPromptSurveyReleaseChannelKey[] = "ReleaseChannel";
 // from Android builds.
 
 const char kRevokedKey[] = "revoked";
-
-const base::TimeDelta kRevocationCleanUpThreshold = base::Days(30);
 }  // namespace permissions

@@ -11,6 +11,8 @@
 
 #include <QtCore/QDebug>
 
+using namespace std::chrono;
+
 QT_BEGIN_NAMESPACE
 
 namespace QtWaylandClient {
@@ -28,6 +30,11 @@ static QString uriList()
 static QString mozUrl()
 {
     return QStringLiteral("text/x-moz-url");
+}
+
+static QString portalFileTransfer()
+{
+    return QStringLiteral("application/vnd.portal.filetransfer");
 }
 
 static QByteArray convertData(const QString &originalMime, const QString &newMime, const QByteArray &data)
@@ -212,7 +219,9 @@ QVariant QWaylandMimeData::retrieveData_sys(const QString &mimeType, QMetaType t
 
     content = convertData(mimeType, mime, content);
 
-    m_data.insert(mimeType, content);
+    if (mimeType != portalFileTransfer())
+        m_data.insert(mimeType, content);
+
     return content;
 }
 
@@ -221,13 +230,9 @@ int QWaylandMimeData::readData(int fd, QByteArray &data) const
     struct pollfd readset;
     readset.fd = fd;
     readset.events = POLLIN;
-    struct timespec timeout;
-    timeout.tv_sec = 1;
-    timeout.tv_nsec = 0;
-
 
     Q_FOREVER {
-        int ready = qt_safe_poll(&readset, 1, &timeout);
+        int ready = qt_safe_poll(&readset, 1, QDeadlineTimer(1s));
         if (ready < 0) {
             qWarning() << "QWaylandDataOffer: qt_safe_poll() failed";
             return -1;

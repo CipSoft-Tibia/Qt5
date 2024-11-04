@@ -14,6 +14,7 @@
 #include <QtCore/qrect.h>
 #include <QtCore/qsize.h>
 
+#include <QtQml/private/qqmlsignalnames_p.h>
 #include <QtQml/private/qv4codegen_p.h>
 #include <QtQml/private/qqmlstringconverters_p.h>
 #include <QtQml/private/qqmlirbuilder_p.h>
@@ -32,6 +33,48 @@ QT_BEGIN_NAMESPACE
 using namespace Qt::StringLiterals;
 
 using namespace QQmlJS::AST;
+
+/*!
+    \internal
+    Returns if assigning \a assignedType to \a property would require an
+    implicit component wrapping.
+ */
+static bool causesImplicitComponentWrapping(const QQmlJSMetaProperty &property,
+                                                  const QQmlJSScope::ConstPtr &assignedType)
+{
+    // See QQmlComponentAndAliasResolver::findAndRegisterImplicitComponents()
+    // for the logic in qqmltypecompiler
+
+    // Note: unlike findAndRegisterImplicitComponents() we do not check whether
+    // the property type is *derived* from QQmlComponent at some point because
+    // this is actually meaningless (and in the case of QQmlComponent::create()
+    // gets rejected in QQmlPropertyValidator): if the type is not a
+    // QQmlComponent, we have a type mismatch because of assigning a Component
+    // object to a non-Component property
+    const bool propertyVerdict = property.type()->internalName() == u"QQmlComponent";
+
+    const bool assignedTypeVerdict = [&assignedType]() {
+        // Note: nonCompositeBaseType covers the case when assignedType itself
+        // is non-composite
+        auto cppBase = QQmlJSScope::nonCompositeBaseType(assignedType);
+        Q_ASSERT(cppBase); // any QML type has (or must have) a C++ base type
+
+        // See isUsableComponent() in qqmltypecompiler.cpp: along with checking
+        // whether a type has a QQmlComponent static meta object (which we
+        // substitute here with checking the first non-composite base for being
+        // a QQmlComponent), it also excludes QQmlAbstractDelegateComponent
+        // subclasses from implicit wrapping
+        if (cppBase->internalName() == u"QQmlComponent")
+            return false;
+        for (; cppBase; cppBase = cppBase->baseType()) {
+            if (cppBase->internalName() == u"QQmlAbstractDelegateComponent")
+                return false;
+        }
+        return true;
+    }();
+
+    return propertyVerdict && assignedTypeVerdict;
+}
 
 /*!
   \internal
@@ -367,7 +410,7 @@ void QQmlJSImportVisitor::importBaseModules()
     // Pulling in the modules and neighboring qml files of the qmltypes we're trying to lint is not
     // something we need to do.
     if (!m_logger->fileName().endsWith(u".qmltypes"_s)) {
-        QQmlJSScope::ContextualTypes fromDirectory =
+        QQmlJS::ContextualTypes fromDirectory =
                 m_importer->importDirectory(m_implicitImportDirectory);
         m_rootScopeImports.addTypes(std::move(fromDirectory));
 
@@ -567,7 +610,7 @@ void QQmlJSImportVisitor::processDefaultProperties()
                                          "missing an import.")
                                   .arg(defaultPropertyName)
                                   .arg(defaultProp.typeName()),
-                          qmlMissingProperty, it.value().constFirst()->sourceLocation());
+                          qmlUnresolvedType, it.value().constFirst()->sourceLocation());
         };
 
         if (propType.isNull()) {
@@ -595,7 +638,7 @@ void QQmlJSImportVisitor::processDefaultProperties()
             // Check whether the property can be assigned the scope
             if (propType->canAssign(scope)) {
                 scope->setIsWrappedInImplicitComponent(
-                        QQmlJSScope::causesImplicitComponentWrapping(defaultProp, scope));
+                        causesImplicitComponentWrapping(defaultProp, scope));
                 continue;
             }
 
@@ -626,32 +669,28 @@ void QQmlJSImportVisitor::processPropertyTypes()
 
 void QQmlJSImportVisitor::processMethodTypes()
 {
-    for (const auto &type : m_pendingMethodTypes) {
+    for (const auto &method : m_pendingMethodTypeAnnotations) {
+        for (auto [it, end] = method.scope->mutableOwnMethodsRange(method.methodName); it != end; ++it) {
+            const auto [parameterBegin, parameterEnd] = it->mutableParametersRange();
+            for (auto parameter = parameterBegin; parameter != parameterEnd; ++parameter) {
+                if (const auto parameterType =
+                    QQmlJSScope::findType(parameter->typeName(), m_rootScopeImports) .scope) {
+                    parameter->setType({ parameterType });
+                } else {
+                    m_logger->log(
+                            u"\"%1\" was not found for the type of parameter \"%2\" in method \"%3\"."_s
+                                    .arg(parameter->typeName(), parameter->name(), it->methodName()),
+                            qmlUnresolvedType, method.locations[parameter - parameterBegin]);
+                }
+            }
 
-        for (auto [it, end] = type.scope->mutableOwnMethodsRange(type.methodName); it != end;
-             ++it) {
             if (const auto returnType =
                         QQmlJSScope::findType(it->returnTypeName(), m_rootScopeImports).scope) {
                 it->setReturnType({ returnType });
             } else {
                 m_logger->log(u"\"%1\" was not found for the return type of method \"%2\"."_s.arg(
                                       it->returnTypeName(), it->methodName()),
-                              qmlUnresolvedType, type.location);
-            }
-
-            for (auto [parameter, parameterEnd] = it->mutableParametersRange();
-                 parameter != parameterEnd; ++parameter) {
-                if (const auto parameterType =
-                            QQmlJSScope::findType(parameter->typeName(), m_rootScopeImports)
-                                    .scope) {
-                    parameter->setType({ parameterType });
-                } else {
-                    m_logger->log(
-                            u"\"%1\" was not found for the type of parameter \"%2\" in method \"%3\"."_s
-                                    .arg(parameter->typeName(), parameter->name(),
-                                         it->methodName()),
-                            qmlUnresolvedType, type.location);
-                }
+                              qmlUnresolvedType, method.locations.last());
             }
         }
     }
@@ -725,18 +764,15 @@ void QQmlJSImportVisitor::processPropertyBindingObjects()
         }
 
         if (!objectBinding.onToken && !property.type()->canAssign(childScope)) {
-            // the type is incompatible
-            m_logger->log(QStringLiteral("Property \"%1\" of type \"%2\" is assigned an "
-                                         "incompatible type \"%3\"")
-                                  .arg(propertyName)
-                                  .arg(property.typeName())
-                                  .arg(getScopeName(childScope, QQmlSA::ScopeType::QMLScope)),
-                          qmlIncompatibleType, objectBinding.location);
+            m_logger->log(QStringLiteral("Cannot assign object of type %1 to %2")
+                                  .arg(getScopeName(childScope, QQmlSA::ScopeType::QMLScope))
+                                  .arg(property.typeName()),
+                          qmlIncompatibleType, childScope->sourceLocation());
             continue;
         }
 
         objectBinding.childScope->setIsWrappedInImplicitComponent(
-                QQmlJSScope::causesImplicitComponentWrapping(property, childScope));
+                causesImplicitComponentWrapping(property, childScope));
 
         // unique because it's per-scope and per-property
         const auto uniqueBindingId = qMakePair(objectBinding.scope, objectBinding.name);
@@ -916,8 +952,7 @@ void QQmlJSImportVisitor::processPropertyBindings()
                     }
                 }
 
-                m_logger->log(QStringLiteral("Binding assigned to \"%1\", but no property \"%1\" "
-                                             "exists in the current element.")
+                m_logger->log(QStringLiteral("Property \"%1\" does not exist.")
                                       .arg(name),
                               qmlMissingProperty, location, true, true, fixSuggestion);
                 continue;
@@ -957,7 +992,7 @@ void QQmlJSImportVisitor::checkSignal(
         const QQmlJSScope::ConstPtr &signalScope, const QQmlJS::SourceLocation &location,
         const QString &handlerName, const QStringList &handlerParameters)
 {
-    const auto signal = QQmlJSUtils::signalName(handlerName);
+    const auto signal = QQmlSignalNames::handlerNameToSignalName(handlerName);
 
     std::optional<QQmlJSMetaMethod> signalMethod;
     const auto setSignalMethod = [&](const QQmlJSScope::ConstPtr &scope, const QString &name) {
@@ -969,8 +1004,7 @@ void QQmlJSImportVisitor::checkSignal(
     if (signal.has_value()) {
         if (signalScope->hasMethod(*signal)) {
             setSignalMethod(signalScope, *signal);
-        } else if (auto p = QQmlJSUtils::changeHandlerProperty(signalScope, *signal);
-                   p.has_value()) {
+        } else if (auto p = QQmlJSUtils::propertyFromChangedHandler(signalScope, handlerName)) {
             // we have a change handler of the form "onXChanged" where 'X'
             // is a property name
 
@@ -985,30 +1019,21 @@ void QQmlJSImportVisitor::checkSignal(
     }
 
     if (!signalMethod.has_value()) { // haven't found anything
-        std::optional<QQmlJSFixSuggestion> fix;
-
         // There is a small chance of suggesting this fix for things that are not actually
         // QtQml/Connections elements, but rather some other thing that is also called
         // "Connections". However, I guess we can live with this.
         if (signalScope->baseTypeName() == QStringLiteral("Connections")) {
-
-            // Cut to the end of the line to avoid hairy issues with pre-existing function()
-            // and the colon.
-            const qsizetype newLength = m_logger->code().indexOf(u'\n', location.end())
-                    - location.offset;
-
-            fix = QQmlJSFixSuggestion{
-                "Implicitly defining %1 as signal handler in Connections is deprecated. "
-                "Create a function instead."_L1.arg(handlerName),
-                QQmlJS::SourceLocation(location.offset, newLength, location.startLine,
-                                       location.startColumn),
-                "function %1(%2) { ... }"_L1.arg(handlerName, handlerParameters.join(u", "))
-            };
+            m_logger->log(
+                    u"Implicitly defining \"%1\" as signal handler in Connections is deprecated. "
+                    u"Create a function instead: \"function %2(%3) { ... }\"."_s.arg(
+                            handlerName, handlerName, handlerParameters.join(u", ")),
+                    qmlUnqualified, location, true, true);
+            return;
         }
 
-        m_logger->log(QStringLiteral("no matching signal found for handler \"%1\"")
-                              .arg(handlerName),
-                      qmlUnqualified, location, true, true, fix);
+        m_logger->log(
+                QStringLiteral("no matching signal found for handler \"%1\"").arg(handlerName),
+                qmlUnqualified, location, true, true);
         return;
     }
 
@@ -1230,6 +1255,7 @@ void QQmlJSImportVisitor::checkGroupedAndAttachedScopes(QQmlJSScope::ConstPtr sc
                               qmlUnqualified, childScope->sourceLocation());
             }
             children.append(childScope->childScopes());
+            break;
         default:
             break;
         }
@@ -1679,7 +1705,6 @@ void QQmlJSImportVisitor::visitFunctionExpressionHelper(QQmlJS::AST::FunctionExp
 {
     using namespace QQmlJS::AST;
     auto name = fexpr->name.toString();
-    bool pending = false;
     if (!name.isEmpty()) {
         QQmlJSMetaMethod method(name);
         method.setMethodType(QQmlJSMetaMethodType::Method);
@@ -1694,6 +1719,8 @@ void QQmlJSImportVisitor::visitFunctionExpressionHelper(QQmlJS::AST::FunctionExp
 
         bool formalsFullyTyped = parseTypes;
         bool anyFormalTyped = false;
+        PendingMethodTypeAnnotations pending{ m_currentScope, name, {} };
+
         if (const auto *formals = parseTypes ? fexpr->formals : nullptr) {
             const auto parameters = formals->formals();
             for (const auto &parameter : parameters) {
@@ -1703,18 +1730,13 @@ void QQmlJSImportVisitor::visitFunctionExpressionHelper(QQmlJS::AST::FunctionExp
                 if (type.isEmpty()) {
                     formalsFullyTyped = false;
                     method.addParameter(QQmlJSMetaParameter(parameter.id, QStringLiteral("var")));
+                    pending.locations.emplace_back();
                 }  else {
                     anyFormalTyped = true;
                     method.addParameter(QQmlJSMetaParameter(parameter.id, type));
-                    if (!pending) {
-                        m_pendingMethodTypes << PendingMethodType{
-                            m_currentScope,
-                            name,
+                    pending.locations.append(
                             combine(parameter.typeAnnotation->firstSourceLocation(),
-                                    parameter.typeAnnotation->lastSourceLocation())
-                        };
-                        pending = true;
-                    }
+                                    parameter.typeAnnotation->lastSourceLocation()));
                 }
             }
         }
@@ -1728,18 +1750,17 @@ void QQmlJSImportVisitor::visitFunctionExpressionHelper(QQmlJS::AST::FunctionExp
         // In order to make a function without arguments return void, you have to specify that.
         if (parseTypes && fexpr->typeAnnotation) {
             method.setReturnTypeName(fexpr->typeAnnotation->type->toString());
-            if (!pending) {
-                m_pendingMethodTypes << PendingMethodType{
-                    m_currentScope, name,
-                    combine(fexpr->typeAnnotation->firstSourceLocation(),
-                            fexpr->typeAnnotation->lastSourceLocation())
-                };
-                pending = true;
-            }
-        } else if (anyFormalTyped)
+            pending.locations.append(combine(fexpr->typeAnnotation->firstSourceLocation(),
+                                             fexpr->typeAnnotation->lastSourceLocation()));
+        } else if (anyFormalTyped) {
             method.setReturnTypeName(QStringLiteral("void"));
-        else
+        } else {
             method.setReturnTypeName(QStringLiteral("var"));
+        }
+
+        const auto &locs = pending.locations;
+        if (std::any_of(locs.cbegin(), locs.cend(), [](const auto &loc) { return loc.isValid(); }))
+            m_pendingMethodTypeAnnotations << pending;
 
         method.setJsFunctionIndex(addFunctionOrExpression(m_currentScope, method.methodName()));
         m_currentScope->addOwnMethod(method);
@@ -1964,7 +1985,6 @@ void QQmlJSImportVisitor::handleIdDeclaration(QQmlJS::AST::UiScriptBinding *scri
         m_logger->log(u"Failed to parse id"_s, qmlSyntax,
                       statement->expression->firstSourceLocation());
         return QString();
-
     }();
     if (m_scopesById.existsAnywhereInDocument(name)) {
         // ### TODO: find an alternative to breakInhertianceCycles here
@@ -2061,11 +2081,11 @@ bool QQmlJSImportVisitor::visit(UiScriptBinding *scriptBinding)
         prefix.clear();
     }
 
-    auto name = group->name.toString();
+    const auto name = group->name.toString();
 
     // This is a preliminary check.
     // Even if the name starts with "on", it might later turn out not to be a signal.
-    const auto signal = QQmlJSUtils::signalName(name);
+    const auto signal = QQmlSignalNames::handlerNameToSignalName(name);
 
     if (!signal.has_value() || m_currentScope->hasProperty(name)) {
         m_propertyBindings[m_currentScope].append(
@@ -2115,7 +2135,7 @@ bool QQmlJSImportVisitor::visit(UiScriptBinding *scriptBinding)
             if (!methods.isEmpty()) {
                 kind = QQmlSA::ScriptBindingKind::SignalHandler;
                 checkSignal(scope, groupLocation, name, signalParameters);
-            } else if (QQmlJSUtils::changeHandlerProperty(scope, signalName).has_value()) {
+            } else if (QQmlJSUtils::propertyFromChangedHandler(scope, name).has_value()) {
                 kind = QQmlSA::ScriptBindingKind::ChangeHandler;
                 checkSignal(scope, groupLocation, name, signalParameters);
             } else if (scope->hasProperty(name)) {
@@ -2215,6 +2235,7 @@ bool QQmlJSImportVisitor::visit(QQmlJS::AST::UiEnumDeclaration *uied)
                       uied->firstSourceLocation());
     }
     QQmlJSMetaEnum qmlEnum(uied->name.toString());
+    qmlEnum.setIsQml(true);
     for (const auto *member = uied->members; member; member = member->next) {
         qmlEnum.addKey(member->member.toString());
         qmlEnum.addValue(int(member->value));
@@ -2241,6 +2262,12 @@ void QQmlJSImportVisitor::importFromHost(const QString &path, const QString &pre
                                          const QQmlJS::SourceLocation &location)
 {
     QFileInfo fileInfo(path);
+    if (!fileInfo.exists()) {
+        m_logger->log("File or directory you are trying to import does not exist: %1."_L1.arg(path),
+                      qmlImport, location);
+        return;
+    }
+
     if (fileInfo.isFile()) {
         const auto scope = m_importer->importFile(path);
         const QString actualPrefix = prefix.isEmpty() ? scope->internalName() : prefix;
@@ -2251,16 +2278,23 @@ void QQmlJSImportVisitor::importFromHost(const QString &path, const QString &pre
         m_rootScopeImports.addTypes(scopes);
         for (auto it = scopes.types().keyBegin(), end = scopes.types().keyEnd(); it != end; it++)
             addImportWithLocation(*it, location);
+    } else {
+        m_logger->log(
+                "%1 is neither a file nor a directory. Are sure the import path is correct?"_L1.arg(
+                        path),
+                qmlImport, location);
     }
 }
 
 void QQmlJSImportVisitor::importFromQrc(const QString &path, const QString &prefix,
                                         const QQmlJS::SourceLocation &location)
 {
-    if (const auto &mapper = m_importer->resourceFileMapper()) {
-        if (mapper->isFile(path)) {
+    Q_ASSERT(path.startsWith(u':'));
+    if (const QQmlJSResourceFileMapper *mapper = m_importer->resourceFileMapper()) {
+        const auto pathNoColon = path.mid(1);
+        if (mapper->isFile(pathNoColon)) {
             const auto entry = m_importer->resourceFileMapper()->entry(
-                    QQmlJSResourceFileMapper::resourceFileFilter(path));
+                    QQmlJSResourceFileMapper::resourceFileFilter(pathNoColon));
             const auto scope = m_importer->importFile(entry.filePath);
             const QString actualPrefix =
                     prefix.isEmpty() ? QFileInfo(entry.resourcePath).baseName() : prefix;
@@ -2380,9 +2414,8 @@ bool QQmlJSImportVisitor::visit(QQmlJS::AST::UiPragma *pragma)
             } else if (value == u"Unbound") {
                 m_scopesById.setComponentsAreBound(false);
             } else {
-                m_logger->log(
-                        u"Unkonwn argument \"%s\" to pragma ComponentBehavior"_s.arg(value),
-                        qmlSyntax, pragma->firstSourceLocation());
+                m_logger->log(u"Unknown argument \"%1\" to pragma ComponentBehavior"_s.arg(value),
+                              qmlSyntax, pragma->firstSourceLocation());
             }
         });
     } else if (pragma->name == u"FunctionSignatureBehavior") {
@@ -2393,7 +2426,7 @@ bool QQmlJSImportVisitor::visit(QQmlJS::AST::UiPragma *pragma)
                 m_scopesById.setSignaturesAreEnforced(false);
             } else {
                 m_logger->log(
-                        u"Unkonwn argument \"%s\" to pragma FunctionSignatureBehavior"_s.arg(value),
+                        u"Unknown argument \"%1\" to pragma FunctionSignatureBehavior"_s.arg(value),
                         qmlSyntax, pragma->firstSourceLocation());
             }
         });
@@ -2408,9 +2441,8 @@ bool QQmlJSImportVisitor::visit(QQmlJS::AST::UiPragma *pragma)
             } else if (value == u"Inaddressable") {
                 m_scopesById.setValueTypesAreAddressable(false);
             } else {
-                m_logger->log(
-                        u"Unkonwn argument \"%s\" to pragma ValueTypeBehavior"_s.arg(value),
-                        qmlSyntax, pragma->firstSourceLocation());
+                m_logger->log(u"Unknown argument \"%1\" to pragma ValueTypeBehavior"_s.arg(value),
+                              qmlSyntax, pragma->firstSourceLocation());
             }
         });
     }
@@ -2553,7 +2585,7 @@ bool QQmlJSImportVisitor::visit(QQmlJS::AST::FormalParameterList *fpl)
                 typeName = type->toString();
         m_currentScope->insertJSIdentifier(boundName.id,
                                            { QQmlJSScope::JavaScriptIdentifier::Parameter,
-                                             fpl->firstSourceLocation(), typeName, false });
+                                             boundName.location, typeName, false });
     }
     return true;
 }
@@ -2794,7 +2826,7 @@ bool QQmlJSImportVisitor::visit(QQmlJS::AST::PatternElement *element)
                     { (element->scope == QQmlJS::AST::VariableScope::Var)
                               ? QQmlJSScope::JavaScriptIdentifier::FunctionScoped
                               : QQmlJSScope::JavaScriptIdentifier::LexicalScoped,
-                      element->firstSourceLocation(), typeName,
+                      name.location, typeName,
                       element->scope == QQmlJS::AST::VariableScope::Const });
         }
     }

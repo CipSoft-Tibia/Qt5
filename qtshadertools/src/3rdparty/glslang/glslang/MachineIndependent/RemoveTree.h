@@ -37,7 +37,7 @@
 namespace QtShaderTools {
 namespace glslang {
 
-void RemoveAllTreeNodes(QtShaderTools::TIntermNode*);
+void RemoveAllTreeNodes(TIntermNode*);
 
 } // end namespace glslang
 } // namespace QtShaderTools

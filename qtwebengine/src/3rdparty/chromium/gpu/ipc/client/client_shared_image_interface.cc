@@ -5,7 +5,8 @@
 #include "gpu/ipc/client/client_shared_image_interface.h"
 
 #include "build/build_config.h"
-#include "components/viz/common/resources/resource_format_utils.h"
+#include "components/viz/common/resources/shared_image_format_utils.h"
+#include "gpu/command_buffer/common/gpu_memory_buffer_support.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/ipc/client/shared_image_interface_proxy.h"
 #include "ui/gfx/gpu_fence.h"
@@ -83,11 +84,13 @@ Mailbox ClientSharedImageInterface::CreateSharedImage(
     GrSurfaceOrigin surface_origin,
     SkAlphaType alpha_type,
     uint32_t usage,
+    base::StringPiece debug_label,
     gpu::SurfaceHandle surface_handle) {
   DCHECK_EQ(surface_handle, kNullSurfaceHandle);
   DCHECK(gpu::IsValidClientUsage(usage));
-  return AddMailbox(proxy_->CreateSharedImage(
-      format, size, color_space, surface_origin, alpha_type, usage));
+  return AddMailbox(proxy_->CreateSharedImage(format, size, color_space,
+                                              surface_origin, alpha_type, usage,
+                                              debug_label));
 }
 
 Mailbox ClientSharedImageInterface::CreateSharedImage(
@@ -97,13 +100,19 @@ Mailbox ClientSharedImageInterface::CreateSharedImage(
     GrSurfaceOrigin surface_origin,
     SkAlphaType alpha_type,
     uint32_t usage,
+    base::StringPiece debug_label,
     base::span<const uint8_t> pixel_data) {
   // Pixel upload path only supports single-planar formats.
   DCHECK(format.is_single_plane());
   DCHECK(gpu::IsValidClientUsage(usage));
+
+  // EstimatedSizeInBytes() returns the minimum size in bytes needed to store
+  // `format` at `size` so if span is smaller there is a problem.
+  CHECK_GE(pixel_data.size(), format.EstimatedSizeInBytes(size));
+
   return AddMailbox(proxy_->CreateSharedImage(format, size, color_space,
                                               surface_origin, alpha_type, usage,
-                                              pixel_data));
+                                              debug_label, pixel_data));
 }
 
 Mailbox ClientSharedImageInterface::CreateSharedImage(
@@ -113,13 +122,34 @@ Mailbox ClientSharedImageInterface::CreateSharedImage(
     GrSurfaceOrigin surface_origin,
     SkAlphaType alpha_type,
     uint32_t usage,
+    base::StringPiece debug_label,
+    gpu::SurfaceHandle surface_handle,
+    gfx::BufferUsage buffer_usage) {
+  DCHECK_EQ(surface_handle, kNullSurfaceHandle);
+  DCHECK(gpu::IsValidClientUsage(usage));
+  return AddMailbox(proxy_->CreateSharedImage(format, size, color_space,
+                                              surface_origin, alpha_type, usage,
+                                              debug_label, buffer_usage));
+}
+
+Mailbox ClientSharedImageInterface::CreateSharedImage(
+    viz::SharedImageFormat format,
+    const gfx::Size& size,
+    const gfx::ColorSpace& color_space,
+    GrSurfaceOrigin surface_origin,
+    SkAlphaType alpha_type,
+    uint32_t usage,
+    base::StringPiece debug_label,
     gfx::GpuMemoryBufferHandle buffer_handle) {
   DCHECK(gpu::IsValidClientUsage(usage));
   DCHECK(viz::HasEquivalentBufferFormat(format));
-  DCHECK(format.is_multi_plane());
-  return AddMailbox(proxy_->CreateSharedImage(format, size, color_space,
-                                              surface_origin, alpha_type, usage,
-                                              std::move(buffer_handle)));
+  CHECK(!format.IsLegacyMultiplanar());
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+  CHECK(!format.PrefersExternalSampler());
+#endif
+  return AddMailbox(proxy_->CreateSharedImage(
+      format, size, color_space, surface_origin, alpha_type, usage, debug_label,
+      std::move(buffer_handle)));
 }
 
 Mailbox ClientSharedImageInterface::CreateSharedImage(
@@ -129,11 +159,14 @@ Mailbox ClientSharedImageInterface::CreateSharedImage(
     const gfx::ColorSpace& color_space,
     GrSurfaceOrigin surface_origin,
     SkAlphaType alpha_type,
-    uint32_t usage) {
+    uint32_t usage,
+    base::StringPiece debug_label) {
   DCHECK(gpu::IsValidClientUsage(usage));
+  auto buffer_format = gpu_memory_buffer->GetFormat();
+  CHECK(gpu::IsPlaneValidForGpuMemoryBufferFormat(plane, buffer_format));
   return AddMailbox(proxy_->CreateSharedImage(
-      gpu_memory_buffer->GetFormat(), plane, gpu_memory_buffer->GetSize(),
-      color_space, surface_origin, alpha_type, usage,
+      buffer_format, plane, gpu_memory_buffer->GetSize(), color_space,
+      surface_origin, alpha_type, usage, debug_label,
       gpu_memory_buffer->CloneHandle()));
 }
 
@@ -146,7 +179,7 @@ void ClientSharedImageInterface::CopyToGpuMemoryBuffer(
 #endif
 
 ClientSharedImageInterface::SwapChainMailboxes
-ClientSharedImageInterface::CreateSwapChain(viz::ResourceFormat format,
+ClientSharedImageInterface::CreateSwapChain(viz::SharedImageFormat format,
                                             const gfx::Size& size,
                                             const gfx::ColorSpace& color_space,
                                             GrSurfaceOrigin surface_origin,
@@ -166,10 +199,37 @@ void ClientSharedImageInterface::DestroySharedImage(const SyncToken& sync_token,
 
   {
     base::AutoLock lock(lock_);
-    DCHECK_NE(mailboxes_.count(mailbox), 0u);
-    mailboxes_.erase(mailbox);
+    auto it = mailboxes_.find(mailbox);
+    CHECK(it != mailboxes_.end());
+    mailboxes_.erase(it);
   }
   proxy_->DestroySharedImage(sync_token, mailbox);
+}
+
+void ClientSharedImageInterface::AddReferenceToSharedImage(
+    const SyncToken& sync_token,
+    const Mailbox& mailbox,
+    uint32_t usage) {
+  DCHECK(!mailbox.IsZero());
+  AddMailbox(mailbox);
+  proxy_->AddReferenceToSharedImage(sync_token, mailbox, usage);
+}
+
+std::unique_ptr<SharedImageInterface::ScopedMapping>
+ClientSharedImageInterface::MapSharedImage(const Mailbox& mailbox) {
+  auto handle_info = proxy_->GetGpuMemoryBufferHandleInfo(mailbox);
+  if (handle_info.handle.is_null()) {
+    LOG(ERROR) << "Buffer is null.";
+    return nullptr;
+  }
+  auto scoped_mapping = SharedImageInterface::ScopedMapping::Create(
+      std::move(handle_info.handle), handle_info.format, handle_info.size,
+      handle_info.buffer_usage);
+  if (!scoped_mapping) {
+    LOG(ERROR) << "Unable to create ScopedMapping.";
+    return nullptr;
+  }
+  return scoped_mapping;
 }
 
 uint32_t ClientSharedImageInterface::UsageForMailbox(const Mailbox& mailbox) {
@@ -187,7 +247,6 @@ Mailbox ClientSharedImageInterface::AddMailbox(const gpu::Mailbox& mailbox) {
     return mailbox;
 
   base::AutoLock lock(lock_);
-  DCHECK_EQ(mailboxes_.count(mailbox), 0u);
   mailboxes_.insert(mailbox);
   return mailbox;
 }

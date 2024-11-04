@@ -30,7 +30,7 @@
 namespace perfetto {
 namespace base {
 
-#if PERFETTO_BUILDFLAG(PERFETTO_COMPILER_MSVC)
+#if PERFETTO_BUILDFLAG(PERFETTO_COMPILER_MSVC) && !PERFETTO_BUILDFLAG(PERFETTO_COMPILER_CLANG)
 inline uint16_t HostToBE16(uint16_t x) {
   return _byteswap_ushort(x);
 }

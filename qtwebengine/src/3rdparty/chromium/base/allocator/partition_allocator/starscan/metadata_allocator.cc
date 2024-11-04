@@ -12,21 +12,12 @@
 namespace partition_alloc::internal {
 
 namespace {
-constexpr PartitionOptions kConfig{
-    PartitionOptions::AlignedAlloc::kDisallowed,
-    PartitionOptions::ThreadCache::kDisabled,
-    PartitionOptions::Quarantine::kDisallowed,
-    PartitionOptions::Cookie::kAllowed,
-    PartitionOptions::BackupRefPtr::kDisabled,
-    PartitionOptions::BackupRefPtrZapping::kDisabled,
-    PartitionOptions::UseConfigurablePool::kNo,
-};
+constexpr PartitionOptions kConfig{};
 }  // namespace
 
 PA_COMPONENT_EXPORT(PARTITION_ALLOC)
-ThreadSafePartitionRoot& PCScanMetadataAllocator() {
-  static internal::base::NoDestructor<ThreadSafePartitionRoot> allocator(
-      kConfig);
+PartitionRoot& PCScanMetadataAllocator() {
+  static internal::base::NoDestructor<PartitionRoot> allocator(kConfig);
   return *allocator;
 }
 

@@ -68,6 +68,25 @@ class Context : public media::RenderableGpuMemoryBufferVideoFramePool::Context {
   }
 
   void CreateSharedImage(gfx::GpuMemoryBuffer* gpu_memory_buffer,
+                         const viz::SharedImageFormat& si_format,
+                         const gfx::ColorSpace& color_space,
+                         GrSurfaceOrigin surface_origin,
+                         SkAlphaType alpha_type,
+                         uint32_t usage,
+                         gpu::Mailbox& mailbox,
+                         gpu::SyncToken& sync_token) override {
+    auto* sii = SharedImageInterface();
+    if (!sii) {
+      return;
+    }
+    mailbox = sii->CreateSharedImage(si_format, gpu_memory_buffer->GetSize(),
+                                     color_space, surface_origin, alpha_type,
+                                     usage, "WebRTCVideoFramePool",
+                                     gpu_memory_buffer->CloneHandle());
+    sync_token = sii->GenVerifiedSyncToken();
+  }
+
+  void CreateSharedImage(gfx::GpuMemoryBuffer* gpu_memory_buffer,
                          gfx::BufferPlane plane,
                          const gfx::ColorSpace& color_space,
                          GrSurfaceOrigin surface_origin,
@@ -80,7 +99,7 @@ class Context : public media::RenderableGpuMemoryBufferVideoFramePool::Context {
       return;
     mailbox = sii->CreateSharedImage(
         gpu_memory_buffer, GpuMemoryBufferManager(), plane, color_space,
-        surface_origin, alpha_type, usage);
+        surface_origin, alpha_type, usage, "WebRTCVideoFramePool");
     sync_token = sii->GenVerifiedSyncToken();
   }
 
@@ -246,8 +265,8 @@ WebRtcVideoFrameAdapter::SharedResources::ConstructVideoFrameFromTexture(
     // SkImage.
     auto format = (source_frame->format() == media::PIXEL_FORMAT_XBGR ||
                    source_frame->format() == media::PIXEL_FORMAT_ABGR)
-                      ? viz::ResourceFormat::RGBA_8888
-                      : viz::ResourceFormat::BGRA_8888;
+                      ? viz::SinglePlaneFormat::kRGBA_8888
+                      : viz::SinglePlaneFormat::kBGRA_8888;
 
     scoped_refptr<media::VideoFrame> dst_frame;
     {
@@ -302,7 +321,8 @@ WebRtcVideoFrameAdapter::SharedResources::ConstructVideoFrameFromTexture(
   }
 
   return media::ReadbackTextureBackedFrameToMemorySync(
-      *source_frame, ri, gr_context, &pool_for_mapped_frames_);
+      *source_frame, ri, gr_context,
+      raster_context_provider->ContextCapabilities(), &pool_for_mapped_frames_);
 }
 
 scoped_refptr<media::VideoFrame>
@@ -442,30 +462,13 @@ WebRtcVideoFrameAdapter::WebRtcVideoFrameAdapter(
 }
 
 WebRtcVideoFrameAdapter::~WebRtcVideoFrameAdapter() {
+  // Mapping is always required when WebRTC uses software encoding.  If hardware
+  // encoding is used, we may not always need to do mapping; however, if scaling
+  // is needed we may do mapping and downscaling here anyway.  Therefore, notify
+  // the capturer that premapped frames are required.
   if (shared_resources_) {
-    // Report mapped sizes to the media::VideoCaptureFeedback of the shared
-    // resources. This information can be carried to the source of the frames,
-    // allowing optimized mapping and scaling of future frames for these sizes.
-    std::vector<gfx::Size> mapped_sizes;
-    for (const auto& adapted_frame : adapted_frames_) {
-      const auto& coded_size = frame_->coded_size();
-      const auto& visible_rect = adapted_frame.size.visible_rect;
-      // The portion of the coded size that is visible.
-      double kVisiblePortionX =
-          static_cast<double>(visible_rect.width()) / coded_size.width();
-      double kVisiblePortionY =
-          static_cast<double>(visible_rect.height()) / coded_size.height();
-      // The mapped size is the natural size of the entire image, not just the
-      // visible portion.
-      const auto& natural_size = adapted_frame.size.natural_size;
-      mapped_sizes.emplace_back(
-          std::round(natural_size.width() / kVisiblePortionX),
-          std::round(natural_size.height() / kVisiblePortionY));
-    }
     shared_resources_->SetFeedback(
-        media::VideoCaptureFeedback()
-            .RequireMapped(!adapted_frames_.empty())
-            .WithMappedSizes(std::move(mapped_sizes)));
+        media::VideoCaptureFeedback().RequireMapped(!adapted_frames_.empty()));
   }
 }
 

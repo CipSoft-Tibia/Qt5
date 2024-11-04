@@ -3,6 +3,9 @@
 
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Shapes
+import QtQuick.Effects
+import QtQuick.Layouts
 
 //! [0]
 Window {
@@ -11,6 +14,36 @@ Window {
     width: 360
     height: 640
     visible: true
+
+    Shape {//Shape because Rectangle does not support diagonal gradient
+        preferredRendererType: Shape.CurveRenderer
+
+        ShapePath {
+            strokeWidth: 0
+            startX: 0; startY: 0
+
+            PathLine { x: window.width; y: 0 }
+            PathLine { x: window.width; y: window.height }
+            PathLine { x: 0; y: window.height }
+            fillGradient: LinearGradient {
+                x1: 0; y1: window.height / 4
+                x2: window.width; y2:  window.height / 4 * 3
+                GradientStop { position: 0.0; color: "#2CDE85" }
+                GradientStop { position: 1.0; color: "#9747FF" }
+            }
+        }
+    }
+
+    Rectangle {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: parent.width / 2
+        width: window.height > window.width * 1.5 ? window.height : window.width * 1.5
+        height: width
+        radius: width / 2
+        color: "#000000"
+        opacity: 0.15
+    }
 
     Item {
         id: statesItem
@@ -56,29 +89,72 @@ Window {
         id: main
         anchors.fill: parent
 
-        Column {
-            spacing: 6
+        ColumnLayout {
+            id: layout
+            spacing: 4
 
             anchors {
                 fill: parent
                 topMargin: 6; bottomMargin: 6; leftMargin: 6; rightMargin: 6
             }
 
-            Rectangle {
-                width: parent.width
-                height: 25
-                color: "lightgrey"
+            Item {
+                Layout.preferredHeight: cityButton.height
+                Layout.fillWidth: true
 
-                Text {
-                    text: (appModel.hasValidCity ? appModel.city : "Unknown location")
-                          + (appModel.useGps ? " (GPS)" : "")
-                    anchors.fill: parent
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
+                Rectangle {
+                    id: cityButton
+                    property int margins: 10
+                    anchors.centerIn: parent
+                    width: cityName.contentWidth + cityIcon.width + 3 * margins
+                    height: cityName.contentHeight + 2 * margins
+                    radius: 8
+                    color: "#3F000000"
+                    visible: false
+
+                    Text {
+                        id: cityName
+                        text: (appModel.hasValidCity ? appModel.city : "Unknown location")
+                              + (appModel.useGps ? " (GPS)" : "")
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.margins: parent.margins
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        font.pixelSize: 24
+                        color: "white"
+                    }
+
+                    Image {
+                        id: cityIcon
+                        source: "icons/waypoint.svg"
+                        height: cityName.font.pixelSize
+                        width: implicitWidth * height / implicitHeight
+                        anchors.left: cityName.right
+                        anchors.margins: parent.margins
+                        anchors.verticalCenter: cityName.verticalCenter
+                        anchors.verticalCenterOffset: 2
+                        visible: false
+                    }
+                    MultiEffect {
+                        source: cityIcon
+                        anchors.fill: cityIcon
+                        brightness: 1 // make icons white, remove for dark icons
+                    }
+
+                }
+
+                MultiEffect {
+                    source: cityButton
+                    anchors.fill: cityButton
+                    shadowEnabled: true
+                    shadowBlur: 0.5
+                    shadowHorizontalOffset: 0
+                    shadowVerticalOffset: 2
                 }
 
                 MouseArea {
-                    anchors.fill: parent
+                    anchors.fill: cityButton
                     onClicked: {
                         if (appModel.useGps) {
                             appModel.useGps = false
@@ -106,9 +182,8 @@ Window {
         //! [3]
             BigForecastIcon {
                 id: current
-
-                width: main.width -12
-                height: 2 * (main.height - 25 - 12) / 3
+                Layout.fillWidth: true
+                Layout.fillHeight: true
 
                 weatherIcon: (appModel.hasValidWeather
                               ? appModel.weather.weatherIcon
@@ -120,43 +195,56 @@ Window {
                 bottomText: (appModel.hasValidWeather
                              ? appModel.weather.weatherDescription
                              : "No weather data")
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        appModel.refreshWeather()
-                    }
-                }
         //! [4]
             }
         //! [4]
 
-            Row {
-                id: iconRow
-                spacing: 6
+            Item {
+                implicitWidth: iconRow.implicitWidth + 40
+                implicitHeight: iconRow.implicitHeight + 40
 
-                width: main.width - 12
-                height: (main.height - 25 - 24) / 3
+                Layout.fillWidth: true
 
-                property int daysCount: appModel.forecast.length
-                property real iconWidth: (daysCount > 0) ? (iconRow.width / daysCount) - 10
-                                                         : iconRow.width
-                property real iconHeight: iconRow.height
+                Rectangle {
+                    id: forcastFrame
 
-                Repeater {
-                    model: appModel.forecast
-                    ForecastIcon {
-                        required property string dayOfWeek
-                        required property string temperature
-                        required property string weatherIcon
-                        id: forecast1
-                        width: iconRow.iconWidth
-                        height: iconRow.iconHeight
+                    anchors.fill: parent
+                    color: "#3F000000"
+                    radius: 40
 
-                        topText: (appModel.hasValidWeather ? dayOfWeek : "??")
-                        bottomText: (appModel.hasValidWeather ? temperature : ("??" + "/??"))
-                        weatherIcon: (appModel.hasValidWeather ? weatherIcon : "sunny")
+                    Row {
+                        id: iconRow
+                        anchors.centerIn: parent
+
+                        property int daysCount: appModel.forecast.length
+                        property real iconWidth: (daysCount > 0) ? ((forcastFrame.width - 20) / daysCount)
+                                                                 : forcastFrame.width
+
+                        Repeater {
+                            model: appModel.forecast
+                            ForecastIcon {
+                                required property string dayOfWeek
+                                required property string temperature
+                                required property string weatherIcon
+                                id: forecast1
+                                width: iconRow.iconWidth
+                                topText: (appModel.hasValidWeather ? dayOfWeek : "??")
+                                bottomText: (appModel.hasValidWeather ? temperature : ("??" + "/??"))
+                                middleIcon: (appModel.hasValidWeather ? weatherIcon : "sunny")
+                            }
+                        }
                     }
+                    visible: false
+                }
+
+                MultiEffect {
+                    source: forcastFrame
+                    anchors.fill: forcastFrame
+                    shadowEnabled: true
+                    shadowBlur: 0.5
+                    shadowHorizontalOffset: 0
+                    shadowVerticalOffset: 4
+                    shadowOpacity: 0.6
                 }
             }
         }

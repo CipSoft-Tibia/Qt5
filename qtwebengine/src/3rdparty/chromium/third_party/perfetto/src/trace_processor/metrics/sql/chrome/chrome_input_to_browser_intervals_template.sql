@@ -20,11 +20,7 @@
 -- The final table includes the time between the arrival of gesture update
 -- input timestamp, and the time it started being processed by CrBrowserMain.
 
-SELECT RUN_METRIC(
-  'chrome/chrome_tasks_template.sql',
-  'slice_table_name', '{{slice_table_name}}',
-  'function_prefix', '{{function_prefix}}'
-);
+INCLUDE PERFETTO MODULE chrome.tasks;
 
 SELECT RUN_METRIC(
   'chrome/chrome_input_to_browser_intervals_base.sql',
@@ -33,7 +29,7 @@ SELECT RUN_METRIC(
 );
 
 DROP TABLE IF EXISTS chrome_input_to_browser_intervals;
-CREATE TABLE chrome_input_to_browser_intervals
+CREATE PERFETTO TABLE chrome_input_to_browser_intervals
 AS
 SELECT
   (SELECT ts FROM {{slice_table_name}} WHERE id = window_start_id) AS window_start_ts,
@@ -42,5 +38,5 @@ SELECT
   window_end_id,
   blocked_gesture,
   upid,
-  {{function_prefix}}GET_SCROLL_TYPE(blocked_gesture, {{function_prefix}}GET_MOJO_PARENT_INTERFACE_TAG(window_end_id)) AS scroll_type
+  {{function_prefix}}GET_SCROLL_TYPE(blocked_gesture, {{function_prefix}}GET_ENCLOSING_CHROME_TASK_NAME(window_end_id)) AS scroll_type
 FROM chrome_input_to_browser_interval_slice_ids;

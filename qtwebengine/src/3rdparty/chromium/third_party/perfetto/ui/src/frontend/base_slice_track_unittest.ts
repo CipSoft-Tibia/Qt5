@@ -13,17 +13,24 @@
 // limitations under the License.
 
 import {GRAY_COLOR} from '../common/colorizer';
+import {Time} from '../common/time';
 
 import {
   filterVisibleSlicesForTesting as filterVisibleSlices,
 } from './base_slice_track';
 import {Slice} from './slice';
 
-function slice(startS: number, durationS: number): Slice {
+function slice(start: number, duration: number): Slice {
+  const startNsQ = Time.fromRaw(BigInt(start));
+  const durNsQ = Time.fromRaw(BigInt(duration));
+  const endNsQ = Time.fromRaw(startNsQ + durNsQ);
   return {
     id: 42,
-    startS,
-    durationS,
+    startNsQ,
+    endNsQ,
+    durNsQ,
+    ts: startNsQ,
+    dur: durNsQ,
     depth: 0,
     flags: 0,
     title: '',
@@ -34,26 +41,29 @@ function slice(startS: number, durationS: number): Slice {
 }
 
 const s = slice;
+const t = Time.fromRaw;
 
 test('filterVisibleSlices', () => {
-  expect(filterVisibleSlices([], 0, 100)).toEqual([]);
-  expect(filterVisibleSlices([s(10, 80)], 0, 100)).toEqual([s(10, 80)]);
-  expect(filterVisibleSlices([s(0, 20)], 10, 100)).toEqual([s(0, 20)]);
-  expect(filterVisibleSlices([s(0, 10)], 10, 100)).toEqual([s(0, 10)]);
-  expect(filterVisibleSlices([s(100, 10)], 10, 100)).toEqual([s(100, 10)]);
-  expect(filterVisibleSlices([s(10, 0)], 10, 100)).toEqual([s(10, 0)]);
-  expect(filterVisibleSlices([s(100, 0)], 10, 100)).toEqual([s(100, 0)]);
-  expect(filterVisibleSlices([s(0, 5)], 10, 90)).toEqual([]);
-  expect(filterVisibleSlices([s(95, 5)], 10, 90)).toEqual([]);
-  expect(filterVisibleSlices([s(0, 5), s(95, 5)], 10, 90)).toEqual([]);
+  expect(filterVisibleSlices([], t(0n), t(100n))).toEqual([]);
+  expect(filterVisibleSlices([s(10, 80)], t(0n), t(100n))).toEqual([s(10, 80)]);
+  expect(filterVisibleSlices([s(0, 20)], t(10n), t(100n))).toEqual([s(0, 20)]);
+  expect(filterVisibleSlices([s(0, 10)], t(10n), t(100n))).toEqual([s(0, 10)]);
+  expect(filterVisibleSlices([s(100, 10)], t(10n), t(100n))).toEqual([s(
+      100, 10)]);
+  expect(filterVisibleSlices([s(10, 0)], t(10n), t(100n))).toEqual([s(10, 0)]);
+  expect(filterVisibleSlices([s(100, 0)], t(10n), t(100n))).toEqual([s(
+      100, 0)]);
+  expect(filterVisibleSlices([s(0, 5)], t(10n), t(90n))).toEqual([]);
+  expect(filterVisibleSlices([s(95, 5)], t(10n), t(90n))).toEqual([]);
+  expect(filterVisibleSlices([s(0, 5), s(95, 5)], t(10n), t(90n))).toEqual([]);
   expect(filterVisibleSlices(
              [
                s(0, 5),
                s(50, 0),
                s(95, 5),
              ],
-             10,
-             90))
+             t(10n),
+             t(90n)))
       .toEqual([
         s(50, 0),
       ]);
@@ -63,8 +73,8 @@ test('filterVisibleSlices', () => {
                s(1, 9),
                s(6, 3),
              ],
-             10,
-             90))
+             t(10n),
+             t(90n)))
       .toContainEqual(s(1, 9));
   expect(filterVisibleSlices(
              [
@@ -73,25 +83,26 @@ test('filterVisibleSlices', () => {
                s(6, 3),
                s(50, 0),
              ],
-             10,
-             90))
+             t(10n),
+             t(90n)))
       .toContainEqual(s(1, 9));
   expect(filterVisibleSlices(
              [
                s(85, 10),
                s(100, 10),
              ],
-             10,
-             90))
+             t(10n),
+             t(90n)))
       .toEqual([
         s(85, 10),
       ]);
   expect(filterVisibleSlices(
              [
                s(0, 100),
+
              ],
-             10,
-             90))
+             t(10n),
+             t(90n)))
       .toEqual([
         s(0, 100),
       ]);
@@ -108,7 +119,7 @@ test('filterVisibleSlices', () => {
                s(8, 1),
                s(9, 1),
              ],
-             10,
-             90))
+             t(10n),
+             t(90n)))
       .toContainEqual(s(5, 10));
 });

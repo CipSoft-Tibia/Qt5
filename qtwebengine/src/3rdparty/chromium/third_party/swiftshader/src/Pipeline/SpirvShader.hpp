@@ -104,6 +104,7 @@ public:
 	{
 		ASSERT(i < componentCount);
 		ASSERT(scalar[i] != nullptr);
+		RR_PRINT_ONLY(typeHint = TypeHint::Float;)
 		return As<SIMD::Float>(scalar[i]);  // TODO(b/128539387): RValue<SIMD::Float>(scalar)
 	}
 
@@ -111,6 +112,7 @@ public:
 	{
 		ASSERT(i < componentCount);
 		ASSERT(scalar[i] != nullptr);
+		RR_PRINT_ONLY(typeHint = TypeHint::Int;)
 		return As<SIMD::Int>(scalar[i]);  // TODO(b/128539387): RValue<SIMD::Int>(scalar)
 	}
 
@@ -118,6 +120,7 @@ public:
 	{
 		ASSERT(i < componentCount);
 		ASSERT(scalar[i] != nullptr);
+		RR_PRINT_ONLY(typeHint = TypeHint::UInt;)
 		return As<SIMD::UInt>(scalar[i]);  // TODO(b/128539387): RValue<SIMD::UInt>(scalar)
 	}
 
@@ -142,7 +145,7 @@ private:
 
 #ifdef ENABLE_RR_PRINT
 	friend struct rr::PrintValue::Ty<sw::Intermediate>;
-	TypeHint typeHint = TypeHint::Float;
+	mutable TypeHint typeHint = TypeHint::Float;
 #endif  // ENABLE_RR_PRINT
 };
 
@@ -1196,6 +1199,8 @@ private:
 
 		RValue<SIMD::Float> Float(uint32_t i) const
 		{
+			ASSERT(i < componentCount);
+
 			if(intermediate)
 			{
 				return intermediate->Float(i);
@@ -1209,6 +1214,8 @@ private:
 
 		RValue<SIMD::Int> Int(uint32_t i) const
 		{
+			ASSERT(i < componentCount);
+
 			if(intermediate)
 			{
 				return intermediate->Int(i);
@@ -1219,6 +1226,8 @@ private:
 
 		RValue<SIMD::UInt> UInt(uint32_t i) const
 		{
+			ASSERT(i < componentCount);
+
 			if(intermediate)
 			{
 				return intermediate->UInt(i);

@@ -77,7 +77,7 @@ public:
         Hide = 18,                              // widget is hidden
         Close = 19,                             // request to close widget
         Quit = 20,                              // request to quit application
-        ParentChange = 21,                      // widget has been reparented
+        ParentChange = 21,                      // object has been reparented
         ParentAboutToChange = 131,              // sent just before the parent change is done
         ThreadChange = 22,                      // object has changed threads
         WindowActivate = 24,                    // window was activated
@@ -286,6 +286,11 @@ public:
 
         DevicePixelRatioChange = 222,
 
+        ChildWindowAdded = 223,
+        ChildWindowRemoved = 224,
+        ParentWindowAboutToChange = 225,
+        ParentWindowChange = 226,
+
         // 512 reserved for Qt Jambi's MetaCall event
         // 513 reserved for Qt Jambi's DeleteOnMainThread event
 
@@ -393,18 +398,6 @@ public:
 
 private:
     QByteArray n;
-};
-
-class Q_CORE_EXPORT QDeferredDeleteEvent : public QEvent
-{
-    Q_DECL_EVENT_COMMON(QDeferredDeleteEvent)
-public:
-    explicit QDeferredDeleteEvent();
-    int loopLevel() const { return level; }
-
-private:
-    int level;
-    friend class QCoreApplication;
 };
 
 QT_END_NAMESPACE

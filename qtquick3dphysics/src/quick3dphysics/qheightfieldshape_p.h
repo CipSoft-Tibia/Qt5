@@ -21,6 +21,7 @@
 #include <QtGui/QVector3D>
 #include <QtQml/QQmlEngine>
 #include <QtQuick3D/QQuick3DGeometry>
+#include <QtQuick/private/qquickimage_p.h>
 
 namespace physx {
 class PxBoxGeometry;
@@ -40,6 +41,7 @@ class Q_QUICK3DPHYSICS_EXPORT QHeightFieldShape : public QAbstractCollisionShape
     Q_OBJECT
     Q_PROPERTY(QVector3D extents READ extents WRITE setExtents NOTIFY extentsChanged)
     Q_PROPERTY(QUrl source READ source WRITE setSource NOTIFY sourceChanged REVISION(6, 5))
+    Q_PROPERTY(QQuickImage *image READ image WRITE setImage NOTIFY imageChanged REVISION(6, 7))
     QML_NAMED_ELEMENT(HeightFieldShape)
 public:
     QHeightFieldShape();
@@ -56,9 +58,17 @@ public:
     void setExtents(const QVector3D &newExtents);
     bool isStaticShape() const override { return true; }
 
+    Q_REVISION(6, 7) QQuickImage *image() const;
+    Q_REVISION(6, 7) void setImage(QQuickImage *newImage);
+
 signals:
     Q_REVISION(6, 5) void sourceChanged();
     void extentsChanged();
+    Q_REVISION(6, 7) void imageChanged();
+
+private slots:
+    void imageDestroyed(QObject *image);
+    void imageGeometryChanged();
 
 private:
     void updatePhysXGeometry();
@@ -73,6 +83,7 @@ private:
     bool m_dirtyPhysx = false;
     QVector3D m_extents = { 100, 100, 100 };
     bool m_extentsSetExplicitly = false;
+    QQuickImage *m_image = nullptr;
 };
 
 QT_END_NAMESPACE

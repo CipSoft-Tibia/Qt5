@@ -87,7 +87,7 @@ namespace internal {
  *              Address end,
  *              int* capture_output_array,
  *              int num_capture_registers,
- *              byte* stack_area_base,
+ *              uint8_t* stack_area_base,
  *              bool direct_call = false,
  *              Isolate* isolate,
  *              Address regexp);
@@ -1076,10 +1076,9 @@ Handle<HeapObject> RegExpMacroAssemblerS390::GetCode(Handle<String> source) {
       Factory::CodeBuilder(isolate(), code_desc, CodeKind::REGEXP)
           .set_self_reference(masm_->CodeObject())
           .Build();
-  Handle<InstructionStream> istream(code->instruction_stream(), isolate());
   PROFILE(masm_->isolate(),
           RegExpCodeCreateEvent(Handle<AbstractCode>::cast(code), source));
-  return Handle<HeapObject>::cast(istream);
+  return Handle<HeapObject>::cast(code);
 }
 
 void RegExpMacroAssemblerS390::GoTo(Label* to) { BranchOrBacktrack(al, to); }
@@ -1254,7 +1253,7 @@ static T* frame_entry_address(Address re_frame, int frame_offset) {
 int RegExpMacroAssemblerS390::CheckStackGuardState(Address* return_address,
                                                    Address raw_code,
                                                    Address re_frame) {
-  InstructionStream re_code = InstructionStream::cast(Object(raw_code));
+  Tagged<InstructionStream> re_code = InstructionStream::cast(Object(raw_code));
   return NativeRegExpMacroAssembler::CheckStackGuardState(
       frame_entry<Isolate*>(re_frame, kIsolateOffset),
       frame_entry<intptr_t>(re_frame, kStartIndexOffset),
@@ -1262,8 +1261,8 @@ int RegExpMacroAssemblerS390::CheckStackGuardState(Address* return_address,
           frame_entry<intptr_t>(re_frame, kDirectCallOffset)),
       return_address, re_code,
       frame_entry_address<Address>(re_frame, kInputStringOffset),
-      frame_entry_address<const byte*>(re_frame, kInputStartOffset),
-      frame_entry_address<const byte*>(re_frame, kInputEndOffset));
+      frame_entry_address<const uint8_t*>(re_frame, kInputStartOffset),
+      frame_entry_address<const uint8_t*>(re_frame, kInputEndOffset));
 }
 
 MemOperand RegExpMacroAssemblerS390::register_location(int register_index) {

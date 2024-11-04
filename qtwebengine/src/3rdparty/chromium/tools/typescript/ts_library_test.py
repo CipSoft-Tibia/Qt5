@@ -46,6 +46,8 @@ class TsLibraryTest(unittest.TestCase):
         'build_ts',
         '--root_gen_dir',
         os.path.relpath(self._out_folder, gen_dir),
+        '--root_src_dir',
+        os.path.relpath(os.path.join(_HERE_DIR, 'tests'), gen_dir),
         '--root_dir',
         os.path.relpath(os.path.join(_HERE_DIR, 'tests', 'project1'), _CWD),
         '--gen_dir',
@@ -72,7 +74,7 @@ class TsLibraryTest(unittest.TestCase):
         'legacy_file.d.ts',
         'tsconfig_definitions.json',
         'tsconfig_build_ts.json',
-        'build_ts.manifest',
+        'build_ts_manifest.json',
     ]
     for f in files:
       self.assertTrue(os.path.exists(os.path.join(gen_dir, f)), f)
@@ -99,6 +101,8 @@ class TsLibraryTest(unittest.TestCase):
         'build_ts',
         '--root_gen_dir',
         os.path.relpath(self._out_folder, gen_dir),
+        '--root_src_dir',
+        os.path.relpath(os.path.join(_HERE_DIR, 'tests'), gen_dir),
         '--raw_deps',
         '//ui/webui/resources/js:build_ts',
         '--root_dir',
@@ -124,7 +128,7 @@ class TsLibraryTest(unittest.TestCase):
     files = [
         'bar.js',
         'tsconfig_build_ts.json',
-        'build_ts.manifest',
+        'build_ts_manifest.json',
     ]
     for f in files:
       self.assertTrue(os.path.exists(os.path.join(gen_dir, f)), f)
@@ -146,6 +150,8 @@ class TsLibraryTest(unittest.TestCase):
         'build_ts',
         '--root_gen_dir',
         os.path.relpath(self._out_folder, gen_dir),
+        '--root_src_dir',
+        os.path.relpath(os.path.join(_HERE_DIR, 'tests'), gen_dir),
         '--root_dir',
         os.path.relpath(os.path.join(_HERE_DIR, 'tests', 'project3'), _CWD),
         '--gen_dir',
@@ -164,7 +170,8 @@ class TsLibraryTest(unittest.TestCase):
         os.path.exists(os.path.join(gen_dir, 'tsconfig_build_ts.json')))
     self.assertFalse(
         os.path.exists(os.path.join(gen_dir, 'tsconfig_build_ts.tsbuildinfo')))
-    self.assertFalse(os.path.exists(os.path.join(gen_dir, 'build_ts.manifest')))
+    self.assertFalse(
+        os.path.exists(os.path.join(gen_dir, 'build_ts_manifest.json')))
 
   def _build_project4(self):
     gen_dir = os.path.join(self._out_folder, 'tools', 'typescript', 'tests',
@@ -177,6 +184,8 @@ class TsLibraryTest(unittest.TestCase):
         'build_ts',
         '--root_gen_dir',
         os.path.relpath(self._out_folder, gen_dir),
+        '--root_src_dir',
+        os.path.relpath(os.path.join(_HERE_DIR, 'tests'), gen_dir),
         '--root_dir',
         os.path.relpath(os.path.join(_HERE_DIR, 'tests', 'project4'), _CWD),
         '--gen_dir',
@@ -196,13 +205,13 @@ class TsLibraryTest(unittest.TestCase):
         'include.js',
         'exclude.js',
         'tsconfig_build_ts.json',
-        'build_ts.manifest',
+        'build_ts_manifest.json',
     ]
     for f in files:
       self.assertTrue(os.path.exists(os.path.join(gen_dir, f)), f)
 
     # Check that the generated manifest file doesn't include exclude.js.
-    manifest = os.path.join(gen_dir, 'build_ts.manifest')
+    manifest = os.path.join(gen_dir, 'build_ts_manifest.json')
     self._assert_manifest_files(manifest, ['include.js'])
 
   def _assert_manifest_files(self, manifest_path, expected_files):
@@ -224,6 +233,8 @@ class TsLibraryTest(unittest.TestCase):
         '--composite',
         '--root_gen_dir',
         os.path.relpath(self._out_folder, gen_dir),
+        '--root_src_dir',
+        os.path.relpath(os.path.join(_HERE_DIR, 'tests'), gen_dir),
         '--root_dir',
         os.path.relpath(os.path.join(_HERE_DIR, 'tests', 'project5'), _CWD),
         '--gen_dir',
@@ -243,6 +254,8 @@ class TsLibraryTest(unittest.TestCase):
         os.path.join(gen_dir, 'tsconfig_build_ts.json'),
         '--root_gen_dir',
         os.path.relpath(self._out_folder, gen_dir),
+        '--root_src_dir',
+        os.path.relpath(os.path.join(_HERE_DIR, 'tests'), gen_dir),
         '--root_dir',
         os.path.relpath(os.path.join(_HERE_DIR, 'tests', 'project5'), _CWD),
         '--gen_dir',
@@ -259,14 +272,14 @@ class TsLibraryTest(unittest.TestCase):
     # prod:
     self.assertTrue(
         os.path.exists(os.path.join(gen_dir, 'tsconfig_build_ts.json')))
-    manifest = os.path.join(gen_dir, 'build_ts.manifest')
+    manifest = os.path.join(gen_dir, 'build_ts_manifest.json')
     self.assertTrue(os.path.exists(manifest))
     self._assert_manifest_files(manifest, ['bar.js'])
 
     # test:
     self.assertTrue(
         os.path.exists(os.path.join(gen_dir, 'tsconfig_test_build_ts.json')))
-    manifest_test = os.path.join(gen_dir, 'test_build_ts.manifest')
+    manifest_test = os.path.join(gen_dir, 'test_build_ts_manifest.json')
     self.assertTrue(os.path.exists(manifest_test))
     self._assert_manifest_files(manifest_test, ['bar_test.js'])
 
@@ -284,6 +297,8 @@ class TsLibraryTest(unittest.TestCase):
         'build_ts',
         '--root_gen_dir',
         os.path.relpath(self._out_folder, gen_dir),
+        '--root_src_dir',
+        os.path.relpath(os.path.join(_HERE_DIR, 'tests'), gen_dir),
         '--root_dir',
         os.path.relpath(
             os.path.join(_HERE_DIR, 'tests', 'ui', 'webui', 'resources', 'js'),
@@ -302,7 +317,7 @@ class TsLibraryTest(unittest.TestCase):
   def _assert_project6_output(self, gen_dir, out_dir):
     gen_dir_files = [
         'tsconfig_build_ts.json',
-        'build_ts.manifest',
+        'build_ts_manifest.json',
     ]
     for f in gen_dir_files:
       self.assertTrue(os.path.exists(os.path.join(gen_dir, f)), f)
@@ -355,6 +370,8 @@ class TsLibraryTest(unittest.TestCase):
           'build_ts',
           '--root_gen_dir',
           os.path.relpath(self._out_folder, gen_dir),
+          '--root_src_dir',
+          os.path.relpath(os.path.join(_HERE_DIR, 'tests'), gen_dir),
           '--root_dir',
           os.path.relpath(os.path.join(_HERE_DIR, 'tests', 'project1'), _CWD),
           '--gen_dir',
@@ -386,6 +403,8 @@ class TsLibraryTest(unittest.TestCase):
           'build_ts',
           '--root_gen_dir',
           os.path.relpath(self._out_folder, gen_dir),
+          '--root_src_dir',
+          os.path.relpath(os.path.join(_HERE_DIR, 'tests'), gen_dir),
           '--root_dir',
           os.path.relpath(root_dir, _CWD),
           '--gen_dir',

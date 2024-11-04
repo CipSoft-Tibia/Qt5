@@ -21,12 +21,12 @@ namespace qdesigner_internal {
 
 OrderDialog::OrderDialog(QWidget *parent) :
     QDialog(parent),
-    m_ui(new Ui::OrderDialog),
+    m_ui(new QT_PREPEND_NAMESPACE(qdesigner_internal)::Ui::OrderDialog),
     m_format(PageOrderFormat)
 {
     m_ui->setupUi(this);
-    m_ui->upButton->setIcon(createIconSet(u"up.png"_s));
-    m_ui->downButton->setIcon(createIconSet(u"down.png"_s));
+    m_ui->upButton->setIcon(createIconSet("up.png"_L1));
+    m_ui->downButton->setIcon(createIconSet("down.png"_L1));
     m_ui->buttonBox->button(QDialogButtonBox::Ok)->setDefault(true);
     connect(m_ui->buttonBox->button(QDialogButtonBox::Reset), &QAbstractButton::clicked,
             this, &OrderDialog::slotReset);

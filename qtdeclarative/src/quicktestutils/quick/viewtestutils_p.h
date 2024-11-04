@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QQUICKVIEWTESTUTILS_P_H
 #define QQUICKVIEWTESTUTILS_P_H
@@ -168,7 +168,7 @@ namespace QQuickViewTestUtils
         int m_rowCount;
     };
 
-#if QT_CONFIG(quick_itemview)
+#if QT_CONFIG(quick_itemview) && defined(QT_BUILD_INTERNAL)
     [[nodiscard]] bool testVisibleItems(const QQuickItemViewPrivate *priv,
         bool *nonUnique, FxViewItem **failItem, int *expectedIdx);
 #endif

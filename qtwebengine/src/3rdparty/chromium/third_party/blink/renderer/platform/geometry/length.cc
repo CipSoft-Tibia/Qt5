@@ -27,11 +27,22 @@
 
 #include "third_party/blink/renderer/platform/geometry/blend.h"
 #include "third_party/blink/renderer/platform/geometry/calculation_value.h"
+#include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/blink/renderer/platform/wtf/size_assertions.h"
+#include "third_party/blink/renderer/platform/wtf/static_constructors.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
 namespace blink {
+
+PLATFORM_EXPORT DEFINE_GLOBAL(Length, g_auto_length);
+PLATFORM_EXPORT DEFINE_GLOBAL(Length, g_none_length);
+
+// static
+void Length::Initialize() {
+  new (WTF::NotNullTag::kNotNull, (void*)&g_auto_length) Length(kAuto);
+  new (WTF::NotNullTag::kNotNull, (void*)&g_none_length) Length(kNone);
+}
 
 class CalculationValueHandleMap {
   USING_FAST_MALLOC(CalculationValueHandleMap);
@@ -195,6 +206,10 @@ bool Length::IsCalculatedEqual(const Length& o) const {
 
 bool Length::HasAnchorQueries() const {
   return IsCalculated() && GetCalculationValue().HasAnchorQueries();
+}
+
+bool Length::HasAutoAnchorPositioning() const {
+  return IsCalculated() && GetCalculationValue().HasAutoAnchorPositioning();
 }
 
 String Length::ToString() const {

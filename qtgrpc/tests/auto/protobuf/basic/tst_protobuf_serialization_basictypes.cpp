@@ -1,6 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2022 Alexey Edelev <semlanik@gmail.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "basicmessages.qpb.h"
 #include "fieldindexrange.qpb.h"
@@ -48,6 +48,8 @@ private slots:
     void StringMessageSerializeTest();
     void ComplexTypeSerializeTest_data();
     void ComplexTypeSerializeTest();
+    void ResetComplexTypeSerializeTest_data();
+    void ResetComplexTypeSerializeTest();
     void DefaultConstructedComplexTypeSerializeTest();
     void EmptyBytesMessageTest();
     void EmptyStringMessageTest();
@@ -454,6 +456,36 @@ void QtProtobufTypesSerializationTest::ComplexTypeSerializeTest()
     ComplexMessage test;
     test.setTestFieldInt(intField);
     test.setTestComplexField(stringMessage);
+    QByteArray result = test.serialize(m_serializer.get());
+    QCOMPARE(result.toHex(), expectedData);
+}
+
+void QtProtobufTypesSerializationTest::ResetComplexTypeSerializeTest_data()
+{
+    QTest::addColumn<int>("intField");
+    QTest::addColumn<QString>("stringField");
+    QTest::addColumn<QByteArray>("expectedData");
+
+    QTest::newRow("empty_value") << 0 << u""_s << ""_ba;
+    QTest::newRow("value_only_int") << 42 << u""_s << "082a"_ba;
+    QTest::newRow("value_only_string") << 0 << u"qwerty"_s << ""_ba;
+    QTest::newRow("int_and_string") << 42 << u"qwerty"_s << "082a"_ba;
+}
+
+void QtProtobufTypesSerializationTest::ResetComplexTypeSerializeTest()
+{
+    QFETCH(const int, intField);
+    QFETCH(const QString, stringField);
+    QFETCH(const QByteArray, expectedData);
+
+    SimpleStringMessage stringMessage;
+    stringMessage.setTestFieldString(stringField);
+    ComplexMessage test;
+    test.setTestFieldInt(intField);
+    test.setTestComplexField(stringMessage);
+
+    // Reset Complex field
+    test.clearTestComplexField();
     QByteArray result = test.serialize(m_serializer.get());
     QCOMPARE(result.toHex(), expectedData);
 }

@@ -219,13 +219,6 @@ struct TensorEvaluator<const TensorForcedEvalOp<ArgType_>, Device>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
   EvaluatorPointerType data() const { return m_buffer; }
 
-#ifdef EIGEN_USE_SYCL
-  // binding placeholder accessors to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_buffer.bind(cgh);
-    m_impl.bind(cgh);
-  }
-#endif
  private:
   TensorEvaluator<ArgType, Device> m_impl;
   const ArgType m_op;

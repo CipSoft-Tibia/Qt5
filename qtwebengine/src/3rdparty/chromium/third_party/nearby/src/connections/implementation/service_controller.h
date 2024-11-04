@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "connections/advertising_options.h"
@@ -26,6 +27,8 @@
 #include "connections/params.h"
 #include "connections/payload.h"
 #include "connections/status.h"
+#include "connections/v3/connection_listening_options.h"
+#include "connections/v3/listeners.h"
 
 namespace nearby {
 namespace connections {
@@ -77,13 +80,21 @@ class ServiceController {
                               const std::string& service_id,
                               const OutOfBandConnectionMetadata& metadata) = 0;
 
+  virtual std::pair<Status, std::vector<ConnectionInfoVariant>>
+  StartListeningForIncomingConnections(
+      ClientProxy* client, absl::string_view service_id,
+      v3::ConnectionListener listener,
+      const v3::ConnectionListeningOptions& options) = 0;
+
+  virtual void StopListeningForIncomingConnections(ClientProxy* client) = 0;
+
   virtual Status RequestConnection(
       ClientProxy* client, const std::string& endpoint_id,
       const ConnectionRequestInfo& info,
       const ConnectionOptions& connection_options) = 0;
   virtual Status AcceptConnection(ClientProxy* client,
                                   const std::string& endpoint_id,
-                                  const PayloadListener& listener) = 0;
+                                  PayloadListener listener) = 0;
   virtual Status RejectConnection(ClientProxy* client,
                                   const std::string& endpoint_id) = 0;
 
@@ -98,6 +109,14 @@ class ServiceController {
 
   virtual void DisconnectFromEndpoint(ClientProxy* client,
                                       const std::string& endpoint_id) = 0;
+
+  virtual Status UpdateAdvertisingOptions(
+      ClientProxy* client, absl::string_view service_id,
+      const AdvertisingOptions& advertising_options) = 0;
+
+  virtual Status UpdateDiscoveryOptions(
+      ClientProxy* client, absl::string_view service_id,
+      const DiscoveryOptions& discovery_options) = 0;
 
   virtual void SetCustomSavePath(ClientProxy* client,
                                  const std::string& path) = 0;

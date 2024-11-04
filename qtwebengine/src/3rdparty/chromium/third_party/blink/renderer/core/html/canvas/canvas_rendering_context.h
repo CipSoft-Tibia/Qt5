@@ -39,6 +39,7 @@
 #include "third_party/blink/renderer/core/html/canvas/canvas_rendering_context_host.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_color_params.h"
+#include "third_party/blink/renderer/platform/graphics/canvas_resource_provider.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_types_3d.h"
 #include "third_party/blink/renderer/platform/heap/member.h"
 #include "third_party/blink/renderer/platform/heap/prefinalizer.h"
@@ -69,7 +70,6 @@ class VideoFrame;
 
 namespace blink {
 
-class CanvasImageSource;
 class CanvasResourceProvider;
 class ComputedStyle;
 class Document;
@@ -148,14 +148,13 @@ class CORE_EXPORT CanvasRenderingContext
   // This is only used in WebGL
   void RecordUKMCanvasDrawnToRenderingAPI();
 
-  static CanvasRenderingAPI RenderingAPIFromId(
-      const String& id,
-      const ExecutionContext* execution_context);
+  static CanvasRenderingAPI RenderingAPIFromId(const String& id);
 
   CanvasRenderingContextHost* Host() const { return host_; }
   virtual SkColorInfo CanvasRenderingContextSkColorInfo() const;
 
-  virtual scoped_refptr<StaticBitmapImage> GetImage() = 0;
+  virtual scoped_refptr<StaticBitmapImage> GetImage(
+      CanvasResourceProvider::FlushReason) = 0;
   virtual bool IsComposited() const = 0;
   virtual bool IsAccelerated() const = 0;
   virtual bool IsOriginTopLeft() const {
@@ -241,7 +240,7 @@ class CORE_EXPORT CanvasRenderingContext
   // This method gets called at the end of script tasks that modified
   // the contents of the canvas (called didDraw). It marks the completion
   // of a presentable frame.
-  virtual void FinalizeFrame(bool printing = false) {}
+  virtual void FinalizeFrame(CanvasResourceProvider::FlushReason) {}
 
   // Thread::TaskObserver implementation
   void DidProcessTask(const base::PendingTask&) override;
@@ -253,11 +252,12 @@ class CORE_EXPORT CanvasRenderingContext
   virtual void ClearRect(double x, double y, double width, double height) {}
   virtual void DidSetSurfaceSize() {}
   virtual void SetShouldAntialias(bool) {}
-  virtual void setFont(const String&) {}
   virtual void StyleDidChange(const ComputedStyle* old_style,
                               const ComputedStyle& new_style) {}
   virtual String GetIdFromControl(const Element* element) { return String(); }
   virtual void ResetUsageTracking() {}
+
+  virtual void setFontForTesting(const String&) { NOTREACHED(); }
 
   // WebGL-specific interface
   virtual bool UsingSwapChain() const { return false; }
@@ -272,9 +272,7 @@ class CORE_EXPORT CanvasRenderingContext
   }
 
   // WebGL & WebGPU-specific interface
-  virtual void SetHDRConfiguration(
-      gfx::HDRMode hdr_mode,
-      absl::optional<gfx::HDRMetadata> hdr_metadata) {}
+  virtual void SetHdrMetadata(const gfx::HDRMetadata& hdr_metadata) {}
   virtual void SetFilterQuality(cc::PaintFlags::FilterQuality) { NOTREACHED(); }
   virtual void Reshape(int width, int height) {}
   virtual int ExternallyAllocatedBufferCountPerPixel() {
@@ -289,7 +287,6 @@ class CORE_EXPORT CanvasRenderingContext
   // Notification the color scheme of the HTMLCanvasElement may have changed.
   virtual void ColorSchemeMayHaveChanged() {}
 
-  bool WouldTaintOrigin(CanvasImageSource*);
   void DidMoveToNewDocument(Document*);
 
   void DetachHost() { host_ = nullptr; }

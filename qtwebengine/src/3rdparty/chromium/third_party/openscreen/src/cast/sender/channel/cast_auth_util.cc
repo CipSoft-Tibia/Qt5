@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,9 +19,9 @@
 #include "platform/api/time.h"
 #include "platform/base/error.h"
 #include "util/osp_logging.h"
+#include "util/span_util.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 using ::cast::channel::AuthResponse;
 using ::cast::channel::CastMessage;
@@ -396,11 +396,8 @@ ErrorOr<CastDeviceCertPolicy> VerifyCredentialsImpl(
     return digest_result;
   }
 
-  ConstDataSpan signature = {
-      reinterpret_cast<const uint8_t*>(response.signature().data()),
-      static_cast<uint32_t>(response.signature().size())};
-  ConstDataSpan siginput = {signature_input.data(),
-                            static_cast<uint32_t>(signature_input.size())};
+  ByteView signature = ByteViewFromString(response.signature());
+  ByteView siginput(signature_input);
   if (!target_cert->VerifySignedData(digest_algorithm, siginput, signature)) {
     return Error(Error::Code::kCastV2SignedBlobsMismatch,
                  "Failed verifying signature over data.");
@@ -438,5 +435,4 @@ ErrorOr<CastDeviceCertPolicy> VerifyCredentialsForTest(
                                verification_time, enforce_sha256_checking);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

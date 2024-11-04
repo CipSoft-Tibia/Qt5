@@ -80,7 +80,6 @@ struct packet_traits<float> : default_packet_traits {
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size = 4,
-    HasHalfPacket = 0,  // Packet2f intrinsics not implemented yet
     // FIXME check the Has*
     HasDiv = 1,
     HasSin = EIGEN_FAST_MATH,
@@ -106,7 +105,6 @@ struct packet_traits<int32_t> : default_packet_traits {
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size = 4,
-    HasHalfPacket = 0,  // Packet2i intrinsics not implemented yet
     // FIXME check the Has*
     HasDiv = 1,
     HasBlend = 1
@@ -850,7 +848,6 @@ struct packet_traits<double> : default_packet_traits {
     Vectorizable = 1,
     AlignedOnScalar = 1,
     size = 2,
-    HasHalfPacket = 0,
     // FIXME check the Has*
     HasDiv = 1,
     HasExp = 1,

@@ -50,7 +50,6 @@ devtools_module("elements") {
     "ImagePreviewPopover.ts",
     "InspectElementModeController.ts",
     "LayersWidget.ts",
-    "LayoutSidebarPane.ts",
     "MarkerDecorator.ts",
     "MetricsSidebarPane.ts",
     "NodeStackTraceWidget.ts",
@@ -78,10 +77,12 @@ devtools_module("elements") {
     "../../generated",
     "../../models/bindings:bundle",
     "../../models/extensions:bundle",
+    "../../models/issues_manager:bundle",
     "../../models/workspace:bundle",
     "../../models/workspace_diff:bundle",
     "../../panels/emulation:bundle",
     "../../panels/event_listeners:bundle",
+    "../../panels/issues:bundle",
     "../../panels/mobile_throttling:bundle",
     "../../panels/utils:bundle",
     "../../ui/components/adorners:bundle",
@@ -116,6 +117,7 @@ devtools_entrypoint("bundle") {
     "../../../test/unittests/front_end/entrypoints/missing_entrypoints/*",
     "../../../test/unittests/front_end/panels/elements/*",
     "../../entrypoints/*",
+    "../../panels/recorder/*",
     "../../ui/components/docs/computed_style_property/*",
     "../../ui/components/docs/computed_style_trace/*",
     "../../ui/components/docs/elements_breadcrumbs/*",
@@ -123,7 +125,6 @@ devtools_entrypoint("bundle") {
     "../../ui/components/docs/layout_pane/*",
 
     # TODO(crbug.com/1202788): Remove invalid dependents
-    "../issues/*",
     "../network/*",
   ]
 

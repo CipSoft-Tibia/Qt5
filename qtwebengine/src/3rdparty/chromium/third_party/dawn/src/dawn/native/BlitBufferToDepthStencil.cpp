@@ -125,7 +125,7 @@ ResultOrError<Ref<RenderPipelineBase>> GetOrCreateRG8ToDepth16UnormPipeline(Devi
     ShaderModuleWGSLDescriptor wgslDesc = {};
     ShaderModuleDescriptor shaderModuleDesc = {};
     shaderModuleDesc.nextInChain = &wgslDesc;
-    wgslDesc.source = kBlitRG8ToDepthShaders;
+    wgslDesc.code = kBlitRG8ToDepthShaders;
 
     Ref<ShaderModuleBase> shaderModule;
     DAWN_TRY_ASSIGN(shaderModule, device->CreateShaderModule(&shaderModuleDesc));
@@ -137,6 +137,7 @@ ResultOrError<Ref<RenderPipelineBase>> GetOrCreateRG8ToDepth16UnormPipeline(Devi
     DepthStencilState dsState = {};
     dsState.format = wgpu::TextureFormat::Depth16Unorm;
     dsState.depthWriteEnabled = true;
+    dsState.depthCompare = wgpu::CompareFunction::Always;
 
     RenderPipelineDescriptor renderPipelineDesc = {};
     renderPipelineDesc.vertex.module = shaderModule.Get();
@@ -175,7 +176,7 @@ ResultOrError<InternalPipelineStore::BlitR8ToStencilPipelines> GetOrCreateR8ToSt
     ShaderModuleWGSLDescriptor wgslDesc = {};
     ShaderModuleDescriptor shaderModuleDesc = {};
     shaderModuleDesc.nextInChain = &wgslDesc;
-    wgslDesc.source = kBlitStencilShaders;
+    wgslDesc.code = kBlitStencilShaders;
 
     Ref<ShaderModuleBase> shaderModule;
     DAWN_TRY_ASSIGN(shaderModule, device->CreateShaderModule(&shaderModuleDesc));
@@ -186,6 +187,7 @@ ResultOrError<InternalPipelineStore::BlitR8ToStencilPipelines> GetOrCreateR8ToSt
     DepthStencilState dsState = {};
     dsState.format = format;
     dsState.depthWriteEnabled = false;
+    dsState.depthCompare = wgpu::CompareFunction::Always;
     dsState.stencilFront.passOp = wgpu::StencilOperation::Replace;
 
     RenderPipelineDescriptor renderPipelineDesc = {};
@@ -221,6 +223,7 @@ MaybeError BlitRG8ToDepth16Unorm(DeviceBase* device,
                                  TextureBase* dataTexture,
                                  const TextureCopy& dst,
                                  const Extent3D& copyExtent) {
+    ASSERT(device->IsLockedByCurrentThreadIfNeeded());
     ASSERT(dst.texture->GetFormat().format == wgpu::TextureFormat::Depth16Unorm);
     ASSERT(dataTexture->GetFormat().format == wgpu::TextureFormat::RG8Uint);
 
@@ -268,7 +271,7 @@ MaybeError BlitRG8ToDepth16Unorm(DeviceBase* device,
                 static_cast<uint32_t*>(paramsBuffer->GetMappedRange(0, bufferDesc.size));
             params[0] = dst.origin.x;
             params[1] = dst.origin.y;
-            paramsBuffer->Unmap();
+            DAWN_TRY(paramsBuffer->Unmap());
         }
 
         Ref<BindGroupBase> bindGroup;
@@ -288,13 +291,14 @@ MaybeError BlitRG8ToDepth16Unorm(DeviceBase* device,
 
         RenderPassDepthStencilAttachment dsAttachment;
         dsAttachment.view = dstView.Get();
+        dsAttachment.depthClearValue = 0.0;
         dsAttachment.depthLoadOp = wgpu::LoadOp::Load;
         dsAttachment.depthStoreOp = wgpu::StoreOp::Store;
 
         RenderPassDescriptor rpDesc = {};
         rpDesc.depthStencilAttachment = &dsAttachment;
 
-        Ref<RenderPassEncoder> pass = AcquireRef(commandEncoder->APIBeginRenderPass(&rpDesc));
+        Ref<RenderPassEncoder> pass = commandEncoder->BeginRenderPass(&rpDesc);
         // Bind the resources.
         pass->APISetBindGroup(0, bindGroup.Get());
         // Discard all fragments outside the copy region.
@@ -304,7 +308,7 @@ MaybeError BlitRG8ToDepth16Unorm(DeviceBase* device,
         pass->APISetPipeline(pipeline.Get());
         pass->APIDraw(3, 1, 0, 0);
 
-        pass->APIEnd();
+        pass->End();
     }
     return {};
 }
@@ -314,6 +318,7 @@ MaybeError BlitR8ToStencil(DeviceBase* device,
                            TextureBase* dataTexture,
                            const TextureCopy& dst,
                            const Extent3D& copyExtent) {
+    ASSERT(device->IsLockedByCurrentThreadIfNeeded());
     const Format& format = dst.texture->GetFormat();
     ASSERT(dst.aspect == Aspect::Stencil);
 
@@ -357,7 +362,7 @@ MaybeError BlitR8ToStencil(DeviceBase* device,
         uint32_t* params = static_cast<uint32_t*>(paramsBuffer->GetMappedRange(0, bufferDesc.size));
         params[0] = dst.origin.x;
         params[1] = dst.origin.y;
-        paramsBuffer->Unmap();
+        DAWN_TRY(paramsBuffer->Unmap());
     }
 
     // For each layer, blit the stencil data.
@@ -400,6 +405,7 @@ MaybeError BlitR8ToStencil(DeviceBase* device,
         }
 
         RenderPassDepthStencilAttachment dsAttachment;
+        dsAttachment.depthClearValue = 0.0;
         dsAttachment.view = dstView.Get();
         if (format.HasDepth()) {
             dsAttachment.depthLoadOp = wgpu::LoadOp::Load;
@@ -411,7 +417,7 @@ MaybeError BlitR8ToStencil(DeviceBase* device,
         RenderPassDescriptor rpDesc = {};
         rpDesc.depthStencilAttachment = &dsAttachment;
 
-        Ref<RenderPassEncoder> pass = AcquireRef(commandEncoder->APIBeginRenderPass(&rpDesc));
+        Ref<RenderPassEncoder> pass = commandEncoder->BeginRenderPass(&rpDesc);
         // Bind the resources.
         pass->APISetBindGroup(0, bindGroup.Get());
         // Discard all fragments outside the copy region.
@@ -434,7 +440,7 @@ MaybeError BlitR8ToStencil(DeviceBase* device,
             // since WebGPU doesn't have push constants.
             pass->APIDraw(3, 1, 0, 1u << bit);
         }
-        pass->APIEnd();
+        pass->End();
     }
     return {};
 }

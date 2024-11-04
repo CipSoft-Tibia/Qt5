@@ -39,6 +39,7 @@ using namespace Qt::StringLiterals;
 
     \ingroup tools
     \ingroup shared
+    \ingroup string-processing
 
     \keyword regular expression
 
@@ -445,6 +446,7 @@ using namespace Qt::StringLiterals;
 
     \ingroup tools
     \ingroup shared
+    \ingroup string-processing
 
     \keyword regular expression match
 
@@ -497,6 +499,7 @@ using namespace Qt::StringLiterals;
 
     \ingroup tools
     \ingroup shared
+    \ingroup string-processing
 
     \keyword regular expression iterator
 
@@ -1104,7 +1107,7 @@ void QRegularExpressionPrivate::doMatch(QRegularExpressionMatchPrivate *priv,
                                         const QRegularExpressionMatchPrivate *previous) const
 {
     Q_ASSERT(priv);
-    Q_ASSUME(priv != previous);
+    Q_ASSERT(priv != previous);
 
     const qsizetype subjectLength = priv->subject.size();
 

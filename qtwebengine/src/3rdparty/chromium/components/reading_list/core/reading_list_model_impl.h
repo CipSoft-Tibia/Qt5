@@ -18,6 +18,7 @@
 #include "components/reading_list/core/reading_list_model_storage.h"
 #include "components/reading_list/core/reading_list_sync_bridge.h"
 #include "components/sync/base/storage_type.h"
+#include "google_apis/gaia/core_account_id.h"
 
 namespace base {
 class Clock;
@@ -30,13 +31,16 @@ class ModelTypeChangeProcessor;
 // Concrete implementation of a reading list model using in memory lists.
 class ReadingListModelImpl : public ReadingListModel {
  public:
-  // Initialize a ReadingListModelImpl to load and save data in
-  // |storage_layer|, which must not be null.
-  // |sync_storage_type| specifies whether the model is meant to sync in
-  // transport-mode or the default and traditional unspecified mode.
-  // |clock| will be used to timestamp all the operations.
+  // Initialize a ReadingListModelImpl to load and save data in |storage_layer|,
+  // which must not be null. |sync_storage_type_for_uma| specifies whether the
+  // model is meant to sync in transport-mode or the default and traditional
+  // unspecified mode, for the purpose of metric-reporting.
+  // |wipe_model_upon_sync_disabled_behavior| influences what happens when sync
+  // is disabled. |clock| will be used to timestamp all the operations.
   ReadingListModelImpl(std::unique_ptr<ReadingListModelStorage> storage_layer,
-                       syncer::StorageType sync_storage_type,
+                       syncer::StorageType sync_storage_type_for_uma,
+                       syncer::WipeModelUponSyncDisabledBehavior
+                           wipe_model_upon_sync_disabled_behavior,
                        base::Clock* clock);
   ~ReadingListModelImpl() override;
 
@@ -60,7 +64,9 @@ class ReadingListModelImpl : public ReadingListModel {
   scoped_refptr<const ReadingListEntry> GetEntryByURL(
       const GURL& gurl) const override;
   bool IsUrlSupported(const GURL& url) override;
+  CoreAccountId GetAccountWhereEntryIsSavedTo(const GURL& url) override;
   bool NeedsExplicitUploadToSyncServer(const GURL& url) const override;
+  void MarkAllForUploadToSyncServerIfNeeded() override;
   const ReadingListEntry& AddOrReplaceEntry(
       const GURL& url,
       const std::string& title,
@@ -83,9 +89,14 @@ class ReadingListModelImpl : public ReadingListModel {
                                      base::Time distilation_time) override;
   void AddObserver(ReadingListModelObserver* observer) override;
   void RemoveObserver(ReadingListModelObserver* observer) override;
+  void RecordCountMetricsOnUMAUpload() const override;
+
+  // Add |entry| to the model, which must not exist before, and notify the sync
+  // bridge if |source| is not ADDED_VIA_SYNC.
+  void AddEntry(scoped_refptr<ReadingListEntry> entry,
+                reading_list::EntrySource source);
 
   // API specifically for changes received via sync.
-  void SyncAddEntry(scoped_refptr<ReadingListEntry> entry);
   ReadingListEntry* SyncMergeEntry(scoped_refptr<ReadingListEntry> entry);
   void SyncRemoveEntry(const GURL& url);
   void SyncDeleteAllEntriesAndSyncMetadata();
@@ -108,6 +119,10 @@ class ReadingListModelImpl : public ReadingListModel {
     std::unique_ptr<ReadingListModelStorage::ScopedBatchUpdate> storage_token_;
   };
 
+  // If an entry exists with `url` and is unseen, it gets marked as seen (but
+  // unread).
+  void MarkEntrySeenIfExists(const GURL& url);
+
   // Same as BeginBatchUpdates(), but returns specifically
   // ReadingListModelImpl's ScopedReadingListBatchUpdateImpl.
   std::unique_ptr<ScopedReadingListBatchUpdateImpl>
@@ -117,10 +132,14 @@ class ReadingListModelImpl : public ReadingListModel {
   // download of data and corresponding merge has completed.
   bool IsTrackingSyncMetadata() const;
 
+  static std::string TrimTitle(const std::string& title);
+
   // Test-only factory function to inject an arbitrary change processor.
   static std::unique_ptr<ReadingListModelImpl> BuildNewForTest(
       std::unique_ptr<ReadingListModelStorage> storage_layer,
-      syncer::StorageType sync_storage_type,
+      syncer::StorageType sync_storage_type_for_uma,
+      syncer::WipeModelUponSyncDisabledBehavior
+          wipe_model_upon_sync_disabled_behavior,
       base::Clock* clock,
       std::unique_ptr<syncer::ModelTypeChangeProcessor> change_processor);
 
@@ -128,9 +147,26 @@ class ReadingListModelImpl : public ReadingListModel {
   ReadingListSyncBridge* GetSyncBridgeForTest();
 
  private:
+  // An enum class to record storage state in enum histograms, or add it as a
+  // suffix to metrics.
+  enum class StorageStateForUma {
+    // Account storage.
+    kAccount = 0,
+    // Local storage that is not being synced at the time the metric is
+    // recorded.
+    kLocalOnly = 1,
+    // Local storage that is being synced at the time the metric is recorded.
+    kSyncEnabled = 2,
+    kMaxValue = kSyncEnabled
+  };
+  StorageStateForUma GetStorageStateForUma() const;
+  std::string GetStorageStateSuffixForUma() const;
+
   ReadingListModelImpl(
       std::unique_ptr<ReadingListModelStorage> storage_layer,
-      syncer::StorageType sync_storage_type,
+      syncer::StorageType sync_storage_type_for_uma,
+      syncer::WipeModelUponSyncDisabledBehavior
+          wipe_model_upon_sync_disabled_behavior,
       base::Clock* clock,
       std::unique_ptr<syncer::ModelTypeChangeProcessor> change_processor);
 
@@ -147,10 +183,7 @@ class ReadingListModelImpl : public ReadingListModel {
   // Returns the |storage_layer_| of the model.
   ReadingListModelStorage* StorageLayer();
 
-  // Add |entry| to the model, which must not exist before, and notify the sync
-  // bridge if |source| is not ADDED_VIA_SYNC.
-  void AddEntryImpl(scoped_refptr<ReadingListEntry> entry,
-                    reading_list::EntrySource source);
+  void MarkEntrySeenImpl(ReadingListEntry* entry);
 
   // Remove entry |url| and propagate to the sync bridge if |from_sync| is
   // false.
@@ -160,6 +193,8 @@ class ReadingListModelImpl : public ReadingListModel {
   void UpdateEntryStateCountersOnEntryRemoval(const ReadingListEntry& entry);
   void UpdateEntryStateCountersOnEntryInsertion(const ReadingListEntry& entry);
 
+  void RecordCountMetrics(const std::string& event_suffix) const;
+
   const std::unique_ptr<ReadingListModelStorage> storage_layer_;
   const raw_ptr<base::Clock> clock_;
 
@@ -168,6 +203,10 @@ class ReadingListModelImpl : public ReadingListModel {
   base::ObserverList<ReadingListModelObserver>::Unchecked observers_;
 
   bool loaded_ = false;
+
+  // Used to suppress deletions and batch updates notifications when
+  // ReadingListModelLoaded is not broadcasted yet.
+  bool suppress_deletions_batch_updates_notifications_ = false;
 
   std::map<GURL, scoped_refptr<ReadingListEntry>> entries_;
   size_t unread_entry_count_ = 0;

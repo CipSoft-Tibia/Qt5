@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+@import "widgets/theme";
+@import "typefaces";
 @import "fonts";
 
 :root {
-  --sidebar-width: 256px;
-  --topbar-height: 48px;
+  --sidebar-width: 230px;
+  --topbar-height: 44px;
   --monospace-font: "Roboto Mono", monospace;
   --track-shell-width: 250px;
   --track-border-color: #00000025;
@@ -35,34 +37,19 @@
 }
 
 @mixin material-icon($content) {
-  direction: ltr;
-  display: inline-block;
-  font-family: "Material Icons";
-  font-size: 24px;
-  font-style: normal;
-  font-weight: normal;
-  letter-spacing: normal;
-  line-height: 1;
-  text-transform: none;
-  white-space: nowrap;
-  word-wrap: normal;
-  -webkit-font-feature-settings: "liga";
-  -webkit-font-smoothing: antialiased;
+  @include icon;
   content: $content;
 }
 
 @mixin track_shell_title() {
-  // line-height is deliberately 1px larger than font-size. Roboto seems to
-  // overflow on the bottom on "g"s otherwise.
   font-size: 14px;
-  line-height: 15px;
   max-height: 30px;
   overflow: hidden;
   text-align: left;
   overflow-wrap: break-word;
   font-family: "Roboto Condensed", sans-serif;
   font-weight: 300;
-  letter-spacing: -0.25px;
+  line-break: anywhere;
 }
 
 * {
@@ -85,6 +72,7 @@ body > main {
   padding: 0;
   margin: 0;
   overscroll-behavior: none;
+  overflow: hidden;
 }
 
 pre,
@@ -185,21 +173,18 @@ button.close {
   grid-area: alerts;
   background-color: #f2f2f2;
   > div {
-    font-family: "Raleway", sans-serif;
+    font-family: "Roboto", sans-serif;
     font-weight: 400;
     letter-spacing: 0.25px;
     padding: 1rem;
     display: flex;
     justify-content: space-between;
+    align-items: center;
     button {
       width: 24px;
       height: 24px;
     }
   }
-}
-
-.query-table-container {
-  width: 100%;
 }
 
 @mixin table-font-size {
@@ -211,36 +196,57 @@ $table-hover-color: hsl(214, 22%, 90%);
 
 $table-border-color: rgba(60, 76, 92, 0.4);
 
-.pivot-table {
+$bottom-tab-padding: 10px;
+
+@mixin table-component {
   @include bottom-panel-font;
   @include table-font-size;
 
   width: 100%;
   border-collapse: collapse;
 
-  thead,
-  i {
-    cursor: pointer;
-  }
   thead {
     font-weight: normal;
   }
+
+  tr:hover td {
+    background-color: $table-hover-color;
+  }
+
+  tr.header {
+    border-bottom: 1px solid $table-border-color;
+    text-align: center;
+  }
+
   td {
-    padding: 2px 1px;
+    padding: 3px 5px;
+    white-space: nowrap;
+
+    i.material-icons {
+      // Shrink the icons inside the table cells to increase the information
+      // density a little bit.
+      font-size: 16px;
+    }
+  }
+}
+
+.generic-table {
+  @include table-component;
+}
+
+.pivot-table {
+  @include table-component;
+
+  thead,
+  i {
+    cursor: pointer;
   }
   td.first {
     border-left: 1px solid $table-border-color;
     padding-left: 6px;
   }
-  tr.header {
-    border-bottom: 1px solid $table-border-color;
-    text-align: center;
-  }
   thead td.reorderable-cell {
     cursor: grab;
-  }
-  tr:hover td {
-    background-color: $table-hover-color;
   }
   .disabled {
     cursor: default;
@@ -256,8 +262,17 @@ $table-border-color: rgba(60, 76, 92, 0.4);
   }
 }
 
-.query-table {
-  width: 100%;
+.pf-query-panel {
+  display: contents;
+  .pf-query-warning {
+    padding: 4px;
+    position: sticky;
+    left: 0;
+  }
+}
+
+.pf-query-table {
+  min-width: 100%;
   font-size: 14px;
   border: 0;
   thead td {
@@ -290,6 +305,11 @@ $table-border-color: rgba(60, 76, 92, 0.4);
     }
     &[clickable] {
       cursor: pointer;
+      &:active {
+        background-color: hsl(206, 19%, 75%);
+        box-shadow: inset 1px 1px 4px #00000040;
+        transition: none;
+      }
     }
   }
 }
@@ -297,13 +317,19 @@ $table-border-color: rgba(60, 76, 92, 0.4);
 .query-error {
   padding: 20px 10px;
   color: hsl(-10, 50%, 50%);
-  font-family: "Roboto Condensed", sans-serif;
+  font-family: "Roboto Mono", sans-serif;
+  font-size: 12px;
   font-weight: 300;
+  white-space: pre;
 }
 
 .dropdown {
   display: inline-block;
   position: relative;
+}
+
+.dropdown-button {
+  cursor: pointer;
 }
 
 .popup-menu {
@@ -372,6 +398,7 @@ $table-border-color: rgba(60, 76, 92, 0.4);
     width: var(--track-shell-width);
     background: #fff;
     border-right: 1px solid #c7d0db;
+    overflow: hidden;
 
     &.drag {
       background-color: #eee;
@@ -394,7 +421,7 @@ $table-border-color: rgba(60, 76, 92, 0.4);
 
     .chip {
       background-color: #bed6ff;
-      border-radius: 3px;
+      border-radius: $pf-border-radius;
       font-size: smaller;
       padding: 0 0.1rem;
       margin-left: 1ch;
@@ -427,6 +454,7 @@ $table-border-color: rgba(60, 76, 92, 0.4);
       display: flex;
       height: 100%;
       align-items: center;
+      justify-content: center;
 
       &:hover {
         background-color: #ebeef9;
@@ -455,17 +483,8 @@ $table-border-color: rgba(60, 76, 92, 0.4);
 }
 
 .details-panel-container {
-  position: relative;
-  overflow-x: hidden;
-  overflow-y: auto;
-  flex: 1 1 auto;
-  // TODO(hjd): This causes the sticky header to flicker when scrolling.
-  // Is will-change necessary in the details panel?
-  // will-change: transform;
-  display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
-  grid-template-areas: "space";
+  box-shadow: #0000003b 0px 0px 3px 1px;
+  overflow: auto;
 }
 
 .pinned-panel-container {
@@ -504,9 +523,10 @@ canvas.main-canvas {
   position: relative; // Otherwise canvas covers panel dom.
 
   &.sticky {
-    position: sticky;
+    // TODO(stevegolton): Get sticky working again.
+    // position: sticky;
     z-index: 3;
-    top: 0;
+    // top: 0;
     background-color: hsl(215, 22%, 19%);
   }
 }
@@ -519,11 +539,11 @@ canvas.main-canvas {
 }
 
 .overview-timeline {
-  height: 100px;
+  height: 70px;
 }
 
 .time-axis-panel {
-  height: 12px;
+  height: 22px;
 }
 
 .tickbar {
@@ -539,8 +559,11 @@ canvas.main-canvas {
 }
 
 header.overview {
+  position: sticky;
+  top: 0;
+  left: 0;
   display: flex;
-  align-content: center;
+  align-content: baseline;
   background-color: hsl(213, 22%, 82%);
   color: hsl(213, 22%, 20%);
   font-family: "Roboto Condensed", sans-serif;
@@ -792,9 +815,9 @@ button.query-ctrl {
   user-select: none;
 }
 
-.pivot-table-redux {
+.pivot-table {
   user-select: text;
-  padding: 10px;
+  padding: $bottom-tab-padding;
 
   button.mode-button {
     border-radius: 10px;
@@ -825,10 +848,6 @@ button.query-ctrl {
     // In regular pivot table cells, avoids wrapping the icon spacer to go on
     // a separate line.
     white-space: pre;
-
-    i.material-icons {
-      font-size: 16px;
-    }
   }
 }
 
@@ -886,7 +905,8 @@ button.query-ctrl {
   button {
     margin: 0 0.5rem;
 
-    i.material-icons {
+    i.material-icons,
+    i.material-icons-filled {
       font-size: 18px;
     }
   }

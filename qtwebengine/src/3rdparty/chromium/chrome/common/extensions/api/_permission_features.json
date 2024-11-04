@@ -36,9 +36,15 @@
       "2FCBCE08B34CCA1728A85F1EFBD9A34DD2558B2E"
     ]
   },
-  "activeTab": {
+  "accessibilityServicePrivate": {
     "channel": "stable",
-    "extension_types": ["extension", "legacy_packaged_app"]
+    "component_extensions_auto_granted": false,
+    "extension_types": ["extension"],
+    "location": "component",
+    "platforms": ["chromeos", "lacros"],
+    "allowlist": [
+      "3CD7D4ABEB04E8C4D20552C60B8B20983DD10A2F"   // Embedded A11y Helper.
+    ]
   },
   "activityLogPrivate": {
     "channel": "stable",
@@ -233,10 +239,6 @@
     "channel": "stable",
     "extension_types": ["extension", "platform_app"]
   },
-  "desktopCapturePrivate": {
-    "channel": "stable",
-    "extension_types": ["extension", "platform_app"]
-  },
   "documentScan": {
     "channel": "stable",
     "extension_types": ["extension", "platform_app"],
@@ -352,10 +354,12 @@
   },
   "fileManagerPrivate": {
     "channel": "stable",
-    "extension_types": ["extension", "legacy_packaged_app", "platform_app"],
+    "extension_types": ["extension", "platform_app"],
+    "location": "component",
     "platforms": ["chromeos"],
     "allowlist": [
-      "74E2D32A61B08D29521A8C4E360F581DE78F5CA5"  // Image loader
+      // Only used for API tests by test ext pkplfbidichfdicaijlchgnapepdginl.
+      "5065C83E84321221675D20FBE4DC43C655CC8C6F"
     ]
   },
   "fileSystemProvider": [{
@@ -413,13 +417,6 @@
     "channel": "stable",
     "extension_types": ["extension", "platform_app"]
   },
-  "identityPrivate": {
-    "channel": "stable",
-    "extension_types": [
-      "legacy_packaged_app", "platform_app"
-    ],
-    "location": "component"
-  },
   "idltest": {
     "channel": "trunk",
     "extension_types": ["extension"]
@@ -428,6 +425,16 @@
     "channel": "stable",
     "extension_types": ["extension", "legacy_packaged_app"],
     "platforms": ["chromeos", "win", "linux"]
+  },
+  "imageLoaderPrivate": {
+    "channel": "stable",
+    "component_extensions_auto_granted": false,
+    "extension_types": ["extension"],
+    "location": "component",
+    "platforms": ["chromeos"],
+    "allowlist": [
+      "74E2D32A61B08D29521A8C4E360F581DE78F5CA5"  // Image loader
+    ]
   },
   "inputMethodPrivate": [{
     "channel": "stable",
@@ -486,6 +493,7 @@
     "location": "policy",
     "platforms": ["chromeos", "lacros"],
     "allowlist": [
+      "93B7178E8C275515C38D4F43D9DF4648F0EA9B03", // Badge Based Auth Extension
       "7FE4A999359A456C4B0FB7B7AD85CEA29CA50519", // Login screen APIs test extension
       "3F5995FE79A861F019C6F093BEF98D73FA9D3A5F"  // Login screen APIs in-session test extension
     ]
@@ -504,6 +512,14 @@
     "allowlist": [
       "7FE4A999359A456C4B0FB7B7AD85CEA29CA50519", // Login screen APIs test extension
       "3F5995FE79A861F019C6F093BEF98D73FA9D3A5F"  // Login screen APIs in-session test extension
+    ]
+  }, {
+    "channel": "stable",
+    "extension_types": ["extension", "login_screen_extension"],
+    "location": "policy",
+    "platforms": ["chromeos", "lacros"],
+    "allowlist": [
+      "93B7178E8C275515C38D4F43D9DF4648F0EA9B03" // Badge Based Auth Extension
     ]
   }],
   "loginScreenUi": [{
@@ -532,6 +548,7 @@
     "location": "policy",
     "platforms": ["chromeos"],
     "allowlist": [
+      "93B7178E8C275515C38D4F43D9DF4648F0EA9B03",   // Badge Based Auth Extension
       "EC3DE21E048B67319893889529354DFBFA96FD23",   // https://crbug.com/1233881
       "A19608AC34215B127FF9D7C006D67F5C8ED8146D",   // https://crbug.com/1233881
       // https://crbug.com/1194693
@@ -601,8 +618,7 @@
       "allowlist": [
         "B44D08FD98F1523ED5837D78D0A606EA9D6206E5"  // Web Store
       ]
-    },
-    {
+    }, {
       "channel": "stable",
       "extension_types": ["platform_app"],
       "session_types": ["kiosk"]
@@ -610,6 +626,14 @@
       "channel": "stable",
       "dependencies": ["behavior:imprivata_login_screen_extension"],
       "extension_types": ["login_screen_extension"]
+    }, {
+      "channel": "stable",
+      "extension_types": ["login_screen_extension"],
+      "location": "policy",
+      "platforms": ["chromeos"],
+      "allowlist": [
+        "93B7178E8C275515C38D4F43D9DF4648F0EA9B03" // Badge Based Auth Extension
+      ]
     }
   ],
   "mediaPlayerPrivate": {
@@ -618,20 +642,10 @@
     "location": "component",
     "platforms": ["chromeos"]
   },
-  "mediaRouterPrivate": {
-    "channel": "stable",
-    "extension_types": ["extension"],
-    "allowlist": [
-      "63ED55E43214C211F82122ED56407FF1A807F2A3",  // Media Router Dev
-      "226CF815E39A363090A1E547D53063472B8279FA"   // Media Router Stable
-    ]
-  },
   "mdns": [{
     "channel": "stable",
     "extension_types": ["extension"],
     "allowlist": [
-      "63ED55E43214C211F82122ED56407FF1A807F2A3",  // Media Router Dev
-      "226CF815E39A363090A1E547D53063472B8279FA",  // Media Router Stable
       "1BFB3A47AA4A1E1C4714D919217602685CDD0FA7",  // http://crbug.com/574600
       "DD87C93131FF8D3DE4E483DC1EB298D73C7223A6"   // http://crbug.com/1328114
     ]
@@ -768,6 +782,11 @@
       "CF6B19571334F49878327D557597D23B1458AA39"   // https://crbug.com/1201800
     ]
   },
+  "readingList": {
+    "channel": "trunk",
+    "extension_types": ["extension"],
+    "min_manifest_version": 3
+  },
   "resourcesPrivate": {
     "channel": "stable",
     "extension_types": [
@@ -813,6 +832,9 @@
     "location": "component"
   },
   {
+    // TODO(devlin): Remove these entries. Unfortunately, this causes a bit of
+    // a problem, because accessibility component extensions are relying an
+    // implicit allowlisting from this entry.
     "channel": "stable",
     "extension_types": ["extension"],
     "allowlist": [
@@ -838,7 +860,7 @@
     ]
   }],
   "sidePanel": {
-    "channel": "canary",
+    "channel": "stable",
     "extension_types": ["extension"],
     "min_manifest_version": 3
   },
@@ -949,23 +971,12 @@
     "extension_types": ["platform_app", "extension"],
     "platforms": ["chromeos", "lacros"]
   },
-  "webAuthenticationProxy": [{
-    "channel": "trunk",
-    "extension_types": ["extension"],
-    "min_manifest_version": 3,
-    "platforms": ["win", "linux", "mac"]
-  }, {
+  "webAuthenticationProxy": {
     "channel": "stable",
     "extension_types": ["extension"],
     "min_manifest_version": 3,
-    "platforms": ["win", "linux", "mac"],
-    "allowlist": [
-      // Chrome Remote Desktop Security Key extension
-      "3CDF65D2CA48FCA9A96B01936FA97049F8332737",
-      // Chrome Remote Desktop Security Key dev extension
-      "2981AC9CF0999EEFFB4599E3C02395054167A521"
-    ]
-  }],
+    "platforms": ["win", "linux", "mac"]
+  },
   "webNavigation": {
     "channel": "stable",
     "extension_types": ["extension", "legacy_packaged_app"]
@@ -1002,10 +1013,6 @@
       "80B9DC58E5210749F052F5B4DB239C50CF72AEB6",
       // Hangout Services component extension.
       "DF84F03F9B960409CCDE0D895B9650EBE81C0A8E",
-      // Media Router dev extension
-      "63ED55E43214C211F82122ED56407FF1A807F2A3",
-      // Media Router release extension
-      "226CF815E39A363090A1E547D53063472B8279FA",
       // Extension used for API test.
       "ADFA45434ABA2F1A4647E673F53FF37F8F6047A3",
       "4F25792AF1AA7483936DE29C07806F203C7170A0",  // http://crbug.com/777967
@@ -1045,7 +1052,8 @@
       "6A4D7AEC6414492BD25219C7A479265BF1177D42",  // http://crbug.com/1206836
       "F80B163C896D50A685E0B683BEEEA94217F253D6",  // http://crbug.com/1206836
       "454738352012A22901C55B348E5E530BDE1AF2B0",  // http://crbug.com/1259253
-      "7D5A66C88A25019F997E548DEC5E0011E2855591"   // http://crbug.com/1206836
+      "7D5A66C88A25019F997E548DEC5E0011E2855591",  // http://crbug.com/1206836
+      "F740D260E7E2107B3AE454F512B65AE6CF244433"   // http://b/273392894
     ]
   }
 }

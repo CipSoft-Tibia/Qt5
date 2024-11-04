@@ -17,9 +17,12 @@
 
 #include <QtQml/qqmllist.h>
 #include <QtQml/qqml.h>
+#include <QtQmlModels/private/qtqmlmodelsglobal_p.h>
 
 #include "qquickpopup_p.h"
 #include <QtQuickTemplates2/private/qquickicon_p.h>
+
+QT_REQUIRE_CONFIG(qml_object_model);
 
 QT_BEGIN_NAMESPACE
 
@@ -132,7 +135,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickMenu)
 
 #endif // QQUICKMENU_P_H

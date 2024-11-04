@@ -67,6 +67,8 @@ GNCStatus GNCStatusFromCppStatus(Status status) {
       return GNCStatusAlreadyAdvertising;
     case Status::kAlreadyDiscovering:
       return GNCStatusAlreadyDiscovering;
+    case Status::kAlreadyListening:
+      return GNCStatusAlreadyListening;
     case Status::kEndpointIoError:
       return GNCStatusEndpointIoError;
     case Status::kEndpointUnknown:
@@ -85,6 +87,14 @@ GNCStatus GNCStatusFromCppStatus(Status status) {
       return GNCStatusWifiLanError;
     case Status::kPayloadUnknown:
       return GNCStatusPayloadUnknown;
+    case Status::kReset:
+      return GNCStatusReset;
+    case Status::kTimeout:
+      return GNCStatusTimeout;
+    case Status::kUnknown:
+      return GNCStatusUnknown;
+    case Status::kNextValue:
+      return GNCStatusUnknown;
   }
 }
 
@@ -158,27 +168,26 @@ GNCStatus GNCStatusFromCppStatus(Status status) {
       ByteArray((const char *)endpointInfo.bytes, endpointInfo.length);
   connection_request_info.listener = std::move(listener);
 
-  ResultListener result;
-  result.result_cb = ^(Status status) {
+  ResultListener result = [completionHandler](Status status) {
     NSError *err = NSErrorFromCppStatus(status);
     if (completionHandler) {
       completionHandler(err);
     }
   };
 
-  _core->StartAdvertising(service_id, advertising_options, connection_request_info, result);
+  _core->StartAdvertising(service_id, advertising_options, connection_request_info,
+                          std::move(result));
 }
 
 - (void)stopAdvertisingWithCompletionHandler:(void (^)(NSError *error))completionHandler {
-  ResultListener result;
-  result.result_cb = ^(Status status) {
+  ResultListener result = [completionHandler](Status status) {
     NSError *err = NSErrorFromCppStatus(status);
     if (completionHandler) {
       completionHandler(err);
     }
   };
 
-  _core->StopAdvertising(result);
+  _core->StopAdvertising(std::move(result));
 }
 
 - (void)startDiscoveryAsService:(NSString *)serviceID
@@ -201,27 +210,25 @@ GNCStatus GNCStatusFromCppStatus(Status status) {
     [delegate lostEndpoint:endpointID];
   };
 
-  ResultListener result;
-  result.result_cb = ^(Status status) {
+  ResultListener result = [completionHandler](Status status) {
     NSError *err = NSErrorFromCppStatus(status);
     if (completionHandler) {
       completionHandler(err);
     }
   };
 
-  _core->StartDiscovery(service_id, discovery_options, std::move(listener), result);
+  _core->StartDiscovery(service_id, discovery_options, std::move(listener), std::move(result));
 }
 
 - (void)stopDiscoveryWithCompletionHandler:(void (^)(NSError *error))completionHandler {
-  ResultListener result;
-  result.result_cb = ^(Status status) {
+  ResultListener result = [completionHandler](Status status) {
     NSError *err = NSErrorFromCppStatus(status);
     if (completionHandler) {
       completionHandler(err);
     }
   };
 
-  _core->StopDiscovery(result);
+  _core->StopDiscovery(std::move(result));
 }
 
 - (void)requestConnectionToEndpoint:(NSString *)endpointID
@@ -261,15 +268,15 @@ GNCStatus GNCStatusFromCppStatus(Status status) {
 
   ConnectionOptions connection_options = [connectionOptions toCpp];
 
-  ResultListener result;
-  result.result_cb = ^(Status status) {
+  ResultListener result = [completionHandler](Status status) {
     NSError *err = NSErrorFromCppStatus(status);
     if (completionHandler) {
       completionHandler(err);
     }
   };
 
-  _core->RequestConnection(endpoint_id, connection_request_info, connection_options, result);
+  _core->RequestConnection(endpoint_id, connection_request_info, connection_options,
+                           std::move(result));
 }
 
 - (void)acceptConnectionRequestFromEndpoint:(NSString *)endpointID
@@ -278,14 +285,14 @@ GNCStatus GNCStatusFromCppStatus(Status status) {
   std::string endpoint_id = [endpointID cStringUsingEncoding:[NSString defaultCStringEncoding]];
 
   PayloadListener listener;
-  listener.payload_cb = ^(const std::string &endpoint_id, Payload payload) {
-    NSString *endpointID = @(endpoint_id.c_str());
+  listener.payload_cb = [delegate](absl::string_view endpoint_id, Payload payload) {
+    NSString *endpointID = @(std::string(endpoint_id).c_str());
     GNCPayload *gncPayload = [GNCPayload fromCpp:std::move(payload)];
     [delegate receivedPayload:gncPayload fromEndpoint:endpointID];
   };
   listener.payload_progress_cb =
-      ^(const std::string &endpoint_id, const PayloadProgressInfo &info) {
-        NSString *endpointID = @(endpoint_id.c_str());
+      [delegate](absl::string_view endpoint_id, const PayloadProgressInfo &info) {
+        NSString *endpointID = @(std::string(endpoint_id).c_str());
         GNCPayloadStatus status;
         switch (info.status) {
           case PayloadProgressInfo::Status::kSuccess:
@@ -308,30 +315,28 @@ GNCStatus GNCStatusFromCppStatus(Status status) {
                                         totalBytes:info.total_bytes];
       };
 
-  ResultListener result;
-  result.result_cb = ^(Status status) {
+  ResultListener result = [completionHandler](Status status) {
     NSError *err = NSErrorFromCppStatus(status);
     if (completionHandler) {
       completionHandler(err);
     }
   };
 
-  _core->AcceptConnection(endpoint_id, std::move(listener), result);
+  _core->AcceptConnection(endpoint_id, std::move(listener), std::move(result));
 }
 
 - (void)rejectConnectionRequestFromEndpoint:(NSString *)endpointID
                       withCompletionHandler:(void (^)(NSError *error))completionHandler {
   std::string endpoint_id = [endpointID cStringUsingEncoding:[NSString defaultCStringEncoding]];
 
-  ResultListener result;
-  result.result_cb = ^(Status status) {
+  ResultListener result = [completionHandler](Status status) {
     NSError *err = NSErrorFromCppStatus(status);
     if (completionHandler) {
       completionHandler(err);
     }
   };
 
-  _core->RejectConnection(endpoint_id, result);
+  _core->RejectConnection(endpoint_id, std::move(result));
 }
 
 - (void)sendPayload:(GNCPayload *)payload
@@ -344,69 +349,64 @@ GNCStatus GNCStatusFromCppStatus(Status status) {
     endpoint_ids.push_back(endpoint_id);
   }
 
-  ResultListener result;
-  result.result_cb = ^(Status status) {
+  ResultListener result = [completionHandler](Status status) {
     NSError *err = NSErrorFromCppStatus(status);
     if (completionHandler) {
       completionHandler(err);
     }
   };
 
-  _core->SendPayload(endpoint_ids, [payload toCpp], result);
+  _core->SendPayload(endpoint_ids, [payload toCpp], std::move(result));
 }
 
 - (void)cancelPayload:(int64_t)payloadID
     withCompletionHandler:(void (^)(NSError *error))completionHandler {
-  ResultListener result;
-  result.result_cb = ^(Status status) {
+  ResultListener result = [completionHandler](Status status) {
     NSError *err = NSErrorFromCppStatus(status);
     if (completionHandler) {
       completionHandler(err);
     }
   };
 
-  _core->CancelPayload(payloadID, result);
+  _core->CancelPayload(payloadID, std::move(result));
 }
 
 - (void)disconnectFromEndpoint:(NSString *)endpointID
          withCompletionHandler:(void (^)(NSError *error))completionHandler {
   std::string endpoint_id = [endpointID cStringUsingEncoding:[NSString defaultCStringEncoding]];
 
-  ResultListener result;
-  result.result_cb = ^(Status status) {
+  ResultListener result = [completionHandler](Status status) {
     NSError *err = NSErrorFromCppStatus(status);
     if (completionHandler) {
       completionHandler(err);
     }
   };
 
-  _core->DisconnectFromEndpoint(endpoint_id, result);
+  _core->DisconnectFromEndpoint(endpoint_id, std::move(result));
 }
 
 - (void)stopAllEndpointsWithCompletionHandler:(void (^)(NSError *error))completionHandler {
-  ResultListener result;
-  result.result_cb = ^(Status status) {
+  ResultListener result = [completionHandler](Status status) {
     NSError *err = NSErrorFromCppStatus(status);
     if (completionHandler) {
       completionHandler(err);
     }
   };
-  _core->StopAllEndpoints(result);
+  _core->StopAllEndpoints(std::move(result));
 }
 
 - (void)initiateBandwidthUpgrade:(NSString *)endpointID
            withCompletionHandler:(void (^)(NSError *error))completionHandler {
   std::string endpoint_id = [endpointID cStringUsingEncoding:[NSString defaultCStringEncoding]];
 
-  ResultListener result;
-  result.result_cb = ^(Status status) {
+  ResultListener result = [completionHandler](Status status) {
     NSError *err = NSErrorFromCppStatus(status);
     if (completionHandler) {
       completionHandler(err);
     }
   };
 
-  _core->InitiateBandwidthUpgrade(endpoint_id, result);
+  _core->InitiateBandwidthUpgrade(endpoint_id, std::move(result));
 }
 
 - (NSString *)localEndpointID {

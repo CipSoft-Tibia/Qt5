@@ -146,6 +146,10 @@ void JourneyLogger::SetOptOutOffered() {
   SetEvent2Occurred(Event2::kOptOutOffered);
 }
 
+void JourneyLogger::SetActivationlessShow() {
+  SetEvent2Occurred(Event2::kActivationlessShow);
+}
+
 void JourneyLogger::SetSkippedShow() {
   SetEventOccurred(EVENT_SKIPPED_SHOW);
   SetEvent2Occurred(Event2::kSkippedShow);
@@ -182,6 +186,8 @@ void JourneyLogger::SetSelectedMethod(PaymentMethodCategory category) {
       SetEventOccurred(EVENT_SELECTED_SECURE_PAYMENT_CONFIRMATION);
       SetEvent2Occurred(Event2::kSelectedSecurePaymentConfirmation);
       break;
+    case PaymentMethodCategory::kGooglePayAuthentication:  // Intentional
+                                                           // fallthrough.
     case PaymentMethodCategory::kOther:
       SetEventOccurred(EVENT_SELECTED_OTHER);
       SetEvent2Occurred(Event2::kSelectedOther);
@@ -199,6 +205,8 @@ void JourneyLogger::SetAvailableMethod(PaymentMethodCategory category) {
     case PaymentMethodCategory::kGoogle:
       SetEventOccurred(EVENT_AVAILABLE_METHOD_GOOGLE);
       break;
+    case PaymentMethodCategory::kGooglePayAuthentication:  // Intentional
+                                                           // fallthrough.
     case PaymentMethodCategory::kPlayBilling:  // Intentional fallthrough.
     case PaymentMethodCategory::kSecurePaymentConfirmation:
       NOTREACHED();
@@ -248,6 +256,9 @@ void JourneyLogger::SetRequestedPaymentMethods(
       case PaymentMethodCategory::kGoogle:
         SetEventOccurred(EVENT_REQUEST_METHOD_GOOGLE);
         SetEvent2Occurred(Event2::kRequestMethodGoogle);
+        break;
+      case PaymentMethodCategory::kGooglePayAuthentication:
+        SetEvent2Occurred(Event2::kRequestMethodGooglePayAuthentication);
         break;
       case PaymentMethodCategory::kPlayBilling:
         SetEvent2Occurred(Event2::kRequestMethodPlayBilling);
@@ -470,7 +481,8 @@ void JourneyLogger::ValidateEventBits() const {
     // It is possible that a service worker based app responds to "basic-card"
     // request.
     DCHECK(events_ & EVENT_REQUEST_METHOD_OTHER ||
-           events_ & EVENT_REQUEST_METHOD_BASIC_CARD);
+           events_ & EVENT_REQUEST_METHOD_BASIC_CARD ||
+           WasOccurred(Event2::kRequestMethodGooglePayAuthentication));
   }
 
   // Validate UI SHOWN status.
@@ -488,6 +500,13 @@ void JourneyLogger::ValidateEventBits() const {
     // Internal secure payment confirmation payment handler should not skip UI
     // show.
     DCHECK(!(events_ & EVENT_SELECTED_SECURE_PAYMENT_CONFIRMATION));
+  }
+
+  // Validate activationless show.
+  if (WasOccurred(Event2::kActivationlessShow)) {
+    // Should not be able to record an activationless show without show itself
+    // being recorded.
+    DCHECK(WasOccurred(Event2::kShown) || WasOccurred(Event2::kSkippedShow));
   }
 
   // Check that the two bits are not set at the same time.

@@ -71,9 +71,11 @@ class V8_EXPORT_PRIVATE GlobalHandles final {
   ~GlobalHandles();
 
   // Creates a new global handle that is alive until Destroy is called.
-  Handle<Object> Create(Object value);
+  Handle<Object> Create(Tagged<Object> value);
   Handle<Object> Create(Address value);
 
+  template <typename T>
+  inline Handle<T> Create(Tagged<T> value);
   template <typename T>
   inline Handle<T> Create(T value);
 
@@ -197,7 +199,8 @@ class EternalHandles final {
   EternalHandles& operator=(const EternalHandles&) = delete;
 
   // Create an EternalHandle, overwriting the index.
-  V8_EXPORT_PRIVATE void Create(Isolate* isolate, Object object, int* index);
+  V8_EXPORT_PRIVATE void Create(Isolate* isolate, Tagged<Object> object,
+                                int* index);
 
   // Grab the handle for an existing EternalHandle.
   inline Handle<Object> Get(int index) {
@@ -247,14 +250,18 @@ class GlobalHandleVector {
       return *this;
     }
     Handle<T> operator*() { return Handle<T>(&*it_); }
-    bool operator!=(Iterator& that) { return it_ != that.it_; }
+    bool operator==(const Iterator& that) const { return it_ == that.it_; }
+    bool operator!=(const Iterator& that) const { return it_ != that.it_; }
+
+    T raw() { return T::cast(Object(*it_)); }
 
    private:
     std::vector<Address, StrongRootBlockAllocator>::iterator it_;
   };
 
-  explicit GlobalHandleVector(Heap* heap)
-      : locations_(StrongRootBlockAllocator(heap)) {}
+  explicit inline GlobalHandleVector(Heap* heap);
+  // Usage with LocalHeap is safe.
+  explicit inline GlobalHandleVector(LocalHeap* local_heap);
 
   Handle<T> operator[](size_t i) { return Handle<T>(&locations_[i]); }
 

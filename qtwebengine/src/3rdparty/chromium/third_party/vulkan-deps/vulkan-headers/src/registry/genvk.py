@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 #
-# Copyright 2013-2022 The Khronos Group Inc.
+# Copyright 2013-2023 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,12 +9,19 @@ import os
 import pdb
 import re
 import sys
+import copy
 import time
 import xml.etree.ElementTree as etree
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from cgenerator import CGeneratorOptions, COutputGenerator
+# Vulkan SC modules
+from json_parser import JSONParserGenerator, JSONParserOptions
+from schema_generator import SchemaGeneratorOptions, SchemaOutputGenerator
+from json_generator import JSONGeneratorOptions, JSONOutputGenerator
+from json_h_generator import JSONHeaderOutputGenerator, JSONHeaderGeneratorOptions
+from json_c_generator import JSONCOutputGenerator, JSONCGeneratorOptions
 
 from docgenerator import DocGeneratorOptions, DocOutputGenerator
 from extensionmetadocgenerator import (ExtensionMetaDocGeneratorOptions,
@@ -24,6 +31,8 @@ from generator import write
 from spirvcapgenerator import SpirvCapabilityOutputGenerator
 from hostsyncgenerator import HostSynchronizationOutputGenerator
 from formatsgenerator import FormatsOutputGenerator
+from syncgenerator import SyncOutputGenerator
+from jsgenerator import JSOutputGenerator
 from pygenerator import PyOutputGenerator
 from rubygenerator import RubyOutputGenerator
 from reflib import logDiag, logWarn, logErr, setLogFile
@@ -119,7 +128,7 @@ def makeGenOpts(args):
     # The SPDX formatting below works around constraints of the 'reuse' tool
     prefixStrings = [
         '/*',
-        '** Copyright 2015-2022 The Khronos Group Inc.',
+        '** Copyright 2015-2023 The Khronos Group Inc.',
         '**',
         '** SPDX-License-Identifier' + ': Apache-2.0',
         '*/',
@@ -135,13 +144,23 @@ def makeGenOpts(args):
         ''
     ]
 
+    vulkanLayer = args.vulkanLayer
+
     # Defaults for generating re-inclusion protection wrappers (or not)
     protectFile = protect
 
     # An API style conventions object
     conventions = APIConventions()
 
-    defaultAPIName = conventions.xml_api_name
+    if args.apiname is not None:
+        defaultAPIName = args.apiname
+    else:
+        defaultAPIName = conventions.xml_api_name
+
+    # APIs to merge
+    mergeApiNames = args.mergeApiNames
+
+    isCTS = args.isCTS
 
     # API include files for spec and ref pages
     # Overwrites include subdirectories in spec source tree
@@ -173,8 +192,26 @@ def makeGenOpts(args):
             expandEnumerants  = False)
         ]
 
-    # Python and Ruby representations of API information, used by scripts
-    # that do not need to load the full XML.
+    # JavaScript, Python, and Ruby representations of API information, used
+    # by scripts that do not need to load the full XML.
+    genOpts['apimap.cjs'] = [
+          JSOutputGenerator,
+          DocGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'apimap.cjs',
+            directory         = directory,
+            genpath           = None,
+            apiname           = defaultAPIName,
+            profile           = None,
+            versions          = featuresPat,
+            emitversions      = featuresPat,
+            defaultExtensions = None,
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            reparentEnums     = False)
+        ]
+
     genOpts['apimap.py'] = [
           PyOutputGenerator,
           DocGeneratorOptions(
@@ -335,6 +372,25 @@ def makeGenOpts(args):
             reparentEnums     = False)
         ]
 
+    # Used to generate various synchronization chapter tables
+    genOpts['syncinc'] = [
+          SyncOutputGenerator,
+          DocGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'timeMarker',
+            directory         = directory,
+            genpath           = None,
+            apiname           = defaultAPIName,
+            profile           = None,
+            versions          = featuresPat,
+            emitversions      = featuresPat,
+            defaultExtensions = None,
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            reparentEnums     = False)
+        ]
+
     # Platform extensions, in their own header files
     # Each element of the platforms[] array defines information for
     # generating a single platform:
@@ -360,10 +416,14 @@ def makeGenOpts(args):
         'VK_KHR_video_encode_queue',
         'VK_EXT_video_encode_h264',
         'VK_EXT_video_encode_h265',
+        'VK_NV_displacement_micromap',
+        'VK_AMDX_shader_enqueue',
     ]
 
     betaSuppressExtensions = [
-        'VK_KHR_video_queue'
+        'VK_KHR_video_queue',
+        'VK_EXT_opacity_micromap',
+        'VK_KHR_pipeline_library',
     ]
 
     platforms = [
@@ -397,7 +457,11 @@ def makeGenOpts(args):
         [ 'vulkan_xlib_xrandr.h', [ 'VK_EXT_acquire_xlib_display' ], commonSuppressExtensions ],
         [ 'vulkan_metal.h',       [ 'VK_EXT_metal_surface',
                                     'VK_EXT_metal_objects'        ], commonSuppressExtensions ],
-        [ 'vulkan_screen.h',      [ 'VK_QNX_screen_surface'       ], commonSuppressExtensions ],
+        [ 'vulkan_screen.h',      [ 'VK_QNX_screen_surface',
+                                    'VK_QNX_external_memory_screen_buffer' ], commonSuppressExtensions ],
+        [ 'vulkan_sci.h',         [ 'VK_NV_external_sci_sync',
+                                    'VK_NV_external_sci_sync2',
+                                    'VK_NV_external_memory_sci_buf'], commonSuppressExtensions ],
         [ 'vulkan_beta.h',        betaRequireExtensions,             betaSuppressExtensions ],
     ]
 
@@ -417,6 +481,7 @@ def makeGenOpts(args):
             directory         = directory,
             genpath           = None,
             apiname           = defaultAPIName,
+            mergeApiNames     = mergeApiNames,
             profile           = None,
             versions          = featuresPat,
             emitversions      = None,
@@ -458,6 +523,7 @@ def makeGenOpts(args):
             directory         = directory,
             genpath           = None,
             apiname           = defaultAPIName,
+            mergeApiNames     = mergeApiNames,
             profile           = None,
             versions          = featuresPat,
             emitversions      = featuresPat,
@@ -477,6 +543,233 @@ def makeGenOpts(args):
             alignFuncParam    = 48,
             misracstyle       = misracstyle,
             misracppstyle     = misracppstyle)
+        ]
+
+    # Vulkan versions to include for SC header - SC *removes* features from 1.0/1.1/1.2
+    scVersions = makeREstring(['VK_VERSION_1_0', 'VK_VERSION_1_1', 'VK_VERSION_1_2', 'VKSC_VERSION_1_0'])
+
+    genOpts['vulkan_sc_core.h'] = [
+          COutputGenerator,
+          CGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vulkan_sc_core.h',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48,
+            misracstyle       = misracstyle,
+            misracppstyle     = misracppstyle)
+        ]
+
+    genOpts['vulkan_sc_core.hpp'] = [
+          COutputGenerator,
+          CGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vulkan_sc_core.hpp',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48,
+            misracstyle       = misracstyle,
+            misracppstyle     = misracppstyle)
+        ]
+
+    genOpts['vk.json'] = [
+          SchemaOutputGenerator,
+          SchemaGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vk.json',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48)
+        ]
+
+    if vulkanLayer:
+        genOpts['vulkan_json_data.hpp'] = [
+            JSONOutputGenerator,
+            JSONGeneratorOptions(
+                conventions       = conventions,
+                filename          = 'vulkan_json_data.hpp',
+                directory         = directory,
+                apiname           = 'vulkan',
+                profile           = None,
+                versions          = featuresPat,
+                emitversions      = featuresPat,
+                defaultExtensions = None,
+                addExtensions     = addExtensionsPat,
+                removeExtensions  = None,
+                emitExtensions    = None,
+                vulkanLayer       = vulkanLayer,
+                prefixText        = prefixStrings + vkPrefixStrings,
+                genFuncPointers   = True,
+                protectFile       = protectFile,
+                protectFeature    = False,
+                protectProto      = '#ifndef',
+                protectProtoStr   = 'VK_NO_PROTOTYPES',
+                apicall           = 'VKAPI_ATTR ',
+                apientry          = 'VKAPI_CALL ',
+                apientryp         = 'VKAPI_PTR *',
+                alignFuncParam    = 48)
+            ]
+    else:
+        genOpts['vulkan_json_data.hpp'] = [
+        JSONOutputGenerator,
+        JSONGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vulkan_json_data.hpp',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = removeExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            vulkanLayer       = vulkanLayer,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            isCTS             = isCTS,
+            alignFuncParam    = 48)
+        ]
+
+    # keep any relevant platform extensions for the following generators
+    # (needed for e.g. the vulkan_sci extensions)
+    explicitRemoveExtensionsPat = makeREstring(
+        removeExtensions, None, strings_are_regex=True)
+
+    # Raw C header file generator.
+    genOpts['vulkan_json_gen.h'] = [
+          JSONHeaderOutputGenerator,
+          JSONHeaderGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vulkan_json_gen.h',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = explicitRemoveExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48)
+        ]
+
+    # Raw C source file generator.
+    genOpts['vulkan_json_gen.c'] = [
+          JSONCOutputGenerator,
+          JSONCGeneratorOptions(
+            conventions       = conventions,
+            filename          = 'vulkan_json_gen.c',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = explicitRemoveExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            alignFuncParam    = 48)
+        ]
+
+    genOpts['vulkan_json_parser.hpp'] = [
+          JSONParserGenerator,
+          JSONParserOptions(
+            conventions       = conventions,
+            filename          = 'vulkan_json_parser.hpp',
+            directory         = directory,
+            apiname           = 'vulkansc',
+            profile           = None,
+            versions          = scVersions,
+            emitversions      = scVersions,
+            defaultExtensions = 'vulkansc',
+            addExtensions     = addExtensionsPat,
+            removeExtensions  = explicitRemoveExtensionsPat,
+            emitExtensions    = emitExtensionsPat,
+            prefixText        = prefixStrings + vkPrefixStrings,
+            genFuncPointers   = True,
+            protectFile       = protectFile,
+            protectFeature    = False,
+            protectProto      = '#ifndef',
+            protectProtoStr   = 'VK_NO_PROTOTYPES',
+            apicall           = 'VKAPI_ATTR ',
+            apientry          = 'VKAPI_CALL ',
+            apientryp         = 'VKAPI_PTR *',
+            isCTS             = isCTS,
+            alignFuncParam    = 48)
         ]
 
     # Unused - vulkan10.h target.
@@ -545,8 +838,9 @@ def makeGenOpts(args):
     ]
 
     # Video extension 'Std' interfaces, each in its own header files
-    # These are not Vulkan extensions, or a part of the Vulkan API at all,
-    # but are treated in a similar fashion for generation purposes.
+    # These are not Vulkan extensions, or a part of the Vulkan API at all.
+    # They are treated in a similar fashion for generation purposes, but
+    # all required APIs for each interface must be explicitly required.
     #
     # Each element of the videoStd[] array is an extension name defining an
     # interface, and is also the basis for the generated header file name.
@@ -561,7 +855,8 @@ def makeGenOpts(args):
         'vulkan_video_codec_h265std_encode',
     ]
 
-    addExtensionRE = makeREstring(videoStd)
+    # Unused at present
+    # addExtensionRE = makeREstring(videoStd)
     for codec in videoStd:
         headername = f'{codec}.h'
 
@@ -574,13 +869,15 @@ def makeGenOpts(args):
             directory         = directory,
             genpath           = None,
             apiname           = defaultAPIName,
+            mergeApiNames     = mergeApiNames,
             profile           = None,
             versions          = None,
             emitversions      = None,
             defaultExtensions = None,
-            addExtensions     = addExtensionRE,
+            addExtensions     = emitExtensionRE,
             removeExtensions  = None,
             emitExtensions    = emitExtensionRE,
+            requireDepends    = False,
             prefixText        = prefixStrings + vkPrefixStrings,
             genFuncPointers   = False,
             protectFile       = protectFile,
@@ -699,6 +996,12 @@ def genTarget(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('-apiname', action='store',
+                        default=None,
+                        help='Specify API to generate (defaults to repository-specific conventions object value)')
+    parser.add_argument('-mergeApiNames', action='store',
+                        default=None,
+                        help='Specify a comma separated list of APIs to merge into the target API')
     parser.add_argument('-defaultExtensions', action='store',
                         default=APIConventions().xml_api_name,
                         help='Specify a single class of extensions to add to targets')
@@ -750,10 +1053,14 @@ if __name__ == '__main__':
                         help='Suppress script output during normal execution.')
     parser.add_argument('-verbose', action='store_false', dest='quiet', default=True,
                         help='Enable script output during normal execution.')
+    parser.add_argument('--vulkanLayer', action='store_true', dest='vulkanLayer',
+                        help='Enable scripts to generate VK specific vulkan_json_data.hpp for json_gen_layer.')
     parser.add_argument('-misracstyle', dest='misracstyle', action='store_true',
                         help='generate MISRA C-friendly headers')
     parser.add_argument('-misracppstyle', dest='misracppstyle', action='store_true',
                         help='generate MISRA C++-friendly headers')
+    parser.add_argument('--iscts', action='store_true', dest='isCTS',
+                        help='Specify if this should generate CTS compatible code')
 
     args = parser.parse_args()
 

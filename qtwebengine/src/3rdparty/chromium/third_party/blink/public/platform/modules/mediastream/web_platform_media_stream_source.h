@@ -73,6 +73,10 @@ class BLINK_PLATFORM_EXPORT WebPlatformMediaStreamSource {
   void ChangeSource(const MediaStreamDevice& new_device);
 
   WebMediaStreamSource Owner();
+
+  // Number of live (non-ended) MediaStreamTracks added as consumers.
+  virtual size_t NumTracks() const = 0;
+
 #if INSIDE_BLINK
   void SetOwner(MediaStreamSource*);
 #endif
@@ -97,9 +101,9 @@ class BLINK_PLATFORM_EXPORT WebPlatformMediaStreamSource {
  private:
   MediaStreamDevice device_;
   SourceStoppedCallback stop_callback_;
-  WebPrivatePtr<MediaStreamSource,
-                kWebPrivatePtrDestructionSameThread,
-                WebPrivatePtrStrength::kWeak>
+  WebPrivatePtrForGC<MediaStreamSource,
+                     WebPrivatePtrDestruction::kSameThread,
+                     WebPrivatePtrStrength::kWeak>
       owner_;
 
   // Task runner for the main thread. Also used to check that all methods that

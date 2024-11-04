@@ -1350,7 +1350,9 @@ class FetchHandlerInstanceClient : public FakeEmbeddedWorkerInstanceClient {
   void EvaluateScript() override {
     host()->OnScriptEvaluationStart();
     host()->OnStarted(blink::mojom::ServiceWorkerStartStatus::kNormalCompletion,
-                      fetch_handler_type_, helper()->GetNextThreadId(),
+                      fetch_handler_type_, /*has_hid_event_handlers=*/false,
+                      /*has_usb_event_handlers=*/false,
+                      helper()->GetNextThreadId(),
                       blink::mojom::EmbeddedWorkerStartTiming::New());
   }
 
@@ -1545,6 +1547,7 @@ class UpdateJobTestHelper : public EmbeddedWorkerTestHelper,
       host()->OnStarted(
           blink::mojom::ServiceWorkerStartStatus::kAbruptCompletion,
           blink::mojom::ServiceWorkerFetchHandlerType::kNoHandler,
+          /*has_hid_event_handlers=*/false, /*has_usb_event_handlers=*/false,
           helper()->GetNextThreadId(),
           blink::mojom::EmbeddedWorkerStartTiming::New());
     }
@@ -1566,12 +1569,15 @@ class UpdateJobTestHelper : public EmbeddedWorkerTestHelper,
         blink::mojom::ServiceWorkerObjectInfoPtr,
         blink::mojom::FetchHandlerExistence,
         mojo::PendingReceiver<blink::mojom::ReportingObserver>,
-        blink::mojom::AncestorFrameType) override {
+        blink::mojom::AncestorFrameType,
+        const blink::StorageKey& storage_key) override {
       client_->SimulateFailureOfScriptEvaluation();
     }
 
    private:
-    raw_ptr<ScriptFailureEmbeddedWorkerInstanceClient> client_;
+    raw_ptr<ScriptFailureEmbeddedWorkerInstanceClient,
+            AcrossTasksDanglingUntriaged>
+        client_;
   };
 
   ServiceWorkerJobCoordinator* job_coordinator() {
@@ -1681,7 +1687,7 @@ class UpdateJobTestHelper : public EmbeddedWorkerTestHelper,
     update_found_ = true;
   }
 
-  raw_ptr<FakeEmbeddedWorkerInstanceClient>
+  raw_ptr<FakeEmbeddedWorkerInstanceClient, AcrossTasksDanglingUntriaged>
       initial_embedded_worker_instance_client_ = nullptr;
   scoped_refptr<ServiceWorkerRegistration> observed_registration_;
   std::vector<AttributeChangeLogEntry> attribute_change_log_;
@@ -1723,7 +1729,7 @@ class ServiceWorkerUpdateJobTest : public ServiceWorkerJobTest {
 
  protected:
   std::unique_ptr<StoragePartitionImpl> storage_partition_impl_;
-  raw_ptr<UpdateJobTestHelper> update_helper_;
+  raw_ptr<UpdateJobTestHelper, DanglingUntriaged> update_helper_;
 };
 
 // Make sure that the same registration is used and the update_via_cache value
@@ -2042,7 +2048,9 @@ TEST_F(ServiceWorkerUpdateJobTest, Update_ScriptUrlChanged) {
   registration->SetTaskRunnerForTest(runner);
 
   // Queue an Update. When this runs, it will use the waiting version's script.
-  job_coordinator()->Update(registration.get(), false);
+  job_coordinator()->Update(registration.get(), false, false,
+                            blink::mojom::FetchClientSettingsObject::New(),
+                            base::NullCallback());
 
   // Add a waiting version with a new script.
   scoped_refptr<ServiceWorkerVersion> version = new ServiceWorkerVersion(
@@ -2150,7 +2158,9 @@ TEST_F(ServiceWorkerUpdateJobTest, Update_UninstallingRegistration) {
                          run_loop.QuitClosure()));
 
   // Update should abort after it starts and sees uninstalling.
-  job_coordinator()->Update(registration.get(), false);
+  job_coordinator()->Update(registration.get(), false, false,
+                            blink::mojom::FetchClientSettingsObject::New(),
+                            base::NullCallback());
 
   run_loop.Run();
 

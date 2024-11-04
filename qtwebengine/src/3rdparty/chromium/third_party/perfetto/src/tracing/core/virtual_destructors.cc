@@ -38,11 +38,20 @@ SharedMemoryArbiter::~SharedMemoryArbiter() = default;
 
 // TODO(primiano): make pure virtual after various 3way patches.
 void ConsumerEndpoint::CloneSession(TracingSessionID) {}
-void Consumer::OnSessionCloned(bool, const std::string&) {}
+void Consumer::OnSessionCloned(const OnSessionClonedArgs&) {}
 
-#if !PERFETTO_IS_AT_LEAST_CPP17()
-constexpr size_t TracingService::kDefaultShmSize;
-constexpr size_t TracingService::kDefaultShmPageSize;
-#endif
+void ConsumerEndpoint::Flush(uint32_t, FlushCallback, FlushFlags) {
+  // In the perfetto codebase, this 3-arg Flush is always overridden and this
+  // FATAL is never reached. The only case where this is used is in
+  // arctraceservice's PerfettoClient_test.cpp. That test mocks the old
+  // 2-arg version of Flush but doesn't actually invoke the 3-arg version.
+  PERFETTO_FATAL("ConsumerEndpoint::Flush(3) not implemented");
+}
+
+void ConsumerEndpoint::Flush(uint32_t timeout_ms, FlushCallback callback) {
+  // This 2-arg version of Flush() is invoked by arctraceservice's
+  // PerfettoClient::Flush().
+  Flush(timeout_ms, std::move(callback), FlushFlags(0));
+}
 
 }  // namespace perfetto

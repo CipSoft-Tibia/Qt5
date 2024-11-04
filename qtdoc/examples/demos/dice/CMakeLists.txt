@@ -1,29 +1,24 @@
 # Copyright (C) 2023 The Qt Company Ltd.
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.14)
-project(dice LANGUAGES CXX)
-
-if(NOT DEFINED INSTALL_EXAMPLESDIR)
-    set(INSTALL_EXAMPLESDIR "examples")
-endif()
-
-set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}")
+set(appname "qtdice")
+project(${appname} LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Quick3D Quick3DPhysics Multimedia Sensors)
 
 qt_standard_project_setup()
 
-qt_add_executable(dice
+qt_add_executable(${appname}
     main.cpp
 )
 
-set_target_properties(dice PROPERTIES
+set_target_properties(${appname} PROPERTIES
     WIN32_EXECUTABLE TRUE
     MACOSX_BUNDLE TRUE
 )
 
-target_link_libraries(dice PRIVATE
+target_link_libraries(${appname} PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Quick
@@ -64,28 +59,37 @@ set(qml_resource_files
     sounds/rolling.wav
 )
 if(ANDROID)
-    set_target_properties(dice PROPERTIES
+    set_target_properties(${appname} PROPERTIES
         QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
         QT_ANDROID_TARGET_SDK_VERSION "33")
 endif()
 
 if(IOS)
     set(asset_catalog_path "ios/Assets.xcassets")
-    target_sources(dice PRIVATE "${asset_catalog_path}")
+    target_sources(${appname} PRIVATE "${asset_catalog_path}")
     set_source_files_properties(${asset_catalog_path} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
-    set_target_properties(dice
+    set_target_properties(${appname}
         PROPERTIES XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME AppIcon)
 endif()
 
-qt_add_resources(dice "qml"
+qt_add_resources(${appname} "qml"
     PREFIX
         "/"
     FILES
         ${qml_resource_files}
 )
 
-install(TARGETS dice
-    RUNTIME DESTINATION "${INSTALL_EXAMPLEDIR}"
-    BUNDLE DESTINATION "${INSTALL_EXAMPLEDIR}"
-    LIBRARY DESTINATION "${INSTALL_EXAMPLEDIR}"
+install(TARGETS ${appname}
+    BUNDLE  DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+
+qt_generate_deploy_qml_app_script(
+    TARGET ${appname}
+    OUTPUT_SCRIPT deploy_script
+    MACOS_BUNDLE_POST_BUILD
+    NO_UNSUPPORTED_PLATFORM_ERROR
+    DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM
+)
+install(SCRIPT ${deploy_script})

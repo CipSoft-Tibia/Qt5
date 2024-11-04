@@ -8,21 +8,24 @@ import './site_favicon.js';
 import './searchable_label.js';
 import './shared_style.css.js';
 
+import {I18nMixin} from 'chrome://resources/cr_elements/i18n_mixin.js';
 import {PluralStringProxyImpl} from 'chrome://resources/js/plural_string_proxy.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
 import {getTemplate} from './password_list_item.html.js';
-import {PasswordManagerImpl} from './password_manager_proxy.js';
-import {Page, Router} from './router.js';
+import {PasswordManagerImpl, PasswordViewPageInteractions} from './password_manager_proxy.js';
+import {Page, Router, UrlParam} from './router.js';
 
 export interface PasswordListItemElement {
   $: {
     displayedName: HTMLElement,
     numberOfAccounts: HTMLElement,
+    seePasswordDetails: HTMLElement,
   };
 }
+const PasswordListItemElementBase = I18nMixin(PolymerElement);
 
-export class PasswordListItemElement extends PolymerElement {
+export class PasswordListItemElement extends PasswordListItemElementBase {
   static get is() {
     return 'password-list-item';
   }
@@ -68,6 +71,10 @@ export class PasswordListItemElement extends PolymerElement {
     this.addEventListener('click', this.onRowClick_);
   }
 
+  override focus() {
+    this.$.seePasswordDetails.focus();
+  }
+
   private async onRowClick_() {
     const ids = this.item.entries.map(entry => entry.id);
     PasswordManagerImpl.getInstance()
@@ -78,9 +85,22 @@ export class PasswordListItemElement extends PolymerElement {
             iconUrl: this.item.iconUrl,
             entries: entries,
           };
-          Router.getInstance().navigateTo(Page.PASSWORD_DETAILS, group);
+          this.dispatchEvent(new CustomEvent(
+              'password-details-shown',
+              {bubbles: true, composed: true, detail: this}));
+          // Keep current search query.
+          Router.getInstance().navigateTo(
+              Page.PASSWORD_DETAILS, group,
+              Router.getInstance().currentRoute.queryParameters);
         })
         .catch(() => {});
+    PasswordManagerImpl.getInstance().recordPasswordViewInteraction(
+        PasswordViewPageInteractions.CREDENTIAL_ROW_CLICKED);
+
+    const searchTerm = Router.getInstance().currentRoute.queryParameters.get(
+                           UrlParam.SEARCH_TERM) || '';
+    chrome.metricsPrivate.recordBoolean(
+        'PasswordManager.UI.OpenedPasswordDetailsWhileSearching', !!searchTerm);
   }
 
   private async onItemChanged_() {
@@ -96,7 +116,7 @@ export class PasswordListItemElement extends PolymerElement {
   }
 
   private getTitle_() {
-    const term = this.searchTerm.trim();
+    const term = this.searchTerm.trim().toLowerCase();
     if (!term) {
       return this.item.name;
     }
@@ -122,6 +142,10 @@ export class PasswordListItemElement extends PolymerElement {
       return this.item.name + ' • ' + matchingDomain;
     }
     return this.item.name;
+  }
+
+  private getAriaLabel_(): string {
+    return this.i18n('viewPasswordAriaDescription', this.item.name);
   }
 }
 

@@ -19,6 +19,7 @@ namespace blink {
 class ExceptionState;
 class NavigatorBase;
 class StorageBucketOptions;
+class StorageBucket;
 
 class MODULES_EXPORT StorageBucketManager final
     : public ScriptWrappable,
@@ -48,10 +49,15 @@ class MODULES_EXPORT StorageBucketManager final
   // GarbageCollected
   void Trace(Visitor*) const override;
 
+  // These are not exposed to the web applications and only used by DevTools.
+  StorageBucket* GetBucketForDevtools(ScriptState* script_state,
+                                      const String& name);
+
  private:
   mojom::blink::BucketManagerHost* GetBucketManager(ScriptState* script_state);
 
   void DidOpen(ScriptPromiseResolver* resolver,
+               const String& name,
                mojo::PendingRemote<mojom::blink::BucketHost> bucket_remote,
                mojom::blink::BucketError error);
   void DidGetKeys(ScriptPromiseResolver* resolver,

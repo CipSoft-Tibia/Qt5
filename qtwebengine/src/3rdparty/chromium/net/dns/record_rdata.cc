@@ -66,7 +66,7 @@ std::unique_ptr<SrvRecordRdata> SrvRecordRdata::Create(
   reader.ReadU16(&rdata->weight_);
   reader.ReadU16(&rdata->port_);
 
-  if (!parser.ReadName(data.substr(kSrvRecordMinimumSize).begin(),
+  if (!parser.ReadName(data.substr(kSrvRecordMinimumSize).data(),
                        &rdata->target_))
     return nullptr;
 
@@ -150,7 +150,7 @@ std::unique_ptr<CnameRecordRdata> CnameRecordRdata::Create(
     const DnsRecordParser& parser) {
   auto rdata = base::WrapUnique(new CnameRecordRdata());
 
-  if (!parser.ReadName(data.begin(), &rdata->cname_))
+  if (!parser.ReadName(data.data(), &rdata->cname_))
     return nullptr;
 
   return rdata;
@@ -177,7 +177,7 @@ std::unique_ptr<PtrRecordRdata> PtrRecordRdata::Create(
     const DnsRecordParser& parser) {
   auto rdata = base::WrapUnique(new PtrRecordRdata());
 
-  if (!parser.ReadName(data.begin(), &rdata->ptrdomain_))
+  if (!parser.ReadName(data.data(), &rdata->ptrdomain_))
     return nullptr;
 
   return rdata;

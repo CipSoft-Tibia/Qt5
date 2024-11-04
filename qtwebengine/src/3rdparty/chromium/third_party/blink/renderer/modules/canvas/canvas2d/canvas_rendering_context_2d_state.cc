@@ -69,9 +69,7 @@ bool StringToNumWithUnit(String spacing,
 }
 
 CanvasRenderingContext2DState::CanvasRenderingContext2DState()
-    : stroke_style_(MakeGarbageCollected<CanvasStyle>(Color::kBlack)),
-      fill_style_(MakeGarbageCollected<CanvasStyle>(Color::kBlack)),
-      shadow_blur_(0.0),
+    : shadow_blur_(0.0),
       shadow_color_(Color::kTransparent),
       global_alpha_(1.0),
       line_dash_offset_(0.0),
@@ -86,8 +84,6 @@ CanvasRenderingContext2DState::CanvasRenderingContext2DState()
       has_complex_clip_(false),
       letter_spacing_is_set_(false),
       word_spacing_is_set_(false),
-      fill_style_dirty_(true),
-      stroke_style_dirty_(true),
       line_dash_dirty_(false),
       image_smoothing_quality_(cc::PaintFlags::FilterQuality::kLow) {
   fill_flags_.setStyle(cc::PaintFlags::kFill_Style);
@@ -153,8 +149,6 @@ CanvasRenderingContext2DState::CanvasRenderingContext2DState(
       has_complex_clip_(other.has_complex_clip_),
       letter_spacing_is_set_(other.letter_spacing_is_set_),
       word_spacing_is_set_(other.word_spacing_is_set_),
-      fill_style_dirty_(other.fill_style_dirty_),
-      stroke_style_dirty_(other.stroke_style_dirty_),
       line_dash_dirty_(other.line_dash_dirty_),
       image_smoothing_enabled_(other.image_smoothing_enabled_),
       image_smoothing_quality_(other.image_smoothing_quality_),
@@ -162,8 +156,6 @@ CanvasRenderingContext2DState::CanvasRenderingContext2DState(
   if (mode == kCopyClipList) {
     clip_list_ = other.clip_list_;
   }
-  stroke_style_->MarkShared(PassKey());
-  fill_style_->MarkShared(PassKey());
   // Since FontSelector is weakly persistent with |font_|, the memory may be
   // freed even |font_| is valid.
   if (realized_font_ && font_.GetFontSelector())
@@ -206,8 +198,8 @@ void CanvasRenderingContext2DState::SetLineDash(const Vector<double>& dash) {
   if (dash.size() % 2)
     line_dash_.AppendVector(dash);
   // clamp the double values to float
-  std::transform(line_dash_.begin(), line_dash_.end(), line_dash_.begin(),
-                 [](double d) { return ClampTo<float>(d); });
+  base::ranges::transform(line_dash_, line_dash_.begin(),
+                          [](double d) { return ClampTo<float>(d); });
 
   line_dash_dirty_ = true;
 }
@@ -220,10 +212,10 @@ static bool HasANonZeroElement(const Vector<double>& line_dash) {
   return false;
 }
 
-void CanvasRenderingContext2DState::UpdateLineDash() const {
-  if (!line_dash_dirty_)
+ALWAYS_INLINE void CanvasRenderingContext2DState::UpdateLineDash() const {
+  if (LIKELY(!line_dash_dirty_)) {
     return;
-
+  }
   if (!HasANonZeroElement(line_dash_)) {
     stroke_flags_.setPathEffect(nullptr);
   } else {
@@ -232,152 +224,7 @@ void CanvasRenderingContext2DState::UpdateLineDash() const {
     stroke_flags_.setPathEffect(SkDashPathEffect::Make(
         line_dash.data(), line_dash.size(), line_dash_offset_));
   }
-
   line_dash_dirty_ = false;
-}
-
-void CanvasRenderingContext2DState::SetStrokeColor(Color color) {
-  if (stroke_style_->IsEquivalentColor(color)) {
-    return;
-  }
-
-  if (stroke_style_->is_shared()) {
-    SetStrokeStyle(MakeGarbageCollected<CanvasStyle>(color));
-    return;
-  }
-
-  stroke_style_dirty_ = true;
-  stroke_style_->SetColor(PassKey(), color);
-}
-
-void CanvasRenderingContext2DState::SetStrokePattern(CanvasPattern* pattern) {
-  if (stroke_style_->IsEquivalentPattern(pattern)) {
-    // Even though the pointer value hasn't changed, the contents of the pattern
-    // may have. For this reason the style is marked dirty.
-    stroke_style_dirty_ = true;
-    return;
-  }
-
-  if (stroke_style_->is_shared()) {
-    SetStrokeStyle(MakeGarbageCollected<CanvasStyle>(pattern));
-    return;
-  }
-
-  stroke_style_->SetPattern(PassKey(), pattern);
-  stroke_style_dirty_ = true;
-}
-
-void CanvasRenderingContext2DState::SetStrokeGradient(
-    CanvasGradient* gradient) {
-  if (stroke_style_->IsEquivalentGradient(gradient)) {
-    // Even though the pointer value hasn't changed, the contents of the
-    // gradient may have. For this reason the style is marked dirty.
-    stroke_style_dirty_ = true;
-    return;
-  }
-
-  if (stroke_style_->is_shared()) {
-    SetStrokeStyle(MakeGarbageCollected<CanvasStyle>(gradient));
-    return;
-  }
-
-  stroke_style_->SetGradient(PassKey(), gradient);
-  stroke_style_dirty_ = true;
-}
-
-void CanvasRenderingContext2DState::SetStrokeStyle(CanvasStyle* style) {
-  stroke_style_ = style;
-  stroke_style_dirty_ = true;
-}
-
-void CanvasRenderingContext2DState::SetFillColor(Color color) {
-  if (fill_style_->IsEquivalentColor(color)) {
-    return;
-  }
-
-  if (fill_style_->is_shared()) {
-    SetFillStyle(MakeGarbageCollected<CanvasStyle>(color));
-    return;
-  }
-
-  fill_style_dirty_ = true;
-  fill_style_->SetColor(PassKey(), color);
-}
-
-void CanvasRenderingContext2DState::SetFillPattern(CanvasPattern* pattern) {
-  if (fill_style_->IsEquivalentPattern(pattern)) {
-    // Even though the pointer value hasn't changed, the contents of the pattern
-    // may have. For this reason the style is marked dirty.
-    fill_style_dirty_ = true;
-    return;
-  }
-
-  if (fill_style_->is_shared()) {
-    SetFillStyle(MakeGarbageCollected<CanvasStyle>(pattern));
-    return;
-  }
-
-  fill_style_dirty_ = true;
-  fill_style_->SetPattern(PassKey(), pattern);
-}
-
-void CanvasRenderingContext2DState::SetFillGradient(CanvasGradient* gradient) {
-  if (fill_style_->IsEquivalentGradient(gradient)) {
-    // Even though the pointer value hasn't changed, the contents of the
-    // gradient may have. For this reason the style is marked dirty.
-    fill_style_dirty_ = true;
-    return;
-  }
-
-  if (fill_style_->is_shared()) {
-    SetFillStyle(MakeGarbageCollected<CanvasStyle>(gradient));
-    return;
-  }
-
-  fill_style_dirty_ = true;
-  fill_style_->SetGradient(PassKey(), gradient);
-}
-
-void CanvasRenderingContext2DState::SetFillStyle(CanvasStyle* style) {
-  fill_style_ = style;
-  fill_style_dirty_ = true;
-}
-
-void CanvasRenderingContext2DState::UpdateStrokeStyle() const {
-  if (!stroke_style_dirty_)
-    return;
-
-  DCHECK(stroke_style_);
-  stroke_style_->ApplyToFlags(stroke_flags_);
-  Color stroke_flag_color = stroke_style_->PaintColor();
-  stroke_flags_.setColor(
-      stroke_flag_color.CombineWithAlpha(global_alpha_).toSkColor4f());
-  stroke_style_dirty_ = false;
-}
-
-void CanvasRenderingContext2DState::UpdateFillStyle() const {
-  if (!fill_style_dirty_)
-    return;
-
-  DCHECK(fill_style_);
-  fill_style_->ApplyToFlags(fill_flags_);
-  Color fill_flag_color = fill_style_->PaintColor();
-  fill_flags_.setColor(
-      fill_flag_color.CombineWithAlpha(global_alpha_).toSkColor4f());
-  fill_style_dirty_ = false;
-}
-
-CanvasStyle* CanvasRenderingContext2DState::Style(PaintType paint_type) const {
-  switch (paint_type) {
-    case kFillPaintType:
-      return FillStyle();
-    case kStrokePaintType:
-      return StrokeStyle();
-    case kImagePaintType:
-      return nullptr;
-  }
-  NOTREACHED();
-  return nullptr;
 }
 
 void CanvasRenderingContext2DState::SetShouldAntialias(bool should_antialias) {
@@ -394,8 +241,8 @@ bool CanvasRenderingContext2DState::ShouldAntialias() const {
 
 void CanvasRenderingContext2DState::SetGlobalAlpha(double alpha) {
   global_alpha_ = alpha;
-  stroke_style_dirty_ = true;
-  fill_style_dirty_ = true;
+  stroke_style_.ApplyToFlags(stroke_flags_, global_alpha_);
+  fill_style_.ApplyToFlags(fill_flags_, global_alpha_);
   image_flags_.setColor(ScaleAlpha(SK_ColorBLACK, alpha));
 }
 
@@ -454,7 +301,6 @@ bool CanvasRenderingContext2DState::IsFontDirtyForFilter() const {
 }
 
 const Font& CanvasRenderingContext2DState::GetFont() const {
-  DCHECK(realized_font_);
   return font_;
 }
 
@@ -475,11 +321,44 @@ void CanvasRenderingContext2DState::SetFontKerning(
 }
 
 void CanvasRenderingContext2DState::SetFontStretch(
-    FontSelectionValue font_stretch,
+    V8CanvasFontStretch font_stretch,
     FontSelector* selector) {
   DCHECK(realized_font_);
+  FontSelectionValue stretch_value;
+  switch (font_stretch.AsEnum()) {
+    case (V8CanvasFontStretch::Enum::kUltraCondensed):
+      stretch_value = UltraCondensedWidthValue();
+      break;
+    case (V8CanvasFontStretch::Enum::kExtraCondensed):
+      stretch_value = ExtraCondensedWidthValue();
+      break;
+    case (V8CanvasFontStretch::Enum::kCondensed):
+      stretch_value = CondensedWidthValue();
+      break;
+    case (V8CanvasFontStretch::Enum::kSemiCondensed):
+      stretch_value = SemiCondensedWidthValue();
+      break;
+    case (V8CanvasFontStretch::Enum::kNormal):
+      stretch_value = NormalWidthValue();
+      break;
+    case (V8CanvasFontStretch::Enum::kUltraExpanded):
+      stretch_value = UltraExpandedWidthValue();
+      break;
+    case (V8CanvasFontStretch::Enum::kExtraExpanded):
+      stretch_value = ExtraExpandedWidthValue();
+      break;
+    case (V8CanvasFontStretch::Enum::kExpanded):
+      stretch_value = ExpandedWidthValue();
+      break;
+    case (V8CanvasFontStretch::Enum::kSemiExpanded):
+      stretch_value = SemiExpandedWidthValue();
+      break;
+    default:
+      NOTREACHED();
+  }
+
   FontDescription font_description(GetFontDescription());
-  font_description.SetStretch(font_stretch);
+  font_description.SetStretch(stretch_value);
   font_stretch_ = font_stretch;
   SetFont(font_description, selector);
 }
@@ -546,11 +425,9 @@ sk_sp<PaintFilter> CanvasRenderingContext2DState::GetFilterForOffscreenCanvas(
   // We can't reuse m_fillFlags and m_strokeFlags for the filter, since these
   // incorporate the global alpha, which isn't applicable here.
   cc::PaintFlags fill_flags_for_filter;
-  fill_style_->ApplyToFlags(fill_flags_for_filter);
-  fill_flags_for_filter.setColor(fill_style_->PaintColor().toSkColor4f());
+  fill_style_.ApplyToFlags(fill_flags_for_filter, 1.0f);
   cc::PaintFlags stroke_flags_for_filter;
-  stroke_style_->ApplyToFlags(stroke_flags_for_filter);
-  stroke_flags_for_filter.setColor(stroke_style_->PaintColor().toSkColor4f());
+  stroke_style_.ApplyToFlags(stroke_flags_for_filter, 1.0f);
 
   FilterEffectBuilder filter_effect_builder(
       gfx::RectF(gfx::SizeF(canvas_size)),
@@ -618,11 +495,9 @@ sk_sp<PaintFilter> CanvasRenderingContext2DState::GetFilter(
   // We can't reuse m_fillFlags and m_strokeFlags for the filter, since these
   // incorporate the global alpha, which isn't applicable here.
   cc::PaintFlags fill_flags_for_filter;
-  fill_style_->ApplyToFlags(fill_flags_for_filter);
-  fill_flags_for_filter.setColor(fill_style_->PaintColor().toSkColor4f());
+  fill_style_.ApplyToFlags(fill_flags_for_filter, 1.0f);
   cc::PaintFlags stroke_flags_for_filter;
-  stroke_style_->ApplyToFlags(stroke_flags_for_filter);
-  stroke_flags_for_filter.setColor(stroke_style_->PaintColor().toSkColor4f());
+  stroke_style_.ApplyToFlags(stroke_flags_for_filter, 1.0f);
 
   FilterEffectBuilder filter_effect_builder(
       gfx::RectF(gfx::SizeF(canvas_size)),
@@ -825,7 +700,7 @@ const cc::PaintFlags* CanvasRenderingContext2DState::GetFlags(
   switch (paint_type) {
     case kStrokePaintType:
       UpdateLineDash();
-      UpdateStrokeStyle();
+      stroke_style_.SyncFlags(stroke_flags_, global_alpha_);
       flags = &stroke_flags_;
       break;
     default:
@@ -834,7 +709,7 @@ const cc::PaintFlags* CanvasRenderingContext2DState::GetFlags(
       // about uninitialized variable.
       [[fallthrough]];
     case kFillPaintType:
-      UpdateFillStyle();
+      fill_style_.SyncFlags(fill_flags_, global_alpha_);
       flags = &fill_flags_;
       break;
     case kImagePaintType:
@@ -875,18 +750,6 @@ const cc::PaintFlags* CanvasRenderingContext2DState::GetFlags(
   flags->setLooper(ShadowAndForegroundDrawLooper());
   flags->setImageFilter(nullptr);
   return flags;
-}
-
-bool CanvasRenderingContext2DState::HasPattern(PaintType paint_type) const {
-  return Style(paint_type) && Style(paint_type)->GetCanvasPattern() &&
-         Style(paint_type)->GetCanvasPattern()->GetPattern();
-}
-
-// Only to be used if the CanvasRenderingContext2DState has Pattern
-bool CanvasRenderingContext2DState::PatternIsAccelerated(
-    PaintType paint_type) const {
-  DCHECK(HasPattern(paint_type));
-  return Style(paint_type)->GetCanvasPattern()->GetPattern()->IsTextureBacked();
 }
 
 void CanvasRenderingContext2DState::SetLetterSpacing(
@@ -939,11 +802,28 @@ void CanvasRenderingContext2DState::SetWordSpacing(const String& word_spacing) {
 }
 
 void CanvasRenderingContext2DState::SetTextRendering(
-    TextRenderingMode text_rendering,
+    V8CanvasTextRendering text_rendering,
     FontSelector* selector) {
+  TextRenderingMode text_rendering_mode;
+  switch (text_rendering.AsEnum()) {
+    case (V8CanvasTextRendering::Enum::kAuto):
+      text_rendering_mode = TextRenderingMode::kAutoTextRendering;
+      break;
+    case (V8CanvasTextRendering::Enum::kOptimizeSpeed):
+      text_rendering_mode = TextRenderingMode::kAutoTextRendering;
+      break;
+    case (V8CanvasTextRendering::Enum::kOptimizeLegibility):
+      text_rendering_mode = TextRenderingMode::kAutoTextRendering;
+      break;
+    case (V8CanvasTextRendering::Enum::kGeometricPrecision):
+      text_rendering_mode = TextRenderingMode::kAutoTextRendering;
+      break;
+    default:
+      NOTREACHED();
+  }
   DCHECK(realized_font_);
   FontDescription font_description(GetFontDescription());
-  font_description.SetTextRendering(text_rendering);
+  font_description.SetTextRendering(text_rendering_mode);
   text_rendering_mode_ = text_rendering;
   SetFont(font_description, selector);
 }

@@ -21,7 +21,7 @@ sys.path.append(os.path.abspath('sphinxext'))
 # -- Project information -----------------------------------------------------
 
 project = u'weston'
-copyright = u'2019, Weston community'
+copyright = u'Weston community - @VERSION@'
 author = u'Weston community '
 
 

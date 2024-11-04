@@ -91,24 +91,20 @@ class DNDToInputNavigationObserver : public content::WebContentsObserver {
 
 int ExecuteHostScriptAndExtractInt(content::WebContents* web_contents,
                                    const std::string& script) {
-  int result;
-  EXPECT_TRUE(content::ExecuteScriptAndExtractInt(
-      web_contents, "window.domAutomationController.send(" + script + ");",
-      &result));
-  return result;
+  return content::EvalJs(web_contents, script).ExtractInt();
 }
 
 int ExecuteGuestScriptAndExtractInt(content::WebContents* web_contents,
                                     const std::string& web_view_id,
                                     const std::string& script) {
-  int result;
-  EXPECT_TRUE(content::ExecuteScriptAndExtractInt(
-      web_contents,
-      "document.getElementById('" + web_view_id + "').executeScript({ "
-          "code: '" + script + "' }, function (results) {"
-          " window.domAutomationController.send(results[0]);});",
-      &result));
-  return result;
+  return content::EvalJs(web_contents, "document.getElementById('" +
+                                           web_view_id +
+                                           "').executeScript({ "
+                                           "code: '" +
+                                           script +
+                                           "' }, function (results) {"
+                                           " return results[0]);});")
+      .ExtractInt();
 }
 }  // namespace
 #endif
@@ -278,27 +274,6 @@ IN_PROC_BROWSER_TEST_F(WebUIWebViewBrowserTest, AddContentScriptWithCode) {
       base::Value(GetTestUrl("empty.html").spec())));
 }
 
-#if !BUILDFLAG(IS_CHROMEOS_ASH)
-// Incognito on CrOS is tested by the usual AddContentScript - OOBE context is
-// running inside incognito (signin) profile.
-
-// TODO(crbug.com/662673) Flaky
-#define MAYBE_AddContentScriptIncognito DISABLED_AddContentScriptIncognito
-// Right now we only have incognito WebUI on CrOS, but this should
-// theoretically work for all platforms.
-IN_PROC_BROWSER_TEST_F(WebUIWebViewBrowserTest,
-                       MAYBE_AddContentScriptIncognito) {
-  Browser* incognito_browser =
-      OpenURLOffTheRecord(browser()->profile(), GetWebViewEnabledWebUIURL());
-
-  SetWebUIInstance(
-      incognito_browser->tab_strip_model()->GetActiveWebContents()->GetWebUI());
-
-  ASSERT_TRUE(WebUIBrowserTest::RunJavascriptAsyncTest(
-      "testAddContentScript", base::Value(GetTestUrl("empty.html").spec())));
-}
-#endif
-
 IN_PROC_BROWSER_TEST_F(WebUIWebViewBrowserTest, ContextMenuInspectElement) {
   content::ContextMenuParams params;
   content::WebContents* web_contents =
@@ -371,8 +346,8 @@ IN_PROC_BROWSER_TEST_F(WebUIWebViewBrowserTest, DISABLED_DragAndDropToInput) {
   // RenderWidgetHosts in order to work with OOPIFs. See crbug.com/647249.
 
   {
-    EXPECT_TRUE(content::ExecuteScript(embedder_web_contents,
-                                       "console.log('step1: Drag Enter')"));
+    EXPECT_TRUE(content::ExecJs(embedder_web_contents,
+                                "console.log('step1: Drag Enter')"));
 
     WebUIMessageListener listener(embedder_web_contents->GetWebUI(),
                                   "Step1: destNode gets dragenter");
@@ -384,8 +359,8 @@ IN_PROC_BROWSER_TEST_F(WebUIWebViewBrowserTest, DISABLED_DragAndDropToInput) {
   }
 
   {
-    EXPECT_TRUE(content::ExecuteScript(embedder_web_contents,
-                                       "console.log('step2: Drag Over')"));
+    EXPECT_TRUE(content::ExecJs(embedder_web_contents,
+                                "console.log('step2: Drag Over')"));
 
     WebUIMessageListener listener(embedder_web_contents->GetWebUI(),
                                   "Step2: destNode gets dragover");
@@ -396,8 +371,8 @@ IN_PROC_BROWSER_TEST_F(WebUIWebViewBrowserTest, DISABLED_DragAndDropToInput) {
   }
 
   {
-    EXPECT_TRUE(content::ExecuteScript(embedder_web_contents,
-                                       "console.log('step3: Drop')"));
+    EXPECT_TRUE(
+        content::ExecJs(embedder_web_contents, "console.log('step3: Drop')"));
 
     DNDToInputNavigationObserver observer(embedder_web_contents);
     WebUIMessageListener listener(embedder_web_contents->GetWebUI(),

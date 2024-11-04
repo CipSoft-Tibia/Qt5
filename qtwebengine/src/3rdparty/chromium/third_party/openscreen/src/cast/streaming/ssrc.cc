@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,7 @@
 
 #include "platform/api/time.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -40,5 +39,4 @@ int ComparePriority(Ssrc ssrc_a, Ssrc ssrc_b) {
   return static_cast<int>(ssrc_a) - static_cast<int>(ssrc_b);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

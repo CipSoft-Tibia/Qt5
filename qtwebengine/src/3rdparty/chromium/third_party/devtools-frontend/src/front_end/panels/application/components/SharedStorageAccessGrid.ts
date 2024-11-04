@@ -15,7 +15,7 @@ const UIStrings = {
   /**
    *@description Text in Shared Storage Events View of the Application panel
    */
-  sharedStorage: 'Shared Storage',
+  sharedStorage: 'Shared storage',
   /**
    *@description Hover text for an info icon in the Shared Storage Events panel
    */
@@ -79,8 +79,8 @@ export class SharedStorageAccessGrid extends HTMLElement {
         <${IconButton.Icon.Icon.litTagName} class="info-icon" title=${
             i18nString(UIStrings.allSharedStorageEvents)}
           .data=${
-            {iconName: 'ic_info_black_18dp',
-              color: 'var(--color-link)', width: '14px'} as
+            {iconName: 'info',
+              color: 'var(--icon-default)', width: '16px'} as
             IconButton.Icon.IconWithName}>
         </${IconButton.Icon.Icon.litTagName}>
         ${this.#renderGridOrNoDataMessage()}

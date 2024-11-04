@@ -63,7 +63,9 @@ typedef unsigned long long quint64; /* 64 bit unsigned */
 typedef qint64 qlonglong;
 typedef quint64 qulonglong;
 
-#if defined(__SIZEOF_INT128__) && !defined(QT_NO_INT128)
+#ifdef Q_QDOC // QDoc always needs to see the typedefs
+#  define QT_SUPPORTS_INT128 16
+#elif defined(__SIZEOF_INT128__) && !defined(QT_NO_INT128)
 #  define QT_SUPPORTS_INT128 __SIZEOF_INT128__
 #else
 #  undef QT_SUPPORTS_INT128
@@ -263,13 +265,12 @@ using NativeFloat16Type = std::float16_t;
 // disabled due to https://github.com/llvm/llvm-project/issues/56963
 #  define QFLOAT16_IS_NATIVE        1
 using NativeFloat16Type = decltype(__FLT16_MAX__);
-#elif defined(Q_CC_GNU_ONLY) && defined(__FLT16_MAX__)
+#elif defined(Q_CC_GNU_ONLY) && defined(__FLT16_MAX__) && defined(__ARM_FP16_FORMAT_IEEE)
 #  define QFLOAT16_IS_NATIVE        1
-#  ifdef __ARM_FP16_FORMAT_IEEE
 using NativeFloat16Type = __fp16;
-#  else
+#elif defined(Q_CC_GNU_ONLY) && defined(__FLT16_MAX__) && defined(__SSE2__)
+#  define QFLOAT16_IS_NATIVE        1
 using NativeFloat16Type = _Float16;
-#  endif
 #else
 #  define QFLOAT16_IS_NATIVE        0
 using NativeFloat16Type = void;

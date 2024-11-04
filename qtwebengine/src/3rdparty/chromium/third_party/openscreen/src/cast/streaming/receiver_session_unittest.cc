@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,8 +24,7 @@ using ::testing::NiceMock;
 using ::testing::Return;
 using ::testing::StrictMock;
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -376,7 +375,7 @@ class ReceiverSessionTest : public ::testing::Test {
 
   std::unique_ptr<MockEnvironment> MakeEnvironment() {
     auto environment = std::make_unique<NiceMock<MockEnvironment>>(
-        &FakeClock::now, &task_runner_);
+        &FakeClock::now, task_runner_);
     ON_CALL(*environment, GetBoundLocalEndpoint())
         .WillByDefault(Return(IPEndpoint{{127, 0, 0, 1}, 12345}));
     environment->SetSocketStateForTesting(Environment::SocketState::kReady);
@@ -1028,5 +1027,4 @@ TEST_F(ReceiverSessionTest, HandlesRpcMessage) {
   ASSERT_TRUE(received_initialize_message);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

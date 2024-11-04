@@ -16,8 +16,8 @@
 
 QT_BEGIN_NAMESPACE
 
-template <typename FunctorWindowGetter, typename FunctorPredicate>
-static bool qWaitForWidgetWindow(FunctorWindowGetter windowGetter, FunctorPredicate predicate, int timeout)
+template <typename FunctorWindowGetter, typename FunctorPredicate, typename Timeout>
+static bool qWaitForWidgetWindow(FunctorWindowGetter windowGetter, FunctorPredicate predicate, Timeout timeout)
 {
     if (!windowGetter())
         return false;
@@ -58,6 +58,32 @@ Q_WIDGETS_EXPORT bool QTest::qWaitForWindowActive(QWidget *widget, int timeout)
     return qWaitForWidgetWindow([&]() { return widget->window()->windowHandle(); },
                                 [&](QWindow *window) { return window->isActive(); },
                                 timeout);
+}
+
+
+/*!
+    \since 6.7
+
+    Returns \c true, if \a widget is the focus window within \a timeout. Otherwise returns \c false.
+
+    The method is useful in tests that call QWidget::show() and rely on the widget
+    having focus (for receiving keyboard events e.g.) before proceeding.
+
+    \note  The method will time out and return \c false if another window prevents \a widget from
+    becoming focused.
+
+    \note Since focus is an exclusive property, \a widget may loose its focus to another window at
+    any time - even after the method has returned \c true.
+
+    \sa qWaitForWindowExposed(), qWaitForWindowActive(), QGuiApplication::focusWindow()
+*/
+Q_WIDGETS_EXPORT bool QTest::qWaitForWindowFocused(QWidget *widget, QDeadlineTimer timeout)
+{
+    return qWaitForWidgetWindow([&]() {
+        return widget->window()->windowHandle();
+    }, [&](QWindow *window) {
+        return qGuiApp->focusWindow() == window;
+    }, timeout);
 }
 
 /*!

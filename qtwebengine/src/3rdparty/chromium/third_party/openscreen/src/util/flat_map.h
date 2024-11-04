@@ -1,16 +1,16 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UTIL_FLAT_MAP_H_
 #define UTIL_FLAT_MAP_H_
 
+#include <algorithm>
 #include <initializer_list>
 #include <map>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "util/osp_logging.h"
 
 namespace openscreen {
@@ -21,7 +21,7 @@ namespace openscreen {
 // performance of a vector with the convenience of a map.
 //
 // NOTE: this class allows usage of const char* as Key or Value types, but
-// it is generally recommended that you use std::string, or absl::string_view
+// it is generally recommended that you use std::string, or std::string_view
 // for literals. string_view is similarly efficient to a raw char* pointer,
 // but gives sizing and equality operators, among other features.
 template <class Key, class Value>

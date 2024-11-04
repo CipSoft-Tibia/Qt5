@@ -887,8 +887,8 @@ IN_PROC_BROWSER_TEST_P(SitePerProcessBrowserTest,
   shutdown_C.Wait();
 }
 
-#if defined(ADDRESS_SANITIZER) || defined(THREAD_SANITIZER)
-// Too slow under sanitizers, even with increased timeout:
+#if defined(ADDRESS_SANITIZER) || defined(THREAD_SANITIZER) || !defined(NDEBUG)
+// Too slow under sanitizers and debug builds, even with increased timeout:
 // https://crbug.com/1096612
 #define MAYBE_DetachedIframeUnloadHandlerABCB \
   DISABLED_DetachedIframeUnloadHandlerABCB
@@ -1343,8 +1343,9 @@ IN_PROC_BROWSER_TEST_P(SitePerProcessBrowserTest,
 // 2. Navigate A1 to A3, same-process.
 // 3. A1 requests the browser to detach B1, but this message is dropped.
 // 4. The browser must be resilient and detach B1 when A3 commits.
+// TODO(crbug.com/1449668): Fix flakes and re-enable test.
 IN_PROC_BROWSER_TEST_P(SitePerProcessBrowserTest,
-                       SameProcessNavigationResilientToDetachDropped) {
+                       DISABLED_SameProcessNavigationResilientToDetachDropped) {
   // The test assumes the previous page gets deleted after navigation. Disable
   // back-forward cache to ensure that it doesn't get preserved in the cache.
   DisableBackForwardCacheForTesting(shell()->web_contents(),
@@ -1394,14 +1395,16 @@ IN_PROC_BROWSER_TEST_P(SitePerProcessBrowserTest,
   UnloadPrint(C4, "C4");
 
   // Navigate the iframe same-process.
+  bool will_delete_b2 = B2->ShouldChangeRenderFrameHostOnSameSiteNavigation();
   ExecuteScriptAsync(B2, JsReplace("location.href = $1", iframe_new_url));
 
   DOMMessageQueue dom_message_queue(
       WebContents::FromRenderFrameHost(web_contents()->GetPrimaryMainFrame()));
 
   // All the documents must be properly deleted:
-  if (ShouldCreateNewHostForSameSiteSubframe())
+  if (will_delete_b2) {
     delete_B2.WaitUntilDeleted();
+  }
   delete_B3.WaitUntilDeleted();
   delete_C4.WaitUntilDeleted();
 

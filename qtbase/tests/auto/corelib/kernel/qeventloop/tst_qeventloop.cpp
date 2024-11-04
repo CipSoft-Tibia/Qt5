@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -9,7 +9,9 @@
 #include <qeventloop.h>
 #include <private/qeventloop_p.h>
 #if defined(Q_OS_UNIX)
-  #include <private/qeventdispatcher_unix_p.h>
+  #if !defined(Q_OS_WASM)
+    #include <private/qeventdispatcher_unix_p.h>
+  #endif
   #include <QtCore/private/qcore_unix_p.h>
   #if defined(HAVE_GLIB)
     #include <private/qeventdispatcher_glib_p.h>
@@ -414,8 +416,8 @@ public slots:
         dataSent = serverSocket->waitForBytesWritten(-1);
 
         if (dataSent) {
-            pollfd pfd = qt_make_pollfd(socket->socketDescriptor(), POLLIN);
-            dataReadable = (1 == qt_safe_poll(&pfd, 1, nullptr));
+            pollfd pfd = qt_make_pollfd(int(socket->socketDescriptor()), POLLIN);
+            dataReadable = (1 == qt_safe_poll(&pfd, 1, QDeadlineTimer::Forever));
         }
 
         if (!dataReadable) {
@@ -500,7 +502,7 @@ void tst_QEventLoop::processEventsExcludeTimers()
     // but not if we exclude timers
     eventLoop.processEvents(QEventLoop::X11ExcludeTimers);
 
-#if defined(Q_OS_UNIX)
+#if defined(Q_OS_UNIX) && !defined(Q_OS_WASM)
     QAbstractEventDispatcher *eventDispatcher = QCoreApplication::eventDispatcher();
     if (!qobject_cast<QEventDispatcherUNIX *>(eventDispatcher)
   #if defined(HAVE_GLIB)

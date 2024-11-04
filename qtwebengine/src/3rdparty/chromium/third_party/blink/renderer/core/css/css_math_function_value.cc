@@ -83,7 +83,23 @@ double CSSMathFunctionValue::ComputeLengthPx(
   // |CSSToLengthConversionData| only resolves relative length units, but not
   // percentages.
   DCHECK_EQ(kCalcLength, expression_->Category());
+  DCHECK(expression_->CanBeResolvedWithConversionData());
   return ClampToPermittedRange(expression_->ComputeLengthPx(length_resolver));
+}
+
+int CSSMathFunctionValue::ComputeInteger(
+    const CSSLengthResolver& length_resolver) const {
+  // |CSSToLengthConversionData| only resolves relative length units, but not
+  // percentages.
+  DCHECK_EQ(kCalcNumber, expression_->Category());
+  DCHECK(expression_->CanBeResolvedWithConversionData());
+  return ClampTo<int>(
+      ClampToPermittedRange(expression_->ComputeNumber(length_resolver)));
+}
+
+double CSSMathFunctionValue::ComputeDotsPerPixel() const {
+  DCHECK_EQ(kCalcResolution, expression_->Category());
+  return ClampToPermittedRange(*expression_->ComputeValueInCanonicalUnit());
 }
 
 bool CSSMathFunctionValue::AccumulateLengthArray(CSSLengthArray& length_array,

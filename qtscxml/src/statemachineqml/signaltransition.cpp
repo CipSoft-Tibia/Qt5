@@ -18,7 +18,7 @@
 SignalTransition::SignalTransition(QState *parent)
     : QSignalTransition(this, SIGNAL(invokeYourself()), parent), m_complete(false), m_signalExpression(nullptr)
 {
-    connect(this, &SignalTransition::signalChanged, [this](){ m_signal.notify(); });
+    connect(this, &SignalTransition::signalChanged, this, [this](){ m_signal.notify(); });
 }
 
 bool SignalTransition::eventTest(QEvent *event)

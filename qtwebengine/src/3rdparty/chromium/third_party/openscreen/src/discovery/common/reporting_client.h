@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,14 @@
 
 #include "platform/base/error.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
 // This class is implemented by the embedder who wishes to use discovery. The
 // discovery implementation will use this API to report back errors and metrics.
 // NOTE: All methods in the reporting client will be called from the task runner
 // thread.
-// TODO(rwkeane): Report state changes back to the caller.
+// TODO(issuetracker.google.com/281739775): Report state changes back to the
+// caller.
 class ReportingClient {
  public:
   virtual ~ReportingClient() = default;
@@ -31,7 +31,6 @@ class ReportingClient {
   virtual void OnRecoverableError(Error error) = 0;
 };
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery
 
 #endif  // DISCOVERY_COMMON_REPORTING_CLIENT_H_

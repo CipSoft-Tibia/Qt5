@@ -7,12 +7,14 @@
 #include <memory>
 #include <utility>
 
+#include "base/feature_list.h"
 #include "base/functional/callback.h"
 #include "base/values.h"
-#include "components/sync/driver/configure_context.h"
+#include "components/sync/base/features.h"
 #include "components/sync/engine/data_type_activation_response.h"
 #include "components/sync/model/sync_error.h"
 #include "components/sync/model/type_entities_count.h"
+#include "components/sync/service/configure_context.h"
 
 namespace sync_sessions {
 
@@ -36,7 +38,6 @@ void ProxyTabsDataTypeController::LoadModels(
     const syncer::ConfigureContext& configure_context,
     const ModelLoadCallback& model_load_callback) {
   DCHECK(CalledOnValidThread());
-  DCHECK_EQ(configure_context.sync_mode, syncer::SyncMode::kFull);
   state_ = MODEL_LOADED;
   state_changed_cb_.Run(state_);
   model_load_callback.Run(type(), syncer::SyncError());
@@ -58,7 +59,7 @@ ProxyTabsDataTypeController::Connect() {
   return activation_response;
 }
 
-void ProxyTabsDataTypeController::Stop(syncer::ShutdownReason shutdown_reason,
+void ProxyTabsDataTypeController::Stop(syncer::SyncStopMetadataFate fate,
                                        StopCallback callback) {
   state_ = NOT_RUNNING;
   state_changed_cb_.Run(state_);
@@ -70,7 +71,7 @@ syncer::DataTypeController::State ProxyTabsDataTypeController::state() const {
 }
 
 bool ProxyTabsDataTypeController::ShouldRunInTransportOnlyMode() const {
-  return false;
+  return true;
 }
 
 void ProxyTabsDataTypeController::GetAllNodes(AllNodesCallback callback) {

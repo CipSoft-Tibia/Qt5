@@ -32,7 +32,6 @@
 
 #include <memory>
 
-#include "base/allocator/partition_allocator/memory_reclaimer.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
@@ -43,6 +42,7 @@
 #include "media/base/media_log.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
+#include "third_party/blink/public/mojom/service_worker/service_worker_fetch_handler_bypass_option.mojom-blink-forward.h"
 #include "third_party/blink/public/platform/scheduler/web_thread_scheduler.h"
 #include "third_party/blink/public/platform/web_dedicated_worker_host_factory_client.h"
 #include "third_party/blink/public/platform/web_graphics_context_3d_provider.h"
@@ -50,6 +50,7 @@
 #include "third_party/blink/renderer/platform/bindings/parkable_string_manager.h"
 #include "third_party/blink/renderer/platform/font_family_names.h"
 #include "third_party/blink/renderer/platform/fonts/font_cache_memory_dump_provider.h"
+#include "third_party/blink/renderer/platform/geometry/length.h"
 #include "third_party/blink/renderer/platform/graphics/parkable_image_manager.h"
 #include "third_party/blink/renderer/platform/heap/blink_gc_memory_dump_provider.h"
 #include "third_party/blink/renderer/platform/heap/gc_task_runner.h"
@@ -194,6 +195,9 @@ void Platform::InitializeBlink() {
   DCHECK(!did_initialize_blink_);
   WTF::Partitions::Initialize();
   WTF::Initialize();
+  Length::Initialize();
+  ProcessHeap::Init();
+  ThreadState::AttachMainThread();
   did_initialize_blink_ = true;
 }
 
@@ -221,9 +225,8 @@ void Platform::InitializeMainThreadCommon(
   DCHECK(did_initialize_blink_);
   MainThread::SetMainThread(std::move(main_thread));
 
-  ProcessHeap::Init();
-
-  ThreadState* thread_state = ThreadState::AttachMainThread();
+  ThreadState* thread_state = ThreadState::Current();
+  CHECK(thread_state->IsMainThread());
   new BlinkGCMemoryDumpProvider(
       thread_state, base::SingleThreadTaskRunner::GetCurrentDefault(),
       BlinkGCMemoryDumpProvider::HeapType::kBlinkMainThread);
@@ -262,7 +265,11 @@ void Platform::InitializeMainThreadCommon(
 
   // Use a delayed idle task as this is low priority work that should stop when
   // the main thread is not doing any work.
-  WTF::Partitions::StartPeriodicReclaim(
+  //
+  // This relies on being called prior to
+  // PartitionAllocSupport::ReconfigureAfterTaskRunnerInit, which would start
+  // memory reclaimer with a regular task runner. The first one prevails.
+  WTF::Partitions::StartMemoryReclaimer(
       base::MakeRefCounted<IdleDelayedTaskHelper>());
 }
 
@@ -329,7 +336,7 @@ Platform::CompositorThreadTaskRunner() {
 std::unique_ptr<WebGraphicsContext3DProvider>
 Platform::CreateOffscreenGraphicsContext3DProvider(
     const Platform::ContextAttributes&,
-    const WebURL& top_document_url,
+    const WebURL& document_url,
     Platform::GraphicsInfo*) {
   return nullptr;
 }
@@ -340,8 +347,7 @@ Platform::CreateSharedOffscreenGraphicsContext3DProvider() {
 }
 
 std::unique_ptr<WebGraphicsContext3DProvider>
-Platform::CreateWebGPUGraphicsContext3DProvider(
-    const WebURL& top_document_url) {
+Platform::CreateWebGPUGraphicsContext3DProvider(const WebURL& document_url) {
   return nullptr;
 }
 

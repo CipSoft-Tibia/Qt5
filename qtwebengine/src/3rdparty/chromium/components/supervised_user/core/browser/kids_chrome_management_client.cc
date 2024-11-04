@@ -8,7 +8,9 @@
 
 #include "base/json/json_reader.h"
 #include "base/logging.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/strings/escape.h"
+#include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/time/time.h"
 #include "components/google/core/common/google_util.h"
@@ -17,6 +19,7 @@
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/primary_account_access_token_fetcher.h"
 #include "components/signin/public/identity_manager/scope_set.h"
+#include "components/supervised_user/core/browser/proto_fetcher.h"
 #include "components/supervised_user/core/common/supervised_user_constants.h"
 #include "google_apis/gaia/gaia_constants.h"
 #include "google_apis/gaia/google_service_auth_error.h"
@@ -29,7 +32,6 @@
 #include "services/network/public/cpp/simple_url_loader.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "url/gurl.h"
 #include "url/url_constants.h"
 
 namespace {
@@ -38,8 +40,29 @@ enum class RequestMethod {
   kClassifyUrl,
 };
 
+// Corresponds to tools/metrics/histograms/enums.xml counterpart. Do not
+// renumber entries as this breaks Uma metrics.
+enum class KidsChromeManagementClientParsingResult {
+  kSuccess = 0,
+  kResponseDictionaryFailure = 1,
+  kDisplayClassificationFailure = 2,
+  kInvalidDisplayClassification = 3,
+  kMaxValue = kInvalidDisplayClassification,
+};
+
 constexpr char kClassifyUrlDataContentType[] =
     "application/x-www-form-urlencoded";
+
+constexpr char kClassifyUrlAuthErrorMetric[] =
+    "FamilyLinkUser.ClassifyUrlRequest.AuthError";
+constexpr char kClassifyUrlNetOrHttpStatusMetric[] =
+    "FamilyLinkUser.ClassifyUrlRequest.NetOrHttpStatus";
+constexpr char kClassifyUrlParsingResultMetric[] =
+    "FamilyLinkUser.ClassifyUrlRequest.ParsingResult";
+constexpr char kClassifyUrlLatencyMetric[] =
+    "FamilyLinkUser.ClassifyUrlRequest.Latency";
+constexpr char kClassifyUrlStatusMetric[] =
+    "FamilyLinkUser.ClassifyUrlRequest.Status";
 
 // Constants for ClassifyURL.
 constexpr char kClassifyUrlOauthConsumerName[] = "kids_url_classifier";
@@ -76,6 +99,9 @@ GetClassifyURLResponseProto(const std::string& response) {
   if (!dict) {
     DLOG(WARNING)
         << "GetClassifyURLResponseProto failed to parse response dictionary";
+    base::UmaHistogramEnumeration(
+        kClassifyUrlParsingResultMetric,
+        KidsChromeManagementClientParsingResult::kResponseDictionaryFailure);
     response_proto->set_display_classification(
         kids_chrome_management::ClassifyUrlResponse::
             UNKNOWN_DISPLAY_CLASSIFICATION);
@@ -87,6 +113,9 @@ GetClassifyURLResponseProto(const std::string& response) {
   if (!maybe_classification_string) {
     DLOG(WARNING)
         << "GetClassifyURLResponseProto failed to parse displayClassification";
+    base::UmaHistogramEnumeration(
+        kClassifyUrlParsingResultMetric,
+        KidsChromeManagementClientParsingResult::kDisplayClassificationFailure);
     response_proto->set_display_classification(
         kids_chrome_management::ClassifyUrlResponse::
             UNKNOWN_DISPLAY_CLASSIFICATION);
@@ -103,11 +132,17 @@ GetClassifyURLResponseProto(const std::string& response) {
   } else {
     DLOG(WARNING)
         << "GetClassifyURLResponseProto expected a valid displayClassification";
+    base::UmaHistogramEnumeration(
+        kClassifyUrlParsingResultMetric,
+        KidsChromeManagementClientParsingResult::kInvalidDisplayClassification);
     response_proto->set_display_classification(
         kids_chrome_management::ClassifyUrlResponse::
             UNKNOWN_DISPLAY_CLASSIFICATION);
   }
 
+  base::UmaHistogramEnumeration(
+      kClassifyUrlParsingResultMetric,
+      KidsChromeManagementClientParsingResult::kSuccess);
   return response_proto;
 }
 
@@ -155,6 +190,7 @@ struct KidsChromeManagementClient::KidsChromeManagementRequest {
   const char* oauth_consumer_name;
   const char* scope;
   const RequestMethod method;
+  const base::TimeTicks start_time_{base::TimeTicks::Now()};
 };
 
 KidsChromeManagementClient::KidsChromeManagementClient(
@@ -253,10 +289,13 @@ void KidsChromeManagementClient::OnAccessTokenFetchComplete(
     signin::AccessTokenInfo token_info) {
   if (error.state() != GoogleServiceAuthError::NONE) {
     DLOG(WARNING) << "Token error: " << error.ToString();
-
+    base::UmaHistogramEnumeration(kClassifyUrlAuthErrorMetric, error.state(),
+                                  GoogleServiceAuthError::NUM_STATES);
     std::unique_ptr<google::protobuf::MessageLite> response_proto;
-    DispatchResult(it, std::move(response_proto),
-                   KidsChromeManagementClient::ErrorCode::kTokenError);
+    DispatchResult(
+        it, std::move(response_proto),
+        KidsChromeManagementClient::ErrorCode::kTokenError,
+        supervised_user::ProtoFetcherStatus::State::GOOGLE_SERVICE_AUTH_ERROR);
     return;
   }
 
@@ -264,8 +303,8 @@ void KidsChromeManagementClient::OnAccessTokenFetchComplete(
 
   req->resource_request->headers.SetHeader(
       net::HttpRequestHeaders::kAuthorization,
-      base::StringPrintf(supervised_user::kAuthorizationHeaderFormat,
-                         token_info.token.c_str()));
+      base::JoinString(
+          {supervised_user::kAuthorizationHeader, token_info.token}, " "));
 
   std::string request_data;
   // TODO(crbug.com/980273): remove this when experiment flag is fully flipped.
@@ -276,43 +315,61 @@ void KidsChromeManagementClient::OnAccessTokenFetchComplete(
   } else {
     DVLOG(1) << "Could not detect the request proto's class.";
     std::unique_ptr<google::protobuf::MessageLite> response_proto;
-    DispatchResult(it, std::move(response_proto),
-                   KidsChromeManagementClient::ErrorCode::kServiceError);
+    DispatchResult(
+        it, std::move(response_proto),
+        KidsChromeManagementClient::ErrorCode::kServiceError,
+        supervised_user::ProtoFetcherStatus::State::INVALID_RESPONSE);
     return;
   }
 
-  std::unique_ptr<network::SimpleURLLoader> simple_url_loader =
-      network::SimpleURLLoader::Create(std::move(req->resource_request),
-                                       req->traffic_annotation);
+  requests_loaders_[req] = network::SimpleURLLoader::Create(
+      std::move(req->resource_request), req->traffic_annotation);
+  network::SimpleURLLoader* simple_url_loader = requests_loaders_[req].get();
 
   simple_url_loader->AttachStringForUpload(request_data,
                                            kClassifyUrlDataContentType);
 
-  auto* const simple_url_loader_ptr = simple_url_loader.get();
-  simple_url_loader_ptr->DownloadToString(
+  // `this` is guaranteed to exist when the callback is called, because the
+  // KidsChromeManagementClient class owns `simple_url_loader`, and deleting the
+  // the simple_url_loader during the request will cause the callback not to be
+  // called.
+  // TODO(https://crbug.com/1444748): Write a test making sure that this cannot
+  // cause a UAF. The test needs to:
+  // - Start a ClassifyURL request.
+  // - Start a loader and pause it before completion.
+  // - Kill the KidsChromeManagementClient. Note that this will not work unless
+  //   DCHECKs are turned off, because we otherwise check that callback_ has
+  //   been run.
+  simple_url_loader->DownloadToString(
       url_loader_factory_.get(),
       base::BindOnce(&KidsChromeManagementClient::OnSimpleLoaderComplete,
-                     base::Unretained(this), it, std::move(simple_url_loader),
-                     token_info),
+                     base::Unretained(this), it, token_info),
       /*max_body_size*/ 128);
 }
 
 void KidsChromeManagementClient::OnSimpleLoaderComplete(
     KidsChromeRequestList::iterator it,
-    std::unique_ptr<network::SimpleURLLoader> simple_url_loader,
     signin::AccessTokenInfo token_info,
     std::unique_ptr<std::string> response_body) {
   int response_code = -1;
+
+  KidsChromeManagementRequest* req = it->get();
+
+  // Get back the SimpleURLLoader from the stored map.
+  CHECK(requests_loaders_[req]);
+  std::unique_ptr<network::SimpleURLLoader> simple_url_loader =
+      std::move(requests_loaders_[req]);
+  requests_loaders_.erase(req);
 
   if (simple_url_loader->ResponseInfo() &&
       simple_url_loader->ResponseInfo()->headers) {
     response_code = simple_url_loader->ResponseInfo()->headers->response_code();
 
-    KidsChromeManagementRequest* req = it->get();
     // Handle first HTTP_UNAUTHORIZED response by removing access token and
     // restarting the request from the beginning (fetching access token).
     if (response_code == net::HTTP_UNAUTHORIZED && !req->access_token_expired) {
       DLOG(WARNING) << "Access token expired:\n" << token_info.token;
+      // Do not record metrics in here to avoid double-counting.
       req->access_token_expired = true;
       signin::ScopeSet scopes{req->scope};
       identity_manager_->RemoveAccessTokenFromCache(
@@ -329,23 +386,31 @@ void KidsChromeManagementClient::OnSimpleLoaderComplete(
 
   if (net_error != net::OK) {
     DLOG(WARNING) << "Network error " << net_error;
-    DispatchResult(it, std::move(response_proto),
-                   KidsChromeManagementClient::ErrorCode::kNetworkError);
+    base::UmaHistogramSparse(kClassifyUrlNetOrHttpStatusMetric, net_error);
+    DispatchResult(
+        it, std::move(response_proto),
+        KidsChromeManagementClient::ErrorCode::kNetworkError,
+        supervised_user::ProtoFetcherStatus::State::HTTP_STATUS_OR_NET_ERROR);
     return;
   }
 
   if (response_code != net::HTTP_OK) {
     DLOG(WARNING) << "Response: " << response_body.get();
-    DispatchResult(it, std::move(response_proto),
-                   KidsChromeManagementClient::ErrorCode::kHttpError);
+    base::UmaHistogramSparse(kClassifyUrlNetOrHttpStatusMetric, response_code);
+    DispatchResult(
+        it, std::move(response_proto),
+        KidsChromeManagementClient::ErrorCode::kHttpError,
+        supervised_user::ProtoFetcherStatus::State::HTTP_STATUS_OR_NET_ERROR);
     return;
   }
 
   // |response_body| is nullptr only in case of failure.
   if (!response_body) {
     DLOG(WARNING) << "URL request failed! Letting through...";
-    DispatchResult(it, std::move(response_proto),
-                   KidsChromeManagementClient::ErrorCode::kNetworkError);
+    DispatchResult(
+        it, std::move(response_proto),
+        KidsChromeManagementClient::ErrorCode::kNetworkError,
+        supervised_user::ProtoFetcherStatus::State::INVALID_RESPONSE);
     return;
   }
 
@@ -353,20 +418,31 @@ void KidsChromeManagementClient::OnSimpleLoaderComplete(
     response_proto = GetClassifyURLResponseProto(*response_body);
   } else {
     DVLOG(1) << "Could not detect the request proto class.";
-    DispatchResult(it, std::move(response_proto),
-                   KidsChromeManagementClient::ErrorCode::kServiceError);
+    DispatchResult(
+        it, std::move(response_proto),
+        KidsChromeManagementClient::ErrorCode::kServiceError,
+        supervised_user::ProtoFetcherStatus::State::INVALID_RESPONSE);
     return;
   }
 
   DispatchResult(it, std::move(response_proto),
-                 KidsChromeManagementClient::ErrorCode::kSuccess);
+                 KidsChromeManagementClient::ErrorCode::kSuccess,
+                 supervised_user::ProtoFetcherStatus::State::OK);
 }
 
 void KidsChromeManagementClient::DispatchResult(
     KidsChromeRequestList::iterator it,
     std::unique_ptr<google::protobuf::MessageLite> response_proto,
-    ErrorCode error) {
-  std::move(it->get()->callback).Run(std::move(response_proto), error);
+    ErrorCode error,
+    supervised_user::ProtoFetcherStatus::State status) {
+  KidsChromeManagementRequest* request = it->get();
+
+  // Record metrics for a/b testing of EnableProtoApiForClassifyUrl experiment.
+  base::TimeDelta latency = base::TimeTicks::Now() - request->start_time_;
+  base::UmaHistogramTimes(kClassifyUrlLatencyMetric, latency);
+  base::UmaHistogramEnumeration(kClassifyUrlStatusMetric, status);
+
+  std::move(request->callback).Run(std::move(response_proto), error);
 
   requests_in_progress_.erase(it);
 }

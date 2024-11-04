@@ -18,7 +18,7 @@
 
 namespace autofill {
 
-namespace metrics {
+namespace autofill_metrics {
 class AutofillMetricsBaseTest;
 }
 
@@ -55,6 +55,7 @@ class CreditCardCvcAuthenticator
     }
     bool did_succeed = false;
     raw_ptr<const CreditCard> card = nullptr;
+    // TODO(crbug.com/1475052): Remove CVC.
     std::u16string cvc = std::u16string();
     absl::optional<base::Value::Dict> request_options;
     std::string card_authorization_token = std::string();
@@ -127,7 +128,7 @@ class CreditCardCvcAuthenticator
  private:
   friend class BrowserAutofillManagerTest;
   friend class AutofillMetricsTest;
-  friend class metrics::AutofillMetricsBaseTest;
+  friend class autofill_metrics::AutofillMetricsBaseTest;
   friend class CreditCardAccessManagerTest;
   friend class CreditCardCvcAuthenticatorTest;
 

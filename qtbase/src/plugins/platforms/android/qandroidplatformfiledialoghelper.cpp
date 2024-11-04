@@ -25,7 +25,7 @@ const char JniIntentClass[] = "android/content/Intent";
 
 QAndroidPlatformFileDialogHelper::QAndroidPlatformFileDialogHelper()
     : QPlatformFileDialogHelper(),
-      m_activity(QtAndroid::activity())
+      m_activity(QtAndroidPrivate::activity())
 {
 }
 
@@ -45,8 +45,8 @@ bool QAndroidPlatformFileDialogHelper::handleActivityResult(jint requestCode, ji
     if (uri.isValid()) {
         takePersistableUriPermission(uri);
         m_selectedFile.append(QUrl(uri.toString()));
-        Q_EMIT fileSelected(m_selectedFile.first());
-        Q_EMIT currentChanged(m_selectedFile.first());
+        Q_EMIT fileSelected(m_selectedFile.constFirst());
+        Q_EMIT currentChanged(m_selectedFile.constFirst());
         Q_EMIT accept();
 
         return true;
@@ -65,7 +65,7 @@ bool QAndroidPlatformFileDialogHelper::handleActivityResult(jint requestCode, ji
             m_selectedFile.append(itemUri.toString());
         }
         Q_EMIT filesSelected(m_selectedFile);
-        Q_EMIT currentChanged(m_selectedFile.first());
+        Q_EMIT currentChanged(m_selectedFile.constFirst());
         Q_EMIT accept();
     }
 

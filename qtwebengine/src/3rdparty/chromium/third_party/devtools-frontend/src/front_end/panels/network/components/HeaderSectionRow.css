@@ -26,10 +26,24 @@
 .header-name {
   color: var(--color-text-primary);
   font-weight: 400;
-  width: 160px;
+  width: 30%;
+  min-width: 160px;
+  max-width: 240px;
   flex-shrink: 0;
   text-transform: capitalize;
   overflow-wrap: break-word;
+}
+
+.header-name,
+.header-value {
+  &::selection {
+    color: var(--sys-color-on-tonal-container);
+    background-color: var(--sys-color-tonal-container);
+  }
+}
+
+.header-name.pseudo-header {
+  text-transform: none;
 }
 
 .header-editable .header-name {
@@ -43,6 +57,7 @@
 .header-value {
   display: flex;
   overflow-wrap: anywhere;
+  margin-inline-end: 14px;
 }
 
 .header-badge-text {
@@ -105,7 +120,7 @@
 }
 
 .row-flex-icon {
-  margin: 4px 5px 0;
+  margin: 2px 5px 0;
 }
 
 .header-value code {
@@ -154,6 +169,7 @@ x-link .inline-icon { /* stylelint-disable-line selector-type-no-unknown */
   opacity: 0%;
   visibility: hidden;
   transition: opacity 200ms;
+  padding-left: 2px;
 }
 
 .row.header-overridden:focus-within .inline-button,
@@ -169,4 +185,8 @@ x-link .inline-icon { /* stylelint-disable-line selector-type-no-unknown */
 
 .flex-right {
   margin-left: auto;
+}
+
+.flex-columns {
+  flex-direction: column;
 }

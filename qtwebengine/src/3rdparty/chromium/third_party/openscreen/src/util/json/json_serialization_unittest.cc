@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -44,12 +44,20 @@ TEST(JsonSerializationTest, ValidDocumentParsedCorrectly) {
   EXPECT_EQ(actual.value().getMemberNames().size(), 2u);
 }
 
-TEST(JsonSerializationTest, NullValueReturnsError) {
+TEST(JsonSerializationTest, EmptyArrayReturnsBrackets) {
+  const auto empty_array = Json::Value(Json::ValueType::arrayValue);
+  const auto actual = json::Stringify(empty_array);
+
+  EXPECT_TRUE(actual.is_value());
+  EXPECT_EQ(actual.value(), "[]");
+}
+
+TEST(JsonSerializationTest, NullValueReturnsNull) {
   const auto null_value = Json::Value();
   const auto actual = json::Stringify(null_value);
 
-  EXPECT_TRUE(actual.is_error());
-  EXPECT_EQ(actual.error().code(), Error::Code::kJsonWriteError);
+  EXPECT_TRUE(actual.is_value());
+  EXPECT_EQ(actual.value(), "null");
 }
 
 TEST(JsonSerializationTest, ValidValueReturnsString) {

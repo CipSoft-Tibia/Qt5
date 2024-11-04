@@ -16,6 +16,7 @@ if not dep_x11_xcb.found()
 endif
 
 deps_x11 = [
+	dep_egl, # optional
 	dep_libweston_private,
 	dep_libdrm_headers,
 	dep_x11_xcb,
@@ -35,13 +36,6 @@ dep_xcb_xkb = dependency('xcb-xkb', version: '>= 1.9', required: false)
 if dep_xcb_xkb.found()
 	deps_x11 += dep_xcb_xkb
 	config_h.set('HAVE_XCB_XKB', '1')
-endif
-
-if get_option('renderer-gl')
-	if not dep_egl.found()
-		error('x11-backend + gl-renderer requires egl which was not found. Or, you can use \'-Dbackend-x11=false\' or \'-Drenderer-gl=false\'.')
-	endif
-	deps_x11 += dep_egl
 endif
 
 plugin_x11 = shared_library(

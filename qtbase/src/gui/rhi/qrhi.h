@@ -592,6 +592,9 @@ public:
     int resolveLevel() const { return m_resolveLevel; }
     void setResolveLevel(int level) { m_resolveLevel = level; }
 
+    int multiViewCount() const { return m_multiViewCount; }
+    void setMultiViewCount(int count) { m_multiViewCount = count; }
+
 private:
     QRhiTexture *m_texture = nullptr;
     QRhiRenderBuffer *m_renderBuffer = nullptr;
@@ -600,6 +603,7 @@ private:
     QRhiTexture *m_resolveTexture = nullptr;
     int m_resolveLayer = 0;
     int m_resolveLevel = 0;
+    int m_multiViewCount = 0;
 };
 
 Q_DECLARE_TYPEINFO(QRhiColorAttachment, Q_RELOCATABLE_TYPE);
@@ -1233,6 +1237,11 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(QRhiShaderResourceBindings::UpdateFlags)
 Q_GUI_EXPORT QDebug operator<<(QDebug, const QRhiShaderResourceBindings &);
 #endif
 
+// The proper name. Until it gets rolled out universally, have the better name
+// as a typedef. Eventually it should be reversed (the old name being a typedef
+// to the new one).
+using QRhiShaderResourceBindingSet = QRhiShaderResourceBindings;
+
 class Q_GUI_EXPORT QRhiGraphicsPipeline : public QRhiResource
 {
 public:
@@ -1437,6 +1446,9 @@ public:
     PolygonMode polygonMode() const {return m_polygonMode; }
     void setPolygonMode(PolygonMode mode) {m_polygonMode = mode; }
 
+    int multiViewCount() const { return m_multiViewCount; }
+    void setMultiViewCount(int count) { m_multiViewCount = count; }
+
     virtual bool create() = 0;
 
 protected:
@@ -1460,6 +1472,7 @@ protected:
     float m_slopeScaledDepthBias = 0.0f;
     int m_patchControlPointCount = 3;
     PolygonMode m_polygonMode = Fill;
+    int m_multiViewCount = 0;
     QVarLengthArray<QRhiShaderStage, 4> m_shaderStages;
     QRhiVertexInputLayout m_vertexInputLayout;
     QRhiShaderResourceBindings *m_shaderResourceBindings = nullptr;
@@ -1472,11 +1485,16 @@ Q_DECLARE_TYPEINFO(QRhiGraphicsPipeline::TargetBlend, Q_RELOCATABLE_TYPE);
 
 struct QRhiSwapChainHdrInfo
 {
-    bool isHardCodedDefaults;
     enum LimitsType {
         LuminanceInNits,
         ColorComponentValue
     };
+
+    enum LuminanceBehavior {
+        SceneReferred,
+        DisplayReferred
+    };
+
     LimitsType limitsType;
     union {
         struct {
@@ -1488,6 +1506,8 @@ struct QRhiSwapChainHdrInfo
             float maxPotentialColorComponentValue;
         } colorComponentValue;
     } limits;
+    LuminanceBehavior luminanceBehavior;
+    float sdrWhiteLevel;
 };
 
 Q_DECLARE_TYPEINFO(QRhiSwapChainHdrInfo, Q_RELOCATABLE_TYPE);
@@ -1517,7 +1537,8 @@ public:
     enum Format {
         SDR,
         HDRExtendedSrgbLinear,
-        HDR10
+        HDR10,
+        HDRExtendedDisplayP3Linear
     };
 
     enum StereoTargetBuffer {
@@ -1771,7 +1792,8 @@ public:
         EnableDebugMarkers = 1 << 0,
         PreferSoftwareRenderer = 1 << 1,
         EnablePipelineCacheDataSave = 1 << 2,
-        EnableTimestamps = 1 << 3
+        EnableTimestamps = 1 << 3,
+        SuppressSmokeTestWarnings = 1 << 4
     };
     Q_DECLARE_FLAGS(Flags, Flag)
 
@@ -1822,7 +1844,8 @@ public:
         OneDimensionalTextureMipmaps,
         HalfAttributes,
         RenderToOneDimensionalTexture,
-        ThreeDimensionalTextureMipmaps
+        ThreeDimensionalTextureMipmaps,
+        MultiView
     };
 
     enum BeginFrameFlag {

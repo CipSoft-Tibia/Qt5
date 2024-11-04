@@ -15,8 +15,6 @@
 #  include "qplatformdefs.h"
 #endif
 
-#include <utility>
-
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
@@ -416,7 +414,7 @@ void QFileInfoGatherer::getFileInfos(const QString &path, const QStringList &fil
     base.start();
     QFileInfo fileInfo;
     bool firstTime = true;
-    QList<QPair<QString, QFileInfo>> updatedFiles;
+    QList<std::pair<QString, QFileInfo>> updatedFiles;
     QStringList filesToCheck = files;
 
     QStringList allFiles;
@@ -445,9 +443,9 @@ void QFileInfoGatherer::getFileInfos(const QString &path, const QStringList &fil
 }
 
 void QFileInfoGatherer::fetch(const QFileInfo &fileInfo, QElapsedTimer &base, bool &firstTime,
-                              QList<QPair<QString, QFileInfo>> &updatedFiles, const QString &path)
+                              QList<std::pair<QString, QFileInfo>> &updatedFiles, const QString &path)
 {
-    updatedFiles.append(QPair<QString, QFileInfo>(fileInfo.fileName(), fileInfo));
+    updatedFiles.emplace_back(std::pair(fileInfo.fileName(), fileInfo));
     QElapsedTimer current;
     current.start();
     if ((firstTime && updatedFiles.size() > 100) || base.msecsTo(current) > 1000) {

@@ -6,6 +6,6 @@
 #define QTPROTOBUFQTCORETYPESGLOBAL_H
 
 #include <QtProtobufQtCoreTypes/qtprotobufqtcoretypesexports.h>
-#include <QtCore/QtGlobal>
+#include <QtCore/qglobal.h>
 
 #endif // QTPROTOBUFQTCORETYPESGLOBAL_H

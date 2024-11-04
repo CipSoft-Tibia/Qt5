@@ -20,6 +20,7 @@ group("samples") {
     ":CHelloTriangle",
     ":ComputeBoids",
     ":CppHelloTriangle",
+    ":DawnInfo",
     ":ManualSwapChainTest",
   ]
 }
@@ -39,7 +40,6 @@ static_library("utils") {
     "${dawn_root}/src/dawn/glfw",
     "${dawn_root}/src/dawn/native",
     "${dawn_root}/src/dawn/utils",
-    "${dawn_root}/src/dawn/utils:bindings",
     "${dawn_root}/src/dawn/wire",
   ]
   public_configs = [ "${dawn_root}/src/dawn/common:internal_config" ]
@@ -75,4 +75,8 @@ sample("Animometer") {
 
 sample("ManualSwapChainTest") {
   sources = [ "ManualSwapChainTest.cpp" ]
+}
+
+sample("DawnInfo") {
+  sources = [ "DawnInfo.cpp" ]
 }

@@ -472,14 +472,12 @@ void Window::SetBounds(const gfx::Rect& new_bounds) {
 
 void Window::SetBoundsInScreen(const gfx::Rect& new_bounds_in_screen,
                                const display::Display& dst_display) {
-  aura::client::ScreenPositionClient* screen_position_client = nullptr;
-  Window* root = GetRootWindow();
-  if (root)
-    screen_position_client = aura::client::GetScreenPositionClient(root);
-  if (screen_position_client)
+  if (auto* screen_position_client =
+          aura::client::GetScreenPositionClient(GetRootWindow())) {
     screen_position_client->SetBounds(this, new_bounds_in_screen, dst_display);
-  else
+  } else {
     SetBounds(new_bounds_in_screen);
+  }
 }
 
 gfx::Rect Window::GetTargetBounds() const {
@@ -667,7 +665,7 @@ void Window::MoveCursorTo(const gfx::Point& point_in_window) {
 }
 
 gfx::NativeCursor Window::GetCursor(const gfx::Point& point) const {
-  return delegate_ ? delegate_->GetCursor(point) : gfx::kNullCursor;
+  return delegate_ ? delegate_->GetCursor(point) : gfx::NativeCursor{};
 }
 
 void Window::AddObserver(WindowObserver* observer) {
@@ -1014,10 +1012,11 @@ void Window::SetOcclusionInfo(OcclusionState occlusion_state,
       occluded_region_in_root_ == occluded_region) {
     return;
   }
+  OcclusionState old_occlusion_state = occlusion_state_;
   occlusion_state_ = occlusion_state;
   occluded_region_in_root_ = occluded_region;
   if (delegate_)
-    delegate_->OnWindowOcclusionChanged(occlusion_state);
+    delegate_->OnWindowOcclusionChanged(old_occlusion_state, occlusion_state);
 
   for (WindowObserver& observer : observers_)
     observer.OnWindowOcclusionChanged(this);
@@ -1297,8 +1296,8 @@ std::unique_ptr<cc::LayerTreeFrameSink> Window::CreateLayerTreeFrameSink() {
   params.pipes.client_receiver = std::move(client_receiver);
   auto frame_sink =
       std::make_unique<cc::mojo_embedder::AsyncLayerTreeFrameSink>(
-          nullptr /* context_provider */, nullptr /* worker_context_provider */,
-          &params);
+          /*context_provider=*/nullptr, /*worker_context_provider=*/nullptr,
+          /*shared_image_interface=*/nullptr, &params);
   frame_sink_ = frame_sink->GetWeakPtr();
   AllocateLocalSurfaceId();
   DCHECK(GetLocalSurfaceId().is_valid());
@@ -1337,10 +1336,11 @@ const viz::LocalSurfaceId& Window::GetLocalSurfaceId() {
   return GetCurrentLocalSurfaceId();
 }
 
-void Window::InvalidateLocalSurfaceId() {
+void Window::InvalidateLocalSurfaceId(bool also_invalidate_allocation_group) {
   if (!parent_local_surface_id_allocator_)
     return;
-  parent_local_surface_id_allocator_->Invalidate();
+  parent_local_surface_id_allocator_->Invalidate(
+      also_invalidate_allocation_group);
 }
 
 void Window::UpdateLocalSurfaceIdFromEmbeddedClient(

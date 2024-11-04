@@ -1,8 +1,8 @@
 /*
  *
- * Copyright (c) 2014-2022 The Khronos Group Inc.
- * Copyright (c) 2014-2022 Valve Corporation
- * Copyright (c) 2014-2022 LunarG, Inc.
+ * Copyright (c) 2014-2023 The Khronos Group Inc.
+ * Copyright (c) 2014-2023 Valve Corporation
+ * Copyright (c) 2014-2023 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,12 +35,12 @@
 #include <ctype.h>
 
 // Environment variables
-#if defined(__linux__) || defined(__APPLE__) || defined(__Fuchsia__) || defined(__QNXNTO__) || defined(__FreeBSD__) || \
-    defined(__OpenBSD__)
+#if COMMON_UNIX_PLATFORMS
 
 bool is_high_integrity() { return geteuid() != getuid() || getegid() != getgid(); }
 
 char *loader_getenv(const char *name, const struct loader_instance *inst) {
+    if (NULL == name) return NULL;
     // No allocation of memory necessary for Linux, but we should at least touch
     // the inst pointer to get rid of compiler warnings.
     (void)inst;
@@ -62,15 +62,15 @@ char *loader_secure_getenv(const char *name, const struct loader_instance *inst)
 #else
     // Linux
     char *out;
-#if defined(HAVE_SECURE_GETENV) && !defined(USE_UNSAFE_FILE_SEARCH)
+#if defined(HAVE_SECURE_GETENV) && !defined(LOADER_USE_UNSAFE_FILE_SEARCH)
     (void)inst;
     out = secure_getenv(name);
-#elif defined(HAVE___SECURE_GETENV) && !defined(USE_UNSAFE_FILE_SEARCH)
+#elif defined(HAVE___SECURE_GETENV) && !defined(LOADER_USE_UNSAFE_FILE_SEARCH)
     (void)inst;
     out = __secure_getenv(name);
 #else
     out = loader_getenv(name, inst);
-#if !defined(USE_UNSAFE_FILE_SEARCH)
+#if !defined(LOADER_USE_UNSAFE_FILE_SEARCH)
     loader_log(inst, VULKAN_LOADER_INFO_BIT, 0, "Loader is using non-secure environment variable lookup for %s", name);
 #endif
 #endif
@@ -147,7 +147,8 @@ char *loader_getenv(const char *name, const struct loader_instance *inst) {
 }
 
 char *loader_secure_getenv(const char *name, const struct loader_instance *inst) {
-#if !defined(USE_UNSAFE_FILE_SEARCH)
+    if (NULL == name) return NULL;
+#if !defined(LOADER_USE_UNSAFE_FILE_SEARCH)
     if (is_high_integrity()) {
         loader_log(inst, VULKAN_LOADER_INFO_BIT, 0,
                    "Loader is running with elevated permissions. Environment variable %s will be ignored", name);
@@ -161,6 +162,9 @@ char *loader_secure_getenv(const char *name, const struct loader_instance *inst)
 void loader_free_getenv(char *val, const struct loader_instance *inst) { loader_instance_heap_free(inst, (void *)val); }
 
 #else
+
+#warning \
+    "This platform does not support environment variables! If this is not intended, please implement the stubs functions loader_getenv and loader_free_getenv"
 
 char *loader_getenv(const char *name, const struct loader_instance *inst) {
     // stub func
@@ -240,47 +244,54 @@ VkResult parse_generic_filter_environment_var(const struct loader_instance *inst
                                               struct loader_envvar_filter *filter_struct) {
     VkResult result = VK_SUCCESS;
     memset(filter_struct, 0, sizeof(struct loader_envvar_filter));
+    char *parsing_string = NULL;
     char *env_var_value = loader_secure_getenv(env_var_name, inst);
     if (NULL == env_var_value) {
         return result;
     }
-    if (strlen(env_var_value) > 0) {
-        const size_t env_var_len = strlen(env_var_value);
-        // Allocate a separate string since strtok modifies the original string
-        char *parsing_string = loader_instance_heap_calloc(inst, env_var_len + 1, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
-        if (NULL != parsing_string) {
-            const char tokenizer[3] = ",";
-
-            for (uint32_t iii = 0; iii < env_var_len; ++iii) {
-                parsing_string[iii] = (char)tolower(env_var_value[iii]);
-            }
-            parsing_string[env_var_len] = '\0';
-
-            char *token = strtok(parsing_string, tokenizer);
-            while (NULL != token) {
-                enum loader_filter_string_type cur_filter_type;
-                const char *actual_start;
-                size_t actual_len;
-                determine_filter_type(token, &cur_filter_type, &actual_start, &actual_len);
-                if (actual_len > VK_MAX_EXTENSION_NAME_SIZE) {
-                    strncpy(filter_struct->filters[filter_struct->count].value, actual_start, VK_MAX_EXTENSION_NAME_SIZE);
-                } else {
-                    strncpy(filter_struct->filters[filter_struct->count].value, actual_start, actual_len);
-                }
-                filter_struct->filters[filter_struct->count].length = actual_len;
-                filter_struct->filters[filter_struct->count++].type = cur_filter_type;
-                if (filter_struct->count >= MAX_ADDITIONAL_FILTERS) {
-                    break;
-                }
-                token = strtok(NULL, tokenizer);
-            }
-            loader_instance_heap_free(inst, parsing_string);
-        } else {
-            loader_log(inst, VULKAN_LOADER_ERROR_BIT, 0,
-                       "parse_generic_filter_environment_var: Failed to allocate space for parsing env var \'%s\'", env_var_name);
-            result = VK_ERROR_OUT_OF_HOST_MEMORY;
-        }
+    const size_t env_var_len = strlen(env_var_value);
+    if (env_var_len == 0) {
+        goto out;
     }
+    // Allocate a separate string since scan_for_next_comma modifies the original string
+    parsing_string = loader_instance_heap_calloc(inst, env_var_len + 1, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
+    if (NULL == parsing_string) {
+        loader_log(inst, VULKAN_LOADER_ERROR_BIT, 0,
+                   "parse_generic_filter_environment_var: Failed to allocate space for parsing env var \'%s\'", env_var_name);
+        result = VK_ERROR_OUT_OF_HOST_MEMORY;
+        goto out;
+    }
+
+    for (uint32_t iii = 0; iii < env_var_len; ++iii) {
+        parsing_string[iii] = (char)tolower(env_var_value[iii]);
+    }
+    parsing_string[env_var_len] = '\0';
+
+    char *context = NULL;
+    char *token = thread_safe_strtok(parsing_string, ",", &context);
+    while (NULL != token) {
+        enum loader_filter_string_type cur_filter_type;
+        const char *actual_start;
+        size_t actual_len;
+        determine_filter_type(token, &cur_filter_type, &actual_start, &actual_len);
+        if (actual_len > VK_MAX_EXTENSION_NAME_SIZE) {
+            loader_strncpy(filter_struct->filters[filter_struct->count].value, VK_MAX_EXTENSION_NAME_SIZE, actual_start,
+                           VK_MAX_EXTENSION_NAME_SIZE);
+        } else {
+            loader_strncpy(filter_struct->filters[filter_struct->count].value, VK_MAX_EXTENSION_NAME_SIZE, actual_start,
+                           actual_len);
+        }
+        filter_struct->filters[filter_struct->count].length = actual_len;
+        filter_struct->filters[filter_struct->count++].type = cur_filter_type;
+        if (filter_struct->count >= MAX_ADDITIONAL_FILTERS) {
+            break;
+        }
+        token = thread_safe_strtok(NULL, ",", &context);
+    }
+
+out:
+
+    loader_instance_heap_free(inst, parsing_string);
     loader_free_getenv(env_var_value, inst);
     return result;
 }
@@ -292,65 +303,85 @@ VkResult parse_layers_disable_filter_environment_var(const struct loader_instanc
                                                      struct loader_envvar_disable_layers_filter *disable_struct) {
     VkResult result = VK_SUCCESS;
     memset(disable_struct, 0, sizeof(struct loader_envvar_disable_layers_filter));
+    char *parsing_string = NULL;
     char *env_var_value = loader_secure_getenv(VK_LAYERS_DISABLE_ENV_VAR, inst);
     if (NULL == env_var_value) {
         goto out;
     }
-    if (strlen(env_var_value) > 0) {
-        const size_t env_var_len = strlen(env_var_value);
-        // Allocate a separate string since strtok modifies the original string
-        char *parsing_string = loader_instance_heap_calloc(inst, env_var_len + 1, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
-        if (NULL != parsing_string) {
-            const char tokenizer[3] = ",";
-
-            for (uint32_t iii = 0; iii < env_var_len; ++iii) {
-                parsing_string[iii] = (char)tolower(env_var_value[iii]);
-            }
-            parsing_string[env_var_len] = '\0';
-
-            char *token = strtok(parsing_string, tokenizer);
-            while (NULL != token) {
-                uint32_t cur_count = disable_struct->additional_filters.count;
-                enum loader_filter_string_type cur_filter_type;
-                const char *actual_start;
-                size_t actual_len;
-                determine_filter_type(token, &cur_filter_type, &actual_start, &actual_len);
-                if (cur_filter_type == FILTER_STRING_SPECIAL) {
-                    if (!strcmp(VK_LOADER_DISABLE_ALL_LAYERS_VAR_1, token) || !strcmp(VK_LOADER_DISABLE_ALL_LAYERS_VAR_2, token) ||
-                        !strcmp(VK_LOADER_DISABLE_ALL_LAYERS_VAR_3, token)) {
-                        disable_struct->disable_all = true;
-                    } else if (!strcmp(VK_LOADER_DISABLE_IMPLICIT_LAYERS_VAR, token)) {
-                        disable_struct->disable_all_implicit = true;
-                    } else if (!strcmp(VK_LOADER_DISABLE_EXPLICIT_LAYERS_VAR, token)) {
-                        disable_struct->disable_all_explicit = true;
-                    }
-                } else {
-                    if (actual_len > VK_MAX_EXTENSION_NAME_SIZE) {
-                        strncpy(disable_struct->additional_filters.filters[cur_count].value, actual_start,
-                                VK_MAX_EXTENSION_NAME_SIZE);
-                    } else {
-                        strncpy(disable_struct->additional_filters.filters[cur_count].value, actual_start, actual_len);
-                    }
-                    disable_struct->additional_filters.filters[cur_count].length = actual_len;
-                    disable_struct->additional_filters.filters[cur_count].type = cur_filter_type;
-                    disable_struct->additional_filters.count++;
-                    if (disable_struct->additional_filters.count >= MAX_ADDITIONAL_FILTERS) {
-                        break;
-                    }
-                }
-                token = strtok(NULL, tokenizer);
-            }
-            loader_instance_heap_free(inst, parsing_string);
-        } else {
-            loader_log(inst, VULKAN_LOADER_ERROR_BIT, 0,
-                       "parse_layers_disable_filter_environment_var: Failed to allocate space for parsing env var "
-                       "\'VK_LAYERS_DISABLE_ENV_VAR\'");
-            result = VK_ERROR_OUT_OF_HOST_MEMORY;
-        }
+    const size_t env_var_len = strlen(env_var_value);
+    if (env_var_len == 0) {
+        goto out;
     }
-    loader_free_getenv(env_var_value, inst);
+    // Allocate a separate string since scan_for_next_comma modifies the original string
+    parsing_string = loader_instance_heap_calloc(inst, env_var_len + 1, VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
+    if (NULL == parsing_string) {
+        loader_log(inst, VULKAN_LOADER_ERROR_BIT, 0,
+                   "parse_layers_disable_filter_environment_var: Failed to allocate space for parsing env var "
+                   "\'VK_LAYERS_DISABLE_ENV_VAR\'");
+        result = VK_ERROR_OUT_OF_HOST_MEMORY;
+        goto out;
+    }
+
+    for (uint32_t iii = 0; iii < env_var_len; ++iii) {
+        parsing_string[iii] = (char)tolower(env_var_value[iii]);
+    }
+    parsing_string[env_var_len] = '\0';
+
+    char *context = NULL;
+    char *token = thread_safe_strtok(parsing_string, ",", &context);
+    while (NULL != token) {
+        uint32_t cur_count = disable_struct->additional_filters.count;
+        enum loader_filter_string_type cur_filter_type;
+        const char *actual_start;
+        size_t actual_len;
+        determine_filter_type(token, &cur_filter_type, &actual_start, &actual_len);
+        if (cur_filter_type == FILTER_STRING_SPECIAL) {
+            if (!strcmp(VK_LOADER_DISABLE_ALL_LAYERS_VAR_1, token) || !strcmp(VK_LOADER_DISABLE_ALL_LAYERS_VAR_2, token) ||
+                !strcmp(VK_LOADER_DISABLE_ALL_LAYERS_VAR_3, token)) {
+                disable_struct->disable_all = true;
+            } else if (!strcmp(VK_LOADER_DISABLE_IMPLICIT_LAYERS_VAR, token)) {
+                disable_struct->disable_all_implicit = true;
+            } else if (!strcmp(VK_LOADER_DISABLE_EXPLICIT_LAYERS_VAR, token)) {
+                disable_struct->disable_all_explicit = true;
+            }
+        } else {
+            if (actual_len > VK_MAX_EXTENSION_NAME_SIZE) {
+                loader_strncpy(disable_struct->additional_filters.filters[cur_count].value, VK_MAX_EXTENSION_NAME_SIZE,
+                               actual_start, VK_MAX_EXTENSION_NAME_SIZE);
+            } else {
+                loader_strncpy(disable_struct->additional_filters.filters[cur_count].value, VK_MAX_EXTENSION_NAME_SIZE,
+                               actual_start, actual_len);
+            }
+            disable_struct->additional_filters.filters[cur_count].length = actual_len;
+            disable_struct->additional_filters.filters[cur_count].type = cur_filter_type;
+            disable_struct->additional_filters.count++;
+            if (disable_struct->additional_filters.count >= MAX_ADDITIONAL_FILTERS) {
+                break;
+            }
+        }
+        token = thread_safe_strtok(NULL, ",", &context);
+    }
 out:
+    loader_instance_heap_free(inst, parsing_string);
+    loader_free_getenv(env_var_value, inst);
     return result;
+}
+
+// Parses the filter environment variables to determine if we have any special behavior
+VkResult parse_layer_environment_var_filters(const struct loader_instance *inst, struct loader_envvar_all_filters *layer_filters) {
+    VkResult res = parse_generic_filter_environment_var(inst, VK_LAYERS_ENABLE_ENV_VAR, &layer_filters->enable_filter);
+    if (VK_SUCCESS != res) {
+        return res;
+    }
+    res = parse_layers_disable_filter_environment_var(inst, &layer_filters->disable_filter);
+    if (VK_SUCCESS != res) {
+        return res;
+    }
+    res = parse_generic_filter_environment_var(inst, VK_LAYERS_ALLOW_ENV_VAR, &layer_filters->allow_filter);
+    if (VK_SUCCESS != res) {
+        return res;
+    }
+    return res;
 }
 
 // Check to see if the provided layer name matches any of the filter strings.
@@ -359,8 +390,7 @@ out:
 //  - prefixes "string*"
 //  - suffixes "*string"
 //  - full string names "string"
-bool check_name_matches_filter_environment_var(const struct loader_instance *inst, const char *name,
-                                               const struct loader_envvar_filter *filter_struct) {
+bool check_name_matches_filter_environment_var(const char *name, const struct loader_envvar_filter *filter_struct) {
     bool ret_value = false;
     const size_t name_len = strlen(name);
     char lower_name[VK_MAX_EXTENSION_NAME_SIZE];
@@ -417,62 +447,62 @@ bool check_name_matches_filter_environment_var(const struct loader_instance *ins
 
 // Get the layer name(s) from the env_name environment variable. If layer is found in
 // search_list then add it to layer_list.  But only add it to layer_list if type_flags matches.
-VkResult loader_add_environment_layers(struct loader_instance *inst, const enum layer_type_flags type_flags, const char *env_name,
-                                       const struct loader_envvar_filter *enable_filter,
-                                       const struct loader_envvar_disable_layers_filter *disable_filter,
-                                       struct loader_layer_list *target_list, struct loader_layer_list *expanded_target_list,
+VkResult loader_add_environment_layers(struct loader_instance *inst, const enum layer_type_flags type_flags,
+                                       const struct loader_envvar_all_filters *filters,
+                                       struct loader_pointer_layer_list *target_list,
+                                       struct loader_pointer_layer_list *expanded_target_list,
                                        const struct loader_layer_list *source_list) {
     VkResult res = VK_SUCCESS;
-    char *next, *name;
-    char *layer_env = loader_getenv(env_name, inst);
-    char **vk_inst_layers = NULL;
-    uint32_t vk_inst_layer_count = 0;
-    uint32_t separator_count = 0;
+    char *layer_env = loader_getenv(ENABLED_LAYERS_ENV, inst);
 
     // If the layer environment variable is present (i.e. VK_INSTANCE_LAYERS), we will always add it to the layer list.
     if (layer_env != NULL) {
-        name = loader_stack_alloc(strlen(layer_env) + 1);
+        size_t layer_env_len = strlen(layer_env) + 1;
+        char *name = loader_stack_alloc(layer_env_len);
         if (name != NULL) {
-            separator_count = 1;
-            for (uint32_t c = 0; c < strlen(layer_env); ++c) {
-                if (layer_env[c] == PATH_SEPARATOR) {
-                    separator_count++;
-                }
-            }
-
-            vk_inst_layers =
-                loader_instance_heap_calloc(inst, (separator_count * sizeof(char *)), VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-            if (vk_inst_layers == NULL) {
-                res = VK_ERROR_OUT_OF_HOST_MEMORY;
-                goto out;
-            }
-            for (uint32_t cur_layer = 0; cur_layer < separator_count; ++cur_layer) {
-                vk_inst_layers[cur_layer] =
-                    loader_instance_heap_calloc(inst, VK_MAX_EXTENSION_NAME_SIZE, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-                if (vk_inst_layers[cur_layer] == NULL) {
-                    res = VK_ERROR_OUT_OF_HOST_MEMORY;
-                    goto out;
-                }
-            }
-
-            strcpy(name, layer_env);
+            loader_strncpy(name, layer_env_len, layer_env, layer_env_len);
 
             loader_log(inst, VULKAN_LOADER_WARN_BIT | VULKAN_LOADER_LAYER_BIT, 0, "env var \'%s\' defined and adding layers \"%s\"",
-                       env_name, name);
+                       ENABLED_LAYERS_ENV, name);
 
             // First look for the old-fashion layers forced on with VK_INSTANCE_LAYERS
             while (name && *name) {
-                next = loader_get_next_path(name);
+                char *next = loader_get_next_path(name);
 
                 if (strlen(name) > 0) {
-                    strncpy(vk_inst_layers[vk_inst_layer_count++], name, VK_MAX_EXTENSION_NAME_SIZE);
+                    bool found = false;
+                    for (uint32_t i = 0; i < source_list->count; i++) {
+                        struct loader_layer_properties *source_prop = &source_list->list[i];
+
+                        if (0 == strcmp(name, source_prop->info.layerName)) {
+                            found = true;
+                            // Only add it if it doesn't already appear in the layer list
+                            if (!loader_find_layer_name_in_list(source_prop->info.layerName, target_list)) {
+                                if (0 == (source_prop->type_flags & VK_LAYER_TYPE_FLAG_META_LAYER)) {
+                                    res = loader_add_layer_properties_to_list(inst, target_list, source_prop);
+                                    if (res == VK_ERROR_OUT_OF_HOST_MEMORY) goto out;
+                                    res = loader_add_layer_properties_to_list(inst, expanded_target_list, source_prop);
+                                    if (res == VK_ERROR_OUT_OF_HOST_MEMORY) goto out;
+                                } else {
+                                    res = loader_add_meta_layer(inst, filters, source_prop, target_list, expanded_target_list,
+                                                                source_list, NULL);
+                                    if (res == VK_ERROR_OUT_OF_HOST_MEMORY) goto out;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    if (!found) {
+                        loader_log(inst, VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_LAYER_BIT, 0,
+                                   "Layer \"%s\" was not found but was requested by env var VK_INSTANCE_LAYERS!", name);
+                    }
                 }
                 name = next;
             }
         }
     }
 
-    // Loop through all the layers and check the enable/disable filters as well as the VK_INSTANCE_LAYERS value.
+    // Loop through all the layers and check the enable/disable filters
     for (uint32_t i = 0; i < source_list->count; i++) {
         struct loader_layer_properties *source_prop = &source_list->list[i];
 
@@ -484,11 +514,11 @@ VkResult loader_add_environment_layers(struct loader_instance *inst, const enum 
         // We found a layer we're interested in, but has it been disabled...
         bool adding = true;
         bool is_implicit = (0 == (source_prop->type_flags & VK_LAYER_TYPE_FLAG_EXPLICIT_LAYER));
-        bool disabled_by_type = (is_implicit) ? (NULL != disable_filter && disable_filter->disable_all_implicit)
-                                              : (NULL != disable_filter && disable_filter->disable_all_explicit);
-        if (NULL != disable_filter &&
-            (disable_filter->disable_all || disabled_by_type ||
-             check_name_matches_filter_environment_var(inst, source_prop->info.layerName, &disable_filter->additional_filters))) {
+        bool disabled_by_type =
+            (is_implicit) ? (filters->disable_filter.disable_all_implicit) : (filters->disable_filter.disable_all_explicit);
+        if ((filters->disable_filter.disable_all || disabled_by_type ||
+             check_name_matches_filter_environment_var(source_prop->info.layerName, &filters->disable_filter.additional_filters)) &&
+            !check_name_matches_filter_environment_var(source_prop->info.layerName, &filters->allow_filter)) {
             loader_log(inst, VULKAN_LOADER_WARN_BIT | VULKAN_LOADER_LAYER_BIT, 0,
                        "Layer \"%s\" ignored because it has been disabled by env var \'%s\'", source_prop->info.layerName,
                        VK_LAYERS_DISABLE_ENV_VAR);
@@ -497,7 +527,9 @@ VkResult loader_add_environment_layers(struct loader_instance *inst, const enum 
 
         // If we are supposed to filter through all layers, we need to compare the layer name against the filter.
         // This can override the disable above, so we want to do it second.
-        if (check_name_matches_filter_environment_var(inst, source_prop->info.layerName, enable_filter)) {
+        // Also make sure the layer isn't already in the output_list, skip adding it if it is.
+        if (check_name_matches_filter_environment_var(source_prop->info.layerName, &filters->enable_filter) &&
+            !loader_find_layer_name_in_list(source_prop->info.layerName, target_list)) {
             adding = true;
             // Only way is_substring is true is if there are enable variables.  If that's the case, and we're past the
             // above, we should indicate that it was forced on in this way.
@@ -505,15 +537,6 @@ VkResult loader_add_environment_layers(struct loader_instance *inst, const enum 
                        "Layer \"%s\" forced enabled due to env var \'%s\'", source_prop->info.layerName, VK_LAYERS_ENABLE_ENV_VAR);
         } else {
             adding = false;
-            // If it's not in the enable filter, check the environment variable if it exists
-            if (vk_inst_layer_count > 0) {
-                for (uint32_t cur_layer = 0; cur_layer < vk_inst_layer_count; ++cur_layer) {
-                    if (!strcmp(vk_inst_layers[cur_layer], source_prop->info.layerName)) {
-                        adding = true;
-                        break;
-                    }
-                }
-            }
         }
 
         if (!adding) {
@@ -522,25 +545,17 @@ VkResult loader_add_environment_layers(struct loader_instance *inst, const enum 
 
         // If not a meta-layer, simply add it.
         if (0 == (source_prop->type_flags & VK_LAYER_TYPE_FLAG_META_LAYER)) {
-            res = loader_add_layer_properties_to_list(inst, target_list, 1, source_prop);
+            res = loader_add_layer_properties_to_list(inst, target_list, source_prop);
             if (res == VK_ERROR_OUT_OF_HOST_MEMORY) goto out;
-            res = loader_add_layer_properties_to_list(inst, expanded_target_list, 1, source_prop);
+            res = loader_add_layer_properties_to_list(inst, expanded_target_list, source_prop);
             if (res == VK_ERROR_OUT_OF_HOST_MEMORY) goto out;
         } else {
-            res = loader_add_meta_layer(inst, enable_filter, disable_filter, source_prop, target_list, expanded_target_list,
-                                        source_list, NULL);
+            res = loader_add_meta_layer(inst, filters, source_prop, target_list, expanded_target_list, source_list, NULL);
             if (res == VK_ERROR_OUT_OF_HOST_MEMORY) goto out;
         }
     }
 
 out:
-
-    if (NULL != vk_inst_layers) {
-        for (uint32_t cur_layer = 0; cur_layer < separator_count; ++cur_layer) {
-            loader_instance_heap_free(inst, vk_inst_layers[cur_layer]);
-        }
-        loader_instance_heap_free(inst, vk_inst_layers);
-    }
 
     if (layer_env != NULL) {
         loader_free_getenv(layer_env, inst);

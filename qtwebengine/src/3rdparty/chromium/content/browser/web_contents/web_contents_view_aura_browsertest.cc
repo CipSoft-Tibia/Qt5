@@ -150,18 +150,14 @@ class WebContentsViewAuraTest : public ContentBrowserTest {
 
     EXPECT_FALSE(controller.CanGoBack());
     EXPECT_FALSE(controller.CanGoForward());
-    base::Value value = ExecuteScriptAndGetValue(main_frame, "get_current()");
-    int index = value.GetInt();
-    EXPECT_EQ(0, index);
+    EXPECT_EQ(0, EvalJs(main_frame, "get_current()"));
 
     if (touch_handler)
-      content::ExecuteScriptAndGetValue(main_frame, "install_touch_handler()");
+      ASSERT_TRUE(content::ExecJs(main_frame, "install_touch_handler()"));
 
-    content::ExecuteScriptAndGetValue(main_frame, "navigate_next()");
-    content::ExecuteScriptAndGetValue(main_frame, "navigate_next()");
-    value = content::ExecuteScriptAndGetValue(main_frame, "get_current()");
-    index = value.GetInt();
-    EXPECT_EQ(2, index);
+    ASSERT_TRUE(content::ExecJs(main_frame, "navigate_next()"));
+    ASSERT_TRUE(content::ExecJs(main_frame, "navigate_next()"));
+    EXPECT_EQ(2, EvalJs(main_frame, "get_current()"));
     EXPECT_TRUE(controller.CanGoBack());
     EXPECT_FALSE(controller.CanGoForward());
 
@@ -181,9 +177,7 @@ class WebContentsViewAuraTest : public ContentBrowserTest {
           base::Milliseconds(kScrollDurationMs), kScrollSteps);
       std::u16string actual_title = title_watcher.WaitAndGetTitle();
       EXPECT_EQ(expected_title, actual_title);
-      value = ExecuteScriptAndGetValue(main_frame, "get_current()");
-      index = value.GetInt();
-      EXPECT_EQ(1, index);
+      EXPECT_EQ(1, EvalJs(main_frame, "get_current()"));
       EXPECT_TRUE(controller.CanGoBack());
       EXPECT_TRUE(controller.CanGoForward());
     }
@@ -198,9 +192,7 @@ class WebContentsViewAuraTest : public ContentBrowserTest {
           base::Milliseconds(kScrollDurationMs), kScrollSteps);
       std::u16string actual_title = title_watcher.WaitAndGetTitle();
       EXPECT_EQ(expected_title, actual_title);
-      value = ExecuteScriptAndGetValue(main_frame, "get_current()");
-      index = value.GetInt();
-      EXPECT_EQ(0, index);
+      EXPECT_EQ(0, EvalJs(main_frame, "get_current()"));
       EXPECT_FALSE(controller.CanGoBack());
       EXPECT_TRUE(controller.CanGoForward());
     }
@@ -215,9 +207,7 @@ class WebContentsViewAuraTest : public ContentBrowserTest {
           base::Milliseconds(kScrollDurationMs), kScrollSteps);
       std::u16string actual_title = title_watcher.WaitAndGetTitle();
       EXPECT_EQ(expected_title, actual_title);
-      value = ExecuteScriptAndGetValue(main_frame, "get_current()");
-      index = value.GetInt();
-      EXPECT_EQ(1, index);
+      EXPECT_EQ(1, EvalJs(main_frame, "get_current()"));
       EXPECT_TRUE(controller.CanGoBack());
       EXPECT_TRUE(controller.CanGoForward());
     }
@@ -227,14 +217,7 @@ class WebContentsViewAuraTest : public ContentBrowserTest {
     WebContentsImpl* web_contents =
         static_cast<WebContentsImpl*>(shell()->web_contents());
     RenderFrameHost* main_frame = web_contents->GetPrimaryMainFrame();
-    base::Value value = ExecuteScriptAndGetValue(main_frame, "get_current()");
-    if (!value.is_int())
-      return -1;
-    return value.GetInt();
-  }
-
-  int ExecuteScriptAndExtractInt(const std::string& script) {
-    return EvalJs(shell(), script).ExtractInt();
+    return EvalJs(main_frame, "get_current()").ExtractInt();
   }
 
   RenderViewHost* GetRenderViewHost() const {
@@ -384,14 +367,10 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest,
 
   EXPECT_FALSE(controller.CanGoBack());
   EXPECT_FALSE(controller.CanGoForward());
-  base::Value value = ExecuteScriptAndGetValue(main_frame, "get_current()");
-  int index = value.GetInt();
-  EXPECT_EQ(0, index);
+  EXPECT_EQ(0, EvalJs(main_frame, "get_current()"));
 
-  content::ExecuteScriptAndGetValue(main_frame, "navigate_next()");
-  value = content::ExecuteScriptAndGetValue(main_frame, "get_current()");
-  index = value.GetInt();
-  EXPECT_EQ(1, index);
+  ASSERT_TRUE(content::ExecJs(main_frame, "navigate_next()"));
+  EXPECT_EQ(1, EvalJs(main_frame, "get_current()"));
   EXPECT_TRUE(controller.CanGoBack());
   EXPECT_FALSE(controller.CanGoForward());
 
@@ -444,8 +423,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest,
 
 // Disabled because the test always fails the first time it runs on the Win Aura
 // bots, and usually but not always passes second-try (See crbug.com/179532).
-// Flaky on CrOS as well: https://crbug.com/856079
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS_ASH)
+// Flaky on CrOS and Linux as well: https://crbug.com/856079
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS_ASH) || BUILDFLAG(IS_LINUX)
 #define MAYBE_QuickOverscrollDirectionChange \
   DISABLED_QuickOverscrollDirectionChange
 #else
@@ -464,9 +443,9 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest,
       ui::ScopedAnimationDurationScaleMode::FAST_DURATION);
 
   // Make sure the page has both back/forward history.
-  content::ExecuteScriptAndGetValue(main_frame, "navigate_next()");
+  ASSERT_TRUE(content::ExecJs(main_frame, "navigate_next()"));
   EXPECT_EQ(1, GetCurrentIndex());
-  content::ExecuteScriptAndGetValue(main_frame, "navigate_next()");
+  ASSERT_TRUE(content::ExecJs(main_frame, "navigate_next()"));
   EXPECT_EQ(2, GetCurrentIndex());
   web_contents->GetController().GoToOffset(-1);
   EXPECT_EQ(1, GetCurrentIndex());
@@ -548,8 +527,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest,
 
   WebContentsImpl* web_contents =
       static_cast<WebContentsImpl*>(shell()->web_contents());
-  content::ExecuteScriptAndGetValue(web_contents->GetPrimaryMainFrame(),
-                                    "navigate_next()");
+  ASSERT_TRUE(
+      content::ExecJs(web_contents->GetPrimaryMainFrame(), "navigate_next()"));
   EXPECT_EQ(1, GetCurrentIndex());
 
   aura::Window* content = web_contents->GetContentNativeView();
@@ -594,7 +573,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest, DragDropOnOopif) {
     auto drop_cb = view->GetDropCallback(event);
     ASSERT_TRUE(drop_cb);
     ui::mojom::DragOperation output_drag_op = ui::mojom::DragOperation::kNone;
-    std::move(drop_cb).Run(std::move(data), output_drag_op);
+    std::move(drop_cb).Run(std::move(data), output_drag_op,
+                           /*drag_image_layer_owner=*/nullptr);
 
     run_loop.Run();
 
@@ -630,7 +610,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest, DragDropOnOopif) {
     auto drop_cb = view->GetDropCallback(event);
     ASSERT_TRUE(drop_cb);
     ui::mojom::DragOperation output_drag_op = ui::mojom::DragOperation::kNone;
-    std::move(drop_cb).Run(std::move(data), output_drag_op);
+    std::move(drop_cb).Run(std::move(data), output_drag_op,
+                           /*drag_image_layer_owner=*/nullptr);
 
     run_loop.Run();
 
@@ -672,7 +653,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest, Drop_DeepScanOK) {
   auto drop_cb = view->GetDropCallback(event);
   ASSERT_TRUE(drop_cb);
   ui::mojom::DragOperation output_drag_op = ui::mojom::DragOperation::kNone;
-  std::move(drop_cb).Run(std::move(data), output_drag_op);
+  std::move(drop_cb).Run(std::move(data), output_drag_op,
+                         /*drag_image_layer_owner=*/nullptr);
 
   // The user should be able to drag other content over Chrome while the scan is
   // occurring without affecting it.
@@ -690,7 +672,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest, Drop_DeepScanOK) {
   view->OnDragEntered(new_event);
   drop_cb = view->GetDropCallback(new_event);
   output_drag_op = ui::mojom::DragOperation::kNone;
-  std::move(drop_cb).Run(std::move(new_data), output_drag_op);
+  std::move(drop_cb).Run(std::move(new_data), output_drag_op,
+                         /*drag_image_layer_owner=*/nullptr);
   EXPECT_FALSE(drag_dest_delegate_.GetOnDropCalled());
 
   delegate_ptr->FinishScan();
@@ -730,7 +713,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest, Drop_DeepScanBad) {
   auto drop_cb = view->GetDropCallback(event);
   ASSERT_TRUE(drop_cb);
   ui::mojom::DragOperation output_drag_op = ui::mojom::DragOperation::kNone;
-  std::move(drop_cb).Run(std::move(data), output_drag_op);
+  std::move(drop_cb).Run(std::move(data), output_drag_op,
+                         /*drag_image_layer_owner=*/nullptr);
 
   // The user should be able to drag other content over Chrome while the scan is
   // occurring without affecting it.
@@ -748,7 +732,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest, Drop_DeepScanBad) {
   view->OnDragEntered(new_event);
   drop_cb = view->GetDropCallback(new_event);
   output_drag_op = ui::mojom::DragOperation::kNone;
-  std::move(drop_cb).Run(std::move(new_data), output_drag_op);
+  std::move(drop_cb).Run(std::move(new_data), output_drag_op,
+                         /*drag_image_layer_owner=*/nullptr);
   EXPECT_FALSE(drag_dest_delegate_.GetOnDropCalled());
 
   delegate_ptr->FinishScan();
@@ -763,8 +748,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest, ContentWindowClose) {
 
   WebContentsImpl* web_contents =
       static_cast<WebContentsImpl*>(shell()->web_contents());
-  content::ExecuteScriptAndGetValue(web_contents->GetPrimaryMainFrame(),
-                                    "navigate_next()");
+  ASSERT_TRUE(
+      content::ExecJs(web_contents->GetPrimaryMainFrame(), "navigate_next()"));
   EXPECT_EQ(1, GetCurrentIndex());
 
   aura::Window* content = web_contents->GetContentNativeView();
@@ -799,11 +784,11 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest,
       static_cast<WebContentsImpl*>(shell()->web_contents());
   NavigationController& controller = web_contents->GetController();
   RenderFrameHost* main_frame = web_contents->GetPrimaryMainFrame();
-  content::ExecuteScriptAndGetValue(main_frame, "install_touch_handler()");
+  ASSERT_TRUE(content::ExecJs(main_frame, "install_touch_handler()"));
 
   // Navigate twice, then navigate back in history once.
-  content::ExecuteScriptAndGetValue(main_frame, "navigate_next()");
-  content::ExecuteScriptAndGetValue(main_frame, "navigate_next()");
+  ASSERT_TRUE(content::ExecJs(main_frame, "navigate_next()"));
+  ASSERT_TRUE(content::ExecJs(main_frame, "navigate_next()"));
   EXPECT_EQ(2, GetCurrentIndex());
   EXPECT_TRUE(controller.CanGoBack());
   EXPECT_FALSE(controller.CanGoForward());
@@ -844,6 +829,42 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest,
   EXPECT_FALSE(controller.CanGoForward());
 }
 
+class OverscrollWebContentsDelegate : public WebContentsDelegate {
+ public:
+  void SetCanOverscrollContent(bool can_overscroll_content) {
+    can_overscroll_content_ = can_overscroll_content;
+  }
+
+  // WebContentsDelegate:
+  bool CanOverscrollContent() override { return can_overscroll_content_; }
+
+ private:
+  bool can_overscroll_content_ = true;
+};
+
+IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest, RenderViewHostChanged) {
+  ASSERT_NO_FATAL_FAILURE(StartTestWithPage("/overscroll_navigation.html"));
+
+  WebContentsImpl* contents =
+      static_cast<WebContentsImpl*>(shell()->web_contents());
+  WebContentsViewAura* view =
+      static_cast<WebContentsViewAura*>(contents->GetView());
+  OverscrollWebContentsDelegate delegate;
+  contents->SetDelegate(&delegate);
+
+  delegate.SetCanOverscrollContent(false);
+  view->RenderViewHostChanged(nullptr, nullptr);
+  EXPECT_FALSE(
+      !!static_cast<RenderWidgetHostViewAura*>(GetRenderWidgetHostView())
+            ->overscroll_controller());
+
+  delegate.SetCanOverscrollContent(true);
+  view->RenderViewHostChanged(nullptr, nullptr);
+  EXPECT_TRUE(
+      !!static_cast<RenderWidgetHostViewAura*>(GetRenderWidgetHostView())
+            ->overscroll_controller());
+}
+
 // Ensure that SnapToPhysicalPixelBoundary() is called on WebContentsView parent
 // change. This is a regression test for http://crbug.com/388908.
 // Disabled due to flakiness: https://crbug.com/807107.
@@ -882,17 +903,17 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest,
   gfx::Rect bounds = content->GetBoundsInRootWindow();
   const int dx = 20;
 
-  content::ExecuteScriptAndGetValue(web_contents->GetPrimaryMainFrame(),
-                                    "install_touchmove_handler()");
+  ASSERT_TRUE(content::ExecJs(web_contents->GetPrimaryMainFrame(),
+                              "install_touchmove_handler()"));
 
   WaitAFrame();
 
   for (int navigated = 0; navigated <= 1; ++navigated) {
     if (navigated) {
-      content::ExecuteScriptAndGetValue(web_contents->GetPrimaryMainFrame(),
-                                        "navigate_next()");
-      content::ExecuteScriptAndGetValue(web_contents->GetPrimaryMainFrame(),
-                                        "reset_touchmove_count()");
+      ASSERT_TRUE(content::ExecJs(web_contents->GetPrimaryMainFrame(),
+                                  "navigate_next()"));
+      ASSERT_TRUE(content::ExecJs(web_contents->GetPrimaryMainFrame(),
+                                  "reset_touchmove_count()"));
     }
     InputEventAckWaiter touch_start_waiter(
         GetRenderWidgetHost(),
@@ -963,9 +984,9 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest,
     WaitAFrame();
 
     if (!navigated)
-      EXPECT_EQ(10, ExecuteScriptAndExtractInt("touchmoveCount"));
+      EXPECT_EQ(10, EvalJs(shell(), "touchmoveCount"));
     else
-      EXPECT_GT(10, ExecuteScriptAndExtractInt("touchmoveCount"));
+      EXPECT_GT(10, EvalJs(shell(), "touchmoveCount"));
   }
 }
 
@@ -994,7 +1015,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsViewAuraTest, GetDropCallback_Run) {
   auto drop_cb = view->GetDropCallback(event);
   ASSERT_TRUE(drop_cb);
   ui::mojom::DragOperation output_drag_op = ui::mojom::DragOperation::kNone;
-  std::move(drop_cb).Run(std::move(data), output_drag_op);
+  std::move(drop_cb).Run(std::move(data), output_drag_op,
+                         /*drag_image_layer_owner=*/nullptr);
 
   run_loop.Run();
 

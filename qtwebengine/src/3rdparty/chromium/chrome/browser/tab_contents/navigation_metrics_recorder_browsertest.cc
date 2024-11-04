@@ -97,7 +97,7 @@ IN_PROC_BROWSER_TEST_F(NavigationMetricsRecorderBrowserTest,
   base::HistogramTester histograms;
   content::TestNavigationObserver observer(web_contents);
   const char* const kScript = "document.getElementById('form').submit()";
-  EXPECT_TRUE(content::ExecuteScript(web_contents, kScript));
+  EXPECT_TRUE(content::ExecJs(web_contents, kScript));
   observer.WaitForNavigationFinished();
 
   histograms.ExpectTotalCount(
@@ -122,7 +122,7 @@ class NavigationMetricsRecorderPrerenderBrowserTest
       const NavigationMetricsRecorderPrerenderBrowserTest&) = delete;
 
   void SetUp() override {
-    prerender_helper_.SetUp(embedded_test_server());
+    prerender_helper_.RegisterServerRequestMonitor(embedded_test_server());
     NavigationMetricsRecorderBrowserTest::SetUp();
   }
 

@@ -8,8 +8,6 @@ See http://dev.chromium.org/developers/how-tos/depottools/presubmit-scripts
 for more details on the presubmit API built into depot_tools.
 """
 
-USE_PYTHON3 = True
-
 def IsComponentsAutofillFile(f, name_suffix):
   # The exact path can change. Only check the containing folder.
   return (f.LocalPath().startswith('components/autofill/') and
@@ -103,17 +101,18 @@ def _CheckWebViewExposedExperiments(input_api, output_api):
 
   _PRODUCTION_SUPPORT_FILE = ('android_webview/java/src/org/chromium/' +
       'android_webview/common/ProductionSupportedFlagList.java')
-  _GENERATE_FLAG_LABELS_PY = 'android_webview/tools/generate_flag_labels.py'
 
   warnings = []
   if (IsComponentsAutofillFileAffected(input_api, 'features.cc') and
       not AnyAffectedFileMatches(
           input_api, lambda f: f.LocalPath() == _PRODUCTION_SUPPORT_FILE)):
     warnings += [
-        output_api.PresubmitPromptWarning((
-            'You may need to modify {} and run {} and follow its '+
-            'instructions if your feature affects WebView.'
-        ).format(_PRODUCTION_SUPPORT_FILE, _GENERATE_FLAG_LABELS_PY))
+        output_api.PresubmitPromptWarning(
+            (
+                'You may need to modify {} instructions if your feature affects'
+                ' WebView.'
+            ).format(_PRODUCTION_SUPPORT_FILE)
+        )
     ]
 
   return warnings

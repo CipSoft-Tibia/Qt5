@@ -25,20 +25,30 @@ find_package(zstd CONFIG QUIET)
 
 include(FindPackageHandleStandardArgs)
 
-if(TARGET zstd::libzstd_static OR TARGET zstd::libzstd_shared)
+if(TARGET zstd::libzstd_static OR TARGET zstd::libzstd_shared OR TARGET zstd::libzstd)
     find_package_handle_standard_args(WrapZSTD
                                       REQUIRED_VARS zstd_VERSION VERSION_VAR zstd_VERSION)
     if(TARGET zstd::libzstd_shared)
         set(zstdtargetsuffix "_shared")
+    elseif(TARGET zstd::libzstd)
+        set(zstdtargetsuffix "")
     else()
         set(zstdtargetsuffix "_static")
     endif()
+
     if(NOT TARGET WrapZSTD::WrapZSTD)
         add_library(WrapZSTD::WrapZSTD INTERFACE IMPORTED)
         set_target_properties(WrapZSTD::WrapZSTD PROPERTIES
                               INTERFACE_LINK_LIBRARIES "zstd::libzstd${zstdtargetsuffix}")
     endif()
 else()
+    get_cmake_property(__packages_not_found PACKAGES_NOT_FOUND)
+    if(__packages_not_found)
+        list(REMOVE_ITEM __packages_not_found zstd)
+        set_property(GLOBAL PROPERTY PACKAGES_NOT_FOUND "${__packages_not_found}")
+    endif()
+    unset(__packages_not_found)
+
     find_package(PkgConfig QUIET)
     pkg_check_modules(PC_ZSTD QUIET "libzstd")
 

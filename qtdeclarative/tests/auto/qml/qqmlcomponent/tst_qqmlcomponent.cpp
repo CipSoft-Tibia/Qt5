@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <qtest.h>
 #include <QDebug>
 
@@ -21,7 +21,7 @@
 #include <private/qv4executablecompilationunit_p.h>
 #include <qcolor.h>
 #include <qsignalspy.h>
-
+#include "lifecyclewatcher.h"
 #include <algorithm>
 
 using namespace Qt::StringLiterals;
@@ -90,13 +90,6 @@ public slots:
     }
 };
 
-static void gc(QQmlEngine &engine)
-{
-    engine.collectGarbage();
-    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-    QCoreApplication::processEvents();
-}
-
 class tst_qqmlcomponent : public QQmlDataTest
 {
     Q_OBJECT
@@ -140,6 +133,7 @@ private slots:
     void boundComponent();
     void loadFromModule_data();
     void loadFromModule();
+    void loadFromModuleLifecycle();
     void loadFromModuleThenCreateWithIncubator();
     void loadFromModuleFailures_data();
     void loadFromModuleFailures();
@@ -147,6 +141,8 @@ private slots:
     void loadFromQrc();
     void removeBinding();
     void complexObjectArgument();
+    void bindingEvaluationOrder();
+    void bindingInRequired();
 
 private:
     QQmlEngine engine;
@@ -184,14 +180,12 @@ void tst_qqmlcomponent::loadEmptyUrl()
 void tst_qqmlcomponent::qmlIncubateObject()
 {
     QQmlComponent component(&engine, testFileUrl("incubateObject.qml"));
-    QObject *object = component.create();
+    std::unique_ptr<QObject> object { component.create() };
     QVERIFY(object != nullptr);
     QCOMPARE(object->property("test1").toBool(), true);
     QCOMPARE(object->property("test2").toBool(), false);
 
     QTRY_VERIFY(object->property("test2").toBool());
-
-    delete object;
 }
 
 void tst_qqmlcomponent::qmlCreateWindow()
@@ -398,11 +392,11 @@ void tst_qqmlcomponent::qmlCreateParentReference()
 
     QQmlComponent component(&engine, testFileUrl("createParentReference.qml"));
     QVERIFY2(component.errorString().isEmpty(), component.errorString().toUtf8());
-    QObject *object = component.create();
+    std::unique_ptr<QObject> object { component.create() };
     QVERIFY(object != nullptr);
 
-    QVERIFY(QMetaObject::invokeMethod(object, "createChild"));
-    delete object;
+    QVERIFY(QMetaObject::invokeMethod(object.get(), "createChild"));
+    object.reset();
 
     engine.setOutputWarningsToStandardError(false);
     QCOMPARE(engine.outputWarningsToStandardError(), false);
@@ -424,10 +418,8 @@ void tst_qqmlcomponent::async()
     QCOMPARE(watcher.ready, 1);
     QCOMPARE(watcher.error, 0);
 
-    QObject *object = component.create();
+    std::unique_ptr<QObject> object { component.create() };
     QVERIFY(object != nullptr);
-
-    delete object;
 }
 
 void tst_qqmlcomponent::asyncHierarchy()
@@ -445,7 +437,7 @@ void tst_qqmlcomponent::asyncHierarchy()
     QCOMPARE(watcher.ready, 1);
     QCOMPARE(watcher.error, 0);
 
-    QObject *root = component.create();
+    std::unique_ptr<QObject> root { component.create() };
     QVERIFY(root != nullptr);
 
     // ensure that the parent-child relationship hierarchy is correct
@@ -469,8 +461,6 @@ void tst_qqmlcomponent::asyncHierarchy()
 
     // ensure that values and bindings are assigned correctly
     QVERIFY(root->property("success").toBool());
-
-    delete root;
 }
 
 void tst_qqmlcomponent::asyncForceSync()
@@ -1356,6 +1346,34 @@ void tst_qqmlcomponent::loadFromModule()
              name);
 }
 
+void tst_qqmlcomponent::loadFromModuleLifecycle()
+{
+    QQmlEngine engine;
+    QList<int> loadFromModuleOrder;
+    QList<int> plainLoadOrder;
+    const QList<int> expected {1, 2, 3};
+    {
+        QQmlComponent component(&engine);
+        component.loadFromModule("test", "LifeCycleWatcher");
+        QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+        std::unique_ptr<QObject> root{ component.create() };
+        LifeCycleWatcher *watcher = qobject_cast<LifeCycleWatcher *>(root.get());
+        QVERIFY(watcher);
+        loadFromModuleOrder = watcher->states;
+        QCOMPARE(loadFromModuleOrder, expected);
+    }
+    {
+        QQmlComponent component(&engine);
+        component.setData("import test; LifeCycleWatcher {}", {});
+        QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+        std::unique_ptr<QObject> root{ component.create() };
+        LifeCycleWatcher *watcher = qobject_cast<LifeCycleWatcher *>(root.get());
+        QVERIFY(watcher);
+        plainLoadOrder = watcher->states;
+    }
+    QCOMPARE(loadFromModuleOrder, plainLoadOrder);
+}
+
 struct CallVerifyingIncubtor : QQmlIncubator
 {
     void setInitialState(QObject *) override { setInitialStateCalled = true; }
@@ -1395,6 +1413,10 @@ void tst_qqmlcomponent::loadFromModuleFailures_data()
     QTest::addRow("CppSingleton") << u"QtQuick"_s
                                   << u"Application"_s
                                   << u"Application is a singleton, and cannot be loaded"_s;
+    QTest::addRow("passedFileName") << "plainqml"
+                                    << "Plain.qml"
+                                    << R"(Type "Plain" from module "plainqml" contains no inline component named "qml". )"
+                                       R"(To load the type "Plain", drop the ".qml" extension.)";
 }
 
 void tst_qqmlcomponent::loadFromModuleFailures()
@@ -1406,7 +1428,11 @@ void tst_qqmlcomponent::loadFromModuleFailures()
     QQmlEngine engine;
     QQmlComponent component(&engine);
     QSignalSpy errorSpy(&component, &QQmlComponent::statusChanged);
+    QSignalSpy progressSpy(&component, &QQmlComponent::progressChanged);
     component.loadFromModule(uri, typeName);
+    // verify that we changed the progress correctly to 1
+    QTRY_VERIFY(!progressSpy.isEmpty());
+    QTRY_COMPARE(progressSpy.last().at(0).toDouble(), 1.0);
     QVERIFY(!errorSpy.isEmpty());
     QCOMPARE(errorSpy.first().first().value<QQmlComponent::Status>(),
              QQmlComponent::Error);
@@ -1475,6 +1501,51 @@ void tst_qqmlcomponent::complexObjectArgument()
     QScopedPointer<QObject> o(c.create());
     QVERIFY(!o.isNull());
     QCOMPARE(o->objectName(), QStringLiteral("26 - 25"));
+}
+
+void tst_qqmlcomponent::bindingEvaluationOrder()
+{
+    // Note: This test explicitly tests the order in which bindings are
+    // evaluated, which is generally unspecified. This, however, exists
+    // as a regression test for QQmlObjectCreator code that is supposed
+    // to *not* mess with the QmlIR given to it.
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQml
+        QtObject {
+            property var myList: ["dummy"]
+            property int p1: { myList.push("p1"); return 0; }
+            property int p2: { myList.push("p2"); return 0; }
+        })", QUrl());
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> o(component.create());
+    QVERIFY(!o.isNull());
+
+    const QList<QVariant> myList = o->property("myList").toList();
+    QCOMPARE(myList.size(), 3);
+    QCOMPARE(myList[0].toString(), u"dummy"_s);
+    QCOMPARE(myList[1].toString(), u"p1"_s);
+    QCOMPARE(myList[2].toString(), u"p2"_s);
+}
+
+void tst_qqmlcomponent::bindingInRequired()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("bindingInRequired.qml"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(!object.isNull());
+
+    QObject *outer = object->property("outer").value<QObject *>();
+    QVERIFY(outer);
+
+    QObject *inner = object->property("inner").value<QObject *>();
+    QVERIFY(inner);
+
+    QCOMPARE(inner, outer->property("obj").value<QObject *>());
+    QVERIFY(!inner->property("obj").value<QObject *>());
 }
 
 QTEST_MAIN(tst_qqmlcomponent)

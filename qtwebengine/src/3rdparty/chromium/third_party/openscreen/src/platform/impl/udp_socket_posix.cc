@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,7 +21,6 @@
 #include <type_traits>
 #include <utility>
 
-#include "absl/types/optional.h"
 #include "platform/api/task_runner.h"
 #include "platform/base/error.h"
 #include "platform/impl/udp_socket_reader_posix.h"
@@ -61,7 +60,7 @@ ErrorOr<int> CreateNonBlockingUdpSocket(int domain) {
 
 }  // namespace
 
-UdpSocketPosix::UdpSocketPosix(TaskRunner* task_runner,
+UdpSocketPosix::UdpSocketPosix(TaskRunner& task_runner,
                                Client* client,
                                SocketHandle handle,
                                const IPEndpoint& local_endpoint,
@@ -71,7 +70,6 @@ UdpSocketPosix::UdpSocketPosix(TaskRunner* task_runner,
       handle_(handle),
       local_endpoint_(local_endpoint),
       platform_client_(platform_client) {
-  OSP_DCHECK(task_runner_);
   OSP_DCHECK(local_endpoint_.address.IsV4() || local_endpoint_.address.IsV6());
 
   if (handle_.fd >= 0) {
@@ -91,7 +89,7 @@ const SocketHandle& UdpSocketPosix::GetHandle() const {
 
 // static
 ErrorOr<std::unique_ptr<UdpSocket>> UdpSocket::Create(
-    TaskRunner* task_runner,
+    TaskRunner& task_runner,
     Client* client,
     const IPEndpoint& endpoint) {
   static std::atomic_bool in_create{false};
@@ -457,7 +455,7 @@ void UdpSocketPosix::ReceiveMessage() {
   // calling into all the other methods.
 
   if (is_closed()) {
-    task_runner_->PostTask([weak_this = weak_factory_.GetWeakPtr()] {
+    task_runner_.PostTask([weak_this = weak_factory_.GetWeakPtr()] {
       if (auto* self = weak_this.get()) {
         if (auto* client = self->client_) {
           client->OnRead(self, Error::Code::kSocketClosedFailure);
@@ -483,11 +481,11 @@ void UdpSocketPosix::ReceiveMessage() {
     }
   }
 
-  task_runner_->PostTask([weak_this = weak_factory_.GetWeakPtr(),
-                          read_result = std::move(read_result)]() mutable {
+  task_runner_.PostTask([weak_this = weak_factory_.GetWeakPtr(),
+                         result = std::move(read_result)]() mutable {
     if (auto* self = weak_this.get()) {
       if (auto* client = self->client_) {
-        client->OnRead(self, std::move(read_result));
+        client->OnRead(self, std::move(result));
       }
     }
   });

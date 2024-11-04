@@ -16,6 +16,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/script_value.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_arraybuffer_arraybufferview_blob_usvstring.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_union_arraybuffer_arraybufferview_blob_usvstring_writeparams.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_write_command_type.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_write_params.h"
 #include "third_party/blink/renderer/core/fileapi/blob.h"
 #include "third_party/blink/renderer/modules/file_system_access/file_system_access_error.h"
@@ -95,7 +96,7 @@ ScriptPromise FileSystemUnderlyingSink::HandleParams(
     ScriptState* script_state,
     const WriteParams& params,
     ExceptionState& exception_state) {
-  if (params.type() == "truncate") {
+  if (params.type() == V8WriteCommandType::Enum::kTruncate) {
     if (!params.hasSizeNonNull()) {
       ThrowDOMExceptionAndInvalidateSink(
           exception_state, DOMExceptionCode::kSyntaxError,
@@ -105,7 +106,7 @@ ScriptPromise FileSystemUnderlyingSink::HandleParams(
     return Truncate(script_state, params.sizeNonNull(), exception_state);
   }
 
-  if (params.type() == "seek") {
+  if (params.type() == V8WriteCommandType::Enum::kSeek) {
     if (!params.hasPositionNonNull()) {
       ThrowDOMExceptionAndInvalidateSink(
           exception_state, DOMExceptionCode::kSyntaxError,
@@ -115,7 +116,7 @@ ScriptPromise FileSystemUnderlyingSink::HandleParams(
     return Seek(script_state, params.positionNonNull(), exception_state);
   }
 
-  if (params.type() == "write") {
+  if (params.type() == V8WriteCommandType::Enum::kWrite) {
     uint64_t position =
         params.hasPositionNonNull() ? params.positionNonNull() : offset_;
     if (!params.hasData()) {
@@ -349,6 +350,7 @@ ScriptPromise FileSystemUnderlyingSink::WriteData(
     return ScriptPromise();
   }
 
+  offset_ = position;
   std::unique_ptr<mojo::DataPipeProducer::DataSource> data_source;
   switch (data->GetContentType()) {
     case V8UnionArrayBufferOrArrayBufferViewOrBlobOrUSVString::ContentType::
@@ -495,11 +497,13 @@ void FileSystemUnderlyingSink::TruncateComplete(
 void FileSystemUnderlyingSink::CloseComplete(
     mojom::blink::FileSystemAccessErrorPtr result) {
   DCHECK(pending_operation_);
-  file_system_access_error::ResolveOrReject(pending_operation_, *result);
-  pending_operation_ = nullptr;
+
   // We close the mojo pipe because we intend this writable file stream to be
   // discarded after close. Subsequent operations will fail.
   writer_remote_.reset();
+
+  file_system_access_error::ResolveOrReject(pending_operation_, *result);
+  pending_operation_ = nullptr;
 }
 
 void FileSystemUnderlyingSink::Trace(Visitor* visitor) const {

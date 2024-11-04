@@ -371,16 +371,14 @@ void FilterHorizontal(const uint8_t* LIBGAV1_RESTRICT const src,
   assert(width <= 4);
   assert(filter_index >= 3 && filter_index <= 5);
   if (filter_index >= 3 && filter_index <= 5) {
-    if (width == 4) {
-      FilterHorizontalWidth4<filter_index, is_2d, is_compound>(
-          src, src_stride, dest, pred_stride, height, v_tap);
-      return;
-    }
-    assert(width == 2);
-    if (!is_compound) {
+    if (width == 2 && !is_compound) {
       FilterHorizontalWidth2<filter_index, is_2d>(src, src_stride, dest,
                                                   pred_stride, height, v_tap);
+      return;
     }
+    assert(width == 4);
+    FilterHorizontalWidth4<filter_index, is_2d, is_compound>(
+        src, src_stride, dest, pred_stride, height, v_tap);
   }
 }
 

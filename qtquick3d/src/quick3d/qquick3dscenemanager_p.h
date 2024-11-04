@@ -20,8 +20,11 @@
 
 #include <QtQuick3D/private/qtquick3dglobal_p.h>
 
-#include "qquick3dobject_p.h"
+#include <QtQuick3DRuntimeRender/private/qssgrendergraphobject_p.h>
+
 #include "qquick3dnode_p.h"
+
+#include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -41,6 +44,7 @@ public:
     Q_INVOKABLE void cleanupResources();
     Q_INVOKABLE bool synchronize(QSet<QSSGRenderGraphObject *> &resourceLoaders);
     Q_INVOKABLE void requestUpdate();
+    Q_INVOKABLE void evaluateEol();
 
     QQuickWindow *window() const;
 
@@ -92,6 +96,7 @@ public:
     bool updateDirtyResourceNodes();
     void updateDirtySpatialNodes();
     void updateDiryExtensions();
+    bool updateDirtyResourceSecondPass();
 
     void updateDirtyResource(QQuick3DObject *resourceObject);
     void updateDirtySpatialNode(QQuick3DNode *spatialNode);
@@ -146,14 +151,20 @@ public:
     QQuick3DObject *dirtyResources[size_t(ResourcePriority::Count)] {};
     QQuick3DObject *dirtyNodes[size_t(NodePriority::Count)] {};
     QQuick3DObject *dirtyExtensions[size_t(ExtensionPriority::Count)] {};
+    // For exceptions to the norm we create a list of resources that
+    // we get a second update.
+    // In the case of the render extensions the resources are update first and for the
+    // first time the extensions have not been run and therefore have no backend node, which
+    // we'll need to use connect the render result from the extension with the texture.
+    QSet<QQuick3DObject *> dirtySecondPassResources;
 
     QList<QQuick3DObject *> dirtyBoundingBoxList;
-    QList<QSSGRenderGraphObject *> cleanupNodeList;
+    QSet<QSSGRenderGraphObject *> cleanupNodeList;
     QList<QSSGRenderGraphObject *> resourceCleanupQueue;
 
     QSet<QQuick3DObject *> parentlessItems;
     QVector<QSGDynamicTexture *> qsgDynamicTextures;
-    QHash<const QSSGRenderGraphObject *, QQuick3DObject *> m_nodeMap;
+    QHash<QSSGRenderGraphObject *, QQuick3DObject *> m_nodeMap;
     QSet<QSSGRenderGraphObject *> resourceLoaders;
     QQuickWindow *m_window = nullptr;
     QPointer<QQuick3DWindowAttachment> wattached;

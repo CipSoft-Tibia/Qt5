@@ -18,6 +18,8 @@
 #include <QtQuickTemplates2/private/qquickcontrol_p.h>
 #include <QtQml/qqmllist.h>
 
+QT_REQUIRE_CONFIG(quicktemplates2_container);
+
 QT_BEGIN_NAMESPACE
 
 class QQuickContainerPrivate;
@@ -102,7 +104,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickContainer)
 
 #endif // QQUICKCONTAINER_P_H

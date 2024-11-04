@@ -39,8 +39,8 @@ void ff_write_pass1_stats(MpegEncContext *s)
     snprintf(s->avctx->stats_out, 256,
              "in:%d out:%d type:%d q:%d itex:%d ptex:%d mv:%d misc:%d "
              "fcode:%d bcode:%d mc-var:%"PRId64" var:%"PRId64" icount:%d skipcount:%d hbits:%d;\n",
-             s->current_picture_ptr->f->display_picture_number,
-             s->current_picture_ptr->f->coded_picture_number,
+             s->current_picture_ptr->display_picture_number,
+             s->current_picture_ptr->coded_picture_number,
              s->pict_type,
              s->current_picture.f->quality,
              s->i_tex_bits,
@@ -57,7 +57,16 @@ void ff_write_pass1_stats(MpegEncContext *s)
 
 static double get_fps(AVCodecContext *avctx)
 {
-    return 1.0 / av_q2d(avctx->time_base) / FFMAX(avctx->ticks_per_frame, 1);
+    if (avctx->framerate.num > 0 && avctx->framerate.den > 0)
+        return av_q2d(avctx->framerate);
+
+FF_DISABLE_DEPRECATION_WARNINGS
+    return 1.0 / av_q2d(avctx->time_base)
+#if FF_API_TICKS_PER_FRAME
+        / FFMAX(avctx->ticks_per_frame, 1)
+#endif
+        ;
+FF_ENABLE_DEPRECATION_WARNINGS
 }
 
 static inline double qp2bits(RateControlEntry *rce, double qp)

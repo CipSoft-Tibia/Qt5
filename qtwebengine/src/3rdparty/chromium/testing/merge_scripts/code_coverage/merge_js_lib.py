@@ -21,6 +21,8 @@ import coverage_modules
 logging.basicConfig(format='[%(asctime)s %(levelname)s] %(message)s',
                     level=logging.DEBUG)
 
+_PREFIXES_TO_CHECK = ['//', 'import ', '/*', '*']
+
 
 def _parse_json_file(path):
     """Opens file and parses data into JSON
@@ -29,7 +31,14 @@ def _parse_json_file(path):
     path (str): The path to a JSON file to parse.
   """
     with open(path, 'r') as json_file:
-        return json.load(json_file)
+        # Some JSON files erroroneously end with double curly brace, prefer to
+        # strip it out instead of throwing an error message.
+        json_string = json_file.read()
+        if json_string[0] == '{' and json_string[-2:] == '}}':
+            logging.warning(
+                'Found additional trailing curly brace for path: %s', path)
+            return json.loads(json_string[:-1])
+        return json.loads(json_string)
 
 
 def _get_paths_with_suffix(input_dir, suffix):
@@ -79,9 +88,6 @@ def write_parsed_scripts(task_output_dir, source_dir=_SRC_PATH):
         return None
 
     for file_path in scripts:
-        # TODO(crbug.com/1224786): Some of the raw script data is being saved
-        # with a trailing curly brace leading to invalid JSON. Bail out if this
-        # is encountered and ensure we log the file path.
         script_data = None
         try:
             script_data = _parse_json_file(file_path)
@@ -144,6 +150,19 @@ def write_parsed_scripts(task_output_dir, source_dir=_SRC_PATH):
 
     return output_dir
 
+def should_exclude(line_contents):
+    """Whether we exclude the line from coverage map."""
+    line_contents = line_contents.strip()
+    # Exclude empty lines.
+    if line_contents == '':
+        return True
+
+    # Exclude comments and imports.
+    for prefix in _PREFIXES_TO_CHECK:
+        if line_contents.startswith(prefix):
+            return True
+
+    return False
 
 def exclude_uninteresting_lines(coverage_file_path):
     """Removes lines from Istanbul coverage reports that correspond to lines in
@@ -179,21 +198,7 @@ def exclude_uninteresting_lines(coverage_file_path):
                 assert statement_map['start']['line'] == statement_map['end'][
                     'line']
 
-                line_contents = lines[line_num - 1].strip()
-
-                # Exclude empty lines
-                if line_contents == '':
-                    exclude_line(istanbul_coverage, key)
-                    continue
-
-                # Exclude lines that start with a full line comment.
-                # e.g. // comment.
-                if line_contents.startswith('//'):
-                    exclude_line(istanbul_coverage, key)
-                    continue
-
-                # Exclude any lines that start with an import statement.
-                if line_contents.startswith('import '):
+                if should_exclude(lines[line_num - 1]):
                     exclude_line(istanbul_coverage, key)
                     continue
 
@@ -274,15 +279,16 @@ def convert_raw_coverage_to_istanbul(raw_coverage_dirs, source_dir,
   Raises:
     RuntimeError: If the underlying node command fails.
   """
-    return node.RunNode([
+    stdout = node.RunNode([
         os.path.join(_HERE_PATH, 'convert_to_istanbul.js'),
         '--source-dir',
         source_dir,
         '--output-dir',
         task_output_dir,
         '--raw-coverage-dirs',
-        ' '.join(raw_coverage_dirs),
+        *raw_coverage_dirs,
     ])
+    logging.info(stdout)
 
 
 def merge_istanbul_reports(istanbul_coverage_dir, source_dir, output_file):

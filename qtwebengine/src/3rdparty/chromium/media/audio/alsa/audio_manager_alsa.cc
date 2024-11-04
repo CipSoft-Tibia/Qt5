@@ -29,7 +29,7 @@ namespace media {
 static const int kMaxOutputStreams = 50;
 
 // Default sample rate for input and output streams.
-static const int kDefaultSampleRate = 48000;
+static const int kDefaultSampleRateAMA = 48000;
 
 // Since "default", "pulse" and "dmix" devices are virtual devices mapped to
 // real devices, we remove them from the list to avoiding duplicate counting.
@@ -73,7 +73,7 @@ AudioParameters AudioManagerAlsa::GetInputStreamParameters(
   static const int kDefaultInputBufferSize = 1024;
 
   return AudioParameters(AudioParameters::AUDIO_PCM_LOW_LATENCY,
-                         ChannelLayoutConfig::Stereo(), kDefaultSampleRate,
+                         ChannelLayoutConfig::Stereo(), kDefaultSampleRateAMA,
                          kDefaultInputBufferSize);
 }
 
@@ -273,7 +273,7 @@ AudioParameters AudioManagerAlsa::GetPreferredOutputStreamParameters(
   DLOG_IF(ERROR, !output_device_id.empty()) << "Not implemented!";
   static const int kDefaultOutputBufferSize = 2048;
   ChannelLayoutConfig channel_layout_config = ChannelLayoutConfig::Stereo();
-  int sample_rate = kDefaultSampleRate;
+  int sample_rate = kDefaultSampleRateAMA;
   int buffer_size = kDefaultOutputBufferSize;
   if (input_params.IsValid()) {
     // Some clients, such as WebRTC, have a more limited use case and work

@@ -9,7 +9,7 @@
 #ifndef GrVkTypes_DEFINED
 #define GrVkTypes_DEFINED
 
-#include "include/gpu/GrTypes.h"
+#include "include/gpu/GpuTypes.h"
 #include "include/gpu/vk/VulkanTypes.h"
 
 using GrVkBackendMemory = skgpu::VulkanBackendMemory;
@@ -34,7 +34,10 @@ struct GrVkYcbcrConversionInfo {
     }
     bool operator!=(const GrVkYcbcrConversionInfo& that) const { return !(*this == that); }
 
-    bool isValid() const { return fYcbcrModel != VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY; }
+    bool isValid() const {
+        return fYcbcrModel != VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY ||
+               fExternalFormat != 0;
+    }
 
     // Format of the source image. Must be set to VK_FORMAT_UNDEFINED for external images or
     // a valid image format otherwise.
@@ -72,14 +75,13 @@ struct GrVkImageInfo {
     uint32_t                 fSampleCount = 1;
     uint32_t                 fLevelCount = 0;
     uint32_t                 fCurrentQueueFamily = VK_QUEUE_FAMILY_IGNORED;
-    GrProtected              fProtected = GrProtected::kNo;
+    skgpu::Protected         fProtected = skgpu::Protected::kNo;
     GrVkYcbcrConversionInfo  fYcbcrConversionInfo;
     VkSharingMode            fSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 #ifdef SK_BUILD_FOR_ANDROID_FRAMEWORK
     bool                     fPartOfSwapchainOrAndroidWindow = false;
 #endif
 
-#if GR_TEST_UTILS
     bool operator==(const GrVkImageInfo& that) const {
         bool equal = fImage == that.fImage && fAlloc == that.fAlloc &&
                      fImageTiling == that.fImageTiling &&
@@ -97,7 +99,6 @@ struct GrVkImageInfo {
 #endif
         return equal;
     }
-#endif
 };
 
 using GrVkGetProc = skgpu::VulkanGetProc;
@@ -137,7 +138,7 @@ struct GrVkDrawableInfo {
 struct GrVkSurfaceInfo {
     uint32_t fSampleCount = 1;
     uint32_t fLevelCount = 0;
-    GrProtected fProtected = GrProtected::kNo;
+    skgpu::Protected fProtected = skgpu::Protected::kNo;
 
     VkImageTiling fImageTiling = VK_IMAGE_TILING_OPTIMAL;
     VkFormat fFormat = VK_FORMAT_UNDEFINED;

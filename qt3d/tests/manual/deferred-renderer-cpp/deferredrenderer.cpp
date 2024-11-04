@@ -1,5 +1,5 @@
 // Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "deferredrenderer.h"
 #include "gbuffer.h"
@@ -74,13 +74,13 @@ void DeferredRenderer::setSurface(QWindow *surface)
         if (m_window != nullptr) {
             // Store connections
             m_widthChangedConnection = QObject::connect(surface, &QWindow::widthChanged,
-                                                        [this] (int width) {
-                m_winSize->setValue(QSizeF(float(width), m_winSize->value().toSizeF().height()));
-            });
+                                                        this, [this](int width) {
+                                                            m_winSize->setValue(QSizeF(float(width), m_winSize->value().toSizeF().height()));
+                                                        });
             m_heightChangedConnection = QObject::connect(surface, &QWindow::heightChanged,
-                                                         [this] (int height) {
-                m_winSize->setValue(QSizeF(m_winSize->value().toSizeF().width(), float(height)));
-            });
+                                                         this, [this](int height) {
+                                                             m_winSize->setValue(QSizeF(m_winSize->value().toSizeF().width(), float(height)));
+                                                         });
         }
     }
 }

@@ -105,14 +105,15 @@
 //#define SK_R32_SHIFT    16
 
 
-/* Determines whether to build code that supports the GPU backend. Some classes
+/* Determines whether to build code that supports the Ganesh GPU backend. Some classes
    that are not GPU-specific, such as SkShader subclasses, have optional code
-   that is used allows them to interact with the GPU backend. If you'd like to
-   omit this code set SK_SUPPORT_GPU to 0. This also allows you to omit the gpu
-   directories from your include search path when you're not building the GPU
-   backend. Defaults to 1 (build the GPU code).
- */
-//#define SK_SUPPORT_GPU 1
+   that is used allows them to interact with this GPU backend. If you'd like to
+   include this code, include -DSK_GANESH in your cflags or uncomment below.
+   Defaults to not set (No Ganesh GPU backend).
+   This define affects the ABI of Skia, so make sure it matches the client which uses
+   the compiled version of Skia.
+*/
+// #define SK_GANESH
 
 /* Skia makes use of histogram logging macros to trace the frequency of
  * events. By default, Skia provides no-op versions of these macros.
@@ -196,8 +197,12 @@ SK_API void SkDebugf_FileLine(const char* file,
 
 #endif
 
-#ifdef __clang__
+#if defined(__has_attribute)
+#if __has_attribute(trivial_abi)
 #define SK_TRIVIAL_ABI [[clang::trivial_abi]]
+#else
+#define SK_TRIVIAL_ABI
+#endif
 #else
 #define SK_TRIVIAL_ABI
 #endif
@@ -206,8 +211,6 @@ SK_API void SkDebugf_FileLine(const char* file,
 // until we update our call-sites (typically these are for API changes).
 //
 // Remove these as we update our sites.
-
-#define SK_LEGACY_LAYER_BOUNDS_EXPANSION  // skbug.com/12083, skbug.com/12303
 
 // Workaround for poor anisotropic mipmap quality,
 // pending Skia ripmap support.
@@ -220,11 +223,17 @@ SK_API void SkDebugf_FileLine(const char* file,
 // Max. verb count for paths rendered by the edge-AA tessellating path renderer.
 #define GR_AA_TESSELLATOR_MAX_VERB_COUNT 100
 
-#define SK_SUPPORT_LEGACY_AAA_CHOICE
+#define SK_FORCE_AAA
 
 #define SK_SUPPORT_LEGACY_DRAWLOOPER
 
 #define SK_USE_LEGACY_MIPMAP_BUILDER
+
+#define SK_SUPPORT_LEGACY_CONIC_CHOP
+
+#define SK_ENABLE_SKSL_IN_RASTER_PIPELINE
+
+#define SK_USE_LEGACY_BLUR_IMAGEFILTER
 
 ///////////////////////// Imported from BUILD.gn and skia_common.gypi
 
@@ -235,6 +244,9 @@ SK_API void SkDebugf_FileLine(const char* file,
 
 /* Restrict formats for Skia font matching to SFNT type fonts. */
 #define SK_FONT_CONFIG_INTERFACE_ONLY_ALLOW_SFNT_FONTS
+
+// Temporarily enable new strike cache pinning logic, for staging.
+#define SK_STRIKE_CACHE_DOESNT_AUTO_CHECK_PINNERS
 
 #define SK_IGNORE_BLURRED_RRECT_OPT
 #define SK_USE_DISCARDABLE_SCALEDIMAGECACHE

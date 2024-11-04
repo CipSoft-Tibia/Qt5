@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformmediarecorder_p.h"
+#include "qstandardpaths.h"
+#include "qmediastoragelocation_p.h"
 #include <QObject>
 
 QT_BEGIN_NAMESPACE
@@ -13,12 +15,12 @@ QPlatformMediaRecorder::QPlatformMediaRecorder(QMediaRecorder *parent)
 
 void QPlatformMediaRecorder::pause()
 {
-    error(QMediaRecorder::FormatError, QMediaRecorder::tr("Pause not supported"));
+    updateError(QMediaRecorder::FormatError, QMediaRecorder::tr("Pause not supported"));
 }
 
 void QPlatformMediaRecorder::resume()
 {
-    error(QMediaRecorder::FormatError, QMediaRecorder::tr("Resume not supported"));
+    updateError(QMediaRecorder::FormatError, QMediaRecorder::tr("Resume not supported"));
 }
 
 void QPlatformMediaRecorder::stateChanged(QMediaRecorder::RecorderState state)
@@ -45,7 +47,7 @@ void QPlatformMediaRecorder::actualLocationChanged(const QUrl &location)
     emit q->actualLocationChanged(location);
 }
 
-void QPlatformMediaRecorder::error(QMediaRecorder::Error error, const QString &errorString)
+void QPlatformMediaRecorder::updateError(QMediaRecorder::Error error, const QString &errorString)
 {
     m_error.setAndNotify(error, errorString, *q);
 }
@@ -53,6 +55,21 @@ void QPlatformMediaRecorder::error(QMediaRecorder::Error error, const QString &e
 void QPlatformMediaRecorder::metaDataChanged()
 {
     emit q->metaDataChanged();
+}
+
+QString QPlatformMediaRecorder::findActualLocation(const QMediaEncoderSettings &settings) const
+{
+    const auto audioOnly = settings.videoCodec() == QMediaFormat::VideoCodec::Unspecified;
+
+    const auto primaryLocation =
+            audioOnly ? QStandardPaths::MusicLocation : QStandardPaths::MoviesLocation;
+    const QString suffix = settings.mimeType().preferredSuffix();
+    QString location = QMediaStorageLocation::generateFileName(
+            outputLocation().toString(QUrl::PreferLocalFile), primaryLocation, suffix);
+
+    Q_ASSERT(!location.isEmpty());
+
+    return location;
 }
 
 QT_END_NAMESPACE

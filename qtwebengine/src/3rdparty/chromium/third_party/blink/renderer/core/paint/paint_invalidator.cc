@@ -12,9 +12,8 @@
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/layout/layout_block_flow.h"
+#include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/layout/layout_shift_tracker.h"
-#include "third_party/blink/renderer/core/layout/layout_table.h"
-#include "third_party/blink/renderer/core/layout/layout_table_section.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_fragment_item.h"
 #include "third_party/blink/renderer/core/layout/ng/legacy_layout_tree_walking.h"
@@ -36,32 +35,17 @@ void PaintInvalidator::UpdatePaintingLayer(const LayoutObject& object,
   if (object.HasLayer() &&
       To<LayoutBoxModelObject>(object).HasSelfPaintingLayer()) {
     context.painting_layer = To<LayoutBoxModelObject>(object).Layer();
-  } else if (object.IsColumnSpanAll() ||
-             object.IsFloatingWithNonContainingBlockParent()) {
-    // See |LayoutObject::PaintingLayer| for the special-cases of floating under
-    // inline and multicolumn.
-    // Post LayoutNG the |LayoutObject::IsFloatingWithNonContainingBlockParent|
-    // check can be removed as floats will be painted by the correct layer.
-    context.painting_layer = object.PaintingLayer();
   }
 
-  auto* layout_block_flow = DynamicTo<LayoutBlockFlow>(object);
-  if (layout_block_flow && !object.IsLayoutNGBlockFlow() &&
-      layout_block_flow->ContainsFloats())
+  if (object.IsFloating()) {
     context.painting_layer->SetNeedsPaintPhaseFloat();
-
-  if (object.IsFloating() &&
-      (object.IsInLayoutNGInlineFormattingContext() ||
-       IsLayoutNGContainingBlock(object.ContainingBlock())))
-    context.painting_layer->SetNeedsPaintPhaseFloat();
+  }
 
   if (!context.painting_layer->NeedsPaintPhaseDescendantOutlines() &&
       ((object != context.painting_layer->GetLayoutObject() &&
-        object.StyleRef().HasOutline()) ||
-       // If this is a block-in-inline, it may need to paint outline.
-       // See |StyleForContinuationOutline|.
-       (layout_block_flow && layout_block_flow->StyleForContinuationOutline())))
+        object.StyleRef().HasOutline()))) {
     context.painting_layer->SetNeedsPaintPhaseDescendantOutlines();
+  }
 }
 
 void PaintInvalidator::UpdateFromTreeBuilderContext(
@@ -170,9 +154,8 @@ void PaintInvalidator::UpdateLayoutShiftTracking(
       block_flow->ChildrenInline() && block_flow->FirstChild();
   if (should_create_containing_block_scope) {
     // For layout shift tracking of contained LayoutTexts.
-    context.containing_block_scope_.emplace(
-        PhysicalSizeToBeNoop(box.PreviousSize()),
-        PhysicalSizeToBeNoop(box.Size()), old_rect, new_rect);
+    context.containing_block_scope_.emplace(box.PreviousSize(), box.Size(),
+                                            old_rect, new_rect);
   }
 
   bool should_report_layout_shift = [&]() -> bool {
@@ -262,54 +245,23 @@ bool PaintInvalidator::InvalidatePaint(
         PaintInvalidatorContext::kSubtreeInvalidationChecking;
   }
 
-  if (UNLIKELY(object.ContainsInlineWithOutlineAndContinuation()) &&
-      // Need this only if the subtree needs to check geometry change.
-      PrePaintTreeWalk::ObjectRequiresTreeBuilderContext(object)) {
-    // Force subtree invalidation checking to ensure invalidation of focus rings
-    // when continuation's geometry changes.
-    context.subtree_flags |=
-        PaintInvalidatorContext::kSubtreeInvalidationChecking;
-  }
-
   if (pre_paint_info) {
-    FragmentData& fragment_data = *pre_paint_info->fragment_data;
-    context.fragment_data = &fragment_data;
-
-    if (tree_builder_context) {
-      DCHECK_EQ(tree_builder_context->fragments.size(), 1u);
-      const auto& fragment_tree_builder_context =
-          tree_builder_context->fragments[0];
-      UpdateFromTreeBuilderContext(fragment_tree_builder_context, context);
-      UpdateLayoutShiftTracking(object, fragment_tree_builder_context, context);
-    } else {
-      context.old_paint_offset = fragment_data.PaintOffset();
-    }
-
-    object.InvalidatePaint(context);
+    context.fragment_data = pre_paint_info->fragment_data;
+    CHECK(context.fragment_data);
   } else {
-    unsigned tree_builder_index = 0;
-
-    for (auto* fragment_data = &object.GetMutableForPainting().FirstFragment();
-         fragment_data;
-         fragment_data = fragment_data->NextFragment(), tree_builder_index++) {
-      context.fragment_data = fragment_data;
-
-      DCHECK(!tree_builder_context ||
-             tree_builder_index < tree_builder_context->fragments.size());
-
-      if (tree_builder_context) {
-        const auto& fragment_tree_builder_context =
-            tree_builder_context->fragments[tree_builder_index];
-        UpdateFromTreeBuilderContext(fragment_tree_builder_context, context);
-        UpdateLayoutShiftTracking(object, fragment_tree_builder_context,
-                                  context);
-      } else {
-        context.old_paint_offset = fragment_data->PaintOffset();
-      }
-
-      object.InvalidatePaint(context);
-    }
+    context.fragment_data = &object.GetMutableForPainting().FirstFragment();
   }
+
+  if (tree_builder_context) {
+    const auto& fragment_tree_builder_context =
+        tree_builder_context->fragment_context;
+    UpdateFromTreeBuilderContext(fragment_tree_builder_context, context);
+    UpdateLayoutShiftTracking(object, fragment_tree_builder_context, context);
+  } else {
+    context.old_paint_offset = context.fragment_data->PaintOffset();
+  }
+
+  object.InvalidatePaint(context);
 
   auto reason = static_cast<const DisplayItemClient&>(object)
                     .GetPaintInvalidationReason();

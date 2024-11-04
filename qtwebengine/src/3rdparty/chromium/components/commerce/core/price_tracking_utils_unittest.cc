@@ -6,18 +6,24 @@
 
 #include "base/functional/callback.h"
 #include "base/run_loop.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/time/time.h"
+#include "base/uuid.h"
 #include "components/bookmarks/browser/bookmark_model.h"
+#include "components/bookmarks/browser/bookmark_uuids.h"
 #include "components/bookmarks/test/test_bookmark_client.h"
+#include "components/commerce/core/commerce_feature_list.h"
 #include "components/commerce/core/mock_shopping_service.h"
 #include "components/commerce/core/pref_names.h"
 #include "components/commerce/core/price_tracking_utils.h"
+#include "components/commerce/core/subscriptions/commerce_subscription.h"
 #include "components/commerce/core/test_utils.h"
 #include "components/power_bookmarks/core/power_bookmark_utils.h"
 #include "components/power_bookmarks/core/proto/power_bookmark_meta.pb.h"
 #include "components/power_bookmarks/core/proto/shopping_specifics.pb.h"
 #include "components/prefs/testing_pref_service.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
@@ -34,6 +40,7 @@ class PriceTrackingUtilsTest : public testing::Test {
     RegisterPrefs(pref_service_->registry());
   }
 
+  base::test::ScopedFeatureList test_features_;
   std::unique_ptr<bookmarks::BookmarkModel> bookmark_model_;
   std::unique_ptr<MockShoppingService> shopping_service_;
   std::unique_ptr<TestingPrefServiceSimple> pref_service_;
@@ -64,6 +71,12 @@ TEST_F(PriceTrackingUtilsTest,
   shopping_service_->SetSubscribeCallbackValue(true);
   shopping_service_->SetUnsubscribeCallbackValue(true);
 
+  EXPECT_CALL(
+      *shopping_service_,
+      Unsubscribe(VectorHasSubscriptionWithId(base::NumberToString(cluster_id)),
+                  testing::_))
+      .Times(1);
+
   base::RunLoop run_loop;
   SetPriceTrackingStateForBookmark(
       shopping_service_.get(), bookmark_model_.get(), product1, false,
@@ -74,9 +87,6 @@ TEST_F(PriceTrackingUtilsTest,
           },
           &run_loop));
   run_loop.Run();
-
-  EXPECT_FALSE(IsBookmarkPriceTracked(bookmark_model_.get(), product1));
-  EXPECT_FALSE(IsBookmarkPriceTracked(bookmark_model_.get(), product2));
 
   ASSERT_GT(
       base::Time::Now().ToDeltaSinceWindowsEpoch().InMicroseconds(),
@@ -91,6 +101,8 @@ TEST_F(PriceTrackingUtilsTest,
 // unsubscribed.
 TEST_F(PriceTrackingUtilsTest,
        SetPriceTrackingState_UnsubscribeDeletesBookmark) {
+  test_features_.InitAndDisableFeature(kShoppingListTrackByDefault);
+
   const bookmarks::BookmarkNode* product =
       AddProductBookmark(bookmark_model_.get(), u"product 1",
                          GURL("http://example.com/1"), 12345L, true);
@@ -110,7 +122,6 @@ TEST_F(PriceTrackingUtilsTest,
       true);
   run_loop.Run();
 
-  EXPECT_TRUE(IsBookmarkPriceTracked(bookmark_model_.get(), product));
   EXPECT_EQ(1U, bookmark_model_->other_node()->children().size());
 
   base::RunLoop run_loop2;
@@ -126,10 +137,51 @@ TEST_F(PriceTrackingUtilsTest,
   EXPECT_EQ(0U, bookmark_model_->other_node()->children().size());
 }
 
+// Ensure bookmarks created by price tracking are kept when the product is
+// unsubscribed if the "track by default" feature is enabled.
+TEST_F(PriceTrackingUtilsTest,
+       SetPriceTrackingState_Unsubscribe_TrackByDefault) {
+  test_features_.InitAndEnableFeature(kShoppingListTrackByDefault);
+
+  const bookmarks::BookmarkNode* product =
+      AddProductBookmark(bookmark_model_.get(), u"product 1",
+                         GURL("http://example.com/1"), 12345L, true);
+
+  EXPECT_EQ(1U, bookmark_model_->other_node()->children().size());
+
+  // Simulate successful calls in the subscriptions manager.
+  shopping_service_->SetSubscribeCallbackValue(true);
+  shopping_service_->SetUnsubscribeCallbackValue(true);
+
+  base::RunLoop run_loop;
+  SetPriceTrackingStateForBookmark(
+      shopping_service_.get(), bookmark_model_.get(), product, true,
+      base::BindOnce(
+          [](base::RunLoop* run_loop, bool success) { run_loop->Quit(); },
+          &run_loop),
+      true);
+  run_loop.Run();
+
+  EXPECT_EQ(1U, bookmark_model_->other_node()->children().size());
+
+  base::RunLoop run_loop2;
+  SetPriceTrackingStateForBookmark(
+      shopping_service_.get(), bookmark_model_.get(), product, false,
+      base::BindOnce(
+          [](base::RunLoop* run_loop, bool success) { run_loop->Quit(); },
+          &run_loop2));
+  run_loop2.Run();
+
+  // The bookmark should not have been deleted.
+  EXPECT_EQ(1U, bookmark_model_->other_node()->children().size());
+}
+
 // If a bookmark was created by price tracking, only delete the bookmark if the
 // relationship between cluster ID and bookmark is 1:1.
 TEST_F(PriceTrackingUtilsTest,
        SetPriceTrackingState_UnsubscribeNoDeleteMultipleBookmarks) {
+  test_features_.InitAndDisableFeature(kShoppingListTrackByDefault);
+
   const bookmarks::BookmarkNode* product =
       AddProductBookmark(bookmark_model_.get(), u"product 1",
                          GURL("http://example.com/1"), 12345L, true);
@@ -151,7 +203,6 @@ TEST_F(PriceTrackingUtilsTest,
       true);
   run_loop.Run();
 
-  EXPECT_TRUE(IsBookmarkPriceTracked(bookmark_model_.get(), product));
   EXPECT_EQ(2U, bookmark_model_->other_node()->children().size());
 
   base::RunLoop run_loop2;
@@ -170,6 +221,8 @@ TEST_F(PriceTrackingUtilsTest,
 // tracking shouldn't be deleted after unsubscribe
 TEST_F(PriceTrackingUtilsTest,
        SetPriceTrackingState_UnsubscribeKeepsExplicitBookmark) {
+  test_features_.InitAndDisableFeature(kShoppingListTrackByDefault);
+
   const bookmarks::BookmarkNode* product =
       AddProductBookmark(bookmark_model_.get(), u"product 1",
                          GURL("http://example.com/1"), 12345L, true);
@@ -189,7 +242,6 @@ TEST_F(PriceTrackingUtilsTest,
       false);
   run_loop.Run();
 
-  EXPECT_TRUE(IsBookmarkPriceTracked(bookmark_model_.get(), product));
   EXPECT_EQ(1U, bookmark_model_->other_node()->children().size());
 
   base::RunLoop run_loop2;
@@ -207,8 +259,9 @@ TEST_F(PriceTrackingUtilsTest,
 
 // Test that a bookmark is updated in-place if revisiting the page and it is
 // detected to be a trackable product.
-TEST_F(PriceTrackingUtilsTest,
-       SetPriceTrackingStateUpdatesAll_SubscribeOldBookmark) {
+TEST_F(PriceTrackingUtilsTest, SetPriceTrackingState_SubscribeOldBookmark) {
+  test_features_.InitAndDisableFeature(kShoppingListTrackByDefault);
+
   const uint64_t cluster_id = 12345L;
 
   // This bookmark is intentionally a non-product bookmark to start with.
@@ -226,6 +279,12 @@ TEST_F(PriceTrackingUtilsTest,
   shopping_service_->SetSubscribeCallbackValue(true);
   shopping_service_->SetUnsubscribeCallbackValue(true);
 
+  EXPECT_CALL(
+      *shopping_service_,
+      Subscribe(VectorHasSubscriptionWithId(base::NumberToString(cluster_id)),
+                testing::_))
+      .Times(1);
+
   base::RunLoop run_loop;
   SetPriceTrackingStateForBookmark(
       shopping_service_.get(), bookmark_model_.get(), existing_bookmark, true,
@@ -237,53 +296,8 @@ TEST_F(PriceTrackingUtilsTest,
           &run_loop));
   run_loop.Run();
 
-  EXPECT_TRUE(IsBookmarkPriceTracked(bookmark_model_.get(), existing_bookmark));
   EXPECT_EQ(GetBookmarksWithClusterId(bookmark_model_.get(), cluster_id)[0],
             existing_bookmark);
-}
-
-// Same as the _SubscriptionSuccess version but the subscription fails on the
-// backend. In this case, the bookmarks should not be updated.
-TEST_F(PriceTrackingUtilsTest,
-       SetPriceTrackingStateUpdatesAll_UnsubscribeFailed) {
-  const uint64_t cluster_id = 12345L;
-  const int64_t last_change_time = 100L;
-  const bookmarks::BookmarkNode* product1 =
-      AddProductBookmark(bookmark_model_.get(), u"product 1",
-                         GURL("http://example.com/1"), cluster_id, true);
-  const bookmarks::BookmarkNode* product2 =
-      AddProductBookmark(bookmark_model_.get(), u"product 2",
-                         GURL("http://example.com/2"), cluster_id, true, 0L,
-                         "usd", absl::make_optional<int64_t>(last_change_time));
-  ASSERT_EQ(absl::nullopt, GetBookmarkLastSubscriptionChangeTime(
-                               bookmark_model_.get(), product1));
-  ASSERT_EQ(last_change_time, GetBookmarkLastSubscriptionChangeTime(
-                                  bookmark_model_.get(), product2)
-                                  .value());
-
-  // Simulate failed calls in the subscriptions manager.
-  shopping_service_->SetSubscribeCallbackValue(false);
-  shopping_service_->SetUnsubscribeCallbackValue(false);
-
-  base::RunLoop run_loop;
-  SetPriceTrackingStateForBookmark(
-      shopping_service_.get(), bookmark_model_.get(), product1, false,
-      base::BindOnce(
-          [](base::RunLoop* run_loop, bool success) {
-            EXPECT_FALSE(success);
-            run_loop->Quit();
-          },
-          &run_loop));
-  run_loop.Run();
-
-  EXPECT_TRUE(IsBookmarkPriceTracked(bookmark_model_.get(), product1));
-  EXPECT_TRUE(IsBookmarkPriceTracked(bookmark_model_.get(), product2));
-
-  ASSERT_EQ(absl::nullopt, GetBookmarkLastSubscriptionChangeTime(
-                               bookmark_model_.get(), product1));
-  ASSERT_EQ(last_change_time, GetBookmarkLastSubscriptionChangeTime(
-                                  bookmark_model_.get(), product2)
-                                  .value());
 }
 
 TEST_F(PriceTrackingUtilsTest, SetPriceTrackingForClusterId) {
@@ -297,6 +311,12 @@ TEST_F(PriceTrackingUtilsTest, SetPriceTrackingForClusterId) {
   shopping_service_->SetSubscribeCallbackValue(true);
   shopping_service_->SetUnsubscribeCallbackValue(true);
 
+  EXPECT_CALL(
+      *shopping_service_,
+      Subscribe(VectorHasSubscriptionWithId(base::NumberToString(cluster_id)),
+                testing::_))
+      .Times(1);
+
   base::RunLoop run_loop;
   SetPriceTrackingStateForClusterId(
       shopping_service_.get(), bookmark_model_.get(), cluster_id, true,
@@ -308,7 +328,6 @@ TEST_F(PriceTrackingUtilsTest, SetPriceTrackingForClusterId) {
           &run_loop));
   run_loop.Run();
 
-  EXPECT_TRUE(IsBookmarkPriceTracked(bookmark_model_.get(), product));
   EXPECT_EQ(GetBookmarksWithClusterId(bookmark_model_.get(), cluster_id)[0],
             product);
 }
@@ -347,16 +366,27 @@ TEST_F(PriceTrackingUtilsTest, GetAllPriceTrackedBookmarks) {
   const bookmarks::BookmarkNode* tracked_product =
       AddProductBookmark(bookmark_model_.get(), u"product 1",
                          GURL("http://example.com/1"), cluster_id, true);
-  AddProductBookmark(bookmark_model_.get(), u"product 2",
-                     GURL("http://example.com/2"), cluster_id, false);
   bookmark_model_->AddURL(bookmark_model_->other_node(), 0, u"non-product",
                           GURL("http://www.example.com"));
 
-  std::vector<const bookmarks::BookmarkNode*> price_tracked_bookmarks =
-      GetAllPriceTrackedBookmarks(bookmark_model_.get());
-  ASSERT_EQ(3U, bookmark_model_->other_node()->children().size());
-  ASSERT_EQ(1U, price_tracked_bookmarks.size());
-  ASSERT_EQ(price_tracked_bookmarks[0]->id(), tracked_product->id());
+  ASSERT_EQ(2U, bookmark_model_->other_node()->children().size());
+
+  shopping_service_->SetGetAllSubscriptionsCallbackValue(
+      {CreateUserTrackedSubscription(12345L)});
+
+  base::RunLoop run_loop;
+  GetAllPriceTrackedBookmarks(
+      shopping_service_.get(), bookmark_model_.get(),
+      base::BindOnce(
+          [](base::RunLoop* looper,
+             const bookmarks::BookmarkNode* known_tracked_bookmark,
+             std::vector<const bookmarks::BookmarkNode*> bookmarks) {
+            ASSERT_EQ(1U, bookmarks.size());
+            ASSERT_EQ(bookmarks[0]->id(), known_tracked_bookmark->id());
+            looper->Quit();
+          },
+          &run_loop, tracked_product));
+  run_loop.Run();
 }
 
 TEST_F(PriceTrackingUtilsTest, GetBookmarksWithClusterId_NoProducts) {
@@ -373,16 +403,22 @@ TEST_F(PriceTrackingUtilsTest, IsBookmarkPriceTracked_Tracked) {
   const bookmarks::BookmarkNode* product =
       AddProductBookmark(bookmark_model_.get(), u"product 1",
                          GURL("http://example.com/1"), 12345L, true);
+  shopping_service_->SetIsSubscribedCallbackValue(true);
 
-  EXPECT_TRUE(IsBookmarkPriceTracked(bookmark_model_.get(), product));
-}
+  EXPECT_CALL(*shopping_service_,
+              IsSubscribed(SubscriptionWithId("12345"), testing::_))
+      .Times(1);
 
-TEST_F(PriceTrackingUtilsTest, IsBookmarkPriceTracked_NotTracked) {
-  const bookmarks::BookmarkNode* product =
-      AddProductBookmark(bookmark_model_.get(), u"product 1",
-                         GURL("http://example.com/1"), 12345L, false);
-
-  EXPECT_FALSE(IsBookmarkPriceTracked(bookmark_model_.get(), product));
+  base::RunLoop run_loop;
+  IsBookmarkPriceTracked(shopping_service_.get(), bookmark_model_.get(),
+                         product,
+                         base::BindOnce(
+                             [](base::RunLoop* looper, bool is_tracked) {
+                               ASSERT_TRUE(is_tracked);
+                               looper->Quit();
+                             },
+                             &run_loop));
+  run_loop.Run();
 }
 
 TEST_F(PriceTrackingUtilsTest, IsBookmarkPriceTracked_NonProduct) {
@@ -390,7 +426,19 @@ TEST_F(PriceTrackingUtilsTest, IsBookmarkPriceTracked_NonProduct) {
       bookmark_model_->AddURL(bookmark_model_->other_node(), 0, u"non-product",
                               GURL("http://www.example.com"));
 
-  EXPECT_FALSE(IsBookmarkPriceTracked(bookmark_model_.get(), normal_bookmark));
+  EXPECT_CALL(*shopping_service_, IsSubscribed(testing::_, testing::_))
+      .Times(0);
+
+  base::RunLoop run_loop;
+  IsBookmarkPriceTracked(shopping_service_.get(), bookmark_model_.get(),
+                         normal_bookmark,
+                         base::BindOnce(
+                             [](base::RunLoop* looper, bool is_tracked) {
+                               ASSERT_FALSE(is_tracked);
+                               looper->Quit();
+                             },
+                             &run_loop));
+  run_loop.Run();
 }
 
 TEST_F(PriceTrackingUtilsTest, PopulateOrUpdateBookmark) {
@@ -597,6 +645,76 @@ TEST_F(PriceTrackingUtilsTest, MaybeEnableEmailNotifications) {
   MaybeEnableEmailNotifications(pref_service_.get());
 
   ASSERT_EQ(false, pref_service_->GetBoolean(kPriceEmailNotificationsEnabled));
+}
+
+TEST_F(PriceTrackingUtilsTest, TestSubscriptionForClusterIdCreation) {
+  uint64_t cluster_id = 12345L;
+  std::string cluster_id_string = "12345";
+
+  CommerceSubscription sub = BuildUserSubscriptionForClusterId(cluster_id);
+
+  ASSERT_EQ(sub.id, cluster_id_string);
+  ASSERT_EQ(sub.id_type, IdentifierType::kProductClusterId);
+  ASSERT_EQ(sub.management_type, ManagementType::kUserManaged);
+  ASSERT_EQ(sub.type, SubscriptionType::kPriceTrack);
+}
+
+TEST_F(PriceTrackingUtilsTest, TestGetBookmarkParentNameOrDefault) {
+  const GURL url = GURL("https://www.foo.com");
+
+  ASSERT_EQ(
+      bookmark_model_->other_node()->GetTitle(),
+      commerce::GetBookmarkParentNameOrDefault(bookmark_model_.get(), url));
+
+  bookmark_model_->AddURL(bookmark_model_->mobile_node(), 0, u"test", url,
+                          nullptr, absl::nullopt, absl::nullopt, true);
+
+  ASSERT_EQ(
+      bookmark_model_->mobile_node()->GetTitle(),
+      commerce::GetBookmarkParentNameOrDefault(bookmark_model_.get(), url));
+}
+
+// Ensure the utility to get the shopping collection knows when to create or
+// simply lookup the folder. The folder's UUID should be deterministic.
+TEST_F(PriceTrackingUtilsTest, GetShoppingCollection) {
+  test_features_.InitAndEnableFeature(kShoppingCollection);
+
+  const base::Uuid collection_uuid =
+      base::Uuid::ParseLowercase(bookmarks::kShoppingCollectionUuid);
+
+  const bookmarks::BookmarkNode* collection =
+      GetShoppingCollectionBookmarkFolder(bookmark_model_.get());
+
+  ASSERT_EQ(collection, nullptr);
+
+  collection = GetShoppingCollectionBookmarkFolder(bookmark_model_.get(), true);
+
+  ASSERT_NE(collection, nullptr);
+  ASSERT_EQ(collection->uuid(), collection_uuid);
+
+  // Deleting the collection should behave like any other bookmark node
+  // deletion.
+  bookmark_model_->Remove(collection,
+                          bookmarks::metrics::BookmarkEditSource::kUser);
+
+  collection = GetShoppingCollectionBookmarkFolder(bookmark_model_.get());
+
+  ASSERT_EQ(collection, nullptr);
+
+  // Creating the collection a second time should result in the same UUID.
+  collection = GetShoppingCollectionBookmarkFolder(bookmark_model_.get(), true);
+
+  ASSERT_NE(collection, nullptr);
+  ASSERT_EQ(collection->uuid(), collection_uuid);
+}
+
+TEST_F(PriceTrackingUtilsTest, GetShoppingCollection_InvalidParams) {
+  test_features_.InitAndDisableFeature(kShoppingCollection);
+
+  const bookmarks::BookmarkNode* collection =
+      GetShoppingCollectionBookmarkFolder(nullptr);
+
+  ASSERT_EQ(collection, nullptr);
 }
 
 }  // namespace

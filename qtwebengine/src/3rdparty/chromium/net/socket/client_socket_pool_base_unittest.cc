@@ -680,9 +680,7 @@ class ClientSocketPoolBaseTest : public TestWithTaskEnvironment {
         NetLogEventPhase::NONE);
     ASSERT_EQ(1u, entries.size());
     ASSERT_TRUE(entries[0].HasParams());
-    ASSERT_TRUE(entries[0].params.is_dict());
-    const std::string* reason =
-        entries[0].params.GetDict().FindString("reason");
+    const std::string* reason = entries[0].params.FindString("reason");
     ASSERT_TRUE(reason);
     EXPECT_EQ(expected_reason, *reason);
   }
@@ -861,8 +859,8 @@ TEST_F(ClientSocketPoolBaseTest, GroupSeparation) {
   const SchemefulSite kSiteA(GURL("http://a.test/"));
   const SchemefulSite kSiteB(GURL("http://b.test/"));
   const NetworkAnonymizationKey kNetworkAnonymizationKeys[] = {
-      NetworkAnonymizationKey(kSiteA, kSiteA, /*is_cross_site=*/false),
-      NetworkAnonymizationKey(kSiteB, kSiteB, /*is_cross_site=*/false),
+      NetworkAnonymizationKey::CreateSameSite(kSiteA),
+      NetworkAnonymizationKey::CreateSameSite(kSiteB),
   };
 
   const SecureDnsPolicy kSecureDnsPolicys[] = {SecureDnsPolicy::kAllow,
@@ -5710,7 +5708,7 @@ enum class RefreshType {
 };
 
 // Common base class to test RefreshGroup() when called from either
-// OnSSLConfigForServerChanged() matching a specific group or the pool's proxy.
+// OnSSLConfigForServersChanged() matching a specific group or the pool's proxy.
 //
 // Tests which test behavior specific to one or the other case should use
 // ClientSocketPoolBaseTest directly. In particular, there is no "other group"
@@ -5745,20 +5743,20 @@ class ClientSocketPoolBaseRefreshTest
     // Note this GroupId will match GetGroupId() unless
     // kPartitionConnectionsByNetworkAnonymizationKey is enabled.
     const SchemefulSite kSite(GURL("https://b/"));
-    const NetworkAnonymizationKey kNetworkAnonymizationKey(
-        kSite, kSite, /*is_cross_site=*/false);
+    const auto kNetworkAnonymizationKey =
+        NetworkAnonymizationKey::CreateSameSite(kSite);
     return TestGroupId("a", 443, url::kHttpsScheme,
                        PrivacyMode::PRIVACY_MODE_DISABLED,
                        kNetworkAnonymizationKey);
   }
 
-  void OnSSLConfigForServerChanged() {
+  void OnSSLConfigForServersChanged() {
     switch (GetParam()) {
       case RefreshType::kServer:
-        pool_->OnSSLConfigForServerChanged(HostPortPair("a", 443));
+        pool_->OnSSLConfigForServersChanged({HostPortPair("a", 443)});
         break;
       case RefreshType::kProxy:
-        pool_->OnSSLConfigForServerChanged(HostPortPair("myproxy", 70));
+        pool_->OnSSLConfigForServersChanged({HostPortPair("myproxy", 70)});
         break;
     }
   }
@@ -5789,7 +5787,7 @@ TEST_P(ClientSocketPoolBaseRefreshTest, RefreshGroupCreatesNewConnectJobs) {
   // success.
   connect_job_factory_->set_job_type(TestConnectJob::kMockJob);
 
-  OnSSLConfigForServerChanged();
+  OnSSLConfigForServersChanged();
   EXPECT_EQ(OK, callback.WaitForResult());
   ASSERT_TRUE(handle.socket());
   EXPECT_EQ(0, pool_->IdleSocketCount());
@@ -5821,7 +5819,7 @@ TEST_P(ClientSocketPoolBaseRefreshTest, RefreshGroupClosesIdleConnectJobs) {
   EXPECT_EQ(2u, pool_->IdleSocketCountInGroup(kGroupId));
   EXPECT_EQ(2u, pool_->IdleSocketCountInGroup(kGroupIdInPartition));
 
-  OnSSLConfigForServerChanged();
+  OnSSLConfigForServersChanged();
   EXPECT_EQ(0, pool_->IdleSocketCount());
   EXPECT_FALSE(pool_->HasGroupForTesting(kGroupId));
   EXPECT_FALSE(pool_->HasGroupForTesting(kGroupIdInPartition));
@@ -5842,7 +5840,7 @@ TEST_F(ClientSocketPoolBaseTest,
   EXPECT_EQ(2, pool_->IdleSocketCount());
   EXPECT_EQ(2u, pool_->IdleSocketCountInGroup(kOtherGroupId));
 
-  pool_->OnSSLConfigForServerChanged(HostPortPair("a", 443));
+  pool_->OnSSLConfigForServersChanged({HostPortPair("a", 443)});
   ASSERT_TRUE(pool_->HasGroupForTesting(kOtherGroupId));
   EXPECT_EQ(2, pool_->IdleSocketCount());
   EXPECT_EQ(2u, pool_->IdleSocketCountInGroup(kOtherGroupId));
@@ -5863,7 +5861,7 @@ TEST_P(ClientSocketPoolBaseRefreshTest, RefreshGroupPreventsSocketReuse) {
   ASSERT_TRUE(pool_->HasGroupForTesting(kGroupId));
   EXPECT_EQ(1, pool_->NumActiveSocketsInGroupForTesting(kGroupId));
 
-  OnSSLConfigForServerChanged();
+  OnSSLConfigForServersChanged();
 
   handle.Reset();
   EXPECT_EQ(0, pool_->IdleSocketCount());
@@ -5889,7 +5887,7 @@ TEST_F(ClientSocketPoolBaseTest,
   ASSERT_TRUE(pool_->HasGroupForTesting(kOtherGroupId));
   EXPECT_EQ(1, pool_->NumActiveSocketsInGroupForTesting(kOtherGroupId));
 
-  pool_->OnSSLConfigForServerChanged(HostPortPair("a", 443));
+  pool_->OnSSLConfigForServersChanged({HostPortPair("a", 443)});
 
   handle.Reset();
   EXPECT_EQ(1, pool_->IdleSocketCount());
@@ -5912,7 +5910,7 @@ TEST_P(ClientSocketPoolBaseRefreshTest,
 
   // This should update the generation, but not cancel the old ConnectJob - it's
   // not safe to do anything while waiting on the original ConnectJob.
-  OnSSLConfigForServerChanged();
+  OnSSLConfigForServersChanged();
 
   // Providing auth credentials and restarting the request with them will cause
   // the ConnectJob to complete successfully, but the result will be discarded
@@ -5982,7 +5980,7 @@ TEST_F(ClientSocketPoolBaseTest, RefreshProxyRefreshesAllGroups) {
 
   // Changes to some other proxy do not affect the pool. The idle socket remains
   // alive and closing |handle2| makes the socket available for the pool.
-  pool_->OnSSLConfigForServerChanged(HostPortPair("someotherproxy", 70));
+  pool_->OnSSLConfigForServersChanged({HostPortPair("someotherproxy", 70)});
 
   ASSERT_TRUE(pool_->HasGroupForTesting(kGroupId1));
   EXPECT_EQ(1, pool_->NumActiveSocketsInGroupForTesting(kGroupId1));
@@ -5996,7 +5994,7 @@ TEST_F(ClientSocketPoolBaseTest, RefreshProxyRefreshesAllGroups) {
   EXPECT_EQ(1u, pool_->IdleSocketCountInGroup(kGroupId2));
 
   // Changes to the matching proxy refreshes all groups.
-  pool_->OnSSLConfigForServerChanged(HostPortPair("myproxy", 70));
+  pool_->OnSSLConfigForServersChanged({HostPortPair("myproxy", 70)});
 
   // Idle sockets are closed.
   EXPECT_EQ(0, pool_->IdleSocketCount());
@@ -6051,7 +6049,7 @@ TEST_F(ClientSocketPoolBaseTest, RefreshBothPrivacyAndNormalSockets) {
   ASSERT_TRUE(pool_->HasGroupForTesting(kOtherGroupId));
   EXPECT_EQ(1, pool_->NumActiveSocketsInGroupForTesting(kOtherGroupId));
 
-  pool_->OnSSLConfigForServerChanged(HostPortPair("a", 443));
+  pool_->OnSSLConfigForServersChanged({HostPortPair("a", 443)});
 
   // Active sockets continue to be active.
   ASSERT_TRUE(pool_->HasGroupForTesting(kGroupId));

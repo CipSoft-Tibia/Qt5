@@ -32,6 +32,19 @@ class BLINK_EXPORT WebAXContext {
 
   void SetAXMode(const ui::AXMode&) const;
 
+  // Recompute the entire tree and reserialize it.
+  // This method is useful when something that potentially affects most of the
+  // page occurs, such as an inertness change or a fullscreen toggle.
+  // This keeps the existing nodes, but recomputes all of their properties and
+  // reserializes everything.
+  // Compared with ResetSerializer() and MarkAXObjectDirtyWithDetails() with
+  // subtree = true, this does more work, because it recomputes the entire tree
+  // structure and properties of each node.
+  void MarkDocumentDirty();
+
+  // Compared with MarkDocumentDirty(), this does less work, because it assumes
+  // the AXObjectCache's tree of objects and properties is correct, but needs to
+  // be reserialized.
   void ResetSerializer();
 
   // Get a new AXID that's not used by any accessibility node in this process,
@@ -42,7 +55,7 @@ class BLINK_EXPORT WebAXContext {
   // Retrieves a vector of all WebAXObjects in this document whose
   // bounding boxes may have changed since the last query. Sends that vector
   // via mojo to the browser process.
-  void SerializeLocationChanges() const;
+  void SerializeLocationChanges(uint32_t reset_token) const;
 
   // Searches the accessibility tree for plugin's root object and returns it.
   // Returns an empty WebAXObject if no root object is present.
@@ -52,8 +65,7 @@ class BLINK_EXPORT WebAXContext {
 
   void Thaw();
 
-  bool SerializeEntireTree(bool exclude_offscreen,
-                           size_t max_node_count,
+  bool SerializeEntireTree(size_t max_node_count,
                            base::TimeDelta timeout,
                            ui::AXTreeUpdate* response);
 
@@ -70,8 +82,9 @@ class BLINK_EXPORT WebAXContext {
                                       bool& had_load_complete_messages,
                                       bool& need_to_send_location_changes);
 
-  // Clears out the list of dirty AXObjects and of pending events.
-  void ClearDirtyObjectsAndPendingEvents();
+  // Returns a vector of the images found in |updates|.
+  void GetImagesToAnnotate(ui::AXTreeUpdate& updates,
+                           std::vector<ui::AXNodeData*>&);
 
   // Note that any pending event also causes its corresponding object to
   // become dirty.

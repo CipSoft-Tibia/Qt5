@@ -29,7 +29,8 @@ namespace wgpu::binding {
 // wgpu::RenderBundleEncoder.
 class GPURenderBundleEncoder final : public interop::GPURenderBundleEncoder {
   public:
-    explicit GPURenderBundleEncoder(wgpu::RenderBundleEncoder enc);
+    GPURenderBundleEncoder(const wgpu::RenderBundleEncoderDescriptor& desc,
+                           wgpu::RenderBundleEncoder enc);
 
     // interop::GPURenderBundleEncoder interface compliance
     interop::Interface<interop::GPURenderBundle> finish(
@@ -37,11 +38,11 @@ class GPURenderBundleEncoder final : public interop::GPURenderBundleEncoder {
         interop::GPURenderBundleDescriptor descriptor) override;
     void setBindGroup(Napi::Env,
                       interop::GPUIndex32 index,
-                      interop::Interface<interop::GPUBindGroup> bindGroup,
+                      std::optional<interop::Interface<interop::GPUBindGroup>> bindGroup,
                       std::vector<interop::GPUBufferDynamicOffset> dynamicOffsets) override;
     void setBindGroup(Napi::Env,
                       interop::GPUIndex32 index,
-                      interop::Interface<interop::GPUBindGroup> bindGroup,
+                      std::optional<interop::Interface<interop::GPUBindGroup>> bindGroup,
                       interop::Uint32Array dynamicOffsetsData,
                       interop::GPUSize64 dynamicOffsetsDataStart,
                       interop::GPUSize32 dynamicOffsetsDataLength) override;
@@ -56,7 +57,7 @@ class GPURenderBundleEncoder final : public interop::GPURenderBundleEncoder {
                         std::optional<interop::GPUSize64> size) override;
     void setVertexBuffer(Napi::Env,
                          interop::GPUIndex32 slot,
-                         interop::Interface<interop::GPUBuffer> buffer,
+                         std::optional<interop::Interface<interop::GPUBuffer>> buffer,
                          interop::GPUSize64 offset,
                          std::optional<interop::GPUSize64> size) override;
     void draw(Napi::Env,
@@ -81,6 +82,7 @@ class GPURenderBundleEncoder final : public interop::GPURenderBundleEncoder {
 
   private:
     wgpu::RenderBundleEncoder enc_;
+    std::string label_;
 };
 
 }  // namespace wgpu::binding

@@ -80,7 +80,7 @@ endfunction()
 # up the host qmake's properties for cross-compiling with this Qt
 # build.
 function(qt_generate_qmake_and_qtpaths_wrapper_for_target)
-    if(NOT CMAKE_CROSSCOMPILING)
+    if(NOT CMAKE_CROSSCOMPILING OR QT_NO_GENERATE_QMAKE_WRAPPER_FOR_TARGET)
         return()
     endif()
 
@@ -212,6 +212,7 @@ function(qt_get_qmake_module_name result module)
     string(REGEX REPLACE "Private$" "_private" module "${module}")
     string(REGEX REPLACE "Qpa$" "_qpa_lib_private" module "${module}")
     string(REGEX REPLACE "Rhi$" "_rhi_lib_private" module "${module}")
+    string(REGEX REPLACE "Ssg$" "_ssg_lib_private" module "${module}")
     string(TOLOWER "${module}" module)
     set(${result} ${module} PARENT_SCOPE)
 endfunction()

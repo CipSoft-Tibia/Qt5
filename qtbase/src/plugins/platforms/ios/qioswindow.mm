@@ -29,9 +29,13 @@
 
 QT_BEGIN_NAMESPACE
 
+enum {
+    defaultWindowWidth = 160,
+    defaultWindowHeight = 160
+};
+
 QIOSWindow::QIOSWindow(QWindow *window, WId nativeHandle)
     : QPlatformWindow(window)
-    , m_windowLevel(0)
 {
     if (nativeHandle) {
         m_view = reinterpret_cast<UIView *>(nativeHandle);
@@ -50,16 +54,16 @@ QIOSWindow::QIOSWindow(QWindow *window, WId nativeHandle)
 
     connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, &QIOSWindow::applicationStateChanged);
 
+    // Always set parent, even if we don't have a parent window,
+    // as we use setParent to reparent top levels into our desktop
+    // manager view.
     setParent(QPlatformWindow::parent());
 
     if (!isForeignWindow()) {
         // Resolve default window geometry in case it was not set before creating the
-        // platform window. This picks up eg. minimum-size if set, and defaults to
-        // the "maxmized" geometry (even though we're not in that window state).
-        // FIXME: Detect if we apply a maximized geometry and send a window state
-        // change event in that case.
+        // platform window. This picks up eg. minimum-size if set.
         m_normalGeometry = initialGeometry(window, QPlatformWindow::geometry(),
-            screen()->availableGeometry().width(), screen()->availableGeometry().height());
+            defaultWindowWidth, defaultWindowHeight);
 
         setWindowState(window->windowStates());
         setOpacity(window->opacity());
@@ -121,11 +125,6 @@ void QIOSWindow::setVisible(bool visible)
 
     if (!isQtApplication() || !window()->isTopLevel())
         return;
-
-    // Since iOS doesn't do window management the way a Qt application
-    // expects, we need to raise and activate windows ourselves:
-    if (visible)
-        updateWindowLevel();
 
     if (blockedByModal()) {
         if (visible)
@@ -225,7 +224,7 @@ void QIOSWindow::applyGeometry(const QRect &rect)
 
 QMargins QIOSWindow::safeAreaMargins() const
 {
-    UIEdgeInsets safeAreaInsets = m_view.qt_safeAreaInsets;
+    UIEdgeInsets safeAreaInsets = m_view.safeAreaInsets;
     return QMargins(safeAreaInsets.left, safeAreaInsets.top,
         safeAreaInsets.right, safeAreaInsets.bottom);
 }
@@ -249,22 +248,32 @@ void QIOSWindow::setWindowState(Qt::WindowStates state)
     if (state & Qt::WindowMinimized) {
         applyGeometry(QRect());
     } else if (state & (Qt::WindowFullScreen | Qt::WindowMaximized)) {
-        // When an application is in split-view mode, the UIScreen still has the
-        // same geometry, but the UIWindow is resized to the area reserved for the
-        // application. We use this to constrain the geometry used when applying the
-        // fullscreen or maximized window states. Note that we do not do this
-        // in applyGeometry(), as we don't want to artificially limit window
-        // placement "outside" of the screen bounds if that's what the user wants.
-
         QRect uiWindowBounds = QRectF::fromCGRect(m_view.window.bounds).toRect();
-        QRect fullscreenGeometry = screen()->geometry().intersected(uiWindowBounds);
-        QRect maximizedGeometry = window()->flags() & Qt::MaximizeUsingFullscreenGeometryHint ?
-            fullscreenGeometry : screen()->availableGeometry().intersected(uiWindowBounds);
+        if (NSProcessInfo.processInfo.iOSAppOnMac) {
+            // iOS apps running as "Designed for iPad" on macOS do not match
+            // our current window management implementation where a single
+            // UIWindow is tied to a single screen. And even if we're on the
+            // right screen, the UIScreen does not account for the 77% scale
+            // of the UIUserInterfaceIdiomPad environment, so we can't use
+            // it to clamp the window geometry. Instead just use the UIWindow
+            // directly, which represents our "screen".
+            applyGeometry(uiWindowBounds);
+        } else {
+            // When an application is in split-view mode, the UIScreen still has the
+            // same geometry, but the UIWindow is resized to the area reserved for the
+            // application. We use this to constrain the geometry used when applying the
+            // fullscreen or maximized window states. Note that we do not do this
+            // in applyGeometry(), as we don't want to artificially limit window
+            // placement "outside" of the screen bounds if that's what the user wants.
+            QRect fullscreenGeometry = screen()->geometry().intersected(uiWindowBounds);
+            QRect maximizedGeometry = window()->flags() & Qt::MaximizeUsingFullscreenGeometryHint ?
+                fullscreenGeometry : screen()->availableGeometry().intersected(uiWindowBounds);
 
-        if (state & Qt::WindowFullScreen)
-            applyGeometry(fullscreenGeometry);
-        else
-            applyGeometry(maximizedGeometry);
+            if (state & Qt::WindowFullScreen)
+                applyGeometry(fullscreenGeometry);
+            else
+                applyGeometry(maximizedGeometry);
+        }
     } else {
         applyGeometry(m_normalGeometry);
     }
@@ -316,8 +325,8 @@ void QIOSWindow::raiseOrLower(bool raise)
             UIView *view = static_cast<UIView *>([subviews objectAtIndex:i]);
             if (view.hidden || view == m_view || !view.qwindow)
                 continue;
-            int level = static_cast<QIOSWindow *>(view.qwindow->handle())->m_windowLevel;
-            if (m_windowLevel > level || (raise && m_windowLevel == level)) {
+            int level = static_cast<QIOSWindow *>(view.qwindow->handle())->windowLevel();
+            if (windowLevel() > level || (raise && windowLevel() == level)) {
                 [m_view.superview insertSubview:m_view aboveSubview:view];
                 return;
             }
@@ -332,30 +341,34 @@ void QIOSWindow::raiseOrLower(bool raise)
     }
 }
 
-void QIOSWindow::updateWindowLevel()
+int QIOSWindow::windowLevel() const
 {
     Qt::WindowType type = window()->type();
 
-    if (type == Qt::ToolTip)
-        m_windowLevel = 120;
-    else if (window()->flags() & Qt::WindowStaysOnTopHint)
-        m_windowLevel = 100;
-    else if (window()->isModal())
-        m_windowLevel = 40;
-    else if (type == Qt::Popup)
-        m_windowLevel = 30;
-    else if (type == Qt::SplashScreen)
-        m_windowLevel = 20;
-    else if (type == Qt::Tool)
-        m_windowLevel = 10;
-    else
-        m_windowLevel = 0;
+    int level = 0;
 
-    // A window should be in at least the same m_windowLevel as its parent:
+    if (type == Qt::ToolTip)
+        level = 120;
+    else if (window()->flags() & Qt::WindowStaysOnTopHint)
+        level = 100;
+    else if (window()->isModal())
+        level = 40;
+    else if (type == Qt::Popup)
+        level = 30;
+    else if (type == Qt::SplashScreen)
+        level = 20;
+    else if (type == Qt::Tool)
+        level = 10;
+    else
+        level = 0;
+
+    // A window should be in at least the same window level as its parent
     QWindow *transientParent = window()->transientParent();
     QIOSWindow *transientParentWindow = transientParent ? static_cast<QIOSWindow *>(transientParent->handle()) : 0;
     if (transientParentWindow)
-        m_windowLevel = qMax(transientParentWindow->m_windowLevel, m_windowLevel);
+        level = qMax(transientParentWindow->windowLevel(), level);
+
+    return level;
 }
 
 void QIOSWindow::handleContentOrientationChange(Qt::ScreenOrientation orientation)
@@ -379,6 +392,15 @@ void QIOSWindow::applicationStateChanged(Qt::ApplicationState)
 
 qreal QIOSWindow::devicePixelRatio() const
 {
+#if !defined(Q_OS_VISIONOS)
+    // If the view has not yet been added to a screen, it will not
+    // pick up its device pixel ratio, so we need to do so manually
+    // based on the screen we think the window will be added to.
+    if (!m_view.window.windowScene.screen)
+        return screen()->devicePixelRatio();
+#endif
+
+    // Otherwise we can rely on the content scale factor
     return m_view.contentScaleFactor;
 }
 

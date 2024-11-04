@@ -110,7 +110,7 @@ enum class OnHostResolutionCallbackResult {
 // ConnectJob synchronously, but may signal the ConnectJob may be destroyed
 // asynchronously. See OnHostResolutionCallbackResult above.
 //
-// |address_list| is the list of addresses the host being connected to was
+// `endpoint_results` is the list of endpoints the host being connected to was
 // resolved to, with the port fields populated to the port being connected to.
 using OnHostResolutionCallback =
     base::RepeatingCallback<OnHostResolutionCallbackResult(
@@ -274,7 +274,7 @@ class NET_EXPORT_PRIVATE ConnectJob {
   WebSocketEndpointLockManager* websocket_endpoint_lock_manager() {
     return common_connect_job_params_->websocket_endpoint_lock_manager;
   }
-  const CommonConnectJobParams* common_connect_job_params() {
+  const CommonConnectJobParams* common_connect_job_params() const {
     return common_connect_job_params_;
   }
 

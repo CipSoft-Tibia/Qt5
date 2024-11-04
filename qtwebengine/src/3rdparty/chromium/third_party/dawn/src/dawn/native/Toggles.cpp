@@ -132,10 +132,6 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
      {"disable_indexed_draw_buffers",
       "Disables the use of indexed draw buffer state which is unsupported on some platforms.",
       "https://crbug.com/dawn/582", ToggleStage::Device}},
-    {Toggle::DisableSnormRead,
-     {"disable_snorm_read",
-      "Disables reading from Snorm textures which is unsupported on some platforms.",
-      "https://crbug.com/dawn/667", ToggleStage::Device}},
     {Toggle::DisableDepthRead,
      {"disable_depth_read",
       "Disables reading from depth textures which is unsupported on some platforms.",
@@ -148,10 +144,6 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
      {"disable_depth_stencil_read",
       "Disables reading from depth/stencil textures which is unsupported on some platforms.",
       "https://crbug.com/dawn/667", ToggleStage::Device}},
-    {Toggle::DisableBGRARead,
-     {"disable_bgra_read",
-      "Disables reading from BGRA textures which is unsupported on some platforms.",
-      "https://crbug.com/dawn/1393", ToggleStage::Device}},
     {Toggle::DisableSampleVariables,
      {"disable_sample_variables",
       "Disables gl_SampleMask and related functionality which is unsupported on some platforms.",
@@ -165,18 +157,18 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
      {"use_dxc",
       "Use DXC instead of FXC for compiling HLSL when both dxcompiler.dll and dxil.dll is "
       "available.",
-      "https://crbug.com/dawn/402", ToggleStage::Device}},
+      "https://crbug.com/dawn/402", ToggleStage::Adapter}},
     {Toggle::DisableRobustness,
      {"disable_robustness", "Disable robust buffer access", "https://crbug.com/dawn/480",
       ToggleStage::Device}},
     {Toggle::MetalEnableVertexPulling,
      {"metal_enable_vertex_pulling", "Uses vertex pulling to protect out-of-bounds reads on Metal",
       "https://crbug.com/dawn/480", ToggleStage::Device}},
-    {Toggle::DisallowUnsafeAPIs,
-     {"disallow_unsafe_apis",
-      "Produces validation errors on API entry points or parameter combinations that aren't "
+    {Toggle::AllowUnsafeAPIs,
+     {"allow_unsafe_apis",
+      "Suppresses validation errors on API entry points or parameter combinations that aren't "
       "considered secure yet.",
-      "http://crbug.com/1138528", ToggleStage::Device}},
+      "http://crbug.com/1138528", ToggleStage::Instance}},
     {Toggle::FlushBeforeClientWaitSync,
      {"flush_before_client_wait_sync",
       "Call glFlush before glClientWaitSync to work around bugs in the latter",
@@ -226,7 +218,8 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
     {Toggle::UsePlaceholderFragmentInVertexOnlyPipeline,
      {"use_placeholder_fragment_in_vertex_only_pipeline",
       "Use a placeholder empty fragment shader in vertex only render pipeline. This toggle must be "
-      "enabled for OpenGL ES backend, and serves as a workaround by default enabled on some Metal "
+      "enabled for OpenGL ES backend, the Vulkan Backend, and serves as a workaround by default "
+      "enabled on some Metal "
       "devices with Intel GPU to ensure the depth result is correct.",
       "https://crbug.com/dawn/136", ToggleStage::Device}},
     {Toggle::FxcOptimizations,
@@ -245,6 +238,11 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
      {"disable_timestamp_query_conversion",
       "Resolve timestamp queries into ticks instead of nanoseconds.", "https://crbug.com/dawn/1305",
       ToggleStage::Device}},
+    {Toggle::ClearBufferBeforeResolveQueries,
+     {"clear_buffer_before_resolve_queries",
+      "clear destination buffer to zero before resolving queries. This toggle is enabled on Intel "
+      "Gen12 GPUs due to driver issue.",
+      "https://crbug.com/dawn/1823", ToggleStage::Device}},
     {Toggle::VulkanUseZeroInitializeWorkgroupMemoryExtension,
      {"use_vulkan_zero_initialize_workgroup_memory_extension",
       "Initialize workgroup memory with OpConstantNull on Vulkan when the Vulkan extension "
@@ -321,18 +319,17 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
       "This toggle is enabled by default on Metal backend where GPU counters cannot be stored to"
       "sampleBufferAttachments on empty blit encoder.",
       "https://crbug.com/dawn/1473", ToggleStage::Device}},
-    {Toggle::VulkanSplitCommandBufferOnDepthStencilComputeSampleAfterRenderPass,
-     {"vulkan_split_command_buffer_on_depth_stencil_compute_sample_after_render_pass",
-      "Splits any command buffer that samples a depth/stencil texture in a compute pass after that "
-      "texture was used as an attachment for a prior render pass. This toggle is enabled by "
-      "default on Qualcomm GPUs, which have been observed experiencing a driver crash in this "
-      "situation.",
+    {Toggle::VulkanSplitCommandBufferOnComputePassAfterRenderPass,
+     {"vulkan_split_command_buffer_on_compute_pass_after_render_pass",
+      "Splits any command buffer where a compute pass is recorded after a render pass. This "
+      "toggle is enabled by default on Qualcomm GPUs, which have been observed experiencing a "
+      "driver crash in this situation.",
       "https://crbug.com/dawn/1564", ToggleStage::Device}},
-    {Toggle::D3D12Allocate2DTextureWithCopyDstOrRenderAttachmentAsCommittedResource,
-     {"d3d12_allocate_2d_texture_with_copy_dst_or_render_attachment_as_committed_resource",
-      "Allocate each 2D texture with CopyDst or RenderAttachment usage as committed resources "
-      "instead of placed resources. This toggle is enabled by default on D3D12 backends using "
-      "Intel Gen9.5 and Gen11 GPUs due to a driver issue on Intel D3D12 driver.",
+    {Toggle::DisableSubAllocationFor2DTextureWithCopyDstOrRenderAttachment,
+     {"disable_sub_allocation_for_2d_texture_with_copy_dst_or_render_attachment",
+      "Disable resource sub-allocation for the 2D texture with CopyDst or RenderAttachment usage. "
+      "This toggle is enabled by default on D3D12 backends using Intel Gen9.5 and Gen11 GPUs and "
+      "on Vulkan backends using Intel Gen12 GPUs due to Intel Mesa Vulkan and D3D12 driver issues.",
       "https://crbug.com/1237175", ToggleStage::Device}},
     {Toggle::MetalUseCombinedDepthStencilFormatForStencil8,
      {"metal_use_combined_depth_stencil_format_for_stencil8",
@@ -357,6 +354,12 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
       "subresource are completely initialized, and StoreOp::Discard is always translated as a "
       "Store.",
       "https://crbug.com/dawn/838", ToggleStage::Device}},
+    {Toggle::MetalFillEmptyOcclusionQueriesWithZero,
+     {"metal_fill_empty_occlusion_queries_with_zero",
+      "Apple GPUs leave stale results in the visibility result buffer instead of writing zero if "
+      "an occlusion query is empty. Workaround this by explicitly filling it with zero if there "
+      "are no draw calls.",
+      "https://crbug.com/dawn/1707", ToggleStage::Device}},
     {Toggle::UseBlitForBufferToDepthTextureCopy,
      {"use_blit_for_buffer_to_depth_texture_copy",
       "Use a blit instead of a copy command to copy buffer data to the depth aspect of a "
@@ -374,13 +377,84 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
       "Use a blit to copy from a depth texture to the nonzero subresource of a depth texture. "
       "Works around an issue where nonzero layers are not written.",
       "https://crbug.com/dawn/1083", ToggleStage::Device}},
-    {Toggle::DisallowDeprecatedAPIs,
-     {"disallow_deprecated_apis",
-      "Disallow all deprecated paths by changing the deprecation warnings to validation error for "
-      "these paths."
-      "This toggle is off by default. It is expected to turn on or get removed when WebGPU V1 "
-      "ships and stays stable.",
-      "https://crbug.com/dawn/1563", ToggleStage::Device}},
+    {Toggle::UseBlitForDepth16UnormTextureToBufferCopy,
+     {"use_blit_for_depth16unorm_texture_to_buffer_copy",
+      "Use a blit instead of a copy command to copy depth aspect of a texture to a buffer."
+      "Workaround for OpenGL and OpenGLES.",
+      "https://crbug.com/dawn/1782", ToggleStage::Device}},
+    {Toggle::UseBlitForDepth32FloatTextureToBufferCopy,
+     {"use_blit_for_depth32float_texture_to_buffer_copy",
+      "Use a blit instead of a copy command to copy depth aspect of a texture to a buffer."
+      "Workaround for OpenGLES.",
+      "https://crbug.com/dawn/1782", ToggleStage::Device}},
+    {Toggle::UseBlitForStencilTextureToBufferCopy,
+     {"use_blit_for_stencil_texture_to_buffer_copy",
+      "Use a blit instead of a copy command to copy stencil aspect of a texture to a buffer."
+      "Workaround for OpenGLES.",
+      "https://crbug.com/dawn/1782", ToggleStage::Device}},
+    {Toggle::UseBlitForSnormTextureToBufferCopy,
+     {"use_blit_for_snorm_texture_to_buffer_copy",
+      "Use a blit instead of a copy command to copy snorm texture to a buffer."
+      "Workaround for OpenGLES.",
+      "https://crbug.com/dawn/1781", ToggleStage::Device}},
+    {Toggle::UseBlitForBGRA8UnormTextureToBufferCopy,
+     {"use_blit_for_bgra8unorm_texture_to_buffer_copy",
+      "Use a blit instead of a copy command to copy bgra8unorm texture to a buffer."
+      "Workaround for OpenGLES.",
+      "https://crbug.com/dawn/1393", ToggleStage::Device}},
+    {Toggle::D3D12ReplaceAddWithMinusWhenDstFactorIsZeroAndSrcFactorIsDstAlpha,
+     {"d3d12_replace_add_with_minus_when_dst_factor_is_zero_and_src_factor_is_dst_alpha",
+      "Replace the blending operation 'Add' with 'Minus' when dstBlendFactor is 'Zero' and "
+      "srcBlendFactor is 'DstAlpha'. Works around an Intel D3D12 driver issue about alpha "
+      "blending.",
+      "https://crbug.com/dawn/1579", ToggleStage::Device}},
+    {Toggle::D3D12PolyfillReflectVec2F32,
+     {"d3d12_polyfill_reflect_vec2_f32",
+      "Polyfill the reflect builtin for vec2<f32> for D3D12. This toggle is enabled by default on "
+      "D3D12 backends using FXC on Intel GPUs due to a driver issue on Intel D3D12 driver.",
+      "https://crbug.com/tint/1798", ToggleStage::Device}},
+    {Toggle::VulkanClearGen12TextureWithCCSAmbiguateOnCreation,
+     {"vulkan_clear_gen12_texture_with_ccs_ambiguate_on_creation",
+      "Clears some R8-like textures to full 0 bits as soon as they are created. This Toggle is "
+      "enabled on Intel Gen12 GPUs due to a mesa driver issue.",
+      "https://crbug.com/chromium/1361662", ToggleStage::Device}},
+    {Toggle::D3D12UseRootSignatureVersion1_1,
+     {"d3d12_use_root_signature_version_1_1",
+      "Use D3D12 Root Signature Version 1.1 to make additional guarantees about the descriptors in "
+      "a descriptor heap and the data pointed to by the descriptors so that the drivers can make "
+      "better optimizations on them.",
+      "https://crbug.com/tint/1890", ToggleStage::Device}},
+    {Toggle::VulkanUseImageRobustAccess2,
+     {"vulkan_use_image_robust_access_2",
+      "Disable Tint robustness transform on textures when VK_EXT_robustness2 is supported and "
+      "robustImageAccess2 == VK_TRUE.",
+      "https://crbug.com/tint/1890", ToggleStage::Device}},
+    {Toggle::VulkanUseBufferRobustAccess2,
+     {"vulkan_use_buffer_robust_access_2",
+      "Disable index clamping on the runtime-sized arrays on buffers in Tint robustness transform "
+      "when VK_EXT_robustness2 is supported and robustBufferAccess2 == VK_TRUE.",
+      "https://crbug.com/tint/1890", ToggleStage::Device}},
+    {Toggle::D3D12Use64KBAlignedMSAATexture,
+     {"d3d12_use_64kb_alignment_msaa_texture",
+      "Create MSAA textures with 64KB (D3D12_SMALL_MSAA_RESOURCE_PLACEMENT_ALIGNMENT) alignment.",
+      "https://crbug.com/dawn/282", ToggleStage::Device}},
+    {Toggle::ResolveMultipleAttachmentInSeparatePasses,
+     {"resolve_multiple_attachments_in_separate_passes",
+      "When multiple MSAA attachments are used in a render pass, splits any resolve steps into a "
+      "separate render pass per resolve target. "
+      "This workaround is enabled by default on ARM Mali drivers.",
+      "https://crbug.com/dawn/1550", ToggleStage::Device}},
+    {Toggle::D3D12CreateNotZeroedHeap,
+     {"d3d12_create_not_zeroed_heap",
+      "Create D3D12 heap with D3D12_HEAP_FLAG_CREATE_NOT_ZEROED when it is supported. It is safe "
+      "because in Dawn we always clear the resources manually when needed.",
+      "https://crbug.com/dawn/484", ToggleStage::Device}},
+    {Toggle::D3D12DontUseNotZeroedHeapFlagOnTexturesAsCommitedResources,
+     {"d3d12_dont_use_not_zeroed_heap_flag_on_textures_as_commited_resources",
+      "Don't set the heap flag D3D12_HEAP_FLAG_CREATE_NOT_ZEROED on the D3D12 textures created "
+      "with CreateCommittedResource() as a workaround of some driver issues on Intel Gen9 and "
+      "Gen11 GPUs.",
+      "https://crbug.com/dawn/484", ToggleStage::Device}},
     {Toggle::NoWorkaroundSampleMaskBecomesZeroForAllButLastColorTarget,
      {"no_workaround_sample_mask_becomes_zero_for_all_but_last_color_target",
       "MacOS 12.0+ Intel has a bug where the sample mask is only applied for the last color "
@@ -392,10 +466,10 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
       "MacOS Intel < Gen9 has a bug where indirect base vertex is not applied for "
       "drawIndexedIndirect. Draws are done as if it is always zero.",
       "https://crbug.com/dawn/966", ToggleStage::Device}},
-    {Toggle::NoWorkaroundDstAlphaBlendDoesNotWork,
-     {"no_workaround_dst_alpha_blend_does_not_work",
-      "Using D3D12_BLEND_DEST_ALPHA as blend factor doesn't work correctly on the D3D12 backend "
-      "using Intel Gen9 or Gen9.5 GPUs.",
+    {Toggle::NoWorkaroundDstAlphaAsSrcBlendFactorForBothColorAndAlphaDoesNotWork,
+     {"no_workaround_dst_alpha_as_src_blend_factor_for_both_color_and_alpha_does_not_work",
+      "Using D3D12_BLEND_DEST_ALPHA as source blend factor for both color and alpha blending "
+      "doesn't work correctly on the D3D12 backend using Intel Gen9 or Gen9.5 GPUs.",
       "https://crbug.com/dawn/1579", ToggleStage::Device}},
     // Comment to separate the }} so it is clearer what to copy-paste to add a toggle.
 }};
@@ -432,21 +506,25 @@ TogglesState TogglesState::CreateFromTogglesDescriptor(const DawnTogglesDescript
     }
 
     TogglesInfo togglesInfo;
-    for (uint32_t i = 0; i < togglesDesc->enabledTogglesCount; ++i) {
+    for (uint32_t i = 0; i < togglesDesc->enabledToggleCount; ++i) {
         Toggle toggle = togglesInfo.ToggleNameToEnum(togglesDesc->enabledToggles[i]);
         if (toggle != Toggle::InvalidEnum) {
             const ToggleInfo* toggleInfo = togglesInfo.GetToggleInfo(toggle);
-            if (toggleInfo->stage == requiredStage) {
+            // Accept the required toggles of current and earlier stage to allow override
+            // inheritance.
+            if (toggleInfo->stage <= requiredStage) {
                 togglesState.mTogglesSet.Set(toggle, true);
                 togglesState.mEnabledToggles.Set(toggle, true);
             }
         }
     }
-    for (uint32_t i = 0; i < togglesDesc->disabledTogglesCount; ++i) {
+    for (uint32_t i = 0; i < togglesDesc->disabledToggleCount; ++i) {
         Toggle toggle = togglesInfo.ToggleNameToEnum(togglesDesc->disabledToggles[i]);
         if (toggle != Toggle::InvalidEnum) {
             const ToggleInfo* toggleInfo = togglesInfo.GetToggleInfo(toggle);
-            if (toggleInfo->stage == requiredStage) {
+            // Accept the required toggles of current and earlier stage to allow override
+            // inheritance.
+            if (toggleInfo->stage <= requiredStage) {
                 togglesState.mTogglesSet.Set(toggle, true);
                 togglesState.mEnabledToggles.Set(toggle, false);
             }
@@ -454,6 +532,30 @@ TogglesState TogglesState::CreateFromTogglesDescriptor(const DawnTogglesDescript
     }
 
     return togglesState;
+}
+
+TogglesState& TogglesState::InheritFrom(const TogglesState& inheritedToggles) {
+    ASSERT(inheritedToggles.GetStage() < mStage);
+
+    // Do inheritance. All toggles that are force-set in the inherited toggles states would
+    // be force-set in the result toggles state, and all toggles that are set in the inherited
+    // toggles states and not required in current toggles state would be set in the result toggles
+    // state.
+    for (uint32_t i : inheritedToggles.mTogglesSet.Iterate()) {
+        const Toggle& toggle = static_cast<Toggle>(i);
+        ASSERT(TogglesInfo::GetToggleInfo(toggle)->stage < mStage);
+        bool isEnabled = inheritedToggles.mEnabledToggles.Has(toggle);
+        bool isForced = inheritedToggles.mForcedToggles.Has(toggle);
+        // Only inherit a toggle if it is not set by user requirement or is forced in earlier stage.
+        // In this way we allow user requirement override the inheritance if not forced.
+        if (!mTogglesSet.Has(toggle) || isForced) {
+            mTogglesSet.Set(toggle, true);
+            mEnabledToggles.Set(toggle, isEnabled);
+            mForcedToggles.Set(toggle, isForced);
+        }
+    }
+
+    return *this;
 }
 
 // Set a toggle to given state, if the toggle has not been already set. Do nothing otherwise.
@@ -479,6 +581,15 @@ void TogglesState::ForceSet(Toggle toggle, bool enabled) {
     mTogglesSet.Set(toggle, true);
     mEnabledToggles.Set(toggle, enabled);
     mForcedToggles.Set(toggle, true);
+}
+
+TogglesState& TogglesState::SetForTesting(Toggle toggle, bool enabled, bool forced) {
+    ASSERT(toggle != Toggle::InvalidEnum);
+    mTogglesSet.Set(toggle, true);
+    mEnabledToggles.Set(toggle, enabled);
+    mForcedToggles.Set(toggle, forced);
+
+    return *this;
 }
 
 bool TogglesState::IsSet(Toggle toggle) const {
@@ -543,6 +654,17 @@ const char* ToggleEnumToName(Toggle toggle) {
         kToggleNameAndInfoList[static_cast<size_t>(toggle)];
     ASSERT(toggleNameAndInfo.toggle == toggle);
     return toggleNameAndInfo.info.name;
+}
+
+// static
+std::vector<const ToggleInfo*> TogglesInfo::AllToggleInfos() {
+    std::vector<const ToggleInfo*> infos;
+    infos.reserve(kToggleNameAndInfoList.size());
+
+    for (const auto& entry : kToggleNameAndInfoList) {
+        infos.push_back(&(entry.info));
+    }
+    return infos;
 }
 
 TogglesInfo::TogglesInfo() = default;

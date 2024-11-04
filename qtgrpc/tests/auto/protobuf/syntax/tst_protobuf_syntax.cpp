@@ -1,6 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2022 Alexey Edelev <semlanik@gmail.com>, Viktor Kopp <vifactor@gmail.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "syntax.qpb.h"
 
@@ -20,6 +20,7 @@ private slots:
     void ReservedUpperCaseTest();
     void ReservedEnumTest();
     void LowerCaseEnumTest();
+    void UpperCaseEnumTest();
 };
 
 using namespace qtprotobufnamespace::tests;
@@ -62,10 +63,11 @@ void QtProtobufSyntaxTest::ReservedUpperCaseTest()
 
 void QtProtobufSyntaxTest::ReservedEnumTest()
 {
-    QVERIFY(MessageEnumReserved::staticMetaObject.enumeratorCount() > 0);
+    const auto &metaObject = MessageEnumReserved_QtProtobufNested::staticMetaObject;
+    QVERIFY(metaObject.enumeratorCount() > 0);
     QMetaEnum simpleEnum;
-    for (int i = 0; i < MessageEnumReserved::staticMetaObject.enumeratorCount(); i++) {
-        QMetaEnum tmp = MessageEnumReserved::staticMetaObject.enumerator(i);
+    for (int i = 0; i < metaObject.enumeratorCount(); i++) {
+        QMetaEnum tmp = metaObject.enumerator(i);
         if (QString(tmp.name()) == QString("ReservedEnum")) {
             simpleEnum = tmp;
             break;
@@ -83,10 +85,11 @@ void QtProtobufSyntaxTest::ReservedEnumTest()
 
 void QtProtobufSyntaxTest::LowerCaseEnumTest()
 {
-    QVERIFY(MessageEnumReserved::staticMetaObject.enumeratorCount() > 0);
+    const auto &metaObject = MessageEnumReserved_QtProtobufNested::staticMetaObject;
+    QVERIFY(metaObject.enumeratorCount() > 0);
     QMetaEnum simpleEnum;
-    for (int i = 0; i < MessageEnumReserved::staticMetaObject.enumeratorCount(); i++) {
-        QMetaEnum tmp = MessageEnumReserved::staticMetaObject.enumerator(i);
+    for (int i = 0; i < metaObject.enumeratorCount(); i++) {
+        QMetaEnum tmp = metaObject.enumerator(i);
         if (QString(tmp.name()) == QString("LowerCaseEnum")) {
             simpleEnum = tmp;
             break;
@@ -96,6 +99,24 @@ void QtProtobufSyntaxTest::LowerCaseEnumTest()
     QCOMPARE(simpleEnum.key(0), "enumValue0");
     QCOMPARE(simpleEnum.key(1), "enumValue1");
     QCOMPARE(simpleEnum.key(2), "enumValue2");
+}
+
+void QtProtobufSyntaxTest::UpperCaseEnumTest()
+{
+    const auto &metaObject = MessageEnumReserved_QtProtobufNested::staticMetaObject;
+    QVERIFY(metaObject.enumeratorCount() > 0);
+    QMetaEnum simpleEnum;
+    for (int i = 0; i < metaObject.enumeratorCount(); i++) {
+        QMetaEnum tmp = metaObject.enumerator(i);
+        if (QString(tmp.name()) == QString("UpperCaseEnum")) {
+            simpleEnum = tmp;
+            break;
+        }
+    }
+    QVERIFY(simpleEnum.isValid());
+    QCOMPARE(simpleEnum.key(0), "EnumValue0");
+    QCOMPARE(simpleEnum.key(1), "EnumValue1");
+    QCOMPARE(simpleEnum.key(2), "EnumValue2");
 }
 
 QTEST_MAIN(QtProtobufSyntaxTest)

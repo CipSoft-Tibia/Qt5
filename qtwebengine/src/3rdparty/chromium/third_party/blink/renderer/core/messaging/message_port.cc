@@ -60,7 +60,8 @@
 namespace blink {
 
 MessagePort::MessagePort(ExecutionContext& execution_context)
-    : ExecutionContextLifecycleObserver(execution_context.IsContextDestroyed()
+    : ActiveScriptWrappable<MessagePort>({}),
+      ExecutionContextLifecycleObserver(execution_context.IsContextDestroyed()
                                             ? nullptr
                                             : &execution_context),
       // Ports in a destroyed context start out in a closed state.
@@ -289,7 +290,7 @@ MessagePortArray* MessagePort::EntanglePorts(
 
 void MessagePort::Trace(Visitor* visitor) const {
   ExecutionContextLifecycleObserver::Trace(visitor);
-  EventTargetWithInlineData::Trace(visitor);
+  EventTarget::Trace(visitor);
 }
 
 bool MessagePort::Accept(mojo::Message* mojo_message) {

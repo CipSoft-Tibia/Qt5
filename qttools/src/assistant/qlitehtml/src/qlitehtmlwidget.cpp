@@ -13,13 +13,11 @@
 
 const int kScrollBarStep = 40;
 
-// TODO copied from litehtml/include/master.css
-const char mastercss[] = R"RAW(
+// copied from include/litehtml/master_css.h
+const char master_css[] = R"##(
 html {
     display: block;
-height:100%;
-width:100%;
-position: relative;
+    position: relative;
 }
 
 head {
@@ -47,43 +45,49 @@ script {
 }
 
 body {
-display:block;
+    display:block;
     margin:8px;
-    height:100%;
-width:100%;
 }
 
 p {
-display:block;
+    display:block;
     margin-top:1em;
     margin-bottom:1em;
 }
 
 b, strong {
-display:inline;
+    display:inline;
     font-weight:bold;
 }
 
-i, em {
-display:inline;
+i, em, cite {
+    display:inline;
     font-style:italic;
+}
+
+ins, u {
+    text-decoration:underline
+}
+
+del, s, strike {
+    text-decoration:line-through
 }
 
 center
 {
     text-align:center;
-display:block;
+    display:block;
 }
 
 a:link
 {
     text-decoration: underline;
-color: #00f;
-cursor: pointer;
+    color: #00f;
+    cursor: pointer;
 }
 
 h1, h2, h3, h4, h5, h6, div {
-display:block;
+    display:block;
 }
 
 h1 {
@@ -128,22 +132,22 @@ h6 {
 }
 
 br {
-display:inline-block;
+    display:inline-block;
 }
 
 br[clear="all"]
 {
-clear:both;
+    clear:both;
 }
 
 br[clear="left"]
 {
-clear:left;
+    clear:left;
 }
 
 br[clear="right"]
 {
-clear:right;
+    clear:right;
 }
 
 span {
@@ -151,7 +155,7 @@ span {
 }
 
 img {
-display: inline-block;
+    display: inline-block;
 }
 
 img[align="right"]
@@ -165,7 +169,7 @@ img[align="left"]
 }
 
 hr {
-display: block;
+    display: block;
     margin-top: 0.5em;
     margin-bottom: 0.5em;
     margin-left: auto;
@@ -178,31 +182,34 @@ display: block;
 /***************** TABLES ********************/
 
 table {
-display: table;
+    display: table;
     border-collapse: separate;
     border-spacing: 2px;
     border-top-color:gray;
     border-left-color:gray;
     border-bottom-color:black;
     border-right-color:black;
+    font-size: medium;
+    font-weight: normal;
+    font-style: normal;
 }
 
 tbody, tfoot, thead {
-display:table-row-group;
+    display:table-row-group;
     vertical-align:middle;
 }
 
 tr {
-display: table-row;
+    display: table-row;
     vertical-align: inherit;
     border-color: inherit;
 }
 
 td, th {
-display: table-cell;
+    display: table-cell;
     vertical-align: inherit;
     border-width:1px;
-padding:1px;
+    padding:1px;
 }
 
 th {
@@ -229,8 +236,21 @@ table[border|=0] td, table[border|=0] th {
     border-style:none;
 }
 
+table[align=left] {
+   float: left;
+}
+
+table[align=right] {
+   float: right;
+}
+
+table[align=center] {
+   margin-left: auto;
+   margin-right: auto;
+}
+
 caption {
-display: table-caption;
+    display: table-caption;
 }
 
 td[nowrap], th[nowrap] {
@@ -240,17 +260,18 @@ td[nowrap], th[nowrap] {
 tt, code, kbd, samp {
     font-family: monospace
 }
+
 pre, xmp, plaintext, listing {
-display: block;
+    display: block;
     font-family: monospace;
     white-space: pre;
-margin: 1em 0
+    margin: 1em 0
 }
 
 /***************** LISTS ********************/
 
 ul, menu, dir {
-display: block;
+    display: block;
     list-style-type: disc;
     margin-top: 1em;
     margin-bottom: 1em;
@@ -260,7 +281,7 @@ display: block;
 }
 
 ol {
-display: block;
+    display: block;
     list-style-type: decimal;
     margin-top: 1em;
     margin-bottom: 1em;
@@ -270,7 +291,7 @@ display: block;
 }
 
 li {
-display: list-item;
+    display: list-item;
 }
 
 ul ul, ol ul {
@@ -282,12 +303,12 @@ ol ol ul, ol ul ul, ul ol ul, ul ul ul {
 }
 
 dd {
-display: block;
+    display: block;
     margin-left: 40px;
 }
 
 dl {
-display: block;
+    display: block;
     margin-top: 1em;
     margin-bottom: 1em;
     margin-left: 0;
@@ -295,7 +316,7 @@ display: block;
 }
 
 dt {
-display: block;
+    display: block;
 }
 
 ol ul, ul ol, ul ul, ol ol {
@@ -304,43 +325,66 @@ ol ul, ul ol, ul ul, ol ol {
 }
 
 blockquote {
-display: block;
+    display: block;
     margin-top: 1em;
     margin-bottom: 1em;
     margin-left: 40px;
-    margin-left: 40px;
+    margin-right: 40px;
 }
 
 /*********** FORM ELEMENTS ************/
 
 form {
-display: block;
+    display: block;
     margin-top: 0em;
 }
 
 option {
-display: none;
+    display: none;
 }
 
 input, textarea, keygen, select, button, isindex {
-margin: 0em;
-color: initial;
+    margin: 0em;
+    color: initial;
     line-height: normal;
     text-transform: none;
     text-indent: 0;
     text-shadow: none;
-display: inline-block;
+    display: inline-block;
 }
 input[type="hidden"] {
-display: none;
+    display: none;
 }
 
 
 article, aside, footer, header, hgroup, nav, section
 {
-display: block;
+    display: block;
 }
-)RAW";
+
+sub {
+    vertical-align: sub;
+    font-size: smaller;
+}
+
+sup {
+    vertical-align: super;
+    font-size: smaller;
+}
+
+figure {
+    display: block;
+    margin-top: 1em;
+    margin-bottom: 1em;
+    margin-left: 40px;
+    margin-right: 40px;
+}
+
+figcaption {
+    display: block;
+}
+
+)##";
 
 class QLiteHtmlWidgetPrivate
 {
@@ -376,7 +420,7 @@ QLiteHtmlWidget::QLiteHtmlWidget(QWidget *parent)
     d->documentContainer.setClipboardCallback([this](bool yes) { emit copyAvailable(yes); });
 
     // TODO adapt mastercss to palette (default text & background color)
-    d->context.setMasterStyleSheet(mastercss);
+    d->context.setMasterStyleSheet(master_css);
 }
 
 QLiteHtmlWidget::~QLiteHtmlWidget()
@@ -477,6 +521,15 @@ void QLiteHtmlWidget::setDefaultFont(const QFont &font)
 QFont QLiteHtmlWidget::defaultFont() const
 {
     return d->documentContainer.defaultFont();
+}
+
+void QLiteHtmlWidget::setAntialias(bool on)
+{
+    withFixedTextPosition([this, on] {
+        d->documentContainer.setAntialias(on);
+        // force litehtml to recreate fonts
+        setHtml(d->html);
+    });
 }
 
 void QLiteHtmlWidget::scrollToAnchor(const QString &name)

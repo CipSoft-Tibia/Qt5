@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "base/command_line.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
@@ -202,6 +203,20 @@ bool SynchronousCompositorHost::IsReadyForSynchronousCall() {
   return res;
 }
 
+void SynchronousCompositorHost::OnCompositorVisible() {
+  if (base::FeatureList::IsEnabled(
+          features::kSynchronousCompositorBackgroundSignal)) {
+    CompositorDependenciesAndroid::Get().OnSynchronousCompositorVisible();
+  }
+}
+
+void SynchronousCompositorHost::OnCompositorHidden() {
+  if (base::FeatureList::IsEnabled(
+          features::kSynchronousCompositorBackgroundSignal)) {
+    CompositorDependenciesAndroid::Get().OnSynchronousCompositorHidden();
+  }
+}
+
 scoped_refptr<SynchronousCompositor::FrameFuture>
 SynchronousCompositorHost::DemandDrawHwAsync(
     const gfx::Size& viewport_size,
@@ -337,7 +352,6 @@ bool SynchronousCompositorHost::DemandDrawSwInProc(SkCanvas* canvas) {
       blink::mojom::SyncCompositorDemandDrawSwParams::New();  // Unused.
   uint32_t metadata_version = 0u;
   invalidate_needs_draw_ = false;
-  num_invalidates_since_last_draw_ = 0u;
   if (!IsReadyForSynchronousCall() ||
       !GetSynchronousCompositor()->DemandDrawSw(std::move(params),
                                                 &common_renderer_params,
@@ -377,6 +391,7 @@ struct SynchronousCompositorHost::SharedMemoryWithSize {
 
 bool SynchronousCompositorHost::DemandDrawSw(SkCanvas* canvas,
                                              bool software_canvas) {
+  num_invalidates_since_last_draw_ = 0u;
   if (use_in_process_zero_copy_software_draw_)
     return DemandDrawSwInProc(canvas);
 
@@ -437,9 +452,9 @@ bool SynchronousCompositorHost::DemandDrawSw(SkCanvas* canvas,
       auto mark_bool = [](const void* pixels, void* context) {
         *static_cast<bool*>(context) = true;
       };
-      image = SkImage::MakeFromRaster(pixmap, mark_bool, &pixels_released);
+      image = SkImages::RasterFromPixmap(pixmap, mark_bool, &pixels_released);
     } else {
-      image = SkImage::MakeRasterCopy(pixmap);
+      image = SkImages::RasterFromPixmapCopy(pixmap);
     }
     canvas->drawImage(image, 0, 0);
     canvas->restore();
@@ -521,7 +536,7 @@ void SynchronousCompositorHost::OnCompositorFrameTransitionDirectiveProcessed(
 void SynchronousCompositorHost::DidPresentCompositorFrames(
     viz::FrameTimingDetailsMap timing_details,
     uint32_t frame_token) {
-  timing_details_ = timing_details;
+  timing_details_.insert(timing_details.begin(), timing_details.end());
   if (!timing_details_.empty())
     AddBeginFrameRequest(BEGIN_FRAME);
 }

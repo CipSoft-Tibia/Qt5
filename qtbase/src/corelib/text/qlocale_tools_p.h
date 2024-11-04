@@ -26,14 +26,6 @@ enum StrayCharacterMode {
     WhitespacesAllowed
 };
 
-template <typename T> struct QSimpleParsedNumber
-{
-    T result;
-    // When used < 0, -used is how much was used, but it was an error.
-    qsizetype used;
-    bool ok() const { return used > 0; }
-};
-
 // API note: this function can't process a number with more than 2.1 billion digits
 [[nodiscard]] QSimpleParsedNumber<double>
 qt_asciiToDouble(const char *num, qsizetype numLen,
@@ -90,7 +82,8 @@ template <typename UcsInt>
     return qstrntod(s00, len, se, ok);
 }
 
-[[nodiscard]] QSimpleParsedNumber<qlonglong> qstrntoll(const char *nptr, qsizetype size, int base);
+[[nodiscard]] Q_AUTOTEST_EXPORT
+QSimpleParsedNumber<qlonglong> qstrntoll(const char *nptr, qsizetype size, int base);
 [[nodiscard]] QSimpleParsedNumber<qulonglong> qstrntoull(const char *nptr, qsizetype size, int base);
 
 QT_END_NAMESPACE

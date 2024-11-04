@@ -107,22 +107,6 @@ struct GpuDevice;
 struct SyclDevice;
 
 #ifdef EIGEN_USE_SYCL
-
-template <typename T> struct MakeSYCLPointer {
-  typedef Eigen::TensorSycl::internal::RangeAccess<cl::sycl::access::mode::read_write, T> Type;
-};
-
-template <typename T>
-EIGEN_STRONG_INLINE const Eigen::TensorSycl::internal::RangeAccess<cl::sycl::access::mode::read_write, T>&
-constCast(const Eigen::TensorSycl::internal::RangeAccess<cl::sycl::access::mode::read_write, T>& data) {
-  return data;
-}
-
-template <typename T>
-struct StorageMemory<T, SyclDevice> : MakeSYCLPointer<T> {};
-template <typename T>
-struct StorageMemory<T, const SyclDevice> : StorageMemory<T, SyclDevice> {};
-
 namespace TensorSycl {
 namespace internal{
 template <typename Evaluator, typename Op> class GenericNondeterministicReducer;

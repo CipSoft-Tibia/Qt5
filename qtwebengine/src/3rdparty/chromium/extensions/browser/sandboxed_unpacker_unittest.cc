@@ -10,6 +10,7 @@
 
 #include "base/base64.h"
 #include "base/command_line.h"
+#include "base/containers/contains.h"
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
@@ -17,6 +18,7 @@
 #include "base/memory/ref_counted.h"
 #include "base/path_service.h"
 #include "base/run_loop.h"
+#include "base/rust_buildflags.h"
 #include "base/strings/pattern.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -38,7 +40,6 @@
 #include "extensions/common/file_util.h"
 #include "extensions/common/manifest_constants.h"
 #include "extensions/common/switches.h"
-#include "extensions/common/value_builder.h"
 #include "extensions/common/verifier_formats.h"
 #include "extensions/strings/grit/extensions_strings.h"
 #include "extensions/test/test_extensions_client.h"
@@ -267,7 +268,7 @@ class SandboxedUnpackerTest : public ExtensionsTest {
 
   void ExpectInstallErrorContains(const std::string& error) {
     std::string full_error = base::UTF16ToUTF8(client_->unpack_error_message());
-    EXPECT_TRUE(full_error.find(error) != std::string::npos)
+    EXPECT_TRUE(base::Contains(full_error, error))
         << "Error message " << full_error << " does not contain " << error;
   }
 
@@ -313,7 +314,7 @@ class SandboxedUnpackerTest : public ExtensionsTest {
 
  protected:
   base::ScopedTempDir extensions_dir_;
-  raw_ptr<MockSandboxedUnpackerClient> client_;
+  raw_ptr<MockSandboxedUnpackerClient, AcrossTasksDanglingUntriaged> client_;
   scoped_refptr<SandboxedUnpacker> sandboxed_unpacker_;
   std::unique_ptr<content::InProcessUtilityThreadHelper>
       in_process_utility_thread_helper_;
@@ -485,10 +486,9 @@ TEST_F(SandboxedUnpackerTest, TestRewriteManifestInjections) {
   std::string fingerprint = "1.0123456789abcdef";
   base::WriteFile(extensions_dir_.GetPath().Append(
                       FILE_PATH_LITERAL("manifest.fingerprint")),
-                  fingerprint.c_str(),
-                  base::checked_cast<int>(fingerprint.size()));
-  absl::optional<base::Value::Dict> manifest(RewriteManifestFile(
-      DictionaryBuilder().Set(kVersionStr, kTestVersion).Build()));
+                  fingerprint);
+  absl::optional<base::Value::Dict> manifest(
+      RewriteManifestFile(base::Value::Dict().Set(kVersionStr, kTestVersion)));
   auto* key = manifest->FindString("key");
   auto* version = manifest->FindString(kVersionStr);
   auto* differential_fingerprint =
@@ -506,9 +506,15 @@ TEST_F(SandboxedUnpackerTest, InvalidMessagesFile) {
   // Check that there is no _locales folder.
   base::FilePath install_path = GetInstallPath().Append(kLocaleFolder);
   EXPECT_FALSE(base::PathExists(install_path));
+#if BUILDFLAG(BUILD_RUST_JSON_READER)
+  EXPECT_TRUE(base::MatchPattern(
+      GetInstallErrorMessage(),
+      u"*_locales?en_US?messages.json': EOF while parsing a string at line 4*"))
+#else   // BUILDFLAG(BUILD_RUST_JSON_READER)
   EXPECT_TRUE(base::MatchPattern(
       GetInstallErrorMessage(),
       u"*_locales?en_US?messages.json': Line: 4, column: 1,*"))
+#endif  // BUILDFLAG(BUILD_RUST_JSON_READER)
       << GetInstallErrorMessage();
   ASSERT_EQ(CrxInstallErrorType::SANDBOXED_UNPACKER_FAILURE,
             GetInstallErrorType());

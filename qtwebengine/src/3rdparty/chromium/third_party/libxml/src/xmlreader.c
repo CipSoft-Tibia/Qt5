@@ -788,6 +788,8 @@ xmlTextReaderPushData(xmlTextReaderPtr reader) {
 			reader->state = oldstate;
 		    }
 		} else if (val < 0) {
+                    xmlGenericError(xmlGenericErrorContext,
+                                    "xmlParserInputBufferRead failed\n");
 		    reader->mode = XML_TEXTREADER_MODE_EOF;
 		    reader->state = oldstate;
 		    if ((oldstate != XML_TEXTREADER_START) ||
@@ -4039,10 +4041,10 @@ xmlTextReaderValidityWarningRelay(void *ctx, const char *msg, ...)
 }
 
 static void
-  xmlTextReaderStructuredError(void *ctxt, xmlErrorPtr error);
+  xmlTextReaderStructuredError(void *ctxt, const xmlError *error);
 
 static void
-xmlTextReaderValidityStructuredRelay(void *userData, xmlErrorPtr error)
+xmlTextReaderValidityStructuredRelay(void *userData, const xmlError *error)
 {
     xmlTextReaderPtr reader = (xmlTextReaderPtr) userData;
 
@@ -4773,7 +4775,7 @@ xmlTextReaderGenericError(void *ctxt, xmlParserSeverities severity,
 }
 
 static void
-xmlTextReaderStructuredError(void *ctxt, xmlErrorPtr error)
+xmlTextReaderStructuredError(void *ctxt, const xmlError *error)
 {
     xmlParserCtxtPtr ctx = (xmlParserCtxtPtr) ctxt;
 

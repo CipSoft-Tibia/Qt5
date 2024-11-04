@@ -27,6 +27,7 @@
 #include "media/gpu/v4l2/v4l2_device.h"
 #include "media/gpu/v4l2/v4l2_video_decoder_delegate_av1.h"
 #include "media/gpu/v4l2/v4l2_video_decoder_delegate_h264.h"
+#include "media/gpu/v4l2/v4l2_video_decoder_delegate_h265.h"
 #include "media/gpu/v4l2/v4l2_video_decoder_delegate_vp8.h"
 #include "media/gpu/v4l2/v4l2_video_decoder_delegate_vp9.h"
 
@@ -240,6 +241,7 @@ V4L2StatelessVideoDecoderBackend::CreateSurface() {
     // driver via MMAP. The VideoFrame received from V4L2 buffer will remain
     // until deallocating V4L2Queue. But we need to know when the buffer is not
     // used by the client. So we wrap the frame here.
+    DCHECK_EQ(output_queue_->GetMemoryType(), V4L2_MEMORY_MMAP);
     scoped_refptr<VideoFrame> origin_frame = output_buf->GetVideoFrame();
     if (!origin_frame) {
       LOG(ERROR) << "There is no available VideoFrame from the V4L2 buffer.";
@@ -250,7 +252,10 @@ V4L2StatelessVideoDecoderBackend::CreateSurface() {
                                        origin_frame->visible_rect(),
                                        origin_frame->natural_size());
   } else {
-    // Try to get VideoFrame from the pool.
+    // This is used in cases when the video decoder format does not need
+    // conversion before being sent to Chrome's Media pipeline. On ChromeOS,
+    // currently only RK3399 (scarlet) supports this.
+    DCHECK_EQ(output_queue_->GetMemoryType(), V4L2_MEMORY_DMABUF);
     frame = pool->GetFrame();
     if (!frame) {
       // We allocate the same number of output buffer slot in V4L2 device and
@@ -353,9 +358,11 @@ void V4L2StatelessVideoDecoderBackend::SurfaceReady(
 
 void V4L2StatelessVideoDecoderBackend::EnqueueDecodeTask(
     scoped_refptr<DecoderBuffer> buffer,
-    VideoDecoder::DecodeCB decode_cb,
-    int32_t bitstream_id) {
+    VideoDecoder::DecodeCB decode_cb) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  const int32_t bitstream_id =
+      bitstream_id_generator_.GenerateNextId().GetUnsafeValue();
 
   if (!buffer->end_of_stream())
     bitstream_id_to_timestamp_.Put(bitstream_id, buffer->timestamp());
@@ -418,6 +425,10 @@ bool V4L2StatelessVideoDecoderBackend::PumpDecodeTask() {
         output_request_queue_.push(OutputRequest::ChangeResolutionFence());
         PumpOutputSurfaces();
         return true;
+
+      case AcceleratedVideoDecoder::kColorSpaceChange:
+        NOTIMPLEMENTED_LOG_ONCE();
+        return false;
 
       case AcceleratedVideoDecoder::kRanOutOfStreamData:
         // Current decode request is finished processing.
@@ -678,16 +689,18 @@ bool V4L2StatelessVideoDecoderBackend::IsSupportedProfile(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(device_);
   if (supported_profiles_.empty()) {
-    constexpr uint32_t kSupportedInputFourccs[] = {
-        V4L2_PIX_FMT_H264_SLICE,
-        V4L2_PIX_FMT_VP8_FRAME,
-        V4L2_PIX_FMT_VP9_FRAME,
-        V4L2_PIX_FMT_AV1_FRAME,
+    const std::vector<uint32_t> kSupportedInputFourccs = {
+      V4L2_PIX_FMT_H264_SLICE,
+#if BUILDFLAG(ENABLE_HEVC_PARSER_AND_HW_DECODER)
+      V4L2_PIX_FMT_HEVC_SLICE,
+#endif
+      V4L2_PIX_FMT_VP8_FRAME,
+      V4L2_PIX_FMT_VP9_FRAME,
+      V4L2_PIX_FMT_AV1_FRAME,
     };
-    scoped_refptr<V4L2Device> device = V4L2Device::Create();
+    auto device = base::MakeRefCounted<V4L2Device>();
     VideoDecodeAccelerator::SupportedProfiles profiles =
-        device->GetSupportedDecodeProfiles(std::size(kSupportedInputFourccs),
-                                           kSupportedInputFourccs);
+        device->GetSupportedDecodeProfiles(kSupportedInputFourccs);
     for (const auto& entry : profiles)
       supported_profiles_.push_back(entry.profile);
   }
@@ -706,6 +719,12 @@ bool V4L2StatelessVideoDecoderBackend::CreateDecoder() {
     decoder_ = std::make_unique<H264Decoder>(
         std::make_unique<V4L2VideoDecoderDelegateH264>(this, device_.get()),
         profile_, color_space_);
+#if BUILDFLAG(ENABLE_HEVC_PARSER_AND_HW_DECODER)
+  } else if (profile_ >= HEVCPROFILE_MIN && profile_ <= HEVCPROFILE_MAX) {
+    decoder_ = std::make_unique<H265Decoder>(
+        std::make_unique<V4L2VideoDecoderDelegateH265>(this, device_.get()),
+        profile_, color_space_);
+#endif
   } else if (profile_ >= VP8PROFILE_MIN && profile_ <= VP8PROFILE_MAX) {
     decoder_ = std::make_unique<VP8Decoder>(
         std::make_unique<V4L2VideoDecoderDelegateVP8>(this, device_.get()),

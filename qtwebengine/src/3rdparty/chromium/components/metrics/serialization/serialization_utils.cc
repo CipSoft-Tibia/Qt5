@@ -89,6 +89,9 @@ bool ReadMessage(int fd, std::string* message) {
 
 }  // namespace
 
+// This value is used as a max value in a histogram,
+// Platform.ExternalMetrics.SamplesRead. If it changes, the histogram will need
+// to be renamed.
 const int SerializationUtils::kMaxMessagesPerRead = 100000;
 
 std::unique_ptr<MetricSample> SerializationUtils::ParseSample(
@@ -110,7 +113,7 @@ std::unique_ptr<MetricSample> SerializationUtils::ParseSample(
   const std::string& value = parts[1];
 
   if (base::EqualsCaseInsensitiveASCII(name, "crash"))
-    return MetricSample::CrashSample(value);
+    return MetricSample::ParseCrash(value);
   if (base::EqualsCaseInsensitiveASCII(name, "histogram"))
     return MetricSample::ParseHistogram(value);
   if (base::EqualsCaseInsensitiveASCII(name, "linearhistogram"))
@@ -118,7 +121,7 @@ std::unique_ptr<MetricSample> SerializationUtils::ParseSample(
   if (base::EqualsCaseInsensitiveASCII(name, "sparsehistogram"))
     return MetricSample::ParseSparseHistogram(value);
   if (base::EqualsCaseInsensitiveASCII(name, "useraction"))
-    return MetricSample::UserActionSample(value);
+    return MetricSample::ParseUserAction(value);
   DLOG(ERROR) << "invalid event type: " << name << ", value: " << value;
   return nullptr;
 }
@@ -170,6 +173,10 @@ void SerializationUtils::ReadAndTruncateMetricsFromFile(
     if (sample)
       metrics->push_back(std::move(sample));
   }
+
+  base::UmaHistogramCustomCounts("Platform.ExternalMetrics.SamplesRead",
+                                 metrics->size(), 1, kMaxMessagesPerRead - 1,
+                                 50);
 
   result = ftruncate(fd.get(), 0);
   if (result < 0)

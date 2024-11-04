@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 source_set("geolocation") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "geolocation_logger.h",
     "geolocation_logger.mm",
@@ -14,9 +13,9 @@ source_set("geolocation") {
     "//components/prefs",
     "//components/strings",
     "//ios/chrome/app:tests_hook",
-    "//ios/chrome/browser/browser_state",
+    "//ios/chrome/browser/shared/model/browser_state",
+    "//ios/chrome/browser/shared/ui/util",
     "//ios/chrome/browser/tabs",
-    "//ios/chrome/browser/ui/util",
     "//ios/web/public",
     "//ios/web/public/navigation",
     "//ui/base",

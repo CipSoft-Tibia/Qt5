@@ -59,8 +59,10 @@
 #include "third_party/blink/public/mojom/frame/sudden_termination_disabler_type.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/frame/viewport_intersection_state.mojom-blink.h"
 #include "third_party/blink/public/mojom/input/focus_type.mojom-blink-forward.h"
+#include "third_party/blink/public/mojom/lcp_critical_path_predictor/lcp_critical_path_predictor.mojom-blink.h"
 #include "third_party/blink/public/mojom/link_to_text/link_to_text.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/loader/pause_subresource_loading_handle.mojom-blink-forward.h"
+#include "third_party/blink/public/mojom/loader/resource_cache.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/navigation/renderer_eviction_reason.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/reporting/reporting.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/script/script_evaluation_params.mojom-blink-forward.h"
@@ -72,6 +74,7 @@
 #include "third_party/blink/renderer/core/dom/weak_identifier_map.h"
 #include "third_party/blink/renderer/core/editing/forward.h"
 #include "third_party/blink/renderer/core/editing/iterators/text_iterator_behavior.h"
+#include "third_party/blink/renderer/core/frame/ad_script_identifier.h"
 #include "third_party/blink/renderer/core/frame/frame.h"
 #include "third_party/blink/renderer/core/frame/frame_types.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
@@ -134,6 +137,7 @@ class InspectorIssueReporter;
 class InspectorTaskRunner;
 class InspectorTraceEvents;
 class InterfaceRegistry;
+class LCPCriticalPathPredictor;
 class LayoutView;
 class LocalDOMWindow;
 class LocalFrameClient;
@@ -144,6 +148,7 @@ class NodeTraversal;
 class PerformanceMonitor;
 class PluginData;
 class PolicyContainer;
+class ResourceCacheImpl;
 class ScrollSnapshotClient;
 class SmoothScrollSequencer;
 class SpellChecker;
@@ -212,6 +217,8 @@ class CORE_EXPORT LocalFrame final
   //   storage, IndexedDB, BroadcastChannel, etc...
   // - |document_ukm_source_id| is the ukm source id for the new document. If
   //   you pass ukm::kInvalidSourceId, a new ukm source id will be generated.
+  // - `creator_base_url` is the base url of the initiator that created this
+  //    frame.
   //
   // Note: Usually, the initial empty document inherits its |policy_container|
   // and |storage_key| from the parent or the opener. The inheritance operation
@@ -222,7 +229,8 @@ class CORE_EXPORT LocalFrame final
             const DocumentToken& document_token,
             std::unique_ptr<PolicyContainer> policy_container,
             const StorageKey& storage_key,
-            ukm::SourceId document_ukm_source_id);
+            ukm::SourceId document_ukm_source_id,
+            const KURL& creator_base_url);
   void SetView(LocalFrameView*);
   void CreateView(const gfx::Size&, const Color&);
 
@@ -253,7 +261,7 @@ class CORE_EXPORT LocalFrame final
   void DidBufferLoadWhileInBackForwardCache(size_t num_bytes) override;
 
   void DidChangeThemeColor(bool update_theme_color_cache);
-  void DidChangeBackgroundColor(SkColor background_color, bool color_adjust);
+  void DidChangeBackgroundColor(SkColor4f background_color, bool color_adjust);
 
   // Returns false if detaching child frames reentrantly detached `this`.
   bool DetachChildren();
@@ -292,6 +300,7 @@ class CORE_EXPORT LocalFrame final
   BackgroundColorPaintImageGenerator* GetBackgroundColorPaintImageGenerator();
   BoxShadowPaintImageGenerator* GetBoxShadowPaintImageGenerator();
   ClipPathPaintImageGenerator* GetClipPathPaintImageGenerator();
+  LCPCriticalPathPredictor* GetLCPP();
 
   // A local root is the root of a connected subtree that contains only
   // LocalFrames. The local root is responsible for coordinating input, layout,
@@ -368,12 +377,12 @@ class CORE_EXPORT LocalFrame final
   // See layers_as_json.h for accepted flags.
   String GetLayerTreeAsTextForTesting(unsigned flags = 0) const;
 
-  // Begin printing with the given page size information.
-  // The frame content will fit to the page size with specified shrink ratio.
-  // If this frame doesn't need to fit into a page size, default values are
-  // used.
+  // Begin printing.
+  // If too large (in the inline direction), the frame content will fit to the
+  // page size with the specified maximum shrink ratio.
+  void StartPrinting(const WebPrintPageDescription&,
+                     float maximum_shrink_ratio = 0);
   void StartPrinting(const gfx::SizeF& page_size = gfx::SizeF(),
-                     const gfx::SizeF& original_page_size = gfx::SizeF(),
                      float maximum_shrink_ratio = 0);
 
   void EndPrinting();
@@ -390,9 +399,6 @@ class CORE_EXPORT LocalFrame final
   // scroll offsets).
   void EnsureSaveScrollOffset(Node&);
   void RestoreScrollOffsets();
-
-  gfx::SizeF ResizePageRectsKeepingRatio(const gfx::SizeF& original_size,
-                                         const gfx::SizeF& expected_size) const;
 
   bool InViewSourceMode() const;
   void SetInViewSourceMode(bool = true);
@@ -449,7 +455,7 @@ class CORE_EXPORT LocalFrame final
   // navigation at a later time.
   bool CanNavigate(const Frame&, const KURL& destination_url = KURL());
 
-  void WillPotentiallyStartOutermostMainFrameNavigation(const KURL& url) const;
+  void MaybeStartOutermostMainFrameNavigation(const Vector<KURL>& urls) const;
 
   // Whether a navigation should replace the current history entry or not.
   // Note this isn't exhaustive; there are other cases where a navigation does a
@@ -570,6 +576,13 @@ class CORE_EXPORT LocalFrame final
   // be removed.
   bool IsProvisional() const;
 
+  // Returns the Page's `previous_main_frame_for_local_swap_` if set, or the
+  // LocalFrame for which `provisional_frame_ == this`. The LocalFrame returned
+  // will be swapped out in place of `this` as part of a
+  // LocalFrame <-> LocalFrame swap during navigation commit. This function may
+  // only be called on a provisional frame.
+  LocalFrame* GetPreviousLocalFrameForLocalSwap();
+
   // Whether the frame is considered to be a root ad frame by Ad Tagging.
   bool IsAdRoot() const;
 
@@ -609,7 +622,14 @@ class CORE_EXPORT LocalFrame final
     return client_hints_preferences_;
   }
 
-  SmoothScrollSequencer& GetSmoothScrollSequencer();
+  // Creates a new scroll sequencer in preparation for starting a new scroll
+  // sequence. Returns the current scroll sequencer which can be reinstated if
+  // the new sequence shouldn't clobber it.
+  SmoothScrollSequencer* CreateNewSmoothScrollSequence();
+  void ReinstateSmoothScrollSequence(SmoothScrollSequencer*);
+  void FinishedScrollSequence();
+
+  SmoothScrollSequencer* GetSmoothScrollSequencer() const;
 
   mojom::blink::ReportingServiceProxy* GetReportingService();
 
@@ -832,29 +852,46 @@ class CORE_EXPORT LocalFrame final
   // https://drafts.csswg.org/scroll-animations-1/#avoiding-cycles
   void UpdateScrollSnapshots();
 
-  // All newly created ScrollSnapshotClients are considered "unvalidated". This
-  // means that the internal state of the client is considered tentative, and
-  // computing the actual state may require an additional style/layout pass.
+  // Each ScrollSnapshotClients has their internal state updated at
+  // a specific point in the lifecycle (see call to UpdateSnapshot).
+  // Since this call takes place *before* layout, ScrollSnapshotClients also
+  // get an additional opportunity to update their state (see ValidateSnapshot).
   //
   // The lifecycle update will call this function after style and layout has
-  // completed. The function will then go though all unvalidated clients,
-  // and compare the current state snapshot to a fresh state snapshot. If they
-  // are equal, then the tentative state turned out to be correct, and no
-  // further action is needed. Otherwise, all effects targets associated with
-  // the client are marked for recalc, which causes the style/layout phase to
-  // run again.
+  // completed. The function will then go though all clients, and compare the
+  // current state snapshot to a fresh state snapshot. If they are equal, then
+  // no further action is needed. Otherwise, all effect targets associated
+  // with the client are marked for recalc, which causes the style/layout phase
+  // to run again.
   //
-  // Returns true if all client states are correct, otherwise returns false.
+  // Returns true if all client states are valid, otherwise returns false.
   //
   // https://github.com/w3c/csswg-drafts/issues/5261
   bool ValidateScrollSnapshotClients();
 
+  void ClearScrollSnapshotClients();
+
   const HeapHashSet<WeakMember<ScrollSnapshotClient>>&
-  GetUnvalidatedScrollSnapshotClientsForTesting() {
-    return unvalidated_scroll_snapshot_clients_;
+  GetScrollSnapshotClientsForTesting() {
+    return scroll_snapshot_clients_;
   }
 
   void ScheduleNextServiceForScrollSnapshotClients();
+
+  void CollectAnchorPositionScrollerIds(
+      Vector<cc::ElementId>* scroll_container_ids) const;
+
+  using BlockingDetailsList = Vector<mojom::blink::BlockingDetailsPtr>;
+  static BlockingDetailsList ConvertFeatureAndLocationToMojomStruct(
+      const BFCacheBlockingFeatureAndLocations&,
+      const BFCacheBlockingFeatureAndLocations&);
+
+  // Binds a ResourceCache. Creates a new ResourceCache when there is no
+  // existing one.
+  void BindResourceCache(mojo::PendingReceiver<mojom::blink::ResourceCache>);
+
+  // Sets a ResourceCache hosted by another frame in a different renderer.
+  void SetResourceCacheRemote(mojo::PendingRemote<mojom::blink::ResourceCache>);
 
  private:
   friend class FrameNavigationDisabler;
@@ -893,24 +930,21 @@ class CORE_EXPORT LocalFrame final
 
   // Internal implementation for starting or ending printing.
   // |printing| is true when printing starts, false when printing ends.
-  // |page_size|, |original_page_size|, and |maximum_shrink_ratio| are only
-  // meaningful when we should use printing layout for this frame.
-  void SetPrinting(bool printing,
-                   const gfx::SizeF& page_size,
-                   const gfx::SizeF& original_page_size,
-                   float maximum_shrink_ratio);
+  // |maximum_shrink_ratio| is only meaningful when we should use printing
+  // layout for this frame.
+  void SetPrinting(bool printing, float maximum_shrink_ratio);
 
   // FrameScheduler::Delegate overrides:
   ukm::UkmRecorder* GetUkmRecorder() override;
   ukm::SourceId GetUkmSourceId() override;
   void UpdateTaskTime(base::TimeDelta time) override;
   void UpdateBackForwardCacheDisablingFeatures(
-      uint64_t features_mask,
-      const BFCacheBlockingFeatureAndLocations&
-          non_sticky_features_and_js_locations,
-      const BFCacheBlockingFeatureAndLocations&
-          sticky_features_and_js_locations) override;
+      BlockingDetails details) override;
   const base::UnguessableToken& GetAgentClusterId() const override;
+  void OnTaskCompleted(base::TimeTicks start_time,
+                       base::TimeTicks end_time,
+                       base::TimeTicks desired_execution_time) override;
+  void MainFrameInteractive() override;
 
   // Activates the user activation states of this frame and all its ancestors.
   //
@@ -1071,8 +1105,8 @@ class CORE_EXPORT LocalFrame final
   // be registered at the actual elements as the references here are weak.
   HeapHashSet<WeakMember<ScrollSnapshotClient>> scroll_snapshot_clients_;
 
-  HeapHashSet<WeakMember<ScrollSnapshotClient>>
-      unvalidated_scroll_snapshot_clients_;
+  // Set lazily, when the browser asks to host a resource cache in this frame.
+  Member<ResourceCacheImpl> resource_cache_;
 
   // Manages a transient affordance for this frame to enter fullscreen.
   TransientAllowFullscreen transient_allow_fullscreen_;
@@ -1101,12 +1135,18 @@ class CORE_EXPORT LocalFrame final
   // ready-to-commit time.
   absl::optional<blink::FrameAdEvidence> ad_evidence_;
 
+  Member<LCPCriticalPathPredictor> lcpp_;
+
   // True if this frame is a frame that had a script tagged as an ad on the v8
   // stack at the time of creation. This is updated in `SetAdEvidence()`,
   // allowing the bit to be propagated when a frame navigates cross-origin.
   // Fenced frames do not set this bit for the initial empty document, see
   // SubresourceFilterAgent::Initialize.
   bool is_frame_created_by_ad_script_ = false;
+
+  // The identifier of the ad script at the time of frame creation. Kept to
+  // defer instrumentation probe call till the frame is committed.
+  absl::optional<AdScriptIdentifier> ad_script_from_frame_creation_stack_;
 
   bool evict_cached_session_storage_on_freeze_or_unload_ = false;
 

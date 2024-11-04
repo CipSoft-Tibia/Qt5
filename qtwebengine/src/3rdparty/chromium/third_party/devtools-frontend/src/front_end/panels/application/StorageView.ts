@@ -7,6 +7,7 @@ import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as Protocol from '../../generated/protocol.js';
+import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as PerfUI from '../../ui/legacy/components/perf_ui/perf_ui.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
@@ -54,6 +55,10 @@ const UIStrings = {
    */
   clearSiteData: 'Clear site data',
   /**
+   * @description Annouce message when the "clear site data" task is complete
+   */
+  SiteDataCleared: 'Site data cleared',
+  /**
    * @description Category description in the Clear Storage section of the Storage View of the Application panel
    */
   application: 'Application',
@@ -77,10 +82,6 @@ const UIStrings = {
    * @description Checkbox label in the Clear Storage section of the Storage View of the Application panel
    */
   cookies: 'Cookies',
-  /**
-   * @description Category description in the Clear Storage section of the Storage View of the Application panel
-   */
-  cache: 'Cache',
   /**
    * @description Checkbox label in the Clear Storage section of the Storage View of the Application panel
    */
@@ -107,6 +108,11 @@ const UIStrings = {
    */
   numberMustBeNonNegative: 'Number must be non-negative',
   /**
+   * @description Text for error message in Application Quota Override
+   * @example {9000000000000} PH1
+   */
+  numberMustBeSmaller: 'Number must be smaller than {PH1}',
+  /**
    * @description Button text for the "Clear site data" button in the Storage View of the Application panel while the clearing action is pending
    */
   clearing: 'Clearing...',
@@ -129,7 +135,7 @@ const UIStrings = {
   /**
    * @description Text in Application Panel Sidebar of the Application panel
    */
-  serviceWorkers: 'Service Workers',
+  serviceWorkers: 'Service workers',
   /**
    * @description Checkbox label in Application Panel Sidebar of the Application panel.
    * Storage quota refers to the amount of disk available for the website or app.
@@ -208,6 +214,7 @@ export class StorageView extends UI.ThrottledWidget.ThrottledWidget {
 
     this.previousOverrideFieldValue = '';
     const quotaOverrideCheckboxRow = quota.appendRow();
+    quotaOverrideCheckboxRow.classList.add('quota-override-row');
     this.quotaOverrideCheckbox =
         UI.UIUtils.CheckboxLabel.create(i18nString(UIStrings.simulateCustomStorage), false, '');
     quotaOverrideCheckboxRow.appendChild(this.quotaOverrideCheckbox);
@@ -251,11 +258,8 @@ export class StorageView extends UI.ThrottledWidget.ThrottledWidget {
     this.appendItem(storage, i18nString(UIStrings.indexDB), Protocol.Storage.StorageType.Indexeddb);
     this.appendItem(storage, i18nString(UIStrings.webSql), Protocol.Storage.StorageType.Websql);
     this.appendItem(storage, i18nString(UIStrings.cookies), Protocol.Storage.StorageType.Cookies);
+    this.appendItem(storage, i18nString(UIStrings.cacheStorage), Protocol.Storage.StorageType.Cache_storage);
     storage.markFieldListAsGroup();
-
-    const caches = this.reportView.appendSection(i18nString(UIStrings.cache));
-    this.appendItem(caches, i18nString(UIStrings.cacheStorage), Protocol.Storage.StorageType.Cache_storage);
-    caches.markFieldListAsGroup();
 
     SDK.TargetManager.TargetManager.instance().observeTargets(this);
   }
@@ -269,7 +273,7 @@ export class StorageView extends UI.ThrottledWidget.ThrottledWidget {
   }
 
   targetAdded(target: SDK.Target.Target): void {
-    if (target !== SDK.TargetManager.TargetManager.instance().mainFrameTarget()) {
+    if (target !== SDK.TargetManager.TargetManager.instance().primaryPageTarget()) {
       return;
     }
     this.target = target;
@@ -365,6 +369,12 @@ export class StorageView extends UI.ThrottledWidget.ThrottledWidget {
       this.quotaOverrideErrorMessage.textContent = i18nString(UIStrings.numberMustBeNonNegative);
       return;
     }
+    const cutoff = 9_000_000_000_000;
+    if (quota >= cutoff) {
+      this.quotaOverrideErrorMessage.textContent =
+          i18nString(UIStrings.numberMustBeSmaller, {PH1: cutoff.toLocaleString()});
+      return;
+    }
     const bytesPerMB = 1000 * 1000;
     const quotaInBytes = Math.round(quota * bytesPerMB);
     const quotaFieldValue = `${quotaInBytes / bytesPerMB}`;
@@ -418,6 +428,8 @@ export class StorageView extends UI.ThrottledWidget.ThrottledWidget {
       this.clearButton.textContent = label;
       this.clearButton.focus();
     }, 500);
+
+    UI.ARIAUtils.alert(i18nString(UIStrings.SiteDataCleared));
   }
 
   static clear(
@@ -467,7 +479,7 @@ export class StorageView extends UI.ThrottledWidget.ThrottledWidget {
     }
 
     if (set.has(Protocol.Storage.StorageType.Cache_storage) || hasAll) {
-      const target = SDK.TargetManager.TargetManager.instance().mainFrameTarget();
+      const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
       const model = target && target.model(SDK.ServiceWorkerCacheModel.ServiceWorkerCacheModel);
       if (model) {
         model.clearForStorageKey(storageKey);
@@ -475,7 +487,7 @@ export class StorageView extends UI.ThrottledWidget.ThrottledWidget {
     }
   }
 
-  async doUpdate(): Promise<void> {
+  override async doUpdate(): Promise<void> {
     if (!this.securityOrigin || !this.target) {
       this.quotaRow.textContent = '';
       this.populatePieChart(0, []);
@@ -505,8 +517,10 @@ export class StorageView extends UI.ThrottledWidget.ThrottledWidget {
             {PH1: response.usage.toLocaleString(), PH2: response.quota.toLocaleString()}));
 
     if (!response.overrideActive && response.quota < 125829120) {  // 120 MB
+      const icon = new IconButton.Icon.Icon();
+      icon.data = {iconName: 'info', color: 'var(--icon-info)', width: '14px', height: '14px'};
       UI.Tooltip.Tooltip.install(this.quotaRow, i18nString(UIStrings.storageQuotaIsLimitedIn));
-      this.quotaRow.appendChild(UI.Icon.Icon.create('smallicon-info'));
+      this.quotaRow.appendChild(icon);
     }
 
     if (this.quotaUsage === null || this.quotaUsage !== response.usage) {
@@ -556,7 +570,7 @@ export class StorageView extends UI.ThrottledWidget.ThrottledWidget {
         return i18nString(UIStrings.other);
     }
   }
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.reportView.registerCSSFiles([storageViewStyles]);
     this.registerCSSFiles([storageViewStyles]);
@@ -596,7 +610,7 @@ export class ActionDelegate implements UI.ActionRegistration.ActionDelegate {
   }
 
   private handleClear(includeThirdPartyCookies: boolean): boolean {
-    const target = SDK.TargetManager.TargetManager.instance().mainFrameTarget();
+    const target = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (!target) {
       return false;
     }

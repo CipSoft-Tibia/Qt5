@@ -19,6 +19,7 @@
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/trace_event/common/trace_event_common.h"
 #include "base/trace_event/trace_event.h"
 #include "base/win/core_winrt_util.h"
 #include "base/win/scoped_propvariant.h"
@@ -54,6 +55,11 @@ namespace {
 constexpr char kUwpDeviceIdPrefix[] = "\\\\?\\SWD#MMDEVAPI#";
 
 constexpr uint32_t KSAUDIO_SPEAKER_UNSUPPORTED = 0;
+
+// Max allowed absolute difference between a QPC-based timestamp and a default
+// base::TimeTicks::Now() timestamp before switching to fake audio timestamps.
+constexpr base::TimeDelta kMaxAbsTimeDiffBeforeSwithingToFakeTimestamps =
+    base::Milliseconds(500);
 
 // Converts a COM error into a human-readable string.
 std::string ErrorToString(HRESULT hresult) {
@@ -192,11 +198,8 @@ const char* EffectTypeToString(
       return "DynamicRangeCompression";
     case ABI::Windows::Media::Effects::AudioEffectType_FarFieldBeamForming:
       return "FarFieldBeamForming";
-#if WINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION >= 0xd0000
-    // This enum appears when upgrading to the Windows 11 10.0.22621.0 SDK.
     case ABI::Windows::Media::Effects::AudioEffectType_DeepNoiseSuppression:
       return "DeepNoiseSuppression";
-#endif
   }
   return "Unknown";
 }
@@ -233,16 +236,22 @@ bool InitializeUWPSupport() {
     // 10.0.10240.0.
     DCHECK_GE(base::win::OSInfo::GetInstance()->version_number().build, 10240u);
 
-    // Provide access to Core WinRT/UWP functions.
-    if (!base::win::ResolveCoreWinRTDelayload()) {
-      // Failed loading functions from combase.dll.
-      DLOG(WARNING) << "Failed to initialize WinRT/UWP";
-      return false;
-    }
     return true;
   }();
 
   return initialization_result;
+}
+
+void LogFakeAudioCaptureTimestamps(bool use_fake_audio_capture_timestamps,
+                                   base::TimeDelta abs_delta_time) {
+  TRACE_EVENT_INSTANT2(
+      "audio", "AudioCaptureWinTimestamps", TRACE_EVENT_SCOPE_THREAD,
+      "use_fake_audio_capture_timestamps", use_fake_audio_capture_timestamps,
+      "abs_timestamp_diff_ms", abs_delta_time.InMilliseconds());
+  base::UmaHistogramBoolean("Media.Audio.Capture.Win.FakeTimestamps",
+                            use_fake_audio_capture_timestamps);
+  base::UmaHistogramLongTimes("Media.Audio.Capture.Win.AbsTimestampDiffMs",
+                              abs_delta_time);
 }
 
 }  // namespace
@@ -296,6 +305,9 @@ WASAPIAudioInputStream::WASAPIAudioInputStream(
     AudioManager::LogCallback log_callback)
     : manager_(manager),
       glitch_reporter_(SystemGlitchReporter::StreamType::kCapture),
+      peak_detector_(base::BindRepeating(&AudioManager::TraceAmplitudePeak,
+                                         base::Unretained(manager_),
+                                         /*trace_start=*/true)),
       data_discontinuity_reporter_(
           std::make_unique<DataDiscontinuityReporter>()),
       device_id_(device_id),
@@ -417,13 +429,6 @@ AudioInputStream::OpenOutcome WASAPIAudioInputStream::Open() {
       // stats when the stream is closed.
       GetAudioCaptureEffects(uwp_device_id);
     }
-  }
-
-  use_fake_audio_capture_timestamps_ =
-      base::FeatureList::IsEnabled(media::kUseFakeAudioCaptureTimestamps);
-  if (use_fake_audio_capture_timestamps_) {
-    SendLogMessage("%s => (WARNING: capture timestamps will be fake)",
-                   __func__);
   }
 
   // Obtain an IAudioClient interface which enables us to create and initialize
@@ -871,6 +876,29 @@ void WASAPIAudioInputStream::PullCaptureDataAndPushToSink() {
       return;
     }
 
+    // Check if QPC-based timestamps provided by IAudioCaptureClient::GetBuffer
+    // can be used for audio timestamps or not. If not, base::TimeTicks::Now()
+    // will be used instead to generate the timestamps (called "fake" here). In
+    // the majority of cases, fake timestamps will not be utilized and the
+    // difference in `delta_time` below will be about the same size as the
+    // native buffer size (e.g. 10 msec).
+    // http://crbug.com/1439283 for details why this check is needed.
+    if (!use_fake_audio_capture_timestamps_.has_value()) {
+      base::TimeDelta delta_time =
+          base::TimeTicks::Now() -
+          base::TimeTicks::FromQPCValue(capture_time_100ns);
+      if (delta_time.magnitude() >
+          kMaxAbsTimeDiffBeforeSwithingToFakeTimestamps) {
+        use_fake_audio_capture_timestamps_ = true;
+        LOG(WARNING) << "WAIS::" << __func__
+                     << " => (WARNING: capture timestamps will be fake)";
+      } else {
+        use_fake_audio_capture_timestamps_ = false;
+      }
+      LogFakeAudioCaptureTimestamps(use_fake_audio_capture_timestamps_.value(),
+                                    delta_time.magnitude());
+    }
+
     // The data in the packet is not correlated with the previous packet's
     // device position; this is possibly due to a stream state transition or
     // timing glitch. Note that, usage of this flag was added after the existing
@@ -878,6 +906,8 @@ void WASAPIAudioInputStream::PullCaptureDataAndPushToSink() {
     // The behavior of the AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY flag is
     // undefined on the application's first call to GetBuffer after Start and
     // Windows 7 or later is required for support.
+    // TODO(https://crbug.com/1427096): take this into account when reporting
+    // glitch info.
     const bool observed_data_discontinuity =
         (device_position > 0 && flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY);
     if (observed_data_discontinuity) {
@@ -918,6 +948,10 @@ void WASAPIAudioInputStream::PullCaptureDataAndPushToSink() {
               input_format_.Format.nSamplesPerSec);
         }
         glitch_reporter_.UpdateStats(glitch_duration);
+        if (glitch_duration.is_positive()) {
+          glitch_accumulator_.Add(AudioGlitchInfo::SingleBoundedGlitch(
+              glitch_duration, AudioGlitchInfo::Direction::kCapture));
+        }
       }
 
       last_device_position = device_position;
@@ -927,7 +961,8 @@ void WASAPIAudioInputStream::PullCaptureDataAndPushToSink() {
     }
 
     base::TimeTicks capture_time;
-    if (use_fake_audio_capture_timestamps_) {
+    if (use_fake_audio_capture_timestamps_.has_value() &&
+        *use_fake_audio_capture_timestamps_) {
       capture_time = base::TimeTicks::Now();
     } else if (!timestamp_error_was_detected) {
       // Use the latest |capture_time_100ns| since it is marked as valid.
@@ -965,8 +1000,10 @@ void WASAPIAudioInputStream::PullCaptureDataAndPushToSink() {
     if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
       fifo_->PushSilence(num_frames_to_read);
     } else {
-      fifo_->Push(data_ptr, num_frames_to_read,
-                  input_format_.Format.wBitsPerSample / 8);
+      const int bytes_per_sample = input_format_.Format.wBitsPerSample / 8;
+
+      peak_detector_.FindPeak(data_ptr, num_frames_to_read, bytes_per_sample);
+      fifo_->Push(data_ptr, num_frames_to_read, bytes_per_sample);
     }
 
     hr = audio_capture_client_->ReleaseBuffer(num_frames_to_read);
@@ -976,6 +1013,11 @@ void WASAPIAudioInputStream::PullCaptureDataAndPushToSink() {
                  << ErrorToString(hr).c_str() << "])";
       return;
     }
+
+    TRACE_EVENT2(TRACE_DISABLED_BY_DEFAULT("audio"),
+                 "AudioInputCallback::OnData", "capture_time",
+                 capture_time - base::TimeTicks(), "time_ticks_now",
+                 base::TimeTicks::Now() - base::TimeTicks());
 
     // Get a cached AGC volume level which is updated once every second on the
     // audio manager thread. Note that, |volume| is also updated each time
@@ -995,13 +1037,15 @@ void WASAPIAudioInputStream::PullCaptureDataAndPushToSink() {
           return;
         }
         converter_->Convert(convert_bus_.get());
-        sink_->OnData(convert_bus_.get(), capture_time, volume);
+        sink_->OnData(convert_bus_.get(), capture_time, volume,
+                      glitch_accumulator_.GetAndReset());
 
         // Move the capture time forward for each vended block.
         capture_time += AudioTimestampHelper::FramesToTime(
             convert_bus_->frames(), output_format_.nSamplesPerSec);
       } else {
-        sink_->OnData(fifo_->Consume(), capture_time, volume);
+        sink_->OnData(fifo_->Consume(), capture_time, volume,
+                      glitch_accumulator_.GetAndReset());
 
         // Move the capture time forward for each vended block.
         capture_time += AudioTimestampHelper::FramesToTime(
@@ -1658,6 +1702,7 @@ double WASAPIAudioInputStream::ProvideInput(
 }
 
 void WASAPIAudioInputStream::ReportAndResetGlitchStats() {
+  glitch_accumulator_.GetAndReset();
   SystemGlitchReporter::Stats stats =
       glitch_reporter_.GetLongTermStatsAndReset();
   SendLogMessage(

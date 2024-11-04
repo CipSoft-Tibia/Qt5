@@ -94,7 +94,8 @@ using namespace Qt::StringLiterals;
 
 void QDBusPendingCallWatcherHelper::add(QDBusPendingCallWatcher *watcher)
 {
-    connect(this, SIGNAL(finished()), watcher, SLOT(_q_finished()), Qt::QueuedConnection);
+    connect(this, &QDBusPendingCallWatcherHelper::finished, watcher,
+            [watcher] { Q_EMIT watcher->finished(watcher); }, Qt::QueuedConnection);
 }
 
 QDBusPendingCallPrivate::~QDBusPendingCallPrivate()
@@ -205,6 +206,26 @@ void QDBusPendingCallPrivate::waitForFinished()
     waitForFinishedCondition.wait(&mutex);
 }
 
+void QDBusPendingCallPrivate::waitForFinishedWithGui()
+{
+    QEventLoop loop;
+
+    {
+        const auto locker = qt_scoped_lock(mutex);
+        if (replyMessage.type() != QDBusMessage::InvalidMessage)
+            return; // already finished
+
+        Q_ASSERT(!watcherHelper);
+        watcherHelper = new QDBusPendingCallWatcherHelper;
+        loop.connect(watcherHelper, &QDBusPendingCallWatcherHelper::reply, &loop,
+                     &QEventLoop::quit);
+        loop.connect(watcherHelper, &QDBusPendingCallWatcherHelper::error, &loop,
+                     &QEventLoop::quit);
+    }
+
+    loop.exec(QEventLoop::ExcludeUserInputEvents | QEventLoop::WaitForMoreEvents);
+}
+
 /*!
     Creates a copy of the \a other pending asynchronous call. Note
     that both objects will refer to the same pending call.
@@ -223,7 +244,6 @@ QDBusPendingCall::QDBusPendingCall(QDBusPendingCallPrivate *dd)
     if (dd) {
         bool r = dd->ref.deref();
         Q_ASSERT(r);
-        Q_UNUSED(r);
     }
 }
 
@@ -445,28 +465,13 @@ QDBusPendingCall QDBusPendingCall::fromCompletedCall(const QDBusMessage &msg)
     return QDBusPendingCall(d);
 }
 
-
-class QDBusPendingCallWatcherPrivate: public QObjectPrivate
-{
-public:
-    void _q_finished();
-
-    Q_DECLARE_PUBLIC(QDBusPendingCallWatcher)
-};
-
-inline void QDBusPendingCallWatcherPrivate::_q_finished()
-{
-    Q_Q(QDBusPendingCallWatcher);
-    emit q->finished(q);
-}
-
 /*!
     Creates a QDBusPendingCallWatcher object to watch for replies on the
     asynchronous pending call \a call and sets this object's parent
     to \a parent.
 */
 QDBusPendingCallWatcher::QDBusPendingCallWatcher(const QDBusPendingCall &call, QObject *parent)
-    : QObject(*new QDBusPendingCallWatcherPrivate, parent), QDBusPendingCall(call)
+    : QObject(parent), QDBusPendingCall(call)
 {
     if (d) {                    // QDBusPendingCall::d
         const auto locker = qt_scoped_lock(d->mutex);

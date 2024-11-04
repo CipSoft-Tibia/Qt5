@@ -4,9 +4,9 @@
 
 #include "third_party/blink/renderer/modules/imagecapture/image_capture_frame_grabber.h"
 
+#include "base/task/bind_post_task.h"
 #include "base/task/single_thread_task_runner.h"
 #include "cc/paint/skia_paint_canvas.h"
-#include "media/base/bind_to_current_loop.h"
 #include "media/base/video_frame.h"
 #include "media/base/video_types.h"
 #include "media/base/video_util.h"
@@ -126,7 +126,7 @@ void ImageCaptureFrameGrabber::SingleShotFrameHandler::ConvertAndDeliverFrame(
       SkImageInfo::MakeN32(display_size.width(), display_size.height(), alpha);
 
   SkSurfaceProps props = skia::LegacyDisplayGlobals::GetSkSurfaceProps();
-  sk_sp<SkSurface> surface = SkSurface::MakeRaster(info, &props);
+  sk_sp<SkSurface> surface = SkSurfaces::Raster(info, &props);
   DCHECK(surface);
 
   // If a frame is GPU backed, we need to use PaintCanvasVideoRenderer to read

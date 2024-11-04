@@ -25,10 +25,11 @@ size_t GetDefaultMaxNumUtilityThreads(size_t max_num_foreground_threads_in) {
   int num_of_efficient_processors = SysInfo::NumberOfEfficientProcessors();
   if (num_of_efficient_processors != 0) {
     DCHECK_GT(num_of_efficient_processors, 0);
-    return std::min(max_num_foreground_threads_in,
-                    static_cast<size_t>(num_of_efficient_processors));
+    return std::max<size_t>(
+        2, std::min(max_num_foreground_threads_in,
+                    static_cast<size_t>(num_of_efficient_processors)));
   }
-  return std::max<size_t>(1, max_num_foreground_threads_in / 2);
+  return std::max<size_t>(2, max_num_foreground_threads_in / 2);
 }
 
 }  // namespace

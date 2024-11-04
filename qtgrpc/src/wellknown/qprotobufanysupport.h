@@ -17,6 +17,8 @@
 
 QT_BEGIN_NAMESPACE
 
+class QAbstractProtobufSerializer;
+
 namespace QtProtobuf {
 class AnyPrivate;
 class Q_PROTOBUFWELLKNOWNTYPES_EXPORT Any : public QProtobufMessage
@@ -48,42 +50,45 @@ public:
     void setValue(const QByteArray &value);
 
     template <typename T>
-    std::optional<T> as() const
+    std::optional<T> as(QAbstractProtobufSerializer *serializer) const
     {
         if constexpr (std::is_same_v<T, Any>) {
-            return asAnyImpl();
+            return asAnyImpl(serializer);
         } else {
             static_assert(QtProtobufPrivate::HasProtobufPropertyOrdering<T>,
                           "T must have the Q_PROTOBUF_OBJECT macro");
             T obj;
-            if (asImpl(&obj, T::propertyOrdering))
+            if (asImpl(serializer, &obj, T::propertyOrdering))
                 return { std::move(obj) };
         }
         return std::nullopt;
     }
 
     template <typename T>
-    static Any fromMessage(const T &message, QAnyStringView typeUrlPrefix = defaultUrlPrefix())
+    static Any fromMessage(QAbstractProtobufSerializer *serializer, const T &message,
+                           QAnyStringView typeUrlPrefix = defaultUrlPrefix())
     {
         if constexpr (std::is_same_v<T, Any>)
-            return fromAnyMessageImpl(&message, typeUrlPrefix);
+            return fromAnyMessageImpl(serializer, &message, typeUrlPrefix);
 
         static_assert(QtProtobufPrivate::HasProtobufPropertyOrdering<T>,
                       "T must have the Q_PROTOBUF_OBJECT macro");
-        return fromMessageImpl(&message, T::propertyOrdering, typeUrlPrefix);
+        return fromMessageImpl(serializer, &message, T::propertyOrdering, typeUrlPrefix);
     }
 
 private:
     AnyPrivate *d_ptr;
     Q_DECLARE_PRIVATE(Any)
 
-    bool asImpl(QProtobufMessage *message,
+    bool asImpl(QAbstractProtobufSerializer *serializer, QProtobufMessage *message,
                 QtProtobufPrivate::QProtobufPropertyOrdering ordering) const;
-    std::optional<Any> asAnyImpl() const;
-    static Any fromMessageImpl(const QProtobufMessage *message,
+    std::optional<Any> asAnyImpl(QAbstractProtobufSerializer *serializer) const;
+    static Any fromMessageImpl(QAbstractProtobufSerializer *serializer,
+                               const QProtobufMessage *message,
                                QtProtobufPrivate::QProtobufPropertyOrdering ordering,
                                QAnyStringView typeUrlPrefix);
-    static Any fromAnyMessageImpl(const Any *message, QAnyStringView typeUrlPrefix);
+    static Any fromAnyMessageImpl(QAbstractProtobufSerializer *serializer,
+                                  const Any *message, QAnyStringView typeUrlPrefix);
 
     static QAnyStringView defaultUrlPrefix();
 

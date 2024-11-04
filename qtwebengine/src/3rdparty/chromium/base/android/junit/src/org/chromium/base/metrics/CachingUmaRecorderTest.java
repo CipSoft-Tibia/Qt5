@@ -36,6 +36,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /** Unit tests for {@link CachingUmaRecorderTest}. */
 @RunWith(BaseRobolectricTestRunner.class)
+@SuppressWarnings("DoNotMock") // Ok to mock UmaRecorder since this is testing metrics.
 public final class CachingUmaRecorderTest {
     @Mock
     UmaRecorder mUmaRecorder;
@@ -333,8 +334,6 @@ public final class CachingUmaRecorderTest {
         @Override
         public void recordExponentialHistogram(
                 String name, int sample, int min, int max, int numBuckets) {
-            // Ignore internal cache metrics.
-            if (name.startsWith("UMA.JavaCachingRecorder")) return;
             throw new UnsupportedOperationException();
         }
 
@@ -447,8 +446,6 @@ public final class CachingUmaRecorderTest {
         @Override
         public void recordExponentialHistogram(
                 String name, int sample, int min, int max, int numBuckets) {
-            // Ignore internal cache metrics.
-            if (name.startsWith("UMA.JavaCachingRecorder")) return;
             throw new UnsupportedOperationException();
         }
 

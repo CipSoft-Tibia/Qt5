@@ -8,18 +8,16 @@
 # property checked below, and is equivalent to qmake's CONFIG += warn_off.
 
 set(_qt_compiler_warning_flags_on "")
-set(_qt_compiler_warning_flags_off "")
+set(_qt_compiler_warning_flags_off -w)
 
 if (MSVC)
     list(APPEND _qt_compiler_warning_flags_on /W3)
-    list(APPEND _qt_compiler_warning_flags_off -W0)
 else()
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GHS") # There is no -Wextra flag for GHS compiler.
         list(APPEND _qt_compiler_warning_flags_on -Wall)
     else()
         list(APPEND _qt_compiler_warning_flags_on -Wall -Wextra)
     endif()
-    list(APPEND _qt_compiler_warning_flags_off -w)
 endif()
 
 set(_qt_compiler_warning_flags_condition
@@ -27,8 +25,15 @@ set(_qt_compiler_warning_flags_condition
 set(_qt_compiler_warning_flags_genex
     "$<IF:${_qt_compiler_warning_flags_condition},${_qt_compiler_warning_flags_off},${_qt_compiler_warning_flags_on}>")
 
+set(_qt_compiler_warning_flags_language_condition
+    "$<COMPILE_LANGUAGE:CXX,C,OBJC,OBJCXX>")
+set(_qt_compiler_warning_flags_language_conditional_genex
+    "$<${_qt_compiler_warning_flags_language_condition}:${_qt_compiler_warning_flags_genex}>")
+
+
 # Need to replace semicolons so that the list is not wrongly expanded in the add_compile_options
 # call.
 string(REPLACE ";" "$<SEMICOLON>"
-       _qt_compiler_warning_flags_genex "${_qt_compiler_warning_flags_genex}")
-add_compile_options(${_qt_compiler_warning_flags_genex})
+       _qt_compiler_warning_flags_language_conditional_genex
+       "${_qt_compiler_warning_flags_language_conditional_genex}")
+add_compile_options(${_qt_compiler_warning_flags_language_conditional_genex})

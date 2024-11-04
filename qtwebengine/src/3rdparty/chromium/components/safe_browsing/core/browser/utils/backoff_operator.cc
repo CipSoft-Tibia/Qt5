@@ -24,7 +24,7 @@ size_t BackoffOperator::GetBackoffDurationInSeconds() const {
                         2 * next_backoff_duration_secs_);
 }
 
-void BackoffOperator::ReportError() {
+bool BackoffOperator::ReportError() {
   consecutive_failures_++;
 
   // Any successful request clears both |consecutive_failures_| as well as
@@ -43,17 +43,19 @@ void BackoffOperator::ReportError() {
   //    exponential backoff.
 
   if (consecutive_failures_ < num_failures_to_enforce_backoff_)
-    return;
+    return false;
 
   if (IsInBackoffMode()) {
-    return;
+    return false;
   }
 
   // Enter backoff mode, calculate duration.
   next_backoff_duration_secs_ = GetBackoffDurationInSeconds();
   backoff_timer_.Start(FROM_HERE, base::Seconds(next_backoff_duration_secs_),
                        this, &BackoffOperator::ResetFailures);
+  last_backoff_start_time_ = base::Time::Now();
   did_successful_request_since_last_backoff_ = false;
+  return true;
 }
 
 void BackoffOperator::ReportSuccess() {
@@ -66,6 +68,12 @@ void BackoffOperator::ReportSuccess() {
 
 bool BackoffOperator::IsInBackoffMode() const {
   return backoff_timer_.IsRunning();
+}
+
+base::TimeDelta BackoffOperator::GetBackoffRemainingDuration() {
+  return IsInBackoffMode() ? base::Seconds(next_backoff_duration_secs_) -
+                                 (base::Time::Now() - last_backoff_start_time_)
+                           : base::Seconds(0);
 }
 
 void BackoffOperator::ResetFailures() {

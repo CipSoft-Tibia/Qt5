@@ -67,9 +67,6 @@ class TestImporter(object):
         # wpt_expectations_updater.SimpleTestResult.
         self.rebaselined_tests = set()
         self.new_test_expectations = {}
-        # New override expectations for Android targets. A dictionary mapping
-        # products to dictionary that maps test names to test expectation lines
-        self.new_override_expectations = {}
         self.verbose = False
 
         args = ['--clean-up-affected-tests-only',
@@ -200,6 +197,13 @@ class TestImporter(object):
 
         return 0
 
+    def log_try_job_results(self, try_job_results) -> None:
+        if try_job_results:
+            _log.info('Failing builder results:')
+            for builder, try_job_status in try_job_results.items():
+                if try_job_status.status != 'COMPLETED' or try_job_status.result != 'SUCCESS':
+                    _log.info(f'{builder}: {try_job_status}')
+
     def update_expectations_for_cl(self) -> bool:
         """Performs the expectation-updating part of an auto-import job.
 
@@ -218,6 +222,10 @@ class TestImporter(object):
 
         if not cl_status:
             _log.error('No initial try job results, aborting.')
+            issue_number = self.git_cl.get_issue_number()
+            try_job_results = self.git_cl.latest_try_jobs(issue_number,
+                                                          cq_only=False)
+            self.log_try_job_results(try_job_results)
             self.git_cl.run(['set-close'])
             return False
 
@@ -321,7 +329,10 @@ class TestImporter(object):
                 'upload', '-f', '--send-mail', '--enable-auto-submit',
                 '--reviewers', RUBBER_STAMPER_BOT
             ])
-            timeout = 1800
+            # Some internal builders (e.g., `win-branded-compile-rel`) only run
+            # on CQ+2 without reusing a CQ+1 build. Use a 1h timeout as well to
+            # accommodate them.
+            timeout = 3600
 
         if self.git_cl.wait_for_closed_status(timeout_seconds=timeout):
             _log.info('Update completed.')
@@ -467,8 +478,9 @@ class TestImporter(object):
         first ensures if upstream deletes some files, we also delete them.
         """
         _log.info('Cleaning out tests from %s.', self.dest_path)
-        should_remove = lambda fs, dirname, basename: (
-            is_file_exportable(fs.relpath(fs.join(dirname, basename), self.finder.chromium_base())))
+        should_remove = lambda fs, dirname, basename: (is_file_exportable(
+            fs.relpath(fs.join(dirname, basename), self.finder.chromium_base()
+                       ), self.host.project_config))
         files_to_delete = self.fs.files_under(
             self.dest_path, file_filter=should_remove)
         for subpath in files_to_delete:
@@ -512,6 +524,7 @@ class TestImporter(object):
             message += '\n'.join(
                 str(commit) for commit in locally_applied_commits)
         message += '\nNo-Export: true'
+        message += '\nValidate-Test-Flakiness: skip'
         return message
 
     def _delete_orphaned_baselines(self):
@@ -607,10 +620,12 @@ class TestImporter(object):
         # Prevent FindIt from auto-reverting import CLs.
         description += 'NOAUTOREVERT=true\n'
 
-        # Move any No-Export tag to the end of the description.
+        # Move any No-Export tag and flakiness footers to the end of the description.
         description = description.replace('No-Export: true', '')
-        description = description.replace('\n\n\n\n', '\n\n')
+        description = description.replace('Validate-Test-Flakiness: skip', '')
+        description = description.replace('\n\n\n\n\n', '\n\n')
         description += 'No-Export: true\n'
+        description += 'Validate-Test-Flakiness: skip\n'
 
         # Add the wptrunner MVP tryjobs as blocking trybots, to catch any test
         # changes or infrastructure changes from upstream.
@@ -714,7 +729,6 @@ class TestImporter(object):
             self.wpt_revision,
             self.rebaselined_tests,
             self.new_test_expectations,
-            self.new_override_expectations,
             issue,
             patchset,
             dry_run=not auto_file_bugs,

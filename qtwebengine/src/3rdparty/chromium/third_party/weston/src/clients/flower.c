@@ -187,6 +187,7 @@ int main(int argc, char *argv[])
 	flower.window = window_create(d);
 	flower.widget = window_add_widget(flower.window, &flower);
 	window_set_title(flower.window, "Flower");
+	window_set_appid(flower.window, "org.freedesktop.weston.flower");
 
 	widget_set_resize_handler(flower.widget, resize_handler);
 	widget_set_redraw_handler(flower.widget, redraw_handler);

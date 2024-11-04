@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtOpenGL/QOpenGLWindow>
 #include <QTest>
@@ -118,6 +118,9 @@ void tst_QOpenGLWindow::resize()
 {
     if (isPlatformWayland())
         QSKIP("Wayland: Crashes on Intel Mesa due to a driver bug (QTBUG-66848).");
+
+    if (QGuiApplication::platformName().startsWith(QLatin1String("eglfs"), Qt::CaseInsensitive))
+        QSKIP("EGLFS does not allow resizing on top level window");
 
     Window w;
     w.reset();

@@ -7,8 +7,8 @@
 #include <memory>
 #include <vector>
 
-#include "base/guid.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/uuid.h"
 #include "components/autofill/core/browser/autofill_test_utils.h"
 #include "components/autofill/core/browser/data_model/autofill_profile.h"
 #include "components/payments/core/payment_options_provider.h"
@@ -51,7 +51,7 @@ class MockPaymentOptionsProvider : public PaymentOptionsProvider {
 AutofillProfile CreateProfileWithContactInfo(const char* name,
                                              const char* email,
                                              const char* phone) {
-  AutofillProfile profile(base::GenerateGUID(), "http://www.example.test/");
+  AutofillProfile profile;
   autofill::test::SetProfileInfo(&profile, name, "", "", email, "", "", "", "",
                                  "", "", "", phone);
   return profile;
@@ -59,7 +59,7 @@ AutofillProfile CreateProfileWithContactInfo(const char* name,
 
 AutofillProfile CreateProfileWithCompleteAddress(const char* name,
                                                  const char* phone) {
-  AutofillProfile profile(base::GenerateGUID(), "http://www.example.test/");
+  AutofillProfile profile;
   autofill::test::SetProfileInfo(&profile, name, "", "", "", "", "123 Fake St.",
                                  "", "Fakesville", "MN", "54000", "US", phone);
   return profile;
@@ -67,7 +67,7 @@ AutofillProfile CreateProfileWithCompleteAddress(const char* name,
 
 AutofillProfile CreateProfileWithPartialAddress(const char* name,
                                                 const char* phone) {
-  AutofillProfile profile(base::GenerateGUID(), "http://www.example.test/");
+  AutofillProfile profile;
   autofill::test::SetProfileInfo(&profile, name, "", "", "", "", "123 Fake St.",
                                  "", "", "", "54000", "", phone);
   return profile;

@@ -8,6 +8,7 @@ The following table describes the mapping of configure options to CMake argument
 | -extprefix /opt/qt6                   | -DCMAKE_STAGING_PREFIX=/opt/qt6                   |                                                                 |
 | -bindir <dir>                         | -DINSTALL_BINDIR=<dir>                            | similar for -headerdir -libdir and so on                        |
 | -hostdatadir <dir>                    | -DINSTALL_MKSPECSDIR=<dir>                        |                                                                 |
+| -qt-host-path <dir>                   | -DQT_HOST_PATH=<dir>                              |                                                                 |
 | -help                                 | n/a                                               | Handled by configure[.bat].                                     |
 | -verbose                              | --log-level=STATUS                                | Sets the CMake log level to STATUS. The default one is NOTICE.  |
 | -continue                             |                                                   |                                                                 |
@@ -46,8 +47,8 @@ The following table describes the mapping of configure options to CMake argument
 | -appstore-compliant                   | -DFEATURE_appstore_compliant=ON                   |                                                                 |
 | -qtnamespace <name>                   | -DQT_NAMESPACE=<name>                             |                                                                 |
 | -qtlibinfix <infix>                   | -DQT_LIBINFIX=<infix>                             |                                                                 |
-| -testcocoon                           |                                                   |                                                                 |
-| -gcov                                 |                                                   |                                                                 |
+| -coverage <tool>                      | -DINPUT_coverage=<tool>                           | Enables code coverage using the specified tool.                 |
+| -gcov                                 | -DINPUT_coverage=gcov                             | Enables code coverage using the gcov tool.                      |
 | -trace [backend]                      | -DINPUT_trace=yes or -DINPUT_trace=<backend>      |                                                                 |
 |                                       | or -DFEATURE_<backend>                            |                                                                 |
 | -sanitize address -sanitize undefined | -DFEATURE_sanitize_address=ON                     | Directly setting -DECM_ENABLE_SANITIZERS=foo is not supported   |
@@ -77,7 +78,7 @@ The following table describes the mapping of configure options to CMake argument
 | -unity-build-batch-size <int>         | -DQT_UNITY_BUILD_BATCH_SIZE=<int>                 |                                                                 |
 | -warnings-are-errors                  | -DWARNINGS_ARE_ERRORS=ON                          |                                                                 |
 | -no-pkg-config                        | -DFEATURE_pkg_config=OFF                          |                                                                 |
-| -no-vcpkg                             | -DQT_USE_VCPKG=OFF                                |                                                                 |
+| -vcpkg                                | -DQT_USE_VCPKG=ON                                 |                                                                 |
 | -D <string>                           | -DQT_EXTRA_DEFINES=<string1>;<string2>            |                                                                 |
 | -I <string>                           | -DQT_EXTRA_INCLUDEPATHS=<string1>;<string2>       |                                                                 |
 | -L <string>                           | -DQT_EXTRA_LIBDIRS=<string1>;<string2>            |                                                                 |
@@ -93,6 +94,8 @@ The following table describes the mapping of configure options to CMake argument
 | -android-javac-source                 | -DQT_ANDROID_JAVAC_SOURCE=7                       | Set the javac build source version.                             |
 | -android-javac-target                 | -DQT_ANDROID_JAVAC_TARGET=7                       | Set the javac build target version.                             |
 | -skip <repo>,...,<repo_n>             | -DBUILD_<repo>=OFF                                |                                                                 |
+| -skip-tests <repo>,...,<repo_n>       | -DQT_BUILD_TESTS_PROJECT_<repo>=OFF               |                                                                 |
+| -skip-examples <repo>,...,<repo_n>    | -DQT_BUILD_EXAMPLES_PROJECT_<repo>=OFF            |                                                                 |
 | -submodules <repo>,...,<repo_n>       | -DQT_BUILD_SUBMODULES=<repo>;...;<repo>            |                                                                 |
 | -make <part>                          | -DQT_BUILD_TESTS=ON                               | A way to turn on tools explicitly is missing. If tests/examples |
 |                                       | -DQT_BUILD_EXAMPLES=ON                            | are enabled, you can disable their building as part of the      |
@@ -114,7 +117,6 @@ The following table describes the mapping of configure options to CMake argument
 | -doubleconversion                     | -DFEATURE_doubleconversion=ON                     |                                                                 |
 |                                       | -DFEATURE_system_doubleconversion=ON/OFF          |                                                                 |
 | -glib                                 | -DFEATURE_glib=ON                                 |                                                                 |
-| -eventfd                              | -DFEATURE_eventfd=ON                              |                                                                 |
 | -inotify                              | -DFEATURE_inotify=ON                              |                                                                 |
 | -icu                                  | -DFEATURE_icu=ON                                  |                                                                 |
 | -pcre                                 | -DFEATURE_pcre2=ON                                |                                                                 |

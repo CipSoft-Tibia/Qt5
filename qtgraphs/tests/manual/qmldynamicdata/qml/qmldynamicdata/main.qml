@@ -53,7 +53,7 @@ Item {
                 appendRow()
                 appendRow()
                 if (graphModel.count > 5000) {
-                    scatterGraph.theme.type = Theme3D.ThemeIsabelle;
+                    scatterGraph.theme.type = Theme3D.Theme.Isabelle;
                     isIncreasing = false;
                 }
             } else {
@@ -67,15 +67,15 @@ Item {
                 graphModel.remove(Math.random() * (graphModel.count - 1));
                 graphModel.remove(Math.random() * (graphModel.count - 1));
                 graphModel.remove(Math.random() * (graphModel.count - 1));
-                if (graphModel.count == 2) {
-                    scatterGraph.theme.type = Theme3D.ThemeDigia;
+                if (graphModel.count === 2) {
+                    scatterGraph.theme.type = Theme3D.Theme.PrimaryColors;
                     isIncreasing = true;
                 }
             }
         }
     }
 
-    ThemeColor {
+    Color {
         id: dynamicColor
         ColorAnimation on color {
             from: "red"
@@ -96,10 +96,10 @@ Item {
             width: dataView.width
             height: dataView.height
             theme: Theme3D {
-                type: Theme3D.ThemeQt
+                type: Theme3D.Theme.Qt
                 baseColors: [dynamicColor]
             }
-            shadowQuality: AbstractGraph3D.ShadowQualitySoftMedium
+            shadowQuality: AbstractGraph3D.ShadowQuality.SoftMedium
             scene.activeCamera.yRotation: 30.0
             inputHandler: null
             axisX.min: 0
@@ -112,7 +112,7 @@ Item {
             Scatter3DSeries {
                 id: scatterSeries
                 itemLabelFormat: "X:@xLabel Y:@yLabel Z:@zLabel"
-                mesh: Abstract3DSeries.MeshCube
+                mesh: Abstract3DSeries.Mesh.Cube
 
                 ItemModelScatterDataProxy {
                     itemModel: graphModel
@@ -129,17 +129,10 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
-            property int mouseX: -1
-            property int mouseY: -1
-
-            onPositionChanged: (mouse)=> {
-                mouseX = mouse.x;
-                mouseY = mouse.y;
-            }
 
             onWheel: (wheel)=> {
                 // Adjust zoom level based on what zoom range we're in.
-                var zoomLevel = scatterGraph.scene.activeCamera.zoomLevel;
+                var zoomLevel = scatterGraph.zoomLevel;
                 if (zoomLevel > 100)
                     zoomLevel += wheel.angleDelta.y / 12.0;
                 else if (zoomLevel > 50)
@@ -151,16 +144,17 @@ Item {
                 else if (zoomLevel < 10)
                     zoomLevel = 10;
 
-                scatterGraph.scene.activeCamera.zoomLevel = zoomLevel;
+                scatterGraph.zoomLevel = zoomLevel;
             }
         }
 
         Timer {
             id: reselectTimer
-            interval: 10
+            interval: 33
             running: true
             repeat: true
             onTriggered: {
+                scatterGraph.scene.selectionQueryPosition = Qt.point(-1, -1);
                 scatterGraph.scene.selectionQueryPosition = Qt.point(inputArea.mouseX, inputArea.mouseY);
             }
         }
@@ -170,8 +164,8 @@ Item {
         id: cameraAnimationX
         loops: Animation.Infinite
         running: true
-        target: scatterGraph.scene.activeCamera
-        property:"xRotation"
+        target: scatterGraph
+        property:"cameraXRotation"
         from: 0.0
         to: 360.0
         duration: 20000
@@ -184,8 +178,8 @@ Item {
         running: true
 
         NumberAnimation {
-            target: scatterGraph.scene.activeCamera
-            property:"yRotation"
+            target: scatterGraph
+            property:"cameraYRotation"
             from: 5.0
             to: 45.0
             duration: 9000
@@ -193,8 +187,8 @@ Item {
         }
 
         NumberAnimation {
-            target: scatterGraph.scene.activeCamera
-            property:"yRotation"
+            target: scatterGraph
+            property:"cameraYRotation"
             from: 45.0
             to: 5.0
             duration: 9000
@@ -209,11 +203,11 @@ Item {
         anchors.left: parent.left
 
         onClicked: {
-            if (scatterGraph.shadowQuality === AbstractGraph3D.ShadowQualityNone) {
-                scatterGraph.shadowQuality = AbstractGraph3D.ShadowQualitySoftMedium;
+            if (scatterGraph.shadowQuality === AbstractGraph3D.ShadowQuality.None) {
+                scatterGraph.shadowQuality = AbstractGraph3D.ShadowQuality.SoftMedium;
                 text = "Hide Shadows";
             } else {
-                scatterGraph.shadowQuality = AbstractGraph3D.ShadowQualityNone;
+                scatterGraph.shadowQuality = AbstractGraph3D.ShadowQuality.None;
                 text = "Show Shadows";
             }
         }

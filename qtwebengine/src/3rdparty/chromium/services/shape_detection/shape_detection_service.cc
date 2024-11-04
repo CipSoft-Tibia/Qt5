@@ -18,7 +18,6 @@
 #endif
 
 #if BUILDFLAG(IS_MAC)
-#include "base/mac/mac_util.h"
 #include "services/shape_detection/barcode_detection_provider_mac.h"
 #elif BUILDFLAG(IS_ANDROID)
 // No C++ code, barcode detection comes from Java.

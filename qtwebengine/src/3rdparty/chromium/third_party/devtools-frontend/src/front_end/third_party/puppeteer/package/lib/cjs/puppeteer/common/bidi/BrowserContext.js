@@ -14,39 +14,82 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
-    if (kind === "m") throw new TypeError("Private method is not writable");
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
-    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
-};
-var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
-    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
-};
-var _BrowserContext_connection;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BrowserContext = void 0;
 const BrowserContext_js_1 = require("../../api/BrowserContext.js");
-const Page_js_1 = require("./Page.js");
 /**
  * @internal
  */
 class BrowserContext extends BrowserContext_js_1.BrowserContext {
-    constructor(connection) {
+    #browser;
+    #connection;
+    #defaultViewport;
+    #isDefault = false;
+    constructor(browser, options) {
         super();
-        _BrowserContext_connection.set(this, void 0);
-        __classPrivateFieldSet(this, _BrowserContext_connection, connection, "f");
+        this.#browser = browser;
+        this.#connection = this.#browser.connection;
+        this.#defaultViewport = options.defaultViewport;
+        this.#isDefault = options.isDefault;
+    }
+    targets() {
+        return this.#browser.targets().filter(target => {
+            return target.browserContext() === this;
+        });
+    }
+    waitForTarget(predicate, options = {}) {
+        return this.#browser.waitForTarget(target => {
+            return target.browserContext() === this && predicate(target);
+        }, options);
+    }
+    get connection() {
+        return this.#connection;
     }
     async newPage() {
-        const result = (await __classPrivateFieldGet(this, _BrowserContext_connection, "f").send('browsingContext.create', {
-            type: 'tab',
-        }));
-        return new Page_js_1.Page(__classPrivateFieldGet(this, _BrowserContext_connection, "f"), result.context);
+        const { result } = await this.#connection.send('browsingContext.create', {
+            type: "tab" /* Bidi.BrowsingContext.CreateType.Tab */,
+        });
+        const target = this.#browser._getTargetById(result.context);
+        // TODO: once BiDi has some concept matching BrowserContext, the newly
+        // created contexts should get automatically assigned to the right
+        // BrowserContext. For now, we assume that only explicitly created pages go
+        // to the current BrowserContext. Otherwise, the contexts get assigned to
+        // the default BrowserContext by the Browser.
+        target._setBrowserContext(this);
+        const page = await target.page();
+        if (!page) {
+            throw new Error('Page is not found');
+        }
+        if (this.#defaultViewport) {
+            try {
+                await page.setViewport(this.#defaultViewport);
+            }
+            catch {
+                // No support for setViewport in Firefox.
+            }
+        }
+        return page;
     }
-    async close() { }
+    async close() {
+        if (this.#isDefault) {
+            throw new Error('Default context cannot be closed!');
+        }
+        await this.#browser._closeContext(this);
+    }
+    browser() {
+        return this.#browser;
+    }
+    async pages() {
+        const results = await Promise.all([...this.targets()].map(t => {
+            return t.page();
+        }));
+        return results.filter((p) => {
+            return p !== null;
+        });
+    }
+    isIncognito() {
+        return !this.#isDefault;
+    }
 }
 exports.BrowserContext = BrowserContext;
-_BrowserContext_connection = new WeakMap();
 //# sourceMappingURL=BrowserContext.js.map

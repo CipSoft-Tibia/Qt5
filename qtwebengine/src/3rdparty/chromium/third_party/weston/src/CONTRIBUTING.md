@@ -1,6 +1,31 @@
 Contributing to Weston
 =======================
 
+Sending patches
+---------------
+
+Patches should be sent via
+[GitLab merge requests](https://docs.gitlab.com/ce/gitlab-basics/add-merge-request.html).
+Weston is
+[hosted on freedesktop.org's GitLab](https://gitlab.freedesktop.org/wayland/weston/):
+in order to submit code, you should create an account on this GitLab instance,
+fork the core Weston repository, push your changes to a branch in your new
+repository, and then submit these patches for review through a merge request.
+
+### Forking & Permissions for new users
+
+Due to huge amounts of spam, freedesktop.org has disabled forking of existing
+projects for new users. Please head to
+[How can I contribute](https://gitlab.freedesktop.org/freedesktop/freedesktop/-/wikis/home#how-can-i-contribute-to-an-existing-project-or-create-a-new-one)
+and verify whether you need to perform additional steps.
+
+### Do not send patches over email
+
+Weston formerly accepted patches via `git-send-email`, sent to
+**wayland-devel\@lists.freedesktop.org**; these were
+[tracked using Patchwork](https://patchwork.freedesktop.org/project/wayland/).
+New email patches are no longer accepted.
+
 Finding something to work on
 ----------------------------
 
@@ -18,30 +43,12 @@ If you have picked an issue you would like to work on, you may want to mention
 in the issue tracker that you would like to pick it up. You can also discuss
 it with the developers in the issue tracker, or on the
 [mailing list](https://lists.freedesktop.org/mailman/listinfo/wayland-devel).
-Many developers also use IRC through [Freenode](https://freenode.net)'s
+Many developers also use IRC through [OFTC](https://www.oftc.net/)'s
 `#wayland` channel; however you may need to wait some time for a response on
 IRC, which requires keeping your client connected. If you cannot stay for a
 long time (potentially some hours due to timezone differences), then you
 may want to send your question to the list or issue tracker instead.
 
-
-Sending patches
----------------
-
-Patches should be sent via
-[GitLab merge requests](https://docs.gitlab.com/ce/gitlab-basics/add-merge-request.html).
-Weston is
-[hosted on freedesktop.org's GitLab](https://gitlab.freedesktop.org/wayland/weston/):
-in order to submit code, you should create an account on this GitLab instance,
-fork the core Weston repository, push your changes to a branch in your new
-repository, and then submit these patches for review through a merge request.
-
-Weston formerly accepted patches via `git-send-email`, sent to
-**wayland-devel\@lists.freedesktop.org**; these were
-[tracked using Patchwork](https://patchwork.freedesktop.org/projects/wayland/).
-Some old patches continue to be sent this way, and we may accept small new
-patches sent to the list, but please send all new patches through GitLab merge
-requests.
 
 Formatting and separating commits
 ---------------------------------
@@ -97,17 +104,20 @@ cope with the way git log presents them.
 See [notes on commit messages] for a recommended reading on writing commit
 messages.
 
-Your patches should also include a Signed-off-by line with your name and
-email address which indicates that you agree to the
+Your patches must also include a Signed-off-by line with your name
+(or pseudonym) and email address which indicates that you agree to the
 [Developer's Certificate of Origin 1.1](DCO-1.1.txt).
 If you're not the patch's original author, you should
-also gather S-o-b's by them (and/or whomever gave the patch to you.) The
+also gather S-o-b's from them (and/or whomever gave the patch to you) in
+addition to your own S-o-b. The
 significance of this is that it certifies that you created the patch,
 that it was created under an appropriate open source license, or
 provided to you under those terms.  This lets us indicate a chain of
 responsibility for the copyright status of the code.
 
-We won't reject patches that lack S-o-b, but it is strongly recommended.
+**Agreeing to DCO 1.1 is mandatory.** Patches without a Signed-off-by cannot
+be accepted, but using a pseudonym is fine as long as the email address is
+yours personally.
 
 When you re-send patches, revised or not, it would be very good to document the
 changes compared to the previous revision in the commit message and/or the
@@ -205,6 +215,10 @@ my_function(void)
         x = function_with_a_really_long_name(parameter1, parameter2,
                                              parameter3, parameter4);
 ```
+
+- do not write fallback paths for failed simple memory allocations, use the
+  `x*alloc()` wrappers from `shared/xalloc.h` instead or use
+  `abort_oom_if_null()`
 
 Conduct
 =======

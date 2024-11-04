@@ -23,6 +23,9 @@ QT_BEGIN_NAMESPACE
 
 class QTcpSocket;
 class QAbstractHttpServer;
+#if QT_CONFIG(localserver)
+class QLocalSocket;
+#endif
 
 class QHttpServerStream : public QObject
 {
@@ -32,7 +35,7 @@ class QHttpServerStream : public QObject
     friend class QHttpServerResponder;
 
 private:
-    QHttpServerStream(QAbstractHttpServer *server, QTcpSocket *socket);
+    QHttpServerStream(QAbstractHttpServer *server, QIODevice *socket);
 
     void write(const QByteArray &data);
     void write(const char *body, qint64 size);
@@ -43,7 +46,13 @@ private:
     void socketDisconnected();
 
     QAbstractHttpServer *server;
-    QTcpSocket *socket;
+    QIODevice *socket;
+    QTcpSocket *tcpSocket;
+#if QT_CONFIG(localserver)
+    QLocalSocket *localSocket;
+#endif
+
+    static QHttpServerRequest initRequestFromSocket(QTcpSocket *socket);
 
     QHttpServerRequest request;
 

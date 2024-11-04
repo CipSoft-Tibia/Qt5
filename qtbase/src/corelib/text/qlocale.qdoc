@@ -50,7 +50,7 @@
     \note For the current keyboard input locale take a look at
     QInputMethod::locale().
 
-    QLocale's data is based on Common Locale Data Repository v44.1.
+    QLocale's data is based on Common Locale Data Repository v45.
 
     \section1 Matching combinations of language, script and territory
 
@@ -253,6 +253,7 @@
     \value [since 6.0] Kuanyama
     \value Kurdish
     \value Kurundi Obsolete, please use Rundi
+    \value [since 6.8] Kuvi
     \value Kwanyama Obsolete, please use Kuanyama
     \value Kwasio
     \value [since 6.0] Kyrgyz
@@ -1153,7 +1154,7 @@
 */
 
 /*!
-    \fn QVariant QSystemLocale::query(QueryType type, QVariant in = QVariant()) const
+    \fn QVariant QSystemLocale::query(QueryType type, QVariant &&in = QVariant()) const
 
     Generic query method for locale data. Provides indirection.
     Denotes the \a type of the query

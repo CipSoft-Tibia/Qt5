@@ -192,7 +192,7 @@ QNetworkReply *QOAuth1Private::requestToken(QNetworkAccessManager::Operation ope
 
     QAbstractOAuthReplyHandler *handler = replyHandler ? replyHandler.data()
                                                        : defaultReplyHandler.data();
-    QObject::connect(reply, &QNetworkReply::finished,
+    QObject::connect(reply, &QNetworkReply::finished, handler,
                      [handler, reply]() { handler->networkReplyFinished(reply); });
     connect(handler, &QAbstractOAuthReplyHandler::tokensReceived, this,
             &QOAuth1Private::_q_tokensReceived);
@@ -609,7 +609,7 @@ QNetworkReply *QOAuth1::get(const QUrl &url, const QVariantMap &parameters)
     QNetworkRequest request(url);
     setup(&request, parameters, QNetworkAccessManager::GetOperation);
     QNetworkReply *reply = d->networkAccessManager()->get(request);
-    connect(reply, &QNetworkReply::finished, [this, reply]() { emit finished(reply); });
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() { emit finished(reply); });
     return reply;
 }
 
@@ -634,7 +634,7 @@ QNetworkReply *QOAuth1::post(const QUrl &url, const QVariantMap &parameters)
 
     const QByteArray data = d->convertParameters(parameters);
     QNetworkReply *reply = d->networkAccessManager()->post(request, data);
-    connect(reply, &QNetworkReply::finished, [this, reply]() { emit finished(reply); });
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() { emit finished(reply); });
     return reply;
 }
 
@@ -659,7 +659,7 @@ QNetworkReply *QOAuth1::put(const QUrl &url, const QVariantMap &parameters)
 
     const QByteArray data = d->convertParameters(parameters);
     QNetworkReply *reply = d->networkAccessManager()->put(request, data);
-    connect(reply, &QNetworkReply::finished, std::bind(&QAbstractOAuth::finished, this, reply));
+    connect(reply, &QNetworkReply::finished, this, std::bind(&QAbstractOAuth::finished, this, reply));
     return reply;
 }
 
@@ -681,7 +681,7 @@ QNetworkReply *QOAuth1::deleteResource(const QUrl &url, const QVariantMap &param
     QNetworkRequest request(url);
     setup(&request, parameters, QNetworkAccessManager::DeleteOperation);
     QNetworkReply *reply = d->networkAccessManager()->deleteResource(request);
-    connect(reply, &QNetworkReply::finished, [this, reply]() { emit finished(reply); });
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() { emit finished(reply); });
     return reply;
 }
 
@@ -855,7 +855,7 @@ void QOAuth1::grant()
     }
 
     QMetaObject::Connection connection;
-    connection = connect(this, &QAbstractOAuth::statusChanged, [&](Status status) {
+    connection = connect(this, &QAbstractOAuth::statusChanged, this, [&](Status status) {
         Q_D(QOAuth1);
 
         if (status == Status::TemporaryCredentialsReceived) {
@@ -883,8 +883,8 @@ void QOAuth1::grant()
 
     auto httpReplyHandler = qobject_cast<QOAuthHttpServerReplyHandler*>(replyHandler());
     if (httpReplyHandler) {
-        connect(httpReplyHandler, &QOAuthHttpServerReplyHandler::callbackReceived, [&](
-                const QVariantMap &values) {
+        auto func = [this](const QVariantMap &values) {
+            Q_D(QOAuth1);
             QString verifier = values.value(OAuth1::oauthVerifier).toString();
             if (verifier.isEmpty()) {
                 qCWarning(d->loggingCategory, "%s not found in the callback",
@@ -892,7 +892,8 @@ void QOAuth1::grant()
                 return;
             }
             continueGrantWithVerifier(verifier);
-        });
+        };
+        connect(httpReplyHandler, &QOAuthHttpServerReplyHandler::callbackReceived, this, func);
     }
 
     // requesting temporary credentials

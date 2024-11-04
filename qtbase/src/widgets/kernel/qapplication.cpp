@@ -310,7 +310,6 @@ QWidget *QApplication::topLevelAt(const QPoint &pos)
 */
 
 void qt_init_tooltip_palette();
-void qt_cleanup();
 
 QStyle *QApplicationPrivate::app_style = nullptr;        // default application style
 #ifndef QT_NO_STYLE_STYLESHEET
@@ -708,7 +707,10 @@ QApplication::~QApplication()
 
     d->cleanupMultitouch();
 
-    qt_cleanup();
+    QPixmapCache::clear();
+    QColormap::cleanup();
+
+    QApplicationPrivate::active_window = nullptr; //### this should not be necessary
 
     if (QApplicationPrivate::widgetCount)
         qDebug("Widgets left: %i    Max widgets: %i \n", QWidgetPrivate::instanceCounter, QWidgetPrivate::maxInstances);
@@ -717,14 +719,6 @@ QApplication::~QApplication()
 
     QApplicationPrivate::enabledAnimations = QPlatformTheme::GeneralUiEffect;
     QApplicationPrivate::widgetCount = false;
-}
-
-void qt_cleanup()
-{
-    QPixmapCache::clear();
-    QColormap::cleanup();
-
-    QApplicationPrivate::active_window = nullptr; //### this should not be necessary
 }
 
 /*!
@@ -2031,19 +2025,6 @@ QWidget *QApplicationPrivate::focusNextPrevChild_helper(QWidget *toplevel, bool 
  */
 void QApplicationPrivate::dispatchEnterLeave(QWidget* enter, QWidget* leave, const QPointF &globalPosF)
 {
-#if 0
-    if (leave) {
-        QEvent e(QEvent::Leave);
-        QCoreApplication::sendEvent(leave, & e);
-    }
-    if (enter) {
-        const QPoint windowPos = enter->window()->mapFromGlobal(globalPos);
-        QEnterEvent e(enter->mapFromGlobal(globalPos), windowPos, globalPos);
-        QCoreApplication::sendEvent(enter, & e);
-    }
-    return;
-#endif
-
     if ((!enter && !leave) || (enter == leave))
         return;
 
@@ -2664,6 +2645,7 @@ bool QApplication::notify(QObject *receiver, QEvent *e)
         Q_FALLTHROUGH();
     case QEvent::Leave:
         d->toolTipWakeUp.stop();
+        break;
     default:
         break;
     }
@@ -2688,6 +2670,7 @@ bool QApplication::notify(QObject *receiver, QEvent *e)
                     || key == Qt::Key_Up
                     || key == Qt::Key_Right
                     || key == Qt::Key_Down);
+        break;
     }
     default:
         break;
@@ -3045,8 +3028,16 @@ bool QApplication::notify(QObject *receiver, QEvent *e)
 #endif
                 w = qobject_cast<QWidget *>(QDragManager::self()->currentTarget());
 
-            if (!w)
-                break;
+            if (!w) {
+                // The widget that received DragEnter didn't accept the event, so we have no
+                // current drag target in the QDragManager. But DragLeave still needs to be
+                // dispatched so that enter/leave events are in balance (and so that UnderMouse
+                // gets cleared).
+                if (e->type() == QEvent::DragLeave)
+                    w = static_cast<QWidget *>(receiver);
+                else
+                    break;
+            }
             if (e->type() == QEvent::DragMove || e->type() == QEvent::Drop) {
                 QDropEvent *dragEvent = static_cast<QDropEvent *>(e);
                 QWidget *origReceiver = static_cast<QWidget *>(receiver);

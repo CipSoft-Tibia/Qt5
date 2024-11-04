@@ -28,6 +28,9 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
+
+constexpr std::chrono::milliseconds QNetworkRequest::DefaultTransferTimeout;
 
 QT_IMPL_METATYPE_EXTERN(QNetworkRequest)
 QT_IMPL_METATYPE_EXTERN_TAGGED(QNetworkRequest::RedirectPolicy, QNetworkRequest__RedirectPolicy)
@@ -136,7 +139,8 @@ QT_IMPL_METATYPE_EXTERN_TAGGED(QNetworkRequest::RedirectPolicy, QNetworkRequest_
         server (like "Ok", "Found", "Not Found", "Access Denied",
         etc.) This is the human-readable representation of the status
         code (see above). If the connection was not HTTP-based, this
-        attribute will not be present.
+        attribute will not be present. \e{Note:} The reason phrase is
+        not used when using HTTP/2.
 
     \value RedirectionTargetAttribute
         Replies only, type: QMetaType::QUrl (no default)
@@ -407,6 +411,16 @@ QT_IMPL_METATYPE_EXTERN_TAGGED(QNetworkRequest::RedirectPolicy, QNetworkRequest_
     \value DefaultTransferTimeoutConstant     The transfer timeout in milliseconds.
                                               Used if setTimeout() is called
                                               without an argument.
+
+    \sa QNetworkRequest::DefaultTransferTimeout
+ */
+
+/*!
+    \variable QNetworkRequest::DefaultTransferTimeout
+
+    The transfer timeout with \l {QNetworkRequest::TransferTimeoutConstant}
+    milliseconds. Used if setTransferTimeout() is called without an
+    argument.
  */
 
 class QNetworkRequestPrivate: public QSharedData, public QNetworkHeadersPrivate
@@ -419,7 +433,6 @@ public:
         , sslConfiguration(nullptr)
 #endif
         , maxRedirectsAllowed(maxRedirectCount)
-        , transferTimeout(0)
     { qRegisterMetaType<QNetworkRequest>(); }
     ~QNetworkRequestPrivate()
     {
@@ -479,7 +492,7 @@ public:
     QHttp2Configuration h2Configuration;
     qint64 decompressedSafetyCheckThreshold = 10ll * 1024ll * 1024ll;
 #endif
-    int transferTimeout;
+    std::chrono::milliseconds transferTimeout = 0ms;
 };
 
 /*!
@@ -617,8 +630,9 @@ void QNetworkRequest::setHeader(KnownHeaders header, const QVariant &value)
     network request.
 
     \sa rawHeader(), setRawHeader()
+    \note In Qt versions prior to 6.7, this function took QByteArray only.
 */
-bool QNetworkRequest::hasRawHeader(const QByteArray &headerName) const
+bool QNetworkRequest::hasRawHeader(QAnyStringView headerName) const
 {
     return d->findRawHeader(headerName) != d->rawHeaders.constEnd();
 }
@@ -632,12 +646,11 @@ bool QNetworkRequest::hasRawHeader(const QByteArray &headerName) const
     Raw headers can be set with setRawHeader() or with setHeader().
 
     \sa header(), setRawHeader()
+    \note In Qt versions prior to 6.7, this function took QByteArray only.
 */
-QByteArray QNetworkRequest::rawHeader(const QByteArray &headerName) const
+QByteArray QNetworkRequest::rawHeader(QAnyStringView headerName) const
 {
-    QNetworkHeadersPrivate::RawHeadersList::ConstIterator it =
-        d->findRawHeader(headerName);
-    if (it != d->rawHeaders.constEnd())
+    if (const auto it = d->findRawHeader(headerName); it != d->rawHeaders.constEnd())
         return it->second;
     return QByteArray();
 }
@@ -977,14 +990,11 @@ void QNetworkRequest::setDecompressedSafetyCheckThreshold(qint64 threshold)
 
     Returns the timeout used for transfers, in milliseconds.
 
-    This timeout is zero if setTransferTimeout hasn't been
-    called, which means that the timeout is not used.
-
-    \sa setTransferTimeout
+    \sa setTransferTimeout()
 */
 int QNetworkRequest::transferTimeout() const
 {
-    return d->transferTimeout;
+    return int(d->transferTimeout.count());
 }
 
 /*!
@@ -992,18 +1002,46 @@ int QNetworkRequest::transferTimeout() const
 
     Sets \a timeout as the transfer timeout in milliseconds.
 
-    Transfers are aborted if no bytes are transferred before
-    the timeout expires. Zero means no timer is set. If no
-    argument is provided, the timeout is
-    QNetworkRequest::DefaultTransferTimeoutConstant. If this function
-    is not called, the timeout is disabled and has the
-    value zero.
-
-    \sa transferTimeout
+    \sa setTransferTimeout(std::chrono::milliseconds),
+        transferTimeout(), transferTimeoutAsDuration()
 */
 void QNetworkRequest::setTransferTimeout(int timeout)
 {
-    d->transferTimeout = timeout;
+    d->transferTimeout = std::chrono::milliseconds(timeout);
+}
+
+/*!
+    \since 6.7
+
+    Returns the timeout duration after which the transfer is aborted if no
+    data is exchanged.
+
+    The default duration is zero, which means that the timeout is not used.
+
+    \sa setTransferTimeout(std::chrono::milliseconds)
+*/
+std::chrono::milliseconds QNetworkRequest::transferTimeoutAsDuration() const
+{
+    return d->transferTimeout;
+}
+
+/*!
+    \since 6.7
+
+    Sets the timeout \a duration to abort the transfer if no data is exchanged.
+
+    Transfers are aborted if no bytes are transferred before
+    the timeout expires. Zero means no timer is set. If no
+    argument is provided, the timeout is
+    QNetworkRequest::DefaultTransferTimeout. If this function
+    is not called, the timeout is disabled and has the
+    value zero.
+
+    \sa transferTimeoutAsDuration()
+*/
+void QNetworkRequest::setTransferTimeout(std::chrono::milliseconds duration)
+{
+    d->transferTimeout = duration;
 }
 #endif // QT_CONFIG(http) || defined (Q_OS_WASM)
 
@@ -1011,49 +1049,65 @@ static QByteArray headerName(QNetworkRequest::KnownHeaders header)
 {
     switch (header) {
     case QNetworkRequest::ContentTypeHeader:
-        return "Content-Type";
+        return "Content-Type"_ba;
 
     case QNetworkRequest::ContentLengthHeader:
-        return "Content-Length";
+        return "Content-Length"_ba;
 
     case QNetworkRequest::LocationHeader:
-        return "Location";
+        return "Location"_ba;
 
     case QNetworkRequest::LastModifiedHeader:
-        return "Last-Modified";
+        return "Last-Modified"_ba;
 
     case QNetworkRequest::IfModifiedSinceHeader:
-        return "If-Modified-Since";
+        return "If-Modified-Since"_ba;
 
     case QNetworkRequest::ETagHeader:
-        return "ETag";
+        return "ETag"_ba;
 
     case QNetworkRequest::IfMatchHeader:
-        return "If-Match";
+        return "If-Match"_ba;
 
     case QNetworkRequest::IfNoneMatchHeader:
-        return "If-None-Match";
+        return "If-None-Match"_ba;
 
     case QNetworkRequest::CookieHeader:
-        return "Cookie";
+        return "Cookie"_ba;
 
     case QNetworkRequest::SetCookieHeader:
-        return "Set-Cookie";
+        return "Set-Cookie"_ba;
 
     case QNetworkRequest::ContentDispositionHeader:
-        return "Content-Disposition";
+        return "Content-Disposition"_ba;
 
     case QNetworkRequest::UserAgentHeader:
-        return "User-Agent";
+        return "User-Agent"_ba;
 
     case QNetworkRequest::ServerHeader:
-        return "Server";
+        return "Server"_ba;
 
     // no default:
     // if new values are added, this will generate a compiler warning
     }
 
     return QByteArray();
+}
+
+static QByteArray makeCookieHeader(const QVariant &value, QNetworkCookie::RawForm type, QByteArrayView separator)
+{
+    QList<QNetworkCookie> cookies = qvariant_cast<QList<QNetworkCookie> >(value);
+    if (cookies.isEmpty() && value.userType() == qMetaTypeId<QNetworkCookie>())
+        cookies << qvariant_cast<QNetworkCookie>(value);
+
+    QByteArray result;
+    for (const QNetworkCookie &cookie : std::as_const(cookies)) {
+        result += cookie.toRawForm(type);
+        result += separator;
+    }
+    if (!result.isEmpty())
+        result.chop(separator.size());
+    return result;
 }
 
 static QByteArray headerValue(QNetworkRequest::KnownHeaders header, const QVariant &value)
@@ -1091,49 +1145,23 @@ static QByteArray headerValue(QNetworkRequest::KnownHeaders header, const QVaria
             return value.toByteArray();
         }
 
-    case QNetworkRequest::CookieHeader: {
-        QList<QNetworkCookie> cookies = qvariant_cast<QList<QNetworkCookie> >(value);
-        if (cookies.isEmpty() && value.userType() == qMetaTypeId<QNetworkCookie>())
-            cookies << qvariant_cast<QNetworkCookie>(value);
+    case QNetworkRequest::CookieHeader:
+        return makeCookieHeader(value, QNetworkCookie::NameAndValueOnly, "; ");
 
-        QByteArray result;
-        bool first = true;
-        for (const QNetworkCookie &cookie : std::as_const(cookies)) {
-            if (!first)
-                result += "; ";
-            first = false;
-            result += cookie.toRawForm(QNetworkCookie::NameAndValueOnly);
-        }
-        return result;
-    }
-
-    case QNetworkRequest::SetCookieHeader: {
-        QList<QNetworkCookie> cookies = qvariant_cast<QList<QNetworkCookie> >(value);
-        if (cookies.isEmpty() && value.userType() == qMetaTypeId<QNetworkCookie>())
-            cookies << qvariant_cast<QNetworkCookie>(value);
-
-        QByteArray result;
-        bool first = true;
-        for (const QNetworkCookie &cookie : std::as_const(cookies)) {
-            if (!first)
-                result += ", ";
-            first = false;
-            result += cookie.toRawForm(QNetworkCookie::Full);
-        }
-        return result;
-    }
+    case QNetworkRequest::SetCookieHeader:
+        return makeCookieHeader(value, QNetworkCookie::Full, ", ");
     }
 
     return QByteArray();
 }
 
-static int parseHeaderName(const QByteArray &headerName)
+static int parseHeaderName(QByteArrayView headerName)
 {
     if (headerName.isEmpty())
         return -1;
 
-    auto is = [&](const char *what) {
-        return qstrnicmp(headerName.data(), headerName.size(), what) == 0;
+    auto is = [headerName](QByteArrayView what) {
+        return headerName.compare(what, Qt::CaseInsensitive) == 0;
     };
 
     switch (QtMiscUtils::toAsciiLower(headerName.front())) {
@@ -1193,11 +1221,10 @@ static QVariant parseHttpDate(const QByteArray &raw)
     return QVariant();          // transform an invalid QDateTime into a null QVariant
 }
 
-static QVariant parseCookieHeader(const QByteArray &raw)
+static QVariant parseCookieHeader(QByteArrayView raw)
 {
     QList<QNetworkCookie> result;
-    const QList<QByteArray> cookieList = raw.split(';');
-    for (const QByteArray &cookie : cookieList) {
+    for (auto cookie : QLatin1StringView(raw).tokenize(';'_L1)) {
         QList<QNetworkCookie> parsed = QNetworkCookie::parseCookies(cookie.trimmed());
         if (parsed.size() != 1)
             return QVariant();  // invalid Cookie: header
@@ -1208,9 +1235,9 @@ static QVariant parseCookieHeader(const QByteArray &raw)
     return QVariant::fromValue(result);
 }
 
-static QVariant parseETag(const QByteArray &raw)
+static QVariant parseETag(QByteArrayView raw)
 {
-    const QByteArray trimmed = raw.trimmed();
+    const QByteArrayView trimmed = raw.trimmed();
     if (!trimmed.startsWith('"') && !trimmed.startsWith(R"(W/")"))
         return QVariant();
 
@@ -1220,46 +1247,34 @@ static QVariant parseETag(const QByteArray &raw)
     return QString::fromLatin1(trimmed);
 }
 
-static QVariant parseIfMatch(const QByteArray &raw)
+template<typename T>
+static QVariant parseMatchImpl(QByteArrayView raw, T op)
 {
-    const QByteArray trimmedRaw = raw.trimmed();
+    const QByteArrayView trimmedRaw = raw.trimmed();
     if (trimmedRaw == "*")
         return QStringList(QStringLiteral("*"));
 
     QStringList tags;
-    const QList<QByteArray> split = trimmedRaw.split(',');
-    for (const QByteArray &element : split) {
-        const QByteArray trimmed = element.trimmed();
-        if (!trimmed.startsWith('"'))
-            continue;
-
-        if (!trimmed.endsWith('"'))
-            continue;
-
-        tags += QString::fromLatin1(trimmed);
+    for (auto &element : QLatin1StringView(trimmedRaw).tokenize(','_L1)) {
+        if (const auto trimmed = element.trimmed(); op(trimmed))
+            tags += QString::fromLatin1(trimmed);
     }
     return tags;
 }
 
-static QVariant parseIfNoneMatch(const QByteArray &raw)
+
+static QVariant parseIfMatch(QByteArrayView raw)
 {
-    const QByteArray trimmedRaw = raw.trimmed();
-    if (trimmedRaw == "*")
-        return QStringList(QStringLiteral("*"));
+    return parseMatchImpl(raw, [](QByteArrayView element) {
+        return element.startsWith('"') && element.endsWith('"');
+    });
+}
 
-    QStringList tags;
-    const QList<QByteArray> split = trimmedRaw.split(',');
-    for (const QByteArray &element : split) {
-        const QByteArray trimmed = element.trimmed();
-        if (!trimmed.startsWith('"') && !trimmed.startsWith(R"(W/")"))
-            continue;
-
-        if (!trimmed.endsWith('"'))
-            continue;
-
-        tags += QString::fromLatin1(trimmed);
-    }
-    return tags;
+static QVariant parseIfNoneMatch(QByteArrayView raw)
+{
+    return parseMatchImpl(raw, [](QByteArrayView element) {
+        return (element.startsWith('"') || element.startsWith(R"(W/")")) && element.endsWith('"');
+    });
 }
 
 
@@ -1276,7 +1291,7 @@ static QVariant parseHeaderValue(QNetworkRequest::KnownHeaders header, const QBy
 
     case QNetworkRequest::ContentLengthHeader: {
         bool ok;
-        qint64 result = value.trimmed().toLongLong(&ok);
+        qint64 result = QByteArrayView(value).trimmed().toLongLong(&ok);
         if (ok)
             return result;
         return QVariant();
@@ -1315,15 +1330,14 @@ static QVariant parseHeaderValue(QNetworkRequest::KnownHeaders header, const QBy
 }
 
 QNetworkHeadersPrivate::RawHeadersList::ConstIterator
-QNetworkHeadersPrivate::findRawHeader(const QByteArray &key) const
+QNetworkHeadersPrivate::findRawHeader(QAnyStringView key) const
 {
-    RawHeadersList::ConstIterator it = rawHeaders.constBegin();
-    RawHeadersList::ConstIterator end = rawHeaders.constEnd();
-    for ( ; it != end; ++it)
-        if (it->first.compare(key, Qt::CaseInsensitive) == 0)
-            return it;
-
-    return end;                 // not found
+    auto isKeyEqual = [key](const auto &headerPair)
+    {
+        QLatin1StringView name{headerPair.first};
+        return QAnyStringView::compare(name, key, Qt::CaseInsensitive) == 0;
+    };
+    return std::find_if(rawHeaders.begin(), rawHeaders.end(), isKeyEqual);
 }
 
 QNetworkHeadersPrivate::RawHeadersList QNetworkHeadersPrivate::allRawHeaders() const
@@ -1335,10 +1349,8 @@ QList<QByteArray> QNetworkHeadersPrivate::rawHeadersKeys() const
 {
     QList<QByteArray> result;
     result.reserve(rawHeaders.size());
-    RawHeadersList::ConstIterator it = rawHeaders.constBegin(),
-                                 end = rawHeaders.constEnd();
-    for ( ; it != end; ++it)
-        result << it->first;
+    for (const auto &pair : rawHeaders)
+        result << pair.first;
 
     return result;
 }
@@ -1366,10 +1378,8 @@ void QNetworkHeadersPrivate::setAllRawHeaders(const RawHeadersList &list)
     cookedHeaders.clear();
     rawHeaders = list;
 
-    RawHeadersList::ConstIterator it = rawHeaders.constBegin();
-    RawHeadersList::ConstIterator end = rawHeaders.constEnd();
-    for ( ; it != end; ++it)
-        parseAndSetHeader(it->first, it->second);
+    for (const auto &[key, value] : std::as_const(rawHeaders))
+        parseAndSetHeader(key, value);
 }
 
 void QNetworkHeadersPrivate::setCookedHeader(QNetworkRequest::KnownHeaders header,
@@ -1534,3 +1544,5 @@ QByteArray QNetworkHeadersPrivate::toHttpDate(const QDateTime &dt)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qnetworkrequest.cpp"

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="ca">
+<TS version="2.1" language="ca_ES">
 <context>
     <name>QBluetoothDeviceDiscoveryAgent</name>
     <message>
@@ -57,7 +57,7 @@
     </message>
     <message>
         <source>Missing Location permission. Search is not possible.</source>
-        <translation>Manca el permís d&apos;ubicació. No es pot cercar.</translation>
+        <translation type="vanished">Manca el permís d&apos;ubicació. No es pot cercar.</translation>
     </message>
     <message>
         <source>Location service turned off. Search is not possible.</source>
@@ -65,7 +65,7 @@
     </message>
     <message>
         <source>Failed to start device discovery due to missing permissions.</source>
-        <translation>Ha fallat en iniciar el descobriment de dispositius degut a la manca de permisos.</translation>
+        <translation>Ha fallat en iniciar el descobriment de dispositius a causa de la manca de permisos.</translation>
     </message>
     <message>
         <source>Classic Discovery cannot be started</source>
@@ -120,7 +120,7 @@
     </message>
     <message>
         <source>Failed to start service discovery due to missing permissions.</source>
-        <translation>Ha fallat en iniciar el descobriment de dispositius degut a la manca de permisos.</translation>
+        <translation>Ha fallat en iniciar el descobriment de dispositius a causa de la manca de permisos.</translation>
     </message>
     <message>
         <source>Cannot create Android BluetoothDevice</source>
@@ -132,7 +132,7 @@
     </message>
     <message>
         <source>Serial Port Profile</source>
-        <translation>Perfil del port sèrie</translation>
+        <translation>Perfil del port en sèrie</translation>
     </message>
     <message>
         <source>Device is powered off</source>
@@ -1165,6 +1165,10 @@
         <translation>Mesura del pes</translation>
     </message>
     <message>
+        <source>Weight Scale Feature</source>
+        <translation>Característica de l&apos;escala de pes</translation>
+    </message>
+    <message>
         <source>User Control Point</source>
         <translation>Punt de control de l&apos;usuari</translation>
     </message>
@@ -1286,7 +1290,7 @@
     </message>
     <message>
         <source>Bluetooth socket connect failed due to missing permissions.</source>
-        <translation>Ha fallat la connexió al sòcol de Bluetooth degut a la manca de permisos.</translation>
+        <translation>Ha fallat la connexió al sòcol de Bluetooth a causa de la manca de permisos.</translation>
     </message>
     <message>
         <source>Device does not support Bluetooth</source>

@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "testcompiler.h"
 
@@ -104,7 +104,8 @@ static inline QStringList systemEnvironment()
 #ifdef Q_OS_WIN
     static QStringList result;
     if (result.isEmpty()) {
-        foreach (const QString &variable, QProcess::systemEnvironment()) {
+        const auto env = QProcess::systemEnvironment();
+        for (const QString &variable : env) {
             if (variable.startsWith(QStringLiteral("MAKEFLAGS="), Qt::CaseInsensitive)) {
                 qWarning("Removing environment setting '%s'", qPrintable(variable));
             } else {
@@ -123,7 +124,7 @@ bool TestCompiler::runCommand(const QString &cmd, const QStringList &args, bool 
     QString dbg = cmd;
     if (dbg.contains(' '))
         dbg.prepend('"').append('"');
-    foreach (QString arg, args) {
+    for (QString arg : args) {
         if (arg.contains(' '))
             arg.prepend('"').append('"');
         dbg.append(' ').append(arg);

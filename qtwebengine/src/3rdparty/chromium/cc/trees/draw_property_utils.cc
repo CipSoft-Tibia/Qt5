@@ -266,7 +266,7 @@ ConditionalClip ComputeAccumulatedClip(PropertyTrees* property_trees,
   while (target_node->clip_id < clip_node->id) {
     if (parent_chain.size() > 0) {
       // Search the cache.
-      for (size_t i = 0; i < clip_node->cached_clip_rects->size(); ++i) {
+      for (size_t i = 0; i < clip_node->cached_clip_rects.size(); ++i) {
         auto& data = clip_node->cached_clip_rects[i];
         if (data.target_id == target_id) {
           cache_hit = true;
@@ -832,7 +832,7 @@ void ComputeClips(PropertyTrees* property_trees) {
        ++i) {
     ClipNode* clip_node = clip_tree->Node(i);
     // Clear the clip rect cache
-    clip_node->cached_clip_rects->clear();
+    clip_node->cached_clip_rects.clear();
     if (clip_node->id == kViewportPropertyNodeId) {
       clip_node->cached_accumulated_rect_in_screen_space = clip_node->clip;
       continue;
@@ -856,10 +856,12 @@ void ComputeSurfaceDrawProperties(PropertyTrees* property_trees,
   SetSurfaceDrawOpacity(property_trees->effect_tree(), render_surface);
   SetSurfaceDrawTransform(property_trees, render_surface);
 
-  render_surface->SetMaskFilterInfo(
+  auto mask_filter_info_pair =
       GetMaskFilterInfoPair(property_trees, render_surface->EffectTreeIndex(),
-                            /*for_render_surface=*/true)
-          .first);
+                            /*for_render_surface=*/true);
+  render_surface->SetMaskFilterInfo(
+      /*mask_filter_info=*/mask_filter_info_pair.first,
+      /*is_fast_rounded_corner=*/mask_filter_info_pair.second);
   render_surface->SetScreenSpaceTransform(
       property_trees->ToScreenSpaceTransformWithoutSurfaceContentsScale(
           render_surface->TransformTreeIndex(),
@@ -1167,14 +1169,8 @@ void UpdateElasticOverscroll(
   // from the overscrolled edge by applying a stretch transform
   overscroll_elasticity_transform_node->local.MakeIdentity();
   overscroll_elasticity_transform_node->origin.SetPoint(0.f, 0.f, 0.f);
-  if (base::FeatureList::IsEnabled(
-          features::kAvoidRasterDuringElasticOverscroll)) {
-    overscroll_elasticity_transform_node->has_potential_animation =
-        !elastic_overscroll.IsZero();
-  } else {
-    overscroll_elasticity_transform_node->to_screen_is_potentially_animated =
-        !elastic_overscroll.IsZero();
-  }
+  overscroll_elasticity_transform_node->has_potential_animation =
+      !elastic_overscroll.IsZero();
 
   if (!elastic_overscroll.IsZero() && inner_viewport) {
     // The inner viewport container size takes into account the size change as a
@@ -1604,7 +1600,7 @@ bool LogDoubleBackgroundBlur(const LayerTreeImpl& layer_tree_impl,
       if (filters.HasFilterOfType(FilterOperation::BLUR)) {
         if (!render_surface->content_rect().IsEmpty()) {
           const LayerImpl* layer_impl =
-              layer_tree_impl.LayerById(effect_node->stable_id);
+              layer_tree_impl.LayerByElementId(effect_node->element_id);
           gfx::Rect screen_space_rect = MathUtil::MapEnclosingClippedRect(
               render_surface->screen_space_transform(),
               render_surface->content_rect());

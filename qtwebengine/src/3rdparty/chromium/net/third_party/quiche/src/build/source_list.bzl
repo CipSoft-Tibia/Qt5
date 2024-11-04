@@ -9,17 +9,7 @@ protobuf_test_support = [
     "quic/test_tools/send_algorithm_test_result.proto",
 ]
 quiche_core_hdrs = [
-    "balsa/balsa_enums.h",
-    "balsa/balsa_frame.h",
-    "balsa/balsa_headers.h",
-    "balsa/balsa_visitor_interface.h",
-    "balsa/framer_interface.h",
-    "balsa/header_api.h",
-    "balsa/header_properties.h",
-    "balsa/http_validation_policy.h",
-    "balsa/noop_balsa_visitor.h",
-    "balsa/simple_buffer.h",
-    "balsa/standard_header_map.h",
+    "common/btree_scheduler.h",
     "common/capsule.h",
     "common/masque/connect_udp_datagram_payload.h",
     "common/platform/api/quiche_bug_tracker.h",
@@ -41,11 +31,11 @@ quiche_core_hdrs = [
     "common/platform/api/quiche_stack_trace.h",
     "common/platform/api/quiche_testvalue.h",
     "common/platform/api/quiche_thread.h",
-    "common/platform/api/quiche_thread_local.h",
     "common/platform/api/quiche_time_utils.h",
     "common/platform/api/quiche_url_utils.h",
     "common/print_elements.h",
     "common/quiche_buffer_allocator.h",
+    "common/quiche_callbacks.h",
     "common/quiche_circular_deque.h",
     "common/quiche_crypto_logging.h",
     "common/quiche_data_reader.h",
@@ -305,6 +295,7 @@ quiche_core_hdrs = [
     "quic/core/quic_flags_list.h",
     "quic/core/quic_flow_controller.h",
     "quic/core/quic_framer.h",
+    "quic/core/quic_generic_session.h",
     "quic/core/quic_idle_network_detector.h",
     "quic/core/quic_interval.h",
     "quic/core/quic_interval_deque.h",
@@ -339,7 +330,6 @@ quiche_core_hdrs = [
     "quic/core/quic_time.h",
     "quic/core/quic_time_accumulator.h",
     "quic/core/quic_time_wait_list_manager.h",
-    "quic/core/quic_trace_visitor.h",
     "quic/core/quic_transmission_info.h",
     "quic/core/quic_types.h",
     "quic/core/quic_unacked_packet_map.h",
@@ -401,15 +391,10 @@ quiche_core_hdrs = [
     "spdy/core/spdy_protocol.h",
     "spdy/core/spdy_simple_arena.h",
     "spdy/core/zero_copy_output_buffer.h",
+    "web_transport/complete_buffer_visitor.h",
     "web_transport/web_transport.h",
 ]
 quiche_core_srcs = [
-    "balsa/balsa_enums.cc",
-    "balsa/balsa_frame.cc",
-    "balsa/balsa_headers.cc",
-    "balsa/header_properties.cc",
-    "balsa/simple_buffer.cc",
-    "balsa/standard_header_map.cc",
     "common/capsule.cc",
     "common/masque/connect_udp_datagram_payload.cc",
     "common/platform/api/quiche_hostname_utils.cc",
@@ -613,7 +598,6 @@ quiche_core_srcs = [
     "quic/core/quic_bandwidth.cc",
     "quic/core/quic_buffered_packet_store.cc",
     "quic/core/quic_chaos_protector.cc",
-    "quic/core/quic_clock.cc",
     "quic/core/quic_coalesced_packet.cc",
     "quic/core/quic_config.cc",
     "quic/core/quic_connection.cc",
@@ -637,6 +621,7 @@ quiche_core_srcs = [
     "quic/core/quic_error_codes.cc",
     "quic/core/quic_flow_controller.cc",
     "quic/core/quic_framer.cc",
+    "quic/core/quic_generic_session.cc",
     "quic/core/quic_idle_network_detector.cc",
     "quic/core/quic_mtu_discovery.cc",
     "quic/core/quic_network_blackhole_detector.cc",
@@ -661,7 +646,6 @@ quiche_core_srcs = [
     "quic/core/quic_tag.cc",
     "quic/core/quic_time.cc",
     "quic/core/quic_time_wait_list_manager.cc",
-    "quic/core/quic_trace_visitor.cc",
     "quic/core/quic_transmission_info.cc",
     "quic/core/quic_types.cc",
     "quic/core/quic_unacked_packet_map.cc",
@@ -697,16 +681,19 @@ quiche_core_srcs = [
     "spdy/core/spdy_prefixed_buffer_reader.cc",
     "spdy/core/spdy_protocol.cc",
     "spdy/core/spdy_simple_arena.cc",
+    "web_transport/complete_buffer_visitor.cc",
 ]
 quiche_tool_support_hdrs = [
     "common/platform/api/quiche_command_line_flags.h",
     "common/platform/api/quiche_default_proof_providers.h",
     "common/platform/api/quiche_file_utils.h",
     "common/platform/api/quiche_system_event_loop.h",
+    "quic/core/quic_trace_visitor.h",
     "quic/platform/api/quic_default_proof_providers.h",
     "quic/tools/connect_server_backend.h",
     "quic/tools/connect_tunnel.h",
     "quic/tools/connect_udp_tunnel.h",
+    "quic/tools/devious_baton.h",
     "quic/tools/fake_proof_verifier.h",
     "quic/tools/quic_backend_response.h",
     "quic/tools/quic_client_base.h",
@@ -728,9 +715,11 @@ quiche_tool_support_hdrs = [
 ]
 quiche_tool_support_srcs = [
     "common/platform/api/quiche_file_utils.cc",
+    "quic/core/quic_trace_visitor.cc",
     "quic/tools/connect_server_backend.cc",
     "quic/tools/connect_tunnel.cc",
     "quic/tools/connect_udp_tunnel.cc",
+    "quic/tools/devious_baton.cc",
     "quic/tools/quic_backend_response.cc",
     "quic/tools/quic_client_base.cc",
     "quic/tools/quic_memory_cache_backend.cc",
@@ -788,6 +777,7 @@ quiche_test_support_hdrs = [
     "quic/test_tools/limited_mtu_test_writer.h",
     "quic/test_tools/mock_clock.h",
     "quic/test_tools/mock_connection_id_generator.h",
+    "quic/test_tools/mock_load_balancer_encoder.h",
     "quic/test_tools/mock_quic_client_promised_info.h",
     "quic/test_tools/mock_quic_dispatcher.h",
     "quic/test_tools/mock_quic_session_visitor.h",
@@ -948,6 +938,29 @@ quiche_test_support_srcs = [
     "spdy/test_tools/mock_spdy_framer_visitor.cc",
     "spdy/test_tools/spdy_test_utils.cc",
 ]
+balsa_hdrs = [
+    "balsa/balsa_enums.h",
+    "balsa/balsa_frame.h",
+    "balsa/balsa_headers.h",
+    "balsa/balsa_headers_sequence.h",
+    "balsa/balsa_visitor_interface.h",
+    "balsa/framer_interface.h",
+    "balsa/header_api.h",
+    "balsa/header_properties.h",
+    "balsa/http_validation_policy.h",
+    "balsa/noop_balsa_visitor.h",
+    "balsa/simple_buffer.h",
+    "balsa/standard_header_map.h",
+]
+balsa_srcs = [
+    "balsa/balsa_enums.cc",
+    "balsa/balsa_frame.cc",
+    "balsa/balsa_headers.cc",
+    "balsa/balsa_headers_sequence.cc",
+    "balsa/header_properties.cc",
+    "balsa/simple_buffer.cc",
+    "balsa/standard_header_map.cc",
+]
 io_tool_support_hdrs = [
     "common/platform/api/quiche_event_loop.h",
     "common/platform/api/quiche_udp_socket_platform_api.h",
@@ -957,6 +970,7 @@ io_tool_support_hdrs = [
     "quic/core/io/quic_event_loop.h",
     "quic/core/io/quic_poll_event_loop.h",
     "quic/core/io/socket.h",
+    "quic/core/io/socket_internal.h",
     "quic/core/quic_default_packet_writer.h",
     "quic/core/quic_packet_reader.h",
     "quic/core/quic_syscall_wrapper.h",
@@ -983,11 +997,15 @@ io_tool_support_srcs = [
     "quic/core/io/event_loop_socket_factory.cc",
     "quic/core/io/quic_default_event_loop.cc",
     "quic/core/io/quic_poll_event_loop.cc",
-    "quic/core/io/socket_posix.cc",
+    "quic/core/io/socket.cc",
+    "quic/core/io/socket_posix.inc",
+    "quic/core/io/socket_win.inc",
     "quic/core/quic_default_packet_writer.cc",
     "quic/core/quic_packet_reader.cc",
     "quic/core/quic_syscall_wrapper.cc",
-    "quic/core/quic_udp_socket_posix.cc",
+    "quic/core/quic_udp_socket.cc",
+    "quic/core/quic_udp_socket_posix.inc",
+    "quic/core/quic_udp_socket_win.inc",
     "quic/masque/masque_client.cc",
     "quic/masque/masque_client_session.cc",
     "quic/masque/masque_client_tools.cc",
@@ -1018,14 +1036,15 @@ io_test_support_srcs = [
     "quic/test_tools/server_thread.cc",
 ]
 quiche_tests_hdrs = [
-
 ]
 quiche_tests_srcs = [
     "balsa/balsa_frame_test.cc",
+    "balsa/balsa_headers_sequence_test.cc",
     "balsa/balsa_headers_test.cc",
     "balsa/header_properties_test.cc",
     "balsa/simple_buffer_test.cc",
     "binary_http/binary_http_message_test.cc",
+    "common/btree_scheduler_test.cc",
     "common/capsule_test.cc",
     "common/masque/connect_udp_datagram_payload_test.cc",
     "common/platform/api/quiche_file_utils_test.cc",
@@ -1038,6 +1057,7 @@ quiche_tests_srcs = [
     "common/platform/api/quiche_url_utils_test.cc",
     "common/print_elements_test.cc",
     "common/quiche_buffer_allocator_test.cc",
+    "common/quiche_callbacks_test.cc",
     "common/quiche_circular_deque_test.cc",
     "common/quiche_data_reader_test.cc",
     "common/quiche_data_writer_test.cc",
@@ -1215,6 +1235,7 @@ quiche_tests_srcs = [
     "quic/core/quic_error_codes_test.cc",
     "quic/core/quic_flow_controller_test.cc",
     "quic/core/quic_framer_test.cc",
+    "quic/core/quic_generic_session_test.cc",
     "quic/core/quic_idle_network_detector_test.cc",
     "quic/core/quic_interval_deque_test.cc",
     "quic/core/quic_interval_set_test.cc",
@@ -1286,7 +1307,6 @@ quiche_tests_srcs = [
     "spdy/core/spdy_simple_arena_test.cc",
 ]
 io_tests_hdrs = [
-
 ]
 io_tests_srcs = [
     "quic/core/chlo_extractor_test.cc",
@@ -1305,10 +1325,10 @@ io_tests_srcs = [
     "quic/tools/quic_url_test.cc",
 ]
 fuzzers_hdrs = [
-
 ]
 fuzzers_srcs = [
     "common/structured_headers_fuzzer.cc",
+    "http2/decoder/http2_frame_decoder_fuzzer.cc",
     "quic/core/crypto/certificate_view_der_fuzzer.cc",
     "quic/core/crypto/certificate_view_pem_fuzzer.cc",
     "quic/core/qpack/fuzzer/qpack_decoder_fuzzer.cc",
@@ -1319,6 +1339,7 @@ fuzzers_srcs = [
     "quic/core/qpack/fuzzer/qpack_round_trip_fuzzer.cc",
     "quic/test_tools/fuzzing/quic_framer_fuzzer.cc",
     "quic/test_tools/fuzzing/quic_framer_process_data_packet_fuzzer.cc",
+    "spdy/core/http2_frame_decoder_adapter_fuzzer.cc",
 ]
 cli_tools_hdrs = [
     "quic/tools/quic_server_factory.h",
@@ -1338,6 +1359,7 @@ cli_tools_srcs = [
     "quic/tools/quic_server_factory.cc",
     "quic/tools/quic_toy_client.cc",
     "quic/tools/quic_toy_server.cc",
+    "quic/tools/web_transport_test_server.cc",
 ]
 nghttp2_hdrs = [
     "http2/adapter/callback_visitor.h",
@@ -1366,7 +1388,6 @@ nghttp2_test_support_srcs = [
     "http2/adapter/nghttp2_test_utils.cc",
 ]
 nghttp2_tests_hdrs = [
-
 ]
 nghttp2_tests_srcs = [
     "http2/adapter/adapter_impl_comparison_test.cc",
@@ -1380,7 +1401,6 @@ default_platform_impl_hdrs = [
     "common/platform/default/quiche_platform_impl/quiche_bug_tracker_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_client_stats_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_containers_impl.h",
-    "common/platform/default/quiche_platform_impl/quiche_default_proof_providers_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_event_loop_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_export_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_flag_utils_impl.h",
@@ -1396,13 +1416,13 @@ default_platform_impl_hdrs = [
     "common/platform/default/quiche_platform_impl/quiche_server_stats_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_stack_trace_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_testvalue_impl.h",
-    "common/platform/default/quiche_platform_impl/quiche_thread_local_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_time_utils_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_udp_socket_platform_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_url_utils_impl.h",
 ]
 default_platform_impl_srcs = [
     "common/platform/default/quiche_platform_impl/quiche_flags_impl.cc",
+    "common/platform/default/quiche_platform_impl/quiche_logging_impl.cc",
     "common/platform/default/quiche_platform_impl/quiche_mutex_impl.cc",
     "common/platform/default/quiche_platform_impl/quiche_stack_trace_impl.cc",
     "common/platform/default/quiche_platform_impl/quiche_time_utils_impl.cc",
@@ -1410,12 +1430,14 @@ default_platform_impl_srcs = [
 ]
 default_platform_impl_tool_support_hdrs = [
     "common/platform/default/quiche_platform_impl/quiche_command_line_flags_impl.h",
+    "common/platform/default/quiche_platform_impl/quiche_default_proof_providers_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_file_utils_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_stream_buffer_allocator_impl.h",
     "common/platform/default/quiche_platform_impl/quiche_system_event_loop_impl.h",
 ]
 default_platform_impl_tool_support_srcs = [
     "common/platform/default/quiche_platform_impl/quiche_command_line_flags_impl.cc",
+    "common/platform/default/quiche_platform_impl/quiche_default_proof_providers_impl.cc",
     "common/platform/default/quiche_platform_impl/quiche_file_utils_impl.cc",
 ]
 default_platform_impl_test_support_hdrs = [
@@ -1547,6 +1569,67 @@ qbone_srcs = [
     "quic/qbone/qbone_stream.cc",
     "quic/qbone/qbone_stream_test.cc",
 ]
+blind_sign_auth_hdrs = [
+    "blind_sign_auth/anonymous_tokens/cpp/client/anonymous_tokens_rsa_bssa_client.h",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/anonymous_tokens_pb_openssl_converters.h",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/blind_signer.h",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/blinder.h",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/constants.h",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/crypto_utils.h",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_blind_signer.h",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_blinder.h",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_ssa_pss_verifier.h",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/verifier.h",
+    "blind_sign_auth/anonymous_tokens/cpp/shared/proto_utils.h",
+    "blind_sign_auth/anonymous_tokens/cpp/shared/status_utils.h",
+    "blind_sign_auth/anonymous_tokens/cpp/testing/proto_utils.h",
+    "blind_sign_auth/anonymous_tokens/cpp/testing/utils.h",
+    "blind_sign_auth/blind_sign_auth.h",
+    "blind_sign_auth/blind_sign_auth_interface.h",
+    "blind_sign_auth/blind_sign_auth_protos.h",
+    "blind_sign_auth/blind_sign_http_interface.h",
+    "blind_sign_auth/blind_sign_http_response.h",
+    "blind_sign_auth/cached_blind_sign_auth.h",
+    "blind_sign_auth/test_tools/mock_blind_sign_auth_interface.h",
+    "blind_sign_auth/test_tools/mock_blind_sign_http_interface.h",
+]
+blind_sign_auth_srcs = [
+    "blind_sign_auth/anonymous_tokens/cpp/client/anonymous_tokens_rsa_bssa_client.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/anonymous_tokens_pb_openssl_converters.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/crypto_utils.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_blind_signer.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_blinder.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_ssa_pss_verifier.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/shared/proto_utils.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/testing/proto_utils.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/testing/utils.cc",
+    "blind_sign_auth/blind_sign_auth.cc",
+    "blind_sign_auth/cached_blind_sign_auth.cc",
+]
+blind_sign_auth_tests_hdrs = [
+]
+blind_sign_auth_tests_srcs = [
+    "blind_sign_auth/anonymous_tokens/cpp/client/anonymous_tokens_rsa_bssa_client_test.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/anonymous_tokens_pb_openssl_converters_test.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/at_crypto_utils_test.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_blind_signer_test.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_blinder_test.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/crypto/rsa_ssa_pss_verifier_test.cc",
+    "blind_sign_auth/anonymous_tokens/cpp/shared/proto_utils_test.cc",
+    "blind_sign_auth/blind_sign_auth_test.cc",
+    "blind_sign_auth/cached_blind_sign_auth_test.cc",
+]
+protobuf_blind_sign_auth = [
+    "blind_sign_auth/anonymous_tokens/proto/anonymous_tokens.proto",
+    "blind_sign_auth/proto/any.proto",
+    "blind_sign_auth/proto/attestation.proto",
+    "blind_sign_auth/proto/auth_and_sign.proto",
+    "blind_sign_auth/proto/get_initial_data.proto",
+    "blind_sign_auth/proto/key_services.proto",
+    "blind_sign_auth/proto/public_metadata.proto",
+    "blind_sign_auth/proto/spend_token_data.proto",
+    "blind_sign_auth/proto/timestamp.proto",
+]
 libevent_hdrs = [
     "quic/bindings/quic_libevent.h",
 ]
@@ -1570,7 +1653,6 @@ linux_only_srcs = [
     "quic/core/quic_linux_socket_utils.cc",
 ]
 linux_only_tests_hdrs = [
-
 ]
 linux_only_tests_srcs = [
     "quic/core/batch_writer/quic_batch_writer_buffer_test.cc",

@@ -4,9 +4,11 @@
 
 #include <limits>
 
+#include "build/build_config.h"
 #include "core/fxcrt/fx_string.h"
+#include "core/fxcrt/utf16.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
 char* TerminatedFloatToString(float value, pdfium::span<char> buf) {
   size_t buflen = FloatToString(value, buf);
@@ -20,52 +22,135 @@ char* TerminatedDoubleToString(double value, pdfium::span<char> buf) {
   return buf.data();
 }
 
-TEST(fxstring, FX_UTF8Encode) {
+TEST(fxstring, FXUTF8Encode) {
   EXPECT_EQ("", FX_UTF8Encode(WideStringView()));
   EXPECT_EQ(
       "x"
-      "\xc2\x80"
-      "\xc3\xbf"
-      "\xef\xbc\xac"
+      "\u0080"
+      "\u00ff"
+      "\ud7ff"
+      "\ue000"
+      "\uff2c"
+      "\uffff"
       "y",
       FX_UTF8Encode(L"x"
                     L"\u0080"
                     L"\u00ff"
+                    L"\ud7ff"
+                    L"\ue000"
                     L"\uff2c"
+                    L"\uffff"
                     L"y"));
 }
 
-TEST(fxstring, FX_UTF8Decode) {
+TEST(fxstring, FXUTF8EncodeSupplementary) {
+  EXPECT_EQ(
+      "\U00010000"
+      "🎨"
+      "\U0010ffff",
+      FX_UTF8Encode(L"\U00010000"
+                    L"\U0001f3a8"
+                    L"\U0010ffff"));
+}
+
+#if defined(WCHAR_T_IS_UTF16)
+TEST(fxstring, FXUTF8EncodeSurrogateErrorRecovery) {
+  EXPECT_EQ("(\xed\xa0\x80)", FX_UTF8Encode(L"(\xd800)")) << "High";
+  EXPECT_EQ("(\xed\xb0\x80)", FX_UTF8Encode(L"(\xdc00)")) << "Low";
+  EXPECT_EQ("(\xed\xa0\x80🎨)", FX_UTF8Encode(L"(\xd800\xd83c\xdfa8)"))
+      << "High-high";
+  EXPECT_EQ("(🎨\xed\xb0\x80)", FX_UTF8Encode(L"(\xd83c\xdfa8\xdc00)"))
+      << "Low-low";
+}
+#endif  // defined(WCHAR_T_IS_UTF16)
+
+TEST(fxstring, FXUTF8Decode) {
   EXPECT_EQ(L"", FX_UTF8Decode(ByteStringView()));
   EXPECT_EQ(
       L"x"
       L"\u0080"
       L"\u00ff"
+      L"\ud7ff"
+      L"\ue000"
       L"\uff2c"
+      L"\uffff"
       L"y",
       FX_UTF8Decode("x"
-                    "\xc2\x80"
-                    "\xc3\xbf"
-                    "\xef\xbc\xac"
+                    "\u0080"
+                    "\u00ff"
+                    "\ud7ff"
+                    "\ue000"
+                    "\uff2c"
+                    "\uffff"
                     "y"));
-  EXPECT_EQ(L"a(A) b() c() d() e().",
-            FX_UTF8Decode("a(\xc2\x41) "      // Invalid continuation.
-                          "b(\xc2\xc2) "      // Invalid continuation.
-                          "c(\xc2\xff\x80) "  // Invalid continuation.
-                          "d(\x80\x80) "      // Invalid leading.
-                          "e(\xff\x80\x80)"   // Invalid leading.
-                          "."));
 }
 
-TEST(fxstring, FX_UTF8EncodeDecodeConsistency) {
+TEST(fxstring, FXUTF8DecodeSupplementary) {
+  EXPECT_EQ(
+      L"\U00010000"
+      L"\U0001f3a8"
+      L"\U0010ffff",
+      FX_UTF8Decode("\U00010000"
+                    "🎨"
+                    "\U0010ffff"));
+}
+
+TEST(fxstring, FXUTF8DecodeErrorRecovery) {
+  EXPECT_EQ(L"(A)", FX_UTF8Decode("(\xc2\x41)")) << "Invalid continuation";
+  EXPECT_EQ(L"()", FX_UTF8Decode("(\xc2\xc2)")) << "Invalid continuation";
+  EXPECT_EQ(L"()", FX_UTF8Decode("(\xc2\xff\x80)")) << "Invalid continuation";
+  EXPECT_EQ(L"()", FX_UTF8Decode("(\x80\x80)")) << "Invalid leading";
+  EXPECT_EQ(L"()", FX_UTF8Decode("(\xff\x80\x80)")) << "Invalid leading";
+  EXPECT_EQ(L"()", FX_UTF8Decode("(\xf8\x80\x80\x80\x80)"))
+      << "Invalid leading";
+  EXPECT_EQ(L"()", FX_UTF8Decode("(\xf8\x88\x80\x80\x80)"))
+      << "Invalid leading";
+  EXPECT_EQ(L"()", FX_UTF8Decode("(\xf4\x90\x80\x80)"))
+      << "Code point greater than U+10FFFF";
+}
+
+TEST(fxstring, FXUTF8EncodeDecodeConsistency) {
   WideString wstr;
   wstr.Reserve(0x10000);
-  for (int w = 0; w < 0x10000; ++w)
+  for (char32_t w = 0; w < pdfium::kMinimumSupplementaryCodePoint; ++w) {
+    if (pdfium::IsHighSurrogate(w) || pdfium::IsLowSurrogate(w)) {
+      // Skip UTF-16 surrogates.
+      continue;
+    }
     wstr += static_cast<wchar_t>(w);
+  }
+  ASSERT_EQ(0xf800u, wstr.GetLength());
 
   ByteString bstr = FX_UTF8Encode(wstr.AsStringView());
   WideString wstr2 = FX_UTF8Decode(bstr.AsStringView());
-  EXPECT_EQ(0x10000u, wstr2.GetLength());
+  EXPECT_EQ(wstr, wstr2);
+}
+
+TEST(fxstring, FXUTF8EncodeDecodeConsistencyUnpairedHighSurrogates) {
+  WideString wstr;
+  wstr.Reserve(0x400);
+  for (wchar_t w = pdfium::kMinimumHighSurrogateCodeUnit;
+       w <= pdfium::kMaximumHighSurrogateCodeUnit; ++w) {
+    wstr += w;
+  }
+  ASSERT_EQ(0x400u, wstr.GetLength());
+
+  ByteString bstr = FX_UTF8Encode(wstr.AsStringView());
+  WideString wstr2 = FX_UTF8Decode(bstr.AsStringView());
+  EXPECT_EQ(wstr, wstr2);
+}
+
+TEST(fxstring, FXUTF8EncodeDecodeConsistencyUnpairedLowSurrogates) {
+  WideString wstr;
+  wstr.Reserve(0x400);
+  for (wchar_t w = pdfium::kMinimumLowSurrogateCodeUnit;
+       w <= pdfium::kMaximumLowSurrogateCodeUnit; ++w) {
+    wstr += w;
+  }
+  ASSERT_EQ(0x400u, wstr.GetLength());
+
+  ByteString bstr = FX_UTF8Encode(wstr.AsStringView());
+  WideString wstr2 = FX_UTF8Decode(bstr.AsStringView());
   EXPECT_EQ(wstr, wstr2);
 }
 

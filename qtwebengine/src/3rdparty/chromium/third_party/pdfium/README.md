@@ -78,7 +78,7 @@ support code only works if one follows this convention.
 A typical `<directory>` name is `out/Debug`.
 
 ```
-use_goma = true  # Googlers only. Make sure goma is installed and running first.
+use_goma = false  # Googlers only. Ensure goma is installed and running first.
 is_debug = true  # Enable debugging features.
 
 # Set true to enable experimental Skia backend.
@@ -94,6 +94,11 @@ For sample applications like `pdfium_test` to build, one must set
 `pdf_is_standalone = true`.
 
 By default, the entire project builds with C++17.
+
+By default, PDFium expects to build with a clang compiler that provides
+additional chrome plugins. To build against a vanilla one lacking these,
+one must set
+`clang_use_chrome_plugins = false`.
 
 When complete the arguments will be stored in `<directory>/args.gn`, and
 GN will automatically use the new arguments to generate build files.

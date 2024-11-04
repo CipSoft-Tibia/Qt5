@@ -47,6 +47,7 @@
 #include "third_party/blink/renderer/platform/fonts/font_fallback_iterator.h"
 #include "third_party/blink/renderer/platform/fonts/opentype/open_type_caps_support.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/case_mapping_harfbuzz_buffer_filler.h"
+#include "third_party/blink/renderer/platform/fonts/shaping/east_asian_spacing.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/font_features.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/harfbuzz_face.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_inline_headers.h"
@@ -393,6 +394,18 @@ CanvasRotationInVertical CanvasRotationForRun(
 
 }  // namespace
 
+inline void HarfBuzzShaper::CheckTextLen(unsigned start,
+                                         unsigned length) const {
+  CHECK_LE(start, text_.length());
+  CHECK_LE(length, text_.length() - start);
+}
+
+inline void HarfBuzzShaper::CheckTextEnd(unsigned start, unsigned end) const {
+  CHECK_LE(start, end);
+  CHECK_LE(start, text_.length());
+  CHECK_LE(end, text_.length());
+}
+
 void HarfBuzzShaper::CommitGlyphs(RangeData* range_data,
                                   const SimpleFontData* current_font,
                                   UScriptCode current_run_script,
@@ -588,7 +601,7 @@ bool HarfBuzzShaper::CollectFallbackHintChars(
     if (it->action_ == kReshapeQueueNextFont)
       break;
 
-    CHECK_LE((it->start_index_ + it->num_characters_), text_.length());
+    CheckTextLen(it->start_index_, it->num_characters_);
     if (text_.Is8Bit()) {
       for (unsigned i = 0; i < it->num_characters_; i++) {
         hint.push_back(text_[it->start_index_ + i]);
@@ -817,12 +830,13 @@ void HarfBuzzShaper::ShapeSegment(
 
     // Clamp the start and end offsets of the queue item to the offsets
     // representing the shaping window.
-    unsigned shape_start =
+    const unsigned shape_start =
         std::max(range_data->start, current_queue_item.start_index_);
-    unsigned shape_end =
+    const unsigned shape_end =
         std::min(range_data->end, current_queue_item.start_index_ +
                                       current_queue_item.num_characters_);
     DCHECK_GT(shape_end, shape_start);
+    CheckTextEnd(shape_start, shape_end);
 
     CaseMapIntend case_map_intend = CaseMapIntend::kKeepSameCase;
     if (needs_caps_handling) {
@@ -842,6 +856,9 @@ void HarfBuzzShaper::ShapeSegment(
     CapsFeatureSettingsScopedOverlay caps_overlay(
         &range_data->font_features,
         caps_support.FontFeatureToUse(small_caps_behavior));
+    EastAsianSpacing east_asian_sapcing(text_, range_data->start,
+                                        range_data->end, *adjusted_font,
+                                        range_data->font_features);
     hb_direction_t direction = range_data->HarfBuzzDirection(canvas_rotation);
 
     if (!ShapeRange(range_data->buffer, range_data->font_features,

@@ -43,6 +43,7 @@
 #include "third_party/blink/renderer/core/css/active_style_sheets.h"
 #include "third_party/blink/renderer/core/css/color_scheme_flags.h"
 #include "third_party/blink/renderer/core/css/css_global_rule_set.h"
+#include "third_party/blink/renderer/core/css/css_to_length_conversion_data.h"
 #include "third_party/blink/renderer/core/css/invalidation/pending_invalidations.h"
 #include "third_party/blink/renderer/core/css/invalidation/style_invalidator.h"
 #include "third_party/blink/renderer/core/css/layout_tree_rebuild_root.h"
@@ -52,6 +53,7 @@
 #include "third_party/blink/renderer/core/css/style_invalidation_root.h"
 #include "third_party/blink/renderer/core/css/style_recalc_root.h"
 #include "third_party/blink/renderer/core/css/vision_deficiency.h"
+#include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/layout/geometry/axis.h"
 #include "third_party/blink/renderer/platform/bindings/name_client.h"
@@ -74,6 +76,7 @@ namespace blink {
 class ComputedStyleBuilder;
 class CounterStyle;
 class CounterStyleMap;
+class StyleContainmentScopeTree;
 class CSSFontSelector;
 class CSSPropertyValueSet;
 class CSSStyleSheet;
@@ -308,6 +311,14 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   void SetStyleAffectedByLayout() { style_affected_by_layout_ = true; }
   bool StyleAffectedByLayout() { return style_affected_by_layout_; }
 
+  void SetStyleMaybeAffectedByLayoutForAccessibility() {
+    style_affected_by_layout_for_accessibility_ = true;
+  }
+  bool StyleMaybeAffectedByLayoutForAccessibility() {
+    return style_affected_by_layout_for_accessibility_ ||
+           style_affected_by_layout_;
+  }
+
   bool StyleMaybeAffectedByLayout(const Node&);
 
   bool SkippedContainerRecalc() const { return skipped_container_recalc_ != 0; }
@@ -342,6 +353,11 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   StyleResolver& GetStyleResolver() const {
     DCHECK(resolver_);
     return *resolver_;
+  }
+
+  StyleContainmentScopeTree& EnsureStyleContainmentScopeTree();
+  StyleContainmentScopeTree* GetStyleContainmentScopeTree() const {
+    return style_containment_scope_tree_;
   }
 
   void SetRuleUsageTracker(StyleRuleUsageTracker*);
@@ -436,7 +452,6 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   void CollectFeaturesTo(RuleFeatureSet& features);
 
   void EnsureUAStyleForFullscreen();
-  void EnsureUAStyleForXrOverlay();
   void EnsureUAStyleForElement(const Element&);
   void EnsureUAStyleForPseudoElement(PseudoId);
   void EnsureUAStyleForForcedColors();
@@ -578,13 +593,14 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   void UpdateStyleAndLayoutTreeForContainer(Element& container,
                                             const LogicalSize&,
                                             LogicalAxes contained_axes);
-  void RecalcStyleForNonLayoutNGContainerDescendants(Element& container);
+  // To be called from layout-tree building for subtree skipped for style
+  // recalcs when we found out the container is eligible for size containment
+  // after all.
+  void UpdateStyleForNonEligibleContainer(Element& container);
   void RecalcStyle();
 
   void ClearEnsuredDescendantStyles(Element& element);
-  enum class RebuildTransitionPseudoTree { kYes, kNo };
-  void RebuildLayoutTree(
-      RebuildTransitionPseudoTree rebuild_transition_pseudo_tree);
+  void RebuildLayoutTree(Element* size_container = nullptr);
   bool InRebuildLayoutTree() const { return in_layout_tree_rebuild_; }
   bool InDOMRemoval() const { return in_dom_removal_; }
   bool InContainerQueryStyleRecalc() const {
@@ -653,15 +669,18 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   const char* NameInHeapSnapshot() const override { return "StyleEngine"; }
 
   RuleSet* DefaultViewTransitionStyle() const;
-  void InvalidateUAViewTransitionStyle();
 
-  const ActiveStyleSheetVector& ActiveUserStyleSheetsForDebug() const {
+  const ActiveStyleSheetVector& ActiveUserStyleSheets() const {
     return active_user_style_sheets_;
   }
 
-  // Report a warning to the console that we are combining legacy layout and
-  // container queries.
-  void ReportUseOfLegacyLayoutWithContainerQueries();
+  // See comment on viewport_size_.
+  void UpdateViewportSize();
+  const CSSToLengthConversionData::ViewportSize& GetViewportSize() const {
+    DCHECK(viewport_size_ == CSSToLengthConversionData::ViewportSize(
+                                 GetDocument().GetLayoutView()));
+    return viewport_size_;
+  }
 
  private:
   // FontSelectorClient implementation.
@@ -800,7 +819,8 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   // removal which caused a layout subtree to be detached.
   void MarkForLayoutTreeChangesAfterDetach();
 
-  void RebuildLayoutTreeForTraversalRootAncestors(Element* parent);
+  void RebuildLayoutTreeForTraversalRootAncestors(Element* parent,
+                                                  Element* container_parent);
 
   // Separate path for layout tree rebuild for re-attaching children of a
   // fieldset size query container, or a size query container which must use
@@ -823,6 +843,9 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   bool AllowSkipStyleRecalcForScope() const;
 
   Member<Document> document_;
+
+  // Tree of style containment scopes. Is in charge of the document's quotes.
+  Member<StyleContainmentScopeTree> style_containment_scope_tree_;
 
   // Tracks the number of currently loading top-level stylesheets. Sheets loaded
   // using the @import directive are not included in this count. We use this
@@ -863,6 +886,7 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   // True if we have performed style recalc for at least one element that
   // depends on container queries.
   bool style_affected_by_layout_{false};
+  bool style_affected_by_layout_for_accessibility_{false};
   // The number of elements currently in a skipped style recalc state.
   //
   // Style recalc can be skipped for an element [1] if its style depends on
@@ -896,10 +920,6 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   // Set to true if we are allowed to skip recalc for a size container subtree.
   bool allow_skip_style_recalc_{false};
 
-  // Set to true if we have detected an element which is a size query container
-  // rendered in legacy layout.
-  bool legacy_layout_query_container_{false};
-
   // See enum ViewportUnitFlag.
   unsigned viewport_unit_dirty_flags_{0};
 
@@ -910,12 +930,6 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   Member<ViewportStyleResolver> viewport_resolver_;
   Member<MediaQueryEvaluator> media_query_evaluator_;
   Member<CSSGlobalRuleSet> global_rule_set_;
-
-  // This is the default UA generated style sheet for the ::transition* pseudo
-  // elements. This is tracked by StyleEngine as opposed to
-  // CSSDefaultStyleSheets since it is 1:1 with a Document and can be
-  // dynamically updated.
-  Member<RuleSet> ua_view_transition_style_;
 
   PendingInvalidations pending_invalidations_;
 
@@ -1018,13 +1032,11 @@ class CORE_EXPORT StyleEngine final : public GarbageCollected<StyleEngine>,
   // for more info.
   HeapHashMap<AtomicString, Member<const CSSValue>>
       fill_or_clip_path_uri_value_cache_;
-};
 
-// Helper function for checking if we need to handle legacy fragmentation cases
-// for container queries.
-inline bool HasFullNGFragmentationSupport() {
-  return RuntimeEnabledFeatures::LayoutNGPrintingEnabled();
-}
+  // Cached because it can be expensive to compute anew for each element.
+  // You must call UpdateViewportSize() once before resolving style.
+  CSSToLengthConversionData::ViewportSize viewport_size_;
+};
 
 void PossiblyScheduleNthPseudoInvalidations(Node& node);
 

@@ -13,6 +13,7 @@
 #include "base/strings/sys_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
+#include "device/bluetooth/bluetooth_adapter_mac.h"
 #include "device/bluetooth/bluetooth_socket_mac.h"
 #include "device/bluetooth/public/cpp/bluetooth_address.h"
 #include "device/bluetooth/public/cpp/bluetooth_uuid.h"
@@ -64,12 +65,11 @@ BluetoothUUID ExtractUuid(IOBluetoothSDPDataElement* service_class_data) {
 BluetoothClassicDeviceMac::BluetoothClassicDeviceMac(
     BluetoothAdapterMac* adapter,
     IOBluetoothDevice* device)
-    : BluetoothDeviceMac(adapter), device_([device retain]) {
+    : BluetoothDeviceMac(adapter), device_(device) {
   UpdateTimestamp();
 }
 
-BluetoothClassicDeviceMac::~BluetoothClassicDeviceMac() {
-}
+BluetoothClassicDeviceMac::~BluetoothClassicDeviceMac() = default;
 
 uint32_t BluetoothClassicDeviceMac::GetBluetoothClass() const {
   return [device_ classOfDevice];
@@ -257,8 +257,7 @@ void BluetoothClassicDeviceMac::ConnectToService(
     ConnectToServiceCallback callback,
     ConnectToServiceErrorCallback error_callback) {
   scoped_refptr<BluetoothSocketMac> socket = BluetoothSocketMac::CreateSocket();
-  socket->Connect(device_.get(), uuid,
-                  base::BindOnce(std::move(callback), socket),
+  socket->Connect(device_, uuid, base::BindOnce(std::move(callback), socket),
                   std::move(error_callback));
 }
 

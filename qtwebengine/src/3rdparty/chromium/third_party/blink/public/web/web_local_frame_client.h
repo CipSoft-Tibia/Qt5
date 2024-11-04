@@ -48,8 +48,10 @@
 #include "third_party/blink/public/common/frame/frame_owner_element_type.h"
 #include "third_party/blink/public/common/loader/loading_behavior_flag.h"
 #include "third_party/blink/public/common/loader/url_loader_factory_bundle.h"
+#include "third_party/blink/public/common/performance/performance_timeline_constants.h"
 #include "third_party/blink/public/common/permissions_policy/permissions_policy.h"
 #include "third_party/blink/public/common/responsiveness_metrics/user_interaction_latency.h"
+#include "third_party/blink/public/common/subresource_load_metrics.h"
 #include "third_party/blink/public/common/tokens/tokens.h"
 #include "third_party/blink/public/common/use_counter/use_counter_feature.h"
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
@@ -65,6 +67,7 @@
 #include "third_party/blink/public/platform/cross_variant_mojo_util.h"
 #include "third_party/blink/public/platform/modules/service_worker/web_service_worker_provider.h"
 #include "third_party/blink/public/platform/resource_load_info_notifier_wrapper.h"
+#include "third_party/blink/public/platform/url_loader_throttle_provider.h"
 #include "third_party/blink/public/platform/web_common.h"
 #include "third_party/blink/public/platform/web_content_security_policy_struct.h"
 #include "third_party/blink/public/platform/web_content_settings_client.h"
@@ -137,6 +140,7 @@ class WebURLResponse;
 class WebView;
 struct FramePolicy;
 struct Impression;
+struct JavaScriptFrameworkDetectionResult;
 struct WebConsoleMessage;
 struct ContextMenuData;
 struct WebPictureInPictureWindowOptions;
@@ -190,10 +194,9 @@ class BLINK_EXPORT WebLocalFrameClient {
     return nullptr;
   }
 
-  // May return null.
+  // May return null if speech recognition is not supported.
   virtual std::unique_ptr<media::SpeechRecognitionClient>
-  CreateSpeechRecognitionClient(
-      media::SpeechRecognitionClient::OnReadyCallback callback) {
+  CreateSpeechRecognitionClient() {
     return nullptr;
   }
 
@@ -271,8 +274,12 @@ class BLINK_EXPORT WebLocalFrameClient {
   // from outside of the browsing instance.
   virtual WebFrame* FindFrame(const WebString& name) { return nullptr; }
 
-  // Notifies observers that the frame is being detached and sends the current
-  // frame's navigation state to the browser.
+  // Notification that the frame will be swapped out and replaced by another
+  // frame.
+  virtual void WillSwap() {}
+
+  // Notification that the frame is being detached and sends the current frame's
+  // navigation state to the browser.
   virtual void WillDetach() {}
 
   // This frame has been detached. Embedders should release any resources
@@ -428,6 +435,12 @@ class BLINK_EXPORT WebLocalFrameClient {
       mojom::SameDocumentNavigationType,
       bool is_client_redirect) {}
 
+  // Called when an async same-document navigation fails before commit. This is
+  // used in the case where a same-document navigation was instructed to commit
+  // asynchronously by the navigate event, then subsequently failed before
+  // commit.
+  virtual void DidFailAsyncSameDocumentCommit() {}
+
   // Called before a frame's page is frozen.
   virtual void WillFreezePage() {}
 
@@ -546,8 +559,15 @@ class BLINK_EXPORT WebLocalFrameClient {
   // An Input Event observed.
   virtual void DidObserveInputDelay(base::TimeDelta input_delay) {}
 
-  // A user interaction is observed.
-  virtual void DidObserveUserInteraction(base::TimeDelta max_event_duration,
+  // A user interaction is observed. A user interaction can be built up from
+  // multiple input events (e.g. keydown then keyup). Each of these events has
+  // an input to next frame latency. This reports the timings of the max
+  // input-to-frame latency for each interaction. `max_event_start` is when
+  // input was received, and `max_event_end` is when the next frame was
+  // presented. See https://web.dev/inp/#whats-in-an-interaction for more
+  // detailed motivation and explanation.
+  virtual void DidObserveUserInteraction(base::TimeTicks max_event_start,
+                                         base::TimeTicks max_event_end,
                                          UserInteractionType interaction_type) {
   }
 
@@ -568,15 +588,16 @@ class BLINK_EXPORT WebLocalFrameClient {
   // use for segregated histograms.
   virtual void DidObserveLoadingBehavior(LoadingBehaviorFlag) {}
 
+  // Blink detected a JavaScript framework that the browser process will use for
+  // UKM.
+  virtual void DidObserveJavaScriptFrameworks(
+      const JavaScriptFrameworkDetectionResult&) {}
+
   // A subresource load is observed.
   // It is called when there is a subresouce load. The reported values via
   // arguments are cumulative. They are NOT a difference from the previous call.
   virtual void DidObserveSubresourceLoad(
-      uint32_t number_of_subresources_loaded,
-      uint32_t number_of_subresource_loads_handled_by_service_worker,
-      bool pervasive_payload_requested,
-      int64_t pervasive_bytes_fetched,
-      int64_t total_bytes_fetched) {}
+      const SubresourceLoadMetrics& subresource_load_metrics) {}
 
   // Blink hits the code path for a certain UseCounterFeature for the first time
   // on this frame. As a performance optimization, features already hit on other
@@ -585,7 +606,7 @@ class BLINK_EXPORT WebLocalFrameClient {
   virtual void DidObserveNewFeatureUsage(const UseCounterFeature&) {}
 
   // A new soft navigation was observed.
-  virtual void DidObserveSoftNavigation(uint32_t count) {}
+  virtual void DidObserveSoftNavigation(blink::SoftNavigationMetrics metrics) {}
 
   // Reports that visible elements in the frame shifted (bit.ly/lsm-explainer).
   virtual void DidObserveLayoutShift(double score, bool after_input_or_scroll) {
@@ -671,6 +692,11 @@ class BLINK_EXPORT WebLocalFrameClient {
 
   virtual scoped_refptr<network::SharedURLLoaderFactory> GetURLLoaderFactory() {
     NOTREACHED();
+    return nullptr;
+  }
+
+  virtual std::unique_ptr<WebURLLoaderThrottleProviderForFrame>
+  CreateWebURLLoaderThrottleProviderForFrame() {
     return nullptr;
   }
 
@@ -793,7 +819,8 @@ class BLINK_EXPORT WebLocalFrameClient {
       const SessionStorageNamespaceId& session_storage_namespace_id,
       bool& consumed_user_gesture,
       const absl::optional<Impression>&,
-      const absl::optional<WebPictureInPictureWindowOptions>& pip_options) {
+      const absl::optional<WebPictureInPictureWindowOptions>& pip_options,
+      const WebURL& base_url) {
     return nullptr;
   }
 };

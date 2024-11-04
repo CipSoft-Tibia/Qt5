@@ -61,7 +61,7 @@ func defaultObjFileFormat(goos string) string {
 	}
 }
 
-func printAndExit(format string, args ...interface{}) {
+func printAndExit(format string, args ...any) {
 	s := fmt.Sprintf(format, args...)
 	fmt.Fprintln(os.Stderr, s)
 	os.Exit(1)
@@ -178,6 +178,9 @@ func listSymbolsELF(contents []byte) ([]string, error) {
 		return nil, err
 	}
 	syms, err := f.Symbols()
+	if err == elf.ErrNoSymbols {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -5,7 +5,7 @@
 #ifndef UI_EVENTS_TYPES_SCROLL_TYPES_H_
 #define UI_EVENTS_TYPES_SCROLL_TYPES_H_
 
-#include <cstdint>
+#include <stdint.h>
 
 namespace ui {
 

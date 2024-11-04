@@ -2,12 +2,20 @@ if not get_option('xwayland')
 	subdir_done()
 endif
 
+xwayland_dep = dependency('xwayland', required: false)
+if xwayland_dep.found()
+	if xwayland_dep.get_variable(pkgconfig: 'have_listenfd') == 'true'
+		config_h.set('HAVE_XWAYLAND_LISTENFD', '1')
+	endif
+endif
+
 srcs_xwayland = [
 	'launcher.c',
 	'window-manager.c',
 	'selection.c',
 	'dnd.c',
-	'hash.c',
+	xwayland_shell_v1_server_protocol_h,
+	xwayland_shell_v1_protocol_c,
 ]
 
 dep_names_xwayland = [
@@ -19,7 +27,7 @@ dep_names_xwayland = [
 	'cairo-xcb',
 ]
 
-deps_xwayland = [ dep_libweston_public ]
+deps_xwayland = [ dep_libweston_public, dep_xcb_xwayland, dep_lib_cairo_shared ]
 
 foreach name : dep_names_xwayland
 	d = dependency(name, required: false)
@@ -32,7 +40,6 @@ endforeach
 plugin_xwayland = shared_library(
 	'xwayland',
 	srcs_xwayland,
-	link_with: lib_cairo_shared,
 	include_directories: common_inc,
 	dependencies: deps_xwayland,
 	name_prefix: '',

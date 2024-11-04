@@ -60,6 +60,14 @@ void AutofillPrivateEventRouter::Shutdown() {
 }
 
 void AutofillPrivateEventRouter::OnPersonalDataChanged() {
+  BroadcastCurrentData();
+}
+
+void AutofillPrivateEventRouter::OnPersonalDataSyncStateChanged() {
+  BroadcastCurrentData();
+}
+
+void AutofillPrivateEventRouter::BroadcastCurrentData() {
   // Ignore any updates before data is loaded. This can happen in tests.
   if (!(personal_data_ && personal_data_->IsDataLoaded()))
     return;
@@ -90,11 +98,6 @@ void AutofillPrivateEventRouter::OnPersonalDataChanged() {
                 std::move(args)));
 
   event_router_->BroadcastEvent(std::move(extension_event));
-}
-
-AutofillPrivateEventRouter* AutofillPrivateEventRouter::Create(
-    content::BrowserContext* context) {
-  return new AutofillPrivateEventRouter(context);
 }
 
 }  // namespace extensions

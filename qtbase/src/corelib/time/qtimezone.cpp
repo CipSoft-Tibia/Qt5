@@ -95,6 +95,8 @@ Q_GLOBAL_STATIC(QTimeZoneSingleton, global_tz);
 
     \brief QTimeZone identifies how a time representation relates to UTC.
 
+    \compares equality
+
     When dates and times are combined, the meaning of the result depends on how
     time is being represented. There are various international standards for
     representing time; one of these, UTC, corresponds to the traditional
@@ -452,11 +454,13 @@ QTimeZone::Data &QTimeZone::Data::operator=(QTimeZonePrivate *dptr) noexcept
     Creates a time zone instance with the requested IANA ID \a ianaId.
 
     The ID must be one of the available system IDs or a valid UTC-with-offset
-    ID, otherwise an invalid time zone will be returned.
+    ID, otherwise an invalid time zone will be returned. For UTC-with-offset
+    IDs, when they are not in fact IANA IDs, the \c{id()} of the resulting
+    instance may differ from the ID passed to the constructor.
 
     This constructor is only available when feature \c timezone is enabled.
 
-    \sa availableTimeZoneIds()
+    \sa availableTimeZoneIds(), id()
 */
 
 QTimeZone::QTimeZone(const QByteArray &ianaId)
@@ -496,7 +500,7 @@ QTimeZone::QTimeZone(const QByteArray &ianaId)
     \c{QTimeZone::fromSecondsAfterUtc(offsetSeconds)}, albeit implemented as a
     time zone.
 
-    \sa MinUtcOffsetSecs, MaxUtcOffsetSecs
+    \sa MinUtcOffsetSecs, MaxUtcOffsetSecs, id()
 */
 
 QTimeZone::QTimeZone(int offsetSeconds)
@@ -556,15 +560,11 @@ QTimeZone::QTimeZone(QTimeZonePrivate &dd)
 
     In all cases, the result's \l timeSpec() is Qt::TimeZone. When this
     QTimeZone's timeSpec() is Qt::TimeZone, this QTimeZone itself is returned.
+    If timeSpec() is Qt::LocalTime then systemTimeZone() is returned.
 
     If timeSpec() is Qt::UTC, QTimeZone::utc() is returned. If it is
     Qt::OffsetFromUTC then QTimeZone(int) is passed its offset and the result is
     returned.
-
-    If timeSpec() is Qt::LocalTime then an instance of the current system time
-    zone will be returned. This will not change to reflect any subsequent change
-    to the system time zone. It represents the local time that was in effect
-    when asBackendZone() was called.
 
     When using a lightweight time representation - local time, UTC time or time
     at a fixed offset from UTC - using methods only supported when feature \c
@@ -735,7 +735,9 @@ QTimeZone &QTimeZone::operator=(const QTimeZone &other)
 */
 
 /*!
-    Returns \c true if this time representation is equal to the \a other.
+    \fn bool QTimeZone::operator==(const QTimeZone &lhs, const QTimeZone &rhs)
+
+    Returns \c true if \a lhs time zone is equal to the \a rhs time zone.
 
     Two representations are different if they are internally described
     differently, even if they agree in their representation of all moments of
@@ -743,33 +745,31 @@ QTimeZone &QTimeZone::operator=(const QTimeZone &other)
     time zone but the two will not be equal.
 */
 
-bool QTimeZone::operator==(const QTimeZone &other) const
-{
-    if (d.isShort())
-        return other.d.isShort() && d.s == other.d.s;
+/*!
+    \fn bool QTimeZone::operator!=(const QTimeZone &lhs, const QTimeZone &rhs)
 
-    if (!other.d.isShort()) {
-        if (d.d == other.d.d)
+    Returns \c true if \a lhs time zone is not equal to the \a rhs time zone.
+
+    Two representations are different if they are internally described
+    differently, even if they agree in their representation of all moments of
+    time. In particular, a lightweight time representation may coincide with a
+    time zone but the two will not be equal.
+*/
+
+bool comparesEqual(const QTimeZone &lhs, const QTimeZone &rhs) noexcept
+{
+    if (lhs.d.isShort())
+        return rhs.d.isShort() && lhs.d.s == rhs.d.s;
+
+    if (!rhs.d.isShort()) {
+        if (lhs.d.d == rhs.d.d)
             return true;
 #if QT_CONFIG(timezone)
-        return d.d && other.d.d && *d.d == *other.d.d;
+        return lhs.d.d && rhs.d.d && *lhs.d.d == *rhs.d.d;
 #endif
     }
 
     return false;
-}
-
-/*!
-    Returns \c true if this time zone is not equal to the \a other time zone.
-
-    Two representations are different if they are internally described
-    differently, even if they agree in their representation of all moments of
-    time. In particular, a lightweight time representation may coincide with a
-    time zone but the two will not be equal.
-*/
-bool QTimeZone::operator!=(const QTimeZone &other) const // ### Qt 7: inline
-{
-    return !(*this == other);
 }
 
 /*!
@@ -791,6 +791,28 @@ bool QTimeZone::isValid() const
 
     IANA IDs are used on all platforms.  On Windows these are translated from
     the Windows ID into the best match IANA ID for the time zone and territory.
+
+    If this timezone instance was not constructed from an IANA ID, its ID is
+    determined by how it was constructed. In most cases, the ID passed when
+    constructing the instance is used. (The constructor for a custom zone uses
+    the ID it is passed, which must not be an IANA ID.) There are two
+    exceptions.
+    \list
+    \li Instances constructed by passing only a UTC offset in seconds have no ID
+        passed when constructing.
+    \li The constructor taking only an IANA ID will also accept some UTC-offset
+        IDs that are not in fact IANA IDs: its handling of these is equivalent
+        to passing the corresponding offset in seconds, as for the first
+        exception.
+    \endlist
+
+    In the two exceptional cases, if there is an IANA UTC-offset zone with the
+    specified offset, the instance constructed uses that IANA zone's ID, even
+    though this may differ from the (non-IANA) UTC-offset ID passed to the
+    constructor. Otherwise, the instance uses an ID synthesized from its offset,
+    with the form UTC±hh:mm:ss, omitting any trailing :00 for zero seconds or
+    minutes. Again, this may differ from the UTC-offset ID passed to the
+    constructor.
 
     This method is only available when feature \c timezone is enabled.
 */
@@ -1282,7 +1304,9 @@ QTimeZone::OffsetData QTimeZone::previousTransition(const QDateTime &beforeDateT
 /*!
     Returns a list of all time zone transitions between the given datetimes.
 
-    The given \a fromDateTime and \a toDateTime are inclusive.
+    The given \a fromDateTime and \a toDateTime are inclusive. The \c atUtc
+    member of each entry describes the moment of the transition, at which the
+    offsets and abbreviation given by other members take effect.
 
     This method is only available when feature \c timezone is enabled.
 
@@ -1319,12 +1343,24 @@ QTimeZone::OffsetDataList QTimeZone::transitions(const QDateTime &fromDateTime,
 /*!
     Returns the current system time zone IANA ID.
 
-    On Windows this ID is translated from the Windows ID using an internal
-    translation table and the user's selected country.  As a consequence there
-    is a small chance any Windows install may have IDs not known by Qt, in
-    which case "UTC" will be returned.
+    Equivalent to calling systemTimeZone().id(), but may bypass some computation
+    to obtain it. Constructing a QTimeZone from the returned byte array will
+    produce the same result as systemTimeZone().
+
+    If the backend is unable to determine the correct system zone, the result is
+    empty. In this case, systemTimeZone().isValid() is false and a warning is
+    output if either this method of systemTimeZone() is called.
+
+    If the backend is able to determine the correct system zone but not its
+    name, an empty byte array is returned. For example, on Windows, the system
+    native ID is converted to an IANA ID - if the system ID isn't known to the
+    internal translation code, the result shall be empty. In this case,
+    systemTimeZone().isValid() shall be true.
 
     This method is only available when feature \c timezone is enabled.
+
+    \note Prior to Qt 6.7, when the result could not be determined, the
+    misleading result "UTC" was returned.
 
     \sa systemTimeZone()
 */
@@ -1335,12 +1371,7 @@ QByteArray QTimeZone::systemTimeZoneId()
     if (!sys.isEmpty())
         return sys;
     // The system zone, despite the empty ID, may know its real ID anyway:
-    auto zone = systemTimeZone();
-    if (zone.isValid() && !zone.id().isEmpty())
-        return zone.id();
-    // TODO: "-00:00", meaning "unspecified local zone" in some RFC, may be more apt.
-    // If all else fails, guess UTC.
-    return QTimeZonePrivate::utcQByteArray();
+    return systemTimeZone().id();
 }
 
 /*!
@@ -1353,11 +1384,29 @@ QByteArray QTimeZone::systemTimeZoneId()
     representation \c {QTimeZone(QTimeZone::LocalTime)}, albeit implemented as a
     time zone.
 
-    \sa utc(), Initialization, asBackendZone()
+    The returned object will not change to reflect any subsequent change to the
+    system time zone. It represents the local time that was in effect when
+    asBackendZone() was called. On misconfigured systems, such as those that
+    lack the timezone data relied on by the backend for which Qt was compiled,
+    it may be invalid. In such a case, a warning is output.
+
+    \sa utc(), Initialization, asBackendZone(), systemTimeZoneId()
 */
 QTimeZone QTimeZone::systemTimeZone()
 {
-    return QTimeZone(global_tz->backend->systemTimeZoneId());
+    // Use ID even if empty, as default constructor is invalid but empty-ID
+    // constructor goes to backend's default constructor, which may succeed.
+    const auto sys = QTimeZone(global_tz->backend->systemTimeZoneId());
+    if (!sys.isValid()) {
+        static bool neverWarned = true;
+        if (neverWarned) {
+            // Racey but, at worst, merely repeats the warning.
+            neverWarned = false;
+            qWarning("Unable to determine system time zone: "
+                     "please check your system configuration.");
+        }
+    }
+    return sys;
 }
 
 /*!
@@ -1378,6 +1427,9 @@ QTimeZone QTimeZone::utc()
 
 /*!
     Returns \c true if a given time zone \a ianaId is available on this system.
+
+    This may include some non-IANA IDs, notably UTC-offset IDs, that are not
+    listed in \l availableTimeZoneIds().
 
     This method is only available when feature \c timezone is enabled.
 
@@ -1416,6 +1468,10 @@ static QList<QByteArray> set_union(const QList<QByteArray> &l1, const QList<QByt
 
     This method is only available when feature \c timezone is enabled.
 
+    \note the QTimeZone constructor will also accept some UTC-offset IDs that
+    are not in the list returned - it would be impractical to list all possible
+    UTC-offset IDs.
+
     \sa isTimeZoneIdAvailable()
 */
 
@@ -1429,7 +1485,7 @@ QList<QByteArray> QTimeZone::availableTimeZoneIds()
     Returns a list of all available IANA time zone IDs for a given \a territory.
 
     As a special case, a \a territory of \l {QLocale::}{AnyTerritory} selects
-    those time zones that have no kown territorial association, such as UTC. If
+    those time zones that have no known territorial association, such as UTC. If
     you require a list of all time zone IDs for all territories then use the
     standard availableTimeZoneIds() method.
 
@@ -1448,9 +1504,13 @@ QList<QByteArray> QTimeZone::availableTimeZoneIds(QLocale::Territory territory)
     Returns a list of all available IANA time zone IDs with a given standard
     time offset of \a offsetSeconds.
 
+    Where the given offset is supported, \c{QTimeZone(offsetSeconds).id()} is
+    included in the list, even if it is not an IANA ID. This only arises when
+    there is no IANA UTC-offset ID with the given offset.
+
     This method is only available when feature \c timezone is enabled.
 
-    \sa isTimeZoneIdAvailable()
+    \sa isTimeZoneIdAvailable(), QTimeZone(int)
 */
 
 QList<QByteArray> QTimeZone::availableTimeZoneIds(int offsetSeconds)

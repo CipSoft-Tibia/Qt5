@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC
+// Copyright 2022-2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,17 +15,22 @@
 #ifndef ANALYTICS_ANALYTICS_RECORDER_H_
 #define ANALYTICS_ANALYTICS_RECORDER_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "connections/implementation/analytics/connection_attempt_metadata_params.h"
-#include "connections/payload.h"
+#include "connections/payload_type.h"
 #include "connections/strategy.h"
 #include "internal/analytics/event_logger.h"
 #include "internal/platform/error_code_params.h"
+#include "internal/platform/implementation/system_clock.h"
 #include "internal/platform/mutex.h"
 #include "internal/platform/single_thread_executor.h"
 #include "internal/proto/analytics/connections_log.pb.h"
@@ -52,6 +57,11 @@ class AnalyticsRecorder {
       ABSL_LOCKS_EXCLUDED(mutex_);
   void OnStopAdvertising() ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Connection listening
+  void OnStartedIncomingConnectionListening(connections::Strategy strategy)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+  void OnStoppedIncomingConnectionListening() ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Discovery phase
   void OnStartDiscovery(
       connections::Strategy strategy,
@@ -64,6 +74,10 @@ class AnalyticsRecorder {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Connection request
+  void OnRequestConnection(const connections::Strategy &strategy,
+                           const std::string &endpoint_id)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   void OnConnectionRequestReceived(const std::string &remote_endpoint_id)
       ABSL_LOCKS_EXCLUDED(mutex_);
   void OnConnectionRequestSent(const std::string &remote_endpoint_id)
@@ -174,6 +188,10 @@ class AnalyticsRecorder {
 
   bool IsSessionLogged();
 
+  // Waits until all logs are sent to the backend.
+  // For testing only.
+  void Sync();
+
  private:
   // Tracks the chunks and duration of a Payload on a particular medium.
   class PendingPayload {
@@ -280,7 +298,7 @@ class AnalyticsRecorder {
 
   // Callbacks the ConnectionsLog proto byte array data to the EventLogger with
   // ClientSession sub-proto.
-  void LogClientSession();
+  void LogClientSessionLocked() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   // Callbacks the ConnectionsLog proto byte array data to the EventLogger.
   void LogEvent(location::nearby::proto::connections::EventType event_type);
 
@@ -324,7 +342,8 @@ class AnalyticsRecorder {
 
   // Reset the client cession's logging resources (e.g. current_strategy_,
   // current_advertising_phase_, current_discovery_phase_, etc)
-  void ResetClientSessionLoggingResouces();
+  void ResetClientSessionLoggingResoucesLocked()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   location::nearby::proto::connections::ConnectionsStrategy
   StrategyToConnectionStrategy(connections::Strategy strategy);
@@ -359,13 +378,13 @@ class AnalyticsRecorder {
   std::unique_ptr<
       location::nearby::analytics::proto::ConnectionsLog::AdvertisingPhase>
       current_advertising_phase_;
-  absl::Time started_advertising_phase_time_;
+  absl::Time started_advertising_phase_time_ = absl::InfinitePast();
 
   // Current DiscoveryPhase
   std::unique_ptr<
       location::nearby::analytics::proto::ConnectionsLog::DiscoveryPhase>
       current_discovery_phase_;
-  absl::Time started_discovery_phase_time_;
+  absl::Time started_discovery_phase_time_ = absl::InfinitePast();
 
   absl::btree_map<std::string,
                   std::unique_ptr<location::nearby::analytics::proto::

@@ -12,6 +12,7 @@
 #include "base/containers/cxx20_erase_vector.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/ranges/algorithm.h"
 #include "base/task/sequenced_task_runner.h"
 #include "build/build_config.h"
@@ -573,6 +574,8 @@ FidoDeviceAuthenticator::PINUVDispositionForMakeCredential(
   const bool can_collect_pin = observer && observer->SupportsPIN();
   const bool pin_supported =
       options_.client_pin_availability != ClientPinAvailability::kNotSupported;
+  const bool uv_supported = options_.user_verification_availability !=
+                            UserVerificationAvailability::kNotSupported;
   const bool pin_configured = options_.client_pin_availability ==
                               ClientPinAvailability::kSupportedAndPinSet;
   const bool uv_configured =
@@ -607,7 +610,10 @@ FidoDeviceAuthenticator::PINUVDispositionForMakeCredential(
         // authenticator could cause the hmac-secret outputs to change as a
         // different seed is used for UV and non-UV assertions.
         (!request.hmac_secret || !options_.supports_hmac_secret)))) {
-    return PINUVDisposition::kNoUV;
+    if (!pin_supported && !uv_supported) {
+      return PINUVDisposition::kUVNotSupportedNorRequired;
+    }
+    return PINUVDisposition::kNoUVRequired;
   }
 
   // Authenticators with built-in UV that don't support UV token should try
@@ -626,7 +632,7 @@ FidoDeviceAuthenticator::PINUVDispositionForMakeCredential(
   }
 
   if (uv_requirement == UserVerificationRequirement::kPreferred) {
-    return PINUVDisposition::kNoUV;
+    return PINUVDisposition::kNoUVRequired;
   }
 
   return PINUVDisposition::kUnsatisfiable;
@@ -640,6 +646,10 @@ FidoDeviceAuthenticator::PINUVDispositionForGetAssertion(
   // enrollment. Perhaps we should change this and align with MakeCredential
   // behavior.
   const bool can_collect_pin = observer && observer->SupportsPIN();
+  const bool pin_supported =
+      options_.client_pin_availability != ClientPinAvailability::kNotSupported;
+  const bool uv_supported = options_.user_verification_availability !=
+                            UserVerificationAvailability::kNotSupported;
   const bool pin_configured = options_.client_pin_availability ==
                               ClientPinAvailability::kSupportedAndPinSet;
 
@@ -654,7 +664,10 @@ FidoDeviceAuthenticator::PINUVDispositionForGetAssertion(
   if (uv_requirement == UserVerificationRequirement::kDiscouraged ||
       (uv_requirement == UserVerificationRequirement::kPreferred &&
        ((!pin_configured || !can_collect_pin) && !uv_configured))) {
-    return PINUVDisposition::kNoUV;
+    if (!pin_supported && !uv_supported) {
+      return PINUVDisposition::kUVNotSupportedNorRequired;
+    }
+    return PINUVDisposition::kNoUVRequired;
   }
 
   // Authenticators with built-in UV that don't support UV token should try
@@ -1386,6 +1399,13 @@ void FidoDeviceAuthenticator::Cancel() {
   if (task_) {
     task_->Cancel();
   }
+}
+
+AuthenticatorType FidoDeviceAuthenticator::GetType() const {
+  if (device_->DeviceTransport() == FidoTransportProtocol::kHybrid) {
+    return AuthenticatorType::kPhone;
+  }
+  return AuthenticatorType::kOther;
 }
 
 std::string FidoDeviceAuthenticator::GetId() const {

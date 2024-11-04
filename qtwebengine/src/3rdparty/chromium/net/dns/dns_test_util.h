@@ -19,6 +19,7 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
+#include "base/values.h"
 #include "net/base/connection_endpoint_metadata.h"
 #include "net/base/ip_endpoint.h"
 #include "net/dns/dns_client.h"
@@ -336,7 +337,7 @@ struct MockDnsClientRule {
   uint16_t qtype;
   bool secure;
   bool delay;
-  raw_ptr<URLRequestContext> context;
+  raw_ptr<URLRequestContext, DanglingUntriaged> context;
 };
 
 typedef std::vector<MockDnsClientRule> MockDnsClientRuleList;
@@ -413,7 +414,7 @@ class MockDnsClient : public DnsClient {
   AddressSorter* GetAddressSorter() override;
   void IncrementInsecureFallbackFailures() override;
   void ClearInsecureFallbackFailures() override;
-  base::Value GetDnsConfigAsValueForNetLog() const override;
+  base::Value::Dict GetDnsConfigAsValueForNetLog() const override;
   absl::optional<DnsConfig> GetSystemConfigForTesting() const override;
   DnsConfigOverrides GetConfigOverridesForTesting() const override;
   void SetTransactionFactoryForTesting(

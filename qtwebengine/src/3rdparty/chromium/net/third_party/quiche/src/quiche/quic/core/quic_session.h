@@ -45,6 +45,7 @@
 #include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_socket_address.h"
 #include "quiche/common/platform/api/quiche_mem_slice.h"
+#include "quiche/common/quiche_callbacks.h"
 #include "quiche/common/quiche_linked_hash_map.h"
 
 namespace quic {
@@ -181,12 +182,14 @@ class QUIC_EXPORT_PRIVATE QuicSession
   bool ValidateToken(absl::string_view token) override;
   bool MaybeSendAddressToken() override;
   void OnBandwidthUpdateTimeout() override {}
-  std::unique_ptr<QuicPathValidationContext> CreateContextForMultiPortPath()
-      override {
-    return nullptr;
-  }
+  void CreateContextForMultiPortPath(
+      std::unique_ptr<MultiPortPathContextObserver> /*context_observer*/)
+      override {}
+  void MigrateToMultiPortPath(
+      std::unique_ptr<QuicPathValidationContext> /*context*/) override {}
   void OnServerPreferredAddressAvailable(
       const QuicSocketAddress& /*server_preferred_address*/) override;
+  void MaybeBundleOpportunistically() override {}
 
   // QuicStreamFrameDataProducer
   WriteStreamDataResult WriteStreamData(QuicStreamId id,
@@ -323,6 +326,10 @@ class QUIC_EXPORT_PRIVATE QuicSession
   void OnHandshakeCallbackDone() override;
   bool PacketFlusherAttached() const override;
   ParsedQuicVersion parsed_version() const override { return version(); }
+  void OnEncryptedClientHelloSent(
+      absl::string_view client_hello) const override;
+  void OnEncryptedClientHelloReceived(
+      absl::string_view client_hello) const override;
 
   // Implement StreamDelegateInterface.
   void OnStreamError(QuicErrorCode error_code,
@@ -649,6 +656,14 @@ class QUIC_EXPORT_PRIVATE QuicSession
     datagram_queue_.SetForceFlush(force_flush);
   }
 
+  // Find stream with |id|, returns nullptr if the stream does not exist or
+  // closed. static streams and zombie streams are not considered active
+  // streams.
+  QuicStream* GetActiveStream(QuicStreamId id) const;
+
+  // Returns the priority type used by the streams in the session.
+  QuicPriorityType priority_type() const { return QuicPriorityType::kHttp; }
+
  protected:
   using StreamMap =
       absl::flat_hash_map<QuicStreamId, std::unique_ptr<QuicStream>>;
@@ -716,7 +731,9 @@ class QUIC_EXPORT_PRIVATE QuicSession
   virtual bool ShouldProcessPendingStreamImmediately() const { return true; }
 
   spdy::SpdyPriority GetSpdyPriorityofStream(QuicStreamId stream_id) const {
-    return write_blocked_streams_.GetPriorityofStream(stream_id).urgency;
+    return write_blocked_streams_->GetPriorityOfStream(stream_id)
+        .http()
+        .urgency;
   }
 
   size_t pending_streams_size() const { return pending_stream_map_.size(); }
@@ -726,8 +743,8 @@ class QUIC_EXPORT_PRIVATE QuicSession
   void set_largest_peer_created_stream_id(
       QuicStreamId largest_peer_created_stream_id);
 
-  QuicWriteBlockedList* write_blocked_streams() {
-    return &write_blocked_streams_;
+  QuicWriteBlockedListInterface* write_blocked_streams() {
+    return write_blocked_streams_.get();
   }
 
   // Returns true if the stream is still active.
@@ -789,9 +806,10 @@ class QUIC_EXPORT_PRIVATE QuicSession
 
   // Called by applications to perform |action| on active streams.
   // Stream iteration will be stopped if action returns false.
-  void PerformActionOnActiveStreams(std::function<bool(QuicStream*)> action);
   void PerformActionOnActiveStreams(
-      std::function<bool(QuicStream*)> action) const;
+      quiche::UnretainedCallback<bool(QuicStream*)> action);
+  void PerformActionOnActiveStreams(
+      quiche::UnretainedCallback<bool(QuicStream*)> action) const;
 
   // Return the largest peer created stream id depending on directionality
   // indicated by |unidirectional|.
@@ -810,11 +828,6 @@ class QUIC_EXPORT_PRIVATE QuicSession
     connection()->SetLossDetectionTuner(std::move(tuner));
   }
 
-  // Find stream with |id|, returns nullptr if the stream does not exist or
-  // closed. static streams and zombie streams are not considered active
-  // streams.
-  QuicStream* GetActiveStream(QuicStreamId id) const;
-
   const UberQuicStreamIdManager& ietf_streamid_manager() const {
     QUICHE_DCHECK(VersionHasIetfQuicFrames(transport_version()));
     return ietf_streamid_manager_;
@@ -828,6 +841,11 @@ class QUIC_EXPORT_PRIVATE QuicSession
   GenerateCachedNetworkParameters() const {
     return absl::nullopt;
   }
+
+  // Debug helper for OnCanWrite. Check that after QuicStream::OnCanWrite(),
+  // if stream has buffered data and is not stream level flow control blocked,
+  // it has to be in the write blocked list.
+  virtual bool CheckStreamWriteBlocked(QuicStream* stream) const;
 
  private:
   friend class test::QuicSessionPeer;
@@ -859,11 +877,6 @@ class QUIC_EXPORT_PRIVATE QuicSession
   bool CheckStreamNotBusyLooping(QuicStream* stream,
                                  uint64_t previous_bytes_written,
                                  bool previous_fin_sent);
-
-  // Debug helper for OnCanWrite. Check that after QuicStream::OnCanWrite(),
-  // if stream has buffered data and is not stream level flow control blocked,
-  // it has to be in the write blocked list.
-  bool CheckStreamWriteBlocked(QuicStream* stream) const;
 
   // Called in OnConfigNegotiated for Finch trials to measure performance of
   // starting with larger flow control receive windows.
@@ -927,7 +940,7 @@ class QUIC_EXPORT_PRIVATE QuicSession
   // A list of streams which need to write more data.  Stream register
   // themselves in their constructor, and unregisterm themselves in their
   // destructors, so the write blocked list must outlive all streams.
-  QuicWriteBlockedList write_blocked_streams_;
+  std::unique_ptr<QuicWriteBlockedList> write_blocked_streams_;
 
   ClosedStreams closed_streams_;
 

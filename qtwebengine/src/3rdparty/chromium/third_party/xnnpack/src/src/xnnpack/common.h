@@ -134,11 +134,13 @@
   #define XNN_PLATFORM_QURT 0
 #endif
 
-#if (XNN_ARCH_ARM || XNN_ARCH_ARM64) && !XNN_PLATFORM_IOS && !XNN_PLATFORM_FUCHSIA
-  #define XNN_PLATFORM_JIT 1
-#else
-  #define XNN_PLATFORM_JIT 0
-#endif
+#ifndef XNN_PLATFORM_JIT
+  #if (XNN_ARCH_ARM || XNN_ARCH_ARM64) && !XNN_PLATFORM_IOS && !XNN_PLATFORM_FUCHSIA
+    #define XNN_PLATFORM_JIT 1
+  #else
+    #define XNN_PLATFORM_JIT 0
+  #endif
+#endif  // XNN_PLATFORM_JIT
 
 // Define compile identification macros
 
@@ -327,3 +329,28 @@
 #else
   #define XNN_ALLOCATION_ALIGNMENT 16
 #endif
+
+// Number of extra elements to allocate for DWCONV accumulators/buffers.
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  // For AVX512.
+  #define XNN_MAX_SIMD_SIZE 64
+#elif XNN_ARCH_RISCV || XNN_ARCH_WASM
+  // Scalable vectors, assume masked loads and stores.
+  // Wasm without SIMD.
+  #define XNN_MAX_SIMD_SIZE 0
+#elif XNN_ARCH_HEXAGON
+  #define XNN_MAX_SIMD_SIZE 128
+#else
+  // XNN_ARCH_ARM, XNN_ARCH_ARM64, XNN_ARCH_WASMSIMD, XNN_ARCH_WASMRELAXEDSIMD.
+  #define XNN_MAX_SIMD_SIZE 16
+#endif
+
+
+#define XNN_LOG2_SIZEOF_INT8_T   0  // log2(sizeof(int8_t))
+#define XNN_LOG2_SIZEOF_UINT8_T  0  // log2(sizeof(uint8_t))
+#define XNN_LOG2_SIZEOF_INT16_T  1  // log2(sizeof(int16_t))
+#define XNN_LOG2_SIZEOF_UINT16_T 1  // log2(sizeof(uint16_t))
+#define XNN_LOG2_SIZEOF_HALF     1  // log2(sizeof(half))
+#define XNN_LOG2_SIZEOF_FLOAT    2  // log2(sizeof(float))
+#define XNN_LOG2_SIZEOF_INT32_T  2  // log2(sizeof(int32_t))
+#define XNN_LOG2_SIZEOF_UINT32_T 2  // log2(sizeof(uint32_t))

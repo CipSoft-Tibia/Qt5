@@ -16,199 +16,193 @@
 
 #include <memory>
 #include <string>
-#include <utility>
+#include <vector>
 
-#include "gmock/gmock.h"
-#include "protobuf-matchers/protocol-buffer-matchers.h"
 #include "gtest/gtest.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/string_view.h"
 #include "fastpair/common/fast_pair_device.h"
 #include "fastpair/common/protocol.h"
-#include "fastpair/scanning/fastpair/fake_fast_pair_discoverable_scanner.h"
-#include "fastpair/scanning/fastpair/fake_fast_pair_scanner.h"
-#include "fastpair/scanning/fastpair/fast_pair_discoverable_scanner.h"
-#include "fastpair/scanning/fastpair/fast_pair_discoverable_scanner_impl.h"
-#include "fastpair/scanning/fastpair/fast_pair_scanner.h"
-#include "fastpair/scanning/fastpair/fast_pair_scanner_impl.h"
+#include "fastpair/internal/mediums/mediums.h"
+#include "fastpair/proto/fastpair_rpcs.proto.h"
+#include "fastpair/repository/fake_fast_pair_repository.h"
+#include "fastpair/repository/fast_pair_device_repository.h"
+#include "fastpair/scanning/scanner_broker.h"
+#include "fastpair/testing/fast_pair_service_data_creator.h"
+#include "internal/platform/byte_array.h"
+#include "internal/platform/count_down_latch.h"
 #include "internal/platform/medium_environment.h"
+#include "internal/platform/single_thread_executor.h"
 
 namespace nearby {
 namespace fastpair {
 namespace {
-
-constexpr absl::string_view kTestDeviceAddress("11:12:13:14:15:16");
-constexpr absl::string_view kValidModelId("718c17");
-
-class FakeFastPairScannerFactory : public FastPairScannerImpl::Factory {
+constexpr int kNotDiscoverableAdvHeader = 0b00000110;
+constexpr int kAccountKeyFilterHeader = 0b01100000;
+constexpr int kSaltHeader = 0b00010001;
+constexpr absl::string_view kAccountKeyFilter("112233445566");
+constexpr absl::string_view kSalt("01");
+constexpr absl::string_view kServiceID{"Fast Pair"};
+constexpr absl::string_view kModelId{"718c17"};
+constexpr absl::string_view kFastPairServiceUuid{
+    "0000FE2C-0000-1000-8000-00805F9B34FB"};
+constexpr absl::string_view kPublicAntiSpoof =
+    "Wuyr48lD3txnUhGiMF1IfzlTwRxxe+wMB1HLzP+"
+    "0wVcljfT3XPoiy1fntlneziyLD5knDVAJSE+RM/zlPRP/Jg==";
+class ScannerBrokerObserver : public ScannerBroker::Observer {
  public:
-  // FastPairScannerImpl::Factory:
-  std::shared_ptr<FastPairScanner> CreateInstance() override {
-    auto fake_fast_pair_scanner = std::shared_ptr<FakeFastPairScanner>();
-    fake_fast_pair_scanner_ = fake_fast_pair_scanner.get();
-    return fake_fast_pair_scanner;
+  explicit ScannerBrokerObserver(ScannerBroker* scanner_broker,
+                                 CountDownLatch* accept_latch,
+                                 CountDownLatch* lost_latch) {
+    accept_latch_ = accept_latch;
+    lost_latch_ = lost_latch;
+    scanner_broker->AddObserver(this);
   }
 
-  ~FakeFastPairScannerFactory() override = default;
-
-  FakeFastPairScanner* fake_fast_pair_scanner() {
-    return fake_fast_pair_scanner_;
+  void OnDeviceFound(FastPairDevice& device) override {
+    accept_latch_->CountDown();
   }
 
- private:
-  FakeFastPairScanner* fake_fast_pair_scanner_ = nullptr;
+  void OnDeviceLost(FastPairDevice& device) override {
+    lost_latch_->CountDown();
+  }
+
+  CountDownLatch* accept_latch_ = nullptr;
+  CountDownLatch* lost_latch_ = nullptr;
 };
 
-class FakeFastPairDiscoverableScannerFactory
-    : public FastPairDiscoverableScannerImpl::Factory {
+class MediumEnvironmentStarter {
  public:
-  // FastPairDiscoverableScannerImpl::Factory:
-  std::unique_ptr<FastPairDiscoverableScanner> CreateInstance(
-      std::shared_ptr<FastPairScanner> scanner,
-      std::shared_ptr<BluetoothAdapter> adapter, DeviceCallback found_callback,
-      DeviceCallback lost_callback) override {
-    create_instance_ = true;
-    auto fake_fast_pair_discoverable_scanner =
-        std::make_unique<FakeFastPairDiscoverableScanner>(
-            std::move(found_callback), std::move(lost_callback));
-    fake_fast_pair_discoverable_scanner_ =
-        fake_fast_pair_discoverable_scanner.get();
-    return fake_fast_pair_discoverable_scanner;
-  }
+  MediumEnvironmentStarter() { MediumEnvironment::Instance().Start(); }
+  ~MediumEnvironmentStarter() { MediumEnvironment::Instance().Stop(); }
+};
 
-  ~FakeFastPairDiscoverableScannerFactory() override = default;
-
-  FakeFastPairDiscoverableScanner* fake_fast_pair_discoverable_scanner() {
-    return fake_fast_pair_discoverable_scanner_;
-  }
-
-  bool create_instance() { return create_instance_; }
-
+class ScannerBrokerImplTest : public testing::Test {
  protected:
-  bool create_instance_ = false;
-  FakeFastPairDiscoverableScanner* fake_fast_pair_discoverable_scanner_ =
-      nullptr;
+  void SetUp() override {
+    MediumEnvironment::Instance().Start();
+    advertiser_ble_address_ =
+        mediums_advertiser_.GetBle().GetMedium().GetAdapter().GetMacAddress();
+  }
+
+  void TearDown() override { MediumEnvironment::Instance().Stop(); }
+
+  // The medium environment must be initialized (started)
+  // before registering medium.
+  MediumEnvironmentStarter env_;
+  Mediums mediums_scanner_;
+  Mediums mediums_advertiser_;
+  std::string advertiser_ble_address_;
 };
 
-class ScannerBrokerImplTest : public testing::Test,
-                              public ScannerBroker::Observer {
- public:
-  ScannerBrokerImplTest() {
-    adapter_ = std::shared_ptr<BluetoothAdapter>();
-    scanner_factory_ = std::make_unique<FakeFastPairScannerFactory>();
-    FastPairScannerImpl::Factory::SetFactoryForTesting(scanner_factory_.get());
+TEST_F(ScannerBrokerImplTest, FoundDiscoverableAdvertisement) {
+  SingleThreadExecutor executor;
+  FastPairDeviceRepository devices{&executor};
 
-    discoverable_scanner_factory_ =
-        std::make_unique<FakeFastPairDiscoverableScannerFactory>();
-    FastPairDiscoverableScannerImpl::Factory::SetFactoryForTesting(
-        discoverable_scanner_factory_.get());
-  }
+  // Setup FakeFastPairRepository
+  std::string decoded_key;
+  absl::Base64Unescape(kPublicAntiSpoof, &decoded_key);
+  proto::Device metadata;
+  auto repository_ = std::make_unique<FakeFastPairRepository>();
+  metadata.mutable_anti_spoofing_key_pair()->set_public_key(decoded_key);
+  repository_->SetFakeMetadata(kModelId, metadata);
 
-  ~ScannerBrokerImplTest() override {
-    scanner_broker_->RemoveObserver(this);
-    scanner_broker_.reset();
-    adapter_.reset();
-  }
+  // Create Scanner and ScannerBrokerObserver
+  auto scanner_broker = std::make_unique<ScannerBrokerImpl>(
+      mediums_scanner_, &executor, &devices);
+  CountDownLatch accept_latch(1);
+  CountDownLatch lost_latch(1);
+  CountDownLatch device_removed(1);
+  FastPairDeviceRepository::RemoveDeviceCallback callback =
+      [&](const FastPairDevice& device) {
+        EXPECT_EQ(device.GetBleAddress(), advertiser_ble_address_);
+        device_removed.CountDown();
+      };
+  devices.AddObserver(&callback);
+  ScannerBrokerObserver observer(scanner_broker.get(), &accept_latch,
+                                 &lost_latch);
 
-  void CreateScannerBroker() {
-    scanner_broker_ = std::make_unique<ScannerBrokerImpl>();
-    scanner_broker_->AddObserver(this);
-  }
+  // Create Advertiser and startAdvertising
+  std::string service_id(kServiceID);
+  ByteArray advertisement_bytes{absl::HexStringToBytes(kModelId)};
+  std::string fast_pair_service_uuid(kFastPairServiceUuid);
+  mediums_advertiser_.GetBle().GetMedium().StartAdvertising(
+      service_id, advertisement_bytes, fast_pair_service_uuid);
 
-  void TriggerDiscoverableDeviceFound() {
-    FastPairDevice device(std::string(kValidModelId),
-                          std::string(kTestDeviceAddress),
-                          Protocol::kFastPairInitialPairing);
-    discoverable_scanner_factory_->fake_fast_pair_discoverable_scanner()
-        ->TriggerDeviceFoundCallback(device);
-  }
+  // Fast Pair scanner startScanning
+  auto scanning_session =
+      scanner_broker->StartScanning(Protocol::kFastPairInitialPairing);
 
-  void TriggerDiscoverableDeviceLost() {
-    FastPairDevice device(std::string(kValidModelId),
-                          std::string(kTestDeviceAddress),
-                          Protocol::kFastPairInitialPairing);
-    discoverable_scanner_factory_->fake_fast_pair_discoverable_scanner()
-        ->TriggerDeviceLostCallback(device);
-  }
+  // Notify device found
+  accept_latch.Await();
 
-  void OnDeviceFound(const FastPairDevice& device) override {
-    device_found_ = true;
-  }
+  // Advertiser stopAdvertising
+  mediums_advertiser_.GetBle().GetMedium().StopAdvertising(service_id);
 
-  void OnDeviceLost(const FastPairDevice& device) override {
-    device_lost_ = true;
-  }
-
- protected:
-  bool device_found_ = false;
-  bool device_lost_ = false;
-  MediumEnvironment& env_{MediumEnvironment::Instance()};
-  std::shared_ptr<BluetoothAdapter> adapter_;
-  std::unique_ptr<FakeFastPairScannerFactory> scanner_factory_;
-  std::unique_ptr<FakeFastPairDiscoverableScannerFactory>
-      discoverable_scanner_factory_;
-  std::unique_ptr<ScannerBroker> scanner_broker_;
-};
-
-TEST_F(ScannerBrokerImplTest, DiscoverableFound) {
-  env_.Start();
-  EXPECT_FALSE(discoverable_scanner_factory_->create_instance());
-
-  CreateScannerBroker();
-  scanner_broker_->StartScanning(Protocol::kFastPairInitialPairing);
-  SystemClock::Sleep(absl::Milliseconds(200));
-  EXPECT_FALSE(device_found_);
-  EXPECT_TRUE(discoverable_scanner_factory_->create_instance());
-
-  TriggerDiscoverableDeviceFound();
-  EXPECT_TRUE(device_found_);
-  env_.Stop();
+  // Notify device lost
+  lost_latch.Await();
+  device_removed.Await();
+  scanning_session.reset();
 }
 
-TEST_F(ScannerBrokerImplTest, DiscoverableLost) {
-  env_.Start();
-  EXPECT_FALSE(discoverable_scanner_factory_->create_instance());
+TEST_F(ScannerBrokerImplTest, FoundNonDiscoverableAdvertisement) {
+  SingleThreadExecutor executor;
+  FastPairDeviceRepository devices{&executor};
 
-  CreateScannerBroker();
-  scanner_broker_->StartScanning(Protocol::kFastPairInitialPairing);
-  SystemClock::Sleep(absl::Milliseconds(200));
-  EXPECT_FALSE(device_found_);
-  EXPECT_TRUE(discoverable_scanner_factory_->create_instance());
+  // Setup FakeFastPairRepository
+  auto repository = std::make_unique<FakeFastPairRepository>();
+  proto::Device metadata;
+  repository->SetFakeMetadata(kModelId, metadata);
+  repository->SetResultOfCheckIfAssociatedWithCurrentAccount(AccountKey(),
+                                                             kModelId);
 
-  TriggerDiscoverableDeviceLost();
-  EXPECT_TRUE(device_lost_);
-  env_.Stop();
-}
+  // Create Scanner and ScannerBrokerObserver
+  auto scanner_broker = std::make_unique<ScannerBrokerImpl>(
+      mediums_scanner_, &executor, &devices);
+  CountDownLatch accept_latch(1);
+  CountDownLatch lost_latch(1);
+  CountDownLatch device_removed(1);
+  FastPairDeviceRepository::RemoveDeviceCallback callback =
+      [&](const FastPairDevice& device) {
+        EXPECT_EQ(device.GetBleAddress(), advertiser_ble_address_);
+        device_removed.CountDown();
+      };
+  devices.AddObserver(&callback);
+  ScannerBrokerObserver observer(scanner_broker.get(), &accept_latch,
+                                 &lost_latch);
 
-TEST_F(ScannerBrokerImplTest, RemoveObserver) {
-  env_.Start();
-  EXPECT_FALSE(discoverable_scanner_factory_->create_instance());
+  // Create Advertiser and startAdvertising
+  std::string service_id(kServiceID);
+  std::vector<uint8_t> service_data =
+      FastPairServiceDataCreator::Builder()
+          .SetHeader(kNotDiscoverableAdvHeader)
+          .SetModelId(kModelId)
+          .AddExtraFieldHeader(kAccountKeyFilterHeader)
+          .AddExtraField(kAccountKeyFilter)
+          .AddExtraFieldHeader(kSaltHeader)
+          .AddExtraField(kSalt)
+          .Build()
+          ->CreateServiceData();
+  ByteArray advertisement_bytes(
+      std::string(service_data.begin(), service_data.end()));
+  std::string fast_pair_service_uuid(kFastPairServiceUuid);
+  mediums_advertiser_.GetBle().GetMedium().StartAdvertising(
+      service_id, advertisement_bytes, fast_pair_service_uuid);
 
-  CreateScannerBroker();
-  scanner_broker_->StartScanning(Protocol::kFastPairInitialPairing);
-  SystemClock::Sleep(absl::Milliseconds(200));
-  EXPECT_FALSE(device_found_);
-  EXPECT_TRUE(discoverable_scanner_factory_->create_instance());
+  // Fast Pair scanner startScanning
+  auto scanning_session =
+      scanner_broker->StartScanning(Protocol::kFastPairInitialPairing);
 
-  scanner_broker_->RemoveObserver(this);
-  TriggerDiscoverableDeviceLost();
-  EXPECT_FALSE(device_lost_);
-  env_.Stop();
-}
+  // Notify device found
+  accept_latch.Await();
 
-TEST_F(ScannerBrokerImplTest, StopScanning) {
-  env_.Start();
-  CreateScannerBroker();
-  EXPECT_FALSE(discoverable_scanner_factory_->create_instance());
+  // Advertiser stopAdvertising
+  mediums_advertiser_.GetBle().GetMedium().StopAdvertising(service_id);
 
-  scanner_broker_->StartScanning(Protocol::kFastPairInitialPairing);
-  SystemClock::Sleep(absl::Milliseconds(200));
-  EXPECT_TRUE(discoverable_scanner_factory_->create_instance());
-
-  scanner_broker_->StopScanning(Protocol::kFastPairInitialPairing);
-  SystemClock::Sleep(absl::Milliseconds(200));
-  scanner_broker_->StartScanning(Protocol::kFastPairInitialPairing);
-  SystemClock::Sleep(absl::Milliseconds(200));
-  EXPECT_TRUE(discoverable_scanner_factory_->create_instance());
-  env_.Stop();
+  // Notify device lost
+  lost_latch.Await();
+  device_removed.Await();
+  scanning_session.reset();
 }
 
 }  // namespace

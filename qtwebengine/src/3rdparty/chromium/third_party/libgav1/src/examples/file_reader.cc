@@ -82,7 +82,14 @@ std::unique_ptr<FileReaderInterface> FileReader::Open(
     return nullptr;
   }
 
-  return file;
+  // With C++11, to return |file|, an explicit move is required as the return
+  // type differs from the local variable. Overload resolution isn't guaranteed
+  // in this case, though some compilers may adopt the C++14 behavior (C++
+  // Standard Core Language Issue #1579, Return by converting move
+  // constructor):
+  // https://www.open-std.org/jtc1/sc22/wg21/docs/cwg_defects.html#1579
+  // To keep things simple we opt for the following compatible form.
+  return std::unique_ptr<FileReaderInterface>(file.release());
 }
 
 // IVF Frame Header format, from https://wiki.multimedia.cx/index.php/IVF

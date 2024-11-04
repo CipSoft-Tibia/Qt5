@@ -10,6 +10,7 @@
 #ifndef BASE_FUNCTIONAL_CALLBACK_HELPERS_H_
 #define BASE_FUNCTIONAL_CALLBACK_HELPERS_H_
 
+#include <atomic>
 #include <memory>
 #include <ostream>
 #include <type_traits>
@@ -79,7 +80,7 @@ class OnceCallbackHolder final {
   OnceCallbackHolder& operator=(const OnceCallbackHolder&) = delete;
 
   void Run(Args... args) {
-    if (subtle::NoBarrier_AtomicExchange(&has_run_, 1)) {
+    if (has_run_.exchange(true, std::memory_order_relaxed)) {
       CHECK(ignore_extra_runs_) << "Both OnceCallbacks returned by "
                                    "base::SplitOnceCallback() were run. "
                                    "At most one of the pair should be run.";
@@ -90,7 +91,7 @@ class OnceCallbackHolder final {
   }
 
  private:
-  volatile subtle::Atomic32 has_run_ = 0;
+  std::atomic<bool> has_run_{false};
   base::OnceCallback<void(Args...)> callback_;
   const bool ignore_extra_runs_;
 };
@@ -218,6 +219,33 @@ template <typename T>
 void DeletePointer(T* obj) {
   delete obj;
 }
+
+#if __OBJC__
+
+// Creates an Objective-C block with the same signature as the corresponding
+// callback. Can be used to implement a callback based API internally based
+// on a block based Objective-C API.
+//
+// Overloaded to work with both repeating and one shot callbacks. Calling the
+// block wrapping a base::OnceCallback<...> multiple times will crash (there
+// is no way to mark the block as callable only once). Only use that when you
+// know that Objective-C API will only invoke the block once.
+template <typename R, typename... Args>
+auto CallbackToBlock(base::OnceCallback<R(Args...)> callback) {
+  __block base::OnceCallback<R(Args...)> block_callback = std::move(callback);
+  return ^(Args... args) {
+    return std::move(block_callback).Run(std::forward<Args>(args)...);
+  };
+}
+
+template <typename R, typename... Args>
+auto CallbackToBlock(base::RepeatingCallback<R(Args...)> callback) {
+  return ^(Args... args) {
+    return callback.Run(std::forward<Args>(args)...);
+  };
+}
+
+#endif  // __OBJC__
 
 }  // namespace base
 

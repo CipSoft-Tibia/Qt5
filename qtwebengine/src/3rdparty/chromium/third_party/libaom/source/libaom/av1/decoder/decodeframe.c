@@ -10,6 +10,7 @@
  */
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 
 #include "config/aom_config.h"
@@ -1274,9 +1275,13 @@ static AOM_INLINE void decode_partition(AV1Decoder *const pbi,
     const int num_planes = av1_num_planes(cm);
     for (int plane = 0; plane < num_planes; ++plane) {
       int rcol0, rcol1, rrow0, rrow1;
+
+      // Skip some unnecessary work if loop restoration is disabled
+      if (cm->rst_info[plane].frame_restoration_type == RESTORE_NONE) continue;
+
       if (av1_loop_restoration_corners_in_sb(cm, plane, mi_row, mi_col, bsize,
                                              &rcol0, &rcol1, &rrow0, &rrow1)) {
-        const int rstride = cm->rst_info[plane].horz_units_per_tile;
+        const int rstride = cm->rst_info[plane].horz_units;
         for (int rrow = rrow0; rrow < rrow1; ++rrow) {
           for (int rcol = rcol0; rcol < rcol1; ++rcol) {
             const int runit_idx = rcol + rrow * rstride;
@@ -4325,10 +4330,8 @@ static int read_global_motion_params(WarpedMotionParams *params,
                        trans_dec_factor;
   }
 
-  if (params->wmtype <= AFFINE) {
-    int good_shear_params = av1_get_shear_params(params);
-    if (!good_shear_params) return 0;
-  }
+  int good_shear_params = av1_get_shear_params(params);
+  if (!good_shear_params) return 0;
 
   return 1;
 }
@@ -5218,7 +5221,7 @@ static AOM_INLINE void setup_frame_info(AV1Decoder *pbi) {
   if (cm->rst_info[0].frame_restoration_type != RESTORE_NONE ||
       cm->rst_info[1].frame_restoration_type != RESTORE_NONE ||
       cm->rst_info[2].frame_restoration_type != RESTORE_NONE) {
-    av1_alloc_restoration_buffers(cm);
+    av1_alloc_restoration_buffers(cm, /*is_sgr_enabled =*/true);
   }
 
   const int use_highbd = cm->seq_params->use_highbitdepth;

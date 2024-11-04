@@ -504,8 +504,15 @@ static int config_output(AVFilterLink *outlink)
 
     if (inlink->w != outlink->w || inlink->h != outlink->h || in_format != vpp->out_format) {
         if (QSV_RUNTIME_VERSION_ATLEAST(mfx_version, 1, 19)) {
+            int mode = vpp->scale_mode;
+
+#if QSV_ONEVPL
+            if (mode > 2)
+                mode = MFX_SCALING_MODE_VENDOR + mode - 2;
+#endif
+
             INIT_MFX_EXTBUF(scale_conf, MFX_EXTBUFF_VPP_SCALING);
-            SET_MFX_PARAM_FIELD(scale_conf, ScalingMode, vpp->scale_mode);
+            SET_MFX_PARAM_FIELD(scale_conf, ScalingMode, mode);
         } else
             av_log(ctx, AV_LOG_WARNING, "The QSV VPP Scale & format conversion "
                    "option is not supported with this MSDK version.\n");
@@ -595,6 +602,7 @@ not_ready:
     return FFERROR_NOT_READY;
 
 eof:
+    pts = av_rescale_q(pts, inlink->time_base, outlink->time_base);
     ff_outlink_set_status(outlink, status, pts);
     return 0;
 }
@@ -641,6 +649,7 @@ const AVFilter ff_vf_##sn##_qsv = { \
     fmts, \
     .activate       = activate, \
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE, \
+    .flags          = AVFILTER_FLAG_HWDEVICE,       \
 };
 
 #if CONFIG_VPP_QSV_FILTER
@@ -679,10 +688,19 @@ static const AVOption vpp_options[] = {
     { "height", "Output video height(0=input video height, -1=keep input video aspect)", OFFSET(oh), AV_OPT_TYPE_STRING, { .str="w*ch/cw" }, 0, 255, .flags = FLAGS },
     { "format", "Output pixel format", OFFSET(output_format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
     { "async_depth", "Internal parallelization depth, the higher the value the higher the latency.", OFFSET(qsv.async_depth), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, .flags = FLAGS },
-    { "scale_mode", "scale & format conversion mode: 0=auto, 1=low power, 2=high quality", OFFSET(scale_mode), AV_OPT_TYPE_INT, { .i64 = MFX_SCALING_MODE_DEFAULT }, MFX_SCALING_MODE_DEFAULT, MFX_SCALING_MODE_QUALITY, .flags = FLAGS, "scale mode" },
+#if QSV_ONEVPL
+    { "scale_mode", "scaling & format conversion mode (mode compute(3), vd(4) and ve(5) are only available on some platforms)", OFFSET(scale_mode), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 5, .flags = FLAGS, "scale mode" },
+#else
+    { "scale_mode", "scaling & format conversion mode", OFFSET(scale_mode), AV_OPT_TYPE_INT, { .i64 = MFX_SCALING_MODE_DEFAULT }, MFX_SCALING_MODE_DEFAULT, MFX_SCALING_MODE_QUALITY, .flags = FLAGS, "scale mode" },
+#endif
     { "auto",      "auto mode",             0,    AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_DEFAULT},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
     { "low_power", "low power mode",        0,    AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_LOWPOWER}, INT_MIN, INT_MAX, FLAGS, "scale mode"},
     { "hq",        "high quality mode",     0,    AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_QUALITY},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
+#if QSV_ONEVPL
+    { "compute",   "compute",               0,    AV_OPT_TYPE_CONST,  { .i64 = 3},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
+    { "vd",        "vd",                    0,    AV_OPT_TYPE_CONST,  { .i64 = 4},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
+    { "ve",        "ve",                    0,    AV_OPT_TYPE_CONST,  { .i64 = 5},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
+#endif
 
     { "rate", "Generate output at frame rate or field rate, available only for deinterlace mode",
       OFFSET(field_rate), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS, "rate" },
@@ -696,27 +714,39 @@ static const AVOption vpp_options[] = {
 
 static int vpp_query_formats(AVFilterContext *ctx)
 {
-    int ret;
+    VPPContext *vpp = ctx->priv;
+    int ret, i = 0;
     static const enum AVPixelFormat in_pix_fmts[] = {
         AV_PIX_FMT_YUV420P,
         AV_PIX_FMT_NV12,
         AV_PIX_FMT_YUYV422,
         AV_PIX_FMT_RGB32,
         AV_PIX_FMT_P010,
+#if CONFIG_VAAPI
+        AV_PIX_FMT_UYVY422,
+#endif
         AV_PIX_FMT_QSV,
         AV_PIX_FMT_NONE
     };
-    static const enum AVPixelFormat out_pix_fmts[] = {
-        AV_PIX_FMT_NV12,
-        AV_PIX_FMT_P010,
-        AV_PIX_FMT_QSV,
-        AV_PIX_FMT_NONE
-    };
+    static enum AVPixelFormat out_pix_fmts[4];
 
     ret = ff_formats_ref(ff_make_format_list(in_pix_fmts),
                          &ctx->inputs[0]->outcfg.formats);
     if (ret < 0)
         return ret;
+
+    /* User specifies the output format */
+    if (vpp->out_format == AV_PIX_FMT_NV12 ||
+        vpp->out_format == AV_PIX_FMT_P010)
+        out_pix_fmts[i++] = vpp->out_format;
+    else {
+        out_pix_fmts[i++] = AV_PIX_FMT_NV12;
+        out_pix_fmts[i++] = AV_PIX_FMT_P010;
+    }
+
+    out_pix_fmts[i++] = AV_PIX_FMT_QSV;
+    out_pix_fmts[i++] = AV_PIX_FMT_NONE;
+
     return ff_formats_ref(ff_make_format_list(out_pix_fmts),
                           &ctx->outputs[0]->incfg.formats);
 }
@@ -732,9 +762,18 @@ static const AVOption qsvscale_options[] = {
     { "h",      "Output video height(0=input video height, -1=keep input video aspect)", OFFSET(oh), AV_OPT_TYPE_STRING, { .str = "ih"   }, .flags = FLAGS },
     { "format", "Output pixel format", OFFSET(output_format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
 
-    { "mode",      "set scaling mode",    OFFSET(scale_mode),    AV_OPT_TYPE_INT,    { .i64 = MFX_SCALING_MODE_DEFAULT}, MFX_SCALING_MODE_DEFAULT, MFX_SCALING_MODE_QUALITY, FLAGS, "mode"},
+#if QSV_ONEVPL
+    { "mode",      "scaling & format conversion mode (mode compute(3), vd(4) and ve(5) are only available on some platforms)",    OFFSET(scale_mode),    AV_OPT_TYPE_INT,    { .i64 = 0}, 0, 5, FLAGS, "mode"},
+#else
+    { "mode",      "scaling & format conversion mode",    OFFSET(scale_mode),    AV_OPT_TYPE_INT,    { .i64 = MFX_SCALING_MODE_DEFAULT}, MFX_SCALING_MODE_DEFAULT, MFX_SCALING_MODE_QUALITY, FLAGS, "mode"},
+#endif
     { "low_power", "low power mode",        0,             AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_LOWPOWER}, INT_MIN, INT_MAX, FLAGS, "mode"},
     { "hq",        "high quality mode",     0,             AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_QUALITY},  INT_MIN, INT_MAX, FLAGS, "mode"},
+#if QSV_ONEVPL
+    { "compute",   "compute",               0,             AV_OPT_TYPE_CONST,  { .i64 = 3},  INT_MIN, INT_MAX, FLAGS, "mode"},
+    { "vd",        "vd",                    0,             AV_OPT_TYPE_CONST,  { .i64 = 4},  INT_MIN, INT_MAX, FLAGS, "mode"},
+    { "ve",        "ve",                    0,             AV_OPT_TYPE_CONST,  { .i64 = 5},  INT_MIN, INT_MAX, FLAGS, "mode"},
+#endif
 
     { NULL },
 };

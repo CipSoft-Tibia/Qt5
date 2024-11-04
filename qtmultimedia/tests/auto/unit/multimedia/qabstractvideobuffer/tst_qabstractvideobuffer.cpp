@@ -1,7 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
-//TESTED_COMPONENT=src/multimedia
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 
@@ -30,7 +28,6 @@ private slots:
     void handleType_data();
     void handleType();
     void handle();
-    void mapMode();
     void mapModeDebug_data();
     void mapModeDebug();
 };
@@ -39,8 +36,6 @@ class QtTestVideoBuffer : public QAbstractVideoBuffer
 {
 public:
     QtTestVideoBuffer(QVideoFrame::HandleType type) : QAbstractVideoBuffer(type) {}
-
-    [[nodiscard]] QVideoFrame::MapMode mapMode() const override { return QVideoFrame::ReadWrite; }
 
     MapData map(QVideoFrame::MapMode) override { return {}; }
     void unmap() override {}
@@ -96,13 +91,7 @@ void tst_QAbstractVideoBuffer::handle()
 {
     QtTestVideoBuffer buffer(QVideoFrame::NoHandle);
 
-    QVERIFY(buffer.textureHandle(0) == 0);
-}
-
-void tst_QAbstractVideoBuffer::mapMode()
-{
-    QtTestVideoBuffer maptest(QVideoFrame::NoHandle);
-    QVERIFY2(maptest.mapMode() == QVideoFrame::ReadWrite, "ReadWrite Failed");
+    QVERIFY(buffer.textureHandle(nullptr, 0) == 0);
 }
 
 void tst_QAbstractVideoBuffer::mapModeDebug_data()

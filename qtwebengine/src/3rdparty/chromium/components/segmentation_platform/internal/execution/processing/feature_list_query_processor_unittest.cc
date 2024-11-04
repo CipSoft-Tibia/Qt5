@@ -16,7 +16,6 @@
 #include "components/segmentation_platform/internal/database/segment_info_database.h"
 #include "components/segmentation_platform/internal/database/signal_storage_config.h"
 #include "components/segmentation_platform/internal/database/storage_service.h"
-#include "components/segmentation_platform/internal/execution/default_model_manager.h"
 #include "components/segmentation_platform/internal/execution/processing/mock_feature_aggregator.h"
 #include "components/segmentation_platform/internal/mock_ukm_data_manager.h"
 #include "components/segmentation_platform/public/input_delegate.h"
@@ -42,9 +41,9 @@ class FeatureListQueryProcessorTest : public testing::Test {
   void SetUp() override {
     auto moved_signal_db = std::make_unique<MockSignalDatabase>();
     signal_database_ = moved_signal_db.get();
-    storage_service_ =
-        std::make_unique<StorageService>(nullptr, std::move(moved_signal_db),
-                                         nullptr, nullptr, &ukm_data_manager_);
+    storage_service_ = std::make_unique<StorageService>(
+        nullptr, std::move(moved_signal_db), nullptr, nullptr, nullptr,
+        &ukm_data_manager_);
     clock_.SetNow(base::Time::Now());
     segment_id_ = SegmentId::OPTIMIZATION_TARGET_SEGMENTATION_NEW_TAB;
   }
@@ -214,7 +213,7 @@ class FeatureListQueryProcessorTest : public testing::Test {
   MockUkmDataManager ukm_data_manager_;
   std::unique_ptr<StorageService> storage_service_;
   raw_ptr<MockSignalDatabase> signal_database_;
-  raw_ptr<MockFeatureAggregator> feature_aggregator_;
+  raw_ptr<MockFeatureAggregator, DanglingUntriaged> feature_aggregator_;
 
   std::unique_ptr<FeatureListQueryProcessor> feature_list_query_processor_;
 };

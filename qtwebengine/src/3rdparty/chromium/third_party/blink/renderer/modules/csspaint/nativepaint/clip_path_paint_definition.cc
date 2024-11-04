@@ -4,6 +4,7 @@
 
 #include "third_party/blink/renderer/modules/csspaint/nativepaint/clip_path_paint_definition.h"
 
+#include "cc/paint/paint_recorder.h"
 #include "third_party/blink/renderer/core/animation/basic_shape_interpolation_functions.h"
 #include "third_party/blink/renderer/core/animation/css/compositor_keyframe_double.h"
 #include "third_party/blink/renderer/core/animation/element_animations.h"
@@ -11,17 +12,15 @@
 #include "third_party/blink/renderer/core/css/basic_shape_functions.h"
 #include "third_party/blink/renderer/core/css/css_identifier_value.h"
 #include "third_party/blink/renderer/core/css/css_to_length_conversion_data.h"
+#include "third_party/blink/renderer/core/css/css_value_list.h"
 #include "third_party/blink/renderer/core/css/cssom/paint_worklet_deferred_image.h"
 #include "third_party/blink/renderer/core/css/cssom/paint_worklet_input.h"
 #include "third_party/blink/renderer/core/css/properties/longhands.h"
 #include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/css/resolver/style_resolver_state.h"
-#include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
+#include "third_party/blink/renderer/core/style/computed_style_constants.h"
 #include "third_party/blink/renderer/core/style/shape_clip_path_operation.h"
-#include "third_party/blink/renderer/modules/csspaint/paint_rendering_context_2d.h"
-#include "third_party/blink/renderer/platform/graphics/paint_worklet_paint_dispatcher.h"
-#include "third_party/blink/renderer/platform/graphics/platform_paint_worklet_layer_painter.h"
 #include "ui/gfx/geometry/size_f.h"
 
 namespace blink {
@@ -151,7 +150,13 @@ scoped_refptr<BasicShape> GetAnimatedShapeFromKeyframe(
         const_cast<Element*>(element), property_name, *value);
     StyleResolverState state(element->GetDocument(),
                              *const_cast<Element*>(element));
-    basic_shape = BasicShapeForValue(state, *computed_value);
+
+    // TODO(pdr): Support <geometry-box> (alone, or with a shape).
+    if (const auto* list = DynamicTo<CSSValueList>(computed_value)) {
+      if (list->First().IsBasicShapeValue() || list->First().IsPathValue()) {
+        basic_shape = BasicShapeForValue(state, list->First());
+      }
+    }
   } else {
     DCHECK(frame->IsTransitionPropertySpecificKeyframe());
     const TransitionKeyframe::PropertySpecificKeyframe* keyframe =
@@ -199,7 +204,7 @@ bool ValidateClipPathValue(const Element* element,
   return false;
 }
 
-scoped_refptr<ShapeClipPathOperation> InterpolateShapes(
+ShapeClipPathOperation* InterpolateShapes(
     const InterpolationValue& from,
     const BasicShape::ShapeType from_shape_type,
     const InterpolationValue& to,
@@ -221,7 +226,9 @@ scoped_refptr<ShapeClipPathOperation> InterpolateShapes(
     result_shape = CreateBasicShape(to_shape_type, *to.interpolable_value,
                                     *to.non_interpolable_value);
   }
-  return ShapeClipPathOperation::Create(result_shape);
+  // TODO(pdr): Handle geometry box.
+  return MakeGarbageCollected<ShapeClipPathOperation>(result_shape,
+                                                      GeometryBox::kBorderBox);
 }
 
 double GetLocalProgress(double global_progress,
@@ -268,10 +275,7 @@ PaintRecord ClipPathPaintDefinition::Paint(
     const CompositorPaintWorkletInput* compositor_input,
     const CompositorPaintWorkletJob::AnimatedPropertyValues&
         animated_property_values) {
-  const ClipPathPaintWorkletInput* input =
-      To<ClipPathPaintWorkletInput>(compositor_input);
-  gfx::SizeF clip_area_size = input->ContainerSize();
-  gfx::RectF reference_box = input->GetReferenceBox();
+  const auto* input = To<ClipPathPaintWorkletInput>(compositor_input);
 
   const Vector<InterpolationValue>& interpolation_values =
       input->InterpolationValues();
@@ -319,22 +323,22 @@ PaintRecord ClipPathPaintDefinition::Paint(
   const InterpolationValue& from = interpolation_values[result_index];
   const InterpolationValue& to = interpolation_values[result_index + 1];
 
-  scoped_refptr<ShapeClipPathOperation> current_shape =
+  ShapeClipPathOperation* current_shape =
       InterpolateShapes(from, basic_shape_types[result_index], to,
                         basic_shape_types[result_index + 1], adjusted_progress);
 
+  const gfx::RectF reference_box = input->GetReferenceBox();
   Path path = current_shape->GetPath(reference_box, input->Zoom());
-  PaintRenderingContext2DSettings* context_settings =
-      PaintRenderingContext2DSettings::Create();
-  auto* rendering_context = MakeGarbageCollected<PaintRenderingContext2D>(
-      gfx::ToRoundedSize(clip_area_size), context_settings, 1, 1,
-      worker_backing_thread_->BackingThread().GetTaskRunner());
+
+  cc::InspectablePaintRecorder paint_recorder;
+  const gfx::Size clip_area_size(gfx::ToRoundedSize(input->ContainerSize()));
+  cc::PaintCanvas* canvas = paint_recorder.beginRecording(clip_area_size);
 
   cc::PaintFlags flags;
   flags.setAntiAlias(true);
-  rendering_context->GetPaintCanvas()->drawPath(path.GetSkPath(), flags);
+  canvas->drawPath(path.GetSkPath(), flags);
 
-  return rendering_context->GetRecord();
+  return paint_recorder.finishRecordingAsPicture();
 }
 
 // Creates a deferred image of size clip_area_size that will be painted via
@@ -436,8 +440,10 @@ gfx::RectF ClipPathPaintDefinition::ClipAreaRect(
 
   for (unsigned i = 0; i < frames->size(); i++) {
     scoped_refptr<BasicShape> cur_shape = animated_shapes[i];
-    scoped_refptr<ShapeClipPathOperation> scpo =
-        ShapeClipPathOperation::Create(cur_shape);
+
+    // TODO(pdr): Handle geometry box.
+    ShapeClipPathOperation* scpo = MakeGarbageCollected<ShapeClipPathOperation>(
+        cur_shape, GeometryBox::kBorderBox);
     Path path = scpo->GetPath(reference_box, zoom);
     clip_area.Union(path.BoundingRect());
 
@@ -464,7 +470,7 @@ gfx::RectF ClipPathPaintDefinition::ClipAreaRect(
 
     if (min_progress < 0) {
       scoped_refptr<BasicShape> next_shape = animated_shapes[i + 1];
-      scoped_refptr<ShapeClipPathOperation> extrapolated_shape =
+      ShapeClipPathOperation* extrapolated_shape =
           InterpolateShapes(CreateInterpolationValue(*cur_shape.get(), zoom),
                             cur_shape->GetType(),
                             CreateInterpolationValue(*next_shape.get(), zoom),
@@ -474,7 +480,7 @@ gfx::RectF ClipPathPaintDefinition::ClipAreaRect(
     }
     if (max_progress > 1) {
       scoped_refptr<BasicShape> next_shape = animated_shapes[i + 1];
-      scoped_refptr<ShapeClipPathOperation> extrapolated_shape =
+      ShapeClipPathOperation* extrapolated_shape =
           InterpolateShapes(CreateInterpolationValue(*cur_shape.get(), zoom),
                             cur_shape->GetType(),
                             CreateInterpolationValue(*next_shape.get(), zoom),

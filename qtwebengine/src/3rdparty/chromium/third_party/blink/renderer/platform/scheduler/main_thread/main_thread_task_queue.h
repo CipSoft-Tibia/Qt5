@@ -23,6 +23,7 @@
 #include "third_party/blink/renderer/platform/scheduler/main_thread/agent_group_scheduler_impl.h"
 #include "third_party/blink/renderer/platform/scheduler/public/frame_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/web_scheduling_priority.h"
+#include "third_party/blink/renderer/platform/scheduler/public/web_scheduling_queue_type.h"
 #include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
 
 namespace base::sequence_manager {
@@ -72,6 +73,7 @@ class PLATFORM_EXPORT MainThreadTaskQueue
     kFramePausable = 14,
     kFrameUnpausable = 15,
     kV8 = 16,
+    kV8LowPriority = 27,
     // 17 : kIPC, obsolete
     kInput = 18,
 
@@ -91,7 +93,7 @@ class PLATFORM_EXPORT MainThreadTaskQueue
 
     // Used to group multiple types when calculating Expected Queueing Time.
     kOther = 23,
-    kCount = 27
+    kCount = 28
   };
 
   // The ThrottleHandle controls throttling and unthrottling the queue. When
@@ -99,14 +101,19 @@ class PLATFORM_EXPORT MainThreadTaskQueue
   // the queue will remain throttled as long as the handle is alive.
   class ThrottleHandle {
    public:
-    explicit ThrottleHandle(base::WeakPtr<MainThreadTaskQueue> task_queue)
-        : task_queue_(std::move(task_queue)) {
-      if (task_queue_)
-        task_queue_->throttler_->IncreaseThrottleRefCount();
+    explicit ThrottleHandle(MainThreadTaskQueue& task_queue)
+        : task_queue_(task_queue.AsWeakPtr()) {
+      // The throttler is reset for detached task queues, which we shouldn't be
+      // attempting to throttle.
+      CHECK(task_queue_->throttler_);
+      task_queue_->throttler_->IncreaseThrottleRefCount();
     }
+
     ~ThrottleHandle() {
-      if (task_queue_)
+      // The throttler is reset for detached task queues.
+      if (task_queue_ && task_queue_->throttler_) {
         task_queue_->throttler_->DecreaseThrottleRefCount();
+      }
     }
 
     // Move-only.
@@ -163,8 +170,10 @@ class PLATFORM_EXPORT MainThreadTaskQueue
       kInput = 10,
       kPostMessageForwarding = 11,
       kInternalNavigationCancellation = 12,
+      kRenderBlocking = 13,
+      kLow = 14,
 
-      kCount = 13
+      kCount = 15
     };
 
     // kPrioritisationTypeWidthBits is the number of bits required
@@ -277,6 +286,12 @@ class PLATFORM_EXPORT MainThreadTaskQueue
     explicit QueueCreationParams(QueueType queue_type)
         : queue_type(queue_type), spec(NameForQueueType(queue_type)) {}
 
+    QueueCreationParams SetWebSchedulingQueueType(
+        absl::optional<WebSchedulingQueueType> type) {
+      web_scheduling_queue_type = type;
+      return *this;
+    }
+
     QueueCreationParams SetWebSchedulingPriority(
         absl::optional<WebSchedulingPriority> priority) {
       web_scheduling_priority = priority;
@@ -367,6 +382,7 @@ class PLATFORM_EXPORT MainThreadTaskQueue
     WeakPersistent<AgentGroupSchedulerImpl> agent_group_scheduler;
     FrameSchedulerImpl* frame_scheduler = nullptr;
     QueueTraits queue_traits;
+    absl::optional<WebSchedulingQueueType> web_scheduling_queue_type;
     absl::optional<WebSchedulingPriority> web_scheduling_priority;
 
    private:
@@ -374,6 +390,11 @@ class PLATFORM_EXPORT MainThreadTaskQueue
       spec = spec.SetDelayedFencesAllowed(queue_traits.can_be_throttled);
     }
   };
+
+  MainThreadTaskQueue(base::sequence_manager::SequenceManager& sequence_manager,
+                      const TaskQueue::Spec& spec,
+                      const QueueCreationParams& params,
+                      MainThreadSchedulerImpl* main_thread_scheduler);
 
   QueueType queue_type() const { return queue_type_; }
 
@@ -428,8 +449,11 @@ class PLATFORM_EXPORT MainThreadTaskQueue
           on_ipc_task_posted_callback);
   void DetachOnIPCTaskPostedWhileInBackForwardCache();
 
-  void DetachFromMainThreadScheduler();
+  // Called when the underlying scheduler is destroyed. Tasks in this queue will
+  // continue to run until the queue becomes empty.
+  void DetachTaskQueue();
 
+  // Shuts down the task queue. No tasks will run after this is called.
   void ShutdownTaskQueue();
 
   AgentGroupScheduler* GetAgentGroupScheduler();
@@ -439,8 +463,15 @@ class PLATFORM_EXPORT MainThreadTaskQueue
   scoped_refptr<base::SingleThreadTaskRunner> CreateTaskRunner(
       TaskType task_type);
 
+  absl::optional<WebSchedulingQueueType> GetWebSchedulingQueueType() const {
+    return web_scheduling_queue_type_;
+  }
+
+  absl::optional<WebSchedulingPriority> GetWebSchedulingPriority() const {
+    return web_scheduling_priority_;
+  }
+
   void SetWebSchedulingPriority(WebSchedulingPriority priority);
-  absl::optional<WebSchedulingPriority> web_scheduling_priority() const;
 
   void OnWebSchedulingTaskQueueDestroyed();
 
@@ -513,14 +544,6 @@ class PLATFORM_EXPORT MainThreadTaskQueue
  protected:
   void SetFrameSchedulerForTest(FrameSchedulerImpl* frame_scheduler);
 
-  // TODO(crbug.com/1143007): Remove references to TaskQueueImpl once
-  // TaskQueueImpl inherits from TaskQueue.
-  MainThreadTaskQueue(
-      std::unique_ptr<base::sequence_manager::internal::TaskQueueImpl> impl,
-      const TaskQueue::Spec& spec,
-      const QueueCreationParams& params,
-      MainThreadSchedulerImpl* main_thread_scheduler);
-
   MainThreadTaskQueue(const MainThreadTaskQueue&) = delete;
   MainThreadTaskQueue& operator=(const MainThreadTaskQueue&) = delete;
 
@@ -528,25 +551,23 @@ class PLATFORM_EXPORT MainThreadTaskQueue
 
  private:
   friend class base::RefCountedThreadSafe<MainThreadTaskQueue>;
-  friend class base::sequence_manager::SequenceManager;
   friend class blink::scheduler::main_thread_scheduler_impl_unittest::
       MainThreadSchedulerImplTest;
-
-  // Clear references to main thread scheduler and frame scheduler and dispatch
-  // appropriate notifications. This is the common part of ShutdownTaskQueue and
-  // DetachFromMainThreadScheduler.
-  void ClearReferencesToSchedulers();
 
   scoped_refptr<BlinkSchedulerSingleThreadTaskRunner> WrapTaskRunner(
       scoped_refptr<base::SingleThreadTaskRunner>);
 
-  scoped_refptr<TaskQueue> task_queue_;
+  TaskQueue::Handle task_queue_;
   scoped_refptr<base::SingleThreadTaskRunner>
       task_runner_with_default_task_type_;
   absl::optional<TaskQueueThrottler> throttler_;
 
   const QueueType queue_type_;
   const QueueTraits queue_traits_;
+
+  // Set if this is queue is used for the web-exposed scheduling API. Used to
+  // differentiate initial tasks from continuations for prioritization.
+  const absl::optional<WebSchedulingQueueType> web_scheduling_queue_type_;
 
   // |web_scheduling_priority_| is the priority of the task queue within the web
   // scheduling API. This priority is used in conjunction with the frame
@@ -558,8 +579,9 @@ class PLATFORM_EXPORT MainThreadTaskQueue
 
   WeakPersistent<AgentGroupSchedulerImpl> agent_group_scheduler_;
 
-  // Set in the constructor. Cleared in ClearReferencesToSchedulers(). Can never
-  // be set to a different value afterwards (except in tests).
+  // Set in the constructor. Cleared in `DetachTaskQueue()` and
+  // `ShutdownTaskQueue()`. Can never be set to a different value afterwards
+  // (except in tests).
   FrameSchedulerImpl* frame_scheduler_;  // NOT OWNED
 
   // The WakeUpBudgetPool for this TaskQueue, if any.

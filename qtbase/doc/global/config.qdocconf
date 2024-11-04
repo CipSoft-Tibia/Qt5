@@ -31,3 +31,9 @@ defines += qt6
 
 # Require Qt modules to define qhp.projects
 qhp = true
+
+# Disable writing host-specific paths into .index files
+locationinfo = false
+
+# Include the warninglimit used for documentation testing in CI
+include(warninglimit.qdocconf)

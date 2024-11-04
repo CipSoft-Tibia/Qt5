@@ -13,19 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
-    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
-};
-var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
-    if (kind === "m") throw new TypeError("Private method is not writable");
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
-    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
-};
-var _FrameTree_frames, _FrameTree_parentIds, _FrameTree_childIds, _FrameTree_mainFrame, _FrameTree_waitRequests;
-import { createDeferredPromise, } from '../util/DeferredPromise.js';
+import { Deferred } from '../util/Deferred.js';
 /**
  * Keeps track of the page frame tree and it's is managed by
  * {@link FrameManager}. FrameTree uses frame IDs to reference frame and it
@@ -34,20 +22,18 @@ import { createDeferredPromise, } from '../util/DeferredPromise.js';
  * @internal
  */
 export class FrameTree {
-    constructor() {
-        _FrameTree_frames.set(this, new Map());
-        // frameID -> parentFrameID
-        _FrameTree_parentIds.set(this, new Map());
-        // frameID -> childFrameIDs
-        _FrameTree_childIds.set(this, new Map());
-        _FrameTree_mainFrame.set(this, void 0);
-        _FrameTree_waitRequests.set(this, new Map());
-    }
+    #frames = new Map();
+    // frameID -> parentFrameID
+    #parentIds = new Map();
+    // frameID -> childFrameIDs
+    #childIds = new Map();
+    #mainFrame;
+    #waitRequests = new Map();
     getMainFrame() {
-        return __classPrivateFieldGet(this, _FrameTree_mainFrame, "f");
+        return this.#mainFrame;
     }
     getById(frameId) {
-        return __classPrivateFieldGet(this, _FrameTree_frames, "f").get(frameId);
+        return this.#frames.get(frameId);
     }
     /**
      * Returns a promise that is resolved once the frame with
@@ -58,44 +44,42 @@ export class FrameTree {
         if (frame) {
             return Promise.resolve(frame);
         }
-        const deferred = createDeferredPromise();
-        const callbacks = __classPrivateFieldGet(this, _FrameTree_waitRequests, "f").get(frameId) || new Set();
+        const deferred = Deferred.create();
+        const callbacks = this.#waitRequests.get(frameId) || new Set();
         callbacks.add(deferred);
-        return deferred;
+        return deferred.valueOrThrow();
     }
     frames() {
-        return Array.from(__classPrivateFieldGet(this, _FrameTree_frames, "f").values());
+        return Array.from(this.#frames.values());
     }
     addFrame(frame) {
-        var _a;
-        __classPrivateFieldGet(this, _FrameTree_frames, "f").set(frame._id, frame);
+        this.#frames.set(frame._id, frame);
         if (frame._parentId) {
-            __classPrivateFieldGet(this, _FrameTree_parentIds, "f").set(frame._id, frame._parentId);
-            if (!__classPrivateFieldGet(this, _FrameTree_childIds, "f").has(frame._parentId)) {
-                __classPrivateFieldGet(this, _FrameTree_childIds, "f").set(frame._parentId, new Set());
+            this.#parentIds.set(frame._id, frame._parentId);
+            if (!this.#childIds.has(frame._parentId)) {
+                this.#childIds.set(frame._parentId, new Set());
             }
-            __classPrivateFieldGet(this, _FrameTree_childIds, "f").get(frame._parentId).add(frame._id);
+            this.#childIds.get(frame._parentId).add(frame._id);
         }
-        else {
-            __classPrivateFieldSet(this, _FrameTree_mainFrame, frame, "f");
+        else if (!this.#mainFrame) {
+            this.#mainFrame = frame;
         }
-        (_a = __classPrivateFieldGet(this, _FrameTree_waitRequests, "f").get(frame._id)) === null || _a === void 0 ? void 0 : _a.forEach(request => {
+        this.#waitRequests.get(frame._id)?.forEach(request => {
             return request.resolve(frame);
         });
     }
     removeFrame(frame) {
-        var _a;
-        __classPrivateFieldGet(this, _FrameTree_frames, "f").delete(frame._id);
-        __classPrivateFieldGet(this, _FrameTree_parentIds, "f").delete(frame._id);
+        this.#frames.delete(frame._id);
+        this.#parentIds.delete(frame._id);
         if (frame._parentId) {
-            (_a = __classPrivateFieldGet(this, _FrameTree_childIds, "f").get(frame._parentId)) === null || _a === void 0 ? void 0 : _a.delete(frame._id);
+            this.#childIds.get(frame._parentId)?.delete(frame._id);
         }
         else {
-            __classPrivateFieldSet(this, _FrameTree_mainFrame, undefined, "f");
+            this.#mainFrame = undefined;
         }
     }
     childFrames(frameId) {
-        const childIds = __classPrivateFieldGet(this, _FrameTree_childIds, "f").get(frameId);
+        const childIds = this.#childIds.get(frameId);
         if (!childIds) {
             return [];
         }
@@ -108,9 +92,8 @@ export class FrameTree {
         });
     }
     parentFrame(frameId) {
-        const parentId = __classPrivateFieldGet(this, _FrameTree_parentIds, "f").get(frameId);
+        const parentId = this.#parentIds.get(frameId);
         return parentId ? this.getById(parentId) : undefined;
     }
 }
-_FrameTree_frames = new WeakMap(), _FrameTree_parentIds = new WeakMap(), _FrameTree_childIds = new WeakMap(), _FrameTree_mainFrame = new WeakMap(), _FrameTree_waitRequests = new WeakMap();
 //# sourceMappingURL=FrameTree.js.map

@@ -21,7 +21,7 @@
 #include "base/trace_event/base_tracing.h"
 
 #if BUILDFLAG(IS_APPLE)
-#include "base/mac/scoped_cftyperef.h"
+#include "base/apple/scoped_cftyperef.h"
 #include "base/third_party/icu/icu_utf.h"
 #endif
 
@@ -338,8 +338,22 @@ FilePath FilePath::DirName() const {
     // separator intact indicating alternate root.
     new_path.path_.resize(letter + 3);
   } else if (last_separator != 0) {
-    // path_ is somewhere else, trim the basename.
-    new_path.path_.resize(last_separator);
+    bool trim_to_basename = true;
+#if BUILDFLAG(IS_POSIX)
+    // On Posix, more than two leading separators are always collapsed to one.
+    // See
+    // https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap04.html#tag_04_13
+    // So, do not strip any of the separators, let
+    // StripTrailingSeparatorsInternal() take care of the extra.
+    if (AreAllSeparators(new_path.path_.substr(0, last_separator + 1))) {
+      new_path.path_.resize(last_separator + 1);
+      trim_to_basename = false;
+    }
+#endif  // BUILDFLAG(IS_POSIX)
+    if (trim_to_basename) {
+      // path_ is somewhere else, trim the basename.
+      new_path.path_.resize(last_separator);
+    }
   }
 
   new_path.StripTrailingSeparatorsInternal();
@@ -447,7 +461,7 @@ FilePath FilePath::AddExtension(StringPieceType extension) const {
       *(str.end() - 1) != kExtensionSeparator) {
     str.append(1, kExtensionSeparator);
   }
-  str.append(extension.data(), extension.size());
+  str.append(extension);
   return FilePath(str);
 }
 
@@ -473,7 +487,7 @@ FilePath FilePath::ReplaceExtension(StringPieceType extension) const {
   StringType str = no_ext.value();
   if (extension[0] != kExtensionSeparator)
     str.append(1, kExtensionSeparator);
-  str.append(extension.data(), extension.size());
+  str.append(extension);
   return FilePath(str);
 }
 
@@ -539,7 +553,7 @@ FilePath FilePath::Append(StringPieceType component) const {
     }
   }
 
-  new_path.path_.append(appended.data(), appended.size());
+  new_path.path_.append(appended);
   return new_path;
 }
 
@@ -1253,7 +1267,7 @@ int FilePath::HFSFastUnicodeCompare(StringPieceType string1,
 
 StringType FilePath::GetHFSDecomposedForm(StringPieceType string) {
   StringType result;
-  ScopedCFTypeRef<CFStringRef> cfstring(CFStringCreateWithBytesNoCopy(
+  apple::ScopedCFTypeRef<CFStringRef> cfstring(CFStringCreateWithBytesNoCopy(
       NULL, reinterpret_cast<const UInt8*>(string.data()),
       checked_cast<CFIndex>(string.length()), kCFStringEncodingUTF8, false,
       kCFAllocatorNull));
@@ -1296,11 +1310,11 @@ int FilePath::CompareIgnoreCase(StringPieceType string1,
 
   // GetHFSDecomposedForm() returns an empty string in an error case.
   if (hfs1.empty() || hfs2.empty()) {
-    ScopedCFTypeRef<CFStringRef> cfstring1(CFStringCreateWithBytesNoCopy(
+    apple::ScopedCFTypeRef<CFStringRef> cfstring1(CFStringCreateWithBytesNoCopy(
         NULL, reinterpret_cast<const UInt8*>(string1.data()),
         checked_cast<CFIndex>(string1.length()), kCFStringEncodingUTF8, false,
         kCFAllocatorNull));
-    ScopedCFTypeRef<CFStringRef> cfstring2(CFStringCreateWithBytesNoCopy(
+    apple::ScopedCFTypeRef<CFStringRef> cfstring2(CFStringCreateWithBytesNoCopy(
         NULL, reinterpret_cast<const UInt8*>(string2.data()),
         checked_cast<CFIndex>(string2.length()), kCFStringEncodingUTF8, false,
         kCFAllocatorNull));

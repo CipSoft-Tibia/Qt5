@@ -1,5 +1,5 @@
 // Copyright (C) 2017 Lorn Potter.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtQml/qqml.h>
 #include <QtCore/QFile>

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import OpcUaMachineBackend
 
@@ -17,8 +16,11 @@ ColumnLayout {
     }
     Text {
         font.pointSize: 10
-        text: "<b>State:</b> " + (uaBackend.machineState === OpcUaMachineBackend.MachineState.Idle ?
-                                      "Idle" : (uaBackend.machineState === OpcUaMachineBackend.MachineState.Pumping ? "Pumping" : "Flushing"))
+        text: "<b>State:</b> "
+              + (uaBackend.machineState === OpcUaMachineBackend.MachineState.Idle
+                ? "Idle"
+                : (uaBackend.machineState === OpcUaMachineBackend.MachineState.Pumping ? "Pumping"
+                                                                                       : "Flushing"))
     }
     Text {
         font.pointSize: 10

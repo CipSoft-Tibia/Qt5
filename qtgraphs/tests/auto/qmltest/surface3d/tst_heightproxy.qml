@@ -45,7 +45,7 @@ Item {
             compare(initial.rowCount, 0)
             verify(!initial.series)
 
-            compare(initial.type, AbstractDataProxy.DataTypeSurface)
+            compare(initial.type, AbstractDataProxy.DataType.Surface)
         }
     }
 

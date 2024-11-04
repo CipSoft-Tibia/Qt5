@@ -19,6 +19,8 @@ namespace Eigen {
 
 }
 
+// IWYU pragma: begin_exports
 #include "src/MoreVectorization/MathFunctions.h"
+// IWYU pragma: end_exports
 
 #endif // EIGEN_MOREVECTORIZATION_MODULE_H

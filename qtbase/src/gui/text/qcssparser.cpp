@@ -979,9 +979,11 @@ void ValueExtractor::borderValue(const Declaration &decl, int *width, QCss::Bord
     }
 
      data.color = parseBrushValue(decl.d->values.at(i), pal);
-     *color = brushFromData(data.color, pal);
-     if (data.color.type != BrushData::DependsOnThePalette)
-         decl.d->parsed = QVariant::fromValue<BorderData>(data);
+    if (data.color.type != BrushData::Invalid) {
+        *color = brushFromData(data.color, pal);
+        if (data.color.type != BrushData::DependsOnThePalette)
+            decl.d->parsed = QVariant::fromValue<BorderData>(data);
+    }
 }
 
 static void parseShorthandBackgroundProperty(const QList<QCss::Value> &values, BrushData *brush, QString *image, Repeat *repeat, Qt::Alignment *alignment, const QPalette &pal)
@@ -1122,7 +1124,7 @@ static bool setFontSizeFromValue(QCss::Value value, QFont *font, int *fontSizeAd
     } else if (s.endsWith("px"_L1, Qt::CaseInsensitive)) {
         s.chop(2);
         value.variant = s;
-        if (value.variant.convert(QMetaType::fromType<int>())) {
+        if (value.variant.convert(QMetaType::fromType<qreal>())) {
             font->setPixelSize(qBound(0, value.variant.toInt(), (1 << 24) - 1));
             valid = true;
         }

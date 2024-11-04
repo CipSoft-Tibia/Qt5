@@ -231,7 +231,7 @@ void QQuick3DRenderStats::setRhiContext(QSSGRhiContext *ctx, QSSGRenderLayer *la
     // called from synchronize(), so on the render thread with gui blocked
 
     m_layer = layer;
-    m_contextStats = &ctx->stats();
+    m_contextStats = &QSSGRhiContextStats::get(*ctx);
 
     // setExtendedDataCollectionEnabled will likely get called at some point
     // before this (so too early), sync the flag here as well now that we know
@@ -239,8 +239,8 @@ void QQuick3DRenderStats::setRhiContext(QSSGRhiContext *ctx, QSSGRenderLayer *la
     if (m_extendedDataCollectionEnabled)
         m_contextStats->dynamicDataSources.insert(layer);
 
-    if (m_contextStats && m_contextStats->context.rhi()) {
-        const QString backendName = QString::fromUtf8(m_contextStats->context.rhi()->backendName());
+    if (m_contextStats && m_contextStats->rhiCtx->rhi()) {
+        const QString backendName = QString::fromUtf8(m_contextStats->rhiCtx->rhi()->backendName());
         if (m_graphicsApiName != backendName) {
             m_graphicsApiName = backendName;
             emit graphicsApiNameChanged();
@@ -423,11 +423,14 @@ void QQuick3DRenderStats::processRhiContextStats()
     // the render pass list is per renderer, i.e. per View3D
     const QSSGRhiContextStats::PerLayerInfo data = m_contextStats->perLayerInfo[m_layer];
 
+    const QSSGRhiContext *rhiCtx = m_contextStats->rhiCtx;
+    const QSSGRhiContextPrivate *rhiCtxD = QSSGRhiContextPrivate::get(rhiCtx);
+
     // textures and meshes include all assets registered to the per-QQuickWindow QSSGRhiContext
     const QSSGRhiContextStats::GlobalInfo globalData = m_contextStats->globalInfo;
-    const QSet<QRhiTexture *> textures = m_contextStats->context.registeredTextures();
-    const QSet<QSSGRenderMesh *> meshes = m_contextStats->context.registeredMeshes();
-    const QHash<QSSGGraphicsPipelineStateKey, QRhiGraphicsPipeline *> pipelines = m_contextStats->context.pipelines();
+    const auto textures = rhiCtxD->m_textures;
+    const auto meshes = rhiCtxD->m_meshes;
+    const auto pipelines = rhiCtxD->m_pipelines;
 
     m_results.drawCallCount = 0;
     m_results.drawVertexCount = 0;
@@ -472,7 +475,7 @@ void QQuick3DRenderStats::processRhiContextStats()
             int mipCount = 1;
             const QRhiTexture::Flags flags = tex->flags();
             if (flags.testFlag(QRhiTexture::MipMapped))
-                mipCount = m_contextStats->context.rhi()->mipLevelsForSize(tex->pixelSize());
+                mipCount = m_contextStats->rhiCtx->rhi()->mipLevelsForSize(tex->pixelSize());
             QByteArray flagMsg;
             if (flags.testFlag(QRhiTexture::CubeMap))
                 flagMsg += QByteArrayLiteral("[cube]");
@@ -484,7 +487,7 @@ void QQuick3DRenderStats::processRhiContextStats()
                                             mipCount,
                                             flagMsg.constData());
         }
-        texDetails += QString::asprintf("\nAsset textures registered with QSSGRhiContext %p", &m_contextStats->context);
+        texDetails += QString::asprintf("\nAsset textures registered with QSSGRhiContext %p", m_contextStats->rhiCtx);
         m_results.textureDetails = texDetails;
     }
 
@@ -523,7 +526,7 @@ void QQuick3DRenderStats::processRhiContextStats()
                                              ibufSize);
 
         }
-        meshDetails += QString::asprintf("\nAsset meshes registered with QSSGRhiContext %p", &m_contextStats->context);
+        meshDetails += QString::asprintf("\nAsset meshes registered with QSSGRhiContext %p", m_contextStats->rhiCtx);
         m_results.meshDetails = meshDetails;
     }
 
@@ -532,7 +535,7 @@ void QQuick3DRenderStats::processRhiContextStats()
     m_results.materialGenerationTime = m_contextStats->globalInfo.materialGenerationTime;
     m_results.effectGenerationTime = m_contextStats->globalInfo.effectGenerationTime;
 
-    m_results.rhiStats = m_contextStats->context.rhi()->statistics();
+    m_results.rhiStats = m_contextStats->rhiCtx->rhi()->statistics();
 }
 
 void QQuick3DRenderStats::notifyRhiContextStats()

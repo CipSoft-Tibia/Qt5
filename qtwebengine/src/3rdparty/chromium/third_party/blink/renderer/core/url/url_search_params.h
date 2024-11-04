@@ -5,6 +5,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_URL_URL_SEARCH_PARAMS_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_URL_URL_SEARCH_PARAMS_H_
 
+#include <cstdint>
 #include <utility>
 
 #include "base/dcheck_is_on.h"
@@ -50,15 +51,19 @@ class CORE_EXPORT URLSearchParams final
 
   // URLSearchParams interface methods
   String toString() const;
+  uint32_t size() const;
   void append(const String& name, const String& value);
-  void deleteAllWithName(ExecutionContext*, const String&);
-  void deleteAllWithName(ExecutionContext*,
-                         const String&,
-                         const ScriptValue& ignored);
+  void deleteAllWithNameOrTuple(ExecutionContext* execution_context,
+                                const String& name);
+  void deleteAllWithNameOrTuple(ExecutionContext* execution_context,
+                                const String& name,
+                                const String& val);
   String get(const String&) const;
   Vector<String> getAll(const String&) const;
-  bool has(ExecutionContext*, const String&) const;
-  bool has(ExecutionContext*, const String&, const ScriptValue& ignored) const;
+  bool has(ExecutionContext* execution_context, const String& name) const;
+  bool has(ExecutionContext* execution_context,
+           const String& name,
+           const String& val) const;
   void set(const String& name, const String& value);
   void sort();
   void SetInputWithoutUpdate(const String&);

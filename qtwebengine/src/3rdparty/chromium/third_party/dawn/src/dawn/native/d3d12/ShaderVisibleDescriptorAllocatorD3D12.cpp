@@ -18,9 +18,10 @@
 #include <limits>
 #include <utility>
 
-#include "dawn/native/d3d12/D3D12Error.h"
+#include "dawn/native/d3d/D3DError.h"
 #include "dawn/native/d3d12/DeviceD3D12.h"
 #include "dawn/native/d3d12/GPUDescriptorHeapAllocationD3D12.h"
+#include "dawn/native/d3d12/QueueD3D12.h"
 #include "dawn/native/d3d12/ResidencyManagerD3D12.h"
 
 namespace dawn::native::d3d12 {
@@ -77,11 +78,11 @@ D3D12_DESCRIPTOR_HEAP_FLAGS GetD3D12HeapFlags(D3D12_DESCRIPTOR_HEAP_TYPE heapTyp
 }
 
 // static
-ResultOrError<std::unique_ptr<ShaderVisibleDescriptorAllocator>>
+ResultOrError<std::unique_ptr<MutexProtected<ShaderVisibleDescriptorAllocator>>>
 ShaderVisibleDescriptorAllocator::Create(Device* device, D3D12_DESCRIPTOR_HEAP_TYPE heapType) {
-    std::unique_ptr<ShaderVisibleDescriptorAllocator> allocator =
-        std::make_unique<ShaderVisibleDescriptorAllocator>(device, heapType);
-    DAWN_TRY(allocator->AllocateAndSwitchShaderVisibleHeap());
+    std::unique_ptr<MutexProtected<ShaderVisibleDescriptorAllocator>> allocator =
+        std::make_unique<MutexProtected<ShaderVisibleDescriptorAllocator>>(device, heapType);
+    DAWN_TRY((*allocator)->AllocateAndSwitchShaderVisibleHeap());
     return std::move(allocator);
 }
 
@@ -189,7 +190,7 @@ MaybeError ShaderVisibleDescriptorAllocator::AllocateAndSwitchShaderVisibleHeap(
             // heaps for heavy users.
             // TODO(dawn:256): Consider periodically triming to avoid OOM.
             mPool.push_back({mDevice->GetPendingCommandSerial(), std::move(mHeap)});
-            if (mPool.front().heapSerial <= mDevice->GetCompletedCommandSerial()) {
+            if (mPool.front().heapSerial <= mDevice->GetQueue()->GetCompletedCommandSerial()) {
                 descriptorHeap = std::move(mPool.front().heap);
                 mPool.pop_front();
             }
@@ -241,7 +242,7 @@ bool ShaderVisibleDescriptorAllocator::IsAllocationStillValid(
     // re-allocated every submit. For this reason, we view any descriptors allocated prior to the
     // pending submit as invalid. We must also verify the descriptor heap has not switched (because
     // a larger descriptor heap was needed).
-    return (allocation.GetLastUsageSerial() == mDevice->GetPendingCommandSerial() &&
+    return (allocation.GetLastUsageSerial() == mDevice->GetQueue()->GetPendingCommandSerial() &&
             allocation.GetHeapSerial() == mHeapSerial);
 }
 

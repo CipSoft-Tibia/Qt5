@@ -35,6 +35,7 @@
 
 #include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
+#include "base/time/time.h"
 #include "third_party/blink/public/mojom/service_worker/controller_service_worker.mojom-blink.h"
 #include "third_party/blink/public/mojom/service_worker/dispatch_fetch_event_params.mojom-blink.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker.mojom-blink.h"
@@ -105,6 +106,8 @@ class ServiceWorkerGlobalScopeProxy final : public WebServiceWorkerContextProxy,
   void PauseEvaluation() override;
   void ResumeEvaluation() override;
   mojom::blink::ServiceWorkerFetchHandlerType FetchHandlerType() override;
+  bool HasHidEventHandlers() override;
+  bool HasUsbEventHandlers() override;
 
   // WorkerReportingProxy overrides:
   void CountFeature(WebFeature) override;
@@ -136,6 +139,9 @@ class ServiceWorkerGlobalScopeProxy final : public WebServiceWorkerContextProxy,
           preload_url_loader_client_receiver);
   void RequestTermination(WTF::CrossThreadOnceFunction<void(bool)> callback);
 
+  bool ShouldNotifyServiceWorkerOnWebSocketActivity(
+      v8::Local<v8::Context> context);
+
   // Detaches this proxy object entirely from the outside world, clearing out
   // all references.
   //
@@ -159,6 +165,8 @@ class ServiceWorkerGlobalScopeProxy final : public WebServiceWorkerContextProxy,
   WebServiceWorkerContextClient* client_;
 
   CrossThreadPersistent<ServiceWorkerGlobalScope> worker_global_scope_;
+
+  base::TimeTicks top_level_script_evaluation_start_time_;
 
   THREAD_CHECKER(worker_thread_checker_);
 };

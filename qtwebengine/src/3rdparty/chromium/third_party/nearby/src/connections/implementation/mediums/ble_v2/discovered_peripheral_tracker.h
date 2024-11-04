@@ -18,7 +18,11 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "connections/implementation/mediums//lost_entity_tracker.h"
 #include "connections/implementation/mediums/ble_v2/advertisement_read_result.h"
 #include "connections/implementation/mediums/ble_v2/ble_advertisement.h"
@@ -27,6 +31,7 @@
 #include "connections/implementation/mediums/lost_entity_tracker.h"
 #include "internal/platform/bluetooth_adapter.h"
 #include "internal/platform/byte_array.h"
+#include "internal/platform/multi_thread_executor.h"
 #include "internal/platform/mutex.h"
 
 namespace nearby {
@@ -58,9 +63,9 @@ class DiscoveredPeripheralTracker {
   };
 
   explicit DiscoveredPeripheralTracker(
-      bool is_extended_advertisement_available = false)
-      : is_extended_advertisement_available_(
-            is_extended_advertisement_available) {}
+      bool is_extended_advertisement_available = false);
+
+  ~DiscoveredPeripheralTracker();
 
   // Starts tracking discoveries for a particular service Id.
   //
@@ -126,11 +131,6 @@ class DiscoveredPeripheralTracker {
     // advertisements are updated. This is a reverse map of
     // gatt_advertisements_.
     BleAdvertisementHeader advertisement_header;
-
-    // Used when we need to make a socket connection based off of the GATT
-    // advertisement alone. Entries are modified every time a GATT
-    // advertisement's advertisement header is seen.
-    std::string mac_address;
 
     // A proxy BlePeripheral for found/lost disovery callback.
     BleV2Peripheral peripheral;
@@ -239,6 +239,11 @@ class DiscoveredPeripheralTracker {
       AdvertisementFetcher advertisement_fetcher)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  std::vector<const ByteArray*> FetchRawAdvertisementsInThread(
+      BleV2Peripheral peripheral,
+      const BleAdvertisementHeader& advertisement_header,
+      AdvertisementFetcher advertisement_fetcher);
+
   // Updates `gatt_advertisement_infos_` map no matter whether we read a new
   // GATT advertisement by the input `advertisement_header` and 'mac_address`.
   void UpdateCommonStateForFoundBleAdvertisement(
@@ -286,6 +291,13 @@ class DiscoveredPeripheralTracker {
   // advertisements are lost or become stale.
   absl::flat_hash_map<BleAdvertisement, GattAdvertisementInfo>
       gatt_advertisement_infos_ ABSL_GUARDED_BY(mutex_);
+
+  // Tracks the advertisements in GATT fetching.
+  absl::flat_hash_set<ByteArray> fetching_advertisements_
+      ABSL_GUARDED_BY(mutex_);
+
+  std::unique_ptr<MultiThreadExecutor> executor_ ABSL_GUARDED_BY(mutex_) =
+      nullptr;
 };
 
 }  // namespace mediums

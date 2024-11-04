@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "osp/impl/quic/quic_connection_factory.h"
 #include "osp/impl/quic/quic_service_common.h"
@@ -17,8 +19,7 @@
 #include "platform/base/ip_address.h"
 #include "util/alarm.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 // This class is the default implementation of ProtocolConnectionServer for the
 // library.  It manages connections to other endpoints as well as the lifetime
@@ -38,7 +39,7 @@ class QuicServer final : public ProtocolConnectionServer,
              std::unique_ptr<QuicConnectionFactory> connection_factory,
              ProtocolConnectionServer::Observer* observer,
              ClockNowFunctionPtr now_function,
-             TaskRunner* task_runner);
+             TaskRunner& task_runner);
   ~QuicServer() override;
 
   // ProtocolConnectionServer overrides.
@@ -105,7 +106,6 @@ class QuicServer final : public ProtocolConnectionServer,
   Alarm cleanup_alarm_;
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_IMPL_QUIC_QUIC_SERVER_H_

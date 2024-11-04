@@ -31,6 +31,51 @@ if(ANDROID)
         "${INSTALL_CMAKE_NAMESPACE}AndroidQmlMacros.cmake")
 endif()
 
+set_source_files_properties(
+        qml/qqmlcomponent.h qml/qqmlcomponent.cpp qml/qqmlcomponent_p.h
+        qml/qqmlcomponentattached_p.h
+        qml/qqmlscriptstring.h qml/qqmlscriptstring_p.h qml/qqmlscriptstring.cpp
+    PROPERTIES
+        SKIP_AUTOMOC TRUE
+)
+
+# We want QQmlComponent, QQmlComponentAttached, and QQmlScriptString to be available as metatypes in
+# the builtins, but without depending on QtQml and without duplicating the metaobjects.
+qt_manual_moc(extra_builtins_moc_files
+    OUTPUT_MOC_JSON_FILES extra_builtins_json_list
+    qml/qqmlcomponent.h
+    qml/qqmlcomponentattached_p.h
+    qml/qqmlscriptstring.h
+    INCLUDE_DIRECTORY_TARGETS Qt::Qml
+)
+
+# The moc files are included directly by qqmlcomponent.cpp and qqmlscriptstring.cpp
+set_source_files_properties(${extra_builtins_moc_files} PROPERTIES HEADER_FILE_ONLY ON)
+
+qt_internal_add_module(QmlBuiltins
+    STATIC
+    NO_GENERATE_METATYPES # we do that manually below
+    SOURCES
+        qqmlbuiltins_p.h
+)
+
+add_custom_target(ExtraBuiltinsJson DEPENDS ${extra_builtins_json_list})
+add_custom_target(ExtraBuiltinsMocs DEPENDS ${extra_builtins_moc_files})
+
+target_link_libraries(QmlBuiltins PRIVATE Qt::Core Qt::QmlIntegration)
+
+# We generally need to copy the files into the build directory,
+# so that they are located together with the QML modules
+qt_path_join(qml_build_dir "${QT_BUILD_DIR}" "${INSTALL_QMLDIR}")
+
+# Simulate conditions that qt6_add_qml_module() would normally set up for us
+set_target_properties(QmlBuiltins PROPERTIES
+    QT_QML_MODULE_VERSION 1.0
+    QT_QML_MODULE_URI QML
+    QT_QML_MODULE_TYPEINFO builtins.qmltypes
+    QT_QML_MODULE_OUTPUT_DIRECTORY ${qml_build_dir}
+)
+
 qt_internal_add_qml_module(Qml
     URI "QtQml.Base"
     VERSION "${PROJECT_VERSION}"
@@ -39,6 +84,8 @@ qt_internal_add_qml_module(Qml
     PLUGIN_TARGET qmlplugin
     CLASS_NAME QtQmlPlugin
     PLUGIN_TYPES qmltooling
+    IMPORTS
+        QML/1.0
     SOURCES
         ../3rdparty/masm/assembler/ARM64Assembler.h
         ../3rdparty/masm/assembler/ARMv7Assembler.cpp ../3rdparty/masm/assembler/ARMv7Assembler.h
@@ -128,6 +175,7 @@ qt_internal_add_qml_module(Qml
         common/qv4staticvalue_p.h
         common/qv4stringtoarrayindex_p.h
         common/qqmltranslation.cpp common/qqmltranslation_p.h
+        common/qqmlsignalnames_p.h common/qqmlsignalnames.cpp
         compat/removed_api.cpp
         compiler/qqmlirbuilder.cpp compiler/qqmlirbuilder_p.h
         compiler/qv4bytecodegenerator.cpp compiler/qv4bytecodegenerator_p.h
@@ -409,6 +457,7 @@ qt_internal_add_qml_module(Qml
         ${CMAKE_CURRENT_BINARY_DIR}/compiler
         ${CMAKE_CURRENT_BINARY_DIR}/jsruntime
         ${CMAKE_CURRENT_BINARY_DIR}/memory
+        ${CMAKE_CURRENT_BINARY_DIR}/qml
         ${CMAKE_CURRENT_BINARY_DIR}/qmldirparser
         ../3rdparty/masm
         ../3rdparty/masm/assembler
@@ -424,6 +473,7 @@ qt_internal_add_qml_module(Qml
         debugger
         jsruntime
         memory
+        qml
         qmldirparser
     LIBRARIES
         Qt::CorePrivate
@@ -431,8 +481,10 @@ qt_internal_add_qml_module(Qml
     PUBLIC_LIBRARIES
         Qt::Core
         Qt::QmlIntegration
+        Qt::QmlBuiltins
     PRIVATE_MODULE_INTERFACE
         Qt::CorePrivate
+        Qt::QmlBuiltinsPrivate
     EXTRA_CMAKE_FILES
         "${CMAKE_CURRENT_LIST_DIR}/${INSTALL_CMAKE_NAMESPACE}qmldirTemplate.cmake.in"
         "${CMAKE_CURRENT_LIST_DIR}/${INSTALL_CMAKE_NAMESPACE}QmlPluginTemplate.cpp.in"
@@ -450,11 +502,77 @@ qt_internal_add_qml_module(Qml
         QTP0001
 )
 
+_qt_internal_add_qml_deploy_info_finalizer(Qml)
+
+target_include_directories(QmlBuiltins PRIVATE
+    $<TARGET_PROPERTY:${QT_CMAKE_EXPORT_NAMESPACE}::QmlPrivate,INTERFACE_INCLUDE_DIRECTORIES>
+)
+
+set(builtins_typeregistration_args
+    MANUAL_MOC_JSON_FILES ${extra_builtins_json_list}
+    REGISTRATIONS_TARGET Qml
+)
+
+get_target_property(qt_namespace ${QT_CMAKE_EXPORT_NAMESPACE}::Core _qt_namespace)
+if(qt_namespace)
+    list(APPEND builtins_typeregistration_args NAMESPACE ${qt_namespace})
+endif()
+
+_qt_internal_qml_type_registration(QmlBuiltins ${builtins_typeregistration_args})
+add_dependencies(QmlBuiltins ExtraBuiltinsJson)
+
+_qt_internal_get_tool_wrapper_script_path(tool_wrapper)
+add_custom_command(
+    OUTPUT
+        "${qml_build_dir}/jsroot.qmltypes"
+    DEPENDS
+        ${QT_CMAKE_EXPORT_NAMESPACE}::qmltyperegistrar
+    COMMAND
+        ${tool_wrapper}
+        $<TARGET_FILE:${QT_CMAKE_EXPORT_NAMESPACE}::qmltyperegistrar>
+        --jsroot --generate-qmltypes "${qml_build_dir}/jsroot.qmltypes"
+    COMMENT "Generating jsroot.qmltypes"
+    VERBATIM
+)
+
+get_target_property(builtins_metatypes_file "QmlBuiltins" INTERFACE_QT_META_TYPES_BUILD_FILE)
+
+_qt_internal_get_metatypes_install_dir(
+    ""
+    "${INSTALL_ARCHDATADIR}"
+    metatypes_install_dir
+)
+
+_qt_internal_assign_install_metatypes_files_and_properties(
+    QmlBuiltins
+    INSTALL_DIR "${metatypes_install_dir}"
+)
+
+qt_install(
+    FILES "${builtins_metatypes_file}"
+    DESTINATION "${metatypes_install_dir}"
+)
+
+set(builtins_output_files "")
+list(APPEND builtins_output_files "${qml_build_dir}/builtins.qmltypes")
+list(APPEND builtins_output_files "${qml_build_dir}/jsroot.qmltypes")
+
+add_custom_target(BuiltinsOutput DEPENDS ${builtins_output_files})
+
+qt_install(
+    FILES ${builtins_output_files}
+    DESTINATION "${INSTALL_QMLDIR}"
+)
+
+add_dependencies(Qml ExtraBuiltinsMocs)
+add_dependencies(Qml BuiltinsOutput)
+
 qt_update_ignore_pch_source(Qml "compat/removed_api.cpp")
 
 set_source_files_properties(compat/removed_api.cpp
                             jsruntime/qv4mathobject.cpp # math.h issues on Windows
                             PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+
 
 qt_internal_add_qml_module(QmlMeta
     URI "QtQml"
@@ -752,8 +870,10 @@ endif()
 # "unknown IID" issue when moc processes plugin sources, because of missing header aliases.
 # Qml_sync_headers target is created later by the finalizer in the directory scope so we add this
 # dependency manually instead of relying on qt_internal_add_qml_module logic. Same is applicable
-# for QmlMeta target.
+# for the QmlMeta and the QmlBuiltins target.
 set_property(TARGET qmlplugin APPEND PROPERTY AUTOGEN_TARGET_DEPENDS
     Qml_sync_headers)
 set_property(TARGET QmlMeta APPEND PROPERTY AUTOGEN_TARGET_DEPENDS
+    Qml_sync_headers)
+set_property(TARGET QmlBuiltins APPEND PROPERTY AUTOGEN_TARGET_DEPENDS
     Qml_sync_headers)

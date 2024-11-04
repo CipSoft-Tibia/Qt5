@@ -5,10 +5,13 @@
 #include "components/keyed_service/core/dependency_manager.h"
 
 #include <ostream>
+#include <string>
 
 #include "base/check.h"
+#include "base/debug/crash_logging.h"
 #include "base/debug/dump_without_crashing.h"
 #include "base/functional/bind.h"
+#include "base/logging.h"
 #include "base/notreached.h"
 #include "base/supports_user_data.h"
 #include "components/keyed_service/core/keyed_service_base_factory.h"
@@ -40,6 +43,23 @@ void DependencyManager::AddComponent(KeyedServiceBaseFactory* component) {
          "for all factories in a method called "
          "Ensure.*KeyedServiceFactoriesBuilt().";
 #endif  // DCHECK_IS_ON()
+
+  if (disallow_factory_registration_) {
+    SCOPED_CRASH_KEY_STRING32("KeyedServiceFactories", "factory_name",
+                              component->name());
+    base::debug::DumpWithoutCrashing();
+
+    DCHECK(false)
+        << "Trying to register KeyedService Factory: `" << component->name()
+        << "` after the call to the main registration function `"
+        << registration_function_name_error_message_
+        << "`. Please add a "
+           "call your factory `KeyedServiceFactory::GetInstance()` in the "
+           "previous method or to the appropriate "
+           "`EnsureBrowserContextKeyedServiceFactoriesBuilt()` function to "
+           "properly register your factory.";
+  }
+
   dependency_graph_.AddNode(component);
 }
 
@@ -200,10 +220,17 @@ void DependencyManager::DumpDependenciesAsGraphviz(
   DCHECK(!dot_file.empty());
   std::string contents = dependency_graph_.DumpAsGraphviz(
       top_level_name, base::BindRepeating(&KeyedServiceBaseFactoryGetNodeName));
-  base::WriteFile(dot_file, contents.c_str(), contents.size());
+  base::WriteFile(dot_file, contents);
 }
 #endif  // NDEBUG
 
 DependencyGraph& DependencyManager::GetDependencyGraphForTesting() {
   return dependency_graph_;
+}
+
+void DependencyManager::DisallowKeyedServiceFactoryRegistration(
+    const std::string& registration_function_name_error_message) {
+  disallow_factory_registration_ = true;
+  registration_function_name_error_message_ =
+      registration_function_name_error_message;
 }

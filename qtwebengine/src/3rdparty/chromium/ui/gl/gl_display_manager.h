@@ -21,21 +21,6 @@
 
 namespace gl {
 
-struct DisplayMapEntry {
-  DisplayMapEntry() = default;
-
-  explicit DisplayMapEntry(uint64_t system_device_id)
-      : system_device_id_(system_device_id) {}
-
-  DisplayMapEntry(uint64_t system_device_id, gl::DisplayKey display_key)
-      : system_device_id_(system_device_id), display_key_(display_key) {}
-
-  auto tie() const { return std::tie(system_device_id_, display_key_); }
-
-  uint64_t system_device_id_ = 0;
-  gl::DisplayKey display_key_ = gl::DisplayKey::kDefault;
-};
-
 template <typename GLDisplayPlatform>
 class GLDisplayManager {
  public:
@@ -140,7 +125,6 @@ class GLDisplayManager {
 #if defined(USE_EGL)
   friend class GLDisplayManagerEGLTest;
 #endif
-  friend class GLSurfaceGLXQt;
 
   // Don't delete these functions for testing purpose.
   // Each test constructs a scoped GLDisplayManager directly.

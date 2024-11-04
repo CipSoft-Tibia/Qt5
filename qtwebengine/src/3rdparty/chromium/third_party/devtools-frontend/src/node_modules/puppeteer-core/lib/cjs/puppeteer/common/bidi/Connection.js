@@ -14,120 +14,151 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
-    if (kind === "m") throw new TypeError("Private method is not writable");
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
-    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
-};
-var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
-    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
-};
-var _Connection_instances, _Connection_transport, _Connection_delay, _Connection_lastId, _Connection_closed, _Connection_callbacks, _Connection_onClose;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Connection = void 0;
+const Connection_js_1 = require("../Connection.js");
 const Debug_js_1 = require("../Debug.js");
+const EventEmitter_js_1 = require("../EventEmitter.js");
+const BrowsingContext_js_1 = require("./BrowsingContext.js");
+const utils_js_1 = require("./utils.js");
 const debugProtocolSend = (0, Debug_js_1.debug)('puppeteer:webDriverBiDi:SEND ►');
 const debugProtocolReceive = (0, Debug_js_1.debug)('puppeteer:webDriverBiDi:RECV ◀');
-const EventEmitter_js_1 = require("../EventEmitter.js");
-const Errors_js_1 = require("../Errors.js");
 /**
  * @internal
  */
 class Connection extends EventEmitter_js_1.EventEmitter {
-    constructor(transport, delay = 0) {
+    #url;
+    #transport;
+    #delay;
+    #timeout = 0;
+    #closed = false;
+    #callbacks = new Connection_js_1.CallbackRegistry();
+    #browsingContexts = new Map();
+    constructor(url, transport, delay = 0, timeout) {
         super();
-        _Connection_instances.add(this);
-        _Connection_transport.set(this, void 0);
-        _Connection_delay.set(this, void 0);
-        _Connection_lastId.set(this, 0);
-        _Connection_closed.set(this, false);
-        _Connection_callbacks.set(this, new Map());
-        __classPrivateFieldSet(this, _Connection_delay, delay, "f");
-        __classPrivateFieldSet(this, _Connection_transport, transport, "f");
-        __classPrivateFieldGet(this, _Connection_transport, "f").onmessage = this.onMessage.bind(this);
-        __classPrivateFieldGet(this, _Connection_transport, "f").onclose = __classPrivateFieldGet(this, _Connection_instances, "m", _Connection_onClose).bind(this);
+        this.#url = url;
+        this.#delay = delay;
+        this.#timeout = timeout ?? 180000;
+        this.#transport = transport;
+        this.#transport.onmessage = this.onMessage.bind(this);
+        this.#transport.onclose = this.#onClose.bind(this);
     }
     get closed() {
-        return __classPrivateFieldGet(this, _Connection_closed, "f");
+        return this.#closed;
+    }
+    get url() {
+        return this.#url;
     }
     send(method, params) {
-        var _a;
-        const id = __classPrivateFieldSet(this, _Connection_lastId, (_a = __classPrivateFieldGet(this, _Connection_lastId, "f"), ++_a), "f");
-        const stringifiedMessage = JSON.stringify({
-            id,
-            method,
-            params,
-        });
-        debugProtocolSend(stringifiedMessage);
-        __classPrivateFieldGet(this, _Connection_transport, "f").send(stringifiedMessage);
-        return new Promise((resolve, reject) => {
-            __classPrivateFieldGet(this, _Connection_callbacks, "f").set(id, {
-                resolve,
-                reject,
-                error: new Errors_js_1.ProtocolError(),
+        return this.#callbacks.create(method, this.#timeout, id => {
+            const stringifiedMessage = JSON.stringify({
+                id,
                 method,
+                params,
             });
+            debugProtocolSend(stringifiedMessage);
+            this.#transport.send(stringifiedMessage);
         });
     }
     /**
      * @internal
      */
     async onMessage(message) {
-        if (__classPrivateFieldGet(this, _Connection_delay, "f")) {
+        if (this.#delay) {
             await new Promise(f => {
-                return setTimeout(f, __classPrivateFieldGet(this, _Connection_delay, "f"));
+                return setTimeout(f, this.#delay);
             });
         }
         debugProtocolReceive(message);
         const object = JSON.parse(message);
-        if ('id' in object) {
-            const callback = __classPrivateFieldGet(this, _Connection_callbacks, "f").get(object.id);
-            // Callbacks could be all rejected if someone has called `.dispose()`.
-            if (callback) {
-                __classPrivateFieldGet(this, _Connection_callbacks, "f").delete(object.id);
-                if ('error' in object) {
-                    callback.reject(createProtocolError(callback.error, callback.method, object));
-                }
-                else {
-                    callback.resolve(object.result);
-                }
+        if ('id' in object && object.id) {
+            if ('error' in object) {
+                this.#callbacks.reject(object.id, createProtocolError(object), object.message);
+            }
+            else {
+                this.#callbacks.resolve(object.id, object);
             }
         }
         else {
-            this.emit(object.method, object.params);
+            if ('error' in object || 'id' in object || 'launched' in object) {
+                (0, utils_js_1.debugError)(object);
+            }
+            else {
+                this.#maybeEmitOnContext(object);
+                this.emit(object.method, object.params);
+            }
         }
     }
+    #maybeEmitOnContext(event) {
+        let context;
+        // Context specific events
+        if ('context' in event.params && event.params.context) {
+            context = this.#browsingContexts.get(event.params.context);
+            // `log.entryAdded` specific context
+        }
+        else if ('source' in event.params && event.params.source.context) {
+            context = this.#browsingContexts.get(event.params.source.context);
+        }
+        else if (isCDPEvent(event)) {
+            BrowsingContext_js_1.cdpSessions
+                .get(event.params.session)
+                ?.emit(event.params.event, event.params.params);
+        }
+        context?.emit(event.method, event.params);
+    }
+    registerBrowsingContexts(context) {
+        this.#browsingContexts.set(context.id, context);
+    }
+    getBrowsingContext(contextId) {
+        const currentContext = this.#browsingContexts.get(contextId);
+        if (!currentContext) {
+            throw new Error(`BrowsingContext ${contextId} does not exist.`);
+        }
+        return currentContext;
+    }
+    getTopLevelContext(contextId) {
+        let currentContext = this.#browsingContexts.get(contextId);
+        if (!currentContext) {
+            throw new Error(`BrowsingContext ${contextId} does not exist.`);
+        }
+        while (currentContext.parent) {
+            contextId = currentContext.parent;
+            currentContext = this.#browsingContexts.get(contextId);
+            if (!currentContext) {
+                throw new Error(`BrowsingContext ${contextId} does not exist.`);
+            }
+        }
+        return currentContext;
+    }
+    unregisterBrowsingContexts(id) {
+        this.#browsingContexts.delete(id);
+    }
+    #onClose() {
+        if (this.#closed) {
+            return;
+        }
+        this.#closed = true;
+        this.#transport.onmessage = undefined;
+        this.#transport.onclose = undefined;
+        this.#callbacks.clear();
+    }
     dispose() {
-        __classPrivateFieldGet(this, _Connection_instances, "m", _Connection_onClose).call(this);
-        __classPrivateFieldGet(this, _Connection_transport, "f").close();
+        this.#onClose();
+        this.#transport.close();
     }
 }
 exports.Connection = Connection;
-_Connection_transport = new WeakMap(), _Connection_delay = new WeakMap(), _Connection_lastId = new WeakMap(), _Connection_closed = new WeakMap(), _Connection_callbacks = new WeakMap(), _Connection_instances = new WeakSet(), _Connection_onClose = function _Connection_onClose() {
-    if (__classPrivateFieldGet(this, _Connection_closed, "f")) {
-        return;
-    }
-    __classPrivateFieldSet(this, _Connection_closed, true, "f");
-    __classPrivateFieldGet(this, _Connection_transport, "f").onmessage = undefined;
-    __classPrivateFieldGet(this, _Connection_transport, "f").onclose = undefined;
-    for (const callback of __classPrivateFieldGet(this, _Connection_callbacks, "f").values()) {
-        callback.reject(rewriteError(callback.error, `Protocol error (${callback.method}): Connection closed.`));
-    }
-    __classPrivateFieldGet(this, _Connection_callbacks, "f").clear();
-};
-function rewriteError(error, message, originalMessage) {
-    error.message = message;
-    error.originalMessage = originalMessage !== null && originalMessage !== void 0 ? originalMessage : error.originalMessage;
-    return error;
-}
-function createProtocolError(error, method, object) {
-    let message = `Protocol error (${method}): ${object.error} ${object.message}`;
+/**
+ * @internal
+ */
+function createProtocolError(object) {
+    let message = `${object.error} ${object.message}`;
     if (object.stacktrace) {
         message += ` ${object.stacktrace}`;
     }
-    return rewriteError(error, message, object.message);
+    return message;
+}
+function isCDPEvent(event) {
+    return event.method.startsWith('cdp.');
 }
 //# sourceMappingURL=Connection.js.map

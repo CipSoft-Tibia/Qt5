@@ -126,15 +126,7 @@ absl::optional<int> g_exactTextMaxCharsOverride;
 
 TextFragmentSelectorGenerator::TextFragmentSelectorGenerator(
     LocalFrame* main_frame)
-    : frame_(main_frame) {
-  if (base::FeatureList::IsEnabled(
-          shared_highlighting::kSharedHighlightingRefinedMaxContextWords)) {
-    max_context_words_ =
-        shared_highlighting::kSharedHighlightingMaxContextWords.Get();
-  } else {
-    max_context_words_ = kMaxContextWords;
-  }
-}
+    : frame_(main_frame) {}
 
 void TextFragmentSelectorGenerator::Generate(const RangeInFlatTree& range,
                                              GenerateCallback callback) {
@@ -266,6 +258,8 @@ void TextFragmentSelectorGenerator::AdjustSelection() {
         FlatTreeTraversal::Previous(*corrected_end));
     if (corrected_end)
       corrected_end_offset = corrected_end->textContent().length();
+    else
+      corrected_end_offset = 0;
   } else {
     // if node change was not necessary move start and end positions to
     // contain full words. This is not necessary when node change happened
@@ -296,7 +290,7 @@ void TextFragmentSelectorGenerator::AdjustSelection() {
     // TODO(bokan): This can sometimes occur from a selection. Avoid crashing
     // from this case but this can come from a seemingly correct range so we
     // should investigate the source of the bug.  https://crbug.com/1216357
-    if (start >= end) {
+    if (!start || !end || start >= end) {
       range_ = nullptr;
       return;
     }
@@ -344,8 +338,6 @@ void TextFragmentSelectorGenerator::StartGeneration() {
     return;
   }
 
-  UMA_HISTOGRAM_COUNTS_1000("SharedHighlights.LinkGenerated.SelectionLength",
-                            PlainText(range_->ToEphemeralRange()).length());
   state_ = kNeedsNewCandidate;
   GenerateSelectorCandidate();
 }
@@ -580,7 +572,7 @@ void TextFragmentSelectorGenerator::ExtendContext() {
   DCHECK(selector_);
 
   // Give up if context is already too long.
-  if (num_context_words_ >= max_context_words_) {
+  if (num_context_words_ >= kMaxContextWords) {
     state_ = kFailure;
     error_ = LinkGenerationError::kContextLimitReached;
     return;
@@ -651,17 +643,9 @@ void TextFragmentSelectorGenerator::RecordAllMetrics(
   ukm::SourceId source_id = frame_->GetDocument()->UkmSourceID();
 
   if (selector.Type() != TextFragmentSelector::SelectorType::kInvalid) {
-    UMA_HISTOGRAM_COUNTS_1000("SharedHighlights.LinkGenerated.ParamLength",
-                              selector.ToString().length());
-
-    UMA_HISTOGRAM_EXACT_LINEAR("SharedHighlights.LinkGenerated.Iterations",
-                               iteration_, kMaxIterationCountToRecord);
     UMA_HISTOGRAM_TIMES("SharedHighlights.LinkGenerated.TimeToGenerate",
                         base::DefaultTickClock::GetInstance()->NowTicks() -
                             generation_start_time_);
-    UMA_HISTOGRAM_ENUMERATION(
-        "SharedHighlights.LinkGenerated.SelectorParameters",
-        TextFragmentAnchorMetrics::GetParametersForSelector(selector));
 
     shared_highlighting::LogLinkGeneratedSuccessUkmEvent(recorder, source_id);
   } else {

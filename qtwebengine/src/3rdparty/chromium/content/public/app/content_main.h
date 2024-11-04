@@ -8,6 +8,7 @@
 #include <stddef.h>
 
 #include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
 #include "content/common/content_export.h"
 
@@ -15,11 +16,11 @@
 #include <windows.h>
 #endif
 
-namespace base {
-namespace mac {
+#if BUILDFLAG(IS_MAC)
+namespace base::apple {
 class ScopedNSAutoreleasePool;
 }
-}
+#endif
 
 namespace sandbox {
 struct SandboxInterfaceInfo;
@@ -41,17 +42,19 @@ struct CONTENT_EXPORT ContentMainParams {
   ContentMainParams(ContentMainParams&&);
   ContentMainParams& operator=(ContentMainParams&&);
 
-  ContentMainDelegate* delegate;
+  raw_ptr<ContentMainDelegate> delegate;
 
 #if BUILDFLAG(IS_WIN)
   HINSTANCE instance = nullptr;
 
   // |sandbox_info| should be initialized using InitializeSandboxInfo from
   // content_main_win.h
-  sandbox::SandboxInterfaceInfo* sandbox_info = nullptr;
+  raw_ptr<sandbox::SandboxInterfaceInfo> sandbox_info = nullptr;
 #elif !BUILDFLAG(IS_ANDROID)
   int argc = 0;
-  const char** argv = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION const char** argv = nullptr;
 #endif
 
   // Used by BrowserTestBase. If set, BrowserMainLoop runs this task instead of
@@ -70,7 +73,7 @@ struct CONTENT_EXPORT ContentMainParams {
 
 #if BUILDFLAG(IS_MAC)
   // The outermost autorelease pool to pass to main entry points.
-  base::mac::ScopedNSAutoreleasePool* autorelease_pool = nullptr;
+  raw_ptr<base::apple::ScopedNSAutoreleasePool> autorelease_pool = nullptr;
 #endif
 
   // Returns a copy of this ContentMainParams without the move-only data

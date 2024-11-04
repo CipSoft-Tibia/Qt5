@@ -1130,7 +1130,13 @@ inline void LookupIntermediate(const uint16x8_t sum, const uint16x8_t index,
   const uint8x8_t idx = vqmovn_u16(index);
   uint8_t temp[8];
   vst1_u8(temp, idx);
-  *ma = vsetq_lane_u8(kSgrMaLookup[temp[0]], *ma, offset + 0);
+  // offset == 0 is assumed to be the first call to this function. The value is
+  // duplicated to avoid -Wuninitialized warnings under gcc.
+  if (offset == 0) {
+    *ma = vdupq_n_u8(kSgrMaLookup[temp[0]]);
+  } else {
+    *ma = vsetq_lane_u8(kSgrMaLookup[temp[0]], *ma, offset + 0);
+  }
   *ma = vsetq_lane_u8(kSgrMaLookup[temp[1]], *ma, offset + 1);
   *ma = vsetq_lane_u8(kSgrMaLookup[temp[2]], *ma, offset + 2);
   *ma = vsetq_lane_u8(kSgrMaLookup[temp[3]], *ma, offset + 3);
@@ -1712,8 +1718,6 @@ LIBGAV1_ALWAYS_INLINE void BoxSumFilterPreProcess3(
   s[0] = Load1QMsanU16(src + 0, overread_in_bytes + 0);
   s[1] = Load1QMsanU16(src + 8, overread_in_bytes + 16);
   Square(s[0], sq);
-  // Quiet "may be used uninitialized" warning.
-  mas[0] = mas[1] = vdupq_n_u8(0);
   BoxFilterPreProcess3Lo(s, scale, sum3, square_sum3, sq, &mas[0], bs);
 
   int x = 0;
@@ -2067,8 +2071,6 @@ LIBGAV1_ALWAYS_INLINE void BoxFilterPass2(
   s[0] = Load1QMsanU16(src0 + 0, overread_in_bytes + 0);
   s[1] = Load1QMsanU16(src0 + 8, overread_in_bytes + 16);
   Square(s[0], sq);
-  // Quiet "may be used uninitialized" warning.
-  mas[0] = mas[1] = vdupq_n_u8(0);
   BoxFilterPreProcess3Lo(s, scale, sum3, square_sum3, sq, &mas[0], bs);
 
   int x = 0;
@@ -2255,8 +2257,6 @@ inline void BoxFilterLastRow(
   s[0] = Load1QMsanU16(src0 + 0, overread_in_bytes + 0);
   s[1] = Load1QMsanU16(src0 + 8, overread_in_bytes + 16);
   Square(s[0], sq);
-  // Quiet "may be used uninitialized" warning.
-  ma3[0] = ma3[1] = vdupq_n_u8(0);
   BoxFilterPreProcessLastRowLo(s, scales, sum3, sum5, square_sum3, square_sum5,
                                sq, &ma3[0], &ma5[0], b3, b5);
 

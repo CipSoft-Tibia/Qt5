@@ -98,7 +98,7 @@ public class MediaRouterClientImpl extends MediaRouterClient {
     }
 
     @Override
-    public boolean isCafMrpDeferredDiscoveryEnabled() {
+    public boolean isCastAnotherContentWhileCastingEnabled() {
         return true;
     }
 

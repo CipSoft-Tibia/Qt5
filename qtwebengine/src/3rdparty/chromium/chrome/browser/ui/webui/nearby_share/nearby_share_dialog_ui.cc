@@ -31,6 +31,7 @@
 #include "chrome/grit/nearby_share_dialog_resources_map.h"
 #include "chrome/grit/theme_resources.h"
 #include "chromeos/components/sharesheet/constants.h"
+#include "chromeos/constants/chromeos_features.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
@@ -41,6 +42,7 @@
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/webui/web_ui_util.h"
 #include "ui/views/controls/webview/webview.h"
+#include "ui/webui/color_change_listener/color_change_handler.h"
 
 namespace nearby_share {
 
@@ -81,7 +83,6 @@ NearbyShareDialogUI::NearbyShareDialogUI(content::WebUI* web_ui)
                               base::make_span(kNearbyShareDialogResources,
                                               kNearbyShareDialogResourcesSize),
                               IDR_NEARBY_SHARE_DIALOG_NEARBY_SHARE_DIALOG_HTML);
-  html_source->DisableTrustedTypesCSP();
 
   // To use lottie, the worker-src CSP needs to be updated for the web ui that
   // is using it. Since as of now there are only a couple of webuis using
@@ -92,10 +93,24 @@ NearbyShareDialogUI::NearbyShareDialogUI(content::WebUI* web_ui)
       network::mojom::CSPDirectiveName::WorkerSrc,
       "worker-src blob: chrome://resources 'self';");
 
+  html_source->OverrideContentSecurityPolicy(
+      network::mojom::CSPDirectiveName::TrustedTypes,
+      "trusted-types static-types "
+      // Required by lottie.
+      "lottie-worker-script-loader webui-test-script "
+      // Required by parse-html-subset.
+      "parse-html-subset sanitize-inner-html "
+      // Required by lit-html.
+      "lit-html "
+      // Required by polymer.
+      "polymer-html-literal polymer-template-event-attribute-policy;");
+
   html_source->AddBoolean(
       "isOnePageOnboardingEnabled",
       base::FeatureList::IsEnabled(features::kNearbySharingOnePageOnboarding));
   RegisterNearbySharedStrings(html_source);
+  html_source->AddBoolean("isJellyEnabled",
+                          chromeos::features::IsJellyEnabled());
   html_source->UseStringsJs();
 
   // Register callback to handle "cancel-button-event" from nearby_*.html files.
@@ -113,6 +128,10 @@ NearbyShareDialogUI::NearbyShareDialogUI(content::WebUI* web_ui)
 
   const GURL& url = web_ui->GetWebContents()->GetVisibleURL();
   SetAttachmentFromQueryParameter(url);
+
+  html_source->AddBoolean(
+      "isSelfShareEnabled",
+      base::FeatureList::IsEnabled(features::kNearbySharingSelfShare));
 }
 
 NearbyShareDialogUI::~NearbyShareDialogUI() = default;
@@ -150,6 +169,12 @@ void NearbyShareDialogUI::BindInterface(
       NearbySharingServiceFactory::GetForBrowserContext(
           Profile::FromWebUI(web_ui()));
   nearby_sharing_service->GetContactManager()->Bind(std::move(receiver));
+}
+
+void NearbyShareDialogUI::BindInterface(
+    mojo::PendingReceiver<color_change_listener::mojom::PageHandler> receiver) {
+  color_provider_handler_ = std::make_unique<ui::ColorChangeHandler>(
+      web_ui()->GetWebContents(), std::move(receiver));
 }
 
 bool NearbyShareDialogUI::HandleKeyboardEvent(

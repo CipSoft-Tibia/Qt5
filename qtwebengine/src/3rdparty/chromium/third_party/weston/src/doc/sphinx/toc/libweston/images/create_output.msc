@@ -11,7 +11,7 @@ msc {
 	--- [label = "Compositor creates an output for a head"];
 
 	c box c [label = "Have an existing head to process."];
-	c => w [label = "weston_compositor_create_output_with_head()"];
+	c => w [label = "weston_compositor_create_output()"];
 	w => b [label = "weston_backend::create_output()"];
 	w << b [label = "an empty output, no hw resources"];
 	w => b [label = "weston_output::attach_head()"];

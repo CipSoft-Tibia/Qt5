@@ -318,7 +318,7 @@ inline ulong getTimeStamp(UIEvent *event)
     }
 
     if (qGuiApp->focusWindow() != self.platformWindow->window())
-        QWindowSystemInterface::handleWindowActivated(self.platformWindow->window(), Qt::ActiveWindowFocusReason);
+        QWindowSystemInterface::handleFocusWindowChanged(self.platformWindow->window(), Qt::ActiveWindowFocusReason);
     else
         qImDebug() << self.platformWindow->window() << "already active, not sending window activation";
 
@@ -355,7 +355,7 @@ inline ulong getTimeStamp(UIEvent *event)
 
     UIResponder *newResponder = FirstResponderCandidate::currentCandidate();
     if ([self responderShouldTriggerWindowDeactivation:newResponder])
-        QWindowSystemInterface::handleWindowActivated(nullptr, Qt::ActiveWindowFocusReason);
+        QWindowSystemInterface::handleFocusWindowChanged(nullptr, Qt::ActiveWindowFocusReason);
 
     return YES;
 }
@@ -827,11 +827,6 @@ inline ulong getTimeStamp(UIEvent *event)
         return static_cast<QIOSViewController *>(vc);
 
     return nil;
-}
-
-- (UIEdgeInsets)qt_safeAreaInsets
-{
-    return self.safeAreaInsets;
 }
 
 @end

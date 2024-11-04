@@ -252,6 +252,15 @@ Item {
     property alias source:          player.source
 
     /*!
+        \since 6.7
+        \qmlproperty bool Video::autoPlay
+
+        This property controls whether the media begins to play automatically after it gets loaded.
+        Defaults to \c false.
+    */
+    property alias autoPlay:        player.autoPlay
+
+    /*!
         \qmlproperty real Video::volume
 
         This property holds the audio volume.
@@ -264,7 +273,7 @@ Item {
         UI volume controls should usually be scaled nonlinearly. For example,
         using a logarithmic scale will produce linear changes in perceived
         loudness, which is what a user would normally expect from a volume
-        control. See \l {QAudio::convertVolume()} for more details.
+        control. See \l {QtAudio::convertVolume()} for more details.
     */
     property alias volume:          audioOutput.volume
 

@@ -42,6 +42,7 @@ static void motion_search(AV1_COMP *cpi, const YV12_BUFFER_CONFIG *src,
 
   // Parameters used for motion search.
   FULLPEL_MOTION_SEARCH_PARAMS full_ms_params;
+  FULLPEL_MV_STATS best_mv_stats;
   const SEARCH_METHODS search_method = NSTEP;
   const search_site_config *search_site_cfg =
       cpi->mv_search_params.search_site_cfg[SS_CFG_FPF];
@@ -63,11 +64,12 @@ static void motion_search(AV1_COMP *cpi, const YV12_BUFFER_CONFIG *src,
   // Do motion search.
   // Only do full search on the entire block.
   av1_make_default_fullpel_ms_params(&full_ms_params, cpi, mb, block_size,
-                                     &baseline_mv, search_site_cfg,
+                                     &baseline_mv, *ref_mv, search_site_cfg,
+                                     search_method,
                                      /*fine_search_interval=*/0);
-  av1_set_mv_search_method(&full_ms_params, search_site_cfg, search_method);
   av1_full_pixel_search(*ref_mv, &full_ms_params, step_param,
-                        cond_cost_list(cpi, cost_list), ref_mv, NULL);
+                        cond_cost_list(cpi, cost_list), ref_mv, &best_mv_stats,
+                        NULL);
 
   // Restore input state.
   mb->plane[0].src = ori_src_buf;
@@ -935,7 +937,8 @@ int av1_get_vmaf_base_qindex(const AV1_COMP *const cpi, int current_qindex) {
   const double dvmaf = 26.11 * (1.0 - exp(-0.06 * motion));
   const double dsse = dvmaf * approx_sse / approx_dvmaf;
 
-  const double beta = approx_sse / (dsse + approx_sse);
+  // Clamping beta to address VQ issue (aomedia:3170).
+  const double beta = AOMMAX(approx_sse / (dsse + approx_sse), 0.5);
   const int offset =
       av1_get_deltaq_offset(cm->seq_params->bit_depth, current_qindex, beta);
   int qindex = current_qindex + offset;

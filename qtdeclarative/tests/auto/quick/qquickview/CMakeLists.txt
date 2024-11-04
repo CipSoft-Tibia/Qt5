@@ -7,6 +7,14 @@
 ## tst_qquickview Test:
 #####################################################################
 
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(tst_qquickview LANGUAGES CXX)
+    find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
+endif()
+
+qt_policy(SET QTP0001 NEW)
+
 # Collect test data
 file(GLOB_RECURSE test_data_glob
     RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
@@ -24,6 +32,14 @@ qt_internal_add_test(tst_qquickview
         Qt::QuickPrivate
         Qt::QuickTestUtilsPrivate
     TESTDATA ${test_data}
+)
+
+
+qt_add_qml_module(
+    tst_qquickview
+    URI test
+    QML_FILES
+        "data/TestQml.qml"
 )
 
 ## Scopes:

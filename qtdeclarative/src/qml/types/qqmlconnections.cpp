@@ -7,6 +7,7 @@
 #include <private/qqmlcontext_p.h>
 #include <private/qqmlexpression_p.h>
 #include <private/qqmlproperty_p.h>
+#include <private/qqmlsignalnames_p.h>
 #include <private/qqmlvmemetaobject_p.h>
 #include <private/qv4jscall_p.h>
 #include <private/qv4qobjectwrapper_p.h>
@@ -201,7 +202,7 @@ public:
     then all signal handlers specified as \c{function} in the same Connections
     object are ignored.
 
-    \sa {Qt QML}
+    \sa {Qt Qml}
 */
 QQmlConnections::QQmlConnections(QObject *parent) :
     QObject(*(new QQmlConnectionsPrivate), parent)
@@ -334,9 +335,7 @@ void QQmlConnectionsParser::verifyBindings(const QQmlRefPointer<QV4::ExecutableC
         const QV4::CompiledData::Binding *binding = props.at(ii);
         const QString &propName = compilationUnit->stringAt(binding->propertyNameIndex);
 
-        const bool thirdCharacterIsValid = (propName.size() >= 2)
-                && (propName.at(2).isUpper() || propName.at(2) == u'_');
-        if (!propName.startsWith(QLatin1String("on")) || !thirdCharacterIsValid) {
+        if (!QQmlSignalNames::isHandlerName(propName)) {
             error(props.at(ii), QQmlConnections::tr("Cannot assign to non-existent property \"%1\"").arg(propName));
             return;
         }

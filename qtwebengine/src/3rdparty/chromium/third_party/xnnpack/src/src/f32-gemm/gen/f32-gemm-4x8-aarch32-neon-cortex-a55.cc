@@ -109,18 +109,38 @@ void Generator::generate(size_t max_mr, size_t nc_mod_nr, size_t kc, const jit_g
   vldm(mem[r9]++, {d16-d19}); // Bias
 
   subs(r5, r2, 16); // kc - 16
+  pld(mem[r3, 0]); // Prefetch A
+  pld(mem[r3, 64]);
   if (max_mr > 1) {
     vmov(q10, q8);
+  }
+  pld(mem[r12, 0]);
+  pld(mem[r12, 64]);
+  if (max_mr > 1) {
     vmov(q11, q9);
   }
+  pld(mem[r10, 0]);
+  pld(mem[r10, 64]);
   if (max_mr > 2) {
     vmov(q12, q8);
+  }
+  pld(mem[r7, 0]);
+  pld(mem[r7, 64]);
+  if (max_mr > 2) {
     vmov(q13, q9);
   }
+  pld(mem[r9, 0]); // Prefetch B
+  pld(mem[r9, 64]);
   if (max_mr > 3) {
     vmov(q14, q8);
+  }
+  pld(mem[r9, 128]);
+  pld(mem[r9, 192]);
+  if (max_mr > 3) {
     vmov(q15, q9);
   }
+  pld(mem[r9, 256]);
+  pld(mem[r9, 320]);
   blo(l4); // less than 4 channels?
 
   // Prologue
@@ -637,6 +657,9 @@ void Generator::perform_post_operations(
   size_t num_post_operations,
   const xnn_post_operation* post_operations)
 {
+  if (num_post_operations == 0) {
+    return;
+  }
   for (size_t i = 0; i < num_post_operations; i++) {
     switch (post_operations[i].op_type) {
       case xnn_post_operation_type_hardswish: {

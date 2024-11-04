@@ -205,6 +205,12 @@ TlsServerHandshaker::TlsServerHandshaker(
   if (session->connection()->context()->tracer) {
     tls_connection_.EnableInfoCallback();
   }
+#if BORINGSSL_API_VERSION >= 22
+  if (!crypto_config->preferred_groups().empty()) {
+    SSL_set1_group_ids(ssl(), crypto_config->preferred_groups().data(),
+                       crypto_config->preferred_groups().size());
+  }
+#endif  // BORINGSSL_API_VERSION
 }
 
 TlsServerHandshaker::~TlsServerHandshaker() { CancelOutstandingCallbacks(); }
@@ -587,6 +593,7 @@ void TlsServerHandshaker::SetWriteSecret(
           SSL_CIPHER_get_protocol_id(cipher);
     }
     crypto_negotiated_params_->key_exchange_group = SSL_get_curve_id(ssl());
+    crypto_negotiated_params_->encrypted_client_hello = SSL_ech_accepted(ssl());
   }
   TlsHandshaker::SetWriteSecret(level, cipher, write_secret);
 }

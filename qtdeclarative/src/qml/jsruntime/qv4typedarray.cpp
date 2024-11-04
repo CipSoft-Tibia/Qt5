@@ -762,14 +762,20 @@ ReturnedValue IntrinsicTypedArrayPrototype::method_fill(const FunctionObject *b,
         fin = static_cast<uint>(std::min(relativeEnd, dlen));
     }
 
-    double val = argc ? argv[0].toNumber() : std::numeric_limits<double>::quiet_NaN();
-    Value value = Value::fromDouble(val);
     if (scope.hasException() || v->hasDetachedArrayData())
         return scope.engine->throwTypeError();
 
     char *data = v->arrayData();
     uint bytesPerElement = v->bytesPerElement();
     uint byteOffset = v->byteOffset();
+
+    Value value;
+    if (!argc)
+        value.setDouble(std::numeric_limits<double>::quiet_NaN());
+    else if (argv[0].isNumber())
+        value = argv[0];
+    else
+        value.setDouble(argv[0].toNumber());
 
     while (k < fin) {
         v->d()->type->write(data + byteOffset + k * bytesPerElement, value);
@@ -1680,14 +1686,13 @@ ReturnedValue IntrinsicTypedArrayCtor::method_from(const FunctionObject *f, cons
         forever {
             // Here we calculate the length of the iterable range.
             if (iterableLength > (static_cast<qint64>(1) << 53) - 1) {
-                ScopedValue falsey(scope, Encode(false));
                 ScopedValue error(scope, scope.engine->throwTypeError());
-                return Runtime::IteratorClose::call(scope.engine, lengthIterator, falsey);
+                return Runtime::IteratorClose::call(scope.engine, lengthIterator);
             }
             // Retrieve the next value. If the iteration ends, we're done here.
             done = Value::fromReturnedValue(Runtime::IteratorNext::call(scope.engine, lengthIterator, nextValue));
             if (scope.hasException())
-                return Runtime::IteratorClose::call(scope.engine, lengthIterator, Value::fromBoolean(false));
+                return Runtime::IteratorClose::call(scope.engine, lengthIterator);
             if (done->toBoolean()) {
                 break;
             }
@@ -1720,21 +1725,21 @@ ReturnedValue IntrinsicTypedArrayCtor::method_from(const FunctionObject *f, cons
         for (qint64 k = 0; k < iterableLength; ++k) {
             done = Value::fromReturnedValue(Runtime::IteratorNext::call(scope.engine, iterator, nextValue));
             if (scope.hasException())
-                return Runtime::IteratorClose::call(scope.engine, iterator, Value::fromBoolean(false));
+                return Runtime::IteratorClose::call(scope.engine, iterator);
 
             if (mapfn) {
                 mapArguments[0] = *nextValue;
                 mapArguments[1] = Value::fromDouble(k);
                 mappedValue = mapfn->call(thisArg, mapArguments, 2);
                 if (scope.hasException())
-                    return Runtime::IteratorClose::call(scope.engine, iterator, Value::fromBoolean(false));
+                    return Runtime::IteratorClose::call(scope.engine, iterator);
             } else {
                 mappedValue = *nextValue;
             }
 
             a->put(k, mappedValue);
             if (scope.hasException())
-                return Runtime::IteratorClose::call(scope.engine, iterator, Value::fromBoolean(false));
+                return Runtime::IteratorClose::call(scope.engine, iterator);
         }
         return a.asReturnedValue();
     } else {

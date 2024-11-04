@@ -11,6 +11,7 @@
 
 #include <xnnpack.h>
 #include <xnnpack/allocator.h>
+#include <xnnpack/config.h>
 #include <xnnpack/log.h>
 #include <xnnpack/operator.h>
 #include <xnnpack/microparams-init.h>
@@ -21,12 +22,16 @@ static void init_constant_pad_nd(
     uint32_t padding_value,
     uint32_t flags,
     enum xnn_operator_type operator_type,
+    const struct xnn_xx_fill_config* fill_config,
+    const struct xnn_xx_pad_config* pad_config,
     xnn_operator_t constant_pad_op)
 {
   constant_pad_op->pad_value = padding_value;
 
   constant_pad_op->type = operator_type;
   constant_pad_op->flags = flags;
+  constant_pad_op->fill_config = fill_config;
+  constant_pad_op->pad_config = pad_config;
 
   constant_pad_op->state = xnn_run_state_invalid;
 }
@@ -57,7 +62,23 @@ static enum xnn_status create_constant_pad_nd(
     goto error;
   }
 
-  init_constant_pad_nd(padding_value, flags, operator_type, constant_pad_op);
+  status = xnn_status_unsupported_hardware;
+
+  const struct xnn_xx_fill_config* fill_config = xnn_init_xx_fill_config();
+  if (fill_config == NULL) {
+    xnn_log_error(
+      "failed to create fill operator: unsupported hardware configuration");
+    goto error;
+  }
+
+  const struct xnn_xx_pad_config* pad_config = xnn_init_xx_pad_config();
+  if (pad_config == NULL) {
+    xnn_log_error(
+      "failed to create pad operator: unsupported hardware configuration");
+    goto error;
+  }
+
+  init_constant_pad_nd(padding_value, flags, operator_type, fill_config, pad_config, constant_pad_op);
   *constant_pad_op_out = constant_pad_op;
 
   return xnn_status_success;
@@ -168,19 +189,8 @@ static enum xnn_status setup_constant_pad_nd(
     }
   }
 
-  const struct xnn_xx_fill_config* xx_fill_config = xnn_init_xx_fill_config();
-  if (xx_fill_config == NULL) {
-    xnn_log_error(
-      "failed to create fill operator: unsupported hardware configuration");
-    return xnn_status_unsupported_hardware;
-  }
-
-  const struct xnn_xx_pad_config* xx_pad_config = xnn_init_xx_pad_config();
-  if (xx_pad_config == NULL) {
-    xnn_log_error(
-      "failed to create pad operator: unsupported hardware configuration");
-    return xnn_status_unsupported_hardware;
-  }
+  const struct xnn_xx_fill_config* xx_fill_config = constant_pad_op->fill_config;
+  const struct xnn_xx_pad_config* xx_pad_config = constant_pad_op->pad_config;
 
   constant_pad_op->context.pad = (struct pad_context) {
     .input = input,
@@ -210,13 +220,13 @@ static enum xnn_status setup_constant_pad_nd(
   constant_pad_op->context.pad.post_paddings[0] =
     constant_pad_op->context.pad.output_size[0] - constant_pad_op->context.pad.pre_paddings[0] - constant_pad_op->context.pad.input_size[0];
 
-  constant_pad_op->compute.type = xnn_parallelization_type_5d;
-  constant_pad_op->compute.task_5d = (pthreadpool_task_5d_t) xnn_compute_pad_5d;
-  constant_pad_op->compute.range[0] = normalized_output_shape[0];
-  constant_pad_op->compute.range[1] = normalized_output_shape[1];
-  constant_pad_op->compute.range[2] = normalized_output_shape[2];
-  constant_pad_op->compute.range[3] = normalized_output_shape[3];
-  constant_pad_op->compute.range[4] = normalized_output_shape[4];
+  constant_pad_op->compute[0].type = xnn_parallelization_type_5d;
+  constant_pad_op->compute[0].task_5d = (pthreadpool_task_5d_t) xnn_compute_pad_5d;
+  constant_pad_op->compute[0].range[0] = normalized_output_shape[0];
+  constant_pad_op->compute[0].range[1] = normalized_output_shape[1];
+  constant_pad_op->compute[0].range[2] = normalized_output_shape[2];
+  constant_pad_op->compute[0].range[3] = normalized_output_shape[3];
+  constant_pad_op->compute[0].range[4] = normalized_output_shape[4];
   constant_pad_op->state = xnn_run_state_ready;
 
   return xnn_status_success;
@@ -235,7 +245,7 @@ enum xnn_status xnn_setup_constant_pad_nd_x8(
   return setup_constant_pad_nd(
     constant_pad_op, xnn_operator_type_constant_pad_nd_x8,
     num_dims, input_shape, pre_padding, post_padding,
-    input, output, 0 /* log2(element size) */,
+    input, output, /*log2_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
     pthreadpool_get_threads_count(threadpool));
 }
 
@@ -252,7 +262,7 @@ enum xnn_status xnn_setup_constant_pad_nd_x16(
   return setup_constant_pad_nd(
     constant_pad_op, xnn_operator_type_constant_pad_nd_x16,
     num_dims, input_shape, pre_padding, post_padding,
-    input, output, 1 /* log2(element size) */,
+    input, output, /*log2_element_size=*/XNN_LOG2_SIZEOF_UINT16_T,
     pthreadpool_get_threads_count(threadpool));
 }
 
@@ -269,7 +279,7 @@ enum xnn_status xnn_setup_constant_pad_nd_x32(
   return setup_constant_pad_nd(
     constant_pad_op, xnn_operator_type_constant_pad_nd_x32,
     num_dims, input_shape, pre_padding, post_padding,
-    input, output, 2 /* log2(element size) */,
+    input, output, /*log2_element_size=*/XNN_LOG2_SIZEOF_UINT32_T,
     pthreadpool_get_threads_count(threadpool));
 }
 
@@ -289,10 +299,26 @@ enum xnn_status run_constant_pad_nd(
   struct xnn_operator constant_pad_op;
   memset(&constant_pad_op, 0, sizeof(constant_pad_op));
 
+  const struct xnn_xx_fill_config* fill_config = xnn_init_xx_fill_config();
+  if (fill_config == NULL) {
+    xnn_log_error(
+      "failed to create fill operator: unsupported hardware configuration");
+    return xnn_status_unsupported_hardware;
+  }
+
+  const struct xnn_xx_pad_config* pad_config = xnn_init_xx_pad_config();
+  if (pad_config == NULL) {
+    xnn_log_error(
+      "failed to create pad operator: unsupported hardware configuration");
+    return xnn_status_unsupported_hardware;
+  }
+
   init_constant_pad_nd(
       padding_value,
       flags,
       operator_type,
+      fill_config,
+      pad_config,
       &constant_pad_op);
 
   const enum xnn_status status = setup_constant_pad_nd(
@@ -323,7 +349,7 @@ enum xnn_status xnn_run_constant_pad_nd_x8(
   return run_constant_pad_nd(
     flags,
     num_dims, input_shape, pre_paddings, post_paddings,
-    input, output, 0 /* log2(sizeof(float)) */,
+    input, output, /*log2_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
     padding_pattern * UINT32_C(0x01010101),
     xnn_operator_type_constant_pad_nd_x32,
     threadpool);
@@ -344,7 +370,7 @@ enum xnn_status xnn_run_constant_pad_nd_x16(
   return run_constant_pad_nd(
     flags,
     num_dims, input_shape, pre_paddings, post_paddings,
-    input, output, 1 /* log2(sizeof(float)) */,
+    input, output, /*log2_element_size=*/XNN_LOG2_SIZEOF_UINT16_T,
     padding_pattern * UINT32_C(0x00010001),
     xnn_operator_type_constant_pad_nd_x32,
     threadpool);
@@ -365,7 +391,7 @@ enum xnn_status xnn_run_constant_pad_nd_x32(
   return run_constant_pad_nd(
     flags,
     num_dims, input_shape, pre_paddings, post_paddings,
-    input, output, 2 /* log2(sizeof(float)) */,
+    input, output, /*log2_element_size=*/XNN_LOG2_SIZEOF_UINT32_T,
     padding_pattern,
     xnn_operator_type_constant_pad_nd_x32,
     threadpool);

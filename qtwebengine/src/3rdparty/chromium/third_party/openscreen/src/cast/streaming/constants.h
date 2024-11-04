@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,7 @@
 #include <chrono>
 #include <ratio>
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Default target playout delay. The playout delay is the window of time between
 // capture from the source until presentation at the receiver.
@@ -105,9 +104,11 @@ constexpr int kSupportedRemotingVersion = 2;
 enum class AudioCodec { kAac, kOpus, kNotSpecified };
 enum class VideoCodec { kH264, kVp8, kHevc, kNotSpecified, kVp9, kAv1 };
 
+// The type (audio, video, or unknown) of the stream.
+enum class StreamType { kUnknown, kAudio, kVideo };
+
 enum class CastMode : uint8_t { kMirroring, kRemoting };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_CONSTANTS_H_

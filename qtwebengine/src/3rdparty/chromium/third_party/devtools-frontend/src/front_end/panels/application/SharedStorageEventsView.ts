@@ -56,7 +56,7 @@ export class SharedStorageEventsView extends UI.SplitWidget.SplitWidget {
     this.#sharedStorageEventGrid.addEventListener('cellfocused', this.#onFocus.bind(this));
 
     this.#getMainFrameResourceTreeModel()?.addEventListener(
-        SDK.ResourceTreeModel.Events.MainFrameNavigated, this.clearEvents, this);
+        SDK.ResourceTreeModel.Events.PrimaryPageChanged, this.clearEvents, this);
 
     this.#noDisplayView.contentElement.classList.add('placeholder');
     const noDisplayDiv = this.#noDisplayView.contentElement.createChild('div');
@@ -64,8 +64,8 @@ export class SharedStorageEventsView extends UI.SplitWidget.SplitWidget {
   }
 
   #getMainFrameResourceTreeModel(): SDK.ResourceTreeModel.ResourceTreeModel|null {
-    const mainFrameTarget = SDK.TargetManager.TargetManager.instance().mainFrameTarget();
-    return mainFrameTarget?.model(SDK.ResourceTreeModel.ResourceTreeModel) || null;
+    const primaryPageTarget = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
+    return primaryPageTarget?.model(SDK.ResourceTreeModel.ResourceTreeModel) || null;
   }
 
   #getMainFrame(): SDK.ResourceTreeModel.ResourceTreeFrame|null {
@@ -76,7 +76,7 @@ export class SharedStorageEventsView extends UI.SplitWidget.SplitWidget {
     return this.#getMainFrame()?.id || this.#defaultId;
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     const sidebar = this.sidebarWidget();
     if (sidebar) {

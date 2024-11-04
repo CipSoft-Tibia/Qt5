@@ -369,6 +369,10 @@ if (is_win) {
   ]
 }
 
+if (is_apple) {
+  default_compiler_configs += [ "//build/config/compiler:enable_arc2" ]
+}
+
 if (is_posix) {
   if (current_os != "aix") {
     default_compiler_configs +=
@@ -442,7 +446,7 @@ if (is_win) {
     "//build/config/win:console",
   ]
 } else if (is_mac) {
-  _linker_configs = [ "//build/config/mac:strip_all" ]
+  _linker_configs = [ "//build/config/apple:strip_all" ]
 } else {
   _linker_configs = []
 }

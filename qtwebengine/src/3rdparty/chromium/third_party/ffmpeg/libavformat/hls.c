@@ -225,6 +225,7 @@ typedef struct HLSContext {
     int http_persistent;
     int http_multiple;
     int http_seekable;
+    int seg_max_retry;
     AVIOContext *playlist_pb;
     HLSCryptoContext  crypto_ctx;
 } HLSContext;
@@ -1472,6 +1473,7 @@ static int read_data(void *opaque, uint8_t *buf, int buf_size)
     int ret;
     int just_opened = 0;
     int reload_count = 0;
+    int segment_retries = 0;
     struct segment *seg;
 
 restart:
@@ -1563,9 +1565,18 @@ reload:
             av_log(v->parent, AV_LOG_WARNING, "Failed to open segment %"PRId64" of playlist %d\n",
                    v->cur_seq_no,
                    v->index);
-            v->cur_seq_no += 1;
+            if (segment_retries >= c->seg_max_retry) {
+                av_log(v->parent, AV_LOG_WARNING, "Segment %"PRId64" of playlist %d failed too many times, skipping\n",
+                       v->cur_seq_no,
+                       v->index);
+                v->cur_seq_no++;
+                segment_retries = 0;
+            } else {
+                segment_retries++;
+            }
             goto reload;
         }
+        segment_retries = 0;
         just_opened = 1;
     }
 
@@ -1837,6 +1848,8 @@ static int set_stream_info_from_input_stream(AVStream *st, struct playlist *pls,
 
     // copy disposition
     st->disposition = ist->disposition;
+
+    av_dict_copy(&st->metadata, ist->metadata, 0);
 
     // copy side data
     for (int i = 0; i < ist->nb_side_data; i++) {
@@ -2521,8 +2534,30 @@ static int hls_probe(const AVProbeData *p)
 
     if (strstr(p->buf, "#EXT-X-STREAM-INF:")     ||
         strstr(p->buf, "#EXT-X-TARGETDURATION:") ||
-        strstr(p->buf, "#EXT-X-MEDIA-SEQUENCE:"))
+        strstr(p->buf, "#EXT-X-MEDIA-SEQUENCE:")) {
+
+        int mime_ok = p->mime_type && !(
+            av_strcasecmp(p->mime_type, "application/vnd.apple.mpegurl") &&
+            av_strcasecmp(p->mime_type, "audio/mpegurl")
+            );
+
+        int mime_x = p->mime_type && !(
+            av_strcasecmp(p->mime_type, "audio/x-mpegurl") &&
+            av_strcasecmp(p->mime_type, "application/x-mpegurl")
+            );
+
+        if (!mime_ok &&
+            !mime_x &&
+            !av_match_ext    (p->filename, "m3u8,m3u") &&
+             ff_match_url_ext(p->filename, "m3u8,m3u") <= 0) {
+            av_log(NULL, AV_LOG_ERROR, "Not detecting m3u8/hls with non standard extension and non standard mime type\n");
+            return 0;
+        }
+        if (mime_x)
+            av_log(NULL, AV_LOG_WARNING, "mime type is not rfc8216 compliant\n");
+
         return AVPROBE_SCORE_MAX;
+    }
     return 0;
 }
 
@@ -2549,6 +2584,8 @@ static const AVOption hls_options[] = {
         OFFSET(http_seekable), AV_OPT_TYPE_BOOL, { .i64 = -1}, -1, 1, FLAGS},
     {"seg_format_options", "Set options for segment demuxer",
         OFFSET(seg_format_opts), AV_OPT_TYPE_DICT, {.str = NULL}, 0, 0, FLAGS},
+    {"seg_max_retry", "Maximum number of times to reload a segment on error.",
+     OFFSET(seg_max_retry), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, FLAGS},
     {NULL}
 };
 

@@ -148,10 +148,14 @@ class ValidateTypeSizeLimitationsTraverser : public TIntermTraverser
             case EvqNoPerspectiveOut:
             case EvqCentroidOut:
             case EvqSampleOut:
+            case EvqNoPerspectiveCentroidOut:
+            case EvqNoPerspectiveSampleOut:
             case EvqSmoothIn:
             case EvqFlatIn:
             case EvqNoPerspectiveIn:
             case EvqCentroidIn:
+            case EvqNoPerspectiveCentroidIn:
+            case EvqNoPerspectiveSampleIn:
             case EvqVertexOut:
             case EvqFragmentIn:
             case EvqGeometryIn:

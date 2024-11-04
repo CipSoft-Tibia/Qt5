@@ -23,11 +23,10 @@ namespace content {
 
 namespace {
 
-static constexpr RenderFrameHost::WebExposedIsolationLevel kNotIsolated =
-    RenderFrameHost::WebExposedIsolationLevel::kNotIsolated;
-static constexpr RenderFrameHost::WebExposedIsolationLevel
-    kMaybeIsolatedApplication =
-        RenderFrameHost::WebExposedIsolationLevel::kMaybeIsolatedApplication;
+static constexpr WebExposedIsolationLevel kNotIsolated =
+    WebExposedIsolationLevel::kNotIsolated;
+static constexpr WebExposedIsolationLevel kIsolatedApplication =
+    WebExposedIsolationLevel::kIsolatedApplication;
 
 const char kAppHost[] = "app.com";
 const char kNonAppHost[] = "other.com";
@@ -183,8 +182,7 @@ IN_PROC_BROWSER_TEST_F(IsolatedWebAppThrottleBrowserTest,
                        CancelCrossOriginNavigationInApp) {
   GURL app_url = GetAppURL("/cross-origin-isolated.html");
   EXPECT_TRUE(NavigateToURL(web_contents(), app_url));
-  EXPECT_EQ(kMaybeIsolatedApplication,
-            main_rfh()->GetWebExposedIsolationLevel());
+  EXPECT_EQ(kIsolatedApplication, main_rfh()->GetWebExposedIsolationLevel());
 
   TestNavigationObserver navigation_observer(web_contents());
   shell()->LoadURL(GetNonAppURL("/simple_page.html"));
@@ -197,15 +195,15 @@ IN_PROC_BROWSER_TEST_F(IsolatedWebAppThrottleBrowserTest,
                        IframeInitiatedIframeNavigationIntoAppBlocked) {
   GURL app_url = GetAppURL("/cross-origin-isolated.html");
   EXPECT_TRUE(NavigateToURL(web_contents(), app_url));
-  EXPECT_EQ(kMaybeIsolatedApplication,
-            main_rfh()->GetWebExposedIsolationLevel());
+  EXPECT_EQ(kIsolatedApplication, main_rfh()->GetWebExposedIsolationLevel());
 
   RenderFrameHost* iframe =
       CreateChildIframe(main_rfh(), GetNonAppURL("/corp-cross-origin.html"));
+  const blink::LocalFrameToken iframe_token = iframe->GetFrameToken();
 
   std::unique_ptr<TestNavigationObserver> navigation_observer =
       SelfNavigateIframeToURL(iframe, app_url);
-  EXPECT_EQ(iframe->GetFrameToken(),
+  EXPECT_EQ(iframe_token,
             navigation_observer->last_initiator_frame_token().value());
   EXPECT_FALSE(navigation_observer->last_navigation_succeeded());
   EXPECT_EQ(net::ERR_BLOCKED_BY_CLIENT,
@@ -216,8 +214,7 @@ IN_PROC_BROWSER_TEST_F(IsolatedWebAppThrottleBrowserTest,
                        AppInitiatedIframeNavigationIntoAppAllowed) {
   GURL app_url = GetAppURL("/cross-origin-isolated.html");
   EXPECT_TRUE(NavigateToURL(web_contents(), app_url));
-  EXPECT_EQ(kMaybeIsolatedApplication,
-            main_rfh()->GetWebExposedIsolationLevel());
+  EXPECT_EQ(kIsolatedApplication, main_rfh()->GetWebExposedIsolationLevel());
 
   RenderFrameHost* iframe =
       CreateChildIframe(main_rfh(), GetNonAppURL("/corp-cross-origin.html"));

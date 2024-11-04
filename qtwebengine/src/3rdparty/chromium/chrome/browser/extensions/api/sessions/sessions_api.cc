@@ -43,7 +43,6 @@
 #include "extensions/browser/extension_function_registry.h"
 #include "extensions/browser/extension_system.h"
 #include "extensions/common/error_utils.h"
-#include "ui/base/layout.h"
 
 namespace extensions {
 
@@ -206,8 +205,8 @@ api::sessions::Session SessionsGetRecentlyClosedFunction::CreateSessionModel(
 }
 
 ExtensionFunction::ResponseAction SessionsGetRecentlyClosedFunction::Run() {
-  std::unique_ptr<GetRecentlyClosed::Params> params(
-      GetRecentlyClosed::Params::Create(args()));
+  absl::optional<GetRecentlyClosed::Params> params =
+      GetRecentlyClosed::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
   int max_results = api::sessions::MAX_SESSION_RESULTS;
   if (params->filter && params->filter->max_results)
@@ -376,8 +375,8 @@ api::sessions::Device SessionsGetDevicesFunction::CreateDeviceModel(
     const sync_sessions::SyncedSession* session) {
   int max_results = api::sessions::MAX_SESSION_RESULTS;
   // Already validated in RunAsync().
-  std::unique_ptr<GetDevices::Params> params(
-      GetDevices::Params::Create(args()));
+  absl::optional<GetDevices::Params> params =
+      GetDevices::Params::Create(args());
   if (params->filter && params->filter->max_results)
     max_results = *params->filter->max_results;
 
@@ -412,8 +411,8 @@ ExtensionFunction::ResponseAction SessionsGetDevicesFunction::Run() {
         GetDevices::Results::Create(std::vector<api::sessions::Device>())));
   }
 
-  std::unique_ptr<GetDevices::Params> params(
-      GetDevices::Params::Create(args()));
+  absl::optional<GetDevices::Params> params =
+      GetDevices::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
   if (params->filter && params->filter->max_results) {
     EXTENSION_FUNCTION_VALIDATE(*params->filter->max_results >= 0 &&
@@ -455,7 +454,8 @@ SessionsRestoreFunction::GetRestoredWindowResult(int window_id) {
           *browser, extension(), ExtensionTabUtil::kPopulateTabs,
           source_context_type());
   std::unique_ptr<api::windows::Window> window =
-      api::windows::Window::FromValue(base::Value(std::move(window_value)));
+      api::windows::Window::FromValueDeprecated(
+          base::Value(std::move(window_value)));
   DCHECK(window);
   return ArgumentList(Restore::Results::Create(
       CreateSessionModelHelper(base::Time::Now().ToTimeT(), absl::nullopt,
@@ -588,7 +588,7 @@ ExtensionFunction::ResponseValue SessionsRestoreFunction::RestoreForeignSession(
 }
 
 ExtensionFunction::ResponseAction SessionsRestoreFunction::Run() {
-  std::unique_ptr<Restore::Params> params(Restore::Params::Create(args()));
+  absl::optional<Restore::Params> params = Restore::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
   Profile* profile = Profile::FromBrowserContext(browser_context());

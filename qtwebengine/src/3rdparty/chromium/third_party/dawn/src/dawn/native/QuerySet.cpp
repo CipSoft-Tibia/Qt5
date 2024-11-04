@@ -47,15 +47,15 @@ MaybeError ValidateQuerySetDescriptor(DeviceBase* device, const QuerySetDescript
 
     switch (descriptor->type) {
         case wgpu::QueryType::Occlusion:
-            DAWN_INVALID_IF(descriptor->pipelineStatisticsCount != 0,
+            DAWN_INVALID_IF(descriptor->pipelineStatisticCount != 0,
                             "Pipeline statistics specified for a query of type %s.",
                             descriptor->type);
             break;
 
         case wgpu::QueryType::PipelineStatistics: {
             // TODO(crbug.com/1177506): Pipeline statistics query is not fully implemented.
-            // Disallow it as unsafe until the implementaion is completed.
-            DAWN_INVALID_IF(device->IsToggleEnabled(Toggle::DisallowUnsafeAPIs),
+            // Allow it only as unsafe until the implementaion is completed.
+            DAWN_INVALID_IF(!device->IsToggleEnabled(Toggle::AllowUnsafeAPIs),
                             "Pipeline statistics queries are disallowed because they are not "
                             "fully implemented");
 
@@ -63,11 +63,11 @@ MaybeError ValidateQuerySetDescriptor(DeviceBase* device, const QuerySetDescript
                 !device->HasFeature(Feature::PipelineStatisticsQuery),
                 "Pipeline statistics query set created without the feature being enabled.");
 
-            DAWN_INVALID_IF(descriptor->pipelineStatisticsCount == 0,
+            DAWN_INVALID_IF(descriptor->pipelineStatisticCount == 0,
                             "Pipeline statistics query set created with 0 statistics.");
 
             std::set<wgpu::PipelineStatisticName> pipelineStatisticsSet;
-            for (uint32_t i = 0; i < descriptor->pipelineStatisticsCount; i++) {
+            for (uint32_t i = 0; i < descriptor->pipelineStatisticCount; i++) {
                 DAWN_TRY(ValidatePipelineStatisticName(descriptor->pipelineStatistics[i]));
 
                 auto [_, inserted] =
@@ -78,7 +78,7 @@ MaybeError ValidateQuerySetDescriptor(DeviceBase* device, const QuerySetDescript
         } break;
 
         case wgpu::QueryType::Timestamp:
-            DAWN_INVALID_IF(device->IsToggleEnabled(Toggle::DisallowUnsafeAPIs),
+            DAWN_INVALID_IF(!device->IsToggleEnabled(Toggle::AllowUnsafeAPIs),
                             "Timestamp queries are disallowed because they may expose precise "
                             "timing information.");
 
@@ -86,7 +86,7 @@ MaybeError ValidateQuerySetDescriptor(DeviceBase* device, const QuerySetDescript
                                 !device->HasFeature(Feature::TimestampQueryInsidePasses),
                             "Timestamp query set created without the feature being enabled.");
 
-            DAWN_INVALID_IF(descriptor->pipelineStatisticsCount != 0,
+            DAWN_INVALID_IF(descriptor->pipelineStatisticCount != 0,
                             "Pipeline statistics specified for a query of type %s.",
                             descriptor->type);
             break;
@@ -103,7 +103,7 @@ QuerySetBase::QuerySetBase(DeviceBase* device, const QuerySetDescriptor* descrip
       mQueryType(descriptor->type),
       mQueryCount(descriptor->count),
       mState(QuerySetState::Available) {
-    for (uint32_t i = 0; i < descriptor->pipelineStatisticsCount; i++) {
+    for (uint32_t i = 0; i < descriptor->pipelineStatisticCount; i++) {
         mPipelineStatistics.push_back(descriptor->pipelineStatistics[i]);
     }
 
@@ -114,7 +114,9 @@ QuerySetBase::QuerySetBase(DeviceBase* device, const QuerySetDescriptor* descrip
 QuerySetBase::QuerySetBase(DeviceBase* device,
                            const QuerySetDescriptor* descriptor,
                            ObjectBase::ErrorTag tag)
-    : ApiObjectBase(device, tag), mQueryType(descriptor->type), mQueryCount(descriptor->count) {}
+    : ApiObjectBase(device, tag, descriptor->label),
+      mQueryType(descriptor->type),
+      mQueryCount(descriptor->count) {}
 
 QuerySetBase::~QuerySetBase() {
     // Uninitialized or already destroyed

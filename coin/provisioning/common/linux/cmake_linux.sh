@@ -13,7 +13,7 @@ source "${BASH_SOURCE%/*}/../unix/SetEnvVar.sh"
 
 majorminorversion="3.27"
 version="3.27.7"
-PrimaryUrl="http://ci-files01-hki.intra.qt.io/input/cmake/cmake-$version-linux-x86_64.tar.gz"
+PrimaryUrl="http://ci-files01-hki.ci.qt.io/input/cmake/cmake-$version-linux-x86_64.tar.gz"
 AltUrl="https://cmake.org/files/v$majorminorversion/cmake-$version-linux-x86_64.tar.gz"
 SHA1="83ab00c8432a71cfc81e933ee7b3c3e14d50ad6f"
 targetFolder="/opt/cmake-$version"

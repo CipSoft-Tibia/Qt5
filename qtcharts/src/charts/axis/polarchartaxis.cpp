@@ -100,13 +100,15 @@ void PolarChartAxis::deleteItems(int count)
 
 void PolarChartAxis::handleShadesBrushChanged(const QBrush &brush)
 {
-    foreach (QGraphicsItem *item, shadeItems())
+    const auto items = shadeItems();
+    for (QGraphicsItem *item : items)
         static_cast<QGraphicsPathItem *>(item)->setBrush(brush);
 }
 
 void PolarChartAxis::handleShadesPenChanged(const QPen &pen)
 {
-    foreach (QGraphicsItem *item, shadeItems())
+    const auto items = shadeItems();
+    for (QGraphicsItem *item : items)
         static_cast<QGraphicsPathItem *>(item)->setPen(pen);
 }
 

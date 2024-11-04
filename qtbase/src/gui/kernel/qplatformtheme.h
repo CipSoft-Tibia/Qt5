@@ -97,6 +97,8 @@ public:
         MouseCursorTheme,
         MouseCursorSize,
         UnderlineShortcut,
+        ShowIconsInMenus,
+        PreferFileIconFromTheme,
     };
     Q_ENUM(ThemeHint)
 

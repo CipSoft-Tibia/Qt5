@@ -35,9 +35,13 @@ class StringSplitter {
     // |splitter|'s |text|, starting from |head|.
     Iterator(const StringSplitter& splitter,
              base::StringPiece::const_iterator head)
-        : splitter_(&splitter), current_(head, 0), end_(splitter.text_.end()) {
-      DCHECK_GE(head, splitter_->text_.begin());
-      DCHECK_LE(head, end_);
+#if BUILDFLAG(IS_APPLE)
+        : splitter_(&splitter), current_(&*head, 0), end_(splitter.text_.cend()) {
+#else
+        : splitter_(&splitter), current_(head, head), end_(splitter.text_.cend()) {
+#endif
+//      DCHECK_GE(head, splitter_->text_.begin());
+//      DCHECK_LE(head, end_);
 
       Advance();
     }
@@ -70,7 +74,11 @@ class StringSplitter {
       base::StringPiece::const_iterator end = begin;
       while (end != end_ && !splitter_->is_separator_(*end))
         ++end;
-      current_ = base::StringPiece(begin, end - begin);
+#if BUILDFLAG(IS_APPLE)
+      current_ = base::StringPiece(&*begin, end - begin);
+#else
+      current_ = base::StringPiece(begin, end);
+#endif
     }
 
     raw_ptr<const StringSplitter<IsSeparator>> splitter_;
@@ -88,8 +96,8 @@ class StringSplitter {
                  IsSeparator is_separator = IsSeparator())
       : text_(text), is_separator_(is_separator) {}
 
-  Iterator begin() const { return Iterator(*this, text_.begin()); }
-  Iterator end() const { return Iterator(*this, text_.end()); }
+  Iterator begin() const { return Iterator(*this, text_.cbegin()); }
+  Iterator end() const { return Iterator(*this, text_.cend()); }
 
  private:
   base::StringPiece text_;

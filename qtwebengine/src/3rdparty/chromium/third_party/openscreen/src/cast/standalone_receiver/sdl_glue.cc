@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,11 +10,10 @@
 #include "platform/api/time.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 SDLEventLoopProcessor::SDLEventLoopProcessor(
-    TaskRunner* task_runner,
+    TaskRunner& task_runner,
     std::function<void()> quit_callback)
     : alarm_(&Clock::now, task_runner),
       quit_callback_(std::move(quit_callback)) {
@@ -49,5 +48,4 @@ void SDLEventLoopProcessor::ProcessPendingEvents() {
   alarm_.ScheduleFromNow([this] { ProcessPendingEvents(); }, kEventPollPeriod);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

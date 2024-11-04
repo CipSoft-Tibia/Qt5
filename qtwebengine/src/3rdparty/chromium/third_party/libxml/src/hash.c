@@ -78,6 +78,7 @@ struct _xmlHashTable {
  */
 #ifdef __clang__
 ATTRIBUTE_NO_SANITIZE("unsigned-integer-overflow")
+ATTRIBUTE_NO_SANITIZE("unsigned-shift-base")
 #endif
 static unsigned long
 xmlHashComputeKey(xmlHashTablePtr table, const xmlChar *name,
@@ -111,6 +112,7 @@ xmlHashComputeKey(xmlHashTablePtr table, const xmlChar *name,
 
 #ifdef __clang__
 ATTRIBUTE_NO_SANITIZE("unsigned-integer-overflow")
+ATTRIBUTE_NO_SANITIZE("unsigned-shift-base")
 #endif
 static unsigned long
 xmlHashComputeQKey(xmlHashTablePtr table,
@@ -177,6 +179,8 @@ xmlHashComputeQKey(xmlHashTablePtr table,
 xmlHashTablePtr
 xmlHashCreate(int size) {
     xmlHashTablePtr table;
+
+    xmlInitParser();
 
     if (size <= 0)
         size = 256;
@@ -611,8 +615,24 @@ xmlHashAddEntry3(xmlHashTablePtr table, const xmlChar *name,
         entry->name3 = (xmlChar *) name3;
     } else {
 	entry->name = xmlStrdup(name);
-	entry->name2 = xmlStrdup(name2);
-	entry->name3 = xmlStrdup(name3);
+        if (entry->name == NULL) {
+            entry->name2 = NULL;
+            goto error;
+        }
+        if (name2 == NULL) {
+            entry->name2 = NULL;
+        } else {
+	    entry->name2 = xmlStrdup(name2);
+            if (entry->name2 == NULL)
+                goto error;
+        }
+        if (name3 == NULL) {
+            entry->name3 = NULL;
+        } else {
+	    entry->name3 = xmlStrdup(name3);
+            if (entry->name3 == NULL)
+                goto error;
+        }
     }
     entry->payload = userdata;
     entry->next = NULL;
@@ -628,6 +648,13 @@ xmlHashAddEntry3(xmlHashTablePtr table, const xmlChar *name,
 	xmlHashGrow(table, MAX_HASH_LEN * table->size);
 
     return(0);
+
+error:
+    xmlFree(entry->name2);
+    xmlFree(entry->name);
+    if (insert != NULL)
+        xmlFree(entry);
+    return(-1);
 }
 
 /**
@@ -741,8 +768,24 @@ xmlHashUpdateEntry3(xmlHashTablePtr table, const xmlChar *name,
         entry->name3 = (xmlChar *) name3;
     } else {
 	entry->name = xmlStrdup(name);
-	entry->name2 = xmlStrdup(name2);
-	entry->name3 = xmlStrdup(name3);
+        if (entry->name == NULL) {
+            entry->name2 = NULL;
+            goto error;
+        }
+        if (name2 == NULL) {
+            entry->name2 = NULL;
+        } else {
+	    entry->name2 = xmlStrdup(name2);
+            if (entry->name2 == NULL)
+                goto error;
+        }
+        if (name3 == NULL) {
+            entry->name3 = NULL;
+        } else {
+	    entry->name3 = xmlStrdup(name3);
+            if (entry->name3 == NULL)
+                goto error;
+        }
     }
     entry->payload = userdata;
     entry->next = NULL;
@@ -754,6 +797,13 @@ xmlHashUpdateEntry3(xmlHashTablePtr table, const xmlChar *name,
 	insert->next = entry;
     }
     return(0);
+
+error:
+    xmlFree(entry->name2);
+    xmlFree(entry->name);
+    if (insert != NULL)
+        xmlFree(entry);
+    return(-1);
 }
 
 /**

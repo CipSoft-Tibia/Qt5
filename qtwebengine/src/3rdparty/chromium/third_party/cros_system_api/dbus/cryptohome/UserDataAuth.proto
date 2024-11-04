@@ -2,11 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// The messages in this file comprise the DBus/Proto interface for
-// the new set of Cryptohome interface after the refactor, and the
-// associated messages that's used by those interfaces.
-// All input parameter to a call is named with a "Request" suffix,
-// and all output parameter to a call is named with a "Reply" suffix.
+// The messages in this file comprise the DBus/Proto interface for the new set
+// of Cryptohome interface after the refactor, and the associated messages used
+// by those interfaces.
+//
+// For every DBus call there is both an input and output message which have the
+// same name as the call plus the "Request" or "Reply" suffix, respectively.
+// Every Reply message will also have two error fields:
+//   * CryptohomeErrorCode error
+//   * CryptohomeErrorInfo error_info
+// The first field is an enum which will be set on any errors. The second field
+// is a richer error message which will also be set on any errors. The latter is
+// intended to eventually replace the former. For more information on which
+// field to use and the process of the migration, see the more specific comments
+// on CryptohomeErrorInfo.
 
 syntax = "proto3";
 
@@ -17,14 +26,13 @@ option go_package = "chromiumos/system_api/user_data_auth_proto";
 
 import "auth_factor.proto";
 import "fido.proto";
-import "key.proto";
 
 ///////////////////////////////////////////////////////////////////////////////
 // Messages that's used by the actual request/reply goes below
 ///////////////////////////////////////////////////////////////////////////////
 
-// We still need the AccountIdentifier, KeyDelegate and AuthorizationRequest
-// messages from the old interface.
+// We still need the AccountIdentifier and KeyDelegate messages from the old
+// interface.
 import "rpc.proto";
 
 // Error codes do not need to be sequential per-call.
@@ -95,30 +103,18 @@ enum CryptohomeErrorCode {
   CRYPTOHOME_ERROR_RECOVERY_TRANSIENT = 56;
   CRYPTOHOME_ERROR_RECOVERY_FATAL = 57;
   CRYPTOHOME_ERROR_BIOMETRICS_BUSY = 58;
+  CRYPTOHOME_ERROR_CREDENTIAL_LOCKED = 59;
+  // Authentication is attempted towards an expired LE credential. A highier
+  // tier credential type has to be entered to reset the LE credential's
+  // expiration. If a credential is both locked out due to too many wrong
+  // attempts AND expired, CRYPTOHOME_ERROR_CREDENTIAL_EXPIRED will take
+  // precedence and be returned.
+  CRYPTOHOME_ERROR_CREDENTIAL_EXPIRED = 60;
+  CRYPTOHOME_RELABEL_CREDENTIALS_FAILED = 61;
   // Note: After adding new fields to this enum, the new enum should be added
   // to ash/components/login/auth/auth_session_authenticator.cc's
   // AuthSessionAuthenticator::ProcessCryptohomeError() so that Chromium
   // can handle them properly.
-}
-
-// This is used by MountRequest to store details about the mount to create
-message CreateRequest {
-  // In the future, this will contain account-wide data like
-  // the deletion priority or the IdP's origin.
-
-  // keys contain the key data to add to the key for the mount that we
-  // are creating. Currently, only one key is supported.
-  // TODO(b/133212955): Change the name of this to "key".
-  repeated cryptohome.Key keys = 1;
-
-  // Explicitly use the |key| from the AuthorizationRequest.
-  // Setting this value means that the |keys| above would be populated with
-  // the |key| specified in MountRequest, so that we can spare the trouble
-  // of specifying |keys| above.
-  bool copy_authorization_key = 2;
-
-  // If set to true, always use eCryptfs as the encryption method.
-  bool force_ecryptfs = 3;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -167,6 +163,18 @@ enum PrimaryAction {
   // Note that it is a special case, see CryptohomeErrorInfo's
   // probable_action field for more info.
   PRIMARY_INCORRECT_AUTH = 8;
+
+  // PRIMARY_LE_LOCKED_OUT indicates that authentication is attempted towards a
+  // locked out LE credential, or that its auth is incorrect and made a LE
+  // credential locked.
+  // Therefore, the caller should try another authentication method that resets
+  // the LE credential, or wait until the LE credential is available.
+  PRIMARY_LE_LOCKED_OUT = 9;
+
+  // PRIMARY_LE_EXPIRED indicates that authentication is attempted towards an
+  // expired LE credential. Therefore, the caller should try another
+  // authentication method that resets the LE credential.
+  PRIMARY_LE_EXPIRED = 10;
 }
 
 // PossibleAction is used to indicate that cryptohomed believies some actions
@@ -184,9 +192,7 @@ enum PossibleAction {
   // POSSIBLY_AUTH suggests the caller to try another authentication method.
   POSSIBLY_AUTH = 3;
 
-  // POSSIBLY_INCORRECT_AUTH suggests that incorrect auth material (password)
-  // have been supplied. The caller should notify the user as such.
-  POSSIBLY_INCORRECT_AUTH = 4;
+  reserved 4;  // POSSIBLY_INCORRECT_AUTH
 
   // POSSIBLY_DELETE_VAULT suggests the caller to delete the user's vault
   // because it's unrecoverable.
@@ -250,15 +256,7 @@ message CryptohomeErrorInfo {
   // occurred, but believes that some of the actions (as listed in this field)
   // are more likely to resolve the error than other actions.
   // The entries in this repeated field are not ordered.
-  // This field can be ignored if primary_action is not PRIMARY_NONE or
-  // PRIMARY_INCORRECT_AUTH.
-  // Note that primary_action = PRIMARY_INCORRECT_AUTH is a special case,
-  // because the Chromium side will handle it different depending the number
-  // of times it happened. Therefore, for the case when primary_action =
-  // PRIMARY_INCORRECT_AUTH, the probable_action field will be populated with
-  // any PossibleAction entry that might be relevant (if any).
-  // In the future we intend to weed out any false positives in reporting
-  // PRIMARY_INCORRECT_AUTH, and thus probable_action will eventually be empty.
+  // This field can be ignored if primary_action is not PRIMARY_NONE.
   repeated PossibleAction possible_actions = 4;
 }
 
@@ -295,64 +293,8 @@ message UnmountRequest {}
 
 // Output parameters for Unmount()
 message UnmountReply {
-  // Indicates an error if |error| is not empty.
   CryptohomeErrorCode error = 1;
-
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
   CryptohomeErrorInfo error_info = 2;
-}
-
-// Input parameters to Mount()
-message MountRequest {
-  // The account of the user whose home directory is requested for mounting.
-  cryptohome.AccountIdentifier account = 1;
-  // Authorization data from the user.
-  cryptohome.AuthorizationRequest authorization = 2;
-
-  // If set, then perform an ephemeral mount only.
-  bool require_ephemeral = 3;
-  // If defined, the account will be created if it does not exist.
-  // Additionally, a failed AuthorizationRequest will be expected as
-  // there will be no existing keys.
-  CreateRequest create = 4;
-  // If set to true, and cryptohomed supports the new "dircrypto" encryption,
-  // forces to use the new encryption. That is, makes it an error to mount
-  // an existing home directory encrypted in the old way (ecryptfs).
-  bool force_dircrypto_if_available = 5;
-  // If set to true, mounts the existing ecryptfs vault to a temporary location
-  // while setting up a new dircrypto directory.
-  bool to_migrate_from_ecryptfs = 6;
-  // If set, then performs a public mount, which is used for a Kiosk session.
-  // Credentials are not needed in the request; they are synthesized by
-  // cryptohomed from id.
-  bool public_mount = 7;
-  // If set to true, the mount will be for a guest session.
-  bool guest_mount = 8;
-  // Auth Session id will let mount derive credentials from AuthSessions.
-  bytes auth_session_id = 9;
-}
-
-// Output parameters for Mount()
-message MountReply {
-  // Indicate an error when |error| is not empty.
-  // TODO(b/229807416): Remove once CryptohomeError refactor is complete.
-  CryptohomeErrorCode error = 1;
-  // |recreated| is set when the cryptohome had to be wiped
-  // because the key or data was an unrecoverable.  It does not imply
-  // failure to Mount nor is it 'true' when a CreateRequest creates
-  // a cryptohome for the first time.
-  bool recreated = 2;
-  // Returns the filesystem-sanitized username.
-  string sanitized_username = 3;
-
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
-  CryptohomeErrorInfo error_info = 4;
 }
 
 // Input parameters to Remove()
@@ -366,12 +308,7 @@ message RemoveRequest {
 
 // Output parameters for Remove()
 message RemoveReply {
-  // Indicate an error when |error| is not empty.
   CryptohomeErrorCode error = 1;
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
   CryptohomeErrorInfo error_info = 2;
 }
 
@@ -388,15 +325,11 @@ message ListKeysRequest {
 
 // Output parameters for ListKeys()
 message ListKeysReply {
-  // Indicates an error if error is not empty.
   CryptohomeErrorCode error = 1;
+  CryptohomeErrorInfo error_info = 3;
+
   // The labels of the Vault Keyset. This will be empty on error.
   repeated string labels = 2;
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
-  CryptohomeErrorInfo error_info = 3;
 }
 
 // Input parameters to CheckKey()
@@ -412,52 +345,29 @@ message CheckKeyRequest {
 
 // Output parameters for CheckKey()
 message CheckKeyReply {
-  // Indicates an error if error is not empty.
   CryptohomeErrorCode error = 1;
 }
 
-// StartFingerprintAuthSession sets BiometricsDaemon and the Fingerprint MCU to
-// match mode. EndFingerprintAuthSession sets them back to non-match mode.
-// A typical call sequence involves one or more other calls that actually wait
-// for fingerprint scan result, between StartFingerprintAuthSession and
-// EndFingerprintAuthSession.
-//
-// Example 1: successful fingerprint match at first attempt.
-// --> StartFingerprintAuthSession
-// --> CheckKey(KEY_TYPE_FINGERPRINT), fingerprint scan success
-// --> EndFingerprintAuthSession
-//
-// Example 2: successful fingerprint match at third attempt.
-// --> StartFingerprintAuthSession
-// --> CheckKey(KEY_TYPE_FINGERPRINT), fingerprint scan no match
-// --> CheckKey(KEY_TYPE_FINGERPRINT), fingerprint scan no match
-// --> CheckKey(KEY_TYPE_FINGERPRINT), fingerprint scan success
-// --> EndFingerprintAuthSession
-//
-// Example 3: client chooses to cancel before success.
-// --> StartFingerprintAuthSession
-// --> CheckKey(KEY_TYPE_FINGERPRINT), fingerprint scan no match
-// --> CheckKey(KEY_TYPE_FINGERPRINT), fingerprint scan no match
-// --> EndFingerprintAuthSession
-
+// Deprecated.
 // Input parameters to StartFingerprintAuthSession()
 message StartFingerprintAuthSessionRequest {
   // This represents the "single user" that we are will be fingerprint for.
   cryptohome.AccountIdentifier account_id = 1;
 }
 
+// Deprecated.
 // Output parameters for StartFingerprintAuthSession()
 message StartFingerprintAuthSessionReply {
-  // Indicates an error if |error| is not empty.
   CryptohomeErrorCode error = 1;
 }
 
+// Deprecated.
 // Input parameters to EndFingerprintAuthSession()
 message EndFingerprintAuthSessionRequest {}
 
+// Deprecated.
 // Output parameters for EndFingerprintAuthSession()
 message EndFingerprintAuthSessionReply {
-  // Indicates an error if |error| is not empty.
   CryptohomeErrorCode error = 1;
 }
 
@@ -469,8 +379,8 @@ message GetWebAuthnSecretRequest {
 
 // Output parameters for GetWebAuthnSecret()
 message GetWebAuthnSecretReply {
-  // Indicates an error if |error| is not empty.
   CryptohomeErrorCode error = 1;
+
   // The WebAuthn secret.
   bytes webauthn_secret = 2;
 }
@@ -483,8 +393,8 @@ message GetWebAuthnSecretHashRequest {
 
 // Output parameters for GetWebAuthnSecretHash()
 message GetWebAuthnSecretHashReply {
-  // Indicates an error if |error| is not empty.
   CryptohomeErrorCode error = 1;
+
   // The WebAuthn secret hash.
   bytes webauthn_secret_hash = 2;
 }
@@ -501,8 +411,8 @@ message GetHibernateSecretRequest {
 
 // Output parameters for GetHibernateSecret()
 message GetHibernateSecretReply {
-  // Indicates an error if |error| is not empty.
   CryptohomeErrorCode error = 1;
+
   // The hibernate secret.
   bytes hibernate_secret = 2;
 }
@@ -512,8 +422,8 @@ message GetEncryptionInfoRequest {}
 
 // Output parameters for GetEncryptionInfo()
 message GetEncryptionInfoReply {
-  // Indicates an error if |error| is not empty.
   CryptohomeErrorCode error = 1;
+
   // Set to true if keylocker is supported.
   bool keylocker_supported = 2;
 }
@@ -533,13 +443,12 @@ message StartMigrateToDircryptoRequest {
   // Auth Session id will let migrate derive credentials from AuthSessions.
   // AuthSession needs to be authenticated for this to be successful. If both
   // account_id and auth_session_id is mentioned, auth_session_id would be
-  // superseed and identity would be derived from that.
+  // supersede and identity would be derived from that.
   bytes auth_session_id = 3;
 }
 
 // Output parameters for StartMigrateToDircrypto().
 message StartMigrateToDircryptoReply {
-  // Indicates an error if not empty.
   CryptohomeErrorCode error = 1;
 }
 
@@ -576,7 +485,6 @@ message NeedsDircryptoMigrationRequest {
 
 // Output parameters for NeedsDircryptoMigration().
 message NeedsDircryptoMigrationReply {
-  // Indicates an error if not empty.
   CryptohomeErrorCode error = 1;
 
   // Whether Dircrypto migration is needed.
@@ -604,7 +512,6 @@ message GetAccountDiskUsageRequest {
 
 // Output parameters for GetAccountDiskUsage().
 message GetAccountDiskUsageReply {
-  // Indicates an error if not empty.
   // Note that for this API call, it is not an error to supply a non-existent
   // user in the |GetAccountDiskUsageRequest.identifier| parameter.
   CryptohomeErrorCode error = 1;
@@ -644,10 +551,17 @@ message StartAuthSessionRequest {
   // TODO(b/240596931): Stop assuming that leaving this unset is the same as
   // `AUTH_INTENT_DECRYPT`, and forbid `AUTH_INTENT_UNSPECIFIED`.
   AuthIntent intent = 3;
-  // Currently nothing is required to be passed in for KeyData map request,
-  // but in the future we can expect this to be expanded to filter queries with
-  // |key.data().type()| to return all keys of a certain class, testing
-  // |key.secret()|, or |key.data().provider_data()| entries.
+}
+
+message StatusInfo {
+  // This field will be used for PIN lockout time. Once an auth factor is locked
+  // out, this field will show the time the factor is locked out for in
+  // milliseconds. If the auth factor is not locked, this field will be set to
+  // zero. If the auth factor is locked out permanently (i.e. until it is
+  // unlocked via a separate credential) this will be set to the maximum uint64
+  // value. |time_available_in| would be indicated in terms of a wall clock
+  // timer, and it will not be affected by sleep.
+  uint64 time_available_in = 1;
 }
 
 // AuthFactorWithStatus returns read-only AuthFactor with relevant status
@@ -665,28 +579,44 @@ message AuthFactorWithStatus {
   // 2) If a pinweaver backed pin is not available (aka locked out), then an
   // empty available_for_intents would be returned.
   repeated AuthIntent available_for_intents = 2;
+
+  StatusInfo status_info = 3;
+}
+
+// AuthFactorStatusUpdate is the dbus signal that is sent for the authenticating
+// user. If an auth factor is locked out, this signal will be sent periodically
+// to update the subscriber about the lock out time. The lock out time would be
+// available in the |time_available_in| inside the |auth_factor_with_status|.
+message AuthFactorStatusUpdate {
+  // Broadcast ID allows chrome to identify the authenticatng user, however, it
+  // cannot be used for authentication purposes.
+  bytes broadcast_id = 1;
+  // The auth factor for which the status update is being provided.
+  AuthFactorWithStatus auth_factor_with_status = 2;
 }
 
 message StartAuthSessionReply {
   reserved 4, 7;
 
-  // Error if any to start the Auth Session
-  // TODO(b/229807416): Remove once CryptohomeError refactor is complete.
   CryptohomeErrorCode error = 1;
+  CryptohomeErrorInfo error_info = 6;
+
   // Token that would be used to conduct any auth-related operation.
   bytes auth_session_id = 2;
+  // Token that is used to identify the session in other replies and signals.
+  // Unlike the session ID this cannot be used as an input to perform actions
+  // with the session and so is safe to share.
+  bytes broadcast_id = 8;
+
   // True if the user that the Auth Session is created for exists or not.
   bool user_exists = 3;
-
   // List of AuthFactors configured and available for authentication in the
   // context of this session.
   repeated AuthFactor auth_factors = 5;
 
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information
-  // on which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
-  CryptohomeErrorInfo error_info = 6;
+  // AuthFactor with status returns available authfactors for account_id
+  // provided in the request, along with their status information.
+  repeated AuthFactorWithStatus configured_auth_factors_with_status = 9;
 }
 
 message InvalidateAuthSessionRequest {
@@ -696,14 +626,7 @@ message InvalidateAuthSessionRequest {
 }
 
 message InvalidateAuthSessionReply {
-  // Error if any to invalidate the Auth Session.
-  // TODO(b/229807416): Remove once CryptohomeError refactor is complete.
   CryptohomeErrorCode error = 1;
-
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
   CryptohomeErrorInfo error_info = 2;
 }
 
@@ -717,15 +640,9 @@ message ExtendAuthSessionRequest {
 }
 
 message ExtendAuthSessionReply {
-  // Error if any to extend the Auth Session.
-  // TODO(b/229807416): Remove once CryptohomeError refactor is complete.
   CryptohomeErrorCode error = 1;
-
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
   CryptohomeErrorInfo error_info = 2;
+
   // The time left in the current AuthSession after extension.
   optional uint32 seconds_left = 3;
 }
@@ -736,35 +653,23 @@ message CreatePersistentUserRequest {
 }
 
 message CreatePersistentUserReply {
-  // The status of the operation.
-  // TODO(b/229807416): Remove once CryptohomeError refactor is complete.
   CryptohomeErrorCode error = 1;
+  CryptohomeErrorInfo error_info = 3;
+
   // The sanitized username, this is basically a hashed representation
   // of the username used in the paths of user's home directory.
   string sanitized_username = 2;
-
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
-  CryptohomeErrorInfo error_info = 3;
 }
 
 message PrepareGuestVaultRequest {}
 
 message PrepareGuestVaultReply {
-  // The status of the operation.
-  // TODO(b/229807416): Remove once CryptohomeError refactor is complete.
   CryptohomeErrorCode error = 1;
+  CryptohomeErrorInfo error_info = 3;
+
   // The sanitized username, this is basically a hashed representation
   // of the username used in the paths of user's home directory.
   string sanitized_username = 2;
-
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
-  CryptohomeErrorInfo error_info = 3;
 }
 
 message PrepareEphemeralVaultRequest {
@@ -774,18 +679,12 @@ message PrepareEphemeralVaultRequest {
 }
 
 message PrepareEphemeralVaultReply {
-  // The status of the operation.
-  // TODO(b/229807416): Remove once CryptohomeError refactor is complete.
   CryptohomeErrorCode error = 1;
+  CryptohomeErrorInfo error_info = 3;
+
   // The sanitized username, this is basically a hashed representation
   // of the username used in the paths of user's home directory.
   string sanitized_username = 2;
-
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
-  CryptohomeErrorInfo error_info = 3;
 }
 
 message GetAuthSessionStatusRequest {
@@ -802,8 +701,8 @@ enum AuthSessionStatus {
 }
 
 message GetAuthSessionStatusReply {
-  // Error if any to start the Auth Session
   CryptohomeErrorCode error = 1;
+
   // Status for the valid AuthSession.
   AuthSessionStatus status = 2;
   // The time left (in sec) in the current AuthSession. This is only set if
@@ -839,18 +738,12 @@ message PreparePersistentVaultRequest {
 }
 
 message PreparePersistentVaultReply {
-  // The status of the operation.
-  // TODO(b/229807416): Remove once CryptohomeError refactor is complete.
   CryptohomeErrorCode error = 1;
+  CryptohomeErrorInfo error_info = 3;
+
   // The sanitized username, this is basically a hashed representation
   // of the username used in the paths of user's home directory.
   string sanitized_username = 2;
-
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
-  CryptohomeErrorInfo error_info = 3;
 }
 
 message PrepareVaultForMigrationRequest {
@@ -860,18 +753,12 @@ message PrepareVaultForMigrationRequest {
 }
 
 message PrepareVaultForMigrationReply {
-  // The status of the operation.
-  // TODO(b/229807416): Remove once CryptohomeError refactor is complete.
   CryptohomeErrorCode error = 1;
+  CryptohomeErrorInfo error_info = 3;
+
   // The sanitized username, this is basically a hashed representation
   // of the username used in the paths of user's home directory.
   string sanitized_username = 2;
-
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
-  CryptohomeErrorInfo error_info = 3;
 }
 
 // ------------------------- ArcQuota Interface -------------------------
@@ -1053,7 +940,6 @@ message InstallAttributesGetRequest {
 
 // Output parameters for InstallAttributesGet()
 message InstallAttributesGetReply {
-  // Will be set if an error occurred.
   CryptohomeErrorCode error = 1;
 
   // The value associated with the install attributes.
@@ -1073,7 +959,6 @@ message InstallAttributesSetRequest {
 
 // Output parameters for InstallAttributesSet()
 message InstallAttributesSetReply {
-  // Will be set if an error occurred.
   CryptohomeErrorCode error = 1;
 }
 
@@ -1095,7 +980,6 @@ message InstallAttributesGetStatusRequest {}
 
 // Output parameters for InstallAttributesGetStatus()
 message InstallAttributesGetStatusReply {
-  // If there's a problem retrieving the status, this will be set.
   CryptohomeErrorCode error = 1;
 
   // How many install attributes are there?
@@ -1127,7 +1011,6 @@ message GetFirmwareManagementParametersRequest {}
 
 // Output parameters for GetFirmwareManagementParameters()
 message GetFirmwareManagementParametersReply {
-  // If there's a problem retrieving the FWMP, then this will be set.
   CryptohomeErrorCode error = 1;
 
   // The firmware management parameters that is retrieved.
@@ -1142,7 +1025,6 @@ message RemoveFirmwareManagementParametersRequest {
 
 // Output parameters for RemoveFirmwareManagementParameters()
 message RemoveFirmwareManagementParametersReply {
-  // If there's a problem removing the FWMP, then this will be set.
   CryptohomeErrorCode error = 1;
 }
 
@@ -1154,7 +1036,6 @@ message SetFirmwareManagementParametersRequest {
 
 // Output parameters for SetFirmwareManagementParameters()
 message SetFirmwareManagementParametersReply {
-  // If there's a problem setting the FWMP, then this will be set.
   CryptohomeErrorCode error = 1;
 }
 
@@ -1185,8 +1066,6 @@ message UpdateCurrentUserActivityTimestampRequest {
 
 // Output parameters for UpdateCurrentUserActivityTimestamp()
 message UpdateCurrentUserActivityTimestampReply {
-  // This will be set if there's a problem updating the user activity timestamp
-  // for any user.
   CryptohomeErrorCode error = 1;
 }
 
@@ -1208,7 +1087,6 @@ message GetLoginStatusRequest {}
 
 // Output parameters for GetLoginStatus()
 message GetLoginStatusReply {
-  // This will be set if there's a problem getting login status.
   CryptohomeErrorCode error = 1;
 
   // This is set to true if an owner user is specified in the device policy.
@@ -1219,16 +1097,6 @@ message GetLoginStatusReply {
   // previous version that does support that has been deprecated.
 
   bool is_locked_to_single_user = 3;
-}
-
-// Input parameters to GetStatusString()
-message GetStatusStringRequest {}
-
-// Output parameters for GetStatusString()
-message GetStatusStringReply {
-  // Contains a JSON string that includes some tpm status, mount status and
-  // install attributes status information.
-  string status = 1;
 }
 
 // Input parameters to LockToSingleUserMountUntilReboot()
@@ -1242,7 +1110,6 @@ message LockToSingleUserMountUntilRebootRequest {
 // Informs the caller whether the disabling succeeded, that is, whether we are
 // now locked to a single user mount.
 message LockToSingleUserMountUntilRebootReply {
-  // Indicates an error if |error| is not empty.
   CryptohomeErrorCode error = 1;
 }
 
@@ -1259,14 +1126,6 @@ message GetRsuDeviceIdReply {
 
 // Output parameters for GetRsuDeviceId()
 message GetRsuDeviceIdRequest {}
-
-// Input parameters to CheckHealth()
-message CheckHealthRequest {}
-
-// Output parameters for CheckHealth()
-message CheckHealthReply {
-  bool requires_powerwash = 2;
-}
 
 // Input parameters to ResetApplicationContainer()
 message ResetApplicationContainerRequest {
@@ -1326,20 +1185,19 @@ message AddAuthFactorRequest {
 }
 
 message AddAuthFactorReply {
-  // Return the status of the request.
   CryptohomeErrorCode error = 1;
-
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
   CryptohomeErrorInfo error_info = 2;
+
+  // When successful, the field will be set and AuthFactor with status returns
+  // newly added authfactors along with their status information.
+  AuthFactorWithStatus added_auth_factor = 3;
 }
 
-// AuthenticateAuthFactorRequest is built when a user is trying to
-// authenticate with an AuthFactor for a user. When the call is made,
-// AuthSession is in an unauthenticated state. After the operation the
-// AuthSession would still be in an authenticated state.
+// AuthenticateAuthFactorRequest is a request to authenticate a user with an
+// AuthFactor. The call can be made multiple times to attempt to authorize the
+// AuthSession for the intents requested by the AuthFactor. If the AuthSession
+// was already authenticated, it will be authorized for a superset of existing
+// intents and the new intents of the AuthFactor.
 message AuthenticateAuthFactorRequest {
   // AuthFactor cannot be authenticated without an active AuthSession running.
   // This id would be used to associate the AuthFactor to an AuthSession.
@@ -1363,17 +1221,11 @@ message AuthenticateAuthFactorRequest {
 }
 
 message AuthenticateAuthFactorReply {
-  // Return the status of the request.
-  // TODO(b/229807416): Remove once CryptohomeError refactor is complete.
-  CryptohomeErrorCode error = 1;
+  reserved 3;
 
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
+  CryptohomeErrorCode error = 1;
   CryptohomeErrorInfo error_info = 2;
-  // DEPRECATED. Use |authorized_for| instead.
-  bool authenticated = 3;
+
   // The intents that the Auth Session has been authorized for. This starts from
   // an empty set when the session is created, and is updated when a factor is
   // successfully authenticated.
@@ -1405,13 +1257,64 @@ message UpdateAuthFactorRequest {
 }
 
 message UpdateAuthFactorReply {
-  // Return the status of the request.
   CryptohomeErrorCode error = 1;
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
   CryptohomeErrorInfo error_info = 2;
+
+  // When successful, the field will be set and AuthFactor with status returns
+  // newly added authfactors along with their status information.
+  AuthFactorWithStatus updated_auth_factor = 3;
+}
+
+message UpdateAuthFactorMetadataRequest {
+  // The id of a running AuthSession.
+  bytes auth_session_id = 1;
+  // Label to identify the existing AuthFactor. Updated auth factor will be
+  // associated with the same label.
+  string auth_factor_label = 2;
+  // The AuthFactor that we will replace the existing AuthFactor with. The full
+  // structure should be populated with factor specific data and metadata. The
+  // type of the AuthFactor should match the existing one, otherwise an error
+  // will be returned.
+  // New auth factor will not be created with this since the request
+  // does not contain AuthInput.
+  // Metadata fields populated by service cryptohome will be ignored in the
+  // request, e.g. `chromeos_version_last_updated` in CommonMetadata. See each
+  // metadata field for details.
+  AuthFactor auth_factor = 3;
+}
+
+message UpdateAuthFactorMetadataReply {
+  CryptohomeErrorCode error = 1;
+  CryptohomeErrorInfo error_info = 2;
+
+  // AuthFactorWithStatus returns newly updated authfactors along with their
+  // status information. This will be unset should the request not be
+  // successful.
+  AuthFactorWithStatus updated_auth_factor = 3;
+}
+
+// RelabelAuthFactor will change the label of an auth factor without modifying
+// the factor itself. Because the factor is not modified it does not require
+// an AuthInput but it does still require an authenticated session.
+message RelabelAuthFactorRequest {
+  // AuthFactor cannot be relabelled without an active and authenticated
+  // AuthSession running. This id would be used to associate the AuthFactor to
+  // an AuthSession.
+  bytes auth_session_id = 1;
+  // Label used to identify the existing AuthFactor.
+  string auth_factor_label = 2;
+  // New label to apply to the auth factor. It must be different from the
+  // original label and not already in use.
+  string new_auth_factor_label = 3;
+}
+
+message RelabelAuthFactorReply {
+  CryptohomeErrorCode error = 1;
+  CryptohomeErrorInfo error_info = 2;
+
+  // AuthFactorWithStatus returns newly updated auth factor. This will only be
+  // set if the relabel operation succeeds.
+  AuthFactorWithStatus relabelled_auth_factor = 3;
 }
 
 // RemoveAuthFactorRequest is built when a user is trying to
@@ -1432,13 +1335,22 @@ message RemoveAuthFactorRequest {
 }
 
 message RemoveAuthFactorReply {
-  // Return the status of the request.
   CryptohomeErrorCode error = 1;
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
   CryptohomeErrorInfo error_info = 2;
+}
+
+// Specifies the intents that are available, or which could be available, for a
+// given type of auth factor.
+message AuthIntentsForAuthFactorType {
+  AuthFactorType type = 1;
+  // The currently available intents for the type based on current policy.
+  repeated AuthIntent current = 2;
+  // The minimal intents for the type. These intents are always available for
+  // this type and cannot be disabled via policy.
+  repeated AuthIntent minimum = 3;
+  // The maximal intents for the type. Intents not in this list cannot be used
+  // with this type of factor, regardless of policy.
+  repeated AuthIntent maximum = 4;
 }
 
 // List all of the auth factors that are configured, as well as the set of auth
@@ -1449,13 +1361,9 @@ message ListAuthFactorsRequest {
 }
 
 message ListAuthFactorsReply {
-  // Return the status of the request.
   CryptohomeErrorCode error = 1;
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
   CryptohomeErrorInfo error_info = 2;
+
   // All of the auth factors configured for the user.
   repeated AuthFactor configured_auth_factors = 3;
   // AuthFactor with status returns available authfactors for account_id
@@ -1463,6 +1371,8 @@ message ListAuthFactorsReply {
   repeated AuthFactorWithStatus configured_auth_factors_with_status = 5;
   // All of the auth factor types supported for this user.
   repeated AuthFactorType supported_auth_factors = 4;
+  // All of the auth factor intents available for the currently supported types.
+  repeated AuthIntentsForAuthFactorType auth_intents_for_types = 6;
 }
 
 message RecoveryExtendedInfoRequest {
@@ -1489,13 +1399,9 @@ message GetAuthFactorExtendedInfoRequest {
 }
 
 message GetAuthFactorExtendedInfoReply {
-  // Return the status of the request.
   CryptohomeErrorCode error = 1;
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
   CryptohomeErrorInfo error_info = 2;
+
   // All of the auth factors configured for the user.
   AuthFactor auth_factor = 3;
   // Extended data for for the AuthFactor.
@@ -1536,14 +1442,43 @@ message GetRecoveryRequestRequest {
 
 message GetRecoveryRequestReply {
   CryptohomeErrorCode error = 1;
+  CryptohomeErrorInfo error_info = 2;
+
+  // Serialized cryptohome.cryptorecovery.CryptoRecoveryRpcRequest, to be sent
+  // to the recovery server.
+  bytes recovery_request = 3;
+}
+
+// CreateVaultKeysetRequest is built when a user is trying to get the
+// recovery payload for CryptohomeRecoveryAuthFactor for a user. When the call
+// is made, AuthSession is in an unauthenticated state. After the operation the
+// AuthSession would still be in an unauthenticated state.
+message CreateVaultKeysetRequest {
+  // Serialized form of token that is used to identify Auth Session that needs
+  // to be extended.
+  bytes auth_session_id = 1;
+  // The secret or password used to create the VaultKeyset.
+  bytes passkey = 2;
+  // Label to identify the VaultKeyset. An empty label is for legacy keys,
+  // for which the label has a fallback of being inferred as "legacy-n".
+  string key_label = 3;
+  // AuthFactorType will help us determine the type and subsequently help us
+  // create the right AuthBlock for derivation or authentication.
+  AuthFactorType type = 4;
+  // A flag to disable the creation of KeyData with the VaultKeyset. Used to
+  // emulate legacy VaultKeysets before M91.
+  bool disable_key_data = 5;
+}
+
+message CreateVaultKeysetReply {
+  // Return the status of the request.
+  CryptohomeErrorCode error = 1;
+
   // Indicate an error if this field exists.
   // This field is replacing the |error| field above, for more information on
   // which field to use and the process on the migration, see comment in
   // CryptohomeErrorInfo.
   CryptohomeErrorInfo error_info = 2;
-  // Serialized cryptohome.cryptorecovery.CryptoRecoveryRpcRequest, to be sent
-  // to the recovery server.
-  bytes recovery_request = 3;
 }
 
 message PrepareAuthFactorRequest {
@@ -1560,10 +1495,6 @@ message PrepareAuthFactorRequest {
 
 message PrepareAuthFactorReply {
   CryptohomeErrorCode error = 1;
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
   CryptohomeErrorInfo error_info = 2;
 }
 
@@ -1577,19 +1508,61 @@ message TerminateAuthFactorRequest {
 
 message TerminateAuthFactorReply {
   CryptohomeErrorCode error = 1;
-  // Indicate an error if this field exists.
-  // This field is replacing the |error| field above, for more information on
-  // which field to use and the process on the migration, see comment in
-  // CryptohomeErrorInfo.
   CryptohomeErrorInfo error_info = 2;
+}
+
+// Send a request to modify the available intents for a user. This can be used
+// to persistently enable or disable the use of a specific type of auth factor
+// for a specific intent.
+message ModifyAuthFactorIntentsRequest {
+  // The id of an authenticated AuthSession. The policy changes will be applied
+  // to the user associated with the session.
+  bytes auth_session_id = 1;
+  // The type for which the policy should be changed.
+  AuthFactorType type = 2;
+  // The set of intents which should be enabled for this policy.
+  //
+  // Note that it is not considered an error to specify intents which the type
+  // does not support, or to exclude intents which are mandatory. Only the
+  // intents which are configurable will be adjusted. It follows from this that
+  // you can set the available intents to the minimum set by passing an empty
+  // list of intents, and to the maximum set by passing a full list.
+  repeated AuthIntent intents = 3;
+}
+
+message ModifyAuthFactorIntentsReply {
+  CryptohomeErrorCode error = 1;
+  CryptohomeErrorInfo error_info = 2;
+
+  // The new auth intents for the modified type.
+  AuthIntentsForAuthFactorType auth_intents = 3;
 }
 
 // Fingerprint scan results.
 enum FingerprintScanResult {
   FINGERPRINT_SCAN_RESULT_SUCCESS = 0;
+
+  // Scan results for authentication.
   FINGERPRINT_SCAN_RESULT_RETRY = 1;
   FINGERPRINT_SCAN_RESULT_LOCKOUT = 2;
+
+  // Internal error.
   FINGERPRINT_SCAN_RESULT_FATAL_ERROR = 3;
+
+  // Scan results for enrollment.
+  // Sensor needs more data.
+  FINGERPRINT_SCAN_RESULT_PARTIAL = 4;
+  // Image doesn't contain enough details.
+  FINGERPRINT_SCAN_RESULT_INSUFFICIENT = 5;
+  // Sensor needs to be cleaned.
+  FINGERPRINT_SCAN_RESULT_SENSOR_DIRTY = 6;
+  // Not enough data collected (swipe type sensor).
+  FINGERPRINT_SCAN_RESULT_TOO_SLOW = 7;
+  // User removed finger too fast.
+  FINGERPRINT_SCAN_RESULT_TOO_FAST = 8;
+  // User didn't move finger during enrollment.
+  FINGERPRINT_SCAN_RESULT_IMMOBILE = 9;
+  FINGERPRINT_SCAN_RESULT_ENROLL_OTHER = 10;
 }
 
 // The message included in signal AuthScanResultSignal.
@@ -1621,4 +1594,52 @@ message AuthScanDone {
   // The result of the latest scan. Note that this doesn't represent the match
   // result, but just whether the scan is successful.
   AuthScanResult scan_result = 1;
+}
+
+// The message included in PrepareAuthFactorProgress when the purpose is add.
+message PrepareAuthFactorForAddProgress {
+  AuthFactorType auth_factor_type = 1;
+  oneof progress {
+    // The progress of biometrics auth factors, e.g., FingerprintAuthFactor.
+    AuthEnrollmentProgress biometrics_progress = 2;
+  }
+}
+
+// The message included in PrepareAuthFactorProgress when the purpose is auth.
+message PrepareAuthFactorForAuthProgress {
+  AuthFactorType auth_factor_type = 1;
+  oneof progress {
+    // The progress of biometrics auth factors, e.g., FingerprintAuthFactor.
+    AuthScanDone biometrics_progress = 2;
+  }
+}
+
+// The message included in signal PrepareAuthFactorProgressSignal.
+message PrepareAuthFactorProgress {
+  AuthFactorPreparePurpose purpose = 1;
+  oneof progress {
+    PrepareAuthFactorForAddProgress add_progress = 2;
+    PrepareAuthFactorForAuthProgress auth_progress = 3;
+  }
+}
+
+// Contains the result of authenticating the auth factor.
+// Used in the AuthenticateAuthFactorCompleted signal to notify
+// if authentication was successful/failed.
+message AuthenticateAuthFactorCompleted {
+  oneof result {
+    AuthenticateAuthFactorCompletedSuccess success = 1;
+    AuthenticateAuthFactorCompletedFailure failure = 2;
+  }
+}
+
+// Used when Authentication succeeds.
+message AuthenticateAuthFactorCompletedSuccess {
+  AuthFactorType auth_factor_type = 1;
+}
+
+// Used when Authentication fails.
+message AuthenticateAuthFactorCompletedFailure {
+  CryptohomeErrorCode error = 1;
+  CryptohomeErrorInfo error_info = 2;
 }

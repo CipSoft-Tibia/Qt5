@@ -11,22 +11,6 @@
 
 QT_BEGIN_NAMESPACE
 
-constexpr QPalette::ResolveMask QPalettePrivate::colorRoleOffset(QPalette::ColorGroup colorGroup)
-{
-    // Exclude NoRole; that bit is used for Accent
-    return (qToUnderlying(QPalette::NColorRoles) - 1) * qToUnderlying(colorGroup);
-}
-
-constexpr QPalette::ResolveMask QPalettePrivate::bitPosition(QPalette::ColorGroup colorGroup,
-                                                             QPalette::ColorRole colorRole)
-{
-    // Map Accent into NoRole for resolving purposes
-    if (colorRole == QPalette::Accent)
-        colorRole = QPalette::NoRole;
-
-    return colorRole + colorRoleOffset(colorGroup);
-}
-
 static_assert(QPalettePrivate::bitPosition(QPalette::ColorGroup(QPalette::NColorGroups - 1),
                               QPalette::ColorRole(QPalette::NColorRoles - 1))
                   < sizeof(QPalette::ResolveMask) * CHAR_BIT,
@@ -974,7 +958,10 @@ static constexpr QPalette::ResolveMask allResolveMask()
 
 /*!
     Returns a new QPalette that is a union of this instance and \a other.
-    Color roles set in this instance take precedence.
+    Color roles set in this instance take precedence. Roles that are not
+    set in this instance will be taken from \a other.
+
+    \sa isBrushSet
 */
 QPalette QPalette::resolve(const QPalette &other) const
 {

@@ -65,11 +65,10 @@ class DecodedBodyLoader : public StaticDataNavigationBodyLoader {
         int64_t total_encoded_data_length,
         int64_t total_encoded_body_length,
         int64_t total_decoded_body_length,
-        bool should_report_corb_blocking,
         const absl::optional<WebURLError>& error) override {
-      client_->BodyLoadingFinished(
-          completion_time, total_encoded_data_length, total_encoded_body_length,
-          total_decoded_body_length, should_report_corb_blocking, error);
+      client_->BodyLoadingFinished(completion_time, total_encoded_data_length,
+                                   total_encoded_body_length,
+                                   total_decoded_body_length, error);
     }
 
    private:
@@ -118,6 +117,15 @@ class DocumentLoaderTest : public testing::TestWithParam<bool> {
     web_view_helper_.Initialize();
     url_test_helpers::RegisterMockedURLLoad(
         url_test_helpers::ToKURL("http://example.com/foo.html"),
+        test::CoreTestDataPath("foo.html"));
+    url_test_helpers::RegisterMockedURLLoad(
+        url_test_helpers::ToKURL("http://user:@example.com/foo.html"),
+        test::CoreTestDataPath("foo.html"));
+    url_test_helpers::RegisterMockedURLLoad(
+        url_test_helpers::ToKURL("http://:pass@example.com/foo.html"),
+        test::CoreTestDataPath("foo.html"));
+    url_test_helpers::RegisterMockedURLLoad(
+        url_test_helpers::ToKURL("http://user:pass@example.com/foo.html"),
         test::CoreTestDataPath("foo.html"));
     url_test_helpers::RegisterMockedURLLoad(
         url_test_helpers::ToKURL("https://example.com/foo.html"),
@@ -583,7 +591,7 @@ TEST_P(DocumentLoaderTest, SameOriginNavigation_WithStorageAccess) {
       WebNavigationParams::CreateWithHTMLBufferForTesting(
           SharedBuffer::Create(), same_origin_url);
   params->requestor_origin = WebSecurityOrigin::Create(WebURL(requestor_url));
-  params->has_storage_access = true;
+  params->load_with_storage_access = true;
   LocalFrame* local_frame =
       To<LocalFrame>(web_view_impl->GetPage()->MainFrame());
   base::HistogramTester histogram_tester;
@@ -836,6 +844,25 @@ TEST_P(DocumentLoaderTest, DecodedBodyDataWithBlockedParser) {
 
   // DecodedBodyLoader uppercases all data.
   EXPECT_EQ(MainFrame()->GetDocument().Body().TextContent(), "FOO");
+}
+
+TEST_P(DocumentLoaderTest, EmbeddedCredentialsNavigation) {
+  struct TestCase {
+    const char* url;
+    const bool useCounted;
+  } test_cases[] = {{"http://example.com/foo.html", false},
+                    {"http://user:@example.com/foo.html", true},
+                    {"http://:pass@example.com/foo.html", true},
+                    {"http://user:pass@example.com/foo.html", true}};
+  for (const auto& test_case : test_cases) {
+    WebViewImpl* web_view_impl =
+        web_view_helper_.InitializeAndLoad(test_case.url);
+    Document* document =
+        To<LocalFrame>(web_view_impl->GetPage()->MainFrame())->GetDocument();
+    EXPECT_EQ(test_case.useCounted,
+              document->IsUseCounted(
+                  WebFeature::kTopLevelDocumentWithEmbeddedCredentials));
+  }
 }
 
 }  // namespace

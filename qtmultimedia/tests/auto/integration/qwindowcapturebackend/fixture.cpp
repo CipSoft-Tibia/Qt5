@@ -1,5 +1,5 @@
 // Copyright (C) 2023 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "fixture.h"
 
@@ -27,7 +27,7 @@ WindowCaptureFixture::WindowCaptureFixture()
 
 QString WindowCaptureFixture::getResultsPath(const QString &fileName)
 {
-    const QString sep = QString::fromLatin1("--");
+    const QString sep = QStringLiteral("--");
 
     QString stem = QCoreApplication::applicationName();
     if (const char *currentTest = QTest::currentTestFunction())
@@ -58,11 +58,11 @@ bool WindowCaptureFixture::compareImages(QImage actual, const QImage &expected,
     qWarning() << "Expected image:";
     qWarning() << expected;
 
-    const QString actualName = getResultsPath(QString("actual%1.png").arg(fileSuffix));
+    const QString actualName = getResultsPath(QStringLiteral("actual%1.png").arg(fileSuffix));
     if (!actual.save(actualName))
         qWarning() << "Failed to save actual file to " << actualName;
 
-    const QString expectedName = getResultsPath(QString("expected%1.png").arg(fileSuffix));
+    const QString expectedName = getResultsPath(QStringLiteral("expected%1.png").arg(fileSuffix));
     if (!expected.save(expectedName))
         qWarning() << "Failed to save expected file to " << expectedName;
 
@@ -154,7 +154,7 @@ bool WindowCaptureWithWidgetAndRecorderFixture::stop()
 
     const auto recorderStopped = [this] { return m_recorderState == QMediaRecorder::StoppedState; };
 
-    return QTest::qWaitFor(recorderStopped, static_cast<int>(s_testTimeout.count()));
+    return QTest::qWaitFor(recorderStopped, s_testTimeout);
 }
 
 bool WindowCaptureWithWidgetAndRecorderFixture::testVideoFilePlayback(const QString &fileName)
@@ -182,9 +182,8 @@ bool WindowCaptureWithWidgetAndRecorderFixture::testVideoFilePlayback(const QStr
     widget.show();
     player.play();
 
-    const bool completed =
-            QTest::qWaitFor([&] { return !playing || error != QMediaPlayer::NoError; },
-                            static_cast<int>(s_testTimeout.count()));
+    const bool completed = QTest::qWaitFor(
+            [&] { return !playing || error != QMediaPlayer::NoError; }, s_testTimeout);
 
     return completed && error == QMediaPlayer::NoError;
 }

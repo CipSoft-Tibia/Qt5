@@ -10,13 +10,8 @@
 #include "third_party/blink/renderer/platform/graphics/paint/float_clip_rect.h"
 #include "third_party/blink/renderer/platform/graphics/paint/property_tree_state.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
-#include "ui/gfx/geometry/quad_f.h"
-#include "ui/gfx/geometry/rect.h"
-#include "ui/gfx/geometry/rect_conversions.h"
 #include "ui/gfx/geometry/rect_f.h"
-#include "ui/gfx/geometry/skia_conversions.h"
 #include "ui/gfx/geometry/transform.h"
-#include "ui/gfx/geometry/vector2d_f.h"
 
 namespace blink {
 
@@ -132,13 +127,13 @@ class PLATFORM_EXPORT GeometryMapper {
   // meaning in the presence of inclusive intersection.)
   //
   // Note: if inclusive intersection is specified, then the
-  // GeometryMapperClipCache is bypassed (the GeometryMapperTRansformCache is
+  // GeometryMapperClipCache is bypassed (the GeometryMapperTransformCache is
   // still used, however).
   //
   // If kInclusiveIntersect is set, clipping operations will
   // use gfx::RectF::InclusiveIntersect, and the return value of
   // InclusiveIntersect will be propagated to the return value of this method.
-  // Otherwise, clipping operations will use LayoutRect::intersect, and the
+  // Otherwise, clipping operations will use gfx::RectF::Intersect, and the
   // return value will be true only if the clipped rect has non-zero area.
   // See the documentation for gfx::RectF::InclusiveIntersect for more
   // information.
@@ -164,13 +159,29 @@ class PLATFORM_EXPORT GeometryMapper {
                                          const gfx::RectF& rect2,
                                          const PropertyTreeState& state2);
 
+  // Returns a clip rect that limits the visibility of painted contents under
+  // the given PropertyTreeState. For now only the following simple cases
+  // are considered:
+  // 1. The clip rect of `state`, if the clip's local transform space is the
+  //    same as that of the state.
+  // 2. The scrolling contents rect, if the transform is a scroll translation.
+  //
+  // The clip rect can be applied to the result of LocalToAncestorVisualRect()
+  // to exclude areas that are never visible in the compositor without a
+  // blink-side compositing update. MightOverlapForCompositing() uses this
+  // function.
+  //
+  // TODO(wangxianzhu): Investigate if this can be integrated into
+  // LocalToAncestorVisualRect().
+  static absl::optional<gfx::RectF> VisibilityLimit(
+      const PropertyTreeState& state);
+
   static void ClearCache();
 
  private:
   struct ExtraProjectionResult {
     bool has_animation = false;
-    bool has_fixed = false;
-    bool has_sticky = false;
+    bool has_sticky_or_anchor_position = false;
     STACK_ALLOCATED();
   };
 
@@ -209,43 +220,21 @@ class PLATFORM_EXPORT GeometryMapper {
       InclusiveIntersectOrNot);
 
   static bool MightOverlapForCompositingInternal(
+      const PropertyTreeState& common_ancestor,
       const gfx::RectF& rect1,
       const PropertyTreeState& state1,
       const gfx::RectF& rect2,
       const PropertyTreeState& state2);
-
-  static const ClipPaintPropertyNode* HighestOutputClipBetween(
-      const EffectPaintPropertyNode& ancestor,
-      const EffectPaintPropertyNode& descendant);
 
   static gfx::RectF VisualRectForCompositingOverlap(
       const gfx::RectF& local_rect,
       const PropertyTreeState& local_state,
       const PropertyTreeState& ancestor_state);
 
-  static void MapFixedVisualRectInScrollForCompositingOverlap(
-      const TransformPaintPropertyNode& scroll_translation,
-      gfx::RectF& rect,
-      PropertyTreeState& state);
-
   static void MapVisualRectAboveScrollForCompositingOverlap(
       const TransformPaintPropertyNode& scroll_translation,
       gfx::RectF& rect,
       PropertyTreeState& state);
-
-  static void MoveRect(gfx::RectF& rect, const gfx::Vector2dF& delta) {
-    rect.Offset(delta.x(), delta.y());
-  }
-
-  static void MoveRect(LayoutRect& rect, const gfx::Vector2dF& delta) {
-    rect.Move(LayoutSize(delta));
-  }
-
-  static void MoveRect(gfx::Rect& rect, const gfx::Vector2dF& delta) {
-    gfx::RectF rect_f(rect);
-    MoveRect(rect_f, delta);
-    rect = gfx::ToEnclosingRect(rect_f);
-  }
 
   friend class GeometryMapperTest;
   static bool LocalToAncestorVisualRectInternalForTesting(

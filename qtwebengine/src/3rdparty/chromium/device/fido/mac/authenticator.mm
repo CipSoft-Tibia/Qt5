@@ -9,7 +9,6 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/mac/mac_util.h"
 #include "base/memory/ptr_util.h"
 #include "base/strings/string_piece.h"
 #import "base/task/sequenced_task_runner.h"
@@ -57,47 +56,31 @@ void TouchIdAuthenticator::GetPlatformCredentialInfoForRequest(
     const CtapGetAssertionRequest& request,
     const CtapGetAssertionOptions& options,
     GetPlatformCredentialInfoForRequestCallback callback) {
-  if (!request.allow_list.empty()) {
-    // Non resident credentials request.
-    absl::optional<std::list<Credential>> credentials =
-        credential_store_.FindCredentialsFromCredentialDescriptorList(
-            request.rp_id, request.allow_list);
-    if (!credentials) {
-      FIDO_LOG(ERROR) << "FindCredentialsFromCredentialDescriptorList() failed";
-      std::move(callback).Run(
-          /*credentials=*/{},
-          device::FidoRequestHandlerBase::RecognizedCredential::
-              kNoRecognizedCredential);
-      return;
-    }
-    std::move(callback).Run(
-        /*credentials=*/{},
-        credentials->empty()
-            ? device::FidoRequestHandlerBase::RecognizedCredential::
-                  kNoRecognizedCredential
-            : device::FidoRequestHandlerBase::RecognizedCredential::
-                  kHasRecognizedCredential);
-    return;
-  }
-
-  // Resident credentials request.
-  absl::optional<std::list<Credential>> resident_credentials =
-      credential_store_.FindResidentCredentials(request.rp_id);
-  if (!resident_credentials) {
-    FIDO_LOG(ERROR) << "GetResidentCredentialsForRequest() failed";
+  absl::optional<std::list<Credential>> credentials =
+      request.allow_list.empty()
+          ? credential_store_.FindResidentCredentials(request.rp_id)
+          : credential_store_.FindCredentialsFromCredentialDescriptorList(
+                request.rp_id, request.allow_list);
+  if (!credentials) {
+    FIDO_LOG(ERROR) << "Failed to fetch credentials from CredentialStore";
     std::move(callback).Run(/*credentials=*/{},
                             device::FidoRequestHandlerBase::
                                 RecognizedCredential::kNoRecognizedCredential);
     return;
   }
   std::vector<DiscoverableCredentialMetadata> result;
-  for (const auto& credential : *resident_credentials) {
-    result.emplace_back(request.rp_id, credential.credential_id,
+  // With `kWebAuthnMacPlatformAuthenticatorOptionalUv`, always report the
+  // list of credentials, because the UI will show a confirmation prompt for
+  // one randomly chosen credential and run through the same pre-select flow
+  // as for empty allow lists.
+  for (const auto& credential : *credentials) {
+    result.emplace_back(AuthenticatorType::kTouchID, request.rp_id,
+                        credential.credential_id,
                         credential.metadata.ToPublicKeyCredentialUserEntity());
   }
   std::move(callback).Run(
       std::move(result),
-      resident_credentials->empty()
+      credentials->empty()
           ? device::FidoRequestHandlerBase::RecognizedCredential::
                 kNoRecognizedCredential
           : device::FidoRequestHandlerBase::RecognizedCredential::
@@ -130,8 +113,8 @@ void TouchIdAuthenticator::Cancel() {
   operation_.reset();
 }
 
-FidoAuthenticator::Type TouchIdAuthenticator::GetType() const {
-  return Type::kTouchID;
+AuthenticatorType TouchIdAuthenticator::GetType() const {
+  return AuthenticatorType::kTouchID;
 }
 
 std::string TouchIdAuthenticator::GetId() const {

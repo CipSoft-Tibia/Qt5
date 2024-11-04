@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -92,6 +92,10 @@ source_set("common") {
     "session_config.h",
     "session_messenger.cc",
     "ssrc.cc",
+    "statistics_collector.cc",
+    "statistics_collector.h",
+    "statistics_defines.cc",
+    "statistics_defines.h",
   ]
 
   public_configs = [ "../../build:openscreen_include_dirs" ]
@@ -171,10 +175,14 @@ source_set("sender") {
     "sender.h",
     "sender_packet_router.h",  # FIXME: Only for Chromium tests.
     "sender_session.h",
+    "statistics.h",
   ]
   sources = [
     "bandwidth_estimator.cc",
     "bandwidth_estimator.h",
+    "clock_offset_estimator.h",
+    "clock_offset_estimator_impl.cc",
+    "clock_offset_estimator_impl.h",
     "compound_rtcp_parser.cc",
     "compound_rtcp_parser.h",
     "rtp_packetizer.cc",
@@ -184,6 +192,9 @@ source_set("sender") {
     "sender_report_builder.cc",
     "sender_report_builder.h",
     "sender_session.cc",
+    "statistics.cc",
+    "statistics_analyzer.cc",
+    "statistics_analyzer.h",
   ]
 
   public_deps = [ ":common" ]
@@ -225,6 +236,7 @@ source_set("unittests") {
     "answer_messages_unittest.cc",
     "bandwidth_estimator_unittest.cc",
     "capture_recommendations_unittest.cc",
+    "clock_offset_estimator_impl_unittest.cc",
     "compound_rtcp_builder_unittest.cc",
     "compound_rtcp_parser_unittest.cc",
     "expanded_value_base_unittest.cc",
@@ -253,6 +265,9 @@ source_set("unittests") {
     "sender_unittest.cc",
     "session_messenger_unittest.cc",
     "ssrc_unittest.cc",
+    "statistics_analyzer_unittest.cc",
+    "statistics_collector_unittest.cc",
+    "statistics_unittest.cc",
   ]
 
   deps = [

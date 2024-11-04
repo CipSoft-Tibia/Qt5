@@ -142,7 +142,7 @@ LiteHtmlView::create_font( const litehtml::tchar_t* faceName, int size,
 	litehtml::trim(fonts[0]);
 
 	uint16 face = B_REGULAR_FACE; // default
-	if (italic == litehtml::fontStyleItalic)
+	if (italic == litehtml::font_style_italic)
 	{
 		face |= B_ITALIC_FACE;
 	}
@@ -479,7 +479,7 @@ LiteHtmlView::transform_text(litehtml::tstring& text, litehtml::text_transform t
 }
 
 void 
-LiteHtmlView::set_clip( const litehtml::position& pos, const litehtml::border_radiuses& bdr_radius, bool valid_x, bool valid_y )
+LiteHtmlView::set_clip( const litehtml::position& pos, const litehtml::border_radiuses& bdr_radius )
 {
 	std::cout << "set_clip" << std::endl;
 }

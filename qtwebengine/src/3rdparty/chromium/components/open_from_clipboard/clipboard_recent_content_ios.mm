@@ -20,10 +20,6 @@
 #include "url/gurl.h"
 #include "url/url_constants.h"
 
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-#error "This file requires ARC support."
-#endif
-
 namespace {
 
 // Schemes accepted by the ClipboardRecentContentIOS.
@@ -84,13 +80,15 @@ ClipboardContentType ClipboardContentTypeFromContentType(ContentType type) {
 
 ClipboardRecentContentIOS::ClipboardRecentContentIOS(
     const std::string& application_scheme,
-    NSUserDefaults* group_user_defaults)
+    NSUserDefaults* group_user_defaults,
+    bool only_use_clipboard_async)
     : ClipboardRecentContentIOS([[ClipboardRecentContentImplIOS alloc]
-             initWithMaxAge:MaximumAgeOfClipboard().InSecondsF()
-          authorizedSchemes:getAuthorizedSchemeList(application_scheme)
-               userDefaults:group_user_defaults
-                   delegate:[[ClipboardRecentContentDelegateImpl alloc]
-                                init]]) {}
+                 initWithMaxAge:MaximumAgeOfClipboard().InSecondsF()
+              authorizedSchemes:getAuthorizedSchemeList(application_scheme)
+                   userDefaults:group_user_defaults
+          onlyUseClipboardAsync:only_use_clipboard_async
+                       delegate:[[ClipboardRecentContentDelegateImpl alloc]
+                                    init]]) {}
 
 ClipboardRecentContentIOS::ClipboardRecentContentIOS(
     ClipboardRecentContentImplIOS* implementation) {

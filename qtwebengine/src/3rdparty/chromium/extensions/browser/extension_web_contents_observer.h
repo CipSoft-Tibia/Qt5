@@ -72,7 +72,7 @@ class ExtensionWebContentsObserver
   // with the RenderFrameHost.
   static void BindLocalFrameHost(
       mojo::PendingAssociatedReceiver<mojom::LocalFrameHost> receiver,
-      content::RenderFrameHost* rfh);
+      content::RenderFrameHost* render_frame_host);
 
   // This must be called by clients directly after the EWCO has been created.
   void Initialize();
@@ -143,7 +143,7 @@ class ExtensionWebContentsObserver
  private:
   using PassKey = base::PassKey<ExtensionWebContentsObserver>;
 
-  void OnWindowIdChanged(const SessionID& id);
+  void OnWindowIdChanged(SessionID id);
 
   // The BrowserContext associated with the WebContents being observed.
   raw_ptr<content::BrowserContext> browser_context_;

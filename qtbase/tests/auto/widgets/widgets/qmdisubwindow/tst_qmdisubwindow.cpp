@@ -1,5 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qmdisubwindow.h"
 #include "private/qmdisubwindow_p.h"
@@ -954,6 +954,8 @@ void tst_QMdiSubWindow::mouseDoubleClick()
     if (!window->style()->styleHint(QStyle::SH_TitleBar_NoBorder, &options, window))
         height += window->isMinimized() ? 8 : 4;
     QPoint mousePosition(window->width() / 2, height - 1);
+    if (window->style()->inherits("QWindows11Style"))
+        mousePosition = QPoint(8, height - 1);
     sendMouseMove(window, mousePosition, Qt::NoButton);
 
     // Without Qt::WindowShadeButtonHint flag set
@@ -981,8 +983,10 @@ void tst_QMdiSubWindow::mouseDoubleClick()
 
     window->showMinimized();
     QVERIFY(window->isMinimized());
+    //Process QEvent::WindowStateChange
+    QCoreApplication::processEvents();
     sendMouseDoubleClick(window, mousePosition);
-    QVERIFY(!window->isMinimized());
+    QTRY_VERIFY(!window->isMinimized());
     QCOMPARE(window->geometry(), originalGeometry);
 }
 
@@ -1867,7 +1871,6 @@ void tst_QMdiSubWindow::closeOnDoubleClick()
 
 void tst_QMdiSubWindow::setFont()
 {
-    QSKIP("This test function is unstable in CI, please see QTBUG-22544");
     QMdiArea mdiArea;
     mdiArea.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     QMdiSubWindow *subWindow = mdiArea.addSubWindow(new TestPushButton(QLatin1String("test")));

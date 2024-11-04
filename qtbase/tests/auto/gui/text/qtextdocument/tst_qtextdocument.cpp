@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -744,6 +744,9 @@ void tst_QTextDocument::mightBeRichText_data()
                                 "    PUBLIC ""-//W3C//DTD XHTML 1.0 Strict//EN\" \"DTD/xhtml1-strict.dtd\">\n"
                                 "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\">";
     QVERIFY(Qt::mightBeRichText(QString::fromLatin1(qtDocuHeader)));
+    QVERIFY(Qt::mightBeRichText(QLatin1StringView(qtDocuHeader)));
+    QVERIFY(QUtf8StringView(qtDocuHeader).isValidUtf8());
+    QVERIFY(Qt::mightBeRichText(QUtf8StringView(qtDocuHeader)));
     QTest::addColumn<QString>("input");
     QTest::addColumn<bool>("result");
 
@@ -763,6 +766,10 @@ void tst_QTextDocument::mightBeRichText()
     QFETCH(QString, input);
     QFETCH(bool, result);
     QCOMPARE(result, Qt::mightBeRichText(input));
+    QCOMPARE(result, Qt::mightBeRichText(QStringView(input)));
+    QCOMPARE(result, Qt::mightBeRichText(QUtf8StringView(input.toUtf8())));
+    QVERIFY(QtPrivate::isLatin1(input));
+    QCOMPARE(result, Qt::mightBeRichText(QLatin1StringView(input.toLatin1())));
 }
 
 Q_DECLARE_METATYPE(QTextDocumentFragment)

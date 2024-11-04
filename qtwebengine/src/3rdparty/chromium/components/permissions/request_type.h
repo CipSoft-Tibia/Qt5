@@ -35,6 +35,7 @@ enum class RequestType {
   kGeolocation,
   kIdleDetection,
   kMicStream,
+  kMidi,
   kMidiSysex,
   kMultipleDownloads,
 #if BUILDFLAG(IS_ANDROID)
@@ -46,12 +47,8 @@ enum class RequestType {
 #endif
 #if !BUILDFLAG(IS_ANDROID)
   kRegisterProtocolHandler,
-  kSecurityAttestation,
 #endif
   kStorageAccess,
-#if !BUILDFLAG(IS_ANDROID)
-  kU2fApiRequest,
-#endif
   kVrSession,
 #if !BUILDFLAG(IS_ANDROID)
   kWindowManagement,
@@ -70,6 +67,9 @@ typedef const gfx::VectorIcon& IconId;
 #endif
 
 bool IsRequestablePermissionType(ContentSettingsType content_settings_type);
+
+absl::optional<RequestType> ContentSettingsTypeToRequestTypeIfExists(
+    ContentSettingsType content_settings_type);
 
 RequestType ContentSettingsTypeToRequestType(
     ContentSettingsType content_settings_type);

@@ -84,6 +84,7 @@ public:
     QDBusMessage &operator<<(const QVariant &arg);
 
 private:
+    explicit QDBusMessage(QDBusMessagePrivate &dd);
     friend class QDBusMessagePrivate;
     QDBusMessagePrivate *d_ptr;
 };

@@ -96,20 +96,27 @@ constexpr ANGLE_INLINE ReturnType GetDefaultReturnValue()
 #    define ANGLE_CAPTURE_GL(...)
 #endif  // ANGLE_CAPTURE_ENABLED
 
+#if defined(_MSC_VER)
+#define EGL_EVENT(EP, FMT, ...) EVENT(nullptr, EGL##EP, FMT __VA_OPT__(,) __VA_ARGS__)
+#else
 #define EGL_EVENT(EP, FMT, ...) EVENT(nullptr, EGL##EP, FMT, ##__VA_ARGS__)
+#endif
 
 inline int CID(const Context *context)
 {
     return context == nullptr ? 0 : static_cast<int>(context->id().value);
 }
 
-bool GeneratePixelLocalStorageActiveError(const Context *context, angle::EntryPoint entryPoint);
+bool GeneratePixelLocalStorageActiveError(const PrivateState &state,
+                                          ErrorSet *errors,
+                                          angle::EntryPoint entryPoint);
 
-ANGLE_INLINE bool ValidatePixelLocalStorageInactive(const Context *context,
+ANGLE_INLINE bool ValidatePixelLocalStorageInactive(const PrivateState &state,
+                                                    ErrorSet *errors,
                                                     angle::EntryPoint entryPoint)
 {
-    return context->getState().getPixelLocalStorageActivePlanes() == 0 ||
-           GeneratePixelLocalStorageActiveError(context, entryPoint);
+    return state.getPixelLocalStorageActivePlanes() == 0 ||
+           GeneratePixelLocalStorageActiveError(state, errors, entryPoint);
 }
 }  // namespace gl
 

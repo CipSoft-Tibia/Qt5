@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <new>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -64,7 +65,7 @@ const char* const
 
 // TODO(tomfinegan): Add a bitdepth arg, and test writing 10 bit frame buffers.
 std::unique_ptr<DecoderBuffer> GetFakeDecoderBuffer(ImageFormat image_format) {
-  auto buffer = absl::make_unique<DecoderBuffer>();
+  auto buffer = absl::WrapUnique(new (std::nothrow) DecoderBuffer);
   if (buffer == nullptr) return nullptr;
   buffer->chroma_sample_position = kChromaSamplePositionUnknown;
   buffer->image_format = image_format;

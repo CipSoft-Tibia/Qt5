@@ -127,9 +127,13 @@ public:
     QByteArray m_fontData;
 };
 
-QCoreTextFontEngine *QCoreTextFontEngine::create(const QByteArray &fontData, qreal pixelSize, QFont::HintingPreference hintingPreference)
+QCoreTextFontEngine *QCoreTextFontEngine::create(const QByteArray &fontData,
+                                                 qreal pixelSize,
+                                                 QFont::HintingPreference hintingPreference,
+                                                 const QMap<QFont::Tag, float> &variableAxisValues)
 {
     Q_UNUSED(hintingPreference);
+    Q_UNUSED(variableAxisValues);
 
     QCFType<CFDataRef> fontDataReference = fontData.toRawCFData();
     QCFType<CGDataProviderRef> dataProvider = CGDataProviderCreateWithCFData(fontDataReference);
@@ -188,6 +192,7 @@ void QCoreTextFontEngine::init()
     face_id.index = 0;
     QCFString name = CTFontCopyName(ctfont, kCTFontUniqueNameKey);
     face_id.filename = QString::fromCFString(name).toUtf8();
+    face_id.variableAxes = fontDef.variableAxisValues;
 
     QCFString family = CTFontCopyFamilyName(ctfont);
     fontDef.families = QStringList(family);
@@ -232,7 +237,7 @@ void QCoreTextFontEngine::init()
         synthesisFlags |= SynthesizedItalic;
 
     avgCharWidth = 0;
-    QByteArray os2Table = getSfntTable(MAKE_TAG('O', 'S', '/', '2'));
+    QByteArray os2Table = getSfntTable(QFont::Tag("OS/2").value());
     unsigned emSize = CTFontGetUnitsPerEm(ctfont);
     if (os2Table.size() >= 10) {
         fsType = qFromBigEndian<quint16>(os2Table.constData() + 8);

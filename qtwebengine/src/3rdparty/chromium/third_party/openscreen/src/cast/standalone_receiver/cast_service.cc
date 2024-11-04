@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,8 +17,7 @@
 #include "util/osp_logging.h"
 #include "util/stringprintf.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -63,7 +62,7 @@ CastService::CastService(CastService::Configuration config)
           discovery_service_
               ? MakeSerialDelete<
                     discovery::DnsSdServicePublisher<ReceiverInfo>>(
-                    config.task_runner,
+                    &config.task_runner,
                     discovery_service_.get(),
                     kCastV2ServiceId,
                     ReceiverInfoToDnsSdInstance)
@@ -108,5 +107,4 @@ void CastService::OnRecoverableError(Error error) {
   OSP_LOG_ERROR << "Encountered recoverable discovery error: " << error;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

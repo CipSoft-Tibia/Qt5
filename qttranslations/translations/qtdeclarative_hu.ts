@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="hu_HU">
+    <extra-po-header-language>hu</extra-po-header-language>
+    <extra-po-header-language_team>Hungarian &lt;kde-l10n-hu@kde.org&gt;</extra-po-header-language_team>
+    <extra-po-header-last_translator>Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header-last_translator>
+    <extra-po-header-po_revision_date>2024-02-07 22:26+0100</extra-po-header-po_revision_date>
+    <extra-po-header-project_id_version></extra-po-header-project_id_version>
+    <extra-po-header-x_generator>Lokalize 23.08.4</extra-po-header-x_generator>
+    <extra-po-header_comment># SPDX-FileCopyrightText: 2024 Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header_comment>
+    <extra-po-headers>MIME-Version,Content-Type,Content-Transfer-Encoding,Plural-Forms,X-Language,X-Qt-Contexts,Last-Translator,PO-Revision-Date,Project-Id-Version,Language-Team,Language,X-Generator</extra-po-headers>
 <context>
     <name>Object</name>
     <message>
@@ -1261,17 +1269,6 @@
     </message>
 </context>
 <context>
-    <name>QQuickWindowQmlImpl</name>
-    <message>
-        <source>Conflicting properties &apos;visible&apos; and &apos;visibility&apos; for Window &apos;%1&apos;</source>
-        <translation>Ütköző „visible” és „visibility” tulajdonságok a(z) „%1” ablaknál</translation>
-    </message>
-    <message>
-        <source>Conflicting properties &apos;visible&apos; and &apos;visibility&apos;</source>
-        <translation>Ütköző „visible” és „visibility” tulajdonságok</translation>
-    </message>
-</context>
-<context>
     <name>qmlRegisterType</name>
     <message>
         <source>Invalid QML %1 name &quot;%2&quot;; type names must begin with an uppercase letter</source>
@@ -1299,6 +1296,16 @@
 </context>
 <context>
     <name>FileDialog</name>
+    <message>
+        <source>“%1” already exists. Do you want to replace it?</source>
+        <translation>A(z) „%1” már létezik. Szeretné lecserélni?</translation>
+    </message>
+    <message>
+        <source>A file with the same name already exists in %1.
+Replacing it will overwrite its current contents.</source>
+        <translation>Már létezik fájl ezen a néven itt: %1
+Lecserélésével a jelenlegi tartalma felül lesz írva.</translation>
+    </message>
     <message>
         <source>File name</source>
         <translation>Fájlnév</translation>
@@ -2181,6 +2188,32 @@ A(z) %1 revízió a(z) %2.%3 verziónak felel meg, de %4.%5 kellene, hogy legyen
     <message>
         <source>Query error: &quot;%1&quot;</source>
         <translation>Lekérdezéshiba: „%1”</translation>
+    </message>
+</context>
+<context>
+    <name>QQuickTextDocument</name>
+    <message>
+        <source>Cannot load:</source>
+        <translation>Nem lehet betölteni:</translation>
+    </message>
+    <message>
+        <source>Cannot save:</source>
+        <translation>Nem lehet menteni:</translation>
+    </message>
+    <message>
+        <source>Can only save to local files</source>
+        <translation>Csak helyi fájlokba lehet menteni</translation>
+    </message>
+</context>
+<context>
+    <name>QQuickWindowQmlImpl</name>
+    <message>
+        <source>Conflicting properties &apos;visible&apos; and &apos;visibility&apos; for Window &apos;%1&apos;</source>
+        <translation type="vanished">Ütköző „visible” és „visibility” tulajdonságok a(z) „%1” ablaknál</translation>
+    </message>
+    <message>
+        <source>Conflicting properties &apos;visible&apos; and &apos;visibility&apos;</source>
+        <translation type="vanished">Ütköző „visible” és „visibility” tulajdonságok</translation>
     </message>
 </context>
 </TS>

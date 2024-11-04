@@ -1318,8 +1318,12 @@ typedef struct macroblock {
   uint8_t color_sensitivity_sb[MAX_MB_PLANE - 1];
   //! Color sensitivity flag for the superblock for golden reference.
   uint8_t color_sensitivity_sb_g[MAX_MB_PLANE - 1];
+  //! Color sensitivity flag for the superblock for altref reference.
+  uint8_t color_sensitivity_sb_alt[MAX_MB_PLANE - 1];
   //! Color sensitivity flag for the coding block.
   uint8_t color_sensitivity[MAX_MB_PLANE - 1];
+  //! Coding block distortion value for uv/color, minimum over the inter modes.
+  int64_t min_dist_inter_uv;
   /**@}*/
 
   /*****************************************************************************
@@ -1328,6 +1332,18 @@ typedef struct macroblock {
   /**@{*/
   //! Variance of the source frame.
   unsigned int source_variance;
+  //! Flag to indicate coding block is zero sad.
+  int block_is_zero_sad;
+  //! Flag to indicate superblock ME in variance partition is determined to be
+  // good/reliable, and so the superblock MV will be tested in the
+  // nonrd_pickmode. This is only used for LAST_FRAME.
+  int sb_me_partition;
+  //! Flag to indicate to test the superblock MV for the coding block in the
+  // nonrd_pickmode.
+  int sb_me_block;
+  //! Motion vector from superblock MV derived from int_pro_motion() in
+  // the variance_partitioning.
+  int_mv sb_me_mv;
   //! SSE of the current predictor.
   unsigned int pred_sse[REF_FRAMES];
   //! Prediction for ML based partition.
@@ -1359,6 +1375,11 @@ typedef struct macroblock {
 #if COLLECT_NONRD_PICK_MODE_STAT
   mode_search_stat_nonrd ms_stat_nonrd;
 #endif  // COLLECT_NONRD_PICK_MODE_STAT
+
+  /*!\brief Number of pixels in current thread that choose palette mode in the
+   * fast encoding stage for screen content tool detemination.
+   */
+  int palette_pixels;
 } MACROBLOCK;
 #undef SINGLE_REF_MODES
 

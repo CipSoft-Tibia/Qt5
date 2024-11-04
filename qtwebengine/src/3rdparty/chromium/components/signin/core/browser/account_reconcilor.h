@@ -159,6 +159,12 @@ class AccountReconcilor
   // Returns true if reconcilor is blocked.
   bool IsReconcileBlocked() const;
 
+  // Returns the 'most severe' error encountered during the last attempt to
+  // reconcile (after the state is already set to kOk or kError).
+  // If the last reconciliation attempt was successful, this will be
+  // `GoogleServiceAuthError::State::NONE`.
+  GoogleServiceAuthError GetReconcileError() const;
+
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
   // Gets the ConsistencyCookieManager, which updates the
   // "CHROME_ID_CONSISTENCY_STATE" cookie.
@@ -229,6 +235,10 @@ class AccountReconcilor
   FRIEND_TEST_ALL_PREFIXES(AccountReconcilorDiceTest,
                            DiceReconcileReuseGaiaFirstAccount);
   FRIEND_TEST_ALL_PREFIXES(AccountReconcilorDiceTest, DeleteCookie);
+  FRIEND_TEST_ALL_PREFIXES(AccountReconcilorDiceTestForSupervisedUsers,
+                           DeleteCookieForNonSyncingSupervisedUsers);
+  FRIEND_TEST_ALL_PREFIXES(AccountReconcilorDiceTestForSupervisedUsers,
+                           DeleteCookieForSyncingSupervisedUsers);
   FRIEND_TEST_ALL_PREFIXES(AccountReconcilorMirrorTest, TokensNotLoaded);
   FRIEND_TEST_ALL_PREFIXES(AccountReconcilorMirrorTest,
                            StartReconcileCookiesDisabled);

@@ -7,13 +7,14 @@
 
 #include "base/compiler_specific.h"
 #include "base/containers/span.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "build/build_config.h"
-#include "components/viz/common/resources/resource_format.h"
 #include "components/viz/common/resources/shared_image_format.h"
 #include "gpu/command_buffer/common/mailbox.h"
 #include "gpu/command_buffer/common/sync_token.h"
 #include "gpu/gpu_export.h"
+#include "gpu/ipc/common/gpu_memory_buffer_impl.h"
 #include "gpu/ipc/common/surface_handle.h"
 #include "third_party/skia/include/core/SkImageInfo.h"
 #include "third_party/skia/include/gpu/GrTypes.h"
@@ -46,6 +47,46 @@ class GpuMemoryBufferManager;
 // synchronized using SyncTokens. See //docs/design/gpu_synchronization.md.
 class GPU_EXPORT SharedImageInterface {
  public:
+  // Provides access to the CPU visible memory for the mailbox if it is being
+  // used for CPU READ/WRITE and underlying resource(native buffers/shared
+  // memory) is CPU mappable. Memory and strides can be requested for each
+  // plane.
+  class GPU_EXPORT ScopedMapping {
+   public:
+    ~ScopedMapping();
+
+    // Returns a pointer to the beginning of the plane.
+    void* Memory(const uint32_t plane_index);
+
+    // Returns plane stride.
+    size_t Stride(const uint32_t plane_index);
+
+    // Returns BufferFormat.
+    gfx::BufferFormat Format();
+
+   private:
+    friend class ClientSharedImageInterface;
+
+    ScopedMapping();
+    static std::unique_ptr<ScopedMapping> Create(
+        gfx::GpuMemoryBufferHandle handle,
+        viz::SharedImageFormat format,
+        gfx::Size size,
+        gfx::BufferUsage buffer_usage);
+    bool Init(gfx::GpuMemoryBufferHandle handle,
+              viz::SharedImageFormat format,
+              gfx::Size size,
+              gfx::BufferUsage buffer_usage);
+
+    // ScopedMapping is essentially a wrapper around GpuMemoryBuffer for now for
+    // simplicity and will be removed later.
+    // TODO(crbug.com/1474697): Refactor/Rename GpuMemoryBuffer and its
+    // implementations  as the end goal after all clients using GMB are
+    // converted to use the ScopedMapping and notion of GpuMemoryBuffer is being
+    // removed.
+    std::unique_ptr<gpu::GpuMemoryBufferImpl> buffer_;
+  };
+
   virtual ~SharedImageInterface() = default;
 
   // Creates a shared image of requested |format|, |size| and |color_space|.
@@ -59,25 +100,50 @@ class GPU_EXPORT SharedImageInterface {
   // The |SharedImageInterface| keeps ownership of the image until
   // |DestroySharedImage| is called or the interface itself is destroyed (e.g.
   // the GPU channel is lost).
+  // |debug_label| is retained for heap dumps and passed to graphics APIs for
+  // tracing tools. Pick a name that is unique to the allocation site.
   virtual Mailbox CreateSharedImage(viz::SharedImageFormat format,
                                     const gfx::Size& size,
                                     const gfx::ColorSpace& color_space,
                                     GrSurfaceOrigin surface_origin,
                                     SkAlphaType alpha_type,
                                     uint32_t usage,
+                                    base::StringPiece debug_label,
                                     gpu::SurfaceHandle surface_handle) = 0;
 
   // Same behavior as the above, except that this version takes |pixel_data|
   // which is used to populate the SharedImage.  |pixel_data| should have the
   // same format which would be passed to glTexImage2D to populate a similarly
   // specified texture.
+  // TODO(crbug.com/1447106): Have the caller specify a row span for
+  // |pixel_data| explicitly. Some backings have different row alignment
+  // requirements which the caller has to match exactly or it won't work.
   virtual Mailbox CreateSharedImage(viz::SharedImageFormat format,
                                     const gfx::Size& size,
                                     const gfx::ColorSpace& color_space,
                                     GrSurfaceOrigin surface_origin,
                                     SkAlphaType alpha_type,
                                     uint32_t usage,
+                                    base::StringPiece debug_label,
                                     base::span<const uint8_t> pixel_data) = 0;
+
+  // Same behavior as above methods, except that this version is specifically
+  // used by clients which intend to create a shared image back by either a
+  // native buffer (if supported) or shared memory which are CPU mappable.
+  // We are currently passing BufferUsage to this method for simplicity since
+  // as of now we dont have a clear way to map BufferUsage to SharedImageUsage.
+  // TODO(crbug.com/1467584): Merge this method to above existing methods once
+  // we figure out mapping between BufferUsage and SharedImageUsage and
+  // eliminate all usages of BufferUsage.
+  virtual Mailbox CreateSharedImage(viz::SharedImageFormat format,
+                                    const gfx::Size& size,
+                                    const gfx::ColorSpace& color_space,
+                                    GrSurfaceOrigin surface_origin,
+                                    SkAlphaType alpha_type,
+                                    uint32_t usage,
+                                    base::StringPiece debug_label,
+                                    gpu::SurfaceHandle surface_handle,
+                                    gfx::BufferUsage buffer_usage);
 
   // Creates a shared image out an existing buffer. The buffer described by
   // `buffer_handle` must hold all planes based `format` and `size. `usage` is a
@@ -87,9 +153,6 @@ class GPU_EXPORT SharedImageInterface {
   // SharedImageInterface keeps ownership of the image until
   // `DestroySharedImage()` is called or the interface itself is destroyed (e.g.
   // the GPU channel is lost).
-  //
-  // NOTE: `format` must be a multi-planar format. This is temporary until
-  // support is added for single-planar formats here.
   virtual Mailbox CreateSharedImage(
       viz::SharedImageFormat format,
       const gfx::Size& size,
@@ -97,8 +160,13 @@ class GPU_EXPORT SharedImageInterface {
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
       uint32_t usage,
+      base::StringPiece debug_label,
       gfx::GpuMemoryBufferHandle buffer_handle) = 0;
 
+  // NOTE: The below method is DEPRECATED for `gpu_memory_buffer` only with
+  // single planar eg. RGB BufferFormats. Please use the equivalent method above
+  // taking in single planar SharedImageFormat with GpuMemoryBufferHandle.
+  //
   // Creates a shared image out of a GpuMemoryBuffer, using |color_space|.
   // |usage| is a combination of |SharedImageUsage| bits that describes which
   // API(s) the image will be used with. Format and size are derived from the
@@ -123,15 +191,21 @@ class GPU_EXPORT SharedImageInterface {
       const gfx::ColorSpace& color_space,
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
-      uint32_t usage) = 0;
+      uint32_t usage,
+      base::StringPiece debug_label) = 0;
 
+  // NOTE: The below method is DEPRECATED for `gpu_memory_buffer` only with
+  // single planar eg. RGB BufferFormats. Please use the equivalent method above
+  // taking in single planar SharedImageFormat with GpuMemoryBufferHandle.
+  //
   // Same as the above, but specifies gfx::BufferPlane::DEFAULT for |plane|.
   Mailbox CreateSharedImage(gfx::GpuMemoryBuffer* gpu_memory_buffer,
                             GpuMemoryBufferManager* gpu_memory_buffer_manager,
                             const gfx::ColorSpace& color_space,
                             GrSurfaceOrigin surface_origin,
                             SkAlphaType alpha_type,
-                            uint32_t usage);
+                            uint32_t usage,
+                            base::StringPiece debug_label);
 
   // Updates a shared image after its GpuMemoryBuffer (if any) was modified on
   // the CPU or through external devices, after |sync_token| has been released.
@@ -161,6 +235,16 @@ class GPU_EXPORT SharedImageInterface {
   virtual void DestroySharedImage(const SyncToken& sync_token,
                                   const Mailbox& mailbox) = 0;
 
+  // Adds another owning reference to the SharedImage. It must be released via
+  // DestroySharedImage in the same way as for SharedImages created via
+  // CreateSharedImage(). Note: The image must have been created on different
+  // gpu channel and each can have only single reference.
+  // Note: `usage` must be the same value as passed to CreateSharedImage call
+  // and is just stored without validation.
+  virtual void AddReferenceToSharedImage(const SyncToken& sync_token,
+                                         const Mailbox& mailbox,
+                                         uint32_t usage) = 0;
+
   struct SwapChainMailboxes {
     Mailbox front_buffer;
     Mailbox back_buffer;
@@ -171,7 +255,7 @@ class GPU_EXPORT SharedImageInterface {
   // be imported into GL command buffer using shared image functions (e.g.
   // GLES2Interface::CreateAndTexStorage2DSharedImageCHROMIUM) or (deprecated)
   // mailbox functions (e.g. GLES2Interface::CreateAndConsumeTextureCHROMIUM).
-  virtual SwapChainMailboxes CreateSwapChain(viz::ResourceFormat format,
+  virtual SwapChainMailboxes CreateSwapChain(viz::SharedImageFormat format,
                                              const gfx::Size& size,
                                              const gfx::ColorSpace& color_space,
                                              GrSurfaceOrigin surface_origin,
@@ -241,6 +325,14 @@ class GPU_EXPORT SharedImageInterface {
   // Informs that existing |mailbox| with |usage| can be passed to
   // DestroySharedImage().
   virtual void NotifyMailboxAdded(const Mailbox& mailbox, uint32_t usage);
+
+  // Maps |mailbox| into CPU visible memory(if SharedImageUsage/BufferUsage are
+  // set to do CPU READ/WRITE) and returns a ScopedMapping object which can be
+  // used to read/write to the CPU mapped memory. Mailbox must have been created
+  // with CPU_READ/CPU_WRITE usage. Note that this call can be blocking
+  // and blocks on the clients thread only the first time for a given |mailbox|.
+  virtual std::unique_ptr<SharedImageInterface::ScopedMapping> MapSharedImage(
+      const Mailbox& mailbox);
 };
 
 }  // namespace gpu

@@ -8,6 +8,8 @@
 
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
 #include "base/strings/string_util.h"
 #include "third_party/libpng/png.h"
@@ -295,8 +297,12 @@ class PngReadStructInfo {
     return true;
   }
 
-  png_struct* png_ptr_;
-  png_info* info_ptr_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #addr-of
+  RAW_PTR_EXCLUSION png_struct* png_ptr_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #addr-of
+  RAW_PTR_EXCLUSION png_info* info_ptr_;
 };
 
 // Holds png struct and info ensuring the proper destruction.
@@ -312,8 +318,12 @@ class PngWriteStructInfo {
     png_destroy_write_struct(&png_ptr_, &info_ptr_);
   }
 
-  png_struct* png_ptr_;
-  png_info* info_ptr_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #addr-of
+  RAW_PTR_EXCLUSION png_struct* png_ptr_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #addr-of
+  RAW_PTR_EXCLUSION png_info* info_ptr_;
 };
 
 // Libpng user error and warning functions which allows us to print libpng
@@ -334,6 +344,8 @@ void LogLibPNGDecodeWarning(png_structp png_ptr, png_const_charp warning_msg) {
 bool PNGCodec::Decode(const unsigned char* input, size_t input_size,
                       ColorFormat format, std::vector<unsigned char>* output,
                       int* w, int* h) {
+  SCOPED_UMA_HISTOGRAM_TIMER_MICROS("ImageDecoder.Png.UiGfxIntoVector");
+
   PngReadStructInfo si;
   if (!si.Build(input, input_size))
     return false;
@@ -372,6 +384,8 @@ bool PNGCodec::Decode(const unsigned char* input, size_t input_size,
 bool PNGCodec::Decode(const unsigned char* input, size_t input_size,
                       SkBitmap* bitmap) {
   DCHECK(bitmap);
+  SCOPED_UMA_HISTOGRAM_TIMER_MICROS("ImageDecoder.Png.UiGfxIntoSkBitmap");
+
   PngReadStructInfo si;
   if (!si.Build(input, input_size))
     return false;

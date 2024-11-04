@@ -25,6 +25,8 @@
 #include <QtWebEngineQuick/QQuickWebEngineProfile>
 #include <QtWebEngineQuick/private/qquickwebenginesettings_p.h>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 class QQuickWebEngineView;

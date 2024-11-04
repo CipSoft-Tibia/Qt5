@@ -17,7 +17,7 @@ namespace Eigen {
 
 namespace internal {
 
-template <typename Scalar, typename Index, int Mode, bool Conjugate, int TriStorageOrder,int OtherInnerStride>
+template <typename Scalar, typename Index, int Mode, bool Conjugate, int TriStorageOrder,int OtherInnerStride, bool Specialized>
 struct trsmKernelL {
   // Generic Implementation of triangular solve for triangular matrix on left and multiple rhs.
   // Handles non-packed matrices.
@@ -27,7 +27,7 @@ struct trsmKernelL {
     Scalar* _other, Index otherIncr, Index otherStride);
 };
 
-template <typename Scalar, typename Index, int Mode, bool Conjugate, int TriStorageOrder,int OtherInnerStride>
+template <typename Scalar, typename Index, int Mode, bool Conjugate, int TriStorageOrder,int OtherInnerStride, bool Specialized>
 struct trsmKernelR {
   // Generic Implementation of triangular solve for triangular matrix on right and multiple lhs.
   // Handles non-packed matrices.
@@ -37,8 +37,8 @@ struct trsmKernelR {
     Scalar* _other, Index otherIncr, Index otherStride);
 };
 
-template <typename Scalar, typename Index, int Mode, bool Conjugate, int TriStorageOrder,int OtherInnerStride>
-EIGEN_STRONG_INLINE void trsmKernelL<Scalar, Index, Mode, Conjugate, TriStorageOrder, OtherInnerStride>::kernel(
+template <typename Scalar, typename Index, int Mode, bool Conjugate, int TriStorageOrder,int OtherInnerStride, bool Specialized>
+EIGEN_STRONG_INLINE void trsmKernelL<Scalar, Index, Mode, Conjugate, TriStorageOrder, OtherInnerStride, Specialized>::kernel(
     Index size, Index otherSize,
     const Scalar* _tri, Index triStride,
     Scalar* _other, Index otherIncr, Index otherStride)
@@ -88,8 +88,8 @@ EIGEN_STRONG_INLINE void trsmKernelL<Scalar, Index, Mode, Conjugate, TriStorageO
   }
 
 
-template <typename Scalar, typename Index, int Mode, bool Conjugate, int TriStorageOrder, int OtherInnerStride>
-EIGEN_STRONG_INLINE void trsmKernelR<Scalar, Index, Mode, Conjugate, TriStorageOrder, OtherInnerStride>::kernel(
+template <typename Scalar, typename Index, int Mode, bool Conjugate, int TriStorageOrder, int OtherInnerStride, bool Specialized>
+EIGEN_STRONG_INLINE void trsmKernelR<Scalar, Index, Mode, Conjugate, TriStorageOrder, OtherInnerStride, Specialized>::kernel(
     Index size, Index otherSize,
     const Scalar* _tri, Index triStride,
     Scalar* _other, Index otherIncr, Index otherStride)
@@ -180,7 +180,7 @@ EIGEN_DONT_INLINE void triangular_solve_matrix<Scalar,Index,OnTheLeft,Mode,Conju
       // TODO: Investigate better heuristics for cutoffs.
       double L2Cap = 0.5; // 50% of L2 size
       if (size < avx512_trsm_cutoff<Scalar>(l2, cols, L2Cap)) {
-        trsmKernelL<Scalar, Index, Mode, Conjugate, TriStorageOrder, 1>::kernel(
+        trsmKernelL<Scalar, Index, Mode, Conjugate, TriStorageOrder, 1, /*Specialized=*/true>::kernel(
           size, cols, _tri, triStride, _other, 1, otherStride);
         return;
       }
@@ -253,7 +253,7 @@ EIGEN_DONT_INLINE void triangular_solve_matrix<Scalar,Index,OnTheLeft,Mode,Conju
               i  = IsLower ? k2 + k1: k2 - k1 - actualPanelWidth;
             }
 #endif
-            trsmKernelL<Scalar, Index, Mode, Conjugate, TriStorageOrder, OtherInnerStride>::kernel(
+            trsmKernelL<Scalar, Index, Mode, Conjugate, TriStorageOrder, OtherInnerStride, /*Specialized=*/true>::kernel(
               actualPanelWidth, actual_cols,
               _tri + i + (i)*triStride, triStride,
               _other + i*OtherInnerStride + j2*otherStride, otherIncr, otherStride);
@@ -327,7 +327,7 @@ EIGEN_DONT_INLINE void triangular_solve_matrix<Scalar,Index,OnTheRight,Mode,Conj
       manage_caching_sizes(GetAction, &l1, &l2, &l3);
       double L2Cap = 0.5; // 50% of L2 size
       if (size < avx512_trsm_cutoff<Scalar>(l2, rows, L2Cap)) {
-        trsmKernelR<Scalar, Index, Mode, Conjugate, TriStorageOrder, OtherInnerStride>::
+        trsmKernelR<Scalar, Index, Mode, Conjugate, TriStorageOrder, OtherInnerStride, /*Specialized=*/true>::
           kernel(size, rows, _tri, triStride, _other, 1, otherStride);
         return;
       }
@@ -423,7 +423,7 @@ EIGEN_DONT_INLINE void triangular_solve_matrix<Scalar,Index,OnTheRight,Mode,Conj
 
             {
               // unblocked triangular solve
-              trsmKernelR<Scalar, Index, Mode, Conjugate, TriStorageOrder, OtherInnerStride>::
+              trsmKernelR<Scalar, Index, Mode, Conjugate, TriStorageOrder, OtherInnerStride, /*Specialized=*/true>::
                 kernel(actualPanelWidth, actual_mc,
                             _tri + absolute_j2 + absolute_j2*triStride, triStride,
                             _other + i2*OtherInnerStride + absolute_j2*otherStride, otherIncr, otherStride);

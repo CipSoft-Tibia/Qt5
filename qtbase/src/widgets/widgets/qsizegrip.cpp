@@ -18,6 +18,8 @@
 #include <qpa/qplatformtheme.h>
 #include <QtWidgets/qabstractscrollarea.h>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 static QWidget *qt_sizegrip_topLevelWidget(QWidget* w)
@@ -73,7 +75,7 @@ public:
     void _q_showIfNotHidden()
     {
         Q_Q(QSizeGrip);
-        bool showSizeGrip = !(q->isHidden() && q->testAttribute(Qt::WA_WState_ExplicitShowHide));
+        bool showSizeGrip = !isExplicitlyHidden();
         updateTopLevelWidget();
         if (tlw && showSizeGrip) {
             Qt::WindowStates sizeGripNotVisibleState = Qt::WindowFullScreen;
@@ -449,7 +451,7 @@ void QSizeGrip::setVisible(bool visible)
 bool QSizeGrip::eventFilter(QObject *o, QEvent *e)
 {
     Q_D(QSizeGrip);
-    if ((isHidden() && testAttribute(Qt::WA_WState_ExplicitShowHide))
+    if (d->isExplicitlyHidden()
         || e->type() != QEvent::WindowStateChange
         || o != d->tlw) {
         return QWidget::eventFilter(o, e);

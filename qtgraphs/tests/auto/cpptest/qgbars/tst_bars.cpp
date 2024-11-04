@@ -53,8 +53,9 @@ private:
 QBar3DSeries *newSeries()
 {
     QBar3DSeries *series = new QBar3DSeries;
-    QBarDataRow *data = new QBarDataRow;
-    *data << -1.0f << 3.0f << 7.5f << 5.0f << 2.2f;
+    QBarDataRow data;
+    data << QBarDataItem(-1.0f) << QBarDataItem(3.0f) << QBarDataItem(7.5f) << QBarDataItem(5.0f)
+         << QBarDataItem(2.2f);
     series->dataProxy()->addRow(data);
     return series;
 }
@@ -98,25 +99,23 @@ void tst_bars::initialProperties()
     QVERIFY(!m_graph->selectedSeries());
     QVERIFY(!m_graph->primarySeries());
     QCOMPARE(m_graph->floorLevel(), 0.0);
-    QCOMPARE(m_graph->columnAxis()->orientation(), QAbstract3DAxis::AxisOrientationX);
-    QCOMPARE(m_graph->valueAxis()->orientation(), QAbstract3DAxis::AxisOrientationY);
-    QCOMPARE(m_graph->rowAxis()->orientation(), QAbstract3DAxis::AxisOrientationZ);
+    QCOMPARE(m_graph->columnAxis()->orientation(), QAbstract3DAxis::AxisOrientation::X);
+    QCOMPARE(m_graph->valueAxis()->orientation(), QAbstract3DAxis::AxisOrientation::Y);
+    QCOMPARE(m_graph->rowAxis()->orientation(), QAbstract3DAxis::AxisOrientation::Z);
 
     // Common properties
-    QCOMPARE(m_graph->activeTheme()->type(), Q3DTheme::ThemeQt);
+    QCOMPARE(m_graph->activeTheme()->type(), Q3DTheme::Theme::Qt);
     QCOMPARE(m_graph->selectionMode(), QAbstract3DGraph::SelectionItem);
-    QCOMPARE(m_graph->shadowQuality(), QAbstract3DGraph::ShadowQualityMedium);
+    QCOMPARE(m_graph->shadowQuality(), QAbstract3DGraph::ShadowQuality::Medium);
     QVERIFY(m_graph->scene());
     QCOMPARE(m_graph->measureFps(), false);
     QCOMPARE(m_graph->isOrthoProjection(), false);
-    QCOMPARE(m_graph->selectedElement(), QAbstract3DGraph::ElementNone);
+    QCOMPARE(m_graph->selectedElement(), QAbstract3DGraph::ElementType::None);
     QCOMPARE(m_graph->aspectRatio(), 2.0);
-    QCOMPARE(m_graph->optimizationHints(), QAbstract3DGraph::OptimizationDefault);
+    QCOMPARE(m_graph->optimizationHint(), QAbstract3DGraph::OptimizationHint::Default);
     QCOMPARE(m_graph->isPolar(), false);
     QCOMPARE(m_graph->radialLabelOffset(), 1.0);
     QCOMPARE(m_graph->horizontalAspectRatio(), 0.0);
-    QCOMPARE(m_graph->isReflection(), false);
-    QCOMPARE(m_graph->reflectivity(), 0.5);
     QCOMPARE(m_graph->locale(), QLocale("C"));
     QCOMPARE(m_graph->queriedGraphPosition(), QVector3D(0, 0, 0));
     QCOMPARE(m_graph->margin(), -1.0);
@@ -140,35 +139,31 @@ void tst_bars::initializeProperties()
     QCOMPARE(m_graph->isBarSpacingRelative(), false);
     QCOMPARE(m_graph->floorLevel(), 1.0f);
 
-    Q3DTheme *theme = new Q3DTheme(Q3DTheme::ThemeDigia);
+    Q3DTheme *theme = new Q3DTheme(Q3DTheme::Theme::PrimaryColors);
     m_graph->setActiveTheme(theme);
     m_graph->setSelectionMode(QAbstract3DGraph::SelectionItem | QAbstract3DGraph::SelectionRow | QAbstract3DGraph::SelectionSlice);
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQualitySoftHigh);
-    QCOMPARE(m_graph->shadowQuality(), QAbstract3DGraph::ShadowQualitySoftHigh);
+    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::SoftHigh);
+    QCOMPARE(m_graph->shadowQuality(), QAbstract3DGraph::ShadowQuality::SoftHigh);
     m_graph->setMeasureFps(true);
     m_graph->setOrthoProjection(true);
     m_graph->setAspectRatio(1.0);
-    m_graph->setOptimizationHints(QAbstract3DGraph::OptimizationDefault);
+    m_graph->setOptimizationHint(QAbstract3DGraph::OptimizationHint::Default);
     m_graph->setPolar(true);
     m_graph->setRadialLabelOffset(0.1f);
     m_graph->setHorizontalAspectRatio(1.0);
-    m_graph->setReflection(true);
-    m_graph->setReflectivity(0.1);
     m_graph->setLocale(QLocale("FI"));
     m_graph->setMargin(1.0);
 
-    QCOMPARE(m_graph->activeTheme()->type(), Q3DTheme::ThemeDigia);
+    QCOMPARE(m_graph->activeTheme()->type(), Q3DTheme::Theme::PrimaryColors);
     QCOMPARE(m_graph->selectionMode(), QAbstract3DGraph::SelectionItem | QAbstract3DGraph::SelectionRow | QAbstract3DGraph::SelectionSlice);
-    QCOMPARE(m_graph->shadowQuality(), QAbstract3DGraph::ShadowQualityNone); // Ortho disables shadows
+    QCOMPARE(m_graph->shadowQuality(), QAbstract3DGraph::ShadowQuality::None); // Ortho disables shadows
     QCOMPARE(m_graph->measureFps(), true);
     QCOMPARE(m_graph->isOrthoProjection(), true);
     QCOMPARE(m_graph->aspectRatio(), 1.0);
-    QCOMPARE(m_graph->optimizationHints(), QAbstract3DGraph::OptimizationDefault);
+    QCOMPARE(m_graph->optimizationHint(), QAbstract3DGraph::OptimizationHint::Default);
     QCOMPARE(m_graph->isPolar(), true);
     QCOMPARE(m_graph->radialLabelOffset(), 0.1f);
     QCOMPARE(m_graph->horizontalAspectRatio(), 1.0);
-    //QCOMPARE(m_graph->isReflection(), true); // TODO: QTBUG-99816
-    QCOMPARE(m_graph->reflectivity(), 0.1);
     QCOMPARE(m_graph->locale(), QLocale("FI"));
     QCOMPARE(m_graph->margin(), 1.0);
 }
@@ -178,13 +173,11 @@ void tst_bars::invalidProperties()
     m_graph->setSelectionMode(QAbstract3DGraph::SelectionColumn | QAbstract3DGraph::SelectionRow | QAbstract3DGraph::SelectionSlice);
     m_graph->setAspectRatio(-1.0);
     m_graph->setHorizontalAspectRatio(-1.0);
-    m_graph->setReflectivity(-1.0);
     m_graph->setLocale(QLocale("XX"));
 
     QCOMPARE(m_graph->selectionMode(), QAbstract3DGraph::SelectionItem);
     QCOMPARE(m_graph->aspectRatio(), -1.0/*2.0*/); // TODO: Fix once QTRD-3367 is done
     QCOMPARE(m_graph->horizontalAspectRatio(), -1.0/*0.0*/); // TODO: Fix once QTRD-3367 is done
-    QCOMPARE(m_graph->reflectivity(), -1.0/*0.5*/); // TODO: Fix once QTRD-3367 is done
     QCOMPARE(m_graph->locale(), QLocale("C"));
 }
 
@@ -322,7 +315,7 @@ void tst_bars::removeInputHandler()
 
 void tst_bars::addTheme()
 {
-    Q3DTheme *theme = new Q3DTheme(Q3DTheme::ThemeDigia);
+    Q3DTheme *theme = new Q3DTheme(Q3DTheme::Theme::PrimaryColors);
     Q3DTheme *theme2 = new Q3DTheme();
     Q3DTheme *initialTheme = m_graph->activeTheme();
     m_graph->addTheme(theme);
@@ -336,7 +329,7 @@ void tst_bars::addTheme()
 
 void tst_bars::removeTheme()
 {
-    Q3DTheme *theme = new Q3DTheme(Q3DTheme::ThemeDigia);
+    Q3DTheme *theme = new Q3DTheme(Q3DTheme::Theme::PrimaryColors);
     Q3DTheme *theme2 = new Q3DTheme();
     m_graph->addTheme(theme);
     m_graph->addTheme(theme2);

@@ -849,6 +849,22 @@ void QProcessPrivate::Channel::clear()
            child. The \c stdin, \c stdout, and \c stderr file descriptors are
            never closed.
 
+    \value [since 6.7] CreateNewSession  Starts a new process session, by calling
+           \c{setsid(2)}. This allows the child process to outlive the session
+           the current process is in. This is one of the steps that
+           startDetached() takes to allow the process to detach, and is also one
+           of the steps to daemonize a process.
+
+    \value [since 6.7] DisconnectControllingTerminal   Requests that the process
+           disconnect from its controlling terminal, if it has one. If it has
+           none, nothing happens. Processes still connected to a controlling
+           terminal may get a Hang Up (\c SIGHUP) signal if the terminal
+           closes, or one of the other terminal-control signals (\c SIGTSTP, \c
+           SIGTTIN, \c SIGTTOU). Note that on some operating systems, a process
+           may only disconnect from the controlling terminal if it is the
+           session leader, meaning the \c CreateNewSession flag may be
+           required. Like it, this is one of the steps to daemonize a process.
+
     \value IgnoreSigPipe    Always sets the \c SIGPIPE signal to ignored
            (\c SIG_IGN), even if the \c ResetSignalHandlers flag was set. By
            default, if the child attempts to write to its standard output or
@@ -856,6 +872,12 @@ void QProcessPrivate::Channel::clear()
            QProcess::closeReadChannel(), it would get the \c SIGPIPE signal and
            terminate immediately; with this flag, the write operation fails
            without a signal and the child may continue executing.
+
+    \value [since 6.7] ResetIds     Drops any retained, effective user or group
+           ID the current process may still have (see \c{setuid(2)} and
+           \c{setgid(2)}, plus QCoreApplication::setSetuidAllowed()). This is
+           useful if the current process was setuid or setgid and does not wish
+           the child process to retain the elevated privileges.
 
     \value ResetSignalHandlers  Resets all Unix signal handlers back to their
            default state (that is, pass \c SIG_DFL to \c{signal(2)}). This flag
@@ -1646,8 +1668,10 @@ std::function<void(void)> QProcess::childProcessModifier() const
 
     \snippet code/src_corelib_io_qprocess.cpp 4
 
-    If the modifier function needs to exit the process, remember to use
-    \c{_exit()}, not \c{exit()}.
+    If the modifier function experiences a failure condition, it can use
+    failChildProcessModifier() to report the situation to the QProcess caller.
+    Alternatively, it may use other methods of stopping the process, like
+    \c{_exit()}, or \c{abort()}.
 
     Certain properties of the child process, such as closing all extraneous
     file descriptors or disconnecting from the controlling TTY, can be more
@@ -1674,7 +1698,7 @@ std::function<void(void)> QProcess::childProcessModifier() const
     only make use of low-level system calls, such as \c{read()},
     \c{write()}, \c{setsid()}, \c{nice()}, and similar.
 
-    \sa childProcessModifier(), setUnixProcessParameters()
+    \sa childProcessModifier(), failChildProcessModifier(), setUnixProcessParameters()
 */
 void QProcess::setChildProcessModifier(const std::function<void(void)> &modifier)
 {
@@ -1683,6 +1707,46 @@ void QProcess::setChildProcessModifier(const std::function<void(void)> &modifier
         d->unixExtras.reset(new QProcessPrivate::UnixExtras);
     d->unixExtras->childProcessModifier = modifier;
 }
+
+/*!
+    \fn void QProcess::failChildProcessModifier(const char *description, int error) noexcept
+    \since 6.7
+
+    This functions can be used inside the modifier set with
+    setChildProcessModifier() to indicate an error condition was encountered.
+    When the modifier calls these functions, QProcess will emit errorOccurred()
+    with code QProcess::FailedToStart in the parent process. The \a description
+    can be used to include some information in errorString() to help diagnose
+    the problem, usually the name of the call that failed, similar to the C
+    Library function \c{perror()}. Additionally, the \a error parameter can be
+    an \c{<errno.h>} error code whose text form will also be included.
+
+    For example, a child modifier could prepare an extra file descriptor for
+    the child process this way:
+
+    \code
+        process.setChildProcessModifier([fd, &process]() {
+            if (dup2(fd, TargetFileDescriptor) < 0)
+                process.failChildProcessModifier(errno, "aux comm channel");
+        });
+        process.start();
+    \endcode
+
+    Where \c{fd} is a file descriptor currently open in the parent process. If
+    the \c{dup2()} system call resulted in an \c EBADF condition, the process
+    errorString() could be "Child process modifier reported error: aux comm
+    channel: Bad file descriptor".
+
+    This function does not return to the caller. Using it anywhere except in
+    the child modifier and with the correct QProcess object is undefined
+    behavior.
+
+    \note The implementation imposes a length limit to the \a description
+    parameter to about 500 characters. This does not include the text from the
+    \a error code.
+
+    \sa setChildProcessModifier(), setUnixProcessParameters()
+*/
 
 /*!
     \since 6.6
@@ -2126,6 +2190,12 @@ QByteArray QProcess::readAllStandardError()
     printed at the console, and the existing process will continue running
     unaffected.
 
+    \note Success at starting the child process only implies the operating
+    system has successfully created the process and assigned the resources
+    every process has, such as its process ID. The child process may crash or
+    otherwise fail very early and thus not produce its expected output. On most
+    operating systems, this may include dynamic linking errors.
+
     \sa processId(), started(), waitForStarted(), setNativeArguments()
 */
 void QProcess::start(const QString &program, const QStringList &arguments, OpenMode mode)
@@ -2207,6 +2277,10 @@ void QProcess::start(OpenMode mode)
 void QProcess::startCommand(const QString &command, OpenMode mode)
 {
     QStringList args = splitCommand(command);
+    if (args.isEmpty()) {
+        qWarning("QProcess::startCommand: empty or whitespace-only command was provided");
+        return;
+    }
     const QString program = args.takeFirst();
     start(program, args, mode);
 }

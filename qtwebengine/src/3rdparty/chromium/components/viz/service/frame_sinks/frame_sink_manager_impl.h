@@ -146,7 +146,8 @@ class VIZ_SERVICE_EXPORT FrameSinkManagerImpl
       mojo::PendingReceiver<mojom::FrameSinkVideoCapturer> receiver) override;
   void EvictSurfaces(const std::vector<SurfaceId>& surface_ids) override;
   void RequestCopyOfOutput(const SurfaceId& surface_id,
-                           std::unique_ptr<CopyOutputRequest> request) override;
+                           std::unique_ptr<CopyOutputRequest> request,
+                           bool capture_exact_surface_id) override;
   void CacheBackBuffer(uint32_t cache_id,
                        const FrameSinkId& root_frame_sink_id) override;
   void EvictBackBuffer(uint32_t cache_id,
@@ -272,6 +273,7 @@ class VIZ_SERVICE_EXPORT FrameSinkManagerImpl
       std::unique_ptr<SurfaceAnimationManager> manager);
   std::unique_ptr<SurfaceAnimationManager> TakeSurfaceAnimationManager(
       NavigationID navigation_id);
+  void ClearSurfaceAnimationManager(NavigationID navigation_id);
 
   FrameCounter* frame_counter() {
     return frame_counter_ ? &frame_counter_.value() : nullptr;
@@ -279,6 +281,7 @@ class VIZ_SERVICE_EXPORT FrameSinkManagerImpl
 
  private:
   friend class FrameSinkManagerTest;
+  friend class CompositorFrameSinkSupportTest;
 
   // Metadata for a CompositorFrameSink.
   struct FrameSinkData {
@@ -453,7 +456,7 @@ class VIZ_SERVICE_EXPORT FrameSinkManagerImpl
   //     remote client and |ui_task_runner_| will be nullptr, and calls to
   //     OnFrameTokenChanged() will be directly called (without PostTask) on
   //     |client_|. Used for some unit tests.
-  raw_ptr<mojom::FrameSinkManagerClient> client_ = nullptr;
+  raw_ptr<mojom::FrameSinkManagerClient, DanglingUntriaged> client_ = nullptr;
   mojo::Receiver<mojom::FrameSinkManager> receiver_{this};
 
   base::ObserverList<FrameSinkObserver>::Unchecked observer_list_;

@@ -9,6 +9,7 @@
 #include "net/base/transport_info.h"
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/ip_address_space_util.h"
+#include "services/network/public/cpp/is_potentially_trustworthy.h"
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/mojom/client_security_state.mojom.h"
 #include "services/network/public/mojom/ip_address_space.mojom.h"
@@ -19,8 +20,8 @@
 namespace network {
 namespace {
 
-using Policy = mojom::PrivateNetworkRequestPolicy;
 using Result = PrivateNetworkAccessCheckResult;
+using Policy = mojom::PrivateNetworkRequestPolicy;
 
 mojom::ClientSecurityStatePtr GetRequestClientSecurityState(
     const ResourceRequest& request) {
@@ -78,9 +79,7 @@ PrivateNetworkAccessChecker::PrivateNetworkAccessChecker(
       should_block_local_request_(url_load_options &
                                   mojom::kURLLoadOptionBlockLocalRequest),
       target_address_space_(request.target_ip_address_space),
-      is_same_origin_(
-          request.request_initiator.has_value() &&
-          request.request_initiator.value().IsSameOriginWith(request.url)) {
+      request_initiator_(request.request_initiator) {
   SetRequestUrl(request.url);
 
   if (!client_security_state_ ||
@@ -99,8 +98,10 @@ PrivateNetworkAccessChecker::~PrivateNetworkAccessChecker() = default;
 PrivateNetworkAccessCheckResult PrivateNetworkAccessChecker::Check(
     const net::TransportInfo& transport_info) {
   // If the request URL host was a private IP, record whether we ended up
-  // connecting to that IP address. See https://crbug.com/1381471#c2.
-  if (request_url_private_ip_.has_value()) {
+  // connecting to that IP address, unless connecting through a proxy.
+  // See https://crbug.com/1381471#c2.
+  if (request_url_private_ip_.has_value() &&
+      transport_info.type != net::TransportType::kProxied) {
     base::UmaHistogramBoolean(
         "Security.PrivateNetworkAccess.PrivateIpResolveMatch",
         *request_url_private_ip_ == transport_info.endpoint.address());
@@ -109,25 +110,21 @@ PrivateNetworkAccessCheckResult PrivateNetworkAccessChecker::Check(
   mojom::IPAddressSpace resource_address_space =
       TransportInfoToIPAddressSpace(transport_info);
 
-  auto result = CheckInternal(resource_address_space);
-
-  base::UmaHistogramEnumeration("Security.PrivateNetworkAccess.CheckResult",
-                                result);
-
-  if (transport_info.type == net::TransportType::kCached) {
-    base::UmaHistogramEnumeration(
-        "Security.PrivateNetworkAccess.CachedResourceCheckResult", result);
-  }
-
-  // If we are connecting to a private IP endpoint over HTTP, and have failed
-  // the check, record whether we could have avoided the failure by inferring
-  // the target IP address space from the request URL.
+  // If we are connecting to a private IP endpoint over HTTP without a target IP
+  // address space, record whether we could have successfully inferred the
+  // target IP address space from the request URL.
   if (resource_address_space == mojom::IPAddressSpace::kPrivate &&
-      is_request_url_scheme_http_ && result == Result::kBlockedByPolicyBlock) {
+      is_request_url_scheme_http_ &&
+      target_address_space_ == mojom::IPAddressSpace::kUnknown) {
     base::UmaHistogramBoolean(
         "Security.PrivateNetworkAccess.PrivateIpInferrable",
         request_url_private_ip_.has_value());
   }
+
+  auto result = CheckInternal(resource_address_space);
+
+  base::UmaHistogramEnumeration("Security.PrivateNetworkAccess.CheckResult",
+                                result);
 
   response_address_space_ = resource_address_space;
   return result;
@@ -189,6 +186,12 @@ Result PrivateNetworkAccessChecker::CheckInternal(
       IsLessPublicAddressSpace(resource_address_space,
                                mojom::IPAddressSpace::kPublic)) {
     return Result::kBlockedByLoadOption;
+  }
+
+  if (is_potentially_trustworthy_same_origin_ &&
+      base::FeatureList::IsEnabled(
+          features::kLocalNetworkAccessAllowPotentiallyTrustworthySameOrigin)) {
+    return Result::kAllowedPotentiallyTrustworthySameOrigin;
   }
 
   if (!client_security_state_) {
@@ -260,17 +263,17 @@ Result PrivateNetworkAccessChecker::CheckInternal(
     case Policy::kPreflightWarn:
       return Result::kBlockedByPolicyPreflightWarn;
     case Policy::kPreflightBlock:
-      return is_same_origin_ &&
-                     base::FeatureList::IsEnabled(
-                         features::kPrivateNetworkAccessAllowSecureSameOrigin)
-                 ? Result::kAllowedSecureSameOrigin
-                 : Result::kBlockedByPolicyPreflightBlock;
+      return Result::kBlockedByPolicyPreflightBlock;
   }
 }
 
 void PrivateNetworkAccessChecker::SetRequestUrl(const GURL& url) {
   is_request_url_scheme_http_ = url.scheme_piece() == url::kHttpScheme;
   request_url_private_ip_ = ParsePrivateIpFromUrl(url);
+
+  is_potentially_trustworthy_same_origin_ =
+      IsUrlPotentiallyTrustworthy(url) && request_initiator_.has_value() &&
+      request_initiator_.value().IsSameOriginWith(url);
 }
 
 }  // namespace network

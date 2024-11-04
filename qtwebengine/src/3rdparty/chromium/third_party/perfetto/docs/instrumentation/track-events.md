@@ -32,7 +32,7 @@ There are a few main types of track events:
 - **Flows**, which are used to connect related slices that span different
     tracks together. For example, if an image file is first loaded from
     the network and then decoded on a thread pool, a flow event can be used to
-    highlight its path through the system. (Not fully implemented yet).
+    highlight its path through the system.
 
 The [Perfetto UI](https://ui.perfetto.dev) has built in support for track
 events, which provides a useful way to quickly visualize the internal
@@ -552,6 +552,33 @@ track, call EraseTrackDescriptor:
 
 ```C++
 perfetto::TrackEvent::EraseTrackDescriptor(track);
+```
+
+### Flows
+
+Flows can be used to link two (or more) events (slices or instants), to mark
+them as related.
+
+The link is displayed as an arrow in the UI, when one of the events is selected:
+
+![A flow between two slices in the Perfetto UI](
+  /docs/images/flows.png "A flow between two slices in the Perfetto UI")
+
+```C++
+// The same identifier is used in both the related slices.
+uint64_t request_id = GetRequestId();
+
+{
+  TRACE_EVENT("rendering", "HandleRequestPhase1",
+              perfetto::Flow::ProcessScoped(request_id));
+  //...
+}
+
+std::thread t1([&] {
+  TRACE_EVENT("rendering", "HandleRequestPhase2",
+              perfetto::TerminatingFlow::ProcessScoped(request_id));
+  //...
+});
 ```
 
 ### Counters

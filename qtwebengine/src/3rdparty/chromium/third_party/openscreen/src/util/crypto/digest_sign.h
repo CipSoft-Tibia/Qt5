@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,14 +9,14 @@
 
 #include <string>
 
-#include "absl/types/span.h"
 #include "platform/base/error.h"
+#include "platform/base/span.h"
 
 namespace openscreen {
 
 ErrorOr<std::string> SignData(const EVP_MD* digest,
                               EVP_PKEY* private_key,
-                              absl::Span<const uint8_t> data);
+                              ByteView data);
 
 }  // namespace openscreen
 

@@ -64,7 +64,9 @@ depends += \
     ../../quickwidgets \
     ../../qmllocalstorage \
     ../../quicklayouts \
-    ../../labs
+    ../../labs \
+    ../../quick/jar/org/qtproject/qt/android \
+    ../../../examples/platforms
 
 # both have their own documentation project
 excludedirs += \
@@ -76,7 +78,8 @@ exampledirs += \
     ../../qmlmodels/doc/snippets \
     ../../quickcontrols/doc/snippets \
     snippets \
-    ../../../tests/auto/quick/doc
+    ../../../tests/auto/quick/doc \
+    ../../../examples/platforms
 
 imagedirs += images
 
@@ -92,7 +95,9 @@ imagedirs += images
     ../../plugins
 
 excludefiles += ../util/qquickpropertychanges_p.h
-examples.fileextensions += "*.qm"
+examples.fileextensions += "*.qm" \
+                           "*.java" \
+                           "*.kt"
 
 manifestmeta.thumbnail.names += "QtQuick/QML Dynamic View Ordering Tutorial*"
 
@@ -117,5 +122,5 @@ macro.QQEM = "Qt Quick Effect Maker"
 # suppress qdoc warnings for \instantiates entries
 spurious += "C\\+\\+ class .*\\\\instantiates .*"
 
-# Fail the documentation build if there are more warnings than the limit
-warninglimit = 1
+# Enforce zero documentation warnings
+warninglimit = 0

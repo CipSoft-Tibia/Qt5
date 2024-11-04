@@ -32,7 +32,6 @@
 #include "base/time/time.h"
 #include "base/trace_event/memory_allocator_dump.h"
 #include "base/trace_event/process_memory_dump.h"
-#include "base/trace_event/traced_value.h"
 #include "build/build_config.h"
 #include "net/base/cache_type.h"
 #include "net/base/completion_once_callback.h"
@@ -40,11 +39,11 @@
 #include "net/base/net_errors.h"
 #include "net/base/request_priority.h"
 #include "net/base/test_completion_callback.h"
+#include "net/base/tracing.h"
 #include "net/disk_cache/backend_cleanup_tracker.h"
 #include "net/disk_cache/blockfile/backend_impl.h"
 #include "net/disk_cache/blockfile/entry_impl.h"
 #include "net/disk_cache/blockfile/experiments.h"
-#include "net/disk_cache/blockfile/histogram_macros.h"
 #include "net/disk_cache/blockfile/mapped_file.h"
 #include "net/disk_cache/cache_util.h"
 #include "net/disk_cache/disk_cache_test_base.h"
@@ -75,9 +74,6 @@ using testing::Field;
 
 #include <windows.h>
 #endif
-
-// Provide a BackendImpl object to macros from histogram_macros.h.
-#define CACHE_UMA_BACKEND_IMPL_OBJ backend_
 
 // TODO(crbug.com/949811): Fix memory leaks in tests and re-enable on LSAN.
 #ifdef LEAK_SANITIZER
@@ -284,12 +280,9 @@ int DiskCacheBackendTest::GeneratePendingIO(net::TestCompletionCallback* cb) {
     // We are using the current thread as the cache thread because we want to
     // be able to call directly this method to make sure that the OS (instead
     // of us switching thread) is returning IO pending.
-    bool optimistic = false;
     if (!simple_cache_mode_) {
       rv = static_cast<disk_cache::EntryImpl*>(entry)->WriteDataImpl(
-          0, i, buffer.get(), kSize, cb->callback(), false, &optimistic);
-      if (optimistic)
-        rv = net::ERR_IO_PENDING;
+          0, i, buffer.get(), kSize, cb->callback(), false);
     } else {
       rv = entry->WriteData(0, i, buffer.get(), kSize, cb->callback(), false);
     }
@@ -897,7 +890,9 @@ TEST_F(DiskCacheBackendTest, ExternalFiles) {
   scoped_refptr<net::IOBuffer> buffer1 =
       base::MakeRefCounted<net::IOBuffer>(kSize);
   CacheTestFillBuffer(buffer1->data(), kSize, false);
-  ASSERT_EQ(kSize, base::WriteFile(filename, buffer1->data(), kSize));
+  ASSERT_TRUE(base::WriteFile(
+      filename,
+      base::StringPiece(buffer1->data(), static_cast<size_t>(kSize))));
 
   // Now let's create a file with the cache.
   disk_cache::Entry* entry;
@@ -1117,7 +1112,7 @@ TEST_F(DiskCacheBackendTest, ShutdownWithPendingDoom) {
 TEST_F(DiskCacheTest, TruncatedIndex) {
   ASSERT_TRUE(CleanupCacheDir());
   base::FilePath index = cache_path_.AppendASCII("index");
-  ASSERT_EQ(5, base::WriteFile(index, "hello", 5));
+  ASSERT_TRUE(base::WriteFile(index, "hello"));
 
   TestBackendResultCompletionCallback cb;
 
@@ -3819,17 +3814,6 @@ TEST_F(DiskCacheTest, AutomaticMaxSize) {
   EXPECT_EQ(largest_size, disk_cache::PreferredCacheSize(largest_size * 10000));
 }
 
-// Tests that we can "migrate" a running instance from one experiment group to
-// another.
-TEST_F(DiskCacheBackendTest, Histograms) {
-  InitCache();
-  disk_cache::BackendImpl* backend_ = cache_impl_;  // Needed be the macro.
-
-  for (int i = 1; i < 3; i++) {
-    CACHE_UMA(HOURS, "FillupTime", i, 28);
-  }
-}
-
 // Make sure that we keep the total memory used by the internal buffers under
 // control.
 TEST_F(DiskCacheBackendTest, TotalBuffersSize1) {
@@ -4125,9 +4109,8 @@ TEST_F(DiskCacheBackendTest, SimpleCacheOpenBadFile) {
 
   disk_cache::SimpleFileHeader header;
   header.initial_magic_number = UINT64_C(0xbadf00d);
-  EXPECT_EQ(static_cast<int>(sizeof(header)),
-            base::WriteFile(entry_file1_path, reinterpret_cast<char*>(&header),
-                            sizeof(header)));
+  EXPECT_TRUE(base::WriteFile(entry_file1_path,
+                              base::as_bytes(base::make_span(&header, 1u))));
   ASSERT_THAT(OpenEntry(key, &entry), IsError(net::ERR_FAILED));
 }
 
@@ -4927,8 +4910,7 @@ TEST_F(DiskCacheBackendTest, EmptyCorruptSimpleCacheRecovery) {
   // Create a corrupt fake index in an otherwise empty simple cache.
   ASSERT_TRUE(base::PathExists(cache_path_));
   const base::FilePath index = cache_path_.AppendASCII("index");
-  ASSERT_EQ(static_cast<int>(kCorruptData.length()),
-            base::WriteFile(index, kCorruptData.data(), kCorruptData.length()));
+  ASSERT_TRUE(base::WriteFile(index, kCorruptData));
 
   TestBackendResultCompletionCallback cb;
 
@@ -4950,8 +4932,7 @@ TEST_F(DiskCacheBackendTest, MAYBE_NonEmptyCorruptSimpleCacheDoesNotRecover) {
   // Corrupt the fake index file for the populated simple cache.
   ASSERT_TRUE(base::PathExists(cache_path_));
   const base::FilePath index = cache_path_.AppendASCII("index");
-  ASSERT_EQ(static_cast<int>(kCorruptData.length()),
-            base::WriteFile(index, kCorruptData.data(), kCorruptData.length()));
+  ASSERT_TRUE(base::WriteFile(index, kCorruptData));
 
   TestBackendResultCompletionCallback cb;
 
@@ -5495,3 +5476,52 @@ TEST_F(DiskCacheBackendTest, BlockfileMigrateNewEviction21) {
   SetNewEviction();
   BackendValidateMigrated();
 }
+
+// Disabled on android since this test requires cache creator to create
+// blockfile caches, and we don't use them on Android anyway.
+#if !BUILDFLAG(IS_ANDROID)
+TEST_F(DiskCacheBackendTest, BlockfileEmptyIndex) {
+  // Regression case for https://crbug.com/1441330 --- blockfile DCHECKing
+  // on mmap error for files it uses.
+
+  // Create a cache.
+  TestBackendResultCompletionCallback cb;
+  disk_cache::BackendResult rv = disk_cache::CreateCacheBackend(
+      net::DISK_CACHE, net::CACHE_BACKEND_BLOCKFILE,
+      /*file_operations=*/nullptr, cache_path_, 0,
+      disk_cache::ResetHandling::kNeverReset, nullptr, cb.callback());
+  rv = cb.GetResult(std::move(rv));
+  ASSERT_THAT(rv.net_error, IsOk());
+  ASSERT_TRUE(rv.backend);
+  rv.backend.reset();
+
+  // Make sure it's done doing I/O stuff.
+  disk_cache::BackendImpl::FlushForTesting();
+
+  // Truncate the index to zero bytes.
+  base::File index(cache_path_.AppendASCII("index"),
+                   base::File::FLAG_OPEN | base::File::FLAG_WRITE);
+  ASSERT_TRUE(index.IsValid());
+  ASSERT_TRUE(index.SetLength(0));
+  index.Close();
+
+  // Open the backend again. Fails w/o error-recovery.
+  rv = disk_cache::CreateCacheBackend(
+      net::DISK_CACHE, net::CACHE_BACKEND_BLOCKFILE,
+      /*file_operations=*/nullptr, cache_path_, 0,
+      disk_cache::ResetHandling::kNeverReset, nullptr, cb.callback());
+  rv = cb.GetResult(std::move(rv));
+  EXPECT_EQ(rv.net_error, net::ERR_FAILED);
+  EXPECT_FALSE(rv.backend);
+
+  // Now try again with the "delete and start over on error" flag people
+  // normally use.
+  rv = disk_cache::CreateCacheBackend(
+      net::DISK_CACHE, net::CACHE_BACKEND_BLOCKFILE,
+      /*file_operations=*/nullptr, cache_path_, 0,
+      disk_cache::ResetHandling::kResetOnError, nullptr, cb.callback());
+  rv = cb.GetResult(std::move(rv));
+  ASSERT_THAT(rv.net_error, IsOk());
+  ASSERT_TRUE(rv.backend);
+}
+#endif

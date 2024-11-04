@@ -99,7 +99,7 @@ class BrowsingHistoryHandlerWithWebUIForTesting
  private:
   base::SimpleTestClock test_clock_;
   bool postpone_query_results_ = false;
-  raw_ptr<history::MockBrowsingHistoryService> mock_service_;
+  raw_ptr<history::MockBrowsingHistoryService, DanglingUntriaged> mock_service_;
 };
 
 }  // namespace
@@ -170,8 +170,9 @@ class BrowsingHistoryHandlerTest : public ChromeRenderViewHostTestHarness {
     return service;
   }
 
-  raw_ptr<syncer::TestSyncService> sync_service_ = nullptr;
-  raw_ptr<history::FakeWebHistoryService> web_history_service_ = nullptr;
+  raw_ptr<syncer::TestSyncService, DanglingUntriaged> sync_service_ = nullptr;
+  raw_ptr<history::FakeWebHistoryService, DanglingUntriaged>
+      web_history_service_ = nullptr;
   std::unique_ptr<content::TestWebUI> web_ui_;
 };
 
@@ -383,13 +384,13 @@ TEST_F(BrowsingHistoryHandlerTest, MdTruncatesTitles) {
   ASSERT_TRUE(web_ui()->call_data().front()->arg2()->GetBool());
   const base::Value* arg3 = web_ui()->call_data().front()->arg3();
   ASSERT_TRUE(arg3->is_dict());
-  const base::Value* list = arg3->FindListKey("value");
+  const base::Value* list = arg3->GetDict().Find("value");
   ASSERT_TRUE(list->is_list());
 
   const base::Value& first_entry = list->GetList()[0];
   ASSERT_TRUE(first_entry.is_dict());
 
-  const std::string* title = first_entry.FindStringKey("title");
+  const std::string* title = first_entry.GetDict().FindString("title");
   ASSERT_TRUE(title);
 
   ASSERT_EQ(0u, title->find("http://loooo"));

@@ -23,6 +23,8 @@
 #include <QtCore/qvariantanimation.h>
 #endif
 
+#include <array>
+
 QT_REQUIRE_CONFIG(treeview);
 
 QT_BEGIN_NAMESPACE
@@ -62,6 +64,7 @@ public:
 
     ~QTreeViewPrivate() {}
     void initialize();
+    void clearConnections();
     int logicalIndexForTree() const;
     inline bool isTreePosition(int logicalIndex) const
     {
@@ -88,17 +91,17 @@ public:
     void beginAnimatedOperation();
     void drawAnimatedOperation(QPainter *painter) const;
     QPixmap renderTreeToPixmapForAnimation(const QRect &rect) const;
-    void _q_endAnimatedOperation();
+    void endAnimatedOperation();
 #endif // animation
 
     void expand(int item, bool emitSignal);
     void collapse(int item, bool emitSignal);
 
-    void _q_columnsAboutToBeRemoved(const QModelIndex &, int, int) override;
-    void _q_columnsRemoved(const QModelIndex &, int, int) override;
-    void _q_modelAboutToBeReset();
-    void _q_sortIndicatorChanged(int column, Qt::SortOrder order);
-    void _q_modelDestroyed() override;
+    void columnsAboutToBeRemoved(const QModelIndex &, int, int) override;
+    void columnsRemoved(const QModelIndex &, int, int) override;
+    void modelAboutToBeReset();
+    void sortIndicatorChanged(int column, Qt::SortOrder order);
+    void modelDestroyed() override;
     QRect intersectedRect(const QRect rect, const QModelIndex &topLeft, const QModelIndex &bottomRight) const override;
 
     void layout(int item, bool recusiveExpanding = false, bool afterIsUninitialized = false);
@@ -260,6 +263,12 @@ public:
     bool pendingAccessibilityUpdate = false;
 #endif
     void updateAccessibility();
+
+    QMetaObject::Connection animationConnection;
+    QMetaObject::Connection selectionmodelConnection;
+    std::array<QMetaObject::Connection, 2> modelConnections;
+    std::array<QMetaObject::Connection, 5> headerConnections;
+    QMetaObject::Connection sortHeaderConnection;
 };
 
 QT_END_NAMESPACE

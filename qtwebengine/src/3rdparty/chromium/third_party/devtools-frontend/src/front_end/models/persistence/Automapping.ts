@@ -4,13 +4,13 @@
 
 import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
-import * as Platform from '../../core/platform/platform.js';
+import type * as Platform from '../../core/platform/platform.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as Bindings from '../bindings/bindings.js';
 import * as Workspace from '../workspace/workspace.js';
 
 import {FileSystemWorkspaceBinding, type FileSystem} from './FileSystemWorkspaceBinding.js';
-import {PathEncoder, PersistenceImpl} from './PersistenceImpl.js';
+import {PersistenceImpl} from './PersistenceImpl.js';
 
 export class Automapping {
   private readonly workspace: Workspace.Workspace.WorkspaceImpl;
@@ -43,10 +43,9 @@ export class Automapping {
     this.sourceCodeToAutoMappingStatusMap = new WeakMap();
     this.sourceCodeToMetadataMap = new WeakMap();
 
-    const pathEncoder = new PathEncoder();
-    this.filesIndex = new FilePathIndex(pathEncoder);
-    this.projectFoldersIndex = new FolderIndex(pathEncoder);
-    this.activeFoldersIndex = new FolderIndex(pathEncoder);
+    this.filesIndex = new FilePathIndex();
+    this.projectFoldersIndex = new FolderIndex();
+    this.activeFoldersIndex = new FolderIndex();
 
     this.interceptors = [];
 
@@ -316,17 +315,17 @@ export class Automapping {
     void this.onStatusRemoved.call(null, status);
   }
 
-  private createBinding(networkSourceCode: Workspace.UISourceCode.UISourceCode): Promise<AutomappingStatus|null> {
+  private async createBinding(networkSourceCode: Workspace.UISourceCode.UISourceCode): Promise<AutomappingStatus|null> {
     const url = networkSourceCode.url();
     if (url.startsWith('file://') || url.startsWith('snippet://')) {
       const fileSourceCode = this.fileSystemUISourceCodes.get(url);
       const status = fileSourceCode ? new AutomappingStatus(networkSourceCode, fileSourceCode, false) : null;
-      return Promise.resolve(status);
+      return status;
     }
 
     let networkPath = Common.ParsedURL.ParsedURL.extractPath(url);
     if (networkPath === null) {
-      return Promise.resolve(null as AutomappingStatus | null);
+      return null;
     }
 
     if (networkPath.endsWith('/')) {
@@ -337,41 +336,32 @@ export class Automapping {
         this.filesIndex.similarFiles(networkPath).map(path => this.fileSystemUISourceCodes.get(path)) as
         Workspace.UISourceCode.UISourceCode[];
     if (!similarFiles.length) {
-      return Promise.resolve(null as AutomappingStatus | null);
+      return null;
     }
 
-    return this.pullMetadatas(similarFiles.concat(networkSourceCode)).then(onMetadatas.bind(this));
+    await Promise.all(similarFiles.concat(networkSourceCode).map(async sourceCode => {
+      this.sourceCodeToMetadataMap.set(sourceCode, await sourceCode.requestMetadata());
+    }));
 
-    function onMetadatas(this: Automapping): AutomappingStatus|null {
-      const activeFiles =
-          similarFiles.filter(
-              file => Boolean(file) && Boolean(this.activeFoldersIndex.closestParentFolder(file.url()))) as
-          Workspace.UISourceCode.UISourceCode[];
-      const networkMetadata = this.sourceCodeToMetadataMap.get(networkSourceCode);
-      if (!networkMetadata || (!networkMetadata.modificationTime && typeof networkMetadata.contentSize !== 'number')) {
-        // If networkSourceCode does not have metadata, try to match against active folders.
-        if (activeFiles.length !== 1) {
-          return null;
-        }
-        return new AutomappingStatus(networkSourceCode, activeFiles[0], false);
-      }
-
-      // Try to find exact matches, prioritizing active folders.
-      let exactMatches = this.filterWithMetadata(activeFiles, networkMetadata);
-      if (!exactMatches.length) {
-        exactMatches = this.filterWithMetadata(similarFiles, networkMetadata);
-      }
-      if (exactMatches.length !== 1) {
+    const activeFiles = similarFiles.filter(file => Boolean(this.activeFoldersIndex.closestParentFolder(file.url())));
+    const networkMetadata = this.sourceCodeToMetadataMap.get(networkSourceCode);
+    if (!networkMetadata || (!networkMetadata.modificationTime && typeof networkMetadata.contentSize !== 'number')) {
+      // If networkSourceCode does not have metadata, try to match against active folders.
+      if (activeFiles.length !== 1) {
         return null;
       }
-      return new AutomappingStatus(networkSourceCode, exactMatches[0], true);
+      return new AutomappingStatus(networkSourceCode, activeFiles[0], false);
     }
-  }
 
-  private async pullMetadatas(uiSourceCodes: Workspace.UISourceCode.UISourceCode[]): Promise<void> {
-    await Promise.all(uiSourceCodes.map(async file => {
-      this.sourceCodeToMetadataMap.set(file, await file.requestMetadata());
-    }));
+    // Try to find exact matches, prioritizing active folders.
+    let exactMatches = this.filterWithMetadata(activeFiles, networkMetadata);
+    if (!exactMatches.length) {
+      exactMatches = this.filterWithMetadata(similarFiles, networkMetadata);
+    }
+    if (exactMatches.length !== 1) {
+      return null;
+    }
+    return new AutomappingStatus(networkSourceCode, exactMatches[0], true);
   }
 
   private filterWithMetadata(
@@ -392,79 +382,70 @@ export class Automapping {
 }
 
 class FilePathIndex {
-  private readonly encoder: PathEncoder;
-  private readonly reversedIndex: Common.Trie.Trie;
-  constructor(encoder: PathEncoder) {
-    this.encoder = encoder;
-    this.reversedIndex = new Common.Trie.Trie();
-  }
+  readonly #reversedIndex = Common.Trie.Trie.newArrayTrie<string[]>();
 
   addPath(path: Platform.DevToolsPath.UrlString): void {
-    const encodedPath = this.encoder.encode(path);
-    this.reversedIndex.add(Platform.StringUtilities.reverse(encodedPath));
+    const reversePathParts = path.split('/').reverse();
+    this.#reversedIndex.add(reversePathParts);
   }
 
   removePath(path: Platform.DevToolsPath.UrlString): void {
-    const encodedPath = this.encoder.encode(path);
-    this.reversedIndex.remove(Platform.StringUtilities.reverse(encodedPath));
+    const reversePathParts = path.split('/').reverse();
+    this.#reversedIndex.remove(reversePathParts);
   }
 
   similarFiles(networkPath: Platform.DevToolsPath.EncodedPathString): Platform.DevToolsPath.UrlString[] {
-    const encodedPath = this.encoder.encode(networkPath);
-    const reversedEncodedPath = Platform.StringUtilities.reverse(encodedPath);
-    const longestCommonPrefix = this.reversedIndex.longestPrefix(reversedEncodedPath, false);
-    if (!longestCommonPrefix) {
+    const reversePathParts = networkPath.split('/').reverse();
+    const longestCommonPrefix = this.#reversedIndex.longestPrefix(reversePathParts, false);
+    if (longestCommonPrefix.length === 0) {
       return [];
     }
-    return this.reversedIndex.words(longestCommonPrefix)
-               .map(encodedPath => this.encoder.decode(Platform.StringUtilities.reverse(encodedPath))) as
-        Platform.DevToolsPath.UrlString[];
+    return this.#reversedIndex.words(longestCommonPrefix)
+               .map(reversePathParts => reversePathParts.reverse().join('/')) as Platform.DevToolsPath.UrlString[];
   }
 }
 
 class FolderIndex {
-  private readonly encoder: PathEncoder;
-  private readonly index: Common.Trie.Trie;
-  private readonly folderCount: Map<string, number>;
-  constructor(encoder: PathEncoder) {
-    this.encoder = encoder;
-    this.index = new Common.Trie.Trie();
-    this.folderCount = new Map();
-  }
+  readonly #index = Common.Trie.Trie.newArrayTrie<string[]>();
+  readonly #folderCount = new Map<string, number>();
 
   addFolder(path: Platform.DevToolsPath.UrlString): boolean {
-    if (path.endsWith('/')) {
-      path = Common.ParsedURL.ParsedURL.substring(path, 0, path.length - 1);
-    }
-    const encodedPath = this.encoder.encode(path);
-    this.index.add(encodedPath);
-    const count = this.folderCount.get(encodedPath) || 0;
-    this.folderCount.set(encodedPath, count + 1);
+    const pathParts = this.#removeTrailingSlash(path).split('/');
+    this.#index.add(pathParts);
+
+    const pathForCount = pathParts.join('/');
+    const count = this.#folderCount.get(pathForCount) ?? 0;
+    this.#folderCount.set(pathForCount, count + 1);
     return count === 0;
   }
 
   removeFolder(path: Platform.DevToolsPath.UrlString): boolean {
-    if (path.endsWith('/')) {
-      path = Common.ParsedURL.ParsedURL.substring(path, 0, path.length - 1);
-    }
-    const encodedPath = this.encoder.encode(path);
-    const count = this.folderCount.get(encodedPath) || 0;
+    const pathParts = this.#removeTrailingSlash(path).split('/');
+    const pathForCount = pathParts.join('/');
+    const count = this.#folderCount.get(pathForCount) ?? 0;
     if (!count) {
       return false;
     }
     if (count > 1) {
-      this.folderCount.set(encodedPath, count - 1);
+      this.#folderCount.set(pathForCount, count - 1);
       return false;
     }
-    this.index.remove(encodedPath);
-    this.folderCount.delete(encodedPath);
+    this.#index.remove(pathParts);
+    this.#folderCount.delete(pathForCount);
     return true;
   }
 
   closestParentFolder(path: Platform.DevToolsPath.UrlString): Platform.DevToolsPath.UrlString {
-    const encodedPath = this.encoder.encode(path);
-    const commonPrefix = this.index.longestPrefix(encodedPath, true);
-    return this.encoder.decode(commonPrefix) as Platform.DevToolsPath.UrlString;
+    const pathParts = path.split('/');
+    const commonPrefix = this.#index.longestPrefix(pathParts, /* fullWordOnly */ true);
+    return commonPrefix.join('/') as Platform.DevToolsPath.UrlString;
+  }
+
+  #removeTrailingSlash(path: Platform.DevToolsPath.UrlString): Platform.DevToolsPath.UrlString {
+    if (path.endsWith('/')) {
+      return Common.ParsedURL.ParsedURL.substring(path, 0, path.length - 1);
+    }
+    return path;
   }
 }
 

@@ -17,6 +17,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Browser = exports.WEB_PERMISSION_TO_PROTOCOL_PERMISSION = void 0;
 const EventEmitter_js_1 = require("../common/EventEmitter.js");
+const util_js_1 = require("../common/util.js");
+const Deferred_js_1 = require("../util/Deferred.js");
 /**
  * @internal
  */
@@ -36,6 +38,7 @@ exports.WEB_PERMISSION_TO_PROTOCOL_PERMISSION = new Map([
     ['accessibility-events', 'accessibilityEvents'],
     ['clipboard-read', 'clipboardReadWrite'],
     ['clipboard-write', 'clipboardReadWrite'],
+    ['clipboard-sanitized-write', 'clipboardSanitizedWrite'],
     ['payment-handler', 'paymentHandler'],
     ['persistent-storage', 'durableStorage'],
     ['idle-detection', 'idleDetection'],
@@ -43,7 +46,7 @@ exports.WEB_PERMISSION_TO_PROTOCOL_PERMISSION = new Map([
     ['midi-sysex', 'midiSysex'],
 ]);
 /**
- * A Browser is created when Puppeteer connects to a Chromium instance, either through
+ * A Browser is created when Puppeteer connects to a browser instance, either through
  * {@link PuppeteerNode.launch} or {@link Puppeteer.connect}.
  *
  * @remarks
@@ -73,14 +76,14 @@ exports.WEB_PERMISSION_TO_PROTOCOL_PERMISSION = new Map([
  *
  * (async () => {
  *   const browser = await puppeteer.launch();
- *   // Store the endpoint to be able to reconnect to Chromium
+ *   // Store the endpoint to be able to reconnect to the browser.
  *   const browserWSEndpoint = browser.wsEndpoint();
- *   // Disconnect puppeteer from Chromium
+ *   // Disconnect puppeteer from the browser.
  *   browser.disconnect();
  *
  *   // Use the endpoint to reestablish a connection
  *   const browser2 = await puppeteer.connect({browserWSEndpoint});
- *   // Close Chromium
+ *   // Close the browser.
  *   await browser2.close();
  * })();
  * ```
@@ -187,8 +190,44 @@ class Browser extends EventEmitter_js_1.EventEmitter {
     target() {
         throw new Error('Not implemented');
     }
-    waitForTarget() {
-        throw new Error('Not implemented');
+    /**
+     * Searches for a target in all browser contexts.
+     *
+     * @param predicate - A function to be run for every target.
+     * @returns The first target found that matches the `predicate` function.
+     *
+     * @example
+     *
+     * An example of finding a target for a page opened via `window.open`:
+     *
+     * ```ts
+     * await page.evaluate(() => window.open('https://www.example.com/'));
+     * const newWindowTarget = await browser.waitForTarget(
+     *   target => target.url() === 'https://www.example.com/'
+     * );
+     * ```
+     */
+    async waitForTarget(predicate, options = {}) {
+        const { timeout = 30000 } = options;
+        const targetDeferred = Deferred_js_1.Deferred.create();
+        this.on("targetcreated" /* BrowserEmittedEvents.TargetCreated */, check);
+        this.on("targetchanged" /* BrowserEmittedEvents.TargetChanged */, check);
+        try {
+            this.targets().forEach(check);
+            if (!timeout) {
+                return await targetDeferred.valueOrThrow();
+            }
+            return await (0, util_js_1.waitWithTimeout)(targetDeferred.valueOrThrow(), 'target', timeout);
+        }
+        finally {
+            this.off("targetcreated" /* BrowserEmittedEvents.TargetCreated */, check);
+            this.off("targetchanged" /* BrowserEmittedEvents.TargetChanged */, check);
+        }
+        async function check(target) {
+            if ((await predicate(target)) && !targetDeferred.resolved()) {
+                targetDeferred.resolve(target);
+            }
+        }
     }
     /**
      * An array of all open pages inside the Browser.
@@ -199,18 +238,26 @@ class Browser extends EventEmitter_js_1.EventEmitter {
      * browser contexts. Non-visible pages, such as `"background_page"`, will not be listed
      * here. You can find them using {@link Target.page}.
      */
-    pages() {
-        throw new Error('Not implemented');
+    async pages() {
+        const contextPages = await Promise.all(this.browserContexts().map(context => {
+            return context.pages();
+        }));
+        // Flatten array.
+        return contextPages.reduce((acc, x) => {
+            return acc.concat(x);
+        }, []);
     }
     /**
      * A string representing the browser name and version.
      *
      * @remarks
      *
-     * For headless Chromium, this is similar to `HeadlessChrome/61.0.3153.0`. For
-     * non-headless, this is similar to `Chrome/61.0.3153.0`.
+     * For headless browser, this is similar to `HeadlessChrome/61.0.3153.0`. For
+     * non-headless or new-headless, this is similar to `Chrome/61.0.3153.0`. For
+     * Firefox, it is similar to `Firefox/116.0a1`.
      *
-     * The format of browser.version() might change with future releases of Chromium.
+     * The format of browser.version() might change with future releases of
+     * browsers.
      */
     version() {
         throw new Error('Not implemented');
@@ -223,14 +270,15 @@ class Browser extends EventEmitter_js_1.EventEmitter {
         throw new Error('Not implemented');
     }
     /**
-     * Closes Chromium and all of its pages (if any were opened). The {@link Browser} object
-     * itself is considered to be disposed and cannot be used anymore.
+     * Closes the browser and all of its pages (if any were opened). The
+     * {@link Browser} object itself is considered to be disposed and cannot be
+     * used anymore.
      */
     close() {
         throw new Error('Not implemented');
     }
     /**
-     * Disconnects Puppeteer from the browser, but leaves the Chromium process running.
+     * Disconnects Puppeteer from the browser, but leaves the browser process running.
      * After calling `disconnect`, the {@link Browser} object is considered disposed and
      * cannot be used anymore.
      */

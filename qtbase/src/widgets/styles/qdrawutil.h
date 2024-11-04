@@ -71,6 +71,17 @@ Q_WIDGETS_EXPORT void qDrawPlainRect(QPainter *p, int x, int y, int w, int h, co
 Q_WIDGETS_EXPORT void qDrawPlainRect(QPainter *p, const QRect &r, const QColor &,
                               int lineWidth = 1, const QBrush *fill = nullptr);
 
+Q_WIDGETS_EXPORT void qDrawPlainRoundedRect(QPainter *p, int x, int y, int w, int h,
+                              qreal rx, qreal ry, const QColor &, int lineWidth = 1,
+                              const QBrush *fill = nullptr);
+
+inline void qDrawPlainRoundedRect(QPainter *painter, const QRect& rect, qreal rx, qreal ry,
+                                  const QColor &lineColor, int lineWidth = 1,
+                                  const QBrush *fill = nullptr)
+{
+    qDrawPlainRoundedRect(painter, rect.x(), rect.y(), rect.width(), rect.height(),
+                          rx, ry, lineColor, lineWidth, fill);
+}
 
 
 struct QTileRules

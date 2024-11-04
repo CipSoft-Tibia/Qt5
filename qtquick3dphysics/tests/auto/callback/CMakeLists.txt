@@ -1,5 +1,5 @@
 # Copyright (C) 2023 The Qt Company Ltd.
-# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+# SPDX-License-Identifier: BSD-3-Clause
 
 set(PROJECT_NAME "test_auto_callback")
 
@@ -13,6 +13,7 @@ qt_internal_add_test(${PROJECT_NAME}
         Qt::Qml
     TESTDATA
         tst_callback.qml
+        tst_callback_report.qml
         PlaneScene.qml
     BUILTIN_TESTDATA
 )

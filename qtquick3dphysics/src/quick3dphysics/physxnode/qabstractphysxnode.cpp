@@ -76,6 +76,8 @@ void QAbstractPhysXNode::markDirtyShapes() { }
 
 void QAbstractPhysXNode::rebuildDirtyShapes(QPhysicsWorld *, QPhysXWorld *) { }
 
+void QAbstractPhysXNode::updateFilters() { }
+
 void QAbstractPhysXNode::cleanup(QPhysXWorld *)
 {
     for (auto *shape : shapes)
@@ -112,6 +114,17 @@ bool QAbstractPhysXNode::shapesDirty() const
 void QAbstractPhysXNode::setShapesDirty(bool dirty)
 {
     frontendNode->m_shapesDirty = dirty;
+}
+
+bool QAbstractPhysXNode::filtersDirty() const
+{
+    return frontendNode && frontendNode->m_filtersDirty;
+}
+
+void QAbstractPhysXNode::setFiltersDirty(bool dirty)
+{
+    Q_ASSERT(frontendNode);
+    frontendNode->m_filtersDirty = dirty;
 }
 
 QT_END_NAMESPACE

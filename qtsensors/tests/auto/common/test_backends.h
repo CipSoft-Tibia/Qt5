@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef TEST_BACKENDS_H
 #define TEST_BACKENDS_H
@@ -36,6 +36,7 @@ void set_test_backend_busy(QSensor* sensor, bool busy);
         SensorClass ## _impl(QSensor *sensor);\
         void start() override;\
         void stop() override;\
+        bool isFeatureSupported(QSensor::Feature feature) const override;\
     };\
     class SensorClass ## _testfilter : public FilterClass { bool filter(ReadingClass *) override; };
 
@@ -47,6 +48,11 @@ void set_test_backend_busy(QSensor* sensor, bool busy);
         newReadingAvailable();\
     }\
     void SensorClass ##_impl::stop() {}\
+    bool SensorClass ##_impl::isFeatureSupported(QSensor::Feature feature) const { \
+        if (feature == QSensor::Feature::SkipDuplicates) \
+            return true; \
+        return false; \
+    } \
     bool SensorClass ## _testfilter::filter(ReadingClass *) { return true; }\
     static QSensorBackend *create_ ## SensorClass ## _impl(QSensor *sensor) { return new SensorClass ## _impl(sensor); }\
     static bool registered_ ## SensorClass = registerTestBackend(#SensorClass, create_ ## SensorClass ## _impl);

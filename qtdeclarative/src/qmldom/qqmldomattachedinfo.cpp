@@ -1,11 +1,16 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+#include "qqmldom_fwd_p.h"
 #include "qqmldomlinewriter_p.h"
 #include "qqmldomelements_p.h"
+#include "qqmldompath_p.h"
 
 QT_BEGIN_NAMESPACE
 namespace QQmlJS {
 namespace Dom {
+
+using namespace Qt::StringLiterals;
+
 
 /*!
 \internal
@@ -26,66 +31,37 @@ Attributes:
 
 \sa QQmlJs::Dom::AttachedInfo
 */
-bool FileLocations::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
+bool FileLocations::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const
 {
     bool cont = true;
-#ifdef QmlDomAddCodeStr
-    bool hasCode = false;
-    QString codeStr = self.fileObject().field(Fields::code).value().toString();
-    auto loc2str = [&self, &codeStr](SourceLocation loc) {
-        if (loc.offset < codeStr.length() && loc.end() <= codeStr.length())
-            return QStringView(codeStr).mid(loc.offset, loc.length);
-        return QStringView();
-    };
-#else
-    auto loc2str = [](SourceLocation) { return QStringView(); };
-#endif
     cont = cont && self.dvValueLazyField(visitor, Fields::fullRegion, [this]() {
-        return locationToData(fullRegion);
+        return sourceLocationToQCborValue(fullRegion);
     });
-    cont = cont && self.dvItemField(visitor, Fields::regions, [this, &self, &loc2str]() {
-        return self.subMapItem(Map::fromMapRef<SourceLocation>(
-                self.pathFromOwner().field(Fields::regions), regions,
-                [&loc2str](DomItem &map, const PathEls::PathComponent &key, SourceLocation &el) {
-                    return map.subLocationItem(key, el, loc2str(el));
-                }));
+    cont = cont && self.dvItemField(visitor, Fields::regions, [this, &self]() -> DomItem {
+        const Path pathFromOwner = self.pathFromOwner().field(Fields::regions);
+        auto map = Map::fromFileRegionMap(pathFromOwner, regions);
+        return self.subMapItem(map);
     });
     cont = cont
-            && self.dvItemField(visitor, Fields::preCommentLocations, [this, &self, &loc2str]() {
-                   return self.subMapItem(Map::fromMapRef<QList<SourceLocation>>(
-                           self.pathFromOwner().field(Fields::preCommentLocations),
-                           preCommentLocations,
-                           [&loc2str](DomItem &map, const PathEls::PathComponent &key,
-                                      QList<SourceLocation> &el) {
-                               return map.subListItem(List::fromQListRef<SourceLocation>(
-                                       map.pathFromOwner().appendComponent(key), el,
-                                       [&loc2str](DomItem &list, const PathEls::PathComponent &idx,
-                                                  SourceLocation &el) {
-                                           return list.subLocationItem(idx, el, loc2str(el));
-                                       }));
-                           }));
+            && self.dvItemField(visitor, Fields::preCommentLocations, [this, &self]() -> DomItem {
+                   const Path pathFromOwner =
+                           self.pathFromOwner().field(Fields::preCommentLocations);
+                   auto map = Map::fromFileRegionListMap(pathFromOwner, preCommentLocations);
+                   return self.subMapItem(map);
                });
     cont = cont
-            && self.dvItemField(visitor, Fields::postCommentLocations, [this, &self, &loc2str]() {
-                   return self.subMapItem(Map::fromMapRef<QList<SourceLocation>>(
-                           self.pathFromOwner().field(Fields::postCommentLocations),
-                           postCommentLocations,
-                           [&loc2str](DomItem &map, const PathEls::PathComponent &key,
-                                      QList<SourceLocation> &el) {
-                               return map.subListItem(List::fromQListRef<SourceLocation>(
-                                       map.pathFromOwner().appendComponent(key), el,
-                                       [&loc2str](DomItem &list, const PathEls::PathComponent &idx,
-                                                  SourceLocation &el) {
-                                           return list.subLocationItem(idx, el, loc2str(el));
-                                       }));
-                           }));
+            && self.dvItemField(visitor, Fields::postCommentLocations, [this, &self]() -> DomItem {
+                   const Path pathFromOwner =
+                           self.pathFromOwner().field(Fields::postCommentLocations);
+                   auto map = Map::fromFileRegionListMap(pathFromOwner, postCommentLocations);
+                   return self.subMapItem(map);
                });
     return cont;
 }
 
-void FileLocations::ensureCommentLocations(QList<QString> keys)
+void FileLocations::ensureCommentLocations(const QList<FileLocationRegion> &keys)
 {
-    for (auto k : keys) {
+    for (FileLocationRegion k : keys) {
         preCommentLocations[k];
         postCommentLocations[k];
     }
@@ -99,55 +75,79 @@ FileLocations::Tree FileLocations::ensure(FileLocations::Tree base, Path basePat
     return AttachedInfoT<FileLocations>::ensure(base, basePath, pType);
 }
 
+/*!
+\internal
+Allows to query information about the FileLocations::Tree obtained from item, such as path of
+the Tree root in the Dom, the path of this item's Tree in the Dom, and so on.
+
+\note You can use \c{qDebug() << item.path(FileLocations::findAttachedInfo(item).foundTreePath)} or
+\c{item.path(FileLocations::findAttachedInfo(item).foundTreePath).toString()} to print out the Tree
+of item, for example, as Tree's cannot be printed when outside the Dom.
+*/
 AttachedInfoLookupResult<FileLocations::Tree>
-FileLocations::findAttachedInfo(DomItem &item, AttachedInfo::FindOptions options)
+FileLocations::findAttachedInfo(const DomItem &item)
 {
-    return AttachedInfoT<FileLocations>::findAttachedInfo(item, Fields::fileLocationsTree, options);
+    return AttachedInfoT<FileLocations>::findAttachedInfo(item, Fields::fileLocationsTree);
 }
 
 /*!
    \internal
    Returns the tree corresponding to a DomItem.
  */
-FileLocations::Tree FileLocations::treeOf(DomItem &item)
+FileLocations::Tree FileLocations::treeOf(const DomItem &item)
 {
-    return AttachedInfoT<FileLocations>::treePtr(item, Fields::fileLocationsTree);
+    return findAttachedInfo(item).foundTree;
 }
 
 /*!
    \internal
    Returns the filelocation Info corresponding to a DomItem.
  */
-const FileLocations *FileLocations::fileLocationsOf(DomItem &item)
+const FileLocations *FileLocations::fileLocationsOf(const DomItem &item)
 {
     if (FileLocations::Tree t = treeOf(item))
         return &(t->info());
     return nullptr;
 }
 
-void FileLocations::updateFullLocation(FileLocations::Tree fLoc, SourceLocation loc) {
+void FileLocations::updateFullLocation(const FileLocations::Tree &fLoc, SourceLocation loc)
+{
     Q_ASSERT(fLoc);
     if (loc != SourceLocation()) {
         FileLocations::Tree p = fLoc;
         while (p) {
             SourceLocation &l = p->info().fullRegion;
-            if (loc.begin() < l.begin() || loc.end() > l.end())
+            if (loc.begin() < l.begin() || loc.end() > l.end()) {
                 l = combine(l, loc);
-            else
+                p->info().regions[MainRegion] = l;
+            } else {
                 break;
+            }
             p = p->parent();
         }
     }
 }
 
-void FileLocations::addRegion(FileLocations::Tree fLoc, QString locName, SourceLocation loc) {
+void FileLocations::addRegion(const FileLocations::Tree &fLoc, FileLocationRegion region,
+                              SourceLocation loc)
+{
     Q_ASSERT(fLoc);
-    fLoc->info().regions[locName] = loc;
+    fLoc->info().regions[region] = loc;
     updateFullLocation(fLoc, loc);
 }
 
-void FileLocations::addRegion(FileLocations::Tree fLoc, QStringView locName, SourceLocation loc) {
-    addRegion(fLoc, locName.toString(), loc);
+SourceLocation FileLocations::region(const FileLocations::Tree &fLoc, FileLocationRegion region)
+{
+    Q_ASSERT(fLoc);
+    const auto &regions = fLoc->info().regions;
+    if (auto it = regions.constFind(region); it != regions.constEnd() && it->isValid()) {
+        return *it;
+    }
+
+    if (region == MainRegion)
+        return fLoc->info().fullRegion;
+
+    return SourceLocation{};
 }
 
 /*!
@@ -168,7 +168,7 @@ Attributes:
 \sa QQmlJs::Dom::AttachedInfo
 */
 
-bool AttachedInfo::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
+bool AttachedInfo::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const
 {
     bool cont = true;
     if (Ptr p = parent())
@@ -180,13 +180,13 @@ bool AttachedInfo::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
     cont = cont && self.dvItemField(visitor, Fields::subItems, [this, &self]() {
         return self.subMapItem(Map(
                 Path::Field(Fields::subItems),
-                [this](DomItem &map, QString key) {
+                [this](const DomItem &map, QString key) {
                     Path p = Path::fromString(key);
                     return map.copy(m_subItems.value(p), map.canonicalPath().key(key));
                 },
-                [this](DomItem &) {
+                [this](const DomItem &) {
                     QSet<QString> res;
-                    for (auto p : m_subItems.keys())
+                    for (const auto &p : m_subItems.keys())
                         res.insert(p.toString());
                     return res;
                 },
@@ -225,7 +225,7 @@ AttachedInfo::Ptr AttachedInfo::ensure(AttachedInfo::Ptr self, Path path, Attach
         break;
     }
     Ptr res = self;
-    for (auto p : path) {
+    for (const auto &p : path) {
         if (AttachedInfo::Ptr subEl = res->m_subItems.value(p)) {
             res = subEl;
         } else {
@@ -257,8 +257,7 @@ AttachedInfo::Ptr AttachedInfo::find(AttachedInfo::Ptr self, Path p, AttachedInf
 }
 
 AttachedInfoLookupResult<AttachedInfo::Ptr>
-AttachedInfo::findAttachedInfo(DomItem &item, QStringView fieldName,
-                               AttachedInfo::FindOptions options)
+AttachedInfo::findAttachedInfo(const DomItem &item, QStringView fieldName)
 {
     Path p;
     DomItem fLoc = item.field(fieldName);
@@ -281,21 +280,15 @@ AttachedInfo::findAttachedInfo(DomItem &item, QStringView fieldName,
         if (AttachedInfo::Ptr foundTree =
                     AttachedInfo::find(fLocPtr, p, AttachedInfo::PathType::Relative))
             res.foundTree = foundTree;
-    if (options & (FindOption::SetRootTreePath | FindOption::SetFoundTreePath))
-        res.rootTreePath = fLoc.canonicalPath();
-    if (options & FindOption::SetFoundTreePath) {
-        Path foundTreePath = res.rootTreePath.value();
-        if (res.lookupPath) {
-            foundTreePath = foundTreePath.key(res.lookupPath.head().toString());
-            for (Path pEl : res.lookupPath.mid(1))
-                foundTreePath = foundTreePath.field(Fields::subItems).key(pEl.toString());
-        }
-        res.foundTreePath = foundTreePath;
-    }
+    res.rootTreePath = fLoc.canonicalPath();
+
+    res.foundTreePath = res.rootTreePath;
+    for (Path pEl : res.lookupPath)
+        res.foundTreePath = res.foundTreePath.field(Fields::subItems).key(pEl.toString());
     return res;
 }
 
-bool UpdatedScriptExpression::iterateDirectSubpaths(DomItem &self, DirectVisitor visitor)
+bool UpdatedScriptExpression::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const
 {
     bool cont = true;
     cont = cont && self.dvWrapField(visitor, Fields::expr, expr);
@@ -315,18 +308,18 @@ UpdatedScriptExpression::Tree UpdatedScriptExpression::ensure(UpdatedScriptExpre
 }
 
 AttachedInfoLookupResult<UpdatedScriptExpression::Tree>
-UpdatedScriptExpression::findAttachedInfo(DomItem &item, AttachedInfo::FindOptions options)
+UpdatedScriptExpression::findAttachedInfo(const DomItem &item)
 {
     return AttachedInfoT<UpdatedScriptExpression>::findAttachedInfo(
-            item, Fields::updatedScriptExpressions, options);
+            item, Fields::updatedScriptExpressions);
 }
 
-UpdatedScriptExpression::Tree UpdatedScriptExpression::treePtr(DomItem &item)
+UpdatedScriptExpression::Tree UpdatedScriptExpression::treePtr(const DomItem &item)
 {
     return AttachedInfoT<UpdatedScriptExpression>::treePtr(item, Fields::updatedScriptExpressions);
 }
 
-const UpdatedScriptExpression *UpdatedScriptExpression::exprPtr(DomItem &item)
+const UpdatedScriptExpression *UpdatedScriptExpression::exprPtr(const DomItem &item)
 {
     if (UpdatedScriptExpression::Tree t = treePtr(item))
         return &(t->info());

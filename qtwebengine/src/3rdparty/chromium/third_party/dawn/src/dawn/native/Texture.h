@@ -17,19 +17,30 @@
 
 #include <vector>
 
+#include "dawn/common/WeakRef.h"
 #include "dawn/common/ityp_array.h"
 #include "dawn/common/ityp_bitset.h"
 #include "dawn/native/Error.h"
 #include "dawn/native/Format.h"
 #include "dawn/native/Forward.h"
 #include "dawn/native/ObjectBase.h"
+#include "dawn/native/SharedTextureMemory.h"
 #include "dawn/native/Subresource.h"
 
 #include "dawn/native/dawn_platform.h"
 
 namespace dawn::native {
 
-MaybeError ValidateTextureDescriptor(const DeviceBase* device, const TextureDescriptor* descriptor);
+enum class AllowMultiPlanarTextureFormat {
+    No,
+    Yes,
+};
+
+MaybeError ValidateTextureDescriptor(
+    const DeviceBase* device,
+    const TextureDescriptor* descriptor,
+    AllowMultiPlanarTextureFormat allowMultiPlanar = AllowMultiPlanarTextureFormat::No,
+    std::optional<wgpu::TextureUsage> allowedSharedTextureMemoryUsage = std::nullopt);
 MaybeError ValidateTextureViewDescriptor(const DeviceBase* device,
                                          const TextureBase* texture,
                                          const TextureViewDescriptor* descriptor);
@@ -40,11 +51,16 @@ ResultOrError<TextureViewDescriptor> GetTextureViewDescriptorWithDefaults(
 bool IsValidSampleCount(uint32_t sampleCount);
 
 static constexpr wgpu::TextureUsage kReadOnlyTextureUsages =
-    wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::TextureBinding | kReadOnlyRenderAttachment;
+    wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::TextureBinding | kReadOnlyRenderAttachment |
+    kReadOnlyStorageTexture;
+
+// Valid texture usages for a resolve texture that are loaded from at the beginning of a render
+// pass.
+static constexpr wgpu::TextureUsage kResolveTextureLoadAndStoreUsages =
+    kResolveAttachmentLoadingUsage | wgpu::TextureUsage::RenderAttachment;
 
 class TextureBase : public ApiObjectBase {
   public:
-    enum class TextureState { OwnedInternal, OwnedExternal, Destroyed };
     enum class ClearValue { Zero, NonZero };
 
     static TextureBase* MakeError(DeviceBase* device, const TextureDescriptor* descriptor);
@@ -70,7 +86,8 @@ class TextureBase : public ApiObjectBase {
     wgpu::TextureUsage GetUsage() const;
     wgpu::TextureUsage GetInternalUsage() const;
 
-    TextureState GetTextureState() const;
+    bool IsDestroyed() const;
+    void SetHasAccess(bool hasAccess);
     uint32_t GetSubresourceIndex(uint32_t mipLevel, uint32_t arraySlice, Aspect aspect) const;
     bool IsSubresourceContentInitialized(const SubresourceRange& range) const;
     void SetIsSubresourceContentInitialized(bool isInitialized, const SubresourceRange& range);
@@ -78,6 +95,9 @@ class TextureBase : public ApiObjectBase {
     MaybeError ValidateCanUseInSubmitNow() const;
 
     bool IsMultisampledTexture() const;
+
+    // Returns true if the size covers the whole subresource.
+    bool CoverFullSubresource(uint32_t mipLevel, const Extent3D& size) const;
 
     // For a texture with non-block-compressed texture format, its physical size is always equal
     // to its virtual size. For a texture with block compressed texture format, the physical
@@ -89,10 +109,17 @@ class TextureBase : public ApiObjectBase {
     Extent3D ClampToMipLevelVirtualSize(uint32_t level,
                                         const Origin3D& origin,
                                         const Extent3D& extent) const;
+    // For 2d-array textures, this keeps the array layers in contrast to
+    // GetMipLevelSingleSubresourceVirtualSize.
+    Extent3D GetMipLevelSubresourceVirtualSize(uint32_t level) const;
 
     ResultOrError<Ref<TextureViewBase>> CreateView(
         const TextureViewDescriptor* descriptor = nullptr);
     ApiObjectList* GetViewTrackingList();
+
+    bool IsImplicitMSAARenderTextureViewSupported() const;
+
+    SharedTextureMemoryState* GetSharedTextureMemoryState() const;
 
     // Dawn API
     TextureViewBase* APICreateView(const TextureViewDescriptor* descriptor = nullptr);
@@ -107,13 +134,25 @@ class TextureBase : public ApiObjectBase {
     wgpu::TextureUsage APIGetUsage() const;
 
   protected:
-    TextureBase(DeviceBase* device, const TextureDescriptor* descriptor, TextureState state);
+    TextureBase(DeviceBase* device, const TextureDescriptor* descriptor);
     ~TextureBase() override;
 
     void DestroyImpl() override;
     void AddInternalUsage(wgpu::TextureUsage usage);
 
+    // The shared texture memory state the texture was created from. May be null.
+    Ref<SharedTextureMemoryState> mSharedTextureMemoryState;
+
   private:
+    struct TextureState {
+        TextureState();
+
+        // Indicates whether the texture may access by the GPU in a queue submit.
+        bool hasAccess : 1;
+        // Indicates whether the texture has been destroyed.
+        bool destroyed : 1;
+    };
+
     TextureBase(DeviceBase* device, const TextureDescriptor* descriptor, ObjectBase::ErrorTag tag);
 
     wgpu::TextureDimension mDimension;
@@ -140,9 +179,10 @@ class TextureViewBase : public ApiObjectBase {
     TextureViewBase(TextureBase* texture, const TextureViewDescriptor* descriptor);
     ~TextureViewBase() override;
 
-    static TextureViewBase* MakeError(DeviceBase* device);
+    static TextureViewBase* MakeError(DeviceBase* device, const char* label = nullptr);
 
     ObjectType GetType() const override;
+    void FormatLabel(absl::FormatSink* s) const override;
 
     const TextureBase* GetTexture() const;
     TextureBase* GetTexture();
@@ -160,7 +200,7 @@ class TextureViewBase : public ApiObjectBase {
     void DestroyImpl() override;
 
   private:
-    TextureViewBase(DeviceBase* device, ObjectBase::ErrorTag tag);
+    TextureViewBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label);
 
     ApiObjectList* GetObjectTrackingList() override;
 

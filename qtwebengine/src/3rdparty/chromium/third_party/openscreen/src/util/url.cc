@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,16 +6,38 @@
 
 #include <limits.h>
 
+#include <string_view>
 #include <utility>
 
-#include "third_party/mozilla/url_parse.h"
-#include "third_party/mozilla/url_parse_internal.h"
+#include "url/third_party/mozilla/url_parse.h"
+#include "url/url_constants.h"
+#include "url/url_util.h"
 
 namespace openscreen {
 
+namespace {
+
+// Given a string and a range inside the string, compares it to the given
+// lower-case |compare_to| buffer.
+bool CompareSchemeComponent(std::string_view spec,
+                            const url::Component& component,
+                            std::string_view compare_to) {
+  if (component.is_empty()) {
+    return compare_to.empty();  // When component is empty, match empty scheme.
+  }
+  for (int i = 0; i < component.len; ++i) {
+    if (tolower(spec[i]) != compare_to[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
 Url::Url(const std::string& source) {
-  Parsed parsed;
-  Component scheme;
+  url::Parsed parsed;
+  url::Component scheme;
   const char* url = source.c_str();
   size_t length = source.size();
   if (length > INT_MAX) {
@@ -23,22 +45,22 @@ Url::Url(const std::string& source) {
   }
   int url_length = static_cast<int>(length);
 
-  if (!ExtractScheme(url, url_length, &scheme)) {
+  if (!url::ExtractScheme(url, url_length, &scheme)) {
     return;
   }
 
-  if (CompareSchemeComponent(url, scheme, kFileScheme) ||
-      CompareSchemeComponent(url, scheme, kFileSystemScheme) ||
-      CompareSchemeComponent(url, scheme, kMailtoScheme)) {
+  if (CompareSchemeComponent(url, scheme, url::kFileScheme) ||
+      CompareSchemeComponent(url, scheme, url::kFileSystemScheme) ||
+      CompareSchemeComponent(url, scheme, url::kMailToScheme)) {
     // NOTE: Special schemes that are unsupported.
     return;
-  } else if (IsStandard(url, scheme)) {
-    ParseStandardURL(url, url_length, &parsed);
+  } else if (url::IsStandard(url, scheme)) {
+    url::ParseStandardURL(url, url_length, &parsed);
     if (!parsed.host.is_valid()) {
       return;
     }
   } else {
-    ParsePathURL(url, url_length, true, &parsed);
+    url::ParsePathURL(url, url_length, true, &parsed);
   }
 
   if (!parsed.scheme.is_nonempty()) {
@@ -52,8 +74,8 @@ Url::Url(const std::string& source) {
   }
 
   if (parsed.port.is_nonempty()) {
-    int parse_result = ParsePort(url, parsed.port);
-    if (parse_result == PORT_INVALID) {
+    int parse_result = url::ParsePort(url, parsed.port);
+    if (parse_result == url::PORT_INVALID) {
       return;
     } else if (parse_result >= 0) {
       has_port_ = true;

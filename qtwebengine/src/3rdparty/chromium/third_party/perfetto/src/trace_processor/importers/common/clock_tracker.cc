@@ -36,13 +36,14 @@ namespace trace_processor {
 
 using Clock = protos::pbzero::ClockSnapshot::Clock;
 
-ClockTracker::ClockTracker(TraceStorage* storage)
-    : storage_(storage),
+ClockTracker::ClockTracker(TraceProcessorContext* context)
+    : context_(context),
       trace_time_clock_id_(protos::pbzero::BUILTIN_CLOCK_BOOTTIME) {}
 
 ClockTracker::~ClockTracker() = default;
 
-uint32_t ClockTracker::AddSnapshot(const std::vector<ClockValue>& clocks) {
+base::StatusOr<uint32_t> ClockTracker::AddSnapshot(
+    const std::vector<ClockTimestamp>& clock_timestamps) {
   const auto snapshot_id = cur_snapshot_id_++;
 
   // Clear the cache
@@ -51,55 +52,58 @@ uint32_t ClockTracker::AddSnapshot(const std::vector<ClockValue>& clocks) {
   // Compute the fingerprint of the snapshot by hashing all clock ids. This is
   // used by the clock pathfinding logic.
   base::Hasher hasher;
-  for (const auto& clock : clocks)
-    hasher.Update(clock.clock_id);
+  for (const auto& clock_ts : clock_timestamps)
+    hasher.Update(clock_ts.clock.id);
   const auto snapshot_hash = static_cast<SnapshotHash>(hasher.digest());
 
   // Add a new entry in each clock's snapshot vector.
-  for (const auto& clock : clocks) {
-    ClockId clock_id = clock.clock_id;
+  for (const auto& clock_ts : clock_timestamps) {
+    ClockId clock_id = clock_ts.clock.id;
     ClockDomain& domain = clocks_[clock_id];
+
     if (domain.snapshots.empty()) {
-      if (clock.is_incremental && !ClockIsSeqScoped(clock_id)) {
-        PERFETTO_ELOG("Clock sync error: the global clock with id=%" PRIu64
-                      " cannot use incremental encoding; this is only "
-                      "supported for sequence-scoped clocks.",
-                      clock_id);
-        storage_->IncrementStats(stats::invalid_clock_snapshots);
-        return snapshot_id;
+      if (clock_ts.clock.is_incremental &&
+          !IsConvertedSequenceClock(clock_id)) {
+        context_->storage->IncrementStats(stats::invalid_clock_snapshots);
+        return base::ErrStatus(
+            "Clock sync error: the global clock with id=%" PRId64
+            " cannot use incremental encoding; this is only "
+            "supported for sequence-scoped clocks.",
+            clock_id);
       }
-      domain.unit_multiplier_ns = clock.unit_multiplier_ns;
-      domain.is_incremental = clock.is_incremental;
-    } else if (PERFETTO_UNLIKELY(
-                   domain.unit_multiplier_ns != clock.unit_multiplier_ns ||
-                   domain.is_incremental != clock.is_incremental)) {
-      PERFETTO_ELOG("Clock sync error: the clock domain with id=%" PRIu64
-                    " (unit=%" PRIu64
-                    ", incremental=%d), was previously registered with "
-                    "different properties (unit=%" PRIu64 ", incremental=%d).",
-                    clock_id, clock.unit_multiplier_ns, clock.is_incremental,
-                    domain.unit_multiplier_ns, domain.is_incremental);
-      storage_->IncrementStats(stats::invalid_clock_snapshots);
-      return snapshot_id;
+      domain.unit_multiplier_ns = clock_ts.clock.unit_multiplier_ns;
+      domain.is_incremental = clock_ts.clock.is_incremental;
+    } else if (PERFETTO_UNLIKELY(domain.unit_multiplier_ns !=
+                                     clock_ts.clock.unit_multiplier_ns ||
+                                 domain.is_incremental !=
+                                     clock_ts.clock.is_incremental)) {
+      context_->storage->IncrementStats(stats::invalid_clock_snapshots);
+      return base::ErrStatus(
+          "Clock sync error: the clock domain with id=%" PRId64
+          " (unit=%" PRId64
+          ", incremental=%d), was previously registered with "
+          "different properties (unit=%" PRId64 ", incremental=%d).",
+          clock_id, clock_ts.clock.unit_multiplier_ns,
+          clock_ts.clock.is_incremental, domain.unit_multiplier_ns,
+          domain.is_incremental);
     }
-    const int64_t timestamp_ns =
-        clock.absolute_timestamp * domain.unit_multiplier_ns;
+    const int64_t timestamp_ns = clock_ts.timestamp * domain.unit_multiplier_ns;
     domain.last_timestamp_ns = timestamp_ns;
 
     ClockSnapshots& vect = domain.snapshots[snapshot_hash];
     if (!vect.snapshot_ids.empty() &&
         PERFETTO_UNLIKELY(vect.snapshot_ids.back() == snapshot_id)) {
-      PERFETTO_ELOG("Clock sync error: duplicate clock domain with id=%" PRIu64
-                    " at snapshot %" PRIu32 ".",
-                    clock_id, snapshot_id);
-      storage_->IncrementStats(stats::invalid_clock_snapshots);
-      return snapshot_id;
+      context_->storage->IncrementStats(stats::invalid_clock_snapshots);
+      return base::ErrStatus(
+          "Clock sync error: duplicate clock domain with id=%" PRId64
+          " at snapshot %" PRIu32 ".",
+          clock_id, snapshot_id);
     }
 
     // Clock ids in the range [64, 128) are sequence-scoped and must be
     // translated to global ids via SeqScopedClockIdToGlobal() before calling
     // this function.
-    PERFETTO_DCHECK(!IsReservedSeqScopedClockId(clock_id));
+    PERFETTO_DCHECK(!IsSequenceClock(clock_id));
 
     // Snapshot IDs must be always monotonic.
     PERFETTO_DCHECK(vect.snapshot_ids.empty() ||
@@ -110,17 +114,16 @@ uint32_t ClockTracker::AddSnapshot(const std::vector<ClockValue>& clocks) {
       // Clock is not monotonic.
 
       if (clock_id == trace_time_clock_id_) {
+        context_->storage->IncrementStats(stats::invalid_clock_snapshots);
         // The trace clock cannot be non-monotonic.
-        PERFETTO_ELOG("Clock sync error: the trace clock (id=%" PRIu64
-                      ") is not monotonic at snapshot %" PRIu32 ". %" PRId64
-                      " not >= %" PRId64 ".",
-                      clock_id, snapshot_id, timestamp_ns,
-                      vect.timestamps_ns.back());
-        storage_->IncrementStats(stats::invalid_clock_snapshots);
-        return snapshot_id;
+        return base::ErrStatus("Clock sync error: the trace clock (id=%" PRId64
+                               ") is not monotonic at snapshot %" PRIu32
+                               ". %" PRId64 " not >= %" PRId64 ".",
+                               clock_id, snapshot_id, timestamp_ns,
+                               vect.timestamps_ns.back());
       }
 
-      PERFETTO_DLOG("Detected non-monotonic clock with ID %" PRIu64, clock_id);
+      PERFETTO_DLOG("Detected non-monotonic clock with ID %" PRId64, clock_id);
 
       // For the other clocks the best thing we can do is mark it as
       // non-monotonic and refuse to use it as a source clock in the resolution
@@ -149,17 +152,19 @@ uint32_t ClockTracker::AddSnapshot(const std::vector<ClockValue>& clocks) {
   // snapshots of type (hash).
   // Clocks that were previously marked as non-monotonic won't be added as
   // valid sources.
-  for (auto it1 = clocks.begin(); it1 != clocks.end(); ++it1) {
+  for (auto it1 = clock_timestamps.begin(); it1 != clock_timestamps.end();
+       ++it1) {
     auto it2 = it1;
     ++it2;
-    for (; it2 != clocks.end(); ++it2) {
-      if (!non_monotonic_clocks_.count(it1->clock_id))
-        graph_.emplace(it1->clock_id, it2->clock_id, snapshot_hash);
+    for (; it2 != clock_timestamps.end(); ++it2) {
+      if (!non_monotonic_clocks_.count(it1->clock.id))
+        graph_.emplace(it1->clock.id, it2->clock.id, snapshot_hash);
 
-      if (!non_monotonic_clocks_.count(it2->clock_id))
-        graph_.emplace(it2->clock_id, it1->clock_id, snapshot_hash);
+      if (!non_monotonic_clocks_.count(it2->clock.id))
+        graph_.emplace(it2->clock.id, it1->clock.id, snapshot_hash);
     }
   }
+
   return snapshot_id;
 }
 
@@ -210,25 +215,36 @@ ClockTracker::ClockPath ClockTracker::FindPath(ClockId src, ClockId target) {
   return ClockPath();  // invalid path.
 }
 
-base::Optional<int64_t> ClockTracker::ConvertSlowpath(ClockId src_clock_id,
+std::optional<int64_t> ClockTracker::ToTraceTimeFromSnapshot(
+    const std::vector<ClockTimestamp>& snapshot) {
+  auto maybe_found_trace_time_clock = std::find_if(
+      snapshot.begin(), snapshot.end(),
+      [this](const ClockTimestamp& clock_timestamp) {
+        return clock_timestamp.clock.id == this->trace_time_clock_id_;
+      });
+
+  if (maybe_found_trace_time_clock == snapshot.end())
+    return std::nullopt;
+
+  return maybe_found_trace_time_clock->timestamp;
+}
+
+base::StatusOr<int64_t> ClockTracker::ConvertSlowpath(ClockId src_clock_id,
                                                       int64_t src_timestamp,
                                                       ClockId target_clock_id) {
-  PERFETTO_DCHECK(!IsReservedSeqScopedClockId(src_clock_id));
-  PERFETTO_DCHECK(!IsReservedSeqScopedClockId(target_clock_id));
+  PERFETTO_DCHECK(!IsSequenceClock(src_clock_id));
+  PERFETTO_DCHECK(!IsSequenceClock(target_clock_id));
 
-  storage_->IncrementStats(stats::clock_sync_cache_miss);
+  context_->storage->IncrementStats(stats::clock_sync_cache_miss);
 
   ClockPath path = FindPath(src_clock_id, target_clock_id);
+
   if (!path.valid()) {
     // Too many logs maybe emitted when path is invalid.
-    static std::atomic<uint32_t> dlog_count(0);
-    if (dlog_count++ < 10) {
-      PERFETTO_DLOG("No path from clock %" PRIu64 " to %" PRIu64
-                    " at timestamp %" PRId64,
-                    src_clock_id, target_clock_id, src_timestamp);
-    }
-    storage_->IncrementStats(stats::clock_sync_failure);
-    return base::nullopt;
+    context_->storage->IncrementStats(stats::clock_sync_failure);
+    return base::ErrStatus("No path from clock %" PRId64 " to %" PRId64
+                           " at timestamp %" PRId64,
+                           src_clock_id, target_clock_id, src_timestamp);
   }
 
   // We can cache only single-path resolutions between two clocks.
@@ -314,35 +330,6 @@ base::Optional<int64_t> ClockTracker::ConvertSlowpath(ClockId src_clock_id,
   }
 
   return ns;
-}
-
-base::Optional<std::string> ClockTracker::FromTraceTimeAsISO8601(
-    int64_t timestamp) {
-  constexpr ClockId unix_epoch_clock =
-      protos::pbzero::ClockSnapshot::Clock::REALTIME;
-  base::Optional<int64_t> opt_ts = FromTraceTime(unix_epoch_clock, timestamp);
-  if (!opt_ts) {
-    return base::nullopt;
-  }
-  int64_t ts = opt_ts.value();
-
-  constexpr int64_t one_second_in_ns = 1LL * 1000LL * 1000LL * 1000LL;
-  int64_t s = ts / one_second_in_ns;
-  int64_t ns = ts % one_second_in_ns;
-
-  time_t time_s = static_cast<time_t>(s);
-  struct tm* time_tm = gmtime(&time_s);
-
-  int seconds = time_tm->tm_sec;
-  int minutes = time_tm->tm_min;
-  int hours = time_tm->tm_hour;
-  int day = time_tm->tm_mday;
-  int month = time_tm->tm_mon + 1;
-  int year = time_tm->tm_year + 1900;
-
-  base::StackString<64> buf("%04d-%02d-%02dT%02d:%02d:%02d.%09" PRId64, year,
-                            month, day, hours, minutes, seconds, ns);
-  return buf.ToStdString();
 }
 
 }  // namespace trace_processor

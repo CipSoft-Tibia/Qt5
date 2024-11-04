@@ -1,5 +1,5 @@
 // Copyright (C) 2023 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef FIXTURE_H
 #define FIXTURE_H
@@ -7,6 +7,10 @@
 #include <qmediaplayer.h>
 #include <qaudiooutput.h>
 #include <qtest.h>
+#include <qsignalspy.h>
+
+#include "fake.h"
+#include "testvideosink.h"
 
 QT_USE_NAMESPACE
 
@@ -71,5 +75,21 @@ public:
 
 // Helper to create an object that is comparable to a QSignalSpy
 using SignalList = QList<QList<QVariant>>;
+
+struct TestSubtitleSink : QObject
+{
+    Q_OBJECT
+
+public Q_SLOTS:
+    void addSubtitle(QString string)
+    {
+        QMetaObject::invokeMethod(this, [this, string = std::move(string)]() mutable {
+            subtitles.append(std::move(string));
+        });
+    }
+
+public:
+    QStringList subtitles;
+};
 
 #endif // FIXTURE_H

@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef TST_QMIMEDATABASE_H
 #define TST_QMIMEDATABASE_H
@@ -45,6 +45,8 @@ private slots:
     void suffixes_data();
     void suffixes();
     void knownSuffix();
+    void filterString_data();
+    void filterString();
     void symlinkToFifo();
     void fromThreads();
 
@@ -67,6 +69,8 @@ private slots:
 
 private:
     void initTestCaseInternal(); // test-specific
+    bool useCacheProvider() const; // test-specific
+    bool useFreeDesktopOrgXml() const; // test-specific
 
     QString m_globalXdgDir;
     QString m_localMimeDir;
@@ -75,6 +79,7 @@ private:
     QTemporaryDir m_temporaryDir;
     QString m_testSuite;
     bool m_isUsingCacheProvider;
+    bool m_hasFreedesktopOrg = false;
 };
 
 #endif   // TST_QMIMEDATABASE_H

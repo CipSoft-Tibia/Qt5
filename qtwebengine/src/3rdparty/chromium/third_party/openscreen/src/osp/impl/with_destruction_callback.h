@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 
 #include "platform/base/macros.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 // A decoration for classes which allows a callback to be run just after
 // destruction. Setting the callback is optional.
@@ -30,7 +29,6 @@ class WithDestructionCallback {
   OSP_DISALLOW_COPY_AND_ASSIGN(WithDestructionCallback);
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_IMPL_WITH_DESTRUCTION_CALLBACK_H_

@@ -66,7 +66,7 @@ public:
     void setContentLength(qint64 length) override;
 
     QList<QPair<QByteArray, QByteArray> > header() const override;
-    QByteArray headerField(const QByteArray &name, const QByteArray &defaultValue = QByteArray()) const override;
+    QByteArray headerField(QByteArrayView name, const QByteArray &defaultValue = QByteArray()) const override;
     void setHeaderField(const QByteArray &name, const QByteArray &data) override;
     void prependHeaderField(const QByteArray &name, const QByteArray &data);
     void clearHeaders();
@@ -148,7 +148,7 @@ public:
     bool http2Direct;
     bool h2cAllowed = false;
     bool withCredentials;
-    bool ssl;
+    bool ssl = false;
     bool preConnect;
     bool needResendWithCredentials = false;
     int redirectCount;

@@ -211,9 +211,8 @@ struct LabelInfo {
   FormFieldData::LabelSource source = FormFieldData::LabelSource::kLabelTag;
 };
 
-// CommonTuple(), SimilarityTuple(), DynamicIdentityTuple(), IdentityTuple()
-// return values should be used as temporaries only because they include a
-// StringPiece.
+// `CommonTuple()`, `SimilarityTuple()`, and `IdentityTuple()` return values
+// should be used as temporaries only because they include a `std::string_view`.
 
 auto CommonTuple(const FormFieldData& f) {
   return std::tuple_cat(
@@ -224,10 +223,6 @@ auto CommonTuple(const FormFieldData& f) {
 auto SimilarityTuple(const FormFieldData& f) {
   return std::tuple_cat(CommonTuple(f),
                         std::make_tuple(IsCheckable(f.check_status)));
-}
-
-auto DynamicIdentityTuple(const FormFieldData& f) {
-  return std::tuple_cat(CommonTuple(f), std::make_tuple(f.IsFocusable()));
 }
 
 auto IdentityTuple(const FormFieldData& f) {
@@ -399,10 +394,6 @@ bool FormFieldData::SimilarFieldAs(const FormFieldData& field) const {
   return SimilarityTuple(*this) == SimilarityTuple(field);
 }
 
-bool FormFieldData::DynamicallySameFieldAs(const FormFieldData& field) const {
-  return DynamicIdentityTuple(*this) == DynamicIdentityTuple(field);
-}
-
 bool FormFieldData::IsTextInputElement() const {
   return form_control_type == "text" || form_control_type == "password" ||
          form_control_type == "search" || form_control_type == "tel" ||
@@ -414,6 +405,18 @@ bool FormFieldData::IsPasswordInputElement() const {
   return form_control_type == "password";
 }
 
+bool FormFieldData::IsSelectElement() const {
+  return form_control_type == "select-one";
+}
+
+bool FormFieldData::IsSelectListElement() const {
+  return form_control_type == "selectlist";
+}
+
+bool FormFieldData::IsSelectOrSelectListElement() const {
+  return IsSelectElement() || IsSelectListElement();
+}
+
 bool FormFieldData::DidUserType() const {
   return properties_mask & kUserTyped;
 }
@@ -422,7 +425,7 @@ bool FormFieldData::HadFocus() const {
   return properties_mask & kHadFocus;
 }
 
-bool FormFieldData::WasAutofilled() const {
+bool FormFieldData::WasPasswordAutofilled() const {
   return properties_mask & kAutofilled;
 }
 

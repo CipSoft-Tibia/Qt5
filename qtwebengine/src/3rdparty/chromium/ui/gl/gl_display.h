@@ -19,7 +19,9 @@
 #endif  // defined(USE_EGL)
 
 #if BUILDFLAG(IS_APPLE)
-#include "components/metal_util/types.h"
+#if __OBJC__
+@protocol MTLSharedEvent;
+#endif  // __OBJC__
 #endif
 
 namespace gl {
@@ -92,7 +94,7 @@ class GL_EXPORT GLDisplay {
   virtual void* GetDisplay() const = 0;
   virtual void Shutdown() = 0;
   virtual bool IsInitialized() const = 0;
-  virtual bool InitializeFromDisplay(GLDisplay* display) = 0;
+  virtual bool Initialize(GLDisplay* display) = 0;
 
   template <typename GLDisplayPlatform>
   GLDisplayPlatform* GetAs();
@@ -133,7 +135,7 @@ class GL_EXPORT GLDisplayEGL : public GLDisplay {
   bool Initialize(bool supports_angle,
                   std::vector<DisplayType> init_displays,
                   EGLDisplayPlatform native_display);
-  bool InitializeFromDisplay(GLDisplay* other_display) override;
+  bool Initialize(GLDisplay* other_display) override;
   void InitializeForTesting();
   bool InitializeExtensionSettings();
 
@@ -141,10 +143,12 @@ class GL_EXPORT GLDisplayEGL : public GLDisplay {
 
 #if BUILDFLAG(IS_APPLE)
   bool IsANGLEMetalSharedEventSyncSupported();
-  bool CreateMetalSharedEvent(metal::MTLSharedEventPtr* shared_event_out,
+#if __OBJC__
+  bool CreateMetalSharedEvent(id<MTLSharedEvent>* shared_event_out,
                               uint64_t* signal_value_out);
-  void WaitForMetalSharedEvent(metal::MTLSharedEventPtr shared_event,
+  void WaitForMetalSharedEvent(id<MTLSharedEvent> shared_event,
                                uint64_t signal_value);
+#endif  // __OBJC__
 
   // Call periodically to clean up resources.
   void CleanupTempEGLSyncObjects();
@@ -171,8 +175,9 @@ class GL_EXPORT GLDisplayEGL : public GLDisplay {
 
   bool InitializeDisplay(bool supports_angle,
                          std::vector<DisplayType> init_displays,
-                         EGLDisplayPlatform native_display);
-  void InitializeCommon();
+                         EGLDisplayPlatform native_display,
+                         gl::GLDisplayEGL* existing_display);
+  void InitializeCommon(bool for_testing);
 
   EGLDisplay display_ = EGL_NO_DISPLAY;
   EGLDisplayPlatform native_display_ = EGLDisplayPlatform(EGL_DEFAULT_DISPLAY);
@@ -185,8 +190,8 @@ class GL_EXPORT GLDisplayEGL : public GLDisplay {
   std::unique_ptr<EGLGpuSwitchingObserver> gpu_switching_observer_;
 
 #if BUILDFLAG(IS_APPLE)
-  metal::MTLSharedEventPtr metal_shared_event_ = nullptr;
-  uint64_t metal_signaled_value_ = 0;
+  struct ObjCStorage;
+  std::unique_ptr<ObjCStorage> objc_storage_;
 #endif
 };
 #endif  // defined(USE_EGL)
@@ -202,7 +207,7 @@ class GL_EXPORT GLDisplayX11 : public GLDisplay {
   void* GetDisplay() const override;
   void Shutdown() override;
   bool IsInitialized() const override;
-  bool InitializeFromDisplay(gl::GLDisplay*) override;
+  bool Initialize(gl::GLDisplay*) override;
 
   GLDisplayX11(uint64_t system_device_id, DisplayKey display_key);
  private:
@@ -219,7 +224,7 @@ class GLDisplayWGL : public GLDisplay {
   void* GetDisplay() const override;
   bool IsInitialized() const override;
   void Shutdown() override;
-  bool InitializeFromDisplay(GLDisplay* display) override;
+  bool Initialize(GLDisplay* display) override;
 
   bool Init(bool software_rendering);
 

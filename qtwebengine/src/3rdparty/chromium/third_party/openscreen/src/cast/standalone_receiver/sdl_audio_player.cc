@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,14 @@
 #include <sstream>
 #include <utility>
 
-#include "absl/types/span.h"
 #include "cast/standalone_receiver/avcodec_glue.h"
+#include "platform/base/span.h"
 #include "util/big_endian.h"
 #include "util/chrono_helpers.h"
 #include "util/osp_logging.h"
 #include "util/trace_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -53,7 +52,7 @@ void InterleaveAudioSamples(const uint8_t* const planes[],
 }  // namespace
 
 SDLAudioPlayer::SDLAudioPlayer(ClockNowFunctionPtr now_function,
-                               TaskRunner* task_runner,
+                               TaskRunner& task_runner,
                                Receiver* receiver,
                                AudioCodec codec,
                                std::function<void()> error_callback)
@@ -151,13 +150,13 @@ ErrorOr<Clock::time_point> SDLAudioPlayer::RenderNextFrame(
       default:
         OSP_NOTREACHED();
     }
-    pending_audio_ = absl::Span<const uint8_t>(interleaved_audio_buffer_);
+    pending_audio_ = ByteView(interleaved_audio_buffer_);
   } else {
     if (!interleaved_audio_buffer_.empty()) {
       interleaved_audio_buffer_.clear();
       interleaved_audio_buffer_.shrink_to_fit();
     }
-    pending_audio_ = absl::Span<const uint8_t>(frame.data[0], byte_count);
+    pending_audio_ = ByteView(frame.data[0], byte_count);
   }
 
   // SDL provides no way to query the actual lead time before audio samples will
@@ -236,5 +235,4 @@ SDL_AudioFormat SDLAudioPlayer::GetSDLAudioFormat(AVSampleFormat format) {
   return kSDLAudioFormatUnknown;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

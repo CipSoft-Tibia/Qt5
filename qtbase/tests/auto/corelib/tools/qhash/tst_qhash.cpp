@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -2841,9 +2841,6 @@ void tst_QHash::QTBUG98265()
 */
 void tst_QHash::detachAndReferences()
 {
-#if !QT_CONFIG(cxx11_future)
-    QSKIP("This test requires cxx11_future")
-#else
     // Repeat a few times because it's not a guarantee
     for (int i = 0; i < 50; ++i) {
         QHash<char, char> hash;
@@ -2881,7 +2878,6 @@ void tst_QHash::detachAndReferences()
         QVERIFY(hash.contains(kCopy));
         QCOMPARE(hash.value(kCopy), vCopy);
     }
-#endif
 }
 
 void tst_QHash::lookupUsingKeyIterator()

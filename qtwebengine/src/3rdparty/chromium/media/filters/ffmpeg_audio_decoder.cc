@@ -56,7 +56,7 @@ FFmpegAudioDecoder::FFmpegAudioDecoder(
       state_(DecoderState::kUninitialized),
       av_sample_format_(0),
       media_log_(media_log),
-      pool_(new AudioBufferMemoryPool()) {
+      pool_(base::MakeRefCounted<AudioBufferMemoryPool>()) {
   DETACH_FROM_SEQUENCE(sequence_checker_);
 }
 
@@ -154,6 +154,14 @@ void FFmpegAudioDecoder::DecodeBuffer(const DecoderBuffer& buffer,
   if (!buffer.end_of_stream() && buffer.timestamp() == kNoTimestamp) {
     DVLOG(1) << "Received a buffer without timestamps!";
     std::move(decode_cb).Run(DecoderStatus::Codes::kFailed);
+    return;
+  }
+
+  if (!buffer.end_of_stream() && buffer.decrypt_config() &&
+      buffer.decrypt_config()->encryption_scheme() !=
+          EncryptionScheme::kUnencrypted) {
+    DLOG(ERROR) << "Encrypted buffer not supported";
+    std::move(decode_cb).Run(DecoderStatus::Codes::kUnsupportedEncryptionMode);
     return;
   }
 

@@ -142,6 +142,14 @@ std::string Stringify(const Json::Value& value) {
   return stream.str();
 }
 
+openscreen::cast::SenderStats ConstructDefaultSenderStats() {
+  return openscreen::cast::SenderStats{
+      .audio_statistics = openscreen::cast::SenderStats::StatisticsList(),
+      .audio_histograms = openscreen::cast::SenderStats::HistogramsList(),
+      .video_statistics = openscreen::cast::SenderStats::StatisticsList(),
+      .video_histograms = openscreen::cast::SenderStats::HistogramsList()};
+}
+
 }  // namespace
 
 class OpenscreenSessionHostTest : public mojom::ResourceProvider,
@@ -166,6 +174,7 @@ class OpenscreenSessionHostTest : public mojom::ResourceProvider,
   MOCK_METHOD(void, LogInfoMessage, (const std::string&));
   MOCK_METHOD(void, LogErrorMessage, (const std::string&));
   MOCK_METHOD(void, OnSourceChanged, ());
+  MOCK_METHOD(void, OnRemotingStateChanged, (bool is_remoting));
 
   MOCK_METHOD(void, OnGetVideoCaptureHost, ());
   MOCK_METHOD(void, OnGetNetworkContext, ());
@@ -217,6 +226,10 @@ class OpenscreenSessionHostTest : public mojom::ResourceProvider,
         std::make_unique<NiceMock<FakeVideoCaptureHost>>(std::move(receiver));
     OnGetVideoCaptureHost();
   }
+
+  void GetVideoEncoderMetricsProvider(
+      mojo::PendingReceiver<media::mojom::VideoEncoderMetricsProvider> receiver)
+      override {}
 
   void GetNetworkContext(
       mojo::PendingReceiver<network::mojom::NetworkContext> receiver) override {
@@ -281,7 +294,8 @@ class OpenscreenSessionHostTest : public mojom::ResourceProvider,
 
   // Create a mirroring session. Expect to send OFFER message.
   void CreateSession(SessionType session_type,
-                     bool is_remote_playback = false) {
+                     bool is_remote_playback = false,
+                     bool enable_rtcp_reporting = false) {
     session_type_ = session_type;
     is_remote_playback_ = is_remote_playback;
     mojom::SessionParametersPtr session_params =
@@ -297,6 +311,9 @@ class OpenscreenSessionHostTest : public mojom::ResourceProvider,
     }
     if (force_letterboxing_) {
       session_params->force_letterboxing = true;
+    }
+    if (enable_rtcp_reporting) {
+      session_params->enable_rtcp_reporting = true;
     }
     session_params->is_remote_playback = is_remote_playback_;
     cast_mode_ = "mirroring";
@@ -314,6 +331,7 @@ class OpenscreenSessionHostTest : public mojom::ResourceProvider,
     EXPECT_CALL(*this, OnError(_)).Times(0);
     EXPECT_CALL(*this, OnOutboundMessage(SenderMessage::Type::kOffer));
     EXPECT_CALL(*this, OnInitialized());
+    EXPECT_CALL(*this, OnRemotingStateChanged(false));
     session_host_ = std::make_unique<OpenscreenSessionHost>(
         std::move(session_params), gfx::Size(1920, 1080),
         std::move(session_observer_remote), std::move(resource_provider_remote),
@@ -385,6 +403,7 @@ class OpenscreenSessionHostTest : public mojom::ResourceProvider,
       EXPECT_CALL(*this, OnError(SessionError::ANSWER_TIME_OUT)).Times(0);
       // Expect to send OFFER message to fallback on mirroring.
       EXPECT_CALL(*this, OnOutboundMessage(SenderMessage::Type::kOffer));
+      EXPECT_CALL(*this, OnRemotingStateChanged(false));
       // The start of remoting is expected to fail.
       EXPECT_CALL(
           remoting_source_,
@@ -442,6 +461,7 @@ class OpenscreenSessionHostTest : public mojom::ResourceProvider,
         .Times(0);
     EXPECT_CALL(*this, OnOutboundMessage(SenderMessage::Type::kOffer))
         .WillOnce(InvokeWithoutArgs(&run_loop, &base::RunLoop::Quit));
+    EXPECT_CALL(*this, OnRemotingStateChanged(true));
     if (is_remote_playback_) {
       EXPECT_TRUE(video_host_ && video_host_->paused());
     }
@@ -466,6 +486,7 @@ class OpenscreenSessionHostTest : public mojom::ResourceProvider,
     const RemotingStopReason reason = RemotingStopReason::LOCAL_PLAYBACK;
     // Expect to send OFFER message to fallback on mirroring.
     EXPECT_CALL(*this, OnOutboundMessage(SenderMessage::Type::kOffer));
+    EXPECT_CALL(*this, OnRemotingStateChanged(false));
     EXPECT_CALL(remoting_source_, OnStopped(reason));
     remoter_->Stop(reason);
     task_environment_.RunUntilIdle();
@@ -736,32 +757,42 @@ TEST_F(OpenscreenSessionHostTest, UpdateBandwidthEstimate) {
   CreateSession(SessionType::VIDEO_ONLY);
   StartSession();
 
+  constexpr int kMinVideoBitrate = 393216;
+  constexpr int kMaxVideoBitrate = 1250000;
   // Default bitrate should be twice the minimum.
-  EXPECT_EQ(786432, session_host().GetSuggestedVideoBitrate());
+  EXPECT_EQ(786432, session_host().GetSuggestedVideoBitrate(kMinVideoBitrate,
+                                                            kMaxVideoBitrate));
 
   // If the estimate is below the minimum, it should stay at the minimum.
-  session_host().forced_bandwidth_estimate_ = 1000;
+  session_host().forced_bandwidth_estimate_for_testing_ = 1000;
   session_host().UpdateBandwidthEstimate();
-  EXPECT_EQ(393216, session_host().GetSuggestedVideoBitrate());
+  EXPECT_EQ(kMinVideoBitrate, session_host().GetSuggestedVideoBitrate(
+                                  kMinVideoBitrate, kMaxVideoBitrate));
 
-  // It should go up gradually instead of all the way to the max.
-  session_host().forced_bandwidth_estimate_ = 1000000;
+  // It should gradually reach the max bandwidth estimate when raised.
+  session_host().forced_bandwidth_estimate_for_testing_ = 1000000;
   session_host().UpdateBandwidthEstimate();
-  EXPECT_EQ(432537, session_host().GetSuggestedVideoBitrate());
-
-  session_host().UpdateBandwidthEstimate();
-  EXPECT_EQ(475790, session_host().GetSuggestedVideoBitrate());
-
-  session_host().UpdateBandwidthEstimate();
-  EXPECT_EQ(523369, session_host().GetSuggestedVideoBitrate());
+  EXPECT_EQ(432537, session_host().GetSuggestedVideoBitrate(kMinVideoBitrate,
+                                                            kMaxVideoBitrate));
 
   session_host().UpdateBandwidthEstimate();
-  EXPECT_EQ(575705, session_host().GetSuggestedVideoBitrate());
+  EXPECT_EQ(475790, session_host().GetSuggestedVideoBitrate(kMinVideoBitrate,
+                                                            kMaxVideoBitrate));
+  for (int i = 0; i < 20; ++i) {
+    session_host().UpdateBandwidthEstimate();
+  }
+  // The max should be 80% of `forced_bandwidth_estimate_for_testing_`.
+  EXPECT_EQ(800000, session_host().GetSuggestedVideoBitrate(kMinVideoBitrate,
+                                                            kMaxVideoBitrate));
 
-  // Should continue to climb at a reasonable rate if the estimate goes up.
-  session_host().forced_bandwidth_estimate_ = 10000000;
-  session_host().UpdateBandwidthEstimate();
-  EXPECT_EQ(633275, session_host().GetSuggestedVideoBitrate());
+  // The video bitrate should stay saturated at the cap when reached.
+  session_host().forced_bandwidth_estimate_for_testing_ = kMaxVideoBitrate + 1;
+  for (int i = 0; i < 20; ++i) {
+    session_host().UpdateBandwidthEstimate();
+  }
+  // The max should be 80% of `kMaxVideoBitrate`.
+  EXPECT_EQ(1000000, session_host().GetSuggestedVideoBitrate(kMinVideoBitrate,
+                                                             kMaxVideoBitrate));
 
   StopSession();
 }
@@ -835,7 +866,7 @@ TEST_F(OpenscreenSessionHostTest, ShouldEnableHardwareVp8EncodingIfSupported) {
 
                           [](const media::cast::FrameSenderConfig& config) {
                             return config.codec ==
-                                       media::cast::Codec::CODEC_VIDEO_VP8 &&
+                                       media::cast::Codec::kVideoVp8 &&
                                    config.use_hardware_encoder;
                           }));
 #endif
@@ -870,10 +901,22 @@ TEST_F(OpenscreenSessionHostTest, ShouldEnableHardwareH264EncodingIfSupported) {
 
                           [](const media::cast::FrameSenderConfig& config) {
                             return config.codec ==
-                                       media::cast::Codec::CODEC_VIDEO_H264 &&
+                                       media::cast::Codec::kVideoH264 &&
                                    config.use_hardware_encoder;
                           }));
 #endif
+}
+
+TEST_F(OpenscreenSessionHostTest, GetStatsDefault) {
+  CreateSession(SessionType::AUDIO_AND_VIDEO);
+  EXPECT_TRUE(session_host().GetMirroringStats().empty());
+}
+
+TEST_F(OpenscreenSessionHostTest, GetStatsEnabled) {
+  CreateSession(SessionType::AUDIO_AND_VIDEO, /* remote_playback */ false,
+                /* rtcp_reporting */ true);
+  session_host().SetSenderStatsForTest(ConstructDefaultSenderStats());
+  EXPECT_FALSE(session_host().GetMirroringStats().empty());
 }
 
 }  // namespace mirroring

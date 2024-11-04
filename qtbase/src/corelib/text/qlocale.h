@@ -36,6 +36,8 @@ class Q_CORE_EXPORT QLocale
     friend class QTextStreamPrivate;
 
 public:
+    static constexpr int DefaultTwoDigitBaseYear = 1900;
+
 // see qlocale_data_p.h for more info on generated data
 // GENERATED PART STARTS HERE
     enum Language : ushort {
@@ -383,6 +385,7 @@ public:
         Anii = 341,
         Kangri = 342,
         Venetian = 343,
+        Kuvi = 344,
 
         Afan = Oromo,
         Bengali = Bangla,
@@ -404,7 +407,7 @@ public:
         Uigur = Uyghur,
         Walamo = Wolaytta,
 
-        LastLanguage = Venetian
+        LastLanguage = Kuvi
     };
 
     enum Script : ushort {
@@ -888,6 +891,9 @@ public:
         FloatingPointShortest = -128
     };
 
+    enum class TagSeparator : char { Dash = '-', Underscore = '_' };
+    Q_ENUM(TagSeparator)
+
     enum CurrencySymbolFormat {
         CurrencyIsoCode,
         CurrencySymbol,
@@ -928,9 +934,14 @@ public:
     QT_DEPRECATED_VERSION_X_6_6("Use territory() instead")
     Country country() const;
 #endif
-    QString name() const;
 
+#if QT_CORE_REMOVED_SINCE(6, 7)
+    QString name() const;
     QString bcp47Name() const;
+#endif
+    QString name(TagSeparator separator = TagSeparator::Underscore) const;
+    QString bcp47Name(TagSeparator separator = TagSeparator::Dash) const;
+
     QString nativeLanguageName() const;
     QString nativeTerritoryName() const;
 #if QT_DEPRECATED_SINCE(6, 6)
@@ -1006,18 +1017,39 @@ public:
     QString dateFormat(FormatType format = LongFormat) const;
     QString timeFormat(FormatType format = LongFormat) const;
     QString dateTimeFormat(FormatType format = LongFormat) const;
+    // QCalendar's header has to #include QLocale's, preventing the reverse, so
+    // QCalendar parameters can't have defaults here.
 #if QT_CONFIG(datestring)
-    QDate toDate(const QString &string, FormatType = LongFormat) const;
     QTime toTime(const QString &string, FormatType = LongFormat) const;
-    QDateTime toDateTime(const QString &string, FormatType format = LongFormat) const;
-    QDate toDate(const QString &string, const QString &format) const;
     QTime toTime(const QString &string, const QString &format) const;
+#  if QT_CORE_REMOVED_SINCE(6, 7)
+    QDate toDate(const QString &string, FormatType = LongFormat) const;
+    QDate toDate(const QString &string, const QString &format) const;
+    QDateTime toDateTime(const QString &string, FormatType format = LongFormat) const;
     QDateTime toDateTime(const QString &string, const QString &format) const;
     // Calendar-aware API
     QDate toDate(const QString &string, FormatType format, QCalendar cal) const;
-    QDateTime toDateTime(const QString &string, FormatType format, QCalendar cal) const;
     QDate toDate(const QString &string, const QString &format, QCalendar cal) const;
+    QDateTime toDateTime(const QString &string, FormatType format, QCalendar cal) const;
     QDateTime toDateTime(const QString &string, const QString &format, QCalendar cal) const;
+#  endif
+    QDate toDate(const QString &string, FormatType = LongFormat,
+                 int baseYear = DefaultTwoDigitBaseYear) const;
+    QDate toDate(const QString &string, const QString &format,
+                 int baseYear = DefaultTwoDigitBaseYear) const;
+    QDateTime toDateTime(const QString &string, FormatType format = LongFormat,
+                         int baseYear = DefaultTwoDigitBaseYear) const;
+    QDateTime toDateTime(const QString &string, const QString &format,
+                         int baseYear = DefaultTwoDigitBaseYear) const;
+    // Calendar-aware API
+    QDate toDate(const QString &string, FormatType format, QCalendar cal,
+                 int baseYear = DefaultTwoDigitBaseYear) const;
+    QDate toDate(const QString &string, const QString &format, QCalendar cal,
+                 int baseYear = DefaultTwoDigitBaseYear) const;
+    QDateTime toDateTime(const QString &string, FormatType format, QCalendar cal,
+                         int baseYear = DefaultTwoDigitBaseYear) const;
+    QDateTime toDateTime(const QString &string, const QString &format, QCalendar cal,
+                         int baseYear = DefaultTwoDigitBaseYear) const;
 #endif
 
     QString decimalPoint() const;
@@ -1063,7 +1095,10 @@ public:
 
     QString formattedDataSize(qint64 bytes, int precision = 2, DataSizeFormats format = DataSizeIecFormat) const;
 
+#if QT_CORE_REMOVED_SINCE(6, 7)
     QStringList uiLanguages() const;
+#endif
+    QStringList uiLanguages(TagSeparator separator = TagSeparator::Dash) const;
 
     enum LanguageCodeType {
         ISO639Part1 = 1 << 0,
@@ -1136,7 +1171,7 @@ private:
     friend class QLocalePrivate;
     friend class QSystemLocale;
     friend class QCalendarBackend;
-    friend class QGregorianCalendar;
+    friend class QRomanCalendar;
     friend Q_CORE_EXPORT size_t qHash(const QLocale &key, size_t seed) noexcept;
 
     friend bool operator==(const QLocale &lhs, const QLocale &rhs) { return lhs.equals(rhs); }

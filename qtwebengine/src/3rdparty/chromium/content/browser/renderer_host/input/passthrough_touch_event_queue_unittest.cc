@@ -126,8 +126,9 @@ class PassthroughTouchEventQueueTest : public testing::Test,
   void SendTouchEvent(WebTouchEvent event) {
     if (slop_length_dips_) {
       event.moved_beyond_slop_region = false;
-      if (WebTouchEventTraits::IsTouchSequenceStart(event))
+      if (event.IsTouchSequenceStart()) {
         anchor_ = event.touches[0].PositionInWidget();
+      }
       if (event.GetType() == WebInputEvent::Type::kTouchMove) {
         gfx::Vector2dF delta = anchor_ - event.touches[0].PositionInWidget();
         if (delta.LengthSquared() > slop_length_dips_ * slop_length_dips_)
@@ -790,7 +791,7 @@ TEST_F(PassthroughTouchEventQueueTest, SynchronousAcksInOrder) {
                                ui::EventTimeForNow());
   followup_event.touches_length = 1;
   followup_event.touches[0].id = 0;
-  followup_event.unique_touch_event_id = 100;
+  followup_event.unique_touch_event_id = ui::GetNextTouchEventId();
   followup_event.touches[0].state = WebTouchPoint::State::kStateMoved;
   SetFollowupEvent(followup_event);
   SetSyncAckResult(blink::mojom::InputEventResultState::kConsumed);
@@ -801,7 +802,8 @@ TEST_F(PassthroughTouchEventQueueTest, SynchronousAcksInOrder) {
   EXPECT_EQ(0U, queued_event_count());
   EXPECT_EQ(1U, GetAndResetSentEventCount());
   EXPECT_EQ(3U, GetAndResetAckedEventCount());
-  EXPECT_EQ(100U, acked_event().unique_touch_event_id);
+  EXPECT_EQ(followup_event.unique_touch_event_id,
+            acked_event().unique_touch_event_id);
 }
 
 // Tests that followup events triggered by an immediate ack from

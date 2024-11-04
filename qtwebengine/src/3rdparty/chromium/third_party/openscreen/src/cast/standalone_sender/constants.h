@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 
 #include "util/chrono_helpers.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // How often should the congestion control logic re-evaluate the target encode
 // bitrates?
@@ -27,7 +26,6 @@ constexpr int kDefaultMaxBitrate = 5 << 20;  // 5 Mbps.
 // What is the minimum amount of bandwidth required?
 constexpr int kMinRequiredBitrate = 384 << 10;  // 384 kbps.
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STANDALONE_SENDER_CONSTANTS_H_

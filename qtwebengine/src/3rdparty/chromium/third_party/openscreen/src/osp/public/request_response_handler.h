@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "osp/public/message_demuxer.h"
 #include "osp/public/network_service_manager.h"
 #include "osp/public/protocol_connection.h"
@@ -19,8 +19,7 @@
 #include "platform/base/macros.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 template <typename T>
 using MessageDecodingFunction = ssize_t (*)(const uint8_t*, size_t, T*);
@@ -94,7 +93,7 @@ class RequestResponseHandler : public MessageDemuxer::MessageCallback {
           std::is_same<typename std::decay<RequestTRval>::type,
                        RequestT>::value,
       Error>::type
-  WriteMessage(absl::optional<uint64_t> id, RequestTRval&& message) {
+  WriteMessage(std::optional<uint64_t> id, RequestTRval&& message) {
     auto* request_msg = RequestCoderTraits::serial_request(message);
     if (connection_) {
       request_msg->request_id = GetNextRequestId(connection_->endpoint_id());
@@ -118,7 +117,7 @@ class RequestResponseHandler : public MessageDemuxer::MessageCallback {
                        RequestT>::value,
       Error>::type
   WriteMessage(RequestTRval&& message) {
-    return WriteMessage(absl::nullopt, std::move(message));
+    return WriteMessage(std::nullopt, std::move(message));
   }
 
   // Remove the message that was originally written with |id| from the send and
@@ -195,7 +194,7 @@ class RequestResponseHandler : public MessageDemuxer::MessageCallback {
 
  private:
   struct RequestWithId {
-    absl::optional<uint64_t> id;
+    std::optional<uint64_t> id;
     RequestT request;
   };
 
@@ -225,7 +224,6 @@ class RequestResponseHandler : public MessageDemuxer::MessageCallback {
   OSP_DISALLOW_COPY_AND_ASSIGN(RequestResponseHandler);
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_PUBLIC_REQUEST_RESPONSE_HANDLER_H_

@@ -12,35 +12,37 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import m from 'mithril';
+
 import {Actions} from '../common/actions';
 import {EngineProxy} from '../common/engine';
-import {NUM, NUM_NULL, STR_NULL} from '../common/query_result';
+import {LONG, NUM, NUM_NULL, STR_NULL} from '../common/query_result';
 import {translateState} from '../common/thread_state';
-import {fromNs, timeToCode} from '../common/time';
+import {
+  duration,
+  Time,
+  time,
+} from '../common/time';
 
-import {copyToClipboard} from './clipboard';
+import {Anchor} from './anchor';
 import {globals} from './globals';
-import {menuItem} from './popup_menu';
 import {scrollToTrackAndTs} from './scroll_helper';
+import {Icons} from './semantic_icons';
 import {
   asUtid,
   SchedSqlId,
   ThreadStateSqlId,
-  toTraceTime,
-  TPTimestamp,
+  Utid,
 } from './sql_types';
 import {
-  constraintsToQueryFragment,
+  constraintsToQuerySuffix,
   fromNumNull,
   SQLConstraints,
 } from './sql_utils';
 import {
-  getProcessName,
   getThreadInfo,
-  getThreadName,
   ThreadInfo,
 } from './thread_and_process_info';
-import {dict, Dict, maybeValue, Value, value} from './value';
 
 // Representation of a single thread state object, corresponding to
 // a row for the |thread_slice| table.
@@ -49,10 +51,10 @@ export interface ThreadState {
   threadStateSqlId: ThreadStateSqlId;
   // Id of the corresponding entry in the |sched| table.
   schedSqlId?: SchedSqlId;
-  // Timestamp of the the beginning of this thread state in nanoseconds.
-  ts: TPTimestamp;
+  // Timestamp of the beginning of this thread state in nanoseconds.
+  ts: time;
   // Duration of this thread state in nanoseconds.
-  dur: number;
+  dur: duration;
   // CPU id if this thread state corresponds to a thread running on the CPU.
   cpu?: number;
   // Human-readable name of this thread state.
@@ -84,12 +86,12 @@ export async function getThreadStateFromConstraints(
       thread_state.utid as utid,
       waker_utid as wakerUtid
     FROM thread_state
-    ${constraintsToQueryFragment(constraints)}`);
+    ${constraintsToQuerySuffix(constraints)}`);
   const it = query.iter({
     threadStateSqlId: NUM,
     schedSqlId: NUM_NULL,
-    ts: NUM,
-    dur: NUM,
+    ts: LONG,
+    dur: LONG,
     cpu: NUM_NULL,
     state: STR_NULL,
     blockedFunction: STR_NULL,
@@ -109,7 +111,7 @@ export async function getThreadStateFromConstraints(
     result.push({
       threadStateSqlId: it.threadStateSqlId as ThreadStateSqlId,
       schedSqlId: fromNumNull(it.schedSqlId) as (SchedSqlId | undefined),
-      ts: it.ts as TPTimestamp,
+      ts: Time.fromRaw(it.ts),
       dur: it.dur,
       cpu: fromNumNull(it.cpu),
       state: translateState(it.state || undefined, ioWait),
@@ -125,7 +127,7 @@ export async function getThreadStateFromConstraints(
 export async function getThreadState(
     engine: EngineProxy, id: number): Promise<ThreadState|undefined> {
   const result = await getThreadStateFromConstraints(engine, {
-    where: [`id=${id}`],
+    filters: [`id=${id}`],
   });
   if (result.length > 1) {
     throw new Error(`thread_state table has more than one row with id ${id}`);
@@ -136,7 +138,7 @@ export async function getThreadState(
   return result[0];
 }
 
-export function goToSchedSlice(cpu: number, id: SchedSqlId, ts: TPTimestamp) {
+export function goToSchedSlice(cpu: number, id: SchedSqlId, ts: time) {
   let trackId: string|undefined;
   for (const track of Object.values(globals.state.tracks)) {
     if (track.kind === 'CpuSliceTrack' &&
@@ -151,56 +153,52 @@ export function goToSchedSlice(cpu: number, id: SchedSqlId, ts: TPTimestamp) {
   scrollToTrackAndTs(trackId, ts);
 }
 
-function stateToValue(
-    state: string,
-    cpu: number|undefined,
-    id: SchedSqlId|undefined,
-    ts: TPTimestamp): Value|null {
-  if (!state) {
-    return null;
-  }
-  if (id === undefined || cpu === undefined) {
-    return value(state);
-  }
-  return value(`${state} on CPU ${cpu}`, {
-    rightButton: {
-      action: () => {
-        goToSchedSlice(cpu, id, ts);
-      },
-      hoverText: 'Go to CPU slice',
-    },
-  });
+interface ThreadStateRefAttrs {
+  id: ThreadStateSqlId;
+  ts: time;
+  dur: duration;
+  utid: Utid;
+  // If not present, a placeholder name will be used.
+  name?: string;
 }
 
-export function threadStateToDict(state: ThreadState): Dict {
-  const result: {[name: string]: Value|null} = {};
+export class ThreadStateRef implements m.ClassComponent<ThreadStateRefAttrs> {
+  view(vnode: m.Vnode<ThreadStateRefAttrs>) {
+    return m(
+        Anchor,
+        {
+          icon: Icons.UpdateSelection,
+          onclick: () => {
+            let trackId: string|number|undefined;
+            for (const track of Object.values(globals.state.tracks)) {
+              if (track.kind === 'ThreadStateTrack' &&
+                  (track.config as {utid: number}).utid === vnode.attrs.utid) {
+                trackId = track.id;
+              }
+            }
 
-  result['Start time'] = value(timeToCode(toTraceTime(state.ts)));
-  result['Duration'] = value(timeToCode(fromNs(state.dur)));
-  result['State'] =
-      stateToValue(state.state, state.cpu, state.schedSqlId, state.ts);
-  result['Blocked function'] = maybeValue(state.blockedFunction);
-  const process = state?.thread?.process;
-  result['Process'] = maybeValue(process ? getProcessName(process) : undefined);
-  const thread = state?.thread;
-  result['Thread'] = maybeValue(thread ? getThreadName(thread) : undefined);
-  if (state.wakerThread) {
-    const process = state.wakerThread.process;
-    result['Waker'] = dict({
-      'Process': maybeValue(process ? getProcessName(process) : undefined),
-      'Thread': maybeValue(getThreadName(state.wakerThread)),
-    });
+            if (trackId) {
+              globals.makeSelection(Actions.selectThreadState({
+                id: vnode.attrs.id,
+                trackId: trackId.toString(),
+              }));
+
+              scrollToTrackAndTs(trackId, vnode.attrs.ts, true);
+            }
+          },
+        },
+        vnode.attrs.name ?? `Thread State ${vnode.attrs.id}`,
+    );
   }
-  result['SQL id'] = value(`thread_state[${state.threadStateSqlId}]`, {
-    contextMenu: [
-      menuItem(
-          'Copy SQL query',
-          () => {
-            copyToClipboard(`select * from thread_state where id=${
-                state.threadStateSqlId}`);
-          }),
-    ],
-  });
+}
 
-  return dict(result);
+export function threadStateRef(state: ThreadState): m.Child {
+  if (state.thread === undefined) return null;
+
+  return m(ThreadStateRef, {
+    id: state.threadStateSqlId,
+    ts: state.ts,
+    dur: state.dur,
+    utid: state.thread?.utid,
+  });
 }

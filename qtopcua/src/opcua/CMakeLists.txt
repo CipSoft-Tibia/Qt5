@@ -33,16 +33,24 @@ qt_internal_add_module(OpcUa
         client/qopcuadoublecomplexnumber.cpp client/qopcuadoublecomplexnumber.h
         client/qopcuaelementoperand.cpp client/qopcuaelementoperand.h
         client/qopcuaendpointdescription.cpp client/qopcuaendpointdescription.h
+        client/qopcuaenumdefinition.cpp client/qopcuaenumdefinition.h
+        client/qopcuaenumfield.cpp client/qopcuaenumfield.h
         client/qopcuaerrorstate.cpp client/qopcuaerrorstate.h
         client/qopcuaeuinformation.cpp client/qopcuaeuinformation.h
         client/qopcuaeventfilterresult.cpp client/qopcuaeventfilterresult.h
         client/qopcuaexpandednodeid.cpp client/qopcuaexpandednodeid.h
         client/qopcuaextensionobject.cpp client/qopcuaextensionobject.h
         client/qopcuahistorydata.cpp client/qopcuahistorydata.h
+        client/qopcuahistoryevent.cpp client/qopcuahistoryevent.h
         client/qopcuahistoryreadrawrequest.cpp client/qopcuahistoryreadrawrequest.h
+        client/qopcuahistoryreadeventrequest.cpp client/qopcuahistoryreadeventrequest.h
         client/qopcuahistoryreadresponse.cpp client/qopcuahistoryreadresponse.h
         client/qopcuahistoryreadresponseimpl.cpp client/qopcuahistoryreadresponseimpl_p.h
         client/qopcuahistoryreadresponse_p.h
+        client/qopcuainternaldatatypenode.cpp client/qopcuainternaldatatypenode_p.h
+        client/qopcuagenericstructvalue.cpp client/qopcuagenericstructvalue.h
+        client/qopcuagenericstructhandler.cpp client/qopcuagenericstructhandler.h
+        client/qopcuagenericstructhandlerprivate.cpp client/qopcuagenericstructhandler_p.h
         client/qopcualiteraloperand.cpp client/qopcualiteraloperand.h
         client/qopcualocalizedtext.cpp client/qopcualocalizedtext.h
         client/qopcuamonitoringparameters.cpp client/qopcuamonitoringparameters.h client/qopcuamonitoringparameters_p.h
@@ -59,17 +67,21 @@ qt_internal_add_module(OpcUa
         client/qopcuareferencedescription.cpp client/qopcuareferencedescription.h
         client/qopcuarelativepathelement.cpp client/qopcuarelativepathelement.h
         client/qopcuasimpleattributeoperand.cpp client/qopcuasimpleattributeoperand.h
+        client/qopcuastructuredefinition.cpp client/qopcuastructuredefinition.h
+        client/qopcuastructurefield.cpp client/qopcuastructurefield.h
         client/qopcuatype.cpp client/qopcuatype.h
         client/qopcuausertokenpolicy.cpp client/qopcuausertokenpolicy.h
         client/qopcuawriteitem.cpp client/qopcuawriteitem.h
         client/qopcuawriteresult.cpp client/qopcuawriteresult.h
         client/qopcuaxvalue.cpp client/qopcuaxvalue.h
+        client/qopcuadiagnosticinfo.cpp client/qopcuadiagnosticinfo.h
+        client/qopcuavariant.cpp client/qopcuavariant.h
+        compat/removed_api.cpp
         core/qopcuaplugin.cpp core/qopcuaplugin.h
         core/qopcuaprovider.cpp core/qopcuaprovider.h
         qopcuaglobal.h
-
-    DEFINES
-        QT_NO_FOREACH
+    NO_PCH_SOURCES
+        compat/removed_api.cpp
     LIBRARIES
         Qt::CorePrivate
         Qt::NetworkPrivate
@@ -111,7 +123,11 @@ if (QT_FEATURE_gds AND QT_FEATURE_openssl)
 endif()
 
 if(MSVC)
-    target_compile_options(OpcUa PRIVATE /constexpr:steps3000000)
+    target_compile_options(OpcUa PRIVATE /constexpr:steps3500000)
+elseif(GCC)
+    target_compile_options(OpcUa PRIVATE -fconstexpr-ops-limit=40000000)
+elseif(CLANG)
+    target_compile_options(OpcUa PRIVATE -fconstexpr-steps=2000000)
 endif()
 
 qt_internal_extend_target(OpcUa CONDITION NOT QT_FEATURE_ns0idnames

@@ -1,5 +1,5 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QStringTokenizer>
 #include <QStringBuilder>
@@ -9,7 +9,7 @@
 #include <string>
 
 Q_DECLARE_METATYPE(Qt::SplitBehavior)
-
+namespace {
 class tst_QStringTokenizer : public QObject
 {
     Q_OBJECT
@@ -45,6 +45,7 @@ QStringList toQStringList(const Container &c)
         r.push_back(toQString(e));
     return r;
 }
+} // namespace
 
 void tst_QStringTokenizer::constExpr() const
 {

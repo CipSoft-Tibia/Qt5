@@ -42,9 +42,6 @@ class QuicConnectionPeer {
   static void SetLossAlgorithm(QuicConnection* connection,
                                LossDetectionInterface* loss_algorithm);
 
-  static void PopulateStopWaitingFrame(QuicConnection* connection,
-                                       QuicStopWaitingFrame* stop_waiting);
-
   static QuicPacketCreator* GetPacketCreator(QuicConnection* connection);
 
   static QuicSentPacketManager* GetSentPacketManager(
@@ -122,9 +119,6 @@ class QuicConnectionPeer {
                                     float ack_decimation_delay);
   static bool HasRetransmittableFrames(QuicConnection* connection,
                                        uint64_t packet_number);
-  static bool GetNoStopWaitingFrames(QuicConnection* connection);
-  static void SetNoStopWaitingFrames(QuicConnection* connection,
-                                     bool no_stop_waiting_frames);
   static void SetMaxTrackedPackets(QuicConnection* connection,
                                    QuicPacketCount max_tracked_packets);
   static void SetNegotiatedVersion(QuicConnection* connection);
@@ -240,10 +234,12 @@ class QuicConnectionPeer {
   static QuicSocketAddress GetSentServerPreferredAddress(
       QuicConnection* connection);
 
-  static QuicEcnCounts* GetEcnCounts(QuicConnection* connection,
-                                     PacketNumberSpace packet_number_space);
-
   static bool TestLastReceivedPacketInfoDefaults();
+
+  // Overrides restrictions on sending ECN for test purposes.
+  static void DisableEcnCodepointValidation(QuicConnection* connection);
+
+  static void OnForwardProgressMade(QuicConnection* connection);
 };
 
 }  // namespace test

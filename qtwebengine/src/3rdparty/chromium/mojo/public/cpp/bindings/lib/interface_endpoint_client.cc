@@ -11,6 +11,7 @@
 #include "base/check.h"
 #include "base/containers/contains.h"
 #include "base/containers/cxx20_erase.h"
+#include "base/debug/alias.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
@@ -20,6 +21,7 @@
 #include "base/task/bind_post_task.h"
 #include "base/task/common/task_annotator.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/task/thread_pool/thread_pool_instance.h"
 #include "base/threading/thread_local.h"
 #include "base/trace_event/interned_args_helper.h"
 #include "base/trace_event/typed_macros.h"
@@ -261,6 +263,10 @@ class ResponderThunk : public MessageReceiverWithStatus {
           endpoint_client_->RaiseError();
         }
       } else {
+        // Instantiate a ScopedFizzleBlockShutdownTasks to allow this PostTask
+        // to fizzle if it happens after shutdown and the endpoint is bound to a
+        // BLOCK_SHUTDOWN sequence. ref. crbug.com/1442134
+        base::ThreadPoolInstance::ScopedFizzleBlockShutdownTasks fizzler;
         task_runner_->PostTask(
             FROM_HERE, base::BindOnce(&InterfaceEndpointClient::RaiseError,
                                       endpoint_client_));
@@ -458,6 +464,7 @@ InterfaceEndpointClient::InterfaceEndpointClient(
       interface_name_(interface_name),
       method_info_callback_(method_info_callback),
       method_name_callback_(method_name_callback) {
+  DCHECK(interface_name_);
   DCHECK(handle_.is_valid());
   sequence_checker_.DetachFromSequence();
 
@@ -713,6 +720,8 @@ void InterfaceEndpointClient::NotifyError(
   if (encountered_error_)
     return;
   encountered_error_ = true;
+
+  DEBUG_ALIAS_FOR_CSTR(interface_name, interface_name_, 256);
 
   // Response callbacks may hold on to resource, and there's no need to keep
   // them alive any longer. Note that it's allowed that a pending response

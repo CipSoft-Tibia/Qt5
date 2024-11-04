@@ -30,17 +30,28 @@
 #include <stdint.h>
 
 #include <libweston/libweston.h>
-#include <libweston-desktop/libweston-desktop.h>
+#include <libweston/desktop.h>
 
 struct ivi_shell
 {
 	struct wl_listener destroy_listener;
 	struct wl_listener wake_listener;
+	struct wl_listener show_input_panel_listener;
+	struct wl_listener hide_input_panel_listener;
+	struct wl_listener update_input_panel_listener;
 
 	struct weston_compositor *compositor;
 
 	struct weston_desktop *desktop;
 	struct wl_list ivi_surface_list; /* struct ivi_shell_surface::link */
+
+	struct text_backend *text_backend;
+
+	struct ivi_shell_surface *text_input_surface;
+	struct {
+		struct wl_resource *binding;
+		struct wl_list surfaces;
+	} input_panel;
 };
 
 void
@@ -51,5 +62,10 @@ struct ivi_layout_surface;
 
 struct ivi_layout_surface *
 shell_get_ivi_layout_surface(struct weston_surface *surface);
+
+void
+shell_ensure_text_input(struct ivi_shell *shell);
+bool
+shell_is_input_panel_surface(struct weston_surface *surface);
 
 #endif /* WESTON_IVI_SHELL_H */

@@ -37,6 +37,12 @@ constexpr char FlossAdminClient::kExportedCallbacksPath[] =
 
 FlossAdminClient::FlossAdminClient() = default;
 FlossAdminClient::~FlossAdminClient() {
+  if (callback_id_) {
+    CallAdminMethod<bool>(
+        base::BindOnce(&FlossAdminClient::HandleCallbackUnregistered,
+                       weak_ptr_factory_.GetWeakPtr()),
+        admin::kUnregisterCallback, callback_id_.value());
+  }
   if (bus_) {
     exported_callback_manager_.UnexportCallback(
         dbus::ObjectPath(kExportedCallbacksPath));
@@ -53,11 +59,27 @@ void FlossAdminClient::OnMethodsExported() {
 }
 
 void FlossAdminClient::HandleCallbackRegistered(DBusResult<uint32_t> result) {
+  if (!result.has_value()) {
+    LOG(WARNING) << "Failed to register admin client: " << result.error();
+    return;
+  }
+
+  if (on_ready_) {
+    std::move(on_ready_).Run();
+  }
+
   client_registered_ = true;
+  callback_id_ = *result;
   while (!initialized_callbacks_.empty()) {
     auto& cb = initialized_callbacks_.front();
     std::move(cb).Run();
     initialized_callbacks_.pop();
+  }
+}
+
+void FlossAdminClient::HandleCallbackUnregistered(DBusResult<bool> result) {
+  if (!result.has_value() || *result == false) {
+    LOG(WARNING) << __func__ << "Failed to unregister callback";
   }
 }
 
@@ -75,7 +97,8 @@ void FlossAdminClient::HandleGetAllowedServices(
 
 void FlossAdminClient::Init(dbus::Bus* bus,
                             const std::string& service_name,
-                            const int adapter_index) {
+                            const int adapter_index,
+                            base::OnceClosure on_ready) {
   bus_ = bus;
   admin_path_ = FlossDBusClient::GenerateAdminPath(adapter_index);
   service_name_ = service_name;
@@ -111,6 +134,8 @@ void FlossAdminClient::Init(dbus::Bus* bus,
     LOG(ERROR) << "Unable to successfully export FlossAdminClientObserver.";
     return;
   }
+
+  on_ready_ = std::move(on_ready);
 }
 
 void FlossAdminClient::AddObserver(FlossAdminClientObserver* observer) {

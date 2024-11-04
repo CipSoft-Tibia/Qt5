@@ -137,12 +137,17 @@ public:
     instance provided by QItemEditorFactory is installed on all item
     delegates. You can set a custom factory using
     setItemEditorFactory() or set a new default factory with
-    QItemEditorFactory::setDefaultFactory(). It is the data stored in
-    the item model with the \l{Qt::}{EditRole} that is edited. See the
-    QItemEditorFactory class for a more high-level introduction to
-    item editor factories. The \l{Color Editor Factory Example}{Color
-    Editor Factory} example shows how to create custom editors with a
-    factory.
+    QItemEditorFactory::setDefaultFactory().
+
+    \snippet code/src_gui_itemviews_qitemeditorfactory.cpp setDefaultFactory
+
+    After the new factory has been set, all standard item delegates
+    will use it (i.e, also delegates that were created before the new
+    default factory was set).
+
+    It is the data stored in the item model with the \l{Qt::}{EditRole}
+    that is edited. See the QItemEditorFactory class for a more
+    high-level introduction to item editor factories.
 
     \section1 Subclassing QStyledItemDelegate
 
@@ -204,8 +209,7 @@ public:
     documentation for details.
 
     \sa {Delegate Classes}, QItemDelegate, QAbstractItemDelegate, QStyle,
-        {Spin Box Delegate Example}, {Star Delegate Example}, {Color
-         Editor Factory Example}
+        {Star Delegate Example}
 */
 
 
@@ -477,15 +481,7 @@ void QStyledItemDelegate::updateEditorGeometry(QWidget *editor,
 
     QStyleOptionViewItem opt = option;
     initStyleOption(&opt, index);
-    // let the editor take up all available space
-    //if the editor is not a QLineEdit
-    //or it is in a QTableView
-#if QT_CONFIG(tableview) && QT_CONFIG(lineedit)
-    if (qobject_cast<QExpandingLineEdit*>(editor) && !qobject_cast<const QTableView*>(widget))
-        opt.showDecorationSelected = editor->style()->styleHint(QStyle::SH_ItemView_ShowDecorationSelected, nullptr, editor);
-    else
-#endif
-        opt.showDecorationSelected = true;
+    opt.showDecorationSelected = editor->style()->styleHint(QStyle::SH_ItemView_ShowDecorationSelected, nullptr, editor);
 
     QStyle *style = widget ? widget->style() : QApplication::style();
     QRect geom = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, widget);

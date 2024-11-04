@@ -12,7 +12,7 @@
 #include "core/fpdfapi/page/cpdf_colorspace.h"
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/unowned_ptr.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
 class CFX_DIBBase;
 class CFX_DIBitmap;
@@ -36,6 +36,8 @@ class CPDF_Image final : public Retainable {
   RetainPtr<const CPDF_Dictionary> GetDict() const;
   RetainPtr<const CPDF_Stream> GetStream() const;
   RetainPtr<const CPDF_Dictionary> GetOC() const;
+
+  // Never returns nullptr.
   CPDF_Document* GetDocument() const { return m_pDocument; }
 
   int32_t GetPixelHeight() const { return m_Height; }

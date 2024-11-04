@@ -10,12 +10,13 @@
 #include "third_party/blink/renderer/core/layout/ng/inline/layout_ng_text_combine.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_item_result.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_line_box_fragment_builder.h"
+#include "third_party/blink/renderer/core/layout/ng/inline/ng_line_utils.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_layout_result.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_physical_box_fragment.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_relative_utils.h"
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_inline_text.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
-#include "third_party/blink/renderer/core/svg/svg_length_context.h"
+#include "third_party/blink/renderer/core/svg/svg_length_functions.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_view.h"
 
 namespace blink {
@@ -135,12 +136,15 @@ void NGInlineBoxState::ComputeTextMetrics(const ComputedStyle& styleref,
 
   FontHeight emphasis_marks_outsets =
       ComputeEmphasisMarkOutsets(styleref, fontref);
+  FontHeight leading_space = CalculateLeadingSpace(
+      styleref.ComputedLineHeightAsFixed(fontref), text_metrics,
+      styleref.TextBoxTrim(), styleref.GetWritingMode());
   if (emphasis_marks_outsets.IsEmpty()) {
-    text_metrics.AddLeading(styleref.ComputedLineHeightAsFixed(fontref));
+    text_metrics.AddLeading(leading_space);
   } else {
     FontHeight emphasis_marks_metrics = text_metrics;
     emphasis_marks_metrics += emphasis_marks_outsets;
-    text_metrics.AddLeading(styleref.ComputedLineHeightAsFixed(fontref));
+    text_metrics.AddLeading(leading_space);
     text_metrics.Unite(emphasis_marks_metrics);
     // TODO: Is this correct to include into text_metrics? How do we use
     // text_metrics after this point?
@@ -171,8 +175,10 @@ void NGInlineBoxState::AccumulateUsedFonts(
   for (const SimpleFontData* const fallback_font : fallback_fonts) {
     FontHeight fallback_metrics =
         fallback_font->GetFontMetrics().GetFontHeight(baseline_type);
-    fallback_metrics.AddLeading(
-        fallback_font->GetFontMetrics().FixedLineSpacing());
+    FontHeight leading_space = CalculateLeadingSpace(
+        fallback_font->GetFontMetrics().FixedLineSpacing(), fallback_metrics,
+        style->TextBoxTrim(), style->GetWritingMode());
+    fallback_metrics.AddLeading(leading_space);
     metrics.Unite(fallback_metrics);
   }
 }
@@ -280,7 +286,7 @@ NGInlineBoxState* NGInlineLayoutStateStack::OnOpenTag(
   box->fragment_start = line_box.size();
   box->ResetStyle(style, is_svg_text_, *item.GetLayoutObject());
   box->item = &item;
-  box->has_start_edge = item_result.has_edge;
+  box->has_start_edge = true;
   box->margin_inline_start = item_result.margins.inline_start;
   box->margin_inline_end = item_result.margins.inline_end;
   box->borders = item_result.borders;
@@ -299,10 +305,9 @@ NGInlineBoxState* NGInlineLayoutStateStack::OnCloseTag(
     const NGConstraintSpace& space,
     NGLogicalLineItems* line_box,
     NGInlineBoxState* box,
-    FontBaseline baseline_type,
-    bool has_end_edge) {
+    FontBaseline baseline_type) {
   DCHECK_EQ(box, &stack_.back());
-  box->has_end_edge = has_end_edge;
+  box->has_end_edge = true;
   EndBoxState(space, box, line_box, baseline_type);
   // TODO(kojii): When the algorithm restarts from a break token, the stack may
   // underflow. We need either synthesize a missing box state, or push all
@@ -874,12 +879,13 @@ const NGLayoutResult* NGInlineLayoutStateStack::BoxData::CreateBoxFragment(
 
     // Propagate any OOF-positioned descendants from any atomic-inlines, etc.
     if (child.layout_result) {
-      box.PropagateChildData(child.layout_result->PhysicalFragment(),
-                             child.rect.offset - rect.offset -
-                                 ComputeRelativeOffsetForInline(
-                                     space, child.PhysicalFragment()->Style()),
-                             ComputeRelativeOffsetForOOFInInline(
-                                 space, child.PhysicalFragment()->Style()));
+      box.PropagateFromLayoutResultAndFragment(
+          *child.layout_result,
+          child.rect.offset - rect.offset -
+              ComputeRelativeOffsetForInline(space,
+                                             child.PhysicalFragment()->Style()),
+          ComputeRelativeOffsetForOOFInInline(
+              space, child.PhysicalFragment()->Style()));
     }
 
     // |NGFragmentItems| has a flat list of all descendants, except
@@ -1003,11 +1009,11 @@ NGInlineLayoutStateStack::ApplyBaselineShift(NGInlineBoxState* box,
       case EBaselineShiftType::kLength: {
         const Length& length = style.BaselineShift();
         // ValueForLength() should be called with unscaled values.
+        const float computed_font_size =
+            box->font->GetFontDescription().ComputedPixelSize() /
+            box->scaling_factor;
         baseline_shift =
-            LayoutUnit(-SVGLengthContext::ValueForLength(
-                           length, style,
-                           box->font->GetFontDescription().ComputedPixelSize() /
-                               box->scaling_factor) *
+            LayoutUnit(-ValueForLength(length, style, computed_font_size) *
                        box->scaling_factor);
         break;
       }
@@ -1148,7 +1154,10 @@ FontHeight NGInlineLayoutStateStack::MetricsForTopAndBottomAlign(
     box_metrics.descent -= box_data.padding.line_under;
     // Include the line-height property. The inline box has the height of the
     // font metrics without the line-height included.
-    box_metrics.AddLeading(style.ComputedLineHeightAsFixed());
+    FontHeight leading_space =
+        CalculateLeadingSpace(style.ComputedLineHeightAsFixed(), box_metrics,
+                              style.TextBoxTrim(), style.GetWritingMode());
+    box_metrics.AddLeading(leading_space);
     metrics.Unite(box_metrics);
   }
 

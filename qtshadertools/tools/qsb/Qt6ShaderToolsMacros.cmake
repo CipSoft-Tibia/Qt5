@@ -35,6 +35,10 @@
 #         Mandatory when a tessellation evaluation shader is in the FILES list. Must match the tess.control stage.
 #     Specify TESSELLATION_MODE to choose the tessellation mode: "triangles" or "quads".
 #         Mandatory when a tessellation control shader is in the FILES list. Must match the tess.eval. stage.
+#     Specify VIEW_COUNT to indicate the number of views the vertex shader is going to be used with.
+#         Relevant for GL_OVR_multiview which an OpenGL GLSL vertex shader can only use if num_views is
+#         declared in the shader. Not used for Vulkan (SPIR-V) and D3D12 (HLSL 6.1+), but should be set
+#         regardless whenever GLSL is enabled for a multiview vertex shader.
 #
 # The actual file name in the resource system is either :/PREFIX/FILES[i]-BASE+".qsb" or :/PREFIX/OUTPUTS[i]
 #
@@ -62,7 +66,7 @@ function(_qt_internal_add_shaders_impl target resourcename)
     cmake_parse_arguments(
         arg
         "BATCHABLE;PRECOMPILE;PERTARGETCOMPILE;NOGLSL;NOHLSL;NOMSL;DEBUGINFO;OPTIMIZED;SILENT;QUIET;TESSELLATION;_QT_INTERNAL"
-        "PREFIX;BASE;GLSL;HLSL;MSL;OUTPUT_TARGETS;TESSELLATION_VERTEX_COUNT;TESSELLATION_MODE;ZORDER_LOC"
+        "PREFIX;BASE;GLSL;HLSL;MSL;OUTPUT_TARGETS;TESSELLATION_VERTEX_COUNT;TESSELLATION_MODE;ZORDER_LOC;VIEW_COUNT"
         "FILES;OUTPUTS;DEFINES"
         ${ARGN}
     )
@@ -177,6 +181,11 @@ function(_qt_internal_add_shaders_impl target resourcename)
         if (arg_ZORDER_LOC)
             list(APPEND qsb_args "--zorder-loc")
             list(APPEND qsb_args "${arg_ZORDER_LOC}")
+        endif()
+
+        if (arg_VIEW_COUNT)
+            list(APPEND qsb_args "--view-count")
+            list(APPEND qsb_args "${arg_VIEW_COUNT}")
         endif()
 
         if (arg_SILENT)

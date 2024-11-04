@@ -62,6 +62,7 @@
 #include "ui/events/platform/platform_event_source.h"
 #include "ui/gfx/switches.h"
 #include "ui/gl/gl_context.h"
+#include "ui/gl/gl_features.h"
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/gl_surface.h"
 #include "ui/gl/gl_switches.h"
@@ -84,8 +85,8 @@
 #include "base/win/scoped_com_initializer.h"
 #include "base/win/win_util.h"
 #include "base/win/windows_version.h"
-#include "media/gpu/windows/dxva_video_decode_accelerator_win.h"
-#include "media/gpu/windows/media_foundation_video_encode_accelerator_win.h"
+#include "media/base/win/mf_initializer.h"
+#include "sandbox/policy/win/sandbox_warmup.h"
 #include "sandbox/win/src/sandbox.h"
 #endif
 
@@ -96,8 +97,9 @@
 #endif
 
 #if BUILDFLAG(IS_MAC)
-#include "base/message_loop/message_pump_mac.h"
+#include "base/message_loop/message_pump_apple.h"
 #include "components/metal_util/device_removal.h"
+#include "gpu/ipc/service/built_in_shader_cache_loader.h"
 #include "media/gpu/mac/vt_video_decode_accelerator_mac.h"
 #include "sandbox/mac/seatbelt.h"
 #endif
@@ -141,7 +143,11 @@ class ContentSandboxHelper : public gpu::GpuSandboxHelper {
       TRACE_EVENT0("gpu", "Warm up rand");
       // Warm up the random subsystem, which needs to be done pre-sandbox on all
       // platforms.
+#if BUILDFLAG(IS_WIN)
+      sandbox::policy::WarmupRandomnessInfrastructure();
+#else
       std::ignore = base::RandUint64();
+#endif  // BUILDFLAG(IS_WIN)
     }
 
 #if BUILDFLAG(USE_VAAPI)
@@ -153,8 +159,7 @@ class ContentSandboxHelper : public gpu::GpuSandboxHelper {
 #endif
 #endif  // BUILDFLAG(USE_VAAPI)
 #if BUILDFLAG(IS_WIN)
-    media::DXVAVideoDecodeAccelerator::PreSandboxInitialization();
-    media::MediaFoundationVideoEncodeAccelerator::PreSandboxInitialization();
+    media::PreSandboxMediaFoundationInitialization();
 #endif
 
 #if BUILDFLAG(IS_MAC)
@@ -188,6 +193,14 @@ class ContentSandboxHelper : public gpu::GpuSandboxHelper {
 #endif
 };
 
+void LoadMetalShaderCacheIfNecessary() {
+#if BUILDFLAG(IS_MAC)
+  if (base::FeatureList::IsEnabled(features::kUseBuiltInMetalShaderCache)) {
+    gpu::BuiltInShaderCacheLoader::StartLoading();
+  }
+#endif
+}
+
 }  // namespace
 
 // Main function for starting the Gpu process.
@@ -199,6 +212,10 @@ int GpuMain(MainFunctionParams parameters) {
       kTraceEventGpuProcessSortIndex);
 
   const base::CommandLine& command_line = *parameters.command_line;
+
+  // Start this early on as it reads from a file (in the background) and full
+  // startup is gated by this completing.
+  LoadMetalShaderCacheIfNecessary();
 
   gpu::GpuPreferences gpu_preferences;
   if (command_line.HasSwitch(switches::kGpuPreferences)) {
@@ -445,7 +462,7 @@ bool StartSandboxLinux(gpu::GpuWatchdogThread* watchdog_thread,
   sandbox_options.accelerated_video_encode_enabled =
       !gpu_prefs.disable_accelerated_video_encode;
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX)
   // Video decoding of many video streams can use thousands of FDs as well as
   // Exo clients like Lacros.
   // See https://crbug.com/1417237
@@ -463,9 +480,7 @@ bool StartSandboxLinux(gpu::GpuWatchdogThread* watchdog_thread,
       base::BindOnce(GpuProcessPreSandboxHook), sandbox_options);
 
   if (watchdog_thread) {
-    base::Thread::Options thread_options;
-    thread_options.timer_slack = base::TIMER_SLACK_MAXIMUM;
-    watchdog_thread->StartWithOptions(std::move(thread_options));
+    watchdog_thread->Start();
   }
 
   return res;

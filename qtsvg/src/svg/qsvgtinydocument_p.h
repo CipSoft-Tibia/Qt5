@@ -36,11 +36,11 @@ class QTransform;
 class Q_SVG_PRIVATE_EXPORT QSvgTinyDocument : public QSvgStructureNode
 {
 public:
-    static QSvgTinyDocument * load(const QString &file);
-    static QSvgTinyDocument * load(const QByteArray &contents);
-    static QSvgTinyDocument * load(QXmlStreamReader *contents);
+    static QSvgTinyDocument *load(const QString &file, QtSvg::Options options = {});
+    static QSvgTinyDocument *load(const QByteArray &contents, QtSvg::Options options = {});
+    static QSvgTinyDocument *load(QXmlStreamReader *contents, QtSvg::Options options = {});
 public:
-    QSvgTinyDocument();
+    QSvgTinyDocument(QtSvg::Options options);
     ~QSvgTinyDocument();
     Type type() const override;
 
@@ -58,7 +58,9 @@ public:
     QRectF viewBox() const;
     void setViewBox(const QRectF &rect);
 
-    void draw(QPainter *p, QSvgExtraStates &) override; //from the QSvgNode
+    QtSvg::Options options() const;
+
+    void drawCommand(QPainter *, QSvgExtraStates &) override;
 
     void draw(QPainter *p);
     void draw(QPainter *p, const QRectF &bounds);
@@ -73,8 +75,8 @@ public:
     QSvgFont *svgFont(const QString &family) const;
     void addNamedNode(const QString &id, QSvgNode *node);
     QSvgNode *namedNode(const QString &id) const;
-    void addNamedStyle(const QString &id, QSvgFillStyleProperty *style);
-    QSvgFillStyleProperty *namedStyle(const QString &id) const;
+    void addNamedStyle(const QString &id, QSvgPaintStyleProperty *style);
+    QSvgPaintStyleProperty *namedStyle(const QString &id) const;
 
     void restartAnimation();
     int currentElapsed() const;
@@ -84,6 +86,7 @@ public:
     int currentFrame() const;
     void setCurrentFrame(int);
     void setFramesPerSecond(int num);
+
 private:
     void mapSourceToTarget(QPainter *p, const QRectF &targetRect, const QRectF &sourceRect = QRectF());
 private:
@@ -97,7 +100,7 @@ private:
 
     QHash<QString, QSvgRefCounter<QSvgFont> > m_fonts;
     QHash<QString, QSvgNode *> m_namedNodes;
-    QHash<QString, QSvgRefCounter<QSvgFillStyleProperty> > m_namedStyles;
+    QHash<QString, QSvgRefCounter<QSvgPaintStyleProperty> > m_namedStyles;
 
     qint64 m_time;
     bool  m_animated;
@@ -105,7 +108,11 @@ private:
     int   m_fps;
 
     QSvgExtraStates m_states;
+
+    const QtSvg::Options m_options;
 };
+
+Q_SVG_PRIVATE_EXPORT QDebug operator<<(QDebug debug, const QSvgTinyDocument &doc);
 
 inline QSize QSvgTinyDocument::size() const
 {

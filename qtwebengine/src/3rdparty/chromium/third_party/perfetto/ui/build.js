@@ -135,27 +135,27 @@ const subprocesses = [];
 
 async function main() {
   const parser = new argparse.ArgumentParser();
-  parser.addArgument('--out', {help: 'Output directory'});
-  parser.addArgument(['--watch', '-w'], {action: 'storeTrue'});
-  parser.addArgument(['--serve', '-s'], {action: 'storeTrue'});
-  parser.addArgument('--serve-host', {help: '--serve bind host'});
-  parser.addArgument('--serve-port', {help: '--serve bind port', type: 'int'});
-  parser.addArgument(['--verbose', '-v'], {action: 'storeTrue'});
-  parser.addArgument(['--no-build', '-n'], {action: 'storeTrue'});
-  parser.addArgument(['--no-wasm', '-W'], {action: 'storeTrue'});
-  parser.addArgument(['--run-unittests', '-t'], {action: 'storeTrue'});
-  parser.addArgument(['--run-integrationtests', '-T'], {action: 'storeTrue'});
-  parser.addArgument(['--debug', '-d'], {action: 'storeTrue'});
-  parser.addArgument(['--interactive', '-i'], {action: 'storeTrue'});
-  parser.addArgument(['--rebaseline', '-r'], {action: 'storeTrue'});
-  parser.addArgument(['--no-depscheck'], {action: 'storeTrue'});
-  parser.addArgument('--cross-origin-isolation', {action: 'storeTrue'});
-  parser.addArgument(
-      ['--test-filter', '-f'],
-      {help: 'filter Jest tests by regex, e.g. \'chrome_render\''});
-  parser.addArgument(['--no-override-gn-args'], {action: 'storeTrue'});
+  parser.add_argument('--out', {help: 'Output directory'});
+  parser.add_argument('--watch', '-w', {action: 'store_true'});
+  parser.add_argument('--serve', '-s', {action: 'store_true'});
+  parser.add_argument('--serve-host', {help: '--serve bind host'});
+  parser.add_argument('--serve-port', {help: '--serve bind port', type: 'int'});
+  parser.add_argument('--verbose', '-v', {action: 'store_true'});
+  parser.add_argument('--no-build', '-n', {action: 'store_true'});
+  parser.add_argument('--no-wasm', '-W', {action: 'store_true'});
+  parser.add_argument('--run-unittests', '-t', {action: 'store_true'});
+  parser.add_argument('--run-integrationtests', '-T', {action: 'store_true'});
+  parser.add_argument('--debug', '-d', {action: 'store_true'});
+  parser.add_argument('--interactive', '-i', {action: 'store_true'});
+  parser.add_argument('--rebaseline', '-r', {action: 'store_true'});
+  parser.add_argument('--no-depscheck', {action: 'store_true'});
+  parser.add_argument('--cross-origin-isolation', {action: 'store_true'});
+  parser.add_argument('--test-filter', '-f', {
+    help: 'filter Jest tests by regex, e.g. \'chrome_render\'',
+  });
+  parser.add_argument('--no-override-gn-args', {action: 'store_true'});
 
-  const args = parser.parseArgs();
+  const args = parser.parse_args();
   const clean = !args.no_build;
   cfg.outDir = path.resolve(ensureDir(args.out || cfg.outDir));
   cfg.outUiDir = ensureDir(pjoin(cfg.outDir, 'ui'), clean);
@@ -237,10 +237,17 @@ async function main() {
     scanDir('buildtools/typefaces');
     scanDir('buildtools/catapult_trace_viewer');
     generateImports('ui/src/tracks', 'all_tracks.ts');
+    generateImports('ui/src/plugins', 'all_plugins.ts');
     compileProtos();
     genVersion();
     transpileTsProject('ui');
     transpileTsProject('ui/src/service_worker');
+
+    if (cfg.watch) {
+      transpileTsProject('ui', {watch: cfg.watch});
+      transpileTsProject('ui/src/service_worker', {watch: cfg.watch});
+    }
+
     bundleJs('rollup.config.js');
     genServiceWorkerManifestJson();
 
@@ -249,7 +256,6 @@ async function main() {
     // - Regenerates the ServiceWorker file map.
     scanDir(cfg.outDistRootDir);
   }
-
 
   // We should enter the loop only in watch mode, where tsc and rollup are
   // asynchronous because they run in watch mode.
@@ -299,9 +305,9 @@ function runTests(cfgFile) {
   }
   if (cfg.watch) {
     args.push('--watchAll');
-    addTask(execNode, ['jest', args, {async: true}]);
+    addTask(execModule, ['jest', args, {async: true}]);
   } else {
-    addTask(execNode, ['jest', args]);
+    addTask(execModule, ['jest', args]);
   }
 }
 
@@ -338,12 +344,20 @@ function compileScss() {
   // In watch mode, don't exit(1) if scss fails. It can easily happen by
   // having a typo in the css. It will still print an error.
   const noErrCheck = !!cfg.watch;
-  addTask(execNode, ['node-sass', ['--quiet', src, dst], {noErrCheck}]);
+  const args = [src, dst];
+  if (!cfg.verbose) {
+    args.unshift('--quiet');
+  }
+  addTask(execModule, ['sass', args, {noErrCheck}]);
 }
 
 function compileProtos() {
   const dstJs = pjoin(cfg.outGenDir, 'protos.js');
   const dstTs = pjoin(cfg.outGenDir, 'protos.d.ts');
+  // We've ended up pulling in all the protos (via trace.proto,
+  // trace_packet.proto) below which means |dstJs| ends up being
+  // 23k lines/12mb. We should probably not do that.
+  // TODO(hjd): Figure out how to use lazy with pbjs/pbts.
   const inputs = [
     'protos/perfetto/common/trace_stats.proto',
     'protos/perfetto/common/tracing_service_capabilities.proto',
@@ -361,6 +375,8 @@ function compileProtos() {
   const pbjsArgs = [
     '--no-beautify',
     '--force-number',
+    '--no-delimited',
+    '--no-verify',
     '-t',
     'static-module',
     '-w',
@@ -370,9 +386,14 @@ function compileProtos() {
     '-o',
     dstJs,
   ].concat(inputs);
-  addTask(execNode, ['pbjs', pbjsArgs]);
+  addTask(execModule, ['pbjs', pbjsArgs]);
+
+  // Note: If you are looking into slowness of pbts it is not pbts
+  // itself that is slow. It invokes jsdoc to parse the comments out of
+  // the |dstJs| with https://github.com/hegemonic/catharsis which is
+  // pinning a CPU core the whole time.
   const pbtsArgs = ['--no-comments', '-p', ROOT_DIR, '-o', dstTs, dstJs];
-  addTask(execNode, ['pbts', pbtsArgs]);
+  addTask(execModule, ['pbts', pbtsArgs]);
 }
 
 function generateImports(dir, name) {
@@ -450,13 +471,14 @@ function buildWasm(skipWasmBuild) {
 
 // This transpiles all the sources (frontend, controller, engine, extension) in
 // one go. The only project that has a dedicated invocation is service_worker.
-function transpileTsProject(project) {
+function transpileTsProject(project, options) {
   const args = ['--project', pjoin(ROOT_DIR, project)];
-  if (cfg.watch) {
+
+  if (options !== undefined && options.watch) {
     args.push('--watch', '--preserveWatchOutput');
-    addTask(execNode, ['tsc', args, {async: true}]);
+    addTask(execModule, ['tsc', args, {async: true}]);
   } else {
-    addTask(execNode, ['tsc', args]);
+    addTask(execModule, ['tsc', args]);
   }
 }
 
@@ -466,12 +488,12 @@ function bundleJs(cfgName) {
   const args = ['-c', rcfg, '--no-indent'];
   args.push(...(cfg.verbose ? [] : ['--silent']));
   if (cfg.watch) {
-    // --waitForBundleInput is so that we can run tsc --watch and rollup --watch
-    // together, without having to wait that tsc completes the first build.
-    args.push('--watch', '--waitForBundleInput', '--no-watch.clearScreen');
-    addTask(execNode, ['rollup', args, {async: true}]);
+    // --waitForBundleInput is sadly quite busted so it is required ts
+    // has build at least once before invoking this.
+    args.push('--watch', '--no-watch.clearScreen');
+    addTask(execModule, ['rollup', args, {async: true}]);
   } else {
-    addTask(execNode, ['rollup', args]);
+    addTask(execModule, ['rollup', args]);
   }
 }
 
@@ -705,11 +727,9 @@ function exec(cmd, args, opts) {
   }
 }
 
-function execNode(module, args, opts) {
+function execModule(module, args, opts) {
   const modPath = pjoin(ROOT_DIR, 'ui/node_modules/.bin', module);
-  const nodeBin = pjoin(ROOT_DIR, 'tools/node');
-  args = [modPath].concat(args || []);
-  return exec(nodeBin, args, opts);
+  return exec(modPath, args || [], opts);
 }
 
 // ------------------------------------------

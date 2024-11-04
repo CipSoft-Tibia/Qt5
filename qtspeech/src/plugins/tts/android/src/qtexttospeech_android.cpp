@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qtexttospeech_android.h"
 
 #include <QtCore/qcoreapplication.h>
@@ -12,7 +12,7 @@ static jclass g_qtSpeechClass = 0;
 typedef QMap<jlong, QTextToSpeechEngineAndroid *> TextToSpeechMap;
 Q_GLOBAL_STATIC(TextToSpeechMap, textToSpeechMap)
 
-Q_DECLARE_JNI_TYPE(Locale, "Ljava/util/Locale;")
+Q_DECLARE_JNI_CLASS(Locale, "java/util/Locale")
 
 static void notifyError(JNIEnv *env, jobject thiz, jlong id, jlong reason)
 {
@@ -440,8 +440,8 @@ QLocale QTextToSpeechEngineAndroid::locale() const
 {
     auto locale = m_speech.callMethod<QtJniTypes::Locale>("getLocale");
     if (locale.isValid()) {
-        auto localeLanguage = locale.callObjectMethod<jstring>("getLanguage").toString();
-        auto localeCountry = locale.callObjectMethod<jstring>("getCountry").toString();
+        auto localeLanguage = locale.callMethod<jstring>("getLanguage").toString();
+        auto localeCountry = locale.callMethod<jstring>("getCountry").toString();
         if (!localeCountry.isEmpty())
             localeLanguage += QString("_%1").arg(localeCountry).toUpper();
         return QLocale(localeLanguage);
@@ -451,7 +451,7 @@ QLocale QTextToSpeechEngineAndroid::locale() const
 
 QVoice QTextToSpeechEngineAndroid::javaVoiceObjectToQVoice(QJniObject &obj) const
 {
-    auto voiceName = obj.callObjectMethod<jstring>("getName").toString();
+    auto voiceName = obj.callMethod<jstring>("getName").toString();
     QVoice::Gender gender;
     if (voiceName.contains(QStringLiteral("#male"))) {
         gender = QVoice::Male;
@@ -463,8 +463,8 @@ QVoice QTextToSpeechEngineAndroid::javaVoiceObjectToQVoice(QJniObject &obj) cons
     QJniObject locale = obj.callMethod<QtJniTypes::Locale>("getLocale");
     QLocale qlocale;
     if (locale.isValid()) {
-        auto localeLanguage = locale.callObjectMethod<jstring>("getLanguage").toString();
-        auto localeCountry = locale.callObjectMethod<jstring>("getCountry").toString();
+        auto localeLanguage = locale.callMethod<jstring>("getLanguage").toString();
+        auto localeCountry = locale.callMethod<jstring>("getCountry").toString();
         if (!localeCountry.isEmpty())
             localeLanguage += QString("_%1").arg(localeCountry).toUpper();
         qlocale = QLocale(localeLanguage);

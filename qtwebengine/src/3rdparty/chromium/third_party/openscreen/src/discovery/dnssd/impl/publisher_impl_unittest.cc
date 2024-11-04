@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,7 @@
 #include "platform/test/fake_clock.h"
 #include "platform/test/fake_task_runner.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 namespace {
 
 using testing::_;
@@ -61,12 +60,8 @@ class PublisherImplTest : public testing::Test {
         task_runner_(&clock_),
         publisher_(&mock_service_,
                    &reporting_client_,
-                   &task_runner_,
+                   task_runner_,
                    &network_config_) {}
-
-  MockMdnsService* mdns_service() { return &mock_service_; }
-  TaskRunner* task_runner() { return &task_runner_; }
-  PublisherImpl* publisher() { return &publisher_; }
 
   // Calls PublisherImpl::OnDomainFound() through the public interface it
   // implements.
@@ -93,12 +88,12 @@ TEST_F(PublisherImplTest, TestRegistrationAndDegrestration) {
   const DnsSdInstance instance2("instance2", "_service._udp", "domain", {}, 80);
   MockClient client;
 
-  EXPECT_CALL(*mdns_service(), StartProbe(publisher(), domain, _)).Times(1);
-  publisher()->Register(instance, &client);
-  testing::Mock::VerifyAndClearExpectations(mdns_service());
+  EXPECT_CALL(mock_service_, StartProbe(&publisher_, domain, _)).Times(1);
+  publisher_.Register(instance, &client);
+  testing::Mock::VerifyAndClearExpectations(&mock_service_);
 
   int seen = 0;
-  EXPECT_CALL(*mdns_service(), RegisterRecord(_))
+  EXPECT_CALL(mock_service_, RegisterRecord(_))
       .Times(4)
       .WillRepeatedly([&seen, &address,
                        &domain2](const MdnsRecord& record) mutable -> Error {
@@ -127,11 +122,11 @@ TEST_F(PublisherImplTest, TestRegistrationAndDegrestration) {
       });
   CallOnDomainFound(domain, domain2);
   EXPECT_EQ(seen, 2);
-  testing::Mock::VerifyAndClearExpectations(mdns_service());
+  testing::Mock::VerifyAndClearExpectations(&mock_service_);
   testing::Mock::VerifyAndClearExpectations(&client);
 
   seen = 0;
-  EXPECT_CALL(*mdns_service(), UnregisterRecord(_))
+  EXPECT_CALL(mock_service_, UnregisterRecord(_))
       .Times(4)
       .WillRepeatedly([&seen,
                        &address](const MdnsRecord& record) mutable -> Error {
@@ -149,7 +144,7 @@ TEST_F(PublisherImplTest, TestRegistrationAndDegrestration) {
         }
         return Error::None();
       });
-  publisher()->DeregisterAll("_service._udp");
+  publisher_.DeregisterAll("_service._udp");
   EXPECT_EQ(seen, 2);
 }
 
@@ -164,12 +159,12 @@ TEST_F(PublisherImplTest, TestUpdate) {
   MockClient client;
 
   // Update a non-existent instance
-  EXPECT_FALSE(publisher()->UpdateRegistration(instance).ok());
+  EXPECT_FALSE(publisher_.UpdateRegistration(instance).ok());
 
   // Update an instance during the probing phase
-  EXPECT_CALL(*mdns_service(), StartProbe(publisher(), domain, _)).Times(1);
-  EXPECT_EQ(publisher()->Register(instance, &client), Error::None());
-  testing::Mock::VerifyAndClearExpectations(mdns_service());
+  EXPECT_CALL(mock_service_, StartProbe(&publisher_, domain, _)).Times(1);
+  EXPECT_EQ(publisher_.Register(instance, &client), Error::None());
+  testing::Mock::VerifyAndClearExpectations(&mock_service_);
 
   IPAddress address2 = IPAddress(1, 2, 3, 4, 5, 6, 7, 8);
   network_config_.set_address_v4(IPAddress{});
@@ -178,10 +173,10 @@ TEST_F(PublisherImplTest, TestUpdate) {
   txt2.SetFlag("id2", true);
   DnsSdInstance instance2("instance", "_service._udp", "domain",
                           std::move(txt2), 80);
-  EXPECT_EQ(publisher()->UpdateRegistration(instance2), Error::None());
+  EXPECT_EQ(publisher_.UpdateRegistration(instance2), Error::None());
 
   bool seen_v6 = false;
-  EXPECT_CALL(*mdns_service(), RegisterRecord(_))
+  EXPECT_CALL(mock_service_, RegisterRecord(_))
       .Times(4)
       .WillRepeatedly([&seen_v6](const MdnsRecord& record) mutable -> Error {
         EXPECT_NE(record.dns_type(), DnsType::kA);
@@ -197,33 +192,32 @@ TEST_F(PublisherImplTest, TestUpdate) {
       });
   CallOnDomainFound(domain, domain);
   EXPECT_TRUE(seen_v6);
-  testing::Mock::VerifyAndClearExpectations(mdns_service());
+  testing::Mock::VerifyAndClearExpectations(&mock_service_);
   testing::Mock::VerifyAndClearExpectations(&client);
 
   // Update an instance once it has been published.
   network_config_.set_address_v4(address);
   network_config_.set_address_v6(IPAddress{});
-  EXPECT_CALL(*mdns_service(), RegisterRecord(_))
+  EXPECT_CALL(mock_service_, RegisterRecord(_))
       .WillOnce([](const MdnsRecord& record) -> Error {
         EXPECT_EQ(record.dns_type(), DnsType::kA);
         return Error::None();
       });
-  EXPECT_CALL(*mdns_service(), UnregisterRecord(_))
+  EXPECT_CALL(mock_service_, UnregisterRecord(_))
       .WillOnce([](const MdnsRecord& record) -> Error {
         EXPECT_EQ(record.dns_type(), DnsType::kAAAA);
         return Error::None();
       });
-  EXPECT_CALL(*mdns_service(), UpdateRegisteredRecord(_, _))
+  EXPECT_CALL(mock_service_, UpdateRegisteredRecord(_, _))
       .WillOnce(
           [](const MdnsRecord& record, const MdnsRecord& record2) -> Error {
             EXPECT_EQ(record.dns_type(), DnsType::kTXT);
             EXPECT_EQ(record2.dns_type(), DnsType::kTXT);
             return Error::None();
           });
-  EXPECT_EQ(publisher()->UpdateRegistration(instance), Error::None());
-  testing::Mock::VerifyAndClearExpectations(mdns_service());
+  EXPECT_EQ(publisher_.UpdateRegistration(instance), Error::None());
+  testing::Mock::VerifyAndClearExpectations(&mock_service_);
 }
 
 }  // namespace
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

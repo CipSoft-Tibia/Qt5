@@ -2,6 +2,7 @@
 
 #include "nopackage.qpb.h"
 #include <QtProtobuf/qprotobufserializer.h>
+#include <cmath>
 
 static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarTestEnumGadget(TestEnumGadget::registerTypes);
 void TestEnumGadget::registerTypes()
@@ -209,22 +210,9 @@ bool SimpleIntMessage::operator !=(const SimpleIntMessage &other) const
     return !this->operator ==(other);
 }
 
-int SimpleIntMessage::testFieldInt_p() const
-{
-    return dptr->m_testFieldInt;
-}
-
 QtProtobuf::int32 SimpleIntMessage::testFieldInt() const
 {
     return dptr->m_testFieldInt;
-}
-
-void SimpleIntMessage::setTestFieldInt_p(const int &testFieldInt)
-{
-    if (dptr->m_testFieldInt != testFieldInt) {
-        dptr.detach();
-        dptr->m_testFieldInt = testFieldInt;
-    }
 }
 
 void SimpleIntMessage::setTestFieldInt(const QtProtobuf::int32 &testFieldInt)
@@ -346,9 +334,27 @@ SimpleIntMessageExt *NoPackageExternalMessage::testField_p() const
     return dptr->m_testField ? dptr->m_testField.get() : nullptr;
 }
 
-SimpleIntMessageExt &NoPackageExternalMessage::testField() const
+bool NoPackageExternalMessage::hasTestField() const
+{
+    return dptr->m_testField.operator bool();
+}
+
+SimpleIntMessageExt &NoPackageExternalMessage::testField()
+{
+    dptr.detach();
+    return *dptr->m_testField;
+}
+const SimpleIntMessageExt &NoPackageExternalMessage::testField() const
 {
     return *dptr->m_testField;
+}
+
+void NoPackageExternalMessage::clearTestField()
+{
+    if (dptr->m_testField) {
+        dptr.detach();
+        dptr->m_testField.reset();
+    }
 }
 
 void NoPackageExternalMessage::setTestField_p(SimpleIntMessageExt *testField)
@@ -478,9 +484,27 @@ SimpleIntMessage *NoPackageMessage::testField_p() const
     return dptr->m_testField ? dptr->m_testField.get() : nullptr;
 }
 
-SimpleIntMessage &NoPackageMessage::testField() const
+bool NoPackageMessage::hasTestField() const
+{
+    return dptr->m_testField.operator bool();
+}
+
+SimpleIntMessage &NoPackageMessage::testField()
+{
+    dptr.detach();
+    return *dptr->m_testField;
+}
+const SimpleIntMessage &NoPackageMessage::testField() const
 {
     return *dptr->m_testField;
+}
+
+void NoPackageMessage::clearTestField()
+{
+    if (dptr->m_testField) {
+        dptr.detach();
+        dptr->m_testField.reset();
+    }
 }
 
 void NoPackageMessage::setTestField_p(SimpleIntMessage *testField)

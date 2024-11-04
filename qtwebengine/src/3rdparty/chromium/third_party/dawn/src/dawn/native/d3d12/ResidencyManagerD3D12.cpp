@@ -17,11 +17,12 @@
 #include <algorithm>
 #include <vector>
 
-#include "dawn/native/d3d12/AdapterD3D12.h"
-#include "dawn/native/d3d12/D3D12Error.h"
+#include "dawn/native/d3d/D3DError.h"
 #include "dawn/native/d3d12/DeviceD3D12.h"
 #include "dawn/native/d3d12/Forward.h"
 #include "dawn/native/d3d12/HeapD3D12.h"
+#include "dawn/native/d3d12/PhysicalDeviceD3D12.h"
+#include "dawn/native/d3d12/QueueD3D12.h"
 
 namespace dawn::native::d3d12 {
 
@@ -115,7 +116,7 @@ void ResidencyManager::UpdateVideoMemoryInfo() {
 void ResidencyManager::UpdateMemorySegmentInfo(MemorySegmentInfo* segmentInfo) {
     DXGI_QUERY_VIDEO_MEMORY_INFO queryVideoMemoryInfo;
 
-    ToBackend(mDevice->GetAdapter())
+    ToBackend(mDevice->GetPhysicalDevice())
         ->GetHardwareAdapter()
         ->QueryVideoMemoryInfo(0, segmentInfo->dxgiSegment, &queryVideoMemoryInfo);
 
@@ -169,7 +170,7 @@ ResultOrError<Pageable*> ResidencyManager::RemoveSingleEntryFromLRU(
 
     // We must ensure that any previous use of a resource has completed before the resource can
     // be evicted.
-    if (lastSubmissionSerial > mDevice->GetCompletedCommandSerial()) {
+    if (lastSubmissionSerial > mDevice->GetQueue()->GetCompletedCommandSerial()) {
         DAWN_TRY(mDevice->WaitForSerial(lastSubmissionSerial));
     }
 

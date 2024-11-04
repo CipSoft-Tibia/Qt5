@@ -60,7 +60,7 @@
 #include <sys/ucontext.h>
 #endif
 
-#if BUILDFLAG(IS_APPLE)
+#if BUILDFLAG(IS_MAC)
 #error "macOS should use launch_mac.cc"
 #endif
 
@@ -720,19 +720,23 @@ int CloneHelper(void* arg) {
 // |stack_buf| is allocated on thread stack instead of ASan's fake stack.
 // Under ASan longjmp() will attempt to clean up the area between the old and
 // new stack pointers and print a warning that may confuse the user.
-__attribute__((no_sanitize_address))
-#endif
-NOINLINE pid_t
+NOINLINE __attribute__((no_sanitize_address)) pid_t
 CloneAndLongjmpInChild(int flags, pid_t* ptid, pid_t* ctid, jmp_buf* env) {
+#else
+NOINLINE pid_t CloneAndLongjmpInChild(int flags,
+                                      pid_t* ptid,
+                                      pid_t* ctid,
+                                      jmp_buf* env) {
+#endif
   // We use the libc clone wrapper instead of making the syscall
   // directly because making the syscall may fail to update the libc's
   // internal pid cache. The libc interface unfortunately requires
   // specifying a new stack, so we use setjmp/longjmp to emulate
   // fork-like behavior.
   alignas(16) char stack_buf[PTHREAD_STACK_MIN];
-#if defined(ARCH_CPU_X86_FAMILY) || defined(ARCH_CPU_ARM_FAMILY) ||   \
-    defined(ARCH_CPU_MIPS_FAMILY) || defined(ARCH_CPU_S390_FAMILY) || \
-    defined(ARCH_CPU_PPC64_FAMILY) || defined(ARCH_CPU_LOONG_FAMILY) || \
+#if defined(ARCH_CPU_X86_FAMILY) || defined(ARCH_CPU_ARM_FAMILY) ||         \
+    defined(ARCH_CPU_MIPS_FAMILY) || defined(ARCH_CPU_S390_FAMILY) ||       \
+    defined(ARCH_CPU_PPC64_FAMILY) || defined(ARCH_CPU_LOONGARCH_FAMILY) || \
     defined(ARCH_CPU_RISCV_FAMILY)
   // The stack grows downward.
   void* stack = stack_buf + sizeof(stack_buf);

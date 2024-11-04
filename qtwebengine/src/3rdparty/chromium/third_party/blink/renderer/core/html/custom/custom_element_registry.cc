@@ -243,6 +243,19 @@ ScriptValue CustomElementRegistry::get(const AtomicString& name) {
   return definition->GetConstructorForScript();
 }
 
+// https://html.spec.whatwg.org/C/#dom-customelementregistry-getname
+const AtomicString& CustomElementRegistry::getName(
+    V8CustomElementConstructor* constructor) {
+  if (!constructor) {
+    return g_null_atom;
+  }
+  CustomElementDefinition* definition = DefinitionForConstructor(constructor);
+  if (!definition) {
+    return g_null_atom;
+  }
+  return definition->Descriptor().GetName();
+}
+
 // https://html.spec.whatwg.org/C/#look-up-a-custom-element-definition
 // At this point, what the spec calls 'is' is 'name' from desc
 CustomElementDefinition* CustomElementRegistry::DefinitionFor(
@@ -283,17 +296,9 @@ CustomElementDefinition* CustomElementRegistry::DefinitionForConstructor(
 
 CustomElementDefinition* CustomElementRegistry::DefinitionForConstructor(
     v8::Local<v8::Object> constructor) const {
-  struct HashTranslator {
-    STATIC_ONLY(HashTranslator);
-    static unsigned GetHash(const v8::Local<v8::Object>& constructor) {
-      return constructor->GetIdentityHash();
-    }
-    static bool Equal(const Member<V8CustomElementConstructor>& a,
-                      const v8::Local<v8::Object>& b) {
-      return a && a->CallbackObject() == b;
-    }
-  };
-  const auto it = constructor_map_.Find<HashTranslator>(constructor);
+  const auto it =
+      constructor_map_.Find<V8CustomElementConstructorHashTranslator>(
+          constructor);
   if (it == constructor_map_.end())
     return nullptr;
   return it->value;
@@ -335,8 +340,8 @@ ScriptPromise CustomElementRegistry::whenDefined(
   const auto it = when_defined_promise_map_.find(name);
   if (it != when_defined_promise_map_.end())
     return it->value->Promise();
-  auto* new_resolver =
-      MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* new_resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   when_defined_promise_map_.insert(name, new_resolver);
   return new_resolver->Promise();
 }

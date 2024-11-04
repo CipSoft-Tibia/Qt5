@@ -28,7 +28,7 @@ add_custom_command(
         --plugin=protoc-gen-grpc=$<TARGET_FILE:WrapgRPC::WrapgRPCPlugin>
         "${proto_files}"
     WORKING_DIRECTORY ${out_dir}
-    DEPENDS "${proto_files}"
+    DEPENDS "${proto_files}" $<TARGET_FILE:WrapProtoc::WrapProtoc>
     COMMENT "Generating gRPC ${target} sources..."
     COMMAND_EXPAND_LISTS
     VERBATIM

@@ -4,7 +4,7 @@
 #ifndef QDBUSEXTRATYPES_H
 #define QDBUSEXTRATYPES_H
 
-// define some useful types for D-BUS
+// define some useful types for D-Bus
 
 #include <QtDBus/qtdbusglobal.h>
 #include <QtCore/qvariant.h>
@@ -74,7 +74,9 @@ class Q_DBUS_EXPORT QDBusSignature
 {
     QString m_signature;
 public:
-    QDBusSignature() noexcept : m_signature() {}
+    QDBusSignature() noexcept
+        : m_signature(QLatin1StringView("")) // mark non-null (empty signatures are valid)
+    {}
     // compiler-generated copy/move constructor/assignment operators are ok!
     // compiler-generated destructor is ok!
 

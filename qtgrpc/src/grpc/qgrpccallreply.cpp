@@ -3,7 +3,10 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qgrpccallreply.h"
-#include <QtCore/QThread>
+#include "qgrpcchanneloperation.h"
+
+#include <QtCore/qthread.h>
+#include <QtCore/qeventloop.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -13,13 +16,10 @@ using namespace Qt::StringLiterals;
     \class QGrpcCallReply
     \inmodule QtGrpc
 
-    \brief The QGrpcCallReply class contains data for asynchronous call
-    of gRPC client API.
+    \brief The QGrpcCallReply class implements logic to handle gRPC calls
+    from the gRPC client side.
 
     The QGrpcCallReply object is owned by the client object that created it.
-    QGrpcCallReply can be used by QAbstractGrpcChannel implementations
-    to control call workflow and abort calls if possible in the event
-    of QGrpcCallReply::abort being called by a library user.
 */
 
 /*!
@@ -53,28 +53,12 @@ using namespace Qt::StringLiterals;
     \endcode
 */
 
-QGrpcCallReply::QGrpcCallReply(std::shared_ptr<QAbstractProtobufSerializer> serializer)
-    : QGrpcOperation(std::move(serializer))
+QGrpcCallReply::QGrpcCallReply(std::shared_ptr<QGrpcChannelOperation> channelOperation)
+    : QGrpcOperation(std::move(channelOperation))
 {
 }
 
 QGrpcCallReply::~QGrpcCallReply() = default;
-
-/*!
-    Aborts this reply and try to abort call in channel.
-*/
-void QGrpcCallReply::abort()
-{
-    auto abortFunc = [&] {
-        setData({});
-        emit errorOccurred(
-                { QGrpcStatus::StatusCode::Aborted, "Call aborted by user or timeout"_L1 });
-    };
-    if (thread() != QThread::currentThread())
-        QMetaObject::invokeMethod(this, abortFunc, Qt::BlockingQueuedConnection);
-    else
-        abortFunc();
-}
 
 QT_END_NAMESPACE
 

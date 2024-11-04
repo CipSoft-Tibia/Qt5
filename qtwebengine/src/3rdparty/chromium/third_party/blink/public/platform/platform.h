@@ -44,11 +44,11 @@
 #include "build/build_config.h"
 #include "cc/tiles/raster_dark_mode_filter.h"
 #include "cc/trees/raster_context_provider_wrapper.h"
-#include "components/attribution_reporting/os_support.mojom-shared.h"
 #include "components/viz/common/surfaces/frame_sink_id.h"
 #include "media/base/audio_capturer_source.h"
 #include "media/base/audio_latency.h"
 #include "media/base/audio_renderer_sink.h"
+#include "services/network/public/mojom/attribution.mojom-shared.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/security/protocol_handler_security_level.h"
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
@@ -63,6 +63,7 @@
 #include "third_party/blink/public/platform/websocket_handshake_throttle_provider.h"
 #include "third_party/webrtc/api/video/video_codec_type.h"
 #include "ui/base/resource/resource_scale_factor.h"
+#include "v8/include/v8-local-handle.h"
 
 class SkCanvas;
 class SkBitmap;
@@ -106,8 +107,6 @@ class Origin;
 
 namespace v8 {
 class Context;
-template <class T>
-class Local;
 }  // namespace v8
 
 namespace viz {
@@ -131,7 +130,6 @@ class WebDedicatedWorker;
 class WebDedicatedWorkerHostFactoryClient;
 class WebGraphicsContext3DProvider;
 class WebLocalFrame;
-class WebResourceRequestSenderDelegate;
 class WebSandboxSupport;
 class WebSecurityOrigin;
 class WebThemeEngine;
@@ -259,10 +257,6 @@ class BLINK_PLATFORM_EXPORT Platform {
   // Returns the default User-Agent string, it can either full User-Agent string
   // or reduced User-Agent string based on policy setting.
   virtual WebString UserAgent() { return WebString(); }
-  // Returns the full User-Agent string.
-  virtual WebString FullUserAgent() { return WebString(); }
-  // Returns the reduced User-Agent string.
-  virtual WebString ReducedUserAgent() { return WebString(); }
 
   // Returns the User Agent metadata. This will replace `UserAgent()` if we
   // end up shipping https://github.com/WICG/ua-client-hints.
@@ -273,11 +267,6 @@ class BLINK_PLATFORM_EXPORT Platform {
   // Determines whether it is safe to redirect from |from_url| to |to_url|.
   virtual bool IsRedirectSafe(const GURL& from_url, const GURL& to_url) {
     return false;
-  }
-
-  // Returns the WebResourceRequestSenderDelegate of this renderer.
-  virtual WebResourceRequestSenderDelegate* GetResourceRequestSenderDelegate() {
-    return nullptr;
   }
 
   // Appends throttles if the browser has sent a variations header to the
@@ -446,13 +435,6 @@ class BLINK_PLATFORM_EXPORT Platform {
     bool prefer_low_power_gpu = false;
     bool fail_if_major_performance_caveat = false;
     ContextType context_type = kGLES2ContextType;
-    // Offscreen contexts usually share a surface for the default frame buffer
-    // since they aren't rendering to it. Setting any of the following
-    // attributes causes creation of a custom surface owned by the context.
-    bool support_alpha = false;
-    bool support_depth = false;
-    bool support_antialias = false;
-    bool support_stencil = false;
 
     // Offscreen contexts created for WebGL should not need the RasterInterface
     // or GrContext. If either of these are set to false, it will not be
@@ -480,7 +462,7 @@ class BLINK_PLATFORM_EXPORT Platform {
   // created or initialized.
   virtual std::unique_ptr<WebGraphicsContext3DProvider>
   CreateOffscreenGraphicsContext3DProvider(const ContextAttributes&,
-                                           const WebURL& top_document_url,
+                                           const WebURL& document_url,
                                            GraphicsInfo*);
 
   // Returns a newly allocated and initialized offscreen context provider,
@@ -493,7 +475,7 @@ class BLINK_PLATFORM_EXPORT Platform {
   // backed by an independent context. Returns null if the context cannot be
   // created or initialized.
   virtual std::unique_ptr<WebGraphicsContext3DProvider>
-  CreateWebGPUGraphicsContext3DProvider(const WebURL& top_document_url);
+  CreateWebGPUGraphicsContext3DProvider(const WebURL& document_url);
 
   virtual gpu::GpuMemoryBufferManager* GetGpuMemoryBufferManager() {
     return nullptr;
@@ -586,9 +568,9 @@ class BLINK_PLATFORM_EXPORT Platform {
       const media::AudioSinkParameters& params) {
     return nullptr;
   }
-  virtual media::AudioLatency::LatencyType GetAudioSourceLatencyType(
+  virtual media::AudioLatency::Type GetAudioSourceLatencyType(
       blink::WebAudioDeviceSourceType source_type) {
-    return media::AudioLatency::LATENCY_PLAYBACK;
+    return media::AudioLatency::Type::kPlayback;
   }
 
   virtual bool ShouldEnforceWebRTCRoutingPreferences() { return true; }
@@ -601,10 +583,6 @@ class BLINK_PLATFORM_EXPORT Platform {
   virtual bool UsesFakeCodecForPeerConnection() { return false; }
 
   virtual bool IsWebRtcEncryptionEnabled() { return true; }
-
-  virtual bool IsWebRtcStunOriginEnabled() { return false; }
-
-  virtual bool IsWebRtcSrtpAesGcmEnabled() { return false; }
 
   virtual bool IsWebRtcSrtpEncryptedHeadersEnabled() { return false; }
 
@@ -777,18 +755,23 @@ class BLINK_PLATFORM_EXPORT Platform {
 
   // Attribution Reporting API ------------------------------------
 
-  // Returns whether OS-level support is enabled for Attribution Reporting API.
+  // Returns whether web or OS-level Attribution Reporting is supported.
   // See
   // https://github.com/WICG/attribution-reporting-api/blob/main/app_to_web.md.
-  virtual attribution_reporting::mojom::OsSupport
-  GetOsSupportForAttributionReporting() {
-    return attribution_reporting::mojom::OsSupport::kDisabled;
+  virtual network::mojom::AttributionSupport GetAttributionReportingSupport() {
+    return network::mojom::AttributionSupport::kWeb;
   }
 
 #if BUILDFLAG(IS_ANDROID)
   // User Level Memory Pressure Signal Generator ------------------
   virtual void SetPrivateMemoryFootprint(
       uint64_t private_memory_footprint_bytes) {}
+
+  virtual bool IsUserLevelMemoryPressureSignalEnabled() { return false; }
+  virtual std::pair<base::TimeDelta, base::TimeDelta>
+  InertAndMinimumIntervalOfUserLevelMemoryPressureSignal() {
+    return std::make_pair(base::TimeDelta(), base::TimeDelta());
+  }
 #endif
 
  private:

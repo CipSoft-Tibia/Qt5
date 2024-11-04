@@ -7,6 +7,7 @@
 
 #include "base/unguessable_token.h"
 #include "content/common/content_export.h"
+#include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/weak_document_ptr.h"
 #include "content/public/common/referrer.h"
 #include "net/base/isolation_info.h"
@@ -47,7 +48,10 @@ struct CONTENT_EXPORT NavigationRequestInfo {
           devtools_accepted_stream_types,
       bool is_pdf,
       WeakDocumentPtr initiator_document,
-      bool allow_cookies_from_browser);
+      const GlobalRenderFrameHostId& previous_render_frame_host_id,
+      bool allow_cookies_from_browser,
+      int64_t navigation_id,
+      bool shared_storage_writable);
   NavigationRequestInfo(const NavigationRequestInfo& other) = delete;
   ~NavigationRequestInfo();
 
@@ -131,9 +135,22 @@ struct CONTENT_EXPORT NavigationRequestInfo {
   // The initiator document, if still available.
   const WeakDocumentPtr initiator_document;
 
+  // The previous document's RenderFrameHostId, used for speculation rules
+  // prefetch.
+  // This corresponds to `NavigationRequest::GetPreviousRenderFrameHostId()`.
+  const GlobalRenderFrameHostId previous_render_frame_host_id;
+
   // Whether a Cookie header added to this request should not be overwritten by
   // the network service.
   const bool allow_cookies_from_browser;
+
+  // Unique id that identifies the navigation.
+  const int64_t navigation_id;
+
+  // Whether or not the request is eligible to write to shared storage from
+  // response headers. See
+  // https://github.com/WICG/shared-storage#from-response-headers.
+  bool shared_storage_writable;
 };
 
 }  // namespace content

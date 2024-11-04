@@ -160,13 +160,6 @@ bool StructTraits<blink::mojom::SharedStorageBudgetMetadataDataView,
         const blink::FencedFrame::SharedStorageBudgetMetadata& input) {
   return input.top_navigated;
 }
-// static
-bool StructTraits<blink::mojom::SharedStorageBudgetMetadataDataView,
-                  blink::FencedFrame::SharedStorageBudgetMetadata>::
-    report_event_called(
-        const blink::FencedFrame::SharedStorageBudgetMetadata& input) {
-  return input.report_event_called;
-}
 
 // static
 bool StructTraits<blink::mojom::SharedStorageBudgetMetadataDataView,
@@ -178,7 +171,6 @@ bool StructTraits<blink::mojom::SharedStorageBudgetMetadataDataView,
   }
   out_data->budget_to_charge = data.budget_to_charge();
   out_data->top_navigated = data.top_navigated();
-  out_data->report_event_called = data.report_event_called();
   return true;
 }
 
@@ -420,7 +412,9 @@ bool StructTraits<blink::mojom::FencedFrameConfigDataView,
       !data.ReadAdAuctionData(&out_config->ad_auction_data_) ||
       !data.ReadNestedConfigs(&out_config->nested_configs_) ||
       !data.ReadSharedStorageBudgetMetadata(
-          &out_config->shared_storage_budget_metadata_)) {
+          &out_config->shared_storage_budget_metadata_) ||
+      !data.ReadEffectiveEnabledPermissions(
+          &out_config->effective_enabled_permissions_)) {
     return false;
   }
 
@@ -470,7 +464,9 @@ bool StructTraits<blink::mojom::FencedFramePropertiesDataView,
       !data.ReadAdAuctionData(&out_properties->ad_auction_data_) ||
       !data.ReadNestedUrnConfigPairs(&nested_urn_config_pairs) ||
       !data.ReadSharedStorageBudgetMetadata(
-          &out_properties->shared_storage_budget_metadata_)) {
+          &out_properties->shared_storage_budget_metadata_) ||
+      !data.ReadEffectiveEnabledPermissions(
+          &out_properties->effective_enabled_permissions_)) {
     return false;
   }
 

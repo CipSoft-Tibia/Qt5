@@ -2,7 +2,6 @@
 #define LH_BACKGROUND_H
 
 #include "types.h"
-#include "attributes.h"
 #include "css_length.h"
 #include "css_position.h"
 #include "web_color.h"
@@ -13,29 +12,34 @@ namespace litehtml
 	class background
 	{
 	public:
-		tstring					m_image;
-		tstring					m_baseurl;
+		string_vector			m_image;
+		string					m_baseurl;
 		web_color				m_color;
-		background_attachment	m_attachment;
-		css_position			m_position;
-		background_repeat		m_repeat;
-		background_box			m_clip;
-		background_box			m_origin;
-		css_border_radius		m_radius;
+		int_vector				m_attachment;
+		length_vector			m_position_x;
+		length_vector			m_position_y;
+		size_vector				m_size;
+		int_vector				m_repeat;
+		int_vector				m_clip;
+		int_vector				m_origin;
 
-	public:
-		background();
-		background(const background& val);
-		~background() = default;
-
-		background& operator=(const background& val);
+		bool is_empty() const
+		{
+			if(m_color.alpha != 0) return false;
+			if(m_image.empty()) return true;
+			for(const auto& img : m_image)
+			{
+				if(!img.empty()) return false;
+			}
+			return true;
+		}
 	};
 
 	class background_paint
 	{
 	public:
-		tstring					image;
-		tstring					baseurl;
+		string					image;
+		string					baseurl;
 		background_attachment	attachment;
 		background_repeat		repeat;
 		web_color				color;
@@ -47,10 +51,17 @@ namespace litehtml
 		int						position_x;
 		int						position_y;
 		bool					is_root;
+
 	public:
-		background_paint();
-		background_paint(const background_paint& val);
-        background_paint& operator=(const background& val);
+		background_paint()
+		{
+			attachment		= background_attachment_scroll;
+			repeat			= background_repeat_repeat;
+			color			= web_color::transparent;
+			position_x		= 0;
+			position_y		= 0;
+			is_root			= false;
+		}
 	};
 
 }

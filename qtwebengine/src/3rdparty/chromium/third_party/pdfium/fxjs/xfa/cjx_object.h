@@ -16,7 +16,7 @@
 #include "fxjs/xfa/fxjse.h"
 #include "fxjs/xfa/jse_define.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 #include "v8/include/cppgc/garbage-collected.h"
 #include "v8/include/cppgc/member.h"
 #include "v8/include/v8-forward.h"
@@ -119,7 +119,8 @@ class CJX_Object : public cppgc::GarbageCollected<CJX_Object>,
   CXFA_LayoutItem* GetLayoutItem() const { return layout_item_; }
 
   bool HasMethod(const WideString& func) const;
-  CJS_Result RunMethod(const WideString& func,
+  CJS_Result RunMethod(CFXJSE_Engine* pScriptContext,
+                       const WideString& func,
                        const std::vector<v8::Local<v8::Value>>& params);
 
   bool HasAttribute(XFA_Attribute eAttr) const;

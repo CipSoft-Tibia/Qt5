@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,7 @@
 
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 namespace {
 
 bool IsTransitionValid(ServicePublisher::State from,
@@ -90,6 +89,16 @@ bool ServicePublisherImpl::Resume() {
   return true;
 }
 
+void ServicePublisherImpl::OnFatalError(Error error) {
+  last_error_ = error;
+  observer_->OnError(error);
+}
+
+void ServicePublisherImpl::OnRecoverableError(Error error) {
+  last_error_ = error;
+  observer_->OnError(error);
+}
+
 void ServicePublisherImpl::SetState(State state) {
   OSP_DCHECK(IsTransitionValid(state_, state));
   state_ = state;
@@ -114,5 +123,4 @@ void ServicePublisherImpl::MaybeNotifyObserver() {
   }
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

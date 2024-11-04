@@ -191,7 +191,7 @@ template <typename Self, typename Reducer, typename Device,
               (TensorEvaluator<typename Self::ChildTypeNoConst, Device>::PacketAccess &&
                internal::reducer_traits<Reducer, Device>::PacketAccess)>
 struct ScanLauncher {
-  void operator()(Self& self, typename Self::CoeffReturnType* data) {
+  void operator()(Self& self, typename Self::CoeffReturnType* data) const {
     Index total_size = internal::array_prod(self.dimensions());
 
     // We fix the index along the scan axis to 0 and perform a
@@ -507,13 +507,6 @@ struct TensorEvaluator<const TensorScanOp<Op, ArgType>, Device> {
     m_impl.cleanup();
   }
 
-#ifdef EIGEN_USE_SYCL
- // binding placeholder accessors to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_impl.bind(cgh);
-    m_output.bind(cgh);
-  }
-#endif
 protected:
   TensorEvaluator<ArgType, Device> m_impl;
   const Device EIGEN_DEVICE_REF m_device;

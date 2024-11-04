@@ -1,11 +1,11 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QQuickView>
 
 #include <private/qquick3dviewport_p.h>
-#include <private/qssgrendercontextcore_p.h>
+#include <ssg/qssgrendercontextcore.h>
 #include <private/qssgrenderbuffermanager_p.h>
 #include <private/qquick3dresourceloader_p.h>
 
@@ -70,8 +70,8 @@ void tst_BufferManager::staticScene_data()
     QTest::newRow("empty scene") << "empty.qml" << 0 << 0 << 0 << 0 << 0;
 
     // Path Meshes
-    QTest::newRow("unshared path meshes") << "pathedMeshesUnshared.qml" << 0 << 0 << 0 << 4 << 0;
-    QTest::newRow("shared path meshes") << "pathedMeshesShared.qml" << 0 << 0 << 0 << 4 << 0;
+    QTest::newRow("unshared path meshes") << "pathedMeshesUnshared.qml" << 0 << 0 << 0 << 2 << 0;
+    QTest::newRow("shared path meshes") << "pathedMeshesShared.qml" << 0 << 0 << 0 << 2 << 0;
 
     // Custom Meshes
     QTest::newRow("unused Custom Geometry") << "customGeometryUnused.qml" << 0 << 0 << 0 << 0 << 0;

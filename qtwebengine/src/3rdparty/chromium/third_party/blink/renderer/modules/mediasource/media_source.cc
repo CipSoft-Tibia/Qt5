@@ -62,17 +62,60 @@ using blink::WebSourceBuffer;
 
 namespace blink {
 
+namespace {
+
+#if BUILDFLAG(ENABLE_MSE_MPEG2TS_STREAM_PARSER)
+
+bool IsMp2tCodecSupported(std::string_view codec_id) {
+  bool is_codec_ambiguous = true;
+  media::VideoCodec video_codec = media::VideoCodec::kUnknown;
+  media::AudioCodec audio_codec = media::AudioCodec::kUnknown;
+  media::VideoCodecProfile profile;
+  uint8_t level = 0;
+  media::VideoColorSpace color_space;
+  if (media::ParseVideoCodecString("", codec_id, &is_codec_ambiguous,
+                                   &video_codec, &profile, &level,
+                                   &color_space)) {
+    if (is_codec_ambiguous) {
+      return false;
+    }
+    if (video_codec != media::VideoCodec::kH264) {
+      return false;
+    }
+    return true;
+  }
+
+  if (media::ParseAudioCodecString("", codec_id, &is_codec_ambiguous,
+                                   &audio_codec)) {
+    if (is_codec_ambiguous) {
+      return false;
+    }
+
+    if (audio_codec != media::AudioCodec::kAAC &&
+        audio_codec != media::AudioCodec::kMP3) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+#endif  // BUILDFLAG(ENABLE_MSE_MPEG2TS_STREAM_PARSER)
+
+}  // namespace
+
 static AtomicString ReadyStateToString(MediaSource::ReadyState state) {
   AtomicString result;
   switch (state) {
     case MediaSource::ReadyState::kOpen:
-      result = "open";
+      result = AtomicString("open");
       break;
     case MediaSource::ReadyState::kClosed:
-      result = "closed";
+      result = AtomicString("closed");
       break;
     case MediaSource::ReadyState::kEnded:
-      result = "ended";
+      result = AtomicString("ended");
       break;
   }
 
@@ -113,10 +156,11 @@ MediaSource* MediaSource::Create(ExecutionContext* context) {
 }
 
 MediaSource::MediaSource(ExecutionContext* context)
-    : ExecutionContextLifecycleObserver(context),
+    : ActiveScriptWrappable<MediaSource>({}),
+      ExecutionContextLifecycleObserver(context),
       ready_state_(ReadyState::kClosed),
       async_event_queue_(
-          MakeGarbageCollected<EventQueue>(context,
+          MakeGarbageCollected<EventQueue>(GetExecutionContext(),
                                            TaskType::kMediaElementEvent)),
       context_already_destroyed_(false),
       source_buffers_(
@@ -129,13 +173,8 @@ MediaSource::MediaSource(ExecutionContext* context)
       live_seekable_range_start_(0.0),
       live_seekable_range_end_(0.0) {
   DVLOG(1) << __func__ << " this=" << this;
-
-  DCHECK(RuntimeEnabledFeatures::MediaSourceInWorkersEnabled(
-             GetExecutionContext()) ||
-         IsMainThread());
-
   if (!IsMainThread()) {
-    DCHECK(context->IsDedicatedWorkerGlobalScope());
+    DCHECK(GetExecutionContext()->IsDedicatedWorkerGlobalScope());
   }
 }
 
@@ -537,6 +576,23 @@ bool MediaSource::IsTypeSupportedInternal(ExecutionContext* context,
   String codecs = content_type.Parameter("codecs");
   ContentType filtered_content_type = content_type;
 
+#if BUILDFLAG(ENABLE_MSE_MPEG2TS_STREAM_PARSER)
+  // Mime util doesn't include the mp2t container in order to prevent codec
+  // support leaking into HtmlMediaElement.canPlayType. If the stream parser
+  // is enabled, we should check that the codecs are valid using the mp4
+  // container, since it can support any of the codecs we support for mp2t.
+  if (mime_type == "video/mp2t") {
+    std::vector<std::string> parsed_codec_ids;
+    media::SplitCodecs(codecs.Ascii(), &parsed_codec_ids);
+    for (const auto& codec_id : parsed_codec_ids) {
+      if (!IsMp2tCodecSupported(codec_id)) {
+        return false;
+      }
+    }
+    return true;
+  }
+#endif
+
 #if BUILDFLAG(ENABLE_PLATFORM_ENCRYPTED_DOLBY_VISION)
   // When build flag ENABLE_PLATFORM_ENCRYPTED_DOLBY_VISION and feature
   // kPlatformEncryptedDolbyVision are both enabled, encrypted Dolby Vision is
@@ -632,9 +688,6 @@ bool MediaSource::IsTypeSupportedInternal(ExecutionContext* context,
 
 // static
 bool MediaSource::canConstructInDedicatedWorker(ExecutionContext* context) {
-  // This method's visibility in IDL is restricted to MSE-in-Workers feature
-  // being enabled.
-  DCHECK(RuntimeEnabledFeatures::MediaSourceInWorkersEnabled(context));
   return true;
 }
 
@@ -717,7 +770,7 @@ void MediaSource::Trace(Visitor* visitor) const {
   visitor->Trace(worker_media_source_handle_);
   visitor->Trace(source_buffers_);
   visitor->Trace(active_source_buffers_);
-  EventTargetWithInlineData::Trace(visitor);
+  EventTarget::Trace(visitor);
   ExecutionContextLifecycleObserver::Trace(visitor);
 }
 
@@ -1107,7 +1160,7 @@ void MediaSource::endOfStream(const AtomicString& error,
 }
 
 void MediaSource::endOfStream(ExceptionState& exception_state) {
-  endOfStream("", exception_state);
+  endOfStream(g_empty_atom, exception_state);
 }
 
 void MediaSource::setLiveSeekableRange(double start,
@@ -1211,11 +1264,6 @@ MediaSourceHandleImpl* MediaSource::handle() {
   base::AutoLock lock(attachment_link_lock_);
 
   DVLOG(3) << __func__;
-
-  DCHECK(RuntimeEnabledFeatures::MediaSourceInWorkersEnabled(
-             GetExecutionContext()) &&
-         RuntimeEnabledFeatures::MediaSourceInWorkersUsingHandleEnabled(
-             GetExecutionContext()));
 
   // TODO(crbug.com/506273): Support MediaSource srcObject attachment idiom for
   // main-thread-owned MediaSource objects (would need MSE spec updates, too,

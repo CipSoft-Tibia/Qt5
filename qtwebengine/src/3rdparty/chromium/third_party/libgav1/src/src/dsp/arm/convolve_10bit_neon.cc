@@ -412,30 +412,21 @@ void FilterHorizontal(const uint16_t* LIBGAV1_RESTRICT const src,
                       void* LIBGAV1_RESTRICT const dest,
                       const ptrdiff_t pred_stride, const int width,
                       const int height, const int16x4_t* const v_tap) {
-  assert(width < 8 || num_taps != 4);
-  // Don't simplify the redundant if conditions with the template parameters,
-  // which helps the compiler generate compact code.
-  if (width >= 8 && num_taps != 4) {
-    FilterHorizontalWidth8AndUp<num_taps, is_compound, is_2d>(
-        src, src_stride, dest, pred_stride, width, height, v_tap);
-    return;
-  }
-
   // Horizontal passes only needs to account for number of taps 2 and 4 when
   // |width| <= 4.
   assert(width <= 4);
   assert(num_taps == 2 || num_taps == 4);
   if (num_taps == 2 || num_taps == 4) {
-    if (width == 4) {
-      FilterHorizontalWidth4<num_taps, is_compound, is_2d>(
-          src, src_stride, dest, pred_stride, height, v_tap);
-      return;
-    }
-    assert(width == 2);
-    if (!is_compound) {
+    if (width == 2 && !is_compound) {
       FilterHorizontalWidth2<num_taps, is_2d>(src, src_stride, dest,
                                               pred_stride, height, v_tap);
+      return;
     }
+    assert(width == 4);
+    FilterHorizontalWidth4<num_taps, is_compound, is_2d>(
+        src, src_stride, dest, pred_stride, height, v_tap);
+  } else {
+    assert(false);
   }
 }
 
@@ -454,19 +445,32 @@ LIBGAV1_ALWAYS_INLINE void DoHorizontalPass(
     v_tap[k] = vdup_n_s16(kHalfSubPixelFilters[filter_index][filter_id][k]);
   }
 
-  if (filter_index == 2) {  // 8 tap.
-    FilterHorizontal<8, is_compound, is_2d>(src, src_stride, dst, dst_stride,
-                                            width, height, v_tap);
-  } else if (filter_index < 2) {  // 6 tap.
-    FilterHorizontal<6, is_compound, is_2d>(src + 1, src_stride, dst,
-                                            dst_stride, width, height, v_tap);
-  } else if ((filter_index & 0x4) != 0) {  // 4 tap.
-    // ((filter_index == 4) | (filter_index == 5))
-    FilterHorizontal<4, is_compound, is_2d>(src + 2, src_stride, dst,
-                                            dst_stride, width, height, v_tap);
-  } else {  // 2 tap.
-    FilterHorizontal<2, is_compound, is_2d>(src + 3, src_stride, dst,
-                                            dst_stride, width, height, v_tap);
+  // Horizontal filter.
+  // Filter types used for width <= 4 are different from those for width > 4.
+  // When width > 4, the valid filter index range is always [0, 3].
+  // When width <= 4, the valid filter index range is always [4, 5].
+  if (width >= 8) {
+    if (filter_index == 2) {  // 8 tap.
+      FilterHorizontalWidth8AndUp<8, is_compound, is_2d>(
+          src, src_stride, dst, dst_stride, width, height, v_tap);
+    } else if (filter_index < 2) {  // 6 tap.
+      FilterHorizontalWidth8AndUp<6, is_compound, is_2d>(
+          src + 1, src_stride, dst, dst_stride, width, height, v_tap);
+    } else {  // 2 tap.
+      assert(filter_index == 3);
+      FilterHorizontalWidth8AndUp<2, is_compound, is_2d>(
+          src + 3, src_stride, dst, dst_stride, width, height, v_tap);
+    }
+  } else {
+    if ((filter_index & 0x4) != 0) {  // 4 tap.
+      // ((filter_index == 4) | (filter_index == 5))
+      FilterHorizontal<4, is_compound, is_2d>(src + 2, src_stride, dst,
+                                              dst_stride, width, height, v_tap);
+    } else {  // 2 tap.
+      assert(filter_index == 3);
+      FilterHorizontal<2, is_compound, is_2d>(src + 3, src_stride, dst,
+                                              dst_stride, width, height, v_tap);
+    }
   }
 }
 

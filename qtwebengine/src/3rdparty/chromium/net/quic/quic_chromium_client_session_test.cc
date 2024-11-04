@@ -20,6 +20,7 @@
 #include "net/base/schemeful_site.h"
 #include "net/base/test_completion_callback.h"
 #include "net/cert/cert_verify_result.h"
+#include "net/dns/public/host_resolver_results.h"
 #include "net/dns/public/secure_dns_policy.h"
 #include "net/http/transport_security_state.h"
 #include "net/http/transport_security_state_test_util.h"
@@ -46,6 +47,7 @@
 #include "net/socket/datagram_client_socket.h"
 #include "net/socket/socket_test_util.h"
 #include "net/spdy/spdy_test_util_common.h"
+#include "net/ssl/ssl_config_service_defaults.h"
 #include "net/test/cert_test_util.h"
 #include "net/test/gtest_util.h"
 #include "net/test/test_data_directory.h"
@@ -168,7 +170,7 @@ class QuicChromiumClientSessionTest
     session_ = std::make_unique<TestingQuicChromiumClientSession>(
         connection, std::move(socket),
         /*stream_factory=*/nullptr, &crypto_client_stream_factory_, &clock_,
-        transport_security_state_.get(), /*ssl_config_service=*/nullptr,
+        transport_security_state_.get(), &ssl_config_service_,
         base::WrapUnique(static_cast<QuicServerInfo*>(nullptr)), session_key_,
         /*require_confirmation=*/false, migrate_session_early_v2_,
         /*migrate_session_on_network_change_v2=*/false, default_network_,
@@ -183,11 +185,12 @@ class QuicChromiumClientSessionTest
             kQuicYieldAfterDurationMilliseconds),
         /*cert_verify_flags=*/0, config_,
         std::make_unique<TestQuicCryptoClientConfigHandle>(&crypto_config_),
-        "CONNECTION_UNKNOWN", base::TimeTicks::Now(), base::TimeTicks::Now(),
+        base::TimeTicks::Now(), base::TimeTicks::Now(),
         std::make_unique<quic::QuicClientPushPromiseIndex>(),
-        &test_push_delegate_, base::DefaultTickClock::GetInstance(),
+        base::DefaultTickClock::GetInstance(),
         base::SingleThreadTaskRunner::GetCurrentDefault().get(),
-        /*socket_performance_watcher=*/nullptr, NetLog::Get());
+        /*socket_performance_watcher=*/nullptr, HostResolverEndpointResult(),
+        NetLog::Get());
     if (connectivity_monitor_) {
       connectivity_monitor_->SetInitialDefaultNetwork(default_network_);
       session_->AddConnectivityObserver(connectivity_monitor_.get());
@@ -213,11 +216,6 @@ class QuicChromiumClientSessionTest
           ERR_ABORTED, quic::QUIC_INTERNAL_ERROR,
           quic::ConnectionCloseBehavior::SILENT_CLOSE);
     }
-  }
-
-  void SetIetfConnectionMigrationFlagsAndConnectionOptions() {
-    FLAGS_quic_reloadable_flag_quic_connection_migration_use_new_cid_v2 = true;
-    config_.SetConnectionOptionsToSend({quic::kRVCM});
   }
 
   void CompleteCryptoHandshake() {
@@ -263,12 +261,12 @@ class QuicChromiumClientSessionTest
   quic::test::MockAlarmFactory alarm_factory_;
   std::unique_ptr<TransportSecurityState> transport_security_state_;
   MockCryptoClientStreamFactory crypto_client_stream_factory_;
+  SSLConfigServiceDefaults ssl_config_service_;
   QuicSessionKey session_key_;
   url::SchemeHostPort destination_;
   std::unique_ptr<TestingQuicChromiumClientSession> session_;
   handles::NetworkHandle default_network_;
   std::unique_ptr<QuicConnectivityMonitor> connectivity_monitor_;
-  TestServerPushDelegate test_push_delegate_;
   raw_ptr<quic::QuicConnectionVisitorInterface> visitor_;
   TestCompletionCallback callback_;
   QuicTestPacketMaker client_maker_;
@@ -575,7 +573,7 @@ TEST_P(QuicChromiumClientSessionTest, CancelStreamRequestBeforeRelease) {
                      client_maker_.MakeInitialSettingsPacket(packet_num++));
   quic_data.AddWrite(
       SYNCHRONOUS,
-      client_maker_.MakeRstPacket(packet_num++, true,
+      client_maker_.MakeRstPacket(packet_num++,
                                   GetNthClientInitiatedBidirectionalStreamId(0),
                                   quic::QUIC_STREAM_CANCELLED));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
@@ -609,28 +607,28 @@ TEST_P(QuicChromiumClientSessionTest, AsyncStreamRequest) {
   // requested, a STREAMS_BLOCKED will be sent, indicating that it's blocked
   // at the limit of 50.
   quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakeStreamsBlockedPacket(
-                                      packet_num++, true, 50,
+                                      packet_num++, 50,
                                       /*unidirectional=*/false));
   // Similarly, requesting the 52nd stream will also send a STREAMS_BLOCKED.
   quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakeStreamsBlockedPacket(
-                                      packet_num++, true, 50,
+                                      packet_num++, 50,
                                       /*unidirectional=*/false));
   quic_data.AddWrite(
       SYNCHRONOUS,
-      client_maker_.MakeRstPacket(packet_num++, true,
+      client_maker_.MakeRstPacket(packet_num++,
                                   GetNthClientInitiatedBidirectionalStreamId(0),
                                   quic::QUIC_STREAM_CANCELLED,
                                   /*include_stop_sending_if_v99=*/false));
   quic_data.AddWrite(
       SYNCHRONOUS,
-      client_maker_.MakeRstPacket(packet_num++, true,
+      client_maker_.MakeRstPacket(packet_num++,
                                   GetNthClientInitiatedBidirectionalStreamId(1),
                                   quic::QUIC_STREAM_CANCELLED,
                                   /*include_stop_sending_if_v99=*/false));
   // After the STREAMS_BLOCKED is sent, receive a MAX_STREAMS to increase
   // the limit to 100.
   quic_data.AddRead(
-      ASYNC, server_maker_.MakeMaxStreamsPacket(1, true, 100,
+      ASYNC, server_maker_.MakeMaxStreamsPacket(1, 100,
                                                 /*unidirectional=*/false));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
@@ -715,17 +713,16 @@ TEST_P(QuicChromiumClientSessionTest, ReadAfterConnectionClose) {
   // requested, a STREAMS_BLOCKED will be sent, indicating that it's blocked
   // at the limit of 50.
   quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakeStreamsBlockedPacket(
-                                      2, true, 50,
+                                      2, 50,
                                       /*unidirectional=*/false));
   quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakeStreamsBlockedPacket(
-                                      3, true, 50,
+                                      3, 50,
                                       /*unidirectional=*/false));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   // This packet will be read after connection is closed.
   quic_data.AddRead(
-      ASYNC,
-      server_maker_.MakeConnectionClosePacket(
-          1, false, quic::QUIC_CRYPTO_VERSION_NOT_SUPPORTED, "Time to panic!"));
+      ASYNC, server_maker_.MakeConnectionClosePacket(
+                 1, quic::QUIC_CRYPTO_VERSION_NOT_SUPPORTED, "Time to panic!"));
   quic_data.AddSocketDataToFactory(&socket_factory_);
 
   Initialize();
@@ -780,10 +777,10 @@ TEST_P(QuicChromiumClientSessionTest, ClosedWithAsyncStreamRequest) {
   // requested, a STREAMS_BLOCKED will be sent, indicating that it's blocked
   // at the limit of 50.
   quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakeStreamsBlockedPacket(
-                                      2, true, 50,
+                                      2, 50,
                                       /*unidirectional=*/false));
   quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakeStreamsBlockedPacket(
-                                      3, true, 50,
+                                      3, 50,
                                       /*unidirectional=*/false));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
@@ -840,13 +837,13 @@ TEST_P(QuicChromiumClientSessionTest, CancelPendingStreamRequest) {
   // MockCryptoClientStream::SetConfigNegotiated() so when the 51st stream is
   // requested, a STREAMS_BLOCKED will be sent.
   quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakeStreamsBlockedPacket(
-                                      2, true, 50,
+                                      2, 50,
                                       /*unidirectional=*/false));
   // This node receives the RST_STREAM+STOP_SENDING, it responds
   // with only a RST_STREAM.
   quic_data.AddWrite(SYNCHRONOUS,
                      client_maker_.MakeRstPacket(
-                         3, true, GetNthClientInitiatedBidirectionalStreamId(0),
+                         3, GetNthClientInitiatedBidirectionalStreamId(0),
                          quic::QUIC_STREAM_CANCELLED,
                          /*include_stop_sending_if_v99=*/false));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
@@ -900,12 +897,10 @@ TEST_P(QuicChromiumClientSessionTest, ConnectionCloseBeforeStreamRequest) {
   int packet_num = 1;
   quic_data.AddWrite(SYNCHRONOUS,
                      client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddWrite(SYNCHRONOUS,
-                     client_maker_.MakePingPacket(packet_num++, true));
+  quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakePingPacket(packet_num++));
   quic_data.AddRead(
-      ASYNC,
-      server_maker_.MakeConnectionClosePacket(
-          1, false, quic::QUIC_CRYPTO_VERSION_NOT_SUPPORTED, "Time to panic!"));
+      ASYNC, server_maker_.MakeConnectionClosePacket(
+                 1, quic::QUIC_CRYPTO_VERSION_NOT_SUPPORTED, "Time to panic!"));
 
   quic_data.AddSocketDataToFactory(&socket_factory_);
 
@@ -944,9 +939,8 @@ TEST_P(QuicChromiumClientSessionTest, ConnectionCloseBeforeHandshakeConfirmed) {
   MockQuicData quic_data(version_);
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(
-      ASYNC,
-      server_maker_.MakeConnectionClosePacket(
-          1, false, quic::QUIC_CRYPTO_VERSION_NOT_SUPPORTED, "Time to panic!"));
+      ASYNC, server_maker_.MakeConnectionClosePacket(
+                 1, quic::QUIC_CRYPTO_VERSION_NOT_SUPPORTED, "Time to panic!"));
   quic_data.AddSocketDataToFactory(&socket_factory_);
 
   Initialize();
@@ -976,16 +970,14 @@ TEST_P(QuicChromiumClientSessionTest, ConnectionCloseWithPendingStreamRequest) {
   int packet_num = 1;
   quic_data.AddWrite(SYNCHRONOUS,
                      client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddWrite(SYNCHRONOUS,
-                     client_maker_.MakePingPacket(packet_num++, true));
+  quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakePingPacket(packet_num++));
   quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakeStreamsBlockedPacket(
-                                      packet_num++, true, 50,
+                                      packet_num++, 50,
                                       /*unidirectional=*/false));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(
-      ASYNC,
-      server_maker_.MakeConnectionClosePacket(
-          1, false, quic::QUIC_CRYPTO_VERSION_NOT_SUPPORTED, "Time to panic!"));
+      ASYNC, server_maker_.MakeConnectionClosePacket(
+                 1, quic::QUIC_CRYPTO_VERSION_NOT_SUPPORTED, "Time to panic!"));
   quic_data.AddSocketDataToFactory(&socket_factory_);
 
   Initialize();
@@ -1029,19 +1021,19 @@ TEST_P(QuicChromiumClientSessionTest, MaxNumStreams) {
   // the static stream (headers), expect to block on when hitting the limit
   // of 50 streams
   quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakeStreamsBlockedPacket(
-                                      2, true, 50,
+                                      2, 50,
                                       /*unidirectional=*/false));
   quic_data.AddWrite(SYNCHRONOUS,
                      client_maker_.MakeRstPacket(
-                         3, true, GetNthClientInitiatedBidirectionalStreamId(0),
+                         3, GetNthClientInitiatedBidirectionalStreamId(0),
                          quic::QUIC_RST_ACKNOWLEDGEMENT));
   // For the second CreateOutgoingStream that fails because of hitting the
   // stream count limit.
   quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakeStreamsBlockedPacket(
-                                      4, true, 50,
+                                      4, 50,
                                       /*unidirectional=*/false));
   quic_data.AddRead(
-      ASYNC, server_maker_.MakeMaxStreamsPacket(1, true, 50 + 2,
+      ASYNC, server_maker_.MakeMaxStreamsPacket(1, 50 + 2,
                                                 /*unidirectional=*/false));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
@@ -1082,123 +1074,16 @@ TEST_P(QuicChromiumClientSessionTest, MaxNumStreams) {
       QuicChromiumClientSessionPeer::CreateOutgoingStream(session_.get()));
 }
 
-TEST_P(QuicChromiumClientSessionTest, PushStreamTimedOutNoResponse) {
-  MockQuicData quic_data(version_);
-  int packet_num = 1;
-  quic_data.AddWrite(ASYNC,
-                     client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddWrite(ASYNC, client_maker_.MakeRstPacket(
-                                packet_num++, true,
-                                GetNthServerInitiatedUnidirectionalStreamId(0),
-                                quic::QUIC_PUSH_STREAM_TIMED_OUT));
-  quic_data.AddRead(ASYNC, ERR_IO_PENDING);
-  quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
-  quic_data.AddSocketDataToFactory(&socket_factory_);
-  Initialize();
-
-  ProofVerifyDetailsChromium details;
-  details.cert_verify_result.verified_cert =
-      ImportCertFromFile(GetTestCertsDirectory(), "spdy_pooling.pem");
-  ASSERT_TRUE(details.cert_verify_result.verified_cert.get());
-
-  CompleteCryptoHandshake();
-  session_->OnProofVerifyDetailsAvailable(details);
-
-  QuicChromiumClientStream* stream =
-      QuicChromiumClientSessionPeer::CreateOutgoingStream(session_.get());
-  EXPECT_TRUE(stream);
-
-  spdy::Http2HeaderBlock promise_headers;
-  promise_headers[":method"] = "GET";
-  promise_headers[":authority"] = "www.example.org";
-  promise_headers[":scheme"] = "https";
-  promise_headers[":path"] = "/pushed.jpg";
-
-  // Receive a PUSH PROMISE from the server.
-  EXPECT_TRUE(session_->HandlePromised(
-      stream->id(), GetNthServerInitiatedUnidirectionalStreamId(0),
-      promise_headers));
-
-  quic::QuicClientPromisedInfo* promised =
-      session_->GetPromisedById(GetNthServerInitiatedUnidirectionalStreamId(0));
-  EXPECT_TRUE(promised);
-  // Fire alarm to time out the push stream.
-  alarm_factory_.FireAlarm(
-      quic::test::QuicClientPromisedInfoPeer::GetAlarm(promised));
-  EXPECT_FALSE(
-      session_->GetPromisedByUrl("https://www.example.org/pushed.jpg"));
-  EXPECT_EQ(0u,
-            QuicChromiumClientSessionPeer::GetPushedBytesCount(session_.get()));
-  EXPECT_EQ(0u, QuicChromiumClientSessionPeer::GetPushedAndUnclaimedBytesCount(
-                    session_.get()));
-}
-
-TEST_P(QuicChromiumClientSessionTest, PushStreamTimedOutWithResponse) {
-  MockQuicData quic_data(version_);
-  int packet_num = 1;
-  quic_data.AddWrite(ASYNC,
-                     client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddWrite(ASYNC, client_maker_.MakeRstPacket(
-                                packet_num++, true,
-                                GetNthServerInitiatedUnidirectionalStreamId(0),
-                                quic::QUIC_PUSH_STREAM_TIMED_OUT));
-  quic_data.AddRead(ASYNC, ERR_IO_PENDING);
-  quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
-  quic_data.AddSocketDataToFactory(&socket_factory_);
-  Initialize();
-
-  ProofVerifyDetailsChromium details;
-  details.cert_verify_result.verified_cert =
-      ImportCertFromFile(GetTestCertsDirectory(), "spdy_pooling.pem");
-  ASSERT_TRUE(details.cert_verify_result.verified_cert.get());
-
-  CompleteCryptoHandshake();
-  session_->OnProofVerifyDetailsAvailable(details);
-
-  QuicChromiumClientStream* stream =
-      QuicChromiumClientSessionPeer::CreateOutgoingStream(session_.get());
-  EXPECT_TRUE(stream);
-
-  spdy::Http2HeaderBlock promise_headers;
-  promise_headers[":method"] = "GET";
-  promise_headers[":authority"] = "www.example.org";
-  promise_headers[":scheme"] = "https";
-  promise_headers[":path"] = "/pushed.jpg";
-
-  session_->GetOrCreateStream(GetNthServerInitiatedUnidirectionalStreamId(0));
-  // Receive a PUSH PROMISE from the server.
-  EXPECT_TRUE(session_->HandlePromised(
-      stream->id(), GetNthServerInitiatedUnidirectionalStreamId(0),
-      promise_headers));
-  session_->OnInitialHeadersComplete(
-      GetNthServerInitiatedUnidirectionalStreamId(0), spdy::Http2HeaderBlock());
-  // Read data on the pushed stream.
-  quic::QuicStreamFrame data(GetNthServerInitiatedUnidirectionalStreamId(0),
-                             false, 0, absl::string_view("SP"));
-  session_->OnStreamFrame(data);
-
-  quic::QuicClientPromisedInfo* promised =
-      session_->GetPromisedById(GetNthServerInitiatedUnidirectionalStreamId(0));
-  EXPECT_TRUE(promised);
-  // Fire alarm to time out the push stream.
-  alarm_factory_.FireAlarm(
-      quic::test::QuicClientPromisedInfoPeer::GetAlarm(promised));
-  EXPECT_EQ(2u,
-            QuicChromiumClientSessionPeer::GetPushedBytesCount(session_.get()));
-  EXPECT_EQ(2u, QuicChromiumClientSessionPeer::GetPushedAndUnclaimedBytesCount(
-                    session_.get()));
-}
-
 // Regression test for crbug.com/968621.
 TEST_P(QuicChromiumClientSessionTest, PendingStreamOnRst) {
   MockQuicData quic_data(version_);
   int packet_num = 1;
   quic_data.AddWrite(ASYNC,
                      client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddWrite(ASYNC, client_maker_.MakeRstPacket(
-                                packet_num++, true,
-                                GetNthServerInitiatedUnidirectionalStreamId(0),
-                                quic::QUIC_RST_ACKNOWLEDGEMENT));
+  quic_data.AddWrite(
+      ASYNC, client_maker_.MakeRstPacket(
+                 packet_num++, GetNthServerInitiatedUnidirectionalStreamId(0),
+                 quic::QUIC_RST_ACKNOWLEDGEMENT));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
   quic_data.AddSocketDataToFactory(&socket_factory_);
@@ -1222,10 +1107,10 @@ TEST_P(QuicChromiumClientSessionTest, ClosePendingStream) {
   int packet_num = 1;
   quic_data.AddWrite(ASYNC,
                      client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddWrite(ASYNC, client_maker_.MakeRstPacket(
-                                packet_num++, true,
-                                GetNthServerInitiatedUnidirectionalStreamId(0),
-                                quic::QUIC_RST_ACKNOWLEDGEMENT));
+  quic_data.AddWrite(
+      ASYNC, client_maker_.MakeRstPacket(
+                 packet_num++, GetNthServerInitiatedUnidirectionalStreamId(0),
+                 quic::QUIC_RST_ACKNOWLEDGEMENT));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
   quic_data.AddSocketDataToFactory(&socket_factory_);
@@ -1240,184 +1125,18 @@ TEST_P(QuicChromiumClientSessionTest, ClosePendingStream) {
   session_->ResetStream(id, quic::QUIC_STREAM_NO_ERROR);
 }
 
-TEST_P(QuicChromiumClientSessionTest, CancelPushWhenPendingValidation) {
-  MockQuicData quic_data(version_);
-  int packet_num = 1;
-  quic_data.AddWrite(ASYNC,
-                     client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddWrite(ASYNC, client_maker_.MakeRstPacket(
-                                packet_num++, true,
-                                GetNthClientInitiatedBidirectionalStreamId(0),
-                                quic::QUIC_RST_ACKNOWLEDGEMENT));
-  quic_data.AddRead(ASYNC, ERR_IO_PENDING);
-  quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
-  quic_data.AddSocketDataToFactory(&socket_factory_);
-  Initialize();
-
-  ProofVerifyDetailsChromium details;
-  details.cert_verify_result.verified_cert =
-      ImportCertFromFile(GetTestCertsDirectory(), "spdy_pooling.pem");
-  ASSERT_TRUE(details.cert_verify_result.verified_cert.get());
-
-  CompleteCryptoHandshake();
-  session_->OnProofVerifyDetailsAvailable(details);
-
-  QuicChromiumClientStream* stream =
-      QuicChromiumClientSessionPeer::CreateOutgoingStream(session_.get());
-  EXPECT_TRUE(stream);
-
-  spdy::Http2HeaderBlock promise_headers;
-  promise_headers[":method"] = "GET";
-  promise_headers[":authority"] = "www.example.org";
-  promise_headers[":scheme"] = "https";
-  promise_headers[":path"] = "/pushed.jpg";
-
-  // Receive a PUSH PROMISE from the server.
-  EXPECT_TRUE(session_->HandlePromised(
-      stream->id(), GetNthServerInitiatedUnidirectionalStreamId(0),
-      promise_headers));
-
-  quic::QuicClientPromisedInfo* promised =
-      session_->GetPromisedById(GetNthServerInitiatedUnidirectionalStreamId(0));
-  EXPECT_TRUE(promised);
-
-  // Initiate rendezvous.
-  spdy::Http2HeaderBlock client_request = promise_headers.Clone();
-  quic::test::TestPushPromiseDelegate delegate(/*match=*/true);
-  promised->HandleClientRequest(client_request, &delegate);
-
-  // Cancel the push before receiving the response to the pushed request.
-  GURL pushed_url("https://www.example.org/pushed.jpg");
-  test_push_delegate_.CancelPush(pushed_url);
-  EXPECT_TRUE(session_->GetPromisedByUrl(pushed_url.spec()));
-
-  // Reset the stream now before tear down.
-  session_->ResetStream(GetNthClientInitiatedBidirectionalStreamId(0),
-                        quic::QUIC_RST_ACKNOWLEDGEMENT);
-}
-
-TEST_P(QuicChromiumClientSessionTest, CancelPushBeforeReceivingResponse) {
-  MockQuicData quic_data(version_);
-  int packet_num = 1;
-  quic_data.AddWrite(ASYNC,
-                     client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddWrite(ASYNC, client_maker_.MakeRstPacket(
-                                packet_num++, true,
-                                GetNthServerInitiatedUnidirectionalStreamId(0),
-                                quic::QUIC_STREAM_CANCELLED));
-  quic_data.AddRead(ASYNC, ERR_IO_PENDING);
-  quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
-  quic_data.AddSocketDataToFactory(&socket_factory_);
-  Initialize();
-
-  ProofVerifyDetailsChromium details;
-  details.cert_verify_result.verified_cert =
-      ImportCertFromFile(GetTestCertsDirectory(), "spdy_pooling.pem");
-  ASSERT_TRUE(details.cert_verify_result.verified_cert.get());
-
-  CompleteCryptoHandshake();
-  session_->OnProofVerifyDetailsAvailable(details);
-
-  QuicChromiumClientStream* stream =
-      QuicChromiumClientSessionPeer::CreateOutgoingStream(session_.get());
-  EXPECT_TRUE(stream);
-
-  spdy::Http2HeaderBlock promise_headers;
-  promise_headers[":method"] = "GET";
-  promise_headers[":authority"] = "www.example.org";
-  promise_headers[":scheme"] = "https";
-  promise_headers[":path"] = "/pushed.jpg";
-
-  // Receive a PUSH PROMISE from the server.
-  EXPECT_TRUE(session_->HandlePromised(
-      stream->id(), GetNthServerInitiatedUnidirectionalStreamId(0),
-      promise_headers));
-
-  quic::QuicClientPromisedInfo* promised =
-      session_->GetPromisedById(GetNthServerInitiatedUnidirectionalStreamId(0));
-  EXPECT_TRUE(promised);
-  // Cancel the push before receiving the response to the pushed request.
-  GURL pushed_url("https://www.example.org/pushed.jpg");
-  test_push_delegate_.CancelPush(pushed_url);
-
-  EXPECT_FALSE(session_->GetPromisedByUrl(pushed_url.spec()));
-  EXPECT_EQ(0u,
-            QuicChromiumClientSessionPeer::GetPushedBytesCount(session_.get()));
-  EXPECT_EQ(0u, QuicChromiumClientSessionPeer::GetPushedAndUnclaimedBytesCount(
-                    session_.get()));
-}
-
-TEST_P(QuicChromiumClientSessionTest, CancelPushAfterReceivingResponse) {
-  MockQuicData quic_data(version_);
-  int packet_num = 1;
-  quic_data.AddWrite(ASYNC,
-                     client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddWrite(ASYNC, client_maker_.MakeRstPacket(
-                                packet_num++, true,
-                                GetNthServerInitiatedUnidirectionalStreamId(0),
-                                quic::QUIC_STREAM_CANCELLED));
-  quic_data.AddRead(ASYNC, ERR_IO_PENDING);
-  quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
-  quic_data.AddSocketDataToFactory(&socket_factory_);
-
-  Initialize();
-
-  ProofVerifyDetailsChromium details;
-  details.cert_verify_result.verified_cert =
-      ImportCertFromFile(GetTestCertsDirectory(), "spdy_pooling.pem");
-  ASSERT_TRUE(details.cert_verify_result.verified_cert.get());
-
-  CompleteCryptoHandshake();
-  session_->OnProofVerifyDetailsAvailable(details);
-
-  QuicChromiumClientStream* stream =
-      QuicChromiumClientSessionPeer::CreateOutgoingStream(session_.get());
-  EXPECT_TRUE(stream);
-
-  spdy::Http2HeaderBlock promise_headers;
-  promise_headers[":method"] = "GET";
-  promise_headers[":authority"] = "www.example.org";
-  promise_headers[":scheme"] = "https";
-  promise_headers[":path"] = "/pushed.jpg";
-
-  session_->GetOrCreateStream(GetNthServerInitiatedUnidirectionalStreamId(0));
-  // Receive a PUSH PROMISE from the server.
-  EXPECT_TRUE(session_->HandlePromised(
-      stream->id(), GetNthServerInitiatedUnidirectionalStreamId(0),
-      promise_headers));
-  session_->OnInitialHeadersComplete(
-      GetNthServerInitiatedUnidirectionalStreamId(0), spdy::Http2HeaderBlock());
-  // Read data on the pushed stream.
-  quic::QuicStreamFrame data(GetNthServerInitiatedUnidirectionalStreamId(0),
-                             false, 0, absl::string_view("SP"));
-  session_->OnStreamFrame(data);
-
-  quic::QuicClientPromisedInfo* promised =
-      session_->GetPromisedById(GetNthServerInitiatedUnidirectionalStreamId(0));
-  EXPECT_TRUE(promised);
-  // Cancel the push after receiving data on the push stream.
-  GURL pushed_url("https://www.example.org/pushed.jpg");
-  test_push_delegate_.CancelPush(pushed_url);
-
-  EXPECT_FALSE(session_->GetPromisedByUrl(pushed_url.spec()));
-  EXPECT_EQ(2u,
-            QuicChromiumClientSessionPeer::GetPushedBytesCount(session_.get()));
-  EXPECT_EQ(2u, QuicChromiumClientSessionPeer::GetPushedAndUnclaimedBytesCount(
-                    session_.get()));
-}
-
 TEST_P(QuicChromiumClientSessionTest, MaxNumStreamsViaRequest) {
   MockQuicData quic_data(version_);
   quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakeInitialSettingsPacket(1));
   quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakeStreamsBlockedPacket(
-                                      2, true, 50,
+                                      2, 50,
                                       /*unidirectional=*/false));
   quic_data.AddWrite(SYNCHRONOUS,
                      client_maker_.MakeRstPacket(
-                         3, true, GetNthClientInitiatedBidirectionalStreamId(0),
+                         3, GetNthClientInitiatedBidirectionalStreamId(0),
                          quic::QUIC_RST_ACKNOWLEDGEMENT));
   quic_data.AddRead(
-      ASYNC, server_maker_.MakeMaxStreamsPacket(1, true, 52,
+      ASYNC, server_maker_.MakeMaxStreamsPacket(1, 52,
                                                 /*unidirectional=*/false));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
@@ -1546,7 +1265,7 @@ TEST_P(QuicChromiumClientSessionTest, CanPool) {
     EXPECT_TRUE(session_->CanPool(
         "mail.example.com",
         QuicSessionKey("foo", 1234, PRIVACY_MODE_DISABLED, SocketTag(),
-                       NetworkAnonymizationKey(kSiteFoo, kSiteFoo),
+                       NetworkAnonymizationKey::CreateSameSite(kSiteFoo),
                        SecureDnsPolicy::kAllow,
                        /*require_dns_https_alpn=*/false)));
   }
@@ -1557,7 +1276,7 @@ TEST_P(QuicChromiumClientSessionTest, CanPool) {
     EXPECT_FALSE(session_->CanPool(
         "mail.example.com",
         QuicSessionKey("foo", 1234, PRIVACY_MODE_DISABLED, SocketTag(),
-                       NetworkAnonymizationKey(kSiteFoo, kSiteFoo),
+                       NetworkAnonymizationKey::CreateSameSite(kSiteFoo),
                        SecureDnsPolicy::kAllow,
                        /*require_dns_https_alpn=*/false)));
   }
@@ -1571,8 +1290,10 @@ TEST_P(QuicChromiumClientSessionTest, CanPoolWithNetworkAnonymizationKey) {
 
   const SchemefulSite kSiteFoo(GURL("http://foo.test/"));
   const SchemefulSite kSiteBar(GURL("http://bar.test/"));
-  const NetworkAnonymizationKey kNetworkAnonymizationKey1(kSiteFoo, kSiteFoo);
-  const NetworkAnonymizationKey kNetworkAnonymizationKey2(kSiteBar, kSiteBar);
+  const auto kNetworkAnonymizationKey1 =
+      NetworkAnonymizationKey::CreateSameSite(kSiteFoo);
+  const auto kNetworkAnonymizationKey2 =
+      NetworkAnonymizationKey::CreateSameSite(kSiteBar);
 
   session_key_ =
       QuicSessionKey(kServerHostname, kServerPort, PRIVACY_MODE_DISABLED,
@@ -1732,8 +1453,6 @@ TEST_P(QuicChromiumClientSessionTest, ConnectionPooledWithMatchingPin) {
 }
 
 TEST_P(QuicChromiumClientSessionTest, MigrateToSocket) {
-  SetIetfConnectionMigrationFlagsAndConnectionOptions();
-
   quic::QuicConnectionId cid_on_new_path =
       quic::test::TestConnectionId(12345678);
   MockQuicData quic_data(version_);
@@ -1743,11 +1462,10 @@ TEST_P(QuicChromiumClientSessionTest, MigrateToSocket) {
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddWrite(ASYNC,
                      client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddRead(
-      ASYNC, server_maker_.MakeNewConnectionIdPacket(
-                 peer_packet_num++, /*include_version=*/false, cid_on_new_path,
-                 /*sequence_number=*/1u,
-                 /*retire_prior_to=*/0u));
+  quic_data.AddRead(ASYNC, server_maker_.MakeNewConnectionIdPacket(
+                               peer_packet_num++, cid_on_new_path,
+                               /*sequence_number=*/1u,
+                               /*retire_prior_to=*/0u));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
   quic_data.AddSocketDataToFactory(&socket_factory_);
@@ -1763,14 +1481,14 @@ TEST_P(QuicChromiumClientSessionTest, MigrateToSocket) {
   client_maker_.set_connection_id(cid_on_new_path);
   quic_data2.AddRead(SYNCHRONOUS, ERR_IO_PENDING);
   quic_data2.AddWrite(SYNCHRONOUS, client_maker_.MakeAckAndPingPacket(
-                                       packet_num++, /*include_version=*/false,
+                                       packet_num++,
                                        /*largest_received=*/peer_packet_num - 1,
                                        /*smallest_received=*/1));
   quic_data2.AddWrite(
       SYNCHRONOUS,
       client_maker_.MakeDataPacket(
-          packet_num++, GetNthClientInitiatedBidirectionalStreamId(0), true,
-          false, absl::string_view(data)));
+          packet_num++, GetNthClientInitiatedBidirectionalStreamId(0), false,
+          std::string_view(data)));
   quic_data2.AddSocketDataToFactory(&socket_factory_);
   // Create connected socket.
   std::unique_ptr<DatagramClientSocket> new_socket =
@@ -1780,22 +1498,23 @@ TEST_P(QuicChromiumClientSessionTest, MigrateToSocket) {
 
   // Create reader and writer.
   auto new_reader = std::make_unique<QuicChromiumPacketReader>(
-      new_socket.get(), &clock_, session_.get(), kQuicYieldAfterPacketsRead,
+      std::move(new_socket), &clock_, session_.get(),
+      kQuicYieldAfterPacketsRead,
       quic::QuicTime::Delta::FromMilliseconds(
           kQuicYieldAfterDurationMilliseconds),
       net_log_with_source_);
   new_reader->StartReading();
   std::unique_ptr<QuicChromiumPacketWriter> new_writer(
-      CreateQuicChromiumPacketWriter(new_socket.get(), session_.get()));
+      CreateQuicChromiumPacketWriter(new_reader->socket(), session_.get()));
 
   IPEndPoint local_address;
-  new_socket->GetLocalAddress(&local_address);
+  new_reader->socket()->GetLocalAddress(&local_address);
   IPEndPoint peer_address;
-  new_socket->GetPeerAddress(&peer_address);
+  new_reader->socket()->GetPeerAddress(&peer_address);
   // Migrate session.
   EXPECT_TRUE(session_->MigrateToSocket(
       ToQuicSocketAddress(local_address), ToQuicSocketAddress(peer_address),
-      std::move(new_socket), std::move(new_reader), std::move(new_writer)));
+      std::move(new_reader), std::move(new_writer)));
   // Spin message loop to complete migration.
   base::RunLoop().RunUntilIdle();
 
@@ -1813,7 +1532,6 @@ TEST_P(QuicChromiumClientSessionTest, MigrateToSocket) {
 }
 
 TEST_P(QuicChromiumClientSessionTest, MigrateToSocketMaxReaders) {
-  SetIetfConnectionMigrationFlagsAndConnectionOptions();
   MockQuicData quic_data(version_);
   socket_data_.reset();
   int packet_num = 1;
@@ -1826,8 +1544,7 @@ TEST_P(QuicChromiumClientSessionTest, MigrateToSocketMaxReaders) {
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(ASYNC,
                     server_maker_.MakeNewConnectionIdPacket(
-                        peer_packet_num++, /*include_version=*/false, next_cid,
-                        next_cid_sequence_number,
+                        peer_packet_num++, next_cid, next_cid_sequence_number,
                         /*retire_prior_to=*/next_cid_sequence_number - 1));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
@@ -1844,21 +1561,20 @@ TEST_P(QuicChromiumClientSessionTest, MigrateToSocketMaxReaders) {
     client_maker_.set_connection_id(next_cid);
     quic_data2.AddWrite(SYNCHRONOUS,
                         client_maker_.MakeAckAndPingPacket(
-                            packet_num++, /*include_version=*/true,
+                            packet_num++,
                             /*largest_received=*/peer_packet_num - 1,
                             /*smallest_received=*/1));
     quic_data2.AddRead(ASYNC, ERR_IO_PENDING);
     quic_data2.AddWrite(ASYNC,
                         client_maker_.MakeRetireConnectionIdPacket(
-                            packet_num++, /*include_version=*/false,
+                            packet_num++,
                             /*sequence_number=*/next_cid_sequence_number - 1));
     next_cid = quic::QuicUtils::CreateRandomConnectionId(
         quiche::QuicheRandom::GetInstance());
     ++next_cid_sequence_number;
     quic_data2.AddRead(
         ASYNC, server_maker_.MakeNewConnectionIdPacket(
-                   peer_packet_num++, /*include_version=*/false, next_cid,
-                   next_cid_sequence_number,
+                   peer_packet_num++, next_cid, next_cid_sequence_number,
                    /*retire_prior_to=*/next_cid_sequence_number - 1));
     quic_data2.AddRead(SYNCHRONOUS, ERR_IO_PENDING);  // Hanging read.
     quic_data2.AddSocketDataToFactory(&socket_factory_);
@@ -1871,22 +1587,23 @@ TEST_P(QuicChromiumClientSessionTest, MigrateToSocketMaxReaders) {
 
     // Create reader and writer.
     auto new_reader = std::make_unique<QuicChromiumPacketReader>(
-        new_socket.get(), &clock_, session_.get(), kQuicYieldAfterPacketsRead,
+        std::move(new_socket), &clock_, session_.get(),
+        kQuicYieldAfterPacketsRead,
         quic::QuicTime::Delta::FromMilliseconds(
             kQuicYieldAfterDurationMilliseconds),
         net_log_with_source_);
     new_reader->StartReading();
     std::unique_ptr<QuicChromiumPacketWriter> new_writer(
-        CreateQuicChromiumPacketWriter(new_socket.get(), session_.get()));
+        CreateQuicChromiumPacketWriter(new_reader->socket(), session_.get()));
 
     IPEndPoint local_address;
-    new_socket->GetLocalAddress(&local_address);
+    new_reader->socket()->GetLocalAddress(&local_address);
     IPEndPoint peer_address;
-    new_socket->GetPeerAddress(&peer_address);
+    new_reader->socket()->GetPeerAddress(&peer_address);
     // Migrate session.
     EXPECT_TRUE(session_->MigrateToSocket(
         ToQuicSocketAddress(local_address), ToQuicSocketAddress(peer_address),
-        std::move(new_socket), std::move(new_reader), std::move(new_writer)));
+        std::move(new_reader), std::move(new_writer)));
     // Spin message loop to complete migration.
     base::RunLoop().RunUntilIdle();
     alarm_factory_.FireAlarm(
@@ -1911,27 +1628,27 @@ TEST_P(QuicChromiumClientSessionTest, MigrateToSocketMaxReaders) {
 
   // Create reader and writer.
   auto new_reader = std::make_unique<QuicChromiumPacketReader>(
-      new_socket.get(), &clock_, session_.get(), kQuicYieldAfterPacketsRead,
+      std::move(new_socket), &clock_, session_.get(),
+      kQuicYieldAfterPacketsRead,
       quic::QuicTime::Delta::FromMilliseconds(
           kQuicYieldAfterDurationMilliseconds),
       net_log_with_source_);
   new_reader->StartReading();
   std::unique_ptr<QuicChromiumPacketWriter> new_writer(
-      CreateQuicChromiumPacketWriter(new_socket.get(), session_.get()));
+      CreateQuicChromiumPacketWriter(new_reader->socket(), session_.get()));
 
   IPEndPoint local_address;
-  new_socket->GetLocalAddress(&local_address);
+  new_reader->socket()->GetLocalAddress(&local_address);
   IPEndPoint peer_address;
-  new_socket->GetPeerAddress(&peer_address);
+  new_reader->socket()->GetPeerAddress(&peer_address);
   EXPECT_FALSE(session_->MigrateToSocket(
       ToQuicSocketAddress(local_address), ToQuicSocketAddress(peer_address),
-      std::move(new_socket), std::move(new_reader), std::move(new_writer)));
+      std::move(new_reader), std::move(new_writer)));
   EXPECT_TRUE(quic_data2.AllReadDataConsumed());
   EXPECT_TRUE(quic_data2.AllWriteDataConsumed());
 }
 
 TEST_P(QuicChromiumClientSessionTest, MigrateToSocketReadError) {
-  SetIetfConnectionMigrationFlagsAndConnectionOptions();
   MockQuicData quic_data(version_);
   socket_data_.reset();
   int packet_num = 1;
@@ -1942,11 +1659,10 @@ TEST_P(QuicChromiumClientSessionTest, MigrateToSocketReadError) {
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddWrite(ASYNC,
                      client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddRead(
-      ASYNC, server_maker_.MakeNewConnectionIdPacket(
-                 peer_packet_num++, /*include_version=*/false, cid_on_new_path,
-                 /*sequence_number=*/1u,
-                 /*retire_prior_to=*/0u));
+  quic_data.AddRead(ASYNC, server_maker_.MakeNewConnectionIdPacket(
+                               peer_packet_num++, cid_on_new_path,
+                               /*sequence_number=*/1u,
+                               /*retire_prior_to=*/0u));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(ASYNC, ERR_NETWORK_CHANGED);
 
@@ -1962,12 +1678,11 @@ TEST_P(QuicChromiumClientSessionTest, MigrateToSocketReadError) {
   client_maker_.set_connection_id(cid_on_new_path);
   quic_data2.AddWrite(SYNCHRONOUS, client_maker_.MakeAckAndPingPacket(
                                        packet_num++,
-                                       /*include_version=*/false,
+
                                        /*largest_received=*/peer_packet_num - 1,
                                        /*smallest_received=*/1));
   quic_data2.AddRead(ASYNC, ERR_IO_PENDING);
-  quic_data2.AddRead(
-      ASYNC, server_maker_.MakePingPacket(1, /*include_version=*/false));
+  quic_data2.AddRead(ASYNC, server_maker_.MakePingPacket(1));
   quic_data2.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data2.AddRead(ASYNC, ERR_NETWORK_CHANGED);
   quic_data2.AddSocketDataToFactory(&socket_factory_);
@@ -1980,22 +1695,23 @@ TEST_P(QuicChromiumClientSessionTest, MigrateToSocketReadError) {
 
   // Create reader and writer.
   auto new_reader = std::make_unique<QuicChromiumPacketReader>(
-      new_socket.get(), &clock_, session_.get(), kQuicYieldAfterPacketsRead,
+      std::move(new_socket), &clock_, session_.get(),
+      kQuicYieldAfterPacketsRead,
       quic::QuicTime::Delta::FromMilliseconds(
           kQuicYieldAfterDurationMilliseconds),
       net_log_with_source_);
   new_reader->StartReading();
   std::unique_ptr<QuicChromiumPacketWriter> new_writer(
-      CreateQuicChromiumPacketWriter(new_socket.get(), session_.get()));
+      CreateQuicChromiumPacketWriter(new_reader->socket(), session_.get()));
 
   IPEndPoint local_address;
-  new_socket->GetLocalAddress(&local_address);
+  new_reader->socket()->GetLocalAddress(&local_address);
   IPEndPoint peer_address;
-  new_socket->GetPeerAddress(&peer_address);
+  new_reader->socket()->GetPeerAddress(&peer_address);
   // Store old socket and migrate session.
   EXPECT_TRUE(session_->MigrateToSocket(
       ToQuicSocketAddress(local_address), ToQuicSocketAddress(peer_address),
-      std::move(new_socket), std::move(new_reader), std::move(new_writer)));
+      std::move(new_reader), std::move(new_writer)));
   // Spin message loop to complete migration.
   base::RunLoop().RunUntilIdle();
   EXPECT_TRUE(
@@ -2026,13 +1742,11 @@ TEST_P(QuicChromiumClientSessionTest, RetransmittableOnWireTimeout) {
   int packet_num = 1;
   quic_data.AddWrite(SYNCHRONOUS,
                      client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddWrite(SYNCHRONOUS,
-                     client_maker_.MakePingPacket(packet_num++, true));
+  quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakePingPacket(packet_num++));
 
   quic_data.AddRead(ASYNC, server_maker_.MakeAckPacket(1, packet_num - 1, 1));
 
-  quic_data.AddWrite(SYNCHRONOUS,
-                     client_maker_.MakePingPacket(packet_num++, false));
+  quic_data.AddWrite(SYNCHRONOUS, client_maker_.MakePingPacket(packet_num++));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
   quic_data.AddSocketDataToFactory(&socket_factory_);
@@ -2075,10 +1789,10 @@ TEST_P(QuicChromiumClientSessionTest, ResetOnEmptyResponseHeaders) {
   int packet_num = 1;
   quic_data.AddWrite(ASYNC,
                      client_maker_.MakeInitialSettingsPacket(packet_num++));
-  quic_data.AddWrite(ASYNC, client_maker_.MakeRstPacket(
-                                packet_num++, true,
-                                GetNthClientInitiatedBidirectionalStreamId(0),
-                                quic::QUIC_STREAM_GENERAL_PROTOCOL_ERROR));
+  quic_data.AddWrite(
+      ASYNC, client_maker_.MakeRstPacket(
+                 packet_num++, GetNthClientInitiatedBidirectionalStreamId(0),
+                 quic::QUIC_STREAM_GENERAL_PROTOCOL_ERROR));
   quic_data.AddRead(ASYNC, ERR_IO_PENDING);
   quic_data.AddRead(ASYNC, ERR_CONNECTION_CLOSED);
   quic_data.AddSocketDataToFactory(&socket_factory_);
@@ -2165,7 +1879,6 @@ TEST_P(QuicChromiumClientSessionTest, DegradingWithMultiPortEnabled) {
   connectivity_monitor_ =
       std::make_unique<QuicConnectivityMonitor>(default_network_);
   allow_port_migration_ = true;
-  SetIetfConnectionMigrationFlagsAndConnectionOptions();
   auto options = config_.SendConnectionOptions();
   config_.SetClientConnectionOptions(quic::QuicTagVector{quic::kMPQC});
   config_.SetConnectionOptionsToSend(options);

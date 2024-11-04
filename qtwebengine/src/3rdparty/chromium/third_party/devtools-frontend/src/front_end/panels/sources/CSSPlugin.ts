@@ -41,7 +41,7 @@ function findPropertyAt(node: CodeMirror.SyntaxNode, pos: number): CodeMirror.Sy
     return null;
   }
   for (let cur: CodeMirror.SyntaxNode|null = node; cur; cur = cur.parent) {
-    if (cur.name === 'StyleSheet') {
+    if (cur.name === 'StyleSheet' || cur.name === 'Styles' || cur.name === 'CallExpression') {
       break;
     } else if (cur.name === 'Declaration') {
       const name = cur.getChild('PropertyName'), colon = cur.getChild(':');
@@ -148,7 +148,7 @@ class ColorSwatchWidget extends CodeMirror.WidgetType {
     this.#from = from;
   }
 
-  eq(other: ColorSwatchWidget): boolean {
+  override eq(other: ColorSwatchWidget): boolean {
     return this.#color.equal(other.#color) && this.#text === other.#text && this.#from === other.#from;
   }
 
@@ -180,7 +180,7 @@ class ColorSwatchWidget extends CodeMirror.WidgetType {
     return swatch;
   }
 
-  ignoreEvent(): boolean {
+  override ignoreEvent(): boolean {
     return true;
   }
 }
@@ -190,7 +190,7 @@ class CurveSwatchWidget extends CodeMirror.WidgetType {
     super();
   }
 
-  eq(other: CurveSwatchWidget): boolean {
+  override eq(other: CurveSwatchWidget): boolean {
     return this.curve.asCSSText() === other.curve.asCSSText() && this.text === other.text;
   }
 
@@ -214,7 +214,7 @@ class CurveSwatchWidget extends CodeMirror.WidgetType {
     return swatch;
   }
 
-  ignoreEvent(): boolean {
+  override ignoreEvent(): boolean {
     return true;
   }
 }
@@ -426,12 +426,12 @@ export class CSSPlugin extends Plugin implements SDK.TargetManager.SDKModelObser
     SDK.TargetManager.TargetManager.instance().observeModels(SDK.CSSModel.CSSModel, this);
   }
 
-  static accepts(uiSourceCode: Workspace.UISourceCode.UISourceCode): boolean {
+  static override accepts(uiSourceCode: Workspace.UISourceCode.UISourceCode): boolean {
     return uiSourceCode.contentType().hasStyleSheets();
   }
 
   modelAdded(cssModel: SDK.CSSModel.CSSModel): void {
-    if (cssModel.target() !== SDK.TargetManager.TargetManager.instance().mainFrameTarget()) {
+    if (cssModel.target() !== SDK.TargetManager.TargetManager.instance().primaryPageTarget()) {
       return;
     }
     this.#cssModel = cssModel;
@@ -442,7 +442,7 @@ export class CSSPlugin extends Plugin implements SDK.TargetManager.SDKModelObser
     }
   }
 
-  editorExtension(): CodeMirror.Extension {
+  override editorExtension(): CodeMirror.Extension {
     return [cssBindings(), this.#cssCompletion(), cssSwatches()];
   }
 

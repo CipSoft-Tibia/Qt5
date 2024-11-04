@@ -3,6 +3,7 @@
 #include "qquickpalettecolorprovider_p.h"
 
 #include <QtQuick/private/qquickabstractpaletteprovider_p.h>
+#include <QtGui/private/qpalette_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -44,10 +45,55 @@ bool QQuickPaletteColorProvider::setColor(QPalette::ColorGroup g, QPalette::Colo
 
 bool QQuickPaletteColorProvider::resetColor(QPalette::ColorGroup group, QPalette::ColorRole role)
 {
-    const auto &defaultPalette = paletteProvider()->defaultPalette() ;
-    const auto &defaultColor = defaultPalette.color(adjustCg(group), role);
+    if (!m_requestedPalette.isAllocated())
+        return false;
 
-    return setColor(group, role, defaultColor);
+    QPalette::ResolveMask unsetResolveMask = 0;
+
+    if (group == QPalette::Current)
+        group = m_requestedPalette->currentColorGroup();
+
+    if (group == QPalette::All) {
+        for (int g = QPalette::Active; g < QPalette::NColorGroups; ++g)
+            unsetResolveMask |= (QPalette::ResolveMask(1) << QPalettePrivate::bitPosition(QPalette::ColorGroup(g), role));
+    } else {
+        unsetResolveMask = (QPalette::ResolveMask(1) << QPalettePrivate::bitPosition(group, role));
+    }
+
+    m_requestedPalette->setResolveMask(m_requestedPalette->resolveMask() & ~unsetResolveMask);
+
+    return updateInheritedPalette();
+}
+
+bool QQuickPaletteColorProvider::resetColor(QPalette::ColorGroup group)
+{
+    if (!m_requestedPalette.isAllocated())
+        return false;
+
+    QPalette::ResolveMask unsetResolveMask = 0;
+
+    auto getResolveMask = [] (QPalette::ColorGroup group) {
+        QPalette::ResolveMask mask = 0;
+        for (int roleIndex = QPalette::WindowText; roleIndex < QPalette::NColorRoles; ++roleIndex) {
+            const auto cr = QPalette::ColorRole(roleIndex);
+            mask |= (QPalette::ResolveMask(1) << QPalettePrivate::bitPosition(group, cr));
+        }
+        return mask;
+    };
+
+    if (group == QPalette::Current)
+        group = m_requestedPalette->currentColorGroup();
+
+    if (group == QPalette::All) {
+        for (int g = QPalette::Active; g < QPalette::NColorGroups; ++g)
+            unsetResolveMask |= getResolveMask(QPalette::ColorGroup(g));
+    } else {
+        unsetResolveMask = getResolveMask(group);
+    }
+
+    m_requestedPalette->setResolveMask(m_requestedPalette->resolveMask() & ~unsetResolveMask);
+
+    return updateInheritedPalette();
 }
 
 bool QQuickPaletteColorProvider::fromQPalette(QPalette p)
@@ -116,6 +162,7 @@ bool QQuickPaletteColorProvider::doInheritPalette(const QPalette &palette)
 {
     auto inheritedMask = m_requestedPalette.isAllocated() ? m_requestedPalette->resolveMask() | palette.resolveMask()
                                                           : palette.resolveMask();
+    // If a palette was set on this item, it should always win over the palette to be inherited from.
     QPalette parentPalette = m_requestedPalette.isAllocated() ? m_requestedPalette->resolve(palette) : palette;
     parentPalette.setResolveMask(inheritedMask);
 

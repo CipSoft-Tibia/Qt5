@@ -4,17 +4,19 @@
 
 import '../strings.m.js';
 import './icons.html.js';
+import '//bookmarks-side-panel.top-chrome/shared/sp_shared_style.css.js';
 import '//resources/cr_elements/cr_action_menu/cr_action_menu.js';
 import '//resources/cr_elements/cr_icon_button/cr_icon_button.js';
 import '//resources/cr_elements/icons.html.js';
 
+import {ShoppingListApiProxy, ShoppingListApiProxyImpl} from '//bookmarks-side-panel.top-chrome/shared/commerce/shopping_list_api_proxy.js';
 import {CrActionMenuElement} from '//resources/cr_elements/cr_action_menu/cr_action_menu.js';
+import {assert} from 'chrome://resources/js/assert_ts.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
-import {DomRepeatEvent, PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+import {afterNextRender, DomRepeatEvent, PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
 import {ActionSource} from './bookmarks.mojom-webui.js';
 import {BookmarksApiProxy, BookmarksApiProxyImpl} from './bookmarks_api_proxy.js';
-import {ShoppingListApiProxy, ShoppingListApiProxyImpl} from './commerce/shopping_list_api_proxy.js';
 import {getTemplate} from './power_bookmarks_context_menu.html.js';
 import {editingDisabledByPolicy} from './power_bookmarks_service.js';
 
@@ -28,18 +30,20 @@ export enum MenuItemId {
   OPEN_NEW_TAB = 0,
   OPEN_NEW_WINDOW = 1,
   OPEN_INCOGNITO = 2,
-  ADD_TO_BOOKMARKS_BAR = 3,
-  REMOVE_FROM_BOOKMARKS_BAR = 4,
-  TRACK_PRICE = 5,
-  RENAME = 6,
-  DELETE = 7,
-  DIVIDER = 8,
+  OPEN_NEW_TAB_GROUP = 3,
+  EDIT = 4,
+  ADD_TO_BOOKMARKS_BAR = 5,
+  REMOVE_FROM_BOOKMARKS_BAR = 6,
+  TRACK_PRICE = 7,
+  RENAME = 8,
+  DELETE = 9,
+  DIVIDER = 10,
 }
 
 export interface MenuItem {
   id: MenuItemId;
   label?: string;
-  trailingIcon?: string;
+  disabled?: boolean;
 }
 
 export class PowerBookmarksContextMenuElement extends PolymerElement {
@@ -67,58 +71,135 @@ export class PowerBookmarksContextMenuElement extends PolymerElement {
 
   showAt(
       event: MouseEvent, bookmarks: chrome.bookmarks.BookmarkTreeNode[],
-      priceTracked: boolean, priceTrackingEligible: boolean) {
+      priceTracked: boolean, priceTrackingEligible: boolean,
+      onShown: Function = () => {}) {
     this.bookmarks_ = bookmarks;
     this.priceTracked_ = priceTracked;
     this.priceTrackingEligible_ = priceTrackingEligible;
-    this.$.menu.showAt(event.target as HTMLElement);
+    const target = event.target as HTMLElement;
+    afterNextRender(this, () => {
+      this.$.menu.showAt(target);
+      onShown();
+    });
   }
 
   showAtPosition(
       event: MouseEvent, bookmarks: chrome.bookmarks.BookmarkTreeNode[],
-      priceTracked: boolean, priceTrackingEligible: boolean) {
+      priceTracked: boolean, priceTrackingEligible: boolean,
+      onShown: Function = () => {}) {
     this.bookmarks_ = bookmarks;
     this.priceTracked_ = priceTracked;
     this.priceTrackingEligible_ = priceTrackingEligible;
-    this.$.menu.showAtPosition({top: event.clientY, left: event.clientX});
+    const menuMargin = 20;
+    const doc = document.scrollingElement!;
+    const minX = doc.scrollLeft + menuMargin;
+    const maxX = doc.scrollLeft + doc.clientWidth - menuMargin;
+    afterNextRender(this, () => {
+      this.$.menu.showAtPosition({
+        top: event.clientY,
+        left: event.clientX,
+        minX: minX,
+        maxX: maxX,
+      });
+      onShown();
+    });
+  }
+
+  isOpen(): boolean {
+    return this.$.menu.open;
   }
 
   private getMenuItemsForBookmarks_(): MenuItem[] {
+    // TODO(crbug.com/1428654): Factor in URLs not available in incognito.
+    let bookmarkCount = 0;
+    this.bookmarks_.forEach((bookmark) => {
+      if (bookmark.url) {
+        bookmarkCount += 1;
+      } else if (bookmark.children) {
+        bookmarkCount +=
+            bookmark.children.filter((child) => !!child.url).length;
+      }
+    });
     const menuItems: MenuItem[] = [
       {
         id: MenuItemId.OPEN_NEW_TAB,
-        label: this.bookmarks_.length === 1 ?
+        label: bookmarkCount < 2 ?
             loadTimeData.getString('menuOpenNewTab') :
-            loadTimeData.getStringF(
-                'menuOpenNewTabWithCount', this.bookmarks_.length),
+            loadTimeData.getStringF('menuOpenNewTabWithCount', bookmarkCount),
+        disabled: bookmarkCount === 0,
       },
       {
         id: MenuItemId.OPEN_NEW_WINDOW,
-        label: this.bookmarks_.length === 1 ?
+        label: bookmarkCount < 2 ?
             loadTimeData.getString('menuOpenNewWindow') :
             loadTimeData.getStringF(
-                'menuOpenNewWindowWithCount', this.bookmarks_.length),
+                'menuOpenNewWindowWithCount', bookmarkCount),
+        disabled: bookmarkCount === 0,
       },
     ];
 
-    if (!loadTimeData.getBoolean('incognitoMode')) {
+    if (!loadTimeData.getBoolean('incognitoMode') &&
+        loadTimeData.getBoolean('isIncognitoModeAvailable')) {
       menuItems.push({
         id: MenuItemId.OPEN_INCOGNITO,
-        label: this.bookmarks_.length === 1 ?
+        label: bookmarkCount < 2 ?
             loadTimeData.getString('menuOpenIncognito') :
             loadTimeData.getStringF(
-                'menuOpenIncognitoWithCount', this.bookmarks_.length),
+                'menuOpenIncognitoWithCount', bookmarkCount),
+        disabled: bookmarkCount === 0,
       });
     }
 
-    if (this.bookmarks_.length !== 1 ||
+    if (this.bookmarks_.length !== 1 || !this.bookmarks_[0]!.url) {
+      menuItems.push({
+        id: MenuItemId.OPEN_NEW_TAB_GROUP,
+        label: bookmarkCount < 2 ?
+            loadTimeData.getString('menuOpenNewTabGroup') :
+            loadTimeData.getStringF(
+                'menuOpenNewTabGroupWithCount', bookmarkCount),
+        disabled: bookmarkCount === 0,
+      });
+    }
+
+    if (this.bookmarks_.length !== 1) {
+      menuItems.push(
+          {id: MenuItemId.DIVIDER},
+          {
+            id: MenuItemId.EDIT,
+            label: loadTimeData.getString('tooltipMove'),
+          },
+          {id: MenuItemId.DIVIDER},
+          {
+            id: MenuItemId.DELETE,
+            label: loadTimeData.getString('tooltipDelete'),
+          },
+      );
+      return menuItems;
+    } else if (
         this.bookmarks_[0]!.id === loadTimeData.getString('bookmarksBarId')) {
       return menuItems;
     }
 
+    if (this.bookmarks_[0]!.url ||
+        this.bookmarks_[0]!.parentId ===
+            loadTimeData.getString('bookmarksBarId') ||
+        this.bookmarks_[0]!.parentId ===
+            loadTimeData.getString('otherBookmarksId') ||
+        this.bookmarks_[0]!.parentId ===
+            loadTimeData.getString('mobileBookmarksId')) {
+      menuItems.push({id: MenuItemId.DIVIDER});
+    }
+
+    if (this.bookmarks_[0]!.url) {
+      menuItems.push({
+        id: MenuItemId.EDIT,
+        label: loadTimeData.getString('menuEdit'),
+      });
+    }
+
     if (this.bookmarks_[0]!.parentId ===
         loadTimeData.getString('bookmarksBarId')) {
-      menuItems.push({id: MenuItemId.DIVIDER}, {
+      menuItems.push({
         id: MenuItemId.REMOVE_FROM_BOOKMARKS_BAR,
         label: loadTimeData.getString('menuMoveToAllBookmarks'),
       });
@@ -127,7 +208,7 @@ export class PowerBookmarksContextMenuElement extends PolymerElement {
             loadTimeData.getString('otherBookmarksId') ||
         this.bookmarks_[0]!.parentId ===
             loadTimeData.getString('mobileBookmarksId')) {
-      menuItems.push({id: MenuItemId.DIVIDER}, {
+      menuItems.push({
         id: MenuItemId.ADD_TO_BOOKMARKS_BAR,
         label: loadTimeData.getString('menuMoveToBookmarksBar'),
       });
@@ -138,18 +219,25 @@ export class PowerBookmarksContextMenuElement extends PolymerElement {
           {id: MenuItemId.DIVIDER},
           {
             id: MenuItemId.TRACK_PRICE,
-            label: loadTimeData.getString('menuTrackPrice'),
-            trailingIcon: this.priceTracked_ ? 'cr:check' : undefined,
+            label: this.priceTracked_ ?
+                loadTimeData.getString('menuUntrackPrice') :
+                loadTimeData.getString('menuTrackPrice'),
+          },
+      );
+    }
+
+    menuItems.push({id: MenuItemId.DIVIDER});
+
+    if (!this.bookmarks_[0]!.url) {
+      menuItems.push(
+          {
+            id: MenuItemId.RENAME,
+            label: loadTimeData.getString('menuRename'),
           },
       );
     }
 
     menuItems.push(
-        {id: MenuItemId.DIVIDER},
-        {
-          id: MenuItemId.RENAME,
-          label: loadTimeData.getString('menuRename'),
-        },
         {
           id: MenuItemId.DELETE,
           label: loadTimeData.getString('tooltipDelete'),
@@ -165,6 +253,19 @@ export class PowerBookmarksContextMenuElement extends PolymerElement {
 
   private dispatchDisabledFeatureEvent_() {
     this.dispatchEvent(new CustomEvent('disabled-feature'));
+  }
+
+  /**
+   * Close the menu on mousedown so clicks can propagate to the underlying UI.
+   * This allows the user to right click the list while a context menu is
+   * showing and get another context menu.
+   */
+  private onMousedown_(e: Event): void {
+    if ((e.composedPath()[0] as HTMLElement).tagName !== 'DIALOG') {
+      return;
+    }
+
+    this.$.menu.close();
   }
 
   private onMenuItemClicked_(event: DomRepeatEvent<MenuItem>) {
@@ -186,9 +287,13 @@ export class PowerBookmarksContextMenuElement extends PolymerElement {
             this.bookmarks_.map(bookmark => bookmark.id),
             ActionSource.kBookmark);
         break;
-      // Everything below is not expected to ever be called when
-      // this.bookmarks_ has more than one entry.
+      case MenuItemId.OPEN_NEW_TAB_GROUP:
+        this.bookmarksApi_.contextMenuOpenBookmarkInNewTabGroup(
+            this.bookmarks_.map(bookmark => bookmark.id),
+            ActionSource.kBookmark);
+        break;
       case MenuItemId.ADD_TO_BOOKMARKS_BAR:
+        assert(this.bookmarks_.length === 1);
         if (editingDisabledByPolicy(this.bookmarks_)) {
           this.dispatchDisabledFeatureEvent_();
         } else {
@@ -197,6 +302,7 @@ export class PowerBookmarksContextMenuElement extends PolymerElement {
         }
         break;
       case MenuItemId.REMOVE_FROM_BOOKMARKS_BAR:
+        assert(this.bookmarks_.length === 1);
         if (editingDisabledByPolicy(this.bookmarks_)) {
           this.dispatchDisabledFeatureEvent_();
         } else {
@@ -205,6 +311,7 @@ export class PowerBookmarksContextMenuElement extends PolymerElement {
         }
         break;
       case MenuItemId.TRACK_PRICE:
+        assert(this.bookmarks_.length === 1);
         if (editingDisabledByPolicy(this.bookmarks_)) {
           this.dispatchDisabledFeatureEvent_();
         } else {
@@ -221,7 +328,17 @@ export class PowerBookmarksContextMenuElement extends PolymerElement {
           }
         }
         break;
+      case MenuItemId.EDIT:
+        this.dispatchEvent(new CustomEvent('edit-clicked', {
+          bubbles: true,
+          composed: true,
+          detail: {
+            bookmarks: this.bookmarks_,
+          },
+        }));
+        break;
       case MenuItemId.RENAME:
+        assert(this.bookmarks_.length === 1);
         if (editingDisabledByPolicy(this.bookmarks_)) {
           this.dispatchDisabledFeatureEvent_();
         } else {
@@ -239,12 +356,13 @@ export class PowerBookmarksContextMenuElement extends PolymerElement {
           this.dispatchDisabledFeatureEvent_();
         } else {
           this.bookmarksApi_.contextMenuDelete(
-              this.bookmarks_[0]!.id, ActionSource.kBookmark);
+              this.bookmarks_.map(bookmark => bookmark.id),
+              ActionSource.kBookmark);
           this.dispatchEvent(new CustomEvent('delete-clicked', {
             bubbles: true,
             composed: true,
             detail: {
-              id: this.bookmarks_[0]!.id,
+              bookmarks: this.bookmarks_,
             },
           }));
         }

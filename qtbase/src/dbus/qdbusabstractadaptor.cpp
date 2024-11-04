@@ -22,14 +22,10 @@
 
 QT_BEGIN_NAMESPACE
 
-static int cachedRelaySlotMethodIndex = 0;
-
 int QDBusAdaptorConnector::relaySlotMethodIndex()
 {
-    if (cachedRelaySlotMethodIndex == 0) {
-        cachedRelaySlotMethodIndex = staticMetaObject.indexOfMethod("relaySlot()");
-        Q_ASSERT(cachedRelaySlotMethodIndex != 0); // 0 should be deleteLater() or destroyed()
-    }
+    static const int cachedRelaySlotMethodIndex = staticMetaObject.indexOfMethod("relaySlot()");
+    Q_ASSERT(cachedRelaySlotMethodIndex != 0); // 0 should be deleteLater() or destroyed()
     return cachedRelaySlotMethodIndex;
 }
 
@@ -108,6 +104,9 @@ void QDBusAbstractAdaptorPrivate::saveIntrospectionXml(QDBusAbstractAdaptor *ada
 QDBusAbstractAdaptor::QDBusAbstractAdaptor(QObject* obj)
     : QObject(*new QDBusAbstractAdaptorPrivate, obj)
 {
+
+    Q_ASSERT_X(obj, Q_FUNC_INFO, "Expected non-null parent");
+
     QDBusAdaptorConnector *connector = qDBusCreateAdaptorConnector(obj);
 
     connector->waitingForPolish = true;

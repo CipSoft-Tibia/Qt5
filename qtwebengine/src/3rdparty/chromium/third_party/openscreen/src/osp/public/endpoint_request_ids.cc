@@ -1,11 +1,10 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "osp/public/endpoint_request_ids.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 EndpointRequestIds::EndpointRequestIds(Role role) : role_(role) {}
 EndpointRequestIds::~EndpointRequestIds() = default;
@@ -27,5 +26,4 @@ void EndpointRequestIds::Reset() {
   request_ids_by_endpoint_id_.clear();
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

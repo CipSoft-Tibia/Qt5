@@ -49,6 +49,10 @@ public:
 
     void handleNewConnections();
 
+#if QT_CONFIG(localserver)
+    void handleNewLocalConnections();
+#endif
+
 #if QT_CONFIG(ssl)
     QSslConfiguration sslConfiguration;
     bool sslEnabled = false;

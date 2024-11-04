@@ -238,14 +238,6 @@ static INLINE void variance128_sse2(const uint8_t *src, const int src_stride,
   }
 }
 
-void aom_get8x8var_sse2(const uint8_t *src_ptr, int src_stride,
-                        const uint8_t *ref_ptr, int ref_stride,
-                        unsigned int *sse, int *sum) {
-  __m128i vsse, vsum;
-  variance8_sse2(src_ptr, src_stride, ref_ptr, ref_stride, 8, &vsse, &vsum);
-  variance_final_128_pel_sse2(vsse, vsum, sse, sum);
-}
-
 void aom_get_var_sse_sum_8x8_quad_sse2(const uint8_t *src_ptr, int src_stride,
                                        const uint8_t *ref_ptr, int ref_stride,
                                        uint32_t *sse8x8, int *sum8x8,

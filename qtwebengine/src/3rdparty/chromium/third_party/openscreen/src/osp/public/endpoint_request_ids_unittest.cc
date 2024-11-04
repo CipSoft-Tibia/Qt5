@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,7 @@
 
 #include "gtest/gtest.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 // These tests validate RequestId generation for two endpoints with IDs 3 and 7.
 
@@ -84,5 +83,4 @@ TEST(EndpointRequestIdsTest, ResetAll) {
   EXPECT_EQ(1u, request_ids_server.GetNextRequestId(3));
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

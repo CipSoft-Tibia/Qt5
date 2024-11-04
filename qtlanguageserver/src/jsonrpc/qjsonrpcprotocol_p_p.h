@@ -77,11 +77,11 @@ public:
     }
 
     bool addPendingRequest(const QJsonValue &id,
-                           const QJsonRpcProtocol::Handler<QJsonRpcProtocol::Response> &handler)
+                           QJsonRpcProtocol::Handler<QJsonRpcProtocol::Response> handler)
     {
         auto it = m_pendingRequests.find(id);
         if (it == m_pendingRequests.end()) {
-            m_pendingRequests.insert(std::make_pair(id, handler));
+            m_pendingRequests.insert(std::make_pair(id, std::move(handler)));
             return true;
         }
         return false;
@@ -91,15 +91,15 @@ public:
     QJsonRpcTransport *transport() const { return m_transport; }
 
     ResponseHandler invalidResponseHandler() const { return m_invalidResponseHandler; }
-    void setInvalidResponseHandler(const ResponseHandler &handler)
+    void setInvalidResponseHandler(ResponseHandler handler)
     {
-        m_invalidResponseHandler = handler;
+        m_invalidResponseHandler = std::move(handler);
     }
 
     ResponseHandler protocolErrorHandler() const { return m_protocolErrorHandler; }
-    void setProtocolErrorHandler(const ResponseHandler &handler)
+    void setProtocolErrorHandler(ResponseHandler handler)
     {
-        m_protocolErrorHandler = handler;
+        m_protocolErrorHandler = std::move(handler);
     }
 
     QJsonRpcProtocol::MessagePreprocessor messagePreprocessor() const
@@ -108,7 +108,7 @@ public:
     }
     void installMessagePreprocessor(QJsonRpcProtocol::MessagePreprocessor preHandler)
     {
-        m_messagePreprocessor = preHandler;
+        m_messagePreprocessor = std::move(preHandler);
     }
 
 private:

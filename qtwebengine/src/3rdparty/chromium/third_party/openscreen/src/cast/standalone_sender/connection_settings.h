@@ -1,4 +1,4 @@
-// Copyright 2021 The Chromium Authors. All rights reserved.
+// Copyright 2021 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@
 #include "cast/streaming/constants.h"
 #include "platform/base/interface_info.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // The connection settings for a given standalone sender instance. These fields
 // are used throughout the standalone sender component to initialize state from
@@ -46,7 +45,6 @@ struct ConnectionSettings {
   VideoCodec codec;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STANDALONE_SENDER_CONNECTION_SETTINGS_H_

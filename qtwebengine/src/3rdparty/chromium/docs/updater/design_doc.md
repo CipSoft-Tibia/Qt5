@@ -44,16 +44,17 @@ display UI to the user.
 
 ![Updater process architecture diagram](images/architecture.svg)
 
-The updater may be installed *per-user* or *system-wide*. If installed per-user,
-the updater can only update applications owned by that user, whereas a system-
-wide updater can update applications owned by any entity on the system. In
-multi-user systems, it is efficient for software such as the browser to be
-installed system-wide, owned by root (or the system user) and run by individual
-users, but this requires the updater to maintain root privileges in order to
-update it. Therefore, in a system-wide installation, the server process runs as
-root (or at high integrity). One system-wide installation of the updater and any
-number of per-user installations of the updater can coexist and operate
-independently on the same system.
+The updater may be installed *per-user* or *system-wide*. If installed
+per-user, the updater may lack permissions to update applications owned by
+other users, whereas a system- wide updater can update applications owned by
+any entity on the system. In multi-user systems, it is efficient for software
+such as the browser to be installed system-wide, owned by root (or the system
+user) and run by individual users, but this requires the updater to maintain
+root privileges in order to update it. Therefore, in a system-wide
+installation, the server process runs as root (or at high integrity). One
+system-wide installation of the updater and any number of per-user
+installations of the updater can coexist and operate independently on the same
+system.
 
 Different versions of the updater can coexist even within the same installation
 of the updater, but only one such instance is *active*. Inactive versions of the
@@ -80,6 +81,19 @@ Instances of the updater are installed in one of the following ways:
     first-run experience, or repair/recovery. (This is the primary flow on
     macOS.)
 *   The updater downloads an update for itself and installs it.
+
+The updater installer calls GetVersion to discover the active version. If it
+gets no response or the response indicates the installed updater is a lower
+version, it installs the updater. If it had gotten no GetVersion response
+at all, it immediately wakes it.
+
+Each updater instance is unpacked into a version-specific subdirectory of the
+main updater installation path. If the installer discovers it is about to
+install into a versioned directory that already exists, it deletes everything
+except the `Crashpad/` subtree (if any) in that directory before unpacking
+the new installation. This clears out any "broken" prior installation while
+preserving crash reports and updater-specific crash-reporting opt-in flags.
+
 
 #### Updater States
 ![Updater state flowchart](images/updater_states.svg)
@@ -109,7 +123,7 @@ The updater also performs other basic health checks during qualification, which
 are detailed in the platform-specific sections.
 
 Qualification is skipped (along with any other pre-active states) if there is
-no active instance of the updater.
+no active instance of the updater, or if this instance of the updater is active.
 
 ##### Activation
 When an instance transitions to the active state, it acquires the updater's
@@ -120,6 +134,11 @@ with its own. Then, it clears the "swapping" bit, flushes the prefs file again,
 and starts listening for instructions on the RPC channels. The swapping bit
 ensures that the an updater will recover and restart activation if the program
 is interrupted mid-activation.
+
+After activating, the server resets its own qualification state to
+"unqualified". If somehow the active version of the updater decreases (most
+likely due to unexpected user intervention), the instance will have to qualify
+itself again before reactivating.
 
 ##### Deactivation
 When a newer instance of the updater activates, formerly active instances will
@@ -364,9 +383,9 @@ An example offline install command line on Windows platform:
 
 ```
 updater.exe /handoff "&appguid={8A69D345-D564-463C-AFF1-A69D9E530F96}&appname=MyApp&needsadmin=True&installdataindex =verboselog"
-¬† ¬† ¬† ¬† ¬† ¬†/installsource offline
-¬† ¬† ¬† ¬† ¬† ¬†/sessionid "{E85204C6-6F2F-40BF-9E6C-4952208BB977}"
-¬† ¬† ¬† ¬† ¬† ¬†/offlinedir "C:\Users\chrome-bot\AppData\Local\ForgedPath"]
+ † † † † † †/installsource offline
+ † † † † † †/sessionid "{E85204C6-6F2F-40BF-9E6C-4952208BB977}"
+ † † † † † †/offlinedir "C:\Users\chrome-bot\AppData\Local\ForgedPath"]
 ```
 DOS style command line switches are also supported for backward compatibility.
 
@@ -422,13 +441,13 @@ installer. See [installdataindex](#installdataindex) below for details.
 
 ##### Steps to create a tagged metainstaller
 
-A tagged metainstaller can be created using the signing tool
+A tagged EXE metainstaller can be created using the signing tool
 [sign.py](https://source.chromium.org/chromium/chromium/src/+/main:chrome/updater/win/signing/sign.py)
 and the metainstaller tagging tool
-[tag.py](https://source.chromium.org/chromium/chromium/src/+/main:chrome/updater/tools/tag.py).
+[tag.exe](https://source.chromium.org/chromium/chromium/src/+/main:chrome/updater/tools/BUILD.gn?q=%5C%22tag%5C%22).
 
 Here are the steps to create a tagged metainstaller for the following tag:
-`--tag="appguid=FOO_BAR_APP_ID&appname=SomeName&needsadmin=prefers"`
+`"appguid=FOO_BAR_APP_ID&appname=SomeName&needsadmin=prefers"`
 
 The source file is the untagged metainstaller `out\Default\UpdaterSetup.exe`,
 and the final tagged file will be `out\Default\Tagged_UpdaterSetup.signed.exe`.
@@ -450,22 +469,32 @@ python3 C:\src\chromium\src\chrome\updater\win\signing\sign.py --in_file
  --lzma_7z "C:\Program Files\7-Zip\7z.exe"
  --signtool c:\windows_sdk_10\files\bin\10.0.22000.0\x64\signtool.exe
  --identity id@domain.tld
- --certificate_tag C:\src\chromium\src\out\Default\certificate_tag.exe
+ --tagging_exe C:\src\chromium\src\out\Default\tag.exe
 ```
 *
 ```
-python3 C:\src\chromium\src\chrome\updater\tools\tag.py
- --certificate_tag=C:\src\chromium\src\out\Default\certificate_tag.exe
- --in_file=C:\src\chromium\src\out\Default\UpdaterSetup.signed.exe
- --out_file=out\Default\Tagged_UpdaterSetup.signed.exe
- --tag="appguid=FOO_BAR_APP_ID&appname=SomeName&needsadmin=prefers"
+C:\src\chromium\src\out\Default\tag.exe
+ --set-tag="appguid=FOO_BAR_APP_ID&appname=SomeName&needsadmin=prefers"
+ --out=C:\src\chromium\src\out\Default\Tagged_UpdaterSetup.signed.exe
+ C:\src\chromium\src\out\Default\UpdaterSetup.signed.exe
 ```
+
+For MSI installers (development in progress), the tagging is done using the same
+`tag.exe` tool:
+*
+```
+C:\src\chromium\src\out\Default\tag.exe
+ --set-tag="appguid=FOO_BAR_APP_ID&appname=SomeName&needsadmin=prefers"
+ --out=C:\src\chromium\src\out\Default\Tagged_UpdaterSetup.signed.msi
+ C:\src\chromium\src\out\Default\UpdaterSetup.signed.msi
+```
+
 
 ##### `needsadmin`
 
 `needsadmin` is one of the install parameters that can be specified for
 first installs via the
-[metainstaller tag](https://source.chromium.org/chromium/chromium/src/+/main:chrome/updater/tools/tag.py).
+[metainstaller tag](#Steps-to-create-a-tagged-metainstaller).
 `needsadmin` is used to indicate whether the application needs admin rights to
 install.
 
@@ -501,7 +530,7 @@ elevation fails however, runs the application installer as the current user.
 
 `installdataindex` is one of the install parameters that can be specified for
 first installs on the command line or via the
-[metainstaller tag](https://source.chromium.org/chromium/chromium/src/+/main:chrome/updater/tools/tag.py).
+[metainstaller tag](#Steps-to-create-a-tagged-metainstaller).
 
 For example, here is a typical command line for the Updater on Windows:
 ```
@@ -772,25 +801,72 @@ take priority over `HKLM` entries when UAC is off.
 
 When introducing a new interface, or making an existing interface to be SxS,
 the following steps need to be followed:
-* Add corresponding interfaces with `User` and `System` suffixes that are
-  binary-identical to the non-suffixed interface, to the `.template` IDL file
-  and BUILD files.
-* IDL file changes use the following rules:
-  * If there are no interface parameters in any of the methods of the interface,
-    simply derive the `User` and `System` suffixed interfaces from the
-    non-suffixed interface.
+* Decorate interfaces with distinct user and system identities with
+`BEGIN_INTERFACE` and `END_INTERFACE` in the `.template` IDL file.
 
-    Example: `IUpdaterInternalCallbackUser` and `IUpdaterInternalCallbackSystem`
-    derive from `IUpdaterInternalCallback` in `updater_internal_idl.template`.
-  * If there are interface parameters in any of the methods of the interface,
-    make an exact copy of the non-suffixed interface, but replace any interface
-    parameters with the `User` and `System` suffixed interface equivalents.
+`BEGIN_INTERFACE` takes the placeholder guid, the interface that needs distinct
+identities, as well as any other items that need to be distinct for `user` and
+`system` respectively.
 
-    Example: `IUpdaterInternalUser` and `IUpdaterInternalSystem` are copies of
-    `IUpdaterInternal`, but with the interface parameters of type
-    `IUpdaterInternalCallback` replaced with `IUpdaterInternalCallbackUser` and
-    `IUpdaterInternalCallbackSystem` respectively for the methods `Run` and
-    `Hello` in `updater_internal_idl.template`.
+Here is an example:
+
+```
+BEGIN_INTERFACE(
+  {
+    "uuid": {
+      "user":"PLACEHOLDER-GUID-9AD1A645-5A4B-4D36-BC21-F0059482E6EA",
+      "system":"PLACEHOLDER-GUID-E2BD9A6B-0A19-4C89-AE8B-B7E9E51D9A07"
+    },
+    "tokensToSuffix": ["ICompleteStatus"]
+  }
+)
+[
+  uuid(PLACEHOLDER-GUID-2FCD14AF-B645-4351-8359-E80A0E202A0B),
+  oleautomation,
+  pointer_default(unique)
+]
+interface ICompleteStatus : IUnknown {
+  [propget] HRESULT statusCode([out, retval] LONG*);
+  [propget] HRESULT statusMessage([out, retval] BSTR*);
+};
+END_INTERFACE
+```
+
+The example IDL above will produce the following output via the build:
+
+```
+[
+  uuid(PLACEHOLDER-GUID-2FCD14AF-B645-4351-8359-E80A0E202A0B),
+  oleautomation,
+  pointer_default(unique)
+]
+interface ICompleteStatus : IUnknown {
+  [propget] HRESULT statusCode([out, retval] LONG*);
+  [propget] HRESULT statusMessage([out, retval] BSTR*);
+};
+[
+  uuid(PLACEHOLDER-GUID-9AD1A645-5A4B-4D36-BC21-F0059482E6EA),
+  oleautomation,
+  pointer_default(unique)
+]
+interface ICompleteStatusUser : IUnknown {
+  [propget] HRESULT statusCode([out, retval] LONG*);
+  [propget] HRESULT statusMessage([out, retval] BSTR*);
+};
+[
+  uuid(PLACEHOLDER-GUID-E2BD9A6B-0A19-4C89-AE8B-B7E9E51D9A07),
+  oleautomation,
+  pointer_default(unique)
+]
+interface ICompleteStatusSystem : IUnknown {
+  [propget] HRESULT statusCode([out, retval] LONG*);
+  [propget] HRESULT statusMessage([out, retval] BSTR*);
+};
+```
+
+* List the interfaces with `User` and `System` suffixes that are
+  binary-identical to the non-suffixed interface, to the `.template` IDL file's
+  `library` section and `BUILD.gn` files.
 * Code changes:
   * Derive the COM class that implements interface `Interface` from
     `DynamicIIDsImpl<Interface, iid_user, iid_system>`. `iid_user` and
@@ -868,8 +944,8 @@ a lock.
 On POSIX, the most common means of uninstalling a program is to delete the
 program's application bundle from disk. When a program registers itself with
 the updater, it provides the path to the application bundle. If the bundle has
-been removed (or is owned by a user different from the updater), the updater
-considers it uninstalled and ceases attempting to update it.
+been removed (or is owned by root and the updater is a user-scope updater), the
+updater considers it uninstalled and ceases attempting to update it.
 
 ### Periodic Task Scheduling
 On Mac, the scheduler is implemented via LaunchAgents (for user-level installs)
@@ -971,7 +1047,7 @@ Consider the following sequence of updater processes A, B, and C
   3. B: Shared memory `foo` exists. Open the existing shared memory object.
   4. A: Release the mutex lock and `shm_unlink` ‚Äúfoo‚Äù. Note: Process B can
      still use the shared memory until it closes it. Future attempts to open
-     `foo` will fail with ENOENT. `foo` can be recreated. 
+     `foo` will fail with ENOENT. `foo` can be recreated.
   5. C:  Shared memory `foo` does not exist. Create the shared memory object.
   6. B: Acquire the mutex lock in shared memory.
   7. C: Creates and acquires the mutex lock in shared memory.

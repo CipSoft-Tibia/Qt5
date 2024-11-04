@@ -6,6 +6,8 @@
 #define QDATETIME_H
 
 #include <QtCore/qcalendar.h>
+#include <QtCore/qcompare.h>
+#include <QtCore/qlocale.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qshareddata.h>
 #include <QtCore/qstring.h>
@@ -32,53 +34,36 @@ public:
     QDate(int y, int m, int d, QCalendar cal);
 #if __cpp_lib_chrono >= 201907L || defined(Q_QDOC)
     QT_POST_CXX17_API_IN_EXPORTED_CLASS
-    Q_IMPLICIT QDate(std::chrono::year_month_day ymd)
+    Q_IMPLICIT constexpr QDate(std::chrono::year_month_day date) noexcept
+        : jd(date.ok() ? stdSysDaysToJulianDay(date) : nullJd())
+    {}
+
+    QT_POST_CXX17_API_IN_EXPORTED_CLASS
+    Q_IMPLICIT constexpr QDate(std::chrono::year_month_day_last date) noexcept
+        : jd(date.ok() ? stdSysDaysToJulianDay(date) : nullJd())
+    {}
+
+    QT_POST_CXX17_API_IN_EXPORTED_CLASS
+    Q_IMPLICIT constexpr QDate(std::chrono::year_month_weekday date) noexcept
+        : jd(date.ok() ? stdSysDaysToJulianDay(date) : nullJd())
+    {}
+
+    QT_POST_CXX17_API_IN_EXPORTED_CLASS
+    Q_IMPLICIT constexpr QDate(std::chrono::year_month_weekday_last date) noexcept
+        : jd(date.ok() ? stdSysDaysToJulianDay(date) : nullJd())
+    {}
+
+    QT_POST_CXX17_API_IN_EXPORTED_CLASS
+    static constexpr QDate fromStdSysDays(const std::chrono::sys_days &days) noexcept
     {
-        if (!ymd.ok())
-            jd = nullJd();
-        else
-            *this = fromStdSysDays(ymd);
+        return QDate(stdSysDaysToJulianDay(days));
     }
 
     QT_POST_CXX17_API_IN_EXPORTED_CLASS
-    Q_IMPLICIT QDate(std::chrono::year_month_day_last ymdl)
+    constexpr std::chrono::sys_days toStdSysDays() const noexcept
     {
-        if (!ymdl.ok())
-            jd = nullJd();
-        else
-            *this = fromStdSysDays(ymdl);
-    }
-
-    QT_POST_CXX17_API_IN_EXPORTED_CLASS
-    Q_IMPLICIT QDate(std::chrono::year_month_weekday ymw)
-    {
-        if (!ymw.ok())
-            jd = nullJd();
-        else
-            *this = fromStdSysDays(ymw);
-    }
-
-    QT_POST_CXX17_API_IN_EXPORTED_CLASS
-    Q_IMPLICIT QDate(std::chrono::year_month_weekday_last ymwl)
-    {
-        if (!ymwl.ok())
-            jd = nullJd();
-        else
-            *this = fromStdSysDays(ymwl);
-    }
-
-    QT_POST_CXX17_API_IN_EXPORTED_CLASS
-    static QDate fromStdSysDays(const std::chrono::sys_days &days)
-    {
-        const QDate epoch(unixEpochJd());
-        return epoch.addDays(days.time_since_epoch().count());
-    }
-
-    QT_POST_CXX17_API_IN_EXPORTED_CLASS
-    std::chrono::sys_days toStdSysDays() const
-    {
-        const QDate epoch(unixEpochJd());
-        return std::chrono::sys_days(std::chrono::days(epoch.daysTo(*this)));
+        const qint64 days = isValid() ? jd - unixEpochJd() : 0;
+        return std::chrono::sys_days(std::chrono::days(days));
     }
 #endif
 
@@ -117,9 +102,11 @@ public:
 
 #if QT_CONFIG(datestring)
     QString toString(Qt::DateFormat format = Qt::TextDate) const;
-    QString toString(const QString &format, QCalendar cal = QCalendar()) const
+    QString toString(const QString &format) const;
+    QString toString(const QString &format, QCalendar cal) const
     { return toString(qToStringViewIgnoringNull(format), cal); }
-    QString toString(QStringView format, QCalendar cal = QCalendar()) const;
+    QString toString(QStringView format) const;
+    QString toString(QStringView format, QCalendar cal) const;
 #endif
     bool setDate(int year, int month, int day); // Gregorian-optimized
     bool setDate(int year, int month, int day, QCalendar cal);
@@ -143,15 +130,37 @@ public:
 
     static QDate currentDate();
 #if QT_CONFIG(datestring)
+    // No DateFormat accepts a two-digit year, so no need for baseYear:
     static QDate fromString(QStringView string, Qt::DateFormat format = Qt::TextDate);
-    static QDate fromString(QStringView string, QStringView format, QCalendar cal = QCalendar())
-    { return fromString(string.toString(), format, cal); }
-    static QDate fromString(const QString &string, QStringView format, QCalendar cal = QCalendar());
     static QDate fromString(const QString &string, Qt::DateFormat format = Qt::TextDate)
     { return fromString(qToStringViewIgnoringNull(string), format); }
+
+    // Accept calendar without over-ride of base year:
+    static QDate fromString(QStringView string, QStringView format, QCalendar cal)
+    { return fromString(string.toString(), format, QLocale::DefaultTwoDigitBaseYear, cal); }
+    QT_CORE_INLINE_SINCE(6, 7)
+    static QDate fromString(const QString &string, QStringView format, QCalendar cal);
+    static QDate fromString(const QString &string, const QString &format, QCalendar cal)
+    { return fromString(string, qToStringViewIgnoringNull(format), QLocale::DefaultTwoDigitBaseYear, cal); }
+
+    // Overriding base year is likely more common than overriding calendar (and
+    // likely to get more so, as the legacy base drops ever further behind us).
+    static QDate fromString(QStringView string, QStringView format,
+                            int baseYear = QLocale::DefaultTwoDigitBaseYear)
+    { return fromString(string.toString(), format, baseYear); }
+    static QDate fromString(QStringView string, QStringView format,
+                            int baseYear, QCalendar cal)
+    { return fromString(string.toString(), format, baseYear, cal); }
+    static QDate fromString(const QString &string, QStringView format,
+                            int baseYear = QLocale::DefaultTwoDigitBaseYear);
+    static QDate fromString(const QString &string, QStringView format,
+                            int baseYear, QCalendar cal);
     static QDate fromString(const QString &string, const QString &format,
-                            QCalendar cal = QCalendar())
-    { return fromString(string, qToStringViewIgnoringNull(format), cal); }
+                            int baseYear = QLocale::DefaultTwoDigitBaseYear)
+    { return fromString(string, qToStringViewIgnoringNull(format), baseYear); }
+    static QDate fromString(const QString &string, const QString &format,
+                            int baseYear, QCalendar cal)
+    { return fromString(string, qToStringViewIgnoringNull(format), baseYear, cal); }
 #endif
     static bool isValid(int y, int m, int d);
     static bool isLeapYear(int year);
@@ -167,17 +176,38 @@ private:
     static constexpr inline qint64 maxJd() { return Q_INT64_C( 784354017364); }
     static constexpr inline qint64 unixEpochJd() { return Q_INT64_C(2440588); }
 
+#if __cpp_lib_chrono >= 201907L
+#if !QT_CORE_REMOVED_SINCE(6, 7)
+    QT_POST_CXX17_API_IN_EXPORTED_CLASS
+#endif
+    static constexpr qint64
+    stdSysDaysToJulianDay(const std::chrono::sys_days &days) noexcept
+    {
+        const auto epochDays = days.time_since_epoch().count();
+        // minJd() and maxJd() fit into 40 bits.
+        if constexpr (sizeof(epochDays) * CHAR_BIT >= 41) {
+            constexpr auto top = maxJd() - unixEpochJd();
+            constexpr auto bottom = minJd() - unixEpochJd();
+            if (epochDays > top || epochDays < bottom)
+                return nullJd();
+        }
+        return unixEpochJd() + epochDays;
+    }
+#endif // __cpp_lib_chrono >= 201907L
+
     qint64 jd;
 
     friend class QDateTime;
+    friend class QDateTimeParser;
     friend class QDateTimePrivate;
 
-    friend constexpr bool operator==(QDate lhs, QDate rhs) { return lhs.jd == rhs.jd; }
-    friend constexpr bool operator!=(QDate lhs, QDate rhs) { return lhs.jd != rhs.jd; }
-    friend constexpr bool operator< (QDate lhs, QDate rhs) { return lhs.jd <  rhs.jd; }
-    friend constexpr bool operator<=(QDate lhs, QDate rhs) { return lhs.jd <= rhs.jd; }
-    friend constexpr bool operator> (QDate lhs, QDate rhs) { return lhs.jd >  rhs.jd; }
-    friend constexpr bool operator>=(QDate lhs, QDate rhs) { return lhs.jd >= rhs.jd; }
+    friend constexpr bool comparesEqual(const QDate &lhs, const QDate &rhs) noexcept
+    { return lhs.jd == rhs.jd; }
+    friend constexpr Qt::strong_ordering
+    compareThreeWay(const QDate &lhs, const QDate &rhs) noexcept
+    { return Qt::compareThreeWay(lhs.jd, rhs.jd); }
+    Q_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE(QDate)
+
 #ifndef QT_NO_DATASTREAM
     friend Q_CORE_EXPORT QDataStream &operator<<(QDataStream &, QDate);
     friend Q_CORE_EXPORT QDataStream &operator>>(QDataStream &, QDate &);
@@ -235,12 +265,12 @@ private:
     constexpr inline int ds() const { return mds == -1 ? 0 : mds; }
     int mds;
 
-    friend constexpr bool operator==(QTime lhs, QTime rhs) { return lhs.mds == rhs.mds; }
-    friend constexpr bool operator!=(QTime lhs, QTime rhs) { return lhs.mds != rhs.mds; }
-    friend constexpr bool operator< (QTime lhs, QTime rhs) { return lhs.mds <  rhs.mds; }
-    friend constexpr bool operator<=(QTime lhs, QTime rhs) { return lhs.mds <= rhs.mds; }
-    friend constexpr bool operator> (QTime lhs, QTime rhs) { return lhs.mds >  rhs.mds; }
-    friend constexpr bool operator>=(QTime lhs, QTime rhs) { return lhs.mds >= rhs.mds; }
+    friend constexpr bool comparesEqual(const QTime &lhs, const QTime &rhs) noexcept
+    { return lhs.mds == rhs.mds; }
+    friend constexpr Qt::strong_ordering
+    compareThreeWay(const QTime &lhs, const QTime &rhs) noexcept
+    { return Qt::compareThreeWay(lhs.mds, rhs.mds); }
+    Q_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE(QTime)
 
     friend class QDateTime;
     friend class QDateTimePrivate;
@@ -298,6 +328,7 @@ class Q_CORE_EXPORT QDateTime
         { std::swap(data, other.data); }
 
         bool isShort() const;
+        inline void invalidate();
         void detach();
         QTimeZone timeZone() const;
 
@@ -310,12 +341,31 @@ class Q_CORE_EXPORT QDateTime
 
 public:
     QDateTime() noexcept;
+
+    enum class TransitionResolution {
+        Reject = 0,
+        RelativeToBefore,
+        RelativeToAfter,
+        PreferBefore,
+        PreferAfter,
+        PreferStandard,
+        PreferDaylightSaving,
+        // Closest match to behavior prior to introducing TransitionResolution:
+        LegacyBehavior = RelativeToBefore
+    };
+
 #if QT_DEPRECATED_SINCE(6, 9)
     QT_DEPRECATED_VERSION_X_6_9("Pass QTimeZone instead")
     QDateTime(QDate date, QTime time, Qt::TimeSpec spec, int offsetSeconds = 0);
 #endif
+#if QT_CORE_REMOVED_SINCE(6, 7)
     QDateTime(QDate date, QTime time, const QTimeZone &timeZone);
     QDateTime(QDate date, QTime time);
+#endif
+    QDateTime(QDate date, QTime time, const QTimeZone &timeZone,
+              TransitionResolution resolve = TransitionResolution::LegacyBehavior);
+    QDateTime(QDate date, QTime time,
+              TransitionResolution resolve = TransitionResolution::LegacyBehavior);
     QDateTime(const QDateTime &other) noexcept;
     QDateTime(QDateTime &&other) noexcept;
     ~QDateTime();
@@ -342,23 +392,34 @@ public:
     qint64 toMSecsSinceEpoch() const;
     qint64 toSecsSinceEpoch() const;
 
+#if QT_CORE_REMOVED_SINCE(6, 7)
     void setDate(QDate date);
     void setTime(QTime time);
+#endif
+    void setDate(QDate date, TransitionResolution resolve = TransitionResolution::LegacyBehavior);
+    void setTime(QTime time, TransitionResolution resolve = TransitionResolution::LegacyBehavior);
+
 #if QT_DEPRECATED_SINCE(6, 9)
     QT_DEPRECATED_VERSION_X_6_9("Use setTimeZone() instead")
     void setTimeSpec(Qt::TimeSpec spec);
     QT_DEPRECATED_VERSION_X_6_9("Use setTimeZone() instead")
     void setOffsetFromUtc(int offsetSeconds);
 #endif
+#if QT_CORE_REMOVED_SINCE(6, 7)
     void setTimeZone(const QTimeZone &toZone);
+#endif
+    void setTimeZone(const QTimeZone &toZone,
+                     TransitionResolution resolve = TransitionResolution::LegacyBehavior);
     void setMSecsSinceEpoch(qint64 msecs);
     void setSecsSinceEpoch(qint64 secs);
 
 #if QT_CONFIG(datestring)
     QString toString(Qt::DateFormat format = Qt::TextDate) const;
-    QString toString(const QString &format, QCalendar cal = QCalendar()) const
+    QString toString(const QString &format) const;
+    QString toString(const QString &format, QCalendar cal) const
     { return toString(qToStringViewIgnoringNull(format), cal); }
-    QString toString(QStringView format, QCalendar cal = QCalendar()) const;
+    QString toString(QStringView format) const;
+    QString toString(QStringView format, QCalendar cal) const;
 #endif
     [[nodiscard]] QDateTime addDays(qint64 days) const;
     [[nodiscard]] QDateTime addMonths(int months) const;
@@ -387,17 +448,37 @@ public:
     static QDateTime currentDateTime();
     static QDateTime currentDateTimeUtc();
 #if QT_CONFIG(datestring)
+    // No DateFormat accepts a two-digit year, so no need for baseYear:
     static QDateTime fromString(QStringView string, Qt::DateFormat format = Qt::TextDate);
-    static QDateTime fromString(QStringView string, QStringView format,
-                                QCalendar cal = QCalendar())
-    { return fromString(string.toString(), format, cal); }
-    static QDateTime fromString(const QString &string, QStringView format,
-                                QCalendar cal = QCalendar());
     static QDateTime fromString(const QString &string, Qt::DateFormat format = Qt::TextDate)
     { return fromString(qToStringViewIgnoringNull(string), format); }
+
+    // Accept calendar without over-ride of base year:
+    static QDateTime fromString(QStringView string, QStringView format, QCalendar cal)
+    { return fromString(string.toString(), format, QLocale::DefaultTwoDigitBaseYear, cal); }
+    QT_CORE_INLINE_SINCE(6, 7)
+    static QDateTime fromString(const QString &string, QStringView format, QCalendar cal);
+    static QDateTime fromString(const QString &string, const QString &format, QCalendar cal)
+    { return fromString(string, qToStringViewIgnoringNull(format), QLocale::DefaultTwoDigitBaseYear, cal); }
+
+    // Overriding base year is likely more common than overriding calendar (and
+    // likely to get more so, as the legacy base drops ever further behind us).
+    static QDateTime fromString(QStringView string, QStringView format,
+                                int baseYear = QLocale::DefaultTwoDigitBaseYear)
+    { return fromString(string.toString(), format, baseYear); }
+    static QDateTime fromString(QStringView string, QStringView format,
+                                int baseYear, QCalendar cal)
+    { return fromString(string.toString(), format, baseYear, cal); }
+    static QDateTime fromString(const QString &string, QStringView format,
+                                int baseYear = QLocale::DefaultTwoDigitBaseYear);
+    static QDateTime fromString(const QString &string, QStringView format,
+                                int baseYear, QCalendar cal);
     static QDateTime fromString(const QString &string, const QString &format,
-                                QCalendar cal = QCalendar())
-    { return fromString(string, qToStringViewIgnoringNull(format), cal); }
+                                int baseYear = QLocale::DefaultTwoDigitBaseYear)
+    { return fromString(string, qToStringViewIgnoringNull(format), baseYear); }
+    static QDateTime fromString(const QString &string, const QString &format,
+                                int baseYear, QCalendar cal)
+    { return fromString(string, qToStringViewIgnoringNull(format), baseYear, cal); }
 #endif
 
 #if QT_DEPRECATED_SINCE(6, 9)
@@ -422,8 +503,26 @@ public:
     NSDate *toNSDate() const Q_DECL_NS_RETURNS_AUTORELEASED;
 #endif
 
+    static QDateTime fromStdTimePoint(
+        std::chrono::time_point<
+            std::chrono::system_clock,
+            std::chrono::milliseconds
+        > time
+    );
+
 #if __cpp_lib_chrono >= 201907L || defined(Q_QDOC)
 #if __cpp_concepts >= 201907L || defined(Q_QDOC)
+private:
+    // The duration type of the result of a clock_cast<system_clock>.
+    // This duration may differ from the duration of the input.
+    template <typename Clock, typename Duration>
+    using system_clock_cast_duration = decltype(
+        std::chrono::clock_cast<std::chrono::system_clock>(
+            std::declval<const std::chrono::time_point<Clock, Duration> &>()
+        ).time_since_epoch()
+    );
+
+public:
     // Generic clock, as long as it's compatible with us (= system_clock)
     template <typename Clock, typename Duration>
     static QDateTime fromStdTimePoint(const std::chrono::time_point<Clock, Duration> &time)
@@ -431,14 +530,18 @@ public:
             requires(const std::chrono::time_point<Clock, Duration> &t) {
                 // the clock can be converted to system_clock
                 std::chrono::clock_cast<std::chrono::system_clock>(t);
-                // the duration can be converted to milliseconds
-                requires std::is_convertible_v<Duration, std::chrono::milliseconds>;
+                // after the conversion to system_clock, the duration type
+                // we get is convertible to milliseconds
+                requires std::is_convertible_v<
+                    system_clock_cast_duration<Clock, Duration>,
+                    std::chrono::milliseconds
+                >;
             }
     {
         const auto sysTime = std::chrono::clock_cast<std::chrono::system_clock>(time);
         // clock_cast can change the duration, so convert it again to milliseconds
         const auto timeInMSec = std::chrono::time_point_cast<std::chrono::milliseconds>(sysTime);
-        return fromMSecsSinceEpoch(timeInMSec.time_since_epoch().count(), Qt::UTC);
+        return fromStdTimePoint(timeInMSec);
     }
 #endif // __cpp_concepts
 
@@ -452,7 +555,7 @@ public:
     QT_POST_CXX17_API_IN_EXPORTED_CLASS
     static QDateTime fromStdLocalTime(const std::chrono::local_time<std::chrono::milliseconds> &time)
     {
-        QDateTime result(QDate(1970, 1, 1), QTime(0, 0, 0));
+        QDateTime result(QDate(1970, 1, 1), QTime(0, 0, 0), TransitionResolution::LegacyBehavior);
         return result.addMSecs(time.time_since_epoch().count());
     }
 
@@ -518,17 +621,18 @@ public:
 
 private:
     bool equals(const QDateTime &other) const;
+#if QT_CORE_REMOVED_SINCE(6, 7)
     bool precedes(const QDateTime &other) const;
+#endif
     friend class QDateTimePrivate;
 
     Data d;
 
-    friend bool operator==(const QDateTime &lhs, const QDateTime &rhs) { return lhs.equals(rhs); }
-    friend bool operator!=(const QDateTime &lhs, const QDateTime &rhs) { return !(lhs == rhs); }
-    friend bool operator<(const QDateTime &lhs, const QDateTime &rhs) { return lhs.precedes(rhs); }
-    friend bool operator<=(const QDateTime &lhs, const QDateTime &rhs) { return !(rhs < lhs); }
-    friend bool operator>(const QDateTime &lhs, const QDateTime &rhs) { return rhs.precedes(lhs); }
-    friend bool operator>=(const QDateTime &lhs, const QDateTime &rhs) { return !(lhs < rhs); }
+    friend bool comparesEqual(const QDateTime &lhs, const QDateTime &rhs)
+    { return lhs.equals(rhs); }
+    friend Q_CORE_EXPORT Qt::weak_ordering
+    compareThreeWay(const QDateTime &lhs, const QDateTime &rhs);
+    Q_DECLARE_WEAKLY_ORDERED(QDateTime)
 
 #ifndef QT_NO_DATASTREAM
     friend Q_CORE_EXPORT QDataStream &operator<<(QDataStream &, const QDateTime &);
@@ -561,6 +665,18 @@ Q_CORE_EXPORT QDebug operator<<(QDebug, const QDateTime &);
 Q_CORE_EXPORT size_t qHash(const QDateTime &key, size_t seed = 0);
 Q_CORE_EXPORT size_t qHash(QDate key, size_t seed = 0) noexcept;
 Q_CORE_EXPORT size_t qHash(QTime key, size_t seed = 0) noexcept;
+
+#if QT_CONFIG(datestring) && QT_CORE_INLINE_IMPL_SINCE(6, 7)
+QDate QDate::fromString(const QString &string, QStringView format, QCalendar cal)
+{
+    return fromString(string, format, QLocale::DefaultTwoDigitBaseYear, cal);
+}
+
+QDateTime QDateTime::fromString(const QString &string, QStringView format, QCalendar cal)
+{
+    return fromString(string, format, QLocale::DefaultTwoDigitBaseYear, cal);
+}
+#endif
 
 QT_END_NAMESPACE
 

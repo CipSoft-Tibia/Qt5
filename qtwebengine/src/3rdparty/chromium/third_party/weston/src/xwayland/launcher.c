@@ -224,8 +224,7 @@ weston_xserver_destroy(struct wl_listener *l, void *data)
 	struct weston_xserver *wxs =
 		container_of(l, struct weston_xserver, destroy_listener);
 
-	if (!wxs)
-		return;
+	wl_list_remove(&wxs->destroy_listener.link);
 
 	if (wxs->loop)
 		weston_xserver_shutdown(wxs);

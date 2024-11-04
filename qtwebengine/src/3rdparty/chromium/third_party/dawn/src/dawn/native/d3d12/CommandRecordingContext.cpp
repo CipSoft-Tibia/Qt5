@@ -20,8 +20,8 @@
 #include <string>
 #include <utility>
 
+#include "dawn/native/d3d/D3DError.h"
 #include "dawn/native/d3d12/CommandAllocatorManager.h"
-#include "dawn/native/d3d12/D3D12Error.h"
 #include "dawn/native/d3d12/DeviceD3D12.h"
 #include "dawn/native/d3d12/HeapD3D12.h"
 #include "dawn/native/d3d12/ResidencyManagerD3D12.h"
@@ -67,13 +67,8 @@ MaybeError CommandRecordingContext::Open(ID3D12Device* d3d12Device,
 
 MaybeError CommandRecordingContext::ExecuteCommandList(Device* device) {
     if (IsOpen()) {
-        // Shared textures must be transitioned to common state after the last usage in order
-        // for them to be used by other APIs like D3D11. We ensure this by transitioning to the
-        // common state right before command list submission. TransitionUsageNow itself ensures
-        // no unnecessary transitions happen if the resources is already in the common state.
         for (Texture* texture : mSharedTextures) {
             DAWN_TRY(texture->SynchronizeImportedTextureBeforeUse());
-            texture->TrackAllUsageAndTransitionNow(this, D3D12_RESOURCE_STATE_COMMON);
         }
 
         MaybeError error =

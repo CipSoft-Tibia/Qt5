@@ -13,6 +13,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "components/autofill/core/browser/autofill_type.h"
 #include "components/autofill/core/browser/data_model/autofill_structured_address_constants.h"
+#include "components/autofill/core/browser/data_model/autofill_structured_address_format_provider.h"
 #include "components/autofill/core/browser/data_model/autofill_structured_address_regex_provider.h"
 #include "components/autofill/core/browser/data_model/autofill_structured_address_utils.h"
 #include "components/autofill/core/browser/field_types.h"
@@ -52,40 +53,26 @@ NameMiddle::NameMiddle(AddressComponent* parent)
 
 NameMiddle::~NameMiddle() = default;
 
-void NameMiddle::GetAdditionalSupportedFieldTypes(
-    ServerFieldTypeSet* supported_types) const {
-  supported_types->insert(NAME_MIDDLE_INITIAL);
+const ServerFieldTypeSet NameMiddle::GetAdditionalSupportedFieldTypes() const {
+  constexpr ServerFieldTypeSet additional_supported_field_types{
+      NAME_MIDDLE_INITIAL};
+  return additional_supported_field_types;
 }
 
-bool NameMiddle::ConvertAndGetTheValueForAdditionalFieldTypeName(
-    const std::string& type_name,
-    std::u16string* value) const {
-  if (type_name == AutofillType::ServerFieldTypeToString(NAME_MIDDLE_INITIAL)) {
-    if (value) {
-      // If the stored value has the characteristics of containing only
-      // initials, use the value as it is. Otherwise, convert it to a
-      // sequence of upper case letters, one for each space- or hyphen-separated
-      // token.
-      if (HasMiddleNameInitialsCharacteristics(base::UTF16ToUTF8(GetValue()))) {
-        *value = GetValue();
-      } else {
-        *value = ReduceToInitials(GetValue());
-      }
-    }
-    return true;
-  }
-  return false;
+std::u16string NameMiddle::GetValueForOtherSupportedType(
+    ServerFieldType field_type) const {
+  CHECK(IsSupportedType(field_type));
+  return HasMiddleNameInitialsCharacteristics(base::UTF16ToUTF8(GetValue()))
+             ? GetValue()
+             : ReduceToInitials(GetValue());
 }
 
-bool NameMiddle::ConvertAndSetValueForAdditionalFieldTypeName(
-    const std::string& type_name,
+void NameMiddle::SetValueForOtherSupportedType(
+    ServerFieldType field_type,
     const std::u16string& value,
     const VerificationStatus& status) {
-  if (type_name == AutofillType::ServerFieldTypeToString(NAME_MIDDLE_INITIAL)) {
-    SetValue(value, status);
-    return true;
-  }
-  return false;
+  CHECK(IsSupportedType(field_type));
+  SetValue(value, status);
 }
 
 NameLastFirst::NameLastFirst(AddressComponent* parent)
@@ -103,8 +90,9 @@ std::vector<const re2::RE2*> NameLast::GetParseRegularExpressionsByRelevance()
   auto* pattern_provider = StructuredAddressesRegExProvider::Instance();
   DCHECK(pattern_provider);
   // Check if the name has the characteristics of an Hispanic/Latinx name.
-  if (HasHispanicLatinxNameCharaceristics(base::UTF16ToUTF8(GetValue())))
+  if (HasHispanicLatinxNameCharacteristics(base::UTF16ToUTF8(GetValue()))) {
     return {pattern_provider->GetRegEx(RegEx::kParseHispanicLastName)};
+  }
   return {pattern_provider->GetRegEx(RegEx::kParseLastNameIntoSecondLastName)};
 }
 
@@ -121,8 +109,7 @@ NameLast::NameLast(AddressComponent* parent)
 NameLast::~NameLast() = default;
 
 void NameLast::ParseValueAndAssignSubcomponentsByFallbackMethod() {
-  SetValueForTypeIfPossible(NAME_LAST_SECOND, GetValue(),
-                            VerificationStatus::kParsed);
+  SetValueForType(NAME_LAST_SECOND, GetValue(), VerificationStatus::kParsed);
 }
 
 NameFull::NameFull() : NameFull(nullptr) {}
@@ -150,7 +137,7 @@ NameHonorificPrefix::NameHonorificPrefix(AddressComponent* parent)
 
 NameHonorificPrefix::~NameHonorificPrefix() = default;
 
-void NameFull::MigrateLegacyStructure(bool is_verified_profile) {
+void NameFull::MigrateLegacyStructure() {
   // Only if the name was imported from a legacy structure, the component has no
   if (GetVerificationStatus() != VerificationStatus::kNoStatus)
     return;
@@ -158,12 +145,7 @@ void NameFull::MigrateLegacyStructure(bool is_verified_profile) {
   // If the value of the component is set, use this value as a basis to migrate
   // the name.
   if (!GetValue().empty()) {
-    // If the profile is verified, set the verification status to accordingly
-    // and reset all the subcomponents.
-    VerificationStatus status = is_verified_profile
-                                    ? VerificationStatus::kUserVerified
-                                    : VerificationStatus::kObserved;
-    SetValue(GetValue(), status);
+    SetValue(GetValue(), VerificationStatus::kObserved);
 
     // Set the verification status of all subcomponents to |kParsed|.
     for (auto* subcomponent : Subcomponents()) {
@@ -226,20 +208,28 @@ std::vector<const re2::RE2*> NameFull::GetParseRegularExpressionsByRelevance()
         pattern_provider->GetRegEx(RegEx::kParseCommonCjkTwoCharacterLastName),
         pattern_provider->GetRegEx(RegEx::kParseCjkSingleCharacterLastName)};
   }
-  if (HasHispanicLatinxNameCharaceristics(base::UTF16ToUTF8(GetValue())))
+  if (HasHispanicLatinxNameCharacteristics(base::UTF16ToUTF8(GetValue()))) {
     return {pattern_provider->GetRegEx(RegEx::kParseHispanicFullName)};
+  }
 
   return {pattern_provider->GetRegEx(RegEx::kParseOnlyLastName),
           pattern_provider->GetRegEx(RegEx::kParseLastCommaFirstMiddleName),
           pattern_provider->GetRegEx(RegEx::kParseFirstMiddleLastName)};
 }
-std::u16string NameFull::GetBestFormatString() const {
-  if (HasCjkNameCharacteristics(base::UTF16ToUTF8(name_first_.GetValue())) &&
-      HasCjkNameCharacteristics(base::UTF16ToUTF8(name_last_.GetValue()))) {
-    return u"${NAME_LAST}${NAME_FIRST}";
-  }
-  return u"${NAME_FIRST} ${NAME_MIDDLE} ${NAME_LAST}";
+
+std::u16string NameFull::GetFormatString() const {
+  StructuredAddressesFormatProvider::ContextInfo info;
+  info.name_has_cjk_characteristics =
+      HasCjkNameCharacteristics(base::UTF16ToUTF8(name_first_.GetValue())) &&
+      HasCjkNameCharacteristics(base::UTF16ToUTF8(name_last_.GetValue()));
+
+  auto* pattern_provider = StructuredAddressesFormatProvider::GetInstance();
+  CHECK(pattern_provider);
+  // TODO(crbug/1464568): Add i18n support for name format strings.
+  return pattern_provider->GetPattern(GetStorageType(), /*country_code=*/"",
+                                      info);
 }
+
 NameFull::~NameFull() = default;
 
 NameFullWithPrefix::NameFullWithPrefix() : NameFullWithPrefix(nullptr) {}
@@ -265,14 +255,14 @@ NameFullWithPrefix::GetParseRegularExpressionsByRelevance() const {
   return {pattern_provider->GetRegEx(RegEx::kParsePrefixedName)};
 }
 
-void NameFullWithPrefix::MigrateLegacyStructure(bool is_verified_profile) {
+void NameFullWithPrefix::MigrateLegacyStructure() {
   // If a verification status is set, the structure is already migrated.
   if (GetVerificationStatus() != VerificationStatus::kNoStatus) {
     return;
   }
 
   // If it is not migrated, continue with migrating the full name.
-  name_full_.MigrateLegacyStructure(is_verified_profile);
+  name_full_.MigrateLegacyStructure();
 
   // Check if the tree is already in a completed state.
   // If yes, build the root node from the subcomponents.

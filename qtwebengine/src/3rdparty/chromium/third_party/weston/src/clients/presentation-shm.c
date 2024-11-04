@@ -446,7 +446,7 @@ feedback_presented(void *data,
 	struct feedback *feedback = data;
 	struct window *window = feedback->window;
 	struct feedback *prev_feedback = window->received_feedback;
-	uint64_t seq = ((uint64_t)seq_hi << 32) + seq_lo;
+	uint64_t seq = u64_from_u32s(seq_hi, seq_lo);
 	const struct timespec *prevpresent;
 	uint32_t commit, present;
 	uint32_t f2c, c2p, f2p;
@@ -765,7 +765,7 @@ registry_handle_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(interface, "xdg_wm_base") == 0) {
 		d->wm_base =
 			wl_registry_bind(registry, name,
-					 &xdg_wm_base_interface, version);
+					 &xdg_wm_base_interface, 1);
 	} else if (strcmp(interface, "wl_shm") == 0) {
 		d->shm = wl_registry_bind(registry,
 					  name, &wl_shm_interface, 1);

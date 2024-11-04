@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef TST_QJSVALUE_H
 #define TST_QJSVALUE_H
@@ -16,7 +16,6 @@ class tst_QJSValue : public QObject
 
 public:
     tst_QJSValue();
-    virtual ~tst_QJSValue();
 
 private slots:
     void ctor_invalid();
@@ -129,11 +128,9 @@ private slots:
 private:
     void newEngine()
     {
-        if (engine)
-            delete engine;
-        engine = new QJSEngine();
+        engine = std::make_unique<QJSEngine>();
     }
-    QJSEngine *engine;
+    std::unique_ptr<QJSEngine> engine;
 };
 
 #endif

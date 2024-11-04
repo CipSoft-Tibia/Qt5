@@ -110,7 +110,11 @@ DECLARE_INIT_QU8_CONV_MINMAX_PARAMS_FUNCTION(xnn_init_qu8_conv_minmax_rndnu_scal
 XNN_INTERNAL void xnn_init_qc8_scale_fp32_params(
   size_t channels,
   size_t channels_tile,
+  size_t channels_subtile,
   size_t stride,
+  size_t substride,
+  // How much offset to subtract from packed_w pointer when moving from channels_tile to channels_subtile.
+  size_t stride_offset,
   const float scale[XNN_MIN_ELEMENTS(1)],
   void* packed_w);
 
@@ -415,6 +419,46 @@ DECLARE_INIT_F32_SIGMOID_PARAMS_FUNCTION(xnn_init_f32_sigmoid_scalar_rr2_p5_para
   DECLARE_INIT_F32_SIGMOID_PARAMS_FUNCTION(xnn_init_f32_sigmoid_wasmsimd_rr2_p5_params)
 #endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
 
+
+#define DECLARE_INIT_F16_TANH_PARAMS_FUNCTION(fn_name)      \
+  XNN_INTERNAL size_t fn_name(                              \
+    union xnn_f16_tanh_params params[XNN_MIN_ELEMENTS(1)]);
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  DECLARE_INIT_F16_TANH_PARAMS_FUNCTION(xnn_init_f16_tanh_avx_expm1minus_rr1_p3h2_params)
+  DECLARE_INIT_F16_TANH_PARAMS_FUNCTION(xnn_init_f16_tanh_avx_polynomial_p19h9t2_params)
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+
+#define DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(fn_name)      \
+  XNN_INTERNAL size_t fn_name(                              \
+    union xnn_f32_tanh_params params[XNN_MIN_ELEMENTS(1)]);
+
+DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_scalar_expm1minus_rr1_lut8_p4h3_params)
+DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_scalar_expm1minus_rr1_p6h5_params)
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_sse_expm1minus_rr1_lut8_p4h3_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_sse_expm1minus_rr1_p6h5_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_avx_expm1minus_rr1_lut4_p4h2_perm_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_avx_expm1minus_rr1_lut4_p4h3_perm_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_avx_expm1minus_rr1_lut8_p4h3_perm_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_avx_expm1minus_rr1_lut8_p4h3_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_avx_expm1minus_rr1_p6h5_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_avx512_expm1minus_rr1_lut4_p4h3_perm_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_avx512_expm1minus_rr1_lut8_p4h3_perm_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_avx512_expm1minus_rr1_lut8_p4h3_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_avx512_expm1minus_rr1_p6h5_params)
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_wasmsimd_expm1minus_rr1_lut8_p4h3_abs_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_wasmsimd_expm1minus_rr1_p6h5_abs_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_wasmsimd_expm1minus_rr1_lut8_p4h3_nabs_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_wasmsimd_expm1minus_rr1_p6h5_nabs_params)
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+#if XNN_ARCH_ARM || XNN_ARCH_ARM64
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_neon_expm1minus_rr1_lut8_p4h3_params)
+  DECLARE_INIT_F32_TANH_PARAMS_FUNCTION(xnn_init_f32_tanh_neon_expm1minus_rr1_p6h5_params)
+#endif  // XNN_ARCH_ARM || XNN_ARCH_ARM64
 
 #define DECLARE_INIT_F32_ABS_PARAMS_FUNCTION(fn_name)      \
   XNN_INTERNAL size_t fn_name(                             \
@@ -967,6 +1011,24 @@ DECLARE_INIT_QS8_CVT_PARAMS_FUNCTION(xnn_init_qs8_cvt_scalar_params)
   DECLARE_INIT_QS8_CVT_PARAMS_FUNCTION(xnn_init_qs8_cvt_wasmsimd_params)
 #endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
 
+#define DECLARE_INIT_QS16_QS8_CVT_PARAMS_FUNCTION(fn_name)     \
+  XNN_INTERNAL size_t fn_name(                                 \
+    union xnn_qs16_qs8_cvt_params params[XNN_MIN_ELEMENTS(1)], \
+    float input_output_scale,                                  \
+    int8_t output_zero_point);
+
+DECLARE_INIT_QS16_QS8_CVT_PARAMS_FUNCTION(xnn_init_qs16_qs8_cvt_scalar_params)
+#if XNN_ARCH_ARM || XNN_ARCH_ARM64
+DECLARE_INIT_QS16_QS8_CVT_PARAMS_FUNCTION(xnn_init_qs16_qs8_cvt_neon_params)
+#endif  // XNN_ARCH_ARM || XNN_ARCH_ARM64
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+DECLARE_INIT_QS16_QS8_CVT_PARAMS_FUNCTION(xnn_init_qs16_qs8_cvt_sse2_params)
+DECLARE_INIT_QS16_QS8_CVT_PARAMS_FUNCTION(xnn_init_qs16_qs8_cvt_ssse3_params)
+DECLARE_INIT_QS16_QS8_CVT_PARAMS_FUNCTION(xnn_init_qs16_qs8_cvt_sse4_params)
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+DECLARE_INIT_QS16_QS8_CVT_PARAMS_FUNCTION(xnn_init_qs16_qs8_cvt_wasmsimd_params)
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
 
 #define DECLARE_INIT_QS8_F32_CVT_PARAMS_FUNCTION(fn_name)     \
   XNN_INTERNAL size_t fn_name(                                \

@@ -13,12 +13,10 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
+#include "services/network/public/mojom/content_security_policy.mojom.h"
 
-#if defined(TOOLKIT_QT)
-#include "qtwebengine/grit/qt_webengine_resources.h"
-#else
-#include "chrome/grit/dev_ui_browser_resources.h"
-#endif
+#include "chrome/grit/sandbox_internals_resources.h"
+#include "chrome/grit/sandbox_internals_resources_map.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "chrome/browser/ui/webui/sandbox/sandbox_handler.h"
@@ -73,8 +71,16 @@ static void SetSandboxStatusData(content::WebUIDataSource* source) {
 void CreateAndAddDataSource(Profile* profile) {
   content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
       profile, chrome::kChromeUISandboxHost);
-  source->SetDefaultResource(IDR_SANDBOX_INTERNALS_HTML);
-  source->AddResourcePath("sandbox_internals.js", IDR_SANDBOX_INTERNALS_JS);
+  source->AddResourcePaths(base::make_span(kSandboxInternalsResources,
+                                           kSandboxInternalsResourcesSize));
+  source->SetDefaultResource(IDR_SANDBOX_INTERNALS_SANDBOX_INTERNALS_HTML);
+
+  source->OverrideContentSecurityPolicy(
+      network::mojom::CSPDirectiveName::TrustedTypes,
+      "trusted-types static-types;");
+  source->OverrideContentSecurityPolicy(
+      network::mojom::CSPDirectiveName::ScriptSrc,
+      "script-src chrome://resources chrome://webui-test 'self';");
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   SetSandboxStatusData(source);

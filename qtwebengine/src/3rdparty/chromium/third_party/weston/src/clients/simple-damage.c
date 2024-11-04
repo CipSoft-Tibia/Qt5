@@ -337,6 +337,8 @@ create_window(struct display *display, int width, int height,
 					  &xdg_toplevel_listener, window);
 
 		xdg_toplevel_set_title(window->xdg_toplevel, "simple-damage");
+		xdg_toplevel_set_app_id(window->xdg_toplevel,
+					"org.freedesktop.weston.simple-damage");
 
 		window->wait_for_configure = true;
 		wl_surface_commit(window->surface);
@@ -774,7 +776,7 @@ create_display(int version)
 {
 	struct display *display;
 
-	display = malloc(sizeof *display);
+	display = zalloc(sizeof *display);
 	if (display == NULL) {
 		fprintf(stderr, "out of memory\n");
 		exit(1);

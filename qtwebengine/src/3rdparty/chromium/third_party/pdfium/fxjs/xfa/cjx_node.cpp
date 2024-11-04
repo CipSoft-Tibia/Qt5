@@ -137,9 +137,7 @@ CJS_Result CJX_Node::clone(CFXJSE_Engine* runtime,
     return CJS_Result::Failure(JSMessage::kParamError);
 
   CXFA_Node* pCloneNode = GetXFANode()->Clone(runtime->ToBoolean(params[0]));
-  return CJS_Result::Success(
-      GetDocument()->GetScriptContext()->GetOrCreateJSBindingFromMap(
-          pCloneNode));
+  return CJS_Result::Success(runtime->GetOrCreateJSBindingFromMap(pCloneNode));
 }
 
 CJS_Result CJX_Node::getAttribute(
@@ -169,8 +167,7 @@ CJS_Result CJX_Node::getElement(
   if (!pNode)
     return CJS_Result::Success(runtime->NewNull());
 
-  return CJS_Result::Success(
-      GetDocument()->GetScriptContext()->GetOrCreateJSBindingFromMap(pNode));
+  return CJS_Result::Success(runtime->GetOrCreateJSBindingFromMap(pNode));
 }
 
 CJS_Result CJX_Node::isPropertySpecified(

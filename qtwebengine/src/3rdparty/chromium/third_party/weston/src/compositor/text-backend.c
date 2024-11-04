@@ -39,6 +39,7 @@
 #include "input-method-unstable-v1-server-protocol.h"
 #include "shared/helpers.h"
 #include "shared/timespec-util.h"
+#include "shared/xalloc.h"
 
 struct text_input_manager;
 struct input_method;
@@ -103,6 +104,7 @@ struct text_backend {
 
 	struct {
 		char *path;
+		bool overlay_keyboard;
 		struct wl_client *client;
 
 		unsigned deathcount;
@@ -139,6 +141,12 @@ deactivate_input_method(struct input_method *input_method)
 	wl_list_remove(&input_method->link);
 	input_method->input = NULL;
 	input_method->context = NULL;
+
+	/* text_input_manager::destroy_listener by compositor shutdown */
+	if (!text_input->manager) {
+		zwp_text_input_v1_send_leave(text_input->resource);
+		return;
+	}
 
 	if (wl_list_empty(&text_input->input_methods) &&
 	    text_input->input_panel_visible &&
@@ -405,9 +413,7 @@ static void text_input_manager_create_text_input(struct wl_client *client,
 		wl_resource_get_user_data(resource);
 	struct text_input *text_input;
 
-	text_input = zalloc(sizeof *text_input);
-	if (text_input == NULL)
-		return;
+	text_input = xzalloc(sizeof *text_input);
 
 	text_input->resource =
 		wl_resource_create(client, &zwp_text_input_v1_interface, 1, id);
@@ -455,6 +461,8 @@ text_input_manager_notifier_destroy(struct wl_listener *listener, void *data)
 	wl_list_remove(&text_input_manager->destroy_listener.link);
 	wl_global_destroy(text_input_manager->text_input_manager_global);
 
+	if (text_input_manager->current_text_input)
+		text_input_manager->current_text_input->manager = NULL;
 	free(text_input_manager);
 }
 
@@ -463,9 +471,7 @@ text_input_manager_create(struct weston_compositor *ec)
 {
 	struct text_input_manager *text_input_manager;
 
-	text_input_manager = zalloc(sizeof *text_input_manager);
-	if (text_input_manager == NULL)
-		return;
+	text_input_manager = xzalloc(sizeof *text_input_manager);
 
 	text_input_manager->ec = ec;
 
@@ -675,6 +681,9 @@ input_method_context_grab_keyboard(struct wl_client *client,
 	struct weston_seat *seat = context->input_method->seat;
 	struct weston_keyboard *keyboard = weston_seat_get_keyboard(seat);
 
+	if (!keyboard)
+		return;
+
 	cr = wl_resource_create(client, &wl_keyboard_interface, 1, id);
 	wl_resource_set_implementation(cr, NULL, context, unbind_keyboard);
 
@@ -802,9 +811,7 @@ input_method_context_create(struct text_input *input,
 	if (!input_method->input_method_binding)
 		return;
 
-	context = zalloc(sizeof *context);
-	if (context == NULL)
-		return;
+	context = xzalloc(sizeof *context);
 
 	binding = input_method->input_method_binding;
 	context->resource =
@@ -848,6 +855,9 @@ static void
 unbind_input_method(struct wl_resource *resource)
 {
 	struct input_method *input_method = wl_resource_get_user_data(resource);
+
+	if (!input_method)
+		return;
 
 	input_method->input_method_binding = NULL;
 	input_method->context = NULL;
@@ -896,8 +906,12 @@ input_method_notifier_destroy(struct wl_listener *listener, void *data)
 	if (input_method->input)
 		deactivate_input_method(input_method);
 
+	if (input_method->input_method_binding)
+		wl_resource_set_user_data(input_method->input_method_binding, NULL);
+
 	wl_global_destroy(input_method->input_method_global);
 	wl_list_remove(&input_method->destroy_listener.link);
+	input_method->seat->input_method = NULL;
 
 	free(input_method);
 }
@@ -938,7 +952,7 @@ input_method_init_seat(struct weston_seat *seat)
 	seat->input_method->focus_listener_initialized = true;
 }
 
-static void launch_input_method(struct text_backend *text_backend);
+static void launch_input_method(void *data);
 
 static void
 respawn_input_method_process(struct text_backend *text_backend)
@@ -978,13 +992,18 @@ input_method_client_notifier(struct wl_listener *listener, void *data)
 }
 
 static void
-launch_input_method(struct text_backend *text_backend)
+launch_input_method(void *data)
 {
+	struct text_backend *text_backend = data;
+
 	if (!text_backend->input_method.path)
 		return;
 
 	if (strcmp(text_backend->input_method.path, "") == 0)
 		return;
+
+	if (text_backend->input_method.overlay_keyboard)
+		setenv("WESTON_KEYBOARD_SURFACE_TYPE", "overlay", 1);
 
 	text_backend->input_method.client =
 		weston_client_start(text_backend->compositor,
@@ -1008,9 +1027,7 @@ text_backend_seat_created(struct text_backend *text_backend,
 	struct input_method *input_method;
 	struct weston_compositor *ec = seat->compositor;
 
-	input_method = zalloc(sizeof *input_method);
-	if (input_method == NULL)
-		return;
+	input_method = xzalloc(sizeof *input_method);
 
 	input_method->seat = seat;
 	input_method->input = NULL;
@@ -1053,6 +1070,9 @@ text_backend_configuration(struct text_backend *text_backend)
 	weston_config_section_get_string(section, "path",
 					 &text_backend->input_method.path,
 					 client);
+	weston_config_section_get_bool(section, "overlay-keyboard",
+				       &text_backend->input_method.overlay_keyboard,
+				       false);
 	free(client);
 }
 
@@ -1076,10 +1096,9 @@ text_backend_init(struct weston_compositor *ec)
 {
 	struct text_backend *text_backend;
 	struct weston_seat *seat;
+	struct wl_event_loop *loop;
 
-	text_backend = zalloc(sizeof(*text_backend));
-	if (text_backend == NULL)
-		return NULL;
+	text_backend = xzalloc(sizeof(*text_backend));
 
 	text_backend->compositor = ec;
 
@@ -1093,7 +1112,8 @@ text_backend_init(struct weston_compositor *ec)
 
 	text_input_manager_create(ec);
 
-	launch_input_method(text_backend);
+	loop = wl_display_get_event_loop(ec->wl_display);
+	wl_event_loop_add_idle(loop, launch_input_method, text_backend);
 
 	return text_backend;
 }

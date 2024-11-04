@@ -9,7 +9,8 @@
 #include <algorithm>
 
 #include "third_party/base/check.h"
-#include "third_party/base/notreached.h"
+
+namespace fxcmap {
 
 namespace {
 
@@ -24,23 +25,23 @@ struct RangeCmap {
   uint16_t cid;
 };
 
-const FXCMAP_CMap* FindNextCMap(const FXCMAP_CMap* pMap) {
+const CMap* FindNextCMap(const CMap* pMap) {
   return pMap->m_UseOffset ? pMap + pMap->m_UseOffset : nullptr;
 }
 
 }  // namespace
 
-uint16_t CIDFromCharCode(const FXCMAP_CMap* pMap, uint32_t charcode) {
+uint16_t CIDFromCharCode(const CMap* pMap, uint32_t charcode) {
   DCHECK(pMap);
   const uint16_t loword = static_cast<uint16_t>(charcode);
   if (charcode >> 16) {
     while (pMap) {
       if (pMap->m_pDWordMap) {
-        const FXCMAP_DWordCIDMap* begin = pMap->m_pDWordMap;
+        const DWordCIDMap* begin = pMap->m_pDWordMap;
         const auto* end = begin + pMap->m_DWordCount;
         const auto* found = std::lower_bound(
             begin, end, charcode,
-            [](const FXCMAP_DWordCIDMap& element, uint32_t charcode) {
+            [](const DWordCIDMap& element, uint32_t charcode) {
               uint16_t hiword = static_cast<uint16_t>(charcode >> 16);
               if (element.m_HiWord != hiword)
                 return element.m_HiWord < hiword;
@@ -58,7 +59,7 @@ uint16_t CIDFromCharCode(const FXCMAP_CMap* pMap, uint32_t charcode) {
 
   while (pMap && pMap->m_pWordMap) {
     switch (pMap->m_WordMapType) {
-      case FXCMAP_CMap::Single: {
+      case CMap::Type::kSingle: {
         const auto* begin =
             reinterpret_cast<const SingleCmap*>(pMap->m_pWordMap);
         const auto* end = begin + pMap->m_WordCount;
@@ -70,7 +71,7 @@ uint16_t CIDFromCharCode(const FXCMAP_CMap* pMap, uint32_t charcode) {
           return found->cid;
         break;
       }
-      case FXCMAP_CMap::Range: {
+      case CMap::Type::kRange: {
         const auto* begin =
             reinterpret_cast<const RangeCmap*>(pMap->m_pWordMap);
         const auto* end = begin + pMap->m_WordCount;
@@ -82,10 +83,6 @@ uint16_t CIDFromCharCode(const FXCMAP_CMap* pMap, uint32_t charcode) {
           return found->cid + loword - found->low;
         break;
       }
-      default: {
-        NOTREACHED();
-        break;
-      }
     }
     pMap = FindNextCMap(pMap);
   }
@@ -93,7 +90,7 @@ uint16_t CIDFromCharCode(const FXCMAP_CMap* pMap, uint32_t charcode) {
   return 0;
 }
 
-uint32_t CharCodeFromCID(const FXCMAP_CMap* pMap, uint16_t cid) {
+uint32_t CharCodeFromCID(const CMap* pMap, uint16_t cid) {
   // TODO(dsinclair): This should be checking both pMap->m_WordMap and
   // pMap->m_DWordMap. There was a second while() but it was never reached as
   // the first always returns. Investigate and determine how this should
@@ -102,7 +99,7 @@ uint32_t CharCodeFromCID(const FXCMAP_CMap* pMap, uint16_t cid) {
   DCHECK(pMap);
   while (pMap) {
     switch (pMap->m_WordMapType) {
-      case FXCMAP_CMap::Single: {
+      case CMap::Type::kSingle: {
         const auto* pCur =
             reinterpret_cast<const SingleCmap*>(pMap->m_pWordMap);
         const auto* pEnd = pCur + pMap->m_WordCount;
@@ -113,7 +110,7 @@ uint32_t CharCodeFromCID(const FXCMAP_CMap* pMap, uint16_t cid) {
         }
         break;
       }
-      case FXCMAP_CMap::Range: {
+      case CMap::Type::kRange: {
         const auto* pCur = reinterpret_cast<const RangeCmap*>(pMap->m_pWordMap);
         const auto* pEnd = pCur + pMap->m_WordCount;
         while (pCur < pEnd) {
@@ -123,12 +120,10 @@ uint32_t CharCodeFromCID(const FXCMAP_CMap* pMap, uint16_t cid) {
         }
         break;
       }
-      default: {
-        NOTREACHED();
-        break;
-      }
     }
     pMap = FindNextCMap(pMap);
   }
   return 0;
 }
+
+}  // namespace fxcmap

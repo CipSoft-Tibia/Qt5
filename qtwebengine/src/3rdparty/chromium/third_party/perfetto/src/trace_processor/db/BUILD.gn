@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import("../../../gn/perfetto_tp_tables.gni")
 import("../../../gn/test.gni")
 
 source_set("db") {
@@ -23,6 +24,10 @@ source_set("db") {
     "column_storage.h",
     "column_storage_overlay.h",
     "compare.h",
+    "query_executor.cc",
+    "query_executor.h",
+    "runtime_table.cc",
+    "runtime_table.h",
     "table.cc",
     "table.h",
     "typed_column.h",
@@ -37,7 +42,15 @@ source_set("db") {
     "../../../include/perfetto/trace_processor",
     "../containers",
     "../util:glob",
+    "../util:regex",
+    "../util:util",
+    "overlays",
+    "storage",
   ]
+}
+
+perfetto_tp_tables("view_unittest") {
+  sources = [ "view_unittest.py" ]
 }
 
 perfetto_unittest_source_set("unittests") {
@@ -45,16 +58,20 @@ perfetto_unittest_source_set("unittests") {
   sources = [
     "column_storage_overlay_unittest.cc",
     "compare_unittest.cc",
-    "table_unittest.cc",
+    "query_executor_unittest.cc",
+    "runtime_table_unittest.cc",
     "view_unittest.cc",
   ]
   deps = [
     ":db",
+    ":view_unittest",
     "../../../gn:default_deps",
     "../../../gn:gtest_and_gmock",
     "../../base",
     "../tables",
     "../views",
+    "overlays",
+    "storage",
   ]
 }
 
@@ -65,7 +82,14 @@ if (enable_perfetto_benchmarks) {
       ":db",
       "../../../gn:benchmark",
       "../../../gn:default_deps",
+      "../../../include/perfetto/base",
+      "../../../include/perfetto/ext/base",
+      "../../base:test_support",
+      "../tables:tables_python",
     ]
-    sources = [ "column_storage_overlay_benchmark.cc" ]
+    sources = [
+      "column_storage_overlay_benchmark.cc",
+      "query_executor_benchmark.cc",
+    ]
   }
 }

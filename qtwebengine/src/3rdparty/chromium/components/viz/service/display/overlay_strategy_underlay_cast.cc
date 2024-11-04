@@ -43,6 +43,7 @@ OverlayStrategyUnderlayCast::~OverlayStrategyUnderlayCast() {}
 
 void OverlayStrategyUnderlayCast::Propose(
     const SkM44& output_color_matrix,
+    const OverlayProcessorInterface::FilterOperationsMap& render_pass_filters,
     const OverlayProcessorInterface::FilterOperationsMap&
         render_pass_backdrop_filters,
     DisplayResourceProvider* resource_provider,
@@ -55,9 +56,13 @@ void OverlayStrategyUnderlayCast::Propose(
   QuadList& quad_list = render_pass->quad_list;
   OverlayCandidate candidate;
   auto overlay_iter = quad_list.end();
+
+  const OverlayCandidateFactory::OverlayContext context = {
+      .supports_mask_filter = true};
   OverlayCandidateFactory candidate_factory = OverlayCandidateFactory(
       render_pass, resource_provider, surface_damage_rect_list,
-      &output_color_matrix, GetPrimaryPlaneDisplayRect(primary_plane));
+      &output_color_matrix, GetPrimaryPlaneDisplayRect(primary_plane),
+      &render_pass_filters, context);
 
   // Original code did reverse iteration.
   // Here we do forward but find the last one. which should be the same thing.
@@ -81,12 +86,13 @@ void OverlayStrategyUnderlayCast::Propose(
   }
 
   if (overlay_iter != quad_list.end()) {
-    candidates->push_back({overlay_iter, candidate, this});
+    candidates->emplace_back(overlay_iter, candidate, this);
   }
 }
 
 bool OverlayStrategyUnderlayCast::Attempt(
     const SkM44& output_color_matrix,
+    const OverlayProcessorInterface::FilterOperationsMap& render_pass_filters,
     const OverlayProcessorInterface::FilterOperationsMap&
         render_pass_backdrop_filters,
     DisplayResourceProvider* resource_provider,
@@ -102,9 +108,14 @@ bool OverlayStrategyUnderlayCast::Attempt(
   QuadList& quad_list = render_pass->quad_list;
   bool found_underlay = false;
   gfx::Rect content_rect;
+
+  const OverlayCandidateFactory::OverlayContext context = {
+      .supports_mask_filter = true};
+
   OverlayCandidateFactory candidate_factory = OverlayCandidateFactory(
       render_pass, resource_provider, surface_damage_rect_list,
-      &output_color_matrix, GetPrimaryPlaneDisplayRect(primary_plane));
+      &output_color_matrix, GetPrimaryPlaneDisplayRect(primary_plane),
+      &render_pass_filters, context);
 
   for (const auto* quad : base::Reversed(quad_list)) {
     if (OverlayCandidate::IsInvisibleQuad(quad))

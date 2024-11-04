@@ -22,13 +22,10 @@
 #include "core/fxge/fx_font.h"
 #include "core/fxge/text_char_pos.h"
 #include "third_party/base/check.h"
+#include "third_party/base/check_op.h"
 #include "third_party/base/numerics/safe_conversions.h"
 #include "xfa/fgas/font/cfgas_gefont.h"
 #include "xfa/fgas/layout/cfgas_txtbreak.h"
-
-#ifdef _SKIA_SUPPORT_
-#include "core/fxge/cfx_defaultrenderdevice.h"
-#endif
 
 namespace {
 
@@ -122,10 +119,6 @@ bool CFDE_TextOut::DrawString(CFX_RenderDevice* device,
     bRet = device->DrawNormalText(pdfium::make_span(pCurCP, iCurCount), font,
                                   -fFontSize, matrix, color, kOptions);
   }
-#ifdef _SKIA_SUPPORT_
-  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-    device->Flush(false);
-#endif
 
   return bRet;
 }
@@ -137,7 +130,7 @@ CFDE_TextOut::Piece::Piece(const Piece& that) = default;
 CFDE_TextOut::Piece::~Piece() = default;
 
 CFDE_TextOut::CFDE_TextOut()
-    : m_pTxtBreak(std::make_unique<CFGAS_TxtBreak>()), m_ttoLines(5) {}
+    : m_pTxtBreak(std::make_unique<CFGAS_TxtBreak>()) {}
 
 CFDE_TextOut::~CFDE_TextOut() = default;
 
@@ -352,6 +345,7 @@ void CFDE_TextOut::LoadText(const WideString& str, const CFX_RectF& rect) {
     }
     if (m_fLinePos + fLineStep > fLineStop) {
       size_t iCurLine = bEndofLine ? m_iCurLine - 1 : m_iCurLine;
+      CHECK_LT(m_iCurLine, m_ttoLines.size());
       m_ttoLines[iCurLine].set_new_reload(true);
       bRet = true;
       break;
@@ -402,6 +396,7 @@ bool CFDE_TextOut::RetrievePieces(CFGAS_Char::BreakType dwBreakStatus,
     }
 
     if (j == chars_to_skip && !bReload) {
+      CHECK_LT(m_iCurLine, m_ttoLines.size());
       m_ttoLines[m_iCurLine].set_new_reload(true);
     } else if (j > chars_to_skip) {
       Piece piece;
@@ -532,8 +527,7 @@ size_t CFDE_TextOut::GetDisplayPos(const Piece* pPiece) {
 
 CFDE_TextOut::Line::Line() = default;
 
-CFDE_TextOut::Line::Line(const Line& that)
-    : new_reload_(that.new_reload_), pieces_(that.pieces_) {}
+CFDE_TextOut::Line::Line(const Line& that) = default;
 
 CFDE_TextOut::Line::~Line() = default;
 

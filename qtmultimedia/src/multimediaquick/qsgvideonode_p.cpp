@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgvideonode_p.h"
+#include "private/qmultimediautils_p.h"
 #include <QtQuick/qsgmaterial.h>
 #include "qsgvideotexture_p.h"
 #include <QtMultimedia/private/qvideotexturehelper_p.h>
-#include <private/qquicktextnode_p.h>
+#include <private/qsginternaltextnode_p.h>
+#include <private/qquickitem_p.h>
 #include <private/qquickvideooutput_p.h>
 #include <private/qabstractvideobuffer_p.h>
 
@@ -236,8 +238,9 @@ void QSGVideoNode::updateSubtitle(const QVideoFrame &frame)
     QSize subtitleFrameSize = m_rect.size().toSize();
     if (subtitleFrameSize.isEmpty())
         return;
-    if (m_orientation % 180)
-        subtitleFrameSize.transpose();
+
+    subtitleFrameSize = qRotatedFrameSize(subtitleFrameSize, m_orientation);
+
     if (!m_subtitleLayout.update(subtitleFrameSize, frame.subtitleText()))
         return;
 
@@ -246,11 +249,14 @@ void QSGVideoNode::updateSubtitle(const QVideoFrame &frame)
     if (frame.subtitleText().isEmpty())
         return;
 
-    m_subtitleTextNode = new QQuickTextNode(m_parent);
+    QQuickItemPrivate *parent_d = QQuickItemPrivate::get(m_parent);
+
+    m_subtitleTextNode = parent_d->sceneGraphContext()->createInternalTextNode(parent_d->sceneGraphRenderContext());
+    m_subtitleTextNode->setColor(Qt::white);
     QColor bgColor = Qt::black;
     bgColor.setAlpha(128);
     m_subtitleTextNode->addRectangleNode(m_subtitleLayout.bounds, bgColor);
-    m_subtitleTextNode->addTextLayout(m_subtitleLayout.layout.position(), &m_subtitleLayout.layout, Qt::white);
+    m_subtitleTextNode->addTextLayout(m_subtitleLayout.layout.position(), &m_subtitleLayout.layout);
     appendChildNode(m_subtitleTextNode);
     setSubtitleGeometry();
 }
@@ -286,7 +292,7 @@ void QSGVideoNode::setSubtitleGeometry()
 /* Update the vertices and texture coordinates.  Orientation must be in {0,90,180,270} */
 void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &textureRect, int orientation)
 {
-    const auto currentFrameOrientation = m_material ? static_cast<int>(m_material->m_currentFrame.rotationAngle()) : 0;
+    const auto currentFrameOrientation = m_material ? static_cast<int>(m_material->m_currentFrame.rotation()) : 0;
     bool frameChanged = false;
     if (m_material) {
         if (currentFrameOrientation != m_frameOrientation

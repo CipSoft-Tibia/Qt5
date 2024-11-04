@@ -22,8 +22,10 @@ inline LayoutUnit InlineOffsetForDisplayMathCentering(
     bool is_display_block_math,
     LayoutUnit available_inline_size,
     LayoutUnit max_row_inline_size) {
-  if (is_display_block_math)
-    return (available_inline_size - max_row_inline_size) / 2;
+  if (is_display_block_math) {
+    return ((available_inline_size - max_row_inline_size) / 2)
+        .ClampNegativeToZero();
+  }
   return LayoutUnit();
 }
 
@@ -209,8 +211,8 @@ const NGLayoutResult* NGMathRowLayoutAlgorithm::Layout() {
   adjust_offset += LogicalOffset{center_offset, max_row_block_baseline};
   for (auto& child_data : children) {
     child_data.offset += adjust_offset;
-    container_builder_.AddResult(*child_data.result, child_data.offset);
-    child_data.child.StoreMargins(ConstraintSpace(), child_data.margins);
+    container_builder_.AddResult(*child_data.result, child_data.offset,
+                                 child_data.margins);
   }
 
   container_builder_.SetBaselines(adjust_offset.block_offset);

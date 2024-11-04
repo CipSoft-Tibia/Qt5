@@ -13,9 +13,12 @@
 // limitations under the License.
 
 #include <mutex>
+#include <utility>
 
+#include "absl/strings/str_format.h"
 #include "dawn/native/Device.h"
 #include "dawn/native/ObjectBase.h"
+#include "dawn/native/ObjectType_autogen.h"
 
 namespace dawn::native {
 
@@ -52,10 +55,15 @@ bool ApiObjectList::Untrack(ApiObjectBase* object) {
 }
 
 void ApiObjectList::Destroy() {
-    std::lock_guard<std::mutex> lock(mMutex);
-    mMarkedDestroyed = true;
-    while (!mObjects.empty()) {
-        auto* head = mObjects.head();
+    LinkedList<ApiObjectBase> objects;
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        mMarkedDestroyed = true;
+        mObjects.MoveInto(&objects);
+    }
+
+    while (!objects.empty()) {
+        auto* head = objects.head();
         bool removed = head->RemoveFromList();
         ASSERT(removed);
         head->value()->DestroyImpl();
@@ -68,7 +76,12 @@ ApiObjectBase::ApiObjectBase(DeviceBase* device, const char* label) : ObjectBase
     }
 }
 
-ApiObjectBase::ApiObjectBase(DeviceBase* device, ErrorTag tag) : ObjectBase(device, tag) {}
+ApiObjectBase::ApiObjectBase(DeviceBase* device, ErrorTag tag, const char* label)
+    : ObjectBase(device, tag) {
+    if (label) {
+        mLabel = label;
+    }
+}
 
 ApiObjectBase::ApiObjectBase(DeviceBase* device, LabelNotImplementedTag tag) : ObjectBase(device) {}
 
@@ -77,12 +90,23 @@ ApiObjectBase::~ApiObjectBase() {
 }
 
 void ApiObjectBase::APISetLabel(const char* label) {
-    mLabel = label;
+    SetLabel(label);
+}
+
+void ApiObjectBase::SetLabel(std::string label) {
+    mLabel = std::move(label);
     SetLabelImpl();
 }
 
 const std::string& ApiObjectBase::GetLabel() const {
     return mLabel;
+}
+
+void ApiObjectBase::FormatLabel(absl::FormatSink* s) const {
+    s->Append(ObjectTypeAsString(GetType()));
+    if (!mLabel.empty()) {
+        s->Append(absl::StrFormat(" \"%s\"", mLabel));
+    }
 }
 
 void ApiObjectBase::SetLabelImpl() {}
@@ -94,6 +118,11 @@ bool ApiObjectBase::IsAlive() const {
 void ApiObjectBase::DeleteThis() {
     Destroy();
     RefCounted::DeleteThis();
+}
+
+void ApiObjectBase::LockAndDeleteThis() {
+    auto deviceLock(GetDevice()->GetScopedLockSafeForDelete());
+    DeleteThis();
 }
 
 ApiObjectList* ApiObjectBase::GetObjectTrackingList() {

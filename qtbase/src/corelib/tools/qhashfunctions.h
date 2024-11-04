@@ -7,10 +7,10 @@
 
 #include <QtCore/qstring.h>
 #include <QtCore/qstringfwd.h>
-#include <QtCore/qpair.h>
 
 #include <numeric> // for std::accumulate
 #include <functional> // for std::hash
+#include <utility> // For std::pair
 
 #if 0
 #pragma qt_class(QHashFunctions)
@@ -112,9 +112,7 @@ Q_DECL_CONST_FUNCTION inline size_t qHash(float key, size_t seed = 0) noexcept
     return QHashPrivate::hash(k, seed);
 }
 Q_CORE_EXPORT Q_DECL_CONST_FUNCTION size_t qHash(double key, size_t seed = 0) noexcept;
-#if !defined(Q_OS_DARWIN) || defined(Q_QDOC)
 Q_CORE_EXPORT Q_DECL_CONST_FUNCTION size_t qHash(long double key, size_t seed = 0) noexcept;
-#endif
 Q_DECL_CONST_FUNCTION constexpr inline size_t qHash(wchar_t key, size_t seed = 0) noexcept
 { return QHashPrivate::hash(size_t(key), seed); }
 Q_DECL_CONST_FUNCTION constexpr inline size_t qHash(char16_t key, size_t seed = 0) noexcept

@@ -10,7 +10,7 @@
 
 .tree-outline > ol {
   padding-bottom: 5px;
-  border-bottom: solid 1px var(--color-details-hairline);
+  border-bottom: solid 1px var(--sys-color-divider);
 }
 
 .tree-outline > .parent {
@@ -94,4 +94,8 @@
 
 .tree-outline .error-field {
   color: var(--color-red);
+}
+
+.prompt-icon {
+  margin-top: 2px;
 }

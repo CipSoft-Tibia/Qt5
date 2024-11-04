@@ -428,16 +428,6 @@ bool EmbeddedTestServer::GenerateCertAndKey() {
 
     leaf = CertBuilder::FromFile(certs_dir.AppendASCII("ok_cert.pem"),
                                  intermediate.get());
-    // Workaround for weird CertVerifyProcWin issue where if too many
-    // intermediates with the same key are fetched by AIA any further
-    // verifications using that key will fail. See
-    // https://crbug.com/1328060. Since generating ECDSA keys is cheap, just do
-    // this on all configurations rather than restricting to Windows, though
-    // this hack can be removed once we delete CertVerifyProcWin.
-    if (cert_config_.intermediate == IntermediateType::kByAIA) {
-      intermediate->GenerateECKey();
-      leaf->SetSignatureAlgorithm(SignatureAlgorithm::kEcdsaSha256);
-    }
   } else {
     leaf = CertBuilder::FromFile(certs_dir.AppendASCII("ok_cert.pem"),
                                  static_root.get());
@@ -458,6 +448,10 @@ bool EmbeddedTestServer::GenerateCertAndKey() {
 
   if (!cert_config_.dns_names.empty() || !cert_config_.ip_addresses.empty()) {
     leaf->SetSubjectAltNames(cert_config_.dns_names, cert_config_.ip_addresses);
+  }
+
+  if (!cert_config_.key_usages.empty()) {
+    leaf->SetKeyUsages(cert_config_.key_usages);
   }
 
   const std::string leaf_serial_text =

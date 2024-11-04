@@ -9,27 +9,39 @@
 #define QUICHE_QUIC_CORE_QUIC_DISPATCHER_H_
 
 #include <cstddef>
+#include <cstdint>
+#include <list>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "quiche/quic/core/connection_id_generator.h"
 #include "quiche/quic/core/crypto/quic_compressed_certs_cache.h"
-#include "quiche/quic/core/crypto/quic_random.h"
+#include "quiche/quic/core/frames/quic_rst_stream_frame.h"
+#include "quiche/quic/core/frames/quic_stop_sending_frame.h"
+#include "quiche/quic/core/quic_alarm.h"
+#include "quiche/quic/core/quic_alarm_factory.h"
 #include "quiche/quic/core/quic_blocked_writer_interface.h"
 #include "quiche/quic/core/quic_buffered_packet_store.h"
 #include "quiche/quic/core/quic_connection.h"
 #include "quiche/quic/core/quic_connection_id.h"
 #include "quiche/quic/core/quic_crypto_server_stream_base.h"
+#include "quiche/quic/core/quic_error_codes.h"
+#include "quiche/quic/core/quic_packet_writer.h"
 #include "quiche/quic/core/quic_packets.h"
 #include "quiche/quic/core/quic_process_packet_interface.h"
 #include "quiche/quic/core/quic_session.h"
 #include "quiche/quic/core/quic_time_wait_list_manager.h"
+#include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_version_manager.h"
+#include "quiche/quic/core/quic_versions.h"
+#include "quiche/quic/platform/api/quic_export.h"
 #include "quiche/quic/platform/api/quic_socket_address.h"
-#include "quiche/common/platform/api/quiche_reference_counted.h"
+#include "quiche/common/platform/api/quiche_logging.h"
+#include "quiche/common/quiche_callbacks.h"
 #include "quiche/common/quiche_linked_hash_map.h"
 
 namespace quic {
@@ -163,12 +175,14 @@ class QUIC_NO_EXPORT QuicDispatcher
 
   // Apply an operation for each session.
   void PerformActionOnActiveSessions(
-      std::function<void(QuicSession*)> operation) const;
+      quiche::UnretainedCallback<void(QuicSession*)> operation) const;
 
   // Get a snapshot of all sessions.
   std::vector<std::shared_ptr<QuicSession>> GetSessionsSnapshot() const;
 
   bool accept_new_connections() const { return accept_new_connections_; }
+
+  uint64_t num_packets_received() const { return num_packets_received_; }
 
  protected:
   // Creates a QUIC session based on the given information.
@@ -177,8 +191,8 @@ class QUIC_NO_EXPORT QuicDispatcher
       QuicConnectionId server_connection_id,
       const QuicSocketAddress& self_address,
       const QuicSocketAddress& peer_address, absl::string_view alpn,
-      const ParsedQuicVersion& version,
-      const ParsedClientHello& parsed_chlo) = 0;
+      const ParsedQuicVersion& version, const ParsedClientHello& parsed_chlo,
+      ConnectionIdGeneratorInterface& connection_id_generator) = 0;
 
   // Tries to validate and dispatch packet based on available information.
   // Returns true if packet is dropped or successfully dispatched (e.g.,
@@ -256,9 +270,9 @@ class QUIC_NO_EXPORT QuicDispatcher
   QuicPacketWriter* writer() { return writer_.get(); }
 
   // Returns true if a session should be created for a connection with an
-  // unknown version identified by |version_label|.
+  // unknown version.
   virtual bool ShouldCreateSessionForUnknownVersion(
-      QuicVersionLabel version_label);
+      const ReceivedPacketInfo& packet_info);
 
   void SetLastError(QuicErrorCode error);
 
@@ -331,7 +345,7 @@ class QUIC_NO_EXPORT QuicDispatcher
   virtual void MaybeSendVersionNegotiationPacket(
       const ReceivedPacketInfo& packet_info);
 
-  ConnectionIdGeneratorInterface& connection_id_generator() {
+  virtual ConnectionIdGeneratorInterface& ConnectionIdGenerator() {
     return connection_id_generator_;
   }
 
@@ -378,10 +392,9 @@ class QUIC_NO_EXPORT QuicDispatcher
 
   // Core CHLO processing logic.
   std::shared_ptr<QuicSession> CreateSessionFromChlo(
-      const QuicConnectionId original_connection_id,
-      const ParsedClientHello& parsed_chlo, const ParsedQuicVersion version,
-      const QuicSocketAddress self_address,
-      const QuicSocketAddress peer_address);
+      QuicConnectionId original_connection_id,
+      const ParsedClientHello& parsed_chlo, ParsedQuicVersion version,
+      QuicSocketAddress self_address, QuicSocketAddress peer_address);
 
   const QuicConfig* config_;
 
@@ -429,6 +442,9 @@ class QUIC_NO_EXPORT QuicDispatcher
 
   // Number of unique session in session map.
   size_t num_sessions_in_session_map_ = 0;
+
+  // Total number of packets received.
+  uint64_t num_packets_received_ = 0;
 
   // A backward counter of how many new sessions can be create within current
   // event loop. When reaches 0, it means can't create sessions for now.

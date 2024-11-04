@@ -16,7 +16,7 @@ load("./builder_config.star", _ = "builder_config")  # @unused
 
 # infra/infra git revision to use for the compilator_watcher luciexe sub_build
 # Used by chromium orchestrators
-_COMPILATOR_WATCHER_GIT_REVISION = "e6d08be3fd589d4f222dae5d18dbc972e6117b23"
+_COMPILATOR_WATCHER_GIT_REVISION = "e3cad57252d996ab02463019e7f49343d739b885"
 
 # Nodes for the definition of an orchestrator builder
 _ORCHESTRATOR = nodes.create_bucket_scoped_node_type("orchestrator")
@@ -220,6 +220,10 @@ def _set_orchestrator_properties(ctx):
 
         compilator = d.compilator
         compilator_properties = dict(orchestrator_properties)
+
+        # The "cq" property doesn't inherit; compilators aren't ever triggered by CV.
+        compilator_properties.pop("cq", None)
+
         compilator_properties.update(json.decode(compilator.builder.properties))
         compilator.builder.properties = json.encode(compilator_properties)
         _update_description(

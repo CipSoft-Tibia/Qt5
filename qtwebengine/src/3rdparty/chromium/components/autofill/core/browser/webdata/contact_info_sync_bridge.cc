@@ -5,8 +5,8 @@
 #include "components/autofill/core/browser/webdata/contact_info_sync_bridge.h"
 
 #include "base/check.h"
-#include "base/guid.h"
 #include "base/ranges/algorithm.h"
+#include "base/uuid.h"
 #include "components/autofill/core/browser/contact_info_sync_util.h"
 #include "components/autofill/core/browser/webdata/autofill_webdata_service.h"
 #include "components/sync/base/features.h"
@@ -28,10 +28,8 @@ ContactInfoSyncBridge::ContactInfoSyncBridge(
     AutofillWebDataBackend* backend)
     : ModelTypeSyncBridge(std::move(change_processor)),
       web_data_backend_(backend) {
-  if (base::FeatureList::IsEnabled(
-          syncer::kSyncEnableContactInfoDataTypeEarlyReturnNoDatabase) &&
-      (!web_data_backend_ || !web_data_backend_->GetDatabase() ||
-       !GetAutofillTable())) {
+  if (!web_data_backend_ || !web_data_backend_->GetDatabase() ||
+      !GetAutofillTable()) {
     ModelTypeSyncBridge::change_processor()->ReportError(
         {FROM_HERE, "Failed to load AutofillWebDatabase."});
     return;
@@ -40,9 +38,7 @@ ContactInfoSyncBridge::ContactInfoSyncBridge(
   LoadMetadata();
 }
 
-ContactInfoSyncBridge::~ContactInfoSyncBridge() {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-}
+ContactInfoSyncBridge::~ContactInfoSyncBridge() = default;
 
 // static
 void ContactInfoSyncBridge::CreateForWebDataServiceAndBackend(
@@ -67,28 +63,29 @@ syncer::ModelTypeSyncBridge* ContactInfoSyncBridge::FromWebDataService(
 
 std::unique_ptr<syncer::MetadataChangeList>
 ContactInfoSyncBridge::CreateMetadataChangeList() {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return std::make_unique<syncer::SyncMetadataStoreChangeList>(
       GetAutofillTable(), syncer::CONTACT_INFO,
       base::BindRepeating(&syncer::ModelTypeChangeProcessor::ReportError,
                           change_processor()->GetWeakPtr()));
 }
 
-absl::optional<syncer::ModelError> ContactInfoSyncBridge::MergeSyncData(
+absl::optional<syncer::ModelError> ContactInfoSyncBridge::MergeFullSyncData(
     std::unique_ptr<syncer::MetadataChangeList> metadata_change_list,
     syncer::EntityChangeList entity_data) {
   // Since the local storage is cleared when the data type is disabled in
-  // `ApplyStopSyncChanges()`, `MergeSyncData()` simply becomes an
-  // `ApplySyncChanges()` call.
-  if (auto error = ApplySyncChanges(std::move(metadata_change_list),
-                                    std::move(entity_data))) {
+  // `ApplyDisableSyncChanges()`, `MergeFullSyncData()` simply becomes an
+  // `ApplyIncrementalSyncChanges()` call.
+  if (auto error = ApplyIncrementalSyncChanges(std::move(metadata_change_list),
+                                               std::move(entity_data))) {
     return error;
   }
   web_data_backend_->NotifyThatSyncHasStarted(syncer::CONTACT_INFO);
   return absl::nullopt;
 }
 
-absl::optional<syncer::ModelError> ContactInfoSyncBridge::ApplySyncChanges(
+absl::optional<syncer::ModelError>
+ContactInfoSyncBridge::ApplyIncrementalSyncChanges(
     std::unique_ptr<syncer::MetadataChangeList> metadata_change_list,
     syncer::EntityChangeList entity_changes) {
   for (const std::unique_ptr<syncer::EntityChange>& change : entity_changes) {
@@ -141,7 +138,7 @@ absl::optional<syncer::ModelError> ContactInfoSyncBridge::ApplySyncChanges(
 
 void ContactInfoSyncBridge::GetData(StorageKeyList storage_keys,
                                     DataCallback callback) {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   base::ranges::sort(storage_keys);
   auto filter_by_keys = base::BindRepeating(
       [](const StorageKeyList& storage_keys, const std::string& guid) {
@@ -155,7 +152,7 @@ void ContactInfoSyncBridge::GetData(StorageKeyList storage_keys,
 }
 
 void ContactInfoSyncBridge::GetAllDataForDebugging(DataCallback callback) {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (std::unique_ptr<syncer::MutableDataBatch> batch = GetDataAndFilter(
           base::BindRepeating([](const std::string& guid) { return true; }))) {
     std::move(callback).Run(std::move(batch));
@@ -181,10 +178,9 @@ std::string ContactInfoSyncBridge::GetStorageKey(
 
 void ContactInfoSyncBridge::AutofillProfileChanged(
     const AutofillProfileChange& change) {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  DCHECK(change.data_model());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (!change_processor()->IsTrackingMetadata() ||
-      change.data_model()->source() != AutofillProfile::Source::kAccount) {
+      change.data_model().source() != AutofillProfile::Source::kAccount) {
     return;
   }
 
@@ -196,7 +192,7 @@ void ContactInfoSyncBridge::AutofillProfileChanged(
       change_processor()->Put(
           change.key(),
           CreateContactInfoEntityDataFromAutofillProfile(
-              *change.data_model(),
+              change.data_model(),
               GetPossiblyTrimmedContactInfoSpecificsDataFromProcessor(
                   change.key())),
           metadata_change_list.get());
@@ -216,14 +212,8 @@ void ContactInfoSyncBridge::AutofillProfileChanged(
   // triggered this notification to the bridge) finishes.
 }
 
-void ContactInfoSyncBridge::ApplyStopSyncChanges(
+void ContactInfoSyncBridge::ApplyDisableSyncChanges(
     std::unique_ptr<syncer::MetadataChangeList> delete_metadata_change_list) {
-  if (!delete_metadata_change_list) {
-    // A null `delete_metadata_change_list` indicates that Sync is stopping.
-    return;
-  }
-  // A non-null `delete_metadata_change_list` indicates that the data type was
-  // disabled.
   if (!GetAutofillTable()->RemoveAllAutofillProfiles(
           AutofillProfile::Source::kAccount)) {
     change_processor()->ReportError(
@@ -295,7 +285,7 @@ ContactInfoSyncBridge::GetDataAndFilter(
     base::RepeatingCallback<bool(const std::string&)> filter) {
   std::vector<std::unique_ptr<AutofillProfile>> profiles;
   if (!GetAutofillTable()->GetAutofillProfiles(
-          &profiles, AutofillProfile::Source::kAccount)) {
+          AutofillProfile::Source::kAccount, &profiles)) {
     change_processor()->ReportError(
         {FROM_HERE, "Failed to load profiles from table."});
     return nullptr;
@@ -321,9 +311,7 @@ void ContactInfoSyncBridge::LoadMetadata() {
     change_processor()->ReportError(
         {FROM_HERE, "Failed reading CONTACT_INFO metadata from WebDatabase."});
     return;
-  } else if (base::FeatureList::IsEnabled(
-                 syncer::kCacheBaseEntitySpecificsInMetadata) &&
-             SyncMetadataCacheContainsSupportedFields(
+  } else if (SyncMetadataCacheContainsSupportedFields(
                  batch->GetAllMetadata())) {
     // Caching entity specifics is meant to preserve fields not supported in a
     // given browser version during commits to the server. If the cache

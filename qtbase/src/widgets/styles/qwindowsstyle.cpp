@@ -117,19 +117,20 @@ bool QWindowsStyle::eventFilter(QObject *o, QEvent *e)
             widget = widget->window();
 
             // Alt has been pressed - find all widgets that care
-            QList<QWidget *> l = widget->findChildren<QWidget *>();
+            const QList<QWidget *> children = widget->findChildren<QWidget *>();
             auto ignorable = [](QWidget *w) {
                 return w->isWindow() || !w->isVisible()
                         || w->style()->styleHint(SH_UnderlineShortcut, nullptr, w);
             };
-            l.removeIf(ignorable);
             // Update states before repainting
             d->seenAlt.append(widget);
             d->alt_down = true;
 
             // Repaint all relevant widgets
-            for (int pos = 0; pos < l.size(); ++pos)
-                l.at(pos)->update();
+            for (QWidget *w : children) {
+                if (!ignorable(w))
+                    w->update();
+            }
         }
         break;
     case QEvent::KeyRelease:
@@ -139,9 +140,9 @@ bool QWindowsStyle::eventFilter(QObject *o, QEvent *e)
             // Update state and repaint the menu bars.
             d->alt_down = false;
 #if QT_CONFIG(menubar)
-            QList<QMenuBar *> l = widget->findChildren<QMenuBar *>();
-            for (int i = 0; i < l.size(); ++i)
-                l.at(i)->update();
+            const QList<QMenuBar *> menuBars = widget->findChildren<QMenuBar *>();
+            for (QWidget *w : menuBars)
+                w->update();
 #endif
         }
         break;
@@ -261,29 +262,33 @@ void QWindowsStyle::polish(QPalette &pal)
 int QWindowsStylePrivate::pixelMetricFromSystemDp(QStyle::PixelMetric pm, const QStyleOption *, const QWidget *widget)
 {
 #if defined(Q_OS_WIN)
+    // The pixel metrics are in device indepentent pixels;
+    // hardcode DPI to 1x 96 DPI.
+    const int dpi = 96;
+
     switch (pm) {
     case QStyle::PM_DockWidgetFrameWidth:
-        return GetSystemMetrics(SM_CXFRAME);
+        return GetSystemMetricsForDpi(SM_CXFRAME, dpi);
 
     case QStyle::PM_TitleBarHeight: {
         const int resizeBorderThickness =
-            GetSystemMetrics(SM_CXSIZEFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER);
+            GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
         if (widget && (widget->windowType() == Qt::Tool))
-            return GetSystemMetrics(SM_CYSMCAPTION) + resizeBorderThickness;
-        return GetSystemMetrics(SM_CYCAPTION) + resizeBorderThickness;
+            return GetSystemMetricsForDpi(SM_CYSMCAPTION, dpi) + resizeBorderThickness;
+        return GetSystemMetricsForDpi(SM_CYCAPTION, dpi) + resizeBorderThickness;
     }
 
     case QStyle::PM_ScrollBarExtent:
         {
             NONCLIENTMETRICS ncm;
-            ncm.cbSize = FIELD_OFFSET(NONCLIENTMETRICS, lfMessageFont) + sizeof(LOGFONT);
-            if (SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICS), &ncm, 0))
+            ncm.cbSize = sizeof(NONCLIENTMETRICS);
+            if (SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICS), &ncm, 0, dpi))
                 return qMax(ncm.iScrollHeight, ncm.iScrollWidth);
         }
         break;
 
     case  QStyle::PM_MdiSubWindowFrameWidth:
-        return GetSystemMetrics(SM_CYFRAME);
+        return GetSystemMetricsForDpi(SM_CYFRAME, dpi);
 
     default:
         break;
@@ -355,22 +360,10 @@ static QScreen *screenOf(const QWidget *w)
 }
 
 // Calculate the overall scale factor to obtain Qt Device Independent
-// Pixels from a native Windows size. Divide by devicePixelRatio
-// and account for secondary screens with differing logical DPI.
+// Pixels from a native Windows size.
 qreal QWindowsStylePrivate::nativeMetricScaleFactor(const QWidget *widget)
 {
-    qreal scale = QHighDpiScaling::factor(screenOf(widget));
-    qreal result = qreal(1) / scale;
-    if (QGuiApplicationPrivate::screen_list.size() > 1) {
-        const QScreen *primaryScreen = QGuiApplication::primaryScreen();
-        const QScreen *screen = screenOf(widget);
-        if (screen != primaryScreen) {
-            qreal primaryScale = QHighDpiScaling::factor(primaryScreen);
-            if (!qFuzzyCompare(scale, primaryScale))
-                result *= scale / primaryScale;
-        }
-    }
-    return result;
+    return qreal(1) / QHighDpiScaling::factor(screenOf(widget));
 }
 
 /*!
@@ -380,7 +373,7 @@ int QWindowsStyle::pixelMetric(PixelMetric pm, const QStyleOption *opt, const QW
 {
     int ret = QWindowsStylePrivate::pixelMetricFromSystemDp(pm, opt, widget);
     if (ret != QWindowsStylePrivate::InvalidMetric)
-        return qRound(qreal(ret) * QWindowsStylePrivate::nativeMetricScaleFactor(widget));
+        return ret;
 
     ret = QWindowsStylePrivate::fixedPixelMetric(pm);
     if (ret != QWindowsStylePrivate::InvalidMetric)
@@ -808,7 +801,7 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
         }
 #endif // QT_CONFIG(itemviews)
         if (!(opt->state & State_Off)) {
-            QPointF  points[6];
+            std::array<QPointF, 6> points;
             qreal scaleh = opt->rect.width() / 12.0;
             qreal scalev = opt->rect.height() / 12.0;
             points[0] = { opt->rect.x() + qreal(3.5) * scaleh, opt->rect.y() + qreal(5.5) * scalev };
@@ -819,7 +812,7 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
             points[5] = { points[4].x() - 4 * scaleh,   points[4].y() + 4 * scalev };
             p->setPen(QPen(opt->palette.text().color(), 0));
             p->setBrush(opt->palette.text().color());
-            p->drawPolygon(points, 6);
+            p->drawPolygon(points.data(), static_cast<int>(points.size()));
         }
         if (doRestore)
             p->restore();
@@ -1571,11 +1564,8 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
                 default:
                     break;
                 }
-                if (opt->direction == Qt::RightToLeft){ //reverse layout changes the order of Beginning/end
-                    bool tmp = paintLeftBorder;
-                    paintRightBorder=paintLeftBorder;
-                    paintLeftBorder=tmp;
-                }
+                if (opt->direction == Qt::RightToLeft)  //reverse layout changes the order of Beginning/end
+                    std::swap(paintLeftBorder, paintRightBorder);
                 break;
             case Qt::RightToolBarArea :
                 switch (toolbar->positionOfLine){
@@ -1950,39 +1940,36 @@ void QWindowsStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComp
                 QSliderDirection dir;
 
                 if (orient == Qt::Horizontal)
-                    if (tickAbove)
-                        dir = SlUp;
-                    else
-                        dir = SlDown;
+                    dir = tickAbove ? SlUp : SlDown;
                 else
-                    if (tickAbove)
-                        dir = SlLeft;
-                    else
-                        dir = SlRight;
+                    dir = tickAbove ? SlLeft : SlRight;
 
-                QPolygon a;
-
+                std::array<QPoint, 5> points;
                 int d = 0;
                 switch (dir) {
                 case SlUp:
-                    y1 = y1 + wi/2;
+                    y1 = y1 + wi / 2;
                     d =  (wi + 1) / 2 - 1;
-                    a.setPoints(5, x1,y1, x1,y2, x2,y2, x2,y1, x1+d,y1-d);
+                    points = {QPoint(x1, y1), QPoint(x1, y2), QPoint(x2, y2),
+                              QPoint(x2, y1), QPoint(x1 + d, y1 - d)};
                     break;
                 case SlDown:
-                    y2 = y2 - wi/2;
+                    y2 = y2 - wi / 2;
                     d =  (wi + 1) / 2 - 1;
-                    a.setPoints(5, x1,y1, x1,y2, x1+d,y2+d, x2,y2, x2,y1);
+                    points = {QPoint(x1, y1), QPoint(x1, y2), QPoint(x1 + d, y2 + d),
+                              QPoint(x2, y2), QPoint(x2, y1)};
                     break;
                 case SlLeft:
                     d =  (he + 1) / 2 - 1;
-                    x1 = x1 + he/2;
-                    a.setPoints(5, x1,y1, x1-d,y1+d, x1,y2, x2,y2, x2,y1);
+                    x1 = x1 + he / 2;
+                    points = {QPoint(x1, y1), QPoint(x1 - d, y1 + d), QPoint(x1,y2),
+                              QPoint(x2, y2), QPoint(x2, y1)};
                     break;
                 case SlRight:
                     d =  (he + 1) / 2 - 1;
-                    x2 = x2 - he/2;
-                    a.setPoints(5, x1,y1, x1,y2, x2,y2, x2+d,y1+d, x2,y1);
+                    x2 = x2 - he / 2;
+                    points = {QPoint(x1, y1), QPoint(x1, y2), QPoint(x2, y2),
+                              QPoint(x2 + d, y1 + d), QPoint(x2, y1)};
                     break;
                 }
 
@@ -1992,7 +1979,7 @@ void QWindowsStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComp
                 Qt::BGMode oldMode = p->backgroundMode();
                 p->setBackgroundMode(Qt::OpaqueMode);
                 p->drawRect(x1, y1, x2-x1+1, y2-y1+1);
-                p->drawPolygon(a);
+                p->drawPolygon(points.data(), static_cast<int>(points.size()));
                 p->setBrush(oldBrush);
                 p->setBackgroundMode(oldMode);
 

@@ -15,6 +15,8 @@
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qpointingdevice_p.h>
 
+#include <QtCore/qpointer.h>
+
 #include <mutex>
 
 #ifdef Q_OS_FREEBSD
@@ -150,12 +152,12 @@ QEvdevTouchScreenData::QEvdevTouchScreenData(QEvdevTouchScreenHandler *q_ptr, co
       m_filtered(false), m_prediction(0)
 {
     for (const QString &arg : args) {
-        if (arg == QStringLiteral("force_window"))
+        if (arg == u"force_window")
             m_forceToActiveWindow = true;
-        else if (arg == QStringLiteral("filtered"))
+        else if (arg == u"filtered")
             m_filtered = true;
-        else if (arg.startsWith(QStringLiteral("prediction=")))
-            m_prediction = arg.mid(11).toInt();
+        else if (const QStringView prefix = u"prediction="; arg.startsWith(prefix))
+            m_prediction = QStringView(arg).mid(prefix.size()).toInt();
     }
 }
 
@@ -192,6 +194,7 @@ QEvdevTouchScreenHandler::QEvdevTouchScreenHandler(const QString &device, const 
                 case 180:
                 case 270:
                     rotationAngle = argValue;
+                    break;
                 default:
                     break;
                 }

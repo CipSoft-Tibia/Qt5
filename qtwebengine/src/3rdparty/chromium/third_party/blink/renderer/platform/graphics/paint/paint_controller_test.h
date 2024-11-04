@@ -60,7 +60,7 @@ class PaintControllerTestBase : public testing::Test {
                              const gfx::Rect& bounds) {
     return Draw(context, client, type, [&]() {
       DrawingRecorder recorder(context, client, type, bounds);
-      context.DrawRect(bounds, AutoDarkMode::Disabled());
+      context.FillRect(bounds, AutoDarkMode::Disabled());
     });
   }
 
@@ -81,7 +81,6 @@ class PaintControllerTestBase : public testing::Test {
     paint_controller.UpdateCurrentPaintChunkProperties(
         root_paint_chunk_id_, *root_paint_property_client_,
         DefaultPaintChunkProperties());
-    paint_controller.RecordDebugInfo(*root_paint_property_client_);
   }
   const PaintChunk::Id DefaultRootChunkId() const {
     return root_paint_chunk_id_;

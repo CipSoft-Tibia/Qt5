@@ -991,7 +991,7 @@ const emulatedDevices = [
     'user-agent':
         'Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.109 Safari/537.36 CrKey/1.54.248666',
     'user-agent-metadata':
-        {'platform': 'Android', 'platformVersion': '', 'architecture': '', 'model': '', 'mobile': true},
+        {'platform': 'Android', 'platformVersion': '', 'architecture': '', 'model': '', 'mobile': false},
     'type': 'tablet',
     'modes': [{'title': 'default', 'orientation': 'horizontal'}],
   },
@@ -1517,7 +1517,7 @@ const emulatedDevices = [
     'user-agent':
         'Mozilla/5.0 (Linux; Android 8.1.0; SM-T837A) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.80 Safari/537.36',
     'user-agent-metadata':
-        {'platform': 'Android', 'platformVersion': '8.1.0', 'architecture': '', 'model': 'SM-T837A', 'mobile': true},
+        {'platform': 'Android', 'platformVersion': '8.1.0', 'architecture': '', 'model': 'SM-T837A', 'mobile': false},
     'type': 'phone',
   },
   {
@@ -1773,6 +1773,28 @@ const emulatedDevices = [
       'model': 'moto g power (2022)',
       'mobile': true,
     },
+    'type': 'phone',
+  },
+  {
+    'order': 200,
+    'show-by-default': false,
+    'title': 'Facebook on Android',
+    'screen': {
+      'horizontal': {
+        'width': 892,
+        'height': 412,
+      },
+      'device-pixel-ratio': 3.5,
+      'vertical': {
+        'width': 412,
+        'height': 892,
+      },
+    },
+    'capabilities': ['touch', 'mobile'],
+    'user-agent':
+        'Mozilla/5.0 (Linux; Android 12; Pixel 6 Build/SQ3A.220705.004; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/%s Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/407.0.0.0.65;]',
+    'user-agent-metadata':
+        {'platform': 'Android', 'platformVersion': '12', 'architecture': '', 'model': 'Pixel 6', 'mobile': true},
     'type': 'phone',
   },
   // DEVICE-LIST-END

@@ -64,6 +64,10 @@ public:
     inline bool isAreaAllowed(Qt::DockWidgetArea area) const
     { return (allowedAreas() & area) == area; }
 
+#ifndef QT_NO_DEBUG_STREAM
+    friend Q_WIDGETS_EXPORT QDebug operator<<(QDebug dbg, const QDockWidget *dockWidget);
+#endif
+
 #ifndef QT_NO_ACTION
     QAction *toggleViewAction() const;
 #endif
@@ -72,7 +76,7 @@ Q_SIGNALS:
     void featuresChanged(QDockWidget::DockWidgetFeatures features);
     void topLevelChanged(bool topLevel);
     void allowedAreasChanged(Qt::DockWidgetAreas allowedAreas);
-    void visibilityChanged(bool visible); //TODO depricate in Qt7: Better listen to hide/show events
+    void visibilityChanged(bool visible); // ### Qt7: Deprecate this. Better listen to hide/show events
     void dockLocationChanged(Qt::DockWidgetArea area);
 
 protected:

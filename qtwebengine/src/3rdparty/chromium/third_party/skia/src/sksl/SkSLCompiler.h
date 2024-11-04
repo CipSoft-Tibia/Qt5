@@ -10,10 +10,10 @@
 
 #include "include/core/SkSize.h"
 #include "include/core/SkTypes.h"
-#include "include/private/SkSLProgramElement.h"
-#include "include/sksl/SkSLErrorReporter.h"
-#include "include/sksl/SkSLPosition.h"
 #include "src/sksl/SkSLContext.h"  // IWYU pragma: keep
+#include "src/sksl/SkSLErrorReporter.h"
+#include "src/sksl/SkSLPosition.h"
+#include "src/sksl/ir/SkSLProgramElement.h"
 
 #include <array>
 #include <cstdint>
@@ -25,9 +25,6 @@
 
 #define SK_FRAGCOLOR_BUILTIN           10001
 #define SK_LASTFRAGCOLOR_BUILTIN       10008
-#define SK_MAIN_COORDS_BUILTIN         10009
-#define SK_INPUT_COLOR_BUILTIN         10010
-#define SK_DEST_COLOR_BUILTIN          10011
 #define SK_SECONDARYFRAGCOLOR_BUILTIN  10012
 #define SK_FRAGCOORD_BUILTIN              15
 #define SK_CLOCKWISE_BUILTIN              17
@@ -45,13 +42,8 @@
 
 namespace SkSL {
 
-namespace dsl {
-    class DSLCore;
-}
-
 class Expression;
 class Inliner;
-class ModifiersPool;
 class OutputStream;
 class ProgramUsage;
 class SymbolTable;
@@ -153,6 +145,8 @@ public:
 
     bool toWGSL(Program& program, OutputStream& out);
 
+    bool toWGSL(Program& program, std::string* out);
+
     void handleError(std::string_view msg, Position pos);
 
     std::string errorText(bool showCount = true);
@@ -173,20 +167,22 @@ public:
     }
 
     std::shared_ptr<SymbolTable>& symbolTable() {
-        return fSymbolTable;
+        return fContext->fSymbolTable;
     }
 
     std::unique_ptr<Module> compileModule(ProgramKind kind,
                                           const char* moduleName,
                                           std::string moduleSource,
                                           const Module* parent,
-                                          ModifiersPool& modifiersPool,
                                           bool shouldInline);
 
     /** Optimize a module at minification time, before writing it out. */
-    bool optimizeModuleBeforeMinifying(ProgramKind kind, Module& module);
+    bool optimizeModuleBeforeMinifying(ProgramKind kind, Module& module, bool shrinkSymbols);
 
     const Module* moduleForProgramKind(ProgramKind kind);
+
+    /** Run the inliner on a program which was compiled earlier (with inlining turned off). */
+    void runInliner(Program& program);
 
 private:
     class CompilerErrorReporter : public ErrorReporter {
@@ -204,6 +200,12 @@ private:
 
     /** Updates ProgramSettings to eliminate contradictions and to honor the ProgramKind. */
     static void FinalizeSettings(ProgramSettings* settings, ProgramKind kind);
+
+    /**
+     * Returns all global elements (functions and global variables) as a self-contained Program. The
+     * optional source string is retained as the program's source.
+     */
+    std::unique_ptr<SkSL::Program> releaseProgram(std::unique_ptr<std::string> source);
 
     /** Optimize every function in the program. */
     bool optimize(Program& program);
@@ -224,17 +226,13 @@ private:
     std::shared_ptr<Context> fContext;
     const ShaderCaps* fCaps;
 
-    // This is the current symbol table of the code we are processing, and therefore changes during
-    // compilation
-    std::shared_ptr<SymbolTable> fSymbolTable;
-
     std::string fErrorText;
 
     static OverrideFlag sOptimizer;
     static OverrideFlag sInliner;
 
+    friend class Parser;
     friend class ThreadContext;
-    friend class dsl::DSLCore;
 };
 
 }  // namespace SkSL

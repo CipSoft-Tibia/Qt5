@@ -51,10 +51,9 @@ import * as DataGrid from '../../ui/legacy/components/data_grid/data_grid.js';
 import * as PerfUI from '../../ui/legacy/components/perf_ui/perf_ui.js';
 import * as Components from '../../ui/legacy/components/utils/utils.js';
 import * as UI from '../../ui/legacy/legacy.js';
+import {PanelUtils} from '../utils/utils.js';
 
 import {type NetworkTimeCalculator} from './NetworkTimeCalculator.js';
-
-import {imageNameForResourceType} from '../utils/utils.js';
 
 const UIStrings = {
   /**
@@ -273,6 +272,18 @@ const UIStrings = {
    */
   dnsAlpnH3JobWonRace:
       '`Chrome` used a `HTTP/3` connection due to the `DNS record` indicating `HTTP/3` support, which won a race against establishing a connection using a different `HTTP` version.',
+  /**
+   *@description Tooltip to explain the resource's overridden status
+   */
+  requestContentHeadersOverridden: 'Both request content and headers are overridden',
+  /**
+   *@description Tooltip to explain the resource's overridden status
+   */
+  requestContentOverridden: 'Request content is overridden',
+  /**
+   *@description Tooltip to explain the resource's overridden status
+   */
+  requestHeadersOverridden: 'Request headers are overridden',
 };
 const str_ = i18n.i18n.registerUIStrings('panels/network/NetworkDataGridNode.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -352,7 +363,7 @@ export class NetworkNode extends DataGrid.SortableDataGrid.SortableDataGridNode<
     return '';
   }
 
-  createCell(columnId: string): HTMLElement {
+  override createCell(columnId: string): HTMLElement {
     const cell = this.createTD(columnId);
     this.renderCell(cell, columnId);
     return cell;
@@ -368,8 +379,7 @@ export class NetworkNode extends DataGrid.SortableDataGrid.SortableDataGridNode<
   backgroundColor(): string {
     const bgColors = _backgroundColors;
     const hasFocus = document.hasFocus();
-    const isSelected = this.dataGrid &&
-        (this.dataGrid.element === document.activeElement || this.dataGrid.element.contains(document.activeElement));
+    const isSelected = this.dataGrid && this.dataGrid.element === document.activeElement;
     const isFailed = this.isFailed();
 
     if (this.selected && hasFocus && isSelected && isFailed) {
@@ -405,18 +415,18 @@ export class NetworkNode extends DataGrid.SortableDataGrid.SortableDataGridNode<
     this.parentViewInternal.stylesChanged();
   }
 
-  setStriped(isStriped: boolean): void {
+  override setStriped(isStriped: boolean): void {
     super.setStriped(isStriped);
     this.updateBackgroundColor();
   }
 
-  select(supressSelectedEvent?: boolean): void {
+  override select(supressSelectedEvent?: boolean): void {
     super.select(supressSelectedEvent);
     this.updateBackgroundColor();
     this.parentViewInternal.updateNodeSelectedClass(/* isSelected */ true);
   }
 
-  deselect(supressSelectedEvent?: boolean): void {
+  override deselect(supressSelectedEvent?: boolean): void {
     super.deselect(supressSelectedEvent);
     this.updateBackgroundColor();
     this.parentViewInternal.updateNodeSelectedClass(/* isSelected */ false);
@@ -434,7 +444,7 @@ export class NetworkNode extends DataGrid.SortableDataGrid.SortableDataGridNode<
     return this.showingInitiatorChainInternal;
   }
 
-  nodeSelfHeight(): number {
+  override nodeSelfHeight(): number {
     return this.parentViewInternal.rowHeight();
   }
 
@@ -475,7 +485,7 @@ export class NetworkNode extends DataGrid.SortableDataGrid.SortableDataGridNode<
     return false;
   }
 
-  clearFlatNodes(): void {
+  override clearFlatNodes(): void {
     super.clearFlatNodes();
     this.requestOrFirstKnownChildRequestInternal = null;
   }
@@ -506,14 +516,14 @@ export class NetworkNode extends DataGrid.SortableDataGrid.SortableDataGridNode<
 export const _backgroundColors: {
   [x: string]: string,
 } = {
-  Default: '--network-grid-default-color',
-  Stripe: '--network-grid-stripe-color',
+  Default: '--color-grid-default',
+  Stripe: '--color-grid-stripe',
   Navigation: '--network-grid-navigation-color',
-  Hovered: '--network-grid-hovered-color',
+  Hovered: '--color-grid-hovered',
   InitiatorPath: '--network-grid-initiator-path-color',
   InitiatedPath: '--network-grid-initiated-path-color',
-  Selected: '--network-grid-selected-color',
-  FocusSelected: '--network-grid-focus-selected-color',
+  Selected: '--color-grid-selected',
+  FocusSelected: '--color-grid-focus-selected',
   FocusSelectedHasError: '--network-grid-focus-selected-color-has-error',
   FromFrame: '--network-grid-from-frame-color',
 };
@@ -523,7 +533,7 @@ export class NetworkRequestNode extends NetworkNode {
   private initiatorCell: Element|null;
   private requestInternal: SDK.NetworkRequest.NetworkRequest;
   private readonly isNavigationRequestInternal: boolean;
-  selectable: boolean;
+  override selectable: boolean;
   private isOnInitiatorPathInternal: boolean;
   private isOnInitiatedPathInternal: boolean;
   private linkifiedInitiatorAnchor?: HTMLElement;
@@ -774,7 +784,7 @@ export class NetworkRequestNode extends NetworkNode {
     return aValue > bValue ? 1 : -1;
   }
 
-  showingInitiatorChainChanged(): void {
+  override showingInitiatorChainChanged(): void {
     const showInitiatorChain = this.showingInitiatorChain();
 
     const initiatorGraph = Logs.NetworkLog.NetworkLog.instance().initiatorGraphForRequest(this.requestInternal);
@@ -808,7 +818,7 @@ export class NetworkRequestNode extends NetworkNode {
     this.updateBackgroundColor();
   }
 
-  isOnInitiatorPath(): boolean {
+  override isOnInitiatorPath(): boolean {
     return this.isOnInitiatorPathInternal;
   }
 
@@ -820,11 +830,11 @@ export class NetworkRequestNode extends NetworkNode {
     this.updateBackgroundColor();
   }
 
-  isOnInitiatedPath(): boolean {
+  override isOnInitiatedPath(): boolean {
     return this.isOnInitiatedPathInternal;
   }
 
-  displayType(): string {
+  override displayType(): string {
     const mimeType = this.requestInternal.mimeType || this.requestInternal.requestContentType() || '';
     const resourceType = this.requestInternal.resourceType();
     let simpleType = resourceType.name();
@@ -841,24 +851,24 @@ export class NetworkRequestNode extends NetworkNode {
     return simpleType;
   }
 
-  displayName(): string {
+  override displayName(): string {
     return this.requestInternal.name();
   }
 
-  request(): SDK.NetworkRequest.NetworkRequest {
+  override request(): SDK.NetworkRequest.NetworkRequest {
     return this.requestInternal;
   }
 
-  isNavigationRequest(): boolean {
+  override isNavigationRequest(): boolean {
     const pageLoad = SDK.PageLoad.PageLoad.forRequest(this.requestInternal);
     return pageLoad ? pageLoad.mainRequest === this.requestInternal : false;
   }
 
-  nodeSelfHeight(): number {
+  override nodeSelfHeight(): number {
     return this.parentView().rowHeight();
   }
 
-  createCells(element: Element): void {
+  override createCells(element: Element): void {
     this.nameCell = null;
     this.initiatorCell = null;
 
@@ -882,7 +892,7 @@ export class NetworkRequestNode extends NetworkNode {
     UI.Tooltip.Tooltip.install(element, titleText);
   }
 
-  renderCell(c: Element, columnId: string): void {
+  override renderCell(c: Element, columnId: string): void {
     const cell = (c as HTMLElement);
     switch (columnId) {
       case 'name': {
@@ -946,6 +956,9 @@ export class NetworkRequestNode extends NetworkNode {
       case 'priority': {
         const priority = this.requestInternal.priority();
         this.setTextAndTitle(cell, priority ? PerfUI.NetworkPriorities.uiLabelForNetworkPriority(priority) : '');
+        const initialPriority = this.requestInternal.initialPriority();
+        this.appendSubtitle(
+            cell, initialPriority ? PerfUI.NetworkPriorities.uiLabelForNetworkPriority(initialPriority) : '');
         break;
       }
       case 'connectionid': {
@@ -980,6 +993,10 @@ export class NetworkRequestNode extends NetworkNode {
         this.setTextAndTitle(cell, '');
         break;
       }
+      case 'has-overrides': {
+        this.setTextAndTitle(cell, this.requestInternal.overrideTypes.join(', '));
+        break;
+      }
       default: {
         this.setTextAndTitle(cell, this.requestInternal.responseHeaderValue(columnId) || '');
         break;
@@ -991,21 +1008,9 @@ export class NetworkRequestNode extends NetworkNode {
     return array ? String(array.length) : '';
   }
 
-  select(supressSelectedEvent?: boolean): void {
+  override select(supressSelectedEvent?: boolean): void {
     super.select(supressSelectedEvent);
     this.parentView().dispatchEventToListeners(Events.RequestSelected, this.requestInternal);
-    const selectedElement = (this.dataGrid?.selectedNode?.elementInternal?.firstElementChild as HTMLElement);
-    if (selectedElement) {
-      selectedElement.tabIndex = 0;
-    }
-  }
-
-  deselect(suppressSelectedEvent?: boolean): void {
-    super.deselect(suppressSelectedEvent);
-    const deselectedElement = (this.elementInternal?.firstElementChild as HTMLElement);
-    if (deselectedElement) {
-      deselectedElement.tabIndex = -1;
-    }
   }
 
   highlightMatchedSubstring(regexp: RegExp|null): Object[] {
@@ -1026,7 +1031,7 @@ export class NetworkRequestNode extends NetworkNode {
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.openInNewTab(this.requestInternal.url());
   }
 
-  isFailed(): boolean {
+  override isFailed(): boolean {
     if (this.requestInternal.failed && !this.requestInternal.statusCode) {
       return true;
     }
@@ -1048,11 +1053,12 @@ export class NetworkRequestNode extends NetworkNode {
   }
 
   private renderPrimaryCell(cell: HTMLElement, columnId: string, text?: string): void {
-    const columnIndex = (this.dataGrid as DataGrid.DataGrid.DataGridImpl<unknown>).indexOfVisibleColumn(columnId);
+    const columnIndex = (this.dataGrid as DataGrid.DataGrid.DataGridImpl<unknown>)?.indexOfVisibleColumn(columnId) | 0;
     const isFirstCell = (columnIndex === 0);
     if (isFirstCell) {
       const leftPadding = this.leftPadding ? this.leftPadding + 'px' : '';
       cell.style.setProperty('padding-left', leftPadding);
+      cell.tabIndex = -1;
       this.nameCell = cell;
       cell.addEventListener('dblclick', this.openInNewTab.bind(this), false);
       cell.addEventListener('mousedown', () => {
@@ -1061,37 +1067,22 @@ export class NetworkRequestNode extends NetworkNode {
         this.select();
         this.parentView().dispatchEventToListeners(Events.RequestActivated, {showPanel: true});
       });
-      let iconElement;
-      if (this.requestInternal.resourceType() === Common.ResourceType.resourceTypes.Image) {
-        const previewImage = document.createElement('img');
-        previewImage.classList.add('image-network-icon-preview');
-        previewImage.alt = this.requestInternal.resourceType().title();
-        void this.requestInternal.populateImageSource((previewImage as HTMLImageElement));
+      cell.addEventListener('focus', () => this.parentView().resetFocus());
 
-        iconElement = document.createElement('div');
-        iconElement.classList.add('image');
-        iconElement.appendChild(previewImage);
-      } else {
-        iconElement = document.createElement('img');
-        iconElement.alt = this.requestInternal.resourceType().title();
-        iconElement.src =
-            new URL(
-                `../../Images/${imageNameForResourceType(this.requestInternal.resourceType())}.svg`, import.meta.url)
-                .toString();
-      }
-      iconElement.classList.add('icon');
-
+      // render icons
+      const iconElement = this.getIcon(this.requestInternal);
       cell.appendChild(iconElement);
-      cell.tabIndex = this.selected ? 0 : -1;
     }
 
     if (columnId === 'name') {
       const webBundleInnerRequestInfo = this.requestInternal.webBundleInnerRequestInfo();
       if (webBundleInnerRequestInfo) {
-        const secondIconElement = document.createElement('img');
+        const iconData = {
+          iconName: 'bundle',
+          color: 'var(--icon-info)',
+        };
+        const secondIconElement = this.createIconElement(iconData, i18nString(UIStrings.webBundleInnerRequest));
         secondIconElement.classList.add('icon');
-        secondIconElement.alt = i18nString(UIStrings.webBundleInnerRequest);
-        secondIconElement.src = new URL('../../Images/ic_file_webbundle_inner_request.svg', import.meta.url).toString();
 
         const networkManager = SDK.NetworkManager.NetworkManager.forRequest(this.requestInternal);
         if (webBundleInnerRequestInfo.bundleRequestId && networkManager) {
@@ -1114,6 +1105,111 @@ export class NetworkRequestNode extends NetworkNode {
     } else if (text) {
       UI.UIUtils.createTextChild(cell, text);
     }
+  }
+
+  private createIconElement(iconData: {iconName: string, color: string}, title: string): HTMLElement {
+    const iconElement = document.createElement('div');
+    iconElement.title = title;
+    iconElement.style.setProperty(
+        '-webkit-mask',
+        `url('${
+            new URL(`../../Images/${iconData.iconName}.svg`, import.meta.url).toString()}')  no-repeat center /99%`);
+    iconElement.style.setProperty('background-color', iconData.color);
+    return iconElement;
+  }
+
+  private getIcon(request: SDK.NetworkRequest.NetworkRequest): HTMLElement {
+    let type = request.resourceType();
+    let iconElement: HTMLElement;
+
+    if (this.isFailed()) {
+      const iconData = {
+        iconName: 'cross-circle-filled',
+        color: 'var(--icon-error)',
+      };
+      iconElement = this.createIconElement(iconData, type.title());
+      iconElement.classList.add('icon');
+
+      return iconElement;
+    }
+
+    if (request.wasIntercepted()) {
+      const iconData = {
+        iconName: 'document',
+        color: 'var(--icon-default)',
+      };
+
+      let title: Common.UIString.LocalizedString;
+      const isHeaderOverriden = request.hasOverriddenHeaders();
+      const isContentOverriden = request.hasOverriddenContent;
+
+      if (isHeaderOverriden && isContentOverriden) {
+        title = i18nString(UIStrings.requestContentHeadersOverridden);
+      } else if (isContentOverriden) {
+        title = i18nString(UIStrings.requestContentOverridden);
+      } else {
+        title = i18nString(UIStrings.requestHeadersOverridden);
+      }
+
+      const iconChildElement = this.createIconElement(iconData, title);
+      iconChildElement.classList.add('icon');
+
+      iconElement = document.createElement('div');
+      iconElement.classList.add('network-override-marker');
+      iconElement.appendChild(iconChildElement);
+
+      return iconElement;
+    }
+
+    // Pick icon based on MIME type in the following cases:
+    // - If the MIME type is 'image': some images have request type of 'fetch' or etc.
+    // - If the request type is 'fetch': everything fetched by service worker has request type 'fetch'.
+    // - If the request type is 'other' and MIME type is 'script', e.g. for wasm files
+    const typeFromMime = Common.ResourceType.ResourceType.fromMimeType(request.mimeType);
+
+    if (typeFromMime !== type && typeFromMime !== Common.ResourceType.resourceTypes.Other) {
+      if (type === Common.ResourceType.resourceTypes.Fetch) {
+        type = typeFromMime;
+      } else if (typeFromMime === Common.ResourceType.resourceTypes.Image) {
+        type = typeFromMime;
+      } else if (
+          type === Common.ResourceType.resourceTypes.Other &&
+          typeFromMime === Common.ResourceType.resourceTypes.Script) {
+        type = typeFromMime;
+      }
+    }
+
+    if (type === Common.ResourceType.resourceTypes.Image) {
+      const previewImage = document.createElement('img');
+      previewImage.classList.add('image-network-icon-preview');
+      previewImage.alt = request.resourceType().title();
+      void request.populateImageSource((previewImage as HTMLImageElement));
+
+      iconElement = document.createElement('div');
+      iconElement.classList.add('image', 'icon');
+      iconElement.appendChild(previewImage);
+
+      return iconElement;
+    }
+
+    // Exclude Manifest here because it has mimeType:application/json but it has its own icon
+    if (type !== Common.ResourceType.resourceTypes.Manifest &&
+        Common.ResourceType.ResourceType.simplifyContentType(request.mimeType) === 'application/json') {
+      const iconData = {
+        iconName: 'file-json',
+        color: 'var(--icon-file-script)',
+      };
+      iconElement = this.createIconElement(iconData, request.resourceType().title());
+      iconElement.classList.add('icon');
+
+      return iconElement;
+    }
+
+    // Others
+    const iconData = PanelUtils.iconDataForResourceType(type);
+    iconElement = this.createIconElement(iconData, request.resourceType().title());
+    iconElement.classList.add('icon');
+    return iconElement;
   }
 
   private renderStatusCell(cell: HTMLElement): void {
@@ -1193,9 +1289,12 @@ export class NetworkRequestNode extends NetworkNode {
       if (displayShowHeadersLink) {
         this.setTextAndTitleAsLink(
             cell, i18nString(UIStrings.blockeds, {PH1: reason}), i18nString(UIStrings.blockedTooltip), () => {
+              const tab = Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.HEADER_OVERRIDES) ?
+                  NetworkForward.UIRequestLocation.UIRequestTabs.HeadersComponent :
+                  NetworkForward.UIRequestLocation.UIRequestTabs.Headers;
               this.parentView().dispatchEventToListeners(Events.RequestActivated, {
                 showPanel: true,
-                tab: NetworkForward.UIRequestLocation.UIRequestTabs.Headers,
+                tab,
               });
             });
       } else {
@@ -1264,6 +1363,13 @@ export class NetworkRequestNode extends NetworkNode {
     }
   }
 
+  #getLinkifierMetric(): Host.UserMetrics.Action|undefined {
+    if (this.requestInternal.resourceType().isStyleSheet()) {
+      return Host.UserMetrics.Action.StyleSheetInitiatorLinkClicked;
+    }
+    return undefined;
+  }
+
   private renderInitiatorCell(cell: HTMLElement): void {
     this.initiatorCell = cell;
     const request = this.requestInternal;
@@ -1276,12 +1382,16 @@ export class NetworkRequestNode extends NetworkNode {
     switch (initiator.type) {
       case SDK.NetworkRequest.InitiatorType.Parser: {
         const uiSourceCode = Workspace.Workspace.WorkspaceImpl.instance().uiSourceCodeForURL(initiator.url);
-        cell.appendChild(
-            Components.Linkifier.Linkifier.linkifyURL(initiator.url, ({
-                                                        text: uiSourceCode ? uiSourceCode.displayName() : undefined,
-                                                        lineNumber: initiator.lineNumber,
-                                                        columnNumber: initiator.columnNumber,
-                                                      } as Components.Linkifier.LinkifyURLOptions)));
+        const displayName = uiSourceCode?.displayName();
+        const text = displayName !== undefined && initiator.lineNumber !== undefined ?
+            `${displayName}:${initiator.lineNumber}` :
+            undefined;
+        cell.appendChild(Components.Linkifier.Linkifier.linkifyURL(initiator.url, {
+          text,
+          lineNumber: initiator.lineNumber,
+          columnNumber: initiator.columnNumber,
+          userMetric: this.#getLinkifierMetric(),
+        }));
         this.appendSubtitle(cell, i18nString(UIStrings.parser));
         break;
       }
@@ -1333,11 +1443,11 @@ export class NetworkRequestNode extends NetworkNode {
       case SDK.NetworkRequest.InitiatorType.Preflight: {
         cell.appendChild(document.createTextNode(i18nString(UIStrings.preflight)));
         if (initiator.initiatorRequest) {
-          const icon = UI.Icon.Icon.create('mediumicon-network-panel');
+          const icon = UI.Icon.Icon.create('arrow-up-down-circle');
           const link = Components.Linkifier.Linkifier.linkifyRevealable(
               initiator.initiatorRequest, icon, undefined, i18nString(UIStrings.selectTheRequestThatTriggered),
               'trailing-link-icon');
-          UI.ARIAUtils.setAccessibleName(link, i18nString(UIStrings.selectTheRequestThatTriggered));
+          UI.ARIAUtils.setLabel(link, i18nString(UIStrings.selectTheRequestThatTriggered));
           cell.appendChild(link);
         }
         break;
@@ -1423,7 +1533,7 @@ export class NetworkRequestNode extends NetworkNode {
 }
 
 export class NetworkGroupNode extends NetworkNode {
-  createCells(element: Element): void {
+  override createCells(element: Element): void {
     super.createCells(element);
     const primaryColumn = (this.dataGrid as DataGrid.DataGrid.DataGridImpl<unknown>).visibleColumnsArray[0];
     const localizedTitle = `${primaryColumn.title}`;
@@ -1432,7 +1542,7 @@ export class NetworkGroupNode extends NetworkNode {
         `${localizedLevel} ${localizedTitle}: ${this.cellAccessibleTextMap.get(primaryColumn.id)}`;
   }
 
-  renderCell(c: Element, columnId: string): void {
+  override renderCell(c: Element, columnId: string): void {
     const columnIndex = (this.dataGrid as DataGrid.DataGrid.DataGridImpl<unknown>).indexOfVisibleColumn(columnId);
     if (columnIndex === 0) {
       const cell = (c as HTMLElement);
@@ -1443,7 +1553,7 @@ export class NetworkGroupNode extends NetworkNode {
     }
   }
 
-  select(supressSelectedEvent?: boolean): void {
+  override select(supressSelectedEvent?: boolean): void {
     super.select(supressSelectedEvent);
     const firstChildNode = (this.traverseNextNode(false, undefined, true) as NetworkNode);
     const request = firstChildNode?.request();

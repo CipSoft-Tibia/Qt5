@@ -12,6 +12,10 @@ if (is_android) {
   import("//build/config/android/rules.gni")
 }
 
+if (is_ios) {
+  import("//build/config/ios/bundle_data_from_filelist.gni")
+}
+
 about_credits_file = "$target_gen_dir/about_credits.html"
 
 group("resources") {
@@ -19,6 +23,8 @@ group("resources") {
     ":components_resources",
     ":components_scaled_resources",
     ":dev_ui_components_resources",
+    "../flags_ui/resources:resources",
+    "../version_ui/resources:resources",
   ]
 }
 
@@ -50,9 +56,7 @@ grit("components_resources") {
 
   deps = [
     ":about_credits",
-    "//components/flags_ui/resources:build_ts",
     "//components/security_interstitials/content/resources:build_ts",
-    "//components/version_ui/resources:build_ts",
   ]
 
   if (!is_ios) {
@@ -127,6 +131,7 @@ action("about_credits") {
 if (is_android) {
   source_set("android_resources") {
     sources = [
+      "android/autofill_resource_id.h",
       "android/blocked_content_resource_id.h",
       "android/page_info_resource_id.h",
       "android/permissions_resource_id.h",
@@ -136,5 +141,15 @@ if (is_android) {
     ]
 
     public_deps = [ "//device/vr/buildflags" ]
+  }
+}
+
+if (is_ios) {
+  bundle_data_from_filelist("terms_resources") {
+    # On iOS, the terms of service file need to be loaded from the application
+    # bundle, not from a datapack. As GetTermsOfServicePath() returns path to
+    # those files, they are added to the bundle resources dir.
+    filelist_name = "terms_resources.filelist"
+    outputs = [ "{{bundle_resources_dir}}/{{source_file_part}}" ]
   }
 }

@@ -49,6 +49,7 @@ public:
     virtual bool writeNodeAttributes(const QList<QOpcUaWriteItem> &nodesToWrite) = 0;
 
     virtual QOpcUaHistoryReadResponse *readHistoryData(const QOpcUaHistoryReadRawRequest &request) = 0;
+    virtual QOpcUaHistoryReadResponse *readHistoryEvents(const QOpcUaHistoryReadEventRequest &request) = 0;
 
     bool registerNode(QPointer<QOpcUaNodeImpl> obj);
     void unregisterNode(QPointer<QOpcUaNodeImpl> obj);
@@ -63,6 +64,9 @@ public:
 
     virtual QStringList supportedSecurityPolicies() const = 0;
     virtual QList<QOpcUaUserTokenPolicy::TokenType> supportedUserTokenTypes() const = 0;
+
+    virtual bool registerNodes(const QStringList &nodesToRegister) = 0;
+    virtual bool unregisterNodes(const QStringList &nodesToUnregister) = 0;
 
     QOpcUaClient *m_client;
 
@@ -98,6 +102,8 @@ signals:
                               QOpcUa::UaStatusCode statusCode);
     void connectError(QOpcUaErrorState *errorState);
     void passwordForPrivateKeyRequired(const QString keyFilePath, QString *password, bool previousTryWasInvalid);
+    void registerNodesFinished(QStringList nodesToRegister, QStringList registeredNodeIds, QOpcUa::UaStatusCode statusCode);
+    void unregisterNodesFinished(QStringList nodesToUnregister, QOpcUa::UaStatusCode statusCode);
 
 private:
     Q_DISABLE_COPY(QOpcUaClientImpl)

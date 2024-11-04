@@ -34,11 +34,12 @@ class QQuick3DPhysicsHeightField
 {
 public:
     QQuick3DPhysicsHeightField(const QString &qmlSource);
+    QQuick3DPhysicsHeightField(QQuickImage *image);
     ~QQuick3DPhysicsHeightField();
 
     void ref() { ++refCount; }
     int deref() { return --refCount; }
-    physx::PxHeightFieldSample *getSamples();
+    void writeSamples(const QImage &heightMap);
     physx::PxHeightField *heightField();
 
     int rows() const;
@@ -46,6 +47,10 @@ public:
 
 private:
     QString m_sourcePath;
+    // This raw pointer is safe to store since when the Image or
+    // HeightFieldShape is destroyed, this heightfield will be dereferenced
+    // from all shapes and deleted.
+    QQuickImage *m_image = nullptr;
     physx::PxHeightFieldSample *m_samples = nullptr;
     physx::PxHeightField *m_heightField = nullptr;
     int m_rows = 0;
@@ -58,13 +63,17 @@ class QQuick3DPhysicsHeightFieldManager
 public:
     static QQuick3DPhysicsHeightField *getHeightField(const QUrl &source,
                                                       const QObject *contextObject);
+    static QQuick3DPhysicsHeightField *getHeightField(QQuickImage *source);
     static void releaseHeightField(QQuick3DPhysicsHeightField *heightField);
 
 private:
     static QHash<QString, QQuick3DPhysicsHeightField *> heightFieldHash;
+    static QHash<QQuickImage *, QQuick3DPhysicsHeightField *> heightFieldImageHash;
 };
 
 QHash<QString, QQuick3DPhysicsHeightField *> QQuick3DPhysicsHeightFieldManager::heightFieldHash;
+QHash<QQuickImage *, QQuick3DPhysicsHeightField *>
+        QQuick3DPhysicsHeightFieldManager::heightFieldImageHash;
 
 QQuick3DPhysicsHeightField *
 QQuick3DPhysicsHeightFieldManager::getHeightField(const QUrl &source, const QObject *contextObject)
@@ -83,12 +92,27 @@ QQuick3DPhysicsHeightFieldManager::getHeightField(const QUrl &source, const QObj
     return heightField;
 }
 
+QQuick3DPhysicsHeightField *QQuick3DPhysicsHeightFieldManager::getHeightField(QQuickImage *source)
+{
+    auto *heightField = heightFieldImageHash.value(source);
+    if (!heightField) {
+        heightField = new QQuick3DPhysicsHeightField(source);
+        heightFieldImageHash[source] = heightField;
+    }
+    heightField->ref();
+    return heightField;
+}
+
 void QQuick3DPhysicsHeightFieldManager::releaseHeightField(QQuick3DPhysicsHeightField *heightField)
 {
-    if (heightField->deref() == 0) {
+    if (heightField != nullptr && heightField->deref() == 0) {
         qCDebug(lcQuick3dPhysics()) << "deleting height field" << heightField;
         erase_if(heightFieldHash,
                  [heightField](std::pair<const QString &, QQuick3DPhysicsHeightField *&> h) {
+                     return h.second == heightField;
+                 });
+        erase_if(heightFieldImageHash,
+                 [heightField](std::pair<QQuickImage *, QQuick3DPhysicsHeightField *&> h) {
                      return h.second == heightField;
                  });
         delete heightField;
@@ -100,33 +124,29 @@ QQuick3DPhysicsHeightField::QQuick3DPhysicsHeightField(const QString &qmlSource)
 {
 }
 
+QQuick3DPhysicsHeightField::QQuick3DPhysicsHeightField(QQuickImage *image) : m_image(image) { }
+
 QQuick3DPhysicsHeightField::~QQuick3DPhysicsHeightField()
 {
     free(m_samples);
 }
 
-physx::PxHeightFieldSample *QQuick3DPhysicsHeightField::getSamples()
+void QQuick3DPhysicsHeightField::writeSamples(const QImage &heightMap)
 {
-    if (!m_samples && !m_sourcePath.isEmpty()) {
-        QImage heightMap(m_sourcePath);
+    m_rows = heightMap.height();
+    m_columns = heightMap.width();
+    int numRows = m_rows;
+    int numCols = m_columns;
 
-        m_rows = heightMap.height();
-        m_columns = heightMap.width();
-        int numRows = m_rows;
-        int numCols = m_columns;
-
-        auto samples = reinterpret_cast<physx::PxHeightFieldSample *>(
-                malloc(sizeof(physx::PxHeightFieldSample) * (numRows * numCols)));
-        for (int i = 0; i < numCols; i++)
-            for (int j = 0; j < numRows; j++) {
-                float f = heightMap.pixelColor(i, j).valueF() - 0.5;
-                // qDebug() << i << j << f;
-                samples[i * numRows + j] = { qint16(0xffff * f), 0,
-                                             0 }; //{qint16(i%3*2 + j), 0, 0};
-            }
-        m_samples = samples;
-    }
-    return m_samples;
+    free(m_samples);
+    m_samples = reinterpret_cast<physx::PxHeightFieldSample *>(
+            malloc(sizeof(physx::PxHeightFieldSample) * (numRows * numCols)));
+    for (int i = 0; i < numCols; i++)
+        for (int j = 0; j < numRows; j++) {
+            float f = heightMap.pixelColor(i, j).valueF() - 0.5;
+            // qDebug() << i << j << f;
+            m_samples[i * numRows + j] = { qint16(0xffff * f), 0, 0 }; //{qint16(i%3*2 + j), 0, 0};
+        }
 }
 
 physx::PxHeightField *QQuick3DPhysicsHeightField::heightField()
@@ -138,21 +158,36 @@ physx::PxHeightField *QQuick3DPhysicsHeightField::heightField()
     if (thePhysics == nullptr)
         return nullptr;
 
-    m_heightField = QCacheUtils::readCachedHeightField(m_sourcePath, *thePhysics);
-    if (m_heightField != nullptr) {
-        m_rows = m_heightField->getNbRows();
-        m_columns = m_heightField->getNbColumns();
-        return m_heightField;
+    // No source set
+    if (m_image == nullptr && m_sourcePath.isEmpty())
+        return nullptr;
+
+    // Reading from image property has precedence
+    const bool readFromFile = m_image == nullptr;
+
+    if (readFromFile) {
+        // Try read cached file
+        m_heightField = QCacheUtils::readCachedHeightField(m_sourcePath, *thePhysics);
+        if (m_heightField != nullptr) {
+            m_rows = m_heightField->getNbRows();
+            m_columns = m_heightField->getNbColumns();
+            return m_heightField;
+        }
+
+        // Try read cooked file
+        m_heightField = QCacheUtils::readCookedHeightField(m_sourcePath, *thePhysics);
+        if (m_heightField != nullptr) {
+            m_rows = m_heightField->getNbRows();
+            m_columns = m_heightField->getNbColumns();
+            return m_heightField;
+        }
+
+        // Try read image file
+        writeSamples(QImage(m_sourcePath));
+    } else {
+        writeSamples(m_image->image());
     }
 
-    m_heightField = QCacheUtils::readCookedHeightField(m_sourcePath, *thePhysics);
-    if (m_heightField != nullptr) {
-        m_rows = m_heightField->getNbRows();
-        m_columns = m_heightField->getNbColumns();
-        return m_heightField;
-    }
-
-    getSamples();
     int numRows = m_rows;
     int numCols = m_columns;
     auto samples = m_samples;
@@ -173,10 +208,13 @@ physx::PxHeightField *QQuick3DPhysicsHeightField::heightField()
         physx::PxDefaultMemoryInputData input(data, size);
         m_heightField = thePhysics->createHeightField(input);
         qCDebug(lcQuick3dPhysics) << "created height field" << m_heightField << numCols << numRows
-                                  << "from" << m_sourcePath;
-        QCacheUtils::writeCachedHeightField(m_sourcePath, buf);
+                                  << "from"
+                                  << (readFromFile ? m_sourcePath : QString::fromUtf8("image"));
+        if (readFromFile)
+            QCacheUtils::writeCachedHeightField(m_sourcePath, buf);
     } else {
-        qCWarning(lcQuick3dPhysics) << "Could not create height field from" << m_sourcePath;
+        qCWarning(lcQuick3dPhysics) << "Could not create height field from"
+                                    << (readFromFile ? m_sourcePath : QString::fromUtf8("image"));
     }
 
     return m_heightField;
@@ -233,6 +271,23 @@ int QQuick3DPhysicsHeightField::columns() const
     conversion can be done in advance. See the \l{Qt Quick 3D Physics Cooking}{cooking overview
     documentation} for details.
 
+    \note If both the \l{HeightFieldShape::}{image} and \l{HeightFieldShape::}{source} properties
+    are set then only \l{HeightFieldShape::}{image} will be used.
+    \sa HeightFieldShape::image
+*/
+
+/*!
+    \qmlproperty Image HeightFieldShape::image
+    This property defines the image holding the heightMap.
+
+    Internally, HeightFieldShape converts the height map image to an optimized data structure. This
+    conversion can be done in advance. See the \l{Qt Quick 3D Physics Cooking}{cooking overview
+    documentation} for details.
+
+    \note If both the \l{HeightFieldShape::}{image} and \l{HeightFieldShape::}{source} properties
+    are set then only \l{HeightFieldShape::}{image} will be used.
+    \sa HeightFieldShape::source
+    \since 6.7
 */
 
 QHeightFieldShape::QHeightFieldShape() = default;
@@ -309,12 +364,73 @@ void QHeightFieldShape::setSource(const QUrl &newSource)
         return;
     m_heightMapSource = newSource;
 
-    m_heightField = QQuick3DPhysicsHeightFieldManager::getHeightField(m_heightMapSource, this);
+    // If we get a new source and our heightfield was from the old source
+    // (meaning it was NOT from an image) we deref
+    if (m_image == nullptr) {
+        QQuick3DPhysicsHeightFieldManager::releaseHeightField(m_heightField);
+        m_heightField = nullptr;
+    }
+
+    // Load new height field only if we don't have image as source
+    if (m_image == nullptr && !newSource.isEmpty()) {
+        m_heightField = QQuick3DPhysicsHeightFieldManager::getHeightField(m_heightMapSource, this);
+        emit needsRebuild(this);
+    }
 
     m_dirtyPhysx = true;
-
-    emit needsRebuild(this);
     emit sourceChanged();
+}
+
+QQuickImage *QHeightFieldShape::image() const
+{
+    return m_image;
+}
+
+void QHeightFieldShape::setImage(QQuickImage *newImage)
+{
+    if (m_image == newImage)
+        return;
+
+    if (m_image)
+        m_image->disconnect(this);
+
+    m_image = newImage;
+
+    if (m_image != nullptr) {
+        connect(m_image, &QObject::destroyed, this, &QHeightFieldShape::imageDestroyed);
+        connect(m_image, &QQuickImage::paintedGeometryChanged, this,
+                &QHeightFieldShape::imageGeometryChanged);
+    }
+
+    // New image means we get a new heightfield so deref the old one
+    QQuick3DPhysicsHeightFieldManager::releaseHeightField(m_heightField);
+    m_heightField = nullptr;
+
+    if (m_image != nullptr)
+        m_heightField = QQuick3DPhysicsHeightFieldManager::getHeightField(m_image);
+    else if (!m_heightMapSource.isEmpty())
+        m_heightField = QQuick3DPhysicsHeightFieldManager::getHeightField(m_heightMapSource, this);
+
+    m_dirtyPhysx = true;
+    emit needsRebuild(this);
+    emit imageChanged();
+}
+
+void QHeightFieldShape::imageDestroyed(QObject *image)
+{
+    Q_ASSERT(m_image == image);
+    // Set image to null and the old one will be disconnected and dereferenced
+    setImage(nullptr);
+}
+
+void QHeightFieldShape::imageGeometryChanged()
+{
+    Q_ASSERT(m_image);
+    // Using image has precedence so it is safe to assume this is the current source
+    QQuick3DPhysicsHeightFieldManager::releaseHeightField(m_heightField);
+    m_heightField = QQuick3DPhysicsHeightFieldManager::getHeightField(m_image);
+    m_dirtyPhysx = true;
+    emit needsRebuild(this);
 }
 
 const QVector3D &QHeightFieldShape::extents() const

@@ -163,7 +163,7 @@ struct ThreadPoolDevice {
     Notification* n = new Notification();
     pool_->Schedule(
         std::bind(&FunctionWrapperWithNotification<Function, Args...>::run, n,
-                  std::move(f), args...));
+                  std::forward<Function>(f), args...));
     return n;
   }
 
@@ -172,16 +172,16 @@ struct ThreadPoolDevice {
                                                 Args&&... args) const {
     pool_->Schedule(
         std::bind(&FunctionWrapperWithBarrier<Function, Args...>::run, b,
-                  std::move(f), args...));
+                  std::forward<Function>(f), args...));
   }
 
   template <class Function, class... Args>
   EIGEN_STRONG_INLINE void enqueueNoNotification(Function&& f,
                                                  Args&&... args) const {
     if (sizeof...(args) > 0) {
-      pool_->Schedule(std::bind(std::move(f), args...));
+      pool_->Schedule(std::bind(std::forward<Function>(f), args...));
     } else {
-      pool_->Schedule(std::move(f));
+      pool_->Schedule(std::forward<Function>(f));
     }
   }
 

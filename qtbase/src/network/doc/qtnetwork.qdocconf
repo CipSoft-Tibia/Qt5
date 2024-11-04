@@ -44,8 +44,8 @@ manifestmeta.highlighted.names = \
     "QtNetwork/Fortune Client" \
     "QtNetwork/Fortune Server" \
     "QtNetwork/HTTP Client" \
-    "QtNetwork/Secure Socket Client Example" \
+    "QtNetwork/Secure Socket Client" \
     "QtNetwork/Torrent Example"
 
-# Fail the documentation build if there are more warnings than the limit
+# Enforce zero documentation warnings
 warninglimit = 0

@@ -10,6 +10,8 @@
 #include <emscripten/bind.h>
 #include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
+#include <emscripten/threading.h>
+
 #include <cstdint>
 #include <iostream>
 
@@ -32,7 +34,7 @@ static void usePotentialyUnusedSymbols()
     // called at runtime.
     volatile bool doIt = false;
     if (doIt)
-        emscripten_set_wheel_callback(NULL, 0, 0, NULL);
+        emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, 0, NULL);
 }
 
 Q_CONSTRUCTOR_FUNCTION(usePotentialyUnusedSymbols)
@@ -362,118 +364,15 @@ void WebPromiseManager::adoptPromise(emscripten::val target, PromiseCallbacks ca
 #if defined(QT_STATIC)
 
 EM_JS(bool, jsHaveAsyncify, (), { return typeof Asyncify !== "undefined"; });
+EM_JS(bool, jsHaveJspi, (),
+      { return typeof Asyncify !== "undefined" && !!Asyncify.makeAsyncFunction && !!WebAssembly.Function; });
 
 #else
 
 bool jsHaveAsyncify() { return false; }
+bool jsHaveJspi() { return false; }
 
 #endif
-
-struct DataTransferReader
-{
-public:
-    using DoneCallback = std::function<void(std::unique_ptr<QMimeData>)>;
-
-    static std::shared_ptr<CancellationFlag> read(emscripten::val webDataTransfer,
-                                                  std::function<QVariant(QByteArray)> imageReader,
-                                                  DoneCallback onCompleted)
-    {
-        auto cancellationFlag = std::make_shared<CancellationFlag>();
-        (new DataTransferReader(std::move(onCompleted), std::move(imageReader), cancellationFlag))
-                ->read(webDataTransfer);
-        return cancellationFlag;
-    }
-
-    ~DataTransferReader() = default;
-
-private:
-    DataTransferReader(DoneCallback onCompleted, std::function<QVariant(QByteArray)> imageReader,
-                       std::shared_ptr<CancellationFlag> cancellationFlag)
-        : mimeData(std::make_unique<QMimeData>()),
-          imageReader(std::move(imageReader)),
-          onCompleted(std::move(onCompleted)),
-          cancellationFlag(cancellationFlag)
-    {
-    }
-
-    void read(emscripten::val webDataTransfer)
-    {
-        enum class ItemKind {
-            File,
-            String,
-        };
-
-        const auto items = webDataTransfer["items"];
-        for (int i = 0; i < items["length"].as<int>(); ++i) {
-            const auto item = items[i];
-            const auto itemKind =
-                    item["kind"].as<std::string>() == "string" ? ItemKind::String : ItemKind::File;
-            const auto itemMimeType = QString::fromStdString(item["type"].as<std::string>());
-
-            switch (itemKind) {
-            case ItemKind::File: {
-                ++fileCount;
-
-                qstdweb::File file(item.call<emscripten::val>("getAsFile"));
-
-                QByteArray fileContent(file.size(), Qt::Uninitialized);
-                file.stream(fileContent.data(), [this, itemMimeType, fileContent]() {
-                    if (!fileContent.isEmpty()) {
-                        if (itemMimeType.startsWith("image/"_L1)) {
-                            mimeData->setImageData(imageReader(fileContent));
-                        } else {
-                            mimeData->setData(itemMimeType, fileContent.data());
-                        }
-                    }
-                    ++doneCount;
-                    onFileRead();
-                });
-                break;
-            }
-            case ItemKind::String:
-                if (itemMimeType.contains("STRING"_L1, Qt::CaseSensitive)
-                    || itemMimeType.contains("TEXT"_L1, Qt::CaseSensitive)) {
-                    break;
-                }
-                QString a;
-                const QString data = QString::fromEcmaString(webDataTransfer.call<emscripten::val>(
-                        "getData", emscripten::val(itemMimeType.toStdString())));
-
-                if (!data.isEmpty()) {
-                    if (itemMimeType == "text/html"_L1)
-                        mimeData->setHtml(data);
-                    else if (itemMimeType.isEmpty() || itemMimeType == "text/plain"_L1)
-                        mimeData->setText(data); // the type can be empty
-                    else
-                        mimeData->setData(itemMimeType, data.toLocal8Bit());
-                }
-                break;
-            }
-        }
-
-        onFileRead();
-    }
-
-    void onFileRead()
-    {
-        Q_ASSERT(doneCount <= fileCount);
-        if (doneCount < fileCount)
-            return;
-
-        std::unique_ptr<DataTransferReader> deleteThisLater(this);
-        if (!cancellationFlag.expired())
-            onCompleted(std::move(mimeData));
-    }
-
-    int fileCount = 0;
-    int doneCount = 0;
-    std::unique_ptr<QMimeData> mimeData;
-    std::function<QVariant(QByteArray)> imageReader;
-    DoneCallback onCompleted;
-
-    std::weak_ptr<CancellationFlag> cancellationFlag;
-};
-
 } // namespace
 
 ArrayBuffer::ArrayBuffer(uint32_t size)
@@ -495,7 +394,12 @@ uint32_t ArrayBuffer::byteLength() const
     return m_arrayBuffer["byteLength"].as<uint32_t>();
 }
 
-emscripten::val ArrayBuffer::val()
+ArrayBuffer ArrayBuffer::slice(uint32_t begin, uint32_t end) const
+{
+    return ArrayBuffer(m_arrayBuffer.call<emscripten::val>("slice", begin, end));
+}
+
+emscripten::val ArrayBuffer::val() const
 {
     return m_arrayBuffer;
 }
@@ -504,6 +408,13 @@ Blob::Blob(const emscripten::val &blob)
     :m_blob(blob)
 {
 
+}
+
+Blob Blob::fromArrayBuffer(const ArrayBuffer &arrayBuffer)
+{
+    auto array = emscripten::val::array();
+    array.call<void>("push", arrayBuffer.val());
+    return Blob(emscripten::val::global("Blob").new_(array));
 }
 
 uint32_t Blob::size() const
@@ -528,7 +439,26 @@ Blob Blob::copyFrom(const char *buffer, uint32_t size)
     return copyFrom(buffer, size, "application/octet-stream");
 }
 
-emscripten::val Blob::val()
+Blob Blob::slice(uint32_t begin, uint32_t end) const
+{
+    return Blob(m_blob.call<emscripten::val>("slice", begin, end));
+}
+
+ArrayBuffer Blob::arrayBuffer_sync() const
+{
+    QEventLoop loop;
+    emscripten::val buffer;
+    qstdweb::Promise::make(m_blob, "arrayBuffer", {
+        .thenFunc = [&loop, &buffer](emscripten::val arrayBuffer) {
+            buffer = arrayBuffer;
+            loop.quit();
+        }
+    });
+    loop.exec();
+    return ArrayBuffer(buffer);
+}
+
+emscripten::val Blob::val() const
 {
     return m_blob;
 }
@@ -538,6 +468,17 @@ File::File(const emscripten::val &file)
 {
 
 }
+
+File::~File() = default;
+
+File::File(const File &other) = default;
+
+File::File(File &&other) = default;
+
+File &File::operator=(const File &other) = default;
+
+File &File::operator=(File &&other) = default;
+
 
 Blob File::slice(uint64_t begin, uint64_t end) const
 {
@@ -579,10 +520,26 @@ std::string File::type() const
     return m_file["type"].as<std::string>();
 }
 
-emscripten::val File::val()
+emscripten::val File::val() const
 {
     return m_file;
 }
+
+FileUrlRegistration::FileUrlRegistration(File file)
+{
+    m_path = QString::fromStdString(emscripten::val::global("window")["URL"].call<std::string>(
+        "createObjectURL", file.file()));
+}
+
+FileUrlRegistration::~FileUrlRegistration()
+{
+    emscripten::val::global("window")["URL"].call<void>("revokeObjectURL",
+                                                        emscripten::val(m_path.toStdString()));
+}
+
+FileUrlRegistration::FileUrlRegistration(FileUrlRegistration &&other) = default;
+
+FileUrlRegistration &FileUrlRegistration::operator=(FileUrlRegistration &&other) = default;
 
 FileList::FileList(const emscripten::val &fileList)
     :m_fileList(fileList)
@@ -638,7 +595,7 @@ void FileReader::onAbort(const std::function<void(emscripten::val)> &onAbort)
     m_onAbort = std::make_unique<EventCallback>(m_fileReader, "abort", onAbort);
 }
 
-emscripten::val FileReader::val()
+emscripten::val FileReader::val() const
 {
     return m_fileReader;
 }
@@ -698,6 +655,13 @@ void Uint8Array::set(const Uint8Array &source)
     m_uint8Array.call<void>("set", source.m_uint8Array); // copies source content
 }
 
+Uint8Array Uint8Array::subarray(uint32_t begin, uint32_t end)
+{
+    // Note: using uint64_t here errors with "Cannot convert a BigInt value to a number"
+    // (see JS BigInt and Number types). Use uint32_t for now.
+    return Uint8Array(m_uint8Array.call<emscripten::val>("subarray", begin, end));
+}
+
 // Copies the Uint8Array content to a destination on the heap
 void Uint8Array::copyTo(char *destination) const
 {
@@ -736,7 +700,7 @@ Uint8Array Uint8Array::copyFrom(const QByteArray &buffer)
     return copyFrom(buffer.constData(), buffer.size());
 }
 
-emscripten::val Uint8Array::val()
+emscripten::val Uint8Array::val() const
 {
     return m_uint8Array;
 }
@@ -848,17 +812,126 @@ namespace Promise {
     }
 }
 
+//  Asyncify and thread blocking: Normally, it's not possible to block the main
+//  thread, except if asyncify is enabled. Secondary threads can always block.
+//
+//  haveAsyncify(): returns true if the main thread can block on QEventLoop::exec(),
+//      if either asyncify 1 or 2 (JSPI) is available.
+//
+//  haveJspi(): returns true if asyncify 2 (JSPI) is available.
+//
+//  canBlockCallingThread(): returns true if the calling thread can block on
+//      QEventLoop::exec(), using either asyncify or as a seconarday thread.
+bool haveJspi()
+{
+    static bool HaveJspi = jsHaveJspi();
+    return HaveJspi;
+}
+
 bool haveAsyncify()
 {
-    static bool HaveAsyncify = jsHaveAsyncify();
+    static bool HaveAsyncify = jsHaveAsyncify() || haveJspi();
     return HaveAsyncify;
 }
 
-std::shared_ptr<CancellationFlag>
-readDataTransfer(emscripten::val webDataTransfer, std::function<QVariant(QByteArray)> imageReader,
-                 std::function<void(std::unique_ptr<QMimeData>)> onDone)
+bool canBlockCallingThread()
 {
-    return DataTransferReader::read(webDataTransfer, std::move(imageReader), std::move(onDone));
+    return haveAsyncify() || !emscripten_is_main_runtime_thread();
+}
+
+BlobIODevice::BlobIODevice(Blob blob)
+    : m_blob(blob)
+{
+
+}
+
+bool BlobIODevice::open(QIODevice::OpenMode mode)
+{
+    if (mode.testFlag(QIODevice::WriteOnly))
+        return false;
+    return QIODevice::open(mode);
+}
+
+bool BlobIODevice::isSequential() const
+{
+    return false;
+}
+
+qint64 BlobIODevice::size() const
+{
+    return m_blob.size();
+}
+
+bool BlobIODevice::seek(qint64 pos)
+{
+    if (pos >= size())
+        return false;
+    return QIODevice::seek(pos);
+}
+
+qint64 BlobIODevice::readData(char *data, qint64 maxSize)
+{
+    uint64_t begin = QIODevice::pos();
+    uint64_t end = std::min<uint64_t>(begin + maxSize, size());
+    uint64_t size = end - begin;
+    if (size > 0) {
+        qstdweb::ArrayBuffer buffer = m_blob.slice(begin, end).arrayBuffer_sync();
+        qstdweb::Uint8Array(buffer).copyTo(data);
+    }
+    return size;
+}
+
+qint64 BlobIODevice::writeData(const char *, qint64)
+{
+    Q_UNREACHABLE();
+}
+
+Uint8ArrayIODevice::Uint8ArrayIODevice(Uint8Array array)
+    : m_array(array)
+{
+
+}
+
+bool Uint8ArrayIODevice::open(QIODevice::OpenMode mode)
+{
+    return QIODevice::open(mode);
+}
+
+bool Uint8ArrayIODevice::isSequential() const
+{
+    return false;
+}
+
+qint64 Uint8ArrayIODevice::size() const
+{
+    return m_array.length();
+}
+
+bool Uint8ArrayIODevice::seek(qint64 pos)
+{
+    if (pos >= size())
+        return false;
+    return QIODevice::seek(pos);
+}
+
+qint64 Uint8ArrayIODevice::readData(char *data, qint64 maxSize)
+{
+    uint64_t begin = QIODevice::pos();
+    uint64_t end = std::min<uint64_t>(begin + maxSize, size());
+    uint64_t size = end - begin;
+    if (size > 0)
+        m_array.subarray(begin, end).copyTo(data);
+    return size;
+}
+
+qint64 Uint8ArrayIODevice::writeData(const char *data, qint64 maxSize)
+{
+    uint64_t begin = QIODevice::pos();
+    uint64_t end = std::min<uint64_t>(begin + maxSize, size());
+    uint64_t size = end - begin;
+    if (size > 0)
+        m_array.subarray(begin, end).set(Uint8Array(data, size));
+    return size;
 }
 
 } // namespace qstdweb

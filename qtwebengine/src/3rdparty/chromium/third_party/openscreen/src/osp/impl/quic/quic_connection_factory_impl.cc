@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,12 +21,11 @@
 #include "util/std_util.h"
 #include "util/trace_logging.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 class QuicTaskRunner final : public ::base::TaskRunner {
  public:
-  explicit QuicTaskRunner(openscreen::TaskRunner* task_runner);
+  explicit QuicTaskRunner(TaskRunner& task_runner);
   ~QuicTaskRunner() override;
 
   void RunTasks();
@@ -39,10 +38,10 @@ class QuicTaskRunner final : public ::base::TaskRunner {
   bool RunsTasksInCurrentSequence() const override;
 
  private:
-  openscreen::TaskRunner* const task_runner_;
+  TaskRunner& task_runner_;
 };
 
-QuicTaskRunner::QuicTaskRunner(openscreen::TaskRunner* task_runner)
+QuicTaskRunner::QuicTaskRunner(TaskRunner& task_runner)
     : task_runner_(task_runner) {}
 
 QuicTaskRunner::~QuicTaskRunner() = default;
@@ -53,7 +52,7 @@ bool QuicTaskRunner::PostDelayedTask(const ::base::Location& whence,
                                      ::base::OnceClosure task,
                                      ::base::TimeDelta delay) {
   Clock::duration wait = Clock::duration(delay.InMilliseconds());
-  task_runner_->PostTaskWithDelay(
+  task_runner_.PostTaskWithDelay(
       [closure = std::move(task)]() mutable { std::move(closure).Run(); },
       wait);
   return true;
@@ -63,7 +62,7 @@ bool QuicTaskRunner::RunsTasksInCurrentSequence() const {
   return true;
 }
 
-QuicConnectionFactoryImpl::QuicConnectionFactoryImpl(TaskRunner* task_runner)
+QuicConnectionFactoryImpl::QuicConnectionFactoryImpl(TaskRunner& task_runner)
     : task_runner_(task_runner) {
   quic_task_runner_ = ::base::MakeRefCounted<QuicTaskRunner>(task_runner);
   alarm_factory_ = std::make_unique<::net::QuicChromiumAlarmFactory>(
@@ -107,6 +106,7 @@ void QuicConnectionFactoryImpl::OnRead(UdpSocket* socket,
                                        ErrorOr<UdpPacket> packet_or_error) {
   TRACE_SCOPED(TraceCategory::kQuic, "QuicConnectionFactoryImpl::OnRead");
   if (packet_or_error.is_error()) {
+    TRACE_SET_RESULT(packet_or_error.error());
     return;
   }
 
@@ -216,5 +216,4 @@ void QuicConnectionFactoryImpl::OnSendError(UdpSocket* socket, Error error) {
   OSP_UNIMPLEMENTED();
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

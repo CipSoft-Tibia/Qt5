@@ -7,6 +7,7 @@
 #include <functional>
 #include <cctype>
 #include <QtCore/qcoreapplication.h>
+#include <QtCore/qurl.h>
 #include <QtNetwork/qtcpserver.h>
 #include <QTcpSocket>
 
@@ -62,14 +63,14 @@ private:
     QMap<QTcpSocket *, HttpRequest> clients;
 };
 
-WebServer::WebServer(Handler handler, QObject *parent) :
+WebServer::WebServer(Handler h, QObject *parent) :
     QTcpServer(parent),
-    handler(handler)
+    handler(h)
 {
-    connect(this, &QTcpServer::newConnection, [=]() {
+    connect(this, &QTcpServer::newConnection, this, [this]() {
         auto socket = nextPendingConnection();
         connect(socket, &QTcpSocket::disconnected, socket, &QTcpSocket::deleteLater);
-        connect(socket, &QTcpSocket::readyRead, [=]() {
+        connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
             if (!clients.contains(socket))
                 clients[socket].port = serverPort();
 

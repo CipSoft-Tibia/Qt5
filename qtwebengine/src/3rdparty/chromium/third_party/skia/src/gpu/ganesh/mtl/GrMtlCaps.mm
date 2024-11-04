@@ -8,6 +8,7 @@
 #include "src/gpu/ganesh/mtl/GrMtlCaps.h"
 
 #include "include/core/SkRect.h"
+#include "include/core/SkTextureCompressionType.h"
 #include "include/gpu/GrBackendSurface.h"
 #include "src/core/SkCompressedDataUtils.h"
 #include "src/core/SkReadBuffer.h"
@@ -23,8 +24,9 @@
 #include "src/gpu/ganesh/mtl/GrMtlRenderTarget.h"
 #include "src/gpu/ganesh/mtl/GrMtlTexture.h"
 #include "src/gpu/ganesh/mtl/GrMtlUtil.h"
+#include "src/gpu/mtl/MtlUtilsPriv.h"
 
-#if GR_TEST_UTILS
+#if defined(GR_TEST_UTILS)
     #include "src/gpu/ganesh/TestFormatColorTypeCombination.h"
 #endif
 
@@ -61,6 +63,9 @@ GrMtlCaps::GrMtlCaps(const GrContextOptions& contextOptions, const id<MTLDevice>
 bool GrMtlCaps::getGPUFamilyFromFeatureSet(id<MTLDevice> device,
                                            GPUFamily* gpuFamily,
                                            int* group) {
+// MTLFeatureSet is deprecated for newer versions of the SDK
+#if GR_METAL_SDK_VERSION < 300
+
 #if defined(SK_BUILD_FOR_MAC)
     // Apple Silicon is only available in later OSes
     *gpuFamily = GPUFamily::kMac;
@@ -100,7 +105,7 @@ bool GrMtlCaps::getGPUFamilyFromFeatureSet(id<MTLDevice> device,
     // TODO: support tvOS
    *gpuFamily = GPUFamily::kApple;
     // iOS 12
-    if (@available(iOS 12.0, *)) {
+    if (@available(iOS 12.0, tvOS 12.0, *)) {
         if ([device supportsFeatureSet:MTLFeatureSet_iOS_GPUFamily5_v1]) {
             *group = 5;
             return true;
@@ -123,7 +128,7 @@ bool GrMtlCaps::getGPUFamilyFromFeatureSet(id<MTLDevice> device,
         }
     }
     // iOS 11
-    if (@available(iOS 11.0, *)) {
+    if (@available(iOS 11.0, tvOS 11.0, *)) {
         if ([device supportsFeatureSet:MTLFeatureSet_iOS_GPUFamily4_v1]) {
             *group = 4;
             return true;
@@ -142,7 +147,7 @@ bool GrMtlCaps::getGPUFamilyFromFeatureSet(id<MTLDevice> device,
         }
     }
     // iOS 10
-    if (@available(iOS 10.0, *)) {
+    if (@available(iOS 10.0, tvOS 10.0, *)) {
         if ([device supportsFeatureSet:MTLFeatureSet_iOS_GPUFamily3_v2]) {
             *group = 3;
             return true;
@@ -158,6 +163,8 @@ bool GrMtlCaps::getGPUFamilyFromFeatureSet(id<MTLDevice> device,
     }
     // We don't support earlier OSes
 #endif
+
+#endif // GR_METAL_SDK_VERSION < 300
 
     // No supported GPU families were found
     return false;
@@ -362,7 +369,7 @@ void GrMtlCaps::initGrCaps(id<MTLDevice> device) {
 
     // Init sample counts. All devices support 1 (i.e. 0 in skia).
     fSampleCounts.push_back(1);
-    if (@available(iOS 9.0, *)) {
+    if (@available(iOS 9.0, tvOS 9.0, *)) {
         for (auto sampleCnt : {2, 4, 8}) {
             if ([device supportsTextureSampleCount:sampleCnt]) {
                 fSampleCounts.push_back(sampleCnt);
@@ -400,7 +407,7 @@ void GrMtlCaps::initGrCaps(id<MTLDevice> device) {
 
     fSampleLocationsSupport = false;
 
-    if (@available(macOS 10.11, iOS 9.0, *)) {
+    if (@available(macOS 10.11, iOS 9.0, tvOS 9.0, *)) {
         if (this->isMac() || fFamilyGroup >= 3) {
             fDrawInstancedSupport = true;
             fNativeDrawIndirectSupport = true;
@@ -411,7 +418,7 @@ void GrMtlCaps::initGrCaps(id<MTLDevice> device) {
 
     fFenceSyncSupport = true;
     bool supportsMTLEvent = false;
-    if (@available(macOS 10.14, iOS 12.0, *)) {
+    if (@available(macOS 10.14, iOS 12.0, tvOS 12.0, *)) {
         supportsMTLEvent = true;
     }
     fSemaphoreSupport = supportsMTLEvent;
@@ -443,7 +450,7 @@ bool GrMtlCaps::isFormatTexturable(const GrBackendFormat& format, GrTextureType)
 
 bool GrMtlCaps::isFormatTexturable(MTLPixelFormat format) const {
     const FormatInfo& formatInfo = this->getFormatInfo(format);
-    return SkToBool(FormatInfo::kTexturable_Flag && formatInfo.fFlags);
+    return SkToBool(FormatInfo::kTexturable_Flag & formatInfo.fFlags);
 }
 
 bool GrMtlCaps::isFormatAsColorTypeRenderable(GrColorType ct, const GrBackendFormat& format,
@@ -519,7 +526,7 @@ void GrMtlCaps::initShaderCaps() {
     shaderCaps->fShaderDerivativeSupport = true;
     shaderCaps->fExplicitTextureLodSupport = true;
 
-    if (@available(macOS 10.12, iOS 11.0, *)) {
+    if (@available(macOS 10.12, iOS 11.0, tvOS 11.0, *)) {
         shaderCaps->fDualSourceBlendingSupport = true;
     } else {
         shaderCaps->fDualSourceBlendingSupport = false;
@@ -625,7 +632,7 @@ size_t GrMtlCaps::GetFormatIndex(MTLPixelFormat pixelFormat) {
             return i;
         }
     }
-    SK_ABORT("Invalid MTLPixelFormat");
+    SK_ABORT("Invalid MTLPixelFormat: %d", static_cast<int>(pixelFormat));
 }
 
 void GrMtlCaps::initFormatTable() {
@@ -682,7 +689,7 @@ void GrMtlCaps::initFormatTable() {
         }
     }
 
-    if (@available(macOS 11.0, iOS 8.0, *)) {
+    if (@available(macOS 11.0, iOS 8.0, tvOS 9.0, *)) {
         if (this->isApple()) {
             // Format: B5G6R5Unorm
             {
@@ -743,7 +750,7 @@ void GrMtlCaps::initFormatTable() {
     // Format: RG8Unorm
     {
         info = &fFormatTable[GetFormatIndex(MTLPixelFormatRG8Unorm)];
-        info->fFlags = FormatInfo::kTexturable_Flag;
+        info->fFlags = FormatInfo::kAllFlags;
         info->fColorTypeInfoCount = 1;
         info->fColorTypeInfos.reset(new ColorTypeInfo[info->fColorTypeInfoCount]());
         int ctIdx = 0;
@@ -805,7 +812,7 @@ void GrMtlCaps::initFormatTable() {
     }
 
     // Format: BGR10A2Unorm
-    if (@available(macos 10.13, ios 11.0, *)) {
+    if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
         info = &fFormatTable[GetFormatIndex(MTLPixelFormatBGR10A2Unorm)];
         if (this->isMac() && fFamilyGroup == 1) {
             info->fFlags = FormatInfo::kTexturable_Flag;
@@ -901,7 +908,7 @@ void GrMtlCaps::initFormatTable() {
         }
     }
 
-    if (@available(macOS 11.0, iOS 8.0, *)) {
+    if (@available(macOS 11.0, iOS 8.0, tvOS 9.0, *)) {
         if (this->isApple()) {
             // ETC2_RGB8
             info = &fFormatTable[GetFormatIndex(MTLPixelFormatETC2_RGB8)];
@@ -961,7 +968,7 @@ void GrMtlCaps::initFormatTable() {
 
     this->setColorType(GrColorType::kAlpha_8,           { MTLPixelFormatR8Unorm,
                                                           MTLPixelFormatA8Unorm });
-    if (@available(macOS 11.0, iOS 8.0, *)) {
+    if (@available(macOS 11.0, iOS 8.0, tvOS 9.0, *)) {
         if (this->isApple()) {
             this->setColorType(GrColorType::kBGR_565,   { MTLPixelFormatB5G6R5Unorm });
             this->setColorType(GrColorType::kABGR_4444, { MTLPixelFormatABGR4Unorm });
@@ -973,7 +980,7 @@ void GrMtlCaps::initFormatTable() {
     this->setColorType(GrColorType::kRG_88,             { MTLPixelFormatRG8Unorm });
     this->setColorType(GrColorType::kBGRA_8888,         { MTLPixelFormatBGRA8Unorm });
     this->setColorType(GrColorType::kRGBA_1010102,      { MTLPixelFormatRGB10A2Unorm });
-    if (@available(macos 10.13, ios 11.0, *)) {
+    if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
         this->setColorType(GrColorType::kBGRA_1010102,  { MTLPixelFormatBGR10A2Unorm });
     }
     this->setColorType(GrColorType::kGray_8,            { MTLPixelFormatR8Unorm });
@@ -1001,7 +1008,7 @@ GrCaps::SurfaceReadPixelsSupport GrMtlCaps::surfaceSupportsReadPixels(
         const GrSurface* surface) const {
     if (auto tex = static_cast<const GrMtlTexture*>(surface->asTexture())) {
         // We disallow reading back directly from compressed textures.
-        if (GrMtlFormatIsCompressed(tex->attachment()->mtlFormat())) {
+        if (skgpu::MtlFormatIsCompressed(tex->attachment()->mtlFormat())) {
             return SurfaceReadPixelsSupport::kCopyToTexture2D;
         }
     }
@@ -1051,11 +1058,11 @@ GrBackendFormat GrMtlCaps::onGetDefaultBackendFormat(GrColorType ct) const {
 }
 
 GrBackendFormat GrMtlCaps::getBackendFormatFromCompressionType(
-        SkImage::CompressionType compressionType) const {
+        SkTextureCompressionType compressionType) const {
     switch (compressionType) {
-        case SkImage::CompressionType::kNone:
+        case SkTextureCompressionType::kNone:
             return {};
-        case SkImage::CompressionType::kETC2_RGB8_UNORM:
+        case SkTextureCompressionType::kETC2_RGB8_UNORM:
             if (@available(macOS 11.0, *)) {
                 if (this->isApple()) {
                     return GrBackendFormat::MakeMtl(MTLPixelFormatETC2_RGB8);
@@ -1065,10 +1072,10 @@ GrBackendFormat GrMtlCaps::getBackendFormatFromCompressionType(
             } else {
                 return {};
             }
-        case SkImage::CompressionType::kBC1_RGB8_UNORM:
+        case SkTextureCompressionType::kBC1_RGB8_UNORM:
             // Metal only supports the RGBA BC1 variant (see following)
             return {};
-        case SkImage::CompressionType::kBC1_RGBA8_UNORM:
+        case SkTextureCompressionType::kBC1_RGBA8_UNORM:
 #ifdef SK_BUILD_FOR_MAC
             if (this->isMac()) {
                 return GrBackendFormat::MakeMtl(MTLPixelFormatBC1_RGBA);
@@ -1145,13 +1152,13 @@ GrCaps::SupportedWrite GrMtlCaps::supportedWritePixelsColorType(
 GrCaps::SupportedRead GrMtlCaps::onSupportedReadPixelsColorType(
         GrColorType srcColorType, const GrBackendFormat& srcBackendFormat,
         GrColorType dstColorType) const {
-    SkImage::CompressionType compression = GrBackendFormatToCompressionType(srcBackendFormat);
-    if (compression != SkImage::CompressionType::kNone) {
+    SkTextureCompressionType compression = GrBackendFormatToCompressionType(srcBackendFormat);
+    if (compression != SkTextureCompressionType::kNone) {
 #ifdef SK_BUILD_FOR_IOS
         // Reading back to kRGB_888x doesn't work on Metal/iOS (skbug.com/9839)
         return { GrColorType::kUnknown, 0 };
 #else
-        return { SkCompressionTypeIsOpaque(compression) ? GrColorType::kRGB_888x
+        return { SkTextureCompressionTypeIsOpaque(compression) ? GrColorType::kRGB_888x
                                                         : GrColorType::kRGBA_8888, 0 };
 #endif
     }
@@ -1225,7 +1232,7 @@ bool GrMtlCaps::renderTargetSupportsDiscardableMSAA(const GrMtlRenderTarget* rt)
            (rt->numSamples() > 1 && this->preferDiscardableMSAAAttachment());
 }
 
-#if GR_TEST_UTILS
+#if defined(GR_TEST_UTILS)
 std::vector<GrTest::TestFormatColorTypeCombination> GrMtlCaps::getTestingCombinations() const {
     std::vector<GrTest::TestFormatColorTypeCombination> combos = {
         { GrColorType::kAlpha_8,          GrBackendFormat::MakeMtl(MTLPixelFormatA8Unorm)         },
@@ -1267,7 +1274,7 @@ void GrMtlCaps::onDumpJSON(SkJSONWriter* writer) const {
 
     writer->beginObject("Preferred Stencil Format");
     writer->appendS32("stencil bits", GrMtlFormatStencilBits(fPreferredStencilFormat));
-    writer->appendS32("total bytes", GrMtlFormatBytesPerBlock(fPreferredStencilFormat));
+    writer->appendS32("total bytes", skgpu::MtlFormatBytesPerBlock(fPreferredStencilFormat));
     writer->endObject();
 
     switch (fGPUFamily) {

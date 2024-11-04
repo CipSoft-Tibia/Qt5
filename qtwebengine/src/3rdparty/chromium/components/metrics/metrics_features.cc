@@ -5,16 +5,6 @@
 #include "components/metrics/metrics_features.h"
 
 namespace metrics::features {
-BASE_FEATURE(kEmitHistogramsEarlier,
-             "EmitHistogramsEarlier",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
-const base::FeatureParam<bool> kEmitHistogramsForIndependentLogs{
-    &kEmitHistogramsEarlier, "emit_for_independent_logs", true};
-
-BASE_FEATURE(kMetricsServiceAsyncCollection,
-             "MetricsServiceAsyncCollection",
-             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kMetricsServiceAllowEarlyLogClose,
              "MetricsServiceAllowEarlyLogClose",
@@ -24,9 +14,39 @@ BASE_FEATURE(kMetricsClearLogsOnClonedInstall,
              "MetricsClearLogsOnClonedInstall",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
-BASE_FEATURE(kReportingServiceFlushPrefsOnUploadInBackground,
-             "ReportingServiceFlushPrefsOnUploadInBackground",
+BASE_FEATURE(kStructuredMetrics,
+             "EnableStructuredMetrics",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+#if BUILDFLAG(IS_ANDROID)
+BASE_FEATURE(kMergeSubprocessMetricsOnBgAndFg,
+             "MergeSubprocessMetricsOnBgAndFg",
              base::FEATURE_DISABLED_BY_DEFAULT);
-#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+#endif  // BUILDFLAG(IS_ANDROID)
+
+BASE_FEATURE(kRestoreUmaClientIdIndependentLogs,
+             "RestoreUmaClientIdIndependentLogs",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kSubprocessMetricsAsync,
+             "SubprocessMetricsAsync",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+const base::FeatureParam<bool> kPeriodicMergeAsync{&kSubprocessMetricsAsync,
+                                                   "PeriodicMergeAsync", false};
+
+const base::FeatureParam<bool> kDeregisterAsync{&kSubprocessMetricsAsync,
+                                                "DeregisterAsync", false};
+
+const base::FeatureParam<bool> kDeregisterSequenced{
+    &kSubprocessMetricsAsync, "DeregisterSequenced", false};
+
+BASE_FEATURE(kMetricsServiceAsyncIndependentLogs,
+             "MetricsServiceAsyncIndependentLogs",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kFlushPersistentSystemProfileOnWrite,
+             "FlushPersistentSystemProfileOnWrite",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 }  // namespace metrics::features

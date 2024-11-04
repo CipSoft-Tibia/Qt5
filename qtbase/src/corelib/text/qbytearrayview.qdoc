@@ -184,7 +184,7 @@
 */
 
 /*!
-    \fn template <typename Byte> QByteArrayView::QByteArrayView(const Byte *data, qsizetype len)
+    \fn template <typename Byte, QByteArrayView::if_compatible_byte<Byte> = true> QByteArrayView::QByteArrayView(const Byte *data, qsizetype len)
 
     Constructs a byte array view on \a data with length \a len.
 
@@ -202,7 +202,7 @@
 */
 
 /*!
-    \fn template <typename Byte> QByteArrayView::QByteArrayView(const Byte *first, const Byte *last)
+    \fn template <typename Byte, QByteArrayView::if_compatible_byte<Byte> = true> QByteArrayView::QByteArrayView(const Byte *first, const Byte *last)
 
     Constructs a byte array view on \a first with length (\a last - \a first).
 
@@ -270,7 +270,7 @@
 */
 
 /*!
-    \fn template <typename Container> QByteArrayView::QByteArrayView(const Container &c)
+    \fn template <typename Container, QByteArrayView::if_compatible_container<Container> = true> QByteArrayView::QByteArrayView(const Container &c)
 
     Constructs a byte array view on the array-like container \a c. The length and data
     are set via \c{std::size(c)} and \c{std::data(c)} respectively.
@@ -562,8 +562,10 @@
     Returns a byte array view that points to \a n bytes of this byte array
     view, starting at position \a pos.
 
+//! [UB-sliced-index-length]
     \note The behavior is undefined when \a pos < 0, \a n < 0,
     or \a pos + \a n > size().
+//! [UB-sliced-index-length]
 
     \sa first(), last(), chopped(), chop(), truncate()
 */
@@ -574,7 +576,9 @@
     Returns a byte array view starting at position \a pos in this object,
     and extending to its end.
 
+//! [UB-sliced-index-only]
     \note The behavior is undefined when \a pos < 0 or \a pos > size().
+//! [UB-sliced-index-only]
 
     \sa first(), last(), chopped(), chop(), truncate()
 */
@@ -1031,4 +1035,13 @@
     if null QByteArray can legitimately be treated as empty ones.
 
     \sa QByteArray::isNull(), QByteArrayView
+*/
+
+/*!
+    \fn QByteArrayView::operator std::string_view() const
+    \since 6.7
+
+    Converts this QByteArrayView object to a \c{std::string_view} object.
+    The returned view will have the same data pointer and length of
+    this view.
 */

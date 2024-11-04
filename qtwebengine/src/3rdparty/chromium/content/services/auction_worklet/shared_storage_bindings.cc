@@ -11,15 +11,15 @@
 
 #include "content/services/auction_worklet/auction_v8_helper.h"
 #include "content/services/auction_worklet/public/mojom/auction_shared_storage_host.mojom.h"
-#include "gin/arguments.h"
-#include "gin/dictionary.h"
+#include "content/services/auction_worklet/webidl_compat.h"
+#include "gin/converter.h"
 #include "third_party/blink/public/common/shared_storage/shared_storage_utils.h"
 #include "v8/include/v8-exception.h"
 #include "v8/include/v8-external.h"
 #include "v8/include/v8-function-callback.h"
+#include "v8/include/v8-function.h"
 #include "v8/include/v8-local-handle.h"
 #include "v8/include/v8-object.h"
-#include "v8/include/v8-template.h"
 
 namespace auction_worklet {
 
@@ -28,26 +28,6 @@ namespace {
 constexpr char kPermissionsPolicyError[] =
     "The \"shared-storage\" Permissions Policy denied the method on "
     "sharedStorage";
-
-// Convert ECMAScript value to IDL DOMString:
-// https://webidl.spec.whatwg.org/#es-DOMString
-bool ToIDLDOMString(v8::Isolate* isolate,
-                    v8::Local<v8::Value> val,
-                    std::u16string& out) {
-  v8::Local<v8::Context> context = isolate->GetCurrentContext();
-
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
-
-  v8::TryCatch try_catch(isolate);
-
-  v8::Local<v8::String> str;
-  if (!val->ToString(context).ToLocal(&str)) {
-    return false;
-  }
-
-  return gin::ConvertFromV8<std::u16string>(isolate, str, &out);
-}
 
 }  // namespace
 
@@ -64,44 +44,48 @@ SharedStorageBindings::SharedStorageBindings(
 
 SharedStorageBindings::~SharedStorageBindings() = default;
 
-void SharedStorageBindings::FillInGlobalTemplate(
-    v8::Local<v8::ObjectTemplate> global_template) {
+void SharedStorageBindings::AttachToContext(v8::Local<v8::Context> context) {
   v8::Local<v8::External> v8_this =
       v8::External::New(v8_helper_->isolate(), this);
 
-  v8::Local<v8::ObjectTemplate> shared_storage_template =
-      v8::ObjectTemplate::New(v8_helper_->isolate());
+  v8::Local<v8::Object> shared_storage = v8::Object::New(v8_helper_->isolate());
 
-  v8::Local<v8::FunctionTemplate> set_method_template =
-      v8::FunctionTemplate::New(v8_helper_->isolate(),
-                                &SharedStorageBindings::Set, v8_this);
-  set_method_template->RemovePrototype();
-  shared_storage_template->Set(v8_helper_->CreateStringFromLiteral("set"),
-                               set_method_template);
+  v8::Local<v8::Function> set_method_function =
+      v8::Function::New(context, &SharedStorageBindings::Set, v8_this)
+          .ToLocalChecked();
+  shared_storage
+      ->Set(context, v8_helper_->CreateStringFromLiteral("set"),
+            set_method_function)
+      .Check();
 
-  v8::Local<v8::FunctionTemplate> append_method_template =
-      v8::FunctionTemplate::New(v8_helper_->isolate(),
-                                &SharedStorageBindings::Append, v8_this);
-  append_method_template->RemovePrototype();
-  shared_storage_template->Set(v8_helper_->CreateStringFromLiteral("append"),
-                               append_method_template);
+  v8::Local<v8::Function> append_method_function =
+      v8::Function::New(context, &SharedStorageBindings::Append, v8_this)
+          .ToLocalChecked();
+  shared_storage
+      ->Set(context, v8_helper_->CreateStringFromLiteral("append"),
+            append_method_function)
+      .Check();
 
-  v8::Local<v8::FunctionTemplate> delete_method_template =
-      v8::FunctionTemplate::New(v8_helper_->isolate(),
-                                &SharedStorageBindings::Delete, v8_this);
-  delete_method_template->RemovePrototype();
-  shared_storage_template->Set(v8_helper_->CreateStringFromLiteral("delete"),
-                               delete_method_template);
+  v8::Local<v8::Function> delete_method_function =
+      v8::Function::New(context, &SharedStorageBindings::Delete, v8_this)
+          .ToLocalChecked();
+  shared_storage
+      ->Set(context, v8_helper_->CreateStringFromLiteral("delete"),
+            delete_method_function)
+      .Check();
 
-  v8::Local<v8::FunctionTemplate> clear_method_template =
-      v8::FunctionTemplate::New(v8_helper_->isolate(),
-                                &SharedStorageBindings::Clear, v8_this);
-  clear_method_template->RemovePrototype();
-  shared_storage_template->Set(v8_helper_->CreateStringFromLiteral("clear"),
-                               clear_method_template);
+  v8::Local<v8::Function> clear_method_function =
+      v8::Function::New(context, &SharedStorageBindings::Clear, v8_this)
+          .ToLocalChecked();
+  shared_storage
+      ->Set(context, v8_helper_->CreateStringFromLiteral("clear"),
+            clear_method_function)
+      .Check();
 
-  global_template->Set(v8_helper_->CreateStringFromLiteral("sharedStorage"),
-                       shared_storage_template);
+  context->Global()
+      ->Set(context, v8_helper_->CreateStringFromLiteral("sharedStorage"),
+            shared_storage)
+      .Check();
 }
 
 void SharedStorageBindings::Reset() {}
@@ -120,42 +104,44 @@ void SharedStorageBindings::Set(
     return;
   }
 
-  gin::Arguments gin_args = gin::Arguments(args);
-
-  std::vector<v8::Local<v8::Value>> v8_args = gin_args.GetAll();
-
+  AuctionV8Helper::TimeLimitScope time_limit_scope(v8_helper->GetTimeLimit());
+  ArgsConverter args_converter(v8_helper, time_limit_scope,
+                               "sharedStorage.set(): ", &args,
+                               /*min_required_args=*/2);
   std::u16string arg0_key;
-  if (v8_args.size() < 1 || !ToIDLDOMString(isolate, v8_args[0], arg0_key) ||
-      !blink::IsValidSharedStorageKeyStringLength(arg0_key.size())) {
-    isolate->ThrowException(v8::Exception::TypeError(gin::StringToV8(
-        isolate,
-        "Missing or invalid \"key\" argument in sharedStorage.set()")));
-    return;
-  }
-
   std::u16string arg1_value;
-  if (v8_args.size() < 2 || !ToIDLDOMString(isolate, v8_args[1], arg1_value) ||
-      !blink::IsValidSharedStorageValueStringLength(arg1_value.size())) {
-    isolate->ThrowException(v8::Exception::TypeError(gin::StringToV8(
-        isolate,
-        "Missing or invalid \"value\" argument in sharedStorage.set()")));
+  args_converter.ConvertArg(0, "key", arg0_key);
+  args_converter.ConvertArg(1, "value", arg1_value);
+
+  absl::optional<bool> ignore_if_present;
+  if (args_converter.is_success() && args.Length() > 2) {
+    DictConverter options_dict_converter(
+        v8_helper, time_limit_scope, "sharedStorage.set 'options' argument ",
+        args[2]);
+    options_dict_converter.GetOptional("ignoreIfPresent", ignore_if_present);
+    args_converter.SetStatus(options_dict_converter.TakeStatus());
+  }
+
+  if (args_converter.is_failed()) {
+    args_converter.TakeStatus().PropagateErrorsToV8(v8_helper);
     return;
   }
 
-  gin::Dictionary arg2_options_dict = gin::Dictionary::CreateEmpty(isolate);
-
-  if (v8_args.size() > 2) {
-    if (!gin::ConvertFromV8(isolate, v8_args[2], &arg2_options_dict)) {
-      isolate->ThrowException(v8::Exception::TypeError(gin::StringToV8(
-          isolate, "Invalid \"options\" argument in sharedStorage.set()")));
-      return;
-    }
+  // IDL portions of checking done, now do semantic checking.
+  if (!blink::IsValidSharedStorageKeyStringLength(arg0_key.size())) {
+    isolate->ThrowException(v8::Exception::TypeError(gin::StringToV8(
+        isolate, "Invalid 'key' argument in sharedStorage.set()")));
+    return;
   }
 
-  bool ignore_if_present = false;
-  arg2_options_dict.Get<bool>("ignoreIfPresent", &ignore_if_present);
+  if (!blink::IsValidSharedStorageValueStringLength(arg1_value.size())) {
+    isolate->ThrowException(v8::Exception::TypeError(gin::StringToV8(
+        isolate, "Invalid 'value' argument in sharedStorage.set()")));
+    return;
+  }
 
-  bindings->shared_storage_host_->Set(arg0_key, arg1_value, ignore_if_present);
+  bindings->shared_storage_host_->Set(arg0_key, arg1_value,
+                                      ignore_if_present.value_or(false));
 }
 
 // static
@@ -172,25 +158,29 @@ void SharedStorageBindings::Append(
     return;
   }
 
-  gin::Arguments gin_args = gin::Arguments(args);
-
-  std::vector<v8::Local<v8::Value>> v8_args = gin_args.GetAll();
+  AuctionV8Helper::TimeLimitScope time_limit_scope(v8_helper->GetTimeLimit());
+  ArgsConverter args_converter(v8_helper, time_limit_scope,
+                               "sharedStorage.append(): ", &args,
+                               /*min_required_args=*/2);
 
   std::u16string arg0_key;
-  if (v8_args.size() < 1 || !ToIDLDOMString(isolate, v8_args[0], arg0_key) ||
-      !blink::IsValidSharedStorageKeyStringLength(arg0_key.size())) {
-    isolate->ThrowException(v8::Exception::TypeError(gin::StringToV8(
-        isolate,
-        "Missing or invalid \"key\" argument in sharedStorage.append()")));
+  std::u16string arg1_value;
+  if (!args_converter.ConvertArg(0, "key", arg0_key) ||
+      !args_converter.ConvertArg(1, "value", arg1_value)) {
+    args_converter.TakeStatus().PropagateErrorsToV8(v8_helper);
     return;
   }
 
-  std::u16string arg1_value;
-  if (v8_args.size() < 2 || !ToIDLDOMString(isolate, v8_args[1], arg1_value) ||
-      !blink::IsValidSharedStorageValueStringLength(arg1_value.size())) {
+  // IDL portions of checking done, now do semantic checking.
+  if (!blink::IsValidSharedStorageKeyStringLength(arg0_key.size())) {
     isolate->ThrowException(v8::Exception::TypeError(gin::StringToV8(
-        isolate,
-        "Missing or invalid \"value\" argument in sharedStorage.append()")));
+        isolate, "Invalid 'key' argument in sharedStorage.append()")));
+    return;
+  }
+
+  if (!blink::IsValidSharedStorageValueStringLength(arg1_value.size())) {
+    isolate->ThrowException(v8::Exception::TypeError(gin::StringToV8(
+        isolate, "Invalid 'value' argument in sharedStorage.append()")));
     return;
   }
 
@@ -211,16 +201,21 @@ void SharedStorageBindings::Delete(
     return;
   }
 
-  gin::Arguments gin_args = gin::Arguments(args);
-
-  std::vector<v8::Local<v8::Value>> v8_args = gin_args.GetAll();
+  AuctionV8Helper::TimeLimitScope time_limit_scope(v8_helper->GetTimeLimit());
+  ArgsConverter args_converter(v8_helper, time_limit_scope,
+                               "sharedStorage.delete(): ", &args,
+                               /*min_required_args=*/1);
 
   std::u16string arg0_key;
-  if (v8_args.size() < 1 || !ToIDLDOMString(isolate, v8_args[0], arg0_key) ||
-      !blink::IsValidSharedStorageKeyStringLength(arg0_key.size())) {
+  if (!args_converter.ConvertArg(0, "key", arg0_key)) {
+    args_converter.TakeStatus().PropagateErrorsToV8(v8_helper);
+    return;
+  }
+
+  // IDL portions of checking done, now do semantic checking.
+  if (!blink::IsValidSharedStorageKeyStringLength(arg0_key.size())) {
     isolate->ThrowException(v8::Exception::TypeError(gin::StringToV8(
-        isolate,
-        "Missing or invalid \"key\" argument in sharedStorage.delete()")));
+        isolate, "Invalid 'key' argument in sharedStorage.delete()")));
     return;
   }
 

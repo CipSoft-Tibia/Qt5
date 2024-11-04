@@ -63,6 +63,9 @@ FetchParameters CSSImageValue::PrepareFetch(
     FetchParameters::ImageRequestBehavior image_request_behavior,
     CrossOriginAttributeValue cross_origin) const {
   KURL request_url;
+
+  base::TimeTicks discovery_time = base::TimeTicks::Now();
+
   if (potentially_dangling_markup_) {
     // The PotentiallyDanglingMarkup() flag is lost when storing the absolute
     // url as a string from which the KURL is constructed here. The url passed
@@ -106,18 +109,16 @@ FetchParameters CSSImageValue::PrepareFetch(
                                        cross_origin);
   }
 
-  bool is_lazily_loaded =
-      image_request_behavior ==
-          FetchParameters::ImageRequestBehavior::kDeferImageLoad &&
-      // Only http/https images are eligible to be lazily loaded.
-      params.Url().ProtocolIsInHTTPFamily();
-  if (is_lazily_loaded) {
+  if (image_request_behavior ==
+      FetchParameters::ImageRequestBehavior::kDeferImageLoad) {
     params.SetLazyImageDeferred();
   }
 
   if (origin_clean_ != OriginClean::kTrue) {
     params.SetFromOriginDirtyStyleSheet(true);
   }
+
+  params.SetDiscoveryTime(discovery_time);
 
   return params;
 }
@@ -184,6 +185,9 @@ void CSSImageValue::TraceAfterDispatch(blink::Visitor* visitor) const {
 }
 
 void CSSImageValue::ReResolveURL(const Document& document) const {
+  if (relative_url_.empty()) {
+    return;
+  }
   KURL url = document.CompleteURL(relative_url_);
   AtomicString url_string(url.GetString());
   if (url_string == absolute_url_) {

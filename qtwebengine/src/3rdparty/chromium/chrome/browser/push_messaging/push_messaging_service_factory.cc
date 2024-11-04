@@ -41,13 +41,19 @@ PushMessagingServiceImpl* PushMessagingServiceFactory::GetForProfile(
 
 // static
 PushMessagingServiceFactory* PushMessagingServiceFactory::GetInstance() {
-  return base::Singleton<PushMessagingServiceFactory>::get();
+  static base::NoDestructor<PushMessagingServiceFactory> instance;
+  return instance.get();
 }
 
 PushMessagingServiceFactory::PushMessagingServiceFactory()
     : ProfileKeyedServiceFactory(
           "PushMessagingProfileService",
-          ProfileSelections::BuildForRegularAndIncognito()) {
+          ProfileSelections::Builder()
+              .WithRegular(ProfileSelection::kOwnInstance)
+              // TODO(crbug.com/1418376): Check if this service is needed in
+              // Guest mode.
+              .WithGuest(ProfileSelection::kOwnInstance)
+              .Build()) {
   DependsOn(gcm::GCMProfileServiceFactory::GetInstance());
   DependsOn(instance_id::InstanceIDProfileServiceFactory::GetInstance());
 #ifndef TOOLKIT_QT
@@ -62,20 +68,20 @@ PushMessagingServiceFactory::PushMessagingServiceFactory()
 #endif
 }
 
-PushMessagingServiceFactory::~PushMessagingServiceFactory() {}
+PushMessagingServiceFactory::~PushMessagingServiceFactory() = default;
 
 void PushMessagingServiceFactory::RestoreFactoryForTests(
     content::BrowserContext* context) {
-  SetTestingFactory(context,
-                    base::BindRepeating([](content::BrowserContext* context) {
-                      return base::WrapUnique(
-                          GetInstance()->BuildServiceInstanceFor(context));
-                    }));
+  SetTestingFactory(
+      context, base::BindRepeating([](content::BrowserContext* context) {
+        return GetInstance()->BuildServiceInstanceForBrowserContext(context);
+      }));
 }
 
-KeyedService* PushMessagingServiceFactory::BuildServiceInstanceFor(
+std::unique_ptr<KeyedService>
+PushMessagingServiceFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
   Profile* profile = Profile::FromBrowserContext(context);
   CHECK(!profile->IsOffTheRecord());
-  return new PushMessagingServiceImpl(profile);
+  return std::make_unique<PushMessagingServiceImpl>(profile);
 }

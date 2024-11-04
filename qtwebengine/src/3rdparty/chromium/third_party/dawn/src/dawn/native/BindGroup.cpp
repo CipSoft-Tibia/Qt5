@@ -19,7 +19,7 @@
 #include "dawn/common/ityp_bitset.h"
 #include "dawn/native/BindGroupLayout.h"
 #include "dawn/native/Buffer.h"
-#include "dawn/native/ChainUtils_autogen.h"
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/CommandValidation.h"
 #include "dawn/native/Device.h"
 #include "dawn/native/ExternalTexture.h"
@@ -63,7 +63,7 @@ MaybeError ValidateBufferBinding(const DeviceBase* device,
                     "Binding size (%u) is larger than the size (%u) of %s.", bindingSize,
                     bufferSize, entry.buffer);
 
-    DAWN_INVALID_IF(bindingSize == 0, "Binding size is zero");
+    DAWN_INVALID_IF(bindingSize == 0, "Binding size for %s is zero.", entry.buffer);
 
     // Note that no overflow can happen because we already checked that
     // bufferSize >= bindingSize
@@ -85,9 +85,10 @@ MaybeError ValidateBufferBinding(const DeviceBase* device,
             requiredUsage = wgpu::BufferUsage::Storage;
             maxBindingSize = device->GetLimits().v1.maxStorageBufferBindingSize;
             requiredBindingAlignment = device->GetLimits().v1.minStorageBufferOffsetAlignment;
-            DAWN_INVALID_IF(bindingSize % 4 != 0,
-                            "Binding size (%u) isn't a multiple of 4 when binding type is (%s).",
-                            bindingSize, bindingInfo.buffer.type);
+            DAWN_INVALID_IF(
+                bindingSize % 4 != 0,
+                "Binding size (%u) of %s isn't a multiple of 4 when binding type is (%s).",
+                bindingSize, entry.buffer, bindingInfo.buffer.type);
             break;
         case kInternalStorageBufferBinding:
             requiredUsage = kInternalStorageBuffer;
@@ -99,20 +100,20 @@ MaybeError ValidateBufferBinding(const DeviceBase* device,
     }
 
     DAWN_INVALID_IF(!IsAligned(entry.offset, requiredBindingAlignment),
-                    "Offset (%u) does not satisfy the minimum %s alignment (%u).", entry.offset,
-                    bindingInfo.buffer.type, requiredBindingAlignment);
+                    "Offset (%u) of %s does not satisfy the minimum %s alignment (%u).",
+                    entry.offset, entry.buffer, bindingInfo.buffer.type, requiredBindingAlignment);
 
     DAWN_INVALID_IF(!(entry.buffer->GetUsage() & requiredUsage),
                     "Binding usage (%s) of %s doesn't match expected usage (%s).",
                     entry.buffer->GetUsageExternalOnly(), entry.buffer, requiredUsage);
 
     DAWN_INVALID_IF(bindingSize < bindingInfo.buffer.minBindingSize,
-                    "Binding size (%u) is smaller than the minimum binding size (%u).", bindingSize,
-                    bindingInfo.buffer.minBindingSize);
+                    "Binding size (%u) of %s is smaller than the minimum binding size (%u).",
+                    bindingSize, entry.buffer, bindingInfo.buffer.minBindingSize);
 
     DAWN_INVALID_IF(bindingSize > maxBindingSize,
-                    "Binding size (%u) is larger than the maximum binding size (%u).", bindingSize,
-                    maxBindingSize);
+                    "Binding size (%u) of %s is larger than the maximum binding size (%u).",
+                    bindingSize, entry.buffer, maxBindingSize);
 
     return {};
 }
@@ -140,13 +141,20 @@ MaybeError ValidateTextureBinding(DeviceBase* device,
         case BindingInfoType::Texture: {
             SampleTypeBit supportedTypes =
                 texture->GetFormat().GetAspectInfo(aspect).supportedSampleTypes;
-            SampleTypeBit requiredType = SampleTypeToSampleTypeBit(bindingInfo.texture.sampleType);
-
             DAWN_TRY(ValidateCanUseAs(texture, wgpu::TextureUsage::TextureBinding, mode));
 
             DAWN_INVALID_IF(texture->IsMultisampledTexture() != bindingInfo.texture.multisampled,
                             "Sample count (%u) of %s doesn't match expectation (multisampled: %d).",
                             texture->GetSampleCount(), texture, bindingInfo.texture.multisampled);
+
+            SampleTypeBit requiredType;
+            if (bindingInfo.texture.sampleType == kInternalResolveAttachmentSampleType) {
+                // If the binding's sample type is kInternalResolveAttachmentSampleType,
+                // then the supported types must contain float.
+                requiredType = SampleTypeBit::UnfilterableFloat;
+            } else {
+                requiredType = SampleTypeToSampleTypeBit(bindingInfo.texture.sampleType);
+            }
 
             DAWN_INVALID_IF(
                 !(supportedTypes & requiredType),
@@ -253,6 +261,16 @@ MaybeError ValidateExternalTextureBinding(
     return {};
 }
 
+template <typename F>
+void ForEachUnverifiedBufferBindingIndexImpl(const BindGroupLayoutInternalBase* bgl, F&& f) {
+    uint32_t packedIndex = 0;
+    for (BindingIndex bindingIndex{0}; bindingIndex < bgl->GetBufferCount(); ++bindingIndex) {
+        if (bgl->GetBindingInfo(bindingIndex).buffer.minBindingSize == 0) {
+            f(bindingIndex, packedIndex++);
+        }
+    }
+}
+
 }  // anonymous namespace
 
 MaybeError ValidateBindGroupDescriptor(DeviceBase* device,
@@ -262,14 +280,15 @@ MaybeError ValidateBindGroupDescriptor(DeviceBase* device,
 
     DAWN_TRY(device->ValidateObject(descriptor->layout));
 
+    BindGroupLayoutInternalBase* layout = descriptor->layout->GetInternalBindGroupLayout();
     DAWN_INVALID_IF(
-        descriptor->entryCount != descriptor->layout->GetUnexpandedBindingCount(),
+        descriptor->entryCount != layout->GetUnexpandedBindingCount(),
         "Number of entries (%u) did not match the number of entries (%u) specified in %s."
         "\nExpected layout: %s",
-        descriptor->entryCount, static_cast<uint32_t>(descriptor->layout->GetBindingCount()),
-        descriptor->layout, descriptor->layout->EntriesToString());
+        descriptor->entryCount, static_cast<uint32_t>(layout->GetBindingCount()), layout,
+        layout->EntriesToString());
 
-    const BindGroupLayoutBase::BindingMap& bindingMap = descriptor->layout->GetBindingMap();
+    const BindGroupLayoutInternalBase::BindingMap& bindingMap = layout->GetBindingMap();
     ASSERT(bindingMap.size() <= kMaxBindingsPerPipelineLayout);
 
     ityp::bitset<BindingIndex, kMaxBindingsPerPipelineLayout> bindingsSet;
@@ -280,10 +299,10 @@ MaybeError ValidateBindGroupDescriptor(DeviceBase* device,
         DAWN_INVALID_IF(it == bindingMap.end(),
                         "In entries[%u], binding index %u not present in the bind group layout."
                         "\nExpected layout: %s",
-                        i, entry.binding, descriptor->layout->EntriesToString());
+                        i, entry.binding, layout->EntriesToString());
 
         BindingIndex bindingIndex = it->second;
-        ASSERT(bindingIndex < descriptor->layout->GetBindingCount());
+        ASSERT(bindingIndex < layout->GetBindingCount());
 
         DAWN_INVALID_IF(bindingsSet[bindingIndex],
                         "In entries[%u], binding index %u already used by a previous entry", i,
@@ -301,19 +320,19 @@ MaybeError ValidateBindGroupDescriptor(DeviceBase* device,
         const ExternalTextureBindingEntry* externalTextureBindingEntry = nullptr;
         FindInChain(entry.nextInChain, &externalTextureBindingEntry);
         if (externalTextureBindingEntry != nullptr) {
-            DAWN_TRY(ValidateExternalTextureBinding(
-                device, entry, externalTextureBindingEntry,
-                descriptor->layout->GetExternalTextureBindingExpansionMap()));
+            DAWN_TRY(
+                ValidateExternalTextureBinding(device, entry, externalTextureBindingEntry,
+                                               layout->GetExternalTextureBindingExpansionMap()));
             continue;
         } else {
-            DAWN_INVALID_IF(descriptor->layout->GetExternalTextureBindingExpansionMap().count(
-                                BindingNumber(entry.binding)),
-                            "entries[%u] is not an ExternalTexture when the layout contains an "
-                            "ExternalTexture entry.",
-                            i);
+            DAWN_INVALID_IF(
+                layout->GetExternalTextureBindingExpansionMap().count(BindingNumber(entry.binding)),
+                "entries[%u] is not an ExternalTexture when the layout contains an "
+                "ExternalTexture entry.",
+                i);
         }
 
-        const BindingInfo& bindingInfo = descriptor->layout->GetBindingInfo(bindingIndex);
+        const BindingInfo& bindingInfo = layout->GetBindingInfo(bindingIndex);
 
         // Perform binding-type specific validation.
         switch (bindingInfo.bindingType) {
@@ -348,10 +367,10 @@ MaybeError ValidateBindGroupDescriptor(DeviceBase* device,
     //  - Each binding must be set at most once
     //
     // We don't validate the equality because it wouldn't be possible to cover it with a test.
-    ASSERT(bindingsSet.count() == descriptor->layout->GetUnexpandedBindingCount());
+    ASSERT(bindingsSet.count() == layout->GetUnexpandedBindingCount());
 
     return {};
-}  // anonymous namespace
+}
 
 // BindGroup
 
@@ -360,8 +379,10 @@ BindGroupBase::BindGroupBase(DeviceBase* device,
                              void* bindingDataStart)
     : ApiObjectBase(device, descriptor->label),
       mLayout(descriptor->layout),
-      mBindingData(mLayout->ComputeBindingDataPointers(bindingDataStart)) {
-    for (BindingIndex i{0}; i < mLayout->GetBindingCount(); ++i) {
+      mBindingData(GetLayout()->ComputeBindingDataPointers(bindingDataStart)) {
+    BindGroupLayoutInternalBase* layout = GetLayout();
+
+    for (BindingIndex i{0}; i < layout->GetBindingCount(); ++i) {
         // TODO(enga): Shouldn't be needed when bindings are tightly packed.
         // This is to fill Ref<ObjectBase> holes with nullptrs.
         new (&mBindingData.bindings[i]) Ref<ObjectBase>();
@@ -370,9 +391,8 @@ BindGroupBase::BindGroupBase(DeviceBase* device,
     for (uint32_t i = 0; i < descriptor->entryCount; ++i) {
         const BindGroupEntry& entry = descriptor->entries[i];
 
-        BindingIndex bindingIndex =
-            descriptor->layout->GetBindingIndex(BindingNumber(entry.binding));
-        ASSERT(bindingIndex < mLayout->GetBindingCount());
+        BindingIndex bindingIndex = layout->GetBindingIndex(BindingNumber(entry.binding));
+        ASSERT(bindingIndex < layout->GetBindingCount());
 
         // Only a single binding type should be set, so once we found it we can skip to the
         // next loop iteration.
@@ -410,18 +430,15 @@ BindGroupBase::BindGroupBase(DeviceBase* device,
             mBoundExternalTextures.push_back(externalTextureBindingEntry->externalTexture);
 
             ExternalTextureBindingExpansionMap expansions =
-                mLayout->GetExternalTextureBindingExpansionMap();
+                layout->GetExternalTextureBindingExpansionMap();
             ExternalTextureBindingExpansionMap::iterator it =
                 expansions.find(BindingNumber(entry.binding));
 
             ASSERT(it != expansions.end());
 
-            BindingIndex plane0BindingIndex =
-                descriptor->layout->GetBindingIndex(it->second.plane0);
-            BindingIndex plane1BindingIndex =
-                descriptor->layout->GetBindingIndex(it->second.plane1);
-            BindingIndex paramsBindingIndex =
-                descriptor->layout->GetBindingIndex(it->second.params);
+            BindingIndex plane0BindingIndex = layout->GetBindingIndex(it->second.plane0);
+            BindingIndex plane1BindingIndex = layout->GetBindingIndex(it->second.plane1);
+            BindingIndex paramsBindingIndex = layout->GetBindingIndex(it->second.params);
 
             ASSERT(mBindingData.bindings[plane0BindingIndex] == nullptr);
 
@@ -437,21 +454,17 @@ BindGroupBase::BindGroupBase(DeviceBase* device,
                 externalTextureBindingEntry->externalTexture->GetParamsBuffer();
             mBindingData.bufferData[paramsBindingIndex].offset = 0;
             mBindingData.bufferData[paramsBindingIndex].size =
-                sizeof(dawn_native::ExternalTextureParams);
+                sizeof(dawn::native::ExternalTextureParams);
 
             continue;
         }
     }
 
-    uint32_t packedIdx = 0;
-    for (BindingIndex bindingIndex{0}; bindingIndex < descriptor->layout->GetBufferCount();
-         ++bindingIndex) {
-        if (descriptor->layout->GetBindingInfo(bindingIndex).buffer.minBindingSize == 0) {
-            mBindingData.unverifiedBufferSizes[packedIdx] =
-                mBindingData.bufferData[bindingIndex].size;
-            ++packedIdx;
-        }
-    }
+    ForEachUnverifiedBufferBindingIndexImpl(layout,
+                                            [&](BindingIndex bindingIndex, uint32_t packedIndex) {
+                                                mBindingData.unverifiedBufferSizes[packedIndex] =
+                                                    mBindingData.bufferData[bindingIndex].size;
+                                            });
 
     GetObjectTrackingList()->Track(this);
 }
@@ -461,7 +474,7 @@ BindGroupBase::~BindGroupBase() = default;
 void BindGroupBase::DestroyImpl() {
     if (mLayout != nullptr) {
         ASSERT(!IsError());
-        for (BindingIndex i{0}; i < mLayout->GetBindingCount(); ++i) {
+        for (BindingIndex i{0}; i < GetLayout()->GetBindingCount(); ++i) {
             mBindingData.bindings[i].~Ref<ObjectBase>();
         }
     }
@@ -475,26 +488,36 @@ void BindGroupBase::DeleteThis() {
     ApiObjectBase::DeleteThis();
 }
 
-BindGroupBase::BindGroupBase(DeviceBase* device, ObjectBase::ErrorTag tag)
-    : ApiObjectBase(device, tag), mBindingData() {}
+BindGroupBase::BindGroupBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label)
+    : ApiObjectBase(device, tag, label), mBindingData() {}
 
 // static
-BindGroupBase* BindGroupBase::MakeError(DeviceBase* device) {
-    return new BindGroupBase(device, ObjectBase::kError);
+BindGroupBase* BindGroupBase::MakeError(DeviceBase* device, const char* label) {
+    return new BindGroupBase(device, ObjectBase::kError, label);
 }
 
 ObjectType BindGroupBase::GetType() const {
     return ObjectType::BindGroup;
 }
 
-BindGroupLayoutBase* BindGroupBase::GetLayout() {
+BindGroupLayoutBase* BindGroupBase::GetFrontendLayout() {
     ASSERT(!IsError());
     return mLayout.Get();
 }
 
-const BindGroupLayoutBase* BindGroupBase::GetLayout() const {
+const BindGroupLayoutBase* BindGroupBase::GetFrontendLayout() const {
     ASSERT(!IsError());
     return mLayout.Get();
+}
+
+BindGroupLayoutInternalBase* BindGroupBase::GetLayout() {
+    ASSERT(!IsError());
+    return mLayout->GetInternalBindGroupLayout();
+}
+
+const BindGroupLayoutInternalBase* BindGroupBase::GetLayout() const {
+    ASSERT(!IsError());
+    return mLayout->GetInternalBindGroupLayout();
 }
 
 const ityp::span<uint32_t, uint64_t>& BindGroupBase::GetUnverifiedBufferSizes() const {
@@ -504,8 +527,9 @@ const ityp::span<uint32_t, uint64_t>& BindGroupBase::GetUnverifiedBufferSizes() 
 
 BufferBinding BindGroupBase::GetBindingAsBufferBinding(BindingIndex bindingIndex) {
     ASSERT(!IsError());
-    ASSERT(bindingIndex < mLayout->GetBindingCount());
-    ASSERT(mLayout->GetBindingInfo(bindingIndex).bindingType == BindingInfoType::Buffer);
+    const BindGroupLayoutInternalBase* layout = GetLayout();
+    ASSERT(bindingIndex < layout->GetBindingCount());
+    ASSERT(layout->GetBindingInfo(bindingIndex).bindingType == BindingInfoType::Buffer);
     BufferBase* buffer = static_cast<BufferBase*>(mBindingData.bindings[bindingIndex].Get());
     return {buffer, mBindingData.bufferData[bindingIndex].offset,
             mBindingData.bufferData[bindingIndex].size};
@@ -513,21 +537,28 @@ BufferBinding BindGroupBase::GetBindingAsBufferBinding(BindingIndex bindingIndex
 
 SamplerBase* BindGroupBase::GetBindingAsSampler(BindingIndex bindingIndex) const {
     ASSERT(!IsError());
-    ASSERT(bindingIndex < mLayout->GetBindingCount());
-    ASSERT(mLayout->GetBindingInfo(bindingIndex).bindingType == BindingInfoType::Sampler);
+    const BindGroupLayoutInternalBase* layout = GetLayout();
+    ASSERT(bindingIndex < layout->GetBindingCount());
+    ASSERT(layout->GetBindingInfo(bindingIndex).bindingType == BindingInfoType::Sampler);
     return static_cast<SamplerBase*>(mBindingData.bindings[bindingIndex].Get());
 }
 
 TextureViewBase* BindGroupBase::GetBindingAsTextureView(BindingIndex bindingIndex) {
     ASSERT(!IsError());
-    ASSERT(bindingIndex < mLayout->GetBindingCount());
-    ASSERT(mLayout->GetBindingInfo(bindingIndex).bindingType == BindingInfoType::Texture ||
-           mLayout->GetBindingInfo(bindingIndex).bindingType == BindingInfoType::StorageTexture);
+    const BindGroupLayoutInternalBase* layout = GetLayout();
+    ASSERT(bindingIndex < layout->GetBindingCount());
+    ASSERT(layout->GetBindingInfo(bindingIndex).bindingType == BindingInfoType::Texture ||
+           layout->GetBindingInfo(bindingIndex).bindingType == BindingInfoType::StorageTexture);
     return static_cast<TextureViewBase*>(mBindingData.bindings[bindingIndex].Get());
 }
 
 const std::vector<Ref<ExternalTextureBase>>& BindGroupBase::GetBoundExternalTextures() const {
     return mBoundExternalTextures;
+}
+
+void BindGroupBase::ForEachUnverifiedBufferBindingIndex(
+    std::function<void(BindingIndex, uint32_t)> fn) const {
+    ForEachUnverifiedBufferBindingIndexImpl(GetLayout(), fn);
 }
 
 }  // namespace dawn::native

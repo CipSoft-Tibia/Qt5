@@ -4,13 +4,13 @@
 
 #include "components/metrics/structured/external_metrics.h"
 
-#include <sys/file.h>
-
 #include "base/containers/fixed_flat_set.h"
+#include "base/files/dir_reader_posix.h"
 #include "base/files/file.h"
-#include "base/files/file_enumerator.h"
 #include "base/files/file_util.h"
 #include "base/logging.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_split.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
@@ -19,9 +19,21 @@
 #include "components/metrics/structured/storage.pb.h"
 #include "components/metrics/structured/structured_metrics_features.h"
 
-namespace metrics {
-namespace structured {
+namespace metrics::structured {
 namespace {
+
+void FilterEvents(
+    google::protobuf::RepeatedPtrField<metrics::StructuredEventProto>* events,
+    const base::flat_set<uint64_t>& disallowed_projects) {
+  auto it = events->begin();
+  while (it != events->end()) {
+    if (disallowed_projects.contains(it->project_name_hash())) {
+      it = events->erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
 
 // TODO(b/181724341): Remove this once the bluetooth metrics are fully enabled.
 void MaybeFilterBluetoothEvents(
@@ -41,8 +53,9 @@ void MaybeFilterBluetoothEvents(
            // BluetoothDeviceInfoReport
            UINT64_C(1506471670382892394)});
 
-  if (base::FeatureList::IsEnabled(kBluetoothSessionizedMetrics))
+  if (base::FeatureList::IsEnabled(kBluetoothSessionizedMetrics)) {
     return;
+  }
 
   // Remove all bluetooth events.
   auto it = events->begin();
@@ -55,42 +68,74 @@ void MaybeFilterBluetoothEvents(
   }
 }
 
-EventsProto ReadAndDeleteEvents(const base::FilePath& directory) {
+bool FilterProto(EventsProto* proto,
+                 const base::flat_set<uint64_t>& disallowed_projects) {
+  FilterEvents(proto->mutable_uma_events(), disallowed_projects);
+  FilterEvents(proto->mutable_non_uma_events(), disallowed_projects);
+  return proto->uma_events_size() > 0 || proto->non_uma_events_size() > 0;
+}
+
+EventsProto ReadAndDeleteEvents(
+    const base::FilePath& directory,
+    const base::flat_set<uint64_t>& disallowed_projects,
+    bool recording_enabled) {
   base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
                                                 base::BlockingType::MAY_BLOCK);
   EventsProto result;
-  if (!base::DirectoryExists(directory))
+  if (!base::DirectoryExists(directory)) {
     return result;
+  }
 
-  base::FileEnumerator enumerator(directory, false,
-                                  base::FileEnumerator::FILES);
+  base::DirReaderPosix dir_reader(directory.value().c_str());
+  if (!dir_reader.IsValid()) {
+    VLOG(2) << "Failed to load External Metrics directory: " << directory;
+    return result;
+  }
+
   int file_counter = 0;
+  int dropped_events = 0;
 
-  for (base::FilePath path = enumerator.Next(); !path.empty();
-       path = enumerator.Next()) {
-    std::string proto_str;
-    int64_t file_size;
-    EventsProto proto;
+  while (dir_reader.Next()) {
+    base::FilePath path = directory.Append(dir_reader.name());
+    base::File file(path, base::File::FLAG_OPEN | base::File::FLAG_OPEN_ALWAYS);
+
+    // This will fail on '.' and '..' files.
+    if (!file.IsValid()) {
+      continue;
+    }
+
+    // Ignore any directory.
+    base::File::Info info;
+    if (!file.GetInfo(&info) || info.is_directory) {
+      continue;
+    }
 
     ++file_counter;
 
     // There may be too many messages in the directory to hold in-memory. This
-    // could happen if the process in which Structured metrics resides is either
-    // crash-looping or taking too long to process externally recorded events.
+    // could happen if the process in which Structured metrics resides is
+    // either crash-looping or taking too long to process externally recorded
+    // events.
     //
     // Events will be dropped in that case so that more recent events can be
-    // processed.
-    if (file_counter > GetFileLimitPerScan()) {
+    // processed. Events will be dropped if recording has been disabled.
+    if (!recording_enabled || file_counter > GetFileLimitPerScan()) {
       base::DeleteFile(path);
+      ++dropped_events;
       continue;
     }
+
+    std::string proto_str;
+    int64_t file_size;
+    EventsProto proto;
 
     // If an event is abnormally large, ignore it to prevent OOM.
     bool fs_ok = base::GetFileSize(path, &file_size);
 
     // If file size get is successful, log the file size.
-    if (fs_ok)
+    if (fs_ok) {
       LogEventFileSizeKB(static_cast<int>(file_size / 1024));
+    }
 
     if (!fs_ok || file_size > GetFileSizeByteLimit()) {
       base::DeleteFile(path);
@@ -101,19 +146,29 @@ EventsProto ReadAndDeleteEvents(const base::FilePath& directory) {
                    proto.ParseFromString(proto_str);
     base::DeleteFile(path);
 
-    if (!read_ok)
+    if (!read_ok) {
       continue;
+    }
 
-    // MergeFrom performs a copy that could be a move if done manually. But all
-    // the protos here are expected to be small, so let's keep it simple.
+    if (!FilterProto(&proto, disallowed_projects)) {
+      continue;
+    }
+
+    // MergeFrom performs a copy that could be a move if done manually. But
+    // all the protos here are expected to be small, so let's keep it simple.
     result.mutable_uma_events()->MergeFrom(proto.uma_events());
     result.mutable_non_uma_events()->MergeFrom(proto.non_uma_events());
+  }
+
+  if (recording_enabled) {
+    LogDroppedExternalMetrics(dropped_events);
   }
 
   LogNumFilesPerExternalMetricsScan(file_counter);
 
   MaybeFilterBluetoothEvents(result.mutable_uma_events());
   MaybeFilterBluetoothEvents(result.mutable_non_uma_events());
+
   return result;
 }
 
@@ -129,6 +184,7 @@ ExternalMetrics::ExternalMetrics(const base::FilePath& events_directory,
           {base::TaskPriority::BEST_EFFORT, base::MayBlock(),
            base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN})) {
   ScheduleCollector();
+  CacheDisallowedProjectsSet();
 }
 
 ExternalMetrics::~ExternalMetrics() = default;
@@ -148,9 +204,39 @@ void ExternalMetrics::ScheduleCollector() {
 
 void ExternalMetrics::CollectEvents() {
   task_runner_->PostTaskAndReplyWithResult(
-      FROM_HERE, base::BindOnce(&ReadAndDeleteEvents, events_directory_),
+      FROM_HERE,
+      base::BindOnce(&ReadAndDeleteEvents, events_directory_,
+                     disallowed_projects_, recording_enabled_),
       base::BindOnce(callback_));
 }
 
-}  // namespace structured
-}  // namespace metrics
+void ExternalMetrics::CacheDisallowedProjectsSet() {
+  const std::string& disallowed_list = GetDisabledProjects();
+  if (disallowed_list.empty()) {
+    return;
+  }
+
+  for (const auto& value :
+       base::SplitString(disallowed_list, ",", base::TRIM_WHITESPACE,
+                         base::SPLIT_WANT_NONEMPTY)) {
+    uint64_t project_name_hash;
+    // Parse the string and keep only perfect conversions.
+    if (base::StringToUint64(value, &project_name_hash)) {
+      disallowed_projects_.insert(project_name_hash);
+    }
+  }
+}
+
+void ExternalMetrics::AddDisallowedProjectForTest(uint64_t project_name_hash) {
+  disallowed_projects_.insert(project_name_hash);
+}
+
+void ExternalMetrics::EnableRecording() {
+  recording_enabled_ = true;
+}
+
+void ExternalMetrics::DisableRecording() {
+  recording_enabled_ = false;
+}
+
+}  // namespace metrics::structured

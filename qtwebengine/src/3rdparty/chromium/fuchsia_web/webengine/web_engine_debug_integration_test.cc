@@ -6,15 +6,16 @@
 #include <lib/fidl/cpp/binding.h>
 #include <lib/fidl/cpp/binding_set.h>
 
+#include "base/containers/contains.h"
 #include "base/fuchsia/file_utils.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_future.h"
 #include "fuchsia_web/common/test/fit_adapter.h"
 #include "fuchsia_web/common/test/frame_test_util.h"
+#include "fuchsia_web/common/test/test_debug_listener.h"
 #include "fuchsia_web/common/test/test_devtools_list_fetcher.h"
 #include "fuchsia_web/common/test/test_navigation_listener.h"
 #include "fuchsia_web/webengine/test/context_provider_for_test.h"
-#include "fuchsia_web/webengine/test_debug_listener.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -26,7 +27,10 @@ const char kTestServerRoot[] = "fuchsia_web/webengine/test/data";
 
 class WebEngineDebugIntegrationTest : public testing::Test {
  public:
-  WebEngineDebugIntegrationTest() {
+  WebEngineDebugIntegrationTest()
+      : web_context_provider_(ContextProviderForDebugTest::Create(
+            base::CommandLine(base::CommandLine::NO_PROGRAM))),
+        dev_tools_listener_binding_(&dev_tools_listener_) {
     web_context_provider_.ptr().set_error_handler(
         [](zx_status_t status) { FAIL() << zx_status_get_string(status); });
   }
@@ -53,11 +57,9 @@ class WebEngineDebugIntegrationTest : public testing::Test {
   base::test::SingleThreadTaskEnvironment task_environment_{
       base::test::SingleThreadTaskEnvironment::MainThreadType::IO};
 
-  ContextProviderForDebugTest web_context_provider_{
-      base::CommandLine(base::CommandLine::NO_PROGRAM)};
+  ContextProviderForDebugTest web_context_provider_;
   TestDebugListener dev_tools_listener_;
-  fidl::Binding<fuchsia::web::DevToolsListener> dev_tools_listener_binding_{
-      &dev_tools_listener_};
+  fidl::Binding<fuchsia::web::DevToolsListener> dev_tools_listener_binding_;
   fuchsia::web::DebugSyncPtr debug_;
 
   base::OnceClosure on_url_fetch_complete_ack_;
@@ -121,13 +123,14 @@ TEST_F(WebEngineDebugIntegrationTest, DebugService) {
       GetDevToolsListFromPort(*dev_tools_listener_.debug_ports().begin());
   EXPECT_EQ(devtools_list.size(), 1u);
 
-  base::Value* devtools_url = devtools_list[0].FindPath("url");
-  ASSERT_TRUE(devtools_url->is_string());
-  EXPECT_EQ(devtools_url->GetString(), url);
+  const auto& devtools_dict = devtools_list[0].GetDict();
+  const auto* devtools_url = devtools_dict.FindString("url");
+  ASSERT_TRUE(devtools_url);
+  EXPECT_EQ(*devtools_url, url);
 
-  base::Value* devtools_title = devtools_list[0].FindPath("title");
-  ASSERT_TRUE(devtools_title->is_string());
-  EXPECT_EQ(devtools_title->GetString(), "title 1");
+  const auto* devtools_title = devtools_dict.FindString("title");
+  ASSERT_TRUE(devtools_title);
+  EXPECT_EQ(*devtools_title, "title 1");
 
   // Unbind the context and wait for the listener to no longer have any active
   // DevTools port.
@@ -148,13 +151,14 @@ TEST_F(WebEngineDebugIntegrationTest, MultipleDebugClients) {
   base::Value::List devtools_list1 = GetDevToolsListFromPort(port1);
   EXPECT_EQ(devtools_list1.size(), 1u);
 
-  base::Value* devtools_url1 = devtools_list1[0].FindPath("url");
-  ASSERT_TRUE(devtools_url1->is_string());
-  EXPECT_EQ(devtools_url1->GetString(), url1);
+  const auto& devtools_dict1 = devtools_list1[0].GetDict();
+  const auto* devtools_url1 = devtools_dict1.FindString("url");
+  ASSERT_TRUE(devtools_url1);
+  EXPECT_EQ(*devtools_url1, url1);
 
-  base::Value* devtools_title1 = devtools_list1[0].FindPath("title");
-  ASSERT_TRUE(devtools_title1->is_string());
-  EXPECT_EQ(devtools_title1->GetString(), "title 1");
+  const auto* devtools_title1 = devtools_dict1.FindString("title");
+  ASSERT_TRUE(devtools_title1);
+  EXPECT_EQ(*devtools_title1, "title 1");
 
   // Connect a second Debug interface.
   fuchsia::web::DebugSyncPtr debug2;
@@ -177,19 +181,19 @@ TEST_F(WebEngineDebugIntegrationTest, MultipleDebugClients) {
 
   uint16_t port2 = *dev_tools_listener2.debug_ports().begin();
   ASSERT_NE(port1, port2);
-  ASSERT_NE(dev_tools_listener_.debug_ports().find(port2),
-            dev_tools_listener_.debug_ports().end());
+  ASSERT_TRUE(base::Contains(dev_tools_listener_.debug_ports(), port2));
 
   base::Value::List devtools_list2 = GetDevToolsListFromPort(port2);
   EXPECT_EQ(devtools_list2.size(), 1u);
 
-  base::Value* devtools_url2 = devtools_list2[0].FindPath("url");
-  ASSERT_TRUE(devtools_url2->is_string());
-  EXPECT_EQ(devtools_url2->GetString(), url2);
+  const auto& devtools_dict2 = devtools_list2[0].GetDict();
+  const auto* devtools_url2 = devtools_dict2.FindString("url");
+  ASSERT_TRUE(devtools_url2);
+  EXPECT_EQ(*devtools_url2, url2);
 
-  base::Value* devtools_title2 = devtools_list2[0].FindPath("title");
-  ASSERT_TRUE(devtools_title2->is_string());
-  EXPECT_EQ(devtools_title2->GetString(), "title 2");
+  const auto* devtools_title2 = devtools_dict2.FindString("title");
+  ASSERT_TRUE(devtools_title2);
+  EXPECT_EQ(*devtools_title2, "title 2");
 
   // Unbind the first Context, each listener should still have one open port.
   frame_data1.context.Unbind();
@@ -227,13 +231,14 @@ TEST_F(WebEngineDebugIntegrationTest, DebugAndUserService) {
       GetDevToolsListFromPort(remote_debugging_port);
   EXPECT_EQ(devtools_list.size(), 1u);
 
-  base::Value* devtools_url = devtools_list[0].FindPath("url");
-  ASSERT_TRUE(devtools_url->is_string());
-  EXPECT_EQ(devtools_url->GetString(), url);
+  const auto& devtools_dict = devtools_list[0].GetDict();
+  const auto* devtools_url = devtools_dict.FindString("url");
+  ASSERT_TRUE(devtools_url);
+  EXPECT_EQ(*devtools_url, url);
 
-  base::Value* devtools_title = devtools_list[0].FindPath("title");
-  ASSERT_TRUE(devtools_title->is_string());
-  EXPECT_EQ(devtools_title->GetString(), "title 1");
+  const auto* devtools_title = devtools_dict.FindString("title");
+  ASSERT_TRUE(devtools_title);
+  EXPECT_EQ(*devtools_title, "title 1");
 
   // Unbind the context and wait for the listener to no longer have any active
   // DevTools port.

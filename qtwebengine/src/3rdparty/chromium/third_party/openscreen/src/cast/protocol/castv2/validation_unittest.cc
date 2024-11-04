@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <numeric>
 #include <string>
+#include <string_view>
 
-#include "absl/strings/string_view.h"
 #include "cast/protocol/castv2/receiver_examples/get_app_availability_data.h"
 #include "cast/protocol/castv2/receiver_examples/get_app_availability_response_data.h"
 #include "cast/protocol/castv2/receiver_examples/launch_data.h"
@@ -29,8 +29,7 @@
 #include "util/std_util.h"
 #include "util/stringprintf.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -70,7 +69,7 @@ std::string BuildSchema(const char* definitions,
   return StringPrintf(kSchemaFormat, definitions, properties, required);
 }
 
-bool TestValidate(absl::string_view document, absl::string_view schema) {
+bool TestValidate(std::string_view document, std::string_view schema) {
   ErrorOr<Json::Value> document_root = json::Parse(document);
   EXPECT_TRUE(document_root.is_value());
   ErrorOr<Json::Value> schema_root = json::Parse(schema);
@@ -155,5 +154,4 @@ TEST_P(ReceiverValidationTest, ExampleReceiverMessages) {
   EXPECT_TRUE(message_root.is_value());
   EXPECT_TRUE(ValidateReceiverMessage(message_root.value()).empty());
 }
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

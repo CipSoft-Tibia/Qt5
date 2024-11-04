@@ -248,6 +248,7 @@ std::unique_ptr<MediaCodecBridge> MediaCodecBridgeImpl::CreateVideoDecoder(
         config.container_color_space, config.hdr_metadata.value());
   }
   auto j_hdr_metadata = jni_hdr_metadata ? jni_hdr_metadata->obj() : nullptr;
+  auto j_decoder_name = ConvertUTF8ToJavaString(env, config.name);
 
   ScopedJavaGlobalRef<jobject> j_bridge(
       Java_MediaCodecBridgeBuilder_createVideoDecoder(
@@ -255,7 +256,7 @@ std::unique_ptr<MediaCodecBridge> MediaCodecBridgeImpl::CreateVideoDecoder(
           config.initial_expected_coded_size.width(),
           config.initial_expected_coded_size.height(), config.surface, j_csd0,
           j_csd1, j_hdr_metadata, true /* allow_adaptive_playback */,
-          !!config.on_buffers_available_cb));
+          !!config.on_buffers_available_cb, j_decoder_name));
   if (j_bridge.is_null())
     return nullptr;
 
@@ -301,9 +302,7 @@ MediaCodecBridgeImpl::MediaCodecBridgeImpl(
     base::RepeatingClosure on_buffers_available_cb)
     : codec_type_(codec_type),
       on_buffers_available_cb_(std::move(on_buffers_available_cb)),
-      j_bridge_(std::move(j_bridge)),
-      use_real_color_space_(base::FeatureList::IsEnabled(
-          media::kUseRealColorSpaceForAndroidVideo)) {
+      j_bridge_(std::move(j_bridge)) {
   DCHECK(!j_bridge_.is_null());
 
   if (!on_buffers_available_cb_)
@@ -368,11 +367,6 @@ MediaCodecStatus MediaCodecBridgeImpl::GetOutputChannelCount(
 
 MediaCodecStatus MediaCodecBridgeImpl::GetOutputColorSpace(
     gfx::ColorSpace* color_space) {
-  if (!use_real_color_space_) {
-    *color_space = gfx::ColorSpace::CreateSRGB();
-    return MEDIA_CODEC_OK;
-  }
-
   JNIEnv* env = AttachCurrentThread();
   ScopedJavaLocalRef<jobject> result =
       Java_MediaCodecBridge_getOutputFormat(env, j_bridge_);
@@ -387,21 +381,25 @@ MediaCodecStatus MediaCodecBridgeImpl::GetOutputColorSpace(
   int transfer = Java_MediaFormatWrapper_colorTransfer(env, result);
   gfx::ColorSpace::PrimaryID primary_id;
   gfx::ColorSpace::TransferID transfer_id;
-  gfx::ColorSpace::MatrixID matrix_id = gfx::ColorSpace::MatrixID::RGB;
+  gfx::ColorSpace::MatrixID matrix_id;
   gfx::ColorSpace::RangeID range_id;
 
   switch (standard) {
     case 1:  // MediaFormat.COLOR_STANDARD_BT709:
       primary_id = gfx::ColorSpace::PrimaryID::BT709;
+      matrix_id = gfx::ColorSpace::MatrixID::BT709;
       break;
     case 2:  // MediaFormat.COLOR_STANDARD_BT601_PAL:
       primary_id = gfx::ColorSpace::PrimaryID::BT470BG;
+      matrix_id = gfx::ColorSpace::MatrixID::SMPTE170M;
       break;
     case 4:  // MediaFormat.COLOR_STANDARD_BT601_NTSC:
       primary_id = gfx::ColorSpace::PrimaryID::SMPTE170M;
+      matrix_id = gfx::ColorSpace::MatrixID::SMPTE170M;
       break;
     case 6:  // MediaFormat.COLOR_STANDARD_BT2020
       primary_id = gfx::ColorSpace::PrimaryID::BT2020;
+      matrix_id = gfx::ColorSpace::MatrixID::BT2020_NCL;
       break;
     default:
       DVLOG(3) << __func__ << ": unsupported primary in p: " << standard

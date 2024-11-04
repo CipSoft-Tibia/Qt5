@@ -135,6 +135,7 @@ stream_destroy(struct debug_stream *stream)
 		weston_debug_stream_v1_destroy(stream->obj);
 
 	wl_list_remove(&stream->link);
+	free(stream->desc);
 	free(stream->name);
 	free(stream);
 }

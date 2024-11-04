@@ -16,10 +16,13 @@
 #define PLATFORM_PUBLIC_BLE_V2_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "internal/platform/bluetooth_adapter.h"
 #include "internal/platform/byte_array.h"
@@ -31,13 +34,59 @@
 
 namespace nearby {
 
+class BleV2Medium;
+
+// Opaque wrapper over a BLE peripheral. Must contain enough data about a
+// particular BLE peripheral to connect to its GATT server.
+class BleV2Peripheral final {
+ public:
+  using ImplCallback =
+      absl::AnyInvocable<void(api::ble_v2::BlePeripheral& device)>;
+  BleV2Peripheral() = default;
+  BleV2Peripheral(BleV2Medium& medium, api::ble_v2::BlePeripheral& impl)
+      : medium_(&medium), unique_id_(impl.GetUniqueId()) {}
+  BleV2Peripheral(const BleV2Peripheral&) = default;
+  BleV2Peripheral& operator=(const BleV2Peripheral&) = default;
+  BleV2Peripheral(BleV2Peripheral&& other) = default;
+
+  BleV2Peripheral& operator=(BleV2Peripheral&& other) = default;
+
+  // NOLINTNEXTLINE(google3-legacy-absl-backports)
+  absl::optional<std::string> GetAddress() const;
+  ByteArray GetId() const { return id_; }
+  void SetId(const ByteArray& id) { id_ = id; }
+
+  int GetPsm() const { return psm_; }
+  void SetPsm(int psm) { psm_ = psm; }
+
+  bool IsValid() const;
+  explicit operator bool() const { return IsValid(); }
+
+  bool GetImpl(ImplCallback callback) const;
+
+ private:
+  BleV2Medium* medium_ = nullptr;
+  std::optional<api::ble_v2::BlePeripheral::UniqueId> unique_id_;
+
+  // A unique identifier for this peripheral. It is the BLE advertisement bytes
+  // it was found on.
+  ByteArray id_ = {};
+
+  // The psm (protocol service multiplexer) value is used for create data
+  // connection on L2CAP socket. It only exists when remote device supports
+  // L2CAP socket feature.
+  int psm_ = 0;
+};
+
 // Container of operations that can be performed over the BLE GATT client
 // socket.
 // This class is copyable but not moveable.
 class BleV2Socket final {
  public:
   BleV2Socket() = default;
-  explicit BleV2Socket(std::unique_ptr<api::ble_v2::BleSocket> socket) {
+  BleV2Socket(BleV2Peripheral peripheral,
+              std::unique_ptr<api::ble_v2::BleSocket> socket)
+      : peripheral_(peripheral) {
     state_->socket = std::move(socket);
   }
   BleV2Socket(const BleV2Socket&) = default;
@@ -72,9 +121,7 @@ class BleV2Socket final {
   }
 
   // Returns BlePeripheral object which wraps a valid BlePeripheral pointer.
-  BleV2Peripheral GetRemotePeripheral() {
-    return BleV2Peripheral(state_->socket->GetRemotePeripheral());
-  }
+  BleV2Peripheral& GetRemotePeripheral() { return peripheral_; }
 
   // Returns true if a socket is usable. If this method returns false,
   // it is not safe to call any other method.
@@ -100,6 +147,7 @@ class BleV2Socket final {
     absl::AnyInvocable<void()> close_notifier;
   };
   std::shared_ptr<SharedState> state_ = std::make_shared<SharedState>();
+  BleV2Peripheral peripheral_;
 };
 
 // Container of operations that can be performed over the BLE GATT server
@@ -107,9 +155,9 @@ class BleV2Socket final {
 // This class is copyable but not moveable.
 class BleV2ServerSocket final {
  public:
-  explicit BleV2ServerSocket(
-      std::unique_ptr<api::ble_v2::BleServerSocket> socket)
-      : impl_(std::move(socket)) {}
+  BleV2ServerSocket(BleV2Medium& medium,
+                    std::unique_ptr<api::ble_v2::BleServerSocket> socket)
+      : medium_(&medium), impl_(std::move(socket)) {}
   BleV2ServerSocket(const BleV2ServerSocket&) = default;
   BleV2ServerSocket& operator=(const BleV2ServerSocket&) = default;
 
@@ -123,11 +171,17 @@ class BleV2ServerSocket final {
   // ServerSocket has to be closed by caller.
   BleV2Socket Accept() {
     std::unique_ptr<api::ble_v2::BleSocket> socket = impl_->Accept();
+    BleV2Peripheral peripheral;
     if (!socket) {
       NEARBY_LOGS(INFO) << "BleServerSocket Accept() failed on server socket: "
                         << this;
+    } else {
+      auto* platform_peripheral = socket->GetRemotePeripheral();
+      if (platform_peripheral != nullptr) {
+        peripheral = BleV2Peripheral(*medium_, *platform_peripheral);
+      }
     }
-    return BleV2Socket(std::move(socket));
+    return BleV2Socket(peripheral, std::move(socket));
   }
 
   // Returns Exception::kIo on error, Exception::kSuccess otherwise.
@@ -140,6 +194,7 @@ class BleV2ServerSocket final {
   api::ble_v2::BleServerSocket& GetImpl() { return *impl_; }
 
  private:
+  BleV2Medium* medium_;
   std::shared_ptr<api::ble_v2::BleServerSocket> impl_;
 };
 
@@ -148,27 +203,34 @@ class BleV2ServerSocket final {
 //
 // Note that some of the methods return absl::optional instead
 // of std::optional, because iOS platform is still in C++14.
+// LINT.IfChange
 class GattServer final {
  public:
-  explicit GattServer(std::unique_ptr<api::ble_v2::GattServer> gatt_server)
-      : impl_(std::move(gatt_server)) {}
+  GattServer(BleV2Medium& medium,
+             std::unique_ptr<api::ble_v2::GattServer> gatt_server)
+      : medium_(medium), impl_(std::move(gatt_server)) {}
   ~GattServer() { Stop(); }
 
   // NOLINTNEXTLINE(google3-legacy-absl-backports)
   absl::optional<api::ble_v2::GattCharacteristic> CreateCharacteristic(
       const Uuid& service_uuid, const Uuid& characteristic_uuid,
-      const std::vector<api::ble_v2::GattCharacteristic::Permission>&
-          permissions,
-      const std::vector<api::ble_v2::GattCharacteristic::Property>&
-          properties) {
+      const api::ble_v2::GattCharacteristic::Permission permission,
+      const api::ble_v2::GattCharacteristic::Property property) {
     return impl_->CreateCharacteristic(service_uuid, characteristic_uuid,
-                                       permissions, properties);
+                                       permission, property);
   }
 
   bool UpdateCharacteristic(
       const api::ble_v2::GattCharacteristic& characteristic,
       const ByteArray& value) {
     return impl_->UpdateCharacteristic(characteristic, value);
+  }
+
+  absl::Status NotifyCharacteristicChanged(
+      const api::ble_v2::GattCharacteristic& characteristic, bool confirm,
+      const ByteArray& new_value) {
+    return impl_->NotifyCharacteristicChanged(characteristic, confirm,
+                                              new_value);
   }
 
   void Stop() {
@@ -179,14 +241,20 @@ class GattServer final {
   // it is not safe to call any other method.
   bool IsValid() const { return impl_ != nullptr; }
 
+  BleV2Peripheral GetBlePeripheral() {
+    return BleV2Peripheral(medium_, impl_->GetBlePeripheral());
+  }
+
   // Returns reference to platform implementation.
   // This is used to communicate with platform code, and for debugging
   // purposes.
   api::ble_v2::GattServer* GetImpl() { return impl_.get(); }
 
  private:
+  BleV2Medium& medium_;
   std::unique_ptr<api::ble_v2::GattServer> impl_;
 };
+// LINT.ThenChange(//depot/google3/third_party/nearby/internal/platform/implementation/ble_v2.h)
 
 // Opaque wrapper for a GattClient.
 //
@@ -211,9 +279,27 @@ class GattClient final {
   }
 
   // NOLINTNEXTLINE(google3-legacy-absl-backports)
-  absl::optional<ByteArray> ReadCharacteristic(
-      api::ble_v2::GattCharacteristic& characteristic) {
+  absl::optional<std::string> ReadCharacteristic(
+      const api::ble_v2::GattCharacteristic& characteristic) {
     return impl_->ReadCharacteristic(characteristic);
+  }
+
+  // NOLINTNEXTLINE(google3-legacy-absl-backports)
+  bool WriteCharacteristic(
+      const api::ble_v2::GattCharacteristic& characteristic,
+      absl::string_view value, api::ble_v2::GattClient::WriteType write_type) {
+    return impl_->WriteCharacteristic(characteristic, value, write_type);
+  }
+
+  // TODO(qinwangz): We should not need  `on_characteristic_changed_cb` when
+  // unsubscribing.
+  // NOLINTNEXTLINE(google3-legacy-absl-backports)
+  bool SetCharacteristicSubscription(
+      const api::ble_v2::GattCharacteristic& characteristic, bool enable,
+      absl::AnyInvocable<void(absl::string_view value)>
+          on_characteristic_changed_cb) {
+    return impl_->SetCharacteristicSubscription(
+        characteristic, enable, std::move(on_characteristic_changed_cb));
   }
 
   void Disconnect() { impl_->Disconnect(); }
@@ -251,14 +337,28 @@ class BleV2Medium final {
                                     const api::ble_v2::BleAdvertisementData&>();
   };
   struct ServerGattConnectionCallback {
-    absl::AnyInvocable<void(
-        const api::ble_v2::GattCharacteristic& characteristic)>
+    using BlePeripheral = api::ble_v2::BlePeripheral;
+    using GattCharacteristic = api::ble_v2::GattCharacteristic;
+    using ReadValueCallback =
+        api::ble_v2::ServerGattConnectionCallback::ReadValueCallback;
+    using WriteValueCallback =
+        api::ble_v2::ServerGattConnectionCallback::WriteValueCallback;
+
+    absl::AnyInvocable<void(const GattCharacteristic& characteristic)>
         characteristic_subscription_cb =
-            nearby::DefaultCallback<const api::ble_v2::GattCharacteristic&>();
-    absl::AnyInvocable<void(
-        const api::ble_v2::GattCharacteristic& characteristic)>
+            nearby::DefaultCallback<const GattCharacteristic&>();
+    absl::AnyInvocable<void(const GattCharacteristic& characteristic)>
         characteristic_unsubscription_cb =
-            nearby::DefaultCallback<const api::ble_v2::GattCharacteristic&>();
+            nearby::DefaultCallback<const GattCharacteristic&>();
+    absl::AnyInvocable<void(const BlePeripheral& remote_device,
+                            const GattCharacteristic& characteristic,
+                            int offset, ReadValueCallback callback)>
+        on_characteristic_read_cb;
+    absl::AnyInvocable<void(const BlePeripheral& remote_device,
+                            const GattCharacteristic& characteristic,
+                            int offset, absl::string_view data,
+                            WriteValueCallback callback)>
+        on_characteristic_write_cb;
   };
   // TODO(b/231318879): Remove this wrapper callback and use impl callback if
   // there is only disconnect function here in the end.
@@ -271,11 +371,25 @@ class BleV2Medium final {
             api::ImplementationPlatform::CreateBleV2Medium(adapter.GetImpl())),
         adapter_(adapter) {}
 
+  ~BleV2Medium();
   // Returns true once the BLE advertising has been initiated.
+  // This interface will be deprecated soon.
+  // TODO(b/271305977) remove this function.
+  // Use 'unique_ptr<AdvertisingSession> StartAdvertisingTmp' instead.
   bool StartAdvertising(
       const api::ble_v2::BleAdvertisementData& advertising_data,
       api::ble_v2::AdvertiseParameters advertise_parameters);
+  // This interface will be deprecated soon.
+  // TODO(b/271305977) remove this function.
   bool StopAdvertising();
+
+  // Temp interface for windows client to use before windows has native impl
+  // for 'unique_ptr<AdvertisingSession> StartAdvertising'.
+  // TODO(b/271305977) remove this function.
+  std::unique_ptr<api::ble_v2::BleMedium::AdvertisingSession>
+  StartAdvertisingTmp(const api::ble_v2::BleAdvertisementData& advertising_data,
+                      api::ble_v2::AdvertiseParameters advertise_set_parameters,
+                      api::ble_v2::BleMedium::AdvertisingCallback callback);
 
   std::unique_ptr<api::ble_v2::BleMedium::AdvertisingSession> StartAdvertising(
       const api::ble_v2::BleAdvertisementData& advertising_data,
@@ -283,12 +397,24 @@ class BleV2Medium final {
       api::ble_v2::BleMedium::AdvertisingCallback callback);
 
   // Returns true once the BLE scan has been initiated.
+  // This interface will be deprecated soon.
+  // TODO(b/271305977) remove this function.
+  // Use 'unique_ptr<ScanningSession> StartScanningTmp' instead.
   bool StartScanning(const Uuid& service_uuid,
                      api::ble_v2::TxPowerLevel tx_power_level,
                      ScanCallback callback);
+  // This interface will be deprecated soon.
+  // TODO(b/271305977) remove this function.
   bool StopScanning();
 
   std::unique_ptr<api::ble_v2::BleMedium::ScanningSession> StartScanning(
+      const Uuid& service_uuid, api::ble_v2::TxPowerLevel tx_power_level,
+      api::ble_v2::BleMedium::ScanningCallback callback);
+
+  // Temp interface for windows client to use before windows has native impl
+  // for 'unique_ptr<AdvertisingSession> StartScanning'.
+  // TODO(b/271305977) remove this function.
+  std::unique_ptr<api::ble_v2::BleMedium::ScanningSession> StartScanningTmp(
       const Uuid& service_uuid, api::ble_v2::TxPowerLevel tx_power_level,
       api::ble_v2::BleMedium::ScanningCallback callback);
 
@@ -317,6 +443,10 @@ class BleV2Medium final {
 
   bool IsValid() const { return impl_ != nullptr; }
 
+  // Returns a `BleV2Peripheral` with given mac address. `mac_address` is in
+  // canonical format.
+  BleV2Peripheral GetRemotePeripheral(const std::string& mac_address);
+
   api::ble_v2::BleMedium* GetImpl() const { return impl_.get(); }
   BluetoothAdapter& GetAdapter() { return adapter_; }
 
@@ -325,8 +455,6 @@ class BleV2Medium final {
   std::unique_ptr<api::ble_v2::BleMedium> impl_;
   BluetoothAdapter& adapter_;
   ServerGattConnectionCallback server_gatt_connection_callback_
-      ABSL_GUARDED_BY(mutex_);
-  ClientGattConnectionCallback client_gatt_connection_callback_
       ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_set<api::ble_v2::BlePeripheral*> peripherals_
       ABSL_GUARDED_BY(mutex_);

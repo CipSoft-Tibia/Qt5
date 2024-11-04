@@ -54,6 +54,12 @@ struct RTC_EXPORT PacketOptions {
   PacketTimeUpdateParams packet_time_params;
   // PacketInfo is passed to SentPacket when signaling this packet is sent.
   PacketInfo info_signaled_after_sent;
+  // True if this is a batchable packet. Batchable packets are collected at low
+  // levels and sent first when their AsyncPacketSocket receives a
+  // OnSendBatchComplete call.
+  bool batchable = false;
+  // True if this is the last packet of a batch.
+  bool last_packet_in_batch = false;
 };
 
 // Provides the ability to receive packets asynchronously. Sends are not
@@ -68,7 +74,7 @@ class RTC_EXPORT AsyncPacketSocket : public sigslot::has_slots<> {
     STATE_CONNECTED
   };
 
-  AsyncPacketSocket();
+  AsyncPacketSocket() = default;
   ~AsyncPacketSocket() override;
 
   AsyncPacketSocket(const AsyncPacketSocket&) = delete;
@@ -104,9 +110,10 @@ class RTC_EXPORT AsyncPacketSocket : public sigslot::has_slots<> {
   virtual void SetError(int error) = 0;
 
   // Register a callback to be called when the socket is closed.
-  void SubscribeClose(const void* removal_tag,
-                      std::function<void(AsyncPacketSocket*, int)> callback);
-  void UnsubscribeClose(const void* removal_tag);
+  void SubscribeCloseEvent(
+      const void* removal_tag,
+      std::function<void(AsyncPacketSocket*, int)> callback);
+  void UnsubscribeCloseEvent(const void* removal_tag);
 
   // Emitted each time a packet is read. Used only for UDP and
   // connected TCP sockets.
@@ -148,7 +155,8 @@ class RTC_EXPORT AsyncPacketSocket : public sigslot::has_slots<> {
     on_close_.Send(this, err);
   }
 
-  RTC_NO_UNIQUE_ADDRESS webrtc::SequenceChecker network_checker_;
+  RTC_NO_UNIQUE_ADDRESS webrtc::SequenceChecker network_checker_{
+      webrtc::SequenceChecker::kDetached};
 
  private:
   webrtc::CallbackList<AsyncPacketSocket*, int> on_close_

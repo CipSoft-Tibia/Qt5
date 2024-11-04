@@ -162,7 +162,7 @@ how to subclass \l QGeoPositionInfoSource to create a custom positioning source.
 
 \section3 \b{Weather Info Example}
 
-The \l{Weather Info (C++/QML)}{Weather Info} example shows how to use the user's current
+The \l{Weather Info} example shows how to use the user's current
 position to retrieve local content from a web service in a C++ plugin for QML.
 
 \section1 Positioning Classes

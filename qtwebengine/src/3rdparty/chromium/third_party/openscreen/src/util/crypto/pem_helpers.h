@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,16 +8,14 @@
 #include <openssl/evp.h>
 
 #include <string>
+#include <string_view>
 #include <vector>
-
-#include "absl/strings/string_view.h"
 
 namespace openscreen {
 
-std::vector<std::string> ReadCertificatesFromPemFile(
-    absl::string_view filename);
+std::vector<std::string> ReadCertificatesFromPemFile(std::string_view filename);
 
-bssl::UniquePtr<EVP_PKEY> ReadKeyFromPemFile(absl::string_view filename);
+bssl::UniquePtr<EVP_PKEY> ReadKeyFromPemFile(std::string_view filename);
 
 }  // namespace openscreen
 

@@ -100,7 +100,7 @@ IN_PROC_BROWSER_TEST_F(SubresourceFilterBrowserTest, RulesArePublished) {
   auto packaged_ruleset_manifest =
       base::JSONReader::Read(packaged_ruleset_manifest_string);
   std::string* packaged_content_version =
-      packaged_ruleset_manifest->FindStringKey("version");
+      packaged_ruleset_manifest->GetDict().FindString("version");
 
   EXPECT_EQ(most_recently_indexed_content_version, *packaged_content_version);
 }
@@ -279,7 +279,7 @@ IN_PROC_BROWSER_TEST_F(SubresourceFilterBrowserTest,
 }
 
 IN_PROC_BROWSER_TEST_F(SubresourceFilterBrowserTest,
-                       DISABLED_ContentSettingsAllowlistGlobal_DoNotActivate) {
+                       ContentSettingsAllowlistGlobal_DoNotActivate) {
   auto* web_contents = static_cast<TabImpl*>(shell()->tab())->web_contents();
 
   GURL test_url(embedded_test_server()->GetURL(

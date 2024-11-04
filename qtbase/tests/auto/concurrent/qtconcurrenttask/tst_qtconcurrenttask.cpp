@@ -1,5 +1,5 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtconcurrenttask.h>
 
@@ -32,7 +32,7 @@ void tst_QtConcurrentTask::taskWithFreeFunction()
 {
     QVariant value(42);
 
-    auto result = task(&qvariant_cast<int>)
+    auto result = task([](const QVariant &var){ return qvariant_cast<int>(var); })
                       .withArguments(value)
                       .spawn()
                       .result();

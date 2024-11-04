@@ -100,21 +100,25 @@ def convertFormat(format):
 class QLocaleXmlReader (object):
     def __init__(self, filename):
         self.root = self.__parse(filename)
-        # Lists of (id, name, code) triples:
-        languages = tuple(self.__loadMap('language'))
-        scripts = tuple(self.__loadMap('script'))
-        territories = tuple(self.__loadMap('territory'))
+
+        from enumdata import language_map, script_map, territory_map
+        # Lists of (id, enum name, code, en.xml name) tuples:
+        languages = tuple(self.__loadMap('language', language_map))
+        scripts = tuple(self.__loadMap('script', script_map))
+        territories = tuple(self.__loadMap('territory', territory_map))
         self.__likely = tuple(self.__likelySubtagsMap())
-        # Mappings {ID: (name, code)}
+
+        # Mappings {ID: (enum name, code, en.xml name)}
         self.languages = dict((v[0], v[1:]) for v in languages)
         self.scripts = dict((v[0], v[1:]) for v in scripts)
         self.territories = dict((v[0], v[1:]) for v in territories)
-        # Private mappings {name: (ID, code)}
+
+        # Private mappings {enum name: (ID, code)}
         self.__langByName = dict((v[1], (v[0], v[2])) for v in languages)
         self.__textByName = dict((v[1], (v[0], v[2])) for v in scripts)
         self.__landByName = dict((v[1], (v[0], v[2])) for v in territories)
         # Other properties:
-        self.dupes = set(v[1] for v in languages) & set(v[1] for v in territories)
+        self.__dupes = set(v[1] for v in languages) & set(v[1] for v in territories)
         self.cldrVersion = self.__firstChildText(self.root, "version")
 
     def loadLocaleMap(self, calendars, grumble = lambda text: None):
@@ -184,11 +188,38 @@ class QLocaleXmlReader (object):
                         self.__textByName[give[1]][0]),
                        self.__landByName[give[2]][0])
 
+    def enumify(self, name, suffix):
+        """Stick together the parts of an enumdata.py name.
+
+        Names given in enumdata.py include spaces and hyphens that we
+        can't include in an identifier, such as the name of a member
+        of an enum type. Removing those would lose the word
+        boundaries, so make sure each word starts with a capital (but
+        don't simply capitalize() as some names contain words,
+        e.g. McDonald, that have later capitals in them).
+
+        We also need to resolve duplication between languages and
+        territories (by adding a suffix to each) and add Script to the
+        ends of script-names that don't already end in it."""
+        name = name.replace('-', ' ')
+        # Don't .capitalize() as McDonald is already camel-case (see enumdata.py):
+        name = ''.join(word[0].upper() + word[1:] for word in name.split())
+        if suffix != 'Script':
+            assert not(name in self.__dupes and name.endswith(suffix))
+            return name + suffix if name in self.__dupes else name
+
+        if not name.endswith(suffix):
+            name += suffix
+        if name in self.__dupes:
+            raise Error(f'The script name "{name}" is messy')
+        return name
+
     # Implementation details:
-    def __loadMap(self, category):
+    def __loadMap(self, category, enum):
         kid = self.__firstChildText
         for element in self.__eachEltInGroup(self.root, f'{category}List', category):
-            yield int(kid(element, 'id')), kid(element, 'name'), kid(element, 'code')
+            key = int(kid(element, 'id'))
+            yield key, enum[key][0], kid(element, 'code'), kid(element, 'name')
 
     def __likelySubtagsMap(self):
         def triplet(element, keys=('language', 'script', 'territory'), kid = self.__firstChildText):
@@ -315,11 +346,21 @@ class QLocaleXmlWriter (object):
         self.__write('<localeDatabase>')
 
     # Output of various sections, in their usual order:
-    def enumData(self):
+    def enumData(self, code2name):
+        """Output name/id/code tables for language, script and territory.
+
+        Parameter, code2name, is a function taking 'language',
+        'script' or 'territory' and returning a lookup function that
+        maps codes, of the relevant type, to their English names. This
+        lookup function is passed a code and the name, both taken from
+        enumdata.py, that QLocale uses, so the .get() of a dict will
+        work. The English name from this lookup will be used by
+        QLocale::*ToString() for the enum member whose name is based
+        on the enumdata.py name passed as fallback to the lookup."""
         from enumdata import language_map, script_map, territory_map
-        self.__enumTable('language', language_map)
-        self.__enumTable('script', script_map)
-        self.__enumTable('territory', territory_map)
+        self.__enumTable('language', language_map, code2name)
+        self.__enumTable('script', script_map, code2name)
+        self.__enumTable('territory', territory_map, code2name)
         # Prepare to detect any unused codes (see __writeLocale(), close()):
         self.__languages = set(p[1] for p in language_map.values()
                                if not p[1].isspace())
@@ -381,13 +422,18 @@ class QLocaleXmlWriter (object):
     def __complain(text):
         raise Error('Attempted to write data after closing :-(')
 
-    def __enumTable(self, tag, table):
+    @staticmethod
+    def __xmlSafe(text):
+        return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+    def __enumTable(self, tag, table, code2name):
         self.__openTag(f'{tag}List')
-        for key, value in table.items():
+        enname, safe = code2name(tag), self.__xmlSafe
+        for key, (name, code) in table.items():
             self.__openTag(tag)
-            self.inTag('name', value[0])
+            self.inTag('name', safe(enname(code, name)))
             self.inTag('id', key)
-            self.inTag('code', value[1])
+            self.inTag('code', code)
             self.__closeTag(tag)
         self.__closeTag(f'{tag}List')
 

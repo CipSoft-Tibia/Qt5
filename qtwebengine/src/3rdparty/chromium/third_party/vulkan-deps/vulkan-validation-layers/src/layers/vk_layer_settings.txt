@@ -76,15 +76,9 @@ khronos_validation.enables =
 
 # Check descriptor indexing accesses
 # =====================
-# <LayerIdentifier>.gpuav_descriptor_indexing
-# Enable descriptor indexing access checking
-#khronos_validation.gpuav_descriptor_indexing = true
-
-# Check Out of Bounds
-# =====================
-# <LayerIdentifier>.gpuav_buffer_oob
-# Enable buffer out of bounds checking
-#khronos_validation.gpuav_buffer_oob = true
+# <LayerIdentifier>.gpuav_descriptor_checks
+# Enable descriptor indexing and buffer out of bounds checking
+#khronos_validation.gpuav_descriptor_checks = true
 
 # Check Draw Indirect Count Buffers and firstInstance values
 # =====================
@@ -104,6 +98,12 @@ khronos_validation.enables =
 # Use VMA linear memory allocations for GPU-AV output buffers
 #khronos_validation.vma_linear_output = true
 
+# Specify the maximum number of buffer device addresses in simultaneous use
+# =====================
+# <LayerIdentifier>.gpuav_max_buffer_device_addresses
+# Specify the maximum number of buffer device addresses to allow GPU-AV allocate resources
+#khronos_validation.gpuav_max_buffer_device_addresses = 10000
+
 # Fine Grained Locking
 # =====================
 # <LayerIdentifier>.fine_grained_locking
@@ -111,3 +111,32 @@ khronos_validation.enables =
 # performance in multithreaded applications.
 khronos_validation.fine_grained_locking = true
 
+# Best Practices
+# =====================
+# Enable best practices layer
+khronos_validation.enables=VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT
+
+# Best Practices with ARM best practices
+# =====================
+# Enable best practices layer
+khronos_validation.enables=VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,VALIDATION_CHECK_ENABLE_VENDOR_SPECIFIC_ARM
+
+# Best Practices with AMD best practices
+# =====================
+# Enable best practices layer
+khronos_validation.enables=VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,VALIDATION_CHECK_ENABLE_VENDOR_SPECIFIC_AMD
+
+# Best Practices with Imagination Tech best practices
+# =====================
+# Enable best practices layer
+khronos_validation.enables=VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,VALIDATION_CHECK_ENABLE_VENDOR_SPECIFIC_IMG
+
+# Best Practices with Nvidia Specific Check
+# =====================
+# Enable best practices layer
+khronos_validation.enables=VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,VALIDATION_CHECK_ENABLE_VENDOR_SPECIFIC_NVIDIA
+
+# Best Practices with ALL Vendor Specific Checks
+# =====================
+# Enable best practices layer
+khronos_validation.enables=VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,VALIDATION_CHECK_ENABLE_VENDOR_SPECIFIC_ALL

@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <qline.h>
@@ -250,7 +250,8 @@ void tst_QLine::testLength()
 
     l.setLength(lengthToSet);
 
-    if constexpr (std::numeric_limits<double>::has_denorm != std::denorm_present) {
+    QT_IGNORE_DEPRECATIONS(constexpr bool has_denorm = std::numeric_limits<double>::has_denorm != std::denorm_present;)
+    if constexpr (has_denorm) {
         if (qstrcmp(QTest::currentDataTag(), "[tiny,tiny]->|2| (-tiny/2,-tiny/2)") == 0
             || qstrcmp(QTest::currentDataTag(), "[4e-323,5e-324]|1892|") == 0) {
             QSKIP("Skipping 'denorm' as this type lacks denormals on this system");

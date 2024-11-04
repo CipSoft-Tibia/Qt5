@@ -18,32 +18,34 @@
 #pragma once
 #include <string>
 #include <vulkan/vulkan_core.h>
-#include "vk_layer_data.h"
+#include "containers/custom_containers.h"
 
-namespace core_error {
 struct Location;
-}
-
+struct DeviceExtensions;
 struct SubresourceRangeErrorCodes;
+struct DeviceExtensions;
 
 namespace sync_vuid_maps {
-using core_error::Location;
 
 extern const std::map<VkPipelineStageFlags2KHR, std::string> kFeatureNameMap;
 
-const std::string &GetBadFeatureVUID(const Location &loc, VkPipelineStageFlags2KHR bit);
+const std::string &GetBadFeatureVUID(const Location &loc, VkPipelineStageFlags2 bit, const DeviceExtensions &device_extensions);
 
 const std::string &GetBadAccessFlagsVUID(const Location &loc, VkAccessFlags2KHR bit);
 
 const std::string &GetStageQueueCapVUID(const Location &loc, VkPipelineStageFlags2KHR bit);
 
 enum class QueueError {
-    kSrcOrDstMustBeIgnore = 0,
-    kSpecialOrIgnoreOnly,
-    kSrcAndDstValidOrSpecial,
-    kSrcAndDestMustBeIgnore,
-    kSrcAndDstBothValid,
-    kSubmitQueueMustMatchSrcOrDst,
+    kSrcNoExternalExt = 0,
+    kDstNoExternalExt,
+    kSrcNoForeignExt,
+    kDstNoForeignExt,
+    kSync1ConcurrentNoIgnored,
+    kSync1ConcurrentSrc,
+    kSync1ConcurrentDst,
+    kExclusiveSrc,
+    kExclusiveDst,
+    kHostStage,
 };
 
 extern const std::map<QueueError, std::string> kQueueErrorSummary;
@@ -67,13 +69,15 @@ enum class ImageError {
     kConflictingLayout,
     kBadLayout,
     kBadAttFeedbackLoopLayout,
+    kBadSync2OldLayout,
+    kBadSync2NewLayout,
     kNotColorAspect,
-    kNotColorAspectYcbcr,
     kBadMultiplanarAspect,
     kBadPlaneCount,
     kNotDepthOrStencilAspect,
     kNotDepthAndStencilAspect,
-    kNotSeparateDepthAndStencilAspect,
+    kSeparateDepthWithStencilLayout,
+    kSeparateStencilhWithDepthLayout,
     kRenderPassMismatch,
     kRenderPassLayoutChange,
 };
@@ -91,8 +95,7 @@ const SubresourceRangeErrorCodes &GetSubResourceVUIDs(const Location &loc);
 enum class SubmitError {
     kTimelineSemSmallValue,
     kSemAlreadySignalled,
-    kOldBinaryCannotBeSignalled,  // timeline semaphores not supported
-    kBinaryCannotBeSignalled,     // timeline semaphores supported
+    kBinaryCannotBeSignalled,
     kTimelineSemMaxDiff,
     kProtectedFeatureDisabled,
     kBadUnprotectedSubmit,
@@ -108,4 +111,10 @@ enum class SubmitError {
 
 const std::string &GetQueueSubmitVUID(const Location &loc, SubmitError error);
 
-};  // namespace sync_vuid_maps
+enum class ShaderTileImageError { kShaderTileImageFeatureError, kShaderTileImageBarrierError };
+
+const std::string &GetShaderTileImageVUID(const Location &loc, ShaderTileImageError error);
+
+const std::string &GetAccessMaskRayQueryVUIDSelector(const Location &loc, const DeviceExtensions &device_extensions);
+
+}  // namespace sync_vuid_maps

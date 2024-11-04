@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/qsignalspy.h>
 #include <QtTest/qtest.h>
@@ -229,6 +229,8 @@ private slots:
 
     void headerData();
 
+    void warnMissingDefaultRole();
+
 private:
     QQmlEngine *engine;
     QString errorString;
@@ -443,6 +445,18 @@ void tst_QQuickHeaderView::headerData()
     const auto label = firstHeaderCell->findChild<QQuickLabel *>();
     QVERIFY(label);
     QCOMPARE(label->text(), "c0");
+}
+
+void tst_QQuickHeaderView::warnMissingDefaultRole()
+{
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(".*toolTip.*"));
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(".*Required property.*"));
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("TableView.*"));
+    QQuickApplicationHelper helper(this, QStringLiteral("DefaultRoles.qml"));
+    QVERIFY2(helper.errorMessage.isEmpty(), helper.errorMessage);
+    QQuickWindow *window = helper.window;
+    window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
 }
 
 QTEST_MAIN(tst_QQuickHeaderView)

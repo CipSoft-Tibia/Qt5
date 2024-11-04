@@ -5,6 +5,7 @@
 #ifndef MEDIA_CAPTURE_VIDEO_CHROMEOS_DISPLAY_ROTATION_OBSERVER_H_
 #define MEDIA_CAPTURE_VIDEO_CHROMEOS_DISPLAY_ROTATION_OBSERVER_H_
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/task/single_thread_task_runner.h"
 #include "ui/display/display.h"
@@ -26,7 +27,7 @@ class ScreenObserverDelegate
       public base::RefCountedThreadSafe<ScreenObserverDelegate> {
  public:
   static scoped_refptr<ScreenObserverDelegate> Create(
-      DisplayRotationObserver* observer,
+      base::WeakPtr<DisplayRotationObserver> observer,
       scoped_refptr<base::SingleThreadTaskRunner> display_task_runner);
 
   ScreenObserverDelegate() = delete;
@@ -41,7 +42,7 @@ class ScreenObserverDelegate
   friend class base::RefCountedThreadSafe<ScreenObserverDelegate>;
 
   ScreenObserverDelegate(
-      DisplayRotationObserver* observer,
+      base::WeakPtr<DisplayRotationObserver> observer,
       scoped_refptr<base::SingleThreadTaskRunner> display_task_runner);
   ~ScreenObserverDelegate() override;
 
@@ -56,7 +57,7 @@ class ScreenObserverDelegate
   void SendDisplayRotation(const display::Display& display);
   void SendDisplayRotationOnCaptureThread(const display::Display& display);
 
-  DisplayRotationObserver* observer_;
+  base::WeakPtr<DisplayRotationObserver> observer_;
 
   absl::optional<display::ScopedDisplayObserver> display_observer_;
 

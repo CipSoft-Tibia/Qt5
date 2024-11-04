@@ -31,8 +31,10 @@
 import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
+import * as Root from '../../core/root/root.js';
 import type * as SDK from '../../core/sdk/sdk.js';
 import * as SourceFrame from '../../ui/legacy/components/source_frame/source_frame.js';
+import * as TextUtils from '../../models/text_utils/text_utils.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
 const UIStrings = {
@@ -92,14 +94,27 @@ export class RequestResponseView extends UI.Widget.VBox {
       return null;
     }
 
-    const mediaType = request.resourceType().canonicalMimeType() || request.mimeType;
+    let mimeType;
+    // If the main document is of type JSON (or any JSON subtype), do not use the more generic canonical MIME type,
+    // which would prevent the JSON from being pretty-printed. See https://crbug.com/406900
+    if (Common.ResourceType.ResourceType.simplifyContentType(request.mimeType) === 'application/json') {
+      mimeType = request.mimeType;
+    } else {
+      mimeType = request.resourceType().canonicalMimeType() || request.mimeType;
+    }
+
+    const mediaType = Common.ResourceType.ResourceType.mediaTypeForMetrics(
+        mimeType, request.resourceType().isFromSourceMap(), TextUtils.TextUtils.isMinified(contentData.content ?? ''));
+
     Host.userMetrics.networkPanelResponsePreviewOpened(mediaType);
-    sourceView = SourceFrame.ResourceSourceFrame.ResourceSourceFrame.createSearchableView(request, mediaType);
+    const autoPrettyPrint = Root.Runtime.experiments.isEnabled('sourcesPrettyPrint');
+    sourceView =
+        SourceFrame.ResourceSourceFrame.ResourceSourceFrame.createSearchableView(request, mimeType, autoPrettyPrint);
     requestToSourceView.set(request, sourceView);
     return sourceView;
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     void this.doShowPreview();
   }
 
@@ -134,10 +149,10 @@ export class RequestResponseView extends UI.Widget.VBox {
     return new UI.EmptyWidget.EmptyWidget(i18nString(UIStrings.failedToLoadResponseData));
   }
 
-  async revealLine(line: number): Promise<void> {
+  async revealPosition(position: SourceFrame.SourceFrame.RevealPosition): Promise<void> {
     const view = await this.doShowPreview();
     if (view instanceof SourceFrame.ResourceSourceFrame.SearchableContainer) {
-      void view.revealPosition(line);
+      void view.revealPosition(position);
     }
   }
 }

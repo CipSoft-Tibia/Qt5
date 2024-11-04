@@ -10,37 +10,37 @@ package qtproto.tests;
 message StringMessage {
     int32 aaa = 1;
     int64 timestamp = 2;
-    string stringField = 3;
+    string extraField = 3;
 }
 
 message LargeIndexStringMessage {
     int32 aaa = 1;
     int64 timestamp = 2;
-    string stringField = 536870900;
+    string extraField = 536870900;
 }
 
 message IntMessage {
     int32 aaa = 1;
     int64 timestamp = 2;
-    int32 intField = 3;
+    int32 extraField = 3;
 }
 
 message MapMessage {
     int32 aaa = 1;
     int64 timestamp = 2;
-    map<int32, int32> mapField = 3;
+    map<int32, int32> extraField = 3;
 }
 
 message RepeatedMessage {
     int32 aaa = 1;
     int64 timestamp = 2;
-    repeated int32 repeatedField = 3;
+    repeated int32 extraField = 3;
 }
 
 message RepeatedMessageNonPacked {
     int32 aaa = 1;
     int64 timestamp = 2;
-    repeated int32 repeatedField = 3 [packed = false];
+    repeated int32 extraField = 3 [packed = false];
 }
 
 message PartialMessage {

@@ -557,6 +557,8 @@ calibrator_create(struct display *display, const char *match_name)
 	cal->widget = window_add_widget(cal->window, cal);
 	window_inhibit_redraw(cal->window);
 	window_set_title(cal->window, "Touchscreen calibrator");
+	window_set_appid(cal->window,
+			 "org.freedesktop.weston.touchscreen-calibrator");
 	cal->display = display;
 
 	widget_set_redraw_handler(cal->widget, redraw_handler);

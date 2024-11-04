@@ -117,8 +117,7 @@ void BranchElimination::SimplifyBranchCondition(Node* branch) {
     bool condition_value = branch_condition.is_true;
 
     if (semantics == BranchSemantics::kJS) {
-      phi_inputs.emplace_back(condition_value ? jsgraph()->TrueConstant()
-                                              : jsgraph()->FalseConstant());
+      phi_inputs.emplace_back(jsgraph()->BooleanConstant(condition_value));
     } else {
       DCHECK_EQ(semantics, BranchSemantics::kMachine);
       phi_inputs.emplace_back(
@@ -181,7 +180,7 @@ bool BranchElimination::TryEliminateBranchWithPhiCondition(Node* branch,
   Node* predecessor0 = merge_inputs[0];
   Node* predecessor1 = merge_inputs[1];
   DCHECK_EQ(branch->op()->ControlOutputCount(), 2);
-  Node** projections = zone()->NewArray<Node*>(2);
+  Node** projections = zone()->AllocateArray<Node*>(2);
   NodeProperties::CollectControlProjections(branch, projections, 2);
   Node* branch_true = projections[0];
   Node* branch_false = projections[1];

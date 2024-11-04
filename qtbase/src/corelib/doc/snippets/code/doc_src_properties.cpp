@@ -68,6 +68,9 @@ public:
 
     void setPriority(Priority priority)
     {
+        if (m_priority == priority)
+            return;
+
         m_priority = priority;
         emit priorityChanged(priority);
     }
@@ -93,7 +96,7 @@ object->setProperty("priority", "VeryHigh");
 
 
 //! [7]
-Q_CLASSINFO("Version", "3.0.0")
+Q_CLASSINFO("DefaultProperty", "content")
 //! [7]
 
 //! [8]

@@ -86,7 +86,14 @@ class CFDETextOutTest : public testing::Test {
 
 TEST_F(CFDETextOutTest, DrawLogicTextBasic) {
   text_out().DrawLogicText(device(), L"foo", CFX_RectF(0, 0, 2100, 100));
-  EXPECT_STREQ("b26f1c171fcdbf185823364185adacf0", GetBitmapChecksum().c_str());
+  const char* checksum = []() {
+#if BUILDFLAG(IS_WIN)
+    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+      return "76fd535f7d490d963598474494d0701e";
+#endif
+    return "b26f1c171fcdbf185823364185adacf0";
+  }();
+  EXPECT_STREQ(checksum, GetBitmapChecksum().c_str());
 }
 
 TEST_F(CFDETextOutTest, DrawLogicTextEmptyRect) {
@@ -117,8 +124,9 @@ class CFDETextOutLargeBitmapTest : public CFDETextOutTest {
   }
 
   const char* GetLargeTextBlobChecksum() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "6181929583fd7651169306852397806f";
+    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+      return "cd357c6afbf17bb2ac48817df5d9eaad";
+    }
     return "268b71a8660b51e31c6bf30fc7ff1e08";
   }
 };

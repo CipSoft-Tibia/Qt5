@@ -36,10 +36,8 @@ wgpu::ErrorType ToWGPUErrorType(InternalErrorType type) {
             return wgpu::ErrorType::Validation;
         case InternalErrorType::OutOfMemory:
             return wgpu::ErrorType::OutOfMemory;
-
-        // There is no equivalent of Internal errors in the WebGPU API. Internal errors cause
-        // the device at the API level to be lost, so treat it like a DeviceLost error.
         case InternalErrorType::Internal:
+            return wgpu::ErrorType::Internal;
         case InternalErrorType::DeviceLost:
             return wgpu::ErrorType::DeviceLost;
 
@@ -59,6 +57,66 @@ InternalErrorType FromWGPUErrorType(wgpu::ErrorType type) {
         default:
             return InternalErrorType::Internal;
     }
+}
+
+absl::FormatConvertResult<absl::FormatConversionCharSet::kString |
+                          absl::FormatConversionCharSet::kIntegral>
+AbslFormatConvert(InternalErrorType value,
+                  const absl::FormatConversionSpec& spec,
+                  absl::FormatSink* s) {
+    if (spec.conversion_char() == absl::FormatConversionChar::s) {
+        if (!static_cast<bool>(value)) {
+            s->Append("None");
+            return {true};
+        }
+
+        bool moreThanOneBit = !HasZeroOrOneBits(value);
+        if (moreThanOneBit) {
+            s->Append("(");
+        }
+
+        bool first = true;
+        if (value & InternalErrorType::Validation) {
+            if (!first) {
+                s->Append("|");
+            }
+            first = false;
+            s->Append("Validation");
+            value &= ~InternalErrorType::Validation;
+        }
+        if (value & InternalErrorType::DeviceLost) {
+            if (!first) {
+                s->Append("|");
+            }
+            first = false;
+            s->Append("DeviceLost");
+            value &= ~InternalErrorType::DeviceLost;
+        }
+        if (value & InternalErrorType::Internal) {
+            if (!first) {
+                s->Append("|");
+            }
+            first = false;
+            s->Append("Internal");
+            value &= ~InternalErrorType::Internal;
+        }
+        if (value & InternalErrorType::OutOfMemory) {
+            if (!first) {
+                s->Append("|");
+            }
+            first = false;
+            s->Append("OutOfMemory");
+            value &= ~InternalErrorType::OutOfMemory;
+        }
+
+        if (moreThanOneBit) {
+            s->Append(")");
+        }
+    } else {
+        s->Append(absl::StrFormat(
+            "%u", static_cast<typename std::underlying_type<InternalErrorType>::type>(value)));
+    }
+    return {true};
 }
 
 }  // namespace dawn::native

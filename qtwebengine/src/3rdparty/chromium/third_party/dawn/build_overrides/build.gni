@@ -25,6 +25,9 @@ declare_args() {
   ignore_elf32_limitations = false
 }
 
+# Enables assertions on safety checks in libc++.
+enable_safe_libcxx = true
+
 # Detect whether we can use the hermetic XCode like in Chromium and do so if
 # possible.
 if (host_os == "mac" && use_system_xcode == "") {

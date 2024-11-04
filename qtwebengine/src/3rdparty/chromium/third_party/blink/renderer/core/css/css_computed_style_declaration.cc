@@ -77,14 +77,19 @@ void LogUnimplementedPropertyID(const CSSProperty& property) {
               << property.GetPropertyName() << "'.";
 }
 
-void UseCountAnimationDelayZero(Document& document,
-                                const ComputedStyle& style) {
+// Tally counts of animation duration being zero when querying a property on
+// an element that has at least one active animation. We are interested in
+// direct queries of the duration property as well as coincidental queries in
+// order to gauge the impact of changing the default duration from 0 to auto.
+void UseCountIfAnimationDurationZero(Document& document,
+                                     const ComputedStyle& style,
+                                     mojom::blink::WebFeature feature) {
   if (const CSSAnimationData* animation_data = style.Animations()) {
-    const Vector<absl::optional<double>>& duration =
-        animation_data->DurationList();
-    if (duration.size() == 1u && duration[0] == 0.0) {
-      UseCounter::Count(document,
-                        WebFeature::kCSSGetComputedAnimationDelayZero);
+    for (absl::optional<double> duration : animation_data->DurationList()) {
+      if (duration == 0.0) {
+        UseCounter::Count(document, feature);
+        return;
+      }
     }
   }
 }
@@ -104,13 +109,13 @@ CSSComputedStyleDeclaration::ComputableProperties(
 }
 
 CSSComputedStyleDeclaration::CSSComputedStyleDeclaration(
-    Node* n,
+    Element* element,
     bool allow_visited_style,
     const String& pseudo_element_name)
-    : CSSStyleDeclaration(n ? n->GetExecutionContext() : nullptr),
-      node_(n),
+    : CSSStyleDeclaration(element ? element->GetExecutionContext() : nullptr),
+      element_(element),
       pseudo_element_specifier_(
-          CSSSelectorParser::ParsePseudoElement(pseudo_element_name, n)),
+          CSSSelectorParser::ParsePseudoElement(pseudo_element_name, element)),
       allow_visited_style_(allow_visited_style) {
   pseudo_argument_ =
       PseudoElementHasArguments(pseudo_element_specifier_)
@@ -135,14 +140,14 @@ void CSSComputedStyleDeclaration::setCSSText(const ExecutionContext*,
 
 const CSSValue*
 CSSComputedStyleDeclaration::GetFontSizeCSSValuePreferringKeyword() const {
-  if (!node_) {
+  if (!element_) {
     return nullptr;
   }
 
-  node_->GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kEditing);
+  element_->GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kEditing);
 
   const ComputedStyle* style =
-      node_->EnsureComputedStyle(pseudo_element_specifier_);
+      element_->EnsureComputedStyle(pseudo_element_specifier_);
   if (!style) {
     return nullptr;
   }
@@ -157,12 +162,12 @@ CSSComputedStyleDeclaration::GetFontSizeCSSValuePreferringKeyword() const {
 }
 
 bool CSSComputedStyleDeclaration::IsMonospaceFont() const {
-  if (!node_) {
+  if (!element_) {
     return false;
   }
 
   const ComputedStyle* style =
-      node_->EnsureComputedStyle(pseudo_element_specifier_);
+      element_->EnsureComputedStyle(pseudo_element_specifier_);
   if (!style) {
     return false;
   }
@@ -170,14 +175,14 @@ bool CSSComputedStyleDeclaration::IsMonospaceFont() const {
   return style->GetFontDescription().IsMonospace();
 }
 const ComputedStyle* CSSComputedStyleDeclaration::ComputeComputedStyle() const {
-  Node* styled_node = StyledNode();
-  DCHECK(styled_node);
-  const ComputedStyle* style = styled_node->EnsureComputedStyle(
-      styled_node->IsPseudoElement() ? kPseudoIdNone
-                                     : pseudo_element_specifier_,
+  Element* styled_element = StyledElement();
+  DCHECK(styled_element);
+  const ComputedStyle* style = styled_element->EnsureComputedStyle(
+      styled_element->IsPseudoElement() ? kPseudoIdNone
+                                        : pseudo_element_specifier_,
       pseudo_argument_);
   if (style && style->IsEnsuredOutsideFlatTree()) {
-    UseCounter::Count(node_->GetDocument(),
+    UseCounter::Count(element_->GetDocument(),
                       WebFeature::kGetComputedStyleOutsideFlatTree);
   }
   return style;
@@ -198,27 +203,25 @@ wtf_size_t CSSComputedStyleDeclaration::GetVariableNamesCount() const {
   return 0;
 }
 
-Node* CSSComputedStyleDeclaration::StyledNode() const {
-  if (!node_) {
+Element* CSSComputedStyleDeclaration::StyledElement() const {
+  if (!element_) {
     return nullptr;
   }
 
-  if (auto* node_element = DynamicTo<Element>(node_.Get())) {
-    if (PseudoElement* element = node_element->GetNestedPseudoElement(
-            pseudo_element_specifier_, pseudo_argument_)) {
-      return element;
-    }
+  if (PseudoElement* pseudo_element = element_->GetNestedPseudoElement(
+          pseudo_element_specifier_, pseudo_argument_)) {
+    return pseudo_element;
   }
-  return node_.Get();
+  return element_.Get();
 }
 
 LayoutObject* CSSComputedStyleDeclaration::StyledLayoutObject() const {
-  auto* node = StyledNode();
+  auto* node = StyledElement();
   if (!node) {
     return nullptr;
   }
 
-  if (pseudo_element_specifier_ != kPseudoIdNone && node == node_.Get()) {
+  if (pseudo_element_specifier_ != kPseudoIdNone && node == element_.Get()) {
     return nullptr;
   }
 
@@ -246,19 +249,19 @@ CSSComputedStyleDeclaration::GetVariables() const {
   if (!style) {
     return {};
   }
-  DCHECK(StyledNode());
+  DCHECK(StyledElement());
   return ComputedStyleCSSValueMapping::GetVariables(
-      *style, StyledNode()->GetDocument().GetPropertyRegistry());
+      *style, StyledElement()->GetDocument().GetPropertyRegistry());
 }
 
 void CSSComputedStyleDeclaration::UpdateStyleAndLayoutTreeIfNeeded(
     const CSSPropertyName* property_name) const {
-  Node* styled_node = StyledNode();
-  if (!styled_node) {
+  Element* styled_element = StyledElement();
+  if (!styled_element) {
     return;
   }
 
-  Document& document = styled_node->GetDocument();
+  Document& document = styled_element->GetDocument();
 
   if (HTMLFrameOwnerElement* owner = document.LocalOwner()) {
     // We are inside an iframe. If any of our ancestor iframes needs a style
@@ -274,10 +277,10 @@ void CSSComputedStyleDeclaration::UpdateStyleAndLayoutTreeIfNeeded(
         CSSProperty::Get(property_name->Id()).IsLayoutDependentProperty();
     if (is_for_layout_dependent_property) {
       owner->GetDocument().UpdateStyleAndLayout(
-          DocumentUpdateReason::kJavaScript);
+          DocumentUpdateReason::kComputedStyle);
       // The style recalc could have caused the styled node to be discarded or
       // replaced if it was a PseudoElement so we need to update it.
-      styled_node = StyledNode();
+      styled_element = StyledElement();
     }
   }
 
@@ -285,32 +288,34 @@ void CSSComputedStyleDeclaration::UpdateStyleAndLayoutTreeIfNeeded(
   // the UA stylesheet for these pseudo-elements.
   // TODO(khushalsagar): We can probably optimize this to run only when a
   // property set by the UA stylesheet is queried.
-  if (IsTransitionPseudoElement(styled_node->GetPseudoId())) {
+  if (IsTransitionPseudoElement(styled_element->GetPseudoId())) {
     if (auto* view = document.View()) {
-      view->UpdateLifecycleToPrePaintClean(DocumentUpdateReason::kJavaScript);
+      view->UpdateLifecycleToPrePaintClean(
+          DocumentUpdateReason::kComputedStyle);
     }
     return;
   }
 
-  document.UpdateStyleAndLayoutTreeForNode(styled_node);
+  document.UpdateStyleAndLayoutTreeForNode(
+      styled_element, DocumentUpdateReason::kComputedStyle);
 }
 
 void CSSComputedStyleDeclaration::UpdateStyleAndLayoutIfNeeded(
     const CSSProperty* property) const {
-  Node* styled_node = StyledNode();
-  if (!styled_node) {
+  Element* styled_element = StyledElement();
+  if (!styled_element) {
     return;
   }
 
   bool is_for_layout_dependent_property =
-      property && property->IsLayoutDependent(styled_node->GetComputedStyle(),
-                                              StyledLayoutObject());
+      property && property->IsLayoutDependent(
+                      styled_element->GetComputedStyle(), StyledLayoutObject());
 
   if (is_for_layout_dependent_property) {
-    auto& doc = styled_node->GetDocument();
+    auto& doc = styled_element->GetDocument();
     // EditingStyle uses this class with DisallowTransitionScope.
     if (!doc.Lifecycle().StateTransitionDisallowed() && doc.View()) {
-      doc.UpdateStyleAndLayoutForNode(styled_node,
+      doc.UpdateStyleAndLayoutForNode(styled_element,
                                       DocumentUpdateReason::kJavaScript);
     }
   }
@@ -318,14 +323,14 @@ void CSSComputedStyleDeclaration::UpdateStyleAndLayoutIfNeeded(
 
 const CSSValue* CSSComputedStyleDeclaration::GetPropertyCSSValue(
     const CSSPropertyName& property_name) const {
-  Node* styled_node = StyledNode();
-  if (!styled_node) {
+  Element* styled_element = StyledElement();
+  if (!styled_element) {
     return nullptr;
   }
 
   UpdateStyleAndLayoutTreeIfNeeded(&property_name);
 
-  CSSPropertyRef ref(property_name, styled_node->GetDocument());
+  CSSPropertyRef ref(property_name, styled_element->GetDocument());
   if (!ref.IsValid()) {
     return nullptr;
   }
@@ -339,9 +344,24 @@ const CSSValue* CSSComputedStyleDeclaration::GetPropertyCSSValue(
     return nullptr;
   }
 
-  if (property_class.PropertyID() == CSSPropertyID::kAnimation ||
-      property_class.PropertyID() == CSSPropertyID::kAnimationDelay) {
-    UseCountAnimationDelayZero(styled_node->GetDocument(), *style);
+  // Tally property value fetches when there is a running animation with zero
+  // duration.
+  //   1. duration shorthand
+  //   2. obscure webkit property for baseline.
+  if (property_class.PropertyID() == CSSPropertyID::kAnimationDuration) {
+    UseCountIfAnimationDurationZero(
+        styled_element->GetDocument(), *style,
+        WebFeature::kCSSGetComputedAnimationDurationZero);
+  }
+
+  // For a baseline comparison, we use a property unrelated to animations (and
+  // likely to be obscure). If reading this property and duration happens to
+  // be zero, then it is by shear coincidence and the reader is probably not
+  // interested in the distinction between 0 and 'auto' for the duration value.
+  if (property_class.PropertyID() == CSSPropertyID::kWebkitFontSmoothing) {
+    UseCountIfAnimationDurationZero(
+        styled_element->GetDocument(), *style,
+        WebFeature::kCSSGetComputedWebkitFontSmoothingAnimationDurationZero);
   }
 
   const CSSValue* value = property_class.CSSValueFromComputedStyle(
@@ -364,7 +384,7 @@ String CSSComputedStyleDeclaration::GetPropertyValue(
 }
 
 unsigned CSSComputedStyleDeclaration::length() const {
-  if (!node_ || !node_->InActiveDocument()) {
+  if (!element_ || !element_->InActiveDocument()) {
     return 0;
   }
 
@@ -404,11 +424,12 @@ bool CSSComputedStyleDeclaration::CssPropertyMatches(
   if (property_id == CSSPropertyID::kFontSize &&
       (property_value.IsPrimitiveValue() ||
        property_value.IsIdentifierValue()) &&
-      node_) {
+      element_) {
     // This is only used by editing code.
-    node_->GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kEditing);
+    element_->GetDocument().UpdateStyleAndLayout(
+        DocumentUpdateReason::kEditing);
     const ComputedStyle* style =
-        node_->EnsureComputedStyle(pseudo_element_specifier_);
+        element_->EnsureComputedStyle(pseudo_element_specifier_);
     if (style && style->GetFontDescription().KeywordSize()) {
       CSSValueID size_value = CssIdentifierForFontSizeKeyword(
           style->GetFontDescription().KeywordSize());
@@ -534,7 +555,7 @@ String CSSComputedStyleDeclaration::GetPropertyPriorityWithHint(
 void CSSComputedStyleDeclaration::SetPropertyInternal(
     CSSPropertyID id,
     const String&,
-    const String&,
+    StringView,
     bool,
     SecureContextMode,
     ExceptionState& exception_state) {
@@ -546,7 +567,7 @@ void CSSComputedStyleDeclaration::SetPropertyInternal(
 }
 
 void CSSComputedStyleDeclaration::Trace(Visitor* visitor) const {
-  visitor->Trace(node_);
+  visitor->Trace(element_);
   CSSStyleDeclaration::Trace(visitor);
 }
 

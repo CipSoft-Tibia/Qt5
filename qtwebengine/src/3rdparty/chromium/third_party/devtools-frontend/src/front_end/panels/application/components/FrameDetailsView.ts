@@ -21,7 +21,7 @@ import * as ExpandableList from '../../../ui/components/expandable_list/expandab
 import * as ReportView from '../../../ui/components/report_view/report_view.js';
 import * as IconButton from '../../../ui/components/icon_button/icon_button.js';
 import * as ComponentHelpers from '../../../ui/components/helpers/helpers.js';
-import * as UI from '../../../ui/legacy/legacy.js';
+import * as LegacyWrapper from '../../../ui/components/legacy_wrapper/legacy_wrapper.js';
 import * as Workspace from '../../../models/workspace/workspace.js';
 import * as Components from '../../../ui/legacy/components/utils/utils.js';
 import * as Protocol from '../../../generated/protocol.js';
@@ -259,44 +259,6 @@ const UIStrings = {
 };
 const str_ = i18n.i18n.registerUIStrings('panels/application/components/FrameDetailsView.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
-export class FrameDetailsView extends UI.ThrottledWidget.ThrottledWidget {
-  readonly #reportView = new FrameDetailsReportView();
-  readonly #frame: SDK.ResourceTreeModel.ResourceTreeFrame;
-  #prerenderedUrl: string;
-
-  constructor(frame: SDK.ResourceTreeModel.ResourceTreeFrame) {
-    super();
-    this.#frame = frame;
-    this.#prerenderedUrl = '';
-    this.contentElement.classList.add('overflow-auto');
-    this.contentElement.appendChild(this.#reportView);
-    this.update();
-
-    SDK.TargetManager.TargetManager.instance().addModelListener(
-        SDK.ChildTargetManager.ChildTargetManager, SDK.ChildTargetManager.Events.TargetInfoChanged, this.targetChanged,
-        this);
-    frame.resourceTreeModel().addEventListener(
-        SDK.ResourceTreeModel.Events.PrerenderingStatusUpdated, this.update, this);
-  }
-
-  targetChanged(event: Common.EventTarget.EventTargetEvent<Protocol.Target.TargetInfo>): void {
-    const targetInfo = event.data;
-    if (targetInfo.subtype === 'prerender') {
-      this.#prerenderedUrl = targetInfo.url;
-      this.update();
-    }
-  }
-
-  async doUpdate(): Promise<void> {
-    const adScriptId = await this.#frame?.parentFrame()?.getAdScriptId(this.#frame?.id);
-    const debuggerModel = adScriptId?.debuggerId ?
-        await SDK.DebuggerModel.DebuggerModel.modelForDebuggerId(adScriptId?.debuggerId) :
-        null;
-    const target = debuggerModel?.target();
-    this.#reportView
-        .data = {frame: this.#frame, target, prerenderedUrl: this.#prerenderedUrl, adScriptId: adScriptId || null};
-  }
-}
 
 const coordinator = Coordinator.RenderCoordinator.RenderCoordinator.instance();
 
@@ -307,7 +269,7 @@ export interface FrameDetailsReportViewData {
   adScriptId: Protocol.Page.AdScriptId|null;
 }
 
-export class FrameDetailsReportView extends HTMLElement {
+export class FrameDetailsReportView extends LegacyWrapper.LegacyWrapper.WrappableComponent {
   static readonly litTagName = LitHtml.literal`devtools-resources-frame-details-view`;
   readonly #shadow = this.attachShadow({mode: 'open'});
   #frame?: SDK.ResourceTreeModel.ResourceTreeFrame;
@@ -320,24 +282,42 @@ export class FrameDetailsReportView extends HTMLElement {
   #linkifier = new Components.Linkifier.Linkifier();
   #adScriptId: Protocol.Page.AdScriptId|null = null;
 
+  constructor(frame: SDK.ResourceTreeModel.ResourceTreeFrame) {
+    super();
+    this.#frame = frame;
+    this.#prerenderedUrl = '';
+
+    SDK.TargetManager.TargetManager.instance().addModelListener(
+        SDK.ChildTargetManager.ChildTargetManager, SDK.ChildTargetManager.Events.TargetInfoChanged, this.targetChanged,
+        this);
+    frame.resourceTreeModel().addEventListener(
+        SDK.ResourceTreeModel.Events.PrerenderingStatusUpdated, this.render, this);
+    void this.render();
+  }
+
+  targetChanged(event: Common.EventTarget.EventTargetEvent<Protocol.Target.TargetInfo>): void {
+    const targetInfo = event.data;
+    if (targetInfo.subtype === 'prerender') {
+      this.#prerenderedUrl = targetInfo.url;
+      void this.render();
+    }
+  }
+
   connectedCallback(): void {
+    this.parentElement?.classList.add('overflow-auto');
     this.#protocolMonitorExperimentEnabled = Root.Runtime.experiments.isEnabled('protocolMonitor');
     this.#shadow.adoptedStyleSheets = [frameDetailsReportViewStyles];
   }
 
-  set data(data: FrameDetailsReportViewData) {
-    this.#frame = data.frame;
-    this.#adScriptId = data.adScriptId;
-    this.#target = data.target;
-
-    this.#prerenderedUrl = data.prerenderedUrl;
+  override async render(): Promise<void> {
+    this.#adScriptId = (await this.#frame?.parentFrame()?.getAdScriptId(this.#frame?.id)) || null;
+    const debuggerModel = this.#adScriptId?.debuggerId ?
+        await SDK.DebuggerModel.DebuggerModel.modelForDebuggerId(this.#adScriptId?.debuggerId) :
+        null;
+    this.#target = debuggerModel?.target();
     if (!this.#permissionsPolicies && this.#frame) {
       this.#permissionsPolicies = this.#frame.getPermissionsPolicyState();
     }
-    void this.#render();
-  }
-
-  async #render(): Promise<void> {
     await coordinator.write('FrameDetailsView render', () => {
       if (!this.#frame) {
         return;
@@ -390,9 +370,11 @@ export class FrameDetailsReportView extends HTMLElement {
       clickHandler: refreshOriginTrials,
       groups: [
         {
-          iconName: 'refresh_12x12_icon',
+          iconName: 'refresh',
           text: i18nString(UIStrings.refresh),
-          iconColor: 'var(--color-text-primary)',
+          iconColor: 'var(--icon-default-hover)',
+          iconWidth: '14px',
+          iconHeight: '14px',
         } as IconButton.IconButton.IconWithTextData,
       ],
     } as IconButton.IconButton.IconButtonData}>
@@ -437,7 +419,7 @@ export class FrameDetailsReportView extends HTMLElement {
     }
     const sourceCode = this.#uiSourceCodeForFrame(this.#frame);
     return renderIconLink(
-        'sources_panel_icon',
+        'breakpoint-circle',
         i18nString(UIStrings.clickToRevealInSourcesPanel),
         (): Promise<void> => Common.Revealer.reveal(sourceCode),
     );
@@ -449,9 +431,11 @@ export class FrameDetailsReportView extends HTMLElement {
       if (resource && resource.request) {
         const request = resource.request;
         return renderIconLink(
-            'network_panel_icon', i18nString(UIStrings.clickToRevealInNetworkPanel), (): Promise<void> => {
-              const requestLocation = NetworkForward.UIRequestLocation.UIRequestLocation.tab(
-                  request, NetworkForward.UIRequestLocation.UIRequestTabs.Headers);
+            'arrow-up-down-circle', i18nString(UIStrings.clickToRevealInNetworkPanel), (): Promise<void> => {
+              const headersTab = Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.HEADER_OVERRIDES) ?
+                  NetworkForward.UIRequestLocation.UIRequestTabs.HeadersComponent :
+                  NetworkForward.UIRequestLocation.UIRequestTabs.Headers;
+              const requestLocation = NetworkForward.UIRequestLocation.UIRequestLocation.tab(request, headersTab);
               return Common.Revealer.reveal(requestLocation);
             });
       }
@@ -493,7 +477,7 @@ export class FrameDetailsReportView extends HTMLElement {
       const unreachableUrl = Common.ParsedURL.ParsedURL.fromString(this.#frame.unreachableUrl());
       if (unreachableUrl) {
         return renderIconLink(
-            'network_panel_icon',
+            'arrow-up-down-circle',
             i18nString(UIStrings.clickToRevealInNetworkPanelMight),
             ():
                 void => {
@@ -534,21 +518,31 @@ export class FrameDetailsReportView extends HTMLElement {
         // Disabled until https://crbug.com/1079231 is fixed.
         // clang-format off
         return LitHtml.html`
-            <${ReportView.ReportView.ReportKey.litTagName}>${i18nString(UIStrings.ownerElement)}</${ReportView.ReportView.ReportKey.litTagName}>
+          <${ReportView.ReportView.ReportKey.litTagName}>${i18nString(UIStrings.ownerElement)}</${ReportView.ReportView.ReportKey.litTagName}>
           <${ReportView.ReportView.ReportValue.litTagName} class="without-min-width">
-              <button class="link" role="link" tabindex=0 title=${i18nString(UIStrings.clickToRevealInElementsPanel)}
-              @mouseenter=${(): Promise<void>|undefined => this.#frame?.highlight()}
-              @mouseleave=${(): void => SDK.OverlayModel.OverlayModel.hideDOMNodeHighlight()}
-              @click=${(): Promise<void> => Common.Revealer.reveal(linkTargetDOMNode)}
-            >
-              <${IconButton.Icon.Icon.litTagName} class="button-icon-with-text" .data=${{
-                iconName: 'elements_panel_icon',
-                color: 'var(--color-primary)',
-                width: '16px',
-                height: '16px',
-              } as IconButton.Icon.IconData}></${IconButton.Icon.Icon.litTagName}>
-              &lt;${linkTargetDOMNode.nodeName().toLocaleLowerCase()}&gt;
-            </button>
+            <div class="inline-items">
+              <button class="link" role="link" tabindex=0
+                @mouseenter=${(): Promise<void>|undefined => this.#frame?.highlight()}
+                @mouseleave=${(): void => SDK.OverlayModel.OverlayModel.hideDOMNodeHighlight()}
+                @click=${(): Promise<void> => Common.Revealer.reveal(linkTargetDOMNode)}
+                title=${i18nString(UIStrings.clickToRevealInElementsPanel)}
+              >
+                <${IconButton.Icon.Icon.litTagName} .data=${{
+                  iconName: 'code-circle',
+                  color: 'var(--icon-link)',
+                  width: '16px',
+                  height: '16px',
+                } as IconButton.Icon.IconData}>
+                </${IconButton.Icon.Icon.litTagName}>
+              </button>
+              <button class="link text-link" role="link" tabindex=0 title=${i18nString(UIStrings.clickToRevealInElementsPanel)}
+                @mouseenter=${(): Promise<void>|undefined => this.#frame?.highlight()}
+                @mouseleave=${(): void => SDK.OverlayModel.OverlayModel.hideDOMNodeHighlight()}
+                @click=${(): Promise<void> => Common.Revealer.reveal(linkTargetDOMNode)}
+              >
+                &lt;${linkTargetDOMNode.nodeName().toLocaleLowerCase()}&gt;
+              </button>
+            </div>
           </${ReportView.ReportView.ReportValue.litTagName}>
         `;
         // clang-format on

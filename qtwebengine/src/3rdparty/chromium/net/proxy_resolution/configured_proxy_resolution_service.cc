@@ -288,7 +288,7 @@ class ProxyResolverFactoryForPacResult : public ProxyResolverFactory {
 };
 
 // Returns NetLog parameters describing a proxy configuration change.
-base::Value NetLogProxyConfigChangedParams(
+base::Value::Dict NetLogProxyConfigChangedParams(
     const absl::optional<ProxyConfigWithAnnotation>* old_config,
     const ProxyConfigWithAnnotation* new_config) {
   base::Value::Dict dict;
@@ -297,24 +297,25 @@ base::Value NetLogProxyConfigChangedParams(
   if (old_config->has_value())
     dict.Set("old_config", (*old_config)->value().ToValue());
   dict.Set("new_config", new_config->value().ToValue());
-  return base::Value(std::move(dict));
+  return dict;
 }
 
-base::Value NetLogBadProxyListParams(const ProxyRetryInfoMap* retry_info) {
+base::Value::Dict NetLogBadProxyListParams(
+    const ProxyRetryInfoMap* retry_info) {
   base::Value::Dict dict;
   base::Value::List list;
 
   for (const auto& retry_info_pair : *retry_info)
     list.Append(retry_info_pair.first);
   dict.Set("bad_proxy_list", std::move(list));
-  return base::Value(std::move(dict));
+  return dict;
 }
 
 // Returns NetLog parameters on a successful proxy resolution.
-base::Value NetLogFinishedResolvingProxyParams(const ProxyInfo* result) {
+base::Value::Dict NetLogFinishedResolvingProxyParams(const ProxyInfo* result) {
   base::Value::Dict dict;
   dict.Set("pac_string", result->ToPacString());
-  return base::Value(std::move(dict));
+  return dict;
 }
 
 // Returns a sanitized copy of |url| which is safe to pass on to a PAC script.
@@ -916,18 +917,24 @@ int ConfiguredProxyResolutionService::ResolveProxy(
   // and password), and local data (i.e. reference fragment) which does not need
   // to be disclosed to the resolver.
   GURL url = SanitizeUrl(raw_url);
+  GURL top_frame_url =
+      network_anonymization_key.GetTopFrameSite().has_value() &&
+              network_anonymization_key.GetTopFrameSite()->GetURL().is_valid()
+          ? SanitizeUrl(network_anonymization_key.GetTopFrameSite()->GetURL())
+          : GURL();
 
   // Check if the request can be completed right away. (This is the case when
   // using a direct connection for example).
   int rv = TryToCompleteSynchronously(url, result);
   if (rv != ERR_IO_PENDING) {
-    rv = DidFinishResolvingProxy(url, method, result, rv, net_log);
+    rv = DidFinishResolvingProxy(url, top_frame_url, method, result, rv,
+                                 net_log);
     return rv;
   }
 
   auto req = std::make_unique<ConfiguredProxyResolutionRequest>(
-      this, url, method, network_anonymization_key, result, std::move(callback),
-      net_log);
+      this, url, top_frame_url, method, network_anonymization_key, result,
+      std::move(callback), net_log);
 
   if (current_state_ == STATE_READY) {
     // Start the resolve request.
@@ -1159,6 +1166,7 @@ void ConfiguredProxyResolutionService::RemovePendingRequest(
 
 int ConfiguredProxyResolutionService::DidFinishResolvingProxy(
     const GURL& url,
+    const GURL& top_frame_url,
     const std::string& method,
     ProxyInfo* result,
     int result_code,
@@ -1170,7 +1178,8 @@ int ConfiguredProxyResolutionService::DidFinishResolvingProxy(
     // Allow the proxy delegate to interpose on the resolution decision,
     // possibly modifying the ProxyInfo.
     if (proxy_delegate_)
-      proxy_delegate_->OnResolveProxy(url, method, proxy_retry_info_, result);
+      proxy_delegate_->OnResolveProxy(url, top_frame_url, method,
+                                      proxy_retry_info_, result);
 
     net_log.AddEvent(
         NetLogEventType::PROXY_RESOLUTION_SERVICE_RESOLVED_PROXY_LIST,
@@ -1204,7 +1213,8 @@ int ConfiguredProxyResolutionService::DidFinishResolvingProxy(
       // Allow the proxy delegate to interpose on the resolution decision,
       // possibly modifying the ProxyInfo.
       if (proxy_delegate_)
-        proxy_delegate_->OnResolveProxy(url, method, proxy_retry_info_, result);
+        proxy_delegate_->OnResolveProxy(url, top_frame_url, method,
+                                        proxy_retry_info_, result);
     } else {
       result_code = ERR_MANDATORY_PROXY_CONFIGURATION_FAILED;
     }

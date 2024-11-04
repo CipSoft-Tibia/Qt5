@@ -8,16 +8,19 @@
 
 #include <map>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
+#include "base/metrics/field_trial_params.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
+#include "base/types/expected_macros.h"
 #include "base/values.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
@@ -62,38 +65,22 @@ const char kPopularSitesDefaultCountryCode[] = "DEFAULT";
 const char kPopularSitesDefaultVersion[] = "5";
 const int kSitesExplorationStartVersion = 6;
 const int kPopularSitesRedownloadIntervalHours = 24;
-const char kIOSDefaultPopularSitesExperimentIncludeApps[] =
+#if BUILDFLAG(IS_IOS)
+const char kIOSDefaultPopularSitesLocaleUS[] =
     "https://www.gstatic.com/chrome/ntp/ios/"
     "suggested_sites_US_2023q1_mvt_experiment_with_popular_sites.json";
-const char kIOSDefaultPopularSitesExperimentExcludeApps[] =
-    "https://www.gstatic.com/chrome/ntp/ios/"
-    "suggested_sites_US_2023q1_mvt_experiment_without_popular_sites.json";
+#endif
 
 GURL GetPopularSitesURL(const std::string& directory,
                         const std::string& country,
                         const std::string& version) {
-  // A Chrome iOS-only experiment is being run for M109 which overrides the
-  // popular sites URL.
-  NewTabPageRetentionExperimentBehavior experiment_type =
-      GetNewTabPageRetentionExperimentType();
-
-  // If the experiment is enabled, and the popular sites suggestions should
-  // include sites with native iOS apps,
-  // `kIOSDefaultPopularSitesExperimentIncludeApps` is used.
-  if (country == "US" && experiment_type ==
-                             NewTabPageRetentionExperimentBehavior::
-                                 kPopularSitesIncludePopularApps) {
-    return GURL(kIOSDefaultPopularSitesExperimentIncludeApps);
+  // US-based Chrome iOS users have a curated set of default Most Visited Tiles,
+  // based on Chrome iOS history in the US.
+#if BUILDFLAG(IS_IOS)
+  if (country == "US") {
+    return GURL(kIOSDefaultPopularSitesLocaleUS);
   }
-
-  // If the experiment is enabled, and the popular sites suggestions should
-  // exclude sites with native iOS apps,
-  // `kIOSDefaultPopularSitesExperimentExcludeApps` is used.
-  if (country == "US" && experiment_type ==
-                             NewTabPageRetentionExperimentBehavior::
-                                 kPopularSitesExcludePopularApps) {
-    return GURL(kIOSDefaultPopularSitesExperimentExcludeApps);
-  }
+#endif
 
   return GURL(base::StringPrintf(kPopularSitesURLFormat, directory.c_str(),
                                  country.c_str(), version.c_str()));
@@ -130,18 +117,16 @@ std::string GetDefaultSearchEngineCountryCode(
 }
 
 std::string GetVariationCountry() {
-  return variations::GetVariationParamValue(kPopularSitesFieldTrialName,
-                                            "country");
+  return base::GetFieldTrialParamValue(kPopularSitesFieldTrialName, "country");
 }
 
 std::string GetVariationVersion() {
-  return variations::GetVariationParamValue(kPopularSitesFieldTrialName,
-                                            "version");
+  return base::GetFieldTrialParamValue(kPopularSitesFieldTrialName, "version");
 }
 
 std::string GetVariationDirectory() {
-  return variations::GetVariationParamValue(kPopularSitesFieldTrialName,
-                                            "directory");
+  return base::GetFieldTrialParamValue(kPopularSitesFieldTrialName,
+                                       "directory");
 }
 
 PopularSites::SitesVector ParseSiteList(const base::Value::List& list) {
@@ -247,41 +232,28 @@ void SetDefaultResourceForSite(size_t index,
 #endif
 
 // Creates the list of popular sites based on a snapshot available for mobile.
-base::Value DefaultPopularSites() {
+base::Value::List DefaultPopularSites(absl::optional<std::string> country) {
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
-  return base::Value(base::Value::Type::LIST);
+  return base::Value::List();
 #else
   if (!base::FeatureList::IsEnabled(kPopularSitesBakedInContentFeature))
-    return base::Value(base::Value::Type::LIST);
+    return base::Value::List();
 
   int popular_sites_json = IDR_DEFAULT_POPULAR_SITES_JSON;
 
-  // A Chrome iOS-only experiment is being run which overrides the popular sites
-  // URL.
-  NewTabPageRetentionExperimentBehavior experiment_type =
-      GetNewTabPageRetentionExperimentType();
-
-  // If the experiment is enabled, and the popular sites suggestions should
-  // include sites with native iOS apps,
-  // `kIOSDefaultPopularSitesExperimentIncludeApps` is used.
-  if (experiment_type ==
-      NewTabPageRetentionExperimentBehavior::kPopularSitesIncludePopularApps) {
+#if BUILDFLAG(IS_IOS)
+  if (country.has_value() && *country == "US") {
     popular_sites_json = IDR_DEFAULT_POPULAR_SITES_WITH_POPULAR_APPS_JSON;
   }
-
-  // If the experiment is enabled, and the popular sites suggestions should
-  // exclude sites with native iOS apps,
-  // `kIOSDefaultPopularSitesExperimentExcludeApps` is used.
-  if (experiment_type ==
-      NewTabPageRetentionExperimentBehavior::kPopularSitesExcludePopularApps) {
-    popular_sites_json = IDR_DEFAULT_POPULAR_SITES_WITHOUT_POPULAR_APPS_JSON;
-  }
+#endif
 
   absl::optional<base::Value> sites = base::JSONReader::Read(
       ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(
           popular_sites_json));
-  for (base::Value& site : sites->GetList())
+  base::Value::List& sites_list = sites->GetList();
+  for (base::Value& site : sites_list) {
     site.GetDict().Set("baked_in", true);
+  }
 
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
   static constexpr int default_popular_sites_icons[] = {
@@ -291,11 +263,10 @@ base::Value DefaultPopularSites() {
       IDR_DEFAULT_POPULAR_SITES_ICON6, IDR_DEFAULT_POPULAR_SITES_ICON7};
   base::span<const int> icon_list = default_popular_sites_icons;
 
-  // If the experiment is enabled, and the popular sites suggestions should
-  // include sites with native iOS apps,
-  // `kPopularSitesIncludePopularApps` is used.
-  if (experiment_type ==
-      NewTabPageRetentionExperimentBehavior::kPopularSitesIncludePopularApps) {
+#if BUILDFLAG(IS_IOS)
+  // US-based Chrome iOS users have a curated set of default Most Visited Tiles,
+  // based on Chrome iOS history in the US.
+  if (country.has_value() && *country == "US") {
     static constexpr int popular_sites_icons_with_popular_ios_apps[] = {
         IDR_DEFAULT_POPULAR_SITES_WITH_POPULAR_APPS_ICON0,
         IDR_DEFAULT_POPULAR_SITES_WITH_POPULAR_APPS_ICON1,
@@ -308,31 +279,14 @@ base::Value DefaultPopularSites() {
 
     icon_list = popular_sites_icons_with_popular_ios_apps;
   }
-
-  // If the experiment is enabled, and the popular sites suggestions should
-  // exclude sites with native iOS apps,
-  // `kPopularSitesExcludePopularApps` is used.
-  if (experiment_type ==
-      NewTabPageRetentionExperimentBehavior::kPopularSitesExcludePopularApps) {
-    static constexpr int popular_sites_icons_without_popular_ios_apps[] = {
-        IDR_DEFAULT_POPULAR_SITES_WITHOUT_POPULAR_APPS_ICON0,
-        IDR_DEFAULT_POPULAR_SITES_WITHOUT_POPULAR_APPS_ICON1,
-        IDR_DEFAULT_POPULAR_SITES_WITHOUT_POPULAR_APPS_ICON2,
-        IDR_DEFAULT_POPULAR_SITES_WITHOUT_POPULAR_APPS_ICON3,
-        IDR_DEFAULT_POPULAR_SITES_WITHOUT_POPULAR_APPS_ICON4,
-        IDR_DEFAULT_POPULAR_SITES_WITHOUT_POPULAR_APPS_ICON5,
-        IDR_DEFAULT_POPULAR_SITES_WITHOUT_POPULAR_APPS_ICON6,
-        IDR_DEFAULT_POPULAR_SITES_WITHOUT_POPULAR_APPS_ICON7};
-
-    icon_list = popular_sites_icons_without_popular_ios_apps;
-  }
+#endif
 
   size_t index = 0;
   for (int icon_resource : icon_list) {
-    SetDefaultResourceForSite(index++, icon_resource, sites->GetList());
+    SetDefaultResourceForSite(index++, icon_resource, sites_list);
   }
 #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  return std::move(sites.value());
+  return std::move(sites_list);
 #endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 }
 
@@ -353,7 +307,7 @@ PopularSites::Site::Site(const std::u16string& title,
 
 PopularSites::Site::Site(const Site& other) = default;
 
-PopularSites::Site::~Site() {}
+PopularSites::Site::~Site() = default;
 
 PopularSitesImpl::PopularSitesImpl(
     PrefService* prefs,
@@ -369,7 +323,7 @@ PopularSitesImpl::PopularSitesImpl(
           ParseSites(prefs->GetList(prefs::kPopularSitesJsonPref),
                      prefs_->GetInteger(prefs::kPopularSitesVersionPref))) {}
 
-PopularSitesImpl::~PopularSitesImpl() {}
+PopularSitesImpl::~PopularSitesImpl() = default;
 
 bool PopularSitesImpl::MaybeStartFetch(bool force_download,
                                        FinishedCallback callback) {
@@ -508,8 +462,24 @@ void PopularSitesImpl::RegisterProfilePrefs(
 
   user_prefs->RegisterInt64Pref(prefs::kPopularSitesLastDownloadPref, 0);
   user_prefs->RegisterStringPref(prefs::kPopularSitesURLPref, std::string());
+
+#if BUILDFLAG(IS_IOS)
+  // Estimate the country code; `GetVariationCountry()` cannot be called because
+  // `RegisterProfilePrefs()` is static.
+  std::string country_code_estimate = GetVariationCountry();
+
+  if (country_code_estimate.empty()) {
+    country_code_estimate = GetDeviceCountryCode();
+  }
+
+  absl::optional<std::string> country(country_code_estimate);
+
   user_prefs->RegisterListPref(prefs::kPopularSitesJsonPref,
-                               DefaultPopularSites());
+                               DefaultPopularSites(country));
+#else
+  user_prefs->RegisterListPref(prefs::kPopularSitesJsonPref,
+                               DefaultPopularSites(absl::nullopt));
+#endif
   int version;
   base::StringToInt(kPopularSitesDefaultVersion, &version);
   user_prefs->RegisterIntegerPref(prefs::kPopularSitesVersionPref, version);
@@ -565,13 +535,11 @@ void PopularSitesImpl::OnSimpleLoaderComplete(
 
 void PopularSitesImpl::OnJsonParsed(
     data_decoder::DataDecoder::ValueOrError result) {
-  if (!result.has_value()) {
-    DLOG(WARNING) << "JSON parsing failed: " << result.error();
+  ASSIGN_OR_RETURN(base::Value list, std::move(result), [&](std::string error) {
+    DLOG(WARNING) << "JSON parsing failed: " << std::move(error);
     OnDownloadFailed();
-    return;
-  }
+  });
 
-  base::Value list = std::move(*result);
   if (!list.is_list()) {
     DLOG(WARNING) << "JSON is not a list";
     OnDownloadFailed();

@@ -134,7 +134,7 @@ RemoteFrame::RemoteFrame(
   dom_window_ = MakeGarbageCollected<RemoteDOMWindow>(*this);
 
   DCHECK(task_runner_);
-  remote_frame_host_remote_.Bind(std::move(remote_frame_host));
+  remote_frame_host_remote_.Bind(std::move(remote_frame_host), task_runner_);
   receiver_.Bind(std::move(receiver), task_runner_);
 
   UpdateInertIfPossible();
@@ -157,6 +157,9 @@ void RemoteFrame::DetachAndDispose() {
 void RemoteFrame::Trace(Visitor* visitor) const {
   visitor->Trace(view_);
   visitor->Trace(security_context_);
+  visitor->Trace(remote_frame_host_remote_);
+  visitor->Trace(receiver_);
+  visitor->Trace(main_frame_receiver_);
   Frame::Trace(visitor);
 }
 
@@ -255,7 +258,11 @@ void RemoteFrame::Navigate(FrameLoadRequest& frame_request,
   auto params = mojom::blink::OpenURLParams::New();
   params->url = url;
   params->initiator_origin = request.RequestorOrigin();
-  params->initiator_base_url = frame_request.GetRequestorBaseURL();
+  if (features::IsNewBaseUrlInheritanceBehaviorEnabled() &&
+      (url.IsAboutBlankURL() || url.IsAboutSrcdocURL()) &&
+      !frame_request.GetRequestorBaseURL().IsEmpty()) {
+    params->initiator_base_url = frame_request.GetRequestorBaseURL();
+  }
   params->post_body =
       blink::GetRequestBodyForWebURLRequest(WrappedResourceRequest(request));
   DCHECK_EQ(!!params->post_body, request.HttpMethod().Utf8() == "POST");
@@ -302,6 +309,7 @@ void RemoteFrame::Navigate(FrameLoadRequest& frame_request,
 
   params->initiator_activation_and_ad_status =
       GetNavigationInitiatorActivationAndAdStatus(request.HasUserGesture(),
+                                                  initiator_frame_is_ad,
                                                   is_ad_script_in_stack);
 
   params->is_container_initiated = frame_request.IsContainerInitiated();
@@ -656,6 +664,9 @@ void RemoteFrame::UpdateUserActivationState(
   switch (update_type) {
     case mojom::blink::UserActivationUpdateType::kNotifyActivation:
       NotifyUserActivationInFrameTree(notification_type);
+      break;
+    case mojom::blink::UserActivationUpdateType::kNotifyActivationStickyOnly:
+      NotifyUserActivationInFrameTreeStickyOnly();
       break;
     case mojom::blink::UserActivationUpdateType::kConsumeTransientActivation:
       ConsumeTransientUserActivationInFrameTree();
@@ -1100,6 +1111,11 @@ void RemoteFrame::CreateRemoteChild(
       token, opener_frame_token, tree_scope_type, std::move(replication_state),
       std::move(owner_properties), is_loading, devtools_frame_token,
       std::move(remote_frame_interfaces));
+}
+
+void RemoteFrame::CreateRemoteChildren(
+    Vector<mojom::blink::CreateRemoteChildParamsPtr> params) {
+  Client()->CreateRemoteChildren(params);
 }
 
 }  // namespace blink

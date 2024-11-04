@@ -12,12 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Round a number up to the nearest stepsize.
-export function roundUpNearest(val: number, stepsize: number): number {
-  return stepsize * Math.ceil(val / stepsize);
-}
-
-// Round a number down to the nearest stepsize.
-export function roundDownNearest(val: number, stepsize: number): number {
-  return stepsize * Math.floor(val / stepsize);
+// Restrict the value of a number between two values (inclusive)
+export function clamp(val: number, lower: number, upper: number): number {
+  return Math.max(lower, Math.min(upper, val));
 }

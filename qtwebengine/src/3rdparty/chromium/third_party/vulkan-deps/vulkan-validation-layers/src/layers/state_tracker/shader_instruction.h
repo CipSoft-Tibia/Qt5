@@ -11,7 +11,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * The Shader Instruction file is in charge of holding instruction information
  */
 #pragma once
@@ -21,10 +21,10 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include "vk_layer_data.h"
+#include "containers/custom_containers.h"
 #include <spirv/unified1/spirv.hpp>
 
-struct SHADER_MODULE_STATE;
+struct SPIRV_MODULE_STATE;
 
 struct AtomicInstructionInfo {
     uint32_t storage_class;
@@ -50,10 +50,10 @@ class Instruction {
 
     uint32_t Opcode() const { return words_[0] & 0x0ffffu; }
 
-    // operand id index, return 0 if no result
-    uint32_t ResultId() const { return result_id_; }
-    // operand id index, return 0 if no type
-    uint32_t TypeId() const { return type_id_; }
+    // operand id, return 0 if no result
+    uint32_t ResultId() const { return (result_id_index_ == 0) ? 0 : words_[result_id_index_]; }
+    // operand id, return 0 if no type
+    uint32_t TypeId() const { return (type_id_index_ == 0) ? 0 : words_[type_id_index_]; }
 
     // Used when need to print information for an error message
     std::string Describe() const;
@@ -68,8 +68,15 @@ class Instruction {
 
     uint32_t GetConstantValue() const;
     uint32_t GetBitWidth() const;
-    AtomicInstructionInfo GetAtomicInfo(const SHADER_MODULE_STATE& module_state) const;
+    uint32_t GetByteWidth() const { return (GetBitWidth() + 31) / 32; }
+    AtomicInstructionInfo GetAtomicInfo(const SPIRV_MODULE_STATE& module_state) const;
     spv::BuiltIn GetBuiltIn() const;
+
+    bool IsArray() const;
+    // Helpers for OpTypeImage
+    spv::Dim FindImageDim() const;
+    bool IsImageArray() const;
+    bool IsImageMultisampled() const;
 
     // Auto-generated helper functions
     spv::StorageClass StorageClass() const;
@@ -87,6 +94,6 @@ class Instruction {
 
     // Max capacity needs to be uint32_t because an instruction can have a string operand that is (2^16)-1 bytes long
     small_vector<uint32_t, word_vector_length, uint32_t> words_;
-    uint32_t result_id_;
-    uint32_t type_id_;
+    uint32_t result_id_index_ = 0;
+    uint32_t type_id_index_ = 0;
 };

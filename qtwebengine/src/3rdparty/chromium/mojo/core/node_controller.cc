@@ -7,6 +7,7 @@
 #include <limits>
 #include <vector>
 
+#include "base/containers/contains.h"
 #include "base/containers/queue.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
@@ -27,6 +28,7 @@
 #include "mojo/core/user_message_impl.h"
 #include "mojo/public/cpp/platform/named_platform_channel.h"
 #include "mojo/public/cpp/platform/platform_channel.h"
+#include "mojo/public/cpp/platform/platform_channel_server.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
 #if BUILDFLAG(IS_WIN)
@@ -161,21 +163,6 @@ absl::optional<ConnectionParams> CreateSyncNodeConnectionParams(
   BrokerHost* broker_host = new BrokerHost(
       target_process.IsValid() ? target_process.Duplicate() : base::Process(),
       std::move(connection_params), process_error_callback);
-
-#if BUILDFLAG(IS_WIN)
-  // On Windows, if target_process is invalid it means it's elevated or running
-  // in another session so a named pipe should be used instead.
-  if (!target_process.IsValid()) {
-    handle_policy = Channel::HandlePolicy::kRejectHandles;
-    NamedPlatformChannel::Options options;
-    NamedPlatformChannel named_channel(options);
-    node_connection_params =
-        ConnectionParams(named_channel.TakeServerEndpoint());
-    node_connection_params.set_is_untrusted_process(is_untrusted_process);
-    broker_host->SendNamedChannel(named_channel.GetServerName());
-    return node_connection_params;
-  }
-#endif
 
   // Sync connections usurp the passed endpoint and use it for the sync broker
   // channel. A new channel is created here for the NodeChannel and sent over
@@ -350,7 +337,8 @@ int NodeController::MergeLocalPorts(const ports::PortRef& port0,
 
 base::WritableSharedMemoryRegion NodeController::CreateSharedBuffer(
     size_t num_bytes) {
-#if !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_NACL) && !BUILDFLAG(IS_FUCHSIA)
+#if !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_NACL) && !BUILDFLAG(IS_FUCHSIA) && \
+    !BUILDFLAG(IS_ANDROID)
   // Shared buffer creation failure is fatal, so always use the broker when we
   // have one; unless of course the embedder forces us not to.
   if (!GetConfiguration().force_direct_shared_memory_allocation && broker_)
@@ -431,6 +419,51 @@ void NodeController::SendBrokerClientInvitationOnIOThread(
     // |BIND_SYNC_BROKER| message from the invited client.
     node_connection_params = std::move(connection_params);
   } else {
+#if BUILDFLAG(IS_WIN)
+    // On Windows, if `target_process` is invalid we can't duplicate a pipe
+    // handle to the remote client. In that case we instead open a new named
+    // pipe and send the client its name via the broker. Once connected, the new
+    // named pipe will be used for the client Channel.
+    if (!target_process.IsValid()) {
+      NamedPlatformChannel::Options options;
+      NamedPlatformChannel named_channel(options);
+
+      const bool is_untrusted_process =
+          connection_params.is_untrusted_process();
+      BrokerHost* broker_host =
+          new BrokerHost(base::Process(), std::move(connection_params),
+                         process_error_callback);
+      broker_host->SendNamedChannel(named_channel.GetServerName());
+
+      // NOTE: The callback given here binds to `this` unretained. This is safe
+      // because in production NodeController lives forever. In tests which do
+      // tear it down, the IO thread is always destroyed first so this callback
+      // will never run after NodeController destruction.
+      PlatformChannelServer::WaitForConnection(
+          named_channel.TakeServerEndpoint(),
+          base::BindOnce(
+              [](base::Process target_process,
+                 const ports::NodeName& temporary_node_name,
+                 const ProcessErrorCallback& process_error_callback,
+                 bool is_untrusted_process, NodeController* node_controller,
+                 PlatformChannelEndpoint endpoint) {
+                if (!endpoint.is_valid()) {
+                  return;
+                }
+
+                ConnectionParams params(std::move(endpoint));
+                params.set_is_untrusted_process(is_untrusted_process);
+                node_controller->FinishSendBrokerClientInvitationOnIOThread(
+                    std::move(target_process), std::move(params),
+                    temporary_node_name, Channel::HandlePolicy::kRejectHandles,
+                    process_error_callback);
+              },
+              std::move(target_process), temporary_node_name,
+              process_error_callback, is_untrusted_process, this));
+      return;
+    }
+#endif
+
     absl::optional<ConnectionParams> params = CreateSyncNodeConnectionParams(
         target_process, std::move(connection_params), process_error_callback,
         handle_policy);
@@ -444,14 +477,26 @@ void NodeController::SendBrokerClientInvitationOnIOThread(
     node_connection_params = std::move(*params);
   }
 
-  scoped_refptr<NodeChannel> channel = NodeChannel::Create(
-      this, std::move(node_connection_params), handle_policy, io_task_runner_,
-      process_error_callback);
+  FinishSendBrokerClientInvitationOnIOThread(
+      std::move(target_process), std::move(node_connection_params),
+      temporary_node_name, handle_policy, process_error_callback);
 #else   // !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_NACL) && !BUILDFLAG(IS_FUCHSIA)
-  scoped_refptr<NodeChannel> channel = NodeChannel::Create(
-      this, std::move(connection_params), Channel::HandlePolicy::kAcceptHandles,
-      io_task_runner_, process_error_callback);
+  FinishSendBrokerClientInvitationOnIOThread(
+      std::move(target_process), std::move(connection_params),
+      temporary_node_name, Channel::HandlePolicy::kAcceptHandles,
+      process_error_callback);
 #endif  // !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_NACL) && !BUILDFLAG(IS_FUCHSIA)
+}
+
+void NodeController::FinishSendBrokerClientInvitationOnIOThread(
+    base::Process target_process,
+    ConnectionParams connection_params,
+    ports::NodeName temporary_node_name,
+    Channel::HandlePolicy handle_policy,
+    const ProcessErrorCallback& process_error_callback) {
+  scoped_refptr<NodeChannel> channel =
+      NodeChannel::Create(this, std::move(connection_params), handle_policy,
+                          io_task_runner_, process_error_callback);
 
   // We set up the invitee channel with a temporary name so it can be identified
   // as a pending invitee if it writes any messages to the channel. We may start
@@ -601,7 +646,7 @@ void NodeController::AddPeer(const ports::NodeName& name,
   OutgoingMessageQueue pending_messages;
   {
     base::AutoLock lock(peers_lock_);
-    if (peers_.find(name) != peers_.end()) {
+    if (base::Contains(peers_, name)) {
       // This can happen normally if two nodes race to be introduced to each
       // other. The losing pipe will be silently closed and introduction should
       // not be affected.
@@ -1474,10 +1519,12 @@ void BoundedPeerSet::Insert(const ports::NodeName& name) {
 }
 
 bool BoundedPeerSet::Contains(const ports::NodeName& name) {
-  if (old_set_.find(name) != old_set_.end())
+  if (base::Contains(old_set_, name)) {
     return true;
-  if (new_set_.find(name) != new_set_.end())
+  }
+  if (base::Contains(new_set_, name)) {
     return true;
+  }
   return false;
 }
 

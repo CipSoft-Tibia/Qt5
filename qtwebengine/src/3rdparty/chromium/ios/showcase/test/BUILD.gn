@@ -3,10 +3,7 @@
 # found in the LICENSE file.
 
 source_set("eg2_test") {
-  configs += [
-    "//build/config/compiler:enable_arc",
-    "//build/config/ios:xctest_config",
-  ]
+  configs += [ "//build/config/ios:xctest_config" ]
   testonly = true
   sources = [
     "showcase_eg_utils.h",
@@ -21,15 +18,11 @@ source_set("eg2_test") {
   deps = [
     ":eg_test_support+eg2",
     "//ios/testing/earl_grey:eg_test_support+eg2",
-    "//ios/third_party/earl_grey2:test_lib",
   ]
 }
 
 source_set("eg_test_support+eg2") {
-  configs += [
-    "//build/config/compiler:enable_arc",
-    "//build/config/ios:xctest_config",
-  ]
+  configs += [ "//build/config/ios:xctest_config" ]
   testonly = true
 
   sources = [
@@ -40,7 +33,7 @@ source_set("eg_test_support+eg2") {
   public_deps = [ "//base" ]
 
   deps = [
-    "//ios/third_party/earl_grey2:test_lib",
+    "//ios/testing/earl_grey:eg_test_support+eg2",
     "//ui/base",
 
     # This is required to load the resources for the EG2 tests.
@@ -48,10 +41,7 @@ source_set("eg_test_support+eg2") {
   ]
 }
 source_set("eg_app_support+eg2") {
-  configs += [
-    "//build/config/compiler:enable_arc",
-    "//build/config/ios:xctest_config",
-  ]
+  configs += [ "//build/config/ios:xctest_config" ]
   testonly = true
 
   sources = [

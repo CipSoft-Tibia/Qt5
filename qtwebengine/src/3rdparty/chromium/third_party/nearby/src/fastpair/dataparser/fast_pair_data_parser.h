@@ -26,29 +26,29 @@
 
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
+#include "fastpair/common/non_discoverable_advertisement.h"
 #include "fastpair/crypto/decrypted_passkey.h"
 #include "fastpair/crypto/decrypted_response.h"
 
 namespace nearby {
 namespace fastpair {
 
-struct GetHexModelIdFromServiceDataCallback {
-  absl::AnyInvocable<void(std::optional<absl::string_view>)> on_retrieved_cb =
-      [](std::optional<absl::string_view>) {};
-};
 
-struct ParseDecryptResponseCallback {
-  absl::AnyInvocable<void(std::optional<DecryptedResponse>)> on_decrypted_cb =
-      [](std::optional<DecryptedResponse>) {};
-};
-
-struct ParseDecryptPasskeyCallback {
-  absl::AnyInvocable<void(std::optional<DecryptedPasskey>)> on_decrypted_cb =
-      [](std::optional<DecryptedPasskey>) {};
-};
 
 // This class is responsible for parsing the untrusted bytes for Fast Pair.
 class FastPairDataParser {
+  using GetHexModelIdFromServiceDataCallback =
+      absl::AnyInvocable<void(std::optional<absl::string_view>)>;
+
+  using ParseDecryptResponseCallback =
+      absl::AnyInvocable<void(std::optional<DecryptedResponse>)>;
+
+  using ParseDecryptPasskeyCallback =
+      absl::AnyInvocable<void(std::optional<DecryptedPasskey>)>;
+
+  using ParseNotDiscoverableAdvertisementCallback =
+      absl::AnyInvocable<void(std::optional<NonDiscoverableAdvertisement>)>;
+
  public:
   // Gets the hex string representation of the device's model ID from the
   // service data.
@@ -69,6 +69,13 @@ class FastPairDataParser {
       const std::vector<uint8_t>& aes_key_bytes,
       const std::vector<uint8_t>& encrypted_passkey_bytes,
       ParseDecryptPasskeyCallback callback);
+
+  // Parses a 'Non Discoverable' advertisement from |service_data|.
+  // If the advertisement does not contain information about salt, use the
+  // |address| as salt instead.
+  static void ParseNotDiscoverableAdvertisement(
+      absl::string_view fast_pair_service_data, absl::string_view address,
+      ParseNotDiscoverableAdvertisementCallback callback);
 };
 
 }  // namespace fastpair

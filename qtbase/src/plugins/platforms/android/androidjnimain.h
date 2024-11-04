@@ -12,6 +12,7 @@
 
 #include <QImage>
 #include <private/qjnihelpers_p.h>
+#include <QtCore/QJniObject>
 
 QT_BEGIN_NAMESPACE
 
@@ -22,8 +23,11 @@ class QAndroidPlatformIntegration;
 class QWidget;
 class QString;
 class QWindow;
-class AndroidSurfaceClient;
+class QAndroidPlatformWindow;
 class QBasicMutex;
+
+Q_DECLARE_JNI_CLASS(QtActivityDelegateBase, "org/qtproject/qt/android/QtActivityDelegateBase")
+Q_DECLARE_JNI_CLASS(QtInputDelegate, "org/qtproject/qt/android/QtInputDelegate")
 
 namespace QtAndroid
 {
@@ -31,17 +35,10 @@ namespace QtAndroid
     QAndroidPlatformIntegration *androidPlatformIntegration();
     void setAndroidPlatformIntegration(QAndroidPlatformIntegration *androidPlatformIntegration);
     void setQtThread(QThread *thread);
-
-
-    int createSurface(AndroidSurfaceClient * client, const QRect &geometry, bool onTop, int imageDepth);
-    int insertNativeView(jobject view, const QRect &geometry);
     void setViewVisibility(jobject view, bool visible);
-    void setSurfaceGeometry(int surfaceId, const QRect &geometry);
-    void destroySurface(int surfaceId);
-    void bringChildToFront(int surfaceId);
-    void bringChildToBack(int surfaceId);
 
     QWindow *topLevelWindowAt(const QPoint &globalPos);
+    QWindow *windowFromId(int windowId);
     int availableWidthPixels();
     int availableHeightPixels();
     double scaledDensity();
@@ -50,8 +47,9 @@ namespace QtAndroid
     jobject assets();
     AAssetManager *assetManager();
     jclass applicationClass();
-    QtJniTypes::Activity activity();
-    QtJniTypes::Service service();
+
+    QtJniTypes::QtActivityDelegateBase qtActivityDelegate();
+    QtJniTypes::QtInputDelegate qtInputDelegate();
 
     // Keep synchronized with flags in ActivityDelegate.java
     enum SystemUiVisibility {
@@ -67,10 +65,11 @@ namespace QtAndroid
 
     void notifyAccessibilityLocationChange(uint accessibilityObjectId);
     void notifyObjectHide(uint accessibilityObjectId, uint parentObjectId);
+    void notifyObjectShow(uint parentObjectId);
     void notifyObjectFocus(uint accessibilityObjectId);
     void notifyValueChanged(uint accessibilityObjectId, jstring value);
     void notifyScrolledEvent(uint accessibilityObjectId);
-    void notifyQtAndroidPluginRunning(bool running);
+    void notifyNativePluginIntegrationReady(bool ready);
 
     const char *classErrorMsgFmt();
     const char *methodErrorMsgFmt();
@@ -78,6 +77,8 @@ namespace QtAndroid
 
     QString deviceName();
     bool blockEventLoopsWhenSuspended();
+
+    bool isQtApplication();
 }
 
 QT_END_NAMESPACE

@@ -17,8 +17,8 @@
 #include "base/check_op.h"
 #include "base/containers/fixed_flat_map.h"
 #include "base/containers/queue.h"
-#include "base/cxx17_backports.h"
 #include "base/debug/crash_logging.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/i18n/char_iterator.h"
@@ -61,6 +61,7 @@
 #include "pdf/parsed_params.h"
 #include "pdf/pdf_accessibility_data_handler.h"
 #include "pdf/pdf_engine.h"
+#include "pdf/pdf_features.h"
 #include "pdf/pdf_init.h"
 #include "pdf/pdfium/pdfium_engine.h"
 #include "pdf/post_message_receiver.h"
@@ -68,6 +69,7 @@
 #include "pdf/ui/file_name.h"
 #include "pdf/ui/thumbnail.h"
 #include "printing/metafile_skia.h"
+#include "printing/units.h"
 #include "services/network/public/mojom/referrer_policy.mojom-shared.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/common/input/web_coalesced_input_event.h"
@@ -177,7 +179,7 @@ class PerProcessInitializer final {
     return *instance;
   }
 
-  void Acquire() {
+  void Acquire(bool use_skia) {
     DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
     DCHECK_GE(init_count_, 0);
@@ -185,7 +187,7 @@ class PerProcessInitializer final {
       return;
 
     DCHECK(!IsSDKInitializedViaPlugin());
-    InitializeSDK(/*enable_v8=*/true, FontMappingMode::kBlink);
+    InitializeSDK(/*enable_v8=*/true, use_skia, FontMappingMode::kBlink);
     SetIsSDKInitializedViaPlugin(true);
   }
 
@@ -272,7 +274,8 @@ std::unique_ptr<PDFiumEngine> PdfViewWebPlugin::Client::CreateEngine(
 
 std::unique_ptr<PdfAccessibilityDataHandler>
 PdfViewWebPlugin::Client::CreateAccessibilityDataHandler(
-    PdfAccessibilityActionHandler* action_handler) {
+    PdfAccessibilityActionHandler* action_handler,
+    PdfAccessibilityImageFetcher* image_fetcher) {
   return nullptr;
 }
 
@@ -284,7 +287,7 @@ PdfViewWebPlugin::PdfViewWebPlugin(
       pdf_service_(std::move(pdf_service)),
       initial_params_(params),
       pdf_accessibility_data_handler_(
-          client_->CreateAccessibilityDataHandler(this)) {
+          client_->CreateAccessibilityDataHandler(this, this)) {
   DCHECK(pdf_service_);
   pdf_service_->SetListener(listener_receiver_.BindNewPipeAndPassRemote());
 }
@@ -331,7 +334,7 @@ bool PdfViewWebPlugin::InitializeCommon() {
                                           base::debug::CrashKeySize::Size256);
   base::debug::SetCrashKeyString(subresource_url, params->original_url);
 
-  PerProcessInitializer::GetInstance().Acquire();
+  PerProcessInitializer::GetInstance().Acquire(params->use_skia);
   initialized_ = true;
 
   // Check if the PDF is being loaded in the PDF chrome extension. We only allow
@@ -502,8 +505,8 @@ void PdfViewWebPlugin::UpdateScroll(const gfx::PointF& scroll_position) {
                          0.0f);
 
   gfx::PointF scaled_scroll_position(
-      base::clamp(scroll_position.x(), 0.0f, max_x),
-      base::clamp(scroll_position.y(), 0.0f, max_y));
+      std::clamp(scroll_position.x(), 0.0f, max_x),
+      std::clamp(scroll_position.y(), 0.0f, max_y));
   scaled_scroll_position.Scale(device_scale_);
 
   engine_->ScrolledToXPosition(scaled_scroll_position.x());
@@ -1110,7 +1113,9 @@ void PdfViewWebPlugin::DocumentLoadComplete() {
 
   RecordDocumentMetrics();
 
-  SendAttachments();
+  if (base::FeatureList::IsEnabled(chrome_pdf::features::kPdfPortfolio)) {
+    SendAttachments();
+  }
   SendBookmarks();
   SendMetadata();
 
@@ -1301,6 +1306,8 @@ void PdfViewWebPlugin::OnMessage(const base::Value::Dict& message) {
            &PdfViewWebPlugin::HandleDisplayAnnotationsMessage},
           {"getNamedDestination",
            &PdfViewWebPlugin::HandleGetNamedDestinationMessage},
+          {"getPageBoundingBox",
+           &PdfViewWebPlugin::HandleGetPageBoundingBoxMessage},
           {"getPasswordComplete",
            &PdfViewWebPlugin::HandleGetPasswordCompleteMessage},
           {"getSelectedText", &PdfViewWebPlugin::HandleGetSelectedTextMessage},
@@ -1358,6 +1365,26 @@ void PdfViewWebPlugin::HandleGetNamedDestinationMessage(
 
     reply.Set("namedDestinationView", view_stream.str());
   }
+
+  client_->PostMessage(std::move(reply));
+}
+
+void PdfViewWebPlugin::HandleGetPageBoundingBoxMessage(
+    const base::Value::Dict& message) {
+  const int page_index = message.FindInt("page").value();
+  base::Value::Dict reply =
+      PrepareReplyMessage("getPageBoundingBoxReply", message);
+
+  gfx::RectF bounding_box = engine_->GetPageBoundingBox(page_index);
+  gfx::Rect page_bounds = engine_->GetPageBoundsRect(page_index);
+
+  // Flip the origin from bottom-left to top-left.
+  bounding_box.set_y(static_cast<float>(page_bounds.height()) -
+                     bounding_box.bottom());
+  reply.Set("x", bounding_box.x());
+  reply.Set("y", bounding_box.y());
+  reply.Set("width", bounding_box.width());
+  reply.Set("height", bounding_box.height());
 
   client_->PostMessage(std::move(reply));
 }
@@ -1861,6 +1888,19 @@ void PdfViewWebPlugin::UpdateSnapshot(sk_sp<SkImage> snapshot) {
           .set_image(std::move(snapshot), cc::PaintImage::GetNextContentId())
           .set_id(cc::PaintImage::GetNextId())
           .TakePaintImage();
+
+  // Every time something changes (e.g. scale or scroll position),
+  // `UpdateSnapshot()` is called, so the snapshot is effectively used only
+  // once. Make it "no-cache" so that the old snapshots are not cached
+  // downstream.
+  //
+  // Otherwise, for instance when scrolling, all the previous snapshots end up
+  // accumulating in the (for the GPU path) GpuImageDecodeCache, and then in the
+  // service transfer cache. The size of the service transfer cache is bounded,
+  // so on desktop this "only" causes a 256MiB memory spike, but it's completely
+  // wasted memory nonetheless.
+  snapshot_.set_no_cache(true);
+
   if (!plugin_rect_.IsEmpty())
     InvalidatePluginContainer();
 }
@@ -1893,16 +1933,27 @@ void PdfViewWebPlugin::EnableAccessibility() {
   if (accessibility_state_ == AccessibilityState::kLoaded)
     return;
 
-  if (accessibility_state_ == AccessibilityState::kOff)
-    accessibility_state_ = AccessibilityState::kPending;
+  LoadOrReloadAccessibility();
+}
 
-  if (document_load_state_ == DocumentLoadState::kComplete)
-    LoadAccessibility();
+SkBitmap PdfViewWebPlugin::GetImageForOcr(int32_t page_index,
+                                          int32_t page_object_index) {
+  return engine_->GetImageForOcr(page_index, page_object_index);
 }
 
 void PdfViewWebPlugin::HandleAccessibilityAction(
     const AccessibilityActionData& action_data) {
   engine_->HandleAccessibilityAction(action_data);
+}
+
+void PdfViewWebPlugin::LoadOrReloadAccessibility() {
+  if (accessibility_state_ == AccessibilityState::kOff) {
+    accessibility_state_ = AccessibilityState::kPending;
+  }
+
+  if (document_load_state_ == DocumentLoadState::kComplete) {
+    LoadAccessibility();
+  }
 }
 
 void PdfViewWebPlugin::OnViewportChanged(

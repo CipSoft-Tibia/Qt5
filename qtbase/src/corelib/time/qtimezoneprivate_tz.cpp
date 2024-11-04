@@ -20,6 +20,8 @@
 #include <qplatformdefs.h>
 
 #include <algorithm>
+#include <memory>
+
 #include <errno.h>
 #include <limits.h>
 #ifndef Q_OS_INTEGRITY
@@ -980,8 +982,16 @@ QTzTimeZoneCacheEntry QTzTimeZoneCache::fetchEntry(const QByteArray &ianaId)
         return *obj;
 
     // ... or build a new entry from scratch
+
+    locker.unlock(); // don't parse files under mutex lock
+
     QTzTimeZoneCacheEntry ret = findEntry(ianaId);
-    m_cache.insert(ianaId, new QTzTimeZoneCacheEntry(ret));
+    auto ptr = std::make_unique<QTzTimeZoneCacheEntry>(ret);
+
+    locker.relock();
+    m_cache.insert(ianaId, ptr.release()); // may overwrite if another thread was faster
+    locker.unlock();
+
     return ret;
 }
 
@@ -1024,46 +1034,27 @@ QString QTzTimeZonePrivate::comment() const
     return QString::fromUtf8(tzZones->value(m_id).comment);
 }
 
-QString QTzTimeZonePrivate::displayName(qint64 atMSecsSinceEpoch,
-                                        QTimeZone::NameType nameType,
-                                        const QLocale &locale) const
-{
-#if QT_CONFIG(icu)
-    auto lock = qt_unique_lock(s_icu_mutex);
-    if (!m_icu)
-        m_icu = new QIcuTimeZonePrivate(m_id);
-    // TODO small risk may not match if tran times differ due to outdated files
-    // TODO Some valid TZ names are not valid ICU names, use translation table?
-    if (m_icu->isValid())
-        return m_icu->displayName(atMSecsSinceEpoch, nameType, locale);
-    lock.unlock();
-#else
-    Q_UNUSED(nameType);
-    Q_UNUSED(locale);
-#endif
-    // Fall back to base-class:
-    return QTimeZonePrivate::displayName(atMSecsSinceEpoch, nameType, locale);
-}
-
 QString QTzTimeZonePrivate::displayName(QTimeZone::TimeType timeType,
                                         QTimeZone::NameType nameType,
                                         const QLocale &locale) const
 {
+    // TZ DB lacks localized names (it only has IANA IDs), so delegate to ICU
+    // for those, when available.
 #if QT_CONFIG(icu)
-    auto lock = qt_unique_lock(s_icu_mutex);
-    if (!m_icu)
-        m_icu = new QIcuTimeZonePrivate(m_id);
-    // TODO small risk may not match if tran times differ due to outdated files
-    // TODO Some valid TZ names are not valid ICU names, use translation table?
-    if (m_icu->isValid())
-        return m_icu->displayName(timeType, nameType, locale);
-    lock.unlock();
+    {
+        auto lock = qt_scoped_lock(s_icu_mutex);
+        // TODO Some valid TZ names are not valid ICU names, use translation table?
+        if (!m_icu)
+            m_icu = new QIcuTimeZonePrivate(m_id);
+        if (m_icu->isValid())
+            return m_icu->displayName(timeType, nameType, locale);
+    }
 #else
     Q_UNUSED(timeType);
     Q_UNUSED(nameType);
     Q_UNUSED(locale);
 #endif
-    // If no ICU available then have to use abbreviations instead
+    // If ICU is unavailable, fall back to abbreviations.
     // Abbreviations don't have GenericTime
     if (timeType == QTimeZone::GenericTime)
         timeType = QTimeZone::StandardTime;

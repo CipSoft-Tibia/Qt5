@@ -25,7 +25,9 @@ import struct
 import re
 import argparse
 
-import common_codegen
+# helper to define paths relative to the repo root
+def repo_relative(path):
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', path))
 
 SPIRV_MAGIC = 0x07230203
 COLUMNS = 4
@@ -67,7 +69,7 @@ def compile(filename, glslang_validator):
     # Because this might be absolute on the system, remove it
     return (words, output.rstrip()[output.index('\n') + 1:])
 
-def write(words, disassembled, filename, outfilename = None):
+def write(words, disassembled, filename, apiname, outfilename = None):
     name = identifierize(os.path.basename(filename))
 
     literals = []
@@ -114,13 +116,17 @@ static const uint32_t %s[%d] = {
     if outfilename:
       out_file = outfilename
     else:
-      out_file = os.path.join(common_codegen.repo_relative('layers/generated'), name + '.h')
+      out_file = os.path.join(repo_relative(f'layers/{apiname}/generated'), name + '.h')
     os.makedirs(os.path.dirname(out_file), exist_ok=True)
     with open(out_file, "w") as f:
         print(header, end="", file=f)
 
 def main():
     parser = argparse.ArgumentParser(description='Generate spirv code for this repository, see layers/gpu_shaders/README.md for more deatils')
+    parser.add_argument('--api',
+                        default='vulkan',
+                        choices=['vulkan'],
+                        help='Specify API name to generate')
     parser.add_argument('--shader', action='store', type=str, help='Input Filename')
     parser.add_argument('--glslang', action='store', type=str, help='Path to glslangvalidator to use')
     parser.add_argument('--outfilename', action='store', type=str, help='Optional path to output file')
@@ -134,13 +140,13 @@ def main():
     else:
         # Get all shaders in gpu_shaders folder
         shader_type = ['vert', 'tesc', 'tese', 'geom', 'frag', 'comp', 'mesh', 'task', 'rgen', 'rint', 'rahit', 'rchit', 'rmiss', 'rcall']
-        gpu_shaders = common_codegen.repo_relative('layers/gpu_shaders')
+        gpu_shaders = repo_relative('layers/gpu_shaders')
         for filename in os.listdir(gpu_shaders):
             if (filename.split(".")[-1] in shader_type):
                 generate_shaders.append(os.path.join(gpu_shaders, filename))
 
     # default glslangValidator path
-    glslang_validator =  common_codegen.repo_relative('external/glslang/build/install/bin/glslangValidator')
+    glslang_validator =  repo_relative('external/glslang/build/install/bin/glslangValidator')
     if args.glslang:
         glslang_validator = args.glslang
     if not os.path.isfile(glslang_validator):
@@ -148,7 +154,7 @@ def main():
 
     for shader in generate_shaders:
         words, disassembled = compile(shader, glslang_validator)
-        write(words, disassembled, shader, args.outfilename)
+        write(words, disassembled, shader, args.api, args.outfilename)
 
 if __name__ == '__main__':
   main()

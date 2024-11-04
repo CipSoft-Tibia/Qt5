@@ -87,16 +87,20 @@ class MockMessagePumpDelegate : public MessagePump::Delegate {
     ++work_item_count_;
   }
 
-  void OnEndWorkItem() override {
+  void OnEndWorkItem(int run_level_depth) override {
     if (check_work_items_) {
-      MockOnEndWorkItem();
+      MockOnEndWorkItem(run_level_depth);
     }
+
+    EXPECT_EQ(run_level_depth, work_item_count_);
 
     --work_item_count_;
 
     // It's not possible to close more scopes than there are open ones.
     EXPECT_GE(work_item_count_, 0);
   }
+
+  int RunDepth() override { return work_item_count_; }
 
   void ValidateNoOpenWorkItems() {
     // Upon exiting there cannot be any open scopes.
@@ -114,7 +118,7 @@ class MockMessagePumpDelegate : public MessagePump::Delegate {
 
   // Mock functions for asserting.
   MOCK_METHOD0(MockOnBeginWorkItem, void(void));
-  MOCK_METHOD0(MockOnEndWorkItem, void(void));
+  MOCK_METHOD1(MockOnEndWorkItem, void(int));
 
   // If native events are covered in the current configuration it's not
   // possible to precisely test all assertions related to work items. This is
@@ -135,6 +139,13 @@ class MessagePumpTest : public ::testing::TestWithParam<MessagePumpType> {
   MessagePumpTest() : message_pump_(MessagePump::Create(GetParam())) {}
 
  protected:
+#if defined(USE_GLIB)
+  // Because of a GLIB implementation quirk, the pump doesn't do the same things
+  // between each DoWork. In this case, it won't set/clear a ScopedDoWorkItem
+  // because we run a chrome work item in the runloop outside of GLIB's control,
+  // so we oscillate between setting and not setting PreDoWorkExpectations.
+  std::map<MessagePump::Delegate*, int> do_work_counts;
+#endif
   void AddPreDoWorkExpectations(
       testing::StrictMock<MockMessagePumpDelegate>& delegate) {
 #if BUILDFLAG(IS_WIN)
@@ -151,14 +162,35 @@ class MessagePumpTest : public ::testing::TestWithParam<MessagePumpType> {
       EXPECT_CALL(delegate, MockOnEndWorkItem).Times(AtMost(1));
     }
 #endif  // BUILDFLAG(IS_WIN)
+#if defined(USE_GLIB)
+    do_work_counts.try_emplace(&delegate, 0);
+    if (GetParam() == MessagePumpType::UI) {
+      if (++do_work_counts[&delegate] % 2) {
+        // The GLib MessagePump will do native work before chrome work on
+        // startup.
+        EXPECT_CALL(delegate, MockOnBeginWorkItem);
+        EXPECT_CALL(delegate, MockOnEndWorkItem);
+      }
+    }
+#endif  // defined(USE_GLIB)
   }
 
   void AddPostDoWorkExpectations(
       testing::StrictMock<MockMessagePumpDelegate>& delegate) {
+#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_NACL)
     // MessagePumpLibEvent checks for native notifications once after processing
     // a DoWork() but only instantiates a ScopedDoWorkItem that triggers
     // MessagePumpLibevent::OnLibeventNotification() which this test does not
     // so there are no post-work expectations at the moment.
+#endif
+#if defined(USE_GLIB)
+    if (GetParam() == MessagePumpType::UI) {
+      // The GLib MessagePump can create and destroy work items between DoWorks
+      // depending on internal state.
+      EXPECT_CALL(delegate, MockOnBeginWorkItem).Times(AtMost(1));
+      EXPECT_CALL(delegate, MockOnEndWorkItem).Times(AtMost(1));
+    }
+#endif  // defined(USE_GLIB)
   }
 
   std::unique_ptr<MessagePump> message_pump_;
@@ -178,6 +210,16 @@ TEST_P(MessagePumpTest, QuitStopsWork) {
     message_pump_->Quit();
     return MessagePump::Delegate::NextWorkInfo{TimeTicks::Max()};
   }));
+
+  // MessagePumpGlib uses a work item between a HandleDispatch() call and
+  // passing control back to the chrome loop, which handles the Quit() despite
+  // us not necessarily doing any native work during that time.
+#if defined(USE_GLIB)
+  if (GetParam() == MessagePumpType::UI) {
+    AddPostDoWorkExpectations(delegate);
+  }
+#endif
+
   EXPECT_CALL(delegate, DoIdleWork()).Times(0);
 
   message_pump_->ScheduleWork();
@@ -211,10 +253,14 @@ TEST_P(MessagePumpTest, QuitStopsWorkWithNestedRunLoop) {
     return MessagePump::Delegate::NextWorkInfo{TimeTicks::Max()};
   }));
 
-  // PostDoWorkExpectations for the first DoWork.
+  // The `nested_delegate` will quit first.
+  AddPostDoWorkExpectations(nested_delegate);
+
+  // Return a delayed task with |yield_to_native| set, and exit.
   AddPostDoWorkExpectations(delegate);
 
   AddPreDoWorkExpectations(delegate);
+
   EXPECT_CALL(delegate, DoWork).WillOnce(Invoke([this] {
     message_pump_->Quit();
     return MessagePump::Delegate::NextWorkInfo{TimeTicks::Max()};
@@ -241,8 +287,8 @@ TEST_P(MessagePumpTest, YieldToNativeRequestedSmokeTest) {
   }));
   AddPostDoWorkExpectations(delegate);
 
-  // Return a delayed task with |yield_to_native| set, and exit.
   AddPreDoWorkExpectations(delegate);
+  // Return a delayed task with |yield_to_native| set, and exit.
   EXPECT_CALL(delegate, DoWork).WillOnce(Invoke([this] {
     message_pump_->Quit();
     auto now = TimeTicks::Now();
@@ -252,93 +298,6 @@ TEST_P(MessagePumpTest, YieldToNativeRequestedSmokeTest) {
   EXPECT_CALL(delegate, DoIdleWork()).Times(AnyNumber());
 
   message_pump_->ScheduleWork();
-  message_pump_->Run(&delegate);
-}
-
-namespace {
-
-class TimerSlackTestDelegate : public MessagePump::Delegate {
- public:
-  TimerSlackTestDelegate(MessagePump* message_pump)
-      : message_pump_(message_pump) {
-    // We first schedule a delayed task far in the future with maximum timer
-    // slack.
-    message_pump_->SetTimerSlack(TIMER_SLACK_MAXIMUM);
-    const TimeTicks now = TimeTicks::Now();
-    message_pump_->ScheduleDelayedWork({now + Hours(1), now});
-
-    // Since we have no other work pending, the pump will initially be idle.
-    action_.store(NONE);
-  }
-
-  void OnBeginWorkItem() override {}
-  void OnEndWorkItem() override {}
-  void BeforeWait() override {}
-
-  MessagePump::Delegate::NextWorkInfo DoWork() override {
-    switch (action_.load()) {
-      case NONE:
-        break;
-      case SCHEDULE_DELAYED_WORK: {
-        // After being woken up by the other thread, we let the pump know that
-        // the next delayed task is in fact much sooner than the 1 hour delay it
-        // was aware of. If the pump refreshes its timer correctly, it will wake
-        // up shortly, finishing the test.
-        action_.store(QUIT);
-        TimeTicks now = TimeTicks::Now();
-        return {now + Milliseconds(50), now};
-      }
-      case QUIT:
-        message_pump_->Quit();
-        break;
-    }
-    return MessagePump::Delegate::NextWorkInfo{TimeTicks::Max()};
-  }
-
-  bool DoIdleWork() override { return false; }
-
-  void WakeUpFromOtherThread() {
-    action_.store(SCHEDULE_DELAYED_WORK);
-    message_pump_->ScheduleWork();
-  }
-
- private:
-  enum Action {
-    NONE,
-    SCHEDULE_DELAYED_WORK,
-    QUIT,
-  };
-
-  const raw_ptr<MessagePump> message_pump_;
-  std::atomic<Action> action_;
-};
-
-}  // namespace
-
-TEST_P(MessagePumpTest, TimerSlackWithLongDelays) {
-  // This is a regression test for an issue where the iOS message pump fails to
-  // run delayed work when timer slack is enabled. The steps needed to trigger
-  // this are:
-  //
-  //  1. The message pump timer slack is set to maximum.
-  //  2. A delayed task is posted for far in the future (e.g., 1h).
-  //  3. The system goes idle at least for a few seconds.
-  //  4. Another delayed task is posted with a much smaller delay.
-  //
-  // The following message pump test delegate automatically runs through this
-  // sequence.
-  TimerSlackTestDelegate delegate(message_pump_.get());
-
-  // We use another thread to wake up the pump after 2 seconds to allow the
-  // system to enter an idle state. This delay was determined experimentally on
-  // the iPhone 6S simulator.
-  Thread thread("Waking thread");
-  thread.StartAndWaitForTesting();
-  thread.task_runner()->PostDelayedTask(
-      FROM_HERE,
-      BindLambdaForTesting([&delegate] { delegate.WakeUpFromOtherThread(); }),
-      Seconds(2));
-
   message_pump_->Run(&delegate);
 }
 
@@ -352,9 +311,13 @@ TEST_P(MessagePumpTest, RunWithoutScheduleWorkInvokesDoWork) {
     message_pump_->Quit();
     return MessagePump::Delegate::NextWorkInfo{TimeTicks::Max()};
   }));
+
+  AddPostDoWorkExpectations(delegate);
+
 #if BUILDFLAG(IS_IOS)
   EXPECT_CALL(delegate, DoIdleWork).Times(AnyNumber());
 #endif
+
   message_pump_->Run(&delegate);
 }
 
@@ -377,6 +340,11 @@ TEST_P(MessagePumpTest, NestedRunWithoutScheduleWorkInvokesDoWork) {
     message_pump_->Quit();
     return MessagePump::Delegate::NextWorkInfo{TimeTicks::Max()};
   }));
+
+  // We quit `nested_delegate` before `delegate`
+  AddPostDoWorkExpectations(nested_delegate);
+
+  AddPostDoWorkExpectations(delegate);
 
 #if BUILDFLAG(IS_IOS)
   EXPECT_CALL(nested_delegate, DoIdleWork).Times(AnyNumber());

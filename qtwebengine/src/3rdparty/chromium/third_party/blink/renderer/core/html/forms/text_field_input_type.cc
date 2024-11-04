@@ -32,6 +32,7 @@
 #include "third_party/blink/renderer/core/html/forms/text_field_input_type.h"
 
 #include "third_party/blink/renderer/core/dom/events/event_dispatch_forbidden_scope.h"
+#include "third_party/blink/renderer/core/dom/focus_params.h"
 #include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/editing/frame_selection.h"
 #include "third_party/blink/renderer/core/events/before_text_inserted_event.h"
@@ -45,7 +46,8 @@
 #include "third_party/blink/renderer/core/html/forms/text_control_inner_elements.h"
 #include "third_party/blink/renderer/core/html/shadow/shadow_element_names.h"
 #include "third_party/blink/renderer/core/html_names.h"
-#include "third_party/blink/renderer/core/layout/layout_object_factory.h"
+#include "third_party/blink/renderer/core/keywords.h"
+#include "third_party/blink/renderer/core/layout/ng/layout_ng_text_control_single_line.h"
 #include "third_party/blink/renderer/core/page/chrome_client.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/paint/paint_layer.h"
@@ -98,13 +100,13 @@ class DataListIndicatorElement final : public HTMLDivElement {
     DCHECK(ContainingShadowRoot()->IsUserAgent());
     SetShadowPseudoId(shadow_element_names::kPseudoCalendarPickerIndicator);
     setAttribute(html_names::kIdAttr, shadow_element_names::kIdPickerIndicator);
-    setAttribute(html_names::kStyleAttr,
-                 "display:list-item; "
-                 "list-style:disclosure-open inside; "
-                 "counter-increment: list-item 0;"
-                 "block-size:1em;");
+    SetInlineStyleProperty(CSSPropertyID::kDisplay, CSSValueID::kListItem);
+    SetInlineStyleProperty(CSSPropertyID::kListStyle, "disclosure-open inside");
+    SetInlineStyleProperty(CSSPropertyID::kCounterIncrement, "list-item 0");
+    SetInlineStyleProperty(CSSPropertyID::kBlockSize, 1.0,
+                           CSSPrimitiveValue::UnitType::kEms);
     // Do not expose list-item role.
-    setAttribute(html_names::kAriaHiddenAttr, "true");
+    setAttribute(html_names::kAriaHiddenAttr, keywords::kTrue);
   }
 };
 
@@ -127,6 +129,9 @@ InputType::ValueMode TextFieldInputType::GetValueMode() const {
 }
 
 SpinButtonElement* TextFieldInputType::GetSpinButtonElement() const {
+  if (!HasCreatedShadowSubtree()) {
+    return nullptr;
+  }
   auto* element = GetElement().UserAgentShadowRoot()->getElementById(
       shadow_element_names::kIdSpinButton);
   CHECK(!element || IsA<SpinButtonElement>(element));
@@ -296,10 +301,8 @@ void TextFieldInputType::AdjustStyle(ComputedStyleBuilder& builder) {
 }
 
 LayoutObject* TextFieldInputType::CreateLayoutObject(
-    const ComputedStyle& style,
-    LegacyLayout legacy) const {
-  return LayoutObjectFactory::CreateTextControlSingleLine(GetElement(), style,
-                                                          legacy);
+    const ComputedStyle&) const {
+  return MakeGarbageCollected<LayoutNGTextControlSingleLine>(&GetElement());
 }
 
 ControlPart TextFieldInputType::AutoAppearance() const {
@@ -353,7 +356,7 @@ void TextFieldInputType::CreateShadowSubtree() {
 }
 
 Element* TextFieldInputType::ContainerElement() const {
-  return GetElement().UserAgentShadowRoot()->getElementById(
+  return GetElement().EnsureShadowSubtree()->getElementById(
       shadow_element_names::kIdTextFieldContainer);
 }
 
@@ -364,6 +367,9 @@ void TextFieldInputType::DestroyShadowSubtree() {
 }
 
 void TextFieldInputType::ListAttributeTargetChanged() {
+  if (!HasCreatedShadowSubtree()) {
+    return;
+  }
   if (ChromeClient* chrome_client = GetChromeClient())
     chrome_client->TextFieldDataListChanged(GetElement());
   Element* picker = GetElement().UserAgentShadowRoot()->getElementById(
@@ -417,10 +423,16 @@ void TextFieldInputType::DisabledOrReadonlyAttributeChanged() {
 }
 
 void TextFieldInputType::DisabledAttributeChanged() {
+  if (!HasCreatedShadowSubtree()) {
+    return;
+  }
   DisabledOrReadonlyAttributeChanged();
 }
 
 void TextFieldInputType::ReadonlyAttributeChanged() {
+  if (!HasCreatedShadowSubtree()) {
+    return;
+  }
   DisabledOrReadonlyAttributeChanged();
 }
 
@@ -529,6 +541,7 @@ void TextFieldInputType::UpdatePlaceholderText(bool is_suggested_value) {
     return;
   }
   if (!placeholder) {
+    GetElement().EnsureShadowSubtree();
     auto* new_element =
         MakeGarbageCollected<HTMLDivElement>(GetElement().GetDocument());
     placeholder = new_element;
@@ -576,6 +589,8 @@ void TextFieldInputType::SubtreeHasChanged() {
   GetElement().UpdatePlaceholderVisibility();
   GetElement().PseudoStateChanged(CSSSelector::kPseudoValid);
   GetElement().PseudoStateChanged(CSSSelector::kPseudoInvalid);
+  GetElement().PseudoStateChanged(CSSSelector::kPseudoUserValid);
+  GetElement().PseudoStateChanged(CSSSelector::kPseudoUserInvalid);
   GetElement().PseudoStateChanged(CSSSelector::kPseudoInRange);
   GetElement().PseudoStateChanged(CSSSelector::kPseudoOutOfRange);
 
@@ -619,7 +634,7 @@ void TextFieldInputType::UpdateView() {
 }
 
 void TextFieldInputType::FocusAndSelectSpinButtonOwner() {
-  GetElement().Focus();
+  GetElement().Focus(FocusParams(FocusTrigger::kUserGesture));
   GetElement().SetSelectionRange(0, std::numeric_limits<int>::max());
 }
 

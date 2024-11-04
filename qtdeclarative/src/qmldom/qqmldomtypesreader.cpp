@@ -1,5 +1,5 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmldomtypesreader_p.h"
 #include "qqmldomelements_p.h"
@@ -27,8 +27,9 @@ static ErrorGroups readerParseErrors()
     return errs;
 }
 
-void QmltypesReader::insertProperty(QQmlJSScope::Ptr jsScope, const QQmlJSMetaProperty &property,
-                                    QMap<int, QmlObject> &objs)
+void QmltypesReader::insertProperty(
+        const QQmlJSScope::ConstPtr &jsScope, const QQmlJSMetaProperty &property,
+        QMap<int, QmlObject> &objs)
 {
     PropertyDefinition prop;
     prop.name = property.propertyName();
@@ -108,20 +109,26 @@ EnumDecl QmltypesReader::enumFromMetaEnum(const QQmlJSMetaEnum &metaEnum)
     return res;
 }
 
-void QmltypesReader::insertComponent(const QQmlJSScope::Ptr &jsScope,
+void QmltypesReader::insertComponent(const QQmlJSScope::ConstPtr &jsScope,
                                      const QList<QQmlJSScope::Export> &exportsList)
 {
     QmltypesComponent comp;
+    comp.setSemanticScope(jsScope);
     QMap<int, QmlObject> objects;
     {
         bool hasExports = false;
         for (const QQmlJSScope::Export &jsE : exportsList) {
             int metaRev = jsE.version().toEncodedVersion<int>();
             hasExports = true;
-            objects.insert(metaRev, QmlObject());
+            QmlObject object;
+            object.setSemanticScope(jsScope);
+            objects.insert(metaRev, object);
         }
-        if (!hasExports)
-            objects.insert(0, QmlObject());
+        if (!hasExports) {
+            QmlObject object;
+            object.setSemanticScope(jsScope);
+            objects.insert(0, object);
+        }
     }
     bool incrementedPath = false;
     QString prototype;
@@ -172,6 +179,7 @@ void QmltypesReader::insertComponent(const QQmlJSScope::Ptr &jsScope,
     comp.setValueTypeName(jsScope->valueTypeName());
     comp.setAccessSemantics(jsScope->accessSemantics());
     comp.setExtensionTypeName(jsScope->extensionTypeName());
+    comp.setExtensionIsJavaScript(jsScope->extensionIsJavaScript());
     comp.setExtensionIsNamespace(jsScope->extensionIsNamespace());
     Path exportSourcePath = qmltypesFile().canonicalPath();
     QMap<int, Path> revToPath;
@@ -215,6 +223,7 @@ void QmltypesReader::insertComponent(const QQmlJSScope::Ptr &jsScope,
         Export e;
         e.uri = jsE.package();
         e.typeName = jsE.type();
+        e.isSingleton = jsScope->isSingleton();
         e.version = Version((v.hasMajorVersion() ? v.majorVersion() : Version::Latest),
                             (v.hasMinorVersion() ? v.minorVersion() : Version::Latest));
         e.typePath = revToPath.value(metaRev);
@@ -242,14 +251,14 @@ bool QmltypesReader::parse()
                                        qmltypesFilePtr()->code());
     QStringList dependencies;
     QList<QQmlJSExportedScope> objects;
-    m_isValid = reader(&objects, &dependencies);
+    const bool isValid = reader(&objects, &dependencies);
     for (const auto &obj : std::as_const(objects))
         insertComponent(obj.scope, obj.exports);
-    qmltypesFilePtr()->setIsValid(m_isValid);
-    return m_isValid;
+    qmltypesFilePtr()->setIsValid(isValid);
+    return isValid;
 }
 
-void QmltypesReader::addError(ErrorMessage message)
+void QmltypesReader::addError(ErrorMessage &&message)
 {
     if (message.file.isEmpty())
         message.file = qmltypesFile().canonicalFilePath();

@@ -43,7 +43,7 @@ namespace sdk {
 // Represents information about one instance of a Google Chrome browser
 // process that is connected to the agent.
 struct BrowserInfo {
-  unsigned long pid = 0;  // Process of Google Chrome browser process.
+  unsigned long pid = 0;  // Process ID of Google Chrome browser process.
   std::string binary_path;  // The full path to the process's main binary.
 };
 
@@ -102,6 +102,7 @@ class ContentAnalysisEvent {
   ContentAnalysisEvent(ContentAnalysisEvent&& rhs) = delete;
   ContentAnalysisEvent& operator=(const ContentAnalysisEvent& rhs) = delete;
   ContentAnalysisEvent& operator=(ContentAnalysisEvent&& rhs) = delete;
+
 };
 
 // Agents should implement this interface in order to handle events as needed.
@@ -257,6 +258,29 @@ ResultCode SetEventVerdictTo(
 //   SetEventVerdictTo(event,
 //                     ContentAnalysisResponse::Result::TriggeredRule::BLOCK);
 ResultCode SetEventVerdictToBlock(ContentAnalysisEvent* event);
+
+// Helper class to handle the lifetime and access of print data.
+class ScopedPrintHandle {
+ public:
+  virtual ~ScopedPrintHandle() = default;
+  virtual const char* data() = 0;
+  virtual size_t size() = 0;
+
+ protected:
+  ScopedPrintHandle() = default;
+
+  ScopedPrintHandle(const ScopedPrintHandle&) = delete;
+  ScopedPrintHandle& operator=(const ScopedPrintHandle&) = delete;
+
+  ScopedPrintHandle(ScopedPrintHandle&&) = default;
+  ScopedPrintHandle& operator=(ScopedPrintHandle&&) = default;
+};
+
+// Returns a `ScopedPrintHandle` initialized from the request's print data
+// if it exists.
+std::unique_ptr<ScopedPrintHandle>
+CreateScopedPrintHandle(const ContentAnalysisRequest& request,
+                        int64_t browser_pid);
 
 }  // namespace sdk
 }  // namespace content_analysis

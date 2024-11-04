@@ -9,6 +9,7 @@
 #include "base/command_line.h"
 #include "base/memory/singleton.h"
 #include "content/public/common/content_switches.h"
+#include "extensions/browser/api/extensions_api_client.h"
 #include "extensions/browser/api/test/test_api_observer_registry.h"
 #include "extensions/browser/extension_function_dispatcher.h"
 #include "extensions/browser/extension_system.h"
@@ -56,9 +57,9 @@ ExtensionFunction::ResponseAction TestNotifyPassFunction::Run() {
 TestNotifyFailFunction::~TestNotifyFailFunction() = default;
 
 ExtensionFunction::ResponseAction TestNotifyFailFunction::Run() {
-  std::unique_ptr<NotifyFail::Params> params(
-      NotifyFail::Params::Create(args()));
-  EXTENSION_FUNCTION_VALIDATE(params.get());
+  absl::optional<NotifyFail::Params> params =
+      NotifyFail::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
   TestApiObserverRegistry::GetInstance()->NotifyTestFailed(
       browser_context(), params->message);
   return RespondNow(NoArguments());
@@ -67,18 +68,32 @@ ExtensionFunction::ResponseAction TestNotifyFailFunction::Run() {
 TestLogFunction::~TestLogFunction() = default;
 
 ExtensionFunction::ResponseAction TestLogFunction::Run() {
-  std::unique_ptr<Log::Params> params(Log::Params::Create(args()));
-  EXTENSION_FUNCTION_VALIDATE(params.get());
+  absl::optional<Log::Params> params = Log::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
   VLOG(1) << params->message;
+  return RespondNow(NoArguments());
+}
+
+TestOpenFileUrlFunction::~TestOpenFileUrlFunction() = default;
+
+ExtensionFunction::ResponseAction TestOpenFileUrlFunction::Run() {
+  absl::optional<api::test::OpenFileUrl::Params> params =
+      api::test::OpenFileUrl::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
+  GURL file_url(params->url);
+  EXTENSION_FUNCTION_VALIDATE(file_url.is_valid());
+  EXTENSION_FUNCTION_VALIDATE(file_url.SchemeIsFile());
+
+  ExtensionsAPIClient::Get()->OpenFileUrl(file_url, browser_context());
   return RespondNow(NoArguments());
 }
 
 TestSendMessageFunction::TestSendMessageFunction() = default;
 
 ExtensionFunction::ResponseAction TestSendMessageFunction::Run() {
-  std::unique_ptr<PassMessage::Params> params(
-      PassMessage::Params::Create(args()));
-  EXTENSION_FUNCTION_VALIDATE(params.get());
+  absl::optional<PassMessage::Params> params =
+      PassMessage::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
   bool listener_will_respond =
       TestApiObserverRegistry::GetInstance()->NotifyTestMessage(
           this, params->message);
@@ -116,8 +131,8 @@ TestSendScriptResultFunction::TestSendScriptResultFunction() = default;
 TestSendScriptResultFunction::~TestSendScriptResultFunction() = default;
 
 ExtensionFunction::ResponseAction TestSendScriptResultFunction::Run() {
-  std::unique_ptr<api::test::SendScriptResult::Params> params(
-      api::test::SendScriptResult::Params::Create(args()));
+  absl::optional<api::test::SendScriptResult::Params> params =
+      api::test::SendScriptResult::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
   TestApiObserverRegistry::GetInstance()->NotifyScriptResult(params->result);
@@ -145,16 +160,15 @@ ExtensionFunction::ResponseAction TestGetConfigFunction::Run() {
   TestConfigState* test_config_state = TestConfigState::GetInstance();
   if (!test_config_state->config_state())
     return RespondNow(Error(kNoTestConfigDataError));
-  return RespondNow(
-      OneArgument(base::Value(test_config_state->config_state()->Clone())));
+  return RespondNow(WithArguments(test_config_state->config_state()->Clone()));
 }
 
 TestWaitForRoundTripFunction::~TestWaitForRoundTripFunction() = default;
 
 ExtensionFunction::ResponseAction TestWaitForRoundTripFunction::Run() {
-  std::unique_ptr<WaitForRoundTrip::Params> params(
-      WaitForRoundTrip::Params::Create(args()));
-  return RespondNow(OneArgument(base::Value(params->message)));
+  absl::optional<WaitForRoundTrip::Params> params =
+      WaitForRoundTrip::Params::Create(args());
+  return RespondNow(WithArguments(params->message));
 }
 
 }  // namespace extensions

@@ -16,6 +16,7 @@ target properties:
 \page cmake-target-property-qt-android-deployment-dependencies.html
 \ingroup cmake-properties-qtcore
 \ingroup cmake-target-properties-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_DEPLOYMENT_DEPENDENCIES
 \target cmake-target-property-QT_ANDROID_DEPLOYMENT_DEPENDENCIES
@@ -47,6 +48,7 @@ is listed before its dependencies, it will fail to load on some devices.
 \page cmake-target-property-qt-android-extra-libs.html
 \ingroup cmake-properties-qtcore
 \ingroup cmake-target-properties-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_EXTRA_LIBS
 \target cmake-target-property-QT_ANDROID_EXTRA_LIBS
@@ -119,6 +121,7 @@ set_target_properties(MyApp PROPERTIES
 \page cmake-target-property-qt-android-extra-plugins.html
 \ingroup cmake-properties-qtcore
 \ingroup cmake-target-properties-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_EXTRA_PLUGINS
 \target cmake-target-property-QT_ANDROID_EXTRA_PLUGINS
@@ -150,6 +153,7 @@ mangling is applied to the plugin library.
 \page cmake-target-property-qt-android-min-sdk-version.html
 \ingroup cmake-properties-qtcore
 \ingroup cmake-target-properties-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_MIN_SDK_VERSION
 \target cmake-target-property-QT_ANDROID_MIN_SDK_VERSION
@@ -169,6 +173,7 @@ Specifies the minimum Android API level for the target.
 \page cmake-target-property-qt-android-package-source-dir.html
 \ingroup cmake-properties-qtcore
 \ingroup cmake-target-properties-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_PACKAGE_SOURCE_DIR
 \target cmake-target-property-QT_ANDROID_PACKAGE_SOURCE_DIR
@@ -202,6 +207,7 @@ then place this directly into the directory specified by this variable.
 \page cmake-target-property-qt-android-target-sdk-version.html
 \ingroup cmake-properties-qtcore
 \ingroup cmake-target-properties-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_TARGET_SDK_VERSION
 \target cmake-target-property-QT_ANDROID_TARGET_SDK_VERSION
@@ -221,6 +227,7 @@ Specifies the target Android API level for the target.
 \page cmake-target-property-qt-android-sdk-build-tools-revision.html
 \ingroup cmake-properties-qtcore
 \ingroup cmake-target-properties-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_SDK_BUILD_TOOLS_REVISION
 \target cmake-target-property-QT_ANDROID_SDK_BUILD_TOOLS_REVISION
@@ -244,6 +251,7 @@ CMake will attempt to use the latest installed version.
 
 \title QT_ANDROID_VERSION_CODE
 \target cmake-target-property-QT_ANDROID_VERSION_CODE
+\ingroup cmake-android-manifest-properties
 
 \summary {Internal Android app version.}
 
@@ -266,6 +274,7 @@ For more information, see \l{Android: App Versioning}{Android App Versioning}.
 
 \title QT_ANDROID_VERSION_NAME
 \target cmake-target-property-QT_ANDROID_VERSION_NAME
+\ingroup cmake-android-manifest-properties
 
 \summary {Human-readable Android app version.}
 
@@ -285,6 +294,7 @@ For more information, see \l{Android: App Versioning}{Android App Versioning}.
 \page cmake-target-property-qt-android-abis.html
 \ingroup cmake-properties-qtcore
 \ingroup cmake-target-properties-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_ABIS
 \target cmake-target-property-QT_ANDROID_ABIS
@@ -351,6 +361,7 @@ For application-specific QML imports, use
 \page cmake-target-property-qt-android-deployment-settings-file.html
 \ingroup cmake-properties-qtcore
 \ingroup cmake-target-properties-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_DEPLOYMENT_SETTINGS_FILE
 \target cmake-target-property-QT_ANDROID_DEPLOYMENT_SETTINGS_FILE
@@ -371,6 +382,7 @@ and overwritten by that command.
 \page cmake-target-property-qt-android-system-libs-prefix.html
 \ingroup cmake-properties-qtcore
 \ingroup cmake-target-properties-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_SYSTEM_LIBS_PREFIX
 \target cmake-target-property-QT_ANDROID_SYSTEM_LIBS_PREFIX
@@ -388,6 +400,7 @@ when those libraries are installed outside app's native (JNI) library directory.
 \page cmake-target-property-qt-android-no-deploy-qt-libs.html
 \ingroup cmake-properties-qtcore
 \ingroup cmake-target-properties-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_NO_DEPLOY_QT_LIBS
 \target cmake-target-property-QT_ANDROID_NO_DEPLOY_QT_LIBS
@@ -423,6 +436,29 @@ On certain platforms, Qt applications link against Qt's entrypoint lib by defaul
 That library provides implementations of main (or WinMain).
 
 On targets that must provide their own entry point, set the property \c qt_no_entrypoint to inhibit linking against Qt's entrypoint library.
+*/
+
+/*!
+\page cmake-target-property-qt-no-utf8-source.html
+\ingroup cmake-properties-qtcore
+\ingroup cmake-target-properties-qtcore
+
+\title QT_NO_UTF8_SOURCE
+\target cmake-target-property-QT_NO_UTF8_SOURCE
+
+\summary {Prevents forcing source files to be treated as UTF-8 for Windows.}
+
+\cmakepropertysince 6.0
+
+When building with some compilers for Windows, targets that link to a Qt library
+will use flags that force the compiler to treat its source files as UTF-8. This
+is currently implemented for Visual Studio and Intel compilers. You can disable
+this behavior on a per-target basis by setting the property to \c TRUE:
+\badcode
+set_property(TARGET target_name PROPERTY QT_NO_UTF8_SOURCE TRUE)
+\endcode
+
+\sa {qt6_disable_unicode_defines}{qt_disable_unicode_defines()}{qt6_allow_non_utf8_sources()}
 */
 
 /*!
@@ -580,6 +616,29 @@ QT_WASM_INITIAL_MEMORY must be a multiple of 65536 bytes.
 
 For more information, see \l{https://github.com/emscripten-core/emscripten/blob/main/src/settings.js}{Emscripten compiler settings}.
 */
+
+/*!
+\page cmake-target-property-qt-wasm-maximum-memory.html
+\ingroup cmake-properties-qtcore
+\ingroup cmake-target-properties-qtcore
+
+\title QT_WASM_MAXIMUM_MEMORY
+\target cmake-target-property-QT_WASM_MAXIMUM_MEMORY
+
+\summary {Internal WebAssembly maximum memory.}
+
+\cmakepropertysince 6.7
+\preliminarycmakeproperty
+\cmakepropertywebassemblyonly
+
+Specifies the maximum amount of memory the application can use. Translates into
+the Emscripten compiler setting of \c MAXIMUM_MEMORY. The default value
+is 4GB, which is the maximum for 32-bit WebAssembly.
+
+For more information, see the \l{https://github.com/emscripten-core/emscripten/blob/3319a313d3b589624d342b650884caaf8cd9ef30/src/settings.js#L187}{Emscripten compiler settings}.
+*/
+
+
 
 /*!
 \page cmake-target-property-qt-ios-launch-screen.html

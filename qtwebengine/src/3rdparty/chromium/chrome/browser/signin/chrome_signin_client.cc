@@ -50,8 +50,8 @@
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/scope_set.h"
 #include "components/supervised_user/core/common/buildflags.h"
+#include "components/version_info/channel.h"
 #include "content/public/browser/browser_context.h"
-#include "content/public/browser/network_service_instance.h"
 #include "content/public/browser/storage_partition.h"
 #include "google_apis/gaia/gaia_constants.h"
 #include "google_apis/gaia/gaia_urls.h"
@@ -62,7 +62,7 @@
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-#include "chrome/browser/ash/net/delay_network_call.h"
+#include "chrome/browser/signin/wait_for_network_callback_helper_ash.h"
 #include "chromeos/ash/components/network/network_handler.h"
 #endif
 
@@ -82,10 +82,13 @@
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS_ASH)
 #include "chrome/browser/ui/browser_list.h"
-#include "chrome/browser/ui/profile_picker.h"
+#include "chrome/browser/ui/profiles/profile_picker.h"
 #endif
 #endif // !TOOLKIT_QT
 
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
+#include "chrome/browser/signin/wait_for_network_callback_helper_chrome.h"
+#endif
 namespace {
 
 // List of sources for which sign out is always allowed.
@@ -114,17 +117,20 @@ signin_metrics::ProfileSignout kAlwaysAllowedSignoutSources[] = {
 
 }  // namespace
 
-ChromeSigninClient::ChromeSigninClient(Profile* profile) : profile_(profile) {
-#if !BUILDFLAG(IS_CHROMEOS_ASH)
-  content::GetNetworkConnectionTracker()->AddNetworkConnectionObserver(this);
+ChromeSigninClient::ChromeSigninClient(Profile* profile)
+    : wait_for_network_callback_helper_(
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+          std::make_unique<WaitForNetworkCallbackHelperAsh>()
+#elif defined(TOOLKIT_QT)
+          nullptr
+#else
+          std::make_unique<WaitForNetworkCallbackHelperChrome>()
 #endif
+              ),
+      profile_(profile) {
 }
 
-ChromeSigninClient::~ChromeSigninClient() {
-#if !BUILDFLAG(IS_CHROMEOS_ASH)
-  content::GetNetworkConnectionTracker()->RemoveNetworkConnectionObserver(this);
-#endif
-}
+ChromeSigninClient::~ChromeSigninClient() = default;
 
 void ChromeSigninClient::DoFinalInit() {
   VerifySyncToken();
@@ -133,9 +139,9 @@ void ChromeSigninClient::DoFinalInit() {
 // static
 bool ChromeSigninClient::ProfileAllowsSigninCookies(Profile* profile) {
 #ifndef TOOLKIT_QT
-  content_settings::CookieSettings* cookie_settings =
-      CookieSettingsFactory::GetForProfile(profile).get();
-  return signin::SettingsAllowSigninCookies(cookie_settings);
+  scoped_refptr<content_settings::CookieSettings> cookie_settings =
+      CookieSettingsFactory::GetForProfile(profile);
+  return signin::SettingsAllowSigninCookies(cookie_settings.get());
 #else
   return true;
 #endif
@@ -163,9 +169,9 @@ bool ChromeSigninClient::AreSigninCookiesAllowed() {
 
 bool ChromeSigninClient::AreSigninCookiesDeletedOnExit() {
 #ifndef TOOLKIT_QT
-  content_settings::CookieSettings* cookie_settings =
-      CookieSettingsFactory::GetForProfile(profile_).get();
-  return signin::SettingsDeleteSigninCookiesOnExit(cookie_settings);
+  scoped_refptr<content_settings::CookieSettings> cookie_settings =
+      CookieSettingsFactory::GetForProfile(profile_);
+  return signin::SettingsDeleteSigninCookiesOnExit(cookie_settings.get());
 #else
   return false;
 #endif
@@ -245,44 +251,12 @@ void ChromeSigninClient::PreSignOut(
   }
 }
 
-#if !BUILDFLAG(IS_CHROMEOS_ASH)
-void ChromeSigninClient::OnConnectionChanged(
-    network::mojom::ConnectionType type) {
-  if (type == network::mojom::ConnectionType::CONNECTION_NONE)
-    return;
-
-  for (base::OnceClosure& callback : delayed_callbacks_)
-    std::move(callback).Run();
-
-  delayed_callbacks_.clear();
+bool ChromeSigninClient::AreNetworkCallsDelayed() {
+  return wait_for_network_callback_helper_->AreNetworkCallsDelayed();
 }
-#endif
 
 void ChromeSigninClient::DelayNetworkCall(base::OnceClosure callback) {
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-  // Do not make network requests in unit tests. ash::NetworkHandler should
-  // not be used and is not expected to have been initialized in unit tests.
-  if (url_loader_factory_for_testing_ &&
-      !ash::NetworkHandler::IsInitialized()) {
-    std::move(callback).Run();
-    return;
-  }
-  ash::DelayNetworkCall(base::Milliseconds(ash::kDefaultNetworkRetryDelayMS),
-                        std::move(callback));
-  return;
-#else
-  // Don't bother if we don't have any kind of network connection.
-  network::mojom::ConnectionType type;
-  bool sync = content::GetNetworkConnectionTracker()->GetConnectionType(
-      &type, base::BindOnce(&ChromeSigninClient::OnConnectionChanged,
-                            weak_ptr_factory_.GetWeakPtr()));
-  if (!sync || type == network::mojom::ConnectionType::CONNECTION_NONE) {
-    // Connection type cannot be retrieved synchronously so delay the callback.
-    delayed_callbacks_.push_back(std::move(callback));
-  } else {
-    std::move(callback).Run();
-  }
-#endif
+  wait_for_network_callback_helper_->DelayNetworkCall(std::move(callback));
 }
 
 std::unique_ptr<GaiaAuthFetcher> ChromeSigninClient::CreateGaiaAuthFetcher(
@@ -290,6 +264,14 @@ std::unique_ptr<GaiaAuthFetcher> ChromeSigninClient::CreateGaiaAuthFetcher(
     gaia::GaiaSource source) {
   return std::make_unique<GaiaAuthFetcher>(consumer, source,
                                            GetURLLoaderFactory());
+}
+
+version_info::Channel ChromeSigninClient::GetClientChannel() {
+#if !defined(TOOLKIT_QT)
+  return chrome::GetChannel();
+#else
+  return {};
+#endif
 }
 
 SigninClient::SignoutDecision ChromeSigninClient::GetSignoutDecision(
@@ -317,8 +299,11 @@ SigninClient::SignoutDecision ChromeSigninClient::GetSignoutDecision(
     return SigninClient::SignoutDecision::CLEAR_PRIMARY_ACCOUNT_DISALLOWED;
   }
 #endif
-#if BUILDFLAG(ENABLE_SUPERVISED_USERS) && !BUILDFLAG(IS_CHROMEOS)
-  // Check if supervised user.
+#if BUILDFLAG(IS_ANDROID)
+  // On Android we do not allow supervised users to sign out.
+  // We also don't allow sign out on ChromeOS, though this is enforced outside
+  // the scope of this method.
+  // Other platforms do not restrict signout of supervised users.
   if (profile_->IsChild()) {
     return SigninClient::SignoutDecision::CLEAR_PRIMARY_ACCOUNT_DISALLOWED;
   }
@@ -424,6 +409,14 @@ void ChromeSigninClient::RemoveAllAccounts() {
 void ChromeSigninClient::SetURLLoaderFactoryForTest(
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory) {
   url_loader_factory_for_testing_ = url_loader_factory;
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  // Do not make network requests in unit tests. ash::NetworkHandler should
+  // not be used and is not expected to have been initialized in unit tests.
+  wait_for_network_callback_helper_
+      ->DisableNetworkCallsDelayedForTesting(  // IN-TEST
+          url_loader_factory_for_testing_ &&
+          !ash::NetworkHandler::IsInitialized());
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 }
 
 void ChromeSigninClient::OnCloseBrowsersSuccess(

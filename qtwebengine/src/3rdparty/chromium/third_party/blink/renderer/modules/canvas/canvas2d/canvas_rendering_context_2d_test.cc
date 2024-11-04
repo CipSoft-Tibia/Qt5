@@ -16,12 +16,12 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/platform/scheduler/test/renderer_scheduler_test_support.h"
-#include "third_party/blink/public/platform/scheduler/web_thread_scheduler.h"
 #include "third_party/blink/renderer/bindings/core/v8/to_v8_traits.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_testing.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_image_bitmap_options.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_float32array_uint16array_uint8clampedarray.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_begin_layer_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_canvas_will_read_frequently.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_union_canvasfilter_string.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_union_cssimagevalue_htmlcanvaselement_htmlimageelement_htmlvideoelement_imagebitmap_offscreencanvas_svgimageelement_videoframe.h"
@@ -55,6 +55,8 @@
 #include "third_party/blink/renderer/platform/graphics/unaccelerated_static_bitmap_image.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/loader/fetch/memory_cache.h"
+#include "third_party/blink/renderer/platform/scheduler/public/main_thread_scheduler.h"
+#include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
 #include "third_party/blink/renderer/platform/testing/paint_test_configurations.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 #include "third_party/blink/renderer/platform/testing/testing_platform_support.h"
@@ -78,9 +80,11 @@ class FakeImageSource : public CanvasImageSource {
  public:
   FakeImageSource(gfx::Size, BitmapOpacity);
 
-  scoped_refptr<Image> GetSourceImageForCanvas(SourceImageStatus*,
-                                               const gfx::SizeF&,
-                                               const AlphaDisposition) override;
+  scoped_refptr<Image> GetSourceImageForCanvas(
+      CanvasResourceProvider::FlushReason,
+      SourceImageStatus*,
+      const gfx::SizeF&,
+      const AlphaDisposition) override;
 
   bool WouldTaintOrigin() const override { return false; }
   gfx::SizeF ElementSize(const gfx::SizeF&,
@@ -100,14 +104,15 @@ class FakeImageSource : public CanvasImageSource {
 
 FakeImageSource::FakeImageSource(gfx::Size size, BitmapOpacity opacity)
     : size_(size), is_opaque_(opacity == kOpaqueBitmap) {
-  sk_sp<SkSurface> surface(
-      SkSurface::MakeRasterN32Premul(size_.width(), size_.height()));
+  sk_sp<SkSurface> surface(SkSurfaces::Raster(
+      SkImageInfo::MakeN32Premul(size_.width(), size_.height())));
   surface->getCanvas()->clear(opacity == kOpaqueBitmap ? SK_ColorWHITE
                                                        : SK_ColorTRANSPARENT);
   image_ = UnacceleratedStaticBitmapImage::Create(surface->makeImageSnapshot());
 }
 
 scoped_refptr<Image> FakeImageSource::GetSourceImageForCanvas(
+    CanvasResourceProvider::FlushReason,
     SourceImageStatus* status,
     const gfx::SizeF&,
     const AlphaDisposition alpha_disposition = kPremultiplyAlpha) {
@@ -143,21 +148,25 @@ class CanvasRenderingContext2DTest : public ::testing::Test,
   void DrawSomething() {
     CanvasElement().DidDraw();
     CanvasElement().PreFinalizeFrame();
-    Context2D()->FinalizeFrame();
-    CanvasElement().PostFinalizeFrame();
+    Context2D()->FinalizeFrame(CanvasResourceProvider::FlushReason::kTesting);
+    CanvasElement().PostFinalizeFrame(
+        CanvasResourceProvider::FlushReason::kTesting);
     // Grabbing an image forces a flush
-    CanvasElement().Snapshot(kBackBuffer);
+    CanvasElement().Snapshot(CanvasResourceProvider::FlushReason::kTesting,
+                             kBackBuffer);
   }
 
   enum LatencyMode { kNormalLatency, kLowLatency };
 
-  static constexpr size_t kMaxPinnedImageBytes = 1000;
+  static constexpr size_t kMaxPinnedImageKB = 1;
+  static constexpr size_t kMaxRecordedOpKB = 10;
 
   void CreateContext(
       OpacityMode,
       LatencyMode = kNormalLatency,
       CanvasContextCreationAttributesCore::WillReadFrequently =
-          CanvasContextCreationAttributesCore::WillReadFrequently::kUndefined);
+          CanvasContextCreationAttributesCore::WillReadFrequently::kUndefined,
+      HTMLCanvasElement* canvas = nullptr);
 
   ScriptState* GetScriptState() {
     return ToScriptStateForMainWorld(canvas_element_->DomWindow()->GetFrame());
@@ -169,7 +178,6 @@ class CanvasRenderingContext2DTest : public ::testing::Test,
 
   void TearDown() override;
   void UnrefCanvas();
-  std::unique_ptr<Canvas2DLayerBridge> MakeBridge(const gfx::Size&, RasterMode);
 
   Document& GetDocument() const {
     return *web_view_helper_->GetWebView()
@@ -219,6 +227,9 @@ class CanvasRenderingContext2DTest : public ::testing::Test,
   Member<CanvasGradient>& AlphaGradient() {
     return wrap_gradients_->alpha_gradient_;
   }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
 };
 
 INSTANTIATE_PAINT_TEST_SUITE_P(CanvasRenderingContext2DTest);
@@ -232,18 +243,28 @@ void CanvasRenderingContext2DTest::CreateContext(
     OpacityMode opacity_mode,
     LatencyMode latency_mode,
     CanvasContextCreationAttributesCore::WillReadFrequently
-        will_read_frequently) {
+        will_read_frequently,
+    HTMLCanvasElement* canvas) {
   String canvas_type("2d");
   CanvasContextCreationAttributesCore attributes;
   attributes.alpha = opacity_mode == kNonOpaque;
   attributes.desynchronized = latency_mode == kLowLatency;
   attributes.will_read_frequently = will_read_frequently;
-  canvas_element_->GetCanvasRenderingContext(canvas_type, attributes);
+  if (!canvas) {
+    canvas = canvas_element_;
+  }
+  canvas->GetCanvasRenderingContext(canvas_type, attributes);
 }
 
 void CanvasRenderingContext2DTest::SetUp() {
-  CanvasResourceProvider::SetMaxPinnedImageBytesForTesting(
-      kMaxPinnedImageBytes);
+  base::FieldTrialParams auto_flush_params;
+  auto_flush_params["max_pinned_image_kb"] =
+      base::NumberToString(kMaxPinnedImageKB);
+  auto_flush_params["max_recorded_op_kb"] =
+      base::NumberToString(kMaxRecordedOpKB);
+  feature_list_.InitAndEnableFeatureWithParameters(kCanvas2DAutoFlushParams,
+                                                   auto_flush_params);
+
   test_context_provider_ = CreateContextProvider();
   InitializeSharedGpuContext(test_context_provider_.get());
   allow_accelerated_ =
@@ -259,7 +280,8 @@ void CanvasRenderingContext2DTest::SetUp() {
   // LayoutHTMLCanvas.
   GetDocument().GetPage()->GetSettings().SetScriptEnabled(true);
 
-  canvas_element_ = To<HTMLCanvasElement>(GetDocument().getElementById("c"));
+  canvas_element_ =
+      To<HTMLCanvasElement>(GetDocument().getElementById(AtomicString("c")));
 
   ImageDataSettings* settings = ImageDataSettings::Create();
   full_image_data_ = ImageData::Create(10, 10, settings, ASSERT_NO_EXCEPTION);
@@ -289,8 +311,7 @@ void CanvasRenderingContext2DTest::SetUp() {
 }
 
 void CanvasRenderingContext2DTest::TearDown() {
-  CanvasResourceProvider::ResetMaxPinnedImageBytesForTesting();
-
+  feature_list_.Reset();
   ThreadState::Current()->CollectAllGarbageForTesting(
       ThreadState::StackState::kNoHeapPointers);
 
@@ -308,35 +329,18 @@ void CanvasRenderingContext2DTest::TearDown() {
   CanvasRenderingContext::GetCanvasPerformanceMonitor().ResetForTesting();
 }
 
-std::unique_ptr<Canvas2DLayerBridge> CanvasRenderingContext2DTest::MakeBridge(
-    const gfx::Size& size,
-    RasterMode raster_mode) {
-  std::unique_ptr<Canvas2DLayerBridge> bridge =
-      std::make_unique<Canvas2DLayerBridge>(size, raster_mode, kNonOpaque);
-  bridge->SetCanvasResourceHost(canvas_element_);
-  return bridge;
-}
-
 //============================================================================
 
 class FakeCanvas2DLayerBridge : public Canvas2DLayerBridge {
  public:
-  FakeCanvas2DLayerBridge(const gfx::Size& size,
-                          OpacityMode opacity_mode,
-                          RasterModeHint hint)
-      : Canvas2DLayerBridge(size, RasterMode::kCPU, opacity_mode),
-        is_accelerated_(hint != RasterModeHint::kPreferCPU) {}
+  FakeCanvas2DLayerBridge(const gfx::Size& size, OpacityMode opacity_mode)
+      : Canvas2DLayerBridge(size, opacity_mode) {}
   ~FakeCanvas2DLayerBridge() override = default;
-  bool IsAccelerated() const override { return is_accelerated_; }
-  void SetIsAccelerated(bool is_accelerated) {
-    if (is_accelerated != is_accelerated_)
-      is_accelerated_ = is_accelerated;
-  }
+
   MOCK_METHOD1(DrawFullImage, void(const PaintImage& image));
   MOCK_METHOD1(DidRestoreCanvasMatrixClipStack, void(cc::PaintCanvas*));
 
  private:
-  bool is_accelerated_;
 };
 
 //============================================================================
@@ -353,7 +357,8 @@ class FakeCanvasResourceProvider : public CanvasResourceProvider {
         is_accelerated_(hint != RasterModeHint::kPreferCPU) {}
   ~FakeCanvasResourceProvider() override = default;
   bool IsAccelerated() const override { return is_accelerated_; }
-  scoped_refptr<CanvasResource> ProduceCanvasResource() override {
+  scoped_refptr<CanvasResource> ProduceCanvasResource(
+      CanvasResourceProvider::FlushReason) override {
     return scoped_refptr<CanvasResource>();
   }
   bool SupportsDirectCompositing() const override { return false; }
@@ -362,8 +367,9 @@ class FakeCanvasResourceProvider : public CanvasResourceProvider {
     return sk_sp<SkSurface>();
   }
   scoped_refptr<StaticBitmapImage> Snapshot(
-      const ImageOrientation& orientation) override {
-    return SnapshotInternal(orientation);
+      CanvasResourceProvider::FlushReason reason,
+      ImageOrientation orientation) override {
+    return SnapshotInternal(orientation, reason);
   }
 
  private:
@@ -376,7 +382,7 @@ class MockImageBufferSurfaceForOverwriteTesting : public Canvas2DLayerBridge {
  public:
   MockImageBufferSurfaceForOverwriteTesting(const gfx::Size& size,
                                             OpacityMode opacity_mode)
-      : Canvas2DLayerBridge(size, RasterMode::kCPU, opacity_mode) {}
+      : Canvas2DLayerBridge(size, opacity_mode) {}
   ~MockImageBufferSurfaceForOverwriteTesting() override = default;
   MOCK_METHOD0(WillOverwriteCanvas, void());
 };
@@ -421,7 +427,8 @@ void CanvasRenderingContext2DOverdrawTest::SetUp() {
 INSTANTIATE_PAINT_TEST_SUITE_P(CanvasRenderingContext2DOverdrawTest);
 
 void CanvasRenderingContext2DOverdrawTest::TearDown() {
-  Context2D()->restore();
+  NonThrowableExceptionState exception_state;
+  Context2D()->restore(exception_state);
 
   histogram_tester_.reset();
   surface_ptr_ = nullptr;
@@ -471,6 +478,14 @@ TEST_P(CanvasRenderingContext2DOverdrawTest, FillRect_FullCoverage) {
   VerifyExpectations();
 }
 
+TEST_P(CanvasRenderingContext2DOverdrawTest, DisableOverdrawOptimization) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(kDisableCanvasOverdrawOptimization);
+  ExpectNoOverdraw();
+  Context2D()->clearRect(0, 0, 10, 10);
+  VerifyExpectations();
+}
+
 TEST_P(CanvasRenderingContext2DOverdrawTest, ClearRect_ExactCoverage) {
   ExpectOverdraw({
       BaseRenderingContext2D::OverdrawOp::kTotal,
@@ -515,7 +530,8 @@ TEST_P(CanvasRenderingContext2DOverdrawTest, ClearRect_Filter) {
   });
   V8UnionCanvasFilterOrString* filter =
       MakeGarbageCollected<V8UnionCanvasFilterOrString>("blur(4px)");
-  Context2D()->setFilter(GetExecutionContext(), filter);
+  Context2D()->setFilter(ToScriptStateForMainWorld(GetDocument().GetFrame()),
+                         filter);
   Context2D()->clearRect(0, 0, 10, 10);
   VerifyExpectations();
 }
@@ -606,7 +622,8 @@ TEST_P(CanvasRenderingContext2DOverdrawTest, DrawImage_Filter) {
   NonThrowableExceptionState exception_state;
   V8UnionCanvasFilterOrString* filter =
       MakeGarbageCollected<V8UnionCanvasFilterOrString>("blur(4px)");
-  Context2D()->setFilter(GetExecutionContext(), filter);
+  Context2D()->setFilter(ToScriptStateForMainWorld(GetDocument().GetFrame()),
+                         filter);
   Context2D()->drawImage(&opaque_bitmap_, 0, 0, 10, 10, 0, 0, 10, 10,
                          exception_state);
   EXPECT_FALSE(exception_state.HadException());
@@ -791,10 +808,10 @@ TEST_P(CanvasRenderingContext2DTest, GPUMemoryUpdateForAcceleratedCanvas) {
           SkImageInfo::MakeN32Premul(size.width(), size.height()),
           RasterModeHint::kPreferGPU);
   std::unique_ptr<FakeCanvas2DLayerBridge> fake_2d_layer_bridge =
-      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque,
-                                                RasterModeHint::kPreferGPU);
+      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque);
   FakeCanvas2DLayerBridge* fake_2d_layer_bridge_ptr =
       fake_2d_layer_bridge.get();
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().SetResourceProviderForTesting(
       std::move(fake_resource_provider), std::move(fake_2d_layer_bridge), size);
 
@@ -802,26 +819,26 @@ TEST_P(CanvasRenderingContext2DTest, GPUMemoryUpdateForAcceleratedCanvas) {
   // pixel per buffer, and 2 is an estimate of num of gpu buffers required
 
   // Switching accelerated mode to non-accelerated mode
-  fake_2d_layer_bridge_ptr->SetIsAccelerated(false);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferCPU);
   CanvasElement().UpdateMemoryUsage();
 
   // Switching non-accelerated mode to accelerated mode
-  fake_2d_layer_bridge_ptr->SetIsAccelerated(true);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().UpdateMemoryUsage();
 
   // Creating a different accelerated image buffer
   auto* anotherCanvas =
-      To<HTMLCanvasElement>(GetDocument().getElementById("d"));
+      To<HTMLCanvasElement>(GetDocument().getElementById(AtomicString("d")));
   CanvasContextCreationAttributesCore attributes;
   anotherCanvas->GetCanvasRenderingContext("2d", attributes);
   gfx::Size size2(10, 5);
   std::unique_ptr<FakeCanvas2DLayerBridge> fake_2d_layer_bridge2 =
-      std::make_unique<FakeCanvas2DLayerBridge>(size2, kNonOpaque,
-                                                RasterModeHint::kPreferGPU);
+      std::make_unique<FakeCanvas2DLayerBridge>(size2, kNonOpaque);
   std::unique_ptr<FakeCanvasResourceProvider> fake_resource_provider2 =
       std::make_unique<FakeCanvasResourceProvider>(
           SkImageInfo::MakeN32Premul(size2.width(), size2.height()),
           RasterModeHint::kPreferGPU);
+  anotherCanvas->SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   anotherCanvas->SetResourceProviderForTesting(
       std::move(fake_resource_provider2), std::move(fake_2d_layer_bridge2),
       size2);
@@ -865,8 +882,9 @@ TEST_P(CanvasRenderingContext2DTest,
   // CanvasResourceProvider) will be changed too, causing bad regressions.
   CreateContext(kNonOpaque);
   gfx::Size size(10, 10);
-  auto fake_accelerate_surface = std::make_unique<FakeCanvas2DLayerBridge>(
-      size, kNonOpaque, RasterModeHint::kPreferGPU);
+  auto fake_accelerate_surface =
+      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().SetResourceProviderForTesting(
       nullptr, std::move(fake_accelerate_surface), size);
 
@@ -879,8 +897,9 @@ TEST_P(CanvasRenderingContext2DTest,
   CreateContext(kNonOpaque);
 
   gfx::Size size(10, 10);
-  auto fake_accelerate_surface = std::make_unique<FakeCanvas2DLayerBridge>(
-      size, kNonOpaque, RasterModeHint::kPreferGPU);
+  auto fake_accelerate_surface =
+      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().SetResourceProviderForTesting(
       nullptr, std::move(fake_accelerate_surface), size);
   CanvasRenderingContext2D* context = Context2D();
@@ -905,14 +924,16 @@ TEST_P(CanvasRenderingContext2DTest,
 
   CreateContext(kNonOpaque);
   gfx::Size size(10, 10);
-  auto fake_accelerate_surface = std::make_unique<FakeCanvas2DLayerBridge>(
-      size, kNonOpaque, RasterModeHint::kPreferGPU);
+  auto fake_accelerate_surface =
+      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().SetResourceProviderForTesting(
       nullptr, std::move(fake_accelerate_surface), size);
 
   FakeCanvasResourceHost host(size);
-  auto fake_deaccelerate_surface = std::make_unique<FakeCanvas2DLayerBridge>(
-      size, kNonOpaque, RasterModeHint::kPreferCPU);
+  auto fake_deaccelerate_surface =
+      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque);
+  host.SetPreferred2DRasterMode(RasterModeHint::kPreferCPU);
   fake_deaccelerate_surface->SetCanvasResourceHost(&host);
 
   FakeCanvas2DLayerBridge* surface_ptr = fake_deaccelerate_surface.get();
@@ -975,6 +996,7 @@ static void TestDrawSingleHighBitDepthPNGOnCanvas(
       resource_content->GetImage()->PaintImageForCurrentFrame().GetSwSkImage();
   ASSERT_EQ(kRGBA_F16_SkColorType, decoded_image->colorType());
   sk_sp<SkImage> color_converted_image = decoded_image->makeColorSpace(
+      static_cast<GrDirectContext*>(nullptr),
       PredefinedColorSpaceToSkColorSpace(context_color_space));
   float expected_pixels[16];
   SkImageInfo expected_info_no_color_space = SkImageInfo::Make(
@@ -1254,31 +1276,13 @@ TEST_P(CanvasRenderingContext2DTest,
 }
 
 TEST_P(CanvasRenderingContext2DTest,
-       RemainAcceleratedAfterGetImageDataWithWillNotReadFrequently) {
-  base::test::ScopedFeatureList feature_list_;
-  CreateContext(
-      kNonOpaque, kNormalLatency,
-      CanvasContextCreationAttributesCore::WillReadFrequently::kFalse);
-  gfx::Size size(10, 10);
-  auto fake_accelerate_surface = std::make_unique<FakeCanvas2DLayerBridge>(
-      size, kNonOpaque, RasterModeHint::kPreferGPU);
-  CanvasElement().SetResourceProviderForTesting(
-      nullptr, std::move(fake_accelerate_surface), size);
-
-  DrawSomething();
-  NonThrowableExceptionState exception_state;
-  ImageDataSettings* settings = ImageDataSettings::Create();
-  Context2D()->getImageData(0, 0, 1, 1, settings, exception_state);
-  EXPECT_TRUE(CanvasElement().GetCanvas2DLayerBridge()->IsAccelerated());
-}
-
-TEST_P(CanvasRenderingContext2DTest,
        UnacceleratedAfterGetImageDataWithDefaultWillReadFrequently) {
   base::test::ScopedFeatureList feature_list_;
   CreateContext(kNonOpaque, kNormalLatency);
   gfx::Size size(10, 10);
-  auto fake_accelerate_surface = std::make_unique<FakeCanvas2DLayerBridge>(
-      size, kNonOpaque, RasterModeHint::kPreferGPU);
+  auto fake_accelerate_surface =
+      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().SetResourceProviderForTesting(
       nullptr, std::move(fake_accelerate_surface), size);
 
@@ -1295,8 +1299,9 @@ TEST_P(CanvasRenderingContext2DTest,
 TEST_P(CanvasRenderingContext2DTest, AutoFlush) {
   CreateContext(kNonOpaque);
   gfx::Size size(10, 10);
-  auto fake_accelerate_surface = std::make_unique<FakeCanvas2DLayerBridge>(
-      size, kNonOpaque, RasterModeHint::kPreferGPU);
+  auto fake_accelerate_surface =
+      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().SetResourceProviderForTesting(
       nullptr, std::move(fake_accelerate_surface), size);
   Context2D()->fillRect(0, 0, 1, 1);  // Ensure resource provider is created.
@@ -1304,7 +1309,7 @@ TEST_P(CanvasRenderingContext2DTest, AutoFlush) {
       CanvasElement().ResourceProvider()->TotalOpCount();
 
   while (CanvasElement().ResourceProvider()->TotalOpBytesUsed() <=
-         CanvasResourceProvider::kMaxRecordedOpBytes) {
+         kMaxRecordedOpKB * 1024) {
     Context2D()->fillRect(0, 0, 1, 1);
     // Verify that auto-flush did not happen
     ASSERT_GT(CanvasElement().ResourceProvider()->TotalOpCount(),
@@ -1319,8 +1324,9 @@ TEST_P(CanvasRenderingContext2DTest, AutoFlush) {
 TEST_P(CanvasRenderingContext2DTest, AutoFlushPinnedImages) {
   CreateContext(kNonOpaque);
   gfx::Size size(10, 10);
-  auto fake_accelerate_surface = std::make_unique<FakeCanvas2DLayerBridge>(
-      size, kNonOpaque, RasterModeHint::kPreferGPU);
+  auto fake_accelerate_surface =
+      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().SetResourceProviderForTesting(
       nullptr, std::move(fake_accelerate_surface), size);
 
@@ -1336,7 +1342,7 @@ TEST_P(CanvasRenderingContext2DTest, AutoFlushPinnedImages) {
   // reset by the Flush.
   for (int repeat = 0; repeat < 2; ++repeat) {
     size_t expected_op_count = initial_op_count;
-    for (size_t pinned_bytes = 0; pinned_bytes <= kMaxPinnedImageBytes;
+    for (size_t pinned_bytes = 0; pinned_bytes <= kMaxPinnedImageKB * 1024;
          pinned_bytes += kBytesPerImage) {
       FakeImageSource unique_image(gfx::Size(kImageSize, kImageSize),
                                    kOpaqueBitmap);
@@ -1357,8 +1363,9 @@ TEST_P(CanvasRenderingContext2DTest, AutoFlushPinnedImages) {
 TEST_P(CanvasRenderingContext2DTest, OverdrawResetsPinnedImageBytes) {
   CreateContext(kNonOpaque);
   gfx::Size size(10, 10);
-  auto fake_accelerate_surface = std::make_unique<FakeCanvas2DLayerBridge>(
-      size, kNonOpaque, RasterModeHint::kPreferGPU);
+  auto fake_accelerate_surface =
+      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().SetResourceProviderForTesting(
       nullptr, std::move(fake_accelerate_surface), size);
 
@@ -1383,8 +1390,9 @@ TEST_P(CanvasRenderingContext2DTest, OverdrawResetsPinnedImageBytes) {
 TEST_P(CanvasRenderingContext2DTest, AutoFlushSameImage) {
   CreateContext(kNonOpaque);
   gfx::Size size(10, 10);
-  auto fake_accelerate_surface = std::make_unique<FakeCanvas2DLayerBridge>(
-      size, kNonOpaque, RasterModeHint::kPreferGPU);
+  auto fake_accelerate_surface =
+      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().SetResourceProviderForTesting(
       nullptr, std::move(fake_accelerate_surface), size);
 
@@ -1396,7 +1404,7 @@ TEST_P(CanvasRenderingContext2DTest, AutoFlushSameImage) {
 
   FakeImageSource image(gfx::Size(kImageSize, kImageSize), kOpaqueBitmap);
 
-  for (size_t pinned_bytes = 0; pinned_bytes <= 2 * kMaxPinnedImageBytes;
+  for (size_t pinned_bytes = 0; pinned_bytes <= 2 * kMaxPinnedImageKB * 1024;
        pinned_bytes += kBytesPerImage) {
     NonThrowableExceptionState exception_state;
     Context2D()->drawImage(&image, 0, 0, 1, 1, 0, 0, 1, 1, exception_state);
@@ -1408,23 +1416,27 @@ TEST_P(CanvasRenderingContext2DTest, AutoFlushSameImage) {
 }
 
 TEST_P(CanvasRenderingContext2DTest, AutoFlushDelayedByLayer) {
+  ScopedCanvas2dLayersForTest layer_feature(/*enabled=*/true);
   CreateContext(kNonOpaque);
   gfx::Size size(10, 10);
-  auto fake_accelerate_surface = std::make_unique<FakeCanvas2DLayerBridge>(
-      size, kNonOpaque, RasterModeHint::kPreferGPU);
+  auto fake_accelerate_surface =
+      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().SetResourceProviderForTesting(
       nullptr, std::move(fake_accelerate_surface), size);
-  Context2D()->beginLayer();
+  NonThrowableExceptionState exception_state;
+  Context2D()->beginLayer(ToScriptStateForMainWorld(GetDocument().GetFrame()),
+                          BeginLayerOptions::Create(), exception_state);
   const size_t initial_op_count =
       CanvasElement().ResourceProvider()->TotalOpCount();
   while (CanvasElement().ResourceProvider()->TotalOpBytesUsed() <=
-         CanvasResourceProvider::kMaxRecordedOpBytes + 1024) {
+         kMaxRecordedOpKB * 1024 * 2) {
     Context2D()->fillRect(0, 0, 1, 1);
     ASSERT_GT(CanvasElement().ResourceProvider()->TotalOpCount(),
               initial_op_count);
   }
   // Closing the layer means next op can trigger auto flush
-  Context2D()->endLayer();
+  Context2D()->endLayer(exception_state);
   Context2D()->fillRect(0, 0, 1, 1);
   ASSERT_EQ(CanvasElement().ResourceProvider()->TotalOpCount(),
             initial_op_count);
@@ -1434,9 +1446,47 @@ class CanvasRenderingContext2DTestAccelerated
     : public CanvasRenderingContext2DTest {
  protected:
   bool AllowsAcceleration() override { return true; }
+
+  void CreateAlotOfCanvasesWithAccelerationExplicitlyDisabled() {
+    for (int i = 0; i < 200; ++i) {
+      auto* canvas = MakeGarbageCollected<HTMLCanvasElement>(GetDocument());
+      CreateContext(
+          kNonOpaque, kNormalLatency,
+          CanvasContextCreationAttributesCore::WillReadFrequently::kUndefined,
+          canvas);
+      canvas->GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferGPU);
+      // Expect that at least the first 10 are accelerated. The exact number
+      // depends on the feature params.
+      if (i < 10) {
+        EXPECT_TRUE(canvas->IsAccelerated());
+      }
+      canvas->DisableAcceleration();
+    }
+  }
 };
 
 INSTANTIATE_PAINT_TEST_SUITE_P(CanvasRenderingContext2DTestAccelerated);
+
+TEST_P(CanvasRenderingContext2DTestAccelerated,
+       RemainAcceleratedAfterGetImageDataWithWillNotReadFrequently) {
+  base::test::ScopedFeatureList feature_list_;
+  CreateContext(
+      kNonOpaque, kNormalLatency,
+      CanvasContextCreationAttributesCore::WillReadFrequently::kFalse);
+  gfx::Size size(10, 10);
+  auto fake_accelerate_surface =
+      std::make_unique<FakeCanvas2DLayerBridge>(size, kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
+  CanvasElement().SetResourceProviderForTesting(
+      nullptr, std::move(fake_accelerate_surface), size);
+
+  DrawSomething();
+  NonThrowableExceptionState exception_state;
+  ImageDataSettings* settings = ImageDataSettings::Create();
+  ASSERT_TRUE(CanvasElement().GetCanvas2DLayerBridge()->IsAccelerated());
+  Context2D()->getImageData(0, 0, 1, 1, settings, exception_state);
+  EXPECT_TRUE(CanvasElement().GetCanvas2DLayerBridge()->IsAccelerated());
+}
 
 // https://crbug.com/708445: When the Canvas2DLayerBridge hibernates or wakes up
 // from hibernation, the compositing reasons for the canvas element may change.
@@ -1446,7 +1496,8 @@ TEST_P(CanvasRenderingContext2DTestAccelerated,
   CreateContext(kNonOpaque);
   gfx::Size size(300, 300);
   std::unique_ptr<Canvas2DLayerBridge> bridge =
-      std::make_unique<Canvas2DLayerBridge>(size, RasterMode::kGPU, kNonOpaque);
+      std::make_unique<Canvas2DLayerBridge>(size, kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().SetResourceProviderForTesting(nullptr, std::move(bridge),
                                                 size);
   CanvasElement().GetCanvas2DLayerBridge()->SetCanvasResourceHost(
@@ -1454,7 +1505,8 @@ TEST_P(CanvasRenderingContext2DTestAccelerated,
 
   EXPECT_TRUE(CanvasElement().GetCanvas2DLayerBridge()->IsAccelerated());
   // Take a snapshot to trigger lazy resource provider creation
-  CanvasElement().GetCanvas2DLayerBridge()->NewImageSnapshot();
+  CanvasElement().GetCanvas2DLayerBridge()->NewImageSnapshot(
+      CanvasResourceProvider::FlushReason::kTesting);
   EXPECT_TRUE(!!CanvasElement().ResourceProvider());
   EXPECT_TRUE(CanvasElement().ResourceProvider()->IsAccelerated());
   auto* box = CanvasElement().GetLayoutBoxModelObject();
@@ -1468,9 +1520,9 @@ TEST_P(CanvasRenderingContext2DTestAccelerated,
       mojom::blink::PageVisibilityState::kHidden,
       /*is_initial_state=*/false);
   // Run hibernation task.
-  scheduler::RunIdleTasksForTesting(
-      scheduler::WebThreadScheduler::MainThreadScheduler(),
-      WTF::BindOnce([]() {}));
+  ThreadScheduler::Current()
+      ->ToMainThreadScheduler()
+      ->StartIdlePeriodForTesting();
   blink::test::RunPendingTasks();
   // If enabled, hibernation should cause repaint of the painting layer.
   EXPECT_FALSE(box->NeedsPaintPropertyUpdate());
@@ -1498,7 +1550,8 @@ TEST_P(CanvasRenderingContext2DTestAccelerated,
   CreateContext(kNonOpaque);
   gfx::Size size(300, 300);
   std::unique_ptr<Canvas2DLayerBridge> bridge =
-      std::make_unique<Canvas2DLayerBridge>(size, RasterMode::kGPU, kNonOpaque);
+      std::make_unique<Canvas2DLayerBridge>(size, kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
   CanvasElement().SetResourceProviderForTesting(nullptr, std::move(bridge),
                                                 size);
   CanvasElement().GetCanvas2DLayerBridge()->SetCanvasResourceHost(
@@ -1520,9 +1573,9 @@ TEST_P(CanvasRenderingContext2DTestAccelerated,
       mojom::blink::PageVisibilityState::kHidden,
       /*is_initial_state=*/false);
   // Run hibernation task.
-  scheduler::RunIdleTasksForTesting(
-      scheduler::WebThreadScheduler::MainThreadScheduler(),
-      WTF::BindOnce([]() {}));
+  ThreadScheduler::Current()
+      ->ToMainThreadScheduler()
+      ->StartIdlePeriodForTesting();
   blink::test::RunPendingTasks();
 
   // Never hibernate a canvas with no resource provider.
@@ -1575,6 +1628,76 @@ TEST_P(CanvasRenderingContext2DTestAccelerated, DrawImage_Video_Flush) {
   EXPECT_FALSE(CanvasElement().ResourceProvider()->HasRecordedDrawOps());
 }
 
+class CanvasRenderingContext2DTestAcceleratedMultipleDisables
+    : public CanvasRenderingContext2DTest {
+ protected:
+  void SetUp() override {
+    base::FieldTrialParams params;
+    params["canvas-disable-acceleration-threshold"] = "10";
+    params["canvas-disable-acceleration-percent"] = "80";
+    feature_list_.InitAndEnableFeatureWithParameters(
+        kStartCanvasWithAccelerationDisabled, params);
+    CanvasRenderingContext2DTest::SetUp();
+  }
+
+  bool AllowsAcceleration() override { return true; }
+
+  void CreateAlotOfCanvasesWithAccelerationExplicitlyDisabled() {
+    for (int i = 0; i < 10; ++i) {
+      auto* canvas = MakeGarbageCollected<HTMLCanvasElement>(GetDocument());
+      CreateContext(
+          kNonOpaque, kNormalLatency,
+          CanvasContextCreationAttributesCore::WillReadFrequently::kUndefined,
+          canvas);
+      canvas->GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferGPU);
+      EXPECT_TRUE(canvas->IsAccelerated());
+      canvas->DisableAcceleration();
+    }
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+INSTANTIATE_PAINT_TEST_SUITE_P(
+    CanvasRenderingContext2DTestAcceleratedMultipleDisables);
+
+TEST_P(CanvasRenderingContext2DTestAcceleratedMultipleDisables,
+       ReadFrequentlyUndefined) {
+  CreateAlotOfCanvasesWithAccelerationExplicitlyDisabled();
+  CreateContext(
+      kNonOpaque, kNormalLatency,
+      CanvasContextCreationAttributesCore::WillReadFrequently::kUndefined);
+  CanvasElement().GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferGPU);
+  // Because a bunch of canvases had acceleration explicitly disabled, canvases
+  // created with `kUndefined` should start with acceleration disabled.
+  EXPECT_FALSE(CanvasElement().IsAccelerated());
+}
+
+TEST_P(CanvasRenderingContext2DTestAcceleratedMultipleDisables,
+       ReadFrequentlyFalse) {
+  CreateAlotOfCanvasesWithAccelerationExplicitlyDisabled();
+  CreateContext(
+      kNonOpaque, kNormalLatency,
+      CanvasContextCreationAttributesCore::WillReadFrequently::kFalse);
+  CanvasElement().GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferGPU);
+  // Canvases created with `kFalse` should always start with acceleration
+  // enabled regardless of how many canvases had acceleration disabled.
+  EXPECT_TRUE(CanvasElement().IsAccelerated());
+}
+
+TEST_P(CanvasRenderingContext2DTestAcceleratedMultipleDisables,
+       ReadFrequentlyTrue) {
+  CreateAlotOfCanvasesWithAccelerationExplicitlyDisabled();
+  CreateContext(kNonOpaque, kNormalLatency,
+                CanvasContextCreationAttributesCore::WillReadFrequently::kTrue);
+  CanvasElement().GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferGPU);
+  // Canvases created with `kTrue` should always start with acceleration
+  // disabled regardless of how many canvases had acceleration explicitly
+  // disabled.
+  EXPECT_FALSE(CanvasElement().IsAccelerated());
+}
+
 class CanvasRenderingContext2DTestImageChromium
     : public CanvasRenderingContext2DTestAccelerated {
  protected:
@@ -1618,13 +1741,15 @@ TEST_P(CanvasRenderingContext2DTestImageChromium, LowLatencyIsSingleBuffered) {
   auto frame1_resource =
       CanvasElement()
           .GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferGPU)
-          ->ProduceCanvasResource();
+          ->ProduceCanvasResource(
+              CanvasResourceProvider::FlushReason::kTesting);
   EXPECT_TRUE(frame1_resource);
   DrawSomething();
   auto frame2_resource =
       CanvasElement()
           .GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferGPU)
-          ->ProduceCanvasResource();
+          ->ProduceCanvasResource(
+              CanvasResourceProvider::FlushReason::kTesting);
   EXPECT_TRUE(frame2_resource);
   EXPECT_EQ(frame1_resource.get(), frame2_resource.get());
 }
@@ -1664,13 +1789,15 @@ TEST_P(CanvasRenderingContext2DTestSwapChain, LowLatencyIsSingleBuffered) {
   auto frame1_resource =
       CanvasElement()
           .GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferGPU)
-          ->ProduceCanvasResource();
+          ->ProduceCanvasResource(
+              CanvasResourceProvider::FlushReason::kTesting);
   EXPECT_TRUE(frame1_resource);
   DrawSomething();
   auto frame2_resource =
       CanvasElement()
           .GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferGPU)
-          ->ProduceCanvasResource();
+          ->ProduceCanvasResource(
+              CanvasResourceProvider::FlushReason::kTesting);
   EXPECT_TRUE(frame2_resource);
   EXPECT_EQ(frame1_resource.get(), frame2_resource.get());
 }

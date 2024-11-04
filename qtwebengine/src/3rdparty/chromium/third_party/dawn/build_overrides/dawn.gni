@@ -37,6 +37,8 @@ dawn_swiftshader_dir = "//third_party/swiftshader"
 dawn_vulkan_loader_dir = "//third_party/vulkan-deps/vulkan-loader/src"
 dawn_vulkan_validation_layers_dir =
     "//third_party/vulkan-deps/vulkan-validation-layers/src"
+dawn_dxc_dir = "//third_party/dxc"
+dawn_dxheaders_dir = "//third_party/dxheaders"
 
 # Optional path to a one-liner version file. Default is empty path indicating
 # that git should be used to figure out the version.

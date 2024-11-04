@@ -57,12 +57,11 @@ static IdMap<T> tryLoadFromFile(const FromJsonFactory<T> &itemFactory, const QSt
 }
 
 static QByteArray getValueFromHeader(const QList<QPair<QByteArray, QByteArray>> &headers,
-                                     const QString &keyToFind)
+                                     QByteArrayView headerName)
 {
     for (const auto &[key, value] : headers) {
-        if (key == keyToFind) {
+        if (key.compare(headerName, Qt::CaseInsensitive) == 0)
             return value;
-        }
     }
     return QByteArray();
 }
@@ -70,7 +69,7 @@ static QByteArray getValueFromHeader(const QList<QPair<QByteArray, QByteArray>> 
 static std::optional<QString> getTokenFromRequest(const QHttpServerRequest &request)
 {
     std::optional<QString> token;
-    if (auto bytes = getValueFromHeader(request.headers(), "TOKEN"); !bytes.isEmpty()) {
+    if (auto bytes = getValueFromHeader(request.headers(), "token"); !bytes.isEmpty()) {
         token = bytes;
     }
     return token;

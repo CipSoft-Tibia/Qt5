@@ -4,6 +4,9 @@
 
 #include "media/gpu/gpu_video_encode_accelerator_factory.h"
 
+#include <utility>
+#include <vector>
+
 #include "base/command_line.h"
 #include "base/containers/cxx20_erase.h"
 #include "base/feature_list.h"
@@ -45,14 +48,11 @@ namespace media {
 namespace {
 #if BUILDFLAG(USE_V4L2_CODEC)
 std::unique_ptr<VideoEncodeAccelerator> CreateV4L2VEA() {
-  scoped_refptr<V4L2Device> device = V4L2Device::Create();
-  if (!device)
-    return nullptr;
 #if BUILDFLAG(IS_CHROMEOS)
   // TODO(crbug.com/901264): Encoders use hack for passing offset within
   // a DMA-buf, which is not supported upstream.
   return base::WrapUnique<VideoEncodeAccelerator>(
-      new V4L2VideoEncodeAccelerator(std::move(device)));
+      new V4L2VideoEncodeAccelerator(new V4L2Device()));
 #else
   return nullptr;
 #endif
@@ -85,8 +85,6 @@ std::unique_ptr<VideoEncodeAccelerator> CreateVTVEA() {
 #endif
 
 #if BUILDFLAG(IS_WIN)
-// Creates a MediaFoundationVEA for Win 7 or later. If |compatible_with_win7| is
-// true, VEA is limited to a subset of features that is compatible with Win 7.
 std::unique_ptr<VideoEncodeAccelerator> CreateMediaFoundationVEA(
     const gpu::GpuPreferences& gpu_preferences,
     const gpu::GpuDriverBugWorkarounds& gpu_workarounds,

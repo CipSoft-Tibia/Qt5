@@ -18,7 +18,6 @@
 #include <QtDBus/private/qtdbusglobal_p.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qmap.h>
-#include <QtCore/qpair.h>
 #include <QtCore/qshareddata.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
@@ -38,9 +37,10 @@ public:
     struct Interface;
     struct Object;
     struct ObjectTree;
+    struct Annotation;
 
     // typedefs
-    typedef QMap<QString, QString> Annotations;
+    typedef QMap<QString, Annotation> Annotations;
     typedef QList<Argument> Arguments;
     typedef QMultiMap<QString, Method> Methods;
     typedef QMultiMap<QString, Signal> Signals;
@@ -51,8 +51,40 @@ public:
 public:
     // the structs
 
+    // Line and column numbers have the same meaning as in QXmlStreamReader.
+    struct SourceLocation
+    {
+        qint64 lineNumber = 1;
+        qint64 columnNumber = 0;
+    };
+
+    class Q_DBUS_EXPORT DiagnosticsReporter
+    {
+        Q_DISABLE_COPY_MOVE(DiagnosticsReporter)
+    public:
+        DiagnosticsReporter() = default;
+        virtual ~DiagnosticsReporter();
+        virtual void warning(const SourceLocation &location, const char *msg, ...)
+                Q_ATTRIBUTE_FORMAT_PRINTF(3, 4) = 0;
+        virtual void error(const SourceLocation &location, const char *msg, ...)
+                Q_ATTRIBUTE_FORMAT_PRINTF(3, 4) = 0;
+    };
+
+    struct Annotation
+    {
+        SourceLocation location;
+        QString name;
+        QString value;
+
+        inline bool operator==(const Annotation &other) const
+        {
+            return name == other.name && value == other.value;
+        }
+    };
+
     struct Argument
     {
+        SourceLocation location;
         QString type;
         QString name;
 
@@ -62,6 +94,7 @@ public:
 
     struct Method
     {
+        SourceLocation location;
         QString name;
         Arguments inputArgs;
         Arguments outputArgs;
@@ -74,6 +107,7 @@ public:
 
     struct Signal
     {
+        SourceLocation location;
         QString name;
         Arguments outputArgs;
         Annotations annotations;
@@ -86,6 +120,7 @@ public:
     struct Property
     {
         enum Access { Read, Write, ReadWrite };
+        SourceLocation location;
         QString name;
         QString type;
         Access access;
@@ -98,6 +133,7 @@ public:
 
     struct Interface: public QSharedData
     {
+        SourceLocation location;
         QString name;
         QString introspection;
 
@@ -112,6 +148,7 @@ public:
 
     struct Object: public QSharedData
     {
+        SourceLocation location;
         QString service;
         QString path;
 
@@ -120,10 +157,11 @@ public:
     };
 
 public:
-    static Interface parseInterface(const QString &xml);
-    static Interfaces parseInterfaces(const QString &xml);
+    static Interface parseInterface(const QString &xml, DiagnosticsReporter *reporter = nullptr);
+    static Interfaces parseInterfaces(const QString &xml, DiagnosticsReporter *reporter = nullptr);
     static Object parseObject(const QString &xml, const QString &service = QString(),
-                              const QString &path = QString());
+                              const QString &path = QString(),
+                              DiagnosticsReporter *reporter = nullptr);
 
 private:
     QDBusIntrospection();

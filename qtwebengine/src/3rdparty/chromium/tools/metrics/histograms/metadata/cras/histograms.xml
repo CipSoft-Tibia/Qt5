@@ -22,8 +22,13 @@ chromium-metrics-reviews@google.com.
 
 <histograms>
 
+<variants name="CrasDlcType">
+  <variant name="NcAp" summary="the AP Noise Cancellation DLC"/>
+  <variant name="SrBt" summary="the Bluetooth Super Resolution DLC"/>
+</variants>
+
 <histogram name="Cras.A2dp100msFailureOverStream" units="units"
-    expires_after="2023-07-02">
+    expires_after="2024-03-17">
   <owner>hychao@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -34,7 +39,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.A2dp20msFailureOverStream" units="units"
-    expires_after="2023-07-30">
+    expires_after="2024-03-17">
   <owner>hychao@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -45,7 +50,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.A2dpExitCode" enum="CrasA2dpExitCode"
-    expires_after="2023-01-22">
+    expires_after="2024-03-17">
   <owner>hychao@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -55,7 +60,23 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Cras.Busyloop" units="units" expires_after="2023-06-04">
+<histogram name="Cras.ApNcRuntime" units="seconds" expires_after="2024-08-31">
+  <owner>hunghsienchen@chromium.org</owner>
+  <owner>chromeos-audio@google.com</owner>
+  <summary>Tracks the runtime of the APM when AP NC is active.</summary>
+</histogram>
+
+<histogram name="Cras.ApNcStartStatus" enum="CrasApNcStartStatus"
+    expires_after="2024-08-31">
+  <owner>hunghsienchen@chromium.org</owner>
+  <owner>chromeos-audio@google.com</owner>
+  <summary>
+    Sent when AP NC is requested in APM. 0 for AP NC requested but failed; 1 for
+    AP NC requested and success.
+  </summary>
+</histogram>
+
+<histogram name="Cras.Busyloop" units="units" expires_after="2024-03-17">
 <!-- Name completed by histogram_suffixes
      name="Cras.TimePeriod" -->
 
@@ -63,15 +84,14 @@ chromium-metrics-reviews@google.com.
   <owner>chromeos-audio@google.com</owner>
   <summary>
     For each audio thread running state, records the number of busyloops.
-    Busyloop means the audio thread doen't sleep during more than two loops,
+    Busyloop means the audio thread doesn't sleep during more than two loops,
     which may make the system busy. Depending on the time of running state, the
-    records is seperated into three logs: ShortPeriod(shorter than 10 minutes),
-    MediumPeriod(between 10 and 60 minutes), LongPeriod (longer than 60
-    minutes).
+    records is separated into three logs: ShortPeriod(shorter than 10 minutes),
+    MediumPeriod(between 10 and 60 minutes), LongPeriod(longer than 60 minutes).
   </summary>
 </histogram>
 
-<histogram name="Cras.BusyloopLength" units="units" expires_after="2023-02-12">
+<histogram name="Cras.BusyloopLength" units="units" expires_after="2024-06-01">
   <owner>yuhsuan@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -82,7 +102,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Cras.DeviceConfigureTime{Direction}{Device}{HostCapability}{PeripheralCapability}"
-    units="ms" expires_after="2023-07-11">
+    units="ms" expires_after="2024-03-17">
   <owner>hychao@google.com</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -138,7 +158,7 @@ chromium-metrics-reviews@google.com.
   </token>
 </histogram>
 
-<histogram name="Cras.DeviceGain" units="level" expires_after="2023-08-08">
+<histogram name="Cras.DeviceGain" units="level" expires_after="2024-02-11">
 <!-- Name completed by histogram_suffixes
      name="Cras.DeviceType" -->
 
@@ -152,7 +172,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.DeviceNoiseCancellationStatus"
-    enum="CrasNoiseCancellationStatus" expires_after="2023-06-25">
+    enum="CrasNoiseCancellationStatus" expires_after="2024-01-14">
 <!-- Name completed by histogram_suffixes
      name="Cras.DeviceType" -->
 
@@ -164,9 +184,20 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="Cras.DeviceOpenStatus" enum="CrasDeviceOpenStatus"
+    expires_after="2024-07-10">
+<!-- Name completed by histogram_suffixes
+     name="Cras.DeviceType" and
+     name="Cras.Direction" -->
+
+  <owner>yuhsuan@chromium.org</owner>
+  <owner>chromeos-audio@google.com</owner>
+  <summary>Log the result every time CRAS tries to open a device.</summary>
+</histogram>
+
 <histogram
     name="Cras.DeviceRuntime{Direction}{Device}{HostCapability}{PeripheralCapability}"
-    units="seconds" expires_after="2022-12-01">
+    units="seconds" expires_after="2024-03-17">
   <owner>jrwu@google.com</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -220,8 +251,20 @@ chromium-metrics-reviews@google.com.
   </token>
 </histogram>
 
+<histogram name="Cras.DeviceSampleRate" units="bps" expires_after="2024-04-21">
+<!-- Name completed by histogram_suffixes
+     name="Cras.DeviceType" and
+     name="Cras.Direction" -->
+
+  <owner>yuhsuan@chromium.org</owner>
+  <owner>chromeos-audio@google.com</owner>
+  <summary>
+    The sampling rate of a device. It is recorded when the device is opened.
+  </summary>
+</histogram>
+
 <histogram name="Cras.DeviceTypeInput" enum="CrasDeviceType"
-    expires_after="2023-08-08">
+    expires_after="2024-10-08">
   <owner>yuhsuan@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -232,7 +275,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.DeviceTypeOutput" enum="CrasDeviceType"
-    expires_after="2023-03-26">
+    expires_after="2024-03-26">
   <owner>yuhsuan@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -242,7 +285,7 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Cras.DeviceVolume" units="level" expires_after="2023-06-04">
+<histogram name="Cras.DeviceVolume" units="level" expires_after="2024-02-11">
 <!-- Name completed by histogram_suffixes
      name="Cras.DeviceType" -->
 
@@ -253,8 +296,29 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="Cras.DlcManagerStatus.DlcStatus.{DlcType}"
+    enum="CrasDlcManagerDlcStatus" expires_after="2024-05-15">
+  <owner>hunghsienchen@google.com</owner>
+  <owner>chromeos-audio@google.com</owner>
+  <summary>
+    Records if {DlcType} is successfully installed or not (failed all retries).
+  </summary>
+  <token key="DlcType" variants="CrasDlcType"/>
+</histogram>
+
+<histogram name="Cras.DlcManagerStatus.RetriedTimesOnSuccess.{DlcType}"
+    units="count" expires_after="2024-05-15">
+  <owner>hunghsienchen@google.com</owner>
+  <owner>chromeos-audio@google.com</owner>
+  <summary>
+    If the installation of {DlcType} succeeded, records how many times retried
+    until success.
+  </summary>
+  <token key="DlcType" variants="CrasDlcType"/>
+</histogram>
+
 <histogram name="Cras.FetchDelayMilliSeconds" units="ms"
-    expires_after="2023-03-26">
+    expires_after="2024-03-26">
 <!-- Name completed by histogram_suffixes
      name="Cras.ClientType" and
      name="Cras.StreamType" -->
@@ -269,8 +333,18 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="Cras.ForceRespectUiGains" enum="BooleanEnabled"
+    expires_after="2024-07-11">
+  <owner>eddyhsu@chromium.org</owner>
+  <owner>chromeos-audio-sw@google.com</owner>
+  <summary>
+    Records the user enables or not the force respect UI gains. This value is
+    recorded for each change to the force respect ui gains setting.
+  </summary>
+</histogram>
+
 <histogram name="Cras.HfpBatteryIndicatorSupported"
-    enum="CrasHfpBatteryIndicator" expires_after="2023-12-01">
+    enum="CrasHfpBatteryIndicator" expires_after="2024-02-04">
   <owner>enshuo@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -279,7 +353,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.HfpBatteryReport" enum="CrasHfpBatteryIndicator"
-    expires_after="2023-12-01">
+    expires_after="2024-02-04">
   <owner>enshuo@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -305,7 +379,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.HfpScoConnectionError" enum="CrasHfpScoError"
-    expires_after="2023-12-01">
+    expires_after="2024-03-17">
   <owner>enshuo@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -315,7 +389,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.HfpWidebandSpeechPacketLoss" units="units"
-    expires_after="2023-12-01">
+    expires_after="2024-03-17">
   <owner>enshuo@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -336,7 +410,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.HighestDeviceDelayInput" units="units"
-    expires_after="2023-06-18">
+    expires_after="2024-03-17">
   <owner>yuhsuan@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -349,7 +423,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.HighestDeviceDelayOutput" units="units"
-    expires_after="2023-04-23">
+    expires_after="2024-03-17">
   <owner>yuhsuan@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -362,7 +436,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.HighestInputHardwareLevel" units="frames"
-    expires_after="2023-01-22">
+    expires_after="2024-03-17">
   <owner>yuhsuan@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -373,13 +447,49 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.HighestOutputHardwareLevel" units="frames"
-    expires_after="2023-06-18">
+    expires_after="2024-03-17">
   <owner>yuhsuan@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
     The highest hardware level of output device in CRAS(Chrome OS audio server).
     The hardware level is the remaining frames in the device. For output device,
     it can show the latency between writing and actual playout.
+  </summary>
+</histogram>
+
+<histogram name="Cras.InputGainChanged" enum="AudioSettingsChangeSource"
+    expires_after="2024-07-11">
+  <owner>eddyhsu@chromium.org</owner>
+  <owner>chromeos-audio-sw@google.com</owner>
+  <summary>
+    Records the source of a change to the input gain if users don't force to
+    respect UI gains.
+  </summary>
+</histogram>
+
+<histogram name="Cras.InputGainChangedSource" enum="AudioSettingsChangeSource"
+    expires_after="2024-02-14">
+  <owner>gavinwill@chromium.org</owner>
+  <owner>yuhsuan@chromium.org</owner>
+  <owner>chromeos-audio@google.com</owner>
+  <summary>Records the source of a change to the input gain.</summary>
+</histogram>
+
+<histogram name="Cras.InputGainMutedSource" enum="AudioSettingsChangeSource"
+    expires_after="2024-02-14">
+  <owner>gavinwill@chromium.org</owner>
+  <owner>yuhsuan@chromium.org</owner>
+  <owner>chromeos-audio@google.com</owner>
+  <summary>Records the source of muting/unmuting the input gain.</summary>
+</histogram>
+
+<histogram name="Cras.InternalSoundcardStatus" enum="InternalSoundcardStatus"
+    expires_after="2024-08-01">
+  <owner>yuhsuan@chromium.org</owner>
+  <owner>chromeos-audio@google.com</owner>
+  <summary>
+    Checks whether an internal soundcard has been detected after CRAS runs for 5
+    seconds.
   </summary>
 </histogram>
 
@@ -488,8 +598,34 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="Cras.NoiseCancellationEnabledSource"
+    enum="AudioSettingsChangeSource" expires_after="2024-02-14">
+  <owner>gavinwill@chromium.org</owner>
+  <owner>yuhsuan@chromium.org</owner>
+  <owner>chromeos-audio@google.com</owner>
+  <summary>
+    Records the source of enabling/disabling noise cancellation.
+  </summary>
+</histogram>
+
+<histogram name="Cras.OutputVolumeChangedSource"
+    enum="AudioSettingsChangeSource" expires_after="2024-02-14">
+  <owner>gavinwill@chromium.org</owner>
+  <owner>yuhsuan@chromium.org</owner>
+  <owner>chromeos-audio@google.com</owner>
+  <summary>Records the source of a change to the output volume.</summary>
+</histogram>
+
+<histogram name="Cras.OutputVolumeMutedSource" enum="AudioSettingsChangeSource"
+    expires_after="2024-02-14">
+  <owner>gavinwill@chromium.org</owner>
+  <owner>yuhsuan@chromium.org</owner>
+  <owner>chromeos-audio@google.com</owner>
+  <summary>Records the source of muting/unmuting the output volume.</summary>
+</histogram>
+
 <histogram name="Cras.RtcDevicePair" enum="CrasDevicePair"
-    expires_after="2023-08-08">
+    expires_after="2024-02-11">
   <owner>yuhsuan@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -499,7 +635,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.RtcRuntime.{InDevice}.{OutDevice}" units="seconds"
-    expires_after="2023-12-01">
+    expires_after="2024-02-20">
   <owner>yuhsuan@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -576,7 +712,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.StreamAddError" enum="CrasStreamAddError"
-    expires_after="2022-11-20">
+    expires_after="2024-03-16">
   <owner>hychao@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -585,7 +721,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.StreamCallbackThreshold" units="frames"
-    expires_after="2023-06-25">
+    expires_after="2024-01-14">
 <!-- Name completed by histogram_suffixes
      name="Cras.Direction" and
      name="Cras.ClientType" -->
@@ -614,7 +750,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.StreamClientTypeInput" enum="CrasClientType"
-    expires_after="2023-08-08">
+    expires_after="2024-02-11">
   <owner>yuhsuan@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -624,7 +760,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.StreamClientTypeOutput" enum="CrasClientType"
-    expires_after="2023-08-08">
+    expires_after="2024-02-11">
   <owner>yuhsuan@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -633,24 +769,25 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Cras.StreamConnectError" enum="CrasStreamConnectError"
-    expires_after="2023-03-26">
+<histogram name="Cras.StreamConnectStatus" enum="CrasStreamConnectStatus"
+    expires_after="2024-08-01">
+  <owner>yuhsuan@chromium.org</owner>
   <owner>hychao@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
-    Record the errors happen when CRAS server handles the client requests to
-    connect new streams.
+    Record the status when CRAS server handles the client requests to connect
+    new streams.
   </summary>
 </histogram>
 
 <histogram name="Cras.StreamCreateError" enum="CrasStreamCreateError"
-    expires_after="2023-06-25">
+    expires_after="2024-01-21">
   <owner>hychao@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>Record the errors happen when CRAS server creats a stream.</summary>
 </histogram>
 
-<histogram name="Cras.StreamEffects" units="value" expires_after="2022-09-20">
+<histogram name="Cras.StreamEffects" units="value" expires_after="2024-03-16">
 <!-- Name completed by histogram_suffixes
      name="Cras.Direction" and
      name="Cras.ClientType" -->
@@ -663,7 +800,20 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Cras.StreamFlags" units="value" expires_after="2023-08-13">
+<histogram name="Cras.StreamEffectState{Effect}" enum="StreamEffectState"
+    expires_after="2024-06-20">
+  <owner>eddyhsu@google.com</owner>
+  <owner>chromeos-audio-sw@google.com</owner>
+  <summary>
+    The state of system {Effect} set for a stream. This value is recorded when
+    the stream is started.
+  </summary>
+  <token key="Effect">
+    <variant name=".VoiceIsolation"/>
+  </token>
+</histogram>
+
+<histogram name="Cras.StreamFlags" units="value" expires_after="2024-02-20">
 <!-- Name completed by histogram_suffixes
      name="Cras.Direction" and
      name="Cras.ClientType" -->
@@ -676,7 +826,7 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Cras.StreamRuntime" units="seconds" expires_after="2023-08-08">
+<histogram name="Cras.StreamRuntime" units="seconds" expires_after="2024-02-11">
 <!-- Name completed by histogram_suffixes
      name="Cras.Direction" and
      name="Cras.ClientType" and
@@ -692,7 +842,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.StreamSamplingFormat" enum="AlsaSampleFormatType"
-    expires_after="2022-09-20">
+    expires_after="2024-03-16">
 <!-- Name completed by histogram_suffixes
      name="Cras.Direction" and
      name="Cras.ClientType" -->
@@ -706,7 +856,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.StreamSamplingRate" units="bps"
-    expires_after="2023-08-08">
+    expires_after="2024-02-11">
 <!-- Name completed by histogram_suffixes
      name="Cras.Direction" and
      name="Cras.ClientType" -->
@@ -720,7 +870,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.UnderrunsPerDevice" units="count"
-    expires_after="2023-08-20">
+    expires_after="2024-02-25">
   <owner>yuhsuan@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>
@@ -731,7 +881,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Cras.WebRTC.Audio.ApmCaptureInputLevelAverageRms"
-    units="dBFS (negated)" expires_after="2023-06-04">
+    units="dBFS (negated)" expires_after="2024-01-14">
   <owner>hychao@chromium.org</owner>
   <owner>chromeos-audio@google.com</owner>
   <summary>

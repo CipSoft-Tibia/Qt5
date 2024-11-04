@@ -7,6 +7,7 @@
 #include "base/no_destructor.h"
 #include "base/notreached.h"
 #include "build/build_config.h"
+#include "components/permissions/features.h"
 #include "components/permissions/permission_util.h"
 #include "components/permissions/request_type.h"
 #include "components/strings/grit/components_strings.h"
@@ -21,14 +22,26 @@ PermissionRequest::PermissionRequest(
     bool has_gesture,
     PermissionDecidedCallback permission_decided_callback,
     base::OnceClosure delete_callback)
-    : requesting_origin_(requesting_origin),
-      request_type_(request_type),
-      has_gesture_(has_gesture),
+    : data_(
+          PermissionRequestData(request_type, has_gesture, requesting_origin)),
+      permission_decided_callback_(std::move(permission_decided_callback)),
+      delete_callback_(std::move(delete_callback)) {}
+
+PermissionRequest::PermissionRequest(
+    PermissionRequestData request_data,
+    PermissionDecidedCallback permission_decided_callback,
+    base::OnceClosure delete_callback)
+    : data_(std::move(request_data)),
       permission_decided_callback_(std::move(permission_decided_callback)),
       delete_callback_(std::move(delete_callback)) {}
 
 PermissionRequest::~PermissionRequest() {
   DCHECK(delete_callback_.is_null());
+}
+
+RequestType PermissionRequest::request_type() const {
+  CHECK(data_.request_type);
+  return data_.request_type.value();
 }
 
 bool PermissionRequest::IsDuplicateOf(PermissionRequest* other_request) const {
@@ -43,7 +56,7 @@ base::WeakPtr<PermissionRequest> PermissionRequest::GetWeakPtr() {
 #if BUILDFLAG(IS_ANDROID)
 std::u16string PermissionRequest::GetDialogMessageText() const {
   int message_id = 0;
-  switch (request_type_) {
+  switch (request_type()) {
     case RequestType::kAccessibilityEvents:
       message_id = IDS_ACCESSIBILITY_EVENTS_INFOBAR_TEXT;
       break;
@@ -68,6 +81,9 @@ std::u16string PermissionRequest::GetDialogMessageText() const {
       break;
     case RequestType::kMicStream:
       message_id = IDS_MEDIA_CAPTURE_AUDIO_ONLY_INFOBAR_TEXT;
+      break;
+    case RequestType::kMidi:
+      message_id = IDS_MIDI_INFOBAR_TEXT;
       break;
     case RequestType::kMidiSysex:
       message_id = IDS_MIDI_SYSEX_INFOBAR_TEXT;
@@ -102,60 +118,80 @@ std::u16string PermissionRequest::GetDialogMessageText() const {
 }
 #endif
 
+bool PermissionRequest::IsEmbeddedPermissionElementInitiated() const {
+  return data_.embedded_permission_element_initiated;
+}
+
 #if !BUILDFLAG(IS_ANDROID)
 
 bool PermissionRequest::IsConfirmationChipSupported() {
-  return permissions::IsConfirmationChipSupported(request_type_);
+  return permissions::IsConfirmationChipSupported(request_type());
 }
 
 IconId PermissionRequest::GetIconForChip() {
-  return permissions::GetIconId(request_type_);
+  return permissions::GetIconId(request_type());
 }
 
 IconId PermissionRequest::GetBlockedIconForChip() {
-  return permissions::GetBlockedIconId(request_type_);
+  return permissions::GetBlockedIconId(request_type());
 }
 
 absl::optional<std::u16string> PermissionRequest::GetRequestChipText(
     ChipTextType type) const {
   static base::NoDestructor<std::map<RequestType, std::vector<int>>> kMessageIds(
-      {{RequestType::kArSession, {IDS_AR_PERMISSION_CHIP, -1, -1, -1, -1, -1}},
+      {{RequestType::kArSession,
+        {IDS_AR_PERMISSION_CHIP, -1, -1, -1, -1, -1, -1, -1}},
        {RequestType::kCameraStream,
         {IDS_MEDIA_CAPTURE_VIDEO_ONLY_PERMISSION_CHIP, -1,
          IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
          IDS_PERMISSIONS_PERMISSION_NOT_ALLOWED_CONFIRMATION,
          IDS_PERMISSIONS_CAMERA_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
+         IDS_PERMISSIONS_CAMERA_ALLOWED_ONCE_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
          IDS_PERMISSIONS_CAMERA_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
        {RequestType::kClipboard,
-        {IDS_CLIPBOARD_PERMISSION_CHIP, -1, -1, -1, -1, -1}},
+        {IDS_CLIPBOARD_PERMISSION_CHIP, -1, -1, -1, -1, -1, -1, -1}},
        {RequestType::kGeolocation,
         {IDS_GEOLOCATION_PERMISSION_CHIP,
          IDS_GEOLOCATION_PERMISSION_BLOCKED_CHIP,
          IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
          IDS_PERMISSIONS_PERMISSION_NOT_ALLOWED_CONFIRMATION,
          IDS_PERMISSIONS_GEOLOCATION_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
          IDS_PERMISSIONS_GEOLOCATION_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
        {RequestType::kIdleDetection,
-        {IDS_IDLE_DETECTION_PERMISSION_CHIP, -1, -1, -1, -1, -1}},
+        {IDS_IDLE_DETECTION_PERMISSION_CHIP, -1, -1, -1, -1, -1, -1, -1}},
        {RequestType::kMicStream,
         {IDS_MEDIA_CAPTURE_AUDIO_ONLY_PERMISSION_CHIP, -1,
          IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
          IDS_PERMISSIONS_PERMISSION_NOT_ALLOWED_CONFIRMATION,
          IDS_PERMISSIONS_MICROPHONE_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
+         IDS_PERMISSIONS_MICROPHONE_ALLOWED_ONCE_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
          IDS_PERMISSIONS_MICROPHONE_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
+       {RequestType::kMidi,
+        {IDS_MIDI_PERMISSION_CHIP, -1, -1, -1, -1, -1, -1, -1}},
        {RequestType::kMidiSysex,
-        {IDS_MIDI_SYSEX_PERMISSION_CHIP, -1, -1, -1, -1, -1}},
+        {IDS_MIDI_SYSEX_PERMISSION_CHIP, -1, -1, -1, -1, -1, -1, -1}},
        {RequestType::kNotifications,
         {IDS_NOTIFICATION_PERMISSIONS_CHIP,
          IDS_NOTIFICATION_PERMISSIONS_BLOCKED_CHIP,
-         IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION, -1,
          IDS_PERMISSIONS_PERMISSION_NOT_ALLOWED_CONFIRMATION,
          IDS_PERMISSIONS_NOTIFICATION_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
+         -1,
          IDS_PERMISSIONS_NOTIFICATION_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
+       {RequestType::kStorageAccess,
+        {IDS_SAA_PERMISSION_CHIP, -1,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION, -1,
+         IDS_PERMISSIONS_PERMISSION_NOT_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_SAA_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT, -1,
+         IDS_PERMISSIONS_SAA_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
        {RequestType::kVrSession,
-        {IDS_VR_PERMISSION_CHIP, -1, -1, -1, -1, -1}}});
+        {IDS_VR_PERMISSION_CHIP, -1, -1, -1, -1, -1, -1, -1}}});
 
-  auto messages = kMessageIds->find(request_type_);
+  auto messages = kMessageIds->find(request_type());
   if (messages != kMessageIds->end() && messages->second[type] != -1)
     return l10n_util::GetStringUTF16(messages->second[type]);
 
@@ -164,7 +200,7 @@ absl::optional<std::u16string> PermissionRequest::GetRequestChipText(
 
 std::u16string PermissionRequest::GetMessageTextFragment() const {
   int message_id = 0;
-  switch (request_type_) {
+  switch (request_type()) {
     case RequestType::kAccessibilityEvents:
       message_id = IDS_ACCESSIBILITY_EVENTS_PERMISSION_FRAGMENT;
       break;
@@ -195,6 +231,9 @@ std::u16string PermissionRequest::GetMessageTextFragment() const {
     case RequestType::kMicStream:
       message_id = IDS_MEDIA_CAPTURE_AUDIO_ONLY_PERMISSION_FRAGMENT;
       break;
+    case RequestType::kMidi:
+      message_id = IDS_MIDI_PERMISSION_FRAGMENT;
+      break;
     case RequestType::kMidiSysex:
       message_id = IDS_MIDI_SYSEX_PERMISSION_FRAGMENT;
       break;
@@ -217,12 +256,6 @@ std::u16string PermissionRequest::GetMessageTextFragment() const {
     case RequestType::kTopLevelStorageAccess:
       message_id = IDS_STORAGE_ACCESS_PERMISSION_FRAGMENT;
       break;
-    case RequestType::kSecurityAttestation:
-      message_id = IDS_SECURITY_KEY_ATTESTATION_PERMISSION_FRAGMENT;
-      break;
-    case RequestType::kU2fApiRequest:
-      message_id = IDS_U2F_API_PERMISSION_FRAGMENT;
-      break;
     case RequestType::kVrSession:
       message_id = IDS_VR_PERMISSION_FRAGMENT;
       break;
@@ -234,6 +267,12 @@ std::u16string PermissionRequest::GetMessageTextFragment() const {
   return l10n_util::GetStringUTF16(message_id);
 }
 #endif
+
+bool PermissionRequest::ShouldUseTwoOriginPrompt() const {
+  return request_type() == RequestType::kStorageAccess &&
+         base::FeatureList::IsEnabled(
+             permissions::features::kPermissionStorageAccessAPI);
+}
 
 void PermissionRequest::PermissionGranted(bool is_one_time) {
   std::move(permission_decided_callback_)
@@ -257,11 +296,11 @@ void PermissionRequest::RequestFinished() {
 }
 
 PermissionRequestGestureType PermissionRequest::GetGestureType() const {
-  return PermissionUtil::GetGestureType(has_gesture_);
+  return PermissionUtil::GetGestureType(data_.user_gesture);
 }
 
 ContentSettingsType PermissionRequest::GetContentSettingsType() const {
-  auto type = RequestTypeToContentSettingsType(request_type_);
+  auto type = RequestTypeToContentSettingsType(request_type());
   if (type.has_value())
     return type.value();
   return ContentSettingsType::DEFAULT;

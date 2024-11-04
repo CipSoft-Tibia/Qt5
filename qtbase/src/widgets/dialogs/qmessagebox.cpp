@@ -32,6 +32,7 @@
 
 #include <QtCore/qanystringview.h>
 #include <QtCore/qdebug.h>
+#include <QtCore/qpointer.h>
 #include <QtCore/qversionnumber.h>
 
 #ifdef Q_OS_WIN
@@ -111,8 +112,8 @@ public:
         layout->addWidget(textEdit);
         setLayout(layout);
 
-        connect(textEdit, SIGNAL(copyAvailable(bool)),
-                this, SLOT(textCopyAvailable(bool)));
+        connect(textEdit, &TextEdit::copyAvailable,
+                this, &QMessageBoxDetailsText::textCopyAvailable);
     }
     void setText(const QString &text) { textEdit->setPlainText(text); }
     QString text() const { return textEdit->toPlainText(); }
@@ -191,8 +192,8 @@ public:
 
     void init(const QString &title = QString(), const QString &text = QString());
     void setupLayout();
-    void _q_buttonClicked(QAbstractButton *);
-    void _q_helperClicked(QPlatformDialogHelper::StandardButton button, QPlatformDialogHelper::ButtonRole role);
+    void buttonClicked(QAbstractButton *);
+    void helperClicked(QPlatformDialogHelper::StandardButton button, QPlatformDialogHelper::ButtonRole role);
     void setClickedButton(QAbstractButton *button);
 
     QAbstractButton *findButton(int button0, int button1, int button2, int flags);
@@ -270,8 +271,8 @@ void QMessageBoxPrivate::init(const QString &title, const QString &text)
     buttonBox = new QDialogButtonBox;
     buttonBox->setObjectName("qt_msgbox_buttonbox"_L1);
     buttonBox->setCenterButtons(q->style()->styleHint(QStyle::SH_MessageBox_CenterButtons, nullptr, q));
-    QObject::connect(buttonBox, SIGNAL(clicked(QAbstractButton*)),
-                     q, SLOT(_q_buttonClicked(QAbstractButton*)));
+    QObjectPrivate::connect(buttonBox, &QDialogButtonBox::clicked,
+                            this, &QMessageBoxPrivate::buttonClicked);
     setupLayout();
     if (!title.isEmpty() || !text.isEmpty()) {
         q->setWindowTitle(title);
@@ -446,20 +447,34 @@ static int oldButton(int button)
 
 int QMessageBoxPrivate::execReturnCode(QAbstractButton *button)
 {
-    int ret = buttonBox->standardButton(button);
-    if (ret == QMessageBox::NoButton) {
-        ret = customButtonList.indexOf(button); // if button == 0, correctly sets ret = -1
-    } else if (compatMode) {
-        ret = oldButton(ret);
+    if (int standardButton = buttonBox->standardButton(button)) {
+        // When using a QMessageBox with standard buttons, the return
+        // code is a StandardButton value indicating the standard button
+        // that was clicked.
+        if (compatMode)
+            return oldButton(standardButton);
+        else
+            return standardButton;
+    } else {
+        // When using QMessageBox with custom buttons, the return code
+        // is an opaque value, and the user is expected to use clickedButton()
+        // to determine which button was clicked. We make sure to keep the opaque
+        // value out of the QDialog::DialogCode range, so we can distinguish them.
+        auto customButtonIndex = customButtonList.indexOf(button);
+        if (customButtonIndex >= 0)
+            return QDialog::DialogCode::Accepted + customButtonIndex + 1;
+        else
+            return customButtonIndex; // Not found, return -1
     }
-    return ret;
 }
 
 int QMessageBoxPrivate::dialogCode() const
 {
     Q_Q(const QMessageBox);
 
-    if (clickedButton) {
+    if (rescode <= QDialog::Accepted) {
+        return rescode;
+    } else if (clickedButton) {
         switch (q->buttonRole(clickedButton)) {
         case QMessageBox::AcceptRole:
         case QMessageBox::YesRole:
@@ -475,7 +490,7 @@ int QMessageBoxPrivate::dialogCode() const
     return QDialogPrivate::dialogCode();
 }
 
-void QMessageBoxPrivate::_q_buttonClicked(QAbstractButton *button)
+void QMessageBoxPrivate::buttonClicked(QAbstractButton *button)
 {
     Q_Q(QMessageBox);
 #if QT_CONFIG(textedit)
@@ -509,7 +524,7 @@ void QMessageBoxPrivate::setClickedButton(QAbstractButton *button)
     q->done(resultCode);
 }
 
-void QMessageBoxPrivate::_q_helperClicked(QPlatformDialogHelper::StandardButton helperButton, QPlatformDialogHelper::ButtonRole role)
+void QMessageBoxPrivate::helperClicked(QPlatformDialogHelper::StandardButton helperButton, QPlatformDialogHelper::ButtonRole role)
 {
     Q_UNUSED(role);
     Q_Q(QMessageBox);
@@ -524,7 +539,7 @@ void QMessageBoxPrivate::_q_helperClicked(QPlatformDialogHelper::StandardButton 
 
     // Simulate click by explicitly clicking the button. This will ensure that
     // any logic of the button that responds to the click is respected, including
-    // plumbing back to _q_buttonClicked above based on the clicked() signal.
+    // plumbing back to buttonClicked above based on the clicked() signal.
     dialogButton->click();
 }
 
@@ -1667,8 +1682,6 @@ void QMessageBox::open(QObject *receiver, const char *member)
 void QMessageBoxPrivate::setVisible(bool visible)
 {
     Q_Q(QMessageBox);
-    if (q->testAttribute(Qt::WA_WState_ExplicitShowHide) && q->testAttribute(Qt::WA_WState_Hidden) != visible)
-        return;
 
     // Last minute setup
     if (autoAddOkButton)
@@ -2144,7 +2157,11 @@ int QMessageBoxPrivate::showOldMessageBox(QWidget *parent, QMessageBox::Icon ico
     messageBox.setDefaultButton(static_cast<QPushButton *>(buttonList.value(defaultButtonNumber)));
     messageBox.setEscapeButton(buttonList.value(escapeButtonNumber));
 
-    return messageBox.exec();
+    messageBox.exec();
+
+    // Ignore exec return value and use button index instead,
+    // as that's what the documentation promises.
+    return buttonList.indexOf(messageBox.clickedButton());
 }
 
 void QMessageBoxPrivate::retranslateStrings()
@@ -2769,6 +2786,7 @@ QPixmap QMessageBoxPrivate::standardIcon(QMessageBox::Icon icon, QMessageBox *mb
         break;
     case QMessageBox::Question:
         tmpIcon = style->standardIcon(QStyle::SP_MessageBoxQuestion, nullptr, mb);
+        break;
     default:
         break;
     }
@@ -2781,19 +2799,18 @@ QPixmap QMessageBoxPrivate::standardIcon(QMessageBox::Icon icon, QMessageBox *mb
 
 void QMessageBoxPrivate::initHelper(QPlatformDialogHelper *h)
 {
-    Q_Q(QMessageBox);
-    QObject::connect(h, SIGNAL(clicked(QPlatformDialogHelper::StandardButton,QPlatformDialogHelper::ButtonRole)),
-                     q, SLOT(_q_helperClicked(QPlatformDialogHelper::StandardButton,QPlatformDialogHelper::ButtonRole)));
-
     auto *messageDialogHelper = static_cast<QPlatformMessageDialogHelper *>(h);
-    QObject::connect(messageDialogHelper, &QPlatformMessageDialogHelper::checkBoxStateChanged, q,
-        [this](Qt::CheckState state) {
+    QObjectPrivate::connect(messageDialogHelper, &QPlatformMessageDialogHelper::clicked,
+                            this, &QMessageBoxPrivate::helperClicked);
+    // Forward state via lambda, so that we can handle addition and removal
+    // of checkbox via setCheckBox() after initializing helper.
+    QObject::connect(messageDialogHelper, &QPlatformMessageDialogHelper::checkBoxStateChanged,
+        q_ptr, [this](Qt::CheckState state) {
             if (checkbox)
                 checkbox->setCheckState(state);
         }
     );
-
-    static_cast<QPlatformMessageDialogHelper *>(h)->setOptions(options);
+    messageDialogHelper->setOptions(options);
 }
 
 static QMessageDialogOptions::StandardIcon helperIcon(QMessageBox::Icon i)
@@ -2836,6 +2853,7 @@ bool QMessageBoxPrivate::canBeNativeDialog() const
     if (strcmp(QMessageBox::staticMetaObject.className(), q->metaObject()->className()) != 0)
         return false;
 
+#if QT_CONFIG(menu)
     for (auto *customButton : buttonBox->buttons()) {
         if (QPushButton *pushButton = qobject_cast<QPushButton *>(customButton)) {
             // We can't support buttons with menus in native dialogs (yet)
@@ -2843,6 +2861,7 @@ bool QMessageBoxPrivate::canBeNativeDialog() const
                 return false;
         }
     }
+#endif
 
     return QDialogPrivate::canBeNativeDialog();
 }

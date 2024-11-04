@@ -7,17 +7,15 @@ import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Root from '../../core/root/root.js';
 import type * as Formatter from '../../models/formatter/formatter.js';
-import {formatCSSChangesFromDiff} from '../../panels/utils/utils.js';
+import type * as Workspace from '../../models/workspace/workspace.js';
+import * as WorkspaceDiff from '../../models/workspace_diff/workspace_diff.js';
+import {PanelUtils} from '../../panels/utils/utils.js';
 import * as Diff from '../../third_party/diff/diff.js';
 import * as DiffView from '../../ui/components/diff_view/diff_view.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
-import changesViewStyles from './changesView.css.js';
-
-import type * as Workspace from '../../models/workspace/workspace.js';
-import * as WorkspaceDiff from '../../models/workspace_diff/workspace_diff.js';
-
 import {ChangesSidebar, Events} from './ChangesSidebar.js';
+import changesViewStyles from './changesView.css.js';
 
 const UIStrings = {
   /**
@@ -106,15 +104,14 @@ export class ChangesView extends UI.Widget.VBox {
     this.diffView = this.diffContainer.appendChild(new DiffView.DiffView.DiffView());
 
     this.toolbar = new UI.Toolbar.Toolbar('changes-toolbar', mainWidget.element);
-    const revertButton =
-        new UI.Toolbar.ToolbarButton(i18nString(UIStrings.revertAllChangesToCurrentFile), 'largeicon-undo');
+    const revertButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.revertAllChangesToCurrentFile), 'undo');
     revertButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.revert.bind(this));
     this.toolbar.appendToolbarItem(revertButton);
     this.diffStats = new UI.Toolbar.ToolbarText('');
     this.toolbar.appendToolbarItem(this.diffStats);
 
-    this.copyButton = new UI.Toolbar.ToolbarButton(
-        i18nString(UIStrings.copyAllChangesFromCurrentFile), 'largeicon-copy', UIStrings.copy);
+    this.copyButton =
+        new UI.Toolbar.ToolbarButton(i18nString(UIStrings.copyAllChangesFromCurrentFile), 'copy', UIStrings.copy);
     this.copyButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.copyChanges.bind(this));
     this.copyButtonSeparator = new UI.Toolbar.ToolbarSeparator();
     this.toolbar.setEnabled(false);
@@ -161,7 +158,7 @@ export class ChangesView extends UI.Widget.VBox {
     if (!diffResponse || diffResponse?.diff.length < 2) {
       return;
     }
-    const changes = await formatCSSChangesFromDiff(diffResponse.diff);
+    const changes = await PanelUtils.formatCSSChangesFromDiff(diffResponse.diff);
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.copyText(changes);
   }
 
@@ -213,7 +210,7 @@ export class ChangesView extends UI.Widget.VBox {
     void this.refreshDiff();
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     void this.refreshDiff();
     this.registerCSSFiles([changesViewStyles]);
   }

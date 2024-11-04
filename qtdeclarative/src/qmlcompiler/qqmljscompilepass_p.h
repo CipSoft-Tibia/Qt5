@@ -83,12 +83,25 @@ public:
         bool isSignalHandler = false;
         bool isQPropertyBinding = false;
         bool isProperty = false;
+        bool isFullyTyped = false;
     };
 
     struct State
     {
         VirtualRegisters registers;
+        VirtualRegisters lookups;
 
+        /*!
+            \internal
+            \brief The accumulatorIn is the input register of the current instruction.
+
+            It holds a content, a type that content is acctually stored in, and an enclosing type
+            of the stored type called the scope. Note that passes after the original type
+            propagation may change the type of this register to a different type that the original
+            one can be coerced to. Therefore, when analyzing the same instruction in a later pass,
+            the type may differ from what was seen or requested ealier. See \l {readAccumulator()}.
+            The input type may then need to be converted to the expected type.
+        */
         const QQmlJSRegisterContent &accumulatorIn() const
         {
             auto it = registers.find(Accumulator);
@@ -96,6 +109,10 @@ public:
             return it.value().content;
         };
 
+        /*!
+            \internal
+            \brief The accumulatorOut is the output register of the current instruction.
+        */
         const QQmlJSRegisterContent &accumulatorOut() const
         {
             Q_ASSERT(m_changedRegisterIndex == Accumulator);
@@ -104,6 +121,10 @@ public:
 
         void setRegister(int registerIndex, QQmlJSRegisterContent content)
         {
+            const int lookupIndex = content.resultLookupIndex();
+            if (lookupIndex != QQmlJSRegisterContent::InvalidLookupIndex)
+                lookups[lookupIndex] = { content, false, false };
+
             m_changedRegister = std::move(content);
             m_changedRegisterIndex = registerIndex;
         }
@@ -156,6 +177,13 @@ public:
             return it != m_readRegisters.end() && it->second.affectedBySideEffects;
         }
 
+        /*!
+            \internal
+            \brief The readAccumulator is the register content expected by the current instruction.
+
+            It may differ from the actual input type of the accumulatorIn register and usage of the
+            value may require a conversion.
+        */
         QQmlJSRegisterContent readAccumulator() const
         {
             return readRegister(Accumulator);
@@ -167,13 +195,23 @@ public:
         }
 
         bool hasSideEffects() const { return m_hasSideEffects; }
-        void setHasSideEffects(bool hasSideEffects) {
-            m_hasSideEffects = hasSideEffects;
+
+        void markSideEffects(bool hasSideEffects) { m_hasSideEffects = hasSideEffects; }
+        void applySideEffects(bool hasSideEffects)
+        {
             if (!hasSideEffects)
                 return;
 
             for (auto it = registers.begin(), end = registers.end(); it != end; ++it)
                 it.value().affectedBySideEffects = true;
+
+            for (auto it = lookups.begin(), end = lookups.end(); it != end; ++it)
+                it.value().affectedBySideEffects = true;
+        }
+
+        void setHasSideEffects(bool hasSideEffects) {
+            markSideEffects(hasSideEffects);
+            applySideEffects(hasSideEffects);
         }
 
         bool isRename() const { return m_isRename; }
@@ -245,6 +283,7 @@ protected:
 
         const auto instruction = annotations.find(currentInstructionOffset());
         newState.registers = oldState.registers;
+        newState.lookups = oldState.lookups;
 
         // Usually the initial accumulator type is the output of the previous instruction, but ...
         if (oldState.changedRegisterIndex() != InvalidRegister) {
@@ -253,10 +292,14 @@ protected:
                     = oldState.changedRegister();
         }
 
+        // Side effects are applied at the end of an instruction: An instruction with side
+        // effects can still read its registers before the side effects happen.
+        newState.applySideEffects(oldState.hasSideEffects());
+
         if (instruction == annotations.constEnd())
             return newState;
 
-        newState.setHasSideEffects(instruction->second.hasSideEffects);
+        newState.markSideEffects(instruction->second.hasSideEffects);
         newState.setReadRegisters(instruction->second.readRegisters);
         newState.setIsRename(instruction->second.isRename);
 
@@ -390,9 +433,9 @@ protected:
     void generate_GetTemplateObject(int) override {}
     void generate_Increment() override {}
     void generate_InitializeBlockDeadTemporalZone(int, int) override {}
-    void generate_IteratorClose(int) override {}
+    void generate_IteratorClose() override {}
     void generate_IteratorNext(int, int) override {}
-    void generate_IteratorNextForYieldStar(int, int) override {}
+    void generate_IteratorNextForYieldStar(int, int, int) override {}
     void generate_Jump(int) override {}
     void generate_JumpFalse(int) override {}
     void generate_JumpNoException(int) override {}

@@ -6,28 +6,27 @@
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qdeadlinetimer.h>
-#include <QtCore/qthread.h>
+
+#include <chrono>
 
 QT_BEGIN_NAMESPACE
 
 namespace QTest {
 
 Q_CORE_EXPORT void qSleep(int ms);
+Q_CORE_EXPORT void qSleep(std::chrono::milliseconds msecs);
 
 template <typename Functor>
-[[nodiscard]] static bool qWaitFor(Functor predicate, int timeout = 5000)
+[[nodiscard]] bool
+qWaitFor(Functor predicate, QDeadlineTimer deadline = QDeadlineTimer(std::chrono::seconds{5}))
 {
     // We should not spin the event loop in case the predicate is already true,
     // otherwise we might send new events that invalidate the predicate.
     if (predicate())
         return true;
 
-    // qWait() is expected to spin the event loop, even when called with a small
-    // timeout like 1ms, so we we can't use a simple while-loop here based on
-    // the deadline timer not having timed out. Use do-while instead.
-
-    int remaining = timeout;
-    QDeadlineTimer deadline(remaining, Qt::PreciseTimer);
+    // qWait() is expected to spin the event loop at least once, even when
+    // called with a small timeout like 1ns.
 
     do {
         // We explicitly do not pass the remaining time to processEvents, as
@@ -42,16 +41,25 @@ template <typename Functor>
         if (predicate())
             return true;
 
-        remaining = int(deadline.remainingTime());
-        if (remaining > 0)
-            qSleep(qMin(10, remaining));
-        remaining = int(deadline.remainingTime());
-    } while (remaining > 0);
+        using namespace std::chrono;
+
+        if (const auto remaining = deadline.remainingTimeAsDuration(); remaining > 0ns)
+            qSleep((std::min)(10ms, ceil<milliseconds>(remaining)));
+
+    } while (!deadline.hasExpired());
 
     return predicate(); // Last chance
 }
 
+template <typename Functor>
+[[nodiscard]] bool qWaitFor(Functor predicate, int timeout)
+{
+    return qWaitFor(predicate, QDeadlineTimer{timeout, Qt::PreciseTimer});
+}
+
 Q_CORE_EXPORT void qWait(int ms);
+
+Q_CORE_EXPORT void qWait(std::chrono::milliseconds msecs);
 
 } // namespace QTest
 

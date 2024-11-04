@@ -12,9 +12,9 @@
 
 #include "base/allocator/partition_allocator/partition_alloc-inl.h"
 #include "base/allocator/partition_allocator/partition_alloc_base/component_export.h"
-#include "base/allocator/partition_allocator/partition_alloc_base/cxx17_backports.h"
 #include "base/allocator/partition_allocator/partition_alloc_base/debug/debugging_buildflags.h"
 #include "base/allocator/partition_allocator/partition_alloc_base/immediate_crash.h"
+#include "base/allocator/partition_allocator/partition_alloc_base/time/time.h"
 #include "base/allocator/partition_allocator/partition_alloc_buildflags.h"
 #include "base/allocator/partition_allocator/partition_alloc_check.h"
 #include "base/allocator/partition_allocator/partition_alloc_config.h"
@@ -52,7 +52,7 @@ thread_local ThreadCache* g_thread_cache;
 namespace {
 // Since |g_thread_cache_key| is shared, make sure that no more than one
 // PartitionRoot can use it.
-static std::atomic<PartitionRoot<>*> g_thread_cache_root;
+static std::atomic<PartitionRoot*> g_thread_cache_root;
 
 #if BUILDFLAG(IS_WIN)
 void OnDllProcessDetach() {
@@ -62,18 +62,14 @@ void OnDllProcessDetach() {
   // mitigated inside the thread cache (since getting to it requires querying
   // TLS), but the PartitionRoot associated wih the thread cache can be made to
   // not use the thread cache anymore.
-  g_thread_cache_root.load(std::memory_order_relaxed)->flags.with_thread_cache =
-      false;
+  g_thread_cache_root.load(std::memory_order_relaxed)
+      ->settings.with_thread_cache = false;
 }
 #endif
 
 static bool g_thread_cache_key_created = false;
 }  // namespace
 
-constexpr internal::base::TimeDelta ThreadCacheRegistry::kMinPurgeInterval;
-constexpr internal::base::TimeDelta ThreadCacheRegistry::kMaxPurgeInterval;
-constexpr internal::base::TimeDelta ThreadCacheRegistry::kDefaultPurgeInterval;
-constexpr size_t ThreadCacheRegistry::kMinCachedMemoryForPurging;
 uint8_t ThreadCache::global_limits_[ThreadCache::kBucketCount];
 
 // Start with the normal size, not the maximum one.
@@ -93,18 +89,22 @@ void ThreadCacheRegistry::RegisterThreadCache(ThreadCache* cache) {
   ThreadCache* previous_head = list_head_;
   list_head_ = cache;
   cache->next_ = previous_head;
-  if (previous_head)
+  if (previous_head) {
     previous_head->prev_ = cache;
+  }
 }
 
 void ThreadCacheRegistry::UnregisterThreadCache(ThreadCache* cache) {
   internal::ScopedGuard scoped_locker(GetLock());
-  if (cache->prev_)
+  if (cache->prev_) {
     cache->prev_->next_ = cache->next_;
-  if (cache->next_)
+  }
+  if (cache->next_) {
     cache->next_->prev_ = cache->prev_;
-  if (cache == list_head_)
+  }
+  if (cache == list_head_) {
     list_head_ = cache->next_;
+  }
 }
 
 void ThreadCacheRegistry::DumpStats(bool my_thread_only,
@@ -115,8 +115,9 @@ void ThreadCacheRegistry::DumpStats(bool my_thread_only,
   internal::ScopedGuard scoped_locker(GetLock());
   if (my_thread_only) {
     auto* tcache = ThreadCache::Get();
-    if (!ThreadCache::IsValid(tcache))
+    if (!ThreadCache::IsValid(tcache)) {
       return;
+    }
     tcache->AccumulateStats(stats);
   } else {
     ThreadCache* tcache = list_head_;
@@ -146,8 +147,9 @@ void ThreadCacheRegistry::PurgeAll() {
   // the main thread for the partition lock, since it is acquired/released once
   // per bucket. By purging the main thread first, we avoid these interferences
   // for this thread at least.
-  if (ThreadCache::IsValid(current_thread_tcache))
+  if (ThreadCache::IsValid(current_thread_tcache)) {
     current_thread_tcache->Purge();
+  }
 
   {
     internal::ScopedGuard scoped_locker(GetLock());
@@ -158,8 +160,9 @@ void ThreadCacheRegistry::PurgeAll() {
       // point".
       // Note that this will not work if the other thread is sleeping forever.
       // TODO(lizeb): Handle sleeping threads.
-      if (tcache != current_thread_tcache)
+      if (tcache != current_thread_tcache) {
         tcache->SetShouldPurge();
+      }
       tcache = tcache->next_;
     }
   }
@@ -217,8 +220,9 @@ void ThreadCacheRegistry::SetThreadCacheMultiplier(float multiplier) {
     // If this is called before *any* thread cache has serviced *any*
     // allocation, which can happen in tests, and in theory in non-test code as
     // well.
-    if (!tcache)
+    if (!tcache) {
       return;
+    }
 
     // Setting the global limit while locked, because we need |tcache->root_|.
     ThreadCache::SetGlobalLimits(tcache->root_, multiplier);
@@ -237,11 +241,27 @@ void ThreadCacheRegistry::SetThreadCacheMultiplier(float multiplier) {
   }
 }
 
+void ThreadCacheRegistry::SetPurgingConfiguration(
+    const internal::base::TimeDelta min_purge_interval,
+    const internal::base::TimeDelta max_purge_interval,
+    const internal::base::TimeDelta default_purge_interval,
+    size_t min_cached_memory_for_purging_bytes) {
+  PA_CHECK(min_purge_interval <= default_purge_interval);
+  PA_CHECK(default_purge_interval <= max_purge_interval);
+  min_purge_interval_ = min_purge_interval;
+  max_purge_interval_ = max_purge_interval;
+  default_purge_interval_ = default_purge_interval;
+  min_cached_memory_for_purging_bytes_ = min_cached_memory_for_purging_bytes;
+  is_purging_configured_ = true;
+}
+
 void ThreadCacheRegistry::RunPeriodicPurge() {
   if (!periodic_purge_is_initialized_) {
     ThreadCache::EnsureThreadSpecificDataInitialized();
     periodic_purge_is_initialized_ = true;
   }
+
+  PA_CHECK(is_purging_configured_);
 
   // Summing across all threads can be slow, but is necessary. Otherwise we rely
   // on the assumption that the current thread is a good proxy for overall
@@ -256,8 +276,9 @@ void ThreadCacheRegistry::RunPeriodicPurge() {
     // Can run when there is no thread cache, in which case there is nothing to
     // do, and the task should not be rescheduled. This would typically indicate
     // a case where the thread cache was never enabled, or got disabled.
-    if (!tcache)
+    if (!tcache) {
       return;
+    }
 
     while (tcache) {
       cached_memory_approx += tcache->cached_memory_;
@@ -276,15 +297,15 @@ void ThreadCacheRegistry::RunPeriodicPurge() {
   // scheduled purge with a small enough interval. This is the case for instance
   // of a renderer moving to foreground. To mitigate that, if cached memory
   // jumps is very large, make a greater leap to faster purging.
-  if (cached_memory_approx > 10 * kMinCachedMemoryForPurging) {
+  if (cached_memory_approx > 10 * min_cached_memory_for_purging_bytes_) {
     periodic_purge_next_interval_ =
-        std::min(kDefaultPurgeInterval, periodic_purge_next_interval_ / 2);
-  } else if (cached_memory_approx > 2 * kMinCachedMemoryForPurging) {
+        std::min(default_purge_interval_, periodic_purge_next_interval_ / 2);
+  } else if (cached_memory_approx > 2 * min_cached_memory_for_purging_bytes_) {
     periodic_purge_next_interval_ =
-        std::max(kMinPurgeInterval, periodic_purge_next_interval_ / 2);
-  } else if (cached_memory_approx < kMinCachedMemoryForPurging) {
+        std::max(min_purge_interval_, periodic_purge_next_interval_ / 2);
+  } else if (cached_memory_approx < min_cached_memory_for_purging_bytes_) {
     periodic_purge_next_interval_ =
-        std::min(kMaxPurgeInterval, periodic_purge_next_interval_ * 2);
+        std::min(max_purge_interval_, periodic_purge_next_interval_ * 2);
   }
 
   // Make sure that the next interval is in the right bounds. Even though the
@@ -295,8 +316,8 @@ void ThreadCacheRegistry::RunPeriodicPurge() {
   // of cached memory cannot change between calls (since we do not purge
   // background threads, but only ask them to purge their own cache at the next
   // allocation).
-  periodic_purge_next_interval_ = internal::base::clamp(
-      periodic_purge_next_interval_, kMinPurgeInterval, kMaxPurgeInterval);
+  periodic_purge_next_interval_ = std::clamp(
+      periodic_purge_next_interval_, min_purge_interval_, max_purge_interval_);
 
   PurgeAll();
 }
@@ -307,7 +328,7 @@ int64_t ThreadCacheRegistry::GetPeriodicPurgeNextIntervalInMicroseconds()
 }
 
 void ThreadCacheRegistry::ResetForTesting() {
-  periodic_purge_next_interval_ = kDefaultPurgeInterval;
+  periodic_purge_next_interval_ = default_purge_interval_;
 }
 
 // static
@@ -316,8 +337,9 @@ void ThreadCache::EnsureThreadSpecificDataInitialized() {
   // adding a special-pupose lock.
   internal::ScopedGuard scoped_locker(
       ThreadCacheRegistry::Instance().GetLock());
-  if (g_thread_cache_key_created)
+  if (g_thread_cache_key_created) {
     return;
+  }
 
   bool ok = internal::PartitionTlsCreate(&internal::g_thread_cache_key, Delete);
   PA_CHECK(ok);
@@ -330,11 +352,12 @@ void ThreadCache::DeleteForTesting(ThreadCache* tcache) {
 }
 
 // static
-void ThreadCache::SwapForTesting(PartitionRoot<>* root) {
+void ThreadCache::SwapForTesting(PartitionRoot* root) {
   auto* old_tcache = ThreadCache::Get();
   g_thread_cache_root.store(nullptr, std::memory_order_relaxed);
-  if (old_tcache)
+  if (old_tcache) {
     ThreadCache::DeleteForTesting(old_tcache);
+  }
   if (root) {
     Init(root);
     Create(root);
@@ -353,7 +376,7 @@ void ThreadCache::RemoveTombstoneForTesting() {
 }
 
 // static
-void ThreadCache::Init(PartitionRoot<>* root) {
+void ThreadCache::Init(PartitionRoot* root) {
 #if BUILDFLAG(IS_NACL)
   static_assert(false, "PartitionAlloc isn't supported for NaCl");
 #endif
@@ -365,7 +388,7 @@ void ThreadCache::Init(PartitionRoot<>* root) {
   EnsureThreadSpecificDataInitialized();
 
   // Make sure that only one PartitionRoot wants a thread cache.
-  PartitionRoot<>* expected = nullptr;
+  PartitionRoot* expected = nullptr;
   if (!g_thread_cache_root.compare_exchange_strong(expected, root,
                                                    std::memory_order_seq_cst,
                                                    std::memory_order_seq_cst)) {
@@ -381,7 +404,7 @@ void ThreadCache::Init(PartitionRoot<>* root) {
 }
 
 // static
-void ThreadCache::SetGlobalLimits(PartitionRoot<>* root, float multiplier) {
+void ThreadCache::SetGlobalLimits(PartitionRoot* root, float multiplier) {
   size_t initial_value =
       static_cast<size_t>(kSmallBucketBaseCount) * multiplier;
 
@@ -412,8 +435,8 @@ void ThreadCache::SetGlobalLimits(PartitionRoot<>* root, float multiplier) {
     constexpr size_t kMinLimit = 1;
     // |PutInBucket()| is called on a full bucket, which should not overflow.
     constexpr size_t kMaxLimit = std::numeric_limits<uint8_t>::max() - 1;
-    global_limits_[index] = static_cast<uint8_t>(
-        internal::base::clamp(value, kMinLimit, kMaxLimit));
+    global_limits_[index] =
+        static_cast<uint8_t>(std::clamp(value, kMinLimit, kMaxLimit));
     PA_DCHECK(global_limits_[index] >= kMinLimit);
     PA_DCHECK(global_limits_[index] <= kMaxLimit);
   }
@@ -421,19 +444,18 @@ void ThreadCache::SetGlobalLimits(PartitionRoot<>* root, float multiplier) {
 
 // static
 void ThreadCache::SetLargestCachedSize(size_t size) {
-  if (size > ThreadCache::kLargeSizeThreshold)
+  if (size > ThreadCache::kLargeSizeThreshold) {
     size = ThreadCache::kLargeSizeThreshold;
-  largest_active_bucket_index_ =
-      PartitionRoot<internal::ThreadSafe>::SizeToBucketIndex(
-          size,
-          PartitionRoot<internal::ThreadSafe>::BucketDistribution::kCoarser);
+  }
+  largest_active_bucket_index_ = PartitionRoot::SizeToBucketIndex(
+      size, PartitionRoot::BucketDistribution::kNeutral);
   PA_CHECK(largest_active_bucket_index_ < kBucketCount);
   ThreadCacheRegistry::Instance().SetLargestActiveBucketIndex(
       largest_active_bucket_index_);
 }
 
 // static
-ThreadCache* ThreadCache::Create(PartitionRoot<internal::ThreadSafe>* root) {
+ThreadCache* ThreadCache::Create(PartitionRoot* root) {
   PA_CHECK(root);
   // See comment in thread_cache.h, this is used to make sure
   // kThreadCacheNeedleArray is kept in the final binary.
@@ -449,12 +471,11 @@ ThreadCache* ThreadCache::Create(PartitionRoot<internal::ThreadSafe>* root) {
   size_t usable_size;
   bool already_zeroed;
 
-  auto* bucket =
-      root->buckets + PartitionRoot<internal::ThreadSafe>::SizeToBucketIndex(
-                          raw_size, root->GetBucketDistribution());
-  uintptr_t buffer = root->RawAlloc(bucket, AllocFlags::kZeroFill, raw_size,
-                                    internal::PartitionPageSize(), &usable_size,
-                                    &already_zeroed);
+  auto* bucket = root->buckets + PartitionRoot::SizeToBucketIndex(
+                                     raw_size, root->GetBucketDistribution());
+  uintptr_t buffer = root->RawAlloc<AllocFlags::kZeroFill>(
+      bucket, raw_size, internal::PartitionPageSize(), &usable_size,
+      &already_zeroed);
   ThreadCache* tcache =
       new (internal::SlotStartAddr2Ptr(buffer)) ThreadCache(root);
 
@@ -476,7 +497,7 @@ ThreadCache* ThreadCache::Create(PartitionRoot<internal::ThreadSafe>* root) {
   return tcache;
 }
 
-ThreadCache::ThreadCache(PartitionRoot<>* root)
+ThreadCache::ThreadCache(PartitionRoot* root)
     : should_purge_(false),
       root_(root),
       thread_id_(internal::base::PlatformThread::CurrentId()),
@@ -512,8 +533,9 @@ ThreadCache::~ThreadCache() {
 void ThreadCache::Delete(void* tcache_ptr) {
   auto* tcache = static_cast<ThreadCache*>(tcache_ptr);
 
-  if (!IsValid(tcache))
+  if (!IsValid(tcache)) {
     return;
+  }
 
 #if PA_CONFIG(THREAD_CACHE_FAST_TLS)
   internal::g_thread_cache = nullptr;
@@ -595,7 +617,7 @@ void ThreadCache::FillBucket(size_t bucket_index) {
 
   size_t allocated_slots = 0;
   // Same as calling RawAlloc() |count| times, but acquires the lock only once.
-  internal::ScopedGuard guard(root_->lock_);
+  internal::ScopedGuard guard(internal::PartitionRootLock(root_));
   for (int i = 0; i < count; i++) {
     // Thread cache fill should not trigger expensive operations, to not grab
     // the lock for a long time needlessly, but also to not inflate memory
@@ -606,19 +628,21 @@ void ThreadCache::FillBucket(size_t bucket_index) {
     // |raw_size| is set to the slot size, as we don't know it. However, it is
     // only used for direct-mapped allocations and single-slot ones anyway,
     // which are not handled here.
-    uintptr_t slot_start = root_->AllocFromBucket(
-        &root_->buckets[bucket_index],
-        AllocFlags::kFastPathOrReturnNull | AllocFlags::kReturnNull,
-        root_->buckets[bucket_index].slot_size /* raw_size */,
-        internal::PartitionPageSize(), &usable_size, &is_already_zeroed);
+    uintptr_t slot_start =
+        root_->AllocFromBucket<AllocFlags::kFastPathOrReturnNull |
+                               AllocFlags::kReturnNull>(
+            &root_->buckets[bucket_index],
+            root_->buckets[bucket_index].slot_size /* raw_size */,
+            internal::PartitionPageSize(), &usable_size, &is_already_zeroed);
 
     // Either the previous allocation would require a slow path allocation, or
     // the central allocator is out of memory. If the bucket was filled with
     // some objects, then the allocation will be handled normally. Otherwise,
     // this goes to the central allocator, which will service the allocation,
     // return nullptr or crash.
-    if (!slot_start)
+    if (!slot_start) {
       break;
+    }
 
     allocated_slots++;
     PutInBucket(bucket, slot_start);
@@ -634,8 +658,9 @@ void ThreadCache::ClearBucket(Bucket& bucket, size_t limit) {
 template <bool crash_on_corruption>
 void ThreadCache::ClearBucketHelper(Bucket& bucket, size_t limit) {
   // Avoids acquiring the lock needlessly.
-  if (!bucket.count || bucket.count <= limit)
+  if (!bucket.count || bucket.count <= limit) {
     return;
+  }
 
   // This serves two purposes: error checking and avoiding stalls when grabbing
   // the lock:
@@ -680,12 +705,12 @@ void ThreadCache::ClearBucketHelper(Bucket& bucket, size_t limit) {
 }
 
 template <bool crash_on_corruption>
-void ThreadCache::FreeAfter(internal::PartitionFreelistEntry* head,
+void ThreadCache::FreeAfter(internal::EncodedNextFreelistEntry* head,
                             size_t slot_size) {
   // Acquire the lock once. Deallocation from the same bucket are likely to be
   // hitting the same cache lines in the central allocator, and lock
   // acquisitions can be expensive.
-  internal::ScopedGuard guard(root_->lock_);
+  internal::ScopedGuard guard(internal::PartitionRootLock(root_));
   while (head) {
     uintptr_t slot_start = internal::SlotStartPtr2Addr(head);
     head = head->GetNextForThreadCache<crash_on_corruption>(slot_size);
@@ -717,8 +742,9 @@ void ThreadCache::ResetForTesting() {
 
 size_t ThreadCache::CachedMemory() const {
   size_t total = 0;
-  for (const Bucket& bucket : buckets_)
+  for (const Bucket& bucket : buckets_) {
     total += bucket.count * static_cast<size_t>(bucket.slot_size);
+  }
 
   return total;
 }
@@ -738,8 +764,9 @@ void ThreadCache::AccumulateStats(ThreadCacheStats* stats) const {
   stats->batch_fill_count += stats_.batch_fill_count;
 
 #if PA_CONFIG(THREAD_CACHE_ALLOC_STATS)
-  for (size_t i = 0; i < internal::kNumBuckets + 1; i++)
+  for (size_t i = 0; i < internal::kNumBuckets + 1; i++) {
     stats->allocs_per_bucket_[i] += stats_.allocs_per_bucket_[i];
+  }
 #endif  // PA_CONFIG(THREAD_CACHE_ALLOC_STATS)
 
   // cached_memory_ is not necessarily equal to |CachedMemory()| here, since
@@ -767,8 +794,9 @@ void ThreadCache::TryPurge() {
 // static
 void ThreadCache::PurgeCurrentThread() {
   auto* tcache = Get();
-  if (IsValid(tcache))
+  if (IsValid(tcache)) {
     tcache->Purge();
+  }
 }
 
 void ThreadCache::PurgeInternal() {
@@ -789,8 +817,9 @@ void ThreadCache::PurgeInternalHelper() {
   // |largest_active_bucket_index_| can be lowered at runtime, there may be
   // memory already cached in the inactive buckets. They should still be
   // purged.
-  for (auto& bucket : buckets_)
+  for (auto& bucket : buckets_) {
     ClearBucketHelper<crash_on_corruption>(bucket, 0);
+  }
 }
 
 }  // namespace partition_alloc

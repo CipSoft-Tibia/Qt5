@@ -13,6 +13,7 @@ generate_css("legacy_css_files") {
     "imageView.css",
     "jsonView.css",
     "resourceSourceFrame.css",
+    "selfXssDialog.css",
     "xmlTree.css",
     "xmlView.css",
   ]
@@ -58,8 +59,10 @@ devtools_entrypoint("bundle") {
 
   visibility = [
     ":*",
+    "../../../../../test/unittests/front_end/entrypoints/meta/*",
     "../../../../panels/application/*",
     "../../../../panels/coverage/*",
+    "../../../../panels/explain/*",
     "../../../../panels/network/*",
     "../../../../panels/protocol_monitor/*",
     "../../../../panels/sources/*",

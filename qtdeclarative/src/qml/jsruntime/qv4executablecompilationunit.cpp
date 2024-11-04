@@ -57,10 +57,13 @@ ExecutableCompilationUnit::ExecutableCompilationUnit() = default;
 ExecutableCompilationUnit::ExecutableCompilationUnit(
         CompiledData::CompilationUnit &&compilationUnit)
     : CompiledData::CompilationUnit(std::move(compilationUnit))
-{}
+{
+    CompilationUnitRuntimeData::constants = CompiledData::CompilationUnit::constants;
+}
 
 ExecutableCompilationUnit::~ExecutableCompilationUnit()
 {
+    delete [] imports;
     unlink();
 }
 
@@ -219,7 +222,7 @@ QV4::Function *ExecutableCompilationUnit::linkToEngine(ExecutionEngine *engine)
     static const bool showCode = qEnvironmentVariableIsSet("QV4_SHOW_BYTECODE");
     if (showCode) {
         qDebug() << "=== Constant table";
-        dumpConstantTable(constants, data->constantTableSize);
+        dumpConstantTable(CompiledData::CompilationUnit::constants, data->constantTableSize);
         qDebug() << "=== String table";
         for (uint i = 0, end = totalStringCount(); i < end; ++i)
             qDebug() << "    " << i << ":" << runtimeStrings[i]->toQString();
@@ -272,12 +275,11 @@ void ExecutableCompilationUnit::unlink()
     if (engine)
         nextCompilationUnit.remove();
 
-    if (isRegistered) {
-        Q_ASSERT(data && propertyCaches.count() > 0 && propertyCaches.at(/*root object*/0));
-        QQmlMetaType::unregisterInternalCompositeType(this);
-    }
-
-    propertyCaches.clear();
+    // Clear the QQmlTypes but not the property caches.
+    // The property caches may still be necessary to resolve further types.
+    qmlType = QQmlType();
+    for (auto &ic : inlineComponentData)
+        ic.qmlType = QQmlType();
 
     if (runtimeLookups) {
         for (uint i = 0; i < data->lookupTableSize; ++i)
@@ -382,26 +384,29 @@ void processInlinComponentType(
     }
 }
 
-void ExecutableCompilationUnit::finalizeCompositeType(CompositeMetaTypeIds types)
+void ExecutableCompilationUnit::finalizeCompositeType(const QQmlType &type)
 {
     // Add to type registry of composites
     if (propertyCaches.needsVMEMetaObject(/*root object*/0)) {
-        // typeIds is only valid for types that have references to themselves.
-        if (!types.isValid())
-            types = CompositeMetaTypeIds::fromCompositeName(rootPropertyCache()->className());
-        typeIds = types;
-        QQmlMetaType::registerInternalCompositeType(this);
+        // qmlType is only valid for types that have references to themselves.
+        if (type.isValid()) {
+            qmlType = type;
+        } else {
+            qmlType = QQmlMetaType::findCompositeType(
+                    finalUrl(), this, (unitData()->flags & CompiledData::Unit::IsSingleton)
+                            ? QQmlMetaType::Singleton
+                            : QQmlMetaType::NonSingleton);
+        }
 
+        QQmlMetaType::registerInternalCompositeType(this);
     } else {
         const QV4::CompiledData::Object *obj = objectAt(/*root object*/0);
         auto *typeRef = resolvedTypes.value(obj->inheritedTypeNameIndex);
         Q_ASSERT(typeRef);
-        if (const auto compilationUnit = typeRef->compilationUnit()) {
-            typeIds = compilationUnit->typeIds;
-        } else {
-            const auto type = typeRef->type();
-            typeIds = CompositeMetaTypeIds{ type.typeId(), type.qListTypeId() };
-        }
+        if (const auto compilationUnit = typeRef->compilationUnit())
+            qmlType = compilationUnit->qmlType;
+        else
+            qmlType = typeRef->type();
     }
 
     // Collect some data for instantiation later.
@@ -529,12 +534,11 @@ bool ExecutableCompilationUnit::verifyChecksum(const CompiledData::DependentType
                       sizeof(data->dependencyMD5Checksum)) == 0;
 }
 
-CompositeMetaTypeIds ExecutableCompilationUnit::typeIdsForComponent(
-    const QString &inlineComponentName) const
+QQmlType ExecutableCompilationUnit::qmlTypeForComponent(const QString &inlineComponentName) const
 {
     if (inlineComponentName.isEmpty())
-        return typeIds;
-    return inlineComponentData[inlineComponentName].typeIds;
+        return qmlType;
+    return inlineComponentData[inlineComponentName].qmlType;
 }
 
 QStringList ExecutableCompilationUnit::moduleRequests() const
@@ -886,6 +890,7 @@ bool ExecutableCompilationUnit::loadFromDisk(const QUrl &url, const QDateTime &s
         dataPtrRevert.dismiss();
         free(const_cast<CompiledData::Unit*>(oldDataPtr));
         backingFile = std::move(cacheFile);
+        CompilationUnitRuntimeData::constants = CompiledData::CompilationUnit::constants;
         return true;
     }
 
@@ -984,11 +989,18 @@ QString ExecutableCompilationUnit::translateFrom(TranslationDataIndex index) con
 
     const bool hasContext
             = translation.contextIndex != QV4::CompiledData::TranslationData::NoContextIndex;
+    QByteArray context;
+    if (hasContext) {
+        context = stringAt(translation.contextIndex).toUtf8();
+    } else {
+        auto pragmaTranslationContext = data->translationContextIndex();
+        context = stringAt(*pragmaTranslationContext).toUtf8();
+        context = context.isEmpty() ? fileContext() : context;
+    }
+
     QByteArray comment = stringAt(translation.commentIndex).toUtf8();
     QByteArray text = stringAt(translation.stringIndex).toUtf8();
-    return QCoreApplication::translate(
-            hasContext ? stringAt(translation.contextIndex).toUtf8() : fileContext(),
-            text, comment, translation.number);
+    return QCoreApplication::translate(context, text, comment, translation.number);
 #endif
 }
 

@@ -36,7 +36,8 @@ depends += qtdoc qtcore qtnetwork qtwidgets qtprotobuf qtcmake qtqml
 
 {headerdirs,sourcedirs}  += .. \
                             ../../tools/doc/src \
-                            ../../tools/qtgrpcgen/doc/src
+                            ../../tools/qtgrpcgen/doc/src \
+                            ../../grpcquick
 
 
 exampledirs +=  ../../tools/qtgrpcgen/doc/src/snippets \

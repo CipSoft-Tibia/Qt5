@@ -150,7 +150,7 @@ class DriverOutput(object):
         self.error = error  # stderr output
         self.pid = pid
         self.command = command
-        self.test_type = None
+        self.test_type = set()
 
     def has_stderr(self):
         return bool(self.error)
@@ -208,10 +208,8 @@ class Driver(object):
         if self._port.get_option('profile'):
             profiler_name = self._port.get_option('profiler')
             self._profiler = ProfilerFactory.create_profiler(
-                self._port.host,
-                self._port._path_to_driver(),  # pylint: disable=protected-access
-                self._port.artifacts_directory(),
-                profiler_name)
+                self._port.host, self._port.path_to_driver(),
+                self._port.artifacts_directory(), profiler_name)
         else:
             self._profiler = None
 
@@ -571,7 +569,7 @@ class Driver(object):
         self._current_cmd_line = None
 
     def _base_cmd_line(self):
-        return [self._port._path_to_driver()]  # pylint: disable=protected-access
+        return [self._port.path_to_driver()]
 
     def cmd_line(self, per_test_args):
         cmd = self._command_wrapper(self._port.get_option('wrapper'))
@@ -592,6 +590,7 @@ class Driver(object):
             # See http://trac.webkit.org/changeset/65537.
             self._crashed_process_name = self._server_process.name()
             self._crashed_pid = self._server_process.pid()
+            self.error_from_test += error_line.encode('utf-8')
         elif (error_line.startswith('#CRASHED - ')
               or error_line.startswith('#PROCESS UNRESPONSIVE - ')):
             # WebKitTestRunner uses this to report that the WebProcess subprocess crashed.
@@ -609,8 +608,7 @@ class Driver(object):
                 self._subprocess_was_unresponsive = True
                 self._port.sample_process(self._crashed_process_name,
                                           self._crashed_pid)
-                # We want to show this since it's not a regular crash and probably we don't have a crash log.
-                self.error_from_test += error_line.encode('utf-8')
+            self.error_from_test += error_line.encode('utf-8')
             return True
         return self.has_crashed()
 

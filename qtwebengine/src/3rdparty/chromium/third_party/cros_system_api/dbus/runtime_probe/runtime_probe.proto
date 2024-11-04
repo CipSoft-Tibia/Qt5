@@ -557,6 +557,21 @@ message EcI2c {
   Fields values = 2;
 }
 
+message Tcpc {
+  message Fields {
+    // Port ID, 8 bits.
+    uint32 port = 1;
+    // Vendor ID, 16 bits.
+    uint32 vendor_id = 2;
+    // Product ID, 16 bits.
+    uint32 product_id = 3;
+    // Device ID, 16 bits.
+    uint32 device_id = 4;
+  }
+  string name = 1;
+  Fields values = 2;
+}
+
 // A ProbeResult contains all potential probe results. For category not
 // existed or not requested for probing, field is expected to be empty.
 message ProbeResult {
@@ -620,4 +635,5 @@ message ProbeSsfcComponentsResponse {
   // Components
   repeated ApI2c ap_i2c = 11;
   repeated EcI2c ec_i2c = 12;
+  repeated Tcpc tcpc = 13;
 }

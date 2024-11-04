@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "materialadapter.h"
 
@@ -625,7 +625,7 @@ void MaterialAdapter::setUniformModel(UniformModel *newUniformModel)
     m_uniformModel = newUniformModel;
     if (m_uniformModel) {
         m_uniformModel->setModelData(&uniformTable);
-        connect(m_uniformModel, &UniformModel::dataChanged, [this]() {
+        connect(m_uniformModel, &UniformModel::dataChanged, this, [this]() {
             updateMaterialDescription();
         });
     }

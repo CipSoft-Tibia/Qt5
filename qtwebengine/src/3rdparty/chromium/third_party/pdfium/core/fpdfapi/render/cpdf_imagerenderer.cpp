@@ -40,11 +40,6 @@
 #include "core/fxge/dib/cfx_imagestretcher.h"
 #include "core/fxge/dib/cfx_imagetransformer.h"
 #include "third_party/base/check.h"
-#include "third_party/base/cxx17_backports.h"
-
-#if defined(_SKIA_SUPPORT_)
-#include "core/fxge/skia/fx_skia_device.h"
-#endif
 
 namespace {
 
@@ -65,19 +60,6 @@ void ClearBitmap(CFX_DefaultRenderDevice& bitmap_device, uint32_t color) {
   }
 #endif
   bitmap_device.GetBitmap()->Clear(color);
-}
-
-RetainPtr<CFX_DIBBase> PreMultiplyBitmapIfAlpha(
-    RetainPtr<CFX_DIBBase> base_bitmap) {
-#if defined(_SKIA_SUPPORT_)
-  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
-    RetainPtr<CFX_DIBitmap> premultiplied = base_bitmap->Realize();
-    if (base_bitmap->IsAlphaFormat())
-      premultiplied->PreMultiply();
-    return premultiplied;
-  }
-#endif  // defined(_SKIA_SUPPORT_)
-  return base_bitmap;
 }
 
 }  // namespace
@@ -283,11 +265,11 @@ void CPDF_ImageRenderer::CalculateDrawImage(
         continue;
       }
       int orig = (*dest_scan - matte_b) * 255 / alpha + matte_b;
-      *dest_scan++ = pdfium::clamp(orig, 0, 255);
+      *dest_scan++ = std::clamp(orig, 0, 255);
       orig = (*dest_scan - matte_g) * 255 / alpha + matte_g;
-      *dest_scan++ = pdfium::clamp(orig, 0, 255);
+      *dest_scan++ = std::clamp(orig, 0, 255);
       orig = (*dest_scan - matte_r) * 255 / alpha + matte_r;
-      *dest_scan++ = pdfium::clamp(orig, 0, 255);
+      *dest_scan++ = std::clamp(orig, 0, 255);
       dest_scan++;
     }
   }
@@ -313,7 +295,6 @@ bool CPDF_ImageRenderer::DrawPatternImage() {
                              nullptr)) {
     return true;
   }
-  bitmap_device1.GetBitmap()->Clear(0);
 
   CPDF_RenderStatus bitmap_render(m_pRenderStatus->GetContext(),
                                   &bitmap_device1);
@@ -339,7 +320,6 @@ bool CPDF_ImageRenderer::DrawPatternImage() {
                              FXDIB_Format::k8bppRgb, nullptr)) {
     return true;
   }
-  bitmap_device2.GetBitmap()->Clear(0);
   CalculateDrawImage(&bitmap_device1, &bitmap_device2, m_pDIBBase, new_matrix,
                      rect);
   bitmap_device2.GetBitmap()->ConvertFormat(FXDIB_Format::k8bppMask);
@@ -381,18 +361,18 @@ bool CPDF_ImageRenderer::DrawMaskedImage() {
                              FXDIB_Format::k8bppRgb, nullptr)) {
     return true;
   }
-  ClearBitmap(bitmap_device2, 0);
   CalculateDrawImage(&bitmap_device1, &bitmap_device2, m_pLoader->GetMask(),
                      new_matrix, rect);
+  DCHECK(!bitmap_device2.GetBitmap()->HasPalette());
+  bitmap_device2.GetBitmap()->ConvertFormat(FXDIB_Format::k8bppMask);
 #if defined(_SKIA_SUPPORT_)
-  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
-    m_pRenderStatus->GetRenderDevice()->SetBitsWithMask(
-        bitmap_device1.GetBitmap(), bitmap_device2.GetBitmap(), rect.left,
-        rect.top, m_BitmapAlpha, m_BlendType);
+  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer() &&
+      m_pRenderStatus->GetRenderDevice()->SetBitsWithMask(
+          bitmap_device1.GetBitmap(), bitmap_device2.GetBitmap(), rect.left,
+          rect.top, m_BitmapAlpha, m_BlendType)) {
     return false;
   }
 #endif
-  bitmap_device2.GetBitmap()->ConvertFormat(FXDIB_Format::k8bppMask);
   bitmap_device1.GetBitmap()->MultiplyAlpha(bitmap_device2.GetBitmap());
   if (m_BitmapAlpha < 255)
     bitmap_device1.GetBitmap()->MultiplyAlpha(m_BitmapAlpha);
@@ -415,10 +395,9 @@ bool CPDF_ImageRenderer::StartDIBBase() {
       m_ResampleOptions.bInterpolateBilinear = true;
     }
   }
-  RetainPtr<CFX_DIBBase> bitmap = PreMultiplyBitmapIfAlpha(m_pDIBBase);
   if (m_pRenderStatus->GetRenderDevice()->StartDIBitsWithBlend(
-          bitmap, m_BitmapAlpha, m_FillArgb, m_ImageMatrix, m_ResampleOptions,
-          &m_DeviceHandle, m_BlendType)) {
+          m_pDIBBase, m_BitmapAlpha, m_FillArgb, m_ImageMatrix,
+          m_ResampleOptions, &m_DeviceHandle, m_BlendType)) {
     if (m_DeviceHandle) {
       m_Mode = Mode::kBlend;
       return true;

@@ -5,6 +5,7 @@
 #include "components/autofill/core/browser/autofill_form_test_utils.h"
 
 #include "components/autofill/core/browser/autofill_test_utils.h"
+#include "components/autofill/core/browser/country_type.h"
 #include "components/autofill/core/browser/form_structure.h"
 #include "components/autofill/core/common/autocomplete_parsing_util.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -108,7 +109,7 @@ FormData GetFormData(const FormDescription& d) {
     if (!dd.autocomplete_attribute.empty()) {
       ff.autocomplete_attribute = dd.autocomplete_attribute;
       ff.parsed_autocomplete =
-          ParseAutocompleteAttribute(dd.autocomplete_attribute, ff.max_length);
+          ParseAutocompleteAttribute(dd.autocomplete_attribute);
     }
     if (dd.label)
       ff.label = *dd.label;
@@ -162,7 +163,8 @@ void FormStructureTest::CheckFormStructureTestData(
     auto form_structure = std::make_unique<FormStructure>(form);
 
     if (test_case.form_flags.determine_heuristic_type)
-      form_structure->DetermineHeuristicTypes(nullptr, nullptr);
+      form_structure->DetermineHeuristicTypes(GeoIpCountryCode(""), nullptr,
+                                              nullptr);
 
     if (test_case.form_flags.is_autofillable)
       EXPECT_TRUE(form_structure->IsAutofillable());

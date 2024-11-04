@@ -26,10 +26,12 @@ bool IsOffTheRecordContextAllowed(content::BrowserContext* browser_context) {
   // In Guest mode on Chrome OS we want to create a task queue for OTR profile.
   if (ExtensionsBrowserClient::Get()->IsGuestSession(browser_context))
     return true;
-#endif
-
+#elif defined(TOOLKIT_QT)
+  return true;
+#else
   // In other cases don't create a task queue for OTR profile.
   return false;
+#endif
 }
 #endif  // DCHECK_IS_ON()
 

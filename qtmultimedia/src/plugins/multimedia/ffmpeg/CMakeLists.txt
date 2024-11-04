@@ -21,8 +21,8 @@ qt_internal_add_plugin(QFFmpegMediaPlugin
         qffmpegavaudioformat.cpp qffmpegavaudioformat_p.h
         qffmpegaudiodecoder.cpp qffmpegaudiodecoder_p.h
         qffmpegaudioinput.cpp qffmpegaudioinput_p.h
+        qffmpegconverter.cpp qffmpegconverter_p.h
         qffmpeghwaccel.cpp qffmpeghwaccel_p.h
-        qffmpegencoderoptions.cpp qffmpegencoderoptions_p.h
         qffmpegmediametadata.cpp qffmpegmediametadata_p.h
         qffmpegmediaplayer.cpp qffmpegmediaplayer_p.h
         qffmpegvideosink.cpp qffmpegvideosink_p.h
@@ -32,16 +32,11 @@ qt_internal_add_plugin(QFFmpegMediaPlugin
         qffmpegimagecapture.cpp qffmpegimagecapture_p.h
         qffmpegmediacapturesession.cpp qffmpegmediacapturesession_p.h
         qffmpegmediarecorder.cpp qffmpegmediarecorder_p.h
-        qffmpegencoder.cpp qffmpegencoder_p.h
         qffmpegthread.cpp qffmpegthread_p.h
         qffmpegresampler.cpp qffmpegresampler_p.h
         qffmpegencodingformatcontext.cpp qffmpegencodingformatcontext_p.h
-        qffmpegvideoframeencoder.cpp qffmpegvideoframeencoder_p.h
-        qffmpegvideoencoderutils.cpp qffmpegvideoencoderutils_p.h
-        qffmpegaudioencoderutils.cpp qffmpegaudioencoderutils_p.h
         qgrabwindowsurfacecapture.cpp qgrabwindowsurfacecapture_p.h
         qffmpegsurfacecapturegrabber.cpp qffmpegsurfacecapturegrabber_p.h
-        qffmpegsymbolsresolve_p.h
 
         qffmpegplaybackengine.cpp qffmpegplaybackengine_p.h
         playbackengine/qffmpegplaybackenginedefs_p.h
@@ -58,6 +53,28 @@ qt_internal_add_plugin(QFFmpegMediaPlugin
         playbackengine/qffmpegpacket_p.h
         playbackengine/qffmpegframe_p.h
         playbackengine/qffmpegpositionwithoffset_p.h
+
+        recordingengine/qffmpegaudioencoder_p.h
+        recordingengine/qffmpegaudioencoder.cpp
+        recordingengine/qffmpegaudioencoderutils_p.h
+        recordingengine/qffmpegaudioencoderutils.cpp
+        recordingengine/qffmpegencoderthread_p.h
+        recordingengine/qffmpegencoderthread.cpp
+        recordingengine/qffmpegencoderoptions_p.h
+        recordingengine/qffmpegencoderoptions.cpp
+        recordingengine/qffmpegmuxer_p.h
+        recordingengine/qffmpegmuxer.cpp
+        recordingengine/qffmpegrecordingengine_p.h
+        recordingengine/qffmpegrecordingengine.cpp
+        recordingengine/qffmpegencodinginitializer_p.h
+        recordingengine/qffmpegencodinginitializer.cpp
+        recordingengine/qffmpegvideoencoder_p.h
+        recordingengine/qffmpegvideoencoder.cpp
+        recordingengine/qffmpegvideoencoderutils_p.h
+        recordingengine/qffmpegvideoencoderutils.cpp
+        recordingengine/qffmpegvideoframeencoder_p.h
+        recordingengine/qffmpegvideoframeencoder.cpp
+
     DEFINES
         QT_COMPILING_FFMPEG
     LIBRARIES
@@ -65,75 +82,39 @@ qt_internal_add_plugin(QFFmpegMediaPlugin
         Qt::CorePrivate
 )
 
-if(DYNAMIC_RESOLVE_OPENSSL_SYMBOLS)
-    if(NOT OPENSSL_INCLUDE_DIR AND OPENSSL_ROOT_DIR)
-        set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include")
+if (LINUX OR ANDROID)
+    # We have 2 options: link shared stubs to QFFmpegMediaPlugin vs
+    # static compilation of the needed stubs to the FFmpeg plugin.
+    # Currently, we chose the second option so that user could trivially
+    # remove the FFmpeg libs we ship.
+    # Set QT_LINK_STUBS_TO_FFMPEG_PLUGIN = TRUE to change the behavior.
+
+    # set(QT_LINK_STUBS_TO_FFMPEG_PLUGIN TRUE)
+
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtAddFFmpegStubs.cmake")
+    qt_internal_multimedia_add_ffmpeg_stubs()
+endif()
+
+
+if (QT_FEATURE_vaapi)
+    qt_internal_extend_target(QFFmpegMediaPlugin
+        SOURCES
+            qffmpeghwaccel_vaapi.cpp qffmpeghwaccel_vaapi_p.h
+        NO_UNITY_BUILD_SOURCES
+            # Conflicts with macros defined in X11.h, and Xlib.h
+            qffmpeghwaccel_vaapi.cpp
+        LIBRARIES
+            EGL::EGL
+    )
+
+    list(FIND FFMPEG_STUBS "va" va_stub_index)
+    if (NOT QT_LINK_STUBS_TO_FFMPEG_PLUGIN AND (FFMPEG_SHARED_LIBRARIES OR ${va_stub_index} EQUAL -1))
+        target_compile_definitions(QFFmpegMediaPlugin PRIVATE Q_FFMPEG_PLUGIN_STUBS_ONLY)
+        qt_internal_multimedia_find_vaapi_soversion()
+        qt_internal_multimedia_add_private_stub_to_plugin("va")
     endif()
 endif()
 
-qt_internal_extend_target(QFFmpegMediaPlugin CONDITION DYNAMIC_RESOLVE_OPENSSL_SYMBOLS
-    SOURCES
-        qffmpegopensslsymbols.cpp
-    INCLUDE_DIRECTORIES
-        ${OPENSSL_INCLUDE_DIR}
-)
-
-if (ENABLE_DYNAMIC_RESOLVE_VAAPI_SYMBOLS)
-    if (QT_FEATURE_vaapi AND NOT DYNAMIC_RESOLVE_VAAPI_SYMBOLS)
-        if (NOT FFMPEG_SHARED_LIBRARIES)
-            message(WARNING
-                   "QT_FEATURE_vaapi is found but statically built FFmpeg doesn't include vaapi,"
-                   "however dynamic symbols resolve is possible.")
-        endif()
-
-        set(DYNAMIC_RESOLVE_VAAPI_SYMBOLS TRUE CACHE INTERNAL "")
-    elseif (NOT QT_FEATURE_vaapi AND DYNAMIC_RESOLVE_VAAPI_SYMBOLS)
-
-        message(FATAL_ERROR
-               "QT_FEATURE_vaapi is not found "
-               "but FFmpeg includes VAAPI and dynamic symbols resolve is enabled.")
-    endif()
-endif()
-
-qt_internal_extend_target(QFFmpegMediaPlugin
-    CONDITION
-        DYNAMIC_RESOLVE_OPENSSL_SYMBOLS OR DYNAMIC_RESOLVE_VAAPI_SYMBOLS
-    SOURCES
-        qffmpegsymbolsresolveutils.cpp qffmpegsymbolsresolveutils_p.h
-)
-
-function (__propagate_to_compile_definitions VAR)
-    if (${VAR})
-        target_compile_definitions(QFFmpegMediaPlugin PRIVATE ${VAR})
-    endif()
-endfunction()
-
-__propagate_to_compile_definitions(DYNAMIC_RESOLVE_OPENSSL_SYMBOLS)
-__propagate_to_compile_definitions(DYNAMIC_RESOLVE_VAAPI_SYMBOLS)
-__propagate_to_compile_definitions(DYNAMIC_RESOLVE_VA_DRM_SYMBOLS)
-__propagate_to_compile_definitions(DYNAMIC_RESOLVE_VA_X11_SYMBOLS)
-
-qt_internal_extend_target(QFFmpegMediaPlugin CONDITION DYNAMIC_RESOLVE_VAAPI_SYMBOLS
-    SOURCES
-        qffmpegvaapisymbols.cpp
-    INCLUDE_DIRECTORIES
-        "$<TARGET_PROPERTY:VAAPI::VAAPI,INTERFACE_INCLUDE_DIRECTORIES>"
-)
-
-qt_internal_extend_target(QFFmpegMediaPlugin
-    CONDITION NOT DYNAMIC_RESOLVE_VAAPI_SYMBOLS AND QT_FEATURE_vaapi
-    LIBRARIES VAAPI::VAAPI
-)
-
-qt_internal_extend_target(QFFmpegMediaPlugin CONDITION QT_FEATURE_vaapi
-    SOURCES
-        qffmpeghwaccel_vaapi.cpp qffmpeghwaccel_vaapi_p.h
-    NO_UNITY_BUILD_SOURCES
-        # Conflicts with macros defined in X11.h, and Xlib.h
-        qffmpeghwaccel_vaapi.cpp
-    LIBRARIES
-        EGL::EGL
-)
 
 qt_internal_extend_target(QFFmpegMediaPlugin CONDITION APPLE
     SOURCES
@@ -143,6 +124,10 @@ qt_internal_extend_target(QFFmpegMediaPlugin CONDITION APPLE
         qffmpeghwaccel_videotoolbox.mm qffmpeghwaccel_videotoolbox_p.h
         qavfcamera.mm qavfcamera_p.h
         qavfsamplebufferdelegate.mm qavfsamplebufferdelegate_p.h
+
+    NO_UNITY_BUILD_SOURCES
+        qffmpeghwaccel_videotoolbox.mm # AVMediaType clash between libavformat and AVFoundation
+
     INCLUDE_DIRECTORIES
         ../darwin
         ../darwin/camera
@@ -204,6 +189,7 @@ qt_internal_extend_target(QFFmpegMediaPlugin CONDITION QT_FEATURE_xlib
 qt_internal_extend_target(QFFmpegMediaPlugin CONDITION QT_FEATURE_eglfs
     SOURCES
         qeglfsscreencapture.cpp qeglfsscreencapture_p.h
+        qopenglvideobuffer.cpp qopenglvideobuffer_p.h
     LIBRARIES
         Qt::OpenGLPrivate
         Qt::Quick
@@ -269,3 +255,4 @@ if (QT_DEPLOY_FFMPEG AND FFMPEG_SHARED_LIBRARIES AND BUILD_SHARED_LIBS)
 endif()
 
 qt_internal_extend_target(QFFmpegMediaPlugin LIBRARIES ${ffmpeg_libs})
+

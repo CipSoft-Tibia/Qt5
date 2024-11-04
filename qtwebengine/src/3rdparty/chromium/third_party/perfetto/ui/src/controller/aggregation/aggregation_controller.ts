@@ -21,10 +21,10 @@ import {
 import {Engine} from '../../common/engine';
 import {NUM} from '../../common/query_result';
 import {Area, Sorting} from '../../common/state';
+import {globals} from '../../frontend/globals';
 import {publishAggregateData} from '../../frontend/publish';
 import {AreaSelectionHandler} from '../area_selection_handler';
 import {Controller} from '../controller';
-import {globals} from '../globals';
 
 export interface AggregationControllerArgs {
   engine: Engine;
@@ -148,6 +148,14 @@ export abstract class AggregationController extends Controller<'main'> {
           column.data[i] = internString(item);
         } else if (item instanceof Uint8Array) {
           column.data[i] = internString('<Binary blob>');
+        } else if (typeof item === 'bigint') {
+          // TODO(stevegolton) It would be nice to keep bigints as bigints for
+          // the purposes of aggregation, however the aggregation infrastructure
+          // is likely to be significantly reworked when we introduce EventSet,
+          // and the complexity of supporting bigints throughout the aggregation
+          // panels in it's current form is not worth it. Thus, we simply
+          // convert bigints to numbers.
+          column.data[i] = Number(item);
         } else {
           column.data[i] = item;
         }

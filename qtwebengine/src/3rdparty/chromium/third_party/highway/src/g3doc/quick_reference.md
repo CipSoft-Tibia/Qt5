@@ -154,6 +154,12 @@ lane count, thus avoiding the need for a second loop to handle remainders.
     sizes of the largest and smallest type, and smaller `d` to be obtained via
     `Half<DLarger>`.
 
+    For other targets, `kPow2` must lie within [HWY_MIN_POW2, HWY_MAX_POW2]. The
+    `*Tag` aliases clamp to the upper bound but your code should ensure the
+    lower bound is not exceeded, typically by specializing compile-time
+    recursions for `kPow2` = `HWY_MIN_POW2` (this avoids compile errors when
+    `kPow2` is low enough that it is no longer a valid shift count).
+
 *   Less common: `CappedTag<T, kCap> d` or the macro form `HWY_CAPPED(T, kCap)
     d;`. These select vectors or masks where *no more than* the largest power of
     two not exceeding `kCap` lanes have observable effects such as
@@ -223,9 +229,9 @@ Store(v, d2, ptr);  // Use d2, NOT DFromV<decltype(v)>()
 ## Targets
 
 Let `Target` denote an instruction set, one of
-`SCALAR/EMU128/SSSE3/SSE4/AVX2/AVX3/AVX3_DL/NEON/SVE/SVE2/WASM/RVV`. Each of
-these is represented by a `HWY_Target` (for example, `HWY_SSE4`) macro which
-expands to a unique power-of-two value.
+`SCALAR/EMU128/SSSE3/SSE4/AVX2/AVX3/AVX3_DL/AVX3_ZEN4/NEON/SVE/SVE2/WASM/RVV`.
+Each of these is represented by a `HWY_Target` (for example, `HWY_SSE4`) macro
+which expands to a unique power-of-two value.
 
 Note that x86 CPUs are segmented into dozens of feature flags and capabilities,
 which are often used together because they were introduced in the same CPU
@@ -350,12 +356,17 @@ time-critical code:
     <code>V **Abs**(V a)</code> returns the absolute value of `a[i]`; for
     integers, `LimitsMin()` maps to `LimitsMax() + 1`.
 
-*   `V`: `f32` \
+*   `V`: `{u,i}{8,16,32,64},f32` \
     <code>V **AbsDiff**(V a, V b)</code>: returns `|a[i] - b[i]|` in each lane.
 
 *   `V`: `u8` \
     <code>VU64 **SumsOf8**(V v)</code> returns the sums of 8 consecutive u8
     lanes, zero-extending each sum into a u64 lane. This is slower on RVV/WASM.
+
+*   `V`: `u8` \
+    <code>VU64 **SumsOf8AbsDiff**(V a, V b)</code> returns the same result as
+    `SumsOf8(AbsDiff(a, b))` but `SumsOf8AbsDiff(a, b)` is more efficient than
+    `SumsOf8(AbsDiff(a, b))` on SSSE3/SSE4/AVX2/AVX3.
 
 *   `V`: `{u,i}{8,16}` \
     <code>V **SaturatedAdd**(V a, V b)</code> returns `a[i] + b[i]` saturated to
@@ -769,6 +780,19 @@ false is zero, true has all bits set:
     d, T* p)</code>: combination of `CompressStore` and `CompressBits`, see
     remarks there.
 
+#### Expand
+
+*   <code>V **Expand**(V v, M m)</code>: returns `r` such that `r[i]` is zero
+    where `m[i]` is false, and otherwise `v[s]`, where `s` is the number of
+    `m[0, i)` which are true. Scatters inputs in ascending index order to the
+    lanes whose mask is true and zeros all other lanes. Potentially slow with 8
+    and 16-bit lanes.
+
+*   <code>V **LoadExpand**(M m, D d, const T* p)</code>: returns `r` such that
+    `r[i]` is zero where `m[i]` is false, and otherwise `p[s]`, where `s` is the
+    number of `m[0, i)` which are true. May be implemented as `LoadU` followed
+    by `Expand`. Potentially slow with 8 and 16-bit lanes.
+
 ### Comparisons
 
 These return a mask (see above) indicating whether the condition is true.
@@ -879,8 +903,8 @@ aligned memory at indices which are not a multiple of the vector length):
     `p[i]` or zero if the `mask` governing element `i` is false. May fault even
     where `mask` is false `#if HWY_MEM_OPS_MIGHT_FAULT`. If `p` is aligned,
     faults cannot happen unless the entire vector is inaccessible. Equivalent
-    to, and potentially more efficient than, `IfThenElseZero(mask, Load(D(),
-    aligned))`.
+    to, and potentially more efficient than, `IfThenElseZero(mask, LoadU(D(),
+    p))`.
 
 *   <code>void **LoadInterleaved2**(D, const T* p, Vec&lt;D&gt;&amp; v0,
     Vec&lt;D&gt;&amp; v1)</code>: equivalent to `LoadU` into `v0, v1` followed

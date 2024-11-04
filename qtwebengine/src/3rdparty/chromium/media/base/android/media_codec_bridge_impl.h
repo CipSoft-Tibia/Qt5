@@ -64,6 +64,9 @@ class MEDIA_EXPORT VideoCodecConfig {
   // called on an arbitrary thread, so use base::BindPostTaskToCurrentDefault if
   // needed.
   base::RepeatingClosure on_buffers_available_cb;
+
+  // The name of decoder/encoder. It's used to create the MediaCodec instance.
+  std::string name;
 };
 
 // A bridge to a Java MediaCodec.
@@ -188,9 +191,6 @@ class MEDIA_EXPORT MediaCodecBridgeImpl : public MediaCodecBridge {
 
   // The Java MediaCodecBridge instance.
   base::android::ScopedJavaGlobalRef<jobject> j_bridge_;
-
-  // Controls if we return real color space or hardcode sRGB.
-  const bool use_real_color_space_;
 };
 
 }  // namespace media

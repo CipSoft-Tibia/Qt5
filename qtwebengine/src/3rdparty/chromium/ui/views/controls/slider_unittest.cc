@@ -21,6 +21,7 @@
 #include "ui/events/gesture_event_details.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/events/test/event_generator.h"
+#include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/test/ax_event_counter.h"
 #include "ui/views/test/slider_test_api.h"
 #include "ui/views/test/views_test_base.h"
@@ -73,9 +74,11 @@ class TestSliderListener : public views::SliderListener {
   // The epoch of the last time SliderDragEnded was called.
   int last_drag_ended_epoch_ = -1;
   // The sender from the last SliderDragStarted call.
-  raw_ptr<views::Slider> last_drag_started_sender_ = nullptr;
+  raw_ptr<views::Slider, AcrossTasksDanglingUntriaged>
+      last_drag_started_sender_ = nullptr;
   // The sender from the last SliderDragEnded call.
-  raw_ptr<views::Slider> last_drag_ended_sender_ = nullptr;
+  raw_ptr<views::Slider, AcrossTasksDanglingUntriaged> last_drag_ended_sender_ =
+      nullptr;
 };
 
 TestSliderListener::TestSliderListener() = default;
@@ -159,7 +162,7 @@ class SliderTest : public views::ViewsTestBase,
 
  private:
   // The Slider to be tested.
-  raw_ptr<Slider> slider_ = nullptr;
+  raw_ptr<Slider, AcrossTasksDanglingUntriaged> slider_ = nullptr;
 
   // Populated values for discrete slider.
   base::flat_set<float> values_;
@@ -287,6 +290,20 @@ TEST_P(SliderTest, NukeAllowedValues) {
           position - test::SliderTestApi(slider()).initial_button_offset()) /
           (slider()->width() - kThumbWidth),
       slider()->GetValue());
+}
+
+TEST_P(SliderTest, AccessibleRole) {
+  ui::AXNodeData data;
+  slider()->GetViewAccessibility().GetAccessibleNodeData(&data);
+  EXPECT_EQ(data.role, ax::mojom::Role::kSlider);
+  EXPECT_EQ(slider()->GetAccessibleRole(), ax::mojom::Role::kSlider);
+
+  slider()->SetAccessibleRole(ax::mojom::Role::kMeter);
+
+  data = ui::AXNodeData();
+  slider()->GetViewAccessibility().GetAccessibleNodeData(&data);
+  EXPECT_EQ(data.role, ax::mojom::Role::kMeter);
+  EXPECT_EQ(slider()->GetAccessibleRole(), ax::mojom::Role::kMeter);
 }
 
 // No touch on desktop Mac. Tracked in http://crbug.com/445520.

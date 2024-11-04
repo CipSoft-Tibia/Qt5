@@ -14,13 +14,15 @@ enum CaptureStartFocusBehavior {
   SecureContext,
   RuntimeEnabled=CaptureController
 ]
-interface CaptureController {
+interface CaptureController : EventTarget {
   [CallWith=ExecutionContext] constructor();
 
   [
     RaisesException,
-    RuntimeEnabled=ConditionalFocus,
     MeasureAs=ConditionalFocus
   ]
   void setFocusBehavior(CaptureStartFocusBehavior focusBehavior);
+
+  // https://screen-share.github.io/mouse-events/#capture-controller-extensions
+  [RuntimeEnabled=CapturedMouseEvents] attribute EventHandler oncapturedmousechange;
 };

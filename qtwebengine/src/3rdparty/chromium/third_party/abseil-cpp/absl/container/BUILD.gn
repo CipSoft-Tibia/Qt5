@@ -52,6 +52,22 @@ absl_source_set("counting_allocator") {
   visibility = [ ":*" ]
 }
 
+absl_test("inlined_vector_test") {
+  sources = [ "inlined_vector_test.cc" ]
+  deps = [
+    ":counting_allocator",
+    ":inlined_vector",
+    ":test_instance_tracker",
+    "//third_party/abseil-cpp/absl/base:config",
+    "//third_party/abseil-cpp/absl/base:core_headers",
+    "//third_party/abseil-cpp/absl/base:exception_testing",
+    "//third_party/abseil-cpp/absl/hash:hash_testing",
+    "//third_party/abseil-cpp/absl/log:check",
+    "//third_party/abseil-cpp/absl/memory",
+    "//third_party/abseil-cpp/absl/strings",
+  ]
+}
+
 absl_source_set("test_instance_tracker") {
   testonly = true
   sources = [ "internal/test_instance_tracker.cc" ]
@@ -128,6 +144,7 @@ absl_source_set("hash_function_defaults") {
     "//third_party/abseil-cpp/absl/hash",
     "//third_party/abseil-cpp/absl/strings",
     "//third_party/abseil-cpp/absl/strings:cord",
+    "//third_party/abseil-cpp/absl/strings:string_view",
   ]
 }
 
@@ -139,7 +156,7 @@ absl_source_set("hash_generator_testing") {
     ":hash_policy_testing",
     "//third_party/abseil-cpp/absl/memory",
     "//third_party/abseil-cpp/absl/meta:type_traits",
-    "//third_party/abseil-cpp/absl/strings",
+    "//third_party/abseil-cpp/absl/strings:string_view",
   ]
 }
 
@@ -148,7 +165,7 @@ absl_source_set("hash_policy_testing") {
   public = [ "internal/hash_policy_testing.h" ]
   deps = [
     "//third_party/abseil-cpp/absl/hash",
-    "//third_party/abseil-cpp/absl/strings",
+    "//third_party/abseil-cpp/absl/strings:string_view",
   ]
 }
 
@@ -256,6 +273,15 @@ absl_source_set("raw_hash_set") {
   ]
 }
 
+absl_test("raw_hash_set_allocator_test") {
+  sources = [ "internal/raw_hash_set_allocator_test.cc" ]
+  deps = [
+    ":raw_hash_set",
+    ":tracked",
+    "//third_party/abseil-cpp/absl/base:config",
+  ]
+}
+
 absl_source_set("layout") {
   public = [ "internal/layout.h" ]
   deps = [
@@ -263,6 +289,17 @@ absl_source_set("layout") {
     "//third_party/abseil-cpp/absl/base:core_headers",
     "//third_party/abseil-cpp/absl/meta:type_traits",
     "//third_party/abseil-cpp/absl/strings",
+    "//third_party/abseil-cpp/absl/types:span",
+    "//third_party/abseil-cpp/absl/utility",
+  ]
+}
+
+absl_test("layout_test") {
+  sources = [ "internal/layout_test.cc" ]
+  deps = [
+    ":layout",
+    "//third_party/abseil-cpp/absl/base:config",
+    "//third_party/abseil-cpp/absl/log:check",
     "//third_party/abseil-cpp/absl/types:span",
     "//third_party/abseil-cpp/absl/utility",
   ]
@@ -383,25 +420,41 @@ absl_source_set("btree") {
     "//third_party/abseil-cpp/absl/base:throw_delegate",
     "//third_party/abseil-cpp/absl/memory",
     "//third_party/abseil-cpp/absl/meta:type_traits",
-    "//third_party/abseil-cpp/absl/strings",
     "//third_party/abseil-cpp/absl/strings:cord",
+    "//third_party/abseil-cpp/absl/strings:string_view",
     "//third_party/abseil-cpp/absl/types:compare",
     "//third_party/abseil-cpp/absl/utility",
   ]
 }
 
-absl_test("inlined_vector_test") {
-  sources = [ "inlined_vector_test.cc" ]
+absl_source_set("btree_test_common") {
+  testonly = true
+  public = [ "btree_test.h" ]
   deps = [
-    ":counting_allocator",
-    ":inlined_vector",
-    ":test_instance_tracker",
-    "//third_party/abseil-cpp/absl/base:config",
-    "//third_party/abseil-cpp/absl/base:core_headers",
-    "//third_party/abseil-cpp/absl/base:exception_testing",
-    "//third_party/abseil-cpp/absl/base:raw_logging_internal",
-    "//third_party/abseil-cpp/absl/hash:hash_testing",
-    "//third_party/abseil-cpp/absl/memory",
+    ":btree",
+    ":flat_hash_set",
     "//third_party/abseil-cpp/absl/strings",
+    "//third_party/abseil-cpp/absl/strings:cord",
+    "//third_party/abseil-cpp/absl/time",
   ]
 }
+# TODO(mbonadei): Fix issue with EXPECT_DEATH and uncomment.
+# absl_test("btree_test") {
+#   sources = [ "btree_test.cc" ]
+#   deps = [
+#     ":btree",
+#     ":btree_test_common",
+#     ":counting_allocator",
+#     ":test_instance_tracker",
+#     "//third_party/abseil-cpp/absl/algorithm:container",
+#     "//third_party/abseil-cpp/absl/base:core_headers",
+#     "//third_party/abseil-cpp/absl/base:raw_logging_internal",
+#     "//third_party/abseil-cpp/absl/flags:flag",
+#     "//third_party/abseil-cpp/absl/hash:hash_testing",
+#     "//third_party/abseil-cpp/absl/memory",
+#     "//third_party/abseil-cpp/absl/random",
+#     "//third_party/abseil-cpp/absl/strings",
+#     "//third_party/abseil-cpp/absl/types:compare",
+#     "//third_party/abseil-cpp/absl/types:optional",
+#   ]
+# }

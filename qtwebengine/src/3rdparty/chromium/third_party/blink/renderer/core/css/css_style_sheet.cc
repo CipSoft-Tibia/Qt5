@@ -316,6 +316,10 @@ void CSSStyleSheet::RemovedAdoptedFromTreeScope(TreeScope& tree_scope) {
   adopted_tree_scopes_.erase(&tree_scope);
 }
 
+bool CSSStyleSheet::IsAdoptedByTreeScope(TreeScope& tree_scope) {
+  return adopted_tree_scopes_.Contains(&tree_scope);
+}
+
 bool CSSStyleSheet::HasViewportDependentMediaQueries() const {
   return media_query_result_flags_.is_viewport_dependent;
 }
@@ -387,7 +391,7 @@ unsigned CSSStyleSheet::insertRule(const String& rule_string,
       MakeGarbageCollected<CSSParserContext>(contents_->ParserContext(), this);
 
   StyleRuleBase* rule =
-      CSSParser::ParseRule(context, contents_.Get(),
+      CSSParser::ParseRule(context, contents_.Get(), CSSNestingType::kNone,
                            /*parent_rule_for_nesting=*/nullptr, rule_string);
 
   if (!rule) {

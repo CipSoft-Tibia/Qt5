@@ -87,8 +87,10 @@ namespace Eigen {
 
 //@{
 
+// IWYU pragma: begin_exports
 #include "src/BVH/BVAlgorithms.h"
 #include "src/BVH/KdBVH.h"
+// IWYU pragma: end_exports
 
 //@}
 

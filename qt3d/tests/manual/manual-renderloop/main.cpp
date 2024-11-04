@@ -1,5 +1,5 @@
 // Copyright (C) 2019 Klaralvdalens Datakonsult AB (KDAB).
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QGuiApplication>
 #include <QTimer>
@@ -171,7 +171,7 @@ int main(int ac, char **av)
     renderer.initialize(&win, &ctx);
 
     QTimer t;
-    QObject::connect(&t, &QTimer::timeout, [&] { renderer.render(); });
+    QObject::connect(&t, &QTimer::timeout, &t, [&] { renderer.render(); });
     t.start(16);
 
     return app.exec();

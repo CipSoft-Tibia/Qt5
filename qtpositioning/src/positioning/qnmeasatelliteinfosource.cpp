@@ -850,7 +850,7 @@ QNmeaSatelliteSimulationReader::QNmeaSatelliteSimulationReader(QNmeaSatelliteInf
     : QNmeaSatelliteReader(sourcePrivate)
 {
     m_timer.reset(new QTimer);
-    QObject::connect(m_timer.get(), &QTimer::timeout, [this]() {
+    QObject::connect(m_timer.get(), &QTimer::timeout, m_timer.get(), [this]() {
         readAvailableData();
     });
     m_updateInterval =

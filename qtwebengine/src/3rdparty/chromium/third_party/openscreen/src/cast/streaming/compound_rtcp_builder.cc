@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,12 +10,12 @@
 
 #include "cast/streaming/packet_util.h"
 #include "cast/streaming/rtcp_session.h"
+#include "platform/base/span.h"
 #include "util/integer_division.h"
 #include "util/osp_logging.h"
 #include "util/std_util.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 CompoundRtcpBuilder::CompoundRtcpBuilder(RtcpSession* session)
     : session_(session) {
@@ -83,9 +83,8 @@ void CompoundRtcpBuilder::IncludeFeedbackInNextPacket(
 #endif
 }
 
-absl::Span<uint8_t> CompoundRtcpBuilder::BuildPacket(
-    Clock::time_point send_time,
-    absl::Span<uint8_t> buffer) {
+ByteBuffer CompoundRtcpBuilder::BuildPacket(Clock::time_point send_time,
+                                            ByteBuffer buffer) {
   OSP_CHECK_GE(buffer.size(), kRequiredBufferSize);
 
   uint8_t* const packet_begin = buffer.data();
@@ -94,28 +93,27 @@ absl::Span<uint8_t> CompoundRtcpBuilder::BuildPacket(
   // from receivers must include at least an empty receiver report at the start.
   // It's not clear whether the Cast RTCP spec requires this, but it costs very
   // little to do so.
-  AppendReceiverReportPacket(&buffer);
+  AppendReceiverReportPacket(buffer);
 
   // Receiver Reference Time Report: While this is optional in the Cast
   // Streaming spec, it is always included by this implementation to improve the
   // stability of the end-to-end system.
-  AppendReceiverReferenceTimeReportPacket(send_time, &buffer);
+  AppendReceiverReferenceTimeReportPacket(send_time, buffer);
 
   // Picture Loss Indicator: Only included if the flag is currently set.
   if (picture_loss_indicator_) {
-    AppendPictureLossIndicatorPacket(&buffer);
+    AppendPictureLossIndicatorPacket(buffer);
   }
 
   // Cast Feedback: Checkpoint information, and add as many NACKs and ACKs as
-  // the remaning space available in the buffer will allow for.
-  AppendCastFeedbackPacket(&buffer);
+  // the remaining space available in the buffer will allow for.
+  AppendCastFeedbackPacket(buffer);
 
   uint8_t* const packet_end = buffer.data();
-  return absl::Span<uint8_t>(packet_begin, packet_end - packet_begin);
+  return ByteBuffer(packet_begin, packet_end - packet_begin);
 }
 
-void CompoundRtcpBuilder::AppendReceiverReportPacket(
-    absl::Span<uint8_t>* buffer) {
+void CompoundRtcpBuilder::AppendReceiverReportPacket(ByteBuffer& buffer) {
   RtcpCommonHeader header;
   header.packet_type = RtcpPacketType::kReceiverReport;
   header.payload_size = kRtcpReceiverReportSize;
@@ -129,13 +127,13 @@ void CompoundRtcpBuilder::AppendReceiverReportPacket(
   AppendField<uint32_t>(session_->receiver_ssrc(), buffer);
   if (receiver_report_for_next_packet_) {
     receiver_report_for_next_packet_->AppendFields(buffer);
-    receiver_report_for_next_packet_ = absl::nullopt;
+    receiver_report_for_next_packet_ = std::nullopt;
   }
 }
 
 void CompoundRtcpBuilder::AppendReceiverReferenceTimeReportPacket(
     Clock::time_point send_time,
-    absl::Span<uint8_t>* buffer) {
+    ByteBuffer& buffer) {
   RtcpCommonHeader header;
   header.packet_type = RtcpPacketType::kExtendedReports;
   header.payload_size = kRtcpExtendedReportHeaderSize +
@@ -151,8 +149,7 @@ void CompoundRtcpBuilder::AppendReceiverReferenceTimeReportPacket(
                         buffer);
 }
 
-void CompoundRtcpBuilder::AppendPictureLossIndicatorPacket(
-    absl::Span<uint8_t>* buffer) {
+void CompoundRtcpBuilder::AppendPictureLossIndicatorPacket(ByteBuffer& buffer) {
   RtcpCommonHeader header;
   header.packet_type = RtcpPacketType::kPayloadSpecific;
   header.with.subtype = RtcpSubtype::kPictureLossIndicator;
@@ -162,13 +159,11 @@ void CompoundRtcpBuilder::AppendPictureLossIndicatorPacket(
   AppendField<uint32_t>(session_->sender_ssrc(), buffer);
 }
 
-void CompoundRtcpBuilder::AppendCastFeedbackPacket(
-    absl::Span<uint8_t>* buffer) {
+void CompoundRtcpBuilder::AppendCastFeedbackPacket(ByteBuffer& buffer) {
   // Reserve space for the RTCP Common Header. It will be serialized later,
   // after the total size of the Cast Feedback message is known.
-  absl::Span<uint8_t> space_for_header =
-      ReserveSpace(kRtcpCommonHeaderSize, buffer);
-  uint8_t* const feedback_fields_begin = buffer->data();
+  ByteBuffer space_for_header = ReserveSpace(kRtcpCommonHeaderSize, buffer);
+  uint8_t* const feedback_fields_begin = buffer.data();
 
   // Append the mandatory fields.
   AppendField<uint32_t>(session_->receiver_ssrc(), buffer);
@@ -199,15 +194,14 @@ void CompoundRtcpBuilder::AppendCastFeedbackPacket(
   RtcpCommonHeader header;
   header.packet_type = RtcpPacketType::kPayloadSpecific;
   header.with.subtype = RtcpSubtype::kFeedback;
-  uint8_t* const feedback_fields_end = buffer->data();
+  uint8_t* const feedback_fields_end = buffer.data();
   header.payload_size = feedback_fields_end - feedback_fields_begin;
-  header.AppendFields(&space_for_header);
+  header.AppendFields(space_for_header);
 
   ++feedback_count_;
 }
 
-int CompoundRtcpBuilder::AppendCastFeedbackLossFields(
-    absl::Span<uint8_t>* buffer) {
+int CompoundRtcpBuilder::AppendCastFeedbackLossFields(ByteBuffer& buffer) {
   if (nacks_for_next_packet_.empty()) {
     return 0;
   }
@@ -215,7 +209,7 @@ int CompoundRtcpBuilder::AppendCastFeedbackLossFields(
   // The maximum number of entries is limited by available packet buffer space
   // and the 8-bit |loss_count_field|.
   const int max_num_loss_fields =
-      std::min<int>(buffer->size() / kRtcpFeedbackLossFieldSize,
+      std::min<int>(buffer.size() / kRtcpFeedbackLossFieldSize,
                     std::numeric_limits<uint8_t>::max());
 
   // Translate the |nacks_for_next_packet_| list into one or more entries
@@ -250,11 +244,10 @@ int CompoundRtcpBuilder::AppendCastFeedbackLossFields(
   return num_loss_fields;
 }
 
-void CompoundRtcpBuilder::AppendCastFeedbackAckFields(
-    absl::Span<uint8_t>* buffer) {
+void CompoundRtcpBuilder::AppendCastFeedbackAckFields(ByteBuffer& buffer) {
   // Return if there is not enough space for the CST2 header and the
   // smallest-possible ACK bit vector.
-  if (buffer->size() <
+  if (buffer.size() <
       (kRtcpFeedbackAckHeaderSize + kRtcpMinAckBitVectorOctets)) {
     return;
   }
@@ -297,7 +290,7 @@ void CompoundRtcpBuilder::AppendCastFeedbackAckFields(
         // If there is not enough room in the buffer to add more ACKs, then do
         // not continue. Also, if the new total count would exceed the design
         // limit, do not continue.
-        if (static_cast<int>(buffer->size()) < num_additional) {
+        if (static_cast<int>(buffer.size()) < num_additional) {
           break;
         }
         const int new_count = num_ack_bitvector_octets + num_additional;
@@ -325,5 +318,4 @@ void CompoundRtcpBuilder::AppendCastFeedbackAckFields(
   acks_for_next_packet_.clear();
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

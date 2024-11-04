@@ -219,7 +219,7 @@ QDateTimeEdit::~QDateTimeEdit()
   widget's date-range to start and end on the date of the new value of this
   property.
 
-  \sa date, time, minimumDateTime, maximumDateTime
+  \sa date, time, minimumDateTime, maximumDateTime, timeZone
 */
 
 QDateTime QDateTimeEdit::dateTime() const
@@ -303,12 +303,28 @@ void QDateTimeEdit::setTime(QTime time)
     }
 }
 
+/*!
+    \since 5.14
+    Report the calendar system in use by this widget.
+
+    \sa setCalendar()
+*/
 
 QCalendar QDateTimeEdit::calendar() const
 {
     Q_D(const QDateTimeEdit);
     return d->calendar;
 }
+
+/*!
+    \since 5.14
+    Set \a calendar as the calendar system to be used by this widget.
+
+    The widget can use any supported calendar system.
+    By default, it uses the Gregorian calendar.
+
+    \sa calendar()
+*/
 
 void QDateTimeEdit::setCalendar(QCalendar calendar)
 {
@@ -948,7 +964,7 @@ void QDateTimeEdit::setDisplayFormat(const QString &format)
             d->value = d->value.toDate().startOfDay(d->timeZone);
         }
         d->updateEdit();
-        d->_q_editorCursorPositionChanged(-1, 0);
+        d->editorCursorPositionChanged(-1, 0);
     }
 }
 
@@ -984,10 +1000,16 @@ void QDateTimeEdit::setCalendarPopup(bool enable)
     update();
 }
 
+#if QT_DEPRECATED_SINCE(6, 10)
 /*!
     \property QDateTimeEdit::timeSpec
-    \brief The current timespec used by the date time edit.
     \since 4.4
+    \deprecated[6.10] Use QDateTimeEdit::timeZone instead.
+    \brief The current timespec used by the date time edit.
+
+    Since Qt 6.7 this is an indirect accessor for the timeZone property.
+
+    \sa QDateTimeEdit::timeZone
 */
 
 Qt::TimeSpec QDateTimeEdit::timeSpec() const
@@ -1002,17 +1024,45 @@ void QDateTimeEdit::setTimeSpec(Qt::TimeSpec spec)
     if (spec != d->timeZone.timeSpec()) {
         switch (spec) {
         case Qt::UTC:
-            d->timeZone = QTimeZone::UTC;
+            setTimeZone(QTimeZone::UTC);
             break;
         case Qt::LocalTime:
-            d->timeZone = QTimeZone::LocalTime;
+            setTimeZone(QTimeZone::LocalTime);
             break;
         default:
             qWarning() << "Ignoring attempt to set time-spec" << spec
-                       << "which is not yet supported by QDateTimeEdit";
-            // TODO: fix that QTBUG-80417.
+                       << "which needs ancillary data: see setTimeZone()";
             return;
         }
+    }
+}
+#endif // 6.10 deprecation
+
+// TODO: enable user input to control timeZone, when the format includes it.
+/*!
+    \property QDateTimeEdit::timeZone
+    \since 6.7
+    \brief The current timezone used by the datetime editing widget
+
+    If the datetime format in use includes a timezone indicator - that is, a
+    \c{t}, \c{tt}, \c{ttt} or \c{tttt} format specifier - the user's input is
+    re-expressed in this timezone whenever it is parsed, overriding any timezone
+    the user may have specified.
+
+    \sa QDateTimeEdit::displayFormat
+*/
+
+QTimeZone QDateTimeEdit::timeZone() const
+{
+    Q_D(const QDateTimeEdit);
+    return d->timeZone;
+}
+
+void QDateTimeEdit::setTimeZone(const QTimeZone &zone)
+{
+    Q_D(QDateTimeEdit);
+    if (zone != d->timeZone) {
+        d->timeZone = zone;
         d->updateTimeZone();
     }
 }
@@ -1297,6 +1347,7 @@ void QDateTimeEdit::focusInEvent(QFocusEvent *event)
     case Qt::ActiveWindowFocusReason:
         if (oldHasHadFocus)
             return;
+        break;
     case Qt::ShortcutFocusReason:
     case Qt::TabFocusReason:
     default:
@@ -1421,8 +1472,6 @@ QDateTime QDateTimeEdit::dateTimeFromText(const QString &text) const
     QString copy = text;
     int pos = d->edit->cursorPosition();
     QValidator::State state = QValidator::Acceptable;
-    // TODO: if the format specifies time-zone, d->timeZone should change as
-    // determined by the parsed text.
     return d->validateAndInterpret(copy, pos, state);
 }
 
@@ -1450,16 +1499,11 @@ void QDateTimeEdit::fixup(QString &input) const
     int copy = d->edit->cursorPosition();
 
     QDateTime value = d->validateAndInterpret(input, copy, state, true);
-    /*
-        String was valid, but the datetime still is not; use the time that
-        has the same distance from epoch.
-        CorrectToPreviousValue correction is handled by QAbstractSpinBox.
-    */
-    if (!value.isValid() && d->correctionMode == QAbstractSpinBox::CorrectToNearestValue) {
-        value = QDateTime::fromMSecsSinceEpoch(value.toMSecsSinceEpoch(),
-                                               value.timeRepresentation());
+    // CorrectToPreviousValue correction is handled by QAbstractSpinBox.
+    // The value might not match the input if the input represents a date-time
+    // skipped over by its time representation, such as a spring-forward.
+    if (d->correctionMode == QAbstractSpinBox::CorrectToNearestValue)
         input = textFromDateTime(value);
-    }
 }
 
 
@@ -1727,11 +1771,7 @@ QDateTime QDateTimeEditPrivate::convertTimeZone(const QDateTime &datetime)
 
 QDateTime QDateTimeEditPrivate::dateTimeValue(QDate date, QTime time) const
 {
-    QDateTime when = QDateTime(date, time, timeZone);
-    if (when.isValid())
-        return when;
-    // Hit a spring-forward gap
-    return QDateTime::fromMSecsSinceEpoch(when.toMSecsSinceEpoch(), timeZone);
+    return QDateTime(date, time, timeZone);
 }
 
 void QDateTimeEditPrivate::updateTimeZone()
@@ -1780,26 +1820,30 @@ void QDateTimeEditPrivate::updateEdit()
     }
 }
 
-QDateTime QDateTimeEditPrivate::getMinimum() const
+QDateTime QDateTimeEditPrivate::getMinimum(const QTimeZone &zone) const
 {
     if (keyboardTracking)
-        return minimum.toDateTime();
+        return minimum.toDateTime().toTimeZone(zone);
 
+    // QDTP's min is the local-time start of QDATETIMEEDIT_DATE_MIN, cached
+    // (along with its conversion to UTC).
     if (timeZone.timeSpec() == Qt::LocalTime)
-        return QDateTimeParser::getMinimum();
+        return QDateTimeParser::getMinimum(zone);
 
-    return QDATETIMEEDIT_DATE_MIN.startOfDay(timeZone);
+    return QDATETIMEEDIT_DATE_MIN.startOfDay(timeZone).toTimeZone(zone);
 }
 
-QDateTime QDateTimeEditPrivate::getMaximum() const
+QDateTime QDateTimeEditPrivate::getMaximum(const QTimeZone &zone) const
 {
     if (keyboardTracking)
-        return maximum.toDateTime();
+        return maximum.toDateTime().toTimeZone(zone);
 
+    // QDTP's max is the local-time end of QDATETIMEEDIT_DATE_MAX, cached
+    // (along with its conversion to UTC).
     if (timeZone.timeSpec() == Qt::LocalTime)
-        return QDateTimeParser::getMaximum();
+        return QDateTimeParser::getMaximum(zone);
 
-    return QDATETIMEEDIT_DATE_MAX.endOfDay(timeZone);
+    return QDATETIMEEDIT_DATE_MAX.endOfDay(timeZone).toTimeZone(zone);
 }
 
 /*!
@@ -2013,6 +2057,8 @@ QDateTime QDateTimeEditPrivate::validateAndInterpret(QString &input, int &positi
     StateNode tmp = parse(input, position, value.toDateTime(), fixup);
     // Take note of any corrections imposed during parsing:
     input = m_text;
+    // TODO: if the format specifies time-zone, update timeZone to match the
+    // parsed text; but we're in const context, so can't - QTBUG-118393.
     // Impose this widget's time system:
     tmp.value = tmp.value.toTimeZone(timeZone);
     // ... but that might turn a valid datetime into an invalid one:
@@ -2135,11 +2181,10 @@ QDateTime QDateTimeEditPrivate::stepBy(int sectionIndex, int steps, bool test) c
         true when date and time are valid, even if the date-time returned
         isn't), so use the time that has the same distance from epoch.
     */
-    if (setDigit(v, sectionIndex, val) && !v.isValid()) {
-        auto msecsSinceEpoch = v.toMSecsSinceEpoch();
+    if (setDigit(v, sectionIndex, val) && getDigit(v, sectionIndex) != val
+        && sn.type & HourSectionMask && steps < 0) {
         // decreasing from e.g 3am to 2am would get us back to 3am, but we want 1am
-        if (steps < 0 && sn.type & HourSectionMask)
-            msecsSinceEpoch -= 3600 * 1000;
+        auto msecsSinceEpoch = v.toMSecsSinceEpoch() - 3600 * 1000;
         v = QDateTime::fromMSecsSinceEpoch(msecsSinceEpoch, v.timeRepresentation());
     }
     // if this sets year or month it will make
@@ -2272,7 +2317,7 @@ void QDateTimeEditPrivate::emitSignals(EmitPolicy ep, const QVariant &old)
   \internal
 */
 
-void QDateTimeEditPrivate::_q_editorCursorPositionChanged(int oldpos, int newpos)
+void QDateTimeEditPrivate::editorCursorPositionChanged(int oldpos, int newpos)
 {
     if (ignoreCursorPositionChanged || specialValue())
         return;
@@ -2330,7 +2375,7 @@ void QDateTimeEditPrivate::_q_editorCursorPositionChanged(int oldpos, int newpos
 
     currentSectionIndex = s;
     Q_ASSERT_X(currentSectionIndex < sectionNodes.size(),
-               "QDateTimeEditPrivate::_q_editorCursorPositionChanged()",
+               "QDateTimeEditPrivate::editorCursorPositionChanged()",
                qPrintable(QString::fromLatin1("Internal error (%1 %2)").
                           arg(currentSectionIndex).
                           arg(sectionNodes.size())));

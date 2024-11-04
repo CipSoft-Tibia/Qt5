@@ -138,7 +138,7 @@ Node::InsertionNotificationRequest HTMLFormElement::InsertedInto(
   LogAddElementIfIsolatedWorldAndInDocument("form", html_names::kMethodAttr,
                                             html_names::kActionAttr);
   if (insertion_point.isConnected())
-    GetDocument().DidAssociateFormControl(this);
+    GetDocument().DidAddOrRemoveFormRelatedElement(this);
   return kInsertionDone;
 }
 
@@ -179,6 +179,12 @@ void HTMLFormElement::RemovedFrom(ContainerNode& insertion_point) {
   }
   GetDocument().GetFormController().WillDeleteForm(this);
   HTMLElement::RemovedFrom(insertion_point);
+
+  if (base::FeatureList::IsEnabled(
+          blink::features::kAutofillDetectRemovedFormControls) &&
+      insertion_point.isConnected()) {
+    GetDocument().DidAddOrRemoveFormRelatedElement(this);
+  }
 }
 
 void HTMLFormElement::HandleLocalEvents(Event& event) {
@@ -329,6 +335,12 @@ void HTMLFormElement::PrepareForSubmission(
         DispatchEvent(*Event::Create(event_type_names::kError));
         return;
       }
+    }
+  }
+
+  for (ListedElement* element : ListedElements()) {
+    if (auto* form_control = DynamicTo<HTMLFormControlElement>(element)) {
+      form_control->SetInteractedSinceLastFormSubmit(true);
     }
   }
 

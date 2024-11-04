@@ -13,10 +13,6 @@
 #import "ios/web/public/js_messaging/web_frame.h"
 #import "ios/web/public/js_messaging/web_frames_manager.h"
 
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-#error "This file requires ARC support."
-#endif
-
 namespace {
 // Name for the UMA metric used to track text extraction time.
 const char kTranslateCaptureText[] = "Translate.CaptureText";
@@ -68,15 +64,15 @@ void LanguageDetectionJavaScriptFeature::ScriptMessageReceived(
     return;
   }
 
-  absl::optional<bool> has_notranslate =
-      script_message.body()->FindBoolKey("hasNoTranslate");
+  base::Value::Dict& body_dict = script_message.body()->GetDict();
+
+  absl::optional<bool> has_notranslate = body_dict.FindBool("hasNoTranslate");
   absl::optional<double> capture_text_time =
-      script_message.body()->FindDoubleKey("captureTextTime");
-  const std::string* html_lang =
-      script_message.body()->FindStringKey("htmlLang");
+      body_dict.FindDouble("captureTextTime");
+  const std::string* html_lang = body_dict.FindString("htmlLang");
   const std::string* http_content_language =
-      script_message.body()->FindStringKey("httpContentLanguage");
-  const std::string* frame_id = script_message.body()->FindStringKey("frameId");
+      body_dict.FindString("httpContentLanguage");
+  const std::string* frame_id = body_dict.FindString("frameId");
   if (!has_notranslate.has_value() || !capture_text_time.has_value() ||
       !html_lang || !http_content_language || !frame_id) {
     return;
@@ -86,7 +82,7 @@ void LanguageDetectionJavaScriptFeature::ScriptMessageReceived(
                       base::Milliseconds(*capture_text_time));
 
   web::WebFrame* sender_frame =
-      web_state->GetPageWorldWebFramesManager()->GetFrameWithId(*frame_id);
+      GetWebFramesManager(web_state)->GetFrameWithId(*frame_id);
   if (!sender_frame) {
     return;
   }

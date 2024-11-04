@@ -46,18 +46,17 @@ public:
 #endif
 
     enum Format {
-        NativeFormat,
-        IniFormat,
+        NativeFormat = 0,
+        IniFormat = 1,
 
 #if defined(Q_OS_WIN) || defined(Q_QDOC)
-        Registry32Format,
-        Registry64Format,
+        Registry32Format = 2,
+        Registry64Format = 3,
 #endif
 
-#if defined(Q_OS_WASM)
-    // FIXME: add public API in next minor release.
-    // WebLocalStorageFormat (IniFormat + 1)
-    // WebIDBSFormat (IniFormat + 2)
+#if defined(Q_OS_WASM) || defined(Q_QDOC)
+        WebLocalStorageFormat = 4,
+        WebIndexedDBFormat = 5,
 #endif
 
         InvalidFormat = 16,

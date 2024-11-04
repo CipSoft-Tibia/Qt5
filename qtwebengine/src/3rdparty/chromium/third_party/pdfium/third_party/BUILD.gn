@@ -8,16 +8,6 @@ import("//build/config/mips.gni")
 import("//build_overrides/build.gni")
 import("../pdfium.gni")
 
-group("third_party") {
-  deps = [
-    ":pdfium_base",
-    ":skia_shared",
-  ]
-  if (pdf_bundle_freetype) {
-    deps += [ ":fx_freetype" ]
-  }
-}
-
 config("pdfium_third_party_config") {
   configs = [
     "..:pdfium_common_config",
@@ -218,7 +208,7 @@ if (is_linux || is_chromeos) {
 }
 
 config("fx_agg_warnings") {
-  visibility = [ ":*" ]
+  visibility = [ ":fx_agg" ]
   if (is_clang) {
     # calc_butt_cap() in agg_vcgen_stroke.cpp is unused.
     cflags = [ "-Wno-unused-function" ]
@@ -234,21 +224,33 @@ source_set("fx_agg") {
     ":fx_agg_warnings",
   ]
   sources = [
+    "agg23/agg_array.h",
     "agg23/agg_basics.h",
     "agg23/agg_clip_liang_barsky.h",
+    "agg23/agg_color_gray.h",
+    "agg23/agg_conv_adaptor_vcgen.h",
     "agg23/agg_conv_dash.h",
     "agg23/agg_conv_stroke.h",
     "agg23/agg_curves.cpp",
     "agg23/agg_curves.h",
+    "agg23/agg_math.h",
+    "agg23/agg_math_stroke.h",
     "agg23/agg_path_storage.cpp",
     "agg23/agg_path_storage.h",
+    "agg23/agg_pixfmt_gray.h",
     "agg23/agg_rasterizer_scanline_aa.cpp",
     "agg23/agg_rasterizer_scanline_aa.h",
+    "agg23/agg_render_scanlines.h",
+    "agg23/agg_renderer_base.h",
     "agg23/agg_renderer_scanline.h",
     "agg23/agg_rendering_buffer.h",
     "agg23/agg_scanline_u.h",
+    "agg23/agg_shorten_path.h",
     "agg23/agg_vcgen_dash.cpp",
+    "agg23/agg_vcgen_dash.h",
     "agg23/agg_vcgen_stroke.cpp",
+    "agg23/agg_vcgen_stroke.h",
+    "agg23/agg_vertex_sequence.h",
   ]
   deps = [ "../core/fxcrt" ]
 }
@@ -456,15 +458,14 @@ group("png") {
 if (pdf_enable_xfa_tiff) {
   if (pdfium_use_system_libtiff) {
     config("system_tiff_config") {
-      defines = [ "USE_SYSTEM_LIBTIFF" ]
       libs = [ "tiff" ]
     }
   } else {
     source_set("fx_tiff") {
       configs -= [ "//build/config/compiler:chromium_code" ]
       configs += [
-       "//build/config/compiler:no_chromium_code",
-       ":pdfium_third_party_config",
+        "//build/config/compiler:no_chromium_code",
+        ":pdfium_third_party_config",
       ]
       if (is_win) {
         # Need to undefine the macro since it is redefined in tif_jpeg.c.
@@ -511,7 +512,6 @@ if (pdf_enable_xfa_tiff) {
         "libtiff/tif_version.c",
         "libtiff/tif_warning.c",
         "libtiff/tif_write.c",
-        "libtiff/tiffio.h",
         "libtiff/tiffiop.h",
         "libtiff/tiffvers.h",
       ]
@@ -543,19 +543,19 @@ source_set("pdfium_base") {
     ":pdfium_third_party_config",
   ]
   sources = [
-    "base/base_export.h",
     "base/bits.h",
     "base/check.h",
     "base/check_op.h",
     "base/component_export.h",
     "base/containers/adapters.h",
     "base/containers/contains.h",
-    "base/cxx17_backports.h",
+    "base/containers/span.h",
     "base/debug/alias.cc",
     "base/debug/alias.h",
     "base/immediate_crash.h",
     "base/memory/aligned_memory.cc",
     "base/memory/aligned_memory.h",
+    "base/memory/ptr_util.h",
     "base/no_destructor.h",
     "base/notreached.h",
     "base/numerics/checked_math.h",
@@ -569,7 +569,6 @@ source_set("pdfium_base") {
     "base/numerics/safe_math_arm_impl.h",
     "base/numerics/safe_math_clang_gcc_impl.h",
     "base/numerics/safe_math_shared_impl.h",
-    "base/span.h",
     "base/sys_byteorder.h",
     "base/template_util.h",
   ]
@@ -602,15 +601,4 @@ source_set("pdfium_base_test_support") {
     ]
     deps += [ "//testing/gtest" ]
   }
-}
-
-source_set("skia_shared") {
-  sources = [
-    "skia_shared/SkFloatToDecimal.cpp",
-    "skia_shared/SkFloatToDecimal.h",
-  ]
-  configs += [
-    "../:pdfium_strict_config",
-    "../:pdfium_noshorten_config",
-  ]
 }

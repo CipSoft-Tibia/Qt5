@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,7 @@
 #include "platform/base/span.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -157,5 +156,4 @@ void FrameCollector::Reset() {
 FrameCollector::PayloadChunk::PayloadChunk() = default;
 FrameCollector::PayloadChunk::~PayloadChunk() = default;
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

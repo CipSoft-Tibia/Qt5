@@ -5,56 +5,48 @@ namespace litehtml
 {
 	struct def_color
 	{
-		const tchar_t*	name;
-		const tchar_t*	rgb;
+		const char*	name;
+		const char*	rgb;
 	};
 
 	extern def_color g_def_colors[];
 
-    class document_container;
+	class document_container;
 
 	struct web_color
 	{
-		byte    blue;
-		byte    green;
-		byte    red;
-		byte    alpha;
+		byte	red;
+		byte	green;
+		byte	blue;
+		byte	alpha;
+
+		static const web_color transparent;
+		static const web_color black;
+		static const web_color white;
 
 		web_color(byte r, byte g, byte b, byte a = 255)
 		{
-			blue	= b;
-			green	= g;
 			red		= r;
+			green	= g;
+			blue	= b;
 			alpha	= a;
 		}
 
 		web_color()
 		{
-			blue	= 0;
-			green	= 0;
 			red		= 0;
+			green	= 0;
+			blue	= 0;
 			alpha	= 0xFF;
 		}
 
-		web_color(const web_color& val)
-		{
-			blue	= val.blue;
-			green	= val.green;
-			red		= val.red;
-			alpha	= val.alpha;
-		}
+		bool operator==(web_color color) const { return red == color.red && green == color.green && blue == color.blue && alpha == color.alpha; }
+		bool operator!=(web_color color) const { return !(*this == color); }
 
-		web_color& operator=(const web_color& val)
-		{
-			blue	= val.blue;
-			green	= val.green;
-			red		= val.red;
-			alpha	= val.alpha;
-			return *this;
-		}
-        static web_color            from_string(const tchar_t* str, litehtml::document_container* callback);
-		static litehtml::tstring    resolve_name(const tchar_t* name, litehtml::document_container* callback);
-        static bool                 is_color(const tchar_t* str);
+		string to_string() const;
+		static web_color	from_string(const string& str, document_container* callback);
+		static string		resolve_name(const string& name, document_container* callback);
+		static bool			is_color(const string& str, document_container* callback);
 	};
 }
 

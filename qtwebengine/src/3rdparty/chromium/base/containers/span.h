@@ -6,6 +6,7 @@
 #define BASE_CONTAINERS_SPAN_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include <array>
 #include <iterator>
@@ -18,6 +19,7 @@
 #include "base/containers/checked_iterators.h"
 #include "base/containers/contiguous_iterator.h"
 #include "base/cxx20_to_address.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/numerics/safe_math.h"
 
 namespace base {
@@ -242,11 +244,10 @@ class GSL_POINTER span : public internal::ExtentStorage<Extent> {
   using size_type = size_t;
   using difference_type = ptrdiff_t;
   using pointer = T*;
+  using const_pointer = const T*;
   using reference = T&;
+  using const_reference = const T&;
   using iterator = CheckedContiguousIterator<T>;
-  // TODO(https://crbug.com/828324): Drop the const_iterator typedef once gMock
-  // supports containers without this nested type.
-  using const_iterator = iterator;
   using reverse_iterator = std::reverse_iterator<iterator>;
   static constexpr size_t extent = Extent;
 
@@ -449,7 +450,9 @@ class GSL_POINTER span : public internal::ExtentStorage<Extent> {
   }
 
  private:
-  T* data_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter
+  // for: #constexpr-ctor-field-initializer, #global-scope, #union
+  RAW_PTR_EXCLUSION T* data_;
 };
 
 // span<T, Extent>::extent can not be declared inline prior to C++17, hence this

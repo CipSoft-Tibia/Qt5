@@ -19,6 +19,8 @@
 #include <QtQml/qjsengine.h>
 #include <QtQml/qqmlfile.h>
 #include <QtNetwork/qnetworkreply.h>
+
+#include <QtCore/qpointer.h>
 #include <QtCore/qstringconverter.h>
 #include <QtCore/qxmlstream.h>
 #include <QtCore/qstack.h>
@@ -116,7 +118,7 @@ public:
     QList<NodeImpl *> attributes;
 };
 
-class DocumentImpl : public QQmlRefCounted<DocumentImpl>, public NodeImpl
+class DocumentImpl final : public QQmlRefCounted<DocumentImpl>, public NodeImpl
 {
     using Base1 = QQmlRefCounted<DocumentImpl>;
 public:

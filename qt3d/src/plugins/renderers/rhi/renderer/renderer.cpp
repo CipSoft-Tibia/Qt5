@@ -1141,9 +1141,17 @@ void Renderer::createRenderTarget(RenderTarget *target)
         }
     };
 
+    RHIRenderTarget::BackBuffer backBuffer = RHIRenderTarget::BackBuffer::None;
+
     // Look up attachments to populate the RT description
     // Attachments are sorted by attachment point (Color0 is first)
     for (const Attachment &attachment : pack.attachments()) {
+
+        if (attachment.m_point == QRenderTargetOutput::Left || attachment.m_point == QRenderTargetOutput::Right) {
+            backBuffer = attachment.m_point == QRenderTargetOutput::Left ? RHIRenderTarget::BackBuffer::Left : RHIRenderTarget::BackBuffer::Right;
+            break;
+        }
+
         RHITexture *tex = texman->lookupResource(attachment.m_textureUuid);
         if (tex && tex->getRhiTexture()) {
             auto rhiTex = tex->getRhiTexture();
@@ -1183,6 +1191,12 @@ void Renderer::createRenderTarget(RenderTarget *target)
         }
     }
 
+    rhiTarget->backBuffer = backBuffer;
+    // If we are targeting one of the back buffers directly, don't create an offscreen RT
+    if (backBuffer != RHIRenderTarget::BackBuffer::None)
+        return;
+
+    // Otherwise, create QRhiRenderBuffer and associated resources
     if (targetSize.width() <= 0 || targetSize.height() <= 0) {
         cleanAllocatedResources();
         return;
@@ -1232,6 +1246,12 @@ bool Renderer::setupRenderTarget(RenderView *rv,
     const auto &managers = *nodeManagers();
     auto &renderTargetManager = *managers.renderTargetManager();
 
+    auto useSwapchainForPipeline = [&]() {
+        Q_ASSERT(swapchain);
+        rhiPipeline->setRenderPassDescriptor(swapchain->renderPassDescriptor());
+        rhiPipeline->setSampleCount(swapchain->sampleCount());
+    };
+
     auto *renderTarget = renderTargetManager.lookupResource(rv->renderTargetId());
     if (renderTarget) {
         // Render to texture
@@ -1239,14 +1259,25 @@ bool Renderer::setupRenderTarget(RenderView *rv,
         RHIRenderTargetManager *rhiRenderTargetManager = m_RHIResourceManagers->rhiRenderTargetManager();
         RHIRenderTarget *rhiTarget = rhiRenderTargetManager->lookupResource(renderTargetId);
 
-        if (!rhiTarget || !rhiTarget->renderTarget) {
+        if (!rhiTarget) {
             qWarning(Backend) << "Invalid RenderTarget " << renderTargetId << " for Pipeline";
             return false;
         }
 
-        rhiPipeline->setRenderPassDescriptor(rhiTarget->renderPassDescriptor);
-        rhiPipeline->setSampleCount(rhiTarget->renderTarget->sampleCount());
+        // The RenderTarget we reference might actually be referencing a swapchain back buffer
+        if (rhiTarget->backBuffer != RHIRenderTarget::BackBuffer::None) {
+            // Render to the default framebuffer on our swapchain
+            useSwapchainForPipeline();
+        } else {
+            if (!rhiTarget->renderTarget) {
+                qWarning(Backend) << "Invalid RenderTarget " << renderTargetId << " for Pipeline";
+                return false;
+            }
+            rhiPipeline->setRenderPassDescriptor(rhiTarget->renderPassDescriptor);
+            rhiPipeline->setSampleCount(rhiTarget->renderTarget->sampleCount());
+        }
         return true;
+
     } else if (m_submissionContext->defaultRenderTarget()) {
         // Use default RenderTarget if set Default FBO set by Scene3D
         QRhiRenderTarget *defaultTarget = m_submissionContext->defaultRenderTarget();;
@@ -1254,10 +1285,8 @@ bool Renderer::setupRenderTarget(RenderView *rv,
         rhiPipeline->setSampleCount(defaultTarget->sampleCount());
         return true;
     } else {
-        Q_ASSERT(swapchain);
         // Render to the default framebuffer on our swapchain
-        rhiPipeline->setRenderPassDescriptor(swapchain->renderPassDescriptor());
-        rhiPipeline->setSampleCount(swapchain->sampleCount());
+        useSwapchainForPipeline();
         return true;
     }
 }
@@ -2640,12 +2669,19 @@ bool Renderer::executeCommandsSubmission(const RHIPassInfo &passInfo)
         auto &renderTargetManager = *managers.rhiRenderTargetManager();
         auto *renderTarget = renderTargetManager.lookupResource(passInfo.renderTargetId);
 
-        if (renderTarget)
-            rhiRenderTarget = renderTarget->renderTarget;
-        else if (m_submissionContext->defaultRenderTarget())
+        if (renderTarget) {
+            // Is our RenderTarget targeting offscreen attachments?
+            if (renderTarget->backBuffer == RHIRenderTarget::BackBuffer::None)
+                rhiRenderTarget = renderTarget->renderTarget;
+            else // Or one of the back buffers?
+                rhiRenderTarget = m_submissionContext->currentSwapChain()->currentFrameRenderTarget(renderTarget->backBuffer == RHIRenderTarget::BackBuffer::Left
+                                                                                                            ? QRhiSwapChain::LeftBuffer
+                                                                                                            : QRhiSwapChain::RightBuffer);
+        } else if (m_submissionContext->defaultRenderTarget()) {
             rhiRenderTarget = m_submissionContext->defaultRenderTarget();
-        else
+        } else {
             rhiRenderTarget = m_submissionContext->currentSwapChain()->currentFrameRenderTarget();
+        }
     }
 
     auto executeDrawRenderView = [&] (RenderView* rv) {
@@ -2705,7 +2741,6 @@ bool Renderer::executeCommandsSubmission(const RHIPassInfo &passInfo)
 
     // All the RVs in the current passinfo target the same RenderTarget
     // A single beginPass should take place, unless Computes RVs are intermingled
-    QRhiResourceUpdateBatch *inPassUpdates = nullptr;
     static const bool supportsCompute = m_submissionContext->rhi()->isFeatureSupported(QRhi::Compute);
 
     // Per Pass Global States
@@ -2723,6 +2758,7 @@ bool Renderer::executeCommandsSubmission(const RHIPassInfo &passInfo)
             if (supportsCompute) {
                 if (!inCompute) {
                     cb->beginComputePass(m_submissionContext->m_currentUpdates);
+                    m_submissionContext->m_currentUpdates = m_submissionContext->rhi()->nextResourceUpdateBatch();
                     inCompute = true;
                 }
                 executeComputeRenderView(rv);
@@ -2744,6 +2780,7 @@ bool Renderer::executeCommandsSubmission(const RHIPassInfo &passInfo)
                     continue;
                 }
                 cb->beginPass(rhiRenderTarget, clearColor, clearDepthStencil, m_submissionContext->m_currentUpdates);
+                m_submissionContext->m_currentUpdates = m_submissionContext->rhi()->nextResourceUpdateBatch();
                 inDraw = true;
             }
 
@@ -2792,8 +2829,7 @@ bool Renderer::executeCommandsSubmission(const RHIPassInfo &passInfo)
                         const QRhiColorAttachment *color0Att = desc.colorAttachmentAt(0);
                         readbackDesc.setTexture(color0Att->texture());
                     }
-                    inPassUpdates = m_submissionContext->rhi()->nextResourceUpdateBatch();
-                    inPassUpdates->readBackTexture(readbackDesc, readBackResult);
+                    m_submissionContext->m_currentUpdates->readBackTexture(readbackDesc, readBackResult);
                 } else {
                     qCWarning(Backend) << "Requested capture rectangle is outside framebuffer";
                 }
@@ -2805,9 +2841,9 @@ bool Renderer::executeCommandsSubmission(const RHIPassInfo &passInfo)
     }
 
     if (Q_LIKELY(inDraw))
-        cb->endPass(inPassUpdates);
+        cb->endPass(m_submissionContext->m_currentUpdates);
     else if (inCompute)
-        cb->endComputePass();
+        cb->endComputePass(m_submissionContext->m_currentUpdates);
 
     m_submissionContext->m_currentUpdates = m_submissionContext->rhi()->nextResourceUpdateBatch();
 

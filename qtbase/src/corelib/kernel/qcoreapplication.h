@@ -8,6 +8,7 @@
 #include <QtCore/qstring.h>
 #ifndef QT_NO_QOBJECT
 #include <QtCore/qcoreevent.h>
+#include <QtCore/qdeadlinetimer.h>
 #include <QtCore/qeventloop.h>
 #include <QtCore/qobject.h>
 #else
@@ -99,6 +100,7 @@ public:
     static int exec();
     static void processEvents(QEventLoop::ProcessEventsFlags flags = QEventLoop::AllEvents);
     static void processEvents(QEventLoop::ProcessEventsFlags flags, int maxtime);
+    static void processEvents(QEventLoop::ProcessEventsFlags flags, QDeadlineTimer deadline);
 
     static bool sendEvent(QObject *receiver, QEvent *event);
     static void postEvent(QObject *receiver, QEvent *event, int priority = Qt::NormalEventPriority);
@@ -140,15 +142,21 @@ public:
     }
 # endif // Q_QDOC
 
+#ifndef QT_NO_CONTEXTLESS_CONNECT
+    #ifdef Q_QDOC
+    template <typename Functor>
+    #else
     // requestPermission to a functor or function pointer (without context)
     template <typename Functor,
               std::enable_if_t<
                     QtPrivate::AreFunctionsCompatible<RequestPermissionPrototype, Functor>::value,
                     bool> = true>
+    #endif
     void requestPermission(const QPermission &permission, Functor &&func)
     {
         requestPermission(permission, nullptr, std::forward<Functor>(func));
     }
+#endif // QT_NO_CONTEXTLESS_CONNECT
 
 private:
     // ### Qt 7: rename to requestPermissionImpl to avoid ambiguity

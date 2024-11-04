@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_UI_WEBUI_SETTINGS_ASH_MULTIDEVICE_SECTION_H_
 
 #include "ash/webui/eche_app_ui/eche_app_manager.h"
+#include "base/memory/raw_ptr.h"
 #include "base/values.h"
 #include "chrome/browser/ui/webui/settings/ash/os_settings_section.h"
 #include "chromeos/ash/services/multidevice_setup/public/cpp/multidevice_setup_client.h"
@@ -50,18 +51,19 @@ class MultiDeviceSection
       eche_app::EcheAppManager* eche_app_manager);
   ~MultiDeviceSection() override;
 
- private:
-  friend class MultiDeviceSectionTest;
   // OsSettingsSection:
   void AddLoadTimeData(content::WebUIDataSource* html_source) override;
   void AddHandlers(content::WebUI* web_ui) override;
   int GetSectionNameMessageId() const override;
   chromeos::settings::mojom::Section GetSection() const override;
   mojom::SearchResultIcon GetSectionIcon() const override;
-  std::string GetSectionPath() const override;
+  const char* GetSectionPath() const override;
   bool LogMetric(chromeos::settings::mojom::Setting setting,
                  base::Value& value) const override;
   void RegisterHierarchy(HierarchyGenerator* generator) const override;
+
+ private:
+  friend class MultiDeviceSectionTest;
 
   // multidevice_setup::MultiDeviceSetupClient::Observer:
   void OnHostStatusChanged(
@@ -96,13 +98,15 @@ class MultiDeviceSection
   mojo::Receiver<nearby_share::mojom::NearbyShareSettingsObserver>
       settings_receiver_{this};
 
-  multidevice_setup::MultiDeviceSetupClient* multidevice_setup_client_;
-  phonehub::PhoneHubManager* phone_hub_manager_;
-  android_sms::AndroidSmsService* android_sms_service_;
-  PrefService* pref_service_;
+  raw_ptr<multidevice_setup::MultiDeviceSetupClient, ExperimentalAsh>
+      multidevice_setup_client_;
+  raw_ptr<phonehub::PhoneHubManager, ExperimentalAsh> phone_hub_manager_;
+  raw_ptr<android_sms::AndroidSmsService, ExperimentalAsh> android_sms_service_;
+  raw_ptr<PrefService, ExperimentalAsh> pref_service_;
   PrefChangeRegistrar pref_change_registrar_;
-  eche_app::EcheAppManager* eche_app_manager_;
-  content::WebUIDataSource* html_source_;
+  raw_ptr<eche_app::EcheAppManager, ExperimentalAsh> eche_app_manager_;
+  raw_ptr<content::WebUIDataSource, DanglingUntriaged | ExperimentalAsh>
+      html_source_;
 };
 
 }  // namespace settings

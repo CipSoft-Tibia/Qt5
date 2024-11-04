@@ -5,6 +5,7 @@
 #include "third_party/blink/renderer/core/layout/ng/grid/ng_grid_item.h"
 
 #include "third_party/blink/renderer/core/layout/ng/grid/ng_grid_placement.h"
+#include "third_party/blink/renderer/platform/text/writing_mode_utils.h"
 
 namespace blink {
 
@@ -121,6 +122,7 @@ AxisEdge AxisEdgeFromItemPosition(bool is_inline_axis,
 GridItemData::GridItemData(
     NGBlockNode node,
     const ComputedStyle& root_grid_style,
+    FontBaseline parent_grid_font_baseline,
     bool parent_must_consider_grid_items_for_column_sizing,
     bool parent_must_consider_grid_items_for_row_sizing)
     : node(node),
@@ -131,7 +133,8 @@ GridItemData::GridItemData(
       is_sizing_dependent_on_block_size(false),
       is_subgridded_to_parent_grid(false),
       must_consider_grid_items_for_column_sizing(false),
-      must_consider_grid_items_for_row_sizing(false) {
+      must_consider_grid_items_for_row_sizing(false),
+      parent_grid_font_baseline(parent_grid_font_baseline) {
   const auto& style = node.Style();
 
   const bool is_replaced = node.IsReplaced();
@@ -175,25 +178,50 @@ GridItemData::GridItemData(
       /* is_parallel_context */ true,
       /* is_last_baseline */ block_axis_alignment == AxisEdge::kLastBaseline);
 
-  if (node.IsGrid()) {
-    // TODO(ethavar): Don't consider subgrids with size containment.
-    has_subgridded_columns = style.GridTemplateColumns().IsSubgriddedAxis();
-    has_subgridded_rows = style.GridTemplateRows().IsSubgriddedAxis();
+  // From https://drafts.csswg.org/css-grid-2/#subgrid-listing:
+  //   "...if the grid container is otherwise forced to establish an independent
+  //   formatting context... the grid container is not a subgrid."
+  //
+  // Only layout and paint containment establish an independent formatting
+  // context as specified in:
+  //   https://drafts.csswg.org/css-contain-2/#containment-layout
+  //   https://drafts.csswg.org/css-contain-2/#containment-paint
+  if (node.IsGrid() && !node.ShouldApplyLayoutContainment() &&
+      !node.ShouldApplyPaintContainment()) {
+    has_subgridded_columns =
+        is_parallel_with_root_grid
+            ? style.GridTemplateColumns().IsSubgriddedAxis()
+            : style.GridTemplateRows().IsSubgriddedAxis();
+    has_subgridded_rows = is_parallel_with_root_grid
+                              ? style.GridTemplateRows().IsSubgriddedAxis()
+                              : style.GridTemplateColumns().IsSubgriddedAxis();
   }
 
+  // The `false, true, false, true` parameters get the converter to calculate
+  // whether the subgrids and its root grid are opposite direction in all cases.
+  const LogicalToLogical<bool> direction_converter(
+      style.GetWritingDirection(), root_grid_writing_direction,
+      /* inline_start */ false, /* inline_end */ true,
+      /* block_start */ false, /* block_end */ true);
+
+  is_opposite_direction_in_root_grid_columns =
+      direction_converter.InlineStart();
+  is_opposite_direction_in_root_grid_rows = direction_converter.BlockStart();
+
+  // From https://drafts.csswg.org/css-grid-2/#subgrid-size-contribution:
+  //   The subgrid itself [...] acts as if it was completely empty for track
+  //   sizing purposes in the subgridded dimension.
+  //
+  // Mark any subgridded axis as not considered for sizing, effectively ignoring
+  // its contribution in `NGGridLayoutAlgorithm::ResolveIntrinsicTrackSizes`.
   if (parent_must_consider_grid_items_for_column_sizing) {
-    is_considered_for_column_sizing = is_parallel_with_root_grid
-                                          ? !has_subgridded_columns
-                                          : !has_subgridded_rows;
-    must_consider_grid_items_for_column_sizing =
-        !is_considered_for_column_sizing;
+    must_consider_grid_items_for_column_sizing = has_subgridded_columns;
+    is_considered_for_column_sizing = !has_subgridded_columns;
   }
 
   if (parent_must_consider_grid_items_for_row_sizing) {
-    is_considered_for_row_sizing = is_parallel_with_root_grid
-                                       ? !has_subgridded_rows
-                                       : !has_subgridded_columns;
-    must_consider_grid_items_for_row_sizing = !is_considered_for_row_sizing;
+    must_consider_grid_items_for_row_sizing = has_subgridded_rows;
+    is_considered_for_row_sizing = !has_subgridded_rows;
   }
 }
 
@@ -201,8 +229,9 @@ void GridItemData::SetAlignmentFallback(
     GridTrackSizingDirection track_direction,
     bool has_synthesized_baseline) {
   // Alignment fallback is only possible when baseline alignment is specified.
-  if (!IsBaselineSpecifiedForDirection(track_direction))
+  if (!IsBaselineSpecified(track_direction)) {
     return;
+  }
 
   auto CanParticipateInBaselineAlignment = [&]() -> bool {
     // "If baseline alignment is specified on a grid item whose size in that
@@ -268,6 +297,8 @@ void GridItemData::ComputeSetIndices(
   DCHECK(!IsOutOfFlow());
 
   const auto track_direction = track_collection.Direction();
+  DCHECK(MustCachePlacementIndices(track_direction));
+
   auto& range_indices = RangeIndices(track_direction);
 
 #if DCHECK_IS_ON()
@@ -315,14 +346,9 @@ void GridItemData::ComputeOutOfFlowItemPlacement(
   auto& end_offset = is_for_columns ? column_placement.offset_in_range.end
                                     : row_placement.offset_in_range.end;
 
-  if (IsGridContainingBlock()) {
-    NGGridPlacement::ResolveOutOfFlowItemGridLines(
-        track_collection, placement_data, grid_style, node.Style(),
-        &start_offset, &end_offset);
-  } else {
-    start_offset = kNotFound;
-    end_offset = kNotFound;
-  }
+  NGGridPlacement::ResolveOutOfFlowItemGridLines(
+      track_collection, placement_data, grid_style, node.Style(), &start_offset,
+      &end_offset);
 
 #if DCHECK_IS_ON()
   if (start_offset != kNotFound && end_offset != kNotFound) {
@@ -375,6 +401,13 @@ void GridItemData::ComputeOutOfFlowItemPlacement(
                      : 0;
       end_offset -= track_collection.RangeStartLine(end_range_index);
     }
+  }
+}
+
+GridItems::GridItems(const GridItems& other) {
+  item_data_.ReserveInitialCapacity(other.item_data_.size());
+  for (const auto& grid_item : other.item_data_) {
+    item_data_.emplace_back(std::make_unique<GridItemData>(*grid_item));
   }
 }
 

@@ -9,13 +9,14 @@
 #include "base/time/time.h"
 #include "media/audio/audio_device_description.h"
 #include "media/audio/cras/audio_manager_cras_base.h"
+#include "media/base/media_switches.h"
 
 namespace media {
 
 namespace {
 
 constexpr char kInternalInputVirtualDevice[] = "Built-in mic";
-constexpr char kInternalOutputVirtualDevice[] = "Built-in speaker";
+constexpr char kInternalOutputVirtualDevice[] = "Built-in speaker/headphone";
 constexpr char kHeadphoneLineOutVirtualDevice[] = "Headphone/Line Out";
 
 // Names below are from the node_type_to_str function in CRAS server.
@@ -184,6 +185,44 @@ CrasUtil::CrasUtil() = default;
 
 CrasUtil::~CrasUtil() = default;
 
+bool CrasUtil::CacheEffects() {
+  libcras_client* client = CrasConnect();
+  if (!client) {
+    LOG(ERROR) << "Failed to cache effects";
+    return false;
+  }
+  if (libcras_client_get_aec_supported(client, &aec_supported_) < 0) {
+    LOG(ERROR) << "Fail to query AEC supported";
+    aec_supported_ = false;
+  }
+  if (libcras_client_get_agc_supported(client, &agc_supported_) < 0) {
+    LOG(ERROR) << "Fail to query AGC supported";
+    agc_supported_ = false;
+  }
+  if (libcras_client_get_ns_supported(client, &ns_supported_) < 0) {
+    LOG(ERROR) << "Fail to query NS supported";
+    ns_supported_ = false;
+  }
+  if (base::FeatureList::IsEnabled(media::kCrOSSystemVoiceIsolationOption)) {
+    if (libcras_client_get_voice_isolation_supported(
+            client, &voice_isolation_supported_) < 0) {
+      LOG(ERROR) << "Fail to query VoiceIsolation supported";
+      voice_isolation_supported_ = false;
+    }
+  }
+  if (libcras_client_get_aec_group_id(client, &aec_group_id_) < 0) {
+    LOG(ERROR) << "Fail to query AEC group ID";
+    aec_group_id_ = -1;  // The default group ID is -1
+  }
+  if (libcras_client_get_default_output_buffer_size(
+          client, &default_output_buffer_size_) < 0) {
+    LOG(ERROR) << "Fail to query default output buffer size";
+    default_output_buffer_size_ = 0;
+  }
+  CrasDisconnect(&client);
+  return true;
+}
+
 std::vector<CrasDevice> CrasUtil::CrasGetAudioDevices(DeviceType type) {
   std::vector<CrasDevice> devices;
 
@@ -236,42 +275,45 @@ std::vector<CrasDevice> CrasUtil::CrasGetAudioDevices(DeviceType type) {
 }
 
 int CrasUtil::CrasGetAecSupported() {
-  libcras_client* client = CrasConnect();
-  if (!client) {
-    return 0;
+  if (!cras_effects_cached_) {
+    cras_effects_cached_ = CacheEffects();
   }
+  return aec_supported_;
+}
 
-  int supported;
-  libcras_client_get_aec_supported(client, &supported);
-  CrasDisconnect(&client);
+int CrasUtil::CrasGetAgcSupported() {
+  if (!cras_effects_cached_) {
+    cras_effects_cached_ = CacheEffects();
+  }
+  return agc_supported_;
+}
 
-  return supported;
+int CrasUtil::CrasGetNsSupported() {
+  if (!cras_effects_cached_) {
+    cras_effects_cached_ = CacheEffects();
+  }
+  return ns_supported_;
+}
+
+int CrasUtil::CrasGetVoiceIsolationSupported() {
+  if (!cras_effects_cached_) {
+    cras_effects_cached_ = CacheEffects();
+  }
+  return voice_isolation_supported_;
 }
 
 int CrasUtil::CrasGetAecGroupId() {
-  libcras_client* client = CrasConnect();
-  if (!client) {
-    return -1;
+  if (!cras_effects_cached_) {
+    cras_effects_cached_ = CacheEffects();
   }
-
-  int id;
-  int rc = libcras_client_get_aec_group_id(client, &id);
-  CrasDisconnect(&client);
-
-  return rc < 0 ? rc : id;
+  return aec_group_id_;
 }
 
 int CrasUtil::CrasGetDefaultOutputBufferSize() {
-  libcras_client* client = CrasConnect();
-  if (!client) {
-    return -1;
+  if (!cras_effects_cached_) {
+    cras_effects_cached_ = CacheEffects();
   }
-
-  int size;
-  int rc = libcras_client_get_default_output_buffer_size(client, &size);
-  CrasDisconnect(&client);
-
-  return rc < 0 ? rc : size;
+  return default_output_buffer_size_;
 }
 
 }  // namespace media

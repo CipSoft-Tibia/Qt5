@@ -5,7 +5,7 @@
 Chrome exposes a different set of configurations to administrators. These
 configurations are called policy and they give administrators more advanced
 controls than the normal users. With different device management tools,
-an administrator can deliver these polices to many users. Here is the
+an administrator can deliver these policies to many users. Here is the
 [help center article](https://support.google.com/chrome/a/answer/9037717?hl=en)
 that talks about Chrome policy and its deployment.
 
@@ -19,8 +19,11 @@ Usually you need a policy when
 -   Deprecating an old feature. Create a policy to give enterprise users more
     time to migrate away from the feature.
 
-**To read more about best practices for shipping enterprise friendly features
-read [this article](https://www.chromium.org/developers/enterprise-changes/).**
+**To read more about best practices for shipping enterprise friendly features,
+please read [this article](https://www.chromium.org/developers/enterprise-changes/).**
+
+**This article covers lots of technical details. More information about policy
+design can be found at [policy_design.md](./policy_design.md).**
 
 ## Adding a new policy
 
@@ -99,18 +102,18 @@ read [this article](https://www.chromium.org/developers/enterprise-changes/).**
     -   All policy values need to be mapped into a prefs value before being used
         unless the policy is needed before PrefService initialization.
     -   To map the policy:
-        1.  Create a prefs and register the prefs in **Local State** or
-            **Profile Prefs**. Please note that, this must match the
-            `per_profile` attribute in the `YourPolicyName.yaml`. We also
-            strongly encourage developers to register the prefs with **Profile
-            Prefs** if possible, because this gives admin more flexibility of
-            policy setup.
+        1.  [Create a prefs and register the prefs in **Local State** or
+            **Profile Prefs**.](../../chrome/browser/prefs/README.md)
+            Please note that, this must match the `per_profile` attribute in the
+            `YourPolicyName.yaml`. We also strongly encourage developers to
+            register the prefs with **Profile Prefs** if possible, because
+            this gives admin more flexibility of policy setup.
         2.  Most policies can be mapped to prefs with `kSimplePolicyMap` in
             [configuration_policy_handler_list_factory.cc](https://cs.chromium.org/chromium/src/chrome/browser/policy/configuration_policy_handler_list_factory.cc?type=cs&q=kSimplePolicyMap&g=0&l=150).
             If the policy needs additional verification or processing, please
             implement a `ConfigurationPolicyHandler` to do so.
         3.  Test the mapping by adding policy to
-            [policy_test_cases.json](https://cs.chromium.org/chromium/src/chrome/test/data/policy/policy_test_cases.json?q=policy_test_case) (see [instructions](https://cs.chromium.org/chromium/src/docs/enterprise/policy_pref_mapping_test.md)).
+            [policy_test_cases.json](https://cs.chromium.org/chromium/src/components/policy/test/data/policy_test_cases.json?q=policy_test_case) (see [instructions](https://cs.chromium.org/chromium/src/docs/enterprise/policy_pref_mapping_test.md)).
         4.  iOS platform has its own
             [configuration_policy_handler_list_factory.mm](https://source.chromium.org/chromium/chromium/src/+/main:ios/chrome/browser/policy/configuration_policy_handler_list_factory.mm)
             and
@@ -125,6 +128,7 @@ read [this article](https://www.chromium.org/developers/enterprise-changes/).**
         -   The setting needs an
             [indicator](https://cs.chromium.org/chromium/src/ui/webui/resources/images/business.svg)
             to tell users that the setting is enforced by the administrator.
+        -   There are more information and util functions can be found [here](https://source.chromium.org/chromium/chromium/src/+/main:ui/webui/resources/cr_elements/policy/).
 8.  Support `dynamic_refresh` if possible.
     -   We strongly encourage developers to make their policies support this
         attribute. It means the admin can change the policy value and Chrome

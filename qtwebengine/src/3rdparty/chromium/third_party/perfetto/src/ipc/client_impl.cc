@@ -75,9 +75,9 @@ ClientImpl::~ClientImpl() {
 
 void ClientImpl::TryConnect() {
   PERFETTO_DCHECK(socket_name_);
-  sock_ = base::UnixSocket::Connect(socket_name_, this, task_runner_,
-                                    kClientSockFamily, base::SockType::kStream,
-                                    base::SockPeerCredMode::kIgnore);
+  sock_ = base::UnixSocket::Connect(
+      socket_name_, this, task_runner_, base::GetSockFamily(socket_name_),
+      base::SockType::kStream, base::SockPeerCredMode::kIgnore);
 }
 
 void ClientImpl::BindService(base::WeakPtr<ServiceProxy> service_proxy) {
@@ -189,6 +189,17 @@ void ClientImpl::OnDisconnect(base::UnixSocket*) {
     task_runner_->PostTask([service_proxy] {
       if (service_proxy)
         service_proxy->OnDisconnect();
+    });
+  }
+  for (const auto& it : queued_requests_) {
+    const QueuedRequest& queued_request = it.second;
+    if (queued_request.type != Frame::kMsgBindServiceFieldNumber) {
+      continue;
+    }
+    base::WeakPtr<ServiceProxy> service_proxy = queued_request.service_proxy;
+    task_runner_->PostTask([service_proxy] {
+      if (service_proxy)
+        service_proxy->OnConnect(false);
     });
   }
   service_bindings_.clear();

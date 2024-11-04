@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,7 @@
 
 #include "cast/streaming/constants.h"
 #include "cast/streaming/resolution.h"
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 struct Answer;
 
@@ -145,7 +144,6 @@ struct Recommendations {
 Recommendations GetRecommendations(const Answer& answer);
 
 }  // namespace capture_recommendations
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_CAPTURE_RECOMMENDATIONS_H_

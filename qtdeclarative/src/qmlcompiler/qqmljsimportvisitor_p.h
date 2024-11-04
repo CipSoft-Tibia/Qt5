@@ -14,6 +14,7 @@
 //
 // We mean it.
 
+#include <private/qqmljscontextualtypes_p.h>
 #include <private/qtqmlcompilerexports_p.h>
 
 #include "qqmljsannotation_p.h"
@@ -285,11 +286,13 @@ protected:
         QQmlJS::SourceLocation location;
     };
 
-    struct PendingMethodType
+    struct PendingMethodTypeAnnotations
     {
         QQmlJSScope::Ptr scope;
         QString methodName;
-        QQmlJS::SourceLocation location;
+        // This keeps type annotations' locations in order (parameters then return type).
+        // If an annotation is not present, it is represented by an invalid source location.
+        QVarLengthArray<QQmlJS::SourceLocation, 3> locations;
     };
 
     struct PendingPropertyObjectBinding
@@ -329,7 +332,7 @@ protected:
 
     QHash<QQmlJSScope::Ptr, QVector<QQmlJSScope::Ptr>> m_pendingDefaultProperties;
     QVector<PendingPropertyType> m_pendingPropertyTypes;
-    QVector<PendingMethodType> m_pendingMethodTypes;
+    QVector<PendingMethodTypeAnnotations> m_pendingMethodTypeAnnotations;
     QVector<PendingPropertyObjectBinding> m_pendingPropertyObjectBindings;
     QVector<RequiredProperty> m_requiredProperties;
     QVector<QQmlJSScope::Ptr> m_objectBindingScopes;

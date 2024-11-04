@@ -8,6 +8,14 @@ if(QT_FEATURE_qtgrpcgen)
     add_subdirectory(grpcgen)
 endif()
 
+if(NOT QT_INTERNAL_GRPC_TEST_MESSAGE_LATENCY_MSEC)
+    if (WIN32)
+        set(QT_INTERNAL_GRPC_TEST_MESSAGE_LATENCY_MSEC 2000)
+    else()
+        set(QT_INTERNAL_GRPC_TEST_MESSAGE_LATENCY_MSEC 300)
+    endif()
+endif()
+
 add_subdirectory(protobuf)
 if(QT_FEATURE_grpc AND TARGET Qt6::qtprotobufgen AND TARGET Qt6::qtgrpcgen)
     add_subdirectory(grpc)
@@ -17,8 +25,8 @@ if(TARGET Qt6::qtprotobufgen AND TARGET Qt6::Quick AND TARGET Qt6::QuickTest)
     add_subdirectory(protobufqml)
 endif()
 
-if(TARGET Qt6::qtgrpcgen AND TARGET Qt6::Quick AND TARGET Qt6::QuickTest)
-    add_subdirectory(grpcqml)
+if(TARGET Qt6::qtgrpcgen AND TARGET Qt6::GrpcQuick AND TARGET Qt6::QuickTest)
+    add_subdirectory(grpcquick)
 endif()
 
 if(TARGET Qt6::ProtobufQtCoreTypes

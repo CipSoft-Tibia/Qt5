@@ -1,0 +1,15 @@
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+/*!
+    \typealias QGrpcMetadata
+    \inmodule QtGrpc
+    \relates std::unordered_multimap<QByteArray, QByteArray>
+    \brief The QGrpcMetadata is an STL-style unordered multimap container.
+
+    Metadata contains information about a particular RPC call or channel
+    (such as authentication details) in the form of a list of key-value pairs,
+    where the keys are strings and the values are typically strings, but can
+    be binary data.
+*/
+

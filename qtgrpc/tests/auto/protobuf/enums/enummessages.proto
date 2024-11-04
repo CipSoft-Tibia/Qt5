@@ -93,3 +93,19 @@ enum TestEnumSecondInFile {
     TEST_ENUM_SIF_VALUE1 = 1;
     TEST_ENUM_SIF_VALUE2 = 2;
 }
+
+message A {
+    enum AEnum {
+        AVal0 = 0;
+        AVal1 = 1;
+    }
+    B.BEnum val = 1;
+}
+
+message B {
+    enum BEnum {
+        BVal0 = 0;
+        BVal1 = 1;
+    }
+    A.AEnum val = 1;
+}

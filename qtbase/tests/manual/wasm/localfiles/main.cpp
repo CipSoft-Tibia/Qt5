@@ -1,5 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <QtWidgets/QtWidgets>
 
 #include <emscripten/val.h>
@@ -91,7 +91,8 @@ private Q_SLOTS:
     {
         QFileDialog::getOpenFileContent(
             m_filterEdit->text(),
-            std::bind(&AppWindow::onFileContentReady, this, std::placeholders::_1, std::placeholders::_2));
+            std::bind(&AppWindow::onFileContentReady, this, std::placeholders::_1, std::placeholders::_2),
+            &m_loadFileUi);
     }
 
     void onSaveClicked()

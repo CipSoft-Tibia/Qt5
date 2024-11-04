@@ -67,9 +67,9 @@ class TestImageBacking : public SharedImageBacking {
   ProduceGLTexturePassthrough(SharedImageManager* manager,
                               MemoryTypeTracker* tracker) override;
 
-  // ProduceSkia creates a representation that is backed by |texture_|, which
-  // allows for the creation of SkImages from the representation.
-  std::unique_ptr<SkiaImageRepresentation> ProduceSkia(
+  // ProduceSkiaGanesh creates a representation that is backed by |texture_|,
+  // which allows for the creation of SkImages from the representation.
+  std::unique_ptr<SkiaGaneshImageRepresentation> ProduceSkiaGanesh(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker,
       scoped_refptr<SharedContextState> context_state) override;
@@ -78,9 +78,9 @@ class TestImageBacking : public SharedImageBacking {
   std::unique_ptr<DawnImageRepresentation> ProduceDawn(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker,
-      WGPUDevice device,
-      WGPUBackendType backend_type,
-      std::vector<WGPUTextureFormat> view_formats) override;
+      const wgpu::Device& device,
+      wgpu::BackendType backend_type,
+      std::vector<wgpu::TextureFormat> view_formats) override;
   std::unique_ptr<OverlayImageRepresentation> ProduceOverlay(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker) override;

@@ -20,6 +20,7 @@
 #include "dawn/common/SerialMap.h"
 #include "dawn/native/CallbackTaskManager.h"
 #include "dawn/native/Error.h"
+#include "dawn/native/ExecutionQueue.h"
 #include "dawn/native/Forward.h"
 #include "dawn/native/IntegerTypes.h"
 #include "dawn/native/ObjectBase.h"
@@ -45,11 +46,11 @@ struct TrackTaskCallback : CallbackTask {
     ExecutionSerial mSerial = kMaxExecutionSerial;
 };
 
-class QueueBase : public ApiObjectBase {
+class QueueBase : public ApiObjectBase, public ExecutionQueueBase {
   public:
     ~QueueBase() override;
 
-    static QueueBase* MakeError(DeviceBase* device);
+    static QueueBase* MakeError(DeviceBase* device, const char* label);
 
     ObjectType GetType() const override;
 
@@ -84,7 +85,7 @@ class QueueBase : public ApiObjectBase {
 
   protected:
     QueueBase(DeviceBase* device, const QueueDescriptor* descriptor);
-    QueueBase(DeviceBase* device, ObjectBase::ErrorTag tag);
+    QueueBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label);
     void DestroyImpl() override;
 
   private:
@@ -120,7 +121,7 @@ class QueueBase : public ApiObjectBase {
                                     const TextureDataLayout& dataLayout,
                                     const Extent3D* writeSize) const;
 
-    void SubmitInternal(uint32_t commandCount, CommandBufferBase* const* commands);
+    MaybeError SubmitInternal(uint32_t commandCount, CommandBufferBase* const* commands);
 
     SerialMap<ExecutionSerial, std::unique_ptr<TrackTaskCallback>> mTasksInFlight;
 };

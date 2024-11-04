@@ -79,20 +79,24 @@ class CORE_EXPORT DOMArrayBuffer : public DOMArrayBufferBase {
                 ExceptionState& exception_state);
 
   // Share the ArrayBuffer, even if it is non-shared. Such sharing is necessary
-  // for e.g. WebAudio which uses a separate thread for processing the
-  // ArrayBuffer while at the same time exposing a NonShared Float32Array.
-  bool ShareNonSharedForInternalUse(ArrayBufferContents& result) {
-    if (!Content()->BackingStore()) {
-      result.Detach();
-      return false;
-    }
-    Content()->ShareNonSharedForInternalUse(result);
-    return true;
-  }
+  // for e.g. WebAudio and WebCodecs which use a separate thread for processing
+  // the ArrayBuffer while at the same time exposing a NonShared TypedArray.
+  virtual bool ShareNonSharedForInternalUse(ArrayBufferContents& result);
 
   v8::MaybeLocal<v8::Value> Wrap(ScriptState*) override;
 
   void Trace(Visitor*) const override;
+
+  bool IsDetached() const override;
+
+  v8::Local<v8::Object> AssociateWithWrapper(
+      v8::Isolate* isolate,
+      const WrapperTypeInfo* wrapper_type_info,
+      v8::Local<v8::Object> wrapper) override;
+
+  bool has_non_main_world_wrappers() const {
+    return has_non_main_world_wrappers_;
+  }
 
  private:
   v8::Maybe<bool> TransferDetachable(v8::Isolate*,
@@ -104,6 +108,8 @@ class CORE_EXPORT DOMArrayBuffer : public DOMArrayBufferBase {
   // support only v8::String as the detach key type. It's also convenient that
   // we can write `array_buffer->SetDetachKey(isolate, "my key")`.
   TraceWrapperV8Reference<v8::String> detach_key_;
+
+  bool has_non_main_world_wrappers_ = false;
 };
 
 }  // namespace blink

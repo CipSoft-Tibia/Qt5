@@ -16,7 +16,6 @@
 
 namespace blink {
 
-class CanvasImageSource;
 class Color;
 
 // In our internal implementation, there are different kinds of canvas such as
@@ -52,7 +51,6 @@ class MODULES_EXPORT PaintRenderingContext2D : public ScriptWrappable,
   // is always clean, and unable to taint it.
   bool OriginClean() const final { return true; }
   void SetOriginTainted() final {}
-  bool WouldTaintOrigin(CanvasImageSource*) final { return false; }
 
   int Width() const final;
   int Height() const final;
@@ -73,9 +71,6 @@ class MODULES_EXPORT PaintRenderingContext2D : public ScriptWrappable,
   void setShadowBlur(double) final;
 
   sk_sp<PaintFilter> StateGetFilter() final;
-  void SnapshotStateForFilter() final {}
-
-  void ValidateStateStackWithCanvas(const cc::PaintCanvas*) const final;
 
   bool HasAlpha() const final { return context_settings_->alpha(); }
 
@@ -95,10 +90,9 @@ class MODULES_EXPORT PaintRenderingContext2D : public ScriptWrappable,
   DOMMatrix* getTransform() final;
   void resetTransform() final;
 
-  void FlushCanvas() final {}
+  void FlushCanvas(CanvasResourceProvider::FlushReason) final {}
 
   PaintRecord GetRecord();
-  cc::PaintCanvas* GetDrawingPaintCanvas();
 
   ExecutionContext* GetTopExecutionContext() const override {
     return global_scope_.Get();

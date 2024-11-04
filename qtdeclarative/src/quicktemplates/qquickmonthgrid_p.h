@@ -58,10 +58,10 @@ Q_SIGNALS:
     void titleChanged();
     void delegateChanged();
 
-    void pressed(const QDate &date);
-    void released(const QDate &date);
-    void clicked(const QDate &date);
-    void pressAndHold(const QDate &date);
+    void pressed(QDate date);
+    void released(QDate date);
+    void clicked(QDate date);
+    void pressAndHold(QDate date);
 
 protected:
     void componentComplete() override;
@@ -78,7 +78,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickMonthGrid)
 
 #endif // QQUICKMONTHGRID_P_H

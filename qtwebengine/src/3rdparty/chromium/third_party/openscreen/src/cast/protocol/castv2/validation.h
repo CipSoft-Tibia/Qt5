@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@
 #include "json/value.h"
 #include "platform/base/error.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Used to validate a JSON message against a JSON schema.
 std::vector<Error> Validate(const Json::Value& document,
@@ -23,7 +22,6 @@ std::vector<Error> ValidateStreamingMessage(const Json::Value& message);
 // Used to validate receiver messages, such as LAUNCH or STOP.
 std::vector<Error> ValidateReceiverMessage(const Json::Value& message);
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_PROTOCOL_CASTV2_VALIDATION_H_

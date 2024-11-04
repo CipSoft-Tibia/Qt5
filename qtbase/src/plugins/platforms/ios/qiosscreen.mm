@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include "qiosglobal.h"
 #include "qiosintegration.h"
 #include "qiosscreen.h"
@@ -321,7 +323,7 @@ void QIOSScreen::updateProperties()
     // and do not take split-view constraints into account, so we have to
     // combine the two to get the correct available geometry.
     QRect applicationFrame = QRectF::fromCGRect(m_uiScreen.qt_applicationFrame).toRect();
-    UIEdgeInsets safeAreaInsets = m_uiWindow.qt_safeAreaInsets;
+    UIEdgeInsets safeAreaInsets = m_uiWindow.safeAreaInsets;
     m_availableGeometry = m_geometry.adjusted(safeAreaInsets.left, safeAreaInsets.top,
         -safeAreaInsets.right, -safeAreaInsets.bottom).intersected(applicationFrame);
 

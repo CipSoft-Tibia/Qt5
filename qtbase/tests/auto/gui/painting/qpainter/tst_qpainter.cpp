@@ -1,6 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <qpainter.h>
@@ -171,6 +170,7 @@ private slots:
     void radialGradientRgb30();
 #endif
 
+    void radialGradient_QTBUG120332_ubsan();
     void fpe_pixmapTransform();
     void fpe_zeroLengthLines();
     void fpe_divByZero();
@@ -2093,21 +2093,22 @@ void tst_QPainter::clippedLines_data()
     QPen pen2(QColor(223, 223, 0, 223));
     pen2.setWidth(2);
 
-    QList<QLineF> lines;
-    lines << QLineF(15, 15, 65, 65)
-          << QLineF(14, 14, 66, 66)
-          << QLineF(16, 16, 64, 64)
-          << QLineF(65, 65, 15, 15)
-          << QLineF(66, 66, 14, 14)
-          << QLineF(64, 64, 14, 14)
-          << QLineF(15, 50, 15, 64)
-          << QLineF(15, 50, 15, 65)
-          << QLineF(15, 50, 15, 66)
-          << QLineF(15, 50, 64, 50)
-          << QLineF(15, 50, 65, 50)
-          << QLineF(15, 50, 66, 50);
+    const auto lines = {
+        QLineF(15, 15, 65, 65),
+        QLineF(14, 14, 66, 66),
+        QLineF(16, 16, 64, 64),
+        QLineF(65, 65, 15, 15),
+        QLineF(66, 66, 14, 14),
+        QLineF(64, 64, 14, 14),
+        QLineF(15, 50, 15, 64),
+        QLineF(15, 50, 15, 65),
+        QLineF(15, 50, 15, 66),
+        QLineF(15, 50, 64, 50),
+        QLineF(15, 50, 65, 50),
+        QLineF(15, 50, 66, 50),
+    };
 
-    foreach (QLineF line, lines) {
+    for (QLineF line : lines) {
         const QByteArray desc = "line (" + QByteArray::number(line.x1())
             + ", " + QByteArray::number(line.y1()) + ", "
             + QByteArray::number(line.x2()) + ", " + QByteArray::number(line.y2())
@@ -2508,6 +2509,12 @@ void tst_QPainter::drawhelper_blend_untransformed_data()
     setOpacity_data();
 }
 
+static const auto &defaultOpacities()
+{
+    static const std::array opacities = {qreal(0.0), 0.1 , 0.01, 0.4, 0.5, 0.6, 0.9, 1.0};
+    return opacities;
+}
+
 void tst_QPainter::drawhelper_blend_untransformed()
 {
     QFETCH(QImage::Format, destFormat);
@@ -2528,9 +2535,7 @@ void tst_QPainter::drawhelper_blend_untransformed()
     p.fillRect(paintRect, srcColor);
     p.end();
 
-    QList<qreal> opacities = (QList<qreal>() << 0.0 << 0.1  << 0.01 << 0.4
-                              << 0.5 << 0.6 << 0.9 << 1.0);
-    foreach (qreal opacity, opacities) {
+    for (qreal opacity : defaultOpacities()) {
         p.begin(&dest);
         p.fillRect(paintRect, destColor);
 
@@ -2585,9 +2590,7 @@ void tst_QPainter::drawhelper_blend_tiled_untransformed()
 
     const QBrush brush(src);
 
-    QList<qreal> opacities = (QList<qreal>() << 0.0 << 0.1  << 0.01 << 0.4
-                              << 0.5 << 0.6 << 0.9 << 1.0);
-    foreach (qreal opacity, opacities) {
+    for (qreal opacity : defaultOpacities()) {
         p.begin(&dest);
         p.fillRect(paintRect, destColor);
 
@@ -3796,10 +3799,10 @@ static QLinearGradient inverseGradient(QLinearGradient g)
 {
     QLinearGradient g2 = g;
 
-    QGradientStops stops = g.stops();
+    const QGradientStops stops = g.stops();
 
     QGradientStops inverse;
-    foreach (QGradientStop stop, stops)
+    for (const QGradientStop &stop : stops)
         inverse << QGradientStop(1 - stop.first, stop.second);
 
     g2.setStops(inverse);
@@ -3903,6 +3906,21 @@ void tst_QPainter::gradientPixelFormat()
     pb.end();
 
     QCOMPARE(a, b.convertToFormat(QImage::Format_ARGB32_Premultiplied));
+}
+
+void tst_QPainter::radialGradient_QTBUG120332_ubsan()
+{
+    // Check if Radial Gradient will cause division by zero or not when
+    // the center point coincide with the focal point.
+    QImage image(8, 8, QImage::Format_ARGB32_Premultiplied);
+    QPainter painter(&image);
+
+    QPointF center(0.5, 0.5);
+    QPointF focal(0.5, 0.5);
+    QRadialGradient gradient(center, 0.5, focal, 0.5);
+    gradient.setColorAt(0, Qt::blue);
+    gradient.setColorAt(1, Qt::red);
+    painter.fillRect(image.rect(), QBrush(gradient));
 }
 
 void tst_QPainter::gradientInterpolation()
@@ -4908,10 +4926,7 @@ void tst_QPainter::QTBUG25153_drawLine()
 {
     QImage image(2, 2, QImage::Format_RGB32);
 
-    QList<Qt::PenCapStyle> styles;
-    styles << Qt::FlatCap << Qt::SquareCap << Qt::RoundCap;
-
-    foreach (Qt::PenCapStyle style, styles) {
+    for (Qt::PenCapStyle style : {Qt::FlatCap, Qt::SquareCap, Qt::RoundCap}) {
         image.fill(0xffffffff);
         QPainter p(&image);
         p.setPen(QPen(Qt::black, 0, Qt::SolidLine, style));

@@ -53,7 +53,7 @@ class PaintFlags;
 
 namespace blink {
 
-struct CharacterRange;
+class NGShapeCache;
 class FontSelector;
 class ShapeCache;
 class TextRun;
@@ -144,9 +144,7 @@ class PLATFORM_EXPORT Font {
   // Glyph bounds will be the minimum rect containing all glyph strokes, in
   // coordinates using (<text run x position>, <baseline position>) as the
   // origin.
-  float Width(const TextRun&,
-              HashSet<const SimpleFontData*>* fallback_fonts = nullptr,
-              gfx::RectF* glyph_bounds = nullptr) const;
+  float Width(const TextRun&, gfx::RectF* glyph_bounds = nullptr) const;
 
   int OffsetForPosition(const TextRun&,
                         float position,
@@ -157,10 +155,6 @@ class PLATFORM_EXPORT Font {
                                   float height,
                                   int from = 0,
                                   int to = -1) const;
-  CharacterRange GetCharacterRange(const TextRun&,
-                                   unsigned from,
-                                   unsigned to) const;
-  Vector<CharacterRange> IndividualCharacterRanges(const TextRun&) const;
 
   // Returns a vector of same size as TextRun.length() with advances measured
   // in pixels from the left bounding box of the full TextRun to the left bound
@@ -196,6 +190,10 @@ class PLATFORM_EXPORT Font {
   // when, for whatever reason, the last resort font cannot be loaded.
   const SimpleFontData* PrimaryFont() const;
 
+  // Access the NG shape cache associated with this particular font object.
+  // Should *not* be retained across layout calls as it may become invalid.
+  NGShapeCache& GetNGShapeCache() const;
+
   // Access the shape cache associated with this particular font object.
   // Should *not* be retained across layout calls as it may become invalid.
   ShapeCache* GetShapeCache() const;
@@ -207,6 +205,12 @@ class PLATFORM_EXPORT Font {
 
   void SetCanShapeWordByWordForTesting(bool b) {
     EnsureFontFallbackList()->SetCanShapeWordByWordForTesting(b);
+  }
+
+  // Causes PrimaryFont to return nullptr, which is useful for simulating
+  // a situation where the "last resort font" did not load.
+  void NullifyPrimaryFontForTesting() {
+    EnsureFontFallbackList()->NullifyPrimarySimpleFontDataForTesting();
   }
 
   void ReportNotDefGlyph() const;

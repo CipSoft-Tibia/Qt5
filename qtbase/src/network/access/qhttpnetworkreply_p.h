@@ -42,6 +42,8 @@ Q_MOC_INCLUDE(<QtNetwork/QAuthenticator>)
 
 #include <private/qdecompresshelper_p.h>
 
+#include <QtCore/qpointer.h>
+
 QT_REQUIRE_CONFIG(http);
 
 QT_BEGIN_NAMESPACE
@@ -51,7 +53,7 @@ class QHttpNetworkConnectionChannel;
 class QHttpNetworkRequest;
 class QHttpNetworkConnectionPrivate;
 class QHttpNetworkReplyPrivate;
-class Q_AUTOTEST_EXPORT QHttpNetworkReply : public QObject, public QHttpNetworkHeader
+class Q_NETWORK_EXPORT QHttpNetworkReply : public QObject, public QHttpNetworkHeader
 {
     Q_OBJECT
 public:
@@ -71,10 +73,10 @@ public:
     void setContentLength(qint64 length) override;
 
     QList<QPair<QByteArray, QByteArray> > header() const override;
-    QByteArray headerField(const QByteArray &name, const QByteArray &defaultValue = QByteArray()) const override;
+    QByteArray headerField(QByteArrayView name, const QByteArray &defaultValue = QByteArray()) const override;
     void setHeaderField(const QByteArray &name, const QByteArray &data) override;
     void appendHeaderField(const QByteArray &name, const QByteArray &data);
-    void parseHeader(const QByteArray &header); // used for testing
+    void parseHeader(QByteArrayView header); // used for testing
 
     QHttpNetworkRequest request() const;
     void setRequest(const QHttpNetworkRequest &request);
@@ -170,14 +172,13 @@ public:
     QHttpNetworkReplyPrivate(const QUrl &newUrl = QUrl());
     ~QHttpNetworkReplyPrivate();
     qint64 readStatus(QAbstractSocket *socket);
-    bool parseStatus(const QByteArray &status);
+    bool parseStatus(QByteArrayView status);
     qint64 readHeader(QAbstractSocket *socket);
-    void parseHeader(const QByteArray &header);
+    void parseHeader(QByteArrayView header);
     void appendHeaderField(const QByteArray &name, const QByteArray &data);
     qint64 readBody(QAbstractSocket *socket, QByteDataBuffer *out);
     qint64 readBodyVeryFast(QAbstractSocket *socket, char *b);
     qint64 readBodyFast(QAbstractSocket *socket, QByteDataBuffer *rb);
-    bool findChallenge(bool forProxy, QByteArray &challenge) const;
     void clear();
     void clearHttpLayerInformation();
 

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcoreevent.h"
+#include "qcoreevent_p.h"
 #include "qcoreapplication.h"
 #include "qcoreapplication_p.h"
 
@@ -78,6 +79,8 @@ Q_TRACE_POINT(qtcore, QEvent_dtor, QEvent *event, QEvent::Type type);
     \value ChildAdded                       An object gets a child (QChildEvent).
     \value ChildPolished                    A widget child gets polished (QChildEvent).
     \value ChildRemoved                     An object loses a child (QChildEvent).
+    \value [since 6.7] ChildWindowAdded     A child window was added to the window.
+    \value [since 6.7] ChildWindowRemoved   A child window was removed from the window.
     \value Clipboard                        The clipboard contents have changed.
     \value Close                            Widget was closed (QCloseEvent).
     \value CloseSoftwareInputPanel          A widget wants to close the software input panel (SIP).
@@ -159,8 +162,12 @@ Q_TRACE_POINT(qtcore, QEvent_dtor, QEvent *event, QEvent::Type type);
     \value OrientationChange                The screens orientation has changes (QScreenOrientationChangeEvent).
     \value Paint                            Screen update necessary (QPaintEvent).
     \value PaletteChange                    Palette of the widget changed.
-    \value ParentAboutToChange              The widget parent is about to change.
-    \value ParentChange                     The widget parent has changed.
+    \value ParentAboutToChange              The object parent is about to change.
+                                            Only sent to some object types, such as QWidget.
+    \value ParentChange                     The object parent has changed.
+                                            Only sent to some object types, such as QWidget.
+    \value [since 6.7] ParentWindowAboutToChange The parent window is about to change.
+    \value [since 6.7] ParentWindowChange   The parent window has changed.
     \value PlatformPanel                    A platform specific panel has been requested.
     \value PlatformSurface                  A native platform surface has been created or is about to be destroyed (QPlatformSurfaceEvent).
     \omitvalue Pointer
@@ -433,8 +440,9 @@ struct QBasicAtomicBitField {
         QBasicAtomicInteger<uint> &entry = data[which / BitsPerInt];
         const uint old = entry.loadRelaxed();
         const uint bit = 1U << (which % BitsPerInt);
-        return !(old & bit) // wasn't taken
-            && entry.testAndSetRelaxed(old, old | bit); // still wasn't taken
+        if (old & bit)
+            return false;       // already taken
+        return (entry.fetchAndOrRelaxed(bit) & bit) == 0;
 
         // don't update 'next' here - it's unlikely that it will need
         // to be updated, in the general case, and having 'next'
@@ -638,18 +646,9 @@ Q_IMPL_EVENT_COMMON(QDynamicPropertyChangeEvent)
 */
 QDeferredDeleteEvent::QDeferredDeleteEvent()
     : QEvent(QEvent::DeferredDelete)
-    , level(0)
 { }
 
 Q_IMPL_EVENT_COMMON(QDeferredDeleteEvent)
-
-/*! \fn int QDeferredDeleteEvent::loopLevel() const
-
-    Returns the loop-level in which the event was posted. The
-    loop-level is set by QCoreApplication::postEvent().
-
-    \sa QObject::deleteLater()
-*/
 
 QT_END_NAMESPACE
 

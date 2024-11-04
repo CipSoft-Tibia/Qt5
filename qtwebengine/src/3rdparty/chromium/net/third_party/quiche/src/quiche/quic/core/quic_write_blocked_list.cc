@@ -9,7 +9,11 @@
 
 namespace quic {
 
-QuicWriteBlockedList::QuicWriteBlockedList() : last_priority_popped_(0) {
+QuicWriteBlockedList::QuicWriteBlockedList()
+    : last_priority_popped_(0),
+      respect_incremental_(
+          GetQuicReloadableFlag(quic_priority_respect_incremental)),
+      disable_batch_write_(GetQuicReloadableFlag(quic_disable_batch_write)) {
   memset(batch_write_stream_id_, 0, sizeof(batch_write_stream_id_));
   memset(bytes_left_for_batch_write_, 0, sizeof(bytes_left_for_batch_write_));
 }
@@ -35,21 +39,36 @@ QuicStreamId QuicWriteBlockedList::PopFront() {
     return static_stream_id;
   }
 
-  const auto id_and_priority =
+  const auto [id, priority] =
       priority_write_scheduler_.PopNextReadyStreamAndPriority();
-  const QuicStreamId id = std::get<0>(id_and_priority);
-  const spdy::SpdyPriority priority = std::get<1>(id_and_priority).urgency;
+  const spdy::SpdyPriority urgency = priority.urgency;
+  const bool incremental = priority.incremental;
+
+  last_priority_popped_ = urgency;
+
+  if (disable_batch_write_) {
+    QUIC_RELOADABLE_FLAG_COUNT_N(quic_disable_batch_write, 1, 3);
+
+    // Writes on incremental streams are not batched.  Not setting
+    // `batch_write_stream_id_` if the current write is incremental allows the
+    // write on the last non-incremental stream to continue if only incremental
+    // writes happened within this urgency bucket while that stream had no data
+    // to write.
+    if (!respect_incremental_ || !incremental) {
+      batch_write_stream_id_[urgency] = id;
+    }
+
+    return id;
+  }
 
   if (!priority_write_scheduler_.HasReadyStreams()) {
     // If no streams are blocked, don't bother latching.  This stream will be
-    // the first popped for its priority anyway.
-    batch_write_stream_id_[priority] = 0;
-    last_priority_popped_ = priority;
-  } else if (batch_write_stream_id_[priority] != id) {
+    // the first popped for its urgency anyway.
+    batch_write_stream_id_[urgency] = 0;
+  } else if (batch_write_stream_id_[urgency] != id) {
     // If newly latching this batch write stream, let it write 16k.
-    batch_write_stream_id_[priority] = id;
-    bytes_left_for_batch_write_[priority] = 16000;
-    last_priority_popped_ = priority;
+    batch_write_stream_id_[urgency] = id;
+    bytes_left_for_batch_write_[urgency] = 16000;
   }
 
   return id;
@@ -65,7 +84,7 @@ void QuicWriteBlockedList::RegisterStream(QuicStreamId stream_id,
     return;
   }
 
-  priority_write_scheduler_.RegisterStream(stream_id, priority);
+  priority_write_scheduler_.RegisterStream(stream_id, priority.http());
 }
 
 void QuicWriteBlockedList::UnregisterStream(QuicStreamId stream_id) {
@@ -78,11 +97,17 @@ void QuicWriteBlockedList::UnregisterStream(QuicStreamId stream_id) {
 void QuicWriteBlockedList::UpdateStreamPriority(
     QuicStreamId stream_id, const QuicStreamPriority& new_priority) {
   QUICHE_DCHECK(!static_stream_collection_.IsRegistered(stream_id));
-  priority_write_scheduler_.UpdateStreamPriority(stream_id, new_priority);
+  priority_write_scheduler_.UpdateStreamPriority(stream_id,
+                                                 new_priority.http());
 }
 
 void QuicWriteBlockedList::UpdateBytesForStream(QuicStreamId stream_id,
                                                 size_t bytes) {
+  if (disable_batch_write_) {
+    QUIC_RELOADABLE_FLAG_COUNT_N(quic_disable_batch_write, 2, 3);
+    return;
+  }
+
   if (batch_write_stream_id_[last_priority_popped_] == stream_id) {
     // If this was the last data stream popped by PopFront, update the
     // bytes remaining in its batch write.
@@ -96,9 +121,27 @@ void QuicWriteBlockedList::AddStream(QuicStreamId stream_id) {
     return;
   }
 
-  bool push_front =
+  if (respect_incremental_) {
+    QUIC_RELOADABLE_FLAG_COUNT(quic_priority_respect_incremental);
+    if (!priority_write_scheduler_.GetStreamPriority(stream_id).incremental) {
+      const bool push_front =
+          stream_id == batch_write_stream_id_[last_priority_popped_];
+      priority_write_scheduler_.MarkStreamReady(stream_id, push_front);
+      return;
+    }
+  }
+
+  if (disable_batch_write_) {
+    QUIC_RELOADABLE_FLAG_COUNT_N(quic_disable_batch_write, 3, 3);
+    priority_write_scheduler_.MarkStreamReady(stream_id,
+                                              /* push_front = */ false);
+    return;
+  }
+
+  const bool push_front =
       stream_id == batch_write_stream_id_[last_priority_popped_] &&
       bytes_left_for_batch_write_[last_priority_popped_] > 0;
+
   priority_write_scheduler_.MarkStreamReady(stream_id, push_front);
 }
 

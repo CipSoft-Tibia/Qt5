@@ -7,13 +7,11 @@
 #ifndef BASE_STRINGS_STRING_UTIL_H_
 #define BASE_STRINGS_STRING_UTIL_H_
 
-#include <ctype.h>
 #include <stdarg.h>   // va_list
 #include <stddef.h>
 #include <stdint.h>
 
 #include <initializer_list>
-#include <sstream>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -114,14 +112,6 @@ constexpr StringPiece16 MakeStringPiece16(Iter begin, Iter end) {
 template <typename Iter>
 constexpr WStringPiece MakeWStringPiece(Iter begin, Iter end) {
   return MakeBasicStringPiece<wchar_t>(begin, end);
-}
-
-// Convert a type with defined `operator<<` into a string.
-template <typename... Streamable>
-std::string StreamableToString(const Streamable&... values) {
-  std::ostringstream ss;
-  (ss << ... << values);
-  return ss.str();
 }
 
 // ASCII-specific tolower.  The standard library's tolower is locale sensitive,
@@ -429,6 +419,28 @@ inline bool IsAsciiAlphaNumeric(Char c) {
 template <typename Char>
 inline bool IsAsciiPrintable(Char c) {
   return c >= ' ' && c <= '~';
+}
+
+template <typename Char>
+inline bool IsAsciiControl(Char c) {
+  if constexpr (std::is_signed_v<Char>) {
+    if (c < 0) {
+      return false;
+    }
+  }
+  return c <= 0x1f || c == 0x7f;
+}
+
+template <typename Char>
+inline bool IsUnicodeControl(Char c) {
+  return IsAsciiControl(c) ||
+         // C1 control characters: http://unicode.org/charts/PDF/U0080.pdf
+         (c >= 0x80 && c <= 0x9F);
+}
+
+template <typename Char>
+inline bool IsAsciiPunctuation(Char c) {
+  return c > 0x20 && c < 0x7f && !IsAsciiAlphaNumeric(c);
 }
 
 template <typename Char>

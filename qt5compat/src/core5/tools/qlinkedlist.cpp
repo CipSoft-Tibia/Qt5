@@ -113,7 +113,8 @@ const QLinkedListData QLinkedListData::shared_null = {
     initializer lists.
 */
 
-/*! \fn template <class T> template<typename InputIterator> QLinkedList<T>::QLinkedList(InputIterator first, InputIterator last)
+/*! \fn template <class T> template<typename InputIterator, QtPrivate::IfIsInputIterator<InputIterator>> QLinkedList<T>::QLinkedList(
+            InputIterator first, InputIterator last)
     \since 5.14
 
     Constructs a list with the contents in the iterator range [\a first, \a last).

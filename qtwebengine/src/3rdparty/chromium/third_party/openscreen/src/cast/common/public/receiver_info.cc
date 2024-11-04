@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,9 +13,9 @@
 #include "absl/strings/str_replace.h"
 #include "discovery/mdns/public/mdns_constants.h"
 #include "util/osp_logging.h"
+#include "util/span_util.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 // Maximum size for the receiver model prefix at start of MDNS service instance
@@ -52,19 +52,6 @@ std::string CalculateInstanceId(const ReceiverInfo& info) {
   instance_name.append(receiver_id);
 
   return std::string(instance_name, 0, discovery::kMaxLabelLength);
-}
-
-// Returns the value for the provided |key| in the |txt| record if it exists;
-// otherwise, returns an empty string.
-std::string GetStringFromRecord(const discovery::DnsSdTxtRecord& txt,
-                                const std::string& key) {
-  std::string result;
-  const ErrorOr<discovery::DnsSdTxtRecord::ValueRef> value = txt.GetValue(key);
-  if (value.is_value()) {
-    const std::vector<uint8_t>& txt_value = value.value().get();
-    result.assign(txt_value.begin(), txt_value.end());
-  }
-  return result;
 }
 
 }  // namespace
@@ -143,7 +130,7 @@ ErrorOr<ReceiverInfo> DnsSdInstanceEndpointToReceiverInfo(
   }
 
   // 128-bit integer in hexadecimal format.
-  record.unique_id = GetStringFromRecord(endpoint.txt(), kUniqueIdKey);
+  record.unique_id = endpoint.txt().GetStringValue(kUniqueIdKey).value("");
   if (record.unique_id.empty()) {
     return {Error::Code::kParameterInvalid,
             "Missing receiver unique ID in record."};
@@ -151,49 +138,52 @@ ErrorOr<ReceiverInfo> DnsSdInstanceEndpointToReceiverInfo(
 
   // Cast protocol version supported. Begins at 2 and is incremented by 1 with
   // each version.
-  std::string a_decimal_number =
-      GetStringFromRecord(endpoint.txt(), kVersionKey);
-  if (a_decimal_number.empty()) {
+  auto version_value = endpoint.txt().GetStringValue(kVersionKey);
+  if (!version_value) {
     return {Error::Code::kParameterInvalid,
             "Missing Cast protocol version in record."};
   }
   constexpr int kMinVersion = 2;   // According to spec.
   constexpr int kMaxVersion = 99;  // Implied by spec (field is max of 2 bytes).
   int version;
-  if (!absl::SimpleAtoi(a_decimal_number, &version) || version < kMinVersion ||
-      version > kMaxVersion) {
+  if (!absl::SimpleAtoi(version_value.value(), &version) ||
+      version < kMinVersion || version > kMaxVersion) {
     return {Error::Code::kParameterInvalid,
             "Invalid Cast protocol version in record."};
   }
   record.protocol_version = static_cast<uint8_t>(version);
 
   // A bitset of receiver capabilities.
-  a_decimal_number = GetStringFromRecord(endpoint.txt(), kCapabilitiesKey);
-  if (a_decimal_number.empty()) {
+  auto capabilities_value = endpoint.txt().GetStringValue(kCapabilitiesKey);
+  if (!capabilities_value) {
     return {Error::Code::kParameterInvalid,
             "Missing receiver capabilities in record."};
   }
-  if (!absl::SimpleAtoi(a_decimal_number, &record.capabilities)) {
+  if (!absl::SimpleAtoi(capabilities_value.value(), &record.capabilities)) {
     return {Error::Code::kParameterInvalid,
             "Invalid receiver capabilities field in record."};
   }
 
   // Receiver status flag.
-  a_decimal_number = GetStringFromRecord(endpoint.txt(), kStatusKey);
-  if (a_decimal_number == "0") {
+  auto status_value = endpoint.txt().GetStringValue(kStatusKey);
+  if (!status_value) {
+    return {Error::Code::kParameterInvalid,
+            "Missing receiver status flag in record."};
+  } else if (status_value.value() == "0") {
     record.status = ReceiverStatus::kIdle;
-  } else if (a_decimal_number == "1") {
+  } else if (status_value.value() == "1") {
     record.status = ReceiverStatus::kBusy;
   } else {
     return {Error::Code::kParameterInvalid,
-            "Missing/Invalid receiver status flag in record."};
+            "Invalid receiver status flag in record."};
   }
 
   // [Optional] Receiver model name.
-  record.model_name = GetStringFromRecord(endpoint.txt(), kModelNameKey);
+  record.model_name = endpoint.txt().GetStringValue(kModelNameKey).value("");
 
   // The friendly name of the receiver.
-  record.friendly_name = GetStringFromRecord(endpoint.txt(), kFriendlyNameKey);
+  record.friendly_name =
+      endpoint.txt().GetStringValue(kFriendlyNameKey).value("");
   if (record.friendly_name.empty()) {
     return {Error::Code::kParameterInvalid,
             "Missing receiver friendly name in record."};
@@ -202,5 +192,4 @@ ErrorOr<ReceiverInfo> DnsSdInstanceEndpointToReceiverInfo(
   return record;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

@@ -31,6 +31,7 @@
 #include "connections/listeners.h"
 #include "connections/payload.h"
 #include "connections/status.h"
+#include "connections/v3/connection_listening_options.h"
 
 namespace nearby {
 namespace connections {
@@ -54,12 +55,20 @@ class OfflineServiceController : public ServiceController {
   void InjectEndpoint(ClientProxy* client, const std::string& service_id,
                       const OutOfBandConnectionMetadata& metadata) override;
 
+  std::pair<Status, std::vector<ConnectionInfoVariant>>
+  StartListeningForIncomingConnections(
+      ClientProxy* client, absl::string_view service_id,
+      v3::ConnectionListener listener,
+      const v3::ConnectionListeningOptions& options) override;
+
+  void StopListeningForIncomingConnections(ClientProxy* client) override;
+
   Status RequestConnection(
       ClientProxy* client, const std::string& endpoint_id,
       const ConnectionRequestInfo& info,
       const ConnectionOptions& connection_options) override;
   Status AcceptConnection(ClientProxy* client, const std::string& endpoint_id,
-                          const PayloadListener& listener) override;
+                          PayloadListener listener) override;
   Status RejectConnection(ClientProxy* client,
                           const std::string& endpoint_id) override;
 
@@ -73,6 +82,14 @@ class OfflineServiceController : public ServiceController {
 
   void DisconnectFromEndpoint(ClientProxy* client,
                               const std::string& endpoint_id) override;
+
+  Status UpdateAdvertisingOptions(
+      ClientProxy* client, absl::string_view service_id,
+      const AdvertisingOptions& advertising_options) override;
+
+  Status UpdateDiscoveryOptions(
+      ClientProxy* client, absl::string_view service_id,
+      const DiscoveryOptions& discovery_options) override;
 
   void Stop() override;
 

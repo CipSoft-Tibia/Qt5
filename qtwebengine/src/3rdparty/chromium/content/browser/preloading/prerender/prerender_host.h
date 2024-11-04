@@ -12,20 +12,14 @@
 #include "base/observer_list.h"
 #include "base/observer_list_types.h"
 #include "base/types/pass_key.h"
-#include "content/browser/preloading/preloading_attempt_impl.h"
 #include "content/browser/preloading/prerender/prerender_attributes.h"
 #include "content/browser/preloading/prerender/prerender_final_status.h"
-#include "content/browser/renderer_host/back_forward_cache_impl.h"
 #include "content/browser/renderer_host/frame_tree.h"
 #include "content/browser/renderer_host/navigation_controller_delegate.h"
-#include "content/browser/renderer_host/stored_page.h"
 #include "content/common/content_export.h"
-#include "content/public/browser/global_routing_id.h"
-#include "content/public/browser/navigation_handle.h"
-#include "content/public/browser/preloading_data.h"
 #include "content/public/browser/render_frame_host.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/blink/public/mojom/navigation/navigation_params.mojom.h"
+#include "third_party/blink/public/mojom/navigation/navigation_params.mojom-forward.h"
 #include "url/gurl.h"
 
 namespace blink {
@@ -36,17 +30,14 @@ namespace network::mojom {
 enum class WebClientHintsType;
 }  // namespace network::mojom
 
-namespace url {
-class Origin;
-}  // namespace url
-
 namespace content {
 
+class DevToolsPrerenderAttempt;
 class FrameTreeNode;
+class PrerenderCancellationReason;
 class PrerenderHostRegistry;
 class RenderFrameHostImpl;
 class WebContentsImpl;
-class PrerenderCancellationReason;
 
 // Prerender2:
 // PrerenderHost creates a new FrameTree in WebContents associated with the page
@@ -92,6 +83,8 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
     kMaxValue = kRequestDestination,
   };
 
+  // Observes a triggered prerender. Note that the observer should overlive the
+  // prerender host instance, or be removed properly upon destruction.
   class Observer : public base::CheckedObserver {
    public:
     // Called on the page activation.
@@ -103,16 +96,25 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
   };
 
   // Returns the PrerenderHost that the given `frame_tree_node` is in, if it is
-  // being prerendered. Note that this function returns a nullptr if the
-  // prerender has been canceled.
-  // TODO(https://crbug.com/1355279): Always return a non-null ptr if the
-  // frame_tree_node is in a prerendering tree.
-  static PrerenderHost* GetPrerenderHostFromFrameTreeNode(
+  // being prerendered.
+  static PrerenderHost* GetFromFrameTreeNodeIfPrerendering(
       FrameTreeNode& frame_tree_node);
+  // Similar to GetPrerenderHostFromFrameTreeNode() but `frame_tree_node` must
+  // be in prerendering.
+  static PrerenderHost& GetFromFrameTreeNode(FrameTreeNode& frame_tree_node);
+
+  // Checks whether two headers are the same in a case-insensitive and
+  // order-insensitive way.
+  // TODO(https://crbug.com/1443922): Migrate this method into
+  // `HttpRequestHeaders`.
+  static bool IsActivationHeaderMatch(
+      const net::HttpRequestHeaders& potential_activation_headers,
+      const net::HttpRequestHeaders& prerender_headers);
 
   PrerenderHost(const PrerenderAttributes& attributes,
                 WebContentsImpl& web_contents,
-                base::WeakPtr<PreloadingAttempt> attempt);
+                base::WeakPtr<PreloadingAttempt> attempt,
+                std::unique_ptr<DevToolsPrerenderAttempt> devtools_attempt);
   ~PrerenderHost() override;
 
   PrerenderHost(const PrerenderHost&) = delete;
@@ -126,8 +128,8 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
   // now as it confuses WebContentsObserver instances because they can not
   // distinguish between the different FrameTrees.
 
-  void DidStartLoading(FrameTreeNode* frame_tree_node,
-                       bool should_show_loading_ui) override {}
+  void LoadingStateChanged(LoadingState new_state) override {}
+  void DidStartLoading(FrameTreeNode* frame_tree_node) override {}
   void DidStopLoading() override;
   bool IsHidden() override;
   FrameTree* LoadingTree() override;
@@ -241,6 +243,11 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
     return attributes_.initiator_origin;
   }
 
+  absl::optional<base::UnguessableToken> initiator_devtools_navigation_token()
+      const {
+    return attributes_.initiator_devtools_navigation_token;
+  }
+
   const GURL& prerendering_url() const { return attributes_.prerendering_url; }
 
   bool IsBrowserInitiated() { return attributes_.IsBrowserInitiated(); }
@@ -268,6 +275,10 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
     return attributes_.embedder_histogram_suffix;
   }
 
+  absl::optional<blink::mojom::SpeculationEagerness> eagerness() const {
+    return attributes_.eagerness;
+  }
+
   base::WeakPtr<PreloadingAttempt> preloading_attempt() { return attempt_; }
 
  private:
@@ -280,8 +291,7 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
   // PreloadingFailureReason for PreloadingAttempt associated with this
   // PrerenderHost.
   void SetTriggeringOutcome(PreloadingTriggeringOutcome outcome);
-  void SetEligibility(PreloadingEligibility eligibility);
-  void SetFailureReason(PrerenderFinalStatus status);
+  void SetFailureReason(const PrerenderCancellationReason& reason);
 
   ActivationNavigationParamsMatch
   AreBeginNavigationParamsCompatibleWithNavigation(
@@ -308,6 +318,7 @@ class CONTENT_EXPORT PrerenderHost : public FrameTree::Delegate,
   // We use a WeakPtr here to avoid inadvertent UAF. `attempt_` can get deleted
   // before `PrerenderHostRegistry::DeleteAbandonedHosts` is scheduled.
   base::WeakPtr<PreloadingAttempt> attempt_;
+  std::unique_ptr<DevToolsPrerenderAttempt> devtools_attempt_;
   // Navigation parameters for the navigation which loaded the main document of
   // the prerendered page, copied immediately after BeginNavigation when
   // throttles are created. They will be compared with the navigation parameters

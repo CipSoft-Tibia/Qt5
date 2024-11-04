@@ -14,6 +14,7 @@
 #include "base/strings/string_piece.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/task_environment.h"
+#include "components/autofill/core/common/unique_ids.h"
 #include "components/password_manager/core/browser/mock_password_store_interface.h"
 #include "components/password_manager/core/browser/password_form.h"
 #include "components/password_manager/core/browser/password_manager_util.h"
@@ -42,11 +43,14 @@ PasswordForm CreateObserved() {
 
 // Creates a dummy pending (for saving) form with some basic arbitrary values
 // and |username| and |password| values as specified.
-PasswordForm CreatePending(base::StringPiece16 username,
-                           base::StringPiece16 password) {
+PasswordForm CreatePending(
+    base::StringPiece16 username,
+    base::StringPiece16 password,
+    PasswordForm::MatchType match_type = PasswordForm::MatchType::kExact) {
   PasswordForm form = CreateObserved();
   form.username_value = std::u16string(username);
   form.password_value = std::u16string(password);
+  form.match_type = match_type;
   return form;
 }
 
@@ -198,7 +202,7 @@ TEST_P(FormSaverImplSaveTest, Write_AndDoNotDeleteEmptyUsernamePSLCredentials) {
   PasswordForm stored = pending;
   PasswordForm no_username_psl = pending;
   no_username_psl.username_value.clear();
-  no_username_psl.is_public_suffix_match = true;
+  no_username_psl.match_type = PasswordForm::MatchType::kPSL;
   const std::vector<const PasswordForm*> matches = {&stored, &no_username_psl};
 
   EXPECT_CALL(*mock_store_, RemoveLogin(_)).Times(0);
@@ -239,10 +243,10 @@ TEST_P(FormSaverImplSaveTest, Write_AndUpdatePasswordValuesOnPSLMatch) {
   constexpr char16_t kOldPassword[] = u"old_password";
   constexpr char16_t kNewPassword[] = u"new_password";
 
-  PasswordForm duplicate = CreatePending(u"nameofuser", kOldPassword);
+  PasswordForm duplicate =
+      CreatePending(u"nameofuser", kOldPassword, PasswordForm::MatchType::kPSL);
   duplicate.url = GURL("https://www.example.in");
   duplicate.signon_realm = duplicate.url.spec();
-  duplicate.is_public_suffix_match = true;
 
   PasswordForm expected_update = duplicate;
   expected_update.password_value = kNewPassword;
@@ -332,7 +336,9 @@ TEST_F(FormSaverImplTest, Blocklist) {
   observed.username_element = u"user";
   observed.password_value = u"12345";
   observed.password_element = u"password";
-  observed.all_possible_usernames = {{u"user2", u"field"}};
+  observed.all_alternative_usernames = {{AlternativeElement::Value(u"user2"),
+                                         autofill::FieldRendererId(1),
+                                         AlternativeElement::Name(u"field")}};
   observed.url = GURL("https://www.example.com/foobar");
 
   PasswordForm blocklisted =

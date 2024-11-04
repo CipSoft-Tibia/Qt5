@@ -113,10 +113,11 @@ uintptr_t NextAlignedWithOffset(uintptr_t address,
 
   uintptr_t actual_offset = address & (alignment - 1);
   uintptr_t new_address;
-  if (actual_offset <= requested_offset)
+  if (actual_offset <= requested_offset) {
     new_address = address + requested_offset - actual_offset;
-  else
+  } else {
     new_address = address + alignment + requested_offset - actual_offset;
+  }
   PA_DCHECK(new_address >= address);
   PA_DCHECK(new_address - address < alignment);
   PA_DCHECK(new_address % alignment == requested_offset);
@@ -135,8 +136,9 @@ uintptr_t SystemAllocPages(uintptr_t hint,
   PA_DCHECK(!(hint & internal::PageAllocationGranularityOffsetMask()));
   uintptr_t ret = internal::SystemAllocPagesInternal(
       hint, length, accessibility, page_tag, file_descriptor_for_shared_alloc);
-  if (ret)
+  if (ret) {
     g_total_mapped_address_space.fetch_add(length, std::memory_order_relaxed);
+  }
 
   return ret;
 }
@@ -210,14 +212,16 @@ uintptr_t AllocPagesWithAlignOffset(
                                     file_descriptor_for_shared_alloc);
     if (ret) {
       // If the alignment is to our liking, we're done.
-      if ((ret & align_offset_mask) == align_offset)
+      if ((ret & align_offset_mask) == align_offset) {
         return ret;
+      }
       // Free the memory and try again.
       FreePages(ret, length);
     } else {
       // |ret| is null; if this try was unhinted, we're OOM.
-      if (internal::kHintIsAdvisory || !address)
+      if (internal::kHintIsAdvisory || !address) {
         return 0;
+      }
     }
 
 #if defined(ARCH_CPU_32_BITS)
@@ -300,13 +304,19 @@ void DecommitSystemPages(
                       accessibility_disposition);
 }
 
-void DecommitAndZeroSystemPages(uintptr_t address, size_t length) {
+void DecommitAndZeroSystemPages(uintptr_t address,
+                                size_t length,
+                                PageTag page_tag) {
   PA_DCHECK(!(address & internal::SystemPageOffsetMask()));
   PA_DCHECK(!(length & internal::SystemPageOffsetMask()));
-  internal::DecommitAndZeroSystemPagesInternal(address, length);
+  internal::DecommitAndZeroSystemPagesInternal(address, length, page_tag);
 }
-void DecommitAndZeroSystemPages(void* address, size_t length) {
-  DecommitAndZeroSystemPages(reinterpret_cast<uintptr_t>(address), length);
+
+void DecommitAndZeroSystemPages(void* address,
+                                size_t length,
+                                PageTag page_tag) {
+  DecommitAndZeroSystemPages(reinterpret_cast<uintptr_t>(address), length,
+                             page_tag);
 }
 
 void RecommitSystemPages(
@@ -368,8 +378,9 @@ bool ReserveAddressSpace(size_t size) {
 bool ReleaseReservation() {
   // To avoid deadlock, call only FreePages.
   internal::ScopedGuard guard(GetReserveLock());
-  if (!s_reservation_address)
+  if (!s_reservation_address) {
     return false;
+  }
 
   FreePages(s_reservation_address, s_reservation_size);
   s_reservation_address = 0;

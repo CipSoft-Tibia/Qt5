@@ -48,24 +48,13 @@ def compute_breakdown(tp: TraceProcessor,
   """)
 
   tp.query("""
+    INCLUDE PERFETTO MODULE android.slices;
     CREATE VIEW modded_names AS
     SELECT
       slice.id,
       slice.depth,
       slice.stack_id,
-      CASE
-        WHEN slice.name LIKE 'Choreographer#doFrame%'
-          THEN 'Choreographer#doFrame'
-        WHEN slice.name LIKE 'DrawFrames%'
-          THEN 'DrawFrames'
-        WHEN slice.name LIKE '/data/app%.apk'
-          THEN 'APK load'
-        WHEN slice.name LIKE 'OpenDexFilesFromOat%'
-          THEN 'OpenDexFilesFromOat'
-        WHEN slice.name LIKE 'Open oat file%'
-          THEN 'Open oat file'
-        ELSE slice.name
-      END AS modded_name
+      ANDROID_STANDARDIZE_SLICE_NAME(slice.name) AS modded_name
     FROM slice
   """)
 
@@ -191,7 +180,7 @@ def compute_breakdown_for_startup(tp: TraceProcessor,
   # name.
   filter = "WHERE package = '{}'".format(package_name) if package_name else ''
   launches = tp.query(f'''
-    SELECT IMPORT('android.startup.startups');
+    INCLUDE PERFETTO MODULE android.startup.startups;
 
     SELECT ts, ts_end, dur
     FROM android_startups

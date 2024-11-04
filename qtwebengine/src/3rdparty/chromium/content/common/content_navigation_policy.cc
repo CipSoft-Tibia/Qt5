@@ -167,6 +167,7 @@ const char kRenderDocumentLevelParameterName[] = "level";
 constexpr base::FeatureParam<RenderDocumentLevel>::Option
     render_document_levels[] = {
         {RenderDocumentLevel::kCrashedFrame, "crashed-frame"},
+        {RenderDocumentLevel::kNonLocalRootSubframe, "non-local-root-subframe"},
         {RenderDocumentLevel::kSubframe, "subframe"},
         {RenderDocumentLevel::kAllFrames, "all-frames"}};
 const base::FeatureParam<RenderDocumentLevel> render_document_level{
@@ -183,8 +184,26 @@ std::string GetRenderDocumentLevelName(RenderDocumentLevel level) {
   return render_document_level.GetName(level);
 }
 
-bool ShouldCreateNewHostForSameSiteSubframe() {
-  return GetRenderDocumentLevel() >= RenderDocumentLevel::kSubframe;
+bool ShouldCreateNewRenderFrameHostOnSameSiteNavigation(
+    bool is_main_frame,
+    bool is_local_root,
+    bool has_committed_any_navigation,
+    bool must_be_replaced) {
+  if (must_be_replaced) {
+    return true;
+  }
+  if (!has_committed_any_navigation) {
+    return false;
+  }
+  RenderDocumentLevel level = GetRenderDocumentLevel();
+  if (is_main_frame) {
+    CHECK(is_local_root);
+    return level >= RenderDocumentLevel::kAllFrames;
+  }
+  if (is_local_root) {
+    return level >= RenderDocumentLevel::kSubframe;
+  }
+  return level >= RenderDocumentLevel::kNonLocalRootSubframe;
 }
 
 bool ShouldCreateNewHostForAllFrames() {
@@ -198,6 +217,41 @@ bool ShouldSkipEarlyCommitPendingForCrashedFrame() {
   return skip_early_commit_pending_for_crashed_frame;
 }
 
+static constexpr base::FeatureParam<NavigationQueueingFeatureLevel>::Option
+    kNavigationQueueingFeatureLevels[] = {
+        {NavigationQueueingFeatureLevel::kNone, "none"},
+        {NavigationQueueingFeatureLevel::kAvoidRedundantCancellations,
+         "avoid-redundant"},
+        {NavigationQueueingFeatureLevel::kFull, "full"}};
+const base::FeatureParam<NavigationQueueingFeatureLevel>
+    kNavigationQueueingFeatureLevelParam{
+        &features::kQueueNavigationsWhileWaitingForCommit, "queueing_level",
+        NavigationQueueingFeatureLevel::kFull,
+        &kNavigationQueueingFeatureLevels};
+
+NavigationQueueingFeatureLevel GetNavigationQueueingFeatureLevel() {
+  if (GetRenderDocumentLevel() >= RenderDocumentLevel::kNonLocalRootSubframe) {
+    // When RenderDocument is enabled with a level of "non-local-root-subframe"
+    // or more, navigation queueing needs to be enabled too, to avoid crashes.
+    return NavigationQueueingFeatureLevel::kFull;
+  }
+  if (base::FeatureList::IsEnabled(
+          features::kQueueNavigationsWhileWaitingForCommit)) {
+    return kNavigationQueueingFeatureLevelParam.Get();
+  }
+  return NavigationQueueingFeatureLevel::kNone;
+}
+
+bool ShouldAvoidRedundantNavigationCancellations() {
+  return GetNavigationQueueingFeatureLevel() >=
+         NavigationQueueingFeatureLevel::kAvoidRedundantCancellations;
+}
+
+bool ShouldQueueNavigationsWhenPendingCommitRFHExists() {
+  return GetNavigationQueueingFeatureLevel() ==
+         NavigationQueueingFeatureLevel::kFull;
+}
+
 bool ShouldRestrictCanAccessDataForOriginToUIThread() {
   // Only restrict calls to the UI thread if the feature is enabled, and if the
   // new blob URL support is enabled.
@@ -206,4 +260,9 @@ bool ShouldRestrictCanAccessDataForOriginToUIThread() {
          base::FeatureList::IsEnabled(
              net::features::kSupportPartitionedBlobUrl);
 }
+
+bool ShouldCreateSiteInstanceForDataUrls() {
+  return base::FeatureList::IsEnabled(features::kSiteInstanceGroupsForDataUrls);
+}
+
 }  // namespace content

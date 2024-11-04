@@ -14,6 +14,8 @@
 #include "qquickstyle.h"
 #include "qquickstyleoption.h"
 
+#include <QtCore/qpointer.h>
+
 // Work-around for now, to avoid creator getting confused
 // about missing macros. Should eventually be defined
 // in qt declarative somewhere I assume.
@@ -273,7 +275,5 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(QQuickStyleItem::DebugFlags)
 #endif
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickStyleItem)
 
 #endif // QQUICKSTYLEITEM_H

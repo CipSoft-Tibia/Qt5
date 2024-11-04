@@ -179,6 +179,7 @@ int CheckPDFiumCApi() {
     CHK(FPDFImageObj_GetImageFilter);
     CHK(FPDFImageObj_GetImageFilterCount);
     CHK(FPDFImageObj_GetImageMetadata);
+    CHK(FPDFImageObj_GetImagePixelSize);
     CHK(FPDFImageObj_GetRenderedBitmap);
     CHK(FPDFImageObj_LoadJpegFile);
     CHK(FPDFImageObj_LoadJpegFileInline);
@@ -311,7 +312,7 @@ int CheckPDFiumCApi() {
     CHK(FPDFPage_HasFormFieldAtPoint);
     CHK(FPDF_FFLDraw);
 #if defined(_SKIA_SUPPORT_)
-    CHK(FPDF_FFLRecord);
+    CHK(FPDF_FFLDrawSkia);
 #endif
     CHK(FPDF_GetFormType);
     CHK(FPDF_LoadXFA);
@@ -430,6 +431,7 @@ int CheckPDFiumCApi() {
     CHK(FPDFText_GetUnicode);
     CHK(FPDFText_HasUnicodeMapError);
     CHK(FPDFText_IsGenerated);
+    CHK(FPDFText_IsHyphen);
     CHK(FPDFText_LoadPage);
 
     // fpdf_thumbnail.h
@@ -517,7 +519,7 @@ int CheckPDFiumCApi() {
     CHK(FPDF_RenderPageBitmap);
     CHK(FPDF_RenderPageBitmapWithMatrix);
 #if defined(_SKIA_SUPPORT_)
-    CHK(FPDF_RenderPageSkp);
+    CHK(FPDF_RenderPageSkia);
 #endif
 #if defined(_WIN32)
     CHK(FPDF_SetPrintMode);

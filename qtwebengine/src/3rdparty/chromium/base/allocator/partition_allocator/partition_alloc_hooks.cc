@@ -68,11 +68,10 @@ void PartitionAllocHooks::SetOverrideHooks(AllocationOverrideHook* alloc_hook,
 }
 
 void PartitionAllocHooks::AllocationObserverHookIfEnabled(
-    void* address,
-    size_t size,
-    const char* type_name) {
-  if (auto* hook = allocation_observer_hook_.load(std::memory_order_relaxed))
-    hook(address, size, type_name);
+    const partition_alloc::AllocationNotificationData& notification_data) {
+  if (auto* hook = allocation_observer_hook_.load(std::memory_order_relaxed)) {
+    hook(notification_data);
+  }
 }
 
 bool PartitionAllocHooks::AllocationOverrideHookIfEnabled(
@@ -80,34 +79,37 @@ bool PartitionAllocHooks::AllocationOverrideHookIfEnabled(
     unsigned int flags,
     size_t size,
     const char* type_name) {
-  if (auto* hook = allocation_override_hook_.load(std::memory_order_relaxed))
+  if (auto* hook = allocation_override_hook_.load(std::memory_order_relaxed)) {
     return hook(out, flags, size, type_name);
+  }
   return false;
 }
 
-void PartitionAllocHooks::FreeObserverHookIfEnabled(void* address) {
-  if (auto* hook = free_observer_hook_.load(std::memory_order_relaxed))
-    hook(address);
+void PartitionAllocHooks::FreeObserverHookIfEnabled(
+    const FreeNotificationData& notification_data) {
+  if (auto* hook = free_observer_hook_.load(std::memory_order_relaxed)) {
+    hook(notification_data);
+  }
 }
 
 bool PartitionAllocHooks::FreeOverrideHookIfEnabled(void* address) {
-  if (auto* hook = free_override_hook_.load(std::memory_order_relaxed))
+  if (auto* hook = free_override_hook_.load(std::memory_order_relaxed)) {
     return hook(address);
+  }
   return false;
 }
 
-void PartitionAllocHooks::ReallocObserverHookIfEnabled(void* old_address,
-                                                       void* new_address,
-                                                       size_t size,
-                                                       const char* type_name) {
+void PartitionAllocHooks::ReallocObserverHookIfEnabled(
+    const FreeNotificationData& free_notification_data,
+    const AllocationNotificationData& allocation_notification_data) {
   // Report a reallocation as a free followed by an allocation.
   AllocationObserverHook* allocation_hook =
       allocation_observer_hook_.load(std::memory_order_relaxed);
   FreeObserverHook* free_hook =
       free_observer_hook_.load(std::memory_order_relaxed);
   if (allocation_hook && free_hook) {
-    free_hook(old_address);
-    allocation_hook(new_address, size, type_name);
+    free_hook(free_notification_data);
+    allocation_hook(allocation_notification_data);
   }
 }
 
@@ -120,6 +122,8 @@ bool PartitionAllocHooks::ReallocOverrideHookIfEnabled(size_t* out,
   return false;
 }
 
+// Do not unset the hook if there are remaining quarantined slots
+// not to break checks on unquarantining.
 void PartitionAllocHooks::SetQuarantineOverrideHook(
     QuarantineOverrideHook* hook) {
   quarantine_override_hook_.store(hook, std::memory_order_release);

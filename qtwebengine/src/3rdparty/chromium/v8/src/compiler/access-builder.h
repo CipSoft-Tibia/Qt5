@@ -60,7 +60,7 @@ class V8_EXPORT_PRIVATE AccessBuilder final
 
   // Provides access to JSObject inobject property fields.
   static FieldAccess ForJSObjectInObjectProperty(
-      const MapRef& map, int index,
+      MapRef map, int index,
       MachineType machine_type = MachineType::AnyTagged());
   static FieldAccess ForJSObjectOffset(
       int offset, WriteBarrierKind write_barrier_kind = kFullWriteBarrier);
@@ -89,14 +89,14 @@ class V8_EXPORT_PRIVATE AccessBuilder final
   // Provides access to JSFunction::context() field.
   static FieldAccess ForJSFunctionContext();
 
+  // Provides access to JSFunction::code() field.
+  static FieldAccess ForJSFunctionCode();
+
   // Provides access to JSFunction::shared() field.
   static FieldAccess ForJSFunctionSharedFunctionInfo();
 
   // Provides access to JSFunction::feedback_cell() field.
   static FieldAccess ForJSFunctionFeedbackCell();
-
-  // Provides access to JSFunction::code() field.
-  static FieldAccess ForJSFunctionCode();
 
   // Provides access to JSBoundFunction::bound_target_function() field.
   static FieldAccess ForJSBoundFunctionBoundTargetFunction();
@@ -241,6 +241,9 @@ class V8_EXPORT_PRIVATE AccessBuilder final
 
   // Provides access to Name::raw_hash_field() field.
   static FieldAccess ForNameRawHashField();
+
+  // Provides access to FreeSpace::size() field
+  static FieldAccess ForFreeSpaceSize();
 
   // Provides access to String::length() field.
   static FieldAccess ForStringLength();

@@ -14,12 +14,6 @@
 
 package common
 
-import (
-	"dawn.googlesource.com/dawn/tools/src/fileutils"
-	"go.chromium.org/luci/auth"
-	"go.chromium.org/luci/hardcoded/chromeinfra"
-)
-
 const (
 	// RollSubjectPrefix is the subject prefix for CTS roll changes
 	RollSubjectPrefix = "Roll third_party/webgpu-cts/ "
@@ -27,11 +21,3 @@ const (
 	// DefaultCacheDir is the default directory for the results cache
 	DefaultCacheDir = "~/.cache/webgpu-cts-results"
 )
-
-// DefaultAuthOptions returns the default authentication options for use by
-// command line arguments.
-func DefaultAuthOptions() auth.Options {
-	def := chromeinfra.DefaultAuthOptions()
-	def.SecretsDir = fileutils.ExpandHome("~/.config/dawn-cts")
-	return def
-}

@@ -20,6 +20,9 @@
 
 QT_BEGIN_NAMESPACE
 
+class QIODevice;
+class QFile;
+
 namespace QFFmpeg {
 
 class EncodingFormatContext
@@ -30,21 +33,24 @@ public:
 
     void openAVIO(const QString &filePath);
 
+    void openAVIO(QIODevice *device);
+
     bool isAVIOOpen() const { return m_avFormatContext->pb != nullptr; }
 
     void closeAVIO();
 
-    operator AVFormatContext *() { return m_avFormatContext; }
-    operator const AVFormatContext *() const { return m_avFormatContext; }
+    AVFormatContext *avFormatContext() { return m_avFormatContext; }
 
-    AVFormatContext *operator->() { return m_avFormatContext; }
-    const AVFormatContext *operator->() const { return m_avFormatContext; }
+    const AVFormatContext *avFormatContext() const { return m_avFormatContext; }
 
 private:
     Q_DISABLE_COPY_MOVE(EncodingFormatContext)
 
+    void openAVIOWithQFile(const QString &filePath);
+
 private:
     AVFormatContext *m_avFormatContext;
+    std::unique_ptr<QFile> m_outputFile;
 };
 
 } // namespace QFFmpeg

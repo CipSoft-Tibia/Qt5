@@ -2261,7 +2261,7 @@ void QRasterPaintEngine::drawImage(const QRectF &r, const QImage &img, const QRe
             || d->rasterBuffer->compositionMode == QPainter::CompositionMode_Source))
     {
         RotationType rotationType = qRotationType(s->matrix);
-        Q_ASSUME(d->rasterBuffer->format < QImage::NImageFormats);
+        Q_ASSERT(d->rasterBuffer->format < QImage::NImageFormats);
         const QPixelLayout::BPP plBpp = qPixelLayouts[d->rasterBuffer->format].bpp;
 
         if (rotationType != NoRotation && qMemRotateFunctions[plBpp][rotationType] && img.rect().contains(sr.toAlignedRect())) {
@@ -3808,7 +3808,7 @@ void QClipData::initialize()
         return;
 
     if (!m_clipLines)
-        m_clipLines = (ClipLine *)calloc(sizeof(ClipLine), clipSpanHeight);
+        m_clipLines = (ClipLine *)calloc(clipSpanHeight, sizeof(ClipLine));
 
     Q_CHECK_PTR(m_clipLines);
     QT_TRY {

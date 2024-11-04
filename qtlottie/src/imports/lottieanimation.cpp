@@ -26,6 +26,8 @@
 #include "rasterrenderer/batchrenderer.h"
 #include "rasterrenderer/lottierasterrenderer.h"
 
+using namespace Qt::StringLiterals;
+
 QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcLottieQtBodymovinRender, "qt.lottieqt.bodymovin.render");
@@ -660,11 +662,7 @@ int LottieAnimation::parse(QByteArray jsonSource)
     if (Q_UNLIKELY(rootObj.empty()))
         return -1;
 
-    QStringList versionString = rootObj.value(QLatin1String("v")).toString().split(u'.');
-    QList<int> version;
-    foreach (QString v, versionString)
-        version.append(v.toInt());
-    m_version = QVersionNumber(version);
+    m_version = QVersionNumber::fromString(rootObj.value("v"_L1).toString());
 
     int startFrame = rootObj.value(QLatin1String("ip")).toVariant().toInt();
     int endFrame = rootObj.value(QLatin1String("op")).toVariant().toInt();

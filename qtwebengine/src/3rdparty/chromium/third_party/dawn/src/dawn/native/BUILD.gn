@@ -65,15 +65,9 @@ config("internal") {
   ]
 }
 
-config("weak_framework") {
-  if (is_mac && dawn_enable_metal) {
-    weak_frameworks = [ "Metal.framework" ]
-  }
-}
-
 # Config that adds the @executable_path rpath if needed so that Swiftshader or the Vulkan loader are found.
 config("vulkan_rpath") {
-  if (is_mac && dawn_enable_vulkan &&
+  if (is_apple && dawn_enable_vulkan &&
       (use_swiftshader || enable_vulkan_loader)) {
     ldflags = [
       "-rpath",
@@ -92,6 +86,8 @@ dawn_json_generator("utils_gen") {
   outputs = [
     "src/dawn/native/ChainUtils_autogen.h",
     "src/dawn/native/ChainUtils_autogen.cpp",
+    "src/dawn/native/Features_autogen.h",
+    "src/dawn/native/Features_autogen.inl",
     "src/dawn/native/ProcTable.cpp",
     "src/dawn/native/dawn_platform_autogen.h",
     "src/dawn/native/wgpu_structs_autogen.h",
@@ -111,7 +107,7 @@ if (dawn_enable_opengl) {
     script = "${dawn_root}/generator/opengl_loader_generator.py"
     args = [
       "--gl-xml",
-      rebase_path("${dawn_root}/third_party/khronos/gl.xml", root_build_dir),
+      rebase_path("${dawn_opengl_registry_dir}/xml/gl.xml", root_build_dir),
       "--supported-extensions",
       rebase_path("opengl/supported_extensions.json", root_build_dir),
     ]
@@ -134,7 +130,9 @@ source_set("headers") {
 
     # Include all backend's public headers so that dependencies can include
     # them even when the backends are disabled.
+    "${dawn_root}/include/dawn/native/D3D11Backend.h",
     "${dawn_root}/include/dawn/native/D3D12Backend.h",
+    "${dawn_root}/include/dawn/native/D3DBackend.h",
     "${dawn_root}/include/dawn/native/MetalBackend.h",
     "${dawn_root}/include/dawn/native/NullBackend.h",
     "${dawn_root}/include/dawn/native/OpenGLBackend.h",
@@ -150,7 +148,7 @@ source_set("sources") {
     ":headers",
     ":utils_gen",
     "${dawn_root}/src/dawn/common",
-    "${dawn_root}/src/tint:libtint",
+    "${dawn_root}/src/tint/api",
 
     # TODO(dawn:286): These should only be necessary if SPIR-V validation is
     # enabled with dawn_enable_spirv_validation
@@ -196,13 +194,19 @@ source_set("sources") {
     "BindGroup.h",
     "BindGroupLayout.cpp",
     "BindGroupLayout.h",
+    "BindGroupLayoutInternal.cpp",
+    "BindGroupLayoutInternal.h",
     "BindGroupTracker.h",
     "BindingInfo.cpp",
     "BindingInfo.h",
     "BlitBufferToDepthStencil.cpp",
     "BlitBufferToDepthStencil.h",
+    "BlitColorToColorWithDraw.cpp",
+    "BlitColorToColorWithDraw.h",
     "BlitDepthToDepth.cpp",
     "BlitDepthToDepth.h",
+    "BlitTextureToBuffer.cpp",
+    "BlitTextureToBuffer.h",
     "Blob.cpp",
     "Blob.h",
     "BlobCache.cpp",
@@ -222,6 +226,8 @@ source_set("sources") {
     "CachedObject.h",
     "CallbackTaskManager.cpp",
     "CallbackTaskManager.h",
+    "ChainUtils.h",
+    "ChainUtilsImpl.h",
     "CommandAllocator.cpp",
     "CommandAllocator.h",
     "CommandBuffer.cpp",
@@ -260,6 +266,8 @@ source_set("sources") {
     "ErrorInjector.h",
     "ErrorScope.cpp",
     "ErrorScope.h",
+    "ExecutionQueue.cpp",
+    "ExecutionQueue.h",
     "ExternalTexture.cpp",
     "ExternalTexture.h",
     "Features.cpp",
@@ -288,6 +296,8 @@ source_set("sources") {
     "PassResourceUsageTracker.h",
     "PerStage.cpp",
     "PerStage.h",
+    "PhysicalDevice.cpp",
+    "PhysicalDevice.h",
     "Pipeline.cpp",
     "Pipeline.h",
     "PipelineCache.cpp",
@@ -329,6 +339,10 @@ source_set("sources") {
     "Serializable.h",
     "ShaderModule.cpp",
     "ShaderModule.h",
+    "SharedFence.cpp",
+    "SharedFence.h",
+    "SharedTextureMemory.cpp",
+    "SharedTextureMemory.h",
     "StreamImplTint.cpp",
     "Subresource.cpp",
     "Subresource.h",
@@ -364,10 +378,9 @@ source_set("sources") {
   ]
 
   if (dawn_use_x11) {
-    libs += [ "X11" ]
     sources += [
-      "XlibXcbFunctions.cpp",
-      "XlibXcbFunctions.h",
+      "X11Functions.cpp",
+      "X11Functions.h",
     ]
   }
 
@@ -393,19 +406,111 @@ source_set("sources") {
   # Somehow use dxcompiler.lib makes CoreApp unable to activate
   # WinPIX should be added as third party tools and linked statically
 
-  if (dawn_enable_d3d12) {
+  if (dawn_enable_d3d11 || dawn_enable_d3d12) {
+    sources += [
+      "d3d/BackendD3D.cpp",
+      "d3d/BackendD3D.h",
+      "d3d/BlobD3D.cpp",
+      "d3d/BlobD3D.h",
+      "d3d/D3DCompilationRequest.h",
+      "d3d/D3DError.cpp",
+      "d3d/D3DError.h",
+      "d3d/DeviceD3D.cpp",
+      "d3d/DeviceD3D.h",
+      "d3d/ExternalImageDXGIImpl.cpp",
+      "d3d/ExternalImageDXGIImpl.h",
+      "d3d/Fence.cpp",
+      "d3d/Fence.h",
+      "d3d/Forward.h",
+      "d3d/PhysicalDeviceD3D.cpp",
+      "d3d/PhysicalDeviceD3D.h",
+      "d3d/PlatformFunctions.cpp",
+      "d3d/PlatformFunctions.h",
+      "d3d/ShaderUtils.cpp",
+      "d3d/ShaderUtils.h",
+      "d3d/SharedFenceD3D.cpp",
+      "d3d/SharedFenceD3D.h",
+      "d3d/SharedTextureMemoryD3D.cpp",
+      "d3d/SharedTextureMemoryD3D.h",
+      "d3d/SwapChainD3D.cpp",
+      "d3d/SwapChainD3D.h",
+      "d3d/TextureD3D.cpp",
+      "d3d/TextureD3D.h",
+      "d3d/UtilsD3D.cpp",
+      "d3d/UtilsD3D.h",
+      "d3d/d3d_platform.h",
+    ]
+  }
+
+  if (dawn_enable_d3d11) {
     libs += [ "dxguid.lib" ]
     sources += [
-      "d3d12/AdapterD3D12.cpp",
-      "d3d12/AdapterD3D12.h",
+      "d3d11/BackendD3D11.cpp",
+      "d3d11/BackendD3D11.h",
+      "d3d11/BindGroupD3D11.cpp",
+      "d3d11/BindGroupD3D11.h",
+      "d3d11/BindGroupLayoutD3D11.cpp",
+      "d3d11/BindGroupLayoutD3D11.h",
+      "d3d11/BindGroupTrackerD3D11.cpp",
+      "d3d11/BindGroupTrackerD3D11.h",
+      "d3d11/BufferD3D11.cpp",
+      "d3d11/BufferD3D11.h",
+      "d3d11/CommandBufferD3D11.cpp",
+      "d3d11/CommandBufferD3D11.h",
+      "d3d11/CommandRecordingContextD3D11.cpp",
+      "d3d11/CommandRecordingContextD3D11.h",
+      "d3d11/ComputePipelineD3D11.cpp",
+      "d3d11/ComputePipelineD3D11.h",
+      "d3d11/DeviceD3D11.cpp",
+      "d3d11/DeviceD3D11.h",
+      "d3d11/DeviceInfoD3D11.cpp",
+      "d3d11/DeviceInfoD3D11.h",
+      "d3d11/FenceD3D11.cpp",
+      "d3d11/FenceD3D11.h",
+      "d3d11/Forward.h",
+      "d3d11/PhysicalDeviceD3D11.cpp",
+      "d3d11/PhysicalDeviceD3D11.h",
+      "d3d11/PipelineLayoutD3D11.cpp",
+      "d3d11/PipelineLayoutD3D11.h",
+      "d3d11/PlatformFunctionsD3D11.cpp",
+      "d3d11/PlatformFunctionsD3D11.h",
+      "d3d11/QuerySetD3D11.cpp",
+      "d3d11/QuerySetD3D11.h",
+      "d3d11/QueueD3D11.cpp",
+      "d3d11/QueueD3D11.h",
+      "d3d11/RenderPipelineD3D11.cpp",
+      "d3d11/RenderPipelineD3D11.h",
+      "d3d11/SamplerD3D11.cpp",
+      "d3d11/SamplerD3D11.h",
+      "d3d11/ShaderModuleD3D11.cpp",
+      "d3d11/ShaderModuleD3D11.h",
+      "d3d11/SharedFenceD3D11.cpp",
+      "d3d11/SharedFenceD3D11.h",
+      "d3d11/SharedTextureMemoryD3D11.cpp",
+      "d3d11/SharedTextureMemoryD3D11.h",
+      "d3d11/SwapChainD3D11.cpp",
+      "d3d11/SwapChainD3D11.h",
+      "d3d11/TextureD3D11.cpp",
+      "d3d11/TextureD3D11.h",
+      "d3d11/UtilsD3D11.cpp",
+      "d3d11/UtilsD3D11.h",
+    ]
+  }
+
+  if (dawn_enable_d3d12) {
+    if (dawn_use_built_dxc) {
+      deps += [ "$dawn_root/third_party/gn/dxc:dxcompiler" ]
+      defines += [ "DAWN_USE_BUILT_DXC" ]
+      data_deps += [ "$dawn_root/third_party/gn/dxc:copy_dxil_dll" ]
+    }
+    libs += [ "dxguid.lib" ]
+    sources += [
       "d3d12/BackendD3D12.cpp",
       "d3d12/BackendD3D12.h",
       "d3d12/BindGroupD3D12.cpp",
       "d3d12/BindGroupD3D12.h",
       "d3d12/BindGroupLayoutD3D12.cpp",
       "d3d12/BindGroupLayoutD3D12.h",
-      "d3d12/BlobD3D12.cpp",
-      "d3d12/BlobD3D12.h",
       "d3d12/BufferD3D12.cpp",
       "d3d12/BufferD3D12.h",
       "d3d12/CPUDescriptorHeapAllocationD3D12.cpp",
@@ -418,16 +523,10 @@ source_set("sources") {
       "d3d12/CommandRecordingContext.h",
       "d3d12/ComputePipelineD3D12.cpp",
       "d3d12/ComputePipelineD3D12.h",
-      "d3d12/D3D11on12Util.cpp",
-      "d3d12/D3D11on12Util.h",
-      "d3d12/D3D12Error.cpp",
-      "d3d12/D3D12Error.h",
       "d3d12/D3D12Info.cpp",
       "d3d12/D3D12Info.h",
       "d3d12/DeviceD3D12.cpp",
       "d3d12/DeviceD3D12.h",
-      "d3d12/ExternalImageDXGIImpl.cpp",
-      "d3d12/ExternalImageDXGIImpl.h",
       "d3d12/FenceD3D12.cpp",
       "d3d12/FenceD3D12.h",
       "d3d12/Forward.h",
@@ -438,14 +537,14 @@ source_set("sources") {
       "d3d12/HeapD3D12.cpp",
       "d3d12/HeapD3D12.h",
       "d3d12/IntegerTypes.h",
-      "d3d12/NativeSwapChainImplD3D12.cpp",
-      "d3d12/NativeSwapChainImplD3D12.h",
       "d3d12/PageableD3D12.cpp",
       "d3d12/PageableD3D12.h",
+      "d3d12/PhysicalDeviceD3D12.cpp",
+      "d3d12/PhysicalDeviceD3D12.h",
       "d3d12/PipelineLayoutD3D12.cpp",
       "d3d12/PipelineLayoutD3D12.h",
-      "d3d12/PlatformFunctions.cpp",
-      "d3d12/PlatformFunctions.h",
+      "d3d12/PlatformFunctionsD3D12.cpp",
+      "d3d12/PlatformFunctionsD3D12.h",
       "d3d12/QuerySetD3D12.cpp",
       "d3d12/QuerySetD3D12.h",
       "d3d12/QueueD3D12.cpp",
@@ -468,6 +567,10 @@ source_set("sources") {
       "d3d12/ShaderModuleD3D12.h",
       "d3d12/ShaderVisibleDescriptorAllocatorD3D12.cpp",
       "d3d12/ShaderVisibleDescriptorAllocatorD3D12.h",
+      "d3d12/SharedFenceD3D12.cpp",
+      "d3d12/SharedFenceD3D12.h",
+      "d3d12/SharedTextureMemoryD3D12.cpp",
+      "d3d12/SharedTextureMemoryD3D12.h",
       "d3d12/StagingDescriptorAllocatorD3D12.cpp",
       "d3d12/StagingDescriptorAllocatorD3D12.h",
       "d3d12/StreamImplD3D12.cpp",
@@ -485,11 +588,14 @@ source_set("sources") {
 
   if (dawn_enable_metal) {
     frameworks = [
-      "Cocoa.framework",
       "IOKit.framework",
       "IOSurface.framework",
+      "Metal.framework",
       "QuartzCore.framework",
     ]
+    if (is_mac) {
+      frameworks += [ "Cocoa.framework" ]
+    }
     sources += [
       "Surface_metal.mm",
       "metal/BackendMTL.h",
@@ -521,6 +627,10 @@ source_set("sources") {
       "metal/SamplerMTL.mm",
       "metal/ShaderModuleMTL.h",
       "metal/ShaderModuleMTL.mm",
+      "metal/SharedFenceMTL.h",
+      "metal/SharedFenceMTL.mm",
+      "metal/SharedTextureMemoryMTL.h",
+      "metal/SharedTextureMemoryMTL.mm",
       "metal/SwapChainMTL.h",
       "metal/SwapChainMTL.mm",
       "metal/TextureMTL.h",
@@ -528,6 +638,12 @@ source_set("sources") {
       "metal/UtilsMetal.h",
       "metal/UtilsMetal.mm",
     ]
+
+    # If a "build with ARC" config is present, remove it.
+    if (filter_include(configs, [ "//build/config/compiler:enable_arc" ]) !=
+        []) {
+      configs -= [ "//build/config/compiler:enable_arc" ]
+    }
   }
 
   if (dawn_enable_null) {
@@ -552,8 +668,6 @@ source_set("sources") {
     ]
     sources += get_target_outputs(":opengl_loader_gen")
     sources += [
-      "opengl/AdapterGL.cpp",
-      "opengl/AdapterGL.h",
       "opengl/BackendGL.cpp",
       "opengl/BackendGL.h",
       "opengl/BindGroupGL.cpp",
@@ -575,14 +689,14 @@ source_set("sources") {
       "opengl/Forward.h",
       "opengl/GLFormat.cpp",
       "opengl/GLFormat.h",
-      "opengl/NativeSwapChainImplGL.cpp",
-      "opengl/NativeSwapChainImplGL.h",
       "opengl/OpenGLFunctions.cpp",
       "opengl/OpenGLFunctions.h",
       "opengl/OpenGLVersion.cpp",
       "opengl/OpenGLVersion.h",
       "opengl/PersistentPipelineStateGL.cpp",
       "opengl/PersistentPipelineStateGL.h",
+      "opengl/PhysicalDeviceGL.cpp",
+      "opengl/PhysicalDeviceGL.h",
       "opengl/PipelineGL.cpp",
       "opengl/PipelineGL.h",
       "opengl/PipelineLayoutGL.cpp",
@@ -597,8 +711,6 @@ source_set("sources") {
       "opengl/SamplerGL.h",
       "opengl/ShaderModuleGL.cpp",
       "opengl/ShaderModuleGL.h",
-      "opengl/SwapChainGL.cpp",
-      "opengl/SwapChainGL.h",
       "opengl/TextureGL.cpp",
       "opengl/TextureGL.h",
       "opengl/UtilsEGL.cpp",
@@ -615,8 +727,6 @@ source_set("sources") {
     deps += [ "${dawn_vulkan_tools_dir}:vulkan_tools_headers" ]
     public_deps += [ "${dawn_vulkan_headers_dir}:vulkan_headers" ]
     sources += [
-      "vulkan/AdapterVk.cpp",
-      "vulkan/AdapterVk.h",
       "vulkan/BackendVk.cpp",
       "vulkan/BackendVk.h",
       "vulkan/BindGroupLayoutVk.cpp",
@@ -639,8 +749,8 @@ source_set("sources") {
       "vulkan/FencedDeleter.cpp",
       "vulkan/FencedDeleter.h",
       "vulkan/Forward.h",
-      "vulkan/NativeSwapChainImplVk.cpp",
-      "vulkan/NativeSwapChainImplVk.h",
+      "vulkan/PhysicalDeviceVk.cpp",
+      "vulkan/PhysicalDeviceVk.h",
       "vulkan/PipelineCacheVk.cpp",
       "vulkan/PipelineCacheVk.h",
       "vulkan/PipelineLayoutVk.cpp",
@@ -676,37 +786,44 @@ source_set("sources") {
       "vulkan/VulkanFunctions.h",
       "vulkan/VulkanInfo.cpp",
       "vulkan/VulkanInfo.h",
+      "vulkan/external_memory/MemoryImportParams.h",
       "vulkan/external_memory/MemoryService.cpp",
       "vulkan/external_memory/MemoryService.h",
+      "vulkan/external_memory/MemoryServiceImplementation.cpp",
+      "vulkan/external_memory/MemoryServiceImplementation.h",
       "vulkan/external_semaphore/SemaphoreService.cpp",
       "vulkan/external_semaphore/SemaphoreService.h",
-      "vulkan/external_semaphore/ServiceImplementation.cpp",
-      "vulkan/external_semaphore/ServiceImplementation.h",
+      "vulkan/external_semaphore/SemaphoreServiceImplementation.cpp",
+      "vulkan/external_semaphore/SemaphoreServiceImplementation.h",
     ]
 
     if (is_android || is_linux || is_chromeos) {
       sources += [
-        "vulkan/external_semaphore/ServiceImplementationFD.cpp",
-        "vulkan/external_semaphore/ServiceImplementationFD.h",
+        "vulkan/external_semaphore/SemaphoreServiceImplementationFD.cpp",
+        "vulkan/external_semaphore/SemaphoreServiceImplementationFD.h",
       ]
+      if (is_android) {
+        sources += [
+          "vulkan/external_memory/MemoryServiceImplementationAHardwareBuffer.cpp",
+          "vulkan/external_memory/MemoryServiceImplementationAHardwareBuffer.h",
+        ]
+      } else if (is_linux || is_chromeos) {
+        sources += [
+          "vulkan/external_memory/MemoryServiceImplementationDmaBuf.cpp",
+          "vulkan/external_memory/MemoryServiceImplementationDmaBuf.h",
+          "vulkan/external_memory/MemoryServiceImplementationOpaqueFD.cpp",
+          "vulkan/external_memory/MemoryServiceImplementationOpaqueFD.h",
+        ]
+      }
     } else if (is_fuchsia) {
       sources += [
-        "vulkan/external_semaphore/ServiceImplementationZirconHandle.cpp",
-        "vulkan/external_semaphore/ServiceImplementationZirconHandle.h",
+        "vulkan/external_memory/MemoryServiceImplementationZicronHandle.cpp",
+        "vulkan/external_memory/MemoryServiceImplementationZicronHandle.h",
+        "vulkan/external_semaphore/SemaphoreServiceImplementationZirconHandle.cpp",
+        "vulkan/external_semaphore/SemaphoreServiceImplementationZirconHandle.h",
       ]
     }
 
-    if (is_chromeos) {
-      sources += [ "vulkan/external_memory/MemoryServiceDmaBuf.cpp" ]
-    } else if (is_linux) {
-      sources += [ "vulkan/external_memory/MemoryServiceOpaqueFD.cpp" ]
-    } else if (is_fuchsia) {
-      sources += [ "vulkan/external_memory/MemoryServiceZirconHandle.cpp" ]
-    } else if (is_android) {
-      sources += [ "vulkan/external_memory/MemoryServiceAHardwareBuffer.cpp" ]
-    } else {
-      sources += [ "vulkan/external_memory/MemoryServiceNull.cpp" ]
-    }
     if (build_with_chromium && is_fuchsia) {
       # Necessary to ensure that the Vulkan libraries will be in the
       # final Fuchsia package.
@@ -763,11 +880,14 @@ dawn_component("native") {
   ]
   sources = [ "DawnNative.cpp" ]
   configs = [ ":internal" ]
-  public_configs = [
-    ":weak_framework",
-    ":vulkan_rpath",
-  ]
+  public_configs = [ ":vulkan_rpath" ]
 
+  if (dawn_enable_d3d11 || dawn_enable_d3d12) {
+    sources += [ "d3d/D3DBackend.cpp" ]
+  }
+  if (dawn_enable_d3d11) {
+    sources += [ "d3d11/D3D11Backend.cpp" ]
+  }
   if (dawn_enable_d3d12) {
     sources += [ "d3d12/D3D12Backend.cpp" ]
   }
@@ -815,6 +935,7 @@ dawn_component("webgpu_dawn") {
   #    - SwiftShader can't be built without use_custom_libcxx.
   #      It should be built separately.
   DEFINE_PREFIX = "WGPU"
+  output_name = "webgpu_dawn"
 
   sources = get_target_outputs(":webgpu_dawn_native_proc_gen")
   deps = [

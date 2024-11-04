@@ -10,8 +10,8 @@ has_r_text_file = true
 is_manifest_empty = true
 manifest_package = "androidx.emoji"
 resources = [
-  "res/layout/input_method_extract_view.xml",
-  "res/values/values.xml"
+  "res/values/values.xml",
+  "res/layout/input_method_extract_view.xml"
 ]
 subjar_tuples = [
   [

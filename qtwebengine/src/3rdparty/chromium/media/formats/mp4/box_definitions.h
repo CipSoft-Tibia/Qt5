@@ -18,10 +18,12 @@
 #include "media/base/media_log.h"
 #include "media/base/video_codecs.h"
 #include "media/formats/mp4/aac.h"
+#include "media/formats/mp4/ac3.h"
 #include "media/formats/mp4/avc.h"
 #include "media/formats/mp4/box_reader.h"
 #include "media/formats/mp4/dts.h"
 #include "media/formats/mp4/dtsx.h"
+#include "media/formats/mp4/eac3.h"
 #include "media/formats/mp4/fourccs.h"
 #include "media/media_buildflags.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -238,14 +240,18 @@ struct MEDIA_EXPORT AVCDecoderConfigurationRecord : Box {
   uint8_t avc_level;
   uint8_t length_size;
 
-  typedef std::vector<uint8_t> SPS;
-  typedef std::vector<uint8_t> PPS;
+  std::vector<std::vector<uint8_t>> sps_list;
+  std::vector<std::vector<uint8_t>> pps_list;
 
-  std::vector<SPS> sps_list;
-  std::vector<PPS> pps_list;
+  uint8_t chroma_format;
+  uint8_t bit_depth_luma_minus8;
+  uint8_t bit_depth_chroma_minus8;
+
+  std::vector<std::vector<uint8_t>> sps_ext_list;
 
  private:
   bool ParseInternal(BufferReader* reader, MediaLog* media_log);
+  bool ParseREXT(BufferReader* reader, MediaLog* media_log);
 };
 #endif  // BUILDFLAG(USE_PROPRIETARY_CODECS)
 
@@ -407,6 +413,18 @@ struct MEDIA_EXPORT DtsUhdSpecificBox : Box {
 };
 #endif  // BUILDFLAG(ENABLE_PLATFORM_DTS_AUDIO)
 
+#if BUILDFLAG(ENABLE_PLATFORM_AC3_EAC3_AUDIO)
+struct MEDIA_EXPORT AC3SpecificBox : Box {
+  DECLARE_BOX_METHODS(AC3SpecificBox);
+  AC3 dac3;
+};
+
+struct MEDIA_EXPORT EC3SpecificBox : Box {
+  DECLARE_BOX_METHODS(EC3SpecificBox);
+  EAC3 dec3;
+};
+#endif  // BUILDFLAG(ENABLE_PLATFORM_AC3_EAC3_AUDIO)
+
 struct MEDIA_EXPORT AudioSampleEntry : Box {
   DECLARE_BOX_METHODS(AudioSampleEntry);
 
@@ -424,6 +442,10 @@ struct MEDIA_EXPORT AudioSampleEntry : Box {
   DtsSpecificBox ddts;
   DtsUhdSpecificBox udts;
 #endif  // BUILDFLAG(ENABLE_PLATFORM_DTS_AUDIO)
+#if BUILDFLAG(ENABLE_PLATFORM_AC3_EAC3_AUDIO)
+  AC3SpecificBox ac3;
+  EC3SpecificBox eac3;
+#endif  // BUILDFLAG(ENABLE_PLATFORM_AC3_EAC3_AUDIO)
 };
 
 struct MEDIA_EXPORT SampleDescription : Box {

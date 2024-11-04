@@ -24,11 +24,13 @@ public:
     QOpcUaContentFilterElement();
     QOpcUaContentFilterElement(const QOpcUaContentFilterElement &);
     QOpcUaContentFilterElement &operator=(const QOpcUaContentFilterElement &);
+#if QT_OPCUA_REMOVED_SINCE(6, 7)
     bool operator==(const QOpcUaContentFilterElement &rhs) const;
+#endif
     operator QVariant() const;
     ~QOpcUaContentFilterElement();
 
-    // Specified in OPC-UA part 4, Tables 115 and 116
+    // Specified in OPC UA 1.05 part 4, 7.7.3
     enum FilterOperator : quint32 {
         Equals = 0,
         IsNull = 1,
@@ -47,7 +49,7 @@ public:
         OfType = 14,
         RelatedTo = 15,
         BitwiseAnd = 16,
-        BitwiseOr = 17
+        BitwiseOr = 17,
     };
 
     QOpcUaContentFilterElement &operator<<(FilterOperator op);
@@ -66,6 +68,16 @@ public:
 
 private:
     QSharedDataPointer<QOpcUaContentFilterElementData> data;
+
+    friend Q_OPCUA_EXPORT bool comparesEqual(const QOpcUaContentFilterElement &lhs,
+                                             const QOpcUaContentFilterElement &rhs) noexcept;
+
+    friend bool operator==(const QOpcUaContentFilterElement &lhs,
+                           const QOpcUaContentFilterElement &rhs) noexcept
+    { return comparesEqual(lhs, rhs); }
+    friend bool operator!=(const QOpcUaContentFilterElement &lhs,
+                           const QOpcUaContentFilterElement &rhs) noexcept
+    { return !comparesEqual(lhs, rhs); }
 };
 
 QT_END_NAMESPACE

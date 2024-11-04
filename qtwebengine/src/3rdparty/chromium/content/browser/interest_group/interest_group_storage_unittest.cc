@@ -32,6 +32,7 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/interest_group/interest_group.h"
+#include "third_party/blink/public/common/interest_group/test_interest_group_builder.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/interest_group/interest_group_types.mojom.h"
 #include "url/origin.h"
@@ -56,7 +57,8 @@ class InterestGroupStorageTest : public testing::Test {
         blink::features::kInterestGroupStorage,
         {{"max_owners", "10"},
          {"max_groups_per_owner", "10"},
-         {"max_ops_before_maintenance", "100"}});
+         {"max_ops_before_maintenance", "100"},
+         {"max_storage_per_owner", "2048"}});
   }
 
   std::unique_ptr<InterestGroupStorage> CreateStorage() {
@@ -91,50 +93,63 @@ class InterestGroupStorageTest : public testing::Test {
     InterestGroup partial = NewInterestGroup(partial_origin, "partial");
     const url::Origin full_origin =
         url::Origin::Create(GURL("https://full.example.com"));
-    InterestGroup full(
-        /*expiry=*/base::Time::Now() + base::Days(30), /*owner=*/full_origin,
-        /*name=*/"full", /*priority=*/1.0,
-        /*enable_bidding_signals_prioritization=*/true,
-        /*priority_vector=*/{{{"a", 2}, {"b", -2.2}}},
-        /*priority_signals_overrides=*/{{{"a", -2}, {"c", 10}, {"d", 1.2}}},
-        /*seller_capabilities=*/
-        {{{full_origin, SellerCapabilities::kInterestGroupCounts},
-          {partial_origin, SellerCapabilities::kLatencyStats}}},
-        /*all_sellers_capabilities=*/
-        {SellerCapabilities::kInterestGroupCounts,
-         SellerCapabilities::kLatencyStats},
-        /*execution_mode=*/InterestGroup::ExecutionMode::kCompatibilityMode,
-        /*bidding_url=*/GURL("https://full.example.com/bid"),
-        /*bidding_wasm_helper_url=*/GURL("https://full.example.com/bid_wasm"),
-        /*daily_update_url=*/GURL("https://full.example.com/update"),
-        /*trusted_bidding_signals_url=*/
-        GURL("https://full.example.com/signals"),
-        /*trusted_bidding_signals_keys=*/
-        std::vector<std::string>{"a", "b", "c", "d"},
-        /*user_bidding_signals=*/"foo",
-        /*ads=*/
-        std::vector<InterestGroup::Ad>{
-            blink::InterestGroup::Ad(GURL("https://full.example.com/ad1"),
-                                     "metadata1"),
-            blink::InterestGroup::Ad(GURL("https://full.example.com/ad2"),
-                                     "metadata2")},
-        /*ad_components=*/
-        std::vector<InterestGroup::Ad>{
-            blink::InterestGroup::Ad(
-                GURL("https://full.example.com/adcomponent1"), "metadata1c"),
-            blink::InterestGroup::Ad(
-                GURL("https://full.example.com/adcomponent2"), "metadata2c")},
-        /*ad_sizes=*/
-        {{{"size_1", blink::InterestGroup::Size(
-                         300, blink::InterestGroup::Size::LengthUnit::kPixels,
-                         150, blink::InterestGroup::Size::LengthUnit::kPixels)},
-          {"size_2",
-           blink::InterestGroup::Size(
-               640, blink::InterestGroup::Size::LengthUnit::kPixels, 480,
-               blink::InterestGroup::Size::LengthUnit::kPixels)}}},
-        /*size_groups=*/
-        {{{"group_1", std::vector<std::string>{"size_1"}},
-          {"group_2", std::vector<std::string>{"size_1", "size_2"}}}});
+
+    InterestGroup full =
+        blink::TestInterestGroupBuilder(/*owner=*/full_origin, /*name=*/"full")
+            .SetPriority(1.0)
+            .SetEnableBiddingSignalsPrioritization(true)
+            .SetPriorityVector({{{"a", 2}, {"b", -2.2}}})
+            .SetPrioritySignalsOverrides({{{"a", -2}, {"c", 10}, {"d", 1.2}}})
+            .SetSellerCapabilities(
+                {{{full_origin, {SellerCapabilities::kInterestGroupCounts}},
+                  {partial_origin, {SellerCapabilities::kLatencyStats}}}})
+            .SetAllSellerCapabilities({SellerCapabilities::kInterestGroupCounts,
+                                       SellerCapabilities::kLatencyStats})
+            .SetBiddingUrl(GURL("https://full.example.com/bid"))
+            .SetBiddingWasmHelperUrl(GURL("https://full.example.com/bid_wasm"))
+            .SetUpdateUrl(GURL("https://full.example.com/update"))
+            .SetTrustedBiddingSignalsUrl(
+                GURL("https://full.example.com/signals"))
+            .SetTrustedBiddingSignalsKeys(
+                std::vector<std::string>{"a", "b", "c", "d"})
+            .SetUserBiddingSignals("foo")
+            .SetAds(std::vector<InterestGroup::Ad>{
+                blink::InterestGroup::Ad(
+                    GURL("https://full.example.com/ad1"), "metadata1",
+                    "group_1", "buyer_id", "shared_id", "adRenderId",
+                    std::vector<url::Origin>{
+                        url::Origin::Create(GURL("https://reporting.com"))}),
+                blink::InterestGroup::Ad(GURL("https://full.example.com/ad2"),
+                                         "metadata2", "group_2", "buyer_id2")})
+            .SetAdComponents(std::vector<InterestGroup::Ad>{
+                blink::InterestGroup::Ad(
+                    GURL("https://full.example.com/adcomponent1"), "metadata1c",
+                    "group_1", /*buyer_reporting_id=*/absl::nullopt,
+                    /*buyer_and_seller_reporting_id=*/absl::nullopt,
+                    "adRenderId2"),
+                blink::InterestGroup::Ad(
+                    GURL("https://full.example.com/adcomponent2"), "metadata2c",
+                    "group_2")})
+            .SetAdSizes(
+                {{{"size_1",
+                   blink::AdSize(300, blink::AdSize::LengthUnit::kPixels, 150,
+                                 blink::AdSize::LengthUnit::kPixels)},
+                  {"size_2",
+                   blink::AdSize(640, blink::AdSize::LengthUnit::kPixels, 480,
+                                 blink::AdSize::LengthUnit::kPixels)},
+                  {"size_3",
+                   blink::AdSize(100, blink::AdSize::LengthUnit::kScreenWidth,
+                                 100,
+                                 blink::AdSize::LengthUnit::kScreenWidth)}}})
+            .SetSizeGroups(
+                {{{"group_1", std::vector<std::string>{"size_1"}},
+                  {"group_2", std::vector<std::string>{"size_1", "size_2"}},
+                  {"group_3", std::vector<std::string>{"size_3"}}}})
+            .SetAuctionServerRequestFlags(
+                {blink::AuctionServerRequestFlagsEnum::kOmitAds,
+                 blink::AuctionServerRequestFlagsEnum::kIncludeFullAds})
+            .Build();
+
     std::unique_ptr<InterestGroupStorage> storage = CreateStorage();
 
     storage->JoinInterestGroup(partial, partial_origin.GetURL());
@@ -167,11 +182,14 @@ class InterestGroupStorageTest : public testing::Test {
     update.trusted_bidding_signals_keys =
         std::vector<std::string>{"a", "b2", "c", "d"};
     update.ads = full.ads;
-    update.ads->emplace_back(blink::InterestGroup::Ad(
-        GURL("https://full.example.com/ad3"), "metadata3"));
+    update.ads->emplace_back(
+        GURL("https://full.example.com/ad3"), "metadata3", "group_3",
+        "new_buyer_id", "another_share_id", "adRenderId3",
+        std::vector<url::Origin>{
+            url::Origin::Create(GURL("https://reporting.updated.com"))});
     update.ad_components = full.ad_components;
-    update.ad_components->emplace_back(blink::InterestGroup::Ad(
-        GURL("https://full.example.com/adcomponent3"), "metadata3c"));
+    update.ad_components->emplace_back(
+        GURL("https://full.example.com/adcomponent3"), "metadata3c", "group_3");
     storage->UpdateInterestGroup(blink::InterestGroupKey(full.owner, full.name),
                                  update);
 
@@ -540,8 +558,14 @@ TEST_F(InterestGroupStorageTest, UpdatesAdKAnonymity) {
 
   InterestGroup g = NewInterestGroup(test_origin, "name");
   g.ads.emplace();
-  g.ads->push_back(blink::InterestGroup::Ad(ad1_url, "metadata1"));
-  g.ads->push_back(blink::InterestGroup::Ad(ad2_url, "metadata2"));
+  g.ads->emplace_back(ad1_url, "metadata1",
+                      /*size_group=*/absl::nullopt,
+                      /*buyer_reporting_id=*/"brid1",
+                      /*buyer_and_seller_reporting_id=*/"shrid1");
+  g.ads->emplace_back(ad2_url, "metadata2",
+                      /*size_group=*/absl::nullopt,
+                      /*buyer_reporting_id=*/"brid2",
+                      /*buyer_and_seller_reporting_id=*/absl::nullopt);
   g.ad_components.emplace();
   g.ad_components->push_back(
       blink::InterestGroup::Ad(ad1_url, "component_metadata1"));
@@ -631,8 +655,8 @@ TEST_F(InterestGroupStorageTest, UpdatesAdKAnonymity) {
 }
 
 TEST_F(InterestGroupStorageTest, KAnonDataExpires) {
-  GURL daily_update_url("https://owner.example.com/groupUpdate");
-  url::Origin test_origin = url::Origin::Create(daily_update_url);
+  GURL update_url("https://owner.example.com/groupUpdate");
+  url::Origin test_origin = url::Origin::Create(update_url);
   const std::string name = "name";
   const std::string key = test_origin.GetURL().spec() + '\n' + name;
   // We make the ad urls equal to the name key and update urls to verify the
@@ -646,7 +670,7 @@ TEST_F(InterestGroupStorageTest, KAnonDataExpires) {
   g.ad_components.emplace();
   g.ad_components->push_back(
       blink::InterestGroup::Ad(ad2_url, "component_metadata2"));
-  g.daily_update_url = daily_update_url;
+  g.update_url = update_url;
   g.expiry = base::Time::Now() + base::Days(1);
 
   std::unique_ptr<InterestGroupStorage> storage = CreateStorage();
@@ -918,6 +942,60 @@ TEST_F(InterestGroupStorageTest, JoinTooManyGroupNames) {
   histograms.ExpectTotalCount("Storage.InterestGroup.DBMaintenanceTime", 1);
 }
 
+// Maintenance should prune groups when the interest group owner exceeds the
+// storage size limit.
+TEST_F(InterestGroupStorageTest, JoinTooMuchStorage) {
+  base::HistogramTester histograms;
+  const size_t kExcessGroups = 3;
+  const url::Origin kTestOrigin =
+      url::Origin::Create(GURL("https://owner.example.com"));
+  const size_t kGroupSize = 800;
+  const size_t groups_before_full =
+      blink::features::kInterestGroupStorageMaxStoragePerOwner.Get() /
+      kGroupSize;
+  std::vector<std::string> added_groups;
+
+  std::unique_ptr<InterestGroupStorage> storage = CreateStorage();
+  for (size_t i = 0; i < groups_before_full + kExcessGroups; i++) {
+    const std::string group_name = base::NumberToString(i);
+    // Allow time to pass so that they have different expiration times.
+    // This makes which groups get removed deterministic as they are sorted by
+    // expiration time.
+    task_environment().FastForwardBy(base::Microseconds(1));
+    blink::InterestGroup group = NewInterestGroup(kTestOrigin, group_name);
+    ASSERT_GT(kGroupSize, group.EstimateSize());
+    group.user_bidding_signals =
+        std::string(kGroupSize - group.EstimateSize(), 'P');
+    EXPECT_EQ(kGroupSize, group.EstimateSize());
+
+    storage->JoinInterestGroup(group, kTestOrigin.GetURL());
+    added_groups.push_back(group_name);
+  }
+
+  std::vector<url::Origin> origins = storage->GetAllInterestGroupOwners();
+  EXPECT_EQ(1u, origins.size());
+
+  std::vector<StorageInterestGroup> interest_groups =
+      storage->GetInterestGroupsForOwner(kTestOrigin);
+  EXPECT_EQ(added_groups.size(), interest_groups.size());
+
+  // Allow enough idle time to trigger maintenance.
+  task_environment().FastForwardBy(InterestGroupStorage::kIdlePeriod +
+                                   base::Seconds(1));
+
+  interest_groups = storage->GetInterestGroupsForOwner(kTestOrigin);
+  ASSERT_EQ(groups_before_full, interest_groups.size());
+
+  std::vector<std::string> remaining_groups;
+  for (const auto& db_group : interest_groups) {
+    remaining_groups.push_back(db_group.interest_group.name);
+  }
+  std::vector<std::string> remaining_groups_expected(
+      added_groups.begin() + kExcessGroups, added_groups.end());
+  EXPECT_THAT(remaining_groups,
+              UnorderedElementsAreArray(remaining_groups_expected));
+}
+
 // Excess group owners should have their groups pruned by maintenance.
 // In this test we trigger maintenance by having too many operations in a short
 // period to test max_ops_before_maintenance_.
@@ -961,6 +1039,55 @@ TEST_F(InterestGroupStorageTest, JoinTooManyGroupOwners) {
   EXPECT_THAT(origins, UnorderedElementsAreArray(remaining_origins_expected));
 }
 
+TEST_F(InterestGroupStorageTest, ExpiredGroupsNotReturned) {
+  const char kName1[] = "name1";
+  const char kName2[] = "name2";
+  const char kName3[] = "name3";
+  const url::Origin kOrigin = url::Origin::Create(GURL("https://owner.test"));
+  std::unique_ptr<InterestGroupStorage> storage = CreateStorage();
+
+  const base::TimeDelta kDelta = base::Seconds(1);
+
+  base::Time start = base::Time::Now();
+  base::Time later = start + kDelta;
+  base::Time even_later = later + kDelta;
+
+  // Already expired when joined.
+  storage->JoinInterestGroup(
+      blink::TestInterestGroupBuilder(kOrigin, kName1).SetExpiry(start).Build(),
+      kOrigin.GetURL());
+
+  // Expires when time reaches `later`.
+  storage->JoinInterestGroup(
+      blink::TestInterestGroupBuilder(kOrigin, kName2).SetExpiry(later).Build(),
+      kOrigin.GetURL());
+
+  // Expires when time reaches `even_later`.
+  storage->JoinInterestGroup(blink::TestInterestGroupBuilder(kOrigin, kName3)
+                                 .SetExpiry(even_later)
+                                 .Build(),
+                             kOrigin.GetURL());
+
+  // All but the first group, which is already expired, should be retrieved.
+  auto interest_groups = storage->GetInterestGroupsForOwner(kOrigin);
+  ASSERT_EQ(2u, interest_groups.size());
+  EXPECT_THAT(
+      (std::vector<std::string>{interest_groups[0].interest_group.name,
+                                interest_groups[1].interest_group.name}),
+      testing::UnorderedElementsAre(kName2, kName3));
+
+  // Wait until `later`. The second group should expire.
+  task_environment().FastForwardBy(kDelta);
+  interest_groups = storage->GetInterestGroupsForOwner(kOrigin);
+  ASSERT_EQ(1u, interest_groups.size());
+  ASSERT_EQ(interest_groups[0].interest_group.name, kName3);
+
+  // Wait until `even_later`. All three interest groups should now be expired.
+  task_environment().FastForwardBy(kDelta);
+  interest_groups = storage->GetInterestGroupsForOwner(kOrigin);
+  EXPECT_EQ(0u, interest_groups.size());
+}
+
 TEST_F(InterestGroupStorageTest, DBMaintenanceExpiresOldInterestGroups) {
   base::HistogramTester histograms;
 
@@ -980,9 +1107,10 @@ TEST_F(InterestGroupStorageTest, DBMaintenanceExpiresOldInterestGroups) {
 
   storage->JoinInterestGroup(NewInterestGroup(keep_origin, "keep"),
                              keep_origin.GetURL());
-  for (const auto& origin : test_origins)
+  for (const auto& origin : test_origins) {
     storage->JoinInterestGroup(NewInterestGroup(origin, "discard"),
                                origin.GetURL());
+  }
 
   std::vector<url::Origin> origins = storage->GetAllInterestGroupOwners();
   EXPECT_EQ(3u, origins.size());
@@ -993,14 +1121,14 @@ TEST_F(InterestGroupStorageTest, DBMaintenanceExpiresOldInterestGroups) {
   base::Time next_maintenance_time =
       base::Time::Now() + InterestGroupStorage::kIdlePeriod;
 
-  //  Maintenance should not have run yet as we are not idle.
+  // Maintenance should not have run yet as we are not idle.
   EXPECT_EQ(storage->GetLastMaintenanceTimeForTesting(),
             original_maintenance_time);
 
   task_environment().FastForwardBy(InterestGroupStorage::kIdlePeriod -
                                    base::Seconds(1));
 
-  //  Maintenance should not have run yet as we are not idle.
+  // Maintenance should not have run yet as we are not idle.
   EXPECT_EQ(storage->GetLastMaintenanceTimeForTesting(),
             original_maintenance_time);
 
@@ -1028,7 +1156,7 @@ TEST_F(InterestGroupStorageTest, DBMaintenanceExpiresOldInterestGroups) {
   interest_groups = storage->GetInterestGroupsForOwner(keep_origin);
   EXPECT_EQ(2u, interest_groups.size());
 
-  //  Maintenance should not have run since we have not been idle.
+  // Maintenance should not have run since we have not been idle.
   EXPECT_EQ(storage->GetLastMaintenanceTimeForTesting(),
             original_maintenance_time);
 
@@ -1077,6 +1205,106 @@ TEST_F(InterestGroupStorageTest, DBMaintenanceExpiresOldInterestGroups) {
   EXPECT_EQ(0, interest_groups[0].bidding_browser_signals->bid_count);
 }
 
+// Test that when an interest group expires, data about the expired group from
+// the additional tables (`prev_wins`, `join_count`, `num_bids`) is not
+// preserved if the interest group is joined again. This tests both the case
+// where the expired group is destroyed by normal database maintenance, and the
+// case where it's overwritten by a new group with the same name and owner
+// before maintenance can be performed.
+TEST_F(InterestGroupStorageTest, ExpirationDeletesMetadata) {
+  base::HistogramTester histograms;
+
+  enum class TestCase {
+    // The expired group is destroyed by periodic database maintenance.
+    kDestroyedByMaintenance,
+    // The expired group is overwritten by a new group before database
+    // maintenance has had a chance to destroy it.
+    kOverwrittenByNewGroup
+  };
+
+  const url::Origin kOrigin = url::Origin::Create(GURL("https://owner.test"));
+  const char kName[] = "name";
+  const blink::InterestGroupKey kGroupKey(kOrigin, kName);
+  const char kAdJson[] = "{url: 'https://ad.test/'}";
+
+  for (auto test_case :
+       {TestCase::kDestroyedByMaintenance, TestCase::kOverwrittenByNewGroup}) {
+    SCOPED_TRACE(static_cast<int>(test_case));
+    std::unique_ptr<InterestGroupStorage> storage = CreateStorage();
+
+    base::Time start = base::Time::Now();
+    const base::TimeDelta kDelta = base::Seconds(1);
+
+    // Join the group, and record a bid and win.
+    storage->JoinInterestGroup(blink::TestInterestGroupBuilder(kOrigin, kName)
+                                   .SetExpiry(start + kDelta)
+                                   .Build(),
+                               kOrigin.GetURL());
+    storage->RecordInterestGroupBids({kGroupKey});
+    storage->RecordInterestGroupWin(kGroupKey, kAdJson);
+
+    // Check that the interest group can be retrieved, and all relevant fields
+    // are correct.
+    std::vector<StorageInterestGroup> interest_groups =
+        storage->GetInterestGroupsForOwner(kOrigin);
+    ASSERT_EQ(1u, interest_groups.size());
+    EXPECT_EQ(kName, interest_groups[0].interest_group.name);
+    EXPECT_EQ(1, interest_groups[0].bidding_browser_signals->join_count);
+    EXPECT_EQ(1, interest_groups[0].bidding_browser_signals->bid_count);
+    ASSERT_EQ(1u, interest_groups[0].bidding_browser_signals->prev_wins.size());
+    EXPECT_EQ(
+        kAdJson,
+        interest_groups[0].bidding_browser_signals->prev_wins[0]->ad_json);
+
+    switch (test_case) {
+      case TestCase::kDestroyedByMaintenance: {
+        base::Time expected_maintenance_time =
+            base::Time::Now() + InterestGroupStorage::kIdlePeriod;
+        // Enough time to trigger maintenance.
+        task_environment().FastForwardBy(InterestGroupStorage::kIdlePeriod +
+                                         base::Seconds(1));
+        // Verify that maintenance has run.
+        EXPECT_EQ(storage->GetLastMaintenanceTimeForTesting(),
+                  expected_maintenance_time);
+        break;
+      }
+
+      case TestCase::kOverwrittenByNewGroup: {
+        base::Time old_maintenance_time =
+            storage->GetLastMaintenanceTimeForTesting();
+        // Not enough time to trigger maintenance.
+        task_environment().FastForwardBy(base::Seconds(1));
+        // Maintenance should not have been performed.
+        EXPECT_EQ(storage->GetLastMaintenanceTimeForTesting(),
+                  old_maintenance_time);
+        break;
+      }
+    }
+
+    // Whether or not it's still in the database, GetInterestGroupsForOwner()
+    // should not retrieve the expired group.
+    interest_groups = storage->GetInterestGroupsForOwner(kOrigin);
+    EXPECT_EQ(0u, interest_groups.size());
+
+    // Re-join the interest group.
+    storage->JoinInterestGroup(
+        blink::TestInterestGroupBuilder(kOrigin, kName).Build(),
+        kOrigin.GetURL());
+
+    // Retrieve the group. Its `join_count`, `bid_count`, and `prev_wins` should
+    // not reflect data from the first time the group was joined.
+    interest_groups = storage->GetInterestGroupsForOwner(kOrigin);
+    ASSERT_EQ(1u, interest_groups.size());
+    EXPECT_EQ(kName, interest_groups[0].interest_group.name);
+    EXPECT_EQ(1, interest_groups[0].bidding_browser_signals->join_count);
+    EXPECT_EQ(0, interest_groups[0].bidding_browser_signals->bid_count);
+    EXPECT_EQ(0u, interest_groups[0].bidding_browser_signals->prev_wins.size());
+
+    // Leave the interest group so it doesn't affect the next test.
+    storage->LeaveInterestGroup(kGroupKey, kOrigin);
+  }
+}
+
 // Upgrades a v6 database dump to an expected current database.
 // The v6 database dump was extracted from the InterestGroups database in
 // a browser profile by using `sqlite3 dump <path-to-database>` and then
@@ -1119,7 +1347,7 @@ TEST_F(InterestGroupStorageTest, UpgradeFromV6) {
                         GURL("https://owner.example.com/bidder.js")),
                   Field("bidding_wasm_helper_url",
                         &InterestGroup::bidding_wasm_helper_url, absl::nullopt),
-                  Field("daily_update_url", &InterestGroup::daily_update_url,
+                  Field("update_url", &InterestGroup::update_url,
                         GURL("https://owner.example.com/update")),
                   Field("trusted_bidding_signals_url",
                         &InterestGroup::trusted_bidding_signals_url,
@@ -1213,7 +1441,7 @@ TEST_F(InterestGroupStorageTest, UpgradeFromV6) {
                         GURL("https://owner.example.com/bidder.js")),
                   Field("bidding_wasm_helper_url",
                         &InterestGroup::bidding_wasm_helper_url, absl::nullopt),
-                  Field("daily_update_url", &InterestGroup::daily_update_url,
+                  Field("update_url", &InterestGroup::update_url,
                         GURL("https://owner.example.com/update")),
                   Field("trusted_bidding_signals_url",
                         &InterestGroup::trusted_bidding_signals_url,
@@ -1307,7 +1535,7 @@ TEST_F(InterestGroupStorageTest, UpgradeFromV6) {
                         GURL("https://owner.example.com/bidder.js")),
                   Field("bidding_wasm_helper_url",
                         &InterestGroup::bidding_wasm_helper_url, absl::nullopt),
-                  Field("daily_update_url", &InterestGroup::daily_update_url,
+                  Field("update_url", &InterestGroup::update_url,
                         GURL("https://owner.example.com/update")),
                   Field("trusted_bidding_signals_url",
                         &InterestGroup::trusted_bidding_signals_url,
@@ -1822,6 +2050,66 @@ TEST_F(InterestGroupStorageTest, OnlyDeletesExpiredKAnon) {
             storage->GetLastKAnonymityReported(ad1_url.spec()));
   EXPECT_EQ(base::Time::Min(),
             storage->GetLastKAnonymityReported(ad2_url.spec()));
+}
+
+TEST_F(InterestGroupStorageTest, UpdateAdditionalBidKey) {
+  const url::Origin test_origin =
+      url::Origin::Create(GURL("https://example.com"));
+
+  constexpr blink::InterestGroup::AdditionalBidKey kAdditionalBidKey1 = {
+      0x7d, 0x4d, 0x0e, 0x7f, 0x61, 0x53, 0xa6, 0x9b, 0x62, 0x42, 0xb5,
+      0x22, 0xab, 0xbe, 0xe6, 0x85, 0xfd, 0xa4, 0x42, 0x0f, 0x88, 0x34,
+      0xb1, 0x08, 0xc3, 0xbd, 0xae, 0x36, 0x9e, 0xf5, 0x49, 0xfa};
+  constexpr blink::InterestGroup::AdditionalBidKey kAdditionalBidKey2 = {
+      0x10, 0x0f, 0xdf, 0x47, 0xfb, 0x94, 0xf1, 0x53, 0x6a, 0x4f, 0x7c,
+      0x3f, 0xda, 0x27, 0x38, 0x3f, 0xa0, 0x33, 0x75, 0xa8, 0xf5, 0x27,
+      0xc5, 0x37, 0xe6, 0xf1, 0x70, 0x3c, 0x47, 0xf9, 0x4f, 0x86};
+
+  InterestGroup negative_interest_group =
+      blink::TestInterestGroupBuilder(/*owner=*/test_origin,
+                                      /*name=*/"negative")
+          .SetBiddingUrl(GURL("https://example.com/bid"))
+          .SetAdditionalBidKey(kAdditionalBidKey1)
+          .Build();
+  std::unique_ptr<InterestGroupStorage> storage = CreateStorage();
+
+  storage->JoinInterestGroup(negative_interest_group, test_origin.GetURL());
+
+  std::vector<StorageInterestGroup> storage_interest_groups =
+      storage->GetInterestGroupsForOwner(test_origin);
+  ASSERT_EQ(1u, storage_interest_groups.size());
+  EXPECT_TRUE(negative_interest_group.IsEqualForTesting(
+      storage_interest_groups[0].interest_group));
+  base::Time join_time = base::Time::Now();
+  EXPECT_EQ(storage_interest_groups[0].join_time, join_time);
+  EXPECT_EQ(storage_interest_groups[0].last_updated, join_time);
+
+  // Test update as well.
+
+  // Pass time, so can check if `join_time` or `last_updated` is updated.
+  task_environment().FastForwardBy(base::Seconds(1234));
+
+  InterestGroupUpdate update;
+  update.additional_bid_key = kAdditionalBidKey2;
+  storage->UpdateInterestGroup(
+      blink::InterestGroupKey(negative_interest_group.owner,
+                              negative_interest_group.name),
+      update);
+
+  InterestGroup updated = negative_interest_group;
+  updated.additional_bid_key = kAdditionalBidKey2;
+
+  storage_interest_groups = storage->GetInterestGroupsForOwner(test_origin);
+  ASSERT_EQ(1u, storage_interest_groups.size());
+  EXPECT_TRUE(
+      updated.IsEqualForTesting(storage_interest_groups[0].interest_group));
+  // `join_time` should not be modified be updates, but `last_updated` should
+  // be.
+  EXPECT_EQ(storage_interest_groups[0].join_time, join_time);
+  EXPECT_EQ(storage_interest_groups[0].last_updated, base::Time::Now());
+  // Make sure the clock was advanced.
+  EXPECT_NE(storage_interest_groups[0].join_time,
+            storage_interest_groups[0].last_updated);
 }
 
 }  // namespace

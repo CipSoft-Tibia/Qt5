@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {fromNs} from '../common/time';
-import {globals} from './globals';
+import {Brand} from './brand';
 
 // Type-safe aliases for various flavours of ints Trace Processor exposes
 // (e.g. timestamp or ids into a given SQL table) and functions to work with
@@ -22,17 +21,6 @@ import {globals} from './globals';
 // These rely on TypeScript's type branding: extending a number with additional
 // compile-time-only type information, which prevents "implicit" conversions
 // between different ids.
-
-// Timestamp (in nanoseconds) in the same time domain as Trace Processor is
-// exposing.
-export type TPTimestamp = number&{
-  __type: 'TPTimestamp'
-}
-
-// TODO: unify this with common/time.ts.
-export function toTraceTime(ts: TPTimestamp): number {
-  return fromNs(ts) - globals.state.traceTime.startSec;
-}
 
 // Unique id for a process, id into |process| table.
 export type Upid = number&{
@@ -56,12 +44,52 @@ export function asUtid(v?: number): Utid|undefined {
   return v as (Utid | undefined);
 }
 
+// Id into |slice| SQL table.
+export type SliceSqlId = number&{
+  __type: 'SliceSqlId'
+}
+
+export function asSliceSqlId(v: number): SliceSqlId;
+export function asSliceSqlId(v?: number): SliceSqlId|undefined;
+export function asSliceSqlId(v?: number): SliceSqlId|undefined {
+  return v as (SliceSqlId | undefined);
+}
+
 // Id into |sched| SQL table.
 export type SchedSqlId = number&{
   __type: 'SchedSqlId'
 }
 
+export function asSchedSqlId(v: number): SchedSqlId;
+export function asSchedSqlId(v?: number): SchedSqlId|undefined;
+export function asSchedSqlId(v?: number): SchedSqlId|undefined {
+  return v as (SchedSqlId | undefined);
+}
+
 // Id into |thread_state| SQL table.
 export type ThreadStateSqlId = number&{
   __type: 'ThreadStateSqlId'
+}
+
+export function asThreadStateSqlId(v: number): ThreadStateSqlId;
+export function asThreadStateSqlId(v?: number): ThreadStateSqlId|undefined;
+export function asThreadStateSqlId(v?: number): ThreadStateSqlId|undefined {
+  return v as (ThreadStateSqlId | undefined);
+}
+
+export type ArgSetId = Brand<number, 'ArgSetId'>;
+
+export function asArgSetId(v: number): ArgSetId;
+export function asArgSetId(v?: number): ArgSetId|undefined;
+export function asArgSetId(v?: number): ArgSetId|undefined {
+  return v as (ArgSetId | undefined);
+}
+
+// Id into |args| SQL table.
+export type ArgsId = Brand<number, 'ArgsId'>;
+
+export function asArgId(v: number): ArgsId;
+export function asArgId(v?: number): ArgsId|undefined;
+export function asArgId(v?: number): ArgsId|undefined {
+  return v as (ArgsId | undefined);
 }

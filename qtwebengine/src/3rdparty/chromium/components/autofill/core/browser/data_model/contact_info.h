@@ -9,12 +9,11 @@
 #include <string>
 
 #include "base/compiler_specific.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "components/autofill/core/browser/data_model/autofill_structured_address_name.h"
 #include "components/autofill/core/browser/data_model/form_group.h"
 
 namespace autofill {
-
-class AutofillProfile;
 
 // A form group that stores name information.
 class NameInfo : public FormGroup {
@@ -46,11 +45,7 @@ class NameInfo : public FormGroup {
   // conflicting iff they are on the same root-to-leaf path.
   // For example, NAME_FIRST is child of NAME_LAST and if both are set, the tree
   // cannot be completed.
-  // |profile_is_verified| indicates that the profile is already verified.
-  bool FinalizeAfterImport(bool profile_is_verified);
-
-  // Convenience wrapper to invoke finalization for unverified profiles.
-  bool FinalizeAfterImport() { return FinalizeAfterImport(false); }
+  bool FinalizeAfterImport();
 
   // Returns true if the structured-name information in |this| and |newer| are
   // mergeable. Note, returns false if |newer| is variant of |this| or vice
@@ -116,10 +111,8 @@ class CompanyInfo : public FormGroup {
  public:
   CompanyInfo();
   CompanyInfo(const CompanyInfo& info);
-  explicit CompanyInfo(const AutofillProfile* profile);
   ~CompanyInfo() override;
 
-  CompanyInfo& operator=(const CompanyInfo& info);
   bool operator==(const CompanyInfo& other) const;
   bool operator!=(const CompanyInfo& other) const { return !operator==(other); }
 
@@ -128,15 +121,19 @@ class CompanyInfo : public FormGroup {
   void SetRawInfoWithVerificationStatus(ServerFieldType type,
                                         const std::u16string& value,
                                         VerificationStatus status) override;
-  void set_profile(const AutofillProfile* profile) { profile_ = profile; }
+
+  // The `company_name_` is considered valid if it doesn't look like a birthdate
+  // or social title. Only valid company names are considered for voting.
+  bool IsValid() const;
 
  private:
   // FormGroup:
   void GetSupportedTypes(ServerFieldTypeSet* supported_types) const override;
-  bool IsValidOrVerified(const std::u16string& value) const;
+  void GetMatchingTypes(const std::u16string& text,
+                        const std::string& app_locale,
+                        ServerFieldTypeSet* matching_types) const override;
 
   std::u16string company_name_;
-  const AutofillProfile* profile_ = nullptr;
 };
 
 }  // namespace autofill

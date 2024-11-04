@@ -15,7 +15,28 @@ extern template class CORE_EXTERN_TEMPLATE_EXPORT LayoutNGMixin<LayoutSVGBlock>;
 extern template class CORE_EXTERN_TEMPLATE_EXPORT
     LayoutNGBlockFlowMixin<LayoutSVGBlock>;
 
-// The LayoutNG representation of SVG <foreignObject>.
+// LayoutNGSVGForeignObject is the LayoutObject associated with <foreignobject>.
+// http://www.w3.org/TR/SVG/extend.html#ForeignObjectElement
+//
+// Foreign object is a way of inserting arbitrary non-SVG content into SVG.
+// A good example of this is HTML in SVG. Because of this, CSS content has to
+// be aware of SVG: e.g. when determining containing blocks we stop at the
+// enclosing foreign object (see LayoutObject::ComputeIsFixedContainer).
+//
+// Note that SVG is also allowed in HTML with the HTML5 parsing rules so SVG
+// content also has to be aware of CSS objects.
+// See http://www.w3.org/TR/html5/syntax.html#elements-0 with the rules for
+// 'foreign elements'. TODO(jchaffraix): Find a better place for this paragraph.
+//
+// The coordinate space for the descendants of the foreignObject does not
+// include the effective zoom (it is baked into any lengths as usual). The
+// transform that defines the userspace of the element is:
+//
+//   [CSS transform] * [inverse effective zoom] (* ['x' and 'y' translation])
+//
+// Because of this, the frame rect and visual rect includes effective zoom. The
+// object bounding box (ObjectBoundingBox method) is however not zoomed to be
+// compatible with the expectations of the getBBox() DOM interface.
 class LayoutNGSVGForeignObject final
     : public LayoutNGBlockFlowMixin<LayoutSVGBlock> {
  public:
@@ -34,22 +55,27 @@ class LayoutNGSVGForeignObject final
 
  private:
   // LayoutObject override:
+  void UpdateLayout() override;
+  // Update LayoutObject state after layout has completed. Returns true if
+  // boundaries needs to be propagated (because of a change to the transform).
+  bool UpdateAfterSvgLayout(bool bounds_changed);
   const char* GetName() const override;
   bool IsOfType(LayoutObjectType type) const override;
   bool IsChildAllowed(LayoutObject* child,
                       const ComputedStyle& style) const override;
   gfx::RectF ObjectBoundingBox() const override;
   gfx::RectF StrokeBoundingBox() const override;
+  gfx::RectF DecoratedBoundingBox() const override;
   gfx::RectF VisualRectInLocalSVGCoordinates() const override;
   AffineTransform LocalToSVGParentTransform() const override;
 
   // LayoutBox override:
-  LayoutPoint Location() const override;
+  LayoutPoint LocationInternal() const override;
   PaintLayerType LayerTypeRequired() const override;
   bool CreatesNewFormattingContext() const override;
 
   // LayoutBlock override:
-  void UpdateBlockLayout(bool relayout_children) override;
+  void StyleDidChange(StyleDifference, const ComputedStyle* old_style) override;
 
   // The resolved viewport in the regular SVG coordinate space (after any
   // 'transform' has been applied but without zoom-adjustment).
@@ -63,7 +89,7 @@ class LayoutNGSVGForeignObject final
 template <>
 struct DowncastTraits<LayoutNGSVGForeignObject> {
   static bool AllowFrom(const LayoutObject& object) {
-    return object.IsNGSVGForeignObject();
+    return object.IsSVGForeignObject();
   }
 };
 

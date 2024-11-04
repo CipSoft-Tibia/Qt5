@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtNetwork/QtNetwork>
 #include <QTest>
@@ -476,9 +476,9 @@ void tst_QNetworkDiskCache::fileMetaData()
     url.setFragment(QString());
 
     QString cacheDirectory = cache.cacheDirectory();
-    QStringList list = countFiles(cacheDirectory);
+    const QStringList list = countFiles(cacheDirectory);
     QCOMPARE(list.size(), NUM_SUBDIRECTORIES + 3);
-    foreach(QString fileName, list) {
+    for (const QString &fileName : list) {
         QFileInfo info(fileName);
         if (info.isFile()) {
             QNetworkCacheMetaData metaData = cache.call_fileMetaData(fileName);
@@ -521,9 +521,9 @@ void tst_QNetworkDiskCache::expire()
     }
 
     QString cacheDirectory = cache.cacheDirectory();
-    QStringList list = countFiles(cacheDirectory);
+    const QStringList list = countFiles(cacheDirectory);
     QStringList cacheList;
-    foreach(QString fileName, list) {
+    for (const QString &fileName : list) {
         QFileInfo info(fileName);
         if (info.isFile()) {
             QNetworkCacheMetaData metaData = cache.call_fileMetaData(fileName);
@@ -569,11 +569,11 @@ void tst_QNetworkDiskCache::oldCacheVersionFile()
         QVERIFY(!metaData.isValid());
         QVERIFY(!QFile::exists(name));
     } else {
-        QStringList files = countFiles(cache.cacheDirectory());
+        const QStringList files = countFiles(cache.cacheDirectory());
         QCOMPARE(files.size(), NUM_SUBDIRECTORIES + 3);
         // find the file
         QString cacheFile;
-        foreach (QString file, files) {
+        for (const QString &file : files) {
             QFileInfo info(file);
             if (info.isFile())
                 cacheFile = file;
@@ -610,8 +610,8 @@ void tst_QNetworkDiskCache::streamVersion()
 
     QString cacheFile;
     // find the file
-    QStringList files = countFiles(cache.cacheDirectory());
-    foreach (const QString &file, files) {
+    const QStringList files = countFiles(cache.cacheDirectory());
+    for (const QString &file : files) {
         QFileInfo info(file);
         if (info.isFile()) {
             cacheFile = file;

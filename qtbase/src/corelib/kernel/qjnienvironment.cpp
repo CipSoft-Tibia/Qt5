@@ -29,8 +29,6 @@ QT_BEGIN_NAMESPACE
     It has not been tested for other platforms.
 */
 
-static const char qJniThreadName[] = "QtThread";
-
 class QJniEnvironmentPrivate
 {
 public:
@@ -46,47 +44,42 @@ public:
     }
 };
 
-struct QJniLocalRefDeleterPrivate
-{
-    static void cleanup(jobject obj)
-    {
-        if (!obj)
-            return;
-
-        QJniEnvironment env;
-        env->DeleteLocalRef(obj);
-    }
-};
-
-// To simplify this we only define it for jobjects.
-typedef QScopedPointer<_jobject, QJniLocalRefDeleterPrivate> QJniScopedLocalRefPrivate;
-
-
 Q_GLOBAL_STATIC(QThreadStorage<QJniEnvironmentPrivateTLS *>, jniEnvTLS)
 
 
-
 /*!
-    \fn QJniEnvironment::QJniEnvironment()
-
     Constructs a new JNI Environment object and attaches the current thread to the Java VM.
 */
 QJniEnvironment::QJniEnvironment()
     : d(new QJniEnvironmentPrivate{})
 {
+    d->jniEnv = getJniEnv();
+}
+
+/*!
+    Returns the JNIEnv pointer for the current thread.
+
+    The current thread will be attached to the Java VM.
+*/
+JNIEnv *QJniEnvironment::getJniEnv()
+{
+    JNIEnv *jniEnv = nullptr;
+
     JavaVM *vm = QtAndroidPrivate::javaVM();
-    const jint ret = vm->GetEnv((void**)&d->jniEnv, JNI_VERSION_1_6);
-    if (ret == JNI_OK) // Already attached
-        return;
+    const jint ret = vm->GetEnv((void**)&jniEnv, JNI_VERSION_1_6);
 
     if (ret == JNI_EDETACHED) { // We need to (re-)attach
-        JavaVMAttachArgs args = { JNI_VERSION_1_6, qJniThreadName, nullptr };
-        if (vm->AttachCurrentThread(&d->jniEnv, &args) != JNI_OK)
-            return;
-
-        if (!jniEnvTLS->hasLocalData()) // If we attached the thread we own it.
-            jniEnvTLS->setLocalData(new QJniEnvironmentPrivateTLS);
+        const QByteArray threadName = QThread::currentThread()->objectName().toUtf8();
+        JavaVMAttachArgs args = { JNI_VERSION_1_6,
+                                  threadName.isEmpty() ? "QtThread" : threadName.constData(),
+                                  nullptr
+                                };
+        if (vm->AttachCurrentThread(&jniEnv, &args) == JNI_OK) {
+            if (!jniEnvTLS->hasLocalData()) // If we attached the thread we own it.
+                jniEnvTLS->setLocalData(new QJniEnvironmentPrivateTLS);
+        }
     }
+    return jniEnv;
 }
 
 /*!
@@ -111,8 +104,6 @@ bool QJniEnvironment::isValid() const
 }
 
 /*!
-    \fn JNIEnv *QJniEnvironment::operator->() const
-
     Provides access to the JNI Environment's \c JNIEnv pointer.
 */
 JNIEnv *QJniEnvironment::operator->() const
@@ -121,8 +112,6 @@ JNIEnv *QJniEnvironment::operator->() const
 }
 
 /*!
-    \fn JNIEnv &QJniEnvironment::operator*() const
-
     Returns the JNI Environment's \c JNIEnv object.
 */
 JNIEnv &QJniEnvironment::operator*() const
@@ -131,8 +120,6 @@ JNIEnv &QJniEnvironment::operator*() const
 }
 
 /*!
-    \fn JNIEnv *QJniEnvironment::jniEnv() const
-
     Returns the JNI Environment's \c JNIEnv pointer.
 */
 JNIEnv *QJniEnvironment::jniEnv() const
@@ -323,8 +310,6 @@ jfieldID QJniEnvironment::findStaticField(jclass clazz, const char *fieldName, c
 */
 
 /*!
-    \fn JavaVM *QJniEnvironment::javaVM()
-
     Returns the Java VM interface for the current process. Although it might
     be possible to have multiple Java VMs per process, Android allows only one.
 
@@ -366,6 +351,15 @@ bool QJniEnvironment::registerNativeMethods(const char *className, const JNINati
 
     return registerNativeMethods(clazz, methods, size);
 }
+
+/*!
+    \fn bool QJniEnvironment::registerNativeMethods(const char *className, std::initializer_list<JNINativeMethod> methods)
+    \overload
+
+    Registers the native functions methods in \a methods for the Java class \a className.
+    Returns \c true if the registration is successful, otherwise \c false.
+*/
+
 #if QT_DEPRECATED_SINCE(6, 2)
 /*!
     \overload
@@ -421,6 +415,14 @@ bool QJniEnvironment::registerNativeMethods(jclass clazz, const JNINativeMethod 
 }
 
 /*!
+    \fn bool QJniEnvironment::registerNativeMethods(jclass clazz, std::initializer_list<JNINativeMethod> methods)
+    \overload
+
+    Registers the native functions methods in \a methods for the Java class \a clazz.
+    Returns \c true if the registration is successful, otherwise \c false.
+*/
+
+/*!
     \enum QJniEnvironment::OutputMode
 
     \value Silent The exceptions are cleaned silently
@@ -448,7 +450,7 @@ bool QJniEnvironment::checkAndClearExceptions(QJniEnvironment::OutputMode output
 
 namespace {
     // Any pending exception need to be cleared before calling this
-    QString exceptionMessage(JNIEnv *env, const jthrowable &exception)
+    QString exceptionMessage(JNIEnv *env, jthrowable exception)
     {
         if (!exception)
             return {};
@@ -496,8 +498,6 @@ namespace {
 } // end namespace
 
 /*!
-    \fn QJniEnvironment::checkAndClearExceptions(JNIEnv *env, OutputMode outputMode = OutputMode::Verbose)
-
     Cleans any pending exceptions for \a env, either silently or reporting
     stack backtrace, depending on the \a outputMode. This is useful when you
     already have a \c JNIEnv pointer such as in a native function implementation.

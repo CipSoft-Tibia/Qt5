@@ -202,7 +202,8 @@ WorkerOrWorkletGlobalScope::WorkerOrWorkletGlobalScope(
     WorkerClients* worker_clients,
     std::unique_ptr<WebContentSettingsClient> content_settings_client,
     scoped_refptr<WebWorkerFetchContext> web_worker_fetch_context,
-    WorkerReportingProxy& reporting_proxy)
+    WorkerReportingProxy& reporting_proxy,
+    bool is_worker_loaded_from_data_url)
     : ExecutionContext(isolate, agent),
       is_creator_secure_context_(is_creator_secure_context),
       name_(name),
@@ -214,6 +215,8 @@ WorkerOrWorkletGlobalScope::WorkerOrWorkletGlobalScope(
           MakeGarbageCollected<WorkerOrWorkletScriptController>(this, isolate)),
       v8_cache_options_(v8_cache_options),
       reporting_proxy_(reporting_proxy) {
+  GetSecurityContext().SetIsWorkerLoadedFromDataURL(
+      is_worker_loaded_from_data_url);
   GetSecurityContext().SetSecurityOrigin(std::move(origin));
 
   SetPolicyContainer(PolicyContainer::CreateEmpty());
@@ -562,12 +565,20 @@ String WorkerOrWorkletGlobalScope::GetAcceptLanguages() const {
   return web_worker_fetch_context_->GetAcceptLanguages();
 }
 
+void WorkerOrWorkletGlobalScope::OnConsoleApiMessage(
+    mojom::ConsoleMessageLevel level,
+    const String& message,
+    SourceLocation* location) {
+  reporting_proxy_.ReportConsoleMessage(
+      mojom::ConsoleMessageSource::kConsoleApi, level, message, location);
+}
+
 void WorkerOrWorkletGlobalScope::Trace(Visitor* visitor) const {
   visitor->Trace(inside_settings_resource_fetcher_);
   visitor->Trace(resource_fetchers_);
   visitor->Trace(subresource_filter_);
   visitor->Trace(script_controller_);
-  EventTargetWithInlineData::Trace(visitor);
+  EventTarget::Trace(visitor);
   ExecutionContext::Trace(visitor);
 }
 

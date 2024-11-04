@@ -25,6 +25,7 @@
 #include "components/feature_engagement/internal/display_lock_controller.h"
 #include "components/feature_engagement/internal/editable_configuration.h"
 #include "components/feature_engagement/internal/event_model_impl.h"
+#include "components/feature_engagement/internal/feature_config_condition_validator.h"
 #include "components/feature_engagement/internal/in_memory_event_store.h"
 #include "components/feature_engagement/internal/never_availability_model.h"
 #include "components/feature_engagement/internal/never_event_storage_validator.h"
@@ -34,6 +35,7 @@
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/feature_engagement/public/feature_list.h"
 #include "components/feature_engagement/test/scoped_iph_feature_list.h"
+#include "components/feature_engagement/test/test_tracker.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace feature_engagement {
@@ -239,6 +241,28 @@ class TestTrackerDisplayLockController : public DisplayLockController {
   std::unique_ptr<DisplayLockHandle> next_display_lock_handle_;
 };
 
+class TestTrackerEventExporter
+    : public TrackerEventExporter,
+      public base::SupportsWeakPtr<TestTrackerEventExporter> {
+ public:
+  TestTrackerEventExporter() = default;
+
+  ~TestTrackerEventExporter() override = default;
+
+  void ExportEvents(ExportEventsCallback callback) override {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback), events_to_export_));
+  }
+
+  void SetEventsToExport(std::vector<EventData> events) {
+    events_to_export_ = events;
+  }
+
+ private:
+  // The events to export
+  std::vector<EventData> events_to_export_;
+};
+
 class TrackerImplTest : public ::testing::Test {
  public:
   TrackerImplTest() = default;
@@ -285,16 +309,19 @@ class TrackerImplTest : public ::testing::Test {
         std::make_unique<TestTrackerDisplayLockController>();
     display_lock_controller_ = display_lock_controller.get();
 
-    auto condition_validator = std::make_unique<OnceConditionValidator>();
+    auto condition_validator = CreateConditionValidator();
     condition_validator_ = condition_validator.get();
 
     auto time_provider = std::make_unique<TestTimeProvider>();
     time_provider_ = time_provider.get();
 
+    event_exporter_ = std::make_unique<TestTrackerEventExporter>();
+
     tracker_ = std::make_unique<TrackerImpl>(
         std::move(event_model), std::move(availability_model),
         std::move(configuration), std::move(display_lock_controller),
-        std::move(condition_validator), std::move(time_provider));
+        std::move(condition_validator), std::move(time_provider),
+        event_exporter_->AsWeakPtr());
   }
 
   void VerifyEventTrigger(std::string event_name, uint32_t count) {
@@ -495,6 +522,10 @@ class TrackerImplTest : public ::testing::Test {
     return std::make_unique<TestTrackerInMemoryEventStore>(true);
   }
 
+  virtual std::unique_ptr<ConditionValidator> CreateConditionValidator() {
+    return std::make_unique<OnceConditionValidator>();
+  }
+
   virtual bool ShouldAvailabilityStoreBeReady() { return true; }
 
   base::test::SingleThreadTaskEnvironment task_environment_;
@@ -502,9 +533,10 @@ class TrackerImplTest : public ::testing::Test {
   raw_ptr<TestTrackerInMemoryEventStore> event_store_;
   raw_ptr<TestTrackerAvailabilityModel> availability_model_;
   raw_ptr<TestTrackerDisplayLockController> display_lock_controller_;
-  raw_ptr<Configuration> configuration_;
+  raw_ptr<EditableConfiguration> configuration_;
+  std::unique_ptr<TestTrackerEventExporter> event_exporter_;
   base::HistogramTester histogram_tester_;
-  raw_ptr<OnceConditionValidator> condition_validator_;
+  raw_ptr<ConditionValidator> condition_validator_;
   raw_ptr<TestTimeProvider> time_provider_;
 };
 
@@ -540,6 +572,10 @@ class FailingAvailabilityModelInitTrackerImplTest : public TrackerImplTest {
 };
 
 }  // namespace
+
+TEST_F(TrackerImplTest, TestCreateTestTracker) {
+  EXPECT_NE(feature_engagement::CreateTestTracker(), nullptr);
+}
 
 TEST_F(TrackerImplTest, TestInitialization) {
   EXPECT_FALSE(tracker_->IsInitialized());
@@ -684,6 +720,112 @@ TEST_F(FailingAvailabilityModelInitTrackerImplTest, AvailabilityModelNotReady) {
   EXPECT_FALSE(tracker_->IsInitialized());
   EXPECT_TRUE(callback.invoked());
   EXPECT_FALSE(callback.success());
+}
+
+TEST_F(TrackerImplTest, TestMigrateEvents) {
+  EXPECT_FALSE(tracker_->IsInitialized());
+  TestTrackerEventExporter::EventData event1("test", 1);
+  event_exporter_->SetEventsToExport({event1});
+
+  StoringInitializedCallback callback;
+  tracker_->AddOnInitializedCallback(base::BindOnce(
+      &StoringInitializedCallback::OnInitialized, base::Unretained(&callback)));
+  EXPECT_FALSE(callback.invoked());
+
+  // Ensure all initialization is finished.
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_TRUE(tracker_->IsInitialized());
+  EXPECT_TRUE(callback.invoked());
+  EXPECT_TRUE(callback.success());
+
+  // Check that event made it into the store.
+  Event stored_event1 = event_store_->GetEvent("test");
+  EXPECT_EQ("test", stored_event1.name());
+  ASSERT_EQ(1, stored_event1.events_size());
+  EXPECT_EQ(1u, stored_event1.events(0).day());
+  EXPECT_EQ(1u, stored_event1.events(0).count());
+}
+
+TEST_F(TrackerImplTest, TestMigrateMultipleEvents) {
+  EXPECT_FALSE(tracker_->IsInitialized());
+  TestTrackerEventExporter::EventData event1("test", 1);
+  TestTrackerEventExporter::EventData event2("test2", 1);
+  event_exporter_->SetEventsToExport({event1, event2});
+
+  StoringInitializedCallback callback;
+  tracker_->AddOnInitializedCallback(base::BindOnce(
+      &StoringInitializedCallback::OnInitialized, base::Unretained(&callback)));
+  EXPECT_FALSE(callback.invoked());
+
+  // Ensure all initialization is finished.
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_TRUE(tracker_->IsInitialized());
+  EXPECT_TRUE(callback.invoked());
+  EXPECT_TRUE(callback.success());
+
+  // Check that events made it into the store.
+  Event stored_event1 = event_store_->GetEvent("test");
+  EXPECT_EQ("test", stored_event1.name());
+  ASSERT_EQ(1, stored_event1.events_size());
+  EXPECT_EQ(1u, stored_event1.events(0).day());
+  EXPECT_EQ(1u, stored_event1.events(0).count());
+
+  Event stored_event2 = event_store_->GetEvent("test2");
+  EXPECT_EQ("test2", stored_event2.name());
+  ASSERT_EQ(1, stored_event2.events_size());
+  EXPECT_EQ(1u, stored_event2.events(0).day());
+  EXPECT_EQ(1u, stored_event2.events(0).count());
+}
+
+TEST_F(TrackerImplTest, TestMigrateSameEventMultipleTimes) {
+  EXPECT_FALSE(tracker_->IsInitialized());
+  TestTrackerEventExporter::EventData event1("test", 1);
+  TestTrackerEventExporter::EventData event2("test", 1);
+  TestTrackerEventExporter::EventData event3("test", 2);
+  event_exporter_->SetEventsToExport({event1, event2, event3});
+
+  StoringInitializedCallback callback;
+  tracker_->AddOnInitializedCallback(base::BindOnce(
+      &StoringInitializedCallback::OnInitialized, base::Unretained(&callback)));
+  EXPECT_FALSE(callback.invoked());
+
+  // Ensure all initialization is finished.
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_TRUE(tracker_->IsInitialized());
+  EXPECT_TRUE(callback.invoked());
+  EXPECT_TRUE(callback.success());
+
+  // Check that events made it into the store.
+  Event stored_event = event_store_->GetEvent("test");
+  EXPECT_EQ("test", stored_event.name());
+  ASSERT_EQ(2, stored_event.events_size());
+  EXPECT_EQ(1u, stored_event.events(0).day());
+  EXPECT_EQ(2u, stored_event.events(0).count());
+
+  EXPECT_EQ(2u, stored_event.events(1).day());
+  EXPECT_EQ(1u, stored_event.events(1).count());
+}
+
+TEST_F(TrackerImplTest, TestNoMigration) {
+  EXPECT_FALSE(tracker_->IsInitialized());
+
+  // Reset the event provider to simulate not providing one.
+  event_exporter_.reset();
+
+  StoringInitializedCallback callback;
+  tracker_->AddOnInitializedCallback(base::BindOnce(
+      &StoringInitializedCallback::OnInitialized, base::Unretained(&callback)));
+  EXPECT_FALSE(callback.invoked());
+
+  // Ensure all initialization is finished and no crash or NPE happens.
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_TRUE(tracker_->IsInitialized());
+  EXPECT_TRUE(callback.invoked());
+  EXPECT_TRUE(callback.success());
 }
 
 TEST_F(TrackerImplTest, TestSetPriorityNotificationBeforeRegistration) {
@@ -1171,8 +1313,24 @@ TEST_F(TrackerImplTest, TrackingOnly_ShownTimeNotLogged) {
   histogram_tester_.ExpectTotalCount(histogram_name, 0);
 }
 
+// Base class for any tests that specifically require a
+// |OnceConditionValidator|.
+class OnceConditionTrackerImplTest : public TrackerImplTest {
+ public:
+  OnceConditionTrackerImplTest() = default;
+  ~OnceConditionTrackerImplTest() override = default;
+
+ protected:
+  std::unique_ptr<ConditionValidator> CreateConditionValidator() override {
+    auto once_condition_validator = std::make_unique<OnceConditionValidator>();
+    once_condition_validator_ = once_condition_validator.get();
+    return once_condition_validator;
+  }
+  raw_ptr<OnceConditionValidator> once_condition_validator_;
+};
+
 // Checks that the times are logged even when multiple IPH are presented.
-TEST_F(TrackerImplTest, MultipleShownTimeLogged) {
+TEST_F(OnceConditionTrackerImplTest, MultipleShownTimeLogged) {
   // Ensure all initialization is finished.
   StoringInitializedCallback callback;
   tracker_->AddOnInitializedCallback(base::BindOnce(
@@ -1181,7 +1339,7 @@ TEST_F(TrackerImplTest, MultipleShownTimeLogged) {
   const char histogram_name_foo[] = "InProductHelp.ShownTime.test_foo";
   const char histogram_name_bar[] = "InProductHelp.ShownTime.test_bar";
 
-  condition_validator_->AllowMultipleFeaturesForTesting(true);
+  once_condition_validator_->AllowMultipleFeaturesForTesting(true);
 
   base::Time start = base::Time::Now();
   time_provider_->SetCurrentTime(start);
@@ -1471,6 +1629,48 @@ TEST_F(ScopedIphFeatureListTest, NestedScopes_SameFeature) {
   }
   EXPECT_TRUE(tracker_->ShouldTriggerHelpUI(kTrackerTestFeatureBar));
   tracker_->Dismissed(kTrackerTestFeatureBar);
+}
+
+// Test class for tests that require an actual
+// |FeatureConfigConditionValidator|.
+class FeatureConfigConditionValidatorTrackerTest : public TrackerImplTest {
+ public:
+  FeatureConfigConditionValidatorTrackerTest() = default;
+  ~FeatureConfigConditionValidatorTrackerTest() override = default;
+
+ protected:
+  std::unique_ptr<ConditionValidator> CreateConditionValidator() override {
+    return std::make_unique<FeatureConfigConditionValidator>();
+  }
+};
+
+TEST_F(FeatureConfigConditionValidatorTrackerTest, GroupRulesApplied) {
+  // Set up the group config to only allow 1 feature from its group to be
+  // displayed.
+  GroupConfig custom_group_config;
+  custom_group_config.valid = true;
+  custom_group_config.trigger.name = "custom_group_trigger";
+  custom_group_config.trigger.comparator = Comparator(EQUAL, 0);
+  custom_group_config.trigger.window = 1u;
+  custom_group_config.trigger.storage = 1u;
+  configuration_->SetConfiguration(&kTrackerTestGroupOne, custom_group_config);
+
+  ScopedIphFeatureList list;
+  list.InitAndEnableFeatures(
+      {kTrackerTestFeatureFoo, kTrackerTestFeatureBar, kTrackerTestGroupOne});
+
+  // Ensure all initialization is finished.
+  StoringInitializedCallback callback;
+  tracker_->AddOnInitializedCallback(base::BindOnce(
+      &StoringInitializedCallback::OnInitialized, base::Unretained(&callback)));
+  base::RunLoop().RunUntilIdle();
+  base::UserActionTester user_action_tester;
+
+  // The first feature should display, but the second one should not, as they
+  // share a group that only allows its features to be displayed once.
+  EXPECT_TRUE(tracker_->ShouldTriggerHelpUI(kTrackerTestFeatureFoo));
+  tracker_->Dismissed(kTrackerTestFeatureFoo);
+  EXPECT_FALSE(tracker_->ShouldTriggerHelpUI(kTrackerTestFeatureBar));
 }
 
 }  // namespace test

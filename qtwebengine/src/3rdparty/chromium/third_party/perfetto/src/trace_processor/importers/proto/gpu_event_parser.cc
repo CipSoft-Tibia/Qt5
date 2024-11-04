@@ -280,17 +280,17 @@ void GpuEventParser::InsertGpuTrack(
   }
   ++gpu_hw_queue_counter_;
 }
-base::Optional<std::string> GpuEventParser::FindDebugName(
+std::optional<std::string> GpuEventParser::FindDebugName(
     int32_t vk_object_type,
     uint64_t vk_handle) const {
   auto map = debug_marker_names_.find(vk_object_type);
   if (map == debug_marker_names_.end()) {
-    return base::nullopt;
+    return std::nullopt;
   }
 
   auto name = map->second.find(vk_handle);
   if (name == map->second.end()) {
-    return base::nullopt;
+    return std::nullopt;
   } else {
     return name->second;
   }
@@ -735,8 +735,8 @@ void GpuEventParser::ParseGpuMemTotalEvent(int64_t ts, ConstBytes blob) {
   if (pid == 0) {
     // Pid 0 is used to indicate the global total
     track = context_->track_tracker->InternGlobalCounterTrack(
-        gpu_mem_total_name_id_, {}, gpu_mem_total_unit_id_,
-        gpu_mem_total_global_desc_id_);
+        TrackTracker::Group::kMemory, gpu_mem_total_name_id_, {},
+        gpu_mem_total_unit_id_, gpu_mem_total_global_desc_id_);
   } else {
     // Process emitting the packet can be different from the pid in the event.
     UniqueTid utid = context_->process_tracker->UpdateThread(pid, pid);

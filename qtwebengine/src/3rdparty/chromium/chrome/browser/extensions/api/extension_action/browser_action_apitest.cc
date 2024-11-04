@@ -59,8 +59,8 @@
 #include "extensions/test/result_catcher.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "testing/gmock/include/gmock/gmock.h"
-#include "ui/base/layout.h"
 #include "ui/base/resource/resource_bundle.h"
+#include "ui/base/resource/resource_scale_factor.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/geometry/skia_conversions.h"
@@ -324,8 +324,12 @@ IN_PROC_BROWSER_TEST_F(BrowserActionApiCanvasTest, DynamicBrowserAction) {
   // these may be generated from the provided scales.
   float kSmallIconScale = 21.f / ExtensionAction::ActionIconSize();
   float kLargeIconScale = 42.f / ExtensionAction::ActionIconSize();
-  ASSERT_FALSE(ui::IsSupportedScale(kSmallIconScale));
-  ASSERT_FALSE(ui::IsSupportedScale(kLargeIconScale));
+  ASSERT_NE(ui::GetScaleForResourceScaleFactor(
+                ui::GetSupportedResourceScaleFactor(kSmallIconScale)),
+            kSmallIconScale);
+  ASSERT_NE(ui::GetScaleForResourceScaleFactor(
+                ui::GetSupportedResourceScaleFactor(kLargeIconScale)),
+            kLargeIconScale);
 
   // Tell the extension to update the icon using ImageData object.
   ResultCatcher catcher;
@@ -488,20 +492,15 @@ IN_PROC_BROWSER_TEST_F(BrowserActionApiCanvasTest, InvisibleIconBrowserAction) {
           extension->id());
   ASSERT_TRUE(background_page);
 
-  static constexpr char kScript[] =
-      "setIcon(%s).then(function(arg) {"
-      "  domAutomationController.send(arg);"
-      "});";
+  static constexpr char kScript[] = "setIcon(%s);";
 
   const std::string histogram_name =
       "Extensions.DynamicExtensionActionIconWasVisible";
   {
     base::HistogramTester histogram_tester;
-    std::string result;
-    EXPECT_TRUE(ExecuteScriptAndExtractString(
-        background_page->host_contents(),
-        base::StringPrintf(kScript, "invisibleImageData"), &result));
-    EXPECT_EQ("Icon not sufficiently visible.", result);
+    EXPECT_EQ("Icon not sufficiently visible.",
+              EvalJs(background_page->host_contents(),
+                     base::StringPrintf(kScript, "invisibleImageData")));
     // The icon should not have changed.
     EXPECT_TRUE(gfx::test::AreImagesEqual(
         initial_bar_icon, GetBrowserActionsBar()->GetIcon(extension->id())));
@@ -511,11 +510,8 @@ IN_PROC_BROWSER_TEST_F(BrowserActionApiCanvasTest, InvisibleIconBrowserAction) {
 
   {
     base::HistogramTester histogram_tester;
-    std::string result;
-    EXPECT_TRUE(ExecuteScriptAndExtractString(
-        background_page->host_contents(),
-        base::StringPrintf(kScript, "visibleImageData"), &result));
-    EXPECT_EQ("", result);
+    EXPECT_EQ("", EvalJs(background_page->host_contents(),
+                         base::StringPrintf(kScript, "visibleImageData")));
     // The icon should have changed.
     EXPECT_FALSE(gfx::test::AreImagesEqual(
         initial_bar_icon, GetBrowserActionsBar()->GetIcon(extension->id())));
@@ -958,12 +954,8 @@ IN_PROC_BROWSER_TEST_P(BrowserActionApiTestWithContextType,
   EXPECT_TRUE(tab);
 
   // Verify that the browser action turned the background color red.
-  const std::string script =
-      "window.domAutomationController.send(document.body.style."
-      "backgroundColor);";
-  std::string result;
-  EXPECT_TRUE(content::ExecuteScriptAndExtractString(tab, script, &result));
-  EXPECT_EQ(result, "red");
+  const std::string script = "document.body.style.backgroundColor;";
+  EXPECT_EQ(content::EvalJs(tab, script), "red");
 }
 
 IN_PROC_BROWSER_TEST_P(BrowserActionApiTestWithContextType,

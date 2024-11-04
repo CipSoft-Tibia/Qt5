@@ -37,10 +37,11 @@ TESTS = ['assert', 'badxml', 'benchlibcallgrind', 'benchlibcounting',
          'fetchbogus', 'findtestdata', 'float', 'globaldata', 'longstring',
          'maxwarnings', 'mouse', 'multiexec', 'pairdiagnostics', 'pass',
          'printdatatags', 'printdatatagswithglobaltags', 'qexecstringlist',
-         'signaldumper', 'silent', 'singleskip', 'skip', 'skipcleanup',
-         'skipcleanuptestcase', 'skipinit', 'skipinitdata', 'sleep', 'strcmp',
-         'subtest', 'testlib', 'tuplediagnostics', 'verbose1', 'verbose2',
-         'verifyexceptionthrown', 'warnings', 'watchdog', 'junit', 'keyboard']
+         'signaldumper', 'silent', 'silent_fatal', 'singleskip', 'skip',
+         'skipblacklisted', 'skipcleanup', 'skipcleanuptestcase', 'skipinit',
+         'skipinitdata', 'sleep', 'strcmp', 'subtest', 'testlib', 'tuplediagnostics',
+         'verbose1', 'verbose2', 'verifyexceptionthrown', 'warnings', 'watchdog',
+         'junit', 'keyboard']
 
 
 class Fail (Exception): pass
@@ -254,7 +255,7 @@ def testEnv(testname,
             # Must match tst_Selftests::runSubTest_data():
             crashers = ("assert", "crashes", "crashedterminate",
                         "exceptionthrow", "faildatatype", "failfetchtype",
-                        "fetchbogus", "silent", "watchdog")):
+                        "fetchbogus", "silent_fatal", "watchdog")):
     """Determine the environment in which to run a test."""
     data = baseEnv()
     if testname in crashers:
@@ -281,6 +282,7 @@ def shouldIgnoreTest(testname, format):
                         "printdatatags",
                         "printdatatagswithglobaltags",
                         "silent",
+                        "silent_fatal",
                         "crashes",
                         "benchlibcallgrind",
                         "float",

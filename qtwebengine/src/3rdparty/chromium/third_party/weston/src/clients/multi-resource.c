@@ -1,6 +1,7 @@
 /*
  * Copyright © 2011 Benjamin Franzke
  * Copyright © 2010, 2013 Intel Corporation
+ * Copyright © 2021 Collabora, Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -44,6 +45,10 @@
 #include "shared/xalloc.h"
 #include <libweston/zalloc.h>
 
+#include "xdg-shell-client-protocol.h"
+
+static int running = 1;
+
 struct device {
 	enum { KEYBOARD, POINTER } type;
 
@@ -61,9 +66,9 @@ struct display {
 	struct wl_display *display;
 	struct wl_registry *registry;
 	struct wl_compositor *compositor;
-	struct wl_shell *shell;
 	struct wl_seat *seat;
 	struct wl_shm *shm;
+	struct xdg_wm_base *wm_base;
 	uint32_t formats;
 	struct wl_list devices;
 };
@@ -72,7 +77,9 @@ struct window {
 	struct display *display;
 	int width, height;
 	struct wl_surface *surface;
-	struct wl_shell_surface *shell_surface;
+	struct xdg_toplevel *xdg_toplevel;
+	struct xdg_surface *xdg_surface;
+	bool wait_for_configure;
 };
 
 static void
@@ -116,27 +123,54 @@ attach_buffer(struct window *window, int width, int height)
 }
 
 static void
-handle_ping(void *data, struct wl_shell_surface *shell_surface,
-							uint32_t serial)
+handle_xdg_surface_configure(void *data, struct xdg_surface *surface,
+			     uint32_t serial)
 {
-	wl_shell_surface_pong(shell_surface, serial);
+	struct window *window = data;
+
+	xdg_surface_ack_configure(surface, serial);
+
+	if (window->wait_for_configure) {
+
+		attach_buffer(window, window->width, window->height);
+		wl_surface_damage(window->surface, 0, 0, window->width, window->height);
+		wl_surface_commit(window->surface);
+
+		window->wait_for_configure = false;
+	}
+}
+
+static const struct xdg_surface_listener xdg_surface_listener = {
+	handle_xdg_surface_configure,
+};
+
+static void
+xdg_wm_base_ping(void *data, struct xdg_wm_base *shell, uint32_t serial)
+{
+	xdg_wm_base_pong(shell, serial);
+}
+
+static const struct xdg_wm_base_listener wm_base_listener = {
+	xdg_wm_base_ping,
+};
+
+
+static void
+handle_toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
+			      int32_t width, int32_t height,
+			      struct wl_array *state)
+{
 }
 
 static void
-handle_configure(void *data, struct wl_shell_surface *shell_surface,
-		 uint32_t edges, int32_t width, int32_t height)
+handle_toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel)
 {
+	running = 0;
 }
 
-static void
-handle_popup_done(void *data, struct wl_shell_surface *shell_surface)
-{
-}
-
-static const struct wl_shell_surface_listener shell_surface_listener = {
-	handle_ping,
-	handle_configure,
-	handle_popup_done
+static const struct xdg_toplevel_listener xdg_toplevel_listener = {
+	handle_toplevel_configure,
+	handle_toplevel_close,
 };
 
 static struct window *
@@ -149,19 +183,19 @@ create_window(struct display *display, int width, int height)
 	window->width = width;
 	window->height = height;
 	window->surface = wl_compositor_create_surface(display->compositor);
-	window->shell_surface = wl_shell_get_shell_surface(display->shell,
-							   window->surface);
 
-	if (window->shell_surface)
-		wl_shell_surface_add_listener(window->shell_surface,
-					      &shell_surface_listener, window);
+	window->xdg_surface =
+		xdg_wm_base_get_xdg_surface(display->wm_base, window->surface);
+	assert(window->xdg_surface);
 
-	wl_shell_surface_set_title(window->shell_surface, "simple-shm");
+	xdg_surface_add_listener(window->xdg_surface, &xdg_surface_listener, window);
 
-	wl_shell_surface_set_toplevel(window->shell_surface);
-
-	wl_surface_damage(window->surface, 0, 0, width, height);
-	attach_buffer(window, width, height);
+	window->xdg_toplevel = xdg_surface_get_toplevel(window->xdg_surface);
+	assert(window->xdg_toplevel);
+	xdg_toplevel_add_listener(window->xdg_toplevel,
+				  &xdg_toplevel_listener, window);
+	xdg_toplevel_set_title(window->xdg_toplevel, "multi-resource");
+	window->wait_for_configure = true;
 	wl_surface_commit(window->surface);
 
 	return window;
@@ -170,7 +204,11 @@ create_window(struct display *display, int width, int height)
 static void
 destroy_window(struct window *window)
 {
-	wl_shell_surface_destroy(window->shell_surface);
+	if (window->xdg_surface)
+		xdg_surface_destroy(window->xdg_surface);
+	if (window->xdg_toplevel)
+		xdg_toplevel_destroy(window->xdg_toplevel);
+
 	wl_surface_destroy(window->surface);
 	free(window);
 }
@@ -197,9 +235,10 @@ registry_handle_global(void *data, struct wl_registry *registry,
 		d->compositor =
 			wl_registry_bind(registry,
 					 id, &wl_compositor_interface, 1);
-	} else if (strcmp(interface, "wl_shell") == 0) {
-		d->shell = wl_registry_bind(registry,
-					    id, &wl_shell_interface, 1);
+	} else if (strcmp(interface, "xdg_wm_base") == 0) {
+		d->wm_base = wl_registry_bind(registry,
+					    id, &xdg_wm_base_interface, 1);
+		xdg_wm_base_add_listener(d->wm_base, &wm_base_listener, d);
 	} else if (strcmp(interface, "wl_shm") == 0) {
 		d->shm = wl_registry_bind(registry,
 					  id, &wl_shm_interface, 1);
@@ -245,6 +284,11 @@ create_display(void)
 
 	if (!(display->formats & (1 << WL_SHM_FORMAT_XRGB8888))) {
 		fprintf(stderr, "WL_SHM_FORMAT_XRGB32 not available\n");
+		exit(1);
+	}
+
+	if (!display->wm_base) {
+		fprintf(stderr, "xdg-shell required!\n");
 		exit(1);
 	}
 
@@ -399,8 +443,8 @@ destroy_display(struct display *display)
 	if (display->shm)
 		wl_shm_destroy(display->shm);
 
-	if (display->shell)
-		wl_shell_destroy(display->shell);
+	if (display->wm_base)
+		xdg_wm_base_destroy(display->wm_base);
 
 	if (display->seat)
 		wl_seat_destroy(display->seat);
@@ -414,7 +458,6 @@ destroy_display(struct display *display)
 	free(display);
 }
 
-static int running = 1;
 
 static void
 signal_int(int signum)

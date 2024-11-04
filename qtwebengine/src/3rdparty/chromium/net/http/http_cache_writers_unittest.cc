@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "base/functional/bind.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/run_loop.h"
 #include "crypto/secure_hash.h"
 #include "net/http/http_cache.h"
@@ -142,7 +143,7 @@ class WritersTest : public TestWithTaskEnvironment {
     writers_->AddTransaction(transaction.get(), parallel_writing_pattern_,
                              transaction->priority(), info);
     writers_->SetNetworkTransaction(transaction.get(),
-                                    std::move(network_transaction), nullptr);
+                                    std::move(network_transaction));
     EXPECT_TRUE(writers_->HasTransaction(transaction.get()));
     transactions_.push_back(std::move(transaction));
   }
@@ -497,7 +498,9 @@ class WritersTest : public TestWithTaskEnvironment {
   ScopedMockTransaction scoped_transaction_;
   MockHttpCache cache_;
   std::unique_ptr<HttpCache::Writers> writers_;
-  disk_cache::Entry* disk_entry_ = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #addr-of
+  RAW_PTR_EXCLUSION disk_cache::Entry* disk_entry_ = nullptr;
   std::unique_ptr<HttpCache::ActiveEntry> entry_;
   TestHttpCache test_cache_;
 

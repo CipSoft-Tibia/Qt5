@@ -27,7 +27,8 @@ PermissionStatus* PermissionStatus::Take(PermissionStatusListener* listener,
 
 PermissionStatus::PermissionStatus(PermissionStatusListener* listener,
                                    ExecutionContext* execution_context)
-    : ExecutionContextLifecycleStateObserver(execution_context),
+    : ActiveScriptWrappable<PermissionStatus>({}),
+      ExecutionContextLifecycleStateObserver(execution_context),
       listener_(listener) {}
 
 PermissionStatus::~PermissionStatus() = default;
@@ -43,8 +44,7 @@ ExecutionContext* PermissionStatus::GetExecutionContext() const {
 void PermissionStatus::AddedEventListener(
     const AtomicString& event_type,
     RegisteredEventListener& registered_listener) {
-  EventTargetWithInlineData::AddedEventListener(event_type,
-                                                registered_listener);
+  EventTarget::AddedEventListener(event_type, registered_listener);
 
   if (!listener_)
     return;
@@ -57,8 +57,7 @@ void PermissionStatus::AddedEventListener(
 void PermissionStatus::RemovedEventListener(
     const AtomicString& event_type,
     const RegisteredEventListener& registered_listener) {
-  EventTargetWithInlineData::RemovedEventListener(event_type,
-                                                  registered_listener);
+  EventTarget::RemovedEventListener(event_type, registered_listener);
   if (!listener_)
     return;
 
@@ -128,7 +127,7 @@ void PermissionStatus::OnPermissionStatusChange(MojoPermissionStatus status) {
 
 void PermissionStatus::Trace(Visitor* visitor) const {
   visitor->Trace(listener_);
-  EventTargetWithInlineData::Trace(visitor);
+  EventTarget::Trace(visitor);
   ExecutionContextLifecycleStateObserver::Trace(visitor);
   PermissionStatusListener::Observer::Trace(visitor);
 }

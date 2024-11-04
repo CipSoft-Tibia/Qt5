@@ -10,11 +10,8 @@
 #include "components/password_manager/core/browser/mock_password_feature_manager.h"
 #include "components/password_manager/core/browser/password_manager_client.h"
 #include "components/password_manager/core/browser/password_manager_metrics_recorder.h"
-#include "components/password_manager/core/browser/password_manager_metrics_util.h"
-#include "components/password_manager/core/browser/password_reuse_detector.h"
 #include "components/password_manager/core/browser/stub_credentials_filter.h"
-#include "components/sync/driver/sync_service.h"
-#include "testing/gmock/include/gmock/gmock.h"
+#include "components/sync/service/sync_service.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace password_manager {
@@ -83,16 +80,6 @@ class StubPasswordManagerClient : public PasswordManagerClient {
                                    const GURL& frame_url) override;
 #endif
 
-  void CheckProtectedPasswordEntry(
-      metrics_util::PasswordType reused_password_type,
-      const std::string& username,
-      const std::vector<MatchingReusedCredential>& matching_reused_credentials,
-      bool password_field_exists,
-      uint64_t reused_password_hash,
-      const std::string& domain) override;
-
-  void LogPasswordReuseDetectedEvent() override;
-
   ukm::SourceId GetUkmSourceId() override;
   PasswordManagerMetricsRecorder* GetMetricsRecorder() override;
   signin::IdentityManager* GetIdentityManager() override;
@@ -100,7 +87,6 @@ class StubPasswordManagerClient : public PasswordManagerClient {
   network::mojom::NetworkContext* GetNetworkContext() const override;
   bool IsIsolationForPasswordSitesEnabled() const override;
   bool IsNewTabPage() const override;
-  FieldInfoManager* GetFieldInfoManager() const override;
 
  private:
   const StubCredentialsFilter credentials_filter_;

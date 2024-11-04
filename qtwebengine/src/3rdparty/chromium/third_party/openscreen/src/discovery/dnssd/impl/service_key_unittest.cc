@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@
 #include "discovery/dnssd/testing/fake_dns_record_factory.h"
 #include "gtest/gtest.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
 TEST(DnsSdServiceKeyTest, TestServiceKeyEquals) {
   ServiceKey key1("_service._udp", "domain");
@@ -61,5 +60,4 @@ TEST(DnsSdServiceKeyTest, CreateFromRecordTest) {
   EXPECT_EQ(key.domain_id(), FakeDnsRecordFactory::kDomainName);
 }
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

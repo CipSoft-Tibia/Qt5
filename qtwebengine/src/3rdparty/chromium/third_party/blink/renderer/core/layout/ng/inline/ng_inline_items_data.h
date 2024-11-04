@@ -9,6 +9,7 @@
 
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_item.h"
+#include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_item_text_index.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
@@ -22,6 +23,10 @@ struct CORE_EXPORT NGInlineItemsData
     : public GarbageCollected<NGInlineItemsData> {
  public:
   virtual ~NGInlineItemsData() = default;
+
+  NGInlineItemTextIndex End() const {
+    return {items.size(), text_content.length()};
+  }
 
   // Text content for all inline items represented by a single NGInlineNode.
   // Encoded either as UTF-16 or latin-1 depending on the content.
@@ -40,9 +45,15 @@ struct CORE_EXPORT NGInlineItemsData
   bool IsValidOffset(unsigned index, unsigned offset) const {
     return index < items.size() && items[index].IsValidOffset(offset);
   }
+  bool IsValidOffset(const NGInlineItemTextIndex& index) const {
+    return IsValidOffset(index.item_index, index.text_offset);
+  }
 
   void AssertOffset(unsigned index, unsigned offset) const {
     items[index].AssertOffset(offset);
+  }
+  void AssertOffset(const NGInlineItemTextIndex& index) const {
+    AssertOffset(index.item_index, index.text_offset);
   }
   void AssertEndOffset(unsigned index, unsigned offset) const {
     items[index].AssertEndOffset(offset);
@@ -51,6 +62,10 @@ struct CORE_EXPORT NGInlineItemsData
   // Get a list of |kOpenTag| that are open at |size|.
   using OpenTagItems = Vector<const NGInlineItem*, 16>;
   void GetOpenTagItems(wtf_size_t size, OpenTagItems* open_items) const;
+
+#if DCHECK_IS_ON()
+  void CheckConsistency() const;
+#endif
 
   virtual void Trace(Visitor* visitor) const;
 };

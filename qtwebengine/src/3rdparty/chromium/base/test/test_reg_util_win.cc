@@ -6,13 +6,13 @@
 
 #include <stdint.h>
 
-#include "base/guid.h"
 #include "base/memory/ptr_util.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/uuid.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 #include <windows.h>
@@ -20,6 +20,11 @@
 namespace registry_util {
 
 namespace {
+
+// Overriding HKLM is not permitted in some environments. This is controlled by
+// this bool and disallowed by calling
+// DisallowHKLMRegistryOverrideForIntegrationTests.
+bool g_hklm_override_allowed = true;
 
 constexpr char16_t kTimestampDelimiter[] = u"$";
 constexpr wchar_t kTempTestKeyPath[] = L"Software\\Chromium\\TempTestKeys";
@@ -63,7 +68,8 @@ std::wstring GenerateTempKeyPath(const std::wstring& test_key_root,
   return base::AsWString(base::StrCat(
       {base::AsStringPiece16(test_key_root), u"\\",
        base::NumberToString16(timestamp.ToInternalValue()), kTimestampDelimiter,
-       base::ASCIIToUTF16(base::GenerateGUID())}));
+       base::ASCIIToUTF16(
+           base::Uuid::GenerateRandomV4().AsLowercaseString())}));
 }
 
 }  // namespace
@@ -100,6 +106,10 @@ void RegistryOverrideManager::OverrideRegistry(HKEY override) {
 
 void RegistryOverrideManager::OverrideRegistry(HKEY override,
                                                std::wstring* override_path) {
+  CHECK(override != HKEY_LOCAL_MACHINE || g_hklm_override_allowed)
+      << "Use of RegistryOverrideManager to override HKLM is not permitted in "
+         "this environment.";
+
   std::wstring key_path = GenerateTempKeyPath(test_key_root_, timestamp_);
 
   base::win::RegKey temp_key;
@@ -111,6 +121,11 @@ void RegistryOverrideManager::OverrideRegistry(HKEY override,
       std::make_unique<ScopedRegistryKeyOverride>(override, key_path));
   if (override_path)
     override_path->assign(key_path);
+}
+
+void RegistryOverrideManager::SetAllowHKLMRegistryOverrideForIntegrationTests(
+    bool allow) {
+  g_hklm_override_allowed = allow;
 }
 
 std::wstring GenerateTempKeyPath() {

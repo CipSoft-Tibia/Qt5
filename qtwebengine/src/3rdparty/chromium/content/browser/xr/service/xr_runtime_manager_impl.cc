@@ -201,6 +201,10 @@ BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetRuntime(
   return it->second.get();
 }
 
+content::WebXrLoggerManager& XRRuntimeManagerImpl::GetLoggerManager() {
+  return logger_manager_;
+}
+
 BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetRuntimeForOptions(
     device::mojom::XRSessionOptions* options) {
   BrowserXRRuntimeImpl* runtime = nullptr;
@@ -226,30 +230,36 @@ BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetRuntimeForOptions(
 }
 
 BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetImmersiveVrRuntime() {
-#if BUILDFLAG(IS_ANDROID)
-  auto* gvr = GetRuntime(device::mojom::XRDeviceId::GVR_DEVICE_ID);
-  if (gvr)
-    return gvr;
-#endif
-
+// OpenXR is the highest priority if it's available.
 #if BUILDFLAG(ENABLE_OPENXR)
   auto* openxr = GetRuntime(device::mojom::XRDeviceId::OPENXR_DEVICE_ID);
-  if (openxr)
+  if (openxr) {
     return openxr;
+  }
+#endif
+
+#if BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(ENABLE_CARDBOARD)
+  auto* cardboard = GetRuntime(device::mojom::XRDeviceId::CARDBOARD_DEVICE_ID);
+  if (cardboard) {
+    return cardboard;
+  }
+#endif
+#if BUILDFLAG(ENABLE_GVR_SERVICES)
+  auto* gvr = GetRuntime(device::mojom::XRDeviceId::GVR_DEVICE_ID);
+  if (gvr) {
+    return gvr;
+  }
+#endif
 #endif
 
   return nullptr;
 }
 
 BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetImmersiveArRuntime() {
-#if BUILDFLAG(IS_ANDROID)
-  auto* arcore_runtime =
-      GetRuntime(device::mojom::XRDeviceId::ARCORE_DEVICE_ID);
-  if (arcore_runtime && arcore_runtime->SupportsArBlendMode())
-    return arcore_runtime;
-#endif
-
 #if BUILDFLAG(ENABLE_OPENXR)
+  // If OpenXR is available and the runtime supports an AR blend mode, prefer
+  // it over ARCore to unify VR/AR rendering paths.
   if (base::FeatureList::IsEnabled(
           device::features::kOpenXrExtendedFeatureSupport)) {
     auto* openxr = GetRuntime(device::mojom::XRDeviceId::OPENXR_DEVICE_ID);
@@ -258,22 +268,36 @@ BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetImmersiveArRuntime() {
   }
 #endif
 
+#if BUILDFLAG(ENABLE_ARCORE)
+  auto* arcore_runtime =
+      GetRuntime(device::mojom::XRDeviceId::ARCORE_DEVICE_ID);
+  if (arcore_runtime && arcore_runtime->SupportsArBlendMode()) {
+    return arcore_runtime;
+  }
+#endif
+
   return nullptr;
 }
 
 BrowserXRRuntimeImpl*
 XRRuntimeManagerImpl::GetCurrentlyPresentingImmersiveRuntime() {
-  auto* vr_runtime = GetImmersiveVrRuntime();
-  if (vr_runtime && vr_runtime->GetServiceWithActiveImmersiveSession()) {
-    return vr_runtime;
-  }
+  auto it = base::ranges::find_if(
+      runtimes_, [](const DeviceRuntimeMap::value_type& val) {
+        return val.second->GetServiceWithActiveImmersiveSession() != nullptr;
+      });
 
-  auto* ar_runtime = GetImmersiveArRuntime();
-  if (ar_runtime && ar_runtime->GetServiceWithActiveImmersiveSession()) {
-    return ar_runtime;
+  if (it != runtimes_.end()) {
+    return it->second.get();
   }
 
   return nullptr;
+}
+
+bool XRRuntimeManagerImpl::HasPendingImmersiveRequest() {
+  return base::ranges::any_of(
+      runtimes_, [](const DeviceRuntimeMap::value_type& val) {
+        return val.second->HasPendingImmersiveSessionRequest();
+      });
 }
 
 bool XRRuntimeManagerImpl::IsOtherClientPresenting(VRServiceImpl* service) {

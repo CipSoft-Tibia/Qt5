@@ -9,27 +9,20 @@
 
 #include "windows-arm-init.h"
 
-/* Efficiency class = 0 means little core, while 1 means big core for now */
-#define MAX_WOA_VALID_EFFICIENCY_CLASSES		2
-#define VENDOR_NAME_MAX		CPUINFO_PACKAGE_NAME_MAX
-
 struct cpuinfo_arm_isa cpuinfo_isa;
 
 static void set_cpuinfo_isa_fields(void);
-static bool get_system_info_from_registry(
-	struct woa_chip_info** chip_info,
-	enum cpuinfo_vendor* vendor);
+static struct woa_chip_info* get_system_info_from_registry(void);
 
-struct vendor_info {
-	char vendor_name[VENDOR_NAME_MAX];
-	enum cpuinfo_vendor vendor;
-};
-
-/* Please add new vendor here! */
-static struct vendor_info vendors[] = {
+static struct woa_chip_info woa_chip_unknown = {
+	L"Unknown",
+	woa_chip_name_unknown,
 	{
-		"Qualcomm",
-		cpuinfo_vendor_qualcomm
+		{
+			cpuinfo_vendor_unknown,
+			cpuinfo_uarch_unknown,
+			0
+		}
 	}
 };
 
@@ -37,14 +30,16 @@ static struct vendor_info vendors[] = {
 static struct woa_chip_info woa_chips[] = {
 	/* Microsoft SQ1 Kryo 495 4 + 4 cores (3 GHz + 1.80 GHz) */
 	{
-		"Microsoft SQ1",
+		L"Microsoft SQ1",
 		woa_chip_name_microsoft_sq_1,
 		{
 			{
+				cpuinfo_vendor_arm,
 				cpuinfo_uarch_cortex_a55,
 				1800000000,
 			},
 			{
+				cpuinfo_vendor_arm,
 				cpuinfo_uarch_cortex_a76,
 				3000000000,
 			}
@@ -52,16 +47,47 @@ static struct woa_chip_info woa_chips[] = {
 	},
 	/* Microsoft SQ2 Kryo 495 4 + 4 cores (3.15 GHz + 2.42 GHz) */
 	{
-		"Microsoft SQ2",
+		L"Microsoft SQ2",
 		woa_chip_name_microsoft_sq_2,
 		{
 			{
+				cpuinfo_vendor_arm,
 				cpuinfo_uarch_cortex_a55,
 				2420000000,
 			},
 			{
+				cpuinfo_vendor_arm,
 				cpuinfo_uarch_cortex_a76,
 				3150000000
+			}
+		}
+	},
+	/* Microsoft Windows Dev Kit 2023 */
+	{
+		L"Snapdragon Compute Platform",
+		woa_chip_name_microsoft_sq_3,
+		{
+			{
+				cpuinfo_vendor_arm,
+				cpuinfo_uarch_cortex_a78,
+				2420000000,
+			},
+			{
+				cpuinfo_vendor_arm,
+				cpuinfo_uarch_cortex_x1,
+				3000000000
+			}
+		}
+	},
+	/* Ampere Altra */
+	{
+		L"Ampere(R) Altra(R) Processor",
+		woa_chip_name_ampere_altra,
+		{
+			{
+				cpuinfo_vendor_arm,
+				cpuinfo_uarch_neoverse_n1,
+				3000000000
 			}
 		}
 	}
@@ -72,13 +98,17 @@ BOOL CALLBACK cpuinfo_arm_windows_init(
 {
 	struct woa_chip_info *chip_info = NULL;
 	enum cpuinfo_vendor vendor = cpuinfo_vendor_unknown;
-	bool result = false;
 	
 	set_cpuinfo_isa_fields();
-	result = get_system_info_from_registry(&chip_info, &vendor);	
-	result &= cpu_info_init_by_logical_sys_info(chip_info, vendor);
-	cpuinfo_is_initialized = result;
-	return ((result == true) ? TRUE : FALSE);
+
+	chip_info = get_system_info_from_registry();
+	if (chip_info == NULL) {
+		chip_info = &woa_chip_unknown;
+	}
+
+	cpuinfo_is_initialized = cpu_info_init_by_logical_sys_info(chip_info, chip_info->uarchs[0].vendor);
+
+	return true;
 }
 
 bool get_core_uarch_for_efficiency(
@@ -100,154 +130,114 @@ bool get_core_uarch_for_efficiency(
 
 /* Static helper functions */
 
-static bool read_registry(
-	LPCTSTR subkey,
-	LPCTSTR value,
-	char** textBuffer)
+static wchar_t* read_registry(
+	LPCWSTR subkey,
+	LPCWSTR value)
 {
-	DWORD keyType = 0;
-	DWORD dataSize = 0;
+	DWORD key_type = 0;
+	DWORD data_size = 0;
 	const DWORD flags = RRF_RT_REG_SZ; /* Only read strings (REG_SZ) */
+	wchar_t *text_buffer = NULL;
 	LSTATUS result = 0;
 	HANDLE heap = GetProcessHeap();
 
-	result = RegGetValue(
-		HKEY_LOCAL_MACHINE, 
+	result = RegGetValueW(
+		HKEY_LOCAL_MACHINE,
 		subkey,
 		value,
 		flags,
-		&keyType,
+		&key_type,
 		NULL, /* Request buffer size */
-		&dataSize);
-	if (result != 0 || dataSize == 0) {
+		&data_size);
+	if (result != 0 || data_size == 0) {
 		cpuinfo_log_error("Registry entry size read error");
-		return false;
+		return NULL;
 	}
 
-	if (*textBuffer) {
-		HeapFree(heap, 0, *textBuffer);
-	}
-	*textBuffer = HeapAlloc(heap, HEAP_ZERO_MEMORY, dataSize);
-	if (*textBuffer == NULL) {
+	text_buffer = HeapAlloc(heap, HEAP_ZERO_MEMORY, data_size);
+	if (text_buffer == NULL) {
 		cpuinfo_log_error("Registry textbuffer allocation error");
-		return false;
+		return NULL;
 	}
 
-	result = RegGetValue(
+	result = RegGetValueW(
 		HKEY_LOCAL_MACHINE,
 		subkey,
 		value,
 		flags,
 		NULL,
-		*textBuffer, /* Write string in this destination buffer */
-		&dataSize);
+		text_buffer, /* Write string in this destination buffer */
+		&data_size);
 	if (result != 0) {
 		cpuinfo_log_error("Registry read error");
-		return false;
+		HeapFree(heap, 0, text_buffer);
+		return NULL;
 	}
-	return true;
+	return text_buffer;
 }
 
-static bool get_system_info_from_registry(
-	struct woa_chip_info** chip_info,
-	enum cpuinfo_vendor* vendor)
+static struct woa_chip_info* get_system_info_from_registry(void)
 {
-	bool result = false;
-	char* textBuffer = NULL;
-	LPCTSTR cpu0_subkey =
-		(LPCTSTR)"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0";
-	LPCTSTR chip_name_value = (LPCTSTR)"ProcessorNameString";
-	LPCTSTR vendor_name_value = (LPCTSTR)"VendorIdentifier";
+	wchar_t* text_buffer = NULL;
+	LPCWSTR cpu0_subkey = L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0";
+	LPCWSTR chip_name_value = L"ProcessorNameString";
+	struct woa_chip_info* chip_info = NULL;
 
-	*chip_info = NULL;
-	*vendor = cpuinfo_vendor_unknown;
 	HANDLE heap = GetProcessHeap();
 
-	/* 1. Read processor model name from registry and find in the hard-coded list. */
-	if (!read_registry(cpu0_subkey, chip_name_value, &textBuffer)) {
+	/* Read processor model name from registry and find in the hard-coded list. */
+	text_buffer = read_registry(cpu0_subkey, chip_name_value);
+	if (text_buffer == NULL) {
 		cpuinfo_log_error("Registry read error");
-		goto cleanup;
+		return NULL;
 	}
 	for (uint32_t i = 0; i < (uint32_t) woa_chip_name_last; i++) {
-		size_t compare_length = strnlen(woa_chips[i].chip_name_string, CPUINFO_PACKAGE_NAME_MAX);
-		int compare_result = strncmp(textBuffer, woa_chips[i].chip_name_string, compare_length);
+		size_t compare_length = wcsnlen(woa_chips[i].chip_name_string, CPUINFO_PACKAGE_NAME_MAX);
+		int compare_result = wcsncmp(text_buffer, woa_chips[i].chip_name_string, compare_length);
 		if (compare_result == 0) {
-			*chip_info = woa_chips+i;
+			chip_info = woa_chips+i;
 			break;
 		}
 	}
-	if (*chip_info == NULL) {
-		cpuinfo_log_error("Unknown chip model name.\n Please add new Windows on Arm SoC/chip support!");
-		goto cleanup;
-	}
-	cpuinfo_log_debug("detected chip model name: %s", (**chip_info).chip_name_string);
-
-	/* 2. Read vendor/manufacturer name from registry. */
-	if (!read_registry(cpu0_subkey, vendor_name_value, &textBuffer)) {
-		cpuinfo_log_error("Registry read error");
-		goto cleanup;
+	if (chip_info == NULL) {
+		/* No match was found, so print a warning and assign the unknown case. */
+		cpuinfo_log_error("Unknown chip model name '%ls'.\nPlease add new Windows on Arm SoC/chip support to arm/windows/init.c!", text_buffer);
+	} else {
+		cpuinfo_log_debug("detected chip model name: %s", chip_info->chip_name_string);
 	}
 
-	for (uint32_t i = 0; i < (sizeof(vendors) / sizeof(struct vendor_info)); i++) {
-		if (strncmp(textBuffer, vendors[i].vendor_name,
-				strlen(vendors[i].vendor_name)) == 0) {
-			*vendor = vendors[i].vendor;
-			result = true;
-			break;
-		}
-	}
-	if (*vendor == cpuinfo_vendor_unknown) {
-		cpuinfo_log_error("Unexpected vendor: %s", textBuffer);
-	}
-
-cleanup:
-	HeapFree(heap, 0, textBuffer);
-	textBuffer = NULL;
-	return result;
+	HeapFree(heap, 0, text_buffer);
+	return chip_info;
 }
 
 static void set_cpuinfo_isa_fields(void)
 {
-	bool armv8 = IsProcessorFeaturePresent(PF_ARM_V8_INSTRUCTIONS_AVAILABLE);
-	bool crypto = IsProcessorFeaturePresent(PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE);
-	bool load_store_atomic = IsProcessorFeaturePresent(PF_ARM_64BIT_LOADSTORE_ATOMIC);
-	bool float_multiply_accumulate = IsProcessorFeaturePresent(PF_ARM_FMAC_INSTRUCTIONS_AVAILABLE);
-	bool crc32 = IsProcessorFeaturePresent(PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE);
-	bool float_emulated = IsProcessorFeaturePresent(PF_FLOATING_POINT_EMULATED);
+	cpuinfo_isa.atomics = IsProcessorFeaturePresent(PF_ARM_V81_ATOMIC_INSTRUCTIONS_AVAILABLE) != 0;
 
-	/* Read all Arm related Windows features for debug purposes, even if we can't
-	 * pair Arm ISA feature to that now.
-	 */
-#if CPUINFO_LOG_DEBUG_PARSERS
-	bool divide = IsProcessorFeaturePresent(PF_ARM_DIVIDE_INSTRUCTION_AVAILABLE);
-	bool ext_cache = IsProcessorFeaturePresent(PF_ARM_EXTERNAL_CACHE_AVAILABLE);
-	bool vfp_registers = IsProcessorFeaturePresent(PF_ARM_VFP_32_REGISTERS_AVAILABLE);
-	bool arm_v81 = IsProcessorFeaturePresent(PF_ARM_V81_ATOMIC_INSTRUCTIONS_AVAILABLE);
+	const bool dotprod = IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0;
+	cpuinfo_isa.dot = dotprod;
 
-	cpuinfo_log_debug("divide present: %d", divide);
-	cpuinfo_log_debug("ext_cache present: %d", ext_cache);
-	cpuinfo_log_debug("vfp_registers present: %d", vfp_registers);
-	cpuinfo_log_debug("arm_v81 present: %d", arm_v81);
-#endif
+	SYSTEM_INFO system_info;
+	GetSystemInfo(&system_info);
+	switch (system_info.wProcessorLevel) {
+		case 0x803:  // Kryo 385 Silver (Snapdragon 850)
+			cpuinfo_isa.fp16arith = dotprod;
+			cpuinfo_isa.rdm = dotprod;
+			break;
+		default:
+			// Assume that Dot Product support implies FP16 arithmetics and RDM support.
+			// ARM manuals don't guarantee that, but it holds in practice.
+			cpuinfo_isa.fp16arith = dotprod;
+			cpuinfo_isa.rdm = dotprod;
+			break;
+	}
 
-	cpuinfo_log_debug("armv8 present: %d", armv8);
-	cpuinfo_log_debug("crypto present: %d", crypto);
-	cpuinfo_log_debug("load_store_atomic present: %d", load_store_atomic);
-	cpuinfo_log_debug("float_multiply_accumulate present: %d", float_multiply_accumulate);
-	cpuinfo_log_debug("crc32 present: %d", crc32);
-	cpuinfo_log_debug("float_emulated: %d", float_emulated);
-
-#if CPUINFO_ARCH_ARM
-	cpuinfo_isa.armv8 = armv8;
-#endif
-#if CPUINFO_ARCH_ARM64
-	cpuinfo_isa.atomics = load_store_atomic;
-#endif
-	cpuinfo_isa.crc32 = crc32;
 	/* Windows API reports all or nothing for cryptographic instructions. */
+	const bool crypto = IsProcessorFeaturePresent(PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE) != 0;
 	cpuinfo_isa.aes = crypto;
 	cpuinfo_isa.sha1 = crypto;
 	cpuinfo_isa.sha2 = crypto;
 	cpuinfo_isa.pmull = crypto;
-	cpuinfo_isa.fp16arith = !float_emulated && float_multiply_accumulate;
+
+	cpuinfo_isa.crc32 = IsProcessorFeaturePresent(PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE) != 0;
 }

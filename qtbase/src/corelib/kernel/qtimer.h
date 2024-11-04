@@ -50,31 +50,31 @@ public:
     static void singleShot(int msec, Qt::TimerType timerType, const QObject *receiver, const char *member);
 
     // singleShot with context
+#ifdef Q_QDOC
+    template <typename Duration, typename Functor>
+    static inline void singleShot(Duration interval, const QObject *receiver, Functor &&slot);
+    template <typename Duration, typename Functor>
+    static inline void singleShot(Duration interval, Qt::TimerType timerType,
+                                  const QObject *receiver, Functor &&slot);
+#else
     template <typename Duration, typename Functor>
     static inline void singleShot(Duration interval,
-#ifdef Q_QDOC
-                                  const QObject *receiver,
-#else
                                   const typename QtPrivate::ContextTypeForFunctor<Functor>::ContextType *receiver,
-#endif
-
                                   Functor &&slot)
     {
         singleShot(interval, defaultTypeFor(interval), receiver, std::forward<Functor>(slot));
     }
     template <typename Duration, typename Functor>
     static inline void singleShot(Duration interval, Qt::TimerType timerType,
-#ifdef Q_QDOC
-                                  const QObject *receiver,
-#else
                                   const typename QtPrivate::ContextTypeForFunctor<Functor>::ContextType *receiver,
-#endif
                                   Functor &&slot)
     {
         using Prototype = void(*)();
         singleShotImpl(interval, timerType, receiver,
                        QtPrivate::makeCallableObject<Prototype>(std::forward<Functor>(slot)));
     }
+#endif
+
     // singleShot without context
     template <typename Duration, typename Functor>
     static inline void singleShot(Duration interval, Functor &&slot)
@@ -152,12 +152,19 @@ private:
     inline void killTimer(int){}
 
     static constexpr Qt::TimerType defaultTypeFor(int msecs) noexcept
-    { return msecs >= 2000 ? Qt::CoarseTimer : Qt::PreciseTimer; }
+    { return defaultTypeFor(std::chrono::milliseconds{msecs}); }
+
+    static constexpr Qt::TimerType defaultTypeFor(std::chrono::milliseconds interval) noexcept
+    {
+        // coarse timers are worst in their first firing
+        // so we prefer a high precision timer for something that happens only once
+        // unless the timeout is too big, in which case we go for coarse anyway
+        using namespace std::chrono_literals;
+        return interval >= 2s ? Qt::CoarseTimer : Qt::PreciseTimer;
+    }
+
     static void singleShotImpl(int msec, Qt::TimerType timerType,
                                const QObject *receiver, QtPrivate::QSlotObjectBase *slotObj);
-
-    static Qt::TimerType defaultTypeFor(std::chrono::milliseconds interval)
-    { return defaultTypeFor(int(interval.count())); }
 
     static void singleShotImpl(std::chrono::milliseconds interval, Qt::TimerType timerType,
                                const QObject *receiver, QtPrivate::QSlotObjectBase *slotObj)

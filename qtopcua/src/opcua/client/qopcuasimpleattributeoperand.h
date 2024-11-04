@@ -13,7 +13,7 @@ QT_BEGIN_NAMESPACE
 
 class QOpcUaQualifiedName;
 
-// OPC-UA part 4, 7.4.4.5
+// OPC UA 1.05 part 4, 7.7.4.5
 class QOpcUaSimpleAttributeOperandData;
 class Q_OPCUA_EXPORT QOpcUaSimpleAttributeOperand
 {
@@ -26,7 +26,9 @@ public:
     QOpcUaSimpleAttributeOperand(QOpcUa::NodeAttribute attributeId,
                             const QString &typeId = QStringLiteral("ns=0;i=2041")); // BaseEventType
     QOpcUaSimpleAttributeOperand &operator=(const QOpcUaSimpleAttributeOperand &);
+#if QT_OPCUA_REMOVED_SINCE(6, 7)
     bool operator==(const QOpcUaSimpleAttributeOperand &rhs) const;
+#endif
     operator QVariant() const;
     ~QOpcUaSimpleAttributeOperand();
 
@@ -45,6 +47,15 @@ public:
 
 private:
     QSharedDataPointer<QOpcUaSimpleAttributeOperandData> data;
+
+    friend Q_OPCUA_EXPORT bool comparesEqual(const QOpcUaSimpleAttributeOperand &lhs,
+                                             const QOpcUaSimpleAttributeOperand &rhs) noexcept;
+    friend bool operator==(const QOpcUaSimpleAttributeOperand &lhs,
+                           const QOpcUaSimpleAttributeOperand &rhs) noexcept
+    { return comparesEqual(lhs, rhs); }
+    friend bool operator!=(const QOpcUaSimpleAttributeOperand &lhs,
+                           const QOpcUaSimpleAttributeOperand &rhs) noexcept
+    { return !comparesEqual(lhs, rhs); }
 };
 
 QT_END_NAMESPACE

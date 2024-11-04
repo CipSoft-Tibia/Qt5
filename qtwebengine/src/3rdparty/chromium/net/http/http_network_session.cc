@@ -44,22 +44,23 @@ namespace net {
 const int32_t kSpdySessionMaxRecvWindowSize = 15 * 1024 * 1024;  // 15 MB
 const int32_t kSpdyStreamMaxRecvWindowSize = 6 * 1024 * 1024;    //  6 MB
 
+// Value of SETTINGS_ENABLE_PUSH reflecting that server push is not supported.
+const uint32_t kSpdyDisablePush = 0;
+
 namespace {
 
 // Keep all HTTP2 parameters in |http2_settings|, even the ones that are not
 // implemented, to be sent to the server.
 // Set default values for settings that |http2_settings| does not specify.
 spdy::SettingsMap AddDefaultHttp2Settings(spdy::SettingsMap http2_settings) {
-  // Set default values only if |http2_settings| does not have
-  // a value set for given setting.
+  // Server push is not supported.
+  http2_settings[spdy::SETTINGS_ENABLE_PUSH] = kSpdyDisablePush;
+
+  // For other setting parameters, set default values only if |http2_settings|
+  // does not have a value set for given setting.
   auto it = http2_settings.find(spdy::SETTINGS_HEADER_TABLE_SIZE);
   if (it == http2_settings.end())
     http2_settings[spdy::SETTINGS_HEADER_TABLE_SIZE] = kSpdyMaxHeaderTableSize;
-
-  it = http2_settings.find(spdy::SETTINGS_MAX_CONCURRENT_STREAMS);
-  if (it == http2_settings.end())
-    http2_settings[spdy::SETTINGS_MAX_CONCURRENT_STREAMS] =
-        kSpdyMaxConcurrentPushedStreams;
 
   it = http2_settings.find(spdy::SETTINGS_INITIAL_WINDOW_SIZE);
   if (it == http2_settings.end())
@@ -70,10 +71,6 @@ spdy::SettingsMap AddDefaultHttp2Settings(spdy::SettingsMap http2_settings) {
   if (it == http2_settings.end())
     http2_settings[spdy::SETTINGS_MAX_HEADER_LIST_SIZE] =
         kSpdyMaxHeaderListSize;
-
-  it = http2_settings.find(spdy::SETTINGS_ENABLE_PUSH);
-  if (it == http2_settings.end())
-    http2_settings[spdy::SETTINGS_ENABLE_PUSH] = kSpdyDisablePush;
 
   return http2_settings;
 }
@@ -322,10 +319,7 @@ base::Value HttpNetworkSession::QuicInfoToValue() const {
       "max_num_migrations_to_non_default_network_on_path_degrading",
       quic_params->max_migrations_to_non_default_network_on_path_degrading);
   dict.Set("allow_server_migration", quic_params->allow_server_migration);
-  dict.Set("race_stale_dns_on_connection",
-           quic_params->race_stale_dns_on_connection);
   dict.Set("estimate_initial_rtt", quic_params->estimate_initial_rtt);
-  dict.Set("server_push_cancellation", params_.enable_server_push_cancellation);
   dict.Set("initial_rtt_for_handshake_milliseconds",
            static_cast<int>(
                quic_params->initial_rtt_for_handshake.InMilliseconds()));
@@ -347,17 +341,6 @@ void HttpNetworkSession::CloseIdleConnections(const char* net_log_reason_utf8) {
   normal_socket_pool_manager_->CloseIdleSockets(net_log_reason_utf8);
   websocket_socket_pool_manager_->CloseIdleSockets(net_log_reason_utf8);
   spdy_session_pool_.CloseCurrentIdleSessions(net_log_reason_utf8);
-}
-
-void HttpNetworkSession::SetServerPushDelegate(
-    std::unique_ptr<ServerPushDelegate> push_delegate) {
-  DCHECK(push_delegate);
-  if (!params_.enable_server_push_cancellation || push_delegate_)
-    return;
-
-  push_delegate_ = std::move(push_delegate);
-  spdy_session_pool_.set_server_push_delegate(push_delegate_.get());
-  quic_stream_factory_.set_server_push_delegate(push_delegate_.get());
 }
 
 bool HttpNetworkSession::IsQuicEnabled() const {

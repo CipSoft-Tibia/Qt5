@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,7 @@
 
 #include <sstream>
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 std::ostream& operator<<(std::ostream& out, const RtpTimeDelta rhs) {
   if (rhs.value_ >= 0)
@@ -21,5 +20,4 @@ std::ostream& operator<<(std::ostream& out, const RtpTimeTicks rhs) {
   return out << "RTP@" << rhs.value_;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

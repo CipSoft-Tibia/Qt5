@@ -16,7 +16,6 @@
 #include "base/task/sequence_manager/task_queue.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
-#include "components/power_scheduler/power_mode_voter.h"
 #include "net/base/request_priority.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "third_party/blink/public/platform/task_type.h"
@@ -31,6 +30,7 @@
 #include "third_party/blink/renderer/platform/scheduler/main_thread/page_visibility_state.h"
 #include "third_party/blink/renderer/platform/scheduler/public/frame_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/web_scheduling_priority.h"
+#include "third_party/blink/renderer/platform/scheduler/public/web_scheduling_queue_type.h"
 #include "third_party/blink/renderer/platform/scheduler/worker/worker_scheduler_proxy.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
@@ -102,6 +102,8 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
 
   void TraceUrlChange(const String& url) override;
   void AddTaskTime(base::TimeDelta time) override;
+  void OnTaskCompleted(TaskQueue::TaskTiming*,
+                       base::TimeTicks desired_execution_time);
   FrameScheduler::FrameType GetFrameType() const override;
   scoped_refptr<base::SingleThreadTaskRunner> GetTaskRunner(TaskType) override;
 
@@ -109,17 +111,28 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
   PageScheduler* GetPageScheduler() const override;
   void DidStartProvisionalLoad() override;
   void DidCommitProvisionalLoad(bool is_web_history_inert_commit,
-                                NavigationType navigation_type) override;
+                                NavigationType navigation_type,
+                                DidCommitProvisionalLoadParams params = {
+                                    base::TimeDelta()}) override;
   WebScopedVirtualTimePauser CreateWebScopedVirtualTimePauser(
       const WTF::String& name,
       WebScopedVirtualTimePauser::VirtualTaskDuration duration) override;
   scoped_refptr<base::SingleThreadTaskRunner> CompositorTaskRunner() override;
 
   void OnFirstContentfulPaintInMainFrame() override;
-  void OnFirstMeaningfulPaint() override;
-  void OnLoad() override;
+  void OnFirstMeaningfulPaint(base::TimeTicks timestamp) override;
+  void OnMainFrameInteractive() override;
+  void OnDispatchLoadEvent() override;
   bool IsWaitingForContentfulPaint() const;
   bool IsWaitingForMeaningfulPaint() const;
+
+  // Returns true when
+  // 1. the FrameSchedulerImpl is still waiting for the meaningful paint signal,
+  // or
+  // 2. the FrameSchedulerImpl has received the meaningful paint signal not
+  // longer than `GetLoadingPhaseBufferTimeAfterFirstMeaningfulPaint` ago, and
+  // the load event is not dispatched yet.
+  bool IsLoading() const;
 
   // An "ordinary" FrameScheduler is responsible for a frame whose parent page
   // is a fully-featured page owned by a web view (as opposed to, e.g.: a Page
@@ -187,11 +200,14 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
   GetActiveFeaturesTrackedForBackForwardCacheMetrics() override;
 
   std::unique_ptr<WebSchedulingTaskQueue> CreateWebSchedulingTaskQueue(
+      WebSchedulingQueueType,
       WebSchedulingPriority) override;
   void OnWebSchedulingTaskQueuePriorityChanged(MainThreadTaskQueue*);
   void OnWebSchedulingTaskQueueDestroyed(MainThreadTaskQueue*);
 
   const base::UnguessableToken& GetAgentClusterId() const;
+
+  base::TimeDelta unreported_task_time() const { return unreported_task_time_; }
 
   void WriteIntoTrace(perfetto::TracedValue context) const;
   void WriteIntoTrace(perfetto::TracedProto<
@@ -267,10 +283,6 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
   // Reset the state which should not persist across navigations.
   void ResetForNavigation();
 
-  // Same as GetActiveFeaturesTrackedForBackForwardCacheMetrics, but returns
-  // a mask instead of a set.
-  uint64_t GetActiveFeaturesTrackedForBackForwardCacheMetricsMask() const;
-
   base::WeakPtr<FrameOrWorkerScheduler> GetFrameOrWorkerSchedulerWeakPtr()
       override;
 
@@ -299,9 +311,19 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
 
   bool is_ad_frame_ = false;
 
-  // A running tally of (wall) time spent in tasks for this frame.
-  // This is periodically forwarded and zeroed out.
-  base::TimeDelta task_time_;
+  // A running tally of (wall) time spent in tasks for this frame. Note that we
+  // are keeping this as a buffer of task time that is not yet reported to the
+  // browser process. This is periodically forwarded and zeroed out when it
+  // reaches kTaskDurationSendThreshold.
+  // Even though this value is saved in the FrameScheduler, which might change
+  // after cross-document navigations, it will be carried over if the new
+  // FrameScheduler object lives in the same process, by passing the value in
+  // OldDocumentInfoForCommit. That is needed to keep the legacy behavior where
+  // the amount of unreported task time is aggregated on a per-frame basis (i.e.
+  // preserved after navigations) instead of a per-document basis. However, note
+  // that the value will not be carried over if the navigation is cross-process,
+  // due to complexities in passing this value.
+  base::TimeDelta unreported_task_time_;
 
   TraceableVariableController tracing_controller_;
   std::unique_ptr<FrameTaskQueueController> frame_task_queue_controller_;
@@ -309,7 +331,6 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
   MainThreadSchedulerImpl* const main_thread_scheduler_;  // NOT OWNED
   PageSchedulerImpl* parent_page_scheduler_;              // NOT OWNED
   FrameScheduler::Delegate* delegate_;                    // NOT OWNED
-  SchedulingLifecycleState throttling_state_;
   TraceableState<bool, TracingCategory::kInfo> frame_visible_;
   TraceableState<bool, TracingCategory::kInfo> frame_paused_;
   TraceableState<FrameOriginType, TracingCategory::kInfo> frame_origin_type_;
@@ -339,8 +360,8 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
 
   TraceableState<bool, TracingCategory::kInfo> waiting_for_contentful_paint_;
   TraceableState<bool, TracingCategory::kInfo> waiting_for_meaningful_paint_;
-
-  std::unique_ptr<power_scheduler::PowerModeVoter> loading_power_mode_voter_;
+  TraceableState<bool, TracingCategory::kInfo> is_load_event_dispatched_;
+  base::TimeTicks first_meaningful_paint_timestamp_;
 
   // TODO(altimin): Remove after we have have 1:1 relationship between frames
   // and documents.

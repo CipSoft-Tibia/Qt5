@@ -11,27 +11,26 @@
 #include "base/time/time.h"
 #include "base/types/expected.h"
 #include "base/values.h"
-#include "content/browser/attribution_reporting/attribution_trigger.h"
-#include "content/browser/attribution_reporting/storable_source.h"
+#include "components/attribution_reporting/source_type.mojom-forward.h"
+#include "components/attribution_reporting/suitable_origin.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/abseil-cpp/absl/types/variant.h"
 
 namespace content {
 
 struct AttributionConfig;
 
-struct AttributionTriggerAndTime {
-  AttributionTrigger trigger;
-  base::Time time;
-};
-
 struct AttributionSimulationEvent {
-  absl::variant<StorableSource, AttributionTriggerAndTime> event;
-  bool debug_permission;
+  attribution_reporting::SuitableOrigin reporting_origin;
+  attribution_reporting::SuitableOrigin context_origin;
+  // If null, the event represents a trigger. Otherwise, represents a source.
+  absl::optional<attribution_reporting::mojom::SourceType> source_type;
+  base::Value registration;
+  base::Time time;
+  bool debug_permission = false;
 
   AttributionSimulationEvent(
-      absl::variant<StorableSource, AttributionTriggerAndTime> event,
-      bool debug_permission);
+      attribution_reporting::SuitableOrigin reporting_origin,
+      attribution_reporting::SuitableOrigin context_origin);
 
   ~AttributionSimulationEvent();
 
@@ -41,6 +40,10 @@ struct AttributionSimulationEvent {
 
   AttributionSimulationEvent(AttributionSimulationEvent&&);
   AttributionSimulationEvent& operator=(AttributionSimulationEvent&&);
+
+  bool operator<(const AttributionSimulationEvent& other) const {
+    return time < other.time;
+  }
 };
 
 using AttributionSimulationEvents = std::vector<AttributionSimulationEvent>;
@@ -57,8 +60,6 @@ base::expected<AttributionConfig, std::string> ParseAttributionConfig(
 // Returns a non-empty string on failure.
 [[nodiscard]] std::string MergeAttributionConfig(const base::Value::Dict&,
                                                  AttributionConfig&);
-
-base::Time GetEventTime(const AttributionSimulationEvent&);
 
 }  // namespace content
 

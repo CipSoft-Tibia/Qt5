@@ -49,7 +49,10 @@ class ThreadStateTracker : public Destructible {
                             UniqueTid next_utid);
 
   // Will add a runnable state for utid and close the previously blocked one.
-  void PushWakingEvent(int64_t event_ts, UniqueTid utid, UniqueTid waker_utid);
+  void PushWakingEvent(int64_t event_ts,
+                       UniqueTid utid,
+                       UniqueTid waker_utid,
+                       std::optional<uint16_t> common_flags = std::nullopt);
 
   // Will add a runnable state for utid. For a new task there are no previous
   // states to close.
@@ -57,16 +60,19 @@ class ThreadStateTracker : public Destructible {
 
   // Updates the current blocked state for utid with blocked reason.
   void PushBlockedReason(UniqueTid utid,
-                         base::Optional<bool> io_wait,
-                         base::Optional<StringId> blocked_function);
+                         std::optional<bool> io_wait,
+                         std::optional<StringId> blocked_function);
 
  private:
   void AddOpenState(int64_t ts,
                     UniqueTid utid,
                     StringId state,
-                    base::Optional<uint32_t> cpu = base::nullopt,
-                    base::Optional<UniqueTid> waker_utid = base::nullopt);
+                    std::optional<uint16_t> cpu = std::nullopt,
+                    std::optional<UniqueTid> waker_utid = std::nullopt,
+                    std::optional<uint16_t> common_flags = std::nullopt);
   void ClosePendingState(int64_t end_ts, UniqueTid utid, bool data_loss);
+
+  uint32_t CommonFlagsToIrqContext(uint32_t common_flags);
 
   bool IsRunning(StringId state);
   bool IsBlocked(StringId state);
@@ -89,11 +95,11 @@ class ThreadStateTracker : public Destructible {
   StringId runnable_string_id_;
 
   struct RelatedRows {
-    base::Optional<tables::ThreadStateTable::RowNumber> last_blocked_row;
+    std::optional<tables::ThreadStateTable::RowNumber> last_blocked_row;
     tables::ThreadStateTable::RowNumber last_row;
   };
 
-  std::vector<base::Optional<RelatedRows>> prev_row_numbers_for_thread_;
+  std::vector<std::optional<RelatedRows>> prev_row_numbers_for_thread_;
 };
 }  // namespace trace_processor
 }  // namespace perfetto

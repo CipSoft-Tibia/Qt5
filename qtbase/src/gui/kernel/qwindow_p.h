@@ -26,6 +26,8 @@
 #include <QtGui/qicon.h>
 #include <QtGui/qpalette.h>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 class Q_GUI_EXPORT QWindowPrivate : public QObjectPrivate
@@ -42,7 +44,7 @@ public:
     QWindowPrivate();
     ~QWindowPrivate() override;
 
-    void init(QScreen *targetScreen = nullptr);
+    void init(QWindow *parent, QScreen *targetScreen = nullptr);
 
 #ifndef QT_NO_CURSOR
     void setCursor(const QCursor *c = nullptr);
@@ -64,7 +66,7 @@ public:
     void updateSiblingPosition(SiblingPosition);
 
     bool windowRecreationRequired(QScreen *newScreen) const;
-    void create(bool recursive, WId nativeHandle = 0);
+    void create(bool recursive);
     void destroy();
     void setTopLevelScreen(QScreen *newScreen, bool recreate);
     void connectToScreen(QScreen *topLevelScreen);

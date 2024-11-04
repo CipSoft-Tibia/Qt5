@@ -16,7 +16,6 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/accessibility/ax_enums.mojom.h"
 #include "ui/accessibility/ax_node_data.h"
-#include "ui/base/layout.h"
 #include "ui/display/screen.h"
 #include "ui/events/event_utils.h"
 #include "ui/events/test/event_generator.h"
@@ -217,7 +216,7 @@ class ButtonTest : public ViewsTestBase {
 
  private:
   std::unique_ptr<Widget> widget_;
-  raw_ptr<TestButton> button_;
+  raw_ptr<TestButton, DanglingUntriaged> button_;
   std::unique_ptr<TestButtonObserver> button_observer_;
   std::unique_ptr<ui::test::EventGenerator> event_generator_;
 };
@@ -925,6 +924,84 @@ TEST_F(ButtonTest, SetTooltipTextNotifiesAccessibilityEvent) {
   const std::string& name =
       data.GetStringAttribute(ax::mojom::StringAttribute::kName);
   EXPECT_EQ(test_tooltip_text, base::ASCIIToUTF16(name));
+}
+
+TEST_F(ButtonTest, AccessibleRole) {
+  ui::AXNodeData data;
+  button()->GetAccessibleNodeData(&data);
+  EXPECT_EQ(data.role, ax::mojom::Role::kButton);
+  EXPECT_EQ(button()->GetAccessibleRole(), ax::mojom::Role::kButton);
+
+  button()->SetAccessibleRole(ax::mojom::Role::kCheckBox);
+
+  data = ui::AXNodeData();
+  button()->GetAccessibleNodeData(&data);
+  EXPECT_EQ(data.role, ax::mojom::Role::kCheckBox);
+  EXPECT_EQ(button()->GetAccessibleRole(), ax::mojom::Role::kCheckBox);
+}
+
+TEST_F(ButtonTest, AnchorHighlightSetsHiglight) {
+  TestInkDrop* ink_drop = CreateButtonWithInkDrop(false);
+
+  Button::ScopedAnchorHighlight highlight = button()->AddAnchorHighlight();
+  EXPECT_EQ(InkDropState::ACTIVATED, ink_drop->GetTargetInkDropState());
+}
+
+TEST_F(ButtonTest, AnchorHighlightDestructionClearsHighlight) {
+  TestInkDrop* ink_drop = CreateButtonWithInkDrop(false);
+
+  absl::optional<Button::ScopedAnchorHighlight> highlight =
+      button()->AddAnchorHighlight();
+  EXPECT_EQ(InkDropState::ACTIVATED, ink_drop->GetTargetInkDropState());
+
+  highlight.reset();
+  EXPECT_EQ(InkDropState::DEACTIVATED, ink_drop->GetTargetInkDropState());
+}
+
+TEST_F(ButtonTest, NestedAnchorHighlights) {
+  TestInkDrop* ink_drop = CreateButtonWithInkDrop(false);
+
+  absl::optional<Button::ScopedAnchorHighlight> highlight1 =
+      button()->AddAnchorHighlight();
+  absl::optional<Button::ScopedAnchorHighlight> highlight2 =
+      button()->AddAnchorHighlight();
+
+  EXPECT_EQ(InkDropState::ACTIVATED, ink_drop->GetTargetInkDropState());
+
+  highlight2.reset();
+  EXPECT_EQ(InkDropState::ACTIVATED, ink_drop->GetTargetInkDropState());
+
+  highlight1.reset();
+  EXPECT_EQ(InkDropState::DEACTIVATED, ink_drop->GetTargetInkDropState());
+}
+
+TEST_F(ButtonTest, OverlappingAnchorHighlights) {
+  TestInkDrop* ink_drop = CreateButtonWithInkDrop(false);
+
+  absl::optional<Button::ScopedAnchorHighlight> highlight1 =
+      button()->AddAnchorHighlight();
+  absl::optional<Button::ScopedAnchorHighlight> highlight2 =
+      button()->AddAnchorHighlight();
+
+  EXPECT_EQ(InkDropState::ACTIVATED, ink_drop->GetTargetInkDropState());
+
+  highlight1.reset();
+  EXPECT_EQ(InkDropState::ACTIVATED, ink_drop->GetTargetInkDropState());
+
+  highlight2.reset();
+  EXPECT_EQ(InkDropState::DEACTIVATED, ink_drop->GetTargetInkDropState());
+}
+
+TEST_F(ButtonTest, AnchorHighlightsCanOutliveButton) {
+  CreateButtonWithInkDrop(false);
+
+  absl::optional<Button::ScopedAnchorHighlight> highlight =
+      button()->AddAnchorHighlight();
+
+  // Creating a new button will destroy the old one
+  CreateButtonWithInkDrop(false);
+
+  highlight.reset();
 }
 
 }  // namespace views

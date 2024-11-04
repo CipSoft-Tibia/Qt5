@@ -109,7 +109,8 @@ class FakeSyncWriter : public FakeConsumer, public InputController::SyncWriter {
   void Write(const media::AudioBus* data,
              double volume,
              bool key_pressed,
-             base::TimeTicks capture_time) final {
+             base::TimeTicks capture_time,
+             const media::AudioGlitchInfo& audio_glitch_info) final {
     FakeConsumer::Consume(*data);
 
     // Capture times should be monotonically increasing.
@@ -260,7 +261,8 @@ class LoopbackStreamTest : public testing::Test {
   std::vector<std::unique_ptr<FakeLoopbackGroupMember>> sources_;
   NiceMock<MockClientAndObserver> client_;
   std::unique_ptr<LoopbackStream> stream_;
-  raw_ptr<FakeSyncWriter> consumer_ = nullptr;  // Owned by |stream_|.
+  raw_ptr<FakeSyncWriter, AcrossTasksDanglingUntriaged> consumer_ =
+      nullptr;  // Owned by |stream_|.
 
   mojo::Remote<media::mojom::AudioInputStream> remote_input_stream_;
 };

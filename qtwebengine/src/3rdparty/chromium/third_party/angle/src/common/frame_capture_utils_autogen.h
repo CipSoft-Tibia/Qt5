@@ -25,6 +25,8 @@ enum class ParamType
     TBufferIDPointer,
     TBufferUsage,
     TClientVertexArrayType,
+    TClipDepthMode,
+    TClipOrigin,
     TCompositorTiming,
     TContextID,
     TCullFaceMode,
@@ -122,8 +124,6 @@ enum class ParamType
     TGLushort,
     TGLushortConstPointer,
     TGLushortPointer,
-    TGLvoidConstPointer,
-    TGLvoidConstPointerPointer,
     TGraphicsResetStatus,
     THandleType,
     TImageID,
@@ -136,6 +136,7 @@ enum class ParamType
     TMemoryObjectIDPointer,
     TObjectType,
     TPointParameter,
+    TPolygonMode,
     TPrimitiveMode,
     TProgramPipelineID,
     TProgramPipelineIDConstPointer,
@@ -190,7 +191,7 @@ enum class ParamType
     TvoidPointerPointer,
 };
 
-constexpr uint32_t kParamTypeCount = 171;
+constexpr uint32_t kParamTypeCount = 172;
 
 union ParamValue
 {
@@ -202,6 +203,8 @@ union ParamValue
     gl::BufferID *BufferIDPointerVal;
     gl::BufferUsage BufferUsageVal;
     gl::ClientVertexArrayType ClientVertexArrayTypeVal;
+    gl::ClipDepthMode ClipDepthModeVal;
+    gl::ClipOrigin ClipOriginVal;
     egl::CompositorTiming CompositorTimingVal;
     gl::ContextID ContextIDVal;
     gl::CullFaceMode CullFaceModeVal;
@@ -299,8 +302,6 @@ union ParamValue
     GLushort GLushortVal;
     const GLushort *GLushortConstPointerVal;
     GLushort *GLushortPointerVal;
-    const GLvoid *GLvoidConstPointerVal;
-    const GLvoid *const *GLvoidConstPointerPointerVal;
     gl::GraphicsResetStatus GraphicsResetStatusVal;
     gl::HandleType HandleTypeVal;
     egl::ImageID ImageIDVal;
@@ -313,6 +314,7 @@ union ParamValue
     gl::MemoryObjectID *MemoryObjectIDPointerVal;
     egl::ObjectType ObjectTypeVal;
     gl::PointParameter PointParameterVal;
+    gl::PolygonMode PolygonModeVal;
     gl::PrimitiveMode PrimitiveModeVal;
     gl::ProgramPipelineID ProgramPipelineIDVal;
     const gl::ProgramPipelineID *ProgramPipelineIDConstPointerVal;
@@ -423,6 +425,19 @@ inline gl::ClientVertexArrayType
 GetParamVal<ParamType::TClientVertexArrayType, gl::ClientVertexArrayType>(const ParamValue &value)
 {
     return value.ClientVertexArrayTypeVal;
+}
+
+template <>
+inline gl::ClipDepthMode GetParamVal<ParamType::TClipDepthMode, gl::ClipDepthMode>(
+    const ParamValue &value)
+{
+    return value.ClipDepthModeVal;
+}
+
+template <>
+inline gl::ClipOrigin GetParamVal<ParamType::TClipOrigin, gl::ClipOrigin>(const ParamValue &value)
+{
+    return value.ClipOriginVal;
 }
 
 template <>
@@ -1049,20 +1064,6 @@ inline GLushort *GetParamVal<ParamType::TGLushortPointer, GLushort *>(const Para
 }
 
 template <>
-inline const GLvoid *GetParamVal<ParamType::TGLvoidConstPointer, const GLvoid *>(
-    const ParamValue &value)
-{
-    return value.GLvoidConstPointerVal;
-}
-
-template <>
-inline const GLvoid *const *
-GetParamVal<ParamType::TGLvoidConstPointerPointer, const GLvoid *const *>(const ParamValue &value)
-{
-    return value.GLvoidConstPointerPointerVal;
-}
-
-template <>
 inline gl::GraphicsResetStatus
 GetParamVal<ParamType::TGraphicsResetStatus, gl::GraphicsResetStatus>(const ParamValue &value)
 {
@@ -1140,6 +1141,13 @@ inline gl::PointParameter GetParamVal<ParamType::TPointParameter, gl::PointParam
     const ParamValue &value)
 {
     return value.PointParameterVal;
+}
+
+template <>
+inline gl::PolygonMode GetParamVal<ParamType::TPolygonMode, gl::PolygonMode>(
+    const ParamValue &value)
+{
+    return value.PolygonModeVal;
 }
 
 template <>
@@ -1523,6 +1531,10 @@ T AccessParamValue(ParamType paramType, const ParamValue &value)
             return GetParamVal<ParamType::TBufferUsage, T>(value);
         case ParamType::TClientVertexArrayType:
             return GetParamVal<ParamType::TClientVertexArrayType, T>(value);
+        case ParamType::TClipDepthMode:
+            return GetParamVal<ParamType::TClipDepthMode, T>(value);
+        case ParamType::TClipOrigin:
+            return GetParamVal<ParamType::TClipOrigin, T>(value);
         case ParamType::TCompositorTiming:
             return GetParamVal<ParamType::TCompositorTiming, T>(value);
         case ParamType::TContextID:
@@ -1717,10 +1729,6 @@ T AccessParamValue(ParamType paramType, const ParamValue &value)
             return GetParamVal<ParamType::TGLushortConstPointer, T>(value);
         case ParamType::TGLushortPointer:
             return GetParamVal<ParamType::TGLushortPointer, T>(value);
-        case ParamType::TGLvoidConstPointer:
-            return GetParamVal<ParamType::TGLvoidConstPointer, T>(value);
-        case ParamType::TGLvoidConstPointerPointer:
-            return GetParamVal<ParamType::TGLvoidConstPointerPointer, T>(value);
         case ParamType::TGraphicsResetStatus:
             return GetParamVal<ParamType::TGraphicsResetStatus, T>(value);
         case ParamType::THandleType:
@@ -1745,6 +1753,8 @@ T AccessParamValue(ParamType paramType, const ParamValue &value)
             return GetParamVal<ParamType::TObjectType, T>(value);
         case ParamType::TPointParameter:
             return GetParamVal<ParamType::TPointParameter, T>(value);
+        case ParamType::TPolygonMode:
+            return GetParamVal<ParamType::TPolygonMode, T>(value);
         case ParamType::TPrimitiveMode:
             return GetParamVal<ParamType::TPrimitiveMode, T>(value);
         case ParamType::TProgramPipelineID:
@@ -1906,6 +1916,18 @@ inline void SetParamVal<ParamType::TClientVertexArrayType>(gl::ClientVertexArray
                                                            ParamValue *valueOut)
 {
     valueOut->ClientVertexArrayTypeVal = valueIn;
+}
+
+template <>
+inline void SetParamVal<ParamType::TClipDepthMode>(gl::ClipDepthMode valueIn, ParamValue *valueOut)
+{
+    valueOut->ClipDepthModeVal = valueIn;
+}
+
+template <>
+inline void SetParamVal<ParamType::TClipOrigin>(gl::ClipOrigin valueIn, ParamValue *valueOut)
+{
+    valueOut->ClipOriginVal = valueIn;
 }
 
 template <>
@@ -2519,19 +2541,6 @@ inline void SetParamVal<ParamType::TGLushortPointer>(GLushort *valueIn, ParamVal
 }
 
 template <>
-inline void SetParamVal<ParamType::TGLvoidConstPointer>(const GLvoid *valueIn, ParamValue *valueOut)
-{
-    valueOut->GLvoidConstPointerVal = valueIn;
-}
-
-template <>
-inline void SetParamVal<ParamType::TGLvoidConstPointerPointer>(const GLvoid *const *valueIn,
-                                                               ParamValue *valueOut)
-{
-    valueOut->GLvoidConstPointerPointerVal = valueIn;
-}
-
-template <>
 inline void SetParamVal<ParamType::TGraphicsResetStatus>(gl::GraphicsResetStatus valueIn,
                                                          ParamValue *valueOut)
 {
@@ -2609,6 +2618,12 @@ inline void SetParamVal<ParamType::TPointParameter>(gl::PointParameter valueIn,
                                                     ParamValue *valueOut)
 {
     valueOut->PointParameterVal = valueIn;
+}
+
+template <>
+inline void SetParamVal<ParamType::TPolygonMode>(gl::PolygonMode valueIn, ParamValue *valueOut)
+{
+    valueOut->PolygonModeVal = valueIn;
 }
 
 template <>
@@ -2987,6 +3002,12 @@ void InitParamValue(ParamType paramType, T valueIn, ParamValue *valueOut)
         case ParamType::TClientVertexArrayType:
             SetParamVal<ParamType::TClientVertexArrayType>(valueIn, valueOut);
             break;
+        case ParamType::TClipDepthMode:
+            SetParamVal<ParamType::TClipDepthMode>(valueIn, valueOut);
+            break;
+        case ParamType::TClipOrigin:
+            SetParamVal<ParamType::TClipOrigin>(valueIn, valueOut);
+            break;
         case ParamType::TCompositorTiming:
             SetParamVal<ParamType::TCompositorTiming>(valueIn, valueOut);
             break;
@@ -3278,12 +3299,6 @@ void InitParamValue(ParamType paramType, T valueIn, ParamValue *valueOut)
         case ParamType::TGLushortPointer:
             SetParamVal<ParamType::TGLushortPointer>(valueIn, valueOut);
             break;
-        case ParamType::TGLvoidConstPointer:
-            SetParamVal<ParamType::TGLvoidConstPointer>(valueIn, valueOut);
-            break;
-        case ParamType::TGLvoidConstPointerPointer:
-            SetParamVal<ParamType::TGLvoidConstPointerPointer>(valueIn, valueOut);
-            break;
         case ParamType::TGraphicsResetStatus:
             SetParamVal<ParamType::TGraphicsResetStatus>(valueIn, valueOut);
             break;
@@ -3319,6 +3334,9 @@ void InitParamValue(ParamType paramType, T valueIn, ParamValue *valueOut)
             break;
         case ParamType::TPointParameter:
             SetParamVal<ParamType::TPointParameter>(valueIn, valueOut);
+            break;
+        case ParamType::TPolygonMode:
+            SetParamVal<ParamType::TPolygonMode>(valueIn, valueOut);
             break;
         case ParamType::TPrimitiveMode:
             SetParamVal<ParamType::TPrimitiveMode>(valueIn, valueOut);

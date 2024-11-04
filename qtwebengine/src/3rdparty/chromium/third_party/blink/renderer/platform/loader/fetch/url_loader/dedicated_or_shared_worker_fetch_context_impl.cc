@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "base/functional/bind.h"
+#include "base/ranges/algorithm.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
@@ -14,6 +15,7 @@
 #include "services/network/public/cpp/wrapper_shared_url_loader_factory.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/loader/loader_constants.h"
+#include "third_party/blink/public/mojom/service_worker/service_worker_fetch_handler_bypass_option.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker_object.mojom.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker_provider.mojom.h"
 #include "third_party/blink/public/platform/child_url_loader_factory_bundle.h"
@@ -23,7 +25,6 @@
 #include "third_party/blink/public/platform/url_loader_throttle_provider.h"
 #include "third_party/blink/public/platform/weak_wrapper_resource_load_info_notifier.h"
 #include "third_party/blink/public/platform/web_code_cache_loader.h"
-#include "third_party/blink/public/platform/web_frame_request_blocker.h"
 #include "third_party/blink/public/platform/web_security_origin.h"
 #include "third_party/blink/public/platform/web_url_request_extra_data.h"
 #include "third_party/blink/public/platform/websocket_handshake_throttle_provider.h"
@@ -76,26 +77,23 @@ class DedicatedOrSharedWorkerFetchContextImpl::Factory
       scoped_refptr<base::SingleThreadTaskRunner> freezable_task_runner,
       scoped_refptr<base::SingleThreadTaskRunner> unfreezable_task_runner,
       mojo::PendingRemote<mojom::blink::KeepAliveHandle> keep_alive_handle,
-
-      BackForwardCacheLoaderHelper* back_forward_cache_loader_helper) override {
+      BackForwardCacheLoaderHelper* back_forward_cache_loader_helper,
+      Vector<std::unique_ptr<URLLoaderThrottle>> throttles) override {
     DCHECK(freezable_task_runner);
     DCHECK(unfreezable_task_runner);
 
-    if (CanCreateServiceWorkerURLLoader(request)) {
-      // Create our own URLLoader to route the request to the controller service
-      // worker.
-      return std::make_unique<URLLoader>(
-          cors_exempt_header_list_, terminate_sync_load_event_,
-          std::move(freezable_task_runner), std::move(unfreezable_task_runner),
-          service_worker_loader_factory_, std::move(keep_alive_handle),
-          back_forward_cache_loader_helper);
-    }
+    // Create our own URLLoader to route the request to the controller service
+    // worker.
+    scoped_refptr<network::SharedURLLoaderFactory> loader_factory =
+        CanCreateServiceWorkerURLLoader(request)
+            ? service_worker_loader_factory_
+            : loader_factory_;
 
     return std::make_unique<URLLoader>(
         cors_exempt_header_list_, terminate_sync_load_event_,
         std::move(freezable_task_runner), std::move(unfreezable_task_runner),
-        loader_factory_, std::move(keep_alive_handle),
-        back_forward_cache_loader_helper);
+        std::move(loader_factory), std::move(keep_alive_handle),
+        back_forward_cache_loader_helper, std::move(throttles));
   }
 
   void SetServiceWorkerURLLoaderFactory(
@@ -296,11 +294,6 @@ void DedicatedOrSharedWorkerFetchContextImpl::set_ancestor_frame_id(int id) {
   ancestor_frame_id_ = id;
 }
 
-void DedicatedOrSharedWorkerFetchContextImpl::set_frame_request_blocker(
-    scoped_refptr<WebFrameRequestBlocker> frame_request_blocker) {
-  frame_request_blocker_ = frame_request_blocker;
-}
-
 void DedicatedOrSharedWorkerFetchContextImpl::set_site_for_cookies(
     const net::SiteForCookies& site_for_cookies) {
   site_for_cookies_ = site_for_cookies;
@@ -389,11 +382,6 @@ void DedicatedOrSharedWorkerFetchContextImpl::WillSendRequest(
   }
 
   auto url_request_extra_data = base::MakeRefCounted<WebURLRequestExtraData>();
-  url_request_extra_data->set_frame_request_blocker(frame_request_blocker_);
-  if (throttle_provider_) {
-    url_request_extra_data->set_url_loader_throttles(
-        throttle_provider_->CreateThrottles(ancestor_frame_id_, request));
-  }
   request.SetURLRequestExtraData(std::move(url_request_extra_data));
 
   if (g_rewrite_url)
@@ -403,6 +391,15 @@ void DedicatedOrSharedWorkerFetchContextImpl::WillSendRequest(
     request.SetReferrerString(WebString());
     request.SetReferrerPolicy(network::mojom::ReferrerPolicy::kNever);
   }
+}
+
+WebVector<std::unique_ptr<URLLoaderThrottle>>
+DedicatedOrSharedWorkerFetchContextImpl::CreateThrottles(
+    const WebURLRequest& request) {
+  if (throttle_provider_) {
+    return throttle_provider_->CreateThrottles(ancestor_frame_id_, request);
+  }
+  return {};
 }
 
 mojom::ControllerServiceWorkerMode
@@ -546,7 +543,6 @@ DedicatedOrSharedWorkerFetchContextImpl::CloneForNestedWorkerInternal(
       std::move(pending_resource_load_info_notifier)));
   new_context->is_on_sub_frame_ = is_on_sub_frame_;
   new_context->ancestor_frame_id_ = ancestor_frame_id_;
-  new_context->frame_request_blocker_ = frame_request_blocker_;
   new_context->site_for_cookies_ = site_for_cookies_;
   new_context->top_frame_origin_ = top_frame_origin_;
   child_preference_watchers_.Add(std::move(preference_watcher));
@@ -661,10 +657,9 @@ WebDedicatedOrSharedWorkerFetchContext::Create(
 
   Vector<String> cors_exempt_header_list(
       base::checked_cast<wtf_size_t>(web_cors_exempt_header_list.size()));
-  std::transform(web_cors_exempt_header_list.begin(),
-                 web_cors_exempt_header_list.end(),
-                 cors_exempt_header_list.begin(),
-                 [](const WebString& h) { return WTF::String(h); });
+  base::ranges::transform(web_cors_exempt_header_list,
+                          cors_exempt_header_list.begin(),
+                          &WebString::operator WTF::String);
 
   scoped_refptr<DedicatedOrSharedWorkerFetchContextImpl> worker_fetch_context =
       base::AdoptRef(new DedicatedOrSharedWorkerFetchContextImpl(

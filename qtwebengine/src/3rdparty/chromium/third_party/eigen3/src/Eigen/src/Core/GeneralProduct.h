@@ -191,7 +191,7 @@ struct gemv_static_vector_if<Scalar,Size,MaxSize,true>
   internal::plain_array<Scalar, internal::min_size_prefer_fixed(Size, MaxSize)+(ForceAlignment?EIGEN_MAX_ALIGN_BYTES:0),0> m_data;
   EIGEN_STRONG_INLINE Scalar* data() {
     return ForceAlignment
-            ? reinterpret_cast<Scalar*>((internal::UIntPtr(m_data.array) & ~(std::size_t(EIGEN_MAX_ALIGN_BYTES-1))) + EIGEN_MAX_ALIGN_BYTES)
+            ? reinterpret_cast<Scalar*>((std::uintptr_t(m_data.array) & ~(std::size_t(EIGEN_MAX_ALIGN_BYTES-1))) + EIGEN_MAX_ALIGN_BYTES)
             : m_data.array;
   }
   #endif

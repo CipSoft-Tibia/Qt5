@@ -10,8 +10,30 @@ package arc.data_migrator;
 
 // The message that is sent from Chrome with HasDataToMigrate call.
 message HasDataToMigrateRequest {
-  // Username of the login user.
+  // Username of the current login user. Usually looks like an email address.
   string username = 1;
+}
+
+// The message that is sent from Chrome with GetAndroidDataInfo call.
+message GetAndroidDataInfoRequest {
+  // Username of the current login user. Usually looks like an email address.
+  string username = 1;
+}
+
+message GetAndroidDataInfoResponse {
+  // Total disk space (in bytes) allocated for files in the pre-migration data
+  // (located under host's /home/root/<hash>/android-data/data).
+  int64 total_allocated_space_src = 1;
+
+  // Estimated total disk space (in bytes) allocated for files in the migrated
+  // /data. This is calculated based on the apparent size (st_size) of files in
+  // the migration source (host's /home/root/<hash>/android-data/data) and can
+  // be bigger than |total_allocated_space_src| if the migration source contains
+  // sparse files. To be on the safe side, this estimation assumes that an
+  // additional 4KB block (which Ext4 allocates for files with large xattrs) is
+  // allocated for all files, and thus can be a little bigger than the actual
+  // allocated space for the migrated /data.
+  int64 total_allocated_space_dest = 2;
 }
 
 // The type of the migration destination.
@@ -24,7 +46,7 @@ enum DataMigrationDestinationType {
 
 // The message that is sent from Chrome with StartMigration call.
 message StartMigrationRequest {
-  // Username of the login user.
+  // Username of the current login user. Usually looks like an email address.
   string username = 1;
 
   DataMigrationDestinationType destination_type = 2;

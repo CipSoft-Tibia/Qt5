@@ -336,6 +336,7 @@ QuicStream::QuicStream(QuicStreamId id, QuicSession* session,
       id_(id),
       session_(session),
       stream_delegate_(session),
+      priority_(QuicStreamPriority::Default(session->priority_type())),
       stream_bytes_read_(stream_bytes_read),
       stream_error_(QuicResetStreamError::NoError()),
       connection_error_(QUIC_NO_ERROR),
@@ -1183,10 +1184,6 @@ bool QuicStream::RetransmitStreamData(QuicStreamOffset offset,
 bool QuicStream::IsWaitingForAcks() const {
   return (!rst_sent_ || stream_error_.ok()) &&
          (send_buffer_.stream_bytes_outstanding() || fin_outstanding_);
-}
-
-QuicByteCount QuicStream::ReadableBytes() const {
-  return sequencer_.ReadableBytes();
 }
 
 bool QuicStream::WriteStreamData(QuicStreamOffset offset,

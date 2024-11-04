@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtest.h>
 #include <QObject>
@@ -59,10 +59,9 @@ void tst_qrcqml::basicLoad()
     QQmlEngine e;
     QQmlComponent c(&e, QUrl(url));
     QVERIFY(c.isReady());
-    QObject* o = c.create();
-    QVERIFY(o);
+    std::unique_ptr<QObject> o { c.create() };
+    QVERIFY(o.get());
     QCOMPARE(o->property("tokenProperty").toString(), token);
-    delete o;
 }
 
 void tst_qrcqml::qrcImport_data()
@@ -88,10 +87,9 @@ void tst_qrcqml::qrcImport()
     e.addImportPath(importPath);
     QQmlComponent c(&e, QUrl("qrc:///importtest.qml"));
     QVERIFY(c.isReady());
-    QObject *o = c.create();
-    QVERIFY(o);
+    std::unique_ptr<QObject> o { c.create() };
+    QVERIFY(o.get());
     QCOMPARE(o->property("tokenProperty").toString(), token);
-    delete o;
 }
 
 QTEST_MAIN(tst_qrcqml)

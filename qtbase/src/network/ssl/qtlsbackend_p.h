@@ -59,6 +59,9 @@ namespace QTlsPrivate {
 
 class Q_NETWORK_PRIVATE_EXPORT TlsKey {
 public:
+    TlsKey() = default;
+    Q_DISABLE_COPY_MOVE(TlsKey)
+
     virtual ~TlsKey();
 
     using KeyType = QSsl::KeyType;
@@ -346,8 +349,11 @@ public:
     static QSslCipher createCiphersuite(const QString &description, int bits, int supportedBits);
     static QSslCipher createCiphersuite(const QString &suiteName, QSsl::SslProtocol protocol,
                                         const QString &protocolString);
-    static QSslCipher createCipher(const QString &name, QSsl::SslProtocol protocol,
-                                   const QString &protocolString);
+    static QSslCipher createCiphersuite(const QString &name, const QString &keyExchangeMethod,
+                                        const QString &encryptionMethod,
+                                        const QString &authenticationMethod,
+                                        int bits, QSsl::SslProtocol protocol,
+                                        const QString &protocolString);
 
     // Those statics are implemented using QSslSocketPrivate (which is not exported,
     // unlike QTlsBackend).

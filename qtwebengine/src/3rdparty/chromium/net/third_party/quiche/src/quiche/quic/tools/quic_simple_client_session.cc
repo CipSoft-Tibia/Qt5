@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "quiche/quic/core/quic_path_validator.h"
+#include "quiche/spdy/core/http2_header_block.h"
 
 namespace quic {
 
@@ -36,38 +37,54 @@ QuicSimpleClientSession::QuicSimpleClientSession(
 
 std::unique_ptr<QuicSpdyClientStream>
 QuicSimpleClientSession::CreateClientStream() {
-  return std::make_unique<QuicSimpleClientStream>(
+  auto stream = std::make_unique<QuicSimpleClientStream>(
       GetNextOutgoingBidirectionalStreamId(), this, BIDIRECTIONAL,
       drop_response_body_);
+  stream->set_on_interim_headers([this](const spdy::Http2HeaderBlock& headers) {
+    on_interim_headers_(headers);
+  });
+  return stream;
 }
 
-bool QuicSimpleClientSession::ShouldNegotiateWebTransport() {
-  return enable_web_transport_;
+WebTransportHttp3VersionSet
+QuicSimpleClientSession::LocallySupportedWebTransportVersions() const {
+  return enable_web_transport_ ? kDefaultSupportedWebTransportVersions
+                               : WebTransportHttp3VersionSet();
 }
 
 HttpDatagramSupport QuicSimpleClientSession::LocalHttpDatagramSupport() {
-  return enable_web_transport_ ? HttpDatagramSupport::kDraft04
+  return enable_web_transport_ ? HttpDatagramSupport::kRfcAndDraft04
                                : HttpDatagramSupport::kNone;
 }
 
-std::unique_ptr<QuicPathValidationContext>
-QuicSimpleClientSession::CreateContextForMultiPortPath() {
+void QuicSimpleClientSession::CreateContextForMultiPortPath(
+    std::unique_ptr<MultiPortPathContextObserver> context_observer) {
   if (!network_helper_ || connection()->multi_port_stats() == nullptr) {
-    return nullptr;
+    return;
   }
   auto self_address = connection()->self_address();
   auto server_address = connection()->peer_address();
   if (!network_helper_->CreateUDPSocketAndBind(
           server_address, self_address.host(), self_address.port() + 1)) {
-    return nullptr;
+    return;
   }
   QuicPacketWriter* writer = network_helper_->CreateQuicPacketWriter();
   if (writer == nullptr) {
-    return nullptr;
+    return;
   }
-  return std::make_unique<PathMigrationContext>(
-      std::unique_ptr<QuicPacketWriter>(writer),
-      network_helper_->GetLatestClientAddress(), peer_address());
+  context_observer->OnMultiPortPathContextAvailable(
+      std::make_unique<PathMigrationContext>(
+          std::unique_ptr<QuicPacketWriter>(writer),
+          network_helper_->GetLatestClientAddress(), peer_address()));
+}
+
+void QuicSimpleClientSession::MigrateToMultiPortPath(
+    std::unique_ptr<QuicPathValidationContext> context) {
+  auto* path_migration_context =
+      static_cast<PathMigrationContext*>(context.get());
+  MigratePath(path_migration_context->self_address(),
+              path_migration_context->peer_address(),
+              path_migration_context->ReleaseWriter(), /*owns_writer=*/true);
 }
 
 }  // namespace quic

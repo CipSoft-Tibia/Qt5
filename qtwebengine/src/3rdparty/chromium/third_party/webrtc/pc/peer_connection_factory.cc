@@ -134,7 +134,7 @@ RtpCapabilities PeerConnectionFactory::GetRtpSenderCapabilities(
     }
     case cricket::MEDIA_TYPE_VIDEO: {
       cricket::VideoCodecs cricket_codecs;
-      cricket_codecs = media_engine()->video().send_codecs();
+      cricket_codecs = media_engine()->video().send_codecs(context_->use_rtx());
       auto extensions =
           GetDefaultEnabledRtpHeaderExtensions(media_engine()->video());
       return ToRtpCapabilities(cricket_codecs, extensions);
@@ -224,11 +224,6 @@ PeerConnectionFactory::CreatePeerConnectionOrError(
         configuration.port_allocator_config.flags);
   }
 
-  if (!dependencies.async_resolver_factory) {
-    dependencies.async_resolver_factory =
-        std::make_unique<webrtc::BasicAsyncResolverFactory>();
-  }
-
   if (!dependencies.ice_transport_factory) {
     dependencies.ice_transport_factory =
         std::make_unique<DefaultIceTransportFactory>();
@@ -273,12 +268,11 @@ PeerConnectionFactory::CreateLocalMediaStream(const std::string& stream_id) {
 }
 
 rtc::scoped_refptr<VideoTrackInterface> PeerConnectionFactory::CreateVideoTrack(
-    const std::string& id,
-    VideoTrackSourceInterface* source) {
+    rtc::scoped_refptr<VideoTrackSourceInterface> source,
+    absl::string_view id) {
   RTC_DCHECK(signaling_thread()->IsCurrent());
-  rtc::scoped_refptr<VideoTrackInterface> track = VideoTrack::Create(
-      id, rtc::scoped_refptr<VideoTrackSourceInterface>(source),
-      worker_thread());
+  rtc::scoped_refptr<VideoTrackInterface> track =
+      VideoTrack::Create(id, source, worker_thread());
   return VideoTrackProxy::Create(signaling_thread(), worker_thread(), track);
 }
 
@@ -294,9 +288,9 @@ rtc::scoped_refptr<AudioTrackInterface> PeerConnectionFactory::CreateAudioTrack(
 std::unique_ptr<RtcEventLog> PeerConnectionFactory::CreateRtcEventLog_w() {
   RTC_DCHECK_RUN_ON(worker_thread());
 
-  auto encoding_type = RtcEventLog::EncodingType::Legacy;
-  if (IsTrialEnabled("WebRTC-RtcEventLogNewFormat"))
-    encoding_type = RtcEventLog::EncodingType::NewFormat;
+  auto encoding_type = RtcEventLog::EncodingType::NewFormat;
+  if (field_trials().IsDisabled("WebRTC-RtcEventLogNewFormat"))
+    encoding_type = RtcEventLog::EncodingType::Legacy;
   return event_log_factory_ ? event_log_factory_->Create(encoding_type)
                             : std::make_unique<RtcEventLogNull>();
 }

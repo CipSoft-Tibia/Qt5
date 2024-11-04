@@ -72,6 +72,7 @@ class CORE_EXPORT InspectorPageAgent final
     virtual ~Client() = default;
     virtual void PageLayoutInvalidated(bool resized) {}
     virtual void WaitForDebugger() {}
+    virtual bool IsPausedForNewWindow() { return false; }
   };
 
   enum ResourceType {
@@ -123,12 +124,14 @@ class CORE_EXPORT InspectorPageAgent final
       const String& source,
       Maybe<String> world_name,
       Maybe<bool> include_command_line_api,
+      Maybe<bool> runImmediately,
       String* identifier) override;
   protocol::Response removeScriptToEvaluateOnNewDocument(
       const String& identifier) override;
   protocol::Response setLifecycleEventsEnabled(bool) override;
   protocol::Response reload(Maybe<bool> bypass_cache,
-                            Maybe<String> script_to_evaluate_on_load) override;
+                            Maybe<String> script_to_evaluate_on_load,
+                            Maybe<String> loader_id) override;
   protocol::Response stopLoading() override;
   protocol::Response setAdBlockingEnabled(bool) override;
   protocol::Response getResourceTree(
@@ -197,7 +200,7 @@ class CORE_EXPORT InspectorPageAgent final
   protocol::Response setInterceptFileChooserDialog(bool enabled) override;
 
   // InspectorInstrumentation API
-  void DidClearDocumentOfWindowObject(LocalFrame*);
+  void DidCreateMainWorldContext(LocalFrame*);
   void DidNavigateWithinDocument(LocalFrame*);
   void DomContentLoadedEventFired(LocalFrame*);
   void LoadEventFired(LocalFrame*);
@@ -208,7 +211,6 @@ class CORE_EXPORT InspectorPageAgent final
       LocalFrame*,
       const absl::optional<AdScriptIdentifier>& ad_script_on_stack);
   void FrameDetachedFromParent(LocalFrame*, FrameDetachType);
-  void FrameStartedLoading(LocalFrame*);
   void FrameStoppedLoading(LocalFrame*);
   void FrameRequestedNavigation(Frame* target_frame,
                                 const KURL&,
@@ -287,6 +289,8 @@ class CORE_EXPORT InspectorPageAgent final
                                String world_name,
                                bool grant_universal_access,
                                std::unique_ptr<CreateIsolatedWorldCallback>);
+  void EvaluateScriptOnNewDocument(LocalFrame&,
+                                   const String& script_identifier);
 
   Member<InspectedFrames> inspected_frames_;
   HashMap<String, protocol::Binary> compilation_cache_;

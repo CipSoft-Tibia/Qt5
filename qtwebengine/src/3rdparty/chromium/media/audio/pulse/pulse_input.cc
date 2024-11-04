@@ -42,7 +42,10 @@ PulseAudioInputStream::PulseAudioInputStream(
       pa_mainloop_(mainloop),
       pa_context_(context),
       log_callback_(std::move(log_callback)),
-      handle_(nullptr) {
+      handle_(nullptr),
+      peak_detector_(base::BindRepeating(&AudioManager::TraceAmplitudePeak,
+                                         base::Unretained(audio_manager_),
+                                         /*trace_start=*/true)) {
   DCHECK(mainloop);
   DCHECK(context);
   CHECK(params_.IsValid());
@@ -323,14 +326,6 @@ void PulseAudioInputStream::ReadData() {
   GetAgcVolume(&normalized_volume);
   normalized_volume = volume_ / GetMaxVolume();
 
-  // Compensate the audio delay caused by the FIFO.
-  // TODO(dalecurtis): This should probably use pa_stream_get_time() so we can
-  // get the capture time directly.
-  base::TimeTicks capture_time =
-      base::TimeTicks::Now() -
-      (pulse::GetHardwareLatency(handle_) +
-       AudioTimestampHelper::FramesToTime(fifo_.GetAvailableFrames(),
-                                          params_.sample_rate()));
   do {
     size_t length = 0;
     const void* data = nullptr;
@@ -350,21 +345,30 @@ void PulseAudioInputStream::ReadData() {
       fifo_.IncreaseCapacity(increase_blocks_of_buffer);
     }
 
-    fifo_.Push(data, number_of_frames,
-               SampleFormatToBytesPerChannel(pulse::kInputSampleFormat));
+    const int bytes_per_sample =
+        SampleFormatToBytesPerChannel(pulse::kInputSampleFormat);
+
+    peak_detector_.FindPeak(data, number_of_frames, bytes_per_sample);
+
+    fifo_.Push(data, number_of_frames, bytes_per_sample);
 
     // Checks if we still have data.
     pa_stream_drop(handle_);
   } while (pa_stream_readable_size(handle_) > 0);
 
+  const base::TimeTicks capture_time_base =
+      base::TimeTicks::Now() - pulse::GetHardwareLatency(handle_);
   while (fifo_.available_blocks()) {
+    // Compensate the audio delay caused by the FIFO.
+    // TODO(dalecurtis): This should probably use pa_stream_get_time() so we can
+    // get the capture time directly.
+    const base::TimeTicks capture_time =
+        capture_time_base -
+        AudioTimestampHelper::FramesToTime(fifo_.GetAvailableFrames(),
+                                           params_.sample_rate());
     const AudioBus* audio_bus = fifo_.Consume();
 
-    callback_->OnData(audio_bus, capture_time, normalized_volume);
-
-    // Move the capture time forward for each vended block.
-    capture_time += AudioTimestampHelper::FramesToTime(audio_bus->frames(),
-                                                       params_.sample_rate());
+    callback_->OnData(audio_bus, capture_time, normalized_volume, {});
 
     // Sleep 5ms to wait until render consumes the data in order to avoid
     // back to back OnData() method.

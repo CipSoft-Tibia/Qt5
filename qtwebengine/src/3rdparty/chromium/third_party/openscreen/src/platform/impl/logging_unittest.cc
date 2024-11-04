@@ -1,15 +1,15 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "platform/api/logging.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "gtest/gtest.h"
 #include "platform/impl/logging.h"
 #include "platform/impl/logging_test.h"
@@ -34,7 +34,7 @@ class LoggingTest : public ::testing::Test {
   }
 
  protected:
-  void ExpectLog(LogLevel level, absl::string_view message) {
+  void ExpectLog(LogLevel level, std::string_view message) {
     const char* level_string = "";
     switch (level) {
       case LogLevel::kVerbose:

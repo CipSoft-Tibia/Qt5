@@ -59,7 +59,7 @@ void tst_input::initialProperties()
     QCOMPARE(m_input->isZoomAtTargetEnabled(), true);
     QCOMPARE(m_input->isZoomEnabled(), true);
     QCOMPARE(m_input->inputPosition(), QPoint(0, 0));
-    QCOMPARE(m_input->inputView(), QAbstract3DInputHandler::InputViewNone);
+    QCOMPARE(m_input->inputView(), QAbstract3DInputHandler::InputView::None);
     QVERIFY(!m_input->scene());
 }
 
@@ -73,14 +73,14 @@ void tst_input::initializeProperties()
     m_input->setZoomAtTargetEnabled(false);
     m_input->setZoomEnabled(false);
     m_input->setInputPosition(QPoint(100, 100));
-    m_input->setInputView(QAbstract3DInputHandler::InputViewOnPrimary);
+    m_input->setInputView(QAbstract3DInputHandler::InputView::OnPrimary);
 
     QCOMPARE(m_input->isRotationEnabled(), false);
     QCOMPARE(m_input->isSelectionEnabled(), false);
     QCOMPARE(m_input->isZoomAtTargetEnabled(), false);
     QCOMPARE(m_input->isZoomEnabled(), false);
     QCOMPARE(m_input->inputPosition(), QPoint(100, 100));
-    QCOMPARE(m_input->inputView(), QAbstract3DInputHandler::InputViewOnPrimary);
+    QCOMPARE(m_input->inputView(), QAbstract3DInputHandler::InputView::OnPrimary);
 }
 
 // TODO: QTRD-3380 (mouse/touch events)

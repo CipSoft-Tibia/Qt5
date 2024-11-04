@@ -36,7 +36,6 @@ DEFINE_QUICHE_COMMAND_LINE_FLAG(
     "Allows setting MASQUE mode, currently only valid value is \"open\".");
 
 int main(int argc, char* argv[]) {
-  quiche::QuicheSystemEventLoop event_loop("masque_server");
   const char* usage = "Usage: masque_server [options]";
   std::vector<std::string> non_option_args =
       quiche::QuicheParseCommandLineFlags(usage, argc, argv);
@@ -45,10 +44,11 @@ int main(int argc, char* argv[]) {
     return 0;
   }
 
+  quiche::QuicheSystemEventLoop event_loop("masque_server");
   quic::MasqueMode masque_mode = quic::MasqueMode::kOpen;
   std::string mode_string = quiche::GetQuicheCommandLineFlag(FLAGS_masque_mode);
   if (!mode_string.empty() && mode_string != "open") {
-    std::cerr << "Invalid masque_mode \"" << mode_string << "\"" << std::endl;
+    QUIC_LOG(ERROR) << "Invalid masque_mode \"" << mode_string << "\"";
     return 1;
   }
 
@@ -65,7 +65,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  std::cerr << "Started " << masque_mode << " MASQUE server" << std::endl;
+  QUIC_LOG(INFO) << "Started " << masque_mode << " MASQUE server";
   server->HandleEventsForever();
   return 0;
 }

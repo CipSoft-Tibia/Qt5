@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/QTimer>
 #include <QtCore/QDebug>
@@ -7,10 +7,13 @@
 #include <QtCore/QHashFunctions>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QImage>
+#include <QtCore/QLoggingCategory>
 
 #include <QtQuick/QQuickView>
 #include <QtQuick/QQuickItem>
 #include <QtQuickControls2/qquickstyle.h>
+#include <QQmlApplicationEngine>
+#include <QtQuickTemplates2/private/qquickapplicationwindow_p.h>
 
 #ifdef Q_OS_WIN
 #  include <fcntl.h>
@@ -27,6 +30,7 @@
 #define SCENE_TIMEOUT     6000
 
 //#define GRABBERDEBUG
+Q_LOGGING_CATEGORY(lcGrabber, "qt.baseline.scenegrabber")
 
 static const QSize DefaultGrabSize(320, 480);
 
@@ -35,24 +39,35 @@ class GrabbingView : public QQuickView
     Q_OBJECT
 
 public:
-    GrabbingView(const QString &outputFile)
-        : ofile(outputFile), grabNo(0), isGrabbing(false), initDone(false), justShow(outputFile.isEmpty())
+    GrabbingView(const QString &outputFile, const bool useAppWindow)
+        : ofile(outputFile), grabNo(0), isGrabbing(false), initDone(false), justShow(outputFile.isEmpty()), preferAppWindow(useAppWindow)
     {
         if (justShow)
             return;
         grabTimer = new QTimer(this);
         grabTimer->setSingleShot(true);
         grabTimer->setInterval(SCENE_STABLE_TIME);
-        connect(grabTimer, SIGNAL(timeout()), SLOT(grab()));
+        connect(grabTimer, &QTimer::timeout, this, &GrabbingView::grab);
 
-        connect(this, SIGNAL(afterRendering()), SLOT(startGrabbing()));
+        if (!preferAppWindow)
+            QObject::connect(this, &QQuickWindow::afterRendering, this, &GrabbingView::startGrabbing);
 
-        QTimer::singleShot(SCENE_TIMEOUT, this, SLOT(timedOut()));
+        QTimer::singleShot(SCENE_TIMEOUT, this, &GrabbingView::timedOut);
     }
+
+    void setApplicationWindow(QWindow* window) {
+        qCDebug(lcGrabber) << "Using ApplicationWindow as visual parent" << this;
+
+        appwindow = qobject_cast<QQuickApplicationWindow *>(window);
+        if (preferAppWindow)
+            QObject::connect(appwindow, &QQuickWindow::afterRendering, this, &GrabbingView::startGrabbing);
+    }
+    QQuickApplicationWindow* appWindow() { return appwindow; }
 
 private slots:
     void startGrabbing()
     {
+        qCDebug(lcGrabber) << "Starting to grab";
         if (!initDone) {
             initDone = true;
             grabTimer->start();
@@ -61,29 +76,28 @@ private slots:
 
     void grab()
     {
-        if (isGrabbing)
+        if (isGrabbing) {
+            qCDebug(lcGrabber) << "Already grabbing, skipping";
             return;
-        isGrabbing = true;
+        }
+
+        QScopedValueRollback grabGuard(isGrabbing, true);
+
         grabNo++;
-#ifdef GRABBERDEBUG
-        printf("grab no. %i\n", grabNo);
-#endif
-        QImage img = grabWindow();
+        qCDebug(lcGrabber) << "grab no." << grabNo;
+        QImage img;
+        img = appwindow ? appwindow->grabWindow() : grabWindow();
         if (!img.isNull() && img == lastGrab) {
             sceneStabilized();
         } else {
             lastGrab = img;
             grabTimer->start();
         }
-
-        isGrabbing = false;
     }
 
     void sceneStabilized()
     {
-#ifdef GRABBERDEBUG
-        printf("...sceneStabilized IN\n");
-#endif
+        qCDebug(lcGrabber) << "...sceneStabilized IN";
         if (QGuiApplication::platformName() == QLatin1String("eglfs")) {
             QSize grabSize = initialSize().isEmpty() ? DefaultGrabSize : initialSize();
             lastGrab = lastGrab.copy(QRect(QPoint(0, 0), grabSize));
@@ -108,9 +122,7 @@ private slots:
             }
         }
         QGuiApplication::exit(0);
-#ifdef GRABBERDEBUG
-        printf("...sceneStabilized OUT\n");
-#endif
+        qCDebug(lcGrabber) << "...sceneStabilized OUT";
     }
 
     void timedOut()
@@ -127,6 +139,8 @@ private:
     bool isGrabbing;
     bool initDone;
     bool justShow;
+    QQuickApplicationWindow *appwindow = nullptr;
+    bool preferAppWindow = false;
 };
 
 
@@ -140,9 +154,11 @@ int main(int argc, char *argv[])
     QString ifile, ofile, style;
     bool noText = false;
     bool justShow = false;
+
     QStringList args = a.arguments();
     int i = 0;
     bool argError = false;
+    bool useAppWindow = false;
     while (++i < args.size()) {
         QString arg = args.at(i);
         if ((arg == "-o") && (i < args.size()-1)) {
@@ -157,14 +173,19 @@ int main(int argc, char *argv[])
         else if (arg == "-viewonly") {
             justShow = true;
         }
-        else if (ifile.isEmpty()) {
-            ifile = arg;
-        }
         else if (arg == "-style") {
             if (i < args.size()-1)
                 style = args.at(++i);
-            else
+            else {
                 argError = true;
+                break;
+            }
+        }
+        else if (arg == "-useAppWindow") {
+            useAppWindow = true;
+        }
+        else if (ifile.isEmpty()) {
+            ifile = arg;
         }
         else {
             argError = true;
@@ -187,26 +208,58 @@ int main(int argc, char *argv[])
     if (!style.isEmpty())
         QQuickStyle::setStyle(style);
 
-    GrabbingView v(ofile);
-    v.setSource(QUrl::fromLocalFile(ifile));
+    GrabbingView v(ofile, useAppWindow);
 
-    if (noText) {
-        const QList<QQuickItem*> items = v.rootObject()->findChildren<QQuickItem*>();
-        for (QQuickItem *item : items) {
-            if (QByteArray(item->metaObject()->className()).contains("Text"))
-                item->setVisible(false);
+    if (useAppWindow) {
+        QQmlEngine *engine = new QQmlEngine;
+        {
+            // test qml component creation
+            QQmlComponent component(engine, QUrl::fromLocalFile(ifile));
+            auto *itemObject = qobject_cast<QQuickItem*>(component.create());
+
+            // TODO: Hack to import native style forcefully for windows
+            QString appCompStr = "import QtQuick.Controls\n";
+            if (QQuickStyle::name() == "Windows")
+                appCompStr += "import QtQuick.NativeStyle\n";
+            appCompStr += "ApplicationWindow{}";
+
+            // Create application window
+            QQmlComponent appWndComp(engine);
+            appWndComp.setData(appCompStr.toLatin1(), QUrl::fromLocalFile(""));
+            auto *appWindow = qobject_cast<QQuickApplicationWindow *>(appWndComp.create());
+
+            if (!appWindow) {
+                qWarning() << "Error: failed to create application window.";
+                QGuiApplication::exit(2);
+            }
+
+            appWindow->resize(itemObject->size().toSize());
+
+            // Use application window as visual parent to the loaded component
+            v.setApplicationWindow(appWindow);
+            itemObject->setParentItem(v.appWindow()->contentItem());
+            itemObject->setParent(v.appWindow());
         }
+        v.appWindow()->show();
+    } else {
+        v.setSource(QUrl::fromLocalFile(ifile));
+
+        if (noText) {
+            const QList<QQuickItem*> items = v.rootObject()->findChildren<QQuickItem*>();
+            for (QQuickItem *item : items) {
+                if (QByteArray(item->metaObject()->className()).contains("Text"))
+                    item->setVisible(false);
+            }
+        }
+
+        if (v.initialSize().isEmpty())
+            v.resize(DefaultGrabSize);
+
+        v.show();
     }
 
-    if (v.initialSize().isEmpty())
-        v.resize(DefaultGrabSize);
-
-    v.show();
-
     int retVal = a.exec();
-#ifdef GRABBERDEBUG
-    printf("...retVal=%i\n", retVal);
-#endif
+    qCDebug(lcGrabber) << "...retVal=" << retVal;
 
     return retVal;
 }

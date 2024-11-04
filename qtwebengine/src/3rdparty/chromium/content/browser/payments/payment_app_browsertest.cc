@@ -104,12 +104,12 @@ class PaymentAppBrowserTest : public ContentBrowserTest {
   }
 
   std::string RunScript(const std::string& script) {
-    return EvalJs(shell()->web_contents(), script,
-                  EXECUTE_SCRIPT_USE_MANUAL_REPLY)
-        .ExtractString();
+    return EvalJs(shell()->web_contents(), script).ExtractString();
   }
 
-  std::string PopConsoleString() { return RunScript("resultQueue.pop()"); }
+  std::string PopConsoleString() {
+    return RunScript("resultQueue.pop().then(result => String(result))");
+  }
 
   void RegisterPaymentApp() {
     SkBitmap app_icon;

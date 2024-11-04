@@ -11,8 +11,8 @@
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
+#include "base/sequence_checker.h"
 #include "base/supports_user_data.h"
-#include "base/threading/thread_checker.h"
 #include "components/autofill/core/browser/contact_info_sync_util.h"
 #include "components/autofill/core/browser/webdata/autofill_table.h"
 #include "components/autofill/core/browser/webdata/autofill_webdata_backend.h"
@@ -53,10 +53,10 @@ class ContactInfoSyncBridge : public AutofillWebDataServiceObserverOnDBSequence,
   // syncer::ModelTypeSyncBridge implementation.
   std::unique_ptr<syncer::MetadataChangeList> CreateMetadataChangeList()
       override;
-  absl::optional<syncer::ModelError> MergeSyncData(
+  absl::optional<syncer::ModelError> MergeFullSyncData(
       std::unique_ptr<syncer::MetadataChangeList> metadata_change_list,
       syncer::EntityChangeList entity_data) override;
-  absl::optional<syncer::ModelError> ApplySyncChanges(
+  absl::optional<syncer::ModelError> ApplyIncrementalSyncChanges(
       std::unique_ptr<syncer::MetadataChangeList> metadata_change_list,
       syncer::EntityChangeList entity_changes) override;
   void GetData(StorageKeyList storage_keys, DataCallback callback) override;
@@ -64,8 +64,8 @@ class ContactInfoSyncBridge : public AutofillWebDataServiceObserverOnDBSequence,
   bool IsEntityDataValid(const syncer::EntityData& entity_data) const override;
   std::string GetClientTag(const syncer::EntityData& entity_data) override;
   std::string GetStorageKey(const syncer::EntityData& entity_data) override;
-  void ApplyStopSyncChanges(std::unique_ptr<syncer::MetadataChangeList>
-                                delete_metadata_change_list) override;
+  void ApplyDisableSyncChanges(std::unique_ptr<syncer::MetadataChangeList>
+                                   delete_metadata_change_list) override;
   sync_pb::EntitySpecifics TrimAllSupportedFieldsFromRemoteSpecifics(
       const sync_pb::EntitySpecifics& entity_specifics) const override;
 
@@ -97,7 +97,7 @@ class ContactInfoSyncBridge : public AutofillWebDataServiceObserverOnDBSequence,
 
   // The bridge should be used on the same sequence where it has been
   // constructed.
-  THREAD_CHECKER(thread_checker_);
+  SEQUENCE_CHECKER(sequence_checker_);
 
   // ContactInfoSyncBridge is owned by `web_data_backend_` through
   // SupportsUserData, so it's guaranteed to outlive `this`.

@@ -85,7 +85,7 @@ class MulticolPartWalker {
   // If a column was added for an OOF before a spanner, we need to update the
   // column break token so that the content is resumed at the correct spot.
   void UpdateNextColumnBreakToken(
-      const NGContainerFragmentBuilder::ChildrenVector& children);
+      const NGFragmentBuilder::ChildrenVector& children);
 
  private:
   void MoveToNext();
@@ -130,7 +130,7 @@ void MulticolPartWalker::AddNextColumnBreakToken(
 }
 
 void MulticolPartWalker::UpdateNextColumnBreakToken(
-    const NGContainerFragmentBuilder::ChildrenVector& children) {
+    const NGFragmentBuilder::ChildrenVector& children) {
   if (children.empty())
     return;
   const blink::NGPhysicalFragment* last_child =
@@ -349,6 +349,14 @@ const NGLayoutResult* NGColumnLayoutAlgorithm::Layout() {
 
 MinMaxSizesResult NGColumnLayoutAlgorithm::ComputeMinMaxSizes(
     const MinMaxSizesFloatInput&) {
+  const LayoutUnit override_intrinsic_inline_size =
+      Node().OverrideIntrinsicContentInlineSize();
+  if (override_intrinsic_inline_size != kIndefiniteSize) {
+    const LayoutUnit size =
+        BorderScrollbarPadding().InlineSum() + override_intrinsic_inline_size;
+    return {{size, size}, /* depends_on_block_constraints */ false};
+  }
+
   // First calculate the min/max sizes of columns.
   NGConstraintSpace space = CreateConstraintSpaceForMinMax();
   NGFragmentGeometry fragment_geometry = CalculateInitialFragmentGeometry(
@@ -656,34 +664,22 @@ const NGLayoutResult* NGColumnLayoutAlgorithm::LayoutRow(
 
   bool shrink_to_fit_column_block_size = false;
 
-  bool balance_columns;
-  bool has_content_based_block_size;
-  if (RuntimeEnabledFeatures::UnconstrainedColumnFillAutoEnabled()) {
-    // If column-fill is 'balance', we should of course balance. Additionally,
-    // we need to do it if we're *inside* another multicol container that's
-    // performing its initial column balancing pass. Otherwise we might report a
-    // taller block-size that we eventually end up with, resulting in the outer
-    // columns to be overstretched.
-    balance_columns = Style().GetColumnFill() == EColumnFill::kBalance ||
-                      (ConstraintSpace().HasBlockFragmentation() &&
-                       !ConstraintSpace().HasKnownFragmentainerBlockSize());
+  // If column-fill is 'balance', we should of course balance. Additionally, we
+  // need to do it if we're *inside* another multicol container that's
+  // performing its initial column balancing pass. Otherwise we might report a
+  // taller block-size that we eventually end up with, resulting in the outer
+  // columns to be overstretched.
+  bool balance_columns = Style().GetColumnFill() == EColumnFill::kBalance ||
+                         (ConstraintSpace().HasBlockFragmentation() &&
+                          !ConstraintSpace().HasKnownFragmentainerBlockSize());
 
-    // If columns are to be balanced, we need to examine the contents of the
-    // multicol container to figure out a good initial (minimal) column
-    // block-size. We also need to do this if column-fill is 'auto' and the
-    // block-size is unconstrained.
-    has_content_based_block_size =
-        balance_columns || (column_size.block_size == kIndefiniteSize &&
-                            !is_constrained_by_outer_fragmentation_context_);
-  } else {
-    // We balance if block-size is unconstrained, or when we're explicitly told
-    // to. Note that the block-size may be constrained by outer fragmentation
-    // contexts, not just by a block-size specified on this multicol container.
-    balance_columns = Style().GetColumnFill() == EColumnFill::kBalance ||
-                      (column_size.block_size == kIndefiniteSize &&
-                       !is_constrained_by_outer_fragmentation_context_);
-    has_content_based_block_size = balance_columns;
-  }
+  // If columns are to be balanced, we need to examine the contents of the
+  // multicol container to figure out a good initial (minimal) column
+  // block-size. We also need to do this if column-fill is 'auto' and the
+  // block-size is unconstrained.
+  bool has_content_based_block_size =
+      balance_columns || (column_size.block_size == kIndefiniteSize &&
+                          !is_constrained_by_outer_fragmentation_context_);
 
   if (has_content_based_block_size) {
     column_size.block_size = ResolveColumnAutoBlockSize(
@@ -738,9 +734,6 @@ const NGLayoutResult* NGColumnLayoutAlgorithm::LayoutRow(
 
   do {
     const NGBlockBreakToken* column_break_token = next_column_token;
-
-    bool allow_discard_start_margin =
-        column_break_token && !column_break_token->IsCausedByColumnSpanner();
     bool has_violating_break = false;
     bool has_oof_fragmentainer_descendants = false;
 
@@ -759,9 +752,9 @@ const NGLayoutResult* NGColumnLayoutAlgorithm::LayoutRow(
 
     do {
       // Lay out one column. Each column will become a fragment.
-      NGConstraintSpace child_space = CreateConstraintSpaceForColumns(
-          ConstraintSpace(), column_size, ColumnPercentageResolutionSize(),
-          allow_discard_start_margin, balance_columns,
+      NGConstraintSpace child_space = CreateConstraintSpaceForFragmentainer(
+          ConstraintSpace(), kFragmentColumn, column_size,
+          ColumnPercentageResolutionSize(), balance_columns,
           min_break_appeal.value_or(kBreakAppealLastResort));
 
       NGFragmentGeometry fragment_geometry =
@@ -872,7 +865,6 @@ const NGLayoutResult* NGColumnLayoutAlgorithm::LayoutRow(
             return nullptr;
         }
       }
-      allow_discard_start_margin = true;
     } while (column_break_token);
 
     if (!balance_columns) {
@@ -1090,8 +1082,9 @@ NGBreakStatus NGColumnLayoutAlgorithm::LayoutSpanner(
   NGFragment logical_fragment(ConstraintSpace().GetWritingDirection(),
                               spanner_fragment);
 
-  ResolveInlineMargins(spanner_style, Style(), ChildAvailableSize().inline_size,
-                       logical_fragment.InlineSize(), &margins);
+  ResolveInlineAutoMargins(spanner_style, Style(),
+                           ChildAvailableSize().inline_size,
+                           logical_fragment.InlineSize(), &margins);
 
   LogicalOffset offset(
       BorderScrollbarPadding().inline_start + margins.inline_start,

@@ -7,7 +7,7 @@
 #include <utility>
 
 #include "base/logging.h"
-#include "base/parsing_buildflags.h"
+#include "base/rust_buildflags.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
 #if BUILDFLAG(BUILD_RUST_JSON_READER)
@@ -52,31 +52,30 @@ void ListAppendValue(ContextPointer& ctx, T v) {
 ContextPointer& DictSetList(ContextPointer& ctx,
                             rust::Str key,
                             size_t reserve) {
-  auto& value = reinterpret_cast<base::Value&>(ctx);
+  auto& dict = reinterpret_cast<base::Value&>(ctx).GetDict();
   base::Value::List list;
   list.reserve(reserve);
-  value.SetKey(base::RustStrToStringPiece(key), base::Value(std::move(list)));
+  dict.Set(base::RustStrToStringPiece(key), std::move(list));
   return reinterpret_cast<ContextPointer&>(
-      *value.GetDict().Find(base::RustStrToStringPiece(key)));
+      *dict.Find(base::RustStrToStringPiece(key)));
 }
 
 ContextPointer& DictSetDict(ContextPointer& ctx, rust::Str key) {
-  auto& value = reinterpret_cast<base::Value&>(ctx);
-  value.SetKey(base::RustStrToStringPiece(key),
-               base::Value(base::Value::Dict()));
+  auto& dict = reinterpret_cast<base::Value&>(ctx).GetDict();
+  dict.Set(base::RustStrToStringPiece(key), base::Value(base::Value::Dict()));
   return reinterpret_cast<ContextPointer&>(
-      *value.GetDict().Find(base::RustStrToStringPiece(key)));
+      *dict.Find(base::RustStrToStringPiece(key)));
 }
 
 void DictSetNone(ContextPointer& ctx, rust::Str key) {
-  auto& value = reinterpret_cast<base::Value&>(ctx);
-  value.SetKey(base::RustStrToStringPiece(key), base::Value());
+  auto& dict = reinterpret_cast<base::Value&>(ctx).GetDict();
+  dict.Set(base::RustStrToStringPiece(key), base::Value());
 }
 
 template <class T, class As = T>
 void DictSetValue(ContextPointer& ctx, rust::Str key, T v) {
-  auto& value = reinterpret_cast<base::Value&>(ctx);
-  value.SetKey(base::RustStrToStringPiece(key), base::Value(As{v}));
+  auto& dict = reinterpret_cast<base::Value&>(ctx).GetDict();
+  dict.Set(base::RustStrToStringPiece(key), base::Value(As{v}));
 }
 
 JSONReader::Result DecodeJSONInRust(const base::StringPiece& json,
@@ -148,11 +147,14 @@ absl::optional<Value> JSONReader::Read(StringPiece json,
 }
 
 // static
-std::unique_ptr<Value> JSONReader::ReadDeprecated(StringPiece json,
-                                                  int options,
-                                                  size_t max_depth) {
+absl::optional<Value::Dict> JSONReader::ReadDict(StringPiece json,
+                                                 int options,
+                                                 size_t max_depth) {
   absl::optional<Value> value = Read(json, options, max_depth);
-  return value ? Value::ToUniquePtrValue(std::move(*value)) : nullptr;
+  if (!value || !value->is_dict()) {
+    return absl::nullopt;
+  }
+  return std::move(*value).TakeDict();
 }
 
 // static

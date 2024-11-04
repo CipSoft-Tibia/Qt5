@@ -7,12 +7,15 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <sstream>
+#include <initializer_list>
 #include <string>
 #include <type_traits>
 
+#include "absl/numeric/bits.h"
 #include "absl/numeric/int128.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "quiche/quic/core/crypto/quic_random.h"
 #include "quiche/quic/core/frames/quic_frame.h"
@@ -226,30 +229,42 @@ QuicByteCount MemSliceSpanTotalSize(absl::Span<quiche::QuicheMemSlice> span);
 // Computes a SHA-256 hash and returns the raw bytes of the hash.
 QUIC_EXPORT_PRIVATE std::string RawSha256(absl::string_view input);
 
-template <typename Mask>
+// BitMask<Index, Mask> is a set of elements of type `Index` represented as a
+// bitmask of an underlying integer type `Mask` (uint64_t by default). The
+// underlying type has to be large enough to fit all possible values of `Index`.
+template <typename Index, typename Mask = uint64_t>
 class QUIC_EXPORT_PRIVATE BitMask {
  public:
-  // explicit to prevent (incorrect) usage like "BitMask bitmask = 0;".
-  template <typename... Bits>
-  explicit BitMask(Bits... bits) {
-    mask_ = MakeMask(bits...);
+  explicit constexpr BitMask(std::initializer_list<Index> bits) {
+    for (Index bit : bits) {
+      mask_ |= MakeMask(bit);
+    }
   }
 
   BitMask() = default;
   BitMask(const BitMask& other) = default;
   BitMask& operator=(const BitMask& other) = default;
 
-  template <typename... Bits>
-  void Set(Bits... bits) {
-    mask_ |= MakeMask(bits...);
+  constexpr void Set(Index bit) { mask_ |= MakeMask(bit); }
+
+  constexpr void Set(std::initializer_list<Index> bits) {
+    mask_ |= BitMask(bits).mask();
   }
 
-  template <typename Bit>
-  bool IsSet(Bit bit) const {
-    return (MakeMask(bit) & mask_) != 0;
-  }
+  constexpr bool IsSet(Index bit) const { return (MakeMask(bit) & mask_) != 0; }
 
-  void ClearAll() { mask_ = 0; }
+  constexpr void ClearAll() { mask_ = 0; }
+
+  // Returns true if any of the bits is set.
+  bool Any() const { return mask_ != 0; }
+
+  // Returns the highest bit set, or nullopt if the mask is all zeroes.
+  absl::optional<Index> Max() const {
+    if (!Any()) {
+      return absl::nullopt;
+    }
+    return static_cast<Index>(NumBits() - absl::countl_zero(mask_) - 1);
+  }
 
   static constexpr size_t NumBits() { return 8 * sizeof(Mask); }
 
@@ -257,33 +272,43 @@ class QUIC_EXPORT_PRIVATE BitMask {
     return lhs.mask_ == rhs.mask_;
   }
 
-  std::string DebugString() const {
-    std::ostringstream oss;
-    oss << "0x" << std::hex << mask_;
-    return oss.str();
+  // Bitwise AND that can act as a set intersection between two bit masks.
+  BitMask<Index, Mask> operator&(const BitMask<Index, Mask>& rhs) const {
+    return BitMask<Index, Mask>(mask_ & rhs.mask_);
   }
+
+  std::string DebugString() const {
+    return absl::StrCat("0x", absl::Hex(mask_));
+  }
+
+  constexpr Mask mask() const { return mask_; }
 
  private:
+  explicit constexpr BitMask(Mask mask) : mask_(mask) {}
+
   template <typename Bit>
-  static std::enable_if_t<std::is_enum<Bit>::value, Mask> MakeMask(Bit bit) {
+  static constexpr std::enable_if_t<std::is_enum_v<Bit>, Mask> MakeMask(
+      Bit bit) {
     using IntType = typename std::underlying_type<Bit>::type;
-    return Mask(1) << static_cast<IntType>(bit);
+    return MakeMask(static_cast<IntType>(bit));
   }
 
   template <typename Bit>
-  static std::enable_if_t<!std::is_enum<Bit>::value, Mask> MakeMask(Bit bit) {
+  static constexpr std::enable_if_t<!std::is_enum_v<Bit>, Mask> MakeMask(
+      Bit bit) {
+    // We can't use QUICHE_DCHECK_LT here, since it doesn't work with constexpr.
+    QUICHE_DCHECK(bit < static_cast<Bit>(NumBits()));
+    if constexpr (std::is_signed_v<Bit>) {
+      QUICHE_DCHECK(bit >= 0);
+    }
     return Mask(1) << bit;
-  }
-
-  template <typename Bit, typename... Bits>
-  static Mask MakeMask(Bit first_bit, Bits... other_bits) {
-    return MakeMask(first_bit) | MakeMask(other_bits...);
   }
 
   Mask mask_ = 0;
 };
 
-using BitMask64 = BitMask<uint64_t>;
+// Ensure that the BitMask constructor can be evaluated as constexpr.
+static_assert(BitMask<int>({1, 2, 3}).mask() == 0x0e);
 
 }  // namespace quic
 

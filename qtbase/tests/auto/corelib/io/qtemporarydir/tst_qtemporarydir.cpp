@@ -1,6 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QStandardPaths>
@@ -54,7 +53,7 @@ private slots:
     void QTBUG_4796_data();
     void QTBUG_4796();
 
-    void QTBUG43352_failedSetPermissions();
+    void nestedTempDirs();
 
 private:
     QString m_previousCurrent;
@@ -390,7 +389,8 @@ void tst_QTemporaryDir::openOnRootDrives()
 #endif
     // If it's possible to create a file in the root directory, it
     // must be possible to create a temp dir there too.
-    foreach (const QFileInfo &driveInfo, QDir::drives()) {
+    const auto drives = QDir::drives();
+    for (const QFileInfo &driveInfo : drives) {
         QFile testFile(driveInfo.filePath() + "XXXXXX");
         if (testFile.open(QIODevice::ReadWrite)) {
             testFile.remove();
@@ -479,7 +479,7 @@ void tst_QTemporaryDir::QTBUG_4796() // unicode support
     {
         ~CleanOnReturn()
         {
-            foreach (const QString &tempName, tempNames)
+            for (const QString &tempName : std::as_const(tempNames))
                 QVERIFY(QDir(tempName).removeRecursively());
         }
 
@@ -549,22 +549,24 @@ void tst_QTemporaryDir::QTBUG_4796() // unicode support
 #ifdef Q_OS_WIN
     QTest::qWait(20);
 #endif
-    foreach (const QString &tempName, cleaner.tempNames)
+    for (const QString &tempName : std::as_const(cleaner.tempNames))
         QVERIFY2(!QDir(tempName).exists(), qPrintable(tempName));
 
     cleaner.reset();
 }
 
-void tst_QTemporaryDir::QTBUG43352_failedSetPermissions()
+void tst_QTemporaryDir::nestedTempDirs()
 {
-    QString path = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) + QStringLiteral("/");
-    int count = QDir(path).entryList().size();
+    QTemporaryDir parentDir;
+    const QString &parentPath = parentDir.path();
 
     {
-        QTemporaryDir dir(path);
+        QTemporaryDir tempdir(parentPath);
     }
 
-    QCOMPARE(QDir(path).entryList().size(), count);
+    QDir dir(parentPath);
+    dir.setFilter(QDir::NoDotAndDotDot);
+    QCOMPARE(dir.count(), 0);
 }
 
 QTEST_MAIN(tst_QTemporaryDir)

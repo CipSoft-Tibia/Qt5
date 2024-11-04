@@ -450,7 +450,8 @@ void QAuthenticatorPrivate::parseHttpResponse(const QList<QPair<QByteArray, QByt
 #if !QT_CONFIG(gssapi)
     Q_UNUSED(host);
 #endif
-    const char *search = isProxy ? "proxy-authenticate" : "www-authenticate";
+    const auto search = isProxy ?
+            QByteArrayView("proxy-authenticate") : QByteArrayView("www-authenticate");
 
     method = None;
     /*
@@ -463,26 +464,25 @@ void QAuthenticatorPrivate::parseHttpResponse(const QList<QPair<QByteArray, QByt
       authentication parameters.
     */
 
-    QByteArray headerVal;
-    for (int i = 0; i < values.size(); ++i) {
-        const QPair<QByteArray, QByteArray> &current = values.at(i);
+    QByteArrayView headerVal;
+    for (const auto &current : values) {
         if (current.first.compare(search, Qt::CaseInsensitive) != 0)
             continue;
-        QByteArray str = current.second.toLower();
-        if (method < Basic && str.startsWith("basic")) {
+        const QLatin1StringView str(current.second);
+        if (method < Basic && str.startsWith("basic"_L1, Qt::CaseInsensitive)) {
             method = Basic;
-            headerVal = current.second.mid(6);
-        } else if (method < Ntlm && str.startsWith("ntlm")) {
+            headerVal = QByteArrayView(current.second).mid(6);
+        } else if (method < Ntlm && str.startsWith("ntlm"_L1, Qt::CaseInsensitive)) {
             method = Ntlm;
-            headerVal = current.second.mid(5);
-        } else if (method < DigestMd5 && str.startsWith("digest")) {
+            headerVal = QByteArrayView(current.second).mid(5);
+        } else if (method < DigestMd5 && str.startsWith("digest"_L1, Qt::CaseInsensitive)) {
             // Make sure the algorithm is actually MD5 before committing to it:
             if (!verifyDigestMD5(QByteArrayView(current.second).sliced(7)))
                 continue;
 
             method = DigestMd5;
-            headerVal = current.second.mid(7);
-        } else if (method < Negotiate && str.startsWith("negotiate")) {
+            headerVal = QByteArrayView(current.second).mid(7);
+        } else if (method < Negotiate && str.startsWith("negotiate"_L1, Qt::CaseInsensitive)) {
 #if QT_CONFIG(sspi) || QT_CONFIG(gssapi) // if it's not supported then we shouldn't try to use it
 #if QT_CONFIG(gssapi)
             // For GSSAPI there needs to be a KDC set up for the host (afaict).
@@ -492,14 +492,14 @@ void QAuthenticatorPrivate::parseHttpResponse(const QList<QPair<QByteArray, QByt
                 continue;
 #endif
             method = Negotiate;
-            headerVal = current.second.mid(10);
+            headerVal = QByteArrayView(current.second).mid(10);
 #endif
         }
     }
 
     // Reparse credentials since we know the method now
     updateCredentials();
-    challenge = headerVal.trimmed();
+    challenge = headerVal.trimmed().toByteArray();
     QHash<QByteArray, QByteArray> options = parseDigestAuthenticationChallenge(challenge);
 
     // Sets phase to Start if this updates our realm and sets the two locations where we store
@@ -547,16 +547,14 @@ QByteArray QAuthenticatorPrivate::calculateResponse(QByteArrayView requestMethod
     Q_UNUSED(host);
 #endif
     QByteArray response;
-    const char* methodString = nullptr;
+    QByteArrayView methodString;
     switch(method) {
     case QAuthenticatorPrivate::None:
-        methodString = "";
         phase = Done;
         break;
     case QAuthenticatorPrivate::Basic:
         methodString = "Basic";
-        response = user.toLatin1() + ':' + password.toLatin1();
-        response = response.toBase64();
+        response = (user + ':'_L1 + password).toLatin1().toBase64();
         phase = Done;
         break;
     case QAuthenticatorPrivate::DigestMd5:
@@ -645,11 +643,20 @@ QByteArray QAuthenticatorPrivate::calculateResponse(QByteArrayView requestMethod
         break;
     }
 
-    return QByteArray::fromRawData(methodString, qstrlen(methodString)) + ' ' + response;
+    return methodString + ' ' + response;
 }
 
 
 // ---------------------------- Digest Md5 code ----------------------------------------
+
+static bool containsAuth(QByteArrayView data)
+{
+    for (auto element : QLatin1StringView(data).tokenize(','_L1)) {
+        if (element == "auth"_L1)
+            return true;
+    }
+    return false;
+}
 
 QHash<QByteArray, QByteArray>
 QAuthenticatorPrivate::parseDigestAuthenticationChallenge(QByteArrayView challenge)
@@ -664,7 +671,7 @@ QAuthenticatorPrivate::parseDigestAuthenticationChallenge(QByteArrayView challen
         const char *start = d;
         while (d < end && *d != '=')
             ++d;
-        QByteArray key = QByteArray(start, d - start);
+        QByteArrayView key = QByteArrayView(start, d - start);
         ++d;
         if (d >= end)
             break;
@@ -695,13 +702,12 @@ QAuthenticatorPrivate::parseDigestAuthenticationChallenge(QByteArrayView challen
         while (d < end && *d != ',')
             ++d;
         ++d;
-        options[key] = value;
+        options[key.toByteArray()] = std::move(value);
     }
 
     QByteArray qop = options.value("qop");
     if (!qop.isEmpty()) {
-        QList<QByteArray> qopoptions = qop.split(',');
-        if (!qopoptions.contains("auth"))
+        if (!containsAuth(qop))
             return QHash<QByteArray, QByteArray>();
         // #### can't do auth-int currently
 //         if (qop.contains("auth-int"))

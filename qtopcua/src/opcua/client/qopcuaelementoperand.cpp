@@ -10,7 +10,7 @@ QT_BEGIN_NAMESPACE
     \inmodule QtOpcUa
     \brief The OPC UA ElementOperand type.
 
-    The ElementOperand is defined in OPC-UA part 4, 7.4.4.2.
+    The ElementOperand is defined in OPC UA 1.05 part 4, 7.7.4.2.
     It is used to identify another element in the filter by its index
     (the first element has the index 0).
 
@@ -106,5 +106,25 @@ void QOpcUaElementOperand::setIndex(quint32 index)
 {
     data->index = index;
 }
+
+/*!
+    \fn bool QOpcUaElementOperand::operator==(const QOpcUaElementOperand &lhs,
+                                              const QOpcUaElementOperand &rhs)
+    \since 6.7
+
+    Returns \c true if \a lhs has the same value as \a rhs.
+*/
+bool comparesEqual(const QOpcUaElementOperand &lhs, const QOpcUaElementOperand &rhs) noexcept
+{
+    return lhs.index() == rhs.index();
+}
+
+/*!
+    \fn bool QOpcUaElementOperand::operator!=(const QOpcUaElementOperand &lhs,
+                                              const QOpcUaElementOperand &rhs)
+    \since 6.7
+
+    Returns \c true if \a lhs a different value than \a rhs.
+*/
 
 QT_END_NAMESPACE

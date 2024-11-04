@@ -6,7 +6,7 @@
 \ingroup cmake-commands-qtprotobuf
 
 \title qt_add_protobuf
-\target qt6_add_protobuf
+\keyword qt6_add_protobuf
 \summary {Generates Qt-based C++ source code using a protobuf schema}
 \preliminarycmakecommand
 \cmakecommandsince 6.5
@@ -39,8 +39,7 @@ link to.
     \include qtprotoccommon-options.qdocinc 0
     \li \c QML enables QProtobufMessage types in QML context by registering
         them as a QML module.
-        Protobuf types can extend an existing QML module.
-        See code examples:
+        Protobuf types can extend an existing QML module:
         \badcode
             qt_add_qml_module(targetname
                 ...
@@ -52,6 +51,11 @@ link to.
             )
         \endcode
 
+        If \c qt_add_protobuf is called with a non-existing target
+        or the target is not a QML module, a new QML module will be created
+        implicitly. In case of the new QML module creation, the
+        \l {qt_add_qml_module} command is called inside the
+        \c qt_add_protobuf command.
         \badcode
             qt_add_executable(targetname
                 ...
@@ -62,12 +66,11 @@ link to.
                 ...
             )
         \endcode
-        If \c qt_add_protobuf is called with a non-existing target
-        or the target is not a QML module, a new QML module will be created
-        implicitly. In case of the new QML module creation, the
-        \l {qt_add_qml_module} command is called inside the
-        \c qt_add_protobuf command.
-        See code example:
+        Every QML module has to define a \c URI name. Other QML modules may
+        use this name in \l{qtqml-syntax-imports.html}{import statements}
+        to import the module into a user application. Use the \c QML_URI
+        option to set the \c URI name. It has to be specified in dotted
+        notation, e.g. \c {Qt.Protobuf.Package}.
         \badcode
             qt_add_executable(targetname
                 ...
@@ -78,11 +81,6 @@ link to.
                 QML_URI proto.uri.example
             )
         \endcode
-        Every QML module has to define a \c URI name. Other QML modules may
-        use this name in \l{qtqml-syntax-imports.html}{import statements}
-        to import the module into a user application. Use the \c QML_URI
-        option to set the \c URI name. It has to be specified in dotted
-        notation, e.g. \c {Qt.Protobuf.Package}.
         If \c QML_URI is omitted, then the protobuf package name will be used
         as the module \c URI.
         \note If \c QML_URI is passed to \c qt_add_protobuf command
@@ -109,6 +107,7 @@ The \c qt_add_protobuf command doesn't consider the dependencies between
 
 The project may have two or more \c .proto files with dependencies:
 \badcode
+// test_messages.proto
 syntax = "proto3";
 
 package test.messages;
@@ -119,6 +118,7 @@ message MyMessage {
 \endcode
 
 \badcode
+// test_extensions.proto
 syntax = "proto3";
 
 import "test_messages.proto";
@@ -153,10 +153,12 @@ Since the \c test_extensions target depends on messages from the
 target_link_libraries(test_extensions PUBLIC test_messages)
 \endcode
 
-\note It's recommended to use the \c PUBLIC linking scope, since messages from
-\c test_messages target are referenced in header files that belong to
-the \c test_extensions target, so targets that link to \c test_extensions should
-have the \c test_messages target as a transitive dependency.
+\note Messages from \c test_messages target are used in header files that belong
+to the \c test_extensions target, so targets that link to \c test_extensions
+should have the \c test_messages target as a transitive dependency. It's
+recommended to use the \c PUBLIC linking scope, to have the proper
+\c INTERFACE_INCLUDE_DIRECTORIES and \c INTERFACE_LINK_LIBRARIES properties for
+protobuf library targets.
 
 \section1 Example
 

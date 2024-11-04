@@ -34,12 +34,7 @@ public:
     // Julian Day conversions:
     bool dateToJulianDay(int year, int month, int day, qint64 *jd) const override;
     QCalendar::YearMonthDay julianDayToDate(qint64 jd) const override;
-
-    // Names of months (implemented in qlocale.cpp):
-    QString monthName(const QLocale &locale, int month, int year,
-                      QLocale::FormatType format) const override;
-    QString standaloneMonthName(const QLocale &locale, int month, int year,
-                                QLocale::FormatType format) const override;
+    qint64 matchCenturyToWeekday(const QCalendar::YearMonthDay &parts, int dow) const override;
 
     // Static optimized versions for the benefit of QDate:
     static int weekDayOfJulian(qint64 jd);

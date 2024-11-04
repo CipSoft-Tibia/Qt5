@@ -64,7 +64,9 @@ QQmlLanguageServer::QQmlLanguageServer(std::function<void(const QByteArray &)> s
       m_navigationSupport(&m_codeModel),
       m_definitionSupport(&m_codeModel),
       m_referencesSupport(&m_codeModel),
-      m_documentFormatting(&m_codeModel)
+      m_documentFormatting(&m_codeModel),
+      m_renameSupport(&m_codeModel),
+      m_rangeFormatting(&m_codeModel)
 {
     m_server.addServerModule(this);
     m_server.addServerModule(&m_textSynchronization);
@@ -75,6 +77,8 @@ QQmlLanguageServer::QQmlLanguageServer(std::function<void(const QByteArray &)> s
     m_server.addServerModule(&m_definitionSupport);
     m_server.addServerModule(&m_referencesSupport);
     m_server.addServerModule(&m_documentFormatting);
+    m_server.addServerModule(&m_renameSupport);
+    m_server.addServerModule(&m_rangeFormatting);
     m_server.finishSetup();
     qCWarning(lspServerLog) << "Did Setup";
 }
@@ -86,7 +90,7 @@ void QQmlLanguageServer::registerHandlers(QLanguageServer *server,
     QObject::connect(server, &QLanguageServer::lifecycleError, this,
                      &QQmlLanguageServer::errorExit);
     QObject::connect(server, &QLanguageServer::exit, this, &QQmlLanguageServer::exit);
-    QObject::connect(server, &QLanguageServer::runStatusChanged, [](QLanguageServer::RunStatus r) {
+    QObject::connect(server, &QLanguageServer::runStatusChanged, this, [](QLanguageServer::RunStatus r) {
         qCDebug(lspServerLog) << "runStatus" << int(r);
     });
     protocol->typedRpc()->registerNotificationHandler<Notifications::AddBuildDirsParams>(
@@ -107,12 +111,22 @@ void QQmlLanguageServer::registerHandlers(QLanguageServer *server,
 void QQmlLanguageServer::setupCapabilities(const QLspSpecification::InitializeParams &clientInfo,
                                            QLspSpecification::InitializeResult &serverInfo)
 {
-    Q_UNUSED(clientInfo);
     QJsonObject expCap;
     if (serverInfo.capabilities.experimental.has_value() && serverInfo.capabilities.experimental->isObject())
         expCap = serverInfo.capabilities.experimental->toObject();
     expCap.insert(u"addBuildDirs"_s, QJsonObject({ { u"supported"_s, true } }));
     serverInfo.capabilities.experimental = expCap;
+
+    if (clientInfo.workspaceFolders) {
+        if (auto workspaceList =
+                    std::get_if<QList<WorkspaceFolder>>(&*clientInfo.workspaceFolders)) {
+            QList<QByteArray> workspaceUris;
+            std::transform(workspaceList->cbegin(), workspaceList->cend(),
+                           std::back_inserter(workspaceUris),
+                           [](const auto &workspaceFolder) { return workspaceFolder.uri; });
+            m_codeModel.setRootUrls(workspaceUris);
+        }
+    }
 }
 
 QString QQmlLanguageServer::name() const

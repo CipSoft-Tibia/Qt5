@@ -239,7 +239,7 @@ class QUIC_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
   explicit QuicCryptoClientConfig(
       std::unique_ptr<ProofVerifier> proof_verifier);
   QuicCryptoClientConfig(std::unique_ptr<ProofVerifier> proof_verifier,
-                         std::unique_ptr<SessionCache> session_cache);
+                         std::shared_ptr<SessionCache> session_cache);
   QuicCryptoClientConfig(const QuicCryptoClientConfig&) = delete;
   QuicCryptoClientConfig& operator=(const QuicCryptoClientConfig&) = delete;
   ~QuicCryptoClientConfig();
@@ -337,6 +337,7 @@ class QUIC_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
 
   ProofVerifier* proof_verifier() const;
   SessionCache* session_cache() const;
+  void set_session_cache(std::shared_ptr<SessionCache> session_cache);
   ClientProofSource* proof_source() const;
   void set_proof_source(std::unique_ptr<ClientProofSource> proof_source);
   SSL_CTX* ssl_ctx() const;
@@ -353,6 +354,18 @@ class QUIC_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
   // matches this suffix, then the server config from another server with the
   // suffix will be used to initialize the cached state for this server.
   void AddCanonicalSuffix(const std::string& suffix);
+
+  // The groups to use for key exchange in the TLS handshake.
+  const std::vector<uint16_t>& preferred_groups() const {
+    return preferred_groups_;
+  }
+
+  // Sets the preferred groups that will be used in the TLS handshake. Values
+  // in the |preferred_groups| vector are NamedGroup enum codepoints from
+  // https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.7.
+  void set_preferred_groups(const std::vector<uint16_t>& preferred_groups) {
+    preferred_groups_ = preferred_groups;
+  }
 
   // Saves the |user_agent_id| that will be passed in QUIC's CHLO message.
   void set_user_agent_id(const std::string& user_agent_id) {
@@ -390,8 +403,6 @@ class QUIC_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
   bool pad_full_hello() const { return pad_full_hello_; }
   void set_pad_full_hello(bool new_value) { pad_full_hello_ = new_value; }
 
-  SessionCache* mutable_session_cache() { return session_cache_.get(); }
-
  private:
   // Sets the members to reasonable, default values.
   void SetDefaults();
@@ -428,10 +439,13 @@ class QUIC_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
   std::vector<std::string> canonical_suffixes_;
 
   std::unique_ptr<ProofVerifier> proof_verifier_;
-  std::unique_ptr<SessionCache> session_cache_;
+  std::shared_ptr<SessionCache> session_cache_;
   std::unique_ptr<ClientProofSource> proof_source_;
 
   bssl::UniquePtr<SSL_CTX> ssl_ctx_;
+
+  // The groups to use for key exchange in the TLS handshake.
+  std::vector<uint16_t> preferred_groups_;
 
   // The |user_agent_id_| passed in QUIC's CHLO message.
   std::string user_agent_id_;

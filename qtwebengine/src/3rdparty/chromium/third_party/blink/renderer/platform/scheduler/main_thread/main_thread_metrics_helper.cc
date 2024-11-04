@@ -4,7 +4,6 @@
 
 #include "third_party/blink/renderer/platform/scheduler/main_thread/main_thread_metrics_helper.h"
 
-#include "base/cpu_reduction_experiment.h"
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/numerics/safe_conversions.h"
@@ -21,8 +20,6 @@ namespace scheduler {
 #define MAIN_THREAD_LOAD_METRIC_NAME "RendererScheduler.RendererMainThreadLoad5"
 #define EXTENSIONS_MAIN_THREAD_LOAD_METRIC_NAME \
   MAIN_THREAD_LOAD_METRIC_NAME ".Extension"
-#define DURATION_PER_TASK_TYPE_METRIC_NAME \
-  "RendererScheduler.TaskDurationPerTaskType2"
 
 #define QUEUEING_DELAY_HISTOGRAM_INIT(name)                       \
   "RendererScheduler.QueueingDuration." name "Priority",          \
@@ -68,22 +65,19 @@ MainThreadMetricsHelper::MainThreadMetricsHelper(
               &MainThreadMetricsHelper::RecordForegroundMainThreadTaskLoad,
               base::Unretained(this)),
           kThreadLoadTrackerReportingInterval),
-      no_use_case_per_task_type_duration_reporter_(
-          DURATION_PER_TASK_TYPE_METRIC_NAME ".UseCaseNone"),
-      loading_per_task_type_duration_reporter_(
-          DURATION_PER_TASK_TYPE_METRIC_NAME ".UseCaseLoading"),
-      input_handling_per_task_type_duration_reporter_(
-          DURATION_PER_TASK_TYPE_METRIC_NAME ".UseCaseInputHandling"),
-      queueing_delay_histograms_{{QUEUEING_DELAY_HISTOGRAM_INIT("Control")},
-                                 {QUEUEING_DELAY_HISTOGRAM_INIT("Highest")},
-                                 {QUEUEING_DELAY_HISTOGRAM_INIT("VeryHigh")},
-                                 {QUEUEING_DELAY_HISTOGRAM_INIT("High")},
-                                 {QUEUEING_DELAY_HISTOGRAM_INIT("Normal")},
-                                 {QUEUEING_DELAY_HISTOGRAM_INIT("Low")},
-                                 {QUEUEING_DELAY_HISTOGRAM_INIT("BestEffort")}},
-      total_task_time_reporter_(
-          "Scheduler.Experimental.Renderer.TotalTime.Wall.MainThread.Positive",
-          "Scheduler.Experimental.Renderer.TotalTime.Wall.MainThread.Negative"),
+      // Order here must match TaskPriority (in descending priority order).
+      queueing_delay_histograms_{
+          {QUEUEING_DELAY_HISTOGRAM_INIT("Control")},
+          {QUEUEING_DELAY_HISTOGRAM_INIT("Highest")},
+          {QUEUEING_DELAY_HISTOGRAM_INIT("ExtremelyHigh")},
+          {QUEUEING_DELAY_HISTOGRAM_INIT("VeryHigh")},
+          {QUEUEING_DELAY_HISTOGRAM_INIT("HighContinuation")},
+          {QUEUEING_DELAY_HISTOGRAM_INIT("High")},
+          {QUEUEING_DELAY_HISTOGRAM_INIT("NormalContinuation")},
+          {QUEUEING_DELAY_HISTOGRAM_INIT("Normal")},
+          {QUEUEING_DELAY_HISTOGRAM_INIT("LowContinuation")},
+          {QUEUEING_DELAY_HISTOGRAM_INIT("Low")},
+          {QUEUEING_DELAY_HISTOGRAM_INIT("BestEffort")}},
       main_thread_task_load_state_(MainThreadTaskLoadState::kUnknown) {
   main_thread_load_tracker_.Resume(now);
   if (renderer_backgrounded) {
@@ -167,43 +161,6 @@ void MainThreadMetricsHelper::RecordTaskMetrics(
         task_timing.start_time() - task.GetDesiredExecutionTime();
     queueing_delay_histograms_[static_cast<size_t>(queue->GetQueuePriority())]
         .CountMicroseconds(elapsed);
-  }
-
-  // Don't log the metrics to evaluate impact of CPU reduction.
-  // This code is deemed not useful anymore (crbug.com/1181870).
-  // TODO(crbug.com/1295441: Fully remove the code once the experiment is over.
-  if (base::IsRunningCpuReductionExperiment()) {
-    return;
-  }
-
-  MetricsHelper::RecordCommonTaskMetrics(task, task_timing);
-
-  total_task_time_reporter_.RecordAdditionalDuration(
-      task_timing.wall_duration());
-
-  // WARNING: All code below must be compatible with down-sampling.
-  constexpr double kSamplingProbability = .01;
-  if (!metrics_subsampler_.ShouldSample(kSamplingProbability)) {
-    return;
-  }
-
-  base::TimeDelta duration = task_timing.wall_duration();
-  UMA_HISTOGRAM_CUSTOM_COUNTS("RendererScheduler.TaskTime2",
-                              base::saturated_cast<base::HistogramBase::Sample>(
-                                  duration.InMicroseconds()),
-                              1, 1000 * 1000, 50);
-
-  TaskType task_type = static_cast<TaskType>(task.task_type);
-  UseCase use_case =
-      main_thread_scheduler_->main_thread_only().current_use_case;
-  if (use_case == UseCase::kNone) {
-    no_use_case_per_task_type_duration_reporter_.RecordTask(task_type,
-                                                            duration);
-  } else if (use_case == UseCase::kLoading) {
-    loading_per_task_type_duration_reporter_.RecordTask(task_type, duration);
-  } else {
-    input_handling_per_task_type_duration_reporter_.RecordTask(task_type,
-                                                               duration);
   }
 }
 

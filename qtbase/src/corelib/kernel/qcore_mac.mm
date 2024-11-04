@@ -25,7 +25,6 @@
 
 #include "qendian.h"
 #include "qhash.h"
-#include "qpair.h"
 #include "qmutex.h"
 #include "qvarlengtharray.h"
 #include "private/qlocking_p.h"
@@ -53,6 +52,7 @@ QT_BEGIN_NAMESPACE
 
 // --------------------------------------------------------------------------
 
+#if defined(Q_OS_MACOS)
 static void initializeStandardUserDefaults()
 {
     // The standard user defaults are initialized from an ordered list of domains,
@@ -65,6 +65,7 @@ static void initializeStandardUserDefaults()
     Q_UNUSED(NSUserDefaults.standardUserDefaults);
 }
 Q_CONSTRUCTOR_FUNCTION(initializeStandardUserDefaults);
+#endif
 
 // --------------------------------------------------------------------------
 
@@ -715,7 +716,7 @@ QMacVersion::VersionTuple QMacVersion::versionsForImage(const mach_header *machH
     };
 
     static auto makeVersionTuple = [](uint32_t dt, uint32_t sdk, QOperatingSystemVersion::OSType osType) {
-        return qMakePair(
+        return std::pair(
             QOperatingSystemVersion(osType, dt >> 16 & 0xffff, dt >> 8 & 0xff, dt & 0xff),
             QOperatingSystemVersion(osType, sdk >> 16 & 0xffff, sdk >> 8 & 0xff, sdk & 0xff)
         );

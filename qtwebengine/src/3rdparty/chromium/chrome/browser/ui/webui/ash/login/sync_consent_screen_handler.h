@@ -25,12 +25,12 @@ class SyncConsentScreenView
   virtual ~SyncConsentScreenView() = default;
 
   // Shows the contents of the screen.
-  virtual void Show(bool is_arc_restricted) = 0;
+  virtual void Show(bool is_lacros_enabled) = 0;
 
   // The screen is initially shown in a loading state.
   // When SyncScreenBehavior becomes Shown, this method should be called to
   // advance the screen to the loaded state.
-  virtual void ShowLoadedStep() = 0;
+  virtual void ShowLoadedStep(bool os_sync_lacros) = 0;
 
   // Set the minor mode flag, which controls whether we could use nudge
   // techinuque on the UI.
@@ -65,7 +65,7 @@ class SyncConsentScreenHandler : public BaseScreenHandler,
 
   // SyncConsentScreenView:
   void Show(bool is_arc_restricted) override;
-  void ShowLoadedStep() override;
+  void ShowLoadedStep(bool os_sync_lacros) override;
   void SetIsMinorMode(bool value) override;
 
   void RetrieveConsentIDs(::login::StringList& consent_description,

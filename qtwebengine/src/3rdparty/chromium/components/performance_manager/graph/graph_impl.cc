@@ -57,6 +57,29 @@ void RemoveObserverImpl(std::vector<NodeObserverType*>* observers,
   DCHECK(!base::Contains(*observers, observer));
 }
 
+base::Value::Dict DescribeNodeWithDescriber(const NodeDataDescriber& describer,
+                                            const Node* node) {
+  const NodeBase* node_base = NodeBase::FromNode(node);
+  switch (node_base->type()) {
+    case NodeTypeEnum::kFrame:
+      return describer.DescribeNodeData(FrameNodeImpl::FromNodeBase(node_base));
+    case NodeTypeEnum::kPage:
+      return describer.DescribeNodeData(PageNodeImpl::FromNodeBase(node_base));
+    case NodeTypeEnum::kProcess:
+      return describer.DescribeNodeData(
+          ProcessNodeImpl::FromNodeBase(node_base));
+    case NodeTypeEnum::kSystem:
+      return describer.DescribeNodeData(
+          SystemNodeImpl::FromNodeBase(node_base));
+    case NodeTypeEnum::kWorker:
+      return describer.DescribeNodeData(
+          WorkerNodeImpl::FromNodeBase(node_base));
+    case NodeTypeEnum::kInvalidType:
+      NOTREACHED_NORETURN();
+  }
+  NOTREACHED_NORETURN();
+}
+
 class NodeDataDescriberRegistryImpl : public NodeDataDescriberRegistry {
  public:
   ~NodeDataDescriberRegistryImpl() override;
@@ -73,32 +96,10 @@ class NodeDataDescriberRegistryImpl : public NodeDataDescriberRegistry {
   }
 
  private:
-  template <typename NodeType, typename NodeImplType>
-  base::Value::Dict DescribeNodeImpl(
-      base::Value::Dict (NodeDataDescriber::*DescribeFn)(const NodeType*) const,
-      const NodeImplType* node) const VALID_CONTEXT_REQUIRED(sequence_checker_);
-
   base::flat_map<const NodeDataDescriber*, std::string> describers_
       GUARDED_BY_CONTEXT(sequence_checker_);
   SEQUENCE_CHECKER(sequence_checker_);
 };
-
-template <typename NodeType, typename NodeImplType>
-base::Value::Dict NodeDataDescriberRegistryImpl::DescribeNodeImpl(
-    base::Value::Dict (NodeDataDescriber::*Describe)(const NodeType*) const,
-    const NodeImplType* node) const {
-  base::Value::Dict result;
-
-  for (const auto& name_and_describer : describers_) {
-    base::Value::Dict description = (name_and_describer.first->*Describe)(node);
-    if (!description.empty()) {
-      DCHECK_EQ(nullptr, result.FindDict(name_and_describer.second));
-      result.Set(name_and_describer.second, std::move(description));
-    }
-  }
-
-  return result;
-}
 
 NodeDataDescriberRegistryImpl::~NodeDataDescriberRegistryImpl() {
   // All describers should have unregistered before the graph is destroyed.
@@ -129,27 +130,15 @@ void NodeDataDescriberRegistryImpl::UnregisterDescriber(
 base::Value::Dict NodeDataDescriberRegistryImpl::DescribeNodeData(
     const Node* node) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  const NodeBase* node_base = NodeBase::FromNode(node);
-  switch (node_base->type()) {
-    case NodeTypeEnum::kInvalidType:
-      NOTREACHED();
-      return base::Value::Dict();
-    case NodeTypeEnum::kFrame:
-      return DescribeNodeImpl(&NodeDataDescriber::DescribeFrameNodeData,
-                              FrameNodeImpl::FromNodeBase(node_base));
-    case NodeTypeEnum::kPage:
-      return DescribeNodeImpl(&NodeDataDescriber::DescribePageNodeData,
-                              PageNodeImpl::FromNodeBase(node_base));
-    case NodeTypeEnum::kProcess:
-      return DescribeNodeImpl(&NodeDataDescriber::DescribeProcessNodeData,
-                              ProcessNodeImpl::FromNodeBase(node_base));
-    case NodeTypeEnum::kSystem:
-      return DescribeNodeImpl(&NodeDataDescriber::DescribeSystemNodeData,
-                              SystemNodeImpl::FromNodeBase(node_base));
-    case NodeTypeEnum::kWorker:
-      return DescribeNodeImpl(&NodeDataDescriber::DescribeWorkerNodeData,
-                              WorkerNodeImpl::FromNodeBase(node_base));
+  base::Value::Dict result;
+  for (const auto& [describer, describer_name] : describers_) {
+    base::Value::Dict description = DescribeNodeWithDescriber(*describer, node);
+    if (!description.empty()) {
+      DCHECK_EQ(nullptr, result.FindDict(describer_name));
+      result.Set(describer_name, std::move(description));
+    }
   }
+  return result;
 }
 
 }  // namespace
@@ -160,6 +149,7 @@ GraphImpl::GraphImpl() {
 
 GraphImpl::~GraphImpl() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  CHECK_EQ(lifecycle_state_, LifecycleState::kTearDownCalled);
 
   // All graph registered and owned objects should have been cleaned up.
   DCHECK(graph_owned_.empty());
@@ -183,6 +173,11 @@ GraphImpl::~GraphImpl() {
 void GraphImpl::SetUp() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CreateSystemNode();
+
+  AddFrameNodeObserver(&initializing_frame_node_observer_manager_);
+
+  CHECK_EQ(lifecycle_state_, LifecycleState::kBeforeSetUp);
+  lifecycle_state_ = LifecycleState::kSetUpCalled;
 }
 
 void GraphImpl::TearDown() {
@@ -196,6 +191,8 @@ void GraphImpl::TearDown() {
   // be invoked, and ideally they clean up any observers they may have, etc.
   graph_owned_.ReleaseObjects(this);
 
+  RemoveFrameNodeObserver(&initializing_frame_node_observer_manager_);
+
   // At this point, all typed observers should be empty.
   DCHECK(graph_observers_.empty());
   DCHECK(frame_node_observers_.empty());
@@ -207,6 +204,9 @@ void GraphImpl::TearDown() {
   ReleaseSystemNode();
 
   DCHECK(nodes_.empty());
+
+  CHECK_EQ(lifecycle_state_, LifecycleState::kSetUpCalled);
+  lifecycle_state_ = LifecycleState::kTearDownCalled;
 }
 
 void GraphImpl::AddGraphObserver(GraphObserver* observer) {
@@ -311,6 +311,22 @@ std::vector<const WorkerNode*> GraphImpl::GetAllWorkerNodes() const {
   return GetAllNodesOfType<WorkerNodeImpl, const WorkerNode*>();
 }
 
+bool GraphImpl::VisitAllProcessNodes(ProcessNodeVisitor visitor) const {
+  return VisitAllNodesOfType<ProcessNodeImpl, const ProcessNode*>(visitor);
+}
+
+bool GraphImpl::VisitAllFrameNodes(FrameNodeVisitor visitor) const {
+  return VisitAllNodesOfType<FrameNodeImpl, const FrameNode*>(visitor);
+}
+
+bool GraphImpl::VisitAllPageNodes(PageNodeVisitor visitor) const {
+  return VisitAllNodesOfType<PageNodeImpl, const PageNode*>(visitor);
+}
+
+bool GraphImpl::VisitAllWorkerNodes(WorkerNodeVisitor visitor) const {
+  return VisitAllNodesOfType<WorkerNodeImpl, const WorkerNode*>(visitor);
+}
+
 bool GraphImpl::HasOnlySystemNode() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return nodes_.size() == 1 && *nodes_.begin() == GetSystemNodeImpl();
@@ -342,6 +358,16 @@ bool GraphImpl::IsOnGraphSequence() const {
   return sequence_checker_.CalledOnValidSequence();
 }
 #endif
+
+void GraphImpl::AddInitializingFrameNodeObserver(
+    InitializingFrameNodeObserver* frame_node_observer) {
+  initializing_frame_node_observer_manager_.AddObserver(frame_node_observer);
+}
+
+void GraphImpl::RemoveInitializingFrameNodeObserver(
+    InitializingFrameNodeObserver* frame_node_observer) {
+  initializing_frame_node_observer_manager_.RemoveObserver(frame_node_observer);
+}
 
 GraphRegistered* GraphImpl::GetRegisteredObject(uintptr_t type_id) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -395,6 +421,22 @@ std::vector<PageNodeImpl*> GraphImpl::GetAllPageNodeImpls() const {
 
 std::vector<WorkerNodeImpl*> GraphImpl::GetAllWorkerNodeImpls() const {
   return GetAllNodesOfType<WorkerNodeImpl, WorkerNodeImpl*>();
+}
+
+bool GraphImpl::VisitAllProcessNodeImpls(ProcessNodeImplVisitor visitor) const {
+  return VisitAllNodesOfType<ProcessNodeImpl, ProcessNodeImpl*>(visitor);
+}
+
+bool GraphImpl::VisitAllFrameNodeImpls(FrameNodeImplVisitor visitor) const {
+  return VisitAllNodesOfType<FrameNodeImpl, FrameNodeImpl*>(visitor);
+}
+
+bool GraphImpl::VisitAllPageNodeImpls(PageNodeImplVisitor visitor) const {
+  return VisitAllNodesOfType<PageNodeImpl, PageNodeImpl*>(visitor);
+}
+
+bool GraphImpl::VisitAllWorkerNodeImpls(WorkerNodeImplVisitor visitor) const {
+  return VisitAllNodesOfType<WorkerNodeImpl, WorkerNodeImpl*>(visitor);
 }
 
 size_t GraphImpl::GetNodeAttachedDataCountForTesting(const Node* node,
@@ -457,6 +499,16 @@ void GraphImpl::RemoveNode(NodeBase* node) {
   // Remove the node itself.
   size_t erased = nodes_.erase(node);
   DCHECK_EQ(1u, erased);
+}
+
+void GraphImpl::NotifyFrameNodeInitializing(const FrameNode* frame_node) {
+  initializing_frame_node_observer_manager_.NotifyFrameNodeInitializing(
+      frame_node);
+}
+
+void GraphImpl::NotifyFrameNodeTearingDown(const FrameNode* frame_node) {
+  initializing_frame_node_observer_manager_.NotifyFrameNodeTearingDown(
+      frame_node);
 }
 
 size_t GraphImpl::NodeDataDescriberCountForTesting() const {
@@ -650,8 +702,24 @@ std::vector<ReturnNodeType> GraphImpl::GetAllNodesOfType() const {
   return ret;
 }
 
+template <typename NodeType, typename VisitedNodeType>
+bool GraphImpl::VisitAllNodesOfType(
+    base::FunctionRef<bool(VisitedNodeType)> visitor) const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  const auto type = NodeType::Type();
+  for (auto* node : nodes_) {
+    if (node->type() == type) {
+      VisitedNodeType visited_node = NodeType::FromNodeBase(node);
+      if (!visitor(visited_node)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 void GraphImpl::CreateSystemNode() {
-  DCHECK(!system_node_);
+  CHECK(!system_node_);
   // Create the singleton system node instance. Ownership is taken by the
   // graph.
   system_node_ = std::make_unique<SystemNodeImpl>();
@@ -659,8 +727,7 @@ void GraphImpl::CreateSystemNode() {
 }
 
 void GraphImpl::ReleaseSystemNode() {
-  if (!system_node_.get())
-    return;
+  CHECK(system_node_);
   RemoveNode(system_node_.get());
   system_node_.reset();
 }

@@ -3,6 +3,7 @@
 
 #include <QtTest/QtTest>
 
+#include <QtGraphs/Q3DBars>
 #include <QtGraphs/Q3DInputHandler>
 
 class tst_input: public QObject
@@ -19,9 +20,11 @@ private slots:
 
     void initialProperties();
     void initializeProperties();
+    void setQuery();
 
 private:
     Q3DInputHandler *m_input;
+    Q3DBars *m_graph;
 };
 
 void tst_input::initTestCase()
@@ -35,11 +38,13 @@ void tst_input::cleanupTestCase()
 void tst_input::init()
 {
     m_input = new Q3DInputHandler();
+    m_graph = new Q3DBars();
 }
 
 void tst_input::cleanup()
 {
     delete m_input;
+    delete m_graph;
 }
 
 void tst_input::construct()
@@ -60,7 +65,7 @@ void tst_input::initialProperties()
 
     // Common (from QAbstract3DInputHandler)
     QCOMPARE(m_input->inputPosition(), QPoint(0, 0));
-    QCOMPARE(m_input->inputView(), QAbstract3DInputHandler::InputViewNone);
+    QCOMPARE(m_input->inputView(), QAbstract3DInputHandler::InputView::None);
     QVERIFY(!m_input->scene());
 }
 
@@ -80,12 +85,22 @@ void tst_input::initializeProperties()
 
     // Common (from QAbstract3DInputHandler)
     m_input->setInputPosition(QPoint(100, 100));
-    m_input->setInputView(QAbstract3DInputHandler::InputViewOnPrimary);
+    m_input->setInputView(QAbstract3DInputHandler::InputView::OnPrimary);
 
     QCOMPARE(m_input->inputPosition(), QPoint(100, 100));
-    QCOMPARE(m_input->inputView(), QAbstract3DInputHandler::InputViewOnPrimary);
+    QCOMPARE(m_input->inputView(), QAbstract3DInputHandler::InputView::OnPrimary);
 }
 
+void tst_input::setQuery()
+{
+    QSignalSpy spy(m_graph, &QAbstract3DGraph::queriedGraphPositionChanged);
+    m_graph->scene()->setGraphPositionQuery(QPoint());
+
+    //signal was emitted one time
+    QCOMPARE(spy.count(), 2);
+    QList<QVariant> arguments = spy.takeFirst();
+    QVERIFY(arguments.at(0).typeName() == QStringLiteral("QVector3D"));
+}
 // TODO: QTRD-3380 (mouse events)
 
 QTEST_MAIN(tst_input)

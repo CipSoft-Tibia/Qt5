@@ -37,7 +37,6 @@
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/renderer/core/animation/animation_clock.h"
 #include "third_party/blink/renderer/core/animation/animation_timeline.h"
-#include "third_party/blink/renderer/core/animation/css/css_scroll_timeline.h"
 #include "third_party/blink/renderer/core/animation/keyframe_effect.h"
 #include "third_party/blink/renderer/core/animation/pending_animations.h"
 #include "third_party/blink/renderer/core/animation/worklet_animation_controller.h"
@@ -135,9 +134,11 @@ void DocumentAnimations::UpdateAnimations(
   document_->GetWorkletAnimationController().UpdateAnimationStates();
   document_->GetFrame()->ScheduleNextServiceForScrollSnapshotClients();
   for (auto& timeline : timelines_) {
-    // ScrollTimelines are already handled as ScrollSnapshotClients above.
-    if (!timeline->IsScrollTimeline())
+    // ScrollSnapshotTimelines are already handled as ScrollSnapshotClients
+    // above.
+    if (!timeline->IsScrollSnapshotTimeline()) {
       timeline->ScheduleNextService();
+    }
   }
 }
 

@@ -220,31 +220,6 @@ void generateClassDecl(QTextStream &out, const QMetaObject *mo,
         out << "public:" << Qt::endl << "    explicit " << className;
         formatConstructorSignature(out, category, true);
         out << ';' << Qt::endl;
-        for (int ci = mo->classInfoOffset(); ci < mo->classInfoCount(); ++ci) {
-            QMetaClassInfo info = mo->classInfo(ci);
-            QByteArray iface_name = info.name();
-            if (iface_name.startsWith("Event "))
-                continue;
-
-            QByteArray iface_class = info.value();
-            if (cSharpTypes.contains(iface_class)) {
-                qWarning("Skipping constructor %s(%s *) (C#-only type).",
-                         className.constData(), iface_class.constData());
-                continue;
-            }
-
-            out << "    " << className << '(' << iface_class << " *iface)" << Qt::endl;
-
-            if (category & ActiveX)
-                out << "    : QAxWidget()" << Qt::endl;
-            else
-                out << "    : QAxObject()" << Qt::endl;
-            out << "    {" << Qt::endl;
-            out << "        initializeFrom(iface);" << Qt::endl;
-            out << "        delete iface;" << Qt::endl;
-            out << "    }" << Qt::endl;
-            out << Qt::endl;
-        }
     }
 
     functions << className;

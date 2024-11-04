@@ -83,7 +83,7 @@ class TestAXNodeWrapper : public AXPlatformNodeDelegate {
   gfx::NativeViewAccessible GetNativeViewAccessible() override;
   gfx::NativeViewAccessible GetParent() const override;
   size_t GetChildCount() const override;
-  gfx::NativeViewAccessible ChildAtIndex(size_t index) override;
+  gfx::NativeViewAccessible ChildAtIndex(size_t index) const override;
   gfx::Rect GetBoundsRect(const AXCoordinateSystem coordinate_system,
                           const AXClippingBehavior clipping_behavior,
                           AXOffscreenResult* offscreen_result) const override;
@@ -110,7 +110,7 @@ class TestAXNodeWrapper : public AXPlatformNodeDelegate {
   AXPlatformNode* GetFromNodeID(int32_t id) override;
   AXPlatformNode* GetFromTreeIDAndNodeID(const ui::AXTreeID& ax_tree_id,
                                          int32_t id) override;
-  absl::optional<size_t> GetIndexInParent() override;
+  absl::optional<size_t> GetIndexInParent() const override;
   absl::optional<int> GetTableRowCount() const override;
   absl::optional<int> GetTableColCount() const override;
   absl::optional<int> GetTableAriaColCount() const override;
@@ -145,9 +145,9 @@ class TestAXNodeWrapper : public AXPlatformNodeDelegate {
   bool ShouldIgnoreHoveredStateForTesting() override;
   const ui::AXUniqueId& GetUniqueId() const override;
   bool HasVisibleCaretOrSelection() const override;
-  std::set<AXPlatformNode*> GetSourceNodesForReverseRelations(
+  std::vector<AXPlatformNode*> GetSourceNodesForReverseRelations(
       ax::mojom::IntAttribute attr) override;
-  std::set<AXPlatformNode*> GetSourceNodesForReverseRelations(
+  std::vector<AXPlatformNode*> GetSourceNodesForReverseRelations(
       ax::mojom::IntListAttribute attr) override;
   bool IsOrderedSetItem() const override;
   bool IsOrderedSet() const override;
@@ -196,7 +196,7 @@ class TestAXNodeWrapper : public AXPlatformNodeDelegate {
   AXOffscreenResult DetermineOffscreenResult(gfx::RectF bounds) const;
 
   raw_ptr<AXTree> tree_;
-  raw_ptr<AXNode> node_;
+  raw_ptr<AXNode, DanglingUntriaged> node_;
   ui::AXUniqueId unique_id_;
   raw_ptr<AXPlatformNode> platform_node_;
   gfx::AcceleratedWidget native_event_target_;

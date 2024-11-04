@@ -25,6 +25,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/time/time.h"
 #include "connections/implementation/analytics/packet_meta_data.h"
 #include "connections/implementation/client_proxy.h"
@@ -61,6 +62,8 @@ namespace connections {
 
 class EndpointManager {
  public:
+  using OfflineFrame = ::location::nearby::connections::OfflineFrame;
+
   class FrameProcessor {
    public:
     virtual ~FrameProcessor() = default;
@@ -87,7 +90,8 @@ class EndpointManager {
     virtual void OnEndpointDisconnect(ClientProxy* client,
                                       const std::string& service_id,
                                       const std::string& endpoint_id,
-                                      CountDownLatch barrier) = 0;
+                                      CountDownLatch barrier,
+                                      DisconnectionReason reason) = 0;
   };
 
   explicit EndpointManager(EndpointChannelManager* manager);
@@ -107,12 +111,12 @@ class EndpointManager {
   // Invoked from the different PcpHandler implementations (of which there can
   // be only one at a time).
   // Blocks until registration is complete.
-  void RegisterEndpoint(
-      ClientProxy* client, const std::string& endpoint_id,
-      const ConnectionResponseInfo& info,
-      const ConnectionOptions& connection_options,
-      std::unique_ptr<EndpointChannel> channel,
-      const ConnectionListener& listener, const std::string& connection_token);
+  void RegisterEndpoint(ClientProxy* client, const std::string& endpoint_id,
+                        const ConnectionResponseInfo& info,
+                        const ConnectionOptions& connection_options,
+                        std::unique_ptr<EndpointChannel> channel,
+                        const ConnectionListener& listener,
+                        const std::string& connection_token);
   // Called when a client explicitly asks to disconnect from this endpoint. In
   // this case, we do not notify the client of onDisconnected().
   void UnregisterEndpoint(ClientProxy* client, const std::string& endpoint_id);
@@ -151,7 +155,13 @@ class EndpointManager {
   // ask everyone who's registered an FrameProcessor to
   // processEndpointDisconnection() while the caller of DiscardEndpoint() is
   // blocked here.
-  void DiscardEndpoint(ClientProxy* client, const std::string& endpoint_id);
+  void DiscardEndpoint(ClientProxy* client, const std::string& endpoint_id,
+                       DisconnectionReason reason);
+
+ protected:
+  // For unit tests only to control executing tasks on the executor.
+  EndpointManager(EndpointChannelManager* manager,
+                  std::unique_ptr<SingleThreadExecutor> serial_executor);
 
  private:
   class EndpointState {
@@ -182,7 +192,7 @@ class EndpointManager {
 
     void StartEndpointReader(Runnable&& runnable);
     void StartEndpointKeepAliveManager(
-        std::function<void(Mutex*, ConditionVariable*)> runnable);
+        absl::AnyInvocable<void(Mutex*, ConditionVariable*)> runnable);
 
    private:
     const std::string endpoint_id_;
@@ -238,19 +248,12 @@ class EndpointManager {
   void EndpointChannelLoopRunnable(
       const std::string& runnable_name, ClientProxy* client_proxy,
       const std::string& endpoint_id,
-      std::function<ExceptionOr<bool>(EndpointChannel*)> handler);
+      absl::AnyInvocable<ExceptionOr<bool>(EndpointChannel*)> handler);
 
   static void WaitForLatch(const std::string& method_name,
                            CountDownLatch* latch);
   static void WaitForLatch(const std::string& method_name,
                            CountDownLatch* latch, std::int32_t timeout_millis);
-
-  // We set this to 11s to provide sufficient time for an in-progress WebRTC
-  // bandwidth upgrade to resolve. This is chosen to be slightly longer than the
-  // 10s timeout in WebRtc::AttemptToConnect().
-  static constexpr absl::Duration kProcessEndpointDisconnectionTimeout =
-      absl::Milliseconds(11000);
-  static constexpr absl::Time kInvalidTimestamp = absl::InfinitePast();
 
   // It should be noted that this method may be called multiple times (because
   // invoking this method closes the endpoint channel, which causes the
@@ -259,15 +262,21 @@ class EndpointManager {
   // this method is idempotent.
   // @EndpointManagerThread
   void RemoveEndpoint(ClientProxy* client, const std::string& endpoint_id,
-                      bool notify);
-
+                      bool notify, DisconnectionReason reason);
+  bool ApplySafeToDisconnect(const std::string& endpoint_id,
+                             EndpointChannel* endpoint_channel,
+                             DisconnectionReason reason);
   void WaitForEndpointDisconnectionProcessing(ClientProxy* client,
                                               const std::string& service_id,
-                                              const std::string& endpoint_id);
-
+                                              const std::string& endpoint_id,
+                                              DisconnectionReason reason);
+  void ProcessDisconnectionFrame(
+      ClientProxy* client, const std::string& endpoint_id,
+      EndpointChannel* endpoint_channel,
+      location::nearby::connections::OfflineFrame& frame);
   CountDownLatch NotifyFrameProcessorsOnEndpointDisconnect(
       ClientProxy* client, const std::string& service_id,
-      const std::string& endpoint_id);
+      const std::string& endpoint_id, DisconnectionReason reason);
 
   std::vector<std::string> SendTransferFrameBytes(
       const std::vector<std::string>& endpoint_ids,
@@ -278,6 +287,8 @@ class EndpointManager {
   // Executes all jobs sequentially, on a serial_executor_.
   void RunOnEndpointManagerThread(const std::string& name, Runnable runnable);
 
+  ExceptionOr<OfflineFrame> TryDecryptFrame(const ByteArray& data,
+                                            EndpointChannel* endpoint_channel);
   EndpointChannelManager* channel_manager_;
 
   RecursiveMutex frame_processors_lock_;
@@ -288,7 +299,19 @@ class EndpointManager {
   // We keep track of all registered channel endpoints here.
   absl::flat_hash_map<std::string, EndpointState> endpoints_;
 
-  SingleThreadExecutor serial_executor_;
+  // Indicates whether the destructor has been called yet. If `is_shutdown_`
+  // is true, assume any `ClientProxy` pointers are invalid, and should not
+  // be used.
+  //
+  // The ordering of these objects is important: `serial_executor_` must be
+  // destroyed before `is_shutdown_` because `serial_executor_` runs all
+  // pending tasks during it's destruction, and the "discard-endpoints"
+  // task checks `is_shutdown_` to prevent accessing an invalid `ClientProxy`
+  // pointer.
+  mutable RecursiveMutex mutex_;
+  bool is_shutdown_ ABSL_GUARDED_BY(mutex_) = false;
+
+  std::unique_ptr<SingleThreadExecutor> serial_executor_;
 };
 
 // Operator overloads when comparing FrameProcessor*.

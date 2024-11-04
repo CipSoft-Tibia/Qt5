@@ -61,11 +61,13 @@ from blinkpy.common.host import Host
 from blinkpy.common.path_finder import PathFinder
 from blinkpy.web_tests.models import test_failures
 from blinkpy.web_tests.port.android import (
-    ANDROID_WEBLAYER, ANDROID_WEBVIEW, CHROME_ANDROID)
+    ANDROID_WEBVIEW, CHROME_ANDROID)
+from blinkpy.w3c.wpt_results_processor import WPTResultsProcessor
 
 from devil import devil_env
 from devil.android import apk_helper
 from devil.android import device_temp_file
+from devil.android import device_utils
 from devil.android import flag_changer
 from devil.android import logcat_monitor
 from devil.android.tools import script_common
@@ -76,11 +78,11 @@ from pylib.local.device import local_device_environment
 from pylib.local.emulator import avd
 from py_utils.tempfile_ext import NamedTemporaryDirectory
 from scripts import common
-from skia_gold_infra.finch_skia_gold_properties import FinchSkiaGoldProperties
-from skia_gold_infra import finch_skia_gold_session_manager
+from skia_gold_common.skia_gold_properties import SkiaGoldProperties
+from skia_gold_common import skia_gold_session_manager
 from skia_gold_infra import finch_skia_gold_utils
-from run_wpt_tests import get_device
 
+ANDROID_WEBLAYER = 'android_weblayer'
 LOGCAT_TAG = 'finch_test_runner_py'
 LOGCAT_FILTERS = [
   'chromium:v',
@@ -123,11 +125,13 @@ class FinchTestCase(common.BaseIsolatedScriptArgsAdapter):
     self.path_finder = PathFinder(self.fs)
     self.port = self.host.port_factory.get()
     super(FinchTestCase, self).__init__()
+    self._add_extra_arguments()
     self._parser = self._override_options(self._parser)
     self._include_filename = None
     self.layout_test_results_subdir = 'layout-test-results'
     self._device = device
     self.parse_args()
+    self.port.set_option_default('target', self.options.target)
     self._browser_apk_helper = apk_helper.ToHelper(self.options.browser_apk)
 
     self.browser_package_name = self._browser_apk_helper.GetPackageName()
@@ -198,10 +202,7 @@ class FinchTestCase(common.BaseIsolatedScriptArgsAdapter):
 
         `argument.ArgumentParser` can extend other parsers and override their
         options, with the caveat that the child parser only inherits options
-        that the parent had at the time of the child's initialization. There is
-        not a clean way to add option overrides in `add_extra_arguments`, where
-        the provided parser is only passed up the inheritance chain, so we add
-        overridden options here at the very end.
+        that the parent had at the time of the child's initialization.
 
         See Also:
             https://docs.python.org/3/library/argparse.html#parents
@@ -266,20 +267,22 @@ class FinchTestCase(common.BaseIsolatedScriptArgsAdapter):
     return True
 
   def enable_internet(self):
+    # Commands here need root permission.
     self._device.RunShellCommand(
-        ['settings', 'put', 'global', 'airplane_mode_on', '0'])
+        ['settings', 'put', 'global', 'airplane_mode_on', '0'], as_root=True)
     self._device.RunShellCommand(
         ['am', 'broadcast', '-a',
-         'android.intent.action.AIRPLANE_MODE'])
-    self._device.RunShellCommand(['svc', 'wifi', 'enable'])
-    self._device.RunShellCommand(['svc', 'data', 'enable'])
+         'android.intent.action.AIRPLANE_MODE'], as_root=True)
+    self._device.RunShellCommand(['svc', 'wifi', 'enable'], as_root=True)
+    self._device.RunShellCommand(['svc', 'data', 'enable'], as_root=True)
 
   def disable_internet(self):
+    # Commands here need root permission.
     self._device.RunShellCommand(
-        ['settings', 'put', 'global', 'airplane_mode_on', '1'])
+        ['settings', 'put', 'global', 'airplane_mode_on', '1'], as_root=True)
     self._device.RunShellCommand(
         ['am', 'broadcast', '-a',
-         'android.intent.action.AIRPLANE_MODE'])
+         'android.intent.action.AIRPLANE_MODE'], as_root=True)
 
   @contextlib.contextmanager
   def _archive_logcat(self, filename, endpoint_name):
@@ -322,6 +325,10 @@ class FinchTestCase(common.BaseIsolatedScriptArgsAdapter):
   def wpt_output(self):
       return self.options.isolated_script_test_output
 
+  @property
+  def _raw_log_path(self):
+    return self.fs.join(self.output_directory, 'finch-smoke-raw-events.log')
+
   def __enter__(self):
     self._device.EnableRoot()
     # Run below commands to ensure that the device can download a seed
@@ -329,8 +336,8 @@ class FinchTestCase(common.BaseIsolatedScriptArgsAdapter):
     self._device.adb.Emu(['power', 'ac', 'on'])
     self._skia_gold_tmp_dir = tempfile.mkdtemp()
     self._skia_gold_session_manager = (
-        finch_skia_gold_session_manager.FinchSkiaGoldSessionManager(
-            self._skia_gold_tmp_dir, FinchSkiaGoldProperties(self.options)))
+        skia_gold_session_manager.SkiaGoldSessionManager(
+            self._skia_gold_tmp_dir, SkiaGoldProperties(self.options)))
     return self
 
   def __exit__(self, exc_type, exc_val, exc_tb):
@@ -391,24 +398,27 @@ class FinchTestCase(common.BaseIsolatedScriptArgsAdapter):
           'run',
       ]
 
-  def process_and_upload_results(self):
-    command = [
-        self.select_python_executable(),
-        os.path.join(BLINK_TOOLS, 'wpt_process_results.py'),
-        '--target',
-        self.options.target,
-        '--web-tests-dir',
-        BLINK_WEB_TESTS,
-        '--artifacts-dir',
-        os.path.join(os.path.dirname(self.wpt_output),
-                      self.layout_test_results_subdir),
-        '--wpt-results',
-        self.wpt_output,
-    ]
-    if self.options.verbose:
-        command.append('--verbose')
+  def process_and_upload_results(self, test_name_prefix):
+    artifacts_dir=os.path.join(os.path.dirname(self.wpt_output),
+                               self.layout_test_results_subdir)
+    if self.fs.exists(artifacts_dir):
+        self.fs.rmtree(artifacts_dir)
+    self.fs.maybe_make_directory(artifacts_dir)
+    logger.info('Recreated artifacts directory (%s)', artifacts_dir)
 
-    return common.run_command(command)
+    processor = WPTResultsProcessor(
+        self.host.filesystem,
+        self.port,
+        artifacts_dir=artifacts_dir,
+        test_name_prefix=test_name_prefix)
+
+    processor.copy_results_viewer()
+
+    with self.fs.open_text_file_for_reading(self._raw_log_path) as raw_logs:
+        for event in map(json.loads, raw_logs):
+            if event.get('action') != 'shutdown':
+                processor.process_event(event)
+    processor.process_results_json(self.wpt_output)
 
   def wpt_rest_args(self, unknown_args):
     rest_args = list(self._wpt_run_args)
@@ -419,6 +429,7 @@ class FinchTestCase(common.BaseIsolatedScriptArgsAdapter):
         '--tests=%s' % self.wpt_root_dir,
         '--metadata=%s' % self.wpt_root_dir,
         '--mojojs-path=%s' % self.mojo_js_directory,
+        '--log-raw=%s' % self._raw_log_path,
     ])
 
     if self.options.default_exclude:
@@ -496,11 +507,12 @@ class FinchTestCase(common.BaseIsolatedScriptArgsAdapter):
                         type=lambda processes: max(0, int(processes)),
                         default=1,
                         help='Number of emulator to run.')
+    common.add_emulator_args(parser)
     # Add arguments used by Skia Gold.
-    FinchSkiaGoldProperties.AddCommandLineArguments(parser)
+    SkiaGoldProperties.AddCommandLineArguments(parser)
 
-  def add_extra_arguments(self, parser):
-    super(FinchTestCase, self).add_extra_arguments(parser)
+  def _add_extra_arguments(self):
+    parser = self._parser
     parser.add_argument(
       '-t',
       '--target',
@@ -665,7 +677,7 @@ class FinchTestCase(common.BaseIsolatedScriptArgsAdapter):
     # If wpt tests are not run then the file path stored in self.wpt_output
     # was not created. That is why this check exists.
     if os.path.exists(self.wpt_output):
-      self.process_and_upload_results()
+      self.process_and_upload_results(test_run_variation)
 
       with open(self.wpt_output, 'r') as test_harness_results:
         test_harness_results_dict = json.load(test_harness_results)
@@ -1170,6 +1182,27 @@ class WebLayerFinchTestCase(FinchTestCase):
       yield
 
 
+@contextlib.contextmanager
+def get_device(args):
+    try:
+        instance = None
+        if args.avd_config:
+            avd_config = avd.AvdConfig(args.avd_config)
+            logger.info('Installing emulator from %s', args.avd_config)
+            avd_config.Install()
+
+            instance = avd_config.CreateInstance()
+            instance.Start(writable_system=True,
+                           window=args.emulator_window,
+                           require_fast_start=True)
+
+        devices = device_utils.DeviceUtils.HealthyDevices()
+        yield devices[0] if len(devices) > 0 else None
+    finally:
+        if instance:
+            instance.Stop()
+
+
 def main(args):
   TEST_CASES.update(
       {p.product_name(): p
@@ -1189,7 +1222,6 @@ def main(args):
         required=False,
         help='path to write test results JSON object to')
 
-  common.add_emulator_args(parser)
   script_common.AddDeviceArguments(parser)
   script_common.AddEnvironmentArguments(parser)
   logging_common.AddLoggingArguments(parser)

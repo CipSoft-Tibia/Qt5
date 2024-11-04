@@ -12,8 +12,6 @@
 #include <utility>
 #include <vector>
 
-#include "base/containers/lru_cache.h"
-#include "base/containers/queue.h"
 #include "base/functional/callback_forward.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
@@ -70,6 +68,7 @@ class MEDIA_GPU_EXPORT V4L2VideoDecoder
   // VideoDecoderMixin implementation, specific part.
   void ApplyResolutionChange() override;
   size_t GetMaxOutputFramePoolSize() const override;
+  bool NeedsTranscryption() override;
 
   // V4L2VideoDecoderBackend::Client implementation
   void OnBackendError() override;
@@ -114,20 +113,6 @@ class MEDIA_GPU_EXPORT V4L2VideoDecoder
     kFlushing,
     // Error state. Cannot transition to other state anymore.
     kError,
-  };
-
-  class BitstreamIdGenerator {
-   public:
-    BitstreamIdGenerator() { DETACH_FROM_SEQUENCE(sequence_checker_); }
-    int32_t GetNextBitstreamId() {
-      DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-      next_bitstream_buffer_id_ = (next_bitstream_buffer_id_ + 1) & 0x7FFFFFFF;
-      return next_bitstream_buffer_id_;
-    }
-
-   private:
-    int32_t next_bitstream_buffer_id_ = 0;
-    SEQUENCE_CHECKER(sequence_checker_);
   };
 
   // Setup format for input queue.
@@ -210,7 +195,9 @@ class MEDIA_GPU_EXPORT V4L2VideoDecoder
   scoped_refptr<V4L2Queue> input_queue_;
   scoped_refptr<V4L2Queue> output_queue_;
 
-  BitstreamIdGenerator bitstream_id_generator_;
+  // We need to use a CdmContextRef to ensure the lifetime of the CdmContext
+  // backing it while we are alive. This also indicates secure playback mode.
+  std::unique_ptr<CdmContextRef> cdm_context_ref_;
 
   SEQUENCE_CHECKER(decoder_sequence_checker_);
 

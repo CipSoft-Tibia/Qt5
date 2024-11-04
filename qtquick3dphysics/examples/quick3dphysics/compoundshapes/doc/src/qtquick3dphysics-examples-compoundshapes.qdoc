@@ -5,7 +5,7 @@
     \example compoundshapes
     \ingroup quick3dphysics-examples
     \title Qt Quick 3D Physics - Compound Shapes Example
-    \examplecategory {Data Visualization & 3D}
+    \examplecategory {3D}
     \brief Demonstrates using complex collision shapes.
     \image compoundshapes-example.jpg
 

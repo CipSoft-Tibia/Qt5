@@ -153,7 +153,7 @@ public:
         const std::lock_guard<QRecursiveMutex> locker(mutex);
 
         bool signalsConnected = false;
-        foreach (const QGeoAreaMonitorPolling *client, registeredClients) {
+        for (const QGeoAreaMonitorPolling *client : std::as_const(registeredClients)) {
             if (client->hasConnections()) {
                 signalsConnected = true;
                 break;
@@ -179,7 +179,8 @@ private:
         activeExpiry.first = QDateTime();
         activeExpiry.second = QString();
 
-        foreach (const QGeoAreaMonitorInfo &info, activeMonitors()) {
+        const auto infos = activeMonitors();
+        for (const QGeoAreaMonitorInfo &info : infos) {
             if (info.expiration().isValid()) {
                 if (!activeExpiry.first.isValid()) {
                     activeExpiry.first = info.expiration();
@@ -255,7 +256,8 @@ private Q_SLOTS:
 
     void positionUpdated(const QGeoPositionInfo &info)
     {
-        foreach (const QGeoAreaMonitorInfo &monInfo, activeMonitors()) {
+        const auto monInfos = activeMonitors();
+        for (const QGeoAreaMonitorInfo &monInfo : monInfos) {
             const QString identifier = monInfo.identifier();
             if (monInfo.area().contains(info.coordinate())) {
                 if (processInsideArea(identifier))
@@ -400,7 +402,7 @@ QList<QGeoAreaMonitorInfo> QGeoAreaMonitorPolling::activeMonitors(const QGeoShap
         return results;
 
     const MonitorTable list = d->activeMonitors();
-    foreach (const QGeoAreaMonitorInfo &monitor, list) {
+    for (const QGeoAreaMonitorInfo &monitor : list) {
         if (region.contains(monitor.area().center()))
             results.append(monitor);
     }

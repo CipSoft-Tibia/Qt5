@@ -35,7 +35,7 @@ using namespace Qt::StringLiterals;
 enum {FileNameRole = Qt::UserRole + 1, IdRole =  Qt::UserRole + 2 };
 enum { debugAppFontWidget = 0 };
 
-static const char fontFileKeyC[] = "fontFiles";
+static constexpr auto fontFileKeyC = "fontFiles"_L1;
 
 // AppFontManager: Singleton that maintains the mapping of loaded application font
 // ids to the file names (which are not stored in QFontDatabase)
@@ -59,7 +59,7 @@ public:
     bool removeAt(int index, QString *errorMessage);
 
     // Store loaded fonts as pair of file name and Id
-    using FileNameFontIdPair = QPair<QString,int>;
+    using FileNameFontIdPair = std::pair<QString, int>;
     using FileNameFontIdPairs = QList<FileNameFontIdPair>;
     const FileNameFontIdPairs &fonts() const;
 
@@ -83,7 +83,7 @@ void AppFontManager::save(QDesignerSettingsInterface *s, const QString &prefix) 
         fontFiles.push_back(fnp.first);
 
     s->beginGroup(prefix);
-    s->setValue(QLatin1StringView(fontFileKeyC),  fontFiles);
+    s->setValue(fontFileKeyC,  fontFiles);
     s->endGroup();
 
     if (debugAppFontWidget)
@@ -92,7 +92,7 @@ void AppFontManager::save(QDesignerSettingsInterface *s, const QString &prefix) 
 
 void AppFontManager::restore(const QDesignerSettingsInterface *s, const QString &prefix)
 {
-    const QString key = prefix + u'/' + QLatin1StringView(fontFileKeyC);
+    const QString key = prefix + u'/' + fontFileKeyC;
     const QStringList fontFiles = s->value(key, QStringList()).toStringList();
 
     if (debugAppFontWidget)
@@ -252,16 +252,17 @@ AppFontWidget::AppFontWidget(QWidget *parent) :
     connect(m_view->selectionModel(), &QItemSelectionModel::selectionChanged, this, &AppFontWidget::selectionChanged);
 
     m_addButton->setToolTip(tr("Add font files"));
-    m_addButton->setIcon(qdesigner_internal::createIconSet(u"plus.png"_s));
+    m_addButton->setIcon(qdesigner_internal::createIconSet("plus.png"_L1));
     connect(m_addButton, &QAbstractButton::clicked, this, &AppFontWidget::addFiles);
 
     m_removeButton->setEnabled(false);
     m_removeButton->setToolTip(tr("Remove current font file"));
-    m_removeButton->setIcon(qdesigner_internal::createIconSet(u"minus.png"_s));
+    m_removeButton->setIcon(qdesigner_internal::createIconSet("minus.png"_L1));
     connect(m_removeButton, &QAbstractButton::clicked, this, &AppFontWidget::slotRemoveFiles);
 
     m_removeAllButton->setToolTip(tr("Remove all font files"));
-    m_removeAllButton->setIcon(qdesigner_internal::createIconSet(u"editdelete.png"_s));
+    m_removeAllButton->setIcon(qdesigner_internal::createIconSet(QIcon::ThemeIcon::EditDelete,
+                                                                 "editdelete.png"_L1));
     connect(m_removeAllButton, &QAbstractButton::clicked, this, &AppFontWidget::slotRemoveAll);
 
     QHBoxLayout *hLayout = new QHBoxLayout;

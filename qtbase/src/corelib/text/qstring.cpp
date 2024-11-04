@@ -17,6 +17,7 @@
 #include <qlist.h>
 #include "qlocale.h"
 #include "qlocale_p.h"
+#include "qspan.h"
 #include "qstringbuilder.h"
 #include "qstringmatcher.h"
 #include "qvarlengtharray.h"
@@ -149,7 +150,7 @@ static inline qsizetype qFindChar(QStringView str, QChar ch, qsizetype from, Qt:
                 return n - s;
         } else {
             c = foldCase(c);
-            auto it = std::find_if(n, e, [c](const auto &ch) { return foldAndCompare(ch, c); });
+            auto it = std::find_if(n, e, [c](auto ch) { return foldAndCompare(ch, c); });
             if (it != e)
                 return std::distance(s, it);
         }
@@ -263,7 +264,7 @@ bool qt_starts_with_impl(Haystack haystack, Needle needle, Qt::CaseSensitivity c
     if (needleLen > haystackLen)
         return false;
 
-    return QtPrivate::compareStrings(haystack.left(needleLen), needle, cs) == 0;
+    return QtPrivate::compareStrings(haystack.first(needleLen), needle, cs) == 0;
 }
 
 template <typename Haystack, typename Needle>
@@ -278,7 +279,7 @@ bool qt_ends_with_impl(Haystack haystack, Needle needle, Qt::CaseSensitivity cs)
     if (haystackLen < needleLen)
         return false;
 
-    return QtPrivate::compareStrings(haystack.right(needleLen), needle, cs) == 0;
+    return QtPrivate::compareStrings(haystack.last(needleLen), needle, cs) == 0;
 }
 
 template <typename T>
@@ -390,7 +391,7 @@ extern "C" void qt_toLatin1_mips_dsp_asm(uchar *dst, const char16_t *src, int le
 #if defined(__SSE2__) && defined(Q_CC_GNU)
 // We may overrun the buffer, but that's a false positive:
 // this won't crash nor produce incorrect results
-#  define ATTRIBUTE_NO_SANITIZE       __attribute__((__no_sanitize_address__))
+#  define ATTRIBUTE_NO_SANITIZE       __attribute__((__no_sanitize_address__, __no_sanitize_thread__))
 #else
 #  define ATTRIBUTE_NO_SANITIZE
 #endif
@@ -683,9 +684,10 @@ static int ucstrncmp_sse2(const char16_t *a, const Char *b, size_t l)
 }
 #endif
 
+Q_NEVER_INLINE
 qsizetype QtPrivate::qustrlen(const char16_t *str) noexcept
 {
-#if defined(__SSE2__) && !(defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer))
+#if defined(__SSE2__) && !(defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)) && !(defined(__SANITIZE_THREAD__) || __has_feature(thread_sanitizer))
     return qustrlen_sse2(str);
 #endif
 
@@ -698,6 +700,11 @@ qsizetype QtPrivate::qustrlen(const char16_t *str) noexcept
     return result;
 }
 
+qsizetype QtPrivate::qustrnlen(const char16_t *str, qsizetype maxlen) noexcept
+{
+    return qustrchr({ str, maxlen }, u'\0') - str;
+}
+
 /*!
  * \internal
  *
@@ -706,6 +713,7 @@ qsizetype QtPrivate::qustrlen(const char16_t *str) noexcept
  * character is not found, this function returns a pointer to the end of the
  * string -- that is, \c{str.end()}.
  */
+Q_NEVER_INLINE
 const char16_t *QtPrivate::qustrchr(QStringView str, char16_t c) noexcept
 {
     const char16_t *n = str.utf16();
@@ -1540,6 +1548,8 @@ int QtPrivate::compareStrings(QLatin1StringView lhs, QLatin1StringView rhs, Qt::
 {
     if (lhs.isEmpty())
         return qt_lencmp(qsizetype(0), rhs.size());
+    if (rhs.isEmpty())
+        return qt_lencmp(lhs.size(), qsizetype(0));
     if (cs == Qt::CaseInsensitive)
         return latin1nicmp(lhs.data(), lhs.size(), rhs.data(), rhs.size());
     const auto l = std::min(lhs.size(), rhs.size());
@@ -2489,7 +2499,7 @@ QString::QString(const QChar *unicode, qsizetype size)
         if (!size) {
             d = DataPointer::fromRawData(&_empty, 0);
         } else {
-            d = DataPointer(Data::allocate(size), size);
+            d = DataPointer(size, size);
             Q_CHECK_PTR(d.data());
             memcpy(d.data(), unicode, size * sizeof(QChar));
             d.data()[size] = '\0';
@@ -2508,7 +2518,7 @@ QString::QString(qsizetype size, QChar ch)
     if (size <= 0) {
         d = DataPointer::fromRawData(&_empty, 0);
     } else {
-        d = DataPointer(Data::allocate(size), size);
+        d = DataPointer(size, size);
         Q_CHECK_PTR(d.data());
         d.data()[size] = '\0';
         char16_t *b = d.data();
@@ -2529,7 +2539,7 @@ QString::QString(qsizetype size, Qt::Initialization)
     if (size <= 0) {
         d = DataPointer::fromRawData(&_empty, 0);
     } else {
-        d = DataPointer(Data::allocate(size), size);
+        d = DataPointer(size, size);
         Q_CHECK_PTR(d.data());
         d.data()[size] = '\0';
     }
@@ -2547,7 +2557,7 @@ QString::QString(qsizetype size, Qt::Initialization)
 */
 QString::QString(QChar ch)
 {
-    d = DataPointer(Data::allocate(1), 1);
+    d = DataPointer(1, 1);
     Q_CHECK_PTR(d.data());
     d.data()[0] = ch.unicode();
     d.data()[1] = '\0';
@@ -2609,6 +2619,12 @@ QString::QString(QChar ch)
 /*! \fn bool QString::isSharedWith(const QString &other) const
 
     \internal
+*/
+
+/*! \fn QString::operator std::u16string_view() const
+    \since 6.7
+
+    Converts this QString object to a \c{std::u16string_view} object.
 */
 
 static bool needsReallocate(const QString &str, qsizetype newSize)
@@ -2759,7 +2775,7 @@ void QString::reallocData(qsizetype alloc, QArrayData::AllocationOption option)
     const bool cannotUseReallocate = d.freeSpaceAtBegin() > 0;
 
     if (d->needsDetach() || cannotUseReallocate) {
-        DataPointer dd(Data::allocate(alloc, option), qMin(alloc, d.size));
+        DataPointer dd(alloc, qMin(alloc, d.size), option);
         Q_CHECK_PTR(dd.data());
         if (dd.size > 0)
             ::memcpy(dd.data(), d.data(), dd.size * sizeof(QChar));
@@ -2865,16 +2881,7 @@ QString &QString::operator=(QLatin1StringView other)
 */
 QString &QString::operator=(QChar ch)
 {
-    const qsizetype capacityAtEnd = capacity() - d.freeSpaceAtBegin();
-    if (isDetached() && capacityAtEnd >= 1) { // assumes d->alloc == 0 -> !isDetached() (sharedNull)
-        // re-use existing capacity:
-        d.data()[0] = ch.unicode();
-        d.data()[1] = 0;
-        d.size = 1;
-    } else {
-        operator=(QString(ch));
-    }
-    return *this;
+    return assign(1, ch);
 }
 
 /*!
@@ -3055,11 +3062,10 @@ QString &QString::insert(qsizetype i, QUtf8StringView s)
     } else {
         // Optimal insertion of Utf8 data is at the end, anywhere else could
         // potentially lead to moving characters twice if Utf8 data size
-        // (variable-width) is less than the equiavalent Utf16 data size
+        // (variable-width) is less than the equivalent Utf16 data size
         QVarLengthArray<char16_t> buffer(insert_size); // ### optimize (QTBUG-108546)
         char16_t *b = QUtf8::convertToUnicode(buffer.data(), s);
-        buffer.resize(std::distance(buffer.begin(), b));
-        insert_helper(*this, i, buffer);
+        insert_helper(*this, i, QStringView(buffer.data(), b));
     }
 
     return *this;
@@ -3342,7 +3348,7 @@ QString &QString::append(QChar ch)
 */
 
 /*!
-    \fn template <typename InputIterator, if_compatible_iterator<InputIterator>> QString &QString::assign(InputIterator first, InputIterator last)
+    \fn template <typename InputIterator, QString::if_compatible_iterator<InputIterator>> QString &QString::assign(InputIterator first, InputIterator last)
     \since 6.6
 
     Replaces the contents of this string with a copy of the elements in the
@@ -3365,6 +3371,10 @@ QString &QString::append(QChar ch)
     \list
     \li QChar
     \li QLatin1Char
+    \li \c {char}
+    \li \c {unsigned char}
+    \li \c {signed char}
+    \li \c {char8_t}
     \li \c char16_t
     \li (on platforms, such as Windows, where it is a 16-bit type) \c wchar_t
     \li \c char32_t
@@ -3623,7 +3633,7 @@ QString &QString::remove(QChar ch, Qt::CaseSensitivity cs)
         it = std::remove_copy_if(first_match + 1, end, it, match);
         copy.d.size = std::distance(dst, it);
         copy.d.data()[copy.d.size] = u'\0';
-        *this = copy;
+        *this = std::move(copy);
     }
     return *this;
 }
@@ -3658,7 +3668,7 @@ QString &QString::remove(QChar ch, Qt::CaseSensitivity cs)
   and there isn't enough capacity, create a new string, copy characters to it
   as needed, then swap it with "str".
 */
-static void replace_with_copy(QString &str, size_t *indices, qsizetype nIndices, qsizetype blen,
+static void replace_with_copy(QString &str, QSpan<size_t> indices, qsizetype blen,
                               QStringView after)
 {
     const qsizetype alen = after.size();
@@ -3666,12 +3676,12 @@ static void replace_with_copy(QString &str, size_t *indices, qsizetype nIndices,
 
     const QString::DataPointer &str_d = str.data_ptr();
     auto src_start = str_d.begin();
-    const qsizetype newSize = str_d.size + nIndices * (alen - blen);
+    const qsizetype newSize = str_d.size + indices.size() * (alen - blen);
     QString copy{ newSize, Qt::Uninitialized };
     QString::DataPointer &copy_d = copy.data_ptr();
     auto dst = copy_d.begin();
-    for (qsizetype i = 0; i < nIndices; ++i) {
-        auto hit = str_d.begin() + indices[i];
+    for (size_t index : indices) {
+        auto hit = str_d.begin() + index;
         dst = std::copy(src_start, hit, dst);
         dst = std::copy_n(after_b, alen, dst);
         src_start = hit + blen;
@@ -3681,7 +3691,7 @@ static void replace_with_copy(QString &str, size_t *indices, qsizetype nIndices,
 }
 
 // No detaching or reallocation is needed
-static void replace_in_place(QString &str, size_t *indices, qsizetype nIndices,
+static void replace_in_place(QString &str, QSpan<size_t> indices,
                              qsizetype blen, QStringView after)
 {
     const qsizetype alen = after.size();
@@ -3689,16 +3699,16 @@ static void replace_in_place(QString &str, size_t *indices, qsizetype nIndices,
     const char16_t *after_e = after.utf16() + after.size();
 
     if (blen == alen) { // Replace in place
-        for (qsizetype i = 0; i < nIndices; ++i)
-            std::copy_n(after_b, alen, str.data_ptr().begin() + indices[i]);
+        for (size_t index : indices)
+            std::copy_n(after_b, alen, str.data_ptr().begin() + index);
     } else if (blen > alen) { // Replace from front
         char16_t *begin = str.data_ptr().begin();
-        char16_t *hit = begin + indices[0];
+        char16_t *hit = begin + indices.front();
         char16_t *to = hit;
         to = std::copy_n(after_b, alen, to);
         char16_t *movestart = hit + blen;
-        for (qsizetype i = 1; i < nIndices; ++i) {
-            hit = begin + indices[i];
+        for (size_t index : indices.sliced(1)) {
+            hit = begin + index;
             to = std::move(movestart, hit, to);
             to = std::copy_n(after_b, alen, to);
             movestart = hit + blen;
@@ -3707,7 +3717,7 @@ static void replace_in_place(QString &str, size_t *indices, qsizetype nIndices,
         str.resize(std::distance(begin, to));
     } else { // blen < alen, Replace from back
         const qsizetype oldSize = str.data_ptr().size;
-        const qsizetype adjust = nIndices * (alen - blen);
+        const qsizetype adjust = indices.size() * (alen - blen);
         const qsizetype newSize = oldSize + adjust;
 
         str.resize(newSize);
@@ -3715,9 +3725,8 @@ static void replace_in_place(QString &str, size_t *indices, qsizetype nIndices,
         char16_t *moveend = begin + oldSize;
         char16_t *to = str.data_ptr().end();
 
-        while (nIndices) {
-            --nIndices;
-            char16_t *hit = begin + indices[nIndices];
+        for (auto it = indices.rbegin(), end = indices.rend(); it != end; ++it) {
+            char16_t *hit = begin + *it;
             char16_t *movestart = hit + blen;
             to = std::move_backward(movestart, moveend, to);
             to = std::copy_backward(after_b, after_e, to);
@@ -3726,22 +3735,24 @@ static void replace_in_place(QString &str, size_t *indices, qsizetype nIndices,
     }
 }
 
-static void replace_helper(QString &str, size_t *indices, qsizetype nIndices, qsizetype blen, QStringView after)
+static void replace_helper(QString &str, QSpan<size_t> indices, qsizetype blen, QStringView after)
 {
     const qsizetype oldSize = str.data_ptr().size;
-    const qsizetype adjust = nIndices * (after.size() - blen);
+    const qsizetype adjust = indices.size() * (after.size() - blen);
     const qsizetype newSize = oldSize + adjust;
-    if (str.data_ptr().needsDetach() || needsReallocate(str, newSize)) {
-        replace_with_copy(str, indices, nIndices, blen, after);
+    if (str.data_ptr().needsDetach()) {
+        replace_with_copy(str, indices, blen, after);
         return;
     }
+
+    str.reserve(newSize);
 
     if (QtPrivate::q_points_into_range(after.begin(), str))
         // Copy after if it lies inside our own d.b area (which we could
         // possibly invalidate via a realloc or modify by replacement)
-        replace_in_place(str, indices, nIndices, blen, QVarLengthArray(after.begin(), after.end()));
+        replace_in_place(str, indices, blen, QVarLengthArray(after.begin(), after.end()));
     else
-        replace_in_place(str, indices, nIndices, blen, after);
+        replace_in_place(str, indices, blen, after);
 }
 
 /*!
@@ -3753,6 +3764,9 @@ static void replace_helper(QString &str, size_t *indices, qsizetype nIndices, qs
   \note If the specified \a position index is within the string,
   but \a position + \a n goes outside the strings range,
   then \a n will be adjusted to stop at the end of the string.
+
+  \note If you use an empty \a before argument, the \a after argument will be
+  inserted \e {before and after} each character of the string.
 
   Example:
 
@@ -3780,7 +3794,7 @@ QString &QString::replace(qsizetype pos, qsizetype len, const QChar *after, qsiz
         len = this->size() - pos;
 
     size_t index = pos;
-    replace_helper(*this, &index, 1, len, QStringView{after, alen});
+    replace_helper(*this, QSpan(&index, 1), len, QStringView{after, alen});
     return *this;
 }
 
@@ -3812,6 +3826,12 @@ QString &QString::replace(qsizetype pos, qsizetype len, QChar after)
   Example:
 
   \snippet qstring/main.cpp 86
+
+//! [empty-before-arg-in-replace]
+  \note If you use an empty \a before argument, the \a after argument will be
+  inserted \e {before and after} each character of the string.
+//! [empty-before-arg-in-replace]
+
 */
 QString &QString::replace(const QString &before, const QString &after, Qt::CaseSensitivity cs)
 {
@@ -3827,6 +3847,10 @@ QString &QString::replace(const QString &before, const QString &after, Qt::CaseS
   after and returns a reference to this string.
 
   \include qstring.qdocinc {search-comparison-case-sensitivity} {search}
+
+  \note If \a before points to an \e empty string (that is, \a blen == 0),
+  the string pointed to by \a after will be inserted \e {before and after}
+  each character in this string.
 */
 QString &QString::replace(const QChar *before, qsizetype blen,
                           const QChar *after, qsizetype alen,
@@ -3859,7 +3883,7 @@ QString &QString::replace(const QChar *before, qsizetype blen,
     if (indices.isEmpty())
         return *this;
 
-    replace_helper(*this, indices.data(), indices.size(), blen, QStringView{after, alen});
+    replace_helper(*this, indices, blen, QStringView{after, alen});
     return *this;
 }
 
@@ -3901,7 +3925,7 @@ QString& QString::replace(QChar ch, const QString &after, Qt::CaseSensitivity cs
     if (indices.isEmpty())
         return *this;
 
-    replace_helper(*this, indices.data(), indices.size(), 1, after);
+    replace_helper(*this, indices, 1, after);
     return *this;
 }
 
@@ -3962,6 +3986,8 @@ QString& QString::replace(QChar before, QChar after, Qt::CaseSensitivity cs)
   \include qstring.qdocinc {search-comparison-case-sensitivity} {search}
 
   \note The text is not rescanned after a replacement.
+
+  \include qstring.cpp empty-before-arg-in-replace
 */
 QString &QString::replace(QLatin1StringView before, QLatin1StringView after, Qt::CaseSensitivity cs)
 {
@@ -3986,6 +4012,8 @@ QString &QString::replace(QLatin1StringView before, QLatin1StringView after, Qt:
   \include qstring.qdocinc {search-comparison-case-sensitivity} {search}
 
   \note The text is not rescanned after a replacement.
+
+  \include qstring.cpp empty-before-arg-in-replace
 */
 QString &QString::replace(QLatin1StringView before, const QString &after, Qt::CaseSensitivity cs)
 {
@@ -4007,6 +4035,8 @@ QString &QString::replace(QLatin1StringView before, const QString &after, Qt::Ca
   \include qstring.qdocinc {search-comparison-case-sensitivity} {search}
 
   \note The text is not rescanned after a replacement.
+
+  \include qstring.cpp empty-before-arg-in-replace
 */
 QString &QString::replace(const QString &before, QLatin1StringView after, Qt::CaseSensitivity cs)
 {
@@ -4611,7 +4641,7 @@ QString &QString::replace(const QRegularExpression &re, const QString &after)
 
     // 1. build the backreferences list, holding where the backreferences
     // are in the replacement string
-    QList<QStringCapture> backReferences;
+    QVarLengthArray<QStringCapture> backReferences;
     const qsizetype al = after.size();
     const QChar *ac = after.unicode();
 
@@ -4643,7 +4673,7 @@ QString &QString::replace(const QRegularExpression &re, const QString &after)
 
     qsizetype newLength = 0; // length of the new string, with all the replacements
     qsizetype lastEnd = 0;
-    QList<QStringView> chunks;
+    QVarLengthArray<QStringView> chunks;
     const QStringView copyView{ copy }, afterView{ after };
     while (iterator.hasNext()) {
         QRegularExpressionMatch match = iterator.next();
@@ -5042,7 +5072,7 @@ public:
 };
 Q_DECLARE_TYPEINFO(qt_section_chunk, Q_RELOCATABLE_TYPE);
 
-static QString extractSections(const QList<qt_section_chunk> &sections, qsizetype start, qsizetype end,
+static QString extractSections(QSpan<qt_section_chunk> sections, qsizetype start, qsizetype end,
                                QString::SectionFlags flags)
 {
     const qsizetype sectionsSize = sections.size();
@@ -5055,7 +5085,7 @@ static QString extractSections(const QList<qt_section_chunk> &sections, qsizetyp
     } else {
         qsizetype skip = 0;
         for (qsizetype k = 0; k < sectionsSize; ++k) {
-            const qt_section_chunk &section = sections.at(k);
+            const qt_section_chunk &section = sections[k];
             if (section.length == section.string.size())
                 skip++;
         }
@@ -5071,7 +5101,7 @@ static QString extractSections(const QList<qt_section_chunk> &sections, qsizetyp
     qsizetype x = 0;
     qsizetype first_i = start, last_i = end;
     for (qsizetype i = 0; x <= end && i < sectionsSize; ++i) {
-        const qt_section_chunk &section = sections.at(i);
+        const qt_section_chunk &section = sections[i];
         const bool empty = (section.length == section.string.size());
         if (x >= start) {
             if (x == start)
@@ -5088,13 +5118,13 @@ static QString extractSections(const QList<qt_section_chunk> &sections, qsizetyp
     }
 
     if ((flags & QString::SectionIncludeLeadingSep) && first_i >= 0) {
-        const qt_section_chunk &section = sections.at(first_i);
+        const qt_section_chunk &section = sections[first_i];
         ret.prepend(section.string.left(section.length));
     }
 
     if ((flags & QString::SectionIncludeTrailingSep)
         && last_i < sectionsSize - 1) {
-        const qt_section_chunk &section = sections.at(last_i+1);
+        const qt_section_chunk &section = sections[last_i + 1];
         ret += section.string.left(section.length);
     }
 
@@ -5130,7 +5160,7 @@ QString QString::section(const QRegularExpression &re, qsizetype start, qsizetyp
     if (flags & SectionCaseInsensitiveSeps)
         sep.setPatternOptions(sep.patternOptions() | QRegularExpression::CaseInsensitiveOption);
 
-    QList<qt_section_chunk> sections;
+    QVarLengthArray<qt_section_chunk> sections;
     qsizetype n = size(), m = 0, last_m = 0, last_len = 0;
     QRegularExpressionMatchIterator iterator = sep.globalMatch(*this);
     while (iterator.hasNext()) {
@@ -5147,6 +5177,9 @@ QString QString::section(const QRegularExpression &re, qsizetype start, qsizetyp
 #endif // QT_CONFIG(regularexpression)
 
 /*!
+    \fn QString QString::left(qsizetype n) const &
+    \fn QString QString::left(qsizetype n) &&
+
     Returns a substring that contains the \a n leftmost characters
     of the string.
 
@@ -5158,14 +5191,11 @@ QString QString::section(const QRegularExpression &re, qsizetype start, qsizetyp
 
     \sa first(), last(), startsWith(), chopped(), chop(), truncate()
 */
-QString QString::left(qsizetype n)  const
-{
-    if (size_t(n) >= size_t(size()))
-        return *this;
-    return QString((const QChar*) d.data(), n);
-}
 
 /*!
+    \fn QString QString::right(qsizetype n) const &
+    \fn QString QString::right(qsizetype n) &&
+
     Returns a substring that contains the \a n rightmost characters
     of the string.
 
@@ -5177,14 +5207,11 @@ QString QString::left(qsizetype n)  const
 
     \sa endsWith(), last(), first(), sliced(), chopped(), chop(), truncate()
 */
-QString QString::right(qsizetype n) const
-{
-    if (size_t(n) >= size_t(size()))
-        return *this;
-    return QString(constData() + size() - n, n);
-}
 
 /*!
+    \fn QString QString::mid(qsizetype position, qsizetype n) const &
+    \fn QString QString::mid(qsizetype position, qsizetype n) &&
+
     Returns a string that contains \a n characters of this string,
     starting at the specified \a position index.
 
@@ -5197,11 +5224,9 @@ QString QString::right(qsizetype n) const
     \a n is -1 (default), the function returns all characters that
     are available from the specified \a position.
 
-
     \sa first(), last(), sliced(), chopped(), chop(), truncate()
 */
-
-QString QString::mid(qsizetype position, qsizetype n) const
+QString QString::mid(qsizetype position, qsizetype n) const &
 {
     qsizetype p = position;
     qsizetype l = n;
@@ -5214,13 +5239,33 @@ QString QString::mid(qsizetype position, qsizetype n) const
     case QContainerImplHelper::Full:
         return *this;
     case QContainerImplHelper::Subset:
-        return QString(constData() + p, l);
+        return sliced(p, l);
+    }
+    Q_UNREACHABLE_RETURN(QString());
+}
+
+QString QString::mid(qsizetype position, qsizetype n) &&
+{
+    qsizetype p = position;
+    qsizetype l = n;
+    using namespace QtPrivate;
+    switch (QContainerImplHelper::mid(size(), &p, &l)) {
+    case QContainerImplHelper::Null:
+        return QString();
+    case QContainerImplHelper::Empty:
+        resize(0);      // keep capacity if we've reserve()d
+        [[fallthrough]];
+    case QContainerImplHelper::Full:
+        return std::move(*this);
+    case QContainerImplHelper::Subset:
+        return std::move(*this).sliced(p, l);
     }
     Q_UNREACHABLE_RETURN(QString());
 }
 
 /*!
-    \fn QString QString::first(qsizetype n) const
+    \fn QString QString::first(qsizetype n) const &
+    \fn QString QString::first(qsizetype n) &&
     \since 6.0
 
     Returns a string that contains the first \a n characters
@@ -5234,7 +5279,8 @@ QString QString::mid(qsizetype position, qsizetype n) const
 */
 
 /*!
-    \fn QString QString::last(qsizetype n) const
+    \fn QString QString::last(qsizetype n) const &
+    \fn QString QString::last(qsizetype n) &&
     \since 6.0
 
     Returns the string that contains the last \a n characters of this string.
@@ -5247,7 +5293,8 @@ QString QString::mid(qsizetype position, qsizetype n) const
 */
 
 /*!
-    \fn QString QString::sliced(qsizetype pos, qsizetype n) const
+    \fn QString QString::sliced(qsizetype pos, qsizetype n) const &
+    \fn QString QString::sliced(qsizetype pos, qsizetype n) &&
     \since 6.0
 
     Returns a string that contains \a n characters of this string,
@@ -5260,9 +5307,18 @@ QString QString::mid(qsizetype position, qsizetype n) const
 
     \sa first(), last(), chopped(), chop(), truncate()
 */
+QString QString::sliced_helper(QString &str, qsizetype pos, qsizetype n)
+{
+    if (n == 0)
+        return QString(DataPointer::fromRawData(&_empty, 0));
+    DataPointer d = std::move(str.d).sliced(pos, n);
+    d.data()[n] = 0;
+    return QString(std::move(d));
+}
 
 /*!
-    \fn QString QString::sliced(qsizetype pos) const
+    \fn QString QString::sliced(qsizetype pos) const &
+    \fn QString QString::sliced(qsizetype pos) &&
     \since 6.0
     \overload
 
@@ -5275,7 +5331,8 @@ QString QString::mid(qsizetype position, qsizetype n) const
 */
 
 /*!
-    \fn QString QString::chopped(qsizetype len) const
+    \fn QString QString::chopped(qsizetype len) const &
+    \fn QString QString::chopped(qsizetype len) &&
     \since 5.10
 
     Returns a string that contains the size() - \a len leftmost characters
@@ -5387,6 +5444,27 @@ bool QString::endsWith(QChar c, Qt::CaseSensitivity cs) const
     return foldCase(at(size() - 1)) == foldCase(c);
 }
 
+static bool checkCase(QStringView s, QUnicodeTables::Case c) noexcept
+{
+    QStringIterator it(s);
+    while (it.hasNext()) {
+        const char32_t uc = it.next();
+        if (qGetProp(uc)->cases[c].diff)
+            return false;
+    }
+    return true;
+}
+
+bool QtPrivate::isLower(QStringView s) noexcept
+{
+    return checkCase(s, QUnicodeTables::LowerCase);
+}
+
+bool QtPrivate::isUpper(QStringView s) noexcept
+{
+    return checkCase(s, QUnicodeTables::UpperCase);
+}
+
 /*!
     Returns \c true if the string is uppercase, that is, it's identical
     to its toUpper() folding.
@@ -5402,15 +5480,7 @@ bool QString::endsWith(QChar c, Qt::CaseSensitivity cs) const
 */
 bool QString::isUpper() const
 {
-    QStringIterator it(*this);
-
-    while (it.hasNext()) {
-        const char32_t uc = it.next();
-        if (qGetProp(uc)->cases[QUnicodeTables::UpperCase].diff)
-            return false;
-    }
-
-    return true;
+    return QtPrivate::isUpper(qToStringViewIgnoringNull(*this));
 }
 
 /*!
@@ -5428,15 +5498,7 @@ bool QString::isUpper() const
  */
 bool QString::isLower() const
 {
-    QStringIterator it(*this);
-
-    while (it.hasNext()) {
-        const char32_t uc = it.next();
-        if (qGetProp(uc)->cases[QUnicodeTables::LowerCase].diff)
-            return false;
-    }
-
-    return true;
+    return QtPrivate::isLower(qToStringViewIgnoringNull(*this));
 }
 
 static QByteArray qt_convert_to_latin1(QStringView string);
@@ -5715,7 +5777,7 @@ QString QString::fromLatin1(QByteArrayView ba)
     } else if (ba.size() == 0) {
         d = DataPointer::fromRawData(&_empty, 0);
     } else {
-        d = DataPointer(Data::allocate(ba.size()), ba.size());
+        d = DataPointer(ba.size(), ba.size());
         Q_CHECK_PTR(d.data());
         d.data()[ba.size()] = '\0';
         char16_t *dst = d.data();
@@ -5989,9 +6051,7 @@ namespace {
     template <typename StringView>
     StringView qt_trimmed(StringView s) noexcept
     {
-        auto begin = s.begin();
-        auto end = s.end();
-        QStringAlgorithms<const StringView>::trimmed_helper_positions(begin, end);
+        const auto [begin, end] = QStringAlgorithms<const StringView>::trimmed_helper_positions(s);
         return StringView{begin, end};
     }
 }
@@ -6198,11 +6258,8 @@ void QString::chop(qsizetype n)
 QString& QString::fill(QChar ch, qsizetype size)
 {
     resize(size < 0 ? d.size : size);
-    if (d.size) {
-        QChar *i = (QChar*)d.data() + d.size;
-        QChar *b = (QChar*)d.data();
-        std::fill(b, i, ch);
-    }
+    if (d.size)
+        std::fill(d.data(), d.data() + d.size, ch.unicode());
     return *this;
 }
 
@@ -6952,7 +7009,10 @@ QString QString::toCaseFolded_helper(QString &str)
     \snippet qstring/main.cpp 81
 
     The case conversion will always happen in the 'C' locale. For
-    locale-dependent case folding use QLocale::toUpper()
+    locale-dependent case folding use QLocale::toUpper().
+
+    \note In some cases the uppercase form of a string may be longer than the
+    original.
 
     \sa toLower(), QLocale::toLower()
 */
@@ -7387,10 +7447,14 @@ static Int toIntegral(QStringView string, bool *ok, int base)
 
     QVarLengthArray<uchar> latin1(string.size());
     qt_to_latin1(latin1.data(), string.utf16(), string.size());
+    QSimpleParsedNumber<Int> r;
     if constexpr (std::is_signed_v<Int>)
-        return QLocaleData::bytearrayToLongLong(latin1, base, ok);
+        r = QLocaleData::bytearrayToLongLong(latin1, base);
     else
-        return QLocaleData::bytearrayToUnsLongLong(latin1, base, ok);
+        r = QLocaleData::bytearrayToUnsLongLong(latin1, base);
+    if (ok)
+        *ok = r.ok();
+    return r.result;
 }
 
 qlonglong QString::toIntegral_helper(QStringView string, bool *ok, int base)
@@ -8817,7 +8881,7 @@ static inline char16_t to_unicode(const QChar c) { return c.unicode(); }
 static inline char16_t to_unicode(const char c) { return QLatin1Char{c}.unicode(); }
 
 template <typename Char>
-static int getEscape(const Char *uc, qsizetype *pos, qsizetype len, int maxNumber = 999)
+static int getEscape(const Char *uc, qsizetype *pos, qsizetype len)
 {
     qsizetype i = *pos;
     ++i;
@@ -8828,17 +8892,16 @@ static int getEscape(const Char *uc, qsizetype *pos, qsizetype len, int maxNumbe
         if (uint(escape) >= 10U)
             return -1;
         ++i;
-        while (i < len) {
+        if (i < len) {
+            // there's a second digit
             int digit = to_unicode(uc[i]) - '0';
-            if (uint(digit) >= 10U)
-                break;
-            escape = (escape * 10) + digit;
-            ++i;
+            if (uint(digit) < 10U) {
+                escape = (escape * 10) + digit;
+                ++i;
+            }
         }
-        if (escape <= maxNumber) {
-            *pos = i;
-            return escape;
-        }
+        *pos = i;
+        return escape;
     }
     return -1;
 }
@@ -8982,9 +9045,6 @@ static qsizetype resolveStringRefsAndReturnTotalSize(ParseResult &parts, const A
 
 } // unnamed namespace
 
-Q_ALWAYS_INLINE QString to_string(QLatin1StringView s) noexcept { return s; }
-Q_ALWAYS_INLINE QString to_string(QStringView s) noexcept { return s.toString(); }
-
 template <typename StringView>
 static QString argToQStringImpl(StringView pattern, size_t numArgs, const QtPrivate::ArgBase **args)
 {
@@ -8998,7 +9058,7 @@ static QString argToQStringImpl(StringView pattern, size_t numArgs, const QtPriv
         argIndexToPlaceholderMap.resize(qsizetype(numArgs));
     else if (Q_UNLIKELY(static_cast<size_t>(argIndexToPlaceholderMap.size()) < numArgs)) // 3b
         qWarning("QString::arg: %d argument(s) missing in %ls",
-                 int(numArgs - argIndexToPlaceholderMap.size()), qUtf16Printable(to_string(pattern)));
+                 int(numArgs - argIndexToPlaceholderMap.size()), qUtf16Printable(pattern.toString()));
 
     // 5
     const qsizetype totalSize = resolveStringRefsAndReturnTotalSize(parts, argIndexToPlaceholderMap, args);
@@ -9037,26 +9097,6 @@ QString QtPrivate::argToQString(QStringView pattern, size_t n, const ArgBase **a
 QString QtPrivate::argToQString(QLatin1StringView pattern, size_t n, const ArgBase **args)
 {
     return argToQStringImpl(pattern, n, args);
-}
-
-/*! \fn bool QString::isSimpleText() const
-
-    \internal
-*/
-bool QString::isSimpleText() const
-{
-    const char16_t *p = d.data();
-    const char16_t * const end = p + d.size;
-    while (p < end) {
-        char16_t uc = *p;
-        // sort out regions of complex text formatting
-        if (uc > 0x058f && (uc < 0x1100 || uc > 0xfb0f)) {
-            return false;
-        }
-        p++;
-    }
-
-    return true;
 }
 
 /*! \fn bool QString::isRightToLeft() const
@@ -9323,16 +9363,15 @@ QDataStream &operator<<(QDataStream &out, const QString &str)
         if (!str.isNull() || out.version() < 3) {
             if ((out.byteOrder() == QDataStream::BigEndian) == (QSysInfo::ByteOrder == QSysInfo::BigEndian)) {
                 out.writeBytes(reinterpret_cast<const char *>(str.unicode()),
-                               static_cast<uint>(sizeof(QChar) * str.size()));
+                               static_cast<qsizetype>(sizeof(QChar) * str.size()));
             } else {
                 QVarLengthArray<char16_t> buffer(str.size());
                 qbswap<sizeof(char16_t)>(str.constData(), str.size(), buffer.data());
                 out.writeBytes(reinterpret_cast<const char *>(buffer.data()),
-                               static_cast<uint>(sizeof(char16_t) * buffer.size()));
+                               static_cast<qsizetype>(sizeof(char16_t) * buffer.size()));
             }
         } else {
-            // write null marker
-            out << (quint32)0xffffffff;
+            QDataStream::writeQSizeType(out, -1); // write null marker
         }
     }
     return out;
@@ -9354,20 +9393,25 @@ QDataStream &operator>>(QDataStream &in, QString &str)
         in >> l;
         str = QString::fromLatin1(l);
     } else {
-        quint32 bytes = 0;
-        in >> bytes;                                  // read size of string
-        if (bytes == 0xffffffff) {                    // null string
+        qint64 size = QDataStream::readQSizeType(in);
+        qsizetype bytes = size;
+        if (size != bytes || size < -1) {
+            str.clear();
+            in.setStatus(QDataStream::SizeLimitExceeded);
+            return in;
+        }
+        if (bytes == -1) { // null string
             str = QString();
-        } else if (bytes > 0) {                       // not empty
+        } else if (bytes > 0) {
             if (bytes & 0x1) {
                 str.clear();
                 in.setStatus(QDataStream::ReadCorruptData);
                 return in;
             }
 
-            const quint32 Step = 1024 * 1024;
-            quint32 len = bytes / 2;
-            quint32 allocated = 0;
+            const qsizetype Step = 1024 * 1024;
+            qsizetype len = bytes / 2;
+            qsizetype allocated = 0;
 
             while (allocated < len) {
                 int blockSize = qMin(Step, len - allocated);
@@ -9745,7 +9789,7 @@ qsizetype QtPrivate::findString(QLatin1StringView haystack, qsizetype from, QLat
     if (cs == Qt::CaseSensitive) {
 
         if (needle.size() == 1) {
-            Q_ASSUME(haystack.data() != nullptr); // see size check above
+            Q_ASSERT(haystack.data() != nullptr); // see size check above
             if (auto it = memchr(haystack.data() + from, needle.front().toLatin1(), adjustedSize))
                 return static_cast<const char *>(it) - haystack.data();
             return -1;
@@ -9774,7 +9818,7 @@ qsizetype QtPrivate::findString(QLatin1StringView haystack, qsizetype from, QLat
         const auto end = haystack.end() - needle.size() + 1;
         auto ciMatch = CaseInsensitiveL1::matcher(needle[0].toLatin1());
         const qsizetype nlen1 = needle.size() - 1;
-        for (auto it = std::find_if(begin + from, end, ciMatch); it < end;
+        for (auto it = std::find_if(begin + from, end, ciMatch); it != end;
              it = std::find_if(it + 1, end, ciMatch)) {
             // In this comparison we skip the first character because we know it's a match
             if (!nlen1 || QLatin1StringView(it + 1, nlen1).compare(needle.sliced(1), cs) == 0)
@@ -9925,10 +9969,14 @@ qsizetype QtPrivate::count(QStringView haystack, const QRegularExpression &re)
 */
 QString QString::toHtmlEscaped() const
 {
+    const auto pos = std::u16string_view(*this).find_first_of(u"<>&\"");
+    if (pos == std::u16string_view::npos)
+        return *this;
     QString rich;
     const qsizetype len = size();
     rich.reserve(qsizetype(len * 1.1));
-    for (QChar ch : *this) {
+    rich += qToStringViewIgnoringNull(*this).first(pos);
+    for (auto ch : qToStringViewIgnoringNull(*this).sliced(pos)) {
         if (ch == u'<')
             rich += "&lt;"_L1;
         else if (ch == u'>')

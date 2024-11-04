@@ -287,6 +287,8 @@ void PassthroughTouchEventQueue::SendTouchEventImmediately(
 
   if (timeout_handler_)
     timeout_handler_->StartIfNecessary(*touch);
+  touch->event.GetModifiableEventLatencyMetadata().dispatched_to_renderer =
+      base::TimeTicks::Now();
   if (wait_for_ack)
     outstanding_touches_.insert(*touch);
   client_->SendTouchEventImmediately(*touch);
@@ -336,7 +338,7 @@ PassthroughTouchEventQueue::FilterBeforeForwardingImpl(
   if (event.GetType() == WebInputEvent::Type::kTouchScrollStarted)
     return PreFilterResult::kUnfiltered;
 
-  if (WebTouchEventTraits::IsTouchSequenceStart(event)) {
+  if (event.IsTouchSequenceStart()) {
     // We don't know if we have a handler until we get the ACK back so
     // assume it is true.
     maybe_has_handler_for_current_sequence_ = true;
@@ -419,14 +421,14 @@ void PassthroughTouchEventQueue::UpdateTouchConsumerStates(
     // Once we have the ack back for the sequence we know if there
     // is a handler or not. Other touch-starts sent can upgrade
     // whether we have a handler or not as well.
-    if (WebTouchEventTraits::IsTouchSequenceStart(event)) {
+    if (event.IsTouchSequenceStart()) {
       maybe_has_handler_for_current_sequence_ =
           ack_result != blink::mojom::InputEventResultState::kNoConsumerExists;
     } else {
       maybe_has_handler_for_current_sequence_ |=
           ack_result != blink::mojom::InputEventResultState::kNoConsumerExists;
     }
-  } else if (WebTouchEventTraits::IsTouchSequenceEnd(event)) {
+  } else if (event.IsTouchSequenceEnd()) {
     maybe_has_handler_for_current_sequence_ = false;
   }
 }

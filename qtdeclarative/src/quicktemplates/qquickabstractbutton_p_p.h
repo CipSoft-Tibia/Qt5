@@ -21,6 +21,8 @@
 #  include <QtGui/qkeysequence.h>
 #endif
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 class QQuickAction;
@@ -66,6 +68,7 @@ public:
 
     void actionTextChange();
     void setText(const QString &text, bool isExplicit);
+    void init();
 
     void updateEffectiveIcon();
 

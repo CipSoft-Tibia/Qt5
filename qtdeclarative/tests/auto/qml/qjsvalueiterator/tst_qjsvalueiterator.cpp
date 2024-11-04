@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QtTest/QtTest>
@@ -447,7 +447,7 @@ void tst_QJSValueIterator::iterateNonObject()
 
 void tst_QJSValueIterator::iterateOverObjectFromDeletedEngine()
 {
-    QJSEngine *engine = new QJSEngine;
+    std::unique_ptr<QJSEngine> engine = std::make_unique<QJSEngine>();
     QJSValue objet = engine->newObject();
 
     // populate object with properties
@@ -465,7 +465,7 @@ void tst_QJSValueIterator::iterateOverObjectFromDeletedEngine()
     it.next();
     QVERIFY(properties.contains(it.name()));
 
-    delete engine;
+    engine.reset();
 
     QVERIFY(objet.isUndefined());
     QVERIFY(it.name().isEmpty());

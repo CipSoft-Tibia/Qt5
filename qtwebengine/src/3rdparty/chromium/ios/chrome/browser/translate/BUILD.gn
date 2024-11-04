@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 source_set("public") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "translate_constants.h",
     "translate_constants.mm",
@@ -17,7 +16,6 @@ source_set("public") {
 }
 
 source_set("translate") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "chrome_ios_translate_client.h",
     "chrome_ios_translate_client.mm",
@@ -53,14 +51,14 @@ source_set("translate") {
     "//components/translate/ios/browser",
     "//components/web_resource",
     "//ios/chrome/app/theme",
-    "//ios/chrome/browser/application_context",
-    "//ios/chrome/browser/browser_state",
     "//ios/chrome/browser/infobars",
     "//ios/chrome/browser/infobars:public",
     "//ios/chrome/browser/language",
     "//ios/chrome/browser/optimization_guide",
-    "//ios/chrome/browser/ui/util",
-    "//ios/chrome/browser/url:constants",
+    "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/browser_state",
+    "//ios/chrome/browser/shared/model/url:constants",
+    "//ios/chrome/browser/shared/ui/util",
     "//ios/components/webui:url_constants",
     "//third_party/metrics_proto",
     "//ui/base",
@@ -72,11 +70,9 @@ source_set("translate") {
 }
 
 source_set("unit_tests") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
   sources = [
     "chrome_ios_translate_client_unittest.mm",
-    "language_detection_javascript_unittest.mm",
     "translate_service_ios_unittest.cc",
   ]
   deps = [
@@ -94,11 +90,11 @@ source_set("unit_tests") {
     "//components/translate/core/common",
     "//components/translate/core/language_detection",
     "//components/translate/ios/browser",
-    "//ios/chrome/browser/browser_state:test_support",
     "//ios/chrome/browser/infobars",
     "//ios/chrome/browser/language",
     "//ios/chrome/browser/optimization_guide",
-    "//ios/chrome/browser/url:constants",
+    "//ios/chrome/browser/shared/model/browser_state:test_support",
+    "//ios/chrome/browser/shared/model/url:constants",
     "//ios/chrome/browser/web:web_internal",
     "//ios/chrome/common:string_util",
     "//ios/web/public",
@@ -126,14 +122,10 @@ source_set("test_support") {
     "//testing/gmock",
     "//third_party/metrics_proto",
   ]
-  configs += [ "//build/config/compiler:enable_arc" ]
 }
 
 source_set("eg_app_support+eg2") {
-  configs += [
-    "//build/config/compiler:enable_arc",
-    "//build/config/ios:xctest_config",
-  ]
+  configs += [ "//build/config/ios:xctest_config" ]
   testonly = true
   sources = [
     "translate_app_interface.h",
@@ -144,7 +136,7 @@ source_set("eg_app_support+eg2") {
     "//components/translate/core/browser:browser",
     "//components/translate/core/common:common",
     "//components/translate/ios/browser:browser",
-    "//ios/chrome/browser/browser_state:browser_state",
+    "//ios/chrome/browser/shared/model/browser_state",
     "//ios/chrome/browser/translate:translate",
     "//ios/chrome/test/app:test_support",
     "//ios/chrome/test/fakes:fakes",
@@ -154,10 +146,7 @@ source_set("eg_app_support+eg2") {
 }
 
 source_set("eg_test_support+eg2") {
-  configs += [
-    "//build/config/compiler:enable_arc",
-    "//build/config/ios:xctest_config",
-  ]
+  configs += [ "//build/config/ios:xctest_config" ]
   testonly = true
   sources = [
     "translate_app_interface.h",
@@ -166,7 +155,6 @@ source_set("eg_test_support+eg2") {
   deps = [
     "//ios/chrome/test/earl_grey:eg_test_support+eg2",
     "//ios/testing/earl_grey:eg_test_support+eg2",
-    "//ios/third_party/earl_grey2:test_lib",
   ]
 }
 

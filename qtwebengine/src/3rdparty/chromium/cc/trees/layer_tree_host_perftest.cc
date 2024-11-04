@@ -50,7 +50,7 @@ class LayerTreeHostPerfTest : public LayerTreeTest {
   std::unique_ptr<TestLayerTreeFrameSink> CreateLayerTreeFrameSink(
       const viz::RendererSettings& renderer_settings,
       double refresh_rate,
-      scoped_refptr<viz::ContextProvider> compositor_context_provider,
+      scoped_refptr<viz::RasterContextProvider> compositor_context_provider,
       scoped_refptr<viz::RasterContextProvider> worker_context_provider)
       override {
     constexpr bool disable_display_vsync = true;
@@ -333,8 +333,8 @@ class BrowserCompositorInvalidateLayerTreePerfTest
 
     constexpr gfx::Size size(64, 64);
     viz::TransferableResource resource = viz::TransferableResource::MakeGpu(
-        gpu_mailbox, GL_LINEAR, GL_TEXTURE_2D, next_sync_token, size,
-        viz::RGBA_8888, false /* is_overlay_candidate */);
+        gpu_mailbox, GL_TEXTURE_2D, next_sync_token, size,
+        viz::SinglePlaneFormat::kRGBA_8888, false /* is_overlay_candidate */);
     next_fence_sync_++;
 
     tab_contents_->SetTransferableResource(resource, std::move(callback));

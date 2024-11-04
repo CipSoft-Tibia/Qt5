@@ -31,8 +31,8 @@
 #include "extensions/browser/api/declarative_net_request/rules_count_pair.h"
 #include "extensions/browser/api/declarative_net_request/ruleset_manager.h"
 #include "extensions/browser/api/declarative_net_request/ruleset_matcher.h"
+#include "extensions/browser/api/web_request/extension_web_request_event_router.h"
 #include "extensions/browser/api/web_request/permission_helper.h"
-#include "extensions/browser/api/web_request/web_request_api.h"
 #include "extensions/browser/disable_reason.h"
 #include "extensions/browser/extension_file_task_runner.h"
 #include "extensions/browser/extension_prefs.h"
@@ -385,7 +385,7 @@ RulesMonitorService::GetSessionRules(const ExtensionId& extension_id) const {
   std::vector<api::declarative_net_request::Rule> result;
   std::u16string error;
   bool populate_result = json_schema_compiler::util::PopulateArrayFromList(
-      GetSessionRulesValue(extension_id), &result, &error);
+      GetSessionRulesValue(extension_id), result, error);
   DCHECK(populate_result);
   DCHECK(error.empty());
   return result;

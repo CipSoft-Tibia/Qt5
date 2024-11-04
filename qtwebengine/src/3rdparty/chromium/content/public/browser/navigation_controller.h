@@ -23,13 +23,13 @@
 #include "content/public/browser/session_storage_namespace.h"
 #include "content/public/browser/site_instance.h"
 #include "content/public/common/referrer.h"
-#include "net/base/net_errors.h"
 #include "services/network/public/cpp/resource_request_body.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/navigation/impression.h"
 #include "third_party/blink/public/common/navigation/navigation_policy.h"
 #include "third_party/blink/public/common/tokens/tokens.h"
 #include "third_party/blink/public/mojom/navigation/navigation_initiator_activation_and_ad_status.mojom.h"
+#include "third_party/blink/public/mojom/navigation/system_entropy.mojom.h"
 #include "third_party/blink/public/mojom/navigation/was_activated_option.mojom.h"
 #include "ui/base/page_transition_types.h"
 #include "url/gurl.h"
@@ -299,6 +299,11 @@ class NavigationController {
     // Indicates the reload type of this navigation.
     ReloadType reload_type = ReloadType::NONE;
 
+    // Indicates the suggested system entropy captured when the navigation
+    // began.
+    blink::mojom::SystemEntropy suggested_system_entropy =
+        blink::mojom::SystemEntropy::kNormal;
+
     // Indicates a form submission created this navigation.
     bool is_form_submission = false;
 
@@ -467,8 +472,7 @@ class NavigationController {
   virtual base::WeakPtr<NavigationHandle> LoadPostCommitErrorPage(
       RenderFrameHost* render_frame_host,
       const GURL& url,
-      const std::string& error_page_html,
-      net::Error error) = 0;
+      const std::string& error_page_html) = 0;
 
   // Renavigation --------------------------------------------------------------
 
@@ -476,6 +480,7 @@ class NavigationController {
   virtual bool CanGoBack() = 0;
   virtual bool CanGoForward() = 0;
   virtual bool CanGoToOffset(int offset) = 0;
+  // `CanGoBack`/`CanGoForward` are preconditions for these respective methods.
   virtual void GoBack() = 0;
   virtual void GoForward() = 0;
 

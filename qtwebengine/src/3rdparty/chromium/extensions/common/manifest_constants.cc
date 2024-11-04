@@ -58,6 +58,7 @@ const char kFileHandlerIncludeDirectories[] = "include_directories";
 const char kFileHandlerTypes[] = "types";
 const char kFileHandlerVerb[] = "verb";
 const char kGlobal[] = "global";
+const char kHandwritingLanguage[] = "handwriting_language";
 const char kHideBookmarkButton[] = "hide_bookmark_button";
 const char kHomepageURL[] = "homepage_url";
 const char kHostPermissions[] = "host_permissions";
@@ -67,7 +68,6 @@ const char kImeOptionsPage[] = "options_page";
 const char kIndicator[] = "indicator";
 const char kInputComponents[] = "input_components";
 const char kInputView[] = "input_view";
-const char kIsolation[] = "app.isolation";
 const char kKey[] = "key";
 const char kKiosk[] = "kiosk";
 const char kKioskAlwaysUpdate[] = "kiosk.always_update";
@@ -115,7 +115,6 @@ const char kPlatformAppBackgroundScripts[] = "app.background.scripts";
 const char kPlatformAppContentSecurityPolicy[] = "app.content_security_policy";
 const char kPublicKey[] = "key";
 const char kRemoveButton[] = "remove_button";
-const char kReplacementAndroidApp[] = "replacement_android_app";
 const char kReplacementWebApp[] = "replacement_web_app";
 const char kSandboxedPages[] = "sandbox.pages";
 const char kSandboxedPagesCSP[] = "sandbox.content_security_policy";
@@ -176,7 +175,6 @@ const char kBrowserActionCommandEvent[] = "_execute_browser_action";
 const char kIncognitoNotAllowed[] = "not_allowed";
 const char kIncognitoSplit[] = "split";
 const char kIncognitoSpanning[] = "spanning";
-const char kIsolatedStorage[] = "storage";
 const char kKeybindingPlatformChromeOs[] = "chromeos";
 const char kKeybindingPlatformDefault[] = "default";
 const char kKeybindingPlatformLinux[] = "linux";
@@ -528,8 +526,6 @@ const char kInvalidPermission[] =
 const char kInvalidPermissions[] =
     "Invalid value for 'permissions'.";
 const char kInvalidPermissionScheme[] = "Invalid scheme for '*[*]'.";
-const char16_t kInvalidReplacementAndroidApp[] =
-    u"Invalid value for 'replacement_android_app'";
 const char16_t kInvalidReplacementWebApp[] =
     u"Invalid value for 'replacement_web_app'.";
 const char kInvalidRulesetID[] =
@@ -593,7 +589,7 @@ const char16_t kInvalidURLHandlerPatternElement16[] =
 const char16_t kInvalidURLHandlerTitle[] =
     u"Invalid value for 'url_handlers[*].title'.";
 const char kInvalidURLHandlerPattern[] =
-    "Invalid value for 'url_handlers[*].matches[*]'.";
+    "Invalid value for 'url_handlers[*].matches'.";
 const char kInvalidURLPatternError[] =
     "Invalid url pattern '*'";
 const char16_t kInvalidVersion[] =
@@ -673,10 +669,7 @@ const char kPermissionCannotBeOptional[] =
 const char kPermissionMarkedOptionalAndRequired[] =
     "Optional permission '*' is redundant with the required permissions;"
     "this permission will be omitted.";
-const char kPermissionNotAllowed[] =
-    "Access to permission '*' denied.";
-const char kPermissionNotAllowedInManifest[] =
-    "Permission '*' cannot be specified in the manifest.";
+const char kPermissionNotAllowed[] = "Access to permission '*' denied.";
 const char kPermissionUnknownOrMalformed[] =
     "Permission '*' is unknown or URL pattern is malformed.";
 const char kPluginsRequirementDeprecated[] =

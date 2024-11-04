@@ -10,6 +10,7 @@
 #include <QtCore/qstringalgorithms.h>
 
 #include <string>
+#include <string_view>
 #include <QtCore/q20type_traits.h>
 
 #if defined(Q_OS_DARWIN) || defined(Q_QDOC)
@@ -105,32 +106,13 @@ private:
     template <typename Char>
     static constexpr qsizetype lengthHelperPointer(const Char *str) noexcept
     {
-#if defined(__cpp_lib_is_constant_evaluated)
-        if (std::is_constant_evaluated())
-            return std::char_traits<Char>::length(str);
-#elif defined(Q_CC_GNU) && !defined(Q_CC_CLANG)
-        if (__builtin_constant_p(*str))
-            return std::char_traits<Char>::length(str);
-#endif
+        if (q20::is_constant_evaluated())
+            return QtPrivate::lengthHelperPointer(str);
         return QtPrivate::qustrlen(reinterpret_cast<const char16_t *>(str));
     }
     static qsizetype lengthHelperPointer(const QChar *str) noexcept
     {
         return QtPrivate::qustrlen(reinterpret_cast<const char16_t *>(str));
-    }
-
-    template <typename Container>
-    static constexpr qsizetype lengthHelperContainer(const Container &c) noexcept
-    {
-        return qsizetype(std::size(c));
-    }
-
-    template <typename Char, size_t N>
-    static constexpr qsizetype lengthHelperContainer(const Char (&str)[N]) noexcept
-    {
-        const auto it = std::char_traits<Char>::find(str, N, Char(0));
-        const auto end = it ? it : std::end(str);
-        return qsizetype(std::distance(str, end));
     }
 
     template <typename Char>
@@ -181,8 +163,8 @@ public:
 #endif
 
     template <typename Container, if_compatible_container<Container> = true>
-    constexpr QStringView(const Container &c) noexcept
-        : QStringView(std::data(c), lengthHelperContainer(c)) {}
+    constexpr Q_ALWAYS_INLINE QStringView(const Container &c) noexcept
+        : QStringView(std::data(c), QtPrivate::lengthHelperContainer(c)) {}
 
     template <typename Char, size_t Size, if_compatible_char<Char> = true>
     [[nodiscard]] constexpr static QStringView fromArray(const Char (&string)[Size]) noexcept
@@ -201,7 +183,7 @@ public:
     [[nodiscard]] constexpr const storage_type *utf16() const noexcept { return m_data; }
 
     [[nodiscard]] constexpr QChar operator[](qsizetype n) const
-    { return Q_ASSERT(n >= 0), Q_ASSERT(n < size()), QChar(m_data[n]); }
+    { verify(n, 1); return QChar(m_data[n]); }
 
     //
     // QString API
@@ -237,20 +219,20 @@ public:
     }
 
     [[nodiscard]] constexpr QStringView first(qsizetype n) const noexcept
-    { Q_ASSERT(n >= 0); Q_ASSERT(n <= size()); return QStringView(m_data, n); }
+    { verify(0, n); return sliced(0, n); }
     [[nodiscard]] constexpr QStringView last(qsizetype n) const noexcept
-    { Q_ASSERT(n >= 0); Q_ASSERT(n <= size()); return QStringView(m_data + size() - n, n); }
+    { verify(0, n); return sliced(size() - n, n); }
     [[nodiscard]] constexpr QStringView sliced(qsizetype pos) const noexcept
-    { Q_ASSERT(pos >= 0); Q_ASSERT(pos <= size()); return QStringView(m_data + pos, size() - pos); }
+    { verify(pos, 0); return QStringView(m_data + pos, size() - pos); }
     [[nodiscard]] constexpr QStringView sliced(qsizetype pos, qsizetype n) const noexcept
-    { Q_ASSERT(pos >= 0); Q_ASSERT(n >= 0); Q_ASSERT(size_t(pos) + size_t(n) <= size_t(size())); return QStringView(m_data + pos, n); }
+    { verify(pos, n); return QStringView(m_data + pos, n); }
     [[nodiscard]] constexpr QStringView chopped(qsizetype n) const noexcept
-    { return Q_ASSERT(n >= 0), Q_ASSERT(n <= size()), QStringView(m_data, m_size - n); }
+    { verify(0, n); return sliced(0, m_size - n); }
 
     constexpr void truncate(qsizetype n) noexcept
-    { Q_ASSERT(n >= 0); Q_ASSERT(n <= size()); m_size = n; }
+    { verify(0, n); ; m_size = n; }
     constexpr void chop(qsizetype n) noexcept
-    { Q_ASSERT(n >= 0); Q_ASSERT(n <= size()); m_size -= n; }
+    { verify(0, n); m_size -= n; }
 
     [[nodiscard]] QStringView trimmed() const noexcept { return QtPrivate::trimmed(*this); }
 
@@ -350,6 +332,11 @@ public:
     [[nodiscard]] bool isValidUtf16() const noexcept
     { return QtPrivate::isValidUtf16(*this); }
 
+    [[nodiscard]] bool isUpper() const noexcept
+    { return QtPrivate::isUpper(*this); }
+    [[nodiscard]] bool isLower() const noexcept
+    { return QtPrivate::isLower(*this); }
+
     [[nodiscard]] inline short toShort(bool *ok = nullptr, int base = 10) const;
     [[nodiscard]] inline ushort toUShort(bool *ok = nullptr, int base = 10) const;
     [[nodiscard]] inline int toInt(bool *ok = nullptr, int base = 10) const;
@@ -417,6 +404,9 @@ public:
     [[nodiscard]] constexpr QChar front() const { return Q_ASSERT(!empty()), QChar(m_data[0]); }
     [[nodiscard]] constexpr QChar back()  const { return Q_ASSERT(!empty()), QChar(m_data[m_size - 1]); }
 
+    [[nodiscard]] Q_IMPLICIT operator std::u16string_view() const noexcept
+    { return std::u16string_view(m_data, size_t(m_size)); }
+
     //
     // Qt compatibility API:
     //
@@ -436,6 +426,15 @@ private:
     qsizetype m_size = 0;
     const storage_type *m_data = nullptr;
 #endif
+
+    Q_ALWAYS_INLINE constexpr void verify([[maybe_unused]] qsizetype pos = 0,
+                                          [[maybe_unused]] qsizetype n = 1) const
+    {
+        Q_ASSERT(pos >= 0);
+        Q_ASSERT(pos <= size());
+        Q_ASSERT(n >= 0);
+        Q_ASSERT(n <= size() - pos);
+    }
 
     constexpr int compare_single_char_helper(int diff) const noexcept
     { return diff ? diff : size() > 1 ? 1 : 0; }

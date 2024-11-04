@@ -20,7 +20,7 @@ class CORE_EXPORT NGTableNode final : public NGBlockNode {
 
   const NGBoxStrut& GetTableBordersStrut() const;
 
-  scoped_refptr<const NGTableBorders> GetTableBorders() const;
+  const NGTableBorders* GetTableBorders() const;
 
   LayoutUnit ComputeCaptionBlockSize(const NGConstraintSpace& space) const;
 
@@ -45,7 +45,7 @@ class CORE_EXPORT NGTableNode final : public NGBlockNode {
 template <>
 struct DowncastTraits<NGTableNode> {
   static bool AllowFrom(const NGLayoutInputNode& node) {
-    return node.IsNGTable();
+    return node.IsTable();
   }
 };
 

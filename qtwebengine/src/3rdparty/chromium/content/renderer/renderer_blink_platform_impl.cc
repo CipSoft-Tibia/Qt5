@@ -13,10 +13,10 @@
 #include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
-#include "base/guid.h"
 #include "base/lazy_instance.h"
 #include "base/location.h"
 #include "base/logging.h"
+#include "base/metrics/field_trial.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/strings/pattern.h"
@@ -30,14 +30,15 @@
 #include "base/task/thread_pool.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
+#include "base/time/time_delta_from_string.h"
 #include "build/build_config.h"
 #include "cc/trees/raster_context_provider_wrapper.h"
-#include "components/attribution_reporting/os_support.mojom.h"
 #include "components/url_formatter/url_formatter.h"
 #include "components/viz/common/features.h"
 #include "content/child/child_process.h"
-#include "content/common/android/sync_compositor_statics.h"
 #include "content/common/content_constants_internal.h"
+#include "content/common/features.h"
+#include "content/common/user_level_memory_pressure_signal_features.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/gpu_stream_constants.h"
@@ -79,6 +80,7 @@
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/wrapper_shared_url_loader_factory.h"
+#include "services/network/public/mojom/attribution.mojom.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "services/viz/public/cpp/gpu/context_provider_command_buffer.h"
 #include "storage/common/database/database_identifier.h"
@@ -104,6 +106,7 @@
 #include "third_party/blink/public/web/modules/media/audio/audio_device_factory.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "third_party/blink/public/web/web_media_inspector.h"
+#include "third_party/blink/public/web/web_user_level_memory_pressure_signal_generator.h"
 #include "third_party/sqlite/sqlite3.h"
 #include "ui/base/ui_base_switches.h"
 #include "ui/gl/buildflags.h"
@@ -117,6 +120,10 @@
 
 #if BUILDFLAG(IS_POSIX)
 #include "base/file_descriptor_posix.h"
+#endif
+
+#if BUILDFLAG(IS_ANDROID)
+#include "content/common/android/sync_compositor_statics.h"
 #endif
 
 using blink::Platform;
@@ -175,15 +182,18 @@ RendererBlinkPlatformImpl::RendererBlinkPlatformImpl(
       sudden_termination_disables_(0),
       is_locked_to_site_(false),
       main_thread_scheduler_(main_thread_scheduler) {
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  sk_sp<font_service::FontLoader> font_loader;
+#endif
+
   // RenderThread may not exist in some tests.
   if (RenderThreadImpl::current()) {
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
     mojo::PendingRemote<font_service::mojom::FontService> font_service;
     RenderThreadImpl::current()->BindHostReceiver(
         font_service.InitWithNewPipeAndPassReceiver());
-    font_loader_ =
-        sk_make_sp<font_service::FontLoader>(std::move(font_service));
-    SkFontConfigInterface::SetGlobal(font_loader_);
+    font_loader = sk_make_sp<font_service::FontLoader>(std::move(font_service));
+    SkFontConfigInterface::SetGlobal(font_loader);
 #endif
   }
 
@@ -192,7 +202,7 @@ RendererBlinkPlatformImpl::RendererBlinkPlatformImpl(
 #if BUILDFLAG(IS_MAC)
     sandbox_support_ = std::make_unique<WebSandboxSupportMac>();
 #else
-    sandbox_support_ = std::make_unique<WebSandboxSupportLinux>(font_loader_);
+    sandbox_support_ = std::make_unique<WebSandboxSupportLinux>(font_loader);
 #endif
   } else {
     DVLOG(1) << "Disabling sandbox support for testing.";
@@ -282,22 +292,6 @@ blink::WebString RendererBlinkPlatformImpl::UserAgent() {
   return render_thread->GetUserAgent();
 }
 
-blink::WebString RendererBlinkPlatformImpl::FullUserAgent() {
-  auto* render_thread = RenderThreadImpl::current();
-  // RenderThreadImpl is null in some tests.
-  if (!render_thread)
-    return WebString();
-  return render_thread->GetFullUserAgent();
-}
-
-blink::WebString RendererBlinkPlatformImpl::ReducedUserAgent() {
-  auto* render_thread = RenderThreadImpl::current();
-  // RenderThreadImpl is null in some tests.
-  if (!render_thread)
-    return WebString();
-  return render_thread->GetReducedUserAgent();
-}
-
 blink::UserAgentMetadata RendererBlinkPlatformImpl::UserAgentMetadata() {
   auto* render_thread = RenderThreadImpl::current();
   // RenderThreadImpl is null in some tests.
@@ -312,16 +306,6 @@ bool RendererBlinkPlatformImpl::IsRedirectSafe(const GURL& from_url,
          (!GetContentClient()->renderer() ||  // null in unit tests.
           GetContentClient()->renderer()->IsSafeRedirectTarget(from_url,
                                                                to_url));
-}
-
-blink::WebResourceRequestSenderDelegate*
-RendererBlinkPlatformImpl::GetResourceRequestSenderDelegate() {
-  auto* render_thread = RenderThreadImpl::current();
-
-  // RenderThreadImpl is null in some tests.
-  if (!render_thread)
-    return nullptr;
-  return render_thread->GetResourceRequestSenderDelegate();
 }
 
 void RendererBlinkPlatformImpl::AppendVariationsThrottles(
@@ -539,8 +523,7 @@ RendererBlinkPlatformImpl::NewAudioRendererSink(
       source_type, web_frame->GetLocalFrameToken(), params);
 }
 
-media::AudioLatency::LatencyType
-RendererBlinkPlatformImpl::GetAudioSourceLatencyType(
+media::AudioLatency::Type RendererBlinkPlatformImpl::GetAudioSourceLatencyType(
     blink::WebAudioDeviceSourceType source_type) {
   return blink::AudioDeviceFactory::GetSourceLatencyType(source_type);
 }
@@ -614,11 +597,6 @@ bool RendererBlinkPlatformImpl::IsWebRtcHWDecodingEnabled() {
       switches::kDisableWebRtcHWDecoding);
 }
 
-bool RendererBlinkPlatformImpl::IsWebRtcSrtpAesGcmEnabled() {
-  return base::CommandLine::ForCurrentProcess()->HasSwitch(
-      switches::kEnableWebRtcSrtpAesGcm);
-}
-
 bool RendererBlinkPlatformImpl::IsWebRtcSrtpEncryptedHeadersEnabled() {
   return base::CommandLine::ForCurrentProcess()->HasSwitch(
       switches::kEnableWebRtcSrtpEncryptedHeaders);
@@ -660,7 +638,7 @@ void RendererBlinkPlatformImpl::Collect3DContextInformation(
 std::unique_ptr<blink::WebGraphicsContext3DProvider>
 RendererBlinkPlatformImpl::CreateOffscreenGraphicsContext3DProvider(
     const blink::Platform::ContextAttributes& web_attributes,
-    const blink::WebURL& top_document_web_url,
+    const blink::WebURL& document_url,
     blink::Platform::GraphicsInfo* gl_info) {
   DCHECK(gl_info);
   if (!RenderThreadImpl::current()) {
@@ -679,20 +657,7 @@ RendererBlinkPlatformImpl::CreateOffscreenGraphicsContext3DProvider(
   }
   Collect3DContextInformation(gl_info, gpu_channel_host->gpu_info());
 
-  // This is an offscreen context. Generally it won't use the default
-  // frame buffer, in that case don't request any alpha, depth, stencil,
-  // antialiasing. But we do need those attributes for the "own
-  // offscreen surface" optimization which supports directly drawing
-  // to a custom surface backed frame buffer.
   gpu::ContextCreationAttribs attributes;
-  attributes.alpha_size = web_attributes.support_alpha ? 8 : -1;
-  attributes.depth_size = web_attributes.support_depth ? 24 : 0;
-  attributes.stencil_size = web_attributes.support_stencil ? 8 : 0;
-  attributes.samples = web_attributes.support_antialias ? 4 : 0;
-  attributes.own_offscreen_surface =
-      web_attributes.support_alpha || web_attributes.support_depth ||
-      web_attributes.support_stencil || web_attributes.support_antialias;
-  attributes.sample_buffers = 0;
   attributes.bind_generates_resource = false;
   attributes.enable_raster_interface = web_attributes.enable_raster_interface;
   attributes.enable_oop_rasterization =
@@ -719,11 +684,10 @@ RendererBlinkPlatformImpl::CreateOffscreenGraphicsContext3DProvider(
   scoped_refptr<viz::ContextProviderCommandBuffer> provider(
       new viz::ContextProviderCommandBuffer(
           std::move(gpu_channel_host),
-          RenderThreadImpl::current()->GetGpuMemoryBufferManager(),
+
           kGpuStreamIdDefault, kGpuStreamPriorityDefault,
-          gpu::kNullSurfaceHandle, GURL(top_document_web_url),
-          automatic_flushes, support_locking, use_grcontext,
-          gpu::SharedMemoryLimits(), attributes,
+          gpu::kNullSurfaceHandle, GURL(document_url), automatic_flushes,
+          support_locking, use_grcontext, gpu::SharedMemoryLimits(), attributes,
           viz::command_buffer_metrics::ContextType::WEBGL));
   return std::make_unique<WebGraphicsContext3DProviderImpl>(
       std::move(provider));
@@ -757,7 +721,7 @@ RendererBlinkPlatformImpl::CreateSharedOffscreenGraphicsContext3DProvider() {
 
 std::unique_ptr<blink::WebGraphicsContext3DProvider>
 RendererBlinkPlatformImpl::CreateWebGPUGraphicsContext3DProvider(
-    const blink::WebURL& top_document_web_url) {
+    const blink::WebURL& document_url) {
 #if !BUILDFLAG(USE_DAWN)
   return nullptr;
 #else
@@ -793,10 +757,10 @@ RendererBlinkPlatformImpl::CreateWebGPUGraphicsContext3DProvider(
   scoped_refptr<viz::ContextProviderCommandBuffer> provider(
       new viz::ContextProviderCommandBuffer(
           std::move(gpu_channel_host),
-          RenderThreadImpl::current()->GetGpuMemoryBufferManager(),
+
           kGpuStreamIdDefault, kGpuStreamPriorityDefault,
-          gpu::kNullSurfaceHandle, GURL(top_document_web_url),
-          automatic_flushes, support_locking, support_grcontext,
+          gpu::kNullSurfaceHandle, GURL(document_url), automatic_flushes,
+          support_locking, support_grcontext,
           gpu::SharedMemoryLimits::ForWebGPUContext(), attributes,
           viz::command_buffer_metrics::ContextType::WEBGPU, buffer_mapper));
   return std::make_unique<WebGraphicsContext3DProviderImpl>(
@@ -889,10 +853,17 @@ void RendererBlinkPlatformImpl::CreateServiceWorkerSubresourceLoaderFactory(
     std::unique_ptr<network::PendingSharedURLLoaderFactory> fallback_factory,
     mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
     scoped_refptr<base::SequencedTaskRunner> task_runner) {
+  // TODO(crbug.com/1371756): plumb `router_rules` with the function callers
+  // if there is such use case. As of 2023-06-01, only
+  // `DedicatedOrSharedWorkerFetchContextImpl` calls the function, and
+  // no need to allow it set the `router_rules`.
   ServiceWorkerSubresourceLoaderFactory::Create(
       base::MakeRefCounted<ControllerServiceWorkerConnector>(
           std::move(service_worker_container_host),
-          /*remote_controller=*/mojo::NullRemote(), client_id.Utf8()),
+          /*remote_controller=*/mojo::NullRemote(),
+          /*remote_cache_storage=*/mojo::NullRemote(), client_id.Utf8(),
+          blink::mojom::ServiceWorkerFetchHandlerBypassOption::kDefault,
+          /*router_rules=*/absl::nullopt, blink::EmbeddedWorkerStatus::STOPPED),
       network::SharedURLLoaderFactory::Create(std::move(fallback_factory)),
       std::move(receiver), std::move(task_runner));
 }
@@ -1006,19 +977,19 @@ base::PlatformThreadId RendererBlinkPlatformImpl::GetIOThreadId() const {
   return io_thread_id_;
 }
 
-attribution_reporting::mojom::OsSupport
-RendererBlinkPlatformImpl::GetOsSupportForAttributionReporting() {
+network::mojom::AttributionSupport
+RendererBlinkPlatformImpl::GetAttributionReportingSupport() {
   auto* render_thread = RenderThreadImpl::current();
   // RenderThreadImpl is null in some tests.
   if (!render_thread)
-    return attribution_reporting::mojom::OsSupport::kDisabled;
-  return render_thread->GetOsSupportForAttributionReporting();
+    return network::mojom::AttributionSupport::kWeb;
+  return render_thread->GetAttributionReportingSupport();
 }
 
 scoped_refptr<base::SingleThreadTaskRunner>
 RendererBlinkPlatformImpl::VideoFrameCompositorTaskRunner() {
   auto compositor_task_runner = CompositorThreadTaskRunner();
-  if (features::UseSurfaceLayerForVideo() || !compositor_task_runner) {
+  if (::features::UseSurfaceLayerForVideo() || !compositor_task_runner) {
     if (!video_frame_compositor_thread_) {
       // All of Chromium's GPU code must know which thread it's running on, and
       // be the same thread on which the rendering context was initialized. This
@@ -1042,6 +1013,31 @@ void RendererBlinkPlatformImpl::SetPrivateMemoryFootprint(
   CHECK(render_thread);
   render_thread->SetPrivateMemoryFootprint(private_memory_footprint_bytes);
 }
-#endif
+
+bool RendererBlinkPlatformImpl::IsUserLevelMemoryPressureSignalEnabled() {
+  return features::IsUserLevelMemoryPressureSignalEnabledOn4GbDevices() ||
+         features::IsUserLevelMemoryPressureSignalEnabledOn6GbDevices();
+}
+
+std::pair<base::TimeDelta, base::TimeDelta> RendererBlinkPlatformImpl::
+    InertAndMinimumIntervalOfUserLevelMemoryPressureSignal() {
+  if (features::IsUserLevelMemoryPressureSignalEnabledOn4GbDevices()) {
+    return std::make_pair(
+        features::InertIntervalFor4GbDevices(),
+        features::MinUserMemoryPressureIntervalOn4GbDevices());
+  }
+  if (features::IsUserLevelMemoryPressureSignalEnabledOn6GbDevices()) {
+    return std::make_pair(
+        features::InertIntervalFor6GbDevices(),
+        features::MinUserMemoryPressureIntervalOn6GbDevices());
+  }
+
+  constexpr std::pair<base::TimeDelta, base::TimeDelta>
+      kDefaultInertAndMinInterval =
+          std::make_pair(base::TimeDelta::Min(), base::Minutes(10));
+  return kDefaultInertAndMinInterval;
+}
+
+#endif  // BUILDFLAG(IS_ANDROID)
 
 }  // namespace content

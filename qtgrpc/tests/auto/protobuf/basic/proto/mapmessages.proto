@@ -366,3 +366,7 @@ message SimpleSFixed64ComplexMessageMapMessage {
 message SimpleStringComplexMessageMapMessage {
     map<string, ComplexMessage> mapField = 13;
 }
+
+message BoolBoolMessageMapMessage {
+    map<bool, bool> mapField = 1;
+}

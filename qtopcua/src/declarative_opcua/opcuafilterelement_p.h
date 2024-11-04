@@ -37,7 +37,7 @@ class OpcUaFilterElement : public QObject {
 
 public:
     // Same as in qopcuacontentfilterelement.h
-    // Specified in OPC-UA part 4, Tables 115 and 116
+    // Specified in OPC UA 1.05 part 4, 7.7.3
     enum class FilterOperator : quint32 {
         Equals = 0,
         IsNull = 1,
@@ -56,7 +56,7 @@ public:
         OfType = 14,
         RelatedTo = 15,
         BitwiseAnd = 16,
-        BitwiseOr = 17
+        BitwiseOr = 17,
     };
     Q_ENUM(FilterOperator);
 

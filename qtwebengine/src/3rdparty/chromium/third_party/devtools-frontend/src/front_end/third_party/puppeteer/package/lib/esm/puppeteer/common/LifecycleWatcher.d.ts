@@ -13,29 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import { HTTPResponse } from '../api/HTTPResponse.js';
 import { TimeoutError } from './Errors.js';
-import { FrameManager } from './FrameManager.js';
 import { Frame } from './Frame.js';
-import { HTTPResponse } from './HTTPResponse.js';
+import { NetworkManager } from './NetworkManager.js';
 /**
  * @public
  */
-export declare type PuppeteerLifeCycleEvent = 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2';
+export type PuppeteerLifeCycleEvent = 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2';
 /**
  * @public
  */
-export declare type ProtocolLifeCycleEvent = 'load' | 'DOMContentLoaded' | 'networkIdle' | 'networkAlmostIdle';
+export type ProtocolLifeCycleEvent = 'load' | 'DOMContentLoaded' | 'networkIdle' | 'networkAlmostIdle';
 /**
  * @internal
  */
 export declare class LifecycleWatcher {
     #private;
-    constructor(frameManager: FrameManager, frame: Frame, waitUntil: PuppeteerLifeCycleEvent | PuppeteerLifeCycleEvent[], timeout: number);
+    constructor(networkManager: NetworkManager, frame: Frame, waitUntil: PuppeteerLifeCycleEvent | PuppeteerLifeCycleEvent[], timeout: number);
     navigationResponse(): Promise<HTTPResponse | null>;
     sameDocumentNavigationPromise(): Promise<Error | undefined>;
     newDocumentNavigationPromise(): Promise<Error | undefined>;
     lifecyclePromise(): Promise<void>;
-    timeoutOrTerminationPromise(): Promise<Error | TimeoutError | undefined>;
+    terminationPromise(): Promise<Error | TimeoutError | undefined>;
     dispose(): void;
 }
 //# sourceMappingURL=LifecycleWatcher.d.ts.map

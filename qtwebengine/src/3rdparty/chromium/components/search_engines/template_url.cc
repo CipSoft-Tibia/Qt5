@@ -32,6 +32,7 @@
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/trace_event/memory_usage_estimator.h"
+#include "base/trace_event/typed_macros.h"
 #include "build/build_config.h"
 #include "components/google/core/common/google_util.h"
 #include "components/omnibox/common/omnibox_features.h"
@@ -195,10 +196,12 @@ bool IsTemplateParameterString(const std::string& param) {
 std::string YandexSearchPathFromDeviceFormFactor() {
   switch (ui::GetDeviceFormFactor()) {
     case ui::DEVICE_FORM_FACTOR_DESKTOP:
+    case ui::DEVICE_FORM_FACTOR_TV:
       return "search/";
     case ui::DEVICE_FORM_FACTOR_PHONE:
       return "search/touch/";
     case ui::DEVICE_FORM_FACTOR_TABLET:
+    case ui::DEVICE_FORM_FACTOR_AUTOMOTIVE:
       return "search/pad/";
   }
   NOTREACHED();
@@ -255,7 +258,8 @@ TemplateURLRef::SearchTermsArgs::ContextualSearchParams::ContextualSearchParams(
     std::string source_lang,
     std::string target_lang,
     std::string fluent_languages,
-    std::string related_searches_stamp)
+    std::string related_searches_stamp,
+    bool apply_lang_hint)
     : version(version),
       contextual_cards_version(contextual_cards_version),
       home_country(home_country),
@@ -265,7 +269,8 @@ TemplateURLRef::SearchTermsArgs::ContextualSearchParams::ContextualSearchParams(
       source_lang(source_lang),
       target_lang(target_lang),
       fluent_languages(fluent_languages),
-      related_searches_stamp(related_searches_stamp) {}
+      related_searches_stamp(related_searches_stamp),
+      apply_lang_hint(apply_lang_hint) {}
 
 TemplateURLRef::SearchTermsArgs::ContextualSearchParams::ContextualSearchParams(
     const ContextualSearchParams& other) = default;
@@ -721,6 +726,9 @@ bool TemplateURLRef::ParseParameter(size_t start,
   } else if (parameter == "google:imageThumbnailBase64") {
     replacements->push_back(
         Replacement(TemplateURLRef::GOOGLE_IMAGE_THUMBNAIL_BASE64, start));
+  } else if (parameter == "google:processedImageDimensions") {
+    replacements->emplace_back(
+        Replacement(TemplateURLRef::GOOGLE_PROCESSED_IMAGE_DIMENSIONS, start));
   } else if (parameter == "google:imageURL") {
     replacements->push_back(Replacement(TemplateURLRef::GOOGLE_IMAGE_URL,
                                         start));
@@ -991,6 +999,7 @@ std::string TemplateURLRef::HandleReplacements(
     const SearchTermsArgs& search_terms_args,
     const SearchTermsData& search_terms_data,
     PostContent* post_content) const {
+  TRACE_EVENT0("omnibox", "TemplateURLRef::HandleReplacement");
   if (replacements_.empty()) {
     if (!post_params_.empty())
       EncodeFormData(post_params_, post_content);
@@ -1068,6 +1077,8 @@ std::string TemplateURLRef::HandleReplacements(
           args.push_back("ctxs_fls=" + params.fluent_languages);
         if (!params.related_searches_stamp.empty())
           args.push_back("ctxsl_rs=" + params.related_searches_stamp);
+        if (params.apply_lang_hint)
+          args.push_back("ctxsl_applylh=1");
 
         HandleReplacement(std::string(), base::JoinString(args, "&"),
                           replacement, &url);
@@ -1076,8 +1087,10 @@ std::string TemplateURLRef::HandleReplacements(
 
       case GOOGLE_ASSISTED_QUERY_STATS: {
         DCHECK(!replacement.is_post_param);
+        const size_t searchbox_stats_size =
+            search_terms_args.searchbox_stats.ByteSizeLong();
         if (!search_terms_args.assisted_query_stats.empty()) {
-          DCHECK(search_terms_args.searchbox_stats.ByteSizeLong() > 0)
+          DCHECK(searchbox_stats_size > 0)
               << "searchbox_stats must be set when assisted_query_stats is.";
           // Get the base URL without substituting AQS and gs_lcrp to avoid
           // infinite recursion and unwanted replacement respectively. We need
@@ -1102,7 +1115,7 @@ std::string TemplateURLRef::HandleReplacements(
           }
         }
 
-        if (search_terms_args.searchbox_stats.ByteSizeLong() > 0) {
+        if (searchbox_stats_size > 0) {
           DCHECK(!search_terms_args.assisted_query_stats.empty())
               << "assisted_query_stats must be set when searchbox_stats is.";
           // Get the base URL without substituting gs_lcrp and AQS to avoid
@@ -1118,22 +1131,22 @@ std::string TemplateURLRef::HandleReplacements(
                                            search_terms_data, nullptr));
           if (base_url.SchemeIsCryptographic() &&
               base::FeatureList::IsEnabled(omnibox::kReportSearchboxStats)) {
-            std::string serialized_searchbox_stats;
-            search_terms_args.searchbox_stats.SerializeToString(
-                &serialized_searchbox_stats);
-            if (!serialized_searchbox_stats.empty()) {
-              std::string encoded_searchbox_stats;
-              base::Base64UrlEncode(serialized_searchbox_stats,
-                                    base::Base64UrlEncodePolicy::OMIT_PADDING,
-                                    &encoded_searchbox_stats);
-              HandleReplacement("gs_lcrp", encoded_searchbox_stats, replacement,
-                                &url);
-              base::UmaHistogramCounts1000(
-                  "Omnibox.SearchboxStats.Length",
-                  static_cast<int>(encoded_searchbox_stats.length()));
-            } else {
-              base::UmaHistogramCounts1000("Omnibox.SearchboxStats.Length", 0);
-            }
+            TRACE_EVENT0(
+                "omnibox",
+                "TemplateURLRef::HandleReplacement:serialize_searchbox_stats");
+            std::vector<uint8_t> serialized_searchbox_stats(
+                searchbox_stats_size);
+            search_terms_args.searchbox_stats.SerializeWithCachedSizesToArray(
+                &serialized_searchbox_stats[0]);
+            std::string encoded_searchbox_stats;
+            base::Base64UrlEncode(serialized_searchbox_stats,
+                                  base::Base64UrlEncodePolicy::OMIT_PADDING,
+                                  &encoded_searchbox_stats);
+            HandleReplacement("gs_lcrp", encoded_searchbox_stats, replacement,
+                              &url);
+            base::UmaHistogramCounts1000(
+                "Omnibox.SearchboxStats.Length",
+                static_cast<int>(encoded_searchbox_stats.length()));
           }
         }
         break;
@@ -1238,14 +1251,15 @@ std::string TemplateURLRef::HandleReplacements(
       }
 
       case GOOGLE_PREFETCH_SOURCE: {
-        if (search_terms_args.is_prefetch) {
+        if (!search_terms_args.prefetch_param.empty()) {
           // Currently, Chrome only support "cs" for prefetches, but if new
           // prefetch sources (outside of suggestions) are added, a new prefetch
           // source value is needed. These should denote the source of the
           // prefetch to allow the search server to treat the requests based on
           // source. "cs" represents Chrome Suggestions as the source. Adding a
           // new source should be supported by the Search engine.
-          HandleReplacement("pf", "cs", replacement, &url);
+          HandleReplacement("pf", search_terms_args.prefetch_param, replacement,
+                            &url);
         }
         break;
       }
@@ -1352,6 +1366,14 @@ std::string TemplateURLRef::HandleReplacements(
           } else {
             post_params_[replacement.index].content_type = "image/jpeg";
           }
+        }
+        break;
+      }
+
+      case GOOGLE_PROCESSED_IMAGE_DIMENSIONS: {
+        std::string dimensions = search_terms_args.processed_image_dimensions;
+        if (!dimensions.empty()) {
+          HandleReplacement(std::string(), dimensions, replacement, &url);
         }
         break;
       }
@@ -1494,6 +1516,8 @@ bool TemplateURL::IsBetterThanEngineWithConflictingKeyword(
     return std::make_tuple(
         // Policy-created engines always win over non-policy created engines.
         engine->created_by_policy(),
+        // Policy-enforced engines always win over policy-recommended engines.
+        engine->enforced_by_policy(),
         // The integral value of the type enum is used to sort next.
         // This makes extension-controlled engines win.
         engine->type(),

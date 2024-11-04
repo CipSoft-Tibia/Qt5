@@ -179,7 +179,7 @@ NavigatorShare& NavigatorShare::From(Navigator& navigator) {
   NavigatorShare* supplement =
       Supplement<Navigator>::From<NavigatorShare>(navigator);
   if (!supplement) {
-    supplement = MakeGarbageCollected<NavigatorShare>();
+    supplement = MakeGarbageCollected<NavigatorShare>(navigator);
     ProvideTo(navigator, supplement);
   }
   return *supplement;
@@ -335,7 +335,8 @@ ScriptPromise NavigatorShare::share(ScriptState* script_state,
   if (data->hasUrl())
     UseCounter::Count(execution_context, WebFeature::kWebShareContainingUrl);
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
 
   ShareClientImpl* client =
       MakeGarbageCollected<ShareClientImpl>(this, has_files, resolver);

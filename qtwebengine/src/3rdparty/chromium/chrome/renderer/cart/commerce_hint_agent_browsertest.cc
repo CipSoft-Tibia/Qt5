@@ -959,47 +959,6 @@ IN_PROC_BROWSER_TEST_F(CommerceHintCacaoTest, Rejected) {
   WaitForUmaCount("Commerce.Carts.VisitCart", 0);
 }
 
-class CommerceHintOptimizeRendererDisabledTest : public CommerceHintAgentTest {
- public:
-  void SetUpInProcessBrowserTestFixture() override {
-    scoped_feature_list_.InitWithFeaturesAndParameters(
-        {{
-#if !BUILDFLAG(IS_ANDROID)
-             ntp_features::kNtpChromeCartModule,
-#else
-             commerce::kCommerceHintAndroid,
-#endif
-             {{"optimize-renderer-signal", "false"}}},
-         {optimization_guide::features::kOptimizationHints, {{}}}},
-        {});
-  }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
-};
-
-// If command line argument "optimization_guide_hints_override" is not given,
-// nothing is specified in AddHintForTesting(), and the real hints are not
-// downloaded, all the URLs are considered non-shopping.
-IN_PROC_BROWSER_TEST_F(CommerceHintOptimizeRendererDisabledTest, Rejected) {
-  NavigateToURL("https://www.guitarcenter.com/");
-  SendXHR("/add-to-cart", "product: 123");
-  base::PlatformThread::Sleep(TestTimeouts::tiny_timeout() * 30);
-#if !BUILDFLAG(IS_ANDROID)
-  WaitForCartCount(kEmptyExpected);
-#endif
-  // The cart won't be added on browser side because of Cacao rejection either
-  // way, but when optimize-renderer-signal is disabled, renderer will still
-  // observer and process commerce signals on this site.
-  WaitForUmaCount("Commerce.Carts.AddToCartByURL", 1);
-
-  NavigateToURL("https://www.guitarcenter.com/cart.html");
-#if !BUILDFLAG(IS_ANDROID)
-  WaitForCartCount(kEmptyExpected);
-#endif
-  WaitForUmaCount("Commerce.Carts.VisitCart", 1);
-}
-
 #if !BUILDFLAG(IS_ANDROID)
 class CommerceHintProductInfoTest : public CommerceHintAgentTest {
  public:
@@ -1720,7 +1679,8 @@ class CommerceHintDOMBasedHeuristicsTest : public CommerceHintAgentTest {
 #endif
              {}},
          {commerce::kChromeCartDomBasedHeuristics,
-          {{"add-to-cart-button-active-time", "2s"}}}},
+          {{"add-to-cart-button-active-time", "2s"},
+           {"heuristics-execution-gap-time", "0s"}}}},
         {optimization_guide::features::kOptimizationHints});
   }
 
@@ -1883,6 +1843,57 @@ IN_PROC_BROWSER_TEST_F(CommerceHintDOMBasedHeuristicsSkipTest,
   WaitForUmaCount("Commerce.Carts.AddToCartByPOST", 2);
   WaitForUmaCount("Commerce.Carts.AddToCartButtonDetection", 0);
   ExpectUKMCount(AddToCartEntry::kEntryName, "HeuristicsExecutionTime", 0);
+}
+
+class CommerceHintDOMBasedHeuristicsGapTimeTest : public CommerceHintAgentTest {
+ public:
+  void SetUpInProcessBrowserTestFixture() override {
+    scoped_feature_list_.InitWithFeaturesAndParameters(
+        {{
+#if !BUILDFLAG(IS_ANDROID)
+             ntp_features::kNtpChromeCartModule,
+#else
+             commerce::kCommerceHintAndroid,
+#endif
+             {}},
+         {commerce::kChromeCartDomBasedHeuristics,
+          {{"add-to-cart-button-active-time", "2s"},
+           {"heuristics-execution-gap-time", "100s"}}}},
+        {optimization_guide::features::kOptimizationHints});
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(CommerceHintDOMBasedHeuristicsGapTimeTest,
+                       EnforceExecutionTimeGap) {
+  NavigateToURL("https://www.guitarcenter.com/product-page.html");
+
+  // Focus on a non-AddToCart button and then send AddToCart requests.
+  EXPECT_EQ(nullptr,
+            content::EvalJs(web_contents(), "focusElement(\"buttonTwo\")"));
+  SendXHR("/wp-admin/admin-ajax.php", "action: woocommerce_add_to_cart");
+
+#if !BUILDFLAG(IS_ANDROID)
+  WaitForCartCount(kEmptyExpected);
+#endif
+  WaitForUmaCount("Commerce.Carts.AddToCartByPOST", 0);
+  WaitForUmaCount("Commerce.Carts.AddToCartButtonDetection", 1);
+  ExpectUKMCount(AddToCartEntry::kEntryName, "HeuristicsExecutionTime", 1);
+
+  // Focus on an AddToCart button and then send AddToCart requests. Since the
+  // gap time is shorter than the threshold, this focus event will be ignored.
+  EXPECT_EQ(nullptr,
+            content::EvalJs(web_contents(), "focusElement(\"buttonOne\")"));
+  SendXHR("/wp-admin/admin-ajax.php", "action: woocommerce_add_to_cart");
+
+#if !BUILDFLAG(IS_ANDROID)
+  WaitForCartCount(kEmptyExpected);
+#endif
+  WaitForUmaCount("Commerce.Carts.AddToCartByPOST", 0);
+  WaitForUmaCount("Commerce.Carts.AddToCartButtonDetection", 1);
+  ExpectUKMCount(AddToCartEntry::kEntryName, "HeuristicsExecutionTime", 1);
 }
 
 }  // namespace

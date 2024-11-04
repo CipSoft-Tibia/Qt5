@@ -47,9 +47,9 @@
 #include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
-#ifndef NDEBUG
+#if DCHECK_IS_ON()
 #include <stdio.h>
-#endif
+#endif  // DCHECK_IS_ON()
 
 namespace blink {
 
@@ -62,6 +62,8 @@ unsigned MaximumSpecificity(const CSSSelectorList* list) {
   return list->MaximumSpecificity();
 }
 
+}  // namespace
+
 unsigned MaximumSpecificity(const CSSSelector* first_selector) {
   unsigned specificity = 0;
   for (const CSSSelector* s = first_selector; s;
@@ -70,8 +72,6 @@ unsigned MaximumSpecificity(const CSSSelector* first_selector) {
   }
   return specificity;
 }
-
-}  // namespace
 
 struct SameSizeAsCSSSelector {
   unsigned bitfields;
@@ -96,21 +96,15 @@ void CSSSelector::CreateRareData() {
 }
 
 unsigned CSSSelector::Specificity() const {
-  // make sure the result doesn't overflow
-  static const unsigned kMaxValueMask = 0xffffff;
-  static const unsigned kIdMask = 0xff0000;
-  static const unsigned kClassMask = 0x00ff00;
-  static const unsigned kElementMask = 0x0000ff;
-
   if (IsForPage()) {
-    return SpecificityForPage() & kMaxValueMask;
+    return SpecificityForPage() & CSSSelector::kMaxValueMask;
   }
 
   unsigned total = 0;
   unsigned temp = 0;
 
   for (const CSSSelector* selector = this; selector;
-       selector = selector->TagHistory()) {
+       selector = selector->NextSimpleSelector()) {
     temp = total + selector->SpecificityForOneSelector();
     // Clamp each component to its max in the case of overflow.
     if ((temp & kIdMask) < (total & kIdMask)) {
@@ -124,6 +118,16 @@ unsigned CSSSelector::Specificity() const {
     }
   }
   return total;
+}
+
+std::array<uint8_t, 3> CSSSelector::SpecificityTuple() const {
+  unsigned specificity = Specificity();
+
+  uint8_t a = (specificity & kIdMask) >> 16;
+  uint8_t b = (specificity & kClassMask) >> 8;
+  uint8_t c = (specificity & kElementMask);
+
+  return {a, b, c};
 }
 
 inline unsigned CSSSelector::SpecificityForOneSelector() const {
@@ -167,6 +171,20 @@ inline unsigned CSSSelector::SpecificityForOneSelector() const {
           }
         case kPseudoRelativeAnchor:
           return 0;
+        case kPseudoTrue:
+          // The :true pseudo-class should never be web-exposed, and should
+          // therefore not affect specificity either.
+          return 0;
+        case kPseudoScope:
+          if (is_implicitly_added_) {
+            // Implicit :scope pseudo-classes are added to selectors
+            // within @scope. Such pseudo-classes must not have any effect
+            // on the specificity of the scoped selector.
+            //
+            // https://drafts.csswg.org/css-cascade-6/#scope-effects
+            return 0;
+          }
+          break;
         // FIXME: PseudoAny should base the specificity on the sub-selectors.
         // See http://lists.w3.org/Archives/Public/www-style/2010Sep/0530.html
         case kPseudoAny:
@@ -214,7 +232,7 @@ unsigned CSSSelector::SpecificityForPage() const {
   unsigned s = 0;
 
   for (const CSSSelector* component = this; component;
-       component = component->TagHistory()) {
+       component = component->NextSimpleSelector()) {
     switch (component->match_) {
       case kTag:
         s += TagQName().LocalName() == UniversalSelectorAtom() ? 0 : 4;
@@ -301,6 +319,9 @@ PseudoId CSSSelector::GetPseudoId(PseudoType type) {
     case kPseudoDecrement:
     case kPseudoDefault:
     case kPseudoDefined:
+    case kPseudoDetailsContent:
+    case kPseudoDetailsSummary:
+    case kPseudoDialogInTopLayer:
     case kPseudoDir:
     case kPseudoDisabled:
     case kPseudoDoubleButton:
@@ -330,7 +351,6 @@ PseudoId CSSSelector::GetPseudoId(PseudoType type) {
     case kPseudoInRange:
     case kPseudoIncrement:
     case kPseudoIndeterminate:
-    case kPseudoInitial:
     case kPseudoInvalid:
     case kPseudoIs:
     case kPseudoIsHtml:
@@ -354,7 +374,6 @@ PseudoId CSSSelector::GetPseudoId(PseudoType type) {
     case kPseudoOptional:
     case kPseudoOutOfRange:
     case kPseudoParent:
-    case kPseudoParentUnparsed:
     case kPseudoPart:
     case kPseudoPastCue:
     case kPseudoPaused:
@@ -362,6 +381,8 @@ PseudoId CSSSelector::GetPseudoId(PseudoType type) {
     case kPseudoPlaceholder:
     case kPseudoPlaceholderShown:
     case kPseudoPlaying:
+    case kPseudoPopoverInTopLayer:
+    case kPseudoPopoverOpen:
     case kPseudoReadOnly:
     case kPseudoReadWrite:
     case kPseudoRelativeAnchor:
@@ -378,7 +399,11 @@ PseudoId CSSSelector::GetPseudoId(PseudoType type) {
     case kPseudoState:
     case kPseudoTarget:
     case kPseudoToggle:
+    case kPseudoTrue:
     case kPseudoUnknown:
+    case kPseudoUnparsed:
+    case kPseudoUserInvalid:
+    case kPseudoUserValid:
     case kPseudoValid:
     case kPseudoVertical:
     case kPseudoVideoPersistent:
@@ -397,6 +422,15 @@ PseudoId CSSSelector::GetPseudoId(PseudoType type) {
   return kPseudoIdNone;
 }
 
+void CSSSelector::Reparent(StyleRule* old_parent, StyleRule* new_parent) {
+  if (GetPseudoType() == CSSSelector::kPseudoParent) {
+    DCHECK_EQ(old_parent, ParentRule());
+    data_.parent_rule_ = new_parent;
+  } else if (has_rare_data_ && data_.rare_data_->selector_list_) {
+    data_.rare_data_->selector_list_->Reparent(old_parent, new_parent);
+  }
+}
+
 // Could be made smaller and faster by replacing pointer with an
 // offset into a string buffer and making the bit fields smaller but
 // that could not be maintained by hand.
@@ -409,12 +443,14 @@ struct NameToPseudoStruct {
 const static NameToPseudoStruct kPseudoTypeWithoutArgumentsMap[] = {
     {"-internal-autofill-previewed", CSSSelector::kPseudoAutofillPreviewed},
     {"-internal-autofill-selected", CSSSelector::kPseudoAutofillSelected},
+    {"-internal-dialog-in-top-layer", CSSSelector::kPseudoDialogInTopLayer},
     {"-internal-has-datalist", CSSSelector::kPseudoHasDatalist},
     {"-internal-is-html", CSSSelector::kPseudoIsHtml},
     {"-internal-list-box", CSSSelector::kPseudoListBox},
     {"-internal-media-controls-overlay-cast-button",
      CSSSelector::kPseudoWebKitCustomElement},
     {"-internal-multi-select-focus", CSSSelector::kPseudoMultiSelectFocus},
+    {"-internal-popover-in-top-layer", CSSSelector::kPseudoPopoverInTopLayer},
     {"-internal-relative-anchor", CSSSelector::kPseudoRelativeAnchor},
     {"-internal-selector-fragment-anchor",
      CSSSelector::kPseudoSelectorFragmentAnchor},
@@ -453,6 +489,8 @@ const static NameToPseudoStruct kPseudoTypeWithoutArgumentsMap[] = {
     {"decrement", CSSSelector::kPseudoDecrement},
     {"default", CSSSelector::kPseudoDefault},
     {"defined", CSSSelector::kPseudoDefined},
+    {"details-content", CSSSelector::kPseudoDetailsContent},
+    {"details-summary", CSSSelector::kPseudoDetailsSummary},
     {"disabled", CSSSelector::kPseudoDisabled},
     {"double-button", CSSSelector::kPseudoDoubleButton},
     {"empty", CSSSelector::kPseudoEmpty},
@@ -476,7 +514,6 @@ const static NameToPseudoStruct kPseudoTypeWithoutArgumentsMap[] = {
     {"in-range", CSSSelector::kPseudoInRange},
     {"increment", CSSSelector::kPseudoIncrement},
     {"indeterminate", CSSSelector::kPseudoIndeterminate},
-    {"initial", CSSSelector::kPseudoInitial},
     {"invalid", CSSSelector::kPseudoInvalid},
     {"last-child", CSSSelector::kPseudoLastChild},
     {"last-of-type", CSSSelector::kPseudoLastOfType},
@@ -496,6 +533,7 @@ const static NameToPseudoStruct kPseudoTypeWithoutArgumentsMap[] = {
     {"placeholder", CSSSelector::kPseudoPlaceholder},
     {"placeholder-shown", CSSSelector::kPseudoPlaceholderShown},
     {"playing", CSSSelector::kPseudoPlaying},
+    {"popover-open", CSSSelector::kPseudoPopoverOpen},
     {"read-only", CSSSelector::kPseudoReadOnly},
     {"read-write", CSSSelector::kPseudoReadWrite},
     {"required", CSSSelector::kPseudoRequired},
@@ -508,6 +546,8 @@ const static NameToPseudoStruct kPseudoTypeWithoutArgumentsMap[] = {
     {"start", CSSSelector::kPseudoStart},
     {"target", CSSSelector::kPseudoTarget},
     {"target-text", CSSSelector::kPseudoTargetText},
+    {"user-invalid", CSSSelector::kPseudoUserInvalid},
+    {"user-valid", CSSSelector::kPseudoUserValid},
     {"valid", CSSSelector::kPseudoValid},
     {"vertical", CSSSelector::kPseudoVertical},
     {"view-transition", CSSSelector::kPseudoViewTransition},
@@ -600,19 +640,6 @@ CSSSelector::PseudoType CSSSelector::NameToPseudoType(
     return CSSSelector::kPseudoUnknown;
   }
 
-  // We enable parsing of the popover pseudo classes in the case that we *don't*
-  // have a document, since that mostly/always occurs when parsing UA
-  // stylesheets.
-  bool popover_attribute_enabled =
-      !document || RuntimeEnabledFeatures::HTMLPopoverAttributeEnabled(
-                       document->GetExecutionContext());
-  if (match->type == CSSSelector::kPseudoOpen && !popover_attribute_enabled) {
-    return CSSSelector::kPseudoUnknown;
-  }
-  if (match->type == CSSSelector::kPseudoClosed && !popover_attribute_enabled) {
-    return CSSSelector::kPseudoUnknown;
-  }
-
   if (match->type == CSSSelector::kPseudoHighlight &&
       !RuntimeEnabledFeatures::HighlightAPIEnabled()) {
     return CSSSelector::kPseudoUnknown;
@@ -629,21 +656,28 @@ CSSSelector::PseudoType CSSSelector::NameToPseudoType(
     return CSSSelector::kPseudoUnknown;
   }
 
+  if ((match->type == CSSSelector::kPseudoDetailsContent ||
+       match->type == CSSSelector::kPseudoDetailsSummary) &&
+      !RuntimeEnabledFeatures::DetailsStylingEnabled()) {
+    return CSSSelector::kPseudoUnknown;
+  }
+
   if (IsTransitionPseudoElement(
           GetPseudoId(static_cast<CSSSelector::PseudoType>(match->type))) &&
       !RuntimeEnabledFeatures::ViewTransitionEnabled()) {
     return CSSSelector::kPseudoUnknown;
   }
 
-  if (match->type == CSSSelector::kPseudoInitial &&
-      !RuntimeEnabledFeatures::CSSInitialPseudoEnabled()) {
+  if ((match->type == CSSSelector::kPseudoUserInvalid ||
+       match->type == CSSSelector::kPseudoUserValid) &&
+      !RuntimeEnabledFeatures::UserValidUserInvalidEnabled()) {
     return CSSSelector::kPseudoUnknown;
   }
 
   return static_cast<CSSSelector::PseudoType>(match->type);
 }
 
-#ifndef NDEBUG
+#if DCHECK_IS_ON()
 void CSSSelector::Show(int indent) const {
   printf("%*sSelectorText(): %s\n", indent, "", SelectorText().Ascii().c_str());
   printf("%*smatch_: %d\n", indent, "", match_);
@@ -662,9 +696,9 @@ void CSSSelector::Show(int indent) const {
   }
   printf("%*sArgument(): %s\n", indent, "", Argument().Ascii().c_str());
   printf("%*sSpecificity(): %u\n", indent, "", Specificity());
-  if (TagHistory()) {
+  if (NextSimpleSelector()) {
     printf("\n%*s--> (Relation() == %d)\n", indent, "", Relation());
-    TagHistory()->Show(indent + 2);
+    NextSimpleSelector()->Show(indent + 2);
   } else {
     printf("\n%*s--> (Relation() == %d)\n", indent, "", Relation());
   }
@@ -676,7 +710,7 @@ void CSSSelector::Show() const {
   Show(2);
   printf("******* end *******\n");
 }
-#endif
+#endif  // DCHECK_IS_ON()
 
 void CSSSelector::UpdatePseudoPage(const AtomicString& value,
                                    const Document* document) {
@@ -739,6 +773,8 @@ void CSSSelector::UpdatePseudoType(const AtomicString& value,
     case kPseudoViewTransitionImagePair:
     case kPseudoViewTransitionOld:
     case kPseudoViewTransitionNew:
+    case kPseudoDetailsContent:
+    case kPseudoDetailsSummary:
       if (match_ != kPseudoElement) {
         pseudo_type_ = kPseudoUnknown;
       }
@@ -775,6 +811,7 @@ void CSSSelector::UpdatePseudoType(const AtomicString& value,
     case kPseudoDecrement:
     case kPseudoDefault:
     case kPseudoDefined:
+    case kPseudoDialogInTopLayer:
     case kPseudoDir:
     case kPseudoDisabled:
     case kPseudoDoubleButton:
@@ -800,7 +837,6 @@ void CSSSelector::UpdatePseudoType(const AtomicString& value,
     case kPseudoInRange:
     case kPseudoIncrement:
     case kPseudoIndeterminate:
-    case kPseudoInitial:
     case kPseudoInvalid:
     case kPseudoIs:
     case kPseudoLang:
@@ -820,12 +856,13 @@ void CSSSelector::UpdatePseudoType(const AtomicString& value,
     case kPseudoOptional:
     case kPseudoOutOfRange:
     case kPseudoParent:
-    case kPseudoParentUnparsed:
     case kPseudoPastCue:
     case kPseudoPaused:
     case kPseudoPictureInPicture:
     case kPseudoPlaceholderShown:
     case kPseudoPlaying:
+    case kPseudoPopoverInTopLayer:
+    case kPseudoPopoverOpen:
     case kPseudoReadOnly:
     case kPseudoReadWrite:
     case kPseudoRelativeAnchor:
@@ -838,7 +875,11 @@ void CSSSelector::UpdatePseudoType(const AtomicString& value,
     case kPseudoState:
     case kPseudoTarget:
     case kPseudoToggle:
+    case kPseudoTrue:
     case kPseudoUnknown:
+    case kPseudoUnparsed:
+    case kPseudoUserInvalid:
+    case kPseudoUserValid:
     case kPseudoValid:
     case kPseudoVertical:
     case kPseudoVisited:
@@ -859,10 +900,33 @@ void CSSSelector::UpdatePseudoType(const AtomicString& value,
   }
 }
 
-void CSSSelector::SetUnparsedPlaceholder(const AtomicString& value) {
+void CSSSelector::SetUnparsedPlaceholder(CSSNestingType unparsed_nesting_type,
+                                         const AtomicString& value) {
   DCHECK(match_ == kPseudoClass);
-  SetPseudoType(kPseudoParentUnparsed);
+  SetPseudoType(kPseudoUnparsed);
+  CreateRareData();
   SetValue(value);
+  data_.rare_data_->bits_.unparsed_nesting_type_ = unparsed_nesting_type;
+}
+
+CSSNestingType CSSSelector::GetNestingType() const {
+  switch (GetPseudoType()) {
+    case CSSSelector::kPseudoParent:
+      return CSSNestingType::kNesting;
+    case CSSSelector::kPseudoUnparsed:
+      return data_.rare_data_->bits_.unparsed_nesting_type_;
+    case CSSSelector::kPseudoScope:
+      // TODO(crbug.com/1280240): Handle unparsed :scope.
+      return CSSNestingType::kScope;
+    default:
+      return CSSNestingType::kNone;
+  }
+}
+
+void CSSSelector::SetTrue() {
+  SetMatch(kPseudoClass);
+  SetPseudoType(kPseudoTrue);
+  is_implicitly_added_ = true;
 }
 
 static void SerializeIdentifierOrAny(const AtomicString& identifier,
@@ -907,10 +971,11 @@ bool CSSSelector::SerializeSimpleSelector(StringBuilder& builder) const {
     builder.Append('.');
     SerializeIdentifier(SerializingValue(), builder);
   } else if (match_ == kPseudoClass || match_ == kPagePseudoClass) {
-    if (GetPseudoType() == kPseudoParentUnparsed) {
+    if (GetPseudoType() == kPseudoUnparsed) {
       builder.Append(Value());
     } else if (GetPseudoType() != kPseudoState &&
-               GetPseudoType() != kPseudoParent) {
+               GetPseudoType() != kPseudoParent &&
+               GetPseudoType() != kPseudoTrue) {
       builder.Append(':');
       builder.Append(SerializingValue());
     }
@@ -1082,11 +1147,12 @@ const CSSSelector* CSSSelector::SerializeCompound(
   }
 
   for (const CSSSelector* simple_selector = this; simple_selector;
-       simple_selector = simple_selector->TagHistory()) {
+       simple_selector = simple_selector->NextSimpleSelector()) {
     if (!simple_selector->SerializeSimpleSelector(builder)) {
       return nullptr;
     }
-    if (simple_selector->Relation() != kSubSelector) {
+    if (simple_selector->Relation() != kSubSelector &&
+        simple_selector->Relation() != kScopeActivation) {
       return simple_selector;
     }
   }
@@ -1096,20 +1162,32 @@ const CSSSelector* CSSSelector::SerializeCompound(
 String CSSSelector::SelectorText() const {
   String result;
   for (const CSSSelector* compound = this; compound;
-       compound = compound->TagHistory()) {
+       compound = compound->NextSimpleSelector()) {
     StringBuilder builder;
     compound = compound->SerializeCompound(builder);
     if (!compound) {
       return builder.ReleaseString() + result;
     }
 
-    // If we are combining with an implicit &, it is as if we used
-    // a relative combinator.
     RelationType relation = compound->Relation();
     DCHECK_NE(relation, kSubSelector);
-    if (compound->TagHistory()->Match() == kPseudoClass &&
-        compound->TagHistory()->GetPseudoType() == kPseudoParent &&
-        compound->TagHistory()->is_implicitly_added_) {
+    DCHECK_NE(relation, kScopeActivation);
+
+    const CSSSelector* next_compound = compound->NextSimpleSelector();
+    DCHECK(next_compound);
+
+    // Skip leading :true. This internal pseudo-class is not supposed to
+    // affect serialization.
+    if (next_compound->GetPseudoType() == kPseudoTrue) {
+      next_compound = next_compound->NextSimpleSelector();
+    }
+
+    // If we are combining with an implicit & or :scope, it is as if we
+    // used a relative combinator.
+    if (!next_compound || (next_compound->Match() == kPseudoClass &&
+                           (next_compound->GetPseudoType() == kPseudoParent ||
+                            next_compound->GetPseudoType() == kPseudoScope) &&
+                           next_compound->is_implicitly_added_)) {
       relation = ConvertRelationToRelative(relation);
     }
 
@@ -1127,6 +1205,7 @@ String CSSSelector::SelectorText() const {
         result = " ~ " + builder.ReleaseString() + result;
         break;
       case kSubSelector:
+      case kScopeActivation:
         NOTREACHED();
         break;
       case kShadowPart:
@@ -1236,7 +1315,6 @@ static bool ValidateSubSelector(const CSSSelector* selector) {
     case CSSSelector::kPseudoFirstChild:
     case CSSSelector::kPseudoLastChild:
     case CSSSelector::kPseudoFirstOfType:
-    case CSSSelector::kPseudoInitial:
     case CSSSelector::kPseudoLastOfType:
     case CSSSelector::kPseudoOnlyOfType:
     case CSSSelector::kPseudoHost:
@@ -1269,7 +1347,7 @@ bool CSSSelector::IsCompound() const {
   }
 
   const CSSSelector* prev_sub_selector = this;
-  const CSSSelector* sub_selector = TagHistory();
+  const CSSSelector* sub_selector = NextSimpleSelector();
 
   while (sub_selector) {
     if (prev_sub_selector->Relation() != kSubSelector) {
@@ -1280,7 +1358,7 @@ bool CSSSelector::IsCompound() const {
     }
 
     prev_sub_selector = sub_selector;
-    sub_selector = sub_selector->TagHistory();
+    sub_selector = sub_selector->NextSimpleSelector();
   }
 
   return true;
@@ -1288,7 +1366,7 @@ bool CSSSelector::IsCompound() const {
 
 bool CSSSelector::HasLinkOrVisited() const {
   for (const CSSSelector* current = this; current;
-       current = current->TagHistory()) {
+       current = current->NextSimpleSelector()) {
     CSSSelector::PseudoType pseudo = current->GetPseudoType();
     if (pseudo == CSSSelector::kPseudoLink ||
         pseudo == CSSSelector::kPseudoVisited) {
@@ -1320,7 +1398,7 @@ bool CSSSelector::MatchNth(unsigned count) const {
 
 bool CSSSelector::MatchesPseudoElement() const {
   for (const CSSSelector* current = this; current;
-       current = current->TagHistory()) {
+       current = current->NextSimpleSelector()) {
     if (current->Match() == kPseudoElement) {
       return true;
     }
@@ -1336,11 +1414,13 @@ bool CSSSelector::IsTreeAbidingPseudoElement() const {
          (GetPseudoType() == kPseudoBefore || GetPseudoType() == kPseudoAfter ||
           GetPseudoType() == kPseudoMarker ||
           GetPseudoType() == kPseudoPlaceholder ||
-          GetPseudoType() == kPseudoFileSelectorButton);
+          GetPseudoType() == kPseudoFileSelectorButton ||
+          GetPseudoType() == kPseudoBackdrop);
 }
 
 bool CSSSelector::IsAllowedAfterPart() const {
-  if (Match() != CSSSelector::kPseudoElement) {
+  if (Match() != CSSSelector::kPseudoElement &&
+      Match() != CSSSelector::kPseudoClass) {
     return false;
   }
   // Everything that makes sense should work following ::part. This list
@@ -1348,6 +1428,9 @@ bool CSSSelector::IsAllowedAfterPart() const {
   switch (GetPseudoType()) {
     case kPseudoBefore:
     case kPseudoAfter:
+    case kPseudoAutofill:
+    case kPseudoAutofillPreviewed:
+    case kPseudoAutofillSelected:
     case kPseudoPlaceholder:
     case kPseudoFileSelectorButton:
     case kPseudoFirstLine:
@@ -1357,6 +1440,7 @@ bool CSSSelector::IsAllowedAfterPart() const {
     case kPseudoHighlight:
     case kPseudoSpellingError:
     case kPseudoGrammarError:
+    case kPseudoWebKitAutofill:
       return true;
     default:
       return false;
@@ -1364,17 +1448,17 @@ bool CSSSelector::IsAllowedAfterPart() const {
 }
 
 template <typename Functor>
-static bool ForAnyInTagHistory(const Functor& functor,
-                               const CSSSelector& selector) {
+static bool ForAnyInComplexSelector(const Functor& functor,
+                                    const CSSSelector& selector) {
   for (const CSSSelector* current = &selector; current;
-       current = current->TagHistory()) {
+       current = current->NextSimpleSelector()) {
     if (functor(*current)) {
       return true;
     }
     if (const CSSSelectorList* selector_list = current->SelectorList()) {
       for (const CSSSelector* sub_selector = selector_list->First();
            sub_selector; sub_selector = CSSSelectorList::Next(*sub_selector)) {
-        if (ForAnyInTagHistory(functor, *sub_selector)) {
+        if (ForAnyInComplexSelector(functor, *sub_selector)) {
           return true;
         }
       }
@@ -1385,7 +1469,7 @@ static bool ForAnyInTagHistory(const Functor& functor,
 }
 
 bool CSSSelector::FollowsPart() const {
-  const CSSSelector* previous = TagHistory();
+  const CSSSelector* previous = NextSimpleSelector();
   if (!previous) {
     return false;
   }
@@ -1393,7 +1477,7 @@ bool CSSSelector::FollowsPart() const {
 }
 
 bool CSSSelector::FollowsSlotted() const {
-  const CSSSelector* previous = TagHistory();
+  const CSSSelector* previous = NextSimpleSelector();
   if (!previous) {
     return false;
   }
@@ -1483,6 +1567,24 @@ const CSSSelector* CSSSelector::SelectorListOrParent() const {
     return data_.rare_data_->selector_list_->First();
   } else {
     return nullptr;
+  }
+}
+
+bool CSSSelector::IsChildIndexedSelector() const {
+  switch (GetPseudoType()) {
+    case kPseudoFirstChild:
+    case kPseudoFirstOfType:
+    case kPseudoLastChild:
+    case kPseudoLastOfType:
+    case kPseudoNthChild:
+    case kPseudoNthLastChild:
+    case kPseudoNthLastOfType:
+    case kPseudoNthOfType:
+    case kPseudoOnlyChild:
+    case kPseudoOnlyOfType:
+      return true;
+    default:
+      return false;
   }
 }
 

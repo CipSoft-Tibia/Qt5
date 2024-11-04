@@ -1,5 +1,5 @@
 # Copyright (C) 2022 The Qt Company Ltd.
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.16)
 project(weatherinfo LANGUAGES CXX)
@@ -62,19 +62,20 @@ qt_add_qml_module(weatherinfo
         WeatherIcon.qml
         WeatherInfo.qml
     RESOURCES
-        icons/weather-few-clouds.png
-        icons/weather-fog.png
-        icons/weather-haze.png
-        icons/weather-icy.png
-        icons/weather-overcast.png
-        icons/weather-showers.png
-        icons/weather-sleet.png
-        icons/weather-snow.png
-        icons/weather-storm.png
-        icons/weather-sunny-very-few-clouds.png
-        icons/weather-sunny.png
-        icons/weather-thundershower.png
-        icons/weather-showers-scattered.png
+        icons/weather-few-clouds.svg
+        icons/weather-fog.svg
+        icons/weather-haze.svg
+        icons/weather-icy.svg
+        icons/weather-overcast.svg
+        icons/weather-showers.svg
+        icons/weather-sleet.svg
+        icons/weather-snow.svg
+        icons/weather-storm.svg
+        icons/weather-sunny-very-few-clouds.svg
+        icons/weather-sunny.svg
+        icons/weather-thundershower.svg
+        icons/weather-showers-scattered.svg
+        icons/waypoint.svg
 )
 
 install(TARGETS weatherinfo

@@ -21,15 +21,15 @@ const UIStrings = {
   /**
    *@description Text in Background Service View of the Application panel
    */
-  backgroundFetch: 'Background Fetch',
+  backgroundFetch: 'Background fetch',
   /**
    *@description Text in Background Service View of the Application panel
    */
-  backgroundSync: 'Background Sync',
+  backgroundSync: 'Background sync',
   /**
    *@description Text in Background Service View of the Application panel
    */
-  pushMessaging: 'Push Messaging',
+  pushMessaging: 'Push messaging',
   /**
    *@description Text in Background Service View of the Application panel
    */
@@ -37,11 +37,11 @@ const UIStrings = {
   /**
    *@description Text in Background Service View of the Application panel
    */
-  paymentHandler: 'Payment Handler',
+  paymentHandler: 'Payment handler',
   /**
    *@description Text in the Periodic Background Service View of the Application panel
    */
-  periodicBackgroundSync: 'Periodic Background Sync',
+  periodicBackgroundSync: 'Periodic background sync',
   /**
    *@description Text to clear content
    */
@@ -93,7 +93,7 @@ const UIStrings = {
   /**
    *@description Text in Application Panel Sidebar of the Application panel
    */
-  backgroundServices: 'Background Services',
+  backgroundServices: 'Background services',
   /**
    *@description Text that is usually a hyperlink to more documentation
    */
@@ -233,13 +233,13 @@ export class BackgroundServiceView extends UI.Widget.VBox {
     this.recordButton = (UI.Toolbar.Toolbar.createActionButton(this.recordAction) as UI.Toolbar.ToolbarToggle);
     this.toolbar.appendToolbarItem(this.recordButton);
 
-    const clearButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.clear), 'largeicon-clear');
+    const clearButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.clear), 'clear');
     clearButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, () => this.clearEvents());
     this.toolbar.appendToolbarItem(clearButton);
 
     this.toolbar.appendSeparator();
 
-    this.saveButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.saveEvents), 'largeicon-download');
+    this.saveButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.saveEvents), 'download');
     this.saveButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, _event => {
       void this.saveToFile();
     });
@@ -469,7 +469,7 @@ export class BackgroundServiceView extends UI.Widget.VBox {
       centered.createChild('p').textContent = i18nString(UIStrings.selectAnEntryToViewMetadata);
     } else if (this.recordButton.toggled()) {
       // Inform users that we are recording/waiting for events.
-      const featureName = BackgroundServiceView.getUIString(this.serviceName);
+      const featureName = BackgroundServiceView.getUIString(this.serviceName).toLowerCase();
       centered.createChild('p').textContent = i18nString(UIStrings.recordingSActivity, {PH1: featureName});
       centered.createChild('p').textContent = i18nString(UIStrings.devtoolsWillRecordAllSActivity, {PH1: featureName});
     } else {
@@ -509,7 +509,7 @@ export class BackgroundServiceView extends UI.Widget.VBox {
     await stream.write(JSON.stringify(events, undefined, 2));
     void stream.close();
   }
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([emptyWidgetStyles, backgroundServiceViewStyles]);
   }

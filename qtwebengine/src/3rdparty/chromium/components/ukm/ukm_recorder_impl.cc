@@ -29,6 +29,7 @@
 #include "services/metrics/public/cpp/ukm_builders.h"
 #include "services/metrics/public/cpp/ukm_decode.h"
 #include "services/metrics/public/cpp/ukm_recorder.h"
+#include "services/metrics/public/cpp/ukm_recorder_impl_utils.h"
 #include "services/metrics/public/cpp/ukm_source.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "services/metrics/public/mojom/ukm_interface.mojom.h"
@@ -63,7 +64,7 @@ bool IsAllowlistedSourceId(SourceId source_id) {
       return true;
     }
     case ukm::SourceIdObj::Type::DEFAULT:
-    case ukm::SourceIdObj::Type::DESKTOP_WEB_APP_ID:
+    case ukm::SourceIdObj::Type::DEPRECATED_DESKTOP_WEB_APP_ID:
     case ukm::SourceIdObj::Type::WORKER_ID:
       return false;
   }
@@ -82,28 +83,6 @@ bool HasSupportedScheme(const GURL& url) {
          url.SchemeIs(kAppScheme);
 }
 
-// These values are persisted to logs. Entries should not be renumbered and
-// numeric values should never be reused.
-// Update tools/metrics/histograms/enums.xml when new entries are added.
-enum class DroppedDataReason {
-  NOT_DROPPED = 0,
-  RECORDING_DISABLED = 1,
-  MAX_HIT = 2,
-  DEPRECATED_NOT_WHITELISTED = 3,
-  UNSUPPORTED_URL_SCHEME = 4,
-  SAMPLED_OUT = 5,
-  EXTENSION_URLS_DISABLED = 6,
-  EXTENSION_NOT_SYNCED = 7,
-  NOT_MATCHED = 8,
-  EMPTY_URL = 9,
-  REJECTED_BY_FILTER = 10,
-  SAMPLING_UNCONFIGURED = 11,
-  MSBB_CONSENT_DISABLED = 12,
-  APPS_CONSENT_DISABLED = 13,
-  EXTENSION_URL_INVALID = 14,
-  NUM_DROPPED_DATA_REASONS
-};
-
 void RecordDroppedSource(DroppedDataReason reason) {
   UMA_HISTOGRAM_ENUMERATION(
       "UKM.Sources.Dropped", static_cast<int>(reason),
@@ -114,41 +93,6 @@ void RecordDroppedSource(bool already_recorded_another_reason,
                          DroppedDataReason reason) {
   if (!already_recorded_another_reason)
     RecordDroppedSource(reason);
-}
-
-void RecordDroppedEntry(uint64_t event_hash, DroppedDataReason reason) {
-  // Truncate the unsigned 64-bit hash to 31 bits, to
-  // make it a suitable histogram sample.
-  uint32_t value = event_hash & 0x7fffffff;
-  // The enum for these histograms gets populated by the
-  // PopulateEnumWithUkmEvents
-  // function in populate_enums.py when producing the merged XML.
-
-  UMA_HISTOGRAM_SPARSE("UKM.Entries.Dropped.ByEntryHash", value);
-
-  // Because the "UKM.Entries.Dropped.ByEntryHash" histogram will be emitted to
-  // every single time an entry is dropped, it will be dominated by the
-  // RECORDING_DISABLED reason (which is not very insightful). We also emit
-  // histograms split by selected reasons that are deemed interesting or helpful
-  // for data quality investigations.
-  switch (reason) {
-    case DroppedDataReason::MAX_HIT:
-      UMA_HISTOGRAM_SPARSE("UKM.Entries.Dropped.MaxHit.ByEntryHash", value);
-      break;
-    case DroppedDataReason::SAMPLED_OUT:
-      UMA_HISTOGRAM_SPARSE("UKM.Entries.Dropped.SampledOut.ByEntryHash", value);
-      break;
-    case DroppedDataReason::REJECTED_BY_FILTER:
-      UMA_HISTOGRAM_SPARSE("UKM.Entries.Dropped.RejectedByFilter.ByEntryHash",
-                           value);
-      break;
-    default:
-      break;
-  }
-
-  UMA_HISTOGRAM_ENUMERATION(
-      "UKM.Entries.Dropped", static_cast<int>(reason),
-      static_cast<int>(DroppedDataReason::NUM_DROPPED_DATA_REASONS));
 }
 
 void StoreEntryProto(const mojom::UkmEntry& in, Entry* out) {
@@ -250,6 +194,7 @@ void UkmRecorderImpl::UpdateRecording(ukm::UkmConsentState state) {
 
 void UkmRecorderImpl::EnableRecording() {
   recording_enabled_ = true;
+  OnRecorderParametersChanged();
 }
 
 void UkmRecorderImpl::DisableRecording() {
@@ -257,6 +202,7 @@ void UkmRecorderImpl::DisableRecording() {
   if (recording_enabled())
     recording_is_continuous_ = false;
   recording_enabled_ = false;
+  OnRecorderParametersChanged();
 }
 
 void UkmRecorderImpl::SetSamplingForTesting(int rate) {
@@ -367,26 +313,33 @@ void UkmRecorderImpl::AddUkmRecorderObserver(
     const base::flat_set<uint64_t>& event_hashes,
     UkmRecorderObserver* observer) {
   DCHECK(observer);
-  base::AutoLock auto_lock(lock_);
-  scoped_refptr<UkmRecorderObserverList> observers;
-  if (observers_.find(event_hashes) == observers_.end()) {
-    observers_.insert(
-        {event_hashes, base::MakeRefCounted<UkmRecorderObserverList>()});
-  }
+  {
+    base::AutoLock auto_lock(lock_);
+    if (!observers_.contains(event_hashes)) {
+      observers_.insert(
+          {event_hashes, base::MakeRefCounted<UkmRecorderObserverList>()});
+    }
 
-  observers_[event_hashes]->AddObserver(observer);
+    observers_[event_hashes]->AddObserver(observer);
+  }
+  // Update the UkmRecorderParameters to capture a UKM event which is being
+  // observed by any UkmRecorderObserver in |observers_|.
+  OnRecorderParametersChanged();
 }
 
 void UkmRecorderImpl::RemoveUkmRecorderObserver(UkmRecorderObserver* observer) {
-  base::AutoLock auto_lock(lock_);
-  for (auto it = observers_.begin(); it != observers_.end();) {
-    if (it->second->RemoveObserver(observer) ==
-        UkmRecorderObserverList::RemoveObserverResult::kWasOrBecameEmpty) {
-      it = observers_.erase(it);
-    } else {
-      ++it;
+  {
+    base::AutoLock auto_lock(lock_);
+    for (auto it = observers_.begin(); it != observers_.end();) {
+      if (it->second->RemoveObserver(observer) ==
+          UkmRecorderObserverList::RemoveObserverResult::kWasOrBecameEmpty) {
+        it = observers_.erase(it);
+      } else {
+        ++it;
+      }
     }
   }
+  OnRecorderParametersChanged();
 }
 
 void UkmRecorderImpl::OnUkmAllowedStateChanged(UkmConsentState state) {
@@ -825,8 +778,13 @@ void UkmRecorderImpl::UpdateSourceURL(SourceId source_id,
     return;
 
   const GURL sanitized_url = SanitizeURL(unsanitized_url);
-  if (ShouldRecordUrl(source_id, sanitized_url) ==
-      ShouldRecordUrlResult::kDropped) {
+
+  // If UKM recording is disabled due to |recording_enabled|,
+  // still notify observers as they might be interested in it.
+  NotifyAllObservers(&UkmRecorderObserver::OnUpdateSourceURL, source_id,
+                     std::vector<GURL>{sanitized_url});
+
+  if (!ShouldRecordUrl(source_id, sanitized_url)) {
     return;
   }
   RecordSource(std::make_unique<UkmSource>(source_id, sanitized_url));
@@ -837,6 +795,11 @@ void UkmRecorderImpl::UpdateAppURL(SourceId source_id,
                                    const AppType app_type) {
   if (app_type != AppType::kPWA && !recording_enabled(ukm::EXTENSIONS)) {
     RecordDroppedSource(DroppedDataReason::EXTENSION_URLS_DISABLED);
+
+    // If UKM recording is disabled due to |recording_enabled|,
+    // still notify observers as they might be interested in it.
+    NotifyAllObservers(&UkmRecorderObserver::OnUpdateSourceURL, source_id,
+                       std::vector<GURL>{SanitizeURL(url)});
     return;
   }
   UpdateSourceURL(source_id, url);
@@ -851,13 +814,21 @@ void UkmRecorderImpl::RecordNavigation(
   // recorded at all if the final URL in |unsanitized_navigation_data| should
   // not be recorded.
   std::vector<GURL> urls;
+  // Observers should be notified of the source URLs even if UKM logs do not
+  // record the URL.
+  std::vector<GURL> observation_urls;
   for (const GURL& url : unsanitized_navigation_data.urls) {
     const GURL sanitized_url = SanitizeURL(url);
-    if (ShouldRecordUrl(source_id, sanitized_url) !=
-        ShouldRecordUrlResult::kDropped) {
+    observation_urls.push_back(sanitized_url);
+    if (ShouldRecordUrl(source_id, sanitized_url)) {
       urls.push_back(std::move(sanitized_url));
     }
   }
+
+  // If UKM recording is disabled due to |recording_enabled|,
+  // still notify observers as they might be interested in it.
+  NotifyAllObservers(&UkmRecorderObserver::OnUpdateSourceURL, source_id,
+                     observation_urls);
 
   // None of the URLs passed the ShouldRecordUrl check, so do not create a new
   // Source for them.
@@ -880,7 +851,7 @@ UkmConsentType UkmRecorderImpl::GetConsentType(SourceIdType type) {
     case SourceIdType::HISTORY_ID:
     case SourceIdType::WEBAPK_ID:
     case SourceIdType::PAYMENT_APP_ID:
-    case SourceIdType::DESKTOP_WEB_APP_ID:
+    case SourceIdType::DEPRECATED_DESKTOP_WEB_APP_ID:
     case SourceIdType::WORKER_ID:
     case SourceIdType::NO_URL_ID:
     case SourceIdType::REDIRECT_ID:
@@ -946,7 +917,7 @@ void UkmRecorderImpl::MaybeMarkForDeletion(SourceId source_id) {
     }
     case ukm::SourceIdObj::Type::DEFAULT:
     case ukm::SourceIdObj::Type::APP_ID:
-    case ukm::SourceIdObj::Type::DESKTOP_WEB_APP_ID:
+    case ukm::SourceIdObj::Type::DEPRECATED_DESKTOP_WEB_APP_ID:
     case ukm::SourceIdObj::Type::NAVIGATION_ID:
     case ukm::SourceIdObj::Type::WORKER_ID:
     case ukm::SourceIdObj::Type::REDIRECT_ID:
@@ -988,18 +959,12 @@ bool UkmRecorderImpl::ShouldDropExtensionUrl(
   return false;
 }
 
-UkmRecorderImpl::ShouldRecordUrlResult UkmRecorderImpl::ShouldRecordUrl(
-    SourceId source_id,
-    const GURL& sanitized_url) const {
-  ShouldRecordUrlResult result = ShouldRecordUrlResult::kOk;
+bool UkmRecorderImpl::ShouldRecordUrl(SourceId source_id,
+                                      const GURL& sanitized_url) const {
   bool has_recorded_reason = false;
   if (!recording_enabled()) {
     RecordDroppedSource(DroppedDataReason::RECORDING_DISABLED);
-    // Don't return the result yet. Check if the we are allowed to notify
-    // observers, as they may rely on the not uploaded metrics to determine
-    // how some features should work.
-    result = ShouldRecordUrlResult::kObserverOnly;
-    has_recorded_reason = true;
+    return false;
   }
 
   const auto required_consent = GetConsentType(GetSourceIdType(source_id));
@@ -1013,17 +978,17 @@ UkmRecorderImpl::ShouldRecordUrlResult UkmRecorderImpl::ShouldRecordUrl(
       RecordDroppedSource(has_recorded_reason,
                           DroppedDataReason::APPS_CONSENT_DISABLED);
     }
-    return ShouldRecordUrlResult::kDropped;
+    return false;
   }
 
   if (recordings_.sources.size() >= max_sources_) {
     RecordDroppedSource(has_recorded_reason, DroppedDataReason::MAX_HIT);
-    return ShouldRecordUrlResult::kDropped;
+    return false;
   }
 
   if (sanitized_url.is_empty()) {
     RecordDroppedSource(has_recorded_reason, DroppedDataReason::EMPTY_URL);
-    return ShouldRecordUrlResult::kDropped;
+    return false;
   }
 
   if (!HasSupportedScheme(sanitized_url)) {
@@ -1031,12 +996,12 @@ UkmRecorderImpl::ShouldRecordUrlResult UkmRecorderImpl::ShouldRecordUrl(
                         DroppedDataReason::UNSUPPORTED_URL_SCHEME);
     DVLOG(2) << "Dropped Unsupported UKM URL:" << source_id << ":"
              << sanitized_url.spec();
-    return ShouldRecordUrlResult::kDropped;
+    return false;
   }
 
   if (GetSourceIdType(source_id) == SourceIdType::EXTENSION_ID) {
     if (ShouldDropExtensionUrl(sanitized_url, has_recorded_reason)) {
-      return ShouldRecordUrlResult::kDropped;
+      return false;
     }
   }
 
@@ -1047,19 +1012,14 @@ UkmRecorderImpl::ShouldRecordUrlResult UkmRecorderImpl::ShouldRecordUrl(
   // extension URL to use the dedicated source ID type, and remove this check.
   if (sanitized_url.SchemeIs(kExtensionScheme)) {
     if (ShouldDropExtensionUrl(sanitized_url, has_recorded_reason)) {
-      return ShouldRecordUrlResult::kDropped;
+      return false;
     }
   }
-  return result;
+  return true;
 }
 
 void UkmRecorderImpl::RecordSource(std::unique_ptr<UkmSource> source) {
   SourceId source_id = source->id();
-  // If UKM recording is disabled due to |recording_enabled|,
-  // still notify observers as they might be interested in it.
-  NotifyAllObservers(&UkmRecorderObserver::OnUpdateSourceURL, source_id,
-                     source->urls());
-
   if (!recording_enabled()) {
     return;
   }
@@ -1263,6 +1223,15 @@ void UkmRecorderImpl::NotifyAllObservers(Method m, Params&&... params) {
   for (const auto& observer : observers_) {
     observer.second->Notify(FROM_HERE, m, std::forward<Params>(params)...);
   }
+}
+
+std::set<uint64_t> UkmRecorderImpl::GetObservedEventHashes() {
+  base::AutoLock lock(lock_);
+  std::set<uint64_t> hashes;
+  for (const auto& observer : observers_) {
+    hashes.insert(observer.first.begin(), observer.first.end());
+  }
+  return hashes;
 }
 
 }  // namespace ukm

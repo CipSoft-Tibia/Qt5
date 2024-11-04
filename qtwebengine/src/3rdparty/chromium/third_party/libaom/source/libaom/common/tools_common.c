@@ -65,9 +65,24 @@ void aom_tools_warn(const char *fmt, ...) { LOG_ERROR("Warning"); }
 void die_codec(aom_codec_ctx_t *ctx, const char *s) {
   const char *detail = aom_codec_error_detail(ctx);
 
-  printf("%s: %s\n", s, aom_codec_error(ctx));
-  if (detail) printf("    %s\n", detail);
+  fprintf(stderr, "%s: %s\n", s, aom_codec_error(ctx));
+  if (detail) fprintf(stderr, "    %s\n", detail);
   exit(EXIT_FAILURE);
+}
+
+const char *image_format_to_string(aom_img_fmt_t fmt) {
+  switch (fmt) {
+    case AOM_IMG_FMT_I420: return "I420";
+    case AOM_IMG_FMT_I422: return "I422";
+    case AOM_IMG_FMT_I444: return "I444";
+    case AOM_IMG_FMT_YV12: return "YV12";
+    case AOM_IMG_FMT_NV12: return "NV12";
+    case AOM_IMG_FMT_YV1216: return "YV1216";
+    case AOM_IMG_FMT_I42016: return "I42016";
+    case AOM_IMG_FMT_I42216: return "I42216";
+    case AOM_IMG_FMT_I44416: return "I44416";
+    default: return "Other";
+  }
 }
 
 int read_yuv_frame(struct AvxInputContext *input_ctx, aom_image_t *yuv_frame) {
@@ -127,8 +142,8 @@ int read_yuv_frame(struct AvxInputContext *input_ctx, aom_image_t *yuv_frame) {
 
 struct CodecInfo {
   // Pointer to a function of zero arguments that returns an aom_codec_iface_t.
-  aom_codec_iface_t *(*const interface)();
-  char *short_name;
+  aom_codec_iface_t *(*interface)(void);
+  const char *short_name;
   uint32_t fourcc;
 };
 
@@ -294,7 +309,7 @@ static void highbd_img_upshift(aom_image_t *dst, const aom_image_t *src,
     case AOM_IMG_FMT_I42016:
     case AOM_IMG_FMT_I42216:
     case AOM_IMG_FMT_I44416: break;
-    default: fatal("Unsupported image conversion"); break;
+    default: fatal("Unsupported image conversion");
   }
   for (plane = 0; plane < 3; plane++) {
     int w = src->d_w;
@@ -330,7 +345,7 @@ static void lowbd_img_upshift(aom_image_t *dst, const aom_image_t *src,
     case AOM_IMG_FMT_I420:
     case AOM_IMG_FMT_I422:
     case AOM_IMG_FMT_I444: break;
-    default: fatal("Unsupported image conversion"); break;
+    default: fatal("Unsupported image conversion");
   }
   for (plane = 0; plane < 3; plane++) {
     int w = src->d_w;
@@ -371,7 +386,7 @@ void aom_img_truncate_16_to_8(aom_image_t *dst, const aom_image_t *src) {
     case AOM_IMG_FMT_I420:
     case AOM_IMG_FMT_I422:
     case AOM_IMG_FMT_I444: break;
-    default: fatal("Unsupported image conversion"); break;
+    default: fatal("Unsupported image conversion");
   }
   for (plane = 0; plane < 3; plane++) {
     int w = src->d_w;
@@ -405,7 +420,7 @@ static void highbd_img_downshift(aom_image_t *dst, const aom_image_t *src,
     case AOM_IMG_FMT_I42016:
     case AOM_IMG_FMT_I42216:
     case AOM_IMG_FMT_I44416: break;
-    default: fatal("Unsupported image conversion"); break;
+    default: fatal("Unsupported image conversion");
   }
   for (plane = 0; plane < 3; plane++) {
     int w = src->d_w;
@@ -438,7 +453,7 @@ static void lowbd_img_downshift(aom_image_t *dst, const aom_image_t *src,
     case AOM_IMG_FMT_I420:
     case AOM_IMG_FMT_I422:
     case AOM_IMG_FMT_I444: break;
-    default: fatal("Unsupported image conversion"); break;
+    default: fatal("Unsupported image conversion");
   }
   for (plane = 0; plane < 3; plane++) {
     int w = src->d_w;

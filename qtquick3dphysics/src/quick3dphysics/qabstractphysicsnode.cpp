@@ -54,16 +54,40 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \qmlproperty int PhysicsNode::filterGroup
+    This property determines what filter group this body is part of.
+
+    Default value is \c 0.
+
+    Range: \c{[0, 32]}
+
+    \sa PhysicsNode::filterIgnoreGroups
+*/
+
+/*!
+    \qmlproperty int PhysicsNode::filterIgnoreGroups
+    This property determines what groups this body should filter out collisions with.
+
+    \note This number is interpreted as a bitmask, meaning that if bit \c i is set then collisions
+    with \l filterGroup number \c i will be filtered. For instance, to filter groups \c{1}, \c{3}
+    and \c{4} then set the value to \c{0b11010}.
+
+    \sa PhysicsNode::filterGroup
+*/
+
+/*!
     \qmlsignal PhysicsNode::bodyContact(PhysicsNode *body, list<vector3D> positions,
    list<vector3D> impulses, list<vector3D> normals)
 
-    This signal is emitted when there is a collision between a non-kinematic dynamic body and any
+    This signal is emitted when there is a collision between a dynamic body and any
     other body. The \l {PhysicsNode::} {receiveContactReports} in this body and \l {PhysicsNode::}
     {sendContactReports} in the colliding body need to be set to true. The parameters \a body, \a
     positions, \a impulses and \a normals contain the other body, position, impulse force and normal
     for each contact point at the same index.
 
     \sa CharacterController::shapeHit
+    \sa PhysicsWorld::reportKinematicKinematicCollisions
+    \sa PhysicsWorld::reportStaticKinematicCollisions
 */
 
 /*!
@@ -260,6 +284,34 @@ void QAbstractPhysicsNode::qmlClearShapes(QQmlListProperty<QAbstractCollisionSha
     for (auto shape : std::as_const(self->m_collisionShapes))
         shape->disconnect(self);
     self->m_collisionShapes.clear();
+}
+
+int QAbstractPhysicsNode::filterGroup() const
+{
+    return m_filterGroup;
+}
+
+void QAbstractPhysicsNode::setfilterGroup(int newfilterGroup)
+{
+    if (m_filterGroup == newfilterGroup)
+        return;
+    m_filterGroup = newfilterGroup;
+    m_filtersDirty = true;
+    emit filterGroupChanged();
+}
+
+int QAbstractPhysicsNode::filterIgnoreGroups() const
+{
+    return m_filterIgnoreGroups;
+}
+
+void QAbstractPhysicsNode::setFilterIgnoreGroups(int newFilterIgnoreGroups)
+{
+    if (m_filterIgnoreGroups == newFilterIgnoreGroups)
+        return;
+    m_filterIgnoreGroups = newFilterIgnoreGroups;
+    m_filtersDirty = true;
+    emit filterIgnoreGroupsChanged();
 }
 
 QT_END_NAMESPACE

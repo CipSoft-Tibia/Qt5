@@ -12,6 +12,8 @@
 #include <vector>
 
 #include "base/functional/callback.h"
+#include "base/memory/weak_ptr.h"
+#include "base/sequence_checker.h"
 #include "base/task/sequenced_task_runner.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
@@ -45,6 +47,7 @@
 #include "media/base/video_decoder.h"
 #include "media/base/video_decoder_config.h"
 #include "media/base/video_encoder.h"
+#include "media/base/video_encoder_metrics_provider.h"
 #include "media/base/video_frame.h"
 #include "media/base/video_renderer.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -206,6 +209,8 @@ class MockDemuxer : public Demuxer {
                base::TimeDelta,
                TrackChangeCB),
               (override));
+
+  MOCK_METHOD(void, SetPlaybackRate, (double), (override));
 };
 
 class MockDemuxerStream : public DemuxerStream {
@@ -350,7 +355,7 @@ class MockVideoEncoder : public VideoEncoder {
   MOCK_METHOD(void,
               Encode,
               (scoped_refptr<VideoFrame> frame,
-               bool key_frame,
+               const EncodeOptions& encode_options,
                EncoderStatusCB done_cb),
               (override));
 
@@ -501,7 +506,8 @@ class MockAudioRenderer : public AudioRenderer {
   MOCK_METHOD1(SetWasPlayedWithUserActivation, void(bool));
 };
 
-class MockRenderer : public Renderer {
+class MockRenderer : public Renderer,
+                     public base::SupportsWeakPtr<MockRenderer> {
  public:
   MockRenderer();
 
@@ -888,6 +894,38 @@ class MockMediaClient : public media::MediaClient {
                    media::AudioParameters audio_parameters));
 };
 
+class MockVideoEncoderMetricsProvider : public VideoEncoderMetricsProvider {
+ public:
+  MockVideoEncoderMetricsProvider();
+  ~MockVideoEncoderMetricsProvider() override;
+
+  void Initialize(VideoCodecProfile codec_profile,
+                  const gfx::Size& encode_size,
+                  bool is_hardware_encoder,
+                  SVCScalabilityMode svc_mode) override {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    MockInitialize(codec_profile, encode_size, is_hardware_encoder, svc_mode);
+  }
+  void IncrementEncodedFrameCount() override {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    MockIncrementEncodedFrameCount();
+  }
+  void SetError(const media::EncoderStatus& status) override {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    MockSetError(status);
+  }
+
+  MOCK_METHOD(
+      void,
+      MockInitialize,
+      (VideoCodecProfile, (const gfx::Size&), bool, SVCScalabilityMode));
+  MOCK_METHOD(void, MockIncrementEncodedFrameCount, ());
+  MOCK_METHOD(void, MockSetError, (const media::EncoderStatus&));
+  MOCK_METHOD(void, MockDestroy, ());
+
+ private:
+  SEQUENCE_CHECKER(sequence_checker_);
+};
 }  // namespace media
 
 #endif  // MEDIA_BASE_MOCK_FILTERS_H_

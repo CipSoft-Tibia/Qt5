@@ -50,6 +50,7 @@ qt_internal_add_module(DesignerComponentsPrivate
         ../propertyeditor/newdynamicpropertydialog.cpp ../propertyeditor/newdynamicpropertydialog.h
         ../propertyeditor/paletteeditor.cpp ../propertyeditor/paletteeditor.h
         ../propertyeditor/paletteeditorbutton.cpp ../propertyeditor/paletteeditorbutton.h
+        ../propertyeditor/pixmapeditor.cpp ../propertyeditor/pixmapeditor.h
         ../propertyeditor/previewframe.cpp ../propertyeditor/previewframe.h
         ../propertyeditor/previewwidget.cpp ../propertyeditor/previewwidget.h
         ../propertyeditor/propertyeditor.cpp ../propertyeditor/propertyeditor.h
@@ -96,6 +97,7 @@ qt_internal_add_module(DesignerComponentsPrivate
         qdesigner_components.cpp
     NO_UNITY_BUILD_SOURCES
         ../tabordereditor/tabordereditor.cpp # redefinition of 'QMetaTypeId<QList<QWidget *>>' (from qdesigner_resource.cpp)
+        ../formeditor/formwindow.cpp         # explicit specialization of 'QMetaTypeId<QWidget *>' after instantiation
     DEFINES
         QDESIGNER_COMPONENTS_LIBRARY
         QT_STATICPLUGIN

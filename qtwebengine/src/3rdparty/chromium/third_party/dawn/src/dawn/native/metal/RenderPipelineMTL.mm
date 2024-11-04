@@ -14,7 +14,9 @@
 
 #include "dawn/native/metal/RenderPipelineMTL.h"
 
+#include "dawn/native/Adapter.h"
 #include "dawn/native/CreatePipelineAsyncTask.h"
+#include "dawn/native/Instance.h"
 #include "dawn/native/VertexFormat.h"
 #include "dawn/native/metal/DeviceMTL.h"
 #include "dawn/native/metal/PipelineLayoutMTL.h"
@@ -159,6 +161,14 @@ MTLBlendFactor MetalBlendFactor(wgpu::BlendFactor factor, bool alpha) {
             return alpha ? MTLBlendFactorBlendAlpha : MTLBlendFactorBlendColor;
         case wgpu::BlendFactor::OneMinusConstant:
             return alpha ? MTLBlendFactorOneMinusBlendAlpha : MTLBlendFactorOneMinusBlendColor;
+        case wgpu::BlendFactor::Src1:
+            return MTLBlendFactorSource1Color;
+        case wgpu::BlendFactor::OneMinusSrc1:
+            return MTLBlendFactorOneMinusSource1Color;
+        case wgpu::BlendFactor::Src1Alpha:
+            return MTLBlendFactorSource1Alpha;
+        case wgpu::BlendFactor::OneMinusSrc1Alpha:
+            return MTLBlendFactorOneMinusSource1Alpha;
     }
 }
 
@@ -321,19 +331,32 @@ MaybeError RenderPipeline::Initialize() {
     mMtlPrimitiveTopology = MTLPrimitiveTopology(GetPrimitiveTopology());
     mMtlFrontFace = MTLFrontFace(GetFrontFace());
     mMtlCullMode = ToMTLCullMode(GetCullMode());
+    // Build a mapping of vertex buffer slots to packed indices
+    {
+        // Vertex buffers are placed after all the buffers for the bind groups.
+        uint32_t mtlVertexBufferIndex =
+            ToBackend(GetLayout())->GetBufferBindingCount(SingleShaderStage::Vertex);
+
+        for (VertexBufferSlot slot : IterateBitSet(GetVertexBufferSlotsUsed())) {
+            mMtlVertexBufferIndices[slot] = mtlVertexBufferIndex;
+            mtlVertexBufferIndex++;
+        }
+    }
+
     auto mtlDevice = ToBackend(GetDevice())->GetMTLDevice();
 
     NSRef<MTLRenderPipelineDescriptor> descriptorMTLRef =
         AcquireNSRef([MTLRenderPipelineDescriptor new]);
     MTLRenderPipelineDescriptor* descriptorMTL = descriptorMTLRef.Get();
 
-    // TODO(dawn:1384): MakeVertexDesc should be const in the future, so we don't need to call
-    // it here when vertex pulling is enabled
-    NSRef<MTLVertexDescriptor> vertexDesc = MakeVertexDesc();
+    NSRef<NSString> label = MakeDebugName(GetDevice(), "Dawn_RenderPipeline", GetLabel());
+    descriptorMTL.label = label.Get();
 
-    // Calling MakeVertexDesc first is important since it sets indices for packed bindings
+    NSRef<MTLVertexDescriptor> vertexDesc;
     if (GetDevice()->IsToggleEnabled(Toggle::MetalEnableVertexPulling)) {
         vertexDesc = AcquireNSRef([MTLVertexDescriptor new]);
+    } else {
+        vertexDesc = MakeVertexDesc();
     }
     descriptorMTL.vertexDescriptor = vertexDesc.Get();
 
@@ -447,12 +470,8 @@ wgpu::ShaderStage RenderPipeline::GetStagesRequiringStorageBufferLength() const 
     return mStagesRequiringStorageBufferLength;
 }
 
-NSRef<MTLVertexDescriptor> RenderPipeline::MakeVertexDesc() {
+NSRef<MTLVertexDescriptor> RenderPipeline::MakeVertexDesc() const {
     MTLVertexDescriptor* mtlVertexDescriptor = [MTLVertexDescriptor new];
-
-    // Vertex buffers are packed after all the buffers for the bind groups.
-    uint32_t mtlVertexBufferIndex =
-        ToBackend(GetLayout())->GetBufferBindingCount(SingleShaderStage::Vertex);
 
     for (VertexBufferSlot slot : IterateBitSet(GetVertexBufferSlotsUsed())) {
         const VertexBufferInfo& info = GetVertexBuffer(slot);
@@ -484,11 +503,8 @@ NSRef<MTLVertexDescriptor> RenderPipeline::MakeVertexDesc() {
             layoutDesc.stride = info.arrayStride;
         }
 
-        mtlVertexDescriptor.layouts[mtlVertexBufferIndex] = layoutDesc;
+        mtlVertexDescriptor.layouts[GetMtlVertexBufferIndex(slot)] = layoutDesc;
         [layoutDesc release];
-
-        mMtlVertexBufferIndices[slot] = mtlVertexBufferIndex;
-        mtlVertexBufferIndex++;
     }
 
     for (VertexAttributeLocation loc : IterateBitSet(GetAttributeLocationsUsed())) {
@@ -497,7 +513,7 @@ NSRef<MTLVertexDescriptor> RenderPipeline::MakeVertexDesc() {
         auto attribDesc = [MTLVertexAttributeDescriptor new];
         attribDesc.format = VertexFormatType(info.format);
         attribDesc.offset = info.offset;
-        attribDesc.bufferIndex = mMtlVertexBufferIndices[info.vertexBufferSlot];
+        attribDesc.bufferIndex = GetMtlVertexBufferIndex(info.vertexBufferSlot);
         mtlVertexDescriptor.attributes[static_cast<uint8_t>(loc)] = attribDesc;
         [attribDesc release];
     }
@@ -508,9 +524,17 @@ NSRef<MTLVertexDescriptor> RenderPipeline::MakeVertexDesc() {
 void RenderPipeline::InitializeAsync(Ref<RenderPipelineBase> renderPipeline,
                                      WGPUCreateRenderPipelineAsyncCallback callback,
                                      void* userdata) {
+    PhysicalDeviceBase* physicalDevice = renderPipeline->GetDevice()->GetPhysicalDevice();
     std::unique_ptr<CreateRenderPipelineAsyncTask> asyncTask =
         std::make_unique<CreateRenderPipelineAsyncTask>(std::move(renderPipeline), callback,
                                                         userdata);
+    // Workaround a crash where the validation layers on AMD crash with partition alloc.
+    // See crbug.com/dawn/1200.
+    if (physicalDevice->GetInstance()->IsBackendValidationEnabled() &&
+        gpu_info::IsAMD(physicalDevice->GetVendorId())) {
+        asyncTask->Run();
+        return;
+    }
     CreateRenderPipelineAsyncTask::RunAsync(std::move(asyncTask));
 }
 

@@ -13,7 +13,9 @@
 
 #include <xnnpack.h>
 #include <xnnpack/allocator.h>
+#include <xnnpack/config.h>
 #include <xnnpack/operator.h>
+#include <xnnpack/operator-type.h>
 #include <xnnpack/log.h>
 #include <xnnpack/common.h>
 #include <xnnpack/math.h>
@@ -26,8 +28,8 @@ static enum xnn_status create_resize_bilinear2d_nhwc(
     size_t input_pixel_stride,
     size_t output_pixel_stride,
     uint32_t flags,
-    uint32_t datatype_init_flags,
     enum xnn_operator_type operator_type,
+    const struct xnn_ibilinear_config* ibilinear_config,
     xnn_operator_t* resize_op_out)
 {
   xnn_operator_t resize_op = NULL;
@@ -35,14 +37,6 @@ static enum xnn_status create_resize_bilinear2d_nhwc(
 
   if ((xnn_params.init_flags & XNN_INIT_FLAG_XNNPACK) == 0) {
     xnn_log_error("failed to create %s operator: XNNPACK is not initialized",
-      xnn_operator_type_to_string(operator_type));
-    goto error;
-  }
-
-  status = xnn_status_unsupported_hardware;
-
-  if ((xnn_params.init_flags & datatype_init_flags) != datatype_init_flags) {
-    xnn_log_error("failed to create %s operator: operations on data type are not supported",
       xnn_operator_type_to_string(operator_type));
     goto error;
   }
@@ -88,6 +82,7 @@ static enum xnn_status create_resize_bilinear2d_nhwc(
 
   resize_op->type = operator_type;
   resize_op->flags = flags;
+  resize_op->ibilinear_config = ibilinear_config;
 
   resize_op->state = xnn_run_state_invalid;
 
@@ -106,13 +101,20 @@ enum xnn_status xnn_create_resize_bilinear2d_nhwc_f16(
     uint32_t flags,
     xnn_operator_t* resize_op_out)
 {
+  const struct xnn_ibilinear_config* ibilinear_config = xnn_init_f16_ibilinear_config();
+  if (ibilinear_config == NULL) {
+    xnn_log_error("failed to create %s operator: unsupported hardware configuration",
+                  xnn_operator_type_to_string(xnn_operator_type_resize_bilinear_nhwc_f16));
+    return xnn_status_unsupported_hardware;
+  }
+
   return create_resize_bilinear2d_nhwc(
     channels,
     input_pixel_stride,
     output_pixel_stride,
     flags,
-    XNN_INIT_FLAG_F16,
     xnn_operator_type_resize_bilinear_nhwc_f16,
+    ibilinear_config,
     resize_op_out);
 }
 
@@ -123,13 +125,20 @@ enum xnn_status xnn_create_resize_bilinear2d_nhwc_f32(
     uint32_t flags,
     xnn_operator_t* resize_op_out)
 {
+  const struct xnn_ibilinear_config* ibilinear_config = xnn_init_f32_ibilinear_config();
+  if (ibilinear_config == NULL) {
+    xnn_log_error("failed to create %s operator: unsupported hardware configuration",
+                  xnn_operator_type_to_string(xnn_operator_type_resize_bilinear_nhwc_f32));
+    return xnn_status_unsupported_hardware;
+  }
+
   return create_resize_bilinear2d_nhwc(
     channels,
     input_pixel_stride,
     output_pixel_stride,
     flags,
-    XNN_INIT_FLAG_F32,
     xnn_operator_type_resize_bilinear_nhwc_f32,
+    ibilinear_config,
     resize_op_out);
 }
 
@@ -140,13 +149,16 @@ enum xnn_status xnn_create_resize_bilinear2d_nhwc_s8(
     uint32_t flags,
     xnn_operator_t* resize_op_out)
 {
+  const struct xnn_ibilinear_config* ibilinear_config = xnn_init_s8_ibilinear_config();
+  assert(ibilinear_config != NULL);
+
   return create_resize_bilinear2d_nhwc(
     channels,
     input_pixel_stride,
     output_pixel_stride,
     flags,
-    XNN_INIT_FLAG_S8,
     xnn_operator_type_resize_bilinear_nhwc_s8,
+    ibilinear_config,
     resize_op_out);
 }
 
@@ -157,13 +169,16 @@ enum xnn_status xnn_create_resize_bilinear2d_nhwc_u8(
     uint32_t flags,
     xnn_operator_t* resize_op_out)
 {
+  const struct xnn_ibilinear_config* ibilinear_config = xnn_init_u8_ibilinear_config();
+  assert(ibilinear_config != NULL);
+
   return create_resize_bilinear2d_nhwc(
     channels,
     input_pixel_stride,
     output_pixel_stride,
     flags,
-    XNN_INIT_FLAG_U8,
     xnn_operator_type_resize_bilinear_nhwc_u8,
+    ibilinear_config,
     resize_op_out);
 }
 
@@ -177,10 +192,9 @@ static enum xnn_status setup_resize_bilinear2d_nhwc(
     size_t output_width,
     const void* input,
     void* output,
-    uint32_t log2_element_size,
+    uint32_t log2_data_element_size,
     uint32_t log2_weight_element_size,
     xnn_indirection_init_resize_bilinear2d_hwc_fn indirection_init,
-    const struct ibilinear_parameters ibilinear[XNN_MIN_ELEMENTS(1)],
     size_t num_threads)
 {
   if (resize_op->type != expected_operator_type) {
@@ -256,7 +270,7 @@ static enum xnn_status setup_resize_bilinear2d_nhwc(
     }
   }
 
-  const size_t input_pixel_stride_in_bytes = resize_op->input_pixel_stride << log2_element_size;
+  const size_t input_pixel_stride_in_bytes = resize_op->input_pixel_stride << log2_data_element_size;
   if (input_height != resize_op->last_input_height ||
       input_width != resize_op->last_input_width ||
       output_height != resize_op->last_output_height ||
@@ -278,11 +292,12 @@ static enum xnn_status setup_resize_bilinear2d_nhwc(
     resize_op->last_output_width = output_width;
   }
 
-  const size_t output_pixel_stride_in_bytes = resize_op->output_pixel_stride << log2_element_size;
+  const struct xnn_ibilinear_config* ibilinear = resize_op->ibilinear_config;
+  const size_t output_pixel_stride_in_bytes = resize_op->output_pixel_stride << log2_data_element_size;
   // Resize bilinear packed weights can change when the operator is resized, we will not use weights cache.
   assert(resize_op->weights_cache == NULL);
   resize_op->context.resize_bilinear = (struct resize_bilinear_context) {
-    .scaled_channels = resize_op->channels << log2_element_size,
+    .scaled_channels = resize_op->channels << log2_data_element_size,
     .indirect_input = resize_op->indirection_buffer,
     .input_offset = (size_t) ((uintptr_t) input - (uintptr_t) resize_op->last_input),
     .input_batch_stride = input_pixel_stride_in_bytes * input_height * input_width,
@@ -310,11 +325,11 @@ static enum xnn_status setup_resize_bilinear2d_nhwc(
       }
     }
   #endif
-  resize_op->compute.type = xnn_parallelization_type_2d_tile_1d;
-  resize_op->compute.task_2d_tile_1d = (pthreadpool_task_2d_tile_1d_t) xnn_compute_resize_bilinear;
-  resize_op->compute.range[0] = batch_size;
-  resize_op->compute.range[1] = output_size;
-  resize_op->compute.tile[0] = output_size_tile;
+  resize_op->compute[0].type = xnn_parallelization_type_2d_tile_1d;
+  resize_op->compute[0].task_2d_tile_1d = (pthreadpool_task_2d_tile_1d_t) xnn_compute_resize_bilinear;
+  resize_op->compute[0].range[0] = batch_size;
+  resize_op->compute[0].range[1] = output_size;
+  resize_op->compute[0].tile[0] = output_size_tile;
   resize_op->state = xnn_run_state_ready;
 
   return xnn_status_success;
@@ -341,10 +356,9 @@ enum xnn_status xnn_setup_resize_bilinear2d_nhwc_f16(
     output_width,
     input,
     output,
-    1 /* log2(element size) == log2(sizeof(uint16_t)) */,
-    1 /* log2(weight element size) == log2(sizeof(uint16_t)) */,
+    /*log2_data_element_size=*/XNN_LOG2_SIZEOF_HALF,
+    /*log2_weight_element_size=*/XNN_LOG2_SIZEOF_HALF,
     (xnn_indirection_init_resize_bilinear2d_hwc_fn) xnn_indirection_init_resize_bilinear2d_hwc_f16,
-    &xnn_params.f16.ibilinear,
     pthreadpool_get_threads_count(threadpool));
 }
 
@@ -369,10 +383,9 @@ enum xnn_status xnn_setup_resize_bilinear2d_nhwc_f32(
     output_width,
     input,
     output,
-    2 /* log2(element size) == log2(sizeof(float)) */,
-    2 /* log2(weight element size) == log2(sizeof(float)) */,
+    /*log2_data_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    /*log2_weight_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
     (xnn_indirection_init_resize_bilinear2d_hwc_fn) xnn_indirection_init_resize_bilinear2d_hwc_f32,
-    &xnn_params.f32.ibilinear,
     pthreadpool_get_threads_count(threadpool));
 }
 
@@ -397,10 +410,9 @@ enum xnn_status xnn_setup_resize_bilinear2d_nhwc_s8(
     output_width,
     input,
     output,
-    0 /* log2(element size) == log2(sizeof(int8_t)) */,
-    1 /* log2(weight element size) == log2(sizeof(int16_t)) */,
+    /*log2_data_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
+    /*log2_weight_element_size=*/XNN_LOG2_SIZEOF_INT16_T,
     (xnn_indirection_init_resize_bilinear2d_hwc_fn) xnn_indirection_init_resize_bilinear2d_hwc_q11,
-    &xnn_params.s8.ibilinear,
     pthreadpool_get_threads_count(threadpool));
 }
 
@@ -425,9 +437,8 @@ enum xnn_status xnn_setup_resize_bilinear2d_nhwc_u8(
     output_width,
     input,
     output,
-    0 /* log2(element size) == log2(sizeof(uint8_t)) */,
-    1 /* log2(weight element size) == log2(sizeof(int16_t)) */,
+    /*log2_data_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
+    /*log2_weight_element_size=*/XNN_LOG2_SIZEOF_INT16_T,
     (xnn_indirection_init_resize_bilinear2d_hwc_fn) xnn_indirection_init_resize_bilinear2d_hwc_q11,
-    &xnn_params.u8.ibilinear,
     pthreadpool_get_threads_count(threadpool));
 }

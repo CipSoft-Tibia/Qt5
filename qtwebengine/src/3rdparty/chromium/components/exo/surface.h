@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "base/time/time.h"
@@ -83,6 +84,10 @@ extern const ui::ClassProperty<std::string*>* const kClientSurfaceIdKey;
 // A property key to store the window session Id set by client or full_restore
 // component.
 extern const ui::ClassProperty<int32_t>* const kWindowSessionId;
+
+// A property key containing a boolean set to true if a surface augmenter is
+// associated with with surface object.
+extern const ui::ClassProperty<bool>* const kSurfaceHasAugmentedSurfaceKey;
 
 // This class represents a rectangular area that is displayed on the screen.
 // It has a location, size and pixel contents.
@@ -183,11 +188,18 @@ class Surface final : public ui::PropertyHandler {
   void PlaceSubSurfaceBelow(Surface* sub_surface, Surface* sibling);
   void OnSubSurfaceCommit();
 
-  void SetRoundedCorners(const gfx::RRectF& rounded_corners_bounds);
+  // `is_root_coordinates` specifies whether `rounded_corners_bounds` is on its
+  // root surface coordinates or on the local surface coordinates.
+  void SetRoundedCorners(const gfx::RRectF& rounded_corners_bounds,
+                         bool is_root_coordinates);
   void SetOverlayPriorityHint(OverlayPriority hint);
 
   // Sets the surface's clip rectangle.
   void SetClipRect(const absl::optional<gfx::RectF>& clip_rect);
+
+  // Sets the surface's clip rectangle on parent surface coordinates.
+  // TODO(crbug.com/1457446): Remove this.
+  void SetClipRectOnParentSurface(const absl::optional<gfx::RectF>& clip_rect);
 
   // Sets the surface's transformation matrix.
   void SetSurfaceTransform(const gfx::Transform& transform);
@@ -195,6 +207,9 @@ class Surface final : public ui::PropertyHandler {
   // Sets the background color that shall be associated with the next buffer
   // commit.
   void SetBackgroundColor(absl::optional<SkColor4f> background_color);
+
+  // Sets that this surface uses trusted damage.
+  void SetTrustedDamage(bool trusted_damage);
 
   // This sets the surface viewport for scaling.
   void SetViewport(const gfx::SizeF& viewport);
@@ -278,6 +293,8 @@ class Surface final : public ui::PropertyHandler {
   void SetAcquireFence(std::unique_ptr<gfx::GpuFence> gpu_fence);
   // Returns whether the surface has an uncommitted acquire fence.
   bool HasPendingAcquireFence() const;
+  // Returns whether the surface has a committed acquire fence.
+  bool HasAcquireFence() const;
 
   // Request a callback when the buffer attached at the next commit is
   // no longer used by that commit.
@@ -307,9 +324,9 @@ class Surface final : public ui::PropertyHandler {
   // This will append contents for surface and its descendants to frame.
   void AppendSurfaceHierarchyContentsToFrame(
       const gfx::PointF& origin,
-      float device_scale_factor,
-      bool client_submits_in_pixel_coords,
+      bool needs_full_damage,
       FrameSinkResourceManager* resource_manager,
+      absl::optional<float> device_scale_factor,
       viz::CompositorFrame* frame);
 
   // Returns true if surface is in synchronized mode.
@@ -332,6 +349,9 @@ class Surface final : public ui::PropertyHandler {
 
   // Returns true if surface has been assigned a surface delegate.
   bool HasSurfaceDelegate() const;
+
+  // Returns a pointer to the SurfaceDelegate for this surface, used by tests.
+  SurfaceDelegate* GetDelegateForTesting();
 
   // Surface does not own observers. It is the responsibility of the observer
   // to remove itself when it is done observing.
@@ -371,11 +391,17 @@ class Surface final : public ui::PropertyHandler {
     return pending_state_.damage.Contains(damage);
   }
 
+  bool HasLeaveEnterCallbackForTesting() const {
+    return !leave_enter_callback_.is_null();
+  }
+
   // Set occlusion tracking region for surface.
   void SetOcclusionTracking(bool tracking);
 
   // Triggers sending an occlusion update to observers.
-  void OnWindowOcclusionChanged();
+  void OnWindowOcclusionChanged(
+      aura::Window::OcclusionState old_occlusion_state,
+      aura::Window::OcclusionState new_occlusion_state);
 
   // Triggers sending a locking status to observers.
   // true : lock a frame to normal or restore state
@@ -449,6 +475,26 @@ class Surface final : public ui::PropertyHandler {
   // Returns the SecurityDelegate associated with this surface, or nullptr
   // if one can not be determined. See go/secure-exo-ids for more details.
   SecurityDelegate* GetSecurityDelegate();
+
+  // Sets the accessibility window ID sent from the shell client to the window.
+  // A negative number removes it.
+  void SetClientAccessibilityId(int id);
+
+  // Set top inset for surface.
+  void SetTopInset(int height);
+
+  // Inform observers and subsurfaces about new fullscreen state
+  void OnFullscreenStateChanged(bool fullscreen);
+
+  OverlayPriority GetOverlayPriorityHint() {
+    return state_.overlay_priority_hint;
+  }
+
+  // Returns the buffer scale of the last committed buffer.
+  float GetBufferScale() const { return state_.basic_state.buffer_scale; }
+
+  // Returns the last committed buffer.
+  Buffer* GetBuffer();
 
  private:
   struct State {
@@ -527,6 +573,13 @@ class Surface final : public ui::PropertyHandler {
     // The rounded corners bounds for the surface.
     // Persisted between commits.
     gfx::RRectF rounded_corners_bounds;
+    // True if `rounded_corners_bounds` is on root surface coordinate space.
+    // `rounded_corners_bounds` should be on local surface coordinates, but the
+    // outdated implementation was on root surface coordinate space. This flag
+    // is to support the fallback implementation.
+    // Persisted between commits.
+    // TODO(crbug.com/1470955): Remove this.
+    bool rounded_corners_is_root_coordinates = false;
     // The damage region to schedule paint for.
     // Not persisted between commits.
     cc::Region damage;
@@ -550,10 +603,17 @@ class Surface final : public ui::PropertyHandler {
     // The hint for overlay prioritization
     // Persisted between commits.
     OverlayPriority overlay_priority_hint = OverlayPriority::REGULAR;
-    // The clip rect for this surface, in the parent's coordinate space. This
+    // The clip rect for this surface, in the local coordinate space. This
     // should only be set for subsurfaces.
     // Persisted between commits.
     absl::optional<gfx::RectF> clip_rect;
+    // True if `clip_rect` is on parent coordinate space. `clip_rect` should be
+    // on local surface coordinates, but the outdated implementation was on
+    // parent coordinate space. This flag is to support the fallback
+    // implementation.
+    // Persisted between commits.
+    // TODO(crbug.com/1457446): Remove this.
+    bool clip_rect_is_parent_coordinates = false;
     // The transform to apply when drawing this surface. This should only be set
     // for subsurfaces, and doesn't apply to children of this surface.
     // Persisted between commits.
@@ -571,11 +631,14 @@ class Surface final : public ui::PropertyHandler {
   // Updates buffer_transform_ to match the current buffer parameters.
   void UpdateBufferTransform(bool y_invert);
 
+  // Update state_.overlay_priority_hint and notify observers
+  void UpdateOverlayPriorityHint(OverlayPriority overlay_priority_hint);
+
   // Puts the current surface into a draw quad, and appends the draw quads into
   // the |frame|.
   void AppendContentsToFrame(const gfx::PointF& origin,
-                             float device_scale_factor,
-                             bool client_submits_in_pixel_coords,
+                             bool needs_full_damage,
+                             absl::optional<float> device_scale_factor,
                              viz::CompositorFrame* frame);
 
   // Update surface content size base on current buffer size.
@@ -591,6 +654,9 @@ class Surface final : public ui::PropertyHandler {
 
   // This true, if sub_surfaces_ has changes (order, position, etc).
   bool sub_surfaces_changed_ = false;
+
+  // This is true if damage reported by the client should be trusted.
+  bool trusted_damage_ = false;
 
   // This is the size of the last committed contents.
   gfx::SizeF content_size_;
@@ -647,7 +713,7 @@ class Surface final : public ui::PropertyHandler {
   // This can be set to have some functions delegated. E.g. ShellSurface class
   // can set this to handle Commit() and apply any double buffered state it
   // maintains.
-  SurfaceDelegate* delegate_ = nullptr;
+  raw_ptr<SurfaceDelegate, ExperimentalAsh> delegate_ = nullptr;
 
   // Surface observer list. Surface does not own the observers.
   base::ObserverList<SurfaceObserver, true>::Unchecked observers_;
@@ -679,8 +745,8 @@ class ScopedSurface {
   Surface* get() { return surface_; }
 
  private:
-  Surface* const surface_;
-  SurfaceObserver* const observer_;
+  const raw_ptr<Surface, ExperimentalAsh> surface_;
+  const raw_ptr<SurfaceObserver, ExperimentalAsh> observer_;
 };
 
 }  // namespace exo

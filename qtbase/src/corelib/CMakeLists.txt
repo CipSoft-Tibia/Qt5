@@ -33,9 +33,6 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/QtInstallPaths.cmake.in"
 ## Core Module:
 #####################################################################
 
-set(core_version_tagging_files
-    global/qversiontagging.cpp
-    global/qversiontagging.h)
 qt_internal_add_module(Core
     QMAKE_MODULE_CONFIG moc resources
     NO_GENERATE_METATYPES # metatypes are extracted manually below
@@ -51,7 +48,8 @@ qt_internal_add_module(Core
         global/archdetect.cpp
         global/qassert.cpp global/qassert.h
         global/qcompare_impl.h
-        global/qcompare.h
+        global/qcompare.cpp global/qcompare.h
+        global/qcomparehelpers.h
         global/qcompilerdetection.h
         global/qconstructormacros.h
         global/qcontainerinfo.h
@@ -89,20 +87,22 @@ qt_internal_add_module(Core
         global/qtpreprocessorsupport.h
         global/qtrace_p.h
         global/qtresource.h
+        global/qtsymbolmacros.h
         global/qttranslation.h
         global/qttypetraits.h
         global/qtversionchecks.h
         global/qtversion.h
         global/qtypeinfo.h
         global/qtypes.cpp global/qtypes.h
-        ${core_version_tagging_files}
         global/qvolatile_p.h
         global/q20algorithm.h
         global/q20chrono.h
         global/q20functional.h
         global/q20iterator.h
+        global/q20map.h
         global/q20memory.h
         global/q20type_traits.h
+        global/q20vector.h
         global/q23functional.h
         global/q23utility.cpp # remove once we have a user that tests this
         global/q23utility.h
@@ -155,7 +155,7 @@ qt_internal_add_module(Core
         kernel/qcoreapplication.cpp kernel/qcoreapplication.h kernel/qcoreapplication_p.h
         kernel/qcoreapplication_platform.h
         kernel/qcorecmdlineargs_p.h
-        kernel/qcoreevent.cpp kernel/qcoreevent.h
+        kernel/qcoreevent.cpp kernel/qcoreevent.h kernel/qcoreevent_p.h
         kernel/qdeadlinetimer.cpp kernel/qdeadlinetimer.h
         kernel/qelapsedtimer.cpp kernel/qelapsedtimer.h
         kernel/qeventloop.cpp kernel/qeventloop.h kernel/qeventloop_p.h
@@ -182,6 +182,7 @@ qt_internal_add_module(Core
         kernel/qsocketnotifier.cpp kernel/qsocketnotifier.h
         kernel/qsystemerror.cpp kernel/qsystemerror_p.h
         kernel/qtestsupport_core.cpp kernel/qtestsupport_core.h
+        kernel/qsingleshottimer_p.h
         kernel/qtimer.cpp kernel/qtimer.h kernel/qtimer_p.h
         kernel/qtranslator.cpp kernel/qtranslator.h kernel/qtranslator_p.h
         kernel/qvariant.cpp kernel/qvariant.h kernel/qvariant_p.h
@@ -208,7 +209,7 @@ qt_internal_add_module(Core
         serialization/qjsonwriter.cpp serialization/qjsonwriter_p.h
         serialization/qtextstream.cpp serialization/qtextstream.h serialization/qtextstream_p.h
         serialization/qxmlutils.cpp serialization/qxmlutils_p.h
-        text/qanystringview.h
+        text/qanystringview.cpp text/qanystringview.h
         text/qbytearray.cpp text/qbytearray.h text/qbytearray_p.h
         text/qbytearrayalgorithms.h
         text/qbytearraylist.cpp text/qbytearraylist.h
@@ -223,6 +224,7 @@ qt_internal_add_module(Core
         text/qlocale.cpp text/qlocale.h text/qlocale_p.h
         text/qlocale_data_p.h
         text/qlocale_tools.cpp text/qlocale_tools_p.h
+        text/qstaticlatin1stringmatcher.h
         text/qstring.cpp text/qstring.h
         text/qstringalgorithms.h text/qstringalgorithms_p.h
         text/qstringbuilder.cpp text/qstringbuilder.h
@@ -253,6 +255,7 @@ qt_internal_add_module(Core
         thread/qthreadstorage.h
         thread/qtsan_impl.h
         thread/qwaitcondition.h thread/qwaitcondition_p.h
+        thread/qyieldcpu.h
         time/qcalendar.cpp time/qcalendar.h
         time/qcalendarbackend_p.h
         time/qcalendarmath_p.h
@@ -268,7 +271,7 @@ qt_internal_add_module(Core
         tools/qarraydata.cpp tools/qarraydata.h
         tools/qarraydataops.h
         tools/qarraydatapointer.h
-        tools/qatomicscopedvaluerollback_p.h
+        tools/qatomicscopedvaluerollback.h
         tools/qbitarray.cpp tools/qbitarray.h
         tools/qcache.h
         tools/qcontainerfwd.h
@@ -278,7 +281,7 @@ qt_internal_add_module(Core
         tools/qduplicatetracker_p.h
         tools/qflatmap_p.h
         tools/qfreelist.cpp tools/qfreelist_p.h
-        tools/qfunctionaltools_impl.h
+        tools/qfunctionaltools_impl.cpp tools/qfunctionaltools_impl.h
         tools/qhashfunctions.h
         tools/qiterator.h
         tools/qline.cpp tools/qline.h
@@ -303,6 +306,7 @@ qt_internal_add_module(Core
         tools/qsharedpointer.cpp tools/qsharedpointer.h
         tools/qsharedpointer_impl.h
         tools/qsize.cpp tools/qsize.h
+        tools/qspan.h
         tools/qspan_p.h
         tools/qstack.h
         tools/qtaggedpointer.h
@@ -327,7 +331,9 @@ qt_internal_add_module(Core
         compat/removed_api.cpp
         global/qsimd.cpp
     DEFINES
+        QT_NO_CONTEXTLESS_CONNECT
         QT_NO_FOREACH
+        QT_NO_QPAIR
         QT_NO_USING_NAMESPACE
         QT_TYPESAFE_FLAGS
     INCLUDE_DIRECTORIES
@@ -343,13 +349,15 @@ qt_internal_add_module(Core
     PUBLIC_LIBRARIES
         Qt::Platform
     EXTRA_CMAKE_FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/Qt6CTestMacros.cmake"
-    "${CMAKE_CURRENT_SOURCE_DIR}/Qt6CoreConfigureFileTemplate.in"
-    "${CMAKE_CURRENT_SOURCE_DIR}/Qt6CoreDeploySupport.cmake"
-    "${config_build_dir}/QtInstallPaths.cmake"
-    ${corelib_extra_cmake_files}
+        "${CMAKE_CURRENT_SOURCE_DIR}/Qt6CTestMacros.cmake"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Qt6CoreConfigureFileTemplate.in"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Qt6CoreResourceInit.in.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Qt6CoreDeploySupport.cmake"
+        "${config_build_dir}/QtInstallPaths.cmake"
+        ${corelib_extra_cmake_files}
     POLICIES
         QTP0002
+        QTP0003
 )
 _qt_internal_setup_deploy_support()
 
@@ -451,8 +459,26 @@ if(ANDROID)
     )
 endif()
 
-## Scopes:
-#####################################################################
+# Add version tagging source files if the linker has version script support
+# or the platform supports it.
+set(core_version_tagging_files
+    global/qversiontagging.cpp
+    global/qversiontagging.h)
+qt_internal_extend_target(Core
+    CONDITION TEST_ld_version_script OR APPLE OR WIN32
+    SOURCES ${core_version_tagging_files}
+)
+
+
+if(GCC)
+    # Disable LTO, as the symbols disappear somehow under GCC
+    # (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=48200)
+    # The issue should be fixed in GCC >= 10
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 10)
+        set_source_files_properties(${core_version_tagging_files}
+            PROPERTIES COMPILE_OPTIONS "-fno-lto")
+    endif()
+endif()
 
 qt_internal_extend_target(Core
     CONDITION ( TEST_architecture_arch STREQUAL i386 ) OR
@@ -497,6 +523,7 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_animation
 # from the wrong DLL at runtime and crash!
 qt_internal_extend_target(Core CONDITION QT_FEATURE_thread AND WIN32
     SOURCES
+        thread/qfutex_win_p.h
         thread/qwaitcondition_win.cpp
     LIBRARIES
         synchronization
@@ -635,13 +662,6 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_journald
         PkgConfig::Libsystemd
 )
 
-# Disable LTO, as the symbols disappear somehow under GCC
-# (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=48200)
-if(GCC)
-    set_source_files_properties(${core_version_tagging_files}
-                                PROPERTIES COMPILE_OPTIONS "-fno-lto")
-endif()
-
 qt_internal_extend_target(Core CONDITION UNIX
     SOURCES
         io/qfilesystemengine_unix.cpp
@@ -649,10 +669,14 @@ qt_internal_extend_target(Core CONDITION UNIX
         io/qfsfileengine_unix.cpp
         io/qlockfile_unix.cpp
         kernel/qcore_unix.cpp kernel/qcore_unix_p.h
-        kernel/qeventdispatcher_unix.cpp kernel/qeventdispatcher_unix_p.h
         kernel/qpoll_p.h
         kernel/qtimerinfo_unix.cpp kernel/qtimerinfo_unix_p.h
         thread/qthread_unix.cpp
+)
+
+qt_internal_extend_target(Core CONDITION UNIX AND NOT WASM
+    SOURCES
+        kernel/qeventdispatcher_unix.cpp kernel/qeventdispatcher_unix_p.h
 )
 
 qt_internal_extend_target(Core CONDITION QT_FEATURE_thread
@@ -673,12 +697,23 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_thread AND UNIX
 
 qt_internal_extend_target(Core CONDITION APPLE AND QT_FEATURE_thread
     SOURCES
+        thread/qfutex_mac_p.h
         thread/qmutex_mac.cpp
 )
 
 qt_internal_extend_target(Core CONDITION QT_FEATURE_thread AND UNIX AND NOT APPLE AND NOT LINUX
     SOURCES
         thread/qmutex_unix.cpp
+)
+
+qt_internal_extend_target(Core CONDITION QT_FEATURE_thread AND FREEBSD
+    SOURCES
+        thread/qfutex_freebsd_p.h
+)
+
+qt_internal_extend_target(Core CONDITION QT_FEATURE_thread AND LINUX
+    SOURCES
+        thread/qfutex_linux_p.h
 )
 
 qt_internal_extend_target(Core CONDITION QT_FEATURE_future
@@ -769,7 +804,7 @@ qt_internal_extend_target(Core CONDITION APPLE
         text/qlocale_mac.mm
 )
 
-qt_internal_extend_target(Core CONDITION UNIX AND NOT APPLE
+qt_internal_extend_target(Core CONDITION UNIX AND NOT APPLE AND NOT WASM
     SOURCES
         text/qlocale_unix.cpp
 )
@@ -779,8 +814,13 @@ qt_internal_extend_target(Core CONDITION WIN32
         text/qlocale_win.cpp
 )
 
+qt_internal_extend_target(Core CONDITION WASM
+    SOURCES
+        text/qlocale_wasm.cpp
+)
+
 # On MS-Win, clang has two flavors, one of which immitates MSVC (so claims to be it)
-qt_internal_extend_target(Core CONDITION WIN32 AND MSVC AND NOT CLANG
+qt_internal_extend_target(Core CONDITION MSVC
     LIBRARIES
         runtimeobject
 )
@@ -952,7 +992,7 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_filesystemiterator AND WIN32
 qt_internal_extend_target(Core CONDITION QT_FEATURE_process AND UNIX
     SOURCES
         ../3rdparty/forkfd/forkfd.h
-        io/forkfd_qt.cpp
+        io/forkfd_qt.c
     INCLUDE_DIRECTORIES
         ../3rdparty/forkfd
 )
@@ -970,8 +1010,9 @@ qt_internal_extend_target(Core CONDITION APPLE AND NOT MACOS
 qt_internal_extend_target(Core CONDITION ANDROID
     SOURCES
         io/qstandardpaths_android.cpp
-        io/qstorageinfo_unix.cpp
-        kernel/qjnitypes.h
+        io/qstorageinfo_linux.cpp io/qstorageinfo_linux_p.h
+        kernel/qjniarray.h
+        kernel/qjnitypes.h kernel/qjnitypes_impl.h
         kernel/qjnienvironment.cpp kernel/qjnienvironment.h
         kernel/qjniobject.cpp kernel/qjniobject.h
         kernel/qjnihelpers.cpp kernel/qjnihelpers_p.h
@@ -985,7 +1026,7 @@ qt_internal_extend_target(Core CONDITION ANDROID
         # place to put them.
 )
 
-qt_internal_extend_target(Core CONDITION WIN32
+qt_internal_extend_target(Core CONDITION QT_FEATURE_cpp_winrt
     SOURCES
         platform/windows/qfactorycacheregistration_p.h
         platform/windows/qfactorycacheregistration.cpp
@@ -1000,10 +1041,17 @@ qt_internal_extend_target(Core CONDITION HAIKU AND NOT ANDROID
         be
 )
 
-qt_internal_extend_target(Core CONDITION UNIX AND NOT APPLE AND NOT HAIKU AND NOT ANDROID
+qt_internal_extend_target(Core
+    CONDITION UNIX AND NOT LINUX AND NOT APPLE AND NOT HAIKU AND NOT ANDROID AND NOT VXWORKS
     SOURCES
         io/qstandardpaths_unix.cpp
         io/qstorageinfo_unix.cpp
+)
+
+qt_internal_extend_target(Core CONDITION LINUX AND NOT ANDROID AND NOT VXWORKS
+    SOURCES
+        io/qstandardpaths_unix.cpp
+        io/qstorageinfo_linux.cpp
 )
 
 qt_internal_extend_target(Core CONDITION QT_FEATURE_itemmodel
@@ -1117,7 +1165,10 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_sysv_sem
 
 qt_internal_extend_target(Core CONDITION VXWORKS
     SOURCES
-        kernel/qfunctions_vxworks.cpp kernel/qfunctions_vxworks.h
+        io/qstandardpaths_unix.cpp
+        io/qstorageinfo_stub.cpp
+        kernel/qfunctions_vxworks.cpp
+        kernel/qfunctions_vxworks.h
 )
 
 qt_internal_extend_target(Core CONDITION QT_FEATURE_cborstreamreader
@@ -1300,7 +1351,7 @@ qt_internal_extend_target(Core CONDITION WASM
         kernel/qeventdispatcher_wasm.cpp kernel/qeventdispatcher_wasm_p.h
 )
 
-qt_internal_extend_target(Core CONDITION QT_FEATURE_ctf AND QT_FEATURE_library
+qt_internal_extend_target(Core CONDITION QT_FEATURE_ctf
     SOURCES
         tracing/qctf_p.h tracing/qctf.cpp
     PLUGIN_TYPES

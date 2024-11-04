@@ -30,6 +30,7 @@
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/page.h"
 #include "content/public/browser/page_navigator.h"
+#include "content/public/browser/preloading.h"
 #include "content/public/browser/prerender_handle.h"
 #include "content/public/browser/prerender_trigger_type.h"
 #include "content/public/browser/save_page_type.h"
@@ -46,6 +47,8 @@
 #include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/accessibility/ax_mode.h"
+#include "ui/base/cursor/mojom/cursor_type.mojom-shared.h"
+#include "ui/color/color_provider_key.h"
 #include "ui/display/types/display_constants.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
@@ -182,8 +185,8 @@ class WebContents : public PageNavigator,
     raw_ptr<BrowserPluginGuestDelegate> guest_delegate = nullptr;
 
     // Used to specify the location context which display the new view should
-    // belong. This can be nullptr if not needed.
-    gfx::NativeView context = nullptr;
+    // belong. This can be unset if not needed.
+    gfx::NativeView context = gfx::NativeView();
 
     // Used to specify that the new WebContents creation is driven by the
     // renderer process. In this case, the renderer-side objects, such as
@@ -392,6 +395,7 @@ class WebContents : public PageNavigator,
   // non-null except during WebContents destruction. This WebContents may
   // have additional main frames for prerendered pages, bfcached pages, etc.
   // See docs/frame_trees.md for more details.
+  virtual const RenderFrameHost* GetPrimaryMainFrame() const = 0;
   virtual RenderFrameHost* GetPrimaryMainFrame() = 0;
 
   // Returns the current page in the primary frame tree of this WebContents.
@@ -485,7 +489,6 @@ class WebContents : public PageNavigator,
       base::OnceCallback<void(const ui::AXTreeUpdate&)>;
   virtual void RequestAXTreeSnapshot(AXTreeSnapshotCallback callback,
                                      ui::AXMode ax_mode,
-                                     bool exclude_offscreen,
                                      size_t max_nodes,
                                      base::TimeDelta timeout) = 0;
 
@@ -524,6 +527,9 @@ class WebContents : public PageNavigator,
   // always return a valid ColorProvider instance.
   virtual const ui::ColorProvider& GetColorProvider() const = 0;
 
+  // Gets the color mode for the ColorProvider associated with this WebContents.
+  virtual ui::ColorProviderKey::ColorMode GetColorMode() const = 0;
+
   // Returns the committed WebUI if one exists.
   virtual WebUI* GetWebUI() = 0;
 
@@ -549,6 +555,11 @@ class WebContents : public PageNavigator,
       NavigationController::UserAgentOverrideOption option) = 0;
 
   virtual const blink::UserAgentOverride& GetUserAgentOverride() = 0;
+
+  // Updates all renderers to start sending subresource notifications since a
+  // certificate error or HTTP exception has been allowed by the user.
+  virtual void SetAlwaysSendSubresourceNotifications() = 0;
+  virtual bool GetSendSubresourceNotification() = 0;
 
   // Set the accessibility mode so that accessibility events are forwarded
   // to each WebContentsObserver.
@@ -783,6 +794,12 @@ class WebContents : public PageNavigator,
   // Returns the visibility of the WebContents' view.
   virtual Visibility GetVisibility() = 0;
 
+  // Sets the visibility of the WebContents' view and notifies the WebContents
+  // observers about Visibility change. Call UpdateWebContentsVisibility instead
+  // of WasShown() if you are setting Visibility to VISIBLE for the first time.
+  // TODO(crbug.com/1444248): Make updating Visibility more robust.
+  virtual void UpdateWebContentsVisibility(Visibility visibility) = 0;
+
   // This function checks *all* frames in this WebContents (not just the main
   // frame) and returns true if at least one frame has either a beforeunload or
   // an unload/pagehide/visibilitychange handler.
@@ -892,6 +909,7 @@ class WebContents : public PageNavigator,
   virtual void Cut() = 0;
   virtual void Copy() = 0;
   virtual void CopyToFindPboard() = 0;
+  virtual void CenterSelection() = 0;
   virtual void Paste() = 0;
   virtual void PasteAndMatchStyle() = 0;
   virtual void Delete() = 0;
@@ -1023,7 +1041,8 @@ class WebContents : public PageNavigator,
       const MHTMLGenerationParams& params,
       MHTMLGenerationResult::GenerateMHTMLCallback callback) = 0;
 
-  // Returns the contents MIME type after a navigation.
+  // Returns the MIME type bound to the primary page contents after a primary
+  // page navigation.
   virtual const std::string& GetContentsMimeType() = 0;
 
   // Returns the settings which get passed to the renderer.
@@ -1068,13 +1087,13 @@ class WebContents : public PageNavigator,
   // Returns false if the request is no longer valid, otherwise true.
   virtual bool GotResponseToKeyboardLockRequest(bool allowed) = 0;
 
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_MAC) || defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_APPLE) || defined(TOOLKIT_QT)
   // Called when the user has selected a color in the color chooser.
   virtual void DidChooseColorInColorChooser(SkColor color) = 0;
 
   // Called when the color chooser has ended.
   virtual void DidEndColorChooser() = 0;
-#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_MAC)
+#endif
 
   // Returns true if the location bar should be focused by default rather than
   // the page contents. The view calls this function when the tab is focused
@@ -1389,9 +1408,28 @@ class WebContents : public PageNavigator,
       PrerenderTriggerType trigger_type,
       const std::string& embedder_histogram_suffix,
       ui::PageTransition page_transition,
+      PreloadingHoldbackStatus holdback_status_override,
       PreloadingAttempt* preloading_attempt,
       absl::optional<base::RepeatingCallback<bool(const GURL&)>>
           url_match_predicate = absl::nullopt) = 0;
+
+  // May be called when the embedder believes that it is likely that the user
+  // will perform a back navigation due to the trigger indicated by `predictor`
+  // (e.g. they're hovering over a back button). `disposition` indicates where
+  // the navigation is predicted to happen (which could differ from where the
+  // navigation actually happens).
+  virtual void BackNavigationLikely(PreloadingPredictor predictor,
+                                    WindowOpenDisposition disposition) = 0;
+
+  // Returns a scope object that needs to be owned by caller in order to
+  // disallow custom cursors. Custom cursors whose width or height are larger
+  // than `max_dimension_dips` are diallowed in this web contents for as long as
+  // any of the returned `ScopedClosureRunner` objects is alive.
+  [[nodiscard]] virtual base::ScopedClosureRunner
+  CreateDisallowCustomCursorScope(int max_dimension_dips = 0) = 0;
+
+  // Enables overscroll history navigation.
+  virtual void SetOverscrollNavigationEnabled(bool enabled) = 0;
 
   // Tag `WebContents` with its owner. Used purely for debugging purposes so it
   // does not need to be exhaustive or perfectly correct.

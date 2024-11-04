@@ -13,7 +13,7 @@ Qt includes several examples to demonstrate a particular usage. The examples
 run as applications or as non-GUI examples in Qt Creator. Qt tutorials show
 the step-by-step information and give insight to particular code snippets.
 
-This page lists the \l{Qt QML} and \l{Qt Quick} examples, however, many other
+This page lists the \l{Qt Qml} and \l{Qt Quick} examples, however, many other
 \l{All Modules}{Qt modules} contain examples related to their QML API.
 
 \section1 Running the Examples and Demos
@@ -81,7 +81,7 @@ steps such as use cases and introductory material. For more information about Qt
 \section2 Extending QML
 
 The following tutorials show how a QML-based application can be combined and
-exteneded with C++ code using the \l{Qt QML} module.
+exteneded with C++ code using the \l{Qt Qml} module.
 \list
     \li \l {Writing QML Extensions with C++}
     \li \l {Writing advanced QML Extensions with C++}
@@ -123,6 +123,13 @@ Creator.
         \li \l{Qt Quick Examples - MultiEffect Item Switcher}{MultiEffect-based Item Transitions}
         \endlist
     \enddiv
+    \div {class="doc-column"}
+        \b{Shapes}
+        \list
+        \li \l{Qt Quick Examples - Shapes}{Shapes}
+        \li \l{Weather Forecast Example}{Weather Forecast}
+        \endlist
+    \enddiv
 \enddiv
 
 \div {class="multi-column"}
@@ -148,6 +155,7 @@ Creator.
         \li \l{Scene Graph - RHI Under QML}{Portable QRhi-based 3D rendering as a scene underlay}
         \li \l{Scene Graph - RHI Texture Item}{Displaying a QRhi-rendered image in a QQuickItem}
         \li \l{Scene Graph - Custom QSGRenderNode}{Implementing a QRhi-based QSGRenderNode}
+        \li \l{QQuickRenderControl RHI Example}{Redirecting Qt Quick rendering into a QRhiTexture}
         \li \l{Scene Graph - Two Texture Providers}{Texture Providers and Materials}
         \li \l{Scene Graph - Custom Geometry}{Custom Geometry}
         \li \l{Scene Graph - Graph}{Graph}

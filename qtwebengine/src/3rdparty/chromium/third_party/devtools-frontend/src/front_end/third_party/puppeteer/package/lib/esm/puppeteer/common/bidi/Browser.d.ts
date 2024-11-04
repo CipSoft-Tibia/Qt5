@@ -14,32 +14,56 @@
  * limitations under the License.
  */
 /// <reference types="node" />
+import { ChildProcess } from 'child_process';
+import * as Bidi from 'chromium-bidi/lib/cjs/protocol/protocol.js';
 import { Browser as BrowserBase, BrowserCloseCallback, BrowserContextOptions } from '../../api/Browser.js';
 import { BrowserContext as BrowserContextBase } from '../../api/BrowserContext.js';
+import { Page } from '../../api/Page.js';
+import { Target } from '../../api/Target.js';
+import { Viewport } from '../PuppeteerViewport.js';
+import { BrowserContext } from './BrowserContext.js';
 import { Connection } from './Connection.js';
-import { ChildProcess } from 'child_process';
+import { BiDiTarget } from './Target.js';
 /**
  * @internal
  */
 export declare class Browser extends BrowserBase {
     #private;
-    /**
-     * @internal
-     */
+    static readonly subscribeModules: string[];
+    static readonly subscribeCdpEvents: Bidi.Cdp.EventNames[];
     static create(opts: Options): Promise<Browser>;
-    /**
-     * @internal
-     */
-    constructor(opts: Options);
+    constructor(opts: Options & {
+        browserName: string;
+        browserVersion: string;
+    });
+    get connection(): Connection;
+    wsEndpoint(): string;
     close(): Promise<void>;
     isConnected(): boolean;
     process(): ChildProcess | null;
     createIncognitoBrowserContext(_options?: BrowserContextOptions): Promise<BrowserContextBase>;
+    version(): Promise<string>;
+    /**
+     * Returns an array of all open browser contexts. In a newly created browser, this will
+     * return a single instance of {@link BrowserContext}.
+     */
+    browserContexts(): BrowserContext[];
+    _closeContext(browserContext: BrowserContext): Promise<void>;
+    /**
+     * Returns the default browser context. The default browser context cannot be closed.
+     */
+    defaultBrowserContext(): BrowserContext;
+    newPage(): Promise<Page>;
+    targets(): Target[];
+    _getTargetById(id: string): BiDiTarget;
+    target(): Target;
 }
 interface Options {
     process?: ChildProcess;
     closeCallback?: BrowserCloseCallback;
     connection: Connection;
+    defaultViewport: Viewport | null;
+    ignoreHTTPSErrors?: boolean;
 }
 export {};
 //# sourceMappingURL=Browser.d.ts.map

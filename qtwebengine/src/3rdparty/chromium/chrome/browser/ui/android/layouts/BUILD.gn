@@ -5,6 +5,7 @@
 import("//build/config/android/rules.gni")
 
 android_library("java") {
+  srcjar_deps = [ ":layouts_jni_headers" ]
   sources = [
     "java/src/org/chromium/chrome/browser/layouts/CompositorModelChangeProcessor.java",
     "java/src/org/chromium/chrome/browser/layouts/EventFilter.java",
@@ -20,8 +21,6 @@ android_library("java") {
     "java/src/org/chromium/chrome/browser/layouts/scene_layer/SceneLayer.java",
     "java/src/org/chromium/chrome/browser/layouts/scene_layer/SceneOverlayLayer.java",
   ]
-
-  annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
 
   deps = [
     "//base:base_java",
@@ -67,7 +66,6 @@ robolectric_library("junit") {
     "//base:base_java",
     "//base:base_java_test_support",
     "//base:base_junit_test_support",
-    "//third_party/android_support_test_runner:runner_java",
     "//third_party/androidx:androidx_test_runner_java",
     "//third_party/junit",
     "//third_party/mockito:mockito_java",

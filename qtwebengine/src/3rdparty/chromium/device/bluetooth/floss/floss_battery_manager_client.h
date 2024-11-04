@@ -81,7 +81,8 @@ class DEVICE_BLUETOOTH_EXPORT FlossBatteryManagerClient
   // Initialize the BatteryManager client for the given adapter.
   void Init(dbus::Bus* bus,
             const std::string& service_name,
-            const int adapter_index) override;
+            const int adapter_index,
+            base::OnceClosure on_ready) override;
 
  protected:
   friend class FlossBatteryManagerClientTest;
@@ -96,8 +97,11 @@ class DEVICE_BLUETOOTH_EXPORT FlossBatteryManagerClient
   // Handle BatteryManager RegisterCallback result.
   void BatteryCallbackRegistered(DBusResult<uint32_t> result);
 
+  // Handle BatteryManager UnregisterCallback result.
+  void BatteryCallbackUnregistered(DBusResult<bool> result);
+
   // Managed by FlossDBusManager - we keep local pointer to access object proxy.
-  base::raw_ptr<dbus::Bus> bus_ = nullptr;
+  raw_ptr<dbus::Bus> bus_ = nullptr;
 
   // Path used for battery api calls by this class.
   dbus::ObjectPath battery_manager_adapter_path_;
@@ -110,6 +114,9 @@ class DEVICE_BLUETOOTH_EXPORT FlossBatteryManagerClient
 
  private:
   friend class FlossBatteryManagerClientTest;
+
+  // Complete initialization once the client is ready to use.
+  void CompleteInit();
 
   template <typename R, typename... Args>
   void CallBatteryManagerMethod(ResponseCallback<R> callback,
@@ -124,7 +131,11 @@ class DEVICE_BLUETOOTH_EXPORT FlossBatteryManagerClient
   ExportedCallbackManager<FlossBatteryManagerClientObserver>
       exported_callback_manager_{battery_manager::kCallbackInterface};
 
-  uint32_t battery_manager_callback_id_;
+  // Callback ID used for callbacks registered to this client.
+  absl::optional<uint32_t> battery_manager_callback_id_;
+
+  // Signal when the client is ready to be used.
+  base::OnceClosure on_ready_;
 
   base::WeakPtrFactory<FlossBatteryManagerClient> weak_ptr_factory_{this};
 };

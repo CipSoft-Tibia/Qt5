@@ -7,6 +7,7 @@
 #include "base/test/test_mock_time_task_runner.h"
 #include "base/test/trace_event_analyzer.h"
 #include "base/time/time.h"
+#include "third_party/blink/renderer/core/dom/text.h"
 #include "third_party/blink/renderer/core/frame/frame_test_helpers.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
 #include "third_party/blink/renderer/core/paint/timing/paint_timing_detector.h"
@@ -286,7 +287,7 @@ TEST_F(TextPaintTimingDetectorTest,
 
 TEST_F(TextPaintTimingDetectorTest, LargestTextPaint_TraceEvent_Candidate) {
   using trace_analyzer::Query;
-  trace_analyzer::Start("*");
+  trace_analyzer::Start("loading");
   {
     SetBodyInnerHTML(R"HTML(
       )HTML");
@@ -330,7 +331,7 @@ TEST_F(TextPaintTimingDetectorTest, LargestTextPaint_TraceEvent_Candidate) {
 TEST_F(TextPaintTimingDetectorTest,
        LargestTextPaint_TraceEvent_Candidate_Frame) {
   using trace_analyzer::Query;
-  trace_analyzer::Start("*");
+  trace_analyzer::Start("loading");
   {
     GetDocument().SetBaseURLOverride(KURL("http://test.com"));
     SetBodyInnerHTML(R"HTML(
@@ -390,7 +391,7 @@ TEST_F(TextPaintTimingDetectorTest, AggregationBySelfPaintingInlineElement) {
         this is the largest text in the world.</span>
     </div>
   )HTML");
-  Element* span = GetDocument().getElementById("target");
+  Element* span = GetDocument().getElementById(AtomicString("target"));
   UpdateAllLifecyclePhasesAndSimulatePresentationTime();
   EXPECT_EQ(TextRecordOfLargestTextPaint()->node_, span);
 }
@@ -416,8 +417,9 @@ TEST_F(TextPaintTimingDetectorTest,
     </div>
   )HTML");
   UpdateAllLifecyclePhases();
-  GetDocument().getElementById("parent")->RemoveChild(
-      GetDocument().getElementById("remove"));
+  GetDocument()
+      .getElementById(AtomicString("parent"))
+      ->RemoveChild(GetDocument().getElementById(AtomicString("remove")));
   InvokeCallback();
   EXPECT_EQ(TextRecordOfLargestTextPaint(), nullptr);
 }
@@ -662,7 +664,7 @@ TEST_F(TextPaintTimingDetectorTest, TreatEllipsisAsText) {
 
 TEST_F(TextPaintTimingDetectorTest, CaptureFileUploadController) {
   SetBodyInnerHTML("<input type='file'>");
-  Element* element = GetDocument().QuerySelector("input");
+  Element* element = GetDocument().QuerySelector(AtomicString("input"));
   UpdateAllLifecyclePhasesAndSimulatePresentationTime();
 
   EXPECT_EQ(CountRecordedSize(), 1u);
@@ -689,7 +691,8 @@ TEST_F(TextPaintTimingDetectorTest, CaptureSVGText) {
     </svg>
   )HTML");
 
-  auto* elem = To<SVGTextContentElement>(GetDocument().QuerySelector("text"));
+  auto* elem = To<SVGTextContentElement>(
+      GetDocument().QuerySelector(AtomicString("text")));
   UpdateAllLifecyclePhasesAndSimulatePresentationTime();
   EXPECT_EQ(CountRecordedSize(), 1u);
   EXPECT_EQ(TextRecordOfLargestTextPaint()->node_, elem);
@@ -738,7 +741,10 @@ TEST_F(TextPaintTimingDetectorTest, ClippedByParentVisibleRect) {
       "######################################################################"
       "#");
   div1->AppendChild(text1);
-  GetDocument().body()->getElementById("outer1")->AppendChild(div1);
+  GetDocument()
+      .body()
+      ->getElementById(AtomicString("outer1"))
+      ->AppendChild(div1);
 
   UpdateAllLifecyclePhasesAndSimulatePresentationTime();
   EXPECT_EQ(TextRecordOfLargestTextPaint()->node_, div1);
@@ -750,7 +756,10 @@ TEST_F(TextPaintTimingDetectorTest, ClippedByParentVisibleRect) {
       "######################################################################"
       "#");
   div2->AppendChild(text2);
-  GetDocument().body()->getElementById("outer2")->AppendChild(div2);
+  GetDocument()
+      .body()
+      ->getElementById(AtomicString("outer2"))
+      ->AppendChild(div2);
 
   UpdateAllLifecyclePhasesAndSimulatePresentationTime();
   EXPECT_EQ(TextRecordOfLargestTextPaint()->node_, div2);
@@ -837,7 +846,7 @@ TEST_F(TextPaintTimingDetectorTest, OpacityZeroHTML) {
 
   // Change the opacity of documentElement, now the img should be a candidate.
   GetDocument().documentElement()->setAttribute(html_names::kStyleAttr,
-                                                "opacity: 1");
+                                                AtomicString("opacity: 1"));
   UpdateAllLifecyclePhasesAndSimulatePresentationTime();
   EXPECT_TRUE(TextRecordOfLargestTextPaint());
 }
@@ -855,11 +864,11 @@ TEST_F(TextPaintTimingDetectorTest, OpacityZeroHTML2) {
   CheckSizeOfTextQueuedForPaintTimeAfterUpdateLifecyclePhases(0u);
 
   GetDocument().documentElement()->setAttribute(html_names::kStyleAttr,
-                                                "opacity: 0");
+                                                AtomicString("opacity: 0"));
   CheckSizeOfTextQueuedForPaintTimeAfterUpdateLifecyclePhases(0u);
 
   GetDocument().documentElement()->setAttribute(html_names::kStyleAttr,
-                                                "opacity: 1");
+                                                AtomicString("opacity: 1"));
   CheckSizeOfTextQueuedForPaintTimeAfterUpdateLifecyclePhases(0u);
 }
 

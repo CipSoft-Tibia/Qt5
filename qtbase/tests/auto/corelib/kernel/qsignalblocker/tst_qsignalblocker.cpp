@@ -1,5 +1,5 @@
 // Copyright (C) 2013 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@woboq.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -11,6 +11,7 @@ class tst_QSignalBlocker : public QObject
 private slots:
     void signalBlocking();
     void moveAssignment();
+    void dismiss();
 };
 
 void tst_QSignalBlocker::signalBlocking()
@@ -131,6 +132,16 @@ void tst_QSignalBlocker::moveAssignment()
 
     QVERIFY(!o1.signalsBlocked());
     QVERIFY(!o2.signalsBlocked());
+}
+
+void tst_QSignalBlocker::dismiss()
+{
+    QObject obj;
+    {
+        QSignalBlocker blocker(obj);
+        blocker.dismiss();
+    }
+    QVERIFY(obj.signalsBlocked());
 }
 
 QTEST_MAIN(tst_QSignalBlocker)

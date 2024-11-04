@@ -36,15 +36,10 @@ public:
     Itemizer(const QString &string, const QScriptAnalysis *analysis, QScriptItemArray &items)
         : m_string(string),
         m_analysis(analysis),
-        m_items(items),
-        m_splitter(nullptr)
+        m_items(items)
     {
     }
-    ~Itemizer()
-    {
-        delete m_splitter;
-    }
-
+    ~Itemizer() = default;
     /// generate the script items
     /// The caps parameter is used to choose the algorithm of splitting text and assigning roles to the textitems
     void generate(int start, int length, QFont::Capitalization caps)
@@ -101,7 +96,7 @@ private:
             return;
 
         if (!m_splitter)
-            m_splitter = new QTextBoundaryFinder(QTextBoundaryFinder::Word,
+            m_splitter = std::make_unique<QTextBoundaryFinder>(QTextBoundaryFinder::Word,
                                                  m_string.constData(), m_string.size(),
                                                  /*buffer*/nullptr, /*buffer size*/0);
 
@@ -171,7 +166,7 @@ private:
     const QString &m_string;
     const QScriptAnalysis * const m_analysis;
     QScriptItemArray &m_items;
-    QTextBoundaryFinder *m_splitter;
+    std::unique_ptr<QTextBoundaryFinder> m_splitter;
 };
 
 // -----------------------------------------------------------------------------------------------------
@@ -1404,7 +1399,7 @@ void QTextEngine::shapeText(int item) const
     bool kerningEnabled;
     bool letterSpacingIsAbsolute;
     bool shapingEnabled = false;
-    QHash<quint32, quint32> features;
+    QHash<QFont::Tag, quint32> features;
     QFixed letterSpacing, wordSpacing;
 #ifndef QT_NO_RAWFONT
     if (useRawFont) {
@@ -1439,8 +1434,7 @@ void QTextEngine::shapeText(int item) const
 
     // split up the item into parts that come from different font engines
     // k * 3 entries, array[k] == index in string, array[k + 1] == index in glyphs, array[k + 2] == engine index
-    QList<uint> itemBoundaries;
-    itemBoundaries.reserve(24);
+    QVarLengthArray<uint, 24> itemBoundaries;
 
     QGlyphLayout initialGlyphs = availableGlyphs(&si);
     int nGlyphs = initialGlyphs.numGlyphs;
@@ -1460,9 +1454,9 @@ void QTextEngine::shapeText(int item) const
         for (int i = 0, glyph_pos = 0; i < itemLength; ++i, ++glyph_pos) {
             const uint engineIdx = initialGlyphs.glyphs[glyph_pos] >> 24;
             if (lastEngine != engineIdx) {
-                itemBoundaries.append(i);
-                itemBoundaries.append(glyph_pos);
-                itemBoundaries.append(engineIdx);
+                itemBoundaries.push_back(i);
+                itemBoundaries.push_back(glyph_pos);
+                itemBoundaries.push_back(engineIdx);
 
                 if (engineIdx != 0) {
                     QFontEngine *actualFontEngine = static_cast<QFontEngineMulti *>(fontEngine)->engine(engineIdx);
@@ -1478,9 +1472,9 @@ void QTextEngine::shapeText(int item) const
                 ++i;
         }
     } else {
-        itemBoundaries.append(0);
-        itemBoundaries.append(0);
-        itemBoundaries.append(0);
+        itemBoundaries.push_back(0);
+        itemBoundaries.push_back(0);
+        itemBoundaries.push_back(0);
     }
 
 #if QT_CONFIG(harfbuzz)
@@ -1602,10 +1596,10 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
                                          const ushort *string,
                                          int itemLength,
                                          QFontEngine *fontEngine,
-                                         const QList<uint> &itemBoundaries,
+                                         QSpan<uint> itemBoundaries,
                                          bool kerningEnabled,
                                          bool hasLetterSpacing,
-                                         const QHash<quint32, quint32> &fontFeatures) const
+                                         const QHash<QFont::Tag, quint32> &fontFeatures) const
 {
     uint glyphs_shaped = 0;
 
@@ -1624,7 +1618,7 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
     // ### TODO get_default_for_script?
     props.language = hb_language_get_default(); // use default language from locale
 
-    for (int k = 0; k < itemBoundaries.size(); k += 3) {
+    for (qsizetype k = 0; k < itemBoundaries.size(); k += 3) {
         const uint item_pos = itemBoundaries[k];
         const uint item_length = (k + 4 < itemBoundaries.size() ? itemBoundaries[k + 3] : itemLength) - item_pos;
         const uint engineIdx = itemBoundaries[k + 2];
@@ -1660,19 +1654,19 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
 
             bool dontLigate = hasLetterSpacing && !scriptRequiresOpenType;
 
-            QHash<quint32, quint32> features;
-            features.insert(HB_TAG('k','e','r','n'), !!kerningEnabled);
+            QHash<QFont::Tag, quint32> features;
+            features.insert(QFont::Tag("kern"), !!kerningEnabled);
             if (dontLigate) {
-                features.insert(HB_TAG('l','i','g','a'), false);
-                features.insert(HB_TAG('c','l','i','g'), false);
-                features.insert(HB_TAG('d','l','i','g'), false);
-                features.insert(HB_TAG('h','l','i','g'), false);
+                features.insert(QFont::Tag("liga"), false);
+                features.insert(QFont::Tag("clig"), false);
+                features.insert(QFont::Tag("dlig"), false);
+                features.insert(QFont::Tag("hlig"), false);
             }
             features.insert(fontFeatures);
 
             QVarLengthArray<hb_feature_t, 16> featureArray;
             for (auto it = features.constBegin(); it != features.constEnd(); ++it) {
-                featureArray.append({ it.key(),
+                featureArray.append({ it.key().value(),
                                       it.value(),
                                       HB_FEATURE_GLOBAL_START,
                                       HB_FEATURE_GLOBAL_END });
@@ -2659,14 +2653,15 @@ QTextEngine::LayoutData::LayoutData()
     currentMaxWidth = 0;
 }
 
-QTextEngine::LayoutData::LayoutData(const QString &str, void **stack_memory, int _allocated)
+QTextEngine::LayoutData::LayoutData(const QString &str, void **stack_memory, qsizetype _allocated)
     : string(str)
 {
     allocated = _allocated;
 
-    int space_charAttributes = int(sizeof(QCharAttributes) * string.size() / sizeof(void*) + 1);
-    int space_logClusters = int(sizeof(unsigned short) * string.size() / sizeof(void*) + 1);
-    available_glyphs = ((int)allocated - space_charAttributes - space_logClusters)*(int)sizeof(void*)/(int)QGlyphLayout::SpaceNeeded;
+    constexpr qsizetype voidSize = sizeof(void*);
+    qsizetype space_charAttributes = sizeof(QCharAttributes) * string.size() / voidSize + 1;
+    qsizetype space_logClusters = sizeof(unsigned short) * string.size() / voidSize + 1;
+    available_glyphs = (allocated - space_charAttributes - space_logClusters) * voidSize / QGlyphLayout::SpaceNeeded;
 
     if (available_glyphs < str.size()) {
         // need to allocate on the heap
@@ -2707,15 +2702,16 @@ bool QTextEngine::LayoutData::reallocate(int totalGlyphs)
         return true;
     }
 
-    int space_charAttributes = int(sizeof(QCharAttributes) * string.size() / sizeof(void*) + 1);
-    int space_logClusters = int(sizeof(unsigned short) * string.size() / sizeof(void*) + 1);
-    int space_glyphs = (totalGlyphs * QGlyphLayout::SpaceNeeded) / sizeof(void *) + 2;
+    const qsizetype space_charAttributes = (sizeof(QCharAttributes) * string.size() / sizeof(void*) + 1);
+    const qsizetype space_logClusters = (sizeof(unsigned short) * string.size() / sizeof(void*) + 1);
+    const qsizetype space_glyphs = qsizetype(totalGlyphs) * QGlyphLayout::SpaceNeeded / sizeof(void *) + 2;
 
-    int newAllocated = space_charAttributes + space_glyphs + space_logClusters;
-    // These values can be negative if the length of string/glyphs causes overflow,
+    const qsizetype newAllocated = space_charAttributes + space_glyphs + space_logClusters;
+    // Check if the length of string/glyphs causes int overflow,
     // we can't layout such a long string all at once, so return false here to
     // indicate there is a failure
-    if (space_charAttributes < 0 || space_logClusters < 0 || space_glyphs < 0 || newAllocated < allocated) {
+    if (size_t(space_charAttributes) > INT_MAX || size_t(space_logClusters) > INT_MAX || totalGlyphs < 0
+        || size_t(space_glyphs) > INT_MAX || size_t(newAllocated) > INT_MAX || newAllocated < allocated) {
         layoutState = LayoutFailed;
         return false;
     }
@@ -2735,7 +2731,7 @@ bool QTextEngine::LayoutData::reallocate(int totalGlyphs)
     logClustersPtr = (unsigned short *) m;
     m += space_logClusters;
 
-    const int space_preGlyphLayout = space_charAttributes + space_logClusters;
+    const qsizetype space_preGlyphLayout = space_charAttributes + space_logClusters;
     if (allocated < space_preGlyphLayout)
         memset(memory + allocated, 0, (space_preGlyphLayout - allocated)*sizeof(void *));
 
@@ -2955,11 +2951,11 @@ static inline bool prevCharJoins(const QString &string, int pos)
     return joining == QChar::Joining_Dual || joining == QChar::Joining_Causing;
 }
 
-static inline bool isRetainableControlCode(QChar c)
+static constexpr bool isRetainableControlCode(char16_t c) noexcept
 {
-    return (c.unicode() >= 0x202a && c.unicode() <= 0x202e) // LRE, RLE, PDF, LRO, RLO
-            || (c.unicode() >= 0x200e && c.unicode() <= 0x200f) // LRM, RLM
-            || (c.unicode() >= 0x2066 && c.unicode() <= 0x2069); // LRI, RLI, FSI, PDI
+    return (c >= 0x202a && c <= 0x202e) // LRE, RLE, PDF, LRO, RLO
+            || (c >= 0x200e && c <= 0x200f) // LRM, RLM
+            || (c >= 0x2066 && c <= 0x2069); // LRI, RLI, FSI, PDI
 }
 
 static QString stringMidRetainingBidiCC(const QString &string,
@@ -2972,14 +2968,14 @@ static QString stringMidRetainingBidiCC(const QString &string,
 {
     QString prefix;
     for (int i=subStringFrom; i<midStart; ++i) {
-        QChar c = string.at(i);
+        char16_t c = string.at(i).unicode();
         if (isRetainableControlCode(c))
             prefix += c;
     }
 
     QString suffix;
     for (int i=midStart + midLength; i<subStringTo; ++i) {
-        QChar c = string.at(i);
+        char16_t c = string.at(i).unicode();
         if (isRetainableControlCode(c))
             suffix += c;
     }
@@ -3036,7 +3032,7 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, QFixed width, int flags,
     {
         QFontEngine *engine = fnt.d->engineForScript(QChar::Script_Common);
 
-        QChar ellipsisChar = u'\x2026';
+        constexpr char16_t ellipsisChar = u'\x2026';
 
         // We only want to use the ellipsis character if it is from the main
         // font (not one of the fallbacks), since using a fallback font
@@ -3048,7 +3044,7 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, QFixed width, int flags,
             engine = multiEngine->engine(0);
         }
 
-        glyph_t glyph = engine->glyphIndex(ellipsisChar.unicode());
+        glyph_t glyph = engine->glyphIndex(ellipsisChar);
 
         QGlyphLayout glyphs;
         glyphs.numGlyphs = 1;
@@ -3068,7 +3064,7 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, QFixed width, int flags,
                 ellipsisText = QStringLiteral("...");
             } else {
                 engine = fnt.d->engineForScript(QChar::Script_Common);
-                glyph = engine->glyphIndex(ellipsisChar.unicode());
+                glyph = engine->glyphIndex(ellipsisChar);
                 engine->recalcAdvances(&glyphs, { });
                 ellipsisText = ellipsisChar;
             }
@@ -3185,7 +3181,7 @@ void QTextEngine::setBoundary(int strPos) const
 
 QFixed QTextEngine::calculateTabWidth(int item, QFixed x) const
 {
-    const QScriptItem &si = layoutData->items[item];
+    const QScriptItem &si = layoutData->items.at(item);
 
     QFixed dpiScale = 1;
     if (QTextDocumentPrivate::get(block) != nullptr && QTextDocumentPrivate::get(block)->layout() != nullptr) {
@@ -3227,7 +3223,7 @@ QFixed QTextEngine::calculateTabWidth(int item, QFixed x) const
                     // find next tab to calculate the width required.
                     tab = QFixed::fromReal(tabSpec.position);
                     for (int i=item + 1; i < layoutData->items.size(); i++) {
-                        const QScriptItem &item = layoutData->items[i];
+                        const QScriptItem &item = layoutData->items.at(i);
                         if (item.analysis.flags == QScriptAnalysis::TabOrObject) { // found it.
                             tabSectionEnd = item.position;
                             break;

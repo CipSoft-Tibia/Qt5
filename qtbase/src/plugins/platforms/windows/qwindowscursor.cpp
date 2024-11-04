@@ -30,6 +30,8 @@ static bool initResources()
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 /*!
     \class QWindowsCursorCacheKey
     \brief Cache key for storing values in a QHash with a QCursor as key.
@@ -145,8 +147,8 @@ static HCURSOR createBitmapCursor(const QCursor &cursor, qreal scaleFactor = 1)
         bbits = bbits.scaled(scaledSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         mbits = mbits.scaled(scaledSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     }
-    bbits = bbits.convertToFormat(QImage::Format_Mono);
-    mbits = mbits.convertToFormat(QImage::Format_Mono);
+    bbits = std::move(bbits).convertToFormat(QImage::Format_Mono);
+    mbits = std::move(mbits).convertToFormat(QImage::Format_Mono);
     const bool invb = bbits.colorCount() > 1 && qGray(bbits.color(0)) < qGray(bbits.color(1));
     const bool invm = mbits.colorCount() > 1 && qGray(mbits.color(0)) < qGray(mbits.color(1));
     return createBitmapCursor(bbits, mbits, cursor.hotSpot(), invb, invm);
@@ -443,8 +445,8 @@ QWindowsCursor::PixmapCursor QWindowsCursor::customCursor(Qt::CursorShape cursor
     if (!bestFit)
         return PixmapCursor();
 
-    const QPixmap rawImage(QStringLiteral(":/qt-project.org/windows/cursors/images/") +
-                           QString::fromLatin1(bestFit->fileName));
+    const QPixmap rawImage(":/qt-project.org/windows/cursors/images/"_L1 +
+                           QLatin1StringView(bestFit->fileName));
     return PixmapCursor(rawImage, QPoint(bestFit->hotSpotX, bestFit->hotSpotY));
 }
 #endif // !QT_NO_IMAGEFORMAT_PNG

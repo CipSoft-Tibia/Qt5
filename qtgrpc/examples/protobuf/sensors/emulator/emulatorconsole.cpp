@@ -38,8 +38,8 @@ EmulatorConsole::EmulatorConsole(QWidget *parent) : QWidget(parent), ui(new Ui::
         qt::examples::sensors::Temperature temp;
         temp.setValue(ui->temperatureValue->text().toInt());
         temp.setUnits(ui->celciusRadio->isChecked()
-                              ? qt::examples::sensors::Temperature::Celsius
-                              : qt::examples::sensors::Temperature::Farenheit);
+                              ? qt::examples::sensors::Temperature::Unit::Celsius
+                              : qt::examples::sensors::Temperature::Unit::Farenheit);
         emit temperatureUpdated(temp);
     });
 

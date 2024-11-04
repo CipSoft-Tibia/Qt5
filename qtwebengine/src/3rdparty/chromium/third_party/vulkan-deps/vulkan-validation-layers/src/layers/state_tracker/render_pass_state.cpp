@@ -18,7 +18,7 @@
  */
 
 #include "state_tracker/render_pass_state.h"
-#include "convert_to_renderpass2.h"
+#include "utils/convert_utils.h"
 #include "state_tracker/image_state.h"
 
 static const VkImageLayout kInvalidLayout = VK_IMAGE_LAYOUT_MAX_ENUM;
@@ -170,6 +170,26 @@ struct AttachmentTracker {  // This is really only of local interest, but a bit 
         }
     }
 
+    void Update(uint32_t subpass, const uint32_t *preserved, uint32_t count) {
+        // for preserved attachment, preserve the layout from the most recent (max subpass) dependency
+        // or initial, if none
+
+        // max_prev is invariant across attachments
+        uint32_t max_prev = VK_SUBPASS_EXTERNAL;
+        for (const auto &prev : rp->subpass_dependencies[subpass].prev) {
+            const auto prev_pass = prev.first->pass;
+            max_prev = (max_prev == VK_SUBPASS_EXTERNAL) ? prev_pass : std::max(prev_pass, max_prev);
+        }
+
+        for (const auto attachment : vvl::make_span(preserved, count)) {
+            if (max_prev == VK_SUBPASS_EXTERNAL) {
+                subpass_attachment_layout[subpass][attachment] = rp->createInfo.pAttachments[attachment].initialLayout;
+            } else {
+                subpass_attachment_layout[subpass][attachment] = subpass_attachment_layout[max_prev][attachment];
+            }
+        }
+    }
+
     void Update(uint32_t subpass, const VkAttachmentReference2 *attach_ref, uint32_t count, bool is_read) {
         if (nullptr == attach_ref) return;
         for (uint32_t j = 0; j < count; ++j) {
@@ -178,12 +198,14 @@ struct AttachmentTracker {  // This is really only of local interest, but a bit 
                 const auto layout = attach_ref[j].layout;
                 // Take advantage of the fact that insert won't overwrite, so we'll only write the first time.
                 first_read.emplace(attachment, is_read);
+                const auto initial_layout = rp->createInfo.pAttachments[attachment].initialLayout;
+                bool no_external_transition = true;
                 if (first[attachment] == VK_SUBPASS_EXTERNAL) {
                     first[attachment] = subpass;
-                    const auto initial_layout = rp->createInfo.pAttachments[attachment].initialLayout;
                     if (initial_layout != layout) {
                         subpass_transitions[subpass].emplace_back(VK_SUBPASS_EXTERNAL, attachment, initial_layout, layout);
                         first_is_transition[attachment] = true;
+                        no_external_transition = false;
                     }
                 }
                 last[attachment] = subpass;
@@ -195,7 +217,17 @@ struct AttachmentTracker {  // This is really only of local interest, but a bit 
                         subpass_transitions[subpass].emplace_back(prev_pass, attachment, prev_layout, layout);
                     }
                 }
+
+                if (no_external_transition && (rp->subpass_dependencies[subpass].prev.size() == 0)) {
+                    // This will insert a layout transition when dependencies are missing between first and subsequent use
+                    // but is consistent with the idea of an implicit external dependency
+                    if (initial_layout != layout) {
+                        subpass_transitions[subpass].emplace_back(VK_SUBPASS_EXTERNAL, attachment, initial_layout, layout);
+                    }
+                }
+
                 attachment_layout[attachment] = layout;
+                subpass_attachment_layout[subpass][attachment] = layout;
             }
         }
     }
@@ -225,6 +257,7 @@ static void InitRenderPassState(RENDER_PASS_STATE *render_pass) {
         attachment_tracker.Update(subpass_index, subpass.pResolveAttachments, subpass.colorAttachmentCount, false);
         attachment_tracker.Update(subpass_index, subpass.pDepthStencilAttachment, 1, false);
         attachment_tracker.Update(subpass_index, subpass.pInputAttachments, subpass.inputAttachmentCount, true);
+        attachment_tracker.Update(subpass_index, subpass.pPreserveAttachments, subpass.preserveAttachmentCount);
 
         // From the spec
         // If the VkSubpassDescription2::viewMask member of any element of pSubpasses is not zero, multiview functionality is
@@ -244,8 +277,7 @@ RENDER_PASS_STATE::RENDER_PASS_STATE(VkRenderPass rp, VkRenderPassCreateInfo2 co
 }
 
 static safe_VkRenderPassCreateInfo2 ConvertCreateInfo(const VkRenderPassCreateInfo &create_info) {
-    safe_VkRenderPassCreateInfo2 create_info_2;
-    ConvertVkRenderPassCreateInfoToV2KHR(create_info, &create_info_2);
+    safe_VkRenderPassCreateInfo2 create_info_2 = ConvertVkRenderPassCreateInfoToV2KHR(create_info);
     return create_info_2;
 }
 
@@ -261,13 +293,15 @@ RENDER_PASS_STATE::RENDER_PASS_STATE(VkRenderPass rp, VkRenderPassCreateInfo con
 const VkPipelineRenderingCreateInfo VkPipelineRenderingCreateInfo_default = {
     VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO, nullptr, 0, 0, nullptr, VK_FORMAT_UNDEFINED, VK_FORMAT_UNDEFINED};
 
-RENDER_PASS_STATE::RENDER_PASS_STATE(VkPipelineRenderingCreateInfo const *pPipelineRenderingCreateInfo)
+RENDER_PASS_STATE::RENDER_PASS_STATE(VkPipelineRenderingCreateInfo const *pPipelineRenderingCreateInfo, bool rasterization_enabled)
     : BASE_NODE(static_cast<VkRenderPass>(VK_NULL_HANDLE), kVulkanObjectTypeRenderPass),
       use_dynamic_rendering(true),
       use_dynamic_rendering_inherited(false),
       has_multiview_enabled(false),
-      dynamic_rendering_pipeline_create_info(pPipelineRenderingCreateInfo ? pPipelineRenderingCreateInfo
-                                                                          : &VkPipelineRenderingCreateInfo_default) {}
+      rasterization_enabled(rasterization_enabled),
+      dynamic_rendering_pipeline_create_info((pPipelineRenderingCreateInfo && rasterization_enabled)
+                                                 ? pPipelineRenderingCreateInfo
+                                                 : &VkPipelineRenderingCreateInfo_default) {}
 
 bool RENDER_PASS_STATE::UsesColorAttachment(uint32_t subpass_num) const {
     bool result = false;
@@ -328,12 +362,13 @@ uint32_t RENDER_PASS_STATE::GetViewMaskBits(uint32_t subpass) const {
     return 0;
 }
 
-RENDER_PASS_STATE::RENDER_PASS_STATE(VkRenderingInfo const *pRenderingInfo)
+RENDER_PASS_STATE::RENDER_PASS_STATE(VkRenderingInfo const *pRenderingInfo, bool rasterization_enabled)
     : BASE_NODE(static_cast<VkRenderPass>(VK_NULL_HANDLE), kVulkanObjectTypeRenderPass),
       use_dynamic_rendering(true),
       use_dynamic_rendering_inherited(false),
       has_multiview_enabled(false),
-      dynamic_rendering_begin_rendering_info(pRenderingInfo) {}
+      rasterization_enabled(rasterization_enabled),
+      dynamic_rendering_begin_rendering_info((pRenderingInfo && rasterization_enabled) ? pRenderingInfo : nullptr) {}
 
 RENDER_PASS_STATE::RENDER_PASS_STATE(VkCommandBufferInheritanceRenderingInfo const *pInheritanceRenderingInfo)
     : BASE_NODE(static_cast<VkRenderPass>(VK_NULL_HANDLE), kVulkanObjectTypeRenderPass),

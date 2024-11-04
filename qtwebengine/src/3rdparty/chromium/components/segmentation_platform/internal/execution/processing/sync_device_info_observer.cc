@@ -10,6 +10,7 @@
 #include "base/strings/stringprintf.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "components/segmentation_platform/internal/execution/processing/feature_processor_state.h"
 #include "components/segmentation_platform/public/types/processed_value.h"
 #include "components/sync_device_info/device_info.h"
@@ -22,14 +23,16 @@ using FormFactor = syncer ::DeviceInfo::FormFactor;
 
 namespace {
 
-constexpr int kDefaultActiveDaysThreshold = 14;
+constexpr int kActiveDaysThresholdForMetrics = 14;
+constexpr int kActiveDayThresholdForInputDelegate = 60;
 
 #define AS_FLOAT_VAL(x) ProcessedValue(static_cast<float>(x))
 
 base::TimeDelta GetActivePeriodForMetrics() {
+  TRACE_EVENT0("ui", "sync_device_info_observer.cc::GetActivePeriodForMetrics");
   return base::Days(base::GetFieldTrialParamByFeatureAsInt(
       kSegmentationDeviceCountByOsType, "active_days_threshold",
-      kDefaultActiveDaysThreshold));
+      kActiveDaysThresholdForMetrics));
 }
 
 base::TimeDelta Age(base::Time last_update, base::Time now) {
@@ -42,6 +45,7 @@ base::TimeDelta Age(base::Time last_update, base::Time now) {
 bool IsDeviceActive(base::Time last_update,
                     base::Time now,
                     base::TimeDelta active_threshold) {
+  TRACE_EVENT0("ui", "sync_device_info_observer.cc::GetActivePeriodForMetrics");
   base::TimeDelta active_days_threshold = GetActivePeriodForMetrics();
   return Age(last_update, now) < active_days_threshold;
 }
@@ -90,6 +94,7 @@ SyncDeviceInfoObserver::~SyncDeviceInfoObserver() {
 
 // Count device by os types and record them in UMA only if not recorded yet.
 void SyncDeviceInfoObserver::OnDeviceInfoChange() {
+  TRACE_EVENT0("ui", "SyncDeviceInfoObserver::OnDeviceInfoChange");
   if (!device_info_tracker_->IsSyncing() ||
       device_info_status_ == DeviceInfoStatus::INFO_AVAILABLE) {
     return;
@@ -99,6 +104,7 @@ void SyncDeviceInfoObserver::OnDeviceInfoChange() {
 
   // Run any method calls that were received during initialization.
   while (!pending_actions_.empty()) {
+    TRACE_EVENT0("ui", "post_pending_action");
     auto callback = std::move(pending_actions_.front());
     pending_actions_.pop_front();
     device_info_status_ = DeviceInfoStatus::INFO_AVAILABLE;
@@ -125,6 +131,7 @@ void SyncDeviceInfoObserver::OnDeviceInfoChange() {
 
 std::map<OsType, int> SyncDeviceInfoObserver::CountActiveDevicesByOsType(
     base::TimeDelta active_threshold) const {
+  TRACE_EVENT0("ui", "SyncDeviceInfoObserver::CountActiveDevicesByOsType");
   std::map<OsType, int> count_by_os_type;
   const base::Time now = base::Time::Now();
   for (const auto& device_info : device_info_tracker_->GetAllDeviceInfo()) {
@@ -144,9 +151,25 @@ void SyncDeviceInfoObserver::Process(
     const FeatureProcessorState& feature_processor_state,
     ProcessedCallback callback) {
   int wait_for_device_info_in_seconds = 0;
-  auto it = input.additional_args().find("wait_for_device_info_in_seconds");
-  if (it != input.additional_args().end()) {
-    if (!base::StringToInt(it->second, &wait_for_device_info_in_seconds)) {
+
+  auto model_input_it =
+      input.additional_args().find("wait_for_device_info_in_seconds");
+  absl::optional<int> wait_from_input;
+  if (feature_processor_state.input_context()) {
+    auto api_input_it =
+        feature_processor_state.input_context()->metadata_args.find(
+            "wait_for_device_info_in_seconds");
+    if (api_input_it !=
+        feature_processor_state.input_context()->metadata_args.end()) {
+      CHECK_EQ(api_input_it->second.type, ProcessedValue::Type::INT);
+      wait_from_input = api_input_it->second.int_val;
+    }
+  }
+  if (wait_from_input) {
+    wait_for_device_info_in_seconds = *wait_from_input;
+  } else if (model_input_it != input.additional_args().end()) {
+    if (!base::StringToInt(model_input_it->second,
+                           &wait_for_device_info_in_seconds)) {
       wait_for_device_info_in_seconds = 0;
     }
   }
@@ -156,7 +179,8 @@ void SyncDeviceInfoObserver::Process(
        device_info_status_ == DeviceInfoStatus::TIMEOUT_POSTED_BUT_NOT_HIT)) {
     pending_actions_.push_back(base::BindOnce(
         &SyncDeviceInfoObserver::ReadyToFinishProcessing,
-        weak_ptr_factory_.GetWeakPtr(), input, std::move(callback)));
+        weak_ptr_factory_.GetWeakPtr(), input,
+        feature_processor_state.input_context(), std::move(callback)));
 
     if (device_info_status_ == DeviceInfoStatus::TIMEOUT_NOT_POSTED) {
       device_info_status_ = DeviceInfoStatus::TIMEOUT_POSTED_BUT_NOT_HIT;
@@ -168,13 +192,14 @@ void SyncDeviceInfoObserver::Process(
     }
   } else {
     ReadyToFinishProcessing(
-        input, std::move(callback),
+        input, feature_processor_state.input_context(), std::move(callback),
         device_info_status_ == DeviceInfoStatus::INFO_AVAILABLE);
   }
 }
 
 void SyncDeviceInfoObserver::ReadyToFinishProcessing(
     const proto::CustomInput& input,
+    scoped_refptr<InputContext> input_context,
     ProcessedCallback callback,
     bool success) {
   if (!success) {
@@ -184,11 +209,15 @@ void SyncDeviceInfoObserver::ReadyToFinishProcessing(
     return;
   }
 
-  int active_threshold = kDefaultActiveDaysThreshold;
-  auto it2 = input.additional_args().find("active_days_limit");
-  if (it2 != input.additional_args().end()) {
-    if (!base::StringToInt(it2->second, &active_threshold)) {
-      active_threshold = kDefaultActiveDaysThreshold;
+  int active_threshold = kActiveDayThresholdForInputDelegate;
+  if (input_context) {
+    auto input_context_iter =
+        input_context->metadata_args.find("active_days_limit");
+    if (input_context_iter != input_context->metadata_args.end()) {
+      const auto& processed_value = input_context_iter->second;
+      if (processed_value.type == ProcessedValue::INT) {
+        active_threshold = processed_value.int_val;
+      }
     }
   }
   std::map<

@@ -27,7 +27,7 @@
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
-#include "ui/color/color_provider_manager.h"
+#include "ui/color/color_provider_key.h"
 #include "ui/compositor/layer.h"
 #include "ui/compositor/layer_animation_element.h"
 #include "ui/compositor/layer_animator.h"
@@ -97,7 +97,7 @@ class BubbleWidget : public Widget {
     return anchor ? anchor->GetThemeProvider() : Widget::GetThemeProvider();
   }
 
-  ui::ColorProviderManager::ThemeInitializerSupplier* GetCustomTheme()
+  ui::ColorProviderKey::ThemeInitializerSupplier* GetCustomTheme()
       const override {
     const Widget* const anchor = GetAnchorWidget();
     return anchor ? anchor->GetCustomTheme() : Widget::GetCustomTheme();
@@ -108,10 +108,18 @@ class BubbleWidget : public Widget {
     return anchor ? anchor->GetNativeTheme() : Widget::GetNativeTheme();
   }
 
+  using Widget::GetPrimaryWindowWidget;
+
   Widget* GetPrimaryWindowWidget() override {
     Widget* const anchor = GetAnchorWidget();
     return anchor ? anchor->GetPrimaryWindowWidget()
                   : Widget::GetPrimaryWindowWidget();
+  }
+
+  const ui::ColorProvider* GetColorProvider() const override {
+    const Widget* const primary = GetPrimaryWindowWidget();
+    return (primary && primary != this) ? primary->GetColorProvider()
+                                        : Widget::GetColorProvider();
   }
 
  private:
@@ -160,9 +168,9 @@ Widget* CreateBubbleWidget(BubbleDialogDelegate* bubble) {
     bubble_params.shadow_type = Widget::InitParams::ShadowType::kNone;
 #if BUILDFLAG(IS_CHROMEOS_ASH)
   bubble_params.background_elevation =
-      ui::ColorProviderManager::ElevationMode::kHigh;
+      ui::ColorProviderKey::ElevationMode::kHigh;
 #endif
-  gfx::NativeView parent = nullptr;
+  gfx::NativeView parent = gfx::NativeView();
   if (bubble->has_parent()) {
     if (bubble->parent_window()) {
       parent = bubble->parent_window();
@@ -439,6 +447,8 @@ BubbleDialogDelegate::BubbleDialogDelegate(View* anchor_view,
   set_margins(layout_provider->GetDialogInsetsForContentType(
       DialogContentType::kText, DialogContentType::kText));
   set_title_margins(layout_provider->GetInsetsMetric(INSETS_DIALOG_TITLE));
+  set_footnote_margins(
+      layout_provider->GetInsetsMetric(INSETS_DIALOG_SUBSECTION));
 
   RegisterWidgetInitializedCallback(base::BindOnce(
       [](BubbleDialogDelegate* bubble_delegate) {
@@ -524,10 +534,8 @@ BubbleDialogDelegate* BubbleDialogDelegate::AsBubbleDialogDelegate() {
 std::unique_ptr<NonClientFrameView>
 BubbleDialogDelegate::CreateNonClientFrameView(Widget* widget) {
   auto frame = std::make_unique<BubbleDialogFrameView>(title_margins_);
-  LayoutProvider* provider = LayoutProvider::Get();
 
-  frame->SetFootnoteMargins(
-      provider->GetInsetsMetric(INSETS_DIALOG_SUBSECTION));
+  frame->SetFootnoteMargins(footnote_margins_);
   frame->SetFootnoteView(DisownFootnoteView());
 
   std::unique_ptr<BubbleBorder> border =
@@ -986,8 +994,13 @@ void BubbleDialogDelegate::SetAnchoredDialogKey() {
 void BubbleDialogDelegate::UpdateHighlightedButton(bool highlighted) {
   Button* button = Button::AsButton(highlighted_button_tracker_.view());
   button = button ? button : Button::AsButton(GetAnchorView());
-  if (button && highlight_button_when_shown_)
-    button->SetHighlighted(highlighted);
+  if (button && highlight_button_when_shown_) {
+    if (highlighted) {
+      button_anchor_higlight_ = button->AddAnchorHighlight();
+    } else {
+      button_anchor_higlight_.reset();
+    }
+  }
 }
 
 BEGIN_METADATA(BubbleDialogDelegateView, View)

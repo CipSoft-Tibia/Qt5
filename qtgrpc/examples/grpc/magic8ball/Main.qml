@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import QtQuick
+import QtGrpc
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Shapes
 
+import qtgrpc.examples
 import qtgrpc.examples.magic8ball
 
 ApplicationWindow {
@@ -22,6 +24,12 @@ ApplicationWindow {
 
     property string textAnswer: ""
     property string textError: ""
+
+    property answerRequest _answerReq
+    property answerResponse _answerResp
+
+    property var setResponse: function(value) { root._answerResp = value }
+    property var errorCallback: function() { console.log("Error can be handled also here") }
 
     MagicText {
         anchors.top: parent.top
@@ -128,13 +136,9 @@ ApplicationWindow {
     }
 
     Connections {
-        target: ClientService
-        function onMessageRecieved(value) {
-            root.textAnswer = value
-        }
-
-        function onErrorRecieved(value) {
-            root.textError = value
+        target: grpcClient
+        function onErrorOccurred() {
+            root.textError = "No connection\nto\nserver"
         }
     }
 
@@ -189,15 +193,16 @@ ApplicationWindow {
     Timer {
         id: animationTimeout
 
-        interval: 3000
+        interval: 5000
         repeat: false
         running: false
-        onTriggered: ClientService.setMessage()
+        onTriggered: root.textAnswer = _answerResp.message
 
         onRunningChanged: {
             if (running) {
+                root.textError = ""
                 answer.closingAnimation.start()
-                ClientService.sendRequest()
+                root.sendRequest()
             } else {
                 waitingAnimation.runAnimation = false
                 waitingAnimation.visible = false
@@ -206,7 +211,29 @@ ApplicationWindow {
         }
     }
 
+    function sendRequest()
+    {
+        grpcClient.answerMethod(_answerReq, setResponse, errorCallback)
+    }
+
     footer: MagicText {
         text: root.textError === "" ? "" : "Please, start server: ../magic8ball/SimpleGrpcServer"
+    }
+
+    ExampleServiceClient {
+        id: grpcClient
+        channel: grpcChannel.channel
+    }
+
+    GrpcHttp2Channel {
+        id: grpcChannel
+        options: GrpcChannelOptions {
+            id: channelOptions
+            host: "http://localhost:50051"
+        }
+    }
+
+    Component.onCompleted: {
+        _answerReq.message = "sleep"
     }
 }

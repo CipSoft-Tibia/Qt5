@@ -1,6 +1,6 @@
 // Copyright (C) 2016 Jolla Ltd.
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //TESTED_COMPONENT=src/location
 
@@ -359,9 +359,8 @@ void tst_QNmeaPositionInfoSource::startUpdates_waitForValidDateTime()
             factory.createPositionInfoSourceProxy(&source));
 
     QSignalSpy spy(proxy->source(), SIGNAL(positionUpdated(QGeoPositionInfo)));
-    QObject::connect(proxy->source(), &QNmeaPositionInfoSource::positionUpdated, [](const QGeoPositionInfo &info) {
-                                                                            qDebug() << info.timestamp();
-                                                                        });
+    QObject::connect(proxy->source(), &QNmeaPositionInfoSource::positionUpdated, this,
+                     [](const QGeoPositionInfo &info) { qDebug() << info.timestamp(); });
 
     proxy->source()->startUpdates();
     proxy->feedBytes(bytes);

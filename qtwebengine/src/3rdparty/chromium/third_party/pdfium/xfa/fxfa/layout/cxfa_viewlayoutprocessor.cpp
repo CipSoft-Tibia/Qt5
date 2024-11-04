@@ -359,13 +359,13 @@ void CXFA_ViewLayoutProcessor::Trace(cppgc::Visitor* visitor) const {
   visitor->Trace(m_pCurPageArea);
   visitor->Trace(m_pPageSetRootLayoutItem);
   visitor->Trace(m_pPageSetCurLayoutItem);
-  for (const auto& record : m_ProposedViewRecords)
-    visitor->Trace(*record);
+  ContainerTrace(visitor, m_ProposedViewRecords);
 
   if (m_CurrentViewRecordIter != m_ProposedViewRecords.end())
     visitor->Trace(*m_CurrentViewRecordIter);
 
   ContainerTrace(visitor, m_PageArray);
+  ContainerTrace(visitor, m_pPageSetMap);
 }
 
 bool CXFA_ViewLayoutProcessor::InitLayoutPage(CXFA_Node* pFormNode) {
@@ -855,12 +855,12 @@ CXFA_ViewLayoutProcessor::ExecuteBreakBeforeOrAfter(const CXFA_Node* pCurNode,
 
 absl::optional<CXFA_ViewLayoutProcessor::BreakData>
 CXFA_ViewLayoutProcessor::ProcessBreakBefore(const CXFA_Node* pBreakNode) {
-  return ProcessBreakBeforeOrAfter(pBreakNode, /*before=*/true);
+  return ProcessBreakBeforeOrAfter(pBreakNode, /*bBefore=*/true);
 }
 
 absl::optional<CXFA_ViewLayoutProcessor::BreakData>
 CXFA_ViewLayoutProcessor::ProcessBreakAfter(const CXFA_Node* pBreakNode) {
-  return ProcessBreakBeforeOrAfter(pBreakNode, /*before=*/false);
+  return ProcessBreakBeforeOrAfter(pBreakNode, /*bBefore=*/false);
 }
 
 absl::optional<CXFA_ViewLayoutProcessor::BreakData>
@@ -907,12 +907,12 @@ CXFA_ViewLayoutProcessor::ProcessBreakBeforeOrAfter(const CXFA_Node* pBreakNode,
 
 CXFA_Node* CXFA_ViewLayoutProcessor::ProcessBookendLeader(
     const CXFA_Node* pBookendNode) {
-  return ProcessBookendLeaderOrTrailer(pBookendNode, /*leader=*/true);
+  return ProcessBookendLeaderOrTrailer(pBookendNode, /*bLeader=*/true);
 }
 
 CXFA_Node* CXFA_ViewLayoutProcessor::ProcessBookendTrailer(
     const CXFA_Node* pBookendNode) {
-  return ProcessBookendLeaderOrTrailer(pBookendNode, /*leader=*/false);
+  return ProcessBookendLeaderOrTrailer(pBookendNode, /*bLeader=*/false);
 }
 
 CXFA_Node* CXFA_ViewLayoutProcessor::ProcessBookendLeaderOrTrailer(

@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QImageReader>
@@ -41,6 +41,7 @@ private slots:
     void streamAvailableSizes();
     void fromTheme();
     void fromThemeCache();
+    void fromThemeConstant();
 
 #ifndef QT_NO_WIDGETS
     void task184901_badCache();
@@ -722,10 +723,16 @@ void tst_QIcon::fromTheme()
         QCOMPARE(i.availableSizes(), abIcon.availableSizes());
     }
 
-    // Check that setting a fallback theme invalidates earlier lookups
-    QVERIFY(QIcon::fromTheme("edit-cut").isNull());
-    QIcon::setFallbackThemeName("fallbacktheme");
-    QVERIFY(!QIcon::fromTheme("edit-cut").isNull());
+    // Setting or changing the fallback theme should invalidate earlier lookups.
+    // We can only test this if the system doesn't provide an icon, because once
+    // we got a valid icon, it will be cached, and even if we proxy to a different
+    // engine when a fallback theme is set, the cacheKey of the icon will be the
+    // same.
+    const QIcon editCut = QIcon::fromTheme("edit-cut");
+    if (editCut.isNull()) {
+        QIcon::setFallbackThemeName("fallbacktheme");
+        QVERIFY(!QIcon::fromTheme("edit-cut").isNull());
+    }
 
     // Make sure setting the theme name clears the state
     QIcon::setThemeName("");
@@ -840,6 +847,11 @@ void tst_QIcon::fromThemeCache()
     QVERIFY(!QIcon::fromTheme("button-open").isNull());
     QVERIFY(!QIcon::fromTheme("button-open-fallback").isNull());
     QVERIFY(QIcon::fromTheme("notexist-fallback").isNull());
+}
+
+void tst_QIcon::fromThemeConstant()
+{
+    const QIcon icon = QIcon::fromTheme(QIcon::ThemeIcon::EditCut);
 }
 
 void tst_QIcon::task223279_inconsistentAddFile()

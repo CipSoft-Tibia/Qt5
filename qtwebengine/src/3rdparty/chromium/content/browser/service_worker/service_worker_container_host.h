@@ -145,6 +145,7 @@ class CONTENT_EXPORT ServiceWorkerContainerHost final
   void EnsureFileAccess(const std::vector<base::FilePath>& file_paths,
                         EnsureFileAccessCallback callback) override;
   void OnExecutionReady() override;
+  void GetRunningStatus(GetRunningStatusCallback callback) override;
 
   // ServiceWorkerRegistration::Listener overrides.
   void OnVersionAttributesChanged(
@@ -289,8 +290,16 @@ class CONTENT_EXPORT ServiceWorkerContainerHost final
       const PolicyContainerPolicies& cross_origin_embedder_policy,
       ukm::SourceId worker_ukm_source_id);
 
-  // Sets `url_`, `top_frame_origin_` and `key_`. For service worker clients,
-  // updates the client uuid if it's a cross-origin transition.
+  // Sets the URL and storage key for the owner of this container.
+  //
+  // For a ServiceWorkerContainerHost representing a service worker
+  // (IsContainerForServiceWorker()), the URL is the service worker's script;
+  // for all other clients (IsContainerForClient()), it is the main resource.
+  //
+  // The top_frame_origin is the origin of the top frame of the client, or for a
+  // service worker the origin of the service worker's scope URL. This is more
+  // specific than the `top_frame_site` in the storage key, so must be passed
+  // separately.
   void UpdateUrls(const GURL& url,
                   const absl::optional<url::Origin>& top_frame_origin,
                   const blink::StorageKey& storage_key);
@@ -340,6 +349,9 @@ class CONTENT_EXPORT ServiceWorkerContainerHost final
   // as late as possible is more idiomatic for new Mojo types.
   mojo::Remote<blink::mojom::ControllerServiceWorker>
   GetRemoteControllerServiceWorker();
+
+  // Get an associated cache storage interface.
+  mojo::PendingRemote<blink::mojom::CacheStorage> GetRemoteCacheStorage();
 
   // |registration| claims the client (document, dedicated worker when
   // PlzDedicatedWorker is enabled, or shared worker) to be controlled.

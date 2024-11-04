@@ -13,6 +13,8 @@
 #include "quiche/quic/core/qpack/qpack_instruction_encoder.h"
 #include "quiche/quic/core/qpack/qpack_required_insert_count.h"
 #include "quiche/quic/core/qpack/value_splitting_header_list.h"
+#include "quiche/quic/platform/api/quic_flag_utils.h"
+#include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_logging.h"
 
 namespace quic {
@@ -85,13 +87,18 @@ QpackEncoder::Representations QpackEncoder::FirstPassEncode(
   Representations representations;
   representations.reserve(header_list.size());
 
-  // The index of the oldest entry that must not be evicted.
-  uint64_t smallest_blocking_index =
-      blocking_manager_.smallest_blocking_index();
   // Entries with index larger than or equal to |known_received_count| are
   // blocking.
   const uint64_t known_received_count =
       blocking_manager_.known_received_count();
+
+  // The index of the oldest entry that must not be evicted. Blocking entries
+  // must not be evicted. Also, unacknowledged entries must not be evicted,
+  // even if they have no outstanding references (see https://crbug.com/1441880
+  // for more context).
+  uint64_t smallest_non_evictable_index = std::min(
+      blocking_manager_.smallest_blocking_index(), known_received_count);
+
   // Only entries with index greater than or equal to |draining_index| are
   // allowed to be referenced.
   const uint64_t draining_index =
@@ -133,7 +140,8 @@ QpackEncoder::Representations QpackEncoder::FirstPassEncode(
           } else {
             representations.push_back(
                 EncodeIndexedHeaderField(is_static, index, referred_indices));
-            smallest_blocking_index = std::min(smallest_blocking_index, index);
+            smallest_non_evictable_index =
+                std::min(smallest_non_evictable_index, index);
             header_table_.set_dynamic_table_entry_referenced();
 
             break;
@@ -144,7 +152,7 @@ QpackEncoder::Representations QpackEncoder::FirstPassEncode(
             blocked_stream_limit_exhausted = true;
           } else if (QpackEntry::Size(name, value) >
                      header_table_.MaxInsertSizeWithoutEvictingGivenEntry(
-                         std::min(smallest_blocking_index, index))) {
+                         std::min(smallest_non_evictable_index, index))) {
             dynamic_table_insertion_blocked = true;
           } else {
             if (can_write_to_encoder_stream) {
@@ -155,8 +163,8 @@ QpackEncoder::Representations QpackEncoder::FirstPassEncode(
               uint64_t new_index = header_table_.InsertEntry(name, value);
               representations.push_back(EncodeIndexedHeaderField(
                   is_static, new_index, referred_indices));
-              smallest_blocking_index =
-                  std::min(smallest_blocking_index, index);
+              smallest_non_evictable_index =
+                  std::min(smallest_non_evictable_index, index);
               header_table_.set_dynamic_table_entry_referenced();
 
               break;
@@ -178,7 +186,7 @@ QpackEncoder::Representations QpackEncoder::FirstPassEncode(
           if (blocking_allowed &&
               QpackEntry::Size(name, value) <=
                   header_table_.MaxInsertSizeWithoutEvictingGivenEntry(
-                      smallest_blocking_index)) {
+                      smallest_non_evictable_index)) {
             // If allowed, insert entry into dynamic table and refer to it.
             if (can_write_to_encoder_stream) {
               encoder_stream_sender_.SendInsertWithNameReference(is_static,
@@ -186,8 +194,8 @@ QpackEncoder::Representations QpackEncoder::FirstPassEncode(
               uint64_t new_index = header_table_.InsertEntry(name, value);
               representations.push_back(EncodeIndexedHeaderField(
                   /* is_static = */ false, new_index, referred_indices));
-              smallest_blocking_index =
-                  std::min<uint64_t>(smallest_blocking_index, new_index);
+              smallest_non_evictable_index =
+                  std::min<uint64_t>(smallest_non_evictable_index, new_index);
 
               break;
             }
@@ -204,7 +212,7 @@ QpackEncoder::Representations QpackEncoder::FirstPassEncode(
           blocked_stream_limit_exhausted = true;
         } else if (QpackEntry::Size(name, value) >
                    header_table_.MaxInsertSizeWithoutEvictingGivenEntry(
-                       std::min(smallest_blocking_index, index))) {
+                       std::min(smallest_non_evictable_index, index))) {
           dynamic_table_insertion_blocked = true;
         } else {
           // If allowed, insert entry with name reference and refer to it.
@@ -217,7 +225,8 @@ QpackEncoder::Representations QpackEncoder::FirstPassEncode(
             uint64_t new_index = header_table_.InsertEntry(name, value);
             representations.push_back(EncodeIndexedHeaderField(
                 is_static, new_index, referred_indices));
-            smallest_blocking_index = std::min(smallest_blocking_index, index);
+            smallest_non_evictable_index =
+                std::min(smallest_non_evictable_index, index);
             header_table_.set_dynamic_table_entry_referenced();
 
             break;
@@ -229,7 +238,8 @@ QpackEncoder::Representations QpackEncoder::FirstPassEncode(
           // If allowed, refer to entry name directly, with literal value.
           representations.push_back(EncodeLiteralHeaderFieldWithNameReference(
               is_static, index, value, referred_indices));
-          smallest_blocking_index = std::min(smallest_blocking_index, index);
+          smallest_non_evictable_index =
+              std::min(smallest_non_evictable_index, index);
           header_table_.set_dynamic_table_entry_referenced();
 
           break;
@@ -250,7 +260,7 @@ QpackEncoder::Representations QpackEncoder::FirstPassEncode(
           blocked_stream_limit_exhausted = true;
         } else if (QpackEntry::Size(name, value) >
                    header_table_.MaxInsertSizeWithoutEvictingGivenEntry(
-                       smallest_blocking_index)) {
+                       smallest_non_evictable_index)) {
           dynamic_table_insertion_blocked = true;
         } else {
           if (can_write_to_encoder_stream) {
@@ -258,8 +268,8 @@ QpackEncoder::Representations QpackEncoder::FirstPassEncode(
             uint64_t new_index = header_table_.InsertEntry(name, value);
             representations.push_back(EncodeIndexedHeaderField(
                 /* is_static = */ false, new_index, referred_indices));
-            smallest_blocking_index =
-                std::min<uint64_t>(smallest_blocking_index, new_index);
+            smallest_non_evictable_index =
+                std::min<uint64_t>(smallest_non_evictable_index, new_index);
 
             break;
           }

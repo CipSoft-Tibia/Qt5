@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
@@ -106,7 +106,6 @@ private Q_SLOTS:
     void scriptIndices();
     void extensions();
     void emptyBlockBinding();
-    void qualifiedName();
     void resolvedNonUniqueScopes();
     void compilationUnitsAreCompatible();
     void attachedTypeResolution_data();
@@ -208,7 +207,7 @@ void tst_qqmljsscope::allTypesAvailable()
 
         QQmlJSImporter importer { importPaths, /* resource file mapper */ nullptr };
         const auto imported = importer.importModule(u"QtQml"_s);
-        QCOMPARE(imported.context(), QQmlJSScope::ContextualTypes::QML);
+        QCOMPARE(imported.context(), QQmlJS::ContextualTypes::QML);
         const auto types = imported.types();
         QVERIFY(types.contains(u"$internal$.QObject"_s));
         QVERIFY(types.contains(u"QtObject"_s));
@@ -341,8 +340,10 @@ void tst_qqmljsscope::descriptiveNameOfNull()
     property.setPropertyName(u"foo"_s);
     property.setTypeName(u"baz"_s);
     QQmlJSRegisterContent unscoped = QQmlJSRegisterContent::create(
-                stored, property, QQmlJSRegisterContent::ScopeProperty, QQmlJSScope::ConstPtr());
-    QCOMPARE(unscoped.descriptiveName(), u"bar of (invalid type)::foo with type baz"_s);
+            stored, property, QQmlJSRegisterContent::InvalidLookupIndex,
+            QQmlJSRegisterContent::InvalidLookupIndex, QQmlJSRegisterContent::ScopeProperty,
+            QQmlJSScope::ConstPtr());
+    QCOMPARE(unscoped.descriptiveName(), u"(invalid type)::foo with type baz (stored as bar)"_s);
 }
 
 void tst_qqmljsscope::groupedPropertiesConsistency()
@@ -676,30 +677,6 @@ void tst_qqmljsscope::emptyBlockBinding()
     QVERIFY(root->hasOwnPropertyBindings(u"y"_s));
 }
 
-void tst_qqmljsscope::qualifiedName()
-{
-    QQmlJSScope::ConstPtr root = run(u"qualifiedName.qml"_s);
-    QVERIFY(root);
-
-    auto qualifiedNameOf = [](const QQmlJSScope::ConstPtr &ptr) -> QString {
-        if (ptr->baseType())
-            return ptr->baseType()->qualifiedName();
-        else
-            return u""_s;
-    };
-
-    QCOMPARE(root->childScopes().size(), 4);
-    QQmlJSScope::ConstPtr b = root->childScopes()[0];
-    QQmlJSScope::ConstPtr d = root->childScopes()[1];
-    QQmlJSScope::ConstPtr qualifiedA = root->childScopes()[2];
-    QQmlJSScope::ConstPtr qualifiedB = root->childScopes()[3];
-
-    QCOMPARE(qualifiedNameOf(b), "QualifiedNamesTests/B 5.0-6.0");
-    QCOMPARE(qualifiedNameOf(d), "QualifiedNamesTests/D 6.0");
-    QCOMPARE(qualifiedNameOf(qualifiedA), "QualifiedNamesTests/A 5.0");
-    QCOMPARE(qualifiedNameOf(qualifiedB), "QualifiedNamesTests/B 5.0-6.0");
-}
-
 void tst_qqmljsscope::resolvedNonUniqueScopes()
 {
     QQmlJSScope::ConstPtr root = run(u"resolvedNonUniqueScope.qml"_s);
@@ -824,6 +801,9 @@ public:
     void run(const QQmlSA::Element &) override { }
 };
 
+using PassManagerPtr = std::unique_ptr<
+        QQmlSA::PassManager, decltype(&QQmlSA::PassManagerPrivate::deletePassManager)>;
+
 void tst_qqmljsscope::attachedTypeResolution()
 {
     QFETCH(bool, creatable);
@@ -850,8 +830,12 @@ void tst_qqmljsscope::attachedTypeResolution()
     QQmlJSImportVisitor v{
         QQmlJSScope::create(), &importer, logger.get(), implicitImportDirectory, {}
     };
-    QQmlSA::PassManager manager{ &v, &resolver };
-    TestPass pass{ &manager };
+
+    PassManagerPtr manager(
+            QQmlSA::PassManagerPrivate::createPassManager(&v, &resolver),
+            &QQmlSA::PassManagerPrivate::deletePassManager);
+
+    TestPass pass{ manager.get() };
     const auto &resolved = pass.resolveType(moduleName, typeName);
 
     QVERIFY(!resolved.isNull());
@@ -904,8 +888,12 @@ void tst_qqmljsscope::builtinTypeResolution()
     QQmlJSImportVisitor v{
         QQmlJSScope::create(), &importer, &logger, implicitImportDirectory, {}
     };
-    QQmlSA::PassManager manager{ &v, &resolver };
-    TestPass pass{ &manager };
+
+    PassManagerPtr manager(
+            QQmlSA::PassManagerPrivate::createPassManager(&v, &resolver),
+            &QQmlSA::PassManagerPrivate::deletePassManager);
+
+    TestPass pass{ manager.get() };
     auto element = pass.resolveBuiltinType(typeName);
     QCOMPARE(element.isNull(), !valid);
 }

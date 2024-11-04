@@ -168,8 +168,16 @@ void Generator::generate(bool prefetch, size_t max_mr, size_t nc_mod_nr, size_t 
 
   bind(l1);
   // Load next 4 A pointers
-  ldp(x13, x14, mem[x4], 16);
-  if (max_mr > 2) {
+  if (max_mr == 1) {
+    ldr(x13, mem[x4], 8);
+  }
+  if (max_mr > 1) {
+    ldp(x13, x14, mem[x4], 16);
+  }
+  if (max_mr == 3) {
+    ldr(x15, mem[x4], 8);
+  }
+  if (max_mr > 3) {
     ldp(x15, x20, mem[x4], 16);
   }
 
@@ -778,6 +786,9 @@ void Generator::perform_post_operations(
   size_t num_post_operations,
   const xnn_post_operation* post_operations)
 {
+  if (num_post_operations == 0) {
+    return;
+  }
   for (size_t i = 0; i < num_post_operations; i++) {
     switch (post_operations[i].op_type) {
       case xnn_post_operation_type_hardswish: {

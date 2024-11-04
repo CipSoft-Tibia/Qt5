@@ -54,6 +54,8 @@ qt_internal_add_qml_module(Quick3DPhysics
     SYSTEM_INCLUDE_DIRECTORIES
         ../3rdparty/PhysX/include
         ../3rdparty/PhysX/pxshared/include
+    DEPENDENCIES
+        QtQuick3D
     LIBRARIES
         Qt::CorePrivate
         Qt::GuiPrivate

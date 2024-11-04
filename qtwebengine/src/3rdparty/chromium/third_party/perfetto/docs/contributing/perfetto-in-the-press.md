@@ -2,6 +2,8 @@
 
 This a partial collection of the talks, blogposts, presentations, and articles that mention Perfetto.
 
+- [Google IO 2023 - What's new in Dart and Flutter](https://youtu.be/yRlwOdCK7Ho?t=798)
+- [Google IO 2023 - Debugging Jetpack Compose](https://youtu.be/Kp-aiSU8qCU?t=1092)
 - [Performance: Perfetto Traceviewer - MAD Skills](https://www.youtube.com/watch?v=phhLFicMacY)
 "On this episode of the MAD Skills series on Performance, Android Performance Engineer Carmen Jackson discusses the Perfetto traceviewer, an alternative to Android Studio for viewing system traces."
 - [Performance and optimisation on the Meta Quest Platform](https://m.facebook.com/RealityLabs/videos/performance-and-optimization-on-meta-quest-platform/488126049869673/)
@@ -16,3 +18,4 @@ experience. We will discuss how we instrument our Snapchat app such that we can
 have the necessary signals for explainability. Additionally, we will describe
 how we incorporate tracing into our development process from local debugging,
 to performance tests and finally in production."
+- [Microsoft: Perfetto tooling for analyzing Android, Linux, and Chromium browser performance](https://devblogs.microsoft.com/performance-diagnostics/perfetto-tooling-for-analyzing-android-linux-and-chromium-browser-performance-microsoft-performance-tools-linux-android/)

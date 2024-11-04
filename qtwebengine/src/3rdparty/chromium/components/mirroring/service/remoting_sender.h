@@ -22,13 +22,13 @@ namespace base {
 class TickClock;
 }  // namespace base
 
-namespace cast_streaming {
-class DecoderBufferReader;
-}  // namespace cast_streaming
-
 namespace media {
 class DecoderBuffer;
 }  // namespace media
+
+namespace media::cast {
+class DecoderBufferReader;
+}  // namespace media::cast
 
 namespace openscreen::cast {
 class Sender;
@@ -126,7 +126,7 @@ class COMPONENT_EXPORT(MIRRORING_SERVICE) RemotingSender final
   base::OnceClosure error_callback_;
 
   // Reads media::DecoderBuffer instances and passes them to OnFrameRead().
-  std::unique_ptr<cast_streaming::DecoderBufferReader> decoder_buffer_reader_;
+  std::unique_ptr<media::cast::DecoderBufferReader> decoder_buffer_reader_;
 
   // Mojo receiver for this instance. Implementation at the other end of the
   // message pipe uses the RemotingDataStreamSender remote to control when
@@ -153,7 +153,7 @@ class COMPONENT_EXPORT(MIRRORING_SERVICE) RemotingSender final
 
   // Number of EnqueueFrame() calls that have failed since the last successful
   // call.
-  int consecuitive_enqueue_frame_failure_count_ = 0;
+  int consecutive_enqueue_frame_failure_count_ = 0;
 
   // The next frame's ID. Before any frames are sent, this will be the ID of
   // the first frame.

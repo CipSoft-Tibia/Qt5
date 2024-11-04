@@ -179,6 +179,8 @@ class MockWebSocketHandshakeStream : public WebSocketHandshakeStreamBase {
 
   std::unique_ptr<WebSocketStream> Upgrade() override { return nullptr; }
 
+  bool CanReadFromStream() const override { return true; }
+
   base::WeakPtr<WebSocketHandshakeStreamBase> GetWeakPtr() override {
     return weak_ptr_factory_.GetWeakPtr();
   }
@@ -680,8 +682,8 @@ TEST_F(HttpStreamFactoryTest, PreconnectNetworkIsolationKey) {
   const GURL kURL("http://foo.test/");
   SchemefulSite kSiteFoo(GURL("http://foo.test"));
   SchemefulSite kSiteBar(GURL("http://bar.test"));
-  const NetworkAnonymizationKey kKey1(kSiteFoo, kSiteFoo);
-  const NetworkAnonymizationKey kKey2(kSiteBar, kSiteBar);
+  const auto kKey1 = NetworkAnonymizationKey::CreateSameSite(kSiteFoo);
+  const auto kKey2 = NetworkAnonymizationKey::CreateSameSite(kSiteBar);
   PreconnectHelperForURL(1, kURL, kKey1, SecureDnsPolicy::kAllow,
                          session.get());
   EXPECT_EQ(1, transport_conn_pool->last_num_streams());
@@ -1687,10 +1689,12 @@ TEST_F(HttpStreamFactoryTest, RequestSpdyHttpStreamHttpURL) {
 TEST_F(HttpStreamFactoryTest,
        RequestSpdyHttpStreamHttpURLWithNetworkAnonymizationKey) {
   const SchemefulSite kSite1(GURL("https://foo.test/"));
-  const NetworkAnonymizationKey kNetworkAnonymizationKey1(kSite1, kSite1);
+  const auto kNetworkAnonymizationKey1 =
+      NetworkAnonymizationKey::CreateSameSite(kSite1);
   const NetworkIsolationKey kNetworkIsolationKey1(kSite1, kSite1);
   const SchemefulSite kSite2(GURL("https://bar.test/"));
-  const NetworkAnonymizationKey kNetworkAnonymizationKey2(kSite2, kSite2);
+  const auto kNetworkAnonymizationKey2 =
+      NetworkAnonymizationKey::CreateSameSite(kSite2);
   const NetworkIsolationKey kNetworkIsolationKey2(kSite1, kSite1);
 
   base::test::ScopedFeatureList feature_list;
@@ -2108,14 +2112,12 @@ TEST_P(HttpStreamFactoryBidirectionalQuicTest,
       client_packet_maker().MakeInitialSettingsPacket(packet_num++));
   mock_quic_data.AddWrite(client_packet_maker().MakeRequestHeadersPacket(
       packet_num++, GetNthClientInitiatedBidirectionalStreamId(0),
-      /*should_include_version=*/true,
       /*fin=*/true, priority,
       client_packet_maker().GetRequestHeaders("GET", "https", "/"),
       &spdy_headers_frame_length));
   size_t spdy_response_headers_frame_length;
   mock_quic_data.AddRead(server_packet_maker().MakeResponseHeadersPacket(
       1, GetNthClientInitiatedBidirectionalStreamId(0),
-      /*should_include_version=*/false,
       /*fin=*/true, server_packet_maker().GetResponseHeaders("200"),
       &spdy_response_headers_frame_length));
   mock_quic_data.AddRead(SYNCHRONOUS, ERR_IO_PENDING);  // No more read data.
@@ -2198,14 +2200,12 @@ TEST_P(HttpStreamFactoryBidirectionalQuicTest,
       client_packet_maker().MakeInitialSettingsPacket(packet_num++));
   mock_quic_data.AddWrite(client_packet_maker().MakeRequestHeadersPacket(
       packet_num++, GetNthClientInitiatedBidirectionalStreamId(0),
-      /*should_include_version=*/true,
       /*fin=*/true, priority,
       client_packet_maker().GetRequestHeaders("GET", "https", "/"),
       &spdy_headers_frame_length));
   size_t spdy_response_headers_frame_length;
   mock_quic_data.AddRead(server_packet_maker().MakeResponseHeadersPacket(
       1, GetNthClientInitiatedBidirectionalStreamId(0),
-      /*should_include_version=*/false,
       /*fin=*/true, server_packet_maker().GetResponseHeaders("200"),
       &spdy_response_headers_frame_length));
   mock_quic_data.AddRead(SYNCHRONOUS, ERR_IO_PENDING);  // No more read data.
@@ -2452,14 +2452,12 @@ TEST_P(HttpStreamFactoryBidirectionalQuicTest, Tag) {
       client_packet_maker().MakeInitialSettingsPacket(packet_num++));
   mock_quic_data.AddWrite(client_packet_maker().MakeRequestHeadersPacket(
       packet_num++, GetNthClientInitiatedBidirectionalStreamId(0),
-      /*should_include_version=*/true,
       /*fin=*/true, priority,
       client_packet_maker().GetRequestHeaders("GET", "https", "/"),
       &spdy_headers_frame_length));
   size_t spdy_response_headers_frame_length;
   mock_quic_data.AddRead(server_packet_maker().MakeResponseHeadersPacket(
       1, GetNthClientInitiatedBidirectionalStreamId(0),
-      /*should_include_version=*/false,
       /*fin=*/true, server_packet_maker().GetResponseHeaders("200"),
       &spdy_response_headers_frame_length));
   mock_quic_data.AddRead(SYNCHRONOUS, ERR_IO_PENDING);  // No more read data.
@@ -2473,13 +2471,11 @@ TEST_P(HttpStreamFactoryBidirectionalQuicTest, Tag) {
       client_packet_maker().MakeInitialSettingsPacket(packet_num++));
   mock_quic_data2.AddWrite(client_packet_maker().MakeRequestHeadersPacket(
       packet_num++, GetNthClientInitiatedBidirectionalStreamId(0),
-      /*should_include_version=*/true,
       /*fin=*/true, priority,
       client_packet_maker().GetRequestHeaders("GET", "https", "/"),
       &spdy_headers_frame_length));
   mock_quic_data2.AddRead(server_packet_maker().MakeResponseHeadersPacket(
       1, GetNthClientInitiatedBidirectionalStreamId(0),
-      /*should_include_version=*/false,
       /*fin=*/true, server_packet_maker().GetResponseHeaders("200"),
       &spdy_response_headers_frame_length));
   mock_quic_data2.AddRead(SYNCHRONOUS, ERR_IO_PENDING);  // No more read data.
@@ -3288,14 +3284,12 @@ TEST_P(HttpStreamFactoryBidirectionalQuicTest, QuicIPPoolingWithDnsAliases) {
       client_packet_maker().MakeInitialSettingsPacket(packet_num++));
   mock_quic_data.AddWrite(client_packet_maker().MakeRequestHeadersPacket(
       packet_num++, GetNthClientInitiatedBidirectionalStreamId(0),
-      /*should_include_version=*/true,
       /*fin=*/true, priority,
       client_packet_maker().GetRequestHeaders("GET", "https", "/"),
       &spdy_headers_frame_length));
   size_t spdy_response_headers_frame_length;
   mock_quic_data.AddRead(server_packet_maker().MakeResponseHeadersPacket(
       1, GetNthClientInitiatedBidirectionalStreamId(0),
-      /*should_include_version=*/false,
       /*fin=*/true, server_packet_maker().GetResponseHeaders("200"),
       &spdy_response_headers_frame_length));
   mock_quic_data.AddRead(SYNCHRONOUS, ERR_IO_PENDING);  // No more read data.
@@ -3457,14 +3451,9 @@ class ProcessAlternativeServicesTest : public TestWithTaskEnvironment {
     session_context_.quic_context = &quic_context_;
   }
 
- protected:
-  HttpNetworkSessionParams session_params_;
-  HttpNetworkSessionContext session_context_;
-  std::unique_ptr<HttpNetworkSession> session_;
-  HttpServerProperties http_server_properties_;
-  QuicContext quic_context_;
-
  private:
+  // Parameters passed in the NetworkSessionContext must outlive the
+  // HttpNetworkSession.
   std::unique_ptr<ProxyResolutionService> proxy_resolution_service_ =
       ConfiguredProxyResolutionService::CreateDirect();
   SSLConfigServiceDefaults ssl_config_service_;
@@ -3473,6 +3462,14 @@ class ProcessAlternativeServicesTest : public TestWithTaskEnvironment {
   MockCertVerifier cert_verifier_;
   TransportSecurityState transport_security_state_;
   DefaultCTPolicyEnforcer ct_policy_enforcer_;
+
+ protected:
+  HttpServerProperties http_server_properties_;
+  QuicContext quic_context_;
+  HttpNetworkSessionParams session_params_;
+  HttpNetworkSessionContext session_context_;
+  std::unique_ptr<HttpNetworkSession> session_;
+
 };
 
 TEST_F(ProcessAlternativeServicesTest, ProcessEmptyAltSvc) {
@@ -3497,8 +3494,7 @@ TEST_F(ProcessAlternativeServicesTest, ProcessAltSvcClear) {
       std::make_unique<HttpNetworkSession>(session_params_, session_context_);
   url::SchemeHostPort origin(url::kHttpsScheme, "example.com", 443);
 
-  NetworkAnonymizationKey network_anonymization_key(
-      SchemefulSite(GURL("https://example.com")),
+  auto network_anonymization_key = NetworkAnonymizationKey::CreateSameSite(
       SchemefulSite(GURL("https://example.com")));
 
   http_server_properties_.SetAlternativeServices(
@@ -3530,8 +3526,7 @@ TEST_F(ProcessAlternativeServicesTest, ProcessAltSvcQuicIetf) {
       std::make_unique<HttpNetworkSession>(session_params_, session_context_);
   url::SchemeHostPort origin(url::kHttpsScheme, "example.com", 443);
 
-  NetworkAnonymizationKey network_anonymization_key(
-      SchemefulSite(GURL("https://example.com")),
+  auto network_anonymization_key = NetworkAnonymizationKey::CreateSameSite(
       SchemefulSite(GURL("https://example.com")));
 
   auto headers = base::MakeRefCounted<HttpResponseHeaders>("");
@@ -3546,7 +3541,6 @@ TEST_F(ProcessAlternativeServicesTest, ProcessAltSvcQuicIetf) {
   quic::ParsedQuicVersionVector versions = {
       quic::ParsedQuicVersion::Draft29(),
       quic::ParsedQuicVersion::Q050(),
-      quic::ParsedQuicVersion::Q043(),
   };
   AlternativeServiceInfoVector alternatives =
       http_server_properties_.GetAlternativeServiceInfos(
@@ -3567,8 +3561,7 @@ TEST_F(ProcessAlternativeServicesTest, ProcessAltSvcHttp2) {
       std::make_unique<HttpNetworkSession>(session_params_, session_context_);
   url::SchemeHostPort origin(url::kHttpsScheme, "example.com", 443);
 
-  NetworkAnonymizationKey network_anonymization_key(
-      SchemefulSite(GURL("https://example.com")),
+  auto network_anonymization_key = NetworkAnonymizationKey::CreateSameSite(
       SchemefulSite(GURL("https://example.com")));
 
   auto headers = base::MakeRefCounted<HttpResponseHeaders>("");

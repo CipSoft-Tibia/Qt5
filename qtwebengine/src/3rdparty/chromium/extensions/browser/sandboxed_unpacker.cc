@@ -79,7 +79,7 @@ bool VerifyJunctionFreeLocation(base::FilePath* temp_dir) {
   // NormalizeFilePath requires a non-empty file, so write some data.
   // If you change the exit points of this function please make sure all
   // exit points delete this temp file!
-  if (base::WriteFile(temp_file, ".", 1) != 1) {
+  if (!base::WriteFile(temp_file, ".")) {
     base::DeleteFile(temp_file);
     return false;
   }
@@ -514,7 +514,6 @@ void SandboxedUnpacker::StoreVerifiedContentsInExtensionDir(
 
 void SandboxedUnpacker::Unpack(const base::FilePath& directory) {
   DCHECK(unpacker_io_task_runner_->RunsTasksInCurrentSequence());
-
   DCHECK(directory.DirName() == temp_dir_.GetPath());
 
   base::FilePath manifest_path = extension_root_.Append(kManifestFilename);
@@ -1068,8 +1067,7 @@ absl::optional<base::Value::Dict> SandboxedUnpacker::RewriteManifestFile(
   }
 
   base::FilePath manifest_path = extension_root_.Append(kManifestFilename);
-  int size = base::checked_cast<int>(manifest_json.size());
-  if (base::WriteFile(manifest_path, manifest_json.data(), size) != size) {
+  if (!base::WriteFile(manifest_path, manifest_json)) {
     // Error saving manifest.json.
     ReportFailure(
         SandboxedUnpackerFailureReason::ERROR_SAVING_MANIFEST_JSON,

@@ -15,12 +15,14 @@
 #ifndef CORE_INTERNAL_MEDIUMS_WEBRTC_H_
 #define CORE_INTERNAL_MEDIUMS_WEBRTC_H_
 
-#include <cstddef>
-#include <functional>
+#ifndef NO_WEBRTC
+
+#include <map>
 #include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "connections/implementation/mediums/webrtc/connection_flow.h"
 #include "connections/implementation/mediums/webrtc_peer_id.h"
 #include "connections/implementation/mediums/webrtc_socket.h"
@@ -39,15 +41,13 @@ namespace nearby {
 namespace connections {
 namespace mediums {
 
-// Callback that is invoked when a new connection is accepted.
-struct AcceptedConnectionCallback {
-  std::function<void(const std::string& service_id, WebRtcSocketWrapper socket)>
-      accepted_cb = [](const std::string&, WebRtcSocketWrapper) {};
-};
-
 // Entry point for connecting a data channel between two devices via WebRtc.
 class WebRtc {
  public:
+  // Callback that is invoked when a new connection is accepted.
+  using AcceptedConnectionCallback = absl::AnyInvocable<void(
+      const std::string& service_id, WebRtcSocketWrapper socket)>;
+
   WebRtc();
   ~WebRtc();
 
@@ -84,6 +84,14 @@ class WebRtc {
       const std::string& service_id, const WebrtcPeerId& peer_id,
       const location::nearby::connections::LocationHint& location_hint,
       CancellationFlag* cancellation_flag) ABSL_LOCKS_EXCLUDED(mutex_);
+
+ protected:
+  // Use for unit tests only to inject a WebRtcMedium.
+  explicit WebRtc(std::unique_ptr<WebRtcMedium> medium);
+
+  // Used in unit tests to determine how many calls to `AttemptToConnect`
+  // occured during a call to `Connect`, per service id.
+  std::map<std::string, int> service_id_to_connect_attempts_count_map_;
 
  private:
   static constexpr int kConnectAttemptsLimit = 3;
@@ -223,7 +231,7 @@ class WebRtc {
 
   Mutex mutex_;
 
-  WebRtcMedium medium_;
+  std::unique_ptr<WebRtcMedium> medium_;
 
   // The single thread we throw the potentially blocking work on to.
   ScheduledExecutor single_thread_executor_;
@@ -248,5 +256,7 @@ class WebRtc {
 }  // namespace mediums
 }  // namespace connections
 }  // namespace nearby
+
+#endif
 
 #endif  // CORE_INTERNAL_MEDIUMS_WEBRTC_H_

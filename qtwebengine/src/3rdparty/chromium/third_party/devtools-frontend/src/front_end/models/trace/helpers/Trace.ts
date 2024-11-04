@@ -41,32 +41,70 @@ export function addEventToProcessThread<T extends Types.TraceEvents.TraceEventDa
   eventsInThread.set(event.tid, events);
   eventsInProcessThread.set(event.pid, eventsInThread);
 }
+
+type TimeSpan = {
+  ts: Types.Timing.MicroSeconds,
+  dur?: Types.Timing.MicroSeconds,
+};
+function eventTimeComparator(a: TimeSpan, b: TimeSpan): -1|0|1 {
+  const aBeginTime = a.ts;
+  const bBeginTime = b.ts;
+  if (aBeginTime < bBeginTime) {
+    return -1;
+  }
+  if (aBeginTime > bBeginTime) {
+    return 1;
+  }
+  const aDuration = a.dur ?? 0;
+  const bDuration = b.dur ?? 0;
+  const aEndTime = aBeginTime + aDuration;
+  const bEndTime = bBeginTime + bDuration;
+  if (aEndTime > bEndTime) {
+    return -1;
+  }
+  if (aEndTime < bEndTime) {
+    return 1;
+  }
+  return 0;
+}
 /**
  * Sorts all the events in place, in order, by their start time. If they have
  * the same start time, orders them by longest first.
  */
-export function sortTraceEventsInPlace(events: Types.TraceEvents.TraceEventData[]): void {
-  events.sort((a, b) => {
-    const aBeginTime = a.ts;
-    const bBeginTime = b.ts;
-    if (aBeginTime < bBeginTime) {
-      return -1;
+export function sortTraceEventsInPlace(events: {ts: Types.Timing.MicroSeconds, dur?: Types.Timing.MicroSeconds}[]):
+    void {
+  events.sort(eventTimeComparator);
+}
+
+/**
+ * Returns an array of ordered events that results after merging the two
+ * ordered input arrays.
+ */
+export function mergeEventsInOrder<T extends Types.TraceEvents.TraceEventData>(
+    eventsArray1: T[], eventsArray2: T[]): T[] {
+  const result = [];
+  let i = 0;
+  let j = 0;
+  while (i < eventsArray1.length && j < eventsArray2.length) {
+    const event1 = eventsArray1[i];
+    const event2 = eventsArray2[j];
+    const compareValue = eventTimeComparator(event1, event2);
+    if (compareValue <= 0) {
+      result.push(event1);
+      i++;
     }
-    if (aBeginTime > bBeginTime) {
-      return 1;
+    if (compareValue === 1) {
+      result.push(event2);
+      j++;
     }
-    const aDuration = a.dur ?? 0;
-    const bDuration = b.dur ?? 0;
-    const aEndTime = aBeginTime + aDuration;
-    const bEndTime = bBeginTime + bDuration;
-    if (aEndTime > bEndTime) {
-      return -1;
-    }
-    if (aEndTime < bEndTime) {
-      return 1;
-    }
-    return 0;
-  });
+  }
+  while (i < eventsArray1.length) {
+    result.push(eventsArray1[i++]);
+  }
+  while (j < eventsArray2.length) {
+    result.push(eventsArray2[j++]);
+  }
+  return result;
 }
 
 export function getNavigationForTraceEvent(
@@ -89,4 +127,29 @@ export function getNavigationForTraceEvent(
     return null;
   }
   return navigations[eventNavigationIndex];
+}
+
+export function extractId(event: Types.TraceEvents.TraceEventNestableAsync): string|undefined {
+  return event.id || event.id2?.global || event.id2?.local;
+}
+
+export function activeURLForFrameAtTime(
+    frameId: string, time: Types.Timing.MicroSeconds,
+    rendererProcessesByFrame: Map<
+        string,
+        Map<Types.TraceEvents.ProcessID, {frame: Types.TraceEvents.TraceFrame, window: Types.Timing.TraceWindow}[]>>):
+    string|null {
+  const processData = rendererProcessesByFrame.get(frameId);
+  if (!processData) {
+    return null;
+  }
+  for (const processes of processData.values()) {
+    for (const processInfo of processes) {
+      if (processInfo.window.min > time || processInfo.window.max < time) {
+        continue;
+      }
+      return processInfo.frame.url;
+    }
+  }
+  return null;
 }

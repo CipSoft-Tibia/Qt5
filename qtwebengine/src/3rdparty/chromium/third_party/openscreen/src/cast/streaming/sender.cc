@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,24 +7,150 @@
 #include <algorithm>
 #include <chrono>
 #include <ratio>
+#include <utility>
 
+#include "cast/streaming/rtp_defines.h"
 #include "cast/streaming/session_config.h"
+#include "cast/streaming/statistics_defines.h"
 #include "platform/base/trivial_clock_traits.h"
 #include "util/chrono_helpers.h"
 #include "util/osp_logging.h"
 #include "util/std_util.h"
 #include "util/trace_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 using clock_operators::operator<<;
+
+namespace {
+
+void DispatchEnqueueEvents(StreamType stream_type,
+                           const EncodedFrame& frame,
+                           Environment& environment) {
+  if (!environment.statistics_collector()) {
+    return;
+  }
+
+  const StatisticsEventMediaType media_type = ToMediaType(stream_type);
+
+  // Submit a capture begin event.
+  FrameEvent capture_begin_event;
+  capture_begin_event.type = StatisticsEventType::kFrameCaptureBegin;
+  capture_begin_event.media_type = media_type;
+  capture_begin_event.rtp_timestamp = frame.rtp_timestamp;
+  capture_begin_event.timestamp =
+      (frame.capture_begin_time > Clock::time_point::min())
+          ? frame.capture_begin_time
+          : environment.now();
+  environment.statistics_collector()->CollectFrameEvent(
+      std::move(capture_begin_event));
+
+  // Submit a capture end event.
+  FrameEvent capture_end_event;
+  capture_end_event.type = StatisticsEventType::kFrameCaptureEnd;
+  capture_end_event.media_type = media_type;
+  capture_end_event.rtp_timestamp = frame.rtp_timestamp;
+  capture_end_event.timestamp =
+      (frame.capture_end_time > Clock::time_point::min())
+          ? frame.capture_end_time
+          : environment.now();
+  environment.statistics_collector()->CollectFrameEvent(
+      std::move(capture_end_event));
+
+  // Submit an encoded event.
+  FrameEvent encode_event;
+  encode_event.timestamp = environment.now();
+  encode_event.type = StatisticsEventType::kFrameEncoded;
+  encode_event.media_type = media_type;
+  encode_event.rtp_timestamp = frame.rtp_timestamp;
+  encode_event.frame_id = frame.frame_id;
+  encode_event.size = static_cast<uint32_t>(frame.data.size());
+  encode_event.key_frame =
+      frame.dependency == openscreen::cast::EncodedFrame::Dependency::kKeyFrame;
+
+  environment.statistics_collector()->CollectFrameEvent(
+      std::move(encode_event));
+}
+
+void DispatchAckEvent(StreamType stream_type,
+                      RtpTimeTicks rtp_timestamp,
+                      FrameId frame_id,
+                      Environment& environment) {
+  if (!environment.statistics_collector()) {
+    return;
+  }
+
+  FrameEvent ack_event;
+  ack_event.timestamp = environment.now();
+  ack_event.type = StatisticsEventType::kFrameAckReceived;
+  ack_event.media_type = ToMediaType(stream_type);
+  ack_event.rtp_timestamp = rtp_timestamp;
+  ack_event.frame_id = frame_id;
+
+  environment.statistics_collector()->CollectFrameEvent(std::move(ack_event));
+}
+
+// TODO(issuetracker.google.com/298277160): move into a helper file, add tests.
+void DispatchFrameLogMessages(
+    StreamType stream_type,
+    const std::vector<RtcpReceiverFrameLogMessage>& messages,
+    Environment& environment) {
+  if (!environment.statistics_collector()) {
+    return;
+  }
+
+  const Clock::time_point now = environment.now();
+  const StatisticsEventMediaType media_type = ToMediaType(stream_type);
+  for (const RtcpReceiverFrameLogMessage& log_message : messages) {
+    for (const RtcpReceiverEventLogMessage& event_message :
+         log_message.messages) {
+      switch (event_message.type) {
+        case StatisticsEventType::kPacketReceived: {
+          PacketEvent event;
+          event.timestamp = event_message.timestamp;
+          event.received_timestamp = now;
+          event.type = event_message.type;
+          event.media_type = media_type;
+          event.rtp_timestamp = log_message.rtp_timestamp;
+          event.packet_id = event_message.packet_id;
+          environment.statistics_collector()->CollectPacketEvent(
+              std::move(event));
+        } break;
+
+        case StatisticsEventType::kFrameAckSent:
+        case StatisticsEventType::kFrameDecoded:
+        case StatisticsEventType::kFramePlayedOut: {
+          FrameEvent event;
+          event.timestamp = event_message.timestamp;
+          event.received_timestamp = now;
+          event.type = event_message.type;
+          event.media_type = media_type;
+          event.rtp_timestamp = log_message.rtp_timestamp;
+          if (event.type == StatisticsEventType::kFramePlayedOut) {
+            event.delay_delta = event_message.delay;
+          }
+          environment.statistics_collector()->CollectFrameEvent(
+              std::move(event));
+        } break;
+
+        default:
+          OSP_VLOG << "Received log message via RTCP that we did not expect, "
+                      "StatisticsEventType="
+                   << static_cast<int>(event_message.type);
+          break;
+      }
+    }
+  }
+}
+
+}  // namespace
 
 Sender::Sender(Environment* environment,
                SenderPacketRouter* packet_router,
                SessionConfig config,
                RtpPayloadType rtp_payload_type)
-    : config_(config),
+    : environment_(environment),
+      config_(config),
       packet_router_(packet_router),
       rtcp_session_(config.sender_ssrc,
                     config.receiver_ssrc,
@@ -101,7 +227,7 @@ Clock::duration Sender::GetCurrentRoundTripTime() const {
 }
 
 Sender::EnqueueFrameResult Sender::EnqueueFrame(const EncodedFrame& frame) {
-  // Assume the fields of the |frame| have all been set correctly, with
+  // Assume the fields of the `frame` have all been set correctly, with
   // monotonically increasing timestamps and a valid pointer to the data.
   OSP_DCHECK_EQ(frame.frame_id, GetNextFrameId());
   OSP_DCHECK_GE(frame.referenced_frame_id, FrameId::first());
@@ -112,7 +238,7 @@ Sender::EnqueueFrameResult Sender::EnqueueFrame(const EncodedFrame& frame) {
   OSP_DCHECK(frame.data.data());
 
   // Check whether enqueuing the frame would exceed the design limit for the
-  // span of FrameIds. Even if |num_frames_in_flight_| is less than
+  // span of FrameIds. Even if `num_frames_in_flight_` is less than
   // kMaxUnackedFrames, it's the span of FrameIds that is restricted.
   if ((frame.frame_id - checkpoint_frame_id_) > kMaxUnackedFrames) {
     return REACHED_ID_SPAN_LIMIT;
@@ -172,6 +298,7 @@ Sender::EnqueueFrameResult Sender::EnqueueFrame(const EncodedFrame& frame) {
 
   // Re-activate RTP sending if it was suspended.
   packet_router_->RequestRtpSend(rtcp_session_.receiver_ssrc());
+  DispatchEnqueueEvents(config_.stream_type, frame, *environment_);
 
   return OK;
 }
@@ -185,10 +312,11 @@ void Sender::CancelInFlightData() {
     ++checkpoint_frame_id_;
     CancelPendingFrame(checkpoint_frame_id_);
   }
+  DispatchCancellations();
 }
 
 void Sender::OnReceivedRtcpPacket(Clock::time_point arrival_time,
-                                  absl::Span<const uint8_t> packet) {
+                                  ByteView packet) {
   rtcp_packet_arrival_time_ = arrival_time;
   // This call to Parse() invoke zero or more of the OnReceiverXYZ() methods in
   // the current call stack:
@@ -197,9 +325,8 @@ void Sender::OnReceivedRtcpPacket(Clock::time_point arrival_time,
   }
 }
 
-absl::Span<uint8_t> Sender::GetRtcpPacketForImmediateSend(
-    Clock::time_point send_time,
-    absl::Span<uint8_t> buffer) {
+ByteBuffer Sender::GetRtcpPacketForImmediateSend(Clock::time_point send_time,
+                                                 ByteBuffer buffer) {
   if (pending_sender_report_.reference_time == SenderPacketRouter::kNever) {
     // Cannot send a report if one is not available (i.e., a frame has never
     // been enqueued).
@@ -219,9 +346,8 @@ absl::Span<uint8_t> Sender::GetRtcpPacketForImmediateSend(
   return sender_report_builder_.BuildPacket(sender_report, buffer).first;
 }
 
-absl::Span<uint8_t> Sender::GetRtpPacketForImmediateSend(
-    Clock::time_point send_time,
-    absl::Span<uint8_t> buffer) {
+ByteBuffer Sender::GetRtpPacketForImmediateSend(Clock::time_point send_time,
+                                                ByteBuffer buffer) {
   ChosenPacket chosen = ChooseNextRtpPacketNeedingSend();
 
   // If no packets need sending (i.e., all packets have been sent at least once
@@ -242,7 +368,7 @@ absl::Span<uint8_t> Sender::GetRtpPacketForImmediateSend(
     OSP_DCHECK(chosen);
   }
 
-  const absl::Span<uint8_t> result = rtp_packetizer_.GeneratePacket(
+  const ByteBuffer result = rtp_packetizer_.GeneratePacket(
       *chosen.slot->frame, chosen.packet_id, buffer);
   chosen.slot->send_flags.Clear(chosen.packet_id);
   chosen.slot->packet_sent_times[chosen.packet_id] = send_time;
@@ -266,6 +392,14 @@ Clock::time_point Sender::GetRtpResumeTime() {
     return Alarm::kImmediately;
   }
   return ChooseKickstartPacket().when;
+}
+
+RtpTimeTicks Sender::GetLastRtpTimestamp() const {
+  return {};
+}
+
+StreamType Sender::GetStreamType() const {
+  return config_.stream_type;
 }
 
 void Sender::OnReceiverReferenceTimeAdvanced(Clock::time_point reference_time) {
@@ -325,8 +459,14 @@ void Sender::OnReceiverReport(const RtcpReportBlock& receiver_report) {
                 "round_trip_time", ToString(round_trip_time_));
 }
 
+void Sender::OnCastReceiverFrameLogMessages(
+    std::vector<RtcpReceiverFrameLogMessage> messages) {
+  DispatchFrameLogMessages(config_.stream_type, messages, *environment_);
+}
+
 void Sender::OnReceiverIndicatesPictureLoss() {
-  TRACE_SCOPED(TraceCategory::kSender, "OnReceiverIndicatesPictureLoss");
+  TRACE_SCOPED1(TraceCategory::kSender, "OnReceiverIndicatesPictureLoss",
+                "last_received_frame_id", picture_lost_at_frame_id_.ToString());
   // The Receiver will continue the PLI notifications until it has received a
   // key frame. Thus, if a key frame is already in-flight, don't make a state
   // change that would cause this Sender to force another expensive key frame.
@@ -357,6 +497,7 @@ void Sender::OnReceiverCheckpoint(FrameId frame_id,
   TRACE_SCOPED2(TraceCategory::kSender, "OnReceiverCheckpoint", "frame_id",
                 frame_id.ToString(), "playout_delay", ToString(playout_delay));
   if (frame_id > last_enqueued_frame_id_) {
+    TRACE_SET_RESULT(Error::Code::kParameterOutOfRange);
     OSP_LOG_ERROR
         << "Ignoring checkpoint for " << latest_expected_frame_id_
         << " because this Sender could not have sent any frames after "
@@ -365,12 +506,18 @@ void Sender::OnReceiverCheckpoint(FrameId frame_id,
   }
   // CompoundRtcpParser should guarantee this:
   OSP_DCHECK(playout_delay >= milliseconds::zero());
-
   while (checkpoint_frame_id_ < frame_id) {
     ++checkpoint_frame_id_;
-    CancelPendingFrame(checkpoint_frame_id_);
+    PendingFrameSlot* const slot = get_slot_for(checkpoint_frame_id_);
+    if (slot && slot->is_active_for_frame(checkpoint_frame_id_)) {
+      const RtpTimeTicks rtp_timestamp = slot->frame->rtp_timestamp;
+      DispatchAckEvent(config_.stream_type, rtp_timestamp, checkpoint_frame_id_,
+                       *environment_);
+      CancelPendingFrame(checkpoint_frame_id_);
+    }
   }
   latest_expected_frame_id_ = std::max(latest_expected_frame_id_, frame_id);
+  DispatchCancellations();
 
   if (playout_delay != target_playout_delay_ &&
       frame_id >= playout_delay_change_at_frame_id_) {
@@ -385,6 +532,7 @@ void Sender::OnReceiverHasFrames(std::vector<FrameId> acks) {
                 Join(acks));
 
   if (acks.back() > last_enqueued_frame_id_) {
+    TRACE_SET_RESULT(Error::Code::kParameterOutOfRange);
     OSP_LOG_ERROR << "Ignoring individual frame ACKs: ACKing frame "
                   << latest_expected_frame_id_
                   << " is invalid because this Sender could not have sent any "
@@ -394,9 +542,15 @@ void Sender::OnReceiverHasFrames(std::vector<FrameId> acks) {
   }
 
   for (FrameId id : acks) {
+    PendingFrameSlot* const slot = get_slot_for(id);
+    if (slot && slot->is_active_for_frame(id)) {
+      const RtpTimeTicks rtp_timestamp = slot->frame->rtp_timestamp;
+      DispatchAckEvent(config_.stream_type, rtp_timestamp, id, *environment_);
+    }
     CancelPendingFrame(id);
   }
   latest_expected_frame_id_ = std::max(latest_expected_frame_id_, acks.back());
+  DispatchCancellations();
 }
 
 void Sender::OnReceiverIsMissingPackets(std::vector<PacketNack> nacks) {
@@ -433,7 +587,8 @@ void Sender::OnReceiverIsMissingPackets(std::vector<PacketNack> nacks) {
     // happen in rare cases where RTCP packets arrive out-of-order (i.e., the
     // network shuffled them).
     if (!slot) {
-      TRACE_SCOPED(TraceCategory::kSender, "MissingNackSlot");
+      TRACE_SCOPED1(TraceCategory::kSender, "MissingNackSlot", "frame_id",
+                    frame_id.ToString());
       for (++nack_it; nack_it != nacks.end() && nack_it->frame_id == frame_id;
            ++nack_it) {
       }
@@ -505,7 +660,7 @@ Sender::ChosenPacketAndWhen Sender::ChooseKickstartPacket() {
   ChosenPacketAndWhen chosen;
   chosen.slot = get_slot_for(last_enqueued_frame_id_);
   // Note: This frame cannot have been canceled since
-  // |latest_expected_frame_id_| hasn't yet reached this point.
+  // `latest_expected_frame_id_` hasn't yet reached this point.
   OSP_DCHECK(chosen.slot->is_active_for_frame(last_enqueued_frame_id_));
   chosen.packet_id = chosen.slot->send_flags.size() - 1;
 
@@ -516,7 +671,7 @@ Sender::ChosenPacketAndWhen Sender::ChooseKickstartPacket() {
   OSP_DCHECK_NE(time_last_sent, SenderPacketRouter::kNever);
 
   // The desired Kickstart interval is a fraction of the total
-  // |target_playout_delay_|. The reason for the specific ratio here is based on
+  // `target_playout_delay_`. The reason for the specific ratio here is based on
   // lost knowledge (from legacy implementations); but it makes sense (i.e., to
   // be a good "network citizen") to be less aggressive for larger playout delay
   // windows, and more aggressive for shorter ones to avoid too-late packet
@@ -539,6 +694,7 @@ Sender::ChosenPacketAndWhen Sender::ChooseKickstartPacket() {
 void Sender::CancelPendingFrame(FrameId frame_id) {
   TRACE_SCOPED1(TraceCategory::kSender, "CancelPendingFrame", "frame_id",
                 frame_id.ToString());
+
   PendingFrameSlot* const slot = get_slot_for(frame_id);
   if (!slot->is_active_for_frame(frame_id)) {
     return;  // Frame was already canceled.
@@ -551,8 +707,23 @@ void Sender::CancelPendingFrame(FrameId frame_id) {
   OSP_DCHECK_GT(num_frames_in_flight_, 0);
   --num_frames_in_flight_;
   if (observer_) {
-    observer_->OnFrameCanceled(frame_id);
+    pending_cancellations_.emplace_back(frame_id);
   }
+}
+
+void Sender::DispatchCancellations() {
+  if (observer_) {
+    for (const FrameId id : pending_cancellations_) {
+      observer_->OnFrameCanceled(id);
+    }
+  }
+  pending_cancellations_.clear();
+
+  // At this point, there should either be no frames in flight, or the frame
+  // immediately after `checkpoint_frame_id_` must be valid.
+  OSP_DCHECK((num_frames_in_flight_ == 0) ||
+             get_slot_for(checkpoint_frame_id_ + 1)
+                 ->is_active_for_frame(checkpoint_frame_id_ + 1));
 }
 
 void Sender::Observer::OnFrameCanceled(FrameId frame_id) {}
@@ -562,5 +733,4 @@ Sender::Observer::~Observer() = default;
 Sender::PendingFrameSlot::PendingFrameSlot() = default;
 Sender::PendingFrameSlot::~PendingFrameSlot() = default;
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

@@ -104,6 +104,11 @@ ABSL_FLAG(bool,
           false,
           "Output charts as protobuf instead of python code.");
 
+ABSL_FLAG(std::string,
+          figure_output_path,
+          "",
+          "A path to output the python plots into");
+
 ABSL_FLAG(bool,
           list_plots,
           false,
@@ -399,7 +404,7 @@ int main(int argc, char* argv[]) {
         "Fraction lost (outgoing RTCP)", "Loss rate (percent)", plot);
   });
   auto GetCumulativeLost = [](const webrtc::rtcp::ReportBlock& block) -> float {
-    return block.cumulative_lost_signed();
+    return block.cumulative_lost();
   };
   plots.RegisterPlot("incoming_rtcp_cumulative_lost", [&](Plot* plot) {
     analyzer.CreateSenderAndReceiverReportPlot(
@@ -634,7 +639,8 @@ int main(int argc, char* argv[]) {
     collection.ExportProtobuf(&proto_charts);
     std::cout << proto_charts.SerializeAsString();
   } else {
-    collection.PrintPythonCode(absl::GetFlag(FLAGS_shared_xaxis));
+    collection.PrintPythonCode(absl::GetFlag(FLAGS_shared_xaxis),
+                               absl::GetFlag(FLAGS_figure_output_path));
   }
 
   if (absl::GetFlag(FLAGS_print_triage_alerts)) {

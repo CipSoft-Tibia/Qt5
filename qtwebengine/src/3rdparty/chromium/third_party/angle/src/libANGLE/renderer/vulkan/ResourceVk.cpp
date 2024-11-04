@@ -23,7 +23,7 @@ angle::Result Resource::waitForIdle(ContextVk *contextVk,
     // If there are pending commands for the resource, flush them.
     if (contextVk->hasUnsubmittedUse(mUse))
     {
-        ANGLE_TRY(contextVk->flushImpl(nullptr, reason));
+        ANGLE_TRY(contextVk->flushImpl(nullptr, nullptr, reason));
     }
 
     RendererVk *renderer = contextVk->getRenderer();
@@ -96,5 +96,14 @@ bool SharedGarbage::hasResourceUseSubmitted(RendererVk *renderer) const
 {
     return renderer->hasResourceUseSubmitted(mLifetime);
 }
+
+// ReleasableResource implementation.
+template <class T>
+void ReleasableResource<T>::release(RendererVk *renderer)
+{
+    renderer->collectGarbage(mUse, &mObject);
+}
+
+template class ReleasableResource<Semaphore>;
 }  // namespace vk
 }  // namespace rx

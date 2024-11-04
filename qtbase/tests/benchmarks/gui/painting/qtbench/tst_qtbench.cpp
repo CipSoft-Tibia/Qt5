@@ -1,5 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
 #include <qtest.h>
 
@@ -107,9 +109,13 @@ class tst_QtBench : public QObject
 {
     Q_OBJECT
 
+    QList<Benchmark *> benchmarks;
+
 private slots:
     void qtBench();
     void qtBench_data();
+
+    void cleanupTestCase() { qDeleteAll(benchmarks); }
 };
 
 QString makeString(int length)
@@ -159,7 +165,6 @@ void tst_QtBench::qtBench_data()
                               "i erat, sed pellentesque\n"
                               "mi. Curabitur sed.";
 
-    QList<Benchmark *> benchmarks;
     benchmarks << (new DrawText(shortString, DrawText::PainterMode));
     benchmarks << (new DrawText(middleString, DrawText::PainterMode));
     benchmarks << (new DrawText(longString, DrawText::PainterMode));

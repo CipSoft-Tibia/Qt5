@@ -24,8 +24,7 @@ export class ObjectEventListenersSidebarPane extends UI.Widget.VBox implements U
   #lastRequestedContext?: SDK.RuntimeModel.ExecutionContext;
   private constructor() {
     super();
-    this.#refreshButton =
-        new UI.Toolbar.ToolbarButton(i18nString(UIStrings.refreshGlobalListeners), 'largeicon-refresh');
+    this.#refreshButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.refreshGlobalListeners), 'refresh');
     this.#refreshButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.refreshClick, this);
     this.#refreshButton.setEnabled(false);
 
@@ -66,14 +65,14 @@ export class ObjectEventListenersSidebarPane extends UI.Widget.VBox implements U
         .then(this.#eventListenersView.addObjects.bind(this.#eventListenersView));
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     UI.Context.Context.instance().addFlavorChangeListener(SDK.RuntimeModel.ExecutionContext, this.update, this);
     this.#refreshButton.setEnabled(true);
     this.update();
   }
 
-  willHide(): void {
+  override willHide(): void {
     super.willHide();
     UI.Context.Context.instance().removeFlavorChangeListener(SDK.RuntimeModel.ExecutionContext, this.update, this);
     this.#refreshButton.setEnabled(false);
@@ -90,11 +89,6 @@ export class ObjectEventListenersSidebarPane extends UI.Widget.VBox implements U
               silent: true,
               returnByValue: false,
               generatePreview: false,
-              timeout: undefined,
-              throwOnSideEffect: undefined,
-              disableBreaks: undefined,
-              replMode: undefined,
-              allowUnsafeEvalBlockedByCSP: undefined,
             },
             /* userGesture */ false,
             /* awaitPromise */ false)

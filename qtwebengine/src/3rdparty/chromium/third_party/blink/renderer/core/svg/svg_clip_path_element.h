@@ -40,15 +40,19 @@ class SVGClipPathElement final : public SVGGraphicsElement {
     return clip_path_units_.Get();
   }
 
-  bool SupportsFocus() const override { return false; }
-
   void Trace(Visitor*) const override;
 
  private:
+  bool SupportsFocus() const override { return false; }
+
   void SvgAttributeChanged(const SvgAttributeChangedParams&) override;
   void ChildrenChanged(const ChildrenChange&) override;
 
-  LayoutObject* CreateLayoutObject(const ComputedStyle&, LegacyLayout) override;
+  LayoutObject* CreateLayoutObject(const ComputedStyle&) override;
+
+  SVGAnimatedPropertyBase* PropertyFromAttribute(
+      const QualifiedName& attribute_name) const override;
+  void SynchronizeAllSVGAttributes() const override;
 
   Member<SVGAnimatedEnumeration<SVGUnitTypes::SVGUnitType>> clip_path_units_;
 };

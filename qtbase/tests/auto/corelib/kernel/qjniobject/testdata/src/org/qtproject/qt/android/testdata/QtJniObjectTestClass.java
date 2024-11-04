@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 package org.qtproject.qt.android.testdatapackage;
 
@@ -19,6 +19,9 @@ public class QtJniObjectTestClass
     static final Throwable A_THROWABLE_OBJECT = new Throwable(A_STRING_OBJECT);
 
     // --------------------------------------------------------------------------------------------
+
+    final int INT_FIELD = 123;
+    final boolean BOOL_FIELD = true;
 
     byte BYTE_VAR;
     short SHORT_VAR;
@@ -125,6 +128,9 @@ public class QtJniObjectTestClass
     public String stringMethod() { return staticStringMethod(); }
 
     // --------------------------------------------------------------------------------------------
+    public static String staticEchoMethod(String value) { return value; }
+
+    // --------------------------------------------------------------------------------------------
     public static Throwable staticThrowableMethod() { return A_THROWABLE_OBJECT; }
     public Throwable throwableMethod() { return staticThrowableMethod(); }
 
@@ -132,43 +138,193 @@ public class QtJniObjectTestClass
     public static Object[] staticObjectArrayMethod()
     { Object[] array = { new Object(), new Object(), new Object() }; return array; }
     public Object[] objectArrayMethod() { return staticObjectArrayMethod(); }
+    public static Object[] staticReverseObjectArray(Object[] array)
+    {
+        for (int i = 0; i < array.length / 2; ++i) {
+            Object old = array[array.length - i - 1];
+            array[array.length - i - 1] = array[i];
+            array[i] = old;
+        }
+        return array;
+    }
+    public Object[] reverseObjectArray(Object[] array)
+    { return staticReverseObjectArray(array); }
 
     // --------------------------------------------------------------------------------------------
     public static boolean[] staticBooleanArrayMethod()
     { boolean[] array = { true, true, true }; return array; }
     public boolean[] booleanArrayMethod() { return staticBooleanArrayMethod(); }
+    public static boolean[] staticReverseBooleanArray(boolean[] array)
+    {
+        for (int i = 0; i < array.length / 2; ++i) {
+            boolean old = array[array.length - i - 1];
+            array[array.length - i - 1] = array[i];
+            array[i] = old;
+        }
+        return array;
+    }
+    public boolean[] reverseBooleanArray(boolean[] array)
+    { return staticReverseBooleanArray(array); }
 
     // --------------------------------------------------------------------------------------------
     public static byte[] staticByteArrayMethod()
     { byte[] array = { 'a', 'b', 'c' }; return array; }
     public byte[] byteArrayMethod() { return staticByteArrayMethod(); }
+    public static byte[] staticReverseByteArray(byte[] array)
+    {
+        for (int i = 0; i < array.length / 2; ++i) {
+            byte old = array[array.length - i - 1];
+            array[array.length - i - 1] = array[i];
+            array[i] = old;
+        }
+        return array;
+    }
+    public byte[] reverseByteArray(byte[] array)
+    { return staticReverseByteArray(array); }
 
     // --------------------------------------------------------------------------------------------
     public static char[] staticCharArrayMethod()
     { char[] array = { 'a', 'b', 'c' }; return array; }
     public char[] charArrayMethod() { return staticCharArrayMethod(); }
+    public static char[] staticReverseCharArray(char[] array)
+    {
+        for (int i = 0; i < array.length / 2; ++i) {
+            char old = array[array.length - i - 1];
+            array[array.length - i - 1] = array[i];
+            array[i] = old;
+        }
+        return array;
+    }
+    public char[] reverseCharArray(char[] array)
+    { return staticReverseCharArray(array); }
 
     // --------------------------------------------------------------------------------------------
     public static short[] staticShortArrayMethod() { short[] array = { 3, 2, 1 }; return array; }
     public short[] shortArrayMethod() { return staticShortArrayMethod(); }
+    public static short[] staticReverseShortArray(short[] array)
+    {
+        for (int i = 0; i < array.length / 2; ++i) {
+            short old = array[array.length - i - 1];
+            array[array.length - i - 1] = array[i];
+            array[i] = old;
+        }
+        return array;
+    }
+    public short[] reverseShortArray(short[] array)
+    { return staticReverseShortArray(array); }
 
     // --------------------------------------------------------------------------------------------
     public static int[] staticIntArrayMethod() { int[] array = { 3, 2, 1 }; return array; }
     public int[] intArrayMethod() { return staticIntArrayMethod(); }
+    public static int[] staticReverseIntArray(int[] array)
+    {
+        for (int i = 0; i < array.length / 2; ++i) {
+            int old = array[array.length - i - 1];
+            array[array.length - i - 1] = array[i];
+            array[i] = old;
+        }
+        return array;
+    }
+    public int[] reverseIntArray(int[] array)
+    { return staticReverseIntArray(array); }
 
     // --------------------------------------------------------------------------------------------
     public static long[] staticLongArrayMethod()
     { long[] array = { 3, 2, 1 }; return array; }
     public long[] longArrayMethod() { return staticLongArrayMethod(); }
+    public static long[] staticReverseLongArray(long[] array)
+    {
+        for (int i = 0; i < array.length / 2; ++i) {
+            long old = array[array.length - i - 1];
+            array[array.length - i - 1] = array[i];
+            array[i] = old;
+        }
+        return array;
+    }
+    public long[] reverseLongArray(long[] array)
+    { return staticReverseLongArray(array); }
 
     // --------------------------------------------------------------------------------------------
     public static float[] staticFloatArrayMethod()
     { float[] array = { 1.0f, 2.0f, 3.0f }; return array; }
     public float[] floatArrayMethod() { return staticFloatArrayMethod(); }
+    public static float[] staticReverseFloatArray(float[] array)
+    {
+        for (int i = 0; i < array.length / 2; ++i) {
+            float old = array[array.length - i - 1];
+            array[array.length - i - 1] = array[i];
+            array[i] = old;
+        }
+        return array;
+    }
+    public float[] reverseFloatArray(float[] array)
+    { return staticReverseFloatArray(array); }
 
     // --------------------------------------------------------------------------------------------
     public static double[] staticDoubleArrayMethod()
     { double[] array = { 3.0, 2.0, 1.0 }; return array; }
     public double[] doubleArrayMethod() { return staticDoubleArrayMethod(); }
-}
+    public static double[] staticReverseDoubleArray(double[] array)
+    {
+        for (int i = 0; i < array.length / 2; ++i) {
+            double old = array[array.length - i - 1];
+            array[array.length - i - 1] = array[i];
+            array[i] = old;
+        }
+        return array;
+    }
+    public double[] reverseDoubleArray(double[] array)
+    { return staticReverseDoubleArray(array); }
 
+    // --------------------------------------------------------------------------------------------
+    native public int callbackWithObject(QtJniObjectTestClass that);
+    native public int callbackWithObjectRef(QtJniObjectTestClass that);
+    native public int callbackWithString(String string);
+    native public int callbackWithByte(byte value);
+    native public int callbackWithBoolean(boolean value);
+    native public int callbackWithInt(int value);
+    native public int callbackWithDouble(double value);
+
+    public int callMeBackWithObject(QtJniObjectTestClass that)
+    {
+        return callbackWithObject(that);
+    }
+
+    public int callMeBackWithObjectRef(QtJniObjectTestClass that)
+    {
+        return callbackWithObjectRef(that);
+    }
+
+    public int callMeBackWithString(String string)
+    {
+        return callbackWithString(string);
+    }
+
+    public int callMeBackWithByte(byte value)
+    {
+        return callbackWithByte(value);
+    }
+
+    public int callMeBackWithBoolean(boolean value)
+    {
+        return callbackWithBoolean(value);
+    }
+
+    public int callMeBackWithInt(int value)
+    {
+        return callbackWithInt(value);
+    }
+
+    public int callMeBackWithDouble(double value)
+    {
+        return callbackWithDouble(value);
+    }
+
+    public Object callMethodThrowsException() throws Exception {
+        throw new Exception();
+    }
+
+    public static Object callStaticMethodThrowsException() throws Exception {
+        throw new Exception();
+    }
+}

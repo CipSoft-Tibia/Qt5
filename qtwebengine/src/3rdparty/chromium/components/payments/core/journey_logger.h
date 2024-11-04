@@ -150,11 +150,16 @@ class JourneyLogger {
     // The user elected to opt-out of the flow (and future flows).
     kUserOptedOut = 1 << 9,
 
+    // .show() was allowed without a user activaiton.
+    kActivationlessShow = 1 << 10,
+
     // Correspond to the merchant specifying requestShipping,
     // requestPayerName,
     // requestPayerEmail, requestPayerPhone.
     kRequestShipping = 1 << 11,
 
+    // The merchent requested a Google Pay Authentication method.
+    kRequestMethodGooglePayAuthentication = 1 << 13,
     // The merchant requested a Play Billing payment method.
     kRequestMethodPlayBilling = 1 << 14,
     // The merchant requested at least one basic-card method.
@@ -221,7 +226,8 @@ class JourneyLogger {
     kPlayBilling = 2,
     kSecurePaymentConfirmation = 3,
     kOther = 4,
-    kMaxValue = kOther,
+    kGooglePayAuthentication = 5,
+    kMaxValue = kGooglePayAuthentication,
   };
 
   // Records different checkout steps for payment requests. The difference
@@ -271,6 +277,9 @@ class JourneyLogger {
   // Records that an Opt Out experience is being offered to the user in the
   // current UI flow.
   void SetOptOutOffered();
+
+  // Records that a show() was allowed without a user activation.
+  void SetActivationlessShow();
 
   // Records that a payment app has been shown without payment UIs being shown
   // before that.

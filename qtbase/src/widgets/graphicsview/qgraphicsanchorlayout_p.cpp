@@ -459,7 +459,7 @@ void SequentialAnchorData::updateChildrenSizes()
     // "from" or "to", that _contains_ one of them.
     AnchorVertex *prev = from;
 
-    for (AnchorData *e : std::as_const(m_edges)) {
+    for (AnchorData *e : m_edges) {
         const bool edgeIsForward = (e->from == prev);
         if (edgeIsForward) {
             e->sizeAtMinimum = interpolate(minFactor, e->minSize, e->minPrefSize,
@@ -494,7 +494,7 @@ void SequentialAnchorData::calculateSizeHints()
 
     AnchorVertex *prev = from;
 
-    for (AnchorData *edge : std::as_const(m_edges)) {
+    for (AnchorData *edge : m_edges) {
         const bool edgeIsForward = (edge->from == prev);
         if (edgeIsForward) {
             minSize += edge->minSize;
@@ -529,7 +529,7 @@ void AnchorData::dump(int indent) {
         p->secondEdge->dump(indent+2);
     } else if (type == Sequential) {
         const auto *s = static_cast<SequentialAnchorData *>(this);
-        qDebug("%*s type: sequential(%lld):", indent, "", s->m_edges.size());
+        qDebug("%*s type: sequential(%lld):", indent, "", qint64(s->m_edges.size()));
         for (AnchorData *e : s->m_edges)
             e->dump(indent + 2);
     } else {

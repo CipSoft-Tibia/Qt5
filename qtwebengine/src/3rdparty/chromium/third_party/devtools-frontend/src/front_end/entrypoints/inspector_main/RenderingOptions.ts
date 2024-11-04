@@ -154,6 +154,10 @@ const UIStrings = {
    */
   forcesCssPrefersreduceddataMedia: 'Forces CSS `prefers-reduced-data` media feature',
   /**
+   * @description Explanation text for the 'Forces CSS prefers-reduced-transparency media' setting in the Rendering tool.
+   */
+  forcesCssPrefersreducedtransparencyMedia: 'Forces CSS `prefers-reduced-transparency` media feature',
+  /**
    * @description Explanation text for the 'Forces CSS color-gamut media' setting in the Rendering tool.
    */
   forcesCssColorgamutMediaFeature: 'Forces CSS `color-gamut` media feature',
@@ -190,14 +194,20 @@ const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 // `front_end/sdk/module.json` to make this feature available in the
 // Command Menu.
 const supportsPrefersReducedData = (): boolean => {
-  const query = '(prefers-reduced-data)';
-  // Note: `media` serializes to `'not all'` for unsupported queries.
-  return window.matchMedia(query).media === query;
+  const query = 'not all and (prefers-reduced-data), (prefers-reduced-data)';
+  return window.matchMedia(query).matches;
+};
+
+// TODO(1424879): remove this feature detection and expose the UI
+// unconditionally once prefers-reduced-transparency ships unflagged.
+const supportsPrefersReducedTransparency = (): boolean => {
+  const query = 'not all and (prefers-reduced-transparency), (prefers-reduced-transparency)';
+  return window.matchMedia(query).matches;
 };
 
 const supportsPrefersContrast = (): boolean => {
-  const query = '(prefers-contrast)';
-  return window.matchMedia(query).media === query;
+  const query = 'not all and (prefers-contrast), (prefers-contrast)';
+  return window.matchMedia(query).matches;
 };
 
 let renderingOptionsViewInstance: RenderingOptionsView;
@@ -261,6 +271,11 @@ export class RenderingOptionsView extends UI.Widget.VBox {
           i18nString(UIStrings.forcesCssPrefersreduceddataMedia),
           Common.Settings.Settings.instance().moduleSetting('emulatedCSSMediaFeaturePrefersReducedData'));
     }
+    if (supportsPrefersReducedTransparency()) {
+      this.#appendSelect(
+          i18nString(UIStrings.forcesCssPrefersreducedtransparencyMedia),
+          Common.Settings.Settings.instance().moduleSetting('emulatedCSSMediaFeaturePrefersReducedTransparency'));
+    }
     this.#appendSelect(
         i18nString(UIStrings.forcesCssColorgamutMediaFeature),
         Common.Settings.Settings.instance().moduleSetting('emulatedCSSMediaFeatureColorGamut'));
@@ -316,7 +331,7 @@ export class RenderingOptionsView extends UI.Widget.VBox {
       this.contentElement.appendChild(control);
     }
   }
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([renderingOptionsStyles]);
   }

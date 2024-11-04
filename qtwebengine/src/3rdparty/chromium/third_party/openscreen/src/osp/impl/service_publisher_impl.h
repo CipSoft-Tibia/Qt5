@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,15 +7,17 @@
 
 #include <memory>
 
+#include "discovery/common/reporting_client.h"
 #include "osp/impl/with_destruction_callback.h"
 #include "osp/public/service_publisher.h"
 #include "platform/base/macros.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
-class ServicePublisherImpl final : public ServicePublisher,
-                                   public WithDestructionCallback {
+class ServicePublisherImpl final
+    : public ServicePublisher,
+      public openscreen::discovery::ReportingClient,
+      public WithDestructionCallback {
  public:
   class Delegate {
    public:
@@ -51,6 +53,10 @@ class ServicePublisherImpl final : public ServicePublisher,
   bool Resume() override;
 
  private:
+  // openscreen::discovery::ReportingClient overrides.
+  void OnFatalError(Error) override;
+  void OnRecoverableError(Error) override;
+
   // Called by |delegate_| to transition the state machine (except kStarting and
   // kStopping which are done automatically).
   void SetState(State state);
@@ -64,7 +70,6 @@ class ServicePublisherImpl final : public ServicePublisher,
   OSP_DISALLOW_COPY_AND_ASSIGN(ServicePublisherImpl);
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_IMPL_SERVICE_PUBLISHER_IMPL_H_

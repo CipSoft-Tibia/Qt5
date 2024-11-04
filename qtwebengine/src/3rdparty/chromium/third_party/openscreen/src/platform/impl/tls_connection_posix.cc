@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,39 +16,33 @@
 
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
-#include "absl/types/span.h"
 #include "platform/api/task_runner.h"
 #include "platform/base/error.h"
+#include "platform/base/span.h"
 #include "platform/impl/stream_socket.h"
 #include "util/crypto/openssl_util.h"
 #include "util/osp_logging.h"
 
 namespace openscreen {
 
-// TODO(jophba, rwkeane): implement write blocking/unblocking
+// TODO(jophba): implement write blocking/unblocking
 TlsConnectionPosix::TlsConnectionPosix(IPEndpoint local_address,
-                                       TaskRunner* task_runner)
+                                       TaskRunner& task_runner)
     : task_runner_(task_runner),
-      socket_(std::make_unique<StreamSocketPosix>(local_address)) {
-  OSP_DCHECK(task_runner_);
-}
+      socket_(std::make_unique<StreamSocketPosix>(local_address)) {}
 
 TlsConnectionPosix::TlsConnectionPosix(IPAddress::Version version,
-                                       TaskRunner* task_runner)
+                                       TaskRunner& task_runner)
     : task_runner_(task_runner),
-      socket_(std::make_unique<StreamSocketPosix>(version)) {
-  OSP_DCHECK(task_runner_);
-}
+      socket_(std::make_unique<StreamSocketPosix>(version)) {}
 
 TlsConnectionPosix::TlsConnectionPosix(std::unique_ptr<StreamSocket> socket,
-                                       TaskRunner* task_runner)
-    : task_runner_(task_runner), socket_(std::move(socket)) {
-  OSP_DCHECK(task_runner_);
-}
+                                       TaskRunner& task_runner)
+    : task_runner_(task_runner), socket_(std::move(socket)) {}
 
 TlsConnectionPosix::~TlsConnectionPosix() {
   if (platform_client_) {
@@ -63,7 +57,7 @@ TlsConnectionPosix::~TlsConnectionPosix() {
 
 void TlsConnectionPosix::TryReceiveMessage() {
   OSP_DCHECK(ssl_);
-  constexpr int kMaxApplicationDataBytes = 4096;
+  constexpr int kMaxApplicationDataBytes = 65536;
   std::vector<uint8_t> block(kMaxApplicationDataBytes);
   ClearOpenSSLERRStack(CURRENT_LOCATION);
   const int bytes_read =
@@ -82,8 +76,8 @@ void TlsConnectionPosix::TryReceiveMessage() {
 
   block.resize(bytes_read);
 
-  task_runner_->PostTask([weak_this = weak_factory_.GetWeakPtr(),
-                          moved_block = std::move(block)]() mutable {
+  task_runner_.PostTask([weak_this = weak_factory_.GetWeakPtr(),
+                         moved_block = std::move(block)]() mutable {
     if (auto* self = weak_this.get()) {
       if (auto* client = self->client_) {
         client->OnRead(self, std::move(moved_block));
@@ -93,19 +87,19 @@ void TlsConnectionPosix::TryReceiveMessage() {
 }
 
 void TlsConnectionPosix::SetClient(Client* client) {
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
   client_ = client;
 }
 
 bool TlsConnectionPosix::Send(const void* data, size_t len) {
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
   return buffer_.Push(data, len);
 }
 
 IPEndpoint TlsConnectionPosix::GetRemoteEndpoint() const {
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
+  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
 
-  absl::optional<IPEndpoint> endpoint = socket_->remote_address();
+  std::optional<IPEndpoint> endpoint = socket_->remote_address();
   OSP_DCHECK(endpoint.has_value());
   return endpoint.value();
 }
@@ -118,7 +112,7 @@ void TlsConnectionPosix::RegisterConnectionWithDataRouter(
 }
 
 void TlsConnectionPosix::SendAvailableBytes() {
-  absl::Span<const uint8_t> sendable_bytes = buffer_.GetReadableRegion();
+  ByteView sendable_bytes = buffer_.GetReadableRegion();
   if (sendable_bytes.empty()) {
     return;
   }
@@ -137,8 +131,8 @@ void TlsConnectionPosix::SendAvailableBytes() {
 }
 
 void TlsConnectionPosix::DispatchError(Error error) {
-  task_runner_->PostTask([weak_this = weak_factory_.GetWeakPtr(),
-                          moved_error = std::move(error)]() mutable {
+  task_runner_.PostTask([weak_this = weak_factory_.GetWeakPtr(),
+                         moved_error = std::move(error)]() mutable {
     if (auto* self = weak_this.get()) {
       if (auto* client = self->client_) {
         client->OnError(self, std::move(moved_error));

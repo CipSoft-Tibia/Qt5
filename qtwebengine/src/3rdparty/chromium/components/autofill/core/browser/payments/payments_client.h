@@ -5,8 +5,10 @@
 #ifndef COMPONENTS_AUTOFILL_CORE_BROWSER_PAYMENTS_PAYMENTS_CLIENT_H_
 #define COMPONENTS_AUTOFILL_CORE_BROWSER_PAYMENTS_PAYMENTS_CLIENT_H_
 
+#include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -15,12 +17,14 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/values.h"
+#include "build/build_config.h"
 #include "components/autofill/core/browser/autofill_client.h"
 #include "components/autofill/core/browser/data_model/autofill_profile.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
 #include "components/autofill/core/browser/payments/autofill_error_dialog_context.h"
 #include "components/autofill/core/browser/payments/card_unmask_challenge_option.h"
 #include "components/autofill/core/browser/payments/card_unmask_delegate.h"
+#include "components/autofill/core/browser/payments/client_behavior_constants.h"
 #include "components/autofill/core/browser/payments/virtual_card_enrollment_flow.h"
 #include "google_apis/gaia/google_service_auth_error.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -40,10 +44,13 @@ class SharedURLLoaderFactory;
 namespace autofill {
 
 class AccountInfoGetter;
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 class MigratableCreditCard;
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
 namespace payments {
 
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 // Callback type for MigrateCards callback. |result| is the Payments Rpc result.
 // |save_result| is an unordered_map parsed from the response whose key is the
 // unique id (guid) for each card and value is the server save result string.
@@ -53,12 +60,13 @@ typedef base::OnceCallback<void(
     std::unique_ptr<std::unordered_map<std::string, std::string>> save_result,
     const std::string& display_text)>
     MigrateCardsCallback;
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
 // Billable service number is defined in Payments server to distinguish
 // different requests.
-const int kUnmaskCardBillableServiceNumber = 70154;
-const int kUploadCardBillableServiceNumber = 70073;
-const int kMigrateCardsBillableServiceNumber = 70264;
+inline constexpr int kUnmaskCardBillableServiceNumber = 70154;
+inline constexpr int kUploadCardBillableServiceNumber = 70073;
+inline constexpr int kMigrateCardsBillableServiceNumber = 70264;
 
 class PaymentsRequest;
 
@@ -72,15 +80,18 @@ class PaymentsClient {
   // The names of the fields used to send non-location elements as part of an
   // address. Used in the implementation and in tests which verify that these
   // values are set or not at appropriate times.
-  static const char kRecipientName[];
-  static const char kPhoneNumber[];
+  static constexpr char kRecipientName[] = "recipient_name";
+  static constexpr char kPhoneNumber[] = "phone_number";
 
   // Details for card unmasking, such as the suggested method of authentication,
   // along with any information required to facilitate the authentication.
   struct UnmaskDetails {
     UnmaskDetails();
+    UnmaskDetails(const UnmaskDetails&);
+    UnmaskDetails(UnmaskDetails&&);
+    UnmaskDetails& operator=(const UnmaskDetails&);
+    UnmaskDetails& operator=(UnmaskDetails&&);
     ~UnmaskDetails();
-    UnmaskDetails& operator=(const UnmaskDetails& other);
 
     // The type of authentication method suggested for card unmask.
     AutofillClient::UnmaskAuthMethod unmask_auth_method =
@@ -116,14 +127,19 @@ class PaymentsClient {
     // The selected challenge option. Should be populated when we are doing CVC
     // unmasking for a virtual card.
     absl::optional<CardUnmaskChallengeOption> selected_challenge_option;
+    // A vector of signals used to share client behavior with the Payments
+    // server.
+    std::vector<ClientBehaviorConstants> client_behavior_signals;
   };
 
   // Information retrieved from an UnmaskRequest.
   struct UnmaskResponseDetails {
     UnmaskResponseDetails();
     UnmaskResponseDetails(const UnmaskResponseDetails& other);
-    ~UnmaskResponseDetails();
+    UnmaskResponseDetails(UnmaskResponseDetails&&);
     UnmaskResponseDetails& operator=(const UnmaskResponseDetails& other);
+    UnmaskResponseDetails& operator=(UnmaskResponseDetails&&);
+    ~UnmaskResponseDetails();
 
     UnmaskResponseDetails& with_real_pan(std::string r) {
       real_pan = r;
@@ -341,7 +357,7 @@ class PaymentsClient {
     std::u16string context_token;
     std::string risk_data;
     std::string app_locale;
-    std::vector<const char*> active_experiments;
+    std::vector<ClientBehaviorConstants> client_behavior_signals;
   };
 
   // An enum set in the GetUploadDetailsRequest indicating the source of the
@@ -380,10 +396,10 @@ class PaymentsClient {
     // |virtual_card_enrollment_state| is used to determine whether we want to
     // pursue further action with the credit card that was uploaded regarding
     // virtual card enrollment. For example, if the state is
-    // UNENROLLED_AND_ELIGIBLE we might offer the user the option to enroll the
+    // kUnenrolledAndEligible we might offer the user the option to enroll the
     // card that was uploaded into virtual card.
     CreditCard::VirtualCardEnrollmentState virtual_card_enrollment_state =
-        CreditCard::VirtualCardEnrollmentState::UNSPECIFIED;
+        CreditCard::VirtualCardEnrollmentState::kUnspecified;
     // |card_art_url| is the mapping that would be used by PersonalDataManager
     // to try to get the card art for the credit card that was uploaded. It is
     // used in flows where after uploading a card we want to display its card
@@ -452,14 +468,13 @@ class PaymentsClient {
   // decisions. |callback| is the callback function when get response from
   // server. |billable_service_number| is used to set the billable service
   // number in the GetUploadDetails request. If the conditions are met, the
-  // legal message will be returned via |callback|. |active_experiments| is used
-  // by Payments server to track requests that were triggered by enabled
-  // features. |upload_card_source| is used by Payments server metrics to track
-  // the source of the request.
+  // legal message will be returned via |callback|. |client_behavior_signals| is
+  // used by Payments server to track Chrome behaviors. |upload_card_source| is
+  // used by Payments server metrics to track the source of the request.
   virtual void GetUploadDetails(
       const std::vector<AutofillProfile>& addresses,
       const int detected_values,
-      const std::vector<const char*>& active_experiments,
+      const std::vector<ClientBehaviorConstants>& client_behavior_signals,
       const std::string& app_locale,
       base::OnceCallback<void(AutofillClient::PaymentsRpcResult,
                               const std::u16string&,
@@ -479,6 +494,7 @@ class PaymentsClient {
                               const PaymentsClient::UploadCardResponseDetails&)>
           callback);
 
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
   // The user has indicated that they would like to migrate their local credit
   // cards. This request will fail server-side if a successful call to
   // GetUploadDetails has not already been made.
@@ -486,6 +502,7 @@ class PaymentsClient {
       const MigrationRequestDetails& details,
       const std::vector<MigratableCreditCard>& migratable_credit_cards,
       MigrateCardsCallback callback);
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
   // The user has chosen one of the available challenge options. Send the
   // selected challenge option to server to continue the unmask flow.
@@ -518,12 +535,7 @@ class PaymentsClient {
   // Exposed for testing.
   void set_url_loader_factory_for_testing(
       scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory);
-
-  // TODO(crbug.com/1409158): Remove this function, as it should not be the
-  // PaymentsClient's responsibility to check if the user is off the record. The
-  // sole responsibility of the PaymentsClient is to send requests to the Google
-  // payments server.
-  bool is_off_the_record() { return is_off_the_record_; }
+  void set_access_token_for_testing(std::string access_token);
 
  private:
   friend class PaymentsClientTest;

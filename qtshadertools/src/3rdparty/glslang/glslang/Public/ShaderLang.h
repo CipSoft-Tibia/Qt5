@@ -79,12 +79,12 @@
 //
 // (Call once per process, not once per thread.)
 //
-GLSLANG_EXPORT int ShInitialize();
+GLSLANG_EXPORT int ShInitialize_Qt();
 
 //
 // Call this at process shutdown to clean up memory.
 //
-GLSLANG_EXPORT int ShFinalize();
+GLSLANG_EXPORT int ShFinalize_Qt();
 
 //
 // Types of languages the compiler can consume.
@@ -108,8 +108,10 @@ typedef enum {
     EShLangMissNV = EShLangMiss,
     EShLangCallable,
     EShLangCallableNV = EShLangCallable,
-    EShLangTaskNV,
-    EShLangMeshNV,
+    EShLangTask,
+    EShLangTaskNV = EShLangTask,
+    EShLangMesh,
+    EShLangMeshNV = EShLangMesh,
     LAST_ELEMENT_MARKER(EShLangCount),
 } EShLanguage;         // would be better as stage, but this is ancient now
 
@@ -132,8 +134,10 @@ typedef enum : unsigned {
     EShLangMissNVMask         = EShLangMissMask,
     EShLangCallableMask       = (1 << EShLangCallable),
     EShLangCallableNVMask     = EShLangCallableMask,
-    EShLangTaskNVMask         = (1 << EShLangTaskNV),
-    EShLangMeshNVMask         = (1 << EShLangMeshNV),
+    EShLangTaskMask           = (1 << EShLangTask),
+    EShLangTaskNVMask         = EShLangTaskMask,
+    EShLangMeshMask           = (1 << EShLangMesh),
+    EShLangMeshNVMask         = EShLangMeshMask,
     LAST_ELEMENT_MARKER(EShLanguageMaskCount),
 } EShLanguageMask;
 
@@ -303,7 +307,7 @@ typedef struct {
 
 //
 // ShHandle held by but opaque to the driver.  It is allocated,
-// managed, and de-allocated by the compiler/linker. It's contents
+// managed, and de-allocated by the compiler/linker. Its contents
 // are defined by and used by the compiler and linker.  For example,
 // symbol table information and object code passed from the compiler
 // to the linker can be stored where ShHandle points.
@@ -317,8 +321,8 @@ typedef void* ShHandle;
 // objects.
 //
 GLSLANG_EXPORT ShHandle ShConstructCompiler_Qt(const EShLanguage, int debugOptions);  // one per shader
-GLSLANG_EXPORT ShHandle ShConstructLinker(const EShExecutable, int debugOptions);  // one per shader pair
-GLSLANG_EXPORT ShHandle ShConstructUniformMap();                 // one per uniform namespace (currently entire program object)
+GLSLANG_EXPORT ShHandle ShConstructLinker_Qt(const EShExecutable, int debugOptions);  // one per shader pair
+GLSLANG_EXPORT ShHandle ShConstructUniformMap_Qt();                 // one per uniform namespace (currently entire program object)
 GLSLANG_EXPORT void ShDestruct_Qt(ShHandle);
 
 //
@@ -341,7 +345,7 @@ GLSLANG_EXPORT int ShCompile_Qt(
     EShMessages messages = EShMsgDefault // warnings and errors
     );
 
-GLSLANG_EXPORT int ShLinkExt(
+GLSLANG_EXPORT int ShLinkExt_Qt(
     const ShHandle,               // linker object
     const ShHandle h[],           // compiler objects to link together
     const int numHandles);
@@ -350,26 +354,26 @@ GLSLANG_EXPORT int ShLinkExt(
 // ShSetEncrpytionMethod is a place-holder for specifying
 // how source code is encrypted.
 //
-GLSLANG_EXPORT void ShSetEncryptionMethod(ShHandle);
+GLSLANG_EXPORT void ShSetEncryptionMethod_Qt(ShHandle);
 
 //
 // All the following return 0 if the information is not
 // available in the object passed down, or the object is bad.
 //
-GLSLANG_EXPORT const char* ShGetInfoLog(const ShHandle);
-GLSLANG_EXPORT const void* ShGetExecutable(const ShHandle);
-GLSLANG_EXPORT int ShSetVirtualAttributeBindings(const ShHandle, const ShBindingTable*);   // to detect user aliasing
-GLSLANG_EXPORT int ShSetFixedAttributeBindings(const ShHandle, const ShBindingTable*);     // to force any physical mappings
+GLSLANG_EXPORT const char* ShGetInfoLog_Qt(const ShHandle);
+GLSLANG_EXPORT const void* ShGetExecutable_Qt(const ShHandle);
+GLSLANG_EXPORT int ShSetVirtualAttributeBindings_Qt(const ShHandle, const ShBindingTable*);   // to detect user aliasing
+GLSLANG_EXPORT int ShSetFixedAttributeBindings_Qt(const ShHandle, const ShBindingTable*);     // to force any physical mappings
 //
 // Tell the linker to never assign a vertex attribute to this list of physical attributes
 //
-GLSLANG_EXPORT int ShExcludeAttributes(const ShHandle, int *attributes, int count);
+GLSLANG_EXPORT int ShExcludeAttributes_Qt(const ShHandle, int *attributes, int count);
 
 //
 // Returns the location ID of the named uniform.
 // Returns -1 if error.
 //
-GLSLANG_EXPORT int ShGetUniformLocation(const ShHandle uniformMap, const char* name);
+GLSLANG_EXPORT int ShGetUniformLocation_Qt(const ShHandle uniformMap, const char* name);
 
 #ifdef __cplusplus
     }  // end extern "C"
@@ -475,6 +479,7 @@ public:
     GLSLANG_EXPORT void addProcesses(const std::vector<std::string>&);
     GLSLANG_EXPORT void setUniqueId(unsigned long long id);
     GLSLANG_EXPORT void setOverrideVersion(int version);
+    GLSLANG_EXPORT void setDebugInfo(bool debugInfo);
 
     // IO resolver binding data: see comments in ShaderLang.cpp
     GLSLANG_EXPORT void setShiftBinding(TResourceType res, unsigned int base);
@@ -528,7 +533,7 @@ public:
     //                 See the definitions of TEnvironment, EShSource, EShLanguage,
     //                 and EShClient for choices and more detail.
     //
-    // setEnvClient:   The client that will be hosting the execution, and it's version.
+    // setEnvClient:   The client that will be hosting the execution, and its version.
     //                 Note 'version' is not the version of the languages involved, but
     //                 the version of the client environment.
     //                 Use EShClientNone and version of 0 if there is no client, e.g.
@@ -726,8 +731,6 @@ private:
     TShader& operator=(TShader&);
 };
 
-#if !defined(GLSLANG_WEB) && !defined(GLSLANG_ANGLE)
-
 //
 // A reflection database and its interface, consistent with the OpenGL API reflection queries.
 //
@@ -844,8 +847,6 @@ public:
     virtual void addStage(EShLanguage stage, TIntermediate& stageIntermediate) = 0;
 };
 
-#endif // !GLSLANG_WEB && !GLSLANG_ANGLE
-
 // Make one TProgram per set of shaders that will get linked together.  Add all
 // the shaders that are to be linked together.  After calling shader.parse()
 // for all shaders, call link().
@@ -864,8 +865,6 @@ public:
     GLSLANG_EXPORT const char* getInfoDebugLog();
 
     TIntermediate* getIntermediate(EShLanguage stage) const { return intermediate[stage]; }
-
-#if !defined(GLSLANG_WEB) && !defined(GLSLANG_ANGLE)
 
     // Reflection Interface
 
@@ -959,7 +958,6 @@ public:
     // If resolver is not provided it uses the previous approach
     // and respects auto assignment and offsets.
     GLSLANG_EXPORT bool mapIO(TIoMapResolver* pResolver = nullptr, TIoMapper* pIoMapper = nullptr);
-#endif // !GLSLANG_WEB && !GLSLANG_ANGLE
 
 protected:
     GLSLANG_EXPORT bool linkStage(EShLanguage, EShMessages);
@@ -970,9 +968,7 @@ protected:
     TIntermediate* intermediate[EShLangCount];
     bool newedIntermediate[EShLangCount];      // track which intermediate were "new" versus reusing a singleton unit in a stage
     TInfoSink* infoSink;
-#if !defined(GLSLANG_WEB) && !defined(GLSLANG_ANGLE)
     TReflection* reflection;
-#endif
     bool linked;
 
 private:

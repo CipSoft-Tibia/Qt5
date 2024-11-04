@@ -206,12 +206,12 @@ void VideoCaptureManager::Close(
   if (blink::IsDeviceMediaType(session_it->second.type)) {
     auto locked_it = locked_sessions_.find(session_it->first);
     const bool was_locked = locked_it != locked_sessions_.end();
-    base::UmaHistogramBoolean(
-        "Media.VideoCaptureManager.DeviceSessionWasLocked", was_locked);
     if (was_locked)
       locked_sessions_.erase(locked_it);
-    if (locked_sessions_.empty() && !lock_time_.is_null())
-      RecordDeviceSessionLockDuration();
+    if (locked_sessions_.empty() && !lock_time_.is_null()) {
+      lock_time_ = base::TimeTicks();
+      idle_close_timer_.Stop();
+    }
   } else {
     DCHECK(!locked_sessions_.contains(session_it->first));
   }
@@ -437,16 +437,13 @@ void VideoCaptureManager::DisconnectClient(
     VideoCaptureControllerID client_id,
     VideoCaptureControllerEventHandler* client_handler,
     media::VideoCaptureError error) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureManager::DisconnectClient");
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
   DCHECK(controller);
   DCHECK(client_handler);
-  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
-               "VideoCaptureManager::DisconnectClient");
+  CHECK(IsControllerPointerValid(controller));
 
-  if (!IsControllerPointerValid(controller)) {
-    NOTREACHED();
-    return;
-  }
   if (error != media::VideoCaptureError::kNone) {
     LogVideoCaptureError(error);
     std::ostringstream string_stream;
@@ -759,7 +756,7 @@ void VideoCaptureManager::OnDeviceInfosReceived(
     EmitLogMessage(
         base::StringPrintf("VideoCaptureManager::OnDeviceInfosReceived: Failed "
                            "to list device infos with error_code %d",
-                           error_code),
+                           static_cast<int>(error_code)),
         0);
     std::move(client_callback).Run(error_code, {});
     return;
@@ -1000,22 +997,11 @@ void VideoCaptureManager::OnScreenUnlocked() {
     return;
 
   DCHECK(!locked_sessions_.empty());
-  RecordDeviceSessionLockDuration();
-
-  if (base::FeatureList::IsEnabled(features::kStopVideoCaptureOnScreenLock)) {
-    ResumeDevices();
-  }
-}
-
-void VideoCaptureManager::RecordDeviceSessionLockDuration() {
-  DCHECK(!lock_time_.is_null());
-  base::UmaHistogramMediumTimes(
-      "Media.VideoCaptureManager.DeviceSessionLockDuration",
-      base::TimeTicks::Now() - lock_time_);
   lock_time_ = base::TimeTicks();
 
   if (base::FeatureList::IsEnabled(features::kStopVideoCaptureOnScreenLock)) {
     idle_close_timer_.Stop();
+    ResumeDevices();
   }
 }
 

@@ -7,27 +7,30 @@
 
 #include <cstdint>
 #include <memory>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "base/component_export.h"
 #include "base/containers/circular_deque.h"
-#include "base/containers/flat_set.h"
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
+#include "cc/resources/ui_resource_client.h"
 #include "cc/resources/ui_resource_manager.h"
+#include "cc/slim/damage_data.h"
 #include "cc/slim/frame_sink_impl_client.h"
 #include "cc/slim/layer_tree.h"
 #include "components/viz/common/frame_sinks/copy_output_request.h"
+#include "components/viz/common/surfaces/child_local_surface_id_allocator.h"
 #include "components/viz/common/surfaces/local_surface_id.h"
 #include "components/viz/common/surfaces/surface_range.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/rect_f.h"
 #include "ui/gfx/overlay_transform.h"
-#include "ui/gfx/presentation_feedback.h"
 
 namespace cc {
 class UIResourceManager;
@@ -42,6 +45,7 @@ namespace cc::slim {
 
 class FrameSinkImpl;
 class TestLayerTreeImpl;
+struct FrameData;
 
 // Slim implementation of LayerTree.
 class COMPONENT_EXPORT(CC_SLIM) LayerTreeImpl : public LayerTree,
@@ -69,10 +73,14 @@ class COMPONENT_EXPORT(CC_SLIM) LayerTreeImpl : public LayerTree,
   void UpdateTopControlsVisibleHeight(float height) override;
   void SetNeedsAnimate() override;
   void SetNeedsRedraw() override;
+  void MaybeCompositeNow() override;
   const scoped_refptr<Layer>& root() const override;
   void SetRoot(scoped_refptr<Layer> root) override;
   void SetFrameSink(std::unique_ptr<FrameSink> sink) override;
   void ReleaseLayerTreeFrameSink() override;
+  std::unique_ptr<ScopedKeepSurfaceAlive> CreateScopedKeepSurfaceAlive(
+      const viz::SurfaceId& surface_id) override;
+  const SurfaceRangesAndCounts& GetSurfaceRangesForTesting() const override;
 
   // FrameSinkImplClient.
   bool BeginFrame(const viz::BeginFrameArgs& args,
@@ -88,7 +96,6 @@ class COMPONENT_EXPORT(CC_SLIM) LayerTreeImpl : public LayerTree,
 
   // Internal methods called by Layers.
   void NotifyTreeChanged();
-  void NotifyPropertyChanged();
   viz::ClientResourceProvider* GetClientResourceProvider();
   viz::ResourceId GetVizResourceId(cc::UIResourceId id);
   bool IsUIResourceOpaque(int resource_id);
@@ -118,7 +125,9 @@ class COMPONENT_EXPORT(CC_SLIM) LayerTreeImpl : public LayerTree,
     std::vector<SuccessfulCallback> success_callbacks;
   };
 
-  explicit LayerTreeImpl(LayerTreeClient* client);
+  LayerTreeImpl(LayerTreeClient* client,
+                uint32_t num_unneeded_begin_frame_before_stop,
+                int min_occlusion_tracking_dimension);
 
   // Request a new frame sink from the client if a new frame sink is needed and
   // there isn't already a pending request.
@@ -131,6 +140,7 @@ class COMPONENT_EXPORT(CC_SLIM) LayerTreeImpl : public LayerTree,
   // Call this whenever there are tree or layer changes that needs to be
   // submitted in a CompositorFrame.
   void SetNeedsDraw();
+  bool NeedsDraw() const;
   bool NeedsBeginFrames() const;
   void GenerateCompositorFrame(
       const viz::BeginFrameArgs& args,
@@ -139,16 +149,46 @@ class COMPONENT_EXPORT(CC_SLIM) LayerTreeImpl : public LayerTree,
       viz::HitTestRegionList& out_hit_test_region_list);
   void Draw(Layer& layer,
             viz::CompositorRenderPass& render_pass,
-            const gfx::Transform& transform_to_target,
-            const gfx::Rect* clip_from_parent);
+            FrameData& data,
+            const gfx::Transform& parent_transform_to_root,
+            const gfx::Transform& parent_transform_to_target,
+            const gfx::RectF* parent_clip_in_target,
+            const gfx::RectF& clip_in_parent,
+            float opacity);
+  void DrawChildrenAndAppendQuads(Layer& layer,
+                                  viz::CompositorRenderPass& render_pass,
+                                  FrameData& data,
+                                  const gfx::Transform& transform_to_root,
+                                  const gfx::Transform& transform_to_target,
+                                  const gfx::RectF* clip_in_target,
+                                  const gfx::RectF& clip_in_layer,
+                                  float opacity);
+  // Updates the `FrameData::occlusion_in_target` field with the visible_rect.
+  // Return if layer's AppendQuads should happen. May reduce `visible_rect` if
+  // it's partially occluded.
+  bool UpdateOcclusionRect(Layer& layer,
+                           FrameData& data,
+                           const gfx::Transform& transform_to_target,
+                           float opacity,
+                           const gfx::RectF& visible_rectf_in_target,
+                           gfx::RectF& visible_rect);
+  // Compute and update `damage_rect` and `has_damage_from_contributing_content`
+  // of `render_pass`. `data.render_pass_damage` should be the newly computed
+  // damage data of the frame being produced. Damage data from previous frame is
+  // retrieved from `damage_from_previous_frame_`. `data.render_pass_damage` is
+  // moved into `data.current_frame_data` and then cleared, to avoid copying
+  // data.
+  void ProcessDamageForRenderPass(viz::CompositorRenderPass& render_pass,
+                                  FrameData& data);
 
   const raw_ptr<LayerTreeClient> client_;
-  scoped_refptr<Layer> root_;
+  const uint32_t num_unneeded_begin_frame_before_stop_;
+  const int min_occlusion_tracking_dimension_;
   std::unique_ptr<FrameSinkImpl> frame_sink_;
 
   cc::UIResourceManager ui_resource_manager_;
 
-  viz::LocalSurfaceId local_surface_id_;
+  viz::ChildLocalSurfaceIdAllocator local_surface_id_allocator_;
 
   bool frame_sink_request_pending_ = false;
   // Indicates there is an `UpdateNeedsBeginFrame` call pending in the current
@@ -163,12 +203,17 @@ class COMPONENT_EXPORT(CC_SLIM) LayerTreeImpl : public LayerTree,
   bool needs_draw_ = false;
   bool visible_ = false;
   uint32_t num_defer_begin_frame_ = 0u;
+  // Number of begin frames with no draw. Stop requesting begin frames after
+  // this reaches `num_unneeded_begin_frame_before_stop_`.
+  // TODO(boliu): Move this logic to DelayedScheduler.
+  uint32_t num_begin_frames_with_no_draw_ =
+      num_unneeded_begin_frame_before_stop_;
 
   gfx::Rect device_viewport_rect_;
   float device_scale_factor_ = 1.0f;
   SkColor4f background_color_ = SkColors::kWhite;
   absl::optional<float> top_controls_visible_height_;
-  base::flat_set<viz::SurfaceRange> referenced_surfaces_;
+  SurfaceRangesAndCounts referenced_surfaces_;
   viz::FrameTokenGenerator next_frame_token_;
   gfx::OverlayTransform display_transform_hint_ = gfx::OVERLAY_TRANSFORM_NONE;
 
@@ -178,8 +223,13 @@ class COMPONENT_EXPORT(CC_SLIM) LayerTreeImpl : public LayerTree,
   std::vector<PresentationCallback> presentation_callback_for_next_frame_;
   std::vector<SuccessfulCallback> success_callback_for_next_frame_;
 
+  FrameDamageData damage_from_previous_frame_;
+
   base::circular_deque<PresentationCallbackInfo>
       pending_presentation_callbacks_;
+
+  // Destroy Layers before other fields that might be accessed by Layers.
+  scoped_refptr<Layer> root_;
 
   base::WeakPtrFactory<LayerTreeImpl> weak_factory_{this};
 };

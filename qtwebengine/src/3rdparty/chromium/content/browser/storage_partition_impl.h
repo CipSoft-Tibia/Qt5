@@ -39,6 +39,7 @@
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "mojo/public/cpp/bindings/unique_receiver_set.h"
+#include "net/cookies/cookie_setting_override.h"
 #include "services/network/public/cpp/network_service_buildflags.h"
 #include "services/network/public/mojom/cookie_manager.mojom.h"
 #include "services/network/public/mojom/network_context.mojom.h"
@@ -70,9 +71,10 @@ class BlobRegistryWrapper;
 class BluetoothAllowedDevicesMap;
 class BroadcastChannelService;
 class BrowsingDataFilterBuilder;
-class BrowsingTopicsURLLoaderService;
+class KeepAliveURLLoaderService;
 class BucketManager;
 class CacheStorageControlWrapper;
+class CookieDeprecationLabelManager;
 class CookieStoreManager;
 class DevToolsBackgroundServicesContextImpl;
 class FileSystemAccessEntryFactory;
@@ -87,12 +89,17 @@ class LockManager;
 class MediaLicenseManager;
 #endif  // BUILDFLAG(ENABLE_LIBRARY_CDMS)
 class PaymentAppContextImpl;
-class PrefetchURLLoaderService;
+class PrivateAggregationDataModel;
 class PrivateAggregationManager;
+class PrivateAggregationManagerImpl;
 class PushMessagingContext;
+class ResourceCacheManager;
 class QuotaContext;
+class SharedDictionaryAccessObserver;
+class SharedStorageHeaderObserver;
 class SharedStorageWorkletHostManager;
 class SharedWorkerServiceImpl;
+class SubresourceProxyingURLLoaderService;
 class NavigationOrDocumentHandle;
 
 class CONTENT_EXPORT StoragePartitionImpl
@@ -140,17 +147,19 @@ class CONTENT_EXPORT StoragePartitionImpl
   void OverrideSharedStorageWorkletHostManagerForTesting(
       std::unique_ptr<SharedStorageWorkletHostManager>
           shared_storage_worklet_host_manager);
+  void OverrideSharedStorageHeaderObserverForTesting(
+      std::unique_ptr<SharedStorageHeaderObserver>
+          shared_storage_header_observer);
   void OverrideAggregationServiceForTesting(
       std::unique_ptr<AggregationService> aggregation_service);
   void OverrideAttributionManagerForTesting(
       std::unique_ptr<AttributionManager> attribution_manager);
   void OverridePrivateAggregationManagerForTesting(
-      std::unique_ptr<PrivateAggregationManager> private_aggregation_manager);
-
-  // Returns the StoragePartitionConfig that represents this StoragePartition.
-  const StoragePartitionConfig& GetConfig();
+      std::unique_ptr<PrivateAggregationManagerImpl>
+          private_aggregation_manager);
 
   // StoragePartition interface.
+  const StoragePartitionConfig& GetConfig() override;
   base::FilePath GetPath() override;
   network::mojom::NetworkContext* GetNetworkContext() override;
   network::mojom::URLLoaderFactoryParamsPtr CreateURLLoaderFactoryParams();
@@ -199,6 +208,7 @@ class CONTENT_EXPORT StoragePartitionImpl
   leveldb_proto::ProtoDatabaseProvider* GetProtoDatabaseProvider() override;
   // Use outside content.
   AttributionDataModel* GetAttributionDataModel() override;
+  PrivateAggregationDataModel* GetPrivateAggregationDataModel() override;
 
   void SetProtoDatabaseProvider(
       std::unique_ptr<leveldb_proto::ProtoDatabaseProvider> proto_db_provider)
@@ -209,8 +219,6 @@ class CONTENT_EXPORT StoragePartitionImpl
                           uint32_t quota_storage_remove_mask,
                           const GURL& storage_origin,
                           base::OnceClosure callback) override;
-  void ClearDataForAllBuckets(const blink::StorageKey& storage_key,
-                              base::OnceClosure callback) override;
   void ClearDataForBuckets(const blink::StorageKey& storage_key,
                            const std::set<std::string>& storage_buckets,
                            base::OnceClosure callback) override;
@@ -247,8 +255,6 @@ class CONTENT_EXPORT StoragePartitionImpl
   void SetNetworkContextForTesting(
       mojo::PendingRemote<network::mojom::NetworkContext>
           network_context_remote) override;
-  void ResetAttributionManagerForTesting(
-      base::OnceCallback<void(bool)> callback) override;
 
   base::WeakPtr<StoragePartitionImpl> GetWeakPtr();
   BackgroundFetchContext* GetBackgroundFetchContext();
@@ -257,8 +263,8 @@ class CONTENT_EXPORT StoragePartitionImpl
   BluetoothAllowedDevicesMap* GetBluetoothAllowedDevicesMap();
   BlobRegistryWrapper* GetBlobRegistry();
   storage::BlobUrlRegistry* GetBlobUrlRegistry();
-  PrefetchURLLoaderService* GetPrefetchURLLoaderService();
-  BrowsingTopicsURLLoaderService* GetBrowsingTopicsURLLoaderService();
+  SubresourceProxyingURLLoaderService* GetSubresourceProxyingURLLoaderService();
+  KeepAliveURLLoaderService* GetKeepAliveURLLoaderService();
   CookieStoreManager* GetCookieStoreManager();
   FileSystemAccessManagerImpl* GetFileSystemAccessManager();
   BucketManager* GetBucketManager();
@@ -276,6 +282,8 @@ class CONTENT_EXPORT StoragePartitionImpl
 
   storage::SharedStorageManager* GetSharedStorageManager() override;
   PrivateAggregationManager* GetPrivateAggregationManager();
+  ResourceCacheManager* GetResourceCacheManager();
+  CookieDeprecationLabelManager* GetCookieDeprecationLabelManager();
 
   // blink::mojom::DomStorage interface.
   void OpenLocalStorage(
@@ -345,17 +353,32 @@ class CONTENT_EXPORT StoragePartitionImpl
       const scoped_refptr<net::HttpResponseHeaders>& head_headers,
       mojo::PendingRemote<network::mojom::AuthChallengeResponder>
           auth_challenge_responder) override;
+  void OnPrivateNetworkAccessPermissionRequired(
+      const GURL& url,
+      const net::IPAddress& ip_address,
+      const std::string& private_network_device_id,
+      const std::string& private_network_device_name,
+      OnPrivateNetworkAccessPermissionRequiredCallback callback) override;
   void OnClearSiteData(
       const GURL& url,
       const std::string& header_value,
       int load_flags,
       const absl::optional<net::CookiePartitionKey>& cookie_partition_key,
+      bool partitioned_state_allowed_only,
       OnClearSiteDataCallback callback) override;
   void OnLoadingStateUpdate(network::mojom::LoadInfoPtr info,
                             OnLoadingStateUpdateCallback callback) override;
   void OnDataUseUpdate(int32_t network_traffic_annotation_id_hash,
                        int64_t recv_bytes,
                        int64_t sent_bytes) override;
+  void OnSharedStorageHeaderReceived(
+      const url::Origin& request_origin,
+      std::vector<network::mojom::SharedStorageOperationPtr> operations,
+      OnSharedStorageHeaderReceivedCallback callback) override;
+
+  SharedStorageHeaderObserver* shared_storage_header_observer() {
+    return shared_storage_header_observer_.get();
+  }
 
   scoped_refptr<URLLoaderFactoryGetter> url_loader_factory_getter() {
     return url_loader_factory_getter_;
@@ -408,12 +431,19 @@ class CONTENT_EXPORT StoragePartitionImpl
       bool is_service_worker,
       int process_id,
       int routing_id,
+      net::CookieSettingOverrides cookie_setting_overrides,
       mojo::PendingReceiver<network::mojom::RestrictedCookieManager> receiver,
       mojo::PendingRemote<network::mojom::CookieAccessObserver>
           cookie_observer);
 
   mojo::PendingRemote<network::mojom::CookieAccessObserver>
   CreateCookieAccessObserverForServiceWorker();
+
+  mojo::PendingRemote<network::mojom::TrustTokenAccessObserver>
+  CreateTrustTokenAccessObserverForServiceWorker();
+
+  mojo::PendingRemote<network::mojom::SharedDictionaryAccessObserver>
+  CreateSharedDictionaryAccessObserverForServiceWorker();
 
   mojo::PendingRemote<network::mojom::URLLoaderNetworkServiceObserver>
   CreateAuthCertObserverForServiceWorker();
@@ -490,6 +520,8 @@ class CONTENT_EXPORT StoragePartitionImpl
   class QuotaManagedDataDeletionHelper;
   class URLLoaderFactoryForBrowserProcess;
   class ServiceWorkerCookieAccessObserver;
+  class ServiceWorkerTrustTokenAccessObserver;
+  class ServiceWorkerSharedDictionaryAccessObserver;
 
   friend class BackgroundSyncManagerTest;
   friend class BackgroundSyncServiceImplTestHarness;
@@ -582,11 +614,6 @@ class CONTENT_EXPORT StoragePartitionImpl
       const base::Time end,
       base::OnceClosure callback);
 
-  void RetrieveBucketsForClearingDone(
-      const blink::StorageKey& storage_key,
-      base::OnceClosure callback,
-      storage::QuotaErrorOr<std::set<storage::BucketInfo>> buckets);
-
   void ClearDataForBucketsDone(
       const blink::StorageKey& storage_key,
       const std::set<std::string>& storage_buckets,
@@ -615,7 +642,7 @@ class CONTENT_EXPORT StoragePartitionImpl
   // Raw pointer that should always be valid. The BrowserContext owns the
   // StoragePartitionImplMap which then owns StoragePartitionImpl. When the
   // BrowserContext is destroyed, `this` will be destroyed too.
-  raw_ptr<BrowserContext> browser_context_;
+  raw_ptr<BrowserContext, DanglingUntriaged> browser_context_;
 
   const base::FilePath partition_path_;
 
@@ -655,9 +682,9 @@ class CONTENT_EXPORT StoragePartitionImpl
   std::unique_ptr<BluetoothAllowedDevicesMap> bluetooth_allowed_devices_map_;
   scoped_refptr<BlobRegistryWrapper> blob_registry_;
   std::unique_ptr<storage::BlobUrlRegistry> blob_url_registry_;
-  std::unique_ptr<PrefetchURLLoaderService> prefetch_url_loader_service_;
-  std::unique_ptr<BrowsingTopicsURLLoaderService>
-      browsing_topics_url_loader_service_;
+  std::unique_ptr<SubresourceProxyingURLLoaderService>
+      subresource_proxying_url_loader_service_;
+  std::unique_ptr<KeepAliveURLLoaderService> keep_alive_url_loader_service_;
   std::unique_ptr<CookieStoreManager> cookie_store_manager_;
   std::unique_ptr<BucketManager> bucket_manager_;
   scoped_refptr<GeneratedCodeCacheContext> generated_code_cache_context_;
@@ -687,7 +714,15 @@ class CONTENT_EXPORT StoragePartitionImpl
   std::unique_ptr<SharedStorageWorkletHostManager>
       shared_storage_worklet_host_manager_;
 
-  std::unique_ptr<PrivateAggregationManager> private_aggregation_manager_;
+  // Owning pointer to the `SharedStorageHeaderObserver` for this partition.
+  std::unique_ptr<SharedStorageHeaderObserver> shared_storage_header_observer_;
+
+  std::unique_ptr<PrivateAggregationManagerImpl> private_aggregation_manager_;
+
+  std::unique_ptr<ResourceCacheManager> resource_cache_manager_;
+
+  std::unique_ptr<CookieDeprecationLabelManager>
+      cookie_deprecation_label_manager_;
 
   // ReceiverSet for DomStorage, using the
   // ChildProcessSecurityPolicyImpl::Handle as the binding context type. The
@@ -745,6 +780,16 @@ class CONTENT_EXPORT StoragePartitionImpl
   // about cookie reads and writes made by a service worker in this process.
   mojo::UniqueReceiverSet<network::mojom::CookieAccessObserver>
       service_worker_cookie_observers_;
+
+  // A set of connections to the network service used to notify browser process
+  // about Trust Token accesses made by a service worker in this process.
+  mojo::UniqueReceiverSet<network::mojom::TrustTokenAccessObserver>
+      service_worker_trust_token_observers_;
+
+  // A set of connections to the network service used to notify browser process
+  // about shared dictionary accesses made by a service worker in this process.
+  mojo::UniqueReceiverSet<network::mojom::SharedDictionaryAccessObserver>
+      service_worker_shared_dictionary_observers_;
 
   mojo::ReceiverSet<network::mojom::URLLoaderNetworkServiceObserver,
                     URLLoaderNetworkContext>

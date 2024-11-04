@@ -51,6 +51,7 @@
 #include <wayland-client.h>
 
 #include "libweston/vertex-clipping.h"
+#include "shared/helpers.h"
 #include "shared/xalloc.h"
 #include "window.h"
 
@@ -65,7 +66,11 @@ struct geometry {
 	float phi;
 };
 
+struct weston_surface {
+};
+
 struct weston_view {
+	struct weston_surface *surface;
 	struct {
 		int enabled;
 	} transform;
@@ -74,8 +79,8 @@ struct weston_view {
 };
 
 static void
-weston_view_to_global_float(struct weston_view *view,
-			    float sx, float sy, float *x, float *y)
+weston_view_to_global_double(struct weston_view *view,
+			     double sx, double sy, double *x, double *y)
 {
 	struct geometry *g = view->geometry;
 
@@ -84,11 +89,20 @@ weston_view_to_global_float(struct weston_view *view,
 	*y = -g->s * sx + g->c * sy;
 }
 
+static struct weston_coord_global
+weston_coord_surface_to_global(struct weston_view *view, struct weston_coord_surface pos)
+{
+	double gx, gy;
+	struct weston_coord_global g_pos;
+
+	weston_view_to_global_double(view, pos.c.x, pos.c.y, &gx, &gy);
+	g_pos.c = weston_coord(gx, gy);
+
+	return g_pos;
+}
+
 /* ---------------------- copied begins -----------------------*/
 /* Keep this in sync with what is in gl-renderer.c! */
-
-#define max(a, b) (((a) > (b)) ? (a) : (b))
-#define min(a, b) (((a) > (b)) ? (b) : (a))
 
 /*
  * Compute the boundary vertices of the intersection of the global coordinate
@@ -101,17 +115,22 @@ weston_view_to_global_float(struct weston_view *view,
  */
 static int
 calculate_edges(struct weston_view *ev, pixman_box32_t *rect,
-		pixman_box32_t *surf_rect, GLfloat *ex, GLfloat *ey)
+		pixman_box32_t *surf_rect, struct weston_coord *e)
 {
 
 	struct clip_context ctx;
 	int i, n;
 	GLfloat min_x, max_x, min_y, max_y;
-	struct polygon8 surf = {
-		{ surf_rect->x1, surf_rect->x2, surf_rect->x2, surf_rect->x1 },
-		{ surf_rect->y1, surf_rect->y1, surf_rect->y2, surf_rect->y2 },
-		4
+	struct weston_surface *es = ev->surface;
+	struct weston_coord_surface tmp[4] = {
+		weston_coord_surface(surf_rect->x1, surf_rect->y1, es),
+		weston_coord_surface(surf_rect->x2, surf_rect->y1, es),
+		weston_coord_surface(surf_rect->x2, surf_rect->y2, es),
+		weston_coord_surface(surf_rect->x1, surf_rect->y2, es),
 	};
+	struct polygon8 surf;
+
+	surf.n = 4;
 
 	ctx.clip.x1 = rect->x1;
 	ctx.clip.y1 = rect->y1;
@@ -120,18 +139,17 @@ calculate_edges(struct weston_view *ev, pixman_box32_t *rect,
 
 	/* transform surface to screen space: */
 	for (i = 0; i < surf.n; i++)
-		weston_view_to_global_float(ev, surf.x[i], surf.y[i],
-					    &surf.x[i], &surf.y[i]);
+		surf.pos[i] = weston_coord_surface_to_global(ev, tmp[i]).c;
 
 	/* find bounding box: */
-	min_x = max_x = surf.x[0];
-	min_y = max_y = surf.y[0];
+	min_x = max_x = surf.pos[0].x;
+	min_y = max_y = surf.pos[0].y;
 
 	for (i = 1; i < surf.n; i++) {
-		min_x = min(min_x, surf.x[i]);
-		max_x = max(max_x, surf.x[i]);
-		min_y = min(min_y, surf.y[i]);
-		max_y = max(max_y, surf.y[i]);
+		min_x = MIN(min_x, surf.pos[i].x);
+		max_x = MAX(max_x, surf.pos[i].x);
+		min_y = MIN(min_y, surf.pos[i].y);
+		max_y = MAX(max_y, surf.pos[i].y);
 	}
 
 	/* First, simple bounding box check to discard early transformed
@@ -146,7 +164,7 @@ calculate_edges(struct weston_view *ev, pixman_box32_t *rect,
 	 * vertices to the clip rect bounds:
 	 */
 	if (!ev->transform.enabled)
-		return clip_simple(&ctx, &surf, ex, ey);
+		return clip_simple(&ctx, &surf, e);
 
 	/* Transformed case: use a general polygon clipping algorithm to
 	 * clip the surface rectangle with each side of 'rect'.
@@ -154,14 +172,13 @@ calculate_edges(struct weston_view *ev, pixman_box32_t *rect,
 	 * http://www.codeguru.com/cpp/misc/misc/graphics/article.php/c8965/Polygon-Clipping.htm
 	 * but without looking at any of that code.
 	 */
-	n = clip_transformed(&ctx, &surf, ex, ey);
+	n = clip_transformed(&ctx, &surf, e);
 
 	if (n < 3)
 		return 0;
 
 	return n;
 }
-
 
 /* ---------------------- copied ends -----------------------*/
 
@@ -206,35 +223,36 @@ struct cliptest {
 	struct ui_state ui;
 
 	struct geometry geometry;
+	struct weston_surface surface;
 	struct weston_view view;
 };
 
 static void
-draw_polygon_closed(cairo_t *cr, GLfloat *x, GLfloat *y, int n)
+draw_polygon_closed(cairo_t *cr, struct weston_coord *pos, int n)
 {
 	int i;
 
-	cairo_move_to(cr, x[0], y[0]);
+	cairo_move_to(cr, pos[0].x, pos[0].y);
 	for (i = 1; i < n; i++)
-		cairo_line_to(cr, x[i], y[i]);
-	cairo_line_to(cr, x[0], y[0]);
+		cairo_line_to(cr, pos[i].x, pos[i].y);
+	cairo_line_to(cr, pos[0].x, pos[0].y);
 }
 
 static void
-draw_polygon_labels(cairo_t *cr, GLfloat *x, GLfloat *y, int n)
+draw_polygon_labels(cairo_t *cr, struct weston_coord *pos, int n)
 {
 	char str[16];
 	int i;
 
 	for (i = 0; i < n; i++) {
 		snprintf(str, 16, "%d", i);
-		cairo_move_to(cr, x[i], y[i]);
+		cairo_move_to(cr, pos[i].x, pos[i].y);
 		cairo_show_text(cr, str);
 	}
 }
 
 static void
-draw_coordinates(cairo_t *cr, double ox, double oy, GLfloat *x, GLfloat *y, int n)
+draw_coordinates(cairo_t *cr, double ox, double oy, struct weston_coord *pos, int n)
 {
 	char str[64];
 	int i;
@@ -242,7 +260,7 @@ draw_coordinates(cairo_t *cr, double ox, double oy, GLfloat *x, GLfloat *y, int 
 
 	cairo_font_extents(cr, &ext);
 	for (i = 0; i < n; i++) {
-		snprintf(str, 64, "%d: %14.9f, %14.9f", i, x[i], y[i]);
+		snprintf(str, 64, "%d: %14.9f, %14.9f", i, pos[i].x, pos[i].y);
 		cairo_move_to(cr, ox, oy + ext.height * (i + 1));
 		cairo_show_text(cr, str);
 	}
@@ -251,34 +269,34 @@ draw_coordinates(cairo_t *cr, double ox, double oy, GLfloat *x, GLfloat *y, int 
 static void
 draw_box(cairo_t *cr, pixman_box32_t *box, struct weston_view *view)
 {
-	GLfloat x[4], y[4];
+	struct weston_coord pos[4];
 
 	if (view) {
-		weston_view_to_global_float(view, box->x1, box->y1, &x[0], &y[0]);
-		weston_view_to_global_float(view, box->x2, box->y1, &x[1], &y[1]);
-		weston_view_to_global_float(view, box->x2, box->y2, &x[2], &y[2]);
-		weston_view_to_global_float(view, box->x1, box->y2, &x[3], &y[3]);
+		weston_view_to_global_double(view, box->x1, box->y1, &pos[0].x, &pos[0].y);
+		weston_view_to_global_double(view, box->x2, box->y1, &pos[1].x, &pos[1].y);
+		weston_view_to_global_double(view, box->x2, box->y2, &pos[2].x, &pos[2].y);
+		weston_view_to_global_double(view, box->x1, box->y2, &pos[3].x, &pos[3].y);
 	} else {
-		x[0] = box->x1; y[0] = box->y1;
-		x[1] = box->x2; y[1] = box->y1;
-		x[2] = box->x2; y[2] = box->y2;
-		x[3] = box->x1; y[3] = box->y2;
+		pos[0] = weston_coord(box->x1, box->y1);
+		pos[1] = weston_coord(box->x2, box->y1);
+		pos[2] = weston_coord(box->x2, box->y2);
+		pos[3] = weston_coord(box->x1, box->y2);
 	}
 
-	draw_polygon_closed(cr, x, y, 4);
+	draw_polygon_closed(cr, pos, 4);
 }
 
 static void
 draw_geometry(cairo_t *cr, struct weston_view *view,
-	      GLfloat *ex, GLfloat *ey, int n)
+	      struct weston_coord *e, int n)
 {
 	struct geometry *g = view->geometry;
-	float cx, cy;
+	double cx, cy;
 
 	draw_box(cr, &g->surf, view);
 	cairo_set_source_rgba(cr, 1.0, 0.0, 0.0, 0.4);
 	cairo_fill(cr);
-	weston_view_to_global_float(view, g->surf.x1 - 4, g->surf.y1 - 4, &cx, &cy);
+	weston_view_to_global_double(view, g->surf.x1 - 4, g->surf.y1 - 4, &cx, &cy);
 	cairo_arc(cr, cx, cy, 1.5, 0.0, 2.0 * M_PI);
 	if (view->transform.enabled == 0)
 		cairo_set_source_rgba(cr, 1.0, 0.0, 0.0, 0.8);
@@ -289,12 +307,12 @@ draw_geometry(cairo_t *cr, struct weston_view *view,
 	cairo_fill(cr);
 
 	if (n) {
-		draw_polygon_closed(cr, ex, ey, n);
+		draw_polygon_closed(cr, e, n);
 		cairo_set_source_rgb(cr, 0.0, 1.0, 0.0);
 		cairo_stroke(cr);
 
 		cairo_set_source_rgba(cr, 0.0, 1.0, 0.0, 0.5);
-		draw_polygon_labels(cr, ex, ey, n);
+		draw_polygon_labels(cr, e, n);
 	}
 }
 
@@ -306,11 +324,10 @@ redraw_handler(struct widget *widget, void *data)
 	struct rectangle allocation;
 	cairo_t *cr;
 	cairo_surface_t *surface;
-	GLfloat ex[8];
-	GLfloat ey[8];
+	struct weston_coord e[8];
 	int n;
 
-	n = calculate_edges(&cliptest->view, &g->clip, &g->surf, ex, ey);
+	n = calculate_edges(&cliptest->view, &g->clip, &g->surf, e);
 
 	widget_get_allocation(cliptest->widget, &allocation);
 
@@ -341,10 +358,10 @@ redraw_handler(struct widget *widget, void *data)
 		cairo_scale(cr, 4.0, 4.0);
 		cairo_set_line_width(cr, 0.5);
 		cairo_set_line_join(cr, CAIRO_LINE_JOIN_BEVEL);
-		cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
+		cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL,
 				       CAIRO_FONT_WEIGHT_BOLD);
 		cairo_set_font_size(cr, 5.0);
-		draw_geometry(cr, &cliptest->view, ex, ey, n);
+		draw_geometry(cr, &cliptest->view, e, n);
 	cairo_pop_group_to_source(cr);
 	cairo_paint(cr);
 
@@ -352,7 +369,7 @@ redraw_handler(struct widget *widget, void *data)
 	cairo_select_font_face(cr, "monospace", CAIRO_FONT_SLANT_NORMAL,
 			       CAIRO_FONT_WEIGHT_NORMAL);
 	cairo_set_font_size(cr, 12.0);
-	draw_coordinates(cr, 10.0, 10.0, ex, ey, n);
+	draw_coordinates(cr, 10.0, 10.0, e, n);
 
 	cairo_destroy(cr);
 
@@ -514,6 +531,7 @@ cliptest_create(struct display *display)
 	struct cliptest *cliptest;
 
 	cliptest = xzalloc(sizeof *cliptest);
+	cliptest->view.surface = &cliptest->surface;
 	cliptest->view.geometry = &cliptest->geometry;
 	cliptest->view.transform.enabled = 0;
 	geometry_init(&cliptest->geometry);
@@ -522,6 +540,7 @@ cliptest_create(struct display *display)
 	cliptest->window = window_create(display);
 	cliptest->widget = window_frame_create(cliptest->window, cliptest);
 	window_set_title(cliptest->window, "cliptest");
+	window_set_appid(cliptest->window, "org.freedesktop.weston.cliptest");
 	cliptest->display = display;
 
 	window_set_user_data(cliptest->window, cliptest);
@@ -565,9 +584,10 @@ read_timer(void)
 static int
 benchmark(void)
 {
+	struct weston_surface surface;
 	struct weston_view view;
 	struct geometry geom;
-	GLfloat ex[8], ey[8];
+	struct weston_coord e[8];
 	int i;
 	double t;
 	const int N = 1000000;
@@ -584,13 +604,14 @@ benchmark(void)
 
 	geometry_set_phi(&geom, 0.0);
 
+	view.surface = &surface;
 	view.transform.enabled = 1;
 	view.geometry = &geom;
 
 	reset_timer();
 	for (i = 0; i < N; i++) {
 		geometry_set_phi(&geom, (float)i / 360.0f);
-		calculate_edges(&view, &geom.clip, &geom.surf, ex, ey);
+		calculate_edges(&view, &geom.clip, &geom.surf, e);
 	}
 	t = read_timer();
 

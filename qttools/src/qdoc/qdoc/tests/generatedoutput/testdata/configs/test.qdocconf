@@ -1,0 +1,19 @@
+include(config.qdocconf)
+project = OutputFromQDocFiles
+description = "A test project for QDoc build artifacts"
+buildversion = "$project - $description"
+moduleheader =
+
+sources = ../outputfromqdocfiles/qdoctests-outputfromqdocfiles.qdoc \
+          ../outputfromqdocfiles/qdoctests-outputfromqdocmanuallikefiles.qdoc
+
+exampledirs = ../outputfromqdocfiles/snippets
+
+macro.beginqdoc = "\\c {/*!}"
+macro.endqdoc = "\\c */"
+macro.PROD = QDoc
+
+defines = test_navigation
+
+# allow (qdoc) warning: Can't link to ''
+warninglimit += 1

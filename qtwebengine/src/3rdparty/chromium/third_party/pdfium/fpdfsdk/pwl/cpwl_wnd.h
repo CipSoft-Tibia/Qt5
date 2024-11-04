@@ -14,6 +14,7 @@
 #include "core/fxcrt/mask.h"
 #include "core/fxcrt/observed_ptr.h"
 #include "core/fxcrt/unowned_ptr.h"
+#include "core/fxcrt/unowned_ptr_exclusion.h"
 #include "core/fxcrt/widestring.h"
 #include "core/fxge/cfx_color.h"
 #include "core/fxge/cfx_renderdevice.h"
@@ -21,7 +22,6 @@
 #include "public/fpdf_fwlevent.h"
 
 class CPWL_Edit;
-class CPWL_MsgControl;
 class CPWL_ScrollBar;
 class IPVT_FontMap;
 struct PWL_SCROLL_INFO;
@@ -79,6 +79,8 @@ class CPWL_Wnd : public Observable {
   static const CFX_Color kDefaultBlackColor;
   static const CFX_Color kDefaultWhiteColor;
 
+  class SharedCaptureFocusState;
+
   class ProviderIface : public Observable {
    public:
     virtual ~ProviderIface() = default;
@@ -118,7 +120,9 @@ class CPWL_Wnd : public Observable {
     CPWL_Dash sDash;
 
     // Ignore, used internally only:
-    CPWL_MsgControl* pMsgControl = nullptr;
+    // TODO(tsepez): fix murky ownership, bare delete.
+    UNOWNED_PTR_EXCLUSION SharedCaptureFocusState* pSharedCaptureFocusState =
+        nullptr;
     IPWL_FillerNotify::CursorStyle eCursorType =
         IPWL_FillerNotify::CursorStyle::kArrow;
   };
@@ -136,7 +140,7 @@ class CPWL_Wnd : public Observable {
   virtual ~CPWL_Wnd();
 
   // Returns |true| iff this instance is still allocated.
-  virtual bool InvalidateRect(const CFX_FloatRect* pRect);
+  [[nodiscard]] virtual bool InvalidateRect(const CFX_FloatRect* pRect);
 
   virtual bool OnKeyDown(FWL_VKEYCODE nKeyCode, Mask<FWL_EVENTFLAG> nFlag);
   virtual bool OnChar(uint16_t nChar, Mask<FWL_EVENTFLAG> nFlag);
@@ -163,7 +167,7 @@ class CPWL_Wnd : public Observable {
   virtual void SetCursor();
 
   // Returns |true| iff this instance is still allocated.
-  virtual bool SetVisible(bool bVisible);
+  [[nodiscard]] virtual bool SetVisible(bool bVisible);
   virtual void SetFontSize(float fFontSize);
   virtual float GetFontSize() const;
 
@@ -222,7 +226,7 @@ class CPWL_Wnd : public Observable {
   virtual void CreateChildWnd(const CreateParams& cp);
 
   // Returns |true| iff this instance is still allocated.
-  virtual bool RePosChildWnd();
+  [[nodiscard]] virtual bool RepositionChildWnd();
 
   virtual void DrawThisAppearance(CFX_RenderDevice* pDevice,
                                   const CFX_Matrix& mtUser2Device);
@@ -246,8 +250,8 @@ class CPWL_Wnd : public Observable {
   CPWL_ScrollBar* GetVScrollBar() const;
 
   // Returns |true| iff this instance is still allocated.
-  bool InvalidateRectMove(const CFX_FloatRect& rcOld,
-                          const CFX_FloatRect& rcNew);
+  [[nodiscard]] bool InvalidateRectMove(const CFX_FloatRect& rcOld,
+                                        const CFX_FloatRect& rcNew);
 
   void SetCapture();
   void ReleaseCapture();
@@ -275,13 +279,12 @@ class CPWL_Wnd : public Observable {
 
   CFX_FloatRect PWLtoWnd(const CFX_FloatRect& rect) const;
 
-  void CreateScrollBar(const CreateParams& cp);
   void CreateVScrollBar(const CreateParams& cp);
 
   void AdjustStyle();
-  void CreateMsgControl();
-  void DestroyMsgControl();
-  CPWL_MsgControl* GetMsgControl() const;
+  void CreateSharedCaptureFocusState();
+  void DestroySharedCaptureFocusState();
+  SharedCaptureFocusState* GetSharedCaptureFocusState() const;
 
   CreateParams m_CreationParams;
   std::unique_ptr<IPWL_FillerNotify::PerWindowData> m_pAttachedData;

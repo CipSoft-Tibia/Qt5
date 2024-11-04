@@ -14,7 +14,7 @@
 
 #include "dawn/native/TintUtils.h"
 
-#include "dawn/native/BindGroupLayout.h"
+#include "dawn/native/BindGroupLayoutInternal.h"
 #include "dawn/native/Device.h"
 #include "dawn/native/Pipeline.h"
 #include "dawn/native/PipelineLayout.h"
@@ -28,17 +28,11 @@ namespace {
 
 thread_local DeviceBase* tlDevice = nullptr;
 
-void TintICEReporter(const tint::diag::List& diagnostics) {
+void TintICEReporter(const tint::InternalCompilerError& err) {
     if (tlDevice) {
-        tlDevice->HandleError(InternalErrorType::Internal, diagnostics.str().c_str());
+        tlDevice->HandleError(DAWN_INTERNAL_ERROR(err.Error()));
 #if DAWN_ENABLE_ASSERTS
-        for (const tint::diag::Diagnostic& diag : diagnostics) {
-            if (diag.severity >= tint::diag::Severity::InternalCompilerError) {
-                HandleAssertionFailure(
-                    diag.source.file ? diag.source.file->path.c_str() : "<unknown>", "",
-                    diag.source.range.begin.line, diag.message.c_str());
-            }
-        }
+        HandleAssertionFailure(err.File(), "", err.Line(), err.Message().c_str());
 #endif
     }
 }
@@ -48,68 +42,68 @@ bool InitializeTintErrorReporter() {
     return true;
 }
 
-tint::transform::VertexFormat ToTintVertexFormat(wgpu::VertexFormat format) {
+tint::ast::transform::VertexFormat ToTintVertexFormat(wgpu::VertexFormat format) {
     switch (format) {
         case wgpu::VertexFormat::Uint8x2:
-            return tint::transform::VertexFormat::kUint8x2;
+            return tint::ast::transform::VertexFormat::kUint8x2;
         case wgpu::VertexFormat::Uint8x4:
-            return tint::transform::VertexFormat::kUint8x4;
+            return tint::ast::transform::VertexFormat::kUint8x4;
         case wgpu::VertexFormat::Sint8x2:
-            return tint::transform::VertexFormat::kSint8x2;
+            return tint::ast::transform::VertexFormat::kSint8x2;
         case wgpu::VertexFormat::Sint8x4:
-            return tint::transform::VertexFormat::kSint8x4;
+            return tint::ast::transform::VertexFormat::kSint8x4;
         case wgpu::VertexFormat::Unorm8x2:
-            return tint::transform::VertexFormat::kUnorm8x2;
+            return tint::ast::transform::VertexFormat::kUnorm8x2;
         case wgpu::VertexFormat::Unorm8x4:
-            return tint::transform::VertexFormat::kUnorm8x4;
+            return tint::ast::transform::VertexFormat::kUnorm8x4;
         case wgpu::VertexFormat::Snorm8x2:
-            return tint::transform::VertexFormat::kSnorm8x2;
+            return tint::ast::transform::VertexFormat::kSnorm8x2;
         case wgpu::VertexFormat::Snorm8x4:
-            return tint::transform::VertexFormat::kSnorm8x4;
+            return tint::ast::transform::VertexFormat::kSnorm8x4;
         case wgpu::VertexFormat::Uint16x2:
-            return tint::transform::VertexFormat::kUint16x2;
+            return tint::ast::transform::VertexFormat::kUint16x2;
         case wgpu::VertexFormat::Uint16x4:
-            return tint::transform::VertexFormat::kUint16x4;
+            return tint::ast::transform::VertexFormat::kUint16x4;
         case wgpu::VertexFormat::Sint16x2:
-            return tint::transform::VertexFormat::kSint16x2;
+            return tint::ast::transform::VertexFormat::kSint16x2;
         case wgpu::VertexFormat::Sint16x4:
-            return tint::transform::VertexFormat::kSint16x4;
+            return tint::ast::transform::VertexFormat::kSint16x4;
         case wgpu::VertexFormat::Unorm16x2:
-            return tint::transform::VertexFormat::kUnorm16x2;
+            return tint::ast::transform::VertexFormat::kUnorm16x2;
         case wgpu::VertexFormat::Unorm16x4:
-            return tint::transform::VertexFormat::kUnorm16x4;
+            return tint::ast::transform::VertexFormat::kUnorm16x4;
         case wgpu::VertexFormat::Snorm16x2:
-            return tint::transform::VertexFormat::kSnorm16x2;
+            return tint::ast::transform::VertexFormat::kSnorm16x2;
         case wgpu::VertexFormat::Snorm16x4:
-            return tint::transform::VertexFormat::kSnorm16x4;
+            return tint::ast::transform::VertexFormat::kSnorm16x4;
         case wgpu::VertexFormat::Float16x2:
-            return tint::transform::VertexFormat::kFloat16x2;
+            return tint::ast::transform::VertexFormat::kFloat16x2;
         case wgpu::VertexFormat::Float16x4:
-            return tint::transform::VertexFormat::kFloat16x4;
+            return tint::ast::transform::VertexFormat::kFloat16x4;
         case wgpu::VertexFormat::Float32:
-            return tint::transform::VertexFormat::kFloat32;
+            return tint::ast::transform::VertexFormat::kFloat32;
         case wgpu::VertexFormat::Float32x2:
-            return tint::transform::VertexFormat::kFloat32x2;
+            return tint::ast::transform::VertexFormat::kFloat32x2;
         case wgpu::VertexFormat::Float32x3:
-            return tint::transform::VertexFormat::kFloat32x3;
+            return tint::ast::transform::VertexFormat::kFloat32x3;
         case wgpu::VertexFormat::Float32x4:
-            return tint::transform::VertexFormat::kFloat32x4;
+            return tint::ast::transform::VertexFormat::kFloat32x4;
         case wgpu::VertexFormat::Uint32:
-            return tint::transform::VertexFormat::kUint32;
+            return tint::ast::transform::VertexFormat::kUint32;
         case wgpu::VertexFormat::Uint32x2:
-            return tint::transform::VertexFormat::kUint32x2;
+            return tint::ast::transform::VertexFormat::kUint32x2;
         case wgpu::VertexFormat::Uint32x3:
-            return tint::transform::VertexFormat::kUint32x3;
+            return tint::ast::transform::VertexFormat::kUint32x3;
         case wgpu::VertexFormat::Uint32x4:
-            return tint::transform::VertexFormat::kUint32x4;
+            return tint::ast::transform::VertexFormat::kUint32x4;
         case wgpu::VertexFormat::Sint32:
-            return tint::transform::VertexFormat::kSint32;
+            return tint::ast::transform::VertexFormat::kSint32;
         case wgpu::VertexFormat::Sint32x2:
-            return tint::transform::VertexFormat::kSint32x2;
+            return tint::ast::transform::VertexFormat::kSint32x2;
         case wgpu::VertexFormat::Sint32x3:
-            return tint::transform::VertexFormat::kSint32x3;
+            return tint::ast::transform::VertexFormat::kSint32x3;
         case wgpu::VertexFormat::Sint32x4:
-            return tint::transform::VertexFormat::kSint32x4;
+            return tint::ast::transform::VertexFormat::kSint32x4;
 
         case wgpu::VertexFormat::Undefined:
             break;
@@ -117,12 +111,12 @@ tint::transform::VertexFormat ToTintVertexFormat(wgpu::VertexFormat format) {
     UNREACHABLE();
 }
 
-tint::transform::VertexStepMode ToTintVertexStepMode(wgpu::VertexStepMode mode) {
+tint::ast::transform::VertexStepMode ToTintVertexStepMode(wgpu::VertexStepMode mode) {
     switch (mode) {
         case wgpu::VertexStepMode::Vertex:
-            return tint::transform::VertexStepMode::kVertex;
+            return tint::ast::transform::VertexStepMode::kVertex;
         case wgpu::VertexStepMode::Instance:
-            return tint::transform::VertexStepMode::kInstance;
+            return tint::ast::transform::VertexStepMode::kInstance;
         case wgpu::VertexStepMode::VertexBufferNotUsed:
             break;
     }
@@ -147,30 +141,31 @@ ScopedTintICEHandler::~ScopedTintICEHandler() {
     tlDevice = nullptr;
 }
 
-tint::transform::MultiplanarExternalTexture::BindingsMap BuildExternalTextureTransformBindings(
+tint::ExternalTextureOptions BuildExternalTextureTransformBindings(
     const PipelineLayoutBase* layout) {
-    tint::transform::MultiplanarExternalTexture::BindingsMap newBindingsMap;
+    tint::ExternalTextureOptions options;
     for (BindGroupIndex i : IterateBitSet(layout->GetBindGroupLayoutsMask())) {
-        const BindGroupLayoutBase* bgl = layout->GetBindGroupLayout(i);
+        const BindGroupLayoutInternalBase* bgl = layout->GetBindGroupLayout(i);
         for (const auto& [_, expansion] : bgl->GetExternalTextureBindingExpansionMap()) {
-            newBindingsMap[{static_cast<uint32_t>(i), static_cast<uint32_t>(expansion.plane0)}] = {
+            options.bindings_map[{static_cast<uint32_t>(i),
+                                  static_cast<uint32_t>(expansion.plane0)}] = {
                 {static_cast<uint32_t>(i), static_cast<uint32_t>(expansion.plane1)},
                 {static_cast<uint32_t>(i), static_cast<uint32_t>(expansion.params)}};
         }
     }
-    return newBindingsMap;
+    return options;
 }
 
-tint::transform::VertexPulling::Config BuildVertexPullingTransformConfig(
+tint::ast::transform::VertexPulling::Config BuildVertexPullingTransformConfig(
     const RenderPipelineBase& renderPipeline,
     BindGroupIndex pullingBufferBindingSet) {
-    tint::transform::VertexPulling::Config cfg;
+    tint::ast::transform::VertexPulling::Config cfg;
     cfg.pulling_group = static_cast<uint32_t>(pullingBufferBindingSet);
 
     cfg.vertex_state.resize(renderPipeline.GetVertexBufferCount());
     for (VertexBufferSlot slot : IterateBitSet(renderPipeline.GetVertexBufferSlotsUsed())) {
         const VertexBufferInfo& dawnInfo = renderPipeline.GetVertexBuffer(slot);
-        tint::transform::VertexBufferLayoutDescriptor* tintInfo =
+        tint::ast::transform::VertexBufferLayoutDescriptor* tintInfo =
             &cfg.vertex_state[static_cast<uint8_t>(slot)];
 
         tintInfo->array_stride = dawnInfo.arrayStride;
@@ -180,7 +175,7 @@ tint::transform::VertexPulling::Config BuildVertexPullingTransformConfig(
     for (VertexAttributeLocation location :
          IterateBitSet(renderPipeline.GetAttributeLocationsUsed())) {
         const VertexAttributeInfo& dawnInfo = renderPipeline.GetAttribute(location);
-        tint::transform::VertexAttributeDescriptor tintInfo;
+        tint::ast::transform::VertexAttributeDescriptor tintInfo;
         tintInfo.format = ToTintVertexFormat(dawnInfo.format);
         tintInfo.offset = dawnInfo.offset;
         tintInfo.shader_location = static_cast<uint32_t>(static_cast<uint8_t>(location));
@@ -191,12 +186,12 @@ tint::transform::VertexPulling::Config BuildVertexPullingTransformConfig(
     return cfg;
 }
 
-tint::transform::SubstituteOverride::Config BuildSubstituteOverridesTransformConfig(
+tint::ast::transform::SubstituteOverride::Config BuildSubstituteOverridesTransformConfig(
     const ProgrammableStage& stage) {
     const EntryPointMetadata& metadata = *stage.metadata;
     const auto& constants = stage.constants;
 
-    tint::transform::SubstituteOverride::Config cfg;
+    tint::ast::transform::SubstituteOverride::Config cfg;
 
     for (const auto& [key, value] : constants) {
         const auto& o = metadata.overrides.at(key);

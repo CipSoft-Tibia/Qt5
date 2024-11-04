@@ -28,6 +28,7 @@
 #include "dawn/native/vulkan/TextureVk.h"
 #include "dawn/native/vulkan/UtilsVulkan.h"
 #include "dawn/native/vulkan/VulkanError.h"
+#include "dawn/platform/metrics/HistogramMacros.h"
 
 namespace dawn::native::vulkan {
 
@@ -193,6 +194,14 @@ VkBlendFactor VulkanBlendFactor(wgpu::BlendFactor factor) {
             return VK_BLEND_FACTOR_CONSTANT_COLOR;
         case wgpu::BlendFactor::OneMinusConstant:
             return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
+        case wgpu::BlendFactor::Src1:
+            return VK_BLEND_FACTOR_SRC1_COLOR;
+        case wgpu::BlendFactor::OneMinusSrc1:
+            return VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR;
+        case wgpu::BlendFactor::Src1Alpha:
+            return VK_BLEND_FACTOR_SRC1_ALPHA;
+        case wgpu::BlendFactor::OneMinusSrc1Alpha:
+            return VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA;
     }
     UNREACHABLE();
 }
@@ -426,18 +435,6 @@ MaybeError RenderPipeline::Initialize() {
     rasterization.depthBiasSlopeFactor = GetDepthBiasSlopeScale();
     rasterization.lineWidth = 1.0f;
 
-    PNextChainBuilder rasterizationChain(&rasterization);
-    VkPipelineRasterizationDepthClipStateCreateInfoEXT depthClipState;
-    if (HasUnclippedDepth()) {
-        ASSERT(device->HasFeature(Feature::DepthClipControl));
-        depthClipState.pNext = nullptr;
-        depthClipState.depthClipEnable = VK_FALSE;
-        depthClipState.flags = 0;
-        rasterizationChain.Add(
-            &depthClipState,
-            VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_DEPTH_CLIP_STATE_CREATE_INFO_EXT);
-    }
-
     VkPipelineMultisampleStateCreateInfo multisample;
     multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisample.pNext = nullptr;
@@ -565,11 +562,23 @@ MaybeError RenderPipeline::Initialize() {
     StreamIn(&mCacheKey, createInfo, layout->GetCacheKey());
 
     // Try to see if we have anything in the blob cache.
+    platform::metrics::DawnHistogramTimer cacheTimer(GetDevice()->GetPlatform());
     Ref<PipelineCache> cache = ToBackend(GetDevice()->GetOrCreatePipelineCache(GetCacheKey()));
-    DAWN_TRY(
-        CheckVkSuccess(device->fn.CreateGraphicsPipelines(device->GetVkDevice(), cache->GetHandle(),
-                                                          1, &createInfo, nullptr, &*mHandle),
-                       "CreateGraphicsPipelines"));
+    if (cache->CacheHit()) {
+        DAWN_TRY(CheckVkSuccess(
+            device->fn.CreateGraphicsPipelines(device->GetVkDevice(), cache->GetHandle(), 1,
+                                               &createInfo, nullptr, &*mHandle),
+            "CreateGraphicsPipelines"));
+        cacheTimer.RecordMicroseconds("Vulkan.CreateGraphicsPipelines.CacheHit");
+    } else {
+        cacheTimer.Reset();
+        DAWN_TRY(CheckVkSuccess(
+            device->fn.CreateGraphicsPipelines(device->GetVkDevice(), cache->GetHandle(), 1,
+                                               &createInfo, nullptr, &*mHandle),
+            "CreateGraphicsPipelines"));
+        cacheTimer.RecordMicroseconds("Vulkan.CreateGraphicsPipelines.CacheMiss");
+    }
+
     // TODO(dawn:549): Flush is currently in the same thread, but perhaps deferrable.
     DAWN_TRY(cache->FlushIfNeeded());
 

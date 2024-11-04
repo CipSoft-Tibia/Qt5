@@ -103,6 +103,7 @@ class PageHandler : public DevToolsDomainHandler,
   void DownloadWillBegin(FrameTreeNode* ftn, download::DownloadItem* item);
 
   void OnFrameDetached(const base::UnguessableToken& frame_id);
+  void DidChangeFrameLoadingState(const FrameTreeNode& ftn);
 
   bool ShouldBypassCSP();
   void BackForwardCacheNotUsed(
@@ -110,19 +111,7 @@ class PageHandler : public DevToolsDomainHandler,
       const BackForwardCacheCanStoreDocumentResult* result,
       const BackForwardCacheCanStoreTreeResult* tree_result);
 
-  void DidActivatePrerender(const NavigationRequest& nav_request);
-  void DidCancelPrerender(const GURL& prerendering_url,
-                          const std::string& initiating_frame_id,
-                          PrerenderFinalStatus status,
-                          const std::string& disallowed_api_method);
-
-  void DidUpdatePrefetchStatus(const std::string& initiating_frame_id,
-                               const GURL& prefetch_url,
-                               PreloadingTriggeringOutcome status);
-
-  void DidUpdatePrerenderStatus(const std::string& initiating_frame_id,
-                                const GURL& prerender_url,
-                                PreloadingTriggeringOutcome status);
+  void IsPrerenderingAllowed(bool& is_allowed);
 
   Response Enable() override;
   Response Disable() override;
@@ -131,6 +120,7 @@ class PageHandler : public DevToolsDomainHandler,
   Response Close() override;
   void Reload(Maybe<bool> bypassCache,
               Maybe<std::string> script_to_evaluate_on_load,
+              Maybe<std::string> loader_id,
               std::unique_ptr<ReloadCallback> callback) override;
   void Navigate(const std::string& url,
                 Maybe<std::string> referrer,
@@ -190,6 +180,8 @@ class PageHandler : public DevToolsDomainHandler,
   Response AddCompilationCache(const std::string& url,
                                const Binary& data) override;
 
+  Response SetPrerenderingAllowed(bool is_allowed) override;
+
   Response AssureTopLevelActiveFrame();
 
  private:
@@ -241,8 +233,6 @@ class PageHandler : public DevToolsDomainHandler,
   using ResponseOrWebContents = absl::variant<Response, WebContentsImpl*>;
   ResponseOrWebContents GetWebContentsForTopLevelActiveFrame();
 
-  void RetrievePrerenderActivationFromWebContents();
-
   const bool allow_unsafe_operations_;
   const bool is_trusted_;
   const absl::optional<url::Origin> navigation_initiator_origin_;
@@ -258,10 +248,6 @@ class PageHandler : public DevToolsDomainHandler,
   int session_id_;
   int frame_counter_;
   int frames_in_flight_;
-
-  // Whether stored prerender activation has been dispatched to Devtools. Reset
-  // whenever a new prerender event received.
-  bool has_dispatched_stored_prerender_activation_ = false;
 
   // |video_consumer_| consumes video frames from FrameSinkVideoCapturerImpl,
   // and provides PageHandler with these frames via OnFrameFromVideoConsumer.
@@ -285,6 +271,8 @@ class PageHandler : public DevToolsDomainHandler,
   base::flat_map<base::UnguessableToken, std::unique_ptr<NavigateCallback>>
       navigate_callbacks_;
   base::flat_set<download::DownloadItem*> pending_downloads_;
+
+  bool is_prerendering_allowed_ = true;
 
   base::WeakPtrFactory<PageHandler> weak_factory_{this};
 };

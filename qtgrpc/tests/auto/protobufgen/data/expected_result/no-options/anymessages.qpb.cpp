@@ -2,6 +2,7 @@
 
 #include "anymessages.qpb.h"
 #include <QtProtobuf/qprotobufserializer.h>
+#include <cmath>
 
 namespace qtproto::tests {
 

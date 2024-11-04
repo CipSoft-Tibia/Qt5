@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,8 +18,7 @@
 #include "util/json/json_serialization.h"
 #include "util/json/json_value.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 using ::cast::channel::CastMessage;
 
@@ -50,7 +49,7 @@ class CastPlatformClientTest : public ::testing::Test {
   VirtualConnectionRouter router_;
   FakeClock clock_{Clock::now()};
   FakeTaskRunner task_runner_{&clock_};
-  CastPlatformClient platform_client_{&router_, &FakeClock::now, &task_runner_};
+  CastPlatformClient platform_client_{&router_, &FakeClock::now, task_runner_};
   ReceiverInfo receiver_;
 };
 
@@ -90,12 +89,11 @@ TEST_F(CastPlatformClientTest, CancelRequest) {
                                           CastMessage message) {
         VerifyAppAvailabilityRequest(message, "AAA", &request_id, &sender_id);
       });
-  absl::optional<int> maybe_request_id =
-      platform_client_.RequestAppAvailability(
-          "receiverId1", "AAA",
-          [](const std::string& app_id, AppAvailabilityResult availability) {
-            EXPECT_TRUE(false);
-          });
+  std::optional<int> maybe_request_id = platform_client_.RequestAppAvailability(
+      "receiverId1", "AAA",
+      [](const std::string& app_id, AppAvailabilityResult availability) {
+        EXPECT_TRUE(false);
+      });
   ASSERT_TRUE(maybe_request_id);
   int local_request_id = maybe_request_id.value();
   platform_client_.CancelRequest(local_request_id);
@@ -105,5 +103,4 @@ TEST_F(CastPlatformClientTest, CancelRequest) {
   EXPECT_TRUE(peer_socket().Send(availability_response).ok());
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

@@ -25,18 +25,12 @@ import {hasKeyModifiers} from 'chrome://resources/js/util_ts.js';
 import {TextDirection} from 'chrome://resources/mojo/mojo/public/mojom/base/text_direction.mojom-webui.js';
 import {SkColor} from 'chrome://resources/mojo/skia/public/mojom/skcolor.mojom-webui.js';
 import {Url} from 'chrome://resources/mojo/url/mojom/url.mojom-webui.js';
-import {DomRepeat, DomRepeatEvent, PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+import {afterNextRender, DomRepeat, DomRepeatEvent, PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
 import {MostVisitedBrowserProxy} from './browser_proxy.js';
 import {getTemplate} from './most_visited.html.js';
 import {MostVisitedInfo, MostVisitedPageCallbackRouter, MostVisitedPageHandlerRemote, MostVisitedTheme, MostVisitedTile} from './most_visited.mojom-webui.js';
 import {MostVisitedWindowProxy} from './window_proxy.js';
-
-enum ScreenWidth {
-  NARROW = 0,
-  MEDIUM = 1,
-  WIDE = 2,
-}
 
 function resetTilePosition(tile: HTMLElement) {
   tile.style.position = '';
@@ -98,6 +92,22 @@ export class MostVisitedElement extends MostVisitedElementBase {
       theme: Object,
 
       /**
+       * If true, renders MV tiles in a single row up to 10 columns wide.
+       * If false, renders MV tiles in up to 2 rows up to 5 columns wide.
+       */
+      singleRow: {
+        type: Boolean,
+        value: false,
+        observer: 'onSingleRowChange_',
+      },
+
+      /** If true, reflows tiles that are overflowing. */
+      reflowOnOverflow: {
+        type: Boolean,
+        value: false,
+      },
+
+      /**
        * When the tile icon background is dark, the icon color is white for
        * contrast. This can be used to determine the color of the tile hover as
        * well.
@@ -108,23 +118,15 @@ export class MostVisitedElement extends MostVisitedElementBase {
         computed: `computeUseWhiteTileIcon_(theme)`,
       },
 
-      /**
-       * If true wraps the tile titles in white pills.
-       */
-      useTitlePill_: {
-        type: Boolean,
-        reflectToAttribute: true,
-        computed: `computeUseTitlePill_(theme)`,
-      },
-
       columnCount_: {
         type: Number,
-        computed: `computeColumnCount_(tiles_, screenWidth_, maxTiles_)`,
+        computed:
+            `computeColumnCount_(singleRow, tiles_, maxVisibleColumnCount_, maxTiles_)`,
       },
 
       rowCount_: {
         type: Number,
-        computed: 'computeRowCount_(columnCount_, tiles_)',
+        computed: 'computeRowCount_(singleRow, columnCount_, tiles_, showAdd_)',
       },
 
       customLinksEnabled_: {
@@ -198,7 +200,7 @@ export class MostVisitedElement extends MostVisitedElementBase {
 
       showToastButtons_: Boolean,
 
-      screenWidth_: Number,
+      maxVisibleColumnCount_: Number,
 
       tiles_: Array,
 
@@ -211,9 +213,10 @@ export class MostVisitedElement extends MostVisitedElementBase {
     };
   }
 
-  private theme: MostVisitedTheme|null;
+  public theme: MostVisitedTheme|null;
+  public reflowOnOverflow: boolean;
+  public singleRow: boolean;
   private useWhiteTileIcon_: boolean;
-  private useTitlePill_: boolean;
   private columnCount_: number;
   private rowCount_: number;
   private customLinksEnabled_: boolean;
@@ -230,11 +233,10 @@ export class MostVisitedElement extends MostVisitedElementBase {
   private maxVisibleTiles_: number;
   private showAdd_: boolean;
   private showToastButtons_: boolean;
-  private screenWidth_: ScreenWidth;
+  private maxVisibleColumnCount_: number;
   private tiles_: MostVisitedTile[];
   private toastContent_: string;
   private visible_: boolean;
-
   private adding_: boolean = false;
   private callbackRouter_: MostVisitedPageCallbackRouter;
   private pageHandler_: MostVisitedPageHandlerRemote;
@@ -244,11 +246,10 @@ export class MostVisitedElement extends MostVisitedElementBase {
   private dragOffset_: {x: number, y: number}|null;
   private tileRects_: DOMRect[] = [];
   private isRtl_: boolean;
+  private mediaEventTracker_: EventTracker;
   private eventTracker_: EventTracker;
-  private boundOnWidthChange_: () => void;
-  private mediaListenerWideWidth_: MediaQueryList;
-  private mediaListenerMediumWidth_: MediaQueryList;
   private boundOnDocumentKeyDown_: (e: KeyboardEvent) => void;
+  private preloadingTimer_: undefined|ReturnType<typeof setTimeout>;
 
   private get tileElements_() {
     return Array.from(
@@ -273,13 +274,17 @@ export class MostVisitedElement extends MostVisitedElementBase {
      * of the tile being dragged.
      */
     this.dragOffset_ = null;
+
+    this.mediaEventTracker_ = new EventTracker();
+    this.eventTracker_ = new EventTracker();
   }
 
   override connectedCallback() {
     super.connectedCallback();
 
     this.isRtl_ = window.getComputedStyle(this)['direction'] === 'rtl';
-    this.eventTracker_ = new EventTracker();
+
+    this.onSingleRowChange_();
 
     this.setMostVisitedInfoListenerId_ =
         this.callbackRouter_.setMostVisitedInfo.addListener(
@@ -305,25 +310,15 @@ export class MostVisitedElement extends MostVisitedElementBase {
 
   override disconnectedCallback() {
     super.disconnectedCallback();
-    assert(this.boundOnWidthChange_);
-    this.mediaListenerWideWidth_.removeListener(this.boundOnWidthChange_);
-    this.mediaListenerMediumWidth_.removeListener(this.boundOnWidthChange_);
+    this.mediaEventTracker_.removeAll();
+    this.eventTracker_.removeAll();
     this.ownerDocument.removeEventListener(
         'keydown', this.boundOnDocumentKeyDown_);
-    this.eventTracker_.removeAll();
   }
 
   override ready() {
     super.ready();
 
-    this.boundOnWidthChange_ = this.updateScreenWidth_.bind(this);
-    this.mediaListenerWideWidth_ =
-        this.windowProxy_.matchMedia('(min-width: 672px)');
-    this.mediaListenerWideWidth_.addListener(this.boundOnWidthChange_);
-    this.mediaListenerMediumWidth_ =
-        this.windowProxy_.matchMedia('(min-width: 560px)');
-    this.mediaListenerMediumWidth_.addListener(this.boundOnWidthChange_);
-    this.updateScreenWidth_();
     this.boundOnDocumentKeyDown_ = e => this.onDocumentKeyDown_(e);
     this.ownerDocument.addEventListener(
         'keydown', this.boundOnDocumentKeyDown_);
@@ -343,26 +338,30 @@ export class MostVisitedElement extends MostVisitedElementBase {
   }
 
   private computeColumnCount_(): number {
-    let maxColumns = 3;
-    if (this.screenWidth_ === ScreenWidth.WIDE) {
-      maxColumns = 5;
-    } else if (this.screenWidth_ === ScreenWidth.MEDIUM) {
-      maxColumns = 4;
-    }
-
     const shortcutCount = this.tiles_ ? this.tiles_.length : 0;
     const canShowAdd = this.maxTiles_ > shortcutCount;
     const tileCount =
         Math.min(this.maxTiles_, shortcutCount + (canShowAdd ? 1 : 0));
-    const columnCount = tileCount <= maxColumns ?
+    const columnCount = tileCount <= this.maxVisibleColumnCount_ ?
         tileCount :
-        Math.min(maxColumns, Math.ceil(tileCount / 2));
+        Math.min(
+            this.maxVisibleColumnCount_,
+            Math.ceil(tileCount / (this.singleRow ? 1 : 2)));
     return columnCount || 3;
   }
 
   private computeRowCount_(): number {
     if (this.columnCount_ === 0) {
       return 0;
+    }
+
+    if (this.reflowOnOverflow && this.tiles_) {
+      return Math.ceil(
+          (this.tiles_.length + (this.showAdd_ ? 1 : 0)) / this.columnCount_);
+    }
+
+    if (this.singleRow) {
+      return 1;
     }
 
     const shortcutCount = this.tiles_ ? this.tiles_.length : 0;
@@ -374,6 +373,10 @@ export class MostVisitedElement extends MostVisitedElementBase {
   }
 
   private computeMaxVisibleTiles_(): number {
+    if (this.reflowOnOverflow) {
+      return this.computeMaxTiles_();
+    }
+
     return this.columnCount_ * this.rowCount_;
   }
 
@@ -414,10 +417,6 @@ export class MostVisitedElement extends MostVisitedElementBase {
 
   private computeUseWhiteTileIcon_(): boolean {
     return this.theme ? this.theme.useWhiteTileIcon : false;
-  }
-
-  private computeUseTitlePill_(): boolean {
-    return this.theme ? this.theme.useTitlePill : false;
   }
 
   /**
@@ -566,7 +565,32 @@ export class MostVisitedElement extends MostVisitedElementBase {
   }
 
   private isHidden_(index: number): boolean {
+    if (this.reflowOnOverflow) {
+      return false;
+    }
+
     return index >= this.maxVisibleTiles_;
+  }
+
+  private onSingleRowChange_() {
+    if (!this.isConnected) {
+      return;
+    }
+    this.mediaEventTracker_.removeAll();
+    const queryLists: MediaQueryList[] = [];
+    const updateCount = () => {
+      const index = queryLists.findIndex(listener => listener.matches);
+      this.maxVisibleColumnCount_ =
+          3 + (index > -1 ? queryLists.length - index : 0);
+    };
+    const maxColumnCount = this.singleRow ? 10 : 5;
+    for (let i = maxColumnCount; i >= 4; i--) {
+      const query = `(min-width: ${112 * (i + 1)}px)`;
+      const queryList = this.windowProxy_.matchMedia(query);
+      this.mediaEventTracker_.add(queryList, 'change', updateCount);
+      queryLists.push(queryList);
+    }
+    updateCount();
   }
 
   private onAdd_() {
@@ -722,7 +746,7 @@ export class MostVisitedElement extends MostVisitedElementBase {
 
   private onTileClick_(e: DomRepeatEvent<MostVisitedTile, MouseEvent>) {
     if (e.defaultPrevented) {
-      // Ignore previousely handled events.
+      // Ignore previously handled events.
       return;
     }
 
@@ -754,6 +778,44 @@ export class MostVisitedElement extends MostVisitedElementBase {
     const advanceKey = this.isRtl_ ? 'ArrowLeft' : 'ArrowRight';
     const delta = (e.key === advanceKey || e.key === 'ArrowDown') ? 1 : -1;
     this.tileFocus_(Math.max(0, index + delta));
+  }
+
+  private onTileHover_(e: DomRepeatEvent<MostVisitedTile, MouseEvent>) {
+    if (e.defaultPrevented) {
+      // Ignore previously handled events.
+      return;
+    }
+
+    if (loadTimeData.getBoolean('prerenderEnabled') &&
+        loadTimeData.getInteger('prerenderStartTimeThreshold') >= 0) {
+      this.preloadingTimer_ = setTimeout(() => {
+        this.pageHandler_.prerenderMostVisitedTile(e.model.item, true);
+      }, loadTimeData.getInteger('prerenderStartTimeThreshold'));
+    }
+  }
+
+  private onTileMouseDown_(e: DomRepeatEvent<MostVisitedTile, MouseEvent>) {
+    if (e.defaultPrevented) {
+      // Ignore previously handled events.
+      return;
+    }
+
+    if (loadTimeData.getBoolean('prerenderEnabled')) {
+      this.pageHandler_.prerenderMostVisitedTile(e.model.item, false);
+    }
+  }
+
+  private onTileExit_(e: DomRepeatEvent<MostVisitedTile, MouseEvent>) {
+    if (e.defaultPrevented) {
+      // Ignore previously handled events.
+      return;
+    }
+
+    if (this.preloadingTimer_) {
+      clearTimeout(this.preloadingTimer_);
+    }
+
+    this.pageHandler_.cancelPrerender();
   }
 
   private onUndoClick_() {
@@ -799,7 +861,7 @@ export class MostVisitedElement extends MostVisitedElementBase {
     }
     const tileElements = this.tileElements_;
     if (index < tileElements.length) {
-      tileElements[index].focus();
+      (tileElements[index] as HTMLElement).querySelector('a')!.focus();
     } else if (this.showAdd_ && index === tileElements.length) {
       this.$.addShortcut.focus();
     }
@@ -819,17 +881,9 @@ export class MostVisitedElement extends MostVisitedElementBase {
     this.toast_(
         'linkRemovedMsg',
         /* showButtons= */ this.customLinksEnabled_ || !isQueryTile);
-    this.tileFocus_(index);
-  }
 
-  private updateScreenWidth_() {
-    if (this.mediaListenerWideWidth_.matches) {
-      this.screenWidth_ = ScreenWidth.WIDE;
-    } else if (this.mediaListenerMediumWidth_.matches) {
-      this.screenWidth_ = ScreenWidth.MEDIUM;
-    } else {
-      this.screenWidth_ = ScreenWidth.NARROW;
-    }
+    // Move focus after the next render so that tileElements_ is updated.
+    afterNextRender(this, () => this.tileFocus_(index));
   }
 
   private onTilesRendered_() {
@@ -837,6 +891,14 @@ export class MostVisitedElement extends MostVisitedElementBase {
     assert(this.maxVisibleTiles_);
     this.pageHandler_.onMostVisitedTilesRendered(
         this.tiles_.slice(0, this.maxVisibleTiles_), this.windowProxy_.now());
+  }
+
+  private getMoreActionText_(title: string) {
+    // Check that 'shortcutMoreActions' is set to more than an empty string,
+    // since we do not use this text for third party NTP.
+    return loadTimeData.getString('shortcutMoreActions') ?
+        loadTimeData.getStringF('shortcutMoreActions', title) :
+        '';
   }
 }
 

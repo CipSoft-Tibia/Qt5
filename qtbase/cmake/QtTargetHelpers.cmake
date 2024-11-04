@@ -459,6 +459,7 @@ function(qt_internal_setup_cmake_config_postfix)
         # If postfix is set by user avoid changing it, but save postfix variable that has
         # a non-default value for further warning.
         if("${${postfix_var}}" STREQUAL "")
+            set(${postfix_var} "${${default_postfix_var}}")
             set(${postfix_var} "${${default_postfix_var}}" PARENT_SCOPE)
         elseif(NOT "${${postfix_var}}" STREQUAL "${${default_postfix_var}}")
             list(APPEND custom_postfix_vars ${postfix_var})
@@ -823,19 +824,46 @@ endif()
             # For Multi-config developer builds we should simply reuse IMPORTED_LOCATION of the
             # target.
             if(NOT QT_WILL_INSTALL AND QT_FEATURE_debug_and_release)
+                set(configure_time_target_build_location "")
                 get_target_property(configure_time_target_install_location ${target}
                     IMPORTED_LOCATION)
             else()
+                if(IS_ABSOLUTE "${arg_CONFIG_INSTALL_DIR}")
+                    file(RELATIVE_PATH reverse_relative_prefix_path
+                        "${arg_CONFIG_INSTALL_DIR}" "${CMAKE_INSTALL_PREFIX}")
+                else()
+                    file(RELATIVE_PATH reverse_relative_prefix_path
+                        "${CMAKE_INSTALL_PREFIX}/${arg_CONFIG_INSTALL_DIR}"
+                        "${CMAKE_INSTALL_PREFIX}")
+                endif()
+
+                get_target_property(configure_time_target_build_location ${target}
+                    _qt_internal_configure_time_target_build_location)
+                string(TOUPPER "${QT_CMAKE_EXPORT_NAMESPACE}_INSTALL_PREFIX" install_prefix_var)
+                string(JOIN "" configure_time_target_build_location
+                    "$\{CMAKE_CURRENT_LIST_DIR}/"
+                    "${reverse_relative_prefix_path}"
+                    "${configure_time_target_build_location}")
+
                 get_target_property(configure_time_target_install_location ${target}
                     _qt_internal_configure_time_target_install_location)
-                set(configure_time_target_install_location
-                    "$\{PACKAGE_PREFIX_DIR}/${configure_time_target_install_location}")
+
+                string(JOIN "" configure_time_target_install_location
+                    "$\{CMAKE_CURRENT_LIST_DIR}/"
+                    "${reverse_relative_prefix_path}"
+                    "${configure_time_target_install_location}")
             endif()
             if(configure_time_target_install_location)
                 string(APPEND content "
 # Import configure-time executable ${full_target}
 if(NOT TARGET ${full_target})
-    set(_qt_imported_location \"${configure_time_target_install_location}\")
+    set(_qt_imported_build_location \"${configure_time_target_build_location}\")
+    set(_qt_imported_install_location \"${configure_time_target_install_location}\")
+    set(_qt_imported_location \"\${_qt_imported_install_location}\")
+    if(NOT EXISTS \"$\{_qt_imported_location}\"
+          AND NOT \"$\{_qt_imported_build_location}\" STREQUAL \"\")
+        set(_qt_imported_location \"\${_qt_imported_build_location}\")
+    endif()
     if(NOT EXISTS \"$\{_qt_imported_location}\")
         message(FATAL_ERROR \"Unable to add configure time executable ${full_target}\"
             \" $\{_qt_imported_location} doesn't exists\")
@@ -846,6 +874,8 @@ if(NOT TARGET ${full_target})
         \"$\{_qt_imported_location}\")
     set_property(TARGET ${full_target} PROPERTY IMPORTED_GLOBAL TRUE)
     unset(_qt_imported_location)
+    unset(_qt_imported_build_location)
+    unset(_qt_imported_install_location)
 endif()
 \n")
             endif()
@@ -855,7 +885,7 @@ endif()
         # the target.  It is not built by default.
         if(NOT QT_WILL_INSTALL AND QT_FEATURE_debug_and_release)
             get_target_property(excluded_genex ${target} EXCLUDE_FROM_ALL)
-            if(NOT excluded_genex STREQUAL "")
+            if(excluded_genex)
                 string(APPEND content "
 # ${full_target} is not built by default in the Debug configuration. Check existence.
 get_target_property(_qt_imported_location ${full_target} IMPORTED_LOCATION_DEBUG)

@@ -23,6 +23,8 @@
 
     \list
       \li \l {abstract-command} {\\abstract}
+      \li \l {compares-command}{\\compares} (Since QDoc 6.7)
+      \li \l {compareswith-command}{\\compareswith} (Since QDoc 6.7)
       \li \l {default-command} {\\default}
       \li \l {deprecated-command}{\\deprecated}
       \li \l {ingroup-command}{\\ingroup}
@@ -174,6 +176,69 @@
         \default "invalid"
     \1/
     \endcode
+
+    \target compares-command
+    \section2 \\compares
+
+    Use the \c {\compares} command to describe the comparison results for the
+    documented C++ type when compared to itself. You must use this command in
+    conjunction with the \l {class-command}{\\class} command.
+
+    \c {\compares} takes one of the following arguments:
+
+    //! [comparison-categories]
+    \list
+        \li \c strong
+        \li \c partial
+        \li \c weak
+        \li \c equality
+    \endlist
+
+    \c {strong}, \c {partial}, and \c {weak} relate to the ordering.
+    \c {equality} means that the type is only compared for equality.
+    //! [comparison-categories]
+
+    This command was introduced to QDoc with Qt 6.7.
+
+    See also \l {compareswith-command}{\\compareswith}.
+
+    \target compareswith-command
+    \section1 \\compareswith
+
+    Use the \c {\compareswith .. \endcompareswith} pair of commands to
+    describe the comparison results for the documented C++ type when
+    compared to other types. \c {\compareswith} takes two or more
+    arguments: a comparison category, followed by a type name, or a
+    space-separated list of type names. Any text lines between
+    \c {\compareswith} and \c {\endcompareswith} commands are
+    considered further details that apply to all types subject
+    to the comparison category argument.
+
+    Types that have one or more space in their name, such as
+    \c{unsigned long}, should be enclosed in braces.
+
+    For example:
+
+    \badcode *
+    /\1!
+        ...
+        \compareswith strong int long {unsigned long} {unsigned int} char
+        ...
+        \endcompareswith
+        ...
+    \1/
+    \endcode
+
+    Argument enclosed in braces have their leading and trailing whitespaces
+    removed.
+    For example, \c{unsigned long} and \c{ unsigned long } are equivalent.
+
+    The comparison category argument must be one of the following:
+    \include qdoc-manual-contextcmds.qdoc comparison-categories
+
+    This command was introduced to QDoc with Qt 6.7.
+
+    See also \l {compares-command}{\\compares}.
 
     \target qmldefault-command
     \section1 \\qmldefault
@@ -795,7 +860,7 @@
 
     For the basic classes in Qt, a class's module is determined by its
     location, namely its directory. However, for extensions like
-    ActiveQt and Qt Designer, a class must be related to a module
+    ActiveQt and \QD, a class must be related to a module
     explicitly.
 
     The command's argument is a module name, but note that the command
@@ -810,7 +875,7 @@
     \endcode
 
     This ensures that the QDesignerTaskMenuExtension class is included
-    in the Qt Designer module, which means, for example, that the
+    in the \QD module, which means, for example, that the
     class will appear on the list created by calling the \l
     {generatelist-command} {\\generatelist} command with the \c
     {{classesbymodule QtDesigner}} argument.

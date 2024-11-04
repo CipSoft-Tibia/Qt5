@@ -11,6 +11,7 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/strings/string_util.h"
 #include "base/time/time.h"
 #include "components/reading_list/core/offline_url_utils.h"
 #include "components/reading_list/core/proto/reading_list.pb.h"
@@ -221,6 +222,24 @@ bool ReadingListEntry::HasBeenSeen() const {
   return state_ != UNSEEN;
 }
 
+bool ReadingListEntry::IsSpecificsValid(
+    const sync_pb::ReadingListSpecifics& pb_entry) {
+  // TODO(crbug.com/1402196): Make sure that the entry_id field is valid too.
+  if (!pb_entry.has_url()) {
+    return false;
+  }
+  GURL url(pb_entry.url());
+  if (url.is_empty() || !url.is_valid()) {
+    return false;
+  }
+  // Some crash reports indicate that some users have reading list entries with
+  // invalid (non-UTF8) titles, so filter out such invalid items.
+  if (!base::IsStringUTF8AllowingNoncharacters(pb_entry.title())) {
+    return false;
+  }
+  return true;
+}
+
 void ReadingListEntry::SetEstimatedReadTime(
     base::TimeDelta estimated_read_time) {
   estimated_read_time_ = estimated_read_time;
@@ -411,16 +430,11 @@ scoped_refptr<ReadingListEntry> ReadingListEntry::FromReadingListLocal(
 }
 
 // static
-scoped_refptr<ReadingListEntry> ReadingListEntry::FromReadingListSpecifics(
+scoped_refptr<ReadingListEntry> ReadingListEntry::FromReadingListValidSpecifics(
     const sync_pb::ReadingListSpecifics& pb_entry,
     const base::Time& now) {
-  if (!pb_entry.has_url()) {
-    return nullptr;
-  }
-  GURL url(pb_entry.url());
-  if (url.is_empty() || !url.is_valid()) {
-    return nullptr;
-  }
+  CHECK(IsSpecificsValid(pb_entry));
+
   std::string title;
   if (pb_entry.has_title()) {
     title = pb_entry.title();
@@ -471,7 +485,7 @@ scoped_refptr<ReadingListEntry> ReadingListEntry::FromReadingListSpecifics(
   }
 
   return base::WrapRefCounted<ReadingListEntry>(new ReadingListEntry(
-      url, title, estimated_read_time, state, creation_time_us,
+      GURL(pb_entry.url()), title, estimated_read_time, state, creation_time_us,
       first_read_time_us, update_time_us, update_title_time_us, WAITING,
       base::FilePath(), GURL(), 0, 0, 0, nullptr));
 }

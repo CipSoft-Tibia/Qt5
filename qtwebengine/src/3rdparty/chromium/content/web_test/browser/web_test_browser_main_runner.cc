@@ -53,8 +53,13 @@
 #endif
 
 #if BUILDFLAG(IS_FUCHSIA)
+#include <lib/sys/cpp/component_context.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include "base/fuchsia/fuchsia_logging.h"
+#include "base/fuchsia/process_context.h"
+#include "ui/ozone/public/ozone_switches.h"
 #endif
 
 namespace content {
@@ -215,11 +220,6 @@ void WebTestBrowserMainRunner::Initialize() {
     command_line.AppendSwitch(switches::kEnableBlinkTestFeatures);
   }
 
-  if (!command_line.HasSwitch(switches::kEnableThreadedCompositing)) {
-    command_line.AppendSwitch(switches::kDisableThreadedCompositing);
-    command_line.AppendSwitch(cc::switches::kDisableThreadedAnimation);
-  }
-
   // With display compositor pixel dumps, we ensure that we complete all
   // stages of compositing before draw. We also can't have checker imaging,
   // since it's incompatible with single threaded compositor and display
@@ -238,6 +238,7 @@ void WebTestBrowserMainRunner::Initialize() {
                                  "MAP nonexistent.*.test ~NOTFOUND,"
                                  "MAP web-platform.test:443 127.0.0.1:8444,"
                                  "MAP not-web-platform.test:443 127.0.0.1:8444,"
+                                 "MAP devtools.test:443 127.0.0.1:8443,"
                                  "MAP *.test. 127.0.0.1,"
                                  "MAP *.test 127.0.0.1");
 
@@ -285,6 +286,9 @@ void WebTestBrowserMainRunner::Initialize() {
   // Always disable the unsandbox GPU process for DX12 Info collection to avoid
   // interference. This GPU process is launched 120 seconds after chrome starts.
   command_line.AppendSwitch(switches::kDisableGpuProcessForDX12InfoCollection);
+
+  // Disable the backgrounding of renderers to make running tests faster.
+  command_line.AppendSwitch(switches::kDisableRendererBackgrounding);
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)

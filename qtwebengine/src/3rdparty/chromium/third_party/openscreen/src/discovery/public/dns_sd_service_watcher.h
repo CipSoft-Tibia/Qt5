@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,14 +19,13 @@
 #include "util/hashing.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
 // This class represents a top-level discovery API which sits on top of DNS-SD.
 // T is the service-specific type which stores information regarding a specific
 // service instance.
-// TODO(rwkeane): Include reporting client as ctor parameter once parallel CLs
-// are in.
+// TODO(issuetracker.google.com/281739775): Include reporting client as ctor
+// parameter once parallel CLs are in.
 // NOTE: This class is not thread-safe and calls will be made to DnsSdService in
 // the same sequence and on the same threads from which these methods are
 // called. This is to avoid forcing design decisions on embedders who write
@@ -215,7 +214,6 @@ class DnsSdServiceWatcher : public DnsSdQuerier::Callback {
   DnsSdQuerier* const querier_;
 };
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery
 
 #endif  // DISCOVERY_PUBLIC_DNS_SD_SERVICE_WATCHER_H_

@@ -93,7 +93,8 @@ class Q_CORE5COMPAT_EXPORT QTextEncoder
 {
     Q_DISABLE_COPY(QTextEncoder)
 public:
-    explicit QTextEncoder(const QTextCodec *codec) : c(codec), state() {}
+    explicit QTextEncoder(const QTextCodec *codec)
+        : c(codec), state(QTextCodec::DefaultConversion) {}
     explicit QTextEncoder(const QTextCodec *codec, QTextCodec::ConversionFlags flags);
     ~QTextEncoder();
     QByteArray fromUnicode(const QString& str);
@@ -109,7 +110,8 @@ class Q_CORE5COMPAT_EXPORT QTextDecoder
 {
     Q_DISABLE_COPY(QTextDecoder)
 public:
-    explicit QTextDecoder(const QTextCodec *codec) : c(codec), state() {}
+    explicit QTextDecoder(const QTextCodec *codec)
+        : c(codec), state(QTextCodec::DefaultConversion) {}
     explicit QTextDecoder(const QTextCodec *codec, QTextCodec::ConversionFlags flags);
     ~QTextDecoder();
     QString toUnicode(const char* chars, int len);

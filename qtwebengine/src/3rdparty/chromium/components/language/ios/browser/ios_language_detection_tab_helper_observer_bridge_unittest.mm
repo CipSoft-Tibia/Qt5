@@ -9,17 +9,15 @@
 
 #include "base/strings/utf_string_conversions.h"
 #import "base/test/task_environment.h"
+#import "components/language/ios/browser/language_detection_java_script_feature.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/testing_pref_service.h"
 #include "components/translate/core/browser/translate_pref_names.h"
 #include "components/translate/core/common/language_detection_details.h"
+#import "ios/web/public/test/fakes/fake_web_frames_manager.h"
 #import "ios/web/public/test/fakes/fake_web_state.h"
 #include "testing/gtest_mac.h"
 #include "testing/platform_test.h"
-
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-#error "This file requires ARC support."
-#endif
 
 @interface TestIOSLanguageDetectionTabHelperObserver
     : NSObject <IOSLanguageDetectionTabHelperObserving>
@@ -51,6 +49,12 @@ class IOSLanguageDetectionTabHelperObserverBridgeTest : public PlatformTest {
   IOSLanguageDetectionTabHelperObserverBridgeTest() {
     pref_service_.registry()->RegisterBooleanPref(
         translate::prefs::kOfferTranslateEnabled, true);
+
+    auto frames_manager = std::make_unique<web::FakeWebFramesManager>();
+    web::ContentWorld content_world =
+        language::LanguageDetectionJavaScriptFeature::GetInstance()
+            ->GetSupportedContentWorld();
+    web_state_.SetWebFramesManager(content_world, std::move(frames_manager));
 
     language::IOSLanguageDetectionTabHelper::CreateForWebState(
         &web_state_, /*url_language_histogram=*/nullptr,

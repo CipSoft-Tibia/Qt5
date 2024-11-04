@@ -48,7 +48,7 @@ HttpRequestParser::HttpRequestParser()
 HttpRequestParser::~HttpRequestParser() = default;
 
 void HttpRequestParser::ProcessChunk(base::StringPiece data) {
-  buffer_.append(data.data(), data.size());
+  buffer_.append(data);
   DCHECK_LE(buffer_.size() + data.size(), kRequestSizeLimit) <<
       "The HTTP request is too large.";
 }
@@ -171,7 +171,8 @@ HttpRequestParser::ParseResult HttpRequestParser::ParseHeaders() {
       LOG(WARNING) << "Malformed Content-Length header's value.";
     }
   } else if (http_request_->headers.count("Transfer-Encoding") > 0) {
-    if (http_request_->headers["Transfer-Encoding"] == "chunked") {
+    if (base::CompareCaseInsensitiveASCII(
+            http_request_->headers["Transfer-Encoding"], "chunked") == 0) {
       http_request_->has_content = true;
       chunked_decoder_ = std::make_unique<HttpChunkedDecoder>();
       state_ = STATE_CONTENT;

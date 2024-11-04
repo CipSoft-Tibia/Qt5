@@ -144,12 +144,27 @@ class FlossAdminClientTest : public testing::Test,
           std::move(*cb).Run(response.get(), /*err=*/nullptr);
         });
     ASSERT_FALSE(IsClientRegistered());
-    client_->Init(bus_.get(), kAdapterInterface, adapter_index_);
+    client_->Init(bus_.get(), kAdapterInterface, adapter_index_,
+                  base::DoNothing());
 
     // Test exported callbacks are correctly parsed
     ASSERT_TRUE(!!method_handler_on_device_policy_effect_changed);
     ASSERT_TRUE(!!method_handler_on_service_allowlist_changed);
     ASSERT_TRUE(IsClientRegistered());
+
+    // Expected call to UnregisterAdminCallback when client is destroyed
+    EXPECT_CALL(*object_proxy_.get(),
+                DoCallMethodWithErrorResponse(
+                    HasMemberOf(admin::kUnregisterCallback), _, _))
+        .WillOnce([](::dbus::MethodCall* method_call, int timeout_ms,
+                     ::dbus::ObjectProxy::ResponseOrErrorCallback* cb) {
+          dbus::MessageReader msg(method_call);
+          // D-Bus method call should have 1 parameter.
+          uint32_t param1;
+          ASSERT_TRUE(FlossDBusClient::ReadAllDBusParams(&msg, &param1));
+          EXPECT_EQ(kTestCallbackId, param1);
+          EXPECT_FALSE(msg.HasMoreData());
+        });
   }
 
   void TestSetServiceAllowlist() {

@@ -4,6 +4,8 @@
 #include "qgst_debug_p.h"
 #include "qgstreamermessage_p.h"
 
+#include <gst/gstclock.h>
+
 QT_BEGIN_NAMESPACE
 
 // NOLINTBEGIN(performance-unnecessary-value-param)
@@ -18,7 +20,7 @@ QDebug operator<<(QDebug dbg, const QGstCaps &caps)
     return dbg << caps.caps();
 }
 
-QDebug operator<<(QDebug dbg, const QGstStructure &structure)
+QDebug operator<<(QDebug dbg, const QGstStructureView &structure)
 {
     return dbg << structure.structure;
 }
@@ -34,6 +36,26 @@ QDebug operator<<(QDebug dbg, const QGstreamerMessage &msg)
 }
 
 QDebug operator<<(QDebug dbg, const QUniqueGErrorHandle &handle)
+{
+    return dbg << handle.get();
+}
+
+QDebug operator<<(QDebug dbg, const QUniqueGStringHandle &handle)
+{
+    return dbg << handle.get();
+}
+
+QDebug operator<<(QDebug dbg, const QGstStreamCollectionHandle &handle)
+{
+    return dbg << handle.get();
+}
+
+QDebug operator<<(QDebug dbg, const QGstStreamHandle &handle)
+{
+    return dbg << handle.get();
+}
+
+QDebug operator<<(QDebug dbg, const QGstTagListHandle &handle)
 {
     return dbg << handle.get();
 }
@@ -59,9 +81,15 @@ QDebug operator<<(QDebug dbg, const GstCaps *caps)
 QDebug operator<<(QDebug dbg, const GstVideoInfo *info)
 {
 #if GST_CHECK_VERSION(1, 20, 0)
-    return dbg << QGstCaps(gst_video_info_to_caps(info));
+    return dbg << QGstCaps{
+        gst_video_info_to_caps(info),
+        QGstCaps::NeedsRef,
+    };
 #else
-    return dbg << QGstCaps(gst_video_info_to_caps(const_cast<GstVideoInfo *>(info)));
+    return dbg << QGstCaps{
+        gst_video_info_to_caps(const_cast<GstVideoInfo *>(info)),
+        QGstCaps::NeedsRef,
+    };
 #endif
 }
 
@@ -139,24 +167,173 @@ QDebug operator<<(QDebug dbg, const GstDevice *device)
     dbg.nospace();
 
     dbg << gst_device_get_display_name(d) << "(" << gst_device_get_device_class(d) << ") ";
-    dbg << "Caps: " << QGstCaps(gst_device_get_caps(d)) << ", ";
+    dbg << "Caps: " << QGstCaps{ gst_device_get_caps(d), QGstCaps::NeedsRef, } << ", ";
     dbg << "Properties: " << QUniqueGstStructureHandle{ gst_device_get_properties(d) }.get();
     return dbg;
 }
+
+namespace {
+
+struct Timepoint
+{
+    explicit Timepoint(guint64 us) : ts{ us } { }
+    guint64 ts;
+};
+
+QDebug operator<<(QDebug dbg, Timepoint ts)
+{
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "%" GST_TIME_FORMAT, GST_TIME_ARGS(ts.ts));
+    dbg << buffer;
+    return dbg;
+}
+
+} // namespace
 
 QDebug operator<<(QDebug dbg, const GstMessage *msg)
 {
     QDebugStateSaver saver(dbg);
     dbg.nospace();
 
-    dbg << GST_MESSAGE_TYPE_NAME(msg) << ", Source: " << GST_MESSAGE_SRC_NAME(msg)
-        << ", Timestamp: " << GST_MESSAGE_TIMESTAMP(msg);
+    dbg << GST_MESSAGE_TYPE_NAME(msg) << ", Source: " << GST_MESSAGE_SRC_NAME(msg);
+    if (GST_MESSAGE_TIMESTAMP(msg) != 0xFFFFFFFFFFFFFFFF)
+        dbg << ", Timestamp: " << GST_MESSAGE_TIMESTAMP(msg);
+
+    switch (msg->type) {
+    case GST_MESSAGE_ERROR: {
+        QUniqueGErrorHandle err;
+        QGString debug;
+        gst_message_parse_error(const_cast<GstMessage *>(msg), &err, &debug);
+
+        dbg << ", Error: " << err << " (" << debug << ")";
+        break;
+    }
+
+    case GST_MESSAGE_WARNING: {
+        QUniqueGErrorHandle err;
+        QGString debug;
+        gst_message_parse_warning(const_cast<GstMessage *>(msg), &err, &debug);
+
+        dbg << ", Warning: " << err << " (" << debug << ")";
+        break;
+    }
+
+    case GST_MESSAGE_INFO: {
+        QUniqueGErrorHandle err;
+        QGString debug;
+        gst_message_parse_info(const_cast<GstMessage *>(msg), &err, &debug);
+
+        dbg << ", Info: " << err << " (" << debug << ")";
+        break;
+    }
+
+    case GST_MESSAGE_TAG: {
+        QGstTagListHandle tagList;
+        gst_message_parse_tag(const_cast<GstMessage *>(msg), &tagList);
+
+        dbg << ", Tags: " << tagList;
+        break;
+    }
+
+    case GST_MESSAGE_QOS: {
+        gboolean live;
+        guint64 running_time;
+        guint64 stream_time;
+        guint64 timestamp;
+        guint64 duration;
+
+        gst_message_parse_qos(const_cast<GstMessage *>(msg), &live, &running_time, &stream_time,
+                              &timestamp, &duration);
+
+        dbg << ", Live: " << bool(live) << ", Running time: " << Timepoint{ running_time }
+            << ", Stream time: " << Timepoint{ stream_time }
+            << ", Timestamp: " << Timepoint{ timestamp } << ", Duration: " << Timepoint{ duration };
+        break;
+    }
+
+    case GST_MESSAGE_STATE_CHANGED: {
+        GstState oldState;
+        GstState newState;
+        GstState pending;
+
+        gst_message_parse_state_changed(const_cast<GstMessage *>(msg), &oldState, &newState,
+                                        &pending);
+
+        dbg << ", Transition: " << oldState << "->" << newState;
+
+        if (pending != GST_STATE_VOID_PENDING)
+            dbg << ", Pending State: " << pending;
+        break;
+    }
+
+    case GST_MESSAGE_STREAM_COLLECTION: {
+        QGstStreamCollectionHandle collection;
+        gst_message_parse_stream_collection(const_cast<GstMessage *>(msg), &collection);
+
+        dbg << ", " << collection;
+        break;
+    }
+
+    case GST_MESSAGE_STREAMS_SELECTED: {
+        QGstStreamCollectionHandle collection;
+        gst_message_parse_streams_selected(const_cast<GstMessage *>(msg), &collection);
+
+        dbg << ", " << collection;
+        break;
+    }
+
+    case GST_MESSAGE_STREAM_STATUS: {
+        GstStreamStatusType streamStatus;
+        gst_message_parse_stream_status(const_cast<GstMessage *>(msg), &streamStatus, nullptr);
+
+        dbg << ", Stream Status: " << streamStatus;
+        break;
+    }
+
+    case GST_MESSAGE_BUFFERING: {
+        int progress = 0;
+        gst_message_parse_buffering(const_cast<GstMessage *>(msg), &progress);
+
+        dbg << ", Buffering: " << progress << "%";
+        break;
+    }
+
+    case GST_MESSAGE_SEGMENT_START: {
+        gint64 pos;
+        GstFormat fmt{};
+        gst_message_parse_segment_start(const_cast<GstMessage *>(msg), &fmt, &pos);
+
+        switch (fmt) {
+        case GST_FORMAT_TIME: {
+            dbg << ", Position: " << std::chrono::nanoseconds{ pos };
+            break;
+        }
+        case GST_FORMAT_BYTES: {
+            dbg << ", Position: " << pos << "Bytes";
+            break;
+        }
+        default: {
+            dbg << ", Position: " << pos;
+            break;
+        }
+        }
+
+        break;
+    }
+
+    default:
+        break;
+    }
     return dbg;
 }
 
 QDebug operator<<(QDebug dbg, const GstTagList *tagList)
 {
-    dbg << QGString{ gst_tag_list_to_string(tagList) };
+    if (tagList)
+        dbg << QGString{ gst_tag_list_to_string(tagList) };
+    else
+        dbg << "NULL";
+
     return dbg;
 }
 
@@ -169,6 +346,44 @@ QDebug operator<<(QDebug dbg, const GstQuery *query)
 QDebug operator<<(QDebug dbg, const GstEvent *event)
 {
     dbg << GST_EVENT_TYPE_NAME(event);
+    return dbg;
+}
+
+QDebug operator<<(QDebug dbg, const GstPadTemplate *padTemplate)
+{
+    QGstCaps caps = padTemplate
+            ? QGstCaps{ gst_pad_template_get_caps(const_cast<GstPadTemplate *>(padTemplate)), QGstCaps::HasRef, }
+            : QGstCaps{};
+
+    dbg << caps;
+    return dbg;
+}
+
+QDebug operator<<(QDebug dbg, const GstStreamCollection *streamCollection)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace();
+
+    GstStreamCollection *collection = const_cast<GstStreamCollection *>(streamCollection);
+    dbg << "Stream Collection: {";
+
+    qForeachStreamInCollection(collection, [&](GstStream *stream) {
+        dbg << stream << ", ";
+    });
+
+    dbg << "}";
+    return dbg;
+}
+
+QDebug operator<<(QDebug dbg, const GstStream *cstream)
+{
+    GstStream *stream = const_cast<GstStream *>(cstream);
+
+    QDebugStateSaver saver(dbg);
+    dbg.nospace();
+
+    dbg << gst_stream_get_stream_id(stream) << " (" << gst_stream_get_stream_type(stream) << ")";
+
     return dbg;
 }
 
@@ -192,16 +407,43 @@ QDebug operator<<(QDebug dbg, GstMessageType type)
     return dbg << gst_message_type_get_name(type);
 }
 
+#define ADD_ENUM_SWITCH(value) \
+    case value:                \
+        return dbg << #value;  \
+        static_assert(true, "enforce semicolon")
+
 QDebug operator<<(QDebug dbg, GstPadDirection direction)
 {
     switch (direction) {
-    case GST_PAD_UNKNOWN:
-        return dbg << "GST_PAD_UNKNOWN";
-    case GST_PAD_SRC:
-        return dbg << "GST_PAD_SRC";
-    case GST_PAD_SINK:
-        return dbg << "GST_PAD_SINK";
+        ADD_ENUM_SWITCH(GST_PAD_UNKNOWN);
+        ADD_ENUM_SWITCH(GST_PAD_SRC);
+        ADD_ENUM_SWITCH(GST_PAD_SINK);
+    default:
+        Q_UNREACHABLE_RETURN(dbg);
     }
+}
+
+QDebug operator<<(QDebug dbg, GstStreamStatusType type)
+{
+    switch (type) {
+        ADD_ENUM_SWITCH(GST_STREAM_STATUS_TYPE_CREATE);
+        ADD_ENUM_SWITCH(GST_STREAM_STATUS_TYPE_ENTER);
+        ADD_ENUM_SWITCH(GST_STREAM_STATUS_TYPE_LEAVE);
+        ADD_ENUM_SWITCH(GST_STREAM_STATUS_TYPE_DESTROY);
+        ADD_ENUM_SWITCH(GST_STREAM_STATUS_TYPE_START);
+        ADD_ENUM_SWITCH(GST_STREAM_STATUS_TYPE_PAUSE);
+        ADD_ENUM_SWITCH(GST_STREAM_STATUS_TYPE_STOP);
+    default:
+        Q_UNREACHABLE_RETURN(dbg);
+    }
+    return dbg;
+}
+
+#undef ADD_ENUM_SWITCH
+
+QDebug operator<<(QDebug dbg, GstStreamType streamType)
+{
+    dbg << gst_stream_type_get_name(streamType);
     return dbg;
 }
 
@@ -260,6 +502,16 @@ QDebug operator<<(QDebug dbg, const GValue *value)
         return dbg;
     }
 
+    if (G_VALUE_TYPE(value) == GST_TYPE_PAD_DIRECTION) {
+        GstPadDirection direction = static_cast<GstPadDirection>(g_value_get_enum(value));
+        return dbg << direction;
+    }
+
+    if (G_VALUE_TYPE(value) == GST_TYPE_PAD_TEMPLATE) {
+        GstPadTemplate *padTemplate = static_cast<GstPadTemplate *>(g_value_get_object(value));
+        return dbg << padTemplate;
+    }
+
     dbg << "(not implemented: " << G_VALUE_TYPE_NAME(value) << ")";
 
     return dbg;
@@ -268,6 +520,71 @@ QDebug operator<<(QDebug dbg, const GValue *value)
 QDebug operator<<(QDebug dbg, const GError *error)
 {
     return dbg << error->message;
+}
+
+QCompactGstMessageAdaptor::QCompactGstMessageAdaptor(const QGstreamerMessage &m)
+    : QCompactGstMessageAdaptor{
+          m.message(),
+      }
+{
+}
+
+QCompactGstMessageAdaptor::QCompactGstMessageAdaptor(GstMessage *m)
+    : msg{
+          m,
+      }
+{
+}
+
+QDebug operator<<(QDebug dbg, const QCompactGstMessageAdaptor &m)
+{
+    std::optional<QDebugStateSaver> saver(dbg);
+    dbg.nospace();
+
+    switch (GST_MESSAGE_TYPE(m.msg)) {
+    case GST_MESSAGE_ERROR: {
+        QUniqueGErrorHandle err;
+        QGString debug;
+        gst_message_parse_error(m.msg, &err, &debug);
+        dbg << err << " (" << debug << ")";
+        return dbg;
+    }
+
+    case GST_MESSAGE_WARNING: {
+        QUniqueGErrorHandle err;
+        QGString debug;
+        gst_message_parse_warning(m.msg, &err, &debug);
+        dbg << err << " (" << debug << ")";
+        return dbg;
+    }
+
+    case GST_MESSAGE_INFO: {
+        QUniqueGErrorHandle err;
+        QGString debug;
+        gst_message_parse_info(m.msg, &err, &debug);
+
+        dbg << err << " (" << debug << ")";
+        return dbg;
+    }
+
+    case GST_MESSAGE_STATE_CHANGED: {
+        GstState oldState;
+        GstState newState;
+        GstState pending;
+
+        gst_message_parse_state_changed(m.msg, &oldState, &newState, &pending);
+
+        dbg << oldState << " -> " << newState;
+        if (pending != GST_STATE_VOID_PENDING)
+            dbg << " (pending: " << pending << ")";
+        return dbg;
+    }
+
+    default: {
+        saver.reset();
+        return dbg << m.msg;
+    }
+    }
 }
 
 QT_END_NAMESPACE

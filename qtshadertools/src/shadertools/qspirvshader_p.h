@@ -73,8 +73,15 @@ public:
         } infoForTese;
     };
 
+    struct MultiViewInfo {
+        // layout(num_views = viewCount) in; see GL_OVR_multiview
+        int viewCount = 0;
+    };
+
     QByteArray translateToGLSL(int version,
                                GlslFlags flags,
+                               QShader::Stage stage,
+                               const MultiViewInfo &multiViewInfo,
                                QVector<SeparateToCombinedImageSamplerMapping> *separateToCombinedImageSamplerMappings) const;
     QByteArray translateToHLSL(int version,
                                QShader::NativeResourceBindingMap *nativeBindings) const;
@@ -83,6 +90,7 @@ public:
                               QShader::Stage stage,
                               QShader::NativeResourceBindingMap *nativeBindings,
                               QShader::NativeShaderInfo *shaderInfo,
+                              const MultiViewInfo &multiViewInfo,
                               const TessellationInfo &tessInfo) const;
     QString translationErrorMessage() const;
 

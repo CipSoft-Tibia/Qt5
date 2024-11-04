@@ -11,13 +11,15 @@ mojom("mojom") {
   disable_variants = true
 
   sources = [
-    "accelerator_keys.mojom",
     "assistant_volume_control.mojom",
     "tray_action.mojom",
   ]
 
   public_deps = [
+    ":accelerator_actions",
+    ":accelerator_configuration",
     ":accelerator_info",
+    ":accelerator_keys",
     ":input_device_settings",
     "//chromeos/ash/components/proximity_auth/public/mojom",
     "//components/account_id/mojom",
@@ -31,23 +33,6 @@ mojom("mojom") {
     "//url/mojom:url_mojom_gurl",
   ]
 
-  cpp_typemaps = [
-    {
-      types = [
-        {
-          mojom = "ash.accelerator_keys.mojom.VKey"
-          cpp = "::ui::KeyboardCode"
-        },
-      ]
-
-      traits_headers = [
-        "//ui/events/keycodes/keyboard_codes_posix.h",
-        "accelerator_keys_mojom_traits.h",
-      ]
-      traits_sources = [ "accelerator_keys_mojom_traits.cc" ]
-    },
-  ]
-
   component_output_prefix = "ash_public_interfaces"
   export_class_attribute = "ASH_PUBLIC_EXPORT"
   export_define = "ASH_PUBLIC_IMPLEMENTATION=1"
@@ -59,8 +44,10 @@ mojom("mojom") {
 # files for all dependencies (and their dependencies) in //ash/public/mojom.
 mojom("accelerator_info") {
   disable_variants = true
+  use_typescript_sources = true
+  generate_legacy_js_bindings = true
 
-  webui_module_path = "/ash/public/mojom"
+  webui_module_path = "/"
 
   sources = [ "accelerator_info.mojom" ]
 
@@ -76,11 +63,95 @@ mojom("accelerator_info") {
 mojom("input_device_settings") {
   disable_variants = true
   webui_module_path = "/"
+  use_typescript_sources = true
+  generate_legacy_js_bindings = true
 
   sources = [ "input_device_settings.mojom" ]
 
   public_deps = [
     "//mojo/public/mojom/base",
-    "//ui/chromeos/events/mojom",
+    "//ui/events/ash/mojom",
+  ]
+
+  deps = [
+    ":accelerator_actions",
+    ":accelerator_keys",
+  ]
+}
+
+# This is a separate target so that downstream WebUI targets can take
+# advantage of JS module Mojom files, without having to generate WebUI Mojom
+# files for all dependencies (and their dependencies) in //ash/public/mojom.
+mojom("accelerator_configuration") {
+  disable_variants = true
+  use_typescript_sources = true
+  generate_legacy_js_bindings = true
+
+  webui_module_path = "/"
+
+  sources = [ "accelerator_configuration.mojom" ]
+
+  public_deps = []
+}
+
+# This is a separate target so that downstream WebUI targets can take
+# advantage of JS module Mojom files, without having to generate WebUI Mojom
+# files for all dependencies (and their dependencies) in //ash/public/mojom.
+mojom("accelerator_keys") {
+  disable_variants = true
+  use_typescript_sources = true
+  generate_legacy_js_bindings = true
+
+  webui_module_path = "/"
+
+  sources = [ "accelerator_keys.mojom" ]
+
+  public_deps = []
+
+  cpp_typemaps = [
+    {
+      types = [
+        {
+          mojom = "ash.mojom.VKey"
+          cpp = "::ui::KeyboardCode"
+        },
+      ]
+
+      traits_headers = [
+        "//ui/events/keycodes/keyboard_codes_posix.h",
+        "accelerator_keys_mojom_traits.h",
+      ]
+      traits_sources = [ "accelerator_keys_mojom_traits.cc" ]
+    },
+  ]
+}
+
+# This is a separate target so that downstream WebUI targets can take
+# advantage of JS module Mojom files, without having to generate WebUI Mojom
+# files for all dependencies (and their dependencies) in //ash/public/mojom.
+mojom("accelerator_actions") {
+  disable_variants = true
+  use_typescript_sources = true
+  generate_legacy_js_bindings = true
+
+  webui_module_path = "/"
+
+  sources = [ "accelerator_actions.mojom" ]
+
+  public_deps = []
+
+  cpp_typemaps = [
+    {
+      types = [
+        {
+          mojom = "ash.mojom.AcceleratorAction"
+          cpp = "::ash::AcceleratorAction"
+        },
+      ]
+
+      traits_headers = [ "accelerator_actions_mojom_traits.h" ]
+      traits_sources = [ "accelerator_actions_mojom_traits.cc" ]
+      traits_public_deps = [ "//ash/public/cpp:accelerator_actions" ]
+    },
   ]
 }

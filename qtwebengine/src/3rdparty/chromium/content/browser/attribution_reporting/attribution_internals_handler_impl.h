@@ -5,27 +5,15 @@
 #ifndef CONTENT_BROWSER_ATTRIBUTION_REPORTING_ATTRIBUTION_INTERNALS_HANDLER_IMPL_H_
 #define CONTENT_BROWSER_ATTRIBUTION_REPORTING_ATTRIBUTION_INTERNALS_HANDLER_IMPL_H_
 
-#include <string>
-
-#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
 #include "base/scoped_observation.h"
-#include "components/attribution_reporting/source_registration_error.mojom-forward.h"
 #include "content/browser/attribution_reporting/attribution_internals.mojom.h"
 #include "content/browser/attribution_reporting/attribution_manager.h"
 #include "content/browser/attribution_reporting/attribution_observer.h"
-#include "content/browser/attribution_reporting/attribution_report.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
-
-namespace attribution_reporting {
-class SuitableOrigin;
-}  // namespace attribution_reporting
-
-namespace base {
-class Time;
-}  // namespace base
 
 namespace content {
 
@@ -60,8 +48,7 @@ class AttributionInternalsHandlerImpl
   void GetActiveSources(
       attribution_internals::mojom::Handler::GetActiveSourcesCallback callback)
       override;
-  void GetReports(AttributionReport::Type report_type,
-                  attribution_internals::mojom::Handler::GetReportsCallback
+  void GetReports(attribution_internals::mojom::Handler::GetReportsCallback
                       callback) override;
   void SendReports(const std::vector<AttributionReport::Id>& ids,
                    attribution_internals::mojom::Handler::SendReportsCallback
@@ -72,9 +59,10 @@ class AttributionInternalsHandlerImpl
  private:
   // AttributionObserver:
   void OnSourcesChanged() override;
-  void OnReportsChanged(AttributionReport::Type report_type) override;
+  void OnReportsChanged() override;
   void OnSourceHandled(
       const StorableSource& source,
+      base::Time source_time,
       absl::optional<uint64_t> cleared_debug_key,
       attribution_reporting::mojom::StoreSourceResult) override;
   void OnReportSent(const AttributionReport& report,
@@ -86,17 +74,15 @@ class AttributionInternalsHandlerImpl
   void OnTriggerHandled(const AttributionTrigger& trigger,
                         absl::optional<uint64_t> cleared_debug_key,
                         const CreateReportResult& result) override;
-  void OnFailedSourceRegistration(
-      const std::string& header_value,
-      base::Time source_time,
-      const attribution_reporting::SuitableOrigin& source_origin,
-      const attribution_reporting::SuitableOrigin& reporting_origin,
-      attribution_reporting::mojom::SourceType,
-      attribution_reporting::mojom::SourceRegistrationError) override;
+  void OnOsRegistration(
+      base::Time time,
+      const OsRegistration&,
+      bool is_debug_key_allowed,
+      attribution_reporting::mojom::OsRegistrationResult) override;
 
   void OnObserverDisconnected();
 
-  raw_ptr<WebUI> web_ui_;
+  const raw_ref<WebUI> web_ui_;
 
   mojo::Remote<attribution_internals::mojom::Observer> observer_;
 

@@ -6,8 +6,8 @@
 
 #include <memory>
 
-#include "base/guid.h"
 #include "base/time/time.h"
+#include "base/uuid.h"
 #include "components/saved_tab_groups/saved_tab_group_tab.h"
 #include "components/sync/protocol/saved_tab_group_specifics.pb.h"
 #include "components/tab_groups/tab_group_color.h"
@@ -71,11 +71,11 @@ TEST_F(SavedTabGroupConversionTest, GroupToSpecificRetainsData) {
   // Create a group.
   const std::u16string& title = u"Test title";
   const tab_groups::TabGroupColorId& color = tab_groups::TabGroupColorId::kBlue;
-  absl::optional<base::GUID> saved_guid = base::GUID::GenerateRandomV4();
+  absl::optional<base::Uuid> saved_guid = base::Uuid::GenerateRandomV4();
   absl::optional<base::Time> creation_time_windows_epoch_micros = time_;
   absl::optional<base::Time> update_time_windows_epoch_micros = time_;
-  SavedTabGroup group(title, color, {}, saved_guid, absl::nullopt,
-                      absl::nullopt, creation_time_windows_epoch_micros,
+  SavedTabGroup group(title, color, {}, 0, saved_guid, absl::nullopt,
+                      creation_time_windows_epoch_micros,
                       update_time_windows_epoch_micros);
 
   // Use the group to create a STGSpecific.
@@ -94,9 +94,9 @@ TEST_F(SavedTabGroupConversionTest, GroupToSpecificRetainsData) {
 TEST_F(SavedTabGroupConversionTest, TabToSpecificRetainsData) {
   // Create a tab.
   SavedTabGroupTab tab(GURL("chrome://hidden_link"), u"Hidden Title",
-                       base::GUID::GenerateRandomV4(), nullptr,
-                       base::GUID::GenerateRandomV4(), absl::nullopt,
-                       absl::nullopt, time_, time_);
+                       base::Uuid::GenerateRandomV4(), /*position=*/0,
+                       base::Uuid::GenerateRandomV4(), absl::nullopt, time_,
+                       time_);
 
   // Create a STGSpecific using `tab`.
   std::unique_ptr<sync_pb::SavedTabGroupSpecifics> specific = tab.ToSpecifics();
@@ -113,7 +113,7 @@ TEST_F(SavedTabGroupConversionTest, TabToSpecificRetainsData) {
 TEST_F(SavedTabGroupConversionTest, SpecificToGroupRetainsData) {
   std::unique_ptr<sync_pb::SavedTabGroupSpecifics> pb_specific =
       std::make_unique<sync_pb::SavedTabGroupSpecifics>();
-  pb_specific->set_guid(base::GUID::GenerateRandomV4().AsLowercaseString());
+  pb_specific->set_guid(base::Uuid::GenerateRandomV4().AsLowercaseString());
 
   int64_t time_in_micros = time_.ToDeltaSinceWindowsEpoch().InMicroseconds();
   pb_specific->set_creation_time_windows_epoch_micros(time_in_micros);
@@ -140,7 +140,7 @@ TEST_F(SavedTabGroupConversionTest, SpecificToGroupRetainsData) {
 TEST_F(SavedTabGroupConversionTest, SpecificToTabRetainsData) {
   std::unique_ptr<sync_pb::SavedTabGroupSpecifics> pb_specific =
       std::make_unique<sync_pb::SavedTabGroupSpecifics>();
-  pb_specific->set_guid(base::GUID::GenerateRandomV4().AsLowercaseString());
+  pb_specific->set_guid(base::Uuid::GenerateRandomV4().AsLowercaseString());
 
   int64_t time_in_micros = time_.ToDeltaSinceWindowsEpoch().InMicroseconds();
   pb_specific->set_creation_time_windows_epoch_micros(time_in_micros);
@@ -148,7 +148,7 @@ TEST_F(SavedTabGroupConversionTest, SpecificToTabRetainsData) {
 
   sync_pb::SavedTabGroupTab* pb_tab = pb_specific->mutable_tab();
   pb_tab->set_url("chrome://newtab/");
-  pb_tab->set_group_guid(base::GUID::GenerateRandomV4().AsLowercaseString());
+  pb_tab->set_group_guid(base::Uuid::GenerateRandomV4().AsLowercaseString());
   pb_tab->set_title("New Tab Title");
 
   // Turn a specific into a tab.
@@ -172,11 +172,11 @@ TEST_F(SavedTabGroupConversionTest, MergedGroupHoldsCorrectData) {
   const base::Time old_time = base::Time::Now();
   const std::u16string& title = u"Test title";
   const tab_groups::TabGroupColorId& color = tab_groups::TabGroupColorId::kBlue;
-  absl::optional<base::GUID> saved_guid = base::GUID::GenerateRandomV4();
+  absl::optional<base::Uuid> saved_guid = base::Uuid::GenerateRandomV4();
   absl::optional<base::Time> creation_time_windows_epoch_micros = time_;
   absl::optional<base::Time> update_time_windows_epoch_micros = time_;
-  SavedTabGroup group1(title, color, {}, saved_guid, absl::nullopt,
-                       absl::nullopt, creation_time_windows_epoch_micros,
+  SavedTabGroup group1(title, color, {}, 0, saved_guid, absl::nullopt,
+                       creation_time_windows_epoch_micros,
                        update_time_windows_epoch_micros);
 
   // Create a new group with the same data and update it. Calling set functions
@@ -203,8 +203,9 @@ TEST_F(SavedTabGroupConversionTest, MergedGroupHoldsCorrectData) {
 TEST_F(SavedTabGroupConversionTest, MergedTabHoldsCorrectData) {
   // Create a tab.
   const base::Time old_time = base::Time::Now();
-  base::GUID saved_guid = base::GUID::GenerateRandomV4();
-  SavedTabGroupTab tab1(GURL("Test url"), u"Test Title", saved_guid);
+  base::Uuid saved_guid = base::Uuid::GenerateRandomV4();
+  SavedTabGroupTab tab1(GURL("Test url"), u"Test Title", saved_guid,
+                        /*position=*/0);
 
   // Create a new group with the same data and update it. Calling set functions
   // should internally update update_time_windows_epoch_micros.

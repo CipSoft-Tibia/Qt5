@@ -9,6 +9,7 @@
 #include "base/rand_util.h"
 #include "third_party/blink/public/common/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/input/web_pointer_properties.h"
 #include "third_party/blink/public/mojom/loader/navigation_predictor.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/loader/navigation_predictor.mojom-forward.h"
 #include "third_party/blink/public/platform/task_type.h"
@@ -19,11 +20,13 @@
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/html/anchor_element_metrics.h"
 #include "third_party/blink/renderer/core/html/html_anchor_element.h"
+#include "third_party/blink/renderer/core/html/html_area_element.h"
 #include "third_party/blink/renderer/core/intersection_observer/intersection_observer.h"
 #include "third_party/blink/renderer/core/intersection_observer/intersection_observer_entry.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/loader/document_loader.h"
 #include "third_party/blink/renderer/core/paint/paint_layer_scrollable_area.h"
+#include "third_party/blink/renderer/core/pointer_type_names.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread.h"
 #include "ui/gfx/geometry/mojom/geometry.mojom-shared.h"
 
@@ -63,6 +66,21 @@ bool AnchorElementMetricsSender::HasAnchorElementMetricsSender(
   const KURL& url = document.BaseURL();
   return is_feature_enabled && document.IsInOutermostMainFrame() &&
          url.IsValid() && url.ProtocolIs("https");
+}
+
+void AnchorElementMetricsSender::
+    MaybeReportAnchorElementPointerDataOnHoverTimerFired(
+        uint32_t anchor_id,
+        mojom::blink::AnchorElementPointerDataPtr pointer_data) {
+  DCHECK(base::FeatureList::IsEnabled(features::kNavigationPredictor));
+  if (!AssociateInterface()) {
+    return;
+  }
+  auto msg = mojom::blink::AnchorElementPointerDataOnHoverTimerFired::New();
+  msg->anchor_id = anchor_id;
+  msg->pointer_data = std::move(pointer_data);
+  metrics_host_->ReportAnchorElementPointerDataOnHoverTimerFired(
+      std::move(msg));
 }
 
 void AnchorElementMetricsSender::MaybeReportClickedMetricsOnClick(
@@ -168,7 +186,9 @@ void AnchorElementMetricsSender::UpdateVisibleAnchors(
 
   for (auto entry : entries) {
     Element* element = entry->target();
-    const auto& anchor_element = To<HTMLAnchorElement>(*element);
+    const HTMLAnchorElement& anchor_element =
+        IsA<HTMLAreaElement>(*element) ? To<HTMLAreaElement>(*element)
+                                       : To<HTMLAnchorElement>(*element);
     if (!entry->isIntersecting()) {
       // The anchor is leaving the viewport.
       EnqueueLeftViewport(anchor_element);
@@ -192,13 +212,36 @@ base::TimeTicks AnchorElementMetricsSender::NavigationStart(
 void AnchorElementMetricsSender::MaybeReportAnchorElementPointerEvent(
     HTMLAnchorElement& element,
     const PointerEvent& pointer_event) {
+  if (!metrics_host_.is_bound()) {
+    return;
+  }
+
   const auto anchor_id = AnchorElementId(element);
+  const AtomicString& event_type = pointer_event.type();
+
+  auto pointer_event_for_ml_model =
+      mojom::blink::AnchorElementPointerEventForMLModel::New();
+  pointer_event_for_ml_model->anchor_id = anchor_id;
+  pointer_event_for_ml_model->is_mouse =
+      pointer_event.pointerType() == pointer_type_names::kMouse;
+  if (event_type == event_type_names::kPointerover) {
+    pointer_event_for_ml_model->user_interaction_event_type = mojom::blink::
+        AnchorElementUserInteractionEventForMLModelType::kPointerOver;
+  } else if (event_type == event_type_names::kPointerout) {
+    pointer_event_for_ml_model->user_interaction_event_type = mojom::blink::
+        AnchorElementUserInteractionEventForMLModelType::kPointerOut;
+  } else {
+    pointer_event_for_ml_model->user_interaction_event_type =
+        mojom::blink::AnchorElementUserInteractionEventForMLModelType::kUnknown;
+  }
+  metrics_host_->ProcessPointerEventUsingMLModel(
+      std::move(pointer_event_for_ml_model));
+
   auto it = anchor_elements_timing_stats_.find(anchor_id);
   if (it == anchor_elements_timing_stats_.end()) {
     return;
   }
   auto& element_timing = it->value;
-  const AtomicString& event_type = pointer_event.type();
   if (event_type == event_type_names::kPointerover) {
     if (!element_timing->pointer_over_timer_.has_value()) {
       element_timing->pointer_over_timer_ = clock_->NowTicks();
@@ -215,6 +258,7 @@ void AnchorElementMetricsSender::MaybeReportAnchorElementPointerEvent(
     if (!element_timing->pointer_over_timer_.has_value()) {
       return;
     }
+
     auto msg = mojom::blink::AnchorElementPointerOut::New();
     msg->anchor_id = anchor_id;
     base::TimeDelta hover_dwell_time =
@@ -222,6 +266,22 @@ void AnchorElementMetricsSender::MaybeReportAnchorElementPointerEvent(
     element_timing->pointer_over_timer_.reset();
     msg->hover_dwell_time = hover_dwell_time;
     metrics_host_->ReportAnchorElementPointerOut(std::move(msg));
+  } else if (event_type == event_type_names::kPointerdown) {
+    // TODO(crbug.com/1297312): Check if user changed the default mouse
+    // settings
+    if (pointer_event.button() !=
+            static_cast<int>(WebPointerProperties::Button::kLeft) &&
+        pointer_event.button() !=
+            static_cast<int>(WebPointerProperties::Button::kMiddle)) {
+      return;
+    }
+
+    auto msg = mojom::blink::AnchorElementPointerDown::New();
+    msg->anchor_id = anchor_id;
+    base::TimeDelta navigation_start_to_pointer_down =
+        clock_->NowTicks() - NavigationStart(element);
+    msg->navigation_start_to_pointer_down = navigation_start_to_pointer_down;
+    metrics_host_->ReportAnchorElementPointerDown(std::move(msg));
   }
 }
 

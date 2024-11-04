@@ -13,24 +13,26 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- Stores the min and max vsync IDs for each of the CUJs.
--- We calculate that by extracting the vsync ID from the
+-- Stores the min and max vsync IDs for each of the CUJs which are extracted
+-- from the CUJ markers. For backward compatibility (In case the markers don't
+-- exist), We calculate that by extracting the vsync ID from the
 -- `Choreographer#doFrame` slices that are within the CUJ markers.
 DROP TABLE IF EXISTS android_jank_cuj_vsync_boundary;
-CREATE TABLE android_jank_cuj_vsync_boundary AS
+CREATE PERFETTO TABLE android_jank_cuj_vsync_boundary AS
 SELECT
   cuj.cuj_id,
   cuj.upid, -- also store upid to simplify further queries
-  MIN(vsync) AS vsync_min,
-  MAX(vsync) AS vsync_max
+  cuj.layer_id,  -- also store layer_id to simplify further queries
+  IFNULL(cuj.begin_vsync, MIN(vsync)) AS vsync_min,
+  IFNULL(cuj.end_vsync, MAX(vsync)) AS vsync_max
 FROM android_jank_cuj cuj
 JOIN android_jank_cuj_do_frame_slice USING (cuj_id)
-GROUP BY cuj.cuj_id, cuj.upid;
+GROUP BY cuj.cuj_id, cuj.upid, cuj.layer_id;
 
 -- Similarly, extract the min/max vsync for the SF from
 -- commit/compose/onMessageInvalidate slices on its main thread.
 DROP TABLE IF EXISTS android_jank_cuj_sf_vsync_boundary;
-CREATE TABLE android_jank_cuj_sf_vsync_boundary AS
+CREATE PERFETTO TABLE android_jank_cuj_sf_vsync_boundary AS
 SELECT
   cuj_id,
   MIN(vsync) AS vsync_min,
@@ -50,7 +52,7 @@ GROUP BY cuj_id;
 -- some other work occupying the main thread (e.g. non-drawing callbacks or
 -- the previous frame taking much longer than expected).
 DROP TABLE IF EXISTS android_jank_cuj_main_thread_frame_boundary;
-CREATE TABLE android_jank_cuj_main_thread_frame_boundary AS
+CREATE PERFETTO TABLE android_jank_cuj_main_thread_frame_boundary AS
 -- intermediate table that discards unfinished slices and parses vsync as int.
 WITH expected_timeline AS (
   SELECT *, CAST(name AS INTEGER) AS vsync
@@ -132,7 +134,7 @@ FROM frame_boundary_base;
 
 -- Compute the CUJ boundary on the main thread from the frame boundaries.
 DROP TABLE IF EXISTS android_jank_cuj_main_thread_cuj_boundary;
-CREATE TABLE android_jank_cuj_main_thread_cuj_boundary AS
+CREATE PERFETTO TABLE android_jank_cuj_main_thread_cuj_boundary AS
 SELECT
   cuj_id,
   utid,
@@ -151,7 +153,7 @@ GROUP BY cuj_id, utid;
 -- slices for a single vsync - this happens when we are drawing multiple layers
 -- (e.g. status bar & notifications).
 DROP TABLE IF EXISTS android_jank_cuj_render_thread_frame_boundary;
-CREATE TABLE android_jank_cuj_render_thread_frame_boundary AS
+CREATE PERFETTO TABLE android_jank_cuj_render_thread_frame_boundary AS
 -- see do_frame_ordered above
 -- we also order by `ts` to handle multiple DrawFrames for a single vsync
 WITH draw_frame_ordered AS (
@@ -189,7 +191,7 @@ FROM frame_boundary_base;
 
 -- Compute the CUJ boundary on the render thread from the frame boundaries.
 DROP TABLE IF EXISTS android_jank_cuj_render_thread_cuj_boundary;
-CREATE TABLE android_jank_cuj_render_thread_cuj_boundary AS
+CREATE PERFETTO TABLE android_jank_cuj_render_thread_cuj_boundary AS
 SELECT
   cuj_id,
   utid,
@@ -202,7 +204,7 @@ GROUP BY cuj_id, utid;
 -- Compute the overall CUJ boundary (in the app process) based on the main
 -- thread CUJ boundaries and the actual timeline.
 DROP TABLE IF EXISTS android_jank_cuj_boundary;
-CREATE TABLE android_jank_cuj_boundary AS
+CREATE PERFETTO TABLE android_jank_cuj_boundary AS
 -- introducing an intermediate table since we want to calculate dur = ts_end - ts
 WITH boundary_base AS (
   SELECT
@@ -238,7 +240,7 @@ FROM boundary_base;
 -- based on when we *expected* the work to start and we use the end of the `composite` slice
 -- as the end of the work on the frame.
 DROP TABLE IF EXISTS android_jank_cuj_sf_main_thread_frame_boundary;
-CREATE TABLE android_jank_cuj_sf_main_thread_frame_boundary AS
+CREATE PERFETTO TABLE android_jank_cuj_sf_main_thread_frame_boundary AS
 -- Join `commit` and `composite` slices using vsync IDs.
 -- We treat the two slices as a single "fake slice" that starts when `commit` starts, and ends
 -- when `composite` ends.
@@ -276,7 +278,7 @@ JOIN main_thread_slice
 
 -- Compute the CUJ boundary on the main thread from the frame boundaries.
 DROP TABLE IF EXISTS android_jank_cuj_sf_main_thread_cuj_boundary;
-CREATE TABLE android_jank_cuj_sf_main_thread_cuj_boundary AS
+CREATE PERFETTO TABLE android_jank_cuj_sf_main_thread_cuj_boundary AS
 SELECT
   cuj_id,
   utid,
@@ -293,7 +295,7 @@ GROUP BY cuj_id, utid;
 -- on the main thread (this calls into RenderEngine), and when `REThreaded::drawLayers`
 -- ends.
 DROP TABLE IF EXISTS android_jank_cuj_sf_render_engine_frame_boundary;
-CREATE TABLE android_jank_cuj_sf_render_engine_frame_boundary AS
+CREATE PERFETTO TABLE android_jank_cuj_sf_render_engine_frame_boundary AS
 SELECT
   cuj_id,
   utid,
@@ -305,6 +307,6 @@ SELECT
 FROM android_jank_cuj_sf_draw_layers_slice draw_layers;
 
 DROP TABLE IF EXISTS android_jank_cuj_sf_boundary;
-CREATE TABLE android_jank_cuj_sf_boundary AS
+CREATE PERFETTO TABLE android_jank_cuj_sf_boundary AS
 SELECT cuj_id, ts, ts_end, dur
 FROM android_jank_cuj_sf_main_thread_cuj_boundary;

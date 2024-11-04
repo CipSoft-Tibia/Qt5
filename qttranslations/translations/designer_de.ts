@@ -2006,8 +2006,16 @@ Container-Seiten sollten ausschließlich im XML der domXML()-Methode spezifizier
         <translation>Die Eigenschaft %1 konnte nicht gelesen werden (Typ: Menge).</translation>
     </message>
     <message>
+        <source>The value &quot;%1&quot; of the set-type property %2 could not be read.</source>
+        <translation>Der Wert &quot;%1&quot; der Eigenschaft %2 konnte nicht gelesen werden (Typ: Menge).</translation>
+    </message>
+    <message>
         <source>The enumeration-type property %1 could not be read.</source>
         <translation>Die Eigenschaft %1 konnte nicht gelesen werden (Typ: Aufzählung).</translation>
+    </message>
+    <message>
+        <source>The value &quot;%1&quot; of the enum-type property %2 could not be read.</source>
+        <translation>Der Wert &quot;%1&quot; der Eigenschaft %2 konnte nicht gelesen werden (Typ: Aufzählung).</translation>
     </message>
     <message>
         <source>Reading properties of the type %1 is not supported yet.</source>
@@ -3759,10 +3767,6 @@ Möchten Sie sie überschreiben?</translation>
         <translation>Geerbt</translation>
     </message>
     <message>
-        <source>[Theme] %1</source>
-        <translation>[Thema] %1</translation>
-    </message>
-    <message>
         <source>Horizontal</source>
         <translation>Horizontal</translation>
     </message>
@@ -3773,6 +3777,10 @@ Möchten Sie sie überschreiben?</translation>
     <message>
         <source>Theme</source>
         <translation>Thema</translation>
+    </message>
+    <message>
+        <source>XDG Theme</source>
+        <translation>XDG-Thema</translation>
     </message>
     <message>
         <source>Normal Off</source>
@@ -3807,16 +3815,8 @@ Möchten Sie sie überschreiben?</translation>
         <translation>Ausgewählt, ein</translation>
     </message>
     <message>
-        <source>translatable</source>
-        <translation>Übersetzung</translation>
-    </message>
-    <message>
         <source>disambiguation</source>
         <translation>Kennung</translation>
-    </message>
-    <message>
-        <source>comment</source>
-        <translation>Kommentar</translation>
     </message>
 </context>
 <context>
@@ -4285,12 +4285,12 @@ Möchten Sie sie überschreiben?</translation>
 <context>
     <name>qdesigner_internal::IconThemeDialog</name>
     <message>
-        <source>Set Icon From Theme</source>
-        <translation>Icon aus Thema setzen</translation>
+        <source>Set Icon From XDG Theme</source>
+        <translation>Icon aus XDG-Thema setzen</translation>
     </message>
     <message>
-        <source>Select icon name from theme:</source>
-        <translation>Icon-Namen aus aktuellem Thema wählen:</translation>
+        <source>Select icon name from XDG theme:</source>
+        <translation>Icon-Namen aus aktuellem XDG-Thema wählen:</translation>
     </message>
 </context>
 <context>
@@ -4451,10 +4451,6 @@ Möchten Sie sie überschreiben?</translation>
         <translation>T&amp;oolTip:</translation>
     </message>
     <message>
-        <source>Icon th&amp;eme:</source>
-        <translation>Icon-Th&amp;ema:</translation>
-    </message>
-    <message>
         <source>&amp;Checkable:</source>
         <translation>&amp;Ankreuzbar:</translation>
     </message>
@@ -4465,6 +4461,14 @@ Möchten Sie sie überschreiben?</translation>
     <message>
         <source>&amp;Menu role:</source>
         <translation>&amp;Menu role:</translation>
+    </message>
+    <message>
+        <source>Icon &amp;XDG theme:</source>
+        <translation>Icon &amp;XDG-Thema:</translation>
+    </message>
+    <message>
+        <source>Icon &amp;theme:</source>
+        <translation>Icon-Th&amp;ema:</translation>
     </message>
 </context>
 <context>
@@ -4693,6 +4697,10 @@ Please select another name.</source>
         <translation>Laden...</translation>
     </message>
     <message>
+        <source>Preview (%1)</source>
+        <translation>Vorschau (%1)</translation>
+    </message>
+    <message>
         <source>Lighter</source>
         <translation>Heller</translation>
     </message>
@@ -4794,12 +4802,24 @@ Please select another name.</source>
         <translation>Icon aus Thema setzen...</translation>
     </message>
     <message>
+        <source>Set Icon From XDG Theme...</source>
+        <translation>Icon aus XDG-Thema setzen...</translation>
+    </message>
+    <message>
         <source>...</source>
         <translation>...</translation>
     </message>
     <message>
         <source>[Theme] %1</source>
         <translation>[Thema] %1</translation>
+    </message>
+    <message>
+        <source>[Theme] %1 (missing)</source>
+        <translation>[Thema] %1 (fehlt)</translation>
+    </message>
+    <message>
+        <source>%1 (fallback)</source>
+        <translation>%1 (fallback)</translation>
     </message>
 </context>
 <context>
@@ -6040,6 +6060,17 @@ This indicates an inconsistency in the ui-file.</source>
     <message>
         <source>comment</source>
         <translation>Kommentar</translation>
+    </message>
+</context>
+<context>
+    <name>qdesigner_internal::IconThemeEnumDialog</name>
+    <message>
+        <source>Set Icon From Theme</source>
+        <translation>Icon aus Thema setzen</translation>
+    </message>
+    <message>
+        <source>Select icon name from theme:</source>
+        <translation>Icon-Namen aus aktuellem Thema wählen:</translation>
     </message>
 </context>
 </TS>

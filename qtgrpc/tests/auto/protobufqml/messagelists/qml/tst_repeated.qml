@@ -30,7 +30,7 @@ TestCase {
     property complexMessage msg2;
     property complexMessage msg3;
 
-    function test_1init() {
+    function initTestCase() {
         msg1.testComplexField = "complexMessage 1"
         msg2.testComplexField = "complexMessage 2"
 
@@ -48,9 +48,7 @@ TestCase {
         rUInt64Msg.testRepeatedInt = [0, 65536, 200, 2]
         rBoolMsg.testRepeatedBool = [true, false, true, false, true, false]
 
-        //TODO: see QTBUG-113690
         rByteMsg.testRepeatedBytes = ["\x02hi!\x03\x00", "\x00"]
-        //TODO: int64, fixed64, sfixed64 not recognized as numbers. See QTBUG-113516.
         rSFixedIntMsg.testRepeatedInt = [0, 65536, -65536, 2]
         rFixedInt64Msg.testRepeatedInt = [0, 65536, 200, 2]
         rSFixedInt64Msg.testRepeatedInt = [0, 65536, -65536, 2]
@@ -133,37 +131,21 @@ TestCase {
                     { tag: "rBoolMsg.testRepeatedBool[i] is a number",
                         field: typeof(rBoolMsg.testRepeatedBool[0]), answer: "boolean" },
 
-                    // repeatedFixedIntMessage
-                    { tag: "rFixedIntMsg.testRepeatedInt is an object",
-                        field: typeof(rFixedIntMsg.testRepeatedInt), answer: "object" },
-                    { tag: "rFixedIntMsg.testRepeatedInt[i] is a number",
-                        field: typeof(rFixedIntMsg.testRepeatedInt[0]), answer: "number" },
-
                     // repeatedIntMessage
                     { tag: "rIntMsg.testRepeatedInt is an object",
                         field: typeof(rIntMsg.testRepeatedInt), answer: "object" },
-                    { tag: "rIntMsg.testRepeatedInt[i] is a number",
-                        field: typeof(rIntMsg.testRepeatedInt[0]), answer: "number" },
+                    { tag: "rIntMsg.testRepeatedInt[i] is a object",
+                        field: typeof(rIntMsg.testRepeatedInt[0]), answer: "object" },
 
                     // repeatedIntMessage
                     { tag: "rInt64Msg.testRepeatedInt is an object",
                         field: typeof(rInt64Msg.testRepeatedInt), answer: "object" },
-                    { tag: "rInt64Msg.testRepeatedInt[i] is a number",
-                        field: typeof(rInt64Msg.testRepeatedInt[0]), answer: "number" },
+                    { tag: "rInt64Msg.testRepeatedInt[i] is a object",
+                        field: typeof(rInt64Msg.testRepeatedInt[0]), answer: "object" },
                 ]
     }
 
     function test_repeatedTypes(data) {
-        //TODO: int64, fixed64, sfixed64 not recognized as numbers. See QTBUG-113516.
-        expectFail("rFixedIntMsg.testRepeatedInt[i] is a number",
-                   "Proper type support is not implemented")
-        expectFail("rIntMsg.testRepeatedInt[i] is a number",
-                   "Proper type support is not implemented")
-        expectFail("rInt64Msg.testRepeatedInt[i] is a number",
-                   "Proper type support is not implemented")
-        expectFail("rByteMsg.testRepeatedBytes[i] is a object",
-                   "Proper ComplexList type support is not implemented")
-
         compare(data.field, data.answer)
     }
 
@@ -210,15 +192,6 @@ TestCase {
                     { tag: "rSInt64Msg.testRepeatedInt[2] == -65536",
                         field: rSInt64Msg.testRepeatedInt[2], answer: -65536 },
 
-                    // repeatedFixedIntMessage
-                    //TODO: int64, fixed64, sfixed64 not recognized as numbers. See QTBUG-113516.
-                    { tag: "rFixedIntMsg.testRepeatedInt size == 4",
-                        field: rFixedIntMsg.testRepeatedInt.length, answer: 4 },
-                    { tag: "rFixedIntMsg.testRepeatedInt[0] == 0",
-                        field: rFixedIntMsg.testRepeatedInt[0], answer: 0 },
-                    { tag: "rFixedIntMsg.testRepeatedInt[2] == 2147483647",
-                        field: rFixedIntMsg.testRepeatedInt[2], answer: 2147483647 },
-
                     // repeatedUIntMessage
                     { tag: "rUIntMsg.testRepeatedInt size == 4",
                         field: rUIntMsg.testRepeatedInt.length, answer: 4 },
@@ -234,21 +207,6 @@ TestCase {
                         field: rUInt64Msg.testRepeatedInt[0], answer: 0 },
                     { tag: "rUInt64Msg.testRepeatedInt[2] == 200",
                         field: rUInt64Msg.testRepeatedInt[2], answer: 200 },
-
-                    // repeatedIntMessage
-                    { tag: "rIntMsg.testRepeatedInt size == 4",
-                        field: rIntMsg.testRepeatedInt.length, answer: 4 },
-                    { tag: "rIntMsg.testRepeatedInt[0] == 0",
-                        field: rIntMsg.testRepeatedInt[0], answer: 0 },
-                    { tag: "rIntMsg.testRepeatedInt[2] == -65536",
-                        field: rIntMsg.testRepeatedInt[2], answer: -65536 },
-
-                    { tag: "rInt64Msg.testRepeatedInt size == 4",
-                        field: rInt64Msg.testRepeatedInt.length, answer: 4 },
-                    { tag: "rInt64Msg.testRepeatedInt[0] == 0",
-                        field: rInt64Msg.testRepeatedInt[0], answer: 0 },
-                    { tag: "rInt64Msg.testRepeatedInt[2] == -65536",
-                        field: rInt64Msg.testRepeatedInt[2], answer: -65536 },
 
                     // repeatedFloatMessage
                     { tag: "rFloatMsg.testRepeatedFloat size == 5",
@@ -271,20 +229,38 @@ TestCase {
     }
 
     function test_repeatedValues(data) {
-        //TODO: int64, fixed64, sfixed64 not recognized as numbers. See QTBUG-113516.
-        expectFail("rInt64Msg.testRepeatedInt[0] == 0",
-                   "QTBUG-113516: Proper int64, fixed64, sfixed64 support is not implemented")
-        expectFail("rInt64Msg.testRepeatedInt[2] == -65536",
-                   "QTBUG-113516: Proper int64, fixed64, sfixed64 support is not implemented")
-        expectFail("rFixedIntMsg.testRepeatedInt[0] == 0",
-                   "Proper int64, fixed64, sfixed64 support is not implemented")
-        expectFail("rFixedIntMsg.testRepeatedInt[2] == 2147483647",
-                   "QTBUG-113516: Proper int64, fixed64, sfixed64 support is not implemented")
-        expectFail("rIntMsg.testRepeatedInt[0] == 0",
-                   "QTBUG-113516: Proper int64, fixed64, sfixed64 support is not implemented")
-        expectFail("rIntMsg.testRepeatedInt[2] == -65536",
-                   "QTBUG-113516: Proper int64, fixed64, sfixed64 support is not implemented")
-
         compare(data.field, data.answer)
+    }
+
+    function test_repeatedValuesProtobufTypes_data() {
+        return [
+                    // repeatedInt64Message
+                    { tag: "rInt64Msg.testRepeatedInt size == 4",
+                        field: rInt64Msg.testRepeatedInt.length, answer: 4 },
+                    { tag: "rInt64Msg.testRepeatedInt[0] == 0",
+                        field: rInt64Msg.testRepeatedInt[0], answer: 0 },
+                    { tag: "rInt64Msg.testRepeatedInt[2] == -65536",
+                        field: rInt64Msg.testRepeatedInt[2], answer: -65536 },
+
+                    // repeatedIntMessage
+                    { tag: "rIntMsg.testRepeatedInt size == 4",
+                        field: rIntMsg.testRepeatedInt.length, answer: 4 },
+                    { tag: "rIntMsg.testRepeatedInt[0] == 0",
+                        field: rIntMsg.testRepeatedInt[0], answer: 0 },
+                    { tag: "rIntMsg.testRepeatedInt[2] == -65536",
+                        field: rIntMsg.testRepeatedInt[2], answer: -65536 },
+
+                    // repeatedFixedIntMessage
+                    { tag: "rFixedIntMsg.testRepeatedInt size == 4",
+                        field: rFixedIntMsg.testRepeatedInt.length, answer: 4 },
+                    { tag: "rFixedIntMsg.testRepeatedInt[0] == 0",
+                        field: rFixedIntMsg.testRepeatedInt[0], answer: 0 },
+                    { tag: "rFixedIntMsg.testRepeatedInt[2] == 2147483647",
+                        field: rFixedIntMsg.testRepeatedInt[2], answer: 2147483647 }
+                ]
+    }
+
+    function test_repeatedValuesProtobufTypes(data) {
+        verify(data.field == data.answer) // those values don't handle "===" operation
     }
 }

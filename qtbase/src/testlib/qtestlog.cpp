@@ -33,7 +33,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include <vector>
 
 #include <vector>
 #include <memory>
@@ -558,6 +557,21 @@ void QTestLog::addLogger(QAbstractTestLogger *logger)
 bool QTestLog::hasLoggers()
 {
     return !QTest::loggers()->empty();
+}
+
+/*!
+    \internal
+
+    Returns true if all loggers support repeated test runs
+*/
+bool QTestLog::isRepeatSupported()
+{
+    FOREACH_TEST_LOGGER {
+        if (!logger->isRepeatSupported())
+            return false;
+    }
+
+    return true;
 }
 
 bool QTestLog::loggerUsingStdout()

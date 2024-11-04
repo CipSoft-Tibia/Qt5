@@ -17,6 +17,7 @@ from xml.etree import ElementTree
 from util import build_utils
 from util import manifest_utils
 from util import server_utils
+import action_helpers  # build_utils adds //build to sys.path.
 
 _LINT_MD_URL = 'https://chromium.googlesource.com/chromium/src/+/main/build/android/docs/lint.md'  # pylint: disable=line-too-long
 
@@ -32,6 +33,7 @@ _DISABLED_ALWAYS = [
     "ObsoleteLintCustomCheck",  # We have no control over custom lint checks.
     "SwitchIntDef",  # Many C++ enums are not used at all in java.
     "Typos",  # Strings are committed in English first and later translated.
+    "VisibleForTests",  # Does not recognize "ForTesting" methods.
     "UniqueConstants",  # Chromium enums allow aliases.
     "UnusedAttribute",  # Chromium apks have various minSdkVersion values.
 ]
@@ -178,7 +180,7 @@ def _GenerateAndroidManifest(original_manifest_path, extra_manifest_paths,
 def _WriteXmlFile(root, path):
   logging.info('Writing xml file %s', path)
   build_utils.MakeDirectory(os.path.dirname(path))
-  with build_utils.AtomicOutput(path) as f:
+  with action_helpers.atomic_output(path) as f:
     # Although we can write it just with ElementTree.tostring, using minidom
     # makes it a lot easier to read as a human (also on code search).
     f.write(
@@ -377,7 +379,7 @@ def _RunLint(create_cache,
 
 def _ParseArgs(argv):
   parser = argparse.ArgumentParser()
-  build_utils.AddDepfileOption(parser)
+  action_helpers.add_depfile_arg(parser)
   parser.add_argument('--target-name', help='Fully qualified GN target name.')
   parser.add_argument('--skip-build-server',
                       action='store_true',
@@ -450,13 +452,14 @@ def _ParseArgs(argv):
                       'on new errors.')
 
   args = parser.parse_args(build_utils.ExpandFileArgs(argv))
-  args.sources = build_utils.ParseGnList(args.sources)
-  args.aars = build_utils.ParseGnList(args.aars)
-  args.srcjars = build_utils.ParseGnList(args.srcjars)
-  args.resource_sources = build_utils.ParseGnList(args.resource_sources)
-  args.extra_manifest_paths = build_utils.ParseGnList(args.extra_manifest_paths)
-  args.resource_zips = build_utils.ParseGnList(args.resource_zips)
-  args.classpath = build_utils.ParseGnList(args.classpath)
+  args.sources = action_helpers.parse_gn_list(args.sources)
+  args.aars = action_helpers.parse_gn_list(args.aars)
+  args.srcjars = action_helpers.parse_gn_list(args.srcjars)
+  args.resource_sources = action_helpers.parse_gn_list(args.resource_sources)
+  args.extra_manifest_paths = action_helpers.parse_gn_list(
+      args.extra_manifest_paths)
+  args.resource_zips = action_helpers.parse_gn_list(args.resource_zips)
+  args.classpath = action_helpers.parse_gn_list(args.classpath)
 
   if args.baseline:
     assert os.path.basename(args.baseline) == 'lint-baseline.xml', (
@@ -521,7 +524,7 @@ def main():
   build_utils.Touch(args.stamp)
 
   if args.depfile:
-    build_utils.WriteDepfile(args.depfile, args.stamp, depfile_deps)
+    action_helpers.write_depfile(args.depfile, args.stamp, depfile_deps)
 
 
 if __name__ == '__main__':

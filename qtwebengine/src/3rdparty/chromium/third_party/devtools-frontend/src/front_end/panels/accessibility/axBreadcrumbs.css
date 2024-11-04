@@ -40,16 +40,16 @@
 }
 
 .ax-breadcrumbs .ax-node::before {
-  -webkit-mask-image: var(--image-file-chevrons);
-  -webkit-mask-position: 0 0;
-  -webkit-mask-size: 30px 10px;
+  -webkit-mask-image: var(--image-file-chevron-right);
   -webkit-mask-repeat: no-repeat;
-  background-color: var(--color-syntax-7);
+  background-color: var(--icon-default);
+  transform: scale(0.7);
   content: "";
   text-shadow: none;
-  margin-right: -2px;
-  height: 12px;
-  width: 14px;
+  margin-left: -4px;
+  margin-top: -2px;
+  height: 16px;
+  width: 16px;
   position: absolute;
   display: inline-block;
 }
@@ -59,7 +59,7 @@
 }
 
 .ax-breadcrumbs .ax-node.parent::before {
-  -webkit-mask-position: -20px 1px;
+  -webkit-mask-image: var(--image-file-chevron-down);
 }
 
 .ax-breadcrumbs .ax-node.no-dom-node {
@@ -87,11 +87,11 @@
 }
 
 .ax-breadcrumbs .ax-node.parent.inspected:focus::before {
-  background-color: var(--color-background);
+  background-color: var(--sys-color-cdt-base-container);
 }
 
 .ax-breadcrumbs .ax-node.inspected:focus {
-  background-color: var(--color-primary);
+  background-color: var(--color-primary-old);
   color: var(--color-background);
 }
 

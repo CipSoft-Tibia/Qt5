@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QSemaphore>
@@ -418,9 +418,6 @@ void tst_QThreadPool::expiryTimeout()
 
 void tst_QThreadPool::expiryTimeoutRace() // QTBUG-3786
 {
-#ifdef Q_OS_WIN
-    QSKIP("This test is unstable on Windows. See QTBUG-3786.");
-#endif
     ExpiryTimeoutTask task;
 
     TestThreadPool threadPool;

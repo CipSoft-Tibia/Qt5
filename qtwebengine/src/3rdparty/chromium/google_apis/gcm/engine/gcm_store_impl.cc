@@ -189,7 +189,7 @@ std::string ParseInstanceIDKey(const std::string& key) {
 // outlive the slice.
 // For example: MakeSlice(MakeOutgoingKey(x)) is invalid.
 leveldb::Slice MakeSlice(const base::StringPiece& s) {
-  return leveldb::Slice(s.begin(), s.size());
+  return leveldb::Slice(s.data(), s.size());
 }
 
 }  // namespace
@@ -198,7 +198,6 @@ class GCMStoreImpl::Backend
     : public base::RefCountedThreadSafe<GCMStoreImpl::Backend> {
  public:
   Backend(const base::FilePath& path,
-          bool remove_account_mappings_with_email_key,
           scoped_refptr<base::SequencedTaskRunner> foreground_runner,
           std::unique_ptr<Encryptor> encryptor);
 
@@ -272,7 +271,6 @@ class GCMStoreImpl::Backend
   bool LoadInstanceIDData(std::map<std::string, std::string>* instance_id_data);
 
   const base::FilePath path_;
-  bool remove_account_mappings_with_email_key_;
   scoped_refptr<base::SequencedTaskRunner> foreground_task_runner_;
   std::unique_ptr<Encryptor> encryptor_;
 
@@ -281,12 +279,9 @@ class GCMStoreImpl::Backend
 
 GCMStoreImpl::Backend::Backend(
     const base::FilePath& path,
-    bool remove_account_mappings_with_email_key,
     scoped_refptr<base::SequencedTaskRunner> foreground_task_runner,
     std::unique_ptr<Encryptor> encryptor)
     : path_(path),
-      remove_account_mappings_with_email_key_(
-          remove_account_mappings_with_email_key),
       foreground_task_runner_(foreground_task_runner),
       encryptor_(std::move(encryptor)) {}
 
@@ -384,18 +379,6 @@ void GCMStoreImpl::Backend::Load(StoreOpenMode open_mode,
       UMA_HISTOGRAM_COUNTS_1M("GCM.StoreSizeKB",
                               static_cast<int>(file_size / 1024));
     }
-
-    UMA_HISTOGRAM_COUNTS_1M("GCM.RestoredRegistrations",
-                            gcm_registration_count);
-    UMA_HISTOGRAM_COUNTS_1M("GCM.RestoredOutgoingMessages",
-                            result->outgoing_messages.size());
-    UMA_HISTOGRAM_COUNTS_1M("GCM.RestoredIncomingMessages",
-                            result->incoming_messages.size());
-
-    UMA_HISTOGRAM_COUNTS_1M("InstanceID.RestoredTokenCount",
-                            instance_id_token_count);
-    UMA_HISTOGRAM_COUNTS_1M("InstanceID.RestoredIDCount",
-                            result->instance_id_data.size());
   }
 
   DVLOG(1) << "Succeeded in loading "
@@ -1158,14 +1141,7 @@ bool GCMStoreImpl::Backend::LoadAccountMappingInfo(
   }
 
   for (const auto& account_mapping : loaded_account_mappings) {
-    bool remove = remove_account_mappings_with_email_key_ &&
-                  account_mapping.account_id.IsEmail();
-    base::UmaHistogramBoolean("GCM.RemoveAccountMappingWhenLoading", remove);
-    if (remove) {
-      RemoveAccountMapping(account_mapping.account_id, base::DoNothing());
-    } else {
-      account_mappings->push_back(account_mapping);
-    }
+    account_mappings->push_back(account_mapping);
   }
 
   return true;
@@ -1240,11 +1216,9 @@ bool GCMStoreImpl::Backend::LoadInstanceIDData(
 
 GCMStoreImpl::GCMStoreImpl(
     const base::FilePath& path,
-    bool remove_account_mappings_with_email_key,
     scoped_refptr<base::SequencedTaskRunner> blocking_task_runner,
     std::unique_ptr<Encryptor> encryptor)
     : backend_(new Backend(path,
-                           remove_account_mappings_with_email_key,
                            base::SingleThreadTaskRunner::GetCurrentDefault(),
                            std::move(encryptor))),
       blocking_task_runner_(blocking_task_runner) {}
@@ -1459,7 +1433,6 @@ void GCMStoreImpl::LoadContinuation(LoadCallback callback,
     std::move(callback).Run(std::move(result));
     return;
   }
-  int num_throttled_apps = 0;
   for (OutgoingMessageMap::const_iterator
            iter = result->outgoing_messages.begin();
        iter != result->outgoing_messages.end(); ++iter) {
@@ -1470,10 +1443,7 @@ void GCMStoreImpl::LoadContinuation(LoadCallback callback,
       app_message_counts_[data_message->category()] = 1;
     else
       app_message_counts_[data_message->category()]++;
-    if (app_message_counts_[data_message->category()] == kMessagesPerAppLimit)
-      num_throttled_apps++;
   }
-  UMA_HISTOGRAM_COUNTS_1M("GCM.NumThrottledApps", num_throttled_apps);
   std::move(callback).Run(std::move(result));
 }
 

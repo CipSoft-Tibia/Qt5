@@ -17,10 +17,10 @@
 
 #include <vector>
 
-#include "dawn/native/BindGroupLayout.h"
-
+#include "dawn/common/MutexProtected.h"
 #include "dawn/common/SlabAllocator.h"
 #include "dawn/common/ityp_stack_vec.h"
+#include "dawn/native/BindGroupLayoutInternal.h"
 #include "dawn/native/d3d12/BindGroupD3D12.h"
 #include "dawn/native/d3d12/d3d12_platform.h"
 
@@ -37,11 +37,9 @@ class StagingDescriptorAllocator;
 static constexpr uint32_t kRegisterSpacePlaceholder =
     D3D12_DRIVER_RESERVED_REGISTER_SPACE_VALUES_START;
 
-class BindGroupLayout final : public BindGroupLayoutBase {
+class BindGroupLayout final : public BindGroupLayoutInternalBase {
   public:
-    static Ref<BindGroupLayout> Create(Device* device,
-                                       const BindGroupLayoutDescriptor* descriptor,
-                                       PipelineCompatibilityToken pipelineCompatibilityToken);
+    static Ref<BindGroupLayout> Create(Device* device, const BindGroupLayoutDescriptor* descriptor);
 
     ResultOrError<Ref<BindGroup>> AllocateBindGroup(Device* device,
                                                     const BindGroupDescriptor* descriptor);
@@ -59,13 +57,11 @@ class BindGroupLayout final : public BindGroupLayoutBase {
     uint32_t GetCbvUavSrvDescriptorCount() const;
     uint32_t GetSamplerDescriptorCount() const;
 
-    const std::vector<D3D12_DESCRIPTOR_RANGE>& GetCbvUavSrvDescriptorRanges() const;
-    const std::vector<D3D12_DESCRIPTOR_RANGE>& GetSamplerDescriptorRanges() const;
+    const std::vector<D3D12_DESCRIPTOR_RANGE1>& GetCbvUavSrvDescriptorRanges() const;
+    const std::vector<D3D12_DESCRIPTOR_RANGE1>& GetSamplerDescriptorRanges() const;
 
   private:
-    BindGroupLayout(Device* device,
-                    const BindGroupLayoutDescriptor* descriptor,
-                    PipelineCompatibilityToken pipelineCompatibilityToken);
+    BindGroupLayout(Device* device, const BindGroupLayoutDescriptor* descriptor);
     ~BindGroupLayout() override = default;
 
     // Contains the offset into the descriptor heap for the given resource view. Samplers and
@@ -82,13 +78,13 @@ class BindGroupLayout final : public BindGroupLayoutBase {
     uint32_t mCbvUavSrvDescriptorCount;
     uint32_t mSamplerDescriptorCount;
 
-    std::vector<D3D12_DESCRIPTOR_RANGE> mCbvUavSrvDescriptorRanges;
-    std::vector<D3D12_DESCRIPTOR_RANGE> mSamplerDescriptorRanges;
+    std::vector<D3D12_DESCRIPTOR_RANGE1> mCbvUavSrvDescriptorRanges;
+    std::vector<D3D12_DESCRIPTOR_RANGE1> mSamplerDescriptorRanges;
 
-    SlabAllocator<BindGroup> mBindGroupAllocator;
+    MutexProtected<SlabAllocator<BindGroup>> mBindGroupAllocator;
 
-    StagingDescriptorAllocator* mSamplerAllocator = nullptr;
-    StagingDescriptorAllocator* mViewAllocator = nullptr;
+    MutexProtected<StagingDescriptorAllocator>* mSamplerAllocator = nullptr;
+    MutexProtected<StagingDescriptorAllocator>* mViewAllocator = nullptr;
 };
 
 }  // namespace dawn::native::d3d12

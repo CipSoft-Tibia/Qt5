@@ -407,8 +407,7 @@ void WebRtcTextLogHandler::FireGenericDoneCallback(
       case LoggingState::STOPPED:
         return "stopped";
     }
-    NOTREACHED();
-    return "";
+    NOTREACHED_NORETURN();
   };
 
   std::string error_message_with_state =
@@ -466,13 +465,12 @@ void WebRtcTextLogHandler::OnGetNetworkInterfaceListFinish(
   }
 
   // Chrome version
+  LogToCircularBuffer(
+      base::StrCat({"Chrome version: ", version_info::GetVersionNumber(), " "
 #if !defined(TOOLKIT_QT)
-  LogToCircularBuffer("Chrome version: " + version_info::GetVersionNumber() +
-                      " " +
-                      chrome::GetChannelName(chrome::WithExtendedStable(true)));
-#else
-  LogToCircularBuffer("Chrome version: " + version_info::GetVersionNumber());
+                    , chrome::GetChannelName(chrome::WithExtendedStable(true))
 #endif
+                   }));
 
   // OS
   LogToCircularBuffer(base::SysInfo::OperatingSystemName() + " " +
@@ -494,7 +492,7 @@ void WebRtcTextLogHandler::OnGetNetworkInterfaceListFinish(
   // Computer model
   std::string computer_model = "Not available";
 #if BUILDFLAG(IS_MAC)
-  computer_model = base::mac::GetModelIdentifier();
+  computer_model = base::SysInfo::HardwareModelName();
 #elif BUILDFLAG(IS_CHROMEOS_ASH)
   if (const absl::optional<base::StringPiece> computer_model_statistic =
           ash::system::StatisticsProvider::GetInstance()->GetMachineStatistic(
@@ -543,10 +541,7 @@ void WebRtcTextLogHandler::OnGetNetworkInterfaceListFinish(
 #if BUILDFLAG(CHROME_WIDE_ECHO_CANCELLATION)
   if (media::IsChromeWideEchoCancellationEnabled()) {
     LogToCircularBuffer(base::StrCat(
-        {"ChromeWideEchoCancellation : Enabled", ", processing_fifo_size = ",
-         NumberToString(
-             media::kChromeWideEchoCancellationProcessingFifoSize.Get()),
-         ", minimize_resampling = ",
+        {"ChromeWideEchoCancellation : Enabled", ", minimize_resampling = ",
          media::kChromeWideEchoCancellationMinimizeResampling.Get() ? "true"
                                                                     : "false",
          ", allow_all_sample_rates = ",
@@ -555,6 +550,14 @@ void WebRtcTextLogHandler::OnGetNetworkInterfaceListFinish(
              : "false"}));
   } else {
     LogToCircularBuffer("ChromeWideEchoCancellation : Disabled");
+  }
+
+  if (base::FeatureList::IsEnabled(media::kDecreaseProcessingAudioFifoSize)) {
+    LogToCircularBuffer(base::StrCat(
+        {"DecreaseProcessingAudioFifoSize : Enabled", ", fifo_size = ",
+         base::NumberToString(media::GetProcessingAudioFifoSize())}));
+  } else {
+    LogToCircularBuffer("DecreaseProcessingAudioFifoSize : Disabled");
   }
 #endif
 

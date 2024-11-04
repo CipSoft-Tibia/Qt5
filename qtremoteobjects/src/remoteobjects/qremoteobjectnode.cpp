@@ -44,6 +44,7 @@ struct ManagedGadgetTypeEntry
 static QMutex s_managedTypesMutex;
 static QHash<int, ManagedGadgetTypeEntry> s_managedTypes;
 static QHash<int, QSet<QtROIoDeviceBase*>> s_trackedConnections;
+static QLocalServer::SocketOptions s_localServerOptions = QLocalServer::NoOptions;
 
 static void GadgetsStaticMetacallFunction(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
 {
@@ -746,7 +747,7 @@ static void trackConnection(int typeId, QtROIoDeviceBase *connection)
     // Unregister the type only when the connection is destroyed
     // Do not unregister types when the connections is discconected, because
     // if it gets reconnected it will not register the types again
-    QObject::connect(connection, &QtROIoDeviceBase::destroyed, unregisterIfNotUsed);
+    QObject::connect(connection, &QtROIoDeviceBase::destroyed, connection, unregisterIfNotUsed);
 }
 
 struct EnumPair {
@@ -1192,6 +1193,8 @@ bool QRemoteObjectNodePrivate::initConnection(const QUrl &address)
     QObject::connect(connection, &QtROIoDeviceBase::readyRead, q, [this, connection]() {
         onClientRead(connection);
     });
+    connect(connection, &QtROClientIoDevice::setError, this,
+            &QRemoteObjectNodePrivate::setLastError);
     connection->connectToServer();
 
     return true;
@@ -1554,6 +1557,7 @@ void QRemoteObjectNodePrivate::onClientRead(QObject *obj)
             QSharedPointer<QRemoteObjectReplicaImplementation> rep = qSharedPointerCast<QRemoteObjectReplicaImplementation>(replicas.value(rxName).toStrongRef());
             if (rep) {
                 qROPrivDebug() << "Received InvokeReplyPacket ack'ing serial id:" << ackedSerialId;
+                rxValue = decodeVariant(std::move(rxValue), {});
                 rep->notifyAboutReply(ackedSerialId, rxValue);
             } else { //replica has been deleted, remove from list
                 replicas.remove(rxName);
@@ -1676,6 +1680,7 @@ void QRemoteObjectNodePrivate::onClientRead(QObject *obj)
     \value HostUrlInvalid The given url has an invalid or unrecognized scheme.
     \value ProtocolMismatch The client and the server have different protocol versions.
     \value ListenFailed Can't listen on the specified host port.
+    \value SocketAccessError The client isn't allowed to connect to the server. Ensure that QRemoteObjectHost::setLocalServerOptions is set appropriately.
 */
 
 /*!
@@ -1696,7 +1701,7 @@ void QRemoteObjectNodePrivate::onClientRead(QObject *obj)
 */
 
 /*!
-    \fn ObjectType *QRemoteObjectNode::acquire(const QString &name)
+    \fn template <class ObjectType> ObjectType *QRemoteObjectNode::acquire(const QString &name)
 
     Returns a pointer to a Replica of type ObjectType (which is a template
     parameter and must inherit from \l QRemoteObjectReplica). That is, the
@@ -1966,6 +1971,13 @@ bool QRemoteObjectHostBasePrivate::setHostUrlBaseImpl(
         return false;
     }
     remoteObjectIo = new QRemoteObjectSourceIo(hostAddress, q);
+    QLocalServer::SocketOptions socketOptions;
+    {
+        QMutexLocker lock(&s_managedTypesMutex);
+        socketOptions = s_localServerOptions;
+    }
+    if (socketOptions != QLocalServer::NoOptions)
+        remoteObjectIo->setSocketOptions(socketOptions);
 
     if (allowedSchemas == QRemoteObjectHostBase::AllowedSchemas::BuiltInSchemasOnly && !remoteObjectIo->startListening()) {
         setLastError(QRemoteObjectHostBase::ListenFailed);
@@ -1984,6 +1996,26 @@ bool QRemoteObjectHostBasePrivate::setHostUrlBaseImpl(
     QObject::connect(remoteObjectIo, &QRemoteObjectSourceIo::remoteObjectRemoved, q, &QRemoteObjectHostBase::remoteObjectRemoved);
 
     return true;
+}
+
+/*!
+    \brief Sets the socket options for QLocalServer backends to \a options.
+    \since 6.7
+
+    It must be set before the QRemoteObjectHost object starts listening.
+    It has no consequence for already listening QRemoteObjectHost
+    objects or QRemoteObjectHost objects that use different
+    backends than QLocalServer. QRemoteObjectHost objects start to
+    listen during construction if the \e address argument is
+    non-empty, otherwise when the address is set via setHostUrl().
+
+    \sa setHostUrl(), QRemoteObjectHost()
+
+*/
+void QRemoteObjectHost::setLocalServerOptions(QLocalServer::SocketOptions options)
+{
+    QMutexLocker lock(&s_managedTypesMutex);
+    s_localServerOptions = options;
 }
 
 /*!
@@ -2320,7 +2352,7 @@ void QRemoteObjectNode::addClientSideConnection(QIODevice *ioDevice)
 */
 
 /*!
-    \fn QStringList QRemoteObjectNode::instances() const
+    \fn template<typename T> QStringList QRemoteObjectNode::instances() const
 
     This templated function (taking a \l repc generated type as the template parameter) will
     return the list of names of every instance of that type on the Remote

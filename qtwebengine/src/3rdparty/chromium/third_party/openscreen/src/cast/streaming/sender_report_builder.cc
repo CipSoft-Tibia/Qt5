@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 #include "cast/streaming/packet_util.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 SenderReportBuilder::SenderReportBuilder(RtcpSession* session)
     : session_(session) {
@@ -17,9 +16,9 @@ SenderReportBuilder::SenderReportBuilder(RtcpSession* session)
 
 SenderReportBuilder::~SenderReportBuilder() = default;
 
-std::pair<absl::Span<uint8_t>, StatusReportId> SenderReportBuilder::BuildPacket(
+std::pair<ByteBuffer, StatusReportId> SenderReportBuilder::BuildPacket(
     const RtcpSenderReport& sender_report,
-    absl::Span<uint8_t> buffer) const {
+    ByteBuffer buffer) const {
   OSP_CHECK_GE(buffer.size(), kRequiredBufferSize);
 
   uint8_t* const packet_begin = buffer.data();
@@ -33,23 +32,22 @@ std::pair<absl::Span<uint8_t>, StatusReportId> SenderReportBuilder::BuildPacket(
   } else {
     header.with.report_count = 0;
   }
-  header.AppendFields(&buffer);
+  header.AppendFields(buffer);
 
-  AppendField<uint32_t>(session_->sender_ssrc(), &buffer);
+  AppendField<uint32_t>(session_->sender_ssrc(), buffer);
   const NtpTimestamp ntp_timestamp =
       session_->ntp_converter().ToNtpTimestamp(sender_report.reference_time);
-  AppendField<uint64_t>(ntp_timestamp, &buffer);
-  AppendField<uint32_t>(sender_report.rtp_timestamp.lower_32_bits(), &buffer);
-  AppendField<uint32_t>(sender_report.send_packet_count, &buffer);
-  AppendField<uint32_t>(sender_report.send_octet_count, &buffer);
+  AppendField<uint64_t>(ntp_timestamp, buffer);
+  AppendField<uint32_t>(sender_report.rtp_timestamp.lower_32_bits(), buffer);
+  AppendField<uint32_t>(sender_report.send_packet_count, buffer);
+  AppendField<uint32_t>(sender_report.send_octet_count, buffer);
   if (sender_report.report_block) {
-    sender_report.report_block->AppendFields(&buffer);
+    sender_report.report_block->AppendFields(buffer);
   }
 
   uint8_t* const packet_end = buffer.data();
-  return std::make_pair(
-      absl::Span<uint8_t>(packet_begin, packet_end - packet_begin),
-      ToStatusReportId(ntp_timestamp));
+  return std::make_pair(ByteBuffer(packet_begin, packet_end - packet_begin),
+                        ToStatusReportId(ntp_timestamp));
 }
 
 Clock::time_point SenderReportBuilder::GetRecentReportTime(
@@ -80,5 +78,4 @@ Clock::time_point SenderReportBuilder::GetRecentReportTime(
   return session_->ntp_converter().ToLocalTime(reconstructed);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

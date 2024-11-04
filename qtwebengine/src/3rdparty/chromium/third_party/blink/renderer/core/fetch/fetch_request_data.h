@@ -8,6 +8,7 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/unguessable_token.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "services/network/public/mojom/attribution.mojom-blink.h"
 #include "services/network/public/mojom/fetch_api.mojom-blink-forward.h"
 #include "services/network/public/mojom/referrer_policy.mojom-blink-forward.h"
 #include "services/network/public/mojom/trust_tokens.mojom-blink.h"
@@ -16,6 +17,7 @@
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/public/platform/web_url_request.h"
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/fetch/body_stream_buffer.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_load_priority.h"
@@ -140,6 +142,14 @@ class CORE_EXPORT FetchRequestData final
   bool BrowsingTopics() const { return browsing_topics_; }
   void SetBrowsingTopics(bool b) { browsing_topics_ = b; }
 
+  bool AdAuctionHeaders() const { return ad_auction_headers_; }
+  void SetAdAuctionHeaders(bool b) { ad_auction_headers_ = b; }
+
+  bool SharedStorageWritable() const { return shared_storage_writable_; }
+  void SetSharedStorageWritable(bool shared_storage_writable) {
+    shared_storage_writable_ = shared_storage_writable;
+  }
+
   bool IsHistoryNavigation() const { return is_history_navigation_; }
   void SetIsHistoryNavigation(bool b) { is_history_navigation_ = b; }
 
@@ -163,6 +173,23 @@ class CORE_EXPORT FetchRequestData final
       absl::optional<network::mojom::blink::TrustTokenParams>
           trust_token_params) {
     trust_token_params_ = std::move(trust_token_params);
+  }
+
+  network::mojom::AttributionReportingEligibility
+  AttributionReportingEligibility() const {
+    return attribution_reporting_eligibility_;
+  }
+  void SetAttributionReportingEligibility(
+      network::mojom::AttributionReportingEligibility eligibility) {
+    attribution_reporting_eligibility_ = eligibility;
+  }
+
+  base::UnguessableToken ServiceWorkerRaceNetworkRequestToken() const {
+    return service_worker_race_network_request_token_;
+  }
+  void SetServiceWorkerRaceNetworkRequestToken(
+      const base::UnguessableToken& token) {
+    service_worker_race_network_request_token_ = token;
   }
 
   void Trace(Visitor*) const;
@@ -211,7 +238,12 @@ class CORE_EXPORT FetchRequestData final
       network::mojom::RequestDestination::kEmpty;
   bool keepalive_ = false;
   bool browsing_topics_ = false;
+  bool ad_auction_headers_ = false;
+  bool shared_storage_writable_ = false;
   bool is_history_navigation_ = false;
+  network::mojom::AttributionReportingEligibility
+      attribution_reporting_eligibility_ =
+          network::mojom::AttributionReportingEligibility::kUnset;
   // A specific factory that should be used for this request instead of whatever
   // the system would otherwise decide to use to load this request.
   // Currently used for blob: URLs, to ensure they can still be loaded even if
@@ -219,6 +251,11 @@ class CORE_EXPORT FetchRequestData final
   HeapMojoRemote<network::mojom::blink::URLLoaderFactory> url_loader_factory_;
   base::UnguessableToken window_id_;
   Member<ExecutionContext> execution_context_;
+
+  // A token set only when the fetch request is initiated with ServiceWorker
+  // RaceNetworkRequest(crbug.com/1420517). When the request is cloned, this
+  // member shouldn't be copied to the new request.
+  base::UnguessableToken service_worker_race_network_request_token_;
 };
 
 }  // namespace blink

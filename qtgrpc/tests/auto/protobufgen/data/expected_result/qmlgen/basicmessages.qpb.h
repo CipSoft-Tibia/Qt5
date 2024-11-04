@@ -12,6 +12,7 @@
 
 #include <QtCore/qbytearray.h>
 #include <QtCore/qstring.h>
+#include "tst_qtprotobufgen_qml_gen_exports.qpb.h"
 
 #include <QtCore/qmetatype.h>
 #include <QtCore/qlist.h>
@@ -19,51 +20,110 @@
 
 #include <memory>
 
-#if defined(QT_SHARED) || !defined(QT_STATIC)
-#  if defined(QT_BUILD_TST_QTPROTOBUFGEN_QML_GEN_LIB)
-#    define QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT Q_DECL_EXPORT
-#  else
-#    define QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT Q_DECL_IMPORT
-#  endif
-#else
-#  define QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT
-#endif
 
 namespace qtprotobufnamespace::tests {
 class EmptyMessage;
 using EmptyMessageRepeated = QList<EmptyMessage>;
+namespace EmptyMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace EmptyMessage_QtProtobufNested
+
 class SimpleBoolMessage;
 using SimpleBoolMessageRepeated = QList<SimpleBoolMessage>;
+namespace SimpleBoolMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleBoolMessage_QtProtobufNested
+
 class SimpleIntMessage;
 using SimpleIntMessageRepeated = QList<SimpleIntMessage>;
+namespace SimpleIntMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleIntMessage_QtProtobufNested
+
 class SimpleSIntMessage;
 using SimpleSIntMessageRepeated = QList<SimpleSIntMessage>;
+namespace SimpleSIntMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSIntMessage_QtProtobufNested
+
 class SimpleUIntMessage;
 using SimpleUIntMessageRepeated = QList<SimpleUIntMessage>;
+namespace SimpleUIntMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUIntMessage_QtProtobufNested
+
 class SimpleInt64Message;
 using SimpleInt64MessageRepeated = QList<SimpleInt64Message>;
+namespace SimpleInt64Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleInt64Message_QtProtobufNested
+
 class SimpleSInt64Message;
 using SimpleSInt64MessageRepeated = QList<SimpleSInt64Message>;
+namespace SimpleSInt64Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSInt64Message_QtProtobufNested
+
 class SimpleUInt64Message;
 using SimpleUInt64MessageRepeated = QList<SimpleUInt64Message>;
+namespace SimpleUInt64Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleUInt64Message_QtProtobufNested
+
 class SimpleStringMessage;
 using SimpleStringMessageRepeated = QList<SimpleStringMessage>;
+namespace SimpleStringMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleStringMessage_QtProtobufNested
+
 class SimpleFloatMessage;
 using SimpleFloatMessageRepeated = QList<SimpleFloatMessage>;
+namespace SimpleFloatMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFloatMessage_QtProtobufNested
+
 class SimpleDoubleMessage;
 using SimpleDoubleMessageRepeated = QList<SimpleDoubleMessage>;
+namespace SimpleDoubleMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleDoubleMessage_QtProtobufNested
+
 class SimpleBytesMessage;
 using SimpleBytesMessageRepeated = QList<SimpleBytesMessage>;
+namespace SimpleBytesMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleBytesMessage_QtProtobufNested
+
 class SimpleFixedInt32Message;
 using SimpleFixedInt32MessageRepeated = QList<SimpleFixedInt32Message>;
+namespace SimpleFixedInt32Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixedInt32Message_QtProtobufNested
+
 class SimpleFixedInt64Message;
 using SimpleFixedInt64MessageRepeated = QList<SimpleFixedInt64Message>;
+namespace SimpleFixedInt64Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleFixedInt64Message_QtProtobufNested
+
 class SimpleSFixedInt32Message;
 using SimpleSFixedInt32MessageRepeated = QList<SimpleSFixedInt32Message>;
+namespace SimpleSFixedInt32Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixedInt32Message_QtProtobufNested
+
 class SimpleSFixedInt64Message;
 using SimpleSFixedInt64MessageRepeated = QList<SimpleSFixedInt64Message>;
+namespace SimpleSFixedInt64Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace SimpleSFixedInt64Message_QtProtobufNested
+
 class ComplexMessage;
 using ComplexMessageRepeated = QList<ComplexMessage>;
+namespace ComplexMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace ComplexMessage_QtProtobufNested
+
 
 class EmptyMessage_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT EmptyMessage : public QProtobufMessage
@@ -74,6 +134,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT EmptyMessage : public QProtobufMessag
     QML_VALUE_TYPE(emptyMessage)
 
 public:
+    using QtProtobufFieldEnum = EmptyMessage_QtProtobufNested::QtProtobufFieldEnum;
     EmptyMessage();
     ~EmptyMessage();
     EmptyMessage(const EmptyMessage &other);
@@ -87,6 +148,11 @@ public:
 private:
     QExplicitlySharedDataPointer<EmptyMessage_QtProtobufData> dptr;
 };
+namespace EmptyMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(EmptyMessage)
+
+} // namespace EmptyMessage_QtProtobufNested
 
 class SimpleBoolMessage_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleBoolMessage : public QProtobufMessage
@@ -98,11 +164,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleBoolMessage : public QProtobufM
     Q_PROPERTY(bool testFieldBool READ testFieldBool WRITE setTestFieldBool SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldBoolProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleBoolMessage_QtProtobufNested::QtProtobufFieldEnum;
     SimpleBoolMessage();
     ~SimpleBoolMessage();
     SimpleBoolMessage(const SimpleBoolMessage &other);
@@ -119,6 +181,16 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleBoolMessage_QtProtobufData> dptr;
 };
+namespace SimpleBoolMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleBoolMessage)
+
+enum class QtProtobufFieldEnum {
+    TestFieldBoolProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleBoolMessage_QtProtobufNested
 
 class SimpleIntMessage_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleIntMessage : public QProtobufMessage
@@ -127,15 +199,10 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleIntMessage : public QProtobufMe
     Q_PROTOBUF_OBJECT
     Q_DECLARE_PROTOBUF_SERIALIZERS(SimpleIntMessage)
     QML_VALUE_TYPE(simpleIntMessage)
-    Q_PROPERTY(QtProtobuf::int32 testFieldInt_p READ testFieldInt WRITE setTestFieldInt SCRIPTABLE false)
-    Q_PROPERTY(int testFieldInt READ testFieldInt_p WRITE setTestFieldInt_p SCRIPTABLE true)
+    Q_PROPERTY(QtProtobuf::int32 testFieldInt READ testFieldInt WRITE setTestFieldInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleIntMessage_QtProtobufNested::QtProtobufFieldEnum;
     SimpleIntMessage();
     ~SimpleIntMessage();
     SimpleIntMessage(const SimpleIntMessage &other);
@@ -150,10 +217,18 @@ public:
     static void registerTypes();
 
 private:
-    int testFieldInt_p() const;
-    void setTestFieldInt_p(const int &testFieldInt);
     QExplicitlySharedDataPointer<SimpleIntMessage_QtProtobufData> dptr;
 };
+namespace SimpleIntMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleIntMessage)
+
+enum class QtProtobufFieldEnum {
+    TestFieldIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleIntMessage_QtProtobufNested
 
 class SimpleSIntMessage_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleSIntMessage : public QProtobufMessage
@@ -165,11 +240,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleSIntMessage : public QProtobufM
     Q_PROPERTY(QtProtobuf::sint32 testFieldInt READ testFieldInt WRITE setTestFieldInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSIntMessage_QtProtobufNested::QtProtobufFieldEnum;
     SimpleSIntMessage();
     ~SimpleSIntMessage();
     SimpleSIntMessage(const SimpleSIntMessage &other);
@@ -186,6 +257,16 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSIntMessage_QtProtobufData> dptr;
 };
+namespace SimpleSIntMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleSIntMessage)
+
+enum class QtProtobufFieldEnum {
+    TestFieldIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSIntMessage_QtProtobufNested
 
 class SimpleUIntMessage_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleUIntMessage : public QProtobufMessage
@@ -197,11 +278,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleUIntMessage : public QProtobufM
     Q_PROPERTY(QtProtobuf::uint32 testFieldInt READ testFieldInt WRITE setTestFieldInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUIntMessage_QtProtobufNested::QtProtobufFieldEnum;
     SimpleUIntMessage();
     ~SimpleUIntMessage();
     SimpleUIntMessage(const SimpleUIntMessage &other);
@@ -218,6 +295,16 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUIntMessage_QtProtobufData> dptr;
 };
+namespace SimpleUIntMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleUIntMessage)
+
+enum class QtProtobufFieldEnum {
+    TestFieldIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUIntMessage_QtProtobufNested
 
 class SimpleInt64Message_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleInt64Message : public QProtobufMessage
@@ -229,11 +316,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleInt64Message : public QProtobuf
     Q_PROPERTY(QtProtobuf::int64 testFieldInt READ testFieldInt WRITE setTestFieldInt SCRIPTABLE false)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleInt64Message_QtProtobufNested::QtProtobufFieldEnum;
     SimpleInt64Message();
     ~SimpleInt64Message();
     SimpleInt64Message(const SimpleInt64Message &other);
@@ -250,6 +333,16 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleInt64Message_QtProtobufData> dptr;
 };
+namespace SimpleInt64Message_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleInt64Message)
+
+enum class QtProtobufFieldEnum {
+    TestFieldIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleInt64Message_QtProtobufNested
 
 class SimpleSInt64Message_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleSInt64Message : public QProtobufMessage
@@ -261,11 +354,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleSInt64Message : public QProtobu
     Q_PROPERTY(QtProtobuf::sint64 testFieldInt READ testFieldInt WRITE setTestFieldInt SCRIPTABLE false)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSInt64Message_QtProtobufNested::QtProtobufFieldEnum;
     SimpleSInt64Message();
     ~SimpleSInt64Message();
     SimpleSInt64Message(const SimpleSInt64Message &other);
@@ -282,6 +371,16 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSInt64Message_QtProtobufData> dptr;
 };
+namespace SimpleSInt64Message_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleSInt64Message)
+
+enum class QtProtobufFieldEnum {
+    TestFieldIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSInt64Message_QtProtobufNested
 
 class SimpleUInt64Message_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleUInt64Message : public QProtobufMessage
@@ -293,11 +392,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleUInt64Message : public QProtobu
     Q_PROPERTY(QtProtobuf::uint64 testFieldInt READ testFieldInt WRITE setTestFieldInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleUInt64Message_QtProtobufNested::QtProtobufFieldEnum;
     SimpleUInt64Message();
     ~SimpleUInt64Message();
     SimpleUInt64Message(const SimpleUInt64Message &other);
@@ -314,6 +409,16 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleUInt64Message_QtProtobufData> dptr;
 };
+namespace SimpleUInt64Message_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleUInt64Message)
+
+enum class QtProtobufFieldEnum {
+    TestFieldIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleUInt64Message_QtProtobufNested
 
 class SimpleStringMessage_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleStringMessage : public QProtobufMessage
@@ -325,11 +430,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleStringMessage : public QProtobu
     Q_PROPERTY(QString testFieldString READ testFieldString WRITE setTestFieldString SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldStringProtoFieldNumber = 6,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleStringMessage_QtProtobufNested::QtProtobufFieldEnum;
     SimpleStringMessage();
     ~SimpleStringMessage();
     SimpleStringMessage(const SimpleStringMessage &other);
@@ -346,6 +447,16 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleStringMessage_QtProtobufData> dptr;
 };
+namespace SimpleStringMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleStringMessage)
+
+enum class QtProtobufFieldEnum {
+    TestFieldStringProtoFieldNumber = 6,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleStringMessage_QtProtobufNested
 
 class SimpleFloatMessage_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleFloatMessage : public QProtobufMessage
@@ -357,11 +468,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleFloatMessage : public QProtobuf
     Q_PROPERTY(float testFieldFloat READ testFieldFloat WRITE setTestFieldFloat SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldFloatProtoFieldNumber = 7,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFloatMessage_QtProtobufNested::QtProtobufFieldEnum;
     SimpleFloatMessage();
     ~SimpleFloatMessage();
     SimpleFloatMessage(const SimpleFloatMessage &other);
@@ -378,6 +485,16 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFloatMessage_QtProtobufData> dptr;
 };
+namespace SimpleFloatMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleFloatMessage)
+
+enum class QtProtobufFieldEnum {
+    TestFieldFloatProtoFieldNumber = 7,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFloatMessage_QtProtobufNested
 
 class SimpleDoubleMessage_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleDoubleMessage : public QProtobufMessage
@@ -389,11 +506,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleDoubleMessage : public QProtobu
     Q_PROPERTY(double testFieldDouble READ testFieldDouble WRITE setTestFieldDouble SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldDoubleProtoFieldNumber = 8,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleDoubleMessage_QtProtobufNested::QtProtobufFieldEnum;
     SimpleDoubleMessage();
     ~SimpleDoubleMessage();
     SimpleDoubleMessage(const SimpleDoubleMessage &other);
@@ -410,6 +523,16 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleDoubleMessage_QtProtobufData> dptr;
 };
+namespace SimpleDoubleMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleDoubleMessage)
+
+enum class QtProtobufFieldEnum {
+    TestFieldDoubleProtoFieldNumber = 8,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleDoubleMessage_QtProtobufNested
 
 class SimpleBytesMessage_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleBytesMessage : public QProtobufMessage
@@ -421,11 +544,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleBytesMessage : public QProtobuf
     Q_PROPERTY(QByteArray testFieldBytes READ testFieldBytes WRITE setTestFieldBytes SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldBytesProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleBytesMessage_QtProtobufNested::QtProtobufFieldEnum;
     SimpleBytesMessage();
     ~SimpleBytesMessage();
     SimpleBytesMessage(const SimpleBytesMessage &other);
@@ -442,6 +561,16 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleBytesMessage_QtProtobufData> dptr;
 };
+namespace SimpleBytesMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleBytesMessage)
+
+enum class QtProtobufFieldEnum {
+    TestFieldBytesProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleBytesMessage_QtProtobufNested
 
 class SimpleFixedInt32Message_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleFixedInt32Message : public QProtobufMessage
@@ -450,15 +579,10 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleFixedInt32Message : public QPro
     Q_PROTOBUF_OBJECT
     Q_DECLARE_PROTOBUF_SERIALIZERS(SimpleFixedInt32Message)
     QML_VALUE_TYPE(simpleFixedInt32Message)
-    Q_PROPERTY(QtProtobuf::fixed32 testFieldFixedInt32_p READ testFieldFixedInt32 WRITE setTestFieldFixedInt32 SCRIPTABLE false)
-    Q_PROPERTY(unsigned int testFieldFixedInt32 READ testFieldFixedInt32_p WRITE setTestFieldFixedInt32_p SCRIPTABLE true)
+    Q_PROPERTY(QtProtobuf::fixed32 testFieldFixedInt32 READ testFieldFixedInt32 WRITE setTestFieldFixedInt32 SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldFixedInt32ProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixedInt32Message_QtProtobufNested::QtProtobufFieldEnum;
     SimpleFixedInt32Message();
     ~SimpleFixedInt32Message();
     SimpleFixedInt32Message(const SimpleFixedInt32Message &other);
@@ -473,10 +597,18 @@ public:
     static void registerTypes();
 
 private:
-    unsigned int testFieldFixedInt32_p() const;
-    void setTestFieldFixedInt32_p(const unsigned int &testFieldFixedInt32);
     QExplicitlySharedDataPointer<SimpleFixedInt32Message_QtProtobufData> dptr;
 };
+namespace SimpleFixedInt32Message_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleFixedInt32Message)
+
+enum class QtProtobufFieldEnum {
+    TestFieldFixedInt32ProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixedInt32Message_QtProtobufNested
 
 class SimpleFixedInt64Message_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleFixedInt64Message : public QProtobufMessage
@@ -488,11 +620,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleFixedInt64Message : public QPro
     Q_PROPERTY(QtProtobuf::fixed64 testFieldFixedInt64 READ testFieldFixedInt64 WRITE setTestFieldFixedInt64 SCRIPTABLE false)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldFixedInt64ProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleFixedInt64Message_QtProtobufNested::QtProtobufFieldEnum;
     SimpleFixedInt64Message();
     ~SimpleFixedInt64Message();
     SimpleFixedInt64Message(const SimpleFixedInt64Message &other);
@@ -509,6 +637,16 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleFixedInt64Message_QtProtobufData> dptr;
 };
+namespace SimpleFixedInt64Message_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleFixedInt64Message)
+
+enum class QtProtobufFieldEnum {
+    TestFieldFixedInt64ProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleFixedInt64Message_QtProtobufNested
 
 class SimpleSFixedInt32Message_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleSFixedInt32Message : public QProtobufMessage
@@ -517,15 +655,10 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleSFixedInt32Message : public QPr
     Q_PROTOBUF_OBJECT
     Q_DECLARE_PROTOBUF_SERIALIZERS(SimpleSFixedInt32Message)
     QML_VALUE_TYPE(simpleSFixedInt32Message)
-    Q_PROPERTY(QtProtobuf::sfixed32 testFieldFixedInt32_p READ testFieldFixedInt32 WRITE setTestFieldFixedInt32 SCRIPTABLE false)
-    Q_PROPERTY(int testFieldFixedInt32 READ testFieldFixedInt32_p WRITE setTestFieldFixedInt32_p SCRIPTABLE true)
+    Q_PROPERTY(QtProtobuf::sfixed32 testFieldFixedInt32 READ testFieldFixedInt32 WRITE setTestFieldFixedInt32 SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldFixedInt32ProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixedInt32Message_QtProtobufNested::QtProtobufFieldEnum;
     SimpleSFixedInt32Message();
     ~SimpleSFixedInt32Message();
     SimpleSFixedInt32Message(const SimpleSFixedInt32Message &other);
@@ -540,10 +673,18 @@ public:
     static void registerTypes();
 
 private:
-    int testFieldFixedInt32_p() const;
-    void setTestFieldFixedInt32_p(const int &testFieldFixedInt32);
     QExplicitlySharedDataPointer<SimpleSFixedInt32Message_QtProtobufData> dptr;
 };
+namespace SimpleSFixedInt32Message_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleSFixedInt32Message)
+
+enum class QtProtobufFieldEnum {
+    TestFieldFixedInt32ProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixedInt32Message_QtProtobufNested
 
 class SimpleSFixedInt64Message_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleSFixedInt64Message : public QProtobufMessage
@@ -555,11 +696,7 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT SimpleSFixedInt64Message : public QPr
     Q_PROPERTY(QtProtobuf::sfixed64 testFieldFixedInt64 READ testFieldFixedInt64 WRITE setTestFieldFixedInt64 SCRIPTABLE false)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldFixedInt64ProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = SimpleSFixedInt64Message_QtProtobufNested::QtProtobufFieldEnum;
     SimpleSFixedInt64Message();
     ~SimpleSFixedInt64Message();
     SimpleSFixedInt64Message(const SimpleSFixedInt64Message &other);
@@ -576,6 +713,16 @@ public:
 private:
     QExplicitlySharedDataPointer<SimpleSFixedInt64Message_QtProtobufData> dptr;
 };
+namespace SimpleSFixedInt64Message_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(SimpleSFixedInt64Message)
+
+enum class QtProtobufFieldEnum {
+    TestFieldFixedInt64ProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace SimpleSFixedInt64Message_QtProtobufNested
 
 class ComplexMessage_QtProtobufData;
 class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT ComplexMessage : public QProtobufMessage
@@ -584,18 +731,12 @@ class QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT ComplexMessage : public QProtobufMess
     Q_PROTOBUF_OBJECT
     Q_DECLARE_PROTOBUF_SERIALIZERS(ComplexMessage)
     QML_VALUE_TYPE(complexMessage)
-    Q_PROPERTY(QtProtobuf::int32 testFieldInt_p READ testFieldInt WRITE setTestFieldInt SCRIPTABLE false)
+    Q_PROPERTY(QtProtobuf::int32 testFieldInt READ testFieldInt WRITE setTestFieldInt SCRIPTABLE true)
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleStringMessage *testComplexField_p READ testComplexField_p WRITE setTestComplexField_p SCRIPTABLE false)
     Q_PROPERTY(qtprotobufnamespace::tests::SimpleStringMessage testComplexField READ testComplexField WRITE setTestComplexField)
-    Q_PROPERTY(int testFieldInt READ testFieldInt_p WRITE setTestFieldInt_p SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestFieldIntProtoFieldNumber = 1,
-        TestComplexFieldProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = ComplexMessage_QtProtobufNested::QtProtobufFieldEnum;
     ComplexMessage();
     ~ComplexMessage();
     ComplexMessage(const ComplexMessage &other);
@@ -607,18 +748,30 @@ public:
 
     QtProtobuf::int32 testFieldInt() const;
 
-    SimpleStringMessage &testComplexField() const;
+    bool hasTestComplexField() const;
+    SimpleStringMessage &testComplexField();
+    const SimpleStringMessage &testComplexField() const;
+    Q_INVOKABLE void clearTestComplexField();
     void setTestFieldInt(const QtProtobuf::int32 &testFieldInt);
     void setTestComplexField(const SimpleStringMessage &testComplexField);
     static void registerTypes();
 
 private:
-    int testFieldInt_p() const;
     SimpleStringMessage *testComplexField_p() const;
-    void setTestFieldInt_p(const int &testFieldInt);
     void setTestComplexField_p(SimpleStringMessage *testComplexField);
     QExplicitlySharedDataPointer<ComplexMessage_QtProtobufData> dptr;
 };
+namespace ComplexMessage_QtProtobufNested {
+Q_NAMESPACE_EXPORT(QPB_TST_QTPROTOBUFGEN_QML_GEN_EXPORT)
+QML_NAMED_ELEMENT(ComplexMessage)
+
+enum class QtProtobufFieldEnum {
+    TestFieldIntProtoFieldNumber = 1,
+    TestComplexFieldProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace ComplexMessage_QtProtobufNested
 } // namespace qtprotobufnamespace::tests
 
 Q_DECLARE_METATYPE(qtprotobufnamespace::tests::EmptyMessage)

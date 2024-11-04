@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "ash/public/cpp/bluetooth_config_service.h"
+#include "ash/webui/common/trusted_types_util.h"
 #include "base/check.h"
 #include "base/json/json_writer.h"
 #include "base/memory/ptr_util.h"
@@ -19,6 +20,7 @@
 #include "chrome/grit/bluetooth_pairing_dialog_resources.h"
 #include "chrome/grit/bluetooth_pairing_dialog_resources_map.h"
 #include "chrome/grit/generated_resources.h"
+#include "chromeos/constants/chromeos_features.h"
 #include "components/session_manager/core/session_manager.h"
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/web_ui.h"
@@ -27,13 +29,14 @@
 #include "device/bluetooth/chromeos/bluetooth_utils.h"
 #include "device/bluetooth/public/cpp/bluetooth_address.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/webui/color_change_listener/color_change_handler.h"
 #include "ui/wm/core/shadow_types.h"
 
 namespace ash {
 
 namespace {
 
-constexpr int kBluetoothPairingDialogHeight = 424;
+constexpr int kBluetoothPairingDialogHeight = 409;
 
 void AddBluetoothStrings(content::WebUIDataSource* html_source) {
   struct {
@@ -132,13 +135,17 @@ BluetoothPairingDialogUI::BluetoothPairingDialogUI(content::WebUI* web_ui)
 
   AddBluetoothStrings(source);
   source->AddLocalizedString("title", IDS_BLUETOOTH_PAIRING_PAIR_NEW_DEVICES);
+  source->AddBoolean("isJellyEnabled", ::chromeos::features::IsJellyEnabled());
 
   webui::SetupWebUIDataSource(
       source,
       base::make_span(kBluetoothPairingDialogResources,
                       kBluetoothPairingDialogResourcesSize),
       IDR_BLUETOOTH_PAIRING_DIALOG_BLUETOOTH_PAIRING_DIALOG_CONTAINER_HTML);
-  source->DisableTrustedTypesCSP();
+  // Enabling trusted types via trusted_types_util must be done after
+  // webui::SetupWebUIDataSource to override the trusted type CSP with correct
+  // policies for JS WebUIs.
+  ash::EnableTrustedTypesCSP(source);
 
   device::RecordUiSurfaceDisplayed(
       device::BluetoothUiSurface::kStandalonePairingDialog);
@@ -150,6 +157,12 @@ void BluetoothPairingDialogUI::BindInterface(
     mojo::PendingReceiver<bluetooth_config::mojom::CrosBluetoothConfig>
         receiver) {
   GetBluetoothConfigService(std::move(receiver));
+}
+
+void BluetoothPairingDialogUI::BindInterface(
+    mojo::PendingReceiver<color_change_listener::mojom::PageHandler> receiver) {
+  color_change_handler_ = std::make_unique<ui::ColorChangeHandler>(
+      web_ui()->GetWebContents(), std::move(receiver));
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(BluetoothPairingDialogUI)

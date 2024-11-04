@@ -1408,7 +1408,10 @@ static int svq3_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     /* for skipping the frame */
     s->cur_pic->f->pict_type = s->pict_type;
-    s->cur_pic->f->key_frame = (s->pict_type == AV_PICTURE_TYPE_I);
+    if (s->pict_type == AV_PICTURE_TYPE_I)
+        s->cur_pic->f->flags |= AV_FRAME_FLAG_KEY;
+    else
+        s->cur_pic->f->flags &= ~AV_FRAME_FLAG_KEY;
 
     ret = get_buffer(avctx, s->cur_pic);
     if (ret < 0)
@@ -1542,12 +1545,12 @@ static int svq3_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
     left = buf_size*8 - get_bits_count(&s->gb_slice);
 
     if (s->mb_y != s->mb_height || s->mb_x != s->mb_width) {
-        av_log(avctx, AV_LOG_INFO, "frame num %d incomplete pic x %d y %d left %d\n", avctx->frame_number, s->mb_y, s->mb_x, left);
+        av_log(avctx, AV_LOG_INFO, "frame num %"PRId64" incomplete pic x %d y %d left %d\n", avctx->frame_num, s->mb_y, s->mb_x, left);
         //av_hex_dump(stderr, buf+buf_size-8, 8);
     }
 
     if (left < 0) {
-        av_log(avctx, AV_LOG_ERROR, "frame num %d left %d\n", avctx->frame_number, left);
+        av_log(avctx, AV_LOG_ERROR, "frame num %"PRId64" left %d\n", avctx->frame_num, left);
         return -1;
     }
 

@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -57,9 +57,8 @@ source_set("api") {
   public = [
     "api/export.h",
     "api/network_interface.h",
-    "api/scoped_wake_lock.h",
-    "api/serial_delete_ptr.h",
     "api/task_runner.h",
+    "api/task_runner_deleter.h",
     "api/time.h",
     "api/tls_connection.h",
     "api/tls_connection_factory.h",
@@ -68,7 +67,7 @@ source_set("api") {
     "api/udp_socket.h",
   ]
   sources = [
-    "api/scoped_wake_lock.cc",
+    "api/task_runner_deleter.cc",
     "api/tls_connection.cc",
     "api/tls_connection_factory.cc",
     "api/trace_event.cc",
@@ -110,27 +109,13 @@ if (!build_with_chromium) {
     public_configs = [ "//util:trace_logging_config" ]
 
     if (is_linux) {
-      sources += [
-        "impl/network_interface_linux.cc",
-        "impl/scoped_wake_lock_linux.cc",
-        "impl/scoped_wake_lock_linux.h",
-      ]
+      sources += [ "impl/network_interface_linux.cc" ]
     } else if (is_mac) {
       defines += [
         # Required, to use the new IPv6 Sockets options introduced by RFC 3542.
         "__APPLE_USE_RFC_3542",
       ]
-
-      frameworks = [
-        "CoreFoundation.framework",
-        "IOKit.framework",
-      ]
-
-      sources += [
-        "impl/network_interface_mac.cc",
-        "impl/scoped_wake_lock_mac.cc",
-        "impl/scoped_wake_lock_mac.h",
-      ]
+      sources += [ "impl/network_interface_mac.cc" ]
     }
 
     if (is_posix) {
@@ -236,7 +221,6 @@ source_set("unittests") {
   visibility += [ "..:openscreen_unittests_all" ]
   public = []
   sources = [
-    "api/serial_delete_ptr_unittest.cc",
     "api/time_unittest.cc",
     "base/error_unittest.cc",
     "base/ip_address_unittest.cc",

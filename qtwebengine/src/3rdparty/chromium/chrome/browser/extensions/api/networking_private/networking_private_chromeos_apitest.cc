@@ -8,28 +8,20 @@
 #include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
-#include "base/functional/callback_helpers.h"
-#include "base/memory/ptr_util.h"
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
 #include "base/test/bind.h"
-#include "base/threading/thread_restrictions.h"
-#include "chrome/browser/ash/login/helper.h"
-#include "chrome/browser/browser_process.h"
-#include "chrome/browser/extensions/api/networking_private/networking_private_ui_delegate_chromeos.h"
+#include "base/test/test_future.h"
+#include "base/values.h"
 #include "chrome/browser/extensions/extension_apitest.h"
 #include "components/onc/onc_constants.h"
-#include "components/onc/onc_pref_names.h"
 #include "components/policy/core/browser/browser_policy_connector.h"
-#include "components/policy/core/common/external_data_fetcher.h"
 #include "components/policy/core/common/mock_configuration_policy_provider.h"
 #include "components/policy/core/common/policy_map.h"
 #include "components/policy/core/common/policy_types.h"
 #include "components/policy/policy_constants.h"
 #include "components/prefs/testing_pref_service.h"
 #include "components/proxy_config/pref_proxy_config_tracker_impl.h"
-#include "components/proxy_config/proxy_config_dictionary.h"
-#include "components/proxy_config/proxy_config_pref_names.h"
 #include "components/sync_preferences/testing_pref_service_syncable.h"
 #include "components/user_manager/user.h"
 #include "components/user_manager/user_manager.h"
@@ -39,15 +31,12 @@
 #include "extensions/browser/api/networking_private/networking_private_chromeos.h"
 #include "extensions/browser/api/networking_private/networking_private_delegate_factory.h"
 #include "extensions/common/switches.h"
-#include "extensions/common/value_builder.h"
 #include "extensions/test/extension_test_message_listener.h"
-#include "testing/gmock/include/gmock/gmock.h"
-#include "third_party/cros_system_api/dbus/service_constants.h"
+#include "third_party/cros_system_api/dbus/shill/dbus-constants.h"
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 #include "ash/constants/ash_switches.h"
 #include "chromeos/ash/components/cryptohome/cryptohome_parameters.h"
-#include "chromeos/ash/components/dbus/dbus_thread_manager.h"
 #include "chromeos/ash/components/dbus/shill/shill_device_client.h"
 #include "chromeos/ash/components/dbus/shill/shill_ipconfig_client.h"
 #include "chromeos/ash/components/dbus/shill/shill_manager_client.h"
@@ -55,23 +44,18 @@
 #include "chromeos/ash/components/dbus/shill/shill_service_client.h"
 #include "chromeos/ash/components/dbus/userdataauth/cryptohome_misc_client.h"
 #include "chromeos/ash/components/dbus/userdataauth/userdataauth_client.h"
-#include "chromeos/ash/components/network/cellular_metrics_logger.h"
 #include "chromeos/ash/components/network/managed_network_configuration_handler.h"
 #include "chromeos/ash/components/network/network_certificate_handler.h"
 #include "chromeos/ash/components/network/network_handler.h"
 #include "chromeos/ash/components/network/network_handler_test_helper.h"
 #include "chromeos/ash/components/network/network_state.h"
 #include "chromeos/ash/components/network/network_state_handler.h"
-#include "chromeos/ash/components/network/network_type_pattern.h"
 #include "chromeos/ash/components/network/onc/network_onc_utils.h"
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
-#include "chromeos/crosapi/mojom/test_controller.mojom-test-utils.h"
 #include "chromeos/crosapi/mojom/test_controller.mojom.h"
 #include "chromeos/lacros/lacros_service.h"
-
-using crosapi::mojom::ShillClientTestInterfaceAsyncWaiter;
 #endif
 
 // This tests the Chrome OS implementation of the networkingPrivate API
@@ -79,8 +63,8 @@ using crosapi::mojom::ShillClientTestInterfaceAsyncWaiter;
 // win/mac (NetworkingPrivateServiceClient) are different to reflect the
 // different implementations, but should be kept similar where possible.
 
-using testing::Return;
 using testing::_;
+using testing::Return;
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 using ash::ShillDeviceClient;
@@ -90,9 +74,9 @@ using ash::ShillProfileClient;
 using ash::ShillServiceClient;
 using ash::UserDataAuthClient;
 
+using extensions::NetworkingPrivateChromeOS;
 using extensions::NetworkingPrivateDelegate;
 using extensions::NetworkingPrivateDelegateFactory;
-using extensions::NetworkingPrivateChromeOS;
 #endif
 
 namespace {
@@ -518,17 +502,18 @@ class NetworkingPrivateChromeOSApiTestLacros
   bool SetUpAsh() {
     auto* service = chromeos::LacrosService::Get();
     if (!service->IsAvailable<crosapi::mojom::TestController>() ||
-        service->GetInterfaceVersion(crosapi::mojom::TestController::Uuid_) <
+        service->GetInterfaceVersion<crosapi::mojom::TestController>() <
             static_cast<int>(crosapi::mojom::TestController::MethodMinVersions::
                                  kBindShillClientTestInterfaceMinVersion)) {
       LOG(ERROR) << "Unsupported ash version.";
       return false;
     }
-    crosapi::mojom::TestControllerAsyncWaiter test_controller_waiter{
-        service->GetRemote<crosapi::mojom::TestController>().get()};
 
-    test_controller_waiter.BindShillClientTestInterface(
-        shill_test_.BindNewPipeAndPassReceiver());
+    base::test::TestFuture<void> future;
+    service->GetRemote<crosapi::mojom::TestController>()
+        ->BindShillClientTestInterface(shill_test_.BindNewPipeAndPassReceiver(),
+                                       future.GetCallback());
+    EXPECT_TRUE(future.Wait());
 
     ConfigFakeNetwork();
 
@@ -540,81 +525,96 @@ class NetworkingPrivateChromeOSApiTestLacros
   std::string GetSanitizedActiveUsername() override {
     auto* service = chromeos::LacrosService::Get();
     if (!service->IsAvailable<crosapi::mojom::TestController>() ||
-        service->GetInterfaceVersion(crosapi::mojom::TestController::Uuid_) <
+        service->GetInterfaceVersion<crosapi::mojom::TestController>() <
             static_cast<int>(crosapi::mojom::TestController::MethodMinVersions::
                                  kGetSanitizedActiveUsernameMinVersion)) {
       LOG(ERROR) << "Unsupported ash version.";
       return "";
     }
 
-    crosapi::mojom::TestControllerAsyncWaiter test_controller_waiter{
-        service->GetRemote<crosapi::mojom::TestController>().get()};
-
-    std::string userhash;
-    test_controller_waiter.GetSanitizedActiveUsername(&userhash);
-    return userhash;
+    base::test::TestFuture<const std::string&> future;
+    service->GetRemote<crosapi::mojom::TestController>()
+        ->GetSanitizedActiveUsername(future.GetCallback());
+    return future.Take();
   }
 
   void AddDevice(const std::string& device_path,
                  const std::string& type,
                  const std::string& name) override {
-    ShillClientTestInterfaceAsyncWaiter(shill_test_.get())
-        .AddDevice(device_path, type, name);
+    base::test::TestFuture<void> future;
+    shill_test_->AddDevice(device_path, type, name, future.GetCallback());
+    ASSERT_TRUE(future.Wait());
   }
 
   void SetDeviceProperty(const std::string& device_path,
                          const std::string& name,
                          const base::Value& value) override {
-    ShillClientTestInterfaceAsyncWaiter(shill_test_.get())
-        .SetDeviceProperty(device_path, name, value.Clone(),
-                           /*notify_changed=*/true);
+    base::test::TestFuture<void> future;
+    shill_test_->SetDeviceProperty(device_path, name, value.Clone(),
+                                   /*notify_changed=*/true,
+                                   future.GetCallback());
+    ASSERT_TRUE(future.Wait());
   }
 
   void SetSimLocked(const std::string& device_path, bool enabled) override {
-    ShillClientTestInterfaceAsyncWaiter(shill_test_.get())
-        .SetSimLocked(device_path, enabled);
+    base::test::TestFuture<void> future;
+    shill_test_->SetSimLocked(device_path, enabled, future.GetCallback());
+    ASSERT_TRUE(future.Wait());
   }
 
   void ClearDevices() override {
-    ShillClientTestInterfaceAsyncWaiter(shill_test_.get()).ClearDevices();
+    base::test::TestFuture<void> future;
+    shill_test_->ClearDevices(future.GetCallback());
+    ASSERT_TRUE(future.Wait());
   }
 
   void AddService(const std::string& service_path,
                   const std::string& name,
                   const std::string& type,
                   const std::string& state) override {
-    ShillClientTestInterfaceAsyncWaiter(shill_test_.get())
-        .AddService(service_path, service_path + "_guid", name, type, state,
-                    true /* add_to_visible */);
+    base::test::TestFuture<void> future;
+    shill_test_->AddService(service_path, service_path + "_guid", name, type,
+                            state, true /* add_to_visible */,
+                            future.GetCallback());
+    ASSERT_TRUE(future.Wait());
   }
 
   void ClearServices() override {
-    ShillClientTestInterfaceAsyncWaiter(shill_test_.get()).ClearServices();
+    base::test::TestFuture<void> future;
+    shill_test_->ClearServices(future.GetCallback());
+    ASSERT_TRUE(future.Wait());
   }
 
   void SetServiceProperty(const std::string& service_path,
                           const std::string& property,
                           const base::Value& value) override {
-    ShillClientTestInterfaceAsyncWaiter(shill_test_.get())
-        .SetServiceProperty(service_path, property, value.Clone());
+    base::test::TestFuture<void> future;
+    shill_test_->SetServiceProperty(service_path, property, value.Clone(),
+                                    future.GetCallback());
+    ASSERT_TRUE(future.Wait());
   }
 
   void AddIPConfig(const std::string& ip_config_path,
                    base::Value::Dict properties) override {
-    ShillClientTestInterfaceAsyncWaiter(shill_test_.get())
-        .AddIPConfig(ip_config_path, base::Value(std::move(properties)));
+    base::test::TestFuture<void> future;
+    shill_test_->AddIPConfig(ip_config_path, base::Value(std::move(properties)),
+                             future.GetCallback());
+    ASSERT_TRUE(future.Wait());
   }
 
   void AddProfile(const std::string& profile_path,
                   const std::string& userhash) override {
-    ShillClientTestInterfaceAsyncWaiter(shill_test_.get())
-        .AddProfile(profile_path, userhash);
+    base::test::TestFuture<void> future;
+    shill_test_->AddProfile(profile_path, userhash, future.GetCallback());
+    ASSERT_TRUE(future.Wait());
   }
 
   void AddServiceToProfile(const std::string& profile_path,
                            const std::string& service_path) override {
-    ShillClientTestInterfaceAsyncWaiter(shill_test_.get())
-        .AddServiceToProfile(profile_path, service_path);
+    base::test::TestFuture<void> future;
+    shill_test_->AddServiceToProfile(profile_path, service_path,
+                                     future.GetCallback());
+    ASSERT_TRUE(future.Wait());
   }
 
   std::string GetSharedProfilePath() override {
@@ -1079,18 +1079,15 @@ IN_PROC_BROWSER_TEST_F(NetworkingPrivateChromeOSApiTest,
   SetupCellular();
   // Create fake list of found networks.
   base::Value::List found_networks =
-      extensions::ListBuilder()
-          .Append(extensions::DictionaryBuilder()
+      base::Value::List()
+          .Append(base::Value::Dict()
                       .Set(shill::kNetworkIdProperty, "network1")
                       .Set(shill::kTechnologyProperty, "GSM")
-                      .Set(shill::kStatusProperty, "current")
-                      .Build())
-          .Append(extensions::DictionaryBuilder()
+                      .Set(shill::kStatusProperty, "current"))
+          .Append(base::Value::Dict()
                       .Set(shill::kNetworkIdProperty, "network2")
                       .Set(shill::kTechnologyProperty, "GSM")
-                      .Set(shill::kStatusProperty, "available")
-                      .Build())
-          .Build();
+                      .Set(shill::kStatusProperty, "available"));
   SetDeviceProperty(kCellularDevicePath, shill::kFoundNetworksProperty,
                     base::Value(std::move(found_networks)));
   EXPECT_TRUE(RunNetworkingSubtest("selectCellularMobileNetwork")) << message_;

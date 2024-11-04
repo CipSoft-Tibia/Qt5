@@ -59,25 +59,45 @@ Online demos using Compiler Explorer:
     (recommended)
 -   [single target using -m flags](https://gcc.godbolt.org/z/rGnjMevKG)
 
-Projects using Highway: (to add yours, feel free to raise an issue or contact us
-via the below email)
+We observe that Highway is referenced in the following open source projects,
+found via sourcegraph.com. Most are Github repositories. If you would like to
+add your project or link to it directly, feel free to raise an issue or contact
+us via the below email.
 
-*   [iresearch database index](https://github.com/iresearch-toolkit/iresearch/blob/e7638e7a4b99136ca41f82be6edccf01351a7223/core/utils/simd_utils.hpp)
-*   [JPEG XL image codec](https://github.com/libjxl/libjxl)
-*   [Grok JPEG 2000 image codec](https://github.com/GrokImageCompression/grok)
+*   Browsers: Chromium (+Vivaldi), Firefox (+floorp / foxhound / librewolf / Waterfox)
+*   Cryptography: google/distributed_point_functions
+*   Image codecs: eustas/2im, [Grok JPEG 2000](https://github.com/GrokImageCompression/grok), [JPEG XL](https://github.com/libjxl/libjxl), OpenHTJ2K
+*   Image processing: cloudinary/ssimulacra2, m-ab-s/media-autobuild_suite
+*   Image viewers: AlienCowEatCake/ImageViewer, mirillis/jpegxl-wic
+*   Information retrieval: [iresearch database index](https://github.com/iresearch-toolkit/iresearch/blob/e7638e7a4b99136ca41f82be6edccf01351a7223/core/utils/simd_utils.hpp), michaeljclark/zvec
+
+Other
+
+*   [zimt](https://github.com/kfjahnke/zimt): C++11 template library to process n-dimensional arrays with multi-threaded SIMD code
 *   [vectorized Quicksort](https://github.com/google/highway/tree/master/hwy/contrib/sort) ([paper](https://arxiv.org/abs/2205.05982))
+
+If you'd like to get Highway, in addition to cloning from this Github repository
+or using it as a Git submodule, you can also find it in the following package
+managers or repositories: alpinelinux, conan-io, conda-forge, DragonFlyBSD,
+freebsd, ghostbsd, microsoft/vcpkg, MidnightBSD, NetBSD, openSUSE, opnsense,
+Xilinx/Vitis_Libraries.
 
 ## Current status
 
 ### Targets
 
-Supported targets: scalar, S-SSE3, SSE4, AVX2, AVX-512, AVX3_DL (~Icelake,
-requires opt-in by defining `HWY_WANT_AVX3_DL`), NEON (ARMv7 and v8), SVE, SVE2,
-WASM SIMD, RISC-V V.
+Highway supports 17 targets, listed in alphabetical order of platform:
 
-`HWY_WASM_EMU256` is a 2x unrolled version of wasm128 and is enabled if
-`HWY_WANT_WASM2` is defined. This will remain supported until it is potentially
-superseded by a future version of WASM.
+-   Any: `EMU128`, `SCALAR`;
+-   Arm: `NEON` (ARMv7 and v8), `SVE`, `SVE2`;
+-   POWER: `PPC8` (v2.07), `PPC9` (v3.0), `PPC10` (v3.1B, not yet supported
+    due to compiler bugs, see #1207; also requires QEMU 7.2);
+-   RISC-V: `RVV` (1.0);
+-   WebAssembly: `WASM`, `WASM_EMU256` (a 2x unrolled version of wasm128,
+    enabled if `HWY_WANT_WASM2` is defined. This will remain supported until it
+    is potentially superseded by a future version of WASM.);
+-   x86: `AVX2`, `AVX3` (AVX-512), `AVX3_DL` (~Icelake, requires opt-in by
+    defining `HWY_WANT_AVX3_DL`), `AVX3_ZEN4`, `SSE2`, `SSSE3`, `SSE4`.
 
 SVE was initially tested using farm_sve (see acknowledgments).
 

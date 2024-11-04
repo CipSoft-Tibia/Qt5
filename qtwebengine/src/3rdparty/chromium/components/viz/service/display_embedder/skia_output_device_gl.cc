@@ -22,6 +22,8 @@
 #include "third_party/skia/include/core/SkSurfaceProps.h"
 #include "third_party/skia/include/gpu/GrBackendSurface.h"
 #include "third_party/skia/include/gpu/GrDirectContext.h"
+#include "third_party/skia/include/gpu/ganesh/SkSurfaceGanesh.h"
+#include "third_party/skia/include/gpu/ganesh/gl/GrGLBackendSurface.h"
 #include "third_party/skia/include/gpu/gl/GrGLTypes.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_context.h"
@@ -52,6 +54,7 @@ SkiaOutputDeviceGL::SkiaOutputDeviceGL(
     gpu::MemoryTracker* memory_tracker,
     DidSwapBufferCompleteCallback did_swap_buffer_complete_callback)
     : SkiaOutputDevice(context_state->gr_context(),
+                       context_state->graphite_context(),
                        memory_tracker,
                        std::move(did_swap_buffer_complete_callback)),
       context_state_(context_state),
@@ -69,8 +72,6 @@ SkiaOutputDeviceGL::SkiaOutputDeviceGL(
   }
   capabilities_.pending_swap_params.max_pending_swaps =
       gl_surface_->GetBufferCount() - 1;
-  capabilities_.supports_commit_overlay_planes =
-      gl_surface_->SupportsCommitOverlayPlanes();
   capabilities_.supports_gpu_vsync = gl_surface_->SupportsGpuVSync();
 #if BUILDFLAG(IS_ANDROID)
   // TODO(weiliangc): This capability is used to check whether we should do
@@ -156,19 +157,18 @@ SkiaOutputDeviceGL::~SkiaOutputDeviceGL() {
   memory_type_tracker_->TrackMemFree(backbuffer_estimated_size_);
 }
 
-bool SkiaOutputDeviceGL::Reshape(
-    const SkSurfaceCharacterization& characterization,
-    const gfx::ColorSpace& color_space,
-    float device_scale_factor,
-    gfx::OverlayTransform transform) {
+bool SkiaOutputDeviceGL::Reshape(const SkImageInfo& image_info,
+                                 const gfx::ColorSpace& color_space,
+                                 int sample_count,
+                                 float device_scale_factor,
+                                 gfx::OverlayTransform transform) {
 #if !BUILDFLAG(IS_CHROMEOS_ASH)
   DCHECK_EQ(transform, gfx::OVERLAY_TRANSFORM_NONE);
 #endif  // !BUILDFLAG(IS_CHROMEOS_ASH)
 
-  const gfx::Size size = gfx::SkISizeToSize(characterization.dimensions());
-  const SkColorType color_type = characterization.colorType();
-  const bool has_alpha =
-      !SkAlphaTypeIsOpaque(characterization.imageInfo().alphaType());
+  const gfx::Size size = gfx::SkISizeToSize(image_info.dimensions());
+  const SkColorType color_type = image_info.colorType();
+  const bool has_alpha = !image_info.isOpaque();
 
   if (!gl_surface_->Resize(size, device_scale_factor, color_space, has_alpha)) {
     CheckForLoopFailures();
@@ -186,17 +186,17 @@ bool SkiaOutputDeviceGL::Reshape(
   GrBackendFormat backend_format =
       gr_context->defaultBackendFormat(color_type, GrRenderable::kYes);
   DCHECK(backend_format.isValid()) << "color_type: " << color_type;
-  framebuffer_info.fFormat = backend_format.asGLFormatEnum();
+  framebuffer_info.fFormat = GrBackendFormats::AsGLFormatEnum(backend_format);
 
-  GrBackendRenderTarget render_target(size.width(), size.height(),
-                                      characterization.sampleCount(),
-                                      /*stencilBits=*/0, framebuffer_info);
+  auto render_target =
+      GrBackendRenderTargets::MakeGL(size.width(), size.height(), sample_count,
+                                     /*stencilBits=*/0, framebuffer_info);
   auto origin = (gl_surface_->GetOrigin() == gfx::SurfaceOrigin::kTopLeft)
                     ? kTopLeft_GrSurfaceOrigin
                     : kBottomLeft_GrSurfaceOrigin;
-  sk_surface_ = SkSurface::MakeFromBackendRenderTarget(
-      gr_context, render_target, origin, color_type,
-      characterization.refColorSpace(), &surface_props);
+  sk_surface_ = SkSurfaces::WrapBackendRenderTarget(
+      gr_context, render_target, origin, color_type, image_info.refColorSpace(),
+      &surface_props);
   if (!sk_surface_) {
     LOG(ERROR) << "Couldn't create surface:"
                << "\n  abandoned()=" << gr_context->abandoned()
@@ -225,8 +225,9 @@ bool SkiaOutputDeviceGL::Reshape(
   return !!sk_surface_;
 }
 
-void SkiaOutputDeviceGL::SwapBuffers(BufferPresentedCallback feedback,
-                                     OutputSurfaceFrame frame) {
+void SkiaOutputDeviceGL::Present(const absl::optional<gfx::Rect>& update_rect,
+                                 BufferPresentedCallback feedback,
+                                 OutputSurfaceFrame frame) {
   StartSwapBuffers({});
 
   gfx::Size surface_size =
@@ -237,58 +238,25 @@ void SkiaOutputDeviceGL::SwapBuffers(BufferPresentedCallback feedback,
     auto callback = base::BindOnce(
         &SkiaOutputDeviceGL::DoFinishSwapBuffersAsync,
         weak_ptr_factory_.GetWeakPtr(), surface_size, std::move(frame));
-    gl_surface_->SwapBuffersAsync(std::move(callback), std::move(feedback),
-                                  data);
+
+    if (update_rect) {
+      gl_surface_->PostSubBufferAsync(
+          update_rect->x(), update_rect->y(), update_rect->width(),
+          update_rect->height(), std::move(callback), std::move(feedback),
+          std::move(data));
+    } else {
+      gl_surface_->SwapBuffersAsync(std::move(callback), std::move(feedback),
+                                    std::move(data));
+    }
   } else {
-    gfx::SwapResult result =
-        gl_surface_->SwapBuffers(std::move(feedback), data);
-    DoFinishSwapBuffers(surface_size, std::move(frame),
-                        gfx::SwapCompletionResult(result));
-  }
-}
-
-void SkiaOutputDeviceGL::PostSubBuffer(const gfx::Rect& rect,
-                                       BufferPresentedCallback feedback,
-                                       OutputSurfaceFrame frame) {
-  StartSwapBuffers({});
-
-  gfx::Size surface_size =
-      gfx::Size(sk_surface_->width(), sk_surface_->height());
-
-  auto data = frame.data;
-  if (supports_async_swap_) {
-    auto callback = base::BindOnce(
-        &SkiaOutputDeviceGL::DoFinishSwapBuffersAsync,
-        weak_ptr_factory_.GetWeakPtr(), surface_size, std::move(frame));
-    gl_surface_->PostSubBufferAsync(rect.x(), rect.y(), rect.width(),
-                                    rect.height(), std::move(callback),
-                                    std::move(feedback), data);
-  } else {
-    gfx::SwapResult result =
-        gl_surface_->PostSubBuffer(rect.x(), rect.y(), rect.width(),
-                                   rect.height(), std::move(feedback), data);
-    DoFinishSwapBuffers(surface_size, std::move(frame),
-                        gfx::SwapCompletionResult(result));
-  }
-}
-
-void SkiaOutputDeviceGL::CommitOverlayPlanes(BufferPresentedCallback feedback,
-                                             OutputSurfaceFrame frame) {
-  StartSwapBuffers({});
-
-  gfx::Size surface_size =
-      gfx::Size(sk_surface_->width(), sk_surface_->height());
-
-  auto data = frame.data;
-  if (supports_async_swap_) {
-    auto callback = base::BindOnce(
-        &SkiaOutputDeviceGL::DoFinishSwapBuffersAsync,
-        weak_ptr_factory_.GetWeakPtr(), surface_size, std::move(frame));
-    gl_surface_->CommitOverlayPlanesAsync(std::move(callback),
-                                          std::move(feedback), data);
-  } else {
-    gfx::SwapResult result =
-        gl_surface_->CommitOverlayPlanes(std::move(feedback), data);
+    gfx::SwapResult result;
+    if (update_rect) {
+      result = gl_surface_->PostSubBuffer(
+          update_rect->x(), update_rect->y(), update_rect->width(),
+          update_rect->height(), std::move(feedback), std::move(data));
+    } else {
+      result = gl_surface_->SwapBuffers(std::move(feedback), std::move(data));
+    }
     DoFinishSwapBuffers(surface_size, std::move(frame),
                         gfx::SwapCompletionResult(result));
   }

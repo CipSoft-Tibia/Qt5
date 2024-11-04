@@ -40,9 +40,9 @@
 
 #include "ParseHelper.h"
 
-namespace QtShaderTools {
-extern int yyparse(glslang::TParseContext*);
+extern int yyparse(QtShaderTools::glslang::TParseContext*);
 
+namespace QtShaderTools {
 namespace glslang {
 
 //
@@ -67,8 +67,6 @@ void TParseContextBase::outputMessage(const TSourceLoc& loc, const char* szReaso
         ++numErrors;
     }
 }
-
-#if !defined(GLSLANG_WEB) || defined(GLSLANG_WEB_DEVEL)
 
 void C_DECL TParseContextBase::error(const TSourceLoc& loc, const char* szReason, const char* szToken,
                                      const char* szExtraInfoFormat, ...)
@@ -119,8 +117,6 @@ void C_DECL TParseContextBase::ppWarn(const TSourceLoc& loc, const char* szReaso
     va_end(args);
 }
 
-#endif
-
 //
 // Both test and if necessary, spit out an error, to see if the node is really
 // an l-value that can be operated on this way.
@@ -141,7 +137,6 @@ bool TParseContextBase::lValueErrorCheck(const TSourceLoc& loc, const char* op, 
     case EvqConst:          message = "can't modify a const";        break;
     case EvqConstReadOnly:  message = "can't modify a const";        break;
     case EvqUniform:        message = "can't modify a uniform";      break;
-#ifndef GLSLANG_WEB
     case EvqBuffer:
         if (node->getQualifier().isReadOnly())
             message = "can't modify a readonly buffer";
@@ -152,7 +147,6 @@ bool TParseContextBase::lValueErrorCheck(const TSourceLoc& loc, const char* op, 
         if (language != EShLangIntersect)
             message = "cannot modify hitAttributeNV in this stage";
         break;
-#endif
 
     default:
         //
@@ -160,12 +154,12 @@ bool TParseContextBase::lValueErrorCheck(const TSourceLoc& loc, const char* op, 
         //
         switch (node->getBasicType()) {
         case EbtSampler:
-            message = "can't modify a sampler";
+            if (extensionTurnedOn(E_GL_ARB_bindless_texture) == false)
+                message = "can't modify a sampler";
             break;
         case EbtVoid:
             message = "can't modify void";
             break;
-#ifndef GLSLANG_WEB
         case EbtAtomicUint:
             message = "can't modify an atomic_uint";
             break;
@@ -175,7 +169,9 @@ bool TParseContextBase::lValueErrorCheck(const TSourceLoc& loc, const char* op, 
         case EbtRayQuery:
             message = "can't modify rayQueryEXT";
             break;
-#endif
+        case EbtHitObjectNV:
+            message = "can't modify hitObjectNV";
+            break;
         default:
             break;
         }
@@ -232,11 +228,11 @@ bool TParseContextBase::lValueErrorCheck(const TSourceLoc& loc, const char* op, 
 // Test for and give an error if the node can't be read from.
 void TParseContextBase::rValueErrorCheck(const TSourceLoc& loc, const char* op, TIntermTyped* node)
 {
-    TIntermBinary* binaryNode = node->getAsBinaryNode();
-    const TIntermSymbol* symNode = node->getAsSymbolNode();
-
     if (! node)
         return;
+
+    TIntermBinary* binaryNode = node->getAsBinaryNode();
+    const TIntermSymbol* symNode = node->getAsSymbolNode();
 
     if (node->getQualifier().isWriteOnly()) {
         const TIntermTyped* leftMostTypeNode = TIntermediate::findLValueBase(node, true);

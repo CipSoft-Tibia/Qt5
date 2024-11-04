@@ -9,8 +9,9 @@
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/editing/frame_selection.h"
 #include "third_party/blink/renderer/core/editing/markers/document_marker.h"
-#include "third_party/blink/renderer/core/layout/api/selection_state.h"
+#include "third_party/blink/renderer/core/editing/markers/highlight_pseudo_marker.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
+#include "third_party/blink/renderer/core/layout/selection_state.h"
 #include "third_party/blink/renderer/core/paint/ng/ng_highlight_overlay.h"
 #include "third_party/blink/renderer/core/paint/text_decoration_info.h"
 #include "third_party/blink/renderer/core/paint/text_paint_style.h"
@@ -45,6 +46,8 @@ class CORE_EXPORT NGHighlightPainter {
     STACK_ALLOCATED();
 
    public:
+    // ComputeSelectionStyle must be called to finish initializing. Until then,
+    // only Status() may be called.
     explicit SelectionPaintState(
         const NGInlineCursor& containing_block,
         const PhysicalOffset& box_offset,
@@ -130,7 +133,6 @@ class CORE_EXPORT NGHighlightPainter {
       const NGInlineCursor& cursor,
       const NGFragmentItem& fragment_item,
       const absl::optional<AffineTransform> writing_mode_rotation,
-      const PhysicalRect& decoration_rect,
       const PhysicalOffset& box_origin,
       const ComputedStyle& style,
       const TextPaintStyle& text_style,
@@ -195,9 +197,16 @@ class CORE_EXPORT NGHighlightPainter {
                               bool paint_marker_backgrounds,
                               absl::optional<AffineTransform> rotation);
 
+  // Return the text content offset for a particular fragment offset.
+  static unsigned GetTextContentOffset(const Text& text, unsigned offset);
+
+  // Query various style pieces for the given marker type
+  static PseudoId PseudoFor(DocumentMarker::MarkerType type);
+  static TextDecorationLine LineFor(DocumentMarker::MarkerType type);
+  static Color ColorFor(DocumentMarker::MarkerType type);
+
   SelectionPaintState* Selection() { return selection_; }
 
- private:
   struct LayerPaintState {
     DISALLOW_NEW();
 
@@ -206,6 +215,8 @@ class CORE_EXPORT NGHighlightPainter {
                     const ComputedStyle* style,
                     TextPaintStyle text_style);
 
+    void Trace(Visitor* visitor) const { visitor->Trace(style); }
+
     // Equality on HighlightLayer id only, for Vector::Find.
     bool operator==(const LayerPaintState&) const = delete;
     bool operator!=(const LayerPaintState&) const = delete;
@@ -213,18 +224,12 @@ class CORE_EXPORT NGHighlightPainter {
     bool operator!=(const NGHighlightOverlay::HighlightLayer&) const;
 
     const NGHighlightOverlay::HighlightLayer id;
-    const ComputedStyle* style;
+    const Member<const ComputedStyle> style;
     const TextPaintStyle text_style;
     const TextDecorationLine decorations_in_effect;
   };
-  struct CachedDecorationInfo {
-    STACK_ALLOCATED();
 
-   public:
-    absl::optional<NGHighlightOverlay::HighlightLayer> id{};
-    absl::optional<TextDecorationInfo> info{};
-  };
-
+ private:
   Case ComputePaintCase() const;
   void FastPaintSpellingGrammarDecorations(const Text& text_node,
                                            const StringView& text,
@@ -241,7 +246,9 @@ class CORE_EXPORT NGHighlightPainter {
       const ComputedStyle& style,
       const TextPaintStyle& text_style,
       const AppliedTextDecoration* decoration_override);
-  void ClipToPartDecorations(const NGHighlightOverlay::HighlightPart&);
+  PhysicalRect RectInWritingModeSpace(
+      const NGHighlightOverlay::HighlightRange&);
+  void ClipToPartDecorations(const PhysicalRect&);
   void PaintDecorationsExceptLineThrough(
       const NGHighlightOverlay::HighlightPart&);
   void PaintDecorationsExceptLineThrough(
@@ -251,9 +258,16 @@ class CORE_EXPORT NGHighlightPainter {
       const NGHighlightOverlay::HighlightPart&);
   void PaintSpellingGrammarDecorations(
       const NGHighlightOverlay::HighlightPart&);
-  TextDecorationInfo& DecorationInfoForLayer(
-      const LayerPaintState&,
-      absl::optional<TextDecorationInfo>&);
+
+  // Paints text with a highlight color. For composition markers, omit the last
+  // two arguments. For PseudoHighlightMarkers, include both the PseudoId and
+  // PseudoArgument.
+  void PaintDecoratedText(const StringView& text,
+                          const Color& text_color,
+                          unsigned paint_start_offset,
+                          unsigned paint_end_offset,
+                          const PseudoId pseudo = PseudoId::kPseudoIdNone,
+                          const AtomicString& pseudo_argument = g_empty_atom);
 
   const NGTextFragmentPaintInfo& fragment_paint_info_;
   NGTextPainter& text_painter_;
@@ -261,8 +275,6 @@ class CORE_EXPORT NGHighlightPainter {
   const PaintInfo& paint_info_;
   const NGInlineCursor& cursor_;
   const NGFragmentItem& fragment_item_;
-  const absl::optional<AffineTransform> writing_mode_rotation_;
-  const PhysicalRect& decoration_rect_;
   const PhysicalOffset& box_origin_;
   const ComputedStyle& originating_style_;
   const TextPaintStyle& originating_text_style_;
@@ -276,13 +288,15 @@ class CORE_EXPORT NGHighlightPainter {
   DocumentMarkerVector spelling_;
   DocumentMarkerVector grammar_;
   DocumentMarkerVector custom_;
-  Vector<LayerPaintState> layers_;
+  HeapVector<LayerPaintState> layers_;
   Vector<NGHighlightOverlay::HighlightPart> parts_;
-  CachedDecorationInfo decoration_cache_[2];
   const bool skip_backgrounds_;
   Case paint_case_;
 };
 
 }  // namespace blink
+
+WTF_ALLOW_CLEAR_UNUSED_SLOTS_WITH_MEM_FUNCTIONS(
+    blink::NGHighlightPainter::LayerPaintState)
 
 #endif  // THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_NG_NG_HIGHLIGHT_PAINTER_H_

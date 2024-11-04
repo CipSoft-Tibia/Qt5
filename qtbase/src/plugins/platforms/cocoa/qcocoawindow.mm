@@ -1246,16 +1246,13 @@ void QCocoaWindow::windowDidEndLiveResize()
 
 void QCocoaWindow::windowDidBecomeKey()
 {
-    if (isForeignWindow())
-        return;
-
     // The NSWindow we're part of become key. Check if we're the first
     // responder, and if so, deliver focus window change to our window.
     if (m_view.window.firstResponder != m_view)
         return;
 
     qCDebug(lcQpaWindow) << m_view.window << "became key window."
-        << "Updating focus window to" << this;
+        << "Updating focus window to" << this << "with view" << m_view;
 
     if (windowIsPopupType()) {
         qCDebug(lcQpaWindow) << "Window is popup. Skipping focus window change.";
@@ -1263,22 +1260,19 @@ void QCocoaWindow::windowDidBecomeKey()
     }
 
     // See also [QNSView becomeFirstResponder]
-    QWindowSystemInterface::handleWindowActivated<QWindowSystemInterface::SynchronousDelivery>(
+    QWindowSystemInterface::handleFocusWindowChanged<QWindowSystemInterface::SynchronousDelivery>(
                 window(), Qt::ActiveWindowFocusReason);
 }
 
 void QCocoaWindow::windowDidResignKey()
 {
-    if (isForeignWindow())
-        return;
-
     // The NSWindow we're part of lost key. Check if we're the first
     // responder, and if so, deliver window deactivation to our window.
     if (m_view.window.firstResponder != m_view)
         return;
 
     qCDebug(lcQpaWindow) << m_view.window << "resigned key window."
-        << "Clearing focus window" << this;
+        << "Clearing focus window" << this << "with view" << m_view;
 
     // Make sure popups are closed before we deliver activation changes, which are
     // otherwise ignored by QApplication.
@@ -1297,7 +1291,7 @@ void QCocoaWindow::windowDidResignKey()
 
     // Lost key window, go ahead and set the active window to zero
     if (!windowIsPopupType()) {
-        QWindowSystemInterface::handleWindowActivated<QWindowSystemInterface::SynchronousDelivery>(
+        QWindowSystemInterface::handleFocusWindowChanged<QWindowSystemInterface::SynchronousDelivery>(
             nullptr, Qt::ActiveWindowFocusReason);
     }
 }
@@ -1818,11 +1812,15 @@ QCocoaNSWindow *QCocoaWindow::createNSWindow(bool shouldBePanel)
 
     applyContentBorderThickness(nsWindow);
 
-    if (QColorSpace colorSpace = format().colorSpace(); colorSpace.isValid()) {
-        NSData *iccData = colorSpace.iccProfile().toNSData();
-        nsWindow.colorSpace = [[[NSColorSpace alloc] initWithICCProfileData:iccData] autorelease];
-        qCDebug(lcQpaDrawing) << "Set" << this << "color space to" << nsWindow.colorSpace;
-    }
+    // We propagate the view's color space granulary to both the IOSurfaces
+    // used for QSurface::RasterSurface, as well as the CAMetalLayer used for
+    // QSurface::MetalSurface, but for QSurface::OpenGLSurface we don't have
+    // that option as we use NSOpenGLContext instead of CAOpenGLLayer. As a
+    // workaround we set the NSWindow's color space, which affects GL drawing
+    // with NSOpenGLContext as well. This does not conflict with the granular
+    // modifications we do to each surface for raster or Metal.
+    if (auto *qtView = qnsview_cast(m_view))
+        nsWindow.colorSpace = qtView.colorSpace;
 
     return nsWindow;
 }

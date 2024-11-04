@@ -1,48 +1,14 @@
 #!/usr/bin/env bash
-
-#############################################################################
-##
-## Copyright (C) 2023 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of the provisioning scripts of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:LGPL$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 3 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL3 included in the
-## packaging of this file. Please review the following information to
-## ensure the GNU Lesser General Public License version 3 requirements
-## will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 2.0 or (at your option) the GNU General
-## Public license version 3 or any later version approved by the KDE Free
-## Qt Foundation. The licenses are as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-2.0.html and
-## https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2023 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 set -ex
 
 # Remove update notifications and packagekit running in the background
 sudo yum -y remove PackageKit gnome-software
+
+# CI: All platforms should have up-to-date packages when new provision is made
+sudo yum -y update
 
 installPackages=()
 installPackages+=(git)
@@ -63,6 +29,7 @@ installPackages+=(ninja-build)
 installPackages+=(pcre2-devel)
 installPackages+=(double-conversion-devel)
 installPackages+=(zstd)
+installPackages+=(libzstd-devel)
 # EGL support
 # mesa-libEGL-devel need to use older version than 22.1.5-2.el9 which cause Xorg to crash
 #installPackages+=(mesa-libEGL-devel-21.3.4-2.el9)
@@ -117,14 +84,17 @@ installPackages+=(gperftools-libs)
 installPackages+=(gperf)
 installPackages+=(alsa-lib-devel)
 installPackages+=(pulseaudio-libs-devel)
+installPackages+=(libdrm-devel)
+installPackages+=(libva-devel)
 installPackages+=(libXtst-devel)
 installPackages+=(libxshmfence-devel)
 installPackages+=(nspr-devel)
 installPackages+=(nss-devel)
 installPackages+=(python3-html5lib)
 installPackages+=(libstdc++-static)
+installPackages+=(mesa-libgbm-devel-21.3.4-2.el9.x86_64)
 # For Android builds
-installPackages+=(java-11-openjdk-devel)
+installPackages+=(java-17-openjdk-devel-17.0.9.0.9)
 # For receiving shasum
 installPackages+=(perl-Digest-SHA)
 # INTEGRITY requirements
@@ -180,7 +150,9 @@ installPackages+=(make)
 installPackages+=(open-vm-tools)
 # nfs-utils is needed to make mount work with ci-files01
 installPackages+=(nfs-utils)
-
+# cifs-utils, for mounting smb drive
+installPackages+=(keyutils)
+installPackages+=(cifs-utils)
 
 sudo yum -y install "${installPackages[@]}"
 
@@ -191,6 +163,10 @@ sudo dnf install 'perl(English)' -y
 # We shouldn't use yum to install virtualenv. The one found from package repo is not
 # working, but we can use installed pip
 sudo pip3 install --upgrade pip
+# Configure pip
+sudo pip config --user set global.index https://ci-files01-hki.ci.qt.io/input/python_module_cache
+sudo pip config --user set global.extra-index-url https://pypi.org/simple/
+
 sudo pip3 install virtualenv wheel
 # Just make sure we have virtualenv to run with python3.8 -m virtualenv
 sudo python -m pip install virtualenv wheel
@@ -201,4 +177,7 @@ sudo /usr/bin/pip3 install wheel
 sudo ln -s /usr/bin/python3 /usr/local/bin/python3
 
 OpenSSLVersion="$(openssl version |cut -b 9-14)"
-echo "OpenSSL = $OpenSSLVersion" >> ~/versions.txt
+echo "System's OpenSSL = $OpenSSLVersion" >> ~/versions.txt
+
+# List all available updates
+sudo yum -y list updates

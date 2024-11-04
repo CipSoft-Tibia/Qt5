@@ -14,8 +14,60 @@
 #include "components/autofill/core/common/html_field_types.h"
 
 namespace autofill {
-
 namespace {
+
+static constexpr auto kStandardizedAttributes =
+    base::MakeFixedFlatMap<base::StringPiece, HtmlFieldType>({
+        {"additional-name", HtmlFieldType::kAdditionalName},
+        {"address-level1", HtmlFieldType::kAddressLevel1},
+        {"address-level2", HtmlFieldType::kAddressLevel2},
+        {"address-level3", HtmlFieldType::kAddressLevel3},
+        {"address-line1", HtmlFieldType::kAddressLine1},
+        {"address-line2", HtmlFieldType::kAddressLine2},
+        {"address-line3", HtmlFieldType::kAddressLine3},
+        {"bday-day", HtmlFieldType::kBirthdateDay},
+        {"bday-month", HtmlFieldType::kBirthdateMonth},
+        {"bday-year", HtmlFieldType::kBirthdateYear},
+        {"cc-csc", HtmlFieldType::kCreditCardVerificationCode},
+        {"cc-exp", HtmlFieldType::kCreditCardExp},
+        {"cc-exp-month", HtmlFieldType::kCreditCardExpMonth},
+        {"cc-exp-year", HtmlFieldType::kCreditCardExpYear},
+        {"cc-family-name", HtmlFieldType::kCreditCardNameLast},
+        {"cc-given-name", HtmlFieldType::kCreditCardNameFirst},
+        {"cc-name", HtmlFieldType::kCreditCardNameFull},
+        {"cc-number", HtmlFieldType::kCreditCardNumber},
+        {"cc-type", HtmlFieldType::kCreditCardType},
+        {"country", HtmlFieldType::kCountryCode},
+        {"country-name", HtmlFieldType::kCountryName},
+        {"email", HtmlFieldType::kEmail},
+        {"family-name", HtmlFieldType::kFamilyName},
+        {"given-name", HtmlFieldType::kGivenName},
+        {"honorific-prefix", HtmlFieldType::kHonorificPrefix},
+        {"name", HtmlFieldType::kName},
+        {"one-time-code", HtmlFieldType::kOneTimeCode},
+        {"organization", HtmlFieldType::kOrganization},
+        {"postal-code", HtmlFieldType::kPostalCode},
+        {"street-address", HtmlFieldType::kStreetAddress},
+        {"tel-area-code", HtmlFieldType::kTelAreaCode},
+        {"tel-country-code", HtmlFieldType::kTelCountryCode},
+        {"tel-extension", HtmlFieldType::kTelExtension},
+        {"tel", HtmlFieldType::kTel},
+        {"tel-local", HtmlFieldType::kTelLocal},
+        {"tel-local-prefix", HtmlFieldType::kTelLocalPrefix},
+        {"tel-local-suffix", HtmlFieldType::kTelLocalSuffix},
+        {"tel-national", HtmlFieldType::kTelNational},
+        {"transaction-amount", HtmlFieldType::kTransactionAmount},
+        {"transaction-currency", HtmlFieldType::kTransactionCurrency},
+    });
+
+static constexpr base::StringPiece kWellIntendedAutocompleteValuesKeywords[] = {
+    "street", "password", "address", "bday",     "cc-",         "family",
+    "name",   "country",  "tel",     "phone",    "transaction", "code",
+    "zip",    "state",    "city",    "shipping", "billing"};
+
+static constexpr base::StringPiece
+    kNegativeMatchWellIntendedAutocompleteValuesKeywords[] = {
+        "off", "disabled", "nope", "noop", "fake", "false", "new"};
 
 // Returns true iff the `token` is a type hint for a contact field, as
 // specified in the implementation section of http://is.gd/whatwg_autocomplete
@@ -49,83 +101,13 @@ bool ContactTypeHintMatchesFieldType(const std::string& token,
   return false;
 }
 
-// Rationalizes the HTML `type` of `field`, based on the fields properties. At
-// the moment only `max_length` is considered. For example, a max_length of 4
-// might indicate a 4 digit year.
-// In case no rationalization rule applies, the original type is returned.
-HtmlFieldType RationalizeAutocompleteType(HtmlFieldType type,
-                                          uint64_t field_max_length) {
-  // (original-type, max-length) -> new-type
-  static constexpr auto rules =
-      base::MakeFixedFlatMap<std::pair<HtmlFieldType, uint64_t>, HtmlFieldType>(
-          {
-              {{HtmlFieldType::kAdditionalName, 1},
-               HtmlFieldType::kAdditionalNameInitial},
-              {{HtmlFieldType::kCreditCardExp, 5},
-               HtmlFieldType::kCreditCardExpDate2DigitYear},
-              {{HtmlFieldType::kCreditCardExp, 7},
-               HtmlFieldType::kCreditCardExpDate4DigitYear},
-              {{HtmlFieldType::kCreditCardExpYear, 2},
-               HtmlFieldType::kCreditCardExp2DigitYear},
-              {{HtmlFieldType::kCreditCardExpYear, 4},
-               HtmlFieldType::kCreditCardExp4DigitYear},
-          });
-
-  auto it = rules.find(std::make_pair(type, field_max_length));
-  return it == rules.end() ? type : it->second;
-}
-
 // Chrome Autofill supports a subset of the field types listed at
 // http://is.gd/whatwg_autocomplete. Returns the corresponding HtmlFieldType, if
 // `value` matches any of them.
 absl::optional<HtmlFieldType> ParseStandardizedAutocompleteAttribute(
     base::StringPiece value) {
-  static constexpr auto standardized_attributes =
-      base::MakeFixedFlatMap<base::StringPiece, HtmlFieldType>({
-          {"additional-name", HtmlFieldType::kAdditionalName},
-          {"address-level1", HtmlFieldType::kAddressLevel1},
-          {"address-level2", HtmlFieldType::kAddressLevel2},
-          {"address-level3", HtmlFieldType::kAddressLevel3},
-          {"address-line1", HtmlFieldType::kAddressLine1},
-          {"address-line2", HtmlFieldType::kAddressLine2},
-          {"address-line3", HtmlFieldType::kAddressLine3},
-          {"bday-day", HtmlFieldType::kBirthdateDay},
-          {"bday-month", HtmlFieldType::kBirthdateMonth},
-          {"bday-year", HtmlFieldType::kBirthdateYear},
-          {"cc-csc", HtmlFieldType::kCreditCardVerificationCode},
-          {"cc-exp", HtmlFieldType::kCreditCardExp},
-          {"cc-exp-month", HtmlFieldType::kCreditCardExpMonth},
-          {"cc-exp-year", HtmlFieldType::kCreditCardExpYear},
-          {"cc-family-name", HtmlFieldType::kCreditCardNameLast},
-          {"cc-given-name", HtmlFieldType::kCreditCardNameFirst},
-          {"cc-name", HtmlFieldType::kCreditCardNameFull},
-          {"cc-number", HtmlFieldType::kCreditCardNumber},
-          {"cc-type", HtmlFieldType::kCreditCardType},
-          {"country", HtmlFieldType::kCountryCode},
-          {"country-name", HtmlFieldType::kCountryName},
-          {"email", HtmlFieldType::kEmail},
-          {"family-name", HtmlFieldType::kFamilyName},
-          {"given-name", HtmlFieldType::kGivenName},
-          {"honorific-prefix", HtmlFieldType::kHonorificPrefix},
-          {"name", HtmlFieldType::kName},
-          {"one-time-code", HtmlFieldType::kOneTimeCode},
-          {"organization", HtmlFieldType::kOrganization},
-          {"postal-code", HtmlFieldType::kPostalCode},
-          {"street-address", HtmlFieldType::kStreetAddress},
-          {"tel-area-code", HtmlFieldType::kTelAreaCode},
-          {"tel-country-code", HtmlFieldType::kTelCountryCode},
-          {"tel-extension", HtmlFieldType::kTelExtension},
-          {"tel", HtmlFieldType::kTel},
-          {"tel-local", HtmlFieldType::kTelLocal},
-          {"tel-local-prefix", HtmlFieldType::kTelLocalPrefix},
-          {"tel-local-suffix", HtmlFieldType::kTelLocalSuffix},
-          {"tel-national", HtmlFieldType::kTelNational},
-          {"transaction-amount", HtmlFieldType::kTransactionAmount},
-          {"transaction-currency", HtmlFieldType::kTransactionCurrency},
-      });
-
-  auto it = standardized_attributes.find(value);
-  return it != standardized_attributes.end()
+  auto it = kStandardizedAttributes.find(value);
+  return it != kStandardizedAttributes.end()
              ? absl::optional<HtmlFieldType>(it->second)
              : absl::nullopt;
 }
@@ -205,9 +187,7 @@ std::string AutocompleteParsingResult::ToString() const {
                        FieldTypeToStringPiece(field_type), "'"});
 }
 
-HtmlFieldType FieldTypeFromAutocompleteAttributeValue(
-    std::string value,
-    uint64_t field_max_length) {
+HtmlFieldType FieldTypeFromAutocompleteAttributeValue(std::string value) {
   if (value.empty())
     return HtmlFieldType::kUnspecified;
 
@@ -227,7 +207,7 @@ HtmlFieldType FieldTypeFromAutocompleteAttributeValue(
   }
 
   if (type.has_value())
-    return RationalizeAutocompleteType(type.value(), field_max_length);
+    return *type;
 
   // `value` cannot be mapped to any HtmlFieldType. By classifying the field
   // as HtmlFieldType::kUnrecognized Autofill is effectively disabled.
@@ -242,8 +222,7 @@ HtmlFieldType FieldTypeFromAutocompleteAttributeValue(
 }
 
 absl::optional<AutocompleteParsingResult> ParseAutocompleteAttribute(
-    base::StringPiece autocomplete_attribute,
-    uint64_t field_max_length) {
+    base::StringPiece autocomplete_attribute) {
   std::vector<std::string> tokens =
       LowercaseAndTokenizeAttributeString(autocomplete_attribute);
 
@@ -269,8 +248,7 @@ absl::optional<AutocompleteParsingResult> ParseAutocompleteAttribute(
   // (1) The final token must be the field type.
   std::string field_type_token = tokens.back();
   tokens.pop_back();
-  result.field_type = FieldTypeFromAutocompleteAttributeValue(field_type_token,
-                                                              field_max_length);
+  result.field_type = FieldTypeFromAutocompleteAttributeValue(field_type_token);
 
   // (2) The preceding token, if any, may be a type hint.
   if (!tokens.empty() && IsContactTypeHint(tokens.back())) {
@@ -309,6 +287,52 @@ absl::optional<AutocompleteParsingResult> ParseAutocompleteAttribute(
     return absl::nullopt;
 
   return result;
+}
+
+bool IsAutocompleteTypeWrongButWellIntended(
+    base::StringPiece autocomplete_attribute) {
+  std::vector<std::string> tokens =
+      LowercaseAndTokenizeAttributeString(autocomplete_attribute);
+
+  // The autocomplete attribute is overloaded: it can specify either a field
+  // type hint or whether autocomplete should be enabled at all. Ignore the
+  // latter type of attribute value.
+  if (tokens.empty() ||
+      (tokens.size() == 1 && ShouldIgnoreAutocompleteAttribute(tokens[0]))) {
+    return false;
+  }
+
+  // Parse the "webauthn" token.
+  if (tokens.back() == "webauthn") {
+    tokens.pop_back();
+    if (tokens.empty()) {
+      return false;
+    }
+  }
+
+  std::string field_type_token = tokens.back();
+
+  // Autofill does not recognize password inputs, so we have to manually check
+  // for them.
+  bool is_field_type_password = field_type_token == "new-password" ||
+                                field_type_token == "current-password";
+  if (is_field_type_password ||
+      FieldTypeFromAutocompleteAttributeValue(field_type_token) !=
+          HtmlFieldType::kUnrecognized) {
+    return false;
+  }
+
+  auto contains_field_type_token = [&](base::StringPiece s) {
+    return base::StringPiece(field_type_token).find(s) != std::string::npos;
+  };
+  bool token_is_wrong_but_has_well_intended_usage_keyword =
+      base::ranges::any_of(kWellIntendedAutocompleteValuesKeywords,
+                           contains_field_type_token);
+  bool developer_likely_tried_to_disable_autofill =
+      base::ranges::any_of(kNegativeMatchWellIntendedAutocompleteValuesKeywords,
+                           contains_field_type_token);
+  return token_is_wrong_but_has_well_intended_usage_keyword &&
+         !developer_likely_tried_to_disable_autofill;
 }
 
 bool ShouldIgnoreAutocompleteAttribute(base::StringPiece autocomplete) {

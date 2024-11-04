@@ -8,11 +8,12 @@
 
 #include "base/check.h"
 #include "base/containers/flat_map.h"
+#include "base/feature_list.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/ui/signin_reauth_view_controller.h"
+#include "chrome/browser/ui/signin/signin_reauth_view_controller.h"
 #include "chrome/browser/ui/webui/signin/signin_reauth_handler.h"
 #include "chrome/browser/ui/webui/signin/signin_url_utils.h"
 #include "chrome/browser/ui/webui/webui_util.h"
@@ -23,6 +24,7 @@
 #include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/sync/base/features.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui_controller.h"
 #include "content/public/browser/web_ui_data_source.h"
@@ -31,6 +33,7 @@
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/base/webui/resource_path.h"
 #include "ui/base/webui/web_ui_util.h"
 #include "ui/gfx/image/image.h"
@@ -73,10 +76,15 @@ bool WasPasswordSavedLocally(signin_metrics::ReauthAccessPoint access_point) {
 
 int GetReauthDescriptionStringId(
     signin_metrics::ReauthAccessPoint access_point) {
+  bool sync_passkeys =
+      base::FeatureList::IsEnabled(syncer::kSyncWebauthnCredentials);
   if (WasPasswordSavedLocally(access_point)) {
-    return IDS_ACCOUNT_PASSWORDS_REAUTH_DESC_ALREADY_SAVED_LOCALLY;
+    return sync_passkeys
+               ? IDS_ACCOUNT_PASSWORDS_WITH_PASSKEYS_REAUTH_DESC_ALREADY_SAVED_LOCALLY
+               : IDS_ACCOUNT_PASSWORDS_REAUTH_DESC_ALREADY_SAVED_LOCALLY;
   }
-  return IDS_ACCOUNT_PASSWORDS_REAUTH_DESC;
+  return sync_passkeys ? IDS_ACCOUNT_PASSWORDS_WITH_PASSKEYS_REAUTH_DESC
+                       : IDS_ACCOUNT_PASSWORDS_REAUTH_DESC;
 }
 
 int GetReauthCloseButtonLabelStringId(
@@ -115,12 +123,17 @@ SigninReauthUI::SigninReauthUI(content::WebUI* web_ui)
 
   source->AddString("accountImageUrl", GetAccountImageURL(profile));
 
+  webui::SetupChromeRefresh2023(source);
+
   signin_metrics::ReauthAccessPoint access_point =
       GetReauthAccessPointForReauthConfirmationURL(
           web_ui->GetWebContents()->GetVisibleURL());
 
-  AddStringResource(source, "signinReauthTitle",
-                    IDS_ACCOUNT_PASSWORDS_REAUTH_TITLE);
+  AddStringResource(
+      source, "signinReauthTitle",
+      base::FeatureList::IsEnabled(syncer::kSyncWebauthnCredentials)
+          ? IDS_ACCOUNT_PASSWORDS_WITH_PASSKEYS_REAUTH_TITLE
+          : IDS_ACCOUNT_PASSWORDS_REAUTH_TITLE);
   AddStringResource(source, "signinReauthDesc",
                     GetReauthDescriptionStringId(access_point));
   AddStringResource(source, "signinReauthConfirmLabel",

@@ -8,10 +8,12 @@ import {CSSFormatter} from './CSSFormatter.js';
 import {type FormattedContentBuilder} from './FormattedContentBuilder.js';
 import {AbortTokenization, createTokenizer} from './FormatterWorker.js';
 import {JavaScriptFormatter} from './JavaScriptFormatter.js';
+import {JSONFormatter} from './JSONFormatter.js';
 
 export class HTMLFormatter {
   readonly #builder: FormattedContentBuilder;
   readonly #jsFormatter: JavaScriptFormatter;
+  readonly #jsonFormatter: JSONFormatter;
   readonly #cssFormatter: CSSFormatter;
   #text?: string;
   #lineEndings?: number[];
@@ -20,6 +22,7 @@ export class HTMLFormatter {
   constructor(builder: FormattedContentBuilder) {
     this.#builder = builder;
     this.#jsFormatter = new JavaScriptFormatter(builder);
+    this.#jsonFormatter = new JSONFormatter(builder);
     this.#cssFormatter = new CSSFormatter(builder);
   }
 
@@ -130,8 +133,10 @@ export class HTMLFormatter {
     if (isBodyToken && element.name === 'script') {
       this.#builder.addNewLine();
       this.#builder.increaseNestingLevel();
-      if (this.#scriptTagIsJavaScript(element)) {
+      if (scriptTagIsJavaScript(element)) {
         this.#jsFormatter.format(this.#text || '', this.#lineEndings || [], token.startOffset, token.endOffset);
+      } else if (scriptTagIsJSON(element)) {
+        this.#jsonFormatter.format(this.#text || '', this.#lineEndings || [], token.startOffset, token.endOffset);
       } else {
         this.#builder.addToken(token.value, token.startOffset);
         this.#builder.addNewLine();
@@ -146,36 +151,33 @@ export class HTMLFormatter {
 
     this.#builder.addToken(token.value, token.startOffset);
   }
+}
 
-  #scriptTagIsJavaScript(element: FormatterElement): boolean {
-    if (!element.openTag) {
-      return true;
-    }
-
-    if (!element.openTag.attributes.has('type')) {
-      return true;
-    }
-
-    let type = element.openTag.attributes.get('type');
-    if (!type) {
-      return true;
-    }
-
-    type = type.toLowerCase();
-    const isWrappedInQuotes = /^(["\'])(.*)\1$/.exec(type.trim());
-    if (isWrappedInQuotes) {
-      type = isWrappedInQuotes[2];
-    }
-    return HTMLFormatter.SupportedJavaScriptMimeTypes.has(type.trim());
+function scriptTagIsJavaScript(element: FormatterElement): boolean {
+  if (!element.openTag) {
+    return true;
   }
 
-  // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  static readonly SupportedJavaScriptMimeTypes = new Set([
+  if (!element.openTag.attributes.has('type')) {
+    return true;
+  }
+
+  let type = element.openTag.attributes.get('type');
+  if (!type) {
+    return true;
+  }
+
+  type = type.toLowerCase();
+  const isWrappedInQuotes = /^(["\'])(.*)\1$/.exec(type.trim());
+  if (isWrappedInQuotes) {
+    type = isWrappedInQuotes[2];
+  }
+  return [
     'application/ecmascript',
     'application/javascript',
     'application/x-ecmascript',
     'application/x-javascript',
+    'module',
     'text/ecmascript',
     'text/javascript',
     'text/javascript1.0',
@@ -188,7 +190,25 @@ export class HTMLFormatter {
     'text/livescript',
     'text/x-ecmascript',
     'text/x-javascript',
-  ]);
+  ].includes(type.trim());
+}
+
+function scriptTagIsJSON(element: FormatterElement): boolean {
+  if (!element.openTag) {
+    return false;
+  }
+
+  let type = element.openTag.attributes.get('type');
+  if (!type) {
+    return false;
+  }
+
+  type = type.toLowerCase();
+  const isWrappedInQuotes = /^(["\'])(.*)\1$/.exec(type.trim());
+  if (isWrappedInQuotes) {
+    type = isWrappedInQuotes[2];
+  }
+  return ['importmap', 'speculationrules'].includes(type.trim());
 }
 
 function hasTokenInSet(tokenTypes: Set<string>, type: string): boolean {
@@ -262,26 +282,38 @@ export class HTMLModel {
       const tokenType = type ? new Set<string>(type.split(' ')) : new Set<string>();
       const token = new Token(tokenValue, tokenType, tokenStart, tokenEnd);
 
-      // This is a pretty horrible work-around for a bug in the CodeMirror 5 HTML
-      // tokenizer, which isn't easy to fix because it shares this code with the
+      // This is a pretty horrible work-around for two bugs in the CodeMirror 5 HTML
+      // tokenizer, which aren't easy to fix because it shares this code with the
       // XML parser[^1], and which is also not actively maintained anymore. The
       // real fix here is to migrate off of CodeMirror 5 also for formatting and
       // pretty printing and use CodeMirror 6 instead, but that's a bigger
-      // project. For now we ducktape the problem by merging a '/' token
-      // following a string token in the HTML formatter, which does the trick.
+      // project.
+      //
+      // For now we ducktape the first problem by merging a '/' token
+      // following a string token in the HTML formatter, which does the trick, and
+      // also merging the error tokens for unescaped ampersands with text tokens
+      // (where `type` is `null`) preceeding and following the error tokens.
       //
       // [^1]: https://github.com/codemirror/codemirror5/blob/742627a/mode/xml/xml.js#L137
       //
       if (pendingToken) {
-        if (tokenValue === '/' && type === 'attribute') {
+        if (tokenValue === '/' && type === 'attribute' && pendingToken.type.has('string')) {
           token.startOffset = pendingToken.startOffset;
           token.value = `${pendingToken.value}${tokenValue}`;
           token.type = pendingToken.type;
+        } else if (
+            (tokenValue.startsWith('&') && type === 'error' && pendingToken.type.size === 0) ||
+            (type === null && pendingToken.type.has('error'))) {
+          pendingToken.endOffset = token.endOffset;
+          pendingToken.value += tokenValue;
+          pendingToken.type = token.type;
+          return;
         } else if (pushToken(pendingToken) === AbortTokenization) {
           return AbortTokenization;
         }
         pendingToken = null;
-      } else if (type === 'string') {
+      }
+      if (type === 'string' || type === null) {
         pendingToken = token;
         return;
       }

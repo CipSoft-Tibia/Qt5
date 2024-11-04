@@ -416,6 +416,10 @@
         <source>SQL: database version mismatch</source>
         <translation>SQL: Die Version der Datenbank entspricht nicht der erwarteten Version</translation>
     </message>
+    <message>
+        <source>SQL: Cannot open database</source>
+        <translation>SQL: Datenbank kann nicht geöffnet werden</translation>
+    </message>
 </context>
 <context>
     <name>QQmlEnumTypeResolver</name>
@@ -952,10 +956,6 @@
         <translation>Ungültige Zuweisung bei Eigenschaft: Unbekannter Aufzählungswert</translation>
     </message>
     <message>
-        <source> - Assigning null to incompatible properties in QML is deprecated. This will become a compile error in future versions of Qt.</source>
-        <translation> - Die Zuweisung von null zu inkompatiblen Eigenschaften in QML ist überholt (deprecated). In zukünftigen Versionen von Qt wird dies einen Compile-Fehler verursachen.</translation>
-    </message>
-    <message>
         <source>Invalid property assignment: string expected</source>
         <translation>Ungültige Zuweisung bei Eigenschaft: Es wird eine Zeichenkette erwartet</translation>
     </message>
@@ -1406,17 +1406,6 @@
     </message>
 </context>
 <context>
-    <name>QQuickWindowQmlImpl</name>
-    <message>
-        <source>Conflicting properties &apos;visible&apos; and &apos;visibility&apos; for Window &apos;%1&apos;</source>
-        <translation>Widersprüchliche Eigenschaften &apos;visible&apos; und &apos;visibility&apos; für das Fenster &apos;%1&apos;</translation>
-    </message>
-    <message>
-        <source>Conflicting properties &apos;visible&apos; and &apos;visibility&apos;</source>
-        <translation>Widersprüchliche Eigenschaften &apos;visible&apos; und &apos;visibility&apos;</translation>
-    </message>
-</context>
-<context>
     <name>qmlRegisterType</name>
     <message>
         <source>Invalid QML %1 name &quot;%2&quot;</source>
@@ -1478,8 +1467,12 @@
         <translation>Unbekannte Zugriffssemantik &quot;%1&quot;.</translation>
     </message>
     <message>
+        <source>Expected only name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
+        <translation>Es werden nur name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, exportMetaObjectRevisions, deferredNames und immediateNames in Script-Bindings erwartet, nicht jedoch &quot;%1&quot;.</translation>
+    </message>
+    <message>
         <source>Expected only script bindings and object definitions.</source>
-        <translation>Es werden script bindings oder Objektdefinitionen erwartet.</translation>
+        <translation>Es werden Script-Bindings oder Objektdefinitionen erwartet.</translation>
     </message>
     <message>
         <source>Component definition is missing a name binding.</source>
@@ -1487,15 +1480,11 @@
     </message>
     <message>
         <source>Expected only name, type, revision, isPointer, isList, isCloned, isConstructor, and isJavaScriptFunction in script bindings.</source>
-        <translation>Es werden nur name, type, revision, isPointer, isList, isCloned, isConstructor und isJavaScriptFunction in script bindings erwartet.</translation>
+        <translation>Es werden nur name, type, revision, isPointer, isList, isCloned, isConstructor und isJavaScriptFunction in Script-Bindings erwartet.</translation>
     </message>
     <message>
         <source>Method or signal is missing a name script binding.</source>
         <translation>Bei der Methode oder dem Signal fehlt name script binding.</translation>
-    </message>
-    <message>
-        <source>Expected only name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isComposite, hasCustomParser, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
-        <translation>Es werden nur name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isComposite, hasCustomParser, exportMetaObjectRevisions, deferredNames und immediateNames in script bindings erwartet, nicht jedoch &quot;%1&quot;.</translation>
     </message>
     <message>
         <source>Expected only Parameter in object definitions.</source>
@@ -1507,7 +1496,7 @@
     </message>
     <message>
         <source>Expected only type, name, revision, isPointer, isReadonly, isRequired, isFinal, isList, bindable, read, write, reset, notify, index, and privateClass and script bindings.</source>
-        <translation>Es werden nur type, name, revision, isPointer, isReadonly, isRequired, isFinal, isList, bindable, read, write, reset, notify, index, und  privateClass und script bindings erwartet.</translation>
+        <translation>Es werden nur type, name, revision, isPointer, isReadonly, isRequired, isFinal, isList, bindable, read, write, reset, notify, index, und  privateClass und Script-Bindings erwartet.</translation>
     </message>
     <message>
         <source>Expected only name, alias, isFlag, values, scoped, or type.</source>
@@ -1905,8 +1894,8 @@ Revision %1 entspricht Version %2.%3; sie sollte %4.%5 sein.</translation>
         <translation>Modul %1 (Major Version %2) hat sowohl versionierte als auch nicht-versionierte Einträge für &apos;%3&apos;</translation>
     </message>
     <message>
-        <source>Failed to find main qmldir file for %1 %2</source>
-        <translation>Die Haupt-qmldir-Datei für %1 %2 konnte nicht gefunden werden</translation>
+        <source>Failed to find main qmldir file for %1 %2 in %3.</source>
+        <translation>Die qmldir-Hauptdatei für %1 %2 konnte in %3 nicht gefunden werden.</translation>
     </message>
 </context>
 <context>
@@ -1951,10 +1940,6 @@ Revision %1 entspricht Version %2.%3; sie sollte %4.%5 sein.</translation>
         <translation>fehlende Information zum Laden in </translation>
     </message>
     <message>
-        <source>Failed to find main qmldir file for %1 %2</source>
-        <translation>Die Haupt-qmldir-Datei für %1 %2 konnte nicht gefunden werden</translation>
-    </message>
-    <message>
         <source>Missing loadInfo for %1</source>
         <translation>fehlende Information zum Laden für %1</translation>
     </message>
@@ -1973,6 +1958,10 @@ Revision %1 entspricht Version %2.%3; sie sollte %4.%5 sein.</translation>
     <message>
         <source>A mutable module was requested in a multithreaded environment</source>
         <translation>Ein Modul des Typs mutable wurde in einer Multithread-Umgebung angefordert</translation>
+    </message>
+    <message>
+        <source>Failed to find main qmldir file for %1 %2 in %3.</source>
+        <translation>Die qmldir-Hauptdatei für %1 %2 konnte in %3 nicht gefunden werden.</translation>
     </message>
     <message>
         <source>addLoadinfo replaces unfinished load info for %1</source>
@@ -2128,6 +2117,16 @@ Revision %1 entspricht Version %2.%3; sie sollte %4.%5 sein.</translation>
 <context>
     <name>FileDialog</name>
     <message>
+        <source>“%1” already exists. Do you want to replace it?</source>
+        <translation>Die Datei “%1“ existiert bereits. Soll sie überschrieben werden?</translation>
+    </message>
+    <message>
+        <source>A file with the same name already exists in %1.
+Replacing it will overwrite its current contents.</source>
+        <translation>Eine Datei gleichen Names existiert bereits in %1.
+Sie zu ersetzen, wird den gegenwärtigen Inhalt überschreiben.</translation>
+    </message>
+    <message>
         <source>File name</source>
         <translation>Dateiname</translation>
     </message>
@@ -2183,6 +2182,21 @@ Revision %1 entspricht Version %2.%3; sie sollte %4.%5 sein.</translation>
     <message>
         <source>Could not detect type of file %1</source>
         <translation>Typ der Datei %1 konnte nicht bestimmt werden</translation>
+    </message>
+</context>
+<context>
+    <name>QQuickTextDocument</name>
+    <message>
+        <source>Cannot load: %1</source>
+        <translation>Fehler beim Laden: %1</translation>
+    </message>
+    <message>
+        <source>Cannot save: %1</source>
+        <translation>Fehler beim Speichern: %1</translation>
+    </message>
+    <message>
+        <source>Can only save to local files</source>
+        <translation>Es kann nur in lokale Dateien gespeichert werden</translation>
     </message>
 </context>
 </TS>

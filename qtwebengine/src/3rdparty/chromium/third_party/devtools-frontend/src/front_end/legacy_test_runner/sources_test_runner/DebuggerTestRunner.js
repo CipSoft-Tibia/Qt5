@@ -7,6 +7,8 @@
  */
 self.SourcesTestRunner = self.SourcesTestRunner || {};
 
+import * as Common from '../../core/common/common.js';
+
 SourcesTestRunner.startDebuggerTest = async function(callback, quiet) {
   console.assert(TestRunner.debuggerModel.debuggerEnabled(), 'Debugger has to be enabled');
 
@@ -30,7 +32,7 @@ SourcesTestRunner.startDebuggerTestPromise = function(quiet) {
 };
 
 SourcesTestRunner.completeDebuggerTest = function() {
-  self.Common.settings.moduleSetting('breakpointsActive').set(true);
+  Common.Settings.moduleSetting('breakpointsActive').set(true);
   SourcesTestRunner.resumeExecution(TestRunner.completeTest.bind(TestRunner));
 };
 
@@ -101,22 +103,6 @@ SourcesTestRunner.runAsyncCallStacksTest = function(totalDebuggerStatements, max
   }
 };
 
-SourcesTestRunner.dumpSourceFrameMessages = function(sourceFrame, dumpFullURL) {
-  const messages = [];
-
-  for (const bucket of sourceFrame.rowMessageBuckets.values()) {
-    for (const rowMessage of bucket.messages) {
-      const message = rowMessage.getMessage();
-      messages.push(String.sprintf(
-          '  %d:%d [%s] %s', message.lineNumber(), message.columnNumber(), message.level(), message.text()));
-    }
-  }
-
-  const name = (dumpFullURL ? sourceFrame.uiSourceCode().url() : sourceFrame.uiSourceCode().displayName());
-  TestRunner.addResult('SourceFrame ' + name + ': ' + messages.length + ' message(s)');
-  TestRunner.addResult(messages.join('\n'));
-};
-
 SourcesTestRunner.waitUntilPausedNextTime = function(callback) {
   SourcesTestRunner.waitUntilPausedCallback = TestRunner.safeWrap(callback);
 };
@@ -133,10 +119,6 @@ SourcesTestRunner.waitUntilPaused = function(callback) {
 
 SourcesTestRunner.waitUntilPausedPromise = function() {
   return new Promise(resolve => SourcesTestRunner.waitUntilPaused(resolve));
-};
-
-SourcesTestRunner.waitUntilResumedNextTime = function(callback) {
-  SourcesTestRunner.waitUntilResumedCallback = TestRunner.safeWrap(callback);
 };
 
 SourcesTestRunner.waitUntilResumed = function(callback) {
@@ -451,18 +433,11 @@ SourcesTestRunner.waitForScriptSource = function(scriptName, callback, contentTy
       SourcesTestRunner.waitForScriptSource.bind(SourcesTestRunner, scriptName, callback, contentType));
 };
 
-SourcesTestRunner.objectForPopover = function(sourceFrame, lineNumber, columnNumber) {
-  const debuggerPlugin = SourcesTestRunner.debuggerPlugin(sourceFrame);
-  const {x, y} = debuggerPlugin.textEditor.cursorPositionToCoordinates(lineNumber, columnNumber);
-  const promise = TestRunner.addSnifferPromise(ObjectUI.ObjectPopoverHelper, 'buildObjectPopover');
-  debuggerPlugin.getPopoverRequest({x, y}).show(new UI.GlassPane());
-  return promise;
-};
-
 SourcesTestRunner.setBreakpoint = async function(sourceFrame, lineNumber, condition, enabled) {
   const debuggerPlugin = SourcesTestRunner.debuggerPlugin(sourceFrame);
   if (!debuggerPlugin.muted) {
-    await debuggerPlugin.setBreakpoint(lineNumber, 0, condition, enabled);
+    const bp = await debuggerPlugin.setBreakpoint(lineNumber, 0, condition, enabled);
+    await bp.refreshInDebugger();  // Make sure the breakpoint is really set
   }
 };
 
@@ -488,48 +463,6 @@ SourcesTestRunner.toggleBreakpoint = async function(sourceFrame, lineNumber, dis
   if (!debuggerPlugin.muted) {
     await debuggerPlugin.toggleBreakpoint(lineNumber, disableOnly);
   }
-};
-
-SourcesTestRunner.waitBreakpointSidebarPane = function(waitUntilResolved) {
-  if (Root.Runtime.experiments.isEnabled('breakpointView')) {
-    throw new Error('The breakpoint sidebar pane content is only available for the old breakpoint sidebar.');
-  }
-  return new Promise(
-             resolve =>
-                 TestRunner.addSniffer(Sources.JavaScriptBreakpointsSidebarPane.prototype, 'didUpdateForTest', resolve))
-      .then(checkIfReady);
-
-  function checkIfReady() {
-    if (!waitUntilResolved) {
-      return;
-    }
-
-    for (const {breakpoint} of self.Bindings.breakpointManager.allBreakpointLocations()) {
-      if (!breakpoint.bound() && breakpoint.enabled()) {
-        return SourcesTestRunner.waitBreakpointSidebarPane();
-      }
-    }
-  }
-};
-
-SourcesTestRunner.breakpointsSidebarPaneContent = function() {
-  if (Root.Runtime.experiments.isEnabled('breakpointView')) {
-    throw new Error('The breakpoint sidebar pane content is only available for the old breakpoint sidebar.');
-  }
-  const pane = Sources.JavaScriptBreakpointsSidebarPane.instance();
-  const empty = pane.emptyElement;
-
-  if (!empty.classList.contains('hidden')) {
-    return TestRunner.textContentWithLineBreaks(empty);
-  }
-
-  const entries = Array.from(pane.contentElement.querySelectorAll('.breakpoint-entry'));
-  return entries.map(TestRunner.textContentWithLineBreaks).join('\n');
-};
-
-SourcesTestRunner.dumpBreakpointSidebarPane = function(title) {
-  TestRunner.addResult('Breakpoint sidebar pane ' + (title || ''));
-  TestRunner.addResult(SourcesTestRunner.breakpointsSidebarPaneContent());
 };
 
 SourcesTestRunner.dumpScopeVariablesSidebarPane = function() {
@@ -633,37 +566,6 @@ SourcesTestRunner.queryScripts = function(filter) {
   return (filter ? scripts.filter(filter) : scripts);
 };
 
-SourcesTestRunner.createScriptMock = function(
-    url, startLine, startColumn, isContentScript, source, target, preRegisterCallback) {
-  target = target || self.SDK.targetManager.mainFrameTarget();
-  const debuggerModel = target.model(SDK.DebuggerModel);
-  const scriptId = String(++SourcesTestRunner.lastScriptId);
-  const sourceLineEndings = TestRunner.findLineEndingIndexes(source);
-  const lineCount = sourceLineEndings.length;
-  const endLine = startLine + lineCount - 1;
-  const endColumn = (lineCount === 1 ? startColumn + source.length : source.length - sourceLineEndings[lineCount - 2]);
-  const hasSourceURL = Boolean(source.match(/\/\/#\ssourceURL=\s*(\S*?)\s*$/m)) ||
-      Boolean(source.match(/\/\/@\ssourceURL=\s*(\S*?)\s*$/m));
-
-  const script = new SDK.Script(
-      debuggerModel, scriptId, url, startLine, startColumn, endLine, endColumn, 0, '', isContentScript, false,
-      undefined, hasSourceURL, source.length);
-
-  script.requestContent = function() {
-    const trimmedSource = SDK.Script.trimSourceURLComment(source);
-    return Promise.resolve({content: trimmedSource, isEncoded: false});
-  };
-
-  if (preRegisterCallback) {
-    preRegisterCallback(script);
-  }
-
-  debuggerModel.registerScript(script);
-  return script;
-};
-
-SourcesTestRunner.lastScriptId = 0;
-
 SourcesTestRunner.checkRawLocation = function(script, lineNumber, columnNumber, location) {
   TestRunner.assertEquals(script.scriptId, location.scriptId, 'Incorrect scriptId');
   TestRunner.assertEquals(lineNumber, location.lineNumber, 'Incorrect lineNumber');
@@ -683,10 +585,6 @@ SourcesTestRunner.checkUILocation = function(uiSourceCode, lineNumber, columnNum
   TestRunner.assertEquals(
       columnNumber, location.columnNumber,
       'Incorrect columnNumber, expected \'' + columnNumber + '\', but got \'' + location.columnNumber + '\'');
-};
-
-SourcesTestRunner.scriptFormatter = function() {
-  return Promise.resolve(Sources.ScriptFormatterEditorAction.instance());
 };
 
 SourcesTestRunner.waitForExecutionContextInTarget = function(target, callback) {
@@ -713,146 +611,8 @@ SourcesTestRunner.evaluateOnCurrentCallFrame = function(code) {
   return TestRunner.debuggerModel.evaluateOnSelectedCallFrame({expression: code, objectGroup: 'console'});
 };
 
-SourcesTestRunner.waitDebuggerPluginDecorations = function(sourceFrame) {
-  return TestRunner.addSnifferPromise(Sources.DebuggerPlugin.prototype, 'breakpointDecorationsUpdatedForTest');
-};
-
-SourcesTestRunner.waitDebuggerPluginBreakpoints = function(sourceFrame) {
-  return SourcesTestRunner.waitDebuggerPluginDecorations().then(checkIfReady);
-
-  function checkIfReady() {
-    for (const {breakpoint} of self.Bindings.breakpointManager.allBreakpointLocations()) {
-      if (!breakpoint.bound() && breakpoint.enabled()) {
-        return SourcesTestRunner.waitDebuggerPluginDecorations().then(checkIfReady);
-      }
-    }
-
-    return Promise.resolve();
-  }
-};
-
-/**
- * Useful for tests that want to run some breakpoint action like setting, toggling, adding a condition, etc.
- * and dumping the set breakpoint decorations afterwards.
- * See {SourcesTestRunner.waitForExactBreakpointDecorations} for the format of the {expectedDecorations} paramter.
- */
-SourcesTestRunner.runActionAndWaitForExactBreakpointDecorations =
-    async function(sourceFrame, expectedDecorations, action, skipFirstWait = false) {
-  const waitPromise =
-      SourcesTestRunner.waitForExactBreakpointDecorations(sourceFrame, expectedDecorations, skipFirstWait);
-  await action();
-  await waitPromise;
-  SourcesTestRunner.dumpDebuggerPluginBreakpoints(sourceFrame);
-};
-
-/**
- * Waits for breakpoint decoration updates until specific decorations are met.
- *
- * @param expectedDecorations An array of key/value pairs where the key is a line number
- *    and the value is the number of decorations in the given line, e.g.:
- *
- *      expectedDecorations = [[5, 1], [10, 2]]
- *
- *    waits until line 5 has one breakpoint decoration and line 10 has two decorations.
- * @param skipFirstWait Check decorations immediately without waiting for the
- *                      "decorations updated" event.
- */
-SourcesTestRunner.waitForExactBreakpointDecorations = function(
-    sourceFrame, expectedDecorations, skipFirstWait = false) {
-  if (skipFirstWait) {
-    return checkIfDecorationsReady();
-  }
-  return SourcesTestRunner.waitDebuggerPluginDecorations().then(checkIfDecorationsReady);
-
-  function checkIfDecorationsReady() {
-    const currentDecorations = collectCurrentDecorationsFromDebuggerPlugin();
-    const expectedDecorationsMap = new Map(expectedDecorations);
-    if (decorationsAreEqual(currentDecorations, expectedDecorationsMap)) {
-      return Promise.resolve();
-    }
-    return SourcesTestRunner.waitForExactBreakpointDecorations(sourceFrame, expectedDecorations);
-  }
-
-  function collectCurrentDecorationsFromDebuggerPlugin() {
-    const currentDecorationCountPerLine = new Map();
-    for (const decoration of SourcesTestRunner.debuggerPlugin(sourceFrame).breakpointDecorations.values()) {
-      const lineNumber = (decoration.handle.resolve() || {}).lineNumber;
-      if (lineNumber) {
-        const count = currentDecorationCountPerLine.get(lineNumber) || 0;
-        currentDecorationCountPerLine.set(lineNumber, count + 1);
-      }
-    }
-    return currentDecorationCountPerLine;
-  }
-
-  function decorationsAreEqual(map1, map2) {
-    if (map1.size !== map2.size) {
-      return false;
-    }
-    for (const [line1, count1] of map1) {
-      if (map2.get(line1) !== count1) {
-        return false;
-      }
-    }
-    return true;
-  }
-};
-
-SourcesTestRunner.dumpDebuggerPluginBreakpoints = function(sourceFrame) {
-  const textEditor = sourceFrame.textEditor;
-
-  for (let lineNumber = 0; lineNumber < textEditor.linesCount; ++lineNumber) {
-    if (!textEditor.hasLineClass(lineNumber, 'cm-breakpoint')) {
-      continue;
-    }
-
-    const disabled = textEditor.hasLineClass(lineNumber, 'cm-breakpoint-disabled');
-    const conditional = textEditor.hasLineClass(lineNumber, 'cm-breakpoint-conditional');
-    TestRunner.addResult(
-        'breakpoint at ' + lineNumber + ((disabled ? ' disabled' : '')) + ((conditional ? ' conditional' : '')));
-    const range = new TextUtils.TextRange(lineNumber, 0, lineNumber, textEditor.line(lineNumber).length);
-    let bookmarks = textEditor.bookmarks(range, Sources.DebuggerPlugin.BreakpointDecoration.bookmarkSymbol);
-    bookmarks = bookmarks.filter(bookmark => Boolean(bookmark.position()));
-    bookmarks.sort((bookmark1, bookmark2) => bookmark1.position().startColumn - bookmark2.position().startColumn);
-
-    for (const bookmark of bookmarks) {
-      const position = bookmark.position();
-      const element = bookmark[Sources.DebuggerPlugin.BreakpointDecoration.elementSymbolForTest];
-      const disabled = element.classList.contains('cm-inline-disabled');
-      const conditional = element.classList.contains('cm-inline-conditional');
-
-      TestRunner.addResult(
-          '  inline breakpoint at (' + position.startLine + ', ' + position.startColumn + ')' +
-          ((disabled ? ' disabled' : '')) + ((conditional ? ' conditional' : '')));
-    }
-  }
-};
-
-SourcesTestRunner.clickDebuggerPluginBreakpoint = function(sourceFrame, lineNumber, index, next) {
-  const textEditor = sourceFrame.textEditor;
-  const lineLength = textEditor.line(lineNumber).length;
-  const lineRange = new TextUtils.TextRange(lineNumber, 0, lineNumber, lineLength);
-  const bookmarks = textEditor.bookmarks(lineRange, Sources.DebuggerPlugin.BreakpointDecoration.bookmarkSymbol);
-  bookmarks.sort((bookmark1, bookmark2) => bookmark1.position().startColumn - bookmark2.position().startColumn);
-  const bookmark = bookmarks[index];
-
-  if (bookmark) {
-    bookmark[Sources.DebuggerPlugin.BreakpointDecoration.elementSymbolForTest].click();
-  } else {
-    TestRunner.addResult(`Could not click on Javascript breakpoint - lineNumber: ${lineNumber}, index: ${index}`);
-    next();
-  }
-};
-
 SourcesTestRunner.debuggerPlugin = function(sourceFrame) {
   return sourceFrame.plugins.find(plugin => plugin instanceof Sources.DebuggerPlugin);
-};
-
-SourcesTestRunner.waitUntilDebuggerPluginLoaded = async function(sourceFrame) {
-  while (!SourcesTestRunner.debuggerPlugin(sourceFrame)) {
-    await TestRunner.addSnifferPromise(sourceFrame, 'ensurePluginsLoaded');
-  }
-  return SourcesTestRunner.debuggerPlugin(sourceFrame);
 };
 
 SourcesTestRunner.setEventListenerBreakpoint = function(id, enabled, targetName) {

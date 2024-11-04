@@ -18,9 +18,9 @@ const UIStrings = {
    */
   dontShowAgain: 'Don\'t show again',
   /**
-   *@description Text that is usually a hyperlink to more documentation
+   *@description Text that indicates that a short message can be expanded to a detailed message
    */
-  learnMore: 'Learn more',
+  showMore: 'Show more',
   /**
    *@description Text to close something
    */
@@ -36,7 +36,7 @@ export class Infobar {
   private readonly mainRow: HTMLElement;
   private readonly detailsRows: HTMLElement;
   private hasDetails: boolean;
-  private detailsMessage: string;
+  private detailsMessage: string|Element;
   private readonly infoContainer: HTMLElement;
   private readonly infoMessage: HTMLElement;
   private infoText: HTMLElement;
@@ -105,7 +105,7 @@ export class Infobar {
 
     this.closeContainer = this.mainRow.createChild('div', 'infobar-close-container');
     this.toggleElement = createTextButton(
-        i18nString(UIStrings.learnMore), this.onToggleDetails.bind(this), 'link-style devtools-link hidden');
+        i18nString(UIStrings.showMore), this.onToggleDetails.bind(this), 'link-style devtools-link hidden');
     this.toggleElement.setAttribute('role', 'link');
     this.closeContainer.appendChild(this.toggleElement);
     this.closeButton = this.closeContainer.createChild('div', 'close-button', 'dt-close-button');
@@ -118,7 +118,7 @@ export class Infobar {
     if (type !== Type.Issue) {
       this.contentElement.tabIndex = 0;
     }
-    ARIAUtils.setAccessibleName(this.contentElement, text);
+    ARIAUtils.setLabel(this.contentElement, text);
     this.contentElement.addEventListener('keydown', event => {
       if (event.keyCode === Keys.Esc.code) {
         this.dispose();
@@ -205,7 +205,8 @@ export class Infobar {
     this.detailsRows.classList.remove('hidden');
     this.toggleElement.remove();
     this.onResize();
-    ARIAUtils.alert(this.detailsMessage);
+    ARIAUtils.alert(
+        typeof this.detailsMessage === 'string' ? this.detailsMessage : this.detailsMessage.textContent || '');
     if (this.#firstFocusableElement) {
       this.#firstFocusableElement.focus();
     } else {
@@ -213,13 +214,17 @@ export class Infobar {
     }
   }
 
-  createDetailsRowMessage(message?: string): Element {
+  createDetailsRowMessage(message: Element|string): Element {
     this.hasDetails = true;
-    this.detailsMessage = message || '';
+    this.detailsMessage = message;
     this.toggleElement.classList.remove('hidden');
     const infobarDetailsRow = this.detailsRows.createChild('div', 'infobar-details-row');
     const detailsRowMessage = infobarDetailsRow.createChild('span', 'infobar-row-message');
-    detailsRowMessage.textContent = this.detailsMessage;
+    if (typeof message === 'string') {
+      detailsRowMessage.textContent = message;
+    } else {
+      detailsRowMessage.appendChild(message);
+    }
     return detailsRowMessage;
   }
 }

@@ -1,15 +1,17 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cast/streaming/rtp_packet_parser.h"
 
 #include "cast/streaming/rtp_defines.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "util/big_endian.h"
 
-namespace openscreen {
-namespace cast {
+using testing::ElementsAreArray;
+
+namespace openscreen::cast {
 namespace {
 
 // Tests that a simple packet for a key frame can be parsed.
@@ -43,9 +45,7 @@ TEST(RtpPacketParserTest, ParsesPacketForKeyFrame) {
   EXPECT_EQ(FramePacketId{0x0a0c}, result->max_packet_id);
   EXPECT_EQ(FrameId::first() + 5, result->referenced_frame_id);
   EXPECT_EQ(0, result->new_playout_delay.count());
-  const absl::Span<const uint8_t> expected_payload(kInput + 18, 8);
-  ASSERT_EQ(expected_payload, result->payload);
-  EXPECT_TRUE(expected_payload == result->payload);
+  EXPECT_THAT(result->payload, ElementsAreArray(kInput + 18, 8));
 }
 
 // Tests that a packet which includes a "referenced frame ID" can be parsed.
@@ -80,9 +80,7 @@ TEST(RtpPacketParserTest, ParsesPacketForNonKeyFrameWithReferenceFrameId) {
   EXPECT_EQ(FramePacketId{0x000c}, result->max_packet_id);
   EXPECT_EQ(FrameId::first() + 39, result->referenced_frame_id);
   EXPECT_EQ(0, result->new_playout_delay.count());
-  const absl::Span<const uint8_t> expected_payload(kInput + 19, 15);
-  ASSERT_EQ(expected_payload, result->payload);
-  EXPECT_TRUE(expected_payload == result->payload);
+  EXPECT_THAT(result->payload, ElementsAreArray(kInput + 19, 15));
 }
 
 // Tests that a packet which lacks a "referenced frame ID" field can be parsed,
@@ -118,9 +116,8 @@ TEST(RtpPacketParserTest, ParsesPacketForNonKeyFrameWithoutReferenceFrameId) {
   EXPECT_EQ(FramePacketId{0x000c}, result->max_packet_id);
   EXPECT_EQ(FrameId::first() + 41, result->referenced_frame_id);
   EXPECT_EQ(0, result->new_playout_delay.count());
-  const absl::Span<const uint8_t> expected_payload(kInput + 18, 15);
-  ASSERT_EQ(expected_payload, result->payload);
-  EXPECT_TRUE(expected_payload == result->payload);
+  const ByteView expected_payload(kInput + 18, 15);
+  EXPECT_THAT(result->payload, ElementsAreArray(kInput + 18, 15));
 }
 
 // Tests that a packet indicating a new playout delay can be parsed.
@@ -156,9 +153,7 @@ TEST(RtpPacketParserTest, ParsesPacketWithAdaptiveLatencyExtension) {
   EXPECT_EQ(FramePacketId{0x000c}, result->max_packet_id);
   EXPECT_EQ(FrameId::first() + 64, result->referenced_frame_id);
   EXPECT_EQ(270, result->new_playout_delay.count());
-  const absl::Span<const uint8_t> expected_payload(kInput + 23, 15);
-  ASSERT_EQ(expected_payload, result->payload);
-  EXPECT_TRUE(expected_payload == result->payload);
+  EXPECT_THAT(result->payload, ElementsAreArray(kInput + 23, 15));
 }
 
 // Tests that the parser can handle multiple Cast Header Extensions in a RTP
@@ -197,9 +192,7 @@ TEST(RtpPacketParserTest, ParsesPacketWithMultipleExtensions) {
   EXPECT_EQ(FramePacketId{0x000c}, result->max_packet_id);
   EXPECT_EQ(FrameId::first() + 64, result->referenced_frame_id);
   EXPECT_EQ(270, result->new_playout_delay.count());
-  const absl::Span<const uint8_t> expected_payload(kInput + 34, 15);
-  ASSERT_EQ(expected_payload, result->payload);
-  EXPECT_TRUE(expected_payload == result->payload);
+  EXPECT_THAT(result->payload, ElementsAreArray(kInput + 34, 15));
 }
 
 // Tests that the parser ignores packets from an unknown source.
@@ -249,22 +242,21 @@ TEST(RtpPacketParserTest, RejectsTruncatedPackets) {
   const Ssrc kSenderSsrc = 0x00000101;
 
   RtpPacketParser parser(kSenderSsrc);
-  ASSERT_FALSE(parser.Parse(absl::Span<const uint8_t>(kInput, 1)));
-  ASSERT_FALSE(parser.Parse(absl::Span<const uint8_t>(kInput, 18)));
-  ASSERT_FALSE(parser.Parse(absl::Span<const uint8_t>(kInput, 22)));
-  ASSERT_FALSE(parser.Parse(absl::Span<const uint8_t>(kInput, 33)));
+  ASSERT_FALSE(parser.Parse(ByteView(kInput, 1)));
+  ASSERT_FALSE(parser.Parse(ByteView(kInput, 18)));
+  ASSERT_FALSE(parser.Parse(ByteView(kInput, 22)));
+  ASSERT_FALSE(parser.Parse(ByteView(kInput, 33)));
 
   // When truncated to 34 bytes, the parser should see it as a packet with zero
   // payload bytes.
-  const auto result_without_payload =
-      parser.Parse(absl::Span<const uint8_t>(kInput, 34));
+  const auto result_without_payload = parser.Parse(ByteView(kInput, 34));
   ASSERT_TRUE(result_without_payload);
   EXPECT_TRUE(result_without_payload->payload.empty());
 
   // And, of course, with the entire kInput available, the parser should see it
   // as a packet with 15 bytes of payload.
   const auto result_with_payload =
-      parser.Parse(absl::Span<const uint8_t>(kInput, sizeof(kInput)));
+      parser.Parse(ByteView(kInput, sizeof(kInput)));
   ASSERT_TRUE(result_with_payload);
   EXPECT_EQ(size_t{15}, result_with_payload->payload.size());
 }
@@ -306,5 +298,4 @@ TEST(RtpPacketParserTest, RejectsPacketWithBadFramePacketIds) {
 }
 
 }  // namespace
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "base/memory/memory_pressure_listener.h"
+#include "base/memory/raw_ptr.h"
 #include "base/ranges/algorithm.h"
 #include "base/test/test_mock_time_task_runner.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -40,7 +41,7 @@ class TestFrameEvictionManagerClient : public FrameEvictionManagerClient {
   bool has_frame() const { return has_frame_; }
 
  private:
-  FrameEvictionManager* manager_ = FrameEvictionManager::GetInstance();
+  raw_ptr<FrameEvictionManager> manager_ = FrameEvictionManager::GetInstance();
   bool has_frame_ = true;
 };
 

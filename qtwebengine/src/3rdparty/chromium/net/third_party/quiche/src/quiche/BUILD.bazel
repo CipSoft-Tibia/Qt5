@@ -4,6 +4,8 @@
 
 load(
     "//build:source_list.bzl",
+    "balsa_hdrs",
+    "balsa_srcs",
     "binary_http_hdrs",
     "binary_http_srcs",
     "default_platform_impl_hdrs",
@@ -111,11 +113,17 @@ cc_library(
         ":quic_flags_list",
         ":quiche_flags_list",
         ":quiche_platform_quiche_export",
+        "@boringssl//:crypto",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/debugging:stacktrace",
         "@com_google_absl//absl/debugging:symbolize",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/log:flags",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -135,6 +143,7 @@ cc_library(
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/flags:usage",
+        "@com_google_absl//absl/log:initialize",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest",
@@ -200,6 +209,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/numeric:int128",
@@ -218,6 +229,25 @@ cc_library(
 )
 
 cc_library(
+  name = "balsa",
+  srcs = balsa_srcs,
+  hdrs = balsa_hdrs,
+  deps = [
+        ":quiche_core",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
+  ],
+)
+
+cc_library(
     name = "quiche_tool_support",
     srcs = quiche_tool_support_srcs,
     hdrs = quiche_tool_support_hdrs,
@@ -228,6 +258,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -282,6 +313,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "quic_toy_server",
+    srcs = [
+        "quic/tools/quic_toy_server.cc",
+    ],
+    hdrs = [
+        "quic/tools/quic_toy_server.h",
+    ],
+    deps = [
+        ":io_tool_support",
+        ":quiche_core",
+        ":quiche_platform_default_tools",
+        ":quiche_tool_support",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "quic_server_factory",
+    srcs = [
+        "quic/tools/quic_server_factory.cc",
+    ],
+    hdrs = [
+        "quic/tools/quic_server_factory.h",
+    ],
+    deps = [
+        ":io_tool_support",
+        ":quic_toy_server",
+    ],
+)
+
 test_suite_from_source_list(
     name = "quiche_tests",
     srcs = quiche_tests_srcs,
@@ -290,6 +353,7 @@ test_suite_from_source_list(
         "quic/test_tools/quic_http_response_cache_data/**",
     ]),
     deps = [
+        ":balsa",
         ":binary_http",
         ":oblivious_http",
         ":quiche_core",
@@ -313,6 +377,7 @@ test_suite_from_source_list(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@com_google_googleurl//url",
     ],
@@ -450,6 +515,21 @@ cc_binary(
 )
 
 cc_binary(
+    name = "quic_server",
+    srcs = ["quic/tools/quic_server_bin.cc"],
+    deps = [
+        ":io_tool_support",
+        ":quic_server_factory",
+        ":quic_toy_server",
+        ":quiche_core",
+        ":quiche_platform_default",
+        ":quiche_platform_default_tools",
+        ":quiche_tool_support",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_binary(
     name = "masque_client",
     srcs = ["quic/masque/masque_client_bin.cc"],
     deps = [
@@ -471,6 +551,24 @@ cc_binary(
         ":quiche_platform_default_tools",
         ":quiche_tool_support",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_binary(
+    name = "web_transport_test_server",
+    srcs = ["quic/tools/web_transport_test_server.cc"],
+    deps = [
+        ":io_tool_support",
+        ":quic_server_factory",
+        ":quic_toy_server",
+        ":quiche_core",
+        ":quiche_platform_default",
+        ":quiche_platform_default_tools",
+        ":quiche_tool_support",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googleurl//url",
     ],
 )
 

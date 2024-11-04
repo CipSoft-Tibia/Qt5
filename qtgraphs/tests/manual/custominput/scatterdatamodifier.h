@@ -6,11 +6,11 @@
 
 #include "custominputhandler.h"
 
-#include <QtGraphs/q3dscatter.h>
-#include <QtGui/QFont>
-#include <QtCore/QTimer>
 #include <QtCore/QPropertyAnimation>
 #include <QtCore/QSequentialAnimationGroup>
+#include <QtCore/QTimer>
+#include <QtGraphs/q3dscatter.h>
+#include <QtGui/QFont>
 #include <QtGui/QVector3D>
 
 class ScatterDataModifier : public QObject

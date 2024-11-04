@@ -277,6 +277,8 @@ int main(int argc, char *argv[])
 		window_add_widget(transformed.window, &transformed);
 
 	window_set_title(transformed.window, "Transformed");
+	window_set_appid(transformed.window,
+			 "org.freedesktop.weston.transformed");
 
 	widget_set_transparent(transformed.widget, 0);
 	widget_set_default_cursor(transformed.widget, CURSOR_BLANK);

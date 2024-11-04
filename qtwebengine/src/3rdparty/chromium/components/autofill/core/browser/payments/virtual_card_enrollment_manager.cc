@@ -67,7 +67,7 @@ void VirtualCardEnrollmentManager::InitVirtualCardEnroll(
     absl::optional<
         payments::PaymentsClient::GetDetailsForEnrollmentResponseDetails>
         get_details_for_enrollment_response_details,
-    const raw_ptr<PrefService> user_prefs,
+    PrefService* user_prefs,
     RiskAssessmentFunction risk_assessment_function,
     VirtualCardEnrollmentFieldsLoadedCallback
         virtual_card_enrollment_fields_loaded_callback) {
@@ -271,6 +271,13 @@ void VirtualCardEnrollmentManager::SetSaveCardBubbleAcceptedTimestamp(
 void VirtualCardEnrollmentManager::OnDidGetUpdateVirtualCardEnrollmentResponse(
     VirtualCardEnrollmentRequestType type,
     AutofillClient::PaymentsRpcResult result) {
+  // Add a strike if enrollment attempt was not successful.
+  if (type == VirtualCardEnrollmentRequestType::kEnroll &&
+      result != AutofillClient::PaymentsRpcResult::kSuccess) {
+    AddStrikeToBlockOfferingVirtualCardEnrollment(base::NumberToString(
+        state_.virtual_card_enrollment_fields.credit_card.instrument_id()));
+  }
+
   LogUpdateVirtualCardEnrollmentRequestResult(
       state_.virtual_card_enrollment_fields.virtual_card_enrollment_source,
       type, result == AutofillClient::PaymentsRpcResult::kSuccess);
@@ -348,6 +355,15 @@ void VirtualCardEnrollmentManager::ShowVirtualCardEnrollBubble() {
       base::BindOnce(
           &VirtualCardEnrollmentManager::OnVirtualCardEnrollmentBubbleCancelled,
           weak_ptr_factory_.GetWeakPtr()));
+}
+
+void VirtualCardEnrollmentManager::OnVirtualCardEnrollmentBubbleCancelled() {
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillEnableUpdateVirtualCardEnrollment)) {
+    AddStrikeToBlockOfferingVirtualCardEnrollment(base::NumberToString(
+        state_.virtual_card_enrollment_fields.credit_card.instrument_id()));
+  }
+  Reset();
 }
 
 void VirtualCardEnrollmentManager::OnRiskDataLoadedForVirtualCard(
@@ -478,7 +494,7 @@ void VirtualCardEnrollmentManager::EnsureCardArtImageIsSetBeforeShowingUI() {
   // The card art image might not be present in the upstream flow if the
   // chrome sync server has not synced down the card art url yet for the card
   // just uploaded.
-  raw_ptr<gfx::Image> cached_card_art_image =
+  gfx::Image* cached_card_art_image =
       personal_data_manager_->GetCachedCardArtImageForUrl(
           state_.virtual_card_enrollment_fields.credit_card.card_art_url());
   if (cached_card_art_image && !cached_card_art_image->IsEmpty()) {
@@ -519,7 +535,7 @@ void VirtualCardEnrollmentManager::SetInitialVirtualCardEnrollFields(
   // request to sync the |card_art_image|, and before showing the
   // VirtualCardEnrollmentBubble we will try to fetch the |card_art_image|
   // from the local cache.
-  raw_ptr<gfx::Image> card_art_image =
+  gfx::Image* card_art_image =
       personal_data_manager_->GetCreditCardArtImageForUrl(
           credit_card.card_art_url());
   if (card_art_image && !card_art_image->IsEmpty()) {
@@ -542,15 +558,6 @@ bool VirtualCardEnrollmentManager::
     return false;
 
   return true;
-}
-
-void VirtualCardEnrollmentManager::OnVirtualCardEnrollmentBubbleCancelled() {
-  if (base::FeatureList::IsEnabled(
-          features::kAutofillEnableUpdateVirtualCardEnrollment)) {
-    AddStrikeToBlockOfferingVirtualCardEnrollment(base::NumberToString(
-        state_.virtual_card_enrollment_fields.credit_card.instrument_id()));
-  }
-  Reset();
 }
 
 }  // namespace autofill

@@ -203,8 +203,10 @@ MaybeError Buffer::Initialize(bool mappedAtCreation) {
     device->fn.GetBufferMemoryRequirements(device->GetVkDevice(), mHandle, &requirements);
 
     MemoryKind requestKind = MemoryKind::Linear;
-    if (GetUsage() & kMappableBufferUsages) {
-        requestKind = MemoryKind::LinearMappable;
+    if (GetUsage() & wgpu::BufferUsage::MapRead) {
+        requestKind = MemoryKind::LinearReadMappable;
+    } else if (GetUsage() & wgpu::BufferUsage::MapWrite) {
+        requestKind = MemoryKind::LinearWriteMappable;
     }
     DAWN_TRY_ASSIGN(mMemoryAllocation,
                     device->GetResourceMemoryAllocator()->Allocate(requirements, requestKind));
@@ -314,8 +316,8 @@ bool Buffer::TrackUsageAndGetResourceBarrier(CommandRecordingContext* recordingC
     barrier->pNext = nullptr;
     barrier->srcAccessMask = VulkanAccessFlags(mLastUsage);
     barrier->dstAccessMask = VulkanAccessFlags(usage);
-    barrier->srcQueueFamilyIndex = 0;
-    barrier->dstQueueFamilyIndex = 0;
+    barrier->srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier->dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier->buffer = mHandle;
     barrier->offset = 0;
     // VK_WHOLE_SIZE doesn't work on old Windows Intel Vulkan drivers, so we don't use it.

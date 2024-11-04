@@ -10,13 +10,16 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
+#include "base/notreached.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/values.h"
 #include "build/build_config.h"
 #include "chrome/browser/printing/print_job_worker.h"
 #include "components/crash/core/common/crash_keys.h"
+#include "components/device_event_log/device_event_log.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/web_contents.h"
 #include "printing/backend/print_backend.h"
 #include "printing/buildflags/buildflags.h"
@@ -39,6 +42,10 @@ std::string getApplicationLocale();
 #if BUILDFLAG(ENABLE_OOP_PRINTING)
 #include "chrome/browser/printing/printer_query_oop.h"
 #include "printing/printing_features.h"
+#endif
+
+#if BUILDFLAG(IS_WIN)
+#include "base/strings/utf_string_conversions.h"
 #endif
 
 namespace printing {
@@ -147,7 +154,7 @@ void PrinterQuery::GetSettingsDone(base::OnceClosure callback,
     cookie_ = PrintSettings::NewCookie();
   } else {
     // Failure.
-    cookie_ = 0;
+    cookie_ = PrintSettings::NewInvalidCookie();
   }
 
   std::move(callback).Run();
@@ -157,6 +164,8 @@ void PrinterQuery::PostSettingsDone(base::OnceClosure callback,
                                     absl::optional<bool> maybe_is_modifiable,
                                     std::unique_ptr<PrintSettings> new_settings,
                                     mojom::ResultCode result) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+
   // `this` is owned by `callback`, so `base::Unretained()` is safe.
   content::GetUIThreadTaskRunner({})->PostTask(
       FROM_HERE,
@@ -258,17 +267,70 @@ void PrinterQuery::SetSettingsFromPOD(
 }
 #endif
 
+#if BUILDFLAG(IS_WIN)
+void PrinterQuery::UpdatePrintableArea(
+    PrintSettings* print_settings,
+    OnDidUpdatePrintableAreaCallback callback) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+#ifdef TOOLKIT_QT
+  scoped_refptr<PrintBackend> print_backend =
+      PrintBackend::CreateInstance(getApplicationLocale());
+#else
+  scoped_refptr<PrintBackend> print_backend =
+      PrintBackend::CreateInstance(g_browser_process->GetApplicationLocale());
+#endif
+
+  // Blocking is needed here because Windows printer drivers are oftentimes
+  // not thread-safe and have to be accessed on the UI thread.
+  base::ScopedAllowBlocking allow_blocking;
+  std::string printer_name = base::UTF16ToUTF8(print_settings->device_name());
+  crash_keys::ScopedPrinterInfo crash_key(
+      print_backend->GetPrinterDriverInfo(printer_name));
+
+  PRINTER_LOG(EVENT) << "Updating paper printable area in-process for "
+                     << printer_name;
+
+  const PrintSettings::RequestedMedia& media =
+      print_settings->requested_media();
+  absl::optional<gfx::Rect> printable_area_um =
+      print_backend->GetPaperPrintableArea(printer_name, media.vendor_id,
+                                           media.size_microns);
+  if (!printable_area_um.has_value()) {
+    std::move(callback).Run(/*success=*/false);
+    return;
+  }
+
+  print_settings->UpdatePrinterPrintableArea(printable_area_um.value());
+  std::move(callback).Run(/*success=*/true);
+}
+#endif
+
+// static
+void PrinterQuery::ApplyDefaultPrintableAreaToVirtualPrinterPrintSettings(
+    PrintSettings& print_settings) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  // The purpose of `print_context` is to set the default printable area. To do
+  // so, it doesn't need a RFH, so just default initialize the RFH id.
+  PrintingContextDelegate delegate((content::GlobalRenderFrameHostId()));
+  std::unique_ptr<PrintingContext> print_context =
+      PrintingContext::Create(&delegate, /*skip_system_calls=*/false);
+  print_context->SetPrintSettings(print_settings);
+  print_context->SetDefaultPrintableAreaForVirtualPrinters();
+  print_settings = print_context->settings();
+}
+
+#if BUILDFLAG(ENABLE_OOP_PRINTING)
+void PrinterQuery::SetClientId(PrintBackendServiceManager::ClientId client_id) {
+  // Only supposed to be called for `PrinterQueryOop` objects.
+  NOTREACHED_NORETURN();
+}
+#endif
+
 std::unique_ptr<PrintSettings> PrinterQuery::GetPdfSettings() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
   printing_context_->UsePdfSettings();
   return printing_context_->TakeAndResetSettings();
-}
-
-bool PrinterQuery::PostTask(const base::Location& from_here,
-                            base::OnceClosure task) {
-  return content::GetUIThreadTaskRunner({})->PostTask(from_here,
-                                                      std::move(task));
 }
 
 void PrinterQuery::InvokeSettingsCallback(SettingsCallback callback,
@@ -376,6 +438,7 @@ void PrinterQuery::GetSettingsWithUI(uint32_t document_page_count,
     web_contents->ExitFullscreen(true);
   }
 
+  PRINTER_LOG(EVENT) << "Getting printer settings from user in-process";
   printing_context_->AskUserForSettings(
       base::checked_cast<int>(document_page_count), has_selection, is_scripted,
       base::BindOnce(&PrinterQuery::InvokeSettingsCallback,
@@ -385,6 +448,7 @@ void PrinterQuery::GetSettingsWithUI(uint32_t document_page_count,
 void PrinterQuery::UseDefaultSettings(SettingsCallback callback) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
+  PRINTER_LOG(EVENT) << "Using printer default settings in-process";
   mojom::ResultCode result;
   {
 #if BUILDFLAG(IS_WIN)

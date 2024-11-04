@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include "cast/streaming/compound_rtcp_parser.h"
 #include "cast/streaming/frame_id.h"
 #include "cast/streaming/rtcp_session.h"
+#include "platform/base/span.h"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   using openscreen::cast::CompoundRtcpParser;
@@ -36,7 +37,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 #pragma clang diagnostic pop
 
   const auto max_feedback_frame_id = FrameId::first() + 100;
-  parser.Parse(absl::Span<const uint8_t>(data, size), max_feedback_frame_id);
+  parser.Parse(openscreen::ByteView(data, size), max_feedback_frame_id);
 
   return 0;
 }

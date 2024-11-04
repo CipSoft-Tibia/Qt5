@@ -6,6 +6,7 @@
 #define COMPONENTS_PASSWORD_MANAGER_CORE_BROWSER_INSECURE_CREDENTIALS_TABLE_H_
 
 #include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "base/types/strong_alias.h"
 #include "components/password_manager/core/browser/password_form.h"
@@ -17,8 +18,6 @@ class Database;
 }
 
 namespace password_manager {
-
-using BulkCheckDone = base::StrongAlias<class BulkCheckDoneTag, bool>;
 
 enum class RemoveInsecureCredentialsReason {
   // If the password was updated in the password store.
@@ -35,11 +34,13 @@ enum class RemoveInsecureCredentialsReason {
 // Represents information about the particular compromised credentials.
 struct InsecureCredential {
   InsecureCredential();
-  InsecureCredential(std::string signon_realm,
-                     std::u16string username,
-                     base::Time create_time,
-                     InsecureType insecure_type,
-                     IsMuted is_muted);
+  InsecureCredential(
+      std::string signon_realm,
+      std::u16string username,
+      base::Time create_time,
+      InsecureType insecure_type,
+      IsMuted is_muted,
+      TriggerBackendNotification trigger_notification_from_backend);
   InsecureCredential(const InsecureCredential& rhs);
   InsecureCredential(InsecureCredential&& rhs);
   InsecureCredential& operator=(const InsecureCredential& rhs);
@@ -60,6 +61,10 @@ struct InsecureCredential {
   InsecureType insecure_type = InsecureType::kLeaked;
   // Whether the problem was explicitly muted by the user.
   IsMuted is_muted{false};
+  // Whether the backend should trigger a notification for this insecure
+  // credential. Set to true if the user hasn't been notified in the client
+  // (e.g. via a leak warning).
+  TriggerBackendNotification trigger_notification_from_backend{false};
   // The store in which those credentials are stored.
   PasswordForm::Store in_store = PasswordForm::Store::kNotSet;
 };
@@ -94,7 +99,7 @@ class InsecureCredentialsTable {
   std::vector<InsecureCredential> GetRows(FormPrimaryKey parent_key) const;
 
  private:
-  sql::Database* db_ = nullptr;
+  raw_ptr<sql::Database> db_ = nullptr;
 };
 
 }  // namespace password_manager

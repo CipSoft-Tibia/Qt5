@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,7 @@
 #include <cstdint>
 #include <string>
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Transport system on top of CastSocket that allows routing messages over a
 // single socket to different virtual endpoints (e.g. system messages vs.
@@ -113,7 +112,6 @@ inline bool operator!=(const VirtualConnection& a, const VirtualConnection& b) {
   return !(a == b);
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_CHANNEL_VIRTUAL_CONNECTION_H_

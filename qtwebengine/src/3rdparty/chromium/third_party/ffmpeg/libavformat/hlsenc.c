@@ -27,12 +27,6 @@
 #include <unistd.h>
 #endif
 
-#if CONFIG_GCRYPT
-#include <gcrypt.h>
-#elif CONFIG_OPENSSL
-#include <openssl/rand.h>
-#endif
-
 #include "libavutil/avassert.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/avstring.h"
@@ -40,6 +34,7 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "libavutil/log.h"
+#include "libavutil/random_seed.h"
 #include "libavutil/time.h"
 #include "libavutil/time_internal.h"
 
@@ -355,9 +350,19 @@ static void write_codec_attr(AVStream *st, VariantStream *vs)
 
     if (st->codecpar->codec_id == AV_CODEC_ID_H264) {
         uint8_t *data = st->codecpar->extradata;
-        if (data && (data[0] | data[1] | data[2]) == 0 && data[3] == 1 && (data[4] & 0x1F) == 7) {
+        if (data) {
+            const uint8_t *p;
+
+            if (AV_RB32(data) == 0x01 && (data[4] & 0x1F) == 7)
+                p = &data[5];
+            else if (AV_RB24(data) == 0x01 && (data[3] & 0x1F) == 7)
+                p = &data[4];
+            else if (data[0] == 0x01)  /* avcC */
+                p = &data[1];
+            else
+                goto fail;
             snprintf(attr, sizeof(attr),
-                     "avc1.%02x%02x%02x", data[5], data[6], data[7]);
+                     "avc1.%02x%02x%02x", p[0], p[1], p[2]);
         } else {
             goto fail;
         }
@@ -700,20 +705,6 @@ fail:
     return ret;
 }
 
-static int randomize(uint8_t *buf, int len)
-{
-#if CONFIG_GCRYPT
-    gcry_randomize(buf, len, GCRY_VERY_STRONG_RANDOM);
-    return 0;
-#elif CONFIG_OPENSSL
-    if (RAND_bytes(buf, len))
-        return 0;
-#else
-    return AVERROR(ENOSYS);
-#endif
-    return AVERROR(EINVAL);
-}
-
 static int do_encrypt(AVFormatContext *s, VariantStream *vs)
 {
     HLSContext *hls = s->priv_data;
@@ -765,7 +756,7 @@ static int do_encrypt(AVFormatContext *s, VariantStream *vs)
     if (!*hls->key_string) {
         AVDictionary *options = NULL;
         if (!hls->key) {
-            if ((ret = randomize(key, sizeof(key))) < 0) {
+            if ((ret = av_random_bytes(key, sizeof(key))) < 0) {
                 av_log(s, AV_LOG_ERROR, "Cannot generate a strong random key\n");
                 return ret;
             }
@@ -869,7 +860,11 @@ static int hls_mux_init(AVFormatContext *s, VariantStream *vs)
     oc->max_delay                = s->max_delay;
     oc->opaque                   = s->opaque;
     oc->io_open                  = s->io_open;
+#if FF_API_AVFORMAT_IO_CLOSE
+FF_DISABLE_DEPRECATION_WARNINGS
     oc->io_close                 = s->io_close;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     oc->io_close2                = s->io_close2;
     oc->strict_std_compliance    = s->strict_std_compliance;
     av_dict_copy(&oc->metadata, s->metadata, 0);
@@ -2943,7 +2938,7 @@ static int hls_init(AVFormatContext *s)
         av_log(hls, AV_LOG_DEBUG, "start_number evaluated to %"PRId64"\n", hls->start_sequence);
     }
 
-    hls->recording_time = hls->init_time ? hls->init_time : hls->time;
+    hls->recording_time = hls->init_time && hls->max_nb_segments > 0 ? hls->init_time : hls->time;
 
     if (hls->flags & HLS_SPLIT_BY_TIME && hls->flags & HLS_INDEPENDENT_SEGMENTS) {
         // Independent segments cannot be guaranteed when splitting by time
@@ -3116,9 +3111,6 @@ static const AVOption options[] = {
     {"hls_init_time", "set segment length at init list",         OFFSET(init_time),     AV_OPT_TYPE_DURATION, {.i64 = 0},       0, INT64_MAX, E},
     {"hls_list_size", "set maximum number of playlist entries",  OFFSET(max_nb_segments),    AV_OPT_TYPE_INT,    {.i64 = 5},     0, INT_MAX, E},
     {"hls_delete_threshold", "set number of unreferenced segments to keep before deleting",  OFFSET(hls_delete_threshold),    AV_OPT_TYPE_INT,    {.i64 = 1},     1, INT_MAX, E},
-#if FF_HLS_TS_OPTIONS
-    {"hls_ts_options","set hls mpegts list of options for the container format used for hls (deprecated, use hls_segment_options instead of it.)", OFFSET(format_options), AV_OPT_TYPE_DICT, {.str = NULL},  0, 0,    E | AV_OPT_FLAG_DEPRECATED},
-#endif
     {"hls_vtt_options","set hls vtt list of options for the container format used for hls", OFFSET(vtt_format_options_str), AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,    E},
     {"hls_allow_cache", "explicitly set whether the client MAY (1) or MUST NOT (0) cache media segments", OFFSET(allowcache), AV_OPT_TYPE_INT, {.i64 = -1}, INT_MIN, INT_MAX, E},
     {"hls_base_url",  "url to prepend to each playlist entry",   OFFSET(baseurl), AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,       E},
@@ -3183,19 +3175,19 @@ static const AVClass hls_class = {
 };
 
 
-const AVOutputFormat ff_hls_muxer = {
-    .name           = "hls",
-    .long_name      = NULL_IF_CONFIG_SMALL("Apple HTTP Live Streaming"),
-    .extensions     = "m3u8",
+const FFOutputFormat ff_hls_muxer = {
+    .p.name           = "hls",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("Apple HTTP Live Streaming"),
+    .p.extensions     = "m3u8",
+    .p.audio_codec    = AV_CODEC_ID_AAC,
+    .p.video_codec    = AV_CODEC_ID_H264,
+    .p.subtitle_codec = AV_CODEC_ID_WEBVTT,
+    .p.flags          = AVFMT_NOFILE | AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_NODIMENSIONS,
+    .p.priv_class     = &hls_class,
     .priv_data_size = sizeof(HLSContext),
-    .audio_codec    = AV_CODEC_ID_AAC,
-    .video_codec    = AV_CODEC_ID_H264,
-    .subtitle_codec = AV_CODEC_ID_WEBVTT,
-    .flags          = AVFMT_NOFILE | AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_NODIMENSIONS,
     .init           = hls_init,
     .write_header   = hls_write_header,
     .write_packet   = hls_write_packet,
     .write_trailer  = hls_write_trailer,
     .deinit         = hls_deinit,
-    .priv_class     = &hls_class,
 };

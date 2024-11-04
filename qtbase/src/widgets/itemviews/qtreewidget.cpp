@@ -2300,37 +2300,43 @@ QDataStream &operator>>(QDataStream &in, QTreeWidgetItem &item)
 #endif // QT_NO_DATASTREAM
 
 
-void QTreeWidgetPrivate::_q_emitItemPressed(const QModelIndex &index)
+void QTreeWidgetPrivate::clearConnections()
+{
+    for (const QMetaObject::Connection &connection : connections)
+        QObject::disconnect(connection);
+}
+
+void QTreeWidgetPrivate::emitItemPressed(const QModelIndex &index)
 {
     Q_Q(QTreeWidget);
     emit q->itemPressed(item(index), index.column());
 }
 
-void QTreeWidgetPrivate::_q_emitItemClicked(const QModelIndex &index)
+void QTreeWidgetPrivate::emitItemClicked(const QModelIndex &index)
 {
     Q_Q(QTreeWidget);
     emit q->itemClicked(item(index), index.column());
 }
 
-void QTreeWidgetPrivate::_q_emitItemDoubleClicked(const QModelIndex &index)
+void QTreeWidgetPrivate::emitItemDoubleClicked(const QModelIndex &index)
 {
     Q_Q(QTreeWidget);
     emit q->itemDoubleClicked(item(index), index.column());
 }
 
-void QTreeWidgetPrivate::_q_emitItemActivated(const QModelIndex &index)
+void QTreeWidgetPrivate::emitItemActivated(const QModelIndex &index)
 {
     Q_Q(QTreeWidget);
     emit q->itemActivated(item(index), index.column());
 }
 
-void QTreeWidgetPrivate::_q_emitItemEntered(const QModelIndex &index)
+void QTreeWidgetPrivate::emitItemEntered(const QModelIndex &index)
 {
     Q_Q(QTreeWidget);
     emit q->itemEntered(item(index), index.column());
 }
 
-void QTreeWidgetPrivate::_q_emitItemChanged(const QModelIndex &index)
+void QTreeWidgetPrivate::emitItemChanged(const QModelIndex &index)
 {
     Q_Q(QTreeWidget);
     QTreeWidgetItem *indexItem = item(index);
@@ -2338,19 +2344,19 @@ void QTreeWidgetPrivate::_q_emitItemChanged(const QModelIndex &index)
         emit q->itemChanged(indexItem, index.column());
 }
 
-void QTreeWidgetPrivate::_q_emitItemExpanded(const QModelIndex &index)
+void QTreeWidgetPrivate::emitItemExpanded(const QModelIndex &index)
 {
     Q_Q(QTreeWidget);
     emit q->itemExpanded(item(index));
 }
 
-void QTreeWidgetPrivate::_q_emitItemCollapsed(const QModelIndex &index)
+void QTreeWidgetPrivate::emitItemCollapsed(const QModelIndex &index)
 {
     Q_Q(QTreeWidget);
     emit q->itemCollapsed(item(index));
 }
 
-void QTreeWidgetPrivate::_q_emitCurrentItemChanged(const QModelIndex &current,
+void QTreeWidgetPrivate::emitCurrentItemChanged(const QModelIndex &current,
                                                 const QModelIndex &previous)
 {
     Q_Q(QTreeWidget);
@@ -2359,7 +2365,7 @@ void QTreeWidgetPrivate::_q_emitCurrentItemChanged(const QModelIndex &current,
     emit q->currentItemChanged(currentItem, previousItem);
 }
 
-void QTreeWidgetPrivate::_q_sort()
+void QTreeWidgetPrivate::sort()
 {
     if (sortingEnabled) {
         int column = header->sortIndicatorSection();
@@ -2368,7 +2374,7 @@ void QTreeWidgetPrivate::_q_sort()
     }
 }
 
-void QTreeWidgetPrivate::_q_selectionChanged(const QItemSelection &selected, const QItemSelection &deselected)
+void QTreeWidgetPrivate::selectionChanged(const QItemSelection &selected, const QItemSelection &deselected)
 {
     Q_Q(QTreeWidget);
     QModelIndexList indices = selected.indexes();
@@ -2388,8 +2394,8 @@ void QTreeWidgetPrivate::_q_selectionChanged(const QItemSelection &selected, con
     emit q->itemSelectionChanged();
 }
 
-void QTreeWidgetPrivate::_q_dataChanged(const QModelIndex &topLeft,
-                                        const QModelIndex &bottomRight)
+void QTreeWidgetPrivate::dataChanged(const QModelIndex &topLeft,
+                                     const QModelIndex &bottomRight)
 {
     if (sortingEnabled && topLeft.isValid() && bottomRight.isValid()
         && !treeModel()->sortPendingTimer.isActive()) {
@@ -2447,7 +2453,7 @@ void QTreeWidgetPrivate::_q_dataChanged(const QModelIndex &topLeft,
   whether sorting is enabled.
 
   \sa QTreeWidgetItem, QTreeWidgetItemIterator, QTreeView,
-  {Model/View Programming}, {Settings Editor Example}
+  {Model/View Programming}
 */
 
 /*!
@@ -2561,6 +2567,8 @@ void QTreeWidgetPrivate::_q_dataChanged(const QModelIndex &topLeft,
   \fn void QTreeWidget::removeItemWidget(QTreeWidgetItem *item, int column)
 
   Removes the widget set in the given \a item in the given \a column.
+
+  \sa itemWidget(), setItemWidget()
 */
 
 /*!
@@ -2569,31 +2577,34 @@ void QTreeWidgetPrivate::_q_dataChanged(const QModelIndex &topLeft,
 QTreeWidget::QTreeWidget(QWidget *parent)
     : QTreeView(*new QTreeWidgetPrivate(), parent)
 {
+    Q_D(QTreeWidget);
     QTreeView::setModel(new QTreeModel(1, this));
-    connect(this, SIGNAL(pressed(QModelIndex)),
-            SLOT(_q_emitItemPressed(QModelIndex)));
-    connect(this, SIGNAL(clicked(QModelIndex)),
-            SLOT(_q_emitItemClicked(QModelIndex)));
-    connect(this, SIGNAL(doubleClicked(QModelIndex)),
-            SLOT(_q_emitItemDoubleClicked(QModelIndex)));
-    connect(this, SIGNAL(activated(QModelIndex)),
-            SLOT(_q_emitItemActivated(QModelIndex)));
-    connect(this, SIGNAL(entered(QModelIndex)),
-            SLOT(_q_emitItemEntered(QModelIndex)));
-    connect(this, SIGNAL(expanded(QModelIndex)),
-            SLOT(_q_emitItemExpanded(QModelIndex)));
-    connect(this, SIGNAL(collapsed(QModelIndex)),
-            SLOT(_q_emitItemCollapsed(QModelIndex)));
-    connect(selectionModel(), SIGNAL(currentChanged(QModelIndex,QModelIndex)),
-            this, SLOT(_q_emitCurrentItemChanged(QModelIndex,QModelIndex)));
-    connect(model(), SIGNAL(dataChanged(QModelIndex,QModelIndex)),
-            this, SLOT(_q_emitItemChanged(QModelIndex)));
-    connect(model(), SIGNAL(dataChanged(QModelIndex,QModelIndex)),
-            this, SLOT(_q_dataChanged(QModelIndex,QModelIndex)));
-    connect(model(), SIGNAL(columnsRemoved(QModelIndex,int,int)),
-            this, SLOT(_q_sort()));
-    connect(selectionModel(), SIGNAL(selectionChanged(QItemSelection,QItemSelection)),
-            this, SLOT(_q_selectionChanged(QItemSelection,QItemSelection)));
+    d->connections = {
+        QObjectPrivate::connect(this, &QTreeWidget::pressed,
+                                d, &QTreeWidgetPrivate::emitItemPressed),
+        QObjectPrivate::connect(this, &QTreeWidget::clicked,
+                                d, &QTreeWidgetPrivate::emitItemClicked),
+        QObjectPrivate::connect(this, &QTreeWidget::doubleClicked,
+                                d, &QTreeWidgetPrivate::emitItemDoubleClicked),
+        QObjectPrivate::connect(this, &QTreeWidget::activated,
+                                d, &QTreeWidgetPrivate::emitItemActivated),
+        QObjectPrivate::connect(this, &QTreeWidget::entered,
+                                d, &QTreeWidgetPrivate::emitItemEntered),
+        QObjectPrivate::connect(this, &QTreeWidget::expanded,
+                                d, &QTreeWidgetPrivate::emitItemExpanded),
+        QObjectPrivate::connect(this, &QTreeWidget::collapsed,
+                                d, &QTreeWidgetPrivate::emitItemCollapsed),
+        QObjectPrivate::connect(model(), &QAbstractItemModel::dataChanged,
+                                d, &QTreeWidgetPrivate::emitItemChanged),
+        QObjectPrivate::connect(model(), &QAbstractItemModel::dataChanged,
+                                d, &QTreeWidgetPrivate::dataChanged),
+        QObjectPrivate::connect(model(), &QAbstractItemModel::columnsRemoved,
+                                d, &QTreeWidgetPrivate::sort),
+        QObjectPrivate::connect(selectionModel(), &QItemSelectionModel::currentChanged,
+                                d, &QTreeWidgetPrivate::emitCurrentItemChanged),
+        QObjectPrivate::connect(selectionModel(), &QItemSelectionModel::selectionChanged,
+                                d, &QTreeWidgetPrivate::selectionChanged)
+    };
     header()->setSectionsClickable(false);
 }
 
@@ -2603,6 +2614,8 @@ QTreeWidget::QTreeWidget(QWidget *parent)
 
 QTreeWidget::~QTreeWidget()
 {
+    Q_D(QTreeWidget);
+    d->clearConnections();
 }
 
 /*
@@ -3005,6 +3018,7 @@ bool QTreeWidget::isPersistentEditorOpen(QTreeWidgetItem *item, int column) cons
 
     Returns the widget displayed in the cell specified by \a item and the given \a column.
 
+    \sa setItemWidget(), removeItemWidget()
 */
 QWidget *QTreeWidget::itemWidget(QTreeWidgetItem *item, int column) const
 {
@@ -3031,9 +3045,9 @@ QWidget *QTreeWidget::itemWidget(QTreeWidgetItem *item, int column) const
     i.e., the QTreeWidgetItem that will hold \a widget must have been added to
     the view before \a widget is set.
 
-    \note The tree takes ownership of the widget.
+    \note The tree takes ownership of \a widget.
 
-    \sa {Delegate Classes}
+    \sa itemWidget(), removeItemWidget(), {Delegate Classes}
 */
 void QTreeWidget::setItemWidget(QTreeWidgetItem *item, int column, QWidget *widget)
 {
@@ -3118,7 +3132,7 @@ void QTreeWidget::setSelectionModel(QItemSelectionModel *selectionModel)
     QTreeView::setSelectionModel(selectionModel);
     QItemSelection newSelection = selectionModel->selection();
     if (!newSelection.isEmpty())
-        d->_q_selectionChanged(newSelection, QItemSelection());
+        d->selectionChanged(newSelection, QItemSelection());
 }
 
 /*!

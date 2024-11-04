@@ -1,5 +1,5 @@
 man_conf = configuration_data()
-man_conf.set('weston_native_backend', opt_backend_native)
+man_conf.set('weston_native_backend', backend_default)
 man_conf.set('weston_modules_dir', dir_module_weston)
 man_conf.set('libweston_modules_dir', dir_module_libweston)
 man_conf.set('weston_shell_client', get_option('desktop-shell-client-default'))
@@ -49,6 +49,15 @@ if get_option('backend-rdp')
 	configure_file(
 		input: 'weston-rdp.man',
 		output: 'weston-rdp.7',
+		install_dir: join_paths(dir_man, 'man7'),
+		configuration: man_conf
+	)
+endif
+
+if get_option('backend-vnc')
+	configure_file(
+		input: 'weston-vnc.man',
+		output: 'weston-vnc.7',
 		install_dir: join_paths(dir_man, 'man7'),
 		configuration: man_conf
 	)

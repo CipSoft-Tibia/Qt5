@@ -2,6 +2,7 @@
 
 #include "repeatednonpackedmessages.qpb.h"
 #include <QtProtobuf/qprotobufserializer.h>
+#include <cmath>
 
 namespace qtprotobufnamespace::tests {
 

@@ -12,27 +12,18 @@
 
 #include "base/containers/flat_map.h"
 #include "base/memory/scoped_refptr.h"
-#include "components/viz/common/resources/resource_format.h"
+#include "base/types/pass_key.h"
+#include "components/viz/common/resources/shared_image_format.h"
 #include "gpu/command_buffer/service/dxgi_shared_handle_manager.h"
 #include "gpu/command_buffer/service/memory_tracking.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
-#include "gpu/command_buffer/service/shared_image/d3d_shared_fence.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_manager.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
 #include "gpu/command_buffer/service/texture_manager.h"
 #include "ui/gfx/gpu_memory_buffer.h"
+#include "ui/gfx/win/d3d_shared_fence.h"
 #include "ui/gl/buildflags.h"
-#include "ui/gl/gl_image_d3d.h"
-
-// Usage of BUILDFLAG(USE_DAWN) needs to be after the include for
-// ui/gl/buildflags.h
-#if BUILDFLAG(USE_DAWN)
-#include <dawn/native/D3D12Backend.h>
-using dawn::native::d3d12::ExternalImageDescriptorDXGISharedHandle;
-using dawn::native::d3d12::ExternalImageDXGI;
-using dawn::native::d3d12::ExternalImageDXGIBeginAccessDescriptor;
-using dawn::native::d3d12::ExternalImageDXGIFenceDescriptor;
-#endif  // BUILDFLAG(USE_DAWN)
+#include "ui/gl/scoped_egl_image.h"
 
 namespace gfx {
 class Size;
@@ -78,19 +69,6 @@ class GPU_GLES2_EXPORT D3DImageBacking
       Microsoft::WRL::ComPtr<IDXGISwapChain1> swap_chain,
       bool is_back_buffer);
 
-  // TODO(sunnyps): Remove this after migrating DXVA decoder to EGLImage.
-  static std::unique_ptr<D3DImageBacking> CreateFromGLTexture(
-      const Mailbox& mailbox,
-      viz::ResourceFormat format,
-      const gfx::Size& size,
-      const gfx::ColorSpace& color_space,
-      GrSurfaceOrigin surface_origin,
-      SkAlphaType alpha_type,
-      uint32_t usage,
-      Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11_texture,
-      scoped_refptr<gles2::TexturePassthrough> gl_texture,
-      size_t array_slice);
-
   // Helper used by D3D11VideoDecoder to create backings directly.
   static std::vector<std::unique_ptr<SharedImageBacking>>
   CreateFromVideoTexture(
@@ -116,16 +94,19 @@ class GPU_GLES2_EXPORT D3DImageBacking
   std::unique_ptr<DawnImageRepresentation> ProduceDawn(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker,
-      WGPUDevice device,
-      WGPUBackendType backend_type,
-      std::vector<WGPUTextureFormat> view_formats) override;
+      const wgpu::Device& device,
+      wgpu::BackendType backend_type,
+      std::vector<wgpu::TextureFormat> view_formats) override;
 
-  bool BeginAccessD3D11(bool write_access);
-  void EndAccessD3D11();
+  bool BeginAccessD3D11(Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device,
+                        bool write_access);
+  void EndAccessD3D11(Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device);
 
 #if BUILDFLAG(USE_DAWN)
-  WGPUTexture BeginAccessDawn(WGPUDevice device, WGPUTextureUsage usage);
-  void EndAccessDawn(WGPUDevice device, WGPUTexture texture);
+  wgpu::Texture BeginAccessDawn(const wgpu::Device& device,
+                                wgpu::BackendType backend_type,
+                                wgpu::TextureUsage usage);
+  void EndAccessDawn(const wgpu::Device& device, wgpu::Texture texture);
 #endif
 
   absl::optional<gl::DCLayerOverlayImage> GetDCLayerOverlayImage();
@@ -144,7 +125,33 @@ class GPU_GLES2_EXPORT D3DImageBacking
     return d3d11_texture_;
   }
 
-  static scoped_refptr<gles2::TexturePassthrough> CreateGLTexture(
+  // Holds a gles2::TexturePassthrough and corresponding egl image.
+  class GLTextureHolder : public base::RefCounted<GLTextureHolder> {
+   public:
+    GLTextureHolder(
+        base::PassKey<D3DImageBacking>,
+        scoped_refptr<gles2::TexturePassthrough> texture_passthrough,
+        gl::ScopedEGLImage egl_image);
+
+    const scoped_refptr<gles2::TexturePassthrough>& texture_passthrough()
+        const {
+      return texture_passthrough_;
+    }
+
+    void* egl_image() const { return egl_image_.get(); }
+
+    void MarkContextLost();
+
+   private:
+    friend class base::RefCounted<GLTextureHolder>;
+
+    ~GLTextureHolder();
+
+    const scoped_refptr<gles2::TexturePassthrough> texture_passthrough_;
+    const gl::ScopedEGLImage egl_image_;
+  };
+
+  static scoped_refptr<GLTextureHolder> CreateGLTexture(
       viz::SharedImageFormat format,
       const gfx::Size& size,
       const gfx::ColorSpace& color_space,
@@ -153,6 +160,14 @@ class GPU_GLES2_EXPORT D3DImageBacking
       unsigned array_slice = 0u,
       unsigned plane_index = 0u,
       Microsoft::WRL::ComPtr<IDXGISwapChain1> swap_chain = nullptr);
+
+  // Only for test use.
+  Microsoft::WRL::ComPtr<IDXGISwapChain1> GetSwapChainForTesting() {
+    return swap_chain_;
+  }
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> GetD3D11TextureForTesting() {
+    return d3d11_texture_;
+  }
 
  protected:
   std::unique_ptr<GLTexturePassthroughImageRepresentation>
@@ -163,7 +178,12 @@ class GPU_GLES2_EXPORT D3DImageBacking
       SharedImageManager* manager,
       MemoryTypeTracker* tracker) override;
 
-  std::unique_ptr<SkiaImageRepresentation> ProduceSkia(
+  std::unique_ptr<SkiaGaneshImageRepresentation> ProduceSkiaGanesh(
+      SharedImageManager* manager,
+      MemoryTypeTracker* tracker,
+      scoped_refptr<SharedContextState> context_state) override;
+
+  std::unique_ptr<SkiaGraphiteImageRepresentation> ProduceSkiaGraphite(
       SharedImageManager* manager,
       MemoryTypeTracker* tracker,
       scoped_refptr<SharedContextState> context_state) override;
@@ -174,24 +194,6 @@ class GPU_GLES2_EXPORT D3DImageBacking
       VideoDecodeDevice device) override;
 
  private:
-#if BUILDFLAG(USE_DAWN)
-  struct DawnExternalImageState {
-    DawnExternalImageState();
-    DawnExternalImageState(DawnExternalImageState&&);
-    DawnExternalImageState& operator=(DawnExternalImageState&&);
-    ~DawnExternalImageState();
-
-    // If an external image exists, it means Dawn produced the D3D12 side of the
-    // D3D11 texture created by ID3D12Device::OpenSharedHandle().
-    std::unique_ptr<ExternalImageDXGI> external_image;
-
-    // Signaled fence imported from Dawn at EndAccess. This can be reused if
-    // D3DSharedFence::IsSameFenceAsHandle() is true for fence handle from Dawn.
-    scoped_refptr<D3DSharedFence> signaled_fence;
-  };
-  base::flat_map<WGPUDevice, DawnExternalImageState> dawn_external_image_cache_;
-#endif  // BUILDFLAG(USE_DAWN)
-
   D3DImageBacking(
       const Mailbox& mailbox,
       viz::SharedImageFormat format,
@@ -201,7 +203,7 @@ class GPU_GLES2_EXPORT D3DImageBacking
       SkAlphaType alpha_type,
       uint32_t usage,
       Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11_texture,
-      std::vector<scoped_refptr<gles2::TexturePassthrough>> gl_textures,
+      std::vector<scoped_refptr<GLTextureHolder>> gl_texture_holders,
       scoped_refptr<DXGISharedHandleState> dxgi_shared_handle_state = nullptr,
       GLenum texture_target = GL_TEXTURE_2D,
       size_t array_slice = 0u,
@@ -209,22 +211,40 @@ class GPU_GLES2_EXPORT D3DImageBacking
       Microsoft::WRL::ComPtr<IDXGISwapChain1> swap_chain = nullptr,
       bool is_back_buffer = false);
 
-  WGPUTextureUsageFlags GetAllowedDawnUsages(
-      const WGPUTextureFormat wgpu_format) const;
+  // Helper to retrieve internal EGLImage for WebGPU GLES compat backend.
+  void* GetEGLImage() const;
 
-  gl::GLImage* GetGLImage() const;
-
+  // Returns a staging texture for CPU uploads/readback, creating one if needed.
   ID3D11Texture2D* GetOrCreateStagingTexture();
 
+  // Common state tracking for both D3D11 and Dawn access.
   bool ValidateBeginAccess(bool write_access) const;
+  void BeginAccessCommon(bool write_access);
+  void EndAccessCommon(scoped_refptr<gfx::D3DSharedFence> fence);
 
-  void EndAccessCommon(scoped_refptr<D3DSharedFence> fence);
+  // Get a list of fences to wait on in BeginAccessD3D11/Dawn. If the waiting
+  // device is backed by D3D11 (ANGLE or Dawn), |wait_d3d11_device| can be
+  // specified to skip over fences for the same device since the wait will be a
+  // no-op. Similarly, |wait_dawn_device| can be provided to skip over waits on
+  // fences previously signaled on the same Dawn device which are cached in
+  // |dawn_signaled_fence_map_|.
+  std::vector<scoped_refptr<gfx::D3DSharedFence>> GetPendingWaitFences(
+      const Microsoft::WRL::ComPtr<ID3D11Device>& wait_d3d11_device,
+      const wgpu::Device& wait_dawn_device,
+      bool write_access);
+
+#if BUILDFLAG(USE_DAWN)
+  // Uses either DXGISharedHandleState or internal |dawn_external_image_|
+  // depending on whether the texture has a shared handle or not.
+  std::unique_ptr<ExternalImageDXGI>& GetDawnExternalImage(
+      const wgpu::Device& device);
+#endif  // BUILDFLAG(USE_DAWN)
 
   // Texture could be nullptr if an empty backing is needed for testing.
   Microsoft::WRL::ComPtr<ID3D11Texture2D> d3d11_texture_;
 
   // Can be null for backings owned by non-GL producers e.g. WebGPU.
-  std::vector<scoped_refptr<gles2::TexturePassthrough>> gl_textures_;
+  std::vector<scoped_refptr<GLTextureHolder>> gl_texture_holders_;
 
   // Holds DXGI shared handle and the keyed mutex if present.  Can be shared
   // between plane shared image backings of a multi-plane texture, or between
@@ -251,8 +271,15 @@ class GPU_GLES2_EXPORT D3DImageBacking
   Microsoft::WRL::ComPtr<ID3D11Texture2D> staging_texture_;
 
   // D3D11 device corresponding to the |d3d11_texture_| provided on creation.
-  // TODO(sunnyps): Support multiple D3D11 devices.
-  Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device_;
+  // Can be different from the ANGLE D3D11 device when using Graphite.
+  Microsoft::WRL::ComPtr<ID3D11Device> texture_d3d11_device_;
+
+  // D3D11 device used by ANGLE. Can be different from |d3d11_device_| when
+  // using Graphite.
+  Microsoft::WRL::ComPtr<ID3D11Device> angle_d3d11_device_;
+
+  // D3D11 texture descriptor for |d3d11_texture_|.
+  D3D11_TEXTURE2D_DESC d3d11_texture_desc_;
 
   // Whether the backing is being used for exclusive read-write access.
   bool in_write_access_ = false;
@@ -262,16 +289,30 @@ class GPU_GLES2_EXPORT D3DImageBacking
 
   // Fences for previous reads. These will be waited on by the subsequent write,
   // but not by reads.
-  base::flat_set<scoped_refptr<D3DSharedFence>> read_fences_;
+  base::flat_set<scoped_refptr<gfx::D3DSharedFence>> read_fences_;
 
   // Fence for the previous write. These will be waited on by subsequent reads
   // and/or write.
-  scoped_refptr<D3DSharedFence> write_fence_;
+  scoped_refptr<gfx::D3DSharedFence> write_fence_;
 
-  // Fence used for signaling on this backing's |d3d11_device_|. Lazily created
-  // and signaled on first Dawn access, and used on any subsequent D3D11 access.
-  // TODO(sunnyps): Support multiple D3D11 devices.
-  scoped_refptr<D3DSharedFence> d3d11_device_fence_;
+  // Fences used for signaling after D3D11 access. Lazily created as needed.
+  // TODO(sunnyps): This doesn't need to be per D3DImageBacking. Find a better
+  // place for this so that they can be shared by all backings.
+  base::flat_map<Microsoft::WRL::ComPtr<ID3D11Device>,
+                 scoped_refptr<gfx::D3DSharedFence>>
+      d3d11_signaled_fence_map_;
+
+#if BUILDFLAG(USE_DAWN)
+  // If an external image exists, it means Dawn produced the D3D12 side of the
+  // D3D11 texture created by ID3D12Device::OpenSharedHandle(). Only used if
+  // the backing doesn't have a shared handle e.g. for mappable D3D11 textures.
+  std::unique_ptr<ExternalImageDXGI> dawn_external_image_;
+
+  // Signaled fence imported from Dawn at EndAccess. This can be reused if
+  // D3DSharedFence::IsSameFenceAsHandle() is true for fence handle from Dawn.
+  base::flat_map<WGPUDevice, scoped_refptr<gfx::D3DSharedFence>>
+      dawn_signaled_fence_map_;
+#endif  // BUILDFLAG(USE_DAWN)
 };
 
 }  // namespace gpu

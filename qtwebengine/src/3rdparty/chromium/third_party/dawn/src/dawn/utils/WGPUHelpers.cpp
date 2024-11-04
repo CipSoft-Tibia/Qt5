@@ -39,7 +39,7 @@ std::array<float, 7> kGammaDecodeBT709 = {2.2, 1.0 / 1.099, 0.099 / 1.099, 1 / 4
 std::array<float, 7> kGammaEncodeSrgb = {1 / 2.4, 1.137119, 0.0, 12.92, 0.0031308, -0.055, 0.0};
 }  // namespace
 
-namespace utils {
+namespace dawn::utils {
 #if TINT_BUILD_SPV_READER
 wgpu::ShaderModule CreateShaderModuleFromASM(
     const wgpu::Device& device,
@@ -84,7 +84,7 @@ wgpu::ShaderModule CreateShaderModuleFromASM(
 
 wgpu::ShaderModule CreateShaderModule(const wgpu::Device& device, const char* source) {
     wgpu::ShaderModuleWGSLDescriptor wgslDesc;
-    wgslDesc.source = source;
+    wgslDesc.code = source;
     wgpu::ShaderModuleDescriptor descriptor;
     descriptor.nextInChain = &wgslDesc;
     return device.CreateShaderModule(&descriptor);
@@ -119,7 +119,7 @@ ComboRenderPassDescriptor::ComboRenderPassDescriptor(
     cDepthStencilAttachmentInfo.stencilLoadOp = wgpu::LoadOp::Clear;
     cDepthStencilAttachmentInfo.stencilStoreOp = wgpu::StoreOp::Store;
 
-    colorAttachmentCount = static_cast<uint32_t>(colorAttachmentInfo.size());
+    colorAttachmentCount = colorAttachmentInfo.size();
     uint32_t colorAttachmentIndex = 0;
     for (const wgpu::TextureView& colorAttachment : colorAttachmentInfo) {
         if (colorAttachment.Get() != nullptr) {
@@ -279,7 +279,7 @@ wgpu::BindGroupLayout MakeBindGroupLayout(
     }
 
     wgpu::BindGroupLayoutDescriptor descriptor;
-    descriptor.entryCount = static_cast<uint32_t>(entries.size());
+    descriptor.entryCount = entries.size();
     descriptor.entries = entries.data();
     return device.CreateBindGroupLayout(&descriptor);
 }
@@ -418,4 +418,4 @@ ColorSpaceConversionInfo GetYUVBT709ToRGBSRGBColorSpaceConversionInfo() {
     return info;
 }
 
-}  // namespace utils
+}  // namespace dawn::utils

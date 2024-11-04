@@ -43,24 +43,26 @@ constexpr base::SockFamily kHostSockFamily =
 base::CrashKey g_crash_key_uid("ipc_uid");
 
 uid_t GetPosixPeerUid(base::UnixSocket* sock) {
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN) || \
-    PERFETTO_BUILDFLAG(PERFETTO_OS_FUCHSIA)
-  base::ignore_result(sock);
-  // Unsupported. Must be != kInvalidUid or the PacketValidator will fail.
-  return 0;
-#else
-  return sock->peer_uid_posix();
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) ||   \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID) || \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_APPLE)
+  if (sock->family() == base::SockFamily::kUnix)
+    return sock->peer_uid_posix();
 #endif
+
+  // Unsupported. Must be != kInvalidUid or the PacketValidator will fail.
+  base::ignore_result(sock);
+  return 0;
 }
 
 pid_t GetLinuxPeerPid(base::UnixSocket* sock) {
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) || \
     PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
-  return sock->peer_pid_linux();
-#else
+  if (sock->family() == base::SockFamily::kUnix)
+    return sock->peer_pid_linux();
+#endif
   base::ignore_result(sock);
   return base::kInvalidPid;  // Unsupported.
-#endif
 }
 
 }  // namespace
@@ -102,7 +104,8 @@ HostImpl::HostImpl(const char* socket_name, base::TaskRunner* task_runner)
     : task_runner_(task_runner), weak_ptr_factory_(this) {
   PERFETTO_DCHECK_THREAD(thread_checker_);
   sock_ = base::UnixSocket::Listen(socket_name, this, task_runner_,
-                                   kHostSockFamily, base::SockType::kStream);
+                                   base::GetSockFamily(socket_name),
+                                   base::SockType::kStream);
   if (!sock_) {
     PERFETTO_PLOG("Failed to create %s", socket_name);
   }
@@ -122,6 +125,8 @@ bool HostImpl::ExposeService(std::unique_ptr<Service> service) {
     PERFETTO_DLOG("Duplicate ExposeService(): %s", service_name.c_str());
     return false;
   }
+  service->use_shmem_emulation_ =
+      sock() && !base::SockShmemSupported(sock()->family());
   ServiceID sid = ++last_service_id_;
   ExposedService exposed_service(sid, service_name, std::move(service));
   services_.emplace(sid, std::move(exposed_service));
@@ -147,6 +152,12 @@ void HostImpl::AdoptConnectedSocket_Fuchsia(
   PERFETTO_DCHECK(client_connection->send_fd_cb_fuchsia);
 }
 
+void HostImpl::SetSocketSendTimeoutMs(uint32_t timeout_ms) {
+  PERFETTO_DCHECK_THREAD(thread_checker_);
+  // Should be less than the watchdog period (30s).
+  socket_tx_timeout_ms_ = timeout_ms;
+}
+
 void HostImpl::OnNewIncomingConnection(
     base::UnixSocket*,
     std::unique_ptr<base::UnixSocket> new_conn) {
@@ -156,8 +167,7 @@ void HostImpl::OnNewIncomingConnection(
   clients_by_socket_[new_conn.get()] = client.get();
   client->id = client_id;
   client->sock = std::move(new_conn);
-  // Watchdog is 30 seconds, so set the socket timeout to 10 seconds.
-  client->sock->SetTxTimeout(10000);
+  client->sock->SetTxTimeout(socket_tx_timeout_ms_);
   clients_[client_id] = std::move(client);
 }
 

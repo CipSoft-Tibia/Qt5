@@ -15,11 +15,12 @@
 import {createEmptyRecordConfig} from '../controller/record_config_types';
 import {
   Aggregation,
-} from '../frontend/pivot_table_redux_types';
+} from '../frontend/pivot_table_types';
 import {
   autosaveConfigStore,
   recordTargetStore,
 } from '../frontend/record_config';
+import {SqlTables} from '../frontend/sql_table/well_known_tables';
 
 import {featureFlags} from './feature_flags';
 import {
@@ -28,6 +29,7 @@ import {
   State,
   STATE_VERSION,
 } from './state';
+import {Time} from './time';
 
 const AUTOLOAD_STARTED_CONFIG_FLAG = featureFlags.register({
   id: 'autoloadStartedConfig',
@@ -57,18 +59,23 @@ export const COUNT_AGGREGATION: Aggregation = {
 
 export function createEmptyNonSerializableState(): NonSerializableState {
   return {
-    pivotTableRedux: {
+    pivotTable: {
       queryResult: null,
-      selectedPivots: [{kind: 'regular', table: 'slice', column: 'name'}],
+      selectedPivots:
+          [{kind: 'regular', table: SqlTables.slice.name, column: 'name'}],
       selectedAggregations: [
         {
           aggregationFunction: 'SUM',
-          column: {kind: 'regular', table: 'slice', column: 'dur'},
+          column: {kind: 'regular', table: SqlTables.slice.name, column: 'dur'},
           sortDirection: 'DESC',
         },
         {
           aggregationFunction: 'SUM',
-          column: {kind: 'regular', table: 'slice', column: 'thread_dur'},
+          column: {
+            kind: 'regular',
+            table: SqlTables.slice.name,
+            column: 'thread_dur',
+          },
         },
         COUNT_AGGREGATION,
       ],
@@ -95,7 +102,6 @@ export function createEmptyState(): State {
     scrollingTracks: [],
     areas: {},
     queries: {},
-    metrics: {},
     permalink: {},
     notes: {},
     visualisedArgs: [],
@@ -110,7 +116,7 @@ export function createEmptyState(): State {
       visibleState: {
         ...defaultTraceTime,
         lastUpdate: 0,
-        resolution: 0,
+        resolution: 0n,
       },
     },
 
@@ -124,6 +130,15 @@ export function createEmptyState(): State {
       count: 0,
     },
 
+    ftracePagination: {
+      offset: 0,
+      count: 0,
+    },
+
+    ftraceFilter: {
+      excludedNames: [],
+    },
+
     status: {msg: '', timestamp: 0},
     currentSelection: null,
     currentFlamegraphState: null,
@@ -133,8 +148,8 @@ export function createEmptyState(): State {
     sidebarVisible: true,
     hoveredUtid: -1,
     hoveredPid: -1,
-    hoveredLogsTimestamp: -1,
-    hoveredNoteTimestamp: -1,
+    hoverCursorTimestamp: Time.INVALID,
+    hoveredNoteTimestamp: Time.INVALID,
     highlightedSliceId: -1,
     focusedFlowIdLeft: -1,
     focusedFlowIdRight: -1,
@@ -158,5 +173,8 @@ export function createEmptyState(): State {
       textEntry: '',
       hideNonMatching: true,
     },
+
+    // Somewhere to store plugins' persistent state.
+    plugins: {},
   };
 }

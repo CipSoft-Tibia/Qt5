@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDial>
@@ -2680,6 +2680,9 @@ void tst_QGraphicsScene::renderItemsWithNegativeWidthOrHeight()
 #ifdef Q_OS_ANDROID
     QSKIP("Test only works on platforms with resizable windows");
 #endif
+    if (QGuiApplication::platformName().startsWith(QLatin1String("eglfs"), Qt::CaseInsensitive))
+        QSKIP("EGLFS does not allow resizing on top window");
+
     QGraphicsScene scene(0, 0, m_testSize.width(), m_testSize.height());
 
     // Add item with negative width.

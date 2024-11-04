@@ -42,11 +42,14 @@
 #include <assert.h>
 #include <linux/input.h>
 
+#include "input-method-unstable-v1-server-protocol.h"
 #include "ivi-shell.h"
 #include "ivi-application-server-protocol.h"
 #include "ivi-layout-private.h"
 #include "ivi-layout-shell.h"
+#include "libweston/libweston.h"
 #include "shared/helpers.h"
+#include "shared/xalloc.h"
 #include "compositor/weston.h"
 
 /* Representation of ivi_surface protocol object. */
@@ -64,6 +67,31 @@ struct ivi_shell_surface
 	int32_t width;
 	int32_t height;
 
+	struct wl_list children_list;
+	struct wl_list children_link;
+
+	struct wl_list link;
+};
+
+struct ivi_input_panel_surface
+{
+	struct wl_resource* resource;
+	struct ivi_shell *shell;
+	struct ivi_layout_surface *layout_surface;
+
+	struct weston_surface *surface;
+	struct wl_listener surface_destroy_listener;
+
+	int32_t width;
+	int32_t height;
+
+	struct weston_output *output;
+	enum {
+		INPUT_PANEL_NONE,
+		INPUT_PANEL_TOPLEVEL,
+		INPUT_PANEL_OVERLAY,
+	} type;
+
 	struct wl_list link;
 };
 
@@ -72,21 +100,20 @@ struct ivi_shell_surface
  */
 
 static void
-ivi_shell_surface_committed(struct weston_surface *, int32_t, int32_t);
+ivi_shell_surface_committed(struct weston_surface *, struct weston_coord_surface);
 
 static struct ivi_shell_surface *
 get_ivi_shell_surface(struct weston_surface *surface)
 {
-	struct ivi_shell_surface *shsurf;
+	struct weston_desktop_surface *desktop_surface
+		= weston_surface_get_desktop_surface(surface);
+	if (desktop_surface)
+		return weston_desktop_surface_get_user_data(desktop_surface);
 
-	if (surface->committed != ivi_shell_surface_committed)
-		return NULL;
+	if (surface->committed == ivi_shell_surface_committed)
+		return surface->committed_private;
 
-	shsurf = surface->committed_private;
-	assert(shsurf);
-	assert(shsurf->surface == surface);
-
-	return shsurf;
+	return NULL;
 }
 
 struct ivi_layout_surface *
@@ -108,8 +135,7 @@ shell_surface_send_configure(struct weston_surface *surface,
 	struct ivi_shell_surface *shsurf;
 
 	shsurf = get_ivi_shell_surface(surface);
-	if (!shsurf)
-		return;
+	assert(shsurf);
 
 	if (shsurf->resource)
 		ivi_surface_send_configure(shsurf->resource, width, height);
@@ -117,16 +143,14 @@ shell_surface_send_configure(struct weston_surface *surface,
 
 static void
 ivi_shell_surface_committed(struct weston_surface *surface,
-			    int32_t sx, int32_t sy)
+			    struct weston_coord_surface new_origin)
 {
 	struct ivi_shell_surface *ivisurf = get_ivi_shell_surface(surface);
 
-	assert(ivisurf);
-	if (!ivisurf)
-		return;
-
-	if (surface->width == 0 || surface->height == 0)
-		return;
+	if (surface->width == 0 || surface->height == 0) {
+		if (!weston_surface_is_unmapping(surface))
+			return;
+	}
 
 	if (ivisurf->width != surface->width ||
 	    ivisurf->height != surface->height) {
@@ -144,9 +168,6 @@ ivi_shell_surface_get_label(struct weston_surface *surface,
 			    size_t len)
 {
 	struct ivi_shell_surface *shell_surf = get_ivi_shell_surface(surface);
-
-	if (!shell_surf)
-		return snprintf(buf, len, "unidentified window in ivi-shell");
 
 	return snprintf(buf, len, "ivi-surface %#x", shell_surf->id_surface);
 }
@@ -268,11 +289,7 @@ application_surface_create(struct wl_client *client,
 
 	layout_surface->weston_desktop_surface = NULL;
 
-	ivisurf = zalloc(sizeof *ivisurf);
-	if (ivisurf == NULL) {
-		wl_resource_post_no_memory(resource);
-		return;
-	}
+	ivisurf = xzalloc(sizeof *ivisurf);
 
 	wl_list_init(&ivisurf->link);
 	wl_list_insert(&shell->ivi_surface_list, &ivisurf->link);
@@ -283,6 +300,13 @@ application_surface_create(struct wl_client *client,
 	ivisurf->width = 0;
 	ivisurf->height = 0;
 	ivisurf->layout_surface = layout_surface;
+
+	/*
+	 * initialize list as well as link. The latter allows to use
+	 * wl_list_remove() event when this surface is not in another list.
+	 */
+	wl_list_init(&ivisurf->children_list);
+	wl_list_init(&ivisurf->children_link);
 
 	/*
 	 * The following code relies on wl_surface destruction triggering
@@ -333,6 +357,9 @@ bind_ivi_application(struct wl_client *client,
 				       shell, NULL);
 }
 
+void
+input_panel_destroy(struct ivi_shell *shell);
+
 /*
  * Called through the compositor's destroy signal.
  */
@@ -343,14 +370,26 @@ shell_destroy(struct wl_listener *listener, void *data)
 		container_of(listener, struct ivi_shell, destroy_listener);
 	struct ivi_shell_surface *ivisurf, *next;
 
+	ivi_layout_ivi_shell_destroy();
+
 	wl_list_remove(&shell->destroy_listener.link);
 	wl_list_remove(&shell->wake_listener.link);
 
+	if (shell->text_backend) {
+		text_backend_destroy(shell->text_backend);
+		input_panel_destroy(shell);
+	}
+
 	wl_list_for_each_safe(ivisurf, next, &shell->ivi_surface_list, link) {
+		if (ivisurf->layout_surface != NULL)
+			layout_surface_cleanup(ivisurf);
 		wl_list_remove(&ivisurf->link);
 		free(ivisurf);
 	}
 
+	ivi_layout_fini();
+
+	weston_desktop_destroy(shell->desktop);
 	free(shell);
 }
 
@@ -400,18 +439,43 @@ init_ivi_shell(struct weston_compositor *compositor, struct ivi_shell *shell)
 	}
 }
 
+static struct ivi_shell_surface *
+get_last_child(struct ivi_shell_surface *ivisurf)
+{
+	struct ivi_shell_surface *ivisurf_child;
+
+	wl_list_for_each_reverse(ivisurf_child, &ivisurf->children_list,
+				 children_link) {
+		if (weston_surface_is_mapped(ivisurf_child->surface))
+			return ivisurf_child;
+	}
+	return NULL;
+}
+
 static void
 activate_binding(struct weston_seat *seat,
-		 struct weston_view *focus_view)
+		 struct weston_view *focus_view,
+		 uint32_t flags)
 {
-	struct weston_surface *focus = focus_view->surface;
-	struct weston_surface *main_surface =
-		weston_surface_get_main_surface(focus);
+	struct ivi_shell_surface *ivisurf, *ivisurf_child;
+	struct weston_surface *main_surface;
 
-	if (get_ivi_shell_surface(main_surface) == NULL)
+	main_surface = weston_surface_get_main_surface(focus_view->surface);
+	ivisurf = get_ivi_shell_surface(main_surface);
+	if (ivisurf == NULL)
 		return;
 
-	weston_seat_set_keyboard_focus(seat, focus);
+	ivisurf_child = get_last_child(ivisurf);
+	if (ivisurf_child) {
+		struct weston_view *view
+			= ivisurf_child->layout_surface->ivi_view->view;
+		activate_binding(seat, view, flags);
+		return;
+	}
+
+	/* FIXME: need to activate the surface like
+	   kiosk_shell_surface_activate() */
+	weston_view_activate_input(focus_view, seat, flags);
 }
 
 static void
@@ -424,7 +488,8 @@ click_to_activate_binding(struct weston_pointer *pointer,
 	if (pointer->focus == NULL)
 		return;
 
-	activate_binding(pointer->seat, pointer->focus);
+	activate_binding(pointer->seat, pointer->focus,
+			 WESTON_ACTIVATE_FLAG_CLICKED);
 }
 
 static void
@@ -437,7 +502,7 @@ touch_to_activate_binding(struct weston_touch *touch,
 	if (touch->focus == NULL)
 		return;
 
-	activate_binding(touch->seat, touch->focus);
+	activate_binding(touch->seat, touch->focus, WESTON_ACTIVATE_FLAG_NONE);
 }
 
 static void
@@ -483,17 +548,9 @@ desktop_surface_added(struct weston_desktop_surface *surface,
 	struct weston_surface *weston_surf =
 			weston_desktop_surface_get_surface(surface);
 
-	layout_surface = ivi_layout_desktop_surface_create(weston_surf);
-	if (!layout_surface) {
-		return;
-	}
+	layout_surface = ivi_layout_desktop_surface_create(weston_surf, surface);
 
-	layout_surface->weston_desktop_surface = surface;
-
-	ivisurf = zalloc(sizeof *ivisurf);
-	if (!ivisurf) {
-		return;
-	}
+	ivisurf = xzalloc(sizeof *ivisurf);
 
 	ivisurf->shell = shell;
 	ivisurf->id_surface = IVI_INVALID_ID;
@@ -502,6 +559,15 @@ desktop_surface_added(struct weston_desktop_surface *surface,
 	ivisurf->height = 0;
 	ivisurf->layout_surface = layout_surface;
 	ivisurf->surface = weston_surf;
+
+	wl_list_insert(&shell->ivi_surface_list, &ivisurf->link);
+
+	/*
+	 * initialize list as well as link. The latter allows to use
+	 * wl_list_remove() event when this surface is not in another list.
+	 */
+	wl_list_init(&ivisurf->children_list);
+	wl_list_init(&ivisurf->children_link);
 
 	weston_desktop_surface_set_user_data(surface, ivisurf);
 }
@@ -512,11 +578,25 @@ desktop_surface_removed(struct weston_desktop_surface *surface,
 {
 	struct ivi_shell_surface *ivisurf = (struct ivi_shell_surface *)
 			weston_desktop_surface_get_user_data(surface);
+	struct ivi_shell_surface *ivisurf_child, *tmp;
 
 	assert(ivisurf != NULL);
 
+	weston_desktop_surface_set_user_data(surface, NULL);
+
+	wl_list_for_each_safe(ivisurf_child, tmp, &ivisurf->children_list,
+			      children_link) {
+		wl_list_remove(&ivisurf_child->children_link);
+		wl_list_init(&ivisurf_child->children_link);
+	}
+	wl_list_remove(&ivisurf->children_link);
+
 	if (ivisurf->layout_surface)
 		layout_surface_cleanup(ivisurf);
+
+	wl_list_remove(&ivisurf->link);
+
+	free(ivisurf);
 }
 
 static void
@@ -531,8 +611,10 @@ desktop_surface_committed(struct weston_desktop_surface *surface,
 	if(!ivisurf)
 		return;
 
-	if (weston_surf->width == 0 || weston_surf->height == 0)
-		return;
+	if (weston_surf->width == 0 || weston_surf->height == 0) {
+		if (!weston_surface_is_unmapping(weston_surf))
+			return;
+	}
 
 	if (ivisurf->width != weston_surf->width ||
 	    ivisurf->height != weston_surf->height) {
@@ -558,6 +640,23 @@ desktop_surface_resize(struct weston_desktop_surface *surface,
 		       enum weston_desktop_surface_edge edges, void *user_data)
 {
 	/* Not supported */
+}
+
+static void
+desktop_surface_set_parent(struct weston_desktop_surface *desktop_surface,
+			   struct weston_desktop_surface *parent,
+			   void *shell)
+{
+	struct ivi_shell_surface *ivisurf =
+		weston_desktop_surface_get_user_data(desktop_surface);
+	struct ivi_shell_surface *ivisurf_parent;
+
+	if (!parent)
+		return;
+
+	ivisurf_parent = weston_desktop_surface_get_user_data(parent);
+	wl_list_insert(ivisurf_parent->children_list.prev,
+		       &ivisurf->children_link);
 }
 
 static void
@@ -600,6 +699,7 @@ static const struct weston_desktop_api shell_desktop_api = {
 
 	.move = desktop_surface_move,
 	.resize = desktop_surface_resize,
+	.set_parent = desktop_surface_set_parent,
 	.fullscreen_requested = desktop_surface_fullscreen_requested,
 	.maximized_requested = desktop_surface_maximized_requested,
 	.minimized_requested = desktop_surface_minimized_requested,
@@ -611,6 +711,330 @@ static const struct weston_desktop_api shell_desktop_api = {
  */
 
 /*
+ * input panel
+ */
+
+static void
+maybe_show_input_panel(struct ivi_input_panel_surface *ipsurf,
+		       struct ivi_shell_surface *target_ivisurf)
+{
+	if (ipsurf->surface->width == 0)
+		return;
+
+	if (ipsurf->type == INPUT_PANEL_NONE)
+		return;
+
+	ivi_layout_show_input_panel(ipsurf->layout_surface,
+				    target_ivisurf->layout_surface,
+				    ipsurf->type == INPUT_PANEL_OVERLAY);
+}
+
+static void
+show_input_panels(struct wl_listener *listener, void *data)
+{
+	struct ivi_shell *shell = container_of(listener, struct ivi_shell,
+					       show_input_panel_listener);
+	struct ivi_shell_surface *target_ivisurf;
+	struct ivi_input_panel_surface *ipsurf;
+
+	target_ivisurf = get_ivi_shell_surface(data);
+	if (!target_ivisurf)
+		return;
+
+	if (shell->text_input_surface)
+		return;
+
+	shell->text_input_surface = target_ivisurf;
+
+	wl_list_for_each(ipsurf, &shell->input_panel.surfaces, link)
+		maybe_show_input_panel(ipsurf, target_ivisurf);
+}
+
+static void
+hide_input_panels(struct wl_listener *listener, void *data)
+{
+	struct ivi_shell *shell = container_of(listener, struct ivi_shell,
+					       hide_input_panel_listener);
+	struct ivi_input_panel_surface *ipsurf;
+
+	if (!shell->text_input_surface)
+		return;
+
+	shell->text_input_surface = NULL;
+
+	wl_list_for_each(ipsurf, &shell->input_panel.surfaces, link)
+		ivi_layout_hide_input_panel(ipsurf->layout_surface);
+}
+
+static void
+update_input_panels(struct wl_listener *listener, void *data)
+{
+	ivi_layout_update_text_input_cursor(data);
+}
+
+static int
+input_panel_get_label(struct weston_surface *surface, char *buf, size_t len)
+{
+	return snprintf(buf, len, "input panel");
+}
+
+static void
+input_panel_committed(struct weston_surface *surface,
+		      struct weston_coord_surface new_origin)
+{
+	struct ivi_input_panel_surface *ipsurf = surface->committed_private;
+	struct ivi_shell *shell = ipsurf->shell;
+
+	if (surface->width == 0 || surface->height == 0)
+		return;
+
+	if (ipsurf->width != surface->width ||
+	    ipsurf->height != surface->height) {
+		ipsurf->width  = surface->width;
+		ipsurf->height = surface->height;
+		ivi_layout_input_panel_surface_configure(ipsurf->layout_surface,
+							 surface->width,
+							 surface->height);
+	}
+
+	if (shell->text_input_surface)
+		maybe_show_input_panel(ipsurf, shell->text_input_surface);
+}
+
+bool
+shell_is_input_panel_surface(struct weston_surface *surface)
+{
+	return surface->committed == input_panel_committed;
+}
+
+static struct ivi_input_panel_surface *
+get_input_panel_surface(struct weston_surface *surface)
+{
+	if (shell_is_input_panel_surface(surface))
+		return surface->committed_private;
+	else
+		return NULL;
+}
+
+static void
+input_panel_handle_surface_destroy(struct wl_listener *listener, void *data)
+{
+	struct ivi_input_panel_surface *ipsurf =
+		container_of(listener, struct ivi_input_panel_surface,
+			     surface_destroy_listener);
+
+	wl_resource_destroy(ipsurf->resource);
+}
+
+static struct ivi_input_panel_surface *
+create_input_panel_surface(struct ivi_shell *shell,
+			   struct weston_surface *surface)
+{
+	struct ivi_input_panel_surface *ipsurf;
+	struct ivi_layout_surface *layout_surface;
+
+	layout_surface = ivi_layout_input_panel_surface_create(surface);
+
+	ipsurf = xzalloc(sizeof *ipsurf);
+
+	surface->committed = input_panel_committed;
+	surface->committed_private = ipsurf;
+	weston_surface_set_label_func(surface, input_panel_get_label);
+
+	wl_list_init(&ipsurf->link);
+	wl_list_insert(&shell->input_panel.surfaces, &ipsurf->link);
+
+	ipsurf->shell = shell;
+
+	ipsurf->width = 0;
+	ipsurf->height = 0;
+	ipsurf->layout_surface = layout_surface;
+	ipsurf->surface = surface;
+
+	if (surface->width && surface->height) {
+		ipsurf->width  = surface->width;
+		ipsurf->height = surface->height;
+		ivi_layout_input_panel_surface_configure(ipsurf->layout_surface,
+							 surface->width,
+							 surface->height);
+	}
+
+	ipsurf->surface_destroy_listener.notify = input_panel_handle_surface_destroy;
+	wl_signal_add(&surface->destroy_signal,
+		      &ipsurf->surface_destroy_listener);
+
+	return ipsurf;
+}
+
+static void
+input_panel_surface_set_toplevel(struct wl_client *client,
+				 struct wl_resource *resource,
+				 struct wl_resource *output_resource,
+				 uint32_t position)
+{
+	struct ivi_input_panel_surface *ipsurf =
+		wl_resource_get_user_data(resource);
+	struct weston_head *head;
+
+	head = weston_head_from_resource(output_resource);
+
+	ipsurf->type = INPUT_PANEL_TOPLEVEL;
+	ipsurf->output = head->output;
+}
+
+static void
+input_panel_surface_set_overlay_panel(struct wl_client *client,
+				      struct wl_resource *resource)
+{
+	struct ivi_input_panel_surface *ipsurf =
+		wl_resource_get_user_data(resource);
+
+	ipsurf->type = INPUT_PANEL_OVERLAY;
+}
+
+static const struct zwp_input_panel_surface_v1_interface input_panel_surface_implementation = {
+	input_panel_surface_set_toplevel,
+	input_panel_surface_set_overlay_panel
+};
+
+static void
+destroy_input_panel_surface_resource(struct wl_resource *resource)
+{
+	struct ivi_input_panel_surface *ipsurf =
+		wl_resource_get_user_data(resource);
+
+	assert(ipsurf->resource == resource);
+
+	ivi_layout_surface_destroy(ipsurf->layout_surface);
+	ipsurf->layout_surface = NULL;
+
+	ipsurf->surface->committed = NULL;
+	ipsurf->surface->committed_private = NULL;
+	weston_surface_set_label_func(ipsurf->surface, NULL);
+	ipsurf->surface = NULL;
+
+	wl_list_remove(&ipsurf->surface_destroy_listener.link);
+	wl_list_remove(&ipsurf->link);
+
+	free(ipsurf);
+}
+
+static void
+input_panel_get_input_panel_surface(struct wl_client *client,
+				    struct wl_resource *resource,
+				    uint32_t id,
+				    struct wl_resource *surface_resource)
+{
+	struct weston_surface *surface =
+		wl_resource_get_user_data(surface_resource);
+	struct ivi_shell *shell = wl_resource_get_user_data(resource);
+	struct ivi_input_panel_surface *ipsurf;
+
+	if (get_input_panel_surface(surface)) {
+		wl_resource_post_error(surface_resource,
+				       WL_DISPLAY_ERROR_INVALID_OBJECT,
+				       "wl_input_panel::get_input_panel_surface already requested");
+		return;
+	}
+
+	ipsurf = create_input_panel_surface(shell, surface);
+	if (!ipsurf) {
+		wl_resource_post_error(surface_resource,
+				       WL_DISPLAY_ERROR_INVALID_OBJECT,
+				       "surface->committed already set");
+		return;
+	}
+
+	ipsurf->resource =
+		wl_resource_create(client,
+				   &zwp_input_panel_surface_v1_interface,
+				   1,
+				   id);
+	wl_resource_set_implementation(ipsurf->resource,
+				       &input_panel_surface_implementation,
+				       ipsurf,
+				       destroy_input_panel_surface_resource);
+}
+
+static const struct zwp_input_panel_v1_interface input_panel_implementation = {
+	input_panel_get_input_panel_surface
+};
+
+static void
+unbind_input_panel(struct wl_resource *resource)
+{
+	struct ivi_shell *shell = wl_resource_get_user_data(resource);
+
+	shell->input_panel.binding = NULL;
+}
+
+static void
+bind_input_panel(struct wl_client *client,
+	      void *data, uint32_t version, uint32_t id)
+{
+	struct ivi_shell *shell = data;
+	struct wl_resource *resource;
+
+	resource = wl_resource_create(client,
+				      &zwp_input_panel_v1_interface, 1, id);
+
+	if (shell->input_panel.binding == NULL) {
+		wl_resource_set_implementation(resource,
+					       &input_panel_implementation,
+					       shell, unbind_input_panel);
+		shell->input_panel.binding = resource;
+		return;
+	}
+
+	wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
+			       "interface object already bound");
+}
+
+void
+input_panel_destroy(struct ivi_shell *shell)
+{
+	wl_list_remove(&shell->show_input_panel_listener.link);
+	wl_list_remove(&shell->hide_input_panel_listener.link);
+	wl_list_remove(&shell->update_input_panel_listener.link);
+}
+
+static void
+input_panel_setup(struct ivi_shell *shell)
+{
+	struct weston_compositor *ec = shell->compositor;
+
+	shell->show_input_panel_listener.notify = show_input_panels;
+	wl_signal_add(&ec->show_input_panel_signal,
+		      &shell->show_input_panel_listener);
+	shell->hide_input_panel_listener.notify = hide_input_panels;
+	wl_signal_add(&ec->hide_input_panel_signal,
+		      &shell->hide_input_panel_listener);
+	shell->update_input_panel_listener.notify = update_input_panels;
+	wl_signal_add(&ec->update_input_panel_signal,
+		      &shell->update_input_panel_listener);
+
+	wl_list_init(&shell->input_panel.surfaces);
+
+	abort_oom_if_null(wl_global_create(shell->compositor->wl_display,
+					   &zwp_input_panel_v1_interface, 1,
+					   shell, bind_input_panel));
+}
+
+void
+shell_ensure_text_input(struct ivi_shell *shell)
+{
+	if (shell->text_backend)
+		return;
+
+	shell->text_backend = text_backend_init(shell->compositor);
+	input_panel_setup(shell);
+}
+
+/*
+ * end of input panel
+ */
+
+/*
  * Initialization of ivi-shell.
  */
 WL_EXPORT int
@@ -619,9 +1043,7 @@ wet_shell_init(struct weston_compositor *compositor,
 {
 	struct ivi_shell *shell;
 
-	shell = zalloc(sizeof *shell);
-	if (shell == NULL)
-		return -1;
+	shell = xzalloc(sizeof *shell);
 
 	if (!weston_compositor_add_destroy_listener_once(compositor,
 							 &shell->destroy_listener,
@@ -644,7 +1066,10 @@ wet_shell_init(struct weston_compositor *compositor,
 			     shell, bind_ivi_application) == NULL)
 		goto err_desktop;
 
-	ivi_layout_init_with_compositor(compositor);
+	ivi_layout_init(compositor, shell);
+
+	screenshooter_create(compositor);
+
 	shell_add_bindings(compositor, shell);
 
 	return IVI_SUCCEEDED;

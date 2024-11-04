@@ -31,14 +31,22 @@ class FastPairScanner {
    public:
     virtual ~Observer() = default;
 
+    // The callbacks are called on platform thread.
     virtual void OnDeviceFound(const BlePeripheral& peripheral) = 0;
     virtual void OnDeviceLost(const BlePeripheral& peripheral) = 0;
+  };
+
+  // Represents scanning session. Must be destroyed before FastPairScanner.
+  class ScanningSession {
+   public:
+    virtual ~ScanningSession() = default;
   };
 
   virtual void AddObserver(Observer* observer) = 0;
   virtual void RemoveObserver(Observer* observer) = 0;
 
- protected:
+  virtual std::unique_ptr<ScanningSession> StartScanning() = 0;
+
   virtual ~FastPairScanner() = default;
 };
 

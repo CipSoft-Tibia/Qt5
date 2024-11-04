@@ -5,12 +5,15 @@
 #ifndef SERVICES_DEVICE_PUBLIC_CPP_GEOLOCATION_GEOLOCATION_MANAGER_H_
 #define SERVICES_DEVICE_PUBLIC_CPP_GEOLOCATION_GEOLOCATION_MANAGER_H_
 
+#include <memory>
+#include <string>
+
 #include "base/component_export.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
+#include "services/device/public/cpp/geolocation/buildflags.h"
 
-#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_CHROMEOS)
-#include <memory>
+#if BUILDFLAG(IS_APPLE) || BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
 
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list_threadsafe.h"
@@ -24,19 +27,28 @@
 
 namespace device {
 
-#if !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_CHROMEOS)
-// Default empty implementation of Geolocation Manager. It is used on operation
-// systems for which we don't support system-level geolocation. A separate class
-// (as opposed to nullptr) makes sure no unsupported calls are made in such
-// context.
-class COMPONENT_EXPORT(GEOLOCATION) GeolocationManager {};
+// This class provides access to location information on the supported OSs.
+class COMPONENT_EXPORT(GEOLOCATION) GeolocationManager {
+ public:
+  // Retrieves the global instance of the Geolocation Manager.
+  static GeolocationManager* GetInstance();
+  // Sets the global instance of the Geolocation Manager.
+  static void SetInstance(std::unique_ptr<GeolocationManager> manager);
+
+  void TrackGeolocationAttempted();
+  void TrackGeolocationRelinquished();
+  void RequestSystemPermission();
+
+#if !BUILDFLAG(IS_APPLE) && \
+    !BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
+  // Default empty implementation of Geolocation Manager. It is used on
+  // operation systems for which we don't support system-level geolocation. A
+  // separate class (as opposed to nullptr) makes sure no unsupported calls are
+  // made in such context.
+};  // class GeolocationManager
 
 #else
 
-// This class is owned by the browser process and provides access to location
-// information on the supported OSs.
-class COMPONENT_EXPORT(GEOLOCATION) GeolocationManager {
- public:
   class PermissionObserver : public base::CheckedObserver {
    public:
     virtual void OnSystemPermissionUpdated(
@@ -50,6 +62,7 @@ class COMPONENT_EXPORT(GEOLOCATION) GeolocationManager {
   class PositionObserver : public base::CheckedObserver {
    public:
     virtual void OnPositionUpdated(const mojom::Geoposition& position) = 0;
+    virtual void OnPositionError(const mojom::GeopositionError& error) = 0;
   };
 
   using PositionObserverList = base::ObserverListThreadSafe<PositionObserver>;
@@ -85,7 +98,7 @@ class COMPONENT_EXPORT(GEOLOCATION) GeolocationManager {
   // Returns the list of position observers.
   scoped_refptr<PositionObserverList> GetPositionObserverList() const;
   // Returns the last position
-  mojom::Geoposition GetLastPosition() const;
+  const mojom::GeopositionResult* GetLastPosition() const;
 #endif
 
  protected:
@@ -95,7 +108,7 @@ class COMPONENT_EXPORT(GEOLOCATION) GeolocationManager {
   void UpdateSystemPermission(LocationSystemPermissionStatus status);
   void NotifyPermissionObservers();
 #if BUILDFLAG(IS_APPLE)
-  void NotifyPositionObservers(const mojom::Geoposition& position);
+  void NotifyPositionObservers(mojom::GeopositionResultPtr result);
 #endif
 
   // Using scoped_refptr so objects can hold a reference and ensure this list
@@ -107,7 +120,7 @@ class COMPONENT_EXPORT(GEOLOCATION) GeolocationManager {
       LocationSystemPermissionStatus::kNotDetermined;
 
 #if BUILDFLAG(IS_APPLE)
-  mojom::Geoposition last_position_;
+  mojom::GeopositionResultPtr last_result_;
   // Using scoped_refptr so objects can hold a reference and ensure this list
   // is not destroyed on shutdown before it had a chance to remove itself from
   // the list

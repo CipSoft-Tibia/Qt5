@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -77,7 +77,7 @@ class UdpSocket {
   // TaskRunner and Client must exist for the duration of the created socket's
   // lifetime.
   static ErrorOr<std::unique_ptr<UdpSocket>> Create(
-      TaskRunner* task_runner,
+      TaskRunner& task_runner,
       Client* client,
       const IPEndpoint& local_endpoint);
 

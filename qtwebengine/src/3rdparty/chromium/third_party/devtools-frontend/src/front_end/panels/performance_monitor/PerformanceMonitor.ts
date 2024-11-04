@@ -7,6 +7,7 @@ import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
 import * as SDK from '../../core/sdk/sdk.js';
+import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as UI from '../../ui/legacy/legacy.js';
 import * as ThemeSupport from '../../ui/legacy/theme_support/theme_support.js';
 
@@ -94,7 +95,7 @@ export class PerformanceMonitorImpl extends UI.Widget.HBox implements
     const chartContainer = this.contentElement.createChild('div', 'perfmon-chart-container');
     this.canvas = chartContainer.createChild('canvas') as HTMLCanvasElement;
     this.canvas.tabIndex = -1;
-    UI.ARIAUtils.setAccessibleName(this.canvas, i18nString(UIStrings.graphsDisplayingARealtimeViewOf));
+    UI.ARIAUtils.setLabel(this.canvas, i18nString(UIStrings.graphsDisplayingARealtimeViewOf));
     this.contentElement.createChild('div', 'perfmon-chart-suspend-overlay fill').createChild('div').textContent =
         i18nString(UIStrings.paused);
     this.controlPane.addEventListener(Events.MetricChanged, this.recalcChartHeight, this);
@@ -110,7 +111,7 @@ export class PerformanceMonitorImpl extends UI.Widget.HBox implements
     return performanceMonitorImplInstance;
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     if (!this.model) {
       return;
     }
@@ -129,7 +130,7 @@ export class PerformanceMonitorImpl extends UI.Widget.HBox implements
     this.suspendStateChanged();
   }
 
-  willHide(): void {
+  override willHide(): void {
     if (!this.model) {
       return;
     }
@@ -140,7 +141,7 @@ export class PerformanceMonitorImpl extends UI.Widget.HBox implements
   }
 
   modelAdded(model: SDK.PerformanceMetricsModel.PerformanceMetricsModel): void {
-    if (model.target() !== SDK.TargetManager.TargetManager.instance().mainFrameTarget()) {
+    if (model.target() !== SDK.TargetManager.TargetManager.instance().primaryPageTarget()) {
       return;
     }
     this.model = model;
@@ -418,7 +419,7 @@ export class PerformanceMonitorImpl extends UI.Widget.HBox implements
     }
   }
 
-  onResize(): void {
+  override onResize(): void {
     super.onResize();
     this.width = this.canvas.offsetWidth;
     this.canvas.width = Math.round(this.width * window.devicePixelRatio);
@@ -633,21 +634,23 @@ export class MetricIndicator {
   private active: boolean;
   private readonly onToggle: (arg0: boolean) => void;
   element: HTMLElement;
-  private readonly swatchElement: UI.Icon.Icon;
+  private readonly swatchElement: IconButton.Icon.Icon;
   private valueElement: HTMLElement;
+  private color: string;
 
   constructor(parent: Element, info: ChartInfo, active: boolean, onToggle: (arg0: boolean) => void) {
-    const color = info.color || info.metrics[0].color;
+    this.color = info.color || info.metrics[0].color;
     this.info = info;
     this.active = active;
     this.onToggle = onToggle;
     this.element = parent.createChild('div', 'perfmon-indicator') as HTMLElement;
-    this.swatchElement = UI.Icon.Icon.create('smallicon-checkmark-square', 'perfmon-indicator-swatch');
-    this.swatchElement.style.backgroundColor = color;
+    this.swatchElement = new IconButton.Icon.Icon();
+    this.swatchElement.classList.add('perfmon-indicator-swatch');
+    this.updateSwatchElement();
     this.element.appendChild(this.swatchElement);
     this.element.createChild('div', 'perfmon-indicator-title').textContent = info.title;
     this.valueElement = this.element.createChild('div', 'perfmon-indicator-value') as HTMLElement;
-    this.valueElement.style.color = color;
+    this.valueElement.style.color = this.color;
     this.element.addEventListener('click', () => this.toggleIndicator());
     this.element.addEventListener('keypress', event => this.handleKeypress(event));
     this.element.classList.toggle('active', active);
@@ -675,8 +678,14 @@ export class MetricIndicator {
     this.valueElement.textContent = MetricIndicator.formatNumber(value, this.info);
   }
 
+  private updateSwatchElement(): void {
+    const color = this.active ? this.color : 'var(--icon-disabled)';
+    this.swatchElement.data = {iconName: 'checkmark', color, width: '16px', height: '14px'};
+  }
+
   private toggleIndicator(): void {
     this.active = !this.active;
+    this.updateSwatchElement();
     this.element.classList.toggle('active', this.active);
     UI.ARIAUtils.setChecked(this.element, this.active);
     this.onToggle(this.active);

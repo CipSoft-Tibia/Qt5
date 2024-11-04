@@ -425,7 +425,7 @@ Q_GUI_EXPORT QDataStream &operator<<(QDataStream &stream, const QTextFormat &fmt
 
         it = properties.find(QTextFormat::FontFamilies);
         if (it != properties.end()) {
-            properties[QTextFormat::OldFontFamily] = QVariant(it.value().toStringList().first());
+            properties[QTextFormat::OldFontFamily] = QVariant(it.value().toStringList().constFirst());
             properties.erase(it);
         }
     }
@@ -955,7 +955,11 @@ void QTextFormat::merge(const QTextFormat &other)
     p->props.reserve(p->props.size() + otherProps.size());
     for (int i = 0; i < otherProps.size(); ++i) {
         const QT_PREPEND_NAMESPACE(Property) &prop = otherProps.at(i);
-        p->insertProperty(prop.key, prop.value);
+        if (prop.value.isValid()) {
+            p->insertProperty(prop.key, prop.value);
+        } else {
+            p->clearProperty(prop.key);
+        }
     }
 }
 
@@ -1212,10 +1216,8 @@ void QTextFormat::setProperty(int propertyId, const QVariant &value)
 {
     if (!d)
         d = new QTextFormatPrivate;
-    if (!value.isValid())
-        clearProperty(propertyId);
-    else
-        d->insertProperty(propertyId, value);
+
+    d->insertProperty(propertyId, value);
 }
 
 /*!
@@ -2240,13 +2242,8 @@ void QTextBlockFormat::setTabPositions(const QList<QTextOption::Tab> &tabs)
 {
     QList<QVariant> list;
     list.reserve(tabs.size());
-    QList<QTextOption::Tab>::ConstIterator iter = tabs.constBegin();
-    while (iter != tabs.constEnd()) {
-        QVariant v;
-        v.setValue(*iter);
-        list.append(v);
-        ++iter;
-    }
+    for (const auto &e : tabs)
+        list.append(QVariant::fromValue(e));
     setProperty(TabPositions, list);
 }
 
@@ -2262,13 +2259,10 @@ QList<QTextOption::Tab> QTextBlockFormat::tabPositions() const
     if (variant.isNull())
         return QList<QTextOption::Tab>();
     QList<QTextOption::Tab> answer;
-    QList<QVariant> variantsList = qvariant_cast<QList<QVariant> >(variant);
-    QList<QVariant>::Iterator iter = variantsList.begin();
+    const QList<QVariant> variantsList = qvariant_cast<QList<QVariant> >(variant);
     answer.reserve(variantsList.size());
-    while(iter != variantsList.end()) {
-        answer.append( qvariant_cast<QTextOption::Tab>(*iter));
-        ++iter;
-    }
+    for (const auto &e: variantsList)
+        answer.append(qvariant_cast<QTextOption::Tab>(e));
     return answer;
 }
 

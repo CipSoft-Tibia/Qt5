@@ -298,6 +298,15 @@ public:
     */
   EIGEN_DEVICE_FUNC inline Quaternion(const Scalar& w, const Scalar& x, const Scalar& y, const Scalar& z) : m_coeffs(x, y, z, w){}
 
+  /** Constructs and initializes a quaternion from its real part as a scalar,
+   *  and its imaginary part as a 3-vector [\c x, \c y, \c z]
+   */
+  template <typename Derived>
+  EIGEN_DEVICE_FUNC inline Quaternion(const Scalar& w, const Eigen::MatrixBase<Derived>& vec)
+      : m_coeffs(vec.x(), vec.y(), vec.z(), w) {
+    EIGEN_STATIC_ASSERT_VECTOR_SPECIFIC_SIZE(Derived, 3);
+  }
+
   /** Constructs and initialize a quaternion from the array data */
   EIGEN_DEVICE_FUNC explicit inline Quaternion(const Scalar* data) : m_coeffs(data) {}
 

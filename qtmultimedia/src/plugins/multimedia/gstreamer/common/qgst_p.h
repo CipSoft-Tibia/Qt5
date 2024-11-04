@@ -15,34 +15,159 @@
 // We mean it.
 //
 
-#include <private/qtmultimediaglobal_p.h>
-#include <private/qmultimediautils_p.h>
-
-#include <QtCore/qsemaphore.h>
-#include <QtCore/qlist.h>
 #include <QtCore/qdebug.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qsemaphore.h>
 
 #include <QtMultimedia/qaudioformat.h>
 #include <QtMultimedia/qvideoframe.h>
+#include <QtMultimedia/private/qtmultimediaglobal_p.h>
+#include <QtMultimedia/private/qmultimediautils_p.h>
+#include <QtMultimedia/private/qplatformmediaplayer_p.h>
+
+#include <gst/gst.h>
+#include <gst/app/gstappsink.h>
+#include <gst/app/gstappsrc.h>
+#include <gst/video/video-info.h>
 
 #include "qgst_handle_types_p.h"
 
-#include <gst/gst.h>
-#include <gst/video/video-info.h>
-
 #include <type_traits>
-#include <functional>
 
 #if QT_CONFIG(gstreamer_photography)
-#define GST_USE_UNSTABLE_API
-#include <gst/interfaces/photography.h>
-#undef GST_USE_UNSTABLE_API
+#  define GST_USE_UNSTABLE_API
+#  include <gst/interfaces/photography.h>
+#  undef GST_USE_UNSTABLE_API
 #endif
+
 
 QT_BEGIN_NAMESPACE
 
+namespace QGstImpl {
+
+template <typename T>
+struct GstObjectTraits
+{
+    // using Type = T;
+    // template <typename U>
+    // static bool isObjectOfType(U *);
+    // template <typename U>
+    // static T *cast(U *);
+};
+
+#define QGST_DEFINE_CAST_TRAITS(ClassName, MACRO_LABEL) \
+    template <>                                         \
+    struct GstObjectTraits<ClassName>                   \
+    {                                                   \
+        using Type = ClassName;                         \
+        template <typename U>                           \
+        static bool isObjectOfType(U *arg)              \
+        {                                               \
+            return GST_IS_##MACRO_LABEL(arg);           \
+        }                                               \
+        template <typename U>                           \
+        static Type *cast(U *arg)                       \
+        {                                               \
+            return GST_##MACRO_LABEL##_CAST(arg);       \
+        }                                               \
+        template <typename U>                           \
+        static Type *checked_cast(U *arg)               \
+        {                                               \
+            return GST_##MACRO_LABEL(arg);              \
+        }                                               \
+    };                                                  \
+    static_assert(true, "ensure semicolon")
+
+#define QGST_DEFINE_CAST_TRAITS_FOR_INTERFACE(ClassName, MACRO_LABEL) \
+  template <>                                                         \
+  struct GstObjectTraits<ClassName>                                   \
+  {                                                                   \
+    using Type = ClassName;                                           \
+    template <typename U>                                             \
+    static bool isObjectOfType(U *arg)                                \
+    {                                                                 \
+      return GST_IS_##MACRO_LABEL(arg);                               \
+    }                                                                 \
+    template <typename U>                                             \
+    static Type *cast(U *arg)                                         \
+    {                                                                 \
+      return checked_cast(arg);                                       \
+    }                                                                 \
+    template <typename U>                                             \
+    static Type *checked_cast(U *arg)                                 \
+    {                                                                 \
+      return GST_##MACRO_LABEL(arg);                                  \
+    }                                                                 \
+  };                                                                  \
+  static_assert(true, "ensure semicolon")
+
+QGST_DEFINE_CAST_TRAITS(GstBin, BIN);
+QGST_DEFINE_CAST_TRAITS(GstClock, CLOCK);
+QGST_DEFINE_CAST_TRAITS(GstElement, ELEMENT);
+QGST_DEFINE_CAST_TRAITS(GstObject, OBJECT);
+QGST_DEFINE_CAST_TRAITS(GstPad, PAD);
+QGST_DEFINE_CAST_TRAITS(GstPipeline, PIPELINE);
+QGST_DEFINE_CAST_TRAITS(GstBaseSink, BASE_SINK);
+QGST_DEFINE_CAST_TRAITS(GstBaseSrc, BASE_SRC);
+QGST_DEFINE_CAST_TRAITS(GstAppSink, APP_SINK);
+QGST_DEFINE_CAST_TRAITS(GstAppSrc, APP_SRC);
+
+QGST_DEFINE_CAST_TRAITS_FOR_INTERFACE(GstTagSetter, TAG_SETTER);
+
+
+template <>
+struct GstObjectTraits<GObject>
+{
+    using Type = GObject;
+    template <typename U>
+    static bool isObjectOfType(U *arg)
+    {
+        return G_IS_OBJECT(arg);
+    }
+    template <typename U>
+    static Type *cast(U *arg)
+    {
+        return G_OBJECT(arg);
+    }
+    template <typename U>
+    static Type *checked_cast(U *arg)
+    {
+        return G_OBJECT(arg);
+    }
+};
+
+#undef QGST_DEFINE_CAST_TRAITS
+#undef QGST_DEFINE_CAST_TRAITS_FOR_INTERFACE
+
+} // namespace QGstImpl
+
+template <typename DestinationType, typename SourceType>
+bool qIsGstObjectOfType(SourceType *arg)
+{
+    using Traits = QGstImpl::GstObjectTraits<DestinationType>;
+    return arg && Traits::isObjectOfType(arg);
+}
+
+template <typename DestinationType, typename SourceType>
+DestinationType *qGstSafeCast(SourceType *arg)
+{
+    using Traits = QGstImpl::GstObjectTraits<DestinationType>;
+    if (arg && Traits::isObjectOfType(arg))
+        return Traits::cast(arg);
+    return nullptr;
+}
+
+template <typename DestinationType, typename SourceType>
+DestinationType *qGstCheckedCast(SourceType *arg)
+{
+    using Traits = QGstImpl::GstObjectTraits<DestinationType>;
+    if (arg)
+        Q_ASSERT(Traits::isObjectOfType(arg));
+    return Traits::cast(arg);
+}
+
 class QSize;
-class QGstStructure;
+class QGstStructureView;
 class QGstCaps;
 class QGstPipelinePrivate;
 class QCameraFormat;
@@ -58,76 +183,79 @@ struct QGString : QUniqueGStringHandle
     using QUniqueGStringHandle::QUniqueGStringHandle;
 
     QLatin1StringView asStringView() const { return QLatin1StringView{ get() }; }
+    QByteArrayView asByteArrayView() const { return QByteArrayView{ get() }; }
     QString toQString() const { return QString::fromUtf8(get()); }
+
+    bool operator==(const QGString &str) const { return asStringView() == str.asStringView(); }
+    bool operator==(const QLatin1StringView str) const { return asStringView() == str; }
+    bool operator==(const QByteArrayView str) const { return asByteArrayView() == str; }
+
+    bool operator!=(const QGString &str) const { return asStringView() != str.asStringView(); }
+    bool operator!=(const QLatin1StringView str) const { return asStringView() != str; }
+    bool operator!=(const QByteArrayView str) const { return asByteArrayView() != str; }
+
+    friend bool operator<(const QGString &lhs, const QGString &rhs)
+    {
+        return lhs.asStringView() < rhs.asStringView();
+    }
+    friend bool operator<(const QGString &lhs, const QLatin1StringView rhs)
+    {
+        return lhs.asStringView() < rhs;
+    }
+    friend bool operator<(const QGString &lhs, const QByteArrayView rhs)
+    {
+        return lhs.asByteArrayView() < rhs;
+    }
+    friend bool operator<(const QLatin1StringView lhs, const QGString &rhs)
+    {
+        return lhs < rhs.asStringView();
+    }
+    friend bool operator<(const QByteArrayView lhs, const QGString &rhs)
+    {
+        return lhs < rhs.asByteArrayView();
+    }
+
+    explicit operator QByteArrayView() const { return asByteArrayView(); }
+    explicit operator QByteArray() const
+    {
+        QByteArrayView view{ asByteArrayView() };
+        return QByteArray{
+            view.data(),
+            view.size(),
+        };
+    }
 };
 
 class QGValue
 {
 public:
-    explicit QGValue(const GValue *v) : value(v) { }
+    explicit QGValue(const GValue *v);
     const GValue *value;
 
-    bool isNull() const { return !value; }
+    bool isNull() const;
 
-    std::optional<bool> toBool() const
-    {
-        if (!G_VALUE_HOLDS_BOOLEAN(value))
-            return std::nullopt;
-        return g_value_get_boolean(value);
-    }
-    std::optional<int> toInt() const
-    {
-        if (!G_VALUE_HOLDS_INT(value))
-            return std::nullopt;
-        return g_value_get_int(value);
-    }
-    std::optional<int> toInt64() const
-    {
-        if (!G_VALUE_HOLDS_INT64(value))
-            return std::nullopt;
-        return g_value_get_int64(value);
-    }
+    std::optional<bool> toBool() const;
+    std::optional<int> toInt() const;
+    std::optional<int> toInt64() const;
     template<typename T>
     T *getPointer() const
     {
         return value ? static_cast<T *>(g_value_get_pointer(value)) : nullptr;
     }
 
-    const char *toString() const
-    {
-        return value ? g_value_get_string(value) : nullptr;
-    }
-    std::optional<float> getFraction() const
-    {
-        if (!GST_VALUE_HOLDS_FRACTION(value))
-            return std::nullopt;
-        return (float)gst_value_get_fraction_numerator(value)/(float)gst_value_get_fraction_denominator(value);
-    }
+    const char *toString() const;
+    std::optional<float> getFraction() const;
+    std::optional<QGRange<float>> getFractionRange() const;
+    std::optional<QGRange<int>> toIntRange() const;
 
-    std::optional<QGRange<float>> getFractionRange() const
-    {
-        if (!GST_VALUE_HOLDS_FRACTION_RANGE(value))
-            return std::nullopt;
-        QGValue min = QGValue{ gst_value_get_fraction_range_min(value) };
-        QGValue max = QGValue{ gst_value_get_fraction_range_max(value) };
-        return QGRange<float>{ *min.getFraction(), *max.getFraction() };
-    }
+    QGstStructureView toStructure() const;
+    QGstCaps toCaps() const;
 
-    std::optional<QGRange<int>> toIntRange() const
-    {
-        if (!GST_VALUE_HOLDS_INT_RANGE(value))
-            return std::nullopt;
-        return QGRange<int>{ gst_value_get_int_range_min(value), gst_value_get_int_range_max(value) };
-    }
+    bool isList() const;
+    int listSize() const;
+    QGValue at(int index) const;
 
-    inline QGstStructure toStructure() const;
-    inline QGstCaps toCaps() const;
-
-    inline bool isList() const { return value && GST_VALUE_HOLDS_LIST(value); }
-    inline int listSize() const { return gst_value_list_get_size(value); }
-    inline QGValue at(int index) const { return QGValue{ gst_value_list_get_value(value, index) }; }
-
-    Q_MULTIMEDIA_EXPORT QList<QAudioFormat::SampleFormat> getSampleFormats() const;
+    QList<QAudioFormat::SampleFormat> getSampleFormats() const;
 };
 
 namespace QGstPointerImpl {
@@ -147,7 +275,7 @@ public:
 
     constexpr QGstObjectWrapper() = default;
 
-    explicit QGstObjectWrapper(GstType *object, RefMode mode = NeedsRef) : m_object(object)
+    explicit QGstObjectWrapper(GstType *object, RefMode mode) : m_object(object)
     {
         if (m_object && mode == NeedsRef)
             Adaptor::ref(m_object);
@@ -218,30 +346,28 @@ protected:
 
 class QGstreamerMessage;
 
-class QGstStructure {
+class QGstStructureView
+{
 public:
     const GstStructure *structure = nullptr;
-    QGstStructure() = default;
-    QGstStructure(const GstStructure *s) : structure(s) {}
-    void free() { if (structure) gst_structure_free(const_cast<GstStructure *>(structure)); structure = nullptr; }
+    explicit QGstStructureView(const GstStructure *);
+    explicit QGstStructureView(const QUniqueGstStructureHandle &);
 
-    bool isNull() const { return !structure; }
+    QUniqueGstStructureHandle clone() const;
 
-    QByteArrayView name() const { return gst_structure_get_name(structure); }
+    bool isNull() const;
+    QByteArrayView name() const;
+    QGValue operator[](const char *fieldname) const;
 
-    QGValue operator[](const char *name) const
-    {
-        return QGValue{ gst_structure_get_value(structure, name) };
-    }
+    QGstCaps caps() const;
+    QGstTagListHandle tags() const;
 
-    Q_MULTIMEDIA_EXPORT QSize resolution() const;
-    Q_MULTIMEDIA_EXPORT QVideoFrameFormat::PixelFormat pixelFormat() const;
-    Q_MULTIMEDIA_EXPORT QGRange<float> frameRateRange() const;
-    Q_MULTIMEDIA_EXPORT QGstreamerMessage getMessage();
-    Q_MULTIMEDIA_EXPORT std::optional<Fraction> pixelAspectRatio() const;
-    Q_MULTIMEDIA_EXPORT QSize nativeSize() const;
-
-    QGstStructure copy() const { return gst_structure_copy(structure); }
+    QSize resolution() const;
+    QVideoFrameFormat::PixelFormat pixelFormat() const;
+    QGRange<float> frameRateRange() const;
+    QGstreamerMessage getMessage();
+    std::optional<Fraction> pixelAspectRatio() const;
+    QSize nativeSize() const;
 };
 
 template <>
@@ -264,20 +390,21 @@ public:
 
     enum MemoryFormat { CpuMemory, GLTexture, DMABuf };
 
-    int size() const { return int(gst_caps_get_size(get())); }
-    QGstStructure at(int index) const { return gst_caps_get_structure(get(), index); }
-    GstCaps *caps() const { return get(); }
+    int size() const;
+    QGstStructureView at(int index) const;
+    GstCaps *caps() const;
 
     MemoryFormat memoryFormat() const;
     std::optional<std::pair<QVideoFrameFormat, GstVideoInfo>> formatAndVideoInfo() const;
 
     void addPixelFormats(const QList<QVideoFrameFormat::PixelFormat> &formats, const char *modifier = nullptr);
+    void setResolution(QSize);
 
-    static QGstCaps create() {
-        return QGstCaps(gst_caps_new_empty(), HasRef);
-    }
+    static QGstCaps create();
 
     static QGstCaps fromCameraFormat(const QCameraFormat &format);
+
+    QGstCaps copy() const;
 };
 
 template <>
@@ -286,6 +413,8 @@ struct QGstPointerImpl::QGstRefcountingAdaptor<GstObject>
     static void ref(GstObject *arg) noexcept { gst_object_ref_sink(arg); }
     static void unref(GstObject *arg) noexcept { gst_object_unref(arg); }
 };
+
+class QGObjectHandlerConnection;
 
 class QGstObject : public QGstPointerImpl::QGstObjectWrapper<GstObject>
 {
@@ -296,99 +425,104 @@ public:
     QGstObject(const QGstObject &) = default;
     QGstObject(QGstObject &&) noexcept = default;
 
-    virtual ~QGstObject() = default;
-
     QGstObject &operator=(const QGstObject &) = default;
     QGstObject &operator=(QGstObject &&) noexcept = default;
 
-    void set(const char *property, const char *str) { g_object_set(get(), property, str, nullptr); }
-    void set(const char *property, bool b) { g_object_set(get(), property, gboolean(b), nullptr); }
-    void set(const char *property, uint i) { g_object_set(get(), property, guint(i), nullptr); }
-    void set(const char *property, int i) { g_object_set(get(), property, gint(i), nullptr); }
-    void set(const char *property, qint64 i) { g_object_set(get(), property, gint64(i), nullptr); }
-    void set(const char *property, quint64 i)
+    void set(const char *property, const char *str);
+    void set(const char *property, bool b);
+    void set(const char *property, uint i);
+    void set(const char *property, int i);
+    void set(const char *property, qint64 i);
+    void set(const char *property, quint64 i);
+    void set(const char *property, double d);
+    void set(const char *property, const QGstObject &o);
+    void set(const char *property, const QGstCaps &c);
+    void set(const char *property, void *object, GDestroyNotify destroyFunction);
+
+    template <typename Object>
+    void set(const char *property, Object *object, GDestroyNotify destroyFunction)
     {
-        g_object_set(get(), property, guint64(i), nullptr);
-    }
-    void set(const char *property, double d) { g_object_set(get(), property, gdouble(d), nullptr); }
-    void set(const char *property, const QGstObject &o)
-    {
-        g_object_set(get(), property, o.object(), nullptr);
-    }
-    void set(const char *property, const QGstCaps &c)
-    {
-        g_object_set(get(), property, c.caps(), nullptr);
+        set(property, static_cast<void *>(object), destroyFunction);
     }
 
-    QGString getString(const char *property) const
+    template <typename Object>
+    void set(const char *property, std::unique_ptr<Object> object)
     {
-        char *s = nullptr;
-        g_object_get(get(), property, &s, nullptr);
-        return QGString(s);
+        set(property, static_cast<void *>(object.release()), qDeleteFromVoidPointer<Object>);
     }
 
-    QGstStructure getStructure(const char *property) const
+    template <typename T>
+    static void qDeleteFromVoidPointer(void *ptr)
     {
-        GstStructure *s = nullptr;
-        g_object_get(get(), property, &s, nullptr);
-        return QGstStructure(s);
-    }
-    bool getBool(const char *property) const
-    {
-        gboolean b = false;
-        g_object_get(get(), property, &b, nullptr);
-        return b;
-    }
-    uint getUInt(const char *property) const
-    {
-        guint i = 0;
-        g_object_get(get(), property, &i, nullptr);
-        return i;
-    }
-    int getInt(const char *property) const
-    {
-        gint i = 0;
-        g_object_get(get(), property, &i, nullptr);
-        return i;
-    }
-    quint64 getUInt64(const char *property) const
-    {
-        guint64 i = 0;
-        g_object_get(get(), property, &i, nullptr);
-        return i;
-    }
-    qint64 getInt64(const char *property) const
-    {
-        gint64 i = 0;
-        g_object_get(get(), property, &i, nullptr);
-        return i;
-    }
-    float getFloat(const char *property) const
-    {
-        gfloat d = 0;
-        g_object_get(get(), property, &d, nullptr);
-        return d;
-    }
-    double getDouble(const char *property) const
-    {
-        gdouble d = 0;
-        g_object_get(get(), property, &d, nullptr);
-        return d;
-    }
-    QGstObject getObject(const char *property) const
-    {
-        GstObject *o = nullptr;
-        g_object_get(get(), property, &o, nullptr);
-        return QGstObject(o, HasRef);
+        delete reinterpret_cast<T *>(ptr);
     }
 
-    void connect(const char *name, GCallback callback, gpointer userData)
+    QGString getString(const char *property) const;
+    QGstStructureView getStructure(const char *property) const;
+    bool getBool(const char *property) const;
+    uint getUInt(const char *property) const;
+    int getInt(const char *property) const;
+    quint64 getUInt64(const char *property) const;
+    qint64 getInt64(const char *property) const;
+    float getFloat(const char *property) const;
+    double getDouble(const char *property) const;
+    QGstObject getGstObject(const char *property) const;
+    void *getObject(const char *property) const;
+
+    template <typename T>
+    T *getObject(const char *property) const
     {
-        g_signal_connect(get(), name, callback, userData);
+        void *rawObject = getObject(property);
+        return reinterpret_cast<T *>(rawObject);
     }
 
-    GstObject *object() const { return get(); }
-    const char *name() const { return get() ? GST_OBJECT_NAME(get()) : "(null)"; }
+    QGObjectHandlerConnection connect(const char *name, GCallback callback, gpointer userData);
+    void disconnect(gulong handlerId);
+
+    GType type() const;
+    QLatin1StringView typeName() const;
+    GstObject *object() const;
+    QLatin1StringView name() const;
+};
+
+class QGObjectHandlerConnection
+{
+public:
+    QGObjectHandlerConnection(QGstObject object, gulong handler);
+
+    QGObjectHandlerConnection() = default;
+    QGObjectHandlerConnection(const QGObjectHandlerConnection &) = default;
+    QGObjectHandlerConnection(QGObjectHandlerConnection &&) = default;
+    QGObjectHandlerConnection &operator=(const QGObjectHandlerConnection &) = default;
+    QGObjectHandlerConnection &operator=(QGObjectHandlerConnection &&) = default;
+
+    void disconnect();
+
+private:
+    static constexpr gulong invalidHandlerId = std::numeric_limits<gulong>::max();
+
+    QGstObject object;
+    gulong handlerId = invalidHandlerId;
+};
+
+// disconnects in dtor
+class QGObjectHandlerScopedConnection
+{
+public:
+    QGObjectHandlerScopedConnection(QGObjectHandlerConnection connection);
+
+    QGObjectHandlerScopedConnection() = default;
+    QGObjectHandlerScopedConnection(const QGObjectHandlerScopedConnection &) = delete;
+    QGObjectHandlerScopedConnection &operator=(const QGObjectHandlerScopedConnection &) = delete;
+    QGObjectHandlerScopedConnection(QGObjectHandlerScopedConnection &&) = default;
+    QGObjectHandlerScopedConnection &operator=(QGObjectHandlerScopedConnection &&) = default;
+
+    ~QGObjectHandlerScopedConnection();
+
+    void disconnect();
+
+private:
+    QGObjectHandlerConnection connection;
 };
 
 class QGstElement;
@@ -400,35 +534,33 @@ public:
     QGstPad(const QGstPad &) = default;
     QGstPad(QGstPad &&) noexcept = default;
 
-    explicit QGstPad(const QGstObject &o) : QGstPad(GST_PAD(o.object()), NeedsRef) { }
-    explicit QGstPad(GstPad *pad, RefMode mode = NeedsRef) : QGstObject(&pad->object, mode) { }
+    explicit QGstPad(const QGstObject &o);
+    explicit QGstPad(GstPad *pad, RefMode mode);
 
     QGstPad &operator=(const QGstPad &) = default;
     QGstPad &operator=(QGstPad &&) noexcept = default;
 
-    QGstCaps currentCaps() const
-    {
-        return QGstCaps(gst_pad_get_current_caps(pad()), QGstCaps::HasRef);
-    }
-    QGstCaps queryCaps() const
-    {
-        return QGstCaps(gst_pad_query_caps(pad(), nullptr), QGstCaps::HasRef);
-    }
+    QGstCaps currentCaps() const;
+    QGstCaps queryCaps() const;
 
-    bool isLinked() const { return gst_pad_is_linked(pad()); }
-    bool link(const QGstPad &sink) const
-    {
-        return gst_pad_link(pad(), sink.pad()) == GST_PAD_LINK_OK;
-    }
-    bool unlink(const QGstPad &sink) const { return gst_pad_unlink(pad(), sink.pad()); }
-    bool unlinkPeer() const { return unlink(peer()); }
-    QGstPad peer() const { return QGstPad(gst_pad_get_peer(pad()), HasRef); }
-    inline QGstElement parent() const;
+    QGstTagListHandle tags() const;
+    QGString streamId() const;
 
-    GstPad *pad() const { return GST_PAD_CAST(object()); }
+    std::optional<QPlatformMediaPlayer::TrackType>
+    inferTrackTypeFromName() const; // for decodebin3 etc
 
-    GstEvent *stickyEvent(GstEventType type) { return gst_pad_get_sticky_event(pad(), type, 0); }
-    bool sendEvent(GstEvent *event) { return gst_pad_send_event (pad(), event); }
+    bool isLinked() const;
+    bool link(const QGstPad &sink) const;
+    bool unlink(const QGstPad &sink) const;
+    bool unlinkPeer() const;
+    QGstPad peer() const;
+    QGstElement parent() const;
+
+    GstPad *pad() const;
+
+    GstEvent *stickyEvent(GstEventType type);
+    bool sendEvent(GstEvent *event);
+    void sendFlushStartStop(bool resetTime);
 
     template<auto Member, typename T>
     void addProbe(T *instance, GstPadProbeType type) {
@@ -474,21 +606,25 @@ public:
 
         gst_pad_add_probe(pad(), GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, callback, instance, nullptr);
     }
+
+    template <typename Functor>
+    void modifyPipelineInIdleProbe(Functor &&f);
+
+    void sendFlushIfPaused();
 };
 
 class QGstClock : public QGstObject
 {
 public:
     QGstClock() = default;
-    explicit QGstClock(const QGstObject &o) : QGstClock(GST_CLOCK(o.object())) { }
-    explicit QGstClock(GstClock *clock, RefMode mode = NeedsRef) : QGstObject(&clock->object, mode)
-    {
-    }
+    explicit QGstClock(const QGstObject &o);
+    explicit QGstClock(GstClock *clock, RefMode mode);
 
-    GstClock *clock() const { return GST_CLOCK_CAST(object()); }
-
-    GstClockTime time() const { return gst_clock_get_time(clock()); }
+    GstClock *clock() const;
+    GstClockTime time() const;
 };
+
+class QGstPipeline;
 
 class QGstElement : public QGstObject
 {
@@ -500,113 +636,130 @@ public:
     QGstElement &operator=(const QGstElement &) = default;
     QGstElement &operator=(QGstElement &&) noexcept = default;
 
-    explicit QGstElement(GstElement *element, RefMode mode = NeedsRef)
-        : QGstObject(&element->object, mode)
+    explicit QGstElement(GstElement *element, RefMode mode);
+    static QGstElement createFromFactory(const char *factory, const char *name = nullptr);
+    static QGstElement createFromFactory(GstElementFactory *, const char *name = nullptr);
+    static QGstElement createFromFactory(const QGstElementFactoryHandle &,
+                                         const char *name = nullptr);
+    static QGstElement createFromDevice(const QGstDeviceHandle &, const char *name = nullptr);
+    static QGstElement createFromDevice(GstDevice *, const char *name = nullptr);
+    static QGstElement createFromPipelineDescription(const char *);
+    static QGstElement createFromPipelineDescription(const QByteArray &);
+
+    static QGstElementFactoryHandle findFactory(const char *);
+    static QGstElementFactoryHandle findFactory(const QByteArray &name);
+
+    QGstPad staticPad(const char *name) const;
+    QGstPad src() const;
+    QGstPad sink() const;
+    QGstPad getRequestPad(const char *name) const;
+    void releaseRequestPad(const QGstPad &pad) const;
+
+    GstState state(std::chrono::nanoseconds timeout = std::chrono::seconds(0)) const;
+    GstStateChangeReturn setState(GstState state);
+    bool setStateSync(GstState state, std::chrono::nanoseconds timeout = std::chrono::seconds(1));
+    bool syncStateWithParent();
+    bool finishStateChange(std::chrono::nanoseconds timeout = std::chrono::seconds(5));
+    bool hasAsyncStateChange(std::chrono::nanoseconds timeout = std::chrono::seconds(0)) const;
+    bool waitForAsyncStateChangeComplete(
+            std::chrono::nanoseconds timeout = std::chrono::seconds(5)) const;
+
+    void lockState(bool locked);
+    bool isStateLocked() const;
+
+    void sendEvent(GstEvent *event) const;
+    void sendEos() const;
+
+    std::optional<std::chrono::nanoseconds> duration() const;
+    std::optional<std::chrono::milliseconds> durationInMs() const;
+    std::optional<std::chrono::nanoseconds> position() const;
+    std::optional<std::chrono::milliseconds> positionInMs() const;
+    std::optional<bool> canSeek() const;
+
+    template <auto Member, typename T>
+    QGObjectHandlerConnection onPadAdded(T *instance)
     {
-    }
-
-    static QGstElement createFromFactory(const char *factory, const char *name = nullptr)
-    {
-        GstElement *element = gst_element_factory_make(factory, name);
-
-#ifndef QT_NO_DEBUG
-        if (!element) {
-            qWarning() << "Failed to make element" << name << "from factory" << factory;
-            return QGstElement{};
-        }
-#endif
-
-        return QGstElement{
-            element,
-            NeedsRef,
-        };
-    }
-
-    QGstPad staticPad(const char *name) const { return QGstPad(gst_element_get_static_pad(element(), name), HasRef); }
-    QGstPad src() const { return staticPad("src"); }
-    QGstPad sink() const { return staticPad("sink"); }
-    QGstPad getRequestPad(const char *name) const
-    {
-#if GST_CHECK_VERSION(1,19,1)
-        return QGstPad(gst_element_request_pad_simple(element(), name), HasRef);
-#else
-        return QGstPad(gst_element_get_request_pad(element(), name), HasRef);
-#endif
-    }
-    void releaseRequestPad(const QGstPad &pad) const { return gst_element_release_request_pad(element(), pad.pad()); }
-
-    GstState state() const
-    {
-        GstState state;
-        gst_element_get_state(element(), &state, nullptr, 0);
-        return state;
-    }
-    GstStateChangeReturn setState(GstState state) { return gst_element_set_state(element(), state); }
-    bool setStateSync(GstState state)
-    {
-        auto change = gst_element_set_state(element(), state);
-        if (change == GST_STATE_CHANGE_ASYNC) {
-            change = gst_element_get_state(element(), nullptr, &state, 1000*1e6 /*nano seconds*/);
-        }
-#ifndef QT_NO_DEBUG
-        if (change != GST_STATE_CHANGE_SUCCESS && change != GST_STATE_CHANGE_NO_PREROLL)
-            qWarning() << "Could not change state of" << name() << "to" << state << change;
-#endif
-        return change == GST_STATE_CHANGE_SUCCESS;
-    }
-    bool syncStateWithParent() { return gst_element_sync_state_with_parent(element()) == TRUE; }
-    bool finishStateChange()
-    {
-        auto change = gst_element_get_state(element(), nullptr, nullptr, 1000*1e6 /*nano seconds*/);
-#ifndef QT_NO_DEBUG
-        if (change != GST_STATE_CHANGE_SUCCESS && change != GST_STATE_CHANGE_NO_PREROLL)
-            qWarning() << "Could finish change state of" << name();
-#endif
-        return change == GST_STATE_CHANGE_SUCCESS;
-    }
-
-    void lockState(bool locked) { gst_element_set_locked_state(element(), locked); }
-    bool isStateLocked() const { return gst_element_is_locked_state(element()); }
-
-    void sendEvent(GstEvent *event) const { gst_element_send_event(element(), event); }
-    void sendEos() const { sendEvent(gst_event_new_eos()); }
-
-    template<auto Member, typename T>
-    void onPadAdded(T *instance) {
-        struct Impl {
-            static void callback(GstElement *e, GstPad *pad, gpointer userData) {
-                (static_cast<T *>(userData)->*Member)(QGstElement(e), QGstPad(pad, NeedsRef));
+        struct Impl
+        {
+            static void callback(GstElement *e, GstPad *pad, gpointer userData)
+            {
+                (static_cast<T *>(userData)->*Member)(QGstElement(e, NeedsRef),
+                                                      QGstPad(pad, NeedsRef));
             };
         };
 
-        connect("pad-added", G_CALLBACK(Impl::callback), instance);
+        return connect("pad-added", G_CALLBACK(Impl::callback), instance);
     }
-    template<auto Member, typename T>
-    void onPadRemoved(T *instance) {
-        struct Impl {
-            static void callback(GstElement *e, GstPad *pad, gpointer userData) {
-                (static_cast<T *>(userData)->*Member)(QGstElement(e), QGstPad(pad, NeedsRef));
+    template <auto Member, typename T>
+    QGObjectHandlerConnection onPadRemoved(T *instance)
+    {
+        struct Impl
+        {
+            static void callback(GstElement *e, GstPad *pad, gpointer userData)
+            {
+                (static_cast<T *>(userData)->*Member)(QGstElement(e, NeedsRef),
+                                                      QGstPad(pad, NeedsRef));
             };
         };
 
-        connect("pad-removed", G_CALLBACK(Impl::callback), instance);
+        return connect("pad-removed", G_CALLBACK(Impl::callback), instance);
     }
-    template<auto Member, typename T>
-    void onNoMorePads(T *instance) {
-        struct Impl {
-            static void callback(GstElement *e, gpointer userData) {
-                (static_cast<T *>(userData)->*Member)(QGstElement(e));
+    template <auto Member, typename T>
+    QGObjectHandlerConnection onNoMorePads(T *instance)
+    {
+        struct Impl
+        {
+            static void callback(GstElement *e, gpointer userData)
+            {
+                (static_cast<T *>(userData)->*Member)(QGstElement(e, NeedsRef));
             };
         };
 
-        connect("no-more-pads", G_CALLBACK(Impl::callback), instance);
+        return connect("no-more-pads", G_CALLBACK(Impl::callback), instance);
     }
 
-    GstClockTime baseTime() const { return gst_element_get_base_time(element()); }
-    void setBaseTime(GstClockTime time) const { gst_element_set_base_time(element(), time); }
+    GstClockTime baseTime() const;
+    void setBaseTime(GstClockTime time) const;
 
-    GstElement *element() const { return GST_ELEMENT_CAST(get()); }
+    GstElement *element() const;
+
+    QGstElement getParent() const;
+    QGstPipeline getPipeline() const;
+    void dumpPipelineGraph(const char *filename) const;
+
+private:
+    QGstQueryHandle &positionQuery() const;
+    mutable QGstQueryHandle m_positionQuery;
 };
+
+template <typename Functor>
+void QGstPad::modifyPipelineInIdleProbe(Functor &&f)
+{
+    using namespace std::chrono_literals;
+
+    GstPadDirection direction = gst_pad_get_direction(pad());
+
+    switch (direction) {
+    case GstPadDirection::GST_PAD_SINK: {
+        // modifying a source: we need to flush the sink pad before we can modify downstream
+        // elements
+        sendFlushIfPaused();
+        doInIdleProbe(f);
+        return;
+    }
+    case GstPadDirection::GST_PAD_SRC: {
+        // modifying a sink: we need to use the idle probes iff the pipeline is playing
+        if (parent().state(1s) == GstState::GST_STATE_PLAYING)
+            doInIdleProbe(f);
+        else
+            f();
+        return;
+    }
+
+    default:
+        Q_UNREACHABLE();
+    }
+}
 
 template <typename... Ts>
 std::enable_if_t<(std::is_base_of_v<QGstElement, Ts> && ...), void>
@@ -637,11 +790,6 @@ qUnlinkGstElements(const Ts &...ts)
         gst_element_unlink_many(ts.element()..., nullptr);
 }
 
-inline QGstElement QGstPad::parent() const
-{
-    return QGstElement(gst_pad_get_parent_element(pad()), HasRef);
-}
-
 class QGstBin : public QGstElement
 {
 public:
@@ -651,18 +799,15 @@ public:
     QGstBin &operator=(const QGstBin &) = default;
     QGstBin &operator=(QGstBin &&) noexcept = default;
 
-    static QGstBin create(const char *name) { return QGstBin(gst_bin_new(name), NeedsRef); }
-    static QGstBin createFromFactory(const char *factory, const char *name)
-    {
-        QGstElement element = QGstElement::createFromFactory(factory, name);
-        Q_ASSERT(GST_IS_BIN(element.element()));
-        return QGstBin{
-            GST_BIN(element.release()),
-            RefMode::HasRef,
-        };
-    }
-
-    explicit QGstBin(GstBin *bin, RefMode mode = NeedsRef) : QGstElement(&bin->element, mode) { }
+    explicit QGstBin(GstBin *bin, RefMode mode = NeedsRef);
+    static QGstBin create(const char *name);
+    static QGstBin createFromFactory(const char *factory, const char *name);
+    static QGstBin createFromPipelineDescription(const QByteArray &pipelineDescription,
+                                                 const char *name = nullptr,
+                                                 bool ghostUnlinkedPads = false);
+    static QGstBin createFromPipelineDescription(const char *pipelineDescription,
+                                                 const char *name = nullptr,
+                                                 bool ghostUnlinkedPads = false);
 
     template <typename... Ts>
     std::enable_if_t<(std::is_base_of_v<QGstElement, Ts> && ...), void> add(const Ts &...ts)
@@ -691,39 +836,148 @@ public:
         remove(ts...);
     }
 
-    GstBin *bin() const { return GST_BIN_CAST(get()); }
+    GstBin *bin() const;
 
-    void addGhostPad(const QGstElement &child, const char *name)
-    {
-        addGhostPad(name, child.staticPad(name));
-    }
-    void addGhostPad(const char *name, const QGstPad &pad)
-    {
-        gst_element_add_pad(element(), gst_ghost_pad_new(name, pad.pad()));
-    }
+    void addGhostPad(const QGstElement &child, const char *name);
+    void addGhostPad(const char *name, const QGstPad &pad);
 
-    bool syncChildrenState() { return gst_bin_sync_children_states(bin()); }
+    bool syncChildrenState();
+
+    void dumpGraph(const char *fileNamePrefix) const;
+
+    QGstElement findByName(const char *);
+
+    void recalculateLatency();
 };
 
-inline QGstStructure QGValue::toStructure() const
+class QGstBaseSink : public QGstElement
 {
-    if (!value || !GST_VALUE_HOLDS_STRUCTURE(value))
-        return QGstStructure();
-    return QGstStructure(gst_value_get_structure(value));
+public:
+    using QGstElement::QGstElement;
+
+    explicit QGstBaseSink(GstBaseSink *, RefMode);
+
+    QGstBaseSink(const QGstBaseSink &) = default;
+    QGstBaseSink(QGstBaseSink &&) noexcept = default;
+    QGstBaseSink &operator=(const QGstBaseSink &) = default;
+    QGstBaseSink &operator=(QGstBaseSink &&) noexcept = default;
+
+    void setSync(bool);
+
+    GstBaseSink *baseSink() const;
+};
+
+class QGstBaseSrc : public QGstElement
+{
+public:
+    using QGstElement::QGstElement;
+
+    explicit QGstBaseSrc(GstBaseSrc *, RefMode);
+
+    QGstBaseSrc(const QGstBaseSrc &) = default;
+    QGstBaseSrc(QGstBaseSrc &&) noexcept = default;
+    QGstBaseSrc &operator=(const QGstBaseSrc &) = default;
+    QGstBaseSrc &operator=(QGstBaseSrc &&) noexcept = default;
+
+    GstBaseSrc *baseSrc() const;
+};
+
+class QGstAppSink : public QGstBaseSink
+{
+public:
+    using QGstBaseSink::QGstBaseSink;
+
+    explicit QGstAppSink(GstAppSink *, RefMode);
+
+    QGstAppSink(const QGstAppSink &) = default;
+    QGstAppSink(QGstAppSink &&) noexcept = default;
+    QGstAppSink &operator=(const QGstAppSink &) = default;
+    QGstAppSink &operator=(QGstAppSink &&) noexcept = default;
+
+    static QGstAppSink create(const char *name);
+
+    GstAppSink *appSink() const;
+
+    void setMaxBuffers(int);
+#  if GST_CHECK_VERSION(1, 24, 0)
+    void setMaxBufferTime(std::chrono::nanoseconds);
+#  endif
+
+    void setCaps(const QGstCaps &caps);
+    void setCallbacks(GstAppSinkCallbacks &callbacks, gpointer user_data, GDestroyNotify notify);
+
+    QGstSampleHandle pullSample();
+};
+
+class QGstAppSrc : public QGstBaseSrc
+{
+public:
+    using QGstBaseSrc::QGstBaseSrc;
+
+    explicit QGstAppSrc(GstAppSrc *, RefMode);
+
+    QGstAppSrc(const QGstAppSrc &) = default;
+    QGstAppSrc(QGstAppSrc &&) noexcept = default;
+    QGstAppSrc &operator=(const QGstAppSrc &) = default;
+    QGstAppSrc &operator=(QGstAppSrc &&) noexcept = default;
+
+    static QGstAppSrc create(const char *name);
+
+    GstAppSrc *appSrc() const;
+
+    void setCallbacks(GstAppSrcCallbacks &callbacks, gpointer user_data, GDestroyNotify notify);
+
+    GstFlowReturn pushBuffer(GstBuffer *); // take ownership
+};
+
+inline GstClockTime qGstClockTimeFromChrono(std::chrono::nanoseconds ns)
+{
+    return ns.count();
 }
 
-inline QGstCaps QGValue::toCaps() const
+QString qGstErrorMessageCannotFindElement(std::string_view element);
+
+template <typename Arg, typename... Args>
+std::optional<QString> qGstErrorMessageIfElementsNotAvailable(const Arg &arg, Args... args)
 {
-    if (!value || !GST_VALUE_HOLDS_CAPS(value))
-        return {};
-    return QGstCaps(gst_caps_copy(gst_value_get_caps(value)), QGstCaps::HasRef);
+    QGstElementFactoryHandle factory = QGstElement::findFactory(arg);
+    if (!factory)
+        return qGstErrorMessageCannotFindElement(arg);
+
+    if constexpr (sizeof...(args) != 0)
+        return qGstErrorMessageIfElementsNotAvailable(args...);
+    else
+        return std::nullopt;
 }
 
-inline QString errorMessageCannotFindElement(std::string_view element)
+template <typename Functor>
+void qForeachStreamInCollection(GstStreamCollection *collection, Functor &&f)
 {
-    return QStringLiteral("Could not find the %1 GStreamer element").arg(element.data());
+    guint size = gst_stream_collection_get_size(collection);
+    for (guint index = 0; index != size; ++index)
+        f(gst_stream_collection_get_stream(collection, index));
+}
+
+template <typename Functor>
+void qForeachStreamInCollection(const QGstStreamCollectionHandle &collection, Functor &&f)
+{
+    qForeachStreamInCollection(collection.get(), std::forward<Functor>(f));
 }
 
 QT_END_NAMESPACE
+
+namespace std {
+
+template <>
+struct hash<QT_PREPEND_NAMESPACE(QGstElement)>
+{
+    using argument_type = QT_PREPEND_NAMESPACE(QGstElement);
+    using result_type = size_t;
+    result_type operator()(const argument_type &e) const noexcept
+    {
+        return std::hash<void *>{}(e.element());
+    }
+};
+} // namespace std
 
 #endif

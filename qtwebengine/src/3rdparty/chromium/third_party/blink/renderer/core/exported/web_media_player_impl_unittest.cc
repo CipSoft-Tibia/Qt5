@@ -1857,12 +1857,34 @@ TEST_F(WebMediaPlayerImplTest, Waiting_NoDecryptionKey) {
   OnWaiting(media::WaitingReason::kNoDecryptionKey);
 }
 
+TEST_F(WebMediaPlayerImplTest, Waiting_SecureSurfaceLost) {
+  InitializeWebMediaPlayerImpl();
+
+  LoadAndWaitForReadyState(kVideoOnlyTestFile,
+                           WebMediaPlayer::kReadyStateHaveFutureData);
+  wmpi_->SetRate(1.0);
+  Play();
+
+  EXPECT_FALSE(IsSuspended());
+
+  OnWaiting(media::WaitingReason::kSecureSurfaceLost);
+  EXPECT_TRUE(IsSuspended());
+}
+
 ACTION(ReportHaveEnough) {
   arg0->OnBufferingStateChange(media::BUFFERING_HAVE_ENOUGH,
                                media::BUFFERING_CHANGE_REASON_UNKNOWN);
 }
 
+ACTION(ReportHardwareContextReset) {
+  arg0->OnError(media::PIPELINE_ERROR_HARDWARE_CONTEXT_RESET);
+}
+
 #if BUILDFLAG(IS_WIN)
+
+// Tests that for encrypted media, when a CDM is attached that requires
+// MediaFoundationRenderer, the pipeline will fallback to create a new Renderer
+// for RendererType::kMediaFoundation.
 TEST_F(WebMediaPlayerImplTest, FallbackToMediaFoundationRenderer) {
   InitializeWebMediaPlayerImpl();
   // To avoid PreloadMetadataLazyLoad.
@@ -1907,6 +1929,90 @@ TEST_F(WebMediaPlayerImplTest, FallbackToMediaFoundationRenderer) {
   Load(kEncryptedVideoOnlyTestFile);
   run_loop.Run();
 }
+
+// Tests that when PIPELINE_ERROR_HARDWARE_CONTEXT_RESET happens, the pipeline
+// will suspend/resume the pipeline, which will create a new Renderer.
+TEST_F(WebMediaPlayerImplTest, PipelineErrorHardwareContextReset) {
+  InitializeWebMediaPlayerImpl();
+  // To avoid PreloadMetadataLazyLoad.
+  wmpi_->SetPreload(WebMediaPlayer::kPreloadAuto);
+
+  base::RunLoop run_loop;
+
+  // Use MockRendererFactory which will create two Renderers. The first will
+  // report a PIPELINE_ERROR_HARDWARE_CONTEXT_RESET after initialization. The
+  // second one will initialize normally and quit the loop to complete the test.
+  auto mock_renderer_factory = std::make_unique<media::MockRendererFactory>();
+  EXPECT_CALL(*mock_renderer_factory, CreateRenderer(_, _, _, _, _, _))
+      .WillOnce(testing::WithoutArgs(Invoke([]() {
+        auto mock_renderer = std::make_unique<NiceMock<media::MockRenderer>>();
+        EXPECT_CALL(*mock_renderer, OnInitialize(_, _, _))
+            .WillOnce(DoAll(RunOnceCallback<2>(media::PIPELINE_OK),
+                            WithArg<1>(ReportHardwareContextReset())));
+        return mock_renderer;
+      })))
+      .WillOnce(testing::WithoutArgs(Invoke([&]() {
+        auto mock_renderer = std::make_unique<NiceMock<media::MockRenderer>>();
+        EXPECT_CALL(*mock_renderer, OnInitialize(_, _, _))
+            .WillOnce(DoAll(RunOnceCallback<2>(media::PIPELINE_OK),
+                            RunClosure(run_loop.QuitClosure())));
+        return mock_renderer;
+      })));
+
+  renderer_factory_selector_->AddFactory(media::RendererType::kTest,
+                                         std::move(mock_renderer_factory));
+  renderer_factory_selector_->SetBaseRendererType(media::RendererType::kTest);
+
+  Load(kVideoOnlyTestFile);
+  run_loop.Run();
+}
+
+// Same as above, but tests that when PIPELINE_ERROR_HARDWARE_CONTEXT_RESET
+// happens twice, the pipeline will always suspend/resume the pipeline, which
+// will create new Renderers. See https://crbug.com/1454226 for the context.
+TEST_F(WebMediaPlayerImplTest, PipelineErrorHardwareContextReset_Twice) {
+  InitializeWebMediaPlayerImpl();
+  // To avoid PreloadMetadataLazyLoad.
+  wmpi_->SetPreload(WebMediaPlayer::kPreloadAuto);
+
+  base::RunLoop run_loop;
+
+  // Use MockRendererFactory which will create three Renderers. The first two
+  // will report a PIPELINE_ERROR_HARDWARE_CONTEXT_RESET after initialization.
+  // The third one will initialize normally and quit the loop to complete the
+  // test.
+  auto mock_renderer_factory = std::make_unique<media::MockRendererFactory>();
+  EXPECT_CALL(*mock_renderer_factory, CreateRenderer(_, _, _, _, _, _))
+      .WillOnce(testing::WithoutArgs(Invoke([]() {
+        auto mock_renderer = std::make_unique<NiceMock<media::MockRenderer>>();
+        EXPECT_CALL(*mock_renderer, OnInitialize(_, _, _))
+            .WillOnce(DoAll(RunOnceCallback<2>(media::PIPELINE_OK),
+                            WithArg<1>(ReportHardwareContextReset())));
+        return mock_renderer;
+      })))
+      .WillOnce(testing::WithoutArgs(Invoke([]() {
+        auto mock_renderer = std::make_unique<NiceMock<media::MockRenderer>>();
+        EXPECT_CALL(*mock_renderer, OnInitialize(_, _, _))
+            .WillOnce(DoAll(RunOnceCallback<2>(media::PIPELINE_OK),
+                            WithArg<1>(ReportHardwareContextReset())));
+        return mock_renderer;
+      })))
+      .WillOnce(testing::WithoutArgs(Invoke([&]() {
+        auto mock_renderer = std::make_unique<NiceMock<media::MockRenderer>>();
+        EXPECT_CALL(*mock_renderer, OnInitialize(_, _, _))
+            .WillOnce(DoAll(RunOnceCallback<2>(media::PIPELINE_OK),
+                            RunClosure(run_loop.QuitClosure())));
+        return mock_renderer;
+      })));
+
+  renderer_factory_selector_->AddFactory(media::RendererType::kTest,
+                                         std::move(mock_renderer_factory));
+  renderer_factory_selector_->SetBaseRendererType(media::RendererType::kTest);
+
+  Load(kVideoOnlyTestFile);
+  run_loop.Run();
+}
+
 #endif  // BUILDFLAG(IS_WIN)
 
 TEST_F(WebMediaPlayerImplTest, VideoConfigChange) {

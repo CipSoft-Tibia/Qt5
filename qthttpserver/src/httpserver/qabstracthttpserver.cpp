@@ -12,6 +12,9 @@
 
 #include <QtCore/qloggingcategory.h>
 #include <QtNetwork/qtcpserver.h>
+#include <QtNetwork/qtcpsocket.h>
+#include <QtNetwork/qlocalserver.h>
+#include <QtNetwork/qlocalsocket.h>
 
 #if QT_CONFIG(ssl)
 #include <QtNetwork/qsslserver.h>
@@ -42,6 +45,22 @@ void QAbstractHttpServerPrivate::handleNewConnections()
     while (auto socket = tcpServer->nextPendingConnection())
         new QHttpServerStream(q, socket);
 }
+
+
+#if QT_CONFIG(localserver)
+/*!
+    \internal
+*/
+void QAbstractHttpServerPrivate::handleNewLocalConnections()
+{
+    Q_Q(QAbstractHttpServer);
+    auto localServer = qobject_cast<QLocalServer *>(q->sender());
+    Q_ASSERT(localServer);
+
+    while (auto socket = localServer->nextPendingConnection())
+        new QHttpServerStream(q, socket);
+}
+#endif
 
 /*!
     \class QAbstractHttpServer
@@ -172,6 +191,21 @@ void QAbstractHttpServer::bind(QTcpServer *server)
                             Qt::UniqueConnection);
 }
 
+#if QT_CONFIG(localserver)
+void QAbstractHttpServer::bind(QLocalServer *server)
+{
+    Q_D(QAbstractHttpServer);
+
+    if (!server->isListening())
+        qCWarning(lcHttpServer) << "The local server" << server << "is not listening.";
+    server->setParent(this);
+
+    QObjectPrivate::connect(server, &QLocalServer::newConnection,
+                            d, &QAbstractHttpServerPrivate::handleNewLocalConnections,
+                            Qt::UniqueConnection);
+}
+#endif
+
 /*!
     Returns list of child TCP servers of this HTTP server.
 
@@ -179,8 +213,20 @@ void QAbstractHttpServer::bind(QTcpServer *server)
  */
 QList<QTcpServer *> QAbstractHttpServer::servers() const
 {
-    return findChildren<QTcpServer *>().toVector();
+    return findChildren<QTcpServer *>();
 }
+
+#if QT_CONFIG(localserver)
+/*!
+    Returns list of child TCP servers of this HTTP server.
+
+    \sa serverPorts()
+ */
+QList<QLocalServer *> QAbstractHttpServer::localServers() const
+{
+    return findChildren<QLocalServer *>();
+}
+#endif
 
 #if defined(QT_WEBSOCKETS_LIB)
 /*!

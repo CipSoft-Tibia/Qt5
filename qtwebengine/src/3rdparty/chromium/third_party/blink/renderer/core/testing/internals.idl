@@ -24,9 +24,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-[
-    DoNotCheckConstants
-] interface Internals {
+interface Internals {
     [RaisesException] GCObservation observeGC(any observed);
 
     [RaisesException] DOMString elementLayoutTreeAsText(Element element);
@@ -35,10 +33,14 @@
     boolean isLoading(DOMString url);
     boolean isLoadingFromMemoryCache(DOMString url);
 
-    // Call this function with the URL of a resource that has not yet been
-    // fetched. It returns a promise that resolves with the initial priority
+    // Call this function with the URL of a resource.
+    // It returns a promise that resolves with the initial priority
     // of the request, once it has been made.
     [CallWith=ScriptState] Promise<unsigned long> getInitialResourcePriority(DOMString url, Document document);
+
+    // Similar to getInitialResourcePriority, but doesn't query the priority of
+    // an already loaded resource.
+    [CallWith=ScriptState] Promise<unsigned long> getInitialResourcePriorityOfNewLoad(DOMString url, Document document);
 
     DOMString getResourceHeader(DOMString url, DOMString header, Document document);
 
@@ -105,6 +107,7 @@
     DOMRectReadOnly boundingBox(Element element);
 
     [RaisesException] void setMarker(Document document, Range range, DOMString markerType);
+    [RaisesException] void removeMarker(Document document, Range range, DOMString markerType);
     [RaisesException] unsigned long markerCountForNode(Text text, DOMString markerType);
     unsigned long activeMarkerCountForNode(Text text);
     [RaisesException] Range markerRangeForNode(Text text, DOMString markerType, unsigned long index);
@@ -148,6 +151,8 @@
     [RaisesException] DOMString idleTimeSpellCheckerState(Document document);
     [RaisesException] void runIdleTimeSpellChecker(Document document);
 
+    [RaisesException] boolean hasLastEditCommand(Document document);
+
     sequence<DOMString> userPreferredLanguages();
     void setUserPreferredLanguages(sequence<DOMString> languages);
     void setSystemTimeZone(DOMString timezone);
@@ -170,7 +175,8 @@
     DOMString svgNamespace();
     sequence<DOMString> svgTags();
 
-    [RaisesException] NodeList nodesFromRect(Document document, long x, long y,
+    [RaisesException, CallWith=ScriptState] NodeList nodesFromRect(
+        Document document, long x, long y,
         unsigned long width, unsigned long height, boolean ignoreClipping,
         boolean allowChildFrameContent);
 
@@ -280,6 +286,8 @@
     long selectPopupItemStyleFontHeight(Node select, long itemIndex);
     void resetTypeAheadSession(HTMLSelectElement select);
 
+    void resetSelectListTypeAheadSession(HTMLSelectListElement selectlist);
+
     StaticSelection getDragCaret();
     [RaisesException] StaticSelection getSelectionInFlatTree(Window window);
     // TODO(editing-dev): We should change |visibleSelection*| to
@@ -331,6 +339,7 @@
     RecordTest recordTest();
     SequenceTest sequenceTest();
     UnionTypesTest unionTypesTest();
+    InternalsUkmRecorder initializeUKMRecorder();
     CallbackFunctionTest callbackFunctionTest();
     [RaisesException] void setScrollChain(ScrollState scrollState, sequence<Element> elements);
 
@@ -444,4 +453,5 @@
 
     void setBackForwardCacheRestorationBufferSize(long maxSize);
 
+    sequence<DOMString> getCreatorScripts(HTMLImageElement img);
 };

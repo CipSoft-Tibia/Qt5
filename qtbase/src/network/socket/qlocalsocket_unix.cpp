@@ -13,16 +13,17 @@
 #include <errno.h>
 
 #include <qdir.h>
+#include <qdeadlinetimer.h>
 #include <qdebug.h>
-#include <qelapsedtimer.h>
 #include <qstringconverter.h>
 
 #ifdef Q_OS_VXWORKS
 #  include <selectLib.h>
 #endif
 
-#define QT_CONNECT_TIMEOUT 30000
+using namespace std::chrono_literals;
 
+#define QT_CONNECT_TIMEOUT 30000
 
 QT_BEGIN_NAMESPACE
 
@@ -585,21 +586,20 @@ bool QLocalSocket::waitForConnected(int msec)
     if (state() != ConnectingState)
         return (state() == ConnectedState);
 
-    QElapsedTimer timer;
-    timer.start();
-
     pollfd pfd = qt_make_pollfd(d->connectingSocket, POLLIN);
 
-    do {
-        const int timeout = (msec > 0) ? qMax(msec - timer.elapsed(), Q_INT64_C(0)) : msec;
-        const int result = qt_poll_msecs(&pfd, 1, timeout);
+    QDeadlineTimer deadline{msec};
+    auto remainingTime = deadline.remainingTimeAsDuration();
 
+    do {
+        const int result = qt_safe_poll(&pfd, 1, deadline);
         if (result == -1)
             d->setErrorAndEmit(QLocalSocket::UnknownSocketError,
                                "QLocalSocket::waitForConnected"_L1);
         else if (result > 0)
             d->_q_connectToSocket();
-    } while (state() == ConnectingState && !timer.hasExpired(msec));
+    } while (state() == ConnectingState
+             && (remainingTime = deadline.remainingTimeAsDuration()) > 0ns);
 
     return (state() == ConnectedState);
 }

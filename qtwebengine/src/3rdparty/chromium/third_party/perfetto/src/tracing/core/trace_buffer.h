@@ -26,12 +26,14 @@
 #include <tuple>
 
 #include "perfetto/base/logging.h"
+#include "perfetto/ext/base/flat_hash_map.h"
 #include "perfetto/ext/base/paged_memory.h"
 #include "perfetto/ext/base/thread_annotations.h"
 #include "perfetto/ext/base/utils.h"
 #include "perfetto/ext/tracing/core/basic_types.h"
 #include "perfetto/ext/tracing/core/slice.h"
 #include "perfetto/ext/tracing/core/trace_stats.h"
+#include "src/tracing/core/histogram.h"
 
 namespace perfetto {
 
@@ -162,6 +164,18 @@ class TraceBuffer {
     WriterID writer_id;
   };
 
+  // Holds the "used chunk" stats for each <Producer, Writer> tuple.
+  struct WriterStats {
+    Histogram<8, 32, 128, 512, 1024, 2048, 4096, 8192, 12288, 16384>
+        used_chunk_hist;
+  };
+
+  using WriterStatsMap = base::FlatHashMap<ProducerAndWriterID,
+                                           WriterStats,
+                                           std::hash<ProducerAndWriterID>,
+                                           base::QuadraticProbe,
+                                           /*AppendOnly=*/true>;
+
   // Can return nullptr if the memory allocation fails.
   static std::unique_ptr<TraceBuffer> Create(size_t size_in_bytes,
                                              OverwritePolicy = kOverwrite);
@@ -199,6 +213,7 @@ class TraceBuffer {
                           bool chunk_complete,
                           const uint8_t* src,
                           size_t size);
+
   // Applies a batch of |patches| to the given chunk, if the given chunk is
   // still in the buffer. Does nothing if the given ChunkID is gone.
   // Returns true if the chunk has been found and patched, false otherwise.
@@ -267,8 +282,12 @@ class TraceBuffer {
   // TraceBuffer will CHECK().
   std::unique_ptr<TraceBuffer> CloneReadOnly() const;
 
+  void set_read_only() { read_only_ = true; }
+  const WriterStatsMap& writer_stats() const { return writer_stats_; }
   const TraceStats::BufferStats& stats() const { return stats_; }
   size_t size() const { return size_; }
+  OverwritePolicy overwrite_policy() const { return overwrite_policy_; }
+  bool has_data() const { return has_data_; }
 
  private:
   friend class TraceBufferTest;
@@ -581,7 +600,9 @@ class TraceBuffer {
   // TracePacket can be nullptr, in which case the read state is still advanced.
   // When TracePacket is not nullptr, ProducerID must also be not null and will
   // be updated with the ProducerID that originally wrote the chunk.
-  ReadPacketResult ReadNextPacketInChunk(ChunkMeta*, TracePacket*);
+  ReadPacketResult ReadNextPacketInChunk(ProducerAndWriterID,
+                                         ChunkMeta*,
+                                         TracePacket*);
 
   void DcheckIsAlignedAndWithinBounds(const uint8_t* ptr) const {
     PERFETTO_DCHECK(ptr >= begin() && ptr <= end() - sizeof(ChunkRecord));
@@ -688,6 +709,14 @@ class TraceBuffer {
 
   // Statistics about buffer usage.
   TraceStats::BufferStats stats_;
+
+  // Per-{Producer, Writer} statistics.
+  WriterStatsMap writer_stats_;
+
+  // Set to true upon the very first call to CopyChunkUntrusted() and never
+  // cleared. This is used to tell if the buffer has never been used since its
+  // creation (which in turn is used to optimize `clear_before_clone`).
+  bool has_data_ = false;
 
 #if PERFETTO_DCHECK_IS_ON()
   bool changed_since_last_read_ = false;

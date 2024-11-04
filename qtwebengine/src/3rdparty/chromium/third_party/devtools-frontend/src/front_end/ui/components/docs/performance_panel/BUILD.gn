@@ -7,15 +7,23 @@ import("../../../../../third_party/typescript/typescript.gni")
 
 ts_library("ts") {
   testonly = true
-  sources = [ "basic.ts" ]
+  sources = [
+    "basic.ts",
+    "flamechart.ts",
+    "overview.ts",
+    "track_example.ts",
+  ]
   deps = [
     "../../../../../test/unittests/front_end/helpers",
     "../../../../core/common:bundle",
     "../../../../core/sdk:bundle",
     "../../../../models/bindings:bundle",
+    "../../../../models/timeline_model:bundle",
+    "../../../../models/trace:bundle",
     "../../../../models/workspace:bundle",
     "../../../../panels/timeline:bundle",
     "../../../legacy:bundle",
+    "../../../legacy/components/perf_ui:bundle",
     "../../helpers:bundle",
   ]
 }
@@ -24,7 +32,9 @@ copy_to_gen("performance_panel") {
   testonly = true
   sources = [
     "basic.html",
-    "liviu.html",
+    "flamechart.html",
+    "overview.html",
+    "track_example.html",
   ]
 
   deps = [ ":ts" ]

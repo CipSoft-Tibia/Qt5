@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,7 @@
 
 #include <utility>
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
 // static
 MdnsRecord FakeDnsRecordFactory::CreateFullyPopulatedSrvRecord(uint16_t port) {
@@ -45,5 +44,4 @@ const char FakeDnsRecordFactory::kServiceNameServicePart[] = "_srv-name";
 // static
 const char FakeDnsRecordFactory::kDomainName[] = "local";
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

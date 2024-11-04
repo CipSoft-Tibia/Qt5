@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "base/containers/flat_set.h"
+#include "base/containers/lru_cache.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
@@ -25,7 +26,7 @@ class HistoryService;
 }  // namespace history
 
 namespace optimization_guide {
-class NewOptimizationGuideDecider;
+class OptimizationGuideDecider;
 }  // namespace optimization_guide
 
 namespace site_engagement {
@@ -54,6 +55,21 @@ struct InProgressCluster {
   // The vector of visits that have not been persisted yet. Note that each entry
   // only contains the minimum required to persist a cluster visit.
   std::vector<history::ClusterVisit> unpersisted_visits;
+  // Whether this cluster was meant to be cleaned up but is being held for
+  // persistence.
+  bool cleaned_up = false;
+};
+
+struct CachedEngagementScore {
+  CachedEngagementScore(float score, base::Time expiry_time);
+  ~CachedEngagementScore();
+  CachedEngagementScore(const CachedEngagementScore&);
+
+  // The site engagement score.
+  float score = 0.0;
+
+  // The time that this cache entry expires.
+  base::Time expiry_time;
 };
 
 // A HistoryServiceObserver responsible for grouping visits into clusters.
@@ -73,8 +89,7 @@ class ContextClustererHistoryServiceObserver
   ContextClustererHistoryServiceObserver(
       history::HistoryService* history_service,
       TemplateURLService* template_url_service,
-      optimization_guide::NewOptimizationGuideDecider*
-          optimization_guide_decider,
+      optimization_guide::OptimizationGuideDecider* optimization_guide_decider,
       site_engagement::SiteEngagementScoreProvider* engagement_score_provider);
   ~ContextClustererHistoryServiceObserver() override;
 
@@ -102,7 +117,11 @@ class ContextClustererHistoryServiceObserver
 
   // Creates a cluster visit from `normalized_url` and `visit_row`.
   history::ClusterVisit CreateClusterVisit(const std::string& normalized_url,
+                                           bool is_search_normalized_url,
                                            const history::VisitRow& visit_row);
+
+  // Gets the site engagement score for `normalized_url`.
+  float GetEngagementScore(const GURL& normalized_url);
 
   // Overrides `clock_` for testing.
   void OverrideClockForTesting(const base::Clock* clock);
@@ -135,8 +154,12 @@ class ContextClustererHistoryServiceObserver
 
   // Used to determine whether to include a visit in any cluster. Can be null,
   // but is guaranteed to outlive `this`.
-  raw_ptr<optimization_guide::NewOptimizationGuideDecider>
+  raw_ptr<optimization_guide::OptimizationGuideDecider>
       optimization_guide_decider_;
+
+  // URL host to score mapping.
+  base::HashingLRUCache<std::string, CachedEngagementScore>
+      engagement_score_cache_;
 
   // Used to determine how "interesting" a visit is likely to be to a user.
   // Should only be null for tests.

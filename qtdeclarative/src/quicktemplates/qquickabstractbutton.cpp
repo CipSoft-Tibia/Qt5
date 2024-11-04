@@ -87,6 +87,25 @@ QT_BEGIN_NAMESPACE
     This signal is emitted when the button is interactively double clicked by the user via touch or mouse.
 */
 
+void QQuickAbstractButtonPrivate::init()
+{
+    Q_Q(QQuickAbstractButton);
+    q->setActiveFocusOnTab(true);
+#ifdef Q_OS_MACOS
+    q->setFocusPolicy(Qt::TabFocus);
+#else
+    q->setFocusPolicy(Qt::StrongFocus);
+#endif
+    q->setAcceptedMouseButtons(Qt::LeftButton);
+#if QT_CONFIG(quicktemplates2_multitouch)
+    q->setAcceptTouchEvents(true);
+#endif
+#if QT_CONFIG(cursor)
+    q->setCursor(Qt::ArrowCursor);
+#endif
+    setSizePolicy(QLayoutPolicy::Preferred, QLayoutPolicy::Fixed);
+}
+
 QPointF QQuickAbstractButtonPrivate::centerPressPoint() const
 {
     return QPointF(qRound(width / 2), qRound(height / 2));
@@ -155,7 +174,7 @@ bool QQuickAbstractButtonPrivate::handleRelease(const QPointF &point, ulong time
     pressButtons = Qt::NoButton;
 
     const bool touchDoubleClick = pressTouchId != -1 && lastTouchReleaseTimestamp != 0
-        && timestamp - lastTouchReleaseTimestamp < qApp->styleHints()->mouseDoubleClickInterval()
+        && QQuickDeliveryAgentPrivate::isWithinDoubleClickInterval(timestamp - lastTouchReleaseTimestamp)
         && isDoubleClickConnected();
 
     if (!wasHeld && (keepPressed || q->contains(point)))
@@ -419,7 +438,7 @@ QQuickAbstractButton *QQuickAbstractButtonPrivate::findCheckedButton() const
 {
     Q_Q(const QQuickAbstractButton);
     if (group)
-        return qobject_cast<QQuickAbstractButton *>(group->checkedButton());
+        return group->checkedButton();
 
     const QList<QQuickAbstractButton *> buttons = findExclusiveButtons();
     // TODO: A singular QRadioButton can be unchecked, which seems logical,
@@ -463,37 +482,15 @@ QList<QQuickAbstractButton *> QQuickAbstractButtonPrivate::findExclusiveButtons(
 QQuickAbstractButton::QQuickAbstractButton(QQuickItem *parent)
     : QQuickControl(*(new QQuickAbstractButtonPrivate), parent)
 {
-    setActiveFocusOnTab(true);
-#ifdef Q_OS_MACOS
-    setFocusPolicy(Qt::TabFocus);
-#else
-    setFocusPolicy(Qt::StrongFocus);
-#endif
-    setAcceptedMouseButtons(Qt::LeftButton);
-#if QT_CONFIG(quicktemplates2_multitouch)
-    setAcceptTouchEvents(true);
-#endif
-#if QT_CONFIG(cursor)
-    setCursor(Qt::ArrowCursor);
-#endif
+    Q_D(QQuickAbstractButton);
+    d->init();
 }
 
 QQuickAbstractButton::QQuickAbstractButton(QQuickAbstractButtonPrivate &dd, QQuickItem *parent)
     : QQuickControl(dd, parent)
 {
-    setActiveFocusOnTab(true);
-#ifdef Q_OS_MACOS
-    setFocusPolicy(Qt::TabFocus);
-#else
-    setFocusPolicy(Qt::StrongFocus);
-#endif
-    setAcceptedMouseButtons(Qt::LeftButton);
-#if QT_CONFIG(quicktemplates2_multitouch)
-    setAcceptTouchEvents(true);
-#endif
-#if QT_CONFIG(cursor)
-    setCursor(Qt::ArrowCursor);
-#endif
+    Q_D(QQuickAbstractButton);
+    d->init();
 }
 
 QQuickAbstractButton::~QQuickAbstractButton()

@@ -40,6 +40,7 @@
 #include "third_party/blink/renderer/core/animation/effect_input.h"
 #include "third_party/blink/renderer/core/animation/element_animations.h"
 #include "third_party/blink/renderer/core/animation/sampled_effect.h"
+#include "third_party/blink/renderer/core/animation/timing_calculations.h"
 #include "third_party/blink/renderer/core/animation/timing_input.h"
 #include "third_party/blink/renderer/core/css/parser/css_selector_parser.h"
 #include "third_party/blink/renderer/core/css/properties/css_property_ref.h"
@@ -85,6 +86,48 @@ bool ValidateAndCanonicalizePseudo(String& selector) {
   return false;
 }
 
+enum class KeyframeOrderStrategy { kSpecifiedOrdering, kCssKeyframeOrdering };
+
+Vector<int> CalculateKeyframeOrdering(const KeyframeVector& keyframes,
+                                      KeyframeOrderStrategy strategy) {
+  Vector<int> indices;
+  indices.ReserveInitialCapacity(keyframes.size());
+  for (wtf_size_t i = 0; i < keyframes.size(); i++) {
+    indices.push_back(i);
+  }
+
+  if (keyframes.empty()) {
+    return indices;
+  }
+
+  if (strategy == KeyframeOrderStrategy::kSpecifiedOrdering) {
+    auto less_than = [&keyframes](int a, int b) {
+      // Sort by original index
+      return keyframes[a]->Index() < keyframes[b]->Index();
+    };
+    std::stable_sort(indices.begin(), indices.end(), less_than);
+  } else {
+    // CSS keyframe order.
+    auto less_than = [&keyframes](int a, int b) {
+      auto* first = keyframes[a].Get();
+      auto* second = keyframes[b].Get();
+      // Sort plain percentages ahead of timeline offsets
+      if (first->GetTimelineOffset().has_value() !=
+          second->GetTimelineOffset().has_value()) {
+        return second->GetTimelineOffset().has_value();
+      }
+      // Sort timeline offsets by original index.
+      if (first->GetTimelineOffset().has_value()) {
+        return first->Index() < second->Index();
+      }
+      // Sort plain percentages by offset.
+      return first->Offset() < second->Offset();
+    };
+    std::stable_sort(indices.begin(), indices.end(), less_than);
+  }
+  return indices;
+}
+
 }  // namespace
 
 KeyframeEffect* KeyframeEffect::Create(
@@ -128,7 +171,8 @@ KeyframeEffect* KeyframeEffect::Create(
   if (!pseudo.empty()) {
     effect->target_pseudo_ = pseudo;
     if (element) {
-      element->GetDocument().UpdateStyleAndLayoutTreeForNode(element);
+      element->GetDocument().UpdateStyleAndLayoutTreeForNode(
+          element, DocumentUpdateReason::kWebAnimation);
       PseudoId pseudo_id =
           CSSSelectorParser::ParsePseudoElement(pseudo, element);
       AtomicString pseudo_argument =
@@ -186,7 +230,7 @@ KeyframeEffect::KeyframeEffect(Element* target,
     // pseudo element originates from.
     target_element_ = DynamicTo<PseudoElement>(target)->OriginatingElement();
     DCHECK(!target_element_->IsPseudoElement());
-    target_pseudo_ = target->tagName();
+    target_pseudo_ = PseudoElement::PseudoElementNameForEvents(target);
   }
 
   CountAnimatedProperties();
@@ -225,7 +269,7 @@ void KeyframeEffect::RefreshTarget() {
     new_target = target_element_;
   } else {
     target_element_->GetDocument().UpdateStyleAndLayoutTreeForNode(
-        target_element_);
+        target_element_, DocumentUpdateReason::kWebAnimation);
     PseudoId pseudoId =
         CSSSelectorParser::ParsePseudoElement(target_pseudo_, target_element_);
     new_target = target_element_->GetPseudoElement(pseudoId);
@@ -257,8 +301,12 @@ void KeyframeEffect::setComposite(String composite_string) {
 // https://w3.org/TR/web-animations-1/#dom-keyframeeffect-getkeyframes
 HeapVector<ScriptValue> KeyframeEffect::getKeyframes(
     ScriptState* script_state) {
-  if (Animation* animation = GetAnimation())
+  if (Animation* animation = GetAnimation()) {
     animation->FlushPendingUpdates();
+    if (AnimationTimeline* timeline = animation->TimelineInternal()) {
+      animation->ResolveTimelineOffsets(timeline->GetTimelineRange());
+    }
+  }
 
   HeapVector<ScriptValue> computed_keyframes;
   if (!model_->HasFrames() || !script_state->ContextIsValid())
@@ -268,14 +316,21 @@ HeapVector<ScriptValue> KeyframeEffect::getKeyframes(
                                  ? model_->GetFrames()
                                  : model_->GetComputedKeyframes(EffectTarget());
 
+  KeyframeOrderStrategy strategy =
+      ignore_css_keyframes_ || !model_->IsCssKeyframeEffectModel()
+          ? KeyframeOrderStrategy::kSpecifiedOrdering
+          : KeyframeOrderStrategy::kCssKeyframeOrdering;
+  Vector<int> indices = CalculateKeyframeOrdering(keyframes, strategy);
+
   Vector<double> computed_offsets =
       KeyframeEffectModelBase::GetComputedOffsets(keyframes);
   computed_keyframes.ReserveInitialCapacity(keyframes.size());
   ScriptState::Scope scope(script_state);
   for (wtf_size_t i = 0; i < keyframes.size(); i++) {
     V8ObjectBuilder object_builder(script_state);
-    keyframes[i]->AddKeyframePropertiesToV8Object(object_builder, target());
-    object_builder.Add("computedOffset", computed_offsets[i]);
+    keyframes[indices[i]]->AddKeyframePropertiesToV8Object(object_builder,
+                                                           target());
+    object_builder.Add("computedOffset", computed_offsets[indices[i]]);
     computed_keyframes.push_back(object_builder.GetScriptValue());
   }
 
@@ -369,7 +424,9 @@ void KeyframeEffect::StartAnimationOnCompositor(
     absl::optional<double> start_time,
     base::TimeDelta time_offset,
     double animation_playback_rate,
-    CompositorAnimation* compositor_animation) {
+    CompositorAnimation* compositor_animation,
+    bool is_monotonic_timeline,
+    bool is_boundary_aligned) {
   DCHECK(!HasActiveAnimationsOnCompositor());
   // TODO(petermayo): Maybe we should recheck that we can start on the
   // compositor if we have the compositable IDs somewhere.
@@ -384,7 +441,8 @@ void KeyframeEffect::StartAnimationOnCompositor(
   CompositorAnimations::StartAnimationOnCompositor(
       *effect_target_, group, start_time, time_offset, SpecifiedTiming(),
       NormalizedTiming(), GetAnimation(), *compositor_animation, *Model(),
-      compositor_keyframe_model_ids_, animation_playback_rate);
+      compositor_keyframe_model_ids_, animation_playback_rate,
+      is_monotonic_timeline, is_boundary_aligned);
   DCHECK(!compositor_keyframe_model_ids_.empty());
 }
 
@@ -444,15 +502,8 @@ void KeyframeEffect::AttachCompositedLayers() {
   DCHECK(GetAnimation());
   CompositorAnimation* compositor_animation =
       GetAnimation()->GetCompositorAnimation();
-  // If this is a paint worklet element and it is animating custom property
-  // only, it doesn't require an element id to run on the compositor thread.
-  // However, our compositor animation system requires the element to be on the
-  // property tree in order to keep ticking the animation. Therefore, we give a
-  // very special element id for this animation so that the compositor animation
-  // system recognize it. We do not use 0 as the element id because 0 is
-  // kInvalidElementId.
   if (compositor_animation && !Model()->RequiresPropertyNode()) {
-    compositor_animation->AttachNoElement();
+    compositor_animation->AttachPaintWorkletElement();
     return;
   }
   CompositorAnimations::AttachCompositedLayers(*effect_target_,
@@ -616,14 +667,16 @@ void KeyframeEffect::ApplyEffects() {
 }
 
 void KeyframeEffect::ClearEffects() {
-  if (!sampled_effect_)
+  if (!sampled_effect_) {
     return;
+  }
   sampled_effect_->Clear();
   sampled_effect_ = nullptr;
   if (GetAnimation())
     GetAnimation()->RestartAnimationOnCompositor();
-  if (!effect_target_->GetDocument().Lifecycle().InDetach())
+  if (!effect_target_->GetDocument().Lifecycle().InDetach()) {
     effect_target_->SetNeedsAnimationStyleRecalc();
+  }
   auto* svg_element = DynamicTo<SVGElement>(effect_target_.Get());
   if (RuntimeEnabledFeatures::WebAnimationsSVGEnabled() && svg_element)
     svg_element->ClearWebAnimatedAttributes();
@@ -635,10 +688,11 @@ void KeyframeEffect::UpdateChildrenAndEffects() const {
     return;
   DCHECK(owner_);
   if (IsInEffect() && !owner_->EffectSuppressed() &&
-      !owner_->ReplaceStateRemoved())
+      !owner_->ReplaceStateRemoved()) {
     const_cast<KeyframeEffect*>(this)->ApplyEffects();
-  else
+  } else {
     const_cast<KeyframeEffect*>(this)->ClearEffects();
+  }
 }
 
 void KeyframeEffect::Attach(AnimationEffectOwner* owner) {
@@ -669,16 +723,6 @@ void KeyframeEffect::DetachTarget(Animation* animation) {
   // the target that it needs to refresh its style, and doing any necessary
   // update on the compositor.
   ClearEffects();
-}
-
-AnimationTimeDelta KeyframeEffect::IntrinsicIterationDuration() const {
-  if (auto* animation = GetAnimation()) {
-    auto* timeline = animation->timeline();
-    if (timeline) {
-      return timeline->CalculateIntrinsicIterationDuration(animation, timing_);
-    }
-  }
-  return AnimationTimeDelta();
 }
 
 AnimationTimeDelta KeyframeEffect::CalculateTimeToEffectChange(
@@ -718,7 +762,8 @@ AnimationTimeDelta KeyframeEffect::CalculateTimeToEffectChange(
       }
       return {};
     case Timing::kPhaseAfter:
-      DCHECK_GE(local_time.value(), after_time);
+      DCHECK(TimingCalculations::GreaterThanOrEqualToWithinTimeTolerance(
+          local_time.value(), after_time));
       if (forwards) {
         // If an animation has a positive-valued end delay, we need an
         // additional tick at the end time to ensure that the finished event is
@@ -734,8 +779,8 @@ AnimationTimeDelta KeyframeEffect::CalculateTimeToEffectChange(
 }
 
 absl::optional<AnimationTimeDelta> KeyframeEffect::TimelineDuration() const {
-  if (GetAnimation() && GetAnimation()->timeline()) {
-    return GetAnimation()->timeline()->GetDuration();
+  if (GetAnimation() && GetAnimation()->TimelineInternal()) {
+    return GetAnimation()->TimelineInternal()->GetDuration();
   }
   return absl::nullopt;
 }
@@ -796,8 +841,9 @@ ActiveInterpolationsMap KeyframeEffect::InterpolationsForCommitStyles() {
       /*suppressed_animations=*/nullptr, kDefaultPriority, property_pass_filter,
       this);
 
-  if (removed)
+  if (removed) {
     ClearEffects();
+  }
 
   return results;
 }

@@ -8,6 +8,7 @@ import "mojo/public/mojom/base/big_buffer.mojom";
 import "mojo/public/mojom/base/file_path.mojom";
 import "mojo/public/mojom/base/time.mojom";
 import "mojo/public/mojom/base/unguessable_token.mojom";
+import "services/network/public/mojom/attribution.mojom";
 import "services/network/public/mojom/url_loader_network_service_observer.mojom";
 import "services/network/public/mojom/client_security_state.mojom";
 import "services/network/public/mojom/cors.mojom";
@@ -24,6 +25,7 @@ import "services/network/public/mojom/isolation_info.mojom";
 import "services/network/public/mojom/network_param.mojom";
 import "services/network/public/mojom/referrer_policy.mojom";
 import "services/network/public/mojom/request_priority.mojom";
+import "services/network/public/mojom/shared_dictionary_access_observer.mojom";
 import "services/network/public/mojom/site_for_cookies.mojom";
 import "services/network/public/mojom/trust_tokens.mojom";
 import "services/network/public/mojom/trust_token_access_observer.mojom";
@@ -38,6 +40,7 @@ enum SourceType {
   kBrotli,
   kDeflate,
   kGzip,
+  kZstd,
   kNone,
   kUnknown,
 };
@@ -100,6 +103,11 @@ struct TrustedUrlRequestParams {
   // received. Can be null to signify that the requestor is not interested in
   // ACCEPT_CH frames.
   pending_remote<AcceptCHFrameObserver>? accept_ch_frame_observer;
+
+  // Observer which should be notified when this URLRequest accesses a shared
+  // dictionary. If this is set to non-null, the observer passed to
+  // URLLoaderFactory will be ignored.
+  pending_remote<SharedDictionaryAccessObserver>? shared_dictionary_observer;
 };
 
 // Options that may only be set on URLRequests which are related to WebBundle.
@@ -117,15 +125,6 @@ struct WebBundleTokenParams {
   // process, for subframe navigation requests to bundled resources. Not used
   // for subresource requests sent by renderer processes.
   int32 render_process_id;
-};
-
-// Options that may be set when URLRequests need to take over NetLog related
-// parameters. The URLRequest will use these parameters on logging.
-// Typemapped to net::NetLogSource.
-struct NetLogSource {
-  uint32 source_type;
-  uint32 source_id;
-  mojo_base.mojom.TimeTicks start_time;
 };
 
 // Typemapped to network::ResourceRequest.
@@ -322,6 +321,16 @@ struct URLRequest {
   // https://github.com/patcg-individual-drafts/topics
   bool browsing_topics;
 
+  // True if this is an ad auction request eligible for attaching the
+  // `Sec-Ad-Auction-Fetch` request header and processing the
+  // `X-Ad-Auction-Result` response header.
+  // https://github.com/WICG/turtledove/blob/main/FLEDGE_browser_bidding_and_auction_API.md#step-3-get-response-blobs-to-browser
+  bool ad_auction_headers;
+
+  // True if the request should send the `Shared-Storage-Writable` request
+  // header.
+  bool shared_storage_writable;
+
   // True if the request was user initiated.
   bool has_user_gesture;
 
@@ -396,6 +405,10 @@ struct URLRequest {
 
   // True for XHR, Fetch, and EventSource.
   bool is_fetch_like_api;
+
+  // True for FetchLater.
+  // https://whatpr.org/fetch/1647/094ea69...152d725.html#fetch-later-method
+  bool is_fetch_later_api;
 
   // True for favicon.
   bool is_favicon;
@@ -493,6 +506,37 @@ struct URLRequest {
   // assumption, the browser process has already determined that this access is
   // ok.
   bool has_storage_access;
+
+ // Indicates whether web or OS-level Attribution Reporting is supported.
+  AttributionSupport attribution_reporting_support;
+
+  // Indicates the value of the request's `Attribution-Reporting-Eligible`
+  // header; how this header is interpreted depends on the context in which
+  // the request is made.
+  AttributionReportingEligibility attribution_reporting_eligibility =
+    AttributionReportingEligibility.kUnset;
+
+  // Indicates whether Attribution Reporting API related runtime features are
+  // enabled.
+  //
+  // TODO(https://crbug.com/1443602): Get rid of this with proper OT
+  // infrastructure support in the network service.
+  AttributionReportingRuntimeFeatures attribution_reporting_runtime_features;
+
+  // When applicable, indicates the token of an Attribution Reporting API
+  // eligible navigation request to which the current request is associated.
+  mojo_base.mojom.UnguessableToken? attribution_reporting_src_token;
+
+  // Indicate the state of CompressionDictionaryTransport feature. When it is
+  // true, `use-as-dictionary` response HTTP header may be processed.
+  // TODO(crbug.com/1413922): Remove this flag when we launch
+  // CompressionDictionaryTransport feature.
+  bool shared_dictionary_writer_enabled = false;
+
+  // Indicates where the original ResourceRequest is created.
+  // TODO(https://crbug.com/1456586): Remove this once the issue is fixed.
+  [EnableIf=is_android]
+  string created_location;
 };
 
 // URLRequestBody represents body (i.e. upload data) of a HTTP request.

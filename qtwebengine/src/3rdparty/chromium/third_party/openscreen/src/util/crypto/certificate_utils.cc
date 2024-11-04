@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,8 +33,8 @@ enum KeyUsageBits {
 
 // Returns whether or not the certificate field successfully was added.
 bool AddCertificateField(X509_NAME* certificate_name,
-                         absl::string_view field,
-                         absl::string_view value) {
+                         std::string_view field,
+                         std::string_view value) {
   return X509_NAME_add_entry_by_txt(
              certificate_name, std::string(field).c_str(), MBSTRING_ASC,
              reinterpret_cast<const unsigned char*>(value.data()),
@@ -47,9 +47,9 @@ bssl::UniquePtr<ASN1_TIME> ToAsn1Time(std::chrono::seconds time_since_epoch) {
 }
 
 bssl::UniquePtr<X509> CreateCertificateInternal(
-    absl::string_view name,
+    std::string_view name,
     std::chrono::seconds certificate_duration,
-    EVP_PKEY key_pair,
+    const EVP_PKEY& key_pair,
     std::chrono::seconds time_since_unix_epoch,
     bool make_ca,
     X509* issuer,
@@ -60,7 +60,9 @@ bssl::UniquePtr<X509> CreateCertificateInternal(
     issuer = certificate.get();
   }
   if (!issuer_key) {
-    issuer_key = &key_pair;
+    // Many EVP_PKEY APIs are not marked as const because they bump internal
+    // reference counts.
+    issuer_key = const_cast<EVP_PKEY*>(&key_pair);
   }
 
   // Certificate versions are zero indexed, so V1 = 0.
@@ -122,7 +124,8 @@ bssl::UniquePtr<X509> CreateCertificateInternal(
 
   X509_NAME* issuer_name = X509_get_subject_name(issuer);
   if ((X509_set_issuer_name(certificate.get(), issuer_name) != 1) ||
-      (X509_set_pubkey(certificate.get(), &key_pair) != 1) ||
+      (X509_set_pubkey(certificate.get(), const_cast<EVP_PKEY*>(&key_pair)) !=
+       1) ||
       // Unlike all of the other BoringSSL methods here, X509_sign returns
       // the size of the signature in bytes.
       (X509_sign(certificate.get(), issuer_key, EVP_sha256()) <= 0) ||
@@ -156,7 +159,7 @@ bssl::UniquePtr<EVP_PKEY> GenerateRsaKeyPair(int key_bits) {
 }
 
 ErrorOr<bssl::UniquePtr<X509>> CreateSelfSignedX509Certificate(
-    absl::string_view name,
+    std::string_view name,
     std::chrono::seconds duration,
     const EVP_PKEY& key_pair,
     std::chrono::seconds time_since_unix_epoch,
@@ -176,14 +179,19 @@ ErrorOr<std::vector<uint8_t>> ExportX509CertificateToDer(
     const X509& certificate) {
   unsigned char* buffer = nullptr;
   // Casting-away the const because the legacy i2d_X509() function is not
-  // const-correct.
+  // const-correct. Note this is only safe if `certificate` was constructed
+  // from parsing. If constructed from X509_new() and setters, the non-const
+  // signature reflects the function modifying the input, and this cast is not
+  // safe.
+  //
+  // See https://crbug.com/boringssl/407.
   X509* const certificate_ptr = const_cast<X509*>(&certificate);
   const int len = i2d_X509(certificate_ptr, &buffer);
   if (len <= 0) {
     return Error::Code::kCertificateValidationError;
   }
   std::vector<uint8_t> raw_der_certificate(buffer, buffer + len);
-  // BoringSSL doesn't free the temporary buffer.
+  // BoringSSL passes ownership of the temporary buffer to the caller.
   OPENSSL_free(buffer);
   return raw_der_certificate;
 }

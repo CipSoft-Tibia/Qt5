@@ -3,13 +3,15 @@
 // found in the LICENSE file.
 
 import '../../core/sdk/sdk-legacy.js';
-import '../test_runner/test_runner.js';
+
 import * as Platform from '../../core/platform/platform.js';
+import * as ProtocolClient from '../../core/protocol_client/protocol_client.js';
+import {TestRunner} from '../test_runner/test_runner.js';
 
 /**
  * @fileoverview using private properties isn't a Closure violation in tests.
  */
-self.SDKTestRunner = self.SDKTestRunner || {};
+export const SDKTestRunner = {};
 
 let id = 0;
 
@@ -51,15 +53,16 @@ SDKTestRunner.PageMock = class {
     this.enabledDomains.clear();
     self.SDK.targetManager.clearAllTargetsForTest();
 
-    const oldFactory = ProtocolClient.Connection.getFactory();
-    ProtocolClient.Connection.setFactory(() => {
+    const oldFactory = ProtocolClient.InspectorBackend.Connection.getFactory();
+    ProtocolClient.InspectorBackend.Connection.setFactory(() => {
       this.connection = new MockPageConnection(this);
       return this.connection;
     });
     const target = self.SDK.targetManager.createTarget(nextId('mock-target-'), targetName, this.type, null);
-    ProtocolClient.Connection.setFactory(oldFactory);
+    ProtocolClient.InspectorBackend.Connection.setFactory(oldFactory);
 
     this.target = target;
+    self.SDK.targetManager.setScopeTarget(target);
     return target;
   }
 
@@ -170,7 +173,7 @@ SDKTestRunner.PageMock = class {
 
   debuggerEnable(id, params) {
     this.enabledDomains.add('Debugger');
-    this.sendResponse(id, {});
+    this.sendResponse(id, {debuggerId: 'MOCK_DEBUGGER_ID'});
 
     for (const script of this.scripts) {
       this.fireEvent('Debugger.scriptParsed', script);
@@ -235,7 +238,8 @@ SDKTestRunner.PageMock = class {
     }
 
     this.sendResponse(
-        id, undefined, {message: 'Can\'t handle command ' + methodName, code: ProtocolClient.DevToolsStubErrorCode});
+        id, undefined,
+        {message: 'Can\'t handle command ' + methodName, code: ProtocolClient.InspectorBackend.DevToolsStubErrorCode});
   }
 
   sendResponse(id, result, error) {

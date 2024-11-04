@@ -206,7 +206,7 @@ export class ResourceWebSocketFrameView extends UI.Widget.VBox {
 
     this.mainToolbar = new UI.Toolbar.Toolbar('');
 
-    this.clearAllButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.clearAll), 'largeicon-clear');
+    this.clearAllButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.clearAll), 'clear');
     this.clearAllButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.clearFrames, this);
     this.mainToolbar.appendToolbarItem(this.clearAllButton);
 
@@ -268,13 +268,13 @@ export class ResourceWebSocketFrameView extends UI.Widget.VBox {
     return i18nString(UIStrings.sOpcodeS, {PH1: localizedDescription(), PH2: opCode});
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     this.refresh();
     this.registerCSSFiles([webSocketFrameViewStyles]);
     this.request.addEventListener(SDK.NetworkRequest.Events.WebsocketFrameAdded, this.frameAdded, this);
   }
 
-  willHide(): void {
+  override willHide(): void {
     this.request.removeEventListener(SDK.NetworkRequest.Events.WebsocketFrameAdded, this.frameAdded, this);
   }
 
@@ -307,7 +307,7 @@ export class ResourceWebSocketFrameView extends UI.Widget.VBox {
 
   private applyFilter(text: string): void {
     const type = (this.filterTypeCombobox.selectedOption() as HTMLOptionElement).value;
-    this.filterRegex = text ? new RegExp(text, 'i') : null;
+    this.filterRegex = text ? new RegExp(Platform.StringUtilities.escapeForRegExp(text), 'i') : null;
     this.filterType = type === 'all' ? null : type;
     this.refresh();
   }
@@ -432,7 +432,7 @@ export class ResourceWebSocketFrameNode extends DataGrid.SortableDataGrid.Sortab
     this.binaryViewInternal = null;
   }
 
-  createCells(element: Element): void {
+  override createCells(element: Element): void {
     element.classList.toggle(
         'websocket-frame-view-row-error', this.frame.type === SDK.NetworkRequest.WebSocketFrameType.Error);
     element.classList.toggle(
@@ -442,7 +442,7 @@ export class ResourceWebSocketFrameNode extends DataGrid.SortableDataGrid.Sortab
     super.createCells(element);
   }
 
-  nodeSelfHeight(): number {
+  override nodeSelfHeight(): number {
     return 21;
   }
 

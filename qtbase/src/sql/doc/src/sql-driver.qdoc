@@ -92,7 +92,14 @@
     directory.
 
     \target DriverStandalone
-    \section2 Compile only a specific sql driver
+    \section2 Compile only a specific SQL driver
+
+    It's possible to only compile a specific SQL driver when Qt is already built
+    or installed as binary version. But you have to make sure to install
+    the exact same version of the Qt sources (for example through the \QMT) -
+    otherwise you might get compile errors due to changed apis.
+    Also make sure to properly set up the build environment by executing the
+    appropriate Qt command prompt in the Windows Start menu.
 
     A typical \c qt-cmake run (in this case to configure for MySQL) looks like this:
 
@@ -404,15 +411,20 @@
     of the ODBC driver. ODBC support can be used as a fallback for compliant
     databases if no native driver is available.
 
-    On Windows, an ODBC driver manager should be installed by default.
+    On Windows, an ODBC driver manager is installed by default.
     For Unix systems, there are some implementations which must be
     installed first. Note that every end user of your application is
     required to have an ODBC driver manager installed, otherwise the
     QODBC plugin will not work.
 
     When connecting to an ODBC datasource, you should pass the name
-    of the ODBC datasource to the QSqlDatabase::setDatabaseName()
+    of the ODBC datasource (DSN) to the QSqlDatabase::setDatabaseName()
     function, rather than the actual database name.
+    It's also possible to pass a FILEDSN (*.dsn) filename or a complete
+    ODBC driver string. When passing a driver string you must make sure,
+    that all parameters (username, password, ...) are properly escaped.
+    Passing the username or password through the QSqlDatabase functions,
+    the escaping is done by the QODBC plugin.
 
     The QODBC Plugin needs an ODBC compliant driver manager version 2.0 or
     later. Some ODBC drivers claim to be version-2.0-compliant,
@@ -723,6 +735,17 @@
       \li Busy handler timeout in milliseconds (val <= 0: disabled),
           see \l {https://www.sqlite.org/c3ref/busy_timeout.html}
           {SQLite documentation} for more information
+
+    \row
+      \li QSQLITE_USE_QT_VFS
+      \li If set, the database is opened using Qt's VFS which allows to
+          open databases using QFile. This way it can open databases from
+          any read-write locations (e.g.android shared storage) but also
+          from read-only resources (e.g. qrc or android assets). Be aware
+          that when opening databases from read-only resources make sure
+          you add QSQLITE_OPEN_READONLY attribute as well.
+          Otherwise it will fail to open it.
+
     \row
       \li QSQLITE_OPEN_READONLY
       \li If set, the database is open in read-only mode which will fail
@@ -745,7 +768,14 @@
     \row
       \li QSQLITE_NO_USE_EXTENDED_RESULT_CODES
       \li Disables the usage of the \l {https://www.sqlite.org/c3ref/extended_result_codes.html}
-          {extended result code} feature in SQLite (for backwards compatibility)
+          {extended result code} feature in SQLite
+    \row
+      \li QSQLITE_ENABLE_NON_ASCII_CASE_FOLDING
+      \li If set, the plugin replaces the functions 'lower' and 'upper' with
+          QString functions for correct case folding of non-ascii characters
+    \row
+      \li QSQLITE_OPEN_NOFOLLOW
+      \li If set, the database filename is not allowed to contain a symbolic link
     \endtable
 
     \section3 How to Build the QSQLITE Plugin
@@ -921,26 +951,37 @@
     a source distribution to compile the client libraries yourself, you
     must make sure that the pre-compiled library is compatible with
     your compiler, otherwise you will get a lot of "undefined symbols"
-    errors. Some compilers have tools to convert libraries, e.g. Borland
-    ships the tool \c{COFF2OMF.EXE} to convert libraries that have been
-    generated with Microsoft Visual C++.
+    errors.
 
-    If the compilation of a plugin succeeds but it cannot be loaded,
-    make sure that the following requirements are met:
+    If the compilation of a plugin succeeds but it cannot be loaded
+    afterwards, check out the following steps to find out the culprit:
 
-    \list
+    \list 1
     \li Ensure that the plugin is in the correct directory. You can use
         QApplication::libraryPaths() to determine where Qt looks for plugins.
     \li Ensure that the client libraries of the DBMS are available on the
         system. On Unix, run the command \c{ldd} and pass the name of the
         plugin as parameter, for example \c{ldd libqsqlmysql.so}. You will
         get a warning if any of the client libraries could not be found.
-        On Windows, you can use Visual Studio's dependency walker. With
+        On Windows, you can use Visual Studio's dependency walker or
+        \l{https://github.com/lucasg/Dependencies/releases}{Dependencies GUI}
+        to find out the dependent libraries. With
         Qt Creator, you can update the \c PATH environment variable in the
         \gui Run section of the \gui Project panel to include the path to
         the folder containing the client libraries.
-    \li Compile Qt with \c{QT_DEBUG_PLUGINS} defined to get very verbose
-        debug output when loading plugins.
+    \li When using MSVC, also make sure the plugin is built with the correct
+        build type. Due to different MSVC runtimes for debug and release,
+        a Qt debug build can't load a Qt release plugin and vice versa.
+    \li Run the compiled Qt executable with the environment variable
+        \l{Environment Variables Recognized by Qt}{QT_DEBUG_PLUGINS} set
+        to get very verbose debug output when loading plugins.
+    \li To retrieve possible debug messages from the SQL subsystem, enable
+        the output by setting the environment variable \c{QT_LOGGING_RULES}
+        to \c{qt.sql.*.debug=true}. Don't forget to enable the
+        \l{Environment Variables Recognized by Qt}{console} when working on
+        windows.
+        See \l{Logging Rules} for a more detailed explanation on how to set
+        logging rules.
     \endlist
 
     Make sure you have followed the guide to \l{Deploying Plugins}.

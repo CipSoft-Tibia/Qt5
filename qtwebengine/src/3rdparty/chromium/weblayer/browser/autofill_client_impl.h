@@ -7,7 +7,8 @@
 
 #include "base/compiler_specific.h"
 #include "build/build_config.h"
-#include "components/autofill/core/browser/autofill_client.h"
+#include "components/autofill/content/browser/content_autofill_client.h"
+#include "components/autofill/core/browser/ui/popup_item_ids.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 
@@ -16,11 +17,23 @@ namespace weblayer {
 // A minimal implementation of autofill::AutofillClient to satisfy the minor
 // touchpoints between the autofill implementation and its client that get
 // exercised within the WebLayer autofill flow.
-class AutofillClientImpl
-    : public autofill::AutofillClient,
-      public content::WebContentsUserData<AutofillClientImpl>,
-      public content::WebContentsObserver {
+class AutofillClientImpl : public autofill::ContentAutofillClient,
+                           public content::WebContentsObserver {
  public:
+  static AutofillClientImpl* FromWebContents(
+      content::WebContents* web_contents) {
+    return static_cast<AutofillClientImpl*>(
+        ContentAutofillClient::FromWebContents(web_contents));
+  }
+
+  static void CreateForWebContents(content::WebContents* contents) {
+    DCHECK(contents);
+    if (!ContentAutofillClient::FromWebContents(contents)) {
+      contents->SetUserData(UserDataKey(),
+                            base::WrapUnique(new AutofillClientImpl(contents)));
+    }
+  }
+
   AutofillClientImpl(const AutofillClientImpl&) = delete;
   AutofillClientImpl& operator=(const AutofillClientImpl&) = delete;
 
@@ -74,6 +87,9 @@ class AutofillClientImpl
       const std::vector<autofill::MigratableCreditCard>&
           migratable_credit_cards,
       MigrationDeleteCardCallback delete_local_card_callback) override;
+  void ConfirmSaveIBANLocally(const autofill::IBAN& iban,
+                              bool should_show_prompt,
+                              LocalSaveIBANPromptCallback callback) override;
   void ShowWebauthnOfferDialog(
       WebauthnDialogCallback offer_dialog_callback) override;
   void ShowWebauthnVerifyPendingDialog(
@@ -111,15 +127,10 @@ class AutofillClientImpl
       const autofill::AutofillProfile* original_profile,
       SaveAddressProfilePromptOptions options,
       AddressProfileSavePromptCallback callback) override;
+  void ShowEditAddressProfileDialog(const AutofillProfile& profile) override;
+  void ShowDeleteAddressProfileDialog() override;
   bool HasCreditCardScanFeature() override;
   void ScanCreditCard(CreditCardScanCallback callback) override;
-  bool TryToShowFastCheckout(
-      const autofill::FormData& form,
-      const autofill::FormFieldData& field,
-      base::WeakPtr<autofill::AutofillManager> autofill_manager) override;
-  void HideFastCheckout(bool allow_further_runs) override;
-  bool IsFastCheckoutSupported() override;
-  bool IsShowingFastCheckoutUI() override;
   bool IsTouchToFillCreditCardSupported() override;
   bool ShowTouchToFillCreditCard(
       base::WeakPtr<autofill::TouchToFillDelegate> delegate,
@@ -133,19 +144,25 @@ class AutofillClientImpl
       const std::vector<std::u16string>& labels) override;
   std::vector<autofill::Suggestion> GetPopupSuggestions() const override;
   void PinPopupView() override;
-  autofill::AutofillClient::PopupOpenArgs GetReopenPopupArgs() const override;
-  void UpdatePopup(const std::vector<autofill::Suggestion>& suggestions,
-                   autofill::PopupType popup_type) override;
+  autofill::AutofillClient::PopupOpenArgs GetReopenPopupArgs(
+      autofill::AutofillSuggestionTriggerSource trigger_source) const override;
+  void UpdatePopup(
+      const std::vector<autofill::Suggestion>& suggestions,
+      autofill::PopupType popup_type,
+      autofill::AutofillSuggestionTriggerSource trigger_source) override;
   void HideAutofillPopup(autofill::PopupHidingReason reason) override;
   bool IsAutocompleteEnabled() const override;
   bool IsPasswordManagerEnabled() override;
-  void PropagateAutofillPredictions(
+  void PropagateAutofillPredictionsDeprecated(
       autofill::AutofillDriver* driver,
       const std::vector<autofill::FormStructure*>& forms) override;
+  void DidFillOrPreviewForm(
+      autofill::mojom::AutofillActionPersistence action_persistence,
+      autofill::AutofillTriggerSource trigger_source,
+      bool is_refill) override;
   void DidFillOrPreviewField(const std::u16string& autofilled_value,
                              const std::u16string& profile_full_name) override;
   bool IsContextSecure() const override;
-  void ExecuteCommand(int id) override;
   void OpenPromoCodeOfferDetailsURL(const GURL& url) override;
   autofill::FormInteractionsFlowId GetCurrentFormInteractionsFlowId() override;
 
@@ -155,11 +172,8 @@ class AutofillClientImpl
 
  private:
   explicit AutofillClientImpl(content::WebContents* web_contents);
-  friend class content::WebContentsUserData<AutofillClientImpl>;
 
   std::unique_ptr<autofill::AutofillDownloadManager> download_manager_;
-
-  WEB_CONTENTS_USER_DATA_KEY_DECL();
 };
 
 }  // namespace weblayer

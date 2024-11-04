@@ -33,6 +33,8 @@ std::string Status::ToString() const {
       return "kAlreadyAdvertising";
     case Status::kAlreadyDiscovering:
       return "kAlreadyDiscovering";
+    case Status::kAlreadyListening:
+      return "kAlreadyListening";
     case Status::kEndpointIoError:
       return "kEndpointIoError";
     case Status::kEndpointUnknown:
@@ -51,6 +53,14 @@ std::string Status::ToString() const {
       return "kWifiLanError";
     case Status::kPayloadUnknown:
       return "kPayloadUnknown";
+    case Status::kReset:
+      return "kReset";
+    case Status::kTimeout:
+      return "kTimeout";
+    case Status::kUnknown:
+      // fall through
+    default:
+      return "Unknown";
   }
 }
 

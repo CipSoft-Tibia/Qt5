@@ -82,7 +82,6 @@
 #include "ui/android/window_android.h"
 #include "ui/android/window_android_compositor.h"
 #include "ui/base/cursor/cursor.h"
-#include "ui/base/layout.h"
 #include "ui/base/ui_base_types.h"
 #include "ui/display/display_util.h"
 #include "ui/events/android/gesture_event_android.h"
@@ -106,7 +105,6 @@ namespace content {
 
 namespace {
 
-static const char kAsyncReadBackString[] = "Compositing.CopyFromSurfaceTime";
 static const base::TimeDelta kClickCountInterval = base::Seconds(0.5);
 static const float kClickCountRadiusSquaredDIP = 25;
 static const base::TimeDelta kThrottleTimeout = base::Milliseconds(200);
@@ -218,6 +216,17 @@ bool IsFullscreenSurfaceSyncSupported() {
 }
 
 }  // namespace
+
+// static
+RenderWidgetHostViewAndroid*
+RenderWidgetHostViewAndroid::FromRenderWidgetHostView(
+    RenderWidgetHostView* view) {
+  if (!view || static_cast<RenderWidgetHostViewBase*>(view)
+                   ->IsRenderWidgetHostViewChildFrame()) {
+    return nullptr;
+  }
+  return static_cast<RenderWidgetHostViewAndroid*>(view);
+}
 
 RenderWidgetHostViewAndroid::ScreenStateChangeHandler::ScreenStateChangeHandler(
     RenderWidgetHostViewAndroid* rwhva)
@@ -414,6 +423,16 @@ bool RenderWidgetHostViewAndroid::ScreenStateChangeHandler::
   } else if (pending_screen_state_.has_unlocked_orientation_lock &&
              rwhva_->in_rotation_) {
     end_rotation = true;
+  } else if (!pending_screen_state_.is_fullscreen &&
+             current_screen_state_.is_fullscreen) {
+    // PWA and WebView may be created as Fullscreen, without marking the
+    // WebContents as Fullscreen. In this state the Renderer can still request
+    // to toggle Fullscreen, which enables the ScreenOrientation APIs. However
+    // there will be no layout changes occuring.
+    //
+    // To account for this trigger a sync now to release the JavaScript Promise,
+    // and to update our `current_screen_state_`.
+    sync_needed = true;
   } else {
     bool physical_backing_rotation = false;
     bool screen_info_rotation = false;
@@ -534,7 +553,10 @@ bool RenderWidgetHostViewAndroid::ScreenStateChangeHandler::
     if (pending_screen_state_.is_fullscreen) {
       pending_screen_state_.any_non_rotation_size_changed = true;
     }
-    rwhva_->SynchronizeVisualProperties(deadline_policy, absl::nullopt);
+    rwhva_->SynchronizeVisualProperties(
+        deadline_policy, absl::nullopt,
+        /*reuse_current_local_surface_id=*/false,
+        /*ignore_ack=*/true);
   }
 
   current_screen_state_.CopyDefinedAttributes(pending_screen_state_);
@@ -1122,13 +1144,8 @@ void RenderWidgetHostViewAndroid::ShowWithVisibility(
     PageVisibilityState page_visibility) {
   // We can transition from `PageVisibilityState::kHiddenButPainting` to
   // `PageVisibilityState::kVisible` while `is_showing_`. We only want to
-  // support updating visibility requests for this transition. So for the non
-  // `features::kOnShowWithPageVisibility` path, still exit early based on
-  // `is_showing_` to prevent non-request work from being re-ran.
-  if (base::FeatureList::IsEnabled(kOnShowWithPageVisibility) &&
-      page_visibility_ == page_visibility) {
-    return;
-  } else if (is_showing_) {
+  // support updating visibility requests for this transition.
+  if (page_visibility_ == page_visibility) {
     return;
   }
 
@@ -1235,19 +1252,24 @@ void RenderWidgetHostViewAndroid::OnUpdateTextInputStateCalled(
 
 void RenderWidgetHostViewAndroid::OnImeCompositionRangeChanged(
     TextInputManager* text_input_manager,
-    RenderWidgetHostViewBase* updated_view) {
+    RenderWidgetHostViewBase* updated_view,
+    bool character_bounds_changed,
+    const absl::optional<std::vector<gfx::Rect>>& line_bounds) {
   DCHECK_EQ(text_input_manager_, text_input_manager);
-  const TextInputManager::CompositionRangeInfo* info =
-      text_input_manager_->GetCompositionRangeInfo();
-  if (!info)
+  if (!ime_adapter_android_) {
     return;
+  }
 
-  std::vector<gfx::RectF> character_bounds;
-  for (const gfx::Rect& rect : info->character_bounds)
-    character_bounds.emplace_back(rect);
+  if (character_bounds_changed) {
+    const TextInputManager::CompositionRangeInfo* info =
+        text_input_manager_->GetCompositionRangeInfo();
+    ime_adapter_android_->SetBounds(
+        info ? info->character_bounds : std::vector<gfx::Rect>(),
+        character_bounds_changed, line_bounds);
+    return;
+  }
 
-  if (ime_adapter_android_)
-    ime_adapter_android_->SetCharacterBounds(character_bounds);
+  ime_adapter_android_->SetBounds(std::vector<gfx::Rect>(), false, line_bounds);
 }
 
 void RenderWidgetHostViewAndroid::OnImeCancelComposition(
@@ -1461,7 +1483,7 @@ void RenderWidgetHostViewAndroid::ResetGestureDetection() {
   }
 }
 
-void RenderWidgetHostViewAndroid::OnDidNavigateMainFrameToNewPage() {
+void RenderWidgetHostViewAndroid::DidNavigateMainFramePreCommit() {
   // Move to front only if we are the primary page (we don't want to receive
   // events in the Prerender). GetMainRenderFrameHost() may be null in
   // tests.
@@ -1475,7 +1497,25 @@ void RenderWidgetHostViewAndroid::OnDidNavigateMainFrameToNewPage() {
   }
   ResetGestureDetection();
   if (delegated_frame_host_)
-    delegated_frame_host_->OnNavigateToNewPage();
+    delegated_frame_host_->DidNavigateMainFramePreCommit();
+}
+
+void RenderWidgetHostViewAndroid::DidEnterBackForwardCache() {
+  local_surface_id_allocator_.GenerateId();
+  delegated_frame_host_->DidEnterBackForwardCache();
+  // If we have the fallback content timer running, force it to stop. Else, when
+  // the page is restored the timer could also fire, setting whatever
+  // `DelegatedFrameHostAndroid::first_local_surface_id_after_navigation_`
+  // as the fallback to our Surfacelayer.
+  //
+  // This is safe for BFCache restore because we will supply specific fallback
+  // surfaces for BFCache.
+  //
+  // We do not want to call this in `RWHImpl::WasHidden()` because in the case
+  // of `Visibility::OCCLUDED` we still want to keep the timer running.
+  //
+  // Called after to prevent prematurely evict the BFCached surface.
+  host()->ForceFirstFrameAfterNavigationTimeout();
 }
 
 void RenderWidgetHostViewAndroid::SetDoubleTapSupportEnabled(bool enabled) {
@@ -1573,8 +1613,6 @@ void RenderWidgetHostViewAndroid::CopyFromSurface(
     return;
   }
 
-  base::TimeTicks start_time = base::TimeTicks::Now();
-
   if (!using_browser_compositor_) {
     SynchronousCopyContents(src_subrect, output_size, std::move(callback));
     return;
@@ -1585,16 +1623,32 @@ void RenderWidgetHostViewAndroid::CopyFromSurface(
       src_subrect, output_size,
       base::BindOnce(
           [](base::OnceCallback<void(const SkBitmap&)> callback,
-             base::TimeTicks start_time, const SkBitmap& bitmap) {
+             const SkBitmap& bitmap) {
             TRACE_EVENT0(
                 "cc", "RenderWidgetHostViewAndroid::CopyFromSurface finished");
-            // TODO(crbug/1110301): Make the Compositing.CopyFromSurfaceTime
-            // histogram obsolete.
-            UMA_HISTOGRAM_TIMES(kAsyncReadBackString,
-                                base::TimeTicks::Now() - start_time);
             std::move(callback).Run(bitmap);
           },
-          std::move(callback), start_time));
+          std::move(callback)),
+      /*capture_exact_surface_id=*/false);
+}
+
+void RenderWidgetHostViewAndroid::CopyFromExactSurface(
+    const gfx::Rect& src_rect,
+    const gfx::Size& output_size,
+    base::OnceCallback<void(const SkBitmap&)> callback) {
+  CHECK(IsSurfaceAvailableForCopy())
+      << "To copy the exact surface, it must be available for copy (embedded "
+         "via the browser).";
+  CHECK(using_browser_compositor_);
+  CHECK(delegated_frame_host_);
+
+  delegated_frame_host_->CopyFromCompositingSurface(
+      src_rect, output_size,
+      base::BindOnce(
+          [](base::OnceCallback<void(const SkBitmap&)> callback,
+             const SkBitmap& bitmap) { std::move(callback).Run(bitmap); },
+          std::move(callback)),
+      /*capture_exact_surface_id=*/true);
 }
 
 void RenderWidgetHostViewAndroid::EnsureSurfaceSynchronizedForWebTest() {
@@ -1923,6 +1977,18 @@ void RenderWidgetHostViewAndroid::OnDidUpdateVisualPropertiesComplete(
     delegated_frame_host_->SetTopControlsVisibleHeight(
         metadata.top_controls_height * metadata.top_controls_shown_ratio);
   }
+
+  if (using_browser_compositor_) {
+    ui::WindowAndroid* window = view_.GetWindowAndroid();
+    if (!window) {
+      return;
+    }
+    ui::WindowAndroidCompositor* compositor = window->GetCompositor();
+    if (!compositor) {
+      return;
+    }
+    static_cast<CompositorImpl*>(compositor)->MaybeCompositeNow();
+  }
 }
 
 void RenderWidgetHostViewAndroid::OnFinishGetContentBitmap(
@@ -1950,13 +2016,7 @@ void RenderWidgetHostViewAndroid::ShowInternal() {
   if (!show)
     return;
 
-  if (base::FeatureList::IsEnabled(kOnShowWithPageVisibility)) {
-    OnShowWithPageVisibility(page_visibility_);
-  } else {
-    if (!host() || !host()->is_hidden())
-      return;
-    NotifyHostAndDelegateOnWasShown(TakeContentToVisibleTimeRequest(host()));
-  }
+  OnShowWithPageVisibility(page_visibility_);
 }
 
 void RenderWidgetHostViewAndroid::HideInternal() {
@@ -2087,9 +2147,20 @@ void RenderWidgetHostViewAndroid::ProcessAckedTouchEvent(
     blink::mojom::InputEventResultState ack_result) {
   const bool event_consumed =
       ack_result == blink::mojom::InputEventResultState::kConsumed;
+  // |is_source_touch_event_set_non_blocking| defines a blocking behaviour of
+  // the future inputs.
+  const bool is_source_touch_event_set_non_blocking =
+      InputEventResultStateIsSetBlocking(ack_result);
+  // |was_touch_blocked| indicates whether the current event was dispatched
+  // blocking to the Renderer.
+  const bool was_touch_blocked =
+      ui::WebInputEventTraits::ShouldBlockEventStream(touch.event);
   gesture_provider_.OnTouchEventAck(
       touch.event.unique_touch_event_id, event_consumed,
-      InputEventResultStateIsSetNonBlocking(ack_result));
+      is_source_touch_event_set_non_blocking,
+      was_touch_blocked
+          ? absl::make_optional(touch.event.GetEventLatencyMetadata())
+          : absl::nullopt);
   if (touch.event.touch_start_or_first_touch_move && event_consumed &&
       host()->delegate() && host()->delegate()->GetInputEventRouter()) {
     host()
@@ -2162,7 +2233,7 @@ RenderWidgetHostViewAndroid::FilterInputEvent(
     return blink::mojom::InputEventResultState::kNotConsumed;
 
   if (input_event.GetType() == blink::WebInputEvent::Type::kTouchStart) {
-    GpuProcessHost::CallOnIO(FROM_HERE, GPU_PROCESS_KIND_SANDBOXED,
+    GpuProcessHost::CallOnUI(FROM_HERE, GPU_PROCESS_KIND_SANDBOXED,
                              false /* force_create */,
                              base::BindOnce(&WakeUpGpu));
   }
@@ -2217,36 +2288,16 @@ void RenderWidgetHostViewAndroid::SendKeyEvent(
 }
 
 void RenderWidgetHostViewAndroid::SendMouseEvent(
-    const ui::MotionEventAndroid& motion_event,
-    int action_button) {
-  blink::WebInputEvent::Type webMouseEventType =
-      ui::ToWebMouseEventType(motion_event.GetAction());
-
-  if (webMouseEventType == blink::WebInputEvent::Type::kUndefined)
-    return;
-
-  if (webMouseEventType == blink::WebInputEvent::Type::kMouseDown)
-    UpdateMouseState(action_button, motion_event.GetX(0), motion_event.GetY(0));
-
-  int click_count = 0;
-
-  if (webMouseEventType == blink::WebInputEvent::Type::kMouseDown ||
-      webMouseEventType == blink::WebInputEvent::Type::kMouseUp)
-    click_count = (action_button == ui::MotionEventAndroid::BUTTON_PRIMARY)
-                      ? left_click_count_
-                      : 1;
-
-  blink::WebMouseEvent mouse_event = WebMouseEventBuilder::Build(
-      motion_event, webMouseEventType, click_count, action_button);
-
+    const blink::WebMouseEvent& event,
+    const ui::LatencyInfo& info) {
   if (!host() || !host()->delegate())
     return;
 
   if (ShouldRouteEvents()) {
-    host()->delegate()->GetInputEventRouter()->RouteMouseEvent(
-        this, &mouse_event, ui::LatencyInfo());
+    host()->delegate()->GetInputEventRouter()->RouteMouseEvent(this, &event,
+                                                               info);
   } else {
-    host()->ForwardMouseEvent(mouse_event);
+    host()->ForwardMouseEventWithLatencyInfo(event, info);
   }
 }
 
@@ -2532,18 +2583,33 @@ void RenderWidgetHostViewAndroid::OnRendererWidgetCreated() {
 
 bool RenderWidgetHostViewAndroid::OnMouseEvent(
     const ui::MotionEventAndroid& event) {
-  // Ignore ACTION_HOVER_ENTER & ACTION_HOVER_EXIT because every mouse-down on
-  // Android follows a hover-exit and is followed by a hover-enter.
-  // https://crbug.com/715114 filed on distinguishing actual hover
-  // enter/exit from these bogus ones.
-  auto action = event.GetAction();
-  if (action == ui::MotionEventAndroid::Action::HOVER_ENTER ||
-      action == ui::MotionEventAndroid::Action::HOVER_EXIT) {
+  RecordToolTypeForActionDown(event);
+
+  blink::WebInputEvent::Type webMouseEventType =
+      ui::ToWebMouseEventType(event.GetAction());
+
+  if (webMouseEventType == blink::WebInputEvent::Type::kUndefined) {
     return false;
   }
 
-  RecordToolTypeForActionDown(event);
-  SendMouseEvent(event, event.GetActionButton());
+  int action_button = event.GetActionButton();
+  if (webMouseEventType == blink::WebInputEvent::Type::kMouseDown) {
+    UpdateMouseState(action_button, event.GetX(0), event.GetY(0));
+  }
+
+  int click_count = 0;
+
+  if (webMouseEventType == blink::WebInputEvent::Type::kMouseDown ||
+      webMouseEventType == blink::WebInputEvent::Type::kMouseUp) {
+    click_count = (action_button == ui::MotionEventAndroid::BUTTON_PRIMARY)
+                      ? left_click_count_
+                      : 1;
+  }
+
+  SendMouseEvent(WebMouseEventBuilder::Build(event, webMouseEventType,
+                                             click_count, action_button),
+                 ui::LatencyInfo());
+
   return true;
 }
 
@@ -2685,6 +2751,17 @@ void RenderWidgetHostViewAndroid::OnAnimate(base::TimeTicks begin_frame_time) {
     SetNeedsAnimate();
 }
 
+void RenderWidgetHostViewAndroid::OnUnfoldStarted(
+    base::TimeTicks unfold_begin_time) {
+  TRACE_EVENT0("browser", "RenderWidgetHostViewAndroid::OnUnfoldStarted");
+  host()->RequestSuccessfulPresentationTimeForNextFrame(
+      blink::mojom::RecordContentToVisibleTimeRequest::New(
+          unfold_begin_time, /*destination_is_loaded=*/false,
+          /*show_reason_tab_switching=*/false,
+          /*show_reason_bfcache_restore=*/false,
+          /*show_reason_unfolding=*/true));
+}
+
 void RenderWidgetHostViewAndroid::OnActivityStopped() {
   TRACE_EVENT0("browser", "RenderWidgetHostViewAndroid::OnActivityStopped");
   DCHECK(observing_root_window_);
@@ -2699,6 +2776,16 @@ void RenderWidgetHostViewAndroid::OnActivityStarted() {
   ShowInternal();
 }
 
+void RenderWidgetHostViewAndroid::SetTextHandlesHiddenForDropdownMenu(
+    bool hide_handles) {
+  if (!touch_selection_controller_ ||
+      handles_hidden_by_dropdown_menu_ == hide_handles) {
+    return;
+  }
+  handles_hidden_by_dropdown_menu_ = hide_handles;
+  SetTextHandlesHiddenInternal();
+}
+
 void RenderWidgetHostViewAndroid::SetTextHandlesHiddenForStylus(
     bool hide_handles) {
   if (!touch_selection_controller_ || handles_hidden_by_stylus_ == hide_handles)
@@ -2711,7 +2798,8 @@ void RenderWidgetHostViewAndroid::SetTextHandlesHiddenInternal() {
   if (!touch_selection_controller_)
     return;
   touch_selection_controller_->SetTemporarilyHidden(
-      handles_hidden_by_stylus_ || handles_hidden_by_selection_ui_);
+      handles_hidden_by_dropdown_menu_ || handles_hidden_by_stylus_ ||
+      handles_hidden_by_selection_ui_);
 }
 
 void RenderWidgetHostViewAndroid::OnStylusSelectBegin(float x0,
@@ -2826,7 +2914,6 @@ void RenderWidgetHostViewAndroid::TakeFallbackContentFrom(
     return;
   delegated_frame_host_->TakeFallbackContentFrom(
       view_android->delegated_frame_host_.get());
-  host()->GetContentRenderingTimeoutFrom(view_android->host());
 }
 
 void RenderWidgetHostViewAndroid::OnSynchronizedDisplayPropertiesChanged(
@@ -3157,6 +3244,11 @@ void RenderWidgetHostViewAndroid::SetHasPersistentVideo(
   screen_state_change_handler_.SetHasPersistentVideo(has_persistent_video);
 }
 
+void RenderWidgetHostViewAndroid::InvalidateLocalSurfaceIdAndAllocationGroup() {
+  local_surface_id_allocator_.Invalidate(
+      /*also_invalidate_allocation_group=*/true);
+}
+
 void RenderWidgetHostViewAndroid::HandleSwipeToMoveCursorGestureAck(
     const blink::WebGestureEvent& event) {
   if (!touch_selection_controller_ || !selection_popup_controller_) {
@@ -3216,6 +3308,9 @@ void RenderWidgetHostViewAndroid::WasEvicted() {
   } else {
     EvictInternal();
   }
+  if (sync_compositor_) {
+    sync_compositor_->WasEvicted();
+  }
 }
 
 void RenderWidgetHostViewAndroid::OnUpdateScopedSelectionHandles() {
@@ -3241,6 +3336,14 @@ void RenderWidgetHostViewAndroid::SetWebContentsAccessibility(
 void RenderWidgetHostViewAndroid::SetNeedsBeginFrameForFlingProgress() {
   if (sync_compositor_)
     sync_compositor_->RequestOneBeginFrame();
+}
+
+const cc::slim::SurfaceLayer* RenderWidgetHostViewAndroid::GetSurfaceLayer()
+    const {
+  if (!delegated_frame_host_) {
+    return nullptr;
+  }
+  return delegated_frame_host_->content_layer();
 }
 
 void RenderWidgetHostViewAndroid::BeginRotationBatching() {

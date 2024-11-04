@@ -252,6 +252,7 @@ DSP_SRCS-yes            += inv_txfm.h
 DSP_SRCS-yes            += inv_txfm.c
 DSP_SRCS-$(HAVE_SSE2)   += x86/inv_txfm_sse2.h
 DSP_SRCS-$(HAVE_SSE2)   += x86/inv_txfm_sse2.c
+DSP_SRCS-$(HAVE_AVX2)   += x86/inv_txfm_avx2.c
 DSP_SRCS-$(HAVE_SSE2)   += x86/inv_wht_sse2.asm
 DSP_SRCS-$(HAVE_SSSE3)  += x86/inv_txfm_ssse3.h
 DSP_SRCS-$(HAVE_SSSE3)  += x86/inv_txfm_ssse3.c
@@ -342,6 +343,10 @@ DSP_SRCS-$(HAVE_SSE2)  += x86/avg_intrin_sse2.c
 DSP_SRCS-$(HAVE_AVX2)  += x86/avg_intrin_avx2.c
 DSP_SRCS-$(HAVE_NEON)  += arm/avg_neon.c
 DSP_SRCS-$(HAVE_NEON)  += arm/hadamard_neon.c
+ifeq ($(CONFIG_VP9_HIGHBITDEPTH),yes)
+DSP_SRCS-$(HAVE_NEON)  += arm/highbd_hadamard_neon.c
+DSP_SRCS-$(HAVE_NEON)  += arm/highbd_avg_neon.c
+endif
 DSP_SRCS-$(HAVE_MSA)   += mips/avg_msa.c
 DSP_SRCS-$(HAVE_LSX)   += loongarch/avg_lsx.c
 ifeq ($(VPX_ARCH_X86_64),yes)
@@ -392,6 +397,7 @@ DSP_SRCS-$(HAVE_LSX)    += loongarch/subtract_lsx.c
 ifeq ($(CONFIG_VP9_HIGHBITDEPTH),yes)
 DSP_SRCS-$(HAVE_SSE2) += x86/highbd_sad4d_sse2.asm
 DSP_SRCS-$(HAVE_SSE2) += x86/highbd_sad_sse2.asm
+DSP_SRCS-$(HAVE_NEON) += arm/highbd_sad4d_neon.c
 DSP_SRCS-$(HAVE_NEON) += arm/highbd_sad_neon.c
 DSP_SRCS-$(HAVE_AVX2) += x86/highbd_sad4d_avx2.c
 DSP_SRCS-$(HAVE_AVX2) += x86/highbd_sad_avx2.c
@@ -418,6 +424,7 @@ DSP_SRCS-$(HAVE_LSX)    += loongarch/avg_pred_lsx.c
 DSP_SRCS-$(HAVE_MMI)    += mips/variance_mmi.c
 
 DSP_SRCS-$(HAVE_SSE2)   += x86/avg_pred_sse2.c
+DSP_SRCS-$(HAVE_AVX2)   += x86/avg_pred_avx2.c
 DSP_SRCS-$(HAVE_SSE2)   += x86/variance_sse2.c  # Contains SSE2 and SSSE3
 DSP_SRCS-$(HAVE_AVX2)   += x86/variance_avx2.c
 DSP_SRCS-$(HAVE_VSX)    += ppc/variance_vsx.c
@@ -432,7 +439,9 @@ ifeq ($(CONFIG_VP9_HIGHBITDEPTH),yes)
 DSP_SRCS-$(HAVE_SSE2)   += x86/highbd_variance_sse2.c
 DSP_SRCS-$(HAVE_SSE2)   += x86/highbd_variance_impl_sse2.asm
 DSP_SRCS-$(HAVE_SSE2)   += x86/highbd_subpel_variance_impl_sse2.asm
+DSP_SRCS-$(HAVE_NEON)   += arm/highbd_avg_pred_neon.c
 DSP_SRCS-$(HAVE_NEON)   += arm/highbd_variance_neon.c
+DSP_SRCS-$(HAVE_NEON)   += arm/highbd_subpel_variance_neon.c
 endif  # CONFIG_VP9_HIGHBITDEPTH
 endif  # CONFIG_ENCODERS || CONFIG_POSTPROC || CONFIG_VP9_POSTPROC
 

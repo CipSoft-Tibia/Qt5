@@ -15,6 +15,7 @@ constexpr char kMissiveServiceName[] = "org.chromium.Missived";
 constexpr char kEnqueueRecord[] = "EnqueueRecord";
 constexpr char kFlushPriority[] = "FlushPriority";
 constexpr char kConfirmRecordUpload[] = "ConfirmRecordUpload";
+constexpr char kUpdateConfigInMissive[] = "UpdateConfigInMissive";
 constexpr char kUpdateEncryptionKey[] = "UpdateEncryptionKey";
 
 }  // namespace missive

@@ -4,26 +4,46 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/core/SkPicturePlayback.h"
 
+#include "include/core/SkBlendMode.h"
 #include "include/core/SkCanvas.h"
+#include "include/core/SkClipOp.h"
+#include "include/core/SkColor.h"
+#include "include/core/SkData.h"
+#include "include/core/SkImage.h"
+#include "include/core/SkMatrix.h"
+#include "include/core/SkPaint.h"
+#include "include/core/SkPoint.h"
+#include "include/core/SkRRect.h"
 #include "include/core/SkRSXform.h"
-#include "include/core/SkTextBlob.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkRegion.h"
+#include "include/core/SkSamplingOptions.h"
+#include "include/core/SkScalar.h"
+#include "include/core/SkString.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkTDArray.h"
-#include "include/private/chromium/Slug.h"
+#include "include/private/base/SkAlign.h"
+#include "include/private/base/SkTArray.h"
+#include "include/private/base/SkTemplates.h"
+#include "include/private/base/SkTo.h"
 #include "src/base/SkSafeMath.h"
 #include "src/core/SkCanvasPriv.h"
 #include "src/core/SkDrawShadowInfo.h"
-#include "src/core/SkFontPriv.h"
-#include "src/core/SkPaintPriv.h"
 #include "src/core/SkPictureData.h"
 #include "src/core/SkPictureFlat.h"
-#include "src/core/SkPicturePlayback.h"
-#include "src/core/SkPictureRecord.h"
+#include "src/core/SkPicturePriv.h"
 #include "src/core/SkReadBuffer.h"
-#include "src/core/SkSamplingPriv.h"
 #include "src/core/SkVerticesPriv.h"
 #include "src/utils/SkPatchUtils.h"
+
+class SkDrawable;
+class SkPath;
+class SkTextBlob;
+class SkVertices;
+
+namespace sktext { namespace gpu { class Slug; } }
 
 using namespace skia_private;
 
@@ -118,7 +138,6 @@ void SkPicturePlayback::handleOp(SkReadBuffer* reader,
             reader->skip(size - 4);
         } break;
         case FLUSH:
-            canvas->flush();
             break;
         case CLIP_PATH: {
             const SkPath& path = fPictureData->getPath(reader);
@@ -390,7 +409,7 @@ void SkPicturePlayback::handleOp(SkReadBuffer* reader,
                 // there aren't enough bytes to provide that many matrices
                 break;
             }
-            SkTArray<SkMatrix> matrices(matrixCount);
+            TArray<SkMatrix> matrices(matrixCount);
             for (int i = 0; i < matrixCount && reader->isValid(); ++i) {
                 reader->readMatrix(&matrices.push_back());
             }
@@ -611,12 +630,10 @@ void SkPicturePlayback::handleOp(SkReadBuffer* reader,
             canvas->drawTextBlob(blob, x, y, paint);
         } break;
         case DRAW_SLUG: {
-#if SK_SUPPORT_GPU
             const sktext::gpu::Slug* slug = fPictureData->getSlug(reader);
             BREAK_ON_READ_ERROR(reader);
 
-            slug->draw(canvas);
-#endif
+            canvas->drawSlug(slug);
         } break;
         case DRAW_VERTICES_OBJECT: {
             const SkPaint& paint = fPictureData->requiredPaint(reader);

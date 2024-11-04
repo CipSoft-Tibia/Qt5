@@ -1,7 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2020 Olivier Goffart <ogoffart@woboq.com>
 // Copyright (C) 2021 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 // This test actually wants to practice narrowing conditions, so never define this.
 #ifdef QT_NO_NARROWING_CONVERSIONS_IN_CONNECT
@@ -38,6 +38,8 @@
 #include <functional>
 
 #include <math.h>
+
+using namespace Qt::StringLiterals;
 
 class tst_QObject : public QObject
 {
@@ -80,6 +82,7 @@ private slots:
     void signalBlocking();
     void blockingQueuedConnection();
     void childEvents();
+    void parentEvents();
     void installEventFilter();
     void installEventFilterOrder();
     void deleteSelfInSlot();
@@ -508,6 +511,12 @@ void tst_QObject::qobject_castTemplate()
     QVERIFY(!::qobject_cast<ReceiverObject*>(o.data()));
 }
 
+class DerivedObj : public QObject {
+    Q_OBJECT
+public:
+    using QObject::QObject;
+};
+
 void tst_QObject::findChildren()
 {
     QObject o;
@@ -520,6 +529,10 @@ void tst_QObject::findChildren()
     QTimer t1(&o);
     QTimer t121(&o12);
     QTimer emptyname(&o);
+    QObject oo;
+    QObject o21(&oo);
+    QObject o22(&oo);
+    QObject o23(&oo);
 
     Q_SET_OBJECT_NAME(o);
     Q_SET_OBJECT_NAME(o1);
@@ -530,6 +543,13 @@ void tst_QObject::findChildren()
     Q_SET_OBJECT_NAME(t1);
     Q_SET_OBJECT_NAME(t121);
     emptyname.setObjectName("");
+    Q_SET_OBJECT_NAME(oo);
+    const QUtf8StringView utf8_name = u8"utf8 ⁎ obj";
+    o21.setObjectName(utf8_name);
+    const QStringView utf16_name = u"utf16 ⁎ obj";
+    o22.setObjectName(utf16_name);
+    constexpr QLatin1StringView L1_name("L1 ⁎ obj");
+    o23.setObjectName(L1_name);
 
     QObject *op = nullptr;
 
@@ -559,6 +579,27 @@ void tst_QObject::findChildren()
     QCOMPARE(op, static_cast<QObject *>(0));
     op = o.findChild<QObject*>("o1");
     QCOMPARE(op, &o1);
+
+    op = oo.findChild<QObject*>(utf8_name);
+    QCOMPARE(op, &o21);
+    op = oo.findChild<QObject*>(utf8_name.chopped(1));
+    QCOMPARE(op, nullptr);
+    const QUtf8StringView utf8_name_with_trailing_data = u8"utf8 ⁎ obj_data";
+    op = oo.findChild<QObject*>(utf8_name_with_trailing_data.chopped(5));
+    QCOMPARE(op, &o21);
+    op = oo.findChild<QObject*>(utf16_name);
+    QCOMPARE(op, &o22);
+    op = oo.findChild<QObject*>(utf16_name.chopped(1));
+    QCOMPARE(op, nullptr);
+    const QStringView utf16_name_with_trailing_data = u"utf16 ⁎ obj_data";
+    op = oo.findChild<QObject*>(utf16_name_with_trailing_data.chopped(5));
+    QCOMPARE(op, &o22);
+    op = oo.findChild<QObject*>(L1_name);
+    QCOMPARE(op, &o23);
+    op = oo.findChild<QObject*>(L1_name.chopped(1));
+    QCOMPARE(op, nullptr);
+    op = oo.findChild<QObject*>((L1_name + "_data"_L1).chopped(5));
+    QCOMPARE(op, &o23);
 
     QList<QObject*> l;
     QList<QTimer*> tl;
@@ -735,7 +776,20 @@ void tst_QObject::findChildren()
     l = o.findChildren<QObject*>(QRegularExpression("^harry$"), Qt::FindDirectChildrenOnly);
     QCOMPARE(l.size(), 0);
 
+    DerivedObj dr1(&o111);
+    DerivedObj dr2(&o111);
+    Q_SET_OBJECT_NAME(dr1);
+    Q_SET_OBJECT_NAME(dr2);
+
     // empty and null string check
+    op = o.findChild<QObject*>(Qt::FindDirectChildrenOnly);
+    QCOMPARE(op, &o1);
+    op = o.findChild<QTimer*>(Qt::FindDirectChildrenOnly);
+    QCOMPARE(op, &t1);
+    op = o.findChild<DerivedObj*>(Qt::FindDirectChildrenOnly);
+    QCOMPARE(op, nullptr);
+    op = o.findChild<DerivedObj*>(Qt::FindChildrenRecursively);
+    QCOMPARE(op, &dr1);
     op = o.findChild<QObject*>(QString(), Qt::FindDirectChildrenOnly);
     QCOMPARE(op, &o1);
     op = o.findChild<QObject*>("", Qt::FindDirectChildrenOnly);
@@ -1817,13 +1871,15 @@ void tst_QObject::moveToThread()
         QObject *child = new QObject(object);
         QCOMPARE(object->thread(), currentThread);
         QCOMPARE(child->thread(), currentThread);
-        object->moveToThread(0);
+        QVERIFY(object->moveToThread(nullptr));
         QCOMPARE(object->thread(), (QThread *)0);
         QCOMPARE(child->thread(), (QThread *)0);
-        object->moveToThread(currentThread);
+        QVERIFY(object->moveToThread(currentThread));
         QCOMPARE(object->thread(), currentThread);
         QCOMPARE(child->thread(), currentThread);
-        object->moveToThread(0);
+        QTest::ignoreMessage(QtWarningMsg, "QObject::moveToThread: Cannot move objects with a parent");
+        QVERIFY(!child->moveToThread(nullptr));
+        QVERIFY(object->moveToThread(nullptr));
         QCOMPARE(object->thread(), (QThread *)0);
         QCOMPARE(child->thread(), (QThread *)0);
         // can delete an object with no thread anywhere
@@ -3204,6 +3260,78 @@ void tst_QObject::childEvents()
             << qMakePair(&object, QEvent::Type(QEvent::User + 2));
         QCOMPARE(spy.eventList(), expected);
     }
+}
+
+void tst_QObject::parentEvents()
+{
+#ifdef QT_BUILD_INTERNAL
+    EventSpy::EventList expected;
+
+    {
+        // Parent events not enabled
+        QObject parent;
+        QObject child;
+
+        EventSpy spy;
+        child.installEventFilter(&spy);
+
+        QCoreApplication::postEvent(&child, new QEvent(QEvent::Type(QEvent::User + 1)));
+
+        child.setParent(&parent);
+
+        QCoreApplication::postEvent(&child, new QEvent(QEvent::Type(QEvent::User + 2)));
+
+        expected =
+            EventSpy::EventList();
+        QCOMPARE(spy.eventList(), expected);
+        spy.clear();
+
+        QCoreApplication::processEvents();
+
+        expected =
+            EventSpy::EventList()
+            << qMakePair(&child, QEvent::Type(QEvent::User + 1))
+            << qMakePair(&child, QEvent::Type(QEvent::User + 2));
+        QCOMPARE(spy.eventList(), expected);
+    }
+
+    {
+        // Parent events enabled
+        QObject parent;
+        QObject child;
+        auto *childPrivate = QObjectPrivate::get(&child);
+        childPrivate->receiveParentEvents = true;
+
+        EventSpy spy;
+        child.installEventFilter(&spy);
+
+        QCoreApplication::postEvent(&child, new QEvent(QEvent::Type(QEvent::User + 1)));
+
+        child.setParent(&parent);
+        child.setParent(nullptr);
+
+        QCoreApplication::postEvent(&child, new QEvent(QEvent::Type(QEvent::User + 2)));
+
+        expected =
+            EventSpy::EventList()
+            << qMakePair(&child, QEvent::ParentAboutToChange)
+            << qMakePair(&child, QEvent::ParentChange)
+            << qMakePair(&child, QEvent::ParentAboutToChange)
+            << qMakePair(&child, QEvent::ParentChange);
+        QCOMPARE(spy.eventList(), expected);
+        spy.clear();
+
+        QCoreApplication::processEvents();
+
+        expected =
+            EventSpy::EventList()
+            << qMakePair(&child, QEvent::Type(QEvent::User + 1))
+            << qMakePair(&child, QEvent::Type(QEvent::User + 2));
+        QCOMPARE(spy.eventList(), expected);
+    }
+#else
+    QSKIP("Needs QT_BUILD_INTERNAL");
+#endif
 }
 
 void tst_QObject::installEventFilter()

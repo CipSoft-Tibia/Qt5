@@ -375,13 +375,20 @@ enum xnn_status xnn_create_runtime_v4(
   }
 
   struct xnn_code_cache* code_cache = NULL;
-#if XNN_PLATFORM_JIT && XNN_ENABLE_JIT
-  code_cache = &runtime->code_cache;
-  status = xnn_init_code_cache(code_cache);
-  if (status != xnn_status_success) {
-    goto error;
-  }
-#endif
+  #if XNN_PLATFORM_JIT
+    if (flags & XNN_FLAG_JIT) {
+      #if !XNN_ENABLE_JIT
+        // Warn and continue without JIT enabled.
+        xnn_log_warning("unable to enable JIT: not compiled with JIT enabled");
+      #else
+        code_cache = &runtime->code_cache;
+        status = xnn_init_code_cache(code_cache);
+        if (status != xnn_status_success) {
+          goto error;
+        }
+      #endif
+    }
+  #endif
   const struct xnn_caches caches = {
     .code_cache = code_cache,
     .weights_cache = weights_cache,
@@ -402,9 +409,11 @@ enum xnn_status xnn_create_runtime_v4(
     }
   }
 
-#if XNN_PLATFORM_JIT && XNN_ENABLE_JIT
-  xnn_finalize_code_memory(&code_cache->cache.code);
-#endif
+  #if XNN_PLATFORM_JIT
+    if (code_cache != NULL) {
+      xnn_finalize_code_memory(&code_cache->cache.code);
+    }
+  #endif
 
   runtime->blobs = xnn_allocate_zero_memory(sizeof(struct xnn_blob) * subgraph->num_values);
   if (runtime->blobs == NULL) {
@@ -511,23 +520,18 @@ enum xnn_status xnn_setup_runtime(
 
   for (size_t i = 0; i < runtime->num_ops; i++) {
     const struct xnn_operator_data* opdata = &runtime->opdata[i];
-    if (opdata->operator_objects[0] == NULL) {
-      // Operator was removed during optimization
-      continue;
-    }
+    for (size_t j = 0; j < XNN_MAX_OPERATOR_OBJECTS; j++) {
+      if (opdata->operator_objects[j] == NULL) {
+        // Operator was removed during optimization
+        continue;
+      }
 
-    // Ensure that weights cache is finalized.
-    struct xnn_weights_cache* weights_cache = opdata->operator_objects[0]->weights_cache;
-    if (weights_cache != NULL && !xnn_weights_cache_is_finalized(weights_cache)) {
-      xnn_log_error("weights cache needs to be finalized before setup/infer");
-      return xnn_status_invalid_state;
-    }
-
-    assert(opdata->setup != NULL);
-    const enum xnn_status status = opdata->setup(opdata, runtime->blobs, runtime->num_blobs, runtime->threadpool);
-    if (status != xnn_status_success) {
-      xnn_log_error("failed to setup runtime: error in operator #%zu", i);
-      return status;
+      assert(opdata->setup != NULL);
+      const enum xnn_status status = opdata->setup(opdata, runtime->blobs, runtime->num_blobs, runtime->threadpool);
+      if (status != xnn_status_success) {
+        xnn_log_error("failed to setup runtime: error in operator #%zu", i);
+        return status;
+      }
     }
   }
 
@@ -746,8 +750,10 @@ enum xnn_status xnn_delete_runtime(
         xnn_release_workspace(runtime->workspace);
       }
     }
-#if XNN_PLATFORM_JIT && XNN_ENABLE_JIT
-    xnn_release_code_cache(&runtime->code_cache);
+#if XNN_PLATFORM_JIT
+    if (xnn_code_cache_valid(&runtime->code_cache)) {
+      xnn_release_code_cache(&runtime->code_cache);
+    }
 #endif
     xnn_release_memory(runtime);
   }

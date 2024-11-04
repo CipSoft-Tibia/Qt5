@@ -147,10 +147,6 @@ FcConfigCreate (void)
     if (!config->configDirs)
 	goto bail1;
 
-    config->configMapDirs = FcStrSetCreate();
-    if (!config->configMapDirs)
-	goto bail1_5;
-
     config->configFiles = FcStrSetCreate ();
     if (!config->configFiles)
 	goto bail2;
@@ -230,8 +226,6 @@ bail4:
 bail3:
     FcStrSetDestroy (config->configFiles);
 bail2:
-    FcStrSetDestroy (config->configMapDirs);
-bail1_5:
     FcStrSetDestroy (config->configDirs);
 bail1:
     free (config);
@@ -370,7 +364,6 @@ FcConfigDestroy (FcConfig *config)
 	(void) fc_atomic_ptr_cmpexch (&_fcConfig, config, NULL);
 
 	FcStrSetDestroy (config->configDirs);
-	FcStrSetDestroy (config->configMapDirs);
 	FcStrSetDestroy (config->fontDirs);
 	FcStrSetDestroy (config->cacheDirs);
 	FcStrSetDestroy (config->configFiles);
@@ -2282,8 +2275,8 @@ FcConfigSubstituteWithPat (FcConfig    *config,
 	printf ("FcConfigSubstitute done");
 	FcPatternPrint (p);
     }
-bail1:
     FamilyTableClear (&data);
+bail1:
     if (elt)
 	free (elt);
     if (value)

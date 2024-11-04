@@ -9,13 +9,14 @@
 #include <memory>
 #include <vector>
 
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "content/browser/preloading/prefetch/no_vary_search_helper.h"
 #include "content/browser/preloading/prefetch/prefetch_type.h"
+#include "content/browser/preloading/speculation_host_devtools_observer.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/document_user_data.h"
 #include "content/public/browser/prefetch_metrics.h"
-#include "content/public/browser/speculation_host_delegate.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "net/http/http_no_vary_search_data.h"
 #include "third_party/blink/public/mojom/speculation_rules/speculation_rules.mojom.h"
@@ -33,6 +34,9 @@ class CONTENT_EXPORT PrefetchDocumentManager
     : public DocumentUserData<PrefetchDocumentManager>,
       public WebContentsObserver {
  public:
+  using PrefetchDestructionCallback =
+      base::RepeatingCallback<void(const GURL&)>;
+
   ~PrefetchDocumentManager() override;
 
   PrefetchDocumentManager(const PrefetchDocumentManager&) = delete;
@@ -49,11 +53,19 @@ class CONTENT_EXPORT PrefetchDocumentManager
       std::vector<blink::mojom::SpeculationCandidatePtr>& candidates,
       base::WeakPtr<SpeculationHostDevToolsObserver> devtools_observer);
 
+  // Attempts to prefetch the given candidate. Returns true if a new prefetch
+  // for the candidate's URL is started.
+  bool MaybePrefetch(
+      blink::mojom::SpeculationCandidatePtr candidate,
+      base::WeakPtr<SpeculationHostDevToolsObserver> devtools_observer);
+
   // Starts the process to prefetch |url| with the given |prefetch_type|.
   void PrefetchUrl(
       const GURL& url,
       const PrefetchType& prefetch_type,
       const blink::mojom::Referrer& referrer,
+      const network::mojom::NoVarySearchPtr& no_vary_search_expected,
+      blink::mojom::SpeculationInjectionWorld world,
       base::WeakPtr<SpeculationHostDevToolsObserver> devtools_observer);
 
   // Releases ownership of the |PrefetchContainer| associated with |url|. The
@@ -88,15 +100,40 @@ class CONTENT_EXPORT PrefetchDocumentManager
 
   // Updates metrics when the response for a prefetch requested by this page
   // load is received.
-  void OnPrefetchSuccessful();
+  void OnPrefetchSuccessful(PrefetchContainer* prefetch);
 
   // Whether the prefetch attempt for target |url| failed or discarded
   bool IsPrefetchAttemptFailedOrDiscarded(const GURL& url);
 
-  // Helper function to get the |NoVarySearchHelper| associated with |this|.
-  const NoVarySearchHelper& GetNoVarySearchHelper() const;
-
+  base::WeakPtr<PrefetchContainer> MatchUrl(const GURL& url) const;
+  std::vector<std::pair<GURL, base::WeakPtr<PrefetchContainer>>>
+  GetAllForUrlWithoutRefAndQueryForTesting(const GURL& url) const;
   void EnableNoVarySearchSupport();
+
+  // Returns a tuple: (can_prefetch_now, prefetch_to_evict). 'can_prefetch_now'
+  // is true if we can prefetch |next_prefetch| based on the state of the
+  // document, and the number of existing completed prefetches (only if
+  // |kPrefetchNewLimits| is enabled). The eagerness of |next_prefetch| is taken
+  // into account when making the decision. 'prefetch_to_evict' is set to an
+  // existing prefetch if one needs to be evicted to make space for the prefetch
+  // of |next_prefetch|, or nullptr otherwise. 'prefetch_to_evict' will only be
+  // non-null if 'can_prefetch_now' is true.
+  std::tuple<bool, base::WeakPtr<PrefetchContainer>> CanPrefetchNow(
+      PrefetchContainer* next_prefetch);
+
+  // See documentation for |prefetch_destruction_callback_|.
+  void SetPrefetchDestructionCallback(PrefetchDestructionCallback callback);
+
+  // Called when a PrefetchContainer started by |this| is being destroyed.
+  void PrefetchWillBeDestroyed(PrefetchContainer* prefetch);
+
+  // Destroys |prefetch|. |prefetch| could either be owned by |this| or by
+  // PrefetchService.
+  void EvictPrefetch(base::WeakPtr<PrefetchContainer> prefetch);
+
+  base::WeakPtr<PrefetchDocumentManager> GetWeakPtr() {
+    return weak_method_factory_.GetWeakPtr();
+  }
 
   static void SetPrefetchServiceForTesting(PrefetchService* prefetch_service);
 
@@ -124,14 +161,20 @@ class CONTENT_EXPORT PrefetchDocumentManager
   // requested by this page.
   int number_prefetch_request_attempted_{0};
 
+  // A list of eager prefetch requests (from this page) that have completed
+  // (oldest to newest).
+  std::vector<base::WeakPtr<PrefetchContainer>> completed_eager_prefetches_;
+  // A list of non-eager prefetch requests (from this page) that have completed
+  // (oldest to newest).
+  std::vector<base::WeakPtr<PrefetchContainer>> completed_non_eager_prefetches_;
+
   // Metrics related to the prefetches requested by this page load.
   PrefetchReferringPageMetrics referring_page_metrics_;
 
-  // NoVarySearchHelper that manages NoVarySearch data and url matching.
-  // Used through the getter GetNoVarySearchHelper
-  NoVarySearchHelper no_vary_search_helper_;
-
   bool no_vary_search_support_enabled_ = false;
+
+  // Callback that is run when a prefetch started by |this| is being destroyed.
+  PrefetchDestructionCallback prefetch_destruction_callback_;
 
   base::WeakPtrFactory<PrefetchDocumentManager> weak_method_factory_{this};
 

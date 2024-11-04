@@ -9,6 +9,7 @@
 #include <private/qqmlcomponent_p.h>
 #include <private/qqmlpropertyresolver_p.h>
 #include <private/qqmlcomponentandaliasresolver_p.h>
+#include <private/qqmlsignalnames_p.h>
 
 #define COMPILE_EXCEPTION(token, desc) \
     { \
@@ -259,9 +260,9 @@ void QQmlTypeCompiler::addImport(const QString &module, const QString &qualifier
     document->imports.append(import);
 }
 
-CompositeMetaTypeIds QQmlTypeCompiler::typeIdsForComponent(const QString &inlineComponentName) const
+QQmlType QQmlTypeCompiler::qmlTypeForComponent(const QString &inlineComponentName) const
 {
-    return typeData->typeIds(inlineComponentName);
+    return typeData->qmlType(inlineComponentName);
 }
 
 QQmlCompilePass::QQmlCompilePass(QQmlTypeCompiler *typeCompiler)
@@ -325,17 +326,20 @@ bool SignalHandlerResolver::resolveSignalHandlerExpressions(
             continue;
         }
 
-        if (!QmlIR::IRBuilder::isSignalPropertyName(bindingPropertyName))
+        QString qPropertyName;
+        QString signalName;
+        if (auto propertyName =
+                    QQmlSignalNames::changedHandlerNameToPropertyName(bindingPropertyName)) {
+            qPropertyName = *propertyName;
+            signalName = *QQmlSignalNames::changedHandlerNameToSignalName(bindingPropertyName);
+        } else {
+            signalName = QQmlSignalNames::handlerNameToSignalName(bindingPropertyName)
+                                 .value_or(QString());
+        }
+        if (signalName.isEmpty())
             continue;
 
         QQmlPropertyResolver resolver(propertyCache);
-
-        const QString signalName = QmlIR::IRBuilder::signalNameFromSignalPropertyName(
-                    bindingPropertyName);
-
-        QString qPropertyName;
-        if (signalName.endsWith(QLatin1String("Changed")))
-            qPropertyName = signalName.mid(0, signalName.size() - static_cast<int>(strlen("Changed")));
 
         bool notInRevision = false;
         const QQmlPropertyData * const signal = resolver.signal(signalName, &notInRevision);
@@ -805,6 +809,17 @@ bool QQmlComponentAndAliasResolver<QQmlTypeCompiler>::wrapImplicitComponent(QmlI
 }
 
 template<>
+void QQmlComponentAndAliasResolver<QQmlTypeCompiler>::resolveGeneralizedGroupProperty(
+        const CompiledObject &component, CompiledBinding *binding)
+{
+    Q_UNUSED(component);
+    // We cannot make it fail here. It might be a custom-parsed property
+    const int targetObjectIndex = m_idToObjectIndex.value(binding->propertyNameIndex, -1);
+    if (targetObjectIndex != -1)
+        m_propertyCaches->set(binding->value.objectIndex, m_propertyCaches->at(targetObjectIndex));
+}
+
+template<>
 typename QQmlComponentAndAliasResolver<QQmlTypeCompiler>::AliasResolutionResult
 QQmlComponentAndAliasResolver<QQmlTypeCompiler>::resolveAliasesInObject(
         const CompiledObject &component, int objectIndex, QQmlError *error)
@@ -1047,7 +1062,7 @@ bool QQmlDeferredAndCustomParserBindingScanner::scanObject(
                     obj->flags |= Object::HasCustomParserBindings;
                     continue;
                 }
-            } else if (QmlIR::IRBuilder::isSignalPropertyName(name)
+            } else if (QQmlSignalNames::isHandlerName(name)
                        && !(customParser->flags() & QQmlCustomParser::AcceptsSignalHandlers)) {
                 obj->flags |= Object::HasCustomParserBindings;
                 binding->setFlag(Binding::IsCustomParserBinding);

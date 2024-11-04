@@ -1043,12 +1043,9 @@ QList<QGlyphRun> QTextLayout::glyphRuns(int from,
     for (int i=0; i<d->lines.size(); ++i) {
         if (d->lines.at(i).from > from + length)
             break;
-        else if (d->lines.at(i).from + d->lines[i].length >= from) {
-            QList<QGlyphRun> glyphRuns = QTextLine(i, d).glyphRuns(from, length, retrievalFlags);
-
-            for (int j = 0; j < glyphRuns.size(); j++) {
-                const QGlyphRun &glyphRun = glyphRuns.at(j);
-
+        else if (d->lines.at(i).from + d->lines.at(i).length >= from) {
+            const QList<QGlyphRun> glyphRuns = QTextLine(i, d).glyphRuns(from, length, retrievalFlags);
+            for (const QGlyphRun &glyphRun : glyphRuns) {
                 QRawFont rawFont = glyphRun.rawFont();
 
                 QFontEngine *fontEngine = rawFont.d->fontEngine;
@@ -1107,7 +1104,6 @@ void QTextLayout::draw(QPainter *p, const QPointF &pos, const QList<FormatRange>
     int firstLine = 0;
     int lastLine = d->lines.size();
     for (int i = 0; i < d->lines.size(); ++i) {
-        QTextLine l(i, d);
         const QScriptLine &sl = d->lines.at(i);
 
         if (sl.y > clipe) {
@@ -1672,23 +1668,18 @@ namespace {
 
     struct LineBreakHelper
     {
-        LineBreakHelper()
-            : glyphCount(0), maxGlyphs(0), currentPosition(0), fontEngine(nullptr), logClusters(nullptr),
-              manualWrap(false), whiteSpaceOrObject(true)
-        {
-        }
-
+        LineBreakHelper() = default;
 
         QScriptLine tmpData;
         QScriptLine spaceData;
 
         QGlyphLayout glyphs;
 
-        int glyphCount;
-        int maxGlyphs;
-        int currentPosition;
-        glyph_t previousGlyph;
-        QFontEngine *previousGlyphFontEngine;
+        int glyphCount = 0;
+        int maxGlyphs = 0;
+        int currentPosition = 0;
+        glyph_t previousGlyph = 0;
+        QExplicitlySharedDataPointer<QFontEngine> previousGlyphFontEngine;
 
         QFixed minw;
         QFixed currentSoftHyphenWidth;
@@ -1696,11 +1687,11 @@ namespace {
         QFixed rightBearing;
         QFixed minimumRightBearing;
 
-        QFontEngine *fontEngine;
-        const unsigned short *logClusters;
+        QExplicitlySharedDataPointer<QFontEngine> fontEngine;
+        const unsigned short *logClusters = nullptr;
 
-        bool manualWrap;
-        bool whiteSpaceOrObject;
+        bool manualWrap = false;
+        bool whiteSpaceOrObject = true;
 
         bool checkFullOtherwiseExtend(QScriptLine &line);
 
@@ -1744,13 +1735,13 @@ namespace {
         {
             if (currentPosition <= 0)
                 return;
-            calculateRightBearing(fontEngine, currentGlyph());
+            calculateRightBearing(fontEngine.data(), currentGlyph());
         }
 
         inline void calculateRightBearingForPreviousGlyph()
         {
             if (previousGlyph > 0)
-                calculateRightBearing(previousGlyphFontEngine, previousGlyph);
+                calculateRightBearing(previousGlyphFontEngine.data(), previousGlyph);
         }
 
         static const QFixed RightBearingNotCalculated;

@@ -27,6 +27,7 @@
 
 #include "hwy/base.h"
 #include "hwy/contrib/sort/vqsort.h"
+#include "hwy/print.h"
 
 // Third-party algorithms
 #define HAVE_AVX2SORT 0
@@ -131,20 +132,24 @@ class InputStats {
   }
 
   bool operator==(const InputStats& other) const {
+    char type_name[100];
+    detail::TypeName(hwy::detail::MakeTypeInfo<T>(), 1, type_name);
+
     if (count_ != other.count_) {
-      HWY_ABORT("count %d vs %d\n", static_cast<int>(count_),
-                static_cast<int>(other.count_));
+      HWY_ABORT("Sort %s: count %d vs %d\n", type_name,
+                static_cast<int>(count_), static_cast<int>(other.count_));
     }
 
     if (min_ != other.min_ || max_ != other.max_) {
-      HWY_ABORT("minmax %f/%f vs %f/%f\n", static_cast<double>(min_),
-                static_cast<double>(max_), static_cast<double>(other.min_),
+      HWY_ABORT("Sort %s: minmax %f/%f vs %f/%f\n", type_name,
+                static_cast<double>(min_), static_cast<double>(max_),
+                static_cast<double>(other.min_),
                 static_cast<double>(other.max_));
     }
 
     // Sum helps detect duplicated/lost values
     if (sum_ != other.sum_) {
-      HWY_ABORT("Sum mismatch %g %g; min %g max %g\n",
+      HWY_ABORT("Sort %s: Sum mismatch %g %g; min %g max %g\n", type_name,
                 static_cast<double>(sum_), static_cast<double>(other.sum_),
                 static_cast<double>(min_), static_cast<double>(max_));
     }
@@ -374,7 +379,7 @@ struct SharedState {
 
 // Bridge from keys (passed to Run) to lanes as expected by HeapSort. For
 // non-128-bit keys they are the same:
-template <class Order, typename KeyType, HWY_IF_NOT_LANE_SIZE(KeyType, 16)>
+template <class Order, typename KeyType, HWY_IF_NOT_T_SIZE(KeyType, 16)>
 void CallHeapSort(KeyType* HWY_RESTRICT keys, const size_t num_keys) {
   using detail::TraitsLane;
   using detail::SharedTraits;

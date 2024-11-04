@@ -32,6 +32,7 @@
 #include <memory>
 #include <utility>
 
+#include "base/debug/crash_logging.h"
 #include "third_party/blink/public/strings/grit/blink_strings.h"
 #include "third_party/blink/renderer/core/accessibility/ax_object_cache.h"
 #include "third_party/blink/renderer/core/dom/events/scoped_event_queue.h"
@@ -498,12 +499,26 @@ String InputType::ValueNotEqualText(const Decimal& value) const {
 }
 
 String InputType::RangeOverflowText(const Decimal&) const {
-  NOTREACHED();
+  static auto* input_type = base::debug::AllocateCrashKeyString(
+      "input-type", base::debug::CrashKeySize::Size32);
+  base::debug::SetCrashKeyString(input_type,
+                                 FormControlType().GetString().Utf8().c_str());
+  NOTREACHED() << "This should not get called. Check if input type '"
+               << FormControlType()
+               << "' should have a RangeOverflowText implementation."
+               << "See crbug.com/1423280";
   return String();
 }
 
 String InputType::RangeUnderflowText(const Decimal&) const {
-  NOTREACHED();
+  static auto* input_type = base::debug::AllocateCrashKeyString(
+      "input-type", base::debug::CrashKeySize::Size32);
+  base::debug::SetCrashKeyString(input_type,
+                                 FormControlType().GetString().Utf8().c_str());
+  NOTREACHED() << "This should not get called. Check if input type '"
+               << FormControlType()
+               << "' should have a RangeUnderflowText implementation."
+               << "See crbug.com/1423280";
   return String();
 }
 
@@ -514,7 +529,14 @@ String InputType::ReversedRangeOutOfRangeText(const Decimal&,
 }
 
 String InputType::RangeInvalidText(const Decimal&, const Decimal&) const {
-  NOTREACHED();
+  static auto* input_type = base::debug::AllocateCrashKeyString(
+      "input-type", base::debug::CrashKeySize::Size32);
+  base::debug::SetCrashKeyString(input_type,
+                                 FormControlType().GetString().Utf8().c_str());
+  NOTREACHED() << "This should not get called. Check if input type '"
+               << FormControlType()
+               << "' should have a RangeInvalidText implementation."
+               << "See crbug.com/1474270";
   return String();
 }
 
@@ -691,7 +713,8 @@ bool InputType::CanSetStringValue() const {
 }
 
 bool InputType::IsKeyboardFocusable() const {
-  return GetElement().IsBaseElementFocusable();
+  // Inputs are always keyboard focusable if they are focusable at all.
+  return GetElement().IsFocusable();
 }
 
 bool InputType::MayTriggerVirtualKeyboard() const {

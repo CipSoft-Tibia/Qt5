@@ -21,6 +21,7 @@
 #include "chromeos/crosapi/mojom/keystore_error.mojom-shared.h"
 #include "chromeos/crosapi/mojom/keystore_service.mojom.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
+#include "net/base/net_errors.h"
 #include "net/cert/asn1_util.h"
 #include "net/cert/cert_status_flags.h"
 #include "net/cert/x509_util.h"
@@ -104,7 +105,7 @@ std::string ValidateCrosapi(int min_version, content::BrowserContext* context) {
   if (!service || !service->IsAvailable<crosapi::mojom::KeystoreService>())
     return kUnsupportedByAsh;
 
-  int version = service->GetInterfaceVersion(KeystoreService::Uuid_);
+  int version = service->GetInterfaceVersion<KeystoreService>();
   if (version < min_version)
     return kUnsupportedByAsh;
 
@@ -168,8 +169,8 @@ PlatformKeysInternalSelectClientCertificatesFunction::Run() {
     return RespondNow(Error(kUnsupportedProfile));
 #endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
 
-  std::unique_ptr<api_pki::SelectClientCertificates::Params> params(
-      api_pki::SelectClientCertificates::Params::Create(args()));
+  absl::optional<api_pki::SelectClientCertificates::Params> params =
+      api_pki::SelectClientCertificates::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
   chromeos::platform_keys::ClientCertificateRequest request;
@@ -293,8 +294,8 @@ PlatformKeysInternalGetPublicKeyFunction::
 
 ExtensionFunction::ResponseAction
 PlatformKeysInternalGetPublicKeyFunction::Run() {
-  std::unique_ptr<api_pki::GetPublicKey::Params> params(
-      api_pki::GetPublicKey::Params::Create(args()));
+  absl::optional<api_pki::GetPublicKey::Params> params =
+      api_pki::GetPublicKey::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
   std::string error = ValidateCrosapi(KeystoreService::kGetPublicKeyMinVersion,
@@ -352,8 +353,8 @@ PlatformKeysInternalGetPublicKeyBySpkiFunction::Run() {
     return RespondNow(Error(kUnsupportedProfile));
 #endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
 
-  std::unique_ptr<api_pki::GetPublicKeyBySpki::Params> params(
-      api_pki::GetPublicKeyBySpki::Params::Create(args()));
+  absl::optional<api_pki::GetPublicKeyBySpki::Params> params =
+      api_pki::GetPublicKeyBySpki::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
   const auto& public_key_spki_der = params->public_key_spki_der;
@@ -399,8 +400,8 @@ ExtensionFunction::ResponseAction PlatformKeysInternalSignFunction::Run() {
     return RespondNow(Error(kUnsupportedProfile));
 #endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
 
-  std::unique_ptr<api_pki::Sign::Params> params(
-      api_pki::Sign::Params::Create(args()));
+  absl::optional<api_pki::Sign::Params> params =
+      api_pki::Sign::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
   absl::optional<chromeos::platform_keys::TokenId> platform_keys_token_id;
@@ -486,9 +487,9 @@ ExtensionFunction::ResponseAction
 PlatformKeysVerifyTLSServerCertificateFunction::Run() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
-  std::unique_ptr<api_pk::VerifyTLSServerCertificate::Params> params(
-      api_pk::VerifyTLSServerCertificate::Params::Create(args()));
-  EXTENSION_FUNCTION_VALIDATE(params.get());
+  absl::optional<api_pk::VerifyTLSServerCertificate::Params> params =
+      api_pk::VerifyTLSServerCertificate::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
 
   VerifyTrustAPI::GetFactoryInstance()
       ->Get(browser_context())

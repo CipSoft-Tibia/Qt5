@@ -115,11 +115,11 @@ instead.
   gn gen out/debug-gcc --args="is_gcc=true"
 ```
 
-Note that g++ version 7 or newer must be installed.  On Debian flavors you can
+Note that g++ version 9 or newer must be installed.  On Debian flavors you can
 run:
 
 ```bash
-  sudo apt-get install gcc-7
+  sudo apt-get install gcc-9
 ```
 
 ## Debug build
@@ -272,3 +272,5 @@ repository.
 * [Building and running fuzz tests](docs/fuzzing.md)
 * [Running on a Raspberry PI](docs/raspberry_pi.md)
 * [Unit test code coverage](docs/code_coverage.md)
+* [Rolling dependencies](docs/roll_deps.md)
+

@@ -237,10 +237,13 @@ class PaintPropertyNode
 
   std::unique_ptr<JSONObject> ToJSONBase() const {
     auto json = std::make_unique<JSONObject>();
-    if (Parent())
+    json->SetString("this", String::Format("%p", this));
+    if (Parent()) {
       json->SetString("parent", String::Format("%p", Parent()));
-    if (IsParentAlias())
+    }
+    if (IsParentAlias()) {
       json->SetBoolean("is_alias", true);
+    }
     if (NodeChanged() != PaintPropertyChangeType::kUnchanged) {
       json->SetString("changed",
                       PaintPropertyChangeTypeToString(NodeChanged()));
@@ -258,8 +261,7 @@ class PaintPropertyNode
 
   // Indicates that the paint property value changed in the last update in the
   // prepaint lifecycle step. This is used for raster invalidation and damage
-  // in the compositor. This value is cleared through ClearChangedToRoot()
-  // called by PaintArtifactCompositor::ClearPropertyTreeChangedState().
+  // in the compositor. This value is cleared through ClearChangedToRoot().
   mutable PaintPropertyChangeType changed_;
   // The changed sequence number is an optimization to avoid an O(n^2) to O(n^4)
   // treewalk when clearing the changed bits for the entire tree. When starting

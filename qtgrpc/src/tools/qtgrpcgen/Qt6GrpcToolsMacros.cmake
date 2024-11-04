@@ -48,6 +48,11 @@ function(_qt_internal_grpc_preparse_proto_files type
             list(APPEND output_files
                 "${folder_path}${basename}_client.grpc.qpb.h"
                 "${folder_path}${basename}_client.grpc.qpb.cpp")
+            if(arg_QML)
+                list(APPEND output_files
+                    "${folder_path}qml${basename}_client.grpc.qpb.h"
+                    "${folder_path}qml${basename}_client.grpc.qpb.cpp")
+            endif()
         else()
             message(FATAL_ERROR "Unknown gRPC target type: '${type}'.\n"
                 "Supported types: CLIENT.")
@@ -143,15 +148,15 @@ function(qt6_add_grpc target type)
         message(FATAL_ERROR "Unsupported target type '${target_type}'.")
     endif()
 
-    if(is_static OR is_shared)
-        # Add EXPORT_MACRO if the target is, or we will create, a shared library
-        string(TOUPPER "${target}" target_upper)
-        if (is_shared)
-            list(APPEND generation_options "EXPORT_MACRO=${target_upper}")
+    if(is_shared)
+        set(generated_export "")
+        set(generated_export_options "")
+        _qt_internal_protoc_generate_cpp_exports(generated_export generated_export_options
+            ${target} "${arg_EXPORT_MACRO}")
+        if(generated_export)
+            list(APPEND generated_files "${generated_export}")
         endif()
-        # Define this so we can conditionally set the export macro
-        target_compile_definitions(${target}
-            PRIVATE "QT_BUILD_${target_upper}_LIB")
+        list(APPEND generation_options "${generated_export_options}")
     endif()
 
     set(output_directory "${CMAKE_CURRENT_BINARY_DIR}")
@@ -169,6 +174,10 @@ function(qt6_add_grpc target type)
     )
 
     target_sources(${target} PRIVATE ${generated_files})
+    if(is_shared)
+        _qt_internal_protoc_get_export_macro_filename(export_macro_filename ${target})
+        target_sources(${target} PRIVATE "${output_directory}/${export_macro_filename}")
+    endif()
 
     # Filter generated headers
     set(generated_headers "${generated_files}")
@@ -187,6 +196,10 @@ function(qt6_add_grpc target type)
     target_link_libraries(${target} PRIVATE
         ${QT_CMAKE_EXPORT_NAMESPACE}::Grpc
     )
+    if(arg_QML)
+        target_link_libraries(${target} PRIVATE
+            ${QT_CMAKE_EXPORT_NAMESPACE}::GrpcQuick)
+    endif()
 
     if(DEFINED arg_OUTPUT_HEADERS)
         set(${arg_OUTPUT_HEADERS} "${generated_headers}" PARENT_SCOPE)

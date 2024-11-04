@@ -12,17 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
+import m from 'mithril';
 
 import {Actions} from '../common/actions';
-import {drawDoubleHeadedArrow} from '../common/canvas_utils';
 import {translateState} from '../common/thread_state';
-import {timeToCode, toNs} from '../common/time';
 
+import {Anchor} from './anchor';
 import {globals, SliceDetails, ThreadDesc} from './globals';
-import {PanelSize} from './panel';
 import {scrollToTrackAndTs} from './scroll_helper';
 import {SlicePanel} from './slice_panel';
+import {DetailsShell} from './widgets/details_shell';
+import {DurationWidget} from './widgets/duration';
+import {GridLayout} from './widgets/grid_layout';
+import {Section} from './widgets/section';
+import {SqlRef} from './widgets/sql_ref';
+import {Timestamp} from './widgets/timestamp';
+import {Tree, TreeNode} from './widgets/tree';
 
 export class SliceDetailsPanel extends SlicePanel {
   view() {
@@ -31,63 +36,159 @@ export class SliceDetailsPanel extends SlicePanel {
     const threadInfo = globals.threads.get(sliceInfo.utid);
 
     return m(
-        '.details-panel',
-        m('.details-panel-heading',
-          m('h2.split', `Slice Details`),
-          (sliceInfo.wakeupTs && sliceInfo.wakerUtid) ?
-              m('h2.split', 'Scheduling Latency') :
-              ''),
-        this.getDetails(sliceInfo, threadInfo));
+        DetailsShell,
+        {
+          title: 'CPU Sched Slice',
+          description: this.renderDescription(sliceInfo),
+        },
+        m(
+            GridLayout,
+            this.renderDetails(sliceInfo, threadInfo),
+            this.renderSchedLatencyInfo(sliceInfo),
+            ),
+    );
   }
 
-  getDetails(sliceInfo: SliceDetails, threadInfo: ThreadDesc|undefined) {
+  private renderDescription(sliceInfo: SliceDetails) {
+    const threadInfo = globals.threads.get(sliceInfo.wakerUtid!);
+    if (!threadInfo) {
+      return null;
+    }
+    return `${threadInfo.procName} [${threadInfo.pid}]`;
+  }
+
+  private renderSchedLatencyInfo(sliceInfo: SliceDetails): m.Children {
+    if (!this.hasSchedLatencyInfo(sliceInfo)) {
+      return null;
+    }
+    return m(
+        Section,
+        {title: 'Scheduling Latency'},
+        m(
+            '.slice-details-latency-panel',
+            m('img.slice-details-image', {
+              src: `${globals.root}assets/scheduling_latency.png`,
+            }),
+            this.renderWakeupText(sliceInfo),
+            this.renderDisplayLatencyText(sliceInfo),
+            ),
+    );
+  }
+
+  private renderWakeupText(sliceInfo: SliceDetails): m.Children {
+    if (sliceInfo.wakerUtid === undefined) {
+      return null;
+    }
+    const threadInfo = globals.threads.get(sliceInfo.wakerUtid!);
+    if (!threadInfo) {
+      return null;
+    }
+    return m(
+        '.slice-details-wakeup-text',
+        m('',
+          `Wakeup @ `,
+          m(Timestamp, {ts: sliceInfo.wakeupTs!}),
+          ` on CPU ${sliceInfo.wakerCpu} by`),
+        m('', `P: ${threadInfo.procName} [${threadInfo.pid}]`),
+        m('', `T: ${threadInfo.threadName} [${threadInfo.tid}]`),
+    );
+  }
+
+  private renderDisplayLatencyText(sliceInfo: SliceDetails): m.Children {
+    if (sliceInfo.ts === undefined || sliceInfo.wakeupTs === undefined) {
+      return null;
+    }
+
+    const latency = sliceInfo.ts - sliceInfo.wakeupTs;
+    return m(
+        '.slice-details-latency-text',
+        m('', `Scheduling latency: `, m(DurationWidget, {dur: latency})),
+        m('.text-detail',
+          `This is the interval from when the task became eligible to run
+        (e.g. because of notifying a wait queue it was suspended on) to
+        when it started running.`),
+    );
+  }
+
+  private hasSchedLatencyInfo({wakeupTs, wakerUtid}: SliceDetails): boolean {
+    return wakeupTs !== undefined && wakerUtid !== undefined;
+  }
+
+  private renderThreadDuration(sliceInfo: SliceDetails) {
+    if (sliceInfo.threadDur !== undefined && sliceInfo.threadTs !== undefined) {
+      return m(TreeNode, {
+        icon: 'timer',
+        left: 'Thread Duration',
+        right: this.computeDuration(sliceInfo.threadTs, sliceInfo.threadDur),
+      });
+    } else {
+      return null;
+    }
+  }
+
+  private renderDetails(sliceInfo: SliceDetails, threadInfo?: ThreadDesc):
+      m.Children {
     if (!threadInfo || sliceInfo.ts === undefined ||
         sliceInfo.dur === undefined) {
       return null;
     } else {
-      const tableRows = [
-        m('tr',
-          m('th', `Process`),
-          m('td', `${threadInfo.procName} [${threadInfo.pid}]`)),
-        m('tr',
-          m('th', `Thread`),
-          m('td',
-            `${threadInfo.threadName} [${threadInfo.tid}]`,
-            m('i.material-icons.grey',
-              {onclick: () => this.goToThread(), title: 'Go to thread'},
-              'call_made'))),
-        m('tr', m('th', `Cmdline`), m('td', threadInfo.cmdline)),
-        m('tr', m('th', `Start time`), m('td', `${timeToCode(sliceInfo.ts)}`)),
-        m('tr',
-          m('th', `Duration`),
-          m('td', this.computeDuration(sliceInfo.ts, sliceInfo.dur))),
-        (sliceInfo.threadDur === undefined ||
-         sliceInfo.threadTs === undefined) ?
-            '' :
-            m('tr',
-              m('th', 'Thread duration'),
-              m('td',
-                this.computeDuration(sliceInfo.threadTs, sliceInfo.threadDur))),
-        m('tr', m('th', `Prio`), m('td', `${sliceInfo.priority}`)),
-        m('tr',
-          m('th', `End State`),
-          m('td', translateState(sliceInfo.endState))),
-        m('tr',
-          m('th', `Slice ID`),
-          m('td',
-            (sliceInfo.id !== undefined) ? sliceInfo.id.toString() :
-                                           'Unknown')),
-      ];
+      const extras: m.Children = [];
 
       for (const [key, value] of this.getProcessThreadDetails(sliceInfo)) {
         if (value !== undefined) {
-          tableRows.push(m('tr', m('th', key), m('td', value)));
+          extras.push(m(TreeNode, {left: key, right: value}));
         }
       }
 
+      const treeNodes = [
+        m(TreeNode, {
+          left: 'Process',
+          right: `${threadInfo.procName} [${threadInfo.pid}]`,
+        }),
+        m(TreeNode, {
+          left: 'Thread',
+          right:
+              m(Anchor,
+                {
+                  icon: 'call_made',
+                  onclick: () => {
+                    this.goToThread();
+                  },
+                },
+                `${threadInfo.threadName} [${threadInfo.tid}]`),
+        }),
+        m(TreeNode, {
+          left: 'Cmdline',
+          right: threadInfo.cmdline,
+        }),
+        m(TreeNode, {
+          left: 'Start time',
+          right: m(Timestamp, {ts: sliceInfo.ts}),
+        }),
+        m(TreeNode, {
+          left: 'Duration',
+          right: this.computeDuration(sliceInfo.ts, sliceInfo.dur),
+        }),
+        this.renderThreadDuration(sliceInfo),
+        m(TreeNode, {
+          left: 'Prio',
+          right: sliceInfo.priority,
+        }),
+        m(TreeNode, {
+          left: 'End State',
+          right: translateState(sliceInfo.endState),
+        }),
+        m(TreeNode, {
+          left: 'SQL ID',
+          right: m(SqlRef, {table: 'sched', id: sliceInfo.id}),
+        }),
+        ...extras,
+      ];
+
       return m(
-          '.details-table',
-          m('table.half-width-panel', tableRows),
+          Section,
+          {title: 'Details'},
+          m(Tree, treeNodes),
       );
     }
   }
@@ -117,62 +218,9 @@ export class SliceDetailsPanel extends SlicePanel {
         trackId: trackId.toString(),
       }));
 
-      scrollToTrackAndTs(
-          trackId, toNs(sliceInfo.ts + globals.state.traceTime.startSec), true);
+      scrollToTrackAndTs(trackId, sliceInfo.ts, true);
     }
   }
 
-
-  renderCanvas(ctx: CanvasRenderingContext2D, size: PanelSize) {
-    const details = globals.sliceDetails;
-    // Show expanded details on the scheduling of the currently selected slice.
-    if (details.wakeupTs && details.wakerUtid !== undefined) {
-      const threadInfo = globals.threads.get(details.wakerUtid);
-      // Draw diamond and vertical line.
-      const startDraw = {x: size.width / 2 + 20, y: 52};
-      ctx.beginPath();
-      ctx.moveTo(startDraw.x, startDraw.y + 28);
-      ctx.fillStyle = 'black';
-      ctx.lineTo(startDraw.x + 6, startDraw.y + 20);
-      ctx.lineTo(startDraw.x, startDraw.y + 12);
-      ctx.lineTo(startDraw.x - 6, startDraw.y + 20);
-      ctx.fill();
-      ctx.closePath();
-      ctx.fillRect(startDraw.x - 1, startDraw.y, 2, 100);
-
-      // Wakeup explanation text.
-      ctx.font = '13px Roboto Condensed';
-      ctx.fillStyle = '#3c4b5d';
-      if (threadInfo) {
-        const displayText = `Wakeup @ ${
-            timeToCode(
-                details.wakeupTs - globals.state.traceTime.startSec)} on CPU ${
-            details.wakerCpu} by`;
-        const processText = `P: ${threadInfo.procName} [${threadInfo.pid}]`;
-        const threadText = `T: ${threadInfo.threadName} [${threadInfo.tid}]`;
-        ctx.fillText(displayText, startDraw.x + 20, startDraw.y + 20);
-        ctx.fillText(processText, startDraw.x + 20, startDraw.y + 37);
-        ctx.fillText(threadText, startDraw.x + 20, startDraw.y + 55);
-      }
-
-      // Draw latency arrow and explanation text.
-      drawDoubleHeadedArrow(ctx, startDraw.x, startDraw.y + 80, 60, true);
-      if (details.ts) {
-        const displayLatency = `Scheduling latency: ${
-            timeToCode(
-                details.ts -
-                (details.wakeupTs - globals.state.traceTime.startSec))}`;
-        ctx.fillText(displayLatency, startDraw.x + 70, startDraw.y + 86);
-        const explain1 =
-            'This is the interval from when the task became eligible to run';
-        const explain2 =
-            '(e.g. because of notifying a wait queue it was suspended on) to';
-        const explain3 = 'when it started running.';
-        ctx.font = '10px Roboto Condensed';
-        ctx.fillText(explain1, startDraw.x + 70, startDraw.y + 86 + 16);
-        ctx.fillText(explain2, startDraw.x + 70, startDraw.y + 86 + 16 + 12);
-        ctx.fillText(explain3, startDraw.x + 70, startDraw.y + 86 + 16 + 24);
-      }
-    }
-  }
+  renderCanvas() {}
 }

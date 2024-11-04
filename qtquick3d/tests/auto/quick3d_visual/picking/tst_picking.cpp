@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <QSignalSpy>
 #include <QTest>
 #include <QtQuick/QQuickItem>
@@ -8,6 +8,8 @@
 #include <QtQuick3D/private/qquick3dmodel_p.h>
 #include <QtQuick3D/private/qquick3dpickresult_p.h>
 #include <QtQuick3D/private/qquick3ditem2d_p.h>
+
+#include <QtQuick3DRuntimeRender/private/qssgrenderray_p.h>
 
 #include "../shared/util.h"
 

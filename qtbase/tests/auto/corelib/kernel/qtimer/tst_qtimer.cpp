@@ -1,10 +1,20 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+/* WARNING: this source-code is reused by another test.
+
+   As Qt built with GUI support may use a different backend for its event loops
+   and other timer-related matters, it is important to test it in that form, as
+   well as in its GUI-less form. So this source file is reused by a build config
+   in the GUI module. Similarly, testing with and without glib is supported,
+   where relevant (see DISABLE_GLIB below).
+*/
 #ifdef QT_GUI_LIB
+// When compiled as tests/auto/gui/kernel/qguitimer/'s source-code:
 #  include <QtGui/QGuiApplication>
 #else
+// When compiled as tests/auto/corelib/kernel/qtimer/'s source-code:
 #  include <QtCore/QCoreApplication>
 #endif
 
@@ -20,6 +30,13 @@
 
 #if defined Q_OS_UNIX
 #include <unistd.h>
+#endif
+
+#ifdef DISABLE_GLIB
+static bool glibDisabled = []() {
+    qputenv("QT_NO_GLIB", "1");
+    return true;
+}();
 #endif
 
 using namespace std::chrono_literals;
@@ -1020,7 +1037,7 @@ void tst_QTimer::singleShotToFunctors()
     thread.wait();
 
     struct MoveOnly : CountedStruct {
-        Q_DISABLE_COPY(MoveOnly);
+        Q_DISABLE_COPY(MoveOnly)
         MoveOnly(MoveOnly &&o) : CountedStruct(std::move(o)) {};
         MoveOnly(int *c) : CountedStruct(c) {}
     };
@@ -1474,14 +1491,10 @@ void tst_QTimer::timerOrder_data()
 
 void tst_QTimer::timerOrderBackgroundThread()
 {
-#if !QT_CONFIG(cxx11_future)
-    QSKIP("This test requires QThread::create");
-#else
     auto *thread = QThread::create([this]() { timerOrder(); });
     thread->start();
     QVERIFY(thread->wait());
     delete thread;
-#endif
 }
 
 struct StaticSingleShotUser

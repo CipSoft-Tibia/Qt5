@@ -24,7 +24,7 @@
 }
 
 h2 {
-  color: var(--color-primary);
+  color: var(--color-primary-old);
   font-size: 13px;
   line-height: 20px;
   letter-spacing: 0.01em;
@@ -59,7 +59,7 @@ h3 {
 }
 
 x-link { /* stylelint-disable-line selector-type-no-unknown */
-  color: var(--color-primary);
+  color: var(--color-primary-old);
   text-decoration-line: underline;
 }
 
@@ -73,4 +73,10 @@ x-link.quick-start-link { /* stylelint-disable-line selector-type-no-unknown */
   min-width: min-content;
   flex-basis: min-content;
   flex-grow: 1;
+}
+
+@media (forced-colors: active) {
+  x-link { /* stylelint-disable-line selector-type-no-unknown */
+    color: linktext;
+  }
 }

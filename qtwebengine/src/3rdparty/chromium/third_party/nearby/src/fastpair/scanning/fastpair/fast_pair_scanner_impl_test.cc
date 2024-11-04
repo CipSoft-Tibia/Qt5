@@ -14,166 +14,113 @@
 
 #include "fastpair/scanning/fastpair/fast_pair_scanner_impl.h"
 
-#include <algorithm>
 #include <memory>
 #include <string>
-#include <vector>
+#include <utility>
 
 #include "gtest/gtest.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
-#include "absl/time/time.h"
-#include "fastpair/common/constant.h"
+#include "fastpair/internal/mediums/mediums.h"
 #include "fastpair/scanning/fastpair/fast_pair_scanner.h"
 #include "internal/platform/bluetooth_adapter.h"
 #include "internal/platform/byte_array.h"
+#include "internal/platform/count_down_latch.h"
 #include "internal/platform/medium_environment.h"
+#include "internal/platform/single_thread_executor.h"
 
 namespace nearby {
 namespace fastpair {
 namespace {
 
-// Below constants are used to construct MockBluetoothDevice for testing.
-constexpr char kTestBleDeviceAddress[] = "11:12:13:14:15:16";
-constexpr char kTestModelId[] = "112233";
-
-class FakeBlePeripheral : public api::BlePeripheral {
- public:
-  explicit FakeBlePeripheral(absl::string_view name,
-                             absl::string_view service_data) {
-    name_ = std::string(name);
-    std::string service_data_str = std::string(service_data);
-    ByteArray advertisement_bytes(service_data_str);
-    advertisement_data_ = advertisement_bytes;
-  }
-  FakeBlePeripheral(const FakeBlePeripheral&) = default;
-  ~FakeBlePeripheral() override = default;
-
-  std::string GetName() const override { return name_; }
-
-  ByteArray GetAdvertisementBytes(
-      const std::string& service_id) const override {
-    return advertisement_data_;
-  }
-
-  void SetName(const std::string& name) { name_ = name; }
-
-  void SetAdvertisementBytes(ByteArray advertisement_bytes) {
-    advertisement_data_ = advertisement_bytes;
-  }
-
- private:
-  std::string name_;
-  ByteArray advertisement_data_;
-};
+constexpr absl::Duration kTaskWaitTimeout = absl::Milliseconds(1000);
+constexpr absl::Duration kShortTimeout = absl::Milliseconds(100);
+constexpr absl::string_view kServiceID{"Fast Pair"};
+constexpr absl::string_view kModelId{"718c17"};
+constexpr absl::string_view kFastPairServiceUuid{
+    "0000FE2C-0000-1000-8000-00805F9B34FB"};
 
 class FastPairScannerObserver : public FastPairScanner::Observer {
  public:
+  explicit FastPairScannerObserver(FastPairScanner* scanner,
+                                   CountDownLatch* accept_latch,
+                                   CountDownLatch* lost_latch) {
+    accept_latch_ = accept_latch;
+    lost_latch_ = lost_latch;
+    scanner->AddObserver(this);
+  }
   // FastPairScanner::Observer overrides
   void OnDeviceFound(const BlePeripheral& peripheral) override {
-    device_addreses_.push_back(peripheral.GetName());
-    on_device_found_count_++;
+    accept_latch_->CountDown();
   }
 
   void OnDeviceLost(const BlePeripheral& peripheral) override {
-    auto it = std::find(device_addreses_.begin(), device_addreses_.end(),
-                        peripheral.GetName());
-    if (it == device_addreses_.end()) return;
-    device_addreses_.erase(it);
+    lost_latch_->CountDown();
   }
 
-  bool DoesDeviceListContainTestDevice(const std::string& address) {
-    auto it =
-        std::find(device_addreses_.begin(), device_addreses_.end(), address);
-    return it != device_addreses_.end();
-  }
-
-  int on_device_found_count() { return on_device_found_count_; }
-
- private:
-  std::vector<std::string> device_addreses_;
-
-  int on_device_found_count_ = 0;
+  CountDownLatch* accept_latch_ = nullptr;
+  CountDownLatch* lost_latch_ = nullptr;
 };
 
 class FastPairScannerImplTest : public testing::Test {
  public:
-  void SetUp() override {
-    scanner_.reset();
-    scanner_ = std::make_shared<FastPairScannerImpl>();
-    scanner_observer_ = std::make_unique<FastPairScannerObserver>();
-    scanner_->AddObserver(scanner_observer_.get());
-  }
-
-  void TearDown() override { env_.Stop(); }
-
-  void TriggerOnDeviceFound(absl::string_view address, absl::string_view data) {
-    auto ble_peripheral = std::make_unique<FakeBlePeripheral>(address, data);
-    scanner_->OnDeviceFound(BlePeripheral(ble_peripheral.get()));
-  }
-
-  void TriggerOnDeviceLost(absl::string_view address, absl::string_view data) {
-    auto ble_peripheral = std::make_unique<FakeBlePeripheral>(address, data);
-    scanner_->OnDeviceLost(BlePeripheral(ble_peripheral.get()));
-  }
-
- protected:
-  MediumEnvironment& env_{MediumEnvironment::Instance()};
-  std::shared_ptr<FastPairScannerImpl> scanner_;
-  std::unique_ptr<FastPairScannerObserver> scanner_observer_;
+  void SetUp() override { MediumEnvironment::Instance().Start(); }
+  void TearDown() override { MediumEnvironment::Instance().Stop(); }
 };
 
-TEST_F(FastPairScannerImplTest, FactoryCreatSuccessfully) {
-  env_.Start();
-  std::shared_ptr<FastPairScanner> scanner =
-      FastPairScannerImpl::Factory::Create();
-  EXPECT_TRUE(scanner);
-  scanner.reset();
-  env_.Stop();
+TEST_F(FastPairScannerImplTest, StartScanning) {
+  // Create Fast Pair Scanner and add its observer
+  Mediums mediums_1;
+  SingleThreadExecutor executor;
+  auto scanner = std::make_unique<FastPairScannerImpl>(mediums_1, &executor);
+  CountDownLatch accept_latch(1);
+  CountDownLatch lost_latch(1);
+  FastPairScannerObserver observer(scanner.get(), &accept_latch, &lost_latch);
+
+  // Create Advertiser and startAdvertising
+  Mediums mediums_2;
+  std::string service_id(kServiceID);
+  ByteArray advertisement_bytes{absl::HexStringToBytes(kModelId)};
+  std::string fast_pair_service_uuid(kFastPairServiceUuid);
+  mediums_2.GetBle().GetMedium().StartAdvertising(
+      service_id, advertisement_bytes, fast_pair_service_uuid);
+
+  // Fast Pair scanner startScanning
+  auto scan_session = scanner->StartScanning();
+  // Notify device found
+  EXPECT_TRUE(accept_latch.Await(kTaskWaitTimeout).result());
+
+  // Advertiser stopAdvertising
+  mediums_2.GetBle().GetMedium().StopAdvertising(service_id);
+  // Notify device lost
+  EXPECT_TRUE(lost_latch.Await(kTaskWaitTimeout).result());
+  scan_session.reset();
+  DestroyOnExecutor(std::move(scanner), &executor);
 }
 
-TEST_F(FastPairScannerImplTest, StartScanningSuccessfully) {
-  env_.Start();
-  scanner_->StartScanning();
-  SystemClock::Sleep(absl::Milliseconds(200));
-  EXPECT_TRUE(scanner_->GetBle().IsScanning());
-  // Not StopScanning as FastPairLowPowerDisabled
-  env_.Stop();
-}
+TEST_F(FastPairScannerImplTest, StopScanning) {
+  // Create Fast Pair Scanner and add its observer
+  Mediums mediums_1;
+  SingleThreadExecutor executor;
+  auto scanner = std::make_unique<FastPairScannerImpl>(mediums_1, &executor);
+  CountDownLatch accept_latch(1);
+  CountDownLatch lost_latch(1);
+  FastPairScannerObserver observer(scanner.get(), &accept_latch, &lost_latch);
+  // Create Advertiser and startAdvertising
+  Mediums mediums_2;
+  std::string service_id(kServiceID);
+  ByteArray advertisement_bytes{absl::HexStringToBytes(kModelId)};
+  std::string fast_pair_service_uuid(kFastPairServiceUuid);
+  mediums_2.GetBle().GetMedium().StartAdvertising(
+      service_id, advertisement_bytes, fast_pair_service_uuid);
 
-TEST_F(FastPairScannerImplTest, DeviceFoundNotifiesObservers) {
-  env_.Start();
-  TriggerOnDeviceFound(kTestBleDeviceAddress, kTestModelId);
-  EXPECT_TRUE(scanner_observer_->DoesDeviceListContainTestDevice(
-      kTestBleDeviceAddress));
-  env_.Stop();
-}
+  auto scan_session = scanner->StartScanning();
+  scan_session.reset();
 
-TEST_F(FastPairScannerImplTest, DeviceLostNotifiesObservers) {
-  env_.Start();
-  TriggerOnDeviceFound(kTestBleDeviceAddress, kTestModelId);
-  EXPECT_TRUE(scanner_observer_->DoesDeviceListContainTestDevice(
-      kTestBleDeviceAddress));
-  TriggerOnDeviceLost(kTestBleDeviceAddress, kTestModelId);
-  EXPECT_FALSE(scanner_observer_->DoesDeviceListContainTestDevice(
-      kTestBleDeviceAddress));
-  env_.Stop();
-}
-
-TEST_F(FastPairScannerImplTest, DeviceFoundWithNoServiceData) {
-  env_.Start();
-  TriggerOnDeviceFound(kTestBleDeviceAddress, "");
-  EXPECT_FALSE(scanner_observer_->DoesDeviceListContainTestDevice(
-      kTestBleDeviceAddress));
-  env_.Stop();
-}
-
-TEST_F(FastPairScannerImplTest, RemoveObserver) {
-  env_.Start();
-  scanner_->RemoveObserver(scanner_observer_.get());
-  TriggerOnDeviceFound(kTestBleDeviceAddress, kTestModelId);
-  EXPECT_FALSE(scanner_observer_->DoesDeviceListContainTestDevice(
-      kTestBleDeviceAddress));
-  env_.Stop();
+  mediums_2.GetBle().GetMedium().StopAdvertising(service_id);
+  // Device lost event should not be delivered when scan session has terminated.
+  EXPECT_FALSE(lost_latch.Await(kShortTimeout).result());
+  DestroyOnExecutor(std::move(scanner), &executor);
 }
 
 }  // namespace

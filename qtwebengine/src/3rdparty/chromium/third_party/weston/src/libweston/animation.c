@@ -458,15 +458,15 @@ move_frame(struct weston_view_animation *animation)
 		progress = 1.0 - progress;
 
 	scale = animation->start +
-                (animation->stop - animation->start) *
-                progress;
+		(animation->stop - animation->start) *
+		progress;
 	weston_matrix_init(&animation->transform.matrix);
 	if (move->scale)
 		weston_matrix_scale(&animation->transform.matrix, scale, scale,
 				    1.0f);
 	weston_matrix_translate(&animation->transform.matrix,
-                                move->dx * progress, move->dy * progress,
-				0);
+	                        move->dx * progress, move->dy * progress,
+	                        0);
 }
 
 static void

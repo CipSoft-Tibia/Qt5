@@ -168,7 +168,7 @@ class PLATFORM_EXPORT InputHandlerProxy : public cc::InputHandlerClient,
       std::unique_ptr<blink::WebCoalescedInputEvent> event,
       std::unique_ptr<cc::EventMetrics> metrics,
       EventDispositionCallback callback,
-      cc::ElementIdType hit_tests_result);
+      cc::ElementId hit_tests_result);
 
   // Handles creating synthetic gesture events. It is currently used for
   // creating gesture event equivalents for mouse events on a composited
@@ -210,6 +210,8 @@ class PLATFORM_EXPORT InputHandlerProxy : public cc::InputHandlerClient,
   // compositor thread has had a chance to update the scroll offset.
   void SetDeferBeginMainFrame(bool defer_begin_main_frame) const;
 
+  void RequestCallbackAfterEventQueueFlushed(base::OnceClosure callback);
+
   // cc::InputHandlerClient implementation.
   void WillShutdown() override;
   void Animate(base::TimeTicks time) override;
@@ -227,6 +229,7 @@ class PLATFORM_EXPORT InputHandlerProxy : public cc::InputHandlerClient,
 
   // SnapFlingClient implementation.
   bool GetSnapFlingInfoAndSetAnimatingSnapTarget(
+      const gfx::Vector2dF& current_delta,
       const gfx::Vector2dF& natural_displacement,
       gfx::PointF* initial_offset,
       gfx::PointF* target_offset) const override;
@@ -246,6 +249,9 @@ class PLATFORM_EXPORT InputHandlerProxy : public cc::InputHandlerClient,
     return currently_active_gesture_device_.value();
   }
 
+  // Immediately dispatches all queued events.
+  void FlushQueuedEventsForTesting();
+
  private:
   friend class test::TestInputHandlerProxy;
   friend class test::InputHandlerProxyTest;
@@ -256,7 +262,7 @@ class PLATFORM_EXPORT InputHandlerProxy : public cc::InputHandlerClient,
 
   void DispatchSingleInputEvent(std::unique_ptr<EventWithCallback>,
                                 const base::TimeTicks);
-  void DispatchQueuedInputEvents();
+  void DispatchQueuedInputEvents(bool frame_aligned);
   void UpdateElasticOverscroll();
 
   // Helper functions for handling more complicated input events.
@@ -320,12 +326,12 @@ class PLATFORM_EXPORT InputHandlerProxy : public cc::InputHandlerClient,
     event_attribution_enabled_ = enabled;
   }
 
-  void RecordMainThreadScrollingReasons(blink::WebGestureDevice device,
-                                        uint32_t reasons_from_scroll_begin,
-                                        bool was_main_thread_hit_tested,
-                                        uint32_t main_thread_repaint_reasons);
+  void RecordScrollBegin(blink::WebGestureDevice device,
+                         uint32_t reasons_from_scroll_begin,
+                         uint32_t main_thread_hit_tested_reasons,
+                         uint32_t main_thread_repaint_reasons);
 
-  bool HasQueuedEventsReadyForDispatch();
+  bool HasQueuedEventsReadyForDispatch(bool frame_aligned);
 
   InputHandlerProxyClient* client_;
 
@@ -376,6 +382,8 @@ class PLATFORM_EXPORT InputHandlerProxy : public cc::InputHandlerClient,
   // which source device is currently performing a gesture based scroll.
   absl::optional<blink::WebGestureDevice> currently_active_gesture_device_;
 
+  base::OnceClosure queue_flushed_callback_;
+
   // Tracks whether the first scroll update gesture event has been seen after a
   // scroll begin. This is set/reset when scroll gestures are processed in
   // HandleInputEventWithLatencyInfo and shouldn't be used outside the scope
@@ -401,13 +409,14 @@ class PLATFORM_EXPORT InputHandlerProxy : public cc::InputHandlerClient,
   bool skip_touch_filter_discrete_ = false;
   bool skip_touch_filter_all_ = false;
 
-  // This bit is set when the input handler proxy has requested that the client
+  // This is set when the input handler proxy has requested that the client
   // perform a hit test for a scroll begin on the main thread. During that
   // time, scroll updates need to be queued. The reply from the main thread
   // will come by calling ContinueScrollBeginAfterMainThreadHitTest where the
   // queue will be flushed and this bit cleared. Used only in scroll
   // unification.
-  bool hit_testing_scroll_begin_on_main_thread_ = false;
+  uint32_t scroll_begin_main_thread_hit_test_reasons_ =
+      cc::MainThreadScrollingReason::kNotScrollingOnMain;
 
   // This bit can be used to disable event attribution in cases where the
   // hit test information is unnecessary (e.g. tests).

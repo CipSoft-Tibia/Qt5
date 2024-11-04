@@ -17,7 +17,6 @@
 
 #include "qffmpeghwaccel_p.h"
 #include <private/qplatformcamera_p.h>
-#include <private/qtvideo_p.h>
 #include <QObject>
 #include <QJniObject>
 

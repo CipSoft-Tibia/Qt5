@@ -210,6 +210,15 @@ struct scalar_unary_pow_op;
 template<typename LhsScalar,typename RhsScalar=LhsScalar> struct scalar_hypot_op;
 template<typename LhsScalar,typename RhsScalar=LhsScalar> struct scalar_product_op;
 template<typename LhsScalar,typename RhsScalar=LhsScalar> struct scalar_quotient_op;
+// logical and bitwise operations
+template <typename Scalar> struct scalar_boolean_and_op;
+template <typename Scalar> struct scalar_boolean_or_op;
+template <typename Scalar> struct scalar_boolean_xor_op;
+template <typename Scalar> struct scalar_boolean_not_op;
+template <typename Scalar> struct scalar_bitwise_and_op;
+template <typename Scalar> struct scalar_bitwise_or_op;
+template <typename Scalar> struct scalar_bitwise_xor_op;
+template <typename Scalar> struct scalar_bitwise_not_op;
 
 // SpecialFunctions module
 template<typename Scalar> struct scalar_lgamma_op;
@@ -261,8 +270,8 @@ typedef lapack_int DefaultPermutationIndex;
 typedef int DefaultPermutationIndex;
 #endif
 
-template<typename MatrixType> class FullPivLU;
-template<typename MatrixType> class PartialPivLU;
+template<typename MatrixType, typename PermutationIndex = DefaultPermutationIndex> class FullPivLU;
+template<typename MatrixType, typename PermutationIndex = DefaultPermutationIndex> class PartialPivLU;
 namespace internal {
 template<typename MatrixType> struct inverse_impl;
 }

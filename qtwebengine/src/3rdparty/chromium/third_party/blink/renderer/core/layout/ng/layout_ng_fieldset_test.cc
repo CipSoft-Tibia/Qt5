@@ -4,6 +4,7 @@
 
 #include "third_party/blink/renderer/core/layout/ng/layout_ng_fieldset.h"
 
+#include "third_party/blink/renderer/core/dom/text.h"
 #include "third_party/blink/renderer/core/testing/core_unit_test_helper.h"
 
 namespace blink {
@@ -19,7 +20,8 @@ TEST_F(LayoutNGFieldsetTest, AddChildWhitespaceCrash) {
 </fieldset>)HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  Node* text = GetDocument().QuerySelector("small")->nextSibling();
+  Node* text =
+      GetDocument().QuerySelector(AtomicString("small"))->nextSibling();
   ASSERT_TRUE(IsA<Text>(text));
   text->remove();
   UpdateAllLifecyclePhasesForTest();

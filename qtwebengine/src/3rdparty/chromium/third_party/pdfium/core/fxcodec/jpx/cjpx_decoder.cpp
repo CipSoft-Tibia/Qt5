@@ -16,9 +16,9 @@
 #include "core/fxcodec/jpx/jpx_decode_utils.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxcrt/span_util.h"
+#include "core/fxge/calculate_pitch.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/base/cxx17_backports.h"
-#include "third_party/base/ptr_util.h"
+#include "third_party/base/memory/ptr_util.h"
 
 #if !defined(USE_SYSTEM_LIBOPENJPEG2)
 #include "third_party/libopenjpeg/opj_malloc.h"
@@ -87,9 +87,9 @@ void sycc_to_rgb(int offset,
                  int* out_b) {
   cb -= offset;
   cr -= offset;
-  *out_r = pdfium::clamp(y + static_cast<int>(1.402 * cr), 0, upb);
-  *out_g = pdfium::clamp(y - static_cast<int>(0.344 * cb + 0.714 * cr), 0, upb);
-  *out_b = pdfium::clamp(y + static_cast<int>(1.772 * cb), 0, upb);
+  *out_r = std::clamp(y + static_cast<int>(1.402 * cr), 0, upb);
+  *out_g = std::clamp(y - static_cast<int>(0.344 * cb + 0.714 * cr), 0, upb);
+  *out_b = std::clamp(y + static_cast<int>(1.772 * cb), 0, upb);
 }
 
 void sycc444_to_rgb(opj_image_t* img) {
@@ -514,13 +514,31 @@ CJPX_Decoder::JpxImageInfo CJPX_Decoder::GetInfo() const {
 
 bool CJPX_Decoder::Decode(pdfium::span<uint8_t> dest_buf,
                           uint32_t pitch,
-                          bool swap_rgb) {
-  if (pitch < ((m_Image->comps[0].w * 8 * m_Image->numcomps + 31) >> 5) << 2)
-    return false;
+                          bool swap_rgb,
+                          uint32_t component_count) {
+  CHECK_LE(component_count, m_Image->numcomps);
+  uint32_t channel_count = component_count;
+  if (channel_count == 3 && m_Image->numcomps == 4) {
+    // When decoding for an ARGB image, include the alpha channel in the channel
+    // count.
+    channel_count = 4;
+  }
 
-  if (swap_rgb && m_Image->numcomps < 3)
+  absl::optional<uint32_t> calculated_pitch =
+      fxge::CalculatePitch32(8 * channel_count, m_Image->comps[0].w);
+  if (!calculated_pitch.has_value() || pitch < calculated_pitch.value()) {
     return false;
+  }
 
+  if (swap_rgb && channel_count < 3) {
+    return false;
+  }
+
+  // Initialize `channel_bufs` and `adjust_comps` to store information from all
+  // the channels of the JPX image. They will contain more information besides
+  // the color component data if `m_Image->numcomps` > `component_count`.
+  // Currently only the color component data is used for rendering.
+  // TODO(crbug.com/pdfium/1747): Make full use of the component information.
   fxcrt::spanset(dest_buf.first(m_Image->comps[0].h * pitch), 0xff);
   std::vector<uint8_t*> channel_bufs(m_Image->numcomps);
   std::vector<int> adjust_comps(m_Image->numcomps);
@@ -540,7 +558,7 @@ bool CJPX_Decoder::Decode(pdfium::span<uint8_t> dest_buf,
 
   uint32_t width = m_Image->comps[0].w;
   uint32_t height = m_Image->comps[0].h;
-  for (uint32_t channel = 0; channel < m_Image->numcomps; ++channel) {
+  for (uint32_t channel = 0; channel < channel_count; ++channel) {
     uint8_t* pChannel = channel_bufs[channel];
     const int adjust = adjust_comps[channel];
     const opj_image_comp_t& comps = m_Image->comps[channel];
@@ -554,7 +572,7 @@ bool CJPX_Decoder::Decode(pdfium::span<uint8_t> dest_buf,
       for (uint32_t row = 0; row < height; ++row) {
         uint8_t* pScanline = pChannel + row * pitch;
         for (uint32_t col = 0; col < width; ++col) {
-          uint8_t* pPixel = pScanline + col * m_Image->numcomps;
+          uint8_t* pPixel = pScanline + col * channel_count;
           int src = comps.data[row * width + col] + src_offset;
           *pPixel = static_cast<uint8_t>(src << -adjust);
         }
@@ -563,7 +581,7 @@ bool CJPX_Decoder::Decode(pdfium::span<uint8_t> dest_buf,
       for (uint32_t row = 0; row < height; ++row) {
         uint8_t* pScanline = pChannel + row * pitch;
         for (uint32_t col = 0; col < width; ++col) {
-          uint8_t* pPixel = pScanline + col * m_Image->numcomps;
+          uint8_t* pPixel = pScanline + col * channel_count;
           int src = comps.data[row * width + col] + src_offset;
           *pPixel = static_cast<uint8_t>(src);
         }
@@ -572,10 +590,10 @@ bool CJPX_Decoder::Decode(pdfium::span<uint8_t> dest_buf,
       for (uint32_t row = 0; row < height; ++row) {
         uint8_t* pScanline = pChannel + row * pitch;
         for (uint32_t col = 0; col < width; ++col) {
-          uint8_t* pPixel = pScanline + col * m_Image->numcomps;
+          uint8_t* pPixel = pScanline + col * channel_count;
           int src = comps.data[row * width + col] + src_offset;
           int pixel = (src >> adjust) + ((src >> (adjust - 1)) % 2);
-          pixel = pdfium::clamp(pixel, 0, 255);
+          pixel = std::clamp(pixel, 0, 255);
           *pPixel = static_cast<uint8_t>(pixel);
         }
       }

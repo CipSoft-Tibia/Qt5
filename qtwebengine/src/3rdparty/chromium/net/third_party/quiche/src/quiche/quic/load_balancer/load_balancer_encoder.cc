@@ -4,15 +4,20 @@
 
 #include "quiche/quic/load_balancer/load_balancer_encoder.h"
 
+#include <cstdint>
+
 #include "absl/numeric/int128.h"
+#include "absl/types/optional.h"
+#include "quiche/quic/core/crypto/quic_random.h"
 #include "quiche/quic/core/quic_connection_id.h"
-#include "quiche/quic/core/quic_data_reader.h"
 #include "quiche/quic/core/quic_data_writer.h"
-#include "quiche/quic/core/quic_packet_number.h"
-#include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_utils.h"
+#include "quiche/quic/core/quic_versions.h"
 #include "quiche/quic/load_balancer/load_balancer_config.h"
+#include "quiche/quic/load_balancer/load_balancer_server_id.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
+#include "quiche/quic/platform/api/quic_logging.h"
+#include "quiche/common/quiche_endian.h"
 
 namespace quic {
 
@@ -102,7 +107,7 @@ void LoadBalancerEncoder::DeleteConfig() {
 QuicConnectionId LoadBalancerEncoder::GenerateConnectionId() {
   uint8_t config_id = config_.has_value() ? config_->config_id()
                                           : kLoadBalancerUnroutableConfigId;
-  uint8_t shifted_config_id = config_id << 6;
+  uint8_t shifted_config_id = config_id << kConnectionIdLengthBits;
   uint8_t length = connection_id_lengths_[config_id];
   if (config_.has_value() != server_id_.has_value()) {
     QUIC_BUG(quic_bug_435375038_04)
@@ -188,15 +193,17 @@ uint8_t LoadBalancerEncoder::ConnectionIdLength(uint8_t first_byte) const {
   if (len_self_encoded()) {
     return (first_byte &= kLoadBalancerLengthMask) + 1;
   }
-  return connection_id_lengths_[first_byte >> 6];
+  return connection_id_lengths_[first_byte >> kConnectionIdLengthBits];
 }
 
 QuicConnectionId LoadBalancerEncoder::MakeUnroutableConnectionId(
     uint8_t first_byte) {
   QuicConnectionId id;
-  id.set_length(connection_id_lengths_[kLoadBalancerUnroutableConfigId]);
+  uint8_t target_length =
+      connection_id_lengths_[kLoadBalancerUnroutableConfigId];
+  id.set_length(target_length);
   id.mutable_data()[0] = first_byte;
-  random_.RandBytes(&id.mutable_data()[1], connection_id_lengths_[3] - 1);
+  random_.RandBytes(&id.mutable_data()[1], target_length - 1);
   return id;
 }
 

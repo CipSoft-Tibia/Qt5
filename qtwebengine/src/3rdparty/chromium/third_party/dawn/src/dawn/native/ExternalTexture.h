@@ -55,9 +55,11 @@ class ExternalTextureBase : public ApiObjectBase {
     const Origin2D& GetVisibleOrigin() const;
 
     MaybeError ValidateCanUseInSubmitNow() const;
-    static ExternalTextureBase* MakeError(DeviceBase* device);
+    static ExternalTextureBase* MakeError(DeviceBase* device, const char* label = nullptr);
 
+    void APIExpire();
     void APIDestroy();
+    void APIRefresh();
 
   protected:
     ExternalTextureBase(DeviceBase* device, const ExternalTextureDescriptor* descriptor);
@@ -68,8 +70,11 @@ class ExternalTextureBase : public ApiObjectBase {
     ~ExternalTextureBase() override;
 
   private:
-    enum class ExternalTextureState { Alive, Destroyed };
-    ExternalTextureBase(DeviceBase* device, ObjectBase::ErrorTag tag);
+    enum class ExternalTextureState { Active, Expired, Destroyed };
+    ExternalTextureBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label);
+
+    MaybeError ValidateRefresh();
+    MaybeError ValidateExpire();
 
     Ref<TextureBase> mPlaceholderTexture;
     Ref<BufferBase> mParamsBuffer;

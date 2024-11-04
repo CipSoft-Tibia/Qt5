@@ -13,18 +13,18 @@
 // limitations under the License.
 
 import {Area, AreaById} from '../common/state';
-import {globals as frontendGlobals} from '../frontend/globals';
+import {globals} from '../frontend/globals';
 
 export class AreaSelectionHandler {
   private previousArea?: Area;
 
   getAreaChange(): [boolean, AreaById|undefined] {
-    const currentSelection = frontendGlobals.state.currentSelection;
+    const currentSelection = globals.state.currentSelection;
     if (currentSelection === null || currentSelection.kind !== 'AREA') {
       return [false, undefined];
     }
 
-    const selectedArea = frontendGlobals.state.areas[currentSelection.areaId];
+    const selectedArea = globals.state.areas[currentSelection.areaId];
     // Area is considered changed if:
     // 1. The new area is defined and the old area undefined.
     // 2. The new area is undefined and the old area defined (viceversa from 1).
@@ -36,10 +36,10 @@ export class AreaSelectionHandler {
       // where `a ||= b` is formatted to `a || = b`, by inserting a space which
       // breaks the operator.
       // Therefore, we are using the pattern `a = a || b` instead.
-      hasAreaChanged = hasAreaChanged ||
-          selectedArea.startSec !== this.previousArea.startSec;
       hasAreaChanged =
-          hasAreaChanged || selectedArea.endSec !== this.previousArea.endSec;
+          hasAreaChanged || selectedArea.start !== this.previousArea.start;
+      hasAreaChanged =
+          hasAreaChanged || selectedArea.end !== this.previousArea.end;
       hasAreaChanged = hasAreaChanged ||
           selectedArea.tracks.length !== this.previousArea.tracks.length;
       for (let i = 0; i < selectedArea.tracks.length; ++i) {

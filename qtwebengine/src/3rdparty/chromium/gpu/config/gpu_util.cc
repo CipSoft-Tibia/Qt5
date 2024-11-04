@@ -43,6 +43,7 @@
 #include "gpu/config/gpu_preferences.h"
 #include "gpu/config/gpu_switches.h"
 #include "gpu/vulkan/buildflags.h"
+#include "skia/buildflags.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/extension_set.h"
 #include "ui/gl/buildflags.h"
@@ -133,22 +134,6 @@ GpuFeatureStatus GetAndroidSurfaceControlFeatureStatus(
 
   DCHECK(gfx::SurfaceControl::IsSupported());
   return kGpuFeatureStatusEnabled;
-#endif
-}
-
-GpuFeatureStatus GetMetalFeatureStatus(
-    const std::set<int>& blocklisted_features,
-    const GpuPreferences& gpu_preferences) {
-#if BUILDFLAG(IS_APPLE)
-  if (blocklisted_features.count(GPU_FEATURE_TYPE_METAL))
-    return kGpuFeatureStatusBlocklisted;
-
-  if (!gpu_preferences.enable_metal)
-    return kGpuFeatureStatusDisabled;
-
-  return kGpuFeatureStatusEnabled;
-#else
-  return kGpuFeatureStatusDisabled;
 #endif
 }
 
@@ -309,28 +294,46 @@ GpuFeatureStatus GetGLFeatureStatus(const std::set<int>& blocklisted_features,
   return kGpuFeatureStatusEnabled;
 }
 
-void AppendWorkaroundsToCommandLine(const GpuFeatureInfo& gpu_feature_info,
-                                    base::CommandLine* command_line) {
-  if (gpu_feature_info.IsWorkaroundEnabled(DISABLE_D3D11)) {
-    command_line->AppendSwitch(switches::kDisableD3D11);
+GpuFeatureStatus GetSkiaGraphiteFeatureStatus(
+    const std::set<int>& blocklisted_features,
+    const GpuPreferences& gpu_preferences) {
+  if (blocklisted_features.count(GPU_FEATURE_TYPE_SKIA_GRAPHITE)) {
+    return kGpuFeatureStatusDisabled;
   }
-  if (gpu_feature_info.IsWorkaroundEnabled(DISABLE_ES3_GL_CONTEXT)) {
-    command_line->AppendSwitch(switches::kDisableES3GLContext);
+#if BUILDFLAG(SKIA_USE_DAWN)
+  if (gpu_preferences.gr_context_type == GrContextType::kGraphiteDawn) {
+    return kGpuFeatureStatusEnabled;
   }
-  if (gpu_feature_info.IsWorkaroundEnabled(
-          DISABLE_ES3_GL_CONTEXT_FOR_TESTING)) {
-    command_line->AppendSwitch(switches::kDisableES3GLContextForTesting);
+#endif  // BUILDFLAG(SKIA_USE_DAWN)
+#if BUILDFLAG(SKIA_USE_METAL)
+  if (gpu_preferences.gr_context_type == GrContextType::kGraphiteMetal) {
+    return kGpuFeatureStatusEnabled;
   }
+#endif  // BUILDFLAG(SKIA_USE_METAL)
+  return kGpuFeatureStatusDisabled;
+}
+
+void SetProcessGlWorkaroundsFromGpuFeatures(
+    const GpuFeatureInfo& gpu_feature_info) {
+  const auto is_enabled =
+      [&gpu_feature_info](const gpu::GpuDriverBugWorkaroundType& type) {
+        return gpu_feature_info.IsWorkaroundEnabled(type);
+      };
+
+  gl::GlWorkarounds workarounds = {
+    .disable_d3d11 = is_enabled(DISABLE_D3D11),
+    .disable_metal = is_enabled(DISABLE_METAL),
+    .disable_es3gl_context = is_enabled(DISABLE_ES3_GL_CONTEXT),
+    .disable_es3gl_context_for_testing =
+        is_enabled(DISABLE_ES3_GL_CONTEXT_FOR_TESTING),
 #if BUILDFLAG(IS_WIN)
-  if (gpu_feature_info.IsWorkaroundEnabled(DISABLE_DIRECT_COMPOSITION)) {
-    command_line->AppendSwitch(switches::kDisableDirectComposition);
-  }
-  if (gpu_feature_info.IsWorkaroundEnabled(
-          DISABLE_DIRECT_COMPOSITION_VIDEO_OVERLAYS)) {
-    command_line->AppendSwitch(
-        switches::kDisableDirectCompositionVideoOverlays);
-  }
+    .disable_direct_composition = is_enabled(DISABLE_DIRECT_COMPOSITION),
+    .disable_direct_composition_video_overlays =
+        is_enabled(DISABLE_DIRECT_COMPOSITION_VIDEO_OVERLAYS),
 #endif
+  };
+
+  gl::SetGlWorkarounds(workarounds);
 }
 
 // Adjust gpu feature status based on enabled gpu driver bug workarounds.
@@ -414,8 +417,10 @@ uint32_t GetSystemCommitLimitMb() {
 }
 #endif  // BUILDFLAG(IS_WIN)
 
+#if BUILDFLAG(IS_ANDROID)
 GPUInfo* g_gpu_info_cache = nullptr;
 GpuFeatureInfo* g_gpu_feature_info_cache = nullptr;
+#endif  // BUILDFLAG(IS_ANDROID)
 
 }  // namespace
 
@@ -437,14 +442,14 @@ GpuFeatureInfo ComputeGpuFeatureInfoWithHardwareAccelerationDisabled() {
       kGpuFeatureStatusDisabled;
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_ACCELERATED_GL] =
       kGpuFeatureStatusDisabled;
-  gpu_feature_info.status_values[GPU_FEATURE_TYPE_METAL] =
-      kGpuFeatureStatusDisabled;
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_VULKAN] =
       kGpuFeatureStatusDisabled;
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_CANVAS_OOP_RASTERIZATION] =
       kGpuFeatureStatusDisabled;
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_ACCELERATED_WEBGPU] =
       kGpuFeatureStatusSoftware;
+  gpu_feature_info.status_values[GPU_FEATURE_TYPE_SKIA_GRAPHITE] =
+      kGpuFeatureStatusDisabled;
 #if DCHECK_IS_ON()
   for (int ii = 0; ii < NUMBER_OF_GPU_FEATURE_TYPES; ++ii) {
     DCHECK_NE(kGpuFeatureStatusUndefined, gpu_feature_info.status_values[ii]);
@@ -471,14 +476,14 @@ GpuFeatureInfo ComputeGpuFeatureInfoWithNoGpu() {
       kGpuFeatureStatusDisabled;
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_ACCELERATED_GL] =
       kGpuFeatureStatusDisabled;
-  gpu_feature_info.status_values[GPU_FEATURE_TYPE_METAL] =
-      kGpuFeatureStatusDisabled;
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_VULKAN] =
       kGpuFeatureStatusDisabled;
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_CANVAS_OOP_RASTERIZATION] =
       kGpuFeatureStatusDisabled;
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_ACCELERATED_WEBGPU] =
       kGpuFeatureStatusSoftware;
+  gpu_feature_info.status_values[GPU_FEATURE_TYPE_SKIA_GRAPHITE] =
+      kGpuFeatureStatusDisabled;
 #if DCHECK_IS_ON()
   for (int ii = 0; ii < NUMBER_OF_GPU_FEATURE_TYPES; ++ii) {
     DCHECK_NE(kGpuFeatureStatusUndefined, gpu_feature_info.status_values[ii]);
@@ -505,14 +510,14 @@ GpuFeatureInfo ComputeGpuFeatureInfoForSwiftShader() {
       kGpuFeatureStatusDisabled;
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_ACCELERATED_GL] =
       kGpuFeatureStatusDisabled;
-  gpu_feature_info.status_values[GPU_FEATURE_TYPE_METAL] =
-      kGpuFeatureStatusDisabled;
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_VULKAN] =
       kGpuFeatureStatusDisabled;
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_CANVAS_OOP_RASTERIZATION] =
       kGpuFeatureStatusDisabled;
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_ACCELERATED_WEBGPU] =
       kGpuFeatureStatusSoftware;
+  gpu_feature_info.status_values[GPU_FEATURE_TYPE_SKIA_GRAPHITE] =
+      kGpuFeatureStatusDisabled;
 #if DCHECK_IS_ON()
   for (int ii = 0; ii < NUMBER_OF_GPU_FEATURE_TYPES; ++ii) {
     DCHECK_NE(kGpuFeatureStatusUndefined, gpu_feature_info.status_values[ii]);
@@ -617,10 +622,10 @@ GpuFeatureInfo ComputeGpuFeatureInfo(const GPUInfo& gpu_info,
                                             gpu_preferences);
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_ACCELERATED_GL] =
       GetGLFeatureStatus(blocklisted_features, use_swift_shader);
-  gpu_feature_info.status_values[GPU_FEATURE_TYPE_METAL] =
-      GetMetalFeatureStatus(blocklisted_features, gpu_preferences);
   gpu_feature_info.status_values[GPU_FEATURE_TYPE_VULKAN] =
       GetVulkanFeatureStatus(blocklisted_features, gpu_preferences);
+  gpu_feature_info.status_values[GPU_FEATURE_TYPE_SKIA_GRAPHITE] =
+      GetSkiaGraphiteFeatureStatus(blocklisted_features, gpu_preferences);
 #if DCHECK_IS_ON()
   for (int ii = 0; ii < NUMBER_OF_GPU_FEATURE_TYPES; ++ii) {
     DCHECK_NE(kGpuFeatureStatusUndefined, gpu_feature_info.status_values[ii]);
@@ -684,9 +689,7 @@ GpuFeatureInfo ComputeGpuFeatureInfo(const GPUInfo& gpu_info,
 
   AdjustGpuFeatureStatusToWorkarounds(&gpu_feature_info);
 
-  // TODO(zmo): Find a better way to communicate these settings to bindings
-  // initialization than commandline switches.
-  AppendWorkaroundsToCommandLine(gpu_feature_info, command_line);
+  SetProcessGlWorkaroundsFromGpuFeatures(gpu_feature_info);
 
   return gpu_feature_info;
 }
@@ -708,8 +711,8 @@ void SetKeysForCrashLogging(const GPUInfo& gpu_info) {
   crash_keys::gpu_driver_version.Set(active_gpu.driver_version);
   crash_keys::gpu_pixel_shader_version.Set(gpu_info.pixel_shader_version);
   crash_keys::gpu_vertex_shader_version.Set(gpu_info.vertex_shader_version);
-  crash_keys::gpu_generation_intel.Set(
-      base::StringPrintf("%d", GetIntelGpuGeneration(gpu_info)));
+  crash_keys::gpu_generation_intel.Set(base::StringPrintf(
+      "%d", static_cast<int>(GetIntelGpuGeneration(gpu_info))));
 #if BUILDFLAG(IS_MAC)
   crash_keys::gpu_gl_version.Set(gpu_info.gl_version);
 #elif BUILDFLAG(IS_POSIX)
@@ -718,6 +721,7 @@ void SetKeysForCrashLogging(const GPUInfo& gpu_info) {
 #endif
 }
 
+#if BUILDFLAG(IS_ANDROID)
 void CacheGPUInfo(const GPUInfo& gpu_info) {
   DCHECK(!g_gpu_info_cache);
   g_gpu_info_cache = new GPUInfo;
@@ -748,7 +752,6 @@ bool PopGpuFeatureInfoCache(GpuFeatureInfo* gpu_feature_info) {
   return true;
 }
 
-#if BUILDFLAG(IS_ANDROID)
 gl::GLDisplay* InitializeGLThreadSafe(base::CommandLine* command_line,
                                       const GpuPreferences& gpu_preferences,
                                       GPUInfo* out_gpu_info,

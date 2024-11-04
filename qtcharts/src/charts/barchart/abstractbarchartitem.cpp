@@ -217,7 +217,8 @@ void AbstractBarChartItem::handleVisibleChanged()
 
 void AbstractBarChartItem::handleOpacityChanged()
 {
-    foreach (QGraphicsItem *item, childItems())
+    const auto items = childItems();
+    for (QGraphicsItem *item : items)
         item->setOpacity(m_series->opacity());
 }
 

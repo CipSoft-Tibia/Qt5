@@ -7,6 +7,7 @@
 
 #include <list>
 #include <memory>
+#include <ostream>
 #include <string>
 
 #include "base/gtest_prod_util.h"
@@ -17,6 +18,7 @@
 #include "ui/base/dragdrop/os_exchange_data_provider.h"
 #include "ui/events/platform/platform_event_dispatcher.h"
 #include "ui/gfx/geometry/point_f.h"
+#include "ui/gfx/image/image_skia.h"
 #include "ui/ozone/platform/wayland/common/wayland_object.h"
 #include "ui/ozone/platform/wayland/host/wayland_data_device.h"
 #include "ui/ozone/platform/wayland/host/wayland_data_source.h"
@@ -113,6 +115,8 @@ class WaylandDataDragController : public WaylandDataDevice::DragDelegate,
   // Returns false iff the data is for a window dragging session.
   bool ShouldReleaseCaptureForDrag(ui::OSExchangeData* data) const;
 
+  void DumpState(std::ostream& out) const;
+
  private:
   FRIEND_TEST_ALL_PREFIXES(WaylandDataDragControllerTest, ReceiveDrag);
   FRIEND_TEST_ALL_PREFIXES(WaylandDataDragControllerTest, StartDrag);
@@ -179,6 +183,7 @@ class WaylandDataDragController : public WaylandDataDevice::DragDelegate,
   bool CanDispatchEvent(const PlatformEvent& event) override;
   uint32_t DispatchEvent(const PlatformEvent& event) override;
 
+  SkBitmap GetIconBitmap();
   void DrawIconInternal();
   static void OnDragSurfaceFrame(void* data,
                                  struct wl_callback* callback,
@@ -217,7 +222,7 @@ class WaylandDataDragController : public WaylandDataDevice::DragDelegate,
   raw_ptr<WaylandWindow> origin_window_ = nullptr;
 
   // Current window under pointer.
-  raw_ptr<WaylandWindow> window_ = nullptr;
+  raw_ptr<WaylandWindow, DanglingUntriaged> window_ = nullptr;
 
   // The most recent location received while dragging the data.
   gfx::PointF last_drag_location_;
@@ -232,8 +237,15 @@ class WaylandDataDragController : public WaylandDataDevice::DragDelegate,
   std::unique_ptr<WaylandSurface> icon_surface_;
   float icon_surface_buffer_scale_ = 1.0f;
   std::unique_ptr<WaylandShmBuffer> icon_buffer_;
-  raw_ptr<const SkBitmap> icon_bitmap_ = nullptr;
-  gfx::Point icon_offset_;
+  gfx::ImageSkia icon_image_;
+  // pending_icon_offset_ is the offset from the image to the cursor to be
+  // applied on the next DrawIconInternal().
+  // current_icon_offset_ holds the actual current offset from the drag image
+  // to the cursor. It's used for calculating the right values to be used with
+  // wl_surface.offset to ensure the offset specified in pending_icon_offset_
+  // becomes the actual offset from the image to the cursor.
+  gfx::Point pending_icon_offset_;
+  gfx::Point current_icon_offset_;
   wl::Object<wl_callback> icon_frame_callback_;
 
   // Keeps track of the window that holds the pointer grab, i.e. the window that

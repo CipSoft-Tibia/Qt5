@@ -1678,7 +1678,7 @@ static int decode_packet(AVCodecContext *avctx, WMAProDecodeCtx *s,
             skip_bits(gb, 2);
         } else {
             int num_frames = get_bits(gb, 6);
-            ff_dlog(avctx, "packet[%d]: number of frames %d\n", avctx->frame_number, num_frames);
+            ff_dlog(avctx, "packet[%"PRId64"]: number of frames %d\n", avctx->frame_num, num_frames);
             packet_sequence_number = 0;
         }
 
@@ -1687,10 +1687,10 @@ static int decode_packet(AVCodecContext *avctx, WMAProDecodeCtx *s,
         if (avctx->codec_id != AV_CODEC_ID_WMAPRO) {
             skip_bits(gb, 3);
             s->skip_packets = get_bits(gb, 8);
-            ff_dlog(avctx, "packet[%d]: skip packets %d\n", avctx->frame_number, s->skip_packets);
+            ff_dlog(avctx, "packet[%"PRId64"]: skip packets %d\n", avctx->frame_num, s->skip_packets);
         }
 
-        ff_dlog(avctx, "packet[%d]: nbpf %x\n", avctx->frame_number,
+        ff_dlog(avctx, "packet[%"PRId64"]: nbpf %x\n", avctx->frame_num,
                 num_bits_prev_frame);
 
         /** check for packet loss */
@@ -2094,7 +2094,11 @@ const FFCodec ff_wmapro_decoder = {
     .init           = wmapro_decode_init,
     .close          = wmapro_decode_end,
     FF_CODEC_DECODE_CB(wmapro_decode_packet),
-    .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
+    .p.capabilities =
+#if FF_API_SUBFRAMES
+                      AV_CODEC_CAP_SUBFRAMES |
+#endif
+                      AV_CODEC_CAP_DR1,
     .flush          = wmapro_flush,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
@@ -2111,7 +2115,11 @@ const FFCodec ff_xma1_decoder = {
     .close          = xma_decode_end,
     FF_CODEC_DECODE_CB(xma_decode_packet),
     .flush          = xma_flush,
-    .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
+    .p.capabilities =
+#if FF_API_SUBFRAMES
+                      AV_CODEC_CAP_SUBFRAMES |
+#endif
+                      AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
@@ -2127,7 +2135,11 @@ const FFCodec ff_xma2_decoder = {
     .close          = xma_decode_end,
     FF_CODEC_DECODE_CB(xma_decode_packet),
     .flush          = xma_flush,
-    .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
+    .p.capabilities =
+#if FF_API_SUBFRAMES
+                      AV_CODEC_CAP_SUBFRAMES |
+#endif
+                      AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,

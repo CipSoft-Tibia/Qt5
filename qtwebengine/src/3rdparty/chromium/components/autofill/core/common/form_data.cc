@@ -43,8 +43,8 @@ bool ReadOrigin(base::PickleIterator* iter, url::Origin* origin) {
 void SerializeFormFieldDataVector(const std::vector<FormFieldData>& fields,
                                   base::Pickle* pickle) {
   pickle->WriteInt(static_cast<int>(fields.size()));
-  for (size_t i = 0; i < fields.size(); ++i) {
-    SerializeFormFieldData(fields[i], pickle);
+  for (const FormFieldData& field : fields) {
+    SerializeFormFieldData(field, pickle);
   }
 }
 
@@ -131,19 +131,6 @@ bool FormData::SimilarFormAs(const FormData& form) const {
   return true;
 }
 
-bool FormData::DynamicallySameFormAs(const FormData& form) const {
-  if (name != form.name || id_attribute != form.id_attribute ||
-      name_attribute != form.name_attribute ||
-      fields.size() != form.fields.size()) {
-    return false;
-  }
-  for (size_t i = 0; i < fields.size(); ++i) {
-    if (!fields[i].DynamicallySameFieldAs(form.fields[i]))
-      return false;
-  }
-  return true;
-}
-
 // static
 bool FormData::DeepEqual(const FormData& a, const FormData& b) {
   // We compare all unique identifiers first, including the field renderer IDs,
@@ -179,10 +166,28 @@ std::ostream& operator<<(std::ostream& os, const FormData& form) {
   os << base::UTF16ToUTF8(form.name) << " " << form.url << " " << form.action
      << " " << form.main_frame_origin << " " << form.is_form_tag << " "
      << "Fields:";
-  for (size_t i = 0; i < form.fields.size(); ++i) {
-    os << form.fields[i] << ",";
+  for (const FormFieldData& field : form.fields) {
+    os << field << ",";
   }
   return os;
+}
+
+const FormFieldData* FormData::FindFieldByGlobalId(
+    const FieldGlobalId& global_id) const {
+  auto fields_it =
+      base::ranges::find(fields, global_id, &FormFieldData::global_id);
+
+  // If the field is found, return a pointer to the field, otherwise return
+  // nullptr.
+  return fields_it != fields.end() ? &*fields_it : nullptr;
+}
+
+FormFieldData* FormData::FindFieldByName(const base::StringPiece16 name_or_id) {
+  auto fields_it = base::ranges::find(fields, name_or_id, &FormFieldData::name);
+
+  // If the field is found, return a pointer to the field, otherwise return
+  // nullptr.
+  return fields_it != fields.end() ? &*fields_it : nullptr;
 }
 
 void SerializeFormData(const FormData& form_data, base::Pickle* pickle) {

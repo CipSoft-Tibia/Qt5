@@ -32,7 +32,6 @@
 #include "net/cookies/cookie_monster.h"
 #include "net/cookies/cookie_options.h"
 #include "net/first_party_sets/first_party_set_metadata.h"
-#include "net/first_party_sets/same_party_context.h"
 #include "net/http/http_util.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
@@ -283,6 +282,22 @@ void FireStorageAccessHistogram(StorageAccessResult result) {
   UMA_HISTOGRAM_ENUMERATION("API.StorageAccess.AllowedRequests2", result);
 }
 
+void FireStorageAccessInputHistogram(bool has_opt_in, bool has_grant) {
+  StorageAccessInputState input_state;
+  if (has_opt_in && has_grant) {
+    input_state = StorageAccessInputState::kOptInWithGrant;
+  } else if (has_opt_in && !has_grant) {
+    input_state = StorageAccessInputState::kOptInWithoutGrant;
+  } else if (!has_opt_in && has_grant) {
+    input_state = StorageAccessInputState::kGrantWithoutOptIn;
+  } else if (!has_opt_in && !has_grant) {
+    input_state = StorageAccessInputState::kNoOptInNoGrant;
+  } else {
+    NOTREACHED_NORETURN();
+  }
+  base::UmaHistogramEnumeration("API.StorageAccess.InputState", input_state);
+}
+
 bool DomainIsHostOnly(const std::string& domain_string) {
   return (domain_string.empty() || domain_string[0] != '.');
 }
@@ -320,6 +335,15 @@ bool GetCookieDomainWithString(const GURL& url,
   }
 
   const std::string url_host(url.host());
+
+  // Disallow invalid hostnames containing multiple `.` at the end.
+  // Httpbis-rfc6265bis draft-11, §5.1.2 says to convert the request host "into
+  // a sequence of individual domain name labels"; a label can only be empty if
+  // it is the last label in the name, but a name ending in `..` would have an
+  // empty label in the penultimate position and is thus invalid.
+  if (base::EndsWith(url_host, "..")) {
+    return false;
+  }
   // If no domain was specified in the domain string, default to a host cookie.
   // We match IE/Firefox in allowing a domain=IPADDR if it matches (case
   // in-sensitive) the url ip address hostname and ignoring a leading dot if one
@@ -329,6 +353,9 @@ bool GetCookieDomainWithString(const GURL& url,
        (base::EqualsCaseInsensitiveASCII(url_host, domain_string) ||
         base::EqualsCaseInsensitiveASCII("." + url_host, domain_string)))) {
     *result = url_host;
+    // TODO(crbug.com/1453416): Once empty label support is implemented we can
+    // CHECK our assumptions here. For now, we DCHECK as DUMP_WILL_BE_CHECK is
+    // generating too many crash reports and already know why this is failing.
     DCHECK(DomainIsHostOnly(*result));
     return true;
   }
@@ -352,9 +379,12 @@ bool GetCookieDomainWithString(const GURL& url,
   const std::string url_domain_and_registry(
       GetEffectiveDomain(url_scheme, url_host));
   if (url_domain_and_registry.empty()) {
-    // We match IE/Firefox by treating an exact match between the domain
-    // attribute and the request host to be treated as a host cookie.
-    if (url_host == domain_string) {
+    // We match IE/Firefox by treating an exact match between the normalized
+    // domain attribute and the request host to be treated as a host cookie.
+    std::string normalized_domain_string = base::ToLowerASCII(
+        domain_string[0] == '.' ? domain_string.substr(1) : domain_string);
+
+    if (url_host == normalized_domain_string) {
       *result = url_host;
       DCHECK(DomainIsHostOnly(*result));
       return true;
@@ -574,6 +604,42 @@ bool IsDomainMatch(const std::string& domain, const std::string& host) {
   return (host.length() > domain.length() &&
           host.compare(host.length() - domain.length(), domain.length(),
                        domain) == 0);
+}
+
+bool IsOnPath(const std::string& cookie_path, const std::string& url_path) {
+  // A zero length would be unsafe for our trailing '/' checks, and
+  // would also make no sense for our prefix match.  The code that
+  // creates a CanonicalCookie should make sure the path is never zero length,
+  // but we double check anyway.
+  if (cookie_path.empty()) {
+    return false;
+  }
+
+  // The Mozilla code broke this into three cases, based on if the cookie path
+  // was longer, the same length, or shorter than the length of the url path.
+  // I think the approach below is simpler.
+
+  // Make sure the cookie path is a prefix of the url path.  If the url path is
+  // shorter than the cookie path, then the cookie path can't be a prefix.
+  if (!base::StartsWith(url_path, cookie_path, base::CompareCase::SENSITIVE)) {
+    return false;
+  }
+
+  // |url_path| is >= |cookie_path|, and |cookie_path| is a prefix of
+  // |url_path|.  If they are the are the same length then they are identical,
+  // otherwise need an additional check:
+
+  // In order to avoid in correctly matching a cookie path of /blah
+  // with a request path of '/blahblah/', we need to make sure that either
+  // the cookie path ends in a trailing '/', or that we prefix up to a '/'
+  // in the url path.  Since we know that the url path length is greater
+  // than the cookie path length, it's safe to index one byte past.
+  if (cookie_path.length() != url_path.length() && cookie_path.back() != '/' &&
+      url_path[cookie_path.length()] != '/') {
+    return false;
+  }
+
+  return true;
 }
 
 void ParseRequestCookieLine(const std::string& header_value,
@@ -815,6 +881,14 @@ CookieOptions::SameSiteCookieContext ComputeSameSiteContextForSubresource(
   return CookieOptions::SameSiteCookieContext::MakeInclusive();
 }
 
+bool IsPortBoundCookiesEnabled() {
+  return base::FeatureList::IsEnabled(features::kEnablePortBoundCookies);
+}
+
+bool IsSchemeBoundCookiesEnabled() {
+  return base::FeatureList::IsEnabled(features::kEnableSchemeBoundCookies);
+}
+
 bool IsSchemefulSameSiteEnabled() {
   return base::FeatureList::IsEnabled(features::kSchemefulSameSite);
 }
@@ -823,17 +897,13 @@ absl::optional<FirstPartySetMetadata> ComputeFirstPartySetMetadataMaybeAsync(
     const SchemefulSite& request_site,
     const IsolationInfo& isolation_info,
     const CookieAccessDelegate* cookie_access_delegate,
-    bool force_ignore_top_frame_party,
     base::OnceCallback<void(FirstPartySetMetadata)> callback) {
-  if (!isolation_info.IsEmpty() && isolation_info.party_context().has_value() &&
-      cookie_access_delegate) {
+  if (isolation_info.party_context().has_value() && cookie_access_delegate) {
     return cookie_access_delegate->ComputeFirstPartySetMetadataMaybeAsync(
         request_site,
-        force_ignore_top_frame_party
-            ? nullptr
-            : base::OptionalToPtr(
-                  isolation_info.network_isolation_key().GetTopFrameSite()),
-        isolation_info.party_context().value(), std::move(callback));
+        base::OptionalToPtr(
+            isolation_info.network_isolation_key().GetTopFrameSite()),
+        std::move(callback));
   }
 
   return FirstPartySetMetadata();
@@ -863,23 +933,6 @@ HttpMethodStringToEnum(const std::string& in) {
     return HttpMethod::kPatch;
 
   return HttpMethod::kUnknown;
-}
-
-CookieSamePartyStatus GetSamePartyStatus(
-    const CanonicalCookie& cookie,
-    const CookieOptions& options,
-    const bool same_party_attribute_enabled) {
-  if (!same_party_attribute_enabled || !cookie.IsSameParty() ||
-      !options.is_in_nontrivial_first_party_set()) {
-    return CookieSamePartyStatus::kNoSamePartyEnforcement;
-  }
-
-  switch (options.same_party_context().context_type()) {
-    case SamePartyContext::Type::kCrossParty:
-      return CookieSamePartyStatus::kEnforceSamePartyExclude;
-    case SamePartyContext::Type::kSameParty:
-      return CookieSamePartyStatus::kEnforceSamePartyInclude;
-  };
 }
 
 bool IsCookieAccessResultInclude(CookieAccessResult cookie_access_result) {
@@ -928,6 +981,12 @@ NET_EXPORT void DCheckIncludedAndExcludedCookieLists(
   // Check that the included cookies are still in the correct order.
   DCHECK(
       base::ranges::is_sorted(included_cookies, CookieWithAccessResultSorter));
+}
+
+NET_EXPORT bool IsForceThirdPartyCookieBlockingEnabled() {
+  return base::FeatureList::IsEnabled(
+             features::kForceThirdPartyCookieBlocking) &&
+         base::FeatureList::IsEnabled(features::kThirdPartyStoragePartitioning);
 }
 
 }  // namespace net::cookie_util

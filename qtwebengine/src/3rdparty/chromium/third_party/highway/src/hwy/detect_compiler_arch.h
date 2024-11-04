@@ -134,6 +134,12 @@
 #define HWY_HAS_ATTRIBUTE(name) 0
 #endif
 
+#ifdef __has_cpp_attribute
+#define HWY_HAS_CPP_ATTRIBUTE(name) __has_cpp_attribute(name)
+#else
+#define HWY_HAS_CPP_ATTRIBUTE(name) 0
+#endif
+
 #ifdef __has_feature
 #define HWY_HAS_FEATURE(name) __has_feature(name)
 #else
@@ -165,12 +171,13 @@
 #define HWY_ARCH_X86 0
 #endif
 
-#if defined(__powerpc64__) || defined(_M_PPC)
+#if defined(__powerpc64__) || defined(_M_PPC) || defined(__powerpc__)
 #define HWY_ARCH_PPC 1
 #else
 #define HWY_ARCH_PPC 0
 #endif
 
+// aarch32 is currently not supported; please raise an issue if you want it.
 #if defined(__ARM_ARCH_ISA_A64) || defined(__aarch64__) || defined(_M_ARM64)
 #define HWY_ARCH_ARM_A64 1
 #else

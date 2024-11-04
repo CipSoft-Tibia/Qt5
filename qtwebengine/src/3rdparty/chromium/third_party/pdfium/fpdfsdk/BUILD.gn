@@ -97,10 +97,6 @@ source_set("fpdfsdk") {
     ]
     allow_circular_includes_from += [ "fpdfxfa" ]
   }
-
-  if (pdf_use_skia) {
-    deps += [ "//skia" ]
-  }
 }
 
 pdfium_unittest_source_set("unittests") {
@@ -159,6 +155,7 @@ pdfium_embeddertest_source_set("embeddertests") {
     "../core/fpdfapi/font",
     "../core/fpdfapi/page",
     "../core/fpdfapi/parser",
+    "../core/fxcrt:test_support",
     "../core/fxge",
   ]
   pdfium_root_dir = "../"

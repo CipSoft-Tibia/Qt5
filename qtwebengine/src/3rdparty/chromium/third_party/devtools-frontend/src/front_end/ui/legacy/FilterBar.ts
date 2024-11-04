@@ -32,20 +32,20 @@ import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
+import * as IconButton from '../components/icon_button/icon_button.js';
 
 import * as ARIAUtils from './ARIAUtils.js';
-import {Icon} from './Icon.js';
 import {KeyboardShortcut, Modifiers} from './KeyboardShortcut.js';
 import {bindCheckbox} from './SettingsUI.js';
 
 import {type Suggestions} from './SuggestBox.js';
 import {Events, TextPrompt} from './TextPrompt.js';
 
+import filterStyles from './filter.css.legacy.js';
 import {ToolbarSettingToggle, type ToolbarButton} from './Toolbar.js';
 import {Tooltip} from './Tooltip.js';
 import {CheckboxLabel, createTextChild} from './UIUtils.js';
 import {HBox} from './Widget.js';
-import filterStyles from './filter.css.legacy.js';
 
 const UIStrings = {
   /**
@@ -89,7 +89,7 @@ export class FilterBar extends Common.ObjectWrapper.eventMixin<FilterBarEventTyp
     this.stateSetting =
         Common.Settings.Settings.instance().createSetting('filterBar-' + name + '-toggled', Boolean(visibleByDefault));
     this.filterButtonInternal =
-        new ToolbarSettingToggle(this.stateSetting, 'largeicon-filter', i18nString(UIStrings.filter));
+        new ToolbarSettingToggle(this.stateSetting, 'filter', i18nString(UIStrings.filter), 'filter-filled');
 
     this.filters = [];
 
@@ -128,7 +128,7 @@ export class FilterBar extends Common.ObjectWrapper.eventMixin<FilterBarEventTyp
     this.dispatchEventToListeners(FilterBarEvents.Changed);
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.updateFilterBar();
   }
@@ -146,7 +146,7 @@ export class FilterBar extends Common.ObjectWrapper.eventMixin<FilterBarEventTyp
     }
   }
 
-  focus(): void {
+  override focus(): void {
     for (let i = 0; i < this.filters.length; ++i) {
       if (this.filters[i] instanceof TextFilterUI) {
         const textFilterUI = (this.filters[i] as TextFilterUI);
@@ -226,7 +226,10 @@ export class TextFilterUI extends Common.ObjectWrapper.ObjectWrapper<FilterUIEve
 
     const clearButton = container.createChild('div', 'filter-input-clear-button');
     Tooltip.install(clearButton, i18nString(UIStrings.clearFilter));
-    clearButton.appendChild(Icon.create('mediumicon-gray-cross-active', 'filter-cancel-button'));
+    const clearIcon = new IconButton.Icon.Icon();
+    clearIcon.data = {color: 'var(--icon-default)', width: '16px', height: '16px', iconName: 'cross-circle-filled'};
+    clearIcon.classList.add('filter-cancel-button');
+    clearButton.appendChild(clearIcon);
     clearButton.addEventListener('click', () => {
       this.clear();
       this.focus();
@@ -499,12 +502,8 @@ export class CheckboxFilterUI extends Common.ObjectWrapper.ObjectWrapper<FilterU
   private fireUpdated(): void {
     this.dispatchEventToListeners(FilterUIEvents.FilterChanged);
   }
-
-  setColor(backgroundColor: string, borderColor: string): void {
-    this.label.backgroundColor = backgroundColor;
-    this.label.borderColor = borderColor;
-  }
 }
+
 export interface Item {
   name: string;
   label: () => string;

@@ -112,27 +112,26 @@
 
 // Efficiently determines whether tracing is enabled for the given category, and
 // if so, emits one trace event with the given arguments.
-#define PERFETTO_INTERNAL_TRACK_EVENT(category, name, ...)                     \
+#define PERFETTO_INTERNAL_TRACK_EVENT_WITH_METHOD(method, category, name, ...) \
   do {                                                                         \
     ::perfetto::internal::ValidateEventNameType<decltype(name)>();             \
     namespace tns = PERFETTO_TRACK_EVENT_NAMESPACE;                            \
     /* Compute the category index outside the lambda to work around a */       \
     /* GCC 7 bug */                                                            \
-    static constexpr auto PERFETTO_UID(                                        \
+    constexpr auto PERFETTO_UID(                                               \
         kCatIndex_ADD_TO_PERFETTO_DEFINE_CATEGORIES_IF_FAILS_) =               \
         PERFETTO_GET_CATEGORY_INDEX(category);                                 \
     if (::PERFETTO_TRACK_EVENT_NAMESPACE::internal::IsDynamicCategory(         \
             category)) {                                                       \
       tns::TrackEvent::CallIfEnabled(                                          \
           [&](uint32_t instances) PERFETTO_NO_THREAD_SAFETY_ANALYSIS {         \
-            tns::TrackEvent::TraceForCategory(instances, category, name,       \
-                                              ##__VA_ARGS__);                  \
+            tns::TrackEvent::method(instances, category, name, ##__VA_ARGS__); \
           });                                                                  \
     } else {                                                                   \
       tns::TrackEvent::CallIfCategoryEnabled(                                  \
           PERFETTO_UID(kCatIndex_ADD_TO_PERFETTO_DEFINE_CATEGORIES_IF_FAILS_), \
           [&](uint32_t instances) PERFETTO_NO_THREAD_SAFETY_ANALYSIS {         \
-            tns::TrackEvent::TraceForCategory(                                 \
+            tns::TrackEvent::method(                                           \
                 instances,                                                     \
                 PERFETTO_UID(                                                  \
                     kCatIndex_ADD_TO_PERFETTO_DEFINE_CATEGORIES_IF_FAILS_),    \
@@ -141,16 +140,22 @@
     }                                                                          \
   } while (false)
 
+// This internal macro is unused from the repo now, but some improper usage
+// remain outside of the repo.
+// TODO(b/294800182): Remove this.
+#define PERFETTO_INTERNAL_TRACK_EVENT(...) \
+  PERFETTO_INTERNAL_TRACK_EVENT_WITH_METHOD(TraceForCategory, ##__VA_ARGS__)
+
 // C++17 doesn't like a move constructor being defined for the EventFinalizer
 // class but C++11 and MSVC doesn't compile without it being defined so support
 // both.
-#if PERFETTO_IS_AT_LEAST_CPP17() && !PERFETTO_BUILDFLAG(PERFETTO_COMPILER_MSVC)
+#if !PERFETTO_BUILDFLAG(PERFETTO_COMPILER_MSVC)
 #define PERFETTO_INTERNAL_EVENT_FINALIZER_KEYWORD delete
 #else
 #define PERFETTO_INTERNAL_EVENT_FINALIZER_KEYWORD default
 #endif
 
-#define PERFETTO_INTERNAL_SCOPED_TRACK_EVENT(category, name, ...)             \
+#define PERFETTO_INTERNAL_SCOPED_EVENT_FINALIZER(category)                    \
   struct PERFETTO_UID(ScopedEvent) {                                          \
     struct EventFinalizer {                                                   \
       /* The parameter is an implementation detail. It allows the          */ \
@@ -170,14 +175,36 @@
           PERFETTO_INTERNAL_EVENT_FINALIZER_KEYWORD;                          \
       EventFinalizer& operator=(EventFinalizer&&) = delete;                   \
     } finalizer;                                                              \
-  } PERFETTO_UID(scoped_event) {                                              \
-    [&]() {                                                                   \
-      TRACE_EVENT_BEGIN(category, name, ##__VA_ARGS__);                       \
-      return 0;                                                               \
-    }()                                                                       \
   }
 
-#if PERFETTO_BUILDFLAG(PERFETTO_COMPILER_GCC)
+#define PERFETTO_INTERNAL_SCOPED_TRACK_EVENT(category, name, ...) \
+  PERFETTO_INTERNAL_SCOPED_EVENT_FINALIZER(category)              \
+  PERFETTO_UID(scoped_event) {                                    \
+    [&]() {                                                       \
+      TRACE_EVENT_BEGIN(category, name, ##__VA_ARGS__);           \
+      return 0;                                                   \
+    }()                                                           \
+  }
+
+#if PERFETTO_ENABLE_LEGACY_TRACE_EVENTS
+// Required for TRACE_EVENT_WITH_FLOW legacy macros, which pass the bind_id as
+// id.
+#define PERFETTO_INTERNAL_SCOPED_LEGACY_TRACK_EVENT_WITH_ID(               \
+    category, name, track, flags, thread_id, id, ...)                      \
+  PERFETTO_INTERNAL_SCOPED_EVENT_FINALIZER(category)                       \
+  PERFETTO_UID(scoped_event) {                                             \
+    [&]() {                                                                \
+      PERFETTO_INTERNAL_TRACK_EVENT_WITH_METHOD(                           \
+          TraceForCategoryLegacyWithId, category, name,                    \
+          ::perfetto::protos::pbzero::TrackEvent::TYPE_SLICE_BEGIN, track, \
+          'B', flags, thread_id, id, ##__VA_ARGS__);                       \
+      return 0;                                                            \
+    }()                                                                    \
+  }
+#endif  // PERFETTO_ENABLE_LEGACY_TRACE_EVENTS
+
+#if PERFETTO_BUILDFLAG(PERFETTO_COMPILER_GCC) || \
+    PERFETTO_BUILDFLAG(PERFETTO_COMPILER_MSVC)
 // On GCC versions <9 there's a bug that prevents using captured constant
 // variables in constexpr evaluation inside a lambda:
 // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=82643

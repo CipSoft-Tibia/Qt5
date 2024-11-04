@@ -11,7 +11,7 @@
 #include <unistd.h>
 
 #include "base/android/jni_android.h"
-#include "base/base_jni_headers/ThreadUtils_jni.h"
+#include "base/base_jni/ThreadUtils_jni.h"
 #include "base/lazy_instance.h"
 #include "base/logging.h"
 #include "base/threading/platform_thread_internal_posix.h"
@@ -87,7 +87,7 @@ GetCurrentThreadPriorityForPlatformForTest() {
 }  // namespace internal
 
 void PlatformThread::SetName(const std::string& name) {
-  ThreadIdNameManager::GetInstance()->SetName(name);
+  SetNameCommon(name);
 
   // Like linux, on android we can get the thread names to show up in the
   // debugger by setting the process name for the LWP.

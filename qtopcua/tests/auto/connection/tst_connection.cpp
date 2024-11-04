@@ -1,7 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
-#include "backend_environment.h"
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtOpcUa/QOpcUaAuthenticationInformation>
 #include <QtOpcUa/QOpcUaClient>
@@ -73,8 +71,6 @@ void Tst_Connection::initTestCase()
 
     for (const auto &backend: m_backends) {
         QVariantMap backendOptions;
-        if (backend == QLatin1String("uacpp"))
-            backendOptions.insert(QLatin1String("disableEncryptedPasswordCheck"), true);
 
         QOpcUaClient *client = m_opcUa.createClient(backend, backendOptions);
         QVERIFY2(client != nullptr,
@@ -123,12 +119,30 @@ void Tst_Connection::initTestCase()
 
         m_serverProcess.start(m_testServerPath);
         QVERIFY2(m_serverProcess.waitForStarted(), qPrintable(m_serverProcess.errorString()));
-        // Let the server come up
-        QTest::qSleep(2000);
+
+        QTest::qSleep(100);
+        socket.connectToHost(defaultHost, defaultPort);
+        if (!socket.waitForConnected(5000))
+        {
+            bool success = false;
+            for (int i = 0; i < 50; ++i) {
+                QTest::qSleep(100);
+                socket.connectToHost(defaultHost, defaultPort);
+                if (socket.waitForConnected(5000)) {
+                    success = true;
+                    break;
+                }
+            }
+
+            if (!success)
+                QFAIL("Server does not run");
+        }
+
+        socket.disconnectFromHost();
     }
     QString host = envOrDefault("OPCUA_HOST", defaultHost.toString());
     QString port = envOrDefault("OPCUA_PORT", QString::number(defaultPort));
-    m_discoveryEndpoint = QStringLiteral("opc.tcp://%1:%2").arg(host).arg(port);
+    m_discoveryEndpoint = QStringLiteral("opc.tcp://%1:%2").arg(host, port);
     qDebug() << "Using endpoint:" << m_discoveryEndpoint;
 
     QOpcUaClient *client = m_clients.first();
@@ -208,7 +222,6 @@ void Tst_Connection::cleanupTestCase()
 
 int main(int argc, char *argv[])
 {
-    updateEnvironment();
     QCoreApplication app(argc, argv);
 
     QTEST_SET_MAIN_SOURCE_PATH

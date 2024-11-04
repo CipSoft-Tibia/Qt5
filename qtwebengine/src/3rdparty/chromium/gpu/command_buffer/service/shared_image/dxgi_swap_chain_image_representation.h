@@ -5,9 +5,12 @@
 #ifndef GPU_COMMAND_BUFFER_SERVICE_SHARED_IMAGE_DXGI_SWAP_CHAIN_IMAGE_REPRESENTATION_H_
 #define GPU_COMMAND_BUFFER_SERVICE_SHARED_IMAGE_DXGI_SWAP_CHAIN_IMAGE_REPRESENTATION_H_
 
+#include "gpu/command_buffer/service/shared_image/d3d_image_backing.h"
 #include "gpu/command_buffer/service/shared_image/dxgi_swap_chain_image_backing.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
 #include "gpu/command_buffer/service/shared_image/skia_gl_image_representation.h"
+
+class GrPromiseImageTexture;
 
 namespace gpu {
 
@@ -36,7 +39,7 @@ class GLTexturePassthroughDXGISwapChainBufferRepresentation
       SharedImageManager* manager,
       SharedImageBacking* backing,
       MemoryTypeTracker* tracker,
-      scoped_refptr<gles2::TexturePassthrough> texture);
+      scoped_refptr<D3DImageBacking::GLTextureHolder> texture_holder);
   ~GLTexturePassthroughDXGISwapChainBufferRepresentation() override;
 
   const scoped_refptr<gles2::TexturePassthrough>& GetTexturePassthrough(
@@ -46,7 +49,8 @@ class GLTexturePassthroughDXGISwapChainBufferRepresentation
   bool BeginAccess(GLenum mode) override;
   void EndAccess() override;
 
-  scoped_refptr<gles2::TexturePassthrough> texture_;
+  // Holds a gles2::TexturePassthrough and corresponding egl image.
+  scoped_refptr<D3DImageBacking::GLTextureHolder> texture_holder_;
 };
 
 // Functionally the same as SkiaGLImageRepresentation, with the exception of
@@ -70,19 +74,41 @@ class SkiaGLImageRepresentationDXGISwapChain
       const gfx::Rect& update_rect,
       std::vector<GrBackendSemaphore>* begin_semaphores,
       std::vector<GrBackendSemaphore>* end_semaphores,
-      std::unique_ptr<GrBackendSurfaceMutableState>* end_state) override;
+      std::unique_ptr<skgpu::MutableTextureState>* end_state) override;
 
   void EndWriteAccess() override;
 
  private:
   SkiaGLImageRepresentationDXGISwapChain(
       std::unique_ptr<GLTextureImageRepresentationBase> gl_representation,
-      std::vector<sk_sp<SkPromiseImageTexture>> promise_textures,
+      std::vector<sk_sp<GrPromiseImageTexture>> promise_textures,
       scoped_refptr<SharedContextState> context_state,
       SharedImageManager* manager,
       SharedImageBacking* backing,
       MemoryTypeTracker* tracker);
 };
+
+#if BUILDFLAG(USE_DAWN)
+// Representation of a DXGI swap chain backbuffer as a Dawn texture.
+class DawnRepresentationDXGISwapChain : public DawnImageRepresentation {
+ public:
+  DawnRepresentationDXGISwapChain(SharedImageManager* manager,
+                                  SharedImageBacking* backing,
+                                  MemoryTypeTracker* tracker,
+                                  wgpu::Device device,
+                                  wgpu::BackendType backend_type);
+  ~DawnRepresentationDXGISwapChain() override;
+
+  wgpu::Texture BeginAccess(wgpu::TextureUsage usage) override;
+  wgpu::Texture BeginAccess(wgpu::TextureUsage usage,
+                            const gfx::Rect& update_rect) override;
+  void EndAccess() override;
+
+ private:
+  const wgpu::Device device_;
+  wgpu::Texture texture_;
+};
+#endif  // BUIDFLAG(USE_DAWN)
 
 }  // namespace gpu
 

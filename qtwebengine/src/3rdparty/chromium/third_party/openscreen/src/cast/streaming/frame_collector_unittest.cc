@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,10 +13,12 @@
 #include "cast/streaming/frame_id.h"
 #include "cast/streaming/rtcp_common.h"
 #include "cast/streaming/rtp_time.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-namespace openscreen {
-namespace cast {
+using testing::ElementsAreArray;
+
+namespace openscreen::cast {
 namespace {
 
 const FrameId kSomeFrameId = FrameId::first() + 39;
@@ -64,7 +66,7 @@ TEST(FrameCollectorTest, CollectsFrameWithOnlyOnePart) {
     for (int j = 0; j < 255; ++j) {
       buffer[j] = static_cast<uint8_t>(j);
     }
-    part.payload = absl::Span<uint8_t>(buffer);
+    part.payload = ByteBuffer(buffer);
     EXPECT_TRUE(collector.CollectRtpPacket(part, &buffer));
 
     // At this point, the collector should feel complete.
@@ -128,7 +130,7 @@ TEST(FrameCollectorTest, CollectsFrameWithMultiplePartsArrivingOutOfOrder) {
     std::vector<uint8_t> buffer(24, uint8_t{0xab});
     buffer.insert(buffer.end(), payloads[packet_id].begin(),
                   payloads[packet_id].end());
-    part.payload = absl::Span<uint8_t>(buffer.data() + 24, buffer.size() - 24);
+    part.payload = ByteBuffer(buffer.data() + 24, buffer.size() - 24);
     EXPECT_TRUE(collector.CollectRtpPacket(part, &buffer));
 
     // Remove the packet from the list of expected remaining NACKs, and then
@@ -154,11 +156,11 @@ TEST(FrameCollectorTest, CollectsFrameWithMultiplePartsArrivingOutOfOrder) {
   EXPECT_EQ(kSomeFrameId, frame.frame_id);
   EXPECT_EQ(kSomeFrameId, frame.referenced_frame_id);
   EXPECT_EQ(kSomeRtpTimestamp, frame.rtp_timestamp);
-  absl::Span<const uint8_t> remaining_data = frame.data;
+  ByteView remaining_data = frame.data;
   for (int i = 0; i < 6; ++i) {
     ASSERT_LE(kPayloadSizes[i], static_cast<int>(remaining_data.size()));
-    EXPECT_EQ(absl::Span<const uint8_t>(payloads[i]),
-              remaining_data.subspan(0, kPayloadSizes[i]))
+    EXPECT_THAT(remaining_data.subspan(0, kPayloadSizes[i]),
+                ElementsAreArray(payloads[i]))
         << "i=" << i;
     remaining_data.remove_prefix(kPayloadSizes[i]);
   }
@@ -177,7 +179,7 @@ TEST(FrameCollectorTest, RejectsInvalidParts) {
   part.packet_id = 0;
   part.max_packet_id = 3;
   std::vector<uint8_t> buffer(1, 'A');
-  part.payload = absl::Span<uint8_t>(buffer);
+  part.payload = ByteBuffer(buffer);
   EXPECT_FALSE(collector.CollectRtpPacket(part, &buffer));
   // Note: When CollectRtpPacket() returns false, it does not take ownership of
   // the buffer memory.
@@ -190,7 +192,7 @@ TEST(FrameCollectorTest, RejectsInvalidParts) {
   // Note: Re-assign the buffer and payload pointer since the buffer was just
   // consumed.
   buffer.assign(1, 'A');
-  part.payload = absl::Span<uint8_t>(buffer);
+  part.payload = ByteBuffer(buffer);
 
   // The collector should reject a part where the packet_id is greater than the
   // previously-established max_packet_id.
@@ -207,5 +209,4 @@ TEST(FrameCollectorTest, RejectsInvalidParts) {
 }
 
 }  // namespace
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

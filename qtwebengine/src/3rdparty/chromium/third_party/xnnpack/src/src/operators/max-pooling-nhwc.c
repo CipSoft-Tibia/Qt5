@@ -19,11 +19,13 @@
 #include <xnnpack.h>
 #include <xnnpack/allocator.h>
 #include <xnnpack/common.h>
+#include <xnnpack/config.h>
 #include <xnnpack/indirection.h>
 #include <xnnpack/log.h>
 #include <xnnpack/math.h>
 #include <xnnpack/operator.h>
 #include <xnnpack/operator-utils.h>
+#include <xnnpack/operator-type.h>
 #include <xnnpack/microparams-init.h>
 #include <xnnpack/params.h>
 
@@ -52,7 +54,7 @@ static enum xnn_status create_max_pooling2d_nhwc(
     uint32_t flags,
     const void* params,
     size_t params_size,
-    uint32_t datatype_init_flags,
+    const struct xnn_maxpool_config* maxpool_config,
     enum xnn_operator_type operator_type,
     xnn_operator_t* max_pooling_op_out)
 {
@@ -63,15 +65,6 @@ static enum xnn_status create_max_pooling2d_nhwc(
     xnn_log_error("failed to setup %s operator: XNNPACK is not initialized",
       xnn_operator_type_to_string(operator_type));
     return xnn_status_uninitialized;
-  }
-
-  status = xnn_status_unsupported_hardware;
-
-  if ((xnn_params.init_flags & datatype_init_flags) != datatype_init_flags) {
-    xnn_log_error(
-      "failed to create %s operator: operations on data type are not supported",
-      xnn_operator_type_to_string(operator_type));
-    goto error;
   }
 
   status = xnn_status_invalid_parameter;
@@ -184,6 +177,7 @@ static enum xnn_status create_max_pooling2d_nhwc(
   memcpy(&max_pooling_op->params, params, params_size);
   max_pooling_op->type = operator_type;
   max_pooling_op->flags = flags;
+  max_pooling_op->maxpool_config = maxpool_config;
 
   max_pooling_op->state = xnn_run_state_invalid;
 
@@ -205,7 +199,7 @@ static enum xnn_status setup_max_pooling2d_nhwc(
   void* output,
   uint32_t log2_input_element_size,
   uint32_t log2_output_element_size,
-  struct maxpool_parameters maxpool[XNN_MIN_ELEMENTS(1)],
+  const struct xnn_maxpool_config maxpool[ XNN_MIN_ELEMENTS(1)],
   const void* params,
   size_t params_size,
   size_t num_threads)
@@ -275,7 +269,7 @@ static enum xnn_status setup_max_pooling2d_nhwc(
   const size_t pooling_size = pooling_height * pooling_width;
   const size_t output_height = max_pooling_op->output_height;
   const size_t output_width = max_pooling_op->output_width;
-  const uint32_t mr = maxpool->mr;
+  const uint32_t first_pass_tile_size = maxpool->first_pass_tile_size;
 
   const size_t step_width =
     max_pooling_op->dilation_width > 1 ? pooling_width : min(max_pooling_op->stride_width, pooling_width);
@@ -284,8 +278,8 @@ static enum xnn_status setup_max_pooling2d_nhwc(
   if (input_height != max_pooling_op->last_input_height ||
       input_width != max_pooling_op->last_input_width)
   {
-    // Micro-kernel may read up to (mr - 1) elements after the end of indirection buffer.
-    const size_t indirection_buffer_size = sizeof(void*) * ((mr - 1) + output_height * step_height);
+    // Micro-kernel may read up to (first_pass_tile_size - 1) elements after the end of indirection buffer.
+    const size_t indirection_buffer_size = sizeof(void*) * ((first_pass_tile_size - 1) + output_height * step_height);
     const void** indirection_buffer =
       (const void**) xnn_reallocate_memory(max_pooling_op->indirection_buffer, indirection_buffer_size);
     if (indirection_buffer == NULL) {
@@ -304,13 +298,13 @@ static enum xnn_status setup_max_pooling2d_nhwc(
     max_pooling_op->last_input_width = input_width;
   }
 
-  const uint32_t qr = maxpool->qr;
+  const uint32_t remainder_pass_tile_size = maxpool->remainder_pass_tile_size;
   const size_t channels = max_pooling_op->channels;
 
   const size_t indirect_input_height_stride = step_height * sizeof(void*);
   const size_t output_width_stride = max_pooling_op->output_pixel_stride << log2_output_element_size;
   const size_t output_height_stride = output_width * output_width_stride;
-  const size_t multipass_adjustment = round_up(doz(pooling_size, mr), qr) + mr;
+  const size_t multipass_adjustment = round_up(doz(pooling_size, first_pass_tile_size), remainder_pass_tile_size) + first_pass_tile_size;
 
   max_pooling_op->context.max_pooling = (struct max_pooling_context) {
     .indirect_input = max_pooling_op->indirection_buffer,
@@ -329,10 +323,10 @@ static enum xnn_status setup_max_pooling2d_nhwc(
   };
   memcpy(&max_pooling_op->context.max_pooling.params, params, params_size);
 
-  max_pooling_op->compute.type = xnn_parallelization_type_2d;
-  max_pooling_op->compute.task_2d = (pthreadpool_task_2d_t) xnn_compute_max_pooling;
-  max_pooling_op->compute.range[0] = batch_size;
-  max_pooling_op->compute.range[1] = output_height;
+  max_pooling_op->compute[0].type = xnn_parallelization_type_2d;
+  max_pooling_op->compute[0].task_2d = (pthreadpool_task_2d_t) xnn_compute_max_pooling;
+  max_pooling_op->compute[0].range[0] = batch_size;
+  max_pooling_op->compute[0].range[1] = output_height;
   max_pooling_op->state = xnn_run_state_ready;
 
   return xnn_status_success;
@@ -364,8 +358,10 @@ enum xnn_status xnn_create_max_pooling2d_nhwc_s8(
     return xnn_status_invalid_parameter;
   }
 
+  const struct xnn_maxpool_config* maxpool_config = xnn_init_s8_maxpool_config();
+  assert(maxpool_config != NULL);
   union xnn_s8_minmax_params params;
-  xnn_params.s8.maxpool.init.s8(&params, output_min, output_max);
+  maxpool_config->init.s8(&params, output_min, output_max);
   return create_max_pooling2d_nhwc(
     input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
     pooling_height, pooling_width,
@@ -373,7 +369,8 @@ enum xnn_status xnn_create_max_pooling2d_nhwc_s8(
     dilation_height, dilation_width,
     channels, input_pixel_stride, output_pixel_stride,
     flags,
-    &params, sizeof(params), XNN_INIT_FLAG_S8,
+    &params, sizeof(params),
+    maxpool_config,
     xnn_operator_type_max_pooling_nhwc_s8,
     max_pooling_op_out);
 }
@@ -404,8 +401,10 @@ enum xnn_status xnn_create_max_pooling2d_nhwc_u8(
     return xnn_status_invalid_parameter;
   }
 
+  const struct xnn_maxpool_config* maxpool_config = xnn_init_u8_maxpool_config();
+  assert(maxpool_config != NULL);
   union xnn_u8_minmax_params params;
-  xnn_params.u8.maxpool.init.u8(&params, output_min, output_max);
+  maxpool_config->init.u8(&params, output_min, output_max);
   return create_max_pooling2d_nhwc(
     input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
     pooling_height, pooling_width,
@@ -413,7 +412,8 @@ enum xnn_status xnn_create_max_pooling2d_nhwc_u8(
     dilation_height, dilation_width,
     channels, input_pixel_stride, output_pixel_stride,
     flags,
-    &params, sizeof(params), XNN_INIT_FLAG_U8,
+    &params, sizeof(params),
+    maxpool_config,
     xnn_operator_type_max_pooling_nhwc_u8,
     max_pooling_op_out);
 }
@@ -458,8 +458,15 @@ enum xnn_status xnn_create_max_pooling2d_nhwc_f32(
     return xnn_status_invalid_parameter;
   }
 
+  const struct xnn_maxpool_config* maxpool_config = xnn_init_f32_maxpool_config();
+  if (maxpool_config == NULL) {
+    xnn_log_error(
+      "failed to create %s operator: unsupported hardware configuration",
+      xnn_operator_type_to_string(xnn_operator_type_max_pooling_nhwc_f32));
+    return xnn_status_unsupported_hardware;
+  }
   union xnn_f32_minmax_params params;
-  xnn_params.f32.maxpool.init.f32(&params, output_min, output_max);
+  maxpool_config->init.f32(&params, output_min, output_max);
   return create_max_pooling2d_nhwc(
     input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
     pooling_height, pooling_width,
@@ -467,7 +474,8 @@ enum xnn_status xnn_create_max_pooling2d_nhwc_f32(
     dilation_height, dilation_width,
     channels, input_pixel_stride, output_pixel_stride,
     flags,
-    &params, sizeof(params), XNN_INIT_FLAG_F32,
+    &params, sizeof(params),
+    maxpool_config,
     xnn_operator_type_max_pooling_nhwc_f32,
     max_pooling_op_out);
 }
@@ -516,9 +524,16 @@ enum xnn_status xnn_create_max_pooling2d_nhwc_f16(
     return xnn_status_invalid_parameter;
   }
 
+  const struct xnn_maxpool_config* maxpool_config = xnn_init_f16_maxpool_config();
+  if (maxpool_config == NULL) {
+    xnn_log_error("failed to create %s operator: unsupported hardware configuration",
+                  xnn_operator_type_to_string(xnn_operator_type_max_pooling_nhwc_f16));
+    return xnn_status_unsupported_hardware;
+  }
+
   union xnn_f16_minmax_params params;
-  if (xnn_params.f16.maxpool.init.f16 != NULL) {
-    xnn_params.f16.maxpool.init.f16(&params, output_min_as_half, output_max_as_half);
+  if (maxpool_config->init.f16 != NULL) {
+    maxpool_config->init.f16(&params, output_min_as_half, output_max_as_half);
   }
   return create_max_pooling2d_nhwc(
     input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
@@ -527,7 +542,8 @@ enum xnn_status xnn_create_max_pooling2d_nhwc_f16(
     dilation_height, dilation_width,
     channels, input_pixel_stride, output_pixel_stride,
     flags,
-    &params, sizeof(params), XNN_INIT_FLAG_F16,
+    &params, sizeof(params),
+    maxpool_config,
     xnn_operator_type_max_pooling_nhwc_f16,
     max_pooling_op_out);
 }
@@ -545,9 +561,9 @@ enum xnn_status xnn_setup_max_pooling2d_nhwc_s8(
     max_pooling_op, xnn_operator_type_max_pooling_nhwc_s8,
     batch_size, input_height, input_width,
     input, output,
-    0 /* log2(sizeof(input element)) = log2(sizeof(int8_t)) */,
-    0 /* log2(sizeof(output element)) = log2(sizeof(int8_t)) */,
-    &xnn_params.s8.maxpool,
+    /*log2_input_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
+    /*log2_output_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
+    max_pooling_op->maxpool_config,
     &max_pooling_op->params.s8_minmax, sizeof(max_pooling_op->params.s8_minmax),
     pthreadpool_get_threads_count(threadpool));
 }
@@ -565,9 +581,9 @@ enum xnn_status xnn_setup_max_pooling2d_nhwc_u8(
     max_pooling_op, xnn_operator_type_max_pooling_nhwc_u8,
     batch_size, input_height, input_width,
     input, output,
-    0 /* log2(sizeof(input element)) = log2(sizeof(uint8_t)) */,
-    0 /* log2(sizeof(output element)) = log2(sizeof(uint8_t)) */,
-    &xnn_params.u8.maxpool,
+    /*log2_input_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
+    /*log2_output_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
+    max_pooling_op->maxpool_config,
     &max_pooling_op->params.u8_minmax, sizeof(max_pooling_op->params.u8_minmax),
     pthreadpool_get_threads_count(threadpool));
 }
@@ -585,9 +601,9 @@ enum xnn_status xnn_setup_max_pooling2d_nhwc_f16(
     max_pooling_op, xnn_operator_type_max_pooling_nhwc_f16,
     batch_size, input_height, input_width,
     input, output,
-    1 /* log2(sizeof(input element)) = log2(sizeof(uint16_t)) */,
-    1 /* log2(sizeof(output element)) = log2(sizeof(uint16_t)) */,
-    &xnn_params.f16.maxpool,
+    /*log2_input_element_size=*/XNN_LOG2_SIZEOF_HALF,
+    /*log2_output_element_size=*/XNN_LOG2_SIZEOF_HALF,
+    max_pooling_op->maxpool_config,
     &max_pooling_op->params.f16_minmax, sizeof(max_pooling_op->params.f16_minmax),
     pthreadpool_get_threads_count(threadpool));
 }
@@ -605,10 +621,9 @@ enum xnn_status xnn_setup_max_pooling2d_nhwc_f32(
     max_pooling_op, xnn_operator_type_max_pooling_nhwc_f32,
     batch_size, input_height, input_width,
     input, output,
-    2 /* log2(sizeof(input element)) = log2(sizeof(float)) */,
-    2 /* log2(sizeof(output element)) = log2(sizeof(float)) */,
-    &xnn_params.f32.maxpool,
+    /*log2_input_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    /*log2_output_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    max_pooling_op->maxpool_config,
     &max_pooling_op->params.f32_minmax, sizeof(max_pooling_op->params.f32_minmax),
     pthreadpool_get_threads_count(threadpool));
 }
-

@@ -60,10 +60,10 @@ void MojoRenderer::Initialize(MediaResource* media_resource,
   init_cb_ = std::move(init_cb);
 
   switch (media_resource_->GetType()) {
-    case MediaResource::Type::STREAM:
+    case MediaResource::Type::kStream:
       InitializeRendererFromStreams(client);
       break;
-    case MediaResource::Type::URL:
+    case MediaResource::Type::KUrl:
       InitializeRendererFromUrl(client);
       break;
   }
@@ -118,8 +118,8 @@ void MojoRenderer::InitializeRendererFromUrl(media::RendererClient* client) {
   // |remote_renderer_| is destroyed.
   mojom::MediaUrlParamsPtr media_url_params = mojom::MediaUrlParams::New(
       url_params.media_url, url_params.site_for_cookies,
-      url_params.top_frame_origin, url_params.allow_credentials,
-      url_params.is_hls);
+      url_params.top_frame_origin, url_params.has_storage_access,
+      url_params.allow_credentials, url_params.is_hls);
   remote_renderer_->Initialize(client_receiver_.BindNewEndpointAndPassRemote(),
                                absl::nullopt, std::move(media_url_params),
                                base::BindOnce(&MojoRenderer::OnInitialized,

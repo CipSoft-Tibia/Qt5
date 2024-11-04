@@ -29,6 +29,8 @@
 #include "vp9/vp9_cx_iface.h"
 #include "vp9/vp9_iface_common.h"
 
+#include "vpx/vpx_tpl.h"
+
 typedef struct vp9_extracfg {
   int cpu_used;  // available cpu percentage in 1/16
   unsigned int enable_auto_alt_ref;
@@ -129,6 +131,8 @@ struct vpx_codec_alg_priv {
   BufferPool *buffer_pool;
 };
 
+// Called by encoder_set_config() and encoder_encode() only. Must not be called
+// by encoder_init().
 static vpx_codec_err_t update_error_state(
     vpx_codec_alg_priv_t *ctx, const struct vpx_internal_error_info *error) {
   const vpx_codec_err_t res = error->error_code;
@@ -635,8 +639,12 @@ static vpx_codec_err_t set_encoder_config(
 
   for (sl = 0; sl < oxcf->ss_number_layers; ++sl) {
     for (tl = 0; tl < oxcf->ts_number_layers; ++tl) {
-      oxcf->layer_target_bitrate[sl * oxcf->ts_number_layers + tl] =
-          1000 * cfg->layer_target_bitrate[sl * oxcf->ts_number_layers + tl];
+      const int layer = sl * oxcf->ts_number_layers + tl;
+      if (cfg->layer_target_bitrate[layer] > INT_MAX / 1000)
+        oxcf->layer_target_bitrate[layer] = INT_MAX;
+      else
+        oxcf->layer_target_bitrate[layer] =
+            1000 * cfg->layer_target_bitrate[layer];
     }
   }
   if (oxcf->ss_number_layers == 1 && oxcf->pass != 0) {
@@ -813,6 +821,7 @@ static vpx_codec_err_t encoder_set_config(vpx_codec_alg_priv_t *ctx,
     assert(codec_err != VPX_CODEC_OK);
     return codec_err;
   }
+  ctx->cpi->common.error.setjmp = 1;
 
   ctx->cfg = *cfg;
   set_encoder_config(&ctx->oxcf, &ctx->cfg, &ctx->extra_cfg);
@@ -1631,13 +1640,9 @@ static vpx_codec_err_t ctrl_set_roi_map(vpx_codec_alg_priv_t *ctx,
 
   if (data) {
     vpx_roi_map_t *roi = (vpx_roi_map_t *)data;
-
-    if (!vp9_set_roi_map(ctx->cpi, roi->roi_map, roi->rows, roi->cols,
-                         roi->delta_q, roi->delta_lf, roi->skip,
-                         roi->ref_frame)) {
-      return VPX_CODEC_OK;
-    }
-    return VPX_CODEC_INVALID_PARAM;
+    return vp9_set_roi_map(ctx->cpi, roi->roi_map, roi->rows, roi->cols,
+                           roi->delta_q, roi->delta_lf, roi->skip,
+                           roi->ref_frame);
   }
   return VPX_CODEC_INVALID_PARAM;
 }
@@ -1675,9 +1680,8 @@ static vpx_codec_err_t ctrl_set_scale_mode(vpx_codec_alg_priv_t *ctx,
   vpx_scaling_mode_t *const mode = va_arg(args, vpx_scaling_mode_t *);
 
   if (mode) {
-    const int res =
-        vp9_set_internal_size(ctx->cpi, (VPX_SCALING)mode->h_scaling_mode,
-                              (VPX_SCALING)mode->v_scaling_mode);
+    const int res = vp9_set_internal_size(ctx->cpi, mode->h_scaling_mode,
+                                          mode->v_scaling_mode);
     return (res == 0) ? VPX_CODEC_OK : VPX_CODEC_INVALID_PARAM;
   }
   return VPX_CODEC_INVALID_PARAM;
@@ -1786,6 +1790,24 @@ static vpx_codec_err_t ctrl_get_svc_ref_frame_config(vpx_codec_alg_priv_t *ctx,
     data->update_golden[sl] = cpi->svc.update_golden[sl];
     data->update_alt_ref[sl] = cpi->svc.update_altref[sl];
   }
+  return VPX_CODEC_OK;
+}
+
+static vpx_codec_err_t ctrl_get_tpl_stats(vpx_codec_alg_priv_t *ctx,
+                                          va_list args) {
+  VP9_COMP *const cpi = ctx->cpi;
+  VpxTplGopStats *data = va_arg(args, VpxTplGopStats *);
+  VpxTplFrameStats *frame_stats_list = cpi->tpl_gop_stats.frame_stats_list;
+  int i;
+  if (data == NULL) {
+    return VPX_CODEC_INVALID_PARAM;
+  }
+  data->size = cpi->tpl_gop_stats.size;
+
+  for (i = 0; i < data->size; i++) {
+    data->frame_stats_list[i] = frame_stats_list[i];
+  }
+
   return VPX_CODEC_OK;
 }
 
@@ -1933,6 +1955,7 @@ static vpx_codec_err_t ctrl_set_external_rate_control(vpx_codec_alg_priv_t *ctx,
     const FRAME_INFO *frame_info = &cpi->frame_info;
     vpx_rc_config_t ratectrl_config;
     vpx_codec_err_t codec_status;
+    memset(&ratectrl_config, 0, sizeof(ratectrl_config));
 
     ratectrl_config.frame_width = frame_info->frame_width;
     ratectrl_config.frame_height = frame_info->frame_height;
@@ -1943,6 +1966,16 @@ static vpx_codec_err_t ctrl_set_external_rate_control(vpx_codec_alg_priv_t *ctx,
     ratectrl_config.target_bitrate_kbps = (int)(oxcf->target_bandwidth / 1000);
     ratectrl_config.frame_rate_num = oxcf->g_timebase.den;
     ratectrl_config.frame_rate_den = oxcf->g_timebase.num;
+    ratectrl_config.overshoot_percent = oxcf->over_shoot_pct;
+    ratectrl_config.undershoot_percent = oxcf->under_shoot_pct;
+
+    if (oxcf->rc_mode == VPX_VBR) {
+      ratectrl_config.rc_mode = VPX_RC_VBR;
+    } else if (oxcf->rc_mode == VPX_Q) {
+      ratectrl_config.rc_mode = VPX_RC_QMODE;
+    } else if (oxcf->rc_mode == VPX_CQ) {
+      ratectrl_config.rc_mode = VPX_RC_CQ;
+    }
 
     codec_status = vp9_extrc_create(funcs, ratectrl_config, ext_ratectrl);
     if (codec_status != VPX_CODEC_OK) {
@@ -2036,6 +2069,7 @@ static vpx_codec_ctrl_fn_map_t encoder_ctrl_maps[] = {
   { VP9E_GET_ACTIVEMAP, ctrl_get_active_map },
   { VP9E_GET_LEVEL, ctrl_get_level },
   { VP9E_GET_SVC_REF_FRAME_CONFIG, ctrl_get_svc_ref_frame_config },
+  { VP9E_GET_TPL_STATS, ctrl_get_tpl_stats },
 
   { -1, NULL },
 };
@@ -2065,8 +2099,8 @@ static vpx_codec_enc_cfg_map_t encoder_usage_cfg_map[] = {
         0,   // rc_resize_allowed
         0,   // rc_scaled_width
         0,   // rc_scaled_height
-        60,  // rc_resize_down_thresold
-        30,  // rc_resize_up_thresold
+        60,  // rc_resize_down_thresh
+        30,  // rc_resize_up_thresh
 
         VPX_VBR,      // rc_end_usage
         { NULL, 0 },  // rc_twopass_stats_in
@@ -2099,7 +2133,7 @@ static vpx_codec_enc_cfg_map_t encoder_usage_cfg_map[] = {
         { 0 },     // ts_rate_decimator
         0,         // ts_periodicity
         { 0 },     // ts_layer_id
-        { 0 },     // layer_taget_bitrate
+        { 0 },     // layer_target_bitrate
         0,         // temporal_layering_mode
         0,         // use_vizier_rc_params
         { 1, 1 },  // active_wq_factor

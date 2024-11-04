@@ -45,8 +45,10 @@ import elementsPanelStyles from './elementsPanel.css.js';
 import type * as Adorners from '../../ui/components/adorners/adorners.js';
 import * as Buttons from '../../ui/components/buttons/buttons.js';
 import * as UI from '../../ui/legacy/legacy.js';
+import * as TreeOutline from '../../ui/components/tree_outline/tree_outline.js';
 
 import {AccessibilityTreeView} from './AccessibilityTreeView.js';
+import {type AXTreeNodeData} from './AccessibilityTreeUtils.js';
 import * as ElementsComponents from './components/components.js';
 import {ComputedStyleWidget} from './ComputedStyleWidget.js';
 
@@ -55,7 +57,6 @@ import {ElementsTreeElementHighlighter} from './ElementsTreeElementHighlighter.j
 import {ElementsTreeOutline} from './ElementsTreeOutline.js';
 import {type MarkerDecorator} from './MarkerDecorator.js';
 import {MetricsSidebarPane} from './MetricsSidebarPane.js';
-import {LayoutSidebarPane} from './LayoutSidebarPane.js';
 import {
   Events as StylesSidebarPaneEvents,
   StylesSidebarPane,
@@ -167,7 +168,7 @@ const createAccessibilityTreeToggleButton = (isActive: boolean): HTMLElement => 
   button.data = {
     active: isActive,
     variant: Buttons.Button.Variant.TOOLBAR,
-    iconUrl: new URL('../../Images/accessibility-icon.svg', import.meta.url).toString(),
+    iconUrl: new URL('../../Images/person.svg', import.meta.url).toString(),
     title,
   };
   button.tabIndex = 0;
@@ -240,7 +241,7 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
     stackElement.appendChild(crumbsContainer);
 
     UI.ARIAUtils.markAsMain(this.domTreeContainer);
-    UI.ARIAUtils.setAccessibleName(this.domTreeContainer, i18nString(UIStrings.domTreeExplorer));
+    UI.ARIAUtils.setLabel(this.domTreeContainer, i18nString(UIStrings.domTreeExplorer));
 
     this.splitWidget.setMainWidget(this.searchableViewInternal);
     this.splitMode = null;
@@ -258,7 +259,8 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
 
     crumbsContainer.id = 'elements-crumbs';
     if (this.domTreeButton) {
-      this.accessibilityTreeView = new AccessibilityTreeView(this.domTreeButton);
+      this.accessibilityTreeView =
+          new AccessibilityTreeView(this.domTreeButton, new TreeOutline.TreeOutline.TreeOutline<AXTreeNodeData>());
     }
     this.breadcrumbs = new ElementsComponents.ElementsBreadcrumbs.ElementsBreadcrumbs();
     this.breadcrumbs.addEventListener('breadcrumbsnodeselected', event => {
@@ -277,14 +279,12 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
     this.updateSidebarPosition();
 
     this.cssStyleTrackerByCSSModel = new Map();
-    SDK.TargetManager.TargetManager.instance().observeModels(SDK.DOMModel.DOMModel, this);
+    SDK.TargetManager.TargetManager.instance().observeModels(SDK.DOMModel.DOMModel, this, {scoped: true});
     SDK.TargetManager.TargetManager.instance().addEventListener(
         SDK.TargetManager.Events.NameChanged, event => this.targetNameChanged(event.data));
     Common.Settings.Settings.instance()
         .moduleSetting('showUAShadowDOM')
         .addChangeListener(this.showUAShadowDOMChanged.bind(this));
-    SDK.TargetManager.TargetManager.instance().addModelListener(
-        SDK.DOMModel.DOMModel, SDK.DOMModel.Events.DocumentUpdated, this.documentUpdatedEvent, this);
     Extensions.ExtensionServer.ExtensionServer.instance().addEventListener(
         Extensions.ExtensionServer.Events.SidebarPaneAdded, this.extensionSidebarPaneAdded, this);
     this.currentSearchResultIndex = -1;  // -1 represents the initial invalid state
@@ -365,7 +365,7 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
       treeOutline.setWordWrap(Common.Settings.Settings.instance().moduleSetting('domWordWrap').get());
       treeOutline.addEventListener(ElementsTreeOutline.Events.SelectedNodeChanged, this.selectedNodeChanged, this);
       treeOutline.addEventListener(ElementsTreeOutline.Events.ElementsTreeUpdated, this.updateBreadcrumbIfNeeded, this);
-      new ElementsTreeElementHighlighter(treeOutline);
+      new ElementsTreeElementHighlighter(treeOutline, new Common.Throttler.Throttler(100));
       this.treeOutlines.add(treeOutline);
     }
     treeOutline.wireToDOMModel(domModel);
@@ -379,9 +379,11 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
     if (this.domTreeContainer.hasFocus()) {
       treeOutline.focus();
     }
+    domModel.addEventListener(SDK.DOMModel.Events.DocumentUpdated, this.documentUpdatedEvent, this);
   }
 
   modelRemoved(domModel: SDK.DOMModel.DOMModel): void {
+    domModel.removeEventListener(SDK.DOMModel.Events.DocumentUpdated, this.documentUpdatedEvent, this);
     const treeOutline = ElementsTreeOutline.forDOMModel(domModel);
     if (!treeOutline) {
       return;
@@ -422,7 +424,7 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
     }
   }
 
-  focus(): void {
+  override focus(): void {
     if (this.treeOutlines.size) {
       this.treeOutlines.values().next().value.focus();
     } else {
@@ -430,11 +432,11 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
     }
   }
 
-  searchableView(): UI.SearchableView.SearchableView {
+  override searchableView(): UI.SearchableView.SearchableView {
     return this.searchableViewInternal;
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     UI.Context.Context.instance().setFlavor(ElementsPanel, this);
     this.registerCSSFiles([elementsPanelStyles]);
@@ -446,7 +448,7 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
       }
     }
 
-    const domModels = SDK.TargetManager.TargetManager.instance().models(SDK.DOMModel.DOMModel);
+    const domModels = SDK.TargetManager.TargetManager.instance().models(SDK.DOMModel.DOMModel, {scoped: true});
     for (const domModel of domModels) {
       if (domModel.parentModel()) {
         continue;
@@ -468,7 +470,7 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
     }
   }
 
-  willHide(): void {
+  override willHide(): void {
     SDK.OverlayModel.OverlayModel.hideDOMNodeHighlight();
     for (const treeOutline of this.treeOutlines) {
       treeOutline.setVisible(false);
@@ -479,7 +481,7 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
     UI.Context.Context.instance().setFlavor(ElementsPanel, null);
   }
 
-  onResize(): void {
+  override onResize(): void {
     this.element.window().requestAnimationFrame(this.updateSidebarPosition.bind(this));  // Do not force layout.
     this.updateTreeOutlineVisibleWidth();
   }
@@ -548,7 +550,7 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
   }
 
   private documentUpdated(domModel: SDK.DOMModel.DOMModel): void {
-    this.searchableViewInternal.resetSearch();
+    this.searchableViewInternal.cancelSearch();
 
     if (!domModel.existingDocument()) {
       if (this.isShowing()) {
@@ -649,7 +651,7 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
     this.searchConfig = searchConfig;
 
     const showUAShadowDOM = Common.Settings.Settings.instance().moduleSetting('showUAShadowDOM').get();
-    const domModels = SDK.TargetManager.TargetManager.instance().models(SDK.DOMModel.DOMModel);
+    const domModels = SDK.TargetManager.TargetManager.instance().models(SDK.DOMModel.DOMModel, {scoped: true});
     const promises = domModels.map(domModel => domModel.performSearch(whitespaceTrimmedQuery, showUAShadowDOM));
     void Promise.all(promises).then(resultCounts => {
       this.searchResults = [];
@@ -1027,7 +1029,7 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
       if (skippedInitialTabSelectedEvent) {
         // We don't log the initially selected sidebar pane to UMA because
         // it will skew the histogram heavily toward the Styles pane
-        Host.userMetrics.sidebarPaneShown(tabId);
+        Host.userMetrics.elementsSidebarTabShown(tabId);
       } else {
         skippedInitialTabSelectedEvent = true;
       }
@@ -1042,11 +1044,11 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
 
     const headerElement = tabbedPane.headerElement();
     UI.ARIAUtils.markAsNavigation(headerElement);
-    UI.ARIAUtils.setAccessibleName(headerElement, i18nString(UIStrings.sidePanelToolbar));
+    UI.ARIAUtils.setLabel(headerElement, i18nString(UIStrings.sidePanelToolbar));
 
     const contentElement = tabbedPane.tabbedPaneContentElement();
     UI.ARIAUtils.markAsComplementary(contentElement);
-    UI.ARIAUtils.setAccessibleName(contentElement, i18nString(UIStrings.sidePanelContent));
+    UI.ARIAUtils.setLabel(contentElement, i18nString(UIStrings.sidePanelContent));
 
     const stylesView =
         new UI.View.SimpleView(i18nString(UIStrings.styles), /* isWebComponent */ undefined, SidebarPaneTabId.Styles);
@@ -1148,7 +1150,7 @@ export class ElementsPanel extends UI.Panel.Panel implements UI.SearchableView.S
         void treeElement.updateStyleAdorners();
       }
 
-      LayoutSidebarPane.instance().update();
+      void ElementsComponents.LayoutPane.LayoutPane.instance().render();
     }
   }
 
@@ -1260,8 +1262,8 @@ export class ContextMenuProvider implements UI.ContextMenu.Provider {
     if (ElementsPanel.instance().element.isAncestor((event.target as Node))) {
       return;
     }
-    const commandCallback: () => void = Common.Revealer.reveal.bind(Common.Revealer.Revealer, object);
-    contextMenu.revealSection().appendItem(i18nString(UIStrings.revealInElementsPanel), commandCallback);
+    contextMenu.revealSection().appendItem(
+        i18nString(UIStrings.revealInElementsPanel), () => Common.Revealer.reveal(object));
   }
 
   static instance(): ContextMenuProvider {

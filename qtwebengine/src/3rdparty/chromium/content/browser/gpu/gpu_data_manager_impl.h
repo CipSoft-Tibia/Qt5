@@ -120,12 +120,12 @@ class CONTENT_EXPORT GpuDataManagerImpl : public GpuDataManager,
   void UpdateVulkanRequestStatus(bool request_continues);
   bool Dx12Requested() const;
   bool VulkanRequested() const;
+  void TerminateInfoCollectionGpuProcess();
+#endif
   // Called from BrowserMainLoop::PostCreateThreads().
   // TODO(content/browser/gpu/OWNERS): This should probably use a
   // BrowserMainParts override instead.
   void PostCreateThreads();
-  void TerminateInfoCollectionGpuProcess();
-#endif
   void UpdateDawnInfo(const std::vector<std::string>& dawn_info_list);
 
   // Update the GPU feature info. This updates the blocklist and enabled status
@@ -220,6 +220,11 @@ class CONTENT_EXPORT GpuDataManagerImpl : public GpuDataManager,
   void OnDisplayRemoved(const display::Display& old_display) override;
   void OnDisplayMetricsChanged(const display::Display& display,
                                uint32_t changed_metrics) override;
+
+#if BUILDFLAG(IS_LINUX)
+  bool IsGpuMemoryBufferNV12Supported();
+  void SetGpuMemoryBufferNV12Supported(bool supported);
+#endif  // BUILDFLAG(IS_LINUX)
 
   // Binds a new Mojo receiver to handle requests from a renderer.
   static void BindReceiver(

@@ -31,12 +31,15 @@
 import * as Common from '../../../../core/common/common.js';
 import * as i18n from '../../../../core/i18n/i18n.js';
 import * as Platform from '../../../../core/platform/platform.js';
+import * as Root from '../../../../core/root/root.js';
 import * as Formatter from '../../../../models/formatter/formatter.js';
 import * as TextUtils from '../../../../models/text_utils/text_utils.js';
 import * as CodeMirror from '../../../../third_party/codemirror.next/codemirror.next.js';
 import * as CodeHighlighter from '../../../components/code_highlighter/code_highlighter.js';
 import * as TextEditor from '../../../components/text_editor/text_editor.js';
 import * as UI from '../../legacy.js';
+
+import selfXssDialogStyles from './selfXssDialog.css.legacy.js';
 
 const UIStrings = {
   /**
@@ -80,6 +83,33 @@ const UIStrings = {
    *@example {2} PH2
    */
   dLinesDCharactersSelected: '{PH1} lines, {PH2} characters selected',
+  /**
+   *@description Headline of warning shown to users when pasting text/code into DevTools.
+   */
+  doYouTrustThisCode: 'Do you trust this code?',
+  /**
+   *@description Warning shown to users when pasting text/code into DevTools.
+   *@example {allow pasting} PH1
+   */
+  doNotPaste:
+      'Don\'t paste code you do not understand or have not reviewed yourself into DevTools. This could allow attackers to steal your identity or take control of your computer. Please type \'\'{PH1}\'\' below to allow pasting.',
+  /**
+   *@description Text a user needs to type in order to confirm that they are aware of the danger of pasting code into the DevTools console.
+   */
+  allowPasting: 'allow pasting',
+  /**
+   *@description Button text for canceling an action
+   */
+  cancel: 'Cancel',
+  /**
+   *@description Button text for allowing an action
+   */
+  allow: 'Allow',
+  /**
+   *@description Input box placeholder which instructs the user to type 'allow pasing' into the input box.
+   *@example {allow pasting} PH1
+   */
+  typeAllowPasting: 'Type  \'\'{PH1}\'\'',
 };
 const str_ = i18n.i18n.registerUIStrings('ui/legacy/components/source_frame/SourceFrame.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -126,9 +156,8 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
   private searchableView: UI.SearchableView.SearchableView|null;
   private editable: boolean;
   private positionToReveal: {
-    line: number,
-    column: (number|undefined),
-    shouldHighlight: (boolean|undefined),
+    from?: {lineNumber: number, columnNumber: number}, to: {lineNumber: number, columnNumber: number},
+    shouldHighlight?: boolean,
   }|null;
   private lineToScrollTo: number|null;
   private selectionToSet: TextUtils.TextRange.TextRange|null;
@@ -136,6 +165,8 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
   private contentRequested: boolean;
   private wasmDisassemblyInternal: Common.WasmDisassembly.WasmDisassembly|null;
   contentSet: boolean;
+  private selfXssWarningDisabledSetting: Common.Settings.Setting<boolean>;
+
   constructor(
       lazyContent: () => Promise<TextUtils.ContentProvider.DeferredContent>,
       private readonly options: SourceFrameOptions = {}) {
@@ -146,7 +177,7 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
     this.prettyInternal = false;
     this.rawContent = null;
     this.formattedMap = null;
-    this.prettyToggle = new UI.Toolbar.ToolbarToggle(i18nString(UIStrings.prettyPrint), 'largeicon-pretty-print');
+    this.prettyToggle = new UI.Toolbar.ToolbarToggle(i18nString(UIStrings.prettyPrint), 'brackets');
     this.prettyToggle.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, () => {
       void this.setPretty(!this.prettyToggle.toggled());
     });
@@ -189,12 +220,14 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
     this.wasmDisassemblyInternal = null;
     this.contentSet = false;
 
+    this.selfXssWarningDisabledSetting = Common.Settings.Settings.instance().createSetting(
+        'disableSelfXssWarning', false, Common.Settings.SettingStorageType.Synced);
     Common.Settings.Settings.instance()
         .moduleSetting('textEditorIndent')
         .addChangeListener(this.#textEditorIndentChanged, this);
   }
 
-  disposeView(): void {
+  override disposeView(): void {
     Common.Settings.Settings.instance()
         .moduleSetting('textEditorIndent')
         .removeChangeListener(this.#textEditorIndentChanged, this);
@@ -235,6 +268,7 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
       CodeMirror.EditorView.domEventHandlers({
         focus: () => this.onFocus(),
         blur: () => this.onBlur(),
+        paste: () => this.onPaste(),
         scroll: () => this.dispatchEventToListeners(Events.EditorScroll),
         contextmenu: event => this.onContextMenu(event),
       }),
@@ -266,6 +300,26 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
 
   protected onFocus(): void {
     this.resetCurrentSearchResultIndex();
+  }
+
+  protected onPaste(): boolean {
+    if (Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.SELF_XSS_WARNING) &&
+        !this.selfXssWarningDisabledSetting.get()) {
+      void this.showSelfXssWarning();
+      return true;
+    }
+    return false;
+  }
+
+  async showSelfXssWarning(): Promise<void> {
+    // Hack to circumvent Chrome issue which would show a tooltip for the newly opened
+    // dialog if pasting via keyboard.
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const allowPasting = await SelfXssWarningDialog.show();
+    if (allowPasting) {
+      this.selfXssWarningDisabledSetting.set(true);
+    }
   }
 
   get wasmDisassembly(): Common.WasmDisassembly.WasmDisassembly|null {
@@ -413,18 +467,18 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
     return this.loadError;
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     void this.ensureContentLoaded();
     this.wasShownOrLoaded();
   }
 
-  willHide(): void {
+  override willHide(): void {
     super.willHide();
 
     this.clearPositionToReveal();
   }
 
-  async toolbarItems(): Promise<UI.Toolbar.ToolbarItem[]> {
+  override async toolbarItems(): Promise<UI.Toolbar.ToolbarItem[]> {
     return [this.prettyToggle, this.sourcePosition, this.progressToolbarItem];
   }
 
@@ -451,110 +505,114 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
   private async ensureContentLoaded(): Promise<void> {
     if (!this.contentRequested) {
       this.contentRequested = true;
+      await this.setDeferredContent(this.lazyContent());
 
-      const progressIndicator = new UI.ProgressIndicator.ProgressIndicator();
-      progressIndicator.setTitle(i18nString(UIStrings.loading));
-      progressIndicator.setTotalWork(100);
-      this.progressToolbarItem.element.appendChild(progressIndicator.element);
-
-      progressIndicator.setWorked(1);
-
-      const deferredContent = await this.lazyContent();
-      let error, content;
-      if (deferredContent.content === null) {
-        error = deferredContent.error;
-        this.rawContent = deferredContent.error;
-      } else {
-        content = deferredContent.content;
-        if (deferredContent.isEncoded) {
-          const view = new DataView(Common.Base64.decode(deferredContent.content));
-          const decoder = new TextDecoder();
-          this.rawContent = decoder.decode(view, {stream: true});
-        } else if ('wasmDisassemblyInfo' in deferredContent && deferredContent.wasmDisassemblyInfo) {
-          const {wasmDisassemblyInfo} = deferredContent;
-          this.rawContent = CodeMirror.Text.of(wasmDisassemblyInfo.lines);
-          this.wasmDisassemblyInternal = wasmDisassemblyInfo;
-        } else {
-          this.rawContent = content;
-          this.wasmDisassemblyInternal = null;
-        }
-      }
-
-      // If the input is wasm but v8-based wasm disassembly failed, fall back to wasmparser for backwards compatibility.
-      if (content && this.contentType === 'application/wasm' && !this.wasmDisassemblyInternal) {
-        const worker = Common.Worker.WorkerWrapper.fromURL(
-            new URL('../../../../entrypoints/wasmparser_worker/wasmparser_worker-entrypoint.js', import.meta.url));
-        const promise = new Promise<{
-          lines: string[],
-          offsets: number[],
-          functionBodyOffsets: {
-            start: number,
-            end: number,
-          }[],
-        }>((resolve, reject) => {
-          worker.onmessage =
-              // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration)
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              ({data}: MessageEvent<any>): void => {
-                if ('event' in data) {
-                  switch (data.event) {
-                    case 'progress':
-                      progressIndicator.setWorked(data.params.percentage);
-                      break;
-                  }
-                } else if ('method' in data) {
-                  switch (data.method) {
-                    case 'disassemble':
-                      if ('error' in data) {
-                        reject(data.error);
-                      } else if ('result' in data) {
-                        resolve(data.result);
-                      }
-                      break;
-                  }
-                }
-              };
-          worker.onerror = reject;
-        });
-        worker.postMessage({method: 'disassemble', params: {content}});
-        try {
-          const {lines, offsets, functionBodyOffsets} = await promise;
-          this.rawContent = content = CodeMirror.Text.of(lines);
-          this.wasmDisassemblyInternal =
-              new Common.WasmDisassembly.WasmDisassembly(lines, offsets, functionBodyOffsets);
-        } catch (e) {
-          this.rawContent = content = error = e.message;
-        } finally {
-          worker.terminate();
-        }
-      }
-
-      progressIndicator.setWorked(100);
-      progressIndicator.done();
-
-      this.formattedMap = null;
-      this.prettyToggle.setEnabled(true);
-
-      if (error) {
-        this.loadError = true;
-        this.textEditor.state = this.placeholderEditorState(error);
-        this.prettyToggle.setEnabled(false);
-      } else {
-        if (this.shouldAutoPrettyPrint && TextUtils.TextUtils.isMinified(content || '')) {
-          await this.setPretty(true);
-        } else {
-          await this.setContent(this.rawContent || '');
-        }
-      }
       this.contentSet = true;
     }
   }
 
-  revealPosition(position: {lineNumber: number, columnNumber?: number}|number, shouldHighlight?: boolean): void {
+  protected async setDeferredContent(deferredContentPromise: Promise<TextUtils.ContentProvider.DeferredContent>):
+      Promise<void> {
+    const progressIndicator = new UI.ProgressIndicator.ProgressIndicator();
+    progressIndicator.setTitle(i18nString(UIStrings.loading));
+    progressIndicator.setTotalWork(100);
+    this.progressToolbarItem.element.appendChild(progressIndicator.element);
+
+    progressIndicator.setWorked(1);
+    const deferredContent = await deferredContentPromise;
+
+    let error, content;
+    if (deferredContent.content === null) {
+      error = deferredContent.error;
+      this.rawContent = deferredContent.error;
+    } else {
+      content = deferredContent.content;
+      if (deferredContent.isEncoded) {
+        const view = new DataView(Common.Base64.decode(deferredContent.content));
+        const decoder = new TextDecoder();
+        this.rawContent = decoder.decode(view, {stream: true});
+      } else if ('wasmDisassemblyInfo' in deferredContent && deferredContent.wasmDisassemblyInfo) {
+        const {wasmDisassemblyInfo} = deferredContent;
+        this.rawContent = CodeMirror.Text.of(wasmDisassemblyInfo.lines);
+        this.wasmDisassemblyInternal = wasmDisassemblyInfo;
+      } else {
+        this.rawContent = content;
+        this.wasmDisassemblyInternal = null;
+      }
+    }
+
+    // If the input is wasm but v8-based wasm disassembly failed, fall back to wasmparser for backwards compatibility.
+    if (content && this.contentType === 'application/wasm' && !this.wasmDisassemblyInternal) {
+      const worker = Common.Worker.WorkerWrapper.fromURL(
+          new URL('../../../../entrypoints/wasmparser_worker/wasmparser_worker-entrypoint.js', import.meta.url));
+      const promise = new Promise<{
+        lines: string[],
+        offsets: number[],
+        functionBodyOffsets: {
+          start: number,
+          end: number,
+        }[],
+      }>((resolve, reject) => {
+        worker.onmessage =
+            // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ({data}: MessageEvent<any>): void => {
+              if ('event' in data) {
+                switch (data.event) {
+                  case 'progress':
+                    progressIndicator?.setWorked(data.params.percentage);
+                    break;
+                }
+              } else if ('method' in data) {
+                switch (data.method) {
+                  case 'disassemble':
+                    if ('error' in data) {
+                      reject(data.error);
+                    } else if ('result' in data) {
+                      resolve(data.result);
+                    }
+                    break;
+                }
+              }
+            };
+        worker.onerror = reject;
+      });
+      worker.postMessage({method: 'disassemble', params: {content}});
+      try {
+        const {lines, offsets, functionBodyOffsets} = await promise;
+        this.rawContent = content = CodeMirror.Text.of(lines);
+        this.wasmDisassemblyInternal = new Common.WasmDisassembly.WasmDisassembly(lines, offsets, functionBodyOffsets);
+      } catch (e) {
+        this.rawContent = content = error = e.message;
+      } finally {
+        worker.terminate();
+      }
+    }
+
+    progressIndicator.setWorked(100);
+    progressIndicator.done();
+
+    this.formattedMap = null;
+    this.prettyToggle.setEnabled(true);
+
+    if (error) {
+      this.loadError = true;
+      this.textEditor.state = this.placeholderEditorState(error);
+      this.prettyToggle.setEnabled(false);
+    } else {
+      if (this.shouldAutoPrettyPrint && TextUtils.TextUtils.isMinified(content || '')) {
+        await this.setPretty(true);
+      } else {
+        await this.setContent(this.rawContent || '');
+      }
+    }
+  }
+
+  revealPosition(position: RevealPosition, shouldHighlight?: boolean): void {
     this.lineToScrollTo = null;
     this.selectionToSet = null;
-    let line = 0, column = 0;
     if (typeof position === 'number') {
+      let line = 0, column = 0;
       const {doc} = this.textEditor.state;
       if (position > doc.length) {
         line = doc.lines - 1;
@@ -563,11 +621,13 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
         line = lineObj.number - 1;
         column = position - lineObj.from;
       }
+      this.positionToReveal = {to: {lineNumber: line, columnNumber: column}, shouldHighlight};
+    } else if ('lineNumber' in position) {
+      const {lineNumber, columnNumber} = position;
+      this.positionToReveal = {to: {lineNumber, columnNumber: columnNumber ?? 0}, shouldHighlight};
     } else {
-      line = position.lineNumber;
-      column = position.columnNumber ?? 0;
+      this.positionToReveal = {...position, shouldHighlight};
     }
-    this.positionToReveal = {line, column, shouldHighlight: shouldHighlight};
     this.innerRevealPositionIfNeeded();
   }
 
@@ -580,10 +640,12 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
       return;
     }
 
-    const location = this.uiLocationToEditorLocation(this.positionToReveal.line, this.positionToReveal.column);
+    const {from, to, shouldHighlight} = this.positionToReveal;
+    const toLocation = this.uiLocationToEditorLocation(to.lineNumber, to.columnNumber);
+    const fromLocation = from ? this.uiLocationToEditorLocation(from.lineNumber, from.columnNumber) : undefined;
 
     const {textEditor} = this;
-    textEditor.revealPosition(textEditor.createSelection(location), this.positionToReveal.shouldHighlight);
+    textEditor.revealPosition(textEditor.createSelection(toLocation, fromLocation), shouldHighlight);
     this.positionToReveal = null;
   }
 
@@ -891,6 +953,8 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
         if (match[0].length) {
           const from = pos + match.index;
           ranges.push(new SearchMatch(from, from + match[0].length, match));
+        } else {
+          regex.lastIndex = match.index + 1;
         }
       }
       pos += line.length + 1;
@@ -967,7 +1031,7 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
   protected populateLineGutterContextMenu(_menu: UI.ContextMenu.ContextMenu, _lineNumber: number): void {
   }
 
-  focus(): void {
+  override focus(): void {
     this.textEditor.focus();
   }
 }
@@ -989,6 +1053,57 @@ class SearchMatch {
       }
       return this.match[Number.parseInt(selector, 10)] || '';
     });
+  }
+}
+
+export class SelfXssWarningDialog {
+  static async show(): Promise<boolean> {
+    const dialog = new UI.Dialog.Dialog();
+    dialog.setMaxContentSize(new UI.Geometry.Size(504, 340));
+    dialog.setSizeBehavior(UI.GlassPane.SizeBehavior.SetExactWidthMaxHeight);
+    dialog.setDimmed(true);
+    const shadowRoot = UI.Utils.createShadowRootWithCoreStyles(
+        dialog.contentElement, {cssFile: selfXssDialogStyles, delegatesFocus: undefined});
+    const content = shadowRoot.createChild('div', 'widget');
+
+    const result = await new Promise<boolean>(resolve => {
+      const closeButton =
+          content.createChild('div', 'dialog-close-button', 'dt-close-button') as UI.UIUtils.DevToolsCloseButton;
+      closeButton.addEventListener('click', () => {
+        dialog.hide();
+        resolve(false);
+      }, false);
+
+      content.createChild('div', 'title').textContent = i18nString(UIStrings.doYouTrustThisCode);
+      content.createChild('div', 'message').textContent =
+          i18nString(UIStrings.doNotPaste, {PH1: i18nString(UIStrings.allowPasting)});
+
+      const input = UI.UIUtils.createInput('text-input', 'text');
+      input.placeholder = i18nString(UIStrings.typeAllowPasting, {PH1: i18nString(UIStrings.allowPasting)});
+      content.appendChild(input);
+
+      const buttonsBar = content.createChild('div', 'button');
+      const cancelButton = UI.UIUtils.createTextButton(i18nString(UIStrings.cancel), () => resolve(false));
+      buttonsBar.appendChild(cancelButton);
+      const allowButton = UI.UIUtils.createTextButton(i18nString(UIStrings.allow), () => {
+        resolve(input.value === i18nString(UIStrings.allowPasting));
+      }, '', true);
+      allowButton.disabled = true;
+      buttonsBar.appendChild(allowButton);
+
+      input.addEventListener('input', () => {
+        allowButton.disabled = !Boolean(input.value);
+      }, false);
+
+      dialog.setOutsideClickCallback(event => {
+        event.consume();
+        resolve(false);
+      });
+      dialog.show();
+      input.focus();
+    });
+    dialog.hide();
+    return result;
   }
 }
 
@@ -1092,9 +1207,14 @@ const searchHighlighter = CodeMirror.ViewPlugin.fromClass(class {
             if (!match) {
               break;
             }
-            const start = pos + match.index, end = start + match[0].length;
-            const current = active.currentRange && active.currentRange.from === start && active.currentRange.to === end;
-            builder.add(start, end, current ? currentSearchMatchDeco : searchMatchDeco);
+            if (match[0].length) {
+              const start = pos + match.index, end = start + match[0].length;
+              const current =
+                  active.currentRange && active.currentRange.from === start && active.currentRange.to === end;
+              builder.add(start, end, current ? currentSearchMatchDeco : searchMatchDeco);
+            } else {
+              active.regexp.regex.lastIndex = match.index + 1;
+            }
           }
         }
         pos += part.length;
@@ -1105,7 +1225,7 @@ const searchHighlighter = CodeMirror.ViewPlugin.fromClass(class {
 }, {decorations: (value): CodeMirror.DecorationSet => value.decorations});
 
 const nonBreakableLineMark = new (class extends CodeMirror.GutterMarker {
-  elementClass = 'cm-nonBreakableLine';
+  override elementClass = 'cm-nonBreakableLine';
 })();
 
 // Effect to add lines (by position) to the set of non-breakable lines.
@@ -1169,6 +1289,15 @@ const sourceFrameTheme = CodeMirror.EditorView.theme({
     },
   },
   ':host-context(.pretty-printed) & .cm-lineNumbers .cm-gutterElement': {
-    color: 'var(--color-primary)',
+    color: 'var(--color-primary-old)',
   },
 });
+
+/**
+ * Reveal position can either be a single point or a range.
+ *
+ * A single point can either be specified as a line/column combo or as an absolute
+ * editor offset.
+ */
+export type RevealPosition = number|{lineNumber: number, columnNumber?: number}|
+    {from: {lineNumber: number, columnNumber: number}, to: {lineNumber: number, columnNumber: number}};

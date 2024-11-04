@@ -15,11 +15,12 @@
 #include <QtCore/private/qjnihelpers_p.h>
 #include <QtCore/QJniObject>
 #include <QtGui/private/qhighdpiscaling_p.h>
+
 #include <QtCore/QObject>
+#include <QtCore/qpointer.h>
 #include <QtCore/qvarlengtharray.h>
 
 static const char m_qtTag[] = "Qt A11Y";
-static const char m_classErrorMsg[] = "Can't find class \"%s\"";
 
 QT_BEGIN_NAMESPACE
 
@@ -81,8 +82,7 @@ namespace QtAndroidAccessibility
 
     void initialize()
     {
-        QJniObject::callStaticMethod<void>(QtAndroid::applicationClass(),
-                                           "initializeAccessibility");
+        QtAndroid::qtActivityDelegate().callMethod<void>("initializeAccessibility");
     }
 
     bool isActive()
@@ -125,6 +125,12 @@ namespace QtAndroidAccessibility
     {
         const auto parentObjectId = parentId_helper(accessibilityObjectId);
         QtAndroid::notifyObjectHide(accessibilityObjectId, parentObjectId);
+    }
+
+    void notifyObjectShow(uint accessibilityObjectId)
+    {
+        const auto parentObjectId = parentId_helper(accessibilityObjectId);
+        QtAndroid::notifyObjectShow(parentObjectId);
     }
 
     void notifyObjectFocus(uint accessibilityObjectId)
@@ -351,16 +357,6 @@ namespace QtAndroidAccessibility
         return result && oldPosition != screenRect_helper(firstChildId, false);
     }
 
-
-#define FIND_AND_CHECK_CLASS(CLASS_NAME) \
-clazz = env->FindClass(CLASS_NAME); \
-if (!clazz) { \
-    __android_log_print(ANDROID_LOG_FATAL, m_qtTag, m_classErrorMsg, CLASS_NAME); \
-    return JNI_FALSE; \
-}
-
-        //__android_log_print(ANDROID_LOG_FATAL, m_qtTag, m_methodErrorMsg, METHOD_NAME, METHOD_SIGNATURE);
-
     static QString textFromValue(QAccessibleInterface *iface)
     {
         QString valueStr;
@@ -557,7 +553,7 @@ if (!clazz) { \
         return true;
     }
 
-    static JNINativeMethod methods[] = {
+    static const JNINativeMethod methods[] = {
         {"setActive","(Z)V",(void*)setActive},
         {"childIdListForAccessibleObject", "(I)[I", (jintArray)childIdListForAccessibleObject},
         {"parentId", "(I)I", (void*)parentId},
@@ -577,13 +573,10 @@ if (!clazz) { \
         return false; \
     }
 
-    bool registerNatives(JNIEnv *env)
+    bool registerNatives(QJniEnvironment &env)
     {
-        jclass clazz;
-        FIND_AND_CHECK_CLASS("org/qtproject/qt/android/accessibility/QtNativeAccessibility");
-        jclass appClass = static_cast<jclass>(env->NewGlobalRef(clazz));
-
-        if (env->RegisterNatives(appClass, methods, sizeof(methods) / sizeof(methods[0])) < 0) {
+        if (!env.registerNativeMethods("org/qtproject/qt/android/accessibility/QtNativeAccessibility",
+                                      methods, sizeof(methods) / sizeof(methods[0]))) {
             __android_log_print(ANDROID_LOG_FATAL,"Qt A11y", "RegisterNatives failed");
             return false;
         }

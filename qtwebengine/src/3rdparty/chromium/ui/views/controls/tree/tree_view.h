@@ -180,14 +180,12 @@ class VIEWS_EXPORT TreeView : public View,
   bool HandleAccessibleAction(const ui::AXActionData& action_data) override;
 
   // TreeModelObserver overrides:
-  void TreeNodesAdded(ui::TreeModel* model,
-                      ui::TreeModelNode* parent,
-                      size_t start,
-                      size_t count) override;
-  void TreeNodesRemoved(ui::TreeModel* model,
-                        ui::TreeModelNode* parent,
-                        size_t start,
-                        size_t count) override;
+  void TreeNodeAdded(ui::TreeModel* model,
+                     ui::TreeModelNode* parent,
+                     size_t index) override;
+  void TreeNodeRemoved(ui::TreeModel* model,
+                       ui::TreeModelNode* parent,
+                       size_t index) override;
   void TreeNodeChanged(ui::TreeModel* model,
                        ui::TreeModelNode* model_node) override;
 
@@ -503,7 +501,7 @@ class VIEWS_EXPORT TreeView : public View,
   bool editable_ = true;
 
   // The controller.
-  raw_ptr<TreeViewController> controller_ = nullptr;
+  raw_ptr<TreeViewController, DanglingUntriaged> controller_ = nullptr;
 
   // Whether or not the root is shown in the tree.
   bool root_shown_ = true;

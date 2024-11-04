@@ -41,7 +41,6 @@
 #include "zunitc/zunitc.h"
 
 #include "zuc_base_logger.h"
-#include "zuc_collector.h"
 #include "zuc_context.h"
 #include "zuc_event_listener.h"
 #include "zuc_junit_reporter.h"
@@ -82,9 +81,7 @@ static struct zuc_context g_ctx = {
 	.fatal = false,
 	.repeat = 0,
 	.random = 0,
-	.spawn = true,
 	.break_on_failure = false,
-	.fds = {-1, -1},
 
 	.listeners = NULL,
 
@@ -139,12 +136,6 @@ void
 zuc_set_random(int random)
 {
 	g_ctx.random = random;
-}
-
-void
-zuc_set_spawn(bool spawn)
-{
-	g_ctx.spawn = spawn;
 }
 
 void
@@ -525,7 +516,6 @@ zuc_initialize(int *argc, char *argv[], bool *help_flagged)
 {
 	int rc = EXIT_FAILURE;
 	bool opt_help = false;
-	bool opt_nofork = false;
 	bool opt_list = false;
 	int opt_repeat = 0;
 	int opt_random = 0;
@@ -537,7 +527,6 @@ zuc_initialize(int *argc, char *argv[], bool *help_flagged)
 	int argc_in = *argc;
 
 	const struct weston_option options[] = {
-		{ WESTON_OPTION_BOOLEAN, "zuc-nofork", 0, &opt_nofork },
 		{ WESTON_OPTION_BOOLEAN, "zuc-list-tests", 0, &opt_list },
 		{ WESTON_OPTION_INTEGER, "zuc-repeat", 0, &opt_repeat },
 		{ WESTON_OPTION_INTEGER, "zuc-random", 0, &opt_random },
@@ -633,7 +622,6 @@ zuc_initialize(int *argc, char *argv[], bool *help_flagged)
 		       "  --zuc-break-on-failure\n"
 		       "  --zuc-filter=FILTER\n"
 		       "  --zuc-list-tests\n"
-		       "  --zuc-nofork\n"
 #if ENABLE_JUNIT_XML
 		       "  --zuc-output-xml\n"
 #endif
@@ -650,7 +638,6 @@ zuc_initialize(int *argc, char *argv[], bool *help_flagged)
 	} else {
 		zuc_set_repeat(opt_repeat);
 		zuc_set_random(opt_random);
-		zuc_set_spawn(!opt_nofork);
 		zuc_set_break_on_failure(opt_break_on_failure);
 		zuc_set_output_junit(opt_junit);
 		rc = EXIT_SUCCESS;
@@ -937,11 +924,6 @@ zuc_cleanup(void)
 
 	free(g_ctx.filter);
 	g_ctx.filter = 0;
-	for (i = 0; i < 2; ++i)
-		if (g_ctx.fds[i] != -1) {
-			close(g_ctx.fds[i]);
-			g_ctx.fds[i] = -1;
-		}
 
 	if (g_ctx.listeners) {
 		struct zuc_slinked *curr = g_ctx.listeners;
@@ -1018,107 +1000,8 @@ zuc_list_tests(void)
 }
 
 static void
-spawn_test(struct zuc_test *test, void *test_data,
-	   void (*cleanup_fn)(void *data), void *cleanup_data)
-{
-	pid_t pid = -1;
-
-	if (!test || (!test->fn && !test->fn_f))
-		return;
-
-	if (pipe2(g_ctx.fds, O_CLOEXEC)) {
-		printf("%s:%d: error: Unable to create pipe: %d\n",
-		       __FILE__, __LINE__, errno);
-		mark_failed(test, ZUC_CHECK_ERROR);
-		return;
-	}
-
-	fflush(NULL); /* important. avoid duplication of output */
-	pid = fork();
-	switch (pid) {
-	case -1: /* Error forking */
-		printf("%s:%d: error: Problem with fork: %d\n",
-		       __FILE__, __LINE__, errno);
-		mark_failed(test, ZUC_CHECK_ERROR);
-		close(g_ctx.fds[0]);
-		g_ctx.fds[0] = -1;
-		close(g_ctx.fds[1]);
-		g_ctx.fds[1] = -1;
-		break;
-	case 0: { /* child */
-		int rc = EXIT_SUCCESS;
-		close(g_ctx.fds[0]);
-		g_ctx.fds[0] = -1;
-
-		if (test->fn_f)
-			test->fn_f(test_data);
-		else
-			test->fn();
-
-		if (test_has_failure(test))
-			rc = EXIT_FAILURE;
-		else if (test_has_skip(test))
-			rc = ZUC_EXIT_SKIP;
-
-		/* Avoid confusing memory tools like valgrind */
-		if (cleanup_fn)
-			cleanup_fn(cleanup_data);
-
-		zuc_cleanup();
-		exit(rc);
-	}
-	default: { /* parent */
-		ssize_t rc = 0;
-		siginfo_t info = {};
-
-		close(g_ctx.fds[1]);
-		g_ctx.fds[1] = -1;
-
-		do {
-			rc = zuc_process_message(g_ctx.curr_test,
-						 g_ctx.fds[0]);
-		} while (rc > 0);
-		close(g_ctx.fds[0]);
-		g_ctx.fds[0] = -1;
-
-		if (waitid(P_ALL, 0, &info, WEXITED)) {
-			printf("%s:%d: error: waitid failed. (%d)\n",
-			       __FILE__, __LINE__, errno);
-			mark_failed(test, ZUC_CHECK_ERROR);
-		} else {
-			switch (info.si_code) {
-			case CLD_EXITED: {
-				int exit_code = info.si_status;
-				switch(exit_code) {
-				case EXIT_SUCCESS:
-					break;
-				case ZUC_EXIT_SKIP:
-					if (!test_has_skip(g_ctx.curr_test) &&
-					    !test_has_failure(g_ctx.curr_test))
-						ZUC_SKIP("Child exited SKIP");
-					break;
-				default:
-					/* unexpected failure */
-					if (!test_has_failure(g_ctx.curr_test))
-						ZUC_ASSERT_EQ(0, exit_code);
-				}
-				break;
-			}
-			case CLD_KILLED:
-			case CLD_DUMPED:
-				printf("%s:%d: error: signaled: %d\n",
-				       __FILE__, __LINE__, info.si_status);
-				mark_failed(test, ZUC_CHECK_ERROR);
-				break;
-			}
-		}
-	}
-	}
-}
-
-static void
 run_single_test(struct zuc_test *test,const struct zuc_fixture *fxt,
-		void *case_data, bool spawn)
+		void *case_data)
 {
 	long elapsed = 0;
 	struct timespec begin;
@@ -1146,15 +1029,10 @@ run_single_test(struct zuc_test *test,const struct zuc_fixture *fxt,
 
 	/* Need to re-check these, as fixtures might have changed test state. */
 	if (!test->fatal && !test->skipped) {
-		if (spawn) {
-			spawn_test(test, test_data,
-				   cleanup_fn, cleanup_data);
-		} else {
-			if (test->fn_f)
-				test->fn_f(test_data);
-			else
-				test->fn();
-		}
+		if (test->fn_f)
+			test->fn_f(test_data);
+		else
+			test->fn();
 	}
 
 	clock_gettime(TARGET_TIMER, &end);
@@ -1204,8 +1082,7 @@ run_single_case(struct zuc_case *test_case)
 			if (curr->disabled) {
 				dispatch_test_disabled(&g_ctx, curr);
 			} else {
-				run_single_test(curr, fxt, case_data,
-						g_ctx.spawn);
+				run_single_test(curr, fxt, case_data);
 				if (curr->skipped)
 					test_case->skipped++;
 				if (curr->failed)
@@ -1313,7 +1190,6 @@ zucimpl_run_tests(void)
 		return EXIT_FAILURE;
 
 	if (g_ctx.listeners == NULL) {
-		zuc_add_event_listener(zuc_collector_create(&(g_ctx.fds[1])));
 		zuc_add_event_listener(zuc_base_logger_create());
 		if (g_ctx.output_junit)
 			zuc_add_event_listener(zuc_junit_reporter_create());

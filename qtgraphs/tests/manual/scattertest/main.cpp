@@ -29,18 +29,18 @@ int main(int argc, char **argv)
     QVBoxLayout *vLayout2 = new QVBoxLayout();
     QVBoxLayout *vLayout3 = new QVBoxLayout();
 
-    Q3DScatter *chart = new Q3DScatter();
-    QSize screenSize = chart->screen()->size();
+    Q3DScatter *graph = new Q3DScatter();
+    QSize screenSize = graph->screen()->size();
 
-    chart->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 2));
-    chart->setMaximumSize(screenSize);
-    chart->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    chart->setFocusPolicy(Qt::StrongFocus);
-    chart->setResizeMode(QQuickWidget::SizeRootObjectToView);
+    graph->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 2));
+    graph->setMaximumSize(screenSize);
+    graph->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    graph->setFocusPolicy(Qt::StrongFocus);
+    graph->setResizeMode(QQuickWidget::SizeRootObjectToView);
 
     widget->setWindowTitle(QStringLiteral("values of some things in something"));
 
-    hLayout->addWidget(chart, 1);
+    hLayout->addWidget(graph, 1);
     hLayout->addLayout(vLayout);
     hLayout->addLayout(vLayout2);
     hLayout->addLayout(vLayout3);
@@ -58,7 +58,7 @@ int main(int argc, char **argv)
     cameraButton->setText(QStringLiteral("Change camera preset"));
 
     QPushButton *clearButton = new QPushButton(widget);
-    clearButton->setText(QStringLiteral("Clear chart"));
+    clearButton->setText(QStringLiteral("Clear graph"));
 
     QPushButton *resetButton = new QPushButton(widget);
     resetButton->setText(QStringLiteral("Reset axes"));
@@ -230,9 +230,9 @@ int main(int argc, char **argv)
     horizontalAspectRatioSlider->setValue(0);
     horizontalAspectRatioSlider->setMaximum(300);
 
-    QCheckBox *optimizationStaticCB = new QCheckBox(widget);
-    optimizationStaticCB->setText(QStringLiteral("Static optimization"));
-    optimizationStaticCB->setChecked(false);
+    QCheckBox *optimizationLegacyCB = new QCheckBox(widget);
+    optimizationLegacyCB->setText(QStringLiteral("Legacy optimization"));
+    optimizationLegacyCB->setChecked(false);
 
     QCheckBox *orthoCB = new QCheckBox(widget);
     orthoCB->setText(QStringLiteral("Orthographic projection"));
@@ -285,6 +285,32 @@ int main(int argc, char **argv)
     marginSlider->setValue(-1);
     marginSlider->setMaximum(100);
 
+    QSlider *xSegmentSlider = new QSlider(Qt::Horizontal, widget);
+    xSegmentSlider->setMinimum(1);
+    xSegmentSlider->setValue(2);
+    xSegmentSlider->setMaximum(10);
+    QSlider *ySegmentSlider = new QSlider(Qt::Horizontal, widget);
+    ySegmentSlider->setMinimum(1);
+    ySegmentSlider->setValue(2);
+    ySegmentSlider->setMaximum(10);
+    QSlider *zSegmentSlider = new QSlider(Qt::Horizontal, widget);
+    zSegmentSlider->setMinimum(1);
+    zSegmentSlider->setValue(2);
+    zSegmentSlider->setMaximum(10);
+
+    QSlider *xSubsegmentSlider = new QSlider(Qt::Horizontal, widget);
+    xSubsegmentSlider->setMinimum(1);
+    xSubsegmentSlider->setValue(2);
+    xSubsegmentSlider->setMaximum(10);
+    QSlider *ySubsegmentSlider = new QSlider(Qt::Horizontal, widget);
+    ySubsegmentSlider->setMinimum(1);
+    ySubsegmentSlider->setValue(2);
+    ySubsegmentSlider->setMaximum(10);
+    QSlider *zSubsegmentSlider = new QSlider(Qt::Horizontal, widget);
+    zSubsegmentSlider->setMinimum(1);
+    zSubsegmentSlider->setValue(2);
+    zSubsegmentSlider->setMaximum(10);
+
     vLayout->addWidget(themeButton, 0, Qt::AlignTop);
     vLayout->addWidget(labelButton, 0, Qt::AlignTop);
     vLayout->addWidget(styleButton, 0, Qt::AlignTop);
@@ -336,7 +362,7 @@ int main(int argc, char **argv)
     vLayout2->addWidget(new QLabel(QStringLiteral("Adjust horizontal aspect ratio")));
     vLayout2->addWidget(horizontalAspectRatioSlider, 1, Qt::AlignTop);
 
-    vLayout3->addWidget(optimizationStaticCB);
+    vLayout3->addWidget(optimizationLegacyCB);
     vLayout3->addWidget(orthoCB);
     vLayout3->addWidget(polarCB);
     vLayout3->addWidget(axisTitlesVisibleCB);
@@ -352,7 +378,17 @@ int main(int argc, char **argv)
     vLayout3->addWidget(new QLabel(QStringLiteral("Adjust margin")), 0, Qt::AlignTop);
     vLayout3->addWidget(marginSlider, 1, Qt::AlignTop);
 
-    ScatterDataModifier *modifier = new ScatterDataModifier(chart);
+    vLayout3->addWidget(new QLabel(QStringLiteral("Adjust X-axis segments")), 0, Qt::AlignTop);
+    vLayout3->addWidget(xSegmentSlider, 1, Qt::AlignTop);
+    vLayout3->addWidget(xSubsegmentSlider, 1, Qt::AlignTop);
+    vLayout3->addWidget(new QLabel(QStringLiteral("Adjust Y-axis segments")), 0, Qt::AlignTop);
+    vLayout3->addWidget(ySegmentSlider, 1, Qt::AlignTop);
+    vLayout3->addWidget(ySubsegmentSlider, 1, Qt::AlignTop);
+    vLayout3->addWidget(new QLabel(QStringLiteral("Adjust Z-axis segments")), 0, Qt::AlignTop);
+    vLayout3->addWidget(zSegmentSlider, 1, Qt::AlignTop);
+    vLayout3->addWidget(zSubsegmentSlider, 1, Qt::AlignTop);
+
+    ScatterDataModifier *modifier = new ScatterDataModifier(graph);
 
     QObject::connect(fontSizeSlider, &QSlider::valueChanged, modifier,
                      &ScatterDataModifier::changeFontSize);
@@ -391,7 +427,9 @@ int main(int argc, char **argv)
                      &ScatterDataModifier::addSeries);
     QObject::connect(removeSeriesButton, &QPushButton::clicked, modifier,
                      &ScatterDataModifier::removeSeries);
-    QObject::connect(toggleSeriesVisibilityButton, &QPushButton::clicked, modifier,
+    QObject::connect(toggleSeriesVisibilityButton,
+                     &QPushButton::clicked,
+                     modifier,
                      &ScatterDataModifier::toggleSeriesVisibility);
     QObject::connect(changeSeriesNameButton, &QPushButton::clicked, modifier,
                      &ScatterDataModifier::changeSeriesName);
@@ -414,7 +452,9 @@ int main(int argc, char **argv)
 
     QObject::connect(shadowQuality, SIGNAL(currentIndexChanged(int)), modifier,
                      SLOT(changeShadowQuality(int)));
-    QObject::connect(modifier, &ScatterDataModifier::shadowQualityChanged, shadowQuality,
+    QObject::connect(modifier,
+                     &ScatterDataModifier::shadowQualityChanged,
+                     shadowQuality,
                      &QComboBox::setCurrentIndex);
     QObject::connect(fontList, &QFontComboBox::currentFontChanged, modifier,
                      &ScatterDataModifier::changeFont);
@@ -438,8 +478,10 @@ int main(int argc, char **argv)
                      &ScatterDataModifier::setMaxY);
     QObject::connect(maxSliderZ, &QSlider::valueChanged, modifier,
                      &ScatterDataModifier::setMaxZ);
-    QObject::connect(optimizationStaticCB, &QCheckBox::stateChanged, modifier,
-                     &ScatterDataModifier::toggleStatic);
+    QObject::connect(optimizationLegacyCB,
+                     &QCheckBox::stateChanged,
+                     modifier,
+                     &ScatterDataModifier::toggleLegacy);
     QObject::connect(orthoCB, &QCheckBox::stateChanged, modifier,
                      &ScatterDataModifier::toggleOrtho);
     QObject::connect(polarCB, &QCheckBox::stateChanged, modifier,
@@ -452,7 +494,9 @@ int main(int argc, char **argv)
                      &ScatterDataModifier::changeLabelRotation);
     QObject::connect(aspectRatioSlider, &QSlider::valueChanged, modifier,
                      &ScatterDataModifier::setAspectRatio);
-    QObject::connect(horizontalAspectRatioSlider, &QSlider::valueChanged, modifier,
+    QObject::connect(horizontalAspectRatioSlider,
+                     &QSlider::valueChanged,
+                     modifier,
                      &ScatterDataModifier::setHorizontalAspectRatio);
     QObject::connect(radialLabelSlider, &QSlider::valueChanged, modifier,
                      &ScatterDataModifier::changeRadialLabelOffset);
@@ -464,10 +508,34 @@ int main(int argc, char **argv)
                      &ScatterDataModifier::setCameraTargetZ);
     QObject::connect(marginSlider, &QSlider::valueChanged, modifier,
                      &ScatterDataModifier::setGraphMargin);
+    QObject::connect(xSegmentSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &ScatterDataModifier::setXAxisSegemntCount);
+    QObject::connect(ySegmentSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &ScatterDataModifier::setYAxisSegemntCount);
+    QObject::connect(zSegmentSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &ScatterDataModifier::setZAxisSegemntCount);
+    QObject::connect(xSubsegmentSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &ScatterDataModifier::setXAxisSubsegemntCount);
+    QObject::connect(ySubsegmentSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &ScatterDataModifier::setYAxisSubsegemntCount);
+    QObject::connect(zSubsegmentSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &ScatterDataModifier::setZAxisSubsegemntCount);
 
     modifier->setFpsLabel(fpsLabel);
 
-    chart->setGeometry(QRect(0, 0, 800, 800));
+    graph->setGeometry(QRect(0, 0, 800, 800));
 
     modifier->start();
     //modifier->renderToImage(); // Initial hidden render

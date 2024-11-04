@@ -123,8 +123,7 @@ export class HistorySyncedDeviceCardElement extends PolymerElement {
     browserService.recordHistogram(
         SYNCED_TABS_HISTOGRAM_NAME, SyncedTabsHistogram.LINK_CLICKED,
         SyncedTabsHistogram.LIMIT);
-    browserService.openForeignSessionTab(
-        this.sessionTag, tab.windowId, tab.sessionId, e);
+    browserService.openForeignSessionTab(this.sessionTag, tab.sessionId, e);
     e.preventDefault();
   }
 
@@ -180,7 +179,7 @@ export class HistorySyncedDeviceCardElement extends PolymerElement {
                     loadTimeData.getString('expandSessionButton');
   }
 
-  private onMenuButtonTap_(e: Event) {
+  private onMenuButtonClick_(e: Event) {
     this.fire_('synced-device-card-open-menu', {
       target: e.target,
       tag: this.sessionTag,

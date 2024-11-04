@@ -21,18 +21,15 @@ SafeWebBundleParser::SafeWebBundleParser(const absl::optional<GURL>& base_url)
 SafeWebBundleParser::~SafeWebBundleParser() = default;
 
 base::File::Error SafeWebBundleParser::OpenFile(base::File file) {
-  DCHECK(disconnected_);
-
   if (!file.IsValid())
     return file.error_details();
 
-  GetFactory()->GetParserForFile(parser_.BindNewPipeAndPassReceiver(),
-                                 base_url_, std::move(file));
-  parser_.set_disconnect_handler(base::BindOnce(
-      &SafeWebBundleParser::OnDisconnect, base::Unretained(this)));
-
-  disconnected_ = false;
-
+  mojo::PendingRemote<web_package::mojom::BundleDataSource>
+      file_data_source_pending_remote;
+  GetFactory()->BindFileDataSource(
+      file_data_source_pending_remote.InitWithNewPipeAndPassReceiver(),
+      std::move(file));
+  OpenDataSource(std::move(file_data_source_pending_remote));
   return base::File::FILE_OK;
 }
 
@@ -65,7 +62,7 @@ void SafeWebBundleParser::ParseIntegrityBlock(
 }
 
 void SafeWebBundleParser::ParseMetadata(
-    int64_t offset,
+    absl::optional<uint64_t> offset,
     web_package::mojom::WebBundleParser::ParseMetadataCallback callback) {
   // This method is designed to be called once. So, allowing only once
   // simultaneous request is fine enough.
@@ -78,7 +75,7 @@ void SafeWebBundleParser::ParseMetadata(
     return;
   }
   metadata_callback_ = std::move(callback);
-  parser_->ParseMetadata(offset,
+  parser_->ParseMetadata(std::move(offset),
                          base::BindOnce(&SafeWebBundleParser::OnMetadataParsed,
                                         base::Unretained(this)));
 }

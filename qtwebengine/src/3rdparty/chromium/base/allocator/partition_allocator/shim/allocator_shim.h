@@ -8,10 +8,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "base/allocator/partition_alloc_features.h"
+#include "base/allocator/partition_allocator/partition_alloc_base/component_export.h"
+#include "base/allocator/partition_allocator/partition_alloc_base/types/strong_alias.h"
 #include "base/allocator/partition_allocator/partition_alloc_buildflags.h"
-#include "base/base_export.h"
-#include "base/types/strong_alias.h"
+#include "base/allocator/partition_allocator/tagging.h"
 #include "build/build_config.h"
 
 #if BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) && BUILDFLAG(USE_STARSCAN)
@@ -141,74 +141,96 @@ struct AllocatorDispatch {
 
 // When true makes malloc behave like new, w.r.t calling the new_handler if
 // the allocation fails (see set_new_mode() in Windows).
-BASE_EXPORT void SetCallNewHandlerOnMallocFailure(bool value);
+PA_COMPONENT_EXPORT(PARTITION_ALLOC)
+void SetCallNewHandlerOnMallocFailure(bool value);
 
 // Allocates |size| bytes or returns nullptr. It does NOT call the new_handler,
 // regardless of SetCallNewHandlerOnMallocFailure().
-BASE_EXPORT void* UncheckedAlloc(size_t size);
+PA_COMPONENT_EXPORT(PARTITION_ALLOC) void* UncheckedAlloc(size_t size);
 
 // Frees memory allocated with UncheckedAlloc().
-BASE_EXPORT void UncheckedFree(void* ptr);
+PA_COMPONENT_EXPORT(PARTITION_ALLOC) void UncheckedFree(void* ptr);
 
 // Inserts |dispatch| in front of the allocator chain. This method is
 // thread-safe w.r.t concurrent invocations of InsertAllocatorDispatch().
 // The callers have responsibility for inserting a single dispatch no more
 // than once.
-BASE_EXPORT void InsertAllocatorDispatch(AllocatorDispatch* dispatch);
+PA_COMPONENT_EXPORT(PARTITION_ALLOC)
+void InsertAllocatorDispatch(AllocatorDispatch* dispatch);
 
 // Test-only. Rationale: (1) lack of use cases; (2) dealing safely with a
 // removal of arbitrary elements from a singly linked list would require a lock
 // in malloc(), which we really don't want.
-BASE_EXPORT void RemoveAllocatorDispatchForTesting(AllocatorDispatch* dispatch);
+PA_COMPONENT_EXPORT(PARTITION_ALLOC)
+void RemoveAllocatorDispatchForTesting(AllocatorDispatch* dispatch);
 
 #if BUILDFLAG(IS_APPLE)
 // The fallback function to be called when try_free_default_function receives a
 // pointer which doesn't belong to the allocator.
-BASE_EXPORT void TryFreeDefaultFallbackToFindZoneAndFree(void* ptr);
+PA_COMPONENT_EXPORT(PARTITION_ALLOC)
+void TryFreeDefaultFallbackToFindZoneAndFree(void* ptr);
 #endif  // BUILDFLAG(IS_APPLE)
-
-#if BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) && BUILDFLAG(IS_WIN)
-// Configures the allocator for the caller's allocation domain. Allocations that
-// take place prior to this configuration step will succeed, but will not
-// benefit from its one-time mitigations. As such, this function must be called
-// as early as possible during startup.
-BASE_EXPORT void ConfigurePartitionAlloc();
-#endif  // BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(IS_APPLE)
 #if BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
-BASE_EXPORT void InitializeDefaultAllocatorPartitionRoot();
+PA_COMPONENT_EXPORT(PARTITION_ALLOC)
+void InitializeDefaultAllocatorPartitionRoot();
 bool IsDefaultAllocatorPartitionRootInitialized();
 #endif  // BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 // On macOS, the allocator shim needs to be turned on during runtime.
-BASE_EXPORT void InitializeAllocatorShim();
+PA_COMPONENT_EXPORT(PARTITION_ALLOC) void InitializeAllocatorShim();
 #endif  // BUILDFLAG(IS_APPLE)
 
 #if BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
-BASE_EXPORT void EnablePartitionAllocMemoryReclaimer();
+PA_COMPONENT_EXPORT(PARTITION_ALLOC) void EnablePartitionAllocMemoryReclaimer();
 
-using EnableBrp = base::StrongAlias<class EnableBrpTag, bool>;
-using EnableBrpZapping = base::StrongAlias<class EnableBrpZappingTag, bool>;
-using SplitMainPartition = base::StrongAlias<class SplitMainPartitionTag, bool>;
-using UseDedicatedAlignedPartition =
-    base::StrongAlias<class UseDedicatedAlignedPartitionTag, bool>;
-using AddDummyRefCount = base::StrongAlias<class AddDummyRefCountTag, bool>;
-using AlternateBucketDistribution =
-    base::features::AlternateBucketDistributionMode;
+using EnableBrp =
+    partition_alloc::internal::base::StrongAlias<class EnableBrpTag, bool>;
+using EnableMemoryTagging =
+    partition_alloc::internal::base::StrongAlias<class EnableMemoryTaggingTag,
+                                                 bool>;
+using SplitMainPartition =
+    partition_alloc::internal::base::StrongAlias<class SplitMainPartitionTag,
+                                                 bool>;
+using UseDedicatedAlignedPartition = partition_alloc::internal::base::
+    StrongAlias<class UseDedicatedAlignedPartitionTag, bool>;
+enum class BucketDistribution : uint8_t { kNeutral, kDenser };
 
 // If |thread_cache_on_non_quarantinable_partition| is specified, the
 // thread-cache will be enabled on the non-quarantinable partition. The
 // thread-cache on the main (malloc) partition will be disabled.
-BASE_EXPORT void ConfigurePartitions(
+PA_COMPONENT_EXPORT(PARTITION_ALLOC)
+void ConfigurePartitions(
     EnableBrp enable_brp,
-    EnableBrpZapping enable_brp_zapping,
+    EnableMemoryTagging enable_memory_tagging,
+    partition_alloc::TagViolationReportingMode memory_tagging_reporting_mode,
     SplitMainPartition split_main_partition,
     UseDedicatedAlignedPartition use_dedicated_aligned_partition,
-    AddDummyRefCount add_dummy_ref_count,
-    AlternateBucketDistribution use_alternate_bucket_distribution);
+    size_t ref_count_size,
+    BucketDistribution distribution);
+
+// If |thread_cache_on_non_quarantinable_partition| is specified, the
+// thread-cache will be enabled on the non-quarantinable partition. The
+// thread-cache on the main (malloc) partition will be disabled.
+// This is the deprecated version of ConfigurePartitions, kept for compatibility
+// with pdfium's test setup, see
+// third_party/pdfium/testing/allocator_shim_config.cpp.
+// TODO(crbug.com/1137393): Remove this functions once pdfium has switched to
+// the new version.
+PA_COMPONENT_EXPORT(PARTITION_ALLOC)
+void ConfigurePartitions(
+    EnableBrp enable_brp,
+    EnableMemoryTagging enable_memory_tagging,
+    SplitMainPartition split_main_partition,
+    UseDedicatedAlignedPartition use_dedicated_aligned_partition,
+    size_t ref_count_size,
+    BucketDistribution distribution);
+
+PA_COMPONENT_EXPORT(PARTITION_ALLOC) uint32_t GetMainPartitionRootExtrasSize();
 
 #if BUILDFLAG(USE_STARSCAN)
-BASE_EXPORT void EnablePCScan(partition_alloc::internal::PCScan::InitConfig);
+PA_COMPONENT_EXPORT(PARTITION_ALLOC)
+void EnablePCScan(partition_alloc::internal::PCScan::InitConfig);
 #endif
 #endif  // BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 

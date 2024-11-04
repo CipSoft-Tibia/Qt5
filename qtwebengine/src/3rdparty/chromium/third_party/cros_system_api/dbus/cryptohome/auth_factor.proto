@@ -161,18 +161,39 @@ message PinMetadata {
   // CRYPTOHOME_ERROR_TPM_DEFEND_LOCK error.
   // Currently, such locking is supported only for keys with
   // |low_entropy_credential| policy set to true,
-  // This field is ignored when registering a new key.
+  // This is populated by cryptohome,  should be omitted in any Add/Update
+  // request. And it will be ignored when present in any Add/Update request.
   bool auth_locked = 1;
 }
 
-message CryptohomeRecoveryMetadata {}
+message CryptohomeRecoveryMetadata {
+  // Public key of the mediator for Cryptohome recovery flow.
+  bytes mediator_pub_key = 1;
+}
 
 message KioskMetadata {}
 
 message SmartCardMetadata {
   // Specifies the key which is asked to sign the data. Contains the DER-encoded
   // blob of the X.509 Subject Public Key Info.
+  // This is supplied by client, updated through Add/Update requests.
   bytes public_key_spki_der = 1;
+}
+
+enum LockoutPolicy {
+  // Default value.
+  LOCKOUT_POLICY_UNKNOWN = 0;
+  // Ideally this will be default, but should be explicitly set for an
+  // AuthFactor where multiple attempts are allowed without any repercussions.
+  LOCKOUT_POLICY_NONE = 1;
+  // ATTEMPT_LIMITED is for an AuthFactors that is not available for a
+  // user x number of wrong attempts. For example, for PIN we lockout
+  // user from PIN usage after five attempts.
+  LOCKOUT_POLICY_ATTEMPT_LIMITED = 2;
+  // TIME_LIMITED is when we locked out user from using a certain AuthFactor
+  // for a particular time after particular number of wrong attempts.
+  // The policy specifics itself can be custom defined by an AuthFactor.
+  LOCKOUT_POLICY_TIME_LIMITED = 3;
 }
 
 message CommonMetadata {
@@ -181,11 +202,25 @@ message CommonMetadata {
   // /etc/lsb-release whenever AuthFactor is updated or first persisted.
   // See:https://chromium.googlesource.com/chromiumos/docs/+/HEAD/os_config.md
   // For example: "11012.0.2018_08_28_1422" could be returned as part of this.
+  // This is populated by cryptohome,  should be omitted in any Add/Update
+  // request. And it will be ignored when present in any Add/Update request.
   string chromeos_version_last_updated = 1;
   // This version number will be supplied by chrome when it calls AddAuthFactor
   // or UpdateAuthFactor.
   // Note: The format of this version will be maintained by chrome.
+  // This is supplied by client, updated through Add/Update requests.
   string chrome_version_last_updated = 2;
+  // This defines how lockout work for each factor. The non-default value is
+  // currently set only for PIN AuthFactor. For pins, if the feature
+  // CrosLateBCrOSLateBootEnableModernPin is enabled, then AddAuthFactor for PIN
+  // will expect LockoutPolicy::LOCKOUT_POLICY_TIME_LIMITED, else
+  // LockoutPolicy::LOCKOUT_POLICY_ATTEMPT_LIMITED. If anything else is provided
+  // then AuthFactor would return CRYPTOHOME_INVALID_ARGUMENT error.
+  // This is supplied by client, updated through Add/Update requests.
+  LockoutPolicy lockout_policy = 3;
+  // User supplied name of each auth factor.
+  // This is supplied by client, updated through Add/Update requests.
+  string user_specified_name = 4;
 }
 
 message LegacyFingerprintMetadata {}

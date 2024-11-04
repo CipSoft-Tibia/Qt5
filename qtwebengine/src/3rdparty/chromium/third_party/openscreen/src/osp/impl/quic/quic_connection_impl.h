@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 
 #include <list>
 #include <memory>
+#include <vector>
 
 #include "osp/impl/quic/quic_connection.h"
 #include "platform/api/udp_socket.h"
@@ -19,8 +20,7 @@
 #include "third_party/chromium_quic/src/net/third_party/quic/quartc/quartc_session.h"
 #include "third_party/chromium_quic/src/net/third_party/quic/quartc/quartc_stream.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 class QuicConnectionFactoryImpl;
 
@@ -99,7 +99,6 @@ class QuicConnectionImpl final : public QuicConnection,
   std::vector<QuicStream*> streams_;
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_IMPL_QUIC_QUIC_CONNECTION_IMPL_H_

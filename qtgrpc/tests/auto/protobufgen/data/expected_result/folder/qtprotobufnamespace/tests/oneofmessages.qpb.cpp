@@ -2,6 +2,7 @@
 
 #include "qtprotobufnamespace/tests/oneofmessages.qpb.h"
 #include <QtProtobuf/qprotobufserializer.h>
+#include <cmath>
 
 namespace qtprotobufnamespace::tests {
 
@@ -474,6 +475,9 @@ void OneofComplexMessage::setTestOneofComplexField(const ComplexMessage &testOne
 
 void OneofComplexMessage::setTestOneofComplexField_p(ComplexMessage *testOneofComplexField)
 {
+    if (dptr->m_testOneof.holdsField(3) &&
+        dptr->m_testOneof.value<ComplexMessage>() == testOneofComplexField)
+        return;
     const ComplexMessage &value = *testOneofComplexField;
     if (!dptr->m_testOneof.isEqual(value, 3)) {
         dptr.detach();
@@ -492,6 +496,9 @@ void OneofComplexMessage::setTestOneofSecondComplexField(const ComplexMessage &t
 
 void OneofComplexMessage::setTestOneofSecondComplexField_p(ComplexMessage *testOneofSecondComplexField)
 {
+    if (dptr->m_testOneof.holdsField(4) &&
+        dptr->m_testOneof.value<ComplexMessage>() == testOneofSecondComplexField)
+        return;
     const ComplexMessage &value = *testOneofSecondComplexField;
     if (!dptr->m_testOneof.isEqual(value, 4)) {
         dptr.detach();
@@ -526,6 +533,9 @@ void OneofComplexMessage::setSecondComplexField(const ComplexMessage &secondComp
 
 void OneofComplexMessage::setSecondComplexField_p(ComplexMessage *secondComplexField)
 {
+    if (dptr->m_secondOneof.holdsField(5) &&
+        dptr->m_secondOneof.value<ComplexMessage>() == secondComplexField)
+        return;
     const ComplexMessage &value = *secondComplexField;
     if (!dptr->m_secondOneof.isEqual(value, 5)) {
         dptr.detach();
@@ -544,6 +554,9 @@ void OneofComplexMessage::setSecondSecondComplexField(const ComplexMessage &seco
 
 void OneofComplexMessage::setSecondSecondComplexField_p(ComplexMessage *secondSecondComplexField)
 {
+    if (dptr->m_secondOneof.holdsField(6) &&
+        dptr->m_secondOneof.value<ComplexMessage>() == secondSecondComplexField)
+        return;
     const ComplexMessage &value = *secondSecondComplexField;
     if (!dptr->m_secondOneof.isEqual(value, 6)) {
         dptr.detach();

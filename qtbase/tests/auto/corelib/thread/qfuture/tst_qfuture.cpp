@@ -1,5 +1,8 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #define QFUTURE_TEST
 
 #include <QCoreApplication>
@@ -3904,7 +3907,7 @@ void tst_QFuture::signalConnect()
     {
         SenderObject sender;
 
-#if defined(Q_CC_MSVC) && !defined(Q_CC_CLANG)
+#if defined(Q_CC_MSVC_ONLY) && (Q_CC_MSVC < 1940 || !defined(_DEBUG))
 #define EXPECT_FUTURE_CONNECT_FAIL() QEXPECT_FAIL("", "QTBUG-101761, test fails on Windows/MSVC", Continue)
 #else
         QTest::ignoreMessage(QtWarningMsg, "QObject::connect: signal not found in SenderObject");
@@ -3924,9 +3927,6 @@ void tst_QFuture::signalConnect()
 
 void tst_QFuture::waitForFinished()
 {
-#if !QT_CONFIG(cxx11_future)
-    QSKIP("This test requires QThread::create");
-#else
     QFutureInterface<void> fi;
     auto future = fi.future();
 
@@ -3947,7 +3947,6 @@ void tst_QFuture::waitForFinished()
 
     QVERIFY(waitingThread->wait());
     QVERIFY(waitingThread->isFinished());
-#endif
 }
 
 void tst_QFuture::rejectResultOverwrite_data()
@@ -4560,7 +4559,7 @@ void tst_QFuture::whenAllIteratorsWithFailed()
     p1.finish();
     QVERIFY(finished);
 #else
-    QSKIP("Exceptions are disabled, skipping the test")
+    QSKIP("Exceptions are disabled, skipping the test");
 #endif
 }
 
@@ -4625,6 +4624,9 @@ void testWhenAllDifferentTypes()
 
 void tst_QFuture::whenAllDifferentTypes()
 {
+#ifdef Q_OS_VXWORKS
+    QSKIP("std::variant implementation on VxWorks 24.03 is broken and doesn't work with duplicated types");
+#endif
     using Futures = std::variant<QFuture<int>, QFuture<int>, QFuture<void>>;
     testWhenAllDifferentTypes<QList<Futures>>();
     if (QTest::currentTestFailed())
@@ -4834,6 +4836,9 @@ void tst_QFuture::whenAnyIteratorsWithFailed()
 
 void tst_QFuture::whenAnyDifferentTypes()
 {
+#ifdef Q_OS_VXWORKS
+    QSKIP("std::variant implementation on VxWorks 24.03 is broken and doesn't work with duplicated types");
+#endif
     QPromise<int> pInt1;
     QPromise<int> pInt2;
     QPromise<void> pVoid;

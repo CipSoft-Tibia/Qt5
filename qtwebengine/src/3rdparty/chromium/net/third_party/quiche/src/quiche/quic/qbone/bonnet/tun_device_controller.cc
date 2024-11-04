@@ -9,14 +9,14 @@
 #include "absl/time/clock.h"
 #include "quiche/quic/platform/api/quic_logging.h"
 #include "quiche/quic/qbone/qbone_constants.h"
+#include "quiche/common/quiche_callbacks.h"
 
 ABSL_FLAG(bool, qbone_tun_device_replace_default_routing_rules, true,
           "If true, will define a rule that points packets sourced from the "
           "qbone interface to the qbone table. This is unnecessary in "
           "environments with no other ipv6 route.");
 
-ABSL_FLAG(int, qbone_route_init_cwnd,
-          quic::NetlinkInterface::kUnspecifiedInitCwnd,
+ABSL_FLAG(int, qbone_route_init_cwnd, 32,
           "If non-zero, will add initcwnd to QBONE routing rules.  Setting "
           "a value below 10 is dangerous and not recommended.");
 
@@ -169,8 +169,8 @@ QuicIpAddress TunDeviceController::current_address() {
 }
 
 void TunDeviceController::RegisterAddressUpdateCallback(
-    const std::function<void(QuicIpAddress)>& cb) {
-  address_update_cbs_.push_back(cb);
+    quiche::MultiUseCallback<void(QuicIpAddress)> cb) {
+  address_update_cbs_.push_back(std::move(cb));
 }
 
 }  // namespace quic

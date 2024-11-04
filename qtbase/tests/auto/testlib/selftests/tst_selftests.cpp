@@ -1,6 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/QCoreApplication>
 
@@ -699,7 +699,8 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
             || test == "benchliboptions"
             || test == "printdatatags"
             || test == "printdatatagswithglobaltags"
-            || test == "silent")
+            || test == "silent"
+            || test == "silent_fatal")
             return true;
 
         // These tests produce variable output (callgrind because of #if-ery,
@@ -764,11 +765,6 @@ void checkErrorOutput(const QString &test, const QByteArray &errorOutput)
         || test == "benchlibcallgrind")
         return;
 
-#ifdef Q_CC_MINGW
-    if (test == "silent") // calls qFatal()
-        return;
-#endif
-
 #ifdef Q_OS_WIN
     if (test == "crashes")
         return; // Complains about uncaught exception
@@ -782,12 +778,17 @@ void checkErrorOutput(const QString &test, const QByteArray &errorOutput)
     return; // Outputs "Received signal 6 (SIGABRT)"
 #endif
 
-#ifdef Q_OS_LINUX
-    if (test == "silent") {
+    if (test == "silent_fatal") {
+#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
+        // Under ASan, this test is not silent
+        return;
+#elif defined(Q_CC_MINGW)
+        // Originally QTBUG-29014 (I can't reproduce this -Thiago)
+        return;
+#endif
         if (QTestPrivate::isRunningArmOnX86())
             return;         // QEMU outputs to stderr about uncaught signals
     }
-#endif
 
     INFO(errorOutput.toStdString());
     REQUIRE(errorOutput.isEmpty());
@@ -927,7 +928,8 @@ static QProcessEnvironment testEnvironment()
     if (environment.isEmpty()) {
         const QProcessEnvironment systemEnvironment = QProcessEnvironment::systemEnvironment();
         const bool preserveLibPath = qEnvironmentVariableIsSet("QT_PRESERVE_TESTLIB_PATH");
-        foreach (const QString &key, systemEnvironment.keys()) {
+        const auto envKeys = systemEnvironment.keys();
+        for (const QString &key : envKeys) {
             const bool useVariable = key == "PATH" || key == "QT_QPA_PLATFORM"
                 || key == "ASAN_OPTIONS"
 #if defined(Q_OS_QNX)
@@ -974,7 +976,7 @@ TestProcessResult runTestProcess(const QString &test, const QStringList &argumen
     const bool expectedCrash = test == "assert" || test == "exceptionthrow"
         || test == "fetchbogus" || test == "crashedterminate"
         || test == "faildatatype" || test == "failfetchtype"
-        || test == "crashes" || test == "silent" || test == "watchdog";
+        || test == "crashes" || test == "silent_fatal" || test == "watchdog";
 
     if (expectedCrash) {
         environment.insert("QTEST_DISABLE_CORE_DUMP", "1");
@@ -1191,6 +1193,8 @@ TEST_CASE("All loggers can be enabled at the same time")
 SCENARIO("Test output of the loggers is as expected")
 {
     static QStringList tests = QString(QT_STRINGIFY(SUBPROGRAMS)).split(' ');
+    if (QString override = qEnvironmentVariable("TST_SELFTEST_SUBPROGRAMS"); !override.isEmpty())
+        tests = override.split(' ', Qt::SkipEmptyParts);
 
     auto logger = GENERATE(filter(isGenericCommandLineLogger, enums<QTestLog::LogMode>()));
 
@@ -1229,6 +1233,7 @@ SCENARIO("Exit code is as expected")
         { 0, "globaldata  testGlobal:global=true" },
         { 0, "globaldata  testGlobal:local=true" },
         { 0, "globaldata  testGlobal:global=true:local=true" },
+        { 0, "globaldata  testGlobal  -repeat  2" },
         { 1, "globaldata  testGlobal:local=true:global=true" },
         { 1, "globaldata  testGlobal:global=true:blah" },
         { 1, "globaldata  testGlobal:blah:local=true" },
@@ -1240,6 +1245,15 @@ SCENARIO("Exit code is as expected")
         { 1, "globaldata  testGlobal:blah         skipSingle:global=true:local=true" },
         { 1, "globaldata  testGlobal:global=true  skipSingle:blah" },
         { 2, "globaldata  testGlobal:blah         skipSingle:blue" },
+    // Passing -repeat argument
+        { 1, "pass  testNumber1  -repeat" },
+        { 0, "pass  testNumber1  -repeat  1" },
+        { 0, "pass  testNumber1  -repeat  1  -o  out.xml,xml" },
+        { 0, "pass  testNumber1  -repeat  2" },
+        { 0, "pass  testNumber1  -repeat  2  -o  -,txt" },
+        { 0, "pass  testNumber1  -repeat  2  -o  -,txt  -o  log.txt,txt" },
+        { 1, "pass  testNumber1  -repeat  2  -o  log.xml,xml" },
+        { 1, "pass  testNumber1  -repeat  2  -o  -,txt  -o  -,xml" },
     };
 
     size_t n_testCases = sizeof(testCases) / sizeof(*testCases);

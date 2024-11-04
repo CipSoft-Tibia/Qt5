@@ -4,11 +4,9 @@
 
 // @ts-nocheck This file is not checked by TypeScript as it has a lot of legacy code.
 import * as Platform from '../../core/platform/platform.js';
-import * as TestRunner from './TestRunner.js';
+import * as Root from '../../core/root/root.js';
 
-export {
-  TestRunner,
-};
+import * as TestRunner from './TestRunner.js';
 
 self.Platform = self.Platform || {};
 self.Platform.StringUtilities = Platform.StringUtilities;
@@ -51,7 +49,7 @@ function _setupTestHelpers(target) {
 }
 
 export async function _executeTestScript() {
-  const testScriptURL = /** @type {string} */ (Root.Runtime.queryParam('test'));
+  const testScriptURL = /** @type {string} */ (Root.Runtime.Runtime.queryParam('test'));
   if (TestRunner.isDebugTest()) {
     /* eslint-disable no-console */
     TestRunner.setInnerResult(console.log);
@@ -114,3 +112,6 @@ export class _TestObserver {
 }
 
 SDK.targetManager.observeTargets(new _TestObserver());
+
+const globalTestRunner = self.TestRunner;
+export {globalTestRunner as TestRunner};

@@ -24,13 +24,13 @@ QT_BEGIN_NAMESPACE
 QQuick3DParticleSpriteParticle::QQuick3DParticleSpriteParticle(QQuick3DNode *parent)
     : QQuick3DParticle(parent)
 {
-    m_connections.insert("maxAmount", QObject::connect(this, &QQuick3DParticle::maxAmountChanged, [this]() {
+    m_connections.insert("maxAmount", QObject::connect(this, &QQuick3DParticle::maxAmountChanged, this, [this]() {
         handleMaxAmountChanged(m_maxAmount);
     }));
-    m_connections.insert("system", QObject::connect(this, &QQuick3DParticle::systemChanged, [this]() {
+    m_connections.insert("system", QObject::connect(this, &QQuick3DParticle::systemChanged, this, [this]() {
         handleSystemChanged(system());
     }));
-    m_connections.insert("sortMode", QObject::connect(this, &QQuick3DParticle::sortModeChanged, [this]() {
+    m_connections.insert("sortMode", QObject::connect(this, &QQuick3DParticle::sortModeChanged, this, [this]() {
         markNodesDirty();
     }));
 }
@@ -766,7 +766,7 @@ void QQuick3DParticleSpriteParticle::qmlClearLights(QQmlListProperty<QQuick3DAbs
     for (const auto &light : std::as_const(self->m_lights)) {
         if (light->parentItem() == nullptr)
             QQuick3DObjectPrivate::get(light)->derefSceneManager();
-        light->disconnect(self, SLOT(onLightDestroyed(QObject*)));
+        disconnect(light, &QQuick3DParticleSpriteParticle::destroyed, self, &QQuick3DParticleSpriteParticle::onLightDestroyed);
     }
     self->m_lights.clear();
     self->updateFeatureLevel();

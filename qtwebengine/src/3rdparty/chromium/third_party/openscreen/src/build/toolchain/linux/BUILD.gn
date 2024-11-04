@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -35,9 +35,7 @@ template("gcc_toolchain") {
       command = "$cc -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "CC {{output}}"
-      outputs = [
-        "$object_prefix{{source_name_part}}.o",
-      ]
+      outputs = [ "$object_prefix{{source_name_part}}.o" ]
     }
 
     tool("cxx") {
@@ -45,9 +43,7 @@ template("gcc_toolchain") {
       command = "$cxx -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "CXX {{output}}"
-      outputs = [
-        "$object_prefix{{source_name_part}}.o",
-      ]
+      outputs = [ "$object_prefix{{source_name_part}}.o" ]
     }
 
     tool("asm") {
@@ -55,9 +51,7 @@ template("gcc_toolchain") {
       command = "$cc -MMD -MF $depfile {{defines}} {{include_dirs}} {{asmflags}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "ASM {{output}}"
-      outputs = [
-        "$object_prefix{{source_name_part}}.o",
-      ]
+      outputs = [ "$object_prefix{{source_name_part}}.o" ]
     }
 
     tool("alink") {
@@ -65,9 +59,7 @@ template("gcc_toolchain") {
       command = "rm -f {{output}} && $ar rcs {{output}} @$rspfile"
       description = "AR {{target_output_name}}{{output_extension}}"
       rspfile_content = "{{inputs}}"
-      outputs = [
-        "{{output_dir}}/{{target_output_name}}{{output_extension}}",
-      ]
+      outputs = [ "{{output_dir}}/{{target_output_name}}{{output_extension}}" ]
       default_output_dir = "{{target_out_dir}}"
       default_output_extension = ".a"
       output_prefix = "lib"
@@ -93,9 +85,7 @@ template("gcc_toolchain") {
       # it (in which case {{output_dir}} will be what the target specifies).
       default_output_dir = "{{root_out_dir}}"
 
-      outputs = [
-        sofile,
-      ]
+      outputs = [ sofile ]
       link_output = sofile
       depend_output = sofile
       output_prefix = "lib"
@@ -112,9 +102,7 @@ template("gcc_toolchain") {
       description = "LINK $outfile"
       default_output_dir = "{{root_out_dir}}"
       rspfile_content = "{{inputs}}"
-      outputs = [
-        outfile,
-      ]
+      outputs = [ outfile ]
     }
 
     tool("stamp") {

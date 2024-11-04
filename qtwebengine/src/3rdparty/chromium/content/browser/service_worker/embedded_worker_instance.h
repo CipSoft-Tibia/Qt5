@@ -97,10 +97,13 @@ class CONTENT_EXPORT EmbeddedWorkerInstance
     virtual void OnProcessAllocated() {}
     virtual void OnRegisteredToDevToolsManager() {}
     virtual void OnStartWorkerMessageSent() {}
+    virtual void OnScriptLoaded() {}
     virtual void OnScriptEvaluationStart() {}
     virtual void OnStarted(
         blink::mojom::ServiceWorkerStartStatus status,
-        blink::mojom::ServiceWorkerFetchHandlerType fetch_handler_type) {}
+        blink::mojom::ServiceWorkerFetchHandlerType fetch_handler_type,
+        bool has_hid_event_handlers,
+        bool has_usb_event_handlers) {}
 
     // Called when status changed to STOPPING. The renderer has been sent a Stop
     // IPC message and OnStopped() will be called upon successful completion.
@@ -172,6 +175,11 @@ class CONTENT_EXPORT EmbeddedWorkerInstance
     return starting_phase_;
   }
   int restart_count() const { return restart_count_; }
+  bool pause_initializing_global_scope() const {
+    return pause_initializing_global_scope_;
+  }
+  void SetPauseInitializingGlobalScope();
+  void ResumeInitializingGlobalScope();
   int process_id() const;
   int thread_id() const { return thread_id_; }
   int worker_devtools_agent_route_id() const;
@@ -251,7 +259,7 @@ class CONTENT_EXPORT EmbeddedWorkerInstance
   CreateFactoryBundle(
       RenderProcessHost* rph,
       int routing_id,
-      const url::Origin& origin,
+      const blink::StorageKey& storage_key,
       network::mojom::ClientSecurityStatePtr client_security_state,
       mojo::PendingRemote<network::mojom::CrossOriginEmbedderPolicyReporter>
           coep_reporter,
@@ -296,6 +304,8 @@ class CONTENT_EXPORT EmbeddedWorkerInstance
   void OnStarted(
       blink::mojom::ServiceWorkerStartStatus status,
       blink::mojom::ServiceWorkerFetchHandlerType fetch_handler_type,
+      bool has_hid_event_handlers,
+      bool has_usb_event_handlers,
       int thread_id,
       blink::mojom::EmbeddedWorkerStartTimingPtr start_timing) override;
   // Resets the embedded worker instance to the initial state. Changes
@@ -339,6 +349,10 @@ class CONTENT_EXPORT EmbeddedWorkerInstance
   EmbeddedWorkerStatus status_;
   StartingPhase starting_phase_;
   int restart_count_;
+
+  // Pause initializing global scope when this flag is true
+  // (https://crbug.com/1431792).
+  bool pause_initializing_global_scope_ = false;
 
   // Current running information.
   std::unique_ptr<EmbeddedWorkerInstance::WorkerProcessHandle> process_handle_;

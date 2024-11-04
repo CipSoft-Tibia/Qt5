@@ -68,6 +68,7 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 Q_LOGGING_CATEGORY(lcQnam, "qt.network.access.manager")
 
@@ -780,6 +781,46 @@ QNetworkReply *QNetworkAccessManager::get(const QNetworkRequest &request)
 }
 
 /*!
+   \since 6.7
+
+   \overload
+
+   \note A GET request with a message body is not cached.
+
+   \note If the request is redirected, the message body will be kept only if the status code is
+   307 or 308.
+*/
+
+QNetworkReply *QNetworkAccessManager::get(const QNetworkRequest &request, QIODevice *data)
+{
+    QNetworkRequest newRequest(request);
+    return d_func()->postProcess(
+            createRequest(QNetworkAccessManager::GetOperation, newRequest, data));
+}
+
+/*!
+   \since 6.7
+
+   \overload
+
+   \note A GET request with a message body is not cached.
+
+   \note If the request is redirected, the message body will be kept only if the status code is
+   307 or 308.
+*/
+
+QNetworkReply *QNetworkAccessManager::get(const QNetworkRequest &request, const QByteArray &data)
+{
+    QBuffer *buffer = new QBuffer;
+    buffer->setData(data);
+    buffer->open(QIODevice::ReadOnly);
+
+    QNetworkReply *reply = get(request, buffer);
+    buffer->setParent(reply);
+    return reply;
+}
+
+/*!
     Sends an HTTP POST request to the destination specified by \a request
     and returns a new QNetworkReply object opened for reading that will
     contain the reply sent by the server. The contents of  the \a data
@@ -1132,8 +1173,8 @@ QNetworkReply *QNetworkAccessManager::createRequest(QNetworkAccessManager::Opera
     }
 
 #if QT_CONFIG(http) || defined (Q_OS_WASM)
-    if (!req.transferTimeout())
-      req.setTransferTimeout(transferTimeout());
+    if (req.transferTimeoutAsDuration() == 0ms)
+        req.setTransferTimeout(transferTimeoutAsDuration());
 #endif
 
     if (autoDeleteReplies()
@@ -1388,12 +1429,11 @@ void QNetworkAccessManager::setAutoDeleteReplies(bool shouldAutoDelete)
 
     Returns the timeout used for transfers, in milliseconds.
 
-    This timeout is zero if setTransferTimeout() hasn't been
-    called, which means that the timeout is not used.
+    \sa setTransferTimeout()
 */
 int QNetworkAccessManager::transferTimeout() const
 {
-    return d_func()->transferTimeout;
+    return int(d_func()->transferTimeout.count());
 }
 
 /*!
@@ -1401,21 +1441,49 @@ int QNetworkAccessManager::transferTimeout() const
 
     Sets \a timeout as the transfer timeout in milliseconds.
 
+    \sa setTransferTimeout(std::chrono::milliseconds),
+        transferTimeout(), transferTimeoutAsDuration()
+*/
+void QNetworkAccessManager::setTransferTimeout(int timeout)
+{
+    setTransferTimeout(std::chrono::milliseconds(timeout));
+}
+
+/*!
+    \since 6.7
+
+    Returns the timeout duration after which the transfer is aborted if no
+    data is exchanged.
+
+    The default duration is zero, which means that the timeout is not used.
+
+    \sa setTransferTimeout(std::chrono::milliseconds)
+ */
+std::chrono::milliseconds QNetworkAccessManager::transferTimeoutAsDuration() const
+{
+    return d_func()->transferTimeout;
+}
+
+/*!
+    \since 6.7
+
+    Sets the timeout \a duration to abort the transfer if no data is exchanged.
+
     Transfers are aborted if no bytes are transferred before
     the timeout expires. Zero means no timer is set. If no
     argument is provided, the timeout is
-    QNetworkRequest::DefaultTransferTimeoutConstant. If this function
+    QNetworkRequest::DefaultTransferTimeout. If this function
     is not called, the timeout is disabled and has the
     value zero. The request-specific non-zero timeouts set for
     the requests that are executed override this value. This means
     that if QNetworkAccessManager has an enabled timeout, it needs
     to be disabled to execute a request without a timeout.
 
-    \sa transferTimeout()
-*/
-void QNetworkAccessManager::setTransferTimeout(int timeout)
+    \sa transferTimeoutAsDuration()
+ */
+void QNetworkAccessManager::setTransferTimeout(std::chrono::milliseconds duration)
 {
-    d_func()->transferTimeout = timeout;
+    d_func()->transferTimeout = duration;
 }
 
 void QNetworkAccessManagerPrivate::_q_replyFinished(QNetworkReply *reply)
@@ -1676,9 +1744,9 @@ QNetworkRequest QNetworkAccessManagerPrivate::prepareMultipart(const QNetworkReq
 
     // add MIME-Version header if not there already (we must include the header
     // if the message conforms to RFC 2045, see section 4 of that RFC)
-    QByteArray mimeHeader("MIME-Version");
+    auto mimeHeader = "MIME-Version"_ba;
     if (!request.hasRawHeader(mimeHeader))
-        newRequest.setRawHeader(mimeHeader, QByteArray("1.0"));
+        newRequest.setRawHeader(mimeHeader, "1.0"_ba);
 
     QIODevice *device = multiPart->d_func()->device;
     if (!device->isReadable()) {

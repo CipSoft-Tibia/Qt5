@@ -67,10 +67,6 @@ int main(int argc, char **argv)
     eccentricityOuterSlider->setValue(90);
     eccentricityOuterSlider->setEnabled(true);
 
-    QCheckBox *staticCheckBox = new QCheckBox(widget);
-    staticCheckBox->setText(QStringLiteral("Static"));
-    staticCheckBox->setChecked(false);
-
     QCheckBox *starsCheckBox = new QCheckBox(widget);
     starsCheckBox->setText(QStringLiteral("Stars"));
     starsCheckBox->setChecked(true);
@@ -102,7 +98,6 @@ int main(int argc, char **argv)
     vLayout->addWidget(eccentricityInnerSlider);
     vLayout->addWidget(new QLabel(QStringLiteral("Eccentricity outer")));
     vLayout->addWidget(eccentricityOuterSlider);
-    vLayout->addWidget(staticCheckBox);
     vLayout->addWidget(starsCheckBox);
     vLayout->addWidget(dustCheckBox);
     vLayout->addWidget(H2CheckBox);
@@ -126,8 +121,6 @@ int main(int argc, char **argv)
                      modifier, &GalaxyData::resetValues);
     QObject::connect(filteredCheckBox, &QCheckBox::stateChanged,
                      modifier, &GalaxyData::setFilteredEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged,
-                     modifier, &GalaxyData::setStaticEnabled);
     QObject::connect(starsCheckBox, &QCheckBox::stateChanged,
                      modifier, &GalaxyData::setStarsVisible);
     QObject::connect(dustCheckBox, &QCheckBox::stateChanged,

@@ -6,17 +6,18 @@
 
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_functions.h"
+#include "services/network/public/mojom/attribution.mojom-blink.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/frame/attribution_src_loader.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
+#include "third_party/blink/renderer/core/lcp_critical_path_predictor/lcp_critical_path_predictor.h"
 #include "third_party/blink/renderer/core/loader/document_loader.h"
 #include "third_party/blink/renderer/core/loader/preload_helper.h"
 #include "third_party/blink/renderer/core/script/document_write_intervention.h"
 #include "third_party/blink/renderer/core/script/script_loader.h"
-#include "third_party/blink/renderer/platform/loader/attribution_header_constants.h"
 #include "third_party/blink/renderer/platform/loader/fetch/cross_origin_attribute_value.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_initiator_info.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_parameters.h"
@@ -61,14 +62,14 @@ KURL PreloadRequest::CompleteURL(Document* document) {
 // static
 std::unique_ptr<PreloadRequest> PreloadRequest::CreateIfNeeded(
     const String& initiator_name,
-    const TextPosition& initiator_position,
     const String& resource_url,
     const KURL& base_url,
     ResourceType resource_type,
     const network::mojom::ReferrerPolicy referrer_policy,
     ResourceFetcher::IsImageSet is_image_set,
     const ExclusionInfo* exclusion_info,
-    const FetchParameters::ResourceWidth& resource_width,
+    absl::optional<float> resource_width,
+    absl::optional<float> resource_height,
     RequestType request_type) {
   // Never preload data URLs. We also disallow relative ref URLs which become
   // data URLs if the document's URL is a data URL. We don't want to create
@@ -83,14 +84,15 @@ std::unique_ptr<PreloadRequest> PreloadRequest::CreateIfNeeded(
     return nullptr;
 
   return base::WrapUnique(new PreloadRequest(
-      initiator_name, initiator_position, resource_url, base_url, resource_type,
-      resource_width, request_type, referrer_policy, is_image_set));
+      initiator_name, resource_url, base_url, resource_type, resource_width,
+      resource_height, request_type, referrer_policy, is_image_set));
 }
 
 Resource* PreloadRequest::Start(Document* document) {
   DCHECK(document->domWindow());
+  base::TimeTicks discovery_timestamp = base::TimeTicks::Now();
   base::UmaHistogramTimes("Blink.PreloadRequestWaitTime",
-                          base::TimeTicks::Now() - creation_time_);
+                          discovery_timestamp - creation_time_);
 
   FetchInitiatorInfo initiator_info;
   initiator_info.name = AtomicString(initiator_name_);
@@ -116,14 +118,28 @@ Resource* PreloadRequest::Start(Document* document) {
       document->domWindow()->GetFrame()->GetAttributionSrcLoader()->CanRegister(
           url, /*element=*/nullptr,
           /*request_id=*/absl::nullopt, /*log_issues=*/false)) {
-    resource_request.SetHttpHeaderField(
-        http_names::kAttributionReportingEligible,
-        kAttributionEligibleEventSourceAndTrigger);
+    resource_request.SetAttributionReportingEligibility(
+        network::mojom::AttributionReportingEligibility::kEventSourceOrTrigger);
+  }
+
+  bool shared_storage_writable =
+      shared_storage_writable_ &&
+      RuntimeEnabledFeatures::SharedStorageAPIM118Enabled(
+          document->domWindow()) &&
+      document->domWindow()->IsSecureContext();
+  resource_request.SetSharedStorageWritable(shared_storage_writable);
+  if (shared_storage_writable) {
+    CHECK_EQ(resource_type_, ResourceType::kImage);
+    UseCounter::Count(document, WebFeature::kSharedStorageAPI_Image_Attribute);
   }
 
   ResourceLoaderOptions options(document->domWindow()->GetCurrentWorld());
   options.initiator_info = initiator_info;
   FetchParameters params(std::move(resource_request), options);
+
+  if (resource_type_ == ResourceType::kImage) {
+    params.SetDiscoveryTime(discovery_timestamp);
+  }
 
   auto* origin = document->domWindow()->GetSecurityOrigin();
   if (script_type_ == mojom::blink::ScriptType::kModule) {
@@ -137,6 +153,7 @@ Resource* PreloadRequest::Start(Document* document) {
 
   params.SetDefer(defer_);
   params.SetResourceWidth(resource_width_);
+  params.SetResourceHeight(resource_height_);
   params.SetIntegrityMetadata(integrity_metadata_);
   params.SetContentSecurityPolicyNonce(nonce_);
   params.SetParserDisposition(kParserInserted);
@@ -164,8 +181,18 @@ Resource* PreloadRequest::Start(Document* document) {
     // We intentionally ignore the returned value, because we don't resend
     // the async request to the blocked script here.
     MaybeDisallowFetchForDocWrittenScript(params, *document);
+
+    if (base::FeatureList::IsEnabled(features::kLCPScriptObserver)) {
+      if (LCPCriticalPathPredictor* lcpp = document->GetFrame()->GetLCPP()) {
+        if (lcpp->lcp_influencer_scripts().Contains(url)) {
+          is_potentially_lcp_element_ = true;
+        }
+      }
+    }
   }
   params.SetRenderBlockingBehavior(render_blocking_behavior_);
+
+  params.SetIsPotentiallyLCPElement(is_potentially_lcp_element_);
 
   return PreloadHelper::StartPreload(resource_type_, params, *document);
 }

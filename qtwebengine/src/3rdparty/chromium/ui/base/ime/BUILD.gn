@@ -18,6 +18,7 @@ source_set("text_input_types") {
 jumbo_component("ime_types") {
   output_name = "ui_base_ime_types"
   sources = [
+    "autocorrect_info.h",
     "candidate_window.cc",
     "candidate_window.h",
     "composition_text.cc",
@@ -34,6 +35,7 @@ jumbo_component("ime_types") {
 
   deps = [
     "//base",
+    "//ui/gfx/geometry",
     "//ui/gfx/range",
   ]
 
@@ -60,6 +62,8 @@ jumbo_component("ime") {
   sources = [
     "constants.cc",
     "constants.h",
+    "events.cc",
+    "events.h",
     "ime_key_event_dispatcher.h",
     "input_method.h",
     "input_method_base.cc",

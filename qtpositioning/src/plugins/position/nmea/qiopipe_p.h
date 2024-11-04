@@ -18,6 +18,7 @@
 #include <QtCore/qiodevice.h>
 #include <QtCore/qbytearray.h>
 #include <QtCore/private/qiodevice_p.h>
+#include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
 

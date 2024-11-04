@@ -34,9 +34,11 @@ import * as i18n from '../../../../core/i18n/i18n.js';
 import * as Platform from '../../../../core/platform/platform.js';
 import * as SDK from '../../../../core/sdk/sdk.js';
 import * as Bindings from '../../../../models/bindings/bindings.js';
+import * as Breakpoints from '../../../../models/breakpoints/breakpoints.js';
 import * as TextUtils from '../../../../models/text_utils/text_utils.js';
 import * as Workspace from '../../../../models/workspace/workspace.js';
 import type * as Protocol from '../../../../generated/protocol.js';
+import type * as IconButton from '../../../components/icon_button/icon_button.js';
 import * as UI from '../../legacy.js';
 
 const UIStrings = {
@@ -171,7 +173,7 @@ export class Linkifier implements SDK.TargetManager.Observer {
       return;
     }
 
-    const breakpoint = Bindings.BreakpointManager.BreakpointManager.instance().findBreakpoint(uiLocation);
+    const breakpoint = Breakpoints.BreakpointManager.BreakpointManager.instance().findBreakpoint(uiLocation);
     if (breakpoint) {
       info.revealable = breakpoint;
     }
@@ -232,6 +234,7 @@ export class Linkifier implements SDK.TargetManager.Observer {
       className: options?.className,
       tabStop: options?.tabStop,
       inlineFrameIndex: options?.inlineFrameIndex ?? 0,
+      userMetric: options?.userMetric,
     };
     const {columnNumber, className = ''} = linkifyURLOptions;
     if (sourceURL) {
@@ -263,6 +266,7 @@ export class Linkifier implements SDK.TargetManager.Observer {
         fallbackAnchor && fallbackAnchor.textContent ? fallbackAnchor.textContent : '', className, createLinkOptions);
     linkInfo.enableDecorator = this.useLinkDecorator;
     linkInfo.fallback = fallbackAnchor;
+    linkInfo.userMetric = options?.userMetric;
 
     const pool = this.locationPoolByTarget.get(rawLocation.debuggerModel.target());
     if (!pool) {
@@ -270,7 +274,7 @@ export class Linkifier implements SDK.TargetManager.Observer {
     }
 
     const linkDisplayOptions: LinkDisplayOptions = {
-      showColumnNumber: linkifyURLOptions.showColumnNumber,
+      showColumnNumber: linkifyURLOptions.showColumnNumber ?? false,
       revealBreakpoint: options?.revealBreakpoint,
     };
 
@@ -301,6 +305,7 @@ export class Linkifier implements SDK.TargetManager.Observer {
       showColumnNumber: Boolean(options?.showColumnNumber),
       inlineFrameIndex: options?.inlineFrameIndex ?? 0,
       tabStop: options?.tabStop,
+      userMetric: options?.userMetric,
     };
 
     return scriptLink || Linkifier.linkifyURL(sourceURL, linkifyURLOptions);
@@ -541,6 +546,7 @@ export class Linkifier implements SDK.TargetManager.Observer {
     if (columnNumber) {
       linkInfo.columnNumber = columnNumber;
     }
+    linkInfo.userMetric = options?.userMetric;
     return link;
   }
 
@@ -690,6 +696,9 @@ export class Linkifier implements SDK.TargetManager.Observer {
     const actions = Linkifier.linkActions(linkInfo);
     if (actions.length) {
       void actions[0].handler.call(null);
+      if (linkInfo.userMetric) {
+        Host.userMetrics.actionTaken(linkInfo.userMetric);
+      }
       return true;
     }
     return false;
@@ -754,7 +763,13 @@ export class Linkifier implements SDK.TargetManager.Observer {
       result.push({
         section: 'reveal',
         title: destination ? i18nString(UIStrings.revealInS, {PH1: destination}) : i18nString(UIStrings.reveal),
-        handler: (): Promise<void> => Common.Revealer.reveal(revealable),
+        handler: (): Promise<void> => {
+          if (revealable instanceof Breakpoints.BreakpointManager.BreakpointLocation) {
+            Host.userMetrics.breakpointEditDialogRevealedFrom(
+                Host.UserMetrics.BreakpointEditDialogRevealedFrom.Linkifier);
+          }
+          return Common.Revealer.reveal(revealable);
+        },
       });
     }
     if (contentProvider) {
@@ -804,7 +819,7 @@ export class Linkifier implements SDK.TargetManager.Observer {
 }
 
 export interface LinkDecorator extends Common.EventTarget.EventTarget<LinkDecorator.EventTypes> {
-  linkIcon(uiSourceCode: Workspace.UISourceCode.UISourceCode): UI.Icon.Icon|null;
+  linkIcon(uiSourceCode: Workspace.UISourceCode.UISourceCode): IconButton.Icon.Icon|null;
 }
 
 export namespace LinkDecorator {
@@ -974,7 +989,7 @@ export class ContentProviderContextMenuProvider implements UI.ContextMenu.Provid
 // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export interface _LinkInfo {
-  icon: UI.Icon.Icon|null;
+  icon: IconButton.Icon.Icon|null;
   enableDecorator: boolean;
   uiLocation: Workspace.UISourceCode.UILocation|null;
   liveLocation: Bindings.LiveLocation.LiveLocation|null;
@@ -984,6 +999,7 @@ export interface _LinkInfo {
   inlineFrameIndex: number;
   revealable: Object|null;
   fallback: Element|null;
+  userMetric?: Host.UserMetrics.Action;
 }
 
 export interface LinkifyURLOptions {
@@ -991,12 +1007,13 @@ export interface LinkifyURLOptions {
   className?: string;
   lineNumber?: number;
   columnNumber?: number;
-  showColumnNumber: boolean;
-  inlineFrameIndex: number;
+  showColumnNumber?: boolean;
+  inlineFrameIndex?: number;
   preventClick?: boolean;
   maxLength?: number;
   tabStop?: boolean;
   bypassURLTrimming?: boolean;
+  userMetric?: Host.UserMetrics.Action;
 }
 
 export interface LinkifyOptions {
@@ -1005,6 +1022,7 @@ export interface LinkifyOptions {
   showColumnNumber?: boolean;
   inlineFrameIndex: number;
   tabStop?: boolean;
+  userMetric?: Host.UserMetrics.Action;
 
   /**
    * {@link LinkDisplayOptions.revealBreakpoint}
@@ -1029,7 +1047,7 @@ interface LinkDisplayOptions {
   /**
    * If true, we'll check if there is a breakpoint at the UILocation we get
    * from the LiveLocation. If we find a breakpoint, we'll reveal the corresponding
-   * {@link Bindings.BreakpointManager.BreakpointLocation}. Which opens the
+   * {@link Breakpoints.BreakpointManager.BreakpointLocation}. Which opens the
    * breakpoint edit dialog.
    */
   revealBreakpoint?: boolean;

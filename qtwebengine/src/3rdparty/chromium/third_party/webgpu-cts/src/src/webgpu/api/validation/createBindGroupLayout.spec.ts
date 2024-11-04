@@ -7,11 +7,10 @@ TODO: make sure tests are complete.
 import { kUnitCaseParamsBuilder } from '../../../common/framework/params_builder.js';
 import { makeTestGroup } from '../../../common/framework/test_group.js';
 import {
-  kAllTextureFormats,
+  kLimitInfo,
   kShaderStages,
   kShaderStageCombinations,
   kStorageTextureAccessValues,
-  kTextureFormatInfo,
   kTextureSampleTypes,
   kTextureViewDimensions,
   allBindingEntries,
@@ -20,6 +19,7 @@ import {
   kBufferBindingTypes,
   BGLEntry,
 } from '../../capability_info.js';
+import { kAllTextureFormats, kTextureFormatInfo } from '../../format_info.js';
 
 import { ValidationTest } from './validation_test.js';
 
@@ -54,10 +54,6 @@ g.test('duplicate_bindings')
     }, !_valid);
   });
 
-// MAINTENANCE_TODO: Move this into kLimits with the proper name after the spec PR lands.
-// https://github.com/gpuweb/gpuweb/pull/3318
-const kMaxBindingsPerBindGroup = 640;
-
 g.test('maximum_binding_limit')
   .desc(
     `
@@ -68,7 +64,14 @@ g.test('maximum_binding_limit')
   )
   .paramsSubcasesOnly(u =>
     u //
-      .combine('binding', [1, 4, 8, 256, kMaxBindingsPerBindGroup - 1, kMaxBindingsPerBindGroup])
+      .combine('binding', [
+        1,
+        4,
+        8,
+        256,
+        kLimitInfo.maxBindingsPerBindGroup.default - 1,
+        kLimitInfo.maxBindingsPerBindGroup.default,
+      ])
   )
   .fn(t => {
     const { binding } = t.params;
@@ -80,7 +83,7 @@ g.test('maximum_binding_limit')
       buffer: { type: 'storage' as const },
     });
 
-    const success = binding < kMaxBindingsPerBindGroup;
+    const success = binding < kLimitInfo.maxBindingsPerBindGroup.default;
 
     t.expectValidationError(() => {
       t.device.createBindGroupLayout({
@@ -294,7 +297,7 @@ const kMaxResourcesCases = kUnitCaseParamsBuilder
   .combine('extraVisibility', kShaderStages)
   .filter(p => (bindingTypeInfo(p.extraEntry).validStages & p.extraVisibility) !== 0);
 
-// Should never fail unless kMaxBindingsPerBindGroup is exceeded, because the validation for
+// Should never fail unless kLimitInfo.maxBindingsPerBindGroup.default is exceeded, because the validation for
 // resources-of-type-per-stage is in pipeline layout creation.
 g.test('max_resources_per_stage,in_bind_group_layout')
   .desc(
@@ -430,8 +433,6 @@ g.test('storage_texture,formats')
   .desc(
     `
   Test that a validation error is generated if the format doesn't support the storage usage.
-
-  TODO: Test "bgra8unorm" with the "bgra8unorm-storage" feature.
   `
   )
   .params(u => u.combine('format', kAllTextureFormats))
@@ -452,5 +453,5 @@ g.test('storage_texture,formats')
           },
         ],
       });
-    }, !info.storage);
+    }, !info.color?.storage);
   });

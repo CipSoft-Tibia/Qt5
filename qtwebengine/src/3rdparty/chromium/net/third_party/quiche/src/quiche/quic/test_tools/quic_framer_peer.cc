@@ -25,12 +25,6 @@ void QuicFramerPeer::SetLastSerializedServerConnectionId(
 }
 
 // static
-void QuicFramerPeer::SetLastSerializedClientConnectionId(
-    QuicFramer* framer, QuicConnectionId client_connection_id) {
-  framer->last_serialized_client_connection_id_ = client_connection_id;
-}
-
-// static
 void QuicFramerPeer::SetLastWrittenPacketNumberLength(
     QuicFramer* framer, size_t packet_number_length) {
   framer->last_written_packet_number_length_ = packet_number_length;
@@ -46,8 +40,6 @@ void QuicFramerPeer::SetLargestPacketNumber(QuicFramer* framer,
 void QuicFramerPeer::SetPerspective(QuicFramer* framer,
                                     Perspective perspective) {
   framer->perspective_ = perspective;
-  framer->infer_packet_header_type_from_version_ =
-      perspective == Perspective::IS_CLIENT;
 }
 
 // static

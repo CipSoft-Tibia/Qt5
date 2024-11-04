@@ -91,9 +91,7 @@ class DummyRTCRtpSenderPlatform : public RTCRtpSenderPlatform {
   void SetParameters(Vector<webrtc::RtpEncodingParameters>,
                      absl::optional<webrtc::DegradationPreference>,
                      RTCVoidRequest*) override {}
-  void GetStats(RTCStatsReportCallback,
-                const Vector<webrtc::NonStandardGroupId>&,
-                bool is_track_stats_deprecation_trial_enabled) override {}
+  void GetStats(RTCStatsReportCallback) override {}
   void SetStreams(const Vector<String>& stream_ids) override {}
 
  private:
@@ -154,9 +152,7 @@ class DummyRTCRtpReceiverPlatform : public RTCRtpReceiverPlatform {
   Vector<std::unique_ptr<RTCRtpSource>> GetSources() override {
     return Vector<std::unique_ptr<RTCRtpSource>>();
   }
-  void GetStats(RTCStatsReportCallback,
-                const Vector<webrtc::NonStandardGroupId>&,
-                bool is_track_stats_deprecation_trial_enabled) override {}
+  void GetStats(RTCStatsReportCallback) override {}
   std::unique_ptr<webrtc::RtpParameters> GetParameters() const override {
     return nullptr;
   }
@@ -252,15 +248,20 @@ class MockRTCPeerConnectionHandlerPlatform::DummyRTCRtpTransceiverPlatform
       const override {
     return absl::nullopt;
   }
-  webrtc::RTCError SetOfferedRtpHeaderExtensions(
+  webrtc::RTCError Stop() override { return webrtc::RTCError::OK(); }
+  webrtc::RTCError SetCodecPreferences(
+      Vector<webrtc::RtpCodecCapability>) override {
+    return webrtc::RTCError::OK();
+  }
+  webrtc::RTCError SetHeaderExtensionsToNegotiate(
       Vector<webrtc::RtpHeaderExtensionCapability> header_extensions) override {
     return webrtc::RTCError(webrtc::RTCErrorType::UNSUPPORTED_OPERATION);
   }
-  Vector<webrtc::RtpHeaderExtensionCapability> HeaderExtensionsNegotiated()
+  Vector<webrtc::RtpHeaderExtensionCapability> GetNegotiatedHeaderExtensions()
       const override {
     return {};
   }
-  Vector<webrtc::RtpHeaderExtensionCapability> HeaderExtensionsToOffer()
+  Vector<webrtc::RtpHeaderExtensionCapability> GetHeaderExtensionsToNegotiate()
       const override {
     return {};
   }
@@ -326,10 +327,7 @@ void MockRTCPeerConnectionHandlerPlatform::RestartIce() {}
 
 void MockRTCPeerConnectionHandlerPlatform::GetStats(RTCStatsRequest*) {}
 
-void MockRTCPeerConnectionHandlerPlatform::GetStats(
-    RTCStatsReportCallback,
-    const Vector<webrtc::NonStandardGroupId>&,
-    bool is_track_stats_deprecation_trial_enabled) {}
+void MockRTCPeerConnectionHandlerPlatform::GetStats(RTCStatsReportCallback) {}
 
 webrtc::RTCErrorOr<std::unique_ptr<RTCRtpTransceiverPlatform>>
 MockRTCPeerConnectionHandlerPlatform::AddTransceiverWithTrack(
@@ -382,7 +380,7 @@ MockRTCPeerConnectionHandlerPlatform::RemoveTrack(
   return std::unique_ptr<RTCRtpTransceiverPlatform>(std::move(copy));
 }
 
-scoped_refptr<webrtc::DataChannelInterface>
+rtc::scoped_refptr<webrtc::DataChannelInterface>
 MockRTCPeerConnectionHandlerPlatform::CreateDataChannel(
     const String& label,
     const webrtc::DataChannelInit&) {

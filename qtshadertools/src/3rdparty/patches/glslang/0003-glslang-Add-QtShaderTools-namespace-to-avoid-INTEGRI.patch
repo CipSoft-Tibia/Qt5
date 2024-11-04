@@ -1,0 +1,3700 @@
+From ccd6eb7ecbfdb7f8043e72dc907243f6c7879d81 Mon Sep 17 00:00:00 2001
+From: Laszlo Agocs <laszlo.agocs@qt.io>
+Date: Fri, 25 Aug 2023 16:42:50 +0200
+Subject: [PATCH] glslang: Add QtShaderTools namespace to avoid INTEGRITY
+ issues
+
+Change-Id: I8b654dd02a3a3b5fe4c40c617c79104bd7dc512d
+---
+ .../glslang/OGLCompilersDLL/InitializeDll.cpp |    2 +
+ .../glslang/OGLCompilersDLL/InitializeDll.h   |    2 +
+ src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp   |    6 +-
+ src/3rdparty/glslang/SPIRV/GlslangToSpv.h     |    6 +-
+ src/3rdparty/glslang/SPIRV/SpvTools.cpp       |    4 +-
+ src/3rdparty/glslang/SPIRV/SpvTools.h         |    2 +
+ .../glslang/glslang/Include/BaseTypes.h       |    2 +
+ src/3rdparty/glslang/glslang/Include/Common.h |    8 +-
+ .../glslang/glslang/Include/ConstantUnion.h   |    2 +
+ .../glslang/glslang/Include/InfoSink.h        |    6 +-
+ .../glslang/Include/InitializeGlobals.h       |    2 +
+ .../glslang/glslang/Include/PoolAlloc.h       |    2 +
+ .../glslang/glslang/Include/ShHandle.h        |   10 +-
+ .../glslang/glslang/Include/SpirvIntrinsics.h |    2 +
+ src/3rdparty/glslang/glslang/Include/Types.h  |    2 +
+ src/3rdparty/glslang/glslang/Include/arrays.h |    2 +
+ .../glslang/glslang/Include/intermediate.h    |   66 +-
+ .../glslang/MachineIndependent/Constant.cpp   |    3 +
+ .../glslang/MachineIndependent/InfoSink.cpp   |    2 +
+ .../glslang/MachineIndependent/Initialize.cpp |   54 +-
+ .../glslang/MachineIndependent/Initialize.h   |    2 +
+ .../MachineIndependent/IntermTraverse.cpp     |    2 +
+ .../MachineIndependent/Intermediate.cpp       |    2 +
+ .../MachineIndependent/LiveTraverser.h        |    2 +
+ .../MachineIndependent/ParseContextBase.cpp   |    4 +-
+ .../MachineIndependent/ParseHelper.cpp        |    4 +-
+ .../glslang/MachineIndependent/ParseHelper.h  |    2 +
+ .../glslang/MachineIndependent/PoolAlloc.cpp  |    2 +
+ .../glslang/MachineIndependent/RemoveTree.cpp |    2 +
+ .../glslang/MachineIndependent/RemoveTree.h   |    2 +
+ .../glslang/MachineIndependent/Scan.cpp       |   10 +-
+ .../glslang/glslang/MachineIndependent/Scan.h |    2 +
+ .../glslang/MachineIndependent/ScanContext.h  |    2 +
+ .../glslang/MachineIndependent/ShaderLang.cpp |    3 +
+ .../MachineIndependent/SpirvIntrinsics.cpp    |    2 +
+ .../MachineIndependent/SymbolTable.cpp        |    2 +
+ .../glslang/MachineIndependent/SymbolTable.h  |    4 +-
+ .../glslang/MachineIndependent/Versions.cpp   |    2 +
+ .../glslang/MachineIndependent/Versions.h     |    2 +
+ .../glslang/MachineIndependent/attribute.cpp  |    2 +
+ .../glslang/MachineIndependent/attribute.h    |    2 +
+ .../MachineIndependent/glslang_tab.cpp        |   11 +-
+ .../MachineIndependent/glslang_tab.cpp.h      |   40 +-
+ .../glslang/MachineIndependent/intermOut.cpp  |    2 +
+ .../glslang/MachineIndependent/iomapper.cpp   |    2 +
+ .../glslang/MachineIndependent/iomapper.h     |    2 +
+ .../glslang/MachineIndependent/limits.cpp     |    2 +
+ .../MachineIndependent/linkValidate.cpp       |    2 +
+ .../MachineIndependent/localintermediate.h    |    6 +-
+ .../glslang/MachineIndependent/parseConst.cpp |    2 +
+ .../MachineIndependent/parseVersions.h        |    6 +-
+ .../MachineIndependent/preprocessor/Pp.cpp    |    2 +
+ .../preprocessor/PpAtom.cpp                   |    3 +
+ .../preprocessor/PpContext.cpp                |    2 +
+ .../preprocessor/PpContext.h                  |    4 +-
+ .../preprocessor/PpScanner.cpp                |    2 +
+ .../preprocessor/PpTokens.cpp                 |    2 +
+ .../preprocessor/PpTokens.h                   |    2 +
+ .../propagateNoContraction.cpp                |  224 +--
+ .../propagateNoContraction.h                  |    5 +-
+ .../glslang/MachineIndependent/reflection.cpp |    2 +
+ .../glslang/MachineIndependent/reflection.h   |    6 +-
+ .../glslang/OSDependent/Unix/ossource.cpp     |    2 +
+ .../glslang/OSDependent/Windows/ossource.cpp  |    2 +
+ .../glslang/glslang/OSDependent/osinclude.h   |    2 +
+ .../glslang/glslang/Public/ShaderLang.h       |    4 +
+ ...-namespace-to-avoid-INTEGRITY-issues.patch | 1446 -----------------
+ 67 files changed, 361 insertions(+), 1666 deletions(-)
+ delete mode 100644 src/3rdparty/patches/glslang/TODO/0003-glslang-Add-QtShaderTools-namespace-to-avoid-INTEGRITY-issues.patch
+
+diff --git a/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.cpp b/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.cpp
+index ab3762e..8ceb6cd 100644
+--- a/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.cpp
++++ b/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.cpp
+@@ -32,6 +32,8 @@
+ // POSSIBILITY OF SUCH DAMAGE.
+ //
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.h b/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.h
+index b18e2ab..7c102e5 100644
+--- a/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.h
++++ b/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.h
+@@ -36,6 +36,7 @@
+ 
+ #include "../glslang/OSDependent/osinclude.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ inline bool InitProcess()   { return true; } // DEPRECATED
+@@ -44,6 +45,7 @@ inline bool DetachThread()  { return true; } // DEPRECATED
+ inline bool DetachProcess() { return true; } // DEPRECATED
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // __INITIALIZEDLL_H
+ 
+diff --git a/src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp b/src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp
+index 395315a..f3dfb4c 100644
+--- a/src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp
++++ b/src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp
+@@ -112,6 +112,8 @@ struct OpDecorations {
+ 
+ } // namespace
+ 
++using namespace QtShaderTools;
++
+ //
+ // The main holder of information for translating glslang to SPIR-V.
+ //
+@@ -9993,6 +9995,7 @@ spv::Id TGlslangToSpvTraverser::getExtBuiltins(const char* name)
+ 
+ };  // end anonymous namespace
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ void GetSpirvVersion(std::string& version)
+@@ -10128,4 +10131,5 @@ void GlslangToSpv(const TIntermediate& intermediate, std::vector<unsigned int>&
+     GetThreadPoolAllocator().pop();
+ }
+ 
+-}; // end namespace glslang
++} // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/SPIRV/GlslangToSpv.h b/src/3rdparty/glslang/SPIRV/GlslangToSpv.h
+index b9736d7..7154f22 100644
+--- a/src/3rdparty/glslang/SPIRV/GlslangToSpv.h
++++ b/src/3rdparty/glslang/SPIRV/GlslangToSpv.h
+@@ -47,15 +47,17 @@
+ 
+ #include "Logger.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ void GetSpirvVersion(std::string&);
+ int GetSpirvGeneratorVersion();
+-void GlslangToSpv(const glslang::TIntermediate& intermediate, std::vector<unsigned int>& spirv,
++void GlslangToSpv(const TIntermediate& intermediate, std::vector<unsigned int>& spirv,
+                   SpvOptions* options = nullptr);
+-void GlslangToSpv(const glslang::TIntermediate& intermediate, std::vector<unsigned int>& spirv,
++void GlslangToSpv(const TIntermediate& intermediate, std::vector<unsigned int>& spirv,
+                   spv::SpvBuildLogger* logger, SpvOptions* options = nullptr);
+ bool OutputSpvBin(const std::vector<unsigned int>& spirv, const char* baseName);
+ bool OutputSpvHex(const std::vector<unsigned int>& spirv, const char* baseName, const char* varName);
+ 
+ }
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/SPIRV/SpvTools.cpp b/src/3rdparty/glslang/SPIRV/SpvTools.cpp
+index ff04f4f..b68754d 100644
+--- a/src/3rdparty/glslang/SPIRV/SpvTools.cpp
++++ b/src/3rdparty/glslang/SPIRV/SpvTools.cpp
+@@ -45,6 +45,7 @@
+ #include "SpvTools.h"
+ #include "spirv-tools/optimizer.hpp"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ // Translate glslang's view of target versioning to what SPIRV-Tools uses.
+@@ -292,6 +293,7 @@ void SpirvToolsStripDebugInfo(const glslang::TIntermediate& intermediate,
+     optimizer.Run(spirv.data(), spirv.size(), &spirv, spvOptOptions);
+ }
+ 
+-}; // end namespace glslang
++} // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif
+diff --git a/src/3rdparty/glslang/SPIRV/SpvTools.h b/src/3rdparty/glslang/SPIRV/SpvTools.h
+index 6fc4e40..517410b 100644
+--- a/src/3rdparty/glslang/SPIRV/SpvTools.h
++++ b/src/3rdparty/glslang/SPIRV/SpvTools.h
+@@ -50,6 +50,7 @@
+ #include "glslang/MachineIndependent/localintermediate.h"
+ #include "Logger.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ struct SpvOptions {
+@@ -108,5 +109,6 @@ void SpirvToolsStripDebugInfo(const glslang::TIntermediate& intermediate,
+ #endif
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // GLSLANG_SPV_TOOLS_H
+diff --git a/src/3rdparty/glslang/glslang/Include/BaseTypes.h b/src/3rdparty/glslang/glslang/Include/BaseTypes.h
+index ae49a93..7f3912e 100644
+--- a/src/3rdparty/glslang/glslang/Include/BaseTypes.h
++++ b/src/3rdparty/glslang/glslang/Include/BaseTypes.h
+@@ -39,6 +39,7 @@
+ #ifndef _BASICTYPES_INCLUDED_
+ #define _BASICTYPES_INCLUDED_
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -609,5 +610,6 @@ __inline int getTypeRank(TBasicType type)
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _BASICTYPES_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/Include/Common.h b/src/3rdparty/glslang/glslang/Include/Common.h
+index 080b807..9b0ce1a 100644
+--- a/src/3rdparty/glslang/glslang/Include/Common.h
++++ b/src/3rdparty/glslang/glslang/Include/Common.h
+@@ -109,6 +109,7 @@ std::string to_string(const T& val) {
+     void operator delete[](void*) { }                                 \
+     void operator delete[](void *, void *) { }
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+     //
+@@ -118,12 +119,13 @@ namespace glslang {
+     typedef std::basic_string <char, std::char_traits<char>, TStringAllocator> TString;
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ // Repackage the std::hash for use by unordered map/set with a TString key.
+ namespace std {
+ 
+-    template<> struct hash<glslang::TString> {
+-        std::size_t operator()(const glslang::TString& s) const
++    template<> struct hash<QtShaderTools::glslang::TString> {
++        std::size_t operator()(const QtShaderTools::glslang::TString& s) const
+         {
+             const unsigned _FNV_offset_basis = 2166136261U;
+             const unsigned _FNV_prime = 16777619U;
+@@ -141,6 +143,7 @@ namespace std {
+     };
+ }
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ inline TString* NewPoolTString(const char* s)
+@@ -321,5 +324,6 @@ inline bool IsNan(double x) {
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _COMMON_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/Include/ConstantUnion.h b/src/3rdparty/glslang/glslang/Include/ConstantUnion.h
+index 1f39fc5..1814001 100644
+--- a/src/3rdparty/glslang/glslang/Include/ConstantUnion.h
++++ b/src/3rdparty/glslang/glslang/Include/ConstantUnion.h
+@@ -41,6 +41,7 @@
+ #include "../Include/Common.h"
+ #include "../Include/BaseTypes.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ class TConstUnion {
+@@ -934,5 +935,6 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _CONSTANT_UNION_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/Include/InfoSink.h b/src/3rdparty/glslang/glslang/Include/InfoSink.h
+index dceb603..184e573 100644
+--- a/src/3rdparty/glslang/glslang/Include/InfoSink.h
++++ b/src/3rdparty/glslang/glslang/Include/InfoSink.h
+@@ -38,6 +38,7 @@
+ #include "../Include/Common.h"
+ #include <cmath>
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -134,11 +135,12 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ class TInfoSink {
+ public:
+-    glslang::TInfoSinkBase info;
+-    glslang::TInfoSinkBase debug;
++    QtShaderTools::glslang::TInfoSinkBase info;
++    QtShaderTools::glslang::TInfoSinkBase debug;
+ };
+ 
+ #endif // _INFOSINK_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/Include/InitializeGlobals.h b/src/3rdparty/glslang/glslang/Include/InitializeGlobals.h
+index b7fdd7a..d196bad 100644
+--- a/src/3rdparty/glslang/glslang/Include/InitializeGlobals.h
++++ b/src/3rdparty/glslang/glslang/Include/InitializeGlobals.h
+@@ -35,10 +35,12 @@
+ #ifndef __INITIALIZE_GLOBALS_INCLUDED_
+ #define __INITIALIZE_GLOBALS_INCLUDED_
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ inline bool InitializePoolIndex() { return true; } // DEPRECATED: No need to call
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // __INITIALIZE_GLOBALS_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/Include/PoolAlloc.h b/src/3rdparty/glslang/glslang/Include/PoolAlloc.h
+index 3e67d6e..1683cfd 100644
+--- a/src/3rdparty/glslang/glslang/Include/PoolAlloc.h
++++ b/src/3rdparty/glslang/glslang/Include/PoolAlloc.h
+@@ -65,6 +65,7 @@
+ #include <cstring>
+ #include <vector>
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ // If we are using guard blocks, we must track each individual
+@@ -314,5 +315,6 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _POOLALLOC_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/Include/ShHandle.h b/src/3rdparty/glslang/glslang/Include/ShHandle.h
+index dee47c0..f39e843 100644
+--- a/src/3rdparty/glslang/glslang/Include/ShHandle.h
++++ b/src/3rdparty/glslang/glslang/Include/ShHandle.h
+@@ -56,14 +56,14 @@ class TUniformMap;
+ //
+ class TShHandleBase {
+ public:
+-    TShHandleBase() { pool = new glslang::TPoolAllocator; }
++    TShHandleBase() { pool = new QtShaderTools::glslang::TPoolAllocator; }
+     virtual ~TShHandleBase() { delete pool; }
+     virtual TCompiler* getAsCompiler() { return nullptr; }
+     virtual TLinker* getAsLinker() { return nullptr; }
+     virtual TUniformMap* getAsUniformMap() { return nullptr; }
+-    virtual glslang::TPoolAllocator* getPool() const { return pool; }
++    virtual QtShaderTools::glslang::TPoolAllocator* getPool() const { return pool; }
+ private:
+-    glslang::TPoolAllocator* pool;
++    QtShaderTools::glslang::TPoolAllocator* pool;
+ };
+ 
+ //
+@@ -109,8 +109,8 @@ protected:
+ //
+ // Link operations are based on a list of compile results...
+ //
+-typedef glslang::TVector<TCompiler*> TCompilerList;
+-typedef glslang::TVector<TShHandleBase*> THandleList;
++typedef QtShaderTools::glslang::TVector<TCompiler*> TCompilerList;
++typedef QtShaderTools::glslang::TVector<TShHandleBase*> THandleList;
+ 
+ //
+ // The base class for the machine dependent linker to derive from
+diff --git a/src/3rdparty/glslang/glslang/Include/SpirvIntrinsics.h b/src/3rdparty/glslang/glslang/Include/SpirvIntrinsics.h
+index bfb551e..9539b40 100644
+--- a/src/3rdparty/glslang/glslang/Include/SpirvIntrinsics.h
++++ b/src/3rdparty/glslang/glslang/Include/SpirvIntrinsics.h
+@@ -40,6 +40,7 @@
+ //
+ #include "Common.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ class TIntermTyped;
+@@ -133,3 +134,4 @@ struct TSpirvType {
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/Include/Types.h b/src/3rdparty/glslang/glslang/Include/Types.h
+index 26aba9b..315e3f9 100644
+--- a/src/3rdparty/glslang/glslang/Include/Types.h
++++ b/src/3rdparty/glslang/glslang/Include/Types.h
+@@ -48,6 +48,7 @@
+ 
+ #include <algorithm>
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ class TIntermAggregate;
+@@ -2853,5 +2854,6 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _TYPES_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/Include/arrays.h b/src/3rdparty/glslang/glslang/Include/arrays.h
+index 91e1908..356130a 100644
+--- a/src/3rdparty/glslang/glslang/Include/arrays.h
++++ b/src/3rdparty/glslang/glslang/Include/arrays.h
+@@ -43,6 +43,7 @@
+ 
+ #include <algorithm>
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ // This is used to mean there is no size yet (unsized), it is waiting to get a size from somewhere else.
+@@ -358,5 +359,6 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _ARRAYS_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/Include/intermediate.h b/src/3rdparty/glslang/glslang/Include/intermediate.h
+index 604f08b..f4a24a3 100644
+--- a/src/3rdparty/glslang/glslang/Include/intermediate.h
++++ b/src/3rdparty/glslang/glslang/Include/intermediate.h
+@@ -57,6 +57,7 @@
+ #include "../Include/Types.h"
+ #include "../Include/ConstantUnion.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ class TIntermediate;
+@@ -971,7 +972,7 @@ enum TOperator {
+     EOpRayQueryGetIntersectionObjectToWorld,
+     EOpRayQueryGetIntersectionWorldToObject,
+ 
+-    // 
++    //
+     // GL_NV_shader_invocation_reorder
+     //
+ 
+@@ -1123,6 +1124,7 @@ class TIntermSymbol;
+ class TIntermLoop;
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ //
+ // Base class for the tree nodes
+@@ -1131,45 +1133,46 @@ class TIntermLoop;
+ //
+ class TIntermNode {
+ public:
+-    POOL_ALLOCATOR_NEW_DELETE(glslang::GetThreadPoolAllocator())
++    POOL_ALLOCATOR_NEW_DELETE(QtShaderTools::glslang::GetThreadPoolAllocator())
+ 
+     TIntermNode() { loc.init(); }
+-    virtual const glslang::TSourceLoc& getLoc() const { return loc; }
+-    virtual void setLoc(const glslang::TSourceLoc& l) { loc = l; }
+-    virtual void traverse(glslang::TIntermTraverser*) = 0;
+-    virtual       glslang::TIntermTyped*         getAsTyped()               { return nullptr; }
+-    virtual       glslang::TIntermOperator*      getAsOperator()            { return nullptr; }
+-    virtual       glslang::TIntermConstantUnion* getAsConstantUnion()       { return nullptr; }
+-    virtual       glslang::TIntermAggregate*     getAsAggregate()           { return nullptr; }
+-    virtual       glslang::TIntermUnary*         getAsUnaryNode()           { return nullptr; }
+-    virtual       glslang::TIntermBinary*        getAsBinaryNode()          { return nullptr; }
+-    virtual       glslang::TIntermSelection*     getAsSelectionNode()       { return nullptr; }
+-    virtual       glslang::TIntermSwitch*        getAsSwitchNode()          { return nullptr; }
+-    virtual       glslang::TIntermMethod*        getAsMethodNode()          { return nullptr; }
+-    virtual       glslang::TIntermSymbol*        getAsSymbolNode()          { return nullptr; }
+-    virtual       glslang::TIntermBranch*        getAsBranchNode()          { return nullptr; }
+-    virtual       glslang::TIntermLoop*          getAsLoopNode()            { return nullptr; }
+-
+-    virtual const glslang::TIntermTyped*         getAsTyped()         const { return nullptr; }
+-    virtual const glslang::TIntermOperator*      getAsOperator()      const { return nullptr; }
+-    virtual const glslang::TIntermConstantUnion* getAsConstantUnion() const { return nullptr; }
+-    virtual const glslang::TIntermAggregate*     getAsAggregate()     const { return nullptr; }
+-    virtual const glslang::TIntermUnary*         getAsUnaryNode()     const { return nullptr; }
+-    virtual const glslang::TIntermBinary*        getAsBinaryNode()    const { return nullptr; }
+-    virtual const glslang::TIntermSelection*     getAsSelectionNode() const { return nullptr; }
+-    virtual const glslang::TIntermSwitch*        getAsSwitchNode()    const { return nullptr; }
+-    virtual const glslang::TIntermMethod*        getAsMethodNode()    const { return nullptr; }
+-    virtual const glslang::TIntermSymbol*        getAsSymbolNode()    const { return nullptr; }
+-    virtual const glslang::TIntermBranch*        getAsBranchNode()    const { return nullptr; }
+-    virtual const glslang::TIntermLoop*          getAsLoopNode()      const { return nullptr; }
++    virtual const QtShaderTools::glslang::TSourceLoc& getLoc() const { return loc; }
++    virtual void setLoc(const QtShaderTools::glslang::TSourceLoc& l) { loc = l; }
++    virtual void traverse(QtShaderTools::glslang::TIntermTraverser*) = 0;
++    virtual       QtShaderTools::glslang::TIntermTyped*         getAsTyped()               { return nullptr; }
++    virtual       QtShaderTools::glslang::TIntermOperator*      getAsOperator()            { return nullptr; }
++    virtual       QtShaderTools::glslang::TIntermConstantUnion* getAsConstantUnion()       { return nullptr; }
++    virtual       QtShaderTools::glslang::TIntermAggregate*     getAsAggregate()           { return nullptr; }
++    virtual       QtShaderTools::glslang::TIntermUnary*         getAsUnaryNode()           { return nullptr; }
++    virtual       QtShaderTools::glslang::TIntermBinary*        getAsBinaryNode()          { return nullptr; }
++    virtual       QtShaderTools::glslang::TIntermSelection*     getAsSelectionNode()       { return nullptr; }
++    virtual       QtShaderTools::glslang::TIntermSwitch*        getAsSwitchNode()          { return nullptr; }
++    virtual       QtShaderTools::glslang::TIntermMethod*        getAsMethodNode()          { return nullptr; }
++    virtual       QtShaderTools::glslang::TIntermSymbol*        getAsSymbolNode()          { return nullptr; }
++    virtual       QtShaderTools::glslang::TIntermBranch*        getAsBranchNode()          { return nullptr; }
++    virtual       QtShaderTools::glslang::TIntermLoop*          getAsLoopNode()            { return nullptr; }
++
++    virtual const QtShaderTools::glslang::TIntermTyped*         getAsTyped()         const { return nullptr; }
++    virtual const QtShaderTools::glslang::TIntermOperator*      getAsOperator()      const { return nullptr; }
++    virtual const QtShaderTools::glslang::TIntermConstantUnion* getAsConstantUnion() const { return nullptr; }
++    virtual const QtShaderTools::glslang::TIntermAggregate*     getAsAggregate()     const { return nullptr; }
++    virtual const QtShaderTools::glslang::TIntermUnary*         getAsUnaryNode()     const { return nullptr; }
++    virtual const QtShaderTools::glslang::TIntermBinary*        getAsBinaryNode()    const { return nullptr; }
++    virtual const QtShaderTools::glslang::TIntermSelection*     getAsSelectionNode() const { return nullptr; }
++    virtual const QtShaderTools::glslang::TIntermSwitch*        getAsSwitchNode()    const { return nullptr; }
++    virtual const QtShaderTools::glslang::TIntermMethod*        getAsMethodNode()    const { return nullptr; }
++    virtual const QtShaderTools::glslang::TIntermSymbol*        getAsSymbolNode()    const { return nullptr; }
++    virtual const QtShaderTools::glslang::TIntermBranch*        getAsBranchNode()    const { return nullptr; }
++    virtual const QtShaderTools::glslang::TIntermLoop*          getAsLoopNode()      const { return nullptr; }
+     virtual ~TIntermNode() { }
+ 
+ protected:
+     TIntermNode(const TIntermNode&);
+     TIntermNode& operator=(const TIntermNode&);
+-    glslang::TSourceLoc loc;
++    QtShaderTools::glslang::TSourceLoc loc;
+ };
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -1875,5 +1878,6 @@ inline bool SameSpecializationConstants(TIntermTyped* node1, TIntermTyped* node2
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // __INTERMEDIATE_H
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Constant.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/Constant.cpp
+index 8acf9e5..3d8cabc 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/Constant.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/Constant.cpp
+@@ -44,6 +44,7 @@
+ 
+ namespace {
+ 
++using namespace QtShaderTools;
+ using namespace glslang;
+ 
+ const double pi = 3.1415926535897932384626433832795;
+@@ -51,6 +52,7 @@ const double pi = 3.1415926535897932384626433832795;
+ } // end anonymous namespace
+ 
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -1382,3 +1384,4 @@ TIntermTyped* TIntermediate::foldSwizzle(TIntermTyped* node, TSwizzleSelectors<T
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/InfoSink.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/InfoSink.cpp
+index d00c422..7c14783 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/InfoSink.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/InfoSink.cpp
+@@ -36,6 +36,7 @@
+ 
+ #include <cstring>
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ void TInfoSinkBase::append(const char* s)
+@@ -111,3 +112,4 @@ void TInfoSinkBase::append(const TString& t)
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.cpp
+index c23bda1..5347ee8 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.cpp
+@@ -54,6 +54,7 @@
+ #include "../Include/intermediate.h"
+ #include "Initialize.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ // TODO: ARB_Compatability: do full extension support
+@@ -2093,7 +2094,7 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
+             );
+ 
+         // Generate all flavors of subgroup ops.
+-        static const char *subgroupOps[] = 
++        static const char *subgroupOps[] =
+         {
+             "bool   subgroupAllEqual(%s);\n",
+             "%s     subgroupBroadcast(%s, uint);\n",
+@@ -2158,25 +2159,25 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
+             "%s     subgroupPartitionedExclusiveXorNV(%s, uvec4 ballot);\n",
+         };
+ 
+-        static const char *floatTypes[] = { 
+-            "float", "vec2", "vec3", "vec4", 
+-            "float16_t", "f16vec2", "f16vec3", "f16vec4", 
++        static const char *floatTypes[] = {
++            "float", "vec2", "vec3", "vec4",
++            "float16_t", "f16vec2", "f16vec3", "f16vec4",
+         };
+-        static const char *doubleTypes[] = { 
+-            "double", "dvec2", "dvec3", "dvec4", 
++        static const char *doubleTypes[] = {
++            "double", "dvec2", "dvec3", "dvec4",
+         };
+-        static const char *intTypes[] = { 
+-            "int8_t", "i8vec2", "i8vec3", "i8vec4", 
+-            "int16_t", "i16vec2", "i16vec3", "i16vec4", 
+-            "int", "ivec2", "ivec3", "ivec4", 
+-            "int64_t", "i64vec2", "i64vec3", "i64vec4", 
+-            "uint8_t", "u8vec2", "u8vec3", "u8vec4", 
+-            "uint16_t", "u16vec2", "u16vec3", "u16vec4", 
+-            "uint", "uvec2", "uvec3", "uvec4", 
+-            "uint64_t", "u64vec2", "u64vec3", "u64vec4", 
++        static const char *intTypes[] = {
++            "int8_t", "i8vec2", "i8vec3", "i8vec4",
++            "int16_t", "i16vec2", "i16vec3", "i16vec4",
++            "int", "ivec2", "ivec3", "ivec4",
++            "int64_t", "i64vec2", "i64vec3", "i64vec4",
++            "uint8_t", "u8vec2", "u8vec3", "u8vec4",
++            "uint16_t", "u16vec2", "u16vec3", "u16vec4",
++            "uint", "uvec2", "uvec3", "uvec4",
++            "uint64_t", "u64vec2", "u64vec3", "u64vec4",
+         };
+-        static const char *boolTypes[] = { 
+-            "bool", "bvec2", "bvec3", "bvec4", 
++        static const char *boolTypes[] = {
++            "bool", "bvec2", "bvec3", "bvec4",
+         };
+ 
+         for (size_t i = 0; i < sizeof(subgroupOps)/sizeof(subgroupOps[0]); ++i) {
+@@ -6182,31 +6183,31 @@ void TBuiltIns::initialize(int version, EProfile profile, const SpvVersion& spvV
+             stageBuiltins[static_cast<EShLanguage>(stage)].append("const highp int gl_ShadingRateFlag4HorizontalPixelsEXT     = 8;\n");
+         }
+     }
+-    
++
+     // GL_EXT_shader_image_int64
+     if ((profile != EEsProfile && version >= 420) ||
+         (profile == EEsProfile && version >= 310)) {
+-            
++
+         const TBasicType bTypes[] = { EbtInt64, EbtUint64 };
+         for (int ms = 0; ms <= 1; ++ms) { // loop over "bool" multisample or not
+             for (int arrayed = 0; arrayed <= 1; ++arrayed) { // loop over "bool" arrayed or not
+                 for (int dim = Esd1D; dim < EsdSubpass; ++dim) { // 1D, ..., buffer
+                     if ((dim == Esd1D || dim == EsdRect) && profile == EEsProfile)
+                         continue;
+-                    
++
+                     if ((dim == Esd3D || dim == EsdRect || dim == EsdBuffer) && arrayed)
+                         continue;
+-                    
++
+                     if (dim != Esd2D && ms)
+                         continue;
+-                    
++
+                     // Loop over the bTypes
+                     for (size_t bType = 0; bType < sizeof(bTypes)/sizeof(TBasicType); ++bType) {
+                         //
+                         // Now, make all the function prototypes for the type we just built...
+                         //
+                         TSampler sampler;
+-                    
++
+                         sampler.setImage(bTypes[bType], (TSamplerDim)dim, arrayed ? true : false,
+                                                                           false,
+                                                                           ms      ? true : false);
+@@ -6512,7 +6513,7 @@ void TBuiltIns::addImageFunctions(TSampler sampler, const TString& typeName, int
+     if ( profile != EEsProfile ||
+         (profile == EEsProfile && version >= 310)) {
+         if (sampler.type == EbtInt || sampler.type == EbtUint || sampler.type == EbtInt64 || sampler.type == EbtUint64 ) {
+-            
++
+             const char* dataType;
+             switch (sampler.type) {
+                 case(EbtInt): dataType = "highp int"; break;
+@@ -9216,12 +9217,12 @@ void TBuiltIns::identifyBuiltIns(int version, EProfile profile, const SpvVersion
+             symbolTable.setVariableExtensions("gl_MeshVerticesEXT", "gl_PointSize",    1, &E_GL_EXT_mesh_shader);
+             symbolTable.setVariableExtensions("gl_MeshVerticesEXT", "gl_ClipDistance", 1, &E_GL_EXT_mesh_shader);
+             symbolTable.setVariableExtensions("gl_MeshVerticesEXT", "gl_CullDistance", 1, &E_GL_EXT_mesh_shader);
+-            
++
+             BuiltInVariable("gl_MeshVerticesEXT", "gl_Position",     EbvPosition,     symbolTable);
+             BuiltInVariable("gl_MeshVerticesEXT", "gl_PointSize",    EbvPointSize,    symbolTable);
+             BuiltInVariable("gl_MeshVerticesEXT", "gl_ClipDistance", EbvClipDistance, symbolTable);
+             BuiltInVariable("gl_MeshVerticesEXT", "gl_CullDistance", EbvCullDistance, symbolTable);
+-            
++
+             symbolTable.setVariableExtensions("gl_MeshPrimitivesEXT", "gl_PrimitiveID",             1, &E_GL_EXT_mesh_shader);
+             symbolTable.setVariableExtensions("gl_MeshPrimitivesEXT", "gl_Layer",                   1, &E_GL_EXT_mesh_shader);
+             symbolTable.setVariableExtensions("gl_MeshPrimitivesEXT", "gl_ViewportIndex",           1, &E_GL_EXT_mesh_shader);
+@@ -10185,3 +10186,4 @@ void TBuiltIns::identifyBuiltIns(int version, EProfile profile, const SpvVersion
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.h b/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.h
+index ac8ec33..7288584 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.h
+@@ -43,6 +43,7 @@
+ #include "SymbolTable.h"
+ #include "Versions.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -108,5 +109,6 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _INITIALIZE_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/IntermTraverse.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/IntermTraverse.cpp
+index 553b1b5..e78c76f 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/IntermTraverse.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/IntermTraverse.cpp
+@@ -37,6 +37,7 @@
+ 
+ #include "../Include/intermediate.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -307,3 +308,4 @@ void TIntermSwitch::traverse(TIntermTraverser* it)
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Intermediate.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/Intermediate.cpp
+index a8e3b38..81499fc 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/Intermediate.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/Intermediate.cpp
+@@ -49,6 +49,7 @@
+ #include <utility>
+ #include <tuple>
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ ////////////////////////////////////////////////////////////////////////////
+@@ -3985,3 +3986,4 @@ const char* TIntermediate::getResourceName(TResourceType res)
+ 
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/LiveTraverser.h b/src/3rdparty/glslang/glslang/MachineIndependent/LiveTraverser.h
+index 9b39b59..b0c5ad5 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/LiveTraverser.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/LiveTraverser.h
+@@ -44,6 +44,7 @@
+ #include <list>
+ #include <unordered_set>
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -166,3 +167,4 @@ private:
+ };
+ 
+ } // namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ParseContextBase.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/ParseContextBase.cpp
+index d73f403..26801ef 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/ParseContextBase.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/ParseContextBase.cpp
+@@ -40,8 +40,9 @@
+ 
+ #include "ParseHelper.h"
+ 
+-extern int yyparse(glslang::TParseContext*);
++extern int yyparse(QtShaderTools::glslang::TParseContext*);
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -732,3 +733,4 @@ void TParseContextBase::finish()
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.cpp
+index 4416a26..c7e828a 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.cpp
+@@ -45,8 +45,9 @@
+ 
+ #include "preprocessor/PpContext.h"
+ 
+-extern int yyparse(glslang::TParseContext*);
++extern int yyparse(QtShaderTools::glslang::TParseContext*);
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ TParseContext::TParseContext(TSymbolTable& symbolTable, TIntermediate& interm, bool parsingBuiltins,
+@@ -9701,3 +9702,4 @@ TLayoutFormat TParseContext::mapLegacyLayoutFormat(TLayoutFormat legacyLayoutFor
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.h b/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.h
+index d746629..f8ed26b 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.h
+@@ -55,6 +55,7 @@
+ #include "Scan.h"
+ #include "attribute.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ struct TPragma {
+@@ -581,5 +582,6 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _PARSER_HELPER_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/PoolAlloc.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/PoolAlloc.cpp
+index 471a980..fdf5cf7 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/PoolAlloc.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/PoolAlloc.cpp
+@@ -35,6 +35,7 @@
+ #include "../Include/Common.h"
+ #include "../Include/PoolAlloc.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ namespace {
+@@ -307,3 +308,4 @@ void TAllocation::checkAllocList() const
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.cpp
+index 1d33bfd..83dfc61 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.cpp
+@@ -37,6 +37,7 @@
+ #include "../Include/intermediate.h"
+ #include "RemoveTree.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -116,3 +117,4 @@ void RemoveAllTreeNodes(TIntermNode* root)
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.h b/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.h
+index 1ed0156..33b53d5 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.h
+@@ -34,8 +34,10 @@
+ 
+ #pragma once
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ void RemoveAllTreeNodes(TIntermNode*);
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Scan.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/Scan.cpp
+index 99c9ecb..8b3facd 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/Scan.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/Scan.cpp
+@@ -58,8 +58,9 @@
+ #include "preprocessor/PpTokens.h"
+ 
+ // Required to avoid missing prototype warnings for some compilers
+-int yylex(YYSTYPE*, glslang::TParseContext&);
++int yylex(YYSTYPE*, QtShaderTools::glslang::TParseContext&);
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ // read past any white space
+@@ -287,11 +288,12 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ // This is the function the glslang parser (i.e., bison) calls to get its next token
+-int yylex(YYSTYPE* glslangTokenDesc, glslang::TParseContext& parseContext)
++int yylex(YYSTYPE* glslangTokenDesc, QtShaderTools::glslang::TParseContext& parseContext)
+ {
+-    glslang::TParserToken token(*glslangTokenDesc);
++    QtShaderTools::glslang::TParserToken token(*glslangTokenDesc);
+ 
+     return parseContext.getScanContext()->tokenize(parseContext.getPpContext(), token);
+ }
+@@ -328,6 +330,7 @@ std::unordered_set<const char*, str_hash, str_eq>* ReservedSet = nullptr;
+ 
+ }
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ void TScanContext::fillInKeywordMap()
+@@ -1983,3 +1986,4 @@ int TScanContext::secondGenerationImage()
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Scan.h b/src/3rdparty/glslang/glslang/MachineIndependent/Scan.h
+index 24b75cf..44be905 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/Scan.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/Scan.h
+@@ -38,6 +38,7 @@
+ 
+ #include "Versions.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ // Use a global end-of-input character, so no translation is needed across
+@@ -272,5 +273,6 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _GLSLANG_SCAN_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ScanContext.h b/src/3rdparty/glslang/glslang/MachineIndependent/ScanContext.h
+index 74b2b3c..740c146 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/ScanContext.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/ScanContext.h
+@@ -42,6 +42,7 @@
+ 
+ #include "ParseHelper.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ class TPpContext;
+@@ -91,3 +92,4 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp
+index a71e4e8..d4f196d 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp
+@@ -85,6 +85,7 @@ int NumberOfClients = 0;
+ // global initialization lock
+ std::mutex init_lock;
+ 
++using namespace QtShaderTools;
+ using namespace glslang;
+ 
+ // Create a language specific version of parseables.
+@@ -1662,6 +1663,7 @@ int ShGetUniformLocation_Qt(const ShHandle handle, const char* name)
+ // See more detailed comment in ShaderLang.h
+ //
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ Version GetVersion()
+@@ -2179,3 +2181,4 @@ bool TProgram::mapIO(TIoMapResolver* pResolver, TIoMapper* pIoMapper)
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/SpirvIntrinsics.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/SpirvIntrinsics.cpp
+index 4e130c3..8d3b605 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/SpirvIntrinsics.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/SpirvIntrinsics.cpp
+@@ -41,6 +41,7 @@
+ #include "../Include/Types.h"
+ #include "ParseHelper.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ bool TSpirvTypeParameter::operator==(const TSpirvTypeParameter& rhs) const
+@@ -358,3 +359,4 @@ TSpirvInstruction* TParseContext::mergeSpirvInstruction(const TSourceLoc& loc, T
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.cpp
+index 1e007a7..1120561 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.cpp
+@@ -44,6 +44,7 @@
+ 
+ #include "SymbolTable.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -464,3 +465,4 @@ void TSymbolTable::copyTable(const TSymbolTable& copyOf)
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.h b/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.h
+index fc86ad6..d8c8c94 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.h
+@@ -69,6 +69,7 @@
+ #include "../Include/intermediate.h"
+ #include "../Include/InfoSink.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -188,7 +189,7 @@ public:
+             (*memberExtensions)[member].push_back(exts[e]);
+     }
+     virtual bool hasMemberExtensions() const { return memberExtensions != nullptr; }
+-    virtual int getNumMemberExtensions(int member) const 
++    virtual int getNumMemberExtensions(int member) const
+     {
+         return memberExtensions == nullptr ? 0 : (int)(*memberExtensions)[member].size();
+     }
+@@ -937,5 +938,6 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _SYMBOL_TABLE_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Versions.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/Versions.cpp
+index 38cbf3e..280e507 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/Versions.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/Versions.cpp
+@@ -149,6 +149,7 @@
+ #include "parseVersions.h"
+ #include "localintermediate.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -1384,3 +1385,4 @@ void TParseVersions::requireSpv(const TSourceLoc& loc, const char *op, unsigned
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Versions.h b/src/3rdparty/glslang/glslang/MachineIndependent/Versions.h
+index 564995b..7f96b1c 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/Versions.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/Versions.h
+@@ -62,6 +62,7 @@ typedef enum : unsigned {
+     LAST_ELEMENT_MARKER(EProfileCount),
+ } EProfile;
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -366,5 +367,6 @@ const char* const AEP_mesh_shader[] = { E_GL_NV_mesh_shader, E_GL_EXT_mesh_shade
+ const int Num_AEP_mesh_shader = sizeof(AEP_mesh_shader)/sizeof(AEP_mesh_shader[0]);
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _VERSIONS_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/attribute.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/attribute.cpp
+index 21ef736..917cc99 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/attribute.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/attribute.cpp
+@@ -38,6 +38,7 @@
+ #include "../Include/intermediate.h"
+ #include "ParseHelper.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ // extract integers out of attribute arguments stored in attribute aggregate
+@@ -365,3 +366,4 @@ void TParseContext::handleFunctionAttributes(const TSourceLoc& loc, const TAttri
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/attribute.h b/src/3rdparty/glslang/glslang/MachineIndependent/attribute.h
+index c5b2917..137cb75 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/attribute.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/attribute.h
+@@ -40,6 +40,7 @@
+ #include "../Include/Common.h"
+ #include "../Include/ConstantUnion.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+     enum TAttributeType {
+@@ -146,5 +147,6 @@ namespace glslang {
+     typedef TList<TAttributeArgs> TAttributes;
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _ATTRIBUTE_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp
+index a265abc..0948777 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp
+@@ -90,6 +90,7 @@ Jutta Degener, 1995
+ #include "../Public/ShaderLang.h"
+ #include "attribute.h"
+ 
++using namespace QtShaderTools;
+ using namespace glslang;
+ 
+ 
+@@ -4542,7 +4543,7 @@ do {                                                                      \
+ 
+ static void
+ yy_symbol_value_print (FILE *yyo,
+-                       yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, glslang::TParseContext* pParseContext)
++                       yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, QtShaderTools::glslang::TParseContext* pParseContext)
+ {
+   FILE *yyoutput = yyo;
+   YY_USE (yyoutput);
+@@ -4561,7 +4562,7 @@ yy_symbol_value_print (FILE *yyo,
+ 
+ static void
+ yy_symbol_print (FILE *yyo,
+-                 yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, glslang::TParseContext* pParseContext)
++                 yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, QtShaderTools::glslang::TParseContext* pParseContext)
+ {
+   YYFPRINTF (yyo, "%s %s (",
+              yykind < YYNTOKENS ? "token" : "nterm", yysymbol_name (yykind));
+@@ -4600,7 +4601,7 @@ do {                                                            \
+ 
+ static void
+ yy_reduce_print (yy_state_t *yyssp, YYSTYPE *yyvsp,
+-                 int yyrule, glslang::TParseContext* pParseContext)
++                 int yyrule, QtShaderTools::glslang::TParseContext* pParseContext)
+ {
+   int yylno = yyrline[yyrule];
+   int yynrhs = yyr2[yyrule];
+@@ -4929,7 +4930,7 @@ yysyntax_error (YYPTRDIFF_T *yymsg_alloc, char **yymsg,
+ 
+ static void
+ yydestruct (const char *yymsg,
+-            yysymbol_kind_t yykind, YYSTYPE *yyvaluep, glslang::TParseContext* pParseContext)
++            yysymbol_kind_t yykind, YYSTYPE *yyvaluep, QtShaderTools::glslang::TParseContext* pParseContext)
+ {
+   YY_USE (yyvaluep);
+   YY_USE (pParseContext);
+@@ -4952,7 +4953,7 @@ yydestruct (const char *yymsg,
+ `----------*/
+ 
+ int
+-yyparse (glslang::TParseContext* pParseContext)
++yyparse (QtShaderTools::glslang::TParseContext* pParseContext)
+ {
+ /* Lookahead token kind.  */
+ int yychar;
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h
+index 39455f2..46eb247 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h
+@@ -527,9 +527,9 @@ union YYSTYPE
+ #line 97 "MachineIndependent/glslang.y"
+ 
+     struct {
+-        glslang::TSourceLoc loc;
++        QtShaderTools::glslang::TSourceLoc loc;
+         union {
+-            glslang::TString *string;
++            QtShaderTools::glslang::TString *string;
+             int i;
+             unsigned int u;
+             long long i64;
+@@ -537,30 +537,30 @@ union YYSTYPE
+             bool b;
+             double d;
+         };
+-        glslang::TSymbol* symbol;
++        QtShaderTools::glslang::TSymbol* symbol;
+     } lex;
+     struct {
+-        glslang::TSourceLoc loc;
+-        glslang::TOperator op;
++        QtShaderTools::glslang::TSourceLoc loc;
++        QtShaderTools::glslang::TOperator op;
+         union {
+             TIntermNode* intermNode;
+-            glslang::TIntermNodePair nodePair;
+-            glslang::TIntermTyped* intermTypedNode;
+-            glslang::TAttributes* attributes;
+-            glslang::TSpirvRequirement* spirvReq;
+-            glslang::TSpirvInstruction* spirvInst;
+-            glslang::TSpirvTypeParameters* spirvTypeParams;
++            QtShaderTools::glslang::TIntermNodePair nodePair;
++            QtShaderTools::glslang::TIntermTyped* intermTypedNode;
++            QtShaderTools::glslang::TAttributes* attributes;
++            QtShaderTools::glslang::TSpirvRequirement* spirvReq;
++            QtShaderTools::glslang::TSpirvInstruction* spirvInst;
++            QtShaderTools::glslang::TSpirvTypeParameters* spirvTypeParams;
+         };
+         union {
+-            glslang::TPublicType type;
+-            glslang::TFunction* function;
+-            glslang::TParameter param;
+-            glslang::TTypeLoc typeLine;
+-            glslang::TTypeList* typeList;
+-            glslang::TArraySizes* arraySizes;
+-            glslang::TIdentifierList* identifierList;
++            QtShaderTools::glslang::TPublicType type;
++            QtShaderTools::glslang::TFunction* function;
++            QtShaderTools::glslang::TParameter param;
++            QtShaderTools::glslang::TTypeLoc typeLine;
++            QtShaderTools::glslang::TTypeList* typeList;
++            QtShaderTools::glslang::TArraySizes* arraySizes;
++            QtShaderTools::glslang::TIdentifierList* identifierList;
+         };
+-        glslang::TTypeParameters* typeParameters;
++        QtShaderTools::glslang::TTypeParameters* typeParameters;
+     } interm;
+ 
+ #line 567 "MachineIndependent/glslang_tab.cpp.h"
+@@ -574,7 +574,7 @@ typedef union YYSTYPE YYSTYPE;
+ 
+ 
+ 
+-int yyparse (glslang::TParseContext* pParseContext);
++int yyparse (QtShaderTools::glslang::TParseContext* pParseContext);
+ 
+ 
+ #endif /* !YY_YY_MACHINEINDEPENDENT_GLSLANG_TAB_CPP_H_INCLUDED  */
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/intermOut.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/intermOut.cpp
+index d5fc26b..2d912fb 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/intermOut.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/intermOut.cpp
+@@ -47,6 +47,7 @@
+ #include <cstdint>
+ 
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -1605,3 +1606,4 @@ void TIntermediate::output(TInfoSink& infoSink, bool tree)
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.cpp
+index 63dedf7..7d72039 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.cpp
+@@ -58,6 +58,7 @@
+ //    c. implicit dead bindings are left un-bound.
+ //
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ class TVarGatherTraverser : public TLiveTraverser {
+@@ -1712,3 +1713,4 @@ bool TGlslIoMapper::doMap(TIoMapResolver* resolver, TInfoSink& infoSink) {
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.h b/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.h
+index 35babbc..6c99786 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.h
+@@ -46,6 +46,7 @@
+ 
+ class TInfoSink;
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ class TIntermediate;
+@@ -355,5 +356,6 @@ private:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _IOMAPPER_INCLUDED
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/limits.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/limits.cpp
+index 4404bec..aba6bdf 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/limits.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/limits.cpp
+@@ -53,6 +53,7 @@
+ 
+ #include "ParseHelper.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -196,3 +197,4 @@ void TParseContext::constantIndexExpressionCheck(TIntermNode* index)
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/linkValidate.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/linkValidate.cpp
+index d69300b..87e4e5d 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/linkValidate.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/linkValidate.cpp
+@@ -50,6 +50,7 @@
+ #include "../Include/InfoSink.h"
+ #include "SymbolTable.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -2384,3 +2385,4 @@ bool TIntermediate::isIoResizeArray(const TType& type, EShLanguage language) {
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h b/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h
+index 2f0e65c..cc3deb5 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h
+@@ -51,6 +51,7 @@
+ 
+ class TInfoSink;
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ struct TMatrixSelector {
+@@ -267,7 +268,7 @@ private:
+     unsigned int features;
+ };
+ 
+-// MustBeAssigned wraps a T, asserting that it has been assigned with 
++// MustBeAssigned wraps a T, asserting that it has been assigned with
+ // operator =() before attempting to read with operator T() or operator ->().
+ // Used to catch cases where fields are read before they have been assigned.
+ template<typename T>
+@@ -278,7 +279,7 @@ public:
+     MustBeAssigned(const T& v) : value(v) {}
+     operator const T&() const { assert(isSet); return value; }
+     const T* operator ->() const { assert(isSet); return &value; }
+-    MustBeAssigned& operator = (const T& v) { value = v; isSet = true; return *this; } 
++    MustBeAssigned& operator = (const T& v) { value = v; isSet = true; return *this; }
+ private:
+     T value;
+     bool isSet = false;
+@@ -1257,5 +1258,6 @@ private:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _LOCAL_INTERMEDIATE_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/parseConst.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/parseConst.cpp
+index 8350972..81dfbef 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/parseConst.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/parseConst.cpp
+@@ -39,6 +39,7 @@
+ 
+ #include "ParseHelper.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ class TConstTraverser : public TIntermTraverser {
+@@ -211,3 +212,4 @@ bool TIntermediate::parseConstTree(TIntermNode* root, TConstUnionArray unionArra
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/parseVersions.h b/src/3rdparty/glslang/glslang/MachineIndependent/parseVersions.h
+index 63841c4..c0f6cfc 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/parseVersions.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/parseVersions.h
+@@ -45,6 +45,7 @@
+ 
+ #include <map>
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -60,9 +61,9 @@ public:
+         :
+         forwardCompatible(forwardCompatible),
+         profile(profile),
+-        infoSink(infoSink), version(version), 
++        infoSink(infoSink), version(version),
+         language(language),
+-        spvVersion(spvVersion), 
++        spvVersion(spvVersion),
+         intermediate(interm), messages(messages), numErrors(0), currentScanner(nullptr) { }
+     virtual ~TParseVersions() { }
+     void requireStage(const TSourceLoc&, EShLanguageMask, const char* featureDesc);
+@@ -177,5 +178,6 @@ private:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _PARSE_VERSIONS_INCLUDED_
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/Pp.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/Pp.cpp
+index 8d2e85f..f023c9b 100755
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/Pp.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/Pp.cpp
+@@ -90,6 +90,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ #include "PpContext.h"
+ #include "PpTokens.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ // Handle #define
+@@ -1344,3 +1345,4 @@ MacroExpandResult TPpContext::MacroExpand(TPpToken* ppToken, bool expandUndef, b
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpAtom.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpAtom.cpp
+index 06c2333..2192913 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpAtom.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpAtom.cpp
+@@ -89,6 +89,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ 
+ namespace {
+ 
++using namespace QtShaderTools;
+ using namespace glslang;
+ 
+ const struct {
+@@ -151,6 +152,7 @@ const struct {
+ 
+ } // end anonymous namespace
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -179,3 +181,4 @@ TStringAtomMap::TStringAtomMap()
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp
+index 70f5119..d590ccb 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp
+@@ -82,6 +82,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ 
+ #include "PpContext.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ TPpContext::TPpContext(TParseContextBase& pc, const std::string& rootFileName, TShader::Includer& inclr) :
+@@ -118,3 +119,4 @@ void TPpContext::setInput(TInputScanner& input, bool versionWillBeError)
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.h b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.h
+index 590eab6..701a134 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.h
+@@ -91,6 +91,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+     #pragma warning(disable : 4127)
+ #endif
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ class TPpToken {
+@@ -255,7 +256,7 @@ public:
+         // of a TPpToken, plus its atom.
+         class Token {
+         public:
+-            Token(int atom, const TPpToken& ppToken) : 
++            Token(int atom, const TPpToken& ppToken) :
+                 atom(atom),
+                 space(ppToken.space),
+                 i64val(ppToken.i64val),
+@@ -714,5 +715,6 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif  // PPCONTEXT_H
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp
+index 34dec20..43006d1 100755
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp
+@@ -91,6 +91,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ #include "PpTokens.h"
+ #include "../Scan.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ ///////////////////////////////////////////////////////////////////////////////////////////////
+@@ -1406,3 +1407,4 @@ void TPpContext::missingEndifCheck()
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp
+index e6ee64c..e8a390f 100755
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp
+@@ -94,6 +94,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ #include "PpContext.h"
+ #include "PpTokens.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ // Add a token (including backing string) to the end of a macro
+@@ -214,3 +215,4 @@ void TPpContext::UngetToken(int token, TPpToken* ppToken)
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.h b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.h
+index 7b0f815..31bbc08 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.h
+@@ -78,6 +78,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ #ifndef PARSER_H
+ #define PARSER_H
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ // Multi-character tokens
+@@ -175,5 +176,6 @@ enum EFixedAtoms {
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif /* not PARSER_H */
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp
+index 7b5cd03..07cec37 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp
+@@ -66,31 +66,31 @@ const char ObjectAccesschainDelimiter = '/';
+ 
+ // Mapping from Symbol IDs of symbol nodes, to their defining operation
+ // nodes.
+-typedef std::unordered_multimap<ObjectAccessChain, glslang::TIntermOperator*> NodeMapping;
++typedef std::unordered_multimap<ObjectAccessChain, QtShaderTools::glslang::TIntermOperator*> NodeMapping;
+ // Mapping from object nodes to their access chain info string.
+-typedef std::unordered_map<glslang::TIntermTyped*, ObjectAccessChain> AccessChainMapping;
++typedef std::unordered_map<QtShaderTools::glslang::TIntermTyped*, ObjectAccessChain> AccessChainMapping;
+ 
+ // Set of object IDs.
+ typedef std::unordered_set<ObjectAccessChain> ObjectAccesschainSet;
+ // Set of return branch nodes.
+-typedef std::unordered_set<glslang::TIntermBranch*> ReturnBranchNodeSet;
++typedef std::unordered_set<QtShaderTools::glslang::TIntermBranch*> ReturnBranchNodeSet;
+ 
+ // A helper function to tell whether a node is 'noContraction'. Returns true if
+ // the node has 'noContraction' qualifier, otherwise false.
+-bool isPreciseObjectNode(glslang::TIntermTyped* node)
++bool isPreciseObjectNode(QtShaderTools::glslang::TIntermTyped* node)
+ {
+     return node->getType().getQualifier().isNoContraction();
+ }
+ 
+ // Returns true if the opcode is a dereferencing one.
+-bool isDereferenceOperation(glslang::TOperator op)
++bool isDereferenceOperation(QtShaderTools::glslang::TOperator op)
+ {
+     switch (op) {
+-    case glslang::EOpIndexDirect:
+-    case glslang::EOpIndexDirectStruct:
+-    case glslang::EOpIndexIndirect:
+-    case glslang::EOpVectorSwizzle:
+-    case glslang::EOpMatrixSwizzle:
++    case QtShaderTools::glslang::EOpIndexDirect:
++    case QtShaderTools::glslang::EOpIndexDirectStruct:
++    case QtShaderTools::glslang::EOpIndexIndirect:
++    case QtShaderTools::glslang::EOpVectorSwizzle:
++    case QtShaderTools::glslang::EOpMatrixSwizzle:
+         return true;
+     default:
+         return false;
+@@ -98,29 +98,29 @@ bool isDereferenceOperation(glslang::TOperator op)
+ }
+ 
+ // Returns true if the opcode leads to an assignment operation.
+-bool isAssignOperation(glslang::TOperator op)
++bool isAssignOperation(QtShaderTools::glslang::TOperator op)
+ {
+     switch (op) {
+-    case glslang::EOpAssign:
+-    case glslang::EOpAddAssign:
+-    case glslang::EOpSubAssign:
+-    case glslang::EOpMulAssign:
+-    case glslang::EOpVectorTimesMatrixAssign:
+-    case glslang::EOpVectorTimesScalarAssign:
+-    case glslang::EOpMatrixTimesScalarAssign:
+-    case glslang::EOpMatrixTimesMatrixAssign:
+-    case glslang::EOpDivAssign:
+-    case glslang::EOpModAssign:
+-    case glslang::EOpAndAssign:
+-    case glslang::EOpLeftShiftAssign:
+-    case glslang::EOpRightShiftAssign:
+-    case glslang::EOpInclusiveOrAssign:
+-    case glslang::EOpExclusiveOrAssign:
+-
+-    case glslang::EOpPostIncrement:
+-    case glslang::EOpPostDecrement:
+-    case glslang::EOpPreIncrement:
+-    case glslang::EOpPreDecrement:
++    case QtShaderTools::glslang::EOpAssign:
++    case QtShaderTools::glslang::EOpAddAssign:
++    case QtShaderTools::glslang::EOpSubAssign:
++    case QtShaderTools::glslang::EOpMulAssign:
++    case QtShaderTools::glslang::EOpVectorTimesMatrixAssign:
++    case QtShaderTools::glslang::EOpVectorTimesScalarAssign:
++    case QtShaderTools::glslang::EOpMatrixTimesScalarAssign:
++    case QtShaderTools::glslang::EOpMatrixTimesMatrixAssign:
++    case QtShaderTools::glslang::EOpDivAssign:
++    case QtShaderTools::glslang::EOpModAssign:
++    case QtShaderTools::glslang::EOpAndAssign:
++    case QtShaderTools::glslang::EOpLeftShiftAssign:
++    case QtShaderTools::glslang::EOpRightShiftAssign:
++    case QtShaderTools::glslang::EOpInclusiveOrAssign:
++    case QtShaderTools::glslang::EOpExclusiveOrAssign:
++
++    case QtShaderTools::glslang::EOpPostIncrement:
++    case QtShaderTools::glslang::EOpPostDecrement:
++    case QtShaderTools::glslang::EOpPreIncrement:
++    case QtShaderTools::glslang::EOpPreDecrement:
+         return true;
+     default:
+         return false;
+@@ -129,7 +129,7 @@ bool isAssignOperation(glslang::TOperator op)
+ 
+ // A helper function to get the unsigned int from a given constant union node.
+ // Note the node should only hold a uint scalar.
+-unsigned getStructIndexFromConstantUnion(glslang::TIntermTyped* node)
++unsigned getStructIndexFromConstantUnion(QtShaderTools::glslang::TIntermTyped* node)
+ {
+     assert(node->getAsConstantUnion() && node->getAsConstantUnion()->isScalar());
+     unsigned struct_dereference_index = node->getAsConstantUnion()->getConstArray()[0].getUConst();
+@@ -137,7 +137,7 @@ unsigned getStructIndexFromConstantUnion(glslang::TIntermTyped* node)
+ }
+ 
+ // A helper function to generate symbol_label.
+-ObjectAccessChain generateSymbolLabel(glslang::TIntermSymbol* node)
++ObjectAccessChain generateSymbolLabel(QtShaderTools::glslang::TIntermSymbol* node)
+ {
+     ObjectAccessChain symbol_id =
+         std::to_string(node->getId()) + "(" + node->getName().c_str() + ")";
+@@ -146,39 +146,39 @@ ObjectAccessChain generateSymbolLabel(glslang::TIntermSymbol* node)
+ 
+ // Returns true if the operation is an arithmetic operation and valid for
+ // the 'NoContraction' decoration.
+-bool isArithmeticOperation(glslang::TOperator op)
++bool isArithmeticOperation(QtShaderTools::glslang::TOperator op)
+ {
+     switch (op) {
+-    case glslang::EOpAddAssign:
+-    case glslang::EOpSubAssign:
+-    case glslang::EOpMulAssign:
+-    case glslang::EOpVectorTimesMatrixAssign:
+-    case glslang::EOpVectorTimesScalarAssign:
+-    case glslang::EOpMatrixTimesScalarAssign:
+-    case glslang::EOpMatrixTimesMatrixAssign:
+-    case glslang::EOpDivAssign:
+-    case glslang::EOpModAssign:
+-
+-    case glslang::EOpNegative:
+-
+-    case glslang::EOpAdd:
+-    case glslang::EOpSub:
+-    case glslang::EOpMul:
+-    case glslang::EOpDiv:
+-    case glslang::EOpMod:
+-
+-    case glslang::EOpVectorTimesScalar:
+-    case glslang::EOpVectorTimesMatrix:
+-    case glslang::EOpMatrixTimesVector:
+-    case glslang::EOpMatrixTimesScalar:
+-    case glslang::EOpMatrixTimesMatrix:
+-
+-    case glslang::EOpDot:
+-
+-    case glslang::EOpPostIncrement:
+-    case glslang::EOpPostDecrement:
+-    case glslang::EOpPreIncrement:
+-    case glslang::EOpPreDecrement:
++    case QtShaderTools::glslang::EOpAddAssign:
++    case QtShaderTools::glslang::EOpSubAssign:
++    case QtShaderTools::glslang::EOpMulAssign:
++    case QtShaderTools::glslang::EOpVectorTimesMatrixAssign:
++    case QtShaderTools::glslang::EOpVectorTimesScalarAssign:
++    case QtShaderTools::glslang::EOpMatrixTimesScalarAssign:
++    case QtShaderTools::glslang::EOpMatrixTimesMatrixAssign:
++    case QtShaderTools::glslang::EOpDivAssign:
++    case QtShaderTools::glslang::EOpModAssign:
++
++    case QtShaderTools::glslang::EOpNegative:
++
++    case QtShaderTools::glslang::EOpAdd:
++    case QtShaderTools::glslang::EOpSub:
++    case QtShaderTools::glslang::EOpMul:
++    case QtShaderTools::glslang::EOpDiv:
++    case QtShaderTools::glslang::EOpMod:
++
++    case QtShaderTools::glslang::EOpVectorTimesScalar:
++    case QtShaderTools::glslang::EOpVectorTimesMatrix:
++    case QtShaderTools::glslang::EOpMatrixTimesVector:
++    case QtShaderTools::glslang::EOpMatrixTimesScalar:
++    case QtShaderTools::glslang::EOpMatrixTimesMatrix:
++
++    case QtShaderTools::glslang::EOpDot:
++
++    case QtShaderTools::glslang::EOpPostIncrement:
++    case QtShaderTools::glslang::EOpPostDecrement:
++    case QtShaderTools::glslang::EOpPreIncrement:
++    case QtShaderTools::glslang::EOpPreDecrement:
+         return true;
+     default:
+         return false;
+@@ -231,18 +231,18 @@ ObjectAccessChain getSubAccessChainAfterPrefix(const ObjectAccessChain& chain,
+ //  1) A mapping from symbol nodes' IDs to their defining operation nodes.
+ //  2) A set of access chains of the initial precise object nodes.
+ //
+-class TSymbolDefinitionCollectingTraverser : public glslang::TIntermTraverser {
++class TSymbolDefinitionCollectingTraverser : public QtShaderTools::glslang::TIntermTraverser {
+ public:
+     TSymbolDefinitionCollectingTraverser(NodeMapping* symbol_definition_mapping,
+                                          AccessChainMapping* accesschain_mapping,
+                                          ObjectAccesschainSet* precise_objects,
+                                          ReturnBranchNodeSet* precise_return_nodes);
+ 
+-    bool visitUnary(glslang::TVisit, glslang::TIntermUnary*) override;
+-    bool visitBinary(glslang::TVisit, glslang::TIntermBinary*) override;
+-    void visitSymbol(glslang::TIntermSymbol*) override;
+-    bool visitAggregate(glslang::TVisit, glslang::TIntermAggregate*) override;
+-    bool visitBranch(glslang::TVisit, glslang::TIntermBranch*) override;
++    bool visitUnary(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermUnary*) override;
++    bool visitBinary(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermBinary*) override;
++    void visitSymbol(QtShaderTools::glslang::TIntermSymbol*) override;
++    bool visitAggregate(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermAggregate*) override;
++    bool visitBranch(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermBranch*) override;
+ 
+ protected:
+     TSymbolDefinitionCollectingTraverser& operator=(const TSymbolDefinitionCollectingTraverser&);
+@@ -265,13 +265,13 @@ protected:
+     // The pointer to the Function Definition node, so we can get the
+     // preciseness of the return expression from it when we traverse the
+     // return branch node.
+-    glslang::TIntermAggregate* current_function_definition_node_;
++    QtShaderTools::glslang::TIntermAggregate* current_function_definition_node_;
+ };
+ 
+ TSymbolDefinitionCollectingTraverser::TSymbolDefinitionCollectingTraverser(
+     NodeMapping* symbol_definition_mapping, AccessChainMapping* accesschain_mapping,
+     ObjectAccesschainSet* precise_objects,
+-    std::unordered_set<glslang::TIntermBranch*>* precise_return_nodes)
++    std::unordered_set<QtShaderTools::glslang::TIntermBranch*>* precise_return_nodes)
+     : TIntermTraverser(true, false, false), symbol_definition_mapping_(*symbol_definition_mapping),
+       precise_objects_(*precise_objects), precise_return_nodes_(*precise_return_nodes),
+       current_object_(), accesschain_mapping_(*accesschain_mapping),
+@@ -281,28 +281,28 @@ TSymbolDefinitionCollectingTraverser::TSymbolDefinitionCollectingTraverser(
+ // current node symbol ID, and record a mapping from this node to the current
+ // current_object_, which is the just obtained symbol
+ // ID.
+-void TSymbolDefinitionCollectingTraverser::visitSymbol(glslang::TIntermSymbol* node)
++void TSymbolDefinitionCollectingTraverser::visitSymbol(QtShaderTools::glslang::TIntermSymbol* node)
+ {
+     current_object_ = generateSymbolLabel(node);
+     accesschain_mapping_[node] = current_object_;
+ }
+ 
+ // Visits an aggregate node, traverses all of its children.
+-bool TSymbolDefinitionCollectingTraverser::visitAggregate(glslang::TVisit,
+-                                                          glslang::TIntermAggregate* node)
++bool TSymbolDefinitionCollectingTraverser::visitAggregate(QtShaderTools::glslang::TVisit,
++                                                          QtShaderTools::glslang::TIntermAggregate* node)
+ {
+     // This aggregate node might be a function definition node, in which case we need to
+     // cache this node, so we can get the preciseness information of the return value
+     // of this function later.
+-    StateSettingGuard<glslang::TIntermAggregate*> current_function_definition_node_setting_guard(
++    StateSettingGuard<QtShaderTools::glslang::TIntermAggregate*> current_function_definition_node_setting_guard(
+         &current_function_definition_node_);
+-    if (node->getOp() == glslang::EOpFunction) {
++    if (node->getOp() == QtShaderTools::glslang::EOpFunction) {
+         // This is function definition node, we need to cache this node so that we can
+         // get the preciseness of the return value later.
+         current_function_definition_node_setting_guard.setState(node);
+     }
+     // Traverse the items in the sequence.
+-    glslang::TIntermSequence& seq = node->getSequence();
++    QtShaderTools::glslang::TIntermSequence& seq = node->getSequence();
+     for (int i = 0; i < (int)seq.size(); ++i) {
+         current_object_.clear();
+         seq[i]->traverse(this);
+@@ -310,10 +310,10 @@ bool TSymbolDefinitionCollectingTraverser::visitAggregate(glslang::TVisit,
+     return false;
+ }
+ 
+-bool TSymbolDefinitionCollectingTraverser::visitBranch(glslang::TVisit,
+-                                                       glslang::TIntermBranch* node)
++bool TSymbolDefinitionCollectingTraverser::visitBranch(QtShaderTools::glslang::TVisit,
++                                                       QtShaderTools::glslang::TIntermBranch* node)
+ {
+-    if (node->getFlowOp() == glslang::EOpReturn && node->getExpression() &&
++    if (node->getFlowOp() == QtShaderTools::glslang::EOpReturn && node->getExpression() &&
+         current_function_definition_node_ &&
+         current_function_definition_node_->getType().getQualifier().noContraction) {
+         // This node is a return node with an expression, and its function has a
+@@ -326,8 +326,8 @@ bool TSymbolDefinitionCollectingTraverser::visitBranch(glslang::TVisit,
+ }
+ 
+ // Visits a unary node. This might be an implicit assignment like i++, i--. etc.
+-bool TSymbolDefinitionCollectingTraverser::visitUnary(glslang::TVisit /* visit */,
+-                                                      glslang::TIntermUnary* node)
++bool TSymbolDefinitionCollectingTraverser::visitUnary(QtShaderTools::glslang::TVisit /* visit */,
++                                                      QtShaderTools::glslang::TIntermUnary* node)
+ {
+     current_object_.clear();
+     node->getOperand()->traverse(this);
+@@ -356,8 +356,8 @@ bool TSymbolDefinitionCollectingTraverser::visitUnary(glslang::TVisit /* visit *
+ 
+ // Visits a binary node and updates the mapping from symbol IDs to the definition
+ // nodes. Also collects the access chains for the initial precise objects.
+-bool TSymbolDefinitionCollectingTraverser::visitBinary(glslang::TVisit /* visit */,
+-                                                       glslang::TIntermBinary* node)
++bool TSymbolDefinitionCollectingTraverser::visitBinary(QtShaderTools::glslang::TVisit /* visit */,
++                                                       QtShaderTools::glslang::TIntermBinary* node)
+ {
+     // Traverses the left node to build the access chain info for the object.
+     current_object_.clear();
+@@ -391,7 +391,7 @@ bool TSymbolDefinitionCollectingTraverser::visitBinary(glslang::TVisit /* visit
+         // The left node (parent node) is a struct type object. We need to
+         // record the access chain information of the current node into its
+         // object id.
+-        if (node->getOp() == glslang::EOpIndexDirectStruct) {
++        if (node->getOp() == QtShaderTools::glslang::EOpIndexDirectStruct) {
+             unsigned struct_dereference_index = getStructIndexFromConstantUnion(node->getRight());
+             current_object_.push_back(ObjectAccesschainDelimiter);
+             current_object_.append(std::to_string(struct_dereference_index));
+@@ -415,7 +415,7 @@ bool TSymbolDefinitionCollectingTraverser::visitBinary(glslang::TVisit /* visit
+ // 3) a set of access chains of precise objects.
+ // 4) a set of return nodes with precise expressions.
+ std::tuple<NodeMapping, AccessChainMapping, ObjectAccesschainSet, ReturnBranchNodeSet>
+-getSymbolToDefinitionMappingAndPreciseSymbolIDs(const glslang::TIntermediate& intermediate)
++getSymbolToDefinitionMappingAndPreciseSymbolIDs(const QtShaderTools::glslang::TIntermediate& intermediate)
+ {
+     auto result_tuple = std::make_tuple(NodeMapping(), AccessChainMapping(), ObjectAccesschainSet(),
+                                         ReturnBranchNodeSet());
+@@ -451,7 +451,7 @@ getSymbolToDefinitionMappingAndPreciseSymbolIDs(const glslang::TIntermediate& in
+ //  the access chain of the given 'precise' object along with the traversal to
+ //  tell if the node to be defined is 'precise' or not.
+ //
+-class TNoContractionAssigneeCheckingTraverser : public glslang::TIntermTraverser {
++class TNoContractionAssigneeCheckingTraverser : public QtShaderTools::glslang::TIntermTraverser {
+ 
+     enum DecisionStatus {
+         // The object node to be assigned to may contain 'precise' objects and also not 'precise' objects.
+@@ -482,13 +482,13 @@ public:
+     //  assignee is 'precise'. Otherwise it shows the path to the nested
+     //  precise object.
+     std::tuple<bool, ObjectAccessChain>
+-    getPrecisenessAndRemainedAccessChain(glslang::TIntermOperator* node,
++    getPrecisenessAndRemainedAccessChain(QtShaderTools::glslang::TIntermOperator* node,
+                                          const ObjectAccessChain& precise_object)
+     {
+         assert(isAssignOperation(node->getOp()));
+         precise_object_ = &precise_object;
+         ObjectAccessChain assignee_object;
+-        if (glslang::TIntermBinary* BN = node->getAsBinaryNode()) {
++        if (QtShaderTools::glslang::TIntermBinary* BN = node->getAsBinaryNode()) {
+             // This is a binary assignment node, we need to check the
+             // preciseness of the left node.
+             assert(accesschain_mapping_.count(BN->getLeft()));
+@@ -506,7 +506,7 @@ public:
+             // of the assignee object with the given precise object.
+             assignee_object = accesschain_mapping_.at(BN->getLeft());
+ 
+-        } else if (glslang::TIntermUnary* UN = node->getAsUnaryNode()) {
++        } else if (QtShaderTools::glslang::TIntermUnary* UN = node->getAsUnaryNode()) {
+             // This is a unary assignment node, we need to check the
+             // preciseness of the operand node. For unary assignment node, the
+             // operand node should always be an object node.
+@@ -553,8 +553,8 @@ public:
+ protected:
+     TNoContractionAssigneeCheckingTraverser& operator=(const TNoContractionAssigneeCheckingTraverser&);
+ 
+-    bool visitBinary(glslang::TVisit, glslang::TIntermBinary* node) override;
+-    void visitSymbol(glslang::TIntermSymbol* node) override;
++    bool visitBinary(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermBinary* node) override;
++    void visitSymbol(QtShaderTools::glslang::TIntermSymbol* node) override;
+ 
+     // A map from object nodes to their access chain string (used as object ID).
+     const AccessChainMapping& accesschain_mapping_;
+@@ -568,8 +568,8 @@ protected:
+ // Visits a binary node. If the node is an object node, it must be a dereference
+ // node. In such cases, if the left node is 'precise', this node should also be
+ // 'precise'.
+-bool TNoContractionAssigneeCheckingTraverser::visitBinary(glslang::TVisit,
+-                                                          glslang::TIntermBinary* node)
++bool TNoContractionAssigneeCheckingTraverser::visitBinary(QtShaderTools::glslang::TVisit,
++                                                          QtShaderTools::glslang::TIntermBinary* node)
+ {
+     // Traverses the left so that we transfer the 'precise' from nesting object
+     // to its nested object.
+@@ -594,7 +594,7 @@ bool TNoContractionAssigneeCheckingTraverser::visitBinary(glslang::TVisit,
+ 
+ // Visits a symbol node, if the symbol node ID (its access chain string) matches
+ // with the given precise object, this node should be 'precise'.
+-void TNoContractionAssigneeCheckingTraverser::visitSymbol(glslang::TIntermSymbol* node)
++void TNoContractionAssigneeCheckingTraverser::visitSymbol(QtShaderTools::glslang::TIntermSymbol* node)
+ {
+     // A symbol node should always be an object node, and should have been added
+     // to the map from object nodes to their access chain strings.
+@@ -613,7 +613,7 @@ void TNoContractionAssigneeCheckingTraverser::visitSymbol(glslang::TIntermSymbol
+ // 2) Find the object which should be marked as 'precise' in the right and
+ //    update the 'precise' object work list.
+ //
+-class TNoContractionPropagator : public glslang::TIntermTraverser {
++class TNoContractionPropagator : public QtShaderTools::glslang::TIntermTraverser {
+ public:
+     TNoContractionPropagator(ObjectAccesschainSet* precise_objects,
+                              const AccessChainMapping& accesschain_mapping)
+@@ -625,17 +625,17 @@ public:
+     // access chain record from the assignee node to a 'precise' object it
+     // contains.
+     void
+-    propagateNoContractionInOneExpression(glslang::TIntermTyped* defining_node,
++    propagateNoContractionInOneExpression(QtShaderTools::glslang::TIntermTyped* defining_node,
+                                           const ObjectAccessChain& assignee_remained_accesschain)
+     {
+         remained_accesschain_ = assignee_remained_accesschain;
+-        if (glslang::TIntermBinary* BN = defining_node->getAsBinaryNode()) {
++        if (QtShaderTools::glslang::TIntermBinary* BN = defining_node->getAsBinaryNode()) {
+             assert(isAssignOperation(BN->getOp()));
+             BN->getRight()->traverse(this);
+             if (isArithmeticOperation(BN->getOp())) {
+                 BN->getWritableType().getQualifier().noContraction = true;
+             }
+-        } else if (glslang::TIntermUnary* UN = defining_node->getAsUnaryNode()) {
++        } else if (QtShaderTools::glslang::TIntermUnary* UN = defining_node->getAsUnaryNode()) {
+             assert(isAssignOperation(UN->getOp()));
+             UN->getOperand()->traverse(this);
+             if (isArithmeticOperation(UN->getOp())) {
+@@ -645,10 +645,10 @@ public:
+     }
+ 
+     // Propagates 'precise' in a given precise return node.
+-    void propagateNoContractionInReturnNode(glslang::TIntermBranch* return_node)
++    void propagateNoContractionInReturnNode(QtShaderTools::glslang::TIntermBranch* return_node)
+     {
+         remained_accesschain_ = "";
+-        assert(return_node->getFlowOp() == glslang::EOpReturn && return_node->getExpression());
++        assert(return_node->getFlowOp() == QtShaderTools::glslang::EOpReturn && return_node->getExpression());
+         return_node->getExpression()->traverse(this);
+     }
+ 
+@@ -659,9 +659,9 @@ protected:
+     // case we need to find the 'precise' or 'precise' containing object node
+     // with the access chain record. In other cases, just need to traverse all
+     // the children nodes.
+-    bool visitAggregate(glslang::TVisit, glslang::TIntermAggregate* node) override
++    bool visitAggregate(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermAggregate* node) override
+     {
+-        if (!remained_accesschain_.empty() && node->getOp() == glslang::EOpConstructStruct) {
++        if (!remained_accesschain_.empty() && node->getOp() == QtShaderTools::glslang::EOpConstructStruct) {
+             // This is a struct initializer node, and the remained
+             // access chain is not empty, we need to refer to the
+             // assignee_remained_access_chain_ to find the nested
+@@ -673,7 +673,7 @@ protected:
+                 getFrontElement(remained_accesschain_);
+             unsigned precise_accesschain_index = (unsigned)strtoul(precise_accesschain_index_str.c_str(), nullptr, 10);
+             // Gets the node pointed by the access chain index extracted before.
+-            glslang::TIntermTyped* potential_precise_node =
++            QtShaderTools::glslang::TIntermTyped* potential_precise_node =
+                 node->getSequence()[precise_accesschain_index]->getAsTyped();
+             assert(potential_precise_node);
+             // Pop the front access chain index from the path, and visit the nested node.
+@@ -695,7 +695,7 @@ protected:
+     // an object node. If the binary node does not represent an object node, it should
+     // go on to traverse its children nodes and if it is an arithmetic operation node, this
+     // operation should be marked as 'noContraction'.
+-    bool visitBinary(glslang::TVisit, glslang::TIntermBinary* node) override
++    bool visitBinary(QtShaderTools::glslang::TVisit, QtShaderTools::glslang::TIntermBinary* node) override
+     {
+         if (isDereferenceOperation(node->getOp())) {
+             // This binary node is an object node. Need to update the precise
+@@ -718,7 +718,7 @@ protected:
+             return false;
+         }
+         // If this is an arithmetic operation, marks this node as 'noContraction'.
+-        if (isArithmeticOperation(node->getOp()) && node->getBasicType() != glslang::EbtInt) {
++        if (isArithmeticOperation(node->getOp()) && node->getBasicType() != QtShaderTools::glslang::EbtInt) {
+             node->getWritableType().getQualifier().noContraction = true;
+         }
+         // As this node is not an object node, need to traverse the children nodes.
+@@ -727,7 +727,7 @@ protected:
+ 
+     // Visits a unary node. A unary node can not be an object node. If the operation
+     // is an arithmetic operation, need to mark this node as 'noContraction'.
+-    bool visitUnary(glslang::TVisit /* visit */, glslang::TIntermUnary* node) override
++    bool visitUnary(QtShaderTools::glslang::TVisit /* visit */, QtShaderTools::glslang::TIntermUnary* node) override
+     {
+         // If this is an arithmetic operation, marks this with 'noContraction'
+         if (isArithmeticOperation(node->getOp())) {
+@@ -741,7 +741,7 @@ protected:
+     // nodes to access chains.  As an object node, a symbol node can be either
+     // 'precise' or containing 'precise' objects according to unused
+     // access chain information we have when we visit this node.
+-    void visitSymbol(glslang::TIntermSymbol* node) override
++    void visitSymbol(QtShaderTools::glslang::TIntermSymbol* node) override
+     {
+         // Symbol nodes are object nodes and should always have an
+         // access chain collected before matches with it.
+@@ -779,9 +779,10 @@ protected:
+ };
+ }
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+-void PropagateNoContraction(const glslang::TIntermediate& intermediate)
++void PropagateNoContraction(const QtShaderTools::glslang::TIntermediate& intermediate)
+ {
+     // First, traverses the AST, records symbols with their defining operations
+     // and collects the initial set of precise symbols (symbol nodes that marked
+@@ -824,7 +825,7 @@ void PropagateNoContraction(const glslang::TIntermediate& intermediate)
+     // objects in the return expression should be added to the precise object
+     // access chain set.
+     while (!precise_return_nodes.empty()) {
+-        glslang::TIntermBranch* precise_return_node = *precise_return_nodes.begin();
++        QtShaderTools::glslang::TIntermBranch* precise_return_node = *precise_return_nodes.begin();
+         propagator.propagateNoContractionInReturnNode(precise_return_node);
+         precise_return_nodes.erase(precise_return_node);
+     }
+@@ -864,3 +865,4 @@ void PropagateNoContraction(const glslang::TIntermediate& intermediate)
+     }
+ }
+ }
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.h b/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.h
+index 8521ad7..3721850 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.h
+@@ -41,6 +41,7 @@
+ 
+ #include "../Include/intermediate.h"
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ // Propagates the 'precise' qualifier for objects (objects marked with
+@@ -52,4 +53,6 @@ namespace glslang {
+ // 'noContraction' means the object is 'precise'; and for arithmetic operation
+ // nodes, it means the operation should not be contracted.
+ void PropagateNoContraction(const glslang::TIntermediate& intermediate);
+-};
++
++}
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/reflection.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/reflection.cpp
+index 6c7d3a2..d6c81d4 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/reflection.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/reflection.cpp
+@@ -63,6 +63,7 @@
+ // there wasn't exactly one entry point.
+ //
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //
+@@ -1268,3 +1269,4 @@ void TReflection::dump()
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/reflection.h b/src/3rdparty/glslang/glslang/MachineIndependent/reflection.h
+index 221d93f..9d79f54 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/reflection.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/reflection.h
+@@ -46,6 +46,7 @@
+ // A reflection database and its interface, consistent with the OpenGL API reflection queries.
+ //
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ class TIntermediate;
+@@ -57,7 +58,7 @@ class TReflection {
+ public:
+     TReflection(EShReflectionOptions opts, EShLanguage first, EShLanguage last)
+         : options(opts), firstStage(first), lastStage(last), badReflection(TObjectReflection::badReflection())
+-    { 
++    {
+         for (int dim=0; dim<3; ++dim)
+             localSize[dim] = 0;
+     }
+@@ -126,7 +127,7 @@ public:
+         else
+             return badReflection;
+     }
+-    
++
+     // for mapping a storage block index to the storage block's description
+     int getNumStorageBuffers() const { return (int)indexToBufferBlock.size(); }
+     const TObjectReflection&  getStorageBufferBlock(int i) const
+@@ -215,5 +216,6 @@ protected:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _REFLECTION_INCLUDED
+diff --git a/src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp b/src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp
+index 3348bf8..a18b5cb 100644
+--- a/src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp
++++ b/src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp
+@@ -43,6 +43,7 @@
+ #include <sys/resource.h>
+ #endif
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ // #define DUMP_COUNTERS
+@@ -60,3 +61,4 @@ void OS_DumpMemoryCounters()
+ }
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/OSDependent/Windows/ossource.cpp b/src/3rdparty/glslang/glslang/OSDependent/Windows/ossource.cpp
+index d7f89f7..b4fe844 100644
+--- a/src/3rdparty/glslang/glslang/OSDependent/Windows/ossource.cpp
++++ b/src/3rdparty/glslang/glslang/OSDependent/Windows/ossource.cpp
+@@ -49,6 +49,7 @@
+ #error Trying to build a windows specific file in a non windows build.
+ #endif
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ //#define DUMP_COUNTERS
+@@ -65,3 +66,4 @@ void OS_DumpMemoryCounters()
+ }
+ 
+ } // namespace glslang
++} // namespace QtShaderTools
+diff --git a/src/3rdparty/glslang/glslang/OSDependent/osinclude.h b/src/3rdparty/glslang/glslang/OSDependent/osinclude.h
+index 0d677e4..b19b1dd 100644
+--- a/src/3rdparty/glslang/glslang/OSDependent/osinclude.h
++++ b/src/3rdparty/glslang/glslang/OSDependent/osinclude.h
+@@ -35,10 +35,12 @@
+ #ifndef __OSINCLUDE_H
+ #define __OSINCLUDE_H
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ void OS_DumpMemoryCounters();
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // __OSINCLUDE_H
+diff --git a/src/3rdparty/glslang/glslang/Public/ShaderLang.h b/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+index 4675d4e..7bb7bc9 100755
+--- a/src/3rdparty/glslang/glslang/Public/ShaderLang.h
++++ b/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+@@ -141,6 +141,7 @@ typedef enum : unsigned {
+     LAST_ELEMENT_MARKER(EShLanguageMaskCount),
+ } EShLanguageMask;
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ class TType;
+@@ -219,6 +220,7 @@ struct TEnvironment {
+ GLSLANG_EXPORT const char* StageName(EShLanguage);
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ //
+ // Types of output the linker will create.
+@@ -400,6 +402,7 @@ GLSLANG_EXPORT int ShGetUniformLocation_Qt(const ShHandle uniformMap, const char
+ class TCompiler;
+ class TInfoSink;
+ 
++namespace QtShaderTools {
+ namespace glslang {
+ 
+ struct Version {
+@@ -974,5 +977,6 @@ private:
+ };
+ 
+ } // end namespace glslang
++} // namespace QtShaderTools
+ 
+ #endif // _COMPILER_INTERFACE_INCLUDED_
+diff --git a/src/3rdparty/patches/glslang/TODO/0003-glslang-Add-QtShaderTools-namespace-to-avoid-INTEGRITY-issues.patch b/src/3rdparty/patches/glslang/TODO/0003-glslang-Add-QtShaderTools-namespace-to-avoid-INTEGRITY-issues.patch
+deleted file mode 100644
+index 21ae434..0000000
+--- a/src/3rdparty/patches/glslang/TODO/0003-glslang-Add-QtShaderTools-namespace-to-avoid-INTEGRITY-issues.patch
++++ /dev/null
+@@ -1,1446 +0,0 @@
+-diff --git a/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.cpp b/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.cpp
+-index abea910..4c044bf 100644
+---- a/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.cpp
+-+++ b/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.cpp
+-@@ -41,6 +41,7 @@
+- #include "../glslang/Public/ShaderLang.h"
+- #include "../glslang/Include/PoolAlloc.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- OS_TLSIndex ThreadInitializeIndex = OS_INVALID_TLS_INDEX;
+-@@ -163,3 +164,4 @@ bool DetachProcess()
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.h b/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.h
+-index 661cee4..ab614f2 100644
+---- a/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.h
+-+++ b/src/3rdparty/glslang/OGLCompilersDLL/InitializeDll.h
+-@@ -36,6 +36,7 @@
+- 
+- #include "../glslang/OSDependent/osinclude.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- bool InitProcess();
+-@@ -44,6 +45,7 @@ bool DetachThread();  // not called from standalone, perhaps other tools rely on
+- bool DetachProcess(); // not called from standalone, perhaps other tools rely on parts of it
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // __INITIALIZEDLL_H
+- 
+-diff --git a/src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp b/src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp
+-index 6354769..bf081cd 100644
+---- a/src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp
+-+++ b/src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp
+-@@ -118,6 +118,7 @@ struct OpDecorations {
+- 
+- } // namespace
+- 
+-+using namespace QtShaderTools;
+- //
+- // The main holder of information for translating glslang to SPIR-V.
+- //
+-@@ -9384,6 +9385,7 @@ spv::Id TGlslangToSpvTraverser::getExtBuiltins(const char* name)
+- 
+- };  // end anonymous namespace
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- void GetSpirvVersion(std::string& version)
+-@@ -9515,3 +9517,4 @@ void GlslangToSpv(const TIntermediate& intermediate, std::vector<unsigned int>&
+- }
+- 
+- }; // end namespace glslang
+-+}; // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/SPIRV/GlslangToSpv.h b/src/3rdparty/glslang/SPIRV/GlslangToSpv.h
+-index 3907be4..25b7e7a 100644
+---- a/src/3rdparty/glslang/SPIRV/GlslangToSpv.h
+-+++ b/src/3rdparty/glslang/SPIRV/GlslangToSpv.h
+-@@ -47,6 +47,7 @@
+- 
+- #include "Logger.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- void GetSpirvVersion(std::string&);
+-@@ -59,3 +60,4 @@ void OutputSpvBin(const std::vector<unsigned int>& spirv, const char* baseName);
+- void OutputSpvHex(const std::vector<unsigned int>& spirv, const char* baseName, const char* varName);
+- 
+- }
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/SPIRV/SpvTools.cpp b/src/3rdparty/glslang/SPIRV/SpvTools.cpp
+-index 8cc17cc..06a3999 100644
+---- a/src/3rdparty/glslang/SPIRV/SpvTools.cpp
+-+++ b/src/3rdparty/glslang/SPIRV/SpvTools.cpp
+-@@ -45,6 +45,7 @@
+- #include "SpvTools.h"
+- #include "spirv-tools/optimizer.hpp"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- // Translate glslang's view of target versioning to what SPIRV-Tools uses.
+-@@ -243,5 +244,6 @@ void SpirvToolsStripDebugInfo(const glslang::TIntermediate& intermediate,
+- }
+- 
+- }; // end namespace glslang
+-+}; // namespace QtShaderTools
+- 
+- #endif
+-diff --git a/src/3rdparty/glslang/SPIRV/SpvTools.h b/src/3rdparty/glslang/SPIRV/SpvTools.h
+-index 3fb3cba..122d292 100644
+---- a/src/3rdparty/glslang/SPIRV/SpvTools.h
+-+++ b/src/3rdparty/glslang/SPIRV/SpvTools.h
+-@@ -50,6 +50,7 @@
+- #include "glslang/MachineIndependent/localintermediate.h"
+- #include "Logger.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- struct SpvOptions {
+-@@ -89,5 +90,6 @@ void SpirvToolsStripDebugInfo(const glslang::TIntermediate& intermediate,
+- #endif
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // GLSLANG_SPV_TOOLS_H
+-diff --git a/src/3rdparty/glslang/glslang/GenericCodeGen/CodeGen.cpp b/src/3rdparty/glslang/glslang/GenericCodeGen/CodeGen.cpp
+-index b3c7226..853539b 100644
+---- a/src/3rdparty/glslang/glslang/GenericCodeGen/CodeGen.cpp
+-+++ b/src/3rdparty/glslang/glslang/GenericCodeGen/CodeGen.cpp
+-@@ -36,6 +36,7 @@
+- #include "../Include/ShHandle.h"
+- #include "../MachineIndependent/Versions.h"
+- 
+-+namespace QtShaderTools {
+- //
+- // Here is where real machine specific high-level data would be defined.
+- //
+-@@ -74,3 +75,4 @@ bool TGenericCompiler::compile(TIntermNode* /*root*/, int /*version*/, EProfile
+- 
+-     return haveValidObjectCode;
+- }
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/GenericCodeGen/Link.cpp b/src/3rdparty/glslang/glslang/GenericCodeGen/Link.cpp
+-index c38db0f..64d4413 100644
+---- a/src/3rdparty/glslang/glslang/GenericCodeGen/Link.cpp
+-+++ b/src/3rdparty/glslang/glslang/GenericCodeGen/Link.cpp
+-@@ -39,6 +39,7 @@
+- #include "../Include/Common.h"
+- #include "../Include/ShHandle.h"
+- 
+-+namespace QtShaderTools {
+- //
+- // Actual link object, derived from the shader handle base classes.
+- //
+-@@ -89,3 +90,5 @@ void DeleteBindingList(TShHandleBase* bindingList)
+- {
+-     delete bindingList;
+- }
+-+
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/HLSL/hlslAttributes.cpp b/src/3rdparty/glslang/glslang/HLSL/hlslAttributes.cpp
+-index 0cc0d3f..2ac90f1 100644
+---- a/src/3rdparty/glslang/glslang/HLSL/hlslAttributes.cpp
+-+++ b/src/3rdparty/glslang/glslang/HLSL/hlslAttributes.cpp
+-@@ -36,6 +36,7 @@
+- #include "hlslAttributes.h"
+- #include "hlslParseHelper.h"
+- 
+-+using namespace QtShaderTools;
+- namespace glslang {
+-     // Map the given string to an attribute enum from TAttributeType,
+-     // or EatNone if invalid.
+-diff --git a/src/3rdparty/glslang/glslang/HLSL/hlslGrammar.cpp b/src/3rdparty/glslang/glslang/HLSL/hlslGrammar.cpp
+-index bd4af92..d09f9de 100644
+---- a/src/3rdparty/glslang/glslang/HLSL/hlslGrammar.cpp
+-+++ b/src/3rdparty/glslang/glslang/HLSL/hlslGrammar.cpp
+-@@ -55,6 +55,7 @@
+- #include "hlslGrammar.h"
+- #include "hlslAttributes.h"
+- 
+-+using namespace QtShaderTools;
+- namespace glslang {
+- 
+- // Root entry point to this recursive decent parser.
+-diff --git a/src/3rdparty/glslang/glslang/HLSL/hlslGrammar.h b/src/3rdparty/glslang/glslang/HLSL/hlslGrammar.h
+-index 27706b2..74e4103 100644
+---- a/src/3rdparty/glslang/glslang/HLSL/hlslGrammar.h
+-+++ b/src/3rdparty/glslang/glslang/HLSL/hlslGrammar.h
+-@@ -41,6 +41,7 @@
+- #include "hlslOpMap.h"
+- #include "hlslTokenStream.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+-     class TFunctionDeclarator;
+-@@ -138,5 +139,6 @@ namespace glslang {
+-     };
+- 
+- } // end namespace glslang
+-+} // end namespace QtShaderTools
+- 
+- #endif // HLSLGRAMMAR_H_
+-diff --git a/src/3rdparty/glslang/glslang/HLSL/hlslParseHelper.cpp b/src/3rdparty/glslang/glslang/HLSL/hlslParseHelper.cpp
+-index ffa1d7a..4d3c6a2 100644
+---- a/src/3rdparty/glslang/glslang/HLSL/hlslParseHelper.cpp
+-+++ b/src/3rdparty/glslang/glslang/HLSL/hlslParseHelper.cpp
+-@@ -51,6 +51,7 @@
+- #include <array>
+- #include <set>
+- 
+-+using namespace QtShaderTools;
+- namespace glslang {
+- 
+- HlslParseContext::HlslParseContext(TSymbolTable& symbolTable, TIntermediate& interm, bool parsingBuiltins,
+-diff --git a/src/3rdparty/glslang/glslang/HLSL/hlslParseHelper.h b/src/3rdparty/glslang/glslang/HLSL/hlslParseHelper.h
+-index 8bebb0e..522e959 100644
+---- a/src/3rdparty/glslang/glslang/HLSL/hlslParseHelper.h
+-+++ b/src/3rdparty/glslang/glslang/HLSL/hlslParseHelper.h
+-@@ -42,6 +42,7 @@
+- 
+- #include <array>
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- class TFunctionDeclarator;
+-@@ -511,5 +512,6 @@ protected:
+- #define BUILTIN_PREFIX "__BI_"
+- 
+- } // end namespace glslang
+-+} // end namespace QtShaderTools
+- 
+- #endif // HLSL_PARSE_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/HLSL/hlslScanContext.cpp b/src/3rdparty/glslang/glslang/HLSL/hlslScanContext.cpp
+-index fc62672..81c67c8 100644
+---- a/src/3rdparty/glslang/glslang/HLSL/hlslScanContext.cpp
+-+++ b/src/3rdparty/glslang/glslang/HLSL/hlslScanContext.cpp
+-@@ -77,6 +77,8 @@ struct str_hash
+-     }
+- };
+- 
+-+using namespace QtShaderTools;
+-+
+- // A single global usable by all threads, by all versions, by all languages.
+- // After a single process-level initialization, this is read only and thread safe
+- std::unordered_map<const char*, glslang::EHlslTokenClass, str_hash, str_eq>* KeywordMap = nullptr;
+-diff --git a/src/3rdparty/glslang/glslang/Include/BaseTypes.h b/src/3rdparty/glslang/glslang/Include/BaseTypes.h
+-index 3eec597..53d6cb1 100644
+---- a/src/3rdparty/glslang/glslang/Include/BaseTypes.h
+-+++ b/src/3rdparty/glslang/glslang/Include/BaseTypes.h
+-@@ -39,6 +39,7 @@
+- #ifndef _BASICTYPES_INCLUDED_
+- #define _BASICTYPES_INCLUDED_
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -590,5 +591,6 @@ __inline int getTypeRank(TBasicType type)
+- }
+- 
+- } // end namespace glslang
+-+} // QtShaderTools
+- 
+- #endif // _BASICTYPES_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/Include/Common.h b/src/3rdparty/glslang/glslang/Include/Common.h
+-index 9042a1a..73d7129 100644
+---- a/src/3rdparty/glslang/glslang/Include/Common.h
+-+++ b/src/3rdparty/glslang/glslang/Include/Common.h
+-@@ -124,6 +124,7 @@ std::string to_string(const T& val) {
+-     void operator delete[](void*) { }                                 \
+-     void operator delete[](void *, void *) { }
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+-     //
+-@@ -133,12 +134,13 @@ namespace glslang {
+-     typedef std::basic_string <char, std::char_traits<char>, TStringAllocator> TString;
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- // Repackage the std::hash for use by unordered map/set with a TString key.
+- namespace std {
+- 
+--    template<> struct hash<glslang::TString> {
+--        std::size_t operator()(const glslang::TString& s) const
+-+    template<> struct hash<QtShaderTools::glslang::TString> {
+-+        std::size_t operator()(const QtShaderTools::glslang::TString& s) const
+-         {
+-             const unsigned _FNV_offset_basis = 2166136261U;
+-             const unsigned _FNV_prime = 16777619U;
+-@@ -156,6 +158,7 @@ namespace std {
+-     };
+- }
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- inline TString* NewPoolTString(const char* s)
+-@@ -336,5 +339,6 @@ inline bool IsNan(double x) {
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _COMMON_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/Include/ConstantUnion.h b/src/3rdparty/glslang/glslang/Include/ConstantUnion.h
+-index c4ffb85..b249372 100644
+---- a/src/3rdparty/glslang/glslang/Include/ConstantUnion.h
+-+++ b/src/3rdparty/glslang/glslang/Include/ConstantUnion.h
+-@@ -41,6 +41,7 @@
+- #include "../Include/Common.h"
+- #include "../Include/BaseTypes.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- class TConstUnion {
+-@@ -970,5 +971,6 @@ protected:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _CONSTANT_UNION_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/Include/InfoSink.h b/src/3rdparty/glslang/glslang/Include/InfoSink.h
+-index dceb603..8147308 100644
+---- a/src/3rdparty/glslang/glslang/Include/InfoSink.h
+-+++ b/src/3rdparty/glslang/glslang/Include/InfoSink.h
+-@@ -38,6 +38,7 @@
+- #include "../Include/Common.h"
+- #include <cmath>
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -140,5 +141,6 @@ public:
+-     glslang::TInfoSinkBase info;
+-     glslang::TInfoSinkBase debug;
+- };
+-+} // namespace QtShaderTools
+- 
+- #endif // _INFOSINK_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/Include/InitializeGlobals.h b/src/3rdparty/glslang/glslang/Include/InitializeGlobals.h
+-index 95d0a40..fcdb8b0 100644
+---- a/src/3rdparty/glslang/glslang/Include/InitializeGlobals.h
+-+++ b/src/3rdparty/glslang/glslang/Include/InitializeGlobals.h
+-@@ -35,10 +35,12 @@
+- #ifndef __INITIALIZE_GLOBALS_INCLUDED_
+- #define __INITIALIZE_GLOBALS_INCLUDED_
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- bool InitializePoolIndex();
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // __INITIALIZE_GLOBALS_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/Include/PoolAlloc.h b/src/3rdparty/glslang/glslang/Include/PoolAlloc.h
+-index 1f5cac7..6fac116 100644
+---- a/src/3rdparty/glslang/glslang/Include/PoolAlloc.h
+-+++ b/src/3rdparty/glslang/glslang/Include/PoolAlloc.h
+-@@ -65,6 +65,7 @@
+- #include <cstring>
+- #include <vector>
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- // If we are using guard blocks, we must track each individual
+-@@ -314,5 +315,6 @@ protected:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _POOLALLOC_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/Include/ShHandle.h b/src/3rdparty/glslang/glslang/Include/ShHandle.h
+-index df07bd8..2d82762 100644
+---- a/src/3rdparty/glslang/glslang/Include/ShHandle.h
+-+++ b/src/3rdparty/glslang/glslang/Include/ShHandle.h
+-@@ -47,6 +47,8 @@
+- #include "../MachineIndependent/Versions.h"
+- #include "InfoSink.h"
+- 
+-+namespace QtShaderTools {
+-+
+- class TCompiler;
+- class TLinker;
+- class TUniformMap;
+-@@ -173,4 +175,6 @@ void DeleteCompiler(TCompiler*);
+- 
+- void DeleteUniformMap(TUniformMap*);
+- 
+-+} // namespace QtShaderTools
+-+
+- #endif // _SHHANDLE_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/Include/SpirvIntrinsics.h b/src/3rdparty/glslang/glslang/Include/SpirvIntrinsics.h
+-index 3c7d72c..f381f57 100644
+---- a/src/3rdparty/glslang/glslang/Include/SpirvIntrinsics.h
+-+++ b/src/3rdparty/glslang/glslang/Include/SpirvIntrinsics.h
+-@@ -42,6 +42,7 @@
+- //
+- #include "Common.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- class TIntermTyped;
+-@@ -124,5 +125,6 @@ struct TSpirvType {
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // GLSLANG_WEB
+-diff --git a/src/3rdparty/glslang/glslang/Include/Types.h b/src/3rdparty/glslang/glslang/Include/Types.h
+-index 682d124..6e5ea06 100644
+---- a/src/3rdparty/glslang/glslang/Include/Types.h
+-+++ b/src/3rdparty/glslang/glslang/Include/Types.h
+-@@ -48,6 +48,7 @@
+- 
+- #include <algorithm>
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- class TIntermAggregate;
+-@@ -2861,5 +2862,6 @@ protected:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _TYPES_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/Include/arrays.h b/src/3rdparty/glslang/glslang/Include/arrays.h
+-index 7f047d9..afbbc71 100644
+---- a/src/3rdparty/glslang/glslang/Include/arrays.h
+-+++ b/src/3rdparty/glslang/glslang/Include/arrays.h
+-@@ -43,6 +43,7 @@
+- 
+- #include <algorithm>
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- // This is used to mean there is no size yet (unsized), it is waiting to get a size from somewhere else.
+-@@ -337,5 +338,6 @@ protected:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _ARRAYS_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/Include/intermediate.h b/src/3rdparty/glslang/glslang/Include/intermediate.h
+-index a64ed68..28df50e 100644
+---- a/src/3rdparty/glslang/glslang/Include/intermediate.h
+-+++ b/src/3rdparty/glslang/glslang/Include/intermediate.h
+-@@ -57,6 +57,7 @@
+- #include "../Include/Types.h"
+- #include "../Include/ConstantUnion.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- class TIntermediate;
+-@@ -1841,5 +1842,6 @@ inline bool SameSpecializationConstants(TIntermTyped* node1, TIntermTyped* node2
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // __INTERMEDIATE_H
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Constant.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/Constant.cpp
+-index 5fc61db..22e5dc2 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/Constant.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/Constant.cpp
+-@@ -44,13 +44,14 @@
+- 
+- namespace {
+- 
+-+using namespace QtShaderTools;
+- using namespace glslang;
+- 
+- const double pi = 3.1415926535897932384626433832795;
+- 
+- } // end anonymous namespace
+- 
+--
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -1396,3 +1397,4 @@ TIntermTyped* TIntermediate::foldSwizzle(TIntermTyped* node, TSwizzleSelectors<T
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/InfoSink.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/InfoSink.cpp
+-index d00c422..7c14783 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/InfoSink.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/InfoSink.cpp
+-@@ -36,6 +36,7 @@
+- 
+- #include <cstring>
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- void TInfoSinkBase::append(const char* s)
+-@@ -111,3 +112,4 @@ void TInfoSinkBase::append(const TString& t)
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.cpp
+-index b18b257..951c9a4 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.cpp
+-@@ -54,6 +54,7 @@
+- #include "../Include/intermediate.h"
+- #include "Initialize.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- // TODO: ARB_Compatability: do full extension support
+-@@ -9796,3 +9797,4 @@ void TBuiltIns::identifyBuiltIns(int version, EProfile profile, const SpvVersion
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.h b/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.h
+-index ac8ec33..7288584 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/Initialize.h
+-@@ -43,6 +43,7 @@
+- #include "SymbolTable.h"
+- #include "Versions.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -108,5 +109,6 @@ protected:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _INITIALIZE_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/IntermTraverse.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/IntermTraverse.cpp
+-index 553b1b5..e78c76f 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/IntermTraverse.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/IntermTraverse.cpp
+-@@ -37,6 +37,7 @@
+- 
+- #include "../Include/intermediate.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -307,3 +308,4 @@ void TIntermSwitch::traverse(TIntermTraverser* it)
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Intermediate.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/Intermediate.cpp
+-index 14fd053..f8a21c9 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/Intermediate.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/Intermediate.cpp
+-@@ -49,6 +49,7 @@
+- #include <utility>
+- #include <tuple>
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- ////////////////////////////////////////////////////////////////////////////
+-@@ -4025,3 +4026,4 @@ const char* TIntermediate::getResourceName(TResourceType res)
+- 
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/LiveTraverser.h b/src/3rdparty/glslang/glslang/MachineIndependent/LiveTraverser.h
+-index 9b39b59..b0c5ad5 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/LiveTraverser.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/LiveTraverser.h
+-@@ -44,6 +44,7 @@
+- #include <list>
+- #include <unordered_set>
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -166,3 +167,4 @@ private:
+- };
+- 
+- } // namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ParseContextBase.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/ParseContextBase.cpp
+-index 616580f..9f5ace2 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/ParseContextBase.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/ParseContextBase.cpp
+-@@ -40,6 +40,7 @@
+- 
+- #include "ParseHelper.h"
+- 
+-+namespace QtShaderTools {
+- extern int yyparse(glslang::TParseContext*);
+- 
+- namespace glslang {
+-@@ -736,3 +737,4 @@ void TParseContextBase::finish()
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.cpp
+-index 45a72d9..a4c8bf3 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.cpp
+-@@ -45,6 +45,8 @@
+- 
+- #include "preprocessor/PpContext.h"
+- 
+-+namespace QtShaderTools {
+-+
+- extern int yyparse(glslang::TParseContext*);
+- 
+- namespace glslang {
+-@@ -9354,4 +9356,4 @@ const TTypeList* TParseContext::recordStructCopy(TStructRecord& record, const TT
+- }
+- 
+- } // end namespace glslang
+--
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.h b/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.h
+-index 885fd90..ebfdf69 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/ParseHelper.h
+-@@ -55,6 +55,7 @@
+- #include "Scan.h"
+- #include "attribute.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- struct TPragma {
+-@@ -584,5 +585,6 @@ protected:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _PARSER_HELPER_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/PoolAlloc.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/PoolAlloc.cpp
+-index 84c40f4..6fc470e 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/PoolAlloc.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/PoolAlloc.cpp
+-@@ -38,6 +38,7 @@
+- #include "../Include/InitializeGlobals.h"
+- #include "../OSDependent/osinclude.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- // Process-wide TLS index
+-@@ -313,3 +314,4 @@ void TAllocation::checkAllocList() const
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.cpp
+-index 1d33bfd..83dfc61 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.cpp
+-@@ -37,6 +37,7 @@
+- #include "../Include/intermediate.h"
+- #include "RemoveTree.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -116,3 +117,4 @@ void RemoveAllTreeNodes(TIntermNode* root)
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.h b/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.h
+-index 1ed0156..f793897 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/RemoveTree.h
+-@@ -34,8 +34,10 @@
+- 
+- #pragma once
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+--void RemoveAllTreeNodes(TIntermNode*);
+-+void RemoveAllTreeNodes(QtShaderTools::TIntermNode*);
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Scan.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/Scan.cpp
+-index f53677f..252dcc7 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/Scan.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/Scan.cpp
+-@@ -57,6 +57,7 @@
+- #include "preprocessor/PpContext.h"
+- #include "preprocessor/PpTokens.h"
+- 
+-+namespace QtShaderTools {
+- // Required to avoid missing prototype warnings for some compilers
+- int yylex(YYSTYPE*, glslang::TParseContext&);
+- 
+-@@ -295,6 +296,7 @@ int yylex(YYSTYPE* glslangTokenDesc, glslang::TParseContext& parseContext)
+- 
+-     return parseContext.getScanContext()->tokenize(parseContext.getPpContext(), token);
+- }
+-+} // namespace QtShaderTools
+- 
+- namespace {
+- 
+-@@ -330,6 +332,7 @@ std::unordered_set<const char*, str_hash, str_eq>* ReservedSet = nullptr;
+- 
+- };
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- void TScanContext::fillInKeywordMap()
+-@@ -1957,3 +1960,4 @@ int TScanContext::secondGenerationImage()
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Scan.h b/src/3rdparty/glslang/glslang/MachineIndependent/Scan.h
+-index 24b75cf..44be905 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/Scan.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/Scan.h
+-@@ -38,6 +38,7 @@
+- 
+- #include "Versions.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- // Use a global end-of-input character, so no translation is needed across
+-@@ -272,5 +273,6 @@ protected:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _GLSLANG_SCAN_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ScanContext.h b/src/3rdparty/glslang/glslang/MachineIndependent/ScanContext.h
+-index 74b2b3c..740c146 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/ScanContext.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/ScanContext.h
+-@@ -42,6 +42,7 @@
+- 
+- #include "ParseHelper.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- class TPpContext;
+-@@ -91,3 +92,4 @@ protected:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp
+-index 3f7a467..e170915 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp
+-@@ -81,6 +81,7 @@ namespace { // anonymous namespace for file-local functions and symbols
+- // Shared global; access should be protected by a global mutex/critical section.
+- int NumberOfClients = 0;
+- 
+-+using namespace QtShaderTools;
+- using namespace glslang;
+- 
+- // Create a language specific version of parseables.
+-@@ -1716,6 +1717,7 @@ int ShGetUniformLocation(const ShHandle handle, const char* name)
+- // See more detailed comment in ShaderLang.h
+- //
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- Version GetVersion()
+-@@ -2253,3 +2255,4 @@ bool TProgram::mapIO(TIoMapResolver* pResolver, TIoMapper* pIoMapper)
+- #endif // !GLSLANG_WEB && !GLSLANG_ANGLE
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/SpirvIntrinsics.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/SpirvIntrinsics.cpp
+-index 6650f7d..d02554e 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/SpirvIntrinsics.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/SpirvIntrinsics.cpp
+-@@ -43,6 +43,7 @@
+- #include "../Include/Types.h"
+- #include "ParseHelper.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -346,5 +347,6 @@ TSpirvInstruction* TParseContext::mergeSpirvInstruction(const TSourceLoc& loc, T
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // GLSLANG_WEB
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.cpp
+-index a3ffa0c..b583439 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.cpp
+-@@ -44,6 +44,7 @@
+- 
+- #include "SymbolTable.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -475,3 +476,4 @@ void TSymbolTable::copyTable(const TSymbolTable& copyOf)
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.h b/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.h
+-index 31312ec..c43972f 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/SymbolTable.h
+-@@ -69,6 +69,7 @@
+- #include "../Include/intermediate.h"
+- #include "../Include/InfoSink.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -951,5 +952,6 @@ protected:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _SYMBOL_TABLE_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Versions.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/Versions.cpp
+-index 52c1e1c..ca995be 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/Versions.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/Versions.cpp
+-@@ -149,6 +149,7 @@
+- #include "parseVersions.h"
+- #include "localintermediate.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- #ifndef GLSLANG_WEB
+-@@ -1350,3 +1351,4 @@ void TParseVersions::requireSpv(const TSourceLoc& loc, const char *op, unsigned
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/Versions.h b/src/3rdparty/glslang/glslang/MachineIndependent/Versions.h
+-index c411f5b..9a3946f 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/Versions.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/Versions.h
+-@@ -62,6 +62,7 @@ typedef enum : unsigned {
+-     LAST_ELEMENT_MARKER(EProfileCount),
+- } EProfile;
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -345,5 +346,6 @@ const char* const AEP_texture_cube_map_array[] = { E_GL_EXT_texture_cube_map_arr
+- const int Num_AEP_texture_cube_map_array = sizeof(AEP_texture_cube_map_array)/sizeof(AEP_texture_cube_map_array[0]);
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _VERSIONS_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/attribute.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/attribute.cpp
+-index df7fdc2..bdaa61d 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/attribute.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/attribute.cpp
+-@@ -40,6 +40,7 @@
+- #include "../Include/intermediate.h"
+- #include "ParseHelper.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- // extract integers out of attribute arguments stored in attribute aggregate
+-@@ -367,5 +368,6 @@ void TParseContext::handleFunctionAttributes(const TSourceLoc& loc, const TAttri
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // GLSLANG_WEB
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/attribute.h b/src/3rdparty/glslang/glslang/MachineIndependent/attribute.h
+-index c5b2917..137cb75 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/attribute.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/attribute.h
+-@@ -40,6 +40,7 @@
+- #include "../Include/Common.h"
+- #include "../Include/ConstantUnion.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+-     enum TAttributeType {
+-@@ -146,5 +147,6 @@ namespace glslang {
+-     typedef TList<TAttributeArgs> TAttributes;
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _ATTRIBUTE_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp
+-index 4e4768e..7e490fa 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp
+-@@ -90,6 +90,7 @@ Jutta Degener, 1995
+- #include "../Public/ShaderLang.h"
+- #include "attribute.h"
+- 
+-+using namespace QtShaderTools;
+- using namespace glslang;
+- 
+- 
+-@@ -726,8 +727,9 @@ typedef enum yysymbol_kind_t yysymbol_kind_t;
+- #define parseContext (*pParseContext)
+- #define yyerror(context, msg) context->parserError(msg)
+- 
+-+namespace QtShaderTools {
+- extern int yylex(YYSTYPE*, TParseContext&);
+--
+-+} // QtShaderTools
+- 
+- #line 733 "MachineIndependent/glslang_tab.cpp"
+- 
+-@@ -4920,6 +4922,8 @@ yydestruct (const char *yymsg,
+- | yyparse.  |
+- `----------*/
+- 
+-+namespace QtShaderTools {
+-+
+- int
+- yyparse (glslang::TParseContext* pParseContext)
+- {
+-@@ -12446,6 +12450,7 @@ yyreturn:
+-     YYSTACK_FREE (yymsg);
+-   return yyresult;
+- }
+-+} // QtShaderTools
+- 
+- #line 4405 "MachineIndependent/glslang.y"
+- 
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h
+-index a6871b3..65d1b8e 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/glslang_tab.cpp.h
+-@@ -511,6 +511,7 @@ extern int yydebug;
+-   typedef enum yytokentype yytoken_kind_t;
+- #endif
+- 
+-+namespace QtShaderTools {
+- /* Value type.  */
+- #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
+- union YYSTYPE
+-@@ -565,5 +566,6 @@ typedef union YYSTYPE YYSTYPE;
+- 
+- 
+- int yyparse (glslang::TParseContext* pParseContext);
+-+} // namespace QtShaderTools
+- 
+- #endif /* !YY_YY_MACHINEINDEPENDENT_GLSLANG_TAB_CPP_H_INCLUDED  */
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/intermOut.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/intermOut.cpp
+-index d8a3aab..4747df5 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/intermOut.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/intermOut.cpp
+-@@ -48,7 +48,7 @@
+- #endif
+- #include <cstdint>
+- 
+--
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -1557,5 +1557,6 @@ void TIntermediate::output(TInfoSink& infoSink, bool tree)
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // !GLSLANG_WEB && !GLSLANG_ANGLE
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.cpp
+-index 4250e92..45e0d2c 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.cpp
+-@@ -60,6 +60,7 @@
+- //    c. implicit dead bindings are left un-bound.
+- //
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- class TVarGatherTraverser : public TLiveTraverser {
+-@@ -1709,5 +1710,6 @@ bool TGlslIoMapper::doMap(TIoMapResolver* resolver, TInfoSink& infoSink) {
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // !GLSLANG_WEB && !GLSLANG_ANGLE
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.h b/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.h
+-index ba7bc3b..177d456 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/iomapper.h
+-@@ -45,7 +45,7 @@
+- //
+- // A reflection database and its interface, consistent with the OpenGL API reflection queries.
+- //
+--
+-+namespace QtShaderTools {
+- class TInfoSink;
+- 
+- namespace glslang {
+-@@ -355,6 +355,7 @@ private:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _IOMAPPER_INCLUDED
+- 
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/limits.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/limits.cpp
+-index 3915705..605fe30 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/limits.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/limits.cpp
+-@@ -53,6 +53,7 @@
+- 
+- #include "ParseHelper.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -198,3 +199,4 @@ void TParseContext::constantIndexExpressionCheck(TIntermNode* index)
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/linkValidate.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/linkValidate.cpp
+-index 6e60155..0cb53fb 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/linkValidate.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/linkValidate.cpp
+-@@ -50,6 +50,7 @@
+- #include "../Include/InfoSink.h"
+- #include "SymbolTable.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -2344,3 +2345,4 @@ bool TIntermediate::isIoResizeArray(const TType& type, EShLanguage language) {
+- #endif // not GLSLANG_WEB
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h b/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h
+-index 581e9aa..9f59c65 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h
+-@@ -49,6 +49,7 @@
+- #include <set>
+- #include <array>
+- 
+-+namespace QtShaderTools {
+- class TInfoSink;
+- 
+- namespace glslang {
+-@@ -1201,5 +1202,6 @@ private:
+- };
+- 
+- } // end namespace glslang
+-+} // QtShaderTools
+- 
+- #endif // _LOCAL_INTERMEDIATE_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/parseConst.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/parseConst.cpp
+-index 6c18299..9e97d19 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/parseConst.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/parseConst.cpp
+-@@ -39,6 +39,7 @@
+- 
+- #include "ParseHelper.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- class TConstTraverser : public TIntermTraverser {
+-@@ -211,3 +212,4 @@ bool TIntermediate::parseConstTree(TIntermNode* root, TConstUnionArray unionArra
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/parseVersions.h b/src/3rdparty/glslang/glslang/MachineIndependent/parseVersions.h
+-index 7248354..a0b25d8 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/parseVersions.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/parseVersions.h
+-@@ -45,6 +45,7 @@
+- 
+- #include <map>
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -241,5 +242,6 @@ private:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _PARSE_VERSIONS_INCLUDED_
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/Pp.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/Pp.cpp
+-index aa1e0d7..1633954 100755
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/Pp.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/Pp.cpp
+-@@ -90,6 +90,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+- #include "PpContext.h"
+- #include "PpTokens.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- // Handle #define
+-@@ -1344,3 +1345,4 @@ MacroExpandResult TPpContext::MacroExpand(TPpToken* ppToken, bool expandUndef, b
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpAtom.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpAtom.cpp
+-index 06c2333..2192913 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpAtom.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpAtom.cpp
+-@@ -89,6 +89,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+- 
+- namespace {
+- 
+-+using namespace QtShaderTools;
+- using namespace glslang;
+- 
+- const struct {
+-@@ -151,6 +152,7 @@ const struct {
+- 
+- } // end anonymous namespace
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -179,3 +181,4 @@ TStringAtomMap::TStringAtomMap()
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp
+-index 1363ce2..9f6b6a9 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp
+-@@ -82,6 +82,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+- 
+- #include "PpContext.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- TPpContext::TPpContext(TParseContextBase& pc, const std::string& rootFileName, TShader::Includer& inclr) :
+-@@ -118,3 +119,4 @@ void TPpContext::setInput(TInputScanner& input, bool versionWillBeError)
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.h b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.h
+-index 714b5ea..5c46592 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpContext.h
+-@@ -91,6 +91,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-     #pragma warning(disable : 4127)
+- #endif
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- class TPpToken {
+-@@ -699,5 +700,6 @@ protected:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif  // PPCONTEXT_H
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp
+-index ad11792..953bc8c 100755
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp
+-@@ -90,6 +90,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+- #include "PpTokens.h"
+- #include "../Scan.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- ///////////////////////////////////////////////////////////////////////////////////////////////
+-@@ -1315,3 +1316,4 @@ void TPpContext::missingEndifCheck()
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp
+-index 7ed5870..e1bc2c7 100755
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp
+-@@ -97,6 +97,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+- #include "PpContext.h"
+- #include "PpTokens.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- // Add a token (including backing string) to the end of a macro
+-@@ -219,3 +220,4 @@ void TPpContext::UngetToken(int token, TPpToken* ppToken)
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.h b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.h
+-index 7b0f815..31bbc08 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/preprocessor/PpTokens.h
+-@@ -78,6 +78,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+- #ifndef PARSER_H
+- #define PARSER_H
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- // Multi-character tokens
+-@@ -175,5 +176,6 @@ enum EFixedAtoms {
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif /* not PARSER_H */
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp
+-index 9def592..5c051fb 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.cpp
+-@@ -48,6 +48,8 @@
+- #include <unordered_set>
+- 
+- #include "localintermediate.h"
+-+
+-+namespace QtShaderTools {
+- namespace {
+- 
+- // Use a string to hold the access chain information, as in most cases the
+-@@ -865,6 +867,7 @@ void PropagateNoContraction(const glslang::TIntermediate& intermediate)
+-         precise_object_accesschains.erase(precise_object_accesschain);
+-     }
+- }
+-+}
+- };
+- 
+- #endif // GLSLANG_WEB
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.h b/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.h
+-index 8521ad7..7968713 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/propagateNoContraction.h
+-@@ -41,6 +41,7 @@
+- 
+- #include "../Include/intermediate.h"
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- // Propagates the 'precise' qualifier for objects (objects marked with
+-@@ -52,4 +53,5 @@ namespace glslang {
+- // 'noContraction' means the object is 'precise'; and for arithmetic operation
+- // nodes, it means the operation should not be contracted.
+- void PropagateNoContraction(const glslang::TIntermediate& intermediate);
+-+}
+- };
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/reflection.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/reflection.cpp
+-index 9ea48c4..4c2bb36 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/reflection.cpp
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/reflection.cpp
+-@@ -65,6 +65,7 @@
+- // there wasn't exactly one entry point.
+- //
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -1270,5 +1271,6 @@ void TReflection::dump()
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // !GLSLANG_WEB && !GLSLANG_ANGLE
+-diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/reflection.h b/src/3rdparty/glslang/glslang/MachineIndependent/reflection.h
+-index 5af4467..1bfd19b 100644
+---- a/src/3rdparty/glslang/glslang/MachineIndependent/reflection.h
+-+++ b/src/3rdparty/glslang/glslang/MachineIndependent/reflection.h
+-@@ -48,6 +48,7 @@
+- // A reflection database and its interface, consistent with the OpenGL API reflection queries.
+- //
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- class TIntermediate;
+-@@ -217,6 +218,7 @@ protected:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _REFLECTION_INCLUDED
+- 
+-diff --git a/src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp b/src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp
+-index e5f7c66..dfb8ba6 100644
+---- a/src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp
+-+++ b/src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp
+-@@ -50,6 +50,7 @@
+- #include <sys/resource.h>
+- #endif
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -211,3 +212,4 @@ void OS_DumpMemoryCounters()
+- }
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/OSDependent/Windows/ossource.cpp b/src/3rdparty/glslang/glslang/OSDependent/Windows/ossource.cpp
+-index 870840c..3d5cd52 100644
+---- a/src/3rdparty/glslang/glslang/OSDependent/Windows/ossource.cpp
+-+++ b/src/3rdparty/glslang/glslang/OSDependent/Windows/ossource.cpp
+-@@ -51,6 +51,7 @@
+- #error Trying to build a windows specific file in a non windows build.
+- #endif
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- inline OS_TLSIndex ToGenericTLSIndex (DWORD handle)
+-@@ -145,3 +146,4 @@ void OS_DumpMemoryCounters()
+- }
+- 
+- } // namespace glslang
+-+} // namespace QtShaderTools
+-diff --git a/src/3rdparty/glslang/glslang/OSDependent/osinclude.h b/src/3rdparty/glslang/glslang/OSDependent/osinclude.h
+-index 218abe4..f16be6f 100644
+---- a/src/3rdparty/glslang/glslang/OSDependent/osinclude.h
+-+++ b/src/3rdparty/glslang/glslang/OSDependent/osinclude.h
+-@@ -35,6 +35,7 @@
+- #ifndef __OSINCLUDE_H
+- #define __OSINCLUDE_H
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- //
+-@@ -59,5 +60,6 @@ void OS_CleanupThreadData(void);
+- void OS_DumpMemoryCounters();
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // __OSINCLUDE_H
+-diff --git a/src/3rdparty/glslang/glslang/Public/ShaderLang.h b/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+-index b55ed59..dbc8a11 100755
+---- a/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+-+++ b/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+-@@ -137,6 +137,7 @@ typedef enum : unsigned {
+-     LAST_ELEMENT_MARKER(EShLanguageMaskCount),
+- } EShLanguageMask;
+- 
+-+namespace QtShaderTools {
+- namespace glslang {
+- 
+- class TType;
+-@@ -215,6 +216,7 @@ struct TEnvironment {
+- GLSLANG_EXPORT const char* StageName(EShLanguage);
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- //
+- // Types of output the linker will create.
+-@@ -393,6 +395,7 @@ GLSLANG_EXPORT int ShGetUniformLocation(const ShHandle uniformMap, const char* n
+- #include <string>
+- #include <utility>
+- 
+-+namespace QtShaderTools {
+- class TCompiler;
+- class TInfoSink;
+- 
+-@@ -978,5 +981,6 @@ private:
+- };
+- 
+- } // end namespace glslang
+-+} // namespace QtShaderTools
+- 
+- #endif // _COMPILER_INTERFACE_INCLUDED_
+-diff --git a/src/shadertools/qspirvcompiler.cpp b/src/shadertools/qspirvcompiler.cpp
+-index 0c997ea..e38f465 100644
+---- a/src/shadertools/qspirvcompiler.cpp
+-+++ b/src/shadertools/qspirvcompiler.cpp
+-@@ -154,6 +154,8 @@ bool QSpirvCompilerPrivate::readFile(const QString &fn)
+-     return true;
+- }
+- 
+-+using namespace QtShaderTools;
+-+
+- class Includer : public glslang::TShader::Includer
+- {
+- public:
+-- 
+2.36.1.windows.1
+

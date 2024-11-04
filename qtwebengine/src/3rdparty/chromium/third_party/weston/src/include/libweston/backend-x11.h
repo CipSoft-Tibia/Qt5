@@ -34,7 +34,7 @@ extern "C" {
 
 #include <libweston/libweston.h>
 
-#define WESTON_X11_BACKEND_CONFIG_VERSION 2
+#define WESTON_X11_BACKEND_CONFIG_VERSION 3
 
 struct weston_x11_backend_config {
 	struct weston_backend_config base;
@@ -42,8 +42,7 @@ struct weston_x11_backend_config {
 	bool fullscreen;
 	bool no_input;
 
-	/** Whether to use the pixman renderer instead of the OpenGL ES renderer. */
-	bool use_pixman;
+	enum weston_renderer_type renderer;
 };
 
 #ifdef  __cplusplus

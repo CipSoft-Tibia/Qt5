@@ -216,7 +216,7 @@ void ThreadPool::WorkerThread::SetupName() {
     rv = pthread_setname_np(name);
     assert(rv == 0);
     static_cast<void>(rv);
-#elif defined(__ANDROID__) || defined(__GLIBC__)
+#elif defined(__ANDROID__) || (defined(__GLIBC__) && !defined(__GNU__))
     // If the |name| buffer is longer than 16 bytes, pthread_setname_np fails
     // with error 34 (ERANGE) on Android.
     char name[16];

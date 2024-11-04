@@ -57,6 +57,7 @@ if (skia_enable_tools) {
       "../..:tool_utils",
       "../../modules/svg:svg",
     ]
+    defines = [ "SK_GANESH" ]
   }
 }
 
@@ -70,6 +71,7 @@ component("debugger") {
     "../../tools/debugger/DrawCommand.cpp",
     "../../tools/debugger/JsonWriteBuffer.cpp",
   ]
+  defines = [ "SK_GANESH" ]
 }
 
 action("create_notomono_cpp") {
@@ -157,8 +159,6 @@ skia_wasm_lib("canvaskit") {
       "-sASSERTIONS=1",
       "-sGL_ASSERTIONS=1",
       "-g3",
-      "--source-map-base",
-      "/node_modules/canvaskit/bin/",
       "--pre-js",
       rebase_path("debug.js"),
     ]
@@ -318,9 +318,7 @@ skia_wasm_lib("canvaskit") {
   ldflags += [
     "--pre-js",
     rebase_path("postamble.js"),
-    "-sLLD_REPORT_UNDEFINED",
     "-sALLOW_MEMORY_GROWTH",
-    "-sUSE_PTHREADS=0",
     "-sDISABLE_EXCEPTION_CATCHING",
     "-sNODEJS_CATCH_EXIT=0",
     "-sDYNAMIC_EXECUTION=0",
@@ -345,10 +343,9 @@ skia_wasm_lib("canvaskit") {
     defines += [ "SK_DISABLE_TRACING" ]
   }
   defines += [
-    "SK_DISABLE_AAA",
+    "SK_FORCE_AAA",
     "SK_FORCE_8_BYTE_ALIGNMENT",
     "EMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0",
-    "SK_HAS_ANDROID_CODEC",
     "SK_SHAPER_HARFBUZZ_AVAILABLE",
   ]
   if (skia_canvaskit_enable_paragraph) {
@@ -357,9 +354,9 @@ skia_wasm_lib("canvaskit") {
   if (skia_canvaskit_enable_skp_serialization) {
     defines += [ "CK_SERIALIZE_SKP" ]
   }
-  if (skia_enable_gpu) {
+  if (skia_enable_ganesh) {
     defines += [
-      "SK_SUPPORT_GPU=1",
+      "SK_GANESH",
       "SK_DISABLE_LEGACY_SHADERCONTEXT",
     ]
     if (skia_canvaskit_enable_webgl) {
@@ -368,17 +365,6 @@ skia_wasm_lib("canvaskit") {
         "CK_ENABLE_WEBGL",
       ]
     }
-    if (skia_canvaskit_enable_webgpu) {
-      defines += [
-        "SK_DAWN",
-        "CK_ENABLE_WEBGPU",
-      ]
-    }
-  } else {
-    defines += [
-      "SK_SUPPORT_GPU=0",
-      "SK_ENABLE_SKSL",
-    ]
   }
 
   if (skia_canvaskit_enable_pathops) {

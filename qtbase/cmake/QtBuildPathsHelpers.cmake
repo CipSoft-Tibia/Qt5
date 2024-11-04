@@ -7,7 +7,7 @@ macro(qt_internal_setup_default_install_prefix)
     # is specified.
     # This detection only happens when building qtbase, and later is propagated via the generated
     # QtBuildInternalsExtra.cmake file.
-    if (PROJECT_NAME STREQUAL "QtBase" AND NOT QT_BUILD_STANDALONE_TESTS)
+    if(PROJECT_NAME STREQUAL "QtBase" AND NOT QT_INTERNAL_BUILD_STANDALONE_PARTS)
         if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
             # Handle both FEATURE_ and QT_FEATURE_ cases when they are specified on the command line
             # explicitly. It's possible for one to be set, but not the other, because
@@ -56,7 +56,8 @@ function(qt_internal_setup_build_and_install_paths)
     # Compute the values of QT_BUILD_DIR, QT_INSTALL_DIR, QT_CONFIG_BUILD_DIR, QT_CONFIG_INSTALL_DIR
     # taking into account whether the current build is a prefix build or a non-prefix build,
     # and whether it is a superbuild or non-superbuild.
-    # A third case is when another module or standalone tests are built against a super-built Qt.
+    # A third case is when another module or standalone tests/examples are built against a
+    # super-built Qt.
     # The layout for the third case is the same as for non-superbuilds.
     #
     # These values should be prepended to file paths in commands or properties,
@@ -115,35 +116,42 @@ function(qt_configure_process_path name default docstring)
     endif()
 
     # No value provided, set the default.
+    # Make sure to process the paths even for the defaults to ensure we have canonicalized paths
+    # on the first configure run and thus don't regenerate qconfig.cpp on a subsequent
+    # configure run when the paths might become different if we didn't do it on first run.
+    # e.g. './plugins' would get turned to 'plugins'.
     if(NOT DEFINED "${name}")
-        set("${name}" "${default}" CACHE STRING "${docstring}")
-    else()
-        get_filename_component(given_path_as_abs "${${name}}" ABSOLUTE BASE_DIR
-                               "${CMAKE_INSTALL_PREFIX}")
-        file(RELATIVE_PATH rel_path "${CMAKE_INSTALL_PREFIX}"
-                                    "${given_path_as_abs}")
-
-        # If absolute path given, check that it's inside the prefix (error out if not).
-        # TODO: Figure out if we need to support paths that are outside the prefix.
-        #
-        # If relative path given, it's relative to the install prefix (rather than the binary dir,
-        # which is what qmake does for some reason).
-        # In both cases, store the value as a relative path.
-        if("${rel_path}" STREQUAL "")
-            # file(RELATIVE_PATH) returns an empty string if the given absolute paths are equal
-            set(rel_path ".")
-        elseif(rel_path MATCHES "^\.\./")
-            # INSTALL_SYSCONFDIR is allowed to be outside the prefix.
-            if(NOT name STREQUAL "INSTALL_SYSCONFDIR")
-                message(FATAL_ERROR
-                    "Path component '${name}' is outside computed install prefix: ${rel_path} ")
-                return()
-            endif()
-            set("${name}" "${${name}}" CACHE STRING "${docstring}" FORCE)
-        else()
-            set("${name}" "${rel_path}" CACHE STRING "${docstring}" FORCE)
-        endif()
+        set("${name}" "${default}")
     endif()
+
+    get_filename_component(given_path_as_abs "${${name}}" ABSOLUTE BASE_DIR
+                           "${CMAKE_INSTALL_PREFIX}")
+    file(RELATIVE_PATH rel_path "${CMAKE_INSTALL_PREFIX}"
+                                "${given_path_as_abs}")
+
+    # If absolute path given, check that it's inside the prefix (error out if not).
+    # If relative path given, it's relative to the install prefix (rather than the binary dir,
+    # which is what qmake does for some reason).
+    # In both cases, store the value as a relative path, unless we're processing INSTALL_SYSCONFDIR
+    # which should stay abslute.
+    if("${rel_path}" STREQUAL "")
+        # file(RELATIVE_PATH) returns an empty string if the given absolute paths are equal,
+        # so manually set it to '.'
+        set(new_value ".")
+    elseif(rel_path MATCHES "^\.\./")
+        # INSTALL_SYSCONFDIR is allowed to be outside the prefix.
+        if(NOT name STREQUAL "INSTALL_SYSCONFDIR")
+            message(FATAL_ERROR
+                "Path component '${name}' is outside computed install prefix: ${rel_path} ")
+        endif()
+        # Keep the absolute path.
+        set(new_value "${${name}}")
+    else()
+        # Use the canonicalized path.
+        set(new_value "${rel_path}")
+    endif()
+
+    set("${name}" "${new_value}" CACHE STRING "${docstring}" FORCE)
 endfunction()
 
 macro(qt_internal_setup_configure_install_paths)
@@ -205,6 +213,18 @@ macro(qt_internal_set_qt_cmake_dir)
     set(QT_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 endmacro()
 
+macro(qt_internal_set_qt_apple_support_files_path)
+    # This is analogous to what we have in QtConfig.cmake.in. It's copied here so that iOS
+    # tests can be built in tree.
+    if(APPLE)
+        if(NOT CMAKE_SYSTEM_NAME OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            set(__qt_internal_cmake_apple_support_files_path "${QT_CMAKE_DIR}/macos")
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+            set(__qt_internal_cmake_apple_support_files_path "${QT_CMAKE_DIR}/ios")
+        endif()
+    endif()
+endmacro()
+
 macro(qt_internal_set_qt_staging_prefix)
     if(NOT "${CMAKE_STAGING_PREFIX}" STREQUAL "")
         set(QT_STAGING_PREFIX "${CMAKE_STAGING_PREFIX}")
@@ -227,4 +247,6 @@ macro(qt_internal_setup_paths_and_prefixes)
     qt_internal_set_cmake_install_libdir()
 
     qt_internal_set_qt_cmake_dir()
+
+    qt_internal_set_qt_apple_support_files_path()
 endmacro()

@@ -267,31 +267,36 @@ void PolarChartAxisRadial::createItems(int count)
 
 void PolarChartAxisRadial::handleArrowPenChanged(const QPen &pen)
 {
-    foreach (QGraphicsItem *item, arrowItems())
+    const auto items = arrowItems();
+    for (QGraphicsItem *item : items)
         static_cast<QGraphicsLineItem *>(item)->setPen(pen);
 }
 
 void PolarChartAxisRadial::handleGridPenChanged(const QPen &pen)
 {
-    foreach (QGraphicsItem *item, gridItems())
+    const auto items = gridItems();
+    for (QGraphicsItem *item : items)
         static_cast<QGraphicsEllipseItem *>(item)->setPen(pen);
 }
 
 void PolarChartAxisRadial::handleMinorArrowPenChanged(const QPen &pen)
 {
-    foreach (QGraphicsItem *item, minorArrowItems())
+    const auto items = minorArrowItems();
+    for (QGraphicsItem *item : items)
         static_cast<QGraphicsLineItem *>(item)->setPen(pen);
 }
 
 void PolarChartAxisRadial::handleMinorGridPenChanged(const QPen &pen)
 {
-    foreach (QGraphicsItem *item, minorGridItems())
+    const auto items = minorGridItems();
+    for (QGraphicsItem *item : items)
         static_cast<QGraphicsEllipseItem *>(item)->setPen(pen);
 }
 
 void PolarChartAxisRadial::handleGridLineColorChanged(const QColor &color)
 {
-    foreach (QGraphicsItem *item, gridItems()) {
+    const auto items = gridItems();
+    for (QGraphicsItem *item : items) {
         QGraphicsEllipseItem *ellipseItem = static_cast<QGraphicsEllipseItem *>(item);
         QPen pen = ellipseItem->pen();
         pen.setColor(color);
@@ -301,7 +306,8 @@ void PolarChartAxisRadial::handleGridLineColorChanged(const QColor &color)
 
 void PolarChartAxisRadial::handleMinorGridLineColorChanged(const QColor &color)
 {
-    foreach (QGraphicsItem *item, minorGridItems()) {
+    const auto items = minorGridItems();
+    for (QGraphicsItem *item : items) {
         QGraphicsEllipseItem *ellipseItem = static_cast<QGraphicsEllipseItem *>(item);
         QPen pen = ellipseItem->pen();
         pen.setColor(color);

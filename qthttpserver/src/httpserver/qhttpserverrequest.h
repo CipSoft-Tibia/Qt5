@@ -10,6 +10,9 @@
 #include <QtCore/qurl.h>
 #include <QtCore/qurlquery.h>
 #include <QtNetwork/qhostaddress.h>
+#if QT_CONFIG(ssl)
+#include <QtNetwork/qsslconfiguration.h>
+#endif
 
 #include <memory>
 
@@ -58,6 +61,9 @@ public:
     Q_HTTPSERVER_EXPORT quint16 remotePort() const;
     Q_HTTPSERVER_EXPORT QHostAddress localAddress() const;
     Q_HTTPSERVER_EXPORT quint16 localPort() const;
+#if QT_CONFIG(ssl)
+    Q_HTTPSERVER_EXPORT QSslConfiguration sslConfiguration() const;
+#endif
 
 private:
     Q_DISABLE_COPY(QHttpServerRequest)
@@ -70,6 +76,13 @@ private:
                                                     quint16 remotePort,
                                                     const QHostAddress &localAddress,
                                                     quint16 localPort);
+#if QT_CONFIG(ssl)
+    Q_HTTPSERVER_EXPORT explicit QHttpServerRequest(const QHostAddress &remoteAddress,
+                                                    quint16 remotePort,
+                                                    const QHostAddress &localAddress,
+                                                    quint16 localPort,
+                                                    const QSslConfiguration &sslConfiguration);
+#endif
 
     std::unique_ptr<QHttpServerRequestPrivate> d;
 };

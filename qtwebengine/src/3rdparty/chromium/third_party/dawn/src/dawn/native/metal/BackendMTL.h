@@ -26,9 +26,13 @@ class Backend : public BackendConnection {
     explicit Backend(InstanceBase* instance);
     ~Backend() override;
 
-    std::vector<Ref<AdapterBase>> DiscoverDefaultAdapters() override;
-    ResultOrError<std::vector<Ref<AdapterBase>>> DiscoverAdapters(
-        const AdapterDiscoveryOptionsBase* optionsBase) override;
+    std::vector<Ref<PhysicalDeviceBase>> DiscoverPhysicalDevices(
+        const RequestAdapterOptions* options) override;
+    void ClearPhysicalDevices() override;
+    size_t GetPhysicalDeviceCountForTesting() const override;
+
+  private:
+    std::vector<Ref<PhysicalDeviceBase>> mPhysicalDevices;
 };
 
 }  // namespace dawn::native::metal

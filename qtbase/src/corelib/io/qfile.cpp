@@ -462,7 +462,9 @@ QFile::remove(const QString &fileName)
 //! [move-to-trash-common]
     The time for this function to run is independent of the size of the file
     being trashed. If this function is called on a directory, it may be
-    proportional to the number of files being trashed.
+    proportional to the number of files being trashed. If the current
+    fileName() points to a symbolic link, this function will move the link to
+    the trash, possibly breaking it, not the target of the link.
 
     This function uses the Windows and \macos APIs to perform the trashing on
     those two operating systems. Elsewhere (Unix systems), this function
@@ -510,7 +512,7 @@ QFile::moveToTrash()
     \since 5.15
     \overload
 
-    Moves the file specified by fileName() to the trash. Returns \c true if successful,
+    Moves the file specified by \a fileName to the trash. Returns \c true if successful,
     and sets \a pathInTrash (if provided) to the path at which the file can be found within
     the trash; otherwise returns \c false.
 
@@ -802,9 +804,9 @@ QFile::copy(const QString &newName)
                 }
 #endif
                 if (error) {
+                    d->setError(QFile::CopyError, tr("Cannot open for output: %1").arg(out.errorString()));
                     out.close();
                     close();
-                    d->setError(QFile::CopyError, tr("Cannot open for output: %1").arg(out.errorString()));
                 } else {
                     if (!d->engine()->cloneTo(out.d_func()->engine())) {
                         char block[4096];

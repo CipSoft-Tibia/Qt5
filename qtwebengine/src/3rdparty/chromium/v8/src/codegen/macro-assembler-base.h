@@ -48,6 +48,7 @@ class V8_EXPORT_PRIVATE MacroAssemblerBase : public Assembler {
   void set_abort_hard(bool v) { hard_abort_ = v; }
 
   void set_builtin(Builtin builtin) { maybe_builtin_ = builtin; }
+  Builtin builtin() const { return maybe_builtin_; }
 
   void set_has_frame(bool v) { has_frame_ = v; }
   bool has_frame() const { return has_frame_; }
@@ -74,6 +75,7 @@ class V8_EXPORT_PRIVATE MacroAssemblerBase : public Assembler {
     return V8_STATIC_ROOTS_BOOL && RootsTable::IsReadOnly(index);
   }
   Tagged_t ReadOnlyRootPtr(RootIndex index);
+  static Tagged_t ReadOnlyRootPtr(RootIndex index, Isolate* isolate);
   virtual void LoadRoot(Register destination, RootIndex index) = 0;
 
   static int32_t RootRegisterOffsetForRootIndex(RootIndex root_index);

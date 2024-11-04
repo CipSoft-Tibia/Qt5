@@ -854,7 +854,7 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     if (s->psypp)
         ff_psy_preprocess(s->psypp, s->planar_samples, s->channels);
 
-    if (!avctx->frame_number)
+    if (!avctx->frame_num)
         return 0;
 
     start_ch = 0;
@@ -958,7 +958,7 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     do {
         init_put_bits(&s->pb, avpkt->data, avpkt->size);
 
-        if ((avctx->frame_number & 0xFF)==1 && !(avctx->flags & AV_CODEC_FLAG_BITEXACT))
+        if ((avctx->frame_num & 0xFF)==1 && !(avctx->flags & AV_CODEC_FLAG_BITEXACT))
             put_bitstream_info(s, LIBAVCODEC_IDENT);
         start_ch = 0;
         target_bits = 0;
@@ -1105,6 +1105,18 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
         too_many_bits = FFMAX(target_bits, rate_bits);
         too_many_bits = FFMIN(too_many_bits, 6144 * s->channels - 3);
         too_few_bits = FFMIN(FFMAX(rate_bits - rate_bits/4, target_bits), too_many_bits);
+
+        /* When strict bit-rate control is demanded */
+        if (avctx->bit_rate_tolerance == 0) {
+            if (rate_bits < frame_bits) {
+                float ratio = ((float)rate_bits) / frame_bits;
+                s->lambda *= FFMIN(0.9f, ratio);
+                continue;
+            }
+            /* reset lambda when solution is found */
+            s->lambda = avctx->global_quality > 0 ? avctx->global_quality : 120;
+            break;
+        }
 
         /* When using ABR, be strict (but only for increasing) */
         too_few_bits = too_few_bits - too_few_bits/8;

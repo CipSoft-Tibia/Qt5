@@ -35,7 +35,7 @@
 extern "C" {
 #endif
 
-#define WESTON_DRM_BACKEND_CONFIG_VERSION 3
+#define WESTON_DRM_BACKEND_CONFIG_VERSION 6
 
 struct libinput_device;
 
@@ -78,6 +78,32 @@ struct weston_drm_output_api {
 	 */
 	void (*set_seat)(struct weston_output *output,
 			 const char *seat);
+
+	/** Set the "max bpc" KMS connector property
+	 *
+	 * The property is used for working around faulty sink hardware like
+	 * monitors or media converters that mishandle the kernel driver
+	 * chosen bits-per-channel on the physical link. When having trouble,
+	 * try a lower value like 8. A value of 0 means that the current max
+	 * bpc will be reprogrammed.
+	 *
+	 * The value actually used in KMS is silently clamped to the range the
+	 * KMS driver claims to support. The default value is 16.
+	 *
+	 * This can be set only while the output is disabled.
+	 */
+	void (*set_max_bpc)(struct weston_output *output, unsigned max_bpc);
+
+	/** The content type primarily used on the output. Valid values are:
+	 * - NULL or "no data" - No information is provided about the usage of the
+	 *   output
+	 * - "graphics"
+	 * - "photo"
+	 * - "cinema"
+	 * - "game"
+	 */
+	int (*set_content_type)(struct weston_output *output,
+				const char *content_type);
 };
 
 static inline const struct weston_drm_output_api *
@@ -90,7 +116,7 @@ weston_drm_output_get_api(struct weston_compositor *compositor)
 	return (const struct weston_drm_output_api *)api;
 }
 
-#define WESTON_DRM_VIRTUAL_OUTPUT_API_NAME "weston_drm_virtual_output_api_v1"
+#define WESTON_DRM_VIRTUAL_OUTPUT_API_NAME "weston_drm_virtual_output_api_v2"
 
 struct drm_fb;
 typedef int (*submit_frame_cb)(struct weston_output *output, int fd,
@@ -101,12 +127,16 @@ struct weston_drm_virtual_output_api {
 	 * This is a low-level function, where the caller is expected to wrap
 	 * the weston_output function pointers as necessary to make the virtual
 	 * output useful. The caller must set up output make, model, serial,
-	 * physical size, the mode list and current mode.
+	 * physical size, the mode list and current mode. The destroy function
+	 * pointer must not be overwritten, as it is used by the DRM backend to
+	 * recognize its outputs. Instead, an auxiliary destroy callback has to
+	 * be provided as a parameter.
 	 *
 	 * Returns output on success, NULL on failure.
 	 */
 	struct weston_output* (*create_output)(struct weston_compositor *c,
-					       char *name);
+					       char *name,
+					       void (*destroy_func)(struct weston_output *base));
 
 	/** Set pixel format same as drm_output set_gbm_format().
 	 *
@@ -171,11 +201,8 @@ weston_drm_virtual_output_get_api(struct weston_compositor *compositor)
 struct weston_drm_backend_config {
 	struct weston_backend_config base;
 
-	/** The tty to be used. Set to 0 to use the current tty. */
-	int tty;
-
-	/** Whether to use the pixman renderer instead of the OpenGL ES renderer. */
-	bool use_pixman;
+	/** Select the renderer type to use */
+	enum weston_renderer_type renderer;
 
 	/** The seat to be used for input and output.
 	 *
@@ -224,8 +251,13 @@ struct weston_drm_backend_config {
 	/** Use shadow buffer if using Pixman-renderer. */
 	bool use_pixman_shadow;
 
-	/** Allow compositor to start without input devices. */
-	bool continue_without_input;
+	/** Additional DRM devices to open
+	 *
+	 * A comma-separated list of DRM devices names, like "card1", to open.
+	 * The devices will be used as additional scanout devices, but not as a
+	 * rendering device.
+	 */
+	char *additional_devices;
 };
 
 #ifdef  __cplusplus

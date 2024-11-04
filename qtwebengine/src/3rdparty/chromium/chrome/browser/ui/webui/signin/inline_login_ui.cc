@@ -28,6 +28,7 @@
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/inline_login_resources.h"
 #include "chrome/grit/inline_login_resources_map.h"
+#include "components/policy/core/common/policy_pref_names.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
 #include "content/public/common/content_switches.h"
@@ -37,6 +38,7 @@
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 #include "ash/constants/ash_features.h"
 #include "ash/constants/ash_pref_names.h"
+#include "ash/webui/settings/public/constants/routes.mojom.h"
 #include "chrome/browser/ash/account_manager/account_apps_availability.h"
 #include "chrome/browser/ash/profiles/profile_helper.h"
 #include "chrome/browser/prefs/incognito_mode_prefs.h"
@@ -44,7 +46,6 @@
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/webui/ash/edu_account_login_handler.h"
 #include "chrome/browser/ui/webui/ash/edu_coexistence/edu_coexistence_login_handler.h"
-#include "chrome/browser/ui/webui/settings/chromeos/constants/routes.mojom.h"
 #include "chrome/browser/ui/webui/signin/ash/inline_login_handler_impl.h"
 #include "chrome/grit/arc_account_picker_resources.h"
 #include "chrome/grit/arc_account_picker_resources_map.h"
@@ -165,8 +166,6 @@ void CreateAndAddWebUIDataSource(Profile* profile) {
     {"edu_coexistence_template.js",
      IDR_EDU_COEXISTENCE_EDU_COEXISTENCE_TEMPLATE_JS},
     {"edu_coexistence_css.js", IDR_EDU_COEXISTENCE_EDU_COEXISTENCE_CSS_JS},
-    {"an_error_occurred.svg", IDR_CHROME_OS_AN_ERROR_OCCURRED_SVG},
-    {"no_network.svg", IDR_CHROME_OS_NO_NETWORK_SVG},
     {"account_manager_signin_blocked_by_policy.svg",
      IDS_ACCOUNT_MANAGER_SIGNIN_BLOCKED_BY_POLICY_SVG},
 
@@ -253,10 +252,15 @@ void CreateAndAddWebUIDataSource(Profile* profile) {
           : profile->GetPrefs()->GetBoolean(
                 ash::prefs::kShouldSkipInlineLoginWelcomePage));
   if (ash::AccountAppsAvailability::IsArcAccountRestrictionsEnabled()) {
-    int message_id =
-        profiles::IsGuestModeEnabled()
-            ? IDS_ACCOUNT_MANAGER_DIALOG_WELCOME_BODY_V2_WITH_GUEST_MODE
-            : IDS_ACCOUNT_MANAGER_DIALOG_WELCOME_BODY_V2;
+    int message_id = IDS_ACCOUNT_MANAGER_DIALOG_WELCOME_BODY_V2_WITHOUT_GUEST;
+    // Offer browser guest mode or device guest mode, if available.
+    if (profiles::IsGuestModeEnabled()) {
+      message_id = IDS_ACCOUNT_MANAGER_DIALOG_WELCOME_BODY_V2_WITH_GUEST_MODE;
+    } else if (user_manager::UserManager::Get()->IsGuestSessionAllowed()) {
+      message_id =
+          IDS_ACCOUNT_MANAGER_DIALOG_WELCOME_BODY_V2_WITH_DEVICE_GUEST_MODE;
+    }
+
     source->AddString(
         "accountManagerDialogWelcomeBody",
         l10n_util::GetStringFUTF16(
@@ -287,7 +291,7 @@ void CreateAndAddWebUIDataSource(Profile* profile) {
   } else {
     bool is_incognito_enabled =
         (IncognitoModePrefs::GetAvailability(profile->GetPrefs()) !=
-         IncognitoModePrefs::Availability::kDisabled);
+         policy::IncognitoModeAvailability::kDisabled);
     int message_id =
         is_incognito_enabled
             ? IDS_ACCOUNT_MANAGER_DIALOG_WELCOME_BODY

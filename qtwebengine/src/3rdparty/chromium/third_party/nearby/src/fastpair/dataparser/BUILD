@@ -15,8 +15,9 @@ cc_library(
         ":decoder",
         "//fastpair/common",
         "//fastpair/crypto",
+        "//internal/base:bluetooth_address",
         "//internal/platform:base",
-        "//internal/platform:logging",
+        "//internal/platform:types",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
     ],
@@ -50,12 +51,11 @@ cc_test(
         "//fastpair/common",
         "//fastpair/crypto",
         "//fastpair/testing",
-        "//internal/platform:logging",
+        "//internal/platform:types",
         "//internal/platform/implementation/g3",  # build_cleaner: keep
         "@boringssl//:crypto",
         "@com_github_protobuf_matchers//protobuf-matchers",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
@@ -71,6 +71,7 @@ cc_test(
     deps = [
         ":decoder",
         "//fastpair/testing",
+        "//internal/platform/implementation/g3",  # build_cleaner: keep
         "@com_github_protobuf_matchers//protobuf-matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",

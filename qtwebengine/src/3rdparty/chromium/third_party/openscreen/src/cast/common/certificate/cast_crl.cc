@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,16 +8,15 @@
 
 #include <memory>
 
-#include "absl/strings/string_view.h"
 #include "cast/common/certificate/date_time.h"
 #include "cast/common/public/parsed_certificate.h"
 #include "cast/common/public/trust_store.h"
 #include "platform/base/macros.h"
 #include "util/crypto/sha2.h"
 #include "util/osp_logging.h"
+#include "util/span_util.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 enum CrlVersion {
@@ -25,11 +24,6 @@ enum CrlVersion {
   //            Signature Algorithm = RSA-PKCS1 V1.5 with SHA-256
   kCrlVersion0 = 0,
 };
-
-ConstDataSpan ConstDataSpanFromString(const std::string& s) {
-  return ConstDataSpan{reinterpret_cast<const uint8_t*>(s.data()),
-                       static_cast<uint32_t>(s.size())};
-}
 
 // Verifies the CRL is signed by a trusted CRL authority at the time the CRL
 // was issued. Verifies the signature of |tbs_crl| is valid based on the
@@ -50,9 +44,9 @@ bool VerifyCRL(const Crl& crl,
   auto& result_path = maybe_result_path.value();
   ParsedCertificate* target_cert = result_path[0].get();
 
-  if (!target_cert->VerifySignedData(
-          DigestAlgorithm::kSha256, ConstDataSpanFromString(crl.tbs_crl()),
-          ConstDataSpanFromString(crl.signature()))) {
+  if (!target_cert->VerifySignedData(DigestAlgorithm::kSha256,
+                                     ByteViewFromString(crl.tbs_crl()),
+                                     ByteViewFromString(crl.signature()))) {
     return false;
   }
 
@@ -204,5 +198,4 @@ std::unique_ptr<CastCRL> ParseAndVerifyCRL(const std::string& crl_proto,
   return nullptr;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

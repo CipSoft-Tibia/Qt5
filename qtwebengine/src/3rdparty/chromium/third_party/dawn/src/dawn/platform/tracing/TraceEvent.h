@@ -152,6 +152,7 @@
 #ifndef SRC_DAWN_PLATFORM_TRACING_TRACEEVENT_H_
 #define SRC_DAWN_PLATFORM_TRACING_TRACEEVENT_H_
 
+#include <atomic>
 #include <string>
 
 #include "dawn/platform/tracing/EventTracer.h"
@@ -645,7 +646,7 @@
 // for best performance when tracing is disabled.
 // const unsigned char*
 //     TRACE_EVENT_API_GET_CATEGORY_ENABLED(const char* category_name)
-#define TRACE_EVENT_API_GET_CATEGORY_ENABLED dawn::platform::tracing::GetTraceCategoryEnabledFlag
+#define TRACE_EVENT_API_GET_CATEGORY_ENABLED ::dawn::platform::tracing::GetTraceCategoryEnabledFlag
 
 // Add a trace event to the platform tracing system.
 // void TRACE_EVENT_API_ADD_TRACE_EVENT(
@@ -658,7 +659,7 @@
 //                    const unsigned char* arg_types,
 //                    const unsigned long long* arg_values,
 //                    unsigned char flags)
-#define TRACE_EVENT_API_ADD_TRACE_EVENT dawn::platform::tracing::AddTraceEvent
+#define TRACE_EVENT_API_ADD_TRACE_EVENT ::dawn::platform::tracing::AddTraceEvent
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -670,10 +671,16 @@
 #define INTERNALTRACEEVENTUID(name_prefix) INTERNAL_TRACE_EVENT_UID2(name_prefix, __LINE__)
 
 // Implementation detail: internal macro to create static category.
-#define INTERNAL_TRACE_EVENT_GET_CATEGORY_INFO(platform, category)    \
-    static const unsigned char* INTERNALTRACEEVENTUID(catstatic) = 0; \
-    if (!INTERNALTRACEEVENTUID(catstatic))                            \
-        INTERNALTRACEEVENTUID(catstatic) = TRACE_EVENT_API_GET_CATEGORY_ENABLED(platform, category);
+#define INTERNAL_TRACE_EVENT_GET_CATEGORY_INFO(platform, category)                            \
+    static std::atomic<const unsigned char*> INTERNALTRACEEVENTUID(atomicCatstatic)(nullptr); \
+    const unsigned char* INTERNALTRACEEVENTUID(catstatic) =                                   \
+        INTERNALTRACEEVENTUID(atomicCatstatic).load(std::memory_order_acquire);               \
+    if (!INTERNALTRACEEVENTUID(catstatic)) {                                                  \
+        INTERNALTRACEEVENTUID(catstatic) =                                                    \
+            TRACE_EVENT_API_GET_CATEGORY_ENABLED(platform, category);                         \
+        INTERNALTRACEEVENTUID(atomicCatstatic)                                                \
+            .store(INTERNALTRACEEVENTUID(catstatic), std::memory_order_release);              \
+    }
 
 // Implementation detail: internal macro to create static category and add
 // event if the category is enabled.
@@ -861,8 +868,8 @@ static inline void setTraceValue(const std::string& arg, unsigned char* type, ui
 // store pointers to the internal c_str and pass through to the tracing API, the
 // arg values must live throughout these procedures.
 
-static inline dawn::platform::tracing::TraceEventHandle addTraceEvent(
-    dawn::platform::Platform* platform,
+static inline tracing::TraceEventHandle addTraceEvent(
+    Platform* platform,
     char phase,
     const unsigned char* categoryEnabled,
     const char* name,
@@ -874,16 +881,15 @@ static inline dawn::platform::tracing::TraceEventHandle addTraceEvent(
 }
 
 template <class ARG1_TYPE>
-static inline dawn::platform::tracing::TraceEventHandle addTraceEvent(
-    dawn::platform::Platform* platform,
-    char phase,
-    const unsigned char* categoryEnabled,
-    const char* name,
-    uint64_t id,
-    unsigned char flags,
-    int /*unused, helps avoid empty __VA_ARGS__*/,
-    const char* arg1Name,
-    const ARG1_TYPE& arg1Val) {
+static inline tracing::TraceEventHandle addTraceEvent(Platform* platform,
+                                                      char phase,
+                                                      const unsigned char* categoryEnabled,
+                                                      const char* name,
+                                                      uint64_t id,
+                                                      unsigned char flags,
+                                                      int /*unused, helps avoid empty __VA_ARGS__*/,
+                                                      const char* arg1Name,
+                                                      const ARG1_TYPE& arg1Val) {
     const int numArgs = 1;
     unsigned char argTypes[1];
     uint64_t argValues[1];
@@ -893,18 +899,17 @@ static inline dawn::platform::tracing::TraceEventHandle addTraceEvent(
 }
 
 template <class ARG1_TYPE, class ARG2_TYPE>
-static inline dawn::platform::tracing::TraceEventHandle addTraceEvent(
-    dawn::platform::Platform* platform,
-    char phase,
-    const unsigned char* categoryEnabled,
-    const char* name,
-    uint64_t id,
-    unsigned char flags,
-    int /*unused, helps avoid empty __VA_ARGS__*/,
-    const char* arg1Name,
-    const ARG1_TYPE& arg1Val,
-    const char* arg2Name,
-    const ARG2_TYPE& arg2Val) {
+static inline tracing::TraceEventHandle addTraceEvent(Platform* platform,
+                                                      char phase,
+                                                      const unsigned char* categoryEnabled,
+                                                      const char* name,
+                                                      uint64_t id,
+                                                      unsigned char flags,
+                                                      int /*unused, helps avoid empty __VA_ARGS__*/,
+                                                      const char* arg1Name,
+                                                      const ARG1_TYPE& arg1Val,
+                                                      const char* arg2Name,
+                                                      const ARG2_TYPE& arg2Val) {
     const int numArgs = 2;
     const char* argNames[2] = {arg1Name, arg2Name};
     unsigned char argTypes[2];
@@ -926,9 +931,7 @@ class TraceEndOnScopeClose {
         }
     }
 
-    void initialize(dawn::platform::Platform* platform,
-                    const unsigned char* categoryEnabled,
-                    const char* name) {
+    void initialize(Platform* platform, const unsigned char* categoryEnabled, const char* name) {
         m_data.platform = platform;
         m_data.categoryEnabled = categoryEnabled;
         m_data.name = name;
@@ -952,7 +955,7 @@ class TraceEndOnScopeClose {
     // members of this class instead, compiler warnings occur about potential
     // uninitialized accesses.
     struct Data {
-        dawn::platform::Platform* platform;
+        Platform* platform;
         const unsigned char* categoryEnabled;
         const char* name;
     };

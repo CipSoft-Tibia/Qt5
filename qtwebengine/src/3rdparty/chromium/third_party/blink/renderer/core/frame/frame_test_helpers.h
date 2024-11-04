@@ -53,6 +53,7 @@
 #include "third_party/blink/public/mojom/page/widget.mojom-blink.h"
 #include "third_party/blink/public/mojom/widget/platform_widget.mojom-blink.h"
 #include "third_party/blink/public/platform/platform.h"
+#include "third_party/blink/public/platform/scheduler/web_agent_group_scheduler.h"
 #include "third_party/blink/public/platform/web_string.h"
 #include "third_party/blink/public/platform/web_url_request.h"
 #include "third_party/blink/public/web/web_frame_owner_properties.h"
@@ -73,6 +74,7 @@ class TickClock;
 }
 
 namespace blink {
+class AgentGroupScheduler;
 class WebFrame;
 class WebLocalFrameImpl;
 struct WebNavigationParams;
@@ -207,12 +209,6 @@ class TestWebFrameWidgetHost : public mojom::blink::WidgetHost,
   void AutoscrollStart(const gfx::PointF& position) override;
   void AutoscrollFling(const gfx::Vector2dF& position) override;
   void AutoscrollEnd() override;
-  void StartDragging(const blink::WebDragData& drag_data,
-                     blink::DragOperationsMask operations_allowed,
-                     const SkBitmap& bitmap,
-                     const gfx::Vector2d& cursor_offset_in_dip,
-                     const gfx::Rect& drag_obj_rect_in_dip,
-                     mojom::blink::DragEventSourceInfoPtr event_info) override;
 
   void BindWidgetHost(
       mojo::PendingAssociatedReceiver<mojom::blink::WidgetHost>,
@@ -339,8 +335,8 @@ class WebViewHelper : public ScopedMockOverlayScrollbars {
       TestWebFrameClient* = nullptr,
       WebViewClient* = nullptr,
       void (*update_settings_func)(WebSettings*) = nullptr,
-      absl::optional<mojom::blink::FencedFrameMode> fenced_frame_mode =
-          absl::nullopt);
+      absl::optional<blink::FencedFrame::DeprecatedFencedFrameMode>
+          fenced_frame_mode = absl::nullopt);
 
   // Same as InitializeWithOpener(), but always sets the opener to null.
   WebViewImpl* Initialize(TestWebFrameClient* = nullptr,
@@ -351,6 +347,11 @@ class WebViewHelper : public ScopedMockOverlayScrollbars {
   // settings function.
   WebViewImpl* InitializeWithSettings(
       void (*update_settings_func)(WebSettings*));
+
+  WebViewImpl* InitializeWithAndroidSettings() {
+    return InitializeWithSettings(&UpdateAndroidCompositingSettings);
+  }
+  static void UpdateAndroidCompositingSettings(WebSettings*);
 
   // Same as Initialize() but also performs the initial load of the url. Only
   // returns once the load is complete.
@@ -390,6 +391,9 @@ class WebViewHelper : public ScopedMockOverlayScrollbars {
       mojo::PendingAssociatedRemote<mojom::blink::RemoteFrameHost>
           remote_frame_host,
       mojo::PendingAssociatedReceiver<mojom::blink::RemoteFrame> receiver);
+
+  // Creates a new uninitialized WebView.
+  WebViewImpl* CreateWebView(WebViewClient*, bool compositing_enabled);
 
   // Helper for creating a local child frame of a remote parent frame.
   WebLocalFrameImpl* CreateLocalChild(
@@ -460,15 +464,16 @@ class WebViewHelper : public ScopedMockOverlayScrollbars {
         is_for_scalable_page);
   }
 
-  blink::scheduler::WebAgentGroupScheduler& GetAgentGroupScheduler() {
-    return *agent_group_scheduler_;
+  AgentGroupScheduler& GetAgentGroupScheduler() {
+    return agent_group_scheduler_->GetAgentGroupScheduler();
   }
 
  private:
   void InitializeWebView(
       WebViewClient*,
       class WebView* opener,
-      absl::optional<mojom::blink::FencedFrameMode> fenced_frame_mode);
+      absl::optional<blink::FencedFrame::DeprecatedFencedFrameMode>
+          fenced_frame_mode);
   void CheckFrameIsAssociatedWithWebView(WebFrame* frame);
 
   bool viewport_enabled_ = false;
@@ -539,7 +544,8 @@ class TestWebFrameClient : public WebLocalFrameClient {
       const SessionStorageNamespaceId&,
       bool& consumed_user_gesture,
       const absl::optional<Impression>&,
-      const absl::optional<WebPictureInPictureWindowOptions>&) override;
+      const absl::optional<WebPictureInPictureWindowOptions>&,
+      const WebURL& base_url) override;
 
   int VisuallyNonEmptyLayoutCount() const {
     return visually_non_empty_layout_count_;
@@ -596,7 +602,8 @@ class TestWidgetInputHandlerHost : public mojom::blink::WidgetInputHandlerHost {
   void ImeCancelComposition() override;
   void ImeCompositionRangeChanged(
       const gfx::Range& range,
-      const WTF::Vector<gfx::Rect>& bounds) override;
+      const absl::optional<WTF::Vector<gfx::Rect>>& character_bounds,
+      const absl::optional<WTF::Vector<gfx::Rect>>& line_bounds) override;
   void SetMouseCapture(bool capture) override;
   void RequestMouseLock(bool from_user_gesture,
                         bool unadjusted_movement,

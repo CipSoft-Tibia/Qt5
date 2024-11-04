@@ -16,7 +16,6 @@
 //
 
 #include "qsvgnode_p.h"
-#include "qtsvgglobal_p.h"
 
 #include "QtCore/qlist.h"
 #include "QtCore/qhash.h"
@@ -49,7 +48,8 @@ class Q_SVG_PRIVATE_EXPORT QSvgG : public QSvgStructureNode
 {
 public:
     QSvgG(QSvgNode *parent);
-    void draw(QPainter *p, QSvgExtraStates &states) override;
+    void drawCommand(QPainter *, QSvgExtraStates &) override;
+    bool shouldDrawNode(QPainter *p, QSvgExtraStates &states) const override;
     Type type() const override;
 };
 
@@ -57,21 +57,171 @@ class Q_SVG_PRIVATE_EXPORT QSvgDefs : public QSvgStructureNode
 {
 public:
     QSvgDefs(QSvgNode *parent);
-    void draw(QPainter *p, QSvgExtraStates &states) override;
+    void drawCommand(QPainter *, QSvgExtraStates &) override {};
+    bool shouldDrawNode(QPainter *p, QSvgExtraStates &states) const override;
     Type type() const override;
 };
+
+class Q_SVG_PRIVATE_EXPORT QSvgSymbolLike : public QSvgStructureNode
+{
+    // Marker, Symbol and potentially other elements share a lot of common
+    // attributes and functionality. By making a common base class we can
+    // avoid repetition.
+public:
+    enum class Overflow : quint8 {
+        Visible,
+        Hidden,
+        Scroll = Visible, //Will not support scrolling
+        Auto = Visible
+    };
+
+    enum class PreserveAspectRatio : quint8 {
+        None =  0b000000,
+        xMin =  0b000001,
+        xMid =  0b000010,
+        xMax =  0b000011,
+        yMin =  0b000100,
+        yMid =  0b001000,
+        yMax =  0b001100,
+        meet =  0b010000,
+        slice = 0b100000,
+        xMask = xMin | xMid | xMax,
+        yMask = yMin | yMid | yMax,
+        xyMask = xMask | yMask,
+        meetSliceMask = meet | slice
+    };
+    Q_DECLARE_FLAGS(PreserveAspectRatios, PreserveAspectRatio)
+
+    QSvgSymbolLike(QSvgNode *parent, QRectF bounds, QRectF viewBox, QPointF refP,
+                   QSvgSymbolLike::PreserveAspectRatios pAspectRatios, QSvgSymbolLike::Overflow overflow);
+    void drawCommand(QPainter *, QSvgExtraStates &) override {};
+protected:
+    void setPainterToRectAndAdjustment(QPainter *p) const;
+protected:
+    QRectF m_rect;
+    QRectF m_viewBox;
+    QPointF m_refP;
+    PreserveAspectRatios m_pAspectRatios;
+    Overflow m_overflow;
+};
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(QSvgSymbolLike::PreserveAspectRatios)
+
+class Q_SVG_PRIVATE_EXPORT QSvgSymbol : public QSvgSymbolLike
+{
+public:
+    QSvgSymbol(QSvgNode *parent, QRectF bounds, QRectF viewBox, QPointF refP,
+               QSvgSymbolLike::PreserveAspectRatios pAspectRatios, QSvgSymbolLike::Overflow overflow);
+    void drawCommand(QPainter *p, QSvgExtraStates &states) override;
+    Type type() const override;
+};
+
+class Q_SVG_PRIVATE_EXPORT QSvgMarker : public QSvgSymbolLike
+{
+public:
+    enum class Orientation : quint8 {
+        Auto,
+        AutoStartReverse,
+        Value
+    };
+    enum class MarkerUnits : quint8 {
+        StrokeWidth,
+        UserSpaceOnUse
+    };
+
+    QSvgMarker(QSvgNode *parent, QRectF bounds, QRectF viewBox, QPointF refP,
+               QSvgSymbolLike::PreserveAspectRatios pAspectRatios, QSvgSymbolLike::Overflow overflow,
+               Orientation orientation, qreal orientationAngle, MarkerUnits markerUnits);
+    void drawCommand(QPainter *p, QSvgExtraStates &states) override;
+    static void drawMarkersForNode(QSvgNode *node, QPainter *p, QSvgExtraStates &states);
+    Orientation orientation() const {
+        return m_orientation;
+    }
+    qreal orientationAngle() const {
+        return m_orientationAngle;
+    }
+    MarkerUnits markerUnits() const {
+        return m_markerUnits;
+    }
+    Type type() const override;
+private:
+    struct PositionMarkerPair {
+        qreal x;
+        qreal y;
+        qreal angle;
+        QString markerId;
+        bool isStartNode = false;
+    };
+    Orientation m_orientation;
+    qreal m_orientationAngle;
+    MarkerUnits m_markerUnits;
+};
+
+class Q_SVG_PRIVATE_EXPORT QSvgFilterContainer : public QSvgStructureNode
+{
+public:
+
+    QSvgFilterContainer(QSvgNode *parent, const QSvgRectF &bounds, QtSvg::UnitTypes filterUnits, QtSvg::UnitTypes primitiveUnits);
+    void drawCommand(QPainter *, QSvgExtraStates &) override {};
+    Type type() const override;
+    QImage applyFilter(QSvgNode *referenceNode, const QImage &buffer, QPainter *p, QRectF bounds) const;
+    void setSupported(bool supported);
+    bool supported() const;
+private:
+    QSvgRectF m_rect;
+    QtSvg::UnitTypes m_filterUnits;
+    QtSvg::UnitTypes m_primitiveUnits;
+    bool m_supported;
+};
+
 
 class Q_SVG_PRIVATE_EXPORT QSvgSwitch : public QSvgStructureNode
 {
 public:
     QSvgSwitch(QSvgNode *parent);
-    void draw(QPainter *p, QSvgExtraStates &states) override;
+    void drawCommand(QPainter *p, QSvgExtraStates &states) override;
     Type type() const override;
 private:
     void init();
 private:
     QString m_systemLanguage;
     QString m_systemLanguagePrefix;
+};
+
+class Q_SVG_PRIVATE_EXPORT QSvgMask : public QSvgStructureNode
+{
+public:
+    QSvgMask(QSvgNode *parent, QSvgRectF bounds,
+             QtSvg::UnitTypes contentsUnits);
+    void drawCommand(QPainter *, QSvgExtraStates &) override {};
+    Type type() const override;
+    QImage createMask(QPainter *p, QSvgExtraStates &states, QSvgNode *targetNode, QRectF *globalRect) const;
+    QImage createMask(QPainter *p, QSvgExtraStates &states, const QRectF &localRect, QRectF *globalRect) const;
+private:
+    QSvgRectF m_rect;
+    QtSvg::UnitTypes m_contentUnits;
+};
+
+class Q_SVG_PRIVATE_EXPORT QSvgPattern : public QSvgStructureNode
+{
+public:
+    QSvgPattern(QSvgNode *parent, QSvgRectF bounds, QRectF viewBox,
+                QtSvg::UnitTypes contentUnits, QTransform transform);
+    void drawCommand(QPainter *, QSvgExtraStates &) override {};
+    QImage patternImage(QPainter *p, QSvgExtraStates &states, const QSvgNode *patternElement);
+    Type type() const override;
+    const QTransform& appliedTransform() const { return m_appliedTransform; }
+
+private:
+    QImage renderPattern(QSize size, qreal contentScaleX, qreal contentScaleY);
+    void calculateAppliedTransform(QTransform& worldTransform, QRectF peLocalBB, QSize imageSize);
+
+private:
+    QTransform m_appliedTransform;
+    QSvgRectF m_rect;
+    QRectF m_viewBox;
+    QtSvg::UnitTypes m_contentUnits;
+    QTransform m_transform;
 };
 
 QT_END_NAMESPACE

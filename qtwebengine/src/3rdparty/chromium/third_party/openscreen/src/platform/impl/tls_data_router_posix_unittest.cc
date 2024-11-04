@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -42,7 +42,7 @@ class MockSocket : public StreamSocketPosix {
 
 class MockConnection : public TlsConnectionPosix {
  public:
-  explicit MockConnection(int fd, TaskRunner* task_runner)
+  explicit MockConnection(int fd, TaskRunner& task_runner)
       : TlsConnectionPosix(std::make_unique<MockSocket>(fd), task_runner) {}
   MOCK_METHOD0(SendAvailableBytes, void());
   MOCK_METHOD0(TryReceiveMessage, void());
@@ -76,7 +76,7 @@ class TlsNetworkingManagerPosixTest : public testing::Test {
         task_runner_(&clock_),
         network_manager_(&network_waiter_) {}
 
-  FakeTaskRunner* task_runner() { return &task_runner_; }
+  FakeTaskRunner& task_runner() { return task_runner_; }
   TestingDataRouter* network_manager() { return &network_manager_; }
 
  private:

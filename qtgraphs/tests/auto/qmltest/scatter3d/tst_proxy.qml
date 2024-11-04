@@ -57,7 +57,7 @@ Item {
             compare(initial.itemCount, 0)
             verify(!initial.series)
 
-            compare(initial.type, AbstractDataProxy.DataTypeScatter)
+            compare(initial.type, AbstractDataProxy.DataType.Scatter)
         }
     }
 

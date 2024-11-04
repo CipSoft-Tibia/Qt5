@@ -14,7 +14,7 @@
 #include "chromeos/crosapi/mojom/video_capture.mojom.h"
 #include "content/browser/media/capture/receiver_media_to_crosapi_adapter.h"
 #include "content/common/content_export.h"
-#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
 #include "content/public/browser/desktop_media_id.h"
 #include "content/public/browser/device_service.h"
 #include "media/capture/mojom/video_capture_types.mojom.h"
@@ -45,12 +45,6 @@ namespace content {
 class CONTENT_EXPORT VideoCaptureDeviceProxyLacros
     : public media::VideoCaptureDevice {
  public:
-  // Helper method to check if the mojom version(s) required to use this class
-  // are available.
-  // May be called from any thread; should be checked before creating (or
-  // posting a task to create) an instance of this class.
-  static bool IsAvailable();
-
   explicit VideoCaptureDeviceProxyLacros(const DesktopMediaID& device_id);
 
   VideoCaptureDeviceProxyLacros(const VideoCaptureDeviceProxyLacros&) = delete;

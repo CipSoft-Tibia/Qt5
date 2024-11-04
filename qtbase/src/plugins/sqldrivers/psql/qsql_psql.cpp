@@ -74,11 +74,11 @@ inline void qPQfreemem(void *buffer)
 
 /* Missing declaration of PGRES_SINGLE_TUPLE for PSQL below 9.2 */
 #if !defined PG_VERSION_NUM || PG_VERSION_NUM-0 < 90200
-static const int PGRES_SINGLE_TUPLE = 9;
+static constexpr int PGRES_SINGLE_TUPLE = 9;
 #endif
 
 typedef int StatementId;
-static const StatementId InvalidStatementId = 0;
+static constexpr StatementId InvalidStatementId = 0;
 
 class QPSQLResultPrivate;
 
@@ -122,7 +122,7 @@ public:
     QSocketNotifier *sn = nullptr;
     QPSQLDriver::Protocol pro = QPSQLDriver::Version6;
     StatementId currentStmtId = InvalidStatementId;
-    int stmtCount = 0;
+    StatementId stmtCount = InvalidStatementId;
     mutable bool pendingNotifyCheck = false;
     bool hasBackslashEscape = false;
 
@@ -232,7 +232,7 @@ void QPSQLDriverPrivate::discardResults() const
 
 StatementId QPSQLDriverPrivate::generateStatementId()
 {
-    int stmtId = ++stmtCount;
+    StatementId stmtId = ++stmtCount;
     if (stmtId <= 0)
         stmtId = stmtCount = 1;
     return stmtId;
@@ -243,18 +243,18 @@ void QPSQLDriverPrivate::checkPendingNotifications() const
     Q_Q(const QPSQLDriver);
     if (seid.size() && !pendingNotifyCheck) {
         pendingNotifyCheck = true;
-        QMetaObject::invokeMethod(const_cast<QPSQLDriver*>(q), "_q_handleNotification", Qt::QueuedConnection);
+        QMetaObject::invokeMethod(const_cast<QPSQLDriver*>(q), &QPSQLDriver::_q_handleNotification, Qt::QueuedConnection);
     }
 }
 
-class QPSQLResultPrivate : public QSqlResultPrivate
+class QPSQLResultPrivate final : public QSqlResultPrivate
 {
     Q_DECLARE_PUBLIC(QPSQLResult)
 public:
     Q_DECLARE_SQLDRIVER_PRIVATE(QPSQLDriver)
     using QSqlResultPrivate::QSqlResultPrivate;
 
-    QString fieldSerial(qsizetype i) const override { return u'$' + QString::number(i + 1); }
+    QString fieldSerial(qsizetype i) const override { return QString("$%1"_L1).arg(i + 1); }
     void deallocatePreparedStmt();
 
     std::queue<PGresult*> nextResultSets;
@@ -641,23 +641,18 @@ QVariant QPSQLResult::data(int i)
         }
         return dbl;
     }
+#if QT_CONFIG(datestring)
     case QMetaType::QDate:
-#if QT_CONFIG(datestring)
         return QVariant(QDate::fromString(QString::fromLatin1(val), Qt::ISODate));
-#else
-        return QVariant(QString::fromLatin1(val));
-#endif
     case QMetaType::QTime:
-#if QT_CONFIG(datestring)
         return QVariant(QTime::fromString(QString::fromLatin1(val), Qt::ISODate));
-#else
-        return QVariant(QString::fromLatin1(val));
-#endif
     case QMetaType::QDateTime:
-#if QT_CONFIG(datestring)
         return QVariant(QDateTime::fromString(QString::fromLatin1(val),
                                               Qt::ISODate).toLocalTime());
 #else
+    case QMetaType::QDate:
+    case QMetaType::QTime:
+    case QMetaType::QDateTime:
         return QVariant(QString::fromLatin1(val));
 #endif
     case QMetaType::QByteArray: {
@@ -1101,8 +1096,7 @@ QPSQLDriver::QPSQLDriver(PGconn *conn, QObject *parent)
 QPSQLDriver::~QPSQLDriver()
 {
     Q_D(QPSQLDriver);
-    if (d->connection)
-        PQfinish(d->connection);
+    PQfinish(d->connection);
 }
 
 QVariant QPSQLDriver::handle() const
@@ -1211,13 +1205,12 @@ void QPSQLDriver::close()
 
     d->seid.clear();
     if (d->sn) {
-        disconnect(d->sn, SIGNAL(activated(QSocketDescriptor)), this, SLOT(_q_handleNotification()));
+        disconnect(d->sn, &QSocketNotifier::activated, this, &QPSQLDriver::_q_handleNotification);
         delete d->sn;
         d->sn = nullptr;
     }
 
-    if (d->connection)
-        PQfinish(d->connection);
+    PQfinish(d->connection);
     d->connection = nullptr;
     setOpen(false);
     setOpenError(false);
@@ -1441,32 +1434,28 @@ QString QPSQLDriver::formatValue(const QSqlField &field, bool trimStrings) const
         r = nullStr();
     } else {
         switch (field.metaType().id()) {
-        case QMetaType::QDateTime:
-#if QT_CONFIG(datestring)
-            if (field.value().toDateTime().isValid()) {
+        case QMetaType::QDateTime: {
+            const auto dt = field.value().toDateTime();
+            if (dt.isValid()) {
                 // we force the value to be considered with a timezone information, and we force it to be UTC
                 // this is safe since postgresql stores only the UTC value and not the timezone offset (only used
                 // while parsing), so we have correct behavior in both case of with timezone and without tz
                 r = QStringLiteral("TIMESTAMP WITH TIME ZONE ") + u'\'' +
-                        QLocale::c().toString(field.value().toDateTime().toUTC(), u"yyyy-MM-ddThh:mm:ss.zzz") +
+                        QLocale::c().toString(dt.toUTC(), u"yyyy-MM-ddThh:mm:ss.zzz") +
                         u'Z' + u'\'';
             } else {
                 r = nullStr();
             }
-#else
-            r = nullStr();
-#endif // datestring
             break;
-        case QMetaType::QTime:
-#if QT_CONFIG(datestring)
-            if (field.value().toTime().isValid()) {
-                r = u'\'' + field.value().toTime().toString(u"hh:mm:ss.zzz") + u'\'';
-            } else
-#endif
-            {
+        }
+        case QMetaType::QTime: {
+            const auto t = field.value().toTime();
+            if (t.isValid())
+                r = u'\'' + QLocale::c().toString(t, u"hh:mm:ss.zzz") + u'\'';
+            else
                 r = nullStr();
-            }
             break;
+        }
         case QMetaType::QString:
             r = QSqlDriver::formatValue(field, trimStrings);
             if (d->hasBackslashEscape)
@@ -1565,8 +1554,8 @@ bool QPSQLDriver::subscribeToNotification(const QString &name)
         PQclear(result);
 
         if (!d->sn) {
-            d->sn = new QSocketNotifier(socket, QSocketNotifier::Read);
-            connect(d->sn, SIGNAL(activated(QSocketDescriptor)), this, SLOT(_q_handleNotification()));
+            d->sn = new QSocketNotifier(socket, QSocketNotifier::Read, this);
+            connect(d->sn, &QSocketNotifier::activated, this, &QPSQLDriver::_q_handleNotification);
         }
     } else {
         qWarning("QPSQLDriver::subscribeToNotificationImplementation: PQsocket didn't return a valid socket to listen on");
@@ -1602,7 +1591,7 @@ bool QPSQLDriver::unsubscribeFromNotification(const QString &name)
     d->seid.removeAll(name);
 
     if (d->seid.isEmpty()) {
-        disconnect(d->sn, SIGNAL(activated(QSocketDescriptor)), this, SLOT(_q_handleNotification()));
+        disconnect(d->sn, &QSocketNotifier::activated, this, &QPSQLDriver::_q_handleNotification);
         delete d->sn;
         d->sn = nullptr;
     }
@@ -1643,3 +1632,5 @@ void QPSQLDriver::_q_handleNotification()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qsql_psql_p.cpp"

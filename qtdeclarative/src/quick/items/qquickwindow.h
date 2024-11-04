@@ -36,6 +36,7 @@ class QQuickGraphicsConfiguration;
 class QRhi;
 class QRhiSwapChain;
 class QRhiTexture;
+class QSGTextNode;
 
 class Q_QUICK_EXPORT QQuickWindow : public QWindow
 {
@@ -43,7 +44,7 @@ class Q_QUICK_EXPORT QQuickWindow : public QWindow
     Q_PRIVATE_PROPERTY(QQuickWindow::d_func(), QQmlListProperty<QObject> data READ data DESIGNABLE false)
     Q_PROPERTY(QColor color READ color WRITE setColor NOTIFY colorChanged)
     Q_PROPERTY(QQuickItem* contentItem READ contentItem CONSTANT)
-    Q_PROPERTY(QQuickItem* activeFocusItem READ activeFocusItem NOTIFY activeFocusItemChanged REVISION(2, 1) FINAL)
+    Q_PROPERTY(QQuickItem* activeFocusItem READ activeFocusItem NOTIFY activeFocusItemChanged REVISION(2, 1))
     Q_PRIVATE_PROPERTY(QQuickWindow::d_func(), QQuickPalette *palette READ palette WRITE setPalette
         RESET resetPalette NOTIFY paletteChanged REVISION(6, 2))
     QDOC_PROPERTY(QWindow* transientParent READ transientParent WRITE setTransientParent NOTIFY transientParentChanged)
@@ -81,7 +82,8 @@ public:
 
     enum TextRenderType {
         QtTextRendering,
-        NativeTextRendering
+        NativeTextRendering,
+        CurveTextRendering
     };
     Q_ENUM(TextRenderType)
 
@@ -155,6 +157,7 @@ public:
     QSGRectangleNode *createRectangleNode() const;
     QSGImageNode *createImageNode() const;
     QSGNinePatchNode *createNinePatchNode() const;
+    QSGTextNode *createTextNode() const;
 
     static TextRenderType textRenderType();
     static void setTextRenderType(TextRenderType renderType);
@@ -227,7 +230,6 @@ private Q_SLOTS:
     void cleanupSceneGraph();
     void physicalDpiChanged();
     void handleScreenChanged(QScreen *screen);
-    void setTransientParent_helper(QQuickWindow *window);
     void runJobsAfterSwap();
     void handleApplicationStateChanged(Qt::ApplicationState state);
     void handleFontDatabaseChanged();
@@ -241,6 +243,7 @@ private:
 #endif
 
     friend class QQuickItem;
+    friend class QQuickItemPrivate;
     friend class QQuickWidget;
     friend class QQuickRenderControl;
     friend class QQuickAnimatorController;

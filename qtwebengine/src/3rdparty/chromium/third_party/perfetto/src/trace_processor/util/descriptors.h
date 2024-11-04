@@ -18,13 +18,13 @@
 #define SRC_TRACE_PROCESSOR_UTIL_DESCRIPTORS_H_
 
 #include <algorithm>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "perfetto/base/status.h"
-#include "perfetto/ext/base/optional.h"
 #include "protos/perfetto/common/descriptor.pbzero.h"
 
 namespace protozero {
@@ -41,6 +41,7 @@ class FieldDescriptor {
                   uint32_t type,
                   std::string raw_type_name,
                   bool is_repeated,
+                  bool is_packed,
                   bool is_extension = false);
 
   const std::string& name() const { return name_; }
@@ -49,6 +50,7 @@ class FieldDescriptor {
   const std::string& raw_type_name() const { return raw_type_name_; }
   const std::string& resolved_type_name() const { return resolved_type_name_; }
   bool is_repeated() const { return is_repeated_; }
+  bool is_packed() const { return is_packed_; }
   bool is_extension() const { return is_extension_; }
 
   void set_resolved_type_name(const std::string& resolved_type_name) {
@@ -62,6 +64,7 @@ class FieldDescriptor {
   std::string raw_type_name_;
   std::string resolved_type_name_;
   bool is_repeated_;
+  bool is_packed_;
   bool is_extension_;
 };
 
@@ -77,7 +80,7 @@ class ProtoDescriptor {
                   std::string package_name,
                   std::string full_name,
                   Type type,
-                  base::Optional<uint32_t> parent_id);
+                  std::optional<uint32_t> parent_id);
 
   void AddField(FieldDescriptor descriptor) {
     PERFETTO_DCHECK(type_ == Type::kMessage);
@@ -114,18 +117,18 @@ class ProtoDescriptor {
     return &it->second;
   }
 
-  base::Optional<std::string> FindEnumString(const int32_t value) const {
+  std::optional<std::string> FindEnumString(const int32_t value) const {
     PERFETTO_DCHECK(type_ == Type::kEnum);
     auto it = enum_names_by_value_.find(value);
-    return it == enum_names_by_value_.end() ? base::nullopt
-                                            : base::make_optional(it->second);
+    return it == enum_names_by_value_.end() ? std::nullopt
+                                            : std::make_optional(it->second);
   }
 
-  base::Optional<int32_t> FindEnumValue(const std::string& value) const {
+  std::optional<int32_t> FindEnumValue(const std::string& value) const {
     PERFETTO_DCHECK(type_ == Type::kEnum);
     auto it = enum_values_by_name_.find(value);
-    return it == enum_values_by_name_.end() ? base::nullopt
-                                            : base::make_optional(it->second);
+    return it == enum_values_by_name_.end() ? std::nullopt
+                                            : std::make_optional(it->second);
   }
 
   const std::string& file_name() const { return file_name_; }
@@ -148,7 +151,7 @@ class ProtoDescriptor {
   std::string package_name_;
   std::string full_name_;
   const Type type_;
-  base::Optional<uint32_t> parent_id_;
+  std::optional<uint32_t> parent_id_;
   std::unordered_map<uint32_t, FieldDescriptor> fields_;
   std::unordered_map<int32_t, std::string> enum_names_by_value_;
   std::unordered_map<std::string, int32_t> enum_values_by_name_;
@@ -166,8 +169,7 @@ class DescriptorPool {
       const std::vector<std::string>& skip_prefixes = {},
       bool merge_existing_messages = false);
 
-  base::Optional<uint32_t> FindDescriptorIdx(
-      const std::string& full_name) const;
+  std::optional<uint32_t> FindDescriptorIdx(const std::string& full_name) const;
 
   std::vector<uint8_t> SerializeAsDescriptorSet();
 
@@ -182,13 +184,13 @@ class DescriptorPool {
  private:
   base::Status AddNestedProtoDescriptors(const std::string& file_name,
                                          const std::string& package_name,
-                                         base::Optional<uint32_t> parent_idx,
+                                         std::optional<uint32_t> parent_idx,
                                          protozero::ConstBytes descriptor_proto,
                                          std::vector<ExtensionInfo>* extensions,
                                          bool merge_existing_messages);
   base::Status AddEnumProtoDescriptors(const std::string& file_name,
                                        const std::string& package_name,
-                                       base::Optional<uint32_t> parent_idx,
+                                       std::optional<uint32_t> parent_idx,
                                        protozero::ConstBytes descriptor_proto,
                                        bool merge_existing_messages);
 
@@ -197,8 +199,8 @@ class DescriptorPool {
 
   // Recursively searches for the given short type in all parent messages
   // and packages.
-  base::Optional<uint32_t> ResolveShortType(const std::string& parent_path,
-                                            const std::string& short_type);
+  std::optional<uint32_t> ResolveShortType(const std::string& parent_path,
+                                           const std::string& short_type);
 
   // Adds a new descriptor to the pool and returns its index. There must not be
   // already a descriptor with the same full_name in the pool.

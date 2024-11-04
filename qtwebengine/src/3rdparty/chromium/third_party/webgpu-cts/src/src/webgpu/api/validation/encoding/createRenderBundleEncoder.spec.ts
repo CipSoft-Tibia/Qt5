@@ -4,13 +4,13 @@ createRenderBundleEncoder validation tests.
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
 import { range } from '../../../../common/util/util.js';
+import { kMaxColorAttachments } from '../../../capability_info.js';
 import {
   kAllTextureFormats,
   kDepthStencilFormats,
   kTextureFormatInfo,
-  kMaxColorAttachments,
   kRenderableColorTextureFormats,
-} from '../../../capability_info.js';
+} from '../../../format_info.js';
 import { ValidationTest } from '../validation_test.js';
 
 export const g = makeTestGroup(ValidationTest);
@@ -49,12 +49,15 @@ g.test('attachment_state,limits,maxColorAttachmentBytesPerSample,aligned')
         range(kMaxColorAttachments, i => i + 1)
       )
   )
+  .beforeAllSubcases(t => {
+    t.skipIfTextureFormatNotSupported(t.params.format);
+  })
   .fn(t => {
     const { format, colorFormatCount } = t.params;
     const info = kTextureFormatInfo[format];
     const shouldError =
-      info.renderTargetPixelByteCost === undefined ||
-      info.renderTargetPixelByteCost * colorFormatCount >
+      !info.colorRender ||
+      info.colorRender.byteCost * colorFormatCount >
         t.device.limits.maxColorAttachmentBytesPerSample;
 
     t.expectValidationError(() => {
@@ -86,7 +89,7 @@ g.test('attachment_state,limits,maxColorAttachmentBytesPerSample,unaligned')
           'rgba32float',
           'r8unorm',
         ] as GPUTextureFormat[],
-        _shouldError: false,
+        _shouldError: true,
       },
       {
         formats: [
@@ -96,7 +99,7 @@ g.test('attachment_state,limits,maxColorAttachmentBytesPerSample,unaligned')
           'r8unorm',
           'r8unorm',
         ] as GPUTextureFormat[],
-        _shouldError: true,
+        _shouldError: false,
       },
     ])
   )
@@ -146,8 +149,7 @@ g.test('valid_texture_formats')
   .fn(t => {
     const { format, attachment } = t.params;
 
-    const colorRenderable =
-      kTextureFormatInfo[format].renderable && kTextureFormatInfo[format].color;
+    const colorRenderable = kTextureFormatInfo[format].colorRender;
 
     const depthStencil = kTextureFormatInfo[format].depth || kTextureFormatInfo[format].stencil;
 

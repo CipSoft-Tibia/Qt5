@@ -170,7 +170,7 @@ inline EDisplay CssValueIDToPlatformEnum(CSSValueID v) {
   if (v == CSSValueID::kInline) {
     return EDisplay::kInline;
   }
-  if (v == CSSValueID::kBlock) {
+  if (v == CSSValueID::kBlock || v == CSSValueID::kFlow) {
     return EDisplay::kBlock;
   }
   if (v == CSSValueID::kFlowRoot) {
@@ -402,10 +402,77 @@ inline CSSValueID PlatformEnumToCSSValueID(EWhiteSpace v) {
       return CSSValueID::kPreWrap;
     case EWhiteSpace::kBreakSpaces:
       return CSSValueID::kBreakSpaces;
+  }
+  NOTREACHED();
+  return CSSValueID::kNone;
+}
+
+template <>
+inline WhiteSpaceCollapse CssValueIDToPlatformEnum(CSSValueID v) {
+  switch (v) {
+    case CSSValueID::kCollapse:
+      return WhiteSpaceCollapse::kCollapse;
+    case CSSValueID::kPreserve:
+      return WhiteSpaceCollapse::kPreserve;
+    case CSSValueID::kPreserveBreaks:
+      return WhiteSpaceCollapse::kPreserveBreaks;
+    case CSSValueID::kBreakSpaces:
+      return WhiteSpaceCollapse::kBreakSpaces;
     default:
       NOTREACHED();
-      return CSSValueID::kNone;
+      return WhiteSpaceCollapse::kCollapse;
   }
+}
+
+template <>
+inline CSSValueID PlatformEnumToCSSValueID(WhiteSpaceCollapse v) {
+  switch (v) {
+    case WhiteSpaceCollapse::kCollapse:
+      return CSSValueID::kCollapse;
+    case WhiteSpaceCollapse::kPreserveBreaks:
+      return CSSValueID::kPreserveBreaks;
+    case WhiteSpaceCollapse::kPreserve:
+      return CSSValueID::kPreserve;
+    case WhiteSpaceCollapse::kBreakSpaces:
+      return CSSValueID::kBreakSpaces;
+  }
+  NOTREACHED();
+  return CSSValueID::kNone;
+}
+
+template <>
+inline TextWrap CssValueIDToPlatformEnum(CSSValueID v) {
+  switch (v) {
+    case CSSValueID::kWrap:
+      return TextWrap::kWrap;
+    case CSSValueID::kNowrap:
+      return TextWrap::kNoWrap;
+    case CSSValueID::kBalance:
+      return TextWrap::kBalance;
+    case CSSValueID::kPretty:
+      DCHECK(RuntimeEnabledFeatures::CSSTextWrapPrettyEnabled());
+      return TextWrap::kPretty;
+    default:
+      NOTREACHED();
+      return TextWrap::kWrap;
+  }
+}
+
+template <>
+inline CSSValueID PlatformEnumToCSSValueID(TextWrap v) {
+  switch (v) {
+    case TextWrap::kWrap:
+      return CSSValueID::kWrap;
+    case TextWrap::kNoWrap:
+      return CSSValueID::kNowrap;
+    case TextWrap::kBalance:
+      return CSSValueID::kBalance;
+    case TextWrap::kPretty:
+      DCHECK(RuntimeEnabledFeatures::CSSTextWrapPrettyEnabled());
+      return CSSValueID::kPretty;
+  }
+  NOTREACHED();
+  return CSSValueID::kNone;
 }
 
 }  // namespace blink

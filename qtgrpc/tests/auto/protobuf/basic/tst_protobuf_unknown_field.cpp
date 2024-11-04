@@ -1,6 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2022 Alexey Edelev <semlanik@gmail.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/qtest.h>
 
@@ -21,16 +21,22 @@ private slots:
     void unknownMapField();
     void unknownRepeatedField();
     void unknownRepeatedFieldNonPacked();
+    void nonPreserveUnknownFieldsSerializer();
 };
 
 // Deserialize a full known message into a type for which one of the fields is
 // unknown, then serialize the message back to bytes.
-void partialMessageRoundtrip_common(QByteArrayView data, QByteArray *out)
+void partialMessageRoundtrip_common(QByteArrayView data, QByteArray *out, QByteArray *leftovers)
 {
     Q_ASSERT(out);
+    Q_ASSERT(leftovers);
+
     qtproto::tests::PartialMessage pm;
     QProtobufSerializer serializer;
     pm.deserialize(&serializer, data);
+
+    for (const auto &num : pm.unknownFieldNumbers())
+        *leftovers += pm.unknownFieldData(num).join();
 
     QCOMPARE(pm.aaa(), 2);
     QCOMPARE(pm.timestamp(), 42);
@@ -39,88 +45,117 @@ void partialMessageRoundtrip_common(QByteArrayView data, QByteArray *out)
 }
 
 template<typename TargetType>
-void partialMessageRoundtrip(QByteArrayView data, TargetType *targetMessage)
+void partialMessageRoundtrip(QByteArrayView known, QByteArrayView unknown, TargetType *targetMessage)
 {
     Q_ASSERT(targetMessage);
     QByteArray roundtrippedProto;
-    partialMessageRoundtrip_common(data, &roundtrippedProto);
+    QByteArray leftovers;
+
+    partialMessageRoundtrip_common(known.toByteArray().append(unknown), &roundtrippedProto, &leftovers);
 
     QProtobufSerializer serializer;
     targetMessage->deserialize(&serializer, roundtrippedProto);
-
     QCOMPARE(targetMessage->aaa(), 2);
     QCOMPARE(targetMessage->timestamp(), 64);
+
+    QCOMPARE(unknown.toByteArray().toHex(), leftovers.toHex());
 }
 
 void tst_protobuf_unknown_field::unknownStringField()
 {
     // "2, 42, Hello World"
-    QByteArray payload = QByteArray::fromHex("0802102a1a0b48656c6c6f20576f726c64");
+    QByteArray knownPayload = QByteArray::fromHex("0802102a");
+    QByteArray unknownPayload = QByteArray::fromHex("1a0b48656c6c6f20576f726c64");
     qtproto::tests::StringMessage sm;
-    partialMessageRoundtrip<>(payload, &sm);
+    partialMessageRoundtrip<>(knownPayload, unknownPayload, &sm);
 
-    QCOMPARE(sm.stringField(), u"Hello World");
+    QCOMPARE(sm.extraField(), u"Hello World");
 
     // "2, 42, Hello World"
     // Same as above but the field number of the string is huge
-    payload = QByteArray::fromHex("0802102aa2ffffff0f0b48656c6c6f20576f726c64");
+    knownPayload = QByteArray::fromHex("0802102a");
+    unknownPayload = QByteArray::fromHex("a2ffffff0f0b48656c6c6f20576f726c64");
     qtproto::tests::LargeIndexStringMessage lsm;
-    partialMessageRoundtrip<>(payload, &lsm);
+    partialMessageRoundtrip<>(knownPayload, unknownPayload, &lsm);
 
-    QCOMPARE(lsm.stringField(), u"Hello World");
+    QCOMPARE(lsm.extraField(), u"Hello World");
 
 }
 
 void tst_protobuf_unknown_field::unknownIntField()
 {
     // "2, 42, 242"
-    QByteArray payload = QByteArray::fromHex("0802102a18f201");
-    qtproto::tests::IntMessage im;
-    partialMessageRoundtrip<>(payload, &im);
+    QByteArray knownPayload = QByteArray::fromHex("0802102a");
+    QByteArray unknownPayload = QByteArray::fromHex("18f201");
 
-    QCOMPARE(im.intField(), 242);
+    qtproto::tests::IntMessage im;
+    partialMessageRoundtrip<>(knownPayload, unknownPayload, &im);
+
+    QCOMPARE(im.extraField(), 242);
 }
 
 void tst_protobuf_unknown_field::unknownMapField()
 {
     // "2, 42, {1: 2, 2: 4, 3: 6}"
-    QByteArray payload = QByteArray::fromHex("0802102a1a04080110021a04080310061a0408021004");
+    QByteArray knownPayload = QByteArray::fromHex("0802102a");
+    QByteArray unknownPayload = QByteArray::fromHex("1a04080110021a04080210041a0408031006");
     qtproto::tests::MapMessage mm;
-    partialMessageRoundtrip<>(payload, &mm);
+    partialMessageRoundtrip<>(knownPayload, unknownPayload, &mm);
 
     QHash<QtProtobuf::int32, QtProtobuf::int32> expected{
         { 1, 2 },
         { 2, 4 },
         { 3, 6 },
     };
-    QCOMPARE(mm.mapField(), expected);
+    QCOMPARE(mm.extraField(), expected);
 }
 
 void tst_protobuf_unknown_field::unknownRepeatedField()
 {
     // "2, 42, [1, 1, 2, 3, 5, -1, -5, -3, -2, -1]"
-    QByteArray payload = QByteArray::fromHex("0802102a1a370101020305ffffffffffffffffff01"
-                                                  "fbffffffffffffffff01fdffffffffffffffff01"
-                                                  "feffffffffffffffff01ffffffffffffffffff01");
+    QByteArray knownPayload = QByteArray::fromHex("0802102a");
+    QByteArray unknownPayload = QByteArray::fromHex("1a370101020305ffffffffffffffffff01"
+                                                    "fbffffffffffffffff01fdffffffffffffffff01"
+                                                    "feffffffffffffffff01ffffffffffffffffff01");
     qtproto::tests::RepeatedMessage mm;
-    partialMessageRoundtrip<>(payload, &mm);
+    partialMessageRoundtrip<>(knownPayload, unknownPayload, &mm);
 
     QList<QtProtobuf::int32> expected{ 1, 1, 2, 3, 5, -1, -5, -3, -2, -1 };
-    QCOMPARE(mm.repeatedField(), expected);
+    QCOMPARE(mm.extraField(), expected);
 }
 
 void tst_protobuf_unknown_field::unknownRepeatedFieldNonPacked()
 {
     // "2, 42, [1, 1, 2, 3, 5, -1, -5, -3, -2, -1]"
-    QByteArray payload = QByteArray::fromHex("0802102a1801180118021803180518ffffffffffffffffff01"
-                                             "18fbffffffffffffffff0118fdffffffffffffffff01"
-                                             "18feffffffffffffffff0118ffffffffffffffffff01");
+    QByteArray knowPayload = QByteArray::fromHex("0802102a");
+    QByteArray unknownPayload = QByteArray::fromHex("1801180118021803180518ffffffffffffffffff01"
+                                                    "18fbffffffffffffffff0118fdffffffffffffffff01"
+                                                    "18feffffffffffffffff0118ffffffffffffffffff01");
     qtproto::tests::RepeatedMessageNonPacked mm;
-    partialMessageRoundtrip<>(payload, &mm);
+    partialMessageRoundtrip<>(knowPayload, unknownPayload, &mm);
 
     QList<QtProtobuf::int32> expected{ 1, 1, 2, 3, 5, -1, -5, -3, -2, -1 };
-    QCOMPARE(mm.repeatedField(), expected);
+    QCOMPARE(mm.extraField(), expected);
 }
+
+void tst_protobuf_unknown_field::nonPreserveUnknownFieldsSerializer()
+{
+    QProtobufSerializer serializer;
+    serializer.shouldPreserveUnknownFields(false);
+    qtproto::tests::PartialMessage pm;
+    pm.deserialize(&serializer, QByteArray::fromHex("0802102a18f201"));
+
+    QVERIFY(pm.unknownFieldNumbers().isEmpty());
+    QCOMPARE(pm.serialize(&serializer).toHex(), "0802102a");
+
+    serializer.shouldPreserveUnknownFields(true);
+    pm.deserialize(&serializer, QByteArray::fromHex("0802102a18f201"));
+
+    serializer.shouldPreserveUnknownFields(false);
+    QVERIFY(!pm.unknownFieldNumbers().isEmpty());
+    QCOMPARE(pm.serialize(&serializer).toHex(), "0802102a");
+}
+
 
 QTEST_MAIN(tst_protobuf_unknown_field)
 #include "tst_protobuf_unknown_field.moc"

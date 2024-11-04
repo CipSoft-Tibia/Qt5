@@ -27,6 +27,7 @@
 #include <QtGui/qwindow.h>
 #include <QtGui/qregion.h>
 #include <QtGui/qopenglcontext.h>
+#include <QtGui/private/qwindowsthemecache_p.h>
 #include <private/qwindow_p.h> // QWINDOWSIZE_MAX
 #include <private/qguiapplication_p.h>
 #include <private/qhighdpiscaling_p.h>
@@ -34,6 +35,7 @@
 
 #include <QtCore/qdebug.h>
 #include <QtCore/qlibraryinfo.h>
+#include <QtCore/qoperatingsystemversion.h>
 
 #include <dwmapi.h>
 
@@ -837,6 +839,10 @@ void WindowCreationData::fromWindow(const QWindow *w, const Qt::WindowFlags flag
         // NOTE: WS_EX_TRANSPARENT flag can make mouse inputs fall through a layered window
         if (flagsIn & Qt::WindowTransparentForInput)
             exStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT;
+
+        // Currently only compatible with D3D surfaces, use it with care.
+        if (qEnvironmentVariableIntValue("QT_QPA_DISABLE_REDIRECTION_SURFACE"))
+            exStyle |= WS_EX_NOREDIRECTIONBITMAP;
     }
 }
 
@@ -1352,6 +1358,8 @@ QWindowsForeignWindow::QWindowsForeignWindow(QWindow *window, HWND hwnd)
     , m_hwnd(hwnd)
     , m_topLevelStyle(0)
 {
+    if (QPlatformWindow::parent())
+        setParent(QPlatformWindow::parent());
 }
 
 void QWindowsForeignWindow::setParent(const QPlatformWindow *newParentWindow)
@@ -1527,6 +1535,7 @@ QWindowsWindow::QWindowsWindow(QWindow *aWindow, const QWindowsWindowData &data)
 QWindowsWindow::~QWindowsWindow()
 {
     setFlag(WithinDestroy);
+    QWindowsThemeCache::clearThemeCache(m_data.hwnd);
     if (testFlag(TouchRegistered))
         UnregisterTouchWindow(m_data.hwnd);
     destroyWindow();
@@ -2005,6 +2014,9 @@ void QWindowsWindow::handleDpiChanged(HWND hwnd, WPARAM wParam, LPARAM lParam)
     const UINT dpi = HIWORD(wParam);
     const qreal scale = dpiRelativeScale(dpi);
     setSavedDpi(dpi);
+
+    QWindowsThemeCache::clearThemeCache(hwnd);
+
     // Send screen change first, so that the new screen is set during any following resize
     checkForScreenChanged(QWindowsWindow::FromDpiChange);
 
@@ -2139,12 +2151,8 @@ void QWindowsWindow::setGeometry(const QRect &rectIn)
         const QMargins margins = frameMargins();
         rect.moveTopLeft(rect.topLeft() + QPoint(margins.left(), margins.top()));
     }
-
     if (m_windowState & Qt::WindowMinimized)
         m_data.geometry = rect; // Otherwise set by handleGeometryChange() triggered by event.
-    else
-        setWindowState(Qt::WindowNoState);// Update window state to WindowNoState unless minimized
-
     if (m_data.hwnd) {
         // A ResizeEvent with resulting geometry will be sent. If we cannot
         // achieve that size (for example, window title minimal constraint),
@@ -2453,6 +2461,12 @@ QWindowsWindowData QWindowsWindow::setWindowFlags_sys(Qt::WindowFlags wt,
     return result;
 }
 
+inline bool QWindowsBaseWindow::hasMaximumSize() const
+{
+    const auto maximumSize = window()->maximumSize();
+    return maximumSize.width() != QWINDOWSIZE_MAX || maximumSize.height() != QWINDOWSIZE_MAX;
+}
+
 void QWindowsWindow::handleWindowStateChange(Qt::WindowStates state)
 {
     qCDebug(lcQpaWindow) << __FUNCTION__ << this << window()
@@ -2469,6 +2483,26 @@ void QWindowsWindow::handleWindowStateChange(Qt::WindowStates state)
             GetWindowPlacement(m_data.hwnd, &windowPlacement);
             const RECT geometry = RECTfromQRect(m_data.restoreGeometry);
             windowPlacement.rcNormalPosition = geometry;
+
+            // A bug in windows 10 grows
+            // - ptMaxPosition.x by the task bar's width, if it's on the left
+            // - ptMaxPosition.y by the task bar's height, if it's on the top
+            // each time GetWindowPlacement() is called.
+            // The offset of the screen's left edge (as per frameMargins_sys().left()) is ignored.
+            // => Check for windows 10 and correct.
+            static const auto windows11 = QOperatingSystemVersion::Windows11_21H2;
+            static const bool isWindows10 = QOperatingSystemVersion::current() < windows11;
+            if (isWindows10 && hasMaximumSize()) {
+                const QMargins margins = frameMargins_sys();
+                const QPoint topLeft = window()->screen()->geometry().topLeft();
+                windowPlacement.ptMaxPosition = POINT{ topLeft.x() - margins.left(), topLeft.y() };
+            }
+
+            // Even if the window is hidden, windowPlacement's showCmd is not SW_HIDE, so change it
+            // manually to avoid unhiding a hidden window with the subsequent call to
+            // SetWindowPlacement().
+            if (!isVisible())
+                windowPlacement.showCmd = SW_HIDE;
             SetWindowPlacement(m_data.hwnd, &windowPlacement);
         }
         // QTBUG-17548: We send expose events when receiving WM_Paint, but for

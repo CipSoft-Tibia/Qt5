@@ -14,17 +14,10 @@
 
 #include "dawn/native/opengl/BackendGL.h"
 
-#include <EGL/egl.h>
-
-#include <memory>
-#include <utility>
-
-#include "dawn/common/SystemUtils.h"
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/Instance.h"
 #include "dawn/native/OpenGLBackend.h"
-#include "dawn/native/opengl/AdapterGL.h"
-#include "dawn/native/opengl/ContextEGL.h"
-#include "dawn/native/opengl/EGLFunctions.h"
+#include "dawn/native/opengl/PhysicalDeviceGL.h"
 
 namespace dawn::native::opengl {
 
@@ -33,76 +26,81 @@ namespace dawn::native::opengl {
 Backend::Backend(InstanceBase* instance, wgpu::BackendType backendType)
     : BackendConnection(instance, backendType) {}
 
-std::vector<Ref<AdapterBase>> Backend::DiscoverDefaultAdapters() {
-    std::vector<Ref<AdapterBase>> adapters;
+std::vector<Ref<PhysicalDeviceBase>> Backend::DiscoverPhysicalDevices(
+    const RequestAdapterOptions* options) {
+    if (options->forceFallbackAdapter) {
+        return {};
+    }
+    if (!options->compatibilityMode) {
+        // Return an empty vector since GL physical devices can only support compatibility mode.
+        return std::vector<Ref<PhysicalDeviceBase>>{};
+    }
+
+    void* (*getProc)(const char* name) = nullptr;
+    EGLDisplay display = EGL_NO_DISPLAY;
+
+    const RequestAdapterOptionsGetGLProc* glGetProcOptions = nullptr;
+    FindInChain(options->nextInChain, &glGetProcOptions);
+    if (glGetProcOptions) {
+        getProc = glGetProcOptions->getProc;
+        display = glGetProcOptions->display;
+    }
+
+    if (getProc == nullptr) {
+        // getProc not passed. Try to load it from libEGL.
+
 #if DAWN_PLATFORM_IS(WINDOWS)
-    const char* eglLib = "libEGL.dll";
+        const char* eglLib = "libEGL.dll";
 #elif DAWN_PLATFORM_IS(MACOS)
-    const char* eglLib = "libEGL.dylib";
+        const char* eglLib = "libEGL.dylib";
 #else
-    const char* eglLib = "libEGL.so";
+        const char* eglLib = "libEGL.so";
 #endif
-    if (!mLibEGL.Valid() && !mLibEGL.Open(eglLib)) {
-        return {};
+        if (!mLibEGL.Valid() && !mLibEGL.Open(eglLib)) {
+            GetInstance()->ConsumedErrorAndWarnOnce(
+                DAWN_VALIDATION_ERROR("Failed to load %s", eglLib));
+            return {};
+        }
+
+        getProc = reinterpret_cast<void* (*)(const char*)>(mLibEGL.GetProc("eglGetProcAddress"));
+        if (!getProc) {
+            GetInstance()->ConsumedErrorAndWarnOnce(
+                DAWN_VALIDATION_ERROR("eglGetProcAddress return nullptr"));
+            return {};
+        }
     }
 
-    AdapterDiscoveryOptions options(ToAPI(GetType()));
-    options.getProc =
-        reinterpret_cast<void* (*)(const char*)>(mLibEGL.GetProc("eglGetProcAddress"));
-    if (!options.getProc) {
-        return {};
-    }
-
-    EGLFunctions egl;
-    egl.Init(options.getProc);
-
-    EGLenum api = GetType() == wgpu::BackendType::OpenGLES ? EGL_OPENGL_ES_API : EGL_OPENGL_API;
-    std::unique_ptr<ContextEGL> context;
-    if (GetInstance()->ConsumedError(ContextEGL::Create(egl, api), &context)) {
-        return {};
-    }
-
-    EGLDisplay prevDisplay = egl.GetCurrentDisplay();
-    EGLContext prevDrawSurface = egl.GetCurrentSurface(EGL_DRAW);
-    EGLContext prevReadSurface = egl.GetCurrentSurface(EGL_READ);
-    EGLContext prevContext = egl.GetCurrentContext();
-
-    context->MakeCurrent();
-
-    auto result = DiscoverAdapters(&options);
-
-    if (result.IsError()) {
-        GetInstance()->ConsumedError(result.AcquireError());
-    } else {
-        auto value = result.AcquireSuccess();
-        adapters.insert(adapters.end(), value.begin(), value.end());
-    }
-
-    egl.MakeCurrent(prevDisplay, prevDrawSurface, prevReadSurface, prevContext);
-
-    return adapters;
+    return DiscoverPhysicalDevicesWithProcs(getProc, display);
 }
 
-ResultOrError<std::vector<Ref<AdapterBase>>> Backend::DiscoverAdapters(
-    const AdapterDiscoveryOptionsBase* optionsBase) {
-    // TODO(cwallez@chromium.org): For now only create a single OpenGL adapter because don't
+std::vector<Ref<PhysicalDeviceBase>> Backend::DiscoverPhysicalDevicesWithProcs(
+    void* (*getProc)(const char*),
+    EGLDisplay display) {
+    // TODO(cwallez@chromium.org): For now only create a single OpenGL physicalDevice because don't
     // know how to handle MakeCurrent.
-    DAWN_INVALID_IF(mCreatedAdapter, "The OpenGL backend can only create a single adapter.");
+    if (mPhysicalDevice != nullptr && (mGetProc != getProc || mDisplay != display)) {
+        GetInstance()->ConsumedErrorAndWarnOnce(
+            DAWN_VALIDATION_ERROR("The OpenGL backend can only create a single physicalDevice."));
+        return {};
+    }
+    if (mPhysicalDevice == nullptr) {
+        if (GetInstance()->ConsumedErrorAndWarnOnce(
+                PhysicalDevice::Create(GetInstance(), GetType(), getProc, display),
+                &mPhysicalDevice)) {
+            return {};
+        }
+        mGetProc = getProc;
+        mDisplay = display;
+    }
+    return {mPhysicalDevice};
+}
 
-    ASSERT(static_cast<wgpu::BackendType>(optionsBase->backendType) == GetType());
-    const AdapterDiscoveryOptions* options =
-        static_cast<const AdapterDiscoveryOptions*>(optionsBase);
+void Backend::ClearPhysicalDevices() {
+    mPhysicalDevice = nullptr;
+}
 
-    DAWN_INVALID_IF(options->getProc == nullptr, "AdapterDiscoveryOptions::getProc must be set");
-
-    Ref<Adapter> adapter = AcquireRef(
-        new Adapter(GetInstance(), static_cast<wgpu::BackendType>(optionsBase->backendType)));
-    DAWN_TRY(adapter->InitializeGLFunctions(options->getProc));
-    DAWN_TRY(adapter->Initialize());
-
-    mCreatedAdapter = true;
-    std::vector<Ref<AdapterBase>> adapters{std::move(adapter)};
-    return std::move(adapters);
+size_t Backend::GetPhysicalDeviceCountForTesting() const {
+    return mPhysicalDevice != nullptr ? 1 : 0;
 }
 
 BackendConnection* Connect(InstanceBase* instance, wgpu::BackendType backendType) {

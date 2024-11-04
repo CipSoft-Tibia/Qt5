@@ -14,7 +14,6 @@
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
-#include "base/guid.h"
 #include "base/json/json_writer.h"
 #include "base/location.h"
 #include "base/logging.h"
@@ -28,6 +27,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/thread.h"
+#include "base/uuid.h"
 #include "base/values.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
@@ -61,7 +61,7 @@
 #include "base/android/build_info.h"
 #endif
 
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_FUCHSIA)
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_FUCHSIA) && !BUILDFLAG(IS_IOS)
 extern const int kCcompressedProtocolJSON;
 #endif
 
@@ -301,8 +301,7 @@ void StartServerOnHandlerThread(
           output_directory.Append(kDevToolsActivePortFileName);
       std::string port_target_string = base::StringPrintf(
           "%d\n%s", ip_address->port(), browser_guid.c_str());
-      if (base::WriteFile(path, port_target_string.c_str(),
-                          static_cast<int>(port_target_string.length())) < 0) {
+      if (!base::WriteFile(path, port_target_string)) {
         PLOG(ERROR) << "Error writing DevTools active port to file " << path;
       }
     }
@@ -608,14 +607,21 @@ void DevToolsHttpHandler::OnJsonRequest(
     DecompressAndSendJsonProtocol(connection_id);
     return;
   }
+  std::vector<base::StringPiece> query_components = base::SplitStringPiece(
+      query, "&", base::KEEP_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
+
+  bool for_tab = base::Contains(query_components, "for_tab");
 
   if (command == "list") {
     DevToolsManager* manager = DevToolsManager::GetInstance();
     DevToolsAgentHost::List list =
-        manager->delegate() ? manager->delegate()->RemoteDebuggingTargets()
-                            : DevToolsAgentHost::GetOrCreateAll();
+        manager->delegate() ? manager->delegate()->RemoteDebuggingTargets(
+                                  for_tab ? DevToolsManagerDelegate::kTab
+                                          : DevToolsManagerDelegate::kFrame)
+            : DevToolsAgentHost::GetOrCreateAll();
+
     RespondToJsonList(connection_id, info.GetHeaderValue("host"),
-                      std::move(list));
+                      std::move(list), for_tab);
     return;
   }
 
@@ -630,8 +636,6 @@ void DevToolsHttpHandler::OnJsonRequest(
       return;
     }
 
-    std::vector<base::StringPiece> query_components = base::SplitStringPiece(
-        query, "&", base::KEEP_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
     base::StringPiece escaped_url =
         query_components.empty() ? "" : query_components[0];
     GURL url(base::UnescapeBinaryURLComponent(escaped_url));
@@ -640,7 +644,8 @@ void DevToolsHttpHandler::OnJsonRequest(
     // TODO(dsv): Remove for "for_tab" support once DevTools Frontend
     // no longer needs it for e2e tests
     scoped_refptr<DevToolsAgentHost> agent_host = delegate_->CreateNewTarget(
-        url, query_components.size() > 1 && query_components[1] == "for_tab");
+        url, for_tab ? DevToolsManagerDelegate::kTab
+                     : DevToolsManagerDelegate::kFrame);
     if (!agent_host) {
       SendJson(connection_id, net::HTTP_INTERNAL_SERVER_ERROR, absl::nullopt,
                "Could not create new page");
@@ -688,7 +693,7 @@ void DevToolsHttpHandler::OnJsonRequest(
 }
 
 void DevToolsHttpHandler::DecompressAndSendJsonProtocol(int connection_id) {
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_FUCHSIA)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_IOS)
   NOTREACHED();
 #else
   scoped_refptr<base::RefCountedMemory> bytes =
@@ -704,21 +709,20 @@ void DevToolsHttpHandler::DecompressAndSendJsonProtocol(int connection_id) {
       FROM_HERE, base::BindOnce(&ServerWrapper::SendResponse,
                                 base::Unretained(server_wrapper_.get()),
                                 connection_id, response));
-#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_FUCHSIA)
+#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_IOS)
 }
 
-void DevToolsHttpHandler::RespondToJsonList(
-    int connection_id,
-    const std::string& host,
-    DevToolsAgentHost::List hosts) {
+void DevToolsHttpHandler::RespondToJsonList(int connection_id,
+                                            const std::string& host,
+                                            DevToolsAgentHost::List hosts,
+                                            bool for_tab) {
   DevToolsAgentHost::List agent_hosts = std::move(hosts);
   std::sort(agent_hosts.begin(), agent_hosts.end(), TimeComparator);
   base::Value::List list_value;
   for (auto& agent_host : agent_hosts) {
-    // TODO(caseq): figure out if it makes sense exposing tab target to
-    // HTTP clients and potentially compatibility risks involved.
-    if (agent_host->GetType() != DevToolsAgentHost::kTypeTab)
+    if (agent_host->GetType() != DevToolsAgentHost::kTypeTab || for_tab) {
       list_value.Append(SerializeDescriptor(agent_host, host));
+    }
   }
   SendJson(connection_id, net::HTTP_OK, list_value, std::string());
 }
@@ -737,7 +741,7 @@ void DevToolsHttpHandler::OnDiscoveryPageRequest(int connection_id) {
 
 void DevToolsHttpHandler::OnFrontendResourceRequest(
     int connection_id, const std::string& path) {
-#if BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   Send404(connection_id);
 #else
   Send200(connection_id,
@@ -821,10 +825,12 @@ DevToolsHttpHandler::DevToolsHttpHandler(
     const base::FilePath& output_directory,
     const base::FilePath& debug_frontend_dir)
     : delegate_(delegate) {
-  browser_guid_ = delegate_->IsBrowserTargetDiscoverable()
-                      ? kBrowserUrlPrefix
-                      : base::StringPrintf("%s/%s", kBrowserUrlPrefix,
-                                           base::GenerateGUID().c_str());
+  browser_guid_ =
+      delegate_->IsBrowserTargetDiscoverable()
+          ? kBrowserUrlPrefix
+          : base::StringPrintf(
+                "%s/%s", kBrowserUrlPrefix,
+                base::Uuid::GenerateRandomV4().AsLowercaseString().c_str());
   std::unique_ptr<base::Thread> thread(
       new base::Thread(kDevToolsHandlerThreadName));
   base::Thread::Options options;

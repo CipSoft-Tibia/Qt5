@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-load("//lib/builders.star", "cpu", "goma", "os", "reclient")
+load("//lib/builders.star", "cpu", "os", "reclient")
 load("//lib/builder_config.star", "builder_config")
 load("//lib/consoles.star", "consoles")
 load("//lib/try.star", "try_")
@@ -60,6 +60,19 @@ swangle_linux_builder(
 )
 
 swangle_linux_builder(
+    name = "linux-swangle-chromium-try-x64-exp",
+    executable = "recipe:chromium_trybot",
+    mirrors = [
+        "ci/linux-swangle-chromium-x64-exp",
+    ],
+    try_settings = builder_config.try_settings(
+        retry_failed_shards = False,
+    ),
+    pool = "luci.chromium.swangle.chromium.linux.x64.try",
+    execution_timeout = 6 * time.hour,
+)
+
+swangle_linux_builder(
     name = "linux-swangle-try-tot-swiftshader-x64",
     mirrors = [
         "ci/linux-swangle-tot-swiftshader-x64",
@@ -82,6 +95,18 @@ swangle_linux_builder(
     pool = "luci.chromium.swangle.deps.linux.x64.try",
 )
 
+swangle_linux_builder(
+    name = "linux-swangle-try-x64-exp",
+    executable = "recipe:chromium_trybot",
+    mirrors = [
+        "ci/linux-swangle-x64-exp",
+    ],
+    try_settings = builder_config.try_settings(
+        retry_failed_shards = False,
+    ),
+    pool = "luci.chromium.swangle.deps.linux.x64.try",
+)
+
 swangle_mac_builder(
     name = "mac-swangle-chromium-try-x64",
     executable = "recipe:chromium_trybot",
@@ -93,7 +118,6 @@ swangle_mac_builder(
     ),
     pool = "luci.chromium.swangle.chromium.mac.x64.try",
     execution_timeout = 6 * time.hour,
-    goma_backend = goma.backend.RBE_PROD,
 )
 
 swangle_windows_builder(

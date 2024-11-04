@@ -7,6 +7,7 @@
 
 #include "base/dcheck_is_on.h"
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_item_text_index.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_node.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_break_token.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
@@ -33,22 +34,19 @@ class CORE_EXPORT NGInlineBreakToken final : public NGBreakToken {
   static NGInlineBreakToken* Create(
       NGInlineNode node,
       const ComputedStyle* style,
-      unsigned item_index,
-      unsigned text_offset,
+      const NGInlineItemTextIndex& start,
       unsigned flags /* NGInlineBreakTokenFlags */,
       const NGBreakToken* sub_break_token = nullptr);
 
   // The style at the end of this break token. The next line should start with
   // this style.
-  const ComputedStyle* Style() const { return style_.get(); }
+  const ComputedStyle* Style() const { return style_.Get(); }
 
-  unsigned ItemIndex() const {
-    return item_index_;
-  }
-
-  unsigned TextOffset() const {
-    return text_offset_;
-  }
+  // The point where the next layout should start, or where the previous layout
+  // ended.
+  const NGInlineItemTextIndex& Start() const { return start_; }
+  wtf_size_t StartItemIndex() const { return start_.item_index; }
+  wtf_size_t StartTextOffset() const { return start_.text_offset; }
 
   bool UseFirstLineStyle() const {
     return flags_ & kUseFirstLineStyle;
@@ -82,8 +80,7 @@ class CORE_EXPORT NGInlineBreakToken final : public NGBreakToken {
   NGInlineBreakToken(PassKey,
                      NGInlineNode node,
                      const ComputedStyle*,
-                     unsigned item_index,
-                     unsigned text_offset,
+                     const NGInlineItemTextIndex& start,
                      unsigned flags /* NGInlineBreakTokenFlags */,
                      const NGBreakToken* sub_break_token);
 
@@ -98,9 +95,8 @@ class CORE_EXPORT NGInlineBreakToken final : public NGBreakToken {
  private:
   const Member<const NGBreakToken>* SubBreakTokenAddress() const;
 
-  scoped_refptr<const ComputedStyle> style_;
-  unsigned item_index_;
-  unsigned text_offset_;
+  Member<const ComputedStyle> style_;
+  NGInlineItemTextIndex start_;
 
   // This is an array of one item if |kHasSubBreakToken|, or zero.
   Member<const NGBreakToken> sub_break_token_[];

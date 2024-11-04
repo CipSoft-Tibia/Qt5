@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 
+#include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
@@ -26,6 +27,7 @@
 #include "extensions/browser/extension_host.h"
 #include "extensions/browser/process_manager.h"
 #include "extensions/browser/process_manager_observer.h"
+#include "extensions/common/api/messaging/channel_type.h"
 #include "extensions/common/api/messaging/message.h"
 #include "extensions/common/api/messaging/messaging_endpoint.h"
 #include "extensions/common/extension_messages.h"
@@ -141,33 +143,36 @@ ExtensionMessagePort::ExtensionMessagePort(
     base::WeakPtr<ChannelDelegate> channel_delegate,
     const PortId& port_id,
     const std::string& extension_id,
-    content::RenderFrameHost* rfh,
+    content::RenderFrameHost* render_frame_host,
     bool include_child_frames)
     : weak_channel_delegate_(channel_delegate),
       port_id_(port_id),
       extension_id_(extension_id),
-      browser_context_(rfh->GetProcess()->GetBrowserContext()),
+      browser_context_(render_frame_host->GetProcess()->GetBrowserContext()),
       frame_tracker_(new FrameTracker(this)) {
-  content::WebContents* tab = content::WebContents::FromRenderFrameHost(rfh);
+  content::WebContents* tab =
+      content::WebContents::FromRenderFrameHost(render_frame_host);
   CHECK(tab);
   frame_tracker_->TrackTabFrames(tab);
   if (include_child_frames) {
     // TODO(https://crbug.com/1227787) We don't yet support MParch for
     // prerender so make sure `include_child_frames` is only provided for
     // primary main frames.
-    CHECK(rfh->IsInPrimaryMainFrame());
-    rfh->ForEachRenderFrameHostWithAction([tab, this](
-                                              content::RenderFrameHost* rfh) {
-      // RegisterFrame should only be called for frames associated with
-      // `tab` and not any inner WebContents.
-      if (content::WebContents::FromRenderFrameHost(rfh) != tab) {
-        return content::RenderFrameHost::FrameIterationAction::kSkipChildren;
-      }
-      RegisterFrame(rfh);
-      return content::RenderFrameHost::FrameIterationAction::kContinue;
-    });
+    CHECK(render_frame_host->IsInPrimaryMainFrame());
+    render_frame_host->ForEachRenderFrameHostWithAction(
+        [tab, this](content::RenderFrameHost* render_frame_host) {
+          // RegisterFrame should only be called for frames associated with
+          // `tab` and not any inner WebContents.
+          if (content::WebContents::FromRenderFrameHost(render_frame_host) !=
+              tab) {
+            return content::RenderFrameHost::FrameIterationAction::
+                kSkipChildren;
+          }
+          RegisterFrame(render_frame_host);
+          return content::RenderFrameHost::FrameIterationAction::kContinue;
+        });
   } else {
-    RegisterFrame(rfh);
+    RegisterFrame(render_frame_host);
   }
 }
 
@@ -187,8 +192,9 @@ std::unique_ptr<ExtensionMessagePort> ExtensionMessagePort::CreateForExtension(
   auto* process_manager = ProcessManager::Get(browser_context);
   auto all_hosts =
       process_manager->GetRenderFrameHostsForExtension(extension_id);
-  for (content::RenderFrameHost* rfh : all_hosts)
-    port->RegisterFrame(rfh);
+  for (content::RenderFrameHost* render_frame_host : all_hosts) {
+    port->RegisterFrame(render_frame_host);
+  }
 
   std::vector<WorkerId> running_workers =
       process_manager->GetServiceWorkersForExtension(extension_id);
@@ -245,8 +251,9 @@ void ExtensionMessagePort::RemoveCommonFrames(const MessagePort& port) {
   }
 }
 
-bool ExtensionMessagePort::HasFrame(content::RenderFrameHost* rfh) const {
-  return frames_.find(rfh) != frames_.end();
+bool ExtensionMessagePort::HasFrame(
+    content::RenderFrameHost* render_frame_host) const {
+  return base::Contains(frames_, render_frame_host);
 }
 
 bool ExtensionMessagePort::IsValidPort() {
@@ -285,6 +292,7 @@ void ExtensionMessagePort::RevalidatePort() {
 }
 
 void ExtensionMessagePort::DispatchOnConnect(
+    ChannelType channel_type,
     const std::string& channel_name,
     absl::optional<base::Value::Dict> source_tab,
     const ExtensionApiFrameIdMap::FrameData& source_frame,
@@ -297,9 +305,10 @@ void ExtensionMessagePort::DispatchOnConnect(
   SendToPort(base::BindRepeating(
       &ExtensionMessagePort::BuildDispatchOnConnectIPC,
       // Called synchronously.
-      base::Unretained(this), channel_name, base::OptionalToPtr(source_tab),
-      source_frame, guest_process_id, guest_render_frame_routing_id,
-      source_endpoint, target_extension_id, source_url, source_origin));
+      base::Unretained(this), channel_type, channel_name,
+      base::OptionalToPtr(source_tab), source_frame, guest_process_id,
+      guest_render_frame_routing_id, source_endpoint, target_extension_id,
+      source_url, source_origin));
 }
 
 void ExtensionMessagePort::DispatchOnDisconnect(
@@ -310,21 +319,34 @@ void ExtensionMessagePort::DispatchOnDisconnect(
 }
 
 void ExtensionMessagePort::DispatchOnMessage(const Message& message) {
+  // We increment activity for every message that passes through the channel.
+  // This is important for long-lived ports, which only keep an extension
+  // alive so long as they are being actively used.
+  IncrementLazyKeepaliveCount(Activity::MESSAGE);
   // Since we are now receiving a message, we can mark any asynchronous reply
   // that may have been pending for this port as no longer pending.
   asynchronous_reply_pending_ = false;
   SendToPort(base::BindRepeating(&ExtensionMessagePort::BuildDeliverMessageIPC,
                                  // Called synchronously.
                                  base::Unretained(this), message));
+  DecrementLazyKeepaliveCount(Activity::MESSAGE);
 }
 
 void ExtensionMessagePort::IncrementLazyKeepaliveCount(
-    bool should_have_strong_keepalive) {
+    Activity::Type activity_type) {
   ProcessManager* pm = ProcessManager::Get(browser_context_);
   ExtensionHost* host = pm->GetBackgroundHostForExtension(extension_id_);
   if (host && BackgroundInfo::HasLazyBackgroundPage(host->extension())) {
-    pm->IncrementLazyKeepaliveCount(host->extension(), Activity::MESSAGE_PORT,
+    pm->IncrementLazyKeepaliveCount(host->extension(), activity_type,
                                     PortIdToString(port_id_));
+  }
+
+  // Keep track of the background host, so when we decrement, we only do so if
+  // the host hasn't reloaded.
+  background_host_ptr_ = host;
+
+  if (!IsServiceWorkerActivity(activity_type)) {
+    return;
   }
 
   // Increment keepalive count for service workers of the extension managed by
@@ -333,27 +355,27 @@ void ExtensionMessagePort::IncrementLazyKeepaliveCount(
   // context.
   for (const auto& worker_id :
        pm->GetServiceWorkersForExtension(extension_id_)) {
-    std::string request_uuid = pm->IncrementServiceWorkerKeepaliveCount(
+    base::Uuid request_uuid = pm->IncrementServiceWorkerKeepaliveCount(
         worker_id,
-        should_have_strong_keepalive
+        should_have_strong_keepalive()
             ? content::ServiceWorkerExternalRequestTimeoutType::kDoesNotTimeout
             : content::ServiceWorkerExternalRequestTimeoutType::kDefault,
-        Activity::MESSAGE_PORT, PortIdToString(port_id_));
-    if (!request_uuid.empty())
-      pending_keepalive_uuids_[worker_id].push_back(request_uuid);
+        activity_type, PortIdToString(port_id_));
+    pending_keepalive_uuids_[worker_id].push_back(std::move(request_uuid));
   }
-
-  // Keep track of the background host, so when we decrement, we only do so if
-  // the host hasn't reloaded.
-  background_host_ptr_ = host;
 }
 
-void ExtensionMessagePort::DecrementLazyKeepaliveCount() {
+void ExtensionMessagePort::DecrementLazyKeepaliveCount(
+    Activity::Type activity_type) {
   ProcessManager* pm = ProcessManager::Get(browser_context_);
   ExtensionHost* host = pm->GetBackgroundHostForExtension(extension_id_);
   if (host && host == background_host_ptr_) {
-    pm->DecrementLazyKeepaliveCount(host->extension(), Activity::MESSAGE_PORT,
+    pm->DecrementLazyKeepaliveCount(host->extension(), activity_type,
                                     PortIdToString(port_id_));
+    return;
+  }
+
+  if (!IsServiceWorkerActivity(activity_type)) {
     return;
   }
 
@@ -369,11 +391,13 @@ void ExtensionMessagePort::DecrementLazyKeepaliveCount() {
       // the time the message channel opened.
       continue;
     }
-    std::string request_uuid = std::move(iter->second.back());
+    base::Uuid request_uuid = std::move(iter->second.back());
     iter->second.pop_back();
-    pm->DecrementServiceWorkerKeepaliveCount(worker_id, request_uuid,
-                                             Activity::MESSAGE_PORT,
-                                             PortIdToString(port_id_));
+    if (iter->second.empty()) {
+      pending_keepalive_uuids_.erase(iter);
+    }
+    pm->DecrementServiceWorkerKeepaliveCount(
+        worker_id, request_uuid, activity_type, PortIdToString(port_id_));
   }
 }
 
@@ -400,9 +424,9 @@ void ExtensionMessagePort::ClosePort(int process_id,
 
   if (is_for_service_worker) {
     UnregisterWorker(process_id, worker_thread_id);
-  } else if (auto* rfh =
+  } else if (auto* render_frame_host =
                  content::RenderFrameHost::FromID(process_id, routing_id)) {
-    UnregisterFrame(rfh);
+    UnregisterFrame(render_frame_host);
   }
 }
 
@@ -417,19 +441,22 @@ void ExtensionMessagePort::CloseChannel() {
     weak_channel_delegate_->CloseChannel(port_id_, error_message);
 }
 
-void ExtensionMessagePort::RegisterFrame(content::RenderFrameHost* rfh) {
+void ExtensionMessagePort::RegisterFrame(
+    content::RenderFrameHost* render_frame_host) {
   // Only register a RenderFrameHost whose RenderFrame has been created, to
   // ensure that we are notified of frame destruction. Without this check,
   // |frames_| can eventually contain a stale pointer because RenderFrameDeleted
-  // is not triggered for |rfh|.
-  if (rfh->IsRenderFrameLive()) {
-    frames_.insert(rfh);
+  // is not triggered for |render_frame_host|.
+  if (render_frame_host->IsRenderFrameLive()) {
+    frames_.insert(render_frame_host);
   }
 }
 
-void ExtensionMessagePort::UnregisterFrame(content::RenderFrameHost* rfh) {
-  if (frames_.erase(rfh) != 0 && !HasReceivers())
+void ExtensionMessagePort::UnregisterFrame(
+    content::RenderFrameHost* render_frame_host) {
+  if (frames_.erase(render_frame_host) != 0 && !HasReceivers()) {
     CloseChannel();
+  }
 }
 
 bool ExtensionMessagePort::HasReceivers() const {
@@ -542,6 +569,7 @@ void ExtensionMessagePort::SendToIPCTarget(const IPCTarget& target,
 }
 
 std::unique_ptr<IPC::Message> ExtensionMessagePort::BuildDispatchOnConnectIPC(
+    ChannelType channel_type,
     const std::string& channel_name,
     const base::Value::Dict* source_tab,
     const ExtensionApiFrameIdMap::FrameData& source_frame,
@@ -571,9 +599,15 @@ std::unique_ptr<IPC::Message> ExtensionMessagePort::BuildDispatchOnConnectIPC(
   info.guest_process_id = guest_process_id;
   info.guest_render_frame_routing_id = guest_render_frame_routing_id;
 
+  ExtensionMsg_OnConnectData connect_data;
+  connect_data.target_port_id = port_id_;
+  connect_data.channel_type = channel_type;
+  connect_data.channel_name = channel_name;
+  connect_data.tab_source = std::move(source);
+  connect_data.external_connection_info = std::move(info);
+
   return std::make_unique<ExtensionMsg_DispatchOnConnect>(
-      MSG_ROUTING_NONE, target.worker_thread_id, port_id_, channel_name, source,
-      info);
+      MSG_ROUTING_NONE, target.worker_thread_id, connect_data);
 }
 
 std::unique_ptr<IPC::Message>
@@ -589,6 +623,23 @@ std::unique_ptr<IPC::Message> ExtensionMessagePort::BuildDeliverMessageIPC(
     const IPCTarget& target) {
   return std::make_unique<ExtensionMsg_DeliverMessage>(
       MSG_ROUTING_NONE, target.worker_thread_id, port_id_, message);
+}
+
+bool ExtensionMessagePort::IsServiceWorkerActivity(
+    Activity::Type activity_type) {
+  switch (activity_type) {
+    case Activity::MESSAGE:
+      return true;
+    case Activity::MESSAGE_PORT:
+      // long-lived  message channels (such as through runtime.connect()) only
+      // increment keepalive when a message is sent so that a port doesn't count
+      // as a single, long-running task.
+      return is_for_onetime_channel() || should_have_strong_keepalive();
+    default:
+      // Extension message port should not check for other activity types.
+      NOTREACHED();
+      return false;
+  }
 }
 
 }  // namespace extensions

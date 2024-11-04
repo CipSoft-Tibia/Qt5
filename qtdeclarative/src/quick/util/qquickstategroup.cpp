@@ -85,7 +85,7 @@ public:
    }
    \endqml
 
-   \sa {Qt Quick States}{Qt Quick States}, {Animation and Transitions in Qt Quick}{Transitions}, {Qt QML}
+   \sa {Qt Quick States}{Qt Quick States}, {Animation and Transitions in Qt Quick}{Transitions}, {Qt Qml}
 */
 
 QQuickStateGroup::QQuickStateGroup(QObject *parent)
@@ -354,8 +354,8 @@ bool QQuickStateGroupPrivate::updateAutoState()
         if (state && state->isWhenKnown()) {
             if (state->isNamed()) {
                 bool whenValue = state->when();
-                const QQmlProperty whenProp(state, u"when"_s);
-                const auto potentialWhenBinding = QQmlAnyBinding::ofProperty(whenProp);
+                const QQmlPropertyIndex whenIndex(state->metaObject()->indexOfProperty("when"));
+                const auto potentialWhenBinding = QQmlAnyBinding::ofProperty(state, whenIndex);
                 Q_ASSERT(!potentialWhenBinding.isUntypedPropertyBinding());
 
                 // if there is a binding, the value in when might not be up-to-date at this point

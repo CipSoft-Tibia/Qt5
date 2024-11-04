@@ -1752,7 +1752,7 @@ inline void DirectionalZone2FromLeftCol_8x8(
   const int index_scale_bits = 6;
   // The values in |offset_y| are negative, except for the first element, which
   // is zero.
-  int16x8_t offset_y = left_y;
+  int16x8_t offset_y;
   int16x8_t shift_upsampled = left_y;
   // The shift argument must be a constant, otherwise use upsample_shift
   // directly.

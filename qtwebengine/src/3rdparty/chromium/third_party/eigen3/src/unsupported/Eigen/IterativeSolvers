@@ -19,7 +19,6 @@
   * \defgroup IterativeLinearSolvers_Module Iterative Solvers module
   * This module aims to provide various iterative linear and non linear solver algorithms.
   * It currently provides:
-  *  - a constrained conjugate gradient
   *  - a Householder GMRES implementation
   *  - an IDR(s) implementation
   *  - a BiCGSTAB(L) implementation
@@ -79,11 +78,7 @@
 
 #include "../../Eigen/src/Core/util/DisableStupidWarnings.h"
 
-#ifndef EIGEN_MPL2_ONLY
-#include "src/IterativeSolvers/IterationController.h"
-#include "src/IterativeSolvers/ConstrainedConjGrad.h"
-#endif
-
+// IWYU pragma: begin_exports
 #include "src/IterativeSolvers/IncompleteLU.h"
 #include "src/IterativeSolvers/GMRES.h"
 #include "src/IterativeSolvers/DGMRES.h"
@@ -91,6 +86,7 @@
 #include "src/IterativeSolvers/IDRS.h"
 #include "src/IterativeSolvers/BiCGSTABL.h"
 #include "src/IterativeSolvers/IDRSTABL.h"
+// IWYU pragma: end_exports
 
 #include "../../Eigen/src/Core/util/ReenableStupidWarnings.h"
 

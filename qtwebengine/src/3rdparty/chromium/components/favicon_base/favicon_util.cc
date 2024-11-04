@@ -17,7 +17,7 @@
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkImage.h"
-#include "ui/base/layout.h"
+#include "ui/base/resource/resource_scale_factor.h"
 #include "ui/gfx/codec/png_codec.h"
 #include "ui/gfx/favicon_size.h"
 #include "ui/gfx/geometry/size.h"
@@ -250,9 +250,9 @@ gfx::Image SelectFaviconFramesFromPNGs(
 }
 
 favicon_base::FaviconRawBitmapResult ResizeFaviconBitmapResult(
+    int desired_size_in_pixel,
     const std::vector<favicon_base::FaviconRawBitmapResult>&
-        favicon_bitmap_results,
-    int desired_size_in_pixel) {
+        favicon_bitmap_results) {
   TRACE_EVENT0("browser", "FaviconUtil::ResizeFaviconBitmapResult");
 
   if (favicon_bitmap_results.empty() || !favicon_bitmap_results[0].is_valid())

@@ -339,9 +339,23 @@ EncoderStatus::Or<OwnedOpusEncoder> AudioOpusEncoder::CreateOpusEncoder(
         base::StringPrintf("Failed to set Opus bitrate: %d", bitrate));
   }
 
+  if (options_.bitrate_mode.has_value()) {
+    bool vbr_enabled =
+        options_.bitrate_mode == media::AudioEncoder::BitrateMode::kVariable;
+
+    if (opus_encoder_ctl(encoder.get(), OPUS_SET_VBR(vbr_enabled ? 1 : 0)) !=
+        OPUS_OK) {
+      return EncoderStatus(
+          EncoderStatus::Codes::kEncoderInitializationError,
+          base::StringPrintf("Failed to set Opus bitrateMode: %d",
+                             vbr_enabled));
+    }
+  }
+
   // The remaining parameters are all purely optional.
-  if (!opus_options.has_value())
+  if (!opus_options.has_value()) {
     return encoder;
+  }
 
   const unsigned int complexity = opus_options.value().complexity;
   DCHECK_LE(complexity, 10u);
@@ -372,8 +386,19 @@ EncoderStatus::Or<OwnedOpusEncoder> AudioOpusEncoder::CreateOpusEncoder(
   }
 
   const unsigned int use_dtx = opus_options.value().use_dtx ? 1 : 0;
-  if (opus_encoder_ctl(encoder.get(), OPUS_SET_INBAND_FEC(use_dtx)) !=
+
+  // For some reason, DTX doesn't work without setting the `OPUS_SIGNAL_VOICE`
+  // hint. Set or unset the signal type accordingly before using DTX.
+  const unsigned int opus_signal = use_dtx ? OPUS_SIGNAL_VOICE : OPUS_AUTO;
+
+  if (opus_encoder_ctl(encoder.get(), OPUS_SET_SIGNAL(opus_signal)) !=
       OPUS_OK) {
+    return EncoderStatus(
+        EncoderStatus::Codes::kEncoderInitializationError,
+        base::StringPrintf("Failed to set Opus signal hint: %d", opus_signal));
+  }
+
+  if (opus_encoder_ctl(encoder.get(), OPUS_SET_DTX(use_dtx)) != OPUS_OK) {
     return EncoderStatus(
         EncoderStatus::Codes::kEncoderInitializationError,
         base::StringPrintf("Failed to set Opus DTX: %d", use_dtx));

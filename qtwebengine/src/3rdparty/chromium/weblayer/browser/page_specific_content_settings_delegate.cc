@@ -52,6 +52,11 @@ HostContentSettingsMap* PageSpecificContentSettingsDelegate::GetSettingsMap() {
       web_contents_->GetBrowserContext());
 }
 
+std::unique_ptr<BrowsingDataModel::Delegate>
+PageSpecificContentSettingsDelegate::CreateBrowsingDataModelDelegate() {
+  return nullptr;
+}
+
 void PageSpecificContentSettingsDelegate::SetDefaultRendererContentSettingRules(
     content::RenderFrameHost* rfh,
     RendererContentSettingRules* rules) {}
@@ -76,8 +81,7 @@ bool PageSpecificContentSettingsDelegate::IsMicrophoneCameraStateChanged(
 
 content_settings::PageSpecificContentSettings::MicrophoneCameraState
 PageSpecificContentSettingsDelegate::GetMicrophoneCameraState() {
-  return content_settings::PageSpecificContentSettings::
-      MICROPHONE_CAMERA_NOT_ACCESSED;
+  return {};
 }
 
 content::WebContents* PageSpecificContentSettingsDelegate::
@@ -91,18 +95,5 @@ void PageSpecificContentSettingsDelegate::OnContentAllowed(
 
 void PageSpecificContentSettingsDelegate::OnContentBlocked(
     ContentSettingsType type) {}
-
-void PageSpecificContentSettingsDelegate::OnStorageAccessAllowed(
-    content_settings::mojom::ContentSettingsManager::StorageType storage_type,
-    const url::Origin& origin,
-    content::Page& page) {}
-
-void PageSpecificContentSettingsDelegate::OnCookieAccessAllowed(
-    const net::CookieList& accessed_cookies,
-    content::Page& page) {}
-
-void PageSpecificContentSettingsDelegate::OnServiceWorkerAccessAllowed(
-    const url::Origin& origin,
-    content::Page& page) {}
 
 }  // namespace weblayer

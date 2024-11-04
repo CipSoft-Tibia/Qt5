@@ -1,5 +1,5 @@
 # Copyright (C) 2023 The Qt Company Ltd.
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 TEMPLATE = app
 TARGET = weatherinfo
@@ -29,19 +29,20 @@ qml_resources.files = \
     ForecastIcon.qml \
     WeatherIcon.qml \
     WeatherInfo.qml \
-    icons/weather-few-clouds.png \
-    icons/weather-fog.png \
-    icons/weather-haze.png \
-    icons/weather-icy.png \
-    icons/weather-overcast.png \
-    icons/weather-showers.png \
-    icons/weather-showers-scattered.png \
-    icons/weather-sleet.png \
-    icons/weather-snow.png \
-    icons/weather-storm.png \
-    icons/weather-sunny-very-few-clouds.png \
-    icons/weather-sunny.png \
-    icons/weather-thundershower.png
+    icons/weather-few-clouds.svg \
+    icons/weather-fog.svg \
+    icons/weather-haze.svg \
+    icons/weather-icy.svg \
+    icons/weather-overcast.svg \
+    icons/weather-showers.svg \
+    icons/weather-showers-scattered.svg \
+    icons/weather-sleet.svg \
+    icons/weather-snow.svg \
+    icons/weather-storm.svg \
+    icons/weather-sunny-very-few-clouds.svg \
+    icons/weather-sunny.svg \
+    icons/weather-thundershower.svg \
+    icons/waypoint.svg
 
 qml_resources.prefix = /qt/qml/Weather
 

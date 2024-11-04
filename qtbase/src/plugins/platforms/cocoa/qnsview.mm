@@ -90,6 +90,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMenuHelper);
 @property (assign) NSView* previousSuperview;
 @property (assign) NSWindow* previousWindow;
 @property (retain) QNSViewMenuHelper* menuHelper;
+@property (nonatomic, retain) NSColorSpace *colorSpace;
 @end
 
 @implementation QNSView {
@@ -118,6 +119,8 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMenuHelper);
     QPointer<QObject> m_composingFocusObject;
     NSDraggingContext m_lastSeenContext;
 }
+
+@synthesize colorSpace = m_colorSpace;
 
 - (instancetype)initWithCocoaWindow:(QCocoaWindow *)platformWindow
 {
@@ -328,7 +331,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMenuHelper);
         // QWindow activation from QCocoaWindow::windowDidBecomeKey instead. The only
         // exception is if the window can never become key, in which case we naturally
         // cannot wait for that to happen.
-        QWindowSystemInterface::handleWindowActivated<QWindowSystemInterface::SynchronousDelivery>(
+        QWindowSystemInterface::handleFocusWindowChanged<QWindowSystemInterface::SynchronousDelivery>(
             [self topLevelWindow], Qt::ActiveWindowFocusReason);
     }
 

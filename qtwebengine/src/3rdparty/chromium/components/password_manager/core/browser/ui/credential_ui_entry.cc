@@ -4,12 +4,14 @@
 
 #include "components/password_manager/core/browser/ui/credential_ui_entry.h"
 
+#include "base/strings/utf_string_conversions.h"
 #include "components/password_manager/core/browser/affiliation/affiliation_utils.h"
-#include "components/password_manager/core/browser/form_parsing/form_parser.h"
+#include "components/password_manager/core/browser/form_parsing/form_data_parser.h"
 #include "components/password_manager/core/browser/import/csv_password.h"
 #include "components/password_manager/core/browser/password_form.h"
 #include "components/password_manager/core/browser/password_list_sorter.h"
 #include "components/password_manager/core/browser/password_ui_utils.h"
+#include "components/password_manager/core/browser/well_known_change_password_util.h"
 #include "components/url_formatter/elide_url.h"
 
 namespace password_manager {
@@ -64,12 +66,9 @@ CredentialUIEntry::CredentialUIEntry(const PasswordForm& form)
       password(form.password_value),
       federation_origin(form.federation_origin),
       password_issues(form.password_issues),
+      note(form.GetNoteWithEmptyUniqueDisplayName()),
       blocked_by_user(form.blocked_by_user),
       last_used_time(form.date_last_used) {
-  // Only one-note with an empty `unique_display_name` is supported in the
-  // settings UI.
-  note = form.GetNoteWithEmptyUniqueDisplayName().value_or(std::u16string());
-
   CredentialFacet facet;
   facet.display_name = form.app_display_name;
   facet.url = form.url;
@@ -99,10 +98,8 @@ CredentialUIEntry::CredentialUIEntry(const std::vector<PasswordForm>& forms) {
   // should be concatenated and linebreak used as a delimiter.
   auto unique_notes =
       base::MakeFlatSet<std::u16string>(forms, {}, [](const auto& form) {
-        return form.GetNoteWithEmptyUniqueDisplayName().value_or(u"");
+        return form.GetNoteWithEmptyUniqueDisplayName();
       });
-  // Only notes with an empty `unique_display_name` are supported in the
-  // settings UI.
   unique_notes.erase(u"");
   note = base::JoinString(std::move(unique_notes).extract(), u"\n");
 
@@ -121,6 +118,19 @@ CredentialUIEntry::CredentialUIEntry(const std::vector<PasswordForm>& forms) {
     if (form.IsUsingProfileStore())
       stored_in.insert(PasswordForm::Store::kProfileStore);
   }
+}
+
+CredentialUIEntry::CredentialUIEntry(const PasskeyCredential& passkey)
+    : passkey_credential_id(passkey.credential_id()),
+      username(base::UTF8ToUTF16(passkey.username())),
+      user_display_name(base::UTF8ToUTF16(passkey.display_name())) {
+  CHECK(!passkey.credential_id().empty());
+  CredentialFacet facet;
+  facet.url = RPIDToURL(passkey.rp_id());
+  facet.signon_realm =
+      FacetURI::FromPotentiallyInvalidSpec(facet.url.possibly_invalid_spec())
+          .potentially_invalid_spec();
+  facets.push_back(std::move(facet));
 }
 
 CredentialUIEntry::CredentialUIEntry(const CSVPassword& csv_password,
@@ -205,11 +215,32 @@ GURL CredentialUIEntry::GetURL() const {
   return facets[0].url;
 }
 
+absl::optional<GURL> CredentialUIEntry::GetChangePasswordURL() const {
+  GURL change_password_origin;
+  auto facetUri = password_manager::FacetURI::FromPotentiallyInvalidSpec(
+      GetFirstSignonRealm());
+
+  if (facetUri.IsValidAndroidFacetURI()) {
+    // Change url needs special handling for Android. Here we use
+    // affiliation information instead of the origin.
+    if (!GetAffiliatedWebRealm().empty()) {
+      return password_manager::CreateChangePasswordUrl(
+          GURL(GetAffiliatedWebRealm()));
+    }
+  } else if (GetURL().is_valid()) {
+    return password_manager::CreateChangePasswordUrl(GetURL());
+  }
+
+  return absl::nullopt;
+}
+
 std::vector<CredentialUIEntry::DomainInfo>
 CredentialUIEntry::GetAffiliatedDomains() const {
   std::vector<CredentialUIEntry::DomainInfo> domains;
+  std::set<std::string> unique_urls;
   for (const auto& facet : facets) {
     CredentialUIEntry::DomainInfo domain;
+    domain.signon_realm = facet.signon_realm;
     password_manager::FacetURI facet_uri =
         password_manager::FacetURI::FromPotentiallyInvalidSpec(
             facet.signon_realm);
@@ -226,7 +257,9 @@ CredentialUIEntry::GetAffiliatedDomains() const {
       domain.name = GetOrigin(url::Origin::Create(facet.url));
       domain.url = facet.url;
     }
-    domains.push_back(std::move(domain));
+    if (unique_urls.insert(domain.url.spec()).second) {
+      domains.push_back(std::move(domain));
+    }
   }
   return domains;
 }
@@ -241,6 +274,10 @@ bool operator!=(const CredentialUIEntry& lhs, const CredentialUIEntry& rhs) {
 
 bool operator<(const CredentialUIEntry& lhs, const CredentialUIEntry& rhs) {
   return CreateSortKey(lhs) < CreateSortKey(rhs);
+}
+
+bool IsCompromised(const CredentialUIEntry& credential) {
+  return credential.IsLeaked() || credential.IsPhished();
 }
 
 }  // namespace password_manager

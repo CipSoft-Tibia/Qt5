@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,8 +15,6 @@
 
 namespace openscreen {
 
-class UdpSocket;
-
 // A move-only std::vector of bytes that may not exceed the maximum possible
 // size of a UDP packet. Implicit copy construction/assignment is disabled to
 // prevent hidden copies (i.e., those not explicitly coded).
@@ -27,12 +25,14 @@ class UdpPacket : public std::vector<uint8_t> {
   explicit UdpPacket(size_type size, uint8_t fill_value = {});
   template <typename InputIt>
   UdpPacket(InputIt first, InputIt last) : std::vector<uint8_t>(first, last) {}
-  UdpPacket(UdpPacket&& other) noexcept;
   UdpPacket(std::initializer_list<uint8_t> init);
+  UdpPacket(const UdpPacket&) = delete;
+  UdpPacket(UdpPacket&& other) noexcept;
 
   ~UdpPacket();
 
   UdpPacket& operator=(UdpPacket&& other);
+  UdpPacket& operator=(const UdpPacket&) = delete;
 
   const IPEndpoint& source() const { return source_; }
   void set_source(IPEndpoint endpoint) { source_ = std::move(endpoint); }
@@ -42,19 +42,11 @@ class UdpPacket : public std::vector<uint8_t> {
     destination_ = std::move(endpoint);
   }
 
-  UdpSocket* socket() const { return socket_; }
-  void set_socket(UdpSocket* socket) { socket_ = socket; }
-
-  std::string ToString() const;
-
   static const size_type kUdpMaxPacketSize;
 
  private:
   IPEndpoint source_ = {};
   IPEndpoint destination_ = {};
-  UdpSocket* socket_ = nullptr;
-
-  OSP_DISALLOW_COPY_AND_ASSIGN(UdpPacket);
 };
 
 }  // namespace openscreen

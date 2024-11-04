@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,9 +20,9 @@
 
 #include <algorithm>
 #include <cstring>
+#include <optional>
+#include <string_view>
 
-#include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "platform/api/network_interface.h"
 #include "platform/base/ip_address.h"
 #include "platform/impl/network_interface.h"
@@ -36,7 +36,7 @@ constexpr int kNetlinkRecvmsgBufSize = 8192;
 
 // Safely reads the system name for the interface from the (probably)
 // null-terminated string |kernel_name| and returns a std::string.
-std::string GetInterfaceName(absl::string_view kernel_name) {
+std::string GetInterfaceName(std::string_view kernel_name) {
   OSP_CHECK_LT(kernel_name.length(), IFNAMSIZ);
   return std::string(kernel_name);
 }
@@ -113,10 +113,10 @@ void GetInterfaceAttributes(struct rtattr* rta,
 // pointed to by |rta|. |ifname| is the name of the interface to which we
 // believe the address belongs based on interface index matching. It is only
 // used for sanity checking.
-absl::optional<IPAddress> GetIPAddressOrNull(struct rtattr* rta,
-                                             unsigned int attrlen,
-                                             IPAddress::Version version,
-                                             const std::string& ifname) {
+std::optional<IPAddress> GetIPAddressOrNull(struct rtattr* rta,
+                                            unsigned int attrlen,
+                                            IPAddress::Version version,
+                                            const std::string& ifname) {
   const size_t expected_address_size = version == IPAddress::Version::kV4
                                            ? IPAddress::kV4Size
                                            : IPAddress::kV6Size;
@@ -130,7 +130,7 @@ absl::optional<IPAddress> GetIPAddressOrNull(struct rtattr* rta,
       if (ifname != label) {
         OSP_LOG_ERROR << "Interface label mismatch! Expected: " << ifname
                       << ", Have: " << label;
-        return absl::nullopt;
+        return std::nullopt;
       }
     } else if (rta->rta_type == IFA_ADDRESS) {
       OSP_DCHECK_EQ(expected_address_size, RTA_PAYLOAD(rta));

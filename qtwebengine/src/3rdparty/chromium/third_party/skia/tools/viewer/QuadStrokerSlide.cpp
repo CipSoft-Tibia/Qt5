@@ -36,6 +36,8 @@
 
 #include <cfloat>
 
+using namespace skia_private;
+
 class SkEvent;
 
 static bool hittest(const SkPoint& target, SkScalar x, SkScalar y) {
@@ -61,7 +63,7 @@ static int getOnCurvePoints(const SkPath& path, SkPoint storage[]) {
     return count;
 }
 
-static void getContourCounts(const SkPath& path, SkTArray<int>* contourCounts) {
+static void getContourCounts(const SkPath& path, TArray<int>* contourCounts) {
     int count = 0;
     for (auto [verb, pts, w] : SkPathPriv::Iterate(path)) {
         switch (verb) {
@@ -486,9 +488,9 @@ private:
         fShader = ToolUtils::create_checkerboard_shader(0xFFCCCCCC, 0xFFFFFFFF, zoom);
 
         SkImageInfo info = SkImageInfo::MakeN32Premul(width, height);
-        fMinSurface = SkSurface::MakeRaster(info);
+        fMinSurface = SkSurfaces::Raster(info);
         info = info.makeWH(width * zoom, height * zoom);
-        fMaxSurface = SkSurface::MakeRaster(info);
+        fMaxSurface = SkSurfaces::Raster(info);
     }
 
     void draw_points(SkCanvas* canvas, const SkPath& path, SkColor color,
@@ -500,7 +502,7 @@ private:
         int n = path.countPoints();
         std::unique_ptr<SkPoint[]> pts{new SkPoint[n]};
         if (show_lines && fDrawTangents) {
-            SkTArray<int> contourCounts;
+            TArray<int> contourCounts;
             getContourCounts(path, &contourCounts);
             SkPoint* ptPtr = pts.get();
             for (int i = 0; i < contourCounts.size(); ++i) {

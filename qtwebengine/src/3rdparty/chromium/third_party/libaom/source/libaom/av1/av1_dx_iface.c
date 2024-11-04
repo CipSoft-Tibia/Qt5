@@ -121,7 +121,7 @@ static aom_codec_err_t decoder_destroy(aom_codec_alg_priv_t *ctx) {
       AV1Decoder *const pbi = frame_worker_data->pbi;
       aom_free(pbi->common.tpl_mvs);
       pbi->common.tpl_mvs = NULL;
-      av1_remove_common(&frame_worker_data->pbi->common);
+      av1_remove_common(&pbi->common);
       av1_free_cdef_buffers(&pbi->common, &pbi->cdef_worker, &pbi->cdef_sync);
       av1_free_cdef_sync(&pbi->cdef_sync);
       av1_free_restoration_buffers(&pbi->common);
@@ -457,18 +457,24 @@ static aom_codec_err_t init_decoder(aom_codec_alg_priv_t *ctx) {
   }
 
   AVxWorker *const worker = ctx->frame_worker;
-  FrameWorkerData *frame_worker_data = NULL;
   winterface->init(worker);
   worker->thread_name = "aom frameworker";
   worker->data1 = aom_memalign(32, sizeof(FrameWorkerData));
   if (worker->data1 == NULL) {
+    winterface->end(worker);
+    aom_free(worker);
+    ctx->frame_worker = NULL;
     set_error_detail(ctx, "Failed to allocate frame_worker_data");
     return AOM_CODEC_MEM_ERROR;
   }
-  frame_worker_data = (FrameWorkerData *)worker->data1;
+  FrameWorkerData *frame_worker_data = (FrameWorkerData *)worker->data1;
   frame_worker_data->pbi = av1_decoder_create(ctx->buffer_pool);
   if (frame_worker_data->pbi == NULL) {
-    set_error_detail(ctx, "Failed to allocate frame_worker_data");
+    winterface->end(worker);
+    aom_free(frame_worker_data);
+    aom_free(worker);
+    ctx->frame_worker = NULL;
+    set_error_detail(ctx, "Failed to allocate frame_worker_data->pbi");
     return AOM_CODEC_MEM_ERROR;
   }
   frame_worker_data->frame_context_ready = 0;

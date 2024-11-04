@@ -4,10 +4,11 @@ import argparse
 import os
 import sys
 from collections import OrderedDict
-from distutils.spawn import find_executable
+from shutil import which
 from datetime import timedelta
 
 from . import config
+from . import products
 from . import wpttest
 from .formatters import chromium, wptreport, wptscreenshot
 
@@ -37,8 +38,6 @@ def require_arg(kwargs, name, value_func=None):
 def create_parser(product_choices=None):
     from mozlog import commandline
 
-    from . import products
-
     if product_choices is None:
         product_choices = products.product_list
 
@@ -64,6 +63,8 @@ scheme host and port.""")
                         "directory")
     parser.add_argument("--processes", action="store", type=int, default=None,
                         help="Number of simultaneous processes to use")
+    parser.add_argument("--max-restarts", action="store", type=int, default=5,
+                        help="Maximum number of browser restart retries")
 
     parser.add_argument("--no-capture-stdio", action="store_true", default=False,
                         help="Don't capture stdio and write to logging")
@@ -140,6 +141,11 @@ scheme host and port.""")
                                       nargs="*", default=wpttest.enabled_tests,
                                       choices=wpttest.enabled_tests,
                                       help="Test types to run")
+    test_selection_group.add_argument("--subsuite-file", action="store",
+                                      help="Path to JSON file containing subsuite configuration")
+    # TODO use an empty string argument for the default subsuite
+    test_selection_group.add_argument("--subsuite", action="append", dest="subsuites",
+                                      help="Subsuite names to run. Runs all subsuites when omitted.")
     test_selection_group.add_argument("--include", action="append",
                                       help="URL prefix to include")
     test_selection_group.add_argument("--include-file", action="store",
@@ -166,6 +172,9 @@ scheme host and port.""")
                                       help="Do not enable WebTransport tests on experimental channels")
     test_selection_group.add_argument("--tag", action="append", dest="tags",
                                       help="Labels applied to tests to include in the run. "
+                                           "Labels starting dir: are equivalent to top-level directories.")
+    test_selection_group.add_argument("--exclude-tag", action="append", dest="exclude_tags",
+                                      help="Labels applied to tests to exclude in the run. Takes precedence over `--tag`. "
                                            "Labels starting dir: are equivalent to top-level directories.")
     test_selection_group.add_argument("--default-exclude", action="store_true",
                                       default=False,
@@ -261,6 +270,11 @@ scheme host and port.""")
                               help="Don't run browser in headless mode")
     config_group.add_argument("--instrument-to-file", action="store",
                               help="Path to write instrumentation logs to")
+    config_group.add_argument("--suppress-handler-traceback", action="store_true", default=None,
+                              help="Don't write the stacktrace for exceptions in server handlers")
+    config_group.add_argument("--no-suppress-handler-traceback", action="store_false",
+                              dest="supress_handler_traceback",
+                              help="Write the stacktrace for exceptions in server handlers")
 
     build_type = parser.add_mutually_exclusive_group()
     build_type.add_argument("--debug-build", dest="debug", action="store_true",
@@ -275,7 +289,8 @@ scheme host and port.""")
                                 help="Total number of chunks to use")
     chunking_group.add_argument("--this-chunk", action="store", type=int, default=1,
                                 help="Chunk number to run")
-    chunking_group.add_argument("--chunk-type", action="store", choices=["none", "hash", "dir_hash"],
+    chunking_group.add_argument("--chunk-type", action="store",
+                                choices=["none", "hash", "id_hash", "dir_hash"],
                                 default=None, help="Chunking type to use")
 
     ssl_group = parser.add_argument_group("SSL/TLS")
@@ -321,8 +336,6 @@ scheme host and port.""")
                              "silently ignored for opt, mobile)")
     gecko_group.add_argument("--no-leak-check", dest="leak_check", action="store_false", default=None,
                              help="Disable leak checking")
-    gecko_group.add_argument("--stylo-threads", action="store", type=int, default=1,
-                             help="Number of parallel threads to use for stylo")
     gecko_group.add_argument("--reftest-internal", dest="reftest_internal", action="store_true",
                              default=None, help="Enable reftest runner implemented inside Marionette")
     gecko_group.add_argument("--reftest-external", dest="reftest_internal", action="store_false",
@@ -335,6 +348,10 @@ scheme host and port.""")
                              help="Enable chaos mode with the specified feature flag "
                              "(see http://searchfox.org/mozilla-central/source/mfbt/ChaosMode.h for "
                              "details). If no value is supplied, all features are activated")
+
+    gecko_view_group = parser.add_argument_group("GeckoView-specific")
+    gecko_view_group.add_argument("--setenv", dest="env", action="append", default=[],
+                                  help="Set target environment variable, like FOO=BAR")
 
     servo_group = parser.add_argument_group("Servo-specific")
     servo_group.add_argument("--user-stylesheet",
@@ -357,6 +374,17 @@ scheme host and port.""")
     chrome_group.add_argument("--no-enable-experimental", action="store_false", dest="enable_experimental",
                               help="Do not enable --enable-experimental-web-platform-features flag "
                               "on experimental channels")
+    chrome_group.add_argument(
+        "--enable-sanitizer",
+        action="store_true",
+        dest="sanitizer_enabled",
+        help="Only alert on sanitizer-related errors and crashes.")
+    chrome_group.add_argument(
+        "--reuse-window",
+        action="store_true",
+        help=("Reuse a window across `testharness.js` tests where possible, "
+              "which can speed up testing. Also useful for ensuring that the "
+              "renderer process has a stable PID for a debugger to attach to."))
 
     sauce_group = parser.add_argument_group("Sauce Labs-specific")
     sauce_group.add_argument("--sauce-browser", dest="sauce_browser",
@@ -432,6 +460,8 @@ def set_from_config(kwargs):
 
     kwargs["config"] = config.read(kwargs["config_path"])
 
+    kwargs["product"] = products.Product(kwargs["config"], kwargs["product"])
+
     keys = {"paths": [("prefs", "prefs_root", True),
                       ("run_info", "run_info", True)],
             "web-platform-tests": [("remote_url", "remote_url", False),
@@ -497,11 +527,7 @@ def exe_path(name):
     if name is None:
         return
 
-    path = find_executable(name)
-    if path and os.access(path, os.X_OK):
-        return path
-    else:
-        return None
+    return which(name)
 
 
 def check_paths(kwargs):
@@ -533,13 +559,10 @@ def check_paths(kwargs):
 def check_args(kwargs):
     set_from_config(kwargs)
 
-    if kwargs["product"] is None:
-        kwargs["product"] = "firefox"
-
     if kwargs["manifest_update"] is None:
         kwargs["manifest_update"] = True
 
-    if "sauce" in kwargs["product"]:
+    if "sauce" in kwargs["product"].name:
         kwargs["pause_after_test"] = False
 
     if kwargs["test_list"]:
@@ -622,7 +645,7 @@ def check_args(kwargs):
             sys.exit(1)
         kwargs["openssl_binary"] = path
 
-    if kwargs["ssl_type"] != "none" and kwargs["product"] == "firefox" and kwargs["certutil_binary"]:
+    if kwargs["ssl_type"] != "none" and kwargs["product"].name == "firefox" and kwargs["certutil_binary"]:
         path = exe_path(kwargs["certutil_binary"])
         if path is None:
             print("certutil-binary argument missing or not a valid executable", file=sys.stderr)
@@ -647,14 +670,16 @@ def check_args(kwargs):
         # Default to preloading a gecko instance if we're only running a single process
         kwargs["preload_browser"] = kwargs["processes"] == 1
 
+    if kwargs["tags"] and kwargs["exclude_tags"]:
+        contradictory = set(kwargs["tags"]) & set(kwargs["exclude_tags"])
+        if contradictory:
+            print("contradictory tags found; exclusion will take precedence:", contradictory)
+
     return kwargs
 
 
 def check_args_metadata_update(kwargs):
     set_from_config(kwargs)
-
-    if kwargs["product"] is None:
-        kwargs["product"] = "firefox"
 
     for item in kwargs["run_log"]:
         if os.path.isdir(item):
@@ -691,7 +716,7 @@ def create_parser_metadata_update(product_choices=None):
                                      description="Update script for web-platform-tests tests.")
     # This will be removed once all consumers are updated to the properties-file based system
     parser.add_argument("--product", action="store", choices=product_choices,
-                        default=None, help=argparse.SUPPRESS)
+                        default="firefox", help=argparse.SUPPRESS)
     parser.add_argument("--config", action="store", type=abs_path, help="Path to config file")
     parser.add_argument("--metadata", action="store", type=abs_path, dest="metadata_root",
                         help="Path to the folder containing test metadata"),

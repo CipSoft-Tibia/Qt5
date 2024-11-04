@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QtTest/QSignalSpy>
@@ -43,6 +43,9 @@ void tst_QQuickDragAttached::setMimeData_data()
         << QStringList{"image/png"};
     QTest::addRow("text/uri-list, string")
         << makeMap("text/uri-list", QString("https://qt-project.org"))
+        << QStringList{"text/uri-list"};
+    QTest::addRow("text/uri-list, RFC2483 string")
+        << makeMap("text/uri-list", QString("https://qt-project.org\r\nhttps://www.test.com"))
         << QStringList{"text/uri-list"};
     QTest::addRow("text/uri-list, strings")
         << makeMap("text/uri-list", QStringList{"file://foo", "https://www.test.com"})

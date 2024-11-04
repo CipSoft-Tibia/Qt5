@@ -34,11 +34,16 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 using namespace QtMiscUtils;
+using namespace std::chrono_literals;
 
 class QNetworkProxy;
 
+static inline QByteArray rangeName() { return "Range"_ba; }
+static inline QByteArray cacheControlName() { return "Cache-Control"_ba; }
+static constexpr QByteArrayView bytesEqualPrefix() noexcept { return "bytes="; }
+
 // ### merge with nextField in cookiejar.cpp
-static QHash<QByteArray, QByteArray> parseHttpOptionHeader(const QByteArray &header)
+static QHash<QByteArray, QByteArray> parseHttpOptionHeader(QByteArrayView header)
 {
     // The HTTP header is of the form:
     // header          = #1(directives)
@@ -67,7 +72,7 @@ static QHash<QByteArray, QByteArray> parseHttpOptionHeader(const QByteArray &hea
             end = header.size();
         if (equal != -1 && end > equal)
             end = equal;        // equal sign comes before comma/end
-        QByteArray key = QByteArray(header.constData() + pos, end - pos).trimmed().toLower();
+        const auto key = header.sliced(pos, end - pos).trimmed();
         pos = end + 1;
 
         if (uint(equal) < uint(comma)) {
@@ -118,7 +123,7 @@ static QHash<QByteArray, QByteArray> parseHttpOptionHeader(const QByteArray &hea
                 }
             }
 
-            result.insert(key, value);
+            result.insert(key.toByteArray().toLower(), value);
 
             // find the comma now:
             comma = header.indexOf(',', pos);
@@ -128,7 +133,7 @@ static QHash<QByteArray, QByteArray> parseHttpOptionHeader(const QByteArray &hea
         } else {
             // case: token
             // key is already set
-            result.insert(key, QByteArray());
+            result.insert(key.toByteArray().toLower(), QByteArray());
         }
     }
 }
@@ -476,16 +481,17 @@ bool QNetworkReplyHttpImplPrivate::loadFromCacheIfAllowed(QHttpNetworkRequest &h
     if (CacheLoadControlAttribute == QNetworkRequest::AlwaysNetwork) {
         // If the request does not already specify preferred cache-control
         // force reload from the network and tell any caching proxy servers to reload too
-        if (!request.rawHeaderList().contains("Cache-Control")) {
-            httpRequest.setHeaderField("Cache-Control", "no-cache");
-            httpRequest.setHeaderField("Pragma", "no-cache");
+        if (!request.rawHeaderList().contains(cacheControlName())) {
+            const auto noCache = "no-cache"_ba;
+            httpRequest.setHeaderField(cacheControlName(), noCache);
+            httpRequest.setHeaderField("Pragma"_ba, noCache);
         }
         return false;
     }
 
     // The disk cache API does not currently support partial content retrieval.
     // That is why we don't use the disk cache for any such requests.
-    if (request.hasRawHeader("Range"))
+    if (request.hasRawHeader(rangeName()))
         return false;
 
     QAbstractNetworkCache *nc = managerPrivate->networkCache;
@@ -512,18 +518,18 @@ bool QNetworkReplyHttpImplPrivate::loadFromCacheIfAllowed(QHttpNetworkRequest &h
 
     it = cacheHeaders.findRawHeader("etag");
     if (it != cacheHeaders.rawHeaders.constEnd())
-        httpRequest.setHeaderField("If-None-Match", it->second);
+        httpRequest.setHeaderField("If-None-Match"_ba, it->second);
 
     QDateTime lastModified = metaData.lastModified();
     if (lastModified.isValid())
-        httpRequest.setHeaderField("If-Modified-Since", QNetworkHeadersPrivate::toHttpDate(lastModified));
+        httpRequest.setHeaderField("If-Modified-Since"_ba, QNetworkHeadersPrivate::toHttpDate(lastModified));
 
-    it = cacheHeaders.findRawHeader("Cache-Control");
+    it = cacheHeaders.findRawHeader(cacheControlName());
     if (it != cacheHeaders.rawHeaders.constEnd()) {
         QHash<QByteArray, QByteArray> cacheControl = parseHttpOptionHeader(it->second);
-        if (cacheControl.contains("must-revalidate"))
+        if (cacheControl.contains("must-revalidate"_ba))
             return false;
-        if (cacheControl.contains("no-cache"))
+        if (cacheControl.contains("no-cache"_ba))
             return false;
     }
 
@@ -578,10 +584,11 @@ bool QNetworkReplyHttpImplPrivate::loadFromCacheIfAllowed(QHttpNetworkRequest &h
         if (lastModified.isValid() && dateHeader.isValid()) {
             qint64 diff = lastModified.secsTo(dateHeader);
             freshness_lifetime = diff / 10;
-            if (httpRequest.headerField("Warning").isEmpty()) {
+            const auto warningHeader = "Warning"_ba;
+            if (httpRequest.headerField(warningHeader).isEmpty()) {
                 QDateTime dt = currentDateTime.addSecs(current_age);
                 if (currentDateTime.daysTo(dt) > 1)
-                    httpRequest.setHeaderField("Warning", "113");
+                    httpRequest.setHeaderField(warningHeader, "113"_ba);
             }
         }
 
@@ -602,7 +609,7 @@ bool QNetworkReplyHttpImplPrivate::loadFromCacheIfAllowed(QHttpNetworkRequest &h
     return sendCacheContents(metaData);
 }
 
-QHttpNetworkRequest::Priority QNetworkReplyHttpImplPrivate::convert(const QNetworkRequest::Priority& prio)
+QHttpNetworkRequest::Priority QNetworkReplyHttpImplPrivate::convert(QNetworkRequest::Priority prio)
 {
     switch (prio) {
     case QNetworkRequest::LowPriority:
@@ -610,9 +617,9 @@ QHttpNetworkRequest::Priority QNetworkReplyHttpImplPrivate::convert(const QNetwo
     case QNetworkRequest::HighPriority:
         return QHttpNetworkRequest::HighPriority;
     case QNetworkRequest::NormalPriority:
-    default:
         return QHttpNetworkRequest::NormalPriority;
     }
+    Q_UNREACHABLE_RETURN(QHttpNetworkRequest::NormalPriority);
 }
 
 void QNetworkReplyHttpImplPrivate::postRequest(const QNetworkRequest &newHttpRequest)
@@ -693,8 +700,13 @@ void QNetworkReplyHttpImplPrivate::postRequest(const QNetworkRequest &newHttpReq
     switch (operation) {
     case QNetworkAccessManager::GetOperation:
         httpRequest.setOperation(QHttpNetworkRequest::Get);
-        if (loadFromCacheIfAllowed(httpRequest))
+        // If the request has a body, createUploadByteDevice() and don't use caching
+        if (outgoingData) {
+            invalidateCache();
+            createUploadByteDevice();
+        } else if (loadFromCacheIfAllowed(httpRequest)) {
             return; // no need to send the request! :)
+        }
         break;
 
     case QNetworkAccessManager::HeadOperation:
@@ -734,14 +746,15 @@ void QNetworkReplyHttpImplPrivate::postRequest(const QNetworkRequest &newHttpReq
 
     QList<QByteArray> headers = newHttpRequest.rawHeaderList();
     if (resumeOffset != 0) {
-        const int rangeIndex = headers.indexOf("Range");
+        const int rangeIndex = headers.indexOf(rangeName());
         if (rangeIndex != -1) {
             // Need to adjust resume offset for user specified range
 
             headers.removeAt(rangeIndex);
 
             // We've already verified that requestRange starts with "bytes=", see canResume.
-            QByteArray requestRange = newHttpRequest.rawHeader("Range").mid(6);
+            const auto rangeHeader = newHttpRequest.rawHeader(rangeName());
+            const auto requestRange = QByteArrayView(rangeHeader).mid(bytesEqualPrefix().size());
 
             int index = requestRange.indexOf('-');
 
@@ -749,12 +762,12 @@ void QNetworkReplyHttpImplPrivate::postRequest(const QNetworkRequest &newHttpReq
             quint64 requestEndOffset = requestRange.mid(index + 1).toULongLong();
 
             // In case an end offset is not given it is skipped from the request range
-            requestRange = "bytes=" + QByteArray::number(resumeOffset + requestStartOffset) +
+            QByteArray newRange = bytesEqualPrefix() + QByteArray::number(resumeOffset + requestStartOffset) +
                            '-' + (requestEndOffset ? QByteArray::number(requestEndOffset) : QByteArray());
 
-            httpRequest.setHeaderField("Range", requestRange);
+            httpRequest.setHeaderField(rangeName(), newRange);
         } else {
-            httpRequest.setHeaderField("Range", "bytes=" + QByteArray::number(resumeOffset) + '-');
+            httpRequest.setHeaderField(rangeName(), bytesEqualPrefix() + QByteArray::number(resumeOffset) + '-');
         }
     }
 
@@ -1232,13 +1245,18 @@ void QNetworkReplyHttpImplPrivate::onRedirected(const QUrl &redirectUrl, int htt
         return;
     }
 
+    // If the original operation was a GET with a body and the status code is either
+    // 307 or 308 then keep the message body
+    const bool getOperationKeepsBody = (operation == QNetworkAccessManager::GetOperation)
+                          && (httpStatus == 307 || httpStatus == 308);
+
     redirectRequest = createRedirectRequest(originalRequest, url, maxRedirectsRemaining);
     operation = getRedirectOperation(operation, httpStatus);
 
     // Clear stale headers, the relevant ones get set again later
     httpRequest.clearHeaders();
-    if (operation == QNetworkAccessManager::GetOperation
-        || operation == QNetworkAccessManager::HeadOperation) {
+    if ((operation == QNetworkAccessManager::GetOperation
+        || operation == QNetworkAccessManager::HeadOperation) && !getOperationKeepsBody) {
         // possibly changed from not-GET/HEAD to GET/HEAD, make sure to get rid of upload device
         uploadByteDevice.reset();
         uploadByteDevicePosition = 0;
@@ -1285,6 +1303,8 @@ void QNetworkReplyHttpImplPrivate::followRedirect()
             q, [this]() { postRequest(redirectRequest); }, Qt::QueuedConnection);
 }
 
+static constexpr QByteArrayView locationHeader() noexcept { return "location"; }
+
 void QNetworkReplyHttpImplPrivate::checkForRedirect(const int statusCode)
 {
     Q_Q(QNetworkReplyHttpImpl);
@@ -1297,7 +1317,7 @@ void QNetworkReplyHttpImplPrivate::checkForRedirect(const int statusCode)
         // What do we do about the caching of the HTML note?
         // The response to a 303 MUST NOT be cached, while the response to
         // all of the others is cacheable if the headers indicate it to be
-        QByteArray header = q->rawHeader("location");
+        QByteArray header = q->rawHeader(locationHeader());
         QUrl url = QUrl(QString::fromUtf8(header));
         if (!url.isValid())
             url = QUrl(QLatin1StringView(header));
@@ -1344,25 +1364,22 @@ void QNetworkReplyHttpImplPrivate::replyDownloadMetaData(const QList<QPair<QByte
     const bool autoDecompress = request.rawHeader("accept-encoding").isEmpty();
     const bool shouldDecompress = isCompressed && autoDecompress;
     // reconstruct the HTTP header
-    QList<QPair<QByteArray, QByteArray> > headerMap = hm;
-    QList<QPair<QByteArray, QByteArray> >::ConstIterator it = headerMap.constBegin(),
-                                                        end = headerMap.constEnd();
-    for (; it != end; ++it) {
-        QByteArray value = q->rawHeader(it->first);
+    for (const auto &[key, originValue] : hm) {
+        QByteArray value = q->rawHeader(key);
 
         // Reset any previous "location" header set in the reply. In case of
         // redirects, we don't want to 'append' multiple location header values,
         // rather we keep only the latest one
-        if (it->first.toLower() == "location")
+        if (key.compare(locationHeader(), Qt::CaseInsensitive) == 0)
             value.clear();
 
         if (shouldDecompress && !decompressHelper.isValid()
-            && it->first.compare("content-encoding", Qt::CaseInsensitive) == 0) {
+            && key.compare("content-encoding", Qt::CaseInsensitive) == 0) {
 
             if (!synchronous) // with synchronous all the data is expected to be handled at once
                 decompressHelper.setCountingBytesEnabled(true);
 
-            if (!decompressHelper.setEncoding(it->second)) {
+            if (!decompressHelper.setEncoding(originValue)) {
                 error(QNetworkReplyImpl::NetworkError::UnknownContentError,
                       QCoreApplication::translate("QHttp", "Failed to initialize decompression: %1")
                               .arg(decompressHelper.errorString()));
@@ -1375,13 +1392,13 @@ void QNetworkReplyHttpImplPrivate::replyDownloadMetaData(const QList<QPair<QByte
         if (!value.isEmpty()) {
             // Why are we appending values for headers which are already
             // present?
-            if (it->first.compare("set-cookie", Qt::CaseInsensitive) == 0)
+            if (key.compare("set-cookie", Qt::CaseInsensitive) == 0)
                 value += '\n';
             else
                 value += ", ";
         }
-        value += it->second;
-        q->setRawHeader(it->first, value);
+        value += originValue;
+        q->setRawHeader(key, value);
     }
 
     q->setAttribute(QNetworkRequest::HttpStatusCodeAttribute, statusCode);
@@ -1400,11 +1417,11 @@ void QNetworkReplyHttpImplPrivate::replyDownloadMetaData(const QList<QPair<QByte
             QNetworkHeadersPrivate cacheHeaders;
             cacheHeaders.setAllRawHeaders(metaData.rawHeaders());
             QNetworkHeadersPrivate::RawHeadersList::ConstIterator it;
-            it = cacheHeaders.findRawHeader("Cache-Control");
+            it = cacheHeaders.findRawHeader(cacheControlName());
             bool mustReValidate = false;
             if (it != cacheHeaders.rawHeaders.constEnd()) {
                 QHash<QByteArray, QByteArray> cacheControl = parseHttpOptionHeader(it->second);
-                if (cacheControl.contains("must-revalidate"))
+                if (cacheControl.contains("must-revalidate"_ba))
                     mustReValidate = true;
             }
             if (!mustReValidate && sendCacheContents(metaData))
@@ -1648,7 +1665,7 @@ bool QNetworkReplyHttpImplPrivate::sendCacheContents(const QNetworkCacheMetaData
     QUrl redirectUrl;
     for ( ; it != end; ++it) {
         if (httpRequest.isFollowRedirects() &&
-            !it->first.compare("location", Qt::CaseInsensitive))
+            !it->first.compare(locationHeader(), Qt::CaseInsensitive))
             redirectUrl = QUrl::fromEncoded(it->second);
         setRawHeader(it->first, it->second);
     }
@@ -1685,6 +1702,27 @@ bool QNetworkReplyHttpImplPrivate::sendCacheContents(const QNetworkCacheMetaData
     return true;
 }
 
+static auto caseInsensitiveCompare(QByteArrayView value)
+{
+    return [value](QByteArrayView element)
+    {
+        return value.compare(element, Qt::CaseInsensitive) == 0;
+    };
+}
+
+static bool isHopByHop(QByteArrayView header)
+{
+    constexpr QByteArrayView headers[] = { "connection",
+                                           "keep-alive",
+                                           "proxy-authenticate",
+                                           "proxy-authorization",
+                                           "te",
+                                           "trailers",
+                                           "transfer-encoding",
+                                           "upgrade"};
+    return std::any_of(std::begin(headers), std::end(headers), caseInsensitiveCompare(header));
+}
+
 QNetworkCacheMetaData QNetworkReplyHttpImplPrivate::fetchCacheMetaData(const QNetworkCacheMetaData &oldMetaData) const
 {
     Q_Q(const QNetworkReplyHttpImpl);
@@ -1696,22 +1734,11 @@ QNetworkCacheMetaData QNetworkReplyHttpImplPrivate::fetchCacheMetaData(const QNe
     QNetworkHeadersPrivate::RawHeadersList::ConstIterator it;
 
     const QList<QByteArray> newHeaders = q->rawHeaderList();
-    for (QByteArray header : newHeaders) {
-        QByteArray originalHeader = header;
-        header = header.toLower();
-        bool hop_by_hop =
-            (header == "connection"
-             || header == "keep-alive"
-             || header == "proxy-authenticate"
-             || header == "proxy-authorization"
-             || header == "te"
-             || header == "trailers"
-             || header == "transfer-encoding"
-             || header ==  "upgrade");
-        if (hop_by_hop)
+    for (const QByteArray& header : newHeaders) {
+        if (isHopByHop(header))
             continue;
 
-        if (header == "set-cookie")
+        if (header.compare("set-cookie", Qt::CaseInsensitive) == 0)
             continue;
 
         // for 4.6.0, we were planning to not store the date header in the
@@ -1724,8 +1751,8 @@ QNetworkCacheMetaData QNetworkReplyHttpImplPrivate::fetchCacheMetaData(const QNe
             //continue;
 
         // Don't store Warning 1xx headers
-        if (header == "warning") {
-            QByteArray v = q->rawHeader(header);
+        if (header.compare("warning", Qt::CaseInsensitive) == 0) {
+            const QByteArray v = q->rawHeader(header);
             if (v.size() == 3
                 && v[0] == '1'
                 && isAsciiDigit(v[1])
@@ -1736,15 +1763,15 @@ QNetworkCacheMetaData QNetworkReplyHttpImplPrivate::fetchCacheMetaData(const QNe
         it = cacheHeaders.findRawHeader(header);
         if (it != cacheHeaders.rawHeaders.constEnd()) {
             // Match the behavior of Firefox and assume Cache-Control: "no-transform"
-            if (header == "content-encoding"
-                || header == "content-range"
-                || header == "content-type")
+            constexpr QByteArrayView headers[]=
+                    {"content-encoding", "content-range", "content-type"};
+            if (std::any_of(std::begin(headers), std::end(headers), caseInsensitiveCompare(header)))
                 continue;
         }
 
         // IIS has been known to send "Content-Length: 0" on 304 responses, so
         // ignore this too
-        if (header == "content-length" && statusCode == 304)
+        if (statusCode == 304 && header.compare("content-length", Qt::CaseInsensitive) == 0)
             continue;
 
 #if defined(QNETWORKACCESSHTTPBACKEND_DEBUG)
@@ -1752,23 +1779,23 @@ QNetworkCacheMetaData QNetworkReplyHttpImplPrivate::fetchCacheMetaData(const QNe
         QByteArray o;
         if (it != cacheHeaders.rawHeaders.constEnd())
             o = (*it).second;
-        if (n != o && header != "date") {
+        if (n != o && headerheader.compare("date", Qt::CaseInsensitive) != 0) {
             qDebug() << "replacing" << header;
             qDebug() << "new" << n;
             qDebug() << "old" << o;
         }
 #endif
-        cacheHeaders.setRawHeader(originalHeader, q->rawHeader(header));
+        cacheHeaders.setRawHeader(header, q->rawHeader(header));
     }
     metaData.setRawHeaders(cacheHeaders.rawHeaders);
 
     bool checkExpired = true;
 
     QHash<QByteArray, QByteArray> cacheControl;
-    it = cacheHeaders.findRawHeader("Cache-Control");
+    it = cacheHeaders.findRawHeader(cacheControlName());
     if (it != cacheHeaders.rawHeaders.constEnd()) {
         cacheControl = parseHttpOptionHeader(it->second);
-        QByteArray maxAge = cacheControl.value("max-age");
+        QByteArray maxAge = cacheControl.value("max-age"_ba);
         if (!maxAge.isEmpty()) {
             checkExpired = false;
             QDateTime dt = QDateTime::currentDateTimeUtc();
@@ -1795,7 +1822,7 @@ QNetworkCacheMetaData QNetworkReplyHttpImplPrivate::fetchCacheMetaData(const QNe
 
         canDiskCache = true;
         // HTTP/1.1. Check the Cache-Control header
-        if (cacheControl.contains("no-store"))
+        if (cacheControl.contains("no-store"_ba))
             canDiskCache = false;
 
     // responses to POST might be cacheable
@@ -1804,7 +1831,7 @@ QNetworkCacheMetaData QNetworkReplyHttpImplPrivate::fetchCacheMetaData(const QNe
         canDiskCache = false;
         // some pages contain "expires:" and "cache-control: no-cache" field,
         // so we only might cache POST requests if we get "cache-control: max-age ..."
-        if (cacheControl.contains("max-age"))
+        if (cacheControl.contains("max-age"_ba))
             canDiskCache = true;
 
     // responses to PUT and DELETE are not cacheable
@@ -1835,14 +1862,14 @@ bool QNetworkReplyHttpImplPrivate::canResume() const
         return false;
 
     // Can only resume if server/resource supports Range header.
-    QByteArray acceptRangesheaderName("Accept-Ranges");
+    constexpr auto acceptRangesheaderName = QByteArrayView("Accept-Ranges");
     if (!q->hasRawHeader(acceptRangesheaderName) || q->rawHeader(acceptRangesheaderName) == "none")
         return false;
 
     // We only support resuming for byte ranges.
-    if (request.hasRawHeader("Range")) {
-        QByteArray range = request.rawHeader("Range");
-        if (!range.startsWith("bytes="))
+    if (request.hasRawHeader(rangeName())) {
+        QByteArray range = request.rawHeader(rangeName());
+        if (!range.startsWith(bytesEqualPrefix()))
             return false;
     }
 
@@ -1861,7 +1888,9 @@ void QNetworkReplyHttpImplPrivate::setResumeOffset(quint64 offset)
 
 void QNetworkReplyHttpImplPrivate::_q_startOperation()
 {
-    if (state == Working) // ensure this function is only being called once
+    // Ensure this function is only being called once, and not at all if we were
+    // cancelled
+    if (state >= Working)
         return;
 
     state = Working;
@@ -2021,9 +2050,9 @@ void QNetworkReplyHttpImplPrivate::setupTransferTimeout()
                        Qt::QueuedConnection);
     }
     transferTimeout->stop();
-    if (request.transferTimeout()) {
+    if (request.transferTimeoutAsDuration() > 0ms) {
         transferTimeout->setSingleShot(true);
-        transferTimeout->setInterval(request.transferTimeout());
+        transferTimeout->setInterval(request.transferTimeoutAsDuration());
         QMetaObject::invokeMethod(transferTimeout, "start",
                                   Qt::QueuedConnection);
 
@@ -2129,7 +2158,9 @@ void QNetworkReplyHttpImplPrivate::error(QNetworkReplyImpl::NetworkError code, c
     Q_Q(QNetworkReplyHttpImpl);
     // Can't set and emit multiple errors.
     if (errorCode != QNetworkReply::NoError) {
-        qWarning("QNetworkReplyImplPrivate::error: Internal problem, this method must only be called once.");
+        // But somewhat unavoidable if we have cancelled the request:
+        if (errorCode != QNetworkReply::OperationCanceledError)
+            qWarning("QNetworkReplyImplPrivate::error: Internal problem, this method must only be called once.");
         return;
     }
 

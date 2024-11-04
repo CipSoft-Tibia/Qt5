@@ -225,39 +225,46 @@ object_value {
   field {
     name: "filters"
     value {
-      object_value {
-        field {
-          name: "a"
-          value {
-            array_value {
+      array_value {
+        value {
+          object_value {
+            field {
+              name: "a"
               value {
-                string_value {
-                  value: "x"
+                array_value {
+                  value {
+                    string_value {
+                      value: "x"
+                    }
+                  }
                 }
               }
             }
           }
         }
-        field {
-          name: "b"
-          value {
-            array_value {
+        value {
+          object_value {
+            field {
+              name: "b"
               value {
-                string_value {
-                  value: "y"
-                }
-              }
-              value {
-                string_value {
-                  value: "z"
+                array_value {
+                  value {
+                    string_value {
+                      value: "y"
+                    }
+                  }
+                  value {
+                    string_value {
+                      value: "z"
+                    }
+                  }
                 }
               }
             }
           }
         }
       }
-    }
-  }
+
   field {
     name: "not_filters"
     value {
@@ -278,7 +285,7 @@ object_value {
     }
   }
   field {
-    name: "aggregatable_dedup_keys"
+    name: "aggregatable_deduplication_keys"
     value {
       array_value {
         value {
@@ -372,10 +379,18 @@ object_value {
     }
   }
   field {
-    name: "aggregation_coordinator_identifier"
+    name: "aggregation_coordinator_origin"
     value {
       string_value {
-        value: "aws-cloud"
+        value: "https://publickeyservice.aws.privacysandboxservices.com"
+      }
+    }
+  }
+  field {
+    name: "aggregatable_source_registration_time"
+    value {
+      string_value {
+        value: "include"
       }
     }
   }

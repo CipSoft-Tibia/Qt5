@@ -27,12 +27,13 @@ static_library("utils") {
   ]
 
   sources = [
+    "BinarySemaphore.cpp",
+    "BinarySemaphore.h",
     "ComboRenderBundleEncoderDescriptor.cpp",
     "ComboRenderBundleEncoderDescriptor.h",
     "ComboRenderPipelineDescriptor.cpp",
     "ComboRenderPipelineDescriptor.h",
     "PlatformDebugLogger.h",
-    "ScopedAutoreleasePool.h",
     "SystemUtils.cpp",
     "SystemUtils.h",
     "TerribleCommandBuffer.cpp",
@@ -73,70 +74,15 @@ static_library("utils") {
       "ObjCUtils.mm",
     ]
     frameworks += [ "QuartzCore.framework" ]
+
+    # If a "build with ARC" config is present, remove it.
+    if (filter_include(configs, [ "//build/config/compiler:enable_arc" ]) !=
+        []) {
+      configs -= [ "//build/config/compiler:enable_arc" ]
+    }
   } else {
     sources += [ "PosixTimer.cpp" ]
   }
 
-  if (is_mac) {
-    sources += [ "ScopedAutoreleasePool.mm" ]
-  } else {
-    sources += [ "ScopedAutoreleasePool.cpp" ]
-  }
-
   public_deps = [ "${dawn_root}/include/dawn:cpp_headers" ]
-}
-
-###############################################################################
-# Dawn samples, only in standalone builds
-###############################################################################
-
-if (dawn_standalone) {
-  # Library to handle the interaction of Dawn with GLFW windows in samples
-  static_library("bindings") {
-    configs += [ "${dawn_root}/src/dawn/common:internal_config" ]
-
-    sources = [
-      "BackendBinding.cpp",
-      "BackendBinding.h",
-    ]
-
-    public_deps = [ "${dawn_root}/include/dawn:headers" ]
-
-    deps = [
-      "${dawn_root}/src/dawn/common",
-      "${dawn_root}/src/dawn/glfw",
-      "${dawn_root}/src/dawn/native",
-    ]
-    libs = []
-    frameworks = []
-
-    if (dawn_enable_d3d12) {
-      sources += [ "D3D12Binding.cpp" ]
-    }
-
-    if (dawn_enable_metal) {
-      sources += [ "MetalBinding.mm" ]
-      frameworks += [
-        "Metal.framework",
-        "QuartzCore.framework",
-      ]
-
-      # Suppress warnings that Metal isn't in the deployment target of Chrome
-      if (is_mac) {
-        cflags_objcc = [ "-Wno-unguarded-availability" ]
-      }
-    }
-
-    if (dawn_enable_null) {
-      sources += [ "NullBinding.cpp" ]
-    }
-
-    if (dawn_enable_opengl) {
-      sources += [ "OpenGLBinding.cpp" ]
-    }
-
-    if (dawn_enable_vulkan) {
-      sources += [ "VulkanBinding.cpp" ]
-    }
-  }
 }

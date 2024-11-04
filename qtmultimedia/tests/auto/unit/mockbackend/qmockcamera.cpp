@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qmockcamera.h"
 
@@ -32,12 +32,6 @@ void QMockCamera::setActive(bool active)
         return;
     m_active = active;
     emit activeChanged(active);
-}
-
-/* helper method to emit the signal error */
-void QMockCamera::setError(QCamera::Error err, QString errorString)
-{
-    emit error(err, errorString);
 }
 
 void QMockCamera::setCamera(const QCameraDevice &camera)

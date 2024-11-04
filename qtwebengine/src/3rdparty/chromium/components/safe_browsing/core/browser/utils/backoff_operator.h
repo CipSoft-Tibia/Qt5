@@ -34,12 +34,17 @@ class BackoffOperator {
   bool IsInBackoffMode() const;
 
   // Should be called by the consumer when a request fails. May initiate or
-  // extend backoff.
-  void ReportError();
+  // extend backoff. Returns whether backoff mode becomes enabled as a result of
+  // the call into this function.
+  bool ReportError();
 
   // Should be called by the consumer when the request succeeds. Resets error
   // count and ends backoff.
   void ReportSuccess();
+
+  // Gets the remaining duration in the backoff mode. Returns 0 if it is
+  // currently not in backoff mode.
+  base::TimeDelta GetBackoffRemainingDuration();
 
  private:
   // Returns the duration of the next backoff. Starts at
@@ -68,6 +73,9 @@ class BackoffOperator {
 
   // If this timer is running, backoff is in effect.
   base::OneShotTimer backoff_timer_;
+
+  // The last time when |backoff_timer_| starts to run.
+  base::Time last_backoff_start_time_;
 
   // The number of consecutive failures that trigger backoff mode.
   size_t num_failures_to_enforce_backoff_;

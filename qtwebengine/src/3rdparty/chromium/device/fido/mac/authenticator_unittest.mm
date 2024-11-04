@@ -5,8 +5,12 @@
 #include "device/fido/mac/authenticator.h"
 
 #include "base/test/task_environment.h"
+#include "base/test/with_feature_override.h"
+#include "device/fido/authenticator_get_assertion_response.h"
 #include "device/fido/ctap_get_assertion_request.h"
 #include "device/fido/discoverable_credential_metadata.h"
+#include "device/fido/features.h"
+#include "device/fido/fido_constants.h"
 #include "device/fido/fido_request_handler_base.h"
 #include "device/fido/fido_types.h"
 #include "device/fido/mac/authenticator_config.h"
@@ -23,6 +27,9 @@ namespace {
 using GetInfoCallback =
     test::TestCallbackReceiver<std::vector<DiscoverableCredentialMetadata>,
                                FidoRequestHandlerBase::RecognizedCredential>;
+using GetAssertionCallback = test::StatusAndValueCallbackReceiver<
+    CtapDeviceResponseCode,
+    std::vector<AuthenticatorGetAssertionResponse>>;
 
 constexpr char kRp1[] = "one.com";
 constexpr char kRp2[] = "two.com";
@@ -51,7 +58,8 @@ TEST_F(TouchIdAuthenticatorTest, GetPlatformCredentialInfoForRequest_RK) {
                             fido::mac::TouchIdCredentialStore::kDiscoverable)
           ->first;
   DiscoverableCredentialMetadata credential_metadata(
-      kRp1, credential.credential_id, std::move(user));
+      AuthenticatorType::kTouchID, kRp1, credential.credential_id,
+      std::move(user));
 
   // Inject a non resident credential for RP 2. This one should be ignored.
   PublicKeyCredentialUserEntity user2(kUserId2);
@@ -94,6 +102,9 @@ TEST_F(TouchIdAuthenticatorTest, GetPlatformCredentialInfoForRequest_NonRK) {
           .CreateCredential(kRp1, user,
                             fido::mac::TouchIdCredentialStore::kNonDiscoverable)
           ->first;
+  DiscoverableCredentialMetadata credential_metadata(
+      AuthenticatorType::kTouchID, kRp1, credential.credential_id,
+      std::move(user));
 
   {
     // RP 1 should report the credential if it is in the allow list but not
@@ -105,7 +116,8 @@ TEST_F(TouchIdAuthenticatorTest, GetPlatformCredentialInfoForRequest_NonRK) {
     authenticator_->GetPlatformCredentialInfoForRequest(
         std::move(request), CtapGetAssertionOptions(), callback.callback());
     callback.WaitForCallback();
-    EXPECT_TRUE(std::get<0>(*callback.result()).empty());
+    EXPECT_THAT(std::get<0>(*callback.result()),
+                testing::ElementsAre(credential_metadata));
     EXPECT_EQ(
         std::get<1>(*callback.result()),
         FidoRequestHandlerBase::RecognizedCredential::kHasRecognizedCredential);
@@ -138,6 +150,15 @@ TEST_F(TouchIdAuthenticatorTest, GetPlatformCredentialInfoForRequest_NonRK) {
         std::get<1>(*callback.result()),
         FidoRequestHandlerBase::RecognizedCredential::kNoRecognizedCredential);
   }
+}
+
+TEST_F(TouchIdAuthenticatorTest, GetAssertionEmpty) {
+  GetAssertionCallback callback;
+  CtapGetAssertionRequest request(kRp1, "{json: true}");
+  authenticator_->GetAssertion(std::move(request), CtapGetAssertionOptions(),
+                               callback.callback());
+  callback.WaitForCallback();
+  EXPECT_EQ(callback.status(), CtapDeviceResponseCode::kCtap2ErrNoCredentials);
 }
 
 }  // namespace

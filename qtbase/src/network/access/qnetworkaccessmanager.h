@@ -80,6 +80,8 @@ public:
 
     QNetworkReply *head(const QNetworkRequest &request);
     QNetworkReply *get(const QNetworkRequest &request);
+    QNetworkReply *get(const QNetworkRequest &request, QIODevice *data);
+    QNetworkReply *get(const QNetworkRequest &request, const QByteArray &data);
     QNetworkReply *post(const QNetworkRequest &request, QIODevice *data);
     QNetworkReply *post(const QNetworkRequest &request, const QByteArray &data);
     QNetworkReply *put(const QNetworkRequest &request, QIODevice *data);
@@ -110,7 +112,11 @@ public:
     void setAutoDeleteReplies(bool autoDelete);
 
     int transferTimeout() const;
-    void setTransferTimeout(int timeout = QNetworkRequest::DefaultTransferTimeoutConstant);
+    void setTransferTimeout(int timeout);
+
+    std::chrono::milliseconds transferTimeoutAsDuration() const;
+    void setTransferTimeout(std::chrono::milliseconds duration =
+                            QNetworkRequest::DefaultTransferTimeout);
 
 Q_SIGNALS:
 #ifndef QT_NO_NETWORKPROXY

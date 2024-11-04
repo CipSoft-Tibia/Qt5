@@ -60,7 +60,7 @@ QT_BEGIN_NAMESPACE
 #define INSTR_Yield(op) INSTRUCTION(op, Yield, 0)
 #define INSTR_YieldStar(op) INSTRUCTION(op, YieldStar, 0)
 #define INSTR_Resume(op) INSTRUCTION(op, Resume, 1, offset)
-#define INSTR_IteratorNextForYieldStar(op) INSTRUCTION(op, IteratorNextForYieldStar, 2, iterator, object)
+#define INSTR_IteratorNextForYieldStar(op) INSTRUCTION(op, IteratorNextForYieldStar, 3, iterator, object, offset)
 #define INSTR_StoreProperty(op) INSTRUCTION(op, StoreProperty, 2, name, base)
 #define INSTR_SetLookup(op) INSTRUCTION(op, SetLookup, 2, index, base)
 #define INSTR_LoadSuperProperty(op) INSTRUCTION(op, LoadSuperProperty, 1, property)
@@ -94,8 +94,8 @@ QT_BEGIN_NAMESPACE
 #define INSTR_PopScriptContext(op) INSTRUCTION(op, PopScriptContext, 0)
 #define INSTR_PopContext(op) INSTRUCTION(op, PopContext, 0)
 #define INSTR_GetIterator(op) INSTRUCTION(op, GetIterator, 1, iterator)
-#define INSTR_IteratorNext(op) INSTRUCTION(op, IteratorNext, 2, value, done)
-#define INSTR_IteratorClose(op) INSTRUCTION(op, IteratorClose, 1, done)
+#define INSTR_IteratorNext(op) INSTRUCTION(op, IteratorNext, 2, value, offset)
+#define INSTR_IteratorClose(op) INSTRUCTION(op, IteratorClose, 0)
 #define INSTR_DestructureRestElement(op) INSTRUCTION(op, DestructureRestElement, 0)
 #define INSTR_DeleteProperty(op) INSTRUCTION(op, DeleteProperty, 2, base, index)
 #define INSTR_DeleteName(op) INSTRUCTION(op, DeleteName, 1, name)
@@ -497,14 +497,22 @@ inline bool operator!=(const StackSlot &l, const StackSlot &r) { return l.stackS
 
 // When making changes to the instructions, make sure to bump QV4_DATA_STRUCTURE_VERSION in qv4compileddata_p.h
 
-void dumpBytecode(const char *bytecode, int len, int nLocals, int nFormals, int startLine = 1,
-                  const QVector<CompiledData::CodeOffsetToLineAndStatement> &lineAndStatementNumberMapping
-                        = QVector<CompiledData::CodeOffsetToLineAndStatement>());
-inline void dumpBytecode(const QByteArray &bytecode, int nLocals, int nFormals, int startLine = 1,
-                         const QVector<CompiledData::CodeOffsetToLineAndStatement> &lineAndStatementNumberMapping
-                            = QVector<CompiledData::CodeOffsetToLineAndStatement>()) {
-    dumpBytecode(bytecode.constData(), bytecode.size(), nLocals, nFormals, startLine,
-                 lineAndStatementNumberMapping);
+Q_QML_PRIVATE_EXPORT
+QString dumpBytecode(
+        const char *bytecode, int len, int nLocals, int nFormals, int beginOffset, int endOffset,
+        const QVector<CompiledData::CodeOffsetToLineAndStatement> &lineAndStatementNumberMapping =
+                QVector<CompiledData::CodeOffsetToLineAndStatement>());
+QString dumpBytecode(
+        const char *bytecode, int len, int nLocals, int nFormals, int startLine = 1,
+        const QVector<CompiledData::CodeOffsetToLineAndStatement> &lineAndStatementNumberMapping =
+                QVector<CompiledData::CodeOffsetToLineAndStatement>());
+inline QString dumpBytecode(
+        const QByteArray &bytecode, int nLocals, int nFormals, int startLine = 1,
+        const QVector<CompiledData::CodeOffsetToLineAndStatement> &lineAndStatementNumberMapping =
+                QVector<CompiledData::CodeOffsetToLineAndStatement>())
+{
+    return dumpBytecode(bytecode.constData(), bytecode.size(), nLocals, nFormals, startLine,
+                        lineAndStatementNumberMapping);
 }
 
 union Instr

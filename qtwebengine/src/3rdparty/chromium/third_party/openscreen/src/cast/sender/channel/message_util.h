@@ -1,16 +1,17 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CAST_SENDER_CHANNEL_MESSAGE_UTIL_H_
 #define CAST_SENDER_CHANNEL_MESSAGE_UTIL_H_
 
+#include <string>
+
 #include "cast/common/channel/message_util.h"
 #include "cast/common/channel/proto/cast_channel.pb.h"
 #include "platform/base/error.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class AuthContext;
 
@@ -23,7 +24,6 @@ ErrorOr<::cast::channel::CastMessage> CreateAppAvailabilityRequest(
     int request_id,
     const std::string& app_id);
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_SENDER_CHANNEL_MESSAGE_UTIL_H_

@@ -45,6 +45,7 @@
 #include "url/origin.h"
 
 #if !BUILDFLAG(IS_ANDROID)
+#include "third_party/blink/public/mojom/direct_sockets/direct_sockets.mojom-forward.h"
 #include "third_party/blink/public/mojom/serial/serial.mojom-forward.h"
 #endif
 
@@ -125,6 +126,10 @@ class DedicatedWorkerHost final
       mojo::PendingReceiver<blink::mojom::IdleManager> receiver);
   void CreateNestedDedicatedWorker(
       mojo::PendingReceiver<blink::mojom::DedicatedWorkerHostFactory> receiver);
+#if !BUILDFLAG(IS_ANDROID)
+  void CreateDirectSocketsService(
+      mojo::PendingReceiver<blink::mojom::DirectSocketsService> receiver);
+#endif
   void CreateWebUsbService(
       mojo::PendingReceiver<blink::mojom::WebUsbService> receiver);
   void CreateWebSocketConnector(
@@ -206,8 +211,10 @@ class DedicatedWorkerHost final
   // blink::mojom::BackForwardCacheControllerHost:
   void EvictFromBackForwardCache(
       blink::mojom::RendererEvictionReason reason) override;
+  using BackForwardCacheBlockingDetails =
+      std::vector<blink::mojom::BlockingDetailsPtr>;
   void DidChangeBackForwardCacheDisablingFeatures(
-      uint64_t features_mask) override;
+      BackForwardCacheBlockingDetails details) override;
 
   // BucketContext:
   blink::StorageKey GetBucketStorageKey() override;
@@ -226,6 +233,9 @@ class DedicatedWorkerHost final
   blink::scheduler::WebSchedulerTrackedFeatures
   GetBackForwardCacheDisablingFeatures() const;
 
+  const BackForwardCacheBlockingDetails& GetBackForwardCacheBlockingDetails()
+      const;
+
   base::WeakPtr<ServiceWorkerContainerHost> GetServiceWorkerContainerHost();
 
   mojo::PendingRemote<blink::mojom::BackForwardCacheControllerHost>
@@ -239,6 +249,7 @@ class DedicatedWorkerHost final
   // RenderProcessHostObserver:
   void RenderProcessExited(RenderProcessHost* render_process_host,
                            const ChildProcessTerminationInfo& info) override;
+  void InProcessRendererExiting(RenderProcessHost* host) override;
   void RenderProcessHostDestroyed(RenderProcessHost* host) override;
 
   // Called from `WorkerScriptFetcher`. Continues starting the dedicated worker
@@ -411,7 +422,7 @@ class DedicatedWorkerHost final
   // JavaScript / WebAssembly resources.
   CodeCacheHostImpl::ReceiverSet code_cache_host_receivers_;
 
-  blink::scheduler::WebSchedulerTrackedFeatures bfcache_disabling_features_;
+  BackForwardCacheBlockingDetails bfcache_blocking_details_;
 
   base::WeakPtrFactory<DedicatedWorkerHost> weak_factory_{this};
 };

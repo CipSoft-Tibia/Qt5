@@ -15,8 +15,9 @@ namespace net {
 
 SiteForCookies::SiteForCookies() = default;
 
-SiteForCookies::SiteForCookies(const SchemefulSite& site)
-    : site_(site), schemefully_same_(!site.opaque()) {
+SiteForCookies::SiteForCookies(const SchemefulSite& site, const GURL first_party_url)
+    : site_(site), schemefully_same_(!site.opaque())
+    , first_party_url_(first_party_url) {
   site_.ConvertWebSocketToHttp();
 }
 

@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -167,7 +167,8 @@ void tst_QIntValidator::validateFrench()
     int i;
     // Grouping separator is a narrow no-break space; QLocale accepts a space as it.
     QString s = QLatin1String("1 ");
-    QCOMPARE(validator.validate(s, i), QValidator::Acceptable);
+    // Shouldn't end with a group separator
+    QCOMPARE(validator.validate(s, i), QValidator::Intermediate);
     validator.fixup(s);
     QCOMPARE(s, s);
 

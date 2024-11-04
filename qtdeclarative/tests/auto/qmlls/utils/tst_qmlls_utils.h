@@ -1,5 +1,5 @@
 // Copyright (C) 2023 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef TST_QMLLS_UTILS_H
 #define TST_QMLLS_UTILS_H
@@ -23,6 +23,17 @@ using namespace Qt::StringLiterals;
 class tst_qmlls_utils : public QQmlDataTest
 {
     Q_OBJECT
+
+    struct ExpectedCompletion
+    {
+        QString label;
+        QLspSpecification::CompletionItemKind kind;
+        QString snippet = {};
+    };
+    using ExpectedCompletions = QList<ExpectedCompletion>;
+
+    using ExpectedDocumentation = std::tuple<QString, QString, QString>;
+    using ExpectedDocumentations = QList<ExpectedDocumentation>;
 
 public:
     tst_qmlls_utils() : QQmlDataTest(QT_QMLLS_UTILS_DATADIR) { }
@@ -49,15 +60,29 @@ private slots:
     void findUsages();
     void findUsages_data();
 
+    void renameUsages();
+    void renameUsages_data();
+
+    void resolveExpressionType();
+    void resolveExpressionType_data();
+
+    void isValidEcmaScriptIdentifier();
+    void isValidEcmaScriptIdentifier_data();
+
+    void completions_data();
+    void completions();
+
+    void cmakeBuildCommand();
+
 private:
     using EnvironmentAndFile = std::tuple<QQmlJS::Dom::DomItem, QQmlJS::Dom::DomItem>;
 
-    EnvironmentAndFile createEnvironmentAndLoadFile(const QString &file,
-                                                    QQmlJS::Dom::DomCreationOptions options);
+    EnvironmentAndFile createEnvironmentAndLoadFile(const QString &file);
 
-    using CacheKey = std::pair<QString, QQmlJS::Dom::DomCreationOptions>;
+    using CacheKey = QString;
     // avoid loading the same file over and over when running all the tests
     QHash<CacheKey, EnvironmentAndFile> cache;
+
 };
 
 #endif // TST_QMLLS_UTILS_H

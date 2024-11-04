@@ -16,6 +16,8 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_update_manager.h"
+#include "chrome/browser/web_applications/locks/web_app_lock_manager.h"
 #include "chrome/browser/web_applications/preinstalled_web_app_manager.h"
 #include "chrome/browser/web_applications/web_app.h"
 #include "chrome/browser/web_applications/web_app_command_manager.h"
@@ -31,6 +33,15 @@
 #include "chrome/browser/web_applications/app_shim_registry_mac.h"
 #endif
 
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/profiles/profile_attributes_storage.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "content/public/browser/browser_thread.h"
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
+
 namespace {
 
 // New fields must be added to BuildIndexJson().
@@ -38,7 +49,12 @@ constexpr char kInstalledWebApps[] = "InstalledWebApps";
 constexpr char kPreinstalledWebAppConfigs[] = "PreinstalledWebAppConfigs";
 constexpr char kUserUninstalledPreinstalledWebAppPrefs[] =
     "UserUninstalledPreinstalledWebAppPrefs";
-constexpr char kExternallyManagedWebAppPrefs[] = "ExternallyManagedWebAppPrefs";
+constexpr char kWebAppPreferences[] = "WebAppPreferences";
+constexpr char kWebAppIphPreferences[] = "WebAppIphPreferences";
+constexpr char kWebAppMlPreferences[] = "WebAppMlPreferences";
+constexpr char kShouldGarbageCollectStoragePartitions[] =
+    "ShouldGarbageCollectStoragePartitions";
+constexpr char kLockManager[] = "LockManager";
 constexpr char kCommandManager[] = "CommandManager";
 constexpr char kIconErrorLog[] = "IconErrorLog";
 constexpr char kInstallationProcessErrorLog[] = "InstallationProcessErrorLog";
@@ -46,6 +62,9 @@ constexpr char kInstallationProcessErrorLog[] = "InstallationProcessErrorLog";
 constexpr char kAppShimRegistryLocalStorage[] = "AppShimRegistryLocalStorage";
 #endif
 constexpr char kWebAppDirectoryDiskState[] = "WebAppDirectoryDiskState";
+#if BUILDFLAG(IS_CHROMEOS)
+constexpr char kIsolatedWebAppUpdateManager[] = "IsolatedWebAppUpdateManager";
+#endif
 
 constexpr char kNeedsRecordWebAppDebugInfo[] =
     "No debugging info available! Please enable: "
@@ -65,12 +84,19 @@ base::Value::Dict BuildIndexJson() {
   index.Append(kInstalledWebApps);
   index.Append(kPreinstalledWebAppConfigs);
   index.Append(kUserUninstalledPreinstalledWebAppPrefs);
-  index.Append(kExternallyManagedWebAppPrefs);
+  index.Append(kWebAppPreferences);
+  index.Append(kWebAppIphPreferences);
+  index.Append(kWebAppMlPreferences);
+  index.Append(kShouldGarbageCollectStoragePartitions);
+  index.Append(kLockManager);
   index.Append(kCommandManager);
   index.Append(kIconErrorLog);
   index.Append(kInstallationProcessErrorLog);
 #if BUILDFLAG(IS_MAC)
   index.Append(kAppShimRegistryLocalStorage);
+#endif
+#if BUILDFLAG(IS_CHROMEOS)
+  index.Append(kIsolatedWebAppUpdateManager);
 #endif
   index.Append(kWebAppDirectoryDiskState);
 
@@ -79,41 +105,7 @@ base::Value::Dict BuildIndexJson() {
 
 base::Value::Dict BuildInstalledWebAppsJson(web_app::WebAppProvider& provider) {
   base::Value::Dict root;
-
-  base::Value::Dict& installed_web_apps = *root.EnsureDict(kInstalledWebApps);
-
-  std::vector<const web_app::WebApp*> web_apps;
-  for (const web_app::WebApp& web_app :
-       provider.registrar_unsafe().GetAppsIncludingStubs()) {
-    web_apps.push_back(&web_app);
-  }
-  base::ranges::sort(web_apps, {}, &web_app::WebApp::untranslated_name);
-
-  // Prefix with a ! so this appears at the top when serialized.
-  base::Value::Dict& index = *installed_web_apps.EnsureDict("!Index");
-  for (const web_app::WebApp* web_app : web_apps) {
-    const std::string& key = web_app->untranslated_name();
-    base::Value* existing_entry = index.Find(key);
-    if (!existing_entry) {
-      index.Set(key, web_app->app_id());
-      continue;
-    }
-    // If any web apps share identical names then collect a list of app IDs.
-    const std::string* existing_id = existing_entry->GetIfString();
-    if (existing_id) {
-      base::Value::List id_list;
-      id_list.Append(*existing_id);
-      index.Set(key, std::move(id_list));
-    }
-    index.FindList(key)->Append(web_app->app_id());
-  }
-
-  base::Value::List& web_app_details =
-      *installed_web_apps.EnsureList("Details");
-  for (const web_app::WebApp* web_app : web_apps) {
-    web_app_details.Append(web_app->AsDebugValue());
-  }
-
+  root.Set(kInstalledWebApps, provider.registrar_unsafe().AsDebugValue());
   return root;
 }
 
@@ -183,13 +175,6 @@ base::Value::Dict BuildPreinstalledWebAppConfigsJson(
   return root;
 }
 
-base::Value::Dict BuildExternallyManagedWebAppPrefsJson(Profile* profile) {
-  base::Value::Dict root;
-  root.Set(kExternallyManagedWebAppPrefs,
-           profile->GetPrefs()->GetDict(prefs::kWebAppsExtensionIDs).Clone());
-  return root;
-}
-
 base::Value::Dict BuildUserUninstalledPreinstalledWebAppPrefsJson(
     Profile* profile) {
   base::Value::Dict root;
@@ -197,6 +182,45 @@ base::Value::Dict BuildUserUninstalledPreinstalledWebAppPrefsJson(
            profile->GetPrefs()
                ->GetDict(prefs::kUserUninstalledPreinstalledWebAppPref)
                .Clone());
+  return root;
+}
+
+base::Value::Dict BuildWebAppsPrefsJson(Profile* profile) {
+  base::Value::Dict root;
+  root.Set(kWebAppPreferences,
+           profile->GetPrefs()->GetDict(prefs::kWebAppsPreferences).Clone());
+  return root;
+}
+
+base::Value::Dict BuildWebAppIphPrefsJson(Profile* profile) {
+  base::Value::Dict root;
+  root.Set(
+      kWebAppIphPreferences,
+      profile->GetPrefs()->GetDict(prefs::kWebAppsAppAgnosticIphState).Clone());
+  return root;
+}
+
+base::Value::Dict BuildWebAppMlPrefsJson(Profile* profile) {
+  base::Value::Dict root;
+  root.Set(
+      kWebAppMlPreferences,
+      profile->GetPrefs()->GetDict(prefs::kWebAppsAppAgnosticMlState).Clone());
+  return root;
+}
+
+base::Value::Dict BuildShouldGarbageCollectStoragePartitionsPrefsJson(
+    Profile* profile) {
+  base::Value::Dict root;
+  root.Set(kShouldGarbageCollectStoragePartitions,
+           profile->GetPrefs()->GetBoolean(
+               prefs::kShouldGarbageCollectStoragePartitions));
+  return root;
+}
+
+base::Value::Dict BuildLockManagerJson(web_app::WebAppProvider& provider) {
+  base::Value::Dict root;
+  root.Set(kLockManager,
+           provider.command_manager().lock_manager().ToDebugValue());
   return root;
 }
 
@@ -255,6 +279,15 @@ base::Value::Dict BuildAppShimRegistryLocalStorageJson() {
 }
 #endif
 
+#if BUILDFLAG(IS_CHROMEOS)
+base::Value BuildIsolatedWebAppUpdaterManagerJson(
+    web_app::WebAppProvider& provider) {
+  return base::Value(
+      base::Value::Dict().Set(kIsolatedWebAppUpdateManager,
+                              provider.iwa_update_manager().AsDebugValue()));
+}
+#endif
+
 void BuildDirectoryState(base::FilePath file_or_folder,
                          base::Value::Dict* folder) {
   base::File::Info info;
@@ -293,6 +326,36 @@ base::Value BuildWebAppDiskStateJson(base::FilePath root_directory,
   return base::Value(std::move(root));
 }
 
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+class ObliterateStoragePartitionHelper
+    : public base::RefCountedThreadSafe<ObliterateStoragePartitionHelper> {
+ public:
+  using Callback = mojom::WebAppInternalsHandler::
+      ClearExperimentalWebAppIsolationDataCallback;
+
+  explicit ObliterateStoragePartitionHelper(Callback callback)
+      : callback_{std::move(callback)} {}
+
+  void OnGcRequired() {
+    CHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI));
+    CHECK(!callback_.is_null()) << "OnDone() is called before OnGcRequired";
+    gc_required_ = true;
+  }
+
+  void OnDone() {
+    CHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI));
+    std::move(callback_).Run(!gc_required_);
+  }
+
+ private:
+  friend class base::RefCountedThreadSafe<ObliterateStoragePartitionHelper>;
+  ~ObliterateStoragePartitionHelper() = default;
+
+  Callback callback_;
+  bool gc_required_ = false;
+};
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
+
 }  // namespace
 
 // static
@@ -306,12 +369,19 @@ void WebAppInternalsHandler::BuildDebugInfo(
   root.Append(BuildInstalledWebAppsJson(*provider));
   root.Append(BuildPreinstalledWebAppConfigsJson(*provider));
   root.Append(BuildUserUninstalledPreinstalledWebAppPrefsJson(profile));
-  root.Append(BuildExternallyManagedWebAppPrefsJson(profile));
+  root.Append(BuildWebAppsPrefsJson(profile));
+  root.Append(BuildWebAppIphPrefsJson(profile));
+  root.Append(BuildWebAppMlPrefsJson(profile));
+  root.Append(BuildShouldGarbageCollectStoragePartitionsPrefsJson(profile));
+  root.Append(BuildLockManagerJson(*provider));
   root.Append(BuildCommandManagerJson(*provider));
   root.Append(BuildIconErrorLogJson(*provider));
   root.Append(BuildInstallProcessErrorLogJson(*provider));
 #if BUILDFLAG(IS_MAC)
   root.Append(BuildAppShimRegistryLocalStorageJson());
+#endif
+#if BUILDFLAG(IS_CHROMEOS)
+  root.Append(BuildIsolatedWebAppUpdaterManagerJson(*provider));
 #endif
   base::ThreadPool::PostTaskAndReplyWithResult(
       FROM_HERE, {base::TaskPriority::USER_VISIBLE, base::MayBlock()},
@@ -343,3 +413,75 @@ void WebAppInternalsHandler::GetDebugInfoAsJsonString(
       base::BindOnce(&WebAppInternalsHandler::BuildDebugInfo, profile_,
                      std::move(value_to_string).Then(std::move(callback))));
 }
+
+void WebAppInternalsHandler::InstallIsolatedWebAppFromDevProxy(
+    const GURL& url,
+    InstallIsolatedWebAppFromDevProxyCallback callback) {
+  if (!web_app::AreWebAppsEnabled(profile_)) {
+    ::mojom::InstallIsolatedWebAppFromDevProxyResult mojo_result;
+    mojo_result.success = false;
+    mojo_result.error = std::string("web apps not enabled");
+    std::move(callback).Run(mojo_result.Clone());
+    return;
+  }
+
+  auto* provider = web_app::WebAppProvider::GetForWebApps(profile_);
+  if (!provider) {
+    ::mojom::InstallIsolatedWebAppFromDevProxyResult mojo_result;
+    mojo_result.success = false;
+    mojo_result.error = std::string("could not get web app provider");
+    std::move(callback).Run(mojo_result.Clone());
+    return;
+  }
+
+  auto& manager = provider->isolated_web_app_installation_manager();
+  manager.InstallIsolatedWebAppFromDevModeProxy(
+      url, base::BindOnce(
+               &WebAppInternalsHandler::OnInstallIsolatedWebAppFromDevModeProxy,
+               weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
+}
+
+void WebAppInternalsHandler::OnInstallIsolatedWebAppFromDevModeProxy(
+    WebAppInternalsHandler::InstallIsolatedWebAppFromDevProxyCallback callback,
+    web_app::IsolatedWebAppInstallationManager::
+        MaybeInstallIsolatedWebAppCommandSuccess result) {
+  ::mojom::InstallIsolatedWebAppFromDevProxyResult mojo_result;
+  if (result.has_value()) {
+    mojo_result.success = true;
+  } else {
+    mojo_result.success = false;
+    mojo_result.error = result.error();
+  }
+  std::move(callback).Run(mojo_result.Clone());
+}
+
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+void WebAppInternalsHandler::ClearExperimentalWebAppIsolationData(
+    ClearExperimentalWebAppIsolationDataCallback callback) {
+  CHECK(web_app::ResolveExperimentalWebAppIsolationFeature() !=
+        web_app::ExperimentalWebAppIsolationMode::kDisabled);
+
+  // Remove app profiles.
+  auto* profile_manager = g_browser_process->profile_manager();
+  for (auto* profile_entry : profile_manager->GetProfileAttributesStorage()
+                                 .GetAllProfilesAttributes()) {
+    auto path = profile_entry->GetPath();
+    if (Profile::IsWebAppProfilePath(path)) {
+      profile_manager->GetDeleteProfileHelper().MaybeScheduleProfileForDeletion(
+          path, base::DoNothing(),
+          ProfileMetrics::ProfileDelete::DELETE_PROFILE_USER_MANAGER);
+    }
+  }
+
+  // Remove app storage partitions.
+  auto helper = base::MakeRefCounted<ObliterateStoragePartitionHelper>(
+      std::move(callback));
+  // It is a bit hard to work with AsyncObliterate...() since it takes two
+  // separate callbacks. It is probably better to change it to only take a
+  // "done" callback which has a "gc_required" param.
+  profile_->AsyncObliterateStoragePartition(
+      web_app::kExperimentalWebAppStorageParitionDomain,
+      base::BindOnce(&ObliterateStoragePartitionHelper::OnGcRequired, helper),
+      base::BindOnce(&ObliterateStoragePartitionHelper::OnDone, helper));
+}
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)

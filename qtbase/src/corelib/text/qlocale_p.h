@@ -25,12 +25,23 @@
 #include <QtCore/qstring.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qvarlengtharray.h>
+#ifdef Q_OS_WASM
+#include <private/qstdweb_p.h>
+#endif
 
 #include <limits>
 #include <cmath>
 #include <string_view>
 
 QT_BEGIN_NAMESPACE
+
+template <typename T> struct QSimpleParsedNumber
+{
+    T result;
+    // When used < 0, -used is how much was used, but it was an error.
+    qsizetype used;
+    bool ok() const { return used > 0; }
+};
 
 template <typename MaskType, uchar Lowest> struct QCharacterSetMatch
 {
@@ -94,7 +105,9 @@ struct QLocaleData;
 // Subclassed by Android platform plugin:
 class Q_CORE_EXPORT QSystemLocale
 {
+    Q_DISABLE_COPY_MOVE(QSystemLocale)
     QSystemLocale *next = nullptr; // Maintains a stack.
+
 public:
     QSystemLocale();
     virtual ~QSystemLocale();
@@ -157,7 +170,7 @@ public:
         StandaloneDayNameShort, // QString, in: int
         StandaloneDayNameNarrow // QString, in: int
     };
-    virtual QVariant query(QueryType type, QVariant in = QVariant()) const;
+    virtual QVariant query(QueryType type, QVariant &&in = QVariant()) const;
 
     virtual QLocale fallbackLocale() const;
     inline qsizetype fallbackLocaleIndex() const;
@@ -213,6 +226,18 @@ Q_DECLARE_TYPEINFO(QLocaleId, Q_PRIMITIVE_TYPE);
 
 
 using CharBuff = QVarLengthArray<char, 256>;
+
+struct ParsingResult
+{
+    enum State { // A duplicate of QValidator::State
+        Invalid,
+        Intermediate,
+        Acceptable
+    };
+
+    State state = Invalid;
+    CharBuff buff;
+};
 
 struct QLocaleData
 {
@@ -301,15 +326,16 @@ public:
 
     [[nodiscard]] double stringToDouble(QStringView str, bool *ok,
                                         QLocale::NumberOptions options) const;
-    [[nodiscard]] qint64 stringToLongLong(QStringView str, int base, bool *ok,
-                                          QLocale::NumberOptions options) const;
-    [[nodiscard]] quint64 stringToUnsLongLong(QStringView str, int base, bool *ok,
-                                              QLocale::NumberOptions options) const;
+    [[nodiscard]] QSimpleParsedNumber<qint64>
+    stringToLongLong(QStringView str, int base, QLocale::NumberOptions options) const;
+    [[nodiscard]] QSimpleParsedNumber<quint64>
+    stringToUnsLongLong(QStringView str, int base, QLocale::NumberOptions options) const;
 
     // this function is used in QIntValidator (QtGui)
-    [[nodiscard]] Q_CORE_EXPORT static qint64 bytearrayToLongLong(QByteArrayView num, int base,
-                                                                  bool *ok);
-    [[nodiscard]] static quint64 bytearrayToUnsLongLong(QByteArrayView num, int base, bool *ok);
+    [[nodiscard]] Q_CORE_EXPORT
+    static QSimpleParsedNumber<qint64> bytearrayToLongLong(QByteArrayView num, int base);
+    [[nodiscard]] static QSimpleParsedNumber<quint64>
+    bytearrayToUnsLongLong(QByteArrayView num, int base);
 
     [[nodiscard]] bool numberToCLocale(QStringView s, QLocale::NumberOptions number_options,
                                        NumberMode mode, CharBuff *result) const;
@@ -361,9 +387,9 @@ public:
     [[nodiscard]] inline NumericData numericData(NumberMode mode) const;
 
     // this function is used in QIntValidator (QtGui)
-    [[nodiscard]] Q_CORE_EXPORT bool validateChars(
-            QStringView str, NumberMode numMode, QByteArray *buff, int decDigits = -1,
-            QLocale::NumberOptions number_options = QLocale::DefaultNumberOptions) const;
+    [[nodiscard]] Q_CORE_EXPORT ParsingResult
+    validateChars(QStringView str, NumberMode numMode, int decDigits = -1,
+                  QLocale::NumberOptions number_options = QLocale::DefaultNumberOptions) const;
 
     // Access to assorted data members:
     [[nodiscard]] QLocaleId id() const
@@ -511,7 +537,7 @@ public:
     // System locale has an m_data all its own; all others have m_data = locale_data + m_index
     const QLocaleData *const m_data;
     QBasicAtomicInt ref;
-    const qsizetype m_index;
+    qsizetype m_index; // System locale needs this updated when m_data->id() changes.
     QLocale::NumberOptions m_numberOptions;
 
     static QBasicAtomicInt s_generation;

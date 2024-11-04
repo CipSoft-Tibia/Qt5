@@ -43,6 +43,7 @@
     margin: 6px auto;
     min-height: 103px;
     width: var(--downloads-card-width);
+    max-width: calc(100% - 2 * var(--downloads-card-margin));
   }
 
   #content.is-active {
@@ -122,13 +123,6 @@
     overflow: hidden;  /* Reduces file icon flicker on initial load. */
   }
 
-  #content:-webkit-any(.show-progress, .dangerous) #file-icon-wrapper {
-    /* TODO(dbeam): animate from top-aligned to centered when items finish?
-     */
-    align-self: flex-start;
-    padding-top: 16px;
-  }
-
   #content:not(.is-active) .icon {
     -webkit-filter: grayscale(100%);
     opacity: .5;
@@ -175,8 +169,12 @@
   }
 
   @media (prefers-color-scheme: light) {
-    .is-active :-webkit-any(#name, #file-link, #show) {
+    .is-active :-webkit-any(#file-link, #show) {
       color: var(--google-blue-600);
+    }
+
+    .is-active #name {
+      color: var(--cr-primary-text-color);
     }
   }
 
@@ -205,13 +203,13 @@
   }
 
   #progress,
-  #description:not(:empty),
+  .description:not(:empty),
   .controls {
     margin-top: 16px;
   }
 
   @media (prefers-color-scheme: light) {
-    .is-active #description {
+    .is-active .description {
       color: #616161;
     }
   }
@@ -297,9 +295,9 @@
   <div id="file-icon-wrapper" class="icon-wrapper" aria-hidden="true">
     <img class="icon" id="file-icon" alt="" hidden="[[!useFileIcon_]]"
     icon-color$="[[computeIconColor_(isDangerous_, data.dangerType,
-    useFileIcon_)]]">
+    useFileIcon_, updateDeepScanningUx_)]]">
     <iron-icon class="icon" icon$="[[computeIcon_(
-        isDangerous_, data.dangerType, useFileIcon_)]]"
+        isDangerous_, data.dangerType, useFileIcon_, updateDeepScanningUx_)]]"
         hidden="[[useFileIcon_]]" icon-color$="[[computeIconColor_(isDangerous_,
         data.dangerType, useFileIcon_)]]"></iron-icon>
   </div>
@@ -307,50 +305,58 @@
   <div id="details">
     <div id="title-area" role="gridcell"><!--
       Can't have any line breaks.
-      --><a is="action-link" id="file-link" href="[[data.url]]"
-          on-click="onFileLinkTap_" focus-row-control
+      --><a is="action-link" id="file-link" href="[[data.url.url]]"
+          on-click="onFileLinkClick_" focus-row-control
           focus-type="fileLink"
-          hidden="[[!completelyOnDisk_]]">[[data.fileName]]</a><!--
+          hidden="[[!shouldLinkFilename_]]">[[data.fileName]]</a><!--
       Before #name.
       --><span id="name"
-          hidden="[[completelyOnDisk_]]">[[data.fileName]]</span>
+          hidden="[[shouldLinkFilename_]]">[[data.fileName]]</span>
       <span id="tag">[[computeTag_(data.state,
                                    data.lastReasonText,
                                    data.fileExternallyRemoved)]]</span>
     </div>
 
     <div role="gridcell">
-      <a id="url" target="_blank" on-click="onUrlTap_" focus-row-control
-          focus-type="url">[[chopUrl_(data.url)]]</a>
+      <a id="url" target="_blank" on-click="onUrlClick_" focus-row-control
+          focus-type="url">[[getDisplayUrlStr_(data.displayUrl)]]</a>
     </div>
 
-    <div id="description" role="gridcell"
+    <div class="description" role="gridcell"
         hidden$="[[!computeDescriptionVisible_(data.*)]]">
       [[computeDescription_(
           data.state,
           data.dangerType,
           data.fileName,
-          data.progressStatusText)]]
+          data.progressStatusText,
+          updateDeepScanningUx_)]]
+    </div>
+
+    <div class="description" role="gridcell"
+        hidden="[[!computeSecondLineVisible_(data.state,
+        updateDeepScanningUx_)]]">
+      $i18n{asyncScanningDownloadDescSecond}
     </div>
 
     <template is="dom-if" if="[[showProgress_]]">
       <div role="gridcell">
         <paper-progress id="progress"
-            indeterminate="[[isIndeterminate_(data.percent)]]"
-            value="[[data.percent]]"></paper-progress>
+            indeterminate="[[isIndeterminate_(data.percent,
+            updateDeepScanningUx_)]]" value="[[data.percent]]">
+        </paper-progress>
       </div>
     </template>
 
     <div id="safe" class="controls" hidden="[[isDangerous_]]">
       <span role="gridcell" hidden="[[!hasShowInFolderLink_]]">
-        <a is="action-link" id="show" on-click="onShowTap_"
+        <a is="action-link" id="show" on-click="onShowClick_"
             focus-row-control
             focus-type="show"
             title="[[data.filePath]]">[[data.showInFolderText]]</a>
       </span>
       <template is="dom-if" if="[[data.retry]]">
         <span role="gridcell">
-          <cr-button class="action-button" on-click="onRetryTap_"
+          <cr-button class="action-button" on-click="onRetryClick_"
               focus-row-control focus-type="retry">
             $i18n{controlRetry}
           </cr-button>
@@ -358,7 +364,7 @@
       </template>
       <template is="dom-if" if="[[pauseOrResumeText_]]">
         <span role="gridcell">
-          <cr-button on-click="onPauseOrResumeTap_" id="pauseOrResume"
+          <cr-button on-click="onPauseOrResumeClick_" id="pauseOrResume"
               focus-row-control focus-type="pauseOrResume">
             [[pauseOrResumeText_]]
           </cr-button>
@@ -366,7 +372,7 @@
       </template>
       <template is="dom-if" if="[[showOpenNow_]]" restamp>
         <span role="gridcell">
-          <cr-button on-click="onOpenNowTap_" id="openNow" class="action-button"
+          <cr-button on-click="onOpenNowClick_" id="openNow" class="action-button"
                      focus-row-control focus-type="open">
             $i18n{controlOpenNow}
           </cr-button>
@@ -374,13 +380,13 @@
       </template>
       <template is="dom-if" if="[[showDeepScan_]]" restamp>
         <span role="gridcell">
-          <cr-button on-click="onDeepScanTap_" id="deepScan"
+          <cr-button on-click="onDeepScanClick_" id="deepScan"
                      class="action-button" focus-row-control focus-type="open">
             $i18n{controlDeepScan}
           </cr-button>
         </span>
         <span role="gridcell">
-          <cr-button on-click="onBypassDeepScanTap_" id="bypassDeepScan"
+          <cr-button on-click="onBypassDeepScanClick_" id="bypassDeepScan"
                      focus-row-control focus-type="open">
             $i18n{controlBypassDeepScan}
           </cr-button>
@@ -388,9 +394,17 @@
       </template>
       <template is="dom-if" if="[[showCancel_]]">
         <span role="gridcell">
-          <cr-button on-click="onCancelTap_" focus-row-control
+          <cr-button on-click="onCancelClick_" focus-row-control
               focus-type="cancel">
             $i18n{controlCancel}
+          </cr-button>
+        </span>
+      </template>
+      <template is="dom-if" if="[[showOpenAnyway_]]">
+        <span role="gridcell">
+          <cr-button on-click="onOpenAnywayClick_" id="openAnyway"
+              focus-row-control focus-type="open">
+            $i18n{controlOpenAnyway}
           </cr-button>
         </span>
       </template>
@@ -402,12 +416,12 @@
         <!-- Files that enterprise policies allow to be reviewed. -->
         <template is="dom-if" if="[[isReviewable_]]">
             <span role="gridcell">
-              <cr-button on-click="onDiscardDangerousTap_"
+              <cr-button on-click="onDiscardDangerousClick_"
                   class="action-button" focus-row-control
                   focus-type="discard">$i18n{dangerDiscard}</cr-button>
             </span>
             <span role="gridcell">
-              <cr-button on-click="onReviewDangerousTap_" focus-row-control
+              <cr-button on-click="onReviewDangerousClick_" focus-row-control
                   focus-type="save">
                 $i18n{dangerReview}</cr-button>
             </span>
@@ -417,12 +431,12 @@
           <!-- Dangerous file types (e.g. .exe, .jar). -->
           <template is="dom-if" if="[[!isMalware_]]">
             <span role="gridcell">
-              <cr-button on-click="onDiscardDangerousTap_"
+              <cr-button on-click="onDiscardDangerousClick_"
                   class="action-button" focus-row-control
                   focus-type="discard">$i18n{dangerDiscard}</cr-button>
             </span>
             <span role="gridcell">
-              <cr-button on-click="onSaveDangerousTap_" focus-row-control
+              <cr-button on-click="onSaveDangerousClick_" focus-row-control
                   focus-type="save">
                 $i18n{dangerSave}</cr-button>
             </span>
@@ -431,13 +445,13 @@
           <!-- Things that safe browsing has determined to be dangerous. -->
           <template is="dom-if" if="[[isMalware_]]">
             <span role="gridcell">
-              <cr-button on-click="onDiscardDangerousTap_"
+              <cr-button on-click="onDiscardDangerousClick_"
                   class="action-button"
                   focus-row-control focus-type="discard">
                 $i18n{controlRemoveFromList}</cr-button>
             </span>
             <span role="gridcell">
-              <cr-button on-click="onSaveDangerousTap_" focus-row-control
+              <cr-button on-click="onSaveDangerousClick_" focus-row-control
                   focus-type="save">
                 $i18n{dangerRestore}</cr-button>
             </span>
@@ -452,7 +466,7 @@
           style$="[[computeRemoveStyle_(isDangerous_, showCancel_)]]"
           id="remove" title="$i18n{controlRemoveFromList}"
           aria-label$="[[controlRemoveFromListAriaLabel_]]"
-          on-click="onRemoveTap_" focus-row-control focus-type="remove">
+          on-click="onRemoveClick_" focus-row-control focus-type="remove">
       </cr-icon-button>
     </div>
     <div id="incognito" title="$i18n{inIncognito}" hidden="[[!data.otr]]"></div>

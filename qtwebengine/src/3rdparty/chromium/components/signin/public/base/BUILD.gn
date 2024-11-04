@@ -15,6 +15,8 @@ buildflag_header("signin_buildflags") {
   flags = [
     "ENABLE_DICE_SUPPORT=$enable_dice_support",
     "ENABLE_MIRROR=$enable_mirror",
+    "ENABLE_BOUND_SESSION_CREDENTIALS=$enable_bound_session_credentials",
+    "ENABLE_SEARCH_ENGINE_CHOICE=$enable_search_engine_choice",
   ]
 }
 
@@ -26,10 +28,14 @@ static_library("base") {
     "consent_level.h",
     "device_id_helper.cc",
     "device_id_helper.h",
+    "gaia_id_hash.cc",
+    "gaia_id_hash.h",
     "multilogin_parameters.cc",
     "multilogin_parameters.h",
     "persistent_repeating_timer.cc",
     "persistent_repeating_timer.h",
+    "session_binding_utils.cc",
+    "session_binding_utils.h",
     "signin_client.cc",
     "signin_client.h",
     "signin_metrics.cc",
@@ -38,6 +44,8 @@ static_library("base") {
     "signin_pref_names.h",
     "signin_switches.cc",
     "signin_switches.h",
+    "wait_for_network_callback_helper.cc",
+    "wait_for_network_callback_helper.h",
   ]
   deps = [
     "//build:chromeos_buildflags",
@@ -49,6 +57,7 @@ static_library("base") {
     ":signin_buildflags",
     "//base",
     "//components/keyed_service/core",
+    "//components/version_info:channel",
     "//google_apis",
     "//url",
   ]
@@ -76,6 +85,8 @@ static_library("test_support") {
   sources = [
     "list_accounts_test_utils.cc",
     "list_accounts_test_utils.h",
+    "session_binding_test_utils.cc",
+    "session_binding_test_utils.h",
     "test_signin_client.cc",
     "test_signin_client.h",
   ]
@@ -84,6 +95,7 @@ static_library("test_support") {
     "//base/test:test_support",
     "//build:chromeos_buildflags",
     "//components/prefs",
+    "//crypto",
     "//google_apis:test_support",
   ]
 
@@ -99,7 +111,9 @@ source_set("unit_tests") {
   sources = [
     "avatar_icon_util_unittest.cc",
     "device_id_helper_unittest.cc",
+    "gaia_id_hash_unittest.cc",
     "persistent_repeating_timer_unittest.cc",
+    "session_binding_utils_unittest.cc",
     "signin_metrics_unittest.cc",
   ]
 

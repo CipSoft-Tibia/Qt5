@@ -97,9 +97,9 @@ Rectangle {
         height: parent.height
         visible: false
         multiSeriesUniform: true
-        scene.activeCamera.zoomLevel: 150
-        scene.activeCamera.maxZoomLevel: 400
-        scene.activeCamera.minZoomLevel: 80
+        cameraZoomLevel: 150
+        maxCameraZoomLevel:  400
+        minCameraZoomLevel:  80
         orthoProjection: true
 
         valueAxis: ValueAxis3D {
@@ -119,7 +119,7 @@ Rectangle {
         }
 
         theme: Theme3D {
-            type: Theme3D.ThemeQt
+            type: Theme3D.Qt
             windowColor: "#101010"
             backgroundEnabled: false
             ambientLightStrength: 1
@@ -143,11 +143,11 @@ Rectangle {
                     valueRole: "volume"
                 }
                 rowColors: [
-                    ThemeColor { color: "red"},
-                    ThemeColor { color: "green"},
-                    ThemeColor { color: "blue"},
-                    ThemeColor { color: "yellow"},
-                    ThemeColor { color: Qt.rgba(1,0,1,1)}
+                    Color { color: "red"},
+                    Color { color: "green"},
+                    Color { color: "blue"},
+                    Color { color: "yellow"},
+                    Color { color: Qt.rgba(1,0,1,1)}
                 ]
             }
         ]
@@ -159,9 +159,9 @@ Rectangle {
         width: parent.width
         height: parent.height
         visible: true
-        scene.activeCamera.zoomLevel: 180
-        scene.activeCamera.maxZoomLevel: 400
-        scene.activeCamera.minZoomLevel: 80
+        cameraZoomLevel: 180
+        maxCameraZoomLevel:  400
+        minCameraZoomLevel:  80
 
         axisX: ValueAxis3D {
             autoAdjustRange: true
@@ -181,7 +181,7 @@ Rectangle {
         }
 
         theme: Theme3D {
-            type: Theme3D.ThemeQt
+            type: Theme3D.Qt
             windowColor: "#101010"
             backgroundEnabled: false
             ambientLightStrength: 1

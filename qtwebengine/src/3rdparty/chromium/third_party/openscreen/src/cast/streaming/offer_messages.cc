@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "absl/strings/match.h"
@@ -23,8 +24,7 @@
 #include "util/osp_logging.h"
 #include "util/stringprintf.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -137,7 +137,7 @@ bool TryParseAesHexBytes(const Json::Value& value,
   return false;
 }
 
-absl::string_view ToString(Stream::Type type) {
+std::string_view ToString(Stream::Type type) {
   switch (type) {
     case Stream::Type::kAudioSource:
       return kAudioSourceType;
@@ -436,5 +436,4 @@ bool Offer::IsValid() const {
          std::all_of(video_streams.begin(), video_streams.end(),
                      [](const VideoStream& v) { return v.IsValid(); });
 }
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

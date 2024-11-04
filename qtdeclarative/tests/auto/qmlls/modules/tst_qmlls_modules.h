@@ -1,5 +1,5 @@
 // Copyright (C) 2018 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef TST_QMLLSMODULES_H
 #define TST_QMLLSMODULES_H
@@ -17,7 +17,6 @@
 #include <QtTest/qtest.h>
 #include <QtQmlLS/private/qlspcustomtypes_p.h>
 
-#include <functional>
 #include <iostream>
 #include <variant>
 
@@ -33,16 +32,18 @@ class tst_qmlls_modules : public QQmlDataTest
     Q_OBJECT
 public:
     tst_qmlls_modules();
-    void checkCompletions(QByteArray uri, int lineNr, int character, ExpectedCompletions expected,
-                          QStringList notExpected);
+    void checkCompletions(const QByteArray &filePath, int lineNr, int character,
+                          ExpectedCompletions expected, QStringList notExpected);
+    std::optional<QByteArray> openFile(const QString &uri);
+    std::optional<QByteArray> openFileFromAbsolutePath(const QString &uri);
+    void ignoreDiagnostics();
 private slots:
+    void init() final;
+    void cleanup();
     void initTestCase() final;
-    void completions_data();
-    void completions();
     void function_documentations_data();
     void function_documentations();
     void buildDir();
-    void cleanupTestCase();
     void goToTypeDefinition_data();
     void goToTypeDefinition();
     void goToDefinition_data();
@@ -51,17 +52,26 @@ private slots:
     void findUsages();
     void documentFormatting_data();
     void documentFormatting();
+    void renameUsages_data();
+    void renameUsages();
+    void linting_data();
+    void linting();
+    void warnings_data();
+    void warnings();
+    void rangeFormatting_data();
+    void rangeFormatting();
+    void qmldirImports_data();
+    void qmldirImports();
     void quickFixes_data();
     void quickFixes();
+    void automaticSemicolonInsertionForCompletions_data();
+    void automaticSemicolonInsertionForCompletions();
 
 private:
     QProcess m_server;
-    QLanguageServerProtocol m_protocol;
+    std::unique_ptr<QLanguageServerProtocol> m_protocol;
     QString m_qmllsPath;
     QList<QByteArray> m_uriToClose;
-    std::function<void(const QByteArray &, const QLspSpecification::PublishDiagnosticsParams &)>
-            m_diagnosticNotificationHandler;
-    QList<QLspSpecification::Diagnostic> m_diagnosticsForQuickFixes;
 };
 
 #endif // TST_QMLLSMODULES_H

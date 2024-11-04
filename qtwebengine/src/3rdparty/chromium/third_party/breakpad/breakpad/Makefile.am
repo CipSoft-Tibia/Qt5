@@ -1732,10 +1732,12 @@ EXTRA_DIST = \
 	src/third_party/curl/typecheck-gcc.h \
 	src/third_party/curl/types.h \
 	src/third_party/mac_headers/architecture/byte_order.h \
+	src/third_party/mac_headers/arm/_types.h \
 	src/third_party/mac_headers/i386/_types.h \
 	src/third_party/mac_headers/mach/boolean.h \
+	src/third_party/mac_headers/mach/arm/boolean.h \
+	src/third_party/mac_headers/mach/arm/vm_types.h \
 	src/third_party/mac_headers/mach/i386/boolean.h \
-	src/third_party/mac_headers/mach/i386/vm_param.h \
 	src/third_party/mac_headers/mach/i386/vm_types.h \
 	src/third_party/mac_headers/mach/machine/boolean.h \
 	src/third_party/mac_headers/mach/machine.h \

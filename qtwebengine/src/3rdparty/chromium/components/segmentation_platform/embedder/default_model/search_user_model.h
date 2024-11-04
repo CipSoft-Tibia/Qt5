@@ -14,7 +14,7 @@ struct Config;
 
 // Segmentation search user model provider. Provides a default model and
 // metadata for the search user optimization target.
-class SearchUserModel : public ModelProvider {
+class SearchUserModel : public DefaultModelProvider {
  public:
   SearchUserModel();
   ~SearchUserModel() override = default;
@@ -25,17 +25,11 @@ class SearchUserModel : public ModelProvider {
 
   static std::unique_ptr<Config> GetConfig();
 
-  // Returns the name of the subsegment for the given segment and the
-  // `subsegment_rank`. The `subsegment_rank` should be computed based on the
-  // subsegment discrete mapping in the model metadata.
-  static absl::optional<std::string> GetSubsegmentName(int subsegment_rank);
-
   // ModelProvider implementation.
-  void InitAndFetchModel(
-      const ModelUpdatedCallback& model_updated_callback) override;
+  std::unique_ptr<ModelConfig> GetModelConfig() override;
+
   void ExecuteModelWithInput(const ModelProvider::Request& inputs,
                              ExecutionCallback callback) override;
-  bool ModelAvailable() override;
 };
 
 }  // namespace segmentation_platform

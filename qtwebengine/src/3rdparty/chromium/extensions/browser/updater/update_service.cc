@@ -21,13 +21,10 @@
 #include "components/update_client/update_client_errors.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_thread.h"
-#include "content/public/browser/notification_details.h"
-#include "content/public/browser/notification_service.h"
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_system.h"
 #include "extensions/browser/extensions_browser_client.h"
-#include "extensions/browser/notification_types.h"
 #include "extensions/browser/updater/extension_downloader.h"
 #include "extensions/browser/updater/extension_update_data.h"
 #include "extensions/browser/updater/scoped_extension_updater_keep_alive.h"
@@ -136,8 +133,7 @@ void UpdateService::OnCrxStateChange(UpdateFoundCallback update_found_callback,
     // Note that it's important to perform actions even if |attributes| is
     // empty, missing values may default to false and have associated logic.
     ExtensionSystem::Get(browser_context_)
-        ->PerformActionBasedOnOmahaAttributes(
-            item.id, base::Value(std::move(attributes)));
+        ->PerformActionBasedOnOmahaAttributes(item.id, attributes);
   }
 }
 

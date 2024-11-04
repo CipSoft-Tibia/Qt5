@@ -12,12 +12,16 @@ IdentityRequestAccount::IdentityRequestAccount(
     const std::string& name,
     const std::string& given_name,
     const GURL& picture,
+    std::vector<std::string> login_hints,
+    std::vector<std::string> hosted_domains,
     absl::optional<LoginState> login_state)
     : id{id},
       email{email},
       name{name},
       given_name{given_name},
       picture{picture},
+      login_hints(std::move(login_hints)),
+      hosted_domains(std::move(hosted_domains)),
       login_state{login_state} {}
 
 IdentityRequestAccount::IdentityRequestAccount(const IdentityRequestAccount&) =

@@ -15,7 +15,11 @@
 #include <cstdint>
 class GrBackendSemaphore;
 
-namespace skgpu { enum class Mipmapped : bool; }
+namespace skgpu {
+enum class Mipmapped : bool;
+enum class Protected : bool;
+enum class Renderable : bool;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -94,12 +98,17 @@ enum class GrBackendApi : unsigned {
     kVulkan,
     kMetal,
     kDirect3D,
-    kDawn,
+
     /**
      * Mock is a backend that does not draw anything. It is used for unit tests
      * and to measure CPU overhead.
      */
     kMock,
+
+    /**
+     * Ganesh doesn't support some context types (e.g. Dawn) and will return Unsupported.
+     */
+    kUnsupported,
 
     /**
      * Added here to support the legacy GrBackend enum value and clients who referenced it using
@@ -131,18 +140,12 @@ using GrMipMapped = skgpu::Mipmapped;
 /*
  * Can a GrBackendObject be rendered to?
  */
-enum class GrRenderable : bool {
-    kNo = false,
-    kYes = true
-};
+using GrRenderable = skgpu::Renderable;
 
 /*
  * Used to say whether texture is backed by protected memory.
  */
-enum class GrProtected : bool {
-    kNo = false,
-    kYes = true
-};
+using GrProtected = skgpu::Protected;
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -186,6 +189,9 @@ typedef void (*GrGpuFinishedProc)(GrGpuFinishedContext finishedContext);
 
 typedef void* GrGpuSubmittedContext;
 typedef void (*GrGpuSubmittedProc)(GrGpuSubmittedContext submittedContext, bool success);
+
+typedef void* GrDirectContextDestroyedContext;
+typedef void (*GrDirectContextDestroyedProc)(GrDirectContextDestroyedContext destroyedContext);
 
 /**
  * Struct to supply options to flush calls.

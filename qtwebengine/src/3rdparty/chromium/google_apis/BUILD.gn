@@ -151,6 +151,8 @@ component("google_apis") {
     "gaia/oauth2_api_call_flow.h",
     "gaia/oauth2_id_token_decoder.cc",
     "gaia/oauth2_id_token_decoder.h",
+    "gaia/oauth2_mint_access_token_fetcher_adapter.cc",
+    "gaia/oauth2_mint_access_token_fetcher_adapter.h",
     "gaia/oauth2_mint_token_flow.cc",
     "gaia/oauth2_mint_token_flow.h",
     "gaia/oauth_multilogin_result.cc",
@@ -210,6 +212,8 @@ static_library("test_support") {
     "gaia/fake_oauth2_access_token_manager.h",
     "gaia/gaia_auth_test_util.cc",
     "gaia/gaia_auth_test_util.h",
+    "gaia/gaia_urls_overrider_for_testing.cc",
+    "gaia/gaia_urls_overrider_for_testing.h",
     "gaia/oauth2_access_token_manager_test_util.cc",
     "gaia/oauth2_access_token_manager_test_util.h",
   ]
@@ -248,6 +252,7 @@ test("google_apis_unittests") {
     "gaia/oauth2_access_token_manager_unittest.cc",
     "gaia/oauth2_api_call_flow_unittest.cc",
     "gaia/oauth2_id_token_decoder_unittest.cc",
+    "gaia/oauth2_mint_access_token_fetcher_adapter_unittest.cc",
     "gaia/oauth2_mint_token_flow_unittest.cc",
     "gaia/oauth_multilogin_result_unittest.cc",
     "gaia/oauth_request_signer_unittest.cc",
@@ -298,7 +303,10 @@ test("google_apis_unittests") {
   }
 
   if (is_chromeos) {
-    deps += [ "//google_apis/tasks:tasks_unittests" ]
+    deps += [
+      "//google_apis/classroom:classroom_unittests",
+      "//google_apis/tasks:tasks_unittests",
+    ]
   }
 }
 
@@ -307,6 +315,8 @@ bundle_data("google_apis_unittest_bundle_data") {
   sources = [
     "test/data/calendar/event_self_response_statuses.json",
     "test/data/calendar/event_statuses.json",
+    "test/data/calendar/event_with_invalid_conference_data_uri.json",
+    "test/data/calendar/event_with_missing_entry_point_type.json",
     "test/data/calendar/events.json",
     "test/data/calendar/invalid_events.json",
     "test/data/gaia/all_base_urls.json",
@@ -318,6 +328,7 @@ bundle_data("google_apis_unittest_bundle_data") {
     "test/data/gaia/not_a_json.txt",
     "test/data/gaia/one_base_url.json",
     "test/data/gaia/one_url.json",
+    "test/data/tasks/task.json",
     "test/data/tasks/task_lists.json",
     "test/data/tasks/tasks.json",
   ]

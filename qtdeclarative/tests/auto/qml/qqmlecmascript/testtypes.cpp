@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
 #include "testtypes.h"
 #ifndef QT_NO_WIDGETS
 # include <QWidget>
@@ -8,6 +9,7 @@
 #include <QQmlEngine>
 #include <QJSEngine>
 #include <QThread>
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 class BaseExtensionObject : public QObject
 {
@@ -393,9 +395,7 @@ void QObjectContainer::children_append(QQmlListProperty<QObject> *prop, QObject 
 
     if (that->gcOnAppend) {
         QQmlEngine *engine = qmlEngine(that);
-        engine->collectGarbage();
-        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-        QCoreApplication::processEvents();
+        gc(*engine);
     }
 }
 
@@ -412,7 +412,7 @@ QObject *QObjectContainer::children_at(QQmlListProperty<QObject> *prop, qsizetyp
 void QObjectContainer::children_clear(QQmlListProperty<QObject> *prop)
 {
     QObjectContainer *that = static_cast<QObjectContainer*>(prop->object);
-    foreach (QObject *c, that->dataChildren)
+    for (QObject *c : std::as_const(that->dataChildren))
         QObject::disconnect(c, SIGNAL(destroyed(QObject*)), that, SLOT(childDestroyed(QObject*)));
     that->dataChildren.clear();
 }
@@ -435,6 +435,44 @@ void ClassWithQProperty2::callback()
 {
     // Q_UNUSED(this->value.value()); // force evaluation
 }
+
+ListPropertyAssignment_Gadget::ListPropertyAssignment_Gadget() { }
+
+QStringList ListPropertyAssignment_Gadget::gadgetStringList() const
+{
+    return m_gadgetStringList;
+}
+
+void ListPropertyAssignment_Gadget::setGadgetStringList(const QStringList &list)
+{
+    if (m_gadgetStringList == list)
+        return;
+    m_gadgetStringList = list;
+}
+
+QVariantList ListPropertyAssignment_Gadget::gadgetVariantList() const
+{
+    return m_gadgetVariantList;
+}
+
+void ListPropertyAssignment_Gadget::setGadgetVariantList(const QVariantList &list)
+{
+    if (m_gadgetVariantList == list)
+        return;
+    m_gadgetVariantList = list;
+}
+
+ListPropertyAssignment_Object::ListPropertyAssignment_Object(QObject *parent)
+    : QObject{ parent } { }
+
+void ListPropertyAssignment_Object::setQobjectStringList(const QStringList &newList)
+{
+    if (m_qobjectStringList == newList)
+        return;
+    m_qobjectStringList = newList;
+}
+
+bool MetaCallInterceptor::didGetObjectDestroyedCallback = false;
 
 void registerTypes()
 {
@@ -544,7 +582,13 @@ void registerTypes()
     qmlRegisterTypesAndRevisions<ReadOnlyBindable>("Qt.test", 1);
     qmlRegisterTypesAndRevisions<ResettableGadgetHolder>("Qt.test", 1);
 
+    qmlRegisterTypesAndRevisions<ListPropertyAssignment_Gadget>("Qt.test", 1);
+    qmlRegisterTypesAndRevisions<ListPropertyAssignment_Object>("Qt.test", 1);
+
     qmlRegisterTypesAndRevisions<SingletonRegistrationWrapper>("Qt.test", 1);
+
+    qmlRegisterExtendedType<TypeWithCustomMetaObject, TypeToTriggerProxyMetaObject>(
+        "Qt.test", 1,0, "TypeWithCustomMetaObject");
 }
 
 #include "testtypes.moc"

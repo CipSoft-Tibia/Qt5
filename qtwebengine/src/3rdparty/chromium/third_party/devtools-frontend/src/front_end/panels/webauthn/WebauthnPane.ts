@@ -158,11 +158,11 @@ class DataGridNode extends DataGrid.DataGrid.DataGridNode<DataGridNode> {
     super(credential);
   }
 
-  nodeSelfHeight(): number {
+  override nodeSelfHeight(): number {
     return 24;
   }
 
-  createCell(columnId: string): HTMLElement {
+  override createCell(columnId: string): HTMLElement {
     const cell = super.createCell(columnId);
     UI.Tooltip.Tooltip.install(cell, cell.textContent || '');
 
@@ -195,7 +195,7 @@ class WebauthnDataGrid extends Common.ObjectWrapper.eventMixin<EventTypes, typeo
     WebauthnDataGridBase) {}
 
 class EmptyDataGridNode extends DataGrid.DataGrid.DataGridNode<DataGridNode> {
-  createCells(element: Element): void {
+  override createCells(element: Element): void {
     element.removeChildren();
     const td = (this.createTDWithClass(DataGrid.DataGrid.Align.Center) as HTMLTableCellElement);
     if (this.dataGrid) {
@@ -259,7 +259,7 @@ export class WebauthnPaneImpl extends UI.Widget.VBox implements
 
   constructor() {
     super(true);
-    SDK.TargetManager.TargetManager.instance().observeModels(SDK.WebAuthnModel.WebAuthnModel, this);
+    SDK.TargetManager.TargetManager.instance().observeModels(SDK.WebAuthnModel.WebAuthnModel, this, {scoped: true});
 
     this.contentElement.classList.add('webauthn-pane');
 
@@ -273,9 +273,8 @@ export class WebauthnPaneImpl extends UI.Widget.VBox implements
     this.#updateVisibility(false);
   }
 
-  static instance(opts = {forceNew: false}): WebauthnPaneImpl {
-    const {forceNew} = opts;
-    if (!webauthnPaneImplInstance || forceNew) {
+  static instance(opts?: {forceNew: boolean}): WebauthnPaneImpl {
+    if (!webauthnPaneImplInstance || opts?.forceNew) {
       webauthnPaneImplInstance = new WebauthnPaneImpl();
     }
 
@@ -283,13 +282,13 @@ export class WebauthnPaneImpl extends UI.Widget.VBox implements
   }
 
   modelAdded(model: SDK.WebAuthnModel.WebAuthnModel): void {
-    if (model.target() === SDK.TargetManager.TargetManager.instance().mainFrameTarget()) {
+    if (model.target() === model.target().outermostTarget()) {
       this.#model = model;
     }
   }
 
   modelRemoved(model: SDK.WebAuthnModel.WebAuthnModel): void {
-    if (model.target() === SDK.TargetManager.TargetManager.instance().mainFrameTarget()) {
+    if (model.target() === model.target().outermostTarget()) {
       this.#model = undefined;
     }
   }
@@ -318,7 +317,7 @@ export class WebauthnPaneImpl extends UI.Widget.VBox implements
     }
   }
 
-  async ownerViewDisposed(): Promise<void> {
+  override async ownerViewDisposed(): Promise<void> {
     if (this.#enableCheckbox) {
       this.#enableCheckbox.setChecked(false);
     }
@@ -573,7 +572,8 @@ export class WebauthnPaneImpl extends UI.Widget.VBox implements
     this.residentKeyCheckbox.classList.add('authenticator-option-checkbox');
     residentKeyGroup.appendChild(this.#residentKeyCheckboxLabel);
 
-    this.#userVerificationCheckboxLabel = UI.UIUtils.CheckboxLabel.create('Supports user verification', false);
+    this.#userVerificationCheckboxLabel =
+        UI.UIUtils.CheckboxLabel.create(i18nString(UIStrings.supportsUserVerification), false);
     this.#userVerificationCheckboxLabel.textElement.classList.add('authenticator-option-label');
     userVerificationGroup.appendChild(this.#userVerificationCheckboxLabel.textElement);
     this.#userVerificationCheckbox = this.#userVerificationCheckboxLabel.checkboxElement;
@@ -647,8 +647,8 @@ export class WebauthnPaneImpl extends UI.Widget.VBox implements
     removeButton.addEventListener('click', this.#removeAuthenticator.bind(this, authenticatorId));
 
     const toolbar = new UI.Toolbar.Toolbar('edit-name-toolbar', titleElement);
-    const editName = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.editName), 'largeicon-edit');
-    const saveName = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.saveName), 'largeicon-checkmark');
+    const editName = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.editName), 'edit');
+    const saveName = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.saveName), 'checkmark');
     saveName.setVisible(false);
 
     const nameField = (titleElement.createChild('input', 'authenticator-name-field') as HTMLInputElement);
@@ -879,7 +879,7 @@ export class WebauthnPaneImpl extends UI.Widget.VBox implements
     this.#activeAuthId = null;
     this.#updateActiveButtons();
   }
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([webauthnPaneStyles]);
   }

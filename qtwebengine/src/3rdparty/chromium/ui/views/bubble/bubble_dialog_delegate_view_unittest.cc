@@ -16,7 +16,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "ui/base/hit_test.h"
-#include "ui/display/test/scoped_screen_override.h"
 #include "ui/display/test/test_screen.h"
 #include "ui/events/event_utils.h"
 #include "ui/views/animation/ink_drop.h"
@@ -610,11 +609,9 @@ TEST_F(BubbleDialogDelegateViewTest, CustomTitle) {
   bubble_frame->InvalidateLayout();
   views::test::RunScheduledLayout(bubble_frame);
 
-  Button* close_button = bubble_frame->GetCloseButtonForTesting();
+  Button* close_button = bubble_frame->close_button();
   // Title moves over for the close button.
-  EXPECT_EQ(close_button->x() - LayoutProvider::Get()->GetDistanceMetric(
-                                    DISTANCE_CLOSE_BUTTON_MARGIN),
-            title_container->bounds().right());
+  EXPECT_GT(close_button->x(), title_container->bounds().right());
 
   LayoutProvider* provider = LayoutProvider::Get();
   const gfx::Insets content_margins = provider->GetDialogInsetsForContentType(

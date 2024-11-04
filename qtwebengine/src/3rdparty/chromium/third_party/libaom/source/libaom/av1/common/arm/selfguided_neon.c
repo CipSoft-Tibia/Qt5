@@ -418,16 +418,16 @@ static INLINE void boxsum2(int16_t *src, const int src_stride, int16_t *dst16,
       dst1_32_ptr += 2;
       dst2_ptr += 2;
       load_s16_4x4(src1_ptr, dst_stride_2, &s1, &s2, &s3, &s4);
-      transpose_s16_4x4d(&s1, &s2, &s3, &s4);
+      transpose_elems_inplace_s16_4x4(&s1, &s2, &s3, &s4);
       load_s32_4x4(src2_ptr, dst_stride_2, &d1, &d2, &d3, &d4);
-      transpose_s32_4x4(&d1, &d2, &d3, &d4);
+      transpose_elems_inplace_s32_4x4(&d1, &d2, &d3, &d4);
       do {
         src1_ptr += 4;
         src2_ptr += 4;
         load_s16_4x4(src1_ptr, dst_stride_2, &s5, &s6, &s7, &s8);
-        transpose_s16_4x4d(&s5, &s6, &s7, &s8);
+        transpose_elems_inplace_s16_4x4(&s5, &s6, &s7, &s8);
         load_s32_4x4(src2_ptr, dst_stride_2, &d5, &d6, &d7, &d8);
-        transpose_s32_4x4(&d5, &d6, &d7, &d8);
+        transpose_elems_inplace_s32_4x4(&d5, &d6, &d7, &d8);
         q23 = vaddl_s16(s2, s3);
         q45 = vaddl_s16(s4, s5);
         q67 = vaddl_s16(s6, s7);
@@ -438,7 +438,7 @@ static INLINE void boxsum2(int16_t *src, const int src_stride, int16_t *dst16,
         q34567 = vaddq_s32(q4567, vmovl_s16(s3));
         q45678 = vaddq_s32(q4567, vmovl_s16(s8));
 
-        transpose_s32_4x4(&q12345, &q23456, &q34567, &q45678);
+        transpose_elems_inplace_s32_4x4(&q12345, &q23456, &q34567, &q45678);
         store_s32_4x4(dst1_32_ptr, dst_stride_2, q12345, q23456, q34567,
                       q45678);
         dst1_32_ptr += 4;
@@ -457,7 +457,7 @@ static INLINE void boxsum2(int16_t *src, const int src_stride, int16_t *dst16,
         r34567 = vaddq_s32(r4567, d3);
         r45678 = vaddq_s32(r4567, d8);
 
-        transpose_s32_4x4(&r12345, &r23456, &r34567, &r45678);
+        transpose_elems_inplace_s32_4x4(&r12345, &r23456, &r34567, &r45678);
         store_s32_4x4(dst2_ptr, dst_stride_2, r12345, r23456, r34567, r45678);
         dst2_ptr += 4;
         d1 = d5;
@@ -844,9 +844,9 @@ static INLINE void boxsum1(int16_t *src, const int src_stride, uint16_t *dst1,
       w = width;
 
       load_s16_4x4((int16_t *)src1_ptr, dst_stride, &d1, &d2, &d3, &d4);
-      transpose_s16_4x4d(&d1, &d2, &d3, &d4);
+      transpose_elems_inplace_s16_4x4(&d1, &d2, &d3, &d4);
       load_s32_4x4(src2_ptr, dst_stride, &r1, &r2, &r3, &r4);
-      transpose_s32_4x4(&r1, &r2, &r3, &r4);
+      transpose_elems_inplace_s32_4x4(&r1, &r2, &r3, &r4);
       src1_ptr += 4;
       src2_ptr += 4;
 
@@ -861,9 +861,9 @@ static INLINE void boxsum1(int16_t *src, const int src_stride, uint16_t *dst1,
 
       do {
         load_s16_4x4((int16_t *)src1_ptr, dst_stride, &d5, &d6, &d7, &d8);
-        transpose_s16_4x4d(&d5, &d6, &d7, &d8);
+        transpose_elems_inplace_s16_4x4(&d5, &d6, &d7, &d8);
         load_s32_4x4(src2_ptr, dst_stride, &r5, &r6, &r7, &r8);
-        transpose_s32_4x4(&r5, &r6, &r7, &r8);
+        transpose_elems_inplace_s32_4x4(&r5, &r6, &r7, &r8);
         src1_ptr += 4;
         src2_ptr += 4;
 
@@ -873,7 +873,7 @@ static INLINE void boxsum1(int16_t *src, const int src_stride, uint16_t *dst1,
         q567 = vadd_s16(d7, q56);
         q78 = vadd_s16(d7, d8);
         q678 = vadd_s16(d6, q78);
-        transpose_s16_4x4d(&q234, &q345, &q456, &q567);
+        transpose_elems_inplace_s16_4x4(&q234, &q345, &q456, &q567);
         store_s16_4x4((int16_t *)dst1_ptr, dst_stride, q234, q345, q456, q567);
         dst1_ptr += 4;
 
@@ -887,7 +887,7 @@ static INLINE void boxsum1(int16_t *src, const int src_stride, uint16_t *dst1,
         r567 = vaddq_s32(r7, r56);
         r78 = vaddq_s32(r7, r8);
         r678 = vaddq_s32(r6, r78);
-        transpose_s32_4x4(&r234, &r345, &r456, &r567);
+        transpose_elems_inplace_s32_4x4(&r234, &r345, &r456, &r567);
         store_s32_4x4(dst2_ptr, dst_stride, r234, r345, r456, r567);
         dst2_ptr += 4;
 
@@ -1503,7 +1503,10 @@ void av1_apply_selfguided_restoration_neon(const uint8_t *dat8, int width,
   {
     int16_t *src_ptr;
     uint8_t *dst_ptr;
+#if CONFIG_AV1_HIGHBITDEPTH
+    uint16_t *dst16 = CONVERT_TO_SHORTPTR(dst8);
     uint16_t *dst16_ptr;
+#endif
     int16x4_t d0, d4;
     int16x8_t r0, s0;
     uint16x8_t r4;
@@ -1515,14 +1518,14 @@ void av1_apply_selfguided_restoration_neon(const uint8_t *dat8, int width,
     const int32x4_t xq1_vec = vdupq_n_s32(xq[1]);
     const int16x8_t zero = vdupq_n_s16(0);
     const uint16x8_t max = vdupq_n_u16((1 << bit_depth) - 1);
-    uint16_t *dst16 = CONVERT_TO_SHORTPTR(dst8);
-    dst_ptr = dst8;
     src_ptr = (int16_t *)dgd16;
     do {
       w = width;
       count = 0;
       dst_ptr = dst8 + rc * dst_stride;
+#if CONFIG_AV1_HIGHBITDEPTH
       dst16_ptr = dst16 + rc * dst_stride;
+#endif
       do {
         s0 = vld1q_s16(src_ptr + count);
 
@@ -1565,19 +1568,20 @@ void av1_apply_selfguided_restoration_neon(const uint8_t *dat8, int width,
         if (highbd) {
           r4 = vminq_u16(r4, max);
           vst1q_u16(dst16_ptr, r4);
+          dst16_ptr += 8;
         } else {
           t0 = vqmovn_u16(r4);
           vst1_u8(dst_ptr, t0);
+          dst_ptr += 8;
         }
 #else
         (void)max;
         t0 = vqmovn_u16(r4);
         vst1_u8(dst_ptr, t0);
+        dst_ptr += 8;
 #endif
         w -= 8;
         count += 8;
-        dst_ptr += 8;
-        dst16_ptr += 8;
       } while (w > 0);
 
       src_ptr += dgd16_stride;

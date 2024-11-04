@@ -42,7 +42,8 @@ ScriptPromise SharedStorageWorklet::addModule(ScriptState* script_state,
 
   KURL script_source_url = execution_context->CompleteURL(module_url);
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
 
   if (!CheckSharedStoragePermissionsPolicy(*script_state, *execution_context,
@@ -86,10 +87,14 @@ ScriptPromise SharedStorageWorklet::addModule(ScriptState* script_state,
                 ScriptState* script_state = resolver->GetScriptState();
 
                 if (!success) {
-                  ScriptState::Scope scope(script_state);
-                  resolver->Reject(V8ThrowDOMException::CreateOrEmpty(
-                      script_state->GetIsolate(),
-                      DOMExceptionCode::kOperationError, error_message));
+                  if (IsInParallelAlgorithmRunnable(
+                          resolver->GetExecutionContext(), script_state)) {
+                    ScriptState::Scope scope(script_state);
+                    resolver->Reject(V8ThrowDOMException::CreateOrEmpty(
+                        script_state->GetIsolate(),
+                        DOMExceptionCode::kOperationError, error_message));
+                  }
+
                   LogSharedStorageWorkletError(
                       SharedStorageWorkletErrorType::kAddModuleWebVisible);
                   return;

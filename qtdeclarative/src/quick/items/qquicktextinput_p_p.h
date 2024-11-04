@@ -36,7 +36,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class QQuickTextNode;
+class QSGInternalTextNode;
 class QInputControl;
 
 class Q_QUICK_PRIVATE_EXPORT QQuickTextInputPrivate : public QQuickImplicitSizeItemPrivate
@@ -107,6 +107,7 @@ public:
         , canRedo(false)
         , hAlignImplicit(true)
         , selectPressed(false)
+        , hadSelectionOnMousePress(false)
         , textLayoutDirty(true)
         , persistentSelection(false)
         , hasImState(false)
@@ -124,6 +125,7 @@ public:
         , inLayout(false)
         , requireImplicitWidth(false)
         , overwriteMode(false)
+        , containsUnscalableGlyphs(false)
 #if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
         , selectByTouchDrag(false)
 #endif
@@ -199,7 +201,7 @@ public:
     QFont sourceFont;
 
     QQuickItem *cursorItem;
-    QQuickTextNode *textNode;
+    QSGInternalTextNode *textNode;
     std::unique_ptr<MaskInputData[]> m_maskData;
     QInputControl *m_inputControl;
 
@@ -259,6 +261,7 @@ public:
     bool canRedo:1;
     bool hAlignImplicit:1;
     bool selectPressed:1;
+    bool hadSelectionOnMousePress:1;
     bool textLayoutDirty:1;
     bool persistentSelection:1;
     bool hasImState : 1;
@@ -276,6 +279,7 @@ public:
     bool inLayout:1;
     bool requireImplicitWidth:1;
     bool overwriteMode:1;
+    bool containsUnscalableGlyphs:1;
 #if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     bool selectByTouchDrag:1;
 #endif

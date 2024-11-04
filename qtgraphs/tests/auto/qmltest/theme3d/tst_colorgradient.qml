@@ -10,25 +10,25 @@ Item {
     width: 150
     height: 150
 
-    ColorGradient {
+    Gradient {
         id: initial
     }
 
-    ColorGradient {
+    Gradient {
         id: initialized
         stops: [
-            ColorGradientStop { color: "blue"; position: 0 },
-            ColorGradientStop { color: "white"; position: 0.5 },
-            ColorGradientStop { color: "red"; position: 1 }
+            GradientStop { color: "blue"; position: 0 },
+            GradientStop { color: "white"; position: 0.5 },
+            GradientStop { color: "red"; position: 1 }
         ]
     }
 
-    ColorGradient {
+    Gradient {
         id: change
     }
 
     TestCase {
-        name: "ColorGradient Initial"
+        name: "Gradient Initial"
 
         function test_initial() {
             compare(initial.stops.length, 0)
@@ -36,7 +36,7 @@ Item {
     }
 
     TestCase {
-        name: "ColorGradient Initialized"
+        name: "Gradient Initialized"
 
         function test_initialized() {
             compare(initialized.stops.length, 3)
@@ -47,11 +47,11 @@ Item {
     }
 
     TestCase {
-        name: "ColorGradient Change"
+        name: "Gradient Change"
 
-        ColorGradientStop { id: stop1; color: "blue"; position: 0 }
-        ColorGradientStop { id: stop2; color: "red"; position: 1.0 }
-        ColorGradientStop { id: stop3; color: "white"; position: 0.5 }
+        GradientStop { id: stop1; color: "blue"; position: 0 }
+        GradientStop { id: stop2; color: "red"; position: 1.0 }
+        GradientStop { id: stop3; color: "white"; position: 0.5 }
 
         function test_change() {
             change.stops = [stop1]

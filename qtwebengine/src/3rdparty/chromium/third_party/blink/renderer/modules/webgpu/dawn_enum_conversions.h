@@ -9,7 +9,6 @@ class V8GPUBufferBindingType;
 class V8GPUSamplerBindingType;
 class V8GPUTextureSampleType;
 class V8GPUStorageTextureAccess;
-class V8GPUTextureComponentType;
 class V8GPUCompareFunction;
 class V8GPUQueryType;
 class V8GPUPipelineStatisticName;
@@ -27,6 +26,7 @@ class V8GPUBlendOperation;
 class V8GPUVertexStepMode;
 class V8GPUVertexFormat;
 class V8GPUAddressMode;
+class V8GPUMipmapFilterMode;
 class V8GPUFilterMode;
 class V8GPUCullMode;
 class V8GPUFrontFace;
@@ -48,8 +48,6 @@ WGPUSamplerBindingType AsDawnEnum(const V8GPUSamplerBindingType& webgpu_enum);
 WGPUTextureSampleType AsDawnEnum(const V8GPUTextureSampleType& webgpu_enum);
 WGPUStorageTextureAccess AsDawnEnum(
     const V8GPUStorageTextureAccess& webgpu_enum);
-WGPUTextureComponentType AsDawnEnum(
-    const V8GPUTextureComponentType& webgpu_enum);
 WGPUCompareFunction AsDawnEnum(const V8GPUCompareFunction& webgpu_enum);
 WGPUQueryType AsDawnEnum(const V8GPUQueryType& webgpu_enum);
 WGPUPipelineStatisticName AsDawnEnum(
@@ -70,6 +68,7 @@ WGPUVertexStepMode AsDawnEnum(const V8GPUVertexStepMode& webgpu_enum);
 WGPUVertexFormat AsDawnEnum(const V8GPUVertexFormat& webgpu_enum);
 WGPUAddressMode AsDawnEnum(const V8GPUAddressMode& webgpu_enum);
 WGPUFilterMode AsDawnEnum(const V8GPUFilterMode& webgpu_enum);
+WGPUMipmapFilterMode AsDawnEnum(const V8GPUMipmapFilterMode& webgpu_enum);
 WGPUCullMode AsDawnEnum(const V8GPUCullMode& webgpu_enum);
 WGPUFrontFace AsDawnEnum(const V8GPUFrontFace& webgpu_enum);
 WGPUTextureAspect AsDawnEnum(const V8GPUTextureAspect& webgpu_enum);

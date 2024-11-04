@@ -42,8 +42,42 @@
 #include <cpuid.h>
 #endif  // HWY_COMPILER_MSVC
 
-#elif HWY_ARCH_ARM && HWY_OS_LINUX && !defined(TOOLCHAIN_MISS_SYS_AUXV_H)
+#elif (HWY_ARCH_ARM || HWY_ARCH_PPC) && HWY_OS_LINUX
+// sys/auxv.h does not always include asm/hwcap.h, or define HWCAP*, hence we
+// still include this directly. See #1199.
+#ifndef TOOLCHAIN_MISS_ASM_HWCAP_H
+#include <asm/hwcap.h>
+#endif
+#ifndef TOOLCHAIN_MISS_SYS_AUXV_H
 #include <sys/auxv.h>
+#endif
+
+#if HWY_ARCH_PPC
+#ifndef PPC_FEATURE_HAS_ALTIVEC
+#define PPC_FEATURE_HAS_ALTIVEC 0x10000000
+#endif
+
+#ifndef PPC_FEATURE_HAS_VSX
+#define PPC_FEATURE_HAS_VSX 0x00000080
+#endif
+
+#ifndef PPC_FEATURE2_ARCH_2_07
+#define PPC_FEATURE2_ARCH_2_07 0x80000000
+#endif
+
+#ifndef PPC_FEATURE2_VEC_CRYPTO
+#define PPC_FEATURE2_VEC_CRYPTO 0x02000000
+#endif
+
+#ifndef PPC_FEATURE2_ARCH_3_00
+#define PPC_FEATURE2_ARCH_3_00 0x00800000
+#endif
+
+#ifndef PPC_FEATURE2_ARCH_3_1
+#define PPC_FEATURE2_ARCH_3_1 0x00040000
+#endif
+#endif  // HWY_ARCH_PPC
+
 #endif  // HWY_ARCH_*
 
 namespace hwy {
@@ -146,9 +180,12 @@ HWY_INLINE constexpr uint64_t Bit(FeatureIndex index) {
   return 1ull << static_cast<size_t>(index);
 }
 
+constexpr uint64_t kGroupSSE2 =
+    Bit(FeatureIndex::kSSE) | Bit(FeatureIndex::kSSE2);
+
 constexpr uint64_t kGroupSSSE3 =
-    Bit(FeatureIndex::kSSE) | Bit(FeatureIndex::kSSE2) |
-    Bit(FeatureIndex::kSSE3) | Bit(FeatureIndex::kSSSE3);
+    Bit(FeatureIndex::kSSE3) | Bit(FeatureIndex::kSSSE3) |
+    kGroupSSE2;
 
 constexpr uint64_t kGroupSSE4 =
     Bit(FeatureIndex::kSSE41) | Bit(FeatureIndex::kSSE42) |
@@ -198,12 +235,19 @@ int64_t DetectTargets() {
 
 #if HWY_ARCH_X86
   bool has_osxsave = false;
+  bool is_amd = false;
   {  // ensures we do not accidentally use flags outside this block
+#if HWY_ARCH_X86_64
+    bits |= HWY_SSE2;
+#endif
+
     uint64_t flags = 0;
     uint32_t abcd[4];
 
     Cpuid(0, 0, abcd);
     const uint32_t max_level = abcd[0];
+    is_amd = max_level >= 1 && abcd[1] == 0x68747541 && abcd[2] == 0x444d4163 &&
+             abcd[3] == 0x69746e65;
 
     // Standard feature flags
     Cpuid(1, 0, abcd);
@@ -261,6 +305,11 @@ int64_t DetectTargets() {
     if ((flags & kGroupSSSE3) == kGroupSSSE3) {
       bits |= HWY_SSSE3;
     }
+#if HWY_ARCH_X86_32
+    if ((flags & kGroupSSE2) == kGroupSSE2) {
+      bits |= HWY_SSE2;
+    }
+#endif
   }
 
   // Clear bits if the OS does not support XSAVE - otherwise, registers
@@ -271,7 +320,17 @@ int64_t DetectTargets() {
     const int64_t min_avx2 = HWY_AVX2 | min_avx3;
     // XMM
     if (!IsBitSet(xcr0, 1)) {
-      bits &= ~(HWY_SSSE3 | HWY_SSE4 | min_avx2);
+#if HWY_ARCH_X86_64
+      // The HWY_SSE2, HWY_SSSE3, and HWY_SSE4 bits do not need to be
+      // cleared on x86_64, even if bit 1 of XCR0 is not set, as
+      // the lower 128 bits of XMM0-XMM15 are guaranteed to be
+      // preserved across context switches on x86_64
+
+      // Only clear the AVX2/AVX3 bits on x86_64 if bit 1 of XCR0 is not set
+      bits &= min_avx2;
+#else
+      bits &= ~(HWY_SSE2 | HWY_SSSE3 | HWY_SSE4 | min_avx2);
+#endif
     }
     // YMM
     if (!IsBitSet(xcr0, 2)) {
@@ -281,6 +340,12 @@ int64_t DetectTargets() {
     if (!IsBitSet(xcr0, 5) || !IsBitSet(xcr0, 6) || !IsBitSet(xcr0, 7)) {
       bits &= ~min_avx3;
     }
+  }
+
+  // This is mainly to work around the slow Zen4 CompressStore. It's unclear
+  // whether subsequent AMD models will be affected; assume yes.
+  if ((bits & HWY_AVX3_DL) && is_amd) {
+    bits |= HWY_AVX3_ZEN4;
   }
 
   if ((bits & HWY_ENABLED_BASELINE) != HWY_ENABLED_BASELINE) {
@@ -296,10 +361,10 @@ int64_t DetectTargets() {
   (void)hw;
 
 #if HWY_ARCH_ARM_A64
+  bits |= HWY_NEON_WITHOUT_AES;  // aarch64 always has NEON and VFPv4..
 
+// .. but not necessarily AES, which is required for HWY_NEON.
 #if defined(HWCAP_AES)
-  // aarch64 always has NEON and VFPv4, but not necessarily AES, which we
-  // require and thus must still check for.
   if (hw & HWCAP_AES) {
     bits |= HWY_NEON;
   }
@@ -318,15 +383,18 @@ int64_t DetectTargets() {
   }
 #endif
 
-#else  // HWY_ARCH_ARM_A64
+#else  // !HWY_ARCH_ARM_A64
 
 // Some old auxv.h / hwcap.h do not define these. If not, treat as unsupported.
-// Note that AES has a different HWCAP bit compared to aarch64.
 #if defined(HWCAP_NEON) && defined(HWCAP_VFPv4)
   if ((hw & HWCAP_NEON) && (hw & HWCAP_VFPv4)) {
-    bits |= HWY_NEON;
+    bits |= HWY_NEON_WITHOUT_AES;
   }
 #endif
+
+  // aarch32 would check getauxval(AT_HWCAP2) & HWCAP2_AES, but we do not yet
+  // support that platform, and Arm v7 lacks AES entirely. Because HWY_NEON
+  // requires native AES instructions, we do not enable that target here.
 
 #endif  // HWY_ARCH_ARM_A64
   if ((bits & HWY_ENABLED_BASELINE) != HWY_ENABLED_BASELINE) {
@@ -335,7 +403,38 @@ int64_t DetectTargets() {
             "\n",
             bits, static_cast<int64_t>(HWY_ENABLED_BASELINE));
   }
-#else   // HWY_ARCH_ARM && HWY_HAVE_RUNTIME_DISPATCH
+#elif HWY_ARCH_PPC && HWY_HAVE_RUNTIME_DISPATCH
+  using CapBits = unsigned long;  // NOLINT
+  const CapBits hw = getauxval(AT_HWCAP);
+  (void)hw;
+
+#if defined(HWY_DISABLE_PPC8_CRYPTO)
+  constexpr CapBits kGroupPPC8 = PPC_FEATURE2_ARCH_2_07;
+#else
+  constexpr CapBits kGroupPPC8 =
+    PPC_FEATURE2_ARCH_2_07 | PPC_FEATURE2_VEC_CRYPTO;
+#endif
+  if ((hw & (PPC_FEATURE_HAS_ALTIVEC | PPC_FEATURE_HAS_VSX)) ==
+      (PPC_FEATURE_HAS_ALTIVEC | PPC_FEATURE_HAS_VSX)) {
+    const CapBits hw2 = getauxval(AT_HWCAP2);
+    if ((hw2 & kGroupPPC8) == kGroupPPC8) {
+      bits |= HWY_PPC8;
+      if ((hw2 & PPC_FEATURE2_ARCH_3_00) == PPC_FEATURE2_ARCH_3_00) {
+        bits |= HWY_PPC9;
+        if ((hw2 & PPC_FEATURE2_ARCH_3_1) == PPC_FEATURE2_ARCH_3_1) {
+          bits |= HWY_PPC10;
+        }
+      }
+    }
+  }
+
+  if ((bits & HWY_ENABLED_BASELINE) != HWY_ENABLED_BASELINE) {
+    fprintf(stderr,
+            "WARNING: CPU supports %" PRIx64 " but software requires %" PRIx64
+            "\n",
+            bits, static_cast<int64_t>(HWY_ENABLED_BASELINE));
+  }
+#else   // HWY_ARCH_PPC && HWY_HAVE_RUNTIME_DISPATCH
   // TODO(janwas): detect for other platforms and check for baseline
   // This file is typically compiled without HWY_IS_TEST, but targets_test has
   // it set, and will expect all of its HWY_TARGETS (= all attainable) to be

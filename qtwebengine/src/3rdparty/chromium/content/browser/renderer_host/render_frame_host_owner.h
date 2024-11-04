@@ -10,6 +10,7 @@
 
 #include "build/build_config.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "services/network/public/cpp/attribution_reporting_runtime_features.h"
 #include "services/network/public/mojom/referrer_policy.mojom-forward.h"
 #include "third_party/blink/public/mojom/frame/user_activation_update_types.mojom-forward.h"
 #include "third_party/blink/public/mojom/loader/referrer.mojom-forward.h"
@@ -36,7 +37,6 @@ class NavigationRequest;
 class Navigator;
 class RenderFrameHostManager;
 class RenderFrameHostImpl;
-class SubresourceWebBundleNavigationInfo;
 
 // An interface for RenderFrameHostImpl to communicate with FrameTreeNode owning
 // it (e.g. to initiate or cancel a navigation in the frame).
@@ -55,20 +55,9 @@ class RenderFrameHostOwner {
   RenderFrameHostOwner() = default;
   virtual ~RenderFrameHostOwner() = default;
 
-  // A RenderFrameHost started loading:
-  //
-  // - `should_show_loading_ui` indicates whether the loading indicator UI
-  //   should be shown or not. It must be true for:
-  //   * cross-document navigations
-  //   * navigations intercepted by the navigation API's intercept().
-  //
-  // - `was_previously_loading` is false if the FrameTree was not loading
-  //   before. The caller is required to provide this boolean as the delegate
-  //   should only be notified if the FrameTree went from non-loading to loading
-  //   state. However, when it is called, the FrameTree should be in a loading
-  //   state.
-  virtual void DidStartLoading(bool should_show_loading_ui,
-                               bool was_previously_loading) = 0;
+  // A RenderFrameHost started loading.
+  virtual void DidStartLoading(
+      LoadingState previous_frame_tree_loading_state) = 0;
 
   // A RenderFrameHost in this owner stopped loading.
   virtual void DidStopLoading() = 0;
@@ -125,8 +114,6 @@ class RenderFrameHostOwner {
       const std::vector<GURL>& redirects,
       const GURL& original_url,
       std::unique_ptr<CrossOriginEmbedderPolicyReporter> coep_reporter,
-      std::unique_ptr<SubresourceWebBundleNavigationInfo>
-          subresource_web_bundle_navigation_info,
       int http_response_code) = 0;
 
   // Cancels the navigation owned by the FrameTreeNode.
@@ -139,10 +126,15 @@ class RenderFrameHostOwner {
 
   // Stores the payload that will be sent as part of an automatic beacon. Right
   // now only the "reserved.top_navigation" beacon is supported.
+  // `attribution_reporting_runtime_features` indicates whether Attribution
+  // Reporting API related runtime features are enabled and is needed for
+  // integration with Attribution Reporting API.
   virtual void SetFencedFrameAutomaticBeaconReportEventData(
       const std::string& event_data,
-      const std::vector<blink::FencedFrame::ReportingDestination>&
-          destination) = 0;
+      const std::vector<blink::FencedFrame::ReportingDestination>& destinations,
+      network::AttributionReportingRuntimeFeatures
+          attribution_reporting_runtime_features,
+      bool once) = 0;
 
 #if !BUILDFLAG(IS_ANDROID)
   virtual void GetVirtualAuthenticatorManager(

@@ -29,12 +29,11 @@
  */
 
 import * as Common from '../../../../core/common/common.js';
-import type * as SDK from '../../../../core/sdk/sdk.js';
+import * as TraceEngine from '../../../../models/trace/trace.js';
 import * as UI from '../../legacy.js';
-import * as i18n from '../../../../core/i18n/i18n.js';
 
 import {Events as OverviewGridEvents, OverviewGrid, type WindowChangedWithPositionEvent} from './OverviewGrid.js';
-import {type Calculator} from './TimelineGrid.js';
+import {TimelineOverviewCalculator} from './TimelineOverviewCalculator.js';
 import timelineOverviewInfoStyles from './timelineOverviewInfo.css.js';
 
 export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventTypes, typeof UI.Widget.VBox>(
@@ -111,15 +110,15 @@ export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventT
     this.overviewInfo.hide();
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     this.update();
   }
 
-  willHide(): void {
+  override willHide(): void {
     this.overviewInfo.hide();
   }
 
-  onResize(): void {
+  override onResize(): void {
     const width = this.element.offsetWidth;
     if (width === this.lastWidth) {
       return;
@@ -141,29 +140,31 @@ export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventT
     this.update();
   }
 
-  setBounds(minimumBoundary: number, maximumBoundary: number): void {
+  setBounds(
+      minimumBoundary: TraceEngine.Types.Timing.MilliSeconds,
+      maximumBoundary: TraceEngine.Types.Timing.MilliSeconds): void {
     this.overviewCalculator.setBounds(minimumBoundary, maximumBoundary);
     this.overviewGrid.setResizeEnabled(true);
     this.cursorEnabled = true;
   }
 
-  setNavStartTimes(navStartTimes: Map<string, SDK.TracingModel.Event>): void {
+  setNavStartTimes(navStartTimes: readonly TraceEngine.Types.TraceEvents.TraceEventNavigationStart[]): void {
     this.overviewCalculator.setNavStartTimes(navStartTimes);
   }
 
-  scheduleUpdate(): void {
+  scheduleUpdate(start?: TraceEngine.Types.Timing.MilliSeconds, end?: TraceEngine.Types.Timing.MilliSeconds): void {
     void this.updateThrottler.schedule(async () => {
-      this.update();
+      this.update(start, end);
     });
   }
 
-  private update(): void {
+  private update(start?: TraceEngine.Types.Timing.MilliSeconds, end?: TraceEngine.Types.Timing.MilliSeconds): void {
     if (!this.isShowing()) {
       return;
     }
     this.overviewCalculator.setDisplayWidth(this.overviewGrid.clientWidth());
     for (let i = 0; i < this.overviewControls.length; ++i) {
-      this.overviewControls[i].update();
+      this.overviewControls[i].update(start, end);
     }
     this.overviewGrid.updateDividers(this.overviewCalculator);
     this.updateMarkers();
@@ -178,7 +179,7 @@ export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventT
     const filteredMarkers = new Map<number, Element>();
     for (const time of this.markers.keys()) {
       const marker = this.markers.get(time) as HTMLElement;
-      const position = Math.round(this.overviewCalculator.computePosition(time));
+      const position = Math.round(this.overviewCalculator.computePosition(TraceEngine.Types.Timing.MilliSeconds(time)));
       // Limit the number of markers to one per pixel.
       if (filteredMarkers.has(position)) {
         continue;
@@ -219,8 +220,11 @@ export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventT
       return;
     }
 
-    this.windowStartTime = event.data.rawStartValue;
-    this.windowEndTime = event.data.rawEndValue;
+    this.windowStartTime =
+        event.data.rawStartValue === this.overviewCalculator.minimumBoundary() ? 0 : event.data.rawStartValue;
+    this.windowEndTime =
+        event.data.rawEndValue === this.overviewCalculator.maximumBoundary() ? Infinity : event.data.rawEndValue;
+
     const windowTimes = {startTime: this.windowStartTime, endTime: this.windowEndTime};
 
     this.dispatchEventToListeners(Events.WindowChanged, windowTimes);
@@ -266,78 +270,10 @@ export type EventTypes = {
   [Events.WindowChanged]: WindowChangedEvent,
 };
 
-export class TimelineOverviewCalculator implements Calculator {
-  private minimumBoundaryInternal!: number;
-  private maximumBoundaryInternal!: number;
-  private workingArea!: number;
-  private navStartTimes?: Map<string, SDK.TracingModel.Event>;
-
-  constructor() {
-    this.reset();
-  }
-
-  computePosition(time: number): number {
-    return (time - this.minimumBoundaryInternal) / this.boundarySpan() * this.workingArea;
-  }
-
-  positionToTime(position: number): number {
-    return position / this.workingArea * this.boundarySpan() + this.minimumBoundaryInternal;
-  }
-
-  setBounds(minimumBoundary: number, maximumBoundary: number): void {
-    this.minimumBoundaryInternal = minimumBoundary;
-    this.maximumBoundaryInternal = maximumBoundary;
-  }
-
-  setNavStartTimes(navStartTimes: Map<string, SDK.TracingModel.Event>): void {
-    this.navStartTimes = navStartTimes;
-  }
-
-  setDisplayWidth(clientWidth: number): void {
-    this.workingArea = clientWidth;
-  }
-
-  reset(): void {
-    this.setBounds(0, 100);
-  }
-
-  formatValue(value: number, precision?: number): string {
-    // If there are nav start times the value needs to be remapped.
-    if (this.navStartTimes) {
-      // Find the latest possible nav start time which is considered earlier
-      // than the value passed through.
-      const navStartTimes = Array.from(this.navStartTimes.values());
-      for (let i = navStartTimes.length - 1; i >= 0; i--) {
-        if (value > navStartTimes[i].startTime) {
-          value -= (navStartTimes[i].startTime - this.zeroTime());
-          break;
-        }
-      }
-    }
-
-    return i18n.TimeUtilities.preciseMillisToString(value - this.zeroTime(), precision);
-  }
-
-  maximumBoundary(): number {
-    return this.maximumBoundaryInternal;
-  }
-
-  minimumBoundary(): number {
-    return this.minimumBoundaryInternal;
-  }
-
-  zeroTime(): number {
-    return this.minimumBoundaryInternal;
-  }
-
-  boundarySpan(): number {
-    return this.maximumBoundaryInternal - this.minimumBoundaryInternal;
-  }
-}
-
 export interface TimelineOverview {
   show(parentElement: Element, insertBefore?: Element|null): void;
-  update(): void;
+  // if start and end are specified, data will be filtered and only data within those bound will be displayed
+  update(start?: TraceEngine.Types.Timing.MilliSeconds, end?: TraceEngine.Types.Timing.MilliSeconds): void;
   dispose(): void;
   reset(): void;
   overviewInfoPromise(x: number): Promise<Element|null>;

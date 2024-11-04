@@ -23,7 +23,23 @@ bool IsFeatureSupported(WGPUFeatureName feature) {
         case WGPUFeatureName_Undefined:
         case WGPUFeatureName_Force32:
         case WGPUFeatureName_DawnNative:
-        case WGPUFeatureName_DawnShaderFloat16:  // Deprecated
+        case WGPUFeatureName_ImplicitDeviceSynchronization:
+        case WGPUFeatureName_SurfaceCapabilities:
+        case WGPUFeatureName_D3D11MultithreadProtected:
+        case WGPUFeatureName_SharedTextureMemoryVkDedicatedAllocation:
+        case WGPUFeatureName_SharedTextureMemoryAHardwareBuffer:
+        case WGPUFeatureName_SharedTextureMemoryDmaBuf:
+        case WGPUFeatureName_SharedTextureMemoryOpaqueFD:
+        case WGPUFeatureName_SharedTextureMemoryZirconHandle:
+        case WGPUFeatureName_SharedTextureMemoryDXGISharedHandle:
+        case WGPUFeatureName_SharedTextureMemoryD3D11Texture2D:
+        case WGPUFeatureName_SharedTextureMemoryIOSurface:
+        case WGPUFeatureName_SharedTextureMemoryEGLImage:
+        case WGPUFeatureName_SharedFenceVkSemaphoreOpaqueFD:
+        case WGPUFeatureName_SharedFenceVkSemaphoreSyncFD:
+        case WGPUFeatureName_SharedFenceVkSemaphoreZirconHandle:
+        case WGPUFeatureName_SharedFenceDXGISharedHandle:
+        case WGPUFeatureName_SharedFenceMTLSharedEvent:
             return false;
         case WGPUFeatureName_Depth32FloatStencil8:
         case WGPUFeatureName_TimestampQuery:
@@ -36,10 +52,23 @@ bool IsFeatureSupported(WGPUFeatureName feature) {
         case WGPUFeatureName_DepthClipControl:
         case WGPUFeatureName_DawnInternalUsages:
         case WGPUFeatureName_DawnMultiPlanarFormats:
+        case WGPUFeatureName_MultiPlanarFormatExtendedUsages:
+        case WGPUFeatureName_MultiPlanarFormatP010:
         case WGPUFeatureName_ChromiumExperimentalDp4a:
         case WGPUFeatureName_ShaderF16:
         case WGPUFeatureName_RG11B10UfloatRenderable:
         case WGPUFeatureName_BGRA8UnormStorage:
+        case WGPUFeatureName_TransientAttachments:
+        case WGPUFeatureName_Float32Filterable:
+        case WGPUFeatureName_MSAARenderToSingleSampled:
+        case WGPUFeatureName_DualSourceBlending:
+        case WGPUFeatureName_ANGLETextureSharing:
+        case WGPUFeatureName_ChromiumExperimentalSubgroups:
+        case WGPUFeatureName_ChromiumExperimentalSubgroupUniformControlFlow:
+        case WGPUFeatureName_ChromiumExperimentalReadWriteStorageTexture:
+        case WGPUFeatureName_PixelLocalStorageCoherent:
+        case WGPUFeatureName_PixelLocalStorageNonCoherent:
+        case WGPUFeatureName_Norm16TextureFormats:
             return true;
     }
 

@@ -74,12 +74,13 @@ void LayoutSVGModelObject::MapAncestorToLocal(
 void LayoutSVGModelObject::AbsoluteQuads(Vector<gfx::QuadF>& quads,
                                          MapCoordinatesFlags mode) const {
   NOT_DESTROYED();
-  quads.push_back(LocalToAbsoluteQuad(gfx::QuadF(StrokeBoundingBox()), mode));
+  quads.push_back(
+      LocalToAbsoluteQuad(gfx::QuadF(DecoratedBoundingBox()), mode));
 }
 
 // This method is called from inside PaintOutline(), and since we call
 // PaintOutline() while transformed to our coord system, return local coords.
-void LayoutSVGModelObject::AddOutlineRects(Vector<PhysicalRect>& rects,
+void LayoutSVGModelObject::AddOutlineRects(OutlineRectCollector& collector,
                                            OutlineInfo* info,
                                            const PhysicalOffset&,
                                            NGOutlineType) const {
@@ -91,28 +92,20 @@ void LayoutSVGModelObject::AddOutlineRects(Vector<PhysicalRect>& rects,
   // If visual rect is clipped away then don't add it.
   if (!was_empty && visual_rect.IsEmpty())
     return;
-  rects.push_back(PhysicalRect::EnclosingRect(visual_rect));
+  collector.AddRect(PhysicalRect::EnclosingRect(visual_rect));
   if (info)
     *info = OutlineInfo::GetUnzoomedFromStyle(StyleRef());
 }
 
 gfx::RectF LayoutSVGModelObject::LocalBoundingBoxRectForAccessibility() const {
   NOT_DESTROYED();
-  return StrokeBoundingBox();
+  return DecoratedBoundingBox();
 }
 
 void LayoutSVGModelObject::WillBeDestroyed() {
   NOT_DESTROYED();
   SVGResources::ClearEffects(*this);
   LayoutObject::WillBeDestroyed();
-}
-
-AffineTransform LayoutSVGModelObject::CalculateLocalTransform() const {
-  NOT_DESTROYED();
-  auto* element = GetElement();
-  if (element->HasTransform(SVGElement::kIncludeMotionTransform))
-    return element->CalculateTransform(SVGElement::kIncludeMotionTransform);
-  return AffineTransform();
 }
 
 bool LayoutSVGModelObject::CheckForImplicitTransformChange(
@@ -124,6 +117,9 @@ bool LayoutSVGModelObject::CheckForImplicitTransformChange(
     case ETransformBox::kViewBox:
       return SVGLayoutSupport::LayoutSizeOfNearestViewportChanged(this);
     case ETransformBox::kFillBox:
+    case ETransformBox::kContentBox:
+    case ETransformBox::kStrokeBox:
+    case ETransformBox::kBorderBox:
       return bbox_changed;
   }
   NOTREACHED();
@@ -169,6 +165,11 @@ void LayoutSVGModelObject::StyleDidChange(StyleDifference diff,
 void LayoutSVGModelObject::InsertedIntoTree() {
   NOT_DESTROYED();
   LayoutObject::InsertedIntoTree();
+  // Ensure that the viewport dependency flag gets set on the ancestor chain.
+  if (SVGSelfOrDescendantHasViewportDependency()) {
+    ClearSVGSelfOrDescendantHasViewportDependency();
+    SetSVGSelfOrDescendantHasViewportDependency();
+  }
   LayoutSVGResourceContainer::MarkForLayoutAndParentResourceInvalidation(*this,
                                                                          false);
   if (StyleRef().HasSVGEffect())

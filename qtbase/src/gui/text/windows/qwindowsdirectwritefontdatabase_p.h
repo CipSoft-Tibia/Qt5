@@ -47,8 +47,10 @@ public:
 
     bool fontsAlwaysScalable() const override;
     bool isPrivateFontFamily(const QString &family) const override;
+    bool supportsVariableApplicationFonts() const override;
 
 private:
+    friend class QWindowsFontEngineDirectWrite;
     static QString localeString(IDWriteLocalizedStrings *names, wchar_t localeName[]);
 
     QHash<QString, IDWriteFontFamily *> m_populatedFonts;

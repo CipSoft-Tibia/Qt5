@@ -14,6 +14,8 @@
 
 #include "connections/implementation/pcp_manager.h"
 
+#include <vector>
+
 #include "connections/implementation/p2p_cluster_pcp_handler.h"
 #include "connections/implementation/p2p_point_to_point_pcp_handler.h"
 #include "connections/implementation/p2p_star_pcp_handler.h"
@@ -87,6 +89,24 @@ void PcpManager::StopDiscovery(ClientProxy* client) {
   }
 }
 
+std::pair<Status, std::vector<ConnectionInfoVariant>>
+PcpManager::StartListeningForIncomingConnections(
+    ClientProxy* client, absl::string_view service_id,
+    v3::ConnectionListener listener,
+    const v3::ConnectionListeningOptions& options) {
+  if (!SetCurrentPcpHandler(options.strategy)) {
+    return {{Status::kError}, {}};
+  }
+  return {current_->StartListeningForIncomingConnections(
+      client, service_id, options, std::move(listener))};
+}
+
+void PcpManager::StopListeningForIncomingConnections(ClientProxy* client) {
+  if (current_) {
+    current_->StopListeningForIncomingConnections(client);
+  }
+}
+
 void PcpManager::InjectEndpoint(ClientProxy* client,
                                 const std::string& service_id,
                                 const OutOfBandConnectionMetadata& metadata) {
@@ -109,12 +129,13 @@ Status PcpManager::RequestConnection(
 
 Status PcpManager::AcceptConnection(ClientProxy* client,
                                     const string& endpoint_id,
-                                    const PayloadListener& payload_listener) {
+                                    PayloadListener payload_listener) {
   if (!current_) {
     return {Status::kOutOfOrderApiCall};
   }
 
-  return current_->AcceptConnection(client, endpoint_id, payload_listener);
+  return current_->AcceptConnection(client, endpoint_id,
+                                    std::move(payload_listener));
 }
 
 Status PcpManager::RejectConnection(ClientProxy* client,
@@ -124,6 +145,26 @@ Status PcpManager::RejectConnection(ClientProxy* client,
   }
 
   return current_->RejectConnection(client, endpoint_id);
+}
+
+Status PcpManager::UpdateAdvertisingOptions(
+    ClientProxy* client, absl::string_view service_id,
+    const AdvertisingOptions& advertising_options) {
+  if (!current_) {
+    return {Status::kOutOfOrderApiCall};
+  }
+  return current_->UpdateAdvertisingOptions(client, service_id,
+                                            advertising_options);
+}
+
+Status PcpManager::UpdateDiscoveryOptions(
+    ClientProxy* client, absl::string_view service_id,
+    const DiscoveryOptions& discovery_options) {
+  if (!current_) {
+    return {Status::kOutOfOrderApiCall};
+  }
+  return current_->UpdateDiscoveryOptions(client, service_id,
+                                          discovery_options);
 }
 
 bool PcpManager::SetCurrentPcpHandler(Strategy strategy) {

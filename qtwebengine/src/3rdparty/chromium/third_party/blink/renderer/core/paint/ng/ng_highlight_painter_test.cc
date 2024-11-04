@@ -65,6 +65,12 @@ TEST_P(NGHighlightPainterTest, FastSpellingGrammarPaintCase) {
     PaintInfo paint_info{graphics_context, cull_rect, PaintPhase::kForeground};
     TextPaintStyle text_style =
         TextPainterBase::TextPaintingStyle(GetDocument(), style, paint_info);
+    if (selection) {
+      selection->ComputeSelectionStyle(GetDocument(), style,
+                                       text_item.GetLayoutObject()->GetNode(),
+                                       paint_info, text_style);
+    }
+
     NGTextPainter text_painter(graphics_context, text_item.ScaledFont(), rect,
                                physical_offset, physical_rect, &inline_context,
                                true);
@@ -73,8 +79,8 @@ TEST_P(NGHighlightPainterTest, FastSpellingGrammarPaintCase) {
                                                physical_rect, selection);
     NGHighlightPainter highlight_painter(
         cursor.Current()->TextPaintInfo(cursor.Items()), text_painter,
-        decoration_painter, paint_info, cursor, text_item, {}, physical_rect,
-        physical_offset, style, text_style, selection, false);
+        decoration_painter, paint_info, cursor, text_item, {}, physical_offset,
+        style, text_style, selection, false);
 
     EXPECT_EQ(highlight_painter.PaintCase(), expected)
         << "(line " << line << ")";

@@ -1,10 +1,11 @@
 // Copyright (C) 2018 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QQmlEngine>
 #include <QtQml>
 #include <QWidget>
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 class tst_QWidgetsInQml : public QObject
 {
@@ -20,13 +21,6 @@ private slots:
     void widgetAsDefaultPropertyKeptDuringCreation();
 };
 
-static void gc(QQmlEngine &engine)
-{
-    engine.collectGarbage();
-    QCoreApplication::sendPostedEvents(0, QEvent::DeferredDelete);
-    QCoreApplication::processEvents();
-}
-
 // Like QtObject, but with default property
 class QObjectContainer : public QObject
 {
@@ -40,7 +34,8 @@ public:
     {}
 
     QQmlListProperty<QObject> data() {
-        return QQmlListProperty<QObject>(this, 0, children_append, children_count, children_at, children_clear);
+        return QQmlListProperty<QObject>(
+                this, nullptr, children_append, children_count, children_at, children_clear);
     }
 
     static void children_append(QQmlListProperty<QObject> *prop, QObject *o)
@@ -58,12 +53,12 @@ public:
         }
     }
 
-    static int children_count(QQmlListProperty<QObject> *prop)
+    static qsizetype children_count(QQmlListProperty<QObject> *prop)
     {
         return static_cast<QObjectContainer*>(prop->object)->dataChildren.count();
     }
 
-    static QObject *children_at(QQmlListProperty<QObject> *prop, int index)
+    static QObject *children_at(QQmlListProperty<QObject> *prop, qsizetype index)
     {
         return static_cast<QObjectContainer*>(prop->object)->dataChildren.at(index);
     }
@@ -71,7 +66,7 @@ public:
     static void children_clear(QQmlListProperty<QObject> *prop)
     {
         QObjectContainer *that = static_cast<QObjectContainer*>(prop->object);
-        foreach (QObject *c, that->dataChildren)
+        for (QObject *c : std::as_const(that->dataChildren))
             QObject::disconnect(c, SIGNAL(destroyed(QObject*)), that, SLOT(childDestroyed(QObject*)));
         that->dataChildren.clear();
     }

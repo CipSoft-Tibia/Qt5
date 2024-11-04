@@ -16,7 +16,6 @@
 #include <qpa/qplatformservices.h>
 
 #include <QtGui/private/qguiapplication_p.h>
-#include <QtGui/private/qhighdpiscaling_p.h>
 
 #include <QtGui/qguiapplication.h>
 
@@ -28,6 +27,8 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcFontDb)
 
 static inline int mapToQtWeightForRange(int fcweight, int fcLower, int fcUpper, int qtLower, int qtUpper)
 {
@@ -366,7 +367,10 @@ static inline bool requiresOpenType(int writingSystem)
             || writingSystem == QFontDatabase::Khmer || writingSystem == QFontDatabase::Nko);
 }
 
-static void populateFromPattern(FcPattern *pattern, QFontDatabasePrivate::ApplicationFont *applicationFont = nullptr)
+static void populateFromPattern(FcPattern *pattern,
+                                QFontDatabasePrivate::ApplicationFont *applicationFont = nullptr,
+                                FT_Face face = nullptr,
+                                QFontconfigDatabase *db = nullptr)
 {
     QString familyName;
     QString familyNameLang;
@@ -489,6 +493,20 @@ static void populateFromPattern(FcPattern *pattern, QFontDatabasePrivate::Applic
     }
 
     QPlatformFontDatabase::registerFont(familyName,styleName,QLatin1StringView((const char *)foundry_value),weight,style,stretch,antialias,scalable,pixel_size,fixedPitch,writingSystems,fontFile);
+    if (applicationFont != nullptr && face != nullptr && db != nullptr) {
+        db->addNamedInstancesForFace(face,
+                                     indexValue,
+                                     familyName,
+                                     styleName,
+                                     weight,
+                                     stretch,
+                                     style,
+                                     fixedPitch,
+                                     writingSystems,
+                                     QByteArray((const char*)file_value),
+                                     applicationFont->data);
+    }
+
 //        qDebug() << familyName << (const char *)foundry_value << weight << style << &writingSystems << scalable << true << pixel_size;
 
     for (int k = 1; FcPatternGetString(pattern, FC_FAMILY, k, &value) == FcResultMatch; ++k) {
@@ -528,6 +546,11 @@ static void populateFromPattern(FcPattern *pattern, QFontDatabasePrivate::Applic
 
 }
 
+static bool isDprScaling()
+{
+    return !qFuzzyCompare(qApp->devicePixelRatio(), 1.0);
+}
+
 QFontconfigDatabase::~QFontconfigDatabase()
 {
     FcConfigDestroy(FcConfigGetCurrent());
@@ -556,6 +579,12 @@ void QFontconfigDatabase::populateFontDatabase()
             FcObjectSetAdd(os, *p);
             ++p;
         }
+
+#ifdef FC_VARIABLE
+        /* Support the named instance of Variable Fonts. */
+        FcPatternAddBool(pattern, FC_VARIABLE, FcFalse);
+#endif
+
         fonts = FcFontList(nullptr, pattern, os);
         FcObjectSetDestroy(os);
         FcPatternDestroy(pattern);
@@ -626,7 +655,7 @@ QFontEngine::HintStyle defaultHintStyleFromMatch(QFont::HintingPreference hintin
         break;
     }
 
-    if (QHighDpiScaling::isActive())
+    if (isDprScaling())
         return QFontEngine::HintNone;
 
     int hint_style = 0;
@@ -702,6 +731,8 @@ QFontEngine *QFontconfigDatabase::fontEngine(const QFontDef &f, void *usrPtr)
     QFontEngine::FaceId fid;
     fid.filename = QFile::encodeName(fontfile->fileName);
     fid.index = fontfile->indexValue;
+    fid.instanceIndex = fontfile->instanceIndex;
+    fid.variableAxes = f.variableAxisValues;
 
     // FIXME: Unify with logic in QFontEngineFT::create()
     QFontEngineFT *engine = new QFontEngineFT(f);
@@ -803,26 +834,28 @@ QStringList QFontconfigDatabase::fallbacksForFamily(const QString &family, QFont
     return fallbackFamilies;
 }
 
-static FcPattern *queryFont(const FcChar8 *file, const QByteArray &data, int id, FcBlanks *blanks, int *count)
+static FcPattern *queryFont(const FcChar8 *file, const QByteArray &data, int id, FcBlanks *blanks, int *count, FT_Face *face)
 {
 #if FC_VERSION < 20402
     Q_UNUSED(data);
+    *face = nullptr;
     return FcFreeTypeQuery(file, id, blanks, count);
 #else
-    if (data.isEmpty())
+    if (data.isEmpty()) {
+        *face = nullptr;
         return FcFreeTypeQuery(file, id, blanks, count);
+    }
 
     FT_Library lib = qt_getFreetype();
 
     FcPattern *pattern = nullptr;
 
-    FT_Face face;
-    if (!FT_New_Memory_Face(lib, (const FT_Byte *)data.constData(), data.size(), id, &face)) {
-        *count = face->num_faces;
+    if (!FT_New_Memory_Face(lib, (const FT_Byte *)data.constData(), data.size(), id, face)) {
+        *count = (*face)->num_faces;
 
-        pattern = FcFreeTypeQueryFace(face, file, id, blanks);
-
-        FT_Done_Face(face);
+        pattern = FcFreeTypeQueryFace(*face, file, id, blanks);
+    } else {
+        *face = nullptr;
     }
 
     return pattern;
@@ -850,8 +883,9 @@ QStringList QFontconfigDatabase::addApplicationFont(const QByteArray &fontData, 
 
     FcPattern *pattern;
     do {
+        FT_Face face;
         pattern = queryFont((const FcChar8 *)QFile::encodeName(fileName).constData(),
-                            fontData, id, blanks, &count);
+                            fontData, id, blanks, &count, &face);
         if (!pattern)
             return families;
 
@@ -860,7 +894,10 @@ QStringList QFontconfigDatabase::addApplicationFont(const QByteArray &fontData, 
             QString family = QString::fromUtf8(reinterpret_cast<const char *>(fam));
             families << family;
         }
-        populateFromPattern(pattern, applicationFont);
+        populateFromPattern(pattern, applicationFont, face, this);
+
+        if (face)
+            FT_Done_Face(face);
 
         FcFontSetAdd(set, pattern);
 
@@ -925,7 +962,7 @@ QFont QFontconfigDatabase::defaultFont() const
 void QFontconfigDatabase::setupFontEngine(QFontEngineFT *engine, const QFontDef &fontDef) const
 {
     bool antialias = !(fontDef.styleStrategy & QFont::NoAntialias);
-    bool forcedAntialiasSetting = !antialias || QHighDpiScaling::isActive();
+    bool forcedAntialiasSetting = !antialias || isDprScaling();
 
     const QPlatformServices *services = QGuiApplicationPrivate::platformIntegration()->services();
     bool useXftConf = false;
@@ -947,6 +984,7 @@ void QFontconfigDatabase::setupFontEngine(QFontEngineFT *engine, const QFontDef 
     QFontEngine::GlyphFormat format;
     // try and get the pattern
     FcPattern *pattern = FcPatternCreate();
+    FcPattern *match = nullptr;
 
     FcValue value;
     value.type = FcTypeString;
@@ -965,7 +1003,7 @@ void QFontconfigDatabase::setupFontEngine(QFontEngineFT *engine, const QFontDef 
         FcPatternAdd(pattern,FC_INDEX,value,true);
     }
 
-    if (fontDef.pixelSize > 0.1)
+    if (!qFuzzyIsNull(fontDef.pixelSize))
         FcPatternAddDouble(pattern, FC_PIXEL_SIZE, fontDef.pixelSize);
 
     FcResult result;
@@ -973,7 +1011,55 @@ void QFontconfigDatabase::setupFontEngine(QFontEngineFT *engine, const QFontDef 
     FcConfigSubstitute(nullptr, pattern, FcMatchPattern);
     FcDefaultSubstitute(pattern);
 
-    FcPattern *match = FcFontMatch(nullptr, pattern, &result);
+#ifdef FC_VARIABLE
+    if (!fid.filename.isEmpty()) {
+        // FC_INDEX is ignored during processing in FcFontMatch.
+        // So iterate FcPatterns directly and find it out.
+        FcFontSet *fcsets[2], *fcfs;
+
+        fcsets[0] = FcConfigGetFonts(nullptr, FcSetSystem);
+        fcsets[1] = FcConfigGetFonts(nullptr, FcSetApplication);
+        for (int nset = 0; nset < 2; nset++) {
+            fcfs = fcsets[nset];
+            if (fcfs == nullptr)
+                continue;
+            for (int fnum = 0; fnum < fcfs->nfont; fnum++) {
+                FcPattern *fcpat = fcfs->fonts[fnum];
+                FcChar8 *fcfile;
+                FcBool variable;
+                double fcpixelsize;
+                int fcindex;
+
+                // Skip the variable font itself, only to use the named instances and normal fonts here
+                if (FcPatternGetBool(fcpat, FC_VARIABLE, 0, &variable) == FcResultMatch &&
+                    variable == FcTrue)
+                    continue;
+
+                if (!qFuzzyIsNull(fontDef.pixelSize)) {
+                    if (FcPatternGetDouble(fcpat, FC_PIXEL_SIZE, 0, &fcpixelsize) == FcResultMatch &&
+                        fontDef.pixelSize != fcpixelsize)
+                    continue;
+                }
+
+                if (FcPatternGetString(fcpat, FC_FILE, 0, &fcfile) == FcResultMatch &&
+                    FcPatternGetInteger(fcpat, FC_INDEX, 0, &fcindex) == FcResultMatch) {
+                    QByteArray f = QByteArray::fromRawData((const char *)fcfile,
+                                                           qstrlen((const char *)fcfile));
+                    if (f == fid.filename && fcindex == fid.index) {
+                        // We found it.
+                        match = FcFontRenderPrepare(nullptr, pattern, fcpat);
+                        goto bail;
+                    }
+                }
+            }
+        }
+    }
+bail:
+#endif
+
+    if (!match)
+        match = FcFontMatch(nullptr, pattern, &result);
+
     if (match) {
         engine->setDefaultHintStyle(defaultHintStyleFromMatch((QFont::HintingPreference)fontDef.hintingPreference, match, useXftConf));
 
@@ -1014,6 +1100,15 @@ void QFontconfigDatabase::setupFontEngine(QFontEngineFT *engine, const QFontDef 
     engine->antialias = antialias;
     engine->defaultFormat = format;
     engine->glyphFormat = format;
+}
+
+bool QFontconfigDatabase::supportsVariableApplicationFonts() const
+{
+#if (FREETYPE_MAJOR*10000 + FREETYPE_MINOR*100 + FREETYPE_PATCH) >= 20900
+    return true;
+#else
+    return false;
+#endif
 }
 
 QT_END_NAMESPACE

@@ -15,7 +15,6 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/threading/thread.h"
 #include "base/values.h"
-#include "components/keyed_service/core/keyed_service.h"
 #include "extensions/browser/api/networking_private/networking_private_delegate.h"
 
 namespace dbus {
@@ -35,6 +34,7 @@ class NetworkingPrivateLinux : public NetworkingPrivateDelegate {
   typedef std::vector<std::string> GuidList;
 
   NetworkingPrivateLinux();
+  ~NetworkingPrivateLinux() override;
 
   NetworkingPrivateLinux(const NetworkingPrivateLinux&) = delete;
   NetworkingPrivateLinux& operator=(const NetworkingPrivateLinux&) = delete;
@@ -53,7 +53,7 @@ class NetworkingPrivateLinux : public NetworkingPrivateDelegate {
                      VoidCallback success_callback,
                      FailureCallback failure_callback) override;
   void CreateNetwork(bool shared,
-                     base::Value properties,
+                     base::Value::Dict properties,
                      StringCallback success_callback,
                      FailureCallback failure_callback) override;
   void ForgetNetwork(const std::string& guid,
@@ -103,7 +103,6 @@ class NetworkingPrivateLinux : public NetworkingPrivateDelegate {
   void RemoveObserver(NetworkingPrivateDelegateObserver* observer) override;
 
  private:
-  ~NetworkingPrivateLinux() override;
 
   // https://developer.gnome.org/NetworkManager/unstable/spec.html#type-NM_DEVICE_TYPE
   enum DeviceType {

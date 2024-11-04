@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QTest>
 #include <QtTest/QSignalSpy>
@@ -189,8 +189,8 @@ void tst_QSocketNotifier::unexpectedDisconnection()
     writeEnd2->waitForBytesWritten();
 
     // ensure both read ends are ready for reading, before the event loop
-    QVERIFY(readEnd1.waitForRead(5000));
-    QVERIFY(readEnd2.waitForRead(5000));
+    QVERIFY(readEnd1.waitForRead(5s));
+    QVERIFY(readEnd2.waitForRead(5s));
 
     UnexpectedDisconnectTester tester(&readEnd1, &readEnd2);
 

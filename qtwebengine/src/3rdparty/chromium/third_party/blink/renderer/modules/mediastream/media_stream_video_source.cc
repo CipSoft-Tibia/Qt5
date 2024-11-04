@@ -163,6 +163,11 @@ void MediaStreamVideoSource::RemoveTrack(MediaStreamVideoTrack* video_track,
   // failed and |frame_adapter_->AddCallback| has not been called.
   GetTrackAdapter()->RemoveTrack(video_track);
 
+  if (video_track->CountEncodedSinks()) {
+    // Notifies the source that encoded sinks have been removed.
+    UpdateNumEncodedSinks();
+  }
+
   if (tracks_.empty()) {
     if (callback) {
       // Use StopForRestart() in order to get a notification of when the
@@ -544,9 +549,7 @@ void MediaStreamVideoSource::UpdateTrackSettings(
   if (VideoTrackAdapter::CalculateDesiredSize(
           false /* is_rotated */, GetCurrentFormat()->frame_size,
           adapter_settings, &desired_size)) {
-    track->SetTargetSizeAndFrameRate(desired_size.width(),
-                                     desired_size.height(),
-                                     adapter_settings.max_frame_rate());
+    track->SetTargetSize(desired_size.width(), desired_size.height());
   }
   track->SetTrackAdapterSettings(adapter_settings);
 }
@@ -596,6 +599,24 @@ void MediaStreamVideoSource::UpdateCanDiscardAlpha() {
     }
   }
   OnSourceCanDiscardAlpha(!using_alpha);
+}
+
+void MediaStreamVideoSource::OnFrameDropped(
+    media::VideoCaptureFrameDropReason reason) {
+  DCHECK(GetTaskRunner()->BelongsToCurrentThread());
+  OnFrameDroppedInternal(reason);
+  if (reason ==
+      media::VideoCaptureFrameDropReason::
+          kVideoTrackFrameDelivererNotEnabledReplacingWithBlackFrame) {
+    // Black frame events only happen when the track is disabled, ignore.
+    return;
+  }
+  if (reason == media::VideoCaptureFrameDropReason::
+                    kResolutionAdapterFrameRateIsHigherThanRequested) {
+    ++discarded_frames_;
+  } else {
+    ++dropped_frames_;
+  }
 }
 
 }  // namespace blink

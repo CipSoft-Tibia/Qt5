@@ -32,12 +32,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import type * as ProtocolProxyApi from '../../generated/protocol-proxy-api.js';
+import type * as Protocol from '../../generated/protocol.js';
 import * as TextUtils from '../../models/text_utils/text_utils.js';
 import * as Common from '../common/common.js';
 import * as Host from '../host/host.js';
 import * as Platform from '../platform/platform.js';
-import type * as ProtocolProxyApi from '../../generated/protocol-proxy-api.js';
-import type * as Protocol from '../../generated/protocol.js';
 
 import {CSSFontFace} from './CSSFontFace.js';
 import {CSSMatchedStyles} from './CSSMatchedStyles.js';
@@ -45,14 +45,16 @@ import {CSSMedia} from './CSSMedia.js';
 import {CSSStyleRule} from './CSSRule.js';
 import {CSSStyleDeclaration, Type} from './CSSStyleDeclaration.js';
 import {CSSStyleSheetHeader} from './CSSStyleSheetHeader.js';
-
 import {DOMModel, type DOMNode} from './DOMModel.js';
-
-import {Events as ResourceTreeModelEvents, ResourceTreeModel, type ResourceTreeFrame} from './ResourceTreeModel.js';
-
-import {Capability, type Target} from './Target.js';
+import {
+  Events as ResourceTreeModelEvents,
+  type PrimaryPageChangeType,
+  type ResourceTreeFrame,
+  ResourceTreeModel,
+} from './ResourceTreeModel.js';
 import {SDKModel} from './SDKModel.js';
 import {SourceMapManager} from './SourceMapManager.js';
+import {Capability, type Target} from './Target.js';
 
 export class CSSModel extends SDKModel<EventTypes> {
   readonly agent: ProtocolProxyApi.CSSApi;
@@ -85,7 +87,7 @@ export class CSSModel extends SDKModel<EventTypes> {
     this.#resourceTreeModel = target.model(ResourceTreeModel);
     if (this.#resourceTreeModel) {
       this.#resourceTreeModel.addEventListener(
-          ResourceTreeModelEvents.MainFrameNavigated, this.onMainFrameNavigated, this);
+          ResourceTreeModelEvents.PrimaryPageChanged, this.onPrimaryPageChanged, this);
     }
     target.registerCSSDispatcher(new CSSDispatcher(this));
     if (!target.suspended()) {
@@ -302,10 +304,21 @@ export class CSSModel extends SDKModel<EventTypes> {
       return null;
     }
 
-    return new CSSMatchedStyles(
-        this, (node as DOMNode), response.inlineStyle || null, response.attributesStyle || null,
-        response.matchedCSSRules || [], response.pseudoElements || [], response.inherited || [],
-        response.inheritedPseudoElements || [], response.cssKeyframesRules || [], response.parentLayoutNodeId);
+    return new CSSMatchedStyles({
+      cssModel: this,
+      node: (node as DOMNode),
+      inlinePayload: response.inlineStyle || null,
+      attributesPayload: response.attributesStyle || null,
+      matchedPayload: response.matchedCSSRules || [],
+      pseudoPayload: response.pseudoElements || [],
+      inheritedPayload: response.inherited || [],
+      inheritedPseudoPayload: response.inheritedPseudoElements || [],
+      animationsPayload: response.cssKeyframesRules || [],
+      parentLayoutNodeId: response.parentLayoutNodeId,
+      positionFallbackRules: response.cssPositionFallbackRules || [],
+      propertyRules: response.cssPropertyRules ?? [],
+      cssPropertyRegistrations: response.cssPropertyRegistrations ?? [],
+    });
   }
 
   async getClassNames(styleSheetId: Protocol.CSS.StyleSheetId): Promise<string[]> {
@@ -585,6 +598,18 @@ export class CSSModel extends SDKModel<EventTypes> {
 
   styleSheetAdded(header: Protocol.CSS.CSSStyleSheetHeader): void {
     console.assert(!this.#styleSheetIdToHeader.get(header.styleSheetId));
+    if (header.loadingFailed) {
+      // When the stylesheet fails to load, treat it as a constructed stylesheet. Failed sheets can still be modified
+      // from JS, in which case CSS.styleSheetChanged events are sent. So as to not confuse CSSModel clients we don't
+      // just discard the failed sheet here. Treating the failed sheet as a constructed stylesheet lets us keep track
+      // of it cleanly.
+      header.hasSourceURL = false;
+      header.isConstructed = true;
+      header.isInline = false;
+      header.isMutable = false;
+      header.sourceURL = '';
+      header.sourceMapURL = undefined;
+    }
     const styleSheetHeader = new CSSStyleSheetHeader(this, header);
     this.#styleSheetIdToHeader.set(header.styleSheetId, styleSheetHeader);
     const url = styleSheetHeader.resourceURL();
@@ -681,14 +706,16 @@ export class CSSModel extends SDKModel<EventTypes> {
     }
   }
 
-  private async onMainFrameNavigated(event: Common.EventTarget.EventTargetEvent<ResourceTreeFrame>): Promise<void> {
+  private async onPrimaryPageChanged(
+      event: Common.EventTarget.EventTargetEvent<{frame: ResourceTreeFrame, type: PrimaryPageChangeType}>):
+      Promise<void> {
     // If the main frame was restored from the back-forward cache, the order of CDP
     // is different from the regular navigations. In this case, events about CSS
     // stylesheet has already been received and they are mixed with the previous page
     // stylesheets. Therefore, we re-enable the CSS agent to get fresh events.
     // For the regular navigations, we can just clear the local data because events about
     // stylesheets will arrive later.
-    if (event.data.backForwardCacheDetails.restoredFromCache) {
+    if (event.data.frame.backForwardCacheDetails.restoredFromCache) {
       await this.suspendModel();
       await this.resumeModel();
     } else {
@@ -711,14 +738,14 @@ export class CSSModel extends SDKModel<EventTypes> {
     this.#fontFaces.clear();
   }
 
-  async suspendModel(): Promise<void> {
+  override async suspendModel(): Promise<void> {
     this.#isEnabled = false;
     await this.agent.invoke_disable();
     this.resetStyleSheets();
     this.resetFontFaces();
   }
 
-  async resumeModel(): Promise<void> {
+  override async resumeModel(): Promise<void> {
     return this.enable();
   }
 
@@ -797,7 +824,7 @@ export class CSSModel extends SDKModel<EventTypes> {
     }
   }
 
-  dispose(): void {
+  override dispose(): void {
     this.disableCSSPropertyTracker();
     super.dispose();
     this.#sourceMapManager.dispose();

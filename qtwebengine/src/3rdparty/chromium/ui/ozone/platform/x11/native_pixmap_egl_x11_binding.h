@@ -8,21 +8,20 @@
 #include <memory>
 
 #include "ui/gfx/native_pixmap.h"
+#include "ui/gfx/x/connection.h"
+#include "ui/gfx/x/glx.h"
 #include "ui/ozone/public/native_pixmap_gl_binding.h"
 
-namespace gl {
-class GLImageEGLPixmap;
-}
+typedef void* EGLSurface;
+typedef void* EGLDisplay;
 
 namespace ui {
 
-// A binding maintained between GLImageEGLPixmap and GL Textures in Ozone. This
-// is used on X11.
+// A binding maintained between NativePixmap and GL Textures in Ozone that works
+// within the context of X11.
 class NativePixmapEGLX11Binding : public NativePixmapGLBinding {
  public:
-  explicit NativePixmapEGLX11Binding(
-      scoped_refptr<gl::GLImageEGLPixmap> gl_image,
-      gfx::BufferFormat format);
+  explicit NativePixmapEGLX11Binding(gfx::BufferFormat format);
   ~NativePixmapEGLX11Binding() override;
 
   static std::unique_ptr<NativePixmapGLBinding> Create(
@@ -39,13 +38,14 @@ class NativePixmapEGLX11Binding : public NativePixmapGLBinding {
   GLenum GetDataType() override;
 
  private:
-  // Invokes NativePixmapGLBinding::BindTexture, passing |gl_image_|.
+  bool Initialize(x11::Pixmap pixmap);
+
+  // Binds image to texture currently bound to |target|. Returns true on
+  // success.
   bool BindTexture(GLenum target, GLuint texture_id);
 
-  // TODO(hitawala): Merge BindTexImage, Initialize from GLImage and its
-  // subclass EGLPixmap to NativePixmapEGLX11Binding once we stop using them
-  // elsewhere eg. VDA decoders in media.
-  scoped_refptr<gl::GLImageEGLPixmap> gl_image_;
+  EGLSurface surface_ = nullptr;
+  EGLDisplay display_;
   gfx::BufferFormat format_;
 };
 

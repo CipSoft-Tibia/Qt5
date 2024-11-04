@@ -296,7 +296,8 @@ void MediaInternals::AudioLogImpl::SetWebContentsTitle() {
 }
 
 std::string MediaInternals::AudioLogImpl::FormatCacheKey() {
-  return base::StringPrintf("%d:%d:%d", owner_id_, component_, component_id_);
+  return base::StringPrintf("%d:%d:%d", owner_id_,
+                            base::to_underlying(component_), component_id_);
 }
 
 // static
@@ -343,7 +344,7 @@ void MediaInternals::AudioLogImpl::StoreComponentMetadata(
     base::Value::Dict* dict) {
   dict->Set("owner_id", owner_id_);
   dict->Set("component_id", component_id_);
-  dict->Set("component_type", component_);
+  dict->Set("component_type", base::to_underlying(component_));
 }
 
 MediaInternals* MediaInternals::GetInstance() {
@@ -351,24 +352,30 @@ MediaInternals* MediaInternals::GetInstance() {
   return internals;
 }
 
-MediaInternals::MediaInternals() : can_update_(false), owner_ids_() {
-  // TODO(sandersd): Is there ever a relevant case where TERMINATED is sent
-  // without CLOSED also being sent?
-  registrar_.Add(this, NOTIFICATION_RENDERER_PROCESS_CLOSED,
-                 NotificationService::AllBrowserContextsAndSources());
-  registrar_.Add(this, NOTIFICATION_RENDERER_PROCESS_TERMINATED,
-                 NotificationService::AllBrowserContextsAndSources());
-}
+MediaInternals::MediaInternals() = default;
 
 MediaInternals::~MediaInternals() {}
 
-void MediaInternals::Observe(int type,
-                             const NotificationSource& source,
-                             const NotificationDetails& details) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  RenderProcessHost* process = Source<RenderProcessHost>(source).ptr();
-  // TODO(sandersd): Send a termination event before clearing the log.
-  saved_events_by_process_.erase(process->GetID());
+void MediaInternals::OnRenderProcessHostCreated(
+    content::RenderProcessHost* host) {
+  if (!host_observation_.IsObservingSource(host)) {
+    host_observation_.AddObservation(host);
+  }
+}
+
+void MediaInternals::RenderProcessExited(
+    RenderProcessHost* host,
+    const ChildProcessTerminationInfo& info) {
+  EraseSavedEvents(host);
+  host_observation_.RemoveObservation(host);
+}
+
+void MediaInternals::RenderProcessHostDestroyed(RenderProcessHost* host) {
+  // TODO(sandersd): Is there ever a relevant case where
+  // RenderProcessHostDestroyed is called without RenderProcessExited also being
+  // called?
+  EraseSavedEvents(host);
+  host_observation_.RemoveObservation(host);
 }
 
 // Converts the |event| to a |update|. Returns whether the conversion succeeded.
@@ -499,11 +506,7 @@ void MediaInternals::SendGeneralAudioInformation() {
   std::string chrome_wide_echo_cancellation_value_string =
       media::IsChromeWideEchoCancellationEnabled()
           ? base::StrCat(
-                {"Enabled, processing_fifo_size = ",
-                 base::NumberToString(
-                     media::kChromeWideEchoCancellationProcessingFifoSize
-                         .Get()),
-                 ", minimize_resampling = ",
+                {"Enabled, minimize_resampling = ",
                  media::kChromeWideEchoCancellationMinimizeResampling.Get()
                      ? "true"
                      : "false",
@@ -514,6 +517,16 @@ void MediaInternals::SendGeneralAudioInformation() {
           : "Disabled";
   audio_info_data.Set(media::kChromeWideEchoCancellation.name,
                       base::Value(chrome_wide_echo_cancellation_value_string));
+
+  std::string decrease_processing_audio_fifo_size_value_string =
+      base::FeatureList::IsEnabled(media::kDecreaseProcessingAudioFifoSize)
+          ? base::StrCat(
+                {"Enabled, fifo_size = ",
+                 base::NumberToString(media::GetProcessingAudioFifoSize())})
+          : "Disabled";
+  audio_info_data.Set(
+      media::kDecreaseProcessingAudioFifoSize.name,
+      base::Value(decrease_processing_audio_fifo_size_value_string));
 #endif
   std::u16string audio_info_update =
       SerializeUpdate("media.updateGeneralAudioInformation", audio_info_data);
@@ -634,9 +647,9 @@ MediaInternals::CreateAudioLogImpl(
     int render_process_id,
     int render_frame_id) {
   base::AutoLock auto_lock(lock_);
-  return std::make_unique<AudioLogImpl>(owner_ids_[component]++, component,
-                                        this, component_id, render_process_id,
-                                        render_frame_id);
+  return std::make_unique<AudioLogImpl>(
+      owner_ids_[base::to_underlying(component)]++, component, this,
+      component_id, render_process_id, render_frame_id);
 }
 
 void MediaInternals::SendUpdate(const std::u16string& update) {
@@ -665,6 +678,12 @@ void MediaInternals::SaveEvent(int process_id,
       return event.id == id_to_remove;
     });
   }
+}
+
+void MediaInternals::EraseSavedEvents(RenderProcessHost* host) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  // TODO(sandersd): Send a termination event before clearing the log.
+  saved_events_by_process_.erase(host->GetID());
 }
 
 void MediaInternals::UpdateAudioLog(AudioLogUpdateType type,

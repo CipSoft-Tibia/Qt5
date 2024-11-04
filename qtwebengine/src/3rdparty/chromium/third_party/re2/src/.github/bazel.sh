@@ -3,7 +3,7 @@ set -eux
 
 bazel clean
 bazel build --compilation_mode=dbg -- //:all
-bazel test  --compilation_mode=dbg --test_output=errors -- //:all \
+bazel test  --compilation_mode=dbg -- //:all \
   -//:dfa_test \
   -//:exhaustive1_test \
   -//:exhaustive2_test \
@@ -13,7 +13,7 @@ bazel test  --compilation_mode=dbg --test_output=errors -- //:all \
 
 bazel clean
 bazel build --compilation_mode=opt -- //:all
-bazel test  --compilation_mode=opt --test_output=errors -- //:all \
+bazel test  --compilation_mode=opt -- //:all \
   -//:dfa_test \
   -//:exhaustive1_test \
   -//:exhaustive2_test \

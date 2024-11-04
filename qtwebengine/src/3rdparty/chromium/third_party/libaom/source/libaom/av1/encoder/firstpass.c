@@ -33,6 +33,7 @@
 #include "av1/encoder/block.h"
 #include "av1/encoder/dwt.h"
 #include "av1/encoder/encodeframe.h"
+#include "av1/encoder/encodeframe_utils.h"
 #include "av1/encoder/encodemb.h"
 #include "av1/encoder/encodemv.h"
 #include "av1/encoder/encoder.h"
@@ -93,6 +94,8 @@ void av1_twopass_zero_stats(FIRSTPASS_STATS *section) {
   section->intra_error = 0.0;
   section->frame_avg_wavelet_energy = 0.0;
   section->coded_error = 0.0;
+  section->log_intra_error = 0.0;
+  section->log_coded_error = 0.0;
   section->sr_coded_error = 0.0;
   section->pcnt_inter = 0.0;
   section->pcnt_motion = 0.0;
@@ -121,6 +124,8 @@ void av1_accumulate_stats(FIRSTPASS_STATS *section,
   section->frame += frame->frame;
   section->weight += frame->weight;
   section->intra_error += frame->intra_error;
+  section->log_intra_error += log1p(frame->intra_error);
+  section->log_coded_error += log1p(frame->coded_error);
   section->frame_avg_wavelet_energy += frame->frame_avg_wavelet_energy;
   section->coded_error += frame->coded_error;
   section->sr_coded_error += frame->sr_coded_error;
@@ -217,7 +222,6 @@ static aom_variance_fn_t highbd_get_block_variance_fn(BLOCK_SIZE bsize,
         case BLOCK_8X16: return aom_highbd_8_mse8x16;
         default: return aom_highbd_8_mse16x16;
       }
-      break;
     case 10:
       switch (bsize) {
         case BLOCK_8X8: return aom_highbd_10_mse8x8;
@@ -225,7 +229,6 @@ static aom_variance_fn_t highbd_get_block_variance_fn(BLOCK_SIZE bsize,
         case BLOCK_8X16: return aom_highbd_10_mse8x16;
         default: return aom_highbd_10_mse16x16;
       }
-      break;
     case 12:
       switch (bsize) {
         case BLOCK_8X8: return aom_highbd_12_mse8x8;
@@ -233,7 +236,6 @@ static aom_variance_fn_t highbd_get_block_variance_fn(BLOCK_SIZE bsize,
         case BLOCK_8X16: return aom_highbd_12_mse8x16;
         default: return aom_highbd_12_mse16x16;
       }
-      break;
   }
 }
 
@@ -258,6 +260,35 @@ static int get_search_range(const InitialDimensions *initial_dimensions) {
   return sr;
 }
 
+static AOM_INLINE const search_site_config *
+av1_get_first_pass_search_site_config(const AV1_COMP *cpi, MACROBLOCK *x,
+                                      SEARCH_METHODS search_method) {
+  const int ref_stride = x->e_mbd.plane[0].pre[0].stride;
+
+  // For AVIF applications, even the source frames can have changing resolution,
+  // so we need to manually check for the strides :(
+  // AV1_COMP::mv_search_params.search_site_config is a compressor level cache
+  // that's shared by multiple threads. In most cases where all frames have the
+  // same resolution, the cache contains the search site config that we need.
+  const MotionVectorSearchParams *mv_search_params = &cpi->mv_search_params;
+  if (ref_stride == mv_search_params->search_site_cfg[SS_CFG_FPF]->stride) {
+    return mv_search_params->search_site_cfg[SS_CFG_FPF];
+  }
+
+  // If the cache does not contain the correct stride, then we will need to rely
+  // on the thread level config MACROBLOCK::search_site_cfg_buf. If even the
+  // thread level config doesn't match, then we need to update it.
+  search_method = search_method_lookup[search_method];
+  assert(search_method_lookup[search_method] == search_method &&
+         "The search_method_lookup table should be idempotent.");
+  if (ref_stride != x->search_site_cfg_buf[search_method].stride) {
+    av1_refresh_search_site_config(x->search_site_cfg_buf, search_method,
+                                   ref_stride);
+  }
+
+  return x->search_site_cfg_buf;
+}
+
 static AOM_INLINE void first_pass_motion_search(AV1_COMP *cpi, MACROBLOCK *x,
                                                 const MV *ref_mv,
                                                 FULLPEL_MV *best_mv,
@@ -271,18 +302,18 @@ static AOM_INLINE void first_pass_motion_search(AV1_COMP *cpi, MACROBLOCK *x,
   const int step_param = cpi->sf.fp_sf.reduce_mv_step_param + sr;
 
   const search_site_config *first_pass_search_sites =
-      cpi->mv_search_params.search_site_cfg[SS_CFG_FPF];
+      av1_get_first_pass_search_site_config(cpi, x, NSTEP);
   const int fine_search_interval =
       cpi->is_screen_content_type && cpi->common.features.allow_intrabc;
   FULLPEL_MOTION_SEARCH_PARAMS ms_params;
   av1_make_default_fullpel_ms_params(&ms_params, cpi, x, bsize, ref_mv,
-                                     first_pass_search_sites,
+                                     start_mv, first_pass_search_sites, NSTEP,
                                      fine_search_interval);
-  av1_set_mv_search_method(&ms_params, first_pass_search_sites, NSTEP);
 
   FULLPEL_MV this_best_mv;
+  FULLPEL_MV_STATS best_mv_stats;
   tmp_err = av1_full_pixel_search(start_mv, &ms_params, step_param, NULL,
-                                  &this_best_mv, NULL);
+                                  &this_best_mv, &best_mv_stats, NULL);
 
   if (tmp_err < INT_MAX) {
     aom_variance_fn_ptr_t v_fn_ptr = cpi->ppi->fn_ptr[bsize];
@@ -514,7 +545,7 @@ static int firstpass_intra_prediction(
     stats->image_data_start_row = unit_row;
   }
 
-  double log_intra = log(this_intra_error + 1.0);
+  double log_intra = log1p(this_intra_error);
   if (log_intra < 10.0) {
     stats->intra_factor += 1.0 + ((10.0 - log_intra) * 0.05);
   } else {
@@ -707,6 +738,8 @@ static int firstpass_inter_prediction(
   // Compute the motion error of the 0,0 motion using the last source
   // frame as the reference. Skip the further motion search on
   // reconstructed frame if this error is small.
+  // TODO(chiyotsai): The unscaled last source might be different dimension
+  // as the current source. See BUG=aomedia:3413
   struct buf_2d unscaled_last_source_buf_2d;
   unscaled_last_source_buf_2d.buf =
       cpi->unscaled_last_source->y_buffer + src_yoffset;
@@ -734,42 +767,41 @@ static int firstpass_inter_prediction(
         mv = tmp_mv;
       }
     }
+  }
 
-    // Motion search in 2nd reference frame.
-    int gf_motion_error = motion_error;
-    if ((current_frame->frame_number > 1) && golden_frame != NULL) {
-      FULLPEL_MV tmp_mv = kZeroFullMv;
-      // Assume 0,0 motion with no mv overhead.
-      xd->plane[0].pre[0].buf = golden_frame->y_buffer + recon_yoffset;
-      xd->plane[0].pre[0].stride = golden_frame->y_stride;
-      gf_motion_error =
-          get_prediction_error_bitdepth(is_high_bitdepth, bitdepth, bsize,
-                                        &x->plane[0].src, &xd->plane[0].pre[0]);
-      first_pass_motion_search(cpi, x, &kZeroMv, &tmp_mv, &gf_motion_error);
-    }
-    if (gf_motion_error < motion_error && gf_motion_error < this_intra_error) {
-      ++stats->second_ref_count;
-    }
-    // In accumulating a score for the 2nd reference frame take the
-    // best of the motion predicted score and the intra coded error
-    // (just as will be done for) accumulation of "coded_error" for
-    // the last frame.
-    if ((current_frame->frame_number > 1) && golden_frame != NULL) {
-      stats->sr_coded_error += AOMMIN(gf_motion_error, this_intra_error);
-    } else {
-      // TODO(chengchen): I believe logically this should also be changed to
-      // stats->sr_coded_error += AOMMIN(gf_motion_error, this_intra_error).
-      stats->sr_coded_error += motion_error;
-    }
-
-    // Reset to last frame as reference buffer.
-    xd->plane[0].pre[0].buf = last_frame->y_buffer + recon_yoffset;
-    if (av1_num_planes(&cpi->common) > 1) {
-      xd->plane[1].pre[0].buf = last_frame->u_buffer + recon_uvoffset;
-      xd->plane[2].pre[0].buf = last_frame->v_buffer + recon_uvoffset;
-    }
+  // Motion search in 2nd reference frame.
+  int gf_motion_error = motion_error;
+  if ((current_frame->frame_number > 1) && golden_frame != NULL) {
+    FULLPEL_MV tmp_mv = kZeroFullMv;
+    // Assume 0,0 motion with no mv overhead.
+    xd->plane[0].pre[0].buf = golden_frame->y_buffer + recon_yoffset;
+    xd->plane[0].pre[0].stride = golden_frame->y_stride;
+    xd->plane[0].pre[0].width = golden_frame->y_width;
+    gf_motion_error =
+        get_prediction_error_bitdepth(is_high_bitdepth, bitdepth, bsize,
+                                      &x->plane[0].src, &xd->plane[0].pre[0]);
+    first_pass_motion_search(cpi, x, &kZeroMv, &tmp_mv, &gf_motion_error);
+  }
+  if (gf_motion_error < motion_error && gf_motion_error < this_intra_error) {
+    ++stats->second_ref_count;
+  }
+  // In accumulating a score for the 2nd reference frame take the
+  // best of the motion predicted score and the intra coded error
+  // (just as will be done for) accumulation of "coded_error" for
+  // the last frame.
+  if ((current_frame->frame_number > 1) && golden_frame != NULL) {
+    stats->sr_coded_error += AOMMIN(gf_motion_error, this_intra_error);
   } else {
+    // TODO(chengchen): I believe logically this should also be changed to
+    // stats->sr_coded_error += AOMMIN(gf_motion_error, this_intra_error).
     stats->sr_coded_error += motion_error;
+  }
+
+  // Reset to last frame as reference buffer.
+  xd->plane[0].pre[0].buf = last_frame->y_buffer + recon_yoffset;
+  if (av1_num_planes(&cpi->common) > 1) {
+    xd->plane[1].pre[0].buf = last_frame->u_buffer + recon_uvoffset;
+    xd->plane[2].pre[0].buf = last_frame->v_buffer + recon_uvoffset;
   }
 
   // Start by assuming that intra mode is best.
@@ -829,7 +861,8 @@ static void normalize_firstpass_stats(FIRSTPASS_STATS *fps,
   fps->sr_coded_error /= num_mbs_16x16;
   fps->intra_error /= num_mbs_16x16;
   fps->frame_avg_wavelet_energy /= num_mbs_16x16;
-
+  fps->log_coded_error = log1p(fps->coded_error);
+  fps->log_intra_error = log1p(fps->intra_error);
   fps->MVr /= f_h;
   fps->mvr_abs /= f_h;
   fps->MVc /= f_w;
@@ -889,11 +922,13 @@ static void update_firstpass_stats(AV1_COMP *cpi,
   fps.pcnt_neutral = (double)stats->neutral_count / num_mbs;
   fps.intra_skip_pct = (double)stats->intra_skip_count / num_mbs;
   fps.inactive_zone_rows = (double)stats->image_data_start_row;
-  fps.inactive_zone_cols = (double)0;  // Placeholder: not currently supported.
+  fps.inactive_zone_cols = 0.0;  // Placeholder: not currently supported.
   fps.raw_error_stdev = raw_err_stdev;
   fps.is_flash = 0;
-  fps.noise_var = (double)0;
-  fps.cor_coeff = (double)1.0;
+  fps.noise_var = 0.0;
+  fps.cor_coeff = 1.0;
+  fps.log_coded_error = 0.0;
+  fps.log_intra_error = 0.0;
 
   if (stats->mv_count > 0) {
     fps.MVr = (double)stats->sum_mvr / stats->mv_count;
@@ -1027,9 +1062,11 @@ static void setup_firstpass_data(AV1_COMMON *const cm,
   }
 }
 
-static void free_firstpass_data(FirstPassData *firstpass_data) {
+void av1_free_firstpass_data(FirstPassData *firstpass_data) {
   aom_free(firstpass_data->raw_motion_err_list);
+  firstpass_data->raw_motion_err_list = NULL;
   aom_free(firstpass_data->mb_stats);
+  firstpass_data->mb_stats = NULL;
 }
 
 int av1_get_unit_rows_in_tile(const TileInfo *tile,
@@ -1068,28 +1105,12 @@ static void first_pass_tiles(AV1_COMP *cpi, const BLOCK_SIZE fp_block_size) {
   AV1_COMMON *const cm = &cpi->common;
   const int tile_cols = cm->tiles.cols;
   const int tile_rows = cm->tiles.rows;
-  const int num_planes = av1_num_planes(&cpi->common);
-  for (int plane = 0; plane < num_planes; plane++) {
-    const int subsampling_xy =
-        plane ? cm->seq_params->subsampling_x + cm->seq_params->subsampling_y
-              : 0;
-    const int sb_size = MAX_SB_SQUARE >> subsampling_xy;
-    CHECK_MEM_ERROR(
-        cm, cpi->td.mb.plane[plane].src_diff,
-        (int16_t *)aom_memalign(
-            32, sizeof(*cpi->td.mb.plane[plane].src_diff) * sb_size));
-  }
+
   for (int tile_row = 0; tile_row < tile_rows; ++tile_row) {
     for (int tile_col = 0; tile_col < tile_cols; ++tile_col) {
       TileDataEnc *const tile_data =
           &cpi->tile_data[tile_row * tile_cols + tile_col];
       first_pass_tile(cpi, &cpi->td, tile_data, fp_block_size);
-    }
-  }
-  for (int plane = 0; plane < num_planes; plane++) {
-    if (cpi->td.mb.plane[plane].src_diff) {
-      aom_free(cpi->td.mb.plane[plane].src_diff);
-      cpi->td.mb.plane[plane].src_diff = NULL;
     }
   }
 }
@@ -1118,10 +1139,16 @@ void av1_first_pass_row(AV1_COMP *cpi, ThreadData *td, TileDataEnc *tile_data,
   AV1EncRowMultiThreadInfo *const enc_row_mt = &mt_info->enc_row_mt;
   AV1EncRowMultiThreadSync *const row_mt_sync = &tile_data->row_mt_sync;
 
-  const YV12_BUFFER_CONFIG *const last_frame =
-      get_ref_frame_yv12_buf(cm, LAST_FRAME);
+  const YV12_BUFFER_CONFIG *last_frame =
+      av1_get_scaled_ref_frame(cpi, LAST_FRAME);
+  if (!last_frame) {
+    last_frame = get_ref_frame_yv12_buf(cm, LAST_FRAME);
+  }
   const YV12_BUFFER_CONFIG *golden_frame =
-      get_ref_frame_yv12_buf(cm, GOLDEN_FRAME);
+      av1_get_scaled_ref_frame(cpi, GOLDEN_FRAME);
+  if (!golden_frame) {
+    golden_frame = get_ref_frame_yv12_buf(cm, GOLDEN_FRAME);
+  }
   YV12_BUFFER_CONFIG *const this_frame = &cm->cur_frame->buf;
 
   PICK_MODE_CONTEXT *ctx = td->firstpass_ctx;
@@ -1175,6 +1202,16 @@ void av1_first_pass_row(AV1_COMP *cpi, ThreadData *td, TileDataEnc *tile_data,
     const int unit_col = unit_col_start + unit_col_in_tile;
 
     enc_row_mt->sync_read_ptr(row_mt_sync, unit_row_in_tile, unit_col_in_tile);
+
+#if CONFIG_MULTITHREAD
+    if (cpi->ppi->p_mt_info.num_workers > 1) {
+      pthread_mutex_lock(enc_row_mt->mutex_);
+      bool firstpass_mt_exit = enc_row_mt->firstpass_mt_exit;
+      pthread_mutex_unlock(enc_row_mt->mutex_);
+      // Exit in case any worker has encountered an error.
+      if (firstpass_mt_exit) return;
+    }
+#endif
 
     if (unit_col_in_tile == 0) {
       last_mv = *first_top_mv;
@@ -1235,7 +1272,7 @@ void av1_noop_first_pass_frame(AV1_COMP *cpi, const int64_t ts_duration) {
   setup_firstpass_data(cm, &cpi->firstpass_data, unit_rows, unit_cols);
   FRAME_STATS *mb_stats = cpi->firstpass_data.mb_stats;
   FRAME_STATS stats = accumulate_frame_stats(mb_stats, unit_rows, unit_cols);
-  free_firstpass_data(&cpi->firstpass_data);
+  av1_free_firstpass_data(&cpi->firstpass_data);
   update_firstpass_stats(cpi, &stats, 1.0, current_frame->frame_number,
                          ts_duration, BLOCK_16X16);
 }
@@ -1249,6 +1286,9 @@ void av1_first_pass(AV1_COMP *cpi, const int64_t ts_duration) {
   const int num_planes = av1_num_planes(cm);
   MACROBLOCKD *const xd = &x->e_mbd;
   const int qindex = find_fp_qindex(seq_params->bit_depth);
+  const int ref_frame_flags_backup = cpi->ref_frame_flags;
+  cpi->ref_frame_flags = av1_ref_frame_flag_list[LAST_FRAME] |
+                         av1_ref_frame_flag_list[GOLDEN_FRAME];
 
   // Detect if the key frame is screen content type.
   if (frame_is_intra_only(cm)) {
@@ -1300,10 +1340,18 @@ void av1_first_pass(AV1_COMP *cpi, const int64_t ts_duration) {
 
   av1_init_tile_data(cpi);
 
-  const YV12_BUFFER_CONFIG *const last_frame =
-      get_ref_frame_yv12_buf(cm, LAST_FRAME);
-  const YV12_BUFFER_CONFIG *golden_frame =
-      get_ref_frame_yv12_buf(cm, GOLDEN_FRAME);
+  const YV12_BUFFER_CONFIG *last_frame = NULL;
+  const YV12_BUFFER_CONFIG *golden_frame = NULL;
+  if (!frame_is_intra_only(cm)) {
+    av1_scale_references(cpi, EIGHTTAP_REGULAR, 0, 0);
+    last_frame = av1_is_scaled(get_ref_scale_factors_const(cm, LAST_FRAME))
+                     ? av1_get_scaled_ref_frame(cpi, LAST_FRAME)
+                     : get_ref_frame_yv12_buf(cm, LAST_FRAME);
+    golden_frame = av1_is_scaled(get_ref_scale_factors_const(cm, GOLDEN_FRAME))
+                       ? av1_get_scaled_ref_frame(cpi, GOLDEN_FRAME)
+                       : get_ref_frame_yv12_buf(cm, GOLDEN_FRAME);
+  }
+
   YV12_BUFFER_CONFIG *const this_frame = &cm->cur_frame->buf;
   // First pass code requires valid last and new frame buffers.
   assert(this_frame != NULL);
@@ -1343,6 +1391,7 @@ void av1_first_pass(AV1_COMP *cpi, const int64_t ts_duration) {
   av1_init_mode_probs(cm->fc);
   av1_init_mv_probs(cm);
   av1_initialize_rd_consts(cpi);
+  av1_alloc_src_diff_buf(cm, &cpi->td.mb);
 
   enc_row_mt->sync_read_ptr = av1_row_mt_sync_read_dummy;
   enc_row_mt->sync_write_ptr = av1_row_mt_sync_write_dummy;
@@ -1360,7 +1409,8 @@ void av1_first_pass(AV1_COMP *cpi, const int64_t ts_duration) {
       frame_is_intra_only(cm) ? 0 : unit_rows * unit_cols;
   const double raw_err_stdev =
       raw_motion_error_stdev(raw_motion_err_list, total_raw_motion_err_count);
-  free_firstpass_data(&cpi->firstpass_data);
+  av1_free_firstpass_data(&cpi->firstpass_data);
+  av1_dealloc_src_diff_buf(&cpi->td.mb, av1_num_planes(cm));
 
   // Clamp the image start to rows/2. This number of rows is discarded top
   // and bottom as dead data so rows / 2 means the frame is blank.
@@ -1425,6 +1475,10 @@ void av1_first_pass(AV1_COMP *cpi, const int64_t ts_duration) {
                              /*do_print=*/0);
 
   ++current_frame->frame_number;
+  cpi->ref_frame_flags = ref_frame_flags_backup;
+  if (!frame_is_intra_only(cm)) {
+    release_scaled_references(cpi);
+  }
 }
 
 aom_codec_err_t av1_firstpass_info_init(FIRSTPASS_INFO *firstpass_info,

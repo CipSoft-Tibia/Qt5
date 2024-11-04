@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,7 @@
 #include "platform/test/fake_clock.h"
 #include "third_party/tinycbor/src/src/cbor.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 namespace {
 
 using ::testing::_;
@@ -362,5 +361,4 @@ TEST_F(MessageDemuxerTest, DeserializeMessages) {
   EXPECT_TRUE(kUnknownInfo.is_error());
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

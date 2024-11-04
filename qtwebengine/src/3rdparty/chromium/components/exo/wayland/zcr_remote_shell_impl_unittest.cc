@@ -24,8 +24,11 @@
 #include "components/exo/test/exo_test_base.h"
 #include "components/exo/test/shell_surface_builder.h"
 #include "components/exo/wayland/server_util.h"
+#include "ui/aura/window_delegate.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
+#include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/size.h"
 #include "ui/views/widget/widget.h"
 
 namespace exo {
@@ -245,7 +248,7 @@ TEST_F(WaylandRemoteShellTest, TabletTransition) {
   auto* const window = widget->GetNativeWindow();
 
   // Snap window.
-  ash::WMEvent event(ash::WM_EVENT_SNAP_PRIMARY);
+  ash::WindowSnapWMEvent event(ash::WM_EVENT_SNAP_PRIMARY);
   ash::WindowState::Get(window)->OnWMEvent(&event);
   shell_surface->SetSnapPrimary(chromeos::kDefaultSnapRatio);
   shell_surface->SetGeometry(gfx::Rect(0, 0, 400, 520));
@@ -425,6 +428,7 @@ TEST_F(WaylandRemoteShellTest, DisplayRemovalAddition) {
   // Move the window to the secandary display.
   const int initial_x = 100;
   const int initial_y = 100;
+  shell_surface->SetScaleFactor(2.f);
   shell_surface->SetBounds(secondary_display_id,
                            gfx::Rect(initial_x, initial_y, kDefaultWindowLength,
                                      kDefaultWindowLength));
@@ -519,17 +523,137 @@ TEST_F(WaylandRemoteShellTest, FloatSurface) {
   SetImplementation(wl_remote_surface(), /*implementation=*/nullptr,
                     std::move(shell_surface));
 
-  // Emitting float event
-  const ash::WMEvent float_event(ash::WM_EVENT_FLOAT);
+  // Emitting float event.
+  const ash::WindowFloatWMEvent float_event(
+      chromeos::FloatStartLocation::kBottomRight);
   window_state->OnWMEvent(&float_event);
   ASSERT_EQ(1UL, remote_shell_requested_bounds_changes().size());
   ASSERT_EQ(remote_shell_requested_bounds_changes()[0].reason,
             ZCR_REMOTE_SURFACE_V2_BOUNDS_CHANGE_REASON_FLOAT);
 
-  // Set float state from clients
+  // Set float state from clients.
   zcr_remote_shell::remote_surface_set_float(wl_client(), wl_remote_surface());
   surface->Commit();
   EXPECT_TRUE(window_state->IsFloated());
+}
+
+// Move the window across displays with the different scale factors.
+TEST_F(WaylandRemoteShellTest, MoveAcrossDisplaysWithDifferentScaleFactors) {
+  UpdateDisplay("800x600,800x600*2");
+
+  auto shell_surface =
+      exo::test::ShellSurfaceBuilder(
+          {kDefaultWindowLength, kDefaultWindowLength})
+          .SetDelegate(CreateDelegate())
+          .SetGeometry({100, 100, kDefaultWindowLength, kDefaultWindowLength})
+          // Disable maximize for verifying the max size.
+          .SetCanMaximize(false)
+          .BuildClientControlledShellSurface();
+  const auto* window = shell_surface->GetWidget()->GetNativeWindow();
+  auto* const shell_surface_ptr = shell_surface.get();
+  auto* const surface = shell_surface->root_surface();
+  SetImplementation(wl_remote_surface(), /*implementation=*/nullptr,
+                    std::move(shell_surface));
+
+  const auto* display_manager = ash::Shell::Get()->display_manager();
+
+  // Parameters in dp.
+  constexpr gfx::Rect bounds_in_dp(10, 20, kDefaultWindowLength,
+                                   kDefaultWindowLength);
+  constexpr gfx::Size min_size_in_dp = bounds_in_dp.size();
+  const gfx::Size max_size_in_dp =
+      gfx::ScaleToRoundedSize(bounds_in_dp.size(), 2);
+
+  // Move the window inside the primary display, and then move it to the
+  // secondary display.
+  for (int displayIndex = 0; displayIndex < 2; displayIndex++) {
+    const int64_t display_id = display_manager->GetDisplayAt(displayIndex).id();
+    const auto device_scale_factor =
+        display_manager->GetDisplayInfo(display_id).device_scale_factor();
+
+    // Parameters in pixels.
+    const auto bounds_in_px =
+        gfx::ScaleToRoundedRect(bounds_in_dp, device_scale_factor);
+    const auto min_size_in_px =
+        gfx::ScaleToRoundedSize(min_size_in_dp, device_scale_factor);
+    const auto max_size_in_px =
+        gfx::ScaleToRoundedSize(max_size_in_dp, device_scale_factor);
+
+    const uint scale_factor_value =
+        *reinterpret_cast<const uint*>(&device_scale_factor);
+    zcr_remote_shell::remote_surface_set_scale_factor(
+        wl_client(), wl_remote_surface(), scale_factor_value);
+
+    // Set bounds, min size, max size, and then commit.
+    shell_surface_ptr->SetBounds(display_id, bounds_in_px);
+    zcr_remote_shell::remote_surface_set_min_size(
+        wl_client(), wl_remote_surface(), min_size_in_px.width(),
+        min_size_in_px.height());
+    zcr_remote_shell::remote_surface_set_max_size(
+        wl_client(), wl_remote_surface(), max_size_in_px.width(),
+        max_size_in_px.height());
+    surface->Commit();
+
+    EXPECT_EQ(window->GetBoundsInRootWindow(), bounds_in_dp);
+    EXPECT_EQ(window->delegate()->GetMinimumSize(), min_size_in_dp);
+    EXPECT_EQ(window->delegate()->GetMaximumSize(), max_size_in_dp);
+  }
+}
+
+// Change the display's device scale factor.
+TEST_F(WaylandRemoteShellTest, DeviceScaleFactorChange) {
+  UpdateDisplay("800x600");
+
+  auto shell_surface =
+      exo::test::ShellSurfaceBuilder(
+          {kDefaultWindowLength, kDefaultWindowLength})
+          .SetDelegate(CreateDelegate())
+          .SetGeometry({100, 100, kDefaultWindowLength, kDefaultWindowLength})
+          // Disable maximize for verifying the max size.
+          .SetCanMaximize(false)
+          .BuildClientControlledShellSurface();
+  const auto* window = shell_surface->GetWidget()->GetNativeWindow();
+  auto* const shell_surface_ptr = shell_surface.get();
+  auto* const surface = shell_surface->root_surface();
+  SetImplementation(wl_remote_surface(), /*implementation=*/nullptr,
+                    std::move(shell_surface));
+
+  // Change the display's device scale factor.
+  UpdateDisplay("800x600*2");
+
+  const auto* display_manager = ash::Shell::Get()->display_manager();
+  const int64_t display_id = display_manager->GetDisplayAt(0).id();
+  const auto device_scale_factor =
+      display_manager->GetDisplayInfo(display_id).device_scale_factor();
+
+  // Parameters in dp.
+  constexpr gfx::Rect bounds_in_dp(10, 20, kDefaultWindowLength,
+                                   kDefaultWindowLength);
+  constexpr gfx::Size min_size_in_dp = bounds_in_dp.size();
+  const gfx::Size max_size_in_dp =
+      gfx::ScaleToRoundedSize(bounds_in_dp.size(), 2);
+
+  // Parameters in pixels.
+  const auto bounds_in_px =
+      gfx::ScaleToRoundedRect(bounds_in_dp, device_scale_factor);
+  const auto min_size_in_px =
+      gfx::ScaleToRoundedSize(min_size_in_dp, device_scale_factor);
+  const auto max_size_in_px =
+      gfx::ScaleToRoundedSize(max_size_in_dp, device_scale_factor);
+
+  // Set bounds, min size, max size, and then commit.
+  shell_surface_ptr->SetBounds(display_id, bounds_in_px);
+  zcr_remote_shell::remote_surface_set_min_size(
+      wl_client(), wl_remote_surface(), min_size_in_px.width(),
+      min_size_in_px.height());
+  zcr_remote_shell::remote_surface_set_max_size(
+      wl_client(), wl_remote_surface(), max_size_in_px.width(),
+      max_size_in_px.height());
+  surface->Commit();
+
+  EXPECT_EQ(window->GetBoundsInRootWindow(), bounds_in_dp);
+  EXPECT_EQ(window->delegate()->GetMinimumSize(), min_size_in_dp);
+  EXPECT_EQ(window->delegate()->GetMaximumSize(), max_size_in_dp);
 }
 
 }  // namespace wayland

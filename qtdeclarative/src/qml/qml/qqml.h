@@ -670,37 +670,25 @@ QObject *qmlAttachedPropertiesObject(const QObject *obj, bool create = true)
     return qmlAttachedPropertiesObject(const_cast<QObject *>(obj), func, create);
 }
 
-inline int qmlRegisterSingletonType(const char *uri, int versionMajor, int versionMinor, const char *typeName,
-                                QJSValue (*callback)(QQmlEngine *, QJSEngine *))
-{
-    QQmlPrivate::RegisterSingletonType api = {
-        0,
-
-        uri, QTypeRevision::fromVersion(versionMajor, versionMinor), typeName,
-
-        callback,
-        nullptr, nullptr, QMetaType(),
-        nullptr, nullptr,
-        QTypeRevision::zero()
-    };
-
-    return QQmlPrivate::qmlregister(QQmlPrivate::SingletonRegistration, &api);
-}
-
-template <typename T>
-inline int qmlRegisterSingletonType(
-        const char *uri, int versionMajor, int versionMinor,  const char *typeName,
-        QObject *(*callback)(QQmlEngine *, QJSEngine *))
+#ifdef Q_QDOC
+int qmlRegisterSingletonType(
+        const char *uri, int versionMajor, int versionMinor, const char *typeName,
+        std::function<QJSValue(QQmlEngine *, QJSEngine *)> callback)
+#else
+template<typename F, typename std::enable_if<std::is_convertible<F, std::function<QJSValue(QQmlEngine *, QJSEngine *)>>::value, void>::type* = nullptr>
+int qmlRegisterSingletonType(
+        const char *uri, int versionMajor, int versionMinor, const char *typeName, F &&callback)
+#endif
 {
     QQmlPrivate::RegisterSingletonType api = {
         0,
         uri,
         QTypeRevision::fromVersion(versionMajor, versionMinor),
         typeName,
+        std::forward<F>(callback),
         nullptr,
-        callback,
-        QQmlPrivate::StaticMetaObject<T>::staticMetaObject(),
-        QQmlPrivate::QmlMetaType<T>::self(),
+        nullptr,
+        QMetaType(),
         nullptr, nullptr,
         QTypeRevision::zero()
     };
@@ -710,12 +698,13 @@ inline int qmlRegisterSingletonType(
 
 #ifdef Q_QDOC
 template <typename T>
-int qmlRegisterSingletonType(const char *uri, int versionMajor, int versionMinor, const char *typeName, std::function<QObject*(QQmlEngine *, QJSEngine *)> callback)
+int qmlRegisterSingletonType(
+        const char *uri, int versionMajor, int versionMinor, const char *typeName,
+        std::function<QObject *(QQmlEngine *, QJSEngine *)> callback)
 #else
-template <typename T, typename F, typename std::enable_if<std::is_convertible<F, std::function<QObject *(QQmlEngine *, QJSEngine *)>>::value
-                                                 && !std::is_convertible<F, QObject *(*)(QQmlEngine *, QJSEngine *)>::value, void>::type* = nullptr>
-inline int qmlRegisterSingletonType(const char *uri, int versionMajor, int versionMinor, const char *typeName,
-                                    F&& callback)
+template<typename T, typename F, typename std::enable_if<std::is_convertible<F, std::function<QObject *(QQmlEngine *, QJSEngine *)>>::value, void>::type* = nullptr>
+int qmlRegisterSingletonType(
+        const char *uri, int versionMajor, int versionMinor, const char *typeName, F &&callback)
 #endif
 {
     QQmlPrivate::RegisterSingletonType api = {
@@ -724,7 +713,7 @@ inline int qmlRegisterSingletonType(const char *uri, int versionMajor, int versi
         QTypeRevision::fromVersion(versionMajor, versionMinor),
         typeName,
         nullptr,
-        callback,
+        std::forward<F>(callback),
         QQmlPrivate::StaticMetaObject<T>::staticMetaObject(),
         QQmlPrivate::QmlMetaType<T>::self(),
         nullptr, nullptr,
@@ -826,8 +815,8 @@ struct QmlTypeAndRevisionsRegistration<T, Resolved, Extended, false, false, fals
         }
 #else
         static_assert(QQmlPrivate::QmlMetaType<Resolved>::hasAcceptableCtors(),
-                      "This type is neither a QObject, nor default- and copy-constructible, nor"
-                      "uncreatable.\n"
+                      "This type is neither a default constructible QObject, nor a default- "
+                      "and copy-constructible Q_GADGET, nor marked as uncreatable.\n"
                       "You should not use it as a QML type.");
         static_assert(std::is_base_of_v<QObject, Resolved>
                 || !QQmlTypeInfo<Resolved>::hasAttachedProperties);

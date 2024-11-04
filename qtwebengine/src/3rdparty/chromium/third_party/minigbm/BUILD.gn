@@ -16,7 +16,7 @@ declare_args() {
 
   use_amdgpu_minigbm = false
   use_exynos_minigbm = false
-  use_intel_minigbm = false
+  use_intel_minigbm = true
   use_marvell_minigbm = false
   use_mediatek_minigbm = false
   use_meson_minigbm = false
@@ -58,7 +58,7 @@ if (!use_system_minigbm) {
     }
   }
 
-  shared_library("minigbm") {
+  source_set("minigbm") {
     sources = [
       "src/amdgpu.c",
       "src/dri.c",

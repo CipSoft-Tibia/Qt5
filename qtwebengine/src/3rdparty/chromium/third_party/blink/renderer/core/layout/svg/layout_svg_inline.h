@@ -48,7 +48,7 @@ class LayoutSVGInline : public LayoutInline {
   bool IsChildAllowed(LayoutObject*, const ComputedStyle&) const override;
 
   gfx::RectF ObjectBoundingBox() const final;
-  gfx::RectF StrokeBoundingBox() const final;
+  gfx::RectF DecoratedBoundingBox() const final;
   gfx::RectF VisualRectInLocalSVGCoordinates() const final;
 
   PhysicalRect VisualRectInDocument(
@@ -58,14 +58,12 @@ class LayoutSVGInline : public LayoutInline {
                           MapCoordinatesFlags) const final;
   void AbsoluteQuads(Vector<gfx::QuadF>&,
                      MapCoordinatesFlags mode = 0) const final;
-  void AddOutlineRects(Vector<PhysicalRect>&,
+  void AddOutlineRects(OutlineRectCollector&,
                        OutlineInfo*,
                        const PhysicalOffset& additional_offset,
                        NGOutlineType) const final;
 
  private:
-  InlineFlowBox* CreateInlineFlowBox() final;
-
   void WillBeDestroyed() final;
   void StyleDidChange(StyleDifference, const ComputedStyle* old_style) final;
 

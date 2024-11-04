@@ -48,12 +48,14 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderCustomMaterial : public QSSGRende
         QSSGRenderTextureFilterOp mipFilterType = QSSGRenderTextureFilterOp::Linear;
         QSSGRenderTextureCoordOp horizontalClampType = QSSGRenderTextureCoordOp::ClampToEdge;
         QSSGRenderTextureCoordOp verticalClampType = QSSGRenderTextureCoordOp::ClampToEdge;
+        QSSGRenderTextureCoordOp zClampType = QSSGRenderTextureCoordOp::ClampToEdge;
         QQuick3DTexture *lastConnectedTexture = nullptr;
         QMetaObject::Connection minFilterChangedConn;
         QMetaObject::Connection magFilterChangedConn;
         QMetaObject::Connection mipFilterChangedConn;
         QMetaObject::Connection horizontalTilingChangedConn;
         QMetaObject::Connection verticalTilingChangedConn;
+        QMetaObject::Connection depthTilingChangedConn;
     };
     using TexturePropertyList = QList<TextureProperty>;
 
@@ -119,6 +121,8 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderCustomMaterial : public QSSGRende
     RenderFlags m_renderFlags;
     QRhiGraphicsPipeline::BlendFactor m_srcBlend;
     QRhiGraphicsPipeline::BlendFactor m_dstBlend;
+    QRhiGraphicsPipeline::BlendFactor m_srcAlphaBlend;
+    QRhiGraphicsPipeline::BlendFactor m_dstAlphaBlend;
     float m_lineWidth = 1.0f;
 
     QSSGRenderGraphObject *m_nextSibling = nullptr;

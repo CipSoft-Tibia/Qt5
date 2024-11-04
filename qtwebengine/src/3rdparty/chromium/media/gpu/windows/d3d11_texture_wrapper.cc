@@ -11,12 +11,12 @@
 
 #include "base/task/bind_post_task.h"
 #include "base/task/single_thread_task_runner.h"
-#include "components/viz/common/resources/resource_format_utils.h"
 #include "gpu/command_buffer/common/constants.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/command_buffer/service/dxgi_shared_handle_manager.h"
 #include "gpu/command_buffer/service/mailbox_manager.h"
 #include "gpu/command_buffer/service/shared_image/d3d_image_backing.h"
+#include "media/base/media_switches.h"
 #include "media/base/win/mf_helpers.h"
 #include "media/gpu/windows/d3d11_picture_buffer.h"
 #include "mojo/public/cpp/bindings/callback_helpers.h"
@@ -44,6 +44,10 @@ bool SupportsFormat(DXGI_FORMAT dxgi_format) {
 }
 
 size_t NumPlanes(DXGI_FORMAT dxgi_format) {
+  if (IsMultiPlaneFormatForHardwareVideoEnabled()) {
+    return 1;
+  }
+
   switch (dxgi_format) {
     case DXGI_FORMAT_Y210:
     case DXGI_FORMAT_Y410:
@@ -59,8 +63,26 @@ size_t NumPlanes(DXGI_FORMAT dxgi_format) {
     case DXGI_FORMAT_R16G16B16A16_FLOAT:
       return 1;
     default:
+      NOTREACHED_NORETURN();
+  }
+}
+
+viz::SharedImageFormat DXGIFormatToMultiPlanarSharedImageFormat(
+    DXGI_FORMAT dxgi_format) {
+  switch (dxgi_format) {
+    case DXGI_FORMAT_NV12:
+      return viz::MultiPlaneFormat::kNV12;
+    case DXGI_FORMAT_P010:
+      return viz::MultiPlaneFormat::kP010;
+    case DXGI_FORMAT_B8G8R8A8_UNORM:
+      return viz::SinglePlaneFormat::kBGRA_8888;
+    case DXGI_FORMAT_R10G10B10A2_UNORM:
+      return viz::SinglePlaneFormat::kRGBA_1010102;
+    case DXGI_FORMAT_R16G16B16A16_FLOAT:
+      return viz::SinglePlaneFormat::kRGBA_F16;
+    default:
       NOTREACHED();
-      return 0;
+      return viz::SinglePlaneFormat::kBGRA_8888;
   }
 }
 
@@ -70,10 +92,13 @@ Texture2DWrapper::Texture2DWrapper() = default;
 
 Texture2DWrapper::~Texture2DWrapper() = default;
 
-DefaultTexture2DWrapper::DefaultTexture2DWrapper(const gfx::Size& size,
-                                                 DXGI_FORMAT dxgi_format,
-                                                 ComD3D11Device device)
+DefaultTexture2DWrapper::DefaultTexture2DWrapper(
+    const gfx::Size& size,
+    const gfx::ColorSpace& color_space,
+    DXGI_FORMAT dxgi_format,
+    ComD3D11Device device)
     : size_(size),
+      color_space_(color_space),
       dxgi_format_(dxgi_format),
       video_device_(std::move(device)) {}
 
@@ -116,6 +141,10 @@ D3D11Status DefaultTexture2DWrapper::ProcessTexture(
   // We're just binding, so the output and output color spaces are the same.
   *output_color_space = input_color_space;
 
+  // TODO(hitawala): Possibly optimize this method as input and stored color
+  // spaces should be same.
+  CHECK_EQ(input_color_space, color_space_);
+
   return D3D11Status::Codes::kOk;
 }
 
@@ -156,9 +185,9 @@ D3D11Status DefaultTexture2DWrapper::Init(
                      weak_factory_.GetWeakPtr()));
   gpu_resources_ = base::SequenceBound<GpuResources>(
       std::move(gpu_task_runner), std::move(on_error_cb),
-      std::move(get_helper_cb), std::move(mailboxes), size_, dxgi_format_,
-      video_device_, texture, array_slice, std::move(picture_buffer),
-      std::move(gpu_resource_init_cb));
+      std::move(get_helper_cb), std::move(mailboxes), size_, color_space_,
+      dxgi_format_, video_device_, texture, array_slice,
+      std::move(picture_buffer), std::move(gpu_resource_init_cb));
   return D3D11Status::Codes::kOk;
 }
 
@@ -187,23 +216,21 @@ DefaultTexture2DWrapper::GpuResources::GpuResources(
     GetCommandBufferHelperCB get_helper_cb,
     const std::vector<gpu::Mailbox>& mailboxes,
     const gfx::Size& size,
+    const gfx::ColorSpace& color_space,
     DXGI_FORMAT dxgi_format,
     ComD3D11Device video_device,
     ComD3D11Texture2D texture,
     size_t array_slice,
     scoped_refptr<media::D3D11PictureBuffer> picture_buffer,
     GPUResourceInitCB gpu_resource_init_cb) {
-  DCHECK(texture);
+  CHECK(texture);
 
   helper_ = get_helper_cb.Run();
-  if (!helper_ || !helper_->MakeContextCurrent()) {
+  if (!helper_) {
     std::move(on_error_cb)
-        .Run(std::move(D3D11Status::Codes::kMakeContextCurrentFailed));
+        .Run(std::move(D3D11Status::Codes::kGetCommandBufferHelperFailed));
     return;
   }
-
-  helper_->AddWillDestroyStubCB(base::BindOnce(&GpuResources::OnWillDestroyStub,
-                                               weak_factory_.GetWeakPtr()));
 
   // Usage flags to allow the display compositor to draw from it, video to
   // decode, and allow webgl/canvas access.
@@ -217,7 +244,7 @@ DefaultTexture2DWrapper::GpuResources::GpuResources(
   texture->GetDesc(&desc);
   // Create shared handle for shareable output texture.
   if (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE) {
-    Microsoft::WRL::ComPtr<IDXGIResource1> dxgi_resource;
+    ComDXGIResource1 dxgi_resource;
     HRESULT hr = texture.As(&dxgi_resource);
     if (FAILED(hr)) {
       DLOG(ERROR) << "QueryInterface for IDXGIResource failed with error "
@@ -245,9 +272,30 @@ DefaultTexture2DWrapper::GpuResources::GpuResources(
             base::win::ScopedHandle(shared_handle), texture);
   }
 
-  auto shared_image_backings = gpu::D3DImageBacking::CreateFromVideoTexture(
-      mailboxes, dxgi_format, size, usage, texture, array_slice,
-      std::move(dxgi_shared_handle_state));
+  std::vector<std::unique_ptr<gpu::SharedImageBacking>> shared_image_backings;
+  if (IsMultiPlaneFormatForHardwareVideoEnabled()) {
+    DCHECK_EQ(mailboxes.size(), 1u);
+    // The target must be GL_TEXTURE_EXTERNAL_OES as the texture is not created
+    // with D3D11_BIND_RENDER_TARGET bind flag and so it cannot be bound to the
+    // framebuffer. To prevent Skia trying to bind it for read pixels, we need
+    // it to be GL_TEXTURE_EXTERNAL_OES.
+    std::unique_ptr<gpu::SharedImageBacking> backing =
+        gpu::D3DImageBacking::Create(
+            mailboxes[0], DXGIFormatToMultiPlanarSharedImageFormat(dxgi_format),
+            size, color_space, kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType,
+            usage, texture, std::move(dxgi_shared_handle_state),
+            GL_TEXTURE_EXTERNAL_OES, array_slice);
+    if (backing) {
+      // Need to clear the backing since the D3D11 Video Decoder will initialize
+      // the textures.
+      backing->SetCleared();
+      shared_image_backings.push_back(std::move(backing));
+    }
+  } else {
+    shared_image_backings = gpu::D3DImageBacking::CreateFromVideoTexture(
+        mailboxes, dxgi_format, size, usage, texture, array_slice,
+        std::move(dxgi_shared_handle_state));
+  }
   if (shared_image_backings.empty()) {
     std::move(on_error_cb)
         .Run(std::move(D3D11Status::Codes::kCreateSharedImageFailed));
@@ -276,29 +324,6 @@ DefaultTexture2DWrapper::GpuResources::GpuResources(
       .Run(std::move(picture_buffer), std::move(shared_image_rep));
 }
 
-DefaultTexture2DWrapper::GpuResources::~GpuResources() {
-  // Destroy shared images with a current context, otherwise mark context lost.
-  // Check that stub is not destroyed since MakeContextCurrent will fail after
-  // that and we should've already propagated context loss in OnWillDestroyStub.
-  if (!is_stub_destroyed_ && (!helper_ || !helper_->MakeContextCurrent())) {
-    for (auto& shared_image_rep : shared_images_) {
-      shared_image_rep->OnContextLost();
-    }
-  }
-  // Destroy helper after shared image since the shared image has a raw pointer
-  // to the helper's memory tracker.
-  shared_images_.clear();
-  helper_.reset();
-}
-
-void DefaultTexture2DWrapper::GpuResources::OnWillDestroyStub(
-    bool have_context) {
-  if (!have_context) {
-    for (auto& shared_image_rep : shared_images_) {
-      shared_image_rep->OnContextLost();
-    }
-  }
-  is_stub_destroyed_ = true;
-}
+DefaultTexture2DWrapper::GpuResources::~GpuResources() = default;
 
 }  // namespace media

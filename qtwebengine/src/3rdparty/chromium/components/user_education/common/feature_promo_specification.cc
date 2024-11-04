@@ -95,6 +95,28 @@ FeaturePromoSpecification::~FeaturePromoSpecification() = default;
 FeaturePromoSpecification& FeaturePromoSpecification::operator=(
     FeaturePromoSpecification&& other) = default;
 
+std::u16string FeaturePromoSpecification::FormatString(
+    int string_id,
+    const FormatParameters& format_params) {
+  if (!string_id) {
+    CHECK(absl::holds_alternative<NoSubstitution>(format_params));
+    return std::u16string();
+  }
+  if (absl::holds_alternative<NoSubstitution>(format_params)) {
+    return l10n_util::GetStringUTF16(string_id);
+  }
+  if (const auto* substitutions =
+          absl::get_if<StringSubstitutions>(&format_params)) {
+    return l10n_util::GetStringFUTF16(string_id, *substitutions, nullptr);
+  }
+  if (const std::u16string* str =
+          absl::get_if<std::u16string>(&format_params)) {
+    return l10n_util::GetStringFUTF16(string_id, *str);
+  }
+  int number = absl::get<int>(format_params);
+  return l10n_util::GetPluralStringFUTF16(string_id, number);
+}
+
 // static
 FeaturePromoSpecification FeaturePromoSpecification::CreateForToastPromo(
     const base::Feature& feature,
@@ -104,6 +126,13 @@ FeaturePromoSpecification FeaturePromoSpecification::CreateForToastPromo(
     AcceleratorInfo accessible_accelerator) {
   FeaturePromoSpecification spec(&feature, PromoType::kToast, anchor_element_id,
                                  body_text_string_id);
+  CHECK_NE(body_text_string_id, accessible_text_string_id)
+      << "Because toasts are hard to notice and time out quickly, screen "
+         "reader text associated with toasts should differ from the bubble "
+         "text and either provide the accelerator to access the highlighted "
+         "entry point for your feature, or at the very least provide a "
+         "separate description of the screen element appropriate for keyboard "
+         "and low-vision users.";
   spec.screen_reader_string_id_ = accessible_text_string_id;
   spec.screen_reader_accelerator_ = std::move(accessible_accelerator);
   return spec;
@@ -116,6 +145,22 @@ FeaturePromoSpecification FeaturePromoSpecification::CreateForSnoozePromo(
     int body_text_string_id) {
   return FeaturePromoSpecification(&feature, PromoType::kSnooze,
                                    anchor_element_id, body_text_string_id);
+}
+
+// static
+FeaturePromoSpecification FeaturePromoSpecification::CreateForSnoozePromo(
+    const base::Feature& feature,
+    ui::ElementIdentifier anchor_element_id,
+    int body_text_string_id,
+    int accessible_text_string_id,
+    AcceleratorInfo accessible_accelerator) {
+  // See `FeaturePromoSpecification::CreateForToastPromo()`.
+  CHECK_NE(body_text_string_id, accessible_text_string_id);
+  FeaturePromoSpecification spec(&feature, PromoType::kSnooze,
+                                 anchor_element_id, body_text_string_id);
+  spec.screen_reader_string_id_ = accessible_text_string_id;
+  spec.screen_reader_accelerator_ = std::move(accessible_accelerator);
+  return spec;
 }
 
 // static
@@ -158,7 +203,7 @@ FeaturePromoSpecification FeaturePromoSpecification::CreateForLegacyPromo(
 FeaturePromoSpecification& FeaturePromoSpecification::SetBubbleTitleText(
     int title_text_string_id) {
   DCHECK_NE(promo_type_, PromoType::kUnspecified);
-  bubble_title_text_ = l10n_util::GetStringUTF16(title_text_string_id);
+  bubble_title_string_id_ = title_text_string_id;
   return *this;
 }
 

@@ -17,6 +17,7 @@
 #include "chrome/browser/new_tab_page/modules/history_clusters/history_clusters.mojom.h"
 #include "chrome/browser/new_tab_page/modules/photos/photos.mojom.h"
 #include "chrome/browser/new_tab_page/modules/recipes/recipes.mojom.h"
+#include "chrome/browser/new_tab_page/modules/v2/history_clusters/history_clusters_v2.mojom.h"
 #include "components/user_education/webui/help_bubble_handler.h"
 #include "ui/webui/resources/cr_components/help_bubble/help_bubble.mojom.h"
 #include "ui/webui/resources/js/browser_command/browser_command.mojom.h"
@@ -32,6 +33,7 @@
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter.h"
 #include "chrome/browser/ui/webui/new_tab_page/new_tab_page.mojom.h"
 #include "components/omnibox/browser/omnibox.mojom-forward.h"
+#include "components/page_image_service/mojom/page_image_service.mojom.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
@@ -59,6 +61,10 @@ namespace ui {
 class ColorChangeHandler;
 }  // namespace ui
 
+namespace page_image_service {
+class ImageServiceHandler;
+}
+
 class ChromeCustomizeThemesHandler;
 #if !defined(OFFICIAL_BUILD)
 class FooHandler;
@@ -79,6 +85,7 @@ namespace ntp {
 class FeedHandler;
 }
 class HistoryClustersPageHandler;
+class HistoryClustersPageHandlerV2;
 class HelpBubbleHandler;
 class NewTabPageUI
     : public ui::MojoWebUIController,
@@ -187,6 +194,17 @@ class NewTabPageUI
       mojo::PendingReceiver<ntp::history_clusters::mojom::PageHandler>
           pending_page_handler);
 
+  // Instantiates the implementor of the
+  // ntp::history_clusters_v2::mojom::PageHandler mojo interface passing to it
+  // the pending receiver that will be internally bound.
+  void BindInterface(
+      mojo::PendingReceiver<ntp::history_clusters_v2::mojom::PageHandler>
+          pending_page_handler);
+
+  void BindInterface(
+      mojo::PendingReceiver<page_image_service::mojom::PageImageServiceHandler>
+          pending_page_handler);
+
   void BindInterface(
       mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandlerFactory>
           pending_receiver);
@@ -268,6 +286,9 @@ class NewTabPageUI
 #endif
   std::unique_ptr<CartHandler> cart_handler_;
   std::unique_ptr<HistoryClustersPageHandler> history_clusters_handler_;
+  std::unique_ptr<HistoryClustersPageHandlerV2> history_clusters_handler_v2_;
+  std::unique_ptr<page_image_service::ImageServiceHandler>
+      image_service_handler_;
   raw_ptr<Profile> profile_;
   raw_ptr<ThemeService> theme_service_;
   raw_ptr<NtpCustomBackgroundService> ntp_custom_background_service_;

@@ -21,6 +21,8 @@
 #include "base/trace_event/trace_log.h"
 #include "build/build_config.h"
 #include "components/crash/core/common/crash_key.h"
+#include "components/memory_system/initializer.h"
+#include "components/memory_system/parameters.h"
 #include "content/common/content_constants_internal.h"
 #include "content/public/app/initialize_mojo_core.h"
 #include "content/public/browser/browser_main_runner.h"
@@ -85,7 +87,7 @@
 #endif
 
 #if BUILDFLAG(IS_IOS)
-#include "content/shell/browser/shell_application_ios.h"
+#include "content/shell/app/ios/shell_application_ios.h"
 #endif
 
 namespace {
@@ -246,11 +248,23 @@ absl::variant<int, MainFunctionParams> ShellMainDelegate::RunProcess(
   base::trace_event::TraceLog::GetInstance()->SetProcessSortIndex(
       kTraceEventBrowserProcessSortIndex);
 
-#if BUILDFLAG(IS_ANDROID)
-  // On Android, we defer to the system message loop when the stack unwinds.
-  // So here we only create (and leak) a BrowserMainRunner. The shutdown
-  // of BrowserMainRunner doesn't happen in Chrome Android and doesn't work
-  // properly on Android at all.
+#if !BUILDFLAG(IS_ANDROID)
+  if (switches::IsRunWebTestsSwitchPresent()) {
+    // Web tests implement their own BrowserMain() replacement.
+    web_test_runner_->RunBrowserMain(std::move(main_function_params));
+    web_test_runner_.reset();
+    // Returning 0 to indicate that we have replaced BrowserMain() and the
+    // caller should not call BrowserMain() itself. Web tests do not ever
+    // return an error.
+    return 0;
+  }
+#endif
+
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+  // On Android and iOS, we defer to the system message loop when the stack
+  // unwinds. So here we only create (and leak) a BrowserMainRunner. The
+  // shutdown of BrowserMainRunner doesn't happen in Chrome Android/iOS and
+  // doesn't work properly on Android/iOS at all.
   std::unique_ptr<BrowserMainRunner> main_runner = BrowserMainRunner::Create();
   // In browser tests, the |main_function_params| contains a |ui_task| which
   // will execute the testing. The task will be executed synchronously inside
@@ -264,35 +278,7 @@ absl::variant<int, MainFunctionParams> ShellMainDelegate::RunProcess(
   // the system message loop for ContentShell, and we're already done thanks
   // to the |ui_task| for browser tests.
   return 0;
-#elif BUILDFLAG(IS_IOS)
-  // On iOS, we need to create the UIApplication which owns the main event
-  // loop.
-  std::unique_ptr<BrowserMainRunner> main_runner = BrowserMainRunner::Create();
-  // In browser tests, the |main_function_params| contains a |ui_task| which
-  // will execute the testing. The task will be executed synchronously inside
-  // Initialize() so we don't depend on the BrowserMainRunner being Run().
-  int initialize_exit_code =
-      main_runner->Initialize(std::move(main_function_params));
-  DCHECK_LT(initialize_exit_code, 0)
-      << "BrowserMainRunner::Initialize failed in ShellMainDelegate";
-
-  RunShellApplication(main_function_params.argc, main_function_params.argv);
-
-  // Return 0 as BrowserMain() should not be called after this, bounce up to
-  // the system message loop for ContentShell, and we're already done thanks
-  // to the |ui_task| for browser tests.
-  return 0;
 #else
-  if (switches::IsRunWebTestsSwitchPresent()) {
-    // Web tests implement their own BrowserMain() replacement.
-    web_test_runner_->RunBrowserMain(std::move(main_function_params));
-    web_test_runner_.reset();
-    // Returning 0 to indicate that we have replaced BrowserMain() and the
-    // caller should not call BrowserMain() itself. Web tests do not ever
-    // return an error.
-    return 0;
-  }
-
   // On non-Android, we can return the |main_function_params| back and have the
   // caller run BrowserMain() normally.
   return std::move(main_function_params);
@@ -379,6 +365,29 @@ absl::optional<int> ShellMainDelegate::PostEarlyInitialization(
   if (!ShouldInitializeMojo(invoked_in)) {
     InitializeMojoCore();
   }
+
+  const std::string process_type =
+      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+          switches::kProcessType);
+
+  // ShellMainDelegate has GWP-ASan as well as Profiling Client disabled.
+  // Consequently, we provide no parameters for these two. The memory_system
+  // includes the PoissonAllocationSampler dynamically only if the Profiling
+  // Client is enabled. However, we are not sure if this is the only user of
+  // PoissonAllocationSampler in the ContentShell. Therefore, enforce inclusion
+  // at the moment.
+  //
+  // TODO(https://crbug.com/1411454): Clarify which users of
+  // PoissonAllocationSampler we have in the ContentShell. Do we really need to
+  // enforce it?
+  memory_system::Initializer()
+      .SetDispatcherParameters(memory_system::DispatcherParameters::
+                                   PoissonAllocationSamplerInclusion::kEnforce,
+                               memory_system::DispatcherParameters::
+                                   AllocationTraceRecorderInclusion::kIgnore,
+                               process_type)
+      .Initialize(memory_system_);
+
   return absl::nullopt;
 }
 

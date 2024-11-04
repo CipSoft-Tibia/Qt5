@@ -25,6 +25,14 @@
 #include "dawn/native/PipelineLayout.h"
 #include "dawn/native/ShaderModule.h"
 
+namespace {
+bool IsDoubleValueRepresentableAsF16(double value) {
+    constexpr double kLowestF16 = -65504.0;
+    constexpr double kMaxF16 = 65504.0;
+    return kLowestF16 <= value && value <= kMaxF16;
+}
+}  // namespace
+
 namespace dawn::native {
 MaybeError ValidateProgrammableStage(DeviceBase* device,
                                      const ShaderModuleBase* module,
@@ -79,6 +87,12 @@ MaybeError ValidateProgrammableStage(DeviceBase* device,
                                 "Pipeline overridable constant \"%s\" with value (%f) is not "
                                 "representable in type (%s)",
                                 constants[i].key, constants[i].value, "f32");
+                break;
+            case EntryPointMetadata::Override::Type::Float16:
+                DAWN_INVALID_IF(!IsDoubleValueRepresentableAsF16(constants[i].value),
+                                "Pipeline overridable constant \"%s\" with value (%f) is not "
+                                "representable in type (%s)",
+                                constants[i].key, constants[i].value, "f16");
                 break;
             case EntryPointMetadata::Override::Type::Int32:
                 DAWN_INVALID_IF(!IsDoubleValueRepresentable<int32_t>(constants[i].value),
@@ -141,6 +155,8 @@ MaybeError ValidateProgrammableStage(DeviceBase* device,
 
 WGPUCreatePipelineAsyncStatus CreatePipelineAsyncStatusFromErrorType(InternalErrorType error) {
     switch (error) {
+        case InternalErrorType::None:
+            return WGPUCreatePipelineAsyncStatus_Success;
         case InternalErrorType::Validation:
             return WGPUCreatePipelineAsyncStatus_ValidationError;
         case InternalErrorType::DeviceLost:
@@ -148,6 +164,9 @@ WGPUCreatePipelineAsyncStatus CreatePipelineAsyncStatusFromErrorType(InternalErr
         case InternalErrorType::Internal:
         case InternalErrorType::OutOfMemory:
             return WGPUCreatePipelineAsyncStatus_InternalError;
+        default:
+            UNREACHABLE();
+            return WGPUCreatePipelineAsyncStatus_Unknown;
     }
 }
 
@@ -197,8 +216,8 @@ PipelineBase::PipelineBase(DeviceBase* device,
     }
 }
 
-PipelineBase::PipelineBase(DeviceBase* device, ObjectBase::ErrorTag tag)
-    : ApiObjectBase(device, tag) {}
+PipelineBase::PipelineBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label)
+    : ApiObjectBase(device, tag, label) {}
 
 PipelineBase::~PipelineBase() = default;
 
@@ -252,7 +271,7 @@ ResultOrError<Ref<BindGroupLayoutBase>> PipelineBase::GetBindGroupLayout(uint32_
     BindGroupIndex groupIndex(groupIndexIn);
 
     DAWN_TRY(ValidateGetBindGroupLayout(groupIndex));
-    return Ref<BindGroupLayoutBase>(mLayout->GetBindGroupLayout(groupIndex));
+    return Ref<BindGroupLayoutBase>(mLayout->GetFrontendBindGroupLayout(groupIndex));
 }
 
 BindGroupLayoutBase* PipelineBase::APIGetBindGroupLayout(uint32_t groupIndexIn) {

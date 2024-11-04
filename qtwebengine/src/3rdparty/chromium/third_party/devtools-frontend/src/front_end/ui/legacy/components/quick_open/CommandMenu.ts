@@ -57,8 +57,17 @@ export class CommandMenu {
   }
 
   static createCommand(options: CreateCommandOptions): Command {
-    const {category, keys, title, shortcut, executeHandler, availableHandler, userActionCode, deprecationWarning} =
-        options;
+    const {
+      category,
+      keys,
+      title,
+      shortcut,
+      executeHandler,
+      availableHandler,
+      userActionCode,
+      deprecationWarning,
+      isPanelOrDrawer,
+    } = options;
 
     let handler = executeHandler;
     if (userActionCode) {
@@ -68,20 +77,11 @@ export class CommandMenu {
         executeHandler();
       };
     }
-    if (title === 'Show Issues') {
-      // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration)
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      const cached_handler = handler;
-      handler = (): void => {
-        Host.userMetrics.issuesPanelOpenedFrom(Host.UserMetrics.IssueOpener.CommandMenu);
-        cached_handler();
-      };
-    }
-
-    return new Command(category, title, keys, shortcut, handler, availableHandler, deprecationWarning);
+    return new Command(category, title, keys, shortcut, handler, availableHandler, deprecationWarning, isPanelOrDrawer);
   }
 
-  static createSettingCommand<V>(setting: Common.Settings.Setting<V>, title: string, value: V): Command {
+  static createSettingCommand<V>(setting: Common.Settings.Setting<V>, title: Common.UIString.LocalizedString, value: V):
+      Command {
     const category = setting.category();
     if (!category) {
       throw new Error(`Creating '${title}' setting command failed. Setting has no category.`);
@@ -117,36 +117,63 @@ export class CommandMenu {
 
   static createActionCommand(options: ActionCommandOptions): Command {
     const {action, userActionCode} = options;
+    const category = action.category();
+    if (!category) {
+      throw new Error(`Creating '${action.title()}' action command failed. Action has no category.`);
+    }
+
+    let panelOrDrawer = undefined;
+    if (category === UI.ActionRegistration.ActionCategory.DRAWER) {
+      panelOrDrawer = PanelOrDrawer.DRAWER;
+    }
+
     const shortcut = UI.ShortcutRegistry.ShortcutRegistry.instance().shortcutTitleForAction(action.id()) || '';
 
     return CommandMenu.createCommand({
-      category: action.category(),
+      category: UI.ActionRegistration.getLocalizedActionCategory(category),
       keys: action.tags() || '',
-      title: action.title() || '',
+      title: action.title(),
       shortcut,
       executeHandler: action.execute.bind(action),
       userActionCode,
       availableHandler: undefined,
+      isPanelOrDrawer: panelOrDrawer,
     });
   }
 
   static createRevealViewCommand(options: RevealViewCommandOptions): Command {
     const {title, tags, category, userActionCode, id} = options;
+    if (!category) {
+      throw new Error(`Creating '${title}' reveal view command failed. Reveal view has no category.`);
+    }
+    let panelOrDrawer = undefined;
+    if (category === UI.ViewManager.ViewLocationCategory.PANEL) {
+      panelOrDrawer = PanelOrDrawer.PANEL;
+    } else if (category === UI.ViewManager.ViewLocationCategory.DRAWER) {
+      panelOrDrawer = PanelOrDrawer.DRAWER;
+    }
+
+    const executeHandler = (): Promise<void> => {
+      if (id === 'issues-pane') {
+        Host.userMetrics.issuesPanelOpenedFrom(Host.UserMetrics.IssueOpener.CommandMenu);
+      }
+      return UI.ViewManager.ViewManager.instance().showView(id, /* userGesture */ true);
+    };
 
     return CommandMenu.createCommand({
-      category,
+      category: UI.ViewManager.getLocalizedViewLocationCategory(category),
       keys: tags,
       title,
       shortcut: '',
-      executeHandler: UI.ViewManager.ViewManager.instance().showView.bind(
-          UI.ViewManager.ViewManager.instance(), id, /* userGesture */ true),
+      executeHandler,
       userActionCode,
       availableHandler: undefined,
+      isPanelOrDrawer: panelOrDrawer,
     });
   }
 
   private loadCommands(): void {
-    const locations = new Map<UI.ViewManager.ViewLocationValues, string>();
+    const locations = new Map<UI.ViewManager.ViewLocationValues, UI.ViewManager.ViewLocationCategory>();
     for (const {category, name} of UI.ViewManager.getRegisteredLocationResolvers()) {
       if (category && name) {
         locations.set(name, category);
@@ -194,21 +221,28 @@ export interface ActionCommandOptions {
 
 export interface RevealViewCommandOptions {
   id: string;
-  title: string;
+  title: Common.UIString.LocalizedString;
   tags: string;
-  category: string;
+  category: UI.ViewManager.ViewLocationCategory;
   userActionCode?: number;
 }
 
 export interface CreateCommandOptions {
-  category: string;
+  category: Platform.UIString.LocalizedString;
   keys: string;
-  title: string;
+  title: Common.UIString.LocalizedString;
   shortcut: string;
   executeHandler: () => void;
   availableHandler?: () => boolean;
   userActionCode?: number;
   deprecationWarning?: Platform.UIString.LocalizedString;
+  isPanelOrDrawer?: PanelOrDrawer;
+}
+
+// eslint-disable-next-line rulesdir/const_enum
+export enum PanelOrDrawer {
+  PANEL = 'PANEL',
+  DRAWER = 'DRAWER',
 }
 
 export class CommandMenuProvider extends Provider {
@@ -219,7 +253,7 @@ export class CommandMenuProvider extends Provider {
     this.commands = commandsForTest;
   }
 
-  attach(): void {
+  override attach(): void {
     const allCommands = CommandMenu.instance().commands();
 
     // Populate allowlisted actions.
@@ -243,47 +277,47 @@ export class CommandMenuProvider extends Provider {
     this.commands = this.commands.sort(commandComparator);
 
     function commandComparator(left: Command, right: Command): number {
-      const cats = Platform.StringUtilities.compare(left.category(), right.category());
-      return cats ? cats : Platform.StringUtilities.compare(left.title(), right.title());
+      const cats = Platform.StringUtilities.compare(left.category, right.category);
+      return cats ? cats : Platform.StringUtilities.compare(left.title, right.title);
     }
   }
 
-  detach(): void {
+  override detach(): void {
     this.commands = [];
   }
 
-  itemCount(): number {
+  override itemCount(): number {
     return this.commands.length;
   }
 
-  itemKeyAt(itemIndex: number): string {
-    return this.commands[itemIndex].key();
+  override itemKeyAt(itemIndex: number): string {
+    return this.commands[itemIndex].key;
   }
 
-  itemScoreAt(itemIndex: number, query: string): number {
+  override itemScoreAt(itemIndex: number, query: string): number {
     const command = this.commands[itemIndex];
-    let score = Diff.Diff.DiffWrapper.characterScore(query.toLowerCase(), command.title().toLowerCase());
+    let score = Diff.Diff.DiffWrapper.characterScore(query.toLowerCase(), command.title.toLowerCase());
 
     // Score panel/drawer reveals above regular actions.
-    if (command.category().startsWith('Panel')) {
+    if (command.isPanelOrDrawer === PanelOrDrawer.PANEL) {
       score += 2;
-    } else if (command.category().startsWith('Drawer')) {
+    } else if (command.isPanelOrDrawer === PanelOrDrawer.DRAWER) {
       score += 1;
     }
 
     return score;
   }
 
-  renderItem(itemIndex: number, query: string, titleElement: Element, subtitleElement: Element): void {
+  override renderItem(itemIndex: number, query: string, titleElement: Element, subtitleElement: Element): void {
     const command = this.commands[itemIndex];
 
     titleElement.removeChildren();
-    UI.UIUtils.createTextChild(titleElement, command.title());
+    UI.UIUtils.createTextChild(titleElement, command.title);
     FilteredListWidget.highlightRanges(titleElement, query, true);
 
-    subtitleElement.textContent = command.shortcut();
+    subtitleElement.textContent = command.shortcut;
 
-    const deprecationWarning = command.deprecationWarning();
+    const deprecationWarning = command.deprecationWarning;
     if (deprecationWarning) {
       const deprecatedTagElement = (titleElement.parentElement?.createChild('span', 'deprecated-tag') as HTMLElement);
       if (deprecatedTagElement) {
@@ -295,13 +329,13 @@ export class CommandMenuProvider extends Provider {
     if (!tagElement) {
       return;
     }
-    const index = Platform.StringUtilities.hashCode(command.category()) % MaterialPaletteColors.length;
+    const index = Platform.StringUtilities.hashCode(command.category) % MaterialPaletteColors.length;
     tagElement.style.backgroundColor = MaterialPaletteColors[index];
     tagElement.style.color = 'var(--color-background)';
-    tagElement.textContent = command.category();
+    tagElement.textContent = command.category;
   }
 
-  selectItem(itemIndex: number|null, _promptValue: string): void {
+  override selectItem(itemIndex: number|null, _promptValue: string): void {
     if (itemIndex === null) {
       return;
     }
@@ -309,7 +343,7 @@ export class CommandMenuProvider extends Provider {
     Host.userMetrics.actionTaken(Host.UserMetrics.Action.SelectCommandFromCommandMenu);
   }
 
-  notFoundText(): string {
+  override notFoundText(): string {
     return i18nString(UIStrings.noCommandsFound);
   }
 }
@@ -335,52 +369,36 @@ export const MaterialPaletteColors = [
 ];
 
 export class Command {
-  private readonly categoryInternal: string;
-  private readonly titleInternal: string;
-  private readonly keyInternal: string;
-  private readonly shortcutInternal: string;
-  private readonly executeHandler: () => void;
-  private readonly availableHandler?: () => boolean;
-  private readonly deprecationWarningInternal?: Platform.UIString.LocalizedString;
+  readonly category: Common.UIString.LocalizedString;
+  readonly title: Common.UIString.LocalizedString;
+  readonly key: string;
+  readonly shortcut: string;
+  readonly deprecationWarning?: Platform.UIString.LocalizedString;
+  readonly isPanelOrDrawer?: PanelOrDrawer;
+
+  readonly #executeHandler: () => unknown;
+  readonly #availableHandler?: () => boolean;
 
   constructor(
-      category: string, title: string, key: string, shortcut: string, executeHandler: () => void,
-      availableHandler?: () => boolean, deprecationWarning?: Platform.UIString.LocalizedString) {
-    this.categoryInternal = category;
-    this.titleInternal = title;
-    this.keyInternal = category + '\0' + title + '\0' + key;
-    this.shortcutInternal = shortcut;
-    this.executeHandler = executeHandler;
-    this.availableHandler = availableHandler;
-    this.deprecationWarningInternal = deprecationWarning;
-  }
-
-  category(): string {
-    return this.categoryInternal;
-  }
-
-  title(): string {
-    return this.titleInternal;
-  }
-
-  key(): string {
-    return this.keyInternal;
-  }
-
-  shortcut(): string {
-    return this.shortcutInternal;
+      category: Common.UIString.LocalizedString, title: Common.UIString.LocalizedString, key: string, shortcut: string,
+      executeHandler: () => unknown, availableHandler?: () => boolean,
+      deprecationWarning?: Platform.UIString.LocalizedString, isPanelOrDrawer?: PanelOrDrawer) {
+    this.category = category;
+    this.title = title;
+    this.key = category + '\0' + title + '\0' + key;
+    this.shortcut = shortcut;
+    this.#executeHandler = executeHandler;
+    this.#availableHandler = availableHandler;
+    this.deprecationWarning = deprecationWarning;
+    this.isPanelOrDrawer = isPanelOrDrawer;
   }
 
   available(): boolean {
-    return this.availableHandler ? this.availableHandler() : true;
+    return this.#availableHandler ? this.#availableHandler() : true;
   }
 
-  execute(): void {
-    this.executeHandler();
-  }
-
-  deprecationWarning(): Platform.UIString.LocalizedString|undefined {
-    return this.deprecationWarningInternal;
+  execute(): unknown {
+    return this.#executeHandler();  // Tests might want to await the action in case it's async.
   }
 }
 
@@ -406,7 +424,8 @@ export class ShowActionDelegate implements UI.ActionRegistration.ActionDelegate 
 
 registerProvider({
   prefix: '>',
-  iconName: 'ic_command_run_command',
+  iconName: 'chevron-right',
+  iconWidth: '20px',
   provider: () => Promise.resolve(new CommandMenuProvider()),
   titlePrefix: (): Common.UIString.LocalizedString => i18nString(UIStrings.run),
   titleSuggestion: (): Common.UIString.LocalizedString => i18nString(UIStrings.command),

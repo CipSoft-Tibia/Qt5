@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -42,6 +41,7 @@ import (
 	"dawn.googlesource.com/dawn/tools/src/cov"
 	"dawn.googlesource.com/dawn/tools/src/fileutils"
 	"dawn.googlesource.com/dawn/tools/src/git"
+	"dawn.googlesource.com/dawn/tools/src/progressbar"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 )
@@ -62,7 +62,7 @@ func showUsage() {
 run-cts is a tool used to run the WebGPU CTS using the Dawn module for NodeJS
 
 Usage:
-  run-cts --dawn-node=<path to dawn.node> --cts=<path to WebGPU CTS> [test-query]`)
+  run-cts --bin=<path to directory containing dawn.node> --cts=<path to WebGPU CTS> [test-query]`)
 	os.Exit(1)
 }
 
@@ -100,6 +100,31 @@ func (f *dawnNodeFlags) Set(value string) error {
 	return nil
 }
 
+// Consolidates all the delimiter separated flags with a given prefix into a single flag.
+// Example:
+// Given the flags: ["foo=a", "bar", "foo=b,c"]
+// GlobListFlags("foo=", ",") will transform the flags to: ["bar", "foo=a,b,c"]
+func (f *dawnNodeFlags) GlobListFlags(prefix string, delimiter string) {
+	list := []string{}
+	i := 0
+	for _, flag := range *f {
+		if strings.HasPrefix(flag, prefix) {
+			// Trim the prefix.
+			value := flag[len(prefix):]
+			// Extract the deliminated values.
+			list = append(list, strings.Split(value, delimiter)...)
+		} else {
+			(*f)[i] = flag
+			i++
+		}
+	}
+	(*f) = (*f)[:i]
+	if len(list) > 0 {
+		// Append back the consolidated flags.
+		f.Set(prefix + strings.Join(list, delimiter))
+	}
+}
+
 func makeCtx() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	sigs := make(chan os.Signal, 1)
@@ -131,11 +156,11 @@ func run() error {
 
 	unrollConstEvalLoopsDefault := runtime.GOOS != "windows"
 
-	var dawnNode, cts, node, npx, resultsPath, expectationsPath, logFilename, backend, adapterName, coverageFile string
+	var bin, cts, node, npx, resultsPath, expectationsPath, logFilename, backend, adapterName, coverageFile string
 	var verbose, isolated, build, validate, dumpShaders, unrollConstEvalLoops, genCoverage bool
 	var numRunners int
 	var flags dawnNodeFlags
-	flag.StringVar(&dawnNode, "dawn-node", "", "path to dawn.node module")
+	flag.StringVar(&bin, "bin", defaultBinPath(), "path to the directory holding cts.js and dawn.node")
 	flag.StringVar(&cts, "cts", defaultCtsPath(), "root directory of WebGPU CTS")
 	flag.StringVar(&node, "node", defaultNodePath(), "path to node executable")
 	flag.StringVar(&npx, "npx", "", "path to npx executable")
@@ -168,18 +193,22 @@ func run() error {
 	defer stdout.Close() // Required to flush the mux chan
 
 	// Check mandatory arguments
-	if dawnNode == "" || cts == "" {
+	if bin == "" || cts == "" {
 		showUsage()
 	}
-	if !isFile(dawnNode) {
-		return fmt.Errorf("'%v' is not a file", dawnNode)
+	for _, dir := range []string{cts, bin} {
+		if !isDir(dir) {
+			return fmt.Errorf("'%v' is not a directory", dir)
+		}
 	}
-	if !isDir(cts) {
-		return fmt.Errorf("'%v' is not a directory", cts)
+	for _, file := range []string{"cts.js", "dawn.node"} {
+		if !isFile(filepath.Join(bin, file)) {
+			return fmt.Errorf("'%v' does not contain '%v'", bin, file)
+		}
 	}
 
 	// Make paths absolute
-	for _, path := range []*string{&dawnNode, &cts} {
+	for _, path := range []*string{&bin, &cts} {
 		abs, err := filepath.Abs(*path)
 		if err != nil {
 			return fmt.Errorf("unable to get absolute path for '%v'", *path)
@@ -223,20 +252,12 @@ func run() error {
 	}
 
 	// While running the CTS, always allow unsafe APIs so they can be tested.
-	disableDawnFeaturesFound := false
-	for i, flag := range flags {
-		if strings.HasPrefix(flag, "disable-dawn-features=") {
-			flags[i] = flag + ",disallow_unsafe_apis"
-			disableDawnFeaturesFound = true
-		}
-	}
-	if !disableDawnFeaturesFound {
-		flags = append(flags, "disable-dawn-features=disallow_unsafe_apis")
-	}
+	flags.Set("enable-dawn-features=allow_unsafe_apis")
 	if dumpShaders {
-		flags = append(flags, "enable-dawn-features=dump_shaders,disable_symbol_renaming")
 		verbose = true
+		flags.Set("enable-dawn-features=dump_shaders,disable_symbol_renaming")
 	}
+	flags.GlobListFlags("enable-dawn-features=", ",")
 
 	r := runner{
 		query:                query,
@@ -244,7 +265,7 @@ func run() error {
 		verbose:              verbose,
 		node:                 node,
 		npx:                  npx,
-		dawnNode:             dawnNode,
+		bin:                  bin,
 		cts:                  cts,
 		tmpDir:               filepath.Join(os.TempDir(), "dawn-cts"),
 		unrollConstEvalLoops: unrollConstEvalLoops,
@@ -263,8 +284,6 @@ func run() error {
 	}
 
 	if genCoverage {
-		dawnOutDir := filepath.Dir(dawnNode)
-
 		profdata, err := exec.LookPath("llvm-profdata")
 		if err != nil {
 			profdata = ""
@@ -280,7 +299,7 @@ func run() error {
 		}
 
 		llvmCov := ""
-		turboCov := filepath.Join(dawnOutDir, "turbo-cov"+fileutils.ExeExt)
+		turboCov := filepath.Join(bin, "turbo-cov"+fileutils.ExeExt)
 		if !fileutils.IsExe(turboCov) {
 			turboCov = ""
 			if path, err := exec.LookPath("llvm-cov"); err == nil {
@@ -291,7 +310,7 @@ func run() error {
 		}
 		r.covEnv = &cov.Env{
 			Profdata: profdata,
-			Binary:   dawnNode,
+			Binary:   bin,
 			Cov:      llvmCov,
 			TurboCov: turboCov,
 		}
@@ -307,7 +326,7 @@ func run() error {
 	}
 
 	cache := cache{}
-	cachePath := dawnNode + ".runcts.cache"
+	cachePath := filepath.Join(bin, "runcts.cache")
 	if err := cache.load(cachePath); err != nil && verbose {
 		fmt.Fprintln(stdout, "failed to load cache from", cachePath, err)
 	}
@@ -445,7 +464,7 @@ type runner struct {
 	verbose              bool
 	node                 string
 	npx                  string
-	dawnNode             string
+	bin                  string
 	cts                  string
 	tmpDir               string
 	unrollConstEvalLoops bool
@@ -675,7 +694,7 @@ func (r *runner) runServer(ctx context.Context, id int, caseIndices <-chan int, 
 			// start at 1, so just inject a placeholder argument.
 			"placeholder-arg",
 			// Actual arguments begin here
-			"--gpu-provider", r.dawnNode,
+			"--gpu-provider", filepath.Join(r.bin, "cts.js"),
 			"--data", filepath.Join(r.cts, "out-node", "data"),
 		}
 		if r.colors {
@@ -850,16 +869,10 @@ func (r *runner) runParallelIsolated(ctx context.Context) error {
 	for i := 0; i < r.numRunners; i++ {
 		wg.Add(1)
 
-		profraw := ""
-		if r.covEnv != nil {
-			profraw = filepath.Join(r.tmpDir, fmt.Sprintf("cts-%v.profraw", i))
-			defer os.Remove(profraw)
-		}
-
 		go func() {
 			defer wg.Done()
 			for idx := range caseIndices {
-				res := r.runTestcase(ctx, r.testcases[idx], profraw)
+				res := r.runTestcase(ctx, r.testcases[idx])
 				res.index = idx
 				results <- res
 
@@ -900,7 +913,7 @@ func (r *runner) streamResults(ctx context.Context, wg *sync.WaitGroup, results 
 	// Helper function for printing a progress bar.
 	lastStatusUpdate, animFrame := time.Now(), 0
 	updateProgress := func() {
-		fmt.Fprint(r.stdout, ansiProgressBar(animFrame, numTests, numByExpectedStatus))
+		drawProgressBar(r.stdout, animFrame, numTests, numByExpectedStatus)
 		animFrame++
 		lastStatusUpdate = time.Now()
 	}
@@ -960,7 +973,7 @@ func (r *runner) streamResults(ctx context.Context, wg *sync.WaitGroup, results 
 			covTree.Add(SplitCTSQuery(res.testcase), res.coverage)
 		}
 	}
-	fmt.Fprint(r.stdout, ansiProgressBar(animFrame, numTests, numByExpectedStatus))
+	drawProgressBar(r.stdout, animFrame, numTests, numByExpectedStatus)
 
 	// All done. Print final stats.
 	fmt.Fprintf(r.stdout, "\nCompleted in %v\n", timeTaken)
@@ -1053,17 +1066,11 @@ func (r *runner) streamResults(ctx context.Context, wg *sync.WaitGroup, results 
 	return nil
 }
 
-// runSerially() calls the CTS test runner to run the test query in a single
-// process.
+// runSerially() calls the CTS test runner to run the test query in a single process.
 // TODO(bclayton): Support comparing against r.expectations
 func (r *runner) runSerially(ctx context.Context, query string) error {
-	profraw := ""
-	if r.covEnv != nil {
-		profraw = filepath.Join(r.tmpDir, "cts.profraw")
-	}
-
 	start := time.Now()
-	result := r.runTestcase(ctx, query, profraw)
+	result := r.runTestcase(ctx, query)
 	timeTaken := time.Since(start)
 
 	if r.verbose {
@@ -1096,6 +1103,14 @@ var statusColor = map[status]string{
 	fail:    red,
 }
 
+var pbStatusColor = map[status]progressbar.Color{
+	pass:    progressbar.Green,
+	warn:    progressbar.Yellow,
+	skip:    progressbar.Cyan,
+	timeout: progressbar.Yellow,
+	fail:    progressbar.Red,
+}
+
 // expectedStatus is a test status, along with a boolean to indicate whether the
 // status matches the test expectations
 type expectedStatus struct {
@@ -1115,7 +1130,7 @@ type result struct {
 
 // runTestcase() runs the CTS testcase with the given query, returning the test
 // result.
-func (r *runner) runTestcase(ctx context.Context, query string, profraw string) result {
+func (r *runner) runTestcase(ctx context.Context, query string) result {
 	ctx, cancel := context.WithTimeout(ctx, testTimeout)
 	defer cancel()
 
@@ -1127,12 +1142,15 @@ func (r *runner) runTestcase(ctx context.Context, query string, profraw string) 
 		// start at 1, so just inject a placeholder argument.
 		"placeholder-arg",
 		// Actual arguments begin here
-		"--gpu-provider", r.dawnNode,
+		"--gpu-provider", filepath.Join(r.bin, "cts.js"),
 		"--verbose", // always required to emit test pass results
 		"--quiet",
 	}
 	if r.verbose {
 		args = append(args, "--gpu-provider-flag", "verbose=1")
+	}
+	if r.covEnv != nil {
+		args = append(args, "--coverage")
 	}
 	if r.colors {
 		args = append(args, "--colors")
@@ -1148,11 +1166,6 @@ func (r *runner) runTestcase(ctx context.Context, query string, profraw string) 
 	cmd := exec.CommandContext(ctx, r.node, args...)
 	cmd.Dir = r.cts
 
-	if profraw != "" {
-		cmd.Env = os.Environ()
-		cmd.Env = append(cmd.Env, cov.RuntimeEnv(cmd.Env, profraw))
-	}
-
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
@@ -1160,18 +1173,33 @@ func (r *runner) runTestcase(ctx context.Context, query string, profraw string) 
 	err := cmd.Run()
 
 	msg := buf.String()
-	res := result{testcase: query,
-		status:  pass,
-		message: msg,
-		error:   err,
+	res := result{
+		testcase: query,
+		status:   pass,
+		message:  msg,
+		error:    err,
 	}
 
-	if r.covEnv != nil {
-		coverage, covErr := r.covEnv.Import(profraw)
-		if covErr != nil {
-			err = fmt.Errorf("could not import coverage data: %v", err)
+	if err == nil && r.covEnv != nil {
+		const header = "Code-coverage: [["
+		const footer = "]]"
+		if headerStart := strings.Index(msg, header); headerStart >= 0 {
+			if footerStart := strings.Index(msg[headerStart:], footer); footerStart >= 0 {
+				footerStart += headerStart
+				path := msg[headerStart+len(header) : footerStart]
+				res.message = msg[:headerStart] + msg[footerStart+len(footer):] // Strip out the coverage from the message
+				coverage, covErr := r.covEnv.Import(path)
+				os.Remove(path)
+				if covErr == nil {
+					res.coverage = coverage
+				} else {
+					err = fmt.Errorf("could not import coverage data from '%v': %v", path, covErr)
+				}
+			}
 		}
-		res.coverage = coverage
+		if err == nil && res.coverage == nil {
+			err = fmt.Errorf("failed to parse code coverage from output")
+		}
 	}
 
 	switch {
@@ -1256,69 +1284,26 @@ func alignRight(val interface{}, width int) string {
 	return strings.Repeat(" ", padding) + s
 }
 
-// ansiProgressBar returns a string with an ANSI-colored progress bar, providing
-// realtime information about the status of the CTS run.
+// drawProgressBar draws an ANSI-colored progress bar, providing realtime
+// information about the status of the CTS run.
 // Note: We'll want to skip this if !isatty or if we're running on windows.
-func ansiProgressBar(animFrame int, numTests int, numByExpectedStatus map[expectedStatus]int) string {
-	const barWidth = 50
-
-	animSymbols := []rune{'⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'}
-	blockSymbols := []rune{'▏', '▎', '▍', '▌', '▋', '▊', '▉'}
-
-	numBlocksPrinted := 0
-
-	buf := &strings.Builder{}
-	fmt.Fprint(buf, string(animSymbols[animFrame%len(animSymbols)]), " [")
-	animFrame++
-
-	numFinished := 0
-
+func drawProgressBar(out io.Writer, animFrame int, numTests int, numByExpectedStatus map[expectedStatus]int) {
+	bar := progressbar.Status{Total: numTests}
 	for _, status := range statuses {
 		for _, expected := range []bool{true, false} {
-			color := statusColor[status]
-			if expected {
-				color += bold
+			if num := numByExpectedStatus[expectedStatus{status, expected}]; num > 0 {
+				bar.Segments = append(bar.Segments,
+					progressbar.Segment{
+						Count:       num,
+						Color:       pbStatusColor[status],
+						Bold:        expected,
+						Transparent: expected,
+					})
 			}
-
-			num := numByExpectedStatus[expectedStatus{status, expected}]
-			numFinished += num
-			statusFrac := float64(num) / float64(numTests)
-			fNumBlocks := barWidth * statusFrac
-			fmt.Fprint(buf, color)
-			numBlocks := int(math.Ceil(fNumBlocks))
-			if expected {
-				if numBlocks > 1 {
-					fmt.Fprint(buf, strings.Repeat(string("░"), numBlocks))
-				}
-			} else {
-				if numBlocks > 1 {
-					fmt.Fprint(buf, strings.Repeat(string("▉"), numBlocks))
-				}
-				if numBlocks > 0 {
-					frac := fNumBlocks - math.Floor(fNumBlocks)
-					symbol := blockSymbols[int(math.Round(frac*float64(len(blockSymbols)-1)))]
-					fmt.Fprint(buf, string(symbol))
-				}
-			}
-			numBlocksPrinted += numBlocks
 		}
 	}
-
-	if barWidth > numBlocksPrinted {
-		fmt.Fprint(buf, strings.Repeat(string(" "), barWidth-numBlocksPrinted))
-	}
-	fmt.Fprint(buf, ansiReset)
-	fmt.Fprint(buf, "] ", percentage(numFinished, numTests))
-
-	if colors {
-		// move cursor to start of line so the bar is overridden
-		fmt.Fprint(buf, positionLeft)
-	} else {
-		// cannot move cursor, so newline
-		fmt.Fprintln(buf)
-	}
-
-	return buf.String()
+	const width = 50
+	bar.Draw(out, width, colors, animFrame)
 }
 
 // testcaseStatus is a pair of testcase name and result status
@@ -1402,6 +1387,18 @@ func defaultNodePath() string {
 		return path
 	}
 
+	return ""
+}
+
+// defaultBinPath looks for the binary output directory at <dawn>/out/active.
+// This is used as the default for the --bin command line flag.
+func defaultBinPath() string {
+	if dawnRoot := fileutils.DawnRoot(); dawnRoot != "" {
+		bin := filepath.Join(dawnRoot, "out/active")
+		if info, err := os.Stat(bin); err == nil && info.IsDir() {
+			return bin
+		}
+	}
 	return ""
 }
 

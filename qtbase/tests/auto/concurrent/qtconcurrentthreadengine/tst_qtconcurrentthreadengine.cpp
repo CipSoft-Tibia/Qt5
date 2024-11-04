@@ -1,5 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include <qtconcurrentthreadengine.h>
 #include <qexception.h>
 #include <QThread>
@@ -103,7 +106,7 @@ public:
     {
         return 0;
     }
-    bool done;
+    bool done = false;
 };
 
 void tst_QtConcurrentThreadEngine::runThroughStarter()

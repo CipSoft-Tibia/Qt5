@@ -52,7 +52,7 @@ class QSslContext;
 #endif // !QT_NO_SSL
 
 class QHttpNetworkConnectionPrivate;
-class Q_AUTOTEST_EXPORT QHttpNetworkConnection : public QObject
+class Q_NETWORK_EXPORT QHttpNetworkConnection : public QObject
 {
     Q_OBJECT
 public:
@@ -92,7 +92,7 @@ public:
 
     QHttpNetworkConnectionChannel *channels() const;
 
-    ConnectionType connectionType();
+    ConnectionType connectionType() const;
     void setConnectionType(ConnectionType type);
 
     QHttp2Configuration http2Parameters() const;
@@ -102,7 +102,7 @@ public:
     void setSslConfiguration(const QSslConfiguration &config);
     void ignoreSslErrors(int channel = -1);
     void ignoreSslErrors(const QList<QSslError> &errors, int channel = -1);
-    std::shared_ptr<QSslContext> sslContext();
+    std::shared_ptr<QSslContext> sslContext() const;
     void setSslContext(std::shared_ptr<QSslContext> context);
 #endif
 
@@ -228,7 +228,7 @@ public:
         QUrl redirectUrl;
         QNetworkReply::NetworkError errorCode;
     };
-    ParseRedirectResult parseRedirectResponse(QHttpNetworkReply *reply);
+    static ParseRedirectResult parseRedirectResponse(QHttpNetworkReply *reply);
     // Used by the HTTP1 code-path
     QUrl parseRedirectResponse(QAbstractSocket *socket, QHttpNetworkReply *reply);
 

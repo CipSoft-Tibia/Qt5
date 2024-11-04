@@ -124,7 +124,6 @@ std::tuple<int, double> OscillatorHandler::ProcessKRateVector(
   // Temporary arrays where we can gather up the wave data we need for
   // interpolation.  Align these for best efficiency on older CPUs where aligned
   // access is much faster than unaliged.
-  // TODO(1013118): Is there a faster way to do this?
   alignas(16) float sample1_lower[4];
   alignas(16) float sample2_lower[4];
   alignas(16) float sample1_higher[4];

@@ -92,6 +92,11 @@ bundled_devtools_locales = [
   "zh",
 ]
 
+if (is_qtwebengine) {
+  bundled_devtools_locales += remote_devtools_locales
+  remote_devtools_locales = []
+}
+
 include_en_xl = is_debug
 if (include_en_xl) {
   bundled_devtools_locales += [ "en-XL" ]

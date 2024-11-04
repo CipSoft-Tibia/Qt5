@@ -5,6 +5,7 @@
 #include "src/libsampler/sampler.h"
 
 #include "include/v8-isolate.h"
+#include "include/v8-platform.h"
 #include "include/v8-unwinder.h"
 
 #ifdef USE_SIGNALS
@@ -266,13 +267,16 @@ class Sampler::PlatformData {
  public:
   // Get a handle to the calling thread. This is the thread that we are
   // going to profile. We need to make a copy of the handle because we are
-  // going to use it in the sampler thread. Using GetThreadHandle() will
-  // not work in this case. We're using OpenThread because DuplicateHandle
-  // for some reason doesn't work in Chrome's sandbox.
-  PlatformData()
-      : profiled_thread_(OpenThread(THREAD_GET_CONTEXT | THREAD_SUSPEND_RESUME |
-                                        THREAD_QUERY_INFORMATION,
-                                    false, GetCurrentThreadId())) {}
+  // going to use it in the sampler thread.
+  PlatformData() {
+    HANDLE current_process = GetCurrentProcess();
+    BOOL result = DuplicateHandle(
+        current_process, GetCurrentThread(), current_process, &profiled_thread_,
+        THREAD_GET_CONTEXT | THREAD_SUSPEND_RESUME | THREAD_QUERY_INFORMATION,
+        FALSE, 0);
+    DCHECK(result);
+    USE(result);
+  }
 
   ~PlatformData() {
     if (profiled_thread_ != nullptr) {
@@ -377,6 +381,7 @@ bool SignalHandler::signal_handler_installed_ = false;
 
 void SignalHandler::HandleProfilerSignal(int signal, siginfo_t* info,
                                          void* context) {
+  v8::ThreadIsolatedAllocator::SetDefaultPermissionsForSignalHandler();
   USE(info);
   if (signal != SIGPROF) return;
   v8::RegisterState state;

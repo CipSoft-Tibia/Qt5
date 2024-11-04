@@ -21,7 +21,7 @@ const UIStrings = {
    * be used to show a certain set of advertisements in the future as the
    * outcome of a FLEDGE auction. (https://developer.chrome.com/blog/fledge-api/)
    */
-  interestGroups: 'Interest Groups',
+  interestGroups: 'Interest groups',
 };
 const str_ = i18n.i18n.registerUIStrings('panels/application/InterestGroupTreeElement.ts', UIStrings);
 export const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -31,17 +31,17 @@ export class InterestGroupTreeElement extends ApplicationPanelTreeElement {
 
   constructor(storagePanel: ResourcesPanel) {
     super(storagePanel, i18nString(UIStrings.interestGroups), false);
-    const interestGroupIcon = UI.Icon.Icon.create('mediumicon-database', 'resource-tree-item');
+    const interestGroupIcon = UI.Icon.Icon.create('database', 'resource-tree-item');
     this.setLeadingIcons([interestGroupIcon]);
     this.view = new InterestGroupStorageView(this);
   }
 
-  get itemURL(): Platform.DevToolsPath.UrlString {
+  override get itemURL(): Platform.DevToolsPath.UrlString {
     return 'interest-groups://' as Platform.DevToolsPath.UrlString;
   }
 
   async getInterestGroupDetails(owner: string, name: string): Promise<Protocol.Storage.InterestGroupDetails|null> {
-    const mainTarget = SDK.TargetManager.TargetManager.instance().mainFrameTarget();
+    const mainTarget = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
     if (!mainTarget) {
       return null;
     }
@@ -50,7 +50,7 @@ export class InterestGroupTreeElement extends ApplicationPanelTreeElement {
     return response.details;
   }
 
-  onselect(selectedByUser?: boolean): boolean {
+  override onselect(selectedByUser?: boolean): boolean {
     super.onselect(selectedByUser);
     this.showView(this.view);
     Host.userMetrics.panelShown(Host.UserMetrics.PanelCodes[Host.UserMetrics.PanelCodes.interest_groups]);

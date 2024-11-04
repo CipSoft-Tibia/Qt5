@@ -101,20 +101,20 @@ void SetPrintableAreaIfValid(PrintSettings& settings,
   }
 
   // Scale the page size and printable area to device units.
-  float x_scale =
-      static_cast<float>(settings.device_units_per_inch_size().width()) /
-      kMicronsPerInch;
-  float y_scale =
-      static_cast<float>(settings.device_units_per_inch_size().height()) /
-      kMicronsPerInch;
-  gfx::Size page_size = gfx::ScaleToRoundedSize(size_microns, x_scale, y_scale);
+  // Blink doesn't support different dpi settings in X and Y axis. Because of
+  // this, printers with non-square pixels still scale page size and printable
+  // area using device_units_per_inch() instead of their respective dimensions
+  // in device_units_per_inch_size().
+  float scale =
+      static_cast<float>(settings.device_units_per_inch()) / kMicronsPerInch;
+  gfx::Size page_size = gfx::ScaleToRoundedSize(size_microns, scale);
   // Flip the y-axis since the imageable area origin is at the bottom-left,
   // while the gfx::Rect origin is at the top-left.
   gfx::Rect printable_area = gfx::ScaleToRoundedRect(
       {left_microns.value(), size_microns.height() - top_microns.value(),
        right_microns.value() - left_microns.value(),
        top_microns.value() - bottom_microns.value()},
-      x_scale, y_scale);
+      scale);
   // Sanity check that the printable area makes sense.
   if (printable_area.IsEmpty() ||
       !gfx::Rect(page_size).Contains(printable_area)) {
@@ -268,6 +268,16 @@ std::unique_ptr<PrintSettings> PrintSettingsFromJobSettings(
     }
   }
   settings->set_requested_media(requested_media);
+
+  absl::optional<bool> borderless = job_settings.FindBool(kSettingBorderless);
+  if (borderless.has_value()) {
+    settings->set_borderless(borderless.value());
+  }
+
+  const std::string* media_type = job_settings.FindString(kSettingMediaType);
+  if (media_type && !media_type->empty()) {
+    settings->set_media_type(*media_type);
+  }
 
   settings->set_ranges(GetPageRangesFromJobSettings(job_settings));
 

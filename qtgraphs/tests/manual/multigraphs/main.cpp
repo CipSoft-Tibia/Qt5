@@ -68,8 +68,8 @@ int main(int argc, char **argv)
 
     QComboBox *modeBox = new QComboBox(widget);
     modeBox->addItem(QStringLiteral("Surface Plot"));
-    modeBox->addItem(QStringLiteral("Scatter Chart"));
-    modeBox->addItem(QStringLiteral("Bar Chart"));
+    modeBox->addItem(QStringLiteral("Scatter Graph"));
+    modeBox->addItem(QStringLiteral("Bar Graph"));
     modeBox->setCurrentIndex(0);
 
     QLinearGradient gradientOne(0, 0, 200, 1);

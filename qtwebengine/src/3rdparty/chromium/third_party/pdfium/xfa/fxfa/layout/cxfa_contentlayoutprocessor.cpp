@@ -78,7 +78,7 @@ void UpdateWidgetSize(CXFA_ContentLayoutItem* pLayoutItem,
       break;
     }
     default:
-      NOTREACHED();
+      NOTREACHED_NORETURN();
   }
 }
 
@@ -652,6 +652,7 @@ void CXFA_ContentLayoutProcessor::Trace(cppgc::Visitor* visitor) const {
   visitor->Trace(m_pViewLayoutProcessor);
   ContainerTrace(visitor, m_ArrayKeepItems);
   ContainerTrace(visitor, m_PendingNodes);
+  ContainerTrace(visitor, m_PendingNodesCount);
 }
 
 CXFA_ContentLayoutItem* CXFA_ContentLayoutProcessor::CreateContentLayoutItem(
@@ -1848,7 +1849,6 @@ CXFA_ContentLayoutProcessor::DoLayoutFlowedContainer(
             case Result::kRowFullBreak:
               goto SuspendAndCreateNewRow;
             case Result::kDone:
-            default:
               fContentCurRowY +=
                   pProcessor->InsertPendingItems(m_pCurChildNode);
               pProcessor = nullptr;
@@ -1857,8 +1857,6 @@ CXFA_ContentLayoutProcessor::DoLayoutFlowedContainer(
           break;
         }
         case Stage::kDone:
-          break;
-        default:
           break;
       }
       GotoNextContainerNodeSimple();

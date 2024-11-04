@@ -1,6 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2014 Governikus GmbH & Co. KG.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtNetwork/private/qtnetworkglobal_p.h>
 
@@ -166,9 +166,7 @@ private slots:
     void protocol();
     void protocolServerSide_data();
     void protocolServerSide();
-#if QT_CONFIG(openssl)
     void serverCipherPreferences();
-#endif
     void setCaCertificates();
     void setLocalCertificate();
     void localCertificateChain();
@@ -1663,8 +1661,6 @@ void tst_QSslSocket::protocolServerSide()
     QCOMPARE(client.isEncrypted(), works);
 }
 
-#if QT_CONFIG(openssl)
-
 void tst_QSslSocket::serverCipherPreferences()
 {
     if (!isTestingOpenSsl)
@@ -1758,8 +1754,6 @@ void tst_QSslSocket::serverCipherPreferences()
         QCOMPARE(client.sessionCipher().name(), testedCiphers[1].name());
     }
 }
-
-#endif // Feature 'openssl'.
 
 
 void tst_QSslSocket::setCaCertificates()
@@ -3482,7 +3476,13 @@ void tst_QSslSocket::dhServer()
         return;
 
     SslServer server;
-    server.ciphers = {QSslCipher("DHE-RSA-AES256-SHA"), QSslCipher("DHE-DSS-AES256-SHA")};
+    QSslCipher rsaCipher("DHE-RSA-AES256-SHA");
+    QSslCipher dssCipher("DHE-DSS-AES256-SHA");
+    if (rsaCipher.isNull())
+        QSKIP("The current backend doesn't support DHE-RSA-AES256-SHA");
+    if (dssCipher.isNull())
+        QSKIP("The current backend doesn't support DHE-DSS-AES256-SHA");
+    server.ciphers = { rsaCipher, dssCipher };
     QVERIFY(server.listen());
 
     QEventLoop loop;
@@ -3510,9 +3510,10 @@ void tst_QSslSocket::dhServerCustomParamsNull()
     if (setProxy)
         return;
 
+    const QSslCipher cipherWithDH("DHE-RSA-AES256-SHA256");
     SslServer server;
-    server.ciphers = {QSslCipher("DHE-RSA-AES256-SHA"), QSslCipher("DHE-DSS-AES256-SHA")};
-    server.protocol = Test::TlsV1_0;
+    server.ciphers = {cipherWithDH};
+    server.protocol = QSsl::TlsV1_2;
 
     QSslConfiguration cfg = server.config;
     cfg.setDiffieHellmanParameters(QSslDiffieHellmanParameters());
@@ -3525,7 +3526,6 @@ void tst_QSslSocket::dhServerCustomParamsNull()
 
     QSslSocket client;
     QSslConfiguration config = client.sslConfiguration();
-    config.setProtocol(Test::TlsV1_0);
     client.setSslConfiguration(config);
     socket = &client;
     connect(socket, SIGNAL(errorOccurred(QAbstractSocket::SocketError)), &loop, SLOT(quit()));
@@ -3536,7 +3536,8 @@ void tst_QSslSocket::dhServerCustomParamsNull()
 
     loop.exec();
 
-    QVERIFY(client.state() != QAbstractSocket::ConnectedState);
+    QCOMPARE(client.state(), QAbstractSocket::ConnectedState);
+    QCOMPARE(client.sessionCipher(), cipherWithDH);
 }
 
 void tst_QSslSocket::dhServerCustomParams()
@@ -3551,7 +3552,9 @@ void tst_QSslSocket::dhServerCustomParams()
         return;
 
     SslServer server;
-    server.ciphers = {QSslCipher("DHE-RSA-AES256-SHA"), QSslCipher("DHE-DSS-AES256-SHA")};
+    const QSslCipher cipherWithDH("DHE-RSA-AES256-SHA256");
+    server.ciphers = {cipherWithDH};
+    server.protocol = QSsl::TlsV1_2;
 
     QSslConfiguration cfg = server.config;
 
@@ -3581,7 +3584,8 @@ void tst_QSslSocket::dhServerCustomParams()
 
     loop.exec();
 
-    QVERIFY(client.state() == QAbstractSocket::ConnectedState);
+    QCOMPARE(client.state(), QAbstractSocket::ConnectedState);
+    QCOMPARE(client.sessionCipher(), cipherWithDH);
 }
 #endif // QT_CONFIG(openssl)
 
@@ -3597,7 +3601,10 @@ void tst_QSslSocket::ecdhServer()
         return;
 
     SslServer server;
-    server.ciphers = {QSslCipher("ECDHE-RSA-AES128-SHA")};
+    QSslCipher cipher("ECDHE-RSA-AES128-SHA");
+    if (cipher.isNull())
+        QSKIP("The current backend doesn't support ECDHE-RSA-AES128-SHA");
+    server.ciphers = {cipher};
     QVERIFY(server.listen());
 
     QEventLoop loop;

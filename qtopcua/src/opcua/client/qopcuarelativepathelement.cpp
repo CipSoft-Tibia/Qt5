@@ -71,14 +71,18 @@ QOpcUaRelativePathElement &QOpcUaRelativePathElement::operator=(const QOpcUaRela
 }
 
 /*!
-    Returns \c true if this relative path element has the same value as \a rhs.
+    \fn bool QOpcUaRelativePathElement::operator==(const QOpcUaRelativePathElement &lhs,
+                                                   const QOpcUaRelativePathElement &rhs)
+
+    Returns \c true if \a lhs has the same value as \a rhs.
 */
-bool QOpcUaRelativePathElement::operator==(const QOpcUaRelativePathElement &rhs) const
+bool comparesEqual(const QOpcUaRelativePathElement &lhs,
+                   const QOpcUaRelativePathElement &rhs) noexcept
 {
-    return data->includeSubtypes == rhs.includeSubtypes() &&
-            data->isInverse == rhs.isInverse() &&
-            data->referenceTypeId == rhs.referenceTypeId() &&
-            data->targetName == rhs.targetName();
+    return lhs.includeSubtypes() == rhs.includeSubtypes() &&
+            lhs.isInverse() == rhs.isInverse() &&
+            lhs.referenceTypeId() == rhs.referenceTypeId() &&
+            lhs.targetName() == rhs.targetName();
 }
 
 QOpcUaRelativePathElement::~QOpcUaRelativePathElement()
@@ -116,6 +120,16 @@ bool QOpcUaRelativePathElement::includeSubtypes() const
 void QOpcUaRelativePathElement::setIncludeSubtypes(bool includeSubtypes)
 {
     data->includeSubtypes = includeSubtypes;
+}
+
+/*!
+    \since 6.7
+
+    Returns a \l QVariant containing this relative path element.
+*/
+QOpcUaRelativePathElement::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
 }
 
 /*!
@@ -158,5 +172,13 @@ void QOpcUaRelativePathElement::setReferenceTypeId(QOpcUa::ReferenceTypeId refer
 {
     data->referenceTypeId = QOpcUa::nodeIdFromReferenceType(referenceTypeId);
 }
+
+/*!
+    \fn bool QOpcUaRelativePathElement::operator!=(const QOpcUaRelativePathElement &lhs,
+                                                   const QOpcUaRelativePathElement &rhs)
+    \since 6.7
+
+    Returns \c true if \a lhs has a different value than \a rhs.
+*/
 
 QT_END_NAMESPACE

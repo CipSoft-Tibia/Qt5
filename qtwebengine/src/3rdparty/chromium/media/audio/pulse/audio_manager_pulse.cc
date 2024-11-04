@@ -25,13 +25,13 @@ using pulse::AutoPulseLock;
 using pulse::WaitForOperationCompletion;
 
 // Maximum number of output streams that can be open simultaneously.
-constexpr int kMaxOutputStreams = 50;
+constexpr int kMaxOutputStreamsAMP = 50;
 
 constexpr int kMinimumOutputBufferSize = 512;
 constexpr int kMaximumOutputBufferSize = 8192;
-constexpr int kDefaultInputBufferSize = 1024;
-constexpr int kDefaultSampleRate = 48000;
-constexpr int kDefaultChannelCount = 2;
+constexpr int kDefaultInputBufferSizeAMP = 1024;
+constexpr int kDefaultSampleRateAMP = 48000;
+constexpr int kDefaultChannelCountAMP = 2;
 
 AudioManagerPulse::AudioManagerPulse(std::unique_ptr<AudioThread> audio_thread,
                                      AudioLogFactory* audio_log_factory,
@@ -41,12 +41,12 @@ AudioManagerPulse::AudioManagerPulse(std::unique_ptr<AudioThread> audio_thread,
       input_mainloop_(pa_mainloop),
       input_context_(pa_context),
       devices_(nullptr),
-      native_input_sample_rate_(kDefaultSampleRate),
-      native_channel_count_(kDefaultChannelCount),
+      native_input_sample_rate_(kDefaultSampleRateAMP),
+      native_channel_count_(kDefaultChannelCountAMP),
       default_source_is_monitor_(false) {
   DCHECK(input_mainloop_);
   DCHECK(input_context_);
-  SetMaxOutputStreamsAllowed(kMaxOutputStreams);
+  SetMaxOutputStreamsAllowed(kMaxOutputStreamsAMP);
 }
 
 AudioManagerPulse::~AudioManagerPulse() = default;
@@ -125,11 +125,11 @@ AudioParameters AudioManagerPulse::GetInputStreamParameters(
 
   const int user_buffer_size = GetUserBufferSize();
   const int buffer_size =
-      user_buffer_size ? user_buffer_size : kDefaultInputBufferSize;
+      user_buffer_size ? user_buffer_size : kDefaultInputBufferSizeAMP;
   return AudioParameters(AudioParameters::AUDIO_PCM_LOW_LATENCY,
                          ChannelLayoutConfig::Stereo(),
                          native_input_sample_rate_ ? native_input_sample_rate_
-                                                   : kDefaultSampleRate,
+                                                   : kDefaultSampleRateAMP,
                          buffer_size);
 }
 
@@ -220,7 +220,7 @@ AudioParameters AudioManagerPulse::GetPreferredOutputStreamParameters(
   // be respected though, so prefer the input parameters for channel count.
   UpdateNativeAudioHardwareInfo();
   int sample_rate = native_input_sample_rate_ ? native_input_sample_rate_
-                                              : kDefaultSampleRate;
+                                              : kDefaultSampleRateAMP;
   ChannelLayoutConfig channel_layout_config = ChannelLayoutConfig::Guess(
       native_channel_count_ ? native_channel_count_ : 2);
 

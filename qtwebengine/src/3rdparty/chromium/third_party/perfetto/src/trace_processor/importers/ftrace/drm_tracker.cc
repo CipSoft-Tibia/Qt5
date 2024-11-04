@@ -53,7 +53,7 @@ DrmTracker::DrmTracker(TraceProcessorContext* context)
       fence_arg_seqno_id_(context->storage->InternString("fence seqno")) {}
 
 void DrmTracker::ParseDrm(int64_t timestamp,
-                          int32_t field_id,
+                          uint32_t field_id,
                           uint32_t pid,
                           protozero::ConstBytes blob) {
   using protos::pbzero::FtraceEvent;
@@ -184,7 +184,7 @@ void DrmTracker::BeginSchedRingSlice(int64_t timestamp, SchedRing& ring) {
     inserter->AddArg(sched_arg_job_id_, Variadic::UnsignedInteger(job_id));
   };
 
-  base::Optional<SliceId> slice_id =
+  std::optional<SliceId> slice_id =
       context_->slice_tracker->Begin(timestamp, ring.track_id, kNullStringId,
                                      sched_slice_job_id_, args_inserter);
 
@@ -210,7 +210,7 @@ void DrmTracker::DrmSchedJob(int64_t timestamp,
     inserter->AddArg(sched_arg_job_id_, Variadic::UnsignedInteger(job_id));
   };
 
-  base::Optional<SliceId> slice_id = context_->slice_tracker->Scoped(
+  std::optional<SliceId> slice_id = context_->slice_tracker->Scoped(
       timestamp, track_id, kNullStringId, sched_slice_schedule_id_, 0,
       args_inserter);
 

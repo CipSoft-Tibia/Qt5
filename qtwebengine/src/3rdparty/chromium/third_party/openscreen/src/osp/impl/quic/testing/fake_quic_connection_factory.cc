@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,11 @@
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 FakeQuicConnectionFactoryBridge::FakeQuicConnectionFactoryBridge(
     const IPEndpoint& controller_endpoint)
@@ -220,5 +220,4 @@ void FakeServerQuicConnectionFactory::OnRead(UdpSocket* socket,
   idle_ = bridge_->server_idle();
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

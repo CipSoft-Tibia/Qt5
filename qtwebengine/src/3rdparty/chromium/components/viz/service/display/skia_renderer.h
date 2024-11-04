@@ -94,21 +94,22 @@ class VIZ_SERVICE_EXPORT SkiaRenderer : public DirectRenderer {
   void BindFramebufferToTexture(
       const AggregatedRenderPassId render_pass_id) override;
   void SetScissorTestRect(const gfx::Rect& scissor_rect) override;
-  void PrepareSurfaceForPass(SurfaceInitializationMode initialization_mode,
-                             const gfx::Rect& render_pass_scissor) override;
+  void BeginDrawingRenderPass(
+      bool needs_clear,
+      const gfx::Rect& render_pass_update_rect) override;
   void DoDrawQuad(const DrawQuad* quad, const gfx::QuadF* draw_region) override;
+  void FinishDrawingRenderPass() override;
   void BeginDrawingFrame() override;
   void FinishDrawingFrame() override;
   bool FlippedFramebuffer() const override;
-  void EnsureScissorTestEnabled() override;
   void EnsureScissorTestDisabled() override;
   void CopyDrawnRenderPass(const copy_output::RenderPassGeometry& geometry,
                            std::unique_ptr<CopyOutputRequest> request) override;
   void DidChangeVisibility() override;
-  void FinishDrawingQuadList() override;
   void GenerateMipmap() override;
   void SetDelegatedInkPointRendererSkiaForTest(
       std::unique_ptr<DelegatedInkPointRendererSkia> renderer) override;
+  bool SupportsBGRA() const override;
 
   std::unique_ptr<DelegatedInkHandler> delegated_ink_handler_;
 
@@ -155,12 +156,12 @@ class VIZ_SERVICE_EXPORT SkiaRenderer : public DirectRenderer {
   // Skia in a consistent manner.
   DrawQuadParams CalculateDrawQuadParams(
       const gfx::AxisTransform2d& target_to_device,
-      const gfx::Rect* scissor_rect,
+      const absl::optional<gfx::Rect>& scissor_rect,
       const DrawQuad* quad,
       const gfx::QuadF* draw_region) const;
 
   DrawRPDQParams CalculateRPDQParams(const AggregatedRenderPassDrawQuad* quad,
-                                     DrawQuadParams* params);
+                                     const DrawQuadParams* params);
   // Modifies |params| and |rpdq_params| to apply correctly when drawing the
   // RenderPass directly via |bypass_quad|.
   BypassMode CalculateBypassParams(const DrawQuad* bypass_quad,
@@ -211,12 +212,15 @@ class VIZ_SERVICE_EXPORT SkiaRenderer : public DirectRenderer {
                          const TileDrawQuad* quad,
                          const DrawQuadParams* params);
 
-  // RPDQ, DebugBorder and picture quads cannot be batched. They
-  // either are not textures (debug, picture), or it's very likely
-  // the texture will have advanced paint effects (rpdq). Additionally, they do
-  // not support being drawn directly for a pass-through RenderPass.
+  // RenderPass draw quads can only be batch when they aren't bypassed and
+  // don't have any advanced effects (eg. filter).
   void DrawRenderPassQuad(const AggregatedRenderPassDrawQuad* quad,
+                          const DrawRPDQParams* bypassed_rpdq_params,
                           DrawQuadParams* params);
+
+  // DebugBorder and picture quads cannot be batched since they are not
+  // textures. Additionally, they do not support being drawn directly for a
+  // pass-through RenderPass.
   void DrawDebugBorderQuad(const DebugBorderDrawQuad* quad,
                            DrawQuadParams* params);
   void DrawPictureQuad(const PictureDrawQuad* quad, DrawQuadParams* params);
@@ -276,11 +280,13 @@ class VIZ_SERVICE_EXPORT SkiaRenderer : public DirectRenderer {
 
   struct RenderPassBacking {
     gfx::Size size;
-    bool generate_mipmap;
+    bool generate_mipmap = false;
     gfx::ColorSpace color_space;
-    ResourceFormat format;
+    SharedImageFormat format;
     gpu::Mailbox mailbox;
-    bool is_root;
+    bool is_root = false;
+    bool is_scanout = false;
+    bool scanout_dcomp_surface = false;
   };
 
 #if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_OZONE)
@@ -292,7 +298,7 @@ class VIZ_SERVICE_EXPORT SkiaRenderer : public DirectRenderer {
   RenderPassOverlayParams* GetOrCreateRenderPassOverlayBacking(
       AggregatedRenderPassId render_pass_id,
       const AggregatedRenderPassDrawQuad* rpdq,
-      ResourceFormat buffer_format,
+      SharedImageFormat buffer_format,
       gfx::ColorSpace color_space,
       const gfx::Size& buffer_size);
 
@@ -305,7 +311,7 @@ class VIZ_SERVICE_EXPORT SkiaRenderer : public DirectRenderer {
   // SkiaOutputSurface::EndPaint will be called with null callbacks.
   // |is_overlay| should be true for render passes that are scheduled as
   // overlays.
-  void EndPaint(bool failed, bool is_overlay);
+  void EndPaint(const gfx::Rect& update_rect, bool failed, bool is_overlay);
 
   DisplayResourceProviderSkia* resource_provider() {
     return static_cast<DisplayResourceProviderSkia*>(resource_provider_);
@@ -348,8 +354,16 @@ class VIZ_SERVICE_EXPORT SkiaRenderer : public DirectRenderer {
   scoped_refptr<FrameResourceReleaseFence> current_release_fence_;
 
   bool disable_picture_quad_image_filtering_ = false;
-  bool is_scissor_enabled_ = false;
-  gfx::Rect scissor_rect_;
+
+  // The rect for the current render pass containing pixels that we intend to
+  // update this frame.
+  // In the current render pass' backing's buffer space, contained by
+  // |current_viewport_rect_|.
+  gfx::Rect current_render_pass_update_rect_;
+
+  // The scissor rect for the current draw. In the same coordinate space as and
+  // contained by |current_render_pass_update_rect_|.
+  absl::optional<gfx::Rect> scissor_rect_;
 
   gfx::Rect swap_buffer_rect_;
 
@@ -479,7 +493,6 @@ class VIZ_SERVICE_EXPORT SkiaRenderer : public DirectRenderer {
 
   bool UsingSkiaForDelegatedInk() const;
   uint32_t debug_tint_modulate_count_ = 0;
-  bool use_real_color_space_for_stream_video_ = false;
 
   // Used to get mailboxes for the root render pass when
   // capabilities().renderer_allocates_images = true.

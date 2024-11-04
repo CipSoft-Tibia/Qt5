@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,19 @@
 #include <utility>
 #include <vector>
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
-TxtRecordRdata MakeTxtRecord(std::initializer_list<absl::string_view> strings) {
+TxtRecordRdata MakeTxtRecord(std::initializer_list<std::string_view> strings) {
+  return TxtRecordRdata(MakeTxtEntries(strings));
+}
+
+std::vector<TxtRecordRdata::Entry> MakeTxtEntries(
+    std::initializer_list<std::string_view> strings) {
   std::vector<TxtRecordRdata::Entry> texts;
   for (const auto& string : strings) {
     texts.push_back(TxtRecordRdata::Entry(string.begin(), string.end()));
   }
-  return TxtRecordRdata(std::move(texts));
+  return texts;
 }
 
 MdnsRecord GetFakePtrRecord(const DomainName& target,
@@ -57,5 +61,4 @@ MdnsRecord GetFakeAAAARecord(const DomainName& name, std::chrono::seconds ttl) {
                     ttl, std::move(rdata));
 }
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

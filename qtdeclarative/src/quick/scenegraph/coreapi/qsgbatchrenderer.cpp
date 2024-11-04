@@ -839,6 +839,8 @@ Renderer::Renderer(QSGDefaultRenderContext *ctx, QSGRendererInterface::RenderMod
     , m_elementsToDelete(64)
     , m_tmpAlphaElements(16)
     , m_tmpOpaqueElements(16)
+    , m_vboPool(16)
+    , m_iboPool(16)
     , m_rebuild(FullRebuild)
     , m_zRange(0)
 #if defined(QSGBATCHRENDERER_INVALIDATE_WEDGED_NODES)
@@ -915,6 +917,10 @@ Renderer::~Renderer()
             qsg_wipeBatch(m_alphaBatches.at(i));
         for (int i = 0; i < m_batchPool.size(); ++i)
             qsg_wipeBatch(m_batchPool.at(i));
+        for (int i = 0; i < m_vboPool.size(); ++i)
+            delete m_vboPool.at(i);
+        for (int i = 0; i < m_iboPool.size(); ++i)
+            delete m_iboPool.at(i);
     }
 
     for (Node *n : std::as_const(m_nodes)) {
@@ -922,7 +928,14 @@ Renderer::~Renderer()
             Element *e = n->element();
             if (!e->removed)
                 m_elementsToDelete.add(e);
+        } else if (n->type() == QSGNode::ClipNodeType) {
+            delete n->clipInfo();
+        } else if (n->type() == QSGNode::RenderNodeType) {
+            RenderNodeElement *e = n->renderNodeElement();
+            if (!e->removed)
+                m_elementsToDelete.add(e);
         }
+
         m_nodeAllocator.release(n);
     }
 
@@ -964,10 +977,24 @@ void Renderer::releaseCachedResources()
     m_vertexUploadPool.reset();
     m_indexUploadPool.shrink(0);
     m_indexUploadPool.reset();
+
+    for (int i = 0; i < m_vboPool.size(); ++i)
+        delete m_vboPool.at(i);
+    m_vboPool.reset();
+
+    for (int i = 0; i < m_iboPool.size(); ++i)
+        delete m_iboPool.at(i);
+    m_iboPool.reset();
 }
 
 void Renderer::invalidateAndRecycleBatch(Batch *b)
 {
+    if (b->vbo.buf != nullptr)
+        m_vboPool.add(b->vbo.buf);
+    if (b->ibo.buf != nullptr)
+        m_iboPool.add(b->ibo.buf);
+    b->vbo.buf = nullptr;
+    b->ibo.buf = nullptr;
     b->invalidate();
     for (int i=0; i<m_batchPool.size(); ++i)
         if (b == m_batchPool.at(i))
@@ -996,8 +1023,9 @@ void Renderer::unmap(Buffer *buffer, bool isIndexBuf)
 {
     // Batches are pooled and reused which means the QRhiBuffer will be
     // still valid in a recycled Batch. We only hit the newBuffer() path
-    // for brand new Batches.
-    if (!buffer->buf) {
+    // when there are no buffers to recycle.
+    QDataBuffer<QRhiBuffer *> *bufferPool = isIndexBuf ? &m_iboPool : &m_vboPool;
+    if (!buffer->buf && bufferPool->isEmpty()) {
         buffer->buf = m_rhi->newBuffer(QRhiBuffer::Immutable,
                                        isIndexBuf ? QRhiBuffer::IndexBuffer : QRhiBuffer::VertexBuffer,
                                        buffer->size);
@@ -1007,6 +1035,28 @@ void Renderer::unmap(Buffer *buffer, bool isIndexBuf)
             buffer->buf = nullptr;
         }
     } else {
+        if (!buffer->buf) {
+            const quint32 expectedSize = buffer->size;
+            qsizetype foundBufferIndex = 0;
+            for (qsizetype i = 0; i < bufferPool->size(); ++i) {
+                QRhiBuffer *testBuffer = bufferPool->at(i);
+                if (!buffer->buf
+                    || (testBuffer->size() >= expectedSize && testBuffer->size() < buffer->buf->size())
+                    || (testBuffer->size() < expectedSize && testBuffer->size() > buffer->buf->size())) {
+                    foundBufferIndex = i;
+                    buffer->buf = testBuffer;
+                    if (buffer->buf->size() == expectedSize)
+                        break;
+                }
+            }
+
+            if (foundBufferIndex < bufferPool->size() - 1) {
+                qSwap(bufferPool->data()[foundBufferIndex],
+                      bufferPool->data()[bufferPool->size() - 1]);
+            }
+            bufferPool->pop_back();
+        }
+
         bool needsRebuild = false;
         if (buffer->buf->size() < buffer->size) {
             buffer->buf->setSize(buffer->size);
@@ -1681,13 +1731,19 @@ void Renderer::prepareOpaqueBatches()
 
             QSGGeometryNode *gnj = ej->node;
 
+            const QSGGeometry *gniGeometry = gni->geometry();
+            const QSGMaterial *gniMaterial = gni->activeMaterial();
+            const QSGGeometry *gnjGeometry = gnj->geometry();
+            const QSGMaterial *gnjMaterial = gnj->activeMaterial();
             if (gni->clipList() == gnj->clipList()
-                    && gni->geometry()->drawingMode() == gnj->geometry()->drawingMode()
-                    && (gni->geometry()->drawingMode() != QSGGeometry::DrawLines || gni->geometry()->lineWidth() == gnj->geometry()->lineWidth())
-                    && gni->geometry()->attributes() == gnj->geometry()->attributes()
+                    && gniGeometry->drawingMode() == gnjGeometry->drawingMode()
+                    && (gniGeometry->drawingMode() != QSGGeometry::DrawLines || gniGeometry->lineWidth() == gnjGeometry->lineWidth())
+                    && gniGeometry->attributes() == gnjGeometry->attributes()
+                    && gniGeometry->indexType() == gnjGeometry->indexType()
                     && gni->inheritedOpacity() == gnj->inheritedOpacity()
-                    && gni->activeMaterial()->type() == gnj->activeMaterial()->type()
-                    && gni->activeMaterial()->compare(gnj->activeMaterial()) == 0) {
+                    && gniMaterial->type() == gnjMaterial->type()
+                    && gniMaterial->compare(gnjMaterial) == 0)
+            {
                 ej->batch = batch;
                 next->nextInBatch = ej;
                 next = ej;
@@ -1788,17 +1844,23 @@ void Renderer::prepareAlphaBatches()
             if (gnj->geometry()->vertexCount() == 0)
                 continue;
 
+            const QSGGeometry *gniGeometry = gni->geometry();
+            const QSGMaterial *gniMaterial = gni->activeMaterial();
+            const QSGGeometry *gnjGeometry = gnj->geometry();
+            const QSGMaterial *gnjMaterial = gnj->activeMaterial();
             if (gni->clipList() == gnj->clipList()
-                    && gni->geometry()->drawingMode() == gnj->geometry()->drawingMode()
-                    && (gni->geometry()->drawingMode() != QSGGeometry::DrawLines
-                        || (gni->geometry()->lineWidth() == gnj->geometry()->lineWidth()
+                    && gniGeometry->drawingMode() == gnjGeometry->drawingMode()
+                    && (gniGeometry->drawingMode() != QSGGeometry::DrawLines
+                        || (gniGeometry->lineWidth() == gnjGeometry->lineWidth()
                             // Must not do overlap checks when the line width is not 1,
                             // we have no knowledge how such lines are rasterized.
-                            && gni->geometry()->lineWidth() == 1.0f))
-                    && gni->geometry()->attributes() == gnj->geometry()->attributes()
+                            && gniGeometry->lineWidth() == 1.0f))
+                    && gniGeometry->attributes() == gnjGeometry->attributes()
+                    && gniGeometry->indexType() == gnjGeometry->indexType()
                     && gni->inheritedOpacity() == gnj->inheritedOpacity()
-                    && gni->activeMaterial()->type() == gnj->activeMaterial()->type()
-                    && gni->activeMaterial()->compare(gnj->activeMaterial()) == 0) {
+                    && gniMaterial->type() == gnjMaterial->type()
+                    && gniMaterial->compare(gnjMaterial) == 0)
+            {
                 if (!overlapBounds.intersects(ej->bounds) || !checkOverlap(i+1, j - 1, ej->bounds)) {
                     ej->batch = batch;
                     next->nextInBatch = ej;
@@ -2001,7 +2063,7 @@ void Renderer::uploadBatch(Batch *b)
     bool canMerge = (g->drawingMode() == QSGGeometry::DrawTriangles || g->drawingMode() == QSGGeometry::DrawTriangleStrip ||
                      g->drawingMode() == QSGGeometry::DrawLines || g->drawingMode() == QSGGeometry::DrawPoints)
             && b->positionAttribute >= 0
-            && (g->indexType() == QSGGeometry::UnsignedShortType && g->indexCount() > 0)
+            && g->indexType() == QSGGeometry::UnsignedShortType
             && (flags & (QSGMaterial::NoBatching | QSGMaterial_FullMatrix)) == 0
             && ((flags & QSGMaterial::RequiresFullMatrixExceptTranslate) == 0 || b->isTranslateOnlyToRoot())
             && b->isSafeToBatch();
@@ -2014,6 +2076,8 @@ void Renderer::uploadBatch(Batch *b)
     int unmergedIndexSize = 0;
     Element *e = b->first;
 
+    // Merged batches always do indexed draw calls. Non-indexed geometry gets
+    // indices generated automatically, when merged.
     while (e) {
         QSGGeometry *eg = e->node->geometry();
         b->vertexCount += eg->vertexCount();
@@ -2829,7 +2893,8 @@ void Renderer::updateMaterialDynamicData(ShaderManager::Shader *sms,
                                          const Batch *batch,
                                          Element *e,
                                          int ubufOffset,
-                                         int ubufRegionSize)
+                                         int ubufRegionSize,
+                                         char *directUpdatePtr)
 {
     m_current_resource_update_batch = m_resourceUpdates;
 
@@ -2842,8 +2907,12 @@ void Renderer::updateMaterialDynamicData(ShaderManager::Shader *sms,
         const bool changed = shader->updateUniformData(renderState, material, m_currentMaterial);
         m_current_uniform_data = nullptr;
 
-        if (changed || !batch->ubufDataValid)
-            m_resourceUpdates->updateDynamicBuffer(batch->ubuf, ubufOffset, ubufRegionSize, pd->masterUniformData.constData());
+        if (changed || !batch->ubufDataValid) {
+            if (directUpdatePtr)
+                memcpy(directUpdatePtr + ubufOffset, pd->masterUniformData.constData(), ubufRegionSize);
+            else
+                m_resourceUpdates->updateDynamicBuffer(batch->ubuf, ubufOffset, ubufRegionSize, pd->masterUniformData.constData());
+        }
 
         bindings.append(QRhiShaderResourceBinding::uniformBuffer(pd->ubufBinding,
                                                                  pd->ubufStages,
@@ -2857,7 +2926,7 @@ void Renderer::updateMaterialDynamicData(ShaderManager::Shader *sms,
         if (!stages)
             continue;
 
-        QVarLengthArray<QSGTexture *, 4> prevTex = pd->textureBindingTable[binding];
+        const QVarLengthArray<QSGTexture *, 4> &prevTex(pd->textureBindingTable[binding]);
         QVarLengthArray<QSGTexture *, 4> nextTex = prevTex;
 
         const int count = pd->combinedImageSamplerCount[binding];
@@ -3138,7 +3207,14 @@ bool Renderer::prepareRenderMergedBatch(Batch *batch, PreparedRenderBatch *rende
     bool pendingGStatePop = false;
     updateMaterialStaticData(sms, renderState, material, batch, &pendingGStatePop);
 
-    updateMaterialDynamicData(sms, renderState, material, batch, e, 0, ubufSize);
+    char *directUpdatePtr = nullptr;
+    if (batch->ubuf->nativeBuffer().slotCount == 0)
+        directUpdatePtr = batch->ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
+
+    updateMaterialDynamicData(sms, renderState, material, batch, e, 0, ubufSize, directUpdatePtr);
+
+    if (directUpdatePtr)
+        batch->ubuf->endFullDynamicBufferUpdateForCurrentFrame();
 
 #ifndef QT_NO_DEBUG
     if (qsg_test_and_clear_material_failure()) {
@@ -3327,6 +3403,11 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
     QRhiGraphicsPipeline *ps = nullptr;
     QRhiGraphicsPipeline *depthPostPassPs = nullptr;
     e = batch->first;
+
+    char *directUpdatePtr = nullptr;
+    if (batch->ubuf->nativeBuffer().slotCount == 0)
+        directUpdatePtr = batch->ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
+
     while (e) {
         gn = e->node;
 
@@ -3341,7 +3422,7 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
         }
 
         QSGMaterialShader::RenderState renderState = state(QSGMaterialShader::RenderState::DirtyStates(int(dirty)));
-        updateMaterialDynamicData(sms, renderState, material, batch, e, ubufOffset, ubufSize);
+        updateMaterialDynamicData(sms, renderState, material, batch, e, ubufOffset, ubufSize, directUpdatePtr);
 
 #ifndef QT_NO_DEBUG
         if (qsg_test_and_clear_material_failure()) {
@@ -3392,6 +3473,9 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
 
         e = e->nextInBatch;
     }
+
+    if (directUpdatePtr)
+        batch->ubuf->endFullDynamicBufferUpdateForCurrentFrame();
 
     if (pendingGStatePop)
         m_gstate = m_gstateStack.pop();
@@ -3802,7 +3886,10 @@ void Renderer::beginRenderPass(RenderPassContext *)
                      // we have no choice but to set the flag always
                      // (thus triggering using secondary command
                      // buffers with Vulkan)
-                     QRhiCommandBuffer::ExternalContent);
+                     QRhiCommandBuffer::ExternalContent
+                     // We do not use GPU compute at all at the moment, this means we can
+                     // get a small performance gain with OpenGL by declaring this.
+                     | QRhiCommandBuffer::DoNotTrackResourcesForCompute);
 
     if (m_renderPassRecordingCallbacks.start)
         m_renderPassRecordingCallbacks.start(m_renderPassRecordingCallbacks.userData);
@@ -3827,6 +3914,8 @@ void Renderer::recordRenderPass(RenderPassContext *ctx)
     cb->debugMarkBegin(QByteArrayLiteral("Qt Quick scene render"));
 
     for (int i = 0, ie = ctx->opaqueRenderBatches.size(); i != ie; ++i) {
+        if (i == 0)
+            cb->debugMarkMsg(QByteArrayLiteral("Qt Quick opaque batches"));
         PreparedRenderBatch *renderBatch = &ctx->opaqueRenderBatches[i];
         if (renderBatch->batch->merged)
             renderMergedBatch(renderBatch);
@@ -3835,6 +3924,12 @@ void Renderer::recordRenderPass(RenderPassContext *ctx)
     }
 
     for (int i = 0, ie = ctx->alphaRenderBatches.size(); i != ie; ++i) {
+        if (i == 0) {
+            if (m_renderMode == QSGRendererInterface::RenderMode3D)
+                cb->debugMarkMsg(QByteArrayLiteral("Qt Quick 2D-in-3D batches"));
+            else
+                cb->debugMarkMsg(QByteArrayLiteral("Qt Quick alpha batches"));
+        }
         PreparedRenderBatch *renderBatch = &ctx->alphaRenderBatches[i];
         if (renderBatch->batch->merged)
             renderMergedBatch(renderBatch);
@@ -3845,8 +3940,15 @@ void Renderer::recordRenderPass(RenderPassContext *ctx)
     }
 
     if (m_renderMode == QSGRendererInterface::RenderMode3D) {
-        // depth post-pass
+        // Depth post-pass to fill up the depth buffer in a way that it
+        // corresponds to what got rendered to the color buffer in the previous
+        // (alpha) pass. The previous pass cannot enable depth write due to Z
+        // fighting. Rather, do it separately in a dedicated color-write-off,
+        // depth-write-on pass. This enables the 3D content drawn afterwards to
+        // depth test against the 2D items' rendering.
         for (int i = 0, ie = ctx->alphaRenderBatches.size(); i != ie; ++i) {
+            if (i == 0)
+                cb->debugMarkMsg(QByteArrayLiteral("Qt Quick 2D-in-3D depth post-pass"));
             PreparedRenderBatch *renderBatch = &ctx->alphaRenderBatches[i];
             if (renderBatch->batch->merged)
                 renderMergedBatch(renderBatch, true);

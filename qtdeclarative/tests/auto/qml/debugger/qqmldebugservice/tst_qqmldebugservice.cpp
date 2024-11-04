@@ -1,6 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qqmldebugtestservice.h"
 #include "debugutil_p.h"
@@ -30,7 +29,7 @@ public:
     tst_QQmlDebugService();
 
 private:
-    QQmlDebugConnection *m_conn;
+    std::unique_ptr<QQmlDebugConnection> m_conn;
     QQmlDebugTestService *m_service;
 
 private slots:
@@ -60,20 +59,23 @@ void tst_QQmlDebugService::initTestCase()
                                     << QStringLiteral("tst_QQmlDebugService"));
     m_service = new QQmlDebugTestService("tst_QQmlDebugService", 2);
 
-    foreach (const QString &service, QQmlDebuggingEnabler::debuggerServices())
+    const QStringList debuggerServices = QQmlDebuggingEnabler::debuggerServices();
+    for (const QString &service : debuggerServices)
         QCOMPARE(QQmlDebugConnector::instance()->service(service), (QQmlDebugService *)nullptr);
-    foreach (const QString &service, QQmlDebuggingEnabler::inspectorServices())
+
+    const QStringList inspectorServices = QQmlDebuggingEnabler::inspectorServices();
+    for (const QString &service : inspectorServices)
         QCOMPARE(QQmlDebugConnector::instance()->service(service), (QQmlDebugService *)nullptr);
-    foreach (const QString &service, QQmlDebuggingEnabler::profilerServices())
+
+    const QStringList profilerServices = QQmlDebuggingEnabler::profilerServices();
+    for (const QString &service : profilerServices)
         QCOMPARE(QQmlDebugConnector::instance()->service(service), (QQmlDebugService *)nullptr);
 
     const QString waitingMsg = QString("QML Debugger: Waiting for connection on port %1...").arg(PORT);
     QTest::ignoreMessage(QtDebugMsg, waitingMsg.toLatin1().constData());
     QQmlDebuggingEnabler::startTcpDebugServer(PORT);
 
-    new QQmlEngine(this);
-
-    m_conn = new QQmlDebugConnection(this);
+    m_conn = std::make_unique<QQmlDebugConnection>(this);
 
     for (int i = 0; i < 50; ++i) {
         // try for 5 seconds ...
@@ -136,7 +138,7 @@ void tst_QQmlDebugService::state()
     QCOMPARE(m_service->state(), QQmlDebugService::Unavailable);
 
     {
-        QQmlDebugTestClient client("tst_QQmlDebugService", m_conn);
+        QQmlDebugTestClient client("tst_QQmlDebugService", m_conn.get());
         QTRY_COMPARE(client.state(), QQmlDebugClient::Enabled);
         QTRY_COMPARE(m_service->state(), QQmlDebugService::Enabled);
     }
@@ -154,7 +156,7 @@ void tst_QQmlDebugService::state()
 
 void tst_QQmlDebugService::sendMessage()
 {
-    QQmlDebugTestClient client("tst_QQmlDebugService", m_conn);
+    QQmlDebugTestClient client("tst_QQmlDebugService", m_conn.get());
 
     QByteArray msg = "hello!";
 
@@ -175,7 +177,7 @@ void tst_QQmlDebugService::sendMessage()
 
 void tst_QQmlDebugService::checkSupportForDataStreamVersion()
 {
-    QQmlDebugTestClient client("tst_QQmlDebugService", m_conn);
+    QQmlDebugTestClient client("tst_QQmlDebugService", m_conn.get());
 
     QByteArray msg = "hello!";
 
@@ -192,22 +194,19 @@ void tst_QQmlDebugService::idForObject()
 {
     QCOMPARE(QQmlDebugService::idForObject(nullptr), -1);
 
-    QObject *objA = new QObject;
+    std::unique_ptr<QObject> objA = std::make_unique<QObject>();
 
-    int idA = QQmlDebugService::idForObject(objA);
+    int idA = QQmlDebugService::idForObject(objA.get());
     QVERIFY(idA >= 0);
-    QCOMPARE(QQmlDebugService::objectForId(idA), objA);
+    QCOMPARE(QQmlDebugService::objectForId(idA), objA.get());
 
-    int idAA = QQmlDebugService::idForObject(objA);
+    int idAA = QQmlDebugService::idForObject(objA.get());
     QCOMPARE(idAA, idA);
 
-    QObject *objB = new QObject;
-    int idB = QQmlDebugService::idForObject(objB);
+    std::unique_ptr<QObject> objB = std::make_unique<QObject>();
+    int idB = QQmlDebugService::idForObject(objB.get());
     QVERIFY(idB != idA);
-    QCOMPARE(QQmlDebugService::objectForId(idB), objB);
-
-    delete objA;
-    delete objB;
+    QCOMPARE(QQmlDebugService::objectForId(idB), objB.get());
 }
 
 void tst_QQmlDebugService::objectForId()
@@ -215,19 +214,18 @@ void tst_QQmlDebugService::objectForId()
     QCOMPARE(QQmlDebugService::objectForId(-1), static_cast<QObject*>(nullptr));
     QCOMPARE(QQmlDebugService::objectForId(1), static_cast<QObject*>(nullptr));
 
-    QObject *obj = new QObject;
-    int id = QQmlDebugService::idForObject(obj);
-    QCOMPARE(QQmlDebugService::objectForId(id), obj);
+    std::unique_ptr<QObject> obj = std::make_unique<QObject>();
+    int id = QQmlDebugService::idForObject(obj.get());
+    QCOMPARE(QQmlDebugService::objectForId(id), obj.get());
 
-    delete obj;
+    obj.reset();
     QCOMPARE(QQmlDebugService::objectForId(id), static_cast<QObject*>(nullptr));
 }
 
 void tst_QQmlDebugService::checkSupportForOldDataStreamVersion()
 {
     //create a new connection;
-    delete m_conn;
-    m_conn = new QQmlDebugConnection(this);
+    m_conn = std::make_unique<QQmlDebugConnection>(this);
     m_conn->setMaximumDataStreamVersion(QDataStream::Qt_5_0);
     for (int i = 0; i < 50; ++i) {
         // try for 5 seconds ...
@@ -238,7 +236,7 @@ void tst_QQmlDebugService::checkSupportForOldDataStreamVersion()
     }
     QVERIFY(m_conn->isConnected());
 
-    QQmlDebugTestClient client("tst_QQmlDebugService", m_conn);
+    QQmlDebugTestClient client("tst_QQmlDebugService", m_conn.get());
 
     QByteArray msg = "hello!";
 

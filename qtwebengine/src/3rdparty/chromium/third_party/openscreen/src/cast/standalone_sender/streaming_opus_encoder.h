@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,8 +17,7 @@ extern "C" {
 struct OpusEncoder;
 }
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Wraps the libopus encoder so that the application can stream
 // interleaved-floats audio samples to a Sender. Either mono or stereo sound is
@@ -61,6 +60,8 @@ class StreamingOpusEncoder {
   // sample.
   void EncodeAndSend(const float* interleaved_samples,
                      int num_samples,
+                     Clock::time_point capture_begin_time,
+                     Clock::time_point capture_end_time,
                      Clock::time_point reference_time);
 
   static constexpr int kDefaultCastAudioFramesPerSecond =
@@ -117,7 +118,6 @@ class StreamingOpusEncoder {
   static constexpr int kOpusMaxPayloadSize = 4000;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STANDALONE_SENDER_STREAMING_OPUS_ENCODER_H_

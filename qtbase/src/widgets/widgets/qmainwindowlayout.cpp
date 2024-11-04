@@ -274,6 +274,14 @@ public:
 
     QDockAreaLayoutInfo *dockAreaLayoutInfo() { return &layoutState; }
 
+#if QT_CONFIG(toolbar)
+    QToolBarAreaLayout *toolBarAreaLayout()
+    {
+        auto *mainWindow = static_cast<QMainWindow*>(parentWidget());
+        return qt_mainwindow_layout(mainWindow)->toolBarAreaLayout();
+    }
+#endif
+
     bool nativeWindowDeco() const
     {
         return groupWindow()->hasNativeDecos();
@@ -338,6 +346,7 @@ bool QDockWidgetGroupWindow::event(QEvent *e)
     case QEvent::Resize:
         updateCurrentGapRect();
         emit resized();
+        break;
     default:
         break;
     }
@@ -1430,17 +1439,18 @@ bool QMainWindowLayoutState::restoreState(QDataStream &_stream,
 
 #if QT_CONFIG(toolbar)
 
-static inline void validateToolBarArea(Qt::ToolBarArea &area)
+static constexpr Qt::ToolBarArea validateToolBarArea(Qt::ToolBarArea area)
 {
     switch (area) {
     case Qt::LeftToolBarArea:
     case Qt::RightToolBarArea:
     case Qt::TopToolBarArea:
     case Qt::BottomToolBarArea:
-        break;
+        return area;
     default:
-        area = Qt::TopToolBarArea;
+        break;
     }
+    return Qt::TopToolBarArea;
 }
 
 static QInternal::DockPosition toDockPos(Qt::ToolBarArea area)
@@ -1476,7 +1486,7 @@ static inline Qt::ToolBarArea toToolBarArea(int pos)
 
 void QMainWindowLayout::addToolBarBreak(Qt::ToolBarArea area)
 {
-    validateToolBarArea(area);
+    area = validateToolBarArea(area);
 
     layoutState.toolBarAreaLayout.addToolBarBreak(toDockPos(area));
     if (savedState.isValid())
@@ -1530,7 +1540,7 @@ void QMainWindowLayout::addToolBar(Qt::ToolBarArea area,
                                    QToolBar *toolbar,
                                    bool)
 {
-    validateToolBarArea(area);
+    area = validateToolBarArea(area);
     // let's add the toolbar to the layout
     addChildWidget(toolbar);
     QLayoutItem *item = layoutState.toolBarAreaLayout.addToolBar(toDockPos(area), toolbar);
@@ -1929,6 +1939,11 @@ bool QMainWindowTabBar::contains(const QDockWidget *dockWidget) const
     return false;
 }
 
+// When a dock widget is removed from a floating tab,
+// Events need to be processed for the tab bar to realize that the dock widget is gone.
+// In this case count() counts the dock widget in transition and accesses dockAt
+// with an out-of-bounds index.
+// => return nullptr in contrast to other xxxxxAt() functions
 QDockWidget *QMainWindowTabBar::dockAt(int index) const
 {
     QMainWindowTabBar *that = const_cast<QMainWindowTabBar *>(this);
@@ -1936,10 +1951,39 @@ QDockWidget *QMainWindowTabBar::dockAt(int index) const
     QDockAreaLayoutInfo *info = mlayout->dockInfo(that);
     if (!info)
         return nullptr;
+
     const int itemIndex = info->tabIndexToListIndex(index);
-    Q_ASSERT(itemIndex >= 0 && itemIndex < info->item_list.count());
-    const QDockAreaLayoutItem &item = info->item_list.at(itemIndex);
-    return item.widgetItem ? qobject_cast<QDockWidget *>(item.widgetItem->widget()) : nullptr;
+    if (itemIndex >= 0) {
+        Q_ASSERT(itemIndex < info->item_list.count());
+        const QDockAreaLayoutItem &item = info->item_list.at(itemIndex);
+        return item.widgetItem ? qobject_cast<QDockWidget *>(item.widgetItem->widget()) : nullptr;
+    }
+
+    return nullptr;
+}
+
+/*!
+   \internal
+   Move \a dockWidget to its ideal unplug position.
+   \list
+   \li If \a dockWidget has a title bar widget, place its center under the mouse cursor.
+   \li Otherwise place it in the middle of the title bar's long side, with a
+       QApplication::startDragDistance() offset on the short side.
+   \endlist
+ */
+static void moveToUnplugPosition(QPoint mouse, QDockWidget *dockWidget)
+{
+    Q_ASSERT(dockWidget);
+
+    if (auto *tbWidget = dockWidget->titleBarWidget()) {
+        dockWidget->move(mouse - tbWidget->rect().center());
+        return;
+    }
+
+    const bool vertical = dockWidget->features().testFlag(QDockWidget::DockWidgetVerticalTitleBar);
+    const int deltaX = vertical ? QApplication::startDragDistance() : dockWidget->width() / 2;
+    const int deltaY = vertical ? dockWidget->height() / 2 : QApplication::startDragDistance();
+    dockWidget->move(mouse - QPoint(deltaX, deltaY));
 }
 
 void QMainWindowTabBar::mouseMoveEvent(QMouseEvent *e)
@@ -1979,9 +2023,8 @@ void QMainWindowTabBar::mouseMoveEvent(QMouseEvent *e)
     if (draggingDock) {
         QDockWidgetPrivate *dockPriv = static_cast<QDockWidgetPrivate *>(QObjectPrivate::get(draggingDock));
         if (dockPriv->state && dockPriv->state->dragging) {
-            QPoint pos = e->globalPosition().toPoint() - dockPriv->state->pressPos;
-            draggingDock->move(pos);
             // move will call QMainWindowLayout::hover
+            moveToUnplugPosition(e->globalPosition().toPoint(), draggingDock);
         }
     }
     QTabBar::mouseMoveEvent(e);

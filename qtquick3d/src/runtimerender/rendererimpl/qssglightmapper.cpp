@@ -5,7 +5,7 @@
 #include <QtQuick3DRuntimeRender/private/qssgrenderer_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrhiquadrenderer_p.h>
 #include <QtQuick3DRuntimeRender/private/qssglayerrenderdata_p.h>
-#include <QtQuick3DRuntimeRender/private/qssgrendercontextcore_p.h>
+#include "../qssgrendercontextcore.h"
 #include <QtQuick3DUtils/private/qssgutils_p.h>
 
 #ifdef QT_QUICK3D_HAS_LIGHTMAPPER
@@ -392,22 +392,22 @@ bool QSSGLightmapperPrivate::commitGeometry()
         for (const QSSGMesh::Mesh::VertexBufferEntry &vbe : mesh.vertexBuffer().entries) {
             if (vbe.name == QSSGMesh::MeshInternal::getPositionAttrName()) {
                 drawInfo.positionOffset = vbe.offset;
-                drawInfo.positionFormat = QSSGRhiInputAssemblerState::toVertexInputFormat(QSSGRenderComponentType(vbe.componentType), vbe.componentCount);
+                drawInfo.positionFormat = QSSGRhiHelpers::toVertexInputFormat(QSSGRenderComponentType(vbe.componentType), vbe.componentCount);
             } else if (vbe.name == QSSGMesh::MeshInternal::getNormalAttrName()) {
                 drawInfo.normalOffset = vbe.offset;
-                drawInfo.normalFormat = QSSGRhiInputAssemblerState::toVertexInputFormat(QSSGRenderComponentType(vbe.componentType), vbe.componentCount);
+                drawInfo.normalFormat = QSSGRhiHelpers::toVertexInputFormat(QSSGRenderComponentType(vbe.componentType), vbe.componentCount);
             } else if (vbe.name == QSSGMesh::MeshInternal::getUV0AttrName()) {
                 drawInfo.uvOffset = vbe.offset;
-                drawInfo.uvFormat = QSSGRhiInputAssemblerState::toVertexInputFormat(QSSGRenderComponentType(vbe.componentType), vbe.componentCount);
+                drawInfo.uvFormat = QSSGRhiHelpers::toVertexInputFormat(QSSGRenderComponentType(vbe.componentType), vbe.componentCount);
             } else if (vbe.name == QSSGMesh::MeshInternal::getLightmapUVAttrName()) {
                 drawInfo.lightmapUVOffset = vbe.offset;
-                drawInfo.lightmapUVFormat = QSSGRhiInputAssemblerState::toVertexInputFormat(QSSGRenderComponentType(vbe.componentType), vbe.componentCount);
+                drawInfo.lightmapUVFormat = QSSGRhiHelpers::toVertexInputFormat(QSSGRenderComponentType(vbe.componentType), vbe.componentCount);
             } else if (vbe.name == QSSGMesh::MeshInternal::getTexTanAttrName()) {
                 drawInfo.tangentOffset = vbe.offset;
-                drawInfo.tangentFormat = QSSGRhiInputAssemblerState::toVertexInputFormat(QSSGRenderComponentType(vbe.componentType), vbe.componentCount);
+                drawInfo.tangentFormat = QSSGRhiHelpers::toVertexInputFormat(QSSGRenderComponentType(vbe.componentType), vbe.componentCount);
             } else if (vbe.name == QSSGMesh::MeshInternal::getTexBinormalAttrName()) {
                 drawInfo.binormalOffset = vbe.offset;
-                drawInfo.binormalFormat = QSSGRhiInputAssemblerState::toVertexInputFormat(QSSGRenderComponentType(vbe.componentType), vbe.componentCount);
+                drawInfo.binormalFormat = QSSGRhiHelpers::toVertexInputFormat(QSSGRenderComponentType(vbe.componentType), vbe.componentCount);
             }
         }
 
@@ -778,6 +778,7 @@ bool QSSGLightmapperPrivate::prepareLightmaps()
             return ps;
         };
 
+        QSSGRhiContextPrivate *rhiCtxD = QSSGRhiContextPrivate::get(rhiCtx);
         QVector<QRhiGraphicsPipeline *> ps;
         // Everything is going to be rendered twice (but note depth testing), first
         // with polygon mode fill, then line.
@@ -793,14 +794,15 @@ bool QSSGLightmapperPrivate::prepareLightmaps()
             // Vertex inputs (just like the sampler uniforms) must match exactly on
             // the shader and the application side, cannot just leave out or have
             // unused inputs.
-            QSSGRenderer::LightmapUVRasterizationShaderMode shaderVariant = QSSGRenderer::LightmapUVRasterizationShaderMode::Default;
+            QSSGBuiltInRhiShaderCache::LightmapUVRasterizationShaderMode shaderVariant = QSSGBuiltInRhiShaderCache::LightmapUVRasterizationShaderMode::Default;
             if (hasUV0) {
-                shaderVariant = QSSGRenderer::LightmapUVRasterizationShaderMode::Uv;
+                shaderVariant = QSSGBuiltInRhiShaderCache::LightmapUVRasterizationShaderMode::Uv;
                 if (hasTangentAndBinormal)
-                    shaderVariant = QSSGRenderer::LightmapUVRasterizationShaderMode::UvTangent;
+                    shaderVariant = QSSGBuiltInRhiShaderCache::LightmapUVRasterizationShaderMode::UvTangent;
             }
 
-            const auto &lmUvRastShaderPipeline = renderer->getRhiLightmapUVRasterizationShader(shaderVariant);
+            const auto &shaderCache = renderer->contextInterface()->shaderCache();
+            const auto &lmUvRastShaderPipeline = shaderCache->getBuiltInRhiShaders().getRhiLightmapUVRasterizationShader(shaderVariant);
             if (!lmUvRastShaderPipeline) {
                 sendOutputInfo(QSSGLightmapper::BakingStatus::Warning, QStringLiteral("Failed to load shaders"));
                 return false;
@@ -823,12 +825,12 @@ bool QSSGLightmapperPrivate::prepareLightmaps()
                                                           QRhiSampler::ClampToEdge, QRhiSampler::ClampToEdge, QRhiSampler::Repeat });
             if (subMeshInfo.baseColorMap) {
                 const bool mipmapped = subMeshInfo.baseColorMap->flags().testFlag(QRhiTexture::MipMapped);
-                QRhiSampler *sampler = rhiCtx->sampler({ toRhi(subMeshInfo.baseColorNode->m_minFilterType),
-                                                         toRhi(subMeshInfo.baseColorNode->m_magFilterType),
-                                                         mipmapped ? toRhi(subMeshInfo.baseColorNode->m_mipFilterType) : QRhiSampler::None,
-                                                         toRhi(subMeshInfo.baseColorNode->m_horizontalTilingMode),
-                                                         toRhi(subMeshInfo.baseColorNode->m_verticalTilingMode),
-                                                         QRhiSampler::Repeat
+                QRhiSampler *sampler = rhiCtx->sampler({ QSSGRhiHelpers::toRhi(subMeshInfo.baseColorNode->m_minFilterType),
+                                                         QSSGRhiHelpers::toRhi(subMeshInfo.baseColorNode->m_magFilterType),
+                                                         mipmapped ? QSSGRhiHelpers::toRhi(subMeshInfo.baseColorNode->m_mipFilterType) : QRhiSampler::None,
+                                                         QSSGRhiHelpers::toRhi(subMeshInfo.baseColorNode->m_horizontalTilingMode),
+                                                         QSSGRhiHelpers::toRhi(subMeshInfo.baseColorNode->m_verticalTilingMode),
+                                                         QSSGRhiHelpers::toRhi(subMeshInfo.baseColorNode->m_depthTilingMode)
                                                        });
                 bindings.addTexture(1, QRhiShaderResourceBinding::FragmentStage, subMeshInfo.baseColorMap, sampler);
             } else {
@@ -836,36 +838,31 @@ bool QSSGLightmapperPrivate::prepareLightmaps()
             }
             if (subMeshInfo.emissiveMap) {
                 const bool mipmapped = subMeshInfo.emissiveMap->flags().testFlag(QRhiTexture::MipMapped);
-                QRhiSampler *sampler = rhiCtx->sampler({ toRhi(subMeshInfo.emissiveNode->m_minFilterType),
-                                                         toRhi(subMeshInfo.emissiveNode->m_magFilterType),
-                                                         mipmapped ? toRhi(subMeshInfo.emissiveNode->m_mipFilterType) : QRhiSampler::None,
-                                                         toRhi(subMeshInfo.emissiveNode->m_horizontalTilingMode),
-                                                         toRhi(subMeshInfo.emissiveNode->m_verticalTilingMode),
-                                                         QRhiSampler::Repeat
+                QRhiSampler *sampler = rhiCtx->sampler({ QSSGRhiHelpers::toRhi(subMeshInfo.emissiveNode->m_minFilterType),
+                                                         QSSGRhiHelpers::toRhi(subMeshInfo.emissiveNode->m_magFilterType),
+                                                         mipmapped ? QSSGRhiHelpers::toRhi(subMeshInfo.emissiveNode->m_mipFilterType) : QRhiSampler::None,
+                                                         QSSGRhiHelpers::toRhi(subMeshInfo.emissiveNode->m_horizontalTilingMode),
+                                                         QSSGRhiHelpers::toRhi(subMeshInfo.emissiveNode->m_verticalTilingMode),
+                                                         QSSGRhiHelpers::toRhi(subMeshInfo.emissiveNode->m_depthTilingMode)
                                                        });
                 bindings.addTexture(2, QRhiShaderResourceBinding::FragmentStage, subMeshInfo.emissiveMap, sampler);
             } else {
                 bindings.addTexture(2, QRhiShaderResourceBinding::FragmentStage, dummyTexture, dummySampler);
             }
             if (subMeshInfo.normalMap) {
-                if (!hasUV0 || !hasTangentAndBinormal) {
-                    sendOutputInfo(QSSGLightmapper::BakingStatus::Warning, QStringLiteral("submesh %1 has a normal map, "
-                                                                                        "but the mesh does not provide all three of UV0, tangent, and binormal; "
-                                                                                        "expect incorrect results").arg(subMeshIdx));
-                }
                 const bool mipmapped = subMeshInfo.normalMap->flags().testFlag(QRhiTexture::MipMapped);
-                QRhiSampler *sampler = rhiCtx->sampler({ toRhi(subMeshInfo.normalMapNode->m_minFilterType),
-                                                         toRhi(subMeshInfo.normalMapNode->m_magFilterType),
-                                                         mipmapped ? toRhi(subMeshInfo.normalMapNode->m_mipFilterType) : QRhiSampler::None,
-                                                         toRhi(subMeshInfo.normalMapNode->m_horizontalTilingMode),
-                                                         toRhi(subMeshInfo.normalMapNode->m_verticalTilingMode),
-                                                         QRhiSampler::Repeat
-                                                       });
+                QRhiSampler *sampler = rhiCtx->sampler({ QSSGRhiHelpers::toRhi(subMeshInfo.normalMapNode->m_minFilterType),
+                        QSSGRhiHelpers::toRhi(subMeshInfo.normalMapNode->m_magFilterType),
+                        mipmapped ? QSSGRhiHelpers::toRhi(subMeshInfo.normalMapNode->m_mipFilterType) : QRhiSampler::None,
+                        QSSGRhiHelpers::toRhi(subMeshInfo.normalMapNode->m_horizontalTilingMode),
+                        QSSGRhiHelpers::toRhi(subMeshInfo.normalMapNode->m_verticalTilingMode),
+                        QSSGRhiHelpers::toRhi(subMeshInfo.normalMapNode->m_depthTilingMode)
+                });
                 bindings.addTexture(3, QRhiShaderResourceBinding::FragmentStage, subMeshInfo.normalMap, sampler);
             } else {
                 bindings.addTexture(3, QRhiShaderResourceBinding::FragmentStage, dummyTexture, dummySampler);
             }
-            QRhiShaderResourceBindings *srb = rhiCtx->srb(bindings);
+            QRhiShaderResourceBindings *srb = rhiCtxD->srb(bindings);
 
             QRhiGraphicsPipeline *pipeline = setupPipeline(lmUvRastShaderPipeline.get(), srb, inputLayout);
             if (!pipeline->create()) {
@@ -1437,6 +1434,7 @@ static void blendLine(const QVector2D &from, const QVector2D &to,
 
 bool QSSGLightmapperPrivate::postProcess()
 {
+    QSSGRhiContextPrivate *rhiCtxD = QSSGRhiContextPrivate::get(rhiCtx);
     QRhi *rhi = rhiCtx->rhi();
     QRhiCommandBuffer *cb = rhiCtx->commandBuffer();
     const int bakedLightingModelCount = bakedLightingModels.size();
@@ -1493,15 +1491,16 @@ bool QSSGLightmapperPrivate::postProcess()
                                                         QRhiSampler::ClampToEdge, QRhiSampler::ClampToEdge, QRhiSampler::Repeat });
         bindings.addTexture(0, QRhiShaderResourceBinding::FragmentStage, lightmapTex.get(), nearestSampler);
         renderer->rhiQuadRenderer()->prepareQuad(rhiCtx, resUpd);
-        const auto &lmDilatePipeline = renderer->getRhiLightmapDilateShader();
+        const auto &shaderCache = renderer->contextInterface()->shaderCache();
+        const auto &lmDilatePipeline = shaderCache->getBuiltInRhiShaders().getRhiLightmapDilateShader();
         if (!lmDilatePipeline) {
             sendOutputInfo(QSSGLightmapper::BakingStatus::Warning, QStringLiteral("Failed to load shaders"));
             return false;
         }
         QSSGRhiGraphicsPipelineState dilatePs;
         dilatePs.viewport = viewport;
-        dilatePs.shaderPipeline = lmDilatePipeline.get();
-        renderer->rhiQuadRenderer()->recordRenderQuadPass(rhiCtx, &dilatePs, rhiCtx->srb(bindings), rtDilate.get(), QSSGRhiQuadRenderer::UvCoords);
+        QSSGRhiGraphicsPipelineStatePrivate::setShaderPipeline(dilatePs, lmDilatePipeline.get());
+        renderer->rhiQuadRenderer()->recordRenderQuadPass(rhiCtx, &dilatePs, rhiCtxD->srb(bindings), rtDilate.get(), QSSGRhiQuadRenderer::UvCoords);
         resUpd = rhi->nextResourceUpdateBatch();
         QRhiReadbackResult dilateReadResult;
         resUpd->readBackTexture({ dilatedLightmapTex.get() }, &dilateReadResult);
@@ -1855,6 +1854,7 @@ QString QSSGLightmapper::lightmapAssetPathForSave(LightmapAsset asset, const QSt
     switch (asset) {
     case LightmapAsset::LightmapImageList:
         result += QStringLiteral("qlm_list.txt");
+        break;
     default:
         break;
     }

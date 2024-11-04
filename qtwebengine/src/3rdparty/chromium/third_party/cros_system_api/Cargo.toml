@@ -7,8 +7,8 @@ include = ["Cargo.toml", "build.rs", "src/*", "src/bindings/*"]
 
 [build-dependencies]
 chromeos-dbus-bindings = { path = "../chromeos-dbus-bindings"} # provided by ebuild
-protoc-rust = "2.3"
+protobuf-codegen = "3.2"
 
 [dependencies]
 dbus = "0.9"
-protobuf = "2.24"
+protobuf = "3.2"

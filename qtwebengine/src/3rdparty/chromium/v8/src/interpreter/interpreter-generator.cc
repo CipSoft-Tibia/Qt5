@@ -236,11 +236,11 @@ IGNITION_HANDLER(StaGlobal, InterpreterAssembler) {
   TNode<Object> result = CallBuiltin(Builtin::kStoreGlobalIC, context, name,
                                      value, slot, maybe_vector);
   // To avoid special logic in the deoptimizer to re-materialize the value in
-  // the accumulator, we overwrite the accumulator after the IC call. It
+  // the accumulator, we clobber the accumulator after the IC call. It
   // doesn't really matter what we write to the accumulator here, since we
   // restore to the correct value on the outside. Storing the result means we
   // don't need to keep unnecessary state alive across the callstub.
-  SetAccumulator(result);
+  ClobberAccumulator(result);
 
   Dispatch();
 }
@@ -604,11 +604,11 @@ class InterpreterSetNamedPropertyAssembler : public InterpreterAssembler {
     TNode<Object> result =
         CallStub(ic, context, object, name, value, slot, maybe_vector);
     // To avoid special logic in the deoptimizer to re-materialize the value in
-    // the accumulator, we overwrite the accumulator after the IC call. It
+    // the accumulator, we clobber the accumulator after the IC call. It
     // doesn't really matter what we write to the accumulator here, since we
     // restore to the correct value on the outside. Storing the result means we
     // don't need to keep unnecessary state alive across the callstub.
-    SetAccumulator(result);
+    ClobberAccumulator(result);
     Dispatch();
   }
 };
@@ -659,11 +659,11 @@ IGNITION_HANDLER(SetKeyedProperty, InterpreterAssembler) {
   TNode<Object> result = CallBuiltin(Builtin::kKeyedStoreIC, context, object,
                                      name, value, slot, maybe_vector);
   // To avoid special logic in the deoptimizer to re-materialize the value in
-  // the accumulator, we overwrite the accumulator after the IC call. It
+  // the accumulator, we clobber the accumulator after the IC call. It
   // doesn't really matter what we write to the accumulator here, since we
   // restore to the correct value on the outside. Storing the result means we
   // don't need to keep unnecessary state alive across the callstub.
-  SetAccumulator(result);
+  ClobberAccumulator(result);
   Dispatch();
 }
 
@@ -686,15 +686,15 @@ IGNITION_HANDLER(DefineKeyedOwnProperty, InterpreterAssembler) {
   TNode<HeapObject> maybe_vector = LoadFeedbackVector();
   TNode<Context> context = GetContext();
 
-  TVARIABLE(Object, var_result);
-  var_result = CallBuiltin(Builtin::kDefineKeyedOwnIC, context, object, name,
-                           value, flags, slot, maybe_vector);
+  TNode<Object> result =
+      CallBuiltin(Builtin::kDefineKeyedOwnIC, context, object, name, value,
+                  flags, slot, maybe_vector);
   // To avoid special logic in the deoptimizer to re-materialize the value in
-  // the accumulator, we overwrite the accumulator after the IC call. It
+  // the accumulator, we clobber the accumulator after the IC call. It
   // doesn't really matter what we write to the accumulator here, since we
   // restore to the correct value on the outside. Storing the result means we
   // don't need to keep unnecessary state alive across the callstub.
-  SetAccumulator(var_result.value());
+  ClobberAccumulator(result);
   Dispatch();
 }
 
@@ -714,11 +714,11 @@ IGNITION_HANDLER(StaInArrayLiteral, InterpreterAssembler) {
       CallBuiltin(Builtin::kStoreInArrayLiteralIC, context, array, index, value,
                   slot, feedback_vector);
   // To avoid special logic in the deoptimizer to re-materialize the value in
-  // the accumulator, we overwrite the accumulator after the IC call. It
+  // the accumulator, we clobber the accumulator after the IC call. It
   // doesn't really matter what we write to the accumulator here, since we
   // restore to the correct value on the outside. Storing the result means we
   // don't need to keep unnecessary state alive across the callstub.
-  SetAccumulator(result);
+  ClobberAccumulator(result);
   Dispatch();
 }
 
@@ -868,13 +868,14 @@ class InterpreterBinaryOpAssembler : public InterpreterAssembler {
     TNode<Object> rhs = GetAccumulator();
     TNode<Context> context = GetContext();
     TNode<UintPtrT> slot_index = BytecodeOperandIdx(1);
-    TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
+    TNode<HeapObject> maybe_feedback_vector =
+        LoadFeedbackVectorOrUndefinedIfJitless();
+    static constexpr UpdateFeedbackMode mode = DefaultUpdateFeedbackMode();
 
     BinaryOpAssembler binop_asm(state());
-    TNode<Object> result =
-        (binop_asm.*generator)([=] { return context; }, lhs, rhs, slot_index,
-                               [=] { return maybe_feedback_vector; },
-                               UpdateFeedbackMode::kOptionalFeedback, false);
+    TNode<Object> result = (binop_asm.*generator)(
+        [=] { return context; }, lhs, rhs, slot_index,
+        [=] { return maybe_feedback_vector; }, mode, false);
     SetAccumulator(result);
     Dispatch();
   }
@@ -884,13 +885,14 @@ class InterpreterBinaryOpAssembler : public InterpreterAssembler {
     TNode<Smi> rhs = BytecodeOperandImmSmi(0);
     TNode<Context> context = GetContext();
     TNode<UintPtrT> slot_index = BytecodeOperandIdx(1);
-    TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
+    TNode<HeapObject> maybe_feedback_vector =
+        LoadFeedbackVectorOrUndefinedIfJitless();
+    static constexpr UpdateFeedbackMode mode = DefaultUpdateFeedbackMode();
 
     BinaryOpAssembler binop_asm(state());
-    TNode<Object> result =
-        (binop_asm.*generator)([=] { return context; }, lhs, rhs, slot_index,
-                               [=] { return maybe_feedback_vector; },
-                               UpdateFeedbackMode::kOptionalFeedback, true);
+    TNode<Object> result = (binop_asm.*generator)(
+        [=] { return context; }, lhs, rhs, slot_index,
+        [=] { return maybe_feedback_vector; }, mode, true);
     SetAccumulator(result);
     Dispatch();
   }
@@ -993,13 +995,14 @@ class InterpreterBitwiseBinaryOpAssembler : public InterpreterAssembler {
     TNode<Object> right = GetAccumulator();
     TNode<Context> context = GetContext();
     TNode<UintPtrT> slot_index = BytecodeOperandIdx(1);
-    TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
+    TNode<HeapObject> maybe_feedback_vector =
+        LoadFeedbackVectorOrUndefinedIfJitless();
+    static constexpr UpdateFeedbackMode mode = DefaultUpdateFeedbackMode();
 
     BinaryOpAssembler binop_asm(state());
     TNode<Object> result = binop_asm.Generate_BitwiseBinaryOpWithFeedback(
         bitwise_op, left, right, [=] { return context; }, slot_index,
-        [=] { return maybe_feedback_vector; },
-        UpdateFeedbackMode::kOptionalFeedback, false);
+        [=] { return maybe_feedback_vector; }, mode, false);
 
     SetAccumulator(result);
     Dispatch();
@@ -1009,14 +1012,15 @@ class InterpreterBitwiseBinaryOpAssembler : public InterpreterAssembler {
     TNode<Object> left = GetAccumulator();
     TNode<Smi> right = BytecodeOperandImmSmi(0);
     TNode<UintPtrT> slot_index = BytecodeOperandIdx(1);
-    TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
     TNode<Context> context = GetContext();
+    TNode<HeapObject> maybe_feedback_vector =
+        LoadFeedbackVectorOrUndefinedIfJitless();
+    static constexpr UpdateFeedbackMode mode = DefaultUpdateFeedbackMode();
 
     BinaryOpAssembler binop_asm(state());
     TNode<Object> result = binop_asm.Generate_BitwiseBinaryOpWithFeedback(
         bitwise_op, left, right, [=] { return context; }, slot_index,
-        [=] { return maybe_feedback_vector; },
-        UpdateFeedbackMode::kOptionalFeedback, true);
+        [=] { return maybe_feedback_vector; }, mode, true);
 
     SetAccumulator(result);
     Dispatch();
@@ -1102,12 +1106,13 @@ IGNITION_HANDLER(BitwiseNot, InterpreterAssembler) {
   TNode<Object> value = GetAccumulator();
   TNode<Context> context = GetContext();
   TNode<UintPtrT> slot_index = BytecodeOperandIdx(0);
-  TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
+  TNode<HeapObject> maybe_feedback_vector =
+      LoadFeedbackVectorOrUndefinedIfJitless();
+  static constexpr UpdateFeedbackMode mode = DefaultUpdateFeedbackMode();
 
   UnaryOpAssembler unary_op_asm(state());
   TNode<Object> result = unary_op_asm.Generate_BitwiseNotWithFeedback(
-      context, value, slot_index, maybe_feedback_vector,
-      UpdateFeedbackMode::kOptionalFeedback);
+      context, value, slot_index, maybe_feedback_vector, mode);
 
   SetAccumulator(result);
   Dispatch();
@@ -1147,12 +1152,13 @@ IGNITION_HANDLER(Negate, InterpreterAssembler) {
   TNode<Object> value = GetAccumulator();
   TNode<Context> context = GetContext();
   TNode<UintPtrT> slot_index = BytecodeOperandIdx(0);
-  TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
+  TNode<HeapObject> maybe_feedback_vector =
+      LoadFeedbackVectorOrUndefinedIfJitless();
+  static constexpr UpdateFeedbackMode mode = DefaultUpdateFeedbackMode();
 
   UnaryOpAssembler unary_op_asm(state());
   TNode<Object> result = unary_op_asm.Generate_NegateWithFeedback(
-      context, value, slot_index, maybe_feedback_vector,
-      UpdateFeedbackMode::kOptionalFeedback);
+      context, value, slot_index, maybe_feedback_vector, mode);
 
   SetAccumulator(result);
   Dispatch();
@@ -1165,7 +1171,7 @@ IGNITION_HANDLER(ToName, InterpreterAssembler) {
   TNode<Object> object = GetAccumulator();
   TNode<Context> context = GetContext();
   TNode<Object> result = CallBuiltin(Builtin::kToName, context, object);
-  StoreRegisterAtOperandIndex(result, 0);
+  SetAccumulator(result);
   Dispatch();
 }
 
@@ -1202,6 +1208,29 @@ IGNITION_HANDLER(ToString, InterpreterAssembler) {
   Dispatch();
 }
 
+// ToString
+//
+// Convert the accumulator to a String.
+IGNITION_HANDLER(ToBoolean, InterpreterAssembler) {
+  TNode<Object> value = GetAccumulator();
+  TVARIABLE(Boolean, result);
+  Label if_true(this), if_false(this), end(this);
+  BranchIfToBooleanIsTrue(value, &if_true, &if_false);
+  BIND(&if_true);
+  {
+    result = TrueConstant();
+    Goto(&end);
+  }
+  BIND(&if_false);
+  {
+    result = FalseConstant();
+    Goto(&end);
+  }
+  BIND(&end);
+  SetAccumulator(result.value());
+  Dispatch();
+}
+
 // Inc
 //
 // Increments value in the accumulator by one.
@@ -1209,12 +1238,13 @@ IGNITION_HANDLER(Inc, InterpreterAssembler) {
   TNode<Object> value = GetAccumulator();
   TNode<Context> context = GetContext();
   TNode<UintPtrT> slot_index = BytecodeOperandIdx(0);
-  TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
+  TNode<HeapObject> maybe_feedback_vector =
+      LoadFeedbackVectorOrUndefinedIfJitless();
+  static constexpr UpdateFeedbackMode mode = DefaultUpdateFeedbackMode();
 
   UnaryOpAssembler unary_op_asm(state());
   TNode<Object> result = unary_op_asm.Generate_IncrementWithFeedback(
-      context, value, slot_index, maybe_feedback_vector,
-      UpdateFeedbackMode::kOptionalFeedback);
+      context, value, slot_index, maybe_feedback_vector, mode);
 
   SetAccumulator(result);
   Dispatch();
@@ -1227,12 +1257,13 @@ IGNITION_HANDLER(Dec, InterpreterAssembler) {
   TNode<Object> value = GetAccumulator();
   TNode<Context> context = GetContext();
   TNode<UintPtrT> slot_index = BytecodeOperandIdx(0);
-  TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
+  TNode<HeapObject> maybe_feedback_vector =
+      LoadFeedbackVectorOrUndefinedIfJitless();
+  static constexpr UpdateFeedbackMode mode = DefaultUpdateFeedbackMode();
 
   UnaryOpAssembler unary_op_asm(state());
   TNode<Object> result = unary_op_asm.Generate_DecrementWithFeedback(
-      context, value, slot_index, maybe_feedback_vector,
-      UpdateFeedbackMode::kOptionalFeedback);
+      context, value, slot_index, maybe_feedback_vector, mode);
 
   SetAccumulator(result);
   Dispatch();
@@ -1244,7 +1275,7 @@ IGNITION_HANDLER(Dec, InterpreterAssembler) {
 // accumulator to a boolean value if required.
 IGNITION_HANDLER(ToBooleanLogicalNot, InterpreterAssembler) {
   TNode<Object> value = GetAccumulator();
-  TVARIABLE(Oddball, result);
+  TVARIABLE(Boolean, result);
   Label if_true(this), if_false(this), end(this);
   BranchIfToBooleanIsTrue(value, &if_true, &if_false);
   BIND(&if_true);
@@ -1268,10 +1299,10 @@ IGNITION_HANDLER(ToBooleanLogicalNot, InterpreterAssembler) {
 // value.
 IGNITION_HANDLER(LogicalNot, InterpreterAssembler) {
   TNode<Object> value = GetAccumulator();
-  TVARIABLE(Oddball, result);
+  TVARIABLE(Boolean, result);
   Label if_true(this), if_false(this), end(this);
-  TNode<Oddball> true_value = TrueConstant();
-  TNode<Oddball> false_value = FalseConstant();
+  TNode<True> true_value = TrueConstant();
+  TNode<False> false_value = FalseConstant();
   Branch(TaggedEqual(value, true_value), &if_true, &if_false);
   BIND(&if_true);
   {
@@ -1350,19 +1381,21 @@ class InterpreterJSCallAssembler : public InterpreterAssembler {
   // Generates code to perform a JS call that collects type feedback.
   void JSCall(ConvertReceiverMode receiver_mode) {
     TNode<Object> function = LoadRegisterAtOperandIndex(0);
+    RegListNodePair args = GetRegisterListAtOperandIndex(1);
+    TNode<Context> context = GetContext();
+
+#ifndef V8_JITLESS
+    // Collect the {function} feedback.
     LazyNode<Object> receiver = [=] {
       return receiver_mode == ConvertReceiverMode::kNullOrUndefined
                  ? UndefinedConstant()
                  : LoadRegisterAtOperandIndex(1);
     };
-    RegListNodePair args = GetRegisterListAtOperandIndex(1);
     TNode<UintPtrT> slot_id = BytecodeOperandIdx(3);
     TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
-    TNode<Context> context = GetContext();
-
-    // Collect the {function} feedback.
     CollectCallFeedback(function, receiver, context, maybe_feedback_vector,
                         slot_id);
+#endif  // !V8_JITLESS
 
     // Call the function and dispatch to the next handler.
     CallJSAndDispatch(function, context, args, receiver_mode);
@@ -1376,22 +1409,24 @@ class InterpreterJSCallAssembler : public InterpreterAssembler {
     const int kReceiverOperandCount =
         (receiver_mode == ConvertReceiverMode::kNullOrUndefined) ? 0 : 1;
     const int kReceiverAndArgOperandCount = kReceiverOperandCount + arg_count;
-    const int kSlotOperandIndex =
-        kFirstArgumentOperandIndex + kReceiverAndArgOperandCount;
 
     TNode<Object> function = LoadRegisterAtOperandIndex(0);
+    TNode<Context> context = GetContext();
+
+#ifndef V8_JITLESS
+    // Collect the {function} feedback.
     LazyNode<Object> receiver = [=] {
       return receiver_mode == ConvertReceiverMode::kNullOrUndefined
                  ? UndefinedConstant()
                  : LoadRegisterAtOperandIndex(1);
     };
+    const int kSlotOperandIndex =
+        kFirstArgumentOperandIndex + kReceiverAndArgOperandCount;
     TNode<UintPtrT> slot_id = BytecodeOperandIdx(kSlotOperandIndex);
     TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
-    TNode<Context> context = GetContext();
-
-    // Collect the {function} feedback.
     CollectCallFeedback(function, receiver, context, maybe_feedback_vector,
                         slot_id);
+#endif  // !V8_JITLESS
 
     switch (kReceiverAndArgOperandCount) {
       case 0:
@@ -1509,6 +1544,7 @@ IGNITION_HANDLER(CallRuntimeForPair, InterpreterAssembler) {
   TNode<Object> result0 = Projection<0>(result_pair);
   TNode<Object> result1 = Projection<1>(result_pair);
   StoreRegisterPairAtOperandIndex(result0, result1, 3);
+  ClobberAccumulator(result0);
   Dispatch();
 }
 
@@ -1540,12 +1576,10 @@ IGNITION_HANDLER(CallWithSpread, InterpreterAssembler) {
   TNode<Object> callable = LoadRegisterAtOperandIndex(0);
   RegListNodePair args = GetRegisterListAtOperandIndex(1);
   TNode<UintPtrT> slot_id = BytecodeOperandIdx(3);
-  TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
   TNode<Context> context = GetContext();
 
   // Call into Runtime function CallWithSpread which does everything.
-  CallJSWithSpreadAndDispatch(callable, context, args, slot_id,
-                              maybe_feedback_vector);
+  CallJSWithSpreadAndDispatch(callable, context, args, slot_id);
 }
 
 // ConstructWithSpread <first_arg> <arg_count>
@@ -1559,10 +1593,9 @@ IGNITION_HANDLER(ConstructWithSpread, InterpreterAssembler) {
   TNode<Object> constructor = LoadRegisterAtOperandIndex(0);
   RegListNodePair args = GetRegisterListAtOperandIndex(1);
   TNode<UintPtrT> slot_id = BytecodeOperandIdx(3);
-  TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
   TNode<Context> context = GetContext();
-  TNode<Object> result = ConstructWithSpread(
-      constructor, context, new_target, args, slot_id, maybe_feedback_vector);
+  TNode<Object> result =
+      ConstructWithSpread(constructor, context, new_target, args, slot_id);
   SetAccumulator(result);
   Dispatch();
 }
@@ -1598,7 +1631,7 @@ class InterpreterCompareOpAssembler : public InterpreterAssembler {
     TNode<Context> context = GetContext();
 
     TVARIABLE(Smi, var_type_feedback);
-    TNode<Oddball> result;
+    TNode<Boolean> result;
     switch (compare_op) {
       case Operation::kEqual:
         result = Equal(lhs, rhs, context, &var_type_feedback);
@@ -1618,9 +1651,11 @@ class InterpreterCompareOpAssembler : public InterpreterAssembler {
     }
 
     TNode<UintPtrT> slot_index = BytecodeOperandIdx(1);
-    TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
-    MaybeUpdateFeedback(var_type_feedback.value(), maybe_feedback_vector,
-                        slot_index);
+    TNode<HeapObject> maybe_feedback_vector =
+        LoadFeedbackVectorOrUndefinedIfJitless();
+    static constexpr UpdateFeedbackMode mode = DefaultUpdateFeedbackMode();
+    UpdateFeedback(var_type_feedback.value(), maybe_feedback_vector, slot_index,
+                   mode);
     SetAccumulator(result);
     Dispatch();
   }
@@ -1677,7 +1712,7 @@ IGNITION_HANDLER(TestGreaterThanOrEqual, InterpreterCompareOpAssembler) {
 IGNITION_HANDLER(TestReferenceEqual, InterpreterAssembler) {
   TNode<Object> lhs = LoadRegisterAtOperandIndex(0);
   TNode<Object> rhs = GetAccumulator();
-  TNode<Oddball> result = SelectBooleanConstant(TaggedEqual(lhs, rhs));
+  TNode<Boolean> result = SelectBooleanConstant(TaggedEqual(lhs, rhs));
   SetAccumulator(result);
   Dispatch();
 }
@@ -1707,11 +1742,14 @@ IGNITION_HANDLER(TestIn, InterpreterAssembler) {
 IGNITION_HANDLER(TestInstanceOf, InterpreterAssembler) {
   TNode<Object> object = LoadRegisterAtOperandIndex(0);
   TNode<Object> callable = GetAccumulator();
-  TNode<UintPtrT> slot_id = BytecodeOperandIdx(1);
-  TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
   TNode<Context> context = GetContext();
 
+#ifndef V8_JITLESS
+  TNode<HeapObject> maybe_feedback_vector = LoadFeedbackVector();
+  TNode<UintPtrT> slot_id = BytecodeOperandIdx(1);
   CollectInstanceOfFeedback(callable, context, maybe_feedback_vector, slot_id);
+#endif  // !V8_JITLESS
+
   SetAccumulator(InstanceOf(object, callable, context));
   Dispatch();
 }
@@ -1729,7 +1767,7 @@ IGNITION_HANDLER(TestUndetectable, InterpreterAssembler) {
   GotoIf(TaggedIsSmi(object), &end);
 
   // If it is a HeapObject, load the map and check for undetectable bit.
-  TNode<Oddball> result =
+  TNode<Boolean> result =
       SelectBooleanConstant(IsUndetectableMap(LoadMap(CAST(object))));
   SetAccumulator(result);
   Goto(&end);
@@ -1743,7 +1781,7 @@ IGNITION_HANDLER(TestUndetectable, InterpreterAssembler) {
 // Test if the value in accumulator is strictly equal to null.
 IGNITION_HANDLER(TestNull, InterpreterAssembler) {
   TNode<Object> object = GetAccumulator();
-  TNode<Oddball> result =
+  TNode<Boolean> result =
       SelectBooleanConstant(TaggedEqual(object, NullConstant()));
   SetAccumulator(result);
   Dispatch();
@@ -1754,7 +1792,7 @@ IGNITION_HANDLER(TestNull, InterpreterAssembler) {
 // Test if the value in the accumulator is strictly equal to undefined.
 IGNITION_HANDLER(TestUndefined, InterpreterAssembler) {
   TNode<Object> object = GetAccumulator();
-  TNode<Oddball> result =
+  TNode<Boolean> result =
       SelectBooleanConstant(TaggedEqual(object, UndefinedConstant()));
   SetAccumulator(result);
   Dispatch();
@@ -2158,22 +2196,27 @@ IGNITION_HANDLER(JumpIfJSReceiverConstant, InterpreterAssembler) {
 IGNITION_HANDLER(JumpLoop, InterpreterAssembler) {
   TNode<IntPtrT> relative_jump = Signed(BytecodeOperandUImmWord(0));
 
+#ifndef V8_JITLESS
   Label ok(this);
+
   TNode<FeedbackVector> feedback_vector =
       CodeStubAssembler::LoadFeedbackVector(LoadFunctionClosure(), &ok);
   TNode<Int8T> osr_state = LoadOsrState(feedback_vector);
   TNode<Int32T> loop_depth = BytecodeOperandImm(1);
 
-  Label maybe_osr_because_baseline(this),
-      maybe_osr_because_osr_state(this, Label::kDeferred);
+  Label maybe_osr_because_osr_state(this, Label::kDeferred);
   // The quick initial OSR check. If it passes, we proceed on to more expensive
   // OSR logic.
-  static_assert(FeedbackVector::MaybeHasOptimizedOsrCodeBit::encode(true) >
+  static_assert(FeedbackVector::MaybeHasMaglevOsrCodeBit::encode(true) >
                 FeedbackVector::kMaxOsrUrgency);
+  static_assert(FeedbackVector::MaybeHasTurbofanOsrCodeBit::encode(true) >
+                FeedbackVector::kMaxOsrUrgency);
+
   GotoIfNot(Uint32GreaterThanOrEqual(loop_depth, osr_state),
             &maybe_osr_because_osr_state);
 
   // Perhaps we've got cached baseline code?
+  Label maybe_osr_because_baseline(this);
   TNode<SharedFunctionInfo> sfi = LoadObjectField<SharedFunctionInfo>(
       LoadFunctionClosure(), JSFunction::kSharedFunctionInfoOffset);
   TNode<HeapObject> sfi_data =
@@ -2182,10 +2225,15 @@ IGNITION_HANDLER(JumpLoop, InterpreterAssembler) {
          &maybe_osr_because_baseline, &ok);
 
   BIND(&ok);
+#endif  // !V8_JITLESS
+
+  ClobberAccumulator(UndefinedConstant());
+
   // The backward jump can trigger a budget interrupt, which can handle stack
   // interrupts, so we don't need to explicitly handle them here.
   JumpBackward(relative_jump);
 
+#ifndef V8_JITLESS
   BIND(&maybe_osr_because_baseline);
   {
     TNode<Context> context = GetContext();
@@ -2203,6 +2251,7 @@ IGNITION_HANDLER(JumpLoop, InterpreterAssembler) {
                        slot_index, osr_state,
                        OnStackReplacementParams::kDefault);
   }
+#endif  // !V8_JITLESS
 }
 
 // SwitchOnSmiNoFeedback <table_start> <table_length> <case_value_base>
@@ -2787,9 +2836,8 @@ IGNITION_HANDLER(FindNonDefaultConstructorOrConstruct, InterpreterAssembler) {
 
   TNode<JSFunction> this_function = CAST(LoadRegisterAtOperandIndex(0));
 
-  FindNonDefaultConstructorOrConstruct(context, this_function, constructor,
-                                       &found_default_base_ctor,
-                                       &found_something_else);
+  FindNonDefaultConstructor(this_function, constructor,
+                            &found_default_base_ctor, &found_something_else);
 
   BIND(&found_default_base_ctor);
   {
@@ -2815,7 +2863,9 @@ IGNITION_HANDLER(FindNonDefaultConstructorOrConstruct, InterpreterAssembler) {
 // Call runtime to handle debugger statement.
 IGNITION_HANDLER(Debugger, InterpreterAssembler) {
   TNode<Context> context = GetContext();
-  CallRuntime(Runtime::kHandleDebuggerStatement, context);
+  TNode<Object> result =
+      CallRuntime(Runtime::kHandleDebuggerStatement, context);
+  ClobberAccumulator(result);
   Dispatch();
 }
 
@@ -2900,10 +2950,7 @@ IGNITION_HANDLER(ForInPrepare, InterpreterAssembler) {
   ForInPrepare(enumerator, vector_index, maybe_feedback_vector, &cache_array,
                &cache_length, UpdateFeedbackMode::kOptionalFeedback);
 
-  // The accumulator is clobbered soon after ForInPrepare, so avoid keeping it
-  // alive too long and instead set it to cache_array to match the first return
-  // value of Builtin::kForInPrepare.
-  SetAccumulator(cache_array);
+  ClobberAccumulator(SmiConstant(0));
 
   StoreRegisterTripleAtOperandIndex(cache_type, cache_array, cache_length, 0);
   Dispatch();
@@ -3053,7 +3100,6 @@ IGNITION_HANDLER(SuspendGenerator, InterpreterAssembler) {
   StoreObjectField(generator, JSGeneratorObject::kInputOrDebugPosOffset,
                    offset);
 
-  UpdateInterruptBudgetOnReturn();
   Return(GetAccumulator());
 }
 

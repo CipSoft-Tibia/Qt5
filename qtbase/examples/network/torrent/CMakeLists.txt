@@ -1,14 +1,8 @@
 # Copyright (C) 2022 The Qt Company Ltd.
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.16)
 project(torrent LANGUAGES CXX)
-
-if(NOT DEFINED INSTALL_EXAMPLESDIR)
-    set(INSTALL_EXAMPLESDIR "examples")
-endif()
-
-set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/network/torrent")
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Widgets)
 
@@ -44,14 +38,15 @@ target_link_libraries(torrent PRIVATE
 
 # Resources:
 set(icons_resource_files
-    "icons/1downarrow.png"
-    "icons/1uparrow.png"
-    "icons/bottom.png"
-    "icons/exit.png"
-    "icons/peertopeer.png"
-    "icons/player_pause.png"
-    "icons/player_play.png"
-    "icons/player_stop.png"
+    "icons/1downarrow.svg"
+    "icons/1uparrow.svg"
+    "icons/bottom.svg"
+    "icons/exit.svg"
+    "icons/peertopeer.svg"
+    "icons/player_pause.svg"
+    "icons/player_play.svg"
+    "icons/player_stop.svg"
+    "icons/about.svg"
 )
 
 qt_add_resources(torrent "icons"
@@ -62,7 +57,14 @@ qt_add_resources(torrent "icons"
 )
 
 install(TARGETS torrent
-    RUNTIME DESTINATION "${INSTALL_EXAMPLEDIR}"
-    BUNDLE DESTINATION "${INSTALL_EXAMPLEDIR}"
-    LIBRARY DESTINATION "${INSTALL_EXAMPLEDIR}"
+    BUNDLE  DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+
+qt_generate_deploy_app_script(
+    TARGET torrent
+    OUTPUT_SCRIPT deploy_script
+    NO_UNSUPPORTED_PLATFORM_ERROR
+)
+install(SCRIPT ${deploy_script})

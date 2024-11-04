@@ -17,13 +17,16 @@
 #include "base/rand_util.h"
 #include "base/ranges/algorithm.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/time/clock.h"
 #include "base/time/time.h"
 #include "components/back_forward_cache/back_forward_cache_disable.h"
+#include "components/permissions/constants.h"
 #include "components/permissions/features.h"
 #include "components/permissions/origin_keyed_permission_action_service.h"
 #include "components/permissions/permission_decision_auto_blocker.h"
 #include "components/permissions/permission_prompt.h"
 #include "components/permissions/permission_request.h"
+#include "components/permissions/permission_uma_util.h"
 #include "components/permissions/permission_util.h"
 #include "components/permissions/permissions_client.h"
 #include "components/permissions/request_type.h"
@@ -37,6 +40,8 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/base/window_open_disposition_utils.h"
+#include "ui/events/event.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -438,17 +443,25 @@ void PermissionRequestManager::DidFinishNavigation(
     return;
   }
 
-  if (!pending_permission_requests_.IsEmpty() || IsRequestInProgress()) {
-    // |pending_permission_requests_| and |requests_| will be deleted below,
-    // which might be a problem for back-forward cache — the page might be
-    // restored later, but the requests won't be. Disable bfcache here if we
-    // have any requests here to prevent this from happening.
-    content::BackForwardCache::DisableForRenderFrameHost(
-        navigation_handle->GetPreviousRenderFrameHostId(),
-        back_forward_cache::DisabledReason(
-            back_forward_cache::DisabledReasonId::kPermissionRequestManager));
+  if (!navigation_handle->IsErrorPage()) {
+    permissions::PermissionUmaUtil::
+        RecordTopLevelPermissionsHeaderPolicyOnNavigation(
+            navigation_handle->GetRenderFrameHost());
   }
 
+  if (!base::FeatureList::IsEnabled(
+          features::kBackForwardCacheUnblockPermissionRequest)) {
+    if (!pending_permission_requests_.IsEmpty() || IsRequestInProgress()) {
+      // |pending_permission_requests_| and |requests_| will be deleted below,
+      // which might be a problem for back-forward cache — the page might be
+      // restored later, but the requests won't be. Disable bfcache here if we
+      // have any requests here to prevent this from happening.
+      content::BackForwardCache::DisableForRenderFrameHost(
+          navigation_handle->GetPreviousRenderFrameHostId(),
+          back_forward_cache::DisabledReason(
+              back_forward_cache::DisabledReasonId::kPermissionRequestManager));
+    }
+  }
   CleanUpRequests();
 }
 
@@ -484,7 +497,7 @@ void PermissionRequestManager::OnVisibilityChanged(
   tab_is_hidden_ = visibility == content::Visibility::HIDDEN;
   if (tab_was_hidden == tab_is_hidden_)
     return;
-
+  NotifyTabVisibilityChanged(visibility);
   if (tab_is_hidden_) {
     if (view_) {
       switch (view_->GetTabSwitchingBehavior()) {
@@ -536,6 +549,10 @@ GURL PermissionRequestManager::GetRequestingOrigin() const {
 }
 
 GURL PermissionRequestManager::GetEmbeddingOrigin() const {
+  if (embedding_origin_for_testing_.has_value()) {
+    return embedding_origin_for_testing_.value();
+  }
+
   return PermissionUtil::GetLastCommittedOriginAsURL(
       web_contents()->GetPrimaryMainFrame());
 }
@@ -552,6 +569,17 @@ void PermissionRequestManager::Accept() {
                                 PermissionAction::GRANTED);
     PermissionGrantedIncludingDuplicates(*requests_iter,
                                          /*is_one_time=*/false);
+
+#if !BUILDFLAG(IS_ANDROID)
+    absl::optional<ContentSettingsType> content_settings_type =
+        RequestTypeToContentSettingsType((*requests_iter)->request_type());
+    if (content_settings_type.has_value()) {
+      PermissionUmaUtil::RecordPermissionRegrantForUnusedSites(
+          (*requests_iter)->requesting_origin(), content_settings_type.value(),
+          PermissionSourceUI::PROMPT, web_contents()->GetBrowserContext(),
+          base::Time::Now());
+    }
+#endif
   }
 
   NotifyRequestDecided(PermissionAction::GRANTED);
@@ -640,6 +668,21 @@ void PermissionRequestManager::Ignore() {
   FinalizeCurrentRequests(PermissionAction::IGNORED);
 }
 
+void PermissionRequestManager::OpenHelpCenterLink(const ui::Event& event) {
+  CHECK_GT(requests_.size(), 0u);
+  switch (requests_[0]->request_type()) {
+    case permissions::RequestType::kStorageAccess:
+      GetAssociatedWebContents()->OpenURL(content::OpenURLParams(
+          GURL(permissions::kEmbeddedContentHelpCenterURL), content::Referrer(),
+          ui::DispositionFromEventFlags(
+              event.flags(), WindowOpenDisposition::NEW_FOREGROUND_TAB),
+          ui::PAGE_TRANSITION_LINK, /*is_renderer_initiated=*/false));
+      break;
+    default:
+      NOTREACHED_NORETURN();
+  }
+}
+
 void PermissionRequestManager::PreIgnoreQuietPrompt() {
   // Random number of seconds in the range [1.0, 2.0).
   double delay_seconds = 1.0 + 1.0 * base::RandDouble();
@@ -699,6 +742,11 @@ PermissionRequestManager::GetWeakPtr() {
   return weak_factory_.GetWeakPtr();
 }
 
+content::WebContents* PermissionRequestManager::GetAssociatedWebContents() {
+  content::WebContents& web_contents = GetWebContents();
+  return &web_contents;
+}
+
 bool PermissionRequestManager::RecreateView() {
   view_ = view_factory_.Run(web_contents(), this);
   if (!view_) {
@@ -713,6 +761,11 @@ bool PermissionRequestManager::RecreateView() {
 
   current_request_prompt_disposition_ = view_->GetPromptDisposition();
   return true;
+}
+
+absl::optional<gfx::Rect>
+PermissionRequestManager::GetPromptBubbleViewBoundsInScreen() const {
+  return view_ ? view_->GetViewBoundsInScreen() : absl::nullopt;
 }
 
 PermissionRequestManager::PermissionRequestManager(
@@ -873,6 +926,7 @@ void PermissionRequestManager::ShowPrompt() {
         absl::nullopt, DetermineCurrentRequestUIDisposition(),
         DetermineCurrentRequestUIDispositionReasonForUMA(),
         requests_[0]->GetGestureType(), absl::nullopt, false,
+        web_contents()->GetLastCommittedURL(),
         hats_shown_callback_.has_value()
             ? std::move(hats_shown_callback_.value())
             : base::DoNothing());
@@ -1238,14 +1292,22 @@ bool PermissionRequestManager::ShouldDropCurrentRequestIfCannotShowQuietly()
   return false;
 }
 
+void PermissionRequestManager::NotifyTabVisibilityChanged(
+    content::Visibility visibility) {
+  for (Observer& observer : observer_list_) {
+    observer.OnTabVisibilityChanged(visibility);
+  }
+}
+
 void PermissionRequestManager::NotifyPromptAdded() {
   for (Observer& observer : observer_list_)
     observer.OnPromptAdded();
 }
 
 void PermissionRequestManager::NotifyPromptRemoved() {
-  for (Observer& observer : observer_list_)
+  for (Observer& observer : observer_list_) {
     observer.OnPromptRemoved();
+  }
 }
 
 void PermissionRequestManager::NotifyPromptRecreateFailed() {

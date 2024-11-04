@@ -18,7 +18,7 @@
 #include "components/cast_receiver/browser/runtime_application_base.h"
 #include "components/cast_receiver/browser/streaming_runtime_application.h"
 #include "components/cast_receiver/browser/web_runtime_application.h"
-#include "components/cast_streaming/public/app_ids.h"
+#include "components/cast_streaming/common/public/app_ids.h"
 
 namespace cast_receiver {
 
@@ -51,7 +51,7 @@ class RuntimeApplicationDispatcherImpl
       const std::string& session_id) override;
 
   SEQUENCE_CHECKER(sequence_checker_);
-  base::raw_ref<ApplicationClient> const application_client_;
+  raw_ref<ApplicationClient> const application_client_;
 
   base::flat_map<std::string, std::unique_ptr<TEmbedderApplication>>
       loaded_apps_;

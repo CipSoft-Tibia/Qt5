@@ -36,6 +36,7 @@ public:
     bool writeNodeAttributes(const QList<QOpcUaWriteItem> &nodesToWrite) override;
 
     QOpcUaHistoryReadResponse *readHistoryData(const QOpcUaHistoryReadRawRequest &request) override;
+    QOpcUaHistoryReadResponse *readHistoryEvents(const QOpcUaHistoryReadEventRequest &request) override;
 
     bool addNode(const QOpcUaAddNodeItem &nodeToAdd) override;
     bool deleteNode(const QString &nodeId, bool deleteTargetReferences) override;
@@ -48,6 +49,12 @@ public:
 
     Q_INVOKABLE bool handleHistoryReadRawRequested(const QOpcUaHistoryReadRawRequest &request, const QList<QByteArray> &continuationPoints,
                                                    bool releaseContinuationPoints, quint64 handle);
+
+    bool registerNodes(const QStringList &nodesToRegister) override;
+    bool unregisterNodes(const QStringList &nodesToUnregister) override;
+
+    bool handleHistoryReadEventsRequested(const QOpcUaHistoryReadEventRequest &request, const QList<QByteArray> &continuationPoints,
+                                          bool releaseContinuationPoints, quint64 handle);
 
 signals:
     void historyReadRequestError(quint64 handle);

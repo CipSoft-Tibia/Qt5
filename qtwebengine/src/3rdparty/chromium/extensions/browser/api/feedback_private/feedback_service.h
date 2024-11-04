@@ -56,9 +56,10 @@ class FeedbackService : public base::RefCountedThreadSafe<FeedbackService> {
   FeedbackService(const FeedbackService&) = delete;
   FeedbackService& operator=(const FeedbackService&) = delete;
 
-  virtual void SendFeedback(const FeedbackParams& params,
-                            scoped_refptr<feedback::FeedbackData> feedback_data,
-                            SendFeedbackCallback callback);
+  virtual void RedactThenSendFeedback(
+      const FeedbackParams& params,
+      scoped_refptr<feedback::FeedbackData> feedback_data,
+      SendFeedbackCallback callback);
 
   FeedbackPrivateDelegate* GetFeedbackPrivateDelegate() { return delegate_; }
 
@@ -67,6 +68,10 @@ class FeedbackService : public base::RefCountedThreadSafe<FeedbackService> {
 
  private:
   friend class base::RefCountedThreadSafe<FeedbackService>;
+
+  void SendFeedback(const FeedbackParams& params,
+                    scoped_refptr<feedback::FeedbackData> feedback_data,
+                    SendFeedbackCallback callback);
 
   void FetchAttachedFileAndScreenshot(
       scoped_refptr<feedback::FeedbackData> feedback_data,
@@ -99,8 +104,9 @@ class FeedbackService : public base::RefCountedThreadSafe<FeedbackService> {
   void OnAllLogsFetched(const FeedbackParams& params,
                         scoped_refptr<feedback::FeedbackData> feedback_data);
 
-  raw_ptr<content::BrowserContext, DanglingUntriaged> browser_context_;
-  raw_ptr<FeedbackPrivateDelegate, DanglingUntriaged> delegate_;
+  raw_ptr<content::BrowserContext, AcrossTasksDanglingUntriaged>
+      browser_context_;
+  raw_ptr<FeedbackPrivateDelegate, AcrossTasksDanglingUntriaged> delegate_;
 };
 
 }  // namespace extensions

@@ -27,6 +27,18 @@ module.exports = {
     'no-extra-boolean-cast': 'error',
     'no-extra-semi': 'error',
     'no-new-wrappers': 'error',
+    'no-restricted-imports': ['error', {
+      'paths': [{
+        'name':  'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js',
+        'importNames': ['Polymer'],
+        'message': 'Use PolymerElement instead.',
+      },
+      {
+        'name':  '//resources/polymer/v3_0/polymer/polymer_bundled.min.js',
+        'importNames': ['Polymer'],
+        'message': 'Use PolymerElement instead.',
+      }],
+    }],
     'no-restricted-properties': [
       'error',
       {
@@ -132,6 +144,14 @@ module.exports = {
           format: ['strictCamelCase'],
           modifiers: ['private'],
           trailingUnderscore: 'allow',
+
+          // Disallow the 'Tap_' suffix, in favor of 'Click_' in event handlers.
+          // Note: Unfortunately this ESLint rule does not provide a way to
+          // customize the error message to better inform developers.
+          custom: {
+            regex: '^on[a-zA-Z0-9]+Tap$',
+            match: false,
+          },
         },
         {
           selector: 'classProperty',

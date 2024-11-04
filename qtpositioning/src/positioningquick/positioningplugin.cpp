@@ -17,7 +17,6 @@ QT_BEGIN_NAMESPACE
     \qmlvaluetype coordinate
     \ingroup qmlvaluetypes
     \inqmlmodule QtPositioning
-    \ingroup qml-QtPositioning5-basictypes
     \since 5.2
 
     \brief The coordinate type represents and stores a geographic position.
@@ -175,7 +174,6 @@ QT_BEGIN_NAMESPACE
     \qmlvaluetype geoshape
     \ingroup qmlvaluetypes
     \inqmlmodule QtPositioning
-    \ingroup qml-QtPositioning5-basictypes
     \since 5.2
 
     \brief A geoshape type represents an abstract geographic area.
@@ -278,7 +276,6 @@ QT_BEGIN_NAMESPACE
     \qmlvaluetype georectangle
     \ingroup qmlvaluetypes
     \inqmlmodule QtPositioning
-    \ingroup qml-QtPositioning5-basictypes
     \since 5.2
 
     \brief The georectangle type represents a rectangular geographic area.
@@ -395,7 +392,6 @@ QT_BEGIN_NAMESPACE
     \qmlvaluetype geocircle
     \ingroup qmlvaluetypes
     \inqmlmodule QtPositioning
-    \ingroup qml-QtPositioning5-basictypes
     \since 5.2
 
     \brief The geocircle type represents a circular geographic area.
@@ -449,7 +445,6 @@ QT_BEGIN_NAMESPACE
     \qmlvaluetype geopath
     \ingroup qmlvaluetypes
     \inqmlmodule QtPositioning
-    \ingroup qml-QtPositioning5-basictypes
     \since 5.9
 
     \brief The geopath type represents a geographic path.
@@ -482,7 +477,6 @@ QT_BEGIN_NAMESPACE
    \qmlvaluetype geopolygon
    \ingroup qmlvaluetypes
    \inqmlmodule QtPositioning
-   \ingroup qml-QtPositioning5-basictypes
    \since 5.10
 
    \brief The geopolygon type represents a geographic polygon.

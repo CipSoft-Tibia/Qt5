@@ -33,8 +33,8 @@
 }
 
 .timeline-toolbar-container > .toolbar {
-  background-color: var(--color-background-elevation-1);
-  border-bottom: var(--legacy-divider-border);
+  background-color: var(--sys-color-cdt-base-container);
+  border-bottom: 1px solid var(--sys-color-divider);
 }
 
 .timeline-main-toolbar {
@@ -43,18 +43,18 @@
 
 .timeline-settings-pane {
   flex: none;
-  background-color: var(--color-background-elevation-1);
-  border-bottom: var(--legacy-divider-border);
+  background-color: var(--sys-color-cdt-base-container);
+  border-bottom: 1px solid var(--sys-color-divider);
 }
 
 #timeline-overview-panel {
   flex: none;
   position: relative;
-  border-bottom: 1px solid var(--color-details-hairline);
+  border-bottom: 1px solid var(--sys-color-divider);
 }
 
 #timeline-overview-grid {
-  background-color: var(--color-background);
+  background-color: var(--sys-color-cdt-base-container);
 }
 
 #timeline-overview-grid .timeline-grid-header {
@@ -82,101 +82,14 @@
 }
 
 .timeline.panel .status-pane-container.tinted {
-  background-color: var(--color-background-elevation-2);
+  background-color: var(--sys-color-cdt-base-container);
   pointer-events: auto;
-}
-
-#timeline-overview-panel .overview-strip {
-  margin-top: 2px;
-  justify-content: center;
-}
-
-#timeline-overview-panel .overview-strip .timeline-overview-strip-title {
-  color: var(--color-text-secondary);
-  font-size: 10px;
-  font-weight: bold;
-  z-index: 100;
-  background-color: var(--color-background-opacity-80);
-  padding: 0 4px;
-  position: absolute;
-  top: -2px;
-  right: 0;
-}
-
-#timeline-overview-cpu-activity {
-  flex-basis: 20px;
-}
-
-#timeline-overview-network {
-  flex-basis: 8px;
-}
-
-#timeline-overview-filmstrip {
-  flex-basis: 30px;
-}
-
-#timeline-overview-memory {
-  flex-basis: 20px;
-}
-
-#timeline-overview-network::before,
-#timeline-overview-cpu-activity::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  border-bottom: 1px solid var(--divider-line);
-  z-index: -200;
-}
-
-.overview-strip .background {
-  z-index: -10;
-}
-
-#timeline-overview-responsiveness {
-  flex-basis: 5px;
-  margin-top: 0 !important; /* stylelint-disable-line declaration-no-important */
-}
-
-#timeline-overview-input {
-  flex-basis: 6px;
-}
-
-#timeline-overview-pane {
-  flex: auto;
-  position: relative;
-  overflow: hidden;
-}
-
-#timeline-overview-container {
-  display: flex;
-  flex-direction: column;
-  flex: none;
-  position: relative;
-  overflow: hidden;
-}
-
-#timeline-overview-container canvas {
-  width: 100%;
-  height: 100%;
 }
 
 .popover ul {
   margin: 0;
   padding: 0;
   list-style-type: none;
-}
-
-.memory-graph-label {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  font-size: 9px;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-  padding: 0 4px;
-  background-color: var(--color-background-opacity-80);
 }
 
 #memory-graphs-canvas-container {
@@ -200,8 +113,8 @@
 
 #memory-graphs-container .timeline-memory-header {
   flex: 0 0 26px;
-  background-color: var(--color-background-elevation-1);
-  border-bottom: 1px solid var(--color-details-hairline);
+  background-color: var(--sys-color-surface2);
+  border-bottom: 1px solid var(--sys-color-divider);
   justify-content: space-between;
 }
 
@@ -224,25 +137,10 @@
 
 #counter-values-bar {
   flex: 0 0 20px;
-  border-top: solid 1px var(--color-details-hairline);
+  border-top: solid 1px var(--sys-color-divider);
   width: 100%;
   overflow: hidden;
   line-height: 18px;
-}
-
-#timeline-overview-coverage {
-  flex-basis: 20px;
-}
-
-.timeline-overview-coverage-label {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  font-size: 9px;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-  padding: 0 4px;
-  background-color: var(--color-background-opacity-80);
 }
 
 .timeline-details {
@@ -250,7 +148,7 @@
 }
 
 .timeline-details-view {
-  color: var(--color-text-secondary);
+  color: var(--sys-color-on-surface);
   overflow: hidden;
 }
 
@@ -258,17 +156,17 @@
   flex: auto;
   overflow: auto;
   position: relative;
-  background-color: var(--color-background-elevation-1);
+  background-color: var(--sys-color-cdt-base-container);
   user-select: text;
 }
 
 .timeline-details-view-block {
   flex: none;
   display: flex;
-  background-color: var(--color-background);
+  background-color: var(--sys-color-cdt-base-container);
   flex-direction: column;
   padding-bottom: 5px;
-  border-bottom: var(--legacy-divider-border);
+  border-bottom: 1px solid var(--sys-color-divider);
 }
 
 .timeline-details-view-row {
@@ -288,7 +186,7 @@
 }
 
 .timeline-details-view-row-title:not(:empty) {
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
   overflow: hidden;
   padding-right: 10px;
   display: inline-block;
@@ -306,7 +204,7 @@
 }
 
 .timeline-details-warning .timeline-details-view-row-title {
-  color: var(--color-red);
+  color: var(--sys-color-error);
 }
 
 .timeline-details-view-row-value {
@@ -371,7 +269,7 @@
 }
 
 .timeline-layers-view-properties td {
-  border: 1px solid var(--color-details-hairline);
+  border: 1px solid var(--sys-color-divider);
   line-height: 22px;
 }
 
@@ -380,7 +278,7 @@
   max-width: 500px;
   max-height: 300px;
   cursor: pointer;
-  border: 1px solid var(--color-details-hairline);
+  border: 1px solid var(--sys-color-divider);
 }
 
 .timeline-tree-view {
@@ -389,8 +287,8 @@
 }
 
 .timeline-tree-view .toolbar {
-  background-color: var(--color-background-elevation-1);
-  border-bottom: var(--legacy-divider-border);
+  background-color: var(--sys-color-cdt-base-container);
+  border-bottom: 1px solid var(--sys-color-divider);
 }
 
 .timeline-tree-view .data-grid {
@@ -407,11 +305,15 @@
 }
 
 .timeline-tree-view .data-grid table.data {
-  background: var(--color-background);
+  background: var(--sys-color-cdt-base-container);
+}
+
+.timeline-tree-view .data-grid .odd {
+  background-color: var(--sys-color-surface1);
 }
 
 .timeline-tree-view .data-grid tr:hover td:not(.bottom-filler-td) {
-  background-color: var(--color-background-hover-overlay);
+  background-color: var(--sys-color-state-hover-on-subtle);
 }
 
 .timeline-tree-view .data-grid td.numeric-column {
@@ -421,10 +323,12 @@
 
 .timeline-tree-view .data-grid div.background-percent-bar {
   float: right;
+  position: relative;
+  z-index: 999;
 }
 
 .timeline-tree-view .data-grid span.percent-column {
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
   width: 45px;
   display: inline-block;
 }
@@ -462,7 +366,7 @@
   margin: 0 4px;
   line-height: 12px;
   font-size: 10px;
-  color: var(--color-text-disabled);
+  color: var(--sys-color-state-disabled);
 }
 
 .timeline-tree-view .data-grid tr.selected .name-container .activity-warning::after {
@@ -494,8 +398,8 @@
 }
 
 .timeline-tree-view .data-grid .selected .background-bar {
-  background-color: var(--color-background-opacity-50);
-  border-bottom: 1px solid var(--color-background-opacity-80);
+  background-color: var(--app-color-selected);
+  border-bottom: 1px solid var(--app-border-selected);
 }
 
 .-theme-with-dark-background .timeline-tree-view .data-grid .background-bar,
@@ -518,21 +422,21 @@
 
 .timeline-stack-view-header {
   height: 27px;
-  background-color: var(--color-background-elevation-1);
+  background-color: var(--sys-color-cdt-base-container);
   padding: 6px 10px;
-  color: var(--color-text-secondary);
+  color: var(--sys-color-on-surface);
   white-space: nowrap;
-  border-bottom: var(--legacy-divider-border);
+  border-bottom: 1px solid var(--sys-color-divider);
 }
 
 .timeline-landing-page {
   position: absolute;
-  background-color: var(--color-background);
+  background-color: var(--sys-color-cdt-base-container);
   justify-content: center;
   align-items: center;
   overflow: auto;
   font-size: 13px;
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
 }
 
 @media (forced-colors: active) {
@@ -555,15 +459,6 @@
     background-color: transparent;
     border-bottom-color: HighlightText;
   }
-}
-
-.timeline-additional-metrics {
-  display: flex;
-  flex: 0 0 27px;
-  background-color: var(--color-background-elevation-1);
-  border-top: var(--legacy-divider-border);
-  overflow: hidden;
-  z-index: 100;
 }
 
 .timeline-details-view-row-stack-trace div {
@@ -626,4 +521,8 @@
 
 .timeline-concurrency-hidden {
   visibility: hidden;
+}
+
+devtools-feedback-button {
+  float: right;
 }

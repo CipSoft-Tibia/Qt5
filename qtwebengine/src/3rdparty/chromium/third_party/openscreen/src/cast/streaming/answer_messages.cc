@@ -1,19 +1,20 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cast/streaming/answer_messages.h"
 
+#include <string_view>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "cast/streaming/constants.h"
 #include "platform/base/error.h"
 #include "util/enum_name_table.h"
 #include "util/json/json_helpers.h"
 #include "util/osp_logging.h"
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
@@ -27,10 +28,6 @@ static constexpr char kVideo[] = "video";
 // by the receiver, the sender will use kDefaultAudioMinBitRate and
 // kDefaultVideoMinBitRate, which represent the true operational minimum.
 static constexpr char kMinBitRate[] = "minBitRate";
-// 32kbps is sender default for audio minimum bit rate.
-static constexpr int kDefaultAudioMinBitRate = 32 * 1000;
-// 300kbps is sender default for video minimum bit rate.
-static constexpr int kDefaultVideoMinBitRate = 300 * 1000;
 
 // Maximum encoded bits per second. This is the lower of (1) the max capability
 // of the decoder, or (2) the max data transfer rate.
@@ -100,7 +97,7 @@ static constexpr char kSsrcs[] = "ssrcs";
 static constexpr char kConstraints[] = "constraints";
 // Provides details about the display on the receiver.
 static constexpr char kDisplay[] = "display";
-// absl::optional array of numbers specifying the indexes of streams that will
+// std::optional array of numbers specifying the indexes of streams that will
 // send event logs through RTCP.
 static constexpr char kReceiverRtcpEventLog[] = "receiverRtcpEventLog";
 // OPtional array of numbers specifying the indexes of streams that will use
@@ -136,19 +133,7 @@ bool TryParseAspectRatioConstraint(const Json::Value& value,
 }
 
 template <typename T>
-Json::Value PrimitiveVectorToJson(const std::vector<T>& vec) {
-  Json::Value array(Json::ValueType::arrayValue);
-  array.resize(vec.size());
-
-  for (Json::Value::ArrayIndex i = 0; i < vec.size(); ++i) {
-    array[i] = Json::Value(vec[i]);
-  }
-
-  return array;
-}
-
-template <typename T>
-bool ParseOptional(const Json::Value& value, absl::optional<T>* out) {
+bool ParseOptional(const Json::Value& value, std::optional<T>* out) {
   // It's fine if the value is empty.
   if (!value) {
     return true;
@@ -170,7 +155,7 @@ bool AspectRatio::TryParse(const Json::Value& value, AspectRatio* out) {
     return false;
   }
 
-  std::vector<absl::string_view> fields =
+  std::vector<std::string_view> fields =
       absl::StrSplit(parsed_value, kAspectRatioDelimiter);
   if (fields.size() != 2) {
     return false;
@@ -312,9 +297,9 @@ bool DisplayDescription::TryParse(const Json::Value& root,
   AspectRatioConstraint constraint;
   if (TryParseAspectRatioConstraint(root[kScaling], &constraint)) {
     out->aspect_ratio_constraint =
-        absl::optional<AspectRatioConstraint>(std::move(constraint));
+        std::optional<AspectRatioConstraint>(std::move(constraint));
   } else {
-    out->aspect_ratio_constraint = absl::nullopt;
+    out->aspect_ratio_constraint = std::nullopt;
   }
 
   return out->IsValid();
@@ -409,22 +394,21 @@ Json::Value Answer::ToJson() const {
     root[kDisplay] = display->ToJson();
   }
   root[kUdpPort] = udp_port;
-  root[kSendIndexes] = PrimitiveVectorToJson(send_indexes);
-  root[kSsrcs] = PrimitiveVectorToJson(ssrcs);
+  root[kSendIndexes] = json::PrimitiveVectorToJson(send_indexes);
+  root[kSsrcs] = json::PrimitiveVectorToJson(ssrcs);
   // Some sender do not handle empty array properly, so we omit these fields
   // if they are empty.
   if (!receiver_rtcp_event_log.empty()) {
     root[kReceiverRtcpEventLog] =
-        PrimitiveVectorToJson(receiver_rtcp_event_log);
+        json::PrimitiveVectorToJson(receiver_rtcp_event_log);
   }
   if (!receiver_rtcp_dscp.empty()) {
-    root[kReceiverRtcpDscp] = PrimitiveVectorToJson(receiver_rtcp_dscp);
+    root[kReceiverRtcpDscp] = json::PrimitiveVectorToJson(receiver_rtcp_dscp);
   }
   if (!rtp_extensions.empty()) {
-    root[kRtpExtensions] = PrimitiveVectorToJson(rtp_extensions);
+    root[kRtpExtensions] = json::PrimitiveVectorToJson(rtp_extensions);
   }
   return root;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

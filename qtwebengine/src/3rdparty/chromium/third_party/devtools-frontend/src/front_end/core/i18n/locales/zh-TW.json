@@ -224,9 +224,6 @@
   "core/i18n/time-utilities.ts | fs": {
     "message": "{PH1} 秒"
   },
-  "core/sdk/CPUProfileDataModel.ts | devtoolsCpuProfileParserIsFixing": {
-    "message": "DevTools：CPU 設定檔剖析器正在修復 {PH1} 個缺少的樣本。"
-  },
   "core/sdk/CPUProfilerModel.ts | profileD": {
     "message": "設定檔 {PH1}"
   },
@@ -238,6 +235,9 @@
   },
   "core/sdk/CompilerSourceMappingContentProvider.ts | couldNotLoadContentForSS": {
     "message": "無法載入 {PH1} 的內容 ({PH2})"
+  },
+  "core/sdk/ConsoleModel.ts | bfcacheNavigation": {
+    "message": "系統已從往返快取還原 {PH1} 的瀏覽畫面 (詳情請參閱 https://web.dev/bfcache/)"
   },
   "core/sdk/ConsoleModel.ts | failedToSaveToTempVariable": {
     "message": "無法儲存至臨時變數。"
@@ -419,9 +419,6 @@
   "core/sdk/EventBreakpointsModel.ts | beforeSellerWorkletScoringStart": {
     "message": "賣方計分階段開始"
   },
-  "core/sdk/NetworkManager.ts | crossoriginReadBlockingCorb": {
-    "message": "Cross-Origin Read Blocking (CORB) 已封鎖 MIME 類型為{PH2}的 {PH1} 跨來源回應。詳情請參閱 https://www.chromestatus.com/feature/5629709824032768。"
-  },
   "core/sdk/NetworkManager.ts | fastG": {
     "message": "快速 3G 網路"
   },
@@ -504,13 +501,13 @@
     "message": "這個 Cookie 在儲存時並未指定「SameSite」屬性，而是預設為「SameSite=Lax」。由於要求來自不同網站，且並非由頂層導覽頁面提出，因此遭到封鎖。這個 Cookie 必須先指定「SameSite=None」，才能支援跨網站的使用方式。"
   },
   "core/sdk/NetworkRequest.ts | schemefulSameSiteLax": {
-    "message": "這個 Cookie 含有「SameSite=Lax」屬性，但其要求類型屬於跨網站性質，且非由頂層導覽頁面提出，因此遭到封鎖。由於網址架構與目前的網站不同，因此系統判定這是跨網站要求。"
+    "message": "這個 Cookie 含有「SameSite=Lax」屬性，但其要求類型屬於跨網站性質，且非由頂層導覽頁面提出，因此遭到封鎖。由於網址配置與目前的網站不同，因此系統判定這是跨網站要求。"
   },
   "core/sdk/NetworkRequest.ts | schemefulSameSiteStrict": {
-    "message": "這個 Cookie 含有「SameSite=Strict」屬性，但其要求類型屬於跨網站性質，因此遭到封鎖。上述要求包括其他網站提出的頂層導覽要求。由於網址架構與目前的網站不同，因此系統判定這是跨網站要求。"
+    "message": "這個 Cookie 含有「SameSite=Strict」屬性，但其要求類型屬於跨網站性質，因此遭到封鎖。上述要求包括其他網站提出的頂層導覽要求。由於網址配置與目前的網站不同，因此系統判定這是跨網站要求。"
   },
   "core/sdk/NetworkRequest.ts | schemefulSameSiteUnspecifiedTreatedAsLax": {
-    "message": "這個 Cookie 在儲存時並未指定「SameSite」屬性，而是預設為「SameSite=Lax\"」。由於其要求類型屬於跨網站性質，而且並非由頂層導覽頁面提出，因此遭到封鎖。由於網址架構與目前的網站不同，因此系統判定這是跨網站要求。"
+    "message": "這個 Cookie 在儲存時並未指定「SameSite」屬性，而是預設為「SameSite=Lax\"」。由於其要求類型屬於跨網站性質，而且並非由頂層導覽頁面提出，因此遭到封鎖。由於網址配置與目前的網站不同，因此系統判定這是跨網站要求。"
   },
   "core/sdk/NetworkRequest.ts | secureOnly": {
     "message": "這個 Cookie 含有「Secure」屬性，而且採用了不安全的連線方式，因此遭到封鎖。"
@@ -522,7 +519,7 @@
     "message": "這個連線的架構無法保存 Cookie。"
   },
   "core/sdk/NetworkRequest.ts | thisSetcookieDidntSpecifyASamesite": {
-    "message": "這個 Set-Cookie 標頭並未指定「SameSite」屬性，而是預設為「SameSite=Lax\"」。由於其來源的跨網站回應並非以頂層導覽頁面為目標，因此遭到封鎖。由於網址架構與目前的網站不同，因此系統將該回應視為跨網站回應。"
+    "message": "這個 Set-Cookie 標頭並未指定「SameSite」屬性，而是預設為「SameSite=Lax\"」。由於其來源的跨網站回應並非以頂層導覽頁面為目標，因此遭到封鎖。由於網址配置與目前的網站不同，因此系統將該回應視為跨網站回應。"
   },
   "core/sdk/NetworkRequest.ts | thisSetcookieHadInvalidSyntax": {
     "message": "這個 Set-Cookie 標頭含有無效的語法。"
@@ -534,7 +531,7 @@
     "message": "嘗試透過 Set-Cookie 標頭設定 Cookie 的操作含有「SameParty」屬性和其他衝突的屬性，因此遭到封鎖。Chrome 規定使用「SameParty」屬性的 Cookie 必須一併使用「Secure」屬性，而且不得受到「SameSite=Strict」限制。"
   },
   "core/sdk/NetworkRequest.ts | thisSetcookieWasBlockedBecauseItHadTheSamesiteStrictLax": {
-    "message": "嘗試透過 Set-Cookie 標頭設定 Cookie 的操作含有「{PH1}」屬性，但其來源的跨網站回應並非以頂層導覽頁面為目標，因此遭到封鎖。由於網址架構與目前的網站不同，因此系統將該回應視為跨網站回應。"
+    "message": "嘗試透過 Set-Cookie 標頭設定 Cookie 的操作含有「{PH1}」屬性，但其來源的跨網站回應並非以頂層導覽頁面為目標，因此遭到封鎖。由於網址配置與目前的網站不同，因此系統將該回應視為跨網站回應。"
   },
   "core/sdk/NetworkRequest.ts | thisSetcookieWasBlockedBecauseTheNameValuePairExceedsMaxSize": {
     "message": "嘗試透過 Set-Cookie 標頭設定 Cookie 的操作因 Cookie 過大而遭到封鎖。名稱和值的合計大小必須在 4096 個半形字元以下。"
@@ -550,9 +547,6 @@
   },
   "core/sdk/OverlayModel.ts | pausedInDebugger": {
     "message": "已在偵錯工具中暫停"
-  },
-  "core/sdk/PageResourceLoader.ts | loadCanceledDueToLoadTimeout": {
-    "message": "載入作業因逾時而取消"
   },
   "core/sdk/PageResourceLoader.ts | loadCanceledDueToReloadOf": {
     "message": "由於系統重新載入已檢查的網頁，因此載入作業已取消"
@@ -618,7 +612,7 @@
     "message": "停止中"
   },
   "core/sdk/sdk-meta.ts | achromatopsia": {
-    "message": "全色盲"
+    "message": "全色盲 (看不到顏色)"
   },
   "core/sdk/sdk-meta.ts | blurredVision": {
     "message": "視力模糊"
@@ -627,7 +621,7 @@
     "message": "擷取非同步堆疊追蹤"
   },
   "core/sdk/sdk-meta.ts | deuteranopia": {
-    "message": "綠色盲"
+    "message": "綠色盲 (看不到綠色)"
   },
   "core/sdk/sdk-meta.ts | disableAsyncStackTraces": {
     "message": "停用非同步堆疊追蹤"
@@ -690,7 +684,7 @@
     "message": "模擬已聚焦的網頁"
   },
   "core/sdk/sdk-meta.ts | emulateAchromatopsia": {
-    "message": "模擬全色盲患者看到的內容"
+    "message": "模擬全色盲 (看不到顏色)"
   },
   "core/sdk/sdk-meta.ts | emulateAutoDarkMode": {
     "message": "模擬自動深色模式"
@@ -714,13 +708,16 @@
     "message": "模擬 CSS 畫面媒體類型"
   },
   "core/sdk/sdk-meta.ts | emulateDeuteranopia": {
-    "message": "模擬綠色盲患者看到的內容"
+    "message": "模擬綠色盲 (看不到綠色)"
   },
   "core/sdk/sdk-meta.ts | emulateProtanopia": {
-    "message": "模擬紅色盲患者看到的內容"
+    "message": "模擬紅色盲 (看不到紅色)"
+  },
+  "core/sdk/sdk-meta.ts | emulateReducedContrast": {
+    "message": "模擬低對比敏感度"
   },
   "core/sdk/sdk-meta.ts | emulateTritanopia": {
-    "message": "模擬藍黃色盲患者看到的內容"
+    "message": "模擬藍色盲 (看不到藍色)"
   },
   "core/sdk/sdk-meta.ts | emulateVisionDeficiencies": {
     "message": "模擬視覺障礙人士看到的內容"
@@ -756,7 +753,7 @@
     "message": "隱藏網站體驗核心指標的重疊內容"
   },
   "core/sdk/sdk-meta.ts | hideFramesPerSecondFpsMeter": {
-    "message": "隱藏每秒畫格數 (FPS) 計量器"
+    "message": "隱藏每秒影格數 (FPS) 計量器"
   },
   "core/sdk/sdk-meta.ts | hideLayerBorders": {
     "message": "隱藏圖層框線"
@@ -780,7 +777,7 @@
     "message": "不模擬"
   },
   "core/sdk/sdk-meta.ts | pauseOnExceptions": {
-    "message": "在例外狀況時暫停"
+    "message": "遇到例外狀況時暫停"
   },
   "core/sdk/sdk-meta.ts | preserveLogUponNavigation": {
     "message": "在瀏覽時保留記錄"
@@ -789,10 +786,13 @@
     "message": "列印"
   },
   "core/sdk/sdk-meta.ts | protanopia": {
-    "message": "紅色盲"
+    "message": "紅色盲 (看不到紅色)"
   },
   "core/sdk/sdk-meta.ts | query": {
     "message": "查詢"
+  },
+  "core/sdk/sdk-meta.ts | reducedContrast": {
+    "message": "低對比敏感度"
   },
   "core/sdk/sdk-meta.ts | screen": {
     "message": "畫面"
@@ -804,7 +804,7 @@
     "message": "顯示網站體驗核心指標的重疊內容"
   },
   "core/sdk/sdk-meta.ts | showFramesPerSecondFpsMeter": {
-    "message": "顯示每秒畫格數 (FPS) 計量器"
+    "message": "顯示每秒影格數 (FPS) 計量器"
   },
   "core/sdk/sdk-meta.ts | showGridNamedAreas": {
     "message": "顯示格線命名區域"
@@ -840,7 +840,7 @@
     "message": "顯示軌道大小"
   },
   "core/sdk/sdk-meta.ts | tritanopia": {
-    "message": "藍黃色盲"
+    "message": "藍色盲 (看不到藍色)"
   },
   "entrypoints/inspector_main/InspectorMain.ts | javascriptIsDisabled": {
     "message": "JavaScript 已停用"
@@ -853,6 +853,12 @@
   },
   "entrypoints/inspector_main/InspectorMain.ts | tab": {
     "message": "分頁"
+  },
+  "entrypoints/inspector_main/OutermostTargetSelector.ts | targetNotSelected": {
+    "message": "頁面：未選取"
+  },
+  "entrypoints/inspector_main/OutermostTargetSelector.ts | targetS": {
+    "message": "頁面：{PH1}"
   },
   "entrypoints/inspector_main/RenderingOptions.ts | coreWebVitals": {
     "message": "網站體驗核心指標"
@@ -899,6 +905,9 @@
   "entrypoints/inspector_main/RenderingOptions.ts | forcesCssPrefersreducedmotion": {
     "message": "強制使用 CSS prefers-reduced-motion 媒體功能"
   },
+  "entrypoints/inspector_main/RenderingOptions.ts | forcesCssPrefersreducedtransparencyMedia": {
+    "message": "強制使用 CSS prefers-reduced-transparency 媒體功能"
+  },
   "entrypoints/inspector_main/RenderingOptions.ts | forcesMediaTypeForTestingPrint": {
     "message": "強制使用測試列印和畫面樣式的媒體類型"
   },
@@ -906,7 +915,7 @@
     "message": "強制模擬視覺障礙人士看到的內容"
   },
   "entrypoints/inspector_main/RenderingOptions.ts | frameRenderingStats": {
-    "message": "畫格算繪統計資料"
+    "message": "影格算繪統計資料"
   },
   "entrypoints/inspector_main/RenderingOptions.ts | highlightAdFrames": {
     "message": "醒目顯示廣告頁框"
@@ -933,7 +942,7 @@
     "message": "閃動顯示繪製區域"
   },
   "entrypoints/inspector_main/RenderingOptions.ts | plotsFrameThroughputDropped": {
-    "message": "繪製圖表來呈現各種資料，包括畫格總處理量、捨棄畫格的時間點，以及 GPU 記憶體。"
+    "message": "繪製圖表來呈現各種資料，包括影格處理量、捨棄影格的時間點，以及 GPU 記憶體。"
   },
   "entrypoints/inspector_main/RenderingOptions.ts | requiresAPageReloadToApplyAnd": {
     "message": "需要重新載入網頁才能套用及停用圖片要求的快取。"
@@ -972,7 +981,7 @@
     "message": "在這個網站上強制封鎖廣告"
   },
   "entrypoints/inspector_main/inspector_main-meta.ts | fps": {
-    "message": "每秒畫格數"
+    "message": "每秒影格數"
   },
   "entrypoints/inspector_main/inspector_main-meta.ts | hardReloadPage": {
     "message": "強制重新載入網頁"
@@ -1023,7 +1032,7 @@
     "message": "固定在右側"
   },
   "entrypoints/main/MainImpl.ts | focusDebuggee": {
-    "message": "重點偵錯目標"
+    "message": "焦點頁面"
   },
   "entrypoints/main/MainImpl.ts | help": {
     "message": "說明"
@@ -1062,7 +1071,7 @@
     "message": "顏色格式："
   },
   "entrypoints/main/main-meta.ts | colorFormatSettingDisabled": {
-    "message": "這項設定與現代化色域不相容，因此已經淘汰。如要重新啟用，可以停用對應的實驗功能。"
+    "message": "這項設定與現代化色彩空間不相容，因此已淘汰。如要重新啟用，請停用對應的實驗功能。"
   },
   "entrypoints/main/main-meta.ts | darkCapital": {
     "message": "深色"
@@ -1098,7 +1107,7 @@
     "message": "尋找上一個結果"
   },
   "entrypoints/main/main-meta.ts | focusDebuggee": {
-    "message": "重點偵錯目標"
+    "message": "焦點頁面"
   },
   "entrypoints/main/main-meta.ts | horizontal": {
     "message": "橫向"
@@ -1241,6 +1250,183 @@
   "entrypoints/worker_app/WorkerMain.ts | main": {
     "message": "主要"
   },
+  "generated/Deprecation.ts | AuthorizationCoveredByWildcard": {
+    "message": "CORS Access-Control-Allow-Headers 處理作業中無法使用萬用字元符號 (*) 標示授權。"
+  },
+  "generated/Deprecation.ts | CSSSelectorInternalMediaControlsOverlayCastButton": {
+    "message": "應使用 disableRemotePlayback 屬性 (而非 -internal-media-controls-overlay-cast-button 選取器) 停用預設的 Cast 整合功能。"
+  },
+  "generated/Deprecation.ts | CanRequestURLHTTPContainingNewline": {
+    "message": "如果資源要求網址中同時包含已移除的 \\(n|r|t) 字元和小於字元 (<)，系統會予以封鎖。請從元素屬性值等位置移除換行符號，並編碼小於字元，以便載入這些資源。"
+  },
+  "generated/Deprecation.ts | ChromeLoadTimesConnectionInfo": {
+    "message": "chrome.loadTimes() 已淘汰，請改用標準化 API：Navigation Timing 2。"
+  },
+  "generated/Deprecation.ts | ChromeLoadTimesFirstPaintAfterLoadTime": {
+    "message": "chrome.loadTimes() 已遭淘汰，請改用標準化 API：Paint Timing。"
+  },
+  "generated/Deprecation.ts | ChromeLoadTimesWasAlternateProtocolAvailable": {
+    "message": "chrome.loadTimes() 已淘汰，請改用標準化 API：Navigation Timing 2 中的 nextHopProtocol。"
+  },
+  "generated/Deprecation.ts | CookieWithTruncatingChar": {
+    "message": "系統會拒絕包含 \\(0|r|n) 字元的 Cookie，而非截斷。"
+  },
+  "generated/Deprecation.ts | CrossOriginAccessBasedOnDocumentDomain": {
+    "message": "透過設定 document.domain 啟用相同來源政策的功能已淘汰，將於日後予以移除。如果是透過設定 document.domain 啟用跨來源存取功能，系統就會顯示這則淘汰警告訊息。"
+  },
+  "generated/Deprecation.ts | CrossOriginWindowAlert": {
+    "message": "從跨來源 iframe 觸發 window.alert 的功能已淘汰，並將在日後移除。"
+  },
+  "generated/Deprecation.ts | CrossOriginWindowConfirm": {
+    "message": "從跨來源 iframe 觸發 window.confirm 的功能已淘汰，並將在之後移除。"
+  },
+  "generated/Deprecation.ts | DOMMutationEvents": {
+    "message": "DOM 變更事件 (包括 DOMSubtreeModified、DOMNodeInserted、DOMNodeRemoved、DOMNodeRemovedFromDocument、DOMNodeInsertedIntoDocument 和 DOMCharacterDataModified) 已淘汰 (https://w3c.github.io/uievents/#legacy-event-types)，並將於日後移除。請改用 MutationObserver。"
+  },
+  "generated/Deprecation.ts | DataUrlInSvgUse": {
+    "message": "SVGUseElement 不再支援「data: 網址」，並將於日後移除。"
+  },
+  "generated/Deprecation.ts | DocumentDomainSettingWithoutOriginAgentClusterHeader": {
+    "message": "透過設定 document.domain 啟用相同來源政策的功能已淘汰，將於日後予以移除。如要繼續使用這項功能，請傳送文件和頁框的 Origin-Agent-Cluster: ?0 標頭和 HTTP 回應，藉此選擇不採用 origin-keyed 代理程式叢集。詳情請參閱 https://developer.chrome.com/blog/immutable-document-domain/。"
+  },
+  "generated/Deprecation.ts | ExpectCTHeader": {
+    "message": "Expect-CT 標頭已遭淘汰，日後將予以移除。Chrome 要求 2018 年 4 月 30 日後核發的所有公開信任憑證都必須符合憑證透明化政策的規範。"
+  },
+  "generated/Deprecation.ts | GeolocationInsecureOrigin": {
+    "message": "getCurrentPosition() 和 watchPosition() 不再適用於不安全的來源。如要使用這個功能，請考慮將應用程式轉移至安全來源，例如 HTTPS。詳情請參閱 https://goo.gle/chrome-insecure-origins。"
+  },
+  "generated/Deprecation.ts | GeolocationInsecureOriginDeprecatedNotRemoved": {
+    "message": "不安全來源上的 getCurrentPosition() 和 watchPosition() 已遭淘汰。如要使用這個功能，請考慮將應用程式轉移至安全來源，例如 HTTPS。詳情請參閱 https://goo.gle/chrome-insecure-origins。"
+  },
+  "generated/Deprecation.ts | GetUserMediaInsecureOrigin": {
+    "message": "getUserMedia() 不再適用於不安全的來源。如要使用這個功能，請考慮將應用程式轉移至安全來源，例如 HTTPS。詳情請參閱 https://goo.gle/chrome-insecure-origins。"
+  },
+  "generated/Deprecation.ts | HostCandidateAttributeGetter": {
+    "message": "RTCPeerConnectionIceErrorEvent.hostCandidate 已淘汰，請改用 RTCPeerConnectionIceErrorEvent.address 或 RTCPeerConnectionIceErrorEvent.port。"
+  },
+  "generated/Deprecation.ts | IdentityInCanMakePaymentEvent": {
+    "message": "「canmakepayment」Service Worker 事件的服務商家來源和任意資料目前已淘汰，並將在之後移除：topOrigin、paymentRequestOrigin、methodData、modifiers。"
+  },
+  "generated/Deprecation.ts | InsecurePrivateNetworkSubresourceRequest": {
+    "message": "由於網站的使用者具有權限可存取網路位置，因此網站透過只能存取的網路要求一個子資源。這些要求會讓非公開裝置和伺服器暴露在網際網路上，導致遭到跨網站要求偽造 (CSRF) 攻擊和/或資訊外洩的風險增加。為降低風險，Chrome 會忽略不安全內容向非公開子資源發出的要求，並將開始封鎖這類要求。"
+  },
+  "generated/Deprecation.ts | InterestGroupDailyUpdateUrl": {
+    "message": "傳遞到 joinAdInterestGroup() 的 InterestGroups dailyUpdateUrl 欄位已重新命名為 updateUrl，以便更準確地反映其行為。"
+  },
+  "generated/Deprecation.ts | LocalCSSFileExtensionRejected": {
+    "message": "除非 CSS 以 .css 的檔案副檔名結尾，否則無法從 file: 網址載入。"
+  },
+  "generated/Deprecation.ts | MediaSourceAbortRemove": {
+    "message": "由於規格變更，系統已淘汰使用 SourceBuffer.abort() 取消 remove() 的非同步範圍移除作業，日後也將停止支援這項功能。建議你改為監聽 updateend 事件。abort() 的用途僅限於取消非同步媒體附加內容或重設剖析器狀態。"
+  },
+  "generated/Deprecation.ts | MediaSourceDurationTruncatingBuffered": {
+    "message": "由於規格變更，系統已淘汰將 MediaSource.duration 設為低於任何緩衝編碼頁框的最高顯示時間戳記。日後將停止支援對已截斷緩衝媒體的隱性移除作業。請改為在 newDuration < oldDuration 的所有 sourceBuffers 上執行明確 remove(newDuration, oldDuration)。"
+  },
+  "generated/Deprecation.ts | NoSysexWebMIDIWithoutPermission": {
+    "message": "即使在 MIDIOptions 中未指定系統專用 (SysEx) 訊息，Web MIDI 也會要求使用權限。"
+  },
+  "generated/Deprecation.ts | NonStandardDeclarativeShadowDOM": {
+    "message": "未標準化的舊款 shadowroot 屬性已淘汰，自 M119 起將*無法再使用*。請改用標準化的新 shadowrootmode 屬性。"
+  },
+  "generated/Deprecation.ts | NotificationInsecureOrigin": {
+    "message": "系統不再允許透過不安全的來源使用 Notification API。請考慮將應用程式轉移至安全來源，例如 HTTPS。詳情請參閱 https://goo.gle/chrome-insecure-origins。"
+  },
+  "generated/Deprecation.ts | NotificationPermissionRequestedIframe": {
+    "message": "系統已不再允許透過跨來源 iframe 要求 Notification API。請考慮透過頂層頁框要求權限，或改為開啟新視窗。"
+  },
+  "generated/Deprecation.ts | ObsoleteCreateImageBitmapImageOrientationNone": {
+    "message": "createImageBitmap 中的 imageOrientation: 'none' 選項已淘汰，使用 createImageBitmap 時請改為選擇 {imageOrientation: 'from-image'} 選項。"
+  },
+  "generated/Deprecation.ts | ObsoleteWebRtcCipherSuite": {
+    "message": "你的合作夥伴正在交涉已過時的傳輸層安全標準 (TLS)/DTLS 版本。請洽詢你的合作夥伴，請對方解決這個問題。"
+  },
+  "generated/Deprecation.ts | OverflowVisibleOnReplacedElement": {
+    "message": "如果指定 img、video 和 canvas 標記的「overflow: visible」，可能會導致這些標記產生的視覺內容超出元素邊界。詳情請參閱 https://github.com/WICG/shared-element-transitions/blob/main/debugging_overflow_on_images.md。"
+  },
+  "generated/Deprecation.ts | PaymentInstruments": {
+    "message": "「paymentManager.instruments」已淘汰。請改用付款處理常式的即時安裝方法。"
+  },
+  "generated/Deprecation.ts | PaymentRequestCSPViolation": {
+    "message": "你的「PaymentRequest」呼叫略過了內容安全政策 (CSP)「connect-src」指令，但目前已無法再略過。請將 PaymentRequest API 的付款方式 ID (位於「supportedMethods」欄位) 新增到 CSP「connect-src」指令。"
+  },
+  "generated/Deprecation.ts | PersistentQuotaType": {
+    "message": "StorageType.persistent 已淘汰，請改用標準化的 navigator.storage。"
+  },
+  "generated/Deprecation.ts | PictureSourceSrc": {
+    "message": "具有 <picture> 父項的 <source src> 無效，因此予以忽略。請改用 <source srcset>。"
+  },
+  "generated/Deprecation.ts | PrefixedCancelAnimationFrame": {
+    "message": "webkitCancelAnimationFrame 僅限供應商使用，請改用標準 cancelAnimationFrame。"
+  },
+  "generated/Deprecation.ts | PrefixedRequestAnimationFrame": {
+    "message": "webkitRequestAnimationFrame 僅限供應商使用，請改用標準 requestAnimationFrame。"
+  },
+  "generated/Deprecation.ts | PrefixedVideoDisplayingFullscreen": {
+    "message": "HTMLVideoElement.webkitDisplayingFullscreen 已淘汰，請改用 Document.fullscreenElement。"
+  },
+  "generated/Deprecation.ts | PrefixedVideoEnterFullScreen": {
+    "message": "HTMLVideoElement.webkitEnterFullScreen() 已淘汰，請改用 Element.requestFullscreen()。"
+  },
+  "generated/Deprecation.ts | PrefixedVideoEnterFullscreen": {
+    "message": "HTMLVideoElement.webkitEnterFullscreen() 已淘汰，請改用 Element.requestFullscreen()。"
+  },
+  "generated/Deprecation.ts | PrefixedVideoExitFullScreen": {
+    "message": "HTMLVideoElement.webkitExitFullScreen() 已淘汰，請改用 Document.exitFullscreen()。"
+  },
+  "generated/Deprecation.ts | PrefixedVideoExitFullscreen": {
+    "message": "HTMLVideoElement.webkitExitFullscreen() 已淘汰，請改用 Document.exitFullscreen()。"
+  },
+  "generated/Deprecation.ts | PrefixedVideoSupportsFullscreen": {
+    "message": "HTMLVideoElement.webkitSupportsFullscreen 已淘汰，請改用 Document.fullscreenEnabled。"
+  },
+  "generated/Deprecation.ts | PrivacySandboxExtensionsAPI": {
+    "message": "我們已淘汰這個 API chrome.privacy.websites.privacySandboxEnabled，但為了提供回溯相容性，這個 API 可持續使用到版本 M113。請改用 chrome.privacy.websites.topicsEnabled、chrome.privacy.websites.fledgeEnabled 和 chrome.privacy.websites.adMeasurementEnabled。詳情請參閱 https://developer.chrome.com/docs/extensions/reference/privacy/#property-websites-privacySandboxEnabled。"
+  },
+  "generated/Deprecation.ts | RTCConstraintEnableDtlsSrtpFalse": {
+    "message": "已移除 DtlsSrtpKeyAgreement 限制條件。系統將你為這項限制指定的 false 值解讀為嘗試使用已移除的「SDES key negotiation」方法。這項功能已移除，請改用支援「DTLS key negotiation」的方法。"
+  },
+  "generated/Deprecation.ts | RTCConstraintEnableDtlsSrtpTrue": {
+    "message": "已移除 DtlsSrtpKeyAgreement 限制條件。你為這項限制指定的 true 值已不再適用，你可以將這項限制移除以保持畫面整潔。"
+  },
+  "generated/Deprecation.ts | RTCPeerConnectionGetStatsLegacyNonCompliant": {
+    "message": "回呼式 getStats() 已淘汰，並將在之後移除。請改用符合規格要求的 getStats()。"
+  },
+  "generated/Deprecation.ts | RangeExpand": {
+    "message": "Range.expand() 已淘汰，請改用 Selection.modify()。"
+  },
+  "generated/Deprecation.ts | RequestedSubresourceWithEmbeddedCredentials": {
+    "message": "如果子資源網址包含內嵌憑證 (例如 https://user:pass@host/)，系統會予以封鎖。"
+  },
+  "generated/Deprecation.ts | RtcpMuxPolicyNegotiate": {
+    "message": "rtcpMuxPolicy 選項已遭淘汰，日後將予以移除。"
+  },
+  "generated/Deprecation.ts | SharedArrayBufferConstructedWithoutIsolation": {
+    "message": "SharedArrayBuffer 會要求跨來源隔離。詳情請參閱 https://developer.chrome.com/blog/enabling-shared-array-buffer/。"
+  },
+  "generated/Deprecation.ts | TextToSpeech_DisallowedByAutoplay": {
+    "message": "無須使用者啟用即可呼叫 speechSynthesis.speak() 的功能已遭淘汰，日後將予以移除。"
+  },
+  "generated/Deprecation.ts | V8SharedArrayBufferConstructedInExtensionWithoutIsolation": {
+    "message": "擴充功能應選擇啟用跨來源隔離功能，以便繼續使用 SharedArrayBuffer。詳情請參閱 https://developer.chrome.com/docs/extensions/mv3/cross-origin-isolation/。"
+  },
+  "generated/Deprecation.ts | WebSQL": {
+    "message": "網路 SQL 已淘汰，請使用 SQLite WebAssembly 或已建立索引的資料庫"
+  },
+  "generated/Deprecation.ts | WindowPlacementPermissionDescriptorUsed": {
+    "message": "權限描述元 window-placement 已淘汰，請改用 window-management，詳情請參閱 https://bit.ly/window-placement-rename。"
+  },
+  "generated/Deprecation.ts | WindowPlacementPermissionPolicyParsed": {
+    "message": "權限政策 window-placement 已淘汰，請改用 window-management，詳情請參閱 https://bit.ly/window-placement-rename。"
+  },
+  "generated/Deprecation.ts | XHRJSONEncodingDetection": {
+    "message": "XMLHttpRequest 中的 JSON 回應不支援 UTF-16"
+  },
+  "generated/Deprecation.ts | XMLHttpRequestSynchronousInNonWorkerOutsideBeforeUnload": {
+    "message": "主要執行緒上的同步 XMLHttpRequest 會對使用者體驗造成負面影響，因此已淘汰。如需更多說明，請前往 https://xhr.spec.whatwg.org/。"
+  },
+  "generated/Deprecation.ts | XRSupportsSession": {
+    "message": "supportsSession() 已淘汰，請改用 isSessionSupported() 並查看解析的布林值。"
+  },
   "models/bindings/ContentProviderBasedProject.ts | unknownErrorLoadingFile": {
     "message": "載入檔案時發生不明錯誤"
   },
@@ -1269,7 +1455,7 @@
     "message": "[{PH1}] 正在載入 {PH2} 的偵錯符號 (透過 {PH3})..."
   },
   "models/bindings/IgnoreListManager.ts | addAllContentScriptsToIgnoreList": {
-    "message": "將內容指令碼全部新增至忽略清單"
+    "message": "將擴充功能指令碼全部加入忽略清單"
   },
   "models/bindings/IgnoreListManager.ts | addAllThirdPartyScriptsToIgnoreList": {
     "message": "將所有第三方指令碼新增到忽略清單"
@@ -1331,6 +1517,9 @@
   "models/har/Writer.ts | writingFile": {
     "message": "正在寫入檔案…"
   },
+  "models/issues_manager/BounceTrackingIssue.ts | bounceTrackingMitigations": {
+    "message": "跳轉追蹤因應措施"
+  },
   "models/issues_manager/ClientHintIssue.ts | clientHintsInfrastructure": {
     "message": "Client Hints Infrastructure"
   },
@@ -1364,6 +1553,9 @@
   "models/issues_manager/CookieIssue.ts | samesiteCookiesExplained": {
     "message": "SameSite Cookie 說明"
   },
+  "models/issues_manager/CookieIssue.ts | thirdPartyPhaseoutExplained": {
+    "message": "準備逐步淘汰第三方 Cookie"
+  },
   "models/issues_manager/CorsIssue.ts | CORS": {
     "message": "跨源資源共享 (CORS)"
   },
@@ -1376,167 +1568,38 @@
   "models/issues_manager/CrossOriginEmbedderPolicyIssue.ts | samesiteAndSameorigin": {
     "message": "同網站與同來源"
   },
-  "models/issues_manager/DeprecationIssue.ts | authorizationCoveredByWildcard": {
-    "message": "CORS Access-Control-Allow-Headers 處理作業中無法使用萬用字元符號 (*) 標示授權。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | canRequestURLHTTPContainingNewline": {
-    "message": "如果資源要求網址中同時包含已移除的 \\(n|r|t) 字元和小於字元 (<)，系統會予以封鎖。請從元素屬性值等位置移除換行符號，並編碼小於字元，以便載入這些資源。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | chromeLoadTimesConnectionInfo": {
-    "message": "chrome.loadTimes() 已淘汰，請改用標準化 API：Navigation Timing 2。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | chromeLoadTimesFirstPaintAfterLoadTime": {
-    "message": "chrome.loadTimes() 已遭淘汰，請改用標準化 API：Paint Timing。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | chromeLoadTimesWasAlternateProtocolAvailable": {
-    "message": "chrome.loadTimes() 已淘汰，請改用標準化 API：Navigation Timing 2 中的 nextHopProtocol。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | cookieWithTruncatingChar": {
-    "message": "系統會拒絕包含 \\(0|r|n) 字元的 Cookie，而非截斷。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | crossOriginAccessBasedOnDocumentDomain": {
-    "message": "透過設定 document.domain 啟用相同來源政策的功能已淘汰，將於日後予以移除。如果是透過設定 document.domain 啟用跨來源存取功能，系統就會顯示這則淘汰警告訊息。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | crossOriginWindowApi": {
-    "message": "從跨來源 iframe 觸發 {PH1} 的功能已遭淘汰，日後將予以移除。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | cssSelectorInternalMediaControlsOverlayCastButton": {
-    "message": "應使用 disableRemotePlayback 屬性 (而非 -internal-media-controls-overlay-cast-button 選取器) 停用預設的 Cast 整合功能。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | deprecatedWithReplacement": {
-    "message": "{PH1} 已淘汰，請改用 {PH2}。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | deprecationExample": {
-    "message": "這個示例是經過翻譯的淘汰問題訊息。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | documentDomainSettingWithoutOriginAgentClusterHeader": {
-    "message": "透過設定 document.domain 啟用相同來源政策的功能已淘汰，將於日後予以移除。如要繼續使用這項功能，請傳送文件和頁框的 Origin-Agent-Cluster: ?0 標頭和 HTTP 回應，藉此選擇不採用 origin-keyed 代理程式叢集。詳情請參閱 https://developer.chrome.com/blog/immutable-document-domain/。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | eventPath": {
-    "message": "Event.path 已遭淘汰，日後將予以移除。請改用 Event.composedPath()。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | expectCTHeader": {
-    "message": "Expect-CT 標頭已遭淘汰，日後將予以移除。Chrome 要求 2018 年 4 月 30 日後核發的所有公開信任憑證都必須符合憑證透明化政策的規範。"
-  },
   "models/issues_manager/DeprecationIssue.ts | feature": {
     "message": "查看「功能狀態」頁面瞭解詳情。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | geolocationInsecureOrigin": {
-    "message": "getCurrentPosition() 和 watchPosition() 不再適用於不安全的來源。如要使用這個功能，請考慮將應用程式轉移至安全來源，例如 HTTPS。詳情請參閱 https://goo.gle/chrome-insecure-origins。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | geolocationInsecureOriginDeprecatedNotRemoved": {
-    "message": "不安全來源上的 getCurrentPosition() 和 watchPosition() 已遭淘汰。如要使用這個功能，請考慮將應用程式轉移至安全來源，例如 HTTPS。詳情請參閱 https://goo.gle/chrome-insecure-origins。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | getUserMediaInsecureOrigin": {
-    "message": "getUserMedia() 不再適用於不安全的來源。如要使用這個功能，請考慮將應用程式轉移至安全來源，例如 HTTPS。詳情請參閱 https://goo.gle/chrome-insecure-origins。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | hostCandidateAttributeGetter": {
-    "message": "RTCPeerConnectionIceErrorEvent.hostCandidate 已淘汰，請改用 RTCPeerConnectionIceErrorEvent.address 或 RTCPeerConnectionIceErrorEvent.port。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | identityInCanMakePaymentEvent": {
-    "message": "「canmakepayment」Service Worker 事件的服務商家來源和任意資料目前已淘汰，並將在之後移除：topOrigin、paymentRequestOrigin、methodData、modifiers。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | insecurePrivateNetworkSubresourceRequest": {
-    "message": "由於網站的使用者具有權限可存取網路位置，因此網站透過只能存取的網路要求一個子資源。這些要求會讓非公開裝置和伺服器暴露在網際網路上，導致遭到跨網站要求偽造 (CSRF) 攻擊和/或資訊外洩的風險增加。為降低風險，Chrome 會忽略不安全內容向非公開子資源發出的要求，並將開始封鎖這類要求。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | localCSSFileExtensionRejected": {
-    "message": "除非 CSS 以 .css 的檔案副檔名結尾，否則無法從 file: 網址載入。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | mediaSourceAbortRemove": {
-    "message": "由於規格變更，系統已淘汰使用 SourceBuffer.abort() 取消 remove() 的非同步範圍移除作業，日後也將停止支援這項功能。建議你改為監聽 updateend 事件。abort() 的用途僅限於取消非同步媒體附加內容或重設剖析器狀態。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | mediaSourceDurationTruncatingBuffered": {
-    "message": "由於規格變更，系統已淘汰將 MediaSource.duration 設為低於任何緩衝編碼頁框的最高顯示時間戳記。日後將停止支援對已截斷緩衝媒體的隱性移除作業。請改為在 newDuration < oldDuration 的所有 sourceBuffers 上執行明確 remove(newDuration, oldDuration)。"
   },
   "models/issues_manager/DeprecationIssue.ts | milestone": {
     "message": "這項變更將於主要版本 {milestone} 生效。"
   },
-  "models/issues_manager/DeprecationIssue.ts | noSysexWebMIDIWithoutPermission": {
-    "message": "即使在 MIDIOptions 中未指定系統專用 (SysEx) 訊息，Web MIDI 也會要求使用權限。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | notificationInsecureOrigin": {
-    "message": "系統不再允許透過不安全的來源使用 Notification API。請考慮將應用程式轉移至安全來源，例如 HTTPS。詳情請參閱 https://goo.gle/chrome-insecure-origins。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | notificationPermissionRequestedIframe": {
-    "message": "系統已不再允許透過跨來源 iframe 要求 Notification API。請考慮透過頂層頁框要求權限，或改為開啟新視窗。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | obsoleteCreateImageBitmAPImageOrientationNone": {
-    "message": "createImageBitmap 中的 imageOrientation: \"none\" 選項已淘汰，使用 createImageBitmap 時請改為選擇 {imageOrientation: \"from-image\"} 選項。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | obsoleteWebRtcCipherSuite": {
-    "message": "你的合作夥伴正在交涉已過時的傳輸層安全標準 (TLS)/DTLS 版本。請洽詢你的合作夥伴，請對方解決這個問題。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | openWebDatabaseInsecureContext": {
-    "message": "系統已淘汰不安全內容中的 WebSQL，並將在近期內移除。請使用網路儲存空間或已建立索引的資料庫。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | overflowVisibleOnReplacedElement": {
-    "message": "如果指定 img、video 和 canvas 標記的「overflow: visible」，可能會導致這些標記產生的視覺內容超出元素邊界。詳情請參閱 https://github.com/WICG/shared-element-transitions/blob/main/debugging_overflow_on_images.md。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | paymentInstruments": {
-    "message": "「paymentManager.instruments」已淘汰。請改用付款處理常式的即時安裝方法。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | paymentRequestCSPViolation": {
-    "message": "你的「PaymentRequest」呼叫略過了內容安全政策 (CSP)「connect-src」指令，但目前已無法再略過。請將 PaymentRequest API 的付款方式 ID (位於「supportedMethods」欄位) 新增到 CSP「connect-src」指令。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | persistentQuotaType": {
-    "message": "StorageType.persistent 已經淘汰，請改用標準化的 navigator.storage。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | pictureSourceSrc": {
-    "message": "具有 <picture> 父項的 <source src> 無效，因此予以忽略。請改用 <source srcset>。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | prefixedStorageInfo": {
-    "message": "window.webkitStorageInfo 已經淘汰，請改用標準化的 navigator.storage。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | privacySandboxExtensionsAPI": {
-    "message": "我們已淘汰這個 API chrome.privacy.websites.privacySandboxEnabled，但為了提供回溯相容性，這個 API 可持續使用到版本 M113。請改用 chrome.privacy.websites.topicsEnabled、chrome.privacy.websites.fledgeEnabled 和 chrome.privacy.websites.adMeasurementEnabled。詳情請參閱 https://developer.chrome.com/docs/extensions/reference/privacy/#property-websites-privacySandboxEnabled。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | requestedSubresourceWithEmbeddedCredentials": {
-    "message": "如果子資源網址包含內嵌憑證 (例如 https://user:pass@host/)，系統會予以封鎖。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | rtcConstraintEnableDtlsSrtpFalse": {
-    "message": "已移除 DtlsSrtpKeyAgreement 限制條件。系統將你為這項限制指定的 false 值解讀為嘗試使用已移除的「SDES key negotiation」方法。這項功能已移除，請改用支援「DTLS key negotiation」的方法。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | rtcConstraintEnableDtlsSrtpTrue": {
-    "message": "已移除 DtlsSrtpKeyAgreement 限制條件。你為這項限制指定的 true 值已不再適用，你可以將這項限制移除以保持畫面整潔。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | rtcPeerConnectionComplexPlanBSdpUsingDefaultSdpSemantics": {
-    "message": "偵測到「Complex Plan B SDP」。系統已不再支援這個「Session Description Protocol」的延伸語言，請改用「Unified Plan SDP」。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | rtcPeerConnectionSdpSemanticsPlanB": {
-    "message": "使用 {sdpSemantics:'plan-b'} 建構 RTCPeerConnection 時使用 Plan B SDP semantics 是 Session Description Protocol 舊款非標準版的做法，現已從網路平台中永久移除。雖然使用 IS_FUCHSIA 進行建構作業時仍可採用這項做法，但我們打算盡快予以刪除，因此請停止使用這項功能。請參閱 https://crbug.com/1302249 瞭解狀態。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | rtcpMuxPolicyNegotiate": {
-    "message": "rtcpMuxPolicy 選項已遭淘汰，日後將予以移除。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | sharedArrayBufferConstructedWithoutIsolation": {
-    "message": "SharedArrayBuffer 會要求跨來源隔離。詳情請參閱 https://developer.chrome.com/blog/enabling-shared-array-buffer/。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | textToSpeech_DisallowedByAutoplay": {
-    "message": "無須使用者啟用即可呼叫 speechSynthesis.speak() 的功能已遭淘汰，日後將予以移除。"
-  },
   "models/issues_manager/DeprecationIssue.ts | title": {
     "message": "使用已淘汰的功能"
-  },
-  "models/issues_manager/DeprecationIssue.ts | v8SharedArrayBufferConstructedInExtensionWithoutIsolation": {
-    "message": "擴充功能應選擇啟用跨來源隔離功能，以便繼續使用 SharedArrayBuffer。詳情請參閱 https://developer.chrome.com/docs/extensions/mv3/cross-origin-isolation/。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | vendorSpecificApi": {
-    "message": "{PH1} 為供應商專用功能，請改用標準 {PH2}。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | xhrJSONEncodingDetection": {
-    "message": "XMLHttpRequest 中的 JSON 回應不支援 UTF-16"
-  },
-  "models/issues_manager/DeprecationIssue.ts | xmlHttpRequestSynchronousInNonWorkerOutsideBeforeUnload": {
-    "message": "主要執行緒上同步的 XMLHttpRequest 會對使用者體驗造成負面影響，因此已遭淘汰。如需更多說明，請前往 https://xhr.spec.whatwg.org/。"
-  },
-  "models/issues_manager/DeprecationIssue.ts | xrSupportsSession": {
-    "message": "supportsSession() 已淘汰，請改用 isSessionSupported() 並查看解析的布林值。"
   },
   "models/issues_manager/FederatedAuthRequestIssue.ts | fedCm": {
     "message": "Federated Credential Management API"
   },
+  "models/issues_manager/FederatedAuthUserInfoRequestIssue.ts | fedCmUserInfo": {
+    "message": "Federated Credential Management User Info API"
+  },
+  "models/issues_manager/GenericIssue.ts | autocompleteAttributePageTitle": {
+    "message": "HTML 屬性：自動完成"
+  },
+  "models/issues_manager/GenericIssue.ts | corbExplainerPageTitle": {
+    "message": "CORB 說明"
+  },
   "models/issues_manager/GenericIssue.ts | crossOriginPortalPostMessage": {
     "message": "入口網站 - 相同來源的通訊管道"
+  },
+  "models/issues_manager/GenericIssue.ts | howDoesAutofillWorkPageTitle": {
+    "message": "自動填入功能如何運作？"
+  },
+  "models/issues_manager/GenericIssue.ts | inputFormElementPageTitle": {
+    "message": "表單輸入元素"
+  },
+  "models/issues_manager/GenericIssue.ts | labelFormlementsPageTitle": {
+    "message": "標籤元素"
   },
   "models/issues_manager/HeavyAdIssue.ts | handlingHeavyAdInterventions": {
     "message": "處理重度耗資源廣告的干涉機制"
@@ -1565,17 +1628,11 @@
   "models/issues_manager/MixedContentIssue.ts | preventingMixedContent": {
     "message": "正在禁止複合型內容"
   },
-  "models/issues_manager/NavigatorUserAgentIssue.ts | userAgentReduction": {
-    "message": "使用者代理程式字串縮減"
-  },
   "models/issues_manager/QuirksModeIssue.ts | documentCompatibilityMode": {
     "message": "文件相容模式"
   },
   "models/issues_manager/SharedArrayBufferIssue.ts | enablingSharedArrayBuffer": {
     "message": "啟用 SharedArrayBuffer"
-  },
-  "models/issues_manager/TrustedWebActivityIssue.ts | changesToQualityCriteriaForPwas": {
-    "message": "透過受信任網路活動整合 PWA 時的品質標準有所變更"
   },
   "models/logs/NetworkLog.ts | anonymous": {
     "message": "<匿名>"
@@ -1643,14 +1700,17 @@
   "models/persistence/PersistenceActions.ts | openInContainingFolder": {
     "message": "開啟所屬的資料夾"
   },
+  "models/persistence/PersistenceActions.ts | overrideContent": {
+    "message": "覆寫內容"
+  },
   "models/persistence/PersistenceActions.ts | saveAs": {
     "message": "另存新檔..."
   },
-  "models/persistence/PersistenceActions.ts | saveForOverrides": {
-    "message": "儲存以覆寫"
-  },
   "models/persistence/PersistenceActions.ts | saveImage": {
     "message": "儲存圖片"
+  },
+  "models/persistence/PersistenceActions.ts | showOverrides": {
+    "message": "顯示所有覆寫檔案"
   },
   "models/persistence/PersistenceUtils.ts | linkedToS": {
     "message": "已連結 {PH1}"
@@ -1732,9 +1792,6 @@
   },
   "models/timeline_model/TimelineModel.ts | unknownWorkletS": {
     "message": "競價小工具 - {PH1}"
-  },
-  "models/timeline_model/TimelineModel.ts | userInteractions": {
-    "message": "使用者互動"
   },
   "models/timeline_model/TimelineModel.ts | workerS": {
     "message": "Worker — {PH1}"
@@ -2264,6 +2321,9 @@
   "panels/application/AppManifestView.ts | couldNotDownloadARequiredIcon": {
     "message": "無法從資訊清單下載必要圖示"
   },
+  "panels/application/AppManifestView.ts | customizePwaTitleBar": {
+    "message": "自訂 PWA 標題列的視窗控制項疊加層。"
+  },
   "panels/application/AppManifestView.ts | darkBackgroundColor": {
     "message": "深色背景顏色"
   },
@@ -2336,9 +2396,6 @@
   "panels/application/AppManifestView.ts | newNoteUrl": {
     "message": "新記事的網址"
   },
-  "panels/application/AppManifestView.ts | noMatchingServiceWorkerDetected": {
-    "message": "未偵測到相符的 service worker。你可能需要重新載入網頁，或是檢查目前網頁的 service worker 範圍是否涵蓋資訊清單的範圍和開始網址。"
-  },
   "panels/application/AppManifestView.ts | noPlayStoreIdProvided": {
     "message": "未提供 Play 商店 ID"
   },
@@ -2374,12 +2431,6 @@
   },
   "panels/application/AppManifestView.ts | presentation": {
     "message": "簡報"
-  },
-  "panels/application/AppManifestView.ts | primaryIconasUsedByChrome": {
-    "message": "Chrome 所使用的主要圖示"
-  },
-  "panels/application/AppManifestView.ts | primaryManifestIconFromS": {
-    "message": "{PH1} 的主要資訊清單圖示"
   },
   "panels/application/AppManifestView.ts | protocolHandlers": {
     "message": "通訊協定處理常式"
@@ -2450,8 +2501,17 @@
   "panels/application/AppManifestView.ts | themeColor": {
     "message": "主題顏色"
   },
-  "panels/application/ApplicationPanelPreloadingSection.ts | prefetchingAndPrerendering": {
-    "message": "預先擷取及預先算繪"
+  "panels/application/AppManifestView.ts | wcoFound": {
+    "message": "Chrome 已成功找到在 {PH3} 中 {PH2} 欄位的 {PH1} 值。"
+  },
+  "panels/application/AppManifestView.ts | wcoNeedHelpReadMore": {
+    "message": "需要協助嗎？請參閱 {PH1}。"
+  },
+  "panels/application/AppManifestView.ts | wcoNotFound": {
+    "message": "在資訊清單中定義 {PH1}，即可使用 Window Control Overlay API 並自訂應用程式的標題列。"
+  },
+  "panels/application/AppManifestView.ts | windowControlsOverlay": {
+    "message": "視窗控制項重疊"
   },
   "panels/application/ApplicationPanelSidebar.ts | appManifest": {
     "message": "應用程式資訊清單"
@@ -2624,6 +2684,9 @@
   "panels/application/BackgroundServiceView.ts | timestamp": {
     "message": "時間戳記"
   },
+  "panels/application/BounceTrackingMitigationsTreeElement.ts | bounceTrackingMitigations": {
+    "message": "跳轉追蹤因應措施"
+  },
   "panels/application/CookieItemsView.ts | clearAllCookies": {
     "message": "清除所有 Cookie"
   },
@@ -2732,9 +2795,6 @@
   "panels/application/IndexedDBViews.ts | keyString": {
     "message": "金鑰"
   },
-  "panels/application/IndexedDBViews.ts | loading": {
-    "message": "載入中…"
-  },
   "panels/application/IndexedDBViews.ts | objectStores": {
     "message": "物件存放區"
   },
@@ -2749,9 +2809,6 @@
   },
   "panels/application/IndexedDBViews.ts | refreshDatabase": {
     "message": "重新整理資料庫"
-  },
-  "panels/application/IndexedDBViews.ts | securityOrigin": {
-    "message": "安全性來源"
   },
   "panels/application/IndexedDBViews.ts | showNextPage": {
     "message": "顯示下一頁"
@@ -2836,6 +2893,15 @@
   },
   "panels/application/OpenedWindowDetailsView.ts | yes": {
     "message": "是"
+  },
+  "panels/application/PreloadingTreeElement.ts | preloads": {
+    "message": "預先載入"
+  },
+  "panels/application/PreloadingTreeElement.ts | speculationRules": {
+    "message": "推測規則"
+  },
+  "panels/application/PreloadingTreeElement.ts | thisPage": {
+    "message": "這個網頁"
   },
   "panels/application/ReportingApiReportsView.ts | clickToDisplayBody": {
     "message": "點選任一報表即可顯示相關內文"
@@ -3047,6 +3113,9 @@
   "panels/application/SharedStorageListTreeElement.ts | sharedStorage": {
     "message": "共用儲存空間"
   },
+  "panels/application/StorageBucketsTreeElement.ts | storageBuckets": {
+    "message": "儲存空間值區"
+  },
   "panels/application/StorageItemsView.ts | clearAll": {
     "message": "全部清除"
   },
@@ -3062,11 +3131,11 @@
   "panels/application/StorageItemsView.ts | refreshedStatus": {
     "message": "表格已更新"
   },
+  "panels/application/StorageView.ts | SiteDataCleared": {
+    "message": "網站資料已清除"
+  },
   "panels/application/StorageView.ts | application": {
     "message": "應用程式"
-  },
-  "panels/application/StorageView.ts | cache": {
-    "message": "快取"
   },
   "panels/application/StorageView.ts | cacheStorage": {
     "message": "快取儲存空間"
@@ -3103,6 +3172,9 @@
   },
   "panels/application/StorageView.ts | numberMustBeNonNegative": {
     "message": "數字不得為負數"
+  },
+  "panels/application/StorageView.ts | numberMustBeSmaller": {
+    "message": "數字必須小於 {PH1}"
   },
   "panels/application/StorageView.ts | other": {
     "message": "其他"
@@ -3147,7 +3219,7 @@
     "message": "網路 SQL"
   },
   "panels/application/TrustTokensTreeElement.ts | trustTokens": {
-    "message": "信任權杖"
+    "message": "私密狀態權杖"
   },
   "panels/application/application-meta.ts | application": {
     "message": "應用程式"
@@ -3170,6 +3242,12 @@
   "panels/application/application-meta.ts | stopRecordingEvents": {
     "message": "停止記錄事件"
   },
+  "panels/application/components/BackForwardCacheStrings.ts | CookieFlushed": {
+    "message": "未定義"
+  },
+  "panels/application/components/BackForwardCacheStrings.ts | HTTPAuthRequired": {
+    "message": "未定義"
+  },
   "panels/application/components/BackForwardCacheStrings.ts | HTTPMethodNotGET": {
     "message": "只有透過 GET 要求載入的網頁才適用往返快取。"
   },
@@ -3181,9 +3259,6 @@
   },
   "panels/application/components/BackForwardCacheStrings.ts | appBanner": {
     "message": "已要求 AppBanner 的網頁目前不適用往返快取。"
-  },
-  "panels/application/components/BackForwardCacheStrings.ts | authorizationHeader": {
-    "message": "系統收到保持運作要求，因此已停用往返快取功能。"
   },
   "panels/application/components/BackForwardCacheStrings.ts | backForwardCacheDisabled": {
     "message": "由於旗標設定的關係，往返快取功能已停用。如要在這部裝置上啟用該功能，請前往 chrome://flags/#back-forward-cache。"
@@ -3250,6 +3325,9 @@
   },
   "panels/application/components/BackForwardCacheStrings.ts | contentWebUSB": {
     "message": "使用 WebUSB API 的網頁不適用往返快取。"
+  },
+  "panels/application/components/BackForwardCacheStrings.ts | cookieDisabled": {
+    "message": "使用 Cache-Control: no-store 的頁面停用 Cookie，因此系統停用往返快取。"
   },
   "panels/application/components/BackForwardCacheStrings.ts | dedicatedWorkerOrWorklet": {
     "message": "使用專屬 Worker 或 Worklet 的網頁目前不適用往返快取。"
@@ -3341,8 +3419,11 @@
   "panels/application/components/BackForwardCacheStrings.ts | internalError": {
     "message": "內部錯誤。"
   },
+  "panels/application/components/BackForwardCacheStrings.ts | jsNetworkRequestReceivedCacheControlNoStoreResource": {
+    "message": "部分 JavaScript 網路要求收到含有「Cache-Control: no-store」標頭的資源，因此往返快取已停用。"
+  },
   "panels/application/components/BackForwardCacheStrings.ts | keepaliveRequest": {
-    "message": "系統收到保持運作要求，因此已停用往返快取功能。"
+    "message": "由於保持運作要求，往返快取功能已停用。"
   },
   "panels/application/components/BackForwardCacheStrings.ts | keyboardLock": {
     "message": "使用鍵盤鎖定功能的網頁目前不適用往返快取。"
@@ -3506,14 +3587,23 @@
   "panels/application/components/BackForwardCacheStrings.ts | webRTC": {
     "message": "使用 WebRTC 的網頁無法儲存至往返快取。"
   },
+  "panels/application/components/BackForwardCacheStrings.ts | webRTCSticky": {
+    "message": "已使用 WebRTC，因此停用往返快取功能。"
+  },
   "panels/application/components/BackForwardCacheStrings.ts | webShare": {
     "message": "使用 WebShare 的網頁目前不適用往返快取。"
   },
   "panels/application/components/BackForwardCacheStrings.ts | webSocket": {
     "message": "使用 WebSocket 的網頁無法儲存至往返快取。"
   },
+  "panels/application/components/BackForwardCacheStrings.ts | webSocketSticky": {
+    "message": "已使用 WebSocket，因此停用往返快取功能。"
+  },
   "panels/application/components/BackForwardCacheStrings.ts | webTransport": {
     "message": "使用 WebTransport 的網頁無法儲存至往返快取。"
+  },
+  "panels/application/components/BackForwardCacheStrings.ts | webTransportSticky": {
+    "message": "已使用 WebTransport，因此停用往返快取功能。"
   },
   "panels/application/components/BackForwardCacheStrings.ts | webXR": {
     "message": "使用 WebXR 的網頁目前不適用往返快取。"
@@ -3586,6 +3676,33 @@
   },
   "panels/application/components/BackForwardCacheView.ts | url": {
     "message": "網址："
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | bounceTrackingMitigationsTitle": {
+    "message": "跳轉追蹤因應措施"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | checkingPotentialTrackers": {
+    "message": "正在檢查潛在跳轉追蹤的網站。"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | featureDisabled": {
+    "message": "已停用跳轉追蹤因應措施。如要啟用這類措施，請將 {PH1} 的旗標設為「啟用並搭配刪除功能」。"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | featureFlag": {
+    "message": "跳轉追蹤因應措施功能旗標"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | forceRun": {
+    "message": "強制執行"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | learnMore": {
+    "message": "瞭解詳情：跳轉追蹤因應措施"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | noPotentialBounceTrackersIdentified": {
+    "message": "系統未清除任何潛在跳轉追蹤網站的狀態，原因可能是未偵測到任何跳轉追蹤網站，或是未封鎖第三方 Cookie。"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | runningMitigations": {
+    "message": "執行中"
+  },
+  "panels/application/components/BounceTrackingMitigationsView.ts | stateDeletedFor": {
+    "message": "已刪除以下網站的狀態："
   },
   "panels/application/components/EndpointsGrid.ts | noEndpointsToDisplay": {
     "message": "沒有可顯示的端點"
@@ -3678,7 +3795,7 @@
     "message": "系統會將此頁框視為廣告頁框，因為它的上層頁框屬於這類頁框。"
   },
   "panels/application/components/FrameDetailsView.ts | prerendering": {
-    "message": "預先算繪"
+    "message": "預先轉譯"
   },
   "panels/application/components/FrameDetailsView.ts | prerenderingStatus": {
     "message": "預先轉譯狀態"
@@ -3918,7 +4035,7 @@
     "message": "預先算繪中"
   },
   "panels/application/components/Prerender2.ts | RendererProcessCrashed": {
-    "message": "預先轉譯的頁面停止運作。"
+    "message": "預先算繪頁面停止運作。"
   },
   "panels/application/components/Prerender2.ts | RendererProcessKilled": {
     "message": "這個預先轉譯頁面的轉譯器程序已終止。"
@@ -4022,23 +4139,14 @@
   "panels/application/components/SharedStorageMetadataView.ts | creation": {
     "message": "建立時間"
   },
-  "panels/application/components/SharedStorageMetadataView.ts | entries": {
-    "message": "項目"
-  },
   "panels/application/components/SharedStorageMetadataView.ts | entropyBudget": {
     "message": "圍欄頁框的熵上限"
-  },
-  "panels/application/components/SharedStorageMetadataView.ts | metadata": {
-    "message": "中繼資料"
   },
   "panels/application/components/SharedStorageMetadataView.ts | notYetCreated": {
     "message": "尚未建立"
   },
   "panels/application/components/SharedStorageMetadataView.ts | numEntries": {
     "message": "項目數"
-  },
-  "panels/application/components/SharedStorageMetadataView.ts | origin": {
-    "message": "來源"
   },
   "panels/application/components/SharedStorageMetadataView.ts | resetBudget": {
     "message": "重設預算"
@@ -4049,83 +4157,530 @@
   "panels/application/components/StackTrace.ts | cannotRenderStackTrace": {
     "message": "無法轉譯堆疊追蹤"
   },
+  "panels/application/components/StackTrace.ts | showLess": {
+    "message": "顯示較少"
+  },
   "panels/application/components/StackTrace.ts | showSMoreFrames": {
     "message": "{n,plural, =1{顯示另外 # 個頁框}other{顯示另外 # 個頁框}}"
   },
+  "panels/application/components/StorageMetadataView.ts | bucketName": {
+    "message": "值區名稱"
+  },
+  "panels/application/components/StorageMetadataView.ts | confirmBucketDeletion": {
+    "message": "要刪除「{PH1}」值區嗎？"
+  },
+  "panels/application/components/StorageMetadataView.ts | defaultBucket": {
+    "message": "預設值區"
+  },
+  "panels/application/components/StorageMetadataView.ts | deleteBucket": {
+    "message": "刪除值區"
+  },
+  "panels/application/components/StorageMetadataView.ts | durability": {
+    "message": "耐用性"
+  },
+  "panels/application/components/StorageMetadataView.ts | expiration": {
+    "message": "有效期限"
+  },
+  "panels/application/components/StorageMetadataView.ts | isOpaque": {
+    "message": "不透明"
+  },
+  "panels/application/components/StorageMetadataView.ts | isThirdParty": {
+    "message": "屬於第三方"
+  },
+  "panels/application/components/StorageMetadataView.ts | loading": {
+    "message": "載入中…"
+  },
+  "panels/application/components/StorageMetadataView.ts | no": {
+    "message": "否"
+  },
+  "panels/application/components/StorageMetadataView.ts | none": {
+    "message": "無"
+  },
+  "panels/application/components/StorageMetadataView.ts | opaque": {
+    "message": "(不透明)"
+  },
+  "panels/application/components/StorageMetadataView.ts | origin": {
+    "message": "來源"
+  },
+  "panels/application/components/StorageMetadataView.ts | persistent": {
+    "message": "永久"
+  },
+  "panels/application/components/StorageMetadataView.ts | quota": {
+    "message": "配額"
+  },
+  "panels/application/components/StorageMetadataView.ts | topLevelSite": {
+    "message": "頂層網站"
+  },
+  "panels/application/components/StorageMetadataView.ts | yes": {
+    "message": "是"
+  },
+  "panels/application/components/StorageMetadataView.ts | yesBecauseAncestorChainHasCrossSite": {
+    "message": "是，因為祖系鏈結含有第三方來源"
+  },
+  "panels/application/components/StorageMetadataView.ts | yesBecauseKeyIsOpaque": {
+    "message": "是，因為儲存空間金鑰不透明"
+  },
+  "panels/application/components/StorageMetadataView.ts | yesBecauseOriginNotInTopLevelSite": {
+    "message": "是，因為來源不屬於頂層網站"
+  },
+  "panels/application/components/StorageMetadataView.ts | yesBecauseTopLevelIsOpaque": {
+    "message": "是，因為頂層網站不透明"
+  },
   "panels/application/components/TrustTokensView.ts | allStoredTrustTokensAvailableIn": {
-    "message": "這個瀏覽器執行個體中可用的所有已儲存信任權杖。"
+    "message": "這個瀏覽器執行個體中的所有已儲存私密狀態權杖。"
   },
   "panels/application/components/TrustTokensView.ts | deleteTrustTokens": {
-    "message": "將 {PH1} 發布的已儲存信任權杖全數刪除。"
+    "message": "刪除 {PH1} 核發的所有已儲存私密狀態權杖。"
   },
   "panels/application/components/TrustTokensView.ts | issuer": {
     "message": "發行者"
   },
   "panels/application/components/TrustTokensView.ts | noTrustTokensStored": {
-    "message": "目前沒有已儲存的 Trust Token。"
+    "message": "目前未儲存私密狀態權杖。"
   },
   "panels/application/components/TrustTokensView.ts | storedTokenCount": {
     "message": "儲存的權杖數"
   },
-  "panels/application/preloading/PreloadingView.ts | clearNotOngoing": {
-    "message": "未開始清除"
+  "panels/application/components/TrustTokensView.ts | trustTokens": {
+    "message": "私密狀態權杖"
   },
-  "panels/application/preloading/PreloadingView.ts | statusActivated": {
-    "message": "已啟用"
+  "panels/application/preloading/PreloadingView.ts | filterAllPreloads": {
+    "message": "所有預先載入項目"
   },
-  "panels/application/preloading/PreloadingView.ts | statusDiscarded": {
-    "message": "已捨棄"
+  "panels/application/preloading/PreloadingView.ts | filterFilterByRuleSet": {
+    "message": "依規則組合篩選"
   },
-  "panels/application/preloading/PreloadingView.ts | statusPrerendering": {
-    "message": "預先算繪"
+  "panels/application/preloading/PreloadingView.ts | statusFailure": {
+    "message": "失敗"
   },
-  "panels/application/preloading/PreloadingView.ts | warningDetailPreloadingDisabledByFeatureFlag": {
-    "message": "開發人員工具已開啟，因此系統已強制啟用預先載入功能。由於這個瀏覽器工作階段屬於用來比較效能的對照組，因此預先算繪功能會在開發人員工具關閉後停用。"
+  "panels/application/preloading/PreloadingView.ts | statusNotTriggered": {
+    "message": "未觸發"
   },
-  "panels/application/preloading/PreloadingView.ts | warningDetailPrerenderingDisabledByFeatureFlag": {
-    "message": "開發人員工具已開啟，因此系統已強制啟用預先算繪功能。由於這個瀏覽器工作階段屬於用來比較效能的對照組，因此預先算繪功能會在開發人員工具關閉後停用。"
+  "panels/application/preloading/PreloadingView.ts | statusPending": {
+    "message": "待處理"
   },
-  "panels/application/preloading/PreloadingView.ts | warningTitlePreloadingDisabledByFeatureFlag": {
-    "message": "預先載入功能先前曾停用，但目前已強制啟用"
+  "panels/application/preloading/PreloadingView.ts | statusReady": {
+    "message": "已就緒"
   },
-  "panels/application/preloading/PreloadingView.ts | warningTitlePrerenderingDisabledByFeatureFlag": {
-    "message": "預先算繪功能先前曾停用，但目前已強制啟用"
+  "panels/application/preloading/PreloadingView.ts | statusRunning": {
+    "message": "執行中"
   },
-  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsBasicInformation": {
-    "message": "基本資訊"
+  "panels/application/preloading/PreloadingView.ts | statusSuccess": {
+    "message": "成功"
   },
-  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsStartedAt": {
-    "message": "開始時間"
+  "panels/application/preloading/PreloadingView.ts | validityInvalid": {
+    "message": "無效"
+  },
+  "panels/application/preloading/PreloadingView.ts | validitySomeRulesInvalid": {
+    "message": "部分規則無效"
+  },
+  "panels/application/preloading/PreloadingView.ts | validityValid": {
+    "message": "有效"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | action": {
+    "message": "動作"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | status": {
+    "message": "狀態"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | statusFailure": {
+    "message": "失敗"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | statusNotTriggered": {
+    "message": "未觸發"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | statusPending": {
+    "message": "待處理"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | statusReady": {
+    "message": "已就緒"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | statusRunning": {
+    "message": "執行中"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | statusSuccess": {
+    "message": "成功"
+  },
+  "panels/application/preloading/components/MismatchedPreloadingGrid.ts | url": {
+    "message": "網址"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | buttonClickToInspect": {
+    "message": "按一下即可檢查預先算繪的頁面"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | buttonClickToRevealRuleSet": {
+    "message": "按一下即可顯示規則組合"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | buttonInspect": {
+    "message": "檢查"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusFailure": {
+    "message": "無法預先載入。"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusNotTriggered": {
+    "message": "尚未觸發預先載入嘗試。"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusPending": {
+    "message": "已可嘗試預先載入，但尚未進行這項作業。"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusReady": {
+    "message": "預先載入完成，其結果可在下一次瀏覽時使用。"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusRunning": {
+    "message": "正在預先載入。"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusSuccess": {
+    "message": "預先載入完成，並可在瀏覽時使用。"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsAction": {
+    "message": "動作"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsDetailedInformation": {
+    "message": "詳細資訊"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsFailureReason": {
+    "message": "失敗原因"
+  },
+  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsRuleSet": {
+    "message": "規則集"
   },
   "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsStatus": {
     "message": "狀態"
   },
-  "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsTrigger": {
-    "message": "觸發條件"
-  },
   "panels/application/preloading/components/PreloadingDetailsReportView.ts | selectAnElementForMoreDetails": {
     "message": "請選取元素以瞭解詳情"
   },
-  "panels/application/preloading/components/PreloadingDetailsReportView.ts | statusActivated": {
-    "message": "已啟用"
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByBatterySaver": {
+    "message": "作業系統處於省電模式，因此預先載入功能已停用。"
   },
-  "panels/application/preloading/components/PreloadingDetailsReportView.ts | statusDiscarded": {
-    "message": "已捨棄"
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByDataSaver": {
+    "message": "作業系統處於數據節省模式，因此預先載入功能已停用。"
   },
-  "panels/application/preloading/components/PreloadingDetailsReportView.ts | statusPrerendering": {
-    "message": "預先算繪"
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByHoldbackPrefetchSpeculationRules": {
+    "message": "開發人員工具已開啟，因此系統已強制啟用預先擷取功能。由於這個瀏覽器工作階段屬於用來比較效能的對照組，因此預先擷取功能會在開發人員工具關閉後停用。"
   },
-  "panels/application/preloading/components/PreloadingGrid.ts | startedAt": {
-    "message": "開始時間"
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByHoldbackPrerenderSpeculationRules": {
+    "message": "開發人員工具已開啟，因此系統已強制啟用預先算繪功能。由於這個瀏覽器工作階段屬於用來比較效能的對照組，因此預先算繪功能會在開發人員工具關閉後停用。"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByPreference": {
+    "message": "預先載入功能因使用者設定或擴充功能而停用。前往「{PH1}」更新偏好設定。前往「{PH2}」停用所有會封鎖預先載入功能的擴充功能。"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | extensionsSettings": {
+    "message": "擴充功能設定"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | footerLearnMore": {
+    "message": "瞭解詳情"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | headerDisabledByBatterySaver": {
+    "message": "省電模式"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | headerDisabledByDataSaver": {
+    "message": "數據節省模式"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | headerDisabledByHoldbackPrefetchSpeculationRules": {
+    "message": "預先載入功能先前曾停用，但目前已強制啟用"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | headerDisabledByHoldbackPrerenderSpeculationRules": {
+    "message": "預先算繪功能先前曾停用，但目前已強制啟用"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | headerDisabledByPreference": {
+    "message": "使用者設定或擴充功能"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | infobarPreloadingIsDisabled": {
+    "message": "已停用預先載入功能"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | infobarPreloadingIsForceEnabled": {
+    "message": "已強制啟用預先載入"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | preloadingPagesSettings": {
+    "message": "預先載入頁面設定"
+  },
+  "panels/application/preloading/components/PreloadingDisabledInfobar.ts | titleReasonsPreventingPreloading": {
+    "message": "無法預先載入的原因"
+  },
+  "panels/application/preloading/components/PreloadingGrid.ts | action": {
+    "message": "動作"
+  },
+  "panels/application/preloading/components/PreloadingGrid.ts | ruleSet": {
+    "message": "規則集"
   },
   "panels/application/preloading/components/PreloadingGrid.ts | status": {
     "message": "狀態"
   },
-  "panels/application/preloading/components/PreloadingGrid.ts | trigger": {
-    "message": "觸發條件"
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchEvicted": {
+    "message": "|kPrefetchNewLimits| 已啟用，因此系統已捨棄現有的預先擷取內容，才能預先擷取較新的內容"
   },
-  "panels/application/preloading/components/PreloadingGrid.ts | type": {
-    "message": "類型"
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedIneligibleRedirect": {
+    "message": "預先擷取功能已重新導向，但重新導向網址不適用預先擷取功能。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedInvalidRedirect": {
+    "message": "預先擷取已重新導向，但該作業發生問題。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedMIMENotSupported": {
+    "message": "系統不支援回應的 Content-Type 標頭，因此無法預先擷取。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedNetError": {
+    "message": "網路發生錯誤，因此無法預先擷取。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedNon2XX": {
+    "message": "HTTP 回應狀態碼不是 2xx，因此無法預先擷取。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedPerPageLimitExceeded": {
+    "message": "啟動中頁面執行太多預先擷取，因此無法執行預先擷取作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchIneligibleRetryAfter": {
+    "message": "先前對來源執行預先擷取時，系統傳回 HTTP 503 回應和 Retry-After 標頭，表示目前仍在該標頭定義的時限內。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchIsPrivacyDecoy": {
+    "message": "該來源已有註冊的 Service Worker 或跨網站 Cookie，但系統仍將預先擷取的資源放上網路且未使用，目的是掩飾使用者先前與該來源的某些關係，因此無法預先擷取網址。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchIsStale": {
+    "message": "預先擷取和使用之間過了很長的時間，因此系統已捨棄預先擷取的內容。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleBatterySaverEnabled": {
+    "message": "省電模式已啟用，因此無法執行預先擷取作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleBrowserContextOffTheRecord": {
+    "message": "瀏覽器處於無痕模式或訪客模式，因此無法執行預先擷取作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleDataSaverEnabled": {
+    "message": "作業系統處於數據節省模式，因此未執行預先擷取作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleExistingProxy": {
+    "message": "在預設網路環境中，網址已設為使用 Proxy 伺服器，因此系統無法預先擷取網址。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleHostIsNonUnique": {
+    "message": "由於主機重複 (例如非公開路由 IP 位址或主機名稱不受登錄檔控制)，但系統必須透過 Proxy 進行預先擷取，因此無法預先擷取網址。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleNonDefaultStoragePartition": {
+    "message": "網址使用非預設儲存空間分區，因此無法預先擷取網址。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligiblePreloadingDisabled": {
+    "message": "預先載入功能已停用，因此並未執行預先擷取作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleSameSiteCrossOriginPrefetchRequiredProxy": {
+    "message": "預設網路環境無法設為將預先擷取 Proxy 用於相同網站但跨來源的預先擷取要求，因此系統無法預先擷取網址。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleSchemeIsNotHttps": {
+    "message": "網址未採用 https: 通訊協定，因此無法預先擷取。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleUserHasCookies": {
+    "message": "由於網址跨網站，但使用者擁有該來源的 Cookie，因此無法預先擷取網址。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleUserHasServiceWorker": {
+    "message": "該來源已有註冊的 Service Worker，但系統目前不支援，因此無法預先擷取網址。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotUsedCookiesChanged": {
+    "message": "這是跨網站預先擷取的資源，因此無法使用。此外，系統在預先擷取執行時為該網址新增了 Cookie，因此預先擷取的回應現在已過時。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchNotUsedProbeFailed": {
+    "message": "你的網際網路服務供應商或網路管理員已封鎖預先擷取功能。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchProxyNotAvailable": {
+    "message": "嘗試設定預先擷取 Proxy 的連線時發生網路錯誤。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusActivatedDuringMainFrameNavigation": {
+    "message": "啟動頁面的主要頁框瀏覽時，系統已啟用預先算繪頁面。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusActivationFramePolicyNotCompatible": {
+    "message": "啟動中頁面的沙箱旗標或權限政策與預先算繪頁面不相容，因此系統未使用預先算繪。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusActivationNavigationParameterMismatch": {
+    "message": "啟動時計算的瀏覽參數 (例如 HTTP 標頭) 與原始預先算繪的瀏覽要求不相符，因此系統未使用預先算繪。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusAudioOutputDeviceRequested": {
+    "message": "預先算繪頁面要求輸出音訊，但目前不支援。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusBatterySaverEnabled": {
+    "message": "使用者要求瀏覽器降低耗電量，因此未執行這項預先算繪作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusBlockedByClient": {
+    "message": "已禁止載入部分資源。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusClientCertRequested": {
+    "message": "預先算繪瀏覽需要 HTTP 用戶端憑證。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusCrossSiteNavigationInInitialNavigation": {
+    "message": "預先算繪瀏覽作業指定跨網站網址，因此失敗。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusCrossSiteNavigationInMainFrameNavigation": {
+    "message": "預先算繪頁面已導向到不同網站的網址。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusCrossSiteRedirectInInitialNavigation": {
+    "message": "預先算繪的網址重新導向到跨網站網址，因此預先算繪瀏覽作業失敗。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusCrossSiteRedirectInMainFrameNavigation": {
+    "message": "預先算繪頁面導向的網址已重新導向到跨網站網址。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusDataSaverEnabled": {
+    "message": "使用者要求瀏覽器減少數據用量，因此未執行這項預先算繪作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusDownload": {
+    "message": "預先算繪頁面嘗試啟動目前不支援的下載作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusFailToGetMemoryUsage": {
+    "message": "瀏覽器在嘗試判斷目前記憶體用量時發生內部錯誤，因此未執行這項預先算繪作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusHasEffectiveUrl": {
+    "message": "啟動中頁面的有效網址與一般網址不同 (例如新分頁或代管應用程式)，因此無法執行預先算繪作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusInvalidSchemeNavigation": {
+    "message": "網址未採用 http: 或 https: 通訊協定，因此無法預先算繪。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusInvalidSchemeRedirect": {
+    "message": "系統重新導向的網址未採用 http: 或 https: 通訊協定，因此預先算繪瀏覽作業失敗。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusLoginAuthRequested": {
+    "message": "預先算繪瀏覽作業需要 HTTP 驗證，但目前不支援。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusLowEndDevice": {
+    "message": "這部裝置的系統記憶體總量不足，無法支援預先算繪，因此無法執行這項預先算繪作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMainFrameNavigation": {
+    "message": "預先算繪頁面本身導向到另一個網址，但目前不支援。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMaxNumOfRunningPrerendersExceeded": {
+    "message": "啟動中頁面執行太多預先算繪，因此未執行這項預先算繪作業。請移除其他推測規則，才能執行其他預先算繪作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMemoryLimitExceeded": {
+    "message": "由於瀏覽器超出預先算繪記憶體限制，因此未執行這項預先算繪作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMemoryPressureAfterTriggered": {
+    "message": "瀏覽器面臨極大的記憶體壓力，因此系統已卸載預先算繪頁面。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMemoryPressureOnTrigger": {
+    "message": "由於瀏覽器面臨極大的記憶體壓力，因此未執行這項預先算繪作業。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMixedContent": {
+    "message": "預先算繪頁面含有複合型內容。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMojoBinderPolicy": {
+    "message": "預先算繪頁面使用目前不支援的 JavaScript API (內部 Mojo 介面：{PH1})"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusNavigationBadHttpStatus": {
+    "message": "HTTP 回應狀態碼不是 2xx，因此預先算繪瀏覽失敗。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusNavigationRequestBlockedByCsp": {
+    "message": "《內容安全政策》已封鎖預先算繪瀏覽。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusNavigationRequestNetworkError": {
+    "message": "預先算繪瀏覽發生網路錯誤。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusPreloadingDisabled": {
+    "message": "使用者在瀏覽器設定中停用預先載入功能，因此系統未執行預先算繪。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusPrerenderingDisabledByDevTools": {
+    "message": "開發人員工具已用於停用預先算繪，因此無法執行預先算繪。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusPrimaryMainFrameRendererProcessCrashed": {
+    "message": "啟動中頁面停止運作。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusPrimaryMainFrameRendererProcessKilled": {
+    "message": "啟動中頁面已終止。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusRendererProcessCrashed": {
+    "message": "預先算繪頁面停止運作。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusRendererProcessKilled": {
+    "message": "預先算繪頁面已終止。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusResourceLoadBlockedByClient": {
+    "message": "已禁止載入部分資源。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSameSiteCrossOriginNavigationNotOptInInInitialNavigation": {
+    "message": "預先算繪頁面本身導向到跨來源的同網站網址，但目的地回應不含適當的 Supports-Loading-Mode 標頭。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSameSiteCrossOriginNavigationNotOptInInMainFrameNavigation": {
+    "message": "預先算繪頁面導向到跨來源的相同網站網址，但目的地回應不含適當的 Supports-Loading-Mode 標頭。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSameSiteCrossOriginRedirectNotOptInInInitialNavigation": {
+    "message": "預先算繪頁面導向的網址已重新導向到跨來源的相同網站網址，但目的地回應不含適當的 Supports-Loading-Mode 標頭，因此預先算繪瀏覽作業失敗。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSameSiteCrossOriginRedirectNotOptInInMainFrameNavigation": {
+    "message": "預先算繪頁面導向的網址已重新導向到跨來源的相同網站網址，但目的地回應不含適當的 Supports-Loading-Mode 標頭。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSpeculationRuleRemoved": {
+    "message": "不明"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSslCertificateError": {
+    "message": "SSL 憑證無效，因此預先算繪瀏覽作業失敗。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusTimeoutBackgrounded": {
+    "message": "啟動中頁面已長期在背景執行，因此系統捨棄了預先算繪頁面。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusTriggerBackgrounded": {
+    "message": "啟動中頁面已在背景執行，因此系統捨棄了預先算繪頁面。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusUaChangeRequiresReload": {
+    "message": "預先算繪瀏覽作業正在變更使用者代理程式。"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | statusFailure": {
+    "message": "失敗"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | statusNotTriggered": {
+    "message": "未觸發"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | statusPending": {
+    "message": "待處理"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | statusReady": {
+    "message": "已就緒"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | statusRunning": {
+    "message": "執行中"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | statusSuccess": {
+    "message": "成功"
+  },
+  "panels/application/preloading/components/RuleSetGrid.ts | buttonClickToRevealInElementsPanel": {
+    "message": "按一下即可在「元素」面板中顯示"
+  },
+  "panels/application/preloading/components/RuleSetGrid.ts | buttonClickToRevealInNetworkPanel": {
+    "message": "按一下即可在「網路」面板中顯示"
+  },
+  "panels/application/preloading/components/RuleSetGrid.ts | buttonRevealPreloadsAssociatedWithRuleSet": {
+    "message": "顯示與這個規則組合相關的預先載入項目"
+  },
+  "panels/application/preloading/components/RuleSetGrid.ts | errors": {
+    "message": "{errorCount,plural, =1{# 個錯誤}other{# 個錯誤}}"
+  },
+  "panels/application/preloading/components/RuleSetGrid.ts | ruleSet": {
+    "message": "規則集"
+  },
+  "panels/application/preloading/components/RuleSetGrid.ts | status": {
+    "message": "狀態"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | currentURL": {
+    "message": "目前的網址"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | detailsFailureReason": {
+    "message": "失敗原因"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | downgradedPrefetchUsed": {
+    "message": "啟動中頁面嘗試預先算繪這個網頁的網址。預先算繪失敗，但系統仍將產生的回應主體當做預先擷取來使用。"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | learnMore": {
+    "message": "瞭解詳情"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | noPreloads": {
+    "message": "啟動中頁面並未嘗試預先載入這個網頁的網址。"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | prefetchFailed": {
+    "message": "啟動中頁面嘗試預先擷取這個網頁的網址，但預先擷取失敗，因此改為執行完整導覽。"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | prefetchUsed": {
+    "message": "已成功擷取這個網頁。"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | preloadedURLs": {
+    "message": "啟動中頁面預先載入的網址"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | preloadingStatus": {
+    "message": "預先載入狀態"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | prerenderFailed": {
+    "message": "啟動中頁面嘗試預先算繪這個網頁的網址，但預先算繪失敗，因此改為執行完整導覽。"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | prerenderUsed": {
+    "message": "已成功預先算繪這個頁面。"
   },
   "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | breakpointHit": {
     "message": "遇到中斷點"
@@ -4328,8 +4883,14 @@
   "panels/console/ConsolePinPane.ts | removeExpressionS": {
     "message": "移除運算式：{PH1}"
   },
+  "panels/console/ConsolePrompt.ts | allowPasting": {
+    "message": "允許貼上"
+  },
   "panels/console/ConsolePrompt.ts | consolePrompt": {
     "message": "主控台提示"
+  },
+  "panels/console/ConsolePrompt.ts | selfXssWarning": {
+    "message": "警告：請勿將你不懂或尚未自行檢查的程式碼貼入開發人員工具控制台中。攻擊者可能會藉此竊取你的身分或控管你的電腦。請在下方輸入「{PH1}」以允許貼上。"
   },
   "panels/console/ConsoleSidebar.ts | dErrors": {
     "message": "{n,plural, =0{沒有任何錯誤}=1{# 個錯誤}other{# 個錯誤}}"
@@ -4499,6 +5060,9 @@
   "panels/console/ConsoleViewMessage.ts | clearAllMessagesWithS": {
     "message": "清除所有包含 {PH1} 的訊息"
   },
+  "panels/console/ConsoleViewMessage.ts | cndBreakpoint": {
+    "message": "條件中斷點"
+  },
   "panels/console/ConsoleViewMessage.ts | console": {
     "message": "主控台"
   },
@@ -4528,6 +5092,9 @@
   },
   "panels/console/ConsoleViewMessage.ts | interventionS": {
     "message": "[Intervention] {PH1}"
+  },
+  "panels/console/ConsoleViewMessage.ts | logpoint": {
+    "message": "記錄點"
   },
   "panels/console/ConsoleViewMessage.ts | repeatS": {
     "message": "{n,plural, =1{已重複 # 次}other{已重複 # 次}}"
@@ -4568,6 +5135,9 @@
   "panels/console/console-meta.ts | autocompleteFromHistory": {
     "message": "透過歷史記錄自動完成"
   },
+  "panels/console/console-meta.ts | autocompleteOnEnter": {
+    "message": "按下 Enter 鍵後接受自動完成建議"
+  },
   "panels/console/console-meta.ts | clearConsole": {
     "message": "清除主控台"
   },
@@ -4575,7 +5145,7 @@
     "message": "清除主控台歷史記錄"
   },
   "panels/console/console-meta.ts | collapseConsoleTraceMessagesByDefault": {
-    "message": "預設收合 console.trace() 訊息"
+    "message": "不要自動展開 console.trace() 訊息"
   },
   "panels/console/console-meta.ts | console": {
     "message": "主控台"
@@ -4585,6 +5155,9 @@
   },
   "panels/console/console-meta.ts | doNotAutocompleteFromHistory": {
     "message": "不要根據歷史記錄自動完成"
+  },
+  "panels/console/console-meta.ts | doNotAutocompleteOnEnter": {
+    "message": "按下 Enter 鍵後不接受自動完成建議"
   },
   "panels/console/console-meta.ts | doNotEagerlyEvaluateConsole": {
     "message": "不要即刻評估主控台提示文字"
@@ -4605,10 +5178,10 @@
     "message": "即刻評估主控台提示文字"
   },
   "panels/console/console-meta.ts | evaluateTriggersUserActivation": {
-    "message": "評估時觸發使用者啟動作業"
+    "message": "將程式碼評估視為使用者動作"
   },
   "panels/console/console-meta.ts | expandConsoleTraceMessagesByDefault": {
-    "message": "預設展開 console.trace() 訊息"
+    "message": "自動展開 console.trace() 訊息"
   },
   "panels/console/console-meta.ts | groupSimilarMessagesInConsole": {
     "message": "將主控台中的類似訊息分組"
@@ -4712,8 +5285,14 @@
   "panels/coverage/CoverageListView.ts | usageVisualization": {
     "message": "用量示意圖"
   },
+  "panels/coverage/CoverageView.ts | activationNoCapture": {
+    "message": "網頁已在背景預先算繪，因此無法擷取涵蓋率資訊。"
+  },
   "panels/coverage/CoverageView.ts | all": {
     "message": "全部"
+  },
+  "panels/coverage/CoverageView.ts | bfcacheNoCapture": {
+    "message": "網頁內容來自往返快取，因此無法擷取涵蓋率資訊。"
   },
   "panels/coverage/CoverageView.ts | chooseCoverageGranularityPer": {
     "message": "選擇涵蓋率的精細程度：如果按函式則負載較低，如果按區塊則負載較高。"
@@ -4754,6 +5333,9 @@
   "panels/coverage/CoverageView.ts | perFunction": {
     "message": "每個函式"
   },
+  "panels/coverage/CoverageView.ts | reloadPrompt": {
+    "message": "按一下重新載入按鈕 {PH1} 即可重新載入並取得涵蓋率。"
+  },
   "panels/coverage/CoverageView.ts | sOfSSUsedSoFarSUnused": {
     "message": "目前已使用 {PH1}，占 {PH2} 中的 {PH3}%，另有 {PH4} 未使用。"
   },
@@ -4761,10 +5343,13 @@
     "message": "網址篩選器"
   },
   "panels/coverage/coverage-meta.ts | coverage": {
-    "message": "涵蓋率"
+    "message": "涵蓋範圍"
   },
   "panels/coverage/coverage-meta.ts | instrumentCoverage": {
     "message": "執行覆蓋率測試工具"
+  },
+  "panels/coverage/coverage-meta.ts | reloadPage": {
+    "message": "重新載入網頁"
   },
   "panels/coverage/coverage-meta.ts | showCoverage": {
     "message": "顯示涵蓋率"
@@ -4886,6 +5471,9 @@
   "panels/css_overview/CSSOverviewSidebarPanel.ts | clearOverview": {
     "message": "清除總覽"
   },
+  "panels/css_overview/CSSOverviewSidebarPanel.ts | cssOverviewPanelSidebar": {
+    "message": "CSS 總覽面板側欄"
+  },
   "panels/css_overview/CSSOverviewUnusedDeclarations.ts | bottomAppliedToAStatically": {
     "message": "「Bottom」已套用到靜態位置元素"
   },
@@ -4968,13 +5556,13 @@
     "message": "網址"
   },
   "panels/developer_resources/DeveloperResourcesView.ts | enableLoadingThroughTarget": {
-    "message": "啟用透過目標載入的功能"
+    "message": "透過網站載入"
   },
   "panels/developer_resources/DeveloperResourcesView.ts | enterTextToSearchTheUrlAndError": {
     "message": "輸入文字以搜尋網址和錯誤欄"
   },
   "panels/developer_resources/DeveloperResourcesView.ts | loadHttpsDeveloperResources": {
-    "message": "透過已檢查的目標載入 HTTP(S) 開發人員資源"
+    "message": "透過檢查的網站 (而非開發人員工具) 載入 HTTP(S) 開發人員資源"
   },
   "panels/developer_resources/DeveloperResourcesView.ts | resources": {
     "message": "{n,plural, =1{# 項資源}other{# 項資源}}"
@@ -4987,6 +5575,9 @@
   },
   "panels/developer_resources/developer_resources-meta.ts | showDeveloperResources": {
     "message": "顯示開發人員資源"
+  },
+  "panels/elements/CSSRuleValidator.ts | fontVariationSettingsWarning": {
+    "message": "對於字型系列「{PH5}」，「{PH1}」{PH2} 的設定值超出支援的範圍 [{PH3}；{PH4}]。"
   },
   "panels/elements/CSSRuleValidator.ts | ruleViolatedByParentElementRuleFix": {
     "message": "建議將父項的「{EXISTING_PARENT_ELEMENT_RULE}」屬性變更為「{TARGET_PARENT_ELEMENT_RULE}」。"
@@ -5069,9 +5660,6 @@
   "panels/elements/ElementsPanel.ts | findByStringSelectorOrXpath": {
     "message": "依字串、選取器或 XPath 尋找"
   },
-  "panels/elements/ElementsPanel.ts | frame": {
-    "message": "頁框"
-  },
   "panels/elements/ElementsPanel.ts | hideComputedStylesSidebar": {
     "message": "隱藏計算樣式側欄"
   },
@@ -5133,7 +5721,7 @@
     "message": "複製 outerHTML"
   },
   "panels/elements/ElementsTreeElement.ts | copySelector": {
-    "message": "複製selector"
+    "message": "複製 selector"
   },
   "panels/elements/ElementsTreeElement.ts | copyStyles": {
     "message": "複製樣式"
@@ -5304,7 +5892,7 @@
     "message": "複製規則"
   },
   "panels/elements/StylePropertiesSection.ts | copySelector": {
-    "message": "複製selector"
+    "message": "複製 selector"
   },
   "panels/elements/StylePropertiesSection.ts | cssSelector": {
     "message": "CSS 選取器程式碼"
@@ -5372,9 +5960,6 @@
   "panels/elements/StylePropertyTreeElement.ts | togglePropertyAndContinueEditing": {
     "message": "切換屬性並繼續編輯"
   },
-  "panels/elements/StylePropertyTreeElement.ts | valueForSettingSSIsOutsideThe": {
-    "message": "對於字型系列「{PH5}」，「{PH1}」{PH2} 的設定值超出支援的範圍 [{PH3}；{PH4}]。"
-  },
   "panels/elements/StylePropertyTreeElement.ts | viewComputedValue": {
     "message": "查看已運算的值"
   },
@@ -5388,7 +5973,7 @@
     "message": "已複製到剪貼簿"
   },
   "panels/elements/StylesSidebarPane.ts | copyAllCSSChanges": {
-    "message": "複製所有 CSS 變更內容"
+    "message": "複製 CSS 變更內容"
   },
   "panels/elements/StylesSidebarPane.ts | cssPropertyName": {
     "message": "CSS 屬性名稱：{PH1}"
@@ -5432,6 +6017,9 @@
   "panels/elements/StylesSidebarPane.ts | pseudoSElement": {
     "message": "虛擬：{PH1} 元素"
   },
+  "panels/elements/StylesSidebarPane.ts | specificity": {
+    "message": "優先權：{PH1}"
+  },
   "panels/elements/StylesSidebarPane.ts | toggleRenderingEmulations": {
     "message": "切換一般算繪模擬功能"
   },
@@ -5454,6 +6042,12 @@
     "message": "顯示標記"
   },
   "panels/elements/components/CSSHintDetailsView.ts | learnMore": {
+    "message": "瞭解詳情"
+  },
+  "panels/elements/components/CSSPropertyDocsView.ts | dontShow": {
+    "message": "不顯示"
+  },
+  "panels/elements/components/CSSPropertyDocsView.ts | learnMore": {
     "message": "瞭解詳情"
   },
   "panels/elements/components/ElementsBreadcrumbs.ts | breadcrumbs": {
@@ -5548,6 +6142,9 @@
   },
   "panels/elements/elements-meta.ts | selectAnElementInThePageTo": {
     "message": "選取網頁中的元素即可檢查"
+  },
+  "panels/elements/elements-meta.ts | showCSSDocumentationTooltip": {
+    "message": "顯示 CSS 說明文件工具提示"
   },
   "panels/elements/elements-meta.ts | showComputedStyles": {
     "message": "顯示計算樣式"
@@ -5924,29 +6521,14 @@
   "panels/issues/AffectedSourcesView.ts | nSources": {
     "message": "{n,plural, =1{# 個來源}other{# 個來源}}"
   },
-  "panels/issues/AffectedTrustedWebActivityIssueDetailsView.ts | nResources": {
-    "message": "{n,plural, =1{# 項資源}other{# 項資源}}"
-  },
-  "panels/issues/AffectedTrustedWebActivityIssueDetailsView.ts | packageName": {
-    "message": "套件名稱"
-  },
-  "panels/issues/AffectedTrustedWebActivityIssueDetailsView.ts | packageSignature": {
-    "message": "套件簽名"
-  },
-  "panels/issues/AffectedTrustedWebActivityIssueDetailsView.ts | statusCode": {
-    "message": "狀態碼"
-  },
-  "panels/issues/AffectedTrustedWebActivityIssueDetailsView.ts | url": {
-    "message": "網址"
+  "panels/issues/AffectedTrackingSitesView.ts | nTrackingSites": {
+    "message": "{n,plural, =1{1 個可能會追蹤的網站}other{# 個可能會追蹤的網站}}"
   },
   "panels/issues/AttributionReportingIssueDetailsView.ts | element": {
     "message": "元素"
   },
   "panels/issues/AttributionReportingIssueDetailsView.ts | invalidHeaderValue": {
     "message": "無效的標頭值"
-  },
-  "panels/issues/AttributionReportingIssueDetailsView.ts | maximumConcurrentRegistrations": {
-    "message": "並行註冊數上限"
   },
   "panels/issues/AttributionReportingIssueDetailsView.ts | nViolations": {
     "message": "{n,plural, =1{# 個違規事項}other{# 個違規事項}}"
@@ -6157,9 +6739,6 @@
   },
   "panels/issues/IssuesPane.ts | samesiteCookie": {
     "message": "SameSite Cookie"
-  },
-  "panels/issues/IssuesPane.ts | trustedWebActivity": {
-    "message": "受信任的網路活動"
   },
   "panels/issues/components/HideIssuesMenu.ts | tooltipTitle": {
     "message": "隱藏問題"
@@ -6389,8 +6968,8 @@
   "panels/lighthouse/LighthouseController.ts | bestPractices": {
     "message": "最佳做法"
   },
-  "panels/lighthouse/LighthouseController.ts | canOnlyAuditHttphttpsPagesAnd": {
-    "message": "只能稽核 HTTP/HTTPS 網頁及 Chrome 擴充功能。請前往不同的網頁以開始稽核。"
+  "panels/lighthouse/LighthouseController.ts | canOnlyAuditHttphttpsPages": {
+    "message": "只能稽核 HTTP 或 HTTPS 網頁。前往其他頁面。"
   },
   "panels/lighthouse/LighthouseController.ts | clearStorage": {
     "message": "清除儲存空間"
@@ -6424,9 +7003,6 @@
   },
   "panels/lighthouse/LighthouseController.ts | javaScriptDisabled": {
     "message": "JavaScript 已停用。你必須啟用 JavaScript 才能稽核這個網頁。如要啟用 JavaScript，請開啟「指令」選單，並執行「啟用 JavaScript」指令即可。"
-  },
-  "panels/lighthouse/LighthouseController.ts | legacyNavigation": {
-    "message": "舊版導覽模式"
   },
   "panels/lighthouse/LighthouseController.ts | lighthouseMode": {
     "message": "Lighthouse 模式"
@@ -6490,9 +7066,6 @@
   },
   "panels/lighthouse/LighthouseController.ts | timespanTooltip": {
     "message": "時間範圍模式會分析任意一段時間，通常包含使用者與網頁互動的時間。"
-  },
-  "panels/lighthouse/LighthouseController.ts | useLegacyNavigation": {
-    "message": "處於導覽模式時，使用傳統版 Lighthouse 分析頁面。"
   },
   "panels/lighthouse/LighthouseController.ts | webSql": {
     "message": "網路 SQL"
@@ -6860,8 +7433,8 @@
   "panels/mobile_throttling/NetworkPanelIndicator.ts | requestsMayBeBlocked": {
     "message": "要求可能遭到封鎖"
   },
-  "panels/mobile_throttling/NetworkPanelIndicator.ts | requestsMayBeRewrittenByLocal": {
-    "message": "要求可能會遭到本機覆寫的改寫"
+  "panels/mobile_throttling/NetworkPanelIndicator.ts | requestsMayBeOverridden": {
+    "message": "要求可能會在本機遭到覆寫"
   },
   "panels/mobile_throttling/NetworkThrottlingSelector.ts | custom": {
     "message": "自訂"
@@ -6899,8 +7472,8 @@
   "panels/mobile_throttling/ThrottlingManager.ts | hardwareConcurrencyIsEnabled": {
     "message": "已啟用硬體並行覆寫功能"
   },
-  "panels/mobile_throttling/ThrottlingManager.ts | hardwareConcurrencyValue": {
-    "message": "navigator.hardwareConcurrency 的值"
+  "panels/mobile_throttling/ThrottlingManager.ts | hardwareConcurrencySettingTooltip": {
+    "message": "覆寫網頁上 navgator.hardwareConcurrency 回報的值"
   },
   "panels/mobile_throttling/ThrottlingManager.ts | noThrottling": {
     "message": "不進行節流"
@@ -7205,6 +7778,15 @@
   "panels/network/NetworkDataGridNode.ts | redirect": {
     "message": "重新導向"
   },
+  "panels/network/NetworkDataGridNode.ts | requestContentHeadersOverridden": {
+    "message": "要求內容和標頭都已覆寫"
+  },
+  "panels/network/NetworkDataGridNode.ts | requestContentOverridden": {
+    "message": "已覆寫要求內容"
+  },
+  "panels/network/NetworkDataGridNode.ts | requestHeadersOverridden": {
+    "message": "已覆寫要求標頭"
+  },
   "panels/network/NetworkDataGridNode.ts | sPreflight": {
     "message": "{PH1} + 預檢"
   },
@@ -7305,10 +7887,10 @@
     "message": "時間"
   },
   "panels/network/NetworkItemView.ts | trustTokenOperationDetails": {
-    "message": "信任權杖作業詳細資料"
+    "message": "私密狀態權杖作業詳細資料"
   },
   "panels/network/NetworkItemView.ts | trustTokens": {
-    "message": "信任權杖"
+    "message": "私密狀態權杖"
   },
   "panels/network/NetworkItemView.ts | websocketMessages": {
     "message": "WebSocket 訊息"
@@ -7327,6 +7909,9 @@
   },
   "panels/network/NetworkLogView.ts | blockedRequests": {
     "message": "已封鎖的要求"
+  },
+  "panels/network/NetworkLogView.ts | chromeExtensions": {
+    "message": "隱藏擴充功能網址"
   },
   "panels/network/NetworkLogView.ts | clearBrowserCache": {
     "message": "清除瀏覽器快取"
@@ -7398,7 +7983,10 @@
     "message": "完成：{PH1}"
   },
   "panels/network/NetworkLogView.ts | hasBlockedCookies": {
-    "message": "已封鎖 Cookie"
+    "message": "已封鎖的回應 Cookie"
+  },
+  "panels/network/NetworkLogView.ts | hideChromeExtension": {
+    "message": "隱藏對「chrome-extension://」網址的要求"
   },
   "panels/network/NetworkLogView.ts | hideDataUrls": {
     "message": "隱藏資料網址"
@@ -7422,10 +8010,10 @@
     "message": "提供網路資料"
   },
   "panels/network/NetworkLogView.ts | onlyShowBlockedRequests": {
-    "message": "只顯示封鎖的要求"
+    "message": "僅顯示已封鎖的要求"
   },
-  "panels/network/NetworkLogView.ts | onlyShowRequestsWithBlocked": {
-    "message": "僅根據已封鎖的回應 Cookie 顯示要求"
+  "panels/network/NetworkLogView.ts | onlyShowRequestsWithBlockedCookies": {
+    "message": "僅顯示已封鎖回應 Cookie 的要求"
   },
   "panels/network/NetworkLogView.ts | onlyShowThirdPartyRequests": {
     "message": "僅顯示來源與頁面來源不同的要求"
@@ -7590,13 +8178,10 @@
     "message": "沒有任何自訂標頭"
   },
   "panels/network/NetworkPanel.ts | captureScreenshots": {
-    "message": "擷取螢幕截圖"
+    "message": "螢幕截圖"
   },
   "panels/network/NetworkPanel.ts | captureScreenshotsWhenLoadingA": {
     "message": "載入頁面時擷取螢幕畫面"
-  },
-  "panels/network/NetworkPanel.ts | clear": {
-    "message": "清除"
   },
   "panels/network/NetworkPanel.ts | close": {
     "message": "關閉"
@@ -7650,7 +8235,7 @@
     "message": "在要求列上顯示更多資訊"
   },
   "panels/network/NetworkPanel.ts | showOverview": {
-    "message": "顯示綜覽畫面"
+    "message": "總覽"
   },
   "panels/network/NetworkPanel.ts | showOverviewOfNetworkRequests": {
     "message": "顯示網路要求總覽"
@@ -7659,7 +8244,7 @@
     "message": "節流"
   },
   "panels/network/NetworkPanel.ts | useLargeRequestRows": {
-    "message": "使用大型要求列"
+    "message": "大型要求資料列"
   },
   "panels/network/NetworkSearchScope.ts | url": {
     "message": "網址"
@@ -7748,9 +8333,6 @@
   "panels/network/RequestHeadersView.ts | general": {
     "message": "一般"
   },
-  "panels/network/RequestHeadersView.ts | headerOverrides": {
-    "message": "覆寫標頭"
-  },
   "panels/network/RequestHeadersView.ts | learnMore": {
     "message": "瞭解詳情"
   },
@@ -7794,7 +8376,7 @@
     "message": "狀態碼"
   },
   "panels/network/RequestHeadersView.ts | thisDocumentWasBlockedFrom": {
-    "message": "這份文件指定了跨來源開啟彈出式視窗的頁面政策，因此無法在屬性為 sandbox 的 iframe 中載入。"
+    "message": "這份文件指定了跨來源開啟彈出式視窗的頁面政策，因此無法在沙箱 iframe 開啟的彈出式視窗中載入。"
   },
   "panels/network/RequestHeadersView.ts | toEmbedThisFrameInYourDocument": {
     "message": "如要在文件中嵌入這個頁框，請在回應中指定下列回應標頭以啟用跨來源嵌入程式政策："
@@ -8198,9 +8780,6 @@
   "panels/network/components/RequestHeadersView.ts | general": {
     "message": "一般"
   },
-  "panels/network/components/RequestHeadersView.ts | headerOverrides": {
-    "message": "覆寫標頭"
-  },
   "panels/network/components/RequestHeadersView.ts | raw": {
     "message": "原始"
   },
@@ -8264,6 +8843,9 @@
   "panels/network/components/RequestTrustTokensView.ts | success": {
     "message": "成功"
   },
+  "panels/network/components/RequestTrustTokensView.ts | theKeysForThisPSTIssuerAreUnavailable": {
+    "message": "這個 PST 核發機構的金鑰無法使用，核發機構可能要透過 Chrome 註冊程序完成註冊。"
+  },
   "panels/network/components/RequestTrustTokensView.ts | theOperationFailedForAnUnknown": {
     "message": "該作業因不明原因而失敗。"
   },
@@ -8292,7 +8874,7 @@
     "message": "只有在含有這項資源的任意網站不會造成安全性風險的情況下，才可選取這個選項。"
   },
   "panels/network/components/ResponseHeaderSection.ts | thisDocumentWasBlockedFrom": {
-    "message": "這份文件指定了跨來源開啟彈出式視窗的頁面政策，因此無法在屬性為 sandbox 的 iframe 中載入。"
+    "message": "這份文件指定了跨來源開啟彈出式視窗的頁面政策，因此無法在沙箱 iframe 開啟的彈出式視窗中載入。"
   },
   "panels/network/components/ResponseHeaderSection.ts | toEmbedThisFrameInYourDocument": {
     "message": "如要在文件中嵌入這個頁框，請在回應中指定下列回應標頭以啟用跨來源嵌入程式政策："
@@ -8308,6 +8890,9 @@
   },
   "panels/network/components/WebBundleInfoView.ts | bundledResource": {
     "message": "Web Bundle 中的資源"
+  },
+  "panels/network/network-meta.ts | clear": {
+    "message": "清除網路記錄"
   },
   "panels/network/network-meta.ts | colorCode": {
     "message": "色彩代碼"
@@ -9002,6 +9587,21 @@
   "panels/profiler/ProfilesPanel.ts | clearAllProfiles": {
     "message": "清除所有設定檔"
   },
+  "panels/profiler/ProfilesPanel.ts | deprecationWarnMsg": {
+    "message": "這個面板將於下一個版本淘汰，請使用效能面板記錄 JavaScript CPU 分析。"
+  },
+  "panels/profiler/ProfilesPanel.ts | enableThisPanelTemporarily": {
+    "message": "暫時啟用這個面板"
+  },
+  "panels/profiler/ProfilesPanel.ts | feedback": {
+    "message": "意見回饋"
+  },
+  "panels/profiler/ProfilesPanel.ts | goToPerformancePanel": {
+    "message": "前往效能面板"
+  },
+  "panels/profiler/ProfilesPanel.ts | learnMore": {
+    "message": "瞭解詳情"
+  },
   "panels/profiler/ProfilesPanel.ts | load": {
     "message": "載入…"
   },
@@ -9041,14 +9641,29 @@
   "panels/profiler/profiler-meta.ts | stopRecordingHeapAllocations": {
     "message": "停止記錄堆積分配量"
   },
+  "panels/protocol_monitor/ProtocolMonitor.ts | CDPCommandEditorHidden": {
+    "message": "已隱藏 CDP 指令編輯器"
+  },
+  "panels/protocol_monitor/ProtocolMonitor.ts | CDPCommandEditorShown": {
+    "message": "已顯示 CDP 指令編輯器"
+  },
   "panels/protocol_monitor/ProtocolMonitor.ts | clearAll": {
     "message": "全部清除"
   },
   "panels/protocol_monitor/ProtocolMonitor.ts | documentation": {
     "message": "說明文件"
   },
+  "panels/protocol_monitor/ProtocolMonitor.ts | editAndResend": {
+    "message": "編輯並重新傳送"
+  },
+  "panels/protocol_monitor/ProtocolMonitor.ts | elapsedTime": {
+    "message": "經過時間"
+  },
   "panels/protocol_monitor/ProtocolMonitor.ts | filter": {
     "message": "篩選"
+  },
+  "panels/protocol_monitor/ProtocolMonitor.ts | hideCDPCommandEditor": {
+    "message": "隱藏 CDP 指令編輯器"
   },
   "panels/protocol_monitor/ProtocolMonitor.ts | method": {
     "message": "方法"
@@ -9083,6 +9698,9 @@
   "panels/protocol_monitor/ProtocolMonitor.ts | session": {
     "message": "工作階段"
   },
+  "panels/protocol_monitor/ProtocolMonitor.ts | showCDPCommandEditor": {
+    "message": "顯示 CDP 指令編輯器"
+  },
   "panels/protocol_monitor/ProtocolMonitor.ts | target": {
     "message": "目標"
   },
@@ -9092,11 +9710,377 @@
   "panels/protocol_monitor/ProtocolMonitor.ts | type": {
     "message": "類型"
   },
+  "panels/protocol_monitor/components/JSONEditor.ts | addParameter": {
+    "message": "新增參數"
+  },
+  "panels/protocol_monitor/components/JSONEditor.ts | deleteParameter": {
+    "message": "刪除參數"
+  },
+  "panels/protocol_monitor/components/JSONEditor.ts | resetDefaultValue": {
+    "message": "重設為預設值"
+  },
+  "panels/protocol_monitor/components/Toolbar.ts | copyCommand": {
+    "message": "複製指令"
+  },
   "panels/protocol_monitor/protocol_monitor-meta.ts | protocolMonitor": {
     "message": "通訊協定監測工具"
   },
   "panels/protocol_monitor/protocol_monitor-meta.ts | showProtocolMonitor": {
     "message": "顯示通訊協定監測工具"
+  },
+  "panels/recorder/RecorderController.ts | continueReplay": {
+    "message": "繼續"
+  },
+  "panels/recorder/RecorderController.ts | copyShortcut": {
+    "message": "複製錄製內容或已選取的步驟"
+  },
+  "panels/recorder/RecorderController.ts | createRecording": {
+    "message": "建立新的錄製內容"
+  },
+  "panels/recorder/RecorderController.ts | deleteRecording": {
+    "message": "刪除錄製內容"
+  },
+  "panels/recorder/RecorderController.ts | export": {
+    "message": "匯出"
+  },
+  "panels/recorder/RecorderController.ts | exportRecording": {
+    "message": "匯出"
+  },
+  "panels/recorder/RecorderController.ts | exportViaExtensions": {
+    "message": "透過擴充功能匯出"
+  },
+  "panels/recorder/RecorderController.ts | getExtensions": {
+    "message": "取得擴充功能…"
+  },
+  "panels/recorder/RecorderController.ts | importRecording": {
+    "message": "匯入錄製內容"
+  },
+  "panels/recorder/RecorderController.ts | replayRecording": {
+    "message": "重播錄製內容"
+  },
+  "panels/recorder/RecorderController.ts | sendFeedback": {
+    "message": "提供意見"
+  },
+  "panels/recorder/RecorderController.ts | startStopRecording": {
+    "message": "開始/停止錄製內容"
+  },
+  "panels/recorder/RecorderController.ts | stepOverReplay": {
+    "message": "執行一個步驟"
+  },
+  "panels/recorder/RecorderController.ts | toggleCode": {
+    "message": "切換程式碼檢視"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | cancelRecording": {
+    "message": "取消錄製"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | createRecording": {
+    "message": "建立新的錄製內容"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | includeNecessarySelectors": {
+    "message": "你必須選擇 CSS、Pierce 或 XPath 做為其中一個選項。由於 ARIA 和文字可能會重複，因此系統只保證會記錄這些選取器。"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | recordingName": {
+    "message": "錄製內容名稱"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | recordingNameIsRequired": {
+    "message": "必須提供錄製內容名稱"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorAttribute": {
+    "message": "選取器屬性"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorTypeARIA": {
+    "message": "ARIA"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorTypeCSS": {
+    "message": "CSS"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorTypePierce": {
+    "message": "Pierce"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorTypeText": {
+    "message": "文字"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorTypeXPath": {
+    "message": "XPath"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | selectorTypes": {
+    "message": "要在錄製時使用的選取器類型"
+  },
+  "panels/recorder/components/CreateRecordingView.ts | startRecording": {
+    "message": "開始錄製"
+  },
+  "panels/recorder/components/ExtensionView.ts | closeView": {
+    "message": "關閉"
+  },
+  "panels/recorder/components/ExtensionView.ts | extension": {
+    "message": "由瀏覽器擴充功能提供的內容"
+  },
+  "panels/recorder/components/RecordingListView.ts | createRecording": {
+    "message": "建立新的錄製內容"
+  },
+  "panels/recorder/components/RecordingListView.ts | deleteRecording": {
+    "message": "刪除錄製內容"
+  },
+  "panels/recorder/components/RecordingListView.ts | openRecording": {
+    "message": "開啟錄製內容"
+  },
+  "panels/recorder/components/RecordingListView.ts | playRecording": {
+    "message": "播放錄製內容"
+  },
+  "panels/recorder/components/RecordingListView.ts | savedRecordings": {
+    "message": "已儲存的錄製內容"
+  },
+  "panels/recorder/components/RecordingView.ts | addAssertion": {
+    "message": "新增斷言"
+  },
+  "panels/recorder/components/RecordingView.ts | cancelReplay": {
+    "message": "取消重播"
+  },
+  "panels/recorder/components/RecordingView.ts | default": {
+    "message": "預設"
+  },
+  "panels/recorder/components/RecordingView.ts | desktop": {
+    "message": "電腦"
+  },
+  "panels/recorder/components/RecordingView.ts | download": {
+    "message": "下載：{value}"
+  },
+  "panels/recorder/components/RecordingView.ts | editReplaySettings": {
+    "message": "編輯重播設定"
+  },
+  "panels/recorder/components/RecordingView.ts | editTitle": {
+    "message": "編輯標題"
+  },
+  "panels/recorder/components/RecordingView.ts | endRecording": {
+    "message": "結束錄製"
+  },
+  "panels/recorder/components/RecordingView.ts | environment": {
+    "message": "環境"
+  },
+  "panels/recorder/components/RecordingView.ts | hideCode": {
+    "message": "隱藏程式碼"
+  },
+  "panels/recorder/components/RecordingView.ts | latency": {
+    "message": "延遲時間：{value} 毫秒"
+  },
+  "panels/recorder/components/RecordingView.ts | mobile": {
+    "message": "行動裝置"
+  },
+  "panels/recorder/components/RecordingView.ts | network": {
+    "message": "網路"
+  },
+  "panels/recorder/components/RecordingView.ts | performancePanel": {
+    "message": "效能面板"
+  },
+  "panels/recorder/components/RecordingView.ts | recording": {
+    "message": "錄製中…"
+  },
+  "panels/recorder/components/RecordingView.ts | recordingIsBeingStopped": {
+    "message": "正在停止錄製…"
+  },
+  "panels/recorder/components/RecordingView.ts | replaySettings": {
+    "message": "重播設定"
+  },
+  "panels/recorder/components/RecordingView.ts | requiredTitleError": {
+    "message": "必須輸入標題"
+  },
+  "panels/recorder/components/RecordingView.ts | screenshotForSection": {
+    "message": "這個部分的螢幕截圖"
+  },
+  "panels/recorder/components/RecordingView.ts | showCode": {
+    "message": "顯示程式碼"
+  },
+  "panels/recorder/components/RecordingView.ts | timeout": {
+    "message": "逾時：{value} 毫秒"
+  },
+  "panels/recorder/components/RecordingView.ts | timeoutExplanation": {
+    "message": "逾時設定 (以毫秒為單位) 會套用至重播錄製內容時執行的所有動作。舉例來說，如果 CSS 選取器找到的 DOM 元素未在指定逾時時間內顯示在頁面上，重播就會失敗並顯示錯誤。"
+  },
+  "panels/recorder/components/RecordingView.ts | timeoutLabel": {
+    "message": "逾時"
+  },
+  "panels/recorder/components/RecordingView.ts | upload": {
+    "message": "上傳：{value}"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplayExtremelySlowButtonLabel": {
+    "message": "極慢重播"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplayExtremelySlowItemLabel": {
+    "message": "極慢"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplayNormalButtonLabel": {
+    "message": "重播"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplayNormalItemLabel": {
+    "message": "正常 (預設)"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplaySlowButtonLabel": {
+    "message": "慢速重播"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplaySlowItemLabel": {
+    "message": "慢"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplayVerySlowButtonLabel": {
+    "message": "極慢速重播"
+  },
+  "panels/recorder/components/ReplayButton.ts | ReplayVerySlowItemLabel": {
+    "message": "非常慢"
+  },
+  "panels/recorder/components/ReplayButton.ts | extensionGroup": {
+    "message": "擴充功能"
+  },
+  "panels/recorder/components/ReplayButton.ts | speedGroup": {
+    "message": "速度"
+  },
+  "panels/recorder/components/StartView.ts | createRecording": {
+    "message": "建立新的錄製內容"
+  },
+  "panels/recorder/components/StartView.ts | header": {
+    "message": "評估整個使用者歷程的效能"
+  },
+  "panels/recorder/components/StartView.ts | quickStart": {
+    "message": "快速入門：瞭解開發人員工具中的全新錄製工具面板"
+  },
+  "panels/recorder/components/StartView.ts | step1": {
+    "message": "錄下網站或應用程式上常見的使用者歷程"
+  },
+  "panels/recorder/components/StartView.ts | step2": {
+    "message": "重播錄製內容，檢查流程是否可行"
+  },
+  "panels/recorder/components/StartView.ts | step3": {
+    "message": "產生詳細的效能追蹤記錄或匯出用於測試的 Puppeteer 指令碼"
+  },
+  "panels/recorder/components/StepEditor.ts | addAttribute": {
+    "message": "新增「{attributeName}」"
+  },
+  "panels/recorder/components/StepEditor.ts | addFrameIndex": {
+    "message": "在頁框樹狀結構中新增頁框索引"
+  },
+  "panels/recorder/components/StepEditor.ts | addSelector": {
+    "message": "新增選取器"
+  },
+  "panels/recorder/components/StepEditor.ts | addSelectorPart": {
+    "message": "新增選取器部分"
+  },
+  "panels/recorder/components/StepEditor.ts | deleteRow": {
+    "message": "刪除列"
+  },
+  "panels/recorder/components/StepEditor.ts | notSaved": {
+    "message": "未儲存：{error}"
+  },
+  "panels/recorder/components/StepEditor.ts | removeFrameIndex": {
+    "message": "移除頁框索引"
+  },
+  "panels/recorder/components/StepEditor.ts | removeSelector": {
+    "message": "移除選取器"
+  },
+  "panels/recorder/components/StepEditor.ts | removeSelectorPart": {
+    "message": "移除選取器部分"
+  },
+  "panels/recorder/components/StepEditor.ts | selectorPicker": {
+    "message": "選取頁面中的元素以更新選取器"
+  },
+  "panels/recorder/components/StepEditor.ts | unknownActionType": {
+    "message": "不明的動作類型。"
+  },
+  "panels/recorder/components/StepView.ts | addBreakpoint": {
+    "message": "新增中斷點"
+  },
+  "panels/recorder/components/StepView.ts | addStepAfter": {
+    "message": "新增後面的步驟"
+  },
+  "panels/recorder/components/StepView.ts | addStepBefore": {
+    "message": "新增前面的步驟"
+  },
+  "panels/recorder/components/StepView.ts | breakpoints": {
+    "message": "中斷點"
+  },
+  "panels/recorder/components/StepView.ts | changeStepTitle": {
+    "message": "變更"
+  },
+  "panels/recorder/components/StepView.ts | clickStepTitle": {
+    "message": "點擊"
+  },
+  "panels/recorder/components/StepView.ts | closeStepTitle": {
+    "message": "關閉"
+  },
+  "panels/recorder/components/StepView.ts | copyAs": {
+    "message": "選取複製格式"
+  },
+  "panels/recorder/components/StepView.ts | customStepTitle": {
+    "message": "自訂步驟"
+  },
+  "panels/recorder/components/StepView.ts | doubleClickStepTitle": {
+    "message": "按兩下"
+  },
+  "panels/recorder/components/StepView.ts | elementRoleButton": {
+    "message": "按鈕"
+  },
+  "panels/recorder/components/StepView.ts | elementRoleFallback": {
+    "message": "元素"
+  },
+  "panels/recorder/components/StepView.ts | elementRoleInput": {
+    "message": "輸入"
+  },
+  "panels/recorder/components/StepView.ts | emulateNetworkConditionsStepTitle": {
+    "message": "模擬網路狀況"
+  },
+  "panels/recorder/components/StepView.ts | hoverStepTitle": {
+    "message": "懸停"
+  },
+  "panels/recorder/components/StepView.ts | keyDownStepTitle": {
+    "message": "按下按鍵"
+  },
+  "panels/recorder/components/StepView.ts | keyUpStepTitle": {
+    "message": "放開按鍵"
+  },
+  "panels/recorder/components/StepView.ts | navigateStepTitle": {
+    "message": "前往"
+  },
+  "panels/recorder/components/StepView.ts | openStepActions": {
+    "message": "開啟步驟動作"
+  },
+  "panels/recorder/components/StepView.ts | removeBreakpoint": {
+    "message": "移除中斷點"
+  },
+  "panels/recorder/components/StepView.ts | removeStep": {
+    "message": "移除步驟"
+  },
+  "panels/recorder/components/StepView.ts | scrollStepTitle": {
+    "message": "捲動"
+  },
+  "panels/recorder/components/StepView.ts | setViewportClickTitle": {
+    "message": "設定可視區域"
+  },
+  "panels/recorder/components/StepView.ts | stepManagement": {
+    "message": "管理步驟"
+  },
+  "panels/recorder/components/StepView.ts | waitForElementStepTitle": {
+    "message": "等待元素"
+  },
+  "panels/recorder/components/StepView.ts | waitForExpressionStepTitle": {
+    "message": "等待運算式"
+  },
+  "panels/recorder/models/RecorderSettings.ts | defaultRecordingName": {
+    "message": "錄製時間：{DATE} {TIME}"
+  },
+  "panels/recorder/recorder-meta.ts | createRecording": {
+    "message": "建立新的錄製內容"
+  },
+  "panels/recorder/recorder-meta.ts | recorder": {
+    "message": "錄製工具"
+  },
+  "panels/recorder/recorder-meta.ts | replayRecording": {
+    "message": "重播錄製內容"
+  },
+  "panels/recorder/recorder-meta.ts | showRecorder": {
+    "message": "顯示錄製工具"
+  },
+  "panels/recorder/recorder-meta.ts | startStopRecording": {
+    "message": "開始/停止錄製內容"
+  },
+  "panels/recorder/recorder-meta.ts | toggleCode": {
+    "message": "切換程式碼檢視"
   },
   "panels/screencast/ScreencastApp.ts | toggleScreencast": {
     "message": "切換螢幕側錄"
@@ -9726,10 +10710,7 @@
     "message": "新增格式..."
   },
   "panels/settings/FrameworkIgnoreListSettingsTab.ts | automaticallyIgnoreListKnownThirdPartyScripts": {
-    "message": "自動新增已知的第三方指令碼以忽略清單"
-  },
-  "panels/settings/FrameworkIgnoreListSettingsTab.ts | automaticallyIgnoreListKnownThirdPartyScriptsTooltip": {
-    "message": "從忽略清單中的來源對應新增 x_google_ignoreList 欄位中的來源"
+    "message": "來源對應中的已知第三方指令碼"
   },
   "panels/settings/FrameworkIgnoreListSettingsTab.ts | customExclusionRules": {
     "message": "自訂排除規則："
@@ -9750,13 +10731,13 @@
     "message": "一般排除規則："
   },
   "panels/settings/FrameworkIgnoreListSettingsTab.ts | ignoreListContentScripts": {
-    "message": "將內容指令碼新增至忽略清單"
-  },
-  "panels/settings/FrameworkIgnoreListSettingsTab.ts | ignoreListContentScriptsExtension": {
-    "message": "新增要忽略清單的內容指令碼 (網頁中的延伸模組指令碼)"
+    "message": "擴充功能插入的內容指令碼"
   },
   "panels/settings/FrameworkIgnoreListSettingsTab.ts | ignoreScriptsWhoseNamesMatchS": {
     "message": "忽略名稱符合「{PH1}」的指令碼"
+  },
+  "panels/settings/FrameworkIgnoreListSettingsTab.ts | learnMore": {
+    "message": "瞭解詳情"
   },
   "panels/settings/FrameworkIgnoreListSettingsTab.ts | pattern": {
     "message": "新增模式"
@@ -9914,8 +10895,8 @@
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | architecturePlaceholder": {
     "message": "架構 (例如：x86)"
   },
-  "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandDeleteAriaLabel": {
-    "message": "刪除 {PH1}"
+  "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandFullVersionListDelete": {
+    "message": "從完整版本清單中刪除品牌"
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandName": {
     "message": "品牌"
@@ -9926,14 +10907,14 @@
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandProperties": {
     "message": "使用者代理程式屬性"
   },
+  "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandUserAgentDelete": {
+    "message": "從使用者代理程式部分刪除品牌"
+  },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandVersionAriaLabel": {
     "message": "{PH1} 版"
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | brandVersionPlaceholder": {
     "message": "版本 (例如 87.0.4280.88)"
-  },
-  "panels/settings/emulation/components/UserAgentClientHintsForm.ts | deleteTooltip": {
-    "message": "刪除"
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | deletedBrand": {
     "message": "已刪除品牌列"
@@ -9952,6 +10933,9 @@
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | fullVersionList": {
     "message": "完整版本清單 (Sec-CH-UA-Full-Version-List)"
+  },
+  "panels/settings/emulation/components/UserAgentClientHintsForm.ts | learnMore": {
+    "message": "瞭解詳情"
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | mobileCheckboxLabel": {
     "message": "行動裝置"
@@ -9981,7 +10965,7 @@
     "message": "更新"
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | userAgentClientHintsInfo": {
-    "message": "使用者代理程式用戶端提示是使用者代理程式字串的替代文字，能以結構更完善的方式識別瀏覽器和裝置，同時進一步保障隱私權。如需瞭解詳情，請按一下說明按鈕。"
+    "message": "使用者代理程式用戶端提示是使用者代理程式字串的替代文字，能以結構更完善的方式識別瀏覽器和裝置，同時進一步保障隱私權。"
   },
   "panels/settings/emulation/components/UserAgentClientHintsForm.ts | useragent": {
     "message": "使用者代理程式 (Sec-CH-UA)"
@@ -10051,6 +11035,9 @@
   },
   "panels/sources/BreakpointEditDialog.ts | breakpointType": {
     "message": "中斷點類型"
+  },
+  "panels/sources/BreakpointEditDialog.ts | closeDialog": {
+    "message": "關閉編輯對話方塊並儲存變更"
   },
   "panels/sources/BreakpointEditDialog.ts | conditionalBreakpoint": {
     "message": "條件中斷點"
@@ -10205,6 +11192,9 @@
   "panels/sources/DebuggerPlugin.ts | debugInfoNotFound": {
     "message": "無法載入 {PH1} 的任何偵錯資訊。"
   },
+  "panels/sources/DebuggerPlugin.ts | debuggingPowerReduced": {
+    "message": "開發人員工具無法顯示已編寫的來源，但你可以對已部署的程式碼進行偵錯。"
+  },
   "panels/sources/DebuggerPlugin.ts | disableBreakpoint": {
     "message": "{n,plural, =1{停用中斷點}other{停用這行程式碼中的所有中斷點}}"
   },
@@ -10214,17 +11204,20 @@
   "panels/sources/DebuggerPlugin.ts | enableBreakpoint": {
     "message": "{n,plural, =1{啟用中斷點}other{啟用這行程式碼中的所有中斷點}}"
   },
+  "panels/sources/DebuggerPlugin.ts | errorLoading": {
+    "message": "載入網址 {PH1} 時發生錯誤：{PH2}"
+  },
+  "panels/sources/DebuggerPlugin.ts | ignoreContentScripts": {
+    "message": "忽略擴充功能指令碼"
+  },
+  "panels/sources/DebuggerPlugin.ts | ignoreScript": {
+    "message": "忽略這個檔案"
+  },
   "panels/sources/DebuggerPlugin.ts | neverPauseHere": {
     "message": "一律不在這裡暫停"
   },
-  "panels/sources/DebuggerPlugin.ts | prettyprint": {
-    "message": "美化排版"
-  },
-  "panels/sources/DebuggerPlugin.ts | prettyprintThisMinifiedFile": {
-    "message": "要對這個壓縮檔套用美化排版嗎？"
-  },
-  "panels/sources/DebuggerPlugin.ts | prettyprintingWillFormatThisFile": {
-    "message": "美化排版功能會在新的分頁將這個檔案格式化；你可以透過該分頁繼續偵錯，也可以藉由點選底部狀態列上的 [{PH1}] 按鈕，為這個檔案進行美化排版。"
+  "panels/sources/DebuggerPlugin.ts | reloadForSourceMap": {
+    "message": "如要再次啟用，請確認檔案未列在忽略清單中，然後重新載入。"
   },
   "panels/sources/DebuggerPlugin.ts | removeBreakpoint": {
     "message": "{n,plural, =1{移除中斷點}other{移除這行程式碼中的所有中斷點}}"
@@ -10232,11 +11225,14 @@
   "panels/sources/DebuggerPlugin.ts | removeFromIgnoreList": {
     "message": "從忽略清單中移除"
   },
-  "panels/sources/DebuggerPlugin.ts | sourceMapDetected": {
-    "message": "偵測到來源對應。"
+  "panels/sources/DebuggerPlugin.ts | sourceMapFailed": {
+    "message": "無法載入來源對應。"
   },
-  "panels/sources/DebuggerPlugin.ts | sourceMapFoundButIgnoredForFile": {
-    "message": "已找到來源對應，但略過忽略清單中的檔案。"
+  "panels/sources/DebuggerPlugin.ts | sourceMapLoaded": {
+    "message": "已載入來源對應。"
+  },
+  "panels/sources/DebuggerPlugin.ts | sourceMapSkipped": {
+    "message": "已略過這個檔案的來源對應。"
   },
   "panels/sources/DebuggerPlugin.ts | theDebuggerWillSkipStepping": {
     "message": "偵錯工具將略過逐步執行這個指令碼的作業，不會停下檢查例外狀況。"
@@ -10246,6 +11242,9 @@
   },
   "panels/sources/FilteredUISourceCodeListProvider.ts | noFilesFound": {
     "message": "找不到檔案"
+  },
+  "panels/sources/FilteredUISourceCodeListProvider.ts | sIgnoreListed": {
+    "message": "{PH1} (已加入忽略清單)"
   },
   "panels/sources/GoToLineQuickOpen.ts | currentLineSTypeALineNumber": {
     "message": "目前位於第 {PH1} 行。輸入介於 1 到 {PH2} 的行數，即可前往相應的行。"
@@ -10276,57 +11275,6 @@
   },
   "panels/sources/InplaceFormatterEditorAction.ts | formatS": {
     "message": "將「{PH1}」格式化"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | activateBreakpoints": {
-    "message": "啟用中斷點"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | checked": {
-    "message": "已勾選"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | deactivateBreakpoints": {
-    "message": "停用中斷點"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | disableAllBreakpoints": {
-    "message": "停用所有中斷點"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | disableBreakpointsInFile": {
-    "message": "停用檔案內的中斷點"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | enableAllBreakpoints": {
-    "message": "啟用所有中斷點"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | enableBreakpointsInFile": {
-    "message": "啟用檔案內的中斷點"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | mixed": {
-    "message": "混合"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | noBreakpoints": {
-    "message": "無中斷點"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | removeAllBreakpoints": {
-    "message": "移除所有中斷點"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | removeAllBreakpointsInLine": {
-    "message": "移除這行程式碼中的所有中斷點"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | removeBreakpoint": {
-    "message": "移除中斷點"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | removeOtherBreakpoints": {
-    "message": "移除其他中斷點"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | revealLocation": {
-    "message": "顯示位置"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | sBreakpointHit": {
-    "message": "遇到{PH1}中斷點"
-  },
-  "panels/sources/JavaScriptBreakpointsSidebarPane.ts | unchecked": {
-    "message": "未勾選"
-  },
-  "panels/sources/NavigatorView.ts | areYouSureYouWantToDeleteAll": {
-    "message": "確定要刪除這個資料夾內的所有覆寫項目嗎？"
   },
   "panels/sources/NavigatorView.ts | areYouSureYouWantToDeleteThis": {
     "message": "確定要刪除這個檔案嗎？"
@@ -10379,6 +11327,9 @@
   "panels/sources/NavigatorView.ts | sFromSourceMap": {
     "message": "{PH1} (來自來源對應)"
   },
+  "panels/sources/NavigatorView.ts | sIgnoreListed": {
+    "message": "{PH1} (已加入忽略清單)"
+  },
   "panels/sources/NavigatorView.ts | searchInAllFiles": {
     "message": "在所有檔案中搜尋"
   },
@@ -10403,11 +11354,11 @@
   "panels/sources/ProfilePlugin.ts | ms": {
     "message": "毫秒"
   },
-  "panels/sources/ResourceOriginPlugin.ts | providedViaDebugInfoByS": {
-    "message": "(由 {PH1} 透過偵錯資訊所提供)"
+  "panels/sources/ResourceOriginPlugin.ts | fromS": {
+    "message": "(來源：{PH1})"
   },
   "panels/sources/ResourceOriginPlugin.ts | sourceMappedFromS": {
-    "message": "(透過 {PH1} 對應的來源)"
+    "message": "(來源對應自 {PH1})"
   },
   "panels/sources/ScopeChainSidebarPane.ts | closure": {
     "message": "閉包"
@@ -10433,12 +11384,6 @@
   "panels/sources/ScopeChainSidebarPane.ts | revealInMemoryInspectorPanel": {
     "message": "顯示在「記憶體檢查工具」面板中"
   },
-  "panels/sources/ScriptFormatterEditorAction.ts | prettyPrint": {
-    "message": "美化排版"
-  },
-  "panels/sources/ScriptFormatterEditorAction.ts | prettyPrintS": {
-    "message": "對「{PH1}」套用美化排版"
-  },
   "panels/sources/SnippetsPlugin.ts | ctrlenter": {
     "message": "Ctrl + Enter 鍵"
   },
@@ -10448,26 +11393,26 @@
   "panels/sources/SourcesNavigator.ts | clearConfiguration": {
     "message": "清除設定"
   },
-  "panels/sources/SourcesNavigator.ts | contentScriptsServedByExtensions": {
-    "message": "擴充功能提供的內容指令碼會顯示在這裡"
-  },
-  "panels/sources/SourcesNavigator.ts | createAndSaveCodeSnippetsFor": {
-    "message": "建立及儲存程式碼片段以便日後再次使用"
-  },
   "panels/sources/SourcesNavigator.ts | createNewSnippet": {
     "message": "建立新的程式碼片段"
+  },
+  "panels/sources/SourcesNavigator.ts | explainContentScripts": {
+    "message": "查看擴充功能提供的內容指令碼"
+  },
+  "panels/sources/SourcesNavigator.ts | explainLocalOverrides": {
+    "message": "在本機覆寫網路要求和網頁內容，以模擬遠端資源"
+  },
+  "panels/sources/SourcesNavigator.ts | explainSnippets": {
+    "message": "儲存你經常執行的 JavaScript 程式碼，以便隨時再次執行"
+  },
+  "panels/sources/SourcesNavigator.ts | explainWorkspace": {
+    "message": "設定工作區，直接將編輯內容同步到你開發的來源"
   },
   "panels/sources/SourcesNavigator.ts | learnMore": {
     "message": "瞭解詳情"
   },
-  "panels/sources/SourcesNavigator.ts | learnMoreAboutWorkspaces": {
-    "message": "進一步瞭解工作區"
-  },
   "panels/sources/SourcesNavigator.ts | newSnippet": {
     "message": "新的程式碼片段"
-  },
-  "panels/sources/SourcesNavigator.ts | overridePageAssetsWithFilesFromA": {
-    "message": "使用本機資料夾中的檔案覆寫網頁資產"
   },
   "panels/sources/SourcesNavigator.ts | remove": {
     "message": "移除"
@@ -10483,9 +11428,6 @@
   },
   "panels/sources/SourcesNavigator.ts | selectFolderForOverrides": {
     "message": "選取覆寫項目的資料夾"
-  },
-  "panels/sources/SourcesNavigator.ts | syncChangesInDevtoolsWithThe": {
-    "message": "將開發人員工具中的變更與本機檔案系統同步"
   },
   "panels/sources/SourcesPanel.ts | continueToHere": {
     "message": "繼續開啟這個面板"
@@ -10507,9 +11449,6 @@
   },
   "panels/sources/SourcesPanel.ts | debuggerShown": {
     "message": "偵錯工具側欄已顯示"
-  },
-  "panels/sources/SourcesPanel.ts | dontPauseOnExceptions": {
-    "message": "不要在例外狀況時暫停"
   },
   "panels/sources/SourcesPanel.ts | dropWorkspaceFolderHere": {
     "message": "將工作區資料夾拖曳到這裡"
@@ -10544,9 +11483,6 @@
   "panels/sources/SourcesPanel.ts | pauseOnCaughtExceptions": {
     "message": "遇到例外狀況時暫停"
   },
-  "panels/sources/SourcesPanel.ts | pauseOnExceptions": {
-    "message": "在例外狀況時暫停"
-  },
   "panels/sources/SourcesPanel.ts | resumeWithAllPausesBlockedForMs": {
     "message": "繼續執行 500 毫秒，略過期間所有暫停行為"
   },
@@ -10567,9 +11503,6 @@
   },
   "panels/sources/SourcesPanel.ts | terminateCurrentJavascriptCall": {
     "message": "終止目前的 JavaScript 呼叫"
-  },
-  "panels/sources/SourcesView.ts | dropInAFolderToAddToWorkspace": {
-    "message": "拖曳到資料夾即可新增至工作區"
   },
   "panels/sources/SourcesView.ts | openFile": {
     "message": "開啟檔案"
@@ -10676,6 +11609,9 @@
   "panels/sources/components/HeadersView.ts | errorWhenParsing": {
     "message": "剖析「{PH1}」時發生錯誤。"
   },
+  "panels/sources/components/HeadersView.ts | learnMore": {
+    "message": "瞭解詳情"
+  },
   "panels/sources/components/HeadersView.ts | parsingErrorExplainer": {
     "message": "這很可能是因為「{PH1}」中的語法有誤。請嘗試在外部編輯器中開啟此檔案以修正錯誤，或是刪除檔案並重新建立覆寫項目。"
   },
@@ -10754,6 +11690,9 @@
   "panels/sources/sources-meta.ts | disableTabMovesFocus": {
     "message": "停用透過 Tab 鍵移動焦點的功能"
   },
+  "panels/sources/sources-meta.ts | disableWasmAutoStepping": {
+    "message": "停用 wasm 自動跨過功能"
+  },
   "panels/sources/sources-meta.ts | disallowScrollingPastEndOfFile": {
     "message": "不允許捲動範圍超出檔案結尾"
   },
@@ -10796,14 +11735,14 @@
   "panels/sources/sources-meta.ts | enableTabMovesFocus": {
     "message": "啟用透過 Tab 鍵移動焦點的功能"
   },
+  "panels/sources/sources-meta.ts | enableWasmAutoStepping": {
+    "message": "啟用 wasm 自動跨過功能"
+  },
   "panels/sources/sources-meta.ts | evaluateSelectedTextInConsole": {
     "message": "在主控台中評估所選文字"
   },
   "panels/sources/sources-meta.ts | file": {
     "message": "檔案"
-  },
-  "panels/sources/sources-meta.ts | filesystem": {
-    "message": "檔案系統"
   },
   "panels/sources/sources-meta.ts | goTo": {
     "message": "前往"
@@ -10880,9 +11819,6 @@
   "panels/sources/sources-meta.ts | showBreakpoints": {
     "message": "顯示「中斷點」工具"
   },
-  "panels/sources/sources-meta.ts | showFilesystem": {
-    "message": "顯示「檔案系統」工具"
-  },
   "panels/sources/sources-meta.ts | showQuickSource": {
     "message": "顯示快速來源"
   },
@@ -10955,8 +11891,17 @@
   "panels/sources/sources-meta.ts | trailing": {
     "message": "結尾"
   },
+  "panels/sources/sources-meta.ts | wasmAutoStepping": {
+    "message": "當偵錯 wasm 含有偵錯資訊時，請盡可能不要暫停 wasm 位元碼"
+  },
   "panels/sources/sources-meta.ts | watch": {
     "message": "監看"
+  },
+  "panels/timeline/AnimationsTrackAppender.ts | animations": {
+    "message": "動畫"
+  },
+  "panels/timeline/AppenderUtils.ts | sSelfS": {
+    "message": "{PH1} (本身 {PH2})"
   },
   "panels/timeline/CountersGraph.ts | documents": {
     "message": "文件"
@@ -10991,6 +11936,24 @@
   "panels/timeline/EventsTimelineTreeView.ts | startTime": {
     "message": "開始時間"
   },
+  "panels/timeline/GPUTrackAppender.ts | gpu": {
+    "message": "GPU"
+  },
+  "panels/timeline/InteractionsTrackAppender.ts | interactions": {
+    "message": "互動"
+  },
+  "panels/timeline/LayoutShiftsTrackAppender.ts | layoutShifts": {
+    "message": "版面配置位移"
+  },
+  "panels/timeline/NetworkTrackAppender.ts | network": {
+    "message": "網路"
+  },
+  "panels/timeline/ThreadAppender.ts | anonymous": {
+    "message": "(匿名)"
+  },
+  "panels/timeline/ThreadAppender.ts | thread": {
+    "message": "新引擎的主要執行緒"
+  },
   "panels/timeline/TimelineController.ts | cpuProfileForATargetIsNot": {
     "message": "無法取得目標的 CPU 設定檔。"
   },
@@ -11003,17 +11966,11 @@
   "panels/timeline/TimelineDetailsView.ts | callTree": {
     "message": "呼叫樹狀結構"
   },
-  "panels/timeline/TimelineDetailsView.ts | estimated": {
-    "message": "預估"
-  },
   "panels/timeline/TimelineDetailsView.ts | eventLog": {
     "message": "事件記錄"
   },
   "panels/timeline/TimelineDetailsView.ts | layers": {
     "message": "圖層"
-  },
-  "panels/timeline/TimelineDetailsView.ts | learnMore": {
-    "message": "瞭解詳情"
   },
   "panels/timeline/TimelineDetailsView.ts | paintProfiler": {
     "message": "Paint Profiler"
@@ -11023,12 +11980,6 @@
   },
   "panels/timeline/TimelineDetailsView.ts | summary": {
     "message": "匯總"
-  },
-  "panels/timeline/TimelineDetailsView.ts | totalBlockingTimeSmss": {
-    "message": "總封鎖時間：{PH1} 毫秒 {PH2}"
-  },
-  "panels/timeline/TimelineEventOverview.ts | coverage": {
-    "message": "涵蓋率"
   },
   "panels/timeline/TimelineEventOverview.ts | cpu": {
     "message": "CPU"
@@ -11042,17 +11993,8 @@
   "panels/timeline/TimelineEventOverview.ts | sSDash": {
     "message": "{PH1} - {PH2}"
   },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | animation": {
-    "message": "動畫"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | console": {
-    "message": "主控台"
-  },
   "panels/timeline/TimelineFlameChartDataProvider.ts | droppedFrame": {
-    "message": "捨棄的畫格"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | experience": {
-    "message": "體驗"
+    "message": "捨棄的影格"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | frame": {
     "message": "頁框"
@@ -11063,23 +12005,14 @@
   "panels/timeline/TimelineFlameChartDataProvider.ts | frames": {
     "message": "頁框"
   },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | gpu": {
-    "message": "GPU"
-  },
   "panels/timeline/TimelineFlameChartDataProvider.ts | idleFrame": {
     "message": "閒置頁框"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | longFrame": {
-    "message": "影格時間太長"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | main": {
     "message": "主要"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | mainS": {
     "message": "主要 - {PH1}"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | occurrencesS": {
-    "message": "出現次數：{PH1}"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | onIgnoreList": {
     "message": "在忽略清單中"
@@ -11101,18 +12034,6 @@
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | thread": {
     "message": "執行緒"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | threadS": {
-    "message": "執行緒 {PH1}"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | timings": {
-    "message": "時間"
-  },
-  "panels/timeline/TimelineFlameChartDataProvider.ts | userInteractions": {
-    "message": "互動"
-  },
-  "panels/timeline/TimelineFlameChartNetworkDataProvider.ts | network": {
-    "message": "網路"
   },
   "panels/timeline/TimelineFlameChartView.ts | sAtS": {
     "message": "{PH2}時顯示的{PH1}"
@@ -11178,7 +12099,7 @@
     "message": "緩衝區用量"
   },
   "panels/timeline/TimelinePanel.ts | captureScreenshots": {
-    "message": "擷取螢幕截圖"
+    "message": "擷取螢幕畫面"
   },
   "panels/timeline/TimelinePanel.ts | captureSettings": {
     "message": "擷取設定"
@@ -11198,9 +12119,6 @@
   "panels/timeline/TimelinePanel.ts | close": {
     "message": "關閉"
   },
-  "panels/timeline/TimelinePanel.ts | coverage": {
-    "message": "涵蓋率"
-  },
   "panels/timeline/TimelinePanel.ts | cpu": {
     "message": "CPU："
   },
@@ -11219,8 +12137,8 @@
   "panels/timeline/TimelinePanel.ts | enableAdvancedPaint": {
     "message": "啟用進階繪製檢測 (速度偏慢)"
   },
-  "panels/timeline/TimelinePanel.ts | failedToSaveTimelineSSS": {
-    "message": "無法儲存時間軸：{PH1} ({PH2}，{PH3})"
+  "panels/timeline/TimelinePanel.ts | failedToSaveTimelineSS": {
+    "message": "無法儲存時間軸：{PH1} ({PH2})"
   },
   "panels/timeline/TimelinePanel.ts | initializingProfiler": {
     "message": "正在初始化分析器…"
@@ -11252,9 +12170,6 @@
   "panels/timeline/TimelinePanel.ts | received": {
     "message": "已接收"
   },
-  "panels/timeline/TimelinePanel.ts | recordCoverageWithPerformance": {
-    "message": "透過效能追蹤記錄來記錄涵蓋率"
-  },
   "panels/timeline/TimelinePanel.ts | recordingFailed": {
     "message": "無法記錄"
   },
@@ -11266,9 +12181,6 @@
   },
   "panels/timeline/TimelinePanel.ts | showMemoryTimeline": {
     "message": "顯示記憶體時間軸"
-  },
-  "panels/timeline/TimelinePanel.ts | showWebVitals": {
-    "message": "顯示網站體驗指標"
   },
   "panels/timeline/TimelinePanel.ts | ssec": {
     "message": "{PH1} 秒"
@@ -11287,9 +12199,6 @@
   },
   "panels/timeline/TimelinePanel.ts | wasd": {
     "message": "WASD"
-  },
-  "panels/timeline/TimelinePanel.ts | webVitals": {
-    "message": "Web Vitals"
   },
   "panels/timeline/TimelineTreeView.ts | activity": {
     "message": "活動"
@@ -11465,6 +12374,9 @@
   "panels/timeline/TimelineUIUtils.ts | commit": {
     "message": "提交"
   },
+  "panels/timeline/TimelineUIUtils.ts | compilationCacheKind": {
+    "message": "編譯快取類型"
+  },
   "panels/timeline/TimelineUIUtils.ts | compilationCacheSize": {
     "message": "編譯快取大小"
   },
@@ -11524,6 +12436,9 @@
   },
   "panels/timeline/TimelineUIUtils.ts | decryptReply": {
     "message": "將回覆解密"
+  },
+  "panels/timeline/TimelineUIUtils.ts | deserializeCodeCache": {
+    "message": "反序列化程式碼快取"
   },
   "panels/timeline/TimelineUIUtils.ts | destroyWebsocket": {
     "message": "刪除 WebSocket"
@@ -11669,17 +12584,17 @@
   "panels/timeline/TimelineUIUtils.ts | imageUrl": {
     "message": "圖片網址"
   },
+  "panels/timeline/TimelineUIUtils.ts | initialPriority": {
+    "message": "初始優先順序"
+  },
   "panels/timeline/TimelineUIUtils.ts | initiator": {
     "message": "發起人"
-  },
-  "panels/timeline/TimelineUIUtils.ts | inputLatency": {
-    "message": "輸入延遲時間"
   },
   "panels/timeline/TimelineUIUtils.ts | installTimer": {
     "message": "安裝計時器"
   },
-  "panels/timeline/TimelineUIUtils.ts | interactionEvent": {
-    "message": "互動類型：{PH1} ID：{PH2}"
+  "panels/timeline/TimelineUIUtils.ts | interactionID": {
+    "message": "ID"
   },
   "panels/timeline/TimelineUIUtils.ts | invalidateLayout": {
     "message": "讓版面配置失效"
@@ -11690,11 +12605,17 @@
   "panels/timeline/TimelineUIUtils.ts | invokedByTimeout": {
     "message": "依逾時長度叫用"
   },
-  "panels/timeline/TimelineUIUtils.ts | jank": {
-    "message": "資源浪費"
-  },
   "panels/timeline/TimelineUIUtils.ts | jsFrame": {
     "message": "JS 框架"
+  },
+  "panels/timeline/TimelineUIUtils.ts | jsIdleFrame": {
+    "message": "JS 閒置框架"
+  },
+  "panels/timeline/TimelineUIUtils.ts | jsRoot": {
+    "message": "JS 來源"
+  },
+  "panels/timeline/TimelineUIUtils.ts | jsSystemFrame": {
+    "message": "JS 系統框架"
   },
   "panels/timeline/TimelineUIUtils.ts | largestContentfulPaint": {
     "message": "最大內容繪製"
@@ -11734,6 +12655,9 @@
   },
   "panels/timeline/TimelineUIUtils.ts | location": {
     "message": "地點"
+  },
+  "panels/timeline/TimelineUIUtils.ts | longInteractionINP": {
+    "message": "互動時間長"
   },
   "panels/timeline/TimelineUIUtils.ts | longTask": {
     "message": "長時間執行的工作"
@@ -11840,6 +12764,9 @@
   "panels/timeline/TimelineUIUtils.ts | producedCacheSize": {
     "message": "已產生的快取大小"
   },
+  "panels/timeline/TimelineUIUtils.ts | profilingOverhead": {
+    "message": "分析作業負載"
+  },
   "panels/timeline/TimelineUIUtils.ts | range": {
     "message": "範圍"
   },
@@ -11927,8 +12854,8 @@
   "panels/timeline/TimelineUIUtils.ts | sIsALikelyPerformanceBottleneck": {
     "message": "{PH1}可能會成為效能瓶頸。"
   },
-  "panels/timeline/TimelineUIUtils.ts | sLongFrameTimesAreAnIndicationOf": {
-    "message": "{PH1}。{PH2}會延長影格時間"
+  "panels/timeline/TimelineUIUtils.ts | sIsLikelyPoorPageResponsiveness": {
+    "message": "如果{PH1}，表示網頁反應速度慢。"
   },
   "panels/timeline/TimelineUIUtils.ts | sOfS": {
     "message": "{PH1}/{PH2}"
@@ -12038,9 +12965,6 @@
   "panels/timeline/TimelineUIUtils.ts | timeSpentInRendering": {
     "message": "算繪所費時間"
   },
-  "panels/timeline/TimelineUIUtils.ts | timeWaitingForMainThread": {
-    "message": "等待主要執行緒的時間"
-  },
   "panels/timeline/TimelineUIUtils.ts | timeout": {
     "message": "逾時"
   },
@@ -12113,6 +13037,9 @@
   "panels/timeline/TimelineUIUtils.ts | yes": {
     "message": "是"
   },
+  "panels/timeline/TimingsTrackAppender.ts | timings": {
+    "message": "時間"
+  },
   "panels/timeline/UIDevtoolsUtils.ts | drawFrame": {
     "message": "繪製頁框"
   },
@@ -12136,36 +13063,6 @@
   },
   "panels/timeline/UIDevtoolsUtils.ts | system": {
     "message": "系統"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | fcp": {
-    "message": "FCP"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | firstContentfulPaint": {
-    "message": "首次顯示內容所需時間"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | good": {
-    "message": "良好"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | largestContentfulPaint": {
-    "message": "最大內容繪製"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | lcp": {
-    "message": "LCP"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | longTask": {
-    "message": "長時間執行的工作"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | longTasks": {
-    "message": "長時間執行的工作"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | ls": {
-    "message": "版面配置位移"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | needsImprovement": {
-    "message": "需要改善"
-  },
-  "panels/timeline/components/WebVitalsTimeline.ts | poor": {
-    "message": "差"
   },
   "panels/timeline/timeline-meta.ts | hideChromeFrameInLayersView": {
     "message": "在「圖層」檢視畫面中隱藏 chrome 頁框"
@@ -12351,7 +13248,7 @@
     "message": "WebAuthn"
   },
   "ui/components/data_grid/DataGrid.ts | enterToSort": {
-    "message": "按下 Enter 鍵套用排序篩選條件"
+    "message": "欄排序狀態：{PH1}。按下 Enter 鍵即可套用排序篩選條件"
   },
   "ui/components/data_grid/DataGrid.ts | headerOptions": {
     "message": "標頭選項"
@@ -12359,8 +13256,17 @@
   "ui/components/data_grid/DataGrid.ts | resetColumns": {
     "message": "重設資料欄"
   },
+  "ui/components/data_grid/DataGrid.ts | sortAsc": {
+    "message": "遞增"
+  },
   "ui/components/data_grid/DataGrid.ts | sortBy": {
     "message": "排序依據"
+  },
+  "ui/components/data_grid/DataGrid.ts | sortDesc": {
+    "message": "遞減"
+  },
+  "ui/components/data_grid/DataGrid.ts | sortNone": {
+    "message": "無"
   },
   "ui/components/data_grid/DataGridController.ts | sortInAscendingOrder": {
     "message": "依遞增順序排列{PH1}"
@@ -12370,6 +13276,18 @@
   },
   "ui/components/data_grid/DataGridController.ts | sortingCanceled": {
     "message": "已取消{PH1}排序"
+  },
+  "ui/components/dialogs/IconDialog.ts | close": {
+    "message": "關閉"
+  },
+  "ui/components/dialogs/ShortcutDialog.ts | close": {
+    "message": "關閉"
+  },
+  "ui/components/dialogs/ShortcutDialog.ts | dialogTitle": {
+    "message": "鍵盤快速鍵"
+  },
+  "ui/components/dialogs/ShortcutDialog.ts | showShortcutTitle": {
+    "message": "顯示捷徑"
   },
   "ui/components/diff_view/DiffView.ts | SkippingDMatchingLines": {
     "message": "( … 略過 {PH1} 行相符內容 … )"
@@ -12512,6 +13430,66 @@
   "ui/components/text_editor/config.ts | codeEditor": {
     "message": "程式碼編輯器"
   },
+  "ui/components/text_editor/config.ts | sSuggestionSOfS": {
+    "message": "{PH1}，第 {PH2} 項建議，共 {PH3} 項"
+  },
+  "ui/legacy/ActionRegistration.ts | background_services": {
+    "message": "背景服務"
+  },
+  "ui/legacy/ActionRegistration.ts | console": {
+    "message": "控制台"
+  },
+  "ui/legacy/ActionRegistration.ts | debugger": {
+    "message": "偵錯工具"
+  },
+  "ui/legacy/ActionRegistration.ts | drawer": {
+    "message": "導覽匣"
+  },
+  "ui/legacy/ActionRegistration.ts | elements": {
+    "message": "元素"
+  },
+  "ui/legacy/ActionRegistration.ts | global": {
+    "message": "通用"
+  },
+  "ui/legacy/ActionRegistration.ts | help": {
+    "message": "說明"
+  },
+  "ui/legacy/ActionRegistration.ts | javascript_profiler": {
+    "message": "JavaScript 分析器"
+  },
+  "ui/legacy/ActionRegistration.ts | layers": {
+    "message": "圖層"
+  },
+  "ui/legacy/ActionRegistration.ts | memory": {
+    "message": "記憶體"
+  },
+  "ui/legacy/ActionRegistration.ts | mobile": {
+    "message": "行動"
+  },
+  "ui/legacy/ActionRegistration.ts | navigation": {
+    "message": "導覽"
+  },
+  "ui/legacy/ActionRegistration.ts | network": {
+    "message": "網路"
+  },
+  "ui/legacy/ActionRegistration.ts | performance": {
+    "message": "效能"
+  },
+  "ui/legacy/ActionRegistration.ts | rendering": {
+    "message": "算繪"
+  },
+  "ui/legacy/ActionRegistration.ts | resources": {
+    "message": "資源"
+  },
+  "ui/legacy/ActionRegistration.ts | screenshot": {
+    "message": "螢幕截圖"
+  },
+  "ui/legacy/ActionRegistration.ts | settings": {
+    "message": "設定"
+  },
+  "ui/legacy/ActionRegistration.ts | sources": {
+    "message": "來源"
+  },
   "ui/legacy/DockController.ts | close": {
     "message": "關閉"
   },
@@ -12557,8 +13535,8 @@
   "ui/legacy/Infobar.ts | dontShowAgain": {
     "message": "不要再顯示"
   },
-  "ui/legacy/Infobar.ts | learnMore": {
-    "message": "瞭解詳情"
+  "ui/legacy/Infobar.ts | showMore": {
+    "message": "顯示更多"
   },
   "ui/legacy/InspectorView.ts | closeDrawer": {
     "message": "關閉導覽匣"
@@ -12684,7 +13662,7 @@
     "message": "(未選取任何項目)"
   },
   "ui/legacy/SuggestBox.ts | sSuggestionSOfS": {
-    "message": "{PH1}，第 {PH2} 項建議 (共 {PH3} 項)"
+    "message": "{PH1}，第 {PH2} 項建議，共 {PH3} 項"
   },
   "ui/legacy/SuggestBox.ts | sSuggestionSSelected": {
     "message": "{PH1}，已選取建議"
@@ -12763,6 +13741,27 @@
   },
   "ui/legacy/ViewManager.ts | sPanel": {
     "message": "{PH1}面板"
+  },
+  "ui/legacy/ViewRegistration.ts | drawer": {
+    "message": "導覽匣"
+  },
+  "ui/legacy/ViewRegistration.ts | drawer_sidebar": {
+    "message": "導覽匣側欄"
+  },
+  "ui/legacy/ViewRegistration.ts | elements": {
+    "message": "元素"
+  },
+  "ui/legacy/ViewRegistration.ts | network": {
+    "message": "網路"
+  },
+  "ui/legacy/ViewRegistration.ts | panel": {
+    "message": "面板"
+  },
+  "ui/legacy/ViewRegistration.ts | settings": {
+    "message": "設定"
+  },
+  "ui/legacy/ViewRegistration.ts | sources": {
+    "message": "來源"
   },
   "ui/legacy/components/color_picker/ContrastDetails.ts | aa": {
     "message": "AA"
@@ -12947,9 +13946,6 @@
   "ui/legacy/components/data_grid/ShowMoreDataGridNode.ts | showDBefore": {
     "message": "顯示前 {PH1} 個"
   },
-  "ui/legacy/components/data_grid/ViewportDataGrid.ts | collapsed": {
-    "message": "已收合"
-  },
   "ui/legacy/components/inline_editor/CSSShadowEditor.ts | blur": {
     "message": "模糊"
   },
@@ -12975,7 +13971,7 @@
     "message": "CSS 屬性"
   },
   "ui/legacy/components/inline_editor/FontEditor.ts | deleteS": {
-    "message": "刪除 {PH1}"
+    "message": "刪除{PH1}"
   },
   "ui/legacy/components/inline_editor/FontEditor.ts | fallbackS": {
     "message": "備用 {PH1}"
@@ -13063,6 +14059,9 @@
   },
   "ui/legacy/components/object_ui/ObjectPropertiesSection.ts | noProperties": {
     "message": "沒有資源"
+  },
+  "ui/legacy/components/object_ui/ObjectPropertiesSection.ts | revealInMemoryInpector": {
+    "message": "顯示在「記憶體檢查工具」面板中"
   },
   "ui/legacy/components/object_ui/ObjectPropertiesSection.ts | showAllD": {
     "message": "顯示全部 ({PH1})"
@@ -13327,6 +14326,9 @@
   },
   "ui/legacy/components/utils/JSPresentationUtils.ts | removeFromIgnore": {
     "message": "從忽略清單中移除"
+  },
+  "ui/legacy/components/utils/JSPresentationUtils.ts | showLess": {
+    "message": "顯示較少"
   },
   "ui/legacy/components/utils/JSPresentationUtils.ts | showSMoreFrames": {
     "message": "{n,plural, =1{顯示另外 # 個頁框}other{顯示另外 # 個頁框}}"

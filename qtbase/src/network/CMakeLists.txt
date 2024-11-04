@@ -26,6 +26,7 @@ qt_internal_add_module(Network
         access/qnetworkreplyfileimpl.cpp access/qnetworkreplyfileimpl_p.h
         access/qnetworkreplyimpl.cpp access/qnetworkreplyimpl_p.h
         access/qnetworkrequest.cpp access/qnetworkrequest.h access/qnetworkrequest_p.h
+        compat/removed_api.cpp
         kernel/qauthenticator.cpp kernel/qauthenticator.h kernel/qauthenticator_p.h
         kernel/qhostaddress.cpp kernel/qhostaddress.h kernel/qhostaddress_p.h
         kernel/qhostinfo.cpp kernel/qhostinfo.h kernel/qhostinfo_p.h
@@ -53,6 +54,7 @@ qt_internal_add_module(Network
         ssl/qsslsocket.h
         ssl/qtlsbackend.cpp ssl/qtlsbackend_p.h
     DEFINES
+        QT_NO_CONTEXTLESS_CONNECT
         QT_NO_FOREACH
         QT_NO_USING_NAMESPACE
     INCLUDE_DIRECTORIES
@@ -63,6 +65,8 @@ qt_internal_add_module(Network
         Qt::Core
     PRIVATE_MODULE_INTERFACE
         Qt::CorePrivate
+    NO_PCH_SOURCES
+        compat/removed_api.cpp
     PRECOMPILED_HEADER
         "../corelib/global/qt_pch.h"
     GENERATE_CPP_EXPORTS
@@ -118,7 +122,9 @@ qt_internal_extend_target(Network CONDITION QT_FEATURE_http
         access/qdecompresshelper.cpp access/qdecompresshelper_p.h
         access/qhttp1configuration.cpp access/qhttp1configuration.h
         access/qhttp2configuration.cpp access/qhttp2configuration.h
+        access/qhttp2connection.cpp access/qhttp2connection_p.h
         access/qhttp2protocolhandler.cpp access/qhttp2protocolhandler_p.h
+        access/qhttpheaders.cpp access/qhttpheaders.h
         access/qhttpmultipart.cpp access/qhttpmultipart.h access/qhttpmultipart_p.h
         access/qhttpnetworkconnection.cpp access/qhttpnetworkconnection_p.h
         access/qhttpnetworkconnectionchannel.cpp access/qhttpnetworkconnectionchannel_p.h
@@ -128,6 +134,10 @@ qt_internal_extend_target(Network CONDITION QT_FEATURE_http
         access/qhttpprotocolhandler.cpp access/qhttpprotocolhandler_p.h
         access/qhttpthreaddelegate.cpp access/qhttpthreaddelegate_p.h
         access/qnetworkreplyhttpimpl.cpp access/qnetworkreplyhttpimpl_p.h
+        access/qnetworkrequestfactory.cpp access/qnetworkrequestfactory_p.h
+        access/qnetworkrequestfactory.h
+        access/qrestaccessmanager.cpp access/qrestaccessmanager.h access/qrestaccessmanager_p.h
+        access/qrestreply.cpp access/qrestreply.h access/qrestreply_p.h
         socket/qhttpsocketengine.cpp socket/qhttpsocketengine_p.h
 )
 
@@ -396,7 +406,6 @@ qt_internal_extend_target(Network CONDITION WIN32
 if(QT_FEATURE_private_tests)
     add_subdirectory(doc/snippets/network)
 endif()
-
 qt_internal_extend_target(Network
     # Workaround for QTBUG-118229:
     # Function called by inline methods taking a pointer to a private class as a parameter

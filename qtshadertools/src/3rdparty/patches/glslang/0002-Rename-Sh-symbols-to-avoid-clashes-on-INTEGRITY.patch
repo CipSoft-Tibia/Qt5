@@ -1,0 +1,263 @@
+From b300c12e425b3299bd672abb2db5a6f9767f76e1 Mon Sep 17 00:00:00 2001
+From: Laszlo Agocs <laszlo.agocs@qt.io>
+Date: Fri, 25 Aug 2023 15:54:06 +0200
+Subject: [PATCH] Rename Sh symbols to avoid clashes on INTEGRITY
+
+Change-Id: I1cfb4368947c989fa6b34e88e7f7d0b9bbcc3252
+---
+ .../glslang/MachineIndependent/ShaderLang.cpp | 36 +++++++++----------
+ .../glslang/glslang/Public/ShaderLang.h       | 30 ++++++++--------
+ 2 files changed, 33 insertions(+), 33 deletions(-)
+
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp
+index 51c524b..a71e4e8 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp
+@@ -1294,7 +1294,7 @@ bool CompileDeferred(
+ //
+ // ShInitialize() should be called exactly once per process, not per thread.
+ //
+-int ShInitialize()
++int ShInitialize_Qt()
+ {
+     if (! InitProcess())
+         return 0;
+@@ -1318,7 +1318,7 @@ int ShInitialize()
+ // objects.
+ //
+ 
+-ShHandle ShConstructCompiler(const EShLanguage language, int debugOptions)
++ShHandle ShConstructCompiler_Qt(const EShLanguage language, int debugOptions)
+ {
+     if (!InitThread())
+         return nullptr;
+@@ -1328,7 +1328,7 @@ ShHandle ShConstructCompiler(const EShLanguage language, int debugOptions)
+     return reinterpret_cast<void*>(base);
+ }
+ 
+-ShHandle ShConstructLinker(const EShExecutable executable, int debugOptions)
++ShHandle ShConstructLinker_Qt(const EShExecutable executable, int debugOptions)
+ {
+     if (!InitThread())
+         return nullptr;
+@@ -1338,7 +1338,7 @@ ShHandle ShConstructLinker(const EShExecutable executable, int debugOptions)
+     return reinterpret_cast<void*>(base);
+ }
+ 
+-ShHandle ShConstructUniformMap()
++ShHandle ShConstructUniformMap_Qt()
+ {
+     if (!InitThread())
+         return nullptr;
+@@ -1348,7 +1348,7 @@ ShHandle ShConstructUniformMap()
+     return reinterpret_cast<void*>(base);
+ }
+ 
+-void ShDestruct(ShHandle handle)
++void ShDestruct_Qt(ShHandle handle)
+ {
+     if (handle == nullptr)
+         return;
+@@ -1366,7 +1366,7 @@ void ShDestruct(ShHandle handle)
+ //
+ // Cleanup symbol tables
+ //
+-int ShFinalize()
++int ShFinalize_Qt()
+ {
+     const std::lock_guard<std::mutex> lock(init_lock);
+     --NumberOfClients;
+@@ -1421,7 +1421,7 @@ int ShFinalize()
+ // Return:  The return value is really boolean, indicating
+ // success (1) or failure (0).
+ //
+-int ShCompile(
++int ShCompile_Qt(
+     const ShHandle handle,
+     const char* const shaderStrings[],
+     const int numStrings,
+@@ -1475,7 +1475,7 @@ int ShCompile(
+ // Return:  The return value of is really boolean, indicating
+ // success or failure.
+ //
+-int ShLinkExt(
++int ShLinkExt_Qt(
+     const ShHandle linkHandle,
+     const ShHandle compHandles[],
+     const int numHandles)
+@@ -1504,7 +1504,7 @@ int ShLinkExt(
+ 
+     if (linker == nullptr)
+         return 0;
+-    
++
+     SetThreadPoolAllocator(linker->getPool());
+     linker->infoSink.info.erase();
+ 
+@@ -1526,7 +1526,7 @@ int ShLinkExt(
+ // ShSetEncrpytionMethod is a place-holder for specifying
+ // how source code is encrypted.
+ //
+-void ShSetEncryptionMethod(ShHandle handle)
++void ShSetEncryptionMethod_Qt(ShHandle handle)
+ {
+     if (handle == nullptr)
+         return;
+@@ -1535,7 +1535,7 @@ void ShSetEncryptionMethod(ShHandle handle)
+ //
+ // Return any compiler/linker/uniformmap log of messages for the application.
+ //
+-const char* ShGetInfoLog(const ShHandle handle)
++const char* ShGetInfoLog_Qt(const ShHandle handle)
+ {
+     if (handle == nullptr)
+         return nullptr;
+@@ -1558,7 +1558,7 @@ const char* ShGetInfoLog(const ShHandle handle)
+ // Return the resulting binary code from the link process.  Structure
+ // is machine dependent.
+ //
+-const void* ShGetExecutable(const ShHandle handle)
++const void* ShGetExecutable_Qt(const ShHandle handle)
+ {
+     if (handle == nullptr)
+         return nullptr;
+@@ -1580,7 +1580,7 @@ const void* ShGetExecutable(const ShHandle handle)
+ // Return:  The return value of is really boolean, indicating
+ // success or failure.
+ //
+-int ShSetVirtualAttributeBindings(const ShHandle handle, const ShBindingTable* table)
++int ShSetVirtualAttributeBindings_Qt(const ShHandle handle, const ShBindingTable* table)
+ {
+     if (handle == nullptr)
+         return 0;
+@@ -1599,7 +1599,7 @@ int ShSetVirtualAttributeBindings(const ShHandle handle, const ShBindingTable* t
+ //
+ // Let the linker know where the predefined attributes have to live.
+ //
+-int ShSetFixedAttributeBindings(const ShHandle handle, const ShBindingTable* table)
++int ShSetFixedAttributeBindings_Qt(const ShHandle handle, const ShBindingTable* table)
+ {
+     if (handle == nullptr)
+         return 0;
+@@ -1617,7 +1617,7 @@ int ShSetFixedAttributeBindings(const ShHandle handle, const ShBindingTable* tab
+ //
+ // Some attribute locations are off-limits to the linker...
+ //
+-int ShExcludeAttributes(const ShHandle handle, int *attributes, int count)
++int ShExcludeAttributes_Qt(const ShHandle handle, int *attributes, int count)
+ {
+     if (handle == nullptr)
+         return 0;
+@@ -1638,7 +1638,7 @@ int ShExcludeAttributes(const ShHandle handle, int *attributes, int count)
+ // Return:  The return value of is really boolean, indicating
+ // success or failure.
+ //
+-int ShGetUniformLocation(const ShHandle handle, const char* name)
++int ShGetUniformLocation_Qt(const ShHandle handle, const char* name)
+ {
+     if (handle == nullptr)
+         return -1;
+@@ -1696,12 +1696,12 @@ int GetKhronosToolId()
+ 
+ bool InitializeProcess()
+ {
+-    return ShInitialize() != 0;
++    return ShInitialize_Qt() != 0;
+ }
+ 
+ void FinalizeProcess()
+ {
+-    ShFinalize();
++    ShFinalize_Qt();
+ }
+ 
+ class TDeferredCompiler : public TCompiler {
+diff --git a/src/3rdparty/glslang/glslang/Public/ShaderLang.h b/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+index e037e63..4675d4e 100755
+--- a/src/3rdparty/glslang/glslang/Public/ShaderLang.h
++++ b/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+@@ -79,12 +79,12 @@
+ //
+ // (Call once per process, not once per thread.)
+ //
+-GLSLANG_EXPORT int ShInitialize();
++GLSLANG_EXPORT int ShInitialize_Qt();
+ 
+ //
+ // Call this at process shutdown to clean up memory.
+ //
+-GLSLANG_EXPORT int ShFinalize();
++GLSLANG_EXPORT int ShFinalize_Qt();
+ 
+ //
+ // Types of languages the compiler can consume.
+@@ -318,10 +318,10 @@ typedef void* ShHandle;
+ // Driver calls these to create and destroy compiler/linker
+ // objects.
+ //
+-GLSLANG_EXPORT ShHandle ShConstructCompiler(const EShLanguage, int debugOptions);  // one per shader
+-GLSLANG_EXPORT ShHandle ShConstructLinker(const EShExecutable, int debugOptions);  // one per shader pair
+-GLSLANG_EXPORT ShHandle ShConstructUniformMap();                 // one per uniform namespace (currently entire program object)
+-GLSLANG_EXPORT void ShDestruct(ShHandle);
++GLSLANG_EXPORT ShHandle ShConstructCompiler_Qt(const EShLanguage, int debugOptions);  // one per shader
++GLSLANG_EXPORT ShHandle ShConstructLinker_Qt(const EShExecutable, int debugOptions);  // one per shader pair
++GLSLANG_EXPORT ShHandle ShConstructUniformMap_Qt();                 // one per uniform namespace (currently entire program object)
++GLSLANG_EXPORT void ShDestruct_Qt(ShHandle);
+ 
+ //
+ // The return value of ShCompile is boolean, non-zero indicating
+@@ -330,7 +330,7 @@ GLSLANG_EXPORT void ShDestruct(ShHandle);
+ // The info-log should be written by ShCompile into
+ // ShHandle, so it can answer future queries.
+ //
+-GLSLANG_EXPORT int ShCompile(
++GLSLANG_EXPORT int ShCompile_Qt(
+     const ShHandle,
+     const char* const shaderStrings[],
+     const int numStrings,
+@@ -343,7 +343,7 @@ GLSLANG_EXPORT int ShCompile(
+     EShMessages messages = EShMsgDefault // warnings and errors
+     );
+ 
+-GLSLANG_EXPORT int ShLinkExt(
++GLSLANG_EXPORT int ShLinkExt_Qt(
+     const ShHandle,               // linker object
+     const ShHandle h[],           // compiler objects to link together
+     const int numHandles);
+@@ -352,26 +352,26 @@ GLSLANG_EXPORT int ShLinkExt(
+ // ShSetEncrpytionMethod is a place-holder for specifying
+ // how source code is encrypted.
+ //
+-GLSLANG_EXPORT void ShSetEncryptionMethod(ShHandle);
++GLSLANG_EXPORT void ShSetEncryptionMethod_Qt(ShHandle);
+ 
+ //
+ // All the following return 0 if the information is not
+ // available in the object passed down, or the object is bad.
+ //
+-GLSLANG_EXPORT const char* ShGetInfoLog(const ShHandle);
+-GLSLANG_EXPORT const void* ShGetExecutable(const ShHandle);
+-GLSLANG_EXPORT int ShSetVirtualAttributeBindings(const ShHandle, const ShBindingTable*);   // to detect user aliasing
+-GLSLANG_EXPORT int ShSetFixedAttributeBindings(const ShHandle, const ShBindingTable*);     // to force any physical mappings
++GLSLANG_EXPORT const char* ShGetInfoLog_Qt(const ShHandle);
++GLSLANG_EXPORT const void* ShGetExecutable_Qt(const ShHandle);
++GLSLANG_EXPORT int ShSetVirtualAttributeBindings_Qt(const ShHandle, const ShBindingTable*);   // to detect user aliasing
++GLSLANG_EXPORT int ShSetFixedAttributeBindings_Qt(const ShHandle, const ShBindingTable*);     // to force any physical mappings
+ //
+ // Tell the linker to never assign a vertex attribute to this list of physical attributes
+ //
+-GLSLANG_EXPORT int ShExcludeAttributes(const ShHandle, int *attributes, int count);
++GLSLANG_EXPORT int ShExcludeAttributes_Qt(const ShHandle, int *attributes, int count);
+ 
+ //
+ // Returns the location ID of the named uniform.
+ // Returns -1 if error.
+ //
+-GLSLANG_EXPORT int ShGetUniformLocation(const ShHandle uniformMap, const char* name);
++GLSLANG_EXPORT int ShGetUniformLocation_Qt(const ShHandle uniformMap, const char* name);
+ 
+ #ifdef __cplusplus
+     }  // end extern "C"
+-- 
+2.36.1.windows.1
+

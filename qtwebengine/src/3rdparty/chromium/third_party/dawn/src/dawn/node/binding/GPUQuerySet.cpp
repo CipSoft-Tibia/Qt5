@@ -24,7 +24,8 @@ namespace wgpu::binding {
 ////////////////////////////////////////////////////////////////////////////////
 // wgpu::bindings::GPUQuerySet
 ////////////////////////////////////////////////////////////////////////////////
-GPUQuerySet::GPUQuerySet(wgpu::QuerySet query_set) : query_set_(std::move(query_set)) {}
+GPUQuerySet::GPUQuerySet(const wgpu::QuerySetDescriptor& desc, wgpu::QuerySet query_set)
+    : query_set_(std::move(query_set)), label_(desc.label ? desc.label : "") {}
 
 void GPUQuerySet::destroy(Napi::Env) {
     query_set_.Destroy();
@@ -43,16 +44,17 @@ interop::GPUQueryType GPUQuerySet::getType(Napi::Env env) {
     return result;
 }
 
-interop::GPUSize32 GPUQuerySet::getCount(Napi::Env) {
+interop::GPUSize32Out GPUQuerySet::getCount(Napi::Env) {
     return query_set_.GetCount();
 }
 
 std::string GPUQuerySet::getLabel(Napi::Env) {
-    UNIMPLEMENTED();
+    return label_;
 }
 
 void GPUQuerySet::setLabel(Napi::Env, std::string value) {
-    UNIMPLEMENTED();
+    query_set_.SetLabel(value.c_str());
+    label_ = value;
 }
 
 }  // namespace wgpu::binding

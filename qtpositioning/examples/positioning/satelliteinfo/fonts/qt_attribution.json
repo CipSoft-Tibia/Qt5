@@ -3,7 +3,7 @@
         "Id": "titilliumweb_font",
         "Name": "Titillium Web Font",
         "QDocModule": "qtpositioning",
-        "QtUsage": "Used in the \"SatelliteInfo\" example",
+        "QtUsage": "Used in the \"Satellite Info\" example",
         "QtParts": [ "examples" ],
         "Description": "Titillium Web font designed by Accademia di Belle Arti di Urbino",
         "Homepage": "https://fonts.google.com/specimen/Titillium+Web",

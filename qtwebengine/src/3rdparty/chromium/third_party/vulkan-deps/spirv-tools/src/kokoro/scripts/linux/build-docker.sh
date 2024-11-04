@@ -43,8 +43,10 @@ function clean_dir() {
   mkdir "$dir"
 }
 
-# Get source for dependencies, as specified in the DEPS file
-/usr/bin/python3 utils/git-sync-deps --treeless
+if [ $TOOL != "cmake-smoketest" ]; then
+  # Get source for dependencies, as specified in the DEPS file
+  /usr/bin/python3 utils/git-sync-deps --treeless
+fi
 
 if [ $TOOL = "cmake" ]; then
   using cmake-3.17.2
@@ -129,6 +131,7 @@ elif [ $TOOL = "cmake-smoketest" ]; then
   git clone https://github.com/KhronosGroup/SPIRV-Headers.git spirv-headers
   git clone https://github.com/google/re2
   git clone https://github.com/google/effcee
+  git clone https://github.com/abseil/abseil-cpp abseil_cpp
 
   cd $SHADERC_DIR
   mkdir build
@@ -139,7 +142,7 @@ elif [ $TOOL = "cmake-smoketest" ]; then
   cmake -GNinja -DRE2_BUILD_TESTING=OFF -DCMAKE_BUILD_TYPE="Release" ..
 
   echo $(date): Build glslang...
-  ninja glslangValidator
+  ninja glslang-standalone
 
   echo $(date): Build everything...
   ninja
@@ -153,7 +156,7 @@ elif [ $TOOL = "cmake-smoketest" ]; then
   echo $(date): ctest completed.
 elif [ $TOOL = "cmake-android-ndk" ]; then
   using cmake-3.17.2
-  using ndk-r21d
+  using ndk-r25c
   using ninja-1.10.0
 
   clean_dir "$ROOT_DIR/build"
@@ -161,7 +164,7 @@ elif [ $TOOL = "cmake-android-ndk" ]; then
 
   echo $(date): Starting build...
   cmake -DCMAKE_BUILD_TYPE=Release \
-        -DANDROID_NATIVE_API_LEVEL=android-16 \
+        -DANDROID_NATIVE_API_LEVEL=android-24 \
         -DANDROID_ABI="armeabi-v7a with NEON" \
         -DSPIRV_SKIP_TESTS=ON \
         -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
@@ -173,7 +176,7 @@ elif [ $TOOL = "cmake-android-ndk" ]; then
   ninja
   echo $(date): Build completed.
 elif [ $TOOL = "android-ndk-build" ]; then
-  using ndk-r21d
+  using ndk-r25c
 
   clean_dir "$ROOT_DIR/build"
   cd "$ROOT_DIR/build"
@@ -191,10 +194,10 @@ elif [ $TOOL = "bazel" ]; then
   using bazel-5.0.0
 
   echo $(date): Build everything...
-  bazel build :all
+  bazel build --cxxopt=-std=c++17 :all
   echo $(date): Build completed.
 
   echo $(date): Starting bazel test...
-  bazel test :all
+  bazel test --cxxopt=-std=c++17 :all
   echo $(date): Bazel test completed.
 fi

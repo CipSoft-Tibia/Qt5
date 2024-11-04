@@ -22,7 +22,20 @@ namespace AndroidPositioning
     QGeoSatelliteInfoSource::Error startSatelliteUpdates(int androidClassKey,
                                                          bool isSingleRequest,
                                                          int updateRequestTimeout);
-    bool hasPositioningPermissions();
+
+    // This basically mimics QGeoPositionInfoSource::PositioningMethods,
+    // but we introduce a separate enum, because it's also used when accessing
+    // QGeoSatelliteInfoSouce.
+    enum class AccuracyType : quint8
+    {
+        None = 0x00,
+        Precise = 0x01,
+        Approximate = 0x02,
+        Any = 0xFF,
+    };
+    Q_DECLARE_FLAGS(AccuracyTypes, AccuracyType)
+
+    bool hasPositioningPermissions(AccuracyTypes accuracy);
 }
 
 #endif // JNIPOSITIONING_H

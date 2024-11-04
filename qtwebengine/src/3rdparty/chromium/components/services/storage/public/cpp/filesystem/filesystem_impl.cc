@@ -16,6 +16,7 @@
 #include "base/no_destructor.h"
 #include "base/notreached.h"
 #include "base/synchronization/lock.h"
+#include "base/types/expected_macros.h"
 #include "build/build_config.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 
@@ -97,13 +98,16 @@ class FileLockImpl : public mojom::FileLock {
 
 }  // namespace
 
-FilesystemImpl::FilesystemImpl(const base::FilePath& root) : root_(root) {}
+FilesystemImpl::FilesystemImpl(const base::FilePath& root,
+                               ClientType client_type)
+    : root_(root), client_type_(client_type) {}
 
 FilesystemImpl::~FilesystemImpl() = default;
 
 void FilesystemImpl::Clone(mojo::PendingReceiver<mojom::Directory> receiver) {
-  mojo::MakeSelfOwnedReceiver(std::make_unique<FilesystemImpl>(root_),
-                              std::move(receiver));
+  mojo::MakeSelfOwnedReceiver(
+      std::make_unique<FilesystemImpl>(root_, client_type_),
+      std::move(receiver));
 }
 
 void FilesystemImpl::PathExists(const base::FilePath& path,
@@ -115,19 +119,16 @@ void FilesystemImpl::GetEntries(const base::FilePath& path,
                                 mojom::GetEntriesMode mode,
                                 GetEntriesCallback callback) {
   const base::FilePath full_path = MakeAbsolute(path);
-  base::FileErrorOr<std::vector<base::FilePath>> result =
-      GetDirectoryEntries(full_path, mode);
-  if (!result.has_value()) {
-    std::move(callback).Run(result.error(), std::vector<base::FilePath>());
-    return;
-  }
+  ASSIGN_OR_RETURN(
+      std::vector<base::FilePath> result, GetDirectoryEntries(full_path, mode),
+      [&](base::File::Error error) { std::move(callback).Run(error, {}); });
 
   // Fix up the absolute paths to be relative to |path|.
   std::vector<base::FilePath> entries;
   std::vector<base::FilePath::StringType> root_components =
       full_path.GetComponents();
   const size_t num_components_to_strip = root_components.size();
-  for (const auto& entry : result.value()) {
+  for (const auto& entry : result) {
     std::vector<base::FilePath::StringType> components = entry.GetComponents();
     base::FilePath relative_path;
     for (size_t i = num_components_to_strip; i < components.size(); ++i)
@@ -189,8 +190,10 @@ void FilesystemImpl::OpenFile(const base::FilePath& path,
       break;
   }
 
-  // This file may be passed to an untrusted process.
-  flags = base::File::AddFlagsForPassingToUntrustedProcess(flags);
+  if (client_type_ == ClientType::kUntrusted) {
+    // This file may be passed to an untrusted process.
+    flags = base::File::AddFlagsForPassingToUntrustedProcess(flags);
+  }
 
   const base::FilePath full_path = MakeAbsolute(path);
   base::File file(full_path, flags);
@@ -257,16 +260,14 @@ void FilesystemImpl::RenameFile(const base::FilePath& old_path,
 
 void FilesystemImpl::LockFile(const base::FilePath& path,
                               LockFileCallback callback) {
-  base::FileErrorOr<base::File> result = LockFileLocal(MakeAbsolute(path));
-  if (!result.has_value()) {
-    std::move(callback).Run(result.error(), mojo::NullRemote());
-    return;
-  }
+  ASSIGN_OR_RETURN(base::File result, LockFileLocal(MakeAbsolute(path)),
+                   [&](base::File::Error error) {
+                     std::move(callback).Run(error, mojo::NullRemote());
+                   });
 
   mojo::PendingRemote<mojom::FileLock> lock;
   mojo::MakeSelfOwnedReceiver(
-      std::make_unique<FileLockImpl>(MakeAbsolute(path),
-                                     std::move(result.value())),
+      std::make_unique<FileLockImpl>(MakeAbsolute(path), std::move(result)),
       lock.InitWithNewPipeAndPassReceiver());
   std::move(callback).Run(base::File::FILE_OK, std::move(lock));
 }

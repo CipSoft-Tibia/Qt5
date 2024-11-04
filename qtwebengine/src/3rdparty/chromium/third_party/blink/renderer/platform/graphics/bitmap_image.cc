@@ -138,6 +138,14 @@ PaintImage BitmapImage::CreatePaintImage() {
           .set_completion_state(completion_state)
           .set_reset_animation_sequence_id(reset_animation_sequence_id_);
 
+  sk_sp<PaintImageGenerator> gainmap_generator;
+  SkGainmapInfo gainmap_info;
+  if (decoder_->CreateGainmapGenerator(gainmap_generator, gainmap_info)) {
+    DCHECK(gainmap_generator);
+    builder = builder.set_gainmap_paint_image_generator(
+        std::move(gainmap_generator), gainmap_info);
+  }
+
   return builder.TakePaintImage();
 }
 
@@ -177,7 +185,9 @@ bool BitmapImage::ShouldReportByteSizeUMAs(bool data_now_completely_received) {
   if (!decoder_)
     return false;
   return !all_data_received_ && data_now_completely_received &&
-         decoder_->ByteSize() != 0 && IsSizeAvailable();
+         decoder_->ByteSize() != 0 && IsSizeAvailable() &&
+         decoder_->RepetitionCount() == kAnimationNone &&
+         !decoder_->ImageIsHighBitDepth();
 }
 
 Image::SizeAvailability BitmapImage::SetData(scoped_refptr<SharedBuffer> data,
@@ -197,7 +207,7 @@ Image::SizeAvailability BitmapImage::SetData(scoped_refptr<SharedBuffer> data,
   bool has_enough_data = ImageDecoder::HasSufficientDataToSniffMimeType(*data);
   decoder_ = DeferredImageDecoder::Create(std::move(data), all_data_received,
                                           ImageDecoder::kAlphaPremultiplied,
-                                          ColorBehavior::Tag());
+                                          ColorBehavior::kTag);
   // If we had enough data but couldn't create a decoder, it implies a decode
   // failure.
   if (has_enough_data && !decoder_)

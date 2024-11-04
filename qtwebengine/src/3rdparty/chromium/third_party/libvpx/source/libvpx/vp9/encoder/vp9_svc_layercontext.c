@@ -107,7 +107,6 @@ void vp9_init_layer_context(VP9_COMP *const cpi) {
       int layer = LAYER_IDS_TO_IDX(sl, tl, oxcf->ts_number_layers);
       LAYER_CONTEXT *const lc = &svc->layer_context[layer];
       RATE_CONTROL *const lrc = &lc->rc;
-      int i;
       lc->current_video_frame_in_layer = 0;
       lc->layer_size = 0;
       lc->frames_from_key_frame = 0;
@@ -164,17 +163,17 @@ void vp9_init_layer_context(VP9_COMP *const cpi) {
         lc->actual_num_seg1_blocks = 0;
         lc->actual_num_seg2_blocks = 0;
         lc->counter_encode_maxq_scene_change = 0;
-        CHECK_MEM_ERROR(cm, lc->map,
+        CHECK_MEM_ERROR(&cm->error, lc->map,
                         vpx_malloc(mi_rows * mi_cols * sizeof(*lc->map)));
         memset(lc->map, 0, mi_rows * mi_cols);
         last_coded_q_map_size =
             mi_rows * mi_cols * sizeof(*lc->last_coded_q_map);
-        CHECK_MEM_ERROR(cm, lc->last_coded_q_map,
+        CHECK_MEM_ERROR(&cm->error, lc->last_coded_q_map,
                         vpx_malloc(last_coded_q_map_size));
         assert(MAXQ <= 255);
         memset(lc->last_coded_q_map, MAXQ, last_coded_q_map_size);
         consec_zero_mv_size = mi_rows * mi_cols * sizeof(*lc->consec_zero_mv);
-        CHECK_MEM_ERROR(cm, lc->consec_zero_mv,
+        CHECK_MEM_ERROR(&cm->error, lc->consec_zero_mv,
                         vpx_malloc(consec_zero_mv_size));
         memset(lc->consec_zero_mv, 0, consec_zero_mv_size);
       }
@@ -220,7 +219,9 @@ void vp9_update_layer_context_change_config(VP9_COMP *const cpi,
         RATE_CONTROL *const lrc = &lc->rc;
 
         lc->spatial_layer_target_bandwidth = spatial_layer_target;
-        bitrate_alloc = (float)lc->target_bandwidth / target_bandwidth;
+        if (target_bandwidth != 0) {
+          bitrate_alloc = (float)lc->target_bandwidth / target_bandwidth;
+        }
         lrc->starting_buffer_level =
             (int64_t)(rc->starting_buffer_level * bitrate_alloc);
         lrc->optimal_buffer_level =
@@ -252,7 +253,9 @@ void vp9_update_layer_context_change_config(VP9_COMP *const cpi,
 
       lc->target_bandwidth = oxcf->layer_target_bitrate[layer];
 
-      bitrate_alloc = (float)lc->target_bandwidth / target_bandwidth;
+      if (target_bandwidth != 0) {
+        bitrate_alloc = (float)lc->target_bandwidth / target_bandwidth;
+      }
       // Update buffer-related quantities.
       lrc->starting_buffer_level =
           (int64_t)(rc->starting_buffer_level * bitrate_alloc);
@@ -389,6 +392,8 @@ void vp9_save_layer_context(VP9_COMP *const cpi) {
   lc->twopass = cpi->twopass;
   lc->target_bandwidth = (int)oxcf->target_bandwidth;
   lc->alt_ref_source = cpi->alt_ref_source;
+  lc->frame_qp = cpi->common.base_qindex;
+  lc->MBs = cpi->common.MBs;
 
   // For spatial-svc, allow cyclic-refresh to be applied on the spatial layers,
   // for the base temporal layer.
@@ -408,6 +413,9 @@ void vp9_save_layer_context(VP9_COMP *const cpi) {
     lc->actual_num_seg1_blocks = cr->actual_num_seg1_blocks;
     lc->actual_num_seg2_blocks = cr->actual_num_seg2_blocks;
     lc->counter_encode_maxq_scene_change = cr->counter_encode_maxq_scene_change;
+    lc->qindex_delta[0] = cr->qindex_delta[0];
+    lc->qindex_delta[1] = cr->qindex_delta[1];
+    lc->qindex_delta[2] = cr->qindex_delta[2];
   }
 }
 
@@ -790,9 +798,9 @@ int vp9_one_pass_svc_start_layer(VP9_COMP *const cpi) {
       for (sl = svc->number_spatial_layers - 1;
            sl >= svc->first_spatial_layer_to_encode; sl--) {
         int layer = sl * svc->number_temporal_layers + svc->temporal_layer_id;
-        LAYER_CONTEXT *const lc = &svc->layer_context[layer];
-        cpi->rc = lc->rc;
-        cpi->oxcf.target_bandwidth = lc->target_bandwidth;
+        LAYER_CONTEXT *const sl_lc = &svc->layer_context[layer];
+        cpi->rc = sl_lc->rc;
+        cpi->oxcf.target_bandwidth = sl_lc->target_bandwidth;
         if (vp9_test_drop(cpi)) {
           int sl2;
           // Set flag to force drop in encoding for this mode.
@@ -1041,17 +1049,17 @@ void vp9_svc_check_reset_layer_rc_flag(VP9_COMP *const cpi) {
   int sl, tl;
   for (sl = 0; sl < svc->number_spatial_layers; ++sl) {
     // Check for reset based on avg_frame_bandwidth for spatial layer sl.
-    int layer = LAYER_IDS_TO_IDX(sl, svc->number_temporal_layers - 1,
-                                 svc->number_temporal_layers);
-    LAYER_CONTEXT *lc = &svc->layer_context[layer];
+    const int spatial_layer_idx = LAYER_IDS_TO_IDX(
+        sl, svc->number_temporal_layers - 1, svc->number_temporal_layers);
+    LAYER_CONTEXT *lc = &svc->layer_context[spatial_layer_idx];
     RATE_CONTROL *lrc = &lc->rc;
     if (lrc->avg_frame_bandwidth > (3 * lrc->last_avg_frame_bandwidth >> 1) ||
         lrc->avg_frame_bandwidth < (lrc->last_avg_frame_bandwidth >> 1)) {
       // Reset for all temporal layers with spatial layer sl.
       for (tl = 0; tl < svc->number_temporal_layers; ++tl) {
-        int layer = LAYER_IDS_TO_IDX(sl, tl, svc->number_temporal_layers);
-        LAYER_CONTEXT *lc = &svc->layer_context[layer];
-        RATE_CONTROL *lrc = &lc->rc;
+        int temporal_layer_idx =
+            LAYER_IDS_TO_IDX(sl, tl, svc->number_temporal_layers);
+        lrc = &svc->layer_context[temporal_layer_idx].rc;
         lrc->rc_1_frame = 0;
         lrc->rc_2_frame = 0;
         lrc->bits_off_target = lrc->optimal_buffer_level;
@@ -1137,7 +1145,7 @@ void vp9_svc_constrain_inter_layer_pred(VP9_COMP *const cpi) {
 void vp9_svc_assert_constraints_pattern(VP9_COMP *const cpi) {
   SVC *const svc = &cpi->svc;
   // For fixed/non-flexible mode, the following constraint are expected,
-  // when inter-layer prediciton is on (default).
+  // when inter-layer prediction is on (default).
   if (svc->temporal_layering_mode != VP9E_TEMPORAL_LAYERING_MODE_BYPASS &&
       svc->disable_inter_layer_pred == INTER_LAYER_PRED_ON &&
       svc->framedrop_mode != LAYER_DROP) {

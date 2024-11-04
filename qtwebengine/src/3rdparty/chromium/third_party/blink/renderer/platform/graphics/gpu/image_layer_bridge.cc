@@ -8,8 +8,8 @@
 #include "cc/layers/texture_layer.h"
 #include "cc/resources/cross_thread_shared_bitmap.h"
 #include "components/viz/common/resources/bitmap_allocation.h"
-#include "components/viz/common/resources/resource_format_utils.h"
 #include "components/viz/common/resources/shared_bitmap.h"
+#include "components/viz/common/resources/shared_image_format_utils.h"
 #include "components/viz/common/resources/transferable_resource.h"
 #include "gpu/command_buffer/client/gles2_interface.h"
 #include "gpu/command_buffer/client/shared_image_interface.h"
@@ -45,24 +45,25 @@ scoped_refptr<StaticBitmapImage> MakeAccelerated(
     return source;
   }
 
-  auto paint_image = source->PaintImageForCurrentFrame();
-  auto image_info = paint_image.GetSkImageInfo().makeWH(
+  const auto paint_image = source->PaintImageForCurrentFrame();
+  const auto image_info = paint_image.GetSkImageInfo().makeWH(
       source->Size().width(), source->Size().height());
   // Always request gpu::SHARED_IMAGE_USAGE_SCANOUT when using gpu compositing,
   // if possible. This is safe because the prerequisite capabilities are checked
   // downstream in CanvasResourceProvider::CreateSharedImageProvider.
+  constexpr uint32_t kSharedImageUsageFlags =
+      gpu::SHARED_IMAGE_USAGE_DISPLAY_READ | gpu::SHARED_IMAGE_USAGE_SCANOUT;
   auto provider = CanvasResourceProvider::CreateSharedImageProvider(
       image_info, cc::PaintFlags::FilterQuality::kLow,
       CanvasResourceProvider::ShouldInitialize::kNo, context_provider_wrapper,
-      RasterMode::kGPU, source->IsOriginTopLeft(),
-      gpu::SHARED_IMAGE_USAGE_DISPLAY_READ | gpu::SHARED_IMAGE_USAGE_SCANOUT);
+      RasterMode::kGPU, kSharedImageUsageFlags);
   if (!provider || !provider->IsAccelerated())
     return nullptr;
 
   cc::PaintFlags paint;
   paint.setBlendMode(SkBlendMode::kSrc);
   provider->Canvas()->drawImage(paint_image, 0, 0, SkSamplingOptions(), &paint);
-  return provider->Snapshot();
+  return provider->Snapshot(CanvasResourceProvider::FlushReason::kNon2DCanvas);
 }
 
 }  // namespace
@@ -171,11 +172,6 @@ bool ImageLayerBridge::PrepareTransferableResource(
     if (!image_for_compositor || !image_for_compositor->ContextProvider())
       return false;
 
-    const gfx::Size size(image_for_compositor->width(),
-                         image_for_compositor->height());
-    uint32_t filter = filter_quality_ == cc::PaintFlags::FilterQuality::kNone
-                          ? GL_NEAREST
-                          : GL_LINEAR;
     auto mailbox_holder = image_for_compositor->GetMailboxHolder();
 
     if (mailbox_holder.mailbox.IsZero()) {
@@ -186,26 +182,21 @@ bool ImageLayerBridge::PrepareTransferableResource(
       return false;
     }
 
+    layer_->SetFlipped(!image_for_compositor->IsOriginTopLeft());
+
+    const gfx::Size size(image_for_compositor->width(),
+                         image_for_compositor->height());
+
     auto* sii = image_for_compositor->ContextProvider()->SharedImageInterface();
     bool is_overlay_candidate = sii->UsageForMailbox(mailbox_holder.mailbox) &
                                 gpu::SHARED_IMAGE_USAGE_SCANOUT;
 
     SkColorType color_type = image_for_compositor->GetSkColorInfo().colorType();
     *out_resource = viz::TransferableResource::MakeGpu(
-        mailbox_holder.mailbox, filter, mailbox_holder.texture_target,
+        mailbox_holder.mailbox, mailbox_holder.texture_target,
         mailbox_holder.sync_token, size,
-        viz::SkColorTypeToResourceFormat(color_type), is_overlay_candidate);
-
-    // If the transferred ImageBitmap contained in this ImageLayerBridge was
-    // originated in a WebGPU context, we need to set the layer to be flipped.
-    // Canvas2D and WebGL contexts handle this aspect internally, whereas
-    // WebGPU does not.
-    if (sii->UsageForMailbox(mailbox_holder.mailbox) &
-        gpu::SHARED_IMAGE_USAGE_WEBGPU_SWAP_CHAIN_TEXTURE) {
-      // Using image_for_compositor->IsOriginTopLeft() and remove
-      // implementation of sii->UsageForMailbox()?
-      layer_->SetFlipped(false);
-    }
+        viz::SkColorTypeToSinglePlaneSharedImageFormat(color_type),
+        is_overlay_candidate);
 
     auto func = WTF::BindOnce(&ImageLayerBridge::ResourceReleasedGpu,
                               WrapWeakPersistent(this),
@@ -223,15 +214,15 @@ bool ImageLayerBridge::PrepareTransferableResource(
     // compositor.
     constexpr SkColorType dst_color_type = kN32_SkColorType;
     // TODO(vasilyt): this used to be
-    // viz::SkColorTypeToResourceFormat(dst_color_type), but on some
-    // platforms (including Mac), kN32_SkColorType is BGRA8888 which
-    // is disallowed as a bitmap format. Deeper refactorings are
-    // needed to fix this properly; in the meantime, force the use of
-    // viz::RGBA_8888 as the resource format. This addresses assertion
-    // failures when serializing these bitmaps to the GPU process.
-    viz::ResourceFormat resource_format = viz::RGBA_8888;
+    // viz::SkColorTypeToResourceFormat(dst_color_type), but on some platforms
+    // (including Mac), kN32_SkColorType is BGRA8888 which is disallowed as a
+    // bitmap format. Deeper refactorings are needed to fix this properly; in
+    // the meantime, force the use of viz::SinglePlaneFormat::kRGBA_8888 as the
+    // resource format. This addresses assertion failures when serializing these
+    // bitmaps to the GPU process.
+    viz::SharedImageFormat format = viz::SinglePlaneFormat::kRGBA_8888;
     RegisteredBitmap registered =
-        CreateOrRecycleBitmap(size, resource_format, bitmap_registrar);
+        CreateOrRecycleBitmap(size, format, bitmap_registrar);
 
     SkImageInfo dst_info =
         SkImageInfo::Make(size.width(), size.height(), dst_color_type,
@@ -243,7 +234,7 @@ bool ImageLayerBridge::PrepareTransferableResource(
       return false;
 
     *out_resource = viz::TransferableResource::MakeSoftware(
-        registered.bitmap->id(), size, resource_format);
+        registered.bitmap->id(), size, format);
     out_resource->color_space = sk_image->colorSpace()
                                     ? gfx::ColorSpace(*sk_image->colorSpace())
                                     : gfx::ColorSpace::CreateSRGB();
@@ -257,14 +248,14 @@ bool ImageLayerBridge::PrepareTransferableResource(
 
 ImageLayerBridge::RegisteredBitmap ImageLayerBridge::CreateOrRecycleBitmap(
     const gfx::Size& size,
-    viz::ResourceFormat format,
+    viz::SharedImageFormat format,
     cc::SharedBitmapIdRegistrar* bitmap_registrar) {
   auto* it = std::remove_if(
       recycled_bitmaps_.begin(), recycled_bitmaps_.end(),
       [&size, &format](const RegisteredBitmap& registered) {
         unsigned src_bytes_per_pixel =
-            viz::BitsPerPixel(registered.bitmap->format()) / 8;
-        unsigned target_bytes_per_pixel = viz::BitsPerPixel(format) / 8;
+            registered.bitmap->format().BitsPerPixel() / 8;
+        unsigned target_bytes_per_pixel = format.BitsPerPixel() / 8;
         return (registered.bitmap->size().GetArea() * src_bytes_per_pixel !=
                 size.GetArea() * target_bytes_per_pixel);
       });

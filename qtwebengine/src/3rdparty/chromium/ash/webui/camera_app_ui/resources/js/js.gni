@@ -9,7 +9,6 @@ compile_js_files = [
   "async_job_queue.ts",
   "barcode_chip.ts",
   "custom_effect.ts",
-  "css.ts",
   "deployed_version.ts",
   "device/camera3_device_info.ts",
   "device/camera_manager.ts",
@@ -27,6 +26,7 @@ compile_js_files = [
   "device/preview.ts",
   "device/stream_constraints.ts",
   "device/stream_manager.ts",
+  "device/stream_manager_chrome.ts",
   "device/type.ts",
   "dom.ts",
   "error.ts",
@@ -42,7 +42,10 @@ compile_js_files = [
   "lib/comlink.ts",
   "lib/comlink_protocol.ts",
   "lib/ffmpeg.js",
+  "lit/svg_wrapper.ts",
+  "local_dev.ts",
   "main.ts",
+  "menu.ts",
   "metrics.ts",
   "models/async_interval.ts",
   "models/async_writer.ts",
@@ -64,12 +67,14 @@ compile_js_files = [
   "mojo/image_capture.ts",
   "mojo/type.ts",
   "mojo/util.ts",
+  "multi_window_manager.ts",
   "nav.ts",
   "perf.ts",
   "snackbar.ts",
   "sound.ts",
   "spoken_msg.ts",
   "state.ts",
+  "trusted_script_url_policy_util.ts",
   "test/cca_test.ts",
   "test/cca_type.ts",
   "test_bridge.ts",
@@ -78,6 +83,7 @@ compile_js_files = [
   "toast.ts",
   "tooltip.ts",
   "type.ts",
+  "type_utils.ts",
   "unload.ts",
   "untrusted_ga_helper.ts",
   "untrusted_script_loader.ts",
@@ -96,6 +102,7 @@ compile_js_files = [
   "views/document_review.ts",
   "views/document_fix_mode.ts",
   "views/document_preview_mode.ts",
+  "views/flash.ts",
   "views/option_panel.ts",
   "views/ptz_panel.ts",
   "views/review.ts",
@@ -110,6 +117,9 @@ compile_js_files = [
   "waitable_event.ts",
   "window_controller.ts",
 ]
+
+local_dev_js_files = [ "local_dev_overrides.ts" ]
+compile_js_files += local_dev_js_files
 
 no_compile_js_files = [ "lib/analytics.js" ]
 

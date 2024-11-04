@@ -583,7 +583,7 @@ MaybeError DoCopyForBrowser(DeviceBase* device,
     passEncoder->APISetViewport(destination->origin.x, destination->origin.y, copySize->width,
                                 copySize->height, 0.0, 1.0);
     passEncoder->APIDraw(3);
-    passEncoder->APIEnd();
+    passEncoder->End();
 
     // Finsh encoding.
     Ref<CommandBufferBase> commandBuffer;
@@ -600,8 +600,7 @@ MaybeError ValidateCopyForBrowserDestination(DeviceBase* device,
                                              const Extent3D& copySize,
                                              const CopyTextureForBrowserOptions& options) {
     DAWN_TRY(device->ValidateObject(destination.texture));
-    DAWN_INVALID_IF(destination.texture->GetTextureState() == TextureBase::TextureState::Destroyed,
-                    "Destination texture %s is destroyed.", destination.texture);
+    DAWN_TRY(destination.texture->ValidateCanUseInSubmitNow());
     DAWN_TRY_CONTEXT(ValidateImageCopyTexture(device, destination, copySize),
                      "validating the ImageCopyTexture for the destination");
     DAWN_TRY_CONTEXT(ValidateTextureCopyRange(device, destination, copySize),
@@ -652,8 +651,7 @@ MaybeError ValidateCopyTextureForBrowser(DeviceBase* device,
                                          const CopyTextureForBrowserOptions* options) {
     // Validate source
     DAWN_TRY(device->ValidateObject(source->texture));
-    DAWN_INVALID_IF(source->texture->GetTextureState() == TextureBase::TextureState::Destroyed,
-                    "Source texture %s is destroyed.", source->texture);
+    DAWN_TRY(source->texture->ValidateCanUseInSubmitNow());
     DAWN_TRY_CONTEXT(ValidateImageCopyTexture(device, *source, *copySize),
                      "validating the ImageCopyTexture for the source");
     DAWN_TRY_CONTEXT(ValidateTextureCopyRange(device, *source, *copySize),
@@ -694,18 +692,20 @@ MaybeError ValidateCopyExternalTextureForBrowser(DeviceBase* device,
     DAWN_TRY(device->ValidateObject(source->externalTexture));
     DAWN_TRY(source->externalTexture->ValidateCanUseInSubmitNow());
 
-    const Extent2D& sourceVisibleSize = source->externalTexture->GetVisibleSize();
+    Extent2D sourceSize;
+    sourceSize.width = source->naturalSize.width;
+    sourceSize.height = source->naturalSize.height;
 
     // All texture dimensions are in uint32_t so by doing checks in uint64_t we avoid
     // overflows.
     DAWN_INVALID_IF(
         static_cast<uint64_t>(source->origin.x) + static_cast<uint64_t>(copySize->width) >
-                static_cast<uint64_t>(sourceVisibleSize.width) ||
+                static_cast<uint64_t>(sourceSize.width) ||
             static_cast<uint64_t>(source->origin.y) + static_cast<uint64_t>(copySize->height) >
-                static_cast<uint64_t>(sourceVisibleSize.height) ||
+                static_cast<uint64_t>(sourceSize.height) ||
             static_cast<uint64_t>(source->origin.z) > 0,
-        "Texture copy range (origin: %s, copySize: %s) touches outside of %s visible size (%s).",
-        &source->origin, copySize, source->externalTexture, &sourceVisibleSize);
+        "Texture copy range (origin: %s, copySize: %s) touches outside of %s source size (%s).",
+        &source->origin, copySize, source->externalTexture, &sourceSize);
     DAWN_INVALID_IF(source->origin.z > 0, "Source has a non-zero z origin (%u).", source->origin.z);
     DAWN_INVALID_IF(
         options->internalUsage && !device->HasFeature(Feature::DawnInternalUsages),
@@ -731,8 +731,7 @@ MaybeError DoCopyExternalTextureForBrowser(DeviceBase* device,
                                            const CopyTextureForBrowserOptions* options) {
     TextureInfo info;
     info.origin = source->origin;
-    const Extent2D& visibleSize = source->externalTexture->GetVisibleSize();
-    info.size = {visibleSize.width, visibleSize.height, 1};
+    info.size = {source->naturalSize.width, source->naturalSize.height, 1};
 
     RenderPipelineBase* pipeline;
     DAWN_TRY_ASSIGN(pipeline, GetOrCreateCopyExternalTextureForBrowserPipeline(

@@ -7,7 +7,6 @@
 #include "qhttp2configuration.h"
 #include "private/qnoncontiguousbytedevice_p.h"
 
-#include <qpair.h>
 #include <qdebug.h>
 
 #include <private/qhttp2protocolhandler_p.h>
@@ -23,6 +22,7 @@
 #include "private/qnetconmonitor_p.h"
 
 #include <memory>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -209,6 +209,10 @@ void QHttpNetworkConnectionChannel::abort()
 bool QHttpNetworkConnectionChannel::sendRequest()
 {
     Q_ASSERT(protocolHandler);
+    if (waitingForPotentialAbort) {
+        needInvokeSendRequest = true;
+        return false; // this return value is unused
+    }
     return protocolHandler->sendRequest();
 }
 
@@ -221,21 +225,28 @@ bool QHttpNetworkConnectionChannel::sendRequest()
 void QHttpNetworkConnectionChannel::sendRequestDelayed()
 {
     QMetaObject::invokeMethod(this, [this] {
-        Q_ASSERT(protocolHandler);
         if (reply)
-            protocolHandler->sendRequest();
+            sendRequest();
     }, Qt::ConnectionType::QueuedConnection);
 }
 
 void QHttpNetworkConnectionChannel::_q_receiveReply()
 {
     Q_ASSERT(protocolHandler);
+    if (waitingForPotentialAbort) {
+        needInvokeReceiveReply = true;
+        return;
+    }
     protocolHandler->_q_receiveReply();
 }
 
 void QHttpNetworkConnectionChannel::_q_readyRead()
 {
     Q_ASSERT(protocolHandler);
+    if (waitingForPotentialAbort) {
+        needInvokeReadyRead = true;
+        return;
+    }
     protocolHandler->_q_readyRead();
 }
 
@@ -325,8 +336,8 @@ bool QHttpNetworkConnectionChannel::ensureConnection()
         QHttpNetworkReply *potentialReply = connection->d_func()->predictNextRequestsReply();
         if (potentialReply) {
             QMetaObject::invokeMethod(potentialReply, "socketStartedConnecting", Qt::QueuedConnection);
-        } else if (h2RequestsToSend.size() > 0) {
-            QMetaObject::invokeMethod(h2RequestsToSend.values().at(0).second, "socketStartedConnecting", Qt::QueuedConnection);
+        } else if (!h2RequestsToSend.isEmpty()) {
+            QMetaObject::invokeMethod(std::as_const(h2RequestsToSend).first().second, "socketStartedConnecting", Qt::QueuedConnection);
         }
 
 #ifndef QT_NO_NETWORKPROXY
@@ -344,8 +355,8 @@ bool QHttpNetworkConnectionChannel::ensureConnection()
                 if (connection->connectionType()
                             == QHttpNetworkConnection::ConnectionTypeHTTP2Direct
                     || (connection->connectionType() == QHttpNetworkConnection::ConnectionTypeHTTP2
-                        && h2RequestsToSend.size() > 0)) {
-                    value = h2RequestsToSend.first().first.headerField("user-agent");
+                        && !h2RequestsToSend.isEmpty())) {
+                    value = std::as_const(h2RequestsToSend).first().first.headerField("user-agent");
                 } else {
                     value = connection->d_func()->predictNextRequest().headerField("user-agent");
                 }
@@ -1096,16 +1107,15 @@ void QHttpNetworkConnectionChannel::_q_error(QAbstractSocket::SocketError socket
 
     if (connection->connectionType() == QHttpNetworkConnection::ConnectionTypeHTTP2
         || connection->connectionType() == QHttpNetworkConnection::ConnectionTypeHTTP2Direct) {
-        QList<HttpMessagePair> h2Pairs = h2RequestsToSend.values();
-        for (int a = 0; a < h2Pairs.size(); ++a) {
+        const auto h2RequestsToSendCopy = std::exchange(h2RequestsToSend, {});
+        for (const auto &httpMessagePair : h2RequestsToSendCopy) {
             // emit error for all replies
-            QHttpNetworkReply *currentReply = h2Pairs.at(a).second;
+            QHttpNetworkReply *currentReply = httpMessagePair.second;
             currentReply->d_func()->errorString = errorString;
             currentReply->d_func()->httpErrorCode = errorCode;
             Q_ASSERT(currentReply);
             emit currentReply->finishedWithError(errorCode, errorString);
         }
-        h2RequestsToSend.clear();
     }
 
     // send the next request
@@ -1154,9 +1164,9 @@ void QHttpNetworkConnectionChannel::emitFinishedWithError(QNetworkReply::Network
 {
     if (reply)
         emit reply->finishedWithError(error, QHttpNetworkConnectionChannel::tr(message));
-    QList<HttpMessagePair> h2Pairs = h2RequestsToSend.values();
-    for (int a = 0; a < h2Pairs.size(); ++a) {
-        QHttpNetworkReply *currentReply = h2Pairs.at(a).second;
+    const auto h2RequestsToSendCopy = h2RequestsToSend;
+    for (const auto &httpMessagePair : h2RequestsToSendCopy) {
+        QHttpNetworkReply *currentReply = httpMessagePair.second;
         Q_ASSERT(currentReply);
         emit currentReply->finishedWithError(error, QHttpNetworkConnectionChannel::tr(message));
     }
@@ -1237,11 +1247,21 @@ void QHttpNetworkConnectionChannel::_q_encrypted()
 
     if (connection->connectionType() == QHttpNetworkConnection::ConnectionTypeHTTP2 ||
         connection->connectionType() == QHttpNetworkConnection::ConnectionTypeHTTP2Direct) {
-        if (h2RequestsToSend.size() > 0) {
+        if (!h2RequestsToSend.isEmpty()) {
             // Similar to HTTP/1.1 counterpart below:
-            const auto &h2Pairs = h2RequestsToSend.values(); // (request, reply)
-            const auto &pair = h2Pairs.first();
+            const auto &pair = std::as_const(h2RequestsToSend).first();
+            waitingForPotentialAbort = true;
             emit pair.second->encrypted();
+
+            // We don't send or handle any received data until any effects from
+            // emitting encrypted() have been processed. This is necessary
+            // because the user may have called abort(). We may also abort the
+            // whole connection if the request has been aborted and there is
+            // no more requests to send.
+            QMetaObject::invokeMethod(this,
+                                      &QHttpNetworkConnectionChannel::checkAndResumeCommunication,
+                                      Qt::QueuedConnection);
+
             // In case our peer has sent us its settings (window size, max concurrent streams etc.)
             // let's give _q_receiveReply a chance to read them first ('invokeMethod', QueuedConnection).
         }
@@ -1259,12 +1279,33 @@ void QHttpNetworkConnectionChannel::_q_encrypted()
     QMetaObject::invokeMethod(connection, "_q_startNextRequest", Qt::QueuedConnection);
 }
 
+
+void QHttpNetworkConnectionChannel::checkAndResumeCommunication()
+{
+    Q_ASSERT(connection->connectionType() == QHttpNetworkConnection::ConnectionTypeHTTP2
+             || connection->connectionType() == QHttpNetworkConnection::ConnectionTypeHTTP2Direct);
+
+    // Because HTTP/2 requires that we send a SETTINGS frame as the first thing we do, and respond
+    // to a SETTINGS frame with an ACK, we need to delay any handling until we can ensure that any
+    // effects from emitting encrypted() have been processed.
+    // This function is called after encrypted() was emitted, so check for changes.
+
+    if (!reply && h2RequestsToSend.isEmpty())
+        abort();
+    waitingForPotentialAbort = false;
+    if (needInvokeReadyRead)
+        _q_readyRead();
+    if (needInvokeReceiveReply)
+        _q_receiveReply();
+    if (needInvokeSendRequest)
+        sendRequest();
+}
+
 void QHttpNetworkConnectionChannel::requeueHttp2Requests()
 {
-    QList<HttpMessagePair> h2Pairs = h2RequestsToSend.values();
-    for (int a = 0; a < h2Pairs.size(); ++a)
-        connection->d_func()->requeueRequest(h2Pairs.at(a));
-    h2RequestsToSend.clear();
+    const auto h2RequestsToSendCopy = std::exchange(h2RequestsToSend, {});
+    for (const auto &httpMessagePair : h2RequestsToSendCopy)
+        connection->d_func()->requeueRequest(httpMessagePair);
 }
 
 void QHttpNetworkConnectionChannel::_q_sslErrors(const QList<QSslError> &errors)
@@ -1283,10 +1324,10 @@ void QHttpNetworkConnectionChannel::_q_sslErrors(const QList<QSslError> &errors)
     }
 #ifndef QT_NO_SSL
     else { // HTTP/2
-        QList<HttpMessagePair> h2Pairs = h2RequestsToSend.values();
-        for (int a = 0; a < h2Pairs.size(); ++a) {
+        const auto h2RequestsToSendCopy = h2RequestsToSend;
+        for (const auto &httpMessagePair : h2RequestsToSendCopy) {
             // emit SSL errors for all replies
-            QHttpNetworkReply *currentReply = h2Pairs.at(a).second;
+            QHttpNetworkReply *currentReply = httpMessagePair.second;
             Q_ASSERT(currentReply);
             emit currentReply->sslErrors(errors);
         }
@@ -1306,10 +1347,10 @@ void QHttpNetworkConnectionChannel::_q_preSharedKeyAuthenticationRequired(QSslPr
         if (reply)
             emit reply->preSharedKeyAuthenticationRequired(authenticator);
     } else {
-        QList<HttpMessagePair> h2Pairs = h2RequestsToSend.values();
-        for (int a = 0; a < h2Pairs.size(); ++a) {
+        const auto h2RequestsToSendCopy = h2RequestsToSend;
+        for (const auto &httpMessagePair : h2RequestsToSendCopy) {
             // emit SSL errors for all replies
-            QHttpNetworkReply *currentReply = h2Pairs.at(a).second;
+            QHttpNetworkReply *currentReply = httpMessagePair.second;
             Q_ASSERT(currentReply);
             emit currentReply->preSharedKeyAuthenticationRequired(authenticator);
         }

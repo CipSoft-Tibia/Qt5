@@ -23,9 +23,7 @@
 
 #include "extensions/qwlqtkey_p.h"
 #include "extensions/qwaylandtextinput.h"
-#if QT_WAYLAND_TEXT_INPUT_V4_WIP
-#include "extensions/qwaylandtextinputv4.h"
-#endif // QT_WAYLAND_TEXT_INPUT_V4_WIP
+#include "extensions/qwaylandtextinputv3.h"
 #include "extensions/qwaylandqttextinputmethod.h"
 
 QT_BEGIN_NAMESPACE
@@ -468,17 +466,15 @@ void QWaylandSeat::sendFullKeyEvent(QKeyEvent *event)
             }
         }
 
-#if QT_WAYLAND_TEXT_INPUT_V4_WIP
-        if (keyboardFocus()->client()->textInputProtocols().testFlag(QWaylandClient::TextInputProtocol::TextInputV4)) {
-            QWaylandTextInputV4 *textInputV4 = QWaylandTextInputV4::findIn(this);
-            if (textInputV4 && !event->text().isEmpty()) {
-                // it will just commit the text for text-input-unstable-v4-wip when keyPress
+        if (keyboardFocus()->client()->textInputProtocols().testFlag(QWaylandClient::TextInputProtocol::TextInputV3)) {
+            QWaylandTextInputV3 *textInputV3 = QWaylandTextInputV3::findIn(this);
+            if (textInputV3 && !event->text().isEmpty()) {
+                // it will just commit the text for text-input-unstable-v3 when keyPress
                 if (event->type() == QEvent::KeyPress)
-                    textInputV4->sendKeyEvent(event);
+                    textInputV3->sendKeyEvent(event);
                 return;
             }
         }
-#endif // QT_WAYLAND_TEXT_INPUT_V4_WIP
     }
 #endif
 
@@ -539,6 +535,104 @@ void QWaylandSeat::sendKeyEvent(int qtKey, bool pressed)
     } else {
         qWarning() << "Can't send Wayland key event: Unable to get scan code for" << Qt::Key(qtKey);
     }
+}
+
+/*!
+ * \qmlmethod void QtWayland.Compositor::WaylandSeat::sendUnicodeKeyPressEvent(uint unicode)
+ * \since 6.7
+ *
+ * Sends a key press event of a UCS4 \a unicode through a text-input protocol.
+ *
+ * \note This function will not work properly if the client does not support the
+ * text-input protocol that the compositor supports.
+ */
+
+/*!
+ * Sends a key press event of a UCS4 \a unicode through a text-input protocol.
+ *
+ * \note This function will not work properly if the client does not support the
+ * text-input protocol that the compositor supports.
+ *
+ * \sa {sendFullKeyEvent} {sendKeyEvent}
+ *
+ * \since 6.7
+ */
+void QWaylandSeat::sendUnicodeKeyPressEvent(uint unicode)
+{
+    sendUnicodeKeyEvent(unicode, QEvent::KeyPress);
+}
+
+/*!
+ * \qmlmethod void QtWayland.Compositor::WaylandSeat::sendUnicodeKeyReleaseEvent(uint unicode)
+ * \since 6.7
+ *
+ * Sends a key release event of a UCS4 \a unicode through a text-input protocol.
+ *
+ * \note This function will not work properly if the client does not support the
+ * text-input protocol that the compositor supports.
+ */
+
+/*!
+ * Sends a key release event of a UCS4 \a unicode through a text-input protocol.
+ *
+ * \note This function will not work properly if the client does not support the
+ * text-input protocol that the compositor supports.
+ *
+ * \sa {sendFullKeyEvent} {sendKeyEvent}
+ *
+ * \since 6.7
+ */
+void QWaylandSeat::sendUnicodeKeyReleaseEvent(uint unicode)
+{
+    sendUnicodeKeyEvent(unicode, QEvent::KeyRelease);
+}
+
+/*!
+ * \internal
+ *
+ * Sends an \a eventType for the UCS4 \a unicode through a text-input protocol.
+ */
+void QWaylandSeat::sendUnicodeKeyEvent(uint unicode, QEvent::Type eventType)
+{
+    if (!keyboardFocus()) {
+        qWarning("Can't send a unicode key event, no keyboard focus, fix the compositor");
+        return;
+    }
+#if QT_CONFIG(im)
+    QString text;
+    text += QChar::fromUcs4(static_cast<char32_t>(unicode));
+
+    QKeyEvent event(eventType, Qt::Key_unknown, Qt::KeyboardModifiers{}, text);
+    if (keyboardFocus()->client()->textInputProtocols().testFlag(QWaylandClient::TextInputProtocol::TextInputV2)) {
+        QWaylandTextInput *textInput = QWaylandTextInput::findIn(this);
+        if (textInput) {
+            textInput->sendKeyEvent(&event);
+            return;
+        }
+    }
+
+    if (keyboardFocus()->client()->textInputProtocols().testFlag(QWaylandClient::TextInputProtocol::QtTextInputMethodV1)) {
+        QWaylandQtTextInputMethod *textInputMethod = QWaylandQtTextInputMethod::findIn(this);
+        if (textInputMethod) {
+            textInputMethod->sendKeyEvent(&event);
+            return;
+        }
+    }
+
+    if (keyboardFocus()->client()->textInputProtocols().testFlag(QWaylandClient::TextInputProtocol::TextInputV3)) {
+        QWaylandTextInputV3 *textInputV3 = QWaylandTextInputV3::findIn(this);
+        if (textInputV3 && !text.isEmpty()) {
+            // it will just commit the text for text-input-unstable-v3 when keyPress
+            if (eventType == QEvent::KeyPress)
+                textInputV3->sendKeyEvent(&event);
+            return;
+        }
+    }
+#else
+    Q_UNUSED(unicode);
+    Q_UNUSED(eventType);
+    qWarning() << "Can't send a unicode key event: Unable to find a text-input protocol.";
+#endif
 }
 
 /*!

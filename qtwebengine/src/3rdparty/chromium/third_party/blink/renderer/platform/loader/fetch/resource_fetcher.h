@@ -30,14 +30,18 @@
 #include <memory>
 #include <utility>
 
+#include "base/strings/string_piece.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/unguessable_token.h"
+#include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/metrics/public/cpp/mojo_ukm_recorder.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/public/common/subresource_load_metrics.h"
 #include "third_party/blink/public/mojom/blob/blob_registry.mojom-blink.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink-forward.h"
+#include "third_party/blink/public/mojom/loader/resource_cache.mojom-blink.h"
 #include "third_party/blink/public/mojom/service_worker/controller_service_worker_mode.mojom-blink-forward.h"
-#include "third_party/blink/public/mojom/timing/resource_timing.mojom-blink-forward.h"
+#include "third_party/blink/public/mojom/timing/resource_timing.mojom-blink.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
@@ -91,7 +95,8 @@ struct ResourceLoaderOptions;
 // keep a ResourceFetcher alive past detach if scripts still reference the
 // Document.
 class PLATFORM_EXPORT ResourceFetcher
-    : public GarbageCollected<ResourceFetcher> {
+    : public GarbageCollected<ResourceFetcher>,
+      public MemoryPressureListener {
   USING_PRE_FINALIZER(ResourceFetcher, ClearPreloads);
 
  public:
@@ -121,8 +126,8 @@ class PLATFORM_EXPORT ResourceFetcher
   explicit ResourceFetcher(const ResourceFetcherInit&);
   ResourceFetcher(const ResourceFetcher&) = delete;
   ResourceFetcher& operator=(const ResourceFetcher&) = delete;
-  virtual ~ResourceFetcher();
-  virtual void Trace(Visitor*) const;
+  ~ResourceFetcher() override;
+  void Trace(Visitor*) const override;
 
   // - This function returns the same object throughout this fetcher's
   //   entire life.
@@ -174,8 +179,14 @@ class PLATFORM_EXPORT ResourceFetcher
   std::unique_ptr<WebCodeCacheLoader> CreateCodeCacheLoader();
 
   Resource* CachedResource(const KURL&) const;
-  static void AddPriorityObserverForTesting(const KURL&,
-                                            base::OnceCallback<void(int)>);
+
+  // Registers an callback to be called with the resource priority of the fetch
+  // made to the specified URL. When `new_load_only` is set to false,
+  // this will also search for Resources alive in Oilpan heap, and their
+  // fetched priority.
+  void AddPriorityObserverForTesting(const KURL&,
+                                     base::OnceCallback<void(int)>,
+                                     bool new_load_only = false);
 
   using DocumentResourceMap = HeapHashMap<String, WeakMember<Resource>>;
   // Note: This function is defined for devtools. Do not use this function in
@@ -183,6 +194,9 @@ class PLATFORM_EXPORT ResourceFetcher
   const DocumentResourceMap& AllResources() const {
     return cached_resources_map_;
   }
+
+  const HeapHashSet<Member<Resource>> MoveResourceStrongReferences();
+  bool HasStrongReferenceForTesting(Resource* resource);
 
   enum class ImageLoadBlockingPolicy {
     kDefault,
@@ -239,10 +253,7 @@ class PLATFORM_EXPORT ResourceFetcher
   void HandleLoaderFinish(Resource*,
                           base::TimeTicks finish_time,
                           LoaderFinishType,
-                          uint32_t inflight_keepalive_bytes,
-                          bool should_report_corb_blocking,
-                          bool pervasive_payload_requested,
-                          int64_t bytes_fetched);
+                          uint32_t inflight_keepalive_bytes);
   void HandleLoaderError(Resource*,
                          base::TimeTicks finish_time,
                          const ResourceError&,
@@ -303,10 +314,16 @@ class PLATFORM_EXPORT ResourceFetcher
       FetchParameters::DeferOption defer_option,
       FetchParameters::SpeculativePreloadType speculative_preload_type,
       RenderBlockingBehavior render_blocking_behavior,
-      bool is_link_preload) {
+      mojom::blink::ScriptType script_type,
+      bool is_link_preload,
+      const absl::optional<float> resource_width = absl::nullopt,
+      const absl::optional<float> resource_height = absl::nullopt,
+      bool is_potentially_lcp_element = false) {
     return ComputeLoadPriority(type, request, visibility_statue, defer_option,
                                speculative_preload_type,
-                               render_blocking_behavior, is_link_preload);
+                               render_blocking_behavior, script_type,
+                               is_link_preload, resource_width, resource_height,
+                               is_potentially_lcp_element);
   }
 
   bool ShouldLoadIncrementalForTesting(ResourceType type) {
@@ -336,6 +353,14 @@ class PLATFORM_EXPORT ResourceFetcher
   void CancelWebBundleSubresourceLoadersFor(
       const base::UnguessableToken& web_bundle_token);
 
+  void OnMemoryPressure(
+      base::MemoryPressureListener::MemoryPressureLevel) override;
+
+  void SetResourceCache(
+      mojo::PendingRemote<mojom::blink::ResourceCache> remote);
+
+  void RecordLCPPSubresourceMetrics();
+
  private:
   friend class ResourceCacheValidationSuppressor;
   enum class StopFetchingTarget {
@@ -346,13 +371,10 @@ class PLATFORM_EXPORT ResourceFetcher
   bool StartLoad(Resource*,
                  ResourceRequestBody,
                  ImageLoadBlockingPolicy,
-                 RenderBlockingBehavior);
+                 RenderBlockingBehavior,
+                 absl::optional<mojom::blink::WebFeature> count_orb_block_as);
 
   void InitializeRevalidation(ResourceRequest&, Resource*);
-  // When |security_origin| of the ResourceLoaderOptions is not a nullptr, it'll
-  // be used instead of the associated FetchContext's SecurityOrigin.
-  scoped_refptr<const SecurityOrigin> GetSourceOrigin(
-      const ResourceLoaderOptions&) const;
   void AddToMemoryCacheIfNeeded(const FetchParameters&, Resource*);
   Resource* CreateResourceForLoading(const FetchParameters&,
                                      const ResourceFactory&);
@@ -366,7 +388,19 @@ class PLATFORM_EXPORT ResourceFetcher
       FetchParameters::SpeculativePreloadType =
           FetchParameters::SpeculativePreloadType::kNotSpeculative,
       RenderBlockingBehavior = RenderBlockingBehavior::kNonBlocking,
-      bool is_link_preload = false);
+      mojom::blink::ScriptType script_type = mojom::blink::ScriptType::kClassic,
+      bool is_link_preload = false,
+      const absl::optional<float> resource_width = absl::nullopt,
+      const absl::optional<float> resource_height = absl::nullopt,
+      bool is_potentially_lcp_element = false);
+  ResourceLoadPriority AdjustImagePriority(
+      ResourceLoadPriority priority_so_far,
+      ResourceType type,
+      const ResourceRequestHead& resource_request,
+      FetchParameters::SpeculativePreloadType speculative_preload_type,
+      bool is_link_preload,
+      const absl::optional<float> resource_width,
+      const absl::optional<float> resource_height);
   bool ShouldLoadIncremental(ResourceType type) const;
 
   // |virtual_time_pauser| is an output parameter. PrepareRequest may
@@ -394,6 +428,8 @@ class PLATFORM_EXPORT ResourceFetcher
 
   void StopFetchingInternal(StopFetchingTarget);
   void StopFetchingIncludingKeepaliveLoaders();
+
+  void MaybeSaveResourceToStrongReference(Resource* resource);
 
   enum class RevalidationPolicy {
     kUse,
@@ -478,6 +514,8 @@ class PLATFORM_EXPORT ResourceFetcher
 
   void WarnUnusedPreloads();
 
+  void RemoveResourceStrongReference(Resource* resource);
+
   // Information about a resource fetch that had started but not completed yet.
   // Would be added to the response data when the response arrives.
   struct PendingResourceTimingInfo {
@@ -499,6 +537,17 @@ class PLATFORM_EXPORT ResourceFetcher
                                         const PendingResourceTimingInfo& info,
                                         base::TimeTicks response_end);
   SubresourceWebBundle* GetMatchingBundle(const KURL& url) const;
+  void UpdateServiceWorkerSubresourceMetrics(ResourceType resource_type,
+                                             bool handled_by_serviceworker);
+
+  void RecordResourceHistogram(base::StringPiece prefix,
+                               ResourceType type,
+                               RevalidationPolicyForMetrics policy) const;
+
+  void OnResourceCacheContainsFinished(
+      base::TimeTicks ipc_send_time,
+      network::mojom::RequestDestination,
+      mojom::blink::ResourceCacheContainsResultPtr);
 
   Member<DetachableResourceFetcherProperties> properties_;
   Member<ResourceLoadObserver> resource_load_observer_;
@@ -511,7 +560,13 @@ class PLATFORM_EXPORT ResourceFetcher
   const Member<ResourceLoadScheduler> scheduler_;
   Member<BackForwardCacheLoaderHelper> back_forward_cache_loader_helper_;
 
+  // Weak reference to all the fetched resources.
   DocumentResourceMap cached_resources_map_;
+
+  // document_resource_strong_refs_ keeps strong references for fonts, images,
+  // scripts and stylesheets within their freshness lifetime.
+  HeapHashSet<Member<Resource>> document_resource_strong_refs_;
+  size_t document_resource_strong_refs_total_size_ = 0;
 
   // |image_resources_| is the subset of all image resources for the document.
   HeapHashSet<WeakMember<Resource>> image_resources_;
@@ -550,10 +605,22 @@ class PLATFORM_EXPORT ResourceFetcher
 
   uint32_t inflight_keepalive_bytes_ = 0;
 
+  // Records when this fetcher is detached from its context.
+  // Used to evaluate how long the keepalive requests outlive the context.
+  base::TimeTicks detached_time_;
+
   HeapMojoRemote<mojom::blink::BlobRegistry> blob_registry_remote_;
 
   // Lazily initialized when the first <script type=webbundle> is inserted.
   Member<SubresourceWebBundleList> subresource_web_bundles_;
+
+  // Used to look for cached responses in a different renderer. Currently
+  // used only for histogram recordings.
+  HeapMojoRemote<mojom::blink::ResourceCache> resource_cache_remote_;
+
+  // The context lifecycle notifier. Used for GC lifetime management
+  // purpose of the ResourceLoader used internally.
+  Member<ContextLifecycleNotifier> context_lifecycle_notifier_;
 
   // This is not in the bit field below because we want to use AutoReset.
   bool is_in_request_resource_ = false;
@@ -569,18 +636,22 @@ class PLATFORM_EXPORT ResourceFetcher
 
   std::unique_ptr<ukm::MojoUkmRecorder> ukm_recorder_;
 
-  // The total number of sub resource loads except for ResourceType::kRaw.
-  uint32_t number_of_subresources_loaded_ = 0;
-  // The number of sub resource loads that a service worker fetch handler
-  // called respondWith. i.e. no fallback to network.
-  uint32_t number_of_subresource_loads_handled_by_service_worker_ = 0;
-  // Whether a pervasive payload (aka sub resource) was requested. Once this is
-  // set as true, it will be true for all future updates in a page load.
-  bool pervasive_payload_requested_ = false;
-  // Number of bytes fetched by the network for pervasive payloads on a page.
-  int64_t pervasive_bytes_fetched_ = 0;
-  // Total number of bytes fetched by the network.
-  int64_t total_bytes_fetched_ = 0;
+  SubresourceLoadMetrics subresource_load_metrics_;
+
+  // Number of of not-small images that get a priority boost.
+  // TODO(http://crbug.com/1431169): change this to a const after the
+  // feature flag is removed.
+  uint32_t boosted_image_target_ = 0;
+
+  // Number of images that have had their priority boosted by heuristics.
+  uint32_t boosted_image_count_ = 0;
+
+  // Area (in pixels) below which an image is considered "small"
+  uint32_t small_image_max_size_ = 0;
+
+  // Number of images that have had their priority boosted based on LCPP
+  // signals.
+  uint32_t potentially_lcp_resource_priority_boosts_ = 0;
 };
 
 class ResourceCacheValidationSuppressor {
@@ -599,8 +670,9 @@ class ResourceCacheValidationSuppressor {
   ResourceCacheValidationSuppressor& operator=(
       const ResourceCacheValidationSuppressor&) = delete;
   ~ResourceCacheValidationSuppressor() {
-    if (loader_)
+    if (loader_) {
       loader_->allow_stale_resources_ = previous_state_;
+    }
   }
 
  private:

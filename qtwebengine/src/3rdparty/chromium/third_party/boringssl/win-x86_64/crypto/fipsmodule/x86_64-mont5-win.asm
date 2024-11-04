@@ -6,6 +6,7 @@ default	rel
 %define XMMWORD
 %define YMMWORD
 %define ZMMWORD
+%define _CET_ENDBR
 
 %ifdef BORINGSSL_PREFIX
 %include "boringssl_prefix_symbols_nasm.inc"
@@ -32,6 +33,7 @@ $L$SEH_begin_bn_mul_mont_gather5:
 
 
 
+_CET_ENDBR
 	mov	r9d,r9d
 	mov	rax,rsp
 
@@ -1137,6 +1139,7 @@ $L$SEH_begin_bn_power5:
 
 
 
+_CET_ENDBR
 	mov	rax,rsp
 
 	lea	r11,[OPENSSL_ia32cap_P]
@@ -1277,6 +1280,7 @@ ALIGN	32
 bn_sqr8x_internal:
 __bn_sqr8x_internal:
 
+_CET_ENDBR
 
 
 
@@ -2816,6 +2820,7 @@ ALIGN	32
 bn_sqrx8x_internal:
 __bn_sqrx8x_internal:
 
+_CET_ENDBR
 
 
 
@@ -3487,6 +3492,7 @@ global	bn_scatter5
 ALIGN	16
 bn_scatter5:
 
+_CET_ENDBR
 	cmp	edx,0
 	jz	NEAR $L$scatter_epilogue
 
@@ -3517,6 +3523,7 @@ ALIGN	32
 bn_gather5:
 
 $L$SEH_begin_bn_gather5:
+_CET_ENDBR
 
 	DB	0x4c,0x8d,0x14,0x24
 
@@ -3679,6 +3686,7 @@ $L$gather:
 $L$SEH_end_bn_gather5:
 
 
+section	.rdata rdata align=8
 ALIGN	64
 $L$inc:
 	DD	0,0,1,1
@@ -3689,6 +3697,8 @@ $L$inc:
 	DB	114,32,120,56,54,95,54,52,44,32,67,82,89,80,84,79
 	DB	71,65,77,83,32,98,121,32,60,97,112,112,114,111,64,111
 	DB	112,101,110,115,115,108,46,111,114,103,62,0
+section	.text
+
 EXTERN	__imp_RtlVirtualUnwind
 
 ALIGN	16

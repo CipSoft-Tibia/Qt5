@@ -38,11 +38,8 @@ QDBusServer::QDBusServer(const QString &address, QObject *parent)
     if (!instance)
         return;
 
-    emit instance->serverRequested(address, this);
+    instance->createServer(address, this);
     Q_ASSERT(d != nullptr);
-
-    QObject::connect(d, SIGNAL(newServerConnection(QDBusConnectionPrivate*)),
-                     this, SLOT(_q_newConnection(QDBusConnectionPrivate*)), Qt::QueuedConnection);
 }
 
 /*!
@@ -51,27 +48,15 @@ QDBusServer::QDBusServer(const QString &address, QObject *parent)
     localhost (elsewhere).
 */
 QDBusServer::QDBusServer(QObject *parent)
-    : QObject(parent), d(nullptr)
-{
+    : QDBusServer(
 #ifdef Q_OS_UNIX
-    // Use Unix sockets on Unix systems only
-    const QString address = QStringLiteral("unix:tmpdir=/tmp");
+            // Use Unix sockets on Unix systems only
+            QStringLiteral("unix:tmpdir=/tmp"),
 #else
-    const QString address = QStringLiteral("tcp:");
+            QStringLiteral("tcp:"),
 #endif
-
-    if (!qdbus_loadLibDBus())
-        return;
-
-    QDBusConnectionManager *instance = QDBusConnectionManager::instance();
-    if (!instance)
-        return;
-
-    emit instance->serverRequested(address, this);
-    Q_ASSERT(d != nullptr);
-
-    QObject::connect(d, SIGNAL(newServerConnection(QDBusConnectionPrivate*)),
-                     this, SLOT(_q_newConnection(QDBusConnectionPrivate*)), Qt::QueuedConnection);
+            parent)
+{
 }
 
 /*!
@@ -86,12 +71,9 @@ QDBusServer::~QDBusServer()
     if (!manager)
         return;
 
-    QMutexLocker locker(&manager->mutex);
     QWriteLocker writeLocker(&d->lock);
-    for (const QString &name : std::as_const(d->serverConnectionNames))
-        manager->removeConnection(name);
+    manager->removeConnections(d->serverConnectionNames);
     d->serverConnectionNames.clear();
-    locker.unlock();
 
     d->serverObject = nullptr;
     d->ref.storeRelaxed(0);

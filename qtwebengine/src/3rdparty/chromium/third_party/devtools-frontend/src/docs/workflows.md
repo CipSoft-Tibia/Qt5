@@ -8,7 +8,7 @@ In order to make changes to DevTools frontend, build, run, test, and submit chan
 
 As a standalone project, Chrome DevTools frontend can be checked out and built independently from Chromium. The main advantage is not having to check out and build Chromium.
 
-However, to run layout tests, you need to use the [integrated checkout](#Integrated-checkout).
+However, to run layout tests, you need to use the [chromium checkout](#Chromium-checkout) or [integrated checkout](#Integrated-checkout).
 
 #### Checking out source
 
@@ -49,6 +49,22 @@ git fetch origin; git checkout origin/main  # or, alternatively: git rebase-upda
 gclient sync
 ```
 
+#### Out of sync dependencies and cross-repo changes
+
+The revisions of git dependencies must always be in sync between the entry in DEPS and the git submodule. PRESUBMIT will
+reject CLs that try to submit changes to one but not the other.
+It can happen that dependencies go out of sync for three main reasons:
+1. The developer attempted a manual roll by only updating the DEPS file (which was the process before migrating to git
+   submodules, see [below](#Managing-dependencies)),
+1. after switching branches or checking out new commit the developer didn't run `gclient sync`, or
+1. they are working across repositories including changes in both.
+
+In the first case, follow the [manual roll process](#Managing-dependencies). In the second case,
+running `gclient sync` is necessary. If the changes to the submodule versions were already added to any commits (this
+happens when commits were created using `git add -A`, for example), it's necessary to unstage them (for example using
+`git checkout -p origin/main`). The latter also applies in the third case: Create a CL excluding the dependency changes
+and a separate CL with a proper roll.
+
 #### Run in a pre-built Chromium
 
 You can run a [build](#Build) of DevTools frontend in a pre-built Chromium in order to avoid the expensive Chromium build. For example, you can use the latest version of Chrome Canary, or the downloaded binary in `third_party/chrome`.
@@ -58,8 +74,22 @@ You can run a [build](#Build) of DevTools frontend in a pre-built Chromium in or
 This works with Chromium 79 or later.
 **(Requires `brew install coreutils` on Mac.)**
 
+To run on **Mac**:
+
 ```bash
-<path-to-devtools-frontend>/third_party/chrome/chrome-<platform>/chrome --custom-devtools-frontend=file://$(realpath out/Default/gen/front_end)
+<path-to-devtools-frontend>./third_party/chrome/chrome-mac/Google\ Chrome\ for\ Testing.app/Contents/Mac OS/Google\ Chrome\ for\ Testing --custom-devtools-frontend=file://$(realpath out/Default/gen/front_end) --use-mock-keychain
+```
+
+To run on **Linux**:
+
+```bash
+<path-to-devtools-frontend>./third_party/chrome/chrome-linux/chrome --custom-devtools-frontend=file://$(realpath out/Default/gen/front_end)
+```
+
+To run on **Windows**:
+
+```bash
+<path-to-devtools-frontend>./third_party/chrome/chrome-win/chrome.exe --custom-devtools-frontend=file://$(realpath out/Default/gen/front_end)
 ```
 
 Note that `$(realpath out/Default/gen/front_end)` expands to the absolute path to build artifacts for DevTools frontend.
@@ -79,34 +109,52 @@ Serve the content of `out/Default/gen/front_end` on a web server, e.g. via `pyth
 Then point to that web server when starting Chromium, for example:
 
 ```bash
-<path-to-devtools-frontend>/third_party/chrome/chrome-<platform>/chrome --custom-devtools-frontend=http://localhost:8000/
+<path-to-devtools-frontend>/third_party/chromium/chrome-<platform>/chrome --custom-devtools-frontend=http://localhost:8000/
 ```
 
 Open DevTools via F12 or Ctrl+Shift+J on Windows/Linux or Cmd+Option+I on Mac.
 
 ##### Running in hosted mode
 
-Serve the content of `out/Default/gen/front_end` on a web server, e.g. via `python -m http.server`.
+Serve the content of `out/Default/gen/front_end` on a web server, e.g. via `python3 -m http.server 8000`.
 
-Then point to that web server when starting Chromium, for example:
+Then start Chromium, allowing for accesses from the web server:
 
 ```bash
-<path-to-devtools-frontend>/third_party/chrome/chrome-<platform>/chrome --custom-devtools-frontend=http://localhost:8000/ --remote-debugging-port=9222
+<path-to-devtools-frontend>/third_party/chrome/chrome-<platform>/chrome --remote-debugging-port=9222 --remote-allow-origins=http://localhost:8000 about:blank
 ```
 
-In a regular Chrome tab, go to the URL `http://localhost:9222#custom=true`. It lists URLs that can be copied to new Chrome tabs to inspect individual debug targets.
+Get the list of pages together with their DevTools frontend URLs:
+```bash
+$ curl http://localhost:9222/json -s | grep '\(url\|devtoolsFrontend\)'
+   "devtoolsFrontendUrl": "/devtools/inspector.html?ws=localhost:9222/devtools/page/BADADD4E55BADADD4E55BADADD4E5511",
+   "url": "about:blank",
+```
+
+In a regular Chrome tab, go to the URL `http://localhost:8000/inspector.html?ws=<web-socket-url>`, where `<web-socket-url>` should be replaced by
+your desired DevTools web socket URL (from `devtoolsFrontendUrl`). For example, for
+`"devtoolsFrontendUrl": "/devtools/inspector.html?ws=localhost:9222/devtools/page/BADADD4E55BADADD4E55BADADD4E5511"`,
+you could run the hosted DevTools with the following command:
+
+```
+$ google-chrome http://localhost:8000/inspector.html?ws=localhost:9222/devtools/page/BADADD4E55BADADD4E55BADADD4E5511
+```
 
 ### Integrated checkout
 
-The integrated workflow offers the best of both worlds, and allows for working on both Chromium and DevTools frontend side-by-side. This is strongly recommended for folks working primarily on DevTools.
+**This solution is experimental, please report any trouble that you run into!**
 
-This workflow will ensure that your local setup is equivalent to how Chromium infrastructure tests your change. It comes in two flavors.
+The integrated workflow offers the best of both worlds, and allows for working on both Chromium and DevTools frontend
+side-by-side. This is strongly recommended for folks working primarily on DevTools.
+
+This workflow will ensure that your local setup is equivalent to how Chromium infrastructure tests your change.
 
 A full [Chromium checkout](#Chromium-checkout) is a pre-requisite for the following steps.
 
-#### Remove existing devtools-frontend sub-repository
+#### Untrack the existing devtools-frontend submodule
 
-First, you need to remove the existing devtools-frontend sub-repo from the Chromium checkout in `chromium/src/`.
+First, you need to untrack the existing devtools-frontend submodule in the chromium checkout. This ensures that devtools
+isn't dragged along whenever you update your chromium dependencies.
 
 In `chromium/src`, run `gclient sync` to make sure you have installed all required submodules.
 
@@ -114,7 +162,8 @@ In `chromium/src`, run `gclient sync` to make sure you have installed all requir
 gclient sync
 ```
 
-Then, disable `gclient sync` for DevTools frontend inside of Chromium by editing `.gclient` config. From `chromium/src/`, run
+Then, disable `gclient sync` for DevTools frontend inside of Chromium by editing `.gclient` config. From
+`chromium/src/`, run
 
 ```bash
 vim "$(gclient root)/.gclient"
@@ -126,82 +175,43 @@ In the `custom_deps` section, insert this line:
 "src/third_party/devtools-frontend/src": None,
 ```
 
-Then run
+Following this step, there are two approaches to manage your standalone checkout
 
-```bash
-gclient sync -D
-```
+#### Single gclient project
 
-This removes the DevTools frontend dependency. We now create a symlink to refer to the standalone checkout (execute in `chromium/src` and make sure that `third_party/devtools-frontend` exists):
+**Note: it's not possible anymore to manage the two projects in separate gclient projects.**
 
-**(Note that the folder names do NOT include the trailing slash)**
-
-Following this step, there are two approaches to integrating the standalone devtools.
-
-#### Flavor 1: separate gclient projects
-
-The first approach is to have separate gclient projects, one for each repository, and manually
-create a symlink. First, get a checkout of [DevTools frontend](#Standalone-checkout).
-
-To then create the symlink:
-
-```bash
-ln -s path/to/standalone/devtools-frontend third_party/devtools-frontend/src
-```
-
-Running `gclient sync` in `chromium/src/` will update dependencies for the Chromium checkout.
-Running `gclient sync` in `chromium/src/third_party/devtools-frontend/src` will update dependencies for the standalone checkout.
-
-#### Flavor 2: a single gclient project
-
-The second approach is to have a single gclient project that automatically gclient sync's all dependencies for both repositories
-
-After removing your devtools dependency, modify the .gclient file for `chromium/src`
-to add the devtools project and a hook to automatically symlink (comments are optional):
+For the integrated checkout, create a single gclient project that automatically gclient sync's all dependencies for both
+repositories. After checking out chromium, modify the .gclient file for `chromium/src` to add the DevTools project:
 
 ```python
 solutions = [
   {
     # Chromium src project
-    "url": "https://chromium.googlesource.com/chromium/src.git",
-    "managed": False,
     "name": "src",
+    "url": "https://chromium.googlesource.com/chromium/src.git",
     "custom_deps": {
       "src/third_party/devtools-frontend/src": None,
     },
-    "custom_vars": {},
   },
   {
     # devtools-frontend project
     "name": "devtools-frontend",
-    "url": "https://chromium.googlesource.com/devtools/devtools-frontend",
-    "custom_deps": {}
+    "managed": False,
+    "url": "https://chromium.googlesource.com/devtools/devtools-frontend.git",
   }
 ]
 ```
 
-Run `gclient sync` once in `chromium/src/` to get the new devtools frontend checkout.
+Do not run `gclient sync` now, first create the symlink. In the same directory as the .gclient file, run:
 
-To automatically symlink between `devtools-frontend` and `chromium/src`, you can add the following
-hook to your `.gclient` file to manage your `chromium/src` repository after your list of solutions.
-
-```python
-hooks = [
-  {
-    # Ensure devtools is symlinked in the correct location on every gclient sync
-    'name': 'Symlink Depot Tools',
-    'pattern': '.',
-    'action': [
-        'python',
-        '<path>/<to>/devtools-frontend/scripts/deps/ensure_symlink.py',
-        '<path>/<to>/chromium/src',
-        '<path>/<to>/devtools-frontend'
-    ],
-  }
-]
+```bash
+ln -s src/third_party/devtools-frontend/src devtools-frontend
 ```
 
-Running `gclient sync` anywhere within `chromium/src/` or `chromium/src/third_party/devtools-frontend/src` will update dependencies for both checkouts. Running `gclient sync -D` will not remove your symlink.
+If you did run `gclient sync` first, remove the devtools-frontend directory and start over.
+
+Run `gclient sync` after creating the link to fetch the dependencies for the standalone checkout.
 
 ### Chromium checkout
 
@@ -242,6 +252,12 @@ autoninja -C out/Default content_shell
 third_party/blink/tools/run_web_tests.py -t Default http/tests/devtools
 ```
 
+To debug a failing layout test we can run
+```bash
+npm run debug-test -- http/tests/devtools/<path>/<to>/<test>.js
+```
+
+The script supports either default DevTools checkout inside the chromium tree or side-by-side checkouts of chromium and DevTools. Passing --custom-devtools-frontend is not supported currently, meaning in the side-by-side scenario the DevTools checkout inside the chromium tree will be used (if not symlinked).
 ## Creating a change
 
 Usual [steps](https://chromium.googlesource.com/chromium/src/+/main/docs/contributing.md#creating-a-change) for creating a change work out of the box, when executed in the DevTools frontend repository.
@@ -276,6 +292,13 @@ Bug: 123456
 ```
 ## Managing dependencies
 
+If you need to manually roll a git dependency, it's not sufficient to update the revision in the DEPS file. Instead, use
+the gclient tool:
+```bash
+gclient setdep -r DEP@REV # for example build@afe0125ef9e10b400d9ec145aa18fca932369346
+```
+This will simultaneously update both the DEPS entry as well as the gitlink entry for the corresponding git submodule.
+
 To sync dependencies from Chromium to DevTools frontend, use `scripts/deps/roll_deps.py && npm run generate-protocol-resources`.
 Note that this may:
 - Introduce unneeded whitespace/formatting changes. Presubmit scripts (e.g. invoked via `git cl upload`) will automatically fix these locally, so just apply the changes directly to your change (e.g. with `git commit --amend`) afterwards.
@@ -289,7 +312,7 @@ The following scripts run as AutoRollers, but can be manually invoked if desired
 
 ## Merges and cherry-picks
 
-_Merge request/approval is handled by Chromium Release Managers. DevTools follows [The Zen of Merge Requests](https://www.chromium.org/developers/the-zen-of-merge-requests). In exceptional cases please get in touch with hablich@chromium.org._
+_Merge request/approval is handled by Chromium Release Managers. DevTools follows [Chromium's merge criteria](https://chromium.googlesource.com/chromium/src.git/+/refs/heads/main/docs/process/merge_request.md#merge-criteria-phases). In exceptional cases please get in touch with hablich@chromium.org._
 
 Step-by-step guide on how to merge:
 
@@ -306,6 +329,33 @@ Step-by-step guide on how to merge:
 1. Get it reviewed if necessary.
 1. Once merge request approval is granted (see step 1), click the hamburger menu on the cherry-pick CL and select “Submit”. (Setting the Commit-Queue bit (+2) has no effect because these branches don’t have a commit queue.)
 1. Done.
+
+### Merge conflicts
+
+If the approach above causes conflicts that need resolving, you can use an alternative git workflow which allows you to resolve conflicts locally before uploading. This is very similar to the [chromium git merge steps](https://chromium.googlesource.com/chromium/src.git/+/refs/heads/main/docs/process/merge_request.md#using-git) but with different branch names. These steps will **create the cherry-pick CL via git**.
+
+_It is suggested to use the Gerrit UI approach when possible, it is more straightforward and automated. Only use this approach if your cherry-pick causes conflicts._
+
+For the commands below, replace `xxxx` with the Chromium branch number that you are merging into.
+
+To set up your local environment run:
+
+```
+gclient sync --with_branch_heads
+git fetch
+git checkout -b BRANCH_NAME origin/chromium/xxxx
+git cl upstream origin/chromium/xxxx
+```
+
+You can then cherry-pick your commit from the main branch:
+
+```
+git cherry-pick -x YOUR_COMMIT
+```
+
+You can then resolve any conflicts, run tests, build DevTools, etc, locally to verify everything is working. Then run `git cl upload` to upload the CL and get a review as normal.
+
+**Make sure you remove the Change-ID: line** from the description to avoid issues when uploading the CL.
 
 ## Useful Commands
 

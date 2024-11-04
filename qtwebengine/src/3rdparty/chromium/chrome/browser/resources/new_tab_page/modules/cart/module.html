@@ -65,11 +65,16 @@
   .cart-container {
     background-color: var(--color-new-tab-page-module-item-background);
     border: 1px solid var(--color-new-tab-page-border);
-    border-radius: 4px;
+    border-radius: var(--ntp-module-item-border-radius);
     display: inline-flex;
     flex-direction: column;
     height: 140px;
     margin: 0 4px;
+  }
+
+  :host-context([chrome-refresh-2023]) #consentCard,
+  :host-context([chrome-refresh-2023]) .cart-container {
+    background-color: var(--color-sys-base-container-elevated);
   }
 
   .cart-container {
@@ -105,7 +110,7 @@
 
   #consentIconContainer {
     background: var(--discount-chip-background);
-    border-radius: 4px;
+    border-radius: var(--ntp-module-item-border-radius);
     height: 24px;
     margin-inline-end: auto;
     margin-inline-start: auto;
@@ -337,9 +342,13 @@
       disable-text="[[i18nRecursive('',
                                     'modulesDisableButtonText',
                                     'modulesCartLower')]]"
+      more-actions-text="[[i18nRecursive('',
+                                         'modulesMoreActions',
+                                         'modulesCartLowerYour')]]"
       show-info-button on-info-button-click="onInfoButtonClick_"
       show-dismiss-button on-dismiss-button-click="onDismissButtonClick_"
-      on-disable-button-click="onDisableButtonClick_">
+      on-disable-button-click="onDisableButtonClick_"
+      icon-src="modules/cart/icons/shopping_cart.svg">
     $i18n{modulesCartSentence}
   </ntp-module-header>
   <div id="moduleContent">
@@ -440,7 +449,8 @@
             </div>
           </a>
           <cr-icon-button class="icon-more-vert"
-              title="$i18n{moreActions}" on-click="onCartMenuButtonClick_">
+              title="[[i18n('modulesMoreActions', item.merchant)]]"
+              on-click="onCartMenuButtonClick_">
           </cr-icon-button>
         </div>
       </template>

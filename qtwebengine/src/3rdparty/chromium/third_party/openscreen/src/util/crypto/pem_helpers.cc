@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,7 +16,7 @@
 namespace openscreen {
 
 std::vector<std::string> ReadCertificatesFromPemFile(
-    absl::string_view filename) {
+    std::string_view filename) {
   FILE* fp = fopen(filename.data(), "r");
   if (!fp) {
     return {};
@@ -38,7 +38,7 @@ std::vector<std::string> ReadCertificatesFromPemFile(
   return certs;
 }
 
-bssl::UniquePtr<EVP_PKEY> ReadKeyFromPemFile(absl::string_view filename) {
+bssl::UniquePtr<EVP_PKEY> ReadKeyFromPemFile(std::string_view filename) {
   FILE* fp = fopen(filename.data(), "r");
   if (!fp) {
     return nullptr;

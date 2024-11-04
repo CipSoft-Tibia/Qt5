@@ -143,6 +143,38 @@ typedef EGLBoolean (EGLAPIENTRYP PFNEGLQUERYDMABUFFORMATSEXTPROC) (EGLDisplay dp
 typedef EGLBoolean (EGLAPIENTRYP PFNEGLQUERYDMABUFMODIFIERSEXTPROC) (EGLDisplay dpy, EGLint format, EGLint max_modifiers, EGLuint64KHR *modifiers, EGLBoolean *external_only, EGLint *num_modifiers);
 #endif
 
+/* Define tokens from EGL_EXT_device_base */
+#ifndef EGL_EXT_device_base
+#define EGL_EXT_device_base 1
+typedef void *EGLDeviceEXT;
+#define EGL_NO_DEVICE_EXT                 EGL_CAST(EGLDeviceEXT,0)
+#define EGL_BAD_DEVICE_EXT                0x322B
+#define EGL_DEVICE_EXT                    0x322C
+typedef EGLBoolean (EGLAPIENTRYP PFNEGLQUERYDEVICEATTRIBEXTPROC) (EGLDeviceEXT device, EGLint attribute, EGLAttrib *value);
+typedef const char *(EGLAPIENTRYP PFNEGLQUERYDEVICESTRINGEXTPROC) (EGLDeviceEXT device, EGLint name);
+typedef EGLBoolean (EGLAPIENTRYP PFNEGLQUERYDEVICESEXTPROC) (EGLint max_devices, EGLDeviceEXT *devices, EGLint *num_devices);
+typedef EGLBoolean (EGLAPIENTRYP PFNEGLQUERYDISPLAYATTRIBEXTPROC) (EGLDisplay dpy, EGLint attribute, EGLAttrib *value);
+#ifdef EGL_EGLEXT_PROTOTYPES
+EGLAPI EGLBoolean EGLAPIENTRY eglQueryDeviceAttribEXT (EGLDeviceEXT device, EGLint attribute, EGLAttrib *value);
+EGLAPI const char *EGLAPIENTRY eglQueryDeviceStringEXT (EGLDeviceEXT device, EGLint name);
+EGLAPI EGLBoolean EGLAPIENTRY eglQueryDevicesEXT (EGLint max_devices, EGLDeviceEXT *devices, EGLint *num_devices);
+EGLAPI EGLBoolean EGLAPIENTRY eglQueryDisplayAttribEXT (EGLDisplay dpy, EGLint attribute, EGLAttrib *value);
+#endif
+#endif /* EGL_EXT_device_base */
+
+/* Define tokens from EGL_EXT_device_drm */
+#ifndef EGL_EXT_device_drm
+#define EGL_EXT_device_drm 1
+#define EGL_DRM_DEVICE_FILE_EXT           0x3233
+#define EGL_DRM_MASTER_FD_EXT             0x333C
+#endif /* EGL_EXT_device_drm */
+
+/* Define tokens from EGL_EXT_device_drm_render_node */
+#ifndef EGL_EXT_device_drm_render_node
+#define EGL_EXT_device_drm_render_node 1
+#define EGL_DRM_RENDER_NODE_FILE_EXT      0x3377
+#endif /* EGL_EXT_device_drm_render_node */
+
 #ifndef EGL_EXT_swap_buffers_with_damage
 #define EGL_EXT_swap_buffers_with_damage 1
 typedef EGLBoolean (EGLAPIENTRYP PFNEGLSWAPBUFFERSWITHDAMAGEEXTPROC) (EGLDisplay dpy, EGLSurface surface, EGLint *rects, EGLint n_rects);
@@ -210,7 +242,7 @@ typedef EGLint (EGLAPIENTRYP PFNEGLDUPNATIVEFENCEFDANDROIDPROC) (EGLDisplay dpy,
 
 #else /* ENABLE_EGL */
 
-/* EGL platform definition are keept to allow compositor-xx.c to build */
+/* EGL platform definition are kept to allow compositor-xx.c to build */
 #define EGL_PLATFORM_GBM_KHR     0x31D7
 #define EGL_PLATFORM_WAYLAND_KHR 0x31D8
 #define EGL_PLATFORM_X11_KHR     0x31D5

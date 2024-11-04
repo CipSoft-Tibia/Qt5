@@ -172,6 +172,8 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
 
   void FrameTypeChanged();
 
+  void PaintAsActiveChanged();
+
   void SetWindowIcons(const gfx::ImageSkia& window_icon,
                       const gfx::ImageSkia& app_icon);
 
@@ -185,7 +187,7 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   void SetFullscreen(bool fullscreen, int64_t target_display_id);
 
   // Updates the aspect ratio of the window.
-  void SetAspectRatio(float aspect_ratio);
+  void SetAspectRatio(float aspect_ratio, const gfx::Size& excluded_mar);
 
   // Updates the window style to reflect whether it can be resized or maximized.
   void SizeConstraintsChanged();
@@ -321,11 +323,6 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   // If |force| is true, the window region is reset to NULL even for native
   // frame windows.
   void ResetWindowRegion(bool force, bool redraw);
-
-  // Enables or disables rendering of the non-client (glass) area by DWM,
-  // under Vista and above, depending on whether the caller has requested a
-  // custom frame.
-  void UpdateDwmNcRenderingPolicy();
 
   // Calls DefWindowProc, safely wrapping the call in a ScopedRedrawLock to
   // prevent frame flicker. DefWindowProc handling can otherwise render the
@@ -557,6 +554,10 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
                                           WPARAM w_param,
                                           LPARAM l_param);
 
+  // Helper to handle client area events of PT_PEN.
+  LRESULT HandlePointerEventTypePen(UINT message,
+                                    UINT32 pointer_id,
+                                    POINTER_PEN_INFO pointer_pen_info);
   // Returns true if the mouse message passed in is an OS synthesized mouse
   // message.
   // |message| identifies the mouse message.
@@ -615,6 +616,11 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   // Get the cursor position, which may be mocked if running a test
   POINT GetCursorPos() const;
 
+  // Sets headless window bounds which may be different from the platform window
+  // bounds and updates Aura window property that stores headless window bounds
+  // for upper layers to retrieve.
+  void SetHeadlessWindowBounds(const gfx::Rect& bounds);
+
   raw_ptr<HWNDMessageHandlerDelegate> delegate_;
 
   std::unique_ptr<FullscreenHandler> fullscreen_handler_;
@@ -640,6 +646,9 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   // The aspect ratio for the window. This is only used for sizing operations
   // for the non-client area.
   absl::optional<float> aspect_ratio_;
+
+  // Size to exclude from aspect ratio calculation.
+  gfx::Size excluded_margin_;
 
   // The current DPI.
   int dpi_;

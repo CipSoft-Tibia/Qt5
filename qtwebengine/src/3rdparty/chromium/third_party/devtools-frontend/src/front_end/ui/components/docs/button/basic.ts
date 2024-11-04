@@ -9,12 +9,12 @@ import * as ComponentHelpers from '../../helpers/helpers.js';
 await ComponentHelpers.ComponentServerSetup.setup();
 await FrontendHelpers.initializeGlobalVars();
 
-const testIcon = '/front_end/Images/ic_file_image.svg';
-const fileIcon = '/front_end/Images/file_icon.svg';
-const plusIcon = '/front_end/Images/plus_icon.svg';
-const minusIcon = '/front_end/Images/minus_icon.svg';
-const trashBinIcon = '/front_end/Images/trash_bin_icon.svg';
-const closeIcon = '/front_end/Images/close-icon.svg';
+const testIcon = '/front_end/Images/file-image.svg';
+const fileIcon = '/front_end/Images/document.svg';
+const plusIcon = '/front_end/Images/plus.svg';
+const minusIcon = '/front_end/Images/minus.svg';
+const trashBinIcon = '/front_end/Images/bin.svg';
+const closeIcon = '/front_end/Images/cross.svg';
 
 function appendButton(button: Buttons.Button.Button): void {
   document.querySelector('#container')?.appendChild(button);
@@ -161,6 +161,16 @@ primaryIconOnlyButton.onclick = () => alert('clicked');
 primaryIconOnlyButton.style.width = '24px';
 appendButton(primaryIconOnlyButton);
 
+// Primary Icon with a name
+const primaryIconByNameButton = new Buttons.Button.Button();
+primaryIconByNameButton.data = {
+  variant: Buttons.Button.Variant.PRIMARY,
+  iconName: 'file-image',
+};
+primaryIconByNameButton.onclick = () => alert('clicked');
+primaryIconByNameButton.innerHTML = 'Icon by name';
+appendButton(primaryIconByNameButton);
+
 // Secondary Icon Only
 const secondaryIconOnlyButton = new Buttons.Button.Button();
 secondaryIconOnlyButton.onclick = () => alert('clicked');
@@ -294,7 +304,7 @@ for (let i = 0; i < 6; i++) {
   const toolbarButton = new Buttons.Button.Button();
   toolbarButton.onclick = () => alert('clicked');
   toolbarButton.data = {
-    variant: Buttons.Button.Variant.TOOLBAR,
+    variant: i % 2 === 1 ? Buttons.Button.Variant.TOOLBAR : Buttons.Button.Variant.PRIMARY_TOOLBAR,
     iconUrl: testIcon,
   };
   appendToToolbar(toolbarButton);

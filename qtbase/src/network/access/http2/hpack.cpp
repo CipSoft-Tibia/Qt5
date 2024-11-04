@@ -35,7 +35,7 @@ struct BitPattern
     uchar bitLength;
 };
 
-bool operator == (const BitPattern &lhs, const BitPattern &rhs)
+bool operator==(BitPattern lhs, BitPattern rhs)
 {
     return lhs.bitLength == rhs.bitLength && lhs.value == rhs.value;
 }
@@ -54,25 +54,25 @@ using StreamError = BitIStream::Error;
 
 // It's always 1 or 0 actually, but the number of bits to extract
 // from the input stream - differs.
-const BitPattern Indexed = {1, 1};
-const BitPattern LiteralIncrementalIndexing = {1, 2};
-const BitPattern LiteralNoIndexing = {0, 4};
-const BitPattern LiteralNeverIndexing = {1, 4};
-const BitPattern SizeUpdate = {1, 3};
+constexpr BitPattern Indexed = {1, 1};
+constexpr BitPattern LiteralIncrementalIndexing = {1, 2};
+constexpr BitPattern LiteralNoIndexing = {0, 4};
+constexpr BitPattern LiteralNeverIndexing = {1, 4};
+constexpr BitPattern SizeUpdate = {1, 3};
 
-bool is_literal_field(const BitPattern &pattern)
+bool is_literal_field(BitPattern pattern)
 {
     return pattern == LiteralIncrementalIndexing
            || pattern == LiteralNoIndexing
            || pattern == LiteralNeverIndexing;
 }
 
-void write_bit_pattern(const BitPattern &pattern, BitOStream &outputStream)
+void write_bit_pattern(BitPattern pattern, BitOStream &outputStream)
 {
     outputStream.writeBits(pattern.value, pattern.bitLength);
 }
 
-bool read_bit_pattern(const BitPattern &pattern, BitIStream &inputStream)
+bool read_bit_pattern(BitPattern pattern, BitIStream &inputStream)
 {
     uchar chunk = 0;
 
@@ -91,7 +91,7 @@ bool read_bit_pattern(const BitPattern &pattern, BitIStream &inputStream)
     return true;
 }
 
-bool is_request_pseudo_header(const QByteArray &name)
+bool is_request_pseudo_header(QByteArrayView name)
 {
     return name == ":method" || name == ":scheme" ||
            name == ":authority" || name == ":path";
@@ -194,8 +194,8 @@ bool Encoder::encodeRequestPseudoHeaders(BitOStream &outputStream,
     using size_type = decltype(header.size());
 
     bool methodFound = false;
-    const char *headerName[] = {":authority", ":scheme", ":path"};
-    const size_type nHeaders = sizeof headerName / sizeof headerName[0];
+    constexpr QByteArrayView headerName[] = {":authority", ":scheme", ":path"};
+    constexpr size_type nHeaders = std::size(headerName);
     bool headerFound[nHeaders] = {};
 
     for (const auto &field : header) {
@@ -319,7 +319,7 @@ bool Encoder::encodeIndexedField(BitOStream &outputStream, quint32 index) const
     return true;
 }
 
-bool Encoder::encodeLiteralField(BitOStream &outputStream, const BitPattern &fieldType,
+bool Encoder::encodeLiteralField(BitOStream &outputStream, BitPattern fieldType,
                                  const QByteArray &name, const QByteArray &value,
                                  bool withCompression)
 {
@@ -347,7 +347,7 @@ bool Encoder::encodeLiteralField(BitOStream &outputStream, const BitPattern &fie
     return true;
 }
 
-bool Encoder::encodeLiteralField(BitOStream &outputStream, const BitPattern &fieldType,
+bool Encoder::encodeLiteralField(BitOStream &outputStream, BitPattern fieldType,
                                  quint32 nameIndex, const QByteArray &value,
                                  bool withCompression)
 {
@@ -451,7 +451,7 @@ bool Decoder::decodeSizeUpdate(BitIStream &inputStream)
     return false;
 }
 
-bool Decoder::decodeLiteralField(const BitPattern &fieldType, BitIStream &inputStream)
+bool Decoder::decodeLiteralField(BitPattern fieldType, BitIStream &inputStream)
 {
     // https://http2.github.io/http2-spec/compression.html
     // 6.2.1, 6.2.2, 6.2.3
@@ -481,7 +481,7 @@ bool Decoder::decodeLiteralField(const BitPattern &fieldType, BitIStream &inputS
     return false;
 }
 
-bool Decoder::processDecodedField(const BitPattern &fieldType,
+bool Decoder::processDecodedField(BitPattern fieldType,
                                  const QByteArray &name,
                                  const QByteArray &value)
 {
@@ -502,6 +502,49 @@ void Decoder::handleStreamError(BitIStream &inputStream)
 
     // For now error handling not needed here,
     // HTTP2 layer will end with session error/COMPRESSION_ERROR.
+}
+
+std::optional<QUrl> makePromiseKeyUrl(const HttpHeader &requestHeader)
+{
+    constexpr QByteArrayView names[] = { ":authority", ":method", ":path", ":scheme" };
+    enum PseudoHeaderEnum
+    {
+        Authority,
+        Method,
+        Path,
+        Scheme
+    };
+    std::array<std::optional<QByteArrayView>, std::size(names)> pseudoHeaders{};
+    for (const auto &field : requestHeader) {
+        const auto *it = std::find(std::begin(names), std::end(names), QByteArrayView(field.name));
+        if (it != std::end(names)) {
+            const auto index = std::distance(std::begin(names), it);
+            if (field.value.isEmpty() || pseudoHeaders.at(index).has_value())
+                return {};
+            pseudoHeaders[index] = field.value;
+        }
+    }
+
+    auto optionalIsSet = [](const auto &x) { return x.has_value(); };
+    if (!std::all_of(pseudoHeaders.begin(), pseudoHeaders.end(), optionalIsSet)) {
+        // All four required, HTTP/2 8.1.2.3.
+        return {};
+    }
+
+    const QByteArrayView method = pseudoHeaders[Method].value();
+    if (method.compare("get", Qt::CaseInsensitive) != 0 &&
+        method.compare("head", Qt::CaseInsensitive) != 0) {
+        return {};
+    }
+
+    QUrl url;
+    url.setScheme(QLatin1StringView(pseudoHeaders[Scheme].value()));
+    url.setAuthority(QLatin1StringView(pseudoHeaders[Authority].value()));
+    url.setPath(QLatin1StringView(pseudoHeaders[Path].value()));
+
+    if (!url.isValid())
+        return {};
+    return url;
 }
 
 }

@@ -24,13 +24,16 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_HTML_HTML_ANCHOR_ELEMENT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_HTML_HTML_ANCHOR_ELEMENT_H_
 
+#include "base/time/time.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/core/html/rel_list.h"
 #include "third_party/blink/renderer/core/html_names.h"
+#include "third_party/blink/renderer/core/loader/navigation_policy.h"
 #include "third_party/blink/renderer/core/url/dom_url_utils.h"
 #include "third_party/blink/renderer/platform/link_hash.h"
+#include "third_party/blink/renderer/platform/loader/fetch/resource_request.h"
 
 namespace blink {
 
@@ -97,6 +100,11 @@ class CORE_EXPORT HTMLAnchorElement : public HTMLElement, public DOMURLUtils {
 
   void SendPings(const KURL& destination_url) const;
 
+  void InitiatePreview(TimerBase*);
+
+  // Element overrides:
+  void SetHovered(bool hovered) override;
+
   void Trace(Visitor*) const override;
 
  protected:
@@ -106,7 +114,7 @@ class CORE_EXPORT HTMLAnchorElement : public HTMLElement, public DOMURLUtils {
  private:
   void AttributeChanged(const AttributeModificationParams&) override;
   bool ShouldHaveFocusAppearance() const final;
-  bool IsMouseFocusable() const override;
+  bool IsFocusable() const override;
   bool IsKeyboardFocusable() const override;
   void DefaultEventHandler(Event&) final;
   bool HasActivationBehavior() const override;
@@ -119,11 +127,19 @@ class CORE_EXPORT HTMLAnchorElement : public HTMLElement, public DOMURLUtils {
   bool IsInteractiveContent() const final;
   InsertionNotificationRequest InsertedInto(ContainerNode&) override;
   void RemovedFrom(ContainerNode&) override;
+  void NavigateToHyperlink(ResourceRequest,
+                           NavigationPolicy,
+                           bool is_trusted,
+                           base::TimeTicks platform_time_stamp,
+                           KURL);
   void HandleClick(Event&);
 
   unsigned link_relations_ : 31;
   mutable LinkHash cached_visited_link_hash_;
   Member<RelList> rel_list_;
+  // TODO(https://b.corp.google.com/issues/296992745): Use
+  // AnchorElementInteractionTracker instead.
+  HeapTaskRunnerTimer<HTMLAnchorElement> hover_timer_;
 };
 
 inline LinkHash HTMLAnchorElement::VisitedLinkHash() const {

@@ -4,6 +4,7 @@
 #include "androidjnimain.h"
 #include "androidjnimenu.h"
 #include "qandroidplatformtheme.h"
+#include "qandroidplatformiconengine.h"
 #include "qandroidplatformmenubar.h"
 #include "qandroidplatformmenu.h"
 #include "qandroidplatformmenuitem.h"
@@ -162,13 +163,6 @@ QJsonObject AndroidStyle::loadStyleData()
         stylePath += "darkUiMode/"_L1;
 
     Q_ASSERT(!stylePath.isEmpty());
-
-    QString androidTheme = QLatin1StringView(qgetenv("QT_ANDROID_THEME"));
-    if (!androidTheme.isEmpty() && !androidTheme.endsWith(slashChar))
-        androidTheme += slashChar;
-
-    if (!androidTheme.isEmpty() && QFileInfo::exists(stylePath + androidTheme + "style.json"_L1))
-        stylePath += androidTheme;
 
     QFile f(stylePath + "style.json"_L1);
     if (!f.open(QIODevice::ReadOnly))
@@ -486,6 +480,11 @@ const QFont *QAndroidPlatformTheme::font(Font type) const
     if (type == QPlatformTheme::SystemFont)
         return &m_systemFont;
     return 0;
+}
+
+QIconEngine *QAndroidPlatformTheme::createIconEngine(const QString &iconName) const
+{
+    return new QAndroidPlatformIconEngine(iconName);
 }
 
 QVariant QAndroidPlatformTheme::themeHint(ThemeHint hint) const

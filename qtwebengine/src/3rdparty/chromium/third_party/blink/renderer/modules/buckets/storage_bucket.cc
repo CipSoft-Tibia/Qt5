@@ -6,6 +6,7 @@
 
 #include "base/time/time.h"
 #include "third_party/blink/public/platform/task_type.h"
+#include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable_creation_key.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_storage_estimate.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_storage_usage_details.h"
@@ -23,11 +24,18 @@ namespace blink {
 
 StorageBucket::StorageBucket(
     NavigatorBase* navigator,
+    const String& name,
     mojo::PendingRemote<mojom::blink::BucketHost> remote)
-    : ExecutionContextLifecycleObserver(navigator->GetExecutionContext()),
+    : ExecutionContextClient(navigator->GetExecutionContext()),
+      name_(name),
+      remote_(GetExecutionContext()),
       navigator_base_(navigator) {
   remote_.Bind(std::move(remote), GetExecutionContext()->GetTaskRunner(
                                       TaskType::kInternalDefault));
+}
+
+const String& StorageBucket::name() {
+  return name_;
 }
 
 ScriptPromise StorageBucket::persist(ScriptState* script_state) {
@@ -142,10 +150,10 @@ ScriptPromise StorageBucket::expires(ScriptState* script_state) {
 
 IDBFactory* StorageBucket::indexedDB() {
   if (!idb_factory_) {
-    idb_factory_ = MakeGarbageCollected<IDBFactory>();
-    mojo::PendingRemote<mojom::blink::IDBFactory> factory;
-    remote_->GetIdbFactory(factory.InitWithNewPipeAndPassReceiver());
-    idb_factory_->SetFactory(std::move(factory), GetExecutionContext());
+    idb_factory_ = MakeGarbageCollected<IDBFactory>(GetExecutionContext());
+    mojo::PendingRemote<mojom::blink::IDBFactory> remote_factory;
+    remote_->GetIdbFactory(remote_factory.InitWithNewPipeAndPassReceiver());
+    idb_factory_->SetRemote(std::move(remote_factory));
   }
   return idb_factory_;
 }
@@ -183,12 +191,13 @@ ScriptPromise StorageBucket::getDirectory(ScriptState* script_state,
 }
 
 void StorageBucket::Trace(Visitor* visitor) const {
+  visitor->Trace(remote_);
   visitor->Trace(idb_factory_);
   visitor->Trace(lock_manager_);
   visitor->Trace(navigator_base_);
   visitor->Trace(caches_);
   ScriptWrappable::Trace(visitor);
-  ExecutionContextLifecycleObserver::Trace(visitor);
+  ExecutionContextClient::Trace(visitor);
 }
 
 void StorageBucket::DidRequestPersist(ScriptPromiseResolver* resolver,
@@ -201,7 +210,7 @@ void StorageBucket::DidRequestPersist(ScriptPromiseResolver* resolver,
   if (!success) {
     resolver->Reject(MakeGarbageCollected<DOMException>(
         DOMExceptionCode::kUnknownError,
-        "Unknown error occured while requesting persist."));
+        "Unknown error occurred while requesting persist."));
     return;
   }
 
@@ -219,7 +228,7 @@ void StorageBucket::DidGetPersisted(ScriptPromiseResolver* resolver,
   if (!success) {
     resolver->Reject(MakeGarbageCollected<DOMException>(
         DOMExceptionCode::kUnknownError,
-        "Unknown error occured while getting persisted."));
+        "Unknown error occurred while getting persisted."));
     return;
   }
 
@@ -239,7 +248,7 @@ void StorageBucket::DidGetEstimate(ScriptPromiseResolver* resolver,
   if (!success) {
     resolver->Reject(MakeGarbageCollected<DOMException>(
         DOMExceptionCode::kUnknownError,
-        "Unknown error occured while getting estimate."));
+        "Unknown error occurred while getting estimate."));
     return;
   }
 
@@ -261,7 +270,7 @@ void StorageBucket::DidGetDurability(ScriptPromiseResolver* resolver,
   if (!success) {
     resolver->Reject(MakeGarbageCollected<DOMException>(
         DOMExceptionCode::kUnknownError,
-        "Unknown error occured while getting durability."));
+        "Unknown error occurred while getting durability."));
     return;
   }
 
@@ -284,7 +293,7 @@ void StorageBucket::DidSetExpires(ScriptPromiseResolver* resolver,
   } else {
     resolver->Reject(MakeGarbageCollected<DOMException>(
         DOMExceptionCode::kUnknownError,
-        "Unknown error occured while setting expires."));
+        "Unknown error occurred while setting expires."));
   }
 }
 
@@ -299,7 +308,7 @@ void StorageBucket::DidGetExpires(ScriptPromiseResolver* resolver,
   if (!success) {
     resolver->Reject(MakeGarbageCollected<DOMException>(
         DOMExceptionCode::kUnknownError,
-        "Unknown error occured while getting expires."));
+        "Unknown error occurred while getting expires."));
   } else if (expires.has_value()) {
     resolver->Resolve(base::Time::kMillisecondsPerSecond *
                       expires.value().ToDoubleT());
@@ -321,9 +330,4 @@ void StorageBucket::GetSandboxedFileSystem(ScriptPromiseResolver* resolver) {
       WTF::BindOnce(&StorageManagerFileSystemAccess::DidGetSandboxedFileSystem,
                     WrapPersistent(resolver)));
 }
-
-void StorageBucket::ContextDestroyed() {
-  remote_.reset();
-}
-
 }  // namespace blink

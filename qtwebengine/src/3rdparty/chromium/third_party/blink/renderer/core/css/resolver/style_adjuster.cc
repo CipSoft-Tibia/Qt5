@@ -138,49 +138,6 @@ void AdjustStyleForSvgElement(const SVGElement& element,
   builder.SetTextUnderlinePosition(TextUnderlinePosition::kAuto);
 }
 
-// Adjust style for anchor() and anchor-size() queries.
-void AdjustAnchorQueryStyles(ComputedStyleBuilder& builder) {
-  if (!RuntimeEnabledFeatures::CSSAnchorPositioningEnabled()) {
-    return;
-  }
-
-  // anchor() and anchor-size() can only be used on absolutely positioned
-  // elements.
-  EPosition position = builder.GetPosition();
-  if (position != EPosition::kAbsolute && position != EPosition::kFixed) {
-    if (builder.Left().HasAnchorQueries()) {
-      builder.SetLeft(Length::Auto());
-    }
-    if (builder.Right().HasAnchorQueries()) {
-      builder.SetRight(Length::Auto());
-    }
-    if (builder.Top().HasAnchorQueries()) {
-      builder.SetTop(Length::Auto());
-    }
-    if (builder.Bottom().HasAnchorQueries()) {
-      builder.SetBottom(Length::Auto());
-    }
-    if (builder.Width().HasAnchorQueries()) {
-      builder.SetWidth(Length::Auto());
-    }
-    if (builder.MinWidth().HasAnchorQueries()) {
-      builder.SetMinWidth(Length::Auto());
-    }
-    if (builder.MaxWidth().HasAnchorQueries()) {
-      builder.SetMaxWidth(Length::Auto());
-    }
-    if (builder.Height().HasAnchorQueries()) {
-      builder.SetHeight(Length::Auto());
-    }
-    if (builder.MinHeight().HasAnchorQueries()) {
-      builder.SetMinHeight(Length::Auto());
-    }
-    if (builder.MaxHeight().HasAnchorQueries()) {
-      builder.SetMaxHeight(Length::Auto());
-    }
-  }
-}
-
 bool ElementForcesStackingContext(Element* element) {
   if (!element) {
     return false;
@@ -196,8 +153,10 @@ bool ElementForcesStackingContext(Element* element) {
 
 }  // namespace
 
+// https://drafts.csswg.org/css-display/#transformations
 static EDisplay EquivalentBlockDisplay(EDisplay display) {
   switch (display) {
+    case EDisplay::kFlowRootListItem:
     case EDisplay::kBlock:
     case EDisplay::kTable:
     case EDisplay::kWebkitBox:
@@ -220,6 +179,10 @@ static EDisplay EquivalentBlockDisplay(EDisplay display) {
       return EDisplay::kBlockMath;
     case EDisplay::kInlineLayoutCustom:
       return EDisplay::kLayoutCustom;
+    case EDisplay::kInlineListItem:
+      return EDisplay::kListItem;
+    case EDisplay::kInlineFlowRootListItem:
+      return EDisplay::kFlowRootListItem;
 
     case EDisplay::kContents:
     case EDisplay::kInline:
@@ -277,7 +240,16 @@ static bool LayoutParentStyleForcesZIndexToCreateStackingContext(
   return layout_parent_style.IsDisplayFlexibleOrGridBox();
 }
 
-void StyleAdjuster::AdjustStyleForEditing(ComputedStyleBuilder& builder) {
+void StyleAdjuster::AdjustStyleForEditing(ComputedStyleBuilder& builder,
+                                          Element* element) {
+  if (element && element->editContext()) {
+    // If an element is associated with an EditContext, it should
+    // become editable and should have -webkit-user-modify set to
+    // read-write. This overrides any other values that have been
+    // specified for contenteditable or -webkit-user-modify on that element.
+    builder.SetUserModify(EUserModify::kReadWrite);
+  }
+
   if (builder.UserModify() != EUserModify::kReadWritePlaintextOnly) {
     return;
   }
@@ -330,7 +302,7 @@ void StyleAdjuster::AdjustStyleForCombinedText(ComputedStyleBuilder& builder) {
 #if DCHECK_IS_ON()
   DCHECK_EQ(builder.GetFont().GetFontDescription().Orientation(),
             FontOrientation::kHorizontal);
-  scoped_refptr<const ComputedStyle> cloned_style = builder.CloneStyle();
+  const ComputedStyle* cloned_style = builder.CloneStyle();
   LayoutNGTextCombine::AssertStyleIsValid(*cloned_style);
 #endif
 }
@@ -352,12 +324,7 @@ static void AdjustStyleForMarker(ComputedStyleBuilder& builder,
     return;
   }
 
-  bool is_inside =
-      parent_style.ListStylePosition() == EListStylePosition::kInside ||
-      (IsA<HTMLLIElement>(parent_element) &&
-       !parent_style.IsInsideListElement());
-
-  if (is_inside) {
+  if (parent_style.MarkerShouldBeInside(parent_element)) {
     Document& document = parent_element.GetDocument();
     auto margins =
         ListMarker::InlineMarginsForInside(document, builder, parent_style);
@@ -562,6 +529,17 @@ void StyleAdjuster::AdjustOverflow(ComputedStyleBuilder& builder,
     UseCounter::Count(element->GetDocument(),
                       WebFeature::kOverflowClipAlongEitherAxis);
   }
+
+  if (RuntimeEnabledFeatures::OverflowOverlayAliasesAutoEnabled()) {
+    // overlay is a legacy alias of auto.
+    // https://drafts.csswg.org/css-overflow-3/#valdef-overflow-auto
+    if (builder.OverflowY() == EOverflow::kOverlay) {
+      builder.SetOverflowY(EOverflow::kAuto);
+    }
+    if (builder.OverflowX() == EOverflow::kOverlay) {
+      builder.SetOverflowX(EOverflow::kAuto);
+    }
+  }
 }
 
 static void AdjustStyleForDisplay(ComputedStyleBuilder& builder,
@@ -611,8 +589,7 @@ static void AdjustStyleForDisplay(ComputedStyleBuilder& builder,
   }
 
   // Blockify the child boxes of media elements. crbug.com/1379779.
-  if (RuntimeEnabledFeatures::LayoutMediaNoInlineChildrenEnabled() &&
-      IsAtMediaUAShadowBoundary(element)) {
+  if (IsAtMediaUAShadowBoundary(element)) {
     builder.SetDisplay(EquivalentBlockDisplay(builder.Display()));
   }
 }
@@ -775,6 +752,17 @@ static void AdjustStyleForInert(ComputedStyleBuilder& builder,
     builder.SetIsInertIsInherited(false);
     return;
   }
+
+  if (auto& base_data = builder.BaseData()) {
+    if (RuntimeEnabledFeatures::InertDisplayTransitionEnabled() &&
+        base_data->GetBaseComputedStyle()->Display() == EDisplay::kNone) {
+      // Elements which are transitioning to display:none should become inert:
+      // https://github.com/w3c/csswg-drafts/issues/8389
+      builder.SetIsInert(true);
+      builder.SetIsInertIsInherited(false);
+      return;
+    }
+  }
 }
 
 void StyleAdjuster::AdjustForForcedColorsMode(ComputedStyleBuilder& builder) {
@@ -785,7 +773,9 @@ void StyleAdjuster::AdjustForForcedColorsMode(ComputedStyleBuilder& builder) {
 
   builder.SetTextShadow(ComputedStyleInitialValues::InitialTextShadow());
   builder.SetBoxShadow(ComputedStyleInitialValues::InitialBoxShadow());
-  builder.SetColorScheme({"light", "dark"});
+  builder.SetColorScheme({AtomicString("light"), AtomicString("dark")});
+  builder.SetScrollbarColor(
+      ComputedStyleInitialValues::InitialScrollbarColor());
   if (builder.ShouldForceColor(builder.AccentColor())) {
     builder.SetAccentColor(ComputedStyleInitialValues::InitialAccentColor());
   }
@@ -833,19 +823,14 @@ void StyleAdjuster::AdjustComputedStyle(StyleResolverState& state,
 
   auto* svg_element = DynamicTo<SVGElement>(element);
 
-  bool is_mathml_element = RuntimeEnabledFeatures::MathMLCoreEnabled() &&
-                           IsA<MathMLElement>(element);
-
   if (builder.Display() != EDisplay::kNone) {
     if (svg_element) {
       AdjustStyleForSvgElement(*svg_element, builder);
     }
 
     if (!RuntimeEnabledFeatures::CSSTopLayerForTransitionsEnabled()) {
-      if ((element && element->IsInTopLayer()) ||
-          builder.StyleType() == kPseudoIdBackdrop ||
-          builder.StyleType() == kPseudoIdViewTransition) {
-        builder.SetTopLayer(ETopLayer::kBrowser);
+      if (element && element->IsInTopLayer()) {
+        builder.SetOverlay(EOverlay::kAuto);
       }
     }
 
@@ -855,7 +840,8 @@ void StyleAdjuster::AdjustComputedStyle(StyleResolverState& state,
     // to 'absolute'. Root elements that are in the top layer should just
     // be left alone because the fullscreen.css doesn't apply any style to
     // them.
-    if (builder.TopLayer() == ETopLayer::kBrowser && !is_document_element) {
+    if ((builder.Overlay() == EOverlay::kAuto && !is_document_element) ||
+        builder.StyleType() == kPseudoIdBackdrop) {
       if (builder.GetPosition() == EPosition::kStatic ||
           builder.GetPosition() == EPosition::kRelative) {
         builder.SetPosition(EPosition::kAbsolute);
@@ -881,8 +867,7 @@ void StyleAdjuster::AdjustComputedStyle(StyleResolverState& state,
 
     // math display values on non-MathML elements compute to flow display
     // values.
-    if ((!element || !is_mathml_element) && builder.IsDisplayMathType()) {
-      DCHECK(RuntimeEnabledFeatures::MathMLCoreEnabled());
+    if (!IsA<MathMLElement>(element) && builder.IsDisplayMathType()) {
       builder.SetDisplay(builder.Display() == EDisplay::kBlockMath
                              ? EDisplay::kBlock
                              : EDisplay::kInline);
@@ -908,7 +893,7 @@ void StyleAdjuster::AdjustComputedStyle(StyleResolverState& state,
     // it to have a backdrop filter either.
     if (is_document_element && is_in_main_frame &&
         builder.HasBackdropFilter()) {
-      builder.MutableBackdropFilter().clear();
+      builder.SetBackdropFilter(FilterOperations());
     }
   } else {
     AdjustStyleForFirstLetter(builder);
@@ -931,8 +916,19 @@ void StyleAdjuster::AdjustComputedStyle(StyleResolverState& state,
     builder.SetForcesStackingContext(true);
   }
 
-  if (builder.TopLayer() == ETopLayer::kBrowser) {
+  if (builder.Overlay() == EOverlay::kAuto ||
+      builder.StyleType() == kPseudoIdBackdrop ||
+      builder.StyleType() == kPseudoIdViewTransition) {
     builder.SetForcesStackingContext(true);
+  }
+
+  // Though will-change is not itself an inherited property, the intent
+  // expressed by 'will-change: contents' includes descendants.
+  // (We can't mark will-change as inherited and copy this in
+  // WillChange::ApplyInherit(), as Apply() for noninherited
+  // properties, like will-change, gets skipped on partial MPC hits.)
+  if (state.ParentStyle()->SubtreeWillChangeContents()) {
+    builder.SetSubtreeWillChangeContents(true);
   }
 
   if (builder.OverflowX() != EOverflow::kVisible ||
@@ -978,7 +974,7 @@ void StyleAdjuster::AdjustComputedStyle(StyleResolverState& state,
 
   AdjustStyleForInert(builder, element);
 
-  AdjustStyleForEditing(builder);
+  AdjustStyleForEditing(builder, element);
 
   bool is_svg_root = false;
 
@@ -1028,7 +1024,7 @@ void StyleAdjuster::AdjustComputedStyle(StyleResolverState& state,
     }
     builder.SetCssDominantBaseline(baseline);
 
-  } else if (is_mathml_element) {
+  } else if (IsA<MathMLElement>(element)) {
     if (builder.Display() == EDisplay::kContents) {
       // https://drafts.csswg.org/css-display/#unbox-mathml
       builder.SetDisplay(EDisplay::kNone);
@@ -1081,24 +1077,20 @@ void StyleAdjuster::AdjustComputedStyle(StyleResolverState& state,
     }
   }
 
-  AdjustAnchorQueryStyles(builder);
-
-  if (!HasFullNGFragmentationSupport()) {
-    // When establishing a block fragmentation context for LayoutNG, we require
-    // that everything fragmentable inside can be laid out by NG natively, since
-    // NG and legacy layout cannot cooperate within the same fragmentation
-    // context. And vice versa (everything inside a legacy fragmentation context
-    // needs to be legacy objects, in order to be fragmentable). Set a flag, so
-    // that we can quickly determine whether we need to check that an element is
-    // compatible with the block fragmentation implementation being used.
-    if (builder.SpecifiesColumns() ||
-        (element && element->GetDocument().Printing())) {
-      builder.SetInsideFragmentationContextWithNondeterministicEngine(true);
-    }
-  }
-
   if (element && element->HasCustomStyleCallbacks()) {
     element->AdjustStyle(base::PassKey<StyleAdjuster>(), builder);
+  }
+
+  if (element &&
+      ViewTransitionUtils::IsViewTransitionElementExcludingRootFromSupplement(
+          *element)) {
+    builder.SetElementIsViewTransitionParticipant();
+  }
+
+  if (RuntimeEnabledFeatures::
+          CSSContentVisibilityImpliesContainIntrinsicSizeAutoEnabled() &&
+      builder.ContentVisibility() == EContentVisibility::kAuto) {
+    builder.SetContainIntrinsicSizeAuto();
   }
 }
 

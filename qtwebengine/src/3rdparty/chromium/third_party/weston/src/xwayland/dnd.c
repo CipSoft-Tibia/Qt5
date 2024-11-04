@@ -40,7 +40,7 @@
 #include <libweston/libweston.h>
 #include "xwayland.h"
 
-#include "hash.h"
+#include "shared/hash.h"
 
 struct dnd_data_source {
 	struct weston_data_source base;
@@ -51,7 +51,7 @@ struct dnd_data_source {
 
 static void
 data_source_accept(struct weston_data_source *base,
-		   uint32_t time, const char *mime_type)
+		   uint32_t serial, const char *mime_type)
 {
 	struct dnd_data_source *source = (struct dnd_data_source *) base;
 	xcb_client_message_event_t client_message;
@@ -207,9 +207,6 @@ weston_wm_handle_dnd_event(struct weston_wm *wm,
 			return 1;
 		} else if (client_message->type == wm->atom.xdnd_drop) {
 			weston_log("got drop!\n");
-			return 1;
-		} else if (client_message->type == wm->atom.xdnd_drop) {
-			weston_log("got enter!\n");
 			return 1;
 		}
 		return 0;

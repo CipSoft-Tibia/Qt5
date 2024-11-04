@@ -538,6 +538,14 @@ QQuickShaderEffect::~QQuickShaderEffect()
 {
     Q_D(QQuickShaderEffect);
     d->inDestructor = true;
+
+    for (int i = 0; i < QQuickShaderEffectPrivate::NShader; ++i) {
+        d->disconnectSignals(QQuickShaderEffectPrivate::Shader(i));
+        d->clearMappers(QQuickShaderEffectPrivate::Shader(i));
+    }
+
+    delete d->m_mgr;
+    d->m_mgr = nullptr;
 }
 
 /*!
@@ -835,12 +843,7 @@ QQuickShaderEffectPrivate::QQuickShaderEffectPrivate()
 
 QQuickShaderEffectPrivate::~QQuickShaderEffectPrivate()
 {
-    for (int i = 0; i < NShader; ++i) {
-        disconnectSignals(Shader(i));
-        clearMappers(Shader(i));
-    }
-
-    delete m_mgr;
+    Q_ASSERT(m_mgr == nullptr);
 }
 
 void QQuickShaderEffectPrivate::setFragmentShader(const QUrl &fileUrl)
@@ -981,9 +984,11 @@ void QQuickShaderEffectPrivate::handleEvent(QEvent *event)
 {
     if (event->type() == QEvent::DynamicPropertyChange) {
         const auto propertyName = static_cast<QDynamicPropertyChangeEvent *>(event)->propertyName();
-        const auto mappedId = findMappedShaderVariableId(propertyName);
-        if (mappedId)
-            propertyChanged(*mappedId);
+        for (int i = 0; i < NShader; ++i) {
+            const auto mappedId = findMappedShaderVariableId(propertyName, Shader(i));
+            if (mappedId)
+                propertyChanged(*mappedId);
+        }
     }
 }
 
@@ -1433,6 +1438,17 @@ std::optional<int> QQuickShaderEffectPrivate::findMappedShaderVariableId(const Q
             if (vars[idx].name == name)
                 return indexToMappedId(shaderType, idx);
         }
+    }
+
+    return {};
+}
+
+std::optional<int> QQuickShaderEffectPrivate::findMappedShaderVariableId(const QByteArray &name, Shader shaderType) const
+{
+    const auto &vars = m_shaders[shaderType].shaderInfo.variables;
+    for (int idx = 0; idx < vars.size(); ++idx) {
+        if (vars[idx].name == name)
+            return indexToMappedId(shaderType, idx);
     }
 
     return {};

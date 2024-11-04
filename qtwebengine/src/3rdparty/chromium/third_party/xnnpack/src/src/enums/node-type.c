@@ -68,6 +68,10 @@ const char* xnn_node_type_to_string(enum xnn_node_type type) {
       return "Global Average Pooling 1D";
     case xnn_node_type_global_average_pooling_2d:
       return "Global Average Pooling 2D";
+    case xnn_node_type_global_sum_pooling_1d:
+      return "Global Sum Pooling 1D";
+    case xnn_node_type_global_sum_pooling_2d:
+      return "Global Sum Pooling 2D";
     case xnn_node_type_hardswish:
       return "HardSwish";
     case xnn_node_type_leaky_relu:
@@ -108,6 +112,8 @@ const char* xnn_node_type_to_string(enum xnn_node_type type) {
       return "Static Transpose";
     case xnn_node_type_subtract:
       return "Subtract";
+    case xnn_node_type_tanh:
+      return "Tanh";
     case xnn_node_type_unpooling_2d:
       return "Unpooling 2D";
   }

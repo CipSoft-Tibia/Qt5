@@ -28,27 +28,32 @@ namespace wgpu::binding {
 ////////////////////////////////////////////////////////////////////////////////
 // wgpu::bindings::GPURenderBundleEncoder
 ////////////////////////////////////////////////////////////////////////////////
-GPURenderBundleEncoder::GPURenderBundleEncoder(wgpu::RenderBundleEncoder enc)
-    : enc_(std::move(enc)) {}
+GPURenderBundleEncoder::GPURenderBundleEncoder(const RenderBundleEncoderDescriptor& desc,
+                                               wgpu::RenderBundleEncoder enc)
+    : enc_(std::move(enc)), label_(desc.label ? desc.label : "") {}
 
 interop::Interface<interop::GPURenderBundle> GPURenderBundleEncoder::finish(
     Napi::Env env,
     interop::GPURenderBundleDescriptor descriptor) {
     wgpu::RenderBundleDescriptor desc{};
+    Converter conv(env);
+    if (!conv(desc.label, descriptor.label)) {
+        return {};
+    }
 
-    return interop::GPURenderBundle::Create<GPURenderBundle>(env, enc_.Finish(&desc));
+    return interop::GPURenderBundle::Create<GPURenderBundle>(env, desc, enc_.Finish(&desc));
 }
 
 void GPURenderBundleEncoder::setBindGroup(
     Napi::Env env,
     interop::GPUIndex32 index,
-    interop::Interface<interop::GPUBindGroup> bindGroup,
+    std::optional<interop::Interface<interop::GPUBindGroup>> bindGroup,
     std::vector<interop::GPUBufferDynamicOffset> dynamicOffsets) {
     Converter conv(env);
 
     wgpu::BindGroup bg{};
     uint32_t* offsets = nullptr;
-    uint32_t num_offsets = 0;
+    size_t num_offsets = 0;
     if (!conv(bg, bindGroup) || !conv(offsets, num_offsets, dynamicOffsets)) {
         return;
     }
@@ -56,12 +61,13 @@ void GPURenderBundleEncoder::setBindGroup(
     enc_.SetBindGroup(index, bg, num_offsets, offsets);
 }
 
-void GPURenderBundleEncoder::setBindGroup(Napi::Env env,
-                                          interop::GPUIndex32 index,
-                                          interop::Interface<interop::GPUBindGroup> bindGroup,
-                                          interop::Uint32Array dynamicOffsetsData,
-                                          interop::GPUSize64 dynamicOffsetsDataStart,
-                                          interop::GPUSize32 dynamicOffsetsDataLength) {
+void GPURenderBundleEncoder::setBindGroup(
+    Napi::Env env,
+    interop::GPUIndex32 index,
+    std::optional<interop::Interface<interop::GPUBindGroup>> bindGroup,
+    interop::Uint32Array dynamicOffsetsData,
+    interop::GPUSize64 dynamicOffsetsDataStart,
+    interop::GPUSize32 dynamicOffsetsDataLength) {
     Converter conv(env);
 
     wgpu::BindGroup bg{};
@@ -118,11 +124,12 @@ void GPURenderBundleEncoder::setIndexBuffer(Napi::Env env,
     enc_.SetIndexBuffer(b, f, o, s);
 }
 
-void GPURenderBundleEncoder::setVertexBuffer(Napi::Env env,
-                                             interop::GPUIndex32 slot,
-                                             interop::Interface<interop::GPUBuffer> buffer,
-                                             interop::GPUSize64 offset,
-                                             std::optional<interop::GPUSize64> size) {
+void GPURenderBundleEncoder::setVertexBuffer(
+    Napi::Env env,
+    interop::GPUIndex32 slot,
+    std::optional<interop::Interface<interop::GPUBuffer>> buffer,
+    interop::GPUSize64 offset,
+    std::optional<interop::GPUSize64> size) {
     Converter conv(env);
 
     wgpu::Buffer b{};
@@ -182,11 +189,12 @@ void GPURenderBundleEncoder::drawIndexedIndirect(
 }
 
 std::string GPURenderBundleEncoder::getLabel(Napi::Env) {
-    UNIMPLEMENTED();
+    return label_;
 }
 
 void GPURenderBundleEncoder::setLabel(Napi::Env, std::string value) {
-    UNIMPLEMENTED();
+    enc_.SetLabel(value.c_str());
+    label_ = value;
 }
 
 }  // namespace wgpu::binding

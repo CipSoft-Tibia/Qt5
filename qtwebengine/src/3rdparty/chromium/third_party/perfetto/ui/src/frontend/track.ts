@@ -12,21 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
+import m from 'mithril';
 
 import {assertExists} from '../base/logging';
-import {Engine} from '../common/engine';
+import {EngineProxy} from '../common/engine';
 import {TrackState} from '../common/state';
+import {duration, Span, time} from '../common/time';
 import {TrackData} from '../common/track_data';
+import {TrackLike} from '../public';
 
 import {checkerboard} from './checkerboard';
 import {globals} from './globals';
+import {PxSpan, TimeScale} from './time_scale';
 import {TrackButtonAttrs} from './track_panel';
 
 // Args passed to the track constructors when creating a new track.
 export interface NewTrackArgs {
   trackId: string;
-  engine: Engine;
+  engine: EngineProxy;
 }
 
 // This interface forces track implementations to have some static properties.
@@ -51,10 +54,11 @@ export interface SliceRect {
 }
 
 // The abstract class that needs to be implemented by all tracks.
-export abstract class Track<Config = {}, Data extends TrackData = TrackData> {
+export abstract class Track<Config = {}, Data extends TrackData = TrackData>
+    implements TrackLike {
   // The UI-generated track ID (not to be confused with the SQL track.id).
   protected readonly trackId: string;
-  protected readonly engine: Engine;
+  protected readonly engine: EngineProxy;
 
   // When true this is a new controller-less track type.
   // TODO(hjd): eventually all tracks will be controller-less and this
@@ -130,9 +134,11 @@ export abstract class Track<Config = {}, Data extends TrackData = TrackData> {
   render(ctx: CanvasRenderingContext2D) {
     globals.frontendLocalState.addVisibleTrack(this.trackState.id);
     if (this.data() === undefined && !this.frontendOnly) {
-      const {visibleWindowTime, timeScale} = globals.frontendLocalState;
-      const startPx = Math.floor(timeScale.timeToPx(visibleWindowTime.start));
-      const endPx = Math.ceil(timeScale.timeToPx(visibleWindowTime.end));
+      const {visibleWindowTime, visibleTimeScale} = globals.frontendLocalState;
+      const startPx =
+          Math.floor(visibleTimeScale.hpTimeToPx(visibleWindowTime.start));
+      const endPx =
+          Math.ceil(visibleTimeScale.hpTimeToPx(visibleWindowTime.end));
       checkerboard(ctx, this.getHeight(), startPx, endPx);
     } else {
       this.renderCanvas(ctx);
@@ -175,7 +181,7 @@ export abstract class Track<Config = {}, Data extends TrackData = TrackData> {
     y -= 10;
 
     // Ensure the box is on screen:
-    const endPx = globals.frontendLocalState.timeScale.endPx;
+    const endPx = globals.frontendLocalState.visibleTimeScale.pxSpan.end;
     if (x + width > endPx) {
       x -= x + width - endPx;
     }
@@ -205,8 +211,10 @@ export abstract class Track<Config = {}, Data extends TrackData = TrackData> {
   // only for track types that support slices e.g. chrome_slice, async_slices
   // tStart - slice start time in seconds, tEnd - slice end time in seconds,
   // depth - slice depth
-  getSliceRect(_tStart: number, _tEnd: number, _depth: number): SliceRect
-      |undefined {
+  getSliceRect(
+      _visibleTimeScale: TimeScale, _visibleWindow: Span<time, duration>,
+      _windowSpan: PxSpan, _tStart: time, _tEnd: time,
+      _depth: number): SliceRect|undefined {
     return undefined;
   }
 }

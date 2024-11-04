@@ -63,7 +63,7 @@ ResultOrError<Ref<RenderPipelineBase>> GetOrCreateDepthBlitPipeline(DeviceBase* 
     ShaderModuleWGSLDescriptor wgslDesc = {};
     ShaderModuleDescriptor shaderModuleDesc = {};
     shaderModuleDesc.nextInChain = &wgslDesc;
-    wgslDesc.source = kBlitToDepthShaders;
+    wgslDesc.code = kBlitToDepthShaders;
 
     Ref<ShaderModuleBase> shaderModule;
     DAWN_TRY_ASSIGN(shaderModule, device->CreateShaderModule(&shaderModuleDesc));
@@ -75,6 +75,7 @@ ResultOrError<Ref<RenderPipelineBase>> GetOrCreateDepthBlitPipeline(DeviceBase* 
     DepthStencilState dsState = {};
     dsState.format = format;
     dsState.depthWriteEnabled = true;
+    dsState.depthCompare = wgpu::CompareFunction::Always;
 
     RenderPipelineDescriptor renderPipelineDesc = {};
     renderPipelineDesc.vertex.module = shaderModule.Get();
@@ -96,6 +97,7 @@ MaybeError BlitDepthToDepth(DeviceBase* device,
                             const TextureCopy& src,
                             const TextureCopy& dst,
                             const Extent3D& copyExtent) {
+    ASSERT(device->IsLockedByCurrentThreadIfNeeded());
     // ASSERT that the texture have depth and are not multisampled.
     ASSERT(src.texture->GetFormat().HasDepth());
     ASSERT(dst.texture->GetFormat().HasDepth());
@@ -203,6 +205,7 @@ MaybeError BlitDepthToDepth(DeviceBase* device,
 
         RenderPassDepthStencilAttachment dsAttachment = {};
         dsAttachment.view = dstView.Get();
+        dsAttachment.depthClearValue = 0.0;
         dsAttachment.depthLoadOp = wgpu::LoadOp::Load;
         dsAttachment.depthStoreOp = wgpu::StoreOp::Store;
         if (dst.texture->GetFormat().HasStencil()) {
@@ -214,11 +217,11 @@ MaybeError BlitDepthToDepth(DeviceBase* device,
         rpDesc.depthStencilAttachment = &dsAttachment;
 
         // Draw to perform the blit.
-        Ref<RenderPassEncoder> pass = AcquireRef(commandEncoder->APIBeginRenderPass(&rpDesc));
+        Ref<RenderPassEncoder> pass = commandEncoder->BeginRenderPass(&rpDesc);
         pass->APISetBindGroup(0, bindGroup.Get());
         pass->APISetPipeline(pipeline.Get());
         pass->APIDraw(3, 1, 0, 0);
-        pass->APIEnd();
+        pass->End();
     }
 
     return {};

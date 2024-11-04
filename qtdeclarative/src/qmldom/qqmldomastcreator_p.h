@@ -110,7 +110,7 @@ class QQmlDomAstCreator final : public AST::Visitor
             return std::get<ScriptElements::ScriptList>(std::move(value));
         }
 
-        void setSemanticScope(const QQmlJSScope::Ptr &scope)
+        void setSemanticScope(const QQmlJSScope::ConstPtr &scope)
         {
             if (auto x = std::get_if<ScriptElementVariant>(&value)) {
                 x->base()->setSemanticScope(scope);
@@ -134,7 +134,7 @@ private:
     QList<ScriptStackElement> scriptNodeStack;
     QVector<int> arrayBindingLevels;
     FileLocations::Tree rootMap;
-    bool m_enableScriptExpressions;
+    bool m_enableScriptExpressions = false;
 
     template<typename T>
     QmlStackElement &currentEl(int idx = 0)
@@ -187,7 +187,7 @@ private:
     void removeCurrentNode(std::optional<DomType> expectedType);
     void removeCurrentScriptNode(std::optional<DomType> expectedType);
 
-    void pushEl(Path p, DomValue it, AST::Node *n)
+    void pushEl(Path p, const DomValue &it, AST::Node *n)
     {
         nodeStack.append({ p, it, createMap(it.kind, p, n) });
     }
@@ -196,11 +196,10 @@ private:
 
     FileLocations::Tree createMap(DomType k, Path p, AST::Node *n);
 
-    const ScriptElementVariant &finalizeScriptExpression(const ScriptElementVariant &element,
-                                                         Path pathFromOwner,
-                                                         const FileLocations::Tree &base);
+    const ScriptElementVariant &
+    finalizeScriptExpression(const ScriptElementVariant &element, Path pathFromOwner,
+                             const FileLocations::Tree &ownerFileLocations);
 
-    const ScriptElementVariant &finalizeScriptList(AST::Node *ast, FileLocations::Tree base);
     void setScriptExpression (const std::shared_ptr<ScriptExpression>& value);
 
     Path pathOfLastScriptNode() const;
@@ -258,6 +257,11 @@ private:
         return myExp;
     }
 
+    enum UnaryExpressionKind { Prefix, Postfix };
+    std::shared_ptr<ScriptElements::GenericScriptElement>
+    makeUnaryExpression(AST::Node *expression, QQmlJS::SourceLocation operatorToken,
+                        bool hasExpression, UnaryExpressionKind type);
+
     static std::shared_ptr<ScriptElements::GenericScriptElement>
     makeGenericScriptElement(SourceLocation location, DomType kind)
     {
@@ -296,7 +300,7 @@ private:
     ScriptElementVariant scriptElementForQualifiedId(AST::UiQualifiedId *expression);
 
 public:
-    QQmlDomAstCreator(MutableDomItem qmlFile);
+    explicit QQmlDomAstCreator(const MutableDomItem &qmlFile);
 
     bool visit(AST::UiProgram *program) override;
     void endVisit(AST::UiProgram *) override;
@@ -307,6 +311,9 @@ public:
 
     bool visit(AST::UiPublicMember *el) override;
     void endVisit(AST::UiPublicMember *el) override;
+
+    bool visit(AST::FunctionDeclaration *el) override;
+    void endVisit(AST::FunctionDeclaration *) override;
 
     bool visit(AST::UiSourceElement *el) override;
     void endVisit(AST::UiSourceElement *) override;
@@ -386,8 +393,98 @@ public:
     bool visit(AST::Type *expression) override;
     void endVisit(AST::Type *expression) override;
 
+    bool visit(AST::DefaultClause *) override;
+    void endVisit(AST::DefaultClause *) override;
+
+    bool visit(AST::CaseClause *) override;
+    void endVisit(AST::CaseClause *) override;
+
+    bool visit(AST::CaseClauses *) override;
+    void endVisit(AST::CaseClauses *) override;
+
+    bool visit(AST::CaseBlock *) override;
+    void endVisit(AST::CaseBlock *) override;
+
+    bool visit(AST::SwitchStatement *) override;
+    void endVisit(AST::SwitchStatement *) override;
+
+    bool visit(AST::WhileStatement *) override;
+    void endVisit(AST::WhileStatement *) override;
+
+    bool visit(AST::DoWhileStatement *) override;
+    void endVisit(AST::DoWhileStatement *) override;
+
+    bool visit(AST::ForEachStatement *) override;
+    void endVisit(AST::ForEachStatement *) override;
+
     bool visit(AST::ClassExpression *) override;
     void endVisit(AST::ClassExpression *) override;
+
+    bool visit(AST::TryStatement *) override;
+    void endVisit(AST::TryStatement *) override;
+
+    bool visit(AST::Catch *) override;
+    void endVisit(AST::Catch *) override;
+
+    bool visit(AST::Finally *) override;
+    void endVisit(AST::Finally *) override;
+
+    bool visit(AST::ThrowStatement *) override;
+    void endVisit(AST::ThrowStatement *) override;
+
+    bool visit(AST::LabelledStatement *) override;
+    void endVisit(AST::LabelledStatement *) override;
+
+    bool visit(AST::ContinueStatement *) override;
+    void endVisit(AST::ContinueStatement *) override;
+
+    bool visit(AST::BreakStatement *) override;
+    void endVisit(AST::BreakStatement *) override;
+
+    bool visit(AST::Expression *) override;
+    void endVisit(AST::Expression *) override;
+
+    bool visit(AST::ConditionalExpression *) override;
+    void endVisit(AST::ConditionalExpression *) override;
+
+    bool visit(AST::UnaryMinusExpression *) override;
+    void endVisit(AST::UnaryMinusExpression *) override;
+
+    bool visit(AST::UnaryPlusExpression *) override;
+    void endVisit(AST::UnaryPlusExpression *) override;
+
+    bool visit(AST::TildeExpression *) override;
+    void endVisit(AST::TildeExpression *) override;
+
+    bool visit(AST::NotExpression *) override;
+    void endVisit(AST::NotExpression *) override;
+
+    bool visit(AST::TypeOfExpression *) override;
+    void endVisit(AST::TypeOfExpression *) override;
+
+    bool visit(AST::DeleteExpression *) override;
+    void endVisit(AST::DeleteExpression *) override;
+
+    bool visit(AST::VoidExpression *) override;
+    void endVisit(AST::VoidExpression *) override;
+
+    bool visit(AST::PostDecrementExpression *) override;
+    void endVisit(AST::PostDecrementExpression *) override;
+
+    bool visit(AST::PostIncrementExpression *) override;
+    void endVisit(AST::PostIncrementExpression *) override;
+
+    bool visit(AST::PreDecrementExpression *) override;
+    void endVisit(AST::PreDecrementExpression *) override;
+
+    bool visit(AST::PreIncrementExpression *) override;
+    void endVisit(AST::PreIncrementExpression *) override;
+
+    bool visit(AST::EmptyStatement *) override;
+    void endVisit(AST::EmptyStatement *) override;
+
+    bool visit(AST::NestedExpression *) override;
+    void endVisit(AST::NestedExpression *) override;
 
     // lists of stuff whose children do not need a qqmljsscope: visitation order can be custom
     bool visit(AST::ArgumentList *) override;
@@ -423,7 +520,8 @@ public:
 class QQmlDomAstCreatorWithQQmlJSScope : public AST::Visitor
 {
 public:
-    QQmlDomAstCreatorWithQQmlJSScope(MutableDomItem &qmlFile, QQmlJSLogger *logger);
+    QQmlDomAstCreatorWithQQmlJSScope(MutableDomItem &qmlFile, QQmlJSLogger *logger,
+                                     QQmlJSImporter *importer);
 
 #define X(name)                       \
     bool visit(AST::name *) override; \
@@ -443,7 +541,6 @@ public:
         m_domCreator.enableScriptExpressions(enable);
     }
 
-    QQmlJSImporter &importer() { return m_importer; }
     QQmlJSImportVisitor &scopeCreator() { return m_scopeCreator; }
 
 private:
@@ -455,6 +552,24 @@ private:
     template<typename U>
     using RequiresCustomIteration = IsInList<U, AST::PatternElementList, AST::PatternPropertyList,
                                              AST::FormalParameterList>;
+
+    enum VisitorKind : bool { DomCreator, ScopeCreator };
+    /*! \internal
+        \brief Holds the information to reactivate a visitor
+        This struct tracks a visitor during its inactive phases
+        and holds the information needed to reactivate the visitor.
+    */
+    struct InactiveVisitorMarker
+    {
+        qsizetype count;
+        AST::Node::Kind nodeKind;
+        VisitorKind inactiveVisitorKind;
+
+        VisitorKind stillActiveVisitorKind() const
+        {
+            return inactiveVisitorKind == DomCreator ? ScopeCreator : DomCreator;
+        }
+    };
 
     template<typename T>
     void customListIteration(T *t)
@@ -474,66 +589,61 @@ private:
         }
     }
 
+    static void initMarkerForActiveVisitor(std::optional<InactiveVisitorMarker> &inactiveVisitorMarker,
+                               AST::Node::Kind nodeKind, bool continueForDom)
+    {
+        inactiveVisitorMarker.emplace();
+        inactiveVisitorMarker->inactiveVisitorKind = continueForDom ? ScopeCreator : DomCreator;
+        inactiveVisitorMarker->count = 1;
+        inactiveVisitorMarker->nodeKind = nodeKind;
+    };
+
+    template<typename T>
+    bool performListIterationIfRequired(T *t)
+    {
+        if constexpr (RequiresCustomIteration<T>::value) {
+            customListIteration(t);
+            return false;
+        }
+        Q_UNUSED(t);
+        return true;
+    }
+
     template<typename T>
     bool visitT(T *t)
     {
-        if (m_marker && m_marker->nodeKind == t->kind) {
-            m_marker->count += 1;
-        }
+        const auto handleVisitResult = [this, t](const bool continueVisit) {
+            if (m_inactiveVisitorMarker && m_inactiveVisitorMarker->nodeKind == t->kind)
+                m_inactiveVisitorMarker->count += 1;
+
+            if (continueVisit)
+                return performListIterationIfRequired(t);
+            return continueVisit;
+        };
 
         // first case: no marker, both can visit
-        if (!m_marker) {
+        if (!m_inactiveVisitorMarker) {
             bool continueForDom = m_domCreator.visit(t);
             bool continueForScope = m_scopeCreator.visit(t);
             if (!continueForDom && !continueForScope)
                 return false;
             else if (continueForDom ^ continueForScope) {
-                m_marker.emplace();
-                m_marker->inactiveVisitor = continueForDom ? ScopeCreator : DomCreator;
-                m_marker->count = 1;
-                m_marker->nodeKind = AST::Node::Kind(t->kind);
-
-                if constexpr (RequiresCustomIteration<T>::value) {
-                    customListIteration(t);
-                    return false;
-                } else {
-                    return true;
-                }
+                initMarkerForActiveVisitor(m_inactiveVisitorMarker, AST::Node::Kind(t->kind),
+                                           continueForDom);
+                return performListIterationIfRequired(t);
             } else {
                 Q_ASSERT(continueForDom && continueForScope);
-
-                if constexpr (RequiresCustomIteration<T>::value) {
-                    customListIteration(t);
-                    return false;
-                } else {
-                    return true;
-                }
+                return performListIterationIfRequired(t);
             }
             Q_UNREACHABLE();
         }
 
         // second case: a marker, just one visit
-        switch (m_marker->inactiveVisitor) {
-        case DomCreator: {
-            const bool continueForScope = m_scopeCreator.visit(t);
-            if (continueForScope) {
-                if constexpr (RequiresCustomIteration<T>::value) {
-                    customListIteration(t);
-                    return false;
-                }
-            }
-            return continueForScope;
-        }
-        case ScopeCreator: {
-            const bool continueForDom = m_domCreator.visit(t);
-            if (continueForDom) {
-                if constexpr (RequiresCustomIteration<T>::value) {
-                    customListIteration(t);
-                    return false;
-                }
-            }
-            return continueForDom;
-        }
+        switch (m_inactiveVisitorMarker->stillActiveVisitorKind()) {
+        case DomCreator:
+            return handleVisitResult(m_domCreator.visit(t));
+        case ScopeCreator:
+            return handleVisitResult(m_scopeCreator.visit(t));
         };
         Q_UNREACHABLE();
     }
@@ -541,22 +651,19 @@ private:
     template<typename T>
     void endVisitT(T *t)
     {
-        if (m_marker && m_marker->nodeKind == t->kind) {
-            m_marker->count -= 1;
-            if (m_marker->count == 0)
-                m_marker.reset();
+        if (m_inactiveVisitorMarker && m_inactiveVisitorMarker->nodeKind == t->kind) {
+            m_inactiveVisitorMarker->count -= 1;
+            if (m_inactiveVisitorMarker->count == 0)
+                m_inactiveVisitorMarker.reset();
         }
-
-        if (m_marker) {
-            switch (m_marker->inactiveVisitor) {
-            case DomCreator: {
-                m_scopeCreator.endVisit(t);
-                return;
-            }
-            case ScopeCreator: {
+        if (m_inactiveVisitorMarker) {
+            switch (m_inactiveVisitorMarker->stillActiveVisitorKind()) {
+            case DomCreator:
                 m_domCreator.endVisit(t);
                 return;
-            }
+            case ScopeCreator:
+                m_scopeCreator.endVisit(t);
+                return;
             };
             Q_UNREACHABLE();
         }
@@ -568,21 +675,14 @@ private:
     }
 
     QQmlJSScope::Ptr m_root;
-    QQmlJSLogger *m_logger;
-    QQmlJSImporter m_importer;
+    QQmlJSLogger *m_logger = nullptr;
+    QQmlJSImporter *m_importer = nullptr;
     QString m_implicitImportDirectory;
     QQmlJSImportVisitor m_scopeCreator;
     QQmlDomAstCreator m_domCreator;
 
-    enum InactiveVisitor : bool { DomCreator, ScopeCreator };
-    struct Marker
-    {
-        qsizetype count;
-        AST::Node::Kind nodeKind;
-        InactiveVisitor inactiveVisitor;
-    };
-    std::optional<Marker> m_marker;
-    bool m_enableScriptExpressions;
+    std::optional<InactiveVisitorMarker> m_inactiveVisitorMarker;
+    bool m_enableScriptExpressions = false;
 };
 
 } // end namespace Dom

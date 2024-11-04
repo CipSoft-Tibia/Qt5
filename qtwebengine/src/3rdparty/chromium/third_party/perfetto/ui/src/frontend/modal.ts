@@ -53,16 +53,15 @@
 // For one-show use-cases it's still possible to just use:
 // showModal({title: 'Foo', content, buttons: ...});
 
-import * as m from 'mithril';
+import m from 'mithril';
+
 import {defer} from '../base/deferred';
 import {assertExists, assertTrue} from '../base/logging';
-import {globals} from './globals';
-
-type AnyAttrsVnode = m.Vnode<unknown, {}>;
+import {raf} from '../core/raf_scheduler';
 
 export interface ModalDefinition {
   title: string;
-  content: AnyAttrsVnode;
+  content: m.Children|(() => m.Children);
   vAlign?: 'MIDDLE' /* default */ | 'TOP';
   buttons?: Button[];
   close?: boolean;
@@ -91,7 +90,7 @@ export class Modal implements m.ClassComponent<ModalDefinition> {
     // The next view pass will kick-off the modalFadeOut CSS animation by
     // appending the .modal-hidden CSS class.
     this.requestClose = true;
-    globals.rafScheduler.scheduleFullRedraw();
+    raf.scheduleFullRedraw();
   }
 
   view(vnode: m.Vnode<ModalDefinition>) {
@@ -151,11 +150,19 @@ class ModalImpl implements m.ClassComponent<ModalImplAttrs> {
                     'button[aria-label=Close Modal]',
                     {onclick: () => attrs.parent.close()},
                     m.trust('&#x2715'),
+                    ),
                 ),
-            ),
-            m('main', attrs.content),
+            m('main', this.renderContent(attrs.content)),
             m('footer', buttons),
-        ));
+            ));
+  }
+
+  private renderContent(content: m.Children|(() => m.Children)): m.Children {
+    if (typeof content === 'function') {
+      return content();
+    } else {
+      return content;
+    }
   }
 
   oncreate(vnode: m.VnodeDOM<ModalImplAttrs>) {
@@ -190,7 +197,7 @@ class ModalImpl implements m.ClassComponent<ModalImplAttrs> {
   onremove() {
     if (this.onClose !== undefined) {
       this.onClose();
-      globals.rafScheduler.scheduleFullRedraw();
+      raf.scheduleFullRedraw();
     }
   }
 
@@ -242,7 +249,7 @@ export class ModalContainer {
               thiz.closeGeneration = thiz.generation;
               if (thiz.attrs?.onClose !== undefined) {
                 thiz.attrs.onClose();
-                globals.rafScheduler.scheduleFullRedraw();
+                raf.scheduleFullRedraw();
               }
             },
             close: thiz.closeGeneration === thiz.generation ? true :
@@ -270,7 +277,7 @@ export class ModalContainer {
 
   close() {
     this.closeGeneration = this.generation;
-    globals.rafScheduler.scheduleFullRedraw();
+    raf.scheduleFullRedraw();
   }
 }
 
@@ -289,6 +296,6 @@ export async function showModal(attrs: ModalDefinition): Promise<void> {
     ...attrs,
     onClose: () => promise.resolve(),
   });
-  globals.rafScheduler.scheduleFullRedraw();
+  raf.scheduleFullRedraw();
   return promise;
 }

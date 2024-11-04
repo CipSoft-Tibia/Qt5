@@ -12,6 +12,7 @@
 #include "components/segmentation_platform/internal/metadata/metadata_writer.h"
 #include "components/segmentation_platform/public/config.h"
 #include "components/segmentation_platform/public/constants.h"
+#include "components/segmentation_platform/public/features.h"
 #include "components/segmentation_platform/public/model_provider.h"
 #include "components/segmentation_platform/public/proto/model_metadata.pb.h"
 
@@ -56,21 +57,25 @@ constexpr int64_t kDeviceSwitcherMinSignalCollectionLength = 0;
 
 // static
 std::unique_ptr<Config> DeviceSwitcherModel::GetConfig() {
+  if (!base::FeatureList::IsEnabled(
+          features::kSegmentationPlatformDeviceSwitcher)) {
+    return nullptr;
+  }
   auto config = std::make_unique<Config>();
   config->segmentation_key = kDeviceSwitcherKey;
   config->segmentation_uma_name = kDeviceSwitcherUmaName;
   config->AddSegmentId(kDeviceSwitcherModelId,
                        std::make_unique<DeviceSwitcherModel>());
   config->is_boolean_segment = false;
-  config->on_demand_execution = true;
+  config->auto_execute_and_cache = false;
   return config;
 }
 
 DeviceSwitcherModel::DeviceSwitcherModel()
-    : ModelProvider(kDeviceSwitcherModelId) {}
+    : DefaultModelProvider(kDeviceSwitcherModelId) {}
 
-void DeviceSwitcherModel::InitAndFetchModel(
-    const ModelUpdatedCallback& model_updated_callback) {
+std::unique_ptr<DefaultModelProvider::ModelConfig>
+DeviceSwitcherModel::GetModelConfig() {
   proto::SegmentationModelMetadata metadata;
   MetadataWriter writer(&metadata);
   writer.SetDefaultSegmentationMetadataConfig(
@@ -85,16 +90,12 @@ void DeviceSwitcherModel::InitAndFetchModel(
       .name = "SyncDeviceInfo"});
   (*sync_input->mutable_additional_args())["wait_for_device_info_in_seconds"] =
       "60";
-  (*sync_input->mutable_additional_args())["active_days_limit"] = "14";
 
   writer.AddOutputConfigForMultiClassClassifier(
       kOutputLabels.begin(), kOutputLabels.size(), kOutputLabels.size(), 0.1);
 
   constexpr int kModelVersion = 1;
-  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-      FROM_HERE,
-      base::BindRepeating(model_updated_callback, kDeviceSwitcherModelId,
-                          std::move(metadata), kModelVersion));
+  return std::make_unique<ModelConfig>(std::move(metadata), kModelVersion);
 }
 
 void DeviceSwitcherModel::ExecuteModelWithInput(
@@ -113,30 +114,26 @@ void DeviceSwitcherModel::ExecuteModelWithInput(
     // Inputs failed to fetch from sync.
     result[RANK(DeviceSwitcherClass::kNotSynced)] = 1;
   } else {
-    // Assign a priority to the labels for the result. 0 labels will not be
-    // returned to the client.
-    result[RANK(DeviceSwitcherClass::kAndroidPhone)] = inputs[1] >= 1 ? 10 : 0;
-    result[RANK(DeviceSwitcherClass::kIosPhoneChrome)] = inputs[3] >= 1 ? 9 : 0;
-    result[RANK(DeviceSwitcherClass::kAndroidTablet)] = inputs[2] >= 1 ? 8 : 0;
-    result[RANK(DeviceSwitcherClass::kIosTablet)] = inputs[4] >= 1 ? 7 : 0;
+    // Order the labels based on the count of devices and additionally increase
+    // by a priority factor to break ties.
+    result[RANK(DeviceSwitcherClass::kAndroidPhone)] = inputs[1] * 1.10;
+    result[RANK(DeviceSwitcherClass::kIosPhoneChrome)] = inputs[3] * 1.09;
+    result[RANK(DeviceSwitcherClass::kAndroidTablet)] = inputs[2] * 1.08;
+    result[RANK(DeviceSwitcherClass::kIosTablet)] = inputs[4] * 1.07;
     result[RANK(DeviceSwitcherClass::kDesktop)] =
-        (inputs[5] + inputs[6] + inputs[7] + inputs[8]) >= 1 ? 6 : 0;
-    result[RANK(DeviceSwitcherClass::kOther)] = inputs[9] >= 1 ? 3 : 0;
+        (inputs[5] + inputs[6] + inputs[7] + inputs[8]) * 1.06;
+    result[RANK(DeviceSwitcherClass::kOther)] = inputs[9] * 1.05;
 
     int total = 0;
     for (unsigned i = 1; i < 10; ++i) {
       total += inputs[i];
     }
     result[RANK(DeviceSwitcherClass::kSyncedAndFirstDevice)] =
-        total == 0 ? 2 : 0;
+        total == 0 ? 1 : 0;
   }
 
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(std::move(callback), std::move(result)));
-}
-
-bool DeviceSwitcherModel::ModelAvailable() {
-  return true;
 }
 
 }  // namespace segmentation_platform

@@ -10,13 +10,14 @@
 
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkRect.h"
-#include "include/gpu/GrTypes.h"
+#include "include/gpu/GpuTypes.h"
 #include "src/gpu/RefCntedCallback.h"
 #include "src/gpu/ganesh/GrGpuResource.h"
 
+class GrBackendFormat;
+class GrDirectContext;
 class GrRenderTarget;
 class GrTexture;
-class GrBackendFormat;
 
 class GrSurface : public GrGpuResource {
 public:
@@ -80,7 +81,7 @@ public:
     }
 
     // Returns true if we are working with protected content.
-    bool isProtected() const { return fIsProtected == GrProtected::kYes; }
+    bool isProtected() const { return fIsProtected == skgpu::Protected::kYes; }
 
     void setFramebufferOnly() {
         SkASSERT(this->asRenderTarget());
@@ -98,6 +99,10 @@ public:
         sk_sp<skgpu::RefCntedCallback> fCallback;
         sk_sp<GrDirectContext> fDirectContext;
     };
+
+#if defined(GR_TEST_UTILS)
+    const GrSurface* asSurface() const override { return this; }
+#endif
 
 protected:
     void setGLRTFBOIDIs0() {
@@ -131,7 +136,7 @@ protected:
 
     GrSurface(GrGpu* gpu,
               const SkISize& dimensions,
-              GrProtected isProtected,
+              skgpu::Protected isProtected,
               std::string_view label)
             : INHERITED(gpu, label)
             , fDimensions(dimensions)
@@ -161,7 +166,7 @@ private:
 
     SkISize                    fDimensions;
     GrInternalSurfaceFlags     fSurfaceFlags;
-    GrProtected                fIsProtected;
+    skgpu::Protected           fIsProtected;
     sk_sp<RefCntedReleaseProc> fReleaseHelper;
 
     using INHERITED = GrGpuResource;

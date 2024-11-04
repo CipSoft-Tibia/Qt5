@@ -103,7 +103,7 @@ class RTCRtpSender final : public ScriptWrappable,
   void UnregisterEncodedAudioStreamCallback();
   void InitializeEncodedAudioStreams(ScriptState*);
   void OnAudioFrameFromEncoder(
-      std::unique_ptr<webrtc::TransformableFrameInterface> frame);
+      std::unique_ptr<webrtc::TransformableAudioFrameInterface> frame);
 
   void RegisterEncodedVideoStreamCallback();
   void UnregisterEncodedVideoStreamCallback();
@@ -120,6 +120,7 @@ class RTCRtpSender final : public ScriptWrappable,
       scoped_refptr<base::SingleThreadTaskRunner> task_runner);
   void SetVideoUnderlyingSink(
       RTCEncodedVideoUnderlyingSink* new_underlying_sink);
+  void LogMessage(const std::string& message);
 
   Member<RTCPeerConnection> pc_;
   std::unique_ptr<RTCRtpSenderPlatform> sender_;
@@ -145,7 +146,7 @@ class RTCRtpSender final : public ScriptWrappable,
       audio_to_packetizer_underlying_sink_
           GUARDED_BY(audio_underlying_sink_lock_);
   Member<RTCInsertableStreams> encoded_audio_streams_;
-  scoped_refptr<blink::RTCEncodedAudioStreamTransformer::Broker>
+  const scoped_refptr<blink::RTCEncodedAudioStreamTransformer::Broker>
       encoded_audio_transformer_;
 
   // Insertable Streams video support
@@ -158,7 +159,7 @@ class RTCRtpSender final : public ScriptWrappable,
       video_to_packetizer_underlying_sink_
           GUARDED_BY(video_underlying_sink_lock_);
   Member<RTCInsertableStreams> encoded_video_streams_;
-  scoped_refptr<blink::RTCEncodedVideoStreamTransformer::Broker>
+  const scoped_refptr<blink::RTCEncodedVideoStreamTransformer::Broker>
       encoded_video_transformer_;
 
   THREAD_CHECKER(thread_checker_);

@@ -22,6 +22,8 @@
 #include <QtQuick3D/private/qquick3dpickresult_p.h>
 #include <QtQuick/private/qquickshadereffectsource_p.h>
 
+#include <QtQuick3DRuntimeRender/private/qssgrenderpickresult_p.h>
+
 #include "qquick3dsceneenvironment_p.h"
 #include "qquick3drenderstats_p.h"
 #include "qquick3dlightmapbaker_p.h"
@@ -53,6 +55,9 @@ class Q_QUICK3D_EXPORT QQuick3DViewport : public QQuickItem
     Q_PROPERTY(QQuickShaderEffectSource::Format renderFormat READ renderFormat WRITE setRenderFormat NOTIFY renderFormatChanged FINAL REVISION(6, 4))
     Q_PROPERTY(QQuick3DRenderStats *renderStats READ renderStats CONSTANT)
     Q_PROPERTY(QQmlListProperty<QQuick3DObject> extensions READ extensions FINAL REVISION(6, 6))
+    Q_PROPERTY(int explicitTextureWidth READ explicitTextureWidth WRITE setExplicitTextureWidth NOTIFY explicitTextureWidthChanged FINAL REVISION(6, 7))
+    Q_PROPERTY(int explicitTextureHeight READ explicitTextureHeight WRITE setExplicitTextureHeight NOTIFY explicitTextureHeightChanged FINAL REVISION(6, 7))
+    Q_PROPERTY(QSize effectiveTextureSize READ effectiveTextureSize NOTIFY effectiveTextureSizeChanged FINAL REVISION(6, 7))
     Q_CLASSINFO("DefaultProperty", "data")
 
     QML_NAMED_ELEMENT(View3D)
@@ -102,10 +107,16 @@ public:
 
     QQmlListProperty<QQuick3DObject> extensions();
 
+    Q_REVISION(6, 7) int explicitTextureWidth() const;
+    Q_REVISION(6, 7) int explicitTextureHeight() const;
+    Q_REVISION(6, 7) QSize effectiveTextureSize() const;
+
     // Private helpers
     [[nodiscard]] bool extensionListDirty() const { return m_extensionListDirty; }
     [[nodiscard]] const QList<QQuick3DObject *> &extensionList() const { return m_extensions; }
     void clearExtensionListDirty() { m_extensionListDirty = false; }
+
+    Q_REVISION(6, 7) Q_INVOKABLE void rebuildExtensionList();
 
 protected:
     void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
@@ -121,6 +132,8 @@ public Q_SLOTS:
     void setImportScene(QQuick3DNode *inScene);
     void setRenderMode(QQuick3DViewport::RenderMode renderMode);
     Q_REVISION(6, 4) void setRenderFormat(QQuickShaderEffectSource::Format format);
+    Q_REVISION(6, 7) void setExplicitTextureWidth(int width);
+    Q_REVISION(6, 7) void setExplicitTextureHeight(int height);
     void cleanupDirectRenderer();
 
     // Setting this true enables picking for all the models, regardless of
@@ -139,11 +152,18 @@ Q_SIGNALS:
     void importSceneChanged();
     void renderModeChanged();
     Q_REVISION(6, 4) void renderFormatChanged();
+    Q_REVISION(6, 7) void explicitTextureWidthChanged();
+    Q_REVISION(6, 7) void explicitTextureHeightChanged();
+    Q_REVISION(6, 7) void effectiveTextureSizeChanged();
 
 private:
     friend class QQuick3DExtensionListHelper;
 
     Q_DISABLE_COPY(QQuick3DViewport)
+    struct SubsceneInfo {
+        QQuick3DObject* obj = nullptr;
+        QVarLengthArray<QPointF, 16> eventPointScenePositions;
+    };
     QQuick3DSceneRenderer *getRenderer() const;
     void updateDynamicTextures();
     QSGNode *setupOffscreenRenderer(QSGNode *node);
@@ -151,7 +171,21 @@ private:
     void setupDirectRenderer(RenderMode mode);
     bool checkIsVisible() const;
     bool internalPick(QPointerEvent *event, const QVector3D &origin = QVector3D(), const QVector3D &direction = QVector3D()) const;
+    QVarLengthArray<QSSGRenderPickResult, 20> getPickResults(QQuick3DSceneRenderer *renderer, const QVector3D &origin, const QVector3D &direction) const;
+    QVarLengthArray<QSSGRenderPickResult, 20> getPickResults(QQuick3DSceneRenderer *renderer, const QEventPoint &eventPoint) const;
+    bool forwardEventToSubscenes(QPointerEvent *event,
+                                 bool useRayPicking,
+                                 QQuick3DSceneRenderer *renderer,
+                                 const QFlatMap<QQuickItem *, SubsceneInfo> &visitedSubscenes) const;
+
+    void processPickedObject(const QSSGRenderGraphObject *backendObject,
+                             const QSSGRenderPickResult &pickResult,
+                             int pointIndex,
+                             QPointerEvent *event,
+                             QFlatMap<QQuickItem *, SubsceneInfo> &vistedSubscenes) const;
+    QQuickItem *getSubSceneRootItem(QQuick3DMaterial *material) const;
     QQuick3DPickResult processPickResult(const QSSGRenderPickResult &pickResult) const;
+    QQuick3DObject *findFrontendNode(const QSSGRenderGraphObject *backendObject) const;
     QQuick3DSceneManager *findChildSceneManager(QQuick3DObject *inObject, QQuick3DSceneManager *manager = nullptr);
     QQuick3DCamera *m_camera = nullptr;
     QQuick3DSceneEnvironment *m_environment = nullptr;
@@ -163,6 +197,11 @@ private:
     bool m_renderModeDirty = false;
     RenderMode m_renderMode = Offscreen;
     QQuickShaderEffectSource::Format m_renderFormat = QQuickShaderEffectSource::RGBA8;
+    int m_explicitTextureWidth = 0;
+    int m_explicitTextureHeight = 0;
+    QSize m_effectiveTextureSize;
+    float m_widthMultiplier = 1.0f;
+    float m_heightMultiplier = 1.0f;
     QQuick3DRenderStats *m_renderStats = nullptr;
     bool m_enableInputProcessing = false;
     QQuick3DLightmapBaker *m_lightmapBaker = nullptr;

@@ -56,7 +56,6 @@ if(QT_FEATURE_private_tests)
     target_compile_definitions(RhiRendererLib PRIVATE
         BUILD_QT3D_MODULE
         QT_BUILDING_QT
-        QT_NO_FOREACH
     )
 
 endif()
@@ -74,7 +73,7 @@ qt_internal_add_plugin(RhiRendererPlugin
     DEFINES
         BUILD_QT3D_MODULE
         QT_BUILDING_QT
-        QT_NO_FOREACH QT_NO_FOREACH
+        QT_NO_CONTEXTLESS_CONNECT
     INCLUDE_DIRECTORIES
         ${CMAKE_CURRENT_SOURCE_DIR}
         graphicshelpers

@@ -10,14 +10,6 @@
 // well as feature.h, simple_feature.h, and feature_provider.h.
 
 {
-  "do_not_sync": {
-    "channel": "stable",
-    "component_extensions_auto_granted": false,
-    "extension_types": ["extension"],
-    "allowlist": [
-      "226CF815E39A363090A1E547D53063472B8279FA"   // Media Router Stable
-    ]
-  },
   "zoom_without_bubble": {
     "channel": "stable",
     "extension_types": ["extension"],
@@ -60,6 +52,7 @@
     "location": "policy",
     "platforms": ["chromeos"],
     "allowlist": [
+      "93B7178E8C275515C38D4F43D9DF4648F0EA9B03",   // Badge Based Auth Extension
       "EC3DE21E048B67319893889529354DFBFA96FD23",   // https://crbug.com/1233881
       "A19608AC34215B127FF9D7C006D67F5C8ED8146D",   // https://crbug.com/1233881
       // https://crbug.com/1194693

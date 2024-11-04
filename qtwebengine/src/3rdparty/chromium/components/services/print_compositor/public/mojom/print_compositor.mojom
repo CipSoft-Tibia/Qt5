@@ -6,10 +6,8 @@ module printing.mojom;
 
 import "mojo/public/mojom/base/shared_memory.mojom";
 import "sandbox/policy/mojom/sandbox.mojom";
-import "url/mojom/url.mojom";
-
-[EnableIf=enable_tagged_pdf]
 import "ui/accessibility/mojom/ax_tree_update.mojom";
+import "url/mojom/url.mojom";
 
 [ServiceSandbox=sandbox.mojom.Sandbox.kPrintCompositor]
 interface PrintCompositor {
@@ -24,14 +22,14 @@ interface PrintCompositor {
   // Notifies that a subframe is unavailable, such as the render frame process
   // hosting it crashed or terminated. The subframe will be composited with no
   // content in the composited result.
-  // |frame_guid| is this subframe's global unique id.
+  // `frame_guid` is this subframe's global unique id.
   NotifyUnavailableSubframe(uint64 frame_guid);
 
   // Adds the content of a subframe for composition.
-  // |frame_guid| is this subframe's global unique id.
-  // |serialized_content| is a buffer of a serialized Skia picture which
+  // `frame_guid` is this subframe's global unique id.
+  // `serialized_content` is a buffer of a serialized Skia picture which
   //                      has the painted content of this frame.
-  // |subframe_content_map| records content id and its corresponding frame's
+  // `subframe_content_map` records content id and its corresponding frame's
   //                        global unique id.
   AddSubframeContent(
       uint64 frame_guid,
@@ -44,14 +42,14 @@ interface PrintCompositor {
   // TODO(crbug.com/1141990): AXTreeUpdate can be quite large, hence the
   // [UnlimitedSize] tag. It may be possible to remove this if AXTreeUpdate
   // can be reworked to avoid very large serialized values.
-  [EnableIf=enable_tagged_pdf, UnlimitedSize]
+  [UnlimitedSize]
   SetAccessibilityTree(ax.mojom.AXTreeUpdate accessibility_tree);
 
   // Requests to composite a page and convert it into a PDF file.
-  // |frame_guid| is the global unique id of the frame to be composited.
-  // |sk_region| is a buffer of a Skia MultiPictureDocument which has
+  // `frame_guid` is the global unique id of the frame to be composited.
+  // `sk_region` is a buffer of a Skia MultiPictureDocument which has
   //             the drawing content of this frame or a page of this frame.
-  // |subframe_content_map| records content id and its corresponding frame's
+  // `subframe_content_map` records content id and its corresponding frame's
   //                        global unique id.
   CompositePageToPdf(uint64 frame_guid,
                      mojo_base.mojom.ReadOnlySharedMemoryRegion sk_region,
@@ -61,7 +59,7 @@ interface PrintCompositor {
 
   // Requests to composite the entire document and convert it into a PDF file.
   // All the arguments carry the same meaning as CompositePageToPdf() above,
-  // except this call doesn't have |page_num|.  Cannot be used in conjunction
+  // except this call doesn't have `page_num`.  Cannot be used in conjunction
   // with PrepareForDocumentToPdf()/CompleteDocumentToPdf().
   CompositeDocumentToPdf(uint64 frame_guid,
                          mojo_base.mojom.ReadOnlySharedMemoryRegion sk_region,
@@ -85,8 +83,8 @@ interface PrintCompositor {
       => (Status status,
           mojo_base.mojom.ReadOnlySharedMemoryRegion? pdf_region);
 
-  // Sets the URL which is committed in the main frame of the WebContents,
-  // for use in crash diagnosis.
+  // Tells the service what URL is committed in the main frame of the
+  // WebContents that is printing, for use in crash diagnosis.
   SetWebContentsURL(url.mojom.Url url);
 
   // Sets the user-agent string for the document.

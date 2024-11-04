@@ -234,6 +234,7 @@ static void DecoderTestAPIFlowForNonFrameParallelMode(void) {
   // Signal end of stream (method 1). This should ensure that all the references
   // are released.
   status = Libgav1DecoderSignalEOS(test.decoder);
+  ASSERT_EQ(status, kLibgav1StatusOk);
 
   // libgav1 should have released all the reference frames now.
   ASSERT_EQ(test.frames_in_use, 0);
@@ -382,6 +383,7 @@ static void DecoderTestNonFrameParallelModeInvalidFrameAfterEOS(void) {
 
   // Signal end of stream.
   status = Libgav1DecoderSignalEOS(test.decoder);
+  ASSERT_EQ(status, kLibgav1StatusOk);
 
   // libgav1 should have released all the reference frames now.
   ASSERT_EQ(test.frames_in_use, 0);
@@ -459,6 +461,7 @@ static void DecoderTestMetadataObu(void) {
   ASSERT_EQ(test.buffer_private_data, buffer->buffer_private_data);
 
   status = Libgav1DecoderSignalEOS(test.decoder);
+  ASSERT_EQ(status, kLibgav1StatusOk);
   ASSERT_EQ(test.frames_in_use, 0);
 
   Libgav1DecoderDestroy(test.decoder);

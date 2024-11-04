@@ -10,7 +10,6 @@ qt_internal_add_qml_module(ChartsQml
     DESIGNER_SUPPORTED
     DEPENDENCIES
         QtQuick
-        QtCharts
     SOURCES
         declarativeabstractrendernode_p.h
         declarativeaxes.cpp declarativeaxes_p.h
@@ -23,8 +22,13 @@ qt_internal_add_qml_module(ChartsQml
         declarativepolarchart.cpp declarativepolarchart_p.h
         declarativexypoint.cpp declarativexypoint_p.h
         declarativexyseries.cpp declarativexyseries_p.h
+    NO_PCH_SOURCES
+        declarativecategoryaxis.cpp # undef QT_NO_FOREACH
+        declarativechart.cpp # undef QT_NO_FOREACH
+        declarativexyseries.cpp # undef QT_NO_FOREACH
     DEFINES
         QT_BUILD_QMLCHARTS_LIB
+        QT_NO_CONTEXTLESS_CONNECT
     INCLUDE_DIRECTORIES
         ${CMAKE_CURRENT_SOURCE_DIR}
     LIBRARIES
@@ -43,6 +47,8 @@ qt_internal_add_qml_module(ChartsQml
 qt_internal_extend_target(ChartsQml CONDITION QT_FEATURE_opengl
     SOURCES
         declarativeopenglrendernode.cpp declarativeopenglrendernode_p.h
+    NO_PCH_SOURCES
+        declarativeopenglrendernode.cpp # undef QT_NO_FOREACH
     PUBLIC_LIBRARIES
         Qt::OpenGL
 )
@@ -70,21 +76,29 @@ qt_internal_extend_target(ChartsQml CONDITION QT_FEATURE_charts_scatter_chart
 qt_internal_extend_target(ChartsQml CONDITION QT_FEATURE_charts_pie_chart
     SOURCES
         declarativepieseries.cpp declarativepieseries_p.h
+    NO_PCH_SOURCES
+        declarativepieseries.cpp # undef QT_NO_FOREACH
 )
 
 qt_internal_extend_target(ChartsQml CONDITION QT_FEATURE_charts_bar_chart
     SOURCES
         declarativebarseries.cpp declarativebarseries_p.h
+    NO_PCH_SOURCES
+        declarativebarseries.cpp # undef QT_NO_FOREACH
 )
 
 qt_internal_extend_target(ChartsQml CONDITION QT_FEATURE_charts_boxplot_chart
     SOURCES
         declarativeboxplotseries.cpp declarativeboxplotseries_p.h
+    NO_PCH_SOURCES
+        declarativeboxplotseries.cpp # undef QT_NO_FOREACH
 )
 
 qt_internal_extend_target(ChartsQml CONDITION QT_FEATURE_charts_candlestick_chart
     SOURCES
         declarativecandlestickseries.cpp declarativecandlestickseries_p.h
+    NO_PCH_SOURCES
+        declarativecandlestickseries.cpp # undef QT_NO_FOREACH
 )
 
 # Warning: The files in the "designer" directory are _not_ part of this QML module.

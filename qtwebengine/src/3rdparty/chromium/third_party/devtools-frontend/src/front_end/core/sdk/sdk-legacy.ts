@@ -194,6 +194,9 @@ SDK.Script = SDKModule.Script.Script;
 SDK.SecurityOriginManager = SDKModule.SecurityOriginManager.SecurityOriginManager;
 
 /** @constructor */
+SDK.StorageBucketsModel = SDKModule.StorageBucketsModel.StorageBucketsModel;
+
+/** @constructor */
 SDK.StorageKeyManager = SDKModule.StorageKeyManager.StorageKeyManager;
 
 /** @enum {symbol} */
@@ -229,19 +232,6 @@ SDK.TargetManager.Events = SDKModule.TargetManager.Events;
 
 /** @interface */
 SDK.TargetManager.Observer = SDKModule.TargetManager.Observer;
-
-/** @constructor */
-SDK.TracingManager = SDKModule.TracingManager.TracingManager;
-
-/** @constructor */
-SDK.TracingModel = SDKModule.TracingModel.TracingModel;
-
-SDK.TracingModel.Phase = SDKModule.TracingModel.Phase;
-SDK.TracingModel.LegacyTopLevelEventCategory = SDKModule.TracingModel.LegacyTopLevelEventCategory;
-SDK.TracingModel.DevToolsMetadataEventCategory = SDKModule.TracingModel.DevToolsMetadataEventCategory;
-
-/** @constructor */
-SDK.TracingModel.Event = SDKModule.TracingModel.Event;
 
 self.SDK.targetManager = SDKModule.TargetManager.TargetManager.instance();
 self.SDK.isolateManager = SDKModule.IsolateManager.IsolateManager.instance({forceNew: true});

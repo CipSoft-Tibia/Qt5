@@ -444,7 +444,6 @@ void Horizontal6_NEON(void* const dest, const ptrdiff_t stride,
   const uint64x1_t need_filter6 = vreinterpret_u64_u16(is_flat3_mask);
   if (vget_lane_u64(need_filter6, 0) == 0) {
     // Filter6() does not apply, but Filter4() applies to one or more values.
-    p0q0_output = p0q0;
     p1q1_output = vbslq_u16(needs_filter_mask_8, f4_p1q1, p1q1);
     p0q0_output = vbslq_u16(needs_filter_mask_8, f4_p0q0, p0q0);
   } else {
@@ -526,7 +525,6 @@ void Vertical6_NEON(void* const dest, const ptrdiff_t stride, int outer_thresh,
   const uint64x1_t need_filter6 = vreinterpret_u64_u16(is_flat3_mask);
   if (vget_lane_u64(need_filter6, 0) == 0) {
     // Filter6() does not apply, but Filter4() applies to one or more values.
-    p0q0_output = p0q0;
     p1q1_output = vbslq_u16(needs_filter_mask_8, f4_p1q1, p1q1);
     p0q0_output = vbslq_u16(needs_filter_mask_8, f4_p0q0, p0q0);
   } else {

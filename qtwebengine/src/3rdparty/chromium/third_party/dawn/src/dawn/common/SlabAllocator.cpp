@@ -22,6 +22,8 @@
 #include "dawn/common/Assert.h"
 #include "dawn/common/Math.h"
 
+namespace dawn {
+
 // IndexLinkNode
 
 SlabAllocatorImpl::IndexLinkNode::IndexLinkNode(Index index, Index nextIndex)
@@ -194,7 +196,6 @@ void SlabAllocatorImpl::Deallocate(void* ptr) {
     ASSERT(slab != nullptr);
 
     bool slabWasFull = slab->blocksInUse == mBlocksPerSlab;
-
     ASSERT(slab->blocksInUse != 0);
     PushFront(slab, node);
 
@@ -241,3 +242,5 @@ void SlabAllocatorImpl::GetNewSlab() {
 
     mAvailableSlabs.Prepend(new (alignedPtr) Slab(allocation, node));
 }
+
+}  // namespace dawn

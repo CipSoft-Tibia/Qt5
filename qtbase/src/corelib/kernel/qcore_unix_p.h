@@ -18,8 +18,8 @@
 
 #include "qplatformdefs.h"
 #include <QtCore/private/qglobal_p.h>
-#include "qatomic.h"
 #include "qbytearray.h"
+#include "qdeadlinetimer.h"
 
 #ifndef Q_OS_UNIX
 # error "qcore_unix_p.h included on a non-Unix system"
@@ -43,10 +43,6 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <fcntl.h>
-
-#if !defined(QT_POSIX_IPC) && !defined(QT_NO_SHAREDMEMORY) && !defined(Q_OS_ANDROID)
-#  include <sys/ipc.h>
-#endif
 
 #if defined(Q_OS_VXWORKS)
 #  include <ioLib.h>
@@ -184,21 +180,7 @@ inline timespec qAbsTimespec(timespec ts)
     return normalizedTimespec(ts);
 }
 
-inline void qt_ignore_sigpipe()
-{
-    // Set to ignore SIGPIPE once only.
-    Q_CONSTINIT static QBasicAtomicInt atom = Q_BASIC_ATOMIC_INITIALIZER(0);
-    if (!atom.loadRelaxed()) {
-        // More than one thread could turn off SIGPIPE at the same time
-        // But that's acceptable because they all would be doing the same
-        // action
-        struct sigaction noaction;
-        memset(&noaction, 0, sizeof(noaction));
-        noaction.sa_handler = SIG_IGN;
-        ::sigaction(SIGPIPE, &noaction, nullptr);
-        atom.storeRelaxed(1);
-    }
-}
+Q_CORE_EXPORT void qt_ignore_sigpipe() noexcept;
 
 #if defined(Q_PROCESSOR_X86_32) && defined(__GLIBC__)
 #  if !__GLIBC_PREREQ(2, 22)
@@ -206,6 +188,16 @@ Q_CORE_EXPORT int qt_open64(const char *pathname, int flags, mode_t);
 #    undef QT_OPEN
 #    define QT_OPEN qt_open64
 #  endif
+#endif
+
+#ifdef AT_FDCWD
+static inline int qt_safe_openat(int dfd, const char *pathname, int flags, mode_t mode = 0777)
+{
+    // everyone already has O_CLOEXEC
+    int fd;
+    QT_EINTR_LOOP(fd, openat(dfd, pathname, flags | O_CLOEXEC, mode));
+    return fd;
+}
 #endif
 
 // don't call QT_OPEN or ::open
@@ -370,8 +362,6 @@ static inline pid_t qt_safe_waitpid(pid_t pid, int *status, int options)
 #  define _POSIX_MONOTONIC_CLOCK -1
 #endif
 
-// in qelapsedtimer_mac.cpp or qtimestamp_unix.cpp
-timespec qt_gettime() noexcept;
 QByteArray qt_readlink(const char *path);
 
 /* non-static */
@@ -389,20 +379,7 @@ inline bool qt_haveLinuxProcfs()
 #endif
 }
 
-Q_CORE_EXPORT int qt_safe_poll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts);
-
-static inline int qt_poll_msecs(struct pollfd *fds, nfds_t nfds, int timeout)
-{
-    timespec ts, *pts = nullptr;
-
-    if (timeout >= 0) {
-        ts.tv_sec = timeout / 1000;
-        ts.tv_nsec = (timeout % 1000) * 1000 * 1000;
-        pts = &ts;
-    }
-
-    return qt_safe_poll(fds, nfds, pts);
-}
+Q_CORE_EXPORT int qt_safe_poll(struct pollfd *fds, nfds_t nfds, QDeadlineTimer deadline);
 
 static inline struct pollfd qt_make_pollfd(int fd, short events)
 {

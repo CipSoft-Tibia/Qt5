@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="ca" sourcelanguage="en">
+<TS version="2.1" language="ca_ES" sourcelanguage="en_US">
 <context>
     <name>QQuickPlatformDialog</name>
     <message>
@@ -42,6 +42,16 @@
 </context>
 <context>
     <name>FileDialog</name>
+    <message>
+        <source>“%1” already exists. Do you want to replace it?</source>
+        <translation>«%1» ja existeix. El voleu substituir?</translation>
+    </message>
+    <message>
+        <source>A file with the same name already exists in %1.
+Replacing it will overwrite its current contents.</source>
+        <translation>Ja existeix un fitxer amb el mateix nom a %1.
+Substituir-lo sobreescriurà el seu contingut actual.</translation>
+    </message>
     <message>
         <source>File name</source>
         <translation>Nom del fitxer</translation>
@@ -492,6 +502,10 @@
         <translation>«createObject»: el valor no és un objecte</translation>
     </message>
     <message>
+        <source>Maximum call stack size exceeded.</source>
+        <translation>S&apos;ha excedit la mida màxima de la pila de crides.</translation>
+    </message>
+    <message>
         <source>Object or context destroyed during incubation</source>
         <translation>Objecte o context destruït durant la incubació</translation>
     </message>
@@ -533,6 +547,10 @@
     <message>
         <source>SQL: database version mismatch</source>
         <translation>SQL: no coincideix la versió de la base de dades</translation>
+    </message>
+    <message>
+        <source>SQL: Cannot open database</source>
+        <translation>SQL: No s&apos;ha pogut obrir la base de dades</translation>
     </message>
 </context>
 <context>
@@ -606,6 +624,10 @@
         <translation>importació de «%1» no té «qmldir» ni espai de noms</translation>
     </message>
     <message>
+        <source>Cannot resolve URL for import &quot;%1&quot;</source>
+        <translation>No s&apos;ha pogut resoldre l&apos;URL per a importar «%1»</translation>
+    </message>
+    <message>
         <source>File name case mismatch for &quot;%1&quot;</source>
         <translation>Les lletres minúscules i majúscules del nom del fitxer «%1» no coincideixen</translation>
     </message>
@@ -624,6 +646,18 @@
     <message>
         <source>module &quot;%1&quot; plugin &quot;%2&quot; not found</source>
         <translation>mòdul «%1» no s&apos;ha trobat el connector «%2»</translation>
+    </message>
+    <message>
+        <source>module &quot;%1&quot; version %2.%3 cannot be imported because:
+%4</source>
+        <translation>mòdul «%1» versió %2.%3 no s&apos;ha pogut importar perquè:
+%4</translation>
+    </message>
+    <message>
+        <source>module &quot;%1&quot; cannot be imported because:
+%2</source>
+        <translation>mòdul «%1» no s&apos;ha pogut importar perquè:
+%2</translation>
     </message>
 </context>
 <context>
@@ -720,7 +754,7 @@
     </message>
     <message>
         <source>Cannot set properties on %1 as it is null</source>
-        <translation>No s&apos;han pogut establir les propietats de %1 ja que és nul</translation>
+        <translation>No s&apos;han pogut establir les propietats de %1 perquè és nul</translation>
     </message>
     <message>
         <source>Cannot assign an object to signal property %1</source>
@@ -773,6 +807,10 @@
 <context>
     <name>QQmlPropertyCacheCreatorBase</name>
     <message>
+        <source>Type cannot be used for &apos;on&apos; assignment</source>
+        <translation>El tipus no es pot usar per a l&apos;assignació «on»</translation>
+    </message>
+    <message>
         <source>Fully dynamic types cannot declare new properties.</source>
         <translation>Els tipus completament dinàmics no poden declarar propietats noves.</translation>
     </message>
@@ -783,6 +821,10 @@
     <message>
         <source>Fully Dynamic types cannot declare new functions.</source>
         <translation>Els tipus completament dinàmics no poden declarar funcions noves.</translation>
+    </message>
+    <message>
+        <source>Type &apos;%1&apos; cannot declare new members.</source>
+        <translation>El tipus «%1» no pot declarar membres nous.</translation>
     </message>
     <message>
         <source>Non-existent attached object</source>
@@ -829,7 +871,7 @@
     </message>
     <message>
         <source>&quot;%1.%2&quot; is not available due to component versioning.</source>
-        <translation>«%1.%2» no és disponible degut a un versionat del component.</translation>
+        <translation>«%1.%2» no és disponible a causa del versionat del component.</translation>
     </message>
     <message>
         <source>Cannot assign a value directly to a grouped property</source>
@@ -897,7 +939,7 @@
     </message>
     <message>
         <source> - Assigning null to incompatible properties in QML is deprecated. This will become a compile error in future versions of Qt.</source>
-        <translation> - L&apos;assignació de «null» a propietats incompatibles en el QML és obsoleta. Això es convertirà en un error de compilació en versions futures de les Qt.</translation>
+        <translation type="vanished"> - L&apos;assignació de «null» a propietats incompatibles en el QML és obsoleta. Això es convertirà en un error de compilació en versions futures de les Qt.</translation>
     </message>
     <message>
         <source>Invalid property assignment: string expected</source>
@@ -1040,7 +1082,7 @@
     </message>
     <message>
         <source>&quot;%1.%2&quot; is not available due to component versioning.</source>
-        <translation>«%1.%2» no és disponible degut a un versionat del component.</translation>
+        <translation>«%1.%2» no és disponible a causa del versionat del component.</translation>
     </message>
     <message>
         <source>Cannot assign a value to a signal (expecting a script to be run)</source>
@@ -1062,43 +1104,43 @@
     <name>QQmlAnonymousComponentResolver</name>
     <message>
         <source>Component objects cannot declare new functions.</source>
-        <translation>Els objectes del component no poden declarar funcions noves.</translation>
+        <translation type="vanished">Els objectes del component no poden declarar funcions noves.</translation>
     </message>
     <message>
         <source>Component objects cannot declare new properties.</source>
-        <translation>Els objectes del component no poden declarar propietats noves.</translation>
+        <translation type="vanished">Els objectes del component no poden declarar propietats noves.</translation>
     </message>
     <message>
         <source>Component objects cannot declare new signals.</source>
-        <translation>Els objectes del component no poden declarar senyals nous.</translation>
+        <translation type="vanished">Els objectes del component no poden declarar senyals nous.</translation>
     </message>
     <message>
         <source>Cannot create empty component specification</source>
-        <translation>No s&apos;ha pogut crear una especificació buida de component</translation>
+        <translation type="vanished">No s&apos;ha pogut crear una especificació buida de component</translation>
     </message>
     <message>
         <source>Component elements may not contain properties other than id</source>
-        <translation>Els elements del component no poden contenir altres propietats a part d&apos;ID</translation>
+        <translation type="vanished">Els elements del component no poden contenir altres propietats a part d&apos;ID</translation>
     </message>
     <message>
         <source>Invalid component body specification</source>
-        <translation>Especificació no vàlida del cos del component</translation>
+        <translation type="vanished">Especificació no vàlida del cos del component</translation>
     </message>
     <message>
         <source>id is not unique</source>
-        <translation>L&apos;ID no és únic</translation>
+        <translation type="vanished">L&apos;ID no és únic</translation>
     </message>
     <message>
         <source>Circular alias reference detected</source>
-        <translation>S&apos;ha detectat una referència circular d&apos;àlies</translation>
+        <translation type="vanished">S&apos;ha detectat una referència circular d&apos;àlies</translation>
     </message>
     <message>
         <source>Invalid alias reference. Unable to find id &quot;%1&quot;</source>
-        <translation>Referència no vàlida d&apos;àlies. No s&apos;ha pogut trobar l&apos;ID «%1»</translation>
+        <translation type="vanished">Referència no vàlida d&apos;àlies. No s&apos;ha pogut trobar l&apos;ID «%1»</translation>
     </message>
     <message>
         <source>Invalid alias target location: %1</source>
-        <translation>Ubicació no vàlida del destí de l&apos;àlies: %1</translation>
+        <translation type="vanished">Ubicació no vàlida del destí de l&apos;àlies: %1</translation>
     </message>
 </context>
 <context>
@@ -1198,7 +1240,7 @@
     </message>
     <message>
         <source>Expected only name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isComposite, hasCustomParser, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
-        <translation>Només s&apos;espera un nom, prototipus, «defaultProperty», «attachedType», «valueType», exportacions, interfícies, «isSingleton», «isCreatable», «isComposite», «hasCustomParser», «exportMetaObjectRevisions», «deferredNames» o «immediateNames» a les vinculacions de scripts, no «%1».</translation>
+        <translation type="vanished">Només s&apos;espera un nom, prototipus, «defaultProperty», «attachedType», «valueType», exportacions, interfícies, «isSingleton», «isCreatable», «isComposite», «hasCustomParser», «exportMetaObjectRevisions», «deferredNames» o «immediateNames» a les vinculacions de scripts, no «%1».</translation>
     </message>
     <message>
         <source>Expected only script bindings and object definitions.</source>
@@ -1214,7 +1256,7 @@
     </message>
     <message>
         <source>Expected only name, type, revision, isPointer, isList, isConstructor, and isJavaScriptFunction in script bindings.</source>
-        <translation>Només s&apos;espera un nom, tipus, revisió, «isPointer», «isList», «isConstructor» o «isJavaScriptFunction» en les vinculacions de scripts.</translation>
+        <translation type="vanished">Només s&apos;espera un nom, tipus, revisió, «isPointer», «isList», «isConstructor» o «isJavaScriptFunction» en les vinculacions de scripts.</translation>
     </message>
     <message>
         <source>Method or signal is missing a name script binding.</source>
@@ -1234,11 +1276,27 @@
     </message>
     <message>
         <source>Expected only name and values script bindings.</source>
-        <translation>Només s&apos;espera un nom i valors de vinculacions de scripts.</translation>
+        <translation type="vanished">Només s&apos;espera un nom i valors de vinculacions de scripts.</translation>
     </message>
     <message>
         <source>Expected only name and type script bindings.</source>
-        <translation>Només s&apos;espera un nom i tipus de vinculacions de scripts.</translation>
+        <translation type="vanished">Només s&apos;espera un nom i tipus de vinculacions de scripts.</translation>
+    </message>
+    <message>
+        <source>Expected only name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
+        <translation>Només s&apos;esperava «name», «prototype», «defaultProperty», «attachedType», «valueType», «exports», «interfaces», «isSingleton», «isCreatable», «isStructured», «isComposite», «hasCustomParser», «exportMetaObjectRevisions», «deferredNames» i «immediateNames» en els llligams d&apos;scripts, no «%1».</translation>
+    </message>
+    <message>
+        <source>Expected only name, type, revision, isPointer, isList, isCloned, isConstructor, and isJavaScriptFunction in script bindings.</source>
+        <translation>Només s&apos;esperava «name», «type», «revision», «isPointer», «isList», «isCloned», «isConstructor» i «isJavaScriptFunction» en els lligams d&apos;scripts.</translation>
+    </message>
+    <message>
+        <source>Expected only name, alias, isFlag, values, scoped, or type.</source>
+        <translation>Només s&apos;esperavas «name», «alias», «isFlag», «values», «scoped» o «type».</translation>
+    </message>
+    <message>
+        <source>Expected only name, type, isPointer, isConstant, isReadonly, or IsList script bindings.</source>
+        <translation>Només s&apos;esperava «name», «type», «isPointer», «isConstant», «isReadonly» o «IsList» als lligams d&apos;scripts.</translation>
     </message>
     <message>
         <source>Expected string after colon.</source>
@@ -1315,27 +1373,27 @@ La revisió %1 correspon a la versió %2.%3; i hauria de ser %4.%5.</translation
     <name>QmlDomAstCreator</name>
     <message>
         <source>id is a special attribute, that should not be used as property name</source>
-        <translation>«id» és un atribut especial, no s&apos;hauria d&apos;usar com a nom de propietat</translation>
+        <translation type="vanished">«id» és un atribut especial, no s&apos;hauria d&apos;usar com a nom de propietat</translation>
     </message>
     <message>
         <source>id attributes should only be a lower case letter followed by letters, numbers or underscore, assuming they refer to an id property</source>
-        <translation>Els atributs d&apos;«id» només haurien de ser una lletra minúscula seguida de lletres, nombres o un subratllat, assumint que es refereixen a una propietat d&apos;«id»</translation>
+        <translation type="vanished">Els atributs d&apos;«id» només haurien de ser una lletra minúscula seguida de lletres, nombres o un subratllat, assumint que es refereixen a una propietat d&apos;«id»</translation>
     </message>
     <message>
         <source>id attributes should only be a lower case letter followed by letters, numbers or underscore, not %1</source>
-        <translation>Els atributs d&apos;«id» només haurien de ser una lletra minúscula seguida de lletres, nombres o un subratllat, no %1</translation>
+        <translation type="vanished">Els atributs d&apos;«id» només haurien de ser una lletra minúscula seguida de lletres, nombres o un subratllat, no %1</translation>
     </message>
     <message>
         <source>id attributes should only be a lower case letter followed by letters, numbers or underscore, not %1 %2, assuming they refer to a property</source>
-        <translation>Els atributs d&apos;«id» només haurien de ser una lletra minúscula seguida de lletres, nombres o un subratllat, no %1 %2, assumint que es refereixen a una propietat</translation>
+        <translation type="vanished">Els atributs d&apos;«id» només haurien de ser una lletra minúscula seguida de lletres, nombres o un subratllat, no %1 %2, assumint que es refereixen a una propietat</translation>
     </message>
     <message>
         <source>id attributes should have only simple strings as values</source>
-        <translation>Els atributs d&apos;«id» només haurien de tenir cadenes simples com a valors</translation>
+        <translation type="vanished">Els atributs d&apos;«id» només haurien de tenir cadenes simples com a valors</translation>
     </message>
     <message>
         <source>Maximum statement or expression depth exceeded in QmlDomAstCreator</source>
-        <translation>S&apos;ha excedit la profunditat màxima de sentència o expressió en «QmlDomAstCreator»</translation>
+        <translation type="vanished">S&apos;ha excedit la profunditat màxima de sentència o expressió en «QmlDomAstCreator»</translation>
     </message>
 </context>
 <context>
@@ -1504,7 +1562,7 @@ La revisió %1 correspon a la versió %2.%3; i hauria de ser %4.%5.</translation
     <name>DomItem</name>
     <message>
         <source>Root context %1 is not known</source>
-        <translation>El context arrel %1 no es conegut</translation>
+        <translation>El context arrel %1 no és conegut</translation>
     </message>
     <message>
         <source>Circular reference:</source>
@@ -1556,15 +1614,15 @@ La revisió %1 correspon a la versió %2.%3; i hauria de ser %4.%5.</translation
     </message>
     <message>
         <source>could not resolve prototype %1 (%2)</source>
-        <translation>no s&apos;ha pogut resoldre el prototipus %1 (%2)</translation>
+        <translation type="vanished">no s&apos;ha pogut resoldre el prototipus %1 (%2)</translation>
     </message>
     <message>
         <source>Multiple definitions found, using first only, resolving prototype %1 (%2): %3</source>
-        <translation>S&apos;han trobat definicions múltiples, s&apos;usa només la primera, es resol el prototipus %1 (%2): %3</translation>
+        <translation type="vanished">S&apos;han trobat definicions múltiples, s&apos;usa només la primera, es resol el prototipus %1 (%2): %3</translation>
     </message>
     <message>
         <source>Unexpected prototype type %1 (%2)</source>
-        <translation>Tipus de prototipus inesperat %1 (%2)</translation>
+        <translation type="vanished">Tipus de prototipus inesperat %1 (%2)</translation>
     </message>
     <message>
         <source>Called visitScopeChain outside scopes</source>
@@ -1613,15 +1671,19 @@ La revisió %1 correspon a la versió %2.%3; i hauria de ser %4.%5.</translation
         <translation>El mòdul %1 (versió major %2) té entrades amb versió i sense versió per «%3»</translation>
     </message>
     <message>
+        <source>Failed to find main qmldir file for %1 %2 in %3.</source>
+        <translation>Ha fallat en trobar el fitxer «qmldir» principal per a %1 %2 en %3.</translation>
+    </message>
+    <message>
         <source>Failed to find main qmldir file for %1 %2</source>
-        <translation>Ha fallat en trobar el fitxer «qmldir» principal per a %1 %2</translation>
+        <translation type="vanished">Ha fallat en trobar el fitxer «qmldir» principal per a %1 %2</translation>
     </message>
 </context>
 <context>
     <name>Dom::filteTypeForPath</name>
     <message>
         <source>Could not detect type of file %1</source>
-        <translation>No s&apos;ha pogut detectar el tipus del fitxer %1</translation>
+        <translation type="vanished">No s&apos;ha pogut detectar el tipus del fitxer %1</translation>
     </message>
 </context>
 <context>
@@ -1686,7 +1748,11 @@ La revisió %1 correspon a la versió %2.%3; i hauria de ser %4.%5.</translation
     </message>
     <message>
         <source>Failed to find main qmldir file for %1 %2</source>
-        <translation>Ha fallat en trobar el fitxer «qmldir» principal per a %1 %2</translation>
+        <translation type="vanished">Ha fallat en trobar el fitxer «qmldir» principal per a %1 %2</translation>
+    </message>
+    <message>
+        <source>Failed to find main qmldir file for %1 %2 in %3.</source>
+        <translation>Ha fallat en trobar el fitxer «qmldir» principal per a %1 %2 en %3.</translation>
     </message>
     <message>
         <source>Missing loadInfo for %1</source>
@@ -1980,7 +2046,7 @@ La revisió %1 correspon a la versió %2.%3; i hauria de ser %4.%5.</translation
     <name>QQuickAnchors</name>
     <message>
         <source>Possible anchor loop detected on fill.</source>
-        <translation>S&apos;ha detectat un possible bucle d&apos;ancoratge a l&apos;emplenat.</translation>
+        <translation>S&apos;ha detectat un possible bucle d&apos;ancoratge a l&apos;emplenament.</translation>
     </message>
     <message>
         <source>Possible anchor loop detected on centerIn.</source>
@@ -2146,11 +2212,11 @@ La revisió %1 correspon a la versió %2.%3; i hauria de ser %4.%5.</translation
     <name>QQuickWindowQmlImpl</name>
     <message>
         <source>Conflicting properties &apos;visible&apos; and &apos;visibility&apos; for Window &apos;%1&apos;</source>
-        <translation>Propietats «visible» i «visibility» en conflicte per a la finestra «%1»</translation>
+        <translation type="vanished">Propietats «visible» i «visibility» en conflicte per a la finestra «%1»</translation>
     </message>
     <message>
         <source>Conflicting properties &apos;visible&apos; and &apos;visibility&apos;</source>
-        <translation>Propietats «visible» i «visibility» en conflicte</translation>
+        <translation type="vanished">Propietats «visible» i «visibility» en conflicte</translation>
     </message>
 </context>
 <context>
@@ -2225,6 +2291,70 @@ La revisió %1 correspon a la versió %2.%3; i hauria de ser %4.%5.</translation
     <message>
         <source>Cannot assign to read-only property &quot;%1&quot;</source>
         <translation>No s&apos;ha pogut assignar a una propietat «%1» de només lectura</translation>
+    </message>
+</context>
+<context>
+    <name>QQmlDomAstCreator</name>
+    <message>
+        <source>id is a special attribute, that should not be used as property name</source>
+        <translation>«id» és un atribut especial, no s&apos;hauria d&apos;usar com a nom de propietat</translation>
+    </message>
+    <message>
+        <source>id attributes should only be a lower case letter followed by letters, numbers or underscore, assuming they refer to an id property</source>
+        <translation>Els atributs d&apos;«id» només haurien de ser una lletra minúscula seguida de lletres, nombres o un subratllat, assumint que es refereixen a una propietat d&apos;«id»</translation>
+    </message>
+    <message>
+        <source>id attributes should only be a lower case letter followed by letters, numbers or underscore, not %1</source>
+        <translation>Els atributs d&apos;«id» només haurien de ser una lletra minúscula seguida de lletres, nombres o un subratllat, no %1</translation>
+    </message>
+    <message>
+        <source>id attributes should only be a lower case letter followed by letters, numbers or underscore, not %1 %2, assuming they refer to a property</source>
+        <translation>Els atributs d&apos;«id» només haurien de ser una lletra minúscula seguida de lletres, nombres o un subratllat, no %1 %2, assumint que es refereixen a una propietat</translation>
+    </message>
+    <message>
+        <source>id attributes should have only simple strings as values</source>
+        <translation>Els atributs d&apos;«id» només haurien de tenir cadenes simples com a valors</translation>
+    </message>
+    <message>
+        <source>Maximum statement or expression depth exceeded in QmlDomAstCreator</source>
+        <translation>S&apos;ha excedit la profunditat màxima de sentència o expressió a «QmlDomAstCreator»</translation>
+    </message>
+</context>
+<context>
+    <name>QQmlJS::Dom</name>
+    <message>
+        <source>could not resolve prototype %1 (%2)</source>
+        <translation>no s&apos;ha pogut resoldre el prototipus %1 (%2)</translation>
+    </message>
+    <message>
+        <source>Multiple definitions found, using first only, resolving prototype %1 (%2): %3</source>
+        <translation>S&apos;han trobat definicions múltiples, s&apos;usa només la primera, es resol el prototipus %1 (%2): %3</translation>
+    </message>
+    <message>
+        <source>Unexpected prototype type %1 (%2)</source>
+        <translation>Tipus de prototipus inesperat %1 (%2)</translation>
+    </message>
+</context>
+<context>
+    <name>Dom::fileTypeForPath</name>
+    <message>
+        <source>Could not detect type of file %1</source>
+        <translation>No s&apos;ha pogut detectar el tipus del fitxer %1</translation>
+    </message>
+</context>
+<context>
+    <name>QQuickTextDocument</name>
+    <message>
+        <source>Cannot load:</source>
+        <translation>No s&apos;ha pogut carregar:</translation>
+    </message>
+    <message>
+        <source>Cannot save:</source>
+        <translation>No s&apos;ha pogut desar:</translation>
+    </message>
+    <message>
+        <source>Can only save to local files</source>
+        <translation>Només es pot desar a fitxers locals</translation>
     </message>
 </context>
 </TS>

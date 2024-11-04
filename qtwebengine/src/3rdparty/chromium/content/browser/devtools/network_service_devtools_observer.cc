@@ -27,6 +27,16 @@ void DispatchToAgents(DevToolsAgentHostImpl* agent_host,
     (h->*method)(std::forward<Args>(args)...);
 }
 
+RenderFrameHostImpl* GetRenderFrameHostImplFrom(int frame_tree_node_id) {
+  auto* ftn = FrameTreeNode::GloballyFindByID(frame_tree_node_id);
+  if (!ftn) {
+    return nullptr;
+  }
+
+  RenderFrameHostImpl* rfhi = ftn->current_frame_host();
+  return rfhi;
+}
+
 }  // namespace
 
 NetworkServiceDevToolsObserver::NetworkServiceDevToolsObserver(
@@ -125,12 +135,11 @@ void NetworkServiceDevToolsObserver::OnPrivateNetworkRequest(
           .SetRequest(std::move(affected_request))
           .SetCorsErrorStatus(std::move(cors_error_status))
           .Build();
-  auto maybe_protocol_security_state =
-      protocol::NetworkHandler::MaybeBuildClientSecurityState(
-          client_security_state);
-  if (maybe_protocol_security_state.isJust()) {
+  if (auto maybe_protocol_security_state =
+          protocol::NetworkHandler::MaybeBuildClientSecurityState(
+              client_security_state)) {
     cors_issue_details->SetClientSecurityState(
-        maybe_protocol_security_state.takeJust());
+        std::move(maybe_protocol_security_state));
   }
   auto details = protocol::Audits::InspectorIssueDetails::Create()
                      .SetCorsIssueDetails(std::move(cors_issue_details))
@@ -193,34 +202,21 @@ void NetworkServiceDevToolsObserver::OnCorsError(
     const GURL& url,
     const network::CorsErrorStatus& cors_error_status,
     bool is_warning) {
-  if (frame_tree_node_id_ == FrameTreeNode::kFrameTreeNodeInvalidId)
-    return;
-
-  auto* ftn = FrameTreeNode::GloballyFindByID(frame_tree_node_id_);
-  if (!ftn)
-    return;
-
-  RenderFrameHostImpl* rfhi = ftn->current_frame_host();
+  RenderFrameHostImpl* rfhi = GetRenderFrameHostImplFrom(frame_tree_node_id_);
   if (!rfhi)
     return;
 
   // TODO(https://crbug.com/1268378): Remove this once enforcement is always
   // enabled and warnings are no more.
-  if (is_warning) {
-    GetContentClient()->browser()->LogWebFeatureForCurrentPage(
-        rfhi,
-        blink::mojom::WebFeature::kPrivateNetworkAccessIgnoredPreflightError);
-
-    if (!initiator_origin.has_value() ||
-        !initiator_origin->IsSameOriginWith(url)) {
+  if (is_warning && initiator_origin.has_value()) {
+    if (!initiator_origin->IsSameOriginWith(url)) {
       GetContentClient()->browser()->LogWebFeatureForCurrentPage(
           rfhi, blink::mojom::WebFeature::
                     kPrivateNetworkAccessIgnoredCrossOriginPreflightError);
     }
 
-    if (!initiator_origin.has_value() ||
-        net::SchemefulSite(initiator_origin.value()) !=
-            net::SchemefulSite(url)) {
+    if (net::SchemefulSite(initiator_origin.value()) !=
+        net::SchemefulSite(url)) {
       GetContentClient()->browser()->LogWebFeatureForCurrentPage(
           rfhi, blink::mojom::WebFeature::
                     kPrivateNetworkAccessIgnoredCrossSitePreflightError);
@@ -243,12 +239,11 @@ void NetworkServiceDevToolsObserver::OnCorsError(
   if (initiator_origin) {
     cors_issue_details->SetInitiatorOrigin(initiator_origin->GetURL().spec());
   }
-  auto maybe_protocol_security_state =
-      protocol::NetworkHandler::MaybeBuildClientSecurityState(
-          client_security_state);
-  if (maybe_protocol_security_state.isJust()) {
+  if (auto maybe_protocol_security_state =
+          protocol::NetworkHandler::MaybeBuildClientSecurityState(
+              client_security_state)) {
     cors_issue_details->SetClientSecurityState(
-        maybe_protocol_security_state.takeJust());
+        std::move(maybe_protocol_security_state));
   }
 
   auto details = protocol::Audits::InspectorIssueDetails::Create()
@@ -259,6 +254,36 @@ void NetworkServiceDevToolsObserver::OnCorsError(
                    .SetDetails(std::move(details))
                    .SetIssueId(cors_error_status.issue_id.ToString())
                    .Build();
+  devtools_instrumentation::ReportBrowserInitiatedIssue(rfhi, issue.get());
+}
+
+void NetworkServiceDevToolsObserver::OnCorbError(
+    const absl::optional<std::string>& devtools_request_id,
+    const GURL& url) {
+  RenderFrameHostImpl* rfhi = GetRenderFrameHostImplFrom(frame_tree_node_id_);
+  if (!rfhi) {
+    return;
+  }
+
+  std::unique_ptr<protocol::Audits::AffectedRequest> affected_request =
+      protocol::Audits::AffectedRequest::Create()
+          .SetRequestId(devtools_request_id.value_or(""))
+          .SetUrl(url.spec())
+          .Build();
+  auto generic_details =
+      protocol::Audits::GenericIssueDetails::Create()
+          .SetErrorType(protocol::Audits::GenericIssueErrorTypeEnum::
+                            ResponseWasBlockedByORB)
+          .SetRequest(std::move(affected_request))
+          .Build();
+  auto details = protocol::Audits::InspectorIssueDetails::Create()
+                     .SetGenericIssueDetails(std::move(generic_details))
+                     .Build();
+  auto issue =
+      protocol::Audits::InspectorIssue::Create()
+          .SetCode(protocol::Audits::InspectorIssueCodeEnum::GenericIssue)
+          .SetDetails(std::move(details))
+          .Build();
   devtools_instrumentation::ReportBrowserInitiatedIssue(rfhi, issue.get());
 }
 

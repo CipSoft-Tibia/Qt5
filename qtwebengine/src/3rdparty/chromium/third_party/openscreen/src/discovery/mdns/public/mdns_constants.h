@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,8 +23,7 @@
 #include "platform/base/ip_address.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
 // ============================================================================
 // Networking
@@ -312,6 +311,7 @@ enum class DnsType : uint16_t {
   kANY = 255,  // Only allowed for QTYPE
 };
 
+// TODO(mfoltz): Move definition so we don't have to inline.
 inline std::ostream& operator<<(std::ostream& output, DnsType type) {
   switch (type) {
     case DnsType::kA:
@@ -330,9 +330,9 @@ inline std::ostream& operator<<(std::ostream& output, DnsType type) {
       return output << "NSEC";
     case DnsType::kANY:
       return output << "ANY";
+    default:
+      return output << "OTHER";
   }
-
-  OSP_NOTREACHED();
 }
 
 constexpr std::array<DnsType, 7> kSupportedDnsTypes = {
@@ -461,7 +461,6 @@ constexpr int kVersionShift = 16;
 constexpr uint32_t kDnssecOkBitMask = 0x00008000;
 constexpr uint8_t kVersionBadvers = 0x10;
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery
 
 #endif  // DISCOVERY_MDNS_PUBLIC_MDNS_CONSTANTS_H_

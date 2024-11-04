@@ -35,14 +35,15 @@ class NavigationClient : mojom::NavigationClient {
           controller_service_worker_info,
       blink::mojom::ServiceWorkerContainerInfoForClientPtr container_info,
       mojo::PendingRemote<network::mojom::URLLoaderFactory>
-          prefetch_loader_factory,
+          subresource_proxying_loader_factory,
       mojo::PendingRemote<network::mojom::URLLoaderFactory>
-          topics_loader_factory,
+          keep_alive_loader_factory,
       const blink::DocumentToken& document_token,
       const base::UnguessableToken& devtools_navigation_token,
       const absl::optional<blink::ParsedPermissionsPolicy>& permissions_policy,
       blink::mojom::PolicyContainerPtr policy_container,
       mojo::PendingRemote<blink::mojom::CodeCacheHost> code_cache_host,
+      mojo::PendingRemote<blink::mojom::ResourceCache> resource_cache,
       mojom::CookieManagerInfoPtr cookie_manager_info,
       mojom::StorageInfoPtr storage_info,
       CommitNavigationCallback callback) override;
@@ -74,6 +75,8 @@ class NavigationClient : mojom::NavigationClient {
   void SetUpRendererInitiatedNavigation(
       mojo::PendingRemote<mojom::NavigationRendererCancellationListener>
           renderer_cancellation_listener_remote);
+
+  void ResetWithoutCancelling();
 
  private:
   // OnDroppedNavigation is bound from BeginNavigation till CommitNavigation.

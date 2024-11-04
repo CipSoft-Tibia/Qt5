@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC
+// Copyright 2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,7 +26,10 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "fastpair/common/account_key.h"
 #include "fastpair/common/constant.h"
+#include "fastpair/common/device_metadata.h"
 #include "fastpair/common/protocol.h"
 #include "fastpair/crypto/decrypted_passkey.h"
 #include "fastpair/crypto/decrypted_response.h"
@@ -34,8 +37,7 @@
 #include "fastpair/crypto/fast_pair_key_pair.h"
 #include "fastpair/dataparser/fast_pair_data_parser.h"
 #include "fastpair/handshake/fast_pair_data_encryptor.h"
-#include "fastpair/repository/device_metadata.h"
-#include "fastpair/server_access/fast_pair_repository.h"
+#include "fastpair/repository/fast_pair_repository.h"
 #include "internal/platform/logging.h"
 
 namespace nearby {
@@ -74,8 +76,11 @@ void FastPairDataEncryptorImpl::Factory::CreateAsync(
     return;
   }
 
-  if (device.protocol == Protocol::kFastPairInitialPairing) {
+  if (device.GetProtocol() == Protocol::kFastPairInitialPairing ||
+      device.GetProtocol() == Protocol::kFastPairRetroactivePairing) {
     CreateAsyncWithKeyExchange(device, std::move(on_get_instance_callback));
+  } else {
+    CreateAsyncWithAccountKey(device, std::move(on_get_instance_callback));
   }
 }
 
@@ -83,35 +88,37 @@ void FastPairDataEncryptorImpl::Factory::CreateAsyncWithKeyExchange(
     const FastPairDevice& device,
     absl::AnyInvocable<void(std::unique_ptr<FastPairDataEncryptor>)>
         on_get_instance_callback) {
-  // We first have to get the metadata in order to get the public key to use
-  // to generate the new secret key pair.
-  NEARBY_LOGS(INFO) << __func__ << ": Attempting to get device metadata.";
-  FastPairRepository::Get()->GetDeviceMetadata(
-      device.model_id,
-      [&device, &on_get_instance_callback](DeviceMetadata& metadata) {
-        FastPairDataEncryptorImpl::Factory::DeviceMetadataRetrieved(
-            device, std::move(on_get_instance_callback), metadata);
-      });
-}
-
-void FastPairDataEncryptorImpl::Factory::DeviceMetadataRetrieved(
-    const FastPairDevice& device,
-    absl::AnyInvocable<void(std::unique_ptr<FastPairDataEncryptor>)>
-        on_get_instance_callback,
-    DeviceMetadata& device_metadata) {
-  DCHECK(&device_metadata);
+  NEARBY_LOGS(VERBOSE) << __func__;
+  auto& metadata = device.GetMetadata();
+  DCHECK(metadata);
   std::optional<KeyPair> key_pair =
       FastPairEncryption::GenerateKeysWithEcdhKeyAgreement(
-          device_metadata.GetDetails().anti_spoofing_key_pair().public_key());
+          metadata->GetDetails().anti_spoofing_key_pair().public_key());
   if (!key_pair.has_value()) {
     NEARBY_LOGS(INFO) << "Fail to generate key pair";
-    on_get_instance_callback(nullptr);
+    std::move(on_get_instance_callback)(nullptr);
     return;
   }
 
-  std::unique_ptr<FastPairDataEncryptor> data_encryptor =
+  auto data_encryptor =
       std::make_unique<FastPairDataEncryptorImpl>(key_pair.value());
-  on_get_instance_callback(std::move(data_encryptor));
+  std::move(on_get_instance_callback)(std::move(data_encryptor));
+}
+
+void FastPairDataEncryptorImpl::Factory::CreateAsyncWithAccountKey(
+    const FastPairDevice& device,
+    absl::AnyInvocable<void(std::unique_ptr<FastPairDataEncryptor>)>
+        on_get_instance_callback) {
+  NEARBY_LOGS(INFO) << __func__;
+  absl::string_view account_key = device.GetAccountKey().GetAsBytes();
+  CHECK_EQ(account_key.size(), static_cast<size_t>(kSharedSecretKeyByteSize));
+  std::array<uint8_t, kSharedSecretKeyByteSize> shared_secret_key;
+  std::copy_n(account_key.begin(), kSharedSecretKeyByteSize,
+              shared_secret_key.begin());
+
+  std::move(on_get_instance_callback)(
+      std::make_unique<FastPairDataEncryptorImpl>(
+          std::move(shared_secret_key)));
 }
 
 // FastPairDataEncryptorImpl
@@ -126,12 +133,12 @@ FastPairDataEncryptorImpl::FastPairDataEncryptorImpl(
 FastPairDataEncryptorImpl::~FastPairDataEncryptorImpl() = default;
 
 std::array<uint8_t, kAesBlockByteSize> FastPairDataEncryptorImpl::EncryptBytes(
-    const std::array<uint8_t, kAesBlockByteSize>& bytes_to_encrypt) {
+    const std::array<uint8_t, kAesBlockByteSize>& bytes_to_encrypt) const {
   return FastPairEncryption::EncryptBytes(shared_secret_key_, bytes_to_encrypt);
 }
 
-std::optional<std::array<uint8_t, kPublicKeyByteSize>>&
-FastPairDataEncryptorImpl::GetPublicKey() {
+std::optional<std::array<uint8_t, kPublicKeyByteSize>>
+FastPairDataEncryptorImpl::GetPublicKey() const {
   return public_key_;
 }
 
@@ -146,10 +153,7 @@ void FastPairDataEncryptorImpl::ParseDecryptResponse(
   FastPairDataParser::ParseDecryptedResponse(
       std::vector<uint8_t>(shared_secret_key_.begin(),
                            shared_secret_key_.end()),
-      encrypted_response_bytes,
-      {
-          .on_decrypted_cb = std::move(callback),
-      });
+      encrypted_response_bytes, std::move(callback));
 }
 
 void FastPairDataEncryptorImpl::ParseDecryptPasskey(
@@ -162,10 +166,7 @@ void FastPairDataEncryptorImpl::ParseDecryptPasskey(
   FastPairDataParser::ParseDecryptedPasskey(
       std::vector<uint8_t>(shared_secret_key_.begin(),
                            shared_secret_key_.end()),
-      encrypted_passkey_bytes,
-      {
-          .on_decrypted_cb = std::move(callback),
-      });
+      encrypted_passkey_bytes, std::move(callback));
 }
 }  // namespace fastpair
 }  // namespace nearby

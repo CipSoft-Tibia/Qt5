@@ -59,7 +59,8 @@ class MediaControlsProgressViewTest : public views::ViewsTestBase {
   MOCK_METHOD1(SeekTo, void(double));
 
  protected:
-  raw_ptr<MediaControlsProgressView> progress_view_ = nullptr;
+  raw_ptr<MediaControlsProgressView, DanglingUntriaged> progress_view_ =
+      nullptr;
 
  private:
   views::Widget widget_;
@@ -131,9 +132,7 @@ TEST_F(MAYBE_MediaControlsProgressViewTest, UpdateProgress) {
   EXPECT_EQ(progress_view_->progress_bar_for_testing()->GetValue(), .55);
 }
 
-// Flaky on multiple platforms. crbug.com/1293864
-TEST_F(MAYBE_MediaControlsProgressViewTest,
-       DISABLED_UpdateProgressFastPlayback) {
+TEST_F(MAYBE_MediaControlsProgressViewTest, UpdateProgressFastPlayback) {
   media_session::MediaPosition media_position(
       /*playback_rate=*/2, /*duration=*/base::Seconds(600),
       /*position=*/base::Seconds(300), /*end_of_media=*/false);

@@ -4,7 +4,7 @@
 
 PROJECT ( YUV C CXX )	# "C" is required even for C++ projects
 CMAKE_MINIMUM_REQUIRED( VERSION 2.8.12 )
-OPTION( TEST "Built unit tests" OFF )
+OPTION( UNIT_TEST "Built unit tests" OFF )
 
 SET ( ly_base_dir	${PROJECT_SOURCE_DIR} )
 SET ( ly_src_dir	${ly_base_dir}/source )
@@ -52,10 +52,13 @@ if (JPEG_FOUND)
   add_definitions( -DHAVE_JPEG )
 endif()
 
-if(TEST)
+if(UNIT_TEST)
   find_library(GTEST_LIBRARY gtest)
   if(GTEST_LIBRARY STREQUAL "GTEST_LIBRARY-NOTFOUND")
     set(GTEST_SRC_DIR /usr/src/gtest CACHE STRING "Location of gtest sources")
+    if (CMAKE_CROSSCOMPILING)
+      set(GTEST_SRC_DIR third_party/googletest/src/googletest)
+    endif()
     if(EXISTS ${GTEST_SRC_DIR}/src/gtest-all.cc)
       message(STATUS "building gtest from sources in ${GTEST_SRC_DIR}")
       set(gtest_sources ${GTEST_SRC_DIR}/src/gtest-all.cc)
@@ -64,7 +67,7 @@ if(TEST)
       include_directories(${GTEST_SRC_DIR}/include)
       set(GTEST_LIBRARY gtest)
     else()
-      message(FATAL_ERROR "TEST is set but unable to find gtest library")
+      message(FATAL_ERROR "UNIT_TEST is set but unable to find gtest library")
     endif()
   endif()
 

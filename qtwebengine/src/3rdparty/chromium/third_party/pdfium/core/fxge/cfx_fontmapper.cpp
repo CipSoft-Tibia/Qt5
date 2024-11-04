@@ -19,13 +19,13 @@
 #include "core/fxcrt/fx_memory.h"
 #include "core/fxcrt/fx_memory_wrappers.h"
 #include "core/fxcrt/stl_util.h"
+#include "core/fxcrt/unowned_ptr_exclusion.h"
 #include "core/fxge/cfx_fontmgr.h"
 #include "core/fxge/cfx_substfont.h"
 #include "core/fxge/fx_font.h"
 #include "core/fxge/systemfontinfo_iface.h"
 #include "third_party/base/check_op.h"
 #include "third_party/base/containers/contains.h"
-#include "third_party/base/cxx17_backports.h"
 
 namespace {
 
@@ -390,7 +390,7 @@ class ScopedFontDeleter {
 
  private:
   UnownedPtr<SystemFontInfoIface> const font_info_;
-  void* const font_;
+  UNOWNED_PTR_EXCLUSION void* const font_;  // void type incompatible.
 };
 
 }  // namespace
@@ -460,7 +460,7 @@ void CFX_FontMapper::AddInstalledFont(const ByteString& name,
     ScopedFontDeleter scoped_font(m_pFontInfo.get(), font_handle);
     ByteString new_name = GetPSNameFromTT(font_handle);
     if (!new_name.IsEmpty())
-      m_LocalizedTTFonts.push_back(std::make_pair(new_name, name));
+      m_LocalizedTTFonts.emplace_back(new_name, name);
   }
   m_InstalledTTFonts.push_back(name);
   m_LastFamily = name;
@@ -715,7 +715,7 @@ RetainPtr<CFX_Face> CFX_FontMapper::FindSubstFont(const ByteString& name,
   }
 
   if (Charset == FX_Charset::kSymbol) {
-#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_ANDROID)
+#if !BUILDFLAG(IS_WIN)
     if (subst_name == "Symbol") {
       subst_font->m_Family = "Chrome Symbol";
       subst_font->m_Charset = FX_Charset::kSymbol;

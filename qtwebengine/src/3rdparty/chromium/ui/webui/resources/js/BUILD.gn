@@ -3,11 +3,11 @@
 # found in the LICENSE file.
 
 import("//build/config/chromeos/ui_mode.gni")
-import("../tools/build_cr_component.gni")
+import("../tools/build_webui.gni")
 
 include_polymer = !is_android && !is_ios
 
-build_cr_component("build") {
+build_webui("build") {
   grd_prefix = "webui_js"
 
   non_web_component_files = [
@@ -27,6 +27,7 @@ build_cr_component("build") {
     "load_time_data.ts",
     "metrics_reporter/browser_proxy.ts",
     "metrics_reporter/metrics_reporter.ts",
+    "mojo_type_util.ts",
     "open_window_proxy.ts",
     "parse_html_subset.ts",
     "platform.ts",
@@ -58,7 +59,6 @@ build_cr_component("build") {
 
   if (include_polymer) {
     non_web_component_files += [
-      "focus_row_mixin.ts",
       "focus_without_ink.ts",
       "browser_command/browser_command_proxy.ts",
     ]
@@ -72,11 +72,13 @@ build_cr_component("build") {
     mojo_files += [ "$root_gen_dir/ui/webui/resources/js/browser_command/browser_command.mojom-webui.ts" ]
   }
 
-  tsc_dir = "$root_gen_dir/ui/webui/resources/tsc/js"
-  tsc_allow_js = true
-  ts_deps = [ "../mojo:library" ]
+  ts_out_dir = "$root_gen_dir/ui/webui/resources/tsc/js"
+  ts_composite = true
+  ts_deps = [ "../mojo:build_ts" ]
   ts_definitions = [
     "//tools/typescript/definitions/chrome_send.d.ts",
     "//tools/typescript/definitions/chrome_timeticks.d.ts",
   ]
+  generate_grdp = true
+  grd_resource_path_prefix = rebase_path(".", "//ui/webui/resources")
 }

@@ -183,7 +183,7 @@ export class ProfileLauncherView extends Common.ObjectWrapper.eventMixin<EventTy
     const headerText = this.typeIdToOptionElementAndProfileType.size > 1 ? i18nString(UIStrings.selectProfilingType) :
                                                                            profileType.name;
     this.profileTypeHeaderElement.textContent = headerText;
-    UI.ARIAUtils.setAccessibleName(this.profileTypeSelectorForm, headerText);
+    UI.ARIAUtils.setLabel(this.profileTypeSelectorForm, headerText);
   }
 
   restoreSelectedProfileType(): void {
@@ -224,7 +224,7 @@ export class ProfileLauncherView extends Common.ObjectWrapper.eventMixin<EventTy
     this.updateControls();
     this.selectedProfileTypeSetting.set(profileType.id);
   }
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([profileLauncherViewStyles]);
   }

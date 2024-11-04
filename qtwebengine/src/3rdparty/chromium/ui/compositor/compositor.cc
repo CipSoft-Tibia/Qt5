@@ -43,7 +43,6 @@
 #include "components/viz/common/frame_sinks/begin_frame_args.h"
 #include "components/viz/common/frame_sinks/begin_frame_source.h"
 #include "components/viz/common/gpu/context_provider.h"
-#include "components/viz/common/resources/resource_format.h"
 #include "components/viz/common/resources/resource_settings.h"
 #include "components/viz/common/switches.h"
 #include "components/viz/host/host_frame_sink_manager.h"
@@ -225,11 +224,6 @@ Compositor::Compositor(const viz::FrameSinkId& frame_sink_id,
   settings.wait_for_all_pipeline_stages_before_draw =
       command_line->HasSwitch(switches::kRunAllCompositorStagesBeforeDraw);
 
-  if (base::FeatureList::IsEnabled(
-          features::kCompositorThreadedScrollbarScrolling)) {
-    settings.compositor_threaded_scrollbar_scrolling = true;
-  }
-
   if (features::IsPercentBasedScrollingEnabled()) {
     settings.percent_based_scrolling = true;
   }
@@ -352,9 +346,16 @@ void Compositor::SetLayerTreeFrameSink(
     display_private_->SetDisplayColorMatrix(
         gfx::SkM44ToTransform(display_color_matrix_));
     display_private_->SetOutputIsSecure(output_is_secure_);
-    if (has_vsync_params_)
+#if BUILDFLAG(IS_MAC)
+    display_private_->SetVSyncDisplayID(display_id_);
+#endif
+    if (has_vsync_params_) {
       display_private_->SetDisplayVSyncParameters(vsync_timebase_,
                                                   vsync_interval_);
+    }
+    if (max_vrr_interval_.has_value()) {
+      display_private_->SetMaxVrrInterval(max_vrr_interval_);
+    }
   }
 }
 
@@ -587,6 +588,15 @@ void Compositor::AddVSyncParameterObserver(
     mojo::PendingRemote<viz::mojom::VSyncParameterObserver> observer) {
   if (display_private_)
     display_private_->AddVSyncParameterObserver(std::move(observer));
+}
+
+void Compositor::SetMaxVrrInterval(
+    const absl::optional<base::TimeDelta>& max_vrr_interval) {
+  max_vrr_interval_ = max_vrr_interval;
+
+  if (display_private_) {
+    display_private_->SetMaxVrrInterval(max_vrr_interval);
+  }
 }
 
 void Compositor::SetAcceleratedWidget(gfx::AcceleratedWidget widget) {

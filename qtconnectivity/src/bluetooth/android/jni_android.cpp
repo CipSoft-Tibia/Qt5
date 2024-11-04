@@ -16,7 +16,7 @@ QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(QT_BT_ANDROID)
 
-typedef QHash<QByteArray, QJniObject> JCachedStringFields;
+typedef QHash<QByteArray, QString> JCachedStringFields;
 Q_GLOBAL_STATIC(JCachedStringFields, cachedStringFields)
 Q_GLOBAL_STATIC(QMutex, stringCacheMutex);
 
@@ -24,7 +24,7 @@ Q_GLOBAL_STATIC(QMutex, stringCacheMutex);
  * This function operates on the assumption that each
  * field is of type java/lang/String.
  */
-QJniObject valueFromStaticFieldCache(const char *key, const char *className, const char *fieldName)
+QString valueFromStaticFieldCache(const char *key, const char *className, const char *fieldName)
 {
     QMutexLocker lock(stringCacheMutex());
     JCachedStringFields::iterator it = cachedStringFields()->find(key);
@@ -33,12 +33,12 @@ QJniObject valueFromStaticFieldCache(const char *key, const char *className, con
         QJniObject fieldValue = QJniObject::getStaticObjectField(
                                             className, fieldName, "Ljava/lang/String;");
         if (!fieldValue.isValid()) {
-            cachedStringFields()->insert(key, QJniObject());
-            return QJniObject();
+            cachedStringFields()->insert(key, {});
+            return {};
         }
-
-        cachedStringFields()->insert(key, fieldValue);
-        return fieldValue;
+        const QString string = fieldValue.toString();
+        cachedStringFields()->insert(key, string);
+        return string;
     } else {
         return it.value();
     }
@@ -48,7 +48,7 @@ void QtBroadcastReceiver_jniOnReceive(JNIEnv *env, jobject /*javaObject*/,
                                       jlong qtObject, QtJniTypes::Context context,
                                       QtJniTypes::Intent intent)
 {
-    reinterpret_cast<AndroidBroadcastReceiver*>(qtObject)->onReceive(env, context, intent);
+    reinterpret_cast<AndroidBroadcastReceiver*>(qtObject)->onReceive(env, context.object(), intent.object());
 }
 Q_DECLARE_JNI_NATIVE_METHOD(QtBroadcastReceiver_jniOnReceive, jniOnReceive)
 
@@ -62,7 +62,7 @@ Q_DECLARE_JNI_NATIVE_METHOD(QtBluetoothSocketServer_errorOccurred, errorOccurred
 static void QtBluetoothSocketServer_newSocket(JNIEnv */*env*/, jobject /*javaObject*/,
                                               jlong qtObject, QtJniTypes::BluetoothSocket socket)
 {
-    reinterpret_cast<ServerAcceptanceThread*>(qtObject)->javaNewSocket(socket);
+    reinterpret_cast<ServerAcceptanceThread*>(qtObject)->javaNewSocket(socket.object());
 }
 Q_DECLARE_JNI_NATIVE_METHOD(QtBluetoothSocketServer_newSocket, newSocket)
 
@@ -88,7 +88,7 @@ void QtBluetoothLE_leScanResult(JNIEnv *env, jobject, jlong qtObject,
         return;
 
     reinterpret_cast<AndroidBroadcastReceiver*>(qtObject)->onReceiveLeScan(
-                                                                env, bluetoothDevice, rssi,
+                                                                env, bluetoothDevice.object(), rssi,
                                                                 scanRecord);
 }
 Q_DECLARE_JNI_NATIVE_METHOD(QtBluetoothLE_leScanResult, leScanResult)
@@ -96,13 +96,13 @@ Q_DECLARE_JNI_NATIVE_METHOD(QtBluetoothLE_leScanResult, leScanResult)
 static const char logTag[] = "QtBluetooth";
 static const char classErrorMsg[] = "Can't find class \"%s\"";
 
-#define FIND_AND_CHECK_CLASS(CLASS_NAME)                             \
-clazz = env.findClass<CLASS_NAME>();                                 \
-if (!clazz) {                                                        \
-    __android_log_print(ANDROID_LOG_FATAL, logTag, classErrorMsg,    \
-                        QtJniTypes::className<CLASS_NAME>().data()); \
-    return JNI_FALSE;                                                \
-}                                                                    \
+#define FIND_AND_CHECK_CLASS(CLASS_NAME)                                     \
+clazz = env.findClass<CLASS_NAME>();                                         \
+if (!clazz) {                                                                \
+    __android_log_print(ANDROID_LOG_FATAL, logTag, classErrorMsg,            \
+                        QtJniTypes::Traits<CLASS_NAME>::className().data()); \
+    return JNI_FALSE;                                                        \
+}                                                                            \
 
 #define LEHUB_SCOPED_METHOD(Method) Q_JNI_NATIVE_SCOPED_METHOD(Method, LowEnergyNotificationHub)
 

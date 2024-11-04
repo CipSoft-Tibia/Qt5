@@ -32,14 +32,6 @@ QMemoryVideoBuffer::~QMemoryVideoBuffer() = default;
 /*!
     \reimp
 */
-QVideoFrame::MapMode QMemoryVideoBuffer::mapMode() const
-{
-    return m_mapMode;
-}
-
-/*!
-    \reimp
-*/
 QAbstractVideoBuffer::MapData QMemoryVideoBuffer::map(QVideoFrame::MapMode mode)
 {
     MapData mapData;
@@ -66,14 +58,6 @@ QAbstractVideoBuffer::MapData QMemoryVideoBuffer::map(QVideoFrame::MapMode mode)
 void QMemoryVideoBuffer::unmap()
 {
     m_mapMode = QVideoFrame::NotMapped;
-}
-
-/*!
-    \reimp
-*/
-QByteArray QMemoryVideoBuffer::underlyingByteArray(int plane) const
-{
-    return plane == 0 ? m_data : QByteArray{};
 }
 
 QT_END_NAMESPACE

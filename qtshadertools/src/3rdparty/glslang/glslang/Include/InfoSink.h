@@ -138,8 +138,8 @@ protected:
 
 class TInfoSink {
 public:
-    glslang::TInfoSinkBase info;
-    glslang::TInfoSinkBase debug;
+    QtShaderTools::glslang::TInfoSinkBase info;
+    QtShaderTools::glslang::TInfoSinkBase debug;
 };
 } // namespace QtShaderTools
 

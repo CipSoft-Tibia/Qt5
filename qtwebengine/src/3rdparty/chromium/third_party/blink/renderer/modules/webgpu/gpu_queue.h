@@ -37,7 +37,8 @@ class GPUQueue : public DawnObject<WGPUQueue> {
   GPUQueue& operator=(const GPUQueue&) = delete;
 
   // gpu_queue.idl
-  void submit(const HeapVector<Member<GPUCommandBuffer>>& buffers);
+  void submit(ScriptState* script_state,
+              const HeapVector<Member<GPUCommandBuffer>>& buffers);
   ScriptPromise onSubmittedWorkDone(ScriptState* script_state);
   void writeBuffer(ScriptState* script_state,
                    GPUBuffer* buffer,
@@ -86,14 +87,15 @@ class GPUQueue : public DawnObject<WGPUQueue> {
   void OnWorkDoneCallback(ScriptPromiseResolver* resolver,
                           WGPUQueueWorkDoneStatus status);
   void CopyFromVideoElement(const ExternalTextureSource source,
-                            const WGPUOrigin3D& origin,
+                            const WGPUExtent2D& video_frame_natural_size,
+                            const WGPUOrigin2D& origin,
                             const WGPUExtent3D& copy_size,
                             const WGPUImageCopyTexture& destination,
                             bool dst_premultiplied_alpha,
                             PredefinedColorSpace dst_color_space,
                             bool flipY);
   bool CopyFromCanvasSourceImage(StaticBitmapImage* image,
-                                 const WGPUOrigin3D& origin,
+                                 const WGPUOrigin2D& origin,
                                  const WGPUExtent3D& copy_size,
                                  const WGPUImageCopyTexture& destination,
                                  bool dst_premultiplied_alpha,

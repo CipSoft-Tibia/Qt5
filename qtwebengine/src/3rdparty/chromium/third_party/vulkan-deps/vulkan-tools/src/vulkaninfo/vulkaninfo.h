@@ -67,7 +67,7 @@
 #endif
 #endif  // _WIN32
 
-#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__QNX__)
 #include <dlfcn.h>
 #endif
 
@@ -252,7 +252,7 @@ auto GetVector(const char *func_name, F &&f, Ts &&...ts) -> std::vector<T> {
 // ----------- Instance Setup ------- //
 struct VkDll {
     VkResult Initialize() {
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__QNX__)
         library = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
         if (!library) library = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
 #elif defined(_WIN32)
@@ -264,7 +264,7 @@ struct VkDll {
         return VK_SUCCESS;
     }
     void Close() {
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__QNX__)
         dlclose(library);
 #elif defined(_WIN32)
         FreeLibrary(library);
@@ -356,6 +356,11 @@ struct VkDll {
 #ifdef VK_USE_PLATFORM_METAL_EXT
     PFN_vkCreateMetalSurfaceEXT fp_vkCreateMetalSurfaceEXT = APPLE_FP(vkCreateMetalSurfaceEXT);
 #endif  // VK_USE_PLATFORM_METAL_EXT
+#ifdef VK_USE_PLATFORM_SCREEN_QNX
+    PFN_vkCreateScreenSurfaceQNX fp_vkCreateScreenSurfaceQNX = APPLE_FP(vkCreateScreenSurfaceQNX);
+    PFN_vkGetPhysicalDeviceScreenPresentationSupportQNX fp_vkGetPhysicalDeviceScreenPresentationSupportQNX =
+        APPLE_FP(vkGetPhysicalDeviceScreenPresentationSupportQNX);
+#endif  // VK_USE_PLATFORM_SCREEN_QNX
     void InitializeDispatchPointers() {
         Load(fp_vkCreateInstance, "vkCreateInstance");
         Load(fp_vkDestroyInstance, "vkDestroyInstance");
@@ -420,18 +425,21 @@ struct VkDll {
 #ifdef VK_USE_PLATFORM_METAL_EXT
         Load(fp_vkCreateMetalSurfaceEXT, "vkCreateMetalSurfaceEXT");
 #endif  // VK_USE_PLATFORM_METAL_EXT
+#ifdef VK_USE_PLATFORM_SCREEN_QNX
+        Load(fp_vkCreateScreenSurfaceQNX, "vkCreateScreenSurfaceQNX");
+#endif  // VK_USE_PLATFORM_SCREEN_QNX
     }
 
   private:
     template <typename T>
     void Load(T &func_dest, const char *func_name) {
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__QNX__)
         func_dest = reinterpret_cast<T>(dlsym(library, func_name));
 #elif defined(_WIN32)
         func_dest = reinterpret_cast<T>(GetProcAddress(library, func_name));
 #endif
     }
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__QNX__)
     void *library;
 #elif defined(_WIN32)
     HMODULE library;
@@ -622,6 +630,10 @@ struct AppInstance {
 #ifdef VK_USE_PLATFORM_ANDROID_KHR  // TODO
     ANativeWindow *window;
 #endif
+#ifdef VK_USE_PLATFORM_SCREEN_QNX
+    struct _screen_context* context;
+    struct _screen_window* window;
+#endif
     AppInstance() {
         VkResult dllErr = dll.Initialize();
         if (dllErr != VK_SUCCESS) {
@@ -652,7 +664,9 @@ struct AppInstance {
         AppCompileInstanceExtensionsToEnable();
 
         std::vector<const char *> inst_exts;
-        for (const auto &ext : inst_extensions) inst_exts.push_back(ext.c_str());
+        for (const auto &ext : inst_extensions) {
+            inst_exts.push_back(ext.c_str());
+        }
 
         const VkInstanceCreateInfo inst_info = {
             VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -692,7 +706,7 @@ struct AppInstance {
     AppInstance(const AppInstance &) = delete;
     const AppInstance &operator=(const AppInstance &) = delete;
 
-    bool CheckExtensionEnabled(std::string extension_to_check) {
+    bool CheckExtensionEnabled(std::string extension_to_check) const {
         return std::any_of(inst_extensions.begin(), inst_extensions.end(),
                            [extension_to_check](std::string str) { return str == extension_to_check; });
     }
@@ -712,9 +726,93 @@ struct AppInstance {
         global_extensions = AppGetGlobalLayerExtensions(nullptr);
     }
     void AppCompileInstanceExtensionsToEnable() {
-        // Get all supported Instance extensions (excl. layer-provided ones)
         for (const auto &ext : global_extensions) {
-            inst_extensions.push_back(ext.extensionName);
+            if (strcmp(VK_EXT_DEBUG_REPORT_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+            if (strcmp(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+            if (strcmp(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+            if (strcmp(VK_KHR_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#ifdef VK_USE_PLATFORM_ANDROID_KHR
+            if (strcmp(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+#ifdef VK_USE_PLATFORM_FUCHSIA
+            if (strcmp(VK_FUCHSIA_IMAGEPIPE_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+#ifdef VK_USE_PLATFORM_IOS_MVK
+            if (strcmp(VK_MVK_IOS_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+#ifdef VK_USE_PLATFORM_MACOS_MVK
+            if (strcmp(VK_MVK_MACOS_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+#ifdef VK_USE_PLATFORM_METAL_EXT
+            if (strcmp(VK_EXT_METAL_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+#ifdef VK_USE_PLATFORM_VI_NN
+            if (strcmp(VK_NN_VI_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+            if (strcmp(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+            if (strcmp(VK_KHR_WIN32_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+#ifdef VK_USE_PLATFORM_XCB_KHR
+            if (strcmp(VK_KHR_XCB_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+#ifdef VK_USE_PLATFORM_XLIB_KHR
+            if (strcmp(VK_KHR_XLIB_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+#ifdef VK_USE_PLATFORM_DIRECTFB_EXT
+            if (strcmp(VK_EXT_DIRECTFB_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+#ifdef VK_USE_PLATFORM_GGP
+            if (strcmp(VK_GGP_STREAM_DESCRIPTOR_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+#ifdef VK_USE_PLATFORM_SCREEN_QNX
+            if (strcmp(VK_QNX_SCREEN_SURFACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+#endif
+            if (strcmp(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+            if (strcmp(VK_KHR_SURFACE_PROTECTED_CAPABILITIES_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
+            if (strcmp(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME, ext.extensionName) == 0) {
+                inst_extensions.push_back(ext.extensionName);
+            }
         }
     }
 
@@ -739,9 +837,19 @@ struct AppInstance {
 
 #if defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_WIN32_KHR) ||      \
     defined(VK_USE_PLATFORM_MACOS_MVK) || defined(VK_USE_PLATFORM_METAL_EXT) || defined(VK_USE_PLATFORM_WAYLAND_KHR) || \
-    defined(VK_USE_PLATFORM_DIRECTFB_EXT) || defined(VK_USE_PLATFORM_ANDROID_KHR) || defined(VK_USE_PLATFORM_GGP)
+    defined(VK_USE_PLATFORM_DIRECTFB_EXT) || defined(VK_USE_PLATFORM_GGP) || defined(VK_USE_PLATFORM_SCREEN_QNX)
+
 #define VULKANINFO_WSI_ENABLED
 #endif
+
+//-----------------------------------------------------------
+#if defined(VULKANINFO_WSI_ENABLED)
+static void AppDestroySurface(AppInstance &inst, VkSurfaceKHR surface) {  // same for all platforms
+    inst.dll.fp_vkDestroySurfaceKHR(inst.instance, surface, nullptr);
+}
+#endif  // defined(VULKANINFO_WSI_ENABLED)
+//-----------------------------------------------------------
+
 //---------------------------Win32---------------------------
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 
@@ -813,13 +921,7 @@ static void AppDestroyWin32Window(AppInstance &inst) { user32_handles->pfnDestro
 #endif  // VK_USE_PLATFORM_WIN32_KHR
 //-----------------------------------------------------------
 
-#if defined(VULKANINFO_WSI_ENABLED)
-static void AppDestroySurface(AppInstance &inst, VkSurfaceKHR surface) {  // same for all platforms
-    inst.dll.fp_vkDestroySurfaceKHR(inst.instance, surface, nullptr);
-}
-#endif  // defined(VULKANINFO_WSI_ENABLED)
 //----------------------------XCB----------------------------
-
 #ifdef VK_USE_PLATFORM_XCB_KHR
 static void AppCreateXcbWindow(AppInstance &inst) {
     //--Init Connection--
@@ -1075,10 +1177,12 @@ static VkSurfaceKHR AppCreateAndroidSurface(AppInstance &inst) {
     createInfo.flags = 0;
     createInfo.window = (struct ANativeWindow *)(inst.window);
 
-    err = inst.dll.fp_vkCreateAndroidSurfaceKHR(inst.inst, &createInfo, NULL, &inst.surface);
-    THROW_VK_ERR("vkCreateAndroidSurfaceKHR", err);
+    VkSurfaceKHR surface;
+    VkResult err = inst.dll.fp_vkCreateAndroidSurfaceKHR(inst.instance, &createInfo, NULL, &surface);
+    if (err) THROW_VK_ERR("vkCreateAndroidSurfaceKHR", err);
+    return surface;
 }
-static VkSurfaceKHR AppDestroyAndroidSurface(AppInstance &inst) {}
+static void AppDestroyAndroidWindow(AppInstance &inst) {}
 #endif
 //-----------------------------------------------------------
 //---------------------------GGP-----------------------------
@@ -1098,6 +1202,47 @@ static VkSurfaceKHR AppCreateGgpSurface(AppInstance &inst) {
 }
 static void AppDestroyGgpWindow(AppInstance &inst) {}
 #endif
+//-----------------------------------------------------------
+//----------------------QNX SCREEN---------------------------
+#ifdef VK_USE_PLATFORM_SCREEN_QNX
+static void AppCreateScreenWindow(AppInstance &inst) {
+    int usage = SCREEN_USAGE_VULKAN;
+    int rc;
+
+    rc = screen_create_context(&inst.context, 0);
+    if (rc) {
+        THROW_ERR("Could not create a QNX Screen context.\nExiting...");
+    }
+    rc = screen_create_window(&inst.window, inst.context);
+    if (rc) {
+        THROW_ERR("Could not create a QNX Screen window.\nExiting...");
+    }
+    rc = screen_set_window_property_iv(inst.window, SCREEN_PROPERTY_USAGE, &usage);
+    if (rc) {
+        THROW_ERR("Could not set SCREEN_USAGE_VULKAN flag for QNX Screen window!\nExiting...");
+    }
+}
+
+static VkSurfaceKHR AppCreateScreenSurface(AppInstance &inst) {
+    VkScreenSurfaceCreateInfoQNX createInfo;
+    createInfo.sType = VK_STRUCTURE_TYPE_SCREEN_SURFACE_CREATE_INFO_QNX;
+    createInfo.pNext = nullptr;
+    createInfo.flags = 0;
+    createInfo.context = inst.context;
+    createInfo.window = inst.window;
+
+    VkSurfaceKHR surface;
+    VkResult err = inst.dll.fp_vkCreateScreenSurfaceQNX(inst.instance, &createInfo, nullptr, &surface);
+    if (err) THROW_VK_ERR("vkCreateScreenSurfaceQNX", err);
+    return surface;
+}
+
+static void AppDestroyScreenWindow(AppInstance &inst)
+{
+    screen_destroy_window(inst.window);
+    screen_destroy_context(inst.context);
+}
+#endif  // VK_USE_PLATFORM_SCREEN_QNX
 //-----------------------------------------------------------
 // ------------ Setup Windows ------------- //
 
@@ -1210,8 +1355,8 @@ void SetupWindowExtensions(AppInstance &inst) {
 //--ANDROID--
 #ifdef VK_USE_PLATFORM_ANDROID_KHR
     SurfaceExtension surface_ext_android;
-    if (inst.CheckExtensionEnabled(VK_ANDROID_SURFACE_EXTENSION_NAME)) {
-        surface_ext_android.name = VK_ANDROID_SURFACE_EXTENSION_NAME;
+    if (inst.CheckExtensionEnabled(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME)) {
+        surface_ext_android.name = VK_KHR_ANDROID_SURFACE_EXTENSION_NAME;
         surface_ext_android.create_window = AppCreateAndroidWindow;
         surface_ext_android.create_surface = AppCreateAndroidSurface;
         surface_ext_android.destroy_window = AppDestroyAndroidWindow;
@@ -1229,6 +1374,18 @@ void SetupWindowExtensions(AppInstance &inst) {
         surface_ext_ggp.destroy_window = AppDestroyGgpWindow;
 
         inst.AddSurfaceExtension(surface_ext_ggp);
+    }
+#endif
+//--QNX_SCREEN--
+#ifdef VK_USE_PLATFORM_SCREEN_QNX
+    SurfaceExtension surface_ext_qnx_screen;
+    if (inst.CheckExtensionEnabled(VK_QNX_SCREEN_SURFACE_EXTENSION_NAME)) {
+        surface_ext_qnx_screen.name = VK_QNX_SCREEN_SURFACE_EXTENSION_NAME;
+        surface_ext_qnx_screen.create_window = AppCreateScreenWindow;
+        surface_ext_qnx_screen.create_surface = AppCreateScreenSurface;
+        surface_ext_qnx_screen.destroy_window = AppDestroyScreenWindow;
+
+        inst.AddSurfaceExtension(surface_ext_qnx_screen);
     }
 #endif
 }
@@ -1566,7 +1723,7 @@ struct AppGpu {
             }
             inst.ext_funcs.vkGetPhysicalDeviceQueueFamilyProperties2KHR(phys_device, &queue_prop2_count, queue_props2.data());
 
-            if ((CheckPhysicalDeviceExtensionIncluded(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME) || api_version.minor >= 2)) {
+            if (CheckPhysicalDeviceExtensionIncluded(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME) || api_version.minor >= 2) {
                 void *place = props2.pNext;
                 while (place) {
                     VkBaseOutStructure *structure = static_cast<VkBaseOutStructure *>(place);
@@ -1750,13 +1907,14 @@ struct AppGpu {
     AppGpu(const AppGpu &) = delete;
     const AppGpu &operator=(const AppGpu &) = delete;
 
-    bool CheckPhysicalDeviceExtensionIncluded(std::string extension_to_check) {
-        return std::any_of(device_extensions.begin(), device_extensions.end(),
-                           [extension_to_check](VkExtensionProperties &prop) { return prop.extensionName == extension_to_check; });
+    bool CheckPhysicalDeviceExtensionIncluded(std::string extension_to_check) const {
+        return std::any_of(
+            device_extensions.begin(), device_extensions.end(),
+            [extension_to_check](const VkExtensionProperties &prop) { return prop.extensionName == extension_to_check; });
     }
 
     // Helper function to determine whether a format range is currently supported.
-    bool FormatRangeSupported(FormatRange &format_range) {
+    bool FormatRangeSupported(FormatRange &format_range) const {
         // True if standard and supported by both this instance and this GPU
         if (format_range.minimum_instance_version > 0 && inst.instance_version >= format_range.minimum_instance_version &&
             props.apiVersion >= format_range.minimum_instance_version) {
@@ -1787,13 +1945,13 @@ struct AppGpu {
         if ((found_driver_props && driver_props.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY) ||
             (!found_driver_props && props.deviceID == 4318)) {
             return std::to_string((v >> 22) & 0x3ff) + "." + std::to_string((v >> 14) & 0x0ff) + "." +
-                   std::to_string((v >> 6) & 0x0ff) + "." + std::to_string((v)&0x003ff);
+                   std::to_string((v >> 6) & 0x0ff) + "." + std::to_string(v & 0x003f);
         } else if ((found_driver_props && driver_props.driverID == VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS)
 #if defined(WIN32)
                    || (!found_driver_props && props.deviceID == 0x8086)  // only do the fallback check if running in windows
 #endif
         ) {
-            return std::to_string((v >> 14)) + "." + std::to_string((v)&0x3fff);
+            return std::to_string(v >> 14) + "." + std::to_string(v & 0x3fff);
         } else {
             // AMD uses the standard vulkan scheme
             return VulkanVersion(v).str();
@@ -1808,23 +1966,60 @@ std::vector<VkPhysicalDeviceToolPropertiesEXT> GetToolingInfo(AppGpu &gpu) {
 }
 
 // --------- Format Properties ----------//
+// can't use autogen because that is put in a header that we can't include because that header depends on stuff defined here
+bool operator==(const VkFormatProperties &a, const VkFormatProperties b) {
+    return a.linearTilingFeatures == b.linearTilingFeatures && a.optimalTilingFeatures == b.optimalTilingFeatures &&
+           a.bufferFeatures == b.bufferFeatures;
+}
+bool operator==(const VkFormatProperties3 &a, const VkFormatProperties3 b) {
+    return a.linearTilingFeatures == b.linearTilingFeatures && a.optimalTilingFeatures == b.optimalTilingFeatures &&
+           a.bufferFeatures == b.bufferFeatures;
+}
 
 struct PropFlags {
-    uint32_t linear;
-    uint32_t optimal;
-    uint32_t buffer;
+    VkFormatProperties props;
+    VkFormatProperties3 props3;
 
-    bool operator==(const PropFlags &other) const {
-        return (linear == other.linear && optimal == other.optimal && buffer == other.buffer);
-    }
+    bool operator==(const PropFlags &other) const { return props == other.props && props3 == other.props3; }
 };
+
+PropFlags get_format_properties(const AppGpu &gpu, VkFormat fmt) {
+    VkFormatProperties props;
+    gpu.inst.dll.fp_vkGetPhysicalDeviceFormatProperties(gpu.phys_device, fmt, &props);
+
+    VkFormatProperties3 props3{};
+    props3.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3;
+
+    if (gpu.inst.CheckExtensionEnabled(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME) &&
+        gpu.CheckPhysicalDeviceExtensionIncluded(VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME)) {
+        VkFormatProperties2 props2{};
+        props2.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2;
+        props2.formatProperties = props;
+        props2.pNext = static_cast<void *>(&props3);
+        gpu.inst.ext_funcs.vkGetPhysicalDeviceFormatProperties2KHR(gpu.phys_device, fmt, &props2);
+    }
+    return {props, props3};
+}
 
 namespace std {
 template <>
+struct hash<VkFormatProperties> {
+    std::size_t operator()(const VkFormatProperties &k) const {
+        return ((std::hash<uint32_t>()(k.linearTilingFeatures) ^ (std::hash<uint32_t>()(k.optimalTilingFeatures) << 1)) >> 1) ^
+               (std::hash<uint32_t>()(k.bufferFeatures) << 1);
+    }
+};
+template <>
+struct hash<VkFormatProperties3> {
+    std::size_t operator()(const VkFormatProperties3 &k) const {
+        return ((std::hash<uint64_t>()(k.linearTilingFeatures) ^ (std::hash<uint64_t>()(k.optimalTilingFeatures) << 1)) >> 1) ^
+               (std::hash<uint64_t>()(k.bufferFeatures) << 1);
+    }
+};
+template <>
 struct hash<PropFlags> {
     std::size_t operator()(const PropFlags &k) const {
-        return ((std::hash<uint32_t>()(k.linear) ^ (std::hash<uint32_t>()(k.optimal) << 1)) >> 1) ^
-               (std::hash<uint32_t>()(k.buffer) << 1);
+        return (std::hash<VkFormatProperties>()(k.props) ^ std::hash<VkFormatProperties3>()(k.props3)) >> 1;
     }
 };
 }  // namespace std
@@ -1834,11 +2029,7 @@ std::unordered_map<PropFlags, std::vector<VkFormat>> FormatPropMap(AppGpu &gpu) 
     std::unordered_map<PropFlags, std::vector<VkFormat>> map;
     for (auto fmtRange : gpu.supported_format_ranges) {
         for (int32_t fmt = fmtRange.first_format; fmt <= fmtRange.last_format; ++fmt) {
-            VkFormatProperties props;
-            gpu.inst.dll.fp_vkGetPhysicalDeviceFormatProperties(gpu.phys_device, static_cast<VkFormat>(fmt), &props);
-
-            PropFlags pf = {props.linearTilingFeatures, props.optimalTilingFeatures, props.bufferFeatures};
-
+            PropFlags pf = get_format_properties(gpu, static_cast<VkFormat>(fmt));
             map[pf].push_back(static_cast<VkFormat>(fmt));
         }
     }

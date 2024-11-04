@@ -60,7 +60,8 @@ class CORE_EXPORT HTMLInputElement
   DEFINE_WRAPPERTYPEINFO();
 
  public:
-  HTMLInputElement(Document&, const CreateElementFlags);
+  explicit HTMLInputElement(Document&,
+                            const CreateElementFlags = CreateElementFlags());
   ~HTMLInputElement() override;
   void Trace(Visitor*) const override;
 
@@ -111,8 +112,9 @@ class CORE_EXPORT HTMLInputElement
   // isRadio, isFile.  If you want to check the input type, you may use
   // |input->type() == input_type_names::kImage|, etc.
 
-  // Returns whether this field is or has ever been a password field so that
-  // its value can be protected from memorization by autofill or keyboards.
+  // Returns whether this field is or has ever been a password field, or if
+  // autofill classified the field as password by predictions, so that its value
+  // can be protected from memorization by autofill or keyboards.
   bool HasBeenPasswordField() const;
 
   bool IsCheckable() const;
@@ -170,6 +172,7 @@ class CORE_EXPORT HTMLInputElement
   // Sets the suggested value and puts the element into
   // WebAutofillState::kPreviewed state if |value| is non-empty, or
   // WebAutofillState::kNotFilled otherwise.
+  // A null value indicates that the suggested value should be hidden.
   void SetSuggestedValue(const String& value) override;
 
   ScriptValue valueAsDate(ScriptState* script_state) const;
@@ -216,7 +219,7 @@ class CORE_EXPORT HTMLInputElement
                                    ExceptionState&);
 
   bool LayoutObjectIsNeeded(const DisplayStyle&) const final;
-  LayoutObject* CreateLayoutObject(const ComputedStyle&, LegacyLayout) override;
+  LayoutObject* CreateLayoutObject(const ComputedStyle&) override;
   void DetachLayoutTree(bool performing_reattach) final;
   void UpdateSelectionOnFocus(SelectionBehaviorOnFocus,
                               const FocusOptions*) final;
@@ -370,9 +373,10 @@ class CORE_EXPORT HTMLInputElement
   bool isMutable();
   void showPicker(ExceptionState&);
 
+  ShadowRoot* EnsureShadowSubtree();
+
  protected:
   void DefaultEventHandler(Event&) override;
-  void CreateShadowSubtree();
 
  private:
   enum AutoCompleteSetting { kUninitialized, kOn, kOff };
@@ -416,7 +420,7 @@ class CORE_EXPORT HTMLInputElement
   void FinishParsingChildren() final;
   void ParserDidSetAttributes() final;
 
-  void CloneNonAttributePropertiesFrom(const Element&, CloneChildrenFlag) final;
+  void CloneNonAttributePropertiesFrom(const Element&, NodeCloningData&) final;
 
   void AttachLayoutTree(AttachContext&) final;
 
@@ -439,6 +443,7 @@ class CORE_EXPORT HTMLInputElement
   bool TooLong(const String&, NeedsToCheckDirtyFlag) const;
   bool TooShort(const String&, NeedsToCheckDirtyFlag) const;
 
+  TextControlInnerEditorElement* EnsureInnerEditorElement() const final;
   void UpdatePlaceholderText() final;
   bool IsEmptyValue() const final { return InnerEditorValue().empty(); }
   void HandleBlurEvent() final;

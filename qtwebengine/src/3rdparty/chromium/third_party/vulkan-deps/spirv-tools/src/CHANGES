@@ -1,7 +1,76 @@
 Revision history for SPIRV-Tools
 
-v2023.2-dev 2023-01-17
-   - Start v2023.2-dev
+v2023.4 2023-07-17
+  - General
+    - Set cmake_policy CMP0128 (#5341)
+    - Add python3 requirement for the script (#5326)
+    - Add support for LiteralFloat type (#5323)
+    - SPV_KHR_cooperative_matrix (#5286)
+    - Allow OpTypeBool in UniformConstant (#5237)
+    - Allow physical storage buffer pointer in IO (#5251)
+    - Remove const zero image operands (#5232)
+  - Optimizer
+    - Enable vector constant folding (#4913) (#5272)
+    - Fold negation of integer vectors (#5269)
+    - Add folding rule for OpTranspose (#5241)
+    - Add SPV_NV_bindless_texture to spirv optimizations (#5231)
+    - Fix incorrect half float conversion (#5349)
+    - Add SPV_EXT_shader_atomic_float_add to allow lists (#5348)
+  - Instrument
+    - instrument: Cast gl_VertexIndex and InstanceIndex to uint (#5319)
+    - instrument: Fix buffer address length calculations (#5257)
+    - instrument: Reduce number of inst_bindless_stream_write_6 calls (#5327)
+  - Validator
+    - Validate GroupNonUniform instructions (#5296)
+    - spirv-val: Label SPV_KHR_cooperative_matrix VUID (#5301)
+    - Validate layouts for PhysicalStorageBuffer pointers (#5291)
+    - spirv-val: Remove VUID from 1.3.251 spec (#5244)
+  - Diff
+    - spirv-diff: Update test expectations (#5264)
+    - spirv-diff: Leave undefined ids unpaired. (#5262)
+    - spirv-diff: Properly match SPV_KHR_ray_query types. (#5259)
+    - diff: Don't give up entry point matching too early. (#5224)
+
+v2023.3 2023-05-15
+  - General
+    - Update spirv_headers to include SPV_KHR_ray_tracing_position_fetch (#5205)
+    - spirv-tools: Add support for QNX (#5211)
+    - build: set std=c++17 for BUILD.gn (#5162)
+  - Optimizer
+    - Run ADCE when the printf extension is used. (#5215)
+    - Don't convert struct members to half (#5201)
+    - Apply scalar replacement on vars with Pointer decorations (#5208)
+    - opt: Fix null deref in OpMatrixTimesVector and OpVectorTimesMatrix (#5199)
+    - instrument: Add set and binding to bindless error records (#5204)
+    - instrument: Change descriptor state storage format (#5178)
+    - Fix LICMPass (#5087)
+    - Add Vulkan memory model to allow lists (#5173)
+    - Do not remove control barrier after spv1.3 (#5174)
+  - Validator
+    - spirv-val: Label Interface Location/Component VUIDs (#5221)
+    - Add support for SPV_EXT_shader_tile_image (#5188)
+    - Fix vector OpConstantComposite type validation (#5191)
+    - spirv-val: Label new Vulkan VUID 07951 (#5154)
+  - Fuzz
+    - Do not define GOOGLE_PROTOBUF_INTERNAL_DONATE_STEAL_INLINE if it is already defined. (#5200)
+
+v2023.2 2023-03-10
+  - General
+    - build: move from c++11 to c++17 (#4983)
+    - tools: refactorize tools flags parsing. (#5111)
+    - Add C interface for Optimizer (#5030)
+    - libspirv.cpp: adds c++ api for spvBinaryParse (#5109)
+    - build: change the way we set cxx version for bazel. (#5114)
+  - Optimizer
+    - Fix null pointer in FoldInsertWithConstants. (#5093)
+    - Fix removal of dependent non-semantic instructions (#5122)
+    - Remove duplicate lists of constant and type opcodes (#5106)
+    - opt: fix spirv ABI on Linux again. (#5113)
+  - Validator
+    - Validate decoration of structs with RuntimeArray (#5094)
+    - Validate operand type before operating on it (#5092)
+    - spirv-val: Conditional Branch without an exit is invalid in loop header (#5069)
+    - spirv-val: Initial SPV_EXT_mesh_shader builtins (#5080)
 
 v2023.1 2023-01-17
   - General

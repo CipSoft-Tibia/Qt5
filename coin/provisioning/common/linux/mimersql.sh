@@ -7,11 +7,13 @@ set -e
 SSL_VER=$1
 PACK_TYPE=$2
 PROVISIONING_DIR="$(dirname "$0")/../../"
-. "$PROVISIONING_DIR"/common/unix/common.sourced.sh
-. "$PROVISIONING_DIR"/common/unix/DownloadURL.sh
+# shellcheck source=../unix/common.sourced.sh
+source "${BASH_SOURCE%/*}/../unix/common.sourced.sh"
+# shellcheck source=../unix/DownloadURL.sh
+source "${BASH_SOURCE%/*}/../unix/DownloadURL.sh"
 
 
-localRepo=http://ci-files01-hki.intra.qt.io/input/docker
+localRepo=http://ci-files01-hki.ci.qt.io/input/docker
 upstreamRepo=http://install.mimer.com/qt
 if [ "$SSL_VER" = "openssl-3" ]; then
     if [ "$PACK_TYPE" = "rpm" ]; then

@@ -12,6 +12,7 @@
 #include "content/services/auction_worklet/for_debugging_only_bindings.h"
 #include "content/services/auction_worklet/private_aggregation_bindings.h"
 #include "content/services/auction_worklet/register_ad_beacon_bindings.h"
+#include "content/services/auction_worklet/register_ad_macro_bindings.h"
 #include "content/services/auction_worklet/report_bindings.h"
 #include "content/services/auction_worklet/set_bid_bindings.h"
 #include "content/services/auction_worklet/set_priority_bindings.h"
@@ -87,6 +88,13 @@ void ContextRecycler::AddRegisterAdBeaconBindings() {
   AddBindings(register_ad_beacon_bindings_.get());
 }
 
+void ContextRecycler::AddRegisterAdMacroBindings() {
+  DCHECK(!register_ad_macro_bindings_);
+  register_ad_macro_bindings_ =
+      std::make_unique<RegisterAdMacroBindings>(v8_helper_);
+  AddBindings(register_ad_macro_bindings_.get());
+}
+
 void ContextRecycler::AddReportBindings() {
   DCHECK(!report_bindings_);
   report_bindings_ = std::make_unique<ReportBindings>(v8_helper_);
@@ -125,21 +133,18 @@ void ContextRecycler::AddSetPrioritySignalsOverrideBindings() {
 }
 
 void ContextRecycler::AddBindings(Bindings* bindings) {
-  DCHECK(context_.IsEmpty());  // should be called before GetContext()
+  DCHECK(!context_.IsEmpty());  // should be called after GetContext()
+  bindings->AttachToContext(context_.Get(v8_helper_->isolate()));
   bindings_list_.push_back(bindings);
 }
 
 v8::Local<v8::Context> ContextRecycler::GetContext() {
   v8::Isolate* isolate = v8_helper_->isolate();
   if (context_.IsEmpty()) {
-    v8::Local<v8::ObjectTemplate> global_template =
-        v8::ObjectTemplate::New(isolate);
-    for (Bindings* bindings : bindings_list_)
-      bindings->FillInGlobalTemplate(global_template);
-    context_.Reset(isolate, v8_helper_->CreateContext(global_template));
+    context_.Reset(isolate, v8_helper_->CreateContext());
   }
 
-  return v8::Local<v8::Context>::New(isolate, context_);
+  return context_.Get(isolate);
 }
 
 void ContextRecycler::ResetForReuse() {

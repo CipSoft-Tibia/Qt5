@@ -87,6 +87,10 @@ void CachedTextInputInfo::DidLayoutSubtree(const LayoutObject& layout_object) {
   if (!container_)
     return;
 
+  if (!layout_object_) {
+    return;
+  }
+
   if (layout_object_->IsDescendantOf(&layout_object)) {
     // `<span contenteditable>...</span>` reaches here.
     return Clear();
@@ -137,7 +141,7 @@ void CachedTextInputInfo::EnsureCached(const ContainerNode& container) const {
     unsigned capacity = kInitialCapacity;
     if (auto* block_flow =
             DynamicTo<LayoutBlockFlow>(container.GetLayoutObject())) {
-      if (block_flow->HasNGInlineNodeData()) {
+      if (block_flow->GetNGInlineNodeData()) {
         if (const auto* mapping = NGInlineNode::GetOffsetMapping(block_flow))
           capacity = mapping->GetText().length();
       }

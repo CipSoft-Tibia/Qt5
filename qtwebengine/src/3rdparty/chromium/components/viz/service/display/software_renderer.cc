@@ -37,6 +37,7 @@
 #include "skia/ext/opacity_filter_canvas.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkColor.h"
+#include "third_party/skia/include/core/SkImage.h"
 #include "third_party/skia/include/core/SkImageFilter.h"
 #include "third_party/skia/include/core/SkMatrix.h"
 #include "third_party/skia/include/core/SkPath.h"
@@ -127,10 +128,6 @@ void SoftwareRenderer::SwapBuffers(SwapFrameData swap_frame_data) {
 
 bool SoftwareRenderer::FlippedFramebuffer() const {
   return false;
-}
-
-void SoftwareRenderer::EnsureScissorTestEnabled() {
-  is_scissor_enabled_ = true;
 }
 
 void SoftwareRenderer::EnsureScissorTestDisabled() {
@@ -230,21 +227,17 @@ void SoftwareRenderer::ClearFramebuffer() {
   }
 }
 
-void SoftwareRenderer::PrepareSurfaceForPass(
-    SurfaceInitializationMode initialization_mode,
-    const gfx::Rect& render_pass_scissor) {
-  switch (initialization_mode) {
-    case SURFACE_INITIALIZATION_MODE_PRESERVE:
-      EnsureScissorTestDisabled();
-      return;
-    case SURFACE_INITIALIZATION_MODE_FULL_SURFACE_CLEAR:
-      EnsureScissorTestDisabled();
-      ClearFramebuffer();
-      break;
-    case SURFACE_INITIALIZATION_MODE_SCISSORED_CLEAR:
-      SetScissorTestRect(render_pass_scissor);
-      ClearFramebuffer();
-      break;
+void SoftwareRenderer::BeginDrawingRenderPass(
+    bool needs_clear,
+    const gfx::Rect& render_pass_update_rect) {
+  if (render_pass_update_rect == current_viewport_rect_) {
+    EnsureScissorTestDisabled();
+  } else {
+    SetScissorTestRect(render_pass_update_rect);
+  }
+
+  if (needs_clear) {
+    ClearFramebuffer();
   }
 }
 
@@ -550,8 +543,7 @@ void SoftwareRenderer::DrawRenderPassQuad(
   const cc::FilterOperations* filters = FiltersForPass(quad->render_pass_id);
   if (filters) {
     DCHECK(!filters->IsEmpty());
-    auto paint_filter = cc::RenderSurfaceFilters::BuildImageFilter(
-        *filters, gfx::SizeF(source_bitmap.width(), source_bitmap.height()));
+    auto paint_filter = cc::RenderSurfaceFilters::BuildImageFilter(*filters);
     auto image_filter =
         paint_filter ? paint_filter->cached_sk_filter_ : nullptr;
     if (image_filter) {
@@ -742,7 +734,7 @@ sk_sp<SkImage> SoftwareRenderer::ApplyImageFilter(
                              : quad->rect.origin();
   SkImageInfo dst_info =
       SkImageInfo::MakeN32Premul(result_rect->width(), result_rect->height());
-  sk_sp<SkSurface> surface = SkSurface::MakeRaster(dst_info);
+  sk_sp<SkSurface> surface = SkSurfaces::Raster(dst_info);
   if (!surface)
     return nullptr;
 
@@ -861,22 +853,20 @@ sk_sp<SkShader> SoftwareRenderer::GetBackdropFilterShader(
     if (filter_clip.IsEmpty())
       return nullptr;
     // Crop the source image to the backdrop_filter_bounds.
-    sk_sp<SkImage> cropped_image = SkImage::MakeFromBitmap(backdrop_bitmap);
-    cropped_image =
-        cropped_image->makeSubset(RectToSkIRect(filter_clip), nullptr);
+    sk_sp<SkImage> cropped_image = SkImages::RasterFromBitmap(backdrop_bitmap);
+    cropped_image = cropped_image->makeSubset(
+        static_cast<GrDirectContext*>(nullptr), RectToSkIRect(filter_clip));
     cropped_image->asLegacyBitmap(&backdrop_bitmap);
     image_offset = filter_clip.origin();
   }
 
-  gfx::Vector2dF clipping_offset =
-      (unclipped_rect.top_right() - backdrop_rect.top_right()) +
-      (backdrop_rect.bottom_left() - unclipped_rect.bottom_left());
-
+  // TODO (crbug.com/1451898): software_renderer doesn't apply backdrop filters
+  // correctly in the context of the ZOOM_FILTER operation (the lens bounds are
+  // not applied correctly). The ZOOM_FILTER is never used on platforms that
+  // use software_renderer, so skip calculating the filter bounds to pass
+  // to BuildImageFilter().
   sk_sp<cc::PaintFilter> paint_filter =
-      cc::RenderSurfaceFilters::BuildImageFilter(
-          *backdrop_filters,
-          gfx::SizeF(backdrop_bitmap.width(), backdrop_bitmap.height()),
-          clipping_offset);
+      cc::RenderSurfaceFilters::BuildImageFilter(*backdrop_filters);
   if (!paint_filter)
     return nullptr;
   sk_sp<SkImageFilter> filter = paint_filter->cached_sk_filter_;
@@ -921,7 +911,7 @@ sk_sp<SkShader> SoftwareRenderer::GetBackdropFilterShader(
   canvas.drawImageRect(filtered_image, src_rect, dst_rect, SkSamplingOptions(),
                        &paint, SkCanvas::kStrict_SrcRectConstraint);
 
-  return SkImage::MakeFromBitmap(bitmap)->makeShader(
+  return SkImages::RasterFromBitmap(bitmap)->makeShader(
       content_tile_mode, content_tile_mode, SkSamplingOptions(),
       &filter_backdrop_transform);
 }

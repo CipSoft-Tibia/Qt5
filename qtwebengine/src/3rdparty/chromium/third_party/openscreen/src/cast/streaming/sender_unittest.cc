@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,7 +15,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "cast/streaming/compound_rtcp_builder.h"
 #include "cast/streaming/constants.h"
 #include "cast/streaming/encoded_frame.h"
@@ -51,9 +50,9 @@ using testing::Mock;
 using testing::NiceMock;
 using testing::Return;
 using testing::Sequence;
+using testing::StrictMock;
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 // Sender configuration.
@@ -80,7 +79,7 @@ static_assert(kFrameDuration < (kTargetPlayoutDelay / 10),
 
 // An Encoded frame that also holds onto its own copy of data.
 struct EncodedFrameWithBuffer : public EncodedFrame {
-  // |EncodedFrame::data| always points inside buffer.begin()...buffer.end().
+  // `EncodedFrame::data` always points inside buffer.begin()...buffer.end().
   std::vector<uint8_t> buffer;
 };
 
@@ -113,11 +112,11 @@ void OverrideRtpTimestamp(int frame_count, EncodedFrame* frame, int fps) {
 // Receiver→Sender), with a settable amount of delay.
 class SimulatedNetworkPipe {
  public:
-  SimulatedNetworkPipe(TaskRunner* task_runner,
+  SimulatedNetworkPipe(TaskRunner& task_runner,
                        Environment::PacketConsumer* remote)
       : task_runner_(task_runner), remote_(remote) {
     // Create a fake IPv6 address using the "documentative purposes" prefix
-    // concatenated with the |this| pointer.
+    // concatenated with the `this` pointer.
     std::array<uint16_t, 8> hextets{};
     hextets[0] = 0x2001;
     hextets[1] = 0x0db8;
@@ -132,19 +131,19 @@ class SimulatedNetworkPipe {
   Clock::duration network_delay() const { return network_delay_; }
   void set_network_delay(Clock::duration delay) { network_delay_ = delay; }
 
-  // The caller needs to spin the task runner before |packet| will reach the
+  // The caller needs to spin the task runner before `packet` will reach the
   // other side.
   void StartPacketTransmission(std::vector<uint8_t> packet) {
-    task_runner_->PostTaskWithDelay(
-        [this, packet = std::move(packet)]() mutable {
+    task_runner_.PostTaskWithDelay(
+        [this, pkt = std::move(packet)]() mutable {
           remote_->OnReceivedPacket(local_endpoint_, FakeClock::now(),
-                                    std::move(packet));
+                                    std::move(pkt));
         },
         network_delay_);
   }
 
  private:
-  TaskRunner* const task_runner_;
+  TaskRunner& task_runner_;
   Environment::PacketConsumer* const remote_;
 
   IPEndpoint local_endpoint_;
@@ -172,14 +171,14 @@ class MockReceiver : public Environment::PacketConsumer {
   ~MockReceiver() override = default;
 
   // Simulate the Receiver ACK'ing all frames up to and including the
-  // |new_checkpoint|.
+  // `new_checkpoint`.
   void SetCheckpointFrame(FrameId new_checkpoint) {
     OSP_CHECK_GE(new_checkpoint, rtcp_builder_.checkpoint_frame());
     rtcp_builder_.SetCheckpointFrame(new_checkpoint);
   }
 
   // Automatically advances the checkpoint based on what is found in
-  // |complete_frames_|, returning true if the checkpoint moved forward.
+  // `complete_frames_`, returning true if the checkpoint moved forward.
   bool AutoAdvanceCheckpoint() {
     const FrameId old_checkpoint = rtcp_builder_.checkpoint_frame();
     FrameId new_checkpoint = old_checkpoint;
@@ -220,7 +219,7 @@ class MockReceiver : public Environment::PacketConsumer {
   // Receiver Report, NACKs, ACKs.
   void TransmitRtcpFeedbackPacket() {
     uint8_t buffer[kMaxRtpPacketSizeForIpv6UdpOnEthernet];
-    const absl::Span<uint8_t> packet =
+    const ByteBuffer packet =
         rtcp_builder_.BuildPacket(FakeClock::now(), buffer);
     pipe_to_sender_->StartPacketTransmission(
         std::vector<uint8_t>(packet.begin(), packet.end()));
@@ -243,7 +242,7 @@ class MockReceiver : public Environment::PacketConsumer {
     EXPECT_NE(ApparentPacketType::UNKNOWN, type_and_ssrc.first);
     EXPECT_EQ(kSenderSsrc, type_and_ssrc.second);
     if (type_and_ssrc.first == ApparentPacketType::RTP) {
-      const absl::optional<RtpPacketParser::ParseResult> part_of_frame =
+      const std::optional<RtpPacketParser::ParseResult> part_of_frame =
           rtp_parser_.Parse(packet);
       ASSERT_TRUE(part_of_frame);
 
@@ -259,7 +258,7 @@ class MockReceiver : public Environment::PacketConsumer {
       OnRtpPacket(*part_of_frame);
       CollectRtpPacket(*part_of_frame, std::move(packet));
     } else if (type_and_ssrc.first == ApparentPacketType::RTCP) {
-      absl::optional<SenderReportParser::SenderReportWithId> report =
+      std::optional<SenderReportParser::SenderReportWithId> report =
           sender_report_parser_.Parse(packet);
       ASSERT_TRUE(report);
       OnSenderReport(*report);
@@ -334,7 +333,7 @@ class SenderTest : public testing::Test {
   SenderTest()
       : fake_clock_(Clock::now()),
         task_runner_(&fake_clock_),
-        sender_environment_(&FakeClock::now, &task_runner_),
+        sender_environment_(&FakeClock::now, task_runner_),
         sender_packet_router_(&sender_environment_,
                               kNumPacketsPerBurst,
                               kBurstInterval),
@@ -349,14 +348,14 @@ class SenderTest : public testing::Test {
                  /* .aes_iv_mask = */ kCastIvMask,
                  /* .is_pli_enabled = */ true},
                 kRtpPayloadType),
-        receiver_to_sender_pipe_(&task_runner_, &sender_packet_router_),
+        receiver_to_sender_pipe_(task_runner_, &sender_packet_router_),
         receiver_(&receiver_to_sender_pipe_),
-        sender_to_receiver_pipe_(&task_runner_, &receiver_) {
+        sender_to_receiver_pipe_(task_runner_, &receiver_) {
     sender_environment_.SetSocketSubscriber(&socket_subscriber_);
     sender_environment_.set_remote_endpoint(
         receiver_to_sender_pipe_.local_endpoint());
-    ON_CALL(sender_environment_, SendPacket(_))
-        .WillByDefault(Invoke([this](absl::Span<const uint8_t> packet) {
+    ON_CALL(sender_environment_, SendPacket(_, _))
+        .WillByDefault(Invoke([this](ByteView packet, PacketMetadata metadata) {
           sender_to_receiver_pipe_.StartPacketTransmission(
               std::vector<uint8_t>(packet.begin(), packet.end()));
         }));
@@ -410,10 +409,10 @@ class SenderTest : public testing::Test {
     frame->data = frame->buffer;
   }
 
-  // Confirms that all |sent_frames| exist in |received_frames|, with identical
+  // Confirms that all `sent_frames` exist in `received_frames`, with identical
   // data and metadata.
   static void ExpectFramesReceivedCorrectly(
-      absl::Span<EncodedFrameWithBuffer> sent_frames,
+      Span<EncodedFrameWithBuffer> sent_frames,
       const std::map<FrameId, EncodedFrameWithBuffer> received_frames) {
     ASSERT_EQ(sent_frames.size(), received_frames.size());
 
@@ -474,10 +473,10 @@ TEST_F(SenderTest, SendsFramesEfficiently) {
     }
   }));
 
-  NiceMock<MockObserver> observer;
-  EXPECT_CALL(observer, OnFrameCanceled(FrameId::first())).Times(1);
-  EXPECT_CALL(observer, OnFrameCanceled(FrameId::first() + 1)).Times(1);
-  EXPECT_CALL(observer, OnFrameCanceled(FrameId::first() + 2)).Times(1);
+  StrictMock<MockObserver> observer;
+  EXPECT_CALL(observer, OnFrameCanceled(FrameId::first()));
+  EXPECT_CALL(observer, OnFrameCanceled(FrameId::first() + 1));
+  EXPECT_CALL(observer, OnFrameCanceled(FrameId::first() + 2));
   sender()->SetObserver(&observer);
 
   EncodedFrameWithBuffer frames[3];
@@ -491,6 +490,70 @@ TEST_F(SenderTest, SendsFramesEfficiently) {
     PopulateFrameWithDefaults(FrameId::first() + i,
                               FakeClock::now() - kCaptureDelay, 0xbf - i,
                               kFrameDataSizes[i], &frames[i]);
+    ASSERT_EQ(Sender::OK, sender()->EnqueueFrame(frames[i]));
+    SimulateExecution(kFrameDuration);
+  }
+  SimulateExecution(kTargetPlayoutDelay);
+
+  ExpectFramesReceivedCorrectly(frames, receiver()->TakeCompleteFrames());
+}
+
+// Tests that the Sender properly updates the checkpoint frame ID while
+// it is cancelling frames. See https://crbug.com/1433584 for an example crash
+// where the checkpoint frame ID is invalid.
+TEST_F(SenderTest, WaitsUntilEndOfReportToUpdateObservers) {
+  constexpr milliseconds kOneWayNetworkDelay{1};
+  SetSenderToReceiverNetworkDelay(kOneWayNetworkDelay);
+  SetReceiverToSenderNetworkDelay(kOneWayNetworkDelay);
+
+  // Expect that each packet is only sent once.
+  std::set<std::pair<FrameId, FramePacketId>> received_packets;
+  EXPECT_CALL(*receiver(), OnRtpPacket(_))
+      .WillRepeatedly(
+          Invoke([&](const RtpPacketParser::ParseResult& parsed_packet) {
+            std::pair<FrameId, FramePacketId> id(parsed_packet.frame_id,
+                                                 parsed_packet.packet_id);
+            const auto insert_result = received_packets.insert(id);
+            EXPECT_TRUE(insert_result.second)
+                << "Received duplicate packet: " << id.first << ':'
+                << static_cast<int>(id.second);
+          }));
+
+  StrictMock<MockObserver> observer;
+
+  // The sender should be in a valid state during frame cancellations. Since
+  // these all came from the same report, the sender shouldn't have any frames
+  // in flight.
+  EXPECT_CALL(observer, OnFrameCanceled(_))
+      .Times(3)
+      .WillRepeatedly([sender = sender()](FrameId id) {
+        EXPECT_EQ(0, sender->GetInFlightFrameCount());
+
+        // Since no frames are in flight, the next frame timestamp should not
+        // matter.
+        EXPECT_EQ(Clock::duration::zero(),
+                  sender->GetInFlightMediaDuration(RtpTimeTicks(123456789)));
+      });
+
+  // Don't ACK frames and return a report until the third frame.
+  EXPECT_CALL(*receiver(), OnFrameComplete(_)).Times(2);
+  EXPECT_CALL(*receiver(), OnFrameComplete(FrameId::first() + 2))
+      .WillOnce(InvokeWithoutArgs([&] {
+        if (receiver()->AutoAdvanceCheckpoint()) {
+          receiver()->TransmitRtcpFeedbackPacket();
+        }
+      }));
+
+  sender()->SetObserver(&observer);
+
+  EncodedFrameWithBuffer frames[3];
+  constexpr int kFrameDataSizes[] = {8196, 12, 1900};
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(i == 0, sender()->NeedsKeyFrame());
+    PopulateFrameWithDefaults(FrameId::first() + i,
+                              FakeClock::now() - kCaptureDelay, 0xbf - i,
+                              kFrameDataSizes[i], &frames[i]);
+
     ASSERT_EQ(Sender::OK, sender()->EnqueueFrame(frames[i]));
     SimulateExecution(kFrameDuration);
   }
@@ -663,7 +726,7 @@ TEST_F(SenderTest, RejectsEnqueuingBeforeProtocolDesignLimit) {
 }
 
 TEST_F(SenderTest, CanCancelAllInFlightFrames) {
-  NiceMock<MockObserver> observer;
+  StrictMock<MockObserver> observer;
   sender()->SetObserver(&observer);
 
   // Send the absolute design-limit maximum number of frames.
@@ -726,7 +789,7 @@ TEST_F(SenderTest, RejectsEnqueuingIfTooLongMediaDurationIsInFlight) {
 // Observer::OnPictureLost(), and via calls to NeedsKeyFrame(); but only when
 // producing a key frame is absolutely necessary.
 TEST_F(SenderTest, ManagesReceiverPictureLossWorkflow) {
-  NiceMock<MockObserver> observer;
+  StrictMock<MockObserver> observer;
   sender()->SetObserver(&observer);
 
   // Send three frames...
@@ -746,9 +809,9 @@ TEST_F(SenderTest, ManagesReceiverPictureLossWorkflow) {
   SimulateExecution(kTargetPlayoutDelay);
 
   // Simulate the Receiver ACK'ing the first three frames.
-  EXPECT_CALL(observer, OnFrameCanceled(FrameId::first())).Times(1);
-  EXPECT_CALL(observer, OnFrameCanceled(FrameId::first() + 1)).Times(1);
-  EXPECT_CALL(observer, OnFrameCanceled(FrameId::first() + 2)).Times(1);
+  EXPECT_CALL(observer, OnFrameCanceled(FrameId::first()));
+  EXPECT_CALL(observer, OnFrameCanceled(FrameId::first() + 1));
+  EXPECT_CALL(observer, OnFrameCanceled(FrameId::first() + 2));
   EXPECT_CALL(observer, OnPictureLost()).Times(0);
   receiver()->SetCheckpointFrame(frames[2].frame_id);
   receiver()->TransmitRtcpFeedbackPacket();
@@ -759,7 +822,7 @@ TEST_F(SenderTest, ManagesReceiverPictureLossWorkflow) {
   // loss to the Sender. The Sender should then propagate this to its Observer
   // and return true when NeedsKeyFrame() is called.
   EXPECT_CALL(observer, OnFrameCanceled(_)).Times(0);
-  EXPECT_CALL(observer, OnPictureLost()).Times(1);
+  EXPECT_CALL(observer, OnPictureLost());
   EXPECT_FALSE(sender()->NeedsKeyFrame());
   receiver()->SetPictureLossIndicator(true);
   receiver()->TransmitRtcpFeedbackPacket();
@@ -802,7 +865,7 @@ TEST_F(SenderTest, ManagesReceiverPictureLossWorkflow) {
   // its picture loss again to the Sender. Observer::OnPictureLost() should not
   // be called, and NeedsKeyFrame() should NOT return true, because the Sender
   // knows the Receiver hasn't acknowledged the key frame (just sent) yet.
-  EXPECT_CALL(observer, OnFrameCanceled(nonkey_frame.frame_id)).Times(1);
+  EXPECT_CALL(observer, OnFrameCanceled(nonkey_frame.frame_id));
   EXPECT_CALL(observer, OnPictureLost()).Times(0);
   receiver()->SetCheckpointFrame(nonkey_frame.frame_id);
   receiver()->SetPictureLossIndicator(true);
@@ -814,8 +877,8 @@ TEST_F(SenderTest, ManagesReceiverPictureLossWorkflow) {
   // Now, simulate the Receiver getting the key frame, but NOT recovering. This
   // should cause Observer::OnPictureLost() to be called, and cause
   // NeedsKeyFrame() to return true again.
-  EXPECT_CALL(observer, OnFrameCanceled(recovery_frame.frame_id)).Times(1);
-  EXPECT_CALL(observer, OnPictureLost()).Times(1);
+  EXPECT_CALL(observer, OnFrameCanceled(recovery_frame.frame_id));
+  EXPECT_CALL(observer, OnPictureLost());
   receiver()->SetCheckpointFrame(recovery_frame.frame_id);
   receiver()->SetPictureLossIndicator(true);
   receiver()->TransmitRtcpFeedbackPacket();
@@ -839,8 +902,7 @@ TEST_F(SenderTest, ManagesReceiverPictureLossWorkflow) {
 
   // Now, simulate the Receiver recovering. It will report this to the Sender,
   // and NeedsKeyFrame() will still return false.
-  EXPECT_CALL(observer, OnFrameCanceled(another_recovery_frame.frame_id))
-      .Times(1);
+  EXPECT_CALL(observer, OnFrameCanceled(another_recovery_frame.frame_id));
   EXPECT_CALL(observer, OnPictureLost()).Times(0);
   receiver()->SetCheckpointFrame(another_recovery_frame.frame_id);
   receiver()->SetPictureLossIndicator(false);
@@ -865,7 +927,7 @@ TEST_F(SenderTest, ProvidesSenderReports) {
             sender_reports.push_back(report);
           }))
       .RetiresOnSaturation();
-  EXPECT_CALL(*receiver(), OnRtpPacket(_)).Times(1).InSequence(packet_sequence);
+  EXPECT_CALL(*receiver(), OnRtpPacket(_)).InSequence(packet_sequence);
   EXPECT_CALL(*receiver(), OnSenderReport(_))
       .Times(3)
       .InSequence(packet_sequence)
@@ -1070,7 +1132,7 @@ TEST_F(SenderTest, ResendsMissingFrames) {
   };
   receiver()->SetIgnoreList(dropped_packets);
 
-  NiceMock<MockObserver> observer;
+  StrictMock<MockObserver> observer;
   sender()->SetObserver(&observer);
 
   // The expectations below track the story and execute simulated Receiver
@@ -1114,13 +1176,10 @@ TEST_F(SenderTest, ResendsMissingFrames) {
   // the third frame, then the second frame.
   Sequence cancel_sequence;
   EXPECT_CALL(observer, OnFrameCanceled(FrameId::first()))
-      .Times(1)
       .InSequence(cancel_sequence);
   EXPECT_CALL(observer, OnFrameCanceled(FrameId::first() + 2))
-      .Times(1)
       .InSequence(cancel_sequence);
   EXPECT_CALL(observer, OnFrameCanceled(FrameId::first() + 1))
-      .Times(1)
       .InSequence(cancel_sequence);
 
   // With all the expectations/sequences in-place, let 'er rip!
@@ -1145,5 +1204,4 @@ TEST_F(SenderTest, ResendsMissingFrames) {
 }
 
 }  // namespace
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

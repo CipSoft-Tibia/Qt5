@@ -43,7 +43,7 @@ class PolicyDiagnostic final : public PolicyInfo {
   std::unique_ptr<std::string> json_string_;
   uint32_t process_id_;
   TokenLevel lockdown_level_ = USER_LAST;
-  JobLevel job_level_ = JobLevel::kNone;
+  JobLevel job_level_ = JobLevel::kUnprotected;
   IntegrityLevel desired_integrity_level_ = INTEGRITY_LEVEL_LAST;
   MitigationFlags desired_mitigations_ = 0;
   absl::optional<base::win::Sid> app_container_sid_;
@@ -54,6 +54,7 @@ class PolicyDiagnostic final : public PolicyInfo {
   AppContainerType app_container_type_ = AppContainerType::kNone;
   std::unique_ptr<PolicyGlobal> policy_rules_;
   bool is_csrss_connected_ = false;
+  bool zero_appshim_ = false;
   HandleMap handles_to_close_;
   std::string tag_;
 };

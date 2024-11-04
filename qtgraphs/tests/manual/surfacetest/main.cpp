@@ -242,7 +242,6 @@ int main(int argc, char *argv[])
     QComboBox *themeList = new QComboBox(widget);
     themeList->addItem(QStringLiteral("Qt"));
     themeList->addItem(QStringLiteral("Primary Colors"));
-    themeList->addItem(QStringLiteral("Digia"));
     themeList->addItem(QStringLiteral("Stone Moss"));
     themeList->addItem(QStringLiteral("Army Blue"));
     themeList->addItem(QStringLiteral("Retro"));
@@ -415,6 +414,32 @@ int main(int argc, char *argv[])
     marginSlider->setValue(-1);
     marginSlider->setMaximum(100);
 
+    QSlider *xSegmentSlider = new QSlider(Qt::Horizontal, widget);
+    xSegmentSlider->setMinimum(1);
+    xSegmentSlider->setValue(2);
+    xSegmentSlider->setMaximum(10);
+    QSlider *ySegmentSlider = new QSlider(Qt::Horizontal, widget);
+    ySegmentSlider->setMinimum(1);
+    ySegmentSlider->setValue(2);
+    ySegmentSlider->setMaximum(10);
+    QSlider *zSegmentSlider = new QSlider(Qt::Horizontal, widget);
+    zSegmentSlider->setMinimum(1);
+    zSegmentSlider->setValue(2);
+    zSegmentSlider->setMaximum(10);
+
+    QSlider *xSubsegmentSlider = new QSlider(Qt::Horizontal, widget);
+    xSubsegmentSlider->setMinimum(1);
+    xSubsegmentSlider->setValue(2);
+    xSubsegmentSlider->setMaximum(10);
+    QSlider *ySubsegmentSlider = new QSlider(Qt::Horizontal, widget);
+    ySubsegmentSlider->setMinimum(1);
+    ySubsegmentSlider->setValue(2);
+    ySubsegmentSlider->setMaximum(10);
+    QSlider *zSubsegmentSlider = new QSlider(Qt::Horizontal, widget);
+    zSubsegmentSlider->setMinimum(1);
+    zSubsegmentSlider->setValue(2);
+    zSubsegmentSlider->setMaximum(10);
+
     // Add controls to the layout
 #ifdef MULTI_SERIES
     vLayout->addWidget(series1CB);
@@ -512,7 +537,16 @@ int main(int argc, char *argv[])
     vLayout3->addWidget(axisTitlesVisibleCB);
     vLayout3->addWidget(axisTitlesFixedCB);
     vLayout3->addWidget(new QLabel(QStringLiteral("Axis label rotation")));
-    vLayout3->addWidget(axisLabelRotationSlider, 1, Qt::AlignTop);
+    vLayout3->addWidget(axisLabelRotationSlider, 1);
+    vLayout3->addWidget(new QLabel(QStringLiteral("Adjust X-axis segments")), 0);
+    vLayout3->addWidget(xSegmentSlider, 1);
+    vLayout3->addWidget(xSubsegmentSlider, 1);
+    vLayout3->addWidget(new QLabel(QStringLiteral("Adjust Y-axis segments")), 0);
+    vLayout3->addWidget(ySegmentSlider, 1);
+    vLayout3->addWidget(ySubsegmentSlider, 1);
+    vLayout3->addWidget(new QLabel(QStringLiteral("Adjust Z-axis segments")), 0);
+    vLayout3->addWidget(zSegmentSlider, 1);
+    vLayout3->addWidget(zSubsegmentSlider, 1, Qt::AlignTop);
 
     widget->show();
 
@@ -718,6 +752,31 @@ int main(int argc, char *argv[])
                      &GraphModifier::setCameraTargetZ);
     QObject::connect(marginSlider, &QSlider::valueChanged, modifier,
                      &GraphModifier::setGraphMargin);
+
+    QObject::connect(xSegmentSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &GraphModifier::setXAxisSegemntCount);
+    QObject::connect(ySegmentSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &GraphModifier::setYAxisSegemntCount);
+    QObject::connect(zSegmentSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &GraphModifier::setZAxisSegemntCount);
+    QObject::connect(xSubsegmentSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &GraphModifier::setXAxisSubsegemntCount);
+    QObject::connect(ySubsegmentSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &GraphModifier::setYAxisSubsegemntCount);
+    QObject::connect(zSubsegmentSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &GraphModifier::setZAxisSubsegemntCount);
 
 #ifdef MULTI_SERIES
     modifier->setSeries1CB(series1CB);

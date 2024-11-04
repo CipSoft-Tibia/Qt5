@@ -107,7 +107,7 @@
 
 .results-section {
   flex-shrink: 0;
-  border-bottom: 1px solid var(--color-details-hairline);
+  border-bottom: 1px solid var(--sys-color-divider);
   padding: var(--overview-default-padding) 0 var(--overview-default-padding) 0;
 }
 
@@ -216,7 +216,7 @@
   min-width: 100px;
   text-align: right;
   margin-right: 8px;
-  color: var(--color-primary);
+  color: var(--color-primary-old);
   pointer-events: none;
 }
 
@@ -231,7 +231,7 @@
 .overview-completed-view .media-queries button .bar,
 .overview-completed-view .unused-declarations button .bar {
   height: 8px;
-  background: var(--color-primary);
+  background: var(--color-primary-old);
   border-radius: 2px;
   min-width: 2px;
 }
@@ -292,7 +292,7 @@
 }
 
 .overview-completed-view .font-family:nth-child(2n+1) {
-  background: var(--color-background);
+  background: var(--sys-color-cdt-base-container);
 }
 
 .overview-completed-view .font-family:first-of-type {
@@ -301,7 +301,8 @@
 
 .contrast-warning {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  margin-top: 2px;
 }
 
 .contrast-warning .threshold-label {
@@ -309,8 +310,8 @@
   width: 30px;
 }
 
-.contrast-warning [is="ui-icon"] {
-  margin-left: 5px;
+.contrast-warning devtools-icon {
+  margin-left: 2px;
 }
 
 .contrast-preview {
@@ -319,20 +320,12 @@
 
 .contrast-container-in-grid {
   display: flex;
-  align-items: baseline;
+  align-items: center;
 }
 
 .contrast-container-in-grid > * {
   margin-right: 5px;
   min-width: initial;
-}
-
-[is="ui-icon"].smallicon-checkmark-square {
-  background-color: var(--color-green);
-}
-
-[is="ui-icon"].smallicon-no {
-  background-color: var(--color-red);
 }
 
 .data .nodeId-column {
@@ -347,21 +340,16 @@
 
 .show-element {
   margin: 0 0 0 8px;
-  padding: 0;
-  background: none;
-  border: none;
-  -webkit-mask-image: var(--image-file-ic_show_node_16x16);
-  background-color: var(--color-text-secondary);
-  width: 16px;
-  height: 16px;
   display: none;
   cursor: pointer;
   flex: none;
+
+  --icon-show-element: var(--icon-default);
 }
 
 .show-element:focus,
 .show-element:hover {
-  background-color: var(--color-primary);
+  --icon-show-element: var(--icon-default-hover);
 }
 
 .nodeId-column:focus-within .show-element,

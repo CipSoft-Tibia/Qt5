@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,18 +6,17 @@
 #define CAST_STREAMING_COMPOUND_RTCP_BUILDER_H_
 
 #include <chrono>
+#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
-#include "absl/types/span.h"
 #include "cast/streaming/constants.h"
 #include "cast/streaming/frame_id.h"
 #include "cast/streaming/rtcp_common.h"
 #include "cast/streaming/rtp_defines.h"
+#include "platform/base/span.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class RtcpSession;
 
@@ -97,8 +96,7 @@ class CompoundRtcpBuilder {
   // should be monotonically increasing so the consuming side (the Sender) can
   // determine the chronological ordering of RTCP packets. The Sender might also
   // use this to estimate round-trip times over the network.
-  absl::Span<uint8_t> BuildPacket(Clock::time_point send_time,
-                                  absl::Span<uint8_t> buffer);
+  ByteBuffer BuildPacket(Clock::time_point send_time, ByteBuffer buffer);
 
   // The required buffer size to be provided to BuildPacket(). This accounts for
   // all the possible headers and report structures that might be included,
@@ -109,20 +107,20 @@ class CompoundRtcpBuilder {
  private:
   // Helper methods called by BuildPacket() to append one RTCP packet to the
   // |buffer| that will ultimately contain a "compound RTCP packet."
-  void AppendReceiverReportPacket(absl::Span<uint8_t>* buffer);
+  void AppendReceiverReportPacket(ByteBuffer& buffer);
   void AppendReceiverReferenceTimeReportPacket(Clock::time_point send_time,
-                                               absl::Span<uint8_t>* buffer);
-  void AppendPictureLossIndicatorPacket(absl::Span<uint8_t>* buffer);
-  void AppendCastFeedbackPacket(absl::Span<uint8_t>* buffer);
-  int AppendCastFeedbackLossFields(absl::Span<uint8_t>* buffer);
-  void AppendCastFeedbackAckFields(absl::Span<uint8_t>* buffer);
+                                               ByteBuffer& buffer);
+  void AppendPictureLossIndicatorPacket(ByteBuffer& buffer);
+  void AppendCastFeedbackPacket(ByteBuffer& buffer);
+  int AppendCastFeedbackLossFields(ByteBuffer& buffer);
+  void AppendCastFeedbackAckFields(ByteBuffer& buffer);
 
   RtcpSession* const session_;
 
   // Data to include in the next built RTCP packet.
   FrameId checkpoint_frame_id_ = FrameId::leader();
   std::chrono::milliseconds playout_delay_ = kDefaultTargetPlayoutDelay;
-  absl::optional<RtcpReportBlock> receiver_report_for_next_packet_;
+  std::optional<RtcpReportBlock> receiver_report_for_next_packet_;
   std::vector<PacketNack> nacks_for_next_packet_;
   std::vector<FrameId> acks_for_next_packet_;
   bool picture_loss_indicator_ = false;
@@ -132,7 +130,6 @@ class CompoundRtcpBuilder {
   uint8_t feedback_count_ = 0;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_COMPOUND_RTCP_BUILDER_H_

@@ -154,6 +154,16 @@
     // math
 
     //
+    // font-size-adjust
+    //
+    //none
+    "ex-height",
+    "cap-height",
+    "ch-width",
+    "ic-width",
+    // from-font
+
+    //
     // font-family (<generic-family> in CSS 2.1)
     //
     // If you modify this list, please make sure you update css_parsing_utils's
@@ -182,6 +192,11 @@
     "font-format",
 
     //
+    // font-palette animation
+    //
+    "palette-mix",
+
+    //
     // *-color
     //
     "aqua",
@@ -204,6 +219,8 @@
     "transparent",
     "-webkit-link",
     "-webkit-activelink",
+    "accentcolor",
+    "accentcolortext",
     "activeborder",
     "activecaption",
     "activetext",
@@ -476,6 +493,7 @@
     "block",
     // The order must match the order found in IsDisplayInside().
     "flow-root",
+    "flow",
     "table",
     "flex",
     "grid",
@@ -567,6 +585,13 @@
     "visible",
     //hidden
     "collapse",
+    //
+    // white-space and its longhands (white-space-collapse and text-wrap)
+    // https://w3c.github.io/csswg-drafts/css-text-4/#white-space-property
+    //
+    "preserve",
+    "preserve-breaks",
+    "pretty",
     //
     // Unordered rest
     //
@@ -733,6 +758,12 @@
     "fit-content",
 
     //
+    // text-autospace
+    //
+    // normal
+    "no-autospace",
+
+    //
     // text-overflow
     //
     "clip",
@@ -768,6 +799,7 @@
     //
     "break-all",
     "keep-all",
+    "auto-phrase",
 
     //
     // word-wrap
@@ -796,32 +828,35 @@
     // The order here must match the order in the ControlPart enum in
     // theme_types.h.
     // All appearance values that should be accepted by the parser should be
-    // listed between 'checkbox' and 'textarea'.
+    // listed between 'checkbox' and 'textarea'. This is checked in
+    // CSSParserFastPaths::IsValidKeywordPropertyAndValue.
     "checkbox",
     "radio",
-    "push-button",
-    "square-button",
     "button",
-    "inner-spin-button",
     "listbox",
-    "media-slider",
-    "media-sliderthumb",
-    "media-volume-slider",
-    "media-volume-sliderthumb",
     "-internal-media-control",
     "menulist",
     "menulist-button",
     "meter",
     "progress-bar",
-    "slider-horizontal",
-    "slider-vertical",
-    "sliderthumb-horizontal",
-    "sliderthumb-vertical",
     "searchfield",
-    "searchfield-cancel-button",
     "textfield",
     "textarea",
-
+    // TODO(crbug/924486) All appearance values that should not be accepted by the parser (high usage).
+    "inner-spin-button",
+    "push-button",
+    "square-button",
+    "slider-horizontal",
+    "searchfield-cancel-button",
+    // TODO(crbug/924486) All appearance values that should not be accepted by the parser (low usage).
+    "media-slider",
+    "media-sliderthumb",
+    "media-volume-slider",
+    "media-volume-sliderthumb",
+    "sliderthumb-horizontal",
+    "sliderthumb-vertical",
+    // TODO(crbug/1426629) All appearance values that should not be accepted by the parser (special case).
+    "slider-vertical",
     //
     // border-image
     //
@@ -1065,6 +1100,10 @@
     // (overflow-block:) media feature
     "paged",
 
+    // (update:) media feature
+    "slow",
+    "fast",
+
     // position
     "sticky",
 
@@ -1244,9 +1283,10 @@
     "-webkit-repeating-radial-gradient",
     "-webkit-image-set",
     "image-set",
+    "type",
 
     // deprecated gradients
-    "from",
+    // "from", now part of relative color syntax
     "to",
     "color-stop",
     "radial",
@@ -1331,6 +1371,25 @@
     // The color-mix function https://www.w3.org/TR/css-color-5/#color-mix
     "color-mix",
 
+    // relative color syntax
+    "from",
+    // RCS channel keywords.
+    // r, g, b for rgb(), rgba() and color()
+    // x, y, z are already defined for "scale"
+    // h, s, l for hsl()
+    // h, w, b for hwb()
+    // l, a, b for lab() and oklab()
+    // l, c, h for lch() and oklch()
+    "r",
+    "g",
+    "b",
+    "h",
+    "s",
+    "l",
+    "w",
+    "a",
+    "c",
+
     // transform
     "matrix",
     "matrix3d",
@@ -1364,6 +1423,9 @@
     "ray",
     "sides",
 
+    // coord-box
+    "stroke-box",
+
     // math functions
     // https://drafts.csswg.org/css-values-4/#math
     "calc",
@@ -1380,6 +1442,24 @@
     "atan",
     "atan2",
     "acos",
+
+    // Stepped value functions
+    "mod",
+    "rem",
+    "up",
+    "down",
+    "to-zero",
+
+    // Sign related functions
+    "sign",
+    "abs",
+
+    // Exponential functions
+    "pow",
+    "sqrt",
+    "hypot",
+    "log",
+    "exp",
 
     //<calc-constant>
     //https://drafts.csswg.org/css-values/#calc-syntax
@@ -1409,7 +1489,6 @@
     // normal
     // always
 
-
     // containment
     // paint
     "style",
@@ -1419,8 +1498,17 @@
     "inline-size",
 
     // @container
-    "name",
-    "type",
+    // size
+    // style
+    "state",
+    // top
+    // left
+    // right
+    // bottom
+    "inset-block-start",
+    "inset-block-end",
+    "inset-inline-start",
+    "inset-inline-end",
 
     // grid auto-repeat
     "auto-fill",
@@ -1477,6 +1565,7 @@
 
     // (prefers-reduced-motion:) media feature
     // (prefers-reduced-data:) media feature
+    // (prefers-reduced-transparency:) media feature
     "reduce",
 
     // (forced-colors:) media feature
@@ -1548,6 +1637,7 @@
     // ([video]-dynamic-range) media feature
     "standard",
     "high",
+    "constrained-high",
 
     // Layered @import rule
     "layer",
@@ -1583,6 +1673,8 @@
 
     // anchor positioning
     "anchor",
+    // auto,
+    "auto-same",
     // top,
     // left,
     // right,
@@ -1600,9 +1692,12 @@
     "self-block",
     "self-inline",
 
-    // anchor-scroll
+    // anchor-default
     "implicit",
     // none,
+
+    // position-fallback-bounds
+    // normal,
 
     // animation-[end-]delay
     // contain
@@ -1615,5 +1710,28 @@
     // scroll()
     "root",
     "nearest",
+
+    // transition-behavior
+    "allow-discrete",
+
+    // (inverted-colors:) media feature
+    "inverted",
+    // none
+
+    // navigation-trigger
+    "cross-document-same-origin",
+    // none
+
+    // container-type
+    // inline-size,
+    // normal,
+    // size,
+    "snap",
+    // sticky,
+
+    // (scripting:) media feature
+    "enabled",
+    "initial-only",
+    // none
   ],
 }

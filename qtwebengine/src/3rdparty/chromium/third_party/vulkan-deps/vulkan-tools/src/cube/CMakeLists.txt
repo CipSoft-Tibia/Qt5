@@ -27,16 +27,17 @@ if(GLSLANG_INSTALL_DIR)
     message(STATUS "Using GLSLANG_INSTALL_DIR to look for glslangValidator")
     find_program(GLSLANG_VALIDATOR names glslangValidator HINTS "${GLSLANG_INSTALL_DIR}/bin")
 else()
+    find_package(Python3 REQUIRED QUIET)
     set(GLSLANG_VALIDATOR_NAME "glslangValidator")
     message(STATUS "Using cmake find_program to look for glslangValidator")
     if(WIN32)
         execute_process(
-            COMMAND ${PYTHON_EXECUTABLE} ${SCRIPTS_DIR}/fetch_glslangvalidator.py glslang-master-windows-x64-Release.zip)
+            COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/fetch_glslangvalidator.py glslang-master-windows-x64-Release.zip)
         set(GLSLANG_VALIDATOR_NAME "glslangValidator.exe")
     elseif(APPLE)
-        execute_process(COMMAND ${PYTHON_EXECUTABLE} ${SCRIPTS_DIR}/fetch_glslangvalidator.py glslang-master-osx-Release.zip)
+        execute_process(COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/fetch_glslangvalidator.py glslang-master-osx-Release.zip)
     elseif(UNIX AND NOT APPLE) # i.e. Linux
-        execute_process(COMMAND ${PYTHON_EXECUTABLE} ${SCRIPTS_DIR}/fetch_glslangvalidator.py glslang-master-linux-Release.zip)
+        execute_process(COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/fetch_glslangvalidator.py glslang-master-linux-Release.zip)
     endif()
     if (WIN32)
         set(PLATFORM_DIR "${PROJECT_SOURCE_DIR}/glslang/windows/bin")
@@ -176,28 +177,6 @@ endif()
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
-if(WIN32)
-    # Use static MSVCRT libraries
-    foreach(configuration
-            in
-            CMAKE_C_FLAGS_DEBUG
-            CMAKE_C_FLAGS_MINSIZEREL
-            CMAKE_C_FLAGS_RELEASE
-            CMAKE_C_FLAGS_RELWITHDEBINFO
-            CMAKE_CXX_FLAGS_DEBUG
-            CMAKE_CXX_FLAGS_MINSIZEREL
-            CMAKE_CXX_FLAGS_RELEASE
-            CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-        if(${configuration} MATCHES "/MD")
-            string(REGEX
-                   REPLACE "/MD"
-                           "/MT"
-                           ${configuration}
-                           "${${configuration}}")
-        endif()
-    endforeach()
-endif()
-
 add_custom_command(COMMENT "Compiling cube vertex shader"
                    OUTPUT cube.vert.inc
                    COMMAND ${GLSLANG_VALIDATOR} -V -x -o ${CMAKE_CURRENT_BINARY_DIR}/cube.vert.inc
@@ -239,6 +218,11 @@ elseif(NOT WIN32)
     if (NEED_RT)
         target_link_libraries(vkcube rt)
     endif()
+
+    if (ENABLE_ADDRESS_SANITIZER)
+        target_compile_options(vkcube PUBLIC -fsanitize=address)
+        target_link_options(vkcube PUBLIC -fsanitize=address)
+    endif ()
 else()
     if(CMAKE_CL_64)
         set(LIB_DIR "Win64")
@@ -284,6 +268,11 @@ elseif(NOT WIN32)
                    ${OPTIONAL_WAYLAND_DATA_FILES})
     target_link_libraries(vkcubepp Vulkan::Vulkan)
     target_compile_definitions(vkcubepp PUBLIC ${CUBE_PLATFORM})
+
+    if (ENABLE_ADDRESS_SANITIZER)
+        target_compile_options(vkcubepp PUBLIC -fsanitize=address)
+        target_link_options(vkcubepp PUBLIC -fsanitize=address)
+    endif ()
 else()
     if(CMAKE_CL_64)
         set(LIB_DIR "Win64")
@@ -342,5 +331,10 @@ if(UNIX AND NOT APPLE) # i.e. Linux
             target_link_libraries(vkcube-wayland rt)
         endif()
         install(TARGETS vkcube-wayland RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+        if (ENABLE_ADDRESS_SANITIZER)
+            target_compile_options(vkcube-wayland PUBLIC -fsanitize=address)
+            target_link_options(vkcube-wayland PUBLIC -fsanitize=address)
+        endif ()
     endif()
 endif()

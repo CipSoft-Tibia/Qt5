@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import './support_tool_shared.css.js';
+import './strings.m.js';
 import 'chrome://resources/cr_elements/cr_button/cr_button.js';
 import 'chrome://resources/cr_elements/cr_shared_vars.css.js';
 import 'chrome://resources/cr_elements/cr_input/cr_input.js';
@@ -11,9 +12,11 @@ import 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
 import 'chrome://resources/polymer/v3_0/iron-list/iron-list.js';
 
 import {CrToastElement} from 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
+import {I18nMixin} from 'chrome://resources/cr_elements/i18n_mixin.js';
+import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
-import {BrowserProxy, BrowserProxyImpl, DataCollectorItem, UrlGenerationResult} from './browser_proxy.js';
+import {BrowserProxy, BrowserProxyImpl, DataCollectorItem, SupportTokenGenerationResult} from './browser_proxy.js';
 import {getTemplate} from './url_generator.html.js';
 
 export interface UrlGeneratorElement {
@@ -23,7 +26,9 @@ export interface UrlGeneratorElement {
   };
 }
 
-export class UrlGeneratorElement extends PolymerElement {
+const UrlGeneratorElementBase = I18nMixin(PolymerElement);
+
+export class UrlGeneratorElement extends UrlGeneratorElementBase {
   static get is() {
     return 'url-generator';
   }
@@ -54,13 +59,23 @@ export class UrlGeneratorElement extends PolymerElement {
         type: Boolean,
         value: true,
       },
+      copiedToastMessage_: {
+        type: String,
+        value: '',
+      },
+      hideTokenButton_: {
+        type: Boolean,
+        value: () => !loadTimeData.getBoolean('enableCopyTokenButton'),
+      },
     };
   }
 
   private caseId_: string;
-  private generatedURL_: string;
+  private generatedResult_: string;
   private errorMessage_: string;
   private buttonDisabled_: boolean;
+  private hideTokenButton_: boolean;
+  private copiedToastMessage_: string;
   private dataCollectors_: DataCollectorItem[];
   private browserProxy_: BrowserProxy = BrowserProxyImpl.getInstance();
 
@@ -92,10 +107,12 @@ export class UrlGeneratorElement extends PolymerElement {
     this.$.errorMessageToast.show();
   }
 
-  private onUrlGenerationResult_(result: UrlGenerationResult) {
+  private showGenerationResult(
+      result: SupportTokenGenerationResult, toastMessage: string) {
     if (result.success) {
-      this.generatedURL_ = result.url;
-      navigator.clipboard.writeText(this.generatedURL_.toString());
+      this.generatedResult_ = result.token;
+      navigator.clipboard.writeText(this.generatedResult_);
+      this.copiedToastMessage_ = toastMessage;
       this.$.copyToast.show();
       this.$.copyToast.focus();
     } else {
@@ -103,9 +120,22 @@ export class UrlGeneratorElement extends PolymerElement {
     }
   }
 
+  private onUrlGenerationResult_(result: SupportTokenGenerationResult) {
+    this.showGenerationResult(result, this.i18n('linkCopied'));
+  }
+
+  private onTokenGenerationResult_(result: SupportTokenGenerationResult) {
+    this.showGenerationResult(result, this.i18n('tokenCopied'));
+  }
+
   private onCopyUrlClick_() {
     this.browserProxy_.generateCustomizedUrl(this.caseId_, this.dataCollectors_)
         .then(this.onUrlGenerationResult_.bind(this));
+  }
+
+  private onCopyTokenClick_() {
+    this.browserProxy_.generateSupportToken(this.dataCollectors_)
+        .then(this.onTokenGenerationResult_.bind(this));
   }
 
   private onErrorMessageToastCloseClicked_() {

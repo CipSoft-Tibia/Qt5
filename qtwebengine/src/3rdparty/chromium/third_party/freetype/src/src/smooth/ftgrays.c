@@ -1006,10 +1006,11 @@ typedef ptrdiff_t  FT_PtrDist;
    *
    * For other cases, using binary splits is actually slightly faster.
    */
-#if defined( __SSE2__ )                          || \
-    defined( __x86_64__ )                        || \
-    defined( _M_AMD64 )                          || \
-    ( defined( _M_IX86_FP ) && _M_IX86_FP >= 2 )
+#if ( defined( __SSE2__ )                          ||   \
+      defined( __x86_64__ )                        ||   \
+      defined( _M_AMD64 )                          ||   \
+      ( defined( _M_IX86_FP ) && _M_IX86_FP >= 2 ) ) && \
+    !defined( __VMS )
 #  define FT_SSE2 1
 #else
 #  define FT_SSE2 0
@@ -1427,8 +1428,10 @@ typedef ptrdiff_t  FT_PtrDist;
 
   static int
   gray_move_to( const FT_Vector*  to,
-                gray_PWorker      worker )
+                void*             worker_ )  /* gray_PWorker */
   {
+    gray_PWorker  worker = (gray_PWorker)worker_;
+
     TPos  x, y;
 
 
@@ -1446,8 +1449,11 @@ typedef ptrdiff_t  FT_PtrDist;
 
   static int
   gray_line_to( const FT_Vector*  to,
-                gray_PWorker      worker )
+                void*             worker_ )   /* gray_PWorker */
   {
+    gray_PWorker  worker = (gray_PWorker)worker_;
+
+
     gray_render_line( RAS_VAR_ UPSCALE( to->x ), UPSCALE( to->y ) );
     return 0;
   }
@@ -1456,8 +1462,11 @@ typedef ptrdiff_t  FT_PtrDist;
   static int
   gray_conic_to( const FT_Vector*  control,
                  const FT_Vector*  to,
-                 gray_PWorker      worker )
+                 void*             worker_ )   /* gray_PWorker */
   {
+    gray_PWorker  worker = (gray_PWorker)worker_;
+
+
     gray_render_conic( RAS_VAR_ control, to );
     return 0;
   }
@@ -1467,8 +1476,11 @@ typedef ptrdiff_t  FT_PtrDist;
   gray_cubic_to( const FT_Vector*  control1,
                  const FT_Vector*  control2,
                  const FT_Vector*  to,
-                 gray_PWorker      worker )
+                 void*             worker_ )   /* gray_PWorker */
   {
+    gray_PWorker  worker = (gray_PWorker)worker_;
+
+
     gray_render_cubic( RAS_VAR_ control1, control2, to );
     return 0;
   }
@@ -1922,7 +1934,7 @@ typedef ptrdiff_t  FT_PtrDist;
       if ( continued )
         FT_Trace_Enable();
 
-      FT_TRACE7(( "band [%d..%d]: %ld cell%s remaining/\n",
+      FT_TRACE7(( "band [%d..%d]: %td cell%s remaining/\n",
                   ras.min_ey,
                   ras.max_ey,
                   ras.cell_null - ras.cell_free,
@@ -2155,9 +2167,12 @@ typedef ptrdiff_t  FT_PtrDist;
 #else /* !STANDALONE_ */
 
   static int
-  gray_raster_new( FT_Memory      memory,
-                   gray_PRaster*  araster )
+  gray_raster_new( void*       memory_,
+                   FT_Raster*  araster_ )
   {
+    FT_Memory      memory  = (FT_Memory)memory_;
+    gray_PRaster*  araster = (gray_PRaster*)araster_;
+
     FT_Error      error;
     gray_PRaster  raster = NULL;
 

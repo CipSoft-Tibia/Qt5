@@ -1,5 +1,5 @@
 import { assert, memcpy } from '../../../common/util/util.js';
-import { EncodableTextureFormat, kTextureFormatInfo } from '../../capability_info.js';
+import { kTextureFormatInfo, EncodableTextureFormat } from '../../format_info.js';
 import { reifyExtent3D, reifyOrigin3D } from '../unions.js';
 
 import { kTexelRepresentationInfo, makeClampToRange, PerTexelComponent } from './texel_data.js';
@@ -76,7 +76,7 @@ export class TexelView {
           coords.x < origin.x + size.width &&
           coords.y < origin.y + size.height &&
           coords.z < origin.z + size.depthOrArrayLayers,
-        'coordinate out of bounds'
+        () => `coordinate (${coords.x},${coords.y},${coords.z}) out of bounds`
       );
 
       const imageOffsetInRows = (coords.z - origin.z) * rowsPerImage;

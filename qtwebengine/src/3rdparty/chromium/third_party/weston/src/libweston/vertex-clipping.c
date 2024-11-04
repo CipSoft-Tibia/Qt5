@@ -26,9 +26,10 @@
 #include <float.h>
 #include <math.h>
 
+#include "shared/helpers.h"
 #include "vertex-clipping.h"
 
-float
+WESTON_EXPORT_FOR_TESTS float
 float_difference(float a, float b)
 {
 	/* http://www.altdevblogaday.com/2012/02/22/comparing-floating-point-numbers-2012-edition/ */
@@ -102,8 +103,8 @@ enum path_transition {
 static void
 clip_append_vertex(struct clip_context *ctx, float x, float y)
 {
-	*ctx->vertices.x++ = x;
-	*ctx->vertices.y++ = y;
+	*ctx->vertices = weston_coord(x, y);
+	ctx->vertices++;
 }
 
 static enum path_transition
@@ -194,17 +195,16 @@ clip_polygon_topbottom(struct clip_context *ctx,
 
 static void
 clip_context_prepare(struct clip_context *ctx, const struct polygon8 *src,
-		      float *dst_x, float *dst_y)
+		     struct weston_coord *dst)
 {
-	ctx->prev.x = src->x[src->n - 1];
-	ctx->prev.y = src->y[src->n - 1];
-	ctx->vertices.x = dst_x;
-	ctx->vertices.y = dst_y;
+	ctx->prev.x = src->pos[src->n - 1].x;
+	ctx->prev.y = src->pos[src->n - 1].y;
+	ctx->vertices = dst;
 }
 
 static int
 clip_polygon_left(struct clip_context *ctx, const struct polygon8 *src,
-		  float *dst_x, float *dst_y)
+		  struct weston_coord *dst)
 {
 	enum path_transition trans;
 	int i;
@@ -212,18 +212,18 @@ clip_polygon_left(struct clip_context *ctx, const struct polygon8 *src,
 	if (src->n < 2)
 		return 0;
 
-	clip_context_prepare(ctx, src, dst_x, dst_y);
+	clip_context_prepare(ctx, src, dst);
 	for (i = 0; i < src->n; i++) {
-		trans = path_transition_left_edge(ctx, src->x[i], src->y[i]);
-		clip_polygon_leftright(ctx, trans, src->x[i], src->y[i],
+		trans = path_transition_left_edge(ctx, src->pos[i].x, src->pos[i].y);
+		clip_polygon_leftright(ctx, trans, src->pos[i].x, src->pos[i].y,
 				       ctx->clip.x1);
 	}
-	return ctx->vertices.x - dst_x;
+	return ctx->vertices - dst;
 }
 
 static int
 clip_polygon_right(struct clip_context *ctx, const struct polygon8 *src,
-		   float *dst_x, float *dst_y)
+		   struct weston_coord *dst)
 {
 	enum path_transition trans;
 	int i;
@@ -231,18 +231,18 @@ clip_polygon_right(struct clip_context *ctx, const struct polygon8 *src,
 	if (src->n < 2)
 		return 0;
 
-	clip_context_prepare(ctx, src, dst_x, dst_y);
+	clip_context_prepare(ctx, src, dst);
 	for (i = 0; i < src->n; i++) {
-		trans = path_transition_right_edge(ctx, src->x[i], src->y[i]);
-		clip_polygon_leftright(ctx, trans, src->x[i], src->y[i],
+		trans = path_transition_right_edge(ctx, src->pos[i].x, src->pos[i].y);
+		clip_polygon_leftright(ctx, trans, src->pos[i].x, src->pos[i].y,
 				       ctx->clip.x2);
 	}
-	return ctx->vertices.x - dst_x;
+	return ctx->vertices - dst;
 }
 
 static int
 clip_polygon_top(struct clip_context *ctx, const struct polygon8 *src,
-		 float *dst_x, float *dst_y)
+		 struct weston_coord *dst)
 {
 	enum path_transition trans;
 	int i;
@@ -250,18 +250,18 @@ clip_polygon_top(struct clip_context *ctx, const struct polygon8 *src,
 	if (src->n < 2)
 		return 0;
 
-	clip_context_prepare(ctx, src, dst_x, dst_y);
+	clip_context_prepare(ctx, src, dst);
 	for (i = 0; i < src->n; i++) {
-		trans = path_transition_top_edge(ctx, src->x[i], src->y[i]);
-		clip_polygon_topbottom(ctx, trans, src->x[i], src->y[i],
+		trans = path_transition_top_edge(ctx, src->pos[i].x, src->pos[i].y);
+		clip_polygon_topbottom(ctx, trans, src->pos[i].x, src->pos[i].y,
 				       ctx->clip.y1);
 	}
-	return ctx->vertices.x - dst_x;
+	return ctx->vertices - dst;
 }
 
 static int
 clip_polygon_bottom(struct clip_context *ctx, const struct polygon8 *src,
-		    float *dst_x, float *dst_y)
+		    struct weston_coord *dst)
 {
 	enum path_transition trans;
 	int i;
@@ -269,61 +269,53 @@ clip_polygon_bottom(struct clip_context *ctx, const struct polygon8 *src,
 	if (src->n < 2)
 		return 0;
 
-	clip_context_prepare(ctx, src, dst_x, dst_y);
+	clip_context_prepare(ctx, src, dst);
 	for (i = 0; i < src->n; i++) {
-		trans = path_transition_bottom_edge(ctx, src->x[i], src->y[i]);
-		clip_polygon_topbottom(ctx, trans, src->x[i], src->y[i],
+		trans = path_transition_bottom_edge(ctx, src->pos[i].x, src->pos[i].y);
+		clip_polygon_topbottom(ctx, trans, src->pos[i].x, src->pos[i].y,
 				       ctx->clip.y2);
 	}
-	return ctx->vertices.x - dst_x;
+	return ctx->vertices - dst;
 }
 
-#define max(a, b) (((a) > (b)) ? (a) : (b))
-#define min(a, b) (((a) > (b)) ? (b) : (a))
-#define clip(x, a, b)  min(max(x, a), b)
-
-int
+WESTON_EXPORT_FOR_TESTS int
 clip_simple(struct clip_context *ctx,
 	    struct polygon8 *surf,
-	    float *ex,
-	    float *ey)
+	    struct weston_coord *e)
 {
 	int i;
 	for (i = 0; i < surf->n; i++) {
-		ex[i] = clip(surf->x[i], ctx->clip.x1, ctx->clip.x2);
-		ey[i] = clip(surf->y[i], ctx->clip.y1, ctx->clip.y2);
+		e[i].x = CLIP(surf->pos[i].x, ctx->clip.x1, ctx->clip.x2);
+		e[i].y = CLIP(surf->pos[i].y, ctx->clip.y1, ctx->clip.y2);
 	}
 	return surf->n;
 }
 
-int
+WESTON_EXPORT_FOR_TESTS int
 clip_transformed(struct clip_context *ctx,
 		 struct polygon8 *surf,
-		 float *ex,
-		 float *ey)
+		 struct weston_coord *e)
 {
 	struct polygon8 polygon;
 	int i, n;
 
-	polygon.n = clip_polygon_left(ctx, surf, polygon.x, polygon.y);
-	surf->n = clip_polygon_right(ctx, &polygon, surf->x, surf->y);
-	polygon.n = clip_polygon_top(ctx, surf, polygon.x, polygon.y);
-	surf->n = clip_polygon_bottom(ctx, &polygon, surf->x, surf->y);
+	polygon.n = clip_polygon_left(ctx, surf, polygon.pos);
+	surf->n = clip_polygon_right(ctx, &polygon, surf->pos);
+	polygon.n = clip_polygon_top(ctx, surf, polygon.pos);
+	surf->n = clip_polygon_bottom(ctx, &polygon, surf->pos);
 
 	/* Get rid of duplicate vertices */
-	ex[0] = surf->x[0];
-	ey[0] = surf->y[0];
+	e[0] = surf->pos[0];
 	n = 1;
 	for (i = 1; i < surf->n; i++) {
-		if (float_difference(ex[n - 1], surf->x[i]) == 0.0f &&
-		    float_difference(ey[n - 1], surf->y[i]) == 0.0f)
+		if (float_difference(e[n - 1].x, surf->pos[i].x) == 0.0f &&
+		    float_difference(e[n - 1].y, surf->pos[i].y) == 0.0f)
 			continue;
-		ex[n] = surf->x[i];
-		ey[n] = surf->y[i];
+		e[n] = surf->pos[i];
 		n++;
 	}
-	if (float_difference(ex[n - 1], surf->x[0]) == 0.0f &&
-	    float_difference(ey[n - 1], surf->y[0]) == 0.0f)
+	if (float_difference(e[n - 1].x, surf->pos[0].x) == 0.0f &&
+	    float_difference(e[n - 1].y, surf->pos[0].y) == 0.0f)
 		n--;
 
 	return n;

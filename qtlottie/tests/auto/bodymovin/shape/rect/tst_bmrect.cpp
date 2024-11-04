@@ -11,6 +11,8 @@
 #include "private/bmlayer_p.h"
 #include "private/bmrect_p.h"
 
+using namespace Qt::StringLiterals;
+
 class tst_BMRect: public QObject
 {
     Q_OBJECT
@@ -291,11 +293,7 @@ void tst_BMRect::loadTestData(const QByteArray &filename)
     if (rootObj.empty())
         QFAIL("Cannot parse test file");
 
-    QStringList vs = rootObj.value(QLatin1String("v")).toString().split(u'.');
-    QList<int> vi;
-    foreach (QString v, vs)
-        vi.append(v.toInt());
-    QVersionNumber version = QVersionNumber(vi);
+    const auto version = QVersionNumber::fromString(rootObj.value("v"_L1).toString());
 
     QJsonArray layers = rootObj.value(QLatin1String("layers")).toArray();
     QJsonObject layerObj = layers[0].toObject();

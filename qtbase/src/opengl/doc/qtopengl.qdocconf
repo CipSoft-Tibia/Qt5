@@ -64,5 +64,5 @@ qhp.QtOpenGL.subprojects.classes.sortPages = true
 navigation.landingpage = "Qt OpenGL"
 navigation.cppclassespage = "Qt OpenGL C++ Classes"
 
-# Fail the documentation build if there are more warnings than the limit
+# Enforce zero documentation warnings
 warninglimit = 0

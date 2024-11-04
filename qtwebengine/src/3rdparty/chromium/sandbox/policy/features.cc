@@ -8,14 +8,37 @@
 #include "build/chromeos_buildflags.h"
 #include "sandbox/features.h"
 
+#if BUILDFLAG(IS_WIN)
+#include "base/win/windows_version.h"
+#endif
+
 namespace sandbox::policy::features {
 
 #if defined(TOOLKIT_QT) || (!BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_FUCHSIA))
 // Enables network service sandbox.
-// (Only causes an effect when feature kNetworkService is enabled.)
+// (Only causes an effect when feature kNetworkServiceInProcess is disabled.)
 BASE_FEATURE(kNetworkServiceSandbox,
              "NetworkServiceSandbox",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+// Enables a fine-grained seccomp-BPF syscall filter for the network service.
+// Only has an effect if IsNetworkSandboxEnabled() returns true.
+// If the network service sandbox is enabled and |kNetworkServiceSyscallFilter|
+// is disabled, a seccomp-BPF filter will still be applied but it will not
+// disallow any syscalls.
+BASE_FEATURE(kNetworkServiceSyscallFilter,
+             "NetworkServiceSyscallFilter",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+// Enables a fine-grained file path allowlist for the network service.
+// Only has an effect if IsNetworkSandboxEnabled() returns true.
+// If the network service sandbox is enabled and |kNetworkServiceFileAllowlist|
+// is disabled, a file path allowlist will still be applied, but the policy will
+// allow everything.
+BASE_FEATURE(kNetworkServiceFileAllowlist,
+             "NetworkServiceFileAllowlist",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #endif  // !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_FUCHSIA)
 
 #if BUILDFLAG(IS_WIN)
@@ -40,17 +63,45 @@ BASE_FEATURE(kRendererAppContainer,
              "RendererAppContainer",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Enables shared/fixed policy for Windows sandbox policies.
-BASE_FEATURE(kSharedSandboxPolicies,
-             "SharedSandboxPolicies",
+// Enables very high job memory limits for sandboxed renderer processes. This
+// sets a limit of 1Tb, effectively removing the Job memory limits, except in
+// egregious cases.
+BASE_FEATURE(kWinSboxHighRendererJobMemoryLimits,
+             "WinSboxHighRendererJobMemoryLimits",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-// Emergency "off switch" for renderer environment filtering, this feature can
-// be removed around the M113 timeline. See https://crbug.com/1403087.
-BASE_FEATURE(kRendererFilterEnvironment,
-             "RendererFilterEnvironment",
+// Emergency "off switch" for closing the KsecDD handle in cryptbase.dll just
+// before sandbox lockdown in renderers.
+BASE_FEATURE(kWinSboxRendererCloseKsecDD,
+             "WinSboxRendererCloseKsecDD",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+// If enabled, only warm up `bcryptprimitives!ProcessPrng` - if disabled warms
+// up `advapi32!RtlGenRandom`.
+BASE_FEATURE(kWinSboxWarmupProcessPrng,
+             "WinSboxWarmupProcessPrng",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// If enabled, launch the network service within an LPAC sandbox. If disabled,
+// the network service will run inside an App Container.
+BASE_FEATURE(kWinSboxNetworkServiceSandboxIsLPAC,
+             "WinSboxNetworkServiceSandboxIsLPAC",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// If enabled, always launch the renderer process with Code Integrity Guard
+// enabled, regardless of the local policy configuration. If disabled, then
+// policy is respected. This acts as an emergency "off switch" for the
+// deprecation of the RendererCodeIntegrityEnabled policy.
+BASE_FEATURE(kWinSboxForceRendererCodeIntegrity,
+             "WinSboxForceRendererCodeIntegrity",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// If enabled, modifies the child's PEB to stop further application of
+// appcompat in the child. Does not affect the browser or unsandboxed
+// processes.
+BASE_FEATURE(kWinSboxZeroAppShim,
+             "WinSboxZeroAppShim",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
@@ -77,13 +128,40 @@ BASE_FEATURE(kCacheMacSandboxProfiles,
              base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_MAC)
 
+#if BUILDFLAG(IS_WIN)
+bool IsNetworkSandboxSupported() {
+  // Network service sandbox uses GetNetworkConnectivityHint which is only
+  // supported on Windows 10 Build 19041 (20H1) so versions before that wouldn't
+  // have a working network change notifier when running in the sandbox.
+  // TODO(crbug.com/1450754): Move this to an API that works earlier than 20H1
+  // and also works in the LPAC sandbox.
+  static const bool supported =
+      base::win::GetVersion() >= base::win::Version::WIN10_20H1;
+  if (!supported) {
+    return false;
+  }
+#if defined(TOOLKIT_QT)
+  // Not supported in QWE
+  if (!sandbox::features::IsAppContainerSandboxSupported()) {
+    return false;
+  }
+#endif
+
+  // App container must be already supported on 20H1, but double check it here.
+  CHECK(sandbox::features::IsAppContainerSandboxSupported());
+
+  return true;
+}
+#endif  // BUILDFLAG(IS_WIN)
+
 bool IsNetworkSandboxEnabled() {
 #if !defined(TOOLKIT_QT) && (BUILDFLAG(IS_MAC) || BUILDFLAG(IS_FUCHSIA))
   return true;
 #else
 #if BUILDFLAG(IS_WIN)
-  if (!sandbox::features::IsAppContainerSandboxSupported())
+  if (!IsNetworkSandboxSupported()) {
     return false;
+  }
 #endif  // BUILDFLAG(IS_WIN)
   // Check feature status.
   return base::FeatureList::IsEnabled(kNetworkServiceSandbox);

@@ -26,32 +26,36 @@ Q_CORE_EXPORT bool qDecodeDataUrl(const QUrl &uri, QString &mimeType, QByteArray
     // reality often differs from the specification. People have
     // data: URIs with ? and #
     //QByteArray data = QByteArray::fromPercentEncoding(uri.path(QUrl::FullyEncoded).toLatin1());
-    QByteArray data = QByteArray::fromPercentEncoding(uri.url(QUrl::FullyEncoded | QUrl::RemoveScheme).toLatin1());
+    const QByteArray dataArray =
+            QByteArray::fromPercentEncoding(uri.url(QUrl::FullyEncoded | QUrl::RemoveScheme).toLatin1());
+    QByteArrayView data = dataArray;
 
     // parse it:
     const qsizetype pos = data.indexOf(',');
     if (pos != -1) {
-        payload = data.mid(pos + 1);
+        payload = data.mid(pos + 1).toByteArray();
         data.truncate(pos);
         data = data.trimmed();
 
         // find out if the payload is encoded in Base64
-        if (QLatin1StringView{data}.endsWith(";base64"_L1, Qt::CaseInsensitive)) {
+        constexpr auto base64 = ";base64"_L1;
+        if (QLatin1StringView{data}.endsWith(base64, Qt::CaseInsensitive)) {
             payload = QByteArray::fromBase64(payload);
-            data.chop(7);
+            data.chop(base64.size());
         }
 
-        if (QLatin1StringView{data}.startsWith("charset"_L1, Qt::CaseInsensitive)) {
-            qsizetype i = 7;      // strlen("charset")
+        QLatin1StringView textPlain;
+        constexpr auto charset = "charset"_L1;
+        if (QLatin1StringView{data}.startsWith(charset, Qt::CaseInsensitive)) {
+            qsizetype i = charset.size();
             while (data.at(i) == ' ')
                 ++i;
             if (data.at(i) == '=')
-                data.prepend("text/plain;");
+                textPlain = "text/plain;"_L1;
         }
 
         if (!data.isEmpty())
-            mimeType = QString::fromLatin1(data.trimmed());
-
+            mimeType = textPlain + QLatin1StringView(data.trimmed());
     }
 
     return true;

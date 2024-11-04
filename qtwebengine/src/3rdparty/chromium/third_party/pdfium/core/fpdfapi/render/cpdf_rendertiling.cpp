@@ -18,6 +18,7 @@
 #include "core/fpdfapi/render/cpdf_renderstatus.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxge/cfx_defaultrenderdevice.h"
+#include "core/fxge/dib/cfx_dibitmap.h"
 
 namespace {
 
@@ -39,7 +40,6 @@ RetainPtr<CFX_DIBitmap> DrawPatternBitmap(
   CFX_DefaultRenderDevice bitmap_device;
   bitmap_device.AttachWithBackdropAndGroupKnockout(
       pBitmap, /*pBackdropBitmap=*/nullptr, /*bGroupKnockout=*/true);
-  pBitmap->Clear(0);
   CFX_FloatRect cell_bbox =
       pPattern->pattern_to_form().TransformRect(pPattern->bbox());
   cell_bbox = mtObject2Device.TransformRect(cell_bbox);
@@ -59,10 +59,10 @@ RetainPtr<CFX_DIBitmap> DrawPatternBitmap(
   context.AppendLayer(pPatternForm, mtPattern2Bitmap);
   context.Render(&bitmap_device, nullptr, &options, nullptr);
 
-#ifdef _SKIA_SUPPORT_
+#if defined(_SKIA_SUPPORT_)
   if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
     pBitmap->UnPreMultiply();
-#endif  // _SKIA_SUPPORT_
+#endif  // defined(_SKIA_SUPPORT_)
   return pBitmap;
 }
 
@@ -195,7 +195,6 @@ RetainPtr<CFX_DIBitmap> CPDF_RenderTiling::Draw(
   if (!pScreen->Create(clip_width, clip_height, FXDIB_Format::kArgb))
     return nullptr;
 
-  pScreen->Clear(0);
   pdfium::span<const uint8_t> src_buf = pPatternBitmap->GetBuffer();
   for (int col = min_col; col <= max_col; col++) {
     for (int row = min_row; row <= max_row; row++) {

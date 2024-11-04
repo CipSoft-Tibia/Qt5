@@ -32,7 +32,7 @@
 
 #define DNN_GENERIC_ERROR FFERRTAG('D','N','N','!')
 
-typedef enum {DNN_NATIVE, DNN_TF, DNN_OV} DNNBackendType;
+typedef enum {DNN_TF = 1, DNN_OV} DNNBackendType;
 
 typedef enum {DNN_FLOAT = 1, DNN_UINT8 = 4} DNNDataType;
 
@@ -123,6 +123,6 @@ typedef struct DNNModule{
 } DNNModule;
 
 // Initializes DNNModule depending on chosen backend.
-DNNModule *ff_get_dnn_module(DNNBackendType backend_type);
+const DNNModule *ff_get_dnn_module(DNNBackendType backend_type, void *log_ctx);
 
 #endif

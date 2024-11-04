@@ -6,6 +6,7 @@ syntax = "proto3";
 option optimize_for = LITE_RUNTIME;
 
 package u2f;
+option go_package = "chromiumos/system_api/u2f_proto";
 
 // UserNotification signal payload.
 message UserNotification {
@@ -194,7 +195,12 @@ message IsPlatformAuthenticatorInitializedResponse {
 message IsUvpaaRequest {}
 
 message IsUvpaaResponse {
-  bool available = 1;
+  bool available = 1 [deprecated = true];
+  // Before this field was introduced, IsUvpaa is always assumed to be true in
+  // Chrome. To preserve backward compatibility, the simplest way is to
+  // introduce this response field which default value (not_available = false)
+  // matches the old behavior.
+  bool not_available = 2;
 }
 
 // Check whether u2f is enabled (by policy or by force flag). If u2f is

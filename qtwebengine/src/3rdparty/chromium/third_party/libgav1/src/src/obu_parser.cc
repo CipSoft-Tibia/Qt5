@@ -21,6 +21,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 
 #include "src/buffer_pool.h"
 #include "src/decoder_impl.h"
@@ -2875,6 +2876,146 @@ StatusCode ObuParser::ParseOneFrame(RefCountedBufferPtr* const current_frame) {
   size_ = size;
   *current_frame = std::move(current_frame_);
   return kStatusOk;
+}
+
+// AV1CodecConfigurationBox specification:
+// https://aomediacodec.github.io/av1-isobmff/#av1codecconfigurationbox.
+// static
+std::unique_ptr<uint8_t[]> ObuParser::GetAV1CodecConfigurationBox(
+    const uint8_t* data, size_t size, size_t* const av1c_size) {
+  if (data == nullptr || av1c_size == nullptr) return nullptr;
+
+  ObuSequenceHeader sequence_header;
+  size_t sequence_header_offset;
+  size_t sequence_header_size;
+  const StatusCode status =
+      ParseBasicStreamInfo(data, size, &sequence_header,
+                           &sequence_header_offset, &sequence_header_size);
+  if (status != kStatusOk) {
+    *av1c_size = 0;
+    return nullptr;
+  }
+
+  *av1c_size = 4 + sequence_header_size;
+  std::unique_ptr<uint8_t[]> av1c_ptr(new (std::nothrow) uint8_t[*av1c_size]);
+  if (av1c_ptr == nullptr) {
+    *av1c_size = 0;
+    return nullptr;
+  }
+  uint8_t* av1c = av1c_ptr.get();
+  // unsigned int (1) marker = 1;
+  // unsigned int (7) version = 1;
+  av1c[0] = 0x81;
+
+  // unsigned int (3) seq_profile;
+  // unsigned int (5) seq_level_idx_0;
+  const uint8_t seq_level_idx_0 = ((sequence_header.level[0].major - 2) << 2) |
+                                  sequence_header.level[0].minor;
+  av1c[1] = (sequence_header.profile << 5) | seq_level_idx_0;
+
+  // unsigned int (1) seq_tier_0;
+  // unsigned int (1) high_bitdepth;
+  // unsigned int (1) twelve_bit;
+  // unsigned int (1) monochrome;
+  // unsigned int (1) chroma_subsampling_x;
+  // unsigned int (1) chroma_subsampling_y;
+  // unsigned int (2) chroma_sample_position;
+  const auto high_bitdepth =
+      static_cast<uint8_t>(sequence_header.color_config.bitdepth > 8);
+  const auto twelve_bit =
+      static_cast<uint8_t>(sequence_header.color_config.bitdepth == 12);
+  av1c[2] =
+      (sequence_header.tier[0] << 7) | (high_bitdepth << 6) |
+      (twelve_bit << 5) |
+      (static_cast<uint8_t>(sequence_header.color_config.is_monochrome) << 4) |
+      (sequence_header.color_config.subsampling_x << 3) |
+      (sequence_header.color_config.subsampling_y << 2) |
+      sequence_header.color_config.chroma_sample_position;
+
+  // unsigned int (3) reserved = 0;
+  // unsigned int (1) initial_presentation_delay_present;
+  // if (initial_presentation_delay_present) {
+  //   unsigned int (4) initial_presentation_delay_minus_one;
+  // } else {
+  //   unsigned int (4) reserved = 0;
+  // }
+  av1c[3] = 0;
+
+  // unsigned int (8) configOBUs[];
+  memcpy(av1c + 4, data + sequence_header_offset, sequence_header_size);
+
+  return av1c_ptr;
+}
+
+// static
+StatusCode ObuParser::ParseBasicStreamInfo(const uint8_t* data, size_t size,
+                                           ObuSequenceHeader* sequence_header,
+                                           size_t* sequence_header_offset,
+                                           size_t* sequence_header_size) {
+  DecoderState state;
+  ObuParser parser(nullptr, 0, 0, nullptr, &state);
+  if (!parser.InitBitReader(data, size)) {
+    LIBGAV1_DLOG(ERROR, "Failed to initialize bit reader.");
+    return kStatusOutOfMemory;
+  }
+  while (!parser.bit_reader_->Finished()) {
+    const size_t obu_start_offset = parser.bit_reader_->byte_offset();
+    if (!parser.ParseHeader()) {
+      LIBGAV1_DLOG(ERROR, "Failed to parse OBU Header.");
+      return kStatusBitstreamError;
+    }
+    const ObuHeader& obu_header = parser.obu_headers_.back();
+    if (!obu_header.has_size_field) {
+      LIBGAV1_DLOG(
+          ERROR,
+          "has_size_field is zero. libgav1 does not support such streams.");
+      return kStatusUnimplemented;
+    }
+    size_t obu_size;
+    if (!parser.bit_reader_->ReadUnsignedLeb128(&obu_size)) {
+      LIBGAV1_DLOG(ERROR, "Could not read OBU size.");
+      return kStatusBitstreamError;
+    }
+    if (size - parser.bit_reader_->byte_offset() < obu_size) {
+      LIBGAV1_DLOG(ERROR, "Not enough bits left to parse OBU %zu vs %zu.",
+                   size - parser.bit_reader_->bit_offset(), obu_size);
+      return kStatusBitstreamError;
+    }
+    if (obu_header.type != kObuSequenceHeader) {
+      parser.obu_headers_.pop_back();
+      parser.bit_reader_->SkipBytes(obu_size);
+      continue;
+    }
+    const size_t obu_start_position = parser.bit_reader_->bit_offset();
+    if (!parser.ParseSequenceHeader(false)) {
+      LIBGAV1_DLOG(ERROR, "Failed to parse SequenceHeader OBU.");
+      return kStatusBitstreamError;
+    }
+    const size_t parsed_obu_size_in_bits =
+        parser.bit_reader_->bit_offset() - obu_start_position;
+    const uint64_t obu_size_in_bits = static_cast<uint64_t>(obu_size) * 8;
+    if (obu_size_in_bits < parsed_obu_size_in_bits) {
+      LIBGAV1_DLOG(
+          ERROR,
+          "Parsed OBU size (%zu bits) is greater than expected OBU size "
+          "(%zu bytes)..",
+          parsed_obu_size_in_bits, obu_size);
+      return kStatusBitstreamError;
+    }
+    if (!parser.bit_reader_->VerifyAndSkipTrailingBits(
+            static_cast<size_t>(obu_size_in_bits - parsed_obu_size_in_bits))) {
+      LIBGAV1_DLOG(
+          ERROR, "Error when verifying trailing bits for the sequence header.");
+      return kStatusBitstreamError;
+    }
+    *sequence_header = parser.sequence_header_;
+    *sequence_header_offset = obu_start_offset;
+    *sequence_header_size =
+        parser.bit_reader_->byte_offset() - obu_start_offset;
+    return kStatusOk;
+  }
+  // Sequence header was never found.
+  return kStatusBitstreamError;
 }
 
 }  // namespace libgav1

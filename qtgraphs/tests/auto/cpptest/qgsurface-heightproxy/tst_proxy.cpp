@@ -83,7 +83,7 @@ void tst_proxy::initialProperties()
     QCOMPARE(m_proxy->rowCount(), 0);
     QVERIFY(!m_proxy->series());
 
-    QCOMPARE(m_proxy->type(), QAbstractDataProxy::DataTypeSurface);
+    QCOMPARE(m_proxy->type(), QAbstractDataProxy::DataType::Surface);
 }
 
 void tst_proxy::initializeProperties()

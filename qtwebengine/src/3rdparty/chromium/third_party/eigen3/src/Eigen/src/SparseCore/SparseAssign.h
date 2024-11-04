@@ -78,7 +78,7 @@ void assign_sparse_to_sparse(DstXprType &dst, const SrcXprType &src)
 
   SrcEvaluatorType srcEvaluator(src);
 
-  const bool transpose = (DstEvaluatorType::Flags & RowMajorBit) != (SrcEvaluatorType::Flags & RowMajorBit);
+  constexpr bool transpose = (DstEvaluatorType::Flags & RowMajorBit) != (SrcEvaluatorType::Flags & RowMajorBit);
   const Index outerEvaluationSize = (SrcEvaluatorType::Flags&RowMajorBit) ? src.rows() : src.cols();
 
   Index reserveSize = 0;

@@ -10,6 +10,7 @@
 
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/posix/eintr_wrapper.h"
 #include "skia/ext/legacy_display_globals.h"
 #include "third_party/skia/include/core/SkSurface.h"
@@ -46,9 +47,9 @@ int GetPlaneCount(struct gbm_bo* bo) {
   return gbm_bo_get_plane_count(bo);
 }
 
-int GetPlaneFdForBo(gbm_bo* bo, size_t plane) {
+base::ScopedFD GetPlaneFdForBo(gbm_bo* bo, size_t plane) {
 #if defined(MINIGBM)
-  return gbm_bo_get_plane_fd(bo, plane);
+  return base::ScopedFD(gbm_bo_get_plane_fd(bo, plane));
 #else
   const int plane_count = GetPlaneCount(bo);
   DCHECK(plane_count > 0 && plane < static_cast<size_t>(plane_count));
@@ -69,10 +70,12 @@ int GetPlaneFdForBo(gbm_bo* bo, size_t plane) {
 
   // Older DRM implementations blocked DRM_RDWR, but gave a read/write mapping
   // anyways
-  if (ret)
+  if (ret) {
     ret = drmPrimeHandleToFD(dev_fd, plane_handle, DRM_CLOEXEC, &fd);
+    return base::ScopedFD();
+  }
 
-  return ret ? ret : fd;
+  return base::ScopedFD(fd);
 #endif
 }
 
@@ -194,22 +197,16 @@ class Buffer final : public ui::GbmBuffer {
     DCHECK(!mmap_data_);
     uint32_t stride;
     void* addr;
-    addr =
-#if defined(MINIGBM)
-        gbm_bo_map2(bo_, 0, 0, gbm_bo_get_width(bo_), gbm_bo_get_height(bo_),
-                    GBM_BO_TRANSFER_READ_WRITE, &stride, &mmap_data_, 0);
-#else
-        gbm_bo_map(bo_, 0, 0, gbm_bo_get_width(bo_), gbm_bo_get_height(bo_),
-                   GBM_BO_TRANSFER_READ_WRITE, &stride, &mmap_data_);
-#endif
+    addr = gbm_bo_map(bo_, 0, 0, gbm_bo_get_width(bo_), gbm_bo_get_height(bo_),
+                      GBM_BO_TRANSFER_READ_WRITE, &stride, &mmap_data_);
 
     if (!addr)
       return nullptr;
     SkImageInfo info =
         SkImageInfo::MakeN32Premul(size_.width(), size_.height());
     SkSurfaceProps props = skia::LegacyDisplayGlobals::GetSkSurfaceProps();
-    return SkSurface::MakeRasterDirectReleaseProc(
-        info, addr, stride, &Buffer::UnmapGbmBo, this, &props);
+    return SkSurfaces::WrapPixels(info, addr, stride, &Buffer::UnmapGbmBo, this,
+                                  &props);
   }
 
  private:
@@ -220,7 +217,9 @@ class Buffer final : public ui::GbmBuffer {
   }
 
   raw_ptr<gbm_bo> bo_;
-  void* mmap_data_ = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #addr-of
+  RAW_PTR_EXCLUSION void* mmap_data_ = nullptr;
 
   const uint32_t format_;
   const uint64_t format_modifier_;
@@ -249,8 +248,7 @@ std::unique_ptr<Buffer> CreateBufferForBO(struct gbm_bo* bo,
   for (size_t i = 0; i < static_cast<size_t>(plane_count); ++i) {
     // The fd returned by gbm_bo_get_fd is not ref-counted and need to be
     // kept open for the lifetime of the buffer.
-    base::ScopedFD fd(GetPlaneFdForBo(bo, i));
-
+    auto fd = GetPlaneFdForBo(bo, i);
     if (!fd.is_valid()) {
       PLOG(ERROR) << "Failed to export buffer to dma_buf";
       gbm_bo_destroy(bo);
@@ -305,11 +303,51 @@ class Device final : public ui::GbmDevice {
       const std::vector<uint64_t>& modifiers) override {
     if (modifiers.empty())
       return CreateBuffer(format, size, flags);
-    struct gbm_bo* bo = gbm_bo_create_with_modifiers(
-        device_, size.width(), size.height(), format, modifiers.data(),
-        modifiers.size());
-    if (!bo)
+
+    std::vector<uint64_t> filtered_modifiers =
+        GetFilteredModifiers(format, flags, modifiers);
+    struct gbm_bo* bo = nullptr;
+    while (filtered_modifiers.size() > 0) {
+      bo = gbm_bo_create_with_modifiers(device_, size.width(), size.height(),
+                                        format, filtered_modifiers.data(),
+                                        filtered_modifiers.size());
+      if (!bo) {
+        return nullptr;
+      }
+
+      struct gbm_import_fd_modifier_data fd_data;
+      fd_data.width = size.width();
+      fd_data.height = size.height();
+      fd_data.format = format;
+      fd_data.num_fds = gbm_bo_get_plane_count(bo);
+      fd_data.modifier = gbm_bo_get_modifier(bo);
+
+      // Store fds in the vector of base::ScopedFDs. Will be released
+      // automatically.
+      std::vector<base::ScopedFD> fds;
+      for (size_t i = 0; i < static_cast<size_t>(fd_data.num_fds); ++i) {
+        fds.emplace_back(GetPlaneFdForBo(bo, i));
+        fd_data.fds[i] = fds.back().get();
+        fd_data.strides[i] = gbm_bo_get_stride_for_plane(bo, i);
+        fd_data.offsets[i] = gbm_bo_get_offset(bo, i);
+      }
+
+      struct gbm_bo* bo_import =
+          gbm_bo_import(device_, GBM_BO_IMPORT_FD_MODIFIER, &fd_data, flags);
+      if (bo_import) {
+        gbm_bo_destroy(bo_import);
+        break;
+      } else {
+        gbm_bo_destroy(bo);
+        bo = nullptr;
+        AddModifierToBlocklist(format, flags, fd_data.modifier);
+        filtered_modifiers =
+            GetFilteredModifiers(format, flags, filtered_modifiers);
+      }
+    }
+    if (!bo) {
       return nullptr;
+    }
 
     return CreateBufferForBO(bo, format, size, flags);
   }
@@ -385,7 +423,33 @@ class Device final : public ui::GbmDevice {
 #endif
 
  private:
+  std::vector<uint64_t> GetFilteredModifiers(
+      uint32_t format,
+      uint32_t flags,
+      const std::vector<uint64_t>& modifiers) {
+    std::vector<uint64_t> filtered_modifiers = modifiers;
+
+    for (const auto& [entry_format, entry_flags, entry_modifier] :
+         modifier_blocklist_) {
+      if (entry_format == format && entry_flags == flags) {
+        filtered_modifiers.erase(
+            std::remove(filtered_modifiers.begin(), filtered_modifiers.end(),
+                        entry_modifier),
+            filtered_modifiers.end());
+      }
+    }
+
+    return filtered_modifiers;
+  }
+
+  void AddModifierToBlocklist(uint32_t format,
+                              uint32_t flags,
+                              uint64_t modifier) {
+    modifier_blocklist_.push_back({format, flags, modifier});
+  }
+
   const raw_ptr<gbm_device> device_;
+  std::vector<std::tuple<uint32_t, uint32_t, uint64_t>> modifier_blocklist_;
 };
 
 }  // namespace gbm_wrapper

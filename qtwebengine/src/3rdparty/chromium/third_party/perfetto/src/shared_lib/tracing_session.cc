@@ -19,22 +19,19 @@
 #include <condition_variable>
 #include <mutex>
 
-#include "perfetto/tracing/backend_type.h"
 #include "perfetto/tracing/tracing.h"
 #include "protos/perfetto/config/trace_config.gen.h"
 
-struct PerfettoTracingSessionImpl* PerfettoTracingSessionCreate(
-    PerfettoBackendTypes backend) {
-  uint32_t backend_type = 0;
-  if (backend & PERFETTO_BACKEND_IN_PROCESS) {
-    backend_type |= perfetto::kInProcessBackend;
-  }
-  if (backend & PERFETTO_BACKEND_SYSTEM) {
-    backend_type |= perfetto::kSystemBackend;
-  }
+struct PerfettoTracingSessionImpl* PerfettoTracingSessionSystemCreate() {
   std::unique_ptr<perfetto::TracingSession> tracing_session =
-      perfetto::Tracing::NewTrace(
-          static_cast<perfetto::BackendType>(backend_type));
+      perfetto::Tracing::NewTrace(perfetto::kSystemBackend);
+  return reinterpret_cast<struct PerfettoTracingSessionImpl*>(
+      tracing_session.release());
+}
+
+struct PerfettoTracingSessionImpl* PerfettoTracingSessionInProcessCreate() {
+  std::unique_ptr<perfetto::TracingSession> tracing_session =
+      perfetto::Tracing::NewTrace(perfetto::kInProcessBackend);
   return reinterpret_cast<struct PerfettoTracingSessionImpl*>(
       tracing_session.release());
 }
@@ -48,6 +45,13 @@ void PerfettoTracingSessionSetup(struct PerfettoTracingSessionImpl* session,
   ts->Setup(cfg);
 }
 
+void PerfettoTracingSessionSetStopCb(struct PerfettoTracingSessionImpl* session,
+                                     PerfettoTracingSessionStopCb cb,
+                                     void* user_arg) {
+  auto* ts = reinterpret_cast<perfetto::TracingSession*>(session);
+  ts->SetOnStopCallback([session, cb, user_arg]() { cb(session, user_arg); });
+}
+
 void PerfettoTracingSessionStartAsync(
     struct PerfettoTracingSessionImpl* session) {
   auto* ts = reinterpret_cast<perfetto::TracingSession*>(session);
@@ -58,6 +62,28 @@ void PerfettoTracingSessionStartBlocking(
     struct PerfettoTracingSessionImpl* session) {
   auto* ts = reinterpret_cast<perfetto::TracingSession*>(session);
   ts->StartBlocking();
+}
+
+void PerfettoTracingSessionFlushAsync(
+    struct PerfettoTracingSessionImpl* session,
+    uint32_t timeout_ms,
+    PerfettoTracingSessionFlushCb cb,
+    void* user_arg) {
+  auto* ts = reinterpret_cast<perfetto::TracingSession*>(session);
+  std::function<void(bool)> flush_cb = [](bool) {};
+  if (cb) {
+    flush_cb = [cb, session, user_arg](bool success) {
+      cb(session, success, user_arg);
+    };
+  }
+  ts->Flush(std::move(flush_cb), timeout_ms);
+}
+
+bool PerfettoTracingSessionFlushBlocking(
+    struct PerfettoTracingSessionImpl* session,
+    uint32_t timeout_ms) {
+  auto* ts = reinterpret_cast<perfetto::TracingSession*>(session);
+  return ts->FlushBlocking(timeout_ms);
 }
 
 void PerfettoTracingSessionStopAsync(

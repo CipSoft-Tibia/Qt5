@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <QtTest/QtTest>
 #include <QtTest/private/qpropertytesthelper_p.h>
 #include <QtPositioningQuick/private/qdeclarativepositionsource_p.h>
@@ -98,15 +98,7 @@ static char *printPosition(const QDeclarativePosition *position)
 {
     // For this test we need to print only coordinate, so that we get a nice
     // error message if the below test fails.
-    QString str;
-    QDebug dbg(&str);
-    dbg << position->coordinate();
-    const auto dataArray = str.toLatin1();
-    const auto msgSize = dataArray.size() + 1;
-    char *msg = new char[msgSize];
-    memset(msg, 0, msgSize);
-    qsnprintf(msg, msgSize, "%s", dataArray.constData());
-    return msg;
+    return qstrdup(QDebug::toString(position->coordinate()).toLatin1().constData());
 }
 
 void tst_DeclarativePositionSource::positionBinding()

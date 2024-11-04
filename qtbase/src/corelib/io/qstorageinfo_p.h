@@ -15,36 +15,78 @@
 // We mean it.
 //
 
+#include <QtCore/qloggingcategory.h>
+#include <QtCore/qsystemdetection.h>
+#include <QtCore/qtenvironmentvariables.h>
 #include <QtCore/private/qglobal_p.h>
 #include "qstorageinfo.h"
 
+#ifdef Q_OS_UNIX
+#include <sys/types.h> // dev_t
+#endif
+
 QT_BEGIN_NAMESPACE
+
+inline Q_LOGGING_CATEGORY(lcStorageInfo, "qt.core.qstorageinfo", QtWarningMsg)
 
 class QStorageInfoPrivate : public QSharedData
 {
 public:
-    inline QStorageInfoPrivate() : QSharedData(),
-        bytesTotal(-1), bytesFree(-1), bytesAvailable(-1), blockSize(-1),
-        readOnly(false), ready(false), valid(false)
-    {}
+    QStorageInfoPrivate() = default;
 
-    void initRootPath();
     void doStat();
 
     static QList<QStorageInfo> mountedVolumes();
-    static QStorageInfo root();
+
+    static QStorageInfo root()
+    {
+#ifdef Q_OS_WIN
+        return QStorageInfo(QDir::fromNativeSeparators(QFile::decodeName(qgetenv("SystemDrive"))));
+#else
+        return QStorageInfo(QStringLiteral("/"));
+#endif
+    };
 
 protected:
 #if defined(Q_OS_WIN)
+    void initRootPath();
     void retrieveVolumeInfo();
     void retrieveDiskFreeSpace();
     bool queryStorageProperty();
     void queryFileFsSectorSizeInformation();
 #elif defined(Q_OS_DARWIN)
+    void initRootPath();
     void retrievePosixInfo();
     void retrieveUrlProperties(bool initRootPath = false);
     void retrieveLabel();
+#elif defined(Q_OS_LINUX)
+    void retrieveVolumeInfo();
+
+public:
+    struct MountInfo {
+        QString mountPoint;
+        QByteArray fsType;
+        QByteArray device;
+        QByteArray fsRoot;
+        dev_t stDev = 0;
+        quint64 mntid = 0;
+    };
+
+    void setFromMountInfo(MountInfo &&info)
+    {
+        rootPath = std::move(info.mountPoint);
+        fileSystemType = std::move(info.fsType);
+        device = std::move(info.device);
+        subvolume = std::move(info.fsRoot);
+    }
+
+    QStorageInfoPrivate(MountInfo &&info)
+    {
+        setFromMountInfo(std::move(info));
+    }
+
 #elif defined(Q_OS_UNIX)
+    void initRootPath();
     void retrieveVolumeInfo();
 #endif
 
@@ -55,15 +97,67 @@ public:
     QByteArray fileSystemType;
     QString name;
 
-    qint64 bytesTotal;
-    qint64 bytesFree;
-    qint64 bytesAvailable;
-    ulong blockSize;
+    qint64 bytesTotal = -1;
+    qint64 bytesFree = -1;
+    qint64 bytesAvailable = -1;
+    int blockSize = -1;
 
-    bool readOnly;
-    bool ready;
-    bool valid;
+    bool readOnly = false;
+    bool ready = false;
+    bool valid = false;
 };
+
+// Common helper functions
+template <typename String>
+static bool isParentOf(const String &parent, const QString &dirName)
+{
+    return dirName.startsWith(parent) &&
+            (dirName.size() == parent.size() || dirName.at(parent.size()) == u'/' ||
+             parent.size() == 1);
+}
+
+static inline bool shouldIncludeFs(const QString &mountDir, const QByteArray &fsType)
+{
+#if defined(Q_OS_ANDROID)
+    // "rootfs" is the filesystem type of "/" on Android
+    static constexpr char RootFsStr[] = "";
+#else
+    // "rootfs" is a type of ramfs on Linux, used in the initrd on some distros
+    static constexpr char RootFsStr[] = "rootfs";
+#endif
+
+    using namespace Qt::StringLiterals;
+    /*
+     * This function implements a heuristic algorithm to determine whether a
+     * given mount should be reported to the user. Our objective is to list
+     * only entries that the end-user would find useful.
+     *
+     * We therefore ignore:
+     *  - mounted in /dev, /proc, /sys: special mounts
+     *    (this will catch /sys/fs/cgroup, /proc/sys/fs/binfmt_misc, /dev/pts,
+     *    some of which are tmpfs on Linux)
+     *  - mounted in /var/run or /var/lock: most likely pseudofs
+     *    (on earlier systemd versions, /var/run was a bind-mount of /run, so
+     *    everything would be unnecessarily duplicated)
+     *  - filesystem type is "rootfs": artifact of the root-pivot on some Linux
+     *    initrd
+     *  - if the filesystem total size is zero, it's a pseudo-fs (not checked here).
+     */
+
+    if (isParentOf("/dev"_L1, mountDir)
+        || isParentOf("/proc"_L1, mountDir)
+        || isParentOf("/sys"_L1, mountDir)
+        || isParentOf("/var/run"_L1, mountDir)
+        || isParentOf("/var/lock"_L1, mountDir)) {
+        return false;
+    }
+
+    if (!fsType.isEmpty() && fsType == RootFsStr)
+        return false;
+
+    // size checking in QStorageInfo::mountedVolumes()
+    return true;
+}
 
 QT_END_NAMESPACE
 

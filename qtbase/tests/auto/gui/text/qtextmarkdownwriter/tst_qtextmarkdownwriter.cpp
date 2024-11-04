@@ -1,5 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QTextDocument>
@@ -38,10 +38,16 @@ private slots:
     void testWriteTable();
     void charFormatWrapping_data();
     void charFormatWrapping();
+    void charFormat_data();
+    void charFormat();
     void rewriteDocument_data();
     void rewriteDocument();
     void fromHtml_data();
     void fromHtml();
+    void fromPlainTextAndBack_data();
+    void fromPlainTextAndBack();
+    void escapeSpecialCharacters_data();
+    void escapeSpecialCharacters();
 
 private:
     bool isMainFontFixed();
@@ -50,6 +56,8 @@ private:
 
 private:
     QTextDocument *document;
+    QFont m_monoFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    QFont m_defaultFont;
 };
 
 void tst_QTextMarkdownWriter::init()
@@ -607,11 +615,131 @@ void tst_QTextMarkdownWriter::charFormatWrapping() // QTBUG-116927
     }
 }
 
+void tst_QTextMarkdownWriter::charFormat_data()
+{
+    QTest::addColumn<QTextFormat::Property>("property");
+    QTest::addColumn<QVariant>("propertyValue");
+    QTest::addColumn<QFont>("explicitFont");
+    QTest::addColumn<QString>("expectedOutput");
+
+    const QTextFormat::Property NoProperty = QTextFormat::ObjectIndex;
+
+    QTest::newRow("FontFixedPitch")
+            << QTextFormat::FontFixedPitch << QVariant(true) << m_defaultFont
+            << "before `formatted` after";
+    if (!isFixedFontProportional()) {
+        // QTBUG-54623 QTBUG-75649 QTBUG-79900 QTBUG-103484 etc.
+        QTest::newRow("mono font") << NoProperty << QVariant() << m_monoFont
+                                        << "before `formatted` after";
+    }
+
+    {
+        QFont font;
+        font.setItalic(true);
+        QTest::newRow("italic font")
+                << NoProperty << QVariant() << font
+                << "before *formatted* after";
+    }
+    QTest::newRow("FontItalic")
+            << QTextFormat::FontItalic << QVariant(true) << m_defaultFont
+            << "before *formatted* after";
+
+    {
+        QFont font;
+        font.setUnderline(true);
+        QTest::newRow("underline font")
+                << NoProperty << QVariant() << font
+                << "before _formatted_ after";
+    }
+    QTest::newRow("FontUnderline")
+            << QTextFormat::FontUnderline << QVariant(true) << m_defaultFont
+            << "before _formatted_ after";
+
+    {
+        QFont font;
+        font.setStrikeOut(true);
+        QTest::newRow("strikeout font")
+                << NoProperty << QVariant() << font
+                << "before ~~formatted~~ after";
+    }
+    QTest::newRow("FontStrikeOut")
+            << QTextFormat::FontStrikeOut << QVariant(true) << m_defaultFont
+            << "before ~~formatted~~ after";
+
+    {
+        QFont font;
+        font.setBold(true);
+        QTest::newRow("bold font")
+                << NoProperty << QVariant() << font
+                << "before **formatted** after";
+    }
+    {
+        QFont font;
+        font.setWeight(QFont::Black);
+        QTest::newRow("black font")
+                << NoProperty << QVariant() << font
+                << "before **formatted** after";
+    }
+    QTest::newRow("FontWeight")
+            << QTextFormat::FontWeight << QVariant(700) << m_defaultFont
+            << "before **formatted** after";
+
+    QTest::newRow("AnchorHref")
+            << QTextFormat::AnchorHref << QVariant("linky linky") << m_defaultFont
+            << "before [formatted](linky linky) after";
+
+    QTest::newRow("TextToolTip") // no effect without AnchorHref
+            << QTextFormat::TextToolTip << QVariant("such a tool") << m_defaultFont
+            << "before formatted after";
+}
+
+void tst_QTextMarkdownWriter::charFormat()
+{
+    if (isMainFontFixed())
+        QSKIP("QTextMarkdownWriter would generate bogus backticks");
+
+    QFETCH(QTextFormat::Property, property);
+    QFETCH(QVariant, propertyValue);
+    QFETCH(QFont, explicitFont);
+    QFETCH(QString, expectedOutput);
+
+    QTextCursor cursor(document);
+    cursor.insertText("before ");
+
+    QTextCharFormat fmt;
+    if (explicitFont != m_defaultFont)
+        fmt.setFont(explicitFont);
+    if (property != QTextFormat::ObjectIndex) // != 0
+        fmt.setProperty(property, propertyValue);
+    if (explicitFont == m_monoFont) {
+        QFontInfo fontInfo(fmt.font());
+        qCDebug(lcTests) << "mono font" << explicitFont << "fontInfo fixedPitch" << fontInfo.fixedPitch() << "fmt fixedPitch" << fmt.fontFixedPitch();
+    }
+    cursor.setCharFormat(fmt);
+    cursor.insertText("formatted");
+
+    cursor.setCharFormat({});
+    cursor.insertText(" after");
+
+    const QString output = documentToUnixMarkdown();
+#ifdef DEBUG_WRITE_OUTPUT
+    {
+        QFile out(QDir::temp().filePath(QLatin1String(QTest::currentDataTag()) + ".md"));
+        out.open(QFile::WriteOnly);
+        out.write(output.toUtf8());
+        out.close();
+    }
+#endif
+    QCOMPARE(output.trimmed(), expectedOutput);
+}
+
 void tst_QTextMarkdownWriter::rewriteDocument_data()
 {
     QTest::addColumn<QString>("inputFile");
 
     QTest::newRow("block quotes") << "blockquotes.md";
+    QTest::newRow("block quotes with lists") << "blockquotesWithLists.md";
+    // QTest::newRow("list item with block quote") << "listItemWithBlockquote.md"; // not supported for now
     QTest::newRow("example") << "example.md";
     QTest::newRow("list items after headings") << "headingsAndLists.md";
     QTest::newRow("word wrap") << "wordWrap.md";
@@ -683,16 +811,42 @@ void tst_QTextMarkdownWriter::fromHtml_data()
     QTest::newRow("code") <<
         "<pre class=\"language-pseudocode\">\n#include \"foo.h\"\n\nblock {\n    statement();\n}\n\n</pre>" <<
         "```pseudocode\n#include \"foo.h\"\n\nblock {\n    statement();\n}\n\n```\n\n";
-    // TODO
-//    QTest::newRow("escaped number and paren after double newline") <<
-//        "<p>(The first sentence of this paragraph is a line, the next paragraph has a number</p>13) but that's not part of an ordered list" <<
-//        "(The first sentence of this paragraph is a line, the next paragraph has a number\n\n13\\) but that's not part of an ordered list\n\n";
+    QTest::newRow("escaped number and paren after single newline") <<
+        "<p>(The first sentence of this paragraph is a line, next paragraph has a number 13) but that's not part of an ordered list</p>" <<
+        "(The first sentence of this paragraph is a line, next paragraph has a number\n13\\) but that's not part of an ordered list\n\n";
+    QTest::newRow("escaped number and paren after double newline") <<
+        "<p>(The first sentence of this paragraph is a line, the next paragraph has a number</p>13) but that's not part of an ordered list" <<
+        "(The first sentence of this paragraph is a line, the next paragraph has a number\n\n13\\) but that's not part of an ordered list\n\n";
     QTest::newRow("preformats with embedded backticks") <<
         "<pre>none `one` ``two``</pre>plain<pre>```three``` ````four````</pre>plain" <<
         "```\nnone `one` ``two``\n\n```\nplain\n\n```\n```three``` ````four````\n\n```\nplain\n\n";
     QTest::newRow("list items with and without checkboxes") <<
         "<ul><li>bullet</li><li class=\"unchecked\">unchecked item</li><li class=\"checked\">checked item</li></ul>" <<
         "- bullet\n- [ ] unchecked item\n- [x] checked item\n";
+    QTest::newRow("table with backslash in cell") << // QTBUG-96051
+            "<table><tr><td>1011011 [</td><td>1011100 backslash \\</td></tr></table>" <<
+            "|1011011 [|1011100 backslash \\\\|";
+    // https://spec.commonmark.org/0.31.2/#example-12
+    // escaping punctuation is ok, but QTextMarkdownWriter currently doesn't do that (which is also ok)
+    QTest::newRow("punctuation") <<
+            R"(<p>!&quot;#$%&amp;'()*+,-./:;&lt;=&gt;?@[\]^_`{|}~</p>)" <<
+            R"(!"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~)";
+    // https://spec.commonmark.org/0.31.2/#example-14
+    QTest::newRow("backslash asterisk no emphasis") << //  QTBUG-122083
+            R"(\*no emphasis*)" <<
+            R"(\\\*no emphasis*)";
+    // https://spec.commonmark.org/0.31.2/#example-15
+    QTest::newRow("backslash before emphasis") <<
+            R"(\<em>emphasis</em>)" <<
+            R"(\\*emphasis*)";
+    // https://spec.commonmark.org/0.31.2/#example-20
+    QTest::newRow("backslash-asterisk in autolink") <<
+            R"(<p><a href="https://example.com?find=\\*">https://example.com?find=\*</a></p>)" <<
+            R"(<https://example.com?find=\\*>)";
+    // https://spec.commonmark.org/0.31.2/#example-24
+    QTest::newRow("plus in fenced code lang") <<
+            "<pre class=\"language-foo+bar\">foo</pre>" <<
+            "```foo+bar\nfoo\n```";
 }
 
 void tst_QTextMarkdownWriter::fromHtml()
@@ -712,6 +866,137 @@ void tst_QTextMarkdownWriter::fromHtml()
     }
 #endif
 
+    output = output.trimmed();
+    expectedOutput = expectedOutput.trimmed();
+    if (output != expectedOutput && (isMainFontFixed() || isFixedFontProportional()))
+        QEXPECT_FAIL("", "fixed main font or proportional fixed font (QTBUG-103484)", Continue);
+    QCOMPARE(output, expectedOutput);
+}
+
+void tst_QTextMarkdownWriter::fromPlainTextAndBack_data()
+{
+    QTest::addColumn<QString>("input");
+    QTest::addColumn<QString>("expectedMarkdown");
+
+    // tests to verify that fixing QTBUG-122083 is safe
+    QTest::newRow("single backslashes") <<
+            R"(\ again: \ not esc: \* \-\-\ \*abc*)" <<
+            R"(\\ again: \\ not esc: \\* \\-\\-\\ \\\*abc*)";
+    // https://spec.commonmark.org/0.31.2/#example-12
+    QTest::newRow("punctuation") <<
+            R"(!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~)" <<
+            R"(!"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~)";
+    // https://spec.commonmark.org/0.31.2/#example-13
+    QTest::newRow("literal backslashes") <<
+            QString::fromUtf16(uR"(\→\A\a\ \3\φ\«)") <<
+            "\\\\\u2192\\\\A\\\\a\\\\ \\\\3\\\\\u03C6\\\\\u00AB";
+    // https://spec.commonmark.org/0.31.2/#example-14
+    QTest::newRow("escape to avoid em") <<
+            R"(*not emphasized*)" <<
+            R"(\*not emphasized*)";
+    QTest::newRow("escape to avoid html") <<
+            R"(<br/> not a tag)" <<
+            R"(\<br/> not a tag)";
+    QTest::newRow("escape to avoid link") <<
+            R"([not a link](/foo))" <<
+            R"(\[not a link](/foo))";
+    QTest::newRow("escape to avoid mono") <<
+            R"(`not code`)" <<
+            R"(\`not code`)";
+    QTest::newRow("escape to avoid num list") <<
+            R"(1. not a list)" <<
+            R"(1\. not a list)";
+    QTest::newRow("escape to avoid list") <<
+            R"(* not a list)" <<
+            R"(\* not a list)";
+    QTest::newRow("escape to avoid heading") <<
+            R"(# not a heading)" <<
+            R"(\# not a heading)";
+    QTest::newRow("escape to avoid reflink") <<
+            R"([foo]: /url "not a reference")" <<
+            R"(\[foo]: /url "not a reference")";
+    QTest::newRow("escape to avoid entity") <<
+            R"(&ouml; not a character entity)" <<
+            R"(\&ouml; not a character entity)";
+    // end of tests to verify that fixing QTBUG-122083 is safe
+    // (it's ok to add unrelated plain-to-markdown-to-plaintext cases later)
+}
+
+void tst_QTextMarkdownWriter::fromPlainTextAndBack()
+{
+    QFETCH(QString, input);
+    QFETCH(QString, expectedMarkdown);
+
+    document->setPlainText(input);
+    QString output = documentToUnixMarkdown();
+
+#ifdef DEBUG_WRITE_OUTPUT
+    {
+        QFile out("/tmp/" + QLatin1String(QTest::currentDataTag()) + ".md");
+        out.open(QFile::WriteOnly);
+        out.write(output.toUtf8());
+        out.close();
+    }
+#endif
+
+    output = output.trimmed();
+    expectedMarkdown = expectedMarkdown.trimmed();
+    if (output != expectedMarkdown && (isMainFontFixed() || isFixedFontProportional()))
+        QSKIP("", "fixed main font or proportional fixed font (QTBUG-103484)");
+    QCOMPARE(output, expectedMarkdown);
+    QCOMPARE(document->toPlainText(), input);
+    document->setMarkdown(output);
+    QCOMPARE(document->toPlainText(), input);
+    if (document->blockCount() == 1)
+        QCOMPARE(document->firstBlock().text(), input);
+}
+
+void tst_QTextMarkdownWriter::escapeSpecialCharacters_data()
+{
+    QTest::addColumn<QString>("input");
+    QTest::addColumn<QString>("expectedOutput");
+
+    QTest::newRow("backslash") << "foo \\ bar \\\\ baz \\" << "foo \\\\ bar \\\\\\\\ baz \\\\";
+    QTest::newRow("not emphasized") << "*normal* **normal too**" << "\\*normal* \\**normal too**";
+    QTest::newRow("not code") << "`normal` `normal too`" << "\\`normal` \\`normal too`";
+    QTest::newRow("code fence") << "```not a fence; ``` no risk here; ```not a fence" // TODO slightly inconsistent
+                                << "\\```not a fence; ``` no risk here; \\```not a fence";
+    QTest::newRow("not html") << "<p>not a tag: <br/> nope</p>" << "\\<p>not a tag: \\<br/> nope\\</p>";
+    QTest::newRow("not a link") << "text [not a link](/foo)" << "text \\[not a link](/foo)";
+    QTest::newRow("not a circle") << "* polaris" << "\\* polaris";
+    QTest::newRow("not a square") << "+ groovy" << "\\+ groovy";
+    QTest::newRow("not a bullet") << "- stayin alive" << "\\- stayin alive";
+    QTest::newRow("arithmetic") << "1 + 2 - 3 * 4" << "1 + 2 - 3 * 4";
+    QTest::newRow("not a list") << "1. not a list" << "1\\. not a list";
+    QTest::newRow("not a list either") << "Jupiter and 10." << "Jupiter and 10.";
+    QTest::newRow("not a heading") << "# not a heading" << "\\# not a heading";
+    QTest::newRow("a non-entity") << "&ouml; not a character entity" << "\\&ouml; not a character entity";
+}
+
+/*! \internal
+    If the user types into a Qt-based editor plain text that the
+    markdown parser would misinterpret, escape it when we save to markdown
+    to clarify that it's plain text.
+    https://spec.commonmark.org/0.31.2/#backslash-escapes
+*/
+void tst_QTextMarkdownWriter::escapeSpecialCharacters() // QTBUG-96051, QTBUG-122083
+{
+    QFETCH(QString, input);
+    QFETCH(QString, expectedOutput);
+
+    document->setPlainText(input);
+    QString output = documentToUnixMarkdown();
+
+#ifdef DEBUG_WRITE_OUTPUT
+    {
+        QFile out("/tmp/" + QLatin1String(QTest::currentDataTag()) + ".md");
+        out.open(QFile::WriteOnly);
+        out.write(output.toUtf8());
+        out.close();
+    }
+#endif
+
+    output = output.trimmed();
     if (output != expectedOutput && (isMainFontFixed() || isFixedFontProportional()))
         QEXPECT_FAIL("", "fixed main font or proportional fixed font (QTBUG-103484)", Continue);
     QCOMPARE(output, expectedOutput);

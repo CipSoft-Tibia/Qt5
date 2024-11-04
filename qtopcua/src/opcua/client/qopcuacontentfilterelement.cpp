@@ -28,7 +28,7 @@ QT_BEGIN_NAMESPACE
     \enum QOpcUaContentFilterElement::FilterOperator
 
     FilterOperator enumerates all possible operators for a ContentFilterElement that are specified in
-    OPC-UA part 4, Tables 115 and 116.
+    OPC UA 1.05 part 4, 7.7.3.
 
     \value Equals
     \value IsNull
@@ -86,11 +86,16 @@ QOpcUaContentFilterElement &QOpcUaContentFilterElement::operator=(const QOpcUaCo
 }
 
 /*!
-    Returns \c true if this content filter element has the same value as \a rhs.
+    \fn bool QOpcUaContentFilterElement::operator==(const QOpcUaContentFilterElement &lhs,
+                                                    const QOpcUaContentFilterElement &rhs)
+
+    Returns \c true if \a lhs has the same value as \a rhs.
 */
-bool QOpcUaContentFilterElement::operator==(const QOpcUaContentFilterElement &rhs) const
+bool comparesEqual(const QOpcUaContentFilterElement &lhs,
+                   const QOpcUaContentFilterElement &rhs) noexcept
 {
-    return filterOperator() == rhs.filterOperator() && filterOperands() == rhs.filterOperands();
+    return lhs.filterOperator() == rhs.filterOperator()
+            && lhs.filterOperands() == rhs.filterOperands();
 }
 
 /*!
@@ -191,5 +196,13 @@ QOpcUaContentFilterElement &QOpcUaContentFilterElement::operator<<(const QOpcUaE
     filterOperandsRef().append(op);
     return *this;
 }
+
+/*!
+    \fn bool QOpcUaContentFilterElement::operator!=(const QOpcUaContentFilterElement &lhs,
+                                                    const QOpcUaContentFilterElement &rhs)
+    \since 6.7
+
+    Returns \c true if \a lhs has a different value than \a rhs.
+*/
 
 QT_END_NAMESPACE

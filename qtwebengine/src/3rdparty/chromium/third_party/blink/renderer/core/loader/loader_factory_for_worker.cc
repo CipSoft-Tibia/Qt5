@@ -28,6 +28,11 @@ void LoaderFactoryForWorker::Trace(Visitor* visitor) const {
   LoaderFactory::Trace(visitor);
 }
 
+LoaderFactoryForWorker::LoaderFactoryForWorker(
+    WorkerOrWorkletGlobalScope& global_scope,
+    scoped_refptr<WebWorkerFetchContext> web_context)
+    : global_scope_(global_scope), web_context_(std::move(web_context)) {}
+
 std::unique_ptr<URLLoader> LoaderFactoryForWorker::CreateURLLoader(
     const ResourceRequest& request,
     const ResourceLoaderOptions& options,
@@ -35,6 +40,13 @@ std::unique_ptr<URLLoader> LoaderFactoryForWorker::CreateURLLoader(
     scoped_refptr<base::SingleThreadTaskRunner> unfreezable_task_runner,
     BackForwardCacheLoaderHelper* back_forward_cache_loader_helper) {
   WrappedResourceRequest wrapped(request);
+  Vector<std::unique_ptr<URLLoaderThrottle>> throttles;
+  WebVector<std::unique_ptr<URLLoaderThrottle>> web_throttles =
+      web_context_->CreateThrottles(wrapped);
+  throttles.reserve(base::checked_cast<wtf_size_t>(web_throttles.size()));
+  for (auto& throttle : web_throttles) {
+    throttles.push_back(std::move(throttle));
+  }
 
   mojo::PendingRemote<network::mojom::blink::URLLoaderFactory>
       url_loader_factory;
@@ -63,7 +75,8 @@ std::unique_ptr<URLLoader> LoaderFactoryForWorker::CreateURLLoader(
     return web_context_->WrapURLLoaderFactory(std::move(url_loader_factory))
         ->CreateURLLoader(wrapped, freezable_task_runner,
                           unfreezable_task_runner, std::move(keep_alive_handle),
-                          back_forward_cache_loader_helper);
+                          back_forward_cache_loader_helper,
+                          std::move(throttles));
   }
 
   // If |global_scope_| is a service worker, use |script_loader_factory_| for
@@ -84,16 +97,32 @@ std::unique_ptr<URLLoader> LoaderFactoryForWorker::CreateURLLoader(
       if (web_context_->GetScriptLoaderFactory()) {
         return web_context_->GetScriptLoaderFactory()->CreateURLLoader(
             wrapped, freezable_task_runner, unfreezable_task_runner,
-            std::move(keep_alive_handle), back_forward_cache_loader_helper);
+            std::move(keep_alive_handle), back_forward_cache_loader_helper,
+            std::move(throttles));
       }
     }
+    // URLLoader for RaceNetworkRequest
+    absl::optional<mojo::PendingRemote<network::mojom::blink::URLLoaderFactory>>
+        race_network_request_url_loader_factory =
+            global_scope_->FindRaceNetworkRequestURLLoaderFactory(
+                request.GetServiceWorkerRaceNetworkRequestToken());
+    if (race_network_request_url_loader_factory) {
+      return web_context_
+          ->WrapURLLoaderFactory(
+              std::move(race_network_request_url_loader_factory.value()))
+          ->CreateURLLoader(
+              wrapped, freezable_task_runner, unfreezable_task_runner,
+              std::move(keep_alive_handle), back_forward_cache_loader_helper,
+              std::move(throttles));
+    }
   } else {
-    DCHECK(!web_context_->GetScriptLoaderFactory());
+    CHECK(!web_context_->GetScriptLoaderFactory());
   }
 
   return web_context_->GetURLLoaderFactory()->CreateURLLoader(
       wrapped, freezable_task_runner, unfreezable_task_runner,
-      std::move(keep_alive_handle), back_forward_cache_loader_helper);
+      std::move(keep_alive_handle), back_forward_cache_loader_helper,
+      std::move(throttles));
 }
 
 std::unique_ptr<WebCodeCacheLoader>

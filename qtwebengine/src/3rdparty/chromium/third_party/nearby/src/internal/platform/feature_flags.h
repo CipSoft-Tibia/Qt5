@@ -15,6 +15,8 @@
 #ifndef PLATFORM_BASE_FEATURE_FLAGS_H_
 #define PLATFORM_BASE_FEATURE_FLAGS_H_
 
+#include <cstdint>
+
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 
@@ -26,7 +28,7 @@ class FeatureFlags {
  public:
   // Holds for all the feature flags.
   struct Flags {
-    bool enable_cancellation_flag = false;
+    bool enable_cancellation_flag = true;
     bool enable_async_bandwidth_upgrade = true;
     // If a scheduled runnable is already running, Cancel() will synchronously
     // wait for the task to complete.
@@ -45,16 +47,33 @@ class FeatureFlags {
     // necessary to properly support multiple BWU mediums, multiple service, and
     // multiple endpionts.
     bool support_multiple_bwu_mediums = true;
-    // Ble v2/v1 switch flag: the flag will be removed once v2 refactor is done.
-    bool support_ble_v2 = false;
     // Allows the code to change the bluetooth radio state
     bool enable_set_radio_state = false;
     // If the feature is enabled, medium connection will timeout when cannot
     // create connection with remote device in a duration.
     bool enable_connection_timeout = true;
-    // Controls to enable or disable to track the status of Bluetooth classic
+    // Controls enable or disable to track the status of Bluetooth classic
     // conncetion.
     bool enable_bluetooth_connection_status_track = true;
+    // Controls enable or disable BLE scan advertisement for fast pair
+    // service uuid 0x2cfe
+    bool enable_scan_for_fast_pair_advertisement = false;
+    // Skip Service Discovery Protocol check if the remote party supports the
+    // requested service id before attempting to connect over rfcomm. SDP fails
+    // on Windows when connecting to FP service id but the rfcomm is successful.
+    bool skip_service_discovery_before_connecting_to_rfcomm = false;
+    std::int32_t min_nc_version_supports_safe_to_disconnect = 1;
+    // Android code won't be able to launch "payload_received_ack" feature for
+    // in near future, so change "payload_received_ack" version from "2" to "5"
+    // after auto-reconnect and auto-resume.
+    std::int32_t min_nc_version_supports_payload_received_ack = 5;
+    // If the other part doesn't ack the safe_to_disconnect request, the
+    // initiator will end the connection in 30s.
+    absl::Duration safe_to_disconnect_ack_delay_millis =
+        absl::Milliseconds(30000);
+    // If the receiver doesn't ack with payload_received_ack frame in 1s, the
+    // sender will timeout the waiting.
+    absl::Duration wait_payload_received_ack_millis = absl::Milliseconds(1000);
   };
 
   static const FeatureFlags& GetInstance() {
@@ -71,16 +90,14 @@ class FeatureFlags {
     return const_cast<FeatureFlags&>(GetInstance()).flags_;
   }
 
- private:
-  FeatureFlags() = default;
-
-  // MediumEnvironment is testing util class. Use friend class here to enable
-  // SetFlags for feature controlling need in test environment.
-  friend class MediumEnvironment;
+  // SetFlags for feature controlling
   void SetFlags(const Flags& flags) ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
     flags_ = flags;
   }
+
+ private:
+  FeatureFlags() = default;
   Flags flags_ ABSL_GUARDED_BY(mutex_);
   mutable absl::Mutex mutex_;
 };

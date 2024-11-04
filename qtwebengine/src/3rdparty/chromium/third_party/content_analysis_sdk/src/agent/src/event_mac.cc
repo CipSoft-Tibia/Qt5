@@ -4,6 +4,8 @@
 
 #include "event_mac.h"
 
+#include "scoped_print_handle_mac.h"
+
 namespace content_analysis {
 namespace sdk {
 
@@ -21,6 +23,7 @@ ResultCode ContentAnalysisEventMac::Send() {
 std::string ContentAnalysisEventMac::DebugString() const {
   return std::string();
 }
+
 
 }  // namespace sdk
 }  // namespace content_analysis

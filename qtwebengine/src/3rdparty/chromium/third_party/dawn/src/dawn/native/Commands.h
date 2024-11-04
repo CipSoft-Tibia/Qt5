@@ -17,9 +17,11 @@
 
 #include <array>
 #include <bitset>
+#include <string>
 #include <vector>
 
 #include "dawn/common/Constants.h"
+#include "dawn/common/Ref.h"
 
 #include "dawn/native/AttachmentState.h"
 #include "dawn/native/BindingInfo.h"
@@ -53,6 +55,7 @@ enum class Command {
     EndRenderPass,
     ExecuteBundles,
     InsertDebugMarker,
+    PixelLocalStorageBarrier,
     PopDebugGroup,
     PushDebugGroup,
     ResolveQuerySet,
@@ -83,6 +86,7 @@ struct BeginComputePassCmd {
 
     TimestampWrite beginTimestamp;
     TimestampWrite endTimestamp;
+    std::string label;
 };
 
 struct BeginOcclusionQueryCmd {
@@ -98,6 +102,7 @@ struct RenderPassColorAttachmentInfo {
     ~RenderPassColorAttachmentInfo();
 
     Ref<TextureViewBase> view;
+    uint32_t depthSlice;
     Ref<TextureViewBase> resolveTarget;
     wgpu::LoadOp loadOp;
     wgpu::StoreOp storeOp;
@@ -135,6 +140,7 @@ struct BeginRenderPassCmd {
     Ref<QuerySetBase> occlusionQuerySet;
     TimestampWrite beginTimestamp;
     TimestampWrite endTimestamp;
+    std::string label;
 };
 
 struct BufferCopy {
@@ -261,6 +267,8 @@ struct ClearBufferCmd {
 struct InsertDebugMarkerCmd {
     uint32_t length;
 };
+
+struct PixelLocalStorageBarrierCmd {};
 
 struct PopDebugGroupCmd {};
 

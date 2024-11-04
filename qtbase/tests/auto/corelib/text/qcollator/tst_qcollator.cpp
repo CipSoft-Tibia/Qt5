@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -9,6 +9,7 @@
 #include <QScopeGuard>
 
 #include <cstring>
+#include <iostream>
 
 class tst_QCollator : public QObject
 {
@@ -263,7 +264,11 @@ void tst_QCollator::compare()
     auto asSign = [](int compared) {
         return compared < 0 ? -1 : compared > 0 ? 1 : 0;
     };
-
+#if defined(Q_OS_WASM)
+    if (strcmp(QTest::currentDataTag(), "english5") == 0
+        || strcmp(QTest::currentDataTag(), "english8") == 0)
+        QSKIP("Some en-us locale tests have issues on WASM");
+#endif // Q_OS_WASM
 #if !QT_CONFIG(icu) && !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
     if (collator.locale() != QLocale::c() && collator.locale() != QLocale::system().collation())
         QSKIP("POSIX implementation of collation only supports C and system collation locales");

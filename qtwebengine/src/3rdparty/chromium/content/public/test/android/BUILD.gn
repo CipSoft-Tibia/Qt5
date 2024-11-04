@@ -17,19 +17,21 @@ android_library("android_test_message_pump_support_java") {
 
 android_library("content_java_test_support") {
   testonly = true
-  annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
+
   deps = [
     ":android_test_message_pump_support_java",
     "//base:base_java",
     "//base:base_java_test_support",
+    "//base:base_java_test_support_uncommon",
     "//base:jni_java",
     "//base:process_launcher_java",
     "//content/public/android:content_java",
     "//mojo/public/java:bindings_java",
     "//net/android:net_java",
+    "//net/android:net_java_test_support",
     "//services/service_manager/public/java:service_manager_java",
-    "//third_party/android_support_test_runner:runner_java",
     "//third_party/androidx:androidx_annotation_annotation_java",
+    "//third_party/androidx:androidx_test_monitor_java",
     "//third_party/blink/public:blink_headers_java",
     "//third_party/blink/public/mojom:android_mojo_bindings_java",
     "//third_party/hamcrest:hamcrest_java",
@@ -40,6 +42,7 @@ android_library("content_java_test_support") {
     "//url:gurl_java",
     "//url:origin_java",
   ]
+  srcjar_deps = [ ":content_test_jni" ]
   sources = [
     "javatests/src/org/chromium/content_public/browser/test/ChildProcessAllocatorSettings.java",
     "javatests/src/org/chromium/content_public/browser/test/ChildProcessAllocatorSettingsHook.java",
@@ -62,6 +65,7 @@ android_library("content_java_test_support") {
     "javatests/src/org/chromium/content_public/browser/test/util/RenderProcessHostUtils.java",
     "javatests/src/org/chromium/content_public/browser/test/util/TestCallbackHelperContainer.java",
     "javatests/src/org/chromium/content_public/browser/test/util/TestInputMethodManagerWrapper.java",
+    "javatests/src/org/chromium/content_public/browser/test/util/TestSelectionDropdownMenuDelegate.java",
     "javatests/src/org/chromium/content_public/browser/test/util/TestSelectionPopupController.java",
     "javatests/src/org/chromium/content_public/browser/test/util/TestThreadUtils.java",
     "javatests/src/org/chromium/content_public/browser/test/util/TestTouchUtils.java",

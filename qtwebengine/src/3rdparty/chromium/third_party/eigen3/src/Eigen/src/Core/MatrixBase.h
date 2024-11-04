@@ -328,10 +328,10 @@ template<typename Derived> class MatrixBase
 
 /////////// LU module ///////////
 
-    inline const FullPivLU<PlainObject> fullPivLu() const;
-    inline const PartialPivLU<PlainObject> partialPivLu() const;
+    template<typename PermutationIndex = DefaultPermutationIndex> inline const FullPivLU<PlainObject, PermutationIndex> fullPivLu() const;
+    template<typename PermutationIndex = DefaultPermutationIndex> inline const PartialPivLU<PlainObject, PermutationIndex> partialPivLu() const;
 
-    inline const PartialPivLU<PlainObject> lu() const;
+    template<typename PermutationIndex = DefaultPermutationIndex> inline const PartialPivLU<PlainObject, PermutationIndex> lu() const;
 
     EIGEN_DEVICE_FUNC
     inline const Inverse<Derived> inverse() const;
@@ -399,8 +399,11 @@ template<typename Derived> class MatrixBase
     EIGEN_DEVICE_FUNC
     inline PlainObject unitOrthogonal(void) const;
 
-    EIGEN_DEVICE_FUNC
+    EIGEN_DEPRECATED EIGEN_DEVICE_FUNC
     inline Matrix<Scalar,3,1> eulerAngles(Index a0, Index a1, Index a2) const;
+
+    EIGEN_DEVICE_FUNC
+    inline Matrix<Scalar,3,1> canonicalEulerAngles(Index a0, Index a1, Index a2) const;
 
     // put this as separate enum value to work around possible GCC 4.3 bug (?)
     enum { HomogeneousReturnTypeDirection = ColsAtCompileTime==1&&RowsAtCompileTime==1 ? ((internal::traits<Derived>::Flags&RowMajorBit)==RowMajorBit ? Horizontal : Vertical)

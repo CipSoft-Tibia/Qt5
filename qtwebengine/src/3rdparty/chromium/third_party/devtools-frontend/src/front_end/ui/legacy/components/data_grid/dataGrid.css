@@ -6,7 +6,7 @@
 
 .data-grid {
   position: relative;
-  border: 1px solid var(--color-details-hairline-light) !important; /* stylelint-disable-line declaration-no-important */
+  border: 1px solid var(--sys-color-divider) !important; /* stylelint-disable-line declaration-no-important */
   /* See: crbug.com/1152736 for color variable migration. */
   line-height: 120%;
 }
@@ -28,7 +28,7 @@
   overflow-x: hidden;
   overflow-y: overlay;
   transform: translateZ(0);
-  background-color: var(--color-background);
+  background-color: var(--sys-color-cdt-base-container);
 }
 
 .data-grid thead {
@@ -94,7 +94,7 @@
 
 .striped-data-grid .revealed.data-grid-data-grid-node:nth-child(odd):not(.dirty):not(.selected),
 .striped-data-grid-starts-with-odd .revealed.data-grid-data-grid-node:nth-child(even):not(.dirty):not(.selected) {
-  background-color: var(--color-background-elevation-1);
+  background-color: var(--sys-color-surface1);
 }
 
 .data-grid td,
@@ -104,7 +104,7 @@
   overflow: hidden;
   line-height: 18px;
   height: 18px;
-  border-left: 1px solid var(--color-details-hairline);
+  border-left: 1px solid var(--sys-color-divider);
   padding: 1px 4px;
 }
 
@@ -115,8 +115,8 @@
 
 .data-grid th {
   text-align: left;
-  background-color: var(--color-background-elevation-1);
-  border-bottom: 1px solid var(--color-details-hairline);
+  background-color: var(--sys-color-surface1);
+  border-bottom: 1px solid var(--sys-color-divider);
   font-weight: normal;
   vertical-align: middle;
 }
@@ -151,7 +151,7 @@
 }
 
 .data-grid th .sort-order-icon-container {
-  background-color: var(--color-background-elevation-1);
+  background-color: var(--sys-color-surface1);
   min-width: 0;
   position: absolute;
   top: 1px;
@@ -197,17 +197,16 @@
 
 .data-grid td.disclosure::before {
   user-select: none;
-  -webkit-mask-image: var(--image-file-treeoutlineTriangles);
-  -webkit-mask-position: 0 0;
-  -webkit-mask-size: 32px 24px;
+  -webkit-mask-image: var(--image-file-triangle-right);
   float: left;
-  width: 8px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   margin-right: 2px;
   content: "";
   position: relative;
   top: 3px;
-  background-color: var(--color-text-secondary);
+  background-color: var(--icon-default);
+  transition: transform 200ms;
 }
 
 .data-grid tr:not(.parent) td.disclosure::before {
@@ -215,12 +214,20 @@
 }
 
 .data-grid tr.expanded td.disclosure::before {
-  -webkit-mask-position: -16px 0;
+  transform: rotate(90deg);
+}
+
+.data-grid tbody tr.revealed:hover {
+  background-color: var(--sys-color-state-hover-on-subtle);
 }
 
 .data-grid tbody tr.revealed.selected {
-  background-color: var(--color-background-highlight);
+  background-color: var(--sys-color-neutral-container);
   color: inherit;
+}
+
+.data-grid tbody tr.revealed:focus-within {
+  background-color: var(--sys-color-tonal-container);
 }
 
 .data-grid tbody tr.revealed.selected.dirty {
@@ -228,12 +235,12 @@
 }
 
 .data-grid.no-selection:focus-visible {
-  border: 1px solid var(--color-primary) !important; /* stylelint-disable-line declaration-no-important */
+  border: 1px solid var(--color-primary-old) !important; /* stylelint-disable-line declaration-no-important */
 }
 
 .data-grid:focus tbody tr.selected {
-  background-color: var(--color-selected-option-background);
-  color: var(--color-selected-option);
+  background-color: var(--sys-color-tonal-container);
+  color: var(--sys-color-on-tonal-container);
 }
 
 .data-grid tbody tr.selected.dirty {
@@ -247,17 +254,11 @@
 }
 
 .data-grid:focus tr.selected .devtools-link {
-  color: var(--color-selected-option);
+  color: var(--sys-color-on-tonal-container);
 }
 
 .data-grid:focus tr.parent.selected td.disclosure::before {
-  background-color: var(--color-selected-option);
-  -webkit-mask-position: 0 0;
-}
-
-.data-grid:focus tr.expanded.selected td.disclosure::before {
-  background-color: var(--color-selected-option);
-  -webkit-mask-position: -16px 0;
+  background-color: var(--icon-force-white);
 }
 
 .data-grid tr.inactive {

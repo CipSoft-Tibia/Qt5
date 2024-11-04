@@ -42,21 +42,21 @@
 
     \snippet chat/client/simplechatengine.cpp 1
 
-    The \l QGrpcStream handler provides the signals that the client application
+    The \l QGrpcServerStream handler provides the signals that the client application
     should connect to.
 
-    The \l QGrpcStream::errorOccurred signal indicates the error that occurred
+    The \l QGrpcServerStream::errorOccurred signal indicates the error that occurred
     either on the server side or in the communication channel. Typically, an
     error results in the connection to the server being closed and
-    the \l QGrpcStream::finished signal being emitted.
+    the \l QGrpcServerStream::finished signal being emitted.
 
-    When the server sends new messages to the stream, \l QGrpcStream emits the
-    \l QGrpcStream::messageReceived signal. The slot connected to this signal
+    When the server sends new messages to the stream, \l QGrpcServerStream emits the
+    \l QGrpcServerStream::messageReceived signal. The slot connected to this signal
     processes the chat message. Messages that are received from the
     \c {SimpleChat/messageList} server stream are collected in the custom
     \l QAbstractListModel model and displayed to the user.
 
-    When the \l QGrpcStream::finished signal is emitted, there is nothing more
+    When the \l QGrpcServerStream::finished signal is emitted, there is nothing more
     you can do with this stream instance, so you need to initiate a new
     subscription.
 

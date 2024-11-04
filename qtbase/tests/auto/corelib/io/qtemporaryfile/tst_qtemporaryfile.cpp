@@ -1,6 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <qcoreapplication.h>
@@ -75,6 +75,7 @@ private slots:
     void QTBUG_4796_data();
     void QTBUG_4796();
     void guaranteeUnique();
+    void stdfilesystem();
 private:
     QTemporaryDir m_temporaryDir;
     QString m_previousCurrent;
@@ -527,7 +528,8 @@ void tst_QTemporaryFile::openOnRootDrives()
 #endif
     // If it's possible to create a file in the root directory, it
     // must be possible to create a temp file there too.
-    foreach (QFileInfo driveInfo, QDir::drives()) {
+    const auto drives = QDir::drives();
+    for (const QFileInfo &driveInfo : drives) {
         QFile testFile(driveInfo.filePath() + "XXXXXX.txt");
         if (testFile.open(QIODevice::ReadWrite)) {
             testFile.remove();
@@ -628,7 +630,7 @@ void tst_QTemporaryFile::renameFdLeak()
 
 void tst_QTemporaryFile::moveToTrash()
 {
-#if defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS) || defined(Q_OS_VXWORKS)
     QSKIP("This platform doesn't implement a trash bin");
 #endif
 #ifdef Q_OS_WIN
@@ -911,7 +913,7 @@ void tst_QTemporaryFile::QTBUG_4796()
     {
         ~CleanOnReturn()
         {
-            Q_FOREACH(QString tempName, tempNames)
+            for (const QString &tempName : std::as_const(tempNames))
                 QFile::remove(tempName);
         }
 
@@ -999,7 +1001,7 @@ void tst_QTemporaryFile::QTBUG_4796()
         }
     }
 
-    Q_FOREACH(QString const &tempName, cleaner.tempNames)
+    for (const QString &tempName : std::as_const(cleaner.tempNames))
         QVERIFY( !QFile::exists(tempName) );
 
     cleaner.reset();
@@ -1033,6 +1035,50 @@ void tst_QTemporaryFile::guaranteeUnique()
     }
 
     QVERIFY(dir.rmdir(takenFileName));
+}
+
+void tst_QTemporaryFile::stdfilesystem()
+{
+#if !QT_CONFIG(cxx17_filesystem)
+    QSKIP("std::filesystem not available");
+#else
+    // ctor
+    {
+        std::filesystem::path testFile("testFile1.XXXXXX");
+        QTemporaryFile file(testFile);
+        QCOMPARE(file.fileTemplate(), QtPrivate::fromFilesystemPath(testFile));
+    }
+    // rename
+    {
+        QTemporaryFile file("testFile1.XXXXXX");
+        QVERIFY(file.open());
+        QByteArray payload = "abc123 I am a string";
+        file.write(payload);
+        QVERIFY(file.rename(std::filesystem::path("./test")));
+        file.close();
+
+        QFile f(u"./test"_s);
+        QVERIFY(f.exists());
+        QVERIFY(f.open(QFile::ReadOnly));
+        QCOMPARE(f.readAll(), payload);
+    }
+    // createNativeFile
+    {
+        std::filesystem::path resource(":/resources/test.txt");
+        std::unique_ptr<QTemporaryFile> tmp(QTemporaryFile::createNativeFile(resource));
+        QVERIFY(tmp);
+        QFile file(resource);
+        QVERIFY(file.open(QFile::ReadOnly));
+        QCOMPARE(tmp->readAll(), file.readAll());
+    }
+    // setFileTemplate
+    {
+        QTemporaryFile file;
+        std::filesystem::path testFile("testFile1.XXXXXX");
+        file.setFileTemplate(testFile);
+        QCOMPARE(file.fileTemplate(), QtPrivate::fromFilesystemPath(testFile));
+    }
+#endif
 }
 
 QTEST_MAIN(tst_QTemporaryFile)

@@ -19,6 +19,7 @@
 #include "base/message_loop/message_pump_type.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/strings/string_util.h"
+#include "base/system/sys_info.h"
 #include "base/task/scoped_set_task_priority_for_current_thread.h"
 #include "base/task/task_features.h"
 #include "base/task/thread_pool/pooled_parallel_task_runner.h"
@@ -64,12 +65,6 @@ bool HasDisableBestEffortTasksSwitch() {
 // avoid having to add a public API to ThreadPoolInstance::InitParams for this
 // internal edge case.
 bool g_synchronous_thread_start_for_testing = false;
-
-// Verifies that |traits| do not have properties that are banned in ThreadPool.
-void AssertNoExtensionInTraits(const base::TaskTraits& traits) {
-  DCHECK_EQ(traits.extension_id(),
-            TaskTraitsExtensionStorage::kInvalidExtensionId);
-}
 
 }  // namespace
 
@@ -128,7 +123,7 @@ void ThreadPoolImpl::Start(const ThreadPoolInstance::InitParams& init_params,
 
   // The max number of concurrent BEST_EFFORT tasks is |kMaxBestEffortTasks|,
   // unless the max number of foreground threads is lower.
-  const size_t max_best_effort_tasks =
+  size_t max_best_effort_tasks =
       std::min(kMaxBestEffortTasks, init_params.max_num_foreground_threads);
 
   // Start the service thread. On platforms that support it (POSIX except NaCL
@@ -141,7 +136,6 @@ void ThreadPoolImpl::Start(const ThreadPoolInstance::InitParams& init_params,
 #else
       MessagePumpType::DEFAULT;
 #endif
-  service_thread_options.timer_slack = TIMER_SLACK_MAXIMUM;
   CHECK(service_thread_.StartWithOptions(std::move(service_thread_options)));
   if (g_synchronous_thread_start_for_testing)
     service_thread_.WaitUntilThreadStarted();
@@ -185,20 +179,40 @@ void ThreadPoolImpl::Start(const ThreadPoolInstance::InitParams& init_params,
 #endif
   }
 
+  size_t foreground_threads = init_params.max_num_foreground_threads;
+  size_t utility_threads = init_params.max_num_utility_threads;
+
+  if (base::FeatureList::IsEnabled(kThreadPoolCap2)) {
+    // Set the size of each ThreadGroup to a initial fixed size which can grow
+    // beyond the value set here when tasks enter ScopedBlockingCall and
+    // set a minimum amount of workers per pool.
+    const int max_allowed_workers_per_pool =
+        std::max(2, kThreadPoolCapRestrictedCount.Get());
+    foreground_threads =
+        std::min(init_params.max_num_foreground_threads,
+                 static_cast<size_t>(max_allowed_workers_per_pool));
+    utility_threads =
+        std::min(init_params.max_num_utility_threads,
+                 static_cast<size_t>(max_allowed_workers_per_pool));
+    max_best_effort_tasks =
+        std::min(max_best_effort_tasks,
+                 static_cast<size_t>(max_allowed_workers_per_pool));
+  }
+
   // On platforms that can't use the background thread priority, best-effort
   // tasks run in foreground pools. A cap is set on the number of best-effort
   // tasks that can run in foreground pools to ensure that there is always
   // room for incoming foreground tasks and to minimize the performance impact
   // of best-effort tasks.
   static_cast<ThreadGroupImpl*>(foreground_thread_group_.get())
-      ->Start(init_params.max_num_foreground_threads, max_best_effort_tasks,
+      ->Start(foreground_threads, max_best_effort_tasks,
               init_params.suggested_reclaim_time, service_thread_task_runner,
               worker_thread_observer, worker_environment,
               g_synchronous_thread_start_for_testing);
 
   if (utility_thread_group_) {
     static_cast<ThreadGroupImpl*>(utility_thread_group_.get())
-        ->Start(init_params.max_num_utility_threads, max_best_effort_tasks,
+        ->Start(utility_threads, max_best_effort_tasks,
                 init_params.suggested_reclaim_time, service_thread_task_runner,
                 worker_thread_observer, worker_environment,
                 g_synchronous_thread_start_for_testing);
@@ -228,7 +242,6 @@ bool ThreadPoolImpl::PostDelayedTask(const Location& from_here,
                                      const TaskTraits& traits,
                                      OnceClosure task,
                                      TimeDelta delay) {
-  AssertNoExtensionInTraits(traits);
   // Post |task| as part of a one-off single-task Sequence.
   return PostTaskWithSequence(
       Task(from_here, std::move(task), TimeTicks::Now(), delay,
@@ -239,13 +252,11 @@ bool ThreadPoolImpl::PostDelayedTask(const Location& from_here,
 
 scoped_refptr<TaskRunner> ThreadPoolImpl::CreateTaskRunner(
     const TaskTraits& traits) {
-  AssertNoExtensionInTraits(traits);
   return MakeRefCounted<PooledParallelTaskRunner>(traits, this);
 }
 
 scoped_refptr<SequencedTaskRunner> ThreadPoolImpl::CreateSequencedTaskRunner(
     const TaskTraits& traits) {
-  AssertNoExtensionInTraits(traits);
   return MakeRefCounted<PooledSequencedTaskRunner>(traits, this);
 }
 
@@ -253,7 +264,6 @@ scoped_refptr<SingleThreadTaskRunner>
 ThreadPoolImpl::CreateSingleThreadTaskRunner(
     const TaskTraits& traits,
     SingleThreadTaskRunnerThreadMode thread_mode) {
-  AssertNoExtensionInTraits(traits);
   return single_thread_task_runner_manager_.CreateSingleThreadTaskRunner(
       traits, thread_mode);
 }
@@ -262,7 +272,6 @@ ThreadPoolImpl::CreateSingleThreadTaskRunner(
 scoped_refptr<SingleThreadTaskRunner> ThreadPoolImpl::CreateCOMSTATaskRunner(
     const TaskTraits& traits,
     SingleThreadTaskRunnerThreadMode thread_mode) {
-  AssertNoExtensionInTraits(traits);
   return single_thread_task_runner_manager_.CreateCOMSTATaskRunner(traits,
                                                                    thread_mode);
 }
@@ -270,7 +279,6 @@ scoped_refptr<SingleThreadTaskRunner> ThreadPoolImpl::CreateCOMSTATaskRunner(
 
 scoped_refptr<UpdateableSequencedTaskRunner>
 ThreadPoolImpl::CreateUpdateableSequencedTaskRunner(const TaskTraits& traits) {
-  AssertNoExtensionInTraits(traits);
   return MakeRefCounted<PooledSequencedTaskRunner>(traits, this);
 }
 

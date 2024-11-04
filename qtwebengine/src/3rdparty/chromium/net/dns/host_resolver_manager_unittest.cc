@@ -32,10 +32,12 @@
 #include "base/task/thread_pool/thread_pool_instance.h"
 #include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
+#include "base/test/mock_callback.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/simple_test_clock.h"
 #include "base/test/test_mock_time_task_runner.h"
 #include "base/test/test_timeouts.h"
+#include "base/test/to_vector.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
 #include "base/timer/mock_timer.h"
@@ -78,6 +80,7 @@
 #include "net/log/net_log_with_source.h"
 #include "net/log/test_net_log.h"
 #include "net/log/test_net_log_util.h"
+#include "net/proxy_resolution/configured_proxy_resolution_service.h"
 #include "net/socket/next_proto.h"
 #include "net/socket/socket_test_util.h"
 #include "net/test/gtest_util.h"
@@ -99,12 +102,16 @@ using net::test::IsError;
 using net::test::IsOk;
 using ::testing::_;
 using ::testing::AllOf;
+using ::testing::AnyOf;
 using ::testing::Between;
 using ::testing::ByMove;
+using ::testing::Contains;
 using ::testing::Eq;
 using ::testing::IsEmpty;
+using ::testing::Not;
 using ::testing::Optional;
 using ::testing::Pair;
+using ::testing::Pointee;
 using ::testing::Property;
 using ::testing::Return;
 using ::testing::UnorderedElementsAre;
@@ -224,8 +231,7 @@ class MockHostResolverProc : public HostResolverProc {
               AddressList* addrlist,
               int* os_error) override {
     base::AutoLock lock(lock_);
-    capture_list_.push_back(
-        ResolveKey(hostname, address_family, host_resolver_flags));
+    capture_list_.emplace_back(hostname, address_family, host_resolver_flags);
     ++num_requests_waiting_;
     requests_waiting_.Broadcast();
     {
@@ -478,24 +484,36 @@ class TestHostResolverManager : public HostResolverManager {
                           SystemDnsConfigChangeNotifier* notifier,
                           NetLog* net_log,
                           bool ipv6_reachable = true,
-                          bool ipv4_reachable = true)
+                          bool ipv4_reachable = true,
+                          bool is_async = false)
       : HostResolverManager(options, notifier, net_log),
         ipv6_reachable_(ipv6_reachable),
-        ipv4_reachable_(ipv4_reachable) {}
+        ipv4_reachable_(ipv4_reachable),
+        is_async_(is_async) {}
 
   ~TestHostResolverManager() override = default;
 
  private:
   const bool ipv6_reachable_;
   const bool ipv4_reachable_;
+  const bool is_async_;
 
-  bool IsGloballyReachable(const IPAddress& dest,
-                           const NetLogWithSource& net_log) override {
+  int StartGloballyReachableCheck(const IPAddress& dest,
+                                  const NetLogWithSource& net_log,
+                                  ClientSocketFactory* client_socket_factory,
+                                  CompletionOnceCallback callback) override {
+    int rv = OK;
     if (dest.IsIPv6()) {
-      return ipv6_reachable_;
+      rv = ipv6_reachable_ ? OK : ERR_FAILED;
     } else {
-      return ipv4_reachable_;
+      rv = ipv4_reachable_ ? OK : ERR_FAILED;
     }
+    if (is_async_) {
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE, base::BindOnce(std::move(callback), rv));
+      return ERR_IO_PENDING;
+    }
+    return rv;
   }
 };
 
@@ -555,12 +573,28 @@ class HostResolverManagerTest : public TestWithTaskEnvironment {
 
   // This HostResolverManager will only allow 1 outstanding resolve at a time
   // and perform no retries.
-  void CreateSerialResolver(bool check_ipv6_on_wifi = true) {
+  void CreateSerialResolver(bool check_ipv6_on_wifi = true,
+                            bool ipv6_reachable = true,
+                            bool is_async = false) {
     HostResolverSystemTask::Params params = DefaultParams(proc_);
     params.max_retry_attempts = 0u;
-    CreateResolverWithLimitsAndParams(1u, params, true /* ipv6_reachable */,
-                                      check_ipv6_on_wifi);
+    CreateResolverWithLimitsAndParams(1u, params, ipv6_reachable,
+                                      check_ipv6_on_wifi, is_async);
   }
+
+  void StaleAllowedFromIpTest(bool is_async);
+  void LocalOnlyFromIpTest(bool is_async);
+  void ChangePriorityTest(bool is_async);
+  void AbortOnlyExistingRequestsOnIPAddressChangeTest(bool is_async);
+  void FlushCacheOnIPAddressChangeTest(bool is_async);
+  void AbortOnIPAddressChangedTest(bool is_async);
+  void NumericIPv6AddressTest(bool is_async);
+  void NumericIPv6AddressWithSchemeTest(bool is_async);
+  void LocalhostIPV4IPV6LookupTest(bool is_async);
+  void IPv4AddressLiteralInIPv6OnlyNetworkTest(bool is_async);
+  void IPv4AddressLiteralInIPv6OnlyNetworkPort443Test(bool is_async);
+  void IPv4AddressLiteralInIPv6OnlyNetworkNoDns64Test(bool is_async);
+  void IPv4AddressLiteralInIPv6OnlyNetworkBadAddressTest(bool is_async);
 
  protected:
   // testing::Test implementation:
@@ -583,13 +617,14 @@ class HostResolverManagerTest : public TestWithTaskEnvironment {
       size_t max_concurrent_resolves,
       const HostResolverSystemTask::Params& params,
       bool ipv6_reachable,
-      bool check_ipv6_on_wifi) {
+      bool check_ipv6_on_wifi,
+      bool is_async = false) {
     HostResolver::ManagerOptions options = DefaultOptions();
     options.max_concurrent_resolves = max_concurrent_resolves;
     options.check_ipv6_on_wifi = check_ipv6_on_wifi;
 
     CreateResolverWithOptionsAndParams(std::move(options), params,
-                                       ipv6_reachable);
+                                       ipv6_reachable, is_async);
   }
 
   virtual HostResolver::ManagerOptions DefaultOptions() {
@@ -603,6 +638,7 @@ class HostResolverManagerTest : public TestWithTaskEnvironment {
       HostResolver::ManagerOptions options,
       const HostResolverSystemTask::Params& params,
       bool ipv6_reachable,
+      bool is_async = false,
       bool ipv4_reachable = true) {
     // Use HostResolverManagerDnsTest if enabling DNS client.
     DCHECK(!options.insecure_dns_client_enabled);
@@ -611,9 +647,8 @@ class HostResolverManagerTest : public TestWithTaskEnvironment {
 
     resolver_ = std::make_unique<TestHostResolverManager>(
         options, nullptr /* notifier */, nullptr /* net_log */, ipv6_reachable,
-        ipv4_reachable);
+        ipv4_reachable, is_async);
     resolver_->set_host_resolver_system_params_for_test(params);
-
     resolver_->RegisterResolveContext(resolve_context_.get());
   }
 
@@ -632,9 +667,15 @@ class HostResolverManagerTest : public TestWithTaskEnvironment {
     return DnsClient::kMaxInsecureFallbackFailures;
   }
 
-  bool IsIPv6Reachable(const NetLogWithSource& net_log) {
-    return resolver_->IsIPv6Reachable(net_log);
+  int StartIPv6ReachabilityCheck(
+      const NetLogWithSource& net_log,
+      raw_ptr<ClientSocketFactory> client_socket_factory,
+      CompletionOnceCallback callback) {
+    return resolver_->StartIPv6ReachabilityCheck(net_log, client_socket_factory,
+                                                 std::move(callback));
   }
+
+  bool GetLastIpv6ProbeResult() { return resolver_->last_ipv6_probe_result_; }
 
   void PopulateCache(const HostCache::Key& key, IPEndPoint endpoint) {
     resolver_->CacheResult(resolve_context_->host_cache(), key,
@@ -844,7 +885,10 @@ TEST_F(HostResolverManagerTest, DnsQueryWithoutAliases) {
               testing::Pointee(testing::IsEmpty()));
 }
 
-TEST_F(HostResolverManagerTest, LocalhostIPV4IPV6Lookup) {
+void HostResolverManagerTest::LocalhostIPV4IPV6LookupTest(bool is_async) {
+  CreateResolverWithLimitsAndParams(kMaxJobs, DefaultParams(proc_),
+                                    true /* ipv6_reachable */,
+                                    true /* check_ipv6_on_wifi */, is_async);
   HostResolver::ResolveHostParameters parameters;
 
   parameters.dns_query_type = DnsQueryType::A;
@@ -886,6 +930,14 @@ TEST_F(HostResolverManagerTest, LocalhostIPV4IPV6Lookup) {
               CreateExpected("::1", 80), CreateExpected("127.0.0.1", 80))))));
 }
 
+TEST_F(HostResolverManagerTest, LocalhostIPV4IPV6LookupAsync) {
+  LocalhostIPV4IPV6LookupTest(true);
+}
+
+TEST_F(HostResolverManagerTest, LocalhostIPV4IPV6LookupSync) {
+  LocalhostIPV4IPV6LookupTest(false);
+}
+
 TEST_F(HostResolverManagerTest, ResolveIPLiteralWithHostResolverSystemOnly) {
   const char kIpLiteral[] = "178.78.32.1";
   // Add a mapping to tell if the resolver proc was called (if it was called,
@@ -921,8 +973,10 @@ TEST_F(HostResolverManagerTest, EmptyListMeansNameNotResolved) {
       resolve_context_->host_cache()));
 
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_FALSE(response.request()->GetStaleInfo());
 
   EXPECT_EQ("just.testing", proc_->GetCaptureList()[0].hostname);
@@ -940,8 +994,10 @@ TEST_F(HostResolverManagerTest, FailedAsynchronousLookup) {
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
   EXPECT_THAT(response.top_level_result_error(),
               IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_FALSE(response.request()->GetStaleInfo());
 
   EXPECT_EQ("just.testing", proc_->GetCaptureList()[0].hostname);
@@ -1013,7 +1069,10 @@ TEST_F(HostResolverManagerTest, NumericIPv4AddressWithScheme) {
           testing::UnorderedElementsAre(CreateExpected("127.1.2.3", 5555))))));
 }
 
-TEST_F(HostResolverManagerTest, NumericIPv6Address) {
+void HostResolverManagerTest::NumericIPv6AddressTest(bool is_async) {
+  CreateResolverWithLimitsAndParams(kMaxJobs, DefaultParams(proc_),
+                                    true /* ipv6_reachable */,
+                                    true /* check_ipv6_on_wifi */, is_async);
   // Resolve a plain IPv6 address.  Don't worry about [brackets], because
   // the caller should have removed them.
   ResolveHostResponseHelper response(resolver_->CreateRequest(
@@ -1030,7 +1089,18 @@ TEST_F(HostResolverManagerTest, NumericIPv6Address) {
                       CreateExpected("2001:db8::1", 5555))))));
 }
 
-TEST_F(HostResolverManagerTest, NumericIPv6AddressWithScheme) {
+TEST_F(HostResolverManagerTest, NumericIPv6AddressAsync) {
+  NumericIPv6AddressTest(true);
+}
+
+TEST_F(HostResolverManagerTest, NumericIPv6AddressSync) {
+  NumericIPv6AddressTest(false);
+}
+
+void HostResolverManagerTest::NumericIPv6AddressWithSchemeTest(bool is_async) {
+  CreateResolverWithLimitsAndParams(kMaxJobs, DefaultParams(proc_),
+                                    true /* ipv6_reachable */,
+                                    true /* check_ipv6_on_wifi */, is_async);
   ResolveHostResponseHelper response(resolver_->CreateRequest(
       url::SchemeHostPort(url::kFtpScheme, "[2001:db8::1]", 5555),
       NetworkAnonymizationKey(), NetLogWithSource(), absl::nullopt,
@@ -1045,6 +1115,82 @@ TEST_F(HostResolverManagerTest, NumericIPv6AddressWithScheme) {
                       CreateExpected("2001:db8::1", 5555))))));
 }
 
+TEST_F(HostResolverManagerTest, NumericIPv6AddressWithSchemeAsync) {
+  NumericIPv6AddressWithSchemeTest(true);
+}
+
+TEST_F(HostResolverManagerTest, NumericIPv6AddressWithSchemeSync) {
+  NumericIPv6AddressWithSchemeTest(false);
+}
+
+// Regression test for https://crbug.com/1432508.
+//
+// Tests that if a new request is made while the loop within
+// FinishIPv6ReachabilityCheck is still running, and the new request needs to
+// wait on a new IPv6 probe to complete, the new request does not try to modify
+// the same vector that FinishIPv6ReachabilityCheck is iterating over.
+TEST_F(HostResolverManagerTest, AddRequestDuringFinishIPv6ReachabilityCheck) {
+  CreateResolverWithLimitsAndParams(kMaxJobs, DefaultParams(proc_),
+                                    true /* ipv6_reachable */,
+                                    true /* check_ipv6_on_wifi */, true);
+
+  // Reset `last_ipv6_probe_time_` if `reset_ipv6_probe_time` true so a new
+  // request kicks off a new reachability probe.
+  auto custom_callback_template = base::BindLambdaForTesting(
+      [&](bool reset_ipv6_probe_time, const HostPortPair& next_host,
+          std::unique_ptr<ResolveHostResponseHelper>* next_response,
+          CompletionOnceCallback completion_callback, int error) {
+        if (reset_ipv6_probe_time) {
+          resolver_->ResetIPv6ProbeTimeForTesting();
+        }
+        *next_response = std::make_unique<ResolveHostResponseHelper>(
+            resolver_->CreateRequest(next_host, NetworkAnonymizationKey(),
+                                     NetLogWithSource(), absl::nullopt,
+                                     resolve_context_.get(),
+                                     resolve_context_->host_cache()));
+        std::move(completion_callback).Run(error);
+      });
+
+  std::vector<std::unique_ptr<ResolveHostResponseHelper>> next_responses(3);
+
+  ResolveHostResponseHelper response0(
+      resolver_->CreateRequest(HostPortPair("2001:db8::1", 5555),
+                               NetworkAnonymizationKey(), NetLogWithSource(),
+                               absl::nullopt, resolve_context_.get(),
+                               resolve_context_->host_cache()),
+      base::BindOnce(custom_callback_template, true, HostPortPair("zzz", 80),
+                     &next_responses[0]));
+
+  // New requests made by response1 and response2 will wait for a new
+  // reachability probe to complete.
+  ResolveHostResponseHelper response1(
+      resolver_->CreateRequest(HostPortPair("2001:db8::1", 5555),
+                               NetworkAnonymizationKey(), NetLogWithSource(),
+                               absl::nullopt, resolve_context_.get(),
+                               resolve_context_->host_cache()),
+      base::BindOnce(custom_callback_template, false, HostPortPair("aaa", 80),
+                     &next_responses[1]));
+
+  ResolveHostResponseHelper response2(
+      resolver_->CreateRequest(HostPortPair("2001:db8::1", 5555),
+                               NetworkAnonymizationKey(), NetLogWithSource(),
+                               absl::nullopt, resolve_context_.get(),
+                               resolve_context_->host_cache()),
+      base::BindOnce(custom_callback_template, false, HostPortPair("eee", 80),
+                     &next_responses[2]));
+
+  // Unblock all calls to proc.
+  proc_->SignalMultiple(6u);
+
+  // All requests should return OK.
+  EXPECT_THAT(response0.result_error(), IsOk());
+  EXPECT_THAT(response1.result_error(), IsOk());
+  EXPECT_THAT(response2.result_error(), IsOk());
+  EXPECT_THAT(next_responses[0]->result_error(), IsOk());
+  EXPECT_THAT(next_responses[1]->result_error(), IsOk());
+  EXPECT_THAT(next_responses[2]->result_error(), IsOk());
+}
+
 TEST_F(HostResolverManagerTest, EmptyHost) {
   ResolveHostResponseHelper response(resolver_->CreateRequest(
       HostPortPair(std::string(), 5555), NetworkAnonymizationKey(),
@@ -1052,8 +1198,10 @@ TEST_F(HostResolverManagerTest, EmptyHost) {
       resolve_context_->host_cache()));
 
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerTest, EmptyDotsHost) {
@@ -1064,8 +1212,10 @@ TEST_F(HostResolverManagerTest, EmptyDotsHost) {
         resolve_context_->host_cache()));
 
     EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-    EXPECT_FALSE(response.request()->GetAddressResults());
-    EXPECT_FALSE(response.request()->GetEndpointResults());
+    EXPECT_THAT(response.request()->GetAddressResults(),
+                AnyOf(nullptr, Pointee(IsEmpty())));
+    EXPECT_THAT(response.request()->GetEndpointResults(),
+                AnyOf(nullptr, Pointee(IsEmpty())));
   }
 }
 
@@ -1076,8 +1226,10 @@ TEST_F(HostResolverManagerTest, LongHost) {
       resolve_context_->host_cache()));
 
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerTest, DeDupeRequests) {
@@ -1600,9 +1752,10 @@ TEST_F(HostResolverManagerTest, BypassCache) {
   EXPECT_EQ(2u, proc_->GetCaptureList().size());
 }
 
-// Test that IP address changes flush the cache but initial DNS config reads
-// do not.
-TEST_F(HostResolverManagerTest, FlushCacheOnIPAddressChange) {
+void HostResolverManagerTest::FlushCacheOnIPAddressChangeTest(bool is_async) {
+  CreateResolverWithLimitsAndParams(kMaxJobs, DefaultParams(proc_),
+                                    true /* ipv6_reachable */,
+                                    true /* check_ipv6_on_wifi */, is_async);
   proc_->SignalMultiple(2u);  // One before the flush, one after.
 
   ResolveHostResponseHelper initial_response(resolver_->CreateRequest(
@@ -1630,13 +1783,27 @@ TEST_F(HostResolverManagerTest, FlushCacheOnIPAddressChange) {
   EXPECT_EQ(2u, proc_->GetCaptureList().size());  // Expected increase.
 }
 
-// Test that IP address changes send ERR_NETWORK_CHANGED to pending requests.
-TEST_F(HostResolverManagerTest, AbortOnIPAddressChanged) {
+// Test that IP address changes flush the cache but initial DNS config reads
+// do not.
+TEST_F(HostResolverManagerTest, FlushCacheOnIPAddressChangeAsync) {
+  FlushCacheOnIPAddressChangeTest(true);
+}
+TEST_F(HostResolverManagerTest, FlushCacheOnIPAddressChangeSync) {
+  FlushCacheOnIPAddressChangeTest(false);
+}
+
+void HostResolverManagerTest::AbortOnIPAddressChangedTest(bool is_async) {
+  CreateResolverWithLimitsAndParams(kMaxJobs, DefaultParams(proc_),
+                                    true /* ipv6_reachable */,
+                                    true /* check_ipv6_on_wifi */, is_async);
   ResolveHostResponseHelper response(resolver_->CreateRequest(
       HostPortPair("host1", 70), NetworkAnonymizationKey(), NetLogWithSource(),
       absl::nullopt, resolve_context_.get(), resolve_context_->host_cache()));
 
   ASSERT_FALSE(response.complete());
+  if (is_async) {
+    base::RunLoop().RunUntilIdle();
+  }
   ASSERT_TRUE(proc_->WaitFor(1u));
 
   // Triggering an IP address change.
@@ -1645,9 +1812,19 @@ TEST_F(HostResolverManagerTest, AbortOnIPAddressChanged) {
   proc_->SignalAll();
 
   EXPECT_THAT(response.result_error(), IsError(ERR_NETWORK_CHANGED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_EQ(0u, resolve_context_->host_cache()->size());
+}
+
+// Test that IP address changes send ERR_NETWORK_CHANGED to pending requests.
+TEST_F(HostResolverManagerTest, AbortOnIPAddressChangedAsync) {
+  AbortOnIPAddressChangedTest(true);
+}
+TEST_F(HostResolverManagerTest, AbortOnIPAddressChangedSync) {
+  AbortOnIPAddressChangedTest(false);
 }
 
 // Obey pool constraints after IP address has changed.
@@ -1695,9 +1872,11 @@ TEST_F(HostResolverManagerTest, ObeyPoolConstraintsAfterIPAddressChange) {
   EXPECT_THAT(responses[2]->result_error(), IsOk());
 }
 
-// Tests that a new Request made from the callback of a previously aborted one
-// will not be aborted.
-TEST_F(HostResolverManagerTest, AbortOnlyExistingRequestsOnIPAddressChange) {
+void HostResolverManagerTest::AbortOnlyExistingRequestsOnIPAddressChangeTest(
+    bool is_async) {
+  CreateResolverWithLimitsAndParams(kMaxJobs, DefaultParams(proc_),
+                                    true /* ipv6_reachable */,
+                                    true /* check_ipv6_on_wifi */, is_async);
   auto custom_callback_template = base::BindLambdaForTesting(
       [&](const HostPortPair& next_host,
           std::unique_ptr<ResolveHostResponseHelper>* next_response,
@@ -1736,8 +1915,12 @@ TEST_F(HostResolverManagerTest, AbortOnlyExistingRequestsOnIPAddressChange) {
       base::BindOnce(custom_callback_template, HostPortPair("eee", 80),
                      &next_responses[2]));
 
+  if (is_async) {
+    base::RunLoop().RunUntilIdle();
+  }
   // Wait until all are blocked;
   ASSERT_TRUE(proc_->WaitFor(3u));
+
   // Trigger an IP address change.
   NetworkChangeNotifier::NotifyObserversOfIPAddressChangeForTests();
   // This should abort all running jobs.
@@ -1762,6 +1945,16 @@ TEST_F(HostResolverManagerTest, AbortOnlyExistingRequestsOnIPAddressChange) {
   // Verify that results of aborted Jobs were not cached.
   EXPECT_EQ(6u, proc_->GetCaptureList().size());
   EXPECT_EQ(3u, resolve_context_->host_cache()->size());
+}
+// Tests that a new Request made from the callback of a previously aborted one
+// will not be aborted.
+TEST_F(HostResolverManagerTest,
+       AbortOnlyExistingRequestsOnIPAddressChangeAsync) {
+  AbortOnlyExistingRequestsOnIPAddressChangeTest(true);
+}
+TEST_F(HostResolverManagerTest,
+       AbortOnlyExistingRequestsOnIPAddressChangeSync) {
+  AbortOnlyExistingRequestsOnIPAddressChangeTest(false);
 }
 
 // Tests that when the maximum threads is set to 1, requests are dequeued
@@ -1849,9 +2042,9 @@ TEST_F(HostResolverManagerTest, HigherPriorityRequestsStartedFirst) {
   EXPECT_EQ("req6", capture_list[6].hostname);
 }
 
-// Test that changing a job's priority affects the dequeueing order.
-TEST_F(HostResolverManagerTest, ChangePriority) {
-  CreateSerialResolver();
+void HostResolverManagerTest::ChangePriorityTest(bool is_async) {
+  CreateSerialResolver(true /* check_ipv6_on_wifi */, true /* ipv6_reachable */,
+                       is_async);
 
   HostResolver::ResolveHostParameters lowest_priority;
   lowest_priority.initial_priority = LOWEST;
@@ -1900,6 +2093,15 @@ TEST_F(HostResolverManagerTest, ChangePriority) {
   EXPECT_EQ("req0", capture_list[0].hostname);
   EXPECT_EQ("req2", capture_list[1].hostname);
   EXPECT_EQ("req1", capture_list[2].hostname);
+}
+
+// Test that changing a job's priority affects the dequeueing order.
+TEST_F(HostResolverManagerTest, ChangePriorityAsync) {
+  ChangePriorityTest(true);
+}
+
+TEST_F(HostResolverManagerTest, ChangePrioritySync) {
+  ChangePriorityTest(false);
 }
 
 // Try cancelling a job which has not started yet.
@@ -2037,8 +2239,10 @@ TEST_F(HostResolverManagerTest, QueueOverflow) {
           resolve_context_->host_cache())));
   EXPECT_THAT(responses[4]->result_error(),
               IsError(ERR_HOST_RESOLVER_QUEUE_TOO_LARGE));  // Evicts self.
-  EXPECT_FALSE(responses[4]->request()->GetAddressResults());
-  EXPECT_FALSE(responses[4]->request()->GetEndpointResults());
+  EXPECT_THAT(responses[4]->request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(responses[4]->request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   responses.emplace_back(
       std::make_unique<ResolveHostResponseHelper>(resolver_->CreateRequest(
@@ -2047,8 +2251,10 @@ TEST_F(HostResolverManagerTest, QueueOverflow) {
           resolve_context_->host_cache())));
   EXPECT_THAT(responses[2]->result_error(),
               IsError(ERR_HOST_RESOLVER_QUEUE_TOO_LARGE));
-  EXPECT_FALSE(responses[2]->request()->GetAddressResults());
-  EXPECT_FALSE(responses[2]->request()->GetEndpointResults());
+  EXPECT_THAT(responses[2]->request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(responses[2]->request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   responses.emplace_back(
       std::make_unique<ResolveHostResponseHelper>(resolver_->CreateRequest(
@@ -2057,8 +2263,10 @@ TEST_F(HostResolverManagerTest, QueueOverflow) {
           resolve_context_->host_cache())));
   EXPECT_THAT(responses[3]->result_error(),
               IsError(ERR_HOST_RESOLVER_QUEUE_TOO_LARGE));
-  EXPECT_FALSE(responses[3]->request()->GetAddressResults());
-  EXPECT_FALSE(responses[3]->request()->GetEndpointResults());
+  EXPECT_THAT(responses[3]->request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(responses[3]->request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   responses.emplace_back(
       std::make_unique<ResolveHostResponseHelper>(resolver_->CreateRequest(
@@ -2067,8 +2275,10 @@ TEST_F(HostResolverManagerTest, QueueOverflow) {
           resolve_context_->host_cache())));
   EXPECT_THAT(responses[5]->result_error(),
               IsError(ERR_HOST_RESOLVER_QUEUE_TOO_LARGE));
-  EXPECT_FALSE(responses[5]->request()->GetAddressResults());
-  EXPECT_FALSE(responses[5]->request()->GetEndpointResults());
+  EXPECT_THAT(responses[5]->request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(responses[5]->request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Unblock the resolver thread so the requests can run.
   proc_->SignalMultiple(4u);
@@ -2122,8 +2332,10 @@ TEST_F(HostResolverManagerTest, QueueOverflow_SelfEvict) {
       absl::nullopt, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(evict_response.result_error(),
               IsError(ERR_HOST_RESOLVER_QUEUE_TOO_LARGE));
-  EXPECT_FALSE(evict_response.request()->GetAddressResults());
-  EXPECT_FALSE(evict_response.request()->GetEndpointResults());
+  EXPECT_THAT(evict_response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(evict_response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   proc_->SignalMultiple(1u);
 
@@ -2213,8 +2425,10 @@ TEST_F(HostResolverManagerTest, LocalOnly_FromCache) {
       resolve_context_->host_cache()));
   EXPECT_TRUE(cache_miss_request.complete());
   EXPECT_THAT(cache_miss_request.result_error(), IsError(ERR_DNS_CACHE_MISS));
-  EXPECT_FALSE(cache_miss_request.request()->GetAddressResults());
-  EXPECT_FALSE(cache_miss_request.request()->GetEndpointResults());
+  EXPECT_THAT(cache_miss_request.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(cache_miss_request.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_FALSE(cache_miss_request.request()->GetStaleInfo());
 
   // Normal query to populate the cache.
@@ -2255,8 +2469,10 @@ TEST_F(HostResolverManagerTest, LocalOnly_StaleEntry) {
       resolve_context_->host_cache()));
   EXPECT_TRUE(cache_miss_request.complete());
   EXPECT_THAT(cache_miss_request.result_error(), IsError(ERR_DNS_CACHE_MISS));
-  EXPECT_FALSE(cache_miss_request.request()->GetAddressResults());
-  EXPECT_FALSE(cache_miss_request.request()->GetEndpointResults());
+  EXPECT_THAT(cache_miss_request.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(cache_miss_request.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_FALSE(cache_miss_request.request()->GetStaleInfo());
 
   // Normal query to populate the cache.
@@ -2276,12 +2492,17 @@ TEST_F(HostResolverManagerTest, LocalOnly_StaleEntry) {
       resolve_context_->host_cache()));
   EXPECT_TRUE(stale_request.complete());
   EXPECT_THAT(stale_request.result_error(), IsError(ERR_DNS_CACHE_MISS));
-  EXPECT_FALSE(stale_request.request()->GetAddressResults());
-  EXPECT_FALSE(stale_request.request()->GetEndpointResults());
+  EXPECT_THAT(stale_request.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(stale_request.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_FALSE(stale_request.request()->GetStaleInfo());
 }
 
-TEST_F(HostResolverManagerTest, LocalOnly_FromIp) {
+void HostResolverManagerTest::LocalOnlyFromIpTest(bool is_async) {
+  CreateResolverWithLimitsAndParams(kMaxJobs, DefaultParams(proc_),
+                                    true /* ipv6_reachable */,
+                                    true /* check_ipv6_on_wifi */, is_async);
   HostResolver::ResolveHostParameters source_none_parameters;
   source_none_parameters.source = HostResolverSource::LOCAL_ONLY;
 
@@ -2290,15 +2511,51 @@ TEST_F(HostResolverManagerTest, LocalOnly_FromIp) {
       NetLogWithSource(), source_none_parameters, resolve_context_.get(),
       resolve_context_->host_cache()));
 
-  // Expected to resolve synchronously.
-  EXPECT_TRUE(response.complete());
-  EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_THAT(response.request()->GetAddressResults()->endpoints(),
-              testing::ElementsAre(CreateExpected("1.2.3.4", 56)));
-  EXPECT_THAT(response.request()->GetEndpointResults(),
-              testing::Pointee(testing::ElementsAre(ExpectEndpointResult(
-                  testing::ElementsAre(CreateExpected("1.2.3.4", 56))))));
-  EXPECT_FALSE(response.request()->GetStaleInfo());
+  // If IPv6 reachability is asynchronous, the first request will return
+  // NAME_NOT_RESOLVED. Do a second request to confirm that it returns OK once
+  // reachability check completes.
+  if (is_async) {
+    // Expected to resolve synchronously.
+    EXPECT_TRUE(response.complete());
+    EXPECT_EQ(response.result_error(), ERR_NAME_NOT_RESOLVED);
+    EXPECT_THAT(response.request()->GetAddressResults(),
+                AnyOf(nullptr, Pointee(IsEmpty())));
+    EXPECT_THAT(response.request()->GetEndpointResults(),
+                AnyOf(nullptr, Pointee(IsEmpty())));
+    EXPECT_FALSE(response.request()->GetStaleInfo());
+    base::RunLoop().RunUntilIdle();
+
+    ResolveHostResponseHelper response2(resolver_->CreateRequest(
+        HostPortPair("1.2.3.4", 56), NetworkAnonymizationKey(),
+        NetLogWithSource(), source_none_parameters, resolve_context_.get(),
+        resolve_context_->host_cache()));
+    EXPECT_TRUE(response2.complete());
+    EXPECT_THAT(response2.result_error(), IsOk());
+    EXPECT_THAT(response2.request()->GetAddressResults()->endpoints(),
+                testing::ElementsAre(CreateExpected("1.2.3.4", 56)));
+    EXPECT_THAT(response2.request()->GetEndpointResults(),
+                testing::Pointee(testing::ElementsAre(ExpectEndpointResult(
+                    testing::ElementsAre(CreateExpected("1.2.3.4", 56))))));
+    EXPECT_FALSE(response2.request()->GetStaleInfo());
+  } else {
+    // Expected to resolve synchronously.
+    EXPECT_TRUE(response.complete());
+    EXPECT_THAT(response.result_error(), IsOk());
+    EXPECT_THAT(response.request()->GetAddressResults()->endpoints(),
+                testing::ElementsAre(CreateExpected("1.2.3.4", 56)));
+    EXPECT_THAT(response.request()->GetEndpointResults(),
+                testing::Pointee(testing::ElementsAre(ExpectEndpointResult(
+                    testing::ElementsAre(CreateExpected("1.2.3.4", 56))))));
+    EXPECT_FALSE(response.request()->GetStaleInfo());
+  }
+}
+
+TEST_F(HostResolverManagerTest, LocalOnly_FromIpAsync) {
+  LocalOnlyFromIpTest(true);
+}
+
+TEST_F(HostResolverManagerTest, LocalOnly_FromIpSync) {
+  LocalOnlyFromIpTest(false);
 }
 
 TEST_F(HostResolverManagerTest, LocalOnly_InvalidName) {
@@ -2315,8 +2572,10 @@ TEST_F(HostResolverManagerTest, LocalOnly_InvalidName) {
   // Expected to fail synchronously.
   EXPECT_TRUE(response.complete());
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_FALSE(response.request()->GetStaleInfo());
 }
 
@@ -2332,8 +2591,10 @@ TEST_F(HostResolverManagerTest, LocalOnly_InvalidLocalhost) {
   // Expected to fail synchronously.
   EXPECT_TRUE(response.complete());
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_FALSE(response.request()->GetStaleInfo());
 }
 
@@ -2353,8 +2614,10 @@ TEST_F(HostResolverManagerTest, StaleAllowed) {
       resolve_context_->host_cache()));
   EXPECT_TRUE(cache_miss_request.complete());
   EXPECT_THAT(cache_miss_request.result_error(), IsError(ERR_DNS_CACHE_MISS));
-  EXPECT_FALSE(cache_miss_request.request()->GetAddressResults());
-  EXPECT_FALSE(cache_miss_request.request()->GetEndpointResults());
+  EXPECT_THAT(cache_miss_request.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(cache_miss_request.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_FALSE(cache_miss_request.request()->GetStaleInfo());
 
   // Normal query to populate cache
@@ -2407,7 +2670,10 @@ TEST_F(HostResolverManagerTest, StaleAllowed_NonLocal) {
   EXPECT_FALSE(response.request()->GetStaleInfo());
 }
 
-TEST_F(HostResolverManagerTest, StaleAllowed_FromIp) {
+void HostResolverManagerTest::StaleAllowedFromIpTest(bool is_async) {
+  CreateResolverWithLimitsAndParams(kMaxJobs, DefaultParams(proc_),
+                                    true /* ipv6_reachable */,
+                                    true /* check_ipv6_on_wifi */, is_async);
   HostResolver::ResolveHostParameters stale_allowed_parameters;
   stale_allowed_parameters.cache_usage =
       HostResolver::ResolveHostParameters::CacheUsage::STALE_ALLOWED;
@@ -2417,8 +2683,10 @@ TEST_F(HostResolverManagerTest, StaleAllowed_FromIp) {
       NetLogWithSource(), stale_allowed_parameters, resolve_context_.get(),
       resolve_context_->host_cache()));
 
-  // Expected to resolve synchronously without stale info.
-  EXPECT_TRUE(response.complete());
+  if (!is_async) {
+    // Expected to resolve synchronously without stale info.
+    EXPECT_TRUE(response.complete());
+  }
   EXPECT_THAT(response.result_error(), IsOk());
   EXPECT_THAT(response.request()->GetAddressResults()->endpoints(),
               testing::ElementsAre(CreateExpected("1.2.3.4", 57)));
@@ -2427,6 +2695,14 @@ TEST_F(HostResolverManagerTest, StaleAllowed_FromIp) {
       testing::Pointee(testing::UnorderedElementsAre(ExpectEndpointResult(
           testing::ElementsAre(CreateExpected("1.2.3.4", 57))))));
   EXPECT_FALSE(response.request()->GetStaleInfo());
+}
+
+TEST_F(HostResolverManagerTest, StaleAllowed_FromIpAsync) {
+  StaleAllowedFromIpTest(true);
+}
+
+TEST_F(HostResolverManagerTest, StaleAllowed_FromIpSync) {
+  StaleAllowedFromIpTest(false);
 }
 
 // TODO(mgersh): add a test case for errors with positive TTL after
@@ -2524,7 +2800,6 @@ TEST_F(HostResolverManagerTest, DefaultMaxRetryAttempts) {
   CreateResolverWithLimitsAndParams(kMaxJobs, params,
                                     false /* ipv6_reachable */,
                                     false /* check_ipv6_on_wifi */);
-
   // Resolve "host1". The resolver proc will hang all requests so this
   // resolution should remain stalled until calling SetResolvedAttemptNumber().
   ResolveHostResponseHelper response(resolver_->CreateRequest(
@@ -2573,8 +2848,10 @@ TEST_F(HostResolverManagerTest, NameCollisionIcann) {
       absl::nullopt, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(single_response.result_error(),
               IsError(ERR_ICANN_NAME_COLLISION));
-  EXPECT_FALSE(single_response.request()->GetAddressResults());
-  EXPECT_FALSE(single_response.request()->GetEndpointResults());
+  EXPECT_THAT(single_response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(single_response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // ERR_ICANN_NAME_COLLISION is cached like any other error, using a fixed TTL
   // for failed entries from proc-based resolver. That said, the fixed TTL is 0,
@@ -2628,30 +2905,57 @@ TEST_F(HostResolverManagerTest, NameCollisionIcann) {
   EXPECT_THAT(similar_response3.result_error(), IsOk());
 }
 
-TEST_F(HostResolverManagerTest, IsIPv6Reachable) {
+TEST_F(HostResolverManagerTest, StartIPv6ReachabilityCheck) {
   // The real HostResolverManager is needed since TestHostResolverManager will
   // bypass the IPv6 reachability tests.
   DestroyResolver();
   resolver_ = std::make_unique<HostResolverManager>(
       DefaultOptions(), nullptr /* system_dns_config_notifier */,
       nullptr /* net_log */);
-
   // Verify that two consecutive calls return the same value.
   RecordingNetLogObserver net_log_observer;
   NetLogWithSource net_log =
       NetLogWithSource::Make(net::NetLog::Get(), NetLogSourceType::NONE);
-  bool result1 = IsIPv6Reachable(net_log);
-  bool result2 = IsIPv6Reachable(net_log);
+  MockClientSocketFactory socket_factory;
+  SequencedSocketData sync_connect(MockConnect(SYNCHRONOUS, OK),
+                                   base::span<net::MockRead>(),
+                                   base::span<net::MockWrite>());
+  SequencedSocketData async_connect(MockConnect(ASYNC, OK),
+                                    base::span<net::MockRead>(),
+                                    base::span<net::MockWrite>());
+  socket_factory.AddSocketDataProvider(&sync_connect);
+  socket_factory.AddSocketDataProvider(&async_connect);
+
+  int attempt1 = StartIPv6ReachabilityCheck(net_log, &socket_factory,
+                                            base::DoNothingAs<void(int)>());
+  EXPECT_EQ(attempt1, OK);
+  int result1 = GetLastIpv6ProbeResult();
+
+  int attempt2 = StartIPv6ReachabilityCheck(net_log, &socket_factory,
+                                            base::DoNothingAs<void(int)>());
+  EXPECT_EQ(attempt2, OK);
+  int result2 = GetLastIpv6ProbeResult();
   EXPECT_EQ(result1, result2);
 
-  // Filter reachability check events and verify that there are two of them.
+  // Verify that async socket connections also return the same value.
+  resolver_->ResetIPv6ProbeTimeForTesting();
+  TestCompletionCallback callback;
+  int attempt3 =
+      StartIPv6ReachabilityCheck(net_log, &socket_factory, callback.callback());
+  EXPECT_EQ(attempt3, ERR_IO_PENDING);
+  EXPECT_THAT(callback.WaitForResult(), IsOk());
+  int result3 = GetLastIpv6ProbeResult();
+  EXPECT_EQ(result1, result3);
+
+  // Filter reachability check events and verify that there are three of them.
   auto probe_event_list = net_log_observer.GetEntriesWithType(
       NetLogEventType::HOST_RESOLVER_MANAGER_IPV6_REACHABILITY_CHECK);
-  ASSERT_EQ(2U, probe_event_list.size());
-
-  // Verify that the first request was not cached and the second one was.
+  ASSERT_EQ(3U, probe_event_list.size());
+  // Verify that the first and third requests were not cached and the second one
+  // was.
   EXPECT_FALSE(GetBooleanValueFromParams(probe_event_list[0], "cached"));
   EXPECT_TRUE(GetBooleanValueFromParams(probe_event_list[1], "cached"));
+  EXPECT_FALSE(GetBooleanValueFromParams(probe_event_list[0], "cached"));
 }
 
 TEST_F(HostResolverManagerTest, IncludeCanonicalName) {
@@ -2805,8 +3109,10 @@ TEST_F(HostResolverManagerTest, IsSpeculative) {
       resolve_context_->host_cache()));
 
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   ASSERT_EQ(1u, proc_->GetCaptureList().size());
   EXPECT_EQ("just.testing", proc_->GetCaptureList()[0].hostname);
@@ -3139,9 +3445,12 @@ TEST_F(HostResolverManagerTest, Mdns) {
           ExpectEndpointResult(testing::UnorderedElementsAre(
               CreateExpected("000a:0000:0000:0000:0001:0002:0003:0004", 80),
               CreateExpected("1.2.3.4", 80))))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerTest, Mdns_AaaaOnly) {
@@ -3193,12 +3502,16 @@ TEST_F(HostResolverManagerTest, Mdns_Txt) {
                                       sizeof(kMdnsResponseTxt));
 
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetTextResults(),
-              testing::Optional(testing::ElementsAre("foo", "bar")));
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+              testing::Pointee(testing::ElementsAre("foo", "bar")));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerTest, Mdns_Ptr) {
@@ -3221,13 +3534,17 @@ TEST_F(HostResolverManagerTest, Mdns_Ptr) {
                                       sizeof(kMdnsResponsePtr));
 
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(
       response.request()->GetHostnameResults(),
-      testing::Optional(testing::ElementsAre(HostPortPair("foo.com", 83))));
+      testing::Pointee(testing::ElementsAre(HostPortPair("foo.com", 83))));
 }
 
 TEST_F(HostResolverManagerTest, Mdns_Srv) {
@@ -3250,13 +3567,17 @@ TEST_F(HostResolverManagerTest, Mdns_Srv) {
                                       sizeof(kMdnsResponseSrv));
 
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(
       response.request()->GetHostnameResults(),
-      testing::Optional(testing::ElementsAre(HostPortPair("foo.com", 8265))));
+      testing::Pointee(testing::ElementsAre(HostPortPair("foo.com", 8265))));
 }
 
 // Test that we are able to create multicast DNS requests that contain
@@ -3279,13 +3600,17 @@ TEST_F(HostResolverManagerTest, Mdns_Srv_Unrestricted) {
                                       sizeof(kMdnsResponseSrvUnrestricted));
 
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(
       response.request()->GetHostnameResults(),
-      testing::Optional(testing::ElementsAre(HostPortPair("foo.com", 8265))));
+      testing::Pointee(testing::ElementsAre(HostPortPair("foo.com", 8265))));
 }
 
 // Test that we are able to create multicast DNS requests that contain
@@ -3309,12 +3634,16 @@ TEST_F(HostResolverManagerTest, Mdns_Srv_Result_Unrestricted) {
       sizeof(kMdnsResponseSrvUnrestrictedResult));
 
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetHostnameResults(),
-              testing::Optional(
+              testing::Pointee(
                   testing::ElementsAre(HostPortPair("foo bar.local", 8265))));
 }
 
@@ -3340,8 +3669,10 @@ TEST_F(HostResolverManagerTest, Mdns_Nsec) {
                                       sizeof(kMdnsResponseNsec));
 
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerTest, Mdns_NoResponse) {
@@ -3375,11 +3706,16 @@ TEST_F(HostResolverManagerTest, Mdns_NoResponse) {
                                   kSleepFudgeFactor);
 
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   test_task_runner->FastForwardUntilNoTasksRemain();
 }
@@ -3420,11 +3756,16 @@ TEST_F(HostResolverManagerTest, Mdns_WrongType) {
                                   kSleepFudgeFactor);
 
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   test_task_runner->FastForwardUntilNoTasksRemain();
 }
@@ -3528,8 +3869,10 @@ TEST_F(HostResolverManagerTest, Mdns_PartialFailure) {
       resolve_context_->host_cache()));
 
   EXPECT_THAT(response.result_error(), IsError(ERR_FAILED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerTest, Mdns_ListenFailure) {
@@ -3548,8 +3891,10 @@ TEST_F(HostResolverManagerTest, Mdns_ListenFailure) {
       resolve_context_->host_cache()));
 
   EXPECT_THAT(response.result_error(), IsError(ERR_FAILED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 // Implementation of HostResolver::MdnsListenerDelegate that records all
@@ -3907,8 +4252,10 @@ DnsConfig CreateUpgradableDnsConfig() {
 TEST_F(HostResolverManagerTest, NetworkAnonymizationKeyWriteToHostCache) {
   const SchemefulSite kSite1(GURL("https://origin1.test/"));
   const SchemefulSite kSite2(GURL("https://origin2.test/"));
-  const NetworkAnonymizationKey kNetworkAnonymizationKey1(kSite1, kSite1);
-  const NetworkAnonymizationKey kNetworkAnonymizationKey2(kSite2, kSite2);
+  auto kNetworkAnonymizationKey1 =
+      net::NetworkAnonymizationKey::CreateSameSite(kSite1);
+  auto kNetworkAnonymizationKey2 =
+      net::NetworkAnonymizationKey::CreateSameSite(kSite2);
 
   const char kFirstDnsResult[] = "192.168.1.42";
   const char kSecondDnsResult[] = "192.168.1.43";
@@ -4020,8 +4367,10 @@ TEST_F(HostResolverManagerTest, NetworkAnonymizationKeyWriteToHostCache) {
 TEST_F(HostResolverManagerTest, NetworkAnonymizationKeyReadFromHostCache) {
   const SchemefulSite kSite1(GURL("https://origin1.test/"));
   const SchemefulSite kSite2(GURL("https://origin2.test/"));
-  const NetworkAnonymizationKey kNetworkAnonymizationKey1(kSite1, kSite1);
-  const NetworkAnonymizationKey kNetworkAnonymizationKey2(kSite2, kSite2);
+  auto kNetworkAnonymizationKey1 =
+      net::NetworkAnonymizationKey::CreateSameSite(kSite1);
+  auto kNetworkAnonymizationKey2 =
+      net::NetworkAnonymizationKey::CreateSameSite(kSite2);
 
   struct CacheEntry {
     NetworkAnonymizationKey network_anonymization_key;
@@ -4035,8 +4384,8 @@ TEST_F(HostResolverManagerTest, NetworkAnonymizationKeyReadFromHostCache) {
   };
 
   // Add entries to cache for the empty NIK, NIK1, and NIK2. Only the
-  // HostResolverManager obeys features::kSplitHostCacheByNetworkIsolationKey,
-  // so this is fine to do regardless of the feature value.
+  // HostResolverManager obeys network state partitioning, so this is fine to do
+  // regardless of the feature value.
   for (const auto& cache_entry : kCacheEntries) {
     HostCache::Key key("just.testing", DnsQueryType::UNSPECIFIED, 0,
                        HostResolverSource::ANY,
@@ -4108,12 +4457,14 @@ TEST_F(HostResolverManagerTest, NetworkAnonymizationKeyReadFromHostCache) {
 }
 
 // Test that two requests made with different NetworkAnonymizationKeys are not
-// merged if |features::kSplitHostCacheByNetworkIsolationKey| is enabled.
+// merged if network state partitioning is enabled.
 TEST_F(HostResolverManagerTest, NetworkAnonymizationKeyTwoRequestsAtOnce) {
   const SchemefulSite kSite1(GURL("https://origin1.test/"));
   const SchemefulSite kSite2(GURL("https://origin2.test/"));
-  const NetworkAnonymizationKey kNetworkAnonymizationKey1(kSite1, kSite1);
-  const NetworkAnonymizationKey kNetworkAnonymizationKey2(kSite2, kSite2);
+  auto kNetworkAnonymizationKey1 =
+      net::NetworkAnonymizationKey::CreateSameSite(kSite1);
+  auto kNetworkAnonymizationKey2 =
+      net::NetworkAnonymizationKey::CreateSameSite(kSite2);
 
   const char kDnsResult[] = "192.168.1.42";
 
@@ -4201,7 +4552,6 @@ TEST_F(HostResolverManagerTest, ContextsNotMerged) {
       NetLogWithSource(), absl::nullopt, &resolve_context2,
       resolve_context2.host_cache()));
   EXPECT_FALSE(response2.complete());
-
   EXPECT_EQ(2u, resolver_->num_jobs_for_testing());
 
   // Wait for and complete the 2 over-the-wire DNS resolutions.
@@ -4249,6 +4599,9 @@ class HostResolverManagerDnsTest : public HostResolverManagerTest {
         notifier_task_runner_, std::move(config_service));
   }
 
+  void Ipv6UnreachableTest(bool is_async);
+  void Ipv6UnreachableInvalidConfigTest(bool is_async);
+
  protected:
   void TearDown() override {
     HostResolverManagerTest::TearDown();
@@ -4272,11 +4625,13 @@ class HostResolverManagerDnsTest : public HostResolverManagerTest {
       HostResolver::ManagerOptions options,
       const HostResolverSystemTask::Params& params,
       bool ipv6_reachable,
+      bool is_async = false,
       bool ipv4_reachable = true) override {
     DestroyResolver();
 
     resolver_ = std::make_unique<TestHostResolverManager>(
-        options, notifier_.get(), nullptr /* net_log */, ipv6_reachable);
+        options, notifier_.get(), nullptr /* net_log */, ipv6_reachable,
+        ipv4_reachable, is_async);
     auto dns_client =
         std::make_unique<MockDnsClient>(DnsConfig(), CreateDefaultDnsRules());
     dns_client_ = dns_client.get();
@@ -4285,7 +4640,6 @@ class HostResolverManagerDnsTest : public HostResolverManagerTest {
         options.insecure_dns_client_enabled,
         options.additional_types_via_insecure_dns_enabled);
     resolver_->set_host_resolver_system_params_for_test(params);
-
     resolver_->RegisterResolveContext(resolve_context_.get());
   }
 
@@ -4461,7 +4815,6 @@ class HostResolverManagerDnsTest : public HostResolverManagerTest {
 
   void ChangeDnsConfig(const DnsConfig& config) {
     DCHECK(config.IsValid());
-
     notifier_task_runner_->PostTask(
         FROM_HERE,
         base::BindOnce(&TestDnsConfigService::OnHostsRead,
@@ -4523,11 +4876,11 @@ class HostResolverManagerDnsTest : public HostResolverManagerTest {
   }
 
   scoped_refptr<base::TestMockTimeTaskRunner> notifier_task_runner_;
-  raw_ptr<TestDnsConfigService> config_service_;
+  raw_ptr<TestDnsConfigService, DanglingUntriaged> config_service_;
   std::unique_ptr<SystemDnsConfigChangeNotifier> notifier_;
 
   // Owned by |resolver_|.
-  raw_ptr<MockDnsClient> dns_client_ = nullptr;
+  raw_ptr<MockDnsClient, DanglingUntriaged> dns_client_ = nullptr;
 };
 
 TEST_F(HostResolverManagerDnsTest, FlushCacheOnDnsConfigChange) {
@@ -5111,8 +5464,10 @@ TEST_F(HostResolverManagerDnsTest, NameCollisionIcann) {
       NetLogWithSource(), absl::nullopt, resolve_context_.get(),
       resolve_context_->host_cache()));
   EXPECT_THAT(response_ipv4.result_error(), IsError(ERR_ICANN_NAME_COLLISION));
-  EXPECT_FALSE(response_ipv4.request()->GetAddressResults());
-  EXPECT_FALSE(response_ipv4.request()->GetEndpointResults());
+  EXPECT_THAT(response_ipv4.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response_ipv4.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // When the resolver returns an AAAA record with ::127.0.53.53 it should
   // work just like any other IP. (Despite having the same suffix, it is not
@@ -5337,7 +5692,7 @@ TEST_F(HostResolverManagerDnsTest, BypassDnsToMdnsWithNonAddress) {
 
   EXPECT_THAT(response.result_error(), IsOk());
   EXPECT_THAT(response.request()->GetTextResults(),
-              testing::Optional(testing::ElementsAre("foo", "bar")));
+              testing::Pointee(testing::ElementsAre("foo", "bar")));
 }
 #endif  // BUILDFLAG(ENABLE_MDNS)
 
@@ -5475,10 +5830,10 @@ TEST_F(HostResolverManagerDnsTest, DontDisableDnsClientOnSporadicFailure) {
   EXPECT_THAT(final_response.result_error(), IsOk());
 }
 
-TEST_F(HostResolverManagerDnsTest, Ipv6Unreachable) {
+void HostResolverManagerDnsTest::Ipv6UnreachableTest(bool is_async) {
   CreateResolverWithLimitsAndParams(kMaxJobs, DefaultParams(proc_),
                                     false /* ipv6_reachable */,
-                                    true /* check_ipv6_on_wifi */);
+                                    true /* check_ipv6_on_wifi */, is_async);
   ChangeDnsConfig(CreateValidDnsConfig());
 
   ResolveHostResponseHelper response(resolver_->CreateRequest(
@@ -5494,11 +5849,19 @@ TEST_F(HostResolverManagerDnsTest, Ipv6Unreachable) {
                   testing::ElementsAre(CreateExpected("127.0.0.1", 500))))));
 }
 
-// Without a valid DnsConfig, assume IPv6 is needed and ignore prober.
-TEST_F(HostResolverManagerDnsTest, Ipv6Unreachable_InvalidConfig) {
+TEST_F(HostResolverManagerDnsTest, Ipv6UnreachableAsync) {
+  Ipv6UnreachableTest(true);
+}
+
+TEST_F(HostResolverManagerDnsTest, Ipv6UnreachableSync) {
+  Ipv6UnreachableTest(false);
+}
+
+void HostResolverManagerDnsTest::Ipv6UnreachableInvalidConfigTest(
+    bool is_async) {
   CreateResolverWithLimitsAndParams(kMaxJobs, DefaultParams(proc_),
                                     false /* ipv6_reachable */,
-                                    true /* check_ipv6_on_wifi */);
+                                    true /* check_ipv6_on_wifi */, is_async);
 
   proc_->AddRule("example.com", ADDRESS_FAMILY_UNSPECIFIED, "1.2.3.4,::5");
   proc_->SignalMultiple(1u);
@@ -5516,6 +5879,14 @@ TEST_F(HostResolverManagerDnsTest, Ipv6Unreachable_InvalidConfig) {
       testing::Pointee(testing::ElementsAre(
           ExpectEndpointResult(testing::UnorderedElementsAre(
               CreateExpected("::5", 500), CreateExpected("1.2.3.4", 500))))));
+}
+// Without a valid DnsConfig, assume IPv6 is needed and ignore prober.
+TEST_F(HostResolverManagerDnsTest, Ipv6Unreachable_InvalidConfigAsync) {
+  Ipv6UnreachableInvalidConfigTest(true);
+}
+
+TEST_F(HostResolverManagerDnsTest, Ipv6Unreachable_InvalidConfigSync) {
+  Ipv6UnreachableInvalidConfigTest(false);
 }
 
 TEST_F(HostResolverManagerDnsTest, Ipv6Unreachable_UseLocalIpv6) {
@@ -5670,8 +6041,10 @@ TEST_F(HostResolverManagerDnsTest, Ipv6UnreachableOnlyDisablesAAAAQuery) {
       response.request()->GetEndpointResults(),
       testing::Pointee(testing::ElementsAre(ExpectEndpointResult(
           testing::UnorderedElementsAre(CreateExpected("127.0.0.1", 443))))));
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -6713,8 +7086,10 @@ TEST_F(HostResolverManagerDnsTest, SecureDnsMode_Secure_Local_CacheMiss) {
   EXPECT_FALSE(cache_miss_request.request()
                    ->GetResolveErrorInfo()
                    .is_secure_network_error);
-  EXPECT_FALSE(cache_miss_request.request()->GetAddressResults());
-  EXPECT_FALSE(cache_miss_request.request()->GetEndpointResults());
+  EXPECT_THAT(cache_miss_request.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(cache_miss_request.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_FALSE(cache_miss_request.request()->GetStaleInfo());
 }
 
@@ -6786,10 +7161,14 @@ TEST_F(HostResolverManagerDnsTest,
       /*optional_parameters=*/absl::nullopt, resolve_context_.get(),
       resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result not cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 0u);
@@ -7165,7 +7544,7 @@ TEST_F(HostResolverManagerDnsTest,
     // so they should be unaffected.
     parameters.source = HostResolverSource::DNS;
     ResolveHostResponseHelper response_dns(resolver_->CreateRequest(
-        HostPortPair("4slow_ok", 80), NetworkAnonymizationKey(),
+        HostPortPair("6slow_ok", 80), NetworkAnonymizationKey(),
         NetLogWithSource(), parameters, resolve_context_.get(),
         resolve_context_->host_cache()));
     EXPECT_FALSE(response_dns.complete());
@@ -7464,8 +7843,10 @@ TEST_F(HostResolverManagerDnsTest, NotFoundTTL) {
       HostPortPair("empty", 80), NetworkAnonymizationKey(), NetLogWithSource(),
       absl::nullopt, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(no_data_response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(no_data_response.request()->GetAddressResults());
-  EXPECT_FALSE(no_data_response.request()->GetEndpointResults());
+  EXPECT_THAT(no_data_response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(no_data_response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   HostCache::Key key("empty", DnsQueryType::UNSPECIFIED, 0,
                      HostResolverSource::ANY, NetworkAnonymizationKey());
   HostCache::EntryStaleness staleness;
@@ -7483,8 +7864,10 @@ TEST_F(HostResolverManagerDnsTest, NotFoundTTL) {
       resolve_context_->host_cache()));
   EXPECT_THAT(no_domain_response.result_error(),
               IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(no_domain_response.request()->GetAddressResults());
-  EXPECT_FALSE(no_domain_response.request()->GetEndpointResults());
+  EXPECT_THAT(no_domain_response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(no_domain_response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   HostCache::Key nxkey("nodomain", DnsQueryType::UNSPECIFIED, 0,
                        HostResolverSource::ANY, NetworkAnonymizationKey());
   cache_result = resolve_context_->host_cache()->Lookup(
@@ -7892,8 +8275,7 @@ TEST_F(HostResolverManagerDnsTest, DnsAliasesAreFixedUp) {
 
   DnsResponse expected_A_response = BuildTestDnsResponse(
       "host.test", dns_protocol::kTypeA,
-      {BuildTestAddressRecord("localhost", IPAddress::IPv4Localhost()),
-       BuildTestCnameRecord("host2.test", "localhost"),
+      {BuildTestAddressRecord("host2.test", IPAddress::IPv4Localhost()),
        BuildTestDnsRecord(
            "host.test", dns_protocol::kTypeCNAME,
            std::string(kNonCanonicalName, sizeof(kNonCanonicalName) - 1))});
@@ -7903,8 +8285,7 @@ TEST_F(HostResolverManagerDnsTest, DnsAliasesAreFixedUp) {
 
   DnsResponse expected_AAAA_response = BuildTestDnsResponse(
       "host.test", dns_protocol::kTypeAAAA,
-      {BuildTestAddressRecord("localhost", IPAddress::IPv6Localhost()),
-       BuildTestCnameRecord("host2.test", "localhost"),
+      {BuildTestAddressRecord("host2.test", IPAddress::IPv6Localhost()),
        BuildTestDnsRecord(
            "host.test", dns_protocol::kTypeCNAME,
            std::string(kNonCanonicalName, sizeof(kNonCanonicalName) - 1))});
@@ -7925,16 +8306,44 @@ TEST_F(HostResolverManagerDnsTest, DnsAliasesAreFixedUp) {
 
   ASSERT_THAT(response.result_error(), IsOk());
   ASSERT_TRUE(response.request()->GetAddressResults());
-  // AddressList results may or may not be fixed, depending on whether or not
-  // they were built from endpoint results.
-  EXPECT_THAT(
-      response.request()->GetAddressResults()->dns_aliases(),
-      testing::AnyOf(testing::UnorderedElementsAre("host2.test", "host.test"),
-                     testing::UnorderedElementsAre("localhost", "HOST2.test",
-                                                   "host.test")));
+  EXPECT_THAT(response.request()->GetAddressResults()->dns_aliases(),
+              testing::UnorderedElementsAre("host2.test", "host.test"));
   EXPECT_THAT(response.request()->GetDnsAliasResults(),
               testing::Pointee(
                   testing::UnorderedElementsAre("host2.test", "host.test")));
+}
+
+TEST_F(HostResolverManagerDnsTest, RejectsLocalhostAlias) {
+  MockDnsClientRuleList rules;
+
+  DnsResponse expected_A_response = BuildTestDnsResponse(
+      "host.test", dns_protocol::kTypeA,
+      {BuildTestAddressRecord("localhost", IPAddress::IPv4Localhost()),
+       BuildTestCnameRecord("host.test", "localhost")});
+
+  AddDnsRule(&rules, "host.test", dns_protocol::kTypeA,
+             std::move(expected_A_response), false /* delay */);
+
+  DnsResponse expected_AAAA_response = BuildTestDnsResponse(
+      "host.test", dns_protocol::kTypeAAAA,
+      {BuildTestAddressRecord("localhost", IPAddress::IPv6Localhost()),
+       BuildTestCnameRecord("host.test", "localhost")});
+
+  AddDnsRule(&rules, "host.test", dns_protocol::kTypeAAAA,
+             std::move(expected_AAAA_response), false /* delay */);
+
+  CreateResolver();
+  UseMockDnsClient(CreateValidDnsConfig(), std::move(rules));
+  set_allow_fallback_to_systemtask(false);
+  HostResolver::ResolveHostParameters params;
+  params.source = HostResolverSource::DNS;
+
+  ResolveHostResponseHelper response(resolver_->CreateRequest(
+      HostPortPair("host.test", 80), NetworkAnonymizationKey(),
+      NetLogWithSource(), params, resolve_context_.get(),
+      resolve_context_->host_cache()));
+
+  ASSERT_THAT(response.result_error(), IsError(ERR_DNS_MALFORMED_RESPONSE));
 }
 
 TEST_F(HostResolverManagerDnsTest, NoAdditionalDnsAliases) {
@@ -8853,20 +9262,24 @@ TEST_F(HostResolverManagerDnsTest, TxtQuery) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Order between separate DNS records is undefined, but each record should
   // stay in order as that order may be meaningful.
   ASSERT_THAT(response.request()->GetTextResults(),
-              testing::Optional(testing::UnorderedElementsAre(
+              testing::Pointee(testing::UnorderedElementsAre(
                   "foo1", "foo2", "foo3", "bar1", "bar2")));
-  std::vector<std::string> results =
-      response.request()->GetTextResults().value();
-  EXPECT_NE(results.end(), base::ranges::search(results, foo_records));
-  EXPECT_NE(results.end(), base::ranges::search(results, bar_records));
+  const std::vector<std::string>* results =
+      response.request()->GetTextResults();
+  EXPECT_NE(results->end(), base::ranges::search(*results, foo_records));
+  EXPECT_NE(results->end(), base::ranges::search(*results, bar_records));
 
   // Expect result to be cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 1u);
@@ -8876,11 +9289,11 @@ TEST_F(HostResolverManagerDnsTest, TxtQuery) {
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(cached_response.result_error(), IsOk());
   ASSERT_THAT(cached_response.request()->GetTextResults(),
-              testing::Optional(testing::UnorderedElementsAre(
+              testing::Pointee(testing::UnorderedElementsAre(
                   "foo1", "foo2", "foo3", "bar1", "bar2")));
-  results = cached_response.request()->GetTextResults().value();
-  EXPECT_NE(results.end(), base::ranges::search(results, foo_records));
-  EXPECT_NE(results.end(), base::ranges::search(results, bar_records));
+  results = cached_response.request()->GetTextResults();
+  EXPECT_NE(results->end(), base::ranges::search(*results, foo_records));
+  EXPECT_NE(results->end(), base::ranges::search(*results, bar_records));
 }
 
 TEST_F(HostResolverManagerDnsTest, TxtQueryRejectsIpLiteral) {
@@ -8904,11 +9317,16 @@ TEST_F(HostResolverManagerDnsTest, TxtQueryRejectsIpLiteral) {
       NetLogWithSource(), parameters, resolve_context_.get(),
       resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 // Test that TXT records can be extracted from a response that also contains
@@ -8936,13 +9354,17 @@ TEST_F(HostResolverManagerDnsTest, TxtQuery_MixedWithUnrecognizedType) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   EXPECT_THAT(response.request()->GetTextResults(),
-              testing::Optional(testing::ElementsAre("foo")));
+              testing::Pointee(testing::ElementsAre("foo")));
 }
 
 TEST_F(HostResolverManagerDnsTest, TxtQuery_InvalidConfig) {
@@ -8983,11 +9405,16 @@ TEST_F(HostResolverManagerDnsTest, TxtQuery_NonexistentDomain) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result to be cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 1u);
@@ -8996,11 +9423,16 @@ TEST_F(HostResolverManagerDnsTest, TxtQuery_NonexistentDomain) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(cached_response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(cached_response.request()->GetAddressResults());
-  EXPECT_FALSE(cached_response.request()->GetEndpointResults());
-  EXPECT_FALSE(cached_response.request()->GetTextResults());
-  EXPECT_FALSE(cached_response.request()->GetHostnameResults());
-  EXPECT_FALSE(cached_response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(cached_response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(cached_response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(cached_response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(cached_response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(cached_response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, TxtQuery_Failure) {
@@ -9025,11 +9457,16 @@ TEST_F(HostResolverManagerDnsTest, TxtQuery_Failure) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result not cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 0u);
@@ -9057,11 +9494,16 @@ TEST_F(HostResolverManagerDnsTest, TxtQuery_Timeout) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_TIMED_OUT));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result not cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 0u);
@@ -9091,11 +9533,16 @@ TEST_F(HostResolverManagerDnsTest, TxtQuery_Empty) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result to be cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 1u);
@@ -9104,11 +9551,16 @@ TEST_F(HostResolverManagerDnsTest, TxtQuery_Empty) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(cached_response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(cached_response.request()->GetAddressResults());
-  EXPECT_FALSE(cached_response.request()->GetEndpointResults());
-  EXPECT_FALSE(cached_response.request()->GetTextResults());
-  EXPECT_FALSE(cached_response.request()->GetHostnameResults());
-  EXPECT_FALSE(cached_response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(cached_response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(cached_response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(cached_response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(cached_response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(cached_response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, TxtQuery_Malformed) {
@@ -9133,11 +9585,16 @@ TEST_F(HostResolverManagerDnsTest, TxtQuery_Malformed) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_MALFORMED_RESPONSE));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result not cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 0u);
@@ -9161,11 +9618,16 @@ TEST_F(HostResolverManagerDnsTest, TxtQuery_MismatchedName) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_MALFORMED_RESPONSE));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result not cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 0u);
@@ -9192,11 +9654,16 @@ TEST_F(HostResolverManagerDnsTest, TxtQuery_WrongType) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result not cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 0u);
@@ -9222,11 +9689,16 @@ TEST_F(HostResolverManagerDnsTest,
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   // No non-local work is done, so ERR_DNS_CACHE_MISS is the result.
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_CACHE_MISS));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 // Same as TxtQuery except we specify DNS HostResolverSource instead of relying
@@ -9259,20 +9731,24 @@ TEST_F(HostResolverManagerDnsTest, TxtDnsQuery) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Order between separate DNS records is undefined, but each record should
   // stay in order as that order may be meaningful.
   ASSERT_THAT(response.request()->GetTextResults(),
-              testing::Optional(testing::UnorderedElementsAre(
+              testing::Pointee(testing::UnorderedElementsAre(
                   "foo1", "foo2", "foo3", "bar1", "bar2")));
-  std::vector<std::string> results =
-      response.request()->GetTextResults().value();
-  EXPECT_NE(results.end(), base::ranges::search(results, foo_records));
-  EXPECT_NE(results.end(), base::ranges::search(results, bar_records));
+  const std::vector<std::string>* results =
+      response.request()->GetTextResults();
+  EXPECT_NE(results->end(), base::ranges::search(*results, foo_records));
+  EXPECT_NE(results->end(), base::ranges::search(*results, bar_records));
 
   // Expect result to be cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 1u);
@@ -9282,11 +9758,11 @@ TEST_F(HostResolverManagerDnsTest, TxtDnsQuery) {
   EXPECT_THAT(cached_response.result_error(), IsOk());
   EXPECT_TRUE(cached_response.request()->GetStaleInfo());
   ASSERT_THAT(cached_response.request()->GetTextResults(),
-              testing::Optional(testing::UnorderedElementsAre(
+              testing::Pointee(testing::UnorderedElementsAre(
                   "foo1", "foo2", "foo3", "bar1", "bar2")));
-  results = cached_response.request()->GetTextResults().value();
-  EXPECT_NE(results.end(), base::ranges::search(results, foo_records));
-  EXPECT_NE(results.end(), base::ranges::search(results, bar_records));
+  results = cached_response.request()->GetTextResults();
+  EXPECT_NE(results->end(), base::ranges::search(*results, foo_records));
+  EXPECT_NE(results->end(), base::ranges::search(*results, bar_records));
 }
 
 TEST_F(HostResolverManagerDnsTest, PtrQuery) {
@@ -9306,14 +9782,18 @@ TEST_F(HostResolverManagerDnsTest, PtrQuery) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Order between separate records is undefined.
   EXPECT_THAT(response.request()->GetHostnameResults(),
-              testing::Optional(testing::UnorderedElementsAre(
+              testing::Pointee(testing::UnorderedElementsAre(
                   HostPortPair("foo.com", 108), HostPortPair("bar.com", 108))));
 }
 
@@ -9338,11 +9818,16 @@ TEST_F(HostResolverManagerDnsTest, PtrQueryRejectsIpLiteral) {
       NetLogWithSource(), parameters, resolve_context_.get(),
       resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, PtrQueryHandlesReverseIpLookup) {
@@ -9365,14 +9850,18 @@ TEST_F(HostResolverManagerDnsTest, PtrQueryHandlesReverseIpLookup) {
       NetLogWithSource(), parameters, resolve_context_.get(),
       resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Order between separate records is undefined.
   EXPECT_THAT(response.request()->GetHostnameResults(),
-              testing::Optional(testing::UnorderedElementsAre(
+              testing::Pointee(testing::UnorderedElementsAre(
                   HostPortPair("dns.google.test", 108),
                   HostPortPair("foo.test", 108))));
 }
@@ -9399,11 +9888,16 @@ TEST_F(HostResolverManagerDnsTest, PtrQuery_NonexistentDomain) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, PtrQuery_Failure) {
@@ -9428,11 +9922,16 @@ TEST_F(HostResolverManagerDnsTest, PtrQuery_Failure) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, PtrQuery_Timeout) {
@@ -9457,11 +9956,16 @@ TEST_F(HostResolverManagerDnsTest, PtrQuery_Timeout) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_TIMED_OUT));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, PtrQuery_Empty) {
@@ -9486,11 +9990,16 @@ TEST_F(HostResolverManagerDnsTest, PtrQuery_Empty) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, PtrQuery_Malformed) {
@@ -9515,11 +10024,16 @@ TEST_F(HostResolverManagerDnsTest, PtrQuery_Malformed) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_MALFORMED_RESPONSE));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, PtrQuery_MismatchedName) {
@@ -9540,11 +10054,16 @@ TEST_F(HostResolverManagerDnsTest, PtrQuery_MismatchedName) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_MALFORMED_RESPONSE));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, PtrQuery_WrongType) {
@@ -9568,11 +10087,16 @@ TEST_F(HostResolverManagerDnsTest, PtrQuery_WrongType) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -9595,11 +10119,16 @@ TEST_F(HostResolverManagerDnsTest,
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   // No non-local work is done, so ERR_DNS_CACHE_MISS is the result.
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_CACHE_MISS));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 // Same as PtrQuery except we specify DNS HostResolverSource instead of relying
@@ -9624,14 +10153,18 @@ TEST_F(HostResolverManagerDnsTest, PtrDnsQuery) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Order between separate records is undefined.
   EXPECT_THAT(response.request()->GetHostnameResults(),
-              testing::Optional(testing::UnorderedElementsAre(
+              testing::Pointee(testing::UnorderedElementsAre(
                   HostPortPair("foo.com", 108), HostPortPair("bar.com", 108))));
 }
 
@@ -9656,26 +10189,30 @@ TEST_F(HostResolverManagerDnsTest, SrvQuery) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect ordered by priority, and random within a priority.
-  absl::optional<std::vector<HostPortPair>> results =
+  const std::vector<HostPortPair>* results =
       response.request()->GetHostnameResults();
   ASSERT_THAT(
       results,
-      testing::Optional(testing::UnorderedElementsAre(
+      testing::Pointee(testing::UnorderedElementsAre(
           HostPortPair("foo.com", 1223), HostPortPair("bar.com", 80),
           HostPortPair("google.com", 5), HostPortPair("chromium.org", 12345))));
-  auto priority2 = std::vector<HostPortPair>(results.value().begin(),
-                                             results.value().begin() + 2);
+  auto priority2 =
+      std::vector<HostPortPair>(results->begin(), results->begin() + 2);
   EXPECT_THAT(priority2, testing::UnorderedElementsAre(
                              HostPortPair("foo.com", 1223),
                              HostPortPair("chromium.org", 12345)));
-  auto priority5 = std::vector<HostPortPair>(results.value().begin() + 2,
-                                             results.value().end());
+  auto priority5 =
+      std::vector<HostPortPair>(results->begin() + 2, results->end());
   EXPECT_THAT(priority5,
               testing::UnorderedElementsAre(HostPortPair("bar.com", 80),
                                             HostPortPair("google.com", 5)));
@@ -9703,11 +10240,16 @@ TEST_F(HostResolverManagerDnsTest, SrvQueryRejectsIpLiteral) {
       NetLogWithSource(), parameters, resolve_context_.get(),
       resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 // 0-weight services are allowed. Ensure that we can handle such records,
@@ -9731,14 +10273,18 @@ TEST_F(HostResolverManagerDnsTest, SrvQuery_ZeroWeight) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect ordered by priority, and random within a priority.
   EXPECT_THAT(response.request()->GetHostnameResults(),
-              testing::Optional(testing::UnorderedElementsAre(
+              testing::Pointee(testing::UnorderedElementsAre(
                   HostPortPair("bar.com", 80), HostPortPair("google.com", 5))));
 }
 
@@ -9764,11 +10310,16 @@ TEST_F(HostResolverManagerDnsTest, SrvQuery_NonexistentDomain) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, SrvQuery_Failure) {
@@ -9793,11 +10344,16 @@ TEST_F(HostResolverManagerDnsTest, SrvQuery_Failure) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, SrvQuery_Timeout) {
@@ -9822,11 +10378,16 @@ TEST_F(HostResolverManagerDnsTest, SrvQuery_Timeout) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_TIMED_OUT));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, SrvQuery_Empty) {
@@ -9851,11 +10412,16 @@ TEST_F(HostResolverManagerDnsTest, SrvQuery_Empty) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, SrvQuery_Malformed) {
@@ -9880,11 +10446,16 @@ TEST_F(HostResolverManagerDnsTest, SrvQuery_Malformed) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_MALFORMED_RESPONSE));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, SrvQuery_MismatchedName) {
@@ -9905,11 +10476,16 @@ TEST_F(HostResolverManagerDnsTest, SrvQuery_MismatchedName) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_MALFORMED_RESPONSE));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, SrvQuery_WrongType) {
@@ -9933,11 +10509,16 @@ TEST_F(HostResolverManagerDnsTest, SrvQuery_WrongType) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -9960,11 +10541,16 @@ TEST_F(HostResolverManagerDnsTest,
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   // No non-local work is done, so ERR_DNS_CACHE_MISS is the result.
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_CACHE_MISS));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 // Same as SrvQuery except we specify DNS HostResolverSource instead of relying
@@ -9993,26 +10579,30 @@ TEST_F(HostResolverManagerDnsTest, SrvDnsQuery) {
       HostPortPair("host", 108), NetworkAnonymizationKey(), NetLogWithSource(),
       parameters, resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect ordered by priority, and random within a priority.
-  absl::optional<std::vector<HostPortPair>> results =
+  const std::vector<HostPortPair>* results =
       response.request()->GetHostnameResults();
   ASSERT_THAT(
       results,
-      testing::Optional(testing::UnorderedElementsAre(
+      testing::Pointee(testing::UnorderedElementsAre(
           HostPortPair("foo.com", 1223), HostPortPair("bar.com", 80),
           HostPortPair("google.com", 5), HostPortPair("chromium.org", 12345))));
-  auto priority2 = std::vector<HostPortPair>(results.value().begin(),
-                                             results.value().begin() + 2);
+  auto priority2 =
+      std::vector<HostPortPair>(results->begin(), results->begin() + 2);
   EXPECT_THAT(priority2, testing::UnorderedElementsAre(
                              HostPortPair("foo.com", 1223),
                              HostPortPair("chromium.org", 12345)));
-  auto priority5 = std::vector<HostPortPair>(results.value().begin() + 2,
-                                             results.value().end());
+  auto priority5 =
+      std::vector<HostPortPair>(results->begin() + 2, results->end());
   EXPECT_THAT(priority5,
               testing::UnorderedElementsAre(HostPortPair("bar.com", 80),
                                             HostPortPair("google.com", 5)));
@@ -10041,10 +10631,14 @@ TEST_F(HostResolverManagerDnsTest, HttpsQuery) {
       NetworkAnonymizationKey(), NetLogWithSource(), parameters,
       resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -10075,10 +10669,14 @@ TEST_F(HostResolverManagerDnsTest, HttpsQueryForNonStandardPort) {
       NetworkAnonymizationKey(), NetLogWithSource(), parameters,
       resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsOk());
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -10106,11 +10704,16 @@ TEST_F(HostResolverManagerDnsTest, HttpsQueryForHttpUpgrade) {
       NetworkAnonymizationKey(), NetLogWithSource(), parameters,
       resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_NAME_HTTPS_ONLY));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 // Test that HTTPS requests for an http host with port 443 will result in a
@@ -10142,11 +10745,16 @@ TEST_F(HostResolverManagerDnsTest, HttpsQueryForHttpUpgradeFromHttpsPort) {
       NetworkAnonymizationKey(), NetLogWithSource(), parameters,
       resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_NAME_HTTPS_ONLY));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -10176,11 +10784,16 @@ TEST_F(HostResolverManagerDnsTest,
       NetworkAnonymizationKey(), NetLogWithSource(), parameters,
       resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_NAME_HTTPS_ONLY));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, HttpsInAddressQuery) {
@@ -10226,8 +10839,10 @@ TEST_F(HostResolverManagerDnsTest, HttpsInAddressQuery) {
                   testing::ElementsAre(dns_protocol::kHttpsServiceDefaultAlpn),
                   testing::IsEmpty(), kName)),
           ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -10287,8 +10902,10 @@ TEST_F(HostResolverManagerDnsTest, HttpsInAddressQueryWithNonstandardPort) {
                   testing::ElementsAre(dns_protocol::kHttpsServiceDefaultAlpn),
                   testing::IsEmpty(), kName)),
           ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -10346,8 +10963,10 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -10408,8 +11027,10 @@ TEST_F(HostResolverManagerDnsTest, HttpsInAddressQueryWithAlpnAndEch) {
                       "foo1", "foo2", dns_protocol::kHttpsServiceDefaultAlpn),
                   testing::ElementsAreArray(kEch), kName)),
           ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -10461,8 +11082,10 @@ TEST_F(HostResolverManagerDnsTest, HttpsInAddressQueryWithNonMatchingPort) {
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -10520,8 +11143,10 @@ TEST_F(HostResolverManagerDnsTest, HttpsInAddressQueryWithMatchingPort) {
                   testing::ElementsAre(dns_protocol::kHttpsServiceDefaultAlpn),
                   testing::IsEmpty(), kName)),
           ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -10587,13 +11212,18 @@ TEST_F(HostResolverManagerDnsTest, HttpsInAddressQueryWithoutAddresses) {
       resolve_context_.get(), resolve_context_->host_cache()));
   // No address results overrides overall result.
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   // No results maintained when overall error is ERR_NAME_NOT_RESOLVED (and also
   // because of the fallback to system resolver).
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, HttpsQueriedInAddressQueryButNoResults) {
@@ -10639,8 +11269,10 @@ TEST_F(HostResolverManagerDnsTest, HttpsQueriedInAddressQueryButNoResults) {
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::IsEmpty()));
 }
@@ -10694,8 +11326,10 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::IsEmpty()));
 }
@@ -10747,8 +11381,10 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::IsEmpty()));
 }
@@ -10794,11 +11430,16 @@ TEST_F(HostResolverManagerDnsTest,
       NetworkAnonymizationKey(), NetLogWithSource(), absl::nullopt,
       resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result not cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 0u);
@@ -10849,8 +11490,10 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::IsEmpty()));
 }
@@ -10904,11 +11547,16 @@ TEST_F(
   dns_client_->CompleteDelayedTransactions();
 
   EXPECT_THAT(response.result_error(), IsError(ERR_NAME_NOT_RESOLVED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result not cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 0u);
@@ -10980,8 +11628,10 @@ TEST_F(
   EXPECT_THAT(response.result_error(), IsOk());
   EXPECT_TRUE(response.request()->GetAddressResults());
   EXPECT_TRUE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_TRUE(response.request()->GetExperimentalResultsForTesting());
 }
 
@@ -11025,11 +11675,16 @@ TEST_F(HostResolverManagerDnsTest, TimeoutHttpsInAddressRequestIsFatal) {
       NetworkAnonymizationKey(), NetLogWithSource(), absl::nullopt,
       resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_TIMED_OUT));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result not cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 0u);
@@ -11080,11 +11735,16 @@ TEST_F(HostResolverManagerDnsTest, ServfailHttpsInAddressRequestIsFatal) {
       NetworkAnonymizationKey(), NetLogWithSource(), absl::nullopt,
       resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_SERVER_FAILED));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result not cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 0u);
@@ -11137,11 +11797,16 @@ TEST_F(HostResolverManagerDnsTest, UnparsableHttpsInAddressRequestIsFatal) {
       NetworkAnonymizationKey(), NetLogWithSource(), absl::nullopt,
       resolve_context_.get(), resolve_context_->host_cache()));
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_MALFORMED_RESPONSE));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 
   // Expect result not cached.
   EXPECT_EQ(resolve_context_->host_cache()->size(), 0u);
@@ -11196,8 +11861,10 @@ TEST_F(HostResolverManagerDnsTest, RefusedHttpsInAddressRequestIsIgnored) {
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::IsEmpty()));
 }
@@ -11254,8 +11921,10 @@ TEST_F(HostResolverManagerDnsTest, HttpsInAddressQueryForWssScheme) {
                   testing::ElementsAre(dns_protocol::kHttpsServiceDefaultAlpn),
                   testing::IsEmpty(), kName)),
           ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -11303,9 +11972,12 @@ TEST_F(HostResolverManagerDnsTest, NoHttpsInAddressQueryWithoutScheme) {
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, NoHttpsInAddressQueryForNonHttpScheme) {
@@ -11352,9 +12024,12 @@ TEST_F(HostResolverManagerDnsTest, NoHttpsInAddressQueryForNonHttpScheme) {
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -11401,11 +12076,16 @@ TEST_F(HostResolverManagerDnsTest,
       resolve_context_.get(), resolve_context_->host_cache()));
 
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_NAME_HTTPS_ONLY));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -11451,11 +12131,16 @@ TEST_F(HostResolverManagerDnsTest,
       resolve_context_.get(), resolve_context_->host_cache()));
 
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_NAME_HTTPS_ONLY));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(
@@ -11511,10 +12196,12 @@ TEST_F(
   EXPECT_THAT(response.result_error(), IsOk());
   EXPECT_TRUE(response.request()->GetAddressResults());
   EXPECT_TRUE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
-              testing::Pointee(testing::ElementsAre(false)));
+              Pointee(Not(Contains(true))));
 }
 
 // Even if no addresses are received for a request, finding an HTTPS record
@@ -11563,11 +12250,16 @@ TEST_F(HostResolverManagerDnsTest,
       resolve_context_.get(), resolve_context_->host_cache()));
 
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_NAME_HTTPS_ONLY));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, HttpsInSecureModeAddressQuery) {
@@ -11614,8 +12306,10 @@ TEST_F(HostResolverManagerDnsTest, HttpsInSecureModeAddressQuery) {
   EXPECT_THAT(response.result_error(), IsOk());
   EXPECT_TRUE(response.request()->GetAddressResults());
   EXPECT_TRUE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -11663,11 +12357,16 @@ TEST_F(HostResolverManagerDnsTest, HttpsInSecureModeAddressQueryForHttpScheme) {
       resolve_context_.get(), resolve_context_->host_cache()));
 
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_NAME_HTTPS_ONLY));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, HttpsInInsecureAddressQuery) {
@@ -11720,8 +12419,10 @@ TEST_F(HostResolverManagerDnsTest, HttpsInInsecureAddressQuery) {
                   testing::ElementsAre(dns_protocol::kHttpsServiceDefaultAlpn),
                   testing::IsEmpty(), kName)),
           ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -11766,11 +12467,16 @@ TEST_F(HostResolverManagerDnsTest, HttpsInInsecureAddressQueryForHttpScheme) {
       resolve_context_.get(), resolve_context_->host_cache()));
 
   EXPECT_THAT(response.result_error(), IsError(ERR_DNS_NAME_HTTPS_ONLY));
-  EXPECT_FALSE(response.request()->GetAddressResults());
-  EXPECT_FALSE(response.request()->GetEndpointResults());
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetAddressResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetEndpointResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, FailedHttpsInInsecureAddressRequestIgnored) {
@@ -11813,8 +12519,10 @@ TEST_F(HostResolverManagerDnsTest, FailedHttpsInInsecureAddressRequestIgnored) {
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::IsEmpty()));
 }
@@ -11860,8 +12568,10 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::IsEmpty()));
 }
@@ -11912,8 +12622,10 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::IsEmpty()));
 }
@@ -11961,8 +12673,10 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::IsEmpty()));
 }
@@ -12024,8 +12738,10 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::IsEmpty()));
 }
@@ -12088,10 +12804,13 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   // No experimental results if transaction did not complete.
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -12152,10 +12871,13 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   // No experimental results if transaction did not complete.
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -12224,10 +12946,13 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   // No experimental results if transaction did not complete.
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -12298,10 +13023,13 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   // No experimental results if transaction did not complete.
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -12370,10 +13098,13 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   // No experimental results if transaction did not complete.
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -12442,10 +13173,13 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   // No experimental results if transaction did not complete.
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -12503,10 +13237,13 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   // No experimental results if transaction did not complete.
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -12564,10 +13301,13 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   // No experimental results if transaction did not complete.
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest,
@@ -12633,10 +13373,13 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   // No experimental results if transaction did not complete.
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 // Test that HTTPS timeouts are not used when fatal for the request.
@@ -12705,8 +13448,10 @@ TEST_F(HostResolverManagerDnsTest,
                   testing::ElementsAre(dns_protocol::kHttpsServiceDefaultAlpn),
                   testing::IsEmpty(), kName)),
           ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
               testing::Pointee(testing::ElementsAre(true)));
 }
@@ -12766,10 +13511,13 @@ TEST_F(HostResolverManagerDnsTest,
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   // No experimental results if transaction did not complete.
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, UnsolicitedHttps) {
@@ -12804,10 +13552,13 @@ TEST_F(HostResolverManagerDnsTest, UnsolicitedHttps) {
   EXPECT_THAT(response.request()->GetEndpointResults(),
               testing::Pointee(testing::ElementsAre(
                   ExpectEndpointResult(testing::SizeIs(2)))));
-  EXPECT_FALSE(response.request()->GetTextResults());
-  EXPECT_FALSE(response.request()->GetHostnameResults());
+  EXPECT_THAT(response.request()->GetTextResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
+  EXPECT_THAT(response.request()->GetHostnameResults(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
   // Unsolicited records not included in results.
-  EXPECT_FALSE(response.request()->GetExperimentalResultsForTesting());
+  EXPECT_THAT(response.request()->GetExperimentalResultsForTesting(),
+              AnyOf(nullptr, Pointee(IsEmpty())));
 }
 
 TEST_F(HostResolverManagerDnsTest, DohProbeRequest) {
@@ -13058,10 +13809,7 @@ class HostResolverManagerBootstrapTest : public HostResolverManagerDnsTest {
 };
 
 std::vector<IPAddress> IPAddresses(const std::vector<IPEndPoint>& endpoints) {
-  std::vector<IPAddress> ip_addresses;
-  base::ranges::transform(endpoints, std::back_inserter(ip_addresses),
-                          &IPEndPoint::address);
-  return ip_addresses;
+  return base::test::ToVector(endpoints, &IPEndPoint::address);
 }
 
 std::vector<IPAddress> IPAddresses(const AddressList& addresses) {
@@ -13150,9 +13898,9 @@ TEST_F(HostResolverManagerBootstrapTest, OnlyBootstrap) {
   const auto* secure_result = resolve_context_->host_cache()->Lookup(
       MakeCacheKey(/*secure=*/true), GetMockTickClock()->NowTicks());
   ASSERT_THAT(secure_result, testing::NotNull());
-  EXPECT_THAT(secure_result->second.GetEndpoints(),
-              testing::Optional(testing::ElementsAre(
-                  ExpectEndpointResult(AddressesMatch(kRemoteAddrs)))));
+  EXPECT_THAT(
+      secure_result->second.GetEndpoints(),
+      testing::ElementsAre(ExpectEndpointResult(AddressesMatch(kRemoteAddrs))));
 }
 
 // The insecure cache is ignored, so the results are identical to
@@ -13182,9 +13930,9 @@ TEST_F(HostResolverManagerBootstrapTest, BootstrapAndInsecureCache) {
   const auto* secure_result = resolve_context_->host_cache()->Lookup(
       MakeCacheKey(/*secure=*/true), GetMockTickClock()->NowTicks());
   ASSERT_THAT(secure_result, testing::NotNull());
-  EXPECT_THAT(secure_result->second.GetEndpoints(),
-              testing::Optional(testing::ElementsAre(
-                  ExpectEndpointResult(AddressesMatch(kRemoteAddrs)))));
+  EXPECT_THAT(
+      secure_result->second.GetEndpoints(),
+      testing::ElementsAre(ExpectEndpointResult(AddressesMatch(kRemoteAddrs))));
 }
 
 // The bootstrap addrs are ignored, so the results are identical to
@@ -13364,12 +14112,13 @@ TEST_F(HostResolverManagerBootstrapTest, OnlyBootstrapTwice) {
   const auto* secure_result = resolve_context_->host_cache()->Lookup(
       MakeCacheKey(/*secure=*/true), GetMockTickClock()->NowTicks());
   ASSERT_THAT(secure_result, testing::NotNull());
-  EXPECT_THAT(secure_result->second.GetEndpoints(),
-              testing::Optional(testing::ElementsAre(
-                  ExpectEndpointResult(AddressesMatch(kRemoteAddrs)))));
+  EXPECT_THAT(
+      secure_result->second.GetEndpoints(),
+      testing::ElementsAre(ExpectEndpointResult(AddressesMatch(kRemoteAddrs))));
 }
 
-TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetwork) {
+void HostResolverManagerTest::IPv4AddressLiteralInIPv6OnlyNetworkTest(
+    bool is_async) {
   base::test::ScopedFeatureList feature_list;
   feature_list.InitWithFeatures(
       /*enabled_features=*/{features::kUseNAT64ForIPv4Literal},
@@ -13377,7 +14126,7 @@ TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetwork) {
 
   HostResolver::ManagerOptions options = DefaultOptions();
   CreateResolverWithOptionsAndParams(std::move(options), DefaultParams(proc_),
-                                     true /* ipv6_reachable */,
+                                     true /* ipv6_reachable */, is_async,
                                      false /* ipv4_reachable */);
   proc_->AddRule("ipv4only.arpa", ADDRESS_FAMILY_IPV6,
                  "64:ff9b::c000:aa,64:ff9b::c000:ab,2001:db8:43::c000:aa,"
@@ -13412,7 +14161,16 @@ TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetwork) {
   EXPECT_TRUE(cache_result);
 }
 
-TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetworkPort443) {
+TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetworkAsync) {
+  IPv4AddressLiteralInIPv6OnlyNetworkTest(true);
+}
+
+TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetworkSync) {
+  IPv4AddressLiteralInIPv6OnlyNetworkTest(false);
+}
+
+void HostResolverManagerTest::IPv4AddressLiteralInIPv6OnlyNetworkPort443Test(
+    bool is_async) {
   base::test::ScopedFeatureList feature_list;
   feature_list.InitWithFeatures(
       /*enabled_features=*/{features::kUseNAT64ForIPv4Literal},
@@ -13420,7 +14178,7 @@ TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetworkPort443) {
 
   HostResolver::ManagerOptions options = DefaultOptions();
   CreateResolverWithOptionsAndParams(std::move(options), DefaultParams(proc_),
-                                     true /* ipv6_reachable */,
+                                     true /* ipv6_reachable */, is_async,
                                      false /* ipv4_reachable */);
   proc_->AddRule("ipv4only.arpa", ADDRESS_FAMILY_IPV6,
                  "64:ff9b::c000:aa,64:ff9b::c000:ab,2001:db8:43::c000:aa,"
@@ -13455,7 +14213,18 @@ TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetworkPort443) {
   EXPECT_TRUE(cache_result);
 }
 
-TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetworkNoDns64) {
+TEST_F(HostResolverManagerTest,
+       IPv4AddressLiteralInIPv6OnlyNetworkPort443Async) {
+  IPv4AddressLiteralInIPv6OnlyNetworkPort443Test(true);
+}
+
+TEST_F(HostResolverManagerTest,
+       IPv4AddressLiteralInIPv6OnlyNetworkPort443Sync) {
+  IPv4AddressLiteralInIPv6OnlyNetworkPort443Test(false);
+}
+
+void HostResolverManagerTest::IPv4AddressLiteralInIPv6OnlyNetworkNoDns64Test(
+    bool is_async) {
   base::test::ScopedFeatureList feature_list;
   feature_list.InitWithFeatures(
       /*enabled_features=*/{features::kUseNAT64ForIPv4Literal},
@@ -13463,7 +14232,7 @@ TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetworkNoDns64) {
 
   HostResolver::ManagerOptions options = DefaultOptions();
   CreateResolverWithOptionsAndParams(std::move(options), DefaultParams(proc_),
-                                     true /* ipv6_reachable */,
+                                     true /* ipv6_reachable */, is_async,
                                      false /* ipv4_reachable */);
   proc_->AddRule("ipv4only.arpa", ADDRESS_FAMILY_IPV6, std::string());
   proc_->SignalMultiple(1u);
@@ -13483,9 +14252,18 @@ TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetworkNoDns64) {
   EXPECT_FALSE(response.request()->GetStaleInfo());
 }
 
-// Test when DNS returns bad IPv6 address of ipv4only.arpa., and the
-// IPv4 address of ipv4only.arpa is not contained in the IPv6 address.
-TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetworkBadAddress) {
+TEST_F(HostResolverManagerTest,
+       IPv4AddressLiteralInIPv6OnlyNetworkNoDns64Async) {
+  IPv4AddressLiteralInIPv6OnlyNetworkNoDns64Test(true);
+}
+
+TEST_F(HostResolverManagerTest,
+       IPv4AddressLiteralInIPv6OnlyNetworkNoDns64Sync) {
+  IPv4AddressLiteralInIPv6OnlyNetworkNoDns64Test(false);
+}
+
+void HostResolverManagerTest::IPv4AddressLiteralInIPv6OnlyNetworkBadAddressTest(
+    bool is_async) {
   base::test::ScopedFeatureList feature_list;
   feature_list.InitWithFeatures(
       /*enabled_features=*/{features::kUseNAT64ForIPv4Literal},
@@ -13493,7 +14271,7 @@ TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetworkBadAddress) {
 
   HostResolver::ManagerOptions options = DefaultOptions();
   CreateResolverWithOptionsAndParams(std::move(options), DefaultParams(proc_),
-                                     true /* ipv6_reachable */,
+                                     true /* ipv6_reachable */, is_async,
                                      false /* ipv4_reachable */);
   proc_->AddRule("ipv4only.arpa", ADDRESS_FAMILY_IPV6, "2001:db8::1");
   proc_->SignalMultiple(1u);
@@ -13511,6 +14289,17 @@ TEST_F(HostResolverManagerTest, IPv4AddressLiteralInIPv6OnlyNetworkBadAddress) {
               testing::Pointee(testing::ElementsAre(ExpectEndpointResult(
                   testing::ElementsAre(CreateExpected("192.168.1.42", 80))))));
   EXPECT_FALSE(response.request()->GetStaleInfo());
+}
+// Test when DNS returns bad IPv6 address of ipv4only.arpa., and the
+// IPv4 address of ipv4only.arpa is not contained in the IPv6 address.
+TEST_F(HostResolverManagerTest,
+       IPv4AddressLiteralInIPv6OnlyNetworkBadAddressAsync) {
+  IPv4AddressLiteralInIPv6OnlyNetworkBadAddressTest(true);
+}
+
+TEST_F(HostResolverManagerTest,
+       IPv4AddressLiteralInIPv6OnlyNetworkBadAddressSync) {
+  IPv4AddressLiteralInIPv6OnlyNetworkBadAddressTest(false);
 }
 
 }  // namespace net

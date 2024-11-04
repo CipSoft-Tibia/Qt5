@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qevent.h"
+
 #include "qcursor.h"
 #include "private/qguiapplication_p.h"
 #include "private/qinputdevice_p.h"
@@ -9,6 +10,7 @@
 #include "qpa/qplatformintegration.h"
 #include "private/qevent_p.h"
 #include "private/qeventpoint_p.h"
+
 #include "qfile.h"
 #include "qhashfunctions.h"
 #include "qmetaobject.h"
@@ -16,6 +18,7 @@
 #include "qevent_p.h"
 #include "qmath.h"
 #include "qloggingcategory.h"
+#include "qpointer.h"
 
 #if QT_CONFIG(draganddrop)
 #include <qpa/qplatformdrag.h>
@@ -4125,6 +4128,10 @@ QDebug operator<<(QDebug dbg, const QEvent *e)
             dbg << ", text=" << ke->text();
         if (ke->isAutoRepeat())
             dbg << ", autorepeat, count=" << ke->count();
+        if (dbg.verbosity() > QDebug::DefaultVerbosity) {
+            dbg << ", nativeScanCode=" << ke->nativeScanCode();
+            dbg << ", nativeVirtualKey=" << ke->nativeVirtualKey();
+        }
         dbg << ')';
     }
         break;
@@ -4471,8 +4478,6 @@ Q_IMPL_EVENT_COMMON(QWindowStateChangeEvent)
 */
 
 /*!
-    \deprecated [6.2] Use another constructor.
-
     Constructs a QTouchEvent with the given \a eventType, \a device,
     \a touchPoints, and current keyboard \a modifiers at the time of the event.
 */
@@ -4750,6 +4755,46 @@ Q_IMPL_EVENT_COMMON(QApplicationStateChangeEvent)
     \fn Qt::ApplicationState QApplicationStateChangeEvent::applicationState() const
 
     Returns the state of the application.
+*/
+
+/*!
+    \class QChildWindowEvent
+    \inmodule QtGui
+    \since 6.7
+    \brief The QChildWindowEvent class contains event parameters for
+    child window changes.
+
+    \ingroup events
+
+    Child window events are sent to windows when children are
+    added or removed.
+
+    In both cases you can only rely on the child being a QWindow
+    — not any subclass thereof. This is because in the
+    QEvent::ChildWindowAdded case the subclass is not yet fully
+    constructed, and in the QEvent::ChildWindowRemoved case it
+    might have already been destructed.
+*/
+
+/*!
+    Constructs a child window event object of a particular \a type
+    for the \a childWindow.
+
+    \a type can be QEvent::ChildWindowAdded or QEvent::ChildWindowRemoved.
+
+    \sa child()
+*/
+QChildWindowEvent::QChildWindowEvent(Type type, QWindow *childWindow)
+    : QEvent(type), c(childWindow)
+{
+}
+
+Q_IMPL_EVENT_COMMON(QChildWindowEvent)
+
+/*!
+    \fn QWindow *QChildWindowEvent::child() const
+
+    Returns the child window that was added or removed.
 */
 
 QMutableTouchEvent::~QMutableTouchEvent()

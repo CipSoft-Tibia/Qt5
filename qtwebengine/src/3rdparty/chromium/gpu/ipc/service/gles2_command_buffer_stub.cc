@@ -58,6 +58,13 @@
 #endif
 
 namespace gpu {
+namespace {
+#if BUILDFLAG(IS_ANDROID)
+BASE_FEATURE(kOnscreenGLSurfaceMatchOffscreen,
+             "OnscreenGLSurfaceMatchOffscreen",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif
+}  // namespace
 
 GLES2CommandBufferStub::GLES2CommandBufferStub(
     GpuChannel* channel,
@@ -138,26 +145,35 @@ gpu::ContextResult GLES2CommandBufferStub::Initialize(
   gl::GLSurfaceFormat surface_format =
       offscreen ? default_surface->GetFormat() : gl::GLSurfaceFormat();
 #if BUILDFLAG(IS_ANDROID)
-  if (init_params.attribs.red_size <= 5 &&
-      init_params.attribs.green_size <= 6 &&
-      init_params.attribs.blue_size <= 5 &&
-      init_params.attribs.alpha_size == 0) {
-    // We hit this code path when creating the onscreen render context
-    // used for compositing on low-end Android devices.
-    //
-    // Currently the only formats supported are RGB565 and default (RGBA8888).
-    // See also comments in ui/gl/gl_surface_format.h in case there's
-    // a use case requiring more fine-grained control.
-    surface_format.SetRGB565();
-    DVLOG(1) << __FUNCTION__ << ": Choosing RGB565 mode.";
-  }
+  if (base::FeatureList::IsEnabled(kOnscreenGLSurfaceMatchOffscreen)) {
+    // To use virtualized contexts we need on screen surface format match the
+    // offscreen.
+    surface_format = default_surface->GetFormat();
+  } else {
+    if (init_params.attribs.red_size <= 5 &&
+        init_params.attribs.green_size <= 6 &&
+        init_params.attribs.blue_size <= 5 &&
+        init_params.attribs.alpha_size == 0) {
+      // We hit this code path when creating the onscreen render context
+      // used for compositing on low-end Android devices.
+      //
+      // Currently the only formats supported are RGB565 and default (RGBA8888).
+      // See also comments in ui/gl/gl_surface_format.h in case there's
+      // a use case requiring more fine-grained control.
+      surface_format.SetRGB565();
+      DVLOG(1) << __FUNCTION__ << ": Choosing RGB565 mode.";
+    }
 
-  // We can only use virtualized contexts for onscreen command buffers if their
-  // config is compatible with the offscreen ones - otherwise MakeCurrent fails.
-  // Example use case is a client requesting an onscreen RGBA8888 buffer for
-  // fullscreen video on a low-spec device with RGB565 default format.
-  if (!surface_format.IsCompatible(default_surface->GetFormat()) && !offscreen)
-    use_virtualized_gl_context_ = false;
+    // We can only use virtualized contexts for onscreen command buffers if
+    // their config is compatible with the offscreen ones - otherwise
+    // MakeCurrent fails. Example use case is a client requesting an onscreen
+    // RGBA8888 buffer for fullscreen video on a low-spec device with RGB565
+    // default format.
+    if (!surface_format.IsCompatible(default_surface->GetFormat()) &&
+        !offscreen) {
+      use_virtualized_gl_context_ = false;
+    }
+  }
 #endif
 
   command_buffer_ = std::make_unique<CommandBufferService>(
@@ -209,34 +225,12 @@ gpu::ContextResult GLES2CommandBufferStub::Initialize(
   if (display_key != gl::DisplayKey::kDefault) {
     gl::GLDisplay* keyed_display = gl::GetDisplay(gpu_preference, display_key);
     if (!keyed_display->IsInitialized()) {
-      keyed_display->InitializeFromDisplay(display);
+      keyed_display->Initialize(display);
     }
     display = keyed_display;
   }
 
   if (offscreen) {
-    // Do we want to create an offscreen rendering context suitable
-    // for directly drawing to a separately supplied surface? In that
-    // case, we must ensure that the surface used for context creation
-    // is compatible with the requested attributes. This is explicitly
-    // opt-in since some context such as for NaCl request custom
-    // attributes but don't expect to get their own surface, and not
-    // all surface factories support custom formats.
-    if (init_params.attribs.own_offscreen_surface) {
-      if (init_params.attribs.depth_size > 0) {
-        surface_format.SetDepthBits(init_params.attribs.depth_size);
-      }
-      if (init_params.attribs.samples > 0) {
-        surface_format.SetSamples(init_params.attribs.samples);
-      }
-      if (init_params.attribs.stencil_size > 0) {
-        surface_format.SetStencilBits(init_params.attribs.stencil_size);
-      }
-      // Currently, we can't separately control alpha channel for surfaces,
-      // it's generally enabled by default except for RGB565 and (on desktop)
-      // smaller-than-32bit formats. If there's a future use case that
-      // requires this, it should use init_params.attribs.alpha_size here.
-    }
     if (!surface_format.IsCompatible(default_surface->GetFormat())) {
       DVLOG(1) << __FUNCTION__ << ": Hit the OwnOffscreenSurface path";
       use_virtualized_gl_context_ = false;
@@ -431,6 +425,23 @@ gpu::ContextResult GLES2CommandBufferStub::Initialize(
     }
   }
 
+  if (IsWebGLContextType(init_params.attribs.context_type)) {
+    gl::GLDisplayEGL* display_egl = display->GetAs<gl::GLDisplayEGL>();
+    if (display_egl) {
+      UMA_HISTOGRAM_ENUMERATION("GPU.WebGLDisplayType",
+                                display_egl->GetDisplayType(),
+                                gl::DISPLAY_TYPE_MAX);
+
+      constexpr uint64_t kLargeCanvasNumPixels = 128 * 128;
+      uint64_t surface_area = surface_->GetSize().Area64();
+      if (surface_area >= kLargeCanvasNumPixels) {
+        UMA_HISTOGRAM_ENUMERATION("GPU.WebGLDisplayTypeLarge",
+                                  display_egl->GetDisplayType(),
+                                  gl::DISPLAY_TYPE_MAX);
+      }
+    }
+  }
+
   manager->delegate()->DidCreateContextSuccessfully();
   initialized_ = true;
   return gpu::ContextResult::kSuccess;
@@ -466,18 +477,6 @@ MemoryTracker* GLES2CommandBufferStub::GetContextGroupMemoryTracker() const {
 void GLES2CommandBufferStub::OnGpuSwitched(
     gl::GpuPreference active_gpu_heuristic) {
   client().OnGpuSwitched(active_gpu_heuristic);
-}
-
-void GLES2CommandBufferStub::OnTakeFrontBuffer(const Mailbox& mailbox) {
-  TRACE_EVENT0("gpu", "CommandBufferStub::OnTakeFrontBuffer");
-  DCHECK(gles2_decoder_);
-  gles2_decoder_->TakeFrontBuffer(mailbox);
-}
-
-void GLES2CommandBufferStub::OnReturnFrontBuffer(const Mailbox& mailbox,
-                                                 bool is_lost) {
-  // No need to pull texture updates.
-  gles2_decoder_->ReturnFrontBuffer(mailbox, is_lost);
 }
 
 void GLES2CommandBufferStub::OnSetDefaultFramebufferSharedImage(

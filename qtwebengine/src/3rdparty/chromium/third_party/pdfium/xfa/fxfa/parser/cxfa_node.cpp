@@ -36,8 +36,8 @@
 #include "third_party/base/check.h"
 #include "third_party/base/check_op.h"
 #include "third_party/base/containers/contains.h"
+#include "third_party/base/containers/span.h"
 #include "third_party/base/notreached.h"
-#include "third_party/base/span.h"
 #include "xfa/fde/cfde_textout.h"
 #include "xfa/fgas/crt/cfgas_decimal.h"
 #include "xfa/fgas/crt/locale_iface.h"
@@ -2490,6 +2490,7 @@ XFA_EventError CXFA_Node::ProcessCalculate(CXFA_FFDocView* pDocView) {
 
   CXFA_EventParam EventParam;
   EventParam.m_eType = XFA_EVENT_Calculate;
+  EventParam.m_bTargeted = false;
   XFA_EventError iRet =
       ExecuteScript(pDocView, calc->GetScriptIfExists(), &EventParam);
   if (iRet != XFA_EventError::kSuccess)
@@ -2682,7 +2683,6 @@ XFA_EventError CXFA_Node::ProcessValidate(CXFA_FFDocView* pDocView,
   if (script) {
     CXFA_EventParam eParam;
     eParam.m_eType = XFA_EVENT_Validate;
-    eParam.m_pTarget = this;
     std::tie(iRet, bRet) = ExecuteBoolScript(pDocView, script, &eParam);
   }
 
@@ -2768,7 +2768,8 @@ std::pair<XFA_EventError, bool> CXFA_Node::ExecuteBoolScript(
 
   CXFA_FFDoc* pDoc = pDocView->GetDoc();
   CFXJSE_Engine* pContext = pDoc->GetXFADoc()->GetScriptContext();
-  pContext->SetEventParam(pEventParam);
+  CFXJSE_Engine::EventParamScope paramScope(
+      pContext, pEventParam->m_bTargeted ? this : nullptr, pEventParam);
   pContext->SetRunAtType(script->GetRunAt());
 
   std::vector<cppgc::Persistent<CXFA_Node>> refNodes;
@@ -2819,7 +2820,6 @@ std::pair<XFA_EventError, bool> CXFA_Node::ExecuteBoolScript(
     }
   }
   pContext->SetNodesOfRunScript(nullptr);
-  pContext->SetEventParam(nullptr);
 
   return {iRet, pTmpRetValue->IsBoolean(pContext->GetIsolate()) &&
                     pTmpRetValue->ToBoolean(pContext->GetIsolate())};
@@ -2918,7 +2918,7 @@ CXFA_Node::CreateChildUIAndValueNodesIfNeeded() {
       widget_type = XFA_FFWidgetType::kTextEdit;
     }
   } else {
-    NOTREACHED();
+    NOTREACHED_NORETURN();
   }
 
   if (!pUIChild) {
@@ -2933,8 +2933,7 @@ CXFA_Node::CreateChildUIAndValueNodesIfNeeded() {
 }
 
 XFA_FFWidgetType CXFA_Node::GetDefaultFFWidgetType() const {
-  NOTREACHED();
-  return XFA_FFWidgetType::kNone;
+  NOTREACHED_NORETURN();
 }
 
 CXFA_Node* CXFA_Node::CreateUINodeIfNeeded(CXFA_Ui* ui, XFA_Element type) {
@@ -2979,7 +2978,7 @@ CXFA_Node* CXFA_Node::GetUIChildNode() {
   } else if (type == XFA_Element::ExclGroup) {
     ff_widget_type_ = XFA_FFWidgetType::kExclGroup;
   } else {
-    NOTREACHED();
+    NOTREACHED_NORETURN();
   }
   return ui_ ? ui_->GetFirstChild() : nullptr;
 }
@@ -3710,8 +3709,7 @@ absl::optional<float> CXFA_Node::FindSplitPos(CXFA_FFDocView* pDocView,
           fStartOffset += (fHeight - fTextHeight + fSpaceAbove);
           break;
         default:
-          NOTREACHED();
-          break;
+          NOTREACHED_NORETURN();
       }
     }
     if (fStartOffset < 0.1f)
@@ -5096,7 +5094,7 @@ void CXFA_Node::SetToXML(const WideString& value) {
       ToXMLText(GetXMLMappingNode())->SetText(value);
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_NORETURN();
   }
 }
 

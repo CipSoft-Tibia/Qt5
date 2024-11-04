@@ -22,18 +22,22 @@ EnumDeclarationPrinter::~EnumDeclarationPrinter() = default;
 
 void EnumDeclarationPrinter::startEnum()
 {
-    printEnumClass();
+    m_printer->Print(m_typeMap, CommonTemplates::EnumGadgetDeclarationTemplate());
+
     if (!m_typeMap["export_macro"].empty())
-        m_printer->Print(m_typeMap, CommonTemplates::EnumRegistrationDeclaration());
+        m_printer->Print(m_typeMap, CommonTemplates::QNamespaceDeclarationTemplate());
     else
-        m_printer->Print(m_typeMap, CommonTemplates::EnumRegistrationDeclarationNoExport());
+        m_printer->Print(m_typeMap, CommonTemplates::QNamespaceDeclarationNoExportTemplate());
+
+    if (Options::instance().hasQml())
+        m_printer->Print(m_typeMap, CommonTemplates::QmlNamedElement());
+
+    m_printer->Print("\n");
 }
 
 void EnumDeclarationPrinter::printEnum()
 {
-    auto typeMap = common::produceEnumTypeMap(m_descriptor, nullptr);
-
-    m_printer->Print(typeMap, CommonTemplates::EnumDefinitionTemplate());
+    m_printer->Print(m_typeMap, CommonTemplates::EnumDefinitionTemplate());
 
     Indent();
     int numValues = m_descriptor->value_count();
@@ -44,15 +48,19 @@ void EnumDeclarationPrinter::printEnum()
                          CommonTemplates::EnumFieldTemplate());
     }
     Outdent();
+
     m_printer->Print(CommonTemplates::SemicolonBlockEnclosureTemplate());
-    m_printer->Print(typeMap, CommonTemplates::QEnumNSTemplate());
-    m_printer->Print(typeMap, CommonTemplates::UsingRepeatedEnumTemplate());
+    m_printer->Print(m_typeMap, CommonTemplates::QEnumNSTemplate());
+    m_printer->Print(m_typeMap, CommonTemplates::UsingRepeatedEnumTemplate());
+
+    if (!m_typeMap["export_macro"].empty())
+        m_printer->Print(m_typeMap, CommonTemplates::EnumRegistrationDeclaration());
+    else
+        m_printer->Print(m_typeMap, CommonTemplates::EnumRegistrationDeclarationNoExport());
 }
 
-void EnumDeclarationPrinter::printEnumClass()
+void EnumDeclarationPrinter::encloseEnum()
 {
-    if (!m_typeMap["export_macro"].empty())
-        m_printer->Print(m_typeMap, CommonTemplates::EnumDeclarationTemplate());
-    else
-        m_printer->Print(m_typeMap, CommonTemplates::EnumDeclarationNoExportTemplate());
+    m_printer->Print({ { "scope_namespaces", m_typeMap["enum_gadget"] } },
+                     CommonTemplates::NamespaceClosingTemplate());
 }

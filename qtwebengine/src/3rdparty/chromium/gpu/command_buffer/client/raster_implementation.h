@@ -129,10 +129,12 @@ class RASTER_EXPORT RasterImplementation : public RasterInterface,
   void WritePixels(const gpu::Mailbox& dest_mailbox,
                    int dst_x_offset,
                    int dst_y_offset,
+                   int dst_plane_index,
                    GLenum texture_target,
-                   GLuint row_bytes,
-                   const SkImageInfo& src_info,
-                   const void* src_pixels) override;
+                   const SkPixmap& src_sk_pixmap) override;
+
+  void WritePixelsYUV(const gpu::Mailbox& dest_mailbox,
+                      const SkYUVAPixmaps& src_yuv_pixmap) override;
 
   void ConvertYUVAMailboxesToRGB(
       const gpu::Mailbox& dest_mailbox,
@@ -196,7 +198,7 @@ class RASTER_EXPORT RasterImplementation : public RasterInterface,
       const gfx::Point& paste_location,
       base::OnceCallback<void()> release_mailbox,
       base::OnceCallback<void(bool)> readback_done) override;
-  void ReadbackImagePixels(const gpu::Mailbox& source_mailbox,
+  bool ReadbackImagePixels(const gpu::Mailbox& source_mailbox,
                            const SkImageInfo& dst_info,
                            GLuint dst_row_bytes,
                            int src_x,
@@ -341,7 +343,7 @@ class RASTER_EXPORT RasterImplementation : public RasterInterface,
       SyncToken* decode_sync_token,
       ClientDiscardableHandle handle);
 
-  void ReadbackImagePixelsINTERNAL(const gpu::Mailbox& source_mailbox,
+  bool ReadbackImagePixelsINTERNAL(const gpu::Mailbox& source_mailbox,
                                    const SkImageInfo& dst_info,
                                    GLuint dst_row_bytes,
                                    int src_x,
@@ -408,7 +410,7 @@ class RASTER_EXPORT RasterImplementation : public RasterInterface,
   ClientFontManager font_manager_;
 
   mutable base::Lock lost_lock_;
-  bool lost_;
+  bool lost_ GUARDED_BY(lost_lock_);
 
   // To avoid repeated allocations when searching the rtrees, hold onto this
   // vector between RasterCHROMIUM calls.  It is not valid outside of that

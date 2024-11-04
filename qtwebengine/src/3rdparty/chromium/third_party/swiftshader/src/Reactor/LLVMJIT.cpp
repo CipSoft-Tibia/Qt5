@@ -26,9 +26,23 @@ __pragma(warning(push))
     __pragma(warning(disable : 4146))  // unary minus operator applied to unsigned type, result still unsigned
 #endif
 
+// See https://groups.google.com/g/llvm-dev/c/CAE7Va57h2c/m/74ITeXFEAQAJ
+// for information about `RTDyldObjectLinkingLayer` vs `ObjectLinkingLayer`.
+// On RISC-V, only `ObjectLinkingLayer` is supported.
+#if defined(__riscv)
+#define USE_LEGACY_OBJECT_LINKING_LAYER 0
+#else
+#define USE_LEGACY_OBJECT_LINKING_LAYER 1
+#endif
+
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+
+#if USE_LEGACY_OBJECT_LINKING_LAYER
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#else
+#include "llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"
+#endif
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Verifier.h"
@@ -141,7 +155,7 @@ static void *getTLSAddress(void *control)
 	case MSanTLS::origin: return reinterpret_cast<void *>(&__msan_origin_tls);
 
 	default:
-		UNSUPPORTED("MemorySanitizer used an unrecognized TLS variable: %d", tlsIndex);
+		UNSUPPORTED("MemorySanitizer used an unrecognized TLS variable: %d", static_cast<int>(tlsIndex));
 		return nullptr;
 	}
 }
@@ -216,21 +230,40 @@ JITGlobals *JITGlobals::get()
 #else
 		(void)ok;  // getHostCPUFeatures always returns false on other platforms
 #endif
-
 		for(auto &feature : cpuFeatures)
 		{
 			jitTargetMachineBuilder.getFeatures().AddFeature(feature.first(), feature.second);
 		}
 
 #if LLVM_VERSION_MAJOR >= 11 /* TODO(b/165000222): Unconditional after LLVM 11 upgrade */
+
+#if defined(__riscv) && __riscv_xlen == 64
+		// jitTargetMachineBuilder.getFeatures() on RISC-V does
+		// not return the RISC-V CPU extensions, so they are
+		// manually added.
+		jitTargetMachineBuilder.getFeatures().AddFeature("+m");
+		jitTargetMachineBuilder.getFeatures().AddFeature("+a");
+		jitTargetMachineBuilder.getFeatures().AddFeature("+f");
+		jitTargetMachineBuilder.getFeatures().AddFeature("+d");
+		jitTargetMachineBuilder.getFeatures().AddFeature("+c");
+		// The default code model is "Small".
+		// On RISC-V, using the default code model results in an
+		// "Unsupported riscv relocation" error.
+		jitTargetMachineBuilder.setCodeModel(llvm::CodeModel::Medium);
+#endif
+
 		jitTargetMachineBuilder.setCPU(std::string(llvm::sys::getHostCPUName()));
 #else
 		jitTargetMachineBuilder.setCPU(llvm::sys::getHostCPUName());
 #endif
 
 		// Reactor's MemorySanitizer support depends on intercepting __emutls_get_address calls.
+#if LLVM_VERSION_MAJOR < 17
 		ASSERT(!__has_feature(memory_sanitizer) || (jitTargetMachineBuilder.getOptions().ExplicitEmulatedTLS &&
 		                                            jitTargetMachineBuilder.getOptions().EmulatedTLS));
+#else
+		ASSERT(!__has_feature(memory_sanitizer) || jitTargetMachineBuilder.getOptions().EmulatedTLS);
+#endif
 
 		auto dataLayout = jitTargetMachineBuilder.getDefaultDataLayoutForTarget();
 		ASSERT_MSG(dataLayout, "JITTargetMachineBuilder::getDefaultDataLayoutForTarget() failed");
@@ -631,13 +664,25 @@ class ExternalSymbolGenerator : public llvm::orc::JITDylib::DefinitionGenerator
 			auto unmangled = *name;
 #endif
 
+#if LLVM_VERSION_MAJOR < 17
+			auto toSymbol = [](void *ptr) {
+				return llvm::JITEvaluatedSymbol(
+				    static_cast<llvm::JITTargetAddress>(reinterpret_cast<uintptr_t>(ptr)),
+				    llvm::JITSymbolFlags::Exported);
+			};
+#else
+			auto toSymbol = [](void *ptr) {
+				return llvm::orc::ExecutorSymbolDef{
+					llvm::orc::ExecutorAddr(reinterpret_cast<uintptr_t>(ptr)),
+					llvm::JITSymbolFlags::Exported,
+				};
+			};
+#endif
+
 			auto it = resolver.functions.find(unmangled.str());
 			if(it != resolver.functions.end())
 			{
-				symbols[name] = llvm::JITEvaluatedSymbol(
-				    static_cast<llvm::JITTargetAddress>(reinterpret_cast<uintptr_t>(it->second)),
-				    llvm::JITSymbolFlags::Exported);
-
+				symbols[name] = toSymbol(it->second);
 				continue;
 			}
 
@@ -652,10 +697,7 @@ class ExternalSymbolGenerator : public llvm::orc::JITDylib::DefinitionGenerator
 
 			if(address)
 			{
-				symbols[name] = llvm::JITEvaluatedSymbol(
-				    static_cast<llvm::JITTargetAddress>(reinterpret_cast<uintptr_t>(address)),
-				    llvm::JITSymbolFlags::Exported);
-
+				symbols[name] = toSymbol(address);
 				continue;
 			}
 #endif
@@ -746,9 +788,13 @@ public:
 #if LLVM_VERSION_MAJOR >= 13
 	    , session(std::move(Unwrap(llvm::orc::SelfExecutorProcessControl::Create())))
 #endif
+#if USE_LEGACY_OBJECT_LINKING_LAYER
 	    , objectLayer(session, [this]() {
 		    return std::make_unique<llvm::SectionMemoryManager>(&memoryMapper);
 	    })
+#else
+	    , objectLayer(session, llvm::cantFail(llvm::jitlink::InProcessMemoryManager::Create()))
+#endif
 	    , addresses(count)
 	{
 		bool fatalCompileIssue = false;
@@ -833,7 +879,11 @@ public:
 			}
 			else  // Successful compilation
 			{
+#if LLVM_VERSION_MAJOR < 17
 				addresses[i] = reinterpret_cast<void *>(static_cast<intptr_t>(symbol->getAddress()));
+#else
+				addresses[i] = reinterpret_cast<void *>(static_cast<intptr_t>(symbol->getAddress().getValue()));
+#endif
 			}
 		}
 
@@ -861,7 +911,11 @@ private:
 	std::string name;
 	llvm::orc::ExecutionSession session;
 	MemoryMapper memoryMapper;
+#if USE_LEGACY_OBJECT_LINKING_LAYER
 	llvm::orc::RTDyldObjectLinkingLayer objectLayer;
+#else
+	llvm::orc::ObjectLinkingLayer objectLayer;
+#endif
 	std::vector<const void *> addresses;
 };
 

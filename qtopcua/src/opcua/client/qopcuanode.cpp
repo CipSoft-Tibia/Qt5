@@ -150,7 +150,18 @@ QT_BEGIN_NAMESPACE
     data change notification from the server, a read or a write operation. \a value contains the
     new value for the node attribute \a attr.
 
-    \sa attribute() attributeError() serverTimestamp() sourceTimestamp()
+    \sa attribute() attributeError() serverTimestamp() sourceTimestamp() valueAttributeUpdated()
+*/
+
+/*!
+    \fn void QOpcUaNode::valueAttributeUpdated(const QVariant &value)
+    \since 6.7
+
+    This signal is emitted after the value attribute in the attribute cache has been updated by a
+    data change notification from the server, a read or a write operation. \a value contains the
+    new value for the value attribute.
+
+    \sa attribute() attributeError() serverTimestamp() sourceTimestamp() attributeUpdated()
 */
 
 /*!
@@ -245,6 +256,7 @@ QT_BEGIN_NAMESPACE
 QOpcUaNode::QOpcUaNode(QOpcUaNodeImpl *impl, QOpcUaClient *client, QObject *parent)
     : QObject(*new QOpcUaNodePrivate(impl, client), parent)
 {
+    d_func()->createConnections();
 }
 
 QOpcUaNode::~QOpcUaNode()
@@ -253,7 +265,7 @@ QOpcUaNode::~QOpcUaNode()
 
 /*!
     Starts an asynchronous read operation for the node attribute \a attribute.
-    \a indexRange is a string which can be used to select a part of an array. It is defined in OPC-UA part 4, 7.22.
+    \a indexRange is a string which can be used to select a part of an array. It is defined in OPC UA 1.05 part 4, 7.27.
     The first element in an array is 0, "1" returns the second element, "0:9" returns the first 10 elements,
     "0,1" returns the second element of the first row in a two-dimensional array.
 
@@ -673,7 +685,7 @@ bool QOpcUaNode::callMethod(const QString &methodNodeId, const QList<QOpcUa::Typ
 
 /*!
     Resolves the browse path \a path to one or more node ids starting from this node
-    using the TranslateBrowsePathsToNodeIds service specified in OPC-UA part 4, 5.8.4.
+    using the TranslateBrowsePathsToNodeIds service specified in OPC UA 1.05 part 4, 5.8.4.
 
     Returns \c true if the asynchronous call has been successfully dispatched.
 
@@ -754,7 +766,7 @@ bool QOpcUaNode::browse(const QOpcUaBrowseRequest &request)
 /*!
     Starts a read history request for this node. This is the Qt OPC UA representation for the OPC UA
     ReadHistory service for reading raw historical data defined in
-    \l {https://reference.opcfoundation.org/v104/Core/docs/Part4/5.10.3/} {OPC-UA part 4, 5.10.3}.
+    \l {https://reference.opcfoundation.org/v105/Core/docs/Part4/5.10.3/} {OPC UA 1.05 part 4, 5.10.3}.
     It reads the history based on the parementers, \a startTime, \a endTime,
     \a numValues, and \a returnBounds.
 
@@ -795,7 +807,76 @@ QOpcUaHistoryReadResponse *QOpcUaNode::readHistoryRaw(const QDateTime &startTime
     if (d->m_client.isNull() || d->m_client->state() != QOpcUaClient::Connected)
         return nullptr;
 
-    return d->m_impl->readHistoryRaw(startTime, endTime, numValues, returnBounds);
+    return d->m_impl->readHistoryRaw(startTime, endTime, numValues, returnBounds, QOpcUa::TimestampsToReturn::Both);
+}
+
+/*!
+    Starts a read history request for this node.
+    The additional \a timestampsToReturn parameter determines which timestamps will be
+    returned for each value.
+
+    \since 6.7
+*/
+QOpcUaHistoryReadResponse *QOpcUaNode::readHistoryRaw(const QDateTime &startTime, const QDateTime &endTime, quint32 numValues, bool returnBounds,
+                                                      QOpcUa::TimestampsToReturn timestampsToReturn)
+{
+    Q_D(QOpcUaNode);
+    if (d->m_client.isNull() || d->m_client->state() != QOpcUaClient::Connected)
+        return nullptr;
+
+    return d->m_impl->readHistoryRaw(startTime, endTime, numValues, returnBounds, timestampsToReturn);
+}
+
+/*!
+    \since 6.7
+
+    Starts a read event history request for this node using the parameters \a startTime, \a endTime, \a filter and \a numValues.
+    The \a filter is used by the server to determine which events and which set of their fields shall be returned.
+
+    Returns a \l QOpcUaHistoryReadResponse which contains the state of the request if the asynchronous
+    request has been successfully dispatched. The results are returned in the
+    \l QOpcUaHistoryReadResponse::readHistoryEventsFinished(const QList<QOpcUaHistoryEvent> &results, QOpcUa::UaStatusCode serviceResult)
+    signal.
+
+    The following example retrieves historic events for the last two days. Up to 10 events are returned at a time. While there are more
+    events matching the filter and the provided time range, \c hasMoreData() will be true and more events can be fetched via \b readMoreData().
+
+    \code
+    QScopedPointer<QOpcUaNode> node(opcuaClient->node("ns=2;s=EventHistorian"));
+    QVERIFY(node != nullptr);
+
+    QOpcUaMonitoringParameters::EventFilter filter;
+    filter << QOpcUaSimpleAttributeOperand("Message");
+    filter << QOpcUaSimpleAttributeOperand("Time");
+
+    const auto response = node->readHistoryEvents(QDateTime::currentDateTime().addDays(-2), QDateTime::currentDateTime(), filter, 10);
+
+    QObject::connect(response, &QOpcUaHistoryReadResponse::readHistoryEventsFinished, this,
+                     [response](const QList<QOpcUaHistoryEvent> &results, QOpcUa::UaStatusCode serviceResult) {
+                         if (serviceResult != QOpcUa::UaStatusCode::Good) {
+                             qDebug() << "Service call failed with" << serviceResult;
+                             return;
+                         }
+
+                         // Print what we got so far
+                         for (const auto &result : response->events()) {
+                             qDebug() << "Results for" << result.nodeId() << result.statusCode();
+                             for (const auto &event : result.events())
+                                 qDebug() << "    Event:" << event;
+                         }
+
+                         if (response->hasMoreData())
+                             response->readMoreData();
+                     });
+    \endcode
+*/
+QOpcUaHistoryReadResponse *QOpcUaNode::readHistoryEvents(const QDateTime &startTime, const QDateTime &endTime, QOpcUaMonitoringParameters::EventFilter &filter, quint32 numValues)
+{
+    Q_D(QOpcUaNode);
+    if (d->m_client.isNull() || d->m_client->state() != QOpcUaClient::Connected)
+        return nullptr;
+
+    return d->m_impl->readHistoryEvents(startTime, endTime, filter, numValues);
 }
 
 QDebug operator<<(QDebug dbg, const QOpcUaNode &node)

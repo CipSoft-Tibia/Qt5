@@ -588,8 +588,9 @@ TEST(LayerStandaloneTest, ReleaseMailboxOnDestruction) {
 
   constexpr gfx::Size size(64, 64);
   auto resource = viz::TransferableResource::MakeGpu(
-      gpu::Mailbox::GenerateForSharedImage(), GL_LINEAR, GL_TEXTURE_2D,
-      gpu::SyncToken(), size, viz::RGBA_8888, false /* is_overlay_candidate */);
+      gpu::Mailbox::GenerateForSharedImage(), GL_TEXTURE_2D, gpu::SyncToken(),
+      size, viz::SinglePlaneFormat::kRGBA_8888,
+      false /* is_overlay_candidate */);
   layer->SetTransferableResource(resource,
                                  base::BindOnce(ReturnMailbox, &callback_run),
                                  gfx::Size(10, 10));
@@ -798,7 +799,7 @@ TEST_F(LayerWithDelegateTest, Cloning) {
   layer->SetRoundedCornerRadius({1, 2, 4, 5});
   layer->SetGradientMask(gradient_mask);
   layer->SetIsFastRoundedCorner(true);
-  layer->SetSubtreeCaptureId(viz::SubtreeCaptureId(1));
+  layer->SetSubtreeCaptureId(viz::SubtreeCaptureId(base::Token(0u, 1u)));
 
   auto clone = layer->Clone();
 
@@ -1096,7 +1097,7 @@ TEST_F(LayerWithNullDelegateTest, SwitchLayerPreservesCCLayerState) {
   constexpr gfx::RoundedCornersF kCornerRadii(1, 2, 3, 4);
   l1->SetRoundedCornerRadius(kCornerRadii);
   l1->SetIsFastRoundedCorner(true);
-  constexpr viz::SubtreeCaptureId kSubtreeCaptureId(22);
+  constexpr viz::SubtreeCaptureId kSubtreeCaptureId(base::Token(0u, 22u));
   l1->SetSubtreeCaptureId(kSubtreeCaptureId);
   gfx::LinearGradient gradient_mask(45);
   gradient_mask.AddStep(.5, 50);
@@ -1121,8 +1122,9 @@ TEST_F(LayerWithNullDelegateTest, SwitchLayerPreservesCCLayerState) {
   bool callback1_run = false;
   constexpr gfx::Size size(64, 64);
   auto resource = viz::TransferableResource::MakeGpu(
-      gpu::Mailbox::GenerateForSharedImage(), GL_LINEAR, GL_TEXTURE_2D,
-      gpu::SyncToken(), size, viz::RGBA_8888, false /* is_overlay_candidate */);
+      gpu::Mailbox::GenerateForSharedImage(), GL_TEXTURE_2D, gpu::SyncToken(),
+      size, viz::SinglePlaneFormat::kRGBA_8888,
+      false /* is_overlay_candidate */);
   l1->SetTransferableResource(resource,
                               base::BindOnce(ReturnMailbox, &callback1_run),
                               gfx::Size(10, 10));
@@ -1146,8 +1148,9 @@ TEST_F(LayerWithNullDelegateTest, SwitchLayerPreservesCCLayerState) {
 
   bool callback2_run = false;
   resource = viz::TransferableResource::MakeGpu(
-      gpu::Mailbox::GenerateForSharedImage(), GL_LINEAR, GL_TEXTURE_2D,
-      gpu::SyncToken(), size, viz::RGBA_8888, false /* is_overlay_candidate */);
+      gpu::Mailbox::GenerateForSharedImage(), GL_TEXTURE_2D, gpu::SyncToken(),
+      size, viz::SinglePlaneFormat::kRGBA_8888,
+      false /* is_overlay_candidate */);
   l1->SetTransferableResource(resource,
                               base::BindOnce(ReturnMailbox, &callback2_run),
                               gfx::Size(10, 10));
@@ -1172,8 +1175,9 @@ TEST_F(LayerWithNullDelegateTest, SwitchLayerPreservesCCLayerState) {
   // Back to a texture, without changing the bounds of the layer or the texture.
   bool callback3_run = false;
   resource = viz::TransferableResource::MakeGpu(
-      gpu::Mailbox::GenerateForSharedImage(), GL_LINEAR, GL_TEXTURE_2D,
-      gpu::SyncToken(), size, viz::RGBA_8888, false /* is_overlay_candidate */);
+      gpu::Mailbox::GenerateForSharedImage(), GL_TEXTURE_2D, gpu::SyncToken(),
+      size, viz::SinglePlaneFormat::kRGBA_8888,
+      false /* is_overlay_candidate */);
   l1->SetTransferableResource(resource,
                               base::BindOnce(ReturnMailbox, &callback3_run),
                               gfx::Size(10, 10));
@@ -1519,8 +1523,9 @@ TEST_F(LayerWithNullDelegateTest, EmptyDamagedRect) {
   std::unique_ptr<Layer> root = CreateLayer(LAYER_SOLID_COLOR);
   constexpr gfx::Size size(64, 64);
   auto resource = viz::TransferableResource::MakeGpu(
-      gpu::Mailbox::GenerateForSharedImage(), GL_LINEAR, GL_TEXTURE_2D,
-      gpu::SyncToken(), size, viz::RGBA_8888, false /* is_overlay_candidate */);
+      gpu::Mailbox::GenerateForSharedImage(), GL_TEXTURE_2D, gpu::SyncToken(),
+      size, viz::SinglePlaneFormat::kRGBA_8888,
+      false /* is_overlay_candidate */);
   root->SetTransferableResource(resource, std::move(callback),
                                 gfx::Size(10, 10));
   compositor()->SetRootLayer(root.get());
@@ -2166,7 +2171,7 @@ class SchedulePaintLayerDelegate : public LayerDelegate {
                                   float new_device_scale_factor) override {}
 
   int paint_count_;
-  raw_ptr<Layer> layer_;
+  raw_ptr<Layer, DanglingUntriaged> layer_;
   gfx::Rect schedule_paint_rect_;
   gfx::Rect last_clip_rect_;
 };
@@ -2439,8 +2444,9 @@ TEST_F(LayerWithDelegateTest, TransferableResourceMirroring) {
 
   constexpr gfx::Size size(64, 64);
   auto resource = viz::TransferableResource::MakeGpu(
-      gpu::Mailbox::GenerateForSharedImage(), GL_LINEAR, GL_TEXTURE_2D,
-      gpu::SyncToken(), size, viz::RGBA_8888, false /* is_overlay_candidate */);
+      gpu::Mailbox::GenerateForSharedImage(), GL_TEXTURE_2D, gpu::SyncToken(),
+      size, viz::SinglePlaneFormat::kRGBA_8888,
+      false /* is_overlay_candidate */);
   bool release_callback_run = false;
 
   layer->SetTransferableResource(
@@ -2468,8 +2474,9 @@ TEST_F(LayerWithDelegateTest, TransferableResourceMirroring) {
   EXPECT_FALSE(mirror->has_external_content());
 
   resource = viz::TransferableResource::MakeGpu(
-      gpu::Mailbox::GenerateForSharedImage(), GL_LINEAR, GL_TEXTURE_2D,
-      gpu::SyncToken(), size, viz::RGBA_8888, false /* is_overlay_candidate */);
+      gpu::Mailbox::GenerateForSharedImage(), GL_TEXTURE_2D, gpu::SyncToken(),
+      size, viz::SinglePlaneFormat::kRGBA_8888,
+      false /* is_overlay_candidate */);
   release_callback_run = false;
 
   // Setting a transferable resource on the source layer should set it on the

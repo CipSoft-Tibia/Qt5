@@ -47,7 +47,7 @@ message AndroidStartupMetric {
 
   // Timing information spanning the intent received by the
   // activity manager to the first frame drawn.
-  // Next id: 33.
+  // Next id: 35.
   message ToFirstFrame {
     // The duration between the intent received and first frame.
     optional int64 dur_ns = 1;
@@ -117,6 +117,14 @@ message AndroidStartupMetric {
     // |time_lock_contention_thread_main|.
     optional Slice time_monitor_contention_thread_main = 32;
 
+    // Time spent in opening dex files on the main thread of the process
+    // being started up.
+    optional Slice time_dex_open_thread_main = 33;
+
+    // Time spent in dlopening .so files on the main thread of the process
+    // being started up.
+    optional Slice time_dlopen_thread_main = 34;
+
     // Removed: was other_process_to_activity_cpu_ratio.
     reserved 12;
 
@@ -147,13 +155,13 @@ message AndroidStartupMetric {
     optional string destination_thread = 3;
     optional string destination_process = 4;
     // From
-    // https://cs.android.com/android/platform/superproject/+/master:external/perfetto/protos/perfetto/trace/ftrace/binder.proto;l=15;drc=7b6a788162a30802f4c9d8d7a30a54e25edd30f1
+    // https://cs.android.com/android/platform/superproject/+/main:external/perfetto/protos/perfetto/trace/ftrace/binder.proto;l=15;drc=7b6a788162a30802f4c9d8d7a30a54e25edd30f1
     optional string flags = 5;
     // From
-    // https://cs.android.com/android/platform/superproject/+/master:external/perfetto/protos/perfetto/trace/ftrace/binder.proto;l=14;drc=7b6a788162a30802f4c9d8d7a30a54e25edd30f1
+    // https://cs.android.com/android/platform/superproject/+/main:external/perfetto/protos/perfetto/trace/ftrace/binder.proto;l=14;drc=7b6a788162a30802f4c9d8d7a30a54e25edd30f1
     optional string code = 6;
     // From
-    // https://cs.android.com/android/platform/superproject/+/master:external/perfetto/protos/perfetto/trace/ftrace/binder.proto;l=37;drc=7b6a788162a30802f4c9d8d7a30a54e25edd30f1
+    // https://cs.android.com/android/platform/superproject/+/main:external/perfetto/protos/perfetto/trace/ftrace/binder.proto;l=37;drc=7b6a788162a30802f4c9d8d7a30a54e25edd30f1
     optional int64 data_size = 7;
   }
 
@@ -167,6 +175,14 @@ message AndroidStartupMetric {
     optional string compilation_filter = 2;
     optional string compilation_reason = 3;
     optional string location = 4;
+    optional string summary = 5;
+  }
+
+  // Contains the name and duration of class verification occurred during
+  // the startup.
+  message VerifyClass {
+    optional string name = 1;
+    optional int64 dur_ns = 2;
   }
 
   // Contains timestamps of important events which occurred during the
@@ -209,7 +225,7 @@ message AndroidStartupMetric {
     optional int64 dex2oat_dur_ns = 7;
   }
 
-  // Next id: 19
+  // Next id: 21
   message Startup {
     // Random id uniquely identifying an app startup in this trace.
     optional uint32 startup_id = 1;
@@ -261,6 +277,12 @@ message AndroidStartupMetric {
 
     // Contains information about the status of odex files.
     repeated OptimizationStatus optimization_status = 12;
+
+    // Contains information about the class verification.
+    repeated VerifyClass verify_class = 19;
+
+    // Contains the dlopen file names.
+    repeated string dlopen_file = 20;
 
     // Package name of startups running concurrent to the launch.
     repeated string startup_concurrent_to_launch = 18;

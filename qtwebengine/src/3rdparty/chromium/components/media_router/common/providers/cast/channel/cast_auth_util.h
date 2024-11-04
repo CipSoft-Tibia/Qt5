@@ -28,6 +28,7 @@ using ::cast::channel::CastMessage;
 
 BASE_DECLARE_FEATURE(kEnforceNonceChecking);
 BASE_DECLARE_FEATURE(kEnforceSHA256Checking);
+BASE_DECLARE_FEATURE(kEnforceFallbackCRLRevocationChecking);
 
 struct AuthResult {
  public:
@@ -49,6 +50,9 @@ struct AuthResult {
     ERROR_TLS_CERT_EXPIRED,
     ERROR_CRL_INVALID,
     ERROR_CERT_REVOKED,
+    ERROR_CRL_OK_FALLBACK_CRL,
+    ERROR_FALLBACK_CRL_INVALID,
+    ERROR_CERTS_REVOKED_BY_FALLBACK_CRL,
     ERROR_SENDER_NONCE_MISMATCH,
     ERROR_DIGEST_UNSUPPORTED,
     ERROR_SIGNATURE_EMPTY,
@@ -72,11 +76,13 @@ struct AuthResult {
 
   bool success() const { return error_type == ERROR_NONE; }
 
+  // Copies any flags set in `source` to this object's flags.
+  void CopyFlagsFrom(const AuthResult& source);
+
   std::string error_message;
   ErrorType error_type{ERROR_NONE};
   unsigned int channel_policies{POLICY_NONE};
-  CastChannelFlags flags{
-      static_cast<CastChannelFlags>(CastChannelFlag::kFlagsNone)};
+  CastChannelFlags flags{kCastChannelFlagsNone};
 };
 
 class AuthContext {

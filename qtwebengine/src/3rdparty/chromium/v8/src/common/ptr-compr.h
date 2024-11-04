@@ -14,7 +14,7 @@ namespace v8::internal {
 // such a class allows plugging different decompression scheme in certain
 // places by introducing another CompressionScheme class with a customized
 // implementation. This is useful, for example, for Code::code
-// field (see CodeObjectSlot).
+// field (see InstructionStreamSlot).
 class V8HeapCompressionScheme {
  public:
   V8_INLINE static Address GetPtrComprCageBaseAddress(Address on_heap_addr);
@@ -24,7 +24,12 @@ class V8HeapCompressionScheme {
 
   // Compresses full-pointer representation of a tagged value to on-heap
   // representation.
-  V8_INLINE static Tagged_t CompressTagged(Address tagged);
+  // Must only be used for compressing object pointers since this function
+  // assumes that we deal with a valid address inside the pointer compression
+  // cage.
+  V8_INLINE static Tagged_t CompressObject(Address tagged);
+  // Compress a potentially invalid pointer.
+  V8_INLINE static Tagged_t CompressAny(Address tagged);
 
   // Decompresses smi value.
   V8_INLINE static Address DecompressTaggedSigned(Tagged_t raw_value);
@@ -43,13 +48,20 @@ class V8HeapCompressionScheme {
       PtrComprCageBase cage_base, Address raw_value,
       ProcessPointerCallback callback);
 
-#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
   // Process-wide cage base value used for decompression.
   V8_INLINE static void InitBase(Address base);
   V8_INLINE static Address base();
 
  private:
+  // These non-inlined accessors to base_ field are used in component builds
+  // where cross-component access to thread local variables is not allowed.
+  static Address base_non_inlined();
+  static void set_base_non_inlined(Address base);
+
+#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
   static V8_EXPORT_PRIVATE uintptr_t base_ V8_CONSTINIT;
+#else
+  static thread_local uintptr_t base_ V8_CONSTINIT;
 #endif  // V8_COMPRESS_POINTERS_IN_SHARED_CAGE
 };
 
@@ -72,7 +84,12 @@ class ExternalCodeCompressionScheme {
 
   // Compresses full-pointer representation of a tagged value to on-heap
   // representation.
-  V8_INLINE static Tagged_t CompressTagged(Address tagged);
+  // Must only be used for compressing object pointers (incl. SMI) since this
+  // function assumes pointers to be inside the pointer compression cage.
+  V8_INLINE static Tagged_t CompressObject(Address tagged);
+  // Compress anything that does not follow the above requirements (e.g. a maybe
+  // object, or a marker bit pattern).
+  V8_INLINE static Tagged_t CompressAny(Address tagged);
 
   // Decompresses smi value.
   V8_INLINE static Address DecompressTaggedSigned(Tagged_t raw_value);
@@ -82,13 +99,20 @@ class ExternalCodeCompressionScheme {
   V8_INLINE static Address DecompressTagged(TOnHeapAddress on_heap_addr,
                                             Tagged_t raw_value);
 
-#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
   // Process-wide cage base value used for decompression.
   V8_INLINE static void InitBase(Address base);
   V8_INLINE static Address base();
 
  private:
+  // These non-inlined accessors to base_ field are used in component builds
+  // where cross-component access to thread local variables is not allowed.
+  static Address base_non_inlined();
+  static void set_base_non_inlined(Address base);
+
+#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
   static V8_EXPORT_PRIVATE uintptr_t base_ V8_CONSTINIT;
+#else
+  static thread_local uintptr_t base_ V8_CONSTINIT;
 #endif  // V8_COMPRESS_POINTERS_IN_SHARED_CAGE
 };
 

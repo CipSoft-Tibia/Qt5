@@ -36,6 +36,7 @@
 #include "content/browser/indexed_db/indexed_db_task_helper.h"
 #include "content/common/content_export.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
+#include "third_party/blink/public/mojom/indexeddb/indexeddb.mojom.h"
 #include "third_party/leveldatabase/src/include/leveldb/status.h"
 
 namespace base {
@@ -44,10 +45,11 @@ class SequencedTaskRunner;
 }  // namespace base
 
 namespace content {
-class IndexedDBBucketState;
-class IndexedDBBucketStateHandle;
+class IndexedDBBucketContext;
+class IndexedDBBucketContextHandle;
 class IndexedDBClassFactory;
 class IndexedDBContextImpl;
+class IndexedDBDatabase;
 class TransactionalLevelDBFactory;
 class TransactionalLevelDBDatabase;
 
@@ -62,9 +64,10 @@ class CONTENT_EXPORT IndexedDBFactory : base::trace_event::MemoryDumpProvider {
 
   ~IndexedDBFactory() override;
 
-  void GetDatabaseInfo(scoped_refptr<IndexedDBCallbacks> callbacks,
-                       const storage::BucketLocator& bucket_locator,
-                       const base::FilePath& data_directory);
+  void GetDatabaseInfo(
+      const storage::BucketLocator& bucket_locator,
+      const base::FilePath& data_directory,
+      blink::mojom::IDBFactory::GetDatabaseInfoCallback callback);
   void Open(const std::u16string& name,
             std::unique_ptr<IndexedDBPendingConnection> connection,
             const storage::BucketLocator& bucket_locator,
@@ -73,7 +76,7 @@ class CONTENT_EXPORT IndexedDBFactory : base::trace_event::MemoryDumpProvider {
                 client_state_checker);
 
   void DeleteDatabase(const std::u16string& name,
-                      scoped_refptr<IndexedDBCallbacks> callbacks,
+                      std::unique_ptr<IndexedDBFactoryClient> factory_client,
                       const storage::BucketLocator& bucket_locator,
                       const base::FilePath& data_directory,
                       bool force_close);
@@ -123,12 +126,12 @@ class CONTENT_EXPORT IndexedDBFactory : base::trace_event::MemoryDumpProvider {
 
   std::vector<storage::BucketId> GetOpenBuckets() const;
 
-  IndexedDBBucketState* GetBucketFactory(const storage::BucketId& id) const;
+  IndexedDBBucketContext* GetBucketFactory(const storage::BucketId& id) const;
 
   // On an OK status, the factory handle is populated. Otherwise (when status is
   // not OK), the `IndexedDBDatabaseError` will be populated. If the status was
   // corruption, the `IndexedDBDataLossInfo` will also be populated.
-  std::tuple<IndexedDBBucketStateHandle,
+  std::tuple<IndexedDBBucketContextHandle,
              leveldb::Status,
              IndexedDBDatabaseError,
              IndexedDBDataLossInfo,
@@ -196,7 +199,7 @@ class CONTENT_EXPORT IndexedDBFactory : base::trace_event::MemoryDumpProvider {
   void OnDatabaseDeleted(const storage::BucketLocator& bucket_locator);
 
   void MaybeRunTasksForBucket(const storage::BucketLocator& bucket_locator);
-  void RunTasksForBucket(base::WeakPtr<IndexedDBBucketState> bucket_state);
+  void RunTasksForBucket(base::WeakPtr<IndexedDBBucketContext> bucket_state);
 
   // Testing helpers, so unit tests don't need to grovel through internal state.
   bool IsDatabaseOpen(const storage::BucketLocator& bucket_locator,
@@ -214,8 +217,9 @@ class CONTENT_EXPORT IndexedDBFactory : base::trace_event::MemoryDumpProvider {
   base::Time earliest_sweep_;
   base::Time earliest_compaction_;
 
-  base::flat_map<storage::BucketId, std::unique_ptr<IndexedDBBucketState>>
-      factories_per_bucket_;
+  // TODO(crbug.com/1474996): these bucket contexts need to be `SequenceBound`.
+  base::flat_map<storage::BucketId, std::unique_ptr<IndexedDBBucketContext>>
+      bucket_contexts_;
 
   std::set<storage::BucketLocator> backends_opened_since_startup_;
 
@@ -223,7 +227,7 @@ class CONTENT_EXPORT IndexedDBFactory : base::trace_event::MemoryDumpProvider {
 
   // Weak pointers from this factory are used to bind the
   // RunTaskForBucket() function, which deletes the
-  // IndexedDBBucketState object. This allows those weak pointers to be
+  // IndexedDBBucketContext object. This allows those weak pointers to be
   // invalidated during force close & shutdown to prevent re-entry (see
   // ContextDestroyed()).
   base::WeakPtrFactory<IndexedDBFactory> bucket_state_destruction_weak_factory_{

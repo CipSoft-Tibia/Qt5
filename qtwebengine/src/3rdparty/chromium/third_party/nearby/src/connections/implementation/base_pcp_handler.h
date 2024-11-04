@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "securegcm/ukey2_handshake.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
@@ -31,17 +32,17 @@
 #include "connections/implementation/endpoint_channel_manager.h"
 #include "connections/implementation/endpoint_manager.h"
 #include "connections/implementation/mediums/mediums.h"
-#ifdef NO_WEBRTC
-#include "connections/implementation/mediums/webrtc_stub.h"
-#else
-#endif
 #include "connections/implementation/pcp.h"
 #include "connections/implementation/pcp_handler.h"
 #include "connections/listeners.h"
+#include "connections/medium_selector.h"
 #include "connections/status.h"
+#include "connections/v3/connection_listening_options.h"
+#include "connections/v3/listeners.h"
 #include "internal/platform/atomic_boolean.h"
 #include "internal/platform/byte_array.h"
 #include "internal/platform/cancelable_alarm.h"
+#include "internal/platform/connection_info.h"
 #include "internal/platform/count_down_latch.h"
 #include "internal/platform/future.h"
 #include "internal/platform/prng.h"
@@ -73,13 +74,20 @@ class BasePcpHandler : public PcpHandler,
  public:
   using FrameProcessor = EndpointManager::FrameProcessor;
 
-  // TODO(apolyudov): Add SecureRandom.
   BasePcpHandler(Mediums* mediums, EndpointManager* endpoint_manager,
                  EndpointChannelManager* channel_manager,
                  BwuManager* bwu_manager, Pcp pcp);
   ~BasePcpHandler() override;
   BasePcpHandler(BasePcpHandler&&) = delete;
   BasePcpHandler& operator=(BasePcpHandler&&) = delete;
+
+  std::pair<Status, std::vector<ConnectionInfoVariant>>
+  StartListeningForIncomingConnections(
+      ClientProxy* client, absl::string_view service_id,
+      v3::ConnectionListeningOptions options,
+      v3::ConnectionListener connection_listener) override;
+
+  void StopListeningForIncomingConnections(ClientProxy* client) override;
 
   // Starts advertising. Once successfully started, changes ClientProxy's state.
   // Notifies ConnectionListener (info.listener) in case of any event.
@@ -122,7 +130,7 @@ class BasePcpHandler : public PcpHandler,
   // Until both parties call it, connection will not reach a data phase.
   // Updates state in ClientProxy.
   Status AcceptConnection(ClientProxy* client, const std::string& endpoint_id,
-                          const PayloadListener& payload_listener) override;
+                          PayloadListener payload_listener) override;
 
   // Called by either party to reject connection on their part.
   // If either party does call it, connection will terminate.
@@ -141,7 +149,16 @@ class BasePcpHandler : public PcpHandler,
   // @EndpointManagerThread
   void OnEndpointDisconnect(ClientProxy* client, const std::string& service_id,
                             const std::string& endpoint_id,
-                            CountDownLatch barrier) override;
+                            CountDownLatch barrier,
+                            DisconnectionReason reason) override;
+
+  Status UpdateAdvertisingOptions(
+      ClientProxy* client, absl::string_view service_id,
+      const AdvertisingOptions& advertising_options) override;
+
+  Status UpdateDiscoveryOptions(
+      ClientProxy* client, absl::string_view service_id,
+      const DiscoveryOptions& discovery_options) override;
 
   Pcp GetPcp() const override { return pcp_; }
   Strategy GetStrategy() const override { return strategy_; }
@@ -236,6 +253,7 @@ class BasePcpHandler : public PcpHandler,
     std::unique_ptr<EndpointChannel> endpoint_channel;
   };
 
+  void Shutdown();
   void RunOnPcpHandlerThread(const std::string& name, Runnable runnable);
 
   BluetoothDevice GetRemoteBluetoothDevice(
@@ -243,16 +261,18 @@ class BasePcpHandler : public PcpHandler,
 
   void OnEndpointFound(ClientProxy* client,
                        std::shared_ptr<DiscoveredEndpoint> endpoint)
-      RUN_ON_PCP_HANDLER_THREAD();
+      RUN_ON_PCP_HANDLER_THREAD()
+          ABSL_LOCKS_EXCLUDED(discovered_endpoint_mutex_);
 
   void OnEndpointLost(ClientProxy* client, const DiscoveredEndpoint& endpoint)
-      RUN_ON_PCP_HANDLER_THREAD();
+      RUN_ON_PCP_HANDLER_THREAD()
+          ABSL_LOCKS_EXCLUDED(discovered_endpoint_mutex_);
 
   Exception OnIncomingConnection(
       ClientProxy* client, const ByteArray& remote_endpoint_info,
       std::unique_ptr<EndpointChannel> endpoint_channel,
-      location::nearby::proto::connections::Medium
-          medium);  // throws Exception::IO
+      location::nearby::proto::connections::Medium medium,
+      NearbyDevice::Type listening_device_type);  // throws Exception::IO
 
   virtual bool HasOutgoingConnections(ClientProxy* client) const;
   virtual bool HasIncomingConnections(ClientProxy* client) const;
@@ -278,6 +298,14 @@ class BasePcpHandler : public PcpHandler,
   virtual Status StopDiscoveryImpl(ClientProxy* client)
       RUN_ON_PCP_HANDLER_THREAD() = 0;
 
+  virtual StartOperationResult StartListeningForIncomingConnectionsImpl(
+      ClientProxy* client_proxy, absl::string_view service_id,
+      absl::string_view local_endpoint_id,
+      v3::ConnectionListeningOptions options) RUN_ON_PCP_HANDLER_THREAD() = 0;
+
+  virtual void StopListeningForIncomingConnectionsImpl(ClientProxy* client)
+      RUN_ON_PCP_HANDLER_THREAD() = 0;
+
   virtual Status InjectEndpointImpl(ClientProxy* client,
                                     const std::string& service_id,
                                     const OutOfBandConnectionMetadata& metadata)
@@ -287,22 +315,63 @@ class BasePcpHandler : public PcpHandler,
                                         DiscoveredEndpoint* endpoint)
       RUN_ON_PCP_HANDLER_THREAD() = 0;
 
+  virtual StartOperationResult UpdateAdvertisingOptionsImpl(
+      ClientProxy* client, absl::string_view service_id,
+      absl::string_view local_endpoint_id,
+      absl::string_view local_endpoint_info,
+      const AdvertisingOptions& advertising_options)
+      RUN_ON_PCP_HANDLER_THREAD() = 0;
+
+  virtual StartOperationResult UpdateDiscoveryOptionsImpl(
+      ClientProxy* client, absl::string_view service_id,
+      absl::string_view local_endpoint_id,
+      absl::string_view local_endpoint_info,
+      const DiscoveryOptions& discovery_options)
+      RUN_ON_PCP_HANDLER_THREAD() = 0;
+
+  bool NeedsToTurnOffAdvertisingMedium(
+      location::nearby::proto::connections::Medium medium,
+      const AdvertisingOptions& old_options,
+      const AdvertisingOptions& new_options);
+
+  bool NeedsToTurnOffDiscoveryMedium(
+      location::nearby::proto::connections::Medium medium,
+      const DiscoveryOptions& old_options, const DiscoveryOptions& new_options);
+
   virtual std::vector<location::nearby::proto::connections::Medium>
   GetConnectionMediumsByPriority() = 0;
   virtual location::nearby::proto::connections::Medium
   GetDefaultUpgradeMedium() = 0;
 
   // Returns the first discovered endpoint for the given endpoint_id.
-  DiscoveredEndpoint* GetDiscoveredEndpoint(const std::string& endpoint_id);
+  DiscoveredEndpoint* GetDiscoveredEndpoint(const std::string& endpoint_id)
+      ABSL_LOCKS_EXCLUDED(discovered_endpoint_mutex_);
 
   // Returns a vector of discovered endpoints, sorted in order of decreasing
   // preference.
   std::vector<BasePcpHandler::DiscoveredEndpoint*> GetDiscoveredEndpoints(
-      const std::string& endpoint_id);
+      const std::string& endpoint_id)
+      ABSL_LOCKS_EXCLUDED(discovered_endpoint_mutex_);
 
   // Returns a vector of discovered endpoints that share a given Medium.
   std::vector<BasePcpHandler::DiscoveredEndpoint*> GetDiscoveredEndpoints(
-      const location::nearby::proto::connections::Medium medium);
+      const location::nearby::proto::connections::Medium medium)
+      ABSL_LOCKS_EXCLUDED(discovered_endpoint_mutex_);
+
+  // Start alarms for endpoints lost by their mediums. Used when updating
+  // discovery options.
+  void StartEndpointLostByMediumAlarms(
+      ClientProxy* client, location::nearby::proto::connections::Medium medium)
+      RUN_ON_PCP_HANDLER_THREAD();
+
+  void StopEndpointLostByMediumAlarm(
+      absl::string_view endpoint_id,
+      location::nearby::proto::connections::Medium medium)
+      RUN_ON_PCP_HANDLER_THREAD();
+
+  // Returns a vector of ConnectionInfos generated from a StartOperationResult.
+  std::vector<ConnectionInfoVariant> GetConnectionInfoFromResult(
+      absl::string_view service_id, StartOperationResult result);
 
   mediums::WebrtcPeerId CreatePeerIdFromAdvertisement(
       const string& service_id, const string& endpoint_id,
@@ -311,6 +380,11 @@ class BasePcpHandler : public PcpHandler,
   SingleThreadExecutor* GetPcpHandlerThread()
       ABSL_LOCK_RETURNED(serial_executor_) {
     return &serial_executor_;
+  }
+
+  // Test only.
+  int GetEndpointLostByMediumAlarmsCount() RUN_ON_PCP_HANDLER_THREAD() {
+    return endpoint_lost_by_medium_alarms_.size();
   }
 
   Mediums* mediums_;
@@ -330,9 +404,8 @@ class BasePcpHandler : public PcpHandler,
     void SetCryptoContext(std::unique_ptr<securegcm::UKey2Handshake> ukey2);
 
     // Pass Accept notification to client.
-    void LocalEndpointAcceptedConnection(
-        const std::string& endpoint_id,
-        const PayloadListener& payload_listener);
+    void LocalEndpointAcceptedConnection(const std::string& endpoint_id,
+                                         PayloadListener payload_listener);
 
     // Pass Reject notification to client.
     void LocalEndpointRejectedConnection(const std::string& endpoint_id);
@@ -392,6 +465,7 @@ class BasePcpHandler : public PcpHandler,
                                    EndpointChannel* endpoint_channel);
 
   static Exception WriteConnectionRequestFrame(
+      NearbyDevice::Type device_type, absl::string_view device_proto_bytes,
       const ConnectionInfo& conection_info, EndpointChannel* endpoint_channel);
   static constexpr absl::Duration kConnectionRequestReadTimeout =
       absl::Seconds(2);
@@ -402,15 +476,6 @@ class BasePcpHandler : public PcpHandler,
   // Returns true if the new endpoint is preferred over the old endpoint.
   bool IsPreferred(const BasePcpHandler::DiscoveredEndpoint& new_endpoint,
                    const BasePcpHandler::DiscoveredEndpoint& old_endpoint);
-
-  // Returns true, if connection party should respect the specified topology.
-  bool ShouldEnforceTopologyConstraints(
-      const AdvertisingOptions& local_advertising_options) const;
-
-  // Returns true, if connection party should attempt to upgrade itself to
-  // use a higher bandwidth medium, if it is available.
-  bool AutoUpgradeBandwidth(
-      const AdvertisingOptions& local_advertising_options) const;
 
   // Returns true if the incoming connection should be killed. This only
   // happens when an incoming connection arrives while we have an outgoing
@@ -429,19 +494,23 @@ class BasePcpHandler : public PcpHandler,
   bool AppendRemoteBluetoothMacAddressEndpoint(
       const std::string& endpoint_id,
       const std::string& remote_bluetooth_mac_address,
-      const DiscoveryOptions& local_discovery_options);
+      const DiscoveryOptions& local_discovery_options)
+      ABSL_LOCKS_EXCLUDED(discovered_endpoint_mutex_);
 
   // Returns true if the webrtc endpoint is created and appended into
   // discovered_endpoints_ with key endpoint_id.
   bool AppendWebRTCEndpoint(const std::string& endpoint_id,
-                            const DiscoveryOptions& local_discovery_options);
+                            const DiscoveryOptions& local_discovery_options)
+      ABSL_LOCKS_EXCLUDED(discovered_endpoint_mutex_);
 
   void ProcessPreConnectionInitiationFailure(
       ClientProxy* client, Medium medium, const std::string& endpoint_id,
       EndpointChannel* channel, bool is_incoming, absl::Time start_time,
       Status status, Future<Status>* result);
   void ProcessPreConnectionResultFailure(ClientProxy* client,
-                                         const std::string& endpoint_id);
+                                         const std::string& endpoint_id,
+                                         bool should_call_disconnect_endpoint,
+                                         const DisconnectionReason& reason);
 
   // Called when either side accepts/rejects the connection, but only takes
   // effect after both have accepted or one side has rejected.
@@ -512,6 +581,7 @@ class BasePcpHandler : public PcpHandler,
 
   ScheduledExecutor alarm_executor_;
   SingleThreadExecutor serial_executor_;
+  Mutex discovered_endpoint_mutex_;
 
   // A map of endpoint id -> PendingConnectionInfo. Entries in this map imply
   // that there is an active connection to the endpoint and we're waiting for
@@ -521,7 +591,7 @@ class BasePcpHandler : public PcpHandler,
   absl::flat_hash_map<std::string, PendingConnectionInfo> pending_connections_;
   // A map of endpoint id -> DiscoveredEndpoint.
   absl::btree_multimap<std::string, std::shared_ptr<DiscoveredEndpoint>>
-      discovered_endpoints_;
+      discovered_endpoints_ ABSL_GUARDED_BY(discovered_endpoint_mutex_);
   // A map of endpoint id -> alarm. These alarms delay closing the
   // EndpointChannel to give the other side enough time to read the rejection
   // message. It's expected that the other side will close the connection
@@ -535,10 +605,16 @@ class BasePcpHandler : public PcpHandler,
   // advertising.
   ConnectionListener advertising_listener_;
 
+  // Mapping from endpoint_id -> CancelableAlarm for triggering endpoint loss
+  // while discovery options are updated.
+  absl::flat_hash_map<std::string, std::unique_ptr<CancelableAlarm>>
+      endpoint_lost_by_medium_alarms_ ABSL_GUARDED_BY(GetPcpHandlerThread());
+
   Pcp pcp_;
   Strategy strategy_{PcpToStrategy(pcp_)};
   EncryptionRunner encryption_runner_;
   BwuManager* bwu_manager_;
+  AtomicBoolean closed_{false};
 };
 
 }  // namespace connections

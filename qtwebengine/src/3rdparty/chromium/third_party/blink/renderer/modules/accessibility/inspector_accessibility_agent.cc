@@ -30,7 +30,6 @@
 namespace blink {
 
 using protocol::Maybe;
-using protocol::Response;
 using protocol::Accessibility::AXNode;
 using protocol::Accessibility::AXNodeId;
 using protocol::Accessibility::AXProperty;
@@ -445,13 +444,15 @@ void FillSparseAttributes(AXObject& ax_object,
                        CreateRelatedNodeListValue(*target)));
   }
 
-  if (node_data.HasIntAttribute(
-          ax::mojom::blink::IntAttribute::kErrormessageId)) {
-    AXObject* target =
-        ax_object.AXObjectCache().ObjectFromAXID(node_data.GetIntAttribute(
-            ax::mojom::blink::IntAttribute::kErrormessageId));
-    properties.emplace_back(CreateProperty(
-        AXPropertyNameEnum::Errormessage, CreateRelatedNodeListValue(*target)));
+  if (node_data.HasIntListAttribute(
+          ax::mojom::blink::IntListAttribute::kErrormessageIds)) {
+    const auto ax_ids = node_data.GetIntListAttribute(
+        ax::mojom::blink::IntListAttribute::kErrormessageIds);
+    AXObject::AXObjectVector ax_objects;
+    GetObjectsFromAXIDs(ax_object.AXObjectCache(), ax_ids, &ax_objects);
+    properties.emplace_back(CreateRelatedNodeListProperty(
+        AXPropertyNameEnum::Errormessage, ax_objects,
+        html_names::kAriaErrormessageAttr, ax_object));
   }
 
   if (node_data.HasIntListAttribute(
@@ -524,27 +525,27 @@ InspectorAccessibilityAgent::InspectorAccessibilityAgent(
       dom_agent_(dom_agent),
       enabled_(&agent_state_, /*default_value=*/false) {}
 
-Response InspectorAccessibilityAgent::getPartialAXTree(
+protocol::Response InspectorAccessibilityAgent::getPartialAXTree(
     Maybe<int> dom_node_id,
     Maybe<int> backend_node_id,
     Maybe<String> object_id,
     Maybe<bool> fetch_relatives,
     std::unique_ptr<protocol::Array<AXNode>>* nodes) {
   Node* dom_node = nullptr;
-  Response response =
+  protocol::Response response =
       dom_agent_->AssertNode(dom_node_id, backend_node_id, object_id, dom_node);
   if (!response.IsSuccess())
     return response;
 
   Document& document = dom_node->GetDocument();
-  document.UpdateStyleAndLayout(DocumentUpdateReason::kInspector);
-  DocumentLifecycle::DisallowTransitionScope disallow_transition(
-      document.Lifecycle());
   LocalFrame* local_frame = document.GetFrame();
   if (!local_frame)
-    return Response::ServerError("Frame is detached.");
+    return protocol::Response::ServerError("Frame is detached.");
 
   auto& cache = AttachToAXObjectCache(&document);
+  cache.UpdateAXForAllDocuments();
+  DocumentLifecycle::DisallowTransitionScope disallow_transition(
+      document.Lifecycle());
 
   AXObject* inspected_ax_object = cache.GetOrCreate(dom_node);
   *nodes = std::make_unique<protocol::Array<protocol::Accessibility::AXNode>>();
@@ -556,8 +557,9 @@ Response InspectorAccessibilityAgent::getPartialAXTree(
         IdentifiersFactory::IntIdForNode(dom_node)));
   }
 
-  if (!fetch_relatives.fromMaybe(true))
-    return Response::Success();
+  if (!fetch_relatives.value_or(true)) {
+    return protocol::Response::Success();
+  }
 
   if (inspected_ax_object && !inspected_ax_object->AccessibilityIsIgnored())
     AddChildren(*inspected_ax_object, true, *nodes, cache);
@@ -579,10 +581,10 @@ Response InspectorAccessibilityAgent::getPartialAXTree(
     }
   }
   if (!parent_ax_object)
-    return Response::Success();
+    return protocol::Response::Success();
   AddAncestors(*parent_ax_object, inspected_ax_object, *nodes, cache);
 
-  return Response::Success();
+  return protocol::Response::Success();
 }
 
 void InspectorAccessibilityAgent::AddAncestors(
@@ -762,32 +764,31 @@ InspectorAccessibilityAgent::BuildProtocolAXNodeForUnignoredAXObject(
 
 LocalFrame* InspectorAccessibilityAgent::FrameFromIdOrRoot(
     const protocol::Maybe<String>& frame_id) {
-  if (frame_id.isJust()) {
-    return IdentifiersFactory::FrameById(inspected_frames_,
-                                         frame_id.fromJust());
+  if (frame_id.has_value()) {
+    return IdentifiersFactory::FrameById(inspected_frames_, frame_id.value());
   }
   return inspected_frames_->Root();
 }
 
-Response InspectorAccessibilityAgent::getFullAXTree(
+protocol::Response InspectorAccessibilityAgent::getFullAXTree(
     protocol::Maybe<int> depth,
     Maybe<String> frame_id,
     std::unique_ptr<protocol::Array<AXNode>>* nodes) {
   LocalFrame* frame = FrameFromIdOrRoot(frame_id);
   if (!frame) {
-    return Response::InvalidParams(
+    return protocol::Response::InvalidParams(
         "Frame with the given frameId is not found.");
   }
 
   Document* document = frame->GetDocument();
   if (!document)
-    return Response::InternalError();
+    return protocol::Response::InternalError();
   if (document->View()->NeedsLayout() || document->NeedsLayoutTreeUpdate())
     document->UpdateStyleAndLayout(DocumentUpdateReason::kInspector);
 
-  *nodes = WalkAXNodesToDepth(document, depth.fromMaybe(-1));
+  *nodes = WalkAXNodesToDepth(document, depth.value_or(-1));
 
-  return Response::Success();
+  return protocol::Response::Success();
 }
 
 std::unique_ptr<protocol::Array<AXNode>>
@@ -797,6 +798,7 @@ InspectorAccessibilityAgent::WalkAXNodesToDepth(Document* document,
       std::make_unique<protocol::Array<protocol::Accessibility::AXNode>>();
 
   auto& cache = AttachToAXObjectCache(document);
+  cache.UpdateAXForAllDocuments();
 
   Deque<std::pair<AXID, int>> id_depths;
   id_depths.emplace_back(cache.Root()->AXObjectID(), 1);
@@ -822,30 +824,31 @@ InspectorAccessibilityAgent::WalkAXNodesToDepth(Document* document,
   return nodes;
 }
 
-Response InspectorAccessibilityAgent::getRootAXNode(
+protocol::Response InspectorAccessibilityAgent::getRootAXNode(
     Maybe<String> frame_id,
     std::unique_ptr<AXNode>* node) {
   LocalFrame* frame = FrameFromIdOrRoot(frame_id);
   if (!frame) {
-    return Response::InvalidParams(
+    return protocol::Response::InvalidParams(
         "Frame with the given frameId is not found.");
   }
-  if (!enabled_.Get())
-    return Response::ServerError("Accessibility has not been enabled.");
+  if (!enabled_.Get()) {
+    return protocol::Response::ServerError(
+        "Accessibility has not been enabled.");
+  }
 
   Document* document = frame->GetDocument();
   if (!document)
-    return Response::InternalError();
-  if (document->View()->NeedsLayout() || document->NeedsLayoutTreeUpdate())
-    document->UpdateStyleAndLayout(DocumentUpdateReason::kInspector);
+    return protocol::Response::InternalError();
 
   auto& cache = AttachToAXObjectCache(document);
+  cache.UpdateAXForAllDocuments();
 
   auto& root = *cache.Root();
   *node = BuildProtocolAXNodeForAXObject(root);
   nodes_requested_.insert(root.AXObjectID());
 
-  return Response::Success();
+  return protocol::Response::Success();
 }
 
 protocol::Response InspectorAccessibilityAgent::getAXNodeAndAncestors(
@@ -854,24 +857,26 @@ protocol::Response InspectorAccessibilityAgent::getAXNodeAndAncestors(
     Maybe<String> object_id,
     std::unique_ptr<protocol::Array<protocol::Accessibility::AXNode>>*
         out_nodes) {
-  if (!enabled_.Get())
-    return Response::ServerError("Accessibility has not been enabled.");
+  if (!enabled_.Get()) {
+    return protocol::Response::ServerError(
+        "Accessibility has not been enabled.");
+  }
 
   Node* dom_node = nullptr;
-  Response response =
+  protocol::Response response =
       dom_agent_->AssertNode(dom_node_id, backend_node_id, object_id, dom_node);
   if (!response.IsSuccess())
     return response;
 
   Document& document = dom_node->GetDocument();
-  document.UpdateStyleAndLayout(DocumentUpdateReason::kInspector);
-  DocumentLifecycle::DisallowTransitionScope disallow_transition(
-      document.Lifecycle());
   LocalFrame* local_frame = document.GetFrame();
   if (!local_frame)
-    return Response::ServerError("Frame is detached.");
+    return protocol::Response::ServerError("Frame is detached.");
 
   auto& cache = AttachToAXObjectCache(&document);
+  cache.UpdateAXForAllDocuments();
+  DocumentLifecycle::DisallowTransitionScope disallow_transition(
+      document.Lifecycle());
 
   AXObject* ax_object = cache.GetOrCreate(dom_node);
 
@@ -882,7 +887,7 @@ protocol::Response InspectorAccessibilityAgent::getAXNodeAndAncestors(
     (*out_nodes)
         ->emplace_back(BuildProtocolAXNodeForDOMNodeWithNoAXNode(
             IdentifiersFactory::IntIdForNode(dom_node)));
-    return Response::Success();
+    return protocol::Response::Success();
   }
 
   do {
@@ -893,7 +898,7 @@ protocol::Response InspectorAccessibilityAgent::getAXNodeAndAncestors(
     ax_object = ax_object->ParentObjectIncludedInTree();
   } while (ax_object);
 
-  return Response::Success();
+  return protocol::Response::Success();
 }
 
 protocol::Response InspectorAccessibilityAgent::getChildAXNodes(
@@ -901,29 +906,29 @@ protocol::Response InspectorAccessibilityAgent::getChildAXNodes(
     Maybe<String> frame_id,
     std::unique_ptr<protocol::Array<protocol::Accessibility::AXNode>>*
         out_nodes) {
-  if (!enabled_.Get())
-    return Response::ServerError("Accessibility has not been enabled.");
+  if (!enabled_.Get()) {
+    return protocol::Response::ServerError(
+        "Accessibility has not been enabled.");
+  }
 
   LocalFrame* frame = FrameFromIdOrRoot(frame_id);
   if (!frame) {
-    return Response::InvalidParams(
+    return protocol::Response::InvalidParams(
         "Frame with the given frameId is not found.");
   }
 
   Document* document = frame->GetDocument();
   if (!document)
-    return Response::InternalError();
-
-  if (document->View()->NeedsLayout() || document->NeedsLayoutTreeUpdate())
-    document->UpdateStyleAndLayout(DocumentUpdateReason::kInspector);
+    return protocol::Response::InternalError();
 
   auto& cache = AttachToAXObjectCache(document);
+  cache.UpdateAXForAllDocuments();
 
   AXID ax_id = in_id.ToInt();
   AXObject* ax_object = cache.ObjectFromAXID(ax_id);
 
   if (!ax_object || ax_object->IsDetached())
-    return Response::InvalidParams("Invalid ID");
+    return protocol::Response::InvalidParams("Invalid ID");
 
   *out_nodes =
       std::make_unique<protocol::Array<protocol::Accessibility::AXNode>>();
@@ -933,7 +938,7 @@ protocol::Response InspectorAccessibilityAgent::getChildAXNodes(
   for (const auto& child : **out_nodes)
     nodes_requested_.insert(child->getNodeId().ToInt());
 
-  return Response::Success();
+  return protocol::Response::Success();
 }
 
 void InspectorAccessibilityAgent::FillCoreProperties(
@@ -999,8 +1004,8 @@ void InspectorAccessibilityAgent::queryAXTree(
     Maybe<String> role,
     std::unique_ptr<QueryAXTreeCallback> callback) {
   Node* root_dom_node = nullptr;
-  Response response = dom_agent_->AssertNode(dom_node_id, backend_node_id,
-                                             object_id, root_dom_node);
+  protocol::Response response = dom_agent_->AssertNode(
+      dom_node_id, backend_node_id, object_id, root_dom_node);
   if (!response.IsSuccess()) {
     callback->sendFailure(response);
     return;
@@ -1014,12 +1019,13 @@ void InspectorAccessibilityAgent::queryAXTree(
   }
   if (!root_dom_node) {
     callback->sendFailure(
-        Response::InvalidParams("Root DOM node could not be found"));
+        protocol::Response::InvalidParams("Root DOM node could not be found"));
     return;
   }
 
   Document& document = root_dom_node->GetDocument();
   auto& cache = AttachToAXObjectCache(&document);
+  cache.UpdateAXForAllDocuments();
 
   AXQuery query = {std::move(dom_node_id), std::move(backend_node_id),
                    std::move(object_id),   std::move(accessible_name),
@@ -1041,7 +1047,7 @@ void InspectorAccessibilityAgent::queryAXTree(
 void InspectorAccessibilityAgent::CompleteQuery(AXQuery& query) {
   Node* root_dom_node = nullptr;
 
-  Response response = dom_agent_->AssertNode(
+  protocol::Response response = dom_agent_->AssertNode(
       query.dom_node_id, query.backend_node_id, query.object_id, root_dom_node);
   if (!response.IsSuccess()) {
     query.callback->sendFailure(response);
@@ -1055,7 +1061,7 @@ void InspectorAccessibilityAgent::CompleteQuery(AXQuery& query) {
     root_dom_node = root_dom_node->OwnerShadowHost();
   if (!root_dom_node) {
     query.callback->sendFailure(
-        Response::InvalidParams("Root DOM node could not be found"));
+        protocol::Response::InvalidParams("Root DOM node could not be found"));
     return;
   }
   Document& document = root_dom_node->GetDocument();
@@ -1063,7 +1069,6 @@ void InspectorAccessibilityAgent::CompleteQuery(AXQuery& query) {
   document.UpdateStyleAndLayout(DocumentUpdateReason::kInspector);
   DocumentLifecycle::DisallowTransitionScope disallow_transition(
       document.Lifecycle());
-
   auto& cache = AttachToAXObjectCache(&document);
 
   std::unique_ptr<protocol::Array<AXNode>> nodes =
@@ -1092,21 +1097,22 @@ void InspectorAccessibilityAgent::CompleteQuery(AXQuery& query) {
     // if querying by name: skip if name of current object does not match.
     // For now, we need to handle names of ignored nodes separately, since they
     // do not get a name assigned when serializing to AXNodeData.
-    if (ignored && query.accessible_name.isJust() &&
-        query.accessible_name.fromJust() != ax_object->ComputedName()) {
+    if (ignored && query.accessible_name.has_value() &&
+        query.accessible_name.value() != ax_object->ComputedName()) {
       continue;
     }
-    if (!ignored && query.accessible_name.isJust() &&
-        query.accessible_name.fromJust().Utf8() !=
+    if (!ignored && query.accessible_name.has_value() &&
+        query.accessible_name.value().Utf8() !=
             node_data.GetStringAttribute(
                 ax::mojom::blink::StringAttribute::kName)) {
       continue;
     }
 
     // if querying by role: skip if role of current object does not match.
-    if (query.role.isJust() &&
-        query.role.fromJust() != AXObject::RoleName(node_data.role))
+    if (query.role.has_value() &&
+        query.role.value() != AXObject::RoleName(node_data.role)) {
       continue;
+    }
 
     // both name and role are OK, so we can add current object to the result.
     nodes->push_back(BuildProtocolAXNodeForAXObject(
@@ -1261,12 +1267,12 @@ void InspectorAccessibilityAgent::EnableAndReset() {
 protocol::Response InspectorAccessibilityAgent::enable() {
   if (!enabled_.Get())
     EnableAndReset();
-  return Response::Success();
+  return protocol::Response::Success();
 }
 
 protocol::Response InspectorAccessibilityAgent::disable() {
   if (!enabled_.Get())
-    return Response::Success();
+    return protocol::Response::Success();
   enabled_.Set(false);
   document_to_context_map_.clear();
   nodes_requested_.clear();
@@ -1281,7 +1287,7 @@ protocol::Response InspectorAccessibilityAgent::disable() {
     auto& cache = To<AXObjectCacheImpl>(context->GetAXObjectCache());
     cache.RemoveInspectorAgent(this);
   }
-  return Response::Success();
+  return protocol::Response::Success();
 }
 
 void InspectorAccessibilityAgent::Restore() {

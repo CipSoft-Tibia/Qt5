@@ -8,9 +8,9 @@
 #  pragma qt_class(QProtobufOneof)
 #endif
 
-#include <QtCore/QExplicitlySharedDataPointer>
-#include <QtCore/qmetaobject.h>
+#include <QtCore/qmetatype.h>
 #include <QtCore/qvariant.h>
+
 #include <QtProtobuf/qtprotobuftypes.h>
 #include <QtProtobuf/qprotobufmessage.h>
 

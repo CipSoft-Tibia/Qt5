@@ -14,9 +14,12 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
+#include "base/uuid.h"
 #include "content/browser/fenced_frame/fenced_frame_url_mapping.h"
+#include "content/browser/interest_group/auction_nonce_manager.h"
 #include "content/browser/interest_group/auction_runner.h"
 #include "content/browser/interest_group/auction_worklet_manager.h"
+#include "content/browser/interest_group/bidding_and_auction_serializer.h"
 #include "content/browser/interest_group/interest_group_auction_reporter.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/content_browser_client.h"
@@ -36,9 +39,12 @@
 
 namespace content {
 
+class AdAuctionPageData;
 class InterestGroupManagerImpl;
+struct BiddingAndAuctionServerKey;
 class RenderFrameHost;
 class RenderFrameHostImpl;
+class PageImpl;
 class PrivateAggregationManager;
 
 // Implements the AdAuctionService service called by Blink code.
@@ -60,6 +66,7 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
                           LeaveInterestGroupCallback callback) override;
   void LeaveInterestGroupForDocument() override;
   void UpdateAdInterestGroups() override;
+  void CreateAuctionNonce(CreateAuctionNonceCallback callback) override;
   void RunAdAuction(
       const blink::AuctionConfig& config,
       mojo::PendingReceiver<blink::mojom::AbortableAdAuction> abort_receiver,
@@ -72,6 +79,9 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
       const GURL& urn_url,
       std::vector<blink::mojom::AdKeywordReplacementPtr> replacements,
       DeprecatedReplaceInURNCallback callback) override;
+  void GetInterestGroupAdAuctionData(
+      const url::Origin& seller,
+      GetInterestGroupAdAuctionDataCallback callback) override;
   void CreateAdRequest(blink::mojom::AdRequestConfigPtr config,
                        CreateAdRequestCallback callback) override;
   void FinalizeAd(const std::string& ads_guid,
@@ -97,6 +107,20 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
  private:
   using ReporterList = std::list<std::unique_ptr<InterestGroupAuctionReporter>>;
 
+  class BiddingAndAuctionDataConstructionState {
+   public:
+    BiddingAndAuctionDataConstructionState();
+    BiddingAndAuctionDataConstructionState(
+        BiddingAndAuctionDataConstructionState&& other);
+    ~BiddingAndAuctionDataConstructionState();
+
+    base::TimeTicks start_time;
+    BiddingAndAuctionData data;
+    base::Uuid request_id;
+    url::Origin seller;
+    GetInterestGroupAdAuctionDataCallback callback;
+  };
+
   // `render_frame_host` must not be null, and DocumentService guarantees
   // `this` will not outlive the `render_frame_host`.
   AdAuctionServiceImpl(
@@ -118,30 +142,35 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
                                      interest_group_api_operation,
                                  const url::Origin& origin) const;
 
+  AdAuctionPageData* GetAdAuctionPageData();
+
   // Deletes `auction`.
-  // TODO(crbug.com/1410340): Handle non reserved private aggregation requests,
-  // which are currently ignored.
   void OnAuctionComplete(
       RunAdAuctionCallback callback,
       GURL urn_uuid,
+      FencedFrameURLMapping::Id fenced_frame_urls_map_id,
+      GlobalRenderFrameHostId render_frame_host_id,
+      const base::WeakPtr<PageImpl> page_impl,
       AuctionRunner* auction,
       bool manually_aborted,
       absl::optional<blink::InterestGroupKey> winning_group_key,
-      absl::optional<GURL> render_url,
-      std::vector<GURL> ad_component_urls,
+      absl::optional<blink::AdSize> requested_ad_size,
+      absl::optional<blink::AdDescriptor> ad_descriptor,
+      std::vector<blink::AdDescriptor> ad_component_descriptors,
       std::vector<std::string> errors,
       std::unique_ptr<InterestGroupAuctionReporter> reporter);
 
   void OnReporterComplete(ReporterList::iterator reporter_it);
 
-  // Calls LogWebFeatureForCurrentPage() for the frame to inform it of FLEDGE
-  // private aggregation API usage, if `private_aggregation_requests` is
-  // non-empty.
-  void MaybeLogPrivateAggregationFeature(
-      const std::map<
-          url::Origin,
-          std::vector<auction_worklet::mojom::PrivateAggregationRequestPtr>>&
+  void MaybeLogPrivateAggregationFeatures(
+      const std::vector<auction_worklet::mojom::PrivateAggregationRequestPtr>&
           private_aggregation_requests);
+
+  void OnGotAuctionData(BiddingAndAuctionDataConstructionState state,
+                        BiddingAndAuctionData data);
+  void OnGotBiddingAndAuctionServerKey(
+      BiddingAndAuctionDataConstructionState state,
+      absl::optional<BiddingAndAuctionServerKey> key);
 
   InterestGroupManagerImpl& GetInterestGroupManager() const;
 
@@ -166,6 +195,11 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
   // worklets it manages.
   AuctionWorkletManager auction_worklet_manager_;
 
+  // Manages auction nonces issued by prior calls to
+  // CreateAuctionNonce, which are used by subsequent calls to
+  // RunAdAuction.
+  AuctionNonceManager auction_nonce_manager_;
+
   // Use a map instead of a list so can remove entries without destroying them.
   // TODO(mmenke): Switch to std::set() and use extract() once that's allowed.
   std::map<AuctionRunner*, std::unique_ptr<AuctionRunner>> auctions_;
@@ -174,6 +208,12 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
   // Safe to keep as it will outlive the associated `RenderFrameHost` and
   // therefore `this`, being tied to the lifetime of the `StoragePartition`.
   const raw_ptr<PrivateAggregationManager> private_aggregation_manager_;
+
+  // Whether a UseCounter has already been logged for usage of the Private
+  // Aggregation API in general and the extended Private Aggregation API,
+  // respectively.
+  bool has_logged_private_aggregation_web_features_ = false;
+  bool has_logged_extended_private_aggregation_web_feature_ = false;
 
   base::WeakPtrFactory<AdAuctionServiceImpl> weak_ptr_factory_{this};
 };

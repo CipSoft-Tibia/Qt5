@@ -56,7 +56,7 @@ export class MediaQueryInspector extends UI.Widget.Widget implements
 
   modelAdded(cssModel: SDK.CSSModel.CSSModel): void {
     // FIXME: adapt this to multiple targets.
-    if (cssModel.target() !== SDK.TargetManager.TargetManager.instance().mainFrameTarget()) {
+    if (cssModel.target() !== SDK.TargetManager.TargetManager.instance().primaryPageTarget()) {
       return;
     }
     this.cssModel = cssModel;
@@ -266,7 +266,7 @@ export class MediaQueryInspector extends UI.Widget.Widget implements
     return UI.ZoomManager.ZoomManager.instance().zoomFactor() / this.scale;
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.scheduleMediaQueriesUpdate();
   }

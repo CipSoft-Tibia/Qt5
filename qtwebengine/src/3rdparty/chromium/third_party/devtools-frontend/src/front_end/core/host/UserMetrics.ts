@@ -59,11 +59,14 @@ export class UserMetrics {
         BreakpointEditDialogRevealedFrom.MaxValue);
   }
 
-  panelShown(panelName: string): void {
+  panelShown(panelName: string, isLaunching?: boolean): void {
     const code = PanelCodes[panelName as keyof typeof PanelCodes] || 0;
     InspectorFrontendHostInstance.recordEnumeratedHistogram(EnumeratedHistogram.PanelShown, code, PanelCodes.MaxValue);
+    InspectorFrontendHostInstance.recordUserMetricsAction('DevTools_PanelShown_' + panelName);
     // Store that the user has changed the panel so we know launch histograms should not be fired.
-    this.#panelChangedSinceLaunch = true;
+    if (!isLaunching) {
+      this.#panelChangedSinceLaunch = true;
+    }
   }
 
   /**
@@ -76,14 +79,26 @@ export class UserMetrics {
     this.#panelChangedSinceLaunch = true;
   }
 
-  sidebarPaneShown(sidebarPaneName: string): void {
-    const code = SidebarPaneCodes[sidebarPaneName as keyof typeof SidebarPaneCodes] || 0;
+  elementsSidebarTabShown(sidebarPaneName: string): void {
+    const code = ElementsSidebarTabCodes[sidebarPaneName as keyof typeof ElementsSidebarTabCodes] || 0;
     InspectorFrontendHostInstance.recordEnumeratedHistogram(
-        EnumeratedHistogram.SidebarPaneShown, code, SidebarPaneCodes.MaxValue);
+        EnumeratedHistogram.ElementsSidebarTabShown, code, ElementsSidebarTabCodes.MaxValue);
+  }
+
+  sourcesSidebarTabShown(sidebarPaneName: string): void {
+    const code = SourcesSidebarTabCodes[sidebarPaneName as keyof typeof SourcesSidebarTabCodes] || 0;
+    InspectorFrontendHostInstance.recordEnumeratedHistogram(
+        EnumeratedHistogram.SourcesSidebarTabShown, code, SourcesSidebarTabCodes.MaxValue);
   }
 
   settingsPanelShown(settingsViewId: string): void {
     this.panelShown('settings-' + settingsViewId);
+  }
+
+  sourcesPanelFileDebugged(mediaType?: string): void {
+    const code = (mediaType && MediaTypes[mediaType as keyof typeof MediaTypes]) || MediaTypes.Unknown;
+    InspectorFrontendHostInstance.recordEnumeratedHistogram(
+        EnumeratedHistogram.SourcesPanelFileDebugged, code, MediaTypes.MaxValue);
   }
 
   sourcesPanelFileOpened(mediaType?: string): void {
@@ -128,6 +143,10 @@ export class UserMetrics {
 
   setLaunchPanel(panelName: string|null): void {
     this.#launchPanelName = (panelName as string);
+  }
+
+  performanceTraceLoad(measure: PerformanceMeasure): void {
+    InspectorFrontendHostInstance.recordPerformanceHistogram('DevTools.TraceLoad', measure.duration);
   }
 
   keybindSetSettingChanged(keybindSet: string): void {
@@ -193,6 +212,15 @@ export class UserMetrics {
         EnumeratedHistogram.ExperimentEnabledAtLaunch, experiment, DevtoolsExperiments.MaxValue);
   }
 
+  experimentDisabledAtLaunch(experimentId: string): void {
+    const experiment = DevtoolsExperiments[experimentId as keyof typeof DevtoolsExperiments];
+    if (experiment === undefined) {
+      return;
+    }
+    InspectorFrontendHostInstance.recordEnumeratedHistogram(
+        EnumeratedHistogram.ExperimentDisabledAtLaunch, experiment, DevtoolsExperiments.MaxValue);
+  }
+
   experimentChanged(experimentId: string, isEnabled: boolean): void {
     const experiment = DevtoolsExperiments[experimentId as keyof typeof DevtoolsExperiments];
     if (experiment === undefined) {
@@ -216,6 +244,22 @@ export class UserMetrics {
     }
     InspectorFrontendHostInstance.recordEnumeratedHistogram(
         EnumeratedHistogram.DeveloperResourceScheme, developerResourceScheme, DeveloperResourceScheme.MaxValue);
+  }
+
+  inlineScriptParsed(inlineScriptType: VMInlineScriptType): void {
+    if (inlineScriptType >= VMInlineScriptType.MaxValue) {
+      return;
+    }
+    InspectorFrontendHostInstance.recordEnumeratedHistogram(
+        EnumeratedHistogram.InlineScriptParsed, inlineScriptType, VMInlineScriptType.MaxValue);
+  }
+
+  vmInlineScriptContentShown(inlineScriptType: VMInlineScriptType): void {
+    if (inlineScriptType >= VMInlineScriptType.MaxValue) {
+      return;
+    }
+    InspectorFrontendHostInstance.recordEnumeratedHistogram(
+        EnumeratedHistogram.VMInlineScriptTypeShown, inlineScriptType, VMInlineScriptType.MaxValue);
   }
 
   linearMemoryInspectorRevealedFrom(linearMemoryInspectorRevealedFrom: LinearMemoryInspectorRevealedFrom): void {
@@ -258,6 +302,11 @@ export class UserMetrics {
       InspectorFrontendHostInstance.recordEnumeratedHistogram(
           EnumeratedHistogram.SyncSetting, settingValue, SyncSetting.MaxValue);
     });
+  }
+
+  recordingAssertion(value: RecordingAssertion): void {
+    InspectorFrontendHostInstance.recordEnumeratedHistogram(
+        EnumeratedHistogram.RecordingAssertion, value, RecordingAssertion.MaxValue);
   }
 
   recordingToggled(value: RecordingToggled): void {
@@ -335,6 +384,69 @@ export class UserMetrics {
   cssPropertyDocumentation(type: CSSPropertyDocumentation): void {
     InspectorFrontendHostInstance.recordEnumeratedHistogram(
         EnumeratedHistogram.CSSPropertyDocumentation, type, CSSPropertyDocumentation.MaxValue);
+  }
+
+  swatchActivated(swatch: SwatchType): void {
+    InspectorFrontendHostInstance.recordEnumeratedHistogram(
+        EnumeratedHistogram.SwatchActivated, swatch, SwatchType.MaxValue);
+  }
+
+  badgeActivated(badge: BadgeType): void {
+    InspectorFrontendHostInstance.recordEnumeratedHistogram(
+        EnumeratedHistogram.BadgeActivated, badge, BadgeType.MaxValue);
+  }
+
+  breakpointsRestoredFromStorage(count: number): void {
+    const countBucket = this.#breakpointCountToBucket(count);
+    InspectorFrontendHostInstance.recordEnumeratedHistogram(
+        EnumeratedHistogram.BreakpointsRestoredFromStorageCount, countBucket,
+        BreakpointsRestoredFromStorageCount.MaxValue);
+  }
+
+  animationPlaybackRateChanged(playbackRate: AnimationsPlaybackRate): void {
+    InspectorFrontendHostInstance.recordEnumeratedHistogram(
+        EnumeratedHistogram.AnimationPlaybackRateChanged, playbackRate, AnimationsPlaybackRate.MaxValue);
+  }
+
+  animationPointDragged(dragType: AnimationPointDragType): void {
+    InspectorFrontendHostInstance.recordEnumeratedHistogram(
+        EnumeratedHistogram.AnimationPointDragged, dragType, AnimationPointDragType.MaxValue);
+  }
+
+  #breakpointCountToBucket(count: number): BreakpointsRestoredFromStorageCount {
+    if (count < 100) {
+      return BreakpointsRestoredFromStorageCount.LessThan100;
+    }
+    if (count < 300) {
+      return BreakpointsRestoredFromStorageCount.LessThan300;
+    }
+    if (count < 1000) {
+      return BreakpointsRestoredFromStorageCount.LessThan1000;
+    }
+    if (count < 3000) {
+      return BreakpointsRestoredFromStorageCount.LessThan3000;
+    }
+    if (count < 10000) {
+      return BreakpointsRestoredFromStorageCount.LessThan10000;
+    }
+    if (count < 30000) {
+      return BreakpointsRestoredFromStorageCount.LessThan30000;
+    }
+    if (count < 100000) {
+      return BreakpointsRestoredFromStorageCount.LessThan100000;
+    }
+    if (count < 300000) {
+      return BreakpointsRestoredFromStorageCount.LessThan300000;
+    }
+    if (count < 1000000) {
+      return BreakpointsRestoredFromStorageCount.LessThan1000000;
+    }
+    return BreakpointsRestoredFromStorageCount.Above1000000;
+  }
+
+  workspacesPopulated(wallClockTimeInMilliseconds: number): void {
+    InspectorFrontendHostInstance.recordPerformanceHistogram(
+        'DevTools.Workspaces.PopulateWallClocktime', wallClockTimeInMilliseconds);
   }
 }
 
@@ -414,7 +526,58 @@ export enum Action {
   CaptureTestProtocolClicked = 57,
   BreakpointRemovedFromRemoveButton = 58,
   BreakpointGroupExpandedStateChanged = 59,
-  MaxValue = 60,
+  HeaderOverrideFileCreated = 60,
+  HeaderOverrideEnableEditingClicked = 61,
+  HeaderOverrideHeaderAdded = 62,
+  HeaderOverrideHeaderEdited = 63,
+  HeaderOverrideHeaderRemoved = 64,
+  HeaderOverrideHeadersFileEdited = 65,
+  PersistenceNetworkOverridesEnabled = 66,
+  PersistenceNetworkOverridesDisabled = 67,
+  BreakpointRemovedFromContextMenu = 68,
+  BreakpointsInFileRemovedFromRemoveButton = 69,
+  BreakpointsInFileRemovedFromContextMenu = 70,
+  BreakpointsInFileCheckboxToggled = 71,
+  BreakpointsInFileEnabledDisabledFromContextMenu = 72,
+  BreakpointConditionEditedFromSidebar = 73,
+  WorkspaceTabAddFolder = 74,
+  WorkspaceTabRemoveFolder = 75,
+  OverrideTabAddFolder = 76,
+  OverrideTabRemoveFolder = 77,
+  WorkspaceSourceSelected = 78,
+  OverridesSourceSelected = 79,
+  StyleSheetInitiatorLinkClicked = 80,
+  BreakpointRemovedFromGutterContextMenu = 81,
+  BreakpointRemovedFromGutterToggle = 82,
+  StylePropertyInsideKeyframeEdited = 83,
+  OverrideContentFromSourcesContextMenu = 84,
+  OverrideContentFromNetworkContextMenu = 85,
+  OverrideScript = 86,
+  OverrideStyleSheet = 87,
+  OverrideDocument = 88,
+  OverrideFetchXHR = 89,
+  OverrideImage = 90,
+  OverrideFont = 91,
+  OverrideContentContextMenuSetup = 92,
+  OverrideContentContextMenuAbandonSetup = 93,
+  OverrideContentContextMenuActivateDisabled = 94,
+  OverrideContentContextMenuOpenExistingFile = 95,
+  OverrideContentContextMenuSaveNewFile = 96,
+  ShowAllOverridesFromSourcesContextMenu = 97,
+  ShowAllOverridesFromNetworkContextMenu = 98,
+  AnimationGroupsCleared = 99,
+  AnimationsPaused = 100,
+  AnimationsResumed = 101,
+  AnimatedNodeDescriptionClicked = 102,
+  AnimationGroupScrubbed = 103,
+  AnimationGroupReplayed = 104,
+  OverrideTabDeleteFolderContextMenu = 105,
+  OverrideTabDeleteOverridesContextMenu = 106,
+  WorkspaceDropFolder = 107,
+  WorkspaceSelectFolder = 108,
+  OverrideContentContextMenuSourceMappedWarning = 109,
+  OverrideContentContextMenuRedirectToDeployed = 110,
+  MaxValue = 111,
 }
 
 /* eslint-disable @typescript-eslint/naming-convention */
@@ -484,14 +647,17 @@ export enum PanelCodes {
   'web_sql' = 62,
   'performance_insights' = 63,
   'preloading' = 64,
-  MaxValue = 65,
+  'bounce_tracking_mitigations' = 65,
+  'resource-loading-pane' = 66,
+  MaxValue = 67,
 }
+
 /* eslint-enable @typescript-eslint/naming-convention */
 
 /* eslint-disable @typescript-eslint/naming-convention */
 // TODO(crbug.com/1167717): Make this a const enum again
 // eslint-disable-next-line rulesdir/const_enum
-export enum SidebarPaneCodes {
+export enum ElementsSidebarTabCodes {
   'OtherSidebarPane' = 0,
   'Styles' = 1,
   'Computed' = 2,
@@ -502,6 +668,21 @@ export enum SidebarPaneCodes {
   'accessibility.view' = 7,
   MaxValue = 8,
 }
+
+/* eslint-enable @typescript-eslint/naming-convention */
+
+/* eslint-disable @typescript-eslint/naming-convention */
+// TODO(crbug.com/1167717): Make this a const enum again
+// eslint-disable-next-line rulesdir/const_enum
+export enum SourcesSidebarTabCodes {
+  'OtherSidebarPane' = 0,
+  'navigator-network' = 1,
+  'navigator-files' = 2,
+  'navigator-overrides' = 3,
+  'navigator-contentScripts' = 4,
+  'navigator-snippets' = 5,
+  MaxValue = 6,
+}
 /* eslint-enable @typescript-eslint/naming-convention */
 
 /* eslint-disable @typescript-eslint/naming-convention */
@@ -509,7 +690,6 @@ export enum SidebarPaneCodes {
 // eslint-disable-next-line rulesdir/const_enum
 export enum MediaTypes {
   Unknown = 0,
-  'text/javascript' = 1,
   'text/css' = 2,
   'text/html' = 3,
   'application/xml' = 4,
@@ -539,7 +719,12 @@ export enum MediaTypes {
   'text/x-kotlin' = 28,
   'text/x-scala' = 29,
   'text/x.svelte' = 30,
-  MaxValue = 31,
+  'text/javascript+plain' = 31,
+  'text/javascript+minified' = 32,
+  'text/javascript+sourcemapped' = 33,
+  'text/x.angular' = 34,
+  'text/x.vue' = 35,
+  MaxValue = 36,
 }
 /* eslint-enable @typescript-eslint/naming-convention */
 
@@ -696,11 +881,9 @@ export enum DevtoolsExperiments {
   'applyCustomStylesheet' = 0,
   'captureNodeCreationStacks' = 1,
   'sourcesPrettyPrint' = 2,
-  'inputEventsOnTimelineOverview' = 10,
   'liveHeapProfile' = 11,
   'protocolMonitor' = 13,
   'developerResourcesView' = 15,
-  'recordCoverageWithPerformanceTracing' = 16,
   'samplingHeapProfilerTimeline' = 17,
   'showOptionToExposeInternalsInHeapSnapshot' = 18,
   'sourceOrderViewer' = 20,
@@ -709,7 +892,6 @@ export enum DevtoolsExperiments {
   'timelineInvalidationTracking' = 26,
   'timelineShowAllEvents' = 27,
   'timelineV8RuntimeCallStats' = 28,
-  'timelineReplayEvent' = 30,
   'wasmDWARFDebugging' = 31,
   'dualScreenSupport' = 32,
   'keyboardShortcutEditor' = 35,
@@ -720,7 +902,6 @@ export enum DevtoolsExperiments {
   'ignoreListJSFramesOnTimeline' = 43,
   'contrastIssues' = 44,
   'experimentalCookieFeatures' = 45,
-  'groupAndHideIssuesByKind' = 51,
   'cssTypeComponentLength' = 52,
   'preciseChanges' = 53,
   'bfcacheDisplayTree' = 54,
@@ -729,17 +910,23 @@ export enum DevtoolsExperiments {
   'evaluateExpressionsWithSourceMaps' = 58,
   'eyedropperColorPicker' = 60,
   'instrumentationBreakpoints' = 61,
-  'cssAuthoringHints' = 62,
   'authoredDeployedGrouping' = 63,
   'importantDOMProperties' = 64,
   'justMyCode' = 65,
-  'breakpointView' = 66,
   'timelineAsConsoleProfileResultPanel' = 67,
   'preloadingStatusPanel' = 68,
   'disableColorFormatSetting' = 69,
-  'timelineDoNotSkipSystemNodesOfCpuProfile' = 70,
+  'outermostTargetSelector' = 71,
+  'jsProfilerTemporarilyEnable' = 72,
+  'highlightErrorsElementsPanel' = 73,
+  'setAllBreakpointsEagerly' = 74,
+  'selfXssWarning' = 75,
+  'useSourceMapScopes' = 76,
+  'storageBucketsTree' = 77,
+  'deleteOverridesTemporarilyEnable' = 78,
+
   // Increment this when new experiments are added.
-  'MaxValue' = 71,
+  'MaxValue' = 79,
 }
 /* eslint-enable @typescript-eslint/naming-convention */
 
@@ -755,7 +942,9 @@ export const enum BreakpointEditDialogRevealedFrom {
   BreakpointMarkerContextMenu = 2,
   LineGutterContextMenu = 3,
   KeyboardShortcut = 4,
-  MaxValue = 5,
+  Linkifier = 5,
+  MouseClick = 6,
+  MaxValue = 7,
 }
 
 export const enum ColorConvertedFrom {
@@ -777,6 +966,20 @@ export const enum CSSPropertyDocumentation {
   MaxValue = 3,
 }
 
+export const enum BreakpointsRestoredFromStorageCount {
+  LessThan100 = 0,
+  LessThan300 = 1,
+  LessThan1000 = 2,
+  LessThan3000 = 3,
+  LessThan10000 = 4,
+  LessThan30000 = 5,
+  LessThan100000 = 6,
+  LessThan300000 = 7,
+  LessThan1000000 = 8,
+  Above1000000 = 9,
+  MaxValue = 10,
+}
+
 // TODO(crbug.com/1167717): Make this a const enum again
 // eslint-disable-next-line rulesdir/const_enum
 export enum IssueExpanded {
@@ -786,7 +989,8 @@ export enum IssueExpanded {
   HeavyAd = 3,
   ContentSecurityPolicy = 4,
   Other = 5,
-  MaxValue = 6,
+  Generic = 6,
+  MaxValue = 7,
 }
 
 // TODO(crbug.com/1167717): Make this a const enum again
@@ -853,9 +1057,6 @@ export enum IssueCreated {
   'CookieIssue::WarnSameSiteUnspecifiedCrossSiteContext::SetCookie' = 35,
   'SharedArrayBufferIssue::TransferIssue' = 36,
   'SharedArrayBufferIssue::CreationIssue' = 37,
-  'TrustedWebActivityIssue::kHttpError' = 38,
-  'TrustedWebActivityIssue::kUnavailableOffline' = 39,
-  'TrustedWebActivityIssue::kDigitalAssetLinks' = 40,
   LowTextContrastIssue = 41,
   'CorsIssue::InsecurePrivateNetwork' = 42,
   'CorsIssue::InvalidHeaders' = 44,
@@ -877,7 +1078,25 @@ export enum IssueCreated {
   'ClientHintIssue::MetaTagAllowListInvalidOrigin' = 61,
   'ClientHintIssue::MetaTagModifiedHTML' = 62,
   'CorsIssue::PreflightAllowPrivateNetworkError' = 63,
-  MaxValue = 64,
+  'GenericIssue::CrossOriginPortalPostMessageError' = 64,
+  'GenericIssue::FormLabelForNameError' = 65,
+  'GenericIssue::FormDuplicateIdForInputError' = 66,
+  'GenericIssue::FormInputWithNoLabelError' = 67,
+  'GenericIssue::FormAutocompleteAttributeEmptyError' = 68,
+  'GenericIssue::FormEmptyIdAndNameAttributesForInputError' = 69,
+  'GenericIssue::FormAriaLabelledByToNonExistingId' = 70,
+  'GenericIssue::FormInputAssignedAutocompleteValueToIdOrNameAttributeError' = 71,
+  'GenericIssue::FormLabelHasNeitherForNorNestedInput' = 72,
+  'GenericIssue::FormLabelForMatchesNonExistingIdError' = 73,
+  'GenericIssue::FormHasPasswordFieldWithoutUsernameFieldError' = 74,
+  'GenericIssue::FormInputHasWrongButWellIntendedAutocompleteValueError' = 75,
+  'StylesheetLoadingIssue::LateImportRule' = 76,
+  'StylesheetLoadingIssue::RequestFailed' = 77,
+  'CorsIssue::PreflightMissingPrivateNetworkAccessId' = 78,
+  'CorsIssue::PreflightMissingPrivateNetworkAccessName' = 79,
+  'CorsIssue::PrivateNetworkAccessPermissionUnavailable' = 80,
+  'CorsIssue::PrivateNetworkAccessPermissionDenied' = 81,
+  MaxValue = 82,
 }
 
 // TODO(crbug.com/1167717): Make this a const enum again
@@ -926,6 +1145,12 @@ export enum LinearMemoryInspectorTarget {
   TypedArray = 3,
   WebAssemblyMemory = 4,
   MaxValue = 5,
+}
+
+export const enum VMInlineScriptType {
+  MODULE_SCRIPT = 0,
+  CLASSIC_SCRIPT = 1,
+  MaxValue = 2,
 }
 
 /* eslint-disable @typescript-eslint/naming-convention */
@@ -1034,6 +1259,15 @@ export enum RecordingToggled {
   RecordingStarted = 1,
   RecordingFinished = 2,
   MaxValue = 3,
+}
+
+// TODO(crbug.com/1167717): Make this a const enum again
+// eslint-disable-next-line rulesdir/const_enum
+export enum RecordingAssertion {
+  AssertionAdded = 1,
+  PropertyAssertionEdited = 2,
+  AttributeAssertionEdited = 3,
+  MaxValue = 4,
 }
 
 // TODO(crbug.com/1167717): Make this a const enum again
@@ -1147,7 +1381,8 @@ export enum ManifestSectionCodes {
   'Presentation' = 2,
   'Protocol Handlers' = 3,
   'Icons' = 4,
-  MaxValue = 5,
+  'Window Controls Overlay' = 5,
+  MaxValue = 6,
 }
 
 // The names here match the CSSRuleValidator names in CSSRuleValidator.ts.
@@ -1167,7 +1402,8 @@ export enum CSSHintType {
   ZIndex = 10,
   Sizing = 11,
   FlexOrGridItem = 12,
-  MaxValue = 13,
+  FontVariationSettings = 13,
+  MaxValue = 14,
 }
 
 // TODO(crbug.com/1167717): Make this a const enum again
@@ -1181,3 +1417,53 @@ export enum LighthouseModeRun {
 }
 
 /* eslint-enable @typescript-eslint/naming-convention */
+export const enum SwatchType {
+  VarLink = 0,
+  AnimationNameLink = 1,
+  Color = 2,
+  AnimationTiming = 3,
+  Shadow = 4,
+  Grid = 5,
+  Flex = 6,
+  Angle = 7,
+  Length = 8,
+  PositionFallbackLink = 9,
+  MaxValue = 10,
+}
+
+/* eslint-enable @typescript-eslint/naming-convention */
+export const enum BadgeType {
+  GRID = 0,
+  SUBGRID = 1,
+  FLEX = 2,
+  AD = 3,
+  SCROLL_SNAP = 4,
+  CONTAINER = 5,
+  SLOT = 6,
+  TOP_LAYER = 7,
+  REVEAL = 8,
+  MaxValue = 9,
+}
+
+/* eslint-enable @typescript-eslint/naming-convention */
+export const enum AnimationsPlaybackRate {
+  Percent100 = 0,
+  Percent25 = 1,
+  Percent10 = 2,
+  Other = 3,
+  MaxValue = 4,
+}
+
+/* eslint-enable @typescript-eslint/naming-convention */
+export const enum AnimationPointDragType {
+  // Animation is dragged as a whole in the Animations panel.
+  AnimationDrag = 0,
+  // A keyframe point inside animation timeline is dragged.
+  KeyframeMove = 1,
+  // Start point of the animation inside animation timeline is dragged.
+  StartEndpointMove = 2,
+  // Finish point of the animation inside animation timeline is dragged.
+  FinishEndpointMove = 3,
+  Other = 4,
+  MaxValue = 5,
+}

@@ -31,6 +31,7 @@
   * \endcode
   */
 
+// IWYU pragma: begin_exports
 #include "src/misc/RealSvd2x2.h"
 #include "src/SVD/UpperBidiagonalization.h"
 #include "src/SVD/SVDBase.h"
@@ -47,6 +48,7 @@
 #endif
 #include "src/SVD/BDCSVD_LAPACKE.h"
 #endif
+// IWYU pragma: end_exports
 
 #include "src/Core/util/ReenableStupidWarnings.h"
 

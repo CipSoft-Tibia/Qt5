@@ -16,6 +16,7 @@
 #include <QtOpcUa/qopcuaaddreferenceitem.h>
 #include <QtOpcUa/qopcuadeletereferenceitem.h>
 #include <QtOpcUa/qopcuaendpointdescription.h>
+#include <QtOpcUa/QOpcUaHistoryReadEventRequest>
 
 #include <QtCore/qobject.h>
 #include <QtCore/qurl.h>
@@ -45,7 +46,7 @@ public:
         Disconnected,
         Connecting,
         Connected,
-        Closing
+        Closing,
     };
     Q_ENUM(ClientState)
 
@@ -55,7 +56,7 @@ public:
         AccessDenied,
         ConnectionError,
         UnknownError,
-        UnsupportedAuthenticationInformation
+        UnsupportedAuthenticationInformation,
     };
     Q_ENUM(ClientError)
 
@@ -114,6 +115,10 @@ public:
     QList<QOpcUaUserTokenPolicy::TokenType> supportedUserTokenTypes() const;
 
     QOpcUaHistoryReadResponse *readHistoryData(const QOpcUaHistoryReadRawRequest &request);
+    QOpcUaHistoryReadResponse *readHistoryEvents(const QOpcUaHistoryReadEventRequest &request);
+
+    bool registerNodes(const QStringList &nodesToRegister);
+    bool unregisterNodes(const QStringList &nodesToUnregister);
 
 Q_SIGNALS:
     void connected();
@@ -134,6 +139,8 @@ Q_SIGNALS:
     void deleteReferenceFinished(QString sourceNodeId, QString referenceTypeId, QOpcUaExpandedNodeId targetNodeId, bool isForwardReference,
                               QOpcUa::UaStatusCode statusCode);
     void passwordForPrivateKeyRequired(QString keyFilePath, QString *password, bool previousTryWasInvalid);
+    void registerNodesFinished(const QStringList &nodesToRegister, const QStringList &registeredNodeIds, QOpcUa::UaStatusCode statusCode);
+    void unregisterNodesFinished(const QStringList &nodesToUnregister, QOpcUa::UaStatusCode statusCode);
 
 private:
     Q_DISABLE_COPY(QOpcUaClient)

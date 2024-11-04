@@ -117,8 +117,9 @@ struct BLINK_COMMON_EXPORT WebPreferences {
   bool should_print_backgrounds;
   bool should_clear_document_background;
   bool enable_scroll_animator;
-  bool threaded_scrolling_enabled;
   bool prefers_reduced_motion;
+  bool prefers_reduced_transparency;
+  bool inverted_colors;
   bool touch_event_feature_detection_enabled;
   bool enable_error_page;
   int pointer_events_max_touch_points;
@@ -126,6 +127,7 @@ struct BLINK_COMMON_EXPORT WebPreferences {
   blink::mojom::PointerType primary_pointer_type;
   int available_hover_types;
   blink::mojom::HoverType primary_hover_type;
+  blink::mojom::OutputDeviceUpdateAbilityType output_device_update_ability_type;
   bool dont_send_key_events_to_javascript;
   bool barrel_button_for_drag_enabled = false;
   bool sync_xhr_in_documents_enabled;
@@ -152,7 +154,6 @@ struct BLINK_COMMON_EXPORT WebPreferences {
   bool initialize_at_minimum_page_scale;
   bool smart_insert_delete_enabled;
   bool spatial_navigation_enabled;
-  bool navigate_on_drag_drop;
   bool fake_no_alloc_direct_call_for_testing_enabled;
   blink::mojom::V8CacheOptions v8_cache_options;
   bool record_whole_document;
@@ -219,6 +220,8 @@ struct BLINK_COMMON_EXPORT WebPreferences {
 
 #if BUILDFLAG(IS_ANDROID)
   float font_scale_factor;
+  int font_weight_adjustment;
+  int text_size_contrast_factor;
   float device_scale_adjustment;
   bool force_enable_zoom;
   GURL default_video_poster_url;
@@ -294,6 +297,15 @@ struct BLINK_COMMON_EXPORT WebPreferences {
   blink::mojom::AutoplayPolicy autoplay_policy =
       blink::mojom::AutoplayPolicy::kNoUserGestureRequired;
 
+  // `getDisplayMedia()`'s transient activation requirement can be bypassed via
+  // `ScreenCaptureWithoutGestureAllowedForOrigins` policy.
+  bool require_transient_activation_for_get_display_media;
+
+  // `show{OpenFile|SaveFile|Directory}Picker()`'s transient activation
+  // requirement can be bypassed via
+  // `FileOrDirectoryPickerWithoutGestureAllowedForOrigins` policy.
+  bool require_transient_activation_for_show_file_or_directory_picker;
+
   // The preferred color scheme for the web content. The scheme is used to
   // evaluate the prefers-color-scheme media query and resolve UA color scheme
   // to be used based on the supported-color-schemes META tag and CSS property.
@@ -327,16 +339,6 @@ struct BLINK_COMMON_EXPORT WebPreferences {
 
   // Whether lazy loading of frames and images is enabled.
   bool lazy_load_enabled = true;
-
-  // Specifies how close a lazily loaded iframe or image should be from the
-  // viewport before it should start being loaded in, depending on the effective
-  // connection type of the current network. Blink will use the default distance
-  // threshold for effective connection types that aren't specified here.
-  std::map<EffectiveConnectionType, int>
-      lazy_frame_loading_distance_thresholds_px;
-  std::map<EffectiveConnectionType, int>
-      lazy_image_loading_distance_thresholds_px;
-  std::map<EffectiveConnectionType, int> lazy_image_first_k_fully_load;
 
   // Setting to false disables upgrades to HTTPS for HTTP resources in HTTPS
   // sites.

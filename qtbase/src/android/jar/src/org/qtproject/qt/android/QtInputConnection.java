@@ -6,6 +6,7 @@ package org.qtproject.qt.android;
 
 import android.content.Context;
 import android.os.Build;
+import android.util.Log;
 import android.view.WindowMetrics;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.CompletionInfo;
@@ -49,31 +50,8 @@ class QtNativeInputConnection
     static native boolean copyURL();
     static native boolean paste();
     static native boolean updateCursorPosition();
-}
-
-class HideKeyboardRunnable implements Runnable {
-    private long m_hideTimeStamp = System.nanoTime();
-
-    @Override
-    public void run() {
-        // Check that the keyboard is really no longer there.
-        Activity activity = QtNative.activity();
-        Rect r = new Rect();
-        activity.getWindow().getDecorView().getWindowVisibleDisplayFrame(r);
-
-        int screenHeight = 0;
-        if (android.os.Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            DisplayMetrics metrics = new DisplayMetrics();
-            activity.getWindowManager().getDefaultDisplay().getMetrics(metrics);
-            screenHeight = metrics.heightPixels;
-        } else {
-            final WindowMetrics maximumWindowMetrics = activity.getWindowManager().getMaximumWindowMetrics();
-            screenHeight = maximumWindowMetrics.getBounds().height();
-        }
-        final int kbHeight = screenHeight - r.bottom;
-        if (kbHeight < 100)
-            QtNative.activityDelegate().setKeyboardVisibility(false, m_hideTimeStamp);
-    }
+    static native void reportFullscreenMode(boolean enabled);
+    static native boolean fullscreenMode();
 }
 
 public class QtInputConnection extends BaseInputConnection
@@ -86,21 +64,71 @@ public class QtInputConnection extends BaseInputConnection
     private static final int ID_SWITCH_INPUT_METHOD = android.R.id.switchInputMethod;
     private static final int ID_ADD_TO_DICTIONARY = android.R.id.addToDictionary;
 
-    private QtEditText m_view = null;
+    private static final String QtTAG = "QtInputConnection";
 
-    private void setClosing(boolean closing)
-    {
-        if (closing) {
-            m_view.postDelayed(new HideKeyboardRunnable(), 100);
-        } else {
-            QtNative.activityDelegate().setKeyboardVisibility(true, System.nanoTime());
+    private final QtInputConnectionListener m_qtInputConnectionListener;
+
+    class HideKeyboardRunnable implements Runnable {
+        @Override
+        public void run() {
+            // Check that the keyboard is really no longer there.
+            Activity activity = QtNative.activity();
+            if (activity == null) {
+                Log.w(QtTAG, "HideKeyboardRunnable: The activity reference is null");
+                return;
+            }
+
+            Rect r = new Rect();
+            activity.getWindow().getDecorView().getWindowVisibleDisplayFrame(r);
+
+            int screenHeight;
+            if (android.os.Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                DisplayMetrics metrics = new DisplayMetrics();
+                activity.getWindowManager().getDefaultDisplay().getMetrics(metrics);
+                screenHeight = metrics.heightPixels;
+            } else {
+                final WindowMetrics maximumWindowMetrics = activity.getWindowManager().getMaximumWindowMetrics();
+                screenHeight = maximumWindowMetrics.getBounds().height();
+            }
+            final int kbHeight = screenHeight - r.bottom;
+            if (kbHeight < 100)
+                m_qtInputConnectionListener.onHideKeyboardRunnableDone(false, System.nanoTime());
         }
     }
 
-    public QtInputConnection(QtEditText targetView)
+    public interface QtInputConnectionListener {
+        void onSetClosing(boolean closing);
+        void onHideKeyboardRunnableDone(boolean visibility, long hideTimeStamp);
+        void onSendKeyEventDefaultCase();
+    }
+
+    private final QtEditText m_view;
+    private final InputMethodManager m_imm;
+
+    private void setClosing(boolean closing)
+    {
+        if (closing)
+            m_view.postDelayed(new HideKeyboardRunnable(), 100);
+        else
+            m_qtInputConnectionListener.onSetClosing(false);
+    }
+
+    public QtInputConnection(QtEditText targetView, QtInputConnectionListener listener)
     {
         super(targetView, true);
         m_view = targetView;
+        m_imm = (InputMethodManager)m_view.getContext().getSystemService(
+                                        Context.INPUT_METHOD_SERVICE);
+        m_qtInputConnectionListener = listener;
+    }
+
+    public void restartImmInput()
+    {
+        if (QtNativeInputConnection.fullscreenMode()) {
+            if (m_imm != null)
+                m_imm.restartInput(m_view);
+        }
+
     }
 
     @Override
@@ -108,6 +136,18 @@ public class QtInputConnection extends BaseInputConnection
     {
         setClosing(false);
         return QtNativeInputConnection.beginBatchEdit();
+    }
+
+    @Override
+    public boolean reportFullscreenMode (boolean enabled)
+    {
+        QtNativeInputConnection.reportFullscreenMode(enabled);
+        // Always ignored on calling editor.
+        // Always false on Android 8 and later, true with earlier.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            return false;
+
+        return true;
     }
 
     @Override
@@ -128,6 +168,7 @@ public class QtInputConnection extends BaseInputConnection
     public boolean commitText(CharSequence text, int newCursorPosition)
     {
         setClosing(false);
+        restartImmInput();
         return QtNativeInputConnection.commitText(text.toString(), newCursorPosition);
     }
 
@@ -193,23 +234,25 @@ public class QtInputConnection extends BaseInputConnection
     {
         switch (id) {
         case ID_SELECT_ALL:
+            restartImmInput();
             return QtNativeInputConnection.selectAll();
         case ID_COPY:
+            restartImmInput();
             return QtNativeInputConnection.copy();
         case ID_COPY_URL:
+            restartImmInput();
             return QtNativeInputConnection.copyURL();
         case ID_CUT:
+            restartImmInput();
             return QtNativeInputConnection.cut();
         case ID_PASTE:
+            restartImmInput();
             return QtNativeInputConnection.paste();
-
         case ID_SWITCH_INPUT_METHOD:
-            InputMethodManager imm = (InputMethodManager)m_view.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
-            if (imm != null)
-                imm.showInputMethodPicker();
+            if (m_imm != null)
+                m_imm.showInputMethodPicker();
 
             return true;
-
         case ID_ADD_TO_DICTIONARY:
 // TODO
 //            String word = m_editable.subSequence(0, m_editable.length()).toString();
@@ -242,8 +285,7 @@ public class QtInputConnection extends BaseInputConnection
                                             event.getRepeatCount(),
                                             event.getMetaState());
                     return super.sendKeyEvent(fakeEvent);
-
-               case android.view.inputmethod.EditorInfo.IME_ACTION_PREVIOUS:
+                case android.view.inputmethod.EditorInfo.IME_ACTION_PREVIOUS:
                     fakeEvent = new KeyEvent(event.getDownTime(),
                                             event.getEventTime(),
                                             event.getAction(),
@@ -251,16 +293,14 @@ public class QtInputConnection extends BaseInputConnection
                                             event.getRepeatCount(),
                                             KeyEvent.META_SHIFT_ON);
                     return super.sendKeyEvent(fakeEvent);
-
                 case android.view.inputmethod.EditorInfo.IME_FLAG_NO_ENTER_ACTION:
+                    restartImmInput();
                     break;
-
                 default:
-                   QtNative.activityDelegate().hideSoftwareKeyboard();
-                   break;
+                    m_qtInputConnectionListener.onSendKeyEventDefaultCase();
+                    break;
             }
         }
-
         return super.sendKeyEvent(event);
     }
 

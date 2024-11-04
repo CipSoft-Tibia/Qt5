@@ -29,6 +29,7 @@ static CborError qt_cbor_decoder_transfer_string(void *token, const void **userp
 
 QT_WARNING_PUSH
 QT_WARNING_DISABLE_MSVC(4334) // '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
+QT_WARNING_DISABLE_GCC("-Wimplicit-fallthrough")
 
 #include <cborparser.c>
 
@@ -618,21 +619,24 @@ public:
             QByteArray *array;
             QString *string;
         };
-        enum { ByteArray = -1, String = -3 };
+        enum Type { ByteArray = -1, String = -3, Utf8String = -5 };
         qsizetype maxlen_or_type;
 
         ReadStringChunk(char *ptr, qsizetype maxlen) : ptr(ptr), maxlen_or_type(maxlen) {}
-        ReadStringChunk(QByteArray *array) : array(array), maxlen_or_type(ByteArray) {}
+        ReadStringChunk(QByteArray *array, Type type = ByteArray) : array(array), maxlen_or_type(type) {}
         ReadStringChunk(QString *str) : string(str), maxlen_or_type(String) {}
         bool isString() const { return maxlen_or_type == String; }
+        bool isUtf8String() const { return maxlen_or_type == Utf8String; }
         bool isByteArray() const { return maxlen_or_type == ByteArray; }
         bool isPlainPointer() const { return maxlen_or_type >= 0; }
     };
 
     static QCborStreamReader::StringResultCode appendStringChunk(QCborStreamReader &reader, QByteArray *data);
+    bool readFullString(ReadStringChunk params);
     QCborStreamReader::StringResult<qsizetype> readStringChunk(ReadStringChunk params);
     qsizetype readStringChunk_byte(ReadStringChunk params, qsizetype len);
     qsizetype readStringChunk_unicode(ReadStringChunk params, qsizetype utf8len);
+    qsizetype readStringChunk_utf8(ReadStringChunk params, qsizetype utf8len);
     bool ensureStringIteration();
 };
 
@@ -929,7 +933,7 @@ void QCborStreamReader::reset()
 
    \sa isValid()
  */
-QCborError QCborStreamReader::lastError()
+QCborError QCborStreamReader::lastError() const
 {
     return d->lastError;
 }
@@ -1290,16 +1294,20 @@ bool QCborStreamReader::leaveContainer()
 
    Decodes one string chunk from the CBOR string and returns it. This function
    is used for both regular and chunked string contents, so the caller must
-   always loop around calling this function, even if isLengthKnown() has
+   always loop around calling this function, even if isLengthKnown()
    is true. The typical use of this function is as follows:
 
    \snippet code/src_corelib_serialization_qcborstream.cpp 27
 
+   The readAllString() function implements the above loop and some extra checks.
+
+//! [string-no-type-conversions]
    This function does not perform any type conversions, including from integers
    or from byte arrays. Therefore, it may only be called if isString() returned
    true; calling it in any other condition is an error.
+//! [string-no-type-conversions]
 
-   \sa readByteArray(), isString(), readStringChunk()
+   \sa readAllString(), readByteArray(), isString(), readStringChunk()
  */
 QCborStreamReader::StringResult<QString> QCborStreamReader::_readString_helper()
 {
@@ -1318,20 +1326,58 @@ QCborStreamReader::StringResult<QString> QCborStreamReader::_readString_helper()
 }
 
 /*!
+   \fn QCborStreamReader::StringResult<QByteArray> QCborStreamReader::readUtf8String()
+   \since 6.7
+
+   Decodes one string chunk from the CBOR string and returns it. This function
+   is used for both regular and chunked string contents, so the caller must
+   always loop around calling this function, even if isLengthKnown() is true.
+   The typical use of this function is as for readString() in the following:
+
+   \snippet code/src_corelib_serialization_qcborstream.cpp 27
+
+   The readAllUtf8String() function implements the above loop and some extra checks.
+
+    \include qcborstreamreader.cpp string-no-type-conversions
+
+   \sa readAllString(), readByteArray(), isString(), readStringChunk()
+ */
+QCborStreamReader::StringResult<QByteArray> QCborStreamReader::_readUtf8String_helper()
+{
+    using P = QCborStreamReaderPrivate::ReadStringChunk;
+    QCborStreamReader::StringResult<QByteArray> result;
+    auto r = d->readStringChunk(P{ &result.data, P::Utf8String });
+    result.status = r.status;
+    if (r.status == Error) {
+        result.data.clear();
+    } else {
+        Q_ASSERT(r.data == result.data.size());
+        if (r.status == EndOfString && lastError() == QCborError::NoError)
+            preparse();
+    }
+
+    return result;
+}
+
+/*!
    \fn QCborStreamReader::StringResult<QByteArray> QCborStreamReader::readByteArray()
 
    Decodes one byte array chunk from the CBOR string and returns it. This
    function is used for both regular and chunked contents, so the caller must
-   always loop around calling this function, even if isLengthKnown() has
+   always loop around calling this function, even if isLengthKnown()
    is true. The typical use of this function is as follows:
 
    \snippet code/src_corelib_serialization_qcborstream.cpp 28
 
+   The readAllByteArray() function implements the above loop and some extra checks.
+
+//! [bytearray-no-type-conversions]
    This function does not perform any type conversions, including from integers
    or from strings. Therefore, it may only be called if isByteArray() is true;
    calling it in any other condition is an error.
+//! [bytearray-no-type-conversions]
 
-   \sa readString(), isByteArray(), readStringChunk()
+   \sa readAllByteArray(), readString(), isByteArray(), readStringChunk()
  */
 QCborStreamReader::StringResult<QByteArray> QCborStreamReader::_readByteArray_helper()
 {
@@ -1378,6 +1424,147 @@ qsizetype QCborStreamReader::_currentStringChunkSize() const
     else
         return qsizetype(len);
     return -1;
+}
+
+bool QCborStreamReaderPrivate::readFullString(ReadStringChunk params)
+{
+    auto r = readStringChunk(params);
+    while (r.status == QCborStreamReader::Ok) {
+        // keep appending
+        r = readStringChunk(params);
+    }
+
+    bool ok = r.status == QCborStreamReader::EndOfString;
+    Q_ASSERT(ok == !lastError);
+    return ok;
+}
+
+/*!
+    \fn QCborStreamReader::readAllString()
+    \since 6.7
+
+    Decodes the current text string and returns it. If the string is chunked,
+    this function will iterate over all chunks and concatenate them. If an
+    error happens, this function returns a default-constructed QString(), but
+    that may not be distinguishable from certain empty text strings. Instead,
+    check lastError() to determine if an error has happened.
+
+    \include qcborstreamreader.cpp string-no-type-conversions
+
+//! [note-not-restartable]
+    \note This function cannot be resumed. That is, this function should not
+    be used in contexts where the CBOR data may still be received, for example
+    from a socket or pipe. It should only be used when the full data has
+    already been received and is available in the input QByteArray or
+    QIODevice.
+//! [note-not-restartable]
+
+    \sa readString(), readStringChunk(), isString(), readAllByteArray()
+ */
+/*!
+    \fn QCborStreamReader::readAndAppendToString(QString &dst)
+    \since 6.7
+
+    Decodes the current text string and appends to \a dst. If the string is
+    chunked, this function will iterate over all chunks and concatenate them.
+    If an error happens during decoding, other chunks that could be decoded
+    successfully may have been written to \a dst nonetheless. Returns \c true
+    if the decoding happened without errors, \c false otherwise.
+
+    \include qcborstreamreader.cpp string-no-type-conversions
+
+    \include qcborstreamreader.cpp note-not-restartable
+
+    \sa readString(), readStringChunk(), isString(), readAndAppendToByteArray()
+ */
+bool QCborStreamReader::_readAndAppendToString_helper(QString &dst)
+{
+    bool ok = d->readFullString(&dst);
+    if (ok)
+        preparse();
+    return ok;
+}
+
+/*!
+    \fn QCborStreamReader::readAllUtf8String()
+    \since 6.7
+
+    Decodes the current text string and returns it. If the string is chunked,
+    this function will iterate over all chunks and concatenate them. If an
+    error happens, this function returns a default-constructed QString(), but
+    that may not be distinguishable from certain empty text strings. Instead,
+    check lastError() to determine if an error has happened.
+
+    \include qcborstreamreader.cpp string-no-type-conversions
+
+    \include qcborstreamreader.cpp note-not-restartable
+
+    \sa readString(), readStringChunk(), isString(), readAllByteArray()
+ */
+/*!
+    \fn QCborStreamReader::readAndAppendToUtf8String(QByteArray &dst)
+    \since 6.7
+
+    Decodes the current text string and appends to \a dst. If the string is
+    chunked, this function will iterate over all chunks and concatenate them.
+    If an error happens during decoding, other chunks that could be decoded
+    successfully may have been written to \a dst nonetheless. Returns \c true
+    if the decoding happened without errors, \c false otherwise.
+
+    \include qcborstreamreader.cpp string-no-type-conversions
+
+    \include qcborstreamreader.cpp note-not-restartable
+
+    \sa readString(), readStringChunk(), isString(), readAndAppendToByteArray()
+ */
+bool QCborStreamReader::_readAndAppendToUtf8String_helper(QByteArray &dst)
+{
+    using P = QCborStreamReaderPrivate::ReadStringChunk;
+    bool ok = d->readFullString({ &dst, P::Utf8String });
+    if (ok)
+        preparse();
+    return ok;
+}
+
+/*!
+    \fn QCborStreamReader::readAllByteArray()
+    \since 6.7
+
+    Decodes the current byte string and returns it. If the string is chunked,
+    this function will iterate over all chunks and concatenate them. If an
+    error happens, this function returns a default-constructed QByteArray(),
+    but that may not be distinguishable from certain empty byte strings.
+    Instead, check lastError() to determine if an error has happened.
+
+    \include qcborstreamreader.cpp bytearray-no-type-conversions
+
+    \include qcborstreamreader.cpp note-not-restartable
+
+    \sa readByteArray(), readStringChunk(), isByteArray(), readAllString()
+ */
+
+/*!
+    \fn QCborStreamReader::readAndAppendToByteArray(QByteArray &dst)
+    \since 6.7
+
+    Decodes the current byte string and appends to \a dst. If the string is
+    chunked, this function will iterate over all chunks and concatenate them.
+    If an error happens during decoding, other chunks that could be decoded
+    successfully may have been written to \a dst nonetheless. Returns \c true
+    if the decoding happened without errors, \c false otherwise.
+
+    \include qcborstreamreader.cpp bytearray-no-type-conversions
+
+    \include qcborstreamreader.cpp note-not-restartable
+
+    \sa readByteArray(), readStringChunk(), isByteArray(), readAndAppendToString()
+ */
+bool QCborStreamReader::_readAndAppendToByteArray_helper(QByteArray &dst)
+{
+    bool ok = d->readFullString(&dst);
+    if (ok)
+        preparse();
+    return ok;
 }
 
 /*!
@@ -1452,6 +1639,12 @@ QCborStreamReaderPrivate::readStringChunk(ReadStringChunk params)
     // qt_cbor_decoder_transfer_string() enforces that
     // QIODevice::bytesAvailable() be bigger than the amount we're about to
     // read.
+    //
+    // This is an important security gate: if the CBOR stream is corrupt or
+    // malicious, and has an impossibly large string size, we only go past it
+    // if the transfer to the destination buffer will succeed (modulo QIODevice
+    // I/O failures).
+
 #if 1
     // Using internal TinyCBOR API!
     err = _cbor_value_get_string_chunk(&currentElement, &content, &len, &currentElement);
@@ -1494,6 +1687,8 @@ QCborStreamReaderPrivate::readStringChunk(ReadStringChunk params)
     if (params.isString()) {
         // readString()
         result.data = readStringChunk_unicode(params, qsizetype(len));
+    } else if (params.isUtf8String()) {
+        result.data = readStringChunk_utf8(params, qsizetype(len));
     } else {
         // readByteArray() or readStringChunk()
         result.data = readStringChunk_byte(params, qsizetype(len));
@@ -1540,7 +1735,7 @@ QCborStreamReaderPrivate::readStringChunk_byte(ReadStringChunk params, qsizetype
         else
             toRead = params.maxlen_or_type;     // buffer smaller than string
         ptr = params.ptr;
-    } else if (params.isByteArray()) {
+    } else if (!params.isString()) {
         // See note above on having ensured there is enough incoming data.
         auto oldSize = params.array->size();
         auto newSize = oldSize;
@@ -1587,24 +1782,25 @@ QCborStreamReaderPrivate::readStringChunk_byte(ReadStringChunk params, qsizetype
 inline qsizetype
 QCborStreamReaderPrivate::readStringChunk_unicode(ReadStringChunk params, qsizetype utf8len)
 {
+    Q_ASSERT(params.isString());
+
     // See QUtf8::convertToUnicode() a detailed explanation of why this
     // conversion uses the same number of words or less.
-    QChar *begin = nullptr;
-    if (params.isString()) {
-        QT_TRY {
-            params.string->resize(utf8len);
-        } QT_CATCH (const std::bad_alloc &) {
-            if (utf8len > MaxStringSize)
-                handleError(CborErrorDataTooLarge);
-            else
-                handleError(CborErrorOutOfMemory);
-            return -1;
-        }
-
-        begin = const_cast<QChar *>(params.string->constData());
+    qsizetype currentSize = params.string->size();
+    size_t newSize = size_t(utf8len) + size_t(currentSize); // can't overflow
+    if (utf8len > MaxStringSize || qsizetype(newSize) < 0) {
+        handleError(CborErrorDataTooLarge);
+        return -1;
+    }
+    QT_TRY {
+        params.string->resize(qsizetype(newSize));
+    } QT_CATCH (const std::bad_alloc &) {
+        handleError(CborErrorOutOfMemory);
+        return -1;
     }
 
-    QChar *ptr = begin;
+    QChar *begin = const_cast<QChar *>(params.string->constData());
+    QChar *ptr = begin + currentSize;
     QStringConverter::State cs(QStringConverter::Flag::Stateless);
     if (device == nullptr) {
         // Easy case: we can decode straight from the buffer we already have
@@ -1636,9 +1832,25 @@ QCborStreamReaderPrivate::readStringChunk_unicode(ReadStringChunk params, qsizet
     }
 
     qsizetype size = ptr - begin;
-    if (params.isString())
-        params.string->truncate(size);
-    return size;
+    params.string->truncate(ptr - begin);
+    return size - currentSize;  // how many bytes we added
+}
+
+inline qsizetype
+QCborStreamReaderPrivate::readStringChunk_utf8(ReadStringChunk params, qsizetype utf8len)
+{
+    qsizetype result = readStringChunk_byte(params, utf8len);
+    if (result < 0)
+        return result;
+
+    // validate the UTF-8 content we've just read
+    QByteArrayView chunk = *params.array;
+    chunk = chunk.last(result);
+    if (QtPrivate::isValidUtf8(chunk))
+        return result;
+
+    handleError(CborErrorInvalidUtf8TextString);
+    return -1;
 }
 
 QT_END_NAMESPACE

@@ -30,3 +30,6 @@ qt_internal_add_qml_module(QuickTimeline
 qt_internal_add_docs(QuickTimeline
     doc/qtquicktimeline.qdocconf
 )
+
+add_subdirectory(blendtrees)
+

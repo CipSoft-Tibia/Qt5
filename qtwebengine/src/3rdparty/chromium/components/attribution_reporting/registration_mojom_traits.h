@@ -13,16 +13,18 @@
 #include "base/component_export.h"
 #include "base/containers/flat_set.h"
 #include "base/time/time.h"
-#include "components/aggregation_service/aggregation_service.mojom-shared.h"
 #include "components/attribution_reporting/aggregatable_dedup_key.h"
 #include "components/attribution_reporting/aggregatable_trigger_data.h"
 #include "components/attribution_reporting/aggregatable_values.h"
 #include "components/attribution_reporting/aggregation_keys.h"
 #include "components/attribution_reporting/destination_set.h"
+#include "components/attribution_reporting/event_report_windows.h"
 #include "components/attribution_reporting/event_trigger_data.h"
 #include "components/attribution_reporting/filters.h"
+#include "components/attribution_reporting/os_registration.h"
 #include "components/attribution_reporting/registration.mojom-shared.h"
 #include "components/attribution_reporting/source_registration.h"
+#include "components/attribution_reporting/source_registration_error.mojom-shared.h"
 #include "components/attribution_reporting/suitable_origin.h"
 #include "components/attribution_reporting/trigger_registration.h"
 #include "mojo/public/cpp/base/int128_mojom_traits.h"
@@ -31,7 +33,9 @@
 #include "services/network/public/cpp/schemeful_site_mojom_traits.h"
 #include "third_party/abseil-cpp/absl/numeric/int128.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
+#include "url/gurl.h"
 #include "url/mojom/origin_mojom_traits.h"
+#include "url/mojom/url_gurl_mojom_traits.h"
 #include "url/origin.h"
 
 namespace mojo {
@@ -89,6 +93,24 @@ struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
 
 template <>
 struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
+    StructTraits<attribution_reporting::mojom::FilterConfigDataView,
+                 attribution_reporting::FilterConfig> {
+  static const absl::optional<base::TimeDelta>& lookback_window(
+      const attribution_reporting::FilterConfig& filter_config) {
+    return filter_config.lookback_window();
+  }
+
+  static const attribution_reporting::FilterValues& filter_values(
+      const attribution_reporting::FilterConfig& filter_config) {
+    return filter_config.filter_values();
+  }
+
+  static bool Read(attribution_reporting::mojom::FilterConfigDataView data,
+                   attribution_reporting::FilterConfig* out);
+};
+
+template <>
+struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
     StructTraits<attribution_reporting::mojom::AggregationKeysDataView,
                  attribution_reporting::AggregationKeys> {
   static const attribution_reporting::AggregationKeys::Keys& keys(
@@ -102,11 +124,43 @@ struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
 
 template <>
 struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
+    StructTraits<attribution_reporting::mojom::DestinationSetDataView,
+                 attribution_reporting::DestinationSet> {
+  static const attribution_reporting::DestinationSet::Destinations&
+  destinations(const attribution_reporting::DestinationSet& set) {
+    return set.destinations();
+  }
+
+  static bool Read(attribution_reporting::mojom::DestinationSetDataView data,
+                   attribution_reporting::DestinationSet* out);
+};
+
+template <>
+struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
+    StructTraits<attribution_reporting::mojom::EventReportWindowsDataView,
+                 attribution_reporting::EventReportWindows> {
+  static base::TimeDelta start_time_or_window_time(
+      const attribution_reporting::EventReportWindows& event_report_windows) {
+    return event_report_windows.start_time_or_window_time();
+  }
+
+  static const base::flat_set<base::TimeDelta>& end_times(
+      const attribution_reporting::EventReportWindows& event_report_windows) {
+    return event_report_windows.end_times();
+  }
+
+  static bool Read(
+      attribution_reporting::mojom::EventReportWindowsDataView data,
+      attribution_reporting::EventReportWindows* out);
+};
+
+template <>
+struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
     StructTraits<attribution_reporting::mojom::SourceRegistrationDataView,
                  attribution_reporting::SourceRegistration> {
-  static const base::flat_set<net::SchemefulSite>& destinations(
+  static const attribution_reporting::DestinationSet& destinations(
       const attribution_reporting::SourceRegistration& source) {
-    return source.destination_set.destinations();
+    return source.destination_set;
   }
 
   static uint64_t source_event_id(
@@ -119,14 +173,20 @@ struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
     return source.expiry;
   }
 
-  static absl::optional<base::TimeDelta> event_report_window(
-      const attribution_reporting::SourceRegistration& source) {
-    return source.event_report_window;
-  }
-
   static absl::optional<base::TimeDelta> aggregatable_report_window(
       const attribution_reporting::SourceRegistration& source) {
     return source.aggregatable_report_window;
+  }
+
+  static const absl::optional<attribution_reporting::EventReportWindows>&
+  event_report_windows(
+      const attribution_reporting::SourceRegistration& source) {
+    return source.event_report_windows;
+  }
+
+  static int max_event_level_reports(
+      const attribution_reporting::SourceRegistration& source) {
+    return source.max_event_level_reports.value_or(-1);
   }
 
   static int64_t priority(
@@ -161,27 +221,14 @@ struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
 
 template <>
 struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
-    StructTraits<attribution_reporting::mojom::FiltersDataView,
-                 attribution_reporting::Filters> {
-  static const attribution_reporting::FilterValues& filter_values(
-      const attribution_reporting::Filters& filters) {
-    return filters.filter_values();
-  }
-
-  static bool Read(attribution_reporting::mojom::FiltersDataView data,
-                   attribution_reporting::Filters* out);
-};
-
-template <>
-struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
     StructTraits<attribution_reporting::mojom::FilterPairDataView,
                  attribution_reporting::FilterPair> {
-  static const attribution_reporting::Filters& positive(
+  static const attribution_reporting::FiltersDisjunction& positive(
       const attribution_reporting::FilterPair& filters) {
     return filters.positive;
   }
 
-  static const attribution_reporting::Filters& negative(
+  static const attribution_reporting::FiltersDisjunction& negative(
       const attribution_reporting::FilterPair& filters) {
     return filters.negative;
   }
@@ -246,7 +293,7 @@ struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
                  attribution_reporting::TriggerRegistration> {
   static const std::vector<attribution_reporting::EventTriggerData>&
   event_triggers(const attribution_reporting::TriggerRegistration& trigger) {
-    return trigger.event_triggers.vec();
+    return trigger.event_triggers;
   }
 
   static const attribution_reporting::FilterPair& filters(
@@ -257,7 +304,7 @@ struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
   static const std::vector<attribution_reporting::AggregatableTriggerData>&
   aggregatable_trigger_data(
       const attribution_reporting::TriggerRegistration& trigger) {
-    return trigger.aggregatable_trigger_data.vec();
+    return trigger.aggregatable_trigger_data;
   }
 
   static const attribution_reporting::AggregatableValues::Values&
@@ -274,7 +321,7 @@ struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
   static const std::vector<attribution_reporting::AggregatableDedupKey>&
   aggregatable_dedup_keys(
       const attribution_reporting::TriggerRegistration& trigger) {
-    return trigger.aggregatable_dedup_keys.vec();
+    return trigger.aggregatable_dedup_keys;
   }
 
   static bool debug_reporting(
@@ -282,10 +329,16 @@ struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
     return trigger.debug_reporting;
   }
 
-  static aggregation_service::mojom::AggregationCoordinator
-  aggregation_coordinator(
+  static const absl::optional<attribution_reporting::SuitableOrigin>&
+  aggregation_coordinator_origin(
       const attribution_reporting::TriggerRegistration& trigger) {
-    return trigger.aggregation_coordinator;
+    return trigger.aggregation_coordinator_origin;
+  }
+
+  static attribution_reporting::mojom::SourceRegistrationTimeConfig
+  source_registration_time_config(
+      const attribution_reporting::TriggerRegistration& trigger) {
+    return trigger.source_registration_time_config;
   }
 
   static bool Read(
@@ -310,6 +363,41 @@ struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
   static bool Read(
       attribution_reporting::mojom::AggregatableDedupKeyDataView data,
       attribution_reporting::AggregatableDedupKey* out);
+};
+
+template <>
+struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
+    StructTraits<attribution_reporting::mojom::OsRegistrationDataView,
+                 std::vector<attribution_reporting::OsRegistrationItem>> {
+  static const std::vector<attribution_reporting::OsRegistrationItem>& items(
+      const std::vector<attribution_reporting::OsRegistrationItem>& items) {
+    return items;
+  }
+
+  static bool Read(
+      attribution_reporting::mojom::OsRegistrationDataView data,
+      std::vector<attribution_reporting::OsRegistrationItem>* out) {
+    return data.ReadItems(out);
+  }
+};
+
+template <>
+struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING_REGISTRATION_MOJOM_TRAITS)
+    StructTraits<attribution_reporting::mojom::OsRegistrationItemDataView,
+                 attribution_reporting::OsRegistrationItem> {
+  static const GURL& url(
+      const attribution_reporting::OsRegistrationItem& item) {
+    return item.url;
+  }
+
+  static bool debug_reporting(
+      const attribution_reporting::OsRegistrationItem& item) {
+    return item.debug_reporting;
+  }
+
+  static bool Read(
+      attribution_reporting::mojom::OsRegistrationItemDataView data,
+      attribution_reporting::OsRegistrationItem* out);
 };
 
 }  // namespace mojo

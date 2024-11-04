@@ -40,7 +40,7 @@
         \li \l[QtNetwork]{Qt Network}
         \li Classes to make network programming easier and more portable.
     \row
-        \li \l[QtQml]{Qt QML}
+        \li \l[QtQml]{Qt Qml}
         \li Classes for QML and JavaScript languages.
     \row
         \li \l[QtQuick]{Qt Quick}
@@ -104,6 +104,11 @@
         \li All
         \li Functionality for near-realtime simulation systems with support
             for 2D and 3D rendering.
+    \row
+        \li \l{Qt 5 Compatibility APIs: Graphical Effects}
+        \li All
+        \li All
+        \li Qt Graphical Effects module from Qt 5 provided for compatibility.
     \row
         \li \l{Qt 5 Core Compatibility APIs}
         \li All

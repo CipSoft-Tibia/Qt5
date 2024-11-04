@@ -20,14 +20,15 @@ namespace switches {
 // alongside the definition of their values in the .cc file.
 
 #if BUILDFLAG(IS_ANDROID)
-BASE_DECLARE_FEATURE(kGaiaIdCacheInAccountManagerFacade);
+BASE_DECLARE_FEATURE(kIdentityStatusConsistency);
 #endif
-
-BASE_DECLARE_FEATURE(kNewSigninRequestHeaderCheckOrder);
 
 extern const char kClearTokenService[];
 
-extern const char kDisableSigninScopedDeviceId[];
+#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+BASE_DECLARE_FEATURE(kEnableBoundSessionCredentials);
+bool IsBoundSessionCredentialsEnabled();
+#endif
 
 BASE_DECLARE_FEATURE(kEnableFetchingAccountCapabilities);
 
@@ -35,10 +36,11 @@ BASE_DECLARE_FEATURE(kForceDisableExtendedSyncPromos);
 
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 BASE_DECLARE_FEATURE(kForceStartupSigninPromo);
-BASE_DECLARE_FEATURE(kIdentityStatusConsistency);
 #endif
 
 BASE_DECLARE_FEATURE(kTangibleSync);
+
+BASE_DECLARE_FEATURE(kSearchEngineChoice);
 
 }  // namespace switches
 

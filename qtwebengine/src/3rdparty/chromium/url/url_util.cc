@@ -58,7 +58,6 @@ struct SchemeRegistry {
        SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION},  // WebSocket secure.
       {kWsScheme, SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION},  // WebSocket.
       {kFileSystemScheme, SCHEME_WITHOUT_AUTHORITY},
-      {kQuicTransportScheme, SCHEME_WITH_HOST_AND_PORT},
   };
 
   // Schemes that are allowed for referrers.
@@ -75,7 +74,10 @@ struct SchemeRegistry {
 
   // Schemes that do not trigger mixed content warning.
   std::vector<std::string> secure_schemes = {
-      kHttpsScheme, kAboutScheme, kDataScheme, kQuicTransportScheme, kWssScheme,
+      kHttpsScheme,
+      kWssScheme,
+      kDataScheme,
+      kAboutScheme,
   };
 
   // Schemes that normal pages cannot link to or access (i.e., with the same
@@ -897,8 +899,8 @@ void DecodeURLEscapeSequences(const char* input,
       // character.
       size_t next_character = i;
       base_icu::UChar32 code_point;
-      if (ReadUTFChar(unescaped_chars.data(), &next_character, unescaped_length,
-                      &code_point)) {
+      if (ReadUTFCharLossy(unescaped_chars.data(), &next_character,
+                           unescaped_length, &code_point)) {
         // Valid UTF-8 character, convert to UTF-16.
         AppendUTF16Value(code_point, output);
         i = next_character;

@@ -19,7 +19,12 @@
 
 namespace nearby {
 
-BluetoothClassicMedium::~BluetoothClassicMedium() { StopDiscovery(); }
+BluetoothClassicMedium::~BluetoothClassicMedium() {
+  if (!observer_list_.empty()) {
+    impl_->RemoveObserver(this);
+  }
+  StopDiscovery();
+}
 
 BluetoothSocket BluetoothClassicMedium::ConnectToService(
     BluetoothDevice& remote_device, const std::string& service_uuid,
@@ -58,6 +63,9 @@ bool BluetoothClassicMedium::StartDiscovery(DiscoveryCallback callback) {
       .device_name_changed_cb =
           [this](api::BluetoothDevice& device) {
             MutexLock lock(&mutex_);
+            // If the device is not already in devices_, we should not be able
+            // to change its name.
+            if (devices_.find(&device) == devices_.end()) return;
             auto& context = *devices_[&device];
             NEARBY_LOG(INFO, "Renaming device=%p, impl=%p", &context.device,
                        &device);
@@ -68,6 +76,11 @@ bool BluetoothClassicMedium::StartDiscovery(DiscoveryCallback callback) {
           [this](api::BluetoothDevice& device) {
             MutexLock lock(&mutex_);
             auto item = devices_.extract(&device);
+            if (!item) {
+              NEARBY_LOGS(WARNING)
+                  << "Removing unknown device: " << device.GetMacAddress();
+              return;
+            }
             auto& context = *item.mapped();
             NEARBY_LOG(INFO, "Removing device=%p, impl=%p", &context.device,
                        &device);
@@ -92,6 +105,56 @@ bool BluetoothClassicMedium::StopDiscovery() {
   devices_.clear();
   NEARBY_LOG(INFO, "BT Discovery disabled: impl=%p", &GetImpl());
   return impl_->StopDiscovery();
+}
+
+void BluetoothClassicMedium::AddObserver(Observer* observer) {
+  MutexLock lock(&mutex_);
+  if (observer_list_.empty()) {
+    impl_->AddObserver(this);
+  }
+  observer_list_.AddObserver(observer);
+}
+void BluetoothClassicMedium::RemoveObserver(Observer* observer) {
+  MutexLock lock(&mutex_);
+  observer_list_.RemoveObserver(observer);
+  if (observer_list_.empty()) {
+    impl_->RemoveObserver(this);
+  }
+}
+
+// api::BluetoothClassicMedium::Observer methods
+void BluetoothClassicMedium::DeviceAdded(api::BluetoothDevice& device) {
+  BluetoothDevice bt_device(&device);
+  for (auto* observer : observer_list_.GetObservers()) {
+    observer->DeviceAdded(bt_device);
+  }
+}
+void BluetoothClassicMedium::DeviceRemoved(api::BluetoothDevice& device) {
+  BluetoothDevice bt_device(&device);
+  for (auto* observer : observer_list_.GetObservers()) {
+    observer->DeviceRemoved(bt_device);
+  }
+}
+void BluetoothClassicMedium::DeviceAddressChanged(
+    api::BluetoothDevice& device, absl::string_view old_address) {
+  BluetoothDevice bt_device(&device);
+  for (auto* observer : observer_list_.GetObservers()) {
+    observer->DeviceAddressChanged(bt_device, old_address);
+  }
+}
+void BluetoothClassicMedium::DevicePairedChanged(api::BluetoothDevice& device,
+                                                 bool new_paired_status) {
+  BluetoothDevice bt_device(&device);
+  for (auto* observer : observer_list_.GetObservers()) {
+    observer->DevicePairedChanged(bt_device, new_paired_status);
+  }
+}
+void BluetoothClassicMedium::DeviceConnectedStateChanged(
+    api::BluetoothDevice& device, bool connected) {
+  BluetoothDevice bt_device(&device);
+  for (auto* observer : observer_list_.GetObservers()) {
+    observer->DeviceConnectedStateChanged(bt_device, connected);
+  }
 }
 
 }  // namespace nearby

@@ -850,7 +850,7 @@ static int jpegxl_probe(const AVProbeData *p)
     if (AV_RL16(b) != FF_JPEGXL_CODESTREAM_SIGNATURE_LE)
         return 0;
 #if CONFIG_IMAGE_JPEGXL_PIPE_DEMUXER
-    if (ff_jpegxl_verify_codestream_header(p->buf, p->buf_size) >= 0)
+    if (ff_jpegxl_verify_codestream_header(p->buf, p->buf_size, 1) >= 0)
         return AVPROBE_SCORE_MAX - 2;
 #endif
     return 0;
@@ -964,8 +964,13 @@ static int svg_probe(const AVProbeData *p)
 {
     const uint8_t *b = p->buf;
     const uint8_t *end = p->buf + p->buf_size;
-
-    if (memcmp(p->buf, "<?xml", 5))
+    while (b < end && av_isspace(*b))
+        b++;
+    if (b >= end - 5)
+        return 0;
+    if (!memcmp(b, "<svg", 4))
+        return AVPROBE_SCORE_EXTENSION + 1;
+    if (memcmp(p->buf, "<?xml", 5) && memcmp(b, "<!--", 4))
         return 0;
     while (b < end) {
         int inc = ff_subtitles_next_line(b);

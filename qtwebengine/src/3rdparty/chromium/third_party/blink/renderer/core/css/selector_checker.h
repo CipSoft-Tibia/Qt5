@@ -105,6 +105,26 @@ class CORE_EXPORT SelectorChecker {
   SelectorChecker(const SelectorChecker&) = delete;
   SelectorChecker& operator=(const SelectorChecker&) = delete;
 
+  // When matching certain selectors (e.g :hover), we sometimes want to mark the
+  // relevant element(s) as being affected by that selector to aid some
+  // invalidation process later. We also typically need a distinction between
+  // elements that are affected themselves and elements that are *related* to
+  // affected elements (e.g. has an affected ancestor or sibling). The impact of
+  // a given SelectorCheckingContext tells us which invalidation flags to set.
+  enum class Impact {
+    // Invalidation
+    // flags on to the element itself should be set.
+    kSubject = 0b01,
+    // Ancestors or previous siblings
+    // should have their invalidation flags set.
+    kNonSubject = 0b10,
+    // Invalidation flags should be set as if both subject and non-subjects are
+    // impacted. This can be used defensively in situations where we don't know
+    // the full impact of a given selector at the time that selector is
+    // evaluated, e.g. '@scope (:hover) { ... }'.
+    kBoth = 0b11
+  };
+
   // Wraps the current element and a CSSSelector and stores some other state of
   // the selector matching process.
   struct SelectorCheckingContext {
@@ -133,6 +153,7 @@ class CORE_EXPORT SelectorChecker {
 
     AtomicString* pseudo_argument = nullptr;
     PseudoId pseudo_id = kPseudoIdNone;
+    Impact impact = Impact::kSubject;
 
     bool is_sub_selector = false;
     bool in_rightmost_compound = true;
@@ -140,11 +161,18 @@ class CORE_EXPORT SelectorChecker {
     bool has_selection_pseudo = false;
     bool treat_shadow_host_as_normal_scope = false;
     bool in_nested_complex_selector = false;
-    bool is_inside_visited_link = false;
+    // If true, elements that are links will match :visited. Otherwise,
+    // they will match :link.
+    bool match_visited = false;
+    // The `match_visited` flag can become false during selector matching
+    // for various reasons (see DisallowMatchVisited and its call sites).
+    // The `had_match_visited` flag tracks whether was initially true or not.
+    // This is needed by @scope (CalculateActivations), which needs to evaluate
+    // visited-dependent selectors according to the original `match_visited`
+    // setting.
+    bool had_match_visited = false;
     bool pseudo_has_in_rightmost_compound = true;
     bool is_inside_has_pseudo_class = false;
-    // Set to true if :initial pseudo class should match.
-    bool is_initial = false;
   };
 
   struct MatchResult {
@@ -214,14 +242,34 @@ class CORE_EXPORT SelectorChecker {
   };
 
   // Used for situations where we have "inner" selector matching, such as
-  // :is(...). Ensures that MatchFlags found for the inner selector are
-  //  propagated to the outer MatchResult.
+  // :is(...). Ensures that we propagate the necessary sub-result data
+  // to the outer MatchResult.
   class SubResult : public MatchResult {
     STACK_ALLOCATED();
 
    public:
     explicit SubResult(MatchResult& parent) : parent_(parent) {}
-    ~SubResult() { parent_.flags |= flags; }
+    ~SubResult() {
+      parent_.flags |= flags;
+      // Propagate proximity from nested selectors which refer to a parent
+      // rule with a kScopeActivation, e.g.:
+      //
+      //   @scope (div) {
+      //     :scope {
+      //       & { ... }
+      //     }
+      //   }
+      //
+      // The inner rule (&) has no kScopeActivation relation anywhere in the
+      // selector, because it's nested using CSSNestingType::kNesting,
+      // yet it refers to a selector which does contain a kScopeActivation.
+      // The resulting proximity value must be propagated.
+      //
+      // Note that regular :is() and similar pseudo-classes with inner selectors
+      // lists do not produce any (non-max) proximity values; it can only happen
+      // with the nesting selector (&).
+      parent_.proximity = std::min(parent_.proximity, proximity);
+    }
 
    private:
     MatchResult& parent_;
@@ -238,7 +286,6 @@ class CORE_EXPORT SelectorChecker {
   static bool MatchesFocusVisiblePseudoClass(const Element&);
   static bool MatchesSpatialNavigationInterestPseudoClass(const Element&);
   static bool MatchesSelectorFragmentAnchorPseudoClass(const Element&);
-  bool CheckInStyleScope(const SelectorCheckingContext&, MatchResult&) const;
 
  private:
   // Does the work of checking whether the simple selector and element pointed
@@ -283,6 +330,7 @@ class CORE_EXPORT SelectorChecker {
                                    const ContainerNode*,
                                    MatchResult&) const;
   bool CheckPseudoClass(const SelectorCheckingContext&, MatchResult&) const;
+  bool CheckPseudoAutofill(CSSSelector::PseudoType, Element&) const;
   bool CheckPseudoElement(const SelectorCheckingContext&, MatchResult&) const;
   bool CheckScrollbarPseudoClass(const SelectorCheckingContext&,
                                  MatchResult&) const;
@@ -300,14 +348,19 @@ class CORE_EXPORT SelectorChecker {
       Element&,
       const StyleScope&,
       const StyleScopeActivations& outer_activations,
-      StyleScopeFrame*) const;
+      StyleScopeFrame*,
+      bool match_visited) const;
   bool MatchesWithScope(Element&,
                         const CSSSelector& selector_list,
-                        const ContainerNode* scope) const;
+                        const ContainerNode* scope,
+                        bool match_visited,
+                        MatchFlags&) const;
   // https://drafts.csswg.org/css-cascade-6/#scoping-limit
   bool ElementIsScopingLimit(const StyleScope&,
                              const StyleScopeActivation&,
-                             Element& element) const;
+                             Element& element,
+                             bool match_visited,
+                             MatchFlags&) const;
 
   CustomScrollbar* scrollbar_;
   PartNames* part_names_;
@@ -356,7 +409,7 @@ class CORE_EXPORT EasySelectorChecker {
   //
   // If IsEasy() is true, this selector can never return any match flags,
   // or match (dynamic) pseudos.
-  static ALWAYS_INLINE bool IsEasy(const CSSSelector* selector);
+  ALWAYS_INLINE static bool IsEasy(const CSSSelector* selector);
 
   // Returns whether the given selector matches the given element.
   // The following preconditions apply:
@@ -368,17 +421,21 @@ class CORE_EXPORT EasySelectorChecker {
   //
   // Unlike SelectorChecker, does not check style_scope; the caller
   // will need to do that if desired.
-  static ALWAYS_INLINE bool Match(const CSSSelector* selector,
+  ALWAYS_INLINE static bool Match(const CSSSelector* selector,
                                   const Element* element);
 
  private:
-  static ALWAYS_INLINE bool MatchOne(const CSSSelector* selector,
+  ALWAYS_INLINE static bool MatchOne(const CSSSelector* selector,
                                      const Element* element);
-  static ALWAYS_INLINE bool AttributeIsSet(const Element& element,
+  ALWAYS_INLINE static bool AttributeIsSet(const Element& element,
                                            const QualifiedName& attr);
-  static ALWAYS_INLINE bool AttributeMatches(const Element& element,
+  ALWAYS_INLINE static bool AttributeMatches(const Element& element,
                                              const QualifiedName& attr,
                                              const AtomicString& value);
+  ALWAYS_INLINE static bool AttributeItemHasName(
+      const Attribute& attribute_item,
+      const Element& element,
+      const QualifiedName& name);
 };
 
 }  // namespace blink

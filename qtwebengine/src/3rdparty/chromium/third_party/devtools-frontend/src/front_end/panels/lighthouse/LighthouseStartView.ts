@@ -7,9 +7,10 @@ import * as UI from '../../ui/legacy/legacy.js';
 import type * as Platform from '../../core/platform/platform.js';
 import type * as Common from '../../core/common/common.js';
 
-import {Events, Presets, RuntimeSettings, type LighthouseController, type Preset} from './LighthouseController.js';
+import {Presets, RuntimeSettings, type LighthouseController, type Preset} from './LighthouseController.js';
 import {RadioSetting} from './RadioSetting.js';
 import lighthouseStartViewStyles from './lighthouseStartView.css.js';
+import {type LighthousePanel} from './LighthousePanel.js';
 
 const UIStrings = {
   /**
@@ -55,6 +56,7 @@ const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 
 export class StartView extends UI.Widget.Widget {
   private controller: LighthouseController;
+  private panel: LighthousePanel;
   private readonly settingsToolbarInternal: UI.Toolbar.Toolbar;
   private startButton!: HTMLButtonElement;
   private helpText?: Element;
@@ -63,10 +65,11 @@ export class StartView extends UI.Widget.Widget {
 
   changeFormMode?: (mode: string) => void;
 
-  constructor(controller: LighthouseController) {
+  constructor(controller: LighthouseController, panel: LighthousePanel) {
     super();
 
     this.controller = controller;
+    this.panel = panel;
     this.settingsToolbarInternal = new UI.Toolbar.Toolbar('');
     this.render();
   }
@@ -92,7 +95,7 @@ export class StartView extends UI.Widget.Widget {
         runtimeSetting.options, runtimeSetting.setting as Common.Settings.Setting<string>,
         runtimeSetting.description());
     parentElement.appendChild(control.element);
-    UI.ARIAUtils.setAccessibleName(control.element, label);
+    UI.ARIAUtils.setLabel(control.element, label);
   }
 
   private populateRuntimeSettingAsToolbarCheckbox(settingName: string, toolbar: UI.Toolbar.Toolbar): void {
@@ -161,13 +164,12 @@ export class StartView extends UI.Widget.Widget {
       }
     }
     UI.ARIAUtils.markAsGroup(categoryFormElements);
-    UI.ARIAUtils.setAccessibleName(categoryFormElements, i18nString(UIStrings.categories));
+    UI.ARIAUtils.setLabel(categoryFormElements, i18nString(UIStrings.categories));
     UI.ARIAUtils.markAsGroup(pluginFormElements);
-    UI.ARIAUtils.setAccessibleName(pluginFormElements, i18nString(UIStrings.plugins));
+    UI.ARIAUtils.setLabel(pluginFormElements, i18nString(UIStrings.plugins));
   }
 
   private render(): void {
-    this.populateRuntimeSettingAsToolbarCheckbox('lighthouse.legacy_navigation', this.settingsToolbarInternal);
     this.populateRuntimeSettingAsToolbarCheckbox('lighthouse.clear_storage', this.settingsToolbarInternal);
     this.populateRuntimeSettingAsToolbarDropdown('lighthouse.throttling', this.settingsToolbarInternal);
 
@@ -227,26 +229,17 @@ export class StartView extends UI.Widget.Widget {
     if (mode === 'timespan') {
       buttonLabel = i18nString(UIStrings.startTimespan);
       callback = (): void => {
-        this.controller.dispatchEventToListeners(
-            Events.RequestLighthouseTimespanStart,
-            /* keyboardInitiated */ this.startButton.matches(':focus-visible'),
-        );
+        void this.panel.handleTimespanStart();
       };
     } else if (mode === 'snapshot') {
       buttonLabel = i18nString(UIStrings.analyzeSnapshot);
       callback = (): void => {
-        this.controller.dispatchEventToListeners(
-            Events.RequestLighthouseStart,
-            /* keyboardInitiated */ this.startButton.matches(':focus-visible'),
-        );
+        void this.panel.handleCompleteRun();
       };
     } else {
       buttonLabel = i18nString(UIStrings.analyzeNavigation);
       callback = (): void => {
-        this.controller.dispatchEventToListeners(
-            Events.RequestLighthouseStart,
-            /* keyboardInitiated */ this.startButton.matches(':focus-visible'),
-        );
+        void this.panel.handleCompleteRun();
       };
     }
 
@@ -281,7 +274,7 @@ export class StartView extends UI.Widget.Widget {
     this.onResize();
   }
 
-  onResize(): void {
+  override onResize(): void {
     const useNarrowLayout = this.contentElement.offsetWidth < 500;
     const useWideLayout = this.contentElement.offsetWidth > 800;
     const headerEl = this.contentElement.querySelector('.lighthouse-start-view header');
@@ -323,7 +316,7 @@ export class StartView extends UI.Widget.Widget {
     }
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.controller.recomputePageAuditability();
     this.registerCSSFiles([lighthouseStartViewStyles]);

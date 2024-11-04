@@ -2,12 +2,14 @@
 
 typedef CwiseUnaryOp<internal::scalar_abs_op<Scalar>, const Derived> AbsReturnType;
 typedef CwiseUnaryOp<internal::scalar_arg_op<Scalar>, const Derived> ArgReturnType;
+typedef CwiseUnaryOp<internal::scalar_carg_op<Scalar>, const Derived> CArgReturnType;
 typedef CwiseUnaryOp<internal::scalar_abs2_op<Scalar>, const Derived> Abs2ReturnType;
 typedef CwiseUnaryOp<internal::scalar_sqrt_op<Scalar>, const Derived> SqrtReturnType;
 typedef CwiseUnaryOp<internal::scalar_rsqrt_op<Scalar>, const Derived> RsqrtReturnType;
 typedef CwiseUnaryOp<internal::scalar_sign_op<Scalar>, const Derived> SignReturnType;
 typedef CwiseUnaryOp<internal::scalar_inverse_op<Scalar>, const Derived> InverseReturnType;
 typedef CwiseUnaryOp<internal::scalar_boolean_not_op<Scalar>, const Derived> BooleanNotReturnType;
+typedef CwiseUnaryOp<internal::scalar_bitwise_not_op<Scalar>, const Derived> BitwiseNotReturnType;
 
 typedef CwiseUnaryOp<internal::scalar_exp_op<Scalar>, const Derived> ExpReturnType;
 typedef CwiseUnaryOp<internal::scalar_expm1_op<Scalar>, const Derived> Expm1ReturnType;
@@ -65,6 +67,10 @@ arg() const
 {
   return ArgReturnType(derived());
 }
+
+EIGEN_DEVICE_FUNC
+EIGEN_STRONG_INLINE const CArgReturnType
+carg() const { return CArgReturnType(derived()); }
 
 /** \returns an expression of the coefficient-wise squared absolute value of \c *this
   *
@@ -576,8 +582,6 @@ isFinite() const
 
 /** \returns an expression of the coefficient-wise ! operator of *this
   *
-  * \warning this operator is for expression of bool only.
-  *
   * Example: \include Cwise_boolean_not.cpp
   * Output: \verbinclude Cwise_boolean_not.out
   *
@@ -587,9 +591,16 @@ EIGEN_DEVICE_FUNC
 inline const BooleanNotReturnType
 operator!() const
 {
-  EIGEN_STATIC_ASSERT((internal::is_same<bool,Scalar>::value),
-                      THIS_METHOD_IS_ONLY_FOR_EXPRESSIONS_OF_BOOL);
   return BooleanNotReturnType(derived());
+}
+
+/** \returns an expression of the bitwise ~ operator of *this
+  */
+EIGEN_DEVICE_FUNC
+inline const BitwiseNotReturnType
+operator~() const
+{
+  return BitwiseNotReturnType(derived());
 }
 
 

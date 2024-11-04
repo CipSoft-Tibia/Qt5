@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -13,7 +14,8 @@
 #include "base/allocator/partition_alloc_support.h"
 #include "base/allocator/partition_allocator/dangling_raw_ptr_checks.h"
 #include "base/allocator/partition_allocator/partition_alloc_buildflags.h"
-#include "base/allocator/partition_allocator/partition_alloc_for_testing.h"  // nogncheck
+#include "base/allocator/partition_allocator/partition_alloc_for_testing.h"
+#include "base/allocator/partition_allocator/partition_root.h"
 #include "base/functional/callback.h"
 #include "base/functional/disallow_unretained.h"
 #include "base/memory/ptr_util.h"
@@ -1489,11 +1491,11 @@ TEST_F(BindTest, CapturelessLambda) {
   EXPECT_FALSE(internal::IsCallableObject<void (*)()>::value);
   EXPECT_FALSE(internal::IsCallableObject<void (NoRef::*)()>::value);
 
-  auto f = []() {};
+  auto f = [] {};
   EXPECT_TRUE(internal::IsCallableObject<decltype(f)>::value);
 
   int i = 0;
-  auto g = [i]() { (void)i; };
+  auto g = [i] { (void)i; };
   EXPECT_TRUE(internal::IsCallableObject<decltype(g)>::value);
 
   auto h = [](int, double) { return 'k'; };
@@ -1778,6 +1780,66 @@ TEST_F(BindTest, BindAndCallbacks) {
   EXPECT_EQ(123, res);
 }
 
+TEST_F(BindTest, ConvertibleArgs) {
+  // Create two types S and T, such that you can convert a T to an S, but you
+  // cannot construct an S from a T.
+  struct T;
+  class S {
+    friend struct T;
+    explicit S(const T&) {}
+  };
+  struct T {
+    // NOLINTNEXTLINE(google-explicit-constructor)
+    operator S() const { return S(*this); }
+  };
+  static_assert(!std::is_constructible_v<S, T>);
+  static_assert(std::is_convertible_v<T, S>);
+
+  // Ensure it's possible to pass a T to a function expecting an S.
+  void (*foo)(S) = +[](S) {};
+  const T t;
+  auto callback = base::BindOnce(foo, t);
+  std::move(callback).Run();
+}
+
+}  // namespace
+
+// This simulates a race weak pointer that, unlike our `base::WeakPtr<>`,
+// may become invalidated between `operator bool()` is tested and `Lock()`
+// is called in the implementation of `Unwrap()`.
+template <typename T>
+struct MockRacyWeakPtr {
+  explicit MockRacyWeakPtr(T*) {}
+  T* Lock() const { return nullptr; }
+
+  explicit operator bool() const { return true; }
+};
+
+template <typename T>
+struct IsWeakReceiver<MockRacyWeakPtr<T>> : std::true_type {};
+
+template <typename T>
+struct BindUnwrapTraits<MockRacyWeakPtr<T>> {
+  static T* Unwrap(const MockRacyWeakPtr<T>& o) { return o.Lock(); }
+};
+
+template <typename T>
+struct MaybeValidTraits<MockRacyWeakPtr<T>> {
+  static bool MaybeValid(const MockRacyWeakPtr<T>& o) { return true; }
+};
+
+namespace {
+
+// Note this only covers a case of racy weak pointer invalidation. Other
+// weak pointer scenarios (such as a valid pointer) are covered
+// in BindTest.WeakPtrFor{Once,Repeating}.
+TEST_F(BindTest, BindRacyWeakPtrTest) {
+  MockRacyWeakPtr<NoRef> weak(&no_ref_);
+
+  RepeatingClosure cb = base::BindRepeating(&NoRef::VoidMethod0, weak);
+  cb.Run();
+}
+
 // Test null callbacks cause a DCHECK.
 TEST(BindDeathTest, NullCallback) {
   base::RepeatingCallback<void(int)> null_cb;
@@ -1821,13 +1883,7 @@ void HandleOOM(size_t unused_size) {
 // testing purpose.
 static constexpr partition_alloc::PartitionOptions
     kOnlyEnableBackupRefPtrOptions = {
-        partition_alloc::PartitionOptions::AlignedAlloc::kDisallowed,
-        partition_alloc::PartitionOptions::ThreadCache::kDisabled,
-        partition_alloc::PartitionOptions::Quarantine::kDisallowed,
-        partition_alloc::PartitionOptions::Cookie::kAllowed,
-        partition_alloc::PartitionOptions::BackupRefPtr::kEnabled,
-        partition_alloc::PartitionOptions::BackupRefPtrZapping::kEnabled,
-        partition_alloc::PartitionOptions::UseConfigurablePool::kNo,
+        .backup_ref_ptr = partition_alloc::PartitionOptions::kEnabled,
 };
 
 class BindUnretainedDanglingInternalFixture : public BindTest {
@@ -1849,15 +1905,17 @@ class BindUnretainedDanglingInternalFixture : public BindTest {
   // root so the test code doesn't interfere with various counters. Following
   // methods are helpers for managing allocations inside the separate allocator
   // root.
-  template <typename T, typename... Args>
-  raw_ptr<T> Alloc(Args&&... args) {
+  template <typename T,
+            RawPtrTraits Traits = RawPtrTraits::kEmpty,
+            typename... Args>
+  raw_ptr<T, Traits> Alloc(Args&&... args) {
     void* ptr = allocator_.root()->Alloc(sizeof(T), "");
     T* p = new (reinterpret_cast<T*>(ptr)) T(std::forward<Args>(args)...);
-    return raw_ptr<T>(p);
+    return raw_ptr<T, Traits>(p);
   }
-  template <typename T>
-  void Free(raw_ptr<T>& ptr) {
-    allocator_.root()->Free(ptr);
+  template <typename T, RawPtrTraits Traits>
+  void Free(raw_ptr<T, Traits>& ptr) {
+    allocator_.root()->Free(ptr.ExtractAsDangling());
   }
 
  private:
@@ -1883,6 +1941,11 @@ bool MayBeDanglingCheckFn(MayBeDangling<int> p) {
   return p != nullptr;
 }
 
+bool MayBeDanglingAndDummyTraitCheckFn(
+    MayBeDangling<int, RawPtrTraits::kDummyForTest> p) {
+  return p != nullptr;
+}
+
 class ClassWithWeakPtr {
  public:
   ClassWithWeakPtr() = default;
@@ -1904,6 +1967,25 @@ TEST_F(BindUnretainedDanglingTest, UnretainedNoDanglingPtr) {
 TEST_F(BindUnretainedDanglingTest, UnsafeDanglingPtr) {
   raw_ptr<int> p = Alloc<int>(3);
   auto callback = base::BindOnce(MayBeDanglingCheckFn, base::UnsafeDangling(p));
+  Free(p);
+  EXPECT_EQ(std::move(callback).Run(), true);
+}
+
+TEST_F(BindUnretainedDanglingTest, UnsafeDanglingPtrWithDummyTrait) {
+  raw_ptr<int, RawPtrTraits::kDummyForTest> p =
+      Alloc<int, RawPtrTraits::kDummyForTest>(3);
+  auto callback = base::BindOnce(MayBeDanglingAndDummyTraitCheckFn,
+                                 base::UnsafeDangling(p));
+  Free(p);
+  EXPECT_EQ(std::move(callback).Run(), true);
+}
+
+TEST_F(BindUnretainedDanglingTest,
+       UnsafeDanglingPtrWithDummyAndDanglingTraits) {
+  raw_ptr<int, RawPtrTraits::kDummyForTest | RawPtrTraits::kMayDangle> p =
+      Alloc<int, RawPtrTraits::kDummyForTest | RawPtrTraits::kMayDangle>(3);
+  auto callback = base::BindOnce(MayBeDanglingAndDummyTraitCheckFn,
+                                 base::UnsafeDangling(p));
   Free(p);
   EXPECT_EQ(std::move(callback).Run(), true);
 }

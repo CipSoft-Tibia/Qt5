@@ -133,7 +133,7 @@ class CORE_EXPORT HTMLSelectElement final
 
   void SetOption(unsigned index, HTMLOptionElement*, ExceptionState&);
 
-  Element* namedItem(const AtomicString& name);
+  HTMLOptionElement* namedItem(const AtomicString& name);
   HTMLOptionElement* item(unsigned index);
 
   bool CanSelectAll() const;
@@ -189,7 +189,7 @@ class CORE_EXPORT HTMLSelectElement final
 
   void Trace(Visitor*) const override;
   void CloneNonAttributePropertiesFrom(const Element&,
-                                       CloneChildrenFlag) override;
+                                       NodeCloningData&) override;
 
   // These should be called only if UsesMenuList().
   Element& InnerElement() const;
@@ -226,7 +226,7 @@ class CORE_EXPORT HTMLSelectElement final
   void ParseAttribute(const AttributeModificationParams&) override;
   bool IsPresentationAttribute(const QualifiedName&) const override;
 
-  LayoutObject* CreateLayoutObject(const ComputedStyle&, LegacyLayout) override;
+  LayoutObject* CreateLayoutObject(const ComputedStyle&) override;
   void DidRecalcStyle(const StyleRecalcChange) override;
   void AttachLayoutTree(AttachContext&) override;
   void DetachLayoutTree(bool performing_reattach = false) override;

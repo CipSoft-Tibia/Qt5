@@ -1,7 +1,7 @@
 // Copyright (C) 2014 Jeremy Lainé <jeremy.laine@m4x.org>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include "private/qasn1element_p.h"
+#include "qasn1element_p.h"
 
 #include <QTest>
 
@@ -166,9 +166,6 @@ void tst_QAsn1Element::dateTime()
 
     QAsn1Element elem;
     QVERIFY(elem.read(encoded));
-    QEXPECT_FAIL("UTCTime - leap day year 2000",
-                 "We decode as 1900, and then adjust to 2000. But there was no leap day in 1900!",
-                 Continue);
     QCOMPARE(elem.toDateTime(), value);
 }
 

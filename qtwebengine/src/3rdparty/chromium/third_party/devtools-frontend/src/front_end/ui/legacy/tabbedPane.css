@@ -42,55 +42,50 @@
 }
 
 .tabbed-pane-content.has-no-tabs {
-  background-color: var(--color-background-elevation-2);
+  background-color: var(--sys-color-cdt-base-container);
 }
 
 .tabbed-pane-placeholder {
   font-size: 14px;
   text-align: center;
   width: fit-content;
-  margin: 20px auto 0;
+  margin: 40px auto 0;
   text-shadow: var(--color-background-opacity-80) 0 1px 0;
   line-height: 28px;
 }
 
 .tabbed-pane-placeholder-row {
-  display: flex;
-  white-space: nowrap;
-  padding: 0 5px;
-  margin: 2px;
-}
+  margin-inline: 10px;
 
-.tabbed-pane-placeholder-row:focus-visible {
-  outline-width: unset;
-}
+  & span {
+    display: inline-block;
+    padding-inline: 10px;
+  }
 
-.tabbed-pane-placeholder-key {
-  flex: 1;
-  text-align: right;
-  padding-right: 14px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+  &:has(.workspace) {
+    max-width: 400px;
+    border: 2px dashed var(--color-background-elevation-2);
+    margin-block-start: 20px;
+    padding: 10px;
+    margin-inline: 20px;
 
-.tabbed-pane-no-shortcut {
-  flex: 1;
-  text-align: center;
-}
-
-.tabbed-pane-placeholder-value {
-  flex: 1;
-  text-align: left;
-  padding-left: 14px;
+    & button {
+      background: transparent;
+      border: none;
+      padding: 0;
+      text-decoration: underline;
+      margin-inline: 4px;
+    }
+  }
 }
 
 .tabbed-pane-header {
   display: flex;
   flex: 0 0 27px;
-  border-bottom: 1px solid var(--color-details-hairline);
+  border-bottom: 1px solid var(--sys-color-divider);
   overflow: visible;
   width: 100%;
-  background-color: var(--color-background-elevation-1);
+  background-color: var(--sys-color-cdt-base);
 }
 
 .tabbed-pane-header-contents {
@@ -112,6 +107,10 @@
   margin-right: 2px;
 }
 
+.tabbed-pane-header-tab-icon devtools-icon {
+  margin-left: -1px;
+}
+
 .tabbed-pane-header-tab {
   float: left;
   padding: 2px 0.8em;
@@ -121,7 +120,7 @@
   cursor: default;
   display: flex;
   align-items: center;
-  color: var(--color-text-secondary);
+  color: var(--ui-text);
 }
 
 .tabbed-pane-header-tab.closeable {
@@ -132,10 +131,18 @@
   padding-right: 5px;
 }
 
+.tabbed-pane-header-tab devtools-icon.dot::before {
+  outline-color: var(--icon-gap-toolbar);
+}
+
+.tabbed-pane-header-tab:hover devtools-icon.dot::before {
+  outline-color: var(--icon-gap-toolbar-hover);
+}
+
 .tabbed-pane-header-tab:hover,
 .tabbed-pane-shadow .tabbed-pane-header-tab:focus-visible {
   color: var(--color-text-primary);
-  background-color: var(--color-background-elevation-2);
+  background-color: var(--sys-color-state-hover-on-subtle);
 }
 
 .tabbed-pane-header-tab-title {
@@ -149,32 +156,15 @@
 
 .tabbed-pane-header-tab.selected {
   border-bottom: none;
-  color: var(--legacy-tab-selected-fg-color);
+  color: var(--sys-color-primary);
 }
-
-/**
- * In light-mode we have a blue border to show the active pane, and we don't change the background color. In dark mode we do not show the border, so we instead change the background color.
- */
-/* stylelint-disable no-descending-specificity */
-.-theme-with-dark-background .tabbed-pane-header-tab.selected,
-:host-context(.-theme-with-dark-background) .tabbed-pane-header-tab.selected {
-  --override-tabbed-dark-mode-bg-color: rgb(0 0 0);
-
-  background-color: var(--override-tabbed-dark-mode-bg-color);
-}
-
-.-theme-with-dark-background .tabbed-pane-header-tab.selected,
-:host-context(.-theme-with-dark-background) .tabbed-pane-header-tab.selected:focus-visible {
-  background-color: var(--color-background-elevation-0);
-}
-/* stylelint-enable no-descending-specificity */
 
 .tabbed-pane-header-tab.dragging {
   --override-dragging-box-shadow-color: rgb(0 0 0 / 37%);
 
   position: relative;
   box-shadow: 0 1px 4px 0 var(--override-dragging-box-shadow-color);
-  background-color: var(--color-background-elevation-2);
+  background-color: var(--sys-color-state-hover-on-subtle);
 }
 
 .-theme-with-dark-background .tabbed-pane-header-tab.dragging,
@@ -201,13 +191,13 @@
 }
 
 .tabbed-pane-header-tabs-drop-down-container > .chevron-icon {
-  background-color: var(--color-text-secondary);
+  background-color: var(--icon-default);
   display: block;
 }
 
 .tabbed-pane-header-tabs-drop-down-container > .chevron-icon:hover,
 .tabbed-pane-header-tabs-drop-down-container > .chevron-icon:focus-visible {
-  background-color: var(--color-text-primary);
+  background-color: var(--icon-default-hover);
   display: block;
 }
 
@@ -263,7 +253,6 @@
   color: var(--color-text-secondary);
   height: 26px;
   padding-left: 10px;
-  border-left: 6px solid transparent;
   margin: 0;
   display: flex;
   align-items: center;
@@ -271,17 +260,14 @@
 
 /* stylelint-disable no-descending-specificity */
 .tabbed-pane-shadow.vertical-tab-layout .tabbed-pane-header-tab.selected {
-  --override-vertical-tab-selected-border-color: #666;
-
   color: inherit;
   border: none transparent;
-  border-left: 6px solid var(--override-vertical-tab-selected-border-color);
-  background-color: var(--color-background-elevation-1);
+  background-color: var(--sys-color-neutral-container);
 }
 
-.-theme-with-dark-background .tabbed-pane-shadow.vertical-tab-layout .tabbed-pane-header-tab.selected,
-:host-context(.-theme-with-dark-background) .tabbed-pane-shadow.vertical-tab-layout .tabbed-pane-header-tab.selected {
-  --override-vertical-tab-selected-border-color: rgb(153 153 153);
+.tabbed-pane-shadow.vertical-tab-layout .tabbed-pane-header-tab:focus {
+  background-color: var(--sys-color-tonal-container);
+  color: var(--sys-color-on-tonal-container);
 }
 /* stylelint-enable no-descending-specificity */
 
@@ -289,15 +275,11 @@
   height: 2px;
   position: absolute;
   bottom: -1px;
-  background-color: var(--legacy-accent-color);
+  background-color: var(--sys-color-primary-bright);
   left: 0;
   transform-origin: 0 100%;
   transition: transform 150ms cubic-bezier(0, 0, 0.2, 1);
   visibility: hidden;
-}
-
-:host-context(.-theme-with-dark-background) .tabbed-pane-tab-slider {
-  display: none;
 }
 
 @media (-webkit-min-device-pixel-ratio: 1.1) {
@@ -326,10 +308,10 @@
 }
 
 .preview-icon {
-  --override-tabbed-pane-preview-icon-color: rgb(110 110 110);
+  --override-tabbed-pane-preview-icon-color: var(--icon-default);
 
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -337,16 +319,11 @@
   flex-shrink: 0;
 }
 
-.-theme-with-dark-background .preview-icon,
-:host-context(.-theme-with-dark-background) .preview-icon {
-  --override-tabbed-pane-preview-icon-color: rgb(145 145 145);
-}
-
 .close-button {
-  --tabbed-pane-close-icon-color: var(--color-text-primary);
+  --tabbed-pane-close-icon-color: var(--icon-default);
 
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;

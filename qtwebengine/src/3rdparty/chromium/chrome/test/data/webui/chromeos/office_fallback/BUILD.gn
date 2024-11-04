@@ -8,7 +8,7 @@ import("//ui/webui/resources/tools/generate_grd.gni")
 ts_library("build_ts") {
   root_dir = "."
   out_dir = "$target_gen_dir/tsc"
-  tsconfig_base = "tsconfig_base.json"
+  tsconfig_base = "../../tsconfig_base.json"
   in_files = [ "office_fallback_app_test.ts" ]
   path_mappings = [
     "chrome://office-fallback/*|" +
@@ -31,6 +31,6 @@ generate_grd("build_grdp") {
 
   deps = [ ":build_ts" ]
   manifest_files =
-      filter_include(get_target_outputs(":build_ts"), [ "*.manifest" ])
+      filter_include(get_target_outputs(":build_ts"), [ "*_manifest.json" ])
   resource_path_prefix = "chromeos/office_fallback"
 }

@@ -140,7 +140,10 @@ if (enable_perfetto_ipc) {
       "../../gn:default_deps",
       "../../include/perfetto/ext/base",
     ]
-    sources = [ "unix_socket.cc" ]
+    sources = [
+      "unix_socket.cc",
+      "vm_sockets.h",
+    ]
     if (is_win && perfetto_build_standalone) {
       libs = [ "Ws2_32.lib" ]
     }
@@ -194,12 +197,12 @@ perfetto_unittest_source_set("unittests") {
     "hash_unittest.cc",
     "logging_unittest.cc",
     "no_destructor_unittest.cc",
-    "optional_unittest.cc",
     "paged_memory_unittest.cc",
     "periodic_task_unittest.cc",
     "scoped_file_unittest.cc",
     "small_vector_unittest.cc",
     "status_or_unittest.cc",
+    "status_unittest.cc",
     "string_splitter_unittest.cc",
     "string_utils_unittest.cc",
     "string_view_unittest.cc",
@@ -230,13 +233,12 @@ perfetto_unittest_source_set("unittests") {
     deps += [ "//third_party/fuchsia-sdk/sdk/pkg/fdio" ]
   }
   if (perfetto_build_standalone || perfetto_build_with_android) {
+    sources += [ "unix_socket_unittest.cc" ]
+    deps += [ ":unix_socket" ]
+
     # This causes some problems on the chromium waterfall.
     if (is_linux || is_android) {
       sources += [ "watchdog_unittest.cc" ]
-    }
-    if (!is_win) {
-      sources += [ "unix_socket_unittest.cc" ]
-      deps += [ ":unix_socket" ]
     }
   }
 }

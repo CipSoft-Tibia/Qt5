@@ -361,7 +361,7 @@ static void getFontDescription(CTFontDescriptorRef font, FontDescription *fd)
     fd->fixedPitch = false;
 
     if (QCFType<CTFontRef> tempFont = CTFontCreateWithFontDescriptor(font, 0.0, 0)) {
-        uint tag = MAKE_TAG('O', 'S', '/', '2');
+        uint tag = QFont::Tag("OS/2").value();
         CTFontRef tempFontRef = tempFont;
         void *userData = reinterpret_cast<void *>(&tempFontRef);
         uint length = 128;
@@ -489,6 +489,31 @@ QFontEngine *QCoreTextFontDatabaseEngineFactory<QCoreTextFontEngine>::fontEngine
     qreal scaledPointSize = fontDef.pixelSize;
 
     CGAffineTransform matrix = qt_transform_from_fontdef(fontDef);
+
+    if (!fontDef.variableAxisValues.isEmpty()) {
+        QCFType<CFMutableDictionaryRef> variations = CFDictionaryCreateMutable(nullptr,
+                                                                       fontDef.variableAxisValues.size(),
+                                                                       &kCFTypeDictionaryKeyCallBacks,
+                                                                       &kCFTypeDictionaryValueCallBacks);
+        for (auto it = fontDef.variableAxisValues.constBegin();
+             it != fontDef.variableAxisValues.constEnd();
+             ++it) {
+            const quint32 tag = it.key().value();
+            const float value = it.value();
+            QCFType<CFNumberRef> tagRef = CFNumberCreate(nullptr, kCFNumberIntType, &tag);
+            QCFType<CFNumberRef> valueRef = CFNumberCreate(nullptr, kCFNumberFloatType, &value);
+
+            CFDictionarySetValue(variations, tagRef, valueRef);
+        }
+        QCFType<CFDictionaryRef> attributes = CFDictionaryCreate(nullptr,
+                                                                 (const void **) &kCTFontVariationAttribute,
+                                                                 (const void **) &variations,
+                                                                 1,
+                                                                 &kCFTypeDictionaryKeyCallBacks,
+                                                                 &kCFTypeDictionaryValueCallBacks);
+        descriptor = CTFontDescriptorCreateCopyWithAttributes(descriptor, attributes);
+    }
+
     if (QCFType<CTFontRef> font = CTFontCreateWithFontDescriptor(descriptor, scaledPointSize, &matrix))
         return new QCoreTextFontEngine(font, fontDef);
 
@@ -504,7 +529,7 @@ QFontEngine *QCoreTextFontDatabaseEngineFactory<QFontEngineFT>::fontEngine(const
     if (NSValue *fontDataValue = descriptorAttribute<NSValue>(descriptor, (CFStringRef)kQtFontDataAttribute)) {
         QByteArray *fontData = static_cast<QByteArray *>(fontDataValue.pointerValue);
         return QFontEngineFT::create(*fontData, fontDef.pixelSize,
-            static_cast<QFont::HintingPreference>(fontDef.hintingPreference));
+            static_cast<QFont::HintingPreference>(fontDef.hintingPreference), fontDef.variableAxisValues);
     } else if (NSURL *url = descriptorAttribute<NSURL>(descriptor, kCTFontURLAttribute)) {
         QFontEngine::FaceId faceId;
 
@@ -514,6 +539,8 @@ QFontEngine *QCoreTextFontDatabaseEngineFactory<QFontEngineFT>::fontEngine(const
 
         QString styleName = QCFString(CTFontDescriptorCopyAttribute(descriptor, kCTFontStyleNameAttribute));
         faceId.index = QFreetypeFace::getFaceIndexByStyleName(faceFileName, styleName);
+
+        faceId.variableAxes = fontDef.variableAxisValues;
 
         return QFontEngineFT::create(fontDef, faceId);
     }
@@ -527,7 +554,7 @@ QFontEngine *QCoreTextFontDatabaseEngineFactory<QFontEngineFT>::fontEngine(const
 template <class T>
 QFontEngine *QCoreTextFontDatabaseEngineFactory<T>::fontEngine(const QByteArray &fontData, qreal pixelSize, QFont::HintingPreference hintingPreference)
 {
-    return T::create(fontData, pixelSize, hintingPreference);
+    return T::create(fontData, pixelSize, hintingPreference, {});
 }
 
 // Explicitly instantiate so that we don't need the plugin to involve FreeType
@@ -545,7 +572,7 @@ CFArrayRef fallbacksForDescriptor(CTFontDescriptorRef descriptor)
     }
 
     CFArrayRef cascadeList = CFArrayRef(CTFontCopyDefaultCascadeListForLanguages(font,
-        (CFArrayRef)[NSUserDefaults.standardUserDefaults stringArrayForKey:@"AppleLanguages"]));
+        (CFArrayRef)NSLocale.preferredLanguages));
 
     if (!cascadeList) {
         qCWarning(lcQpaFonts) << "Failed to create fallback cascade list for" << descriptor;
@@ -714,13 +741,20 @@ QStringList QCoreTextFontDatabase::addApplicationFont(const QByteArray &fontData
 
     if (!fontData.isEmpty()) {
         QCFType<CFDataRef> fontDataReference = fontData.toRawCFData();
-        if (QCFType<CTFontDescriptorRef> descriptor = CTFontManagerCreateFontDescriptorFromData(fontDataReference)) {
-            // There's no way to get the data back out of a font descriptor created with
-            // CTFontManagerCreateFontDescriptorFromData, so we attach the data manually.
-            NSDictionary *attributes = @{ kQtFontDataAttribute : [NSValue valueWithPointer:new QByteArray(fontData)] };
-            descriptor = CTFontDescriptorCreateCopyWithAttributes(descriptor, (CFDictionaryRef)attributes);
+        if (QCFType<CFArrayRef> descriptors = CTFontManagerCreateFontDescriptorsFromData(fontDataReference)) {
             CFMutableArrayRef array = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
-            CFArrayAppendValue(array, descriptor);
+            const int count = CFArrayGetCount(descriptors);
+
+            for (int i = 0; i < count; ++i) {
+                CTFontDescriptorRef descriptor = CTFontDescriptorRef(CFArrayGetValueAtIndex(descriptors, i));
+
+                // There's no way to get the data back out of a font descriptor created with
+                // CTFontManagerCreateFontDescriptorFromData, so we attach the data manually.
+                NSDictionary *attributes = @{ kQtFontDataAttribute : [NSValue valueWithPointer:new QByteArray(fontData)] };
+                descriptor = CTFontDescriptorCreateCopyWithAttributes(descriptor, (CFDictionaryRef)attributes);
+                CFArrayAppendValue(array, descriptor);
+            }
+
             fonts = array;
         }
     } else {
@@ -978,6 +1012,11 @@ QList<int> QCoreTextFontDatabase::standardSizes() const
     const unsigned short *sizes = standard;
     while (*sizes) ret << *sizes++;
     return ret;
+}
+
+bool QCoreTextFontDatabase::supportsVariableApplicationFonts() const
+{
+    return true;
 }
 
 QT_END_NAMESPACE

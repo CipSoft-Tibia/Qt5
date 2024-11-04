@@ -12,7 +12,7 @@ QT_BEGIN_NAMESPACE
     \since 6.3
 
     This is the Qt OPC UA representation for the OPC UA ReadRawModifiedDetails for reading historical data
-    defined in \l {https://reference.opcfoundation.org/Core/docs/Part11/6.4.3/} {OPC-UA part 11, 6.4.3}.
+    defined in \l {https://reference.opcfoundation.org/Core/Part11/v104/docs/6.4.3} {OPC UA 1.04 part 11, 6.4.3}.
 
     When requesting historic data from a server, several values need to be provided to the server
     to know which data to collect. The QOpcUaHistoryReadRawRequest class provides the required values.
@@ -26,9 +26,10 @@ class QOpcUaHistoryReadRawRequestData : public QSharedData
 public:
     QDateTime startTimestamp;
     QDateTime endTimestamp;
-    quint32 numValuesPerNode;
-    bool returnBounds;
+    quint32 numValuesPerNode = 0;
+    bool returnBounds = false;
     QList<QOpcUaReadItem> nodesToRead;
+    QOpcUa::TimestampsToReturn timestampsToReturn = QOpcUa::TimestampsToReturn::Both;
 };
 
 /*!
@@ -54,6 +55,23 @@ QOpcUaHistoryReadRawRequest::QOpcUaHistoryReadRawRequest(const QList<QOpcUaReadI
     data->numValuesPerNode = numValuesPerNode;
     data->returnBounds = returnBounds;
     data->nodesToRead = nodesToRead;
+}
+
+/*!
+    Constructs a QOpcUaHistoryReadRawRequest item with the given values.
+    The \a timestampsToReturn parameter determines the timestamps to return for each value.
+
+    \since 6.7
+*/
+QOpcUaHistoryReadRawRequest::QOpcUaHistoryReadRawRequest(const QList<QOpcUaReadItem> &nodesToRead,
+                                                         const QDateTime &startTimestamp, const QDateTime &endTimestamp,
+                                                         QOpcUa::TimestampsToReturn timestampsToReturn)
+    : data(new QOpcUaHistoryReadRawRequestData)
+{
+    data->startTimestamp = startTimestamp;
+    data->endTimestamp = endTimestamp;
+    data->nodesToRead = nodesToRead;
+    data->timestampsToReturn = timestampsToReturn;
 }
 
 /*!
@@ -150,6 +168,26 @@ bool QOpcUaHistoryReadRawRequest::returnBounds() const
 void QOpcUaHistoryReadRawRequest::setReturnBounds(bool returnBounds)
 {
     data->returnBounds = returnBounds;
+}
+
+/*!
+    Returns the selected timestamps to return for each value.
+
+    \since 6.7
+*/
+QOpcUa::TimestampsToReturn QOpcUaHistoryReadRawRequest::timestampsToReturn() const
+{
+    return data->timestampsToReturn;
+}
+
+/*!
+    Sets the selected timestamps to return for each value to \a timestampsToReturn.
+
+    \since 6.7
+*/
+void QOpcUaHistoryReadRawRequest::setTimestampsToReturn(QOpcUa::TimestampsToReturn timestampsToReturn)
+{
+    data->timestampsToReturn = timestampsToReturn;
 }
 
 /*!

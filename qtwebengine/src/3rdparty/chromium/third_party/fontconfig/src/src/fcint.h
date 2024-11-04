@@ -524,7 +524,6 @@ struct _FcConfig {
      * and those directives may occur in any order
      */
     FcStrSet	*configDirs;	    /* directories to scan for fonts */
-    FcStrSet	*configMapDirs;	    /* mapped names to generate cache entries */
     /*
      * List of directories containing fonts,
      * built by recursively scanning the set

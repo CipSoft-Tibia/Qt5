@@ -94,9 +94,8 @@ class TensorExecutor {
                 "You must #define EIGEN_USE_THREADS, EIGEN_USE_GPU or "
                 "EIGEN_USE_SYCL before including Eigen headers.");
 
-  EIGEN_DEVICE_FUNC
   static EIGEN_STRONG_INLINE void run(const Expression& expr,
-                                      const Device& device = Device()) {
+                                      const Device& device = DefaultDevice()) {
     TensorEvaluator<Expression, Device> evaluator(expr, device);
     const bool needs_assign = evaluator.evalSubExprsIfNeeded(NULL);
     if (needs_assign) {
@@ -126,7 +125,6 @@ class TensorExecutor<Expression, DefaultDevice, /*Vectorizable=*/true,
  public:
   typedef typename Expression::Index StorageIndex;
 
-  EIGEN_DEVICE_FUNC
   static EIGEN_STRONG_INLINE void run(
       const Expression& expr, const DefaultDevice& device = DefaultDevice()) {
     TensorEvaluator<Expression, DefaultDevice> evaluator(expr, device);
@@ -745,7 +743,7 @@ class TensorExecutor<Expression, Eigen::SyclDevice, Vectorizable, Tiling> {
           evaluator,
           cl::sycl::nd_range<1>(cl::sycl::range<1>(GRange),
                                 cl::sycl::range<1>(tileSize)),
-          Index(1), range);
+          Index(1), range).wait();
     }
     evaluator.cleanup();
   }

@@ -439,7 +439,7 @@
 #include <qmetaobject.h>
 #include <qpointer.h>
 #include <qtimer.h>
-#include <qelapsedtimer.h>
+#include <qdeadlinetimer.h>
 #include <qscopedvaluerollback.h>
 #include <qvarlengtharray.h>
 
@@ -465,11 +465,12 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 QT_IMPL_METATYPE_EXTERN_TAGGED(QAbstractSocket::SocketState, QAbstractSocket__SocketState)
 QT_IMPL_METATYPE_EXTERN_TAGGED(QAbstractSocket::SocketError, QAbstractSocket__SocketError)
 
-static const int DefaultConnectTimeout = 30000;
+static constexpr auto DefaultConnectTimeout = 30s;
 
 static bool isProxyError(QAbstractSocket::SocketError error)
 {
@@ -641,7 +642,11 @@ bool QAbstractSocketPrivate::canReadNotification()
             socketEngine->setReadNotificationEnabled(false);
             return true;
         }
-        if (!isUdpSocket || socketEngine->hasPendingDatagrams()) {
+        if (!isUdpSocket
+#if QT_CONFIG(udpsocket)
+            || socketEngine->hasPendingDatagrams()
+#endif
+        ) {
             hasPendingData = true;
             hasPendingDatagram = isUdpSocket;
         }
@@ -1061,8 +1066,7 @@ void QAbstractSocketPrivate::_q_connectToNextAddress()
                                  q, SLOT(_q_abortConnectionAttempt()),
                                  Qt::DirectConnection);
             }
-            int connectTimeout = DefaultConnectTimeout;
-            connectTimer->start(connectTimeout);
+            connectTimer->start(DefaultConnectTimeout);
         }
 
         // Wait for a write notification that will eventually call
@@ -2056,8 +2060,7 @@ bool QAbstractSocket::waitForConnected(int msecs)
 
     bool wasPendingClose = d->pendingClose;
     d->pendingClose = false;
-    QElapsedTimer stopWatch;
-    stopWatch.start();
+    QDeadlineTimer deadline{msecs};
 
     if (d->state == HostLookupState) {
 #if defined (QABSTRACTSOCKET_DEBUG)
@@ -2077,22 +2080,21 @@ bool QAbstractSocket::waitForConnected(int msecs)
     if (state() == UnconnectedState)
         return false; // connect not im progress anymore!
 
-    int connectTimeout = DefaultConnectTimeout;
     bool timedOut = true;
 #if defined (QABSTRACTSOCKET_DEBUG)
     int attempt = 1;
 #endif
-    while (state() == ConnectingState && (msecs == -1 || stopWatch.elapsed() < msecs)) {
-        int timeout = qt_subtract_from_timeout(msecs, stopWatch.elapsed());
-        if (msecs != -1 && timeout > connectTimeout)
-            timeout = connectTimeout;
+    while (state() == ConnectingState && !deadline.hasExpired()) {
+        QDeadlineTimer timer = deadline;
+        if (!deadline.isForever() && deadline.remainingTimeAsDuration() > DefaultConnectTimeout)
+            timer = QDeadlineTimer(DefaultConnectTimeout);
 #if defined (QABSTRACTSOCKET_DEBUG)
         qDebug("QAbstractSocket::waitForConnected(%i) waiting %.2f secs for connection attempt #%i",
-               msecs, timeout / 1000.0, attempt++);
+               msecs, timer.remainingTime() / 1000.0, attempt++);
 #endif
         timedOut = false;
 
-        if (d->socketEngine && d->socketEngine->waitForWrite(timeout, &timedOut) && !timedOut) {
+        if (d->socketEngine && d->socketEngine->waitForWrite(timer, &timedOut) && !timedOut) {
             d->_q_testConnection();
         } else {
             d->_q_connectToNextAddress();
@@ -2147,8 +2149,7 @@ bool QAbstractSocket::waitForReadyRead(int msecs)
         return false;
     }
 
-    QElapsedTimer stopWatch;
-    stopWatch.start();
+    QDeadlineTimer deadline{msecs};
 
     // handle a socket in connecting state
     if (state() == HostLookupState || state() == ConnectingState) {
@@ -2164,7 +2165,7 @@ bool QAbstractSocket::waitForReadyRead(int msecs)
         bool readyToRead = false;
         bool readyToWrite = false;
         if (!d->socketEngine->waitForReadOrWrite(&readyToRead, &readyToWrite, true, !d->writeBuffer.isEmpty(),
-                                               qt_subtract_from_timeout(msecs, stopWatch.elapsed()))) {
+                                                 deadline)) {
 #if defined (QABSTRACTSOCKET_DEBUG)
             qDebug("QAbstractSocket::waitForReadyRead(%i) failed (%i, %s)",
                    msecs, d->socketEngine->error(), d->socketEngine->errorString().toLatin1().constData());
@@ -2182,7 +2183,7 @@ bool QAbstractSocket::waitForReadyRead(int msecs)
 
         if (readyToWrite)
             d->canWriteNotification();
-    } while (msecs == -1 || qt_subtract_from_timeout(msecs, stopWatch.elapsed()) > 0);
+    } while (!deadline.hasExpired());
     return false;
 }
 
@@ -2218,8 +2219,7 @@ bool QAbstractSocket::waitForBytesWritten(int msecs)
     if (d->writeBuffer.isEmpty())
         return false;
 
-    QElapsedTimer stopWatch;
-    stopWatch.start();
+    QDeadlineTimer deadline{msecs};
 
     // handle a socket in connecting state
     if (state() == HostLookupState || state() == ConnectingState) {
@@ -2227,13 +2227,13 @@ bool QAbstractSocket::waitForBytesWritten(int msecs)
             return false;
     }
 
-    forever {
+    for (;;) {
         bool readyToRead = false;
         bool readyToWrite = false;
         if (!d->socketEngine->waitForReadOrWrite(&readyToRead, &readyToWrite,
                                   !d->readBufferMaxSize || d->buffer.size() < d->readBufferMaxSize,
                                   !d->writeBuffer.isEmpty(),
-                                  qt_subtract_from_timeout(msecs, stopWatch.elapsed()))) {
+                                  deadline)) {
 #if defined (QABSTRACTSOCKET_DEBUG)
             qDebug("QAbstractSocket::waitForBytesWritten(%i) failed (%i, %s)",
                    msecs, d->socketEngine->error(), d->socketEngine->errorString().toLatin1().constData());
@@ -2297,8 +2297,7 @@ bool QAbstractSocket::waitForDisconnected(int msecs)
         return false;
     }
 
-    QElapsedTimer stopWatch;
-    stopWatch.start();
+    QDeadlineTimer deadline{msecs};
 
     // handle a socket in connecting state
     if (state() == HostLookupState || state() == ConnectingState) {
@@ -2308,12 +2307,12 @@ bool QAbstractSocket::waitForDisconnected(int msecs)
             return true;
     }
 
-    forever {
+    for (;;) {
         bool readyToRead = false;
         bool readyToWrite = false;
         if (!d->socketEngine->waitForReadOrWrite(&readyToRead, &readyToWrite, state() == ConnectedState,
                                                !d->writeBuffer.isEmpty(),
-                                               qt_subtract_from_timeout(msecs, stopWatch.elapsed()))) {
+                                               deadline)) {
 #if defined (QABSTRACTSOCKET_DEBUG)
             qDebug("QAbstractSocket::waitForReadyRead(%i) failed (%i, %s)",
                    msecs, d->socketEngine->error(), d->socketEngine->errorString().toLatin1().constData());

@@ -50,7 +50,7 @@ SERIAL=$(udevadm info "$SYSPATH" --query=property | \
 [ -z "$SERIAL" ] && exit 1
 
 # You'd have this write a file instead.
-echo "ACTION==\"add|change\",SUBSYSTEM==\"input\",ENV{ID_SERIAL}==\"$SERIAL\",ENV{LIBINPUT_CALIBRATION_MATRIX}=\"$MATRIX\""
+echo "ACTION!=\"remove\",SUBSYSTEM==\"input\",ENV{ID_SERIAL}==\"$SERIAL\",ENV{LIBINPUT_CALIBRATION_MATRIX}=\"$MATRIX\""
 
 # Then you'd tell udev to reload the rules:
 #udevadm control --reload

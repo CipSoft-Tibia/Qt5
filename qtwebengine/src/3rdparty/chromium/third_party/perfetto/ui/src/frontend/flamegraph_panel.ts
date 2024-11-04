@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import * as m from 'mithril';
+import m from 'mithril';
 
+import {findRef} from '../base/dom_utils';
 import {assertExists, assertTrue} from '../base/logging';
 import {Actions} from '../common/actions';
 import {
@@ -28,10 +29,10 @@ import {
   FlamegraphStateViewingOption,
   ProfileType,
 } from '../common/state';
-import {timeToCode} from '../common/time';
+import {Time} from '../common/time';
 import {profileType} from '../controller/flamegraph_controller';
+import {raf} from '../core/raf_scheduler';
 
-import {PerfettoMouseEvent} from './events';
 import {Flamegraph, NodeRendering} from './flamegraph';
 import {globals} from './globals';
 import {Modal, ModalDefinition} from './modal';
@@ -40,6 +41,8 @@ import {debounce} from './rate_limiters';
 import {Router} from './router';
 import {getCurrentTrace} from './sidebar';
 import {convertTraceToPprofAndDownload} from './trace_converter';
+import {Button} from './widgets/button';
+import {DurationWidget} from './widgets/duration';
 
 interface FlamegraphDetailsPanelAttrs {}
 
@@ -63,23 +66,24 @@ const RENDER_OBJ_COUNT: NodeRendering = {
 
 export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
   private profileType?: ProfileType = undefined;
-  private ts = 0;
+  private ts = Time.ZERO;
   private pids: number[] = [];
   private flamegraph: Flamegraph = new Flamegraph([]);
   private focusRegex = '';
   private updateFocusRegexDebounced = debounce(() => {
     this.updateFocusRegex();
   }, 20);
+  private canvas?: HTMLCanvasElement;
 
   view() {
     const flamegraphDetails = globals.flamegraphDetails;
     if (flamegraphDetails && flamegraphDetails.type !== undefined &&
-        flamegraphDetails.startNs !== undefined &&
-        flamegraphDetails.durNs !== undefined &&
+        flamegraphDetails.start !== undefined &&
+        flamegraphDetails.dur !== undefined &&
         flamegraphDetails.pids !== undefined &&
         flamegraphDetails.upids !== undefined) {
       this.profileType = profileType(flamegraphDetails.type);
-      this.ts = flamegraphDetails.startNs + flamegraphDetails.durNs;
+      this.ts = Time.add(flamegraphDetails.start, flamegraphDetails.dur);
       this.pids = flamegraphDetails.pids;
       if (flamegraphDetails.flamegraph) {
         this.flamegraph.updateDataIfChanged(
@@ -90,25 +94,6 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
           0;
       return m(
           '.details-panel',
-          {
-            onclick: (e: PerfettoMouseEvent) => {
-              if (this.flamegraph !== undefined) {
-                this.onMouseClick({y: e.layerY, x: e.layerX});
-              }
-              return false;
-            },
-            onmousemove: (e: PerfettoMouseEvent) => {
-              if (this.flamegraph !== undefined) {
-                this.onMouseMove({y: e.layerY, x: e.layerX});
-                globals.rafScheduler.scheduleRedraw();
-              }
-            },
-            onmouseout: () => {
-              if (this.flamegraph !== undefined) {
-                this.onMouseOut();
-              }
-            },
-          },
           this.maybeShowModal(flamegraphDetails.graphIncomplete),
           m('.details-panel-heading.flamegraph-profile',
             {onclick: (e: MouseEvent) => e.stopPropagation()},
@@ -125,7 +110,8 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
                         toSelectedCallsite(
                             flamegraphDetails.expandedCallsite)}`),
                   m('div.time',
-                    `Snapshot time: ${timeToCode(flamegraphDetails.durNs)}`),
+                    `Snapshot time: `,
+                    m(DurationWidget, {dur: flamegraphDetails.dur})),
                   m('input[type=text][placeholder=Focus]', {
                     oninput: (e: Event) => {
                       const target = (e.target as HTMLInputElement);
@@ -135,20 +121,30 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
                     // Required to stop hot-key handling:
                     onkeydown: (e: Event) => e.stopPropagation(),
                   }),
-                  this.profileType === ProfileType.NATIVE_HEAP_PROFILE ||
-                          this.profileType === ProfileType.JAVA_HEAP_SAMPLES ?
-                      m('button.download',
-                        {
-                          onclick: () => {
-                            this.downloadPprof();
-                          },
+                  (this.profileType === ProfileType.NATIVE_HEAP_PROFILE ||
+                   this.profileType === ProfileType.JAVA_HEAP_SAMPLES) &&
+                      m(Button, {
+                        icon: 'file_download',
+                        onclick: () => {
+                          this.downloadPprof();
                         },
-                        m('i.material-icons', 'file_download'),
-                        'Download profile') :
-                      null,
+                      }),
                 ]),
             ]),
-          m(`div[style=height:${height}px]`),
+          m(`canvas[ref=canvas]`, {
+            style: `height:${height}px; width:100%`,
+            onmousemove: (e: MouseEvent) => {
+              const {offsetX, offsetY} = e;
+              this.onMouseMove({x: offsetX, y: offsetY});
+            },
+            onmouseout: () => {
+              this.onMouseOut();
+            },
+            onclick: (e: MouseEvent) => {
+              const {offsetX, offsetY} = e;
+              this.onMouseClick({x: offsetX, y: offsetY});
+            },
+          }),
       );
     } else {
       return m(
@@ -177,7 +173,7 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
           text: 'Skip',
           action: () => {
             globals.dispatch(Actions.dismissFlamegraphModal({}));
-            globals.rafScheduler.scheduleFullRedraw();
+            raf.scheduleFullRedraw();
           },
         },
       ],
@@ -258,7 +254,53 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
         this.nodeRendering(), flamegraphData, data.expandedCallsite);
   }
 
-  renderCanvas(ctx: CanvasRenderingContext2D, size: PanelSize) {
+  oncreate({dom}: m.CVnodeDOM<FlamegraphDetailsPanelAttrs>) {
+    this.canvas = FlamegraphDetailsPanel.findCanvasElement(dom);
+    // TODO(stevegolton): If we truely want to be standalone, then we shouldn't
+    // rely on someone else calling the rafScheduler when the window is resized,
+    // but it's good enough for now as we know the ViewerPage will do it.
+    raf.addRedrawCallback(this.rafRedrawCallback);
+  }
+
+  onupdate({dom}: m.CVnodeDOM<FlamegraphDetailsPanelAttrs>) {
+    this.canvas = FlamegraphDetailsPanel.findCanvasElement(dom);
+  }
+
+  onremove(_vnode: m.CVnodeDOM<FlamegraphDetailsPanelAttrs>) {
+    raf.removeRedrawCallback(this.rafRedrawCallback);
+  }
+
+  private static findCanvasElement(dom: Element): HTMLCanvasElement|undefined {
+    const canvas = findRef(dom, 'canvas');
+    if (canvas && canvas instanceof HTMLCanvasElement) {
+      return canvas;
+    } else {
+      return undefined;
+    }
+  }
+
+  private rafRedrawCallback = () => {
+    if (this.canvas) {
+      const canvas = this.canvas;
+      canvas.width = canvas.offsetWidth * devicePixelRatio;
+      canvas.height = canvas.offsetHeight * devicePixelRatio;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.scale(devicePixelRatio, devicePixelRatio);
+        const {offsetWidth: width, offsetHeight: height} = canvas;
+        this.renderLocalCanvas(ctx, {width, height});
+        ctx.restore();
+      }
+    }
+  };
+
+  renderCanvas() {
+    // No-op
+  }
+
+  private renderLocalCanvas(ctx: CanvasRenderingContext2D, size: PanelSize) {
     this.changeFlamegraphData();
     const current = globals.state.currentFlamegraphState;
     if (current === null) return;
@@ -267,22 +309,24 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
             current.viewingOption === ALLOC_SPACE_MEMORY_ALLOCATED_KEY ?
         'B' :
         '';
-    this.flamegraph.draw(ctx, size.width, size.height, 0, HEADER_HEIGHT, unit);
+    this.flamegraph.draw(ctx, size.width, size.height, 0, 0, unit);
   }
 
-  onMouseClick({x, y}: {x: number, y: number}): boolean {
+  private onMouseClick({x, y}: {x: number, y: number}): boolean {
     const expandedCallsite = this.flamegraph.onMouseClick({x, y});
     globals.dispatch(Actions.expandFlamegraphState({expandedCallsite}));
     return true;
   }
 
-  onMouseMove({x, y}: {x: number, y: number}): boolean {
+  private onMouseMove({x, y}: {x: number, y: number}): boolean {
     this.flamegraph.onMouseMove({x, y});
+    raf.scheduleFullRedraw();
     return true;
   }
 
-  onMouseOut() {
+  private onMouseOut() {
     this.flamegraph.onMouseOut();
+    raf.scheduleFullRedraw();
   }
 
   private static selectViewingOptions(profileType: ProfileType) {
@@ -330,19 +374,16 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
 
   private static buildButtonComponent(
       viewingOption: FlamegraphStateViewingOption, text: string) {
-    const buttonsClass =
-        (globals.state.currentFlamegraphState &&
-         globals.state.currentFlamegraphState.viewingOption === viewingOption) ?
-        '.chosen' :
-        '';
-    return m(
-        `button${buttonsClass}`,
-        {
-          onclick: () => {
-            globals.dispatch(
-                Actions.changeViewFlamegraphState({viewingOption}));
-          },
-        },
-        text);
+    const active =
+        (globals.state.currentFlamegraphState !== null &&
+         globals.state.currentFlamegraphState.viewingOption === viewingOption);
+    return m(Button, {
+      label: text,
+      active,
+      minimal: true,
+      onclick: () => {
+        globals.dispatch(Actions.changeViewFlamegraphState({viewingOption}));
+      },
+    });
   }
 }

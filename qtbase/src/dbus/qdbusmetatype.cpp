@@ -129,7 +129,7 @@ Q_GLOBAL_STATIC(QDBusCustomTypes, customTypes)
 */
 
 /*!
-    \fn int qDBusRegisterMetaType()
+    \fn template<typename T> QMetaType qDBusRegisterMetaType()
     \relates QDBusArgument
     \threadsafe
     \since 4.2
@@ -471,7 +471,7 @@ const char *QDBusMetaType::typeToSignature(QMetaType type)
     {
         // createSignature will never return a null QByteArray
         // if there was an error, it'll return ""
-        QByteArray signature = QDBusArgumentPrivate::createSignature(type.id());
+        QByteArray signature = QDBusArgumentPrivate::createSignature(type);
 
         // re-acquire lock
         QWriteLocker locker(&ct->lock);

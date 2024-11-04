@@ -108,6 +108,7 @@ class TestSharedImageInterface : public gpu::SharedImageInterface {
                                  GrSurfaceOrigin surface_origin,
                                  SkAlphaType alpha_type,
                                  uint32_t usage,
+                                 base::StringPiece debug_label,
                                  gpu::SurfaceHandle surface_handle) override {
     ADD_FAILURE();
     return gpu::Mailbox();
@@ -120,6 +121,7 @@ class TestSharedImageInterface : public gpu::SharedImageInterface {
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
       uint32_t usage,
+      base::StringPiece debug_label,
       base::span<const uint8_t> pixel_data) override {
     ADD_FAILURE();
     return gpu::Mailbox();
@@ -132,6 +134,7 @@ class TestSharedImageInterface : public gpu::SharedImageInterface {
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
       uint32_t usage,
+      base::StringPiece debug_label,
       gfx::GpuMemoryBufferHandle buffer_handle) override {
     ADD_FAILURE();
     return gpu::Mailbox();
@@ -144,7 +147,8 @@ class TestSharedImageInterface : public gpu::SharedImageInterface {
       const gfx::ColorSpace& color_space,
       GrSurfaceOrigin surface_origin,
       SkAlphaType alpha_type,
-      uint32_t usage) override {
+      uint32_t usage,
+      base::StringPiece debug_label) override {
     gfx::GpuMemoryBufferHandle handle = gpu_memory_buffer->CloneHandle();
     CHECK_EQ(handle.type, gfx::GpuMemoryBufferType::NATIVE_PIXMAP);
 
@@ -171,12 +175,18 @@ class TestSharedImageInterface : public gpu::SharedImageInterface {
     ADD_FAILURE();
   }
 
+  void AddReferenceToSharedImage(const gpu::SyncToken& sync_token,
+                                 const gpu::Mailbox& mailbox,
+                                 uint32_t usage) override {
+    ADD_FAILURE();
+  }
+
   void DestroySharedImage(const gpu::SyncToken& sync_token,
                           const gpu::Mailbox& mailbox) override {
     CHECK_EQ(mailboxes_.erase(mailbox), 1U);
   }
 
-  SwapChainMailboxes CreateSwapChain(viz::ResourceFormat format,
+  SwapChainMailboxes CreateSwapChain(viz::SharedImageFormat format,
                                      const gfx::Size& size,
                                      const gfx::ColorSpace& color_space,
                                      GrSurfaceOrigin surface_origin,
@@ -297,6 +307,11 @@ class TestRasterContextProvider
     ADD_FAILURE();
     return nullptr;
   }
+  unsigned int GetGrGLTextureFormat(
+      viz::SharedImageFormat format) const override {
+    ADD_FAILURE();
+    return 0;
+  }
 
  private:
   friend class base::RefCountedThreadSafe<TestRasterContextProvider>;
@@ -370,23 +385,11 @@ class FakeClientNativePixmap : public gfx::ClientNativePixmap {
   ~FakeClientNativePixmap() override = default;
 
   // gfx::ClientNativePixmap implementation.
-  bool Map() override {
-    NOTREACHED();
-    return false;
-  }
+  bool Map() override { NOTREACHED_NORETURN(); }
   void Unmap() override { NOTREACHED(); }
-  size_t GetNumberOfPlanes() const override {
-    NOTREACHED();
-    return 0;
-  }
-  void* GetMemoryAddress(size_t plane) const override {
-    NOTREACHED();
-    return nullptr;
-  }
-  int GetStride(size_t plane) const override {
-    NOTREACHED();
-    return 0;
-  }
+  size_t GetNumberOfPlanes() const override { NOTREACHED_NORETURN(); }
+  void* GetMemoryAddress(size_t plane) const override { NOTREACHED_NORETURN(); }
+  int GetStride(size_t plane) const override { NOTREACHED_NORETURN(); }
   gfx::NativePixmapHandle CloneHandleForIPC() const override {
     return gfx::CloneHandleForIPC(handle_);
   }

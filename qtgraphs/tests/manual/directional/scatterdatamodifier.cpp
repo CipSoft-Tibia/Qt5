@@ -5,7 +5,6 @@
 #include <QtGraphs/qscatterdataproxy.h>
 #include <QtGraphs/qvalue3daxis.h>
 #include <QtGraphs/q3dscene.h>
-#include <QtGraphs/q3dcamera.h>
 #include <QtGraphs/qscatter3dseries.h>
 #include <QtGraphs/q3dtheme.h>
 #include <qmath.h>
@@ -19,15 +18,15 @@ const float limit = 8.0f;
 ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
     : m_graph(scatter),
       m_fontSize(40.0f),
-      m_style(QAbstract3DSeries::MeshUserDefined),
+      m_style(QAbstract3DSeries::Mesh::UserDefined),
       m_smooth(true)
 {
-    m_graph->activeTheme()->setType(Q3DTheme::ThemeEbony);
+    m_graph->activeTheme()->setType(Q3DTheme::Theme::Ebony);
     QFont font = m_graph->activeTheme()->font();
     font.setPointSize(m_fontSize);
     m_graph->activeTheme()->setFont(font);
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQualitySoftLow);
-    m_graph->scene()->activeCamera()->setCameraPreset(Q3DCamera::CameraPresetFront);
+    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::SoftLow);
+    m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::Front);
 
     m_graph->setAxisX(new QValue3DAxis);
     m_graph->setAxisY(new QValue3DAxis);
@@ -64,13 +63,12 @@ void ScatterDataModifier::addData()
     m_graph->axisY()->setRange(-1.0f, 1.0f);
     m_graph->axisZ()->setRange(-limit, limit);
 
-    QScatterDataArray *dataArray = new QScatterDataArray;
-    dataArray->resize(numberOfCols * numberOfRows);
-    QScatterDataItem *ptrToDataArray = &dataArray->first();
+    QScatterDataArray dataArray(numberOfCols * numberOfRows);
 
     float angleStep = 360.0f / float(numberOfCols);
     float latAngleStep = 100.0f / float(numberOfRows);
 
+    int arrayIndex = 0;
     for (float i = 0; i < numberOfRows; i++) {
         float latAngle = float(i) * latAngleStep + 40.0f;
         float radius = qSin(qDegreesToRadians(latAngle)) * limit;
@@ -97,9 +95,9 @@ void ScatterDataModifier::addData()
                 QQuaternion::fromAxisAndAngle(QVector3D(1.0f, 0.0f, 0.0f), -90.0f);
 #endif
 
-            ptrToDataArray->setPosition(QVector3D(x, y, z));
-            ptrToDataArray->setRotation(rotation);
-            ptrToDataArray++;
+            dataArray[arrayIndex].setPosition(QVector3D(x, y, z));
+            dataArray[arrayIndex].setRotation(rotation);
+            ++arrayIndex;
         }
     }
 
@@ -109,9 +107,9 @@ void ScatterDataModifier::addData()
 void ScatterDataModifier::enableOptimization(int enabled)
 {
     if (enabled)
-        m_graph->setOptimizationHints(QAbstract3DGraph::OptimizationDefault);
+        m_graph->setOptimizationHint(QAbstract3DGraph::OptimizationHint::Default);
     else
-        m_graph->setOptimizationHints(QAbstract3DGraph::OptimizationLegacy);
+        m_graph->setOptimizationHint(QAbstract3DGraph::OptimizationHint::Legacy);
 }
 
 void ScatterDataModifier::changeStyle(int style)
@@ -135,12 +133,12 @@ void ScatterDataModifier::changeTheme(int theme)
 
 void ScatterDataModifier::changePresetCamera()
 {
-    static int preset = Q3DCamera::CameraPresetFrontLow;
+    static int preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
 
-    m_graph->scene()->activeCamera()->setCameraPreset((Q3DCamera::CameraPreset)preset);
+    m_graph->setCameraPreset((QAbstract3DGraph::CameraPreset)preset);
 
-    if (++preset > Q3DCamera::CameraPresetDirectlyBelow)
-        preset = Q3DCamera::CameraPresetFrontLow;
+    if (++preset > int(QAbstract3DGraph::CameraPreset::DirectlyBelow))
+        preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
 }
 
 void ScatterDataModifier::changeLabelStyle()
@@ -167,7 +165,7 @@ void ScatterDataModifier::triggerRotation()
         int selectedIndex = m_graph->seriesList().at(0)->selectedItem();
         if (selectedIndex != QScatter3DSeries::invalidSelectionIndex()) {
             static float itemAngle = 0.0f;
-            QScatterDataItem item(*(m_graph->seriesList().at(0)->dataProxy()->itemAt(selectedIndex)));
+            QScatterDataItem item(m_graph->seriesList().at(0)->dataProxy()->itemAt(selectedIndex));
             QQuaternion itemRotation = QQuaternion::fromAxisAndAngle(0.0f, 0.0f, 1.0f, itemAngle++);
             item.setRotation(itemRotation);
             m_graph->seriesList().at(0)->dataProxy()->setItem(selectedIndex, item);

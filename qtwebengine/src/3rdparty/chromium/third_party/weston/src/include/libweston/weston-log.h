@@ -109,6 +109,8 @@ weston_log_subscription_complete(struct weston_log_subscription *sub);
 char *
 weston_log_scope_timestamp(struct weston_log_scope *scope,
 			     char *buf, size_t len);
+char *
+weston_log_timestamp(char *buf, size_t len, int *cached_tm_mday);
 
 void
 weston_log_subscriber_destroy(struct weston_log_subscriber *subscriber);

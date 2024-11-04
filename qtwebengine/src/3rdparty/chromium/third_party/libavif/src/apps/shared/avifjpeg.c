@@ -285,7 +285,7 @@ avifBool avifJPEGRead(const char * inputFilename,
                       avifPixelFormat requestedFormat,
                       uint32_t requestedDepth,
                       avifChromaDownsampling chromaDownsampling,
-                      avifBool ignoreICC,
+                      avifBool ignoreColorProfile,
                       avifBool ignoreExif,
                       avifBool ignoreXMP)
 {
@@ -319,18 +319,21 @@ avifBool avifJPEGRead(const char * inputFilename,
     if (!ignoreExif || !ignoreXMP) {
         jpeg_save_markers(&cinfo, JPEG_APP0 + 1, /*length_limit=*/0xFFFF); // Exif/XMP
     }
-    if (!ignoreICC) {
+    if (!ignoreColorProfile) {
         setup_read_icc_profile(&cinfo);
     }
     jpeg_stdio_src(&cinfo, f);
     jpeg_read_header(&cinfo, TRUE);
 
-    if (!ignoreICC) {
+    if (!ignoreColorProfile) {
         uint8_t * iccDataTmp;
         unsigned int iccDataLen;
         if (read_icc_profile(&cinfo, &iccDataTmp, &iccDataLen)) {
             iccData = iccDataTmp;
-            avifImageSetProfileICC(avif, iccDataTmp, (size_t)iccDataLen);
+            if (avifImageSetProfileICC(avif, iccDataTmp, (size_t)iccDataLen) != AVIF_RESULT_OK) {
+                fprintf(stderr, "Setting ICC profile failed: %s (out of memory)\n", inputFilename);
+                goto cleanup;
+            }
         }
     }
 
@@ -356,17 +359,40 @@ avifBool avifJPEGRead(const char * inputFilename,
 
         avif->width = cinfo.output_width;
         avif->height = cinfo.output_height;
+#if defined(AVIF_ENABLE_EXPERIMENTAL_YCGCO_R)
+        const avifBool useYCgCoR = (avif->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_YCGCO_RE ||
+                                    avif->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_YCGCO_RO);
+#else
+        const avifBool useYCgCoR = AVIF_FALSE;
+#endif
         if (avif->yuvFormat == AVIF_PIXEL_FORMAT_NONE) {
-            // Identity is only valid with YUV444.
-            avif->yuvFormat = (avif->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_IDENTITY) ? AVIF_PIXEL_FORMAT_YUV444
-                                                                                              : AVIF_APP_DEFAULT_PIXEL_FORMAT;
+            // Identity and YCgCo-R are only valid with YUV444.
+            avif->yuvFormat = (avif->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_IDENTITY || useYCgCoR)
+                                  ? AVIF_PIXEL_FORMAT_YUV444
+                                  : AVIF_APP_DEFAULT_PIXEL_FORMAT;
         }
         avif->depth = requestedDepth ? requestedDepth : 8;
+#if defined(AVIF_ENABLE_EXPERIMENTAL_YCGCO_R)
+        if (useYCgCoR) {
+            if (avif->matrixCoefficients == AVIF_MATRIX_COEFFICIENTS_YCGCO_RO) {
+                fprintf(stderr, "AVIF_MATRIX_COEFFICIENTS_YCGCO_RO cannot be used with JPEG because it has an even bit depth.\n");
+                goto cleanup;
+            }
+            if (requestedDepth && requestedDepth != 10) {
+                fprintf(stderr, "Cannot request %u bits for YCgCo-Re as it uses 2 extra bits.\n", requestedDepth);
+                goto cleanup;
+            }
+            avif->depth = 10;
+        }
+#endif
         avifRGBImageSetDefaults(&rgb, avif);
         rgb.format = AVIF_RGB_FORMAT_RGB;
         rgb.chromaDownsampling = chromaDownsampling;
         rgb.depth = 8;
-        avifRGBImageAllocatePixels(&rgb);
+        if (avifRGBImageAllocatePixels(&rgb) != AVIF_RESULT_OK) {
+            fprintf(stderr, "Conversion to YUV failed: %s (out of memory)\n", inputFilename);
+            goto cleanup;
+        }
 
         int row = 0;
         while (cinfo.output_scanline < cinfo.output_height) {
@@ -395,7 +421,10 @@ avifBool avifJPEGRead(const char * inputFilename,
                 // Exif orientation, if any, is imported to avif->irot/imir and kept in avif->exif.
                 // libheif has the same behavior, see
                 // https://github.com/strukturag/libheif/blob/ea78603d8e47096606813d221725621306789ff2/examples/heif_enc.cc#L403
-                avifImageSetMetadataExif(avif, marker->data + tagExif.size, marker->data_length - tagExif.size);
+                if (avifImageSetMetadataExif(avif, marker->data + tagExif.size, marker->data_length - tagExif.size) != AVIF_RESULT_OK) {
+                    fprintf(stderr, "Setting Exif metadata failed: %s (out of memory)\n", inputFilename);
+                    goto cleanup;
+                }
                 found = AVIF_TRUE;
             }
         }
@@ -470,11 +499,17 @@ avifBool avifJPEGRead(const char * inputFilename,
                 } else {
                     memcpy(extendedXMPGUID, guid, AVIF_JPEG_EXTENDED_XMP_GUID_LENGTH);
 
-                    avifRWDataRealloc(&totalXMP, (size_t)standardXMPSize + totalExtendedXMPSize);
+                    if (avifRWDataRealloc(&totalXMP, (size_t)standardXMPSize + totalExtendedXMPSize) != AVIF_RESULT_OK) {
+                        fprintf(stderr, "XMP extraction failed: out of memory\n");
+                        goto cleanup;
+                    }
                     memcpy(totalXMP.data, standardXMPData, standardXMPSize);
 
                     // Keep track of the bytes that were set.
-                    avifRWDataRealloc(&extendedXMPReadBytes, totalExtendedXMPSize);
+                    if (avifRWDataRealloc(&extendedXMPReadBytes, totalExtendedXMPSize) != AVIF_RESULT_OK) {
+                        fprintf(stderr, "XMP extraction failed: out of memory\n");
+                        goto cleanup;
+                    }
                     memset(extendedXMPReadBytes.data, 0, extendedXMPReadBytes.size);
 
                     foundExtendedXMP = AVIF_TRUE;
@@ -526,8 +561,12 @@ avifBool avifJPEGRead(const char * inputFilename,
             totalXMP.data = NULL;
             totalXMP.size = 0;
         } else if (standardXMPData) {
-            avifImageSetMetadataXMP(avif, standardXMPData, standardXMPSize);
+            if (avifImageSetMetadataXMP(avif, standardXMPData, standardXMPSize) != AVIF_RESULT_OK) {
+                fprintf(stderr, "XMP extraction failed: out of memory\n");
+                goto cleanup;
+            }
         }
+        avifImageFixXMP(avif); // Remove one trailing null character if any.
     }
     jpeg_finish_decompress(&cinfo);
     ret = AVIF_TRUE;
@@ -557,7 +596,10 @@ avifBool avifJPEGWrite(const char * outputFilename, const avifImage * avif, int 
     rgb.format = AVIF_RGB_FORMAT_RGB;
     rgb.chromaUpsampling = chromaUpsampling;
     rgb.depth = 8;
-    avifRGBImageAllocatePixels(&rgb);
+    if (avifRGBImageAllocatePixels(&rgb) != AVIF_RESULT_OK) {
+        fprintf(stderr, "Conversion to RGB failed: %s (out of memory)\n", outputFilename);
+        goto cleanup;
+    }
     if (avifImageYUVToRGB(avif, &rgb) != AVIF_RESULT_OK) {
         fprintf(stderr, "Conversion to RGB failed: %s\n", outputFilename);
         goto cleanup;
@@ -592,7 +634,10 @@ avifBool avifJPEGWrite(const char * outputFilename, const avifImage * avif, int 
         }
 
         avifRWData exif = { NULL, 0 };
-        avifRWDataRealloc(&exif, AVIF_JPEG_EXIF_HEADER_LENGTH + avif->exif.size - exifTiffHeaderOffset);
+        if (avifRWDataRealloc(&exif, AVIF_JPEG_EXIF_HEADER_LENGTH + avif->exif.size - exifTiffHeaderOffset) != AVIF_RESULT_OK) {
+            fprintf(stderr, "Error writing JPEG metadata: out of memory\n");
+            goto cleanup;
+        }
         memcpy(exif.data, AVIF_JPEG_EXIF_HEADER, AVIF_JPEG_EXIF_HEADER_LENGTH);
         memcpy(exif.data + AVIF_JPEG_EXIF_HEADER_LENGTH, avif->exif.data + exifTiffHeaderOffset, avif->exif.size - exifTiffHeaderOffset);
         // Make sure the Exif orientation matches the irot/imir values.
@@ -638,7 +683,10 @@ avifBool avifJPEGWrite(const char * outputFilename, const avifImage * avif, int 
             fprintf(stderr, "Warning writing JPEG metadata: XMP payload is too big and was dropped\n");
         } else {
             avifRWData xmp = { NULL, 0 };
-            avifRWDataRealloc(&xmp, AVIF_JPEG_STANDARD_XMP_TAG_LENGTH + avif->xmp.size);
+            if (avifRWDataRealloc(&xmp, AVIF_JPEG_STANDARD_XMP_TAG_LENGTH + avif->xmp.size) != AVIF_RESULT_OK) {
+                fprintf(stderr, "Error writing JPEG metadata: out of memory\n");
+                goto cleanup;
+            }
             memcpy(xmp.data, AVIF_JPEG_STANDARD_XMP_TAG, AVIF_JPEG_STANDARD_XMP_TAG_LENGTH);
             memcpy(xmp.data + AVIF_JPEG_STANDARD_XMP_TAG_LENGTH, avif->xmp.data, avif->xmp.size);
             jpeg_write_marker(&cinfo, JPEG_APP0 + 1, xmp.data, (unsigned int)xmp.size);

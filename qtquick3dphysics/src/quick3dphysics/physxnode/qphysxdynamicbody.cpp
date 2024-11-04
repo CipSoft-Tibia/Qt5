@@ -120,6 +120,15 @@ void QPhysXDynamicBody::sync(float deltaTime, QHash<QQuick3DNode *, QMatrix4x4> 
     } else {
         dynamicActor->setRigidDynamicLockFlags(getLockFlags(dynamicRigidBody));
     }
+
+    const bool disabledPrevious = actor->getActorFlags() & physx::PxActorFlag::eDISABLE_SIMULATION;
+    const bool disabled = !dynamicRigidBody->simulationEnabled();
+    if (disabled != disabledPrevious) {
+        actor->setActorFlag(physx::PxActorFlag::eDISABLE_SIMULATION, disabled);
+        if (!disabled && !dynamicRigidBody->isKinematic())
+            dynamicActor->wakeUp();
+    }
+
     QPhysXActorBody::sync(deltaTime, transformCache);
 }
 

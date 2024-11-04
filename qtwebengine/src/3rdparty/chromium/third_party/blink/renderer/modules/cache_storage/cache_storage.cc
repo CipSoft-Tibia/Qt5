@@ -53,8 +53,9 @@ struct TypeConverter<MultiCacheQueryOptionsPtr,
 
     MultiCacheQueryOptionsPtr output = MultiCacheQueryOptions::New();
     output->query_options = std::move(query_options);
-    if (input->hasCacheName())
+    if (input->hasCacheName()) {
       output->cache_name = input->cacheName();
+    }
     return output;
   }
 };
@@ -395,8 +396,9 @@ ScriptPromise CacheStorage::match(ScriptState* script_state,
     case V8RequestInfo::ContentType::kUSVString:
       request_object = Request::Create(script_state, request->GetAsUSVString(),
                                        exception_state);
-      if (exception_state.HadException())
+      if (exception_state.HadException()) {
         return ScriptPromise();
+      }
       break;
   }
   return MatchImpl(script_state, request_object, options, exception_state);
@@ -535,7 +537,8 @@ CacheStorage::CacheStorage(
     ExecutionContext* context,
     GlobalFetch::ScopedFetcher* fetcher,
     mojo::PendingRemote<mojom::blink::CacheStorage> pending_remote)
-    : ExecutionContextClient(context),
+    : ActiveScriptWrappable<CacheStorage>({}),
+      ExecutionContextClient(context),
       scoped_fetcher_(fetcher),
       blob_client_list_(MakeGarbageCollected<CacheStorageBlobClientList>()),
       cache_storage_remote_(context) {
@@ -551,8 +554,9 @@ CacheStorage::CacheStorage(
     // optimization.
     mojo::PendingRemote<mojom::blink::CacheStorage> info =
         service_worker->TakeCacheStorage();
-    if (info)
+    if (info) {
       cache_storage_remote_.Bind(std::move(info), task_runner);
+    }
   }
 
   // Otherwise wait for MaybeInit() to bind a new mojo connection.
@@ -580,18 +584,26 @@ void CacheStorage::Trace(Visitor* visitor) const {
 }
 
 void CacheStorage::MaybeInit() {
-  if (cache_storage_remote_.is_bound())
+  if (cache_storage_remote_.is_bound()) {
     return;
+  }
 
   auto* context = GetExecutionContext();
-  if (!context || context->IsContextDestroyed())
+  if (!context || context->IsContextDestroyed()) {
     return;
+  }
 
   scoped_refptr<base::SingleThreadTaskRunner> task_runner =
       context->GetTaskRunner(blink::TaskType::kMiscPlatformAPI);
 
   context->GetBrowserInterfaceBroker().GetInterface(
       cache_storage_remote_.BindNewPipeAndPassReceiver(task_runner));
+}
+
+mojom::blink::CacheStorage* CacheStorage::GetRemoteForDevtools(
+    base::OnceClosure disconnect_handler) {
+  cache_storage_remote_.set_disconnect_handler(std::move(disconnect_handler));
+  return cache_storage_remote_.get();
 }
 
 }  // namespace blink

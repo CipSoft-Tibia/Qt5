@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <random>
+#include <string_view>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
@@ -16,21 +17,19 @@
 #include "util/osp_logging.h"
 #include "util/stringprintf.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 static constexpr std::chrono::seconds kRequestTimeout = std::chrono::seconds(5);
 
 CastPlatformClient::CastPlatformClient(VirtualConnectionRouter* router,
                                        ClockNowFunctionPtr clock,
-                                       TaskRunner* task_runner)
+                                       TaskRunner& task_runner)
     : sender_id_(MakeUniqueSessionId("sender")),
       virtual_conn_router_(router),
       clock_(clock),
       task_runner_(task_runner) {
   OSP_DCHECK(virtual_conn_router_);
   OSP_DCHECK(clock_);
-  OSP_DCHECK(task_runner_);
   virtual_conn_router_->AddHandlerForLocalId(sender_id_, this);
 }
 
@@ -46,14 +45,14 @@ CastPlatformClient::~CastPlatformClient() {
   }
 }
 
-absl::optional<int> CastPlatformClient::RequestAppAvailability(
+std::optional<int> CastPlatformClient::RequestAppAvailability(
     const std::string& receiver_id,
     const std::string& app_id,
     AppAvailabilityCallback callback) {
   auto entry = socket_id_by_receiver_id_.find(receiver_id);
   if (entry == socket_id_by_receiver_id_.end()) {
     callback(app_id, AppAvailabilityResult::kUnknown);
-    return absl::nullopt;
+    return std::nullopt;
   }
   int socket_id = entry->second;
 
@@ -127,13 +126,13 @@ void CastPlatformClient::OnMessage(VirtualConnectionRouter* router,
       message.source_id() != kPlatformReceiverId) {
     return;
   }
-  ErrorOr<Json::Value> dict_or_error = json::Parse(message.payload_utf8());
+  ErrorOr<Json::Value> dict_or_error = json::Parse(GetPayload(message));
   if (dict_or_error.is_error()) {
     return;
   }
 
   Json::Value& dict = dict_or_error.value();
-  absl::optional<int> request_id =
+  std::optional<int> request_id =
       MaybeGetInt(dict, JSON_EXPAND_FIND_CONSTANT_ARGS(kMessageKeyRequestId));
   if (request_id) {
     auto socket_map_entry = std::find_if(
@@ -167,7 +166,7 @@ void CastPlatformClient::HandleResponse(const std::string& receiver_id,
     const Json::Value* maybe_availability =
         message.find(JSON_EXPAND_FIND_CONSTANT_ARGS(kMessageKeyAvailability));
     if (maybe_availability && maybe_availability->isObject()) {
-      absl::optional<absl::string_view> result =
+      std::optional<std::string_view> result =
           MaybeGetString(*maybe_availability, &it->app_id[0],
                          &it->app_id[0] + it->app_id.size());
       if (result) {
@@ -210,5 +209,4 @@ int CastPlatformClient::GetNextRequestId() {
 // static
 int CastPlatformClient::next_request_id_ = 0;
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

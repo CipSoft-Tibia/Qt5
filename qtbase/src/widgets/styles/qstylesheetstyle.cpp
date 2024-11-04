@@ -625,7 +625,7 @@ public:
 Q_DECLARE_TYPEINFO(QRenderRule, Q_RELOCATABLE_TYPE);
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-static const char knownStyleHints[][45] = {
+static constexpr std::array<const char*, 90> knownStyleHints = {
     "activate-on-singleclick",
     "alignment",
     "arrow-keys-navigate-into-children",
@@ -718,13 +718,10 @@ static const char knownStyleHints[][45] = {
     "widget-animation-duration"
 };
 
-static const int numKnownStyleHints = sizeof(knownStyleHints)/sizeof(knownStyleHints[0]);
-
-static QList<QVariant> subControlLayout(const QString& layout)
+static QList<QVariant> subControlLayout(QByteArrayView layout)
 {
     QList<QVariant> buttons;
-    for (int i = 0; i < layout.size(); i++) {
-        int button = layout[i].toLatin1();
+    for (int button : layout) {
         switch (button) {
         case 'm':
             buttons.append(PseudoElement_MdiMinButton);
@@ -786,10 +783,9 @@ QHash<QStyle::SubControl, QRect> QStyleSheetStyle::titleBarLayout(const QWidget 
     int offsets[3] = { 0, 0, 0 };
     enum Where { Left, Right, Center, NoWhere } where = Left;
     QList<ButtonInfo> infos;
-    const int numLayouts = layout.size();
-    infos.reserve(numLayouts);
-    for (int i = 0; i < numLayouts; i++) {
-        const int element = layout[i].toInt();
+    infos.reserve(layout.size());
+    for (const QVariant &val : std::as_const(layout)) {
+        const int element = val.toInt();
         if (element == '(') {
             where = Center;
         } else if (element == ')') {
@@ -848,8 +844,7 @@ QHash<QStyle::SubControl, QRect> QStyleSheetStyle::titleBarLayout(const QWidget 
         }
     }
 
-    for (int i = 0; i < infos.size(); i++) {
-        const ButtonInfo &info = infos[i];
+    for (const ButtonInfo &info : std::as_const(infos)) {
         QRect lr = cr;
         switch (info.where) {
         case Center: {
@@ -1030,8 +1025,8 @@ QRenderRule::QRenderRule(const QList<Declaration> &declarations, const QObject *
             // intentionally left blank...
         } else if (decl.d->propertyId == UnknownProperty) {
             bool knownStyleHint = false;
-            for (int i = 0; i < numKnownStyleHints; i++) {
-                QLatin1StringView styleHint(knownStyleHints[i]);
+            for (const auto sh : knownStyleHints) {
+                QLatin1StringView styleHint(sh);
                 if (decl.d->property.compare(styleHint) == 0) {
                     QString hintName = QString(styleHint);
                     QVariant hintValue;
@@ -1073,7 +1068,7 @@ QRenderRule::QRenderRule(const QList<Declaration> &declarations, const QObject *
                         hintValue = decl.iconValue();
                     } else if (hintName == "button-layout"_L1 && decl.d->values.size() != 0
                                && decl.d->values.at(0).type == QCss::Value::String) {
-                        hintValue = subControlLayout(decl.d->values.at(0).variant.toString());
+                        hintValue = subControlLayout(decl.d->values.at(0).variant.toString().toLatin1());
                     } else {
                         int integer;
                         decl.intValue(&integer);
@@ -1681,7 +1676,8 @@ QList<QCss::StyleRule> QStyleSheetStyle::styleRules(const QObject *obj) const
         defaultSs = getDefaultStyleSheet();
         QStyle *bs = baseStyle();
         styleSheetCaches->styleSheetCache.insert(bs, defaultSs);
-        QObject::connect(bs, SIGNAL(destroyed(QObject*)), styleSheetCaches, SLOT(styleDestroyed(QObject*)), Qt::UniqueConnection);
+        QObject::connect(bs, &QStyle::destroyed, styleSheetCaches,
+                         &QStyleSheetStyleCaches::styleDestroyed);
     } else {
         defaultSs = defaultCacheIt.value();
     }
@@ -2904,7 +2900,9 @@ bool QStyleSheetStyle::initObject(const QObject *obj) const
         const_cast<QWidget *>(w)->setAttribute(Qt::WA_StyleSheet, true);
     }
 
-    QObject::connect(obj, SIGNAL(destroyed(QObject*)), styleSheetCaches, SLOT(objectDestroyed(QObject*)), Qt::UniqueConnection);
+    connect(obj, &QObject::destroyed,
+            styleSheetCaches, &QStyleSheetStyleCaches::objectDestroyed,
+            Qt::UniqueConnection);
     return true;
 }
 
@@ -2948,10 +2946,10 @@ void QStyleSheetStyle::polish(QWidget *w)
         QRenderRule rule = renderRule(sa, PseudoElement_None, PseudoClass_Enabled);
         if ((rule.hasBorder() && rule.border()->hasBorderImage())
             || (rule.hasBackground() && !rule.background()->pixmap.isNull())) {
-            QObject::connect(sa->horizontalScrollBar(), SIGNAL(valueChanged(int)),
-                             sa, SLOT(update()), Qt::UniqueConnection);
-            QObject::connect(sa->verticalScrollBar(), SIGNAL(valueChanged(int)),
-                             sa, SLOT(update()), Qt::UniqueConnection);
+            connect(sa->horizontalScrollBar(), &QScrollBar::valueChanged,
+                    sa, QOverload<>::of(&QAbstractScrollArea::update), Qt::UniqueConnection);
+            connect(sa->verticalScrollBar(), &QScrollBar::valueChanged,
+                    sa, QOverload<>::of(&QAbstractScrollArea::update), Qt::UniqueConnection);
         }
     }
 #endif
@@ -3054,13 +3052,13 @@ void QStyleSheetStyle::unpolish(QWidget *w)
     setGeometry(w);
     w->setAttribute(Qt::WA_StyleSheetTarget, false);
     w->setAttribute(Qt::WA_StyleSheet, false);
-    QObject::disconnect(w, nullptr, this, nullptr);
+    w->disconnect(this);
 #if QT_CONFIG(scrollarea)
     if (QAbstractScrollArea *sa = qobject_cast<QAbstractScrollArea *>(w)) {
-        QObject::disconnect(sa->horizontalScrollBar(), SIGNAL(valueChanged(int)),
-                            sa, SLOT(update()));
-        QObject::disconnect(sa->verticalScrollBar(), SIGNAL(valueChanged(int)),
-                            sa, SLOT(update()));
+        disconnect(sa->horizontalScrollBar(), &QScrollBar::valueChanged,
+                   sa, QOverload<>::of(&QAbstractScrollArea::update));
+        disconnect(sa->verticalScrollBar(), &QScrollBar::valueChanged,
+                   sa, QOverload<>::of(&QAbstractScrollArea::update));
     }
 #endif
     baseStyle()->unpolish(w);
@@ -3505,12 +3503,12 @@ void QStyleSheetStyle::drawComplexControl(ComplexControl cc, const QStyleOptionC
             || hasStyleRule(w, PseudoElement_MdiMinButton)) {
             QList<QVariant> layout = rule.styleHint("button-layout"_L1).toList();
             if (layout.isEmpty())
-                layout = subControlLayout("mNX"_L1);
+                layout = subControlLayout("mNX");
 
             QStyleOptionComplex optCopy(*opt);
             optCopy.subControls = { };
-            for (int i = 0; i < layout.size(); i++) {
-                int layoutButton = layout[i].toInt();
+            for (const QVariant &val : std::as_const(layout)) {
+                int layoutButton = val.toInt();
                 if (layoutButton < PseudoElement_MdiCloseButton
                     || layoutButton > PseudoElement_MdiNormalButton)
                     continue;
@@ -3541,6 +3539,7 @@ void QStyleSheetStyle::drawComplexControl(ComplexControl cc, const QStyleOptionC
                 break;
             subRule.drawRule(p, opt->rect);
             QHash<QStyle::SubControl, QRect> layout = titleBarLayout(w, tb);
+            const auto paintDeviceDpr = p->device()->devicePixelRatio();
 
             QRect ir;
             ir = layout[SC_TitleBarLabel];
@@ -3551,8 +3550,6 @@ void QStyleSheetStyle::drawComplexControl(ComplexControl cc, const QStyleOptionC
                 p->drawText(ir.x(), ir.y(), ir.width(), ir.height(), Qt::AlignLeft | Qt::AlignVCenter | Qt::TextSingleLine, tb->text);
             }
 
-            QPixmap pm;
-
             ir = layout[SC_TitleBarSysMenu];
             if (ir.isValid()) {
                 QRenderRule subSubRule = renderRule(w, opt, PseudoElement_TitleBarSysMenu);
@@ -3562,7 +3559,9 @@ void QStyleSheetStyle::drawComplexControl(ComplexControl cc, const QStyleOptionC
                     tb->icon.paint(p, ir);
                 } else {
                     int iconSize = pixelMetric(PM_SmallIconSize, tb, w);
-                    pm = standardIcon(SP_TitleBarMenuButton, nullptr, w).pixmap(iconSize, iconSize);
+                    const QSize sz(iconSize, iconSize);
+                    const auto pm = standardIcon(SP_TitleBarMenuButton, nullptr, w)
+                        .pixmap(sz, paintDeviceDpr);
                     drawItemPixmap(p, ir, Qt::AlignCenter, pm);
                 }
             }
@@ -3572,15 +3571,14 @@ void QStyleSheetStyle::drawComplexControl(ComplexControl cc, const QStyleOptionC
                 QRenderRule subSubRule = renderRule(w, opt, PseudoElement_TitleBarCloseButton);
                 subSubRule.drawRule(p, ir);
 
-                QSize sz = subSubRule.contentsRect(ir).size();
-                if ((tb->titleBarFlags & Qt::WindowType_Mask) == Qt::Tool)
-                    pm = standardIcon(SP_DockWidgetCloseButton, nullptr, w).pixmap(sz);
-                else
-                    pm = standardIcon(SP_TitleBarCloseButton, nullptr, w).pixmap(sz);
+                const QSize sz = subSubRule.contentsRect(ir).size();
+                const auto type = ((tb->titleBarFlags & Qt::WindowType_Mask) == Qt::Tool)
+                    ? SP_DockWidgetCloseButton : SP_TitleBarCloseButton;
+                const auto pm = standardIcon(type, nullptr, w).pixmap(sz, paintDeviceDpr);
                 drawItemPixmap(p, ir, Qt::AlignCenter, pm);
             }
 
-            int pes[] = {
+            constexpr std::array<int, 6> pes = {
                 PseudoElement_TitleBarMaxButton,
                 PseudoElement_TitleBarMinButton,
                 PseudoElement_TitleBarNormalButton,
@@ -3589,15 +3587,15 @@ void QStyleSheetStyle::drawComplexControl(ComplexControl cc, const QStyleOptionC
                 PseudoElement_TitleBarContextHelpButton
             };
 
-            for (unsigned int i = 0; i < sizeof(pes)/sizeof(int); i++) {
-                int pe = pes[i];
+            for (int pe : pes) {
                 QStyle::SubControl sc = knownPseudoElements[pe].subControl;
                 ir = layout[sc];
                 if (!ir.isValid())
                     continue;
                 QRenderRule subSubRule = renderRule(w, opt, pe);
                 subSubRule.drawRule(p, ir);
-                pm = standardIcon(subControlIcon(pe), nullptr, w).pixmap(subSubRule.contentsRect(ir).size());
+                const QSize sz = subSubRule.contentsRect(ir).size();
+                const auto pm = standardIcon(subControlIcon(pe), nullptr, w).pixmap(sz, paintDeviceDpr);
                 drawItemPixmap(p, ir, Qt::AlignCenter, pm);
             }
 
@@ -3620,7 +3618,9 @@ void QStyleSheetStyle::renderMenuItemIcon(const QStyleOptionMenuItem *mi, QPaint
                            ? (mi->state & QStyle::State_Selected ? QIcon::Active : QIcon::Normal)
                            : QIcon::Disabled;
     const bool checked = mi->checkType != QStyleOptionMenuItem::NotCheckable && mi->checked;
-    const QPixmap pixmap(mi->icon.pixmap(pixelMetric(PM_SmallIconSize), mode,
+    const auto iconSize = pixelMetric(PM_SmallIconSize, mi, w);
+    const QSize sz(iconSize, iconSize);
+    const QPixmap pixmap(mi->icon.pixmap(sz, p->device()->devicePixelRatio(), mode,
                         checked ? QIcon::On : QIcon::Off));
     const int pixw = pixmap.width() / pixmap.devicePixelRatio();
     const int pixh = pixmap.height() / pixmap.devicePixelRatio();
@@ -3755,7 +3755,8 @@ void QStyleSheetStyle::drawControl(ControlElement ce, const QStyleOption *opt, Q
                     if (button->state & State_On)
                         state = QIcon::On;
 
-                    QPixmap pixmap = icon.pixmap(button->iconSize, mode, state);
+                    const auto paintDeviceDpr = p->device()->devicePixelRatio();
+                    QPixmap pixmap = icon.pixmap(button->iconSize, paintDeviceDpr, mode, state);
                     int pixmapWidth = pixmap.width() / pixmap.devicePixelRatio();
                     int pixmapHeight = pixmap.height() / pixmap.devicePixelRatio();
                     int labelWidth = pixmapWidth;
@@ -4057,7 +4058,8 @@ void QStyleSheetStyle::drawControl(ControlElement ce, const QStyleOption *opt, Q
                 if (spacing == -1)
                     spacing = 6;
                 QIcon::Mode mode = cb->state & State_Enabled ? QIcon::Normal : QIcon::Disabled;
-                QPixmap pixmap = cb->currentIcon.pixmap(cb->iconSize, mode);
+                const auto paintDeviceDpr = p->device()->devicePixelRatio();
+                QPixmap pixmap = cb->currentIcon.pixmap(cb->iconSize, paintDeviceDpr, mode);
                 QRect iconRect(editRect);
                 iconRect.setWidth(cb->iconSize.width());
                 iconRect = alignedRect(cb->direction,
@@ -4486,7 +4488,7 @@ void QStyleSheetStyle::drawControl(ControlElement ce, const QStyleOption *opt, Q
 
                 QString titleText = p->fontMetrics().elidedText(dwOpt->title, Qt::ElideRight, r.width());
                 drawItemText(p, r,
-                             alignment, dwOpt->palette,
+                             alignment | Qt::TextHideMnemonic, dwOpt->palette,
                              dwOpt->state & State_Enabled, titleText,
                              QPalette::WindowText);
 
@@ -4842,8 +4844,24 @@ void QStyleSheetStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *op
         // only indirectly through the background of the item. To get the
         // same background for all parts drawn by QTreeView, we have to
         // use the background rule for the item here.
-        if (renderRule(w, opt, PseudoElement_ViewItem).hasBackground())
+        if (renderRule(w, opt, PseudoElement_ViewItem).hasBackground()) {
             pseudoElement = PseudoElement_ViewItem;
+            // Skip border for the branch and draw only the brackground
+            if (const QStyleOptionViewItem *vopt = qstyleoption_cast<const QStyleOptionViewItem *>(opt)) {
+                QRenderRule rule = renderRule(w, opt, PseudoElement_ViewItem);
+                if (vopt->features & QStyleOptionViewItem::HasDecoration &&
+                    (vopt->viewItemPosition == QStyleOptionViewItem::Beginning ||
+                     vopt->viewItemPosition == QStyleOptionViewItem::OnlyOne) && rule.hasBorder()) {
+                    if (rule.hasDrawable()) {
+                        rule.drawBackground(p, rect);
+                        rule.drawImage(p, rule.contentsRect(rect));
+                    } else {
+                        baseStyle()->drawPrimitive(pe, opt, p, w);
+                    }
+                    return;
+                }
+            }
+        }
         break;
     case PE_PanelItemViewItem:
         pseudoElement = PseudoElement_ViewItem;
@@ -4871,6 +4889,7 @@ void QStyleSheetStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *op
             w = w->parentWidget(); //match on the QTabBar instead of the CloseButton
         }
         pseudoElement = PseudoElement_TabBarTabCloseButton;
+        break;
 #endif
 
     default:
@@ -5498,11 +5517,11 @@ QSize QStyleSheetStyle::sizeFromContents(ContentsType ct, const QStyleOption *op
 
             QList<QVariant> layout = rule.styleHint("button-layout"_L1).toList();
             if (layout.isEmpty())
-                layout = subControlLayout("mNX"_L1);
+                layout = subControlLayout("mNX");
 
             int width = 0, height = 0;
-            for (int i = 0; i < layout.size(); i++) {
-                int layoutButton = layout[i].toInt();
+            for (const QVariant &val : std::as_const(layout)) {
+                int layoutButton = val.toInt();
                 if (layoutButton < PseudoElement_MdiCloseButton
                     || layoutButton > PseudoElement_MdiNormalButton)
                     continue;
@@ -5629,7 +5648,8 @@ QPixmap QStyleSheetStyle::standardPixmap(StandardPixmap standardPixmap, const QS
         QRenderRule rule = renderRule(w, opt);
         if (rule.hasStyleHint(s)) {
             QIcon icon = qvariant_cast<QIcon>(rule.styleHint(s));
-            return icon.pixmap(16, 16); // ###: unhard-code this if someone complains
+            const auto dpr = w ? w->devicePixelRatio() : qApp->devicePixelRatio();
+            return icon.pixmap(QSize(16, 16), dpr);
         }
     }
     return baseStyle()->standardPixmap(standardPixmap, opt, w);
@@ -6064,12 +6084,12 @@ QRect QStyleSheetStyle::subControlRect(ComplexControl cc, const QStyleOptionComp
             || hasStyleRule(w, PseudoElement_MdiMinButton)) {
             QList<QVariant> layout = rule.styleHint("button-layout"_L1).toList();
             if (layout.isEmpty())
-                layout = subControlLayout("mNX"_L1);
+                layout = subControlLayout("mNX");
 
             int x = 0, width = 0;
             QRenderRule subRule;
-            for (int i = 0; i < layout.size(); i++) {
-                int layoutButton = layout[i].toInt();
+            for (const QVariant &val : std::as_const(layout)) {
+                int layoutButton = val.toInt();
                 if (layoutButton < PseudoElement_MdiCloseButton
                     || layoutButton > PseudoElement_MdiNormalButton)
                     continue;
@@ -6508,6 +6528,9 @@ bool QStyleSheetStyle::isNaturalChild(const QObject *obj)
 
 QPixmap QStyleSheetStyle::loadPixmap(const QString &fileName, const QObject *context)
 {
+    if (fileName.isEmpty())
+        return {};
+
     qreal ratio = -1.0;
     if (const QWidget *widget = qobject_cast<const QWidget *>(context)) {
         if (QScreen *screen = QApplication::screenAt(widget->mapToGlobal(QPoint(0, 0))))

@@ -32,6 +32,7 @@
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
 #include "third_party/blink/renderer/platform/text/text_direction.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
+#include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 
 namespace blink {
 
@@ -42,9 +43,9 @@ class ElementInternals;
 class ExceptionState;
 class FormAssociated;
 class HTMLFormElement;
-class HTMLSelectMenuElement;
+class HTMLSelectListElement;
 class KeyboardEvent;
-class V8UnionStringTreatNullAsEmptyStringOrTrustedScript;
+class V8UnionStringLegacyNullToEmptyStringOrTrustedScript;
 
 enum TranslateAttributeMode {
   kTranslateAttributeYes,
@@ -62,16 +63,16 @@ enum class ContentEditableType {
 enum class PopoverValueType {
   kNone,
   kAuto,
+  kHint,
   kManual,
 };
-constexpr const char* kPopoverTypeValueAuto = "auto";
-constexpr const char* kPopoverTypeValueManual = "manual";
 
 enum class PopoverTriggerAction {
   kNone,
   kToggle,
   kShow,
   kHide,
+  kHover,
 };
 
 enum class HidePopoverFocusBehavior {
@@ -80,8 +81,22 @@ enum class HidePopoverFocusBehavior {
 };
 
 enum class HidePopoverTransitionBehavior {
+  // Fire events (e.g. beforetoggle) which can run synchronous script, and
+  // also wait for CSS transitions of `overlay` before removing the popover
+  // from the top layer. This should be used for most "normal" popover hide
+  // operations.
   kFireEventsAndWaitForTransitions,
+  // Does not fire any events, nor wait for CSS transitions. The popover is
+  // removed immediately from the top layer. This should be used when the UA
+  // is forcibly removing the popover from the top layer, e.g. when other
+  // higher priority elements are entering the top layer, or when the popover
+  // element is being removed from the document.
   kNoEventsNoWaiting,
+};
+
+enum class HidePopoverIndependence {
+  kLeaveUnrelated,
+  kHideUnrelated,
 };
 
 class CORE_EXPORT HTMLElement : public Element {
@@ -99,9 +114,9 @@ class CORE_EXPORT HTMLElement : public Element {
 
   String innerText();
   void setInnerText(const String&);
-  V8UnionStringTreatNullAsEmptyStringOrTrustedScript* innerTextForBinding();
+  V8UnionStringLegacyNullToEmptyStringOrTrustedScript* innerTextForBinding();
   virtual void setInnerTextForBinding(
-      const V8UnionStringTreatNullAsEmptyStringOrTrustedScript*
+      const V8UnionStringLegacyNullToEmptyStringOrTrustedScript*
           string_or_trusted_script,
       ExceptionState& exception_state);
   void setOuterText(const String&, ExceptionState&);
@@ -168,7 +183,6 @@ class CORE_EXPORT HTMLElement : public Element {
   static const AtomicString& EventNameForAttributeName(
       const QualifiedName& attr_name);
 
-  bool SupportsFocus() const override;
   bool IsDisabledFormControl() const override;
   bool MatchesEnabledPseudoClass() const override;
   bool MatchesReadOnlyPseudoClass() const override;
@@ -200,7 +214,7 @@ class CORE_EXPORT HTMLElement : public Element {
   void UpdateDirectionalityAndDescendant(TextDirection direction);
   void UpdateDescendantDirectionality(TextDirection direction);
   void AdjustDirectionalityIfNeededAfterShadowRootChanged();
-  void BeginParsingChildren() override;
+  void ParserDidSetAttributes() override;
 
   V8UnionBooleanOrStringOrUnrestrictedDouble* hidden() const;
   void setHidden(const V8UnionBooleanOrStringOrUnrestrictedDouble*);
@@ -209,33 +223,44 @@ class CORE_EXPORT HTMLElement : public Element {
   virtual bool IsPotentiallyRenderBlocking() const { return false; }
 
   // Popover API related functions.
-  void UpdatePopoverAttribute(String);
+  void UpdatePopoverAttribute(const AtomicString&);
   bool HasPopoverAttribute() const;
+  // The IDL reflections:
+  AtomicString popover() const;
+  void setPopover(const AtomicString& value);
   PopoverValueType PopoverType() const;
   bool popoverOpen() const;
+  // IsPopoverReady returns true if the popover is in a state where it can be
+  // either shown or hidden based on |action|. If exception_state is set, then
+  // it will throw an exception if the state is not ready to transition to the
+  // state in |action|. |include_event_handler_text| adds some additional text
+  // to the exception if an exception is thrown. When |expected_document| is
+  // set, it will be compared to the current document and return false if they
+  // do not match.
   bool IsPopoverReady(PopoverTriggerAction action,
                       ExceptionState* exception_state,
-                      bool include_event_handler_text = false) const;
-  void togglePopover(ExceptionState& exception_state);
-  void togglePopover(bool force, ExceptionState& exception_state);
+                      bool include_event_handler_text,
+                      Document* expected_document) const;
+  bool togglePopover(ExceptionState& exception_state);
+  bool togglePopover(bool force, ExceptionState& exception_state);
   void showPopover(ExceptionState& exception_state);
   void hidePopover(ExceptionState& exception_state);
   // |exception_state| can be nullptr when exceptions can't be thrown, such as
   // when the browser hides a popover during light dismiss or shows a popover in
   // response to clicking a button with popovershowtarget.
-  void ShowPopoverInternal(ExceptionState* exception_state);
+  void ShowPopoverInternal(Element* invoker, ExceptionState* exception_state);
   void HidePopoverInternal(HidePopoverFocusBehavior focus_behavior,
                            HidePopoverTransitionBehavior event_firing,
                            ExceptionState* exception_state);
   void PopoverHideFinishIfNeeded(bool immediate);
-  static const HTMLElement* FindTopmostPopoverAncestor(HTMLElement&);
+  static const HTMLElement* FindTopmostPopoverAncestor(
+      HTMLElement& new_popover,
+      Element* new_popovers_invoker);
 
   // Retrieves the element pointed to by this element's 'anchor' content
   // attribute, if that element exists.
   Element* anchorElement();
   void setAnchorElement(Element*);
-  void ResetPopoverAnchorObserver();
-  void PopoverAnchorElementChanged();
   static void HandlePopoverLightDismiss(const Event& event, const Node& node);
   void InvokePopover(Element* invoker);
   void SetPopoverFocusOnShow();
@@ -244,16 +269,15 @@ class CORE_EXPORT HTMLElement : public Element {
   static void HideAllPopoversUntil(const HTMLElement*,
                                    Document&,
                                    HidePopoverFocusBehavior,
-                                   HidePopoverTransitionBehavior);
-  // This function checks that the ancestor relationships are still valid for
-  // the entire popover stack. These can change in various ways, such as a
-  // triggering element changing its `disabled` attribute. If any relationships
-  // are invalid, the entire popover stack is closed, and a console warning is
-  // emitted.
-  void CheckAndPossiblyClosePopoverStack();
+                                   HidePopoverTransitionBehavior,
+                                   HidePopoverIndependence);
+  // Popover hover triggering behavior.
+  bool IsNodePopoverDescendant(const Node& node) const;
+  void MaybeQueuePopoverHideEvent();
+  static void HoveredElementChanged(Element* old_element, Element* new_element);
 
-  void SetOwnerSelectMenuElement(HTMLSelectMenuElement* element);
-  HTMLSelectMenuElement* ownerSelectMenuElement() const;
+  void SetPopoverOwnerSelectListElement(HTMLSelectListElement* element);
+  HTMLSelectListElement* popoverOwnerSelectListElement() const;
 
   bool DispatchFocusEvent(
       Element* old_focused_element,
@@ -261,6 +285,8 @@ class CORE_EXPORT HTMLElement : public Element {
       InputDeviceCapabilities* source_capabilities) override;
 
  protected:
+  bool SupportsFocus() const override;
+
   enum AllowPercentage { kDontAllowPercentageValues, kAllowPercentageValues };
   enum AllowZero { kDontAllowZeroValues, kAllowZeroValues };
   void AddHTMLLengthToStyle(MutableCSSPropertyValueSet*,
@@ -311,7 +337,6 @@ class CORE_EXPORT HTMLElement : public Element {
   void FinishParsingChildren() override;
 
  private:
-  String DebugNodeName() const final;
   String nodeName() const final;
 
   bool IsHTMLElement() const =
@@ -345,7 +370,9 @@ class CORE_EXPORT HTMLElement : public Element {
   void OnFormAttrChanged(const AttributeModificationParams&);
   void OnLangAttrChanged(const AttributeModificationParams&);
   void OnNonceAttrChanged(const AttributeModificationParams&);
+  void OnPopoverChanged(const AttributeModificationParams&);
 
+  // Delegate ParseAttribute to base class
   void ReparseAttribute(const AttributeModificationParams&);
 
   int AdjustedOffsetForZoom(LayoutUnit);

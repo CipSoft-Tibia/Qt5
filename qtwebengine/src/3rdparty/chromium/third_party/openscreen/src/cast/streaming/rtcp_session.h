@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,7 @@
 #include "cast/streaming/ntp_time.h"
 #include "cast/streaming/ssrc.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // Session-level configuration and shared components for the RTCP messaging
 // associated with a single Cast RTP stream. Multiple packet serialization and
@@ -27,16 +26,18 @@ class RtcpSession {
   Ssrc sender_ssrc() const { return sender_ssrc_; }
   Ssrc receiver_ssrc() const { return receiver_ssrc_; }
   const NtpTimeConverter& ntp_converter() const { return ntp_converter_; }
+  Clock::time_point start_time() const { return start_time_; }
 
  private:
   const Ssrc sender_ssrc_;
   const Ssrc receiver_ssrc_;
 
+  Clock::time_point start_time_;
+
   // Translates between system time (internal format) and NTP (wire format).
   NtpTimeConverter ntp_converter_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_RTCP_SESSION_H_

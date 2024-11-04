@@ -23,17 +23,17 @@ Item {
         anchors.top: mainwindow.top
         anchors.left: mainwindow.left
 
-        ColorGradient {
+        Gradient {
             id: surfaceGradient
-            ColorGradientStop { position: 0.0; color: "darkslategray" }
-            ColorGradientStop { id: middleGradient; position: 0.50; color: "peru" }
-            ColorGradientStop { position: 1.0; color: "red" }
+            GradientStop { position: 0.0; color: "darkslategray" }
+            GradientStop { id: middleGradient; position: 0.50; color: "peru" }
+            GradientStop { position: 1.0; color: "red" }
         }
 
         Theme3D {
             id: mainTheme
-            type: Q3DTheme.ThemeStoneMoss
-            colorStyle: Q3DTheme.ColorStyleRangeGradient
+            type: Theme3D.Theme.StoneMoss
+            colorStyle: Theme3D.ColorStyle.RangeGradient
             baseGradients: [surfaceGradient]
         }
 
@@ -42,9 +42,9 @@ Item {
             width: surfaceview.width
             height: surfaceview.height
             theme: mainTheme
-            shadowQuality: AbstractGraph3D.ShadowQualityMedium
+            shadowQuality: AbstractGraph3D.ShadowQuality.Medium
             selectionMode: AbstractGraph3D.SelectionSlice | AbstractGraph3D.SelectionItemAndRow
-            scene.activeCamera.cameraPreset: Camera3D.CameraPresetIsometricLeft
+            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeft
             axisY.min: 0.0
             axisY.max: 500.0
             axisX.segmentCount: 10

@@ -86,10 +86,11 @@ PeerConfigurer* PeerConfigurer::SetAudioDecoderFactory(
   components_->pcf_dependencies->audio_decoder_factory = audio_decoder_factory;
   return this;
 }
-PeerConfigurer* PeerConfigurer::SetAsyncResolverFactory(
-    std::unique_ptr<webrtc::AsyncResolverFactory> async_resolver_factory) {
-  components_->pc_dependencies->async_resolver_factory =
-      std::move(async_resolver_factory);
+PeerConfigurer* PeerConfigurer::SetAsyncDnsResolverFactory(
+    std::unique_ptr<webrtc::AsyncDnsResolverFactoryInterface>
+        async_dns_resolver_factory) {
+  components_->pc_dependencies->async_dns_resolver_factory =
+      std::move(async_dns_resolver_factory);
   return this;
 }
 PeerConfigurer* PeerConfigurer::SetRTCCertificateGenerator(
@@ -181,12 +182,12 @@ PeerConfigurer* PeerConfigurer::SetUseNetworkThreadAsWorkerThread() {
   return this;
 }
 
-PeerConfigurer* PeerConfigurer::SetRtcEventLogPath(std::string path) {
-  params_->rtc_event_log_path = std::move(path);
+PeerConfigurer* PeerConfigurer::SetRtcEventLogPath(absl::string_view path) {
+  params_->rtc_event_log_path = std::string(path);
   return this;
 }
-PeerConfigurer* PeerConfigurer::SetAecDumpPath(std::string path) {
-  params_->aec_dump_path = std::move(path);
+PeerConfigurer* PeerConfigurer::SetAecDumpPath(absl::string_view path) {
+  params_->aec_dump_path = std::string(path);
   return this;
 }
 PeerConfigurer* PeerConfigurer::SetRTCConfiguration(

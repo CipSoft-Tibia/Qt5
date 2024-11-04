@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 #include <utility>
 
 #include "absl/strings/ascii.h"
-#include "absl/types/optional.h"
 #include "cast/streaming/message_fields.h"
 #include "json/reader.h"
 #include "json/writer.h"
@@ -19,12 +18,11 @@
 #include "util/osp_logging.h"
 #include "util/stringprintf.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
-EnumNameTable<ReceiverMessage::Type, 5> kMessageTypeNames{
+EnumNameTable<ReceiverMessage::Type, 3> kMessageTypeNames{
     {{kMessageTypeAnswer, ReceiverMessage::Type::kAnswer},
      {"CAPABILITIES_RESPONSE", ReceiverMessage::Type::kCapabilitiesResponse},
      {"RPC", ReceiverMessage::Type::kRpc}}};
@@ -70,14 +68,14 @@ bool TryParseCapability(const Json::Value& value, MediaCapability* out) {
 
 }  // namespace
 
-ReceiverError::ReceiverError(int code, absl::string_view description)
+ReceiverError::ReceiverError(int code, std::string_view description)
     : code(code), description(description) {
   if (code >= kOpenscreenErrorOffset) {
     openscreen_code = static_cast<Error::Code>(code - kOpenscreenErrorOffset);
   }
 }
 
-ReceiverError::ReceiverError(Error::Code code, absl::string_view description)
+ReceiverError::ReceiverError(Error::Code code, std::string_view description)
     : code(static_cast<int>(code) + kOpenscreenErrorOffset),
       openscreen_code(code),
       description(description) {}
@@ -281,5 +279,4 @@ ErrorOr<Json::Value> ReceiverMessage::ToJson() const {
   return root;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

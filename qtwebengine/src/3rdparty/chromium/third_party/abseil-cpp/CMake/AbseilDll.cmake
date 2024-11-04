@@ -25,6 +25,7 @@ set(ABSL_INTERNAL_DLL_FILES
   "base/internal/low_level_alloc.cc"
   "base/internal/low_level_alloc.h"
   "base/internal/low_level_scheduling.h"
+  "base/internal/nullability_impl.h"
   "base/internal/per_thread_tls.h"
   "base/internal/prefetch.h"
   "base/prefetch.h"
@@ -54,6 +55,7 @@ set(ABSL_INTERNAL_DLL_FILES
   "base/log_severity.cc"
   "base/log_severity.h"
   "base/macros.h"
+  "base/nullability.h"
   "base/optimization.h"
   "base/options.h"
   "base/policy_checks.h"
@@ -159,6 +161,8 @@ set(ABSL_INTERNAL_DLL_FILES
   "log/internal/conditions.cc"
   "log/internal/conditions.h"
   "log/internal/config.h"
+  "log/internal/fnmatch.h"
+  "log/internal/fnmatch.cc"
   "log/internal/globals.cc"
   "log/internal/globals.h"
   "log/internal/log_format.cc"
@@ -257,6 +261,7 @@ set(ABSL_INTERNAL_DLL_FILES
   "strings/ascii.h"
   "strings/charconv.cc"
   "strings/charconv.h"
+  "strings/charset.h"
   "strings/cord.cc"
   "strings/cord.h"
   "strings/cord_analysis.cc"
@@ -321,7 +326,6 @@ set(ABSL_INTERNAL_DLL_FILES
   "strings/strip.h"
   "strings/substitute.cc"
   "strings/substitute.h"
-  "strings/internal/char_map.h"
   "strings/internal/escaping.h"
   "strings/internal/escaping.cc"
   "strings/internal/memutil.cc"
@@ -360,15 +364,26 @@ set(ABSL_INTERNAL_DLL_FILES
   "synchronization/internal/create_thread_identity.cc"
   "synchronization/internal/create_thread_identity.h"
   "synchronization/internal/futex.h"
+  "synchronization/internal/futex_waiter.h"
+  "synchronization/internal/futex_waiter.cc"
   "synchronization/internal/graphcycles.cc"
   "synchronization/internal/graphcycles.h"
   "synchronization/internal/kernel_timeout.h"
   "synchronization/internal/kernel_timeout.cc"
   "synchronization/internal/per_thread_sem.cc"
   "synchronization/internal/per_thread_sem.h"
+  "synchronization/internal/pthread_waiter.h"
+  "synchronization/internal/pthread_waiter.cc"
+  "synchronization/internal/sem_waiter.h"
+  "synchronization/internal/sem_waiter.cc"
+  "synchronization/internal/stdcpp_waiter.h"
+  "synchronization/internal/stdcpp_waiter.cc"
   "synchronization/internal/thread_pool.h"
-  "synchronization/internal/waiter.cc"
   "synchronization/internal/waiter.h"
+  "synchronization/internal/waiter_base.h"
+  "synchronization/internal/waiter_base.cc"
+  "synchronization/internal/win32_waiter.h"
+  "synchronization/internal/win32_waiter.cc"
   "time/civil_time.cc"
   "time/civil_time.h"
   "time/clock.cc"
@@ -406,17 +421,13 @@ set(ABSL_INTERNAL_DLL_FILES
   "types/bad_variant_access.cc"
   "types/bad_variant_access.h"
   "types/compare.h"
-  "types/internal/conformance_aliases.h"
-  "types/internal/conformance_archetype.h"
-  "types/internal/conformance_profile.h"
-  "types/internal/parentheses.h"
-  "types/internal/transform_args.h"
   "types/internal/variant.h"
   "types/optional.h"
   "types/internal/optional.h"
   "types/span.h"
   "types/internal/span.h"
   "types/variant.h"
+  "utility/internal/if_constexpr.h"
   "utility/utility.h"
   "debugging/leak_check.cc"
 )
@@ -448,8 +459,14 @@ set(ABSL_INTERNAL_DLL_TARGETS
   "container_common"
   "container_memory"
   "cord"
+  "cord_internal"
+  "cordz_functions"
+  "cordz_handle"
+  "cordz_info"
+  "cordz_sample_token"
   "core_headers"
   "counting_allocator"
+  "crc_cord_state"
   "crc_cpu_detect"
   "crc_internal"
   "crc32c"
@@ -504,6 +521,7 @@ set(ABSL_INTERNAL_DLL_TARGETS
   "log_internal_structured"
   "log_severity"
   "log_structured"
+  "low_level_hash"
   "malloc_internal"
   "memory"
   "meta"
@@ -555,8 +573,10 @@ set(ABSL_INTERNAL_DLL_TARGETS
   "stack_consumption"
   "stacktrace"
   "status"
+  "statusor"
   "str_format"
   "str_format_internal"
+  "strerror"
   "strings"
   "strings_internal"
   "symbolize"
@@ -575,6 +595,10 @@ set(ABSL_INTERNAL_TEST_DLL_FILES
   "hash/hash_testing.h"
   "log/scoped_mock_log.cc"
   "log/scoped_mock_log.h"
+  "random/internal/chi_square.cc"
+  "random/internal/chi_square.h"
+  "random/internal/distribution_test_util.cc"
+  "random/internal/distribution_test_util.h"
   "random/internal/mock_helpers.h"
   "random/internal/mock_overload_set.h"
   "random/mocking_bit_gen.h"
@@ -588,17 +612,10 @@ set(ABSL_INTERNAL_TEST_DLL_TARGETS
   "cordz_test_helpers"
   "hash_testing"
   "random_mocking_bit_gen"
+  "random_internal_distribution_test_util"
   "random_internal_mock_overload_set"
   "scoped_mock_log"
 )
-
-function(_absl_target_compile_features_if_available TARGET TYPE FEATURE)
-  if(FEATURE IN_LIST CMAKE_CXX_COMPILE_FEATURES)
-    target_compile_features(${TARGET} ${TYPE} ${FEATURE})
-  else()
-    message(WARNING "Feature ${FEATURE} is unknown for the CXX compiler")
-  endif()
-endfunction()
 
 include(CheckCXXSourceCompiles)
 
@@ -766,7 +783,7 @@ Name: ${_dll}\n\
 Description: Abseil DLL library\n\
 URL: https://abseil.io/\n\
 Version: ${absl_VERSION}\n\
-Libs: -L\${libdir} ${PC_LINKOPTS} $<$<NOT:$<BOOL:${ABSL_CC_LIB_IS_INTERFACE}>>:-l${_dll}>\n\
+Libs: -L\${libdir} $<$<NOT:$<BOOL:${ABSL_CC_LIB_IS_INTERFACE}>>:-l${_dll}> ${PC_LINKOPTS}\n\
 Cflags: -I\${includedir}${PC_CFLAGS}\n")
   INSTALL(FILES "${CMAKE_BINARY_DIR}/lib/pkgconfig/${_dll}.pc"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
@@ -787,18 +804,7 @@ Cflags: -I\${includedir}${PC_CFLAGS}\n")
     # Abseil libraries require C++14 as the current minimum standard. When
     # compiled with C++17 (either because it is the compiler's default or
     # explicitly requested), then Abseil requires C++17.
-    _absl_target_compile_features_if_available(${_dll} PUBLIC ${ABSL_INTERNAL_CXX_STD_FEATURE})
-  else()
-    # Note: This is legacy (before CMake 3.8) behavior. Setting the
-    # target-level CXX_STANDARD property to ABSL_CXX_STANDARD (which is
-    # initialized by CMAKE_CXX_STANDARD) should have no real effect, since
-    # that is the default value anyway.
-    #
-    # CXX_STANDARD_REQUIRED does guard against the top-level CMake project
-    # not having enabled CMAKE_CXX_STANDARD_REQUIRED (which prevents
-    # "decaying" to an older standard if the requested one isn't available).
-    set_property(TARGET ${_dll} PROPERTY CXX_STANDARD ${ABSL_CXX_STANDARD})
-    set_property(TARGET ${_dll} PROPERTY CXX_STANDARD_REQUIRED ON)
+    target_compile_features(${_dll} PUBLIC ${ABSL_INTERNAL_CXX_STD_FEATURE})
   endif()
 
   install(TARGETS ${_dll} EXPORT ${PROJECT_NAME}Targets
@@ -806,4 +812,6 @@ Cflags: -I\${includedir}${PC_CFLAGS}\n")
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
+
+  add_library(absl::${_dll} ALIAS ${_dll})
 endfunction()

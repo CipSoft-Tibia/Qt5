@@ -20,15 +20,17 @@ namespace {
 // re-visit the loop if a loop phi backedge changes something. As a performance
 // optimization, we keep track of operations (`candidates`) that need to be
 // updated potentially, so that we don't have to walk the whole graph again.
-struct DecompressionAnalyzer : AnalyzerBase {
-  using Base = AnalyzerBase;
+struct DecompressionAnalyzer {
+  const Graph& graph;
+  Zone* phase_zone;
   // We use `uint8_t` instead of `bool` here to avoid the bitvector optimization
   // of std::vector.
   FixedSidetable<uint8_t> needs_decompression;
   ZoneVector<OpIndex> candidates;
 
   DecompressionAnalyzer(const Graph& graph, Zone* phase_zone)
-      : AnalyzerBase(graph, phase_zone),
+      : graph(graph),
+        phase_zone(phase_zone),
         needs_decompression(graph.op_id_count(), phase_zone),
         candidates(phase_zone) {
     candidates.reserve(graph.op_id_count() / 8);
@@ -140,6 +142,8 @@ void DecompressionAnalyzer::ProcessOperation(const Operation& op) {
       auto& bitcast = op.Cast<TaggedBitcastOp>();
       if (NeedsDecompression(op)) {
         MarkAsNeedsDecompression(bitcast.input());
+      } else {
+        candidates.push_back(graph.Index(op));
       }
       break;
     }
@@ -190,6 +194,15 @@ void RunDecompressionOptimization(Graph& graph, Zone* phase_zone) {
                     any_of(RegisterRepresentation::Tagged(),
                            RegisterRepresentation::Compressed()));
           load.result_rep = RegisterRepresentation::Compressed();
+        }
+        break;
+      }
+      case Opcode::kTaggedBitcast: {
+        auto& bitcast = op.Cast<TaggedBitcastOp>();
+        if (bitcast.from == RegisterRepresentation::Tagged() &&
+            bitcast.to == RegisterRepresentation::PointerSized()) {
+          bitcast.from = RegisterRepresentation::Compressed();
+          bitcast.to = RegisterRepresentation::Word32();
         }
         break;
       }

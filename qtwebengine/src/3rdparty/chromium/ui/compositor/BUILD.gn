@@ -6,10 +6,6 @@ import("//build/config/jumbo.gni")
 import("//build/config/ui.gni")
 import("//testing/test.gni")
 
-if (is_ios) {
-  import("//build/config/ios/bundle_data_from_filelist.gni")
-}
-
 jumbo_component("compositor") {
   sources = [
     "animation_throughput_reporter.cc",
@@ -139,8 +135,6 @@ jumbo_static_library("test_support") {
     "test/fake_context_factory.h",
     "test/in_process_context_factory.cc",
     "test/in_process_context_factory.h",
-    "test/in_process_context_provider.cc",
-    "test/in_process_context_provider.h",
     "test/layer_animation_observer_test_api.cc",
     "test/layer_animation_observer_test_api.h",
     "test/layer_animation_stopped_waiter.cc",
@@ -227,13 +221,6 @@ jumbo_static_library("test_support") {
   }
 }
 
-if (is_ios) {
-  bundle_data_from_filelist("unit_tests_bundle_data") {
-    testonly = true
-    filelist_name = "unit_tests_bundle_data.filelist"
-  }
-}
-
 test("compositor_unittests") {
   use_xvfb = use_xvfb_in_this_config
 
@@ -286,10 +273,13 @@ test("compositor_unittests") {
   }
 
   if (is_fuchsia) {
-    # TODO(https://crbug.com/1185811): Investigate removing the requirement for
-    # job_policy_ambient_mark_vmo_exec for the sake of V8's allocator in tests.
+    # TODO(https://crbug.com/1022542): Some of these tests use SwiftShader,
+    # which requires ambient VMEX.
     test_runner_shard = "//build/config/fuchsia/test/elf_test_ambient_exec_runner.shard.test-cml"
+
     additional_manifest_fragments = [
+      # TODO(https://crbug.com/1185811): Investigate removing the requirement
+      # for VmexResource.
       "//build/config/fuchsia/test/mark_vmo_executable.shard.test-cml",
       "//build/config/fuchsia/test/present_view.shard.test-cml",
       "//third_party/fuchsia-sdk/sdk/pkg/vulkan/client.shard.cml",
@@ -297,6 +287,6 @@ test("compositor_unittests") {
   }
 
   if (is_ios) {
-    public_deps = [ ":unit_tests_bundle_data" ]
+    public_deps = [ "//ui/gfx:unit_tests_bundle_data" ]
   }
 }

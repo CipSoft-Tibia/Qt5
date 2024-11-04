@@ -5,16 +5,18 @@
 #include "third_party/blink/renderer/core/css/style_scope.h"
 #include "third_party/blink/renderer/core/css/parser/css_selector_parser.h"
 #include "third_party/blink/renderer/core/css/properties/css_parsing_utils.h"
+#include "third_party/blink/renderer/core/css/style_rule.h"
 #include "third_party/blink/renderer/core/css/style_sheet_contents.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
-StyleScope::StyleScope(CSSSelectorList* from, CSSSelectorList* to)
+StyleScope::StyleScope(StyleRule* from, CSSSelectorList* to)
     : from_(from), to_(to) {}
 
-StyleScope::StyleScope(StyleSheetContents* contents) : contents_(contents) {}
+StyleScope::StyleScope(StyleSheetContents* contents, CSSSelectorList* to)
+    : contents_(contents), to_(to) {}
 
 StyleScope::StyleScope(const StyleScope& other)
     : contents_(other.contents_),
@@ -30,7 +32,7 @@ StyleScope* StyleScope::CopyWithParent(const StyleScope* parent) const {
 
 const CSSSelector* StyleScope::From() const {
   if (from_) {
-    return from_->First();
+    return from_->FirstSelector();
   }
   return nullptr;
 }
@@ -46,19 +48,13 @@ bool StyleScope::HasImplicitRoot(Element* element) const {
   if (!contents_) {
     return false;
   }
-  return contents_->HasOwnerParentNode(element);
-}
-
-unsigned StyleScope::Specificity() const {
-  if (!specificity_.has_value()) {
-    specificity_ = (from_ ? from_->MaximumSpecificity() : 0) +
-                   (parent_ ? parent_->Specificity() : 0);
-  }
-  return *specificity_;
+  return contents_->HasOwnerParentElementOrAdoptiveHost(element);
 }
 
 StyleScope* StyleScope::Parse(CSSParserTokenRange prelude,
                               const CSSParserContext* context,
+                              CSSNestingType nesting_type,
+                              StyleRule* parent_rule_for_nesting,
                               StyleSheetContents* style_sheet) {
   HeapVector<CSSSelector> arena;
 
@@ -67,23 +63,23 @@ StyleScope* StyleScope::Parse(CSSParserTokenRange prelude,
 
   prelude.ConsumeWhitespace();
 
-  if (prelude.AtEnd()) {
-    // Implicitly rooted.
-    return MakeGarbageCollected<StyleScope>(style_sheet);
-  }
-
-  if (prelude.Peek().GetType() != kLeftParenthesisToken) {
-    return nullptr;
-  }
-
   // <scope-start>
-  {
+  if (prelude.Peek().GetType() == kLeftParenthesisToken) {
     auto block = prelude.ConsumeBlock();
-    from = CSSSelectorParser::ParseScopeBoundary(block, context, style_sheet,
-                                                 arena);
+    from = CSSSelectorParser::ParseScopeBoundary(block, context, nesting_type,
+                                                 parent_rule_for_nesting,
+                                                 style_sheet, arena);
     if (!from.has_value()) {
       return nullptr;
     }
+  }
+
+  StyleRule* from_rule = nullptr;
+  if (from.has_value() && !from.value().empty()) {
+    auto* properties = MakeGarbageCollected<ImmutableCSSPropertyValueSet>(
+        /* properties */ nullptr, /* count */ 0,
+        CSSParserMode::kHTMLStandardMode);
+    from_rule = StyleRule::Create(from.value(), properties);
   }
 
   prelude.ConsumeWhitespace();
@@ -94,9 +90,16 @@ StyleScope* StyleScope::Parse(CSSParserTokenRange prelude,
       return nullptr;
     }
 
+    // Note that <scope-start> should act as the enclosing style rule for
+    // the purposes of matching the parent pseudo-class (&) within <scope-end>,
+    // hence we're not passing `nesting_type` and `parent_rule_for_nesting`
+    // to `ParseScopeBoundary` here.
+    //
+    // https://drafts.csswg.org/css-nesting-1/#nesting-at-scope
     auto block = prelude.ConsumeBlock();
-    to = CSSSelectorParser::ParseScopeBoundary(block, context, style_sheet,
-                                               arena);
+    to = CSSSelectorParser::ParseScopeBoundary(
+        block, context, CSSNestingType::kScope,
+        /* parent_rule_for_nesting */ from_rule, style_sheet, arena);
     if (!to.has_value()) {
       return nullptr;
     }
@@ -108,14 +111,16 @@ StyleScope* StyleScope::Parse(CSSParserTokenRange prelude,
     return nullptr;
   }
 
-  CSSSelectorList* from_list =
-      from.has_value() ? CSSSelectorList::AdoptSelectorVector(from.value())
-                       : nullptr;
   CSSSelectorList* to_list =
       to.has_value() ? CSSSelectorList::AdoptSelectorVector(to.value())
                      : nullptr;
 
-  return MakeGarbageCollected<StyleScope>(from_list, to_list);
+  if (!from.has_value()) {
+    // Implicitly rooted.
+    return MakeGarbageCollected<StyleScope>(style_sheet, to_list);
+  }
+
+  return MakeGarbageCollected<StyleScope>(from_rule, to_list);
 }
 
 void StyleScope::Trace(blink::Visitor* visitor) const {

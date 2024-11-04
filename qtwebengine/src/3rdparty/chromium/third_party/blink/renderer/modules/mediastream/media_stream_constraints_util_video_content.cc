@@ -8,15 +8,16 @@
 #include <cmath>
 #include <utility>
 
+#include "base/feature_list.h"
 #include "media/base/limits.h"
 #include "media/base/video_types.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/mediastream/media_stream_controls.h"
 #include "third_party/blink/public/platform/web_string.h"
 #include "third_party/blink/public/web/modules/mediastream/media_stream_video_source.h"
 #include "third_party/blink/renderer/modules/mediastream/media_constraints.h"
 #include "third_party/blink/renderer/modules/mediastream/media_stream_constraints_util.h"
 #include "third_party/blink/renderer/modules/mediastream/media_stream_constraints_util_sets.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 
 namespace blink {
 
@@ -206,11 +207,13 @@ media::VideoCaptureParams SelectVideoCaptureParamsFromCandidates(
   media::VideoCaptureParams params;
   // If zero-copy tab capture is enabled, we want the capturer to auto-select
   // the pixel format:
+  const media::VideoPixelFormat pixel_format =
+      base::FeatureList::IsEnabled(blink::features::kZeroCopyTabCapture)
+          ? media::PIXEL_FORMAT_UNKNOWN
+          : media::PIXEL_FORMAT_I420;
   params.requested_format = media::VideoCaptureFormat(
       ToGfxSize(requested_resolution), static_cast<float>(requested_frame_rate),
-      RuntimeEnabledFeatures::ZeroCopyTabCaptureEnabled()
-          ? media::PIXEL_FORMAT_UNKNOWN
-          : media::PIXEL_FORMAT_I420);
+      pixel_format);
   params.resolution_change_policy = SelectResolutionPolicyFromCandidates(
       candidates.resolution_set(), default_resolution_policy);
   // Content capture always uses default power-line frequency.

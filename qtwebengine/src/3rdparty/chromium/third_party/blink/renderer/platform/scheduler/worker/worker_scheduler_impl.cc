@@ -40,7 +40,8 @@ WorkerSchedulerImpl::WorkerSchedulerImpl(
     WorkerSchedulerProxy* proxy)
     : throttleable_task_queue_(worker_thread_scheduler->CreateTaskQueue(
           base::sequence_manager::QueueName::WORKER_THROTTLEABLE_TQ,
-          true)),
+          NonMainThreadTaskQueue::QueueCreationParams().SetCanBeThrottled(
+              true))),
       pausable_task_queue_(worker_thread_scheduler->CreateTaskQueue(
           base::sequence_manager::QueueName::WORKER_PAUSABLE_TQ)),
       pausable_non_vt_task_queue_(worker_thread_scheduler->CreateTaskQueue(
@@ -172,7 +173,6 @@ scoped_refptr<base::SingleThreadTaskRunner> WorkerSchedulerImpl::GetTaskRunner(
     case TaskType::kMicrotask:
     case TaskType::kRemoteEvent:
     case TaskType::kUnshippedPortMessage:
-    case TaskType::kFileReading:
     case TaskType::kDatabaseAccess:
     case TaskType::kPresentation:
     case TaskType::kSensor:
@@ -201,6 +201,8 @@ scoped_refptr<base::SingleThreadTaskRunner> WorkerSchedulerImpl::GetTaskRunner(
       // move them into other task runners. See also comments in
       // Get(LocalFrame). (https://crbug.com/670534)
       return pausable_task_queue_->CreateTaskRunner(type);
+    case TaskType::kFileReading:
+      return pausable_non_vt_task_queue_->CreateTaskRunner(type);
     case TaskType::kDeprecatedNone:
     case TaskType::kInternalInspector:
     case TaskType::kInternalTest:
@@ -214,10 +216,12 @@ scoped_refptr<base::SingleThreadTaskRunner> WorkerSchedulerImpl::GetTaskRunner(
       // Get(LocalFrame). (https://crbug.com/670534)
       return unpausable_task_queue_->CreateTaskRunner(type);
     case TaskType::kNetworkingUnfreezable:
+    case TaskType::kNetworkingUnfreezableImageLoading:
       return IsInflightNetworkRequestBackForwardCacheSupportEnabled()
                  ? unpausable_task_queue_->CreateTaskRunner(type)
                  : pausable_non_vt_task_queue_->CreateTaskRunner(type);
     case TaskType::kMainThreadTaskQueueV8:
+    case TaskType::kMainThreadTaskQueueV8LowPriority:
     case TaskType::kMainThreadTaskQueueCompositor:
     case TaskType::kMainThreadTaskQueueDefault:
     case TaskType::kMainThreadTaskQueueInput:
@@ -293,9 +297,6 @@ void WorkerSchedulerImpl::OnStartedUsingNonStickyFeature(
     const SchedulingPolicy& policy,
     std::unique_ptr<SourceLocation> source_location,
     SchedulingAffectingFeatureHandle* handle) {
-  if (policy.disable_align_wake_ups)
-    scheduler::DisableAlignWakeUpsForProcess();
-
   if (!policy.disable_back_forward_cache) {
     return;
   }
@@ -307,9 +308,6 @@ void WorkerSchedulerImpl::OnStartedUsingStickyFeature(
     SchedulingPolicy::Feature feature,
     const SchedulingPolicy& policy,
     std::unique_ptr<SourceLocation> source_location) {
-  if (policy.disable_align_wake_ups)
-    scheduler::DisableAlignWakeUpsForProcess();
-
   if (!policy.disable_back_forward_cache) {
     return;
   }
@@ -333,11 +331,14 @@ WorkerSchedulerImpl::GetFrameOrWorkerSchedulerWeakPtr() {
 
 std::unique_ptr<WebSchedulingTaskQueue>
 WorkerSchedulerImpl::CreateWebSchedulingTaskQueue(
+    WebSchedulingQueueType queue_type,
     WebSchedulingPriority priority) {
   scoped_refptr<NonMainThreadTaskQueue> task_queue =
       thread_scheduler_->CreateTaskQueue(
-          base::sequence_manager::QueueName::WORKER_WEB_SCHEDULING_TQ);
-  task_queue->SetWebSchedulingPriority(priority);
+          base::sequence_manager::QueueName::WORKER_WEB_SCHEDULING_TQ,
+          NonMainThreadTaskQueue::QueueCreationParams()
+              .SetWebSchedulingQueueType(queue_type)
+              .SetWebSchedulingPriority(priority));
   return std::make_unique<NonMainThreadWebSchedulingTaskQueueImpl>(
       std::move(task_queue));
 }

@@ -4,24 +4,46 @@
 #ifndef DATAGENERATOR_H
 #define DATAGENERATOR_H
 
-#include <QtGraphs/QScatter3DSeries>
 #include <QtCore/QFile>
+#include <QtGraphs>
 
-class DataGenerator  : public QObject
+class DataGenerator : public QObject
 {
     Q_OBJECT
 public:
     DataGenerator(QObject *parent = 0);
-    virtual ~DataGenerator();
+    ~DataGenerator() override;
 
 public Q_SLOTS:
-    void generateData(QScatter3DSeries *series, uint count);
-    void add(QScatter3DSeries *series, uint count);
-    void writeLine(int itemCount, float fps);
+    void generateSurfaceData(QSurface3DSeries *series, uint count);
+    void generateScatterData(QScatter3DSeries *series, uint count);
+    void generateBarData(QBar3DSeries *series, uint count);
+
+    void updateScatterData(QScatter3DSeries *series);
+    void updateSurfaceData(QSurface3DSeries *series);
+    void updateBarData(QBar3DSeries *series);
+
+    void setFilePath(const QUrl &path);
+    void writeLine(const QString &line);
+    void writeCSV(const QString &line);
+
+Q_SIGNALS:
+    void onMessage(const QString &message);
+    void onCaptureInit(long long nanoseconds);
 
 private:
-    QScatter3DSeries m_series;
-    QFile *m_file;
+    QFile *m_file = nullptr;
+    QFile *m_csv = nullptr;
+    QElapsedTimer m_timer;
+    int m_cacheCount = 60;
+
+    QList<QSurfaceDataArray> m_surfaceCaches;
+    QList<QScatterDataArray> m_scatterCaches;
+    QList<QBarDataArray> m_barCaches;
+
+    void populateSurfaceCaches(int sideLength);
+    void populateScatterCaches(int sideLength);
+    void populateBarChaches(int sideLength);
 };
 
 #endif // DATAGENERATOR_H

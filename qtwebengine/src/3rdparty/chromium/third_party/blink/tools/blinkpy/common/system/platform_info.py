@@ -29,6 +29,7 @@
 import re
 import sys
 
+from blinkpy.common.memoized import memoized
 from blinkpy.common.system.executive import ScriptError
 
 
@@ -62,6 +63,8 @@ class PlatformInfo:
             self.os_version = self._determine_win_version(
                 self._win_version_tuple())
         self.interactive = sys_module.stdin.isatty()
+        self._processor = platform_module.processor() or ""
+
         assert sys.platform != 'cygwin', 'Cygwin is not supported.'
 
     def is_mac(self):
@@ -76,6 +79,10 @@ class PlatformInfo:
     def is_freebsd(self):
         return self.os_name == 'freebsd'
 
+    def processor(self):
+        return self._processor
+
+    @memoized
     def is_highdpi(self):
         if self.is_mac():
             output = self._executive.run_command(
@@ -86,6 +93,7 @@ class PlatformInfo:
                 return True
         return False
 
+    @memoized
     def is_running_rosetta(self):
         if self.is_mac():
             # If we are running under Rosetta, platform.machine() is
@@ -110,6 +118,7 @@ class PlatformInfo:
         # Windows-2008ServerR2-6.1.7600
         return self._platform_module.platform()
 
+    @memoized
     def total_bytes_memory(self):
         if self.is_mac():
             return int(
@@ -164,6 +173,7 @@ class PlatformInfo:
 
         return 'unknown'
 
+    @memoized
     def _raw_mac_version(self, platform_module):
         """Read this Mac's version string (starts with "<major>.<minor>")."""
         try:
@@ -192,7 +202,7 @@ class PlatformInfo:
         major_release = int(mac_version_string.split('.')[0])
         minor_release = int(mac_version_string.split('.')[1])
         if major_release == 10:
-            assert 13 <= minor_release <= 15, 'Unsupported mac OS version: %s' % mac_version_string
+            assert minor_release == 15, 'Unsupported mac OS version: %s' % mac_version_string
             return 'mac{major_release}.{minor_release}'.format(
                 major_release=major_release,
                 minor_release=minor_release,
@@ -203,7 +213,9 @@ class PlatformInfo:
                 13, major_release), )
 
     def _determine_linux_version(self, _):
-        return 'trusty'
+        # Assume we only test against one Linux version at a time (see
+        # crbug.com/1468322). Therefore, there's no need to name that version.
+        return 'linux'
 
     def _determine_win_version(self, win_version_tuple):
         if win_version_tuple[:2] == (10, 0):
@@ -237,6 +249,7 @@ class PlatformInfo:
 
         return self._win_version_tuple_from_cmd()
 
+    @memoized
     def _win_version_tuple_from_cmd(self):
         # Note that this should only ever be called on windows, so this should always work.
         ver_output = self._executive.run_command(['cmd', '/c', 'ver'],

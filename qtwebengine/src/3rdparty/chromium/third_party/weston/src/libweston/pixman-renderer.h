@@ -28,6 +28,7 @@
 #include <libweston/libweston.h>
 #include "backend.h"
 #include "libweston-internal.h"
+#include "pixman.h"
 
 int
 pixman_renderer_init(struct weston_compositor *ec);
@@ -35,19 +36,25 @@ pixman_renderer_init(struct weston_compositor *ec);
 struct pixman_renderer_output_options {
 	/** Composite into a shadow buffer, copying to the hardware buffer */
 	bool use_shadow;
+	/** Initial framebuffer size */
+	struct weston_size fb_size;
+	/** Initial pixel format */
+	const struct pixel_format_info *format;
 };
 
-int
-pixman_renderer_output_create(struct weston_output *output,
-			      const struct pixman_renderer_output_options *options);
+struct pixman_renderer_interface {
+	int (*output_create)(struct weston_output *output,
+			     const struct pixman_renderer_output_options *options);
+	void (*output_destroy)(struct weston_output *output);
 
-void
-pixman_renderer_output_set_buffer(struct weston_output *output,
-				  pixman_image_t *buffer);
-
-void
-pixman_renderer_output_set_hw_extra_damage(struct weston_output *output,
-					   pixman_region32_t *extra_damage);
-
-void
-pixman_renderer_output_destroy(struct weston_output *output);
+	struct weston_renderbuffer *(*create_image_from_ptr)(struct weston_output *output,
+							     const struct pixel_format_info *format,
+							     int width,
+							     int height,
+							     uint32_t *ptr,
+							     int stride);
+	struct weston_renderbuffer *(*create_image)(struct weston_output *output,
+						    const struct pixel_format_info *format,
+						    int width, int height);
+	pixman_image_t *(*renderbuffer_get_image)(struct weston_renderbuffer *renderbuffer);
+};

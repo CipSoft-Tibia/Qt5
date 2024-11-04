@@ -9,10 +9,14 @@
 #include <string>
 #include <vector>
 
+#include "base/containers/flat_map.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/types/id_type.h"
+#include "components/autofill/core/browser/data_model/autofill_wallet_usage_data.h"
+#include "components/autofill/core/browser/metrics/log_event.h"
 #include "components/autofill/core/browser/ui/suggestion.h"
+#include "components/autofill/core/common/aliases.h"
 
 namespace base {
 class Time;
@@ -25,16 +29,13 @@ struct CardMetadataLoggingContext;
 }
 
 class AutofillClient;
-class AutofillField;
 class AutofillOfferData;
 class AutofillType;
 class CreditCard;
 struct FormFieldData;
 class FormStructure;
-class IBAN;
+class Iban;
 class PersonalDataManager;
-
-using InternalId = base::IdType32<class InternalIdTag>;
 
 // Helper class to generate Autofill suggestions, such as for credit card and
 // address profile Autofill.
@@ -47,13 +48,18 @@ class AutofillSuggestionGenerator {
   AutofillSuggestionGenerator& operator=(const AutofillSuggestionGenerator&) =
       delete;
 
-  // Generates suggestions for all available profiles based on the `form`,
-  // the value of `field` and the `autofill_field`. `app_locale` is the
-  // locale used by the application.
+  // Generates suggestions for all available profiles based on the `form` and
+  // the value of `field` of type `field_type`. `app_locale` is the locale used
+  // by the application.
+  // `skip_statuses` is used to know which fields are skipped during filling and
+  // which are not, and only use fillable fields for suggestion deduplication
+  // and label generation.
+  // It is assumed that skip_statuses and form_structure have the sane size.
   std::vector<Suggestion> GetSuggestionsForProfiles(
       const FormStructure& form,
       const FormFieldData& field,
-      const AutofillField& autofill_field,
+      AutofillType field_type,
+      base::span<SkipStatus> skip_statuses,
       const std::string& app_locale);
 
   // Generates suggestions for all available credit cards based on the `type`
@@ -71,17 +77,31 @@ class AutofillSuggestionGenerator {
       bool& with_offer,
       autofill_metrics::CardMetadataLoggingContext& metadata_logging_context);
 
+  // Generates suggestions for standalone CVC fields. These only apply to
+  // virtual cards that are saved on file to a merchant. In these cases,
+  // we only display the virtual card option and do not show FPAN option.
+  std::vector<Suggestion> GetSuggestionsForVirtualCardStandaloneCvc(
+      autofill_metrics::CardMetadataLoggingContext& metadata_logging_context,
+      base::flat_map<std::string, VirtualCardUsageData::VirtualCardLastFour>&
+          virtual_card_guid_to_last_four_map);
+
+  // Generates a separator suggestion.
+  static Suggestion CreateSeparator();
+
+  // Generates a footer suggestion "Manage payment methods..." menu item which
+  // will redirect to Chrome payment settings page.
+  static Suggestion CreateManagePaymentMethodsEntry();
+
   // Returns the local and server cards ordered by the Autofill ranking. The
   // cards which are expired and disused aren't included if
   // |suppress_disused_cards| is true.
-  static std::vector<CreditCard*> GetOrderedCardsToSuggest(
-      // PersonalDataManager* personal_data,
+  static std::vector<CreditCard> GetOrderedCardsToSuggest(
       AutofillClient* autofill_client,
       bool suppress_disused_cards);
 
   // Generates suggestions for all available IBANs.
-  static std::vector<Suggestion> GetSuggestionsForIBANs(
-      const std::vector<const IBAN*>& ibans);
+  static std::vector<Suggestion> GetSuggestionsForIbans(
+      const std::vector<const Iban*>& ibans);
 
   // Converts the vector of promo code offers that is passed in to a vector of
   // suggestions that can be displayed to the user for a promo code field.
@@ -102,28 +122,9 @@ class AutofillSuggestionGenerator {
   // one copy has a nickname, take that.
   std::u16string GetDisplayNicknameForCreditCard(const CreditCard& card) const;
 
-  // Methods for packing and unpacking credit card and profile IDs for sending
-  // and receiving to and from the renderer process.
-  int MakeFrontendId(const Suggestion::BackendId& cc_backend_id,
-                     const Suggestion::BackendId& profile_backend_id);
-  void SplitFrontendId(int frontend_id,
-                       Suggestion::BackendId* cc_backend_id,
-                       Suggestion::BackendId* profile_backend_id);
-
   // Helper function to decide whether to show the virtual card option for
   // `candidate_card`.
   bool ShouldShowVirtualCardOption(const CreditCard* candidate_card) const;
-
-  // Returns a pointer to the server card that has duplicate information of the
-  // `local_card`. It is not guaranteed that a server card is found. If not,
-  // nullptr is returned.
-  const CreditCard* GetServerCardForLocalCard(
-      const CreditCard* local_card) const;
-
-  // Helper functions to expose functions to tests.
-  InternalId BackendIdToInternalIdForTesting(
-      const Suggestion::BackendId& backend_id);
-  Suggestion::BackendId InternalIdToBackendIdForTesting(InternalId internal_id);
 
  protected:
   // Creates a suggestion for the given `credit_card`. `type` denotes the
@@ -139,13 +140,6 @@ class AutofillSuggestionGenerator {
                                         bool virtual_card_option,
                                         const std::string& app_locale,
                                         bool card_linked_offer_available) const;
-
-  // Suggestion backend ID to internal ID mapping. We keep two maps to convert
-  // back and forth. These should be used only by BackendIdToInternalId and
-  // InternalIdToBackendId.
-  // Note that the internal IDs are not frontend IDs.
-  std::map<Suggestion::BackendId, InternalId> backend_to_internal_map_;
-  std::map<InternalId, Suggestion::BackendId> internal_to_backend_map_;
 
  private:
   // Return the texts shown as the first line of the suggestion, based on the
@@ -177,11 +171,9 @@ class AutofillSuggestionGenerator {
                      const CreditCard& credit_card,
                      bool virtual_card_option) const;
 
-  // Maps suggestion backend ID to and from an internal ID identifying it. Two
-  // of these intermediate internal IDs are packed by MakeFrontendID to make the
-  // IDs that this class generates for the UI and for IPC.
-  InternalId BackendIdToInternalId(const Suggestion::BackendId& backend_id);
-  Suggestion::BackendId InternalIdToBackendId(InternalId internal_id);
+  // Returns true if we should show a virtual card option for the server card
+  // `card`, false otherwise.
+  bool ShouldShowVirtualCardOptionForServerCard(const CreditCard* card) const;
 
   // autofill_client_ and the generator are both one per tab, and have the same
   // lifecycle.

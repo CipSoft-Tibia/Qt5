@@ -16,8 +16,14 @@ VideoRenderer::VideoRenderer(const TimeController &tc, QVideoSink *sink, QtVideo
 
 void VideoRenderer::setOutput(QVideoSink *sink, bool cleanPrevSink)
 {
-    setOutputInternal(m_sink, sink, [cleanPrevSink](QVideoSink *prev) {
-        if (prev && cleanPrevSink)
+    setOutputInternal(m_sink, sink, [=](QVideoSink *prev) {
+        if (!prev)
+            return;
+
+        if (sink)
+            sink->setVideoFrame(prev->videoFrame());
+
+        if (cleanPrevSink)
             prev->setVideoFrame({});
     });
 }
@@ -65,7 +71,7 @@ VideoRenderer::RenderingResult VideoRenderer::renderInternal(Frame frame)
     QVideoFrame videoFrame(buffer.release(), format);
     videoFrame.setStartTime(frame.pts());
     videoFrame.setEndTime(frame.end());
-    videoFrame.setRotationAngle(QVideoFrame::RotationAngle(m_rotation));
+    videoFrame.setRotation(m_rotation);
     m_sink->setVideoFrame(videoFrame);
 
     return {};

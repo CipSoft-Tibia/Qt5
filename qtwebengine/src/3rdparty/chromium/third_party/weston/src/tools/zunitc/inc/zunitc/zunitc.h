@@ -240,16 +240,6 @@ void
 zuc_set_random(int random);
 
 /**
- * Controls whether or not to run the tests as forked child processes.
- * Defaults to true.
- *
- * @param spawn true to spawn each test in a forked child process,
- * false to run tests directly.
- */
-void
-zuc_set_spawn(bool spawn);
-
-/**
  * Enables output in the JUnit XML format.
  * Defaults to false.
  *

@@ -1,6 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2022 Alexey Edelev <semlanik@gmail.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "enummessages.qpb.h"
 
@@ -27,7 +27,7 @@ using namespace Qt::Literals::StringLiterals;
 void QtProtobufEnumTypesSerializationTest::SimpleEnumMessageSerializeTest()
 {
     SimpleEnumMessage test;
-    test.setLocalEnum(SimpleEnumMessage::LOCAL_ENUM_VALUE2);
+    test.setLocalEnum(SimpleEnumMessage::LocalEnum::LOCAL_ENUM_VALUE2);
     QByteArray result = test.serialize(m_serializer.get());
     QCOMPARE(result.size(), 2);
     QCOMPARE(result.toHex(), "0802"_ba);
@@ -37,12 +37,12 @@ void QtProtobufEnumTypesSerializationTest::RepeatedEnumMessageTest()
 {
     RepeatedEnumMessage msg;
 
-    msg.setLocalEnumList({RepeatedEnumMessage::LOCAL_ENUM_VALUE0,
-                          RepeatedEnumMessage::LOCAL_ENUM_VALUE1,
-                          RepeatedEnumMessage::LOCAL_ENUM_VALUE2,
-                          RepeatedEnumMessage::LOCAL_ENUM_VALUE1,
-                          RepeatedEnumMessage::LOCAL_ENUM_VALUE2,
-                          RepeatedEnumMessage::LOCAL_ENUM_VALUE3});
+    msg.setLocalEnumList({RepeatedEnumMessage::LocalEnum::LOCAL_ENUM_VALUE0,
+                          RepeatedEnumMessage::LocalEnum::LOCAL_ENUM_VALUE1,
+                          RepeatedEnumMessage::LocalEnum::LOCAL_ENUM_VALUE2,
+                          RepeatedEnumMessage::LocalEnum::LOCAL_ENUM_VALUE1,
+                          RepeatedEnumMessage::LocalEnum::LOCAL_ENUM_VALUE2,
+                          RepeatedEnumMessage::LocalEnum::LOCAL_ENUM_VALUE3});
     QByteArray result = msg.serialize(m_serializer.get());
     QCOMPARE(result.toHex(), "0a06000102010203"_ba);
     msg.setLocalEnumList({});

@@ -20,20 +20,24 @@
 #include "dawn/common/TypedInteger.h"
 #include "dawn/common/UnderlyingType.h"
 
+namespace dawn {
 namespace ityp {
 
 // ityp::bitset is a helper class that wraps std::bitset with the restriction that
 // indices must be a particular type |Index|.
 template <typename Index, size_t N>
-class bitset : private std::bitset<N> {
+class bitset : private ::std::bitset<N> {
     using I = UnderlyingType<Index>;
-    using Base = std::bitset<N>;
+    using Base = ::std::bitset<N>;
 
     static_assert(sizeof(I) <= sizeof(size_t));
 
     explicit constexpr bitset(const Base& rhs) : Base(rhs) {}
 
   public:
+    const Base& AsBase() const { return static_cast<const Base&>(*this); }
+    Base& AsBase() { return static_cast<Base&>(*this); }
+
     using reference = typename Base::reference;
 
     constexpr bitset() noexcept : Base() {}
@@ -167,5 +171,7 @@ Index GetHighestBitIndexPlusOne(const ityp::bitset<Index, N>& bitset) {
     }
 #endif  // DAWN_COMPILER_IS(MSVC)
 }
+
+}  // namespace dawn
 
 #endif  // SRC_DAWN_COMMON_ITYP_BITSET_H_

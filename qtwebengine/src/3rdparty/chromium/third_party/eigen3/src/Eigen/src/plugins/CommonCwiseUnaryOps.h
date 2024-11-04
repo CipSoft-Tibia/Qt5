@@ -45,7 +45,7 @@ inline const NegativeReturnType
 operator-() const { return NegativeReturnType(derived()); }
 
 
-template<class NewType> struct CastXpr { typedef typename internal::cast_return_type<Derived,const CwiseUnaryOp<internal::scalar_cast_op<Scalar, NewType>, const Derived> >::type Type; };
+template<class NewType> struct CastXpr { typedef typename internal::cast_return_type<Derived,const CwiseUnaryOp<internal::core_cast_op<Scalar, NewType>, const Derived> >::type Type; };
 
 /// \returns an expression of \c *this with the \a Scalar type casted to
 /// \a NewScalar.

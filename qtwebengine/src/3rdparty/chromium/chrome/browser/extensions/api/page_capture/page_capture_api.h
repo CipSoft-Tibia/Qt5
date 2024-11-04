@@ -39,13 +39,11 @@ class PageCaptureSaveAsMHTMLFunction : public ExtensionFunction {
   };
   static void SetTestDelegate(TestDelegate* delegate);
 
-  // ExtensionFunction:
-  void OnServiceWorkerAck() override;
-
  private:
+  // ExtensionFunction:
   ~PageCaptureSaveAsMHTMLFunction() override;
   ResponseAction Run() override;
-  bool OnMessageReceived(const IPC::Message& message) override;
+  void OnResponseAck() override;
 
   // Returns whether or not the extension has permission to capture the current
   // page. Sets |*error| to an error value on failure.
@@ -59,7 +57,7 @@ class PageCaptureSaveAsMHTMLFunction : public ExtensionFunction {
 
   // Called on the UI thread.
   void ReturnFailure(const std::string& error);
-  void ReturnSuccess(int64_t file_size);
+  void ReturnSuccess(int file_size);
 
   // Callback called once the MHTML generation is done.
   void MHTMLGenerated(int64_t mhtml_file_size);
@@ -67,7 +65,7 @@ class PageCaptureSaveAsMHTMLFunction : public ExtensionFunction {
   // Returns the WebContents we are associated with, NULL if it's been closed.
   content::WebContents* GetWebContents();
 
-  std::unique_ptr<extensions::api::page_capture::SaveAsMHTML::Params> params_;
+  absl::optional<extensions::api::page_capture::SaveAsMHTML::Params> params_;
 
   // The path to the temporary file containing the MHTML data.
   base::FilePath mhtml_path_;

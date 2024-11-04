@@ -535,12 +535,6 @@ struct TensorEvaluator<const TensorVolumePatchOp<Planes, Rows, Cols, ArgType>, D
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Index rowInflateStride() const { return m_row_inflate_strides; }
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Index colInflateStride() const { return m_col_inflate_strides; }
 
-#ifdef EIGEN_USE_SYCL
-  // binding placeholder accessors to a command group handler for SYCL
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void bind(cl::sycl::handler &cgh) const {
-    m_impl.bind(cgh);
-  }
-#endif
  protected:
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE PacketReturnType packetWithPossibleZero(Index index) const
   {

@@ -25,7 +25,9 @@
 #include "gtest/gtest.h"
 #include "absl/time/time.h"
 #include "connections/implementation/bwu_manager.h"
+#include "connections/implementation/flags/nearby_connections_feature_flags.h"
 #include "connections/implementation/injected_bluetooth_device_store.h"
+#include "internal/flags/nearby_flags.h"
 #include "internal/platform/count_down_latch.h"
 #include "internal/platform/logging.h"
 #include "internal/platform/medium_environment.h"
@@ -69,15 +71,16 @@ constexpr BooleanMediumSelector kTestCases[] = {
     },
 };
 
-// Combines the bool `support_ble_v2` as param testing but should revert it back
+// Combines the bool `kEnableBleV2` as param testing but should revert it back
 // if ble_v2 is done and ble will be replaced by ble_v2.
 class P2pPointToPointPcpHandlerTest
     : public testing::TestWithParam<std::tuple<BooleanMediumSelector, bool>> {
  protected:
   void SetUp() override {
     NEARBY_LOG(INFO, "SetUp: begin");
-    FeatureFlags::GetMutableFlagsForTesting().support_ble_v2 =
-        std::get<1>(GetParam());
+    NearbyFlags::GetInstance().OverrideBoolFlagValue(
+        config_package_nearby::nearby_connections_feature::kEnableBleV2,
+        std::get<1>(GetParam()));
     if (advertising_options_.allowed.ble) {
       NEARBY_LOG(INFO, "SetUp: BLE enabled");
     }
@@ -204,13 +207,13 @@ TEST_P(P2pPointToPointPcpHandlerTest, CanConnect) {
 
   const std::string kBssid = "34:36:3B:C7:8C:71";
   const std::int32_t kFreq = 5200;
-  constexpr char kIp4Bytes[] = {(char)192, (char)168, (char)1, (char)37};
-  const std::string kIpAddr4Bytes(kIp4Bytes);
+  constexpr char kIp4Bytes[] = {(char)192, (char)168, (char)1, (char)37, 0};
 
   connection_options_.connection_info.supports_5_ghz = true;
   connection_options_.connection_info.bssid = kBssid;
   connection_options_.connection_info.ap_frequency = kFreq;
-  connection_options_.connection_info.ip_address = kIpAddr4Bytes;
+  connection_options_.connection_info.ip_address.resize(4);
+  connection_options_.connection_info.ip_address = std::string(kIp4Bytes);
 
   client_b_.AddCancellationFlag(discovered.endpoint_id);
   handler_b.RequestConnection(
@@ -232,7 +235,8 @@ TEST_P(P2pPointToPointPcpHandlerTest, CanConnect) {
   EXPECT_TRUE(client_b_.Is5GHzSupported(discovered.endpoint_id));
   EXPECT_EQ(client_b_.GetBssid(discovered.endpoint_id), kBssid);
   EXPECT_EQ(client_b_.GetApFrequency(discovered.endpoint_id), kFreq);
-  EXPECT_EQ(client_b_.GetIPAddress(discovered.endpoint_id), kIpAddr4Bytes);
+  EXPECT_EQ(client_b_.GetIPAddress(discovered.endpoint_id),
+            std::string(kIp4Bytes));
   EXPECT_EQ(client_a_.Is5GHzSupported(client_b_local_endpoint),
             mediums_b.GetWifi().GetCapability().supports_5_ghz);
   EXPECT_EQ(client_a_.GetBssid(client_b_local_endpoint),
@@ -242,6 +246,7 @@ TEST_P(P2pPointToPointPcpHandlerTest, CanConnect) {
   EXPECT_EQ(client_a_.GetIPAddress(client_b_local_endpoint),
             mediums_b.GetWifi().GetInformation().ip_address_4_bytes);
 
+  handler_b.StopDiscovery(&client_b_);
   bwu_a.Shutdown();
   bwu_b.Shutdown();
   env_.Stop();

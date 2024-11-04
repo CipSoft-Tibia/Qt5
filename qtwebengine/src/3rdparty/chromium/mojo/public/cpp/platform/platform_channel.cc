@@ -16,6 +16,7 @@
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
+#include "mojo/buildflags.h"
 
 #if BUILDFLAG(IS_WIN)
 #include <windows.h>
@@ -36,11 +37,11 @@
 #include "base/posix/global_descriptors.h"
 #endif
 
-#if BUILDFLAG(IS_MAC)
+#if BUILDFLAG(MOJO_USE_APPLE_CHANNEL)
 #include <mach/port.h>
 
-#include "base/mac/mach_logging.h"
-#include "base/mac/scoped_mach_port.h"
+#include "base/apple/mach_logging.h"
+#include "base/apple/scoped_mach_port.h"
 #endif
 
 #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_NACL)
@@ -101,7 +102,7 @@ void CreateChannel(PlatformHandle* local_endpoint,
   DCHECK(local_endpoint->is_valid());
   DCHECK(remote_endpoint->is_valid());
 }
-#elif BUILDFLAG(IS_MAC)
+#elif BUILDFLAG(MOJO_USE_APPLE_CHANNEL)
 void CreateChannel(PlatformHandle* local_endpoint,
                    PlatformHandle* remote_endpoint) {
   // Mach messaging is simplex; and in order to enable full-duplex
@@ -109,11 +110,11 @@ void CreateChannel(PlatformHandle* local_endpoint,
   // handshake with its peer to establish two sets of Mach receive and send
   // rights. The handshake process starts with the creation of one
   // PlatformChannel endpoint.
-  base::mac::ScopedMachReceiveRight receive;
-  base::mac::ScopedMachSendRight send;
+  base::apple::ScopedMachReceiveRight receive;
+  base::apple::ScopedMachSendRight send;
   // The mpl_qlimit specified here should stay in sync with
   // NamedPlatformChannel.
-  CHECK(base::mac::CreateMachPort(&receive, &send, MACH_PORT_QLIMIT_LARGE));
+  CHECK(base::apple::CreateMachPort(&receive, &send, MACH_PORT_QLIMIT_LARGE));
 
   // In a reverse of Mach messaging semantics, in Mojo the "local" endpoint is
   // the send right, while the "remote" end is the receive right.

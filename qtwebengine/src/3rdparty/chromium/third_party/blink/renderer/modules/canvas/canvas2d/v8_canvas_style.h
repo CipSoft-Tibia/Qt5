@@ -35,7 +35,7 @@ struct MODULES_EXPORT V8CanvasStyle {
   V8CanvasStyleType type;
   CanvasPattern* pattern = nullptr;
   CanvasGradient* gradient = nullptr;
-  RGBA32 css_color_value = 0;
+  Color css_color_value = Color::kTransparent;
   AtomicString string;
 };
 
@@ -48,7 +48,7 @@ MODULES_EXPORT bool ExtractV8CanvasStyle(v8::Isolate* isolate,
 
 // Converts `style` to a v8 value.
 MODULES_EXPORT v8::Local<v8::Value> CanvasStyleToV8(ScriptState* script_state,
-                                                    CanvasStyle* style);
+                                                    const CanvasStyle& style);
 
 }  // namespace blink
 

@@ -66,29 +66,54 @@ QMetaType QQmlPropertyCacheCreatorBase::listTypeForPropertyType(QV4::CompiledDat
     return QMetaType {};
 }
 
-QByteArray QQmlPropertyCacheCreatorBase::createClassNameTypeByUrl(const QUrl &url)
+template<typename BaseNameHandler, typename FailHandler>
+auto processUrlForClassName(
+    const QUrl &url, BaseNameHandler &&baseNameHandler, FailHandler &&failHandler)
 {
     const QString path = url.path();
-    int lastSlash = path.lastIndexOf(QLatin1Char('/'));
+
     // Not a reusable type if we don't have an absolute Url
+    const qsizetype lastSlash = path.lastIndexOf(QLatin1Char('/'));
     if (lastSlash <= -1)
-        return QByteArray();
+        return failHandler();
+
     // ### this might not be correct for .ui.qml files
-    const QStringView nameBase = QStringView{path}.mid(lastSlash + 1, path.size() - lastSlash - 5);
+    const QStringView baseName = QStringView{path}.mid(lastSlash + 1, path.size() - lastSlash - 5);
+
     // Not a reusable type if it doesn't start with a upper case letter.
-    if (nameBase.isEmpty() || !nameBase.at(0).isUpper())
-        return QByteArray();
-    return nameBase.toUtf8() + "_QMLTYPE_" +
-            QByteArray::number(classIndexCounter.fetchAndAddRelaxed(1));
+    return (!baseName.isEmpty() && baseName.at(0).isUpper())
+        ? baseNameHandler(baseName)
+        : failHandler();
 }
 
-QByteArray QQmlPropertyCacheCreatorBase::createClassNameForInlineComponent(const QUrl &baseUrl, int icId)
+bool QQmlPropertyCacheCreatorBase::canCreateClassNameTypeByUrl(const QUrl &url)
 {
-    QByteArray baseName = createClassNameTypeByUrl(baseUrl);
-    if (baseName.isEmpty())
-        baseName = QByteArray("ANON_QML_IC_") + QByteArray::number(classIndexCounter.fetchAndAddRelaxed(1));
-    baseName += "_" + QByteArray::number(icId);
-    return baseName;
+    return processUrlForClassName(url, [](QStringView) {
+        return true;
+    }, []() {
+        return false;
+    });
+}
+
+QByteArray QQmlPropertyCacheCreatorBase::createClassNameTypeByUrl(const QUrl &url)
+{
+    return processUrlForClassName(url, [](QStringView nameBase) {
+        return nameBase.toUtf8() + QByteArray("_QMLTYPE_");
+    }, []() {
+        return QByteArray("ANON_QML_TYPE_");
+    }) + QByteArray::number(classIndexCounter.fetchAndAddRelaxed(1));
+}
+
+QByteArray QQmlPropertyCacheCreatorBase::createClassNameForInlineComponent(
+    const QUrl &baseUrl, const QString &name)
+{
+    QByteArray baseName = processUrlForClassName(baseUrl, [](QStringView nameBase) {
+        return QByteArray(nameBase.toUtf8() + "_QMLTYPE_");
+    }, []() {
+        return QByteArray("ANON_QML_IC_");
+    });
+    return baseName + name.toUtf8() + '_'
+            + QByteArray::number(classIndexCounter.fetchAndAddRelaxed(1));
 }
 
 QQmlBindingInstantiationContext::QQmlBindingInstantiationContext(
@@ -129,8 +154,19 @@ QQmlPropertyCache::ConstPtr QQmlBindingInstantiationContext::instantiatingProper
         if (instantiatingProperty->isQObject()) {
             // rawPropertyCacheForType assumes a given unspecified version means "any version".
             // There is another overload that takes no version, which we shall not use here.
-            return QQmlMetaType::rawPropertyCacheForType(instantiatingProperty->propType(),
+            auto result = QQmlMetaType::rawPropertyCacheForType(instantiatingProperty->propType(),
                                                          instantiatingProperty->typeVersion());
+            if (result)
+                return result;
+            /* We might end up here if there's a grouped property, and the type hasn't been registered.
+               Still try to get a property cache, as long as the type of the property is well-behaved
+               (i.e., not dynamic)*/
+            if (auto metaObject = instantiatingProperty->propType().metaObject(); metaObject) {
+                // we'll warn about dynamic meta-object later in the property validator
+                if (!(QMetaObjectPrivate::get(metaObject)->flags & DynamicMetaObject))
+                    return QQmlMetaType::propertyCache(metaObject);
+            }
+            // fall through intentional
         } else if (const QMetaObject *vtmo = QQmlMetaType::metaObjectForValueType(instantiatingProperty->propType())) {
             return QQmlMetaType::propertyCache(vtmo, instantiatingProperty->typeVersion());
         }
@@ -147,12 +183,7 @@ void QQmlPendingGroupPropertyBindings::resolveMissingPropertyCaches(
         if (propertyCaches->at(groupPropertyObjectIndex))
             continue;
 
-        if (pendingBinding.instantiatingPropertyName.isEmpty()) {
-            // Generalized group property.
-            auto cache = propertyCaches->at(pendingBinding.referencingObjectIndex);
-            propertyCaches->set(groupPropertyObjectIndex, cache);
-            continue;
-        }
+        Q_ASSERT(!pendingBinding.instantiatingPropertyName.isEmpty());
 
         if (!pendingBinding.referencingObjectPropertyCache) {
             pendingBinding.referencingObjectPropertyCache

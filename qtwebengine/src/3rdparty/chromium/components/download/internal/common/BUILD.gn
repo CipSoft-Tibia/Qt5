@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/jumbo.gni")
 import("//components/safe_browsing/buildflags.gni")
 
 if (is_android) {
@@ -9,7 +10,7 @@ if (is_android) {
   import("//build/config/android/rules.gni")
 }
 
-source_set("internal") {
+jumbo_source_set("internal") {
   visibility = [
     ":for_tests",
     "//components/download/public/common:public",
@@ -109,6 +110,7 @@ source_set("internal") {
 
 if (is_android) {
   android_library("internal_java") {
+    srcjar_deps = [ ":jni_headers" ]
     sources = [
       "android/java/src/org/chromium/components/download/DownloadCollectionBridge.java",
       "android/java/src/org/chromium/components/download/DownloadDelegate.java",
@@ -121,7 +123,6 @@ if (is_android) {
       "//third_party/android_provider:android_provider_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
     ]
-    annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
   }
 
   generate_jni("jni_headers") {
@@ -165,7 +166,6 @@ source_set("unit_tests") {
   deps = [
     ":for_tests",
     "//base/test:test_support",
-    "//build:chromeos_buildflags",
     "//build:chromeos_buildflags",
     "//components/download/database",
     "//components/download/public/common:test_support",

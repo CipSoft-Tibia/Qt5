@@ -49,7 +49,28 @@ struct CORE_EXPORT LogicalSize {
   constexpr bool IsEmpty() const {
     return inline_size == LayoutUnit() || block_size == LayoutUnit();
   }
+
+  void Expand(LayoutUnit inline_offset, LayoutUnit block_offset) {
+    inline_size += inline_offset;
+    block_size += block_offset;
+  }
+
+  void Shrink(LayoutUnit inline_offset, LayoutUnit block_offset) {
+    inline_size -= inline_offset;
+    block_size -= block_offset;
+  }
+
+  LogicalSize ClampNegativeToZero() const {
+    return LogicalSize(inline_size.ClampNegativeToZero(),
+                       block_size.ClampNegativeToZero());
+  }
 };
+
+constexpr LogicalSize kIndefiniteLogicalSize(kIndefiniteSize, kIndefiniteSize);
+
+inline LogicalSize operator-(const LogicalSize& a, const NGBoxStrut& b) {
+  return {a.inline_size - b.InlineSum(), a.block_size - b.BlockSum()};
+}
 
 inline LogicalSize& operator-=(LogicalSize& a, const NGBoxStrut& b) {
   a.inline_size -= b.InlineSum();

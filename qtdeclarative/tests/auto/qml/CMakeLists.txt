@@ -17,8 +17,9 @@ add_subdirectory(qjsonbinding)
 add_subdirectory(qqmlfile)
 
 if(NOT INTEGRITY)
-    # The INTEGRITY linker tends to crash on tst_qqmlfileselector
+    # The INTEGRITY linker tends to crash on tst_qqmlfileselector and tst_qml_common
     add_subdirectory(qqmlfileselector)
+    add_subdirectory(common)
 endif()
 
 # Limit set of tests to run for static Qt builds.
@@ -76,6 +77,7 @@ if(TARGET Qt::Widgets)
     add_subdirectory(qjsengine)
     add_subdirectory(qjsvalue)
     add_subdirectory(qjsmanagedvalue)
+    add_subdirectory(qwidgetsinqml)
 endif()
 if(QT_FEATURE_process AND QT_FEATURE_qml_debug)
     add_subdirectory(debugger)
@@ -140,6 +142,7 @@ if(QT_FEATURE_private_tests)
     add_subdirectory(qqmltreemodeltotablemodel)
     add_subdirectory(qv4assembler)
     add_subdirectory(qv4mm)
+    add_subdirectory(qv4estable)
     add_subdirectory(qv4identifiertable)
     add_subdirectory(qv4regexp)
     add_subdirectory(qv4urlobject)

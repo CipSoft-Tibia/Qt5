@@ -119,7 +119,9 @@ class CORE_EXPORT KeyframeEffect final : public AnimationEffect {
                                   absl::optional<double> start_time,
                                   base::TimeDelta time_offset,
                                   double animation_playback_rate,
-                                  CompositorAnimation* = nullptr);
+                                  CompositorAnimation* = nullptr,
+                                  bool is_monotonic_timeline = true,
+                                  bool is_boundary_aligned = false);
   bool HasActiveAnimationsOnCompositor() const;
   bool HasActiveAnimationsOnCompositor(const PropertyHandle&) const;
   bool CancelAnimationOnCompositor(CompositorAnimation*);
@@ -160,7 +162,6 @@ class CORE_EXPORT KeyframeEffect final : public AnimationEffect {
   void DetachTarget(Animation*);
   void RefreshTarget();
   void CountAnimatedProperties() const;
-  AnimationTimeDelta IntrinsicIterationDuration() const override;
   AnimationTimeDelta CalculateTimeToEffectChange(
       bool forwards,
       absl::optional<AnimationTimeDelta> inherited_time,

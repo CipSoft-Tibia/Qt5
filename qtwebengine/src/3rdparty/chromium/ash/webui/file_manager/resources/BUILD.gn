@@ -10,6 +10,7 @@ import("//tools/grit/preprocess_if_expr.gni")
 import("//tools/typescript/ts_library.gni")
 import("//ui/webui/resources/tools/generate_grd.gni")
 import("//ui/webui/resources/tools/optimize_webui.gni")
+import("//ui/webui/webui_features.gni")
 
 assert(is_chromeos_ash)
 
@@ -146,8 +147,12 @@ optimize_webui("build") {
   deps = [
     ":preprocess",
     ":preprocess_mojo",
-    "//ui/file_manager:build_ts",
   ]
+  if (enable_webui_inline_sourcemaps) {
+    deps += [ "//ui/file_manager:merge_source_maps" ]
+  } else {
+    deps += [ "//ui/file_manager:build_ts" ]
+  }
 }
 
 generated_static_grdp = "$target_gen_dir/static_resources.grdp"
@@ -199,8 +204,8 @@ generate_grd("build_grd") {
     manifest_files += [ "$target_gen_dir/manifest_preprocess.json" ]
 
     # Labs:
-    manifest_files +=
-        filter_include(get_target_outputs(":labs_build_ts"), [ "*.manifest" ])
+    manifest_files += filter_include(get_target_outputs(":labs_build_ts"),
+                                     [ "*_manifest.json" ])
     input_files += [ "labs/labs.html" ]
     deps += [
       ":copy_labs",

@@ -3,7 +3,10 @@
 
 # Basic functionality
 if(TARGET Qt6::qtprotobufgen)
+    get_target_property(protoc_version WrapProtoc::WrapProtoc _qt_internal_protobuf_version)
+
     add_subdirectory(basic)
+    add_subdirectory(json)
     add_subdirectory(syntax)
     add_subdirectory(nopackage)
     add_subdirectory(enums)
@@ -14,7 +17,10 @@ if(TARGET Qt6::qtprotobufgen)
     add_subdirectory(converters)
     add_subdirectory(duplicated_metatypes)
     add_subdirectory(recursive)
-    add_subdirectory(optional)
+    if(protoc_version VERSION_GREATER_EQUAL "3.12")
+        add_subdirectory(optional)
+    endif()
+
     if(TARGET Qt6::ProtobufWellKnownTypes)
         add_subdirectory(wellknown)
     endif()

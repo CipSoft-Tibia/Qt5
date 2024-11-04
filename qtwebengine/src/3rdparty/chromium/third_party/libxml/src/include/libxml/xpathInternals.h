@@ -273,8 +273,7 @@ XMLPUBFUN void *
  * type.
  */
 #define CHECK_TYPE(typeval)						\
-    if ((ctxt->error != 0) ||						\
-        (ctxt->value == NULL) || (ctxt->value->type != typeval))	\
+    if ((ctxt->value == NULL) || (ctxt->value->type != typeval))	\
         XP_ERROR(XPATH_INVALID_TYPE)
 
 /**
@@ -298,7 +297,7 @@ XMLPUBFUN void *
     if (ctxt == NULL) return;						\
     if (nargs != (x))							\
         XP_ERROR(XPATH_INVALID_ARITY);					\
-    if (ctxt->valueNr < ctxt->valueFrame + (x))				\
+    if (ctxt->valueNr < (x))						\
         XP_ERROR(XPATH_STACK_ERROR);
 
 /**

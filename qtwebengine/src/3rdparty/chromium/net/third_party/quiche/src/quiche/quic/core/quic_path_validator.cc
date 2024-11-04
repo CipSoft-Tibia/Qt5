@@ -114,6 +114,12 @@ QuicPathValidationContext* QuicPathValidator::GetContext() const {
   return path_context_.get();
 }
 
+std::unique_ptr<QuicPathValidationContext> QuicPathValidator::ReleaseContext() {
+  auto ret = std::move(path_context_);
+  ResetPathValidation();
+  return ret;
+}
+
 const QuicPathFrameBuffer& QuicPathValidator::GeneratePathChallengePayload() {
   probing_data_.emplace_back(clock_->Now());
   random_->RandBytes(probing_data_.back().frame_buffer.data(),
@@ -163,7 +169,7 @@ void QuicPathValidator::MaybeWritePacketToAddress(
                 << path_context_->peer_address();
   path_context_->WriterToUse()->WritePacket(
       buffer, buf_len, path_context_->self_address().host(),
-      path_context_->peer_address(), nullptr);
+      path_context_->peer_address(), nullptr, QuicPacketWriterParams());
 }
 
 }  // namespace quic

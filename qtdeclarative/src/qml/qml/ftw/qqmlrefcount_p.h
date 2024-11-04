@@ -24,17 +24,16 @@ QT_BEGIN_NAMESPACE
 template <typename T>
 class QQmlRefCounted;
 
-class Q_QML_PRIVATE_EXPORT QQmlRefCount
+class QQmlRefCount
 {
     Q_DISABLE_COPY_MOVE(QQmlRefCount)
 public:
     inline QQmlRefCount();
     inline void addref() const;
-    inline void release() const;
     inline int count() const;
 
 private:
-    inline virtual ~QQmlRefCount();
+    inline ~QQmlRefCount();
     template <typename T> friend class QQmlRefCounted;
 
 private:
@@ -44,8 +43,10 @@ private:
 template <typename T>
 class QQmlRefCounted : public QQmlRefCount
 {
+public:
+    inline void release() const;
 protected:
-    ~QQmlRefCounted() = default;
+    inline ~QQmlRefCounted();
 };
 
 template<class T>
@@ -56,16 +57,16 @@ public:
         AddRef,
         Adopt
     };
-    Q_NODISCARD_CTOR inline QQmlRefPointer();
+    Q_NODISCARD_CTOR inline QQmlRefPointer() noexcept;
     Q_NODISCARD_CTOR inline QQmlRefPointer(T *, Mode m = AddRef);
     Q_NODISCARD_CTOR inline QQmlRefPointer(const QQmlRefPointer &);
-    Q_NODISCARD_CTOR inline QQmlRefPointer(QQmlRefPointer &&);
+    Q_NODISCARD_CTOR inline QQmlRefPointer(QQmlRefPointer &&) noexcept;
     inline ~QQmlRefPointer();
 
     void swap(QQmlRefPointer &other) noexcept { qt_ptr_swap(o, other.o); }
 
     inline QQmlRefPointer<T> &operator=(const QQmlRefPointer<T> &o);
-    inline QQmlRefPointer<T> &operator=(QQmlRefPointer<T> &&o);
+    inline QQmlRefPointer<T> &operator=(QQmlRefPointer<T> &&o) noexcept;
 
     inline bool isNull() const { return !o; }
 
@@ -78,8 +79,20 @@ public:
 
     inline T* take() { T *res = o; o = nullptr; return res; }
 
-    friend bool operator==(const QQmlRefPointer &a, const QQmlRefPointer &b) { return a.o == b.o; }
-    friend bool operator!=(const QQmlRefPointer &a, const QQmlRefPointer &b) { return !(a == b); }
+    friend bool operator==(const QQmlRefPointer &a, const QQmlRefPointer &b) noexcept
+    {
+        return a.o == b.o;
+    }
+
+    friend bool operator!=(const QQmlRefPointer &a, const QQmlRefPointer &b) noexcept
+    {
+        return !(a == b);
+    }
+
+    friend size_t qHash(const QQmlRefPointer &v, size_t seed = 0) noexcept
+    {
+        return qHash(v.o, seed);
+    }
 
     void reset(T *t = nullptr)
     {
@@ -130,11 +143,22 @@ void QQmlRefCount::addref() const
     refCount.ref();
 }
 
-void QQmlRefCount::release() const
+template <typename T>
+void QQmlRefCounted<T>::release() const
 {
+    static_assert(std::is_base_of_v<QQmlRefCounted, T>,
+                  "QQmlRefCounted<T> must be a base of T (CRTP)");
     Q_ASSERT(refCount.loadRelaxed() > 0);
     if (!refCount.deref())
-        delete this;
+        delete static_cast<const T *>(this);
+}
+
+template <typename T>
+QQmlRefCounted<T>::~QQmlRefCounted()
+{
+    static_assert(std::is_final_v<T> || std::has_virtual_destructor_v<T>,
+                  "T must either be marked final or have a virtual dtor, "
+                  "lest release() runs into UB.");
 }
 
 int QQmlRefCount::count() const
@@ -143,7 +167,7 @@ int QQmlRefCount::count() const
 }
 
 template<class T>
-QQmlRefPointer<T>::QQmlRefPointer()
+QQmlRefPointer<T>::QQmlRefPointer() noexcept
 : o(nullptr)
 {
 }
@@ -164,7 +188,7 @@ QQmlRefPointer<T>::QQmlRefPointer(const QQmlRefPointer<T> &other)
 }
 
 template <class T>
-QQmlRefPointer<T>::QQmlRefPointer(QQmlRefPointer<T> &&other)
+QQmlRefPointer<T>::QQmlRefPointer(QQmlRefPointer<T> &&other) noexcept
     : o(other.take())
 {
 }
@@ -189,7 +213,7 @@ QQmlRefPointer<T> &QQmlRefPointer<T>::operator=(const QQmlRefPointer<T> &other)
 }
 
 template <class T>
-QQmlRefPointer<T> &QQmlRefPointer<T>::operator=(QQmlRefPointer<T> &&other)
+QQmlRefPointer<T> &QQmlRefPointer<T>::operator=(QQmlRefPointer<T> &&other) noexcept
 {
     QQmlRefPointer<T> m(std::move(other));
     swap(m);

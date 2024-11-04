@@ -68,7 +68,7 @@ QCoapQUdpConnection::QCoapQUdpConnection(QCoapQUdpConnectionPrivate &dd, QObject
 
     if (isSecure()) {
 #if QT_CONFIG(dtls)
-        connect(this, &QCoapConnection::securityConfigurationChanged,
+        connect(this, &QCoapConnection::securityConfigurationChanged, this,
                 [this]() {
                        Q_D(QCoapQUdpConnection);
                        d->setSecurityConfiguration(securityConfiguration());
@@ -121,11 +121,11 @@ void QCoapQUdpConnection::createSocket()
 
     d->udpSocket = new QUdpSocket(this);
 
-    connect(d->udpSocket.data(), &QUdpSocket::readyRead, [this]() {
+    connect(d->udpSocket.data(), &QUdpSocket::readyRead, this, [this]() {
         Q_D(QCoapQUdpConnection);
         d->socketReadyRead();
     });
-    connect(d->udpSocket.data(), &QUdpSocket::errorOccurred,
+    connect(d->udpSocket.data(), &QUdpSocket::errorOccurred, this,
             [this](QAbstractSocket::SocketError socketError) {
                     qCWarning(lcCoapConnection) << "CoAP UDP socket error" << socketError
                                                 << socket()->errorString();

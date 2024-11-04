@@ -6,8 +6,6 @@
 
 #include "third_party/blink/renderer/core/css/properties/longhands.h"
 #include "third_party/blink/renderer/core/dom/layout_tree_builder_traversal.h"
-#include "third_party/blink/renderer/core/layout/layout_fieldset.h"
-#include "third_party/blink/renderer/core/layout/layout_object_factory.h"
 
 namespace blink {
 
@@ -54,8 +52,7 @@ void LayoutNGFieldset::AddChild(LayoutObject* new_child,
   // >   the '::before' and '::after' pseudo-elements) of the fieldset
   // >   element except for the rendered legend, if there is one.
 
-  if (new_child->IsRenderedLegendCandidate() &&
-      !LayoutFieldset::FindInFlowLegend(*this)) {
+  if (new_child->IsRenderedLegendCandidate() && !FindInFlowLegend()) {
     LayoutNGBlockFlow::AddChild(new_child, FirstChild());
     return;
   }
@@ -151,18 +148,10 @@ void LayoutNGFieldset::UpdateAnonymousChildStyle(
   child_style_builder.SetGridRowEnd(StyleRef().GridRowEnd());
   child_style_builder.SetGridRowStart(StyleRef().GridRowStart());
 
-  // grid-template-columns, grid-template-rows
+  // grid-template-columns, grid-template-rows, grid-template-areas
   child_style_builder.SetGridTemplateColumns(StyleRef().GridTemplateColumns());
   child_style_builder.SetGridTemplateRows(StyleRef().GridTemplateRows());
-  child_style_builder.SetNamedGridArea(StyleRef().NamedGridArea());
-  child_style_builder.SetNamedGridAreaColumnCount(
-      StyleRef().NamedGridAreaColumnCount());
-  child_style_builder.SetNamedGridAreaRowCount(
-      StyleRef().NamedGridAreaRowCount());
-  child_style_builder.SetImplicitNamedGridColumnLines(
-      StyleRef().ImplicitNamedGridColumnLines());
-  child_style_builder.SetImplicitNamedGridRowLines(
-      StyleRef().ImplicitNamedGridRowLines());
+  child_style_builder.SetGridTemplateAreas(StyleRef().GridTemplateAreas());
 
   child_style_builder.SetRowGap(StyleRef().RowGap());
 
@@ -171,6 +160,12 @@ void LayoutNGFieldset::UpdateAnonymousChildStyle(
   child_style_builder.SetOverflowX(StyleRef().OverflowX());
   child_style_builder.SetOverflowY(StyleRef().OverflowY());
   child_style_builder.SetUnicodeBidi(StyleRef().GetUnicodeBidi());
+
+  // scroll-start
+  child_style_builder.SetScrollStartBlock(StyleRef().ScrollStartBlock());
+  child_style_builder.SetScrollStartInline(StyleRef().ScrollStartInline());
+  child_style_builder.SetScrollStartX(StyleRef().ScrollStartX());
+  child_style_builder.SetScrollStartY(StyleRef().ScrollStartY());
 }
 
 bool LayoutNGFieldset::IsOfType(LayoutObjectType type) const {
@@ -180,7 +175,7 @@ bool LayoutNGFieldset::IsOfType(LayoutObjectType type) const {
 void LayoutNGFieldset::InvalidatePaint(
     const PaintInvalidatorContext& context) const {
   // Fieldset's box decoration painting depends on the legend geometry.
-  const LayoutBox* legend_box = LayoutFieldset::FindInFlowLegend(*this);
+  const LayoutBox* legend_box = FindInFlowLegend();
   if (legend_box && legend_box->ShouldCheckLayoutForPaintInvalidation()) {
     GetMutableForPainting().SetShouldDoFullPaintInvalidation(
         PaintInvalidationReason::kLayout);
@@ -192,8 +187,9 @@ bool LayoutNGFieldset::BackgroundIsKnownToBeOpaqueInRect(
     const PhysicalRect& local_rect) const {
   // If the field set has a legend, then it probably does not completely fill
   // its background.
-  if (LayoutFieldset::FindInFlowLegend(*this))
+  if (FindInFlowLegend()) {
     return false;
+  }
 
   return LayoutBlockFlow::BackgroundIsKnownToBeOpaqueInRect(local_rect);
 }
@@ -208,6 +204,18 @@ LayoutUnit LayoutNGFieldset::ScrollHeight() const {
   if (const auto* content = FindAnonymousFieldsetContentBox())
     return content->ScrollHeight();
   return LayoutNGBlockFlow::ScrollHeight();
+}
+
+// static
+LayoutBox* LayoutNGFieldset::FindInFlowLegend(const LayoutBlock& fieldset) {
+  DCHECK(fieldset.IsFieldset());
+  for (LayoutObject* legend = fieldset.FirstChild(); legend;
+       legend = legend->NextSibling()) {
+    if (legend->IsRenderedLegendCandidate()) {
+      return To<LayoutBox>(legend);
+    }
+  }
+  return nullptr;
 }
 
 }  // namespace blink

@@ -54,6 +54,13 @@ Rectangle {
 }
 \endqml
 
+\note Even though signal handlers look a bit like JavaScript functions, you
+      should not call them directly. If you need to share code between signal
+      handlers and other functionality, refactor it into a separate function.
+      Otherwise always emit the signal if you want the signal handler to be
+      called. There can be multiple handlers, in different scopes, for the
+      same signal.
+
 \section2 Property change signal handlers
 
 A signal is automatically emitted when the value of a QML property changes.
@@ -97,6 +104,7 @@ import QtQuick
 
 Item {
     id: myitem
+
     signal errorOccurred(message: string, line: int, column: int)
 }
 \endqml
@@ -113,7 +121,7 @@ signal.
 If you do not need to handle all parameters, it is possible to omit trailing ones:
 \qml
 Status {
-    onErrorOccurred: function (message) { console.log(message) }
+    onErrorOccurred: message => console.log(message)
 }
 \endqml
 
@@ -247,7 +255,7 @@ Now any objects of the \c SquareButton can connect to the \c activated signal us
 \qml
 // myapplication.qml
 SquareButton {
-    onActivated: (xPosition, yPosition)=> console.log("Activated at " + xPosition + "," + yPosition)
+    onActivated: (xPosition, yPosition) => console.log(`Activated at {xPosition}, ${yPosition}`)
 }
 \endqml
 
@@ -279,14 +287,14 @@ Rectangle {
         relay.messageReceived("Tom", "Happy Birthday")
     }
 
-    function sendToPost(person, notice) {
-        console.log("Sending to post: " + person + ", " + notice)
+    function sendToPost(person: string, notice: string) {
+        console.log(`Sending to post: ${person}, ${notice}`)
     }
-    function sendToTelegraph(person, notice) {
-        console.log("Sending to telegraph: " + person + ", " + notice)
+    function sendToTelegraph(person: string, notice: string) {
+        console.log(`Sending to telegraph: ${person}, ${notice}`)
     }
-    function sendToEmail(person, notice) {
-        console.log("Sending to email: " + person + ", " + notice)
+    function sendToEmail(person: string, notice: string) {
+        console.log(`Sending to email: ${person}, ${notice}`)
     }
 }
 \endqml
@@ -347,4 +355,65 @@ output:
     MouseArea clicked
     Send clicked
 \endcode
-*/
+
+\note Connections to function objects will stay alive as long as the sender of the signal is alive.
+This behavior is analogous to the 3-argument version of QObject::connect() in C++.
+
+\qml
+Window {
+    visible: true
+    width: 400
+    height: 400
+
+    Item {
+        id: item
+        property color globalColor: "red"
+
+        Button {
+            text: "Change global color"
+            onPressed: {
+                item.globalColor = item.globalColor === Qt.color("red") ? "green" : "red"
+            }
+        }
+
+        Button {
+            x: 150
+            text: "Clear rectangles"
+            onPressed: repeater.model = 0
+        }
+
+        Repeater {
+            id: repeater
+            model: 5
+            Rectangle {
+                id: rect
+                color: "red"
+                width: 50
+                height: 50
+                x: (width + 2) * index + 2
+                y: 100
+                Component.onCompleted: {
+                    if (index % 2 === 0) {
+                        item.globalColorChanged.connect(() => {
+                            color = item.globalColor
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+\endqml
+
+In the contrived example above, the goal is to flip the color of every even rectangle to follow
+some global color. To achieve this, for every even rectangle, a connection is made between the
+globalColorChanged signal and a function to set the rectangle's color. This works as expected while
+the rectangles are alive. However, once the clear button is pressed, the rectangles are gone but
+the function handling the signal is still called every time the signal is emitted. This can be
+seen by the error messages thrown by the function trying to run in the background when changing
+the global color.
+
+In the current setup, the connections would only be destroyed once the item holding
+globalColor is destroyed. To prevent the connections from lingering on, they can be explicitly
+disconnected when the rectangles are being destroyed.
+ */

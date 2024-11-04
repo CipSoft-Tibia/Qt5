@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,14 +16,13 @@
 #include "third_party/chromium_quic/src/net/quic/quic_chromium_alarm_factory.h"
 #include "third_party/chromium_quic/src/net/third_party/quic/quartc/quartc_factory.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 class QuicTaskRunner;
 
 class QuicConnectionFactoryImpl final : public QuicConnectionFactory {
  public:
-  explicit QuicConnectionFactoryImpl(TaskRunner* task_runner);
+  explicit QuicConnectionFactoryImpl(TaskRunner& task_runner);
   ~QuicConnectionFactoryImpl() override;
 
   // UdpSocket::Client overrides.
@@ -59,10 +58,9 @@ class QuicConnectionFactoryImpl final : public QuicConnectionFactory {
   // NOTE: Must be provided in constructor and stored as an instance variable
   // rather than using the static accessor method to allow for UTs to mock this
   // layer.
-  TaskRunner* const task_runner_;
+  TaskRunner& task_runner_;
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_IMPL_QUIC_QUIC_CONNECTION_FACTORY_IMPL_H_

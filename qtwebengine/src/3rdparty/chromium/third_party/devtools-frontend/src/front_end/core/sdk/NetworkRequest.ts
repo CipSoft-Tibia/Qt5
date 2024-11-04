@@ -38,6 +38,7 @@ import * as Common from '../common/common.js';
 import * as i18n from '../i18n/i18n.js';
 import * as Platform from '../platform/platform.js';
 
+import * as HttpReasonPhraseStrings from './HttpReasonPhraseStrings.js';
 import {Attributes, type Cookie} from './Cookie.js';
 import {CookieParser} from './CookieParser.js';
 import {NetworkManager, Events as NetworkManagerEvents} from './NetworkManager.js';
@@ -114,6 +115,10 @@ const UIStrings = {
    *@description Tooltip to explain why an attempt to set a cookie via `Set-Cookie` HTTP header on a request's response was blocked.
    */
   thisSetcookieHadInvalidSyntax: 'This `Set-Cookie` header had invalid syntax.',
+  /**
+   *@description Tooltip to explain why a cookie was blocked
+   */
+  thisSetcookieHadADisallowedCharacter: 'This `Set-Cookie` header contained a disallowed character (a forbidden ASCII control character, or the tab character if it appears in the middle of the cookie name, value, an attribute name, or an attribute value).',
   /**
    *@description Tooltip to explain why a cookie was blocked
    */
@@ -207,6 +212,7 @@ export class NetworkRequest extends Common.ObjectWrapper.ObjectWrapper<EventType
   readonly #frameIdInternal: Protocol.Page.FrameId|null;
   readonly #loaderIdInternal: Protocol.Network.LoaderId|null;
   readonly #initiatorInternal: Protocol.Network.Initiator|null|undefined;
+  readonly #hasUserGesture: boolean|undefined;
   #redirectSourceInternal: NetworkRequest|null;
   #preflightRequestInternal: NetworkRequest|null;
   #preflightInitiatorRequestInternal: NetworkRequest|null;
@@ -218,7 +224,7 @@ export class NetworkRequest extends Common.ObjectWrapper.ObjectWrapper<EventType
   #blockedReasonInternal: Protocol.Network.BlockedReason|undefined;
   #corsErrorStatusInternal: Protocol.Network.CorsErrorStatus|undefined;
   statusCode: number;
-  statusText: string;
+  #statusText: string;
   requestMethod: string;
   requestTime: number;
   protocol: string;
@@ -238,6 +244,7 @@ export class NetworkRequest extends Common.ObjectWrapper.ObjectWrapper<EventType
   };
   #responseHeadersTextInternal: string;
   #originalResponseHeaders: Protocol.Fetch.HeaderEntry[];
+  #sortedOriginalResponseHeaders?: NameValue[];
 
   // This field is only used when intercepting and overriding requests, because
   // in that case 'this.responseHeaders' does not contain 'set-cookie' headers.
@@ -301,11 +308,12 @@ export class NetworkRequest extends Common.ObjectWrapper.ObjectWrapper<EventType
   #isSameSiteInternal: boolean|null;
   #wasIntercepted: boolean;
   #associatedData = new Map<string, object>();
+  #hasOverriddenContent: boolean;
 
   private constructor(
       requestId: string, backendRequestId: Protocol.Network.RequestId|undefined, url: Platform.DevToolsPath.UrlString,
       documentURL: Platform.DevToolsPath.UrlString, frameId: Protocol.Page.FrameId|null,
-      loaderId: Protocol.Network.LoaderId|null, initiator: Protocol.Network.Initiator|null) {
+      loaderId: Protocol.Network.LoaderId|null, initiator: Protocol.Network.Initiator|null, hasUserGesture?: boolean) {
     super();
 
     this.#requestIdInternal = requestId;
@@ -315,6 +323,7 @@ export class NetworkRequest extends Common.ObjectWrapper.ObjectWrapper<EventType
     this.#frameIdInternal = frameId;
     this.#loaderIdInternal = loaderId;
     this.#initiatorInternal = initiator;
+    this.#hasUserGesture = hasUserGesture;
     this.#redirectSourceInternal = null;
     this.#preflightRequestInternal = null;
     this.#preflightInitiatorRequestInternal = null;
@@ -327,7 +336,7 @@ export class NetworkRequest extends Common.ObjectWrapper.ObjectWrapper<EventType
     this.#corsErrorStatusInternal = undefined;
 
     this.statusCode = 0;
-    this.statusText = '';
+    this.#statusText = '';
     this.requestMethod = '';
     this.requestTime = 0;
     this.protocol = '';
@@ -382,13 +391,16 @@ export class NetworkRequest extends Common.ObjectWrapper.ObjectWrapper<EventType
     this.#isSameSiteInternal = null;
 
     this.#wasIntercepted = false;
+    this.#hasOverriddenContent = false;
   }
 
   static create(
       backendRequestId: Protocol.Network.RequestId, url: Platform.DevToolsPath.UrlString,
       documentURL: Platform.DevToolsPath.UrlString, frameId: Protocol.Page.FrameId|null,
-      loaderId: Protocol.Network.LoaderId|null, initiator: Protocol.Network.Initiator|null): NetworkRequest {
-    return new NetworkRequest(backendRequestId, backendRequestId, url, documentURL, frameId, loaderId, initiator);
+      loaderId: Protocol.Network.LoaderId|null, initiator: Protocol.Network.Initiator|null,
+      hasUserGesture?: boolean): NetworkRequest {
+    return new NetworkRequest(
+        backendRequestId, backendRequestId, url, documentURL, frameId, loaderId, initiator, hasUserGesture);
   }
 
   static createForWebSocket(
@@ -843,6 +855,17 @@ export class NetworkRequest extends Common.ObjectWrapper.ObjectWrapper<EventType
     return this.#parsedURLInternal.scheme;
   }
 
+  get statusText(): string {
+    if (!this.#statusText) {
+      this.#statusText = HttpReasonPhraseStrings.getStatusText(this.statusCode);
+    }
+    return this.#statusText;
+  }
+
+  set statusText(statusText: string) {
+    this.#statusText = statusText;
+  }
+
   redirectSource(): NetworkRequest|null {
     return this.#redirectSourceInternal;
   }
@@ -962,6 +985,7 @@ export class NetworkRequest extends Common.ObjectWrapper.ObjectWrapper<EventType
 
   set originalResponseHeaders(headers: Protocol.Fetch.HeaderEntry[]) {
     this.#originalResponseHeaders = headers;
+    this.#sortedOriginalResponseHeaders = undefined;
   }
 
   get setCookieHeaders(): Protocol.Fetch.HeaderEntry[] {
@@ -988,10 +1012,64 @@ export class NetworkRequest extends Common.ObjectWrapper.ObjectWrapper<EventType
     }
 
     this.#sortedResponseHeadersInternal = this.responseHeaders.slice();
-    this.#sortedResponseHeadersInternal.sort(function(a, b) {
-      return Platform.StringUtilities.compare(a.name.toLowerCase(), b.name.toLowerCase());
+    return this.#sortedResponseHeadersInternal.sort(function(a, b) {
+      return Platform.StringUtilities.compare(a.name.toLowerCase(), b.name.toLowerCase()) ||
+          Platform.StringUtilities.compare(a.value, b.value);
     });
-    return this.#sortedResponseHeadersInternal;
+  }
+
+  get sortedOriginalResponseHeaders(): NameValue[] {
+    if (this.#sortedOriginalResponseHeaders !== undefined) {
+      return this.#sortedOriginalResponseHeaders;
+    }
+
+    this.#sortedOriginalResponseHeaders = this.originalResponseHeaders.slice();
+    return this.#sortedOriginalResponseHeaders.sort(function(a, b) {
+      return Platform.StringUtilities.compare(a.name.toLowerCase(), b.name.toLowerCase()) ||
+          Platform.StringUtilities.compare(a.value, b.value);
+    });
+  }
+
+  get overrideTypes(): OverrideType[] {
+    const types: OverrideType[] = [];
+
+    if (this.hasOverriddenContent) {
+      types.push('content');
+    }
+
+    if (this.hasOverriddenHeaders()) {
+      types.push('headers');
+    }
+
+    return types;
+  }
+
+  get hasOverriddenContent(): boolean {
+    return this.#hasOverriddenContent;
+  }
+
+  set hasOverriddenContent(value: boolean) {
+    this.#hasOverriddenContent = value;
+  }
+
+  hasOverriddenHeaders(): boolean {
+    if (!this.#originalResponseHeaders.length) {
+      return false;
+    }
+    const sortedResponseHeaders = this.sortedResponseHeaders;
+    const sortedOriginalResponseHeaders = this.sortedOriginalResponseHeaders;
+    if (sortedOriginalResponseHeaders.length !== sortedResponseHeaders.length) {
+      return true;
+    }
+    for (let i = 0; i < sortedResponseHeaders.length; i++) {
+      if (sortedResponseHeaders[i].name.toLowerCase() !== sortedOriginalResponseHeaders[i].name.toLowerCase()) {
+        return true;
+      }
+      if (sortedResponseHeaders[i].value !== sortedOriginalResponseHeaders[i].value) {
+        return true;
+      }
+    }
+    return false;
   }
 
   responseHeaderValue(headerName: string): string|undefined {
@@ -1334,6 +1412,10 @@ export class NetworkRequest extends Common.ObjectWrapper.ObjectWrapper<EventType
     return this.#initiatorInternal || null;
   }
 
+  hasUserGesture(): boolean|null {
+    return this.#hasUserGesture ?? null;
+  }
+
   frames(): WebSocketFrame[] {
     return this.#framesInternal;
   }
@@ -1465,7 +1547,7 @@ export class NetworkRequest extends Common.ObjectWrapper.ObjectWrapper<EventType
         this.setRequestHeadersText(requestHeadersText);
       }
 
-      this.statusText = NetworkRequest.parseStatusTextFromResponseHeadersText(extraResponseInfo.responseHeadersText);
+      this.#statusText = NetworkRequest.parseStatusTextFromResponseHeadersText(extraResponseInfo.responseHeadersText);
     }
     this.#remoteAddressSpaceInternal = extraResponseInfo.resourceIPAddressSpace;
 
@@ -1671,6 +1753,8 @@ export const setCookieBlockedReasonToUiString = function(
       return i18nString(UIStrings.thisSetcookieWasBlockedBecauseItHadTheSamepartyAttribute);
     case Protocol.Network.SetCookieBlockedReason.NameValuePairExceedsMaxSize:
       return i18nString(UIStrings.thisSetcookieWasBlockedBecauseTheNameValuePairExceedsMaxSize);
+    case Protocol.Network.SetCookieBlockedReason.DisallowedCharacter:
+      return i18nString(UIStrings.thisSetcookieHadADisallowedCharacter);
   }
   return '';
 };
@@ -1726,6 +1810,7 @@ export const setCookieBlockedReasonToAttribute = function(blockedReason: Protoco
         case Protocol.Network.SetCookieBlockedReason.SyntaxError:
         case Protocol.Network.SetCookieBlockedReason.SchemeNotSupported:
         case Protocol.Network.SetCookieBlockedReason.UnknownError:
+        case Protocol.Network.SetCookieBlockedReason.DisallowedCharacter:
           return null;
       }
       return null;
@@ -1803,3 +1888,5 @@ export interface WebBundleInnerRequestInfo {
   bundleRequestId?: string;
   errorMessage?: string;
 }
+
+export type OverrideType = 'content'|'headers';

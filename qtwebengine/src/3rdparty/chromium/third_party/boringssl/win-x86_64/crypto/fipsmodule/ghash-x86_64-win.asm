@@ -6,6 +6,7 @@ default	rel
 %define XMMWORD
 %define YMMWORD
 %define ZMMWORD
+%define _CET_ENDBR
 
 %ifdef BORINGSSL_PREFIX
 %include "boringssl_prefix_symbols_nasm.inc"
@@ -19,6 +20,7 @@ ALIGN	16
 gcm_init_clmul:
 
 $L$SEH_begin_gcm_init_clmul_1:
+_CET_ENDBR
 $L$_init_clmul:
 	sub	rsp,0x18
 $L$SEH_prolog_gcm_init_clmul_2:
@@ -184,6 +186,7 @@ global	gcm_gmult_clmul
 ALIGN	16
 gcm_gmult_clmul:
 
+_CET_ENDBR
 $L$_gmult_clmul:
 	movdqu	xmm0,XMMWORD[rcx]
 	movdqa	xmm5,XMMWORD[$L$bswap_mask]
@@ -238,6 +241,7 @@ ALIGN	32
 gcm_ghash_clmul:
 
 $L$SEH_begin_gcm_ghash_clmul_1:
+_CET_ENDBR
 $L$_ghash_clmul:
 	lea	rax,[((-136))+rsp]
 	lea	rsp,[((-32))+rax]
@@ -659,6 +663,7 @@ global	gcm_init_avx
 ALIGN	32
 gcm_init_avx:
 
+_CET_ENDBR
 $L$SEH_begin_gcm_init_avx_1:
 	sub	rsp,0x18
 $L$SEH_prolog_gcm_init_avx_2:
@@ -776,6 +781,7 @@ global	gcm_gmult_avx
 ALIGN	32
 gcm_gmult_avx:
 
+_CET_ENDBR
 	jmp	NEAR $L$_gmult_clmul
 
 
@@ -784,6 +790,7 @@ global	gcm_ghash_avx
 ALIGN	32
 gcm_ghash_avx:
 
+_CET_ENDBR
 $L$SEH_begin_gcm_ghash_avx_1:
 	lea	rax,[((-136))+rsp]
 	lea	rsp,[((-32))+rax]
@@ -1193,6 +1200,7 @@ $L$tail_no_xor_avx:
 
 $L$SEH_end_gcm_ghash_avx_13:
 
+section	.rdata rdata align=8
 ALIGN	64
 $L$bswap_mask:
 	DB	15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
@@ -1207,6 +1215,8 @@ ALIGN	64
 	DB	60,97,112,112,114,111,64,111,112,101,110,115,115,108,46,111
 	DB	114,103,62,0
 ALIGN	64
+section	.text
+
 section	.pdata rdata align=4
 ALIGN	4
 	DD	$L$SEH_begin_gcm_init_clmul_1 wrt ..imagebase

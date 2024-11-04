@@ -79,6 +79,8 @@ public:
     bool dynamicRoles() const { return m_dynamicRoles; }
     void setDynamicRoles(bool enableDynamicRoles);
 
+    ListModel *listModel() const { return m_listModel; }
+
 Q_SIGNALS:
     void countChanged();
 
@@ -180,8 +182,5 @@ inline QQmlCustomParser *qmlCreateCustomParser<QQmlListModel>()
 }
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQmlListModel)
-QML_DECLARE_TYPE(QQmlListElement)
 
 #endif // QQMLLISTMODEL_H

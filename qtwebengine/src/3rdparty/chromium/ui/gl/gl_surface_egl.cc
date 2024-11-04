@@ -174,8 +174,7 @@ EGLConfig ChooseConfig(EGLDisplay display,
   // On X this is only used for PBuffer surfaces.
 
   std::vector<EGLint> renderable_types;
-  if (!base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kDisableES3GLContext)) {
+  if (!GetGlWorkarounds().disable_es3gl_context) {
     renderable_types.push_back(EGL_OPENGL_ES3_BIT);
   }
   renderable_types.push_back(EGL_OPENGL_ES2_BIT);
@@ -437,44 +436,12 @@ bool NativeViewGLSurfaceEGL::Initialize(GLSurfaceFormat format) {
     egl_window_attributes.push_back(EGL_SURFACE_ORIENTATION_INVERT_Y_ANGLE);
   }
 
-  switch (format_.GetColorSpace()) {
-    case GLSurfaceFormat::COLOR_SPACE_UNSPECIFIED:
-      break;
-    case GLSurfaceFormat::COLOR_SPACE_SRGB:
-      // Note that COLORSPACE_LINEAR refers to the sRGB color space, but
-      // without opting into sRGB blending. It is equivalent to
-      // COLORSPACE_SRGB with Disable(FRAMEBUFFER_SRGB).
-      if (display_->ext->b_EGL_KHR_gl_colorspace) {
-        egl_window_attributes.push_back(EGL_GL_COLORSPACE_KHR);
-        egl_window_attributes.push_back(EGL_GL_COLORSPACE_LINEAR_KHR);
-      }
-      break;
-    case GLSurfaceFormat::COLOR_SPACE_DISPLAY_P3:
-      // Note that it is not the case that
-      //   COLORSPACE_SRGB is to COLORSPACE_LINEAR_KHR
-      // as
-      //   COLORSPACE_DISPLAY_P3 is to COLORSPACE_DISPLAY_P3_LINEAR
-      // COLORSPACE_DISPLAY_P3 is equivalent to COLORSPACE_LINEAR, except with
-      // with the P3 gamut instead of the the sRGB gamut.
-      // COLORSPACE_DISPLAY_P3_LINEAR has a linear transfer function, and is
-      // intended for use with 16-bit formats.
-      bool p3_supported =
-          display_->ext->b_EGL_EXT_gl_colorspace_display_p3 ||
-          display_->ext->b_EGL_EXT_gl_colorspace_display_p3_passthrough;
-      if (display_->ext->b_EGL_KHR_gl_colorspace && p3_supported) {
-        egl_window_attributes.push_back(EGL_GL_COLORSPACE_KHR);
-        // Chrome relied on incorrect Android behavior when dealing with P3 /
-        // framebuffer_srgb interactions. This behavior was fixed in Q, which
-        // causes invalid Chrome rendering. To achieve Android-P behavior in Q+,
-        // use EGL_GL_COLORSPACE_P3_PASSTHROUGH_EXT where possible.
-        if (display_->ext->b_EGL_EXT_gl_colorspace_display_p3_passthrough) {
-          egl_window_attributes.push_back(
-              EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT);
-        } else {
-          egl_window_attributes.push_back(EGL_GL_COLORSPACE_DISPLAY_P3_EXT);
-        }
-      }
-      break;
+  // Note that COLORSPACE_LINEAR refers to the sRGB color space, but
+  // without opting into sRGB blending. It is equivalent to
+  // COLORSPACE_SRGB with Disable(FRAMEBUFFER_SRGB).
+  if (display_->ext->b_EGL_KHR_gl_colorspace) {
+    egl_window_attributes.push_back(EGL_GL_COLORSPACE_KHR);
+    egl_window_attributes.push_back(EGL_GL_COLORSPACE_LINEAR_KHR);
   }
 
   egl_window_attributes.push_back(EGL_NONE);
@@ -781,8 +748,8 @@ gfx::Size NativeViewGLSurfaceEGL::GetSize() {
   EGLint height;
   if (!eglQuerySurface(display_->GetDisplay(), surface_, EGL_WIDTH, &width) ||
       !eglQuerySurface(display_->GetDisplay(), surface_, EGL_HEIGHT, &height)) {
-    NOTREACHED() << "eglQuerySurface failed with error "
-                 << GetLastEGLErrorString();
+    LOG(ERROR) << "eglQuerySurface failed with error "
+               << GetLastEGLErrorString();
     return gfx::Size();
   }
 
@@ -1015,17 +982,6 @@ gfx::SwapResult NativeViewGLSurfaceEGL::PostSubBuffer(
   return scoped_swap_buffers.result();
 }
 
-bool NativeViewGLSurfaceEGL::SupportsCommitOverlayPlanes() {
-  return false;
-}
-
-gfx::SwapResult NativeViewGLSurfaceEGL::CommitOverlayPlanes(
-    PresentationCallback callback,
-    gfx::FrameData data) {
-  NOTREACHED();
-  return gfx::SwapResult::SWAP_FAILED;
-}
-
 bool NativeViewGLSurfaceEGL::OnMakeCurrent(GLContext* context) {
   if (presentation_helper_)
     presentation_helper_->OnMakeCurrent(context, this);
@@ -1044,14 +1000,6 @@ void NativeViewGLSurfaceEGL::SetVSyncEnabled(bool enabled) {
     LOG(ERROR) << "eglSwapInterval failed with error "
                << GetLastEGLErrorString();
   }
-}
-
-bool NativeViewGLSurfaceEGL::ScheduleOverlayPlane(
-    OverlayImage image,
-    std::unique_ptr<gfx::GpuFence> gpu_fence,
-    const gfx::OverlayPlaneData& overlay_plane_data) {
-  NOTIMPLEMENTED();
-  return false;
 }
 
 NativeViewGLSurfaceEGL::~NativeViewGLSurfaceEGL() {

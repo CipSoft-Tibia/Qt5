@@ -8,7 +8,6 @@
 #include <utility>
 
 #include "base/containers/adapters.h"
-#include "base/cxx17_backports.h"
 #include "base/i18n/rtl.h"
 #include "base/memory/ptr_util.h"
 #include "build/build_config.h"
@@ -296,7 +295,7 @@ void TreeView::Collapse(ui::TreeModelNode* model_node) {
     DrawnNodesChanged();
     AXVirtualView* ax_view = node->accessibility_view();
     if (ax_view) {
-      ax_view->NotifyAccessibilityEvent(ax::mojom::Event::kStateChanged);
+      ax_view->NotifyAccessibilityEvent(ax::mojom::Event::kExpandedChanged);
       ax_view->NotifyAccessibilityEvent(ax::mojom::Event::kRowCollapsed);
     }
     NotifyAccessibilityEvent(ax::mojom::Event::kRowCountChanged, true);
@@ -311,7 +310,7 @@ void TreeView::Expand(TreeModelNode* node) {
     AXVirtualView* ax_view =
         internal_node ? internal_node->accessibility_view() : nullptr;
     if (ax_view) {
-      ax_view->NotifyAccessibilityEvent(ax::mojom::Event::kStateChanged);
+      ax_view->NotifyAccessibilityEvent(ax::mojom::Event::kExpandedChanged);
       ax_view->NotifyAccessibilityEvent(ax::mojom::Event::kRowExpanded);
     }
     NotifyAccessibilityEvent(ax::mojom::Event::kRowCountChanged, true);
@@ -336,7 +335,7 @@ void TreeView::ExpandAll(TreeModelNode* node) {
     AXVirtualView* ax_view =
         internal_node ? internal_node->accessibility_view() : nullptr;
     if (ax_view) {
-      ax_view->NotifyAccessibilityEvent(ax::mojom::Event::kStateChanged);
+      ax_view->NotifyAccessibilityEvent(ax::mojom::Event::kExpandedChanged);
       ax_view->NotifyAccessibilityEvent(ax::mojom::Event::kRowExpanded);
     }
     NotifyAccessibilityEvent(ax::mojom::Event::kRowCountChanged, true);
@@ -527,54 +526,54 @@ bool TreeView::HandleAccessibleAction(const ui::AXActionData& action_data) {
   return true;
 }
 
-void TreeView::TreeNodesAdded(TreeModel* model,
-                              TreeModelNode* parent,
-                              size_t start,
-                              size_t count) {
+void TreeView::TreeNodeAdded(TreeModel* model,
+                             TreeModelNode* parent,
+                             size_t index) {
   InternalNode* parent_node =
       GetInternalNodeForModelNode(parent, DONT_CREATE_IF_NOT_LOADED);
   if (!parent_node || !parent_node->loaded_children())
     return;
+
   const auto& children = model_->GetChildren(parent);
-  for (size_t i = start; i < start + count; ++i) {
-    auto child = std::make_unique<InternalNode>();
-    ConfigureInternalNode(children[i], child.get());
-    std::unique_ptr<AXVirtualView> ax_view =
-        CreateAndSetAccessibilityView(child.get());
-    parent_node->Add(std::move(child), i);
-    DCHECK_LE(i, parent_node->accessibility_view()->GetChildCount());
-    parent_node->accessibility_view()->AddChildViewAt(std::move(ax_view), i);
-  }
+  auto child = std::make_unique<InternalNode>();
+  ConfigureInternalNode(children[index], child.get());
+  std::unique_ptr<AXVirtualView> ax_view =
+      CreateAndSetAccessibilityView(child.get());
+  parent_node->Add(std::move(child), index);
+  DCHECK_LE(index, parent_node->accessibility_view()->GetChildCount());
+  parent_node->accessibility_view()->AddChildViewAt(std::move(ax_view), index);
+
   if (IsExpanded(parent)) {
     NotifyAccessibilityEvent(ax::mojom::Event::kRowCountChanged, true);
     DrawnNodesChanged();
   }
 }
 
-void TreeView::TreeNodesRemoved(TreeModel* model,
-                                TreeModelNode* parent,
-                                size_t start,
-                                size_t count) {
+void TreeView::TreeNodeRemoved(TreeModel* model,
+                               TreeModelNode* parent,
+                               size_t index) {
   InternalNode* parent_node =
       GetInternalNodeForModelNode(parent, DONT_CREATE_IF_NOT_LOADED);
+
   if (!parent_node || !parent_node->loaded_children())
     return;
+
   bool reset_selected_node = false;
   bool reset_active_node = false;
-  for (size_t i = 0; i < count; ++i) {
-    InternalNode* child_removing = parent_node->children()[start].get();
-    if (selected_node_ && selected_node_->HasAncestor(child_removing))
-      reset_selected_node = true;
-    if (active_node_ && active_node_->HasAncestor(child_removing))
-      reset_active_node = true;
-
-    DCHECK(parent_node->accessibility_view()->Contains(
-        child_removing->accessibility_view()));
-    parent_node->accessibility_view()->RemoveChildView(
-        child_removing->accessibility_view());
-    child_removing->set_accessibility_view(nullptr);
-    parent_node->Remove(start);
+  InternalNode* child_removing = parent_node->children()[index].get();
+  if (selected_node_ && selected_node_->HasAncestor(child_removing)) {
+    reset_selected_node = true;
   }
+  if (active_node_ && active_node_->HasAncestor(child_removing)) {
+    reset_active_node = true;
+  }
+
+  DCHECK(parent_node->accessibility_view()->Contains(
+      child_removing->accessibility_view()));
+  parent_node->accessibility_view()->RemoveChildView(
+      child_removing->accessibility_view());
+  child_removing->set_accessibility_view(nullptr);
+  parent_node->Remove(index);
 
   if (reset_selected_node || reset_active_node) {
     // selected_node_ or active_node_ or both were no longer valid (i.e. the
@@ -590,7 +589,7 @@ void TreeView::TreeNodesRemoved(TreeModel* model,
     const auto& children = model_->GetChildren(parent);
     TreeModelNode* nearest_node = nullptr;
     if (!children.empty()) {
-      nearest_node = children[std::min(start, children.size() - 1)];
+      nearest_node = children[std::min(index, children.size() - 1)];
     } else if (parent != root_.model_node() || root_shown_) {
       nearest_node = parent;
     }
@@ -691,8 +690,8 @@ gfx::Point TreeView::GetKeyboardContextMenuLocation() {
     if (node_bounds.Intersects(vis_bounds))
       node_bounds.Intersect(vis_bounds);
     gfx::Point menu_point(node_bounds.CenterPoint());
-    x = base::clamp(menu_point.x(), vis_bounds.x(), vis_bounds.right());
-    y = base::clamp(menu_point.y(), vis_bounds.y(), vis_bounds.bottom());
+    x = std::clamp(menu_point.x(), vis_bounds.x(), vis_bounds.right());
+    y = std::clamp(menu_point.y(), vis_bounds.y(), vis_bounds.bottom());
   }
   gfx::Point screen_loc(x, y);
   if (base::i18n::IsRTL())
@@ -1394,7 +1393,7 @@ void TreeView::IncrementSelection(IncrementType type) {
   int delta = type == IncrementType::kPrevious ? -1 : 1;
   int row = GetRowForInternalNode(active_node_, &depth);
   int new_row =
-      base::clamp(row + delta, 0, base::checked_cast<int>(GetRowCount()) - 1);
+      std::clamp(row + delta, 0, base::checked_cast<int>(GetRowCount()) - 1);
   if (new_row == row)
     return;  // At the end/beginning.
   SetSelectedNode(GetNodeByRow(new_row, &depth)->model_node());

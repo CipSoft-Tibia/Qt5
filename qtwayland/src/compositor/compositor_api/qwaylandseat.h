@@ -71,6 +71,9 @@ public:
     void sendFullKeyEvent(QKeyEvent *event);
     Q_INVOKABLE void sendKeyEvent(int qtKey, bool pressed);
 
+    Q_REVISION(6, 7) Q_INVOKABLE void sendUnicodeKeyPressEvent(uint unicode);
+    Q_REVISION(6, 7) Q_INVOKABLE void sendUnicodeKeyReleaseEvent(uint unicode);
+
     uint sendTouchPointEvent(QWaylandSurface *surface, int id, const QPointF &point, Qt::TouchPointState state);
     Q_INVOKABLE uint sendTouchPointPressed(QWaylandSurface *surface, int id, const QPointF &position);
     Q_INVOKABLE uint sendTouchPointReleased(QWaylandSurface *surface, int id, const QPointF &position);
@@ -114,6 +117,8 @@ Q_SIGNALS:
     void cursorSurfaceRequested(QWaylandSurface *surface, int hotspotX, int hotspotY, QWaylandClient *client);
 
 private:
+    void sendUnicodeKeyEvent(uint unicode, QEvent::Type type);
+
     void handleMouseFocusDestroyed();
 };
 

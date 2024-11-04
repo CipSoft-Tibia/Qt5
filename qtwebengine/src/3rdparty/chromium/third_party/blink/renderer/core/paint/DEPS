@@ -6,7 +6,6 @@ include_rules = [
     "+base/logging.h",
     # Hash function access
     "+base/hash/hash.h",
-    "+components/shared_highlighting/core/common",
 ]
 
 specific_include_rules = {

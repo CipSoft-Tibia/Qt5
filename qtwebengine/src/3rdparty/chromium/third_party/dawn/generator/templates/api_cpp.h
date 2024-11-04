@@ -13,7 +13,7 @@
 //* limitations under the License.
 {% set API = metadata.api.upper() %}
 {% set api = API.lower() %}
-{% if 'dawn' not in enabled_tags %}
+{% if 'dawn' in enabled_tags %}
     #ifdef __EMSCRIPTEN__
     #error "Do not include this header. Emscripten already provides headers needed for {{metadata.api}}."
     #endif
@@ -22,8 +22,12 @@
 #define {{API}}_CPP_H_
 
 #include "dawn/{{api}}.h"
+#include "dawn/{{api}}_cpp_chained_struct.h"
 #include "dawn/EnumClassBitmasks.h"
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
 
 namespace {{metadata.namespace}} {
 
@@ -69,6 +73,26 @@ namespace {{metadata.namespace}} {
     {% for type in by_category["structure"] %}
         struct {{as_cppType(type.name)}};
     {% endfor %}
+
+
+    // Special class for booleans in order to allow implicit conversions.
+    {% set BoolCppType = as_cppType(types["bool"].name) %}
+    {% set BoolCType = as_cType(types["bool"].name) %}
+    class {{BoolCppType}} {
+      public:
+        constexpr {{BoolCppType}}() = default;
+        // NOLINTNEXTLINE(runtime/explicit) allow implicit construction
+        constexpr {{BoolCppType}}(bool value) : mValue(static_cast<{{BoolCType}}>(value)) {}
+        // NOLINTNEXTLINE(runtime/explicit) allow implicit construction
+        {{BoolCppType}}({{BoolCType}} value): mValue(value) {}
+
+        constexpr operator bool() const { return static_cast<bool>(mValue); }
+
+      private:
+        friend struct std::hash<{{BoolCppType}}>;
+        // Default to false.
+        {{BoolCType}} mValue = static_cast<{{BoolCType}}>(false);
+    };
 
     {% for typeDef in by_category["typedef"] %}
         // {{as_cppType(typeDef.name)}} is deprecated.
@@ -136,7 +160,7 @@ namespace {{metadata.namespace}} {
         CType Get() const {
             return mHandle;
         }
-        CType Release() {
+        CType MoveToCHandle() {
             CType result = mHandle;
             mHandle = 0;
             return result;
@@ -151,7 +175,7 @@ namespace {{metadata.namespace}} {
         CType mHandle = nullptr;
     };
 
-{% macro render_cpp_default_value(member, is_struct=True) -%}
+{% macro render_cpp_default_value(member, is_struct=True, force_default=False) -%}
     {%- if member.json_data.get("no_default", false) -%}
     {%- elif member.annotation in ["*", "const*"] and member.optional or member.default_value == "nullptr" -%}
         {{" "}}= nullptr
@@ -165,6 +189,9 @@ namespace {{metadata.namespace}} {
         {{" "}}= {{member.default_value}}
     {%- else -%}
         {{assert(member.default_value == None)}}
+        {%- if force_default -%}
+            {{" "}}= {}
+        {%- endif -%}
     {%- endif -%}
 {%- endmacro %}
 
@@ -203,7 +230,7 @@ namespace {{metadata.namespace}} {
 
     {% endfor %}
 
-    {% for function in by_category["function"] %}
+    {% for function in by_category["function"] if not function.no_cpp %}
         {{as_cppType(function.return_type.name)}} {{as_cppType(function.name)}}(
             {%- for arg in function.arguments -%}
                 {%- if not loop.first %}, {% endif -%}
@@ -211,16 +238,6 @@ namespace {{metadata.namespace}} {
             {%- endfor -%}
         );
     {% endfor %}
-
-    struct ChainedStruct {
-        ChainedStruct const * nextInChain = nullptr;
-        SType sType = SType::Invalid;
-    };
-
-    struct ChainedStructOut {
-        ChainedStruct * nextInChain = nullptr;
-        SType sType = SType::Invalid;
-    };
 
     {% for type in by_category["structure"] %}
         {% set Out = "Out" if type.output else "" %}
@@ -236,11 +253,19 @@ namespace {{metadata.namespace}} {
         {% else %}
             struct {{as_cppType(type.name)}} {
         {% endif %}
+            {% if type.has_free_members_function %}
+                {{as_cppType(type.name)}}() = default;
+                ~{{as_cppType(type.name)}}();
+                {{as_cppType(type.name)}}(const {{as_cppType(type.name)}}&) = delete;
+                {{as_cppType(type.name)}}& operator=(const {{as_cppType(type.name)}}&) = delete;
+                {{as_cppType(type.name)}}({{as_cppType(type.name)}}&&);
+                {{as_cppType(type.name)}}& operator=({{as_cppType(type.name)}}&&);
+            {% endif %}
             {% if type.extensible %}
                 ChainedStruct{{Out}} {{const}} * nextInChain = nullptr;
             {% endif %}
             {% for member in type.members %}
-                {% set member_declaration = as_annotated_cppType(member) + render_cpp_default_value(member) %}
+                {% set member_declaration = as_annotated_cppType(member, type.has_free_members_function) + render_cpp_default_value(member, False, type.has_free_members_function) %}
                 {% if type.chained and loop.first %}
                     //* Align the first member after ChainedStruct to match the C struct layout.
                     //* It has to be aligned both to its natural and ChainedStruct's alignment.
@@ -268,5 +293,16 @@ namespace dawn {
 
     {% endfor %}
 } // namespace dawn
+
+namespace std {
+// Custom boolean class needs corresponding hash function so that it appears as a transparent bool.
+template <>
+struct hash<{{metadata.namespace}}::{{BoolCppType}}> {
+  public:
+    size_t operator()(const {{metadata.namespace}}::{{BoolCppType}} &v) const {
+        return hash<bool>()(v);
+    }
+};
+}  // namespace std
 
 #endif // {{API}}_CPP_H_

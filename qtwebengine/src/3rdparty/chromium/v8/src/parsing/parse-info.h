@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "include/v8-callbacks.h"
 #include "src/base/bit-field.h"
 #include "src/base/export-template.h"
 #include "src/base/logging.h"
@@ -62,7 +63,8 @@ class Zone;
   V(post_parallel_compile_tasks_for_lazy, bool, 1, _)           \
   V(collect_source_positions, bool, 1, _)                       \
   V(is_repl_mode, bool, 1, _)                                   \
-  V(produce_compile_hints, bool, 1, _)
+  V(produce_compile_hints, bool, 1, _)                          \
+  V(compile_hints_magic_enabled, bool, 1, _)
 
 class V8_EXPORT_PRIVATE UnoptimizedCompileFlags {
  public:
@@ -75,12 +77,12 @@ class V8_EXPORT_PRIVATE UnoptimizedCompileFlags {
 
   // Set-up flags for a compiling a particular function (either a lazy compile
   // or a recompile).
-  static UnoptimizedCompileFlags ForFunctionCompile(Isolate* isolate,
-                                                    SharedFunctionInfo shared);
+  static UnoptimizedCompileFlags ForFunctionCompile(
+      Isolate* isolate, Tagged<SharedFunctionInfo> shared);
 
   // Set-up flags for a full compilation of a given script.
   static UnoptimizedCompileFlags ForScriptCompile(Isolate* isolate,
-                                                  Script script);
+                                                  Tagged<Script> script);
 
   // Set-up flags for a parallel toplevel function compilation, based on the
   // flags of an existing toplevel compilation.
@@ -144,7 +146,7 @@ class V8_EXPORT_PRIVATE UnoptimizedCompileFlags {
                                   LanguageMode language_mode,
                                   REPLMode repl_mode, ScriptType type,
                                   bool lazy);
-  void SetFlagsForFunctionFromScript(Script script);
+  void SetFlagsForFunctionFromScript(Tagged<Script> script);
 
   uint32_t flags_;
   int script_id_;
@@ -337,7 +339,7 @@ class V8_EXPORT_PRIVATE ParseInfo {
     source_range_map_ = source_range_map;
   }
 
-  void CheckFlagsForFunctionFromScript(Script script);
+  void CheckFlagsForFunctionFromScript(Tagged<Script> script);
 
   bool is_background_compilation() const { return is_background_compilation_; }
 
@@ -347,12 +349,27 @@ class V8_EXPORT_PRIVATE ParseInfo {
 
   void set_is_streaming_compilation() { is_streaming_compilation_ = true; }
 
+  void SetCompileHintCallbackAndData(CompileHintCallback callback, void* data) {
+    DCHECK_NULL(compile_hint_callback_);
+    DCHECK_NULL(compile_hint_callback_data_);
+    compile_hint_callback_ = callback;
+    compile_hint_callback_data_ = data;
+  }
+
+  CompileHintCallback compile_hint_callback() const {
+    return compile_hint_callback_;
+  }
+
+  void* compile_hint_callback_data() const {
+    return compile_hint_callback_data_;
+  }
+
  private:
   ParseInfo(const UnoptimizedCompileFlags flags, UnoptimizedCompileState* state,
             ReusableUnoptimizedCompileState* reusable_state,
             uintptr_t stack_limit, RuntimeCallStats* runtime_call_stats);
 
-  void CheckFlagsForToplevelCompileFromScript(Script script);
+  void CheckFlagsForToplevelCompileFromScript(Tagged<Script> script);
 
   //------------- Inputs to parsing and scope analysis -----------------------
   const UnoptimizedCompileFlags flags_;
@@ -364,6 +381,9 @@ class V8_EXPORT_PRIVATE ParseInfo {
   uintptr_t stack_limit_;
   int parameters_end_pos_;
   int max_function_literal_id_;
+
+  v8::CompileHintCallback compile_hint_callback_ = nullptr;
+  void* compile_hint_callback_data_ = nullptr;
 
   //----------- Inputs+Outputs of parsing and scope analysis -----------------
   std::unique_ptr<Utf16CharacterStream> character_stream_;

@@ -170,7 +170,7 @@ static int config_enc_params(EbSvtAv1EncConfiguration *param,
         param->look_ahead_distance    = svt_enc->la_depth;
 #endif
 
-    if (svt_enc->enc_mode >= 0)
+    if (svt_enc->enc_mode >= -1)
         param->enc_mode             = svt_enc->enc_mode;
 
     if (avctx->bit_rate) {
@@ -184,8 +184,10 @@ static int config_enc_params(EbSvtAv1EncConfiguration *param,
         param->min_qp_allowed       = avctx->qmin;
     }
     param->max_bit_rate             = avctx->rc_max_rate;
-    if (avctx->bit_rate && avctx->rc_buffer_size)
-        param->maximum_buffer_size_ms = avctx->rc_buffer_size * 1000LL / avctx->bit_rate;
+    if ((avctx->bit_rate > 0 || avctx->rc_max_rate > 0) && avctx->rc_buffer_size)
+        param->maximum_buffer_size_ms =
+            avctx->rc_buffer_size * 1000LL /
+            FFMAX(avctx->bit_rate, avctx->rc_max_rate);
 
     if (svt_enc->crf > 0) {
         param->qp                   = svt_enc->crf;
@@ -240,15 +242,32 @@ static int config_enc_params(EbSvtAv1EncConfiguration *param,
     if (avctx->level != FF_LEVEL_UNKNOWN)
         param->level = avctx->level;
 
-    if (avctx->gop_size > 0)
+    // gop_size == 1 case is handled when encoding each frame by setting
+    // pic_type to EB_AV1_KEY_PICTURE. For gop_size > 1, set the
+    // intra_period_length. Even though setting intra_period_length to 0 should
+    // work in this case, it does not.
+    // See: https://gitlab.com/AOMediaCodec/SVT-AV1/-/issues/2076
+    if (avctx->gop_size > 1)
         param->intra_period_length  = avctx->gop_size - 1;
+
+    // In order for SVT-AV1 to force keyframes by setting pic_type to
+    // EB_AV1_KEY_PICTURE on any frame, force_key_frames has to be set. Note
+    // that this does not force all frames to be keyframes (it only forces a
+    // keyframe with pic_type is set to EB_AV1_KEY_PICTURE).
+    param->force_key_frames = 1;
 
     if (avctx->framerate.num > 0 && avctx->framerate.den > 0) {
         param->frame_rate_numerator   = avctx->framerate.num;
         param->frame_rate_denominator = avctx->framerate.den;
     } else {
         param->frame_rate_numerator   = avctx->time_base.den;
-        param->frame_rate_denominator = avctx->time_base.num * avctx->ticks_per_frame;
+FF_DISABLE_DEPRECATION_WARNINGS
+        param->frame_rate_denominator = avctx->time_base.num
+#if FF_API_TICKS_PER_FRAME
+            * avctx->ticks_per_frame
+#endif
+            ;
+FF_ENABLE_DEPRECATION_WARNINGS
     }
 
     /* 2 = IDR, closed GOP, 1 = CRA, open GOP */
@@ -302,7 +321,8 @@ static int config_enc_params(EbSvtAv1EncConfiguration *param,
     avctx->bit_rate       = param->rate_control_mode > 0 ?
                             param->target_bit_rate : 0;
     avctx->rc_max_rate    = param->max_bit_rate;
-    avctx->rc_buffer_size = param->maximum_buffer_size_ms * avctx->bit_rate / 1000LL;
+    avctx->rc_buffer_size = param->maximum_buffer_size_ms *
+                            FFMAX(avctx->bit_rate, avctx->rc_max_rate) / 1000LL;
 
     if (avctx->bit_rate || avctx->rc_max_rate || avctx->rc_buffer_size) {
         AVCPBProperties *cpb_props = ff_add_cpb_side_data(avctx);
@@ -453,6 +473,9 @@ static int eb_send_frame(AVCodecContext *avctx, const AVFrame *frame)
         break;
     }
 
+    if (avctx->gop_size == 1)
+        headerPtr->pic_type = EB_AV1_KEY_PICTURE;
+
     svt_av1_enc_send_picture(svt_enc->svt_handle, headerPtr);
 
     return 0;
@@ -590,7 +613,7 @@ static const AVOption options[] = {
         { "high", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, VE, "tier" },
 #endif
     { "preset", "Encoding preset",
-      OFFSET(enc_mode), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, MAX_ENC_PRESET, VE },
+      OFFSET(enc_mode), AV_OPT_TYPE_INT, { .i64 = -2 }, -2, MAX_ENC_PRESET, VE },
 
     FF_AV1_PROFILE_OPTS
 

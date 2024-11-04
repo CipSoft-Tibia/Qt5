@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include "private/glxyseriesdata_p.h"
 #include "private/abstractdomain_p.h"
 #if QT_CONFIG(charts_scatter_chart)
@@ -58,7 +60,8 @@ void GLXYSeriesDataManager::setPoints(QXYSeries *series, const AbstractDomain *d
     bool logAxis = false;
     bool reverseX = false;
     bool reverseY = false;
-    foreach (QAbstractAxis* axis, series->attachedAxes()) {
+    const auto attached = series->attachedAxes();
+    for (QAbstractAxis *axis : attached) {
         if (axis->type() == QAbstractAxis::AxisTypeLogValue) {
             logAxis = true;
             break;

@@ -362,17 +362,15 @@ void UseCounterCallback(v8::Isolate* isolate,
       blink_feature =
           WebFeature::kV8InvalidatedTypedArraySpeciesLookupChainProtector;
       break;
+    case v8::Isolate::kInvalidatedNumberStringNotRegexpLikeProtector:
+      blink_feature =
+          WebFeature::kV8InvalidatedNumberStringNotRegexpLikeProtector;
+      break;
     case v8::Isolate::kVarRedeclaredCatchBinding:
       blink_feature = WebFeature::kV8VarRedeclaredCatchBinding;
       break;
     case v8::Isolate::kWasmRefTypes:
       blink_feature = WebFeature::kV8WasmRefTypes;
-      break;
-    case v8::Isolate::kWasmBulkMemory:
-      blink_feature = WebFeature::kV8WasmBulkMemory;
-      break;
-    case v8::Isolate::kWasmMultiValue:
-      blink_feature = WebFeature::kV8WasmMultiValue;
       break;
     case v8::Isolate::kWasmExceptionHandling:
       blink_feature = WebFeature::kV8WasmExceptionHandling;
@@ -392,6 +390,21 @@ void UseCounterCallback(v8::Isolate* isolate,
     case v8::Isolate::kRegExpUnicodeSetIncompatibilitiesWithUnicodeMode:
       blink_feature =
           WebFeature::kV8RegExpUnicodeSetIncompatibilitiesWithUnicodeMode;
+      break;
+    case v8::Isolate::kImportAssertionDeprecatedSyntax:
+      blink_feature = WebFeature::kV8ImportAssertionDeprecatedSyntax;
+      break;
+    case v8::Isolate::kCompileHintsMagicAll:
+      blink_feature = WebFeature::kV8CompileHintsMagicAll;
+      break;
+    case v8::Isolate::kWasmMemory64:
+      blink_feature = WebFeature::kV8WasmMemory64;
+      break;
+    case v8::Isolate::kWasmMultiMemory:
+      blink_feature = WebFeature::kV8WasmMultiMemory;
+      break;
+    case v8::Isolate::kWasmGC:
+      blink_feature = WebFeature::kV8WasmGC;
       break;
     default:
       // This can happen if V8 has added counters that this version of Blink

@@ -1,4 +1,4 @@
-// Copyright 2021 The Chromium Authors
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,14 +29,12 @@ public class FrameMetricsListenerTest {
         FrameMetricsListener metricsListener = new FrameMetricsListener(store);
         FrameMetrics frameMetrics = mock(FrameMetrics.class);
 
-        store.startTrackingScenario(JankScenario.PERIODIC_REPORTING);
         when(frameMetrics.getMetric(FrameMetrics.TOTAL_DURATION)).thenReturn(10_000_000L);
 
         metricsListener.onFrameMetricsAvailable(null, frameMetrics, 0);
 
         // By default metrics shouldn't be logged.
-        Assert.assertEquals(
-                0, store.stopTrackingScenario(JankScenario.PERIODIC_REPORTING).durationsNs.length);
+        Assert.assertEquals(0, store.takeMetrics().durationsNs.length);
         verifyNoMoreInteractions(frameMetrics);
     }
 
@@ -47,13 +45,11 @@ public class FrameMetricsListenerTest {
         FrameMetricsListener metricsListener = new FrameMetricsListener(store);
         FrameMetrics frameMetrics = mock(FrameMetrics.class);
 
-        store.startTrackingScenario(JankScenario.PERIODIC_REPORTING);
         when(frameMetrics.getMetric(FrameMetrics.TOTAL_DURATION)).thenReturn(10_000_000L);
 
         metricsListener.setIsListenerRecording(true);
         metricsListener.onFrameMetricsAvailable(null, frameMetrics, 0);
 
-        Assert.assertArrayEquals(new Long[] {10_000_000L},
-                store.stopTrackingScenario(JankScenario.PERIODIC_REPORTING).durationsNs);
+        Assert.assertArrayEquals(new long[] {10_000_000L}, store.takeMetrics().durationsNs);
     }
 }

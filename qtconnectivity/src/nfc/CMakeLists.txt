@@ -17,7 +17,7 @@ qt_internal_add_module(Nfc
         qnearfieldtarget.cpp qnearfieldtarget.h qnearfieldtarget_p.cpp qnearfieldtarget_p.h
         qtnfcglobal.h qtnfcglobal_p.h
     DEFINES
-        QT_NO_FOREACH
+        QT_NO_CONTEXTLESS_CONNECT
     PUBLIC_LIBRARIES
         Qt::Core
     GENERATE_CPP_EXPORTS

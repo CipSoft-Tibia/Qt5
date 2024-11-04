@@ -10,9 +10,9 @@
 #include "base/containers/adapters.h"
 #include "base/containers/contains.h"
 #include "base/functional/callback_helpers.h"
-#include "base/guid.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/uuid.h"
 #include "content/browser/child_process_security_policy_impl.h"
 #include "content/browser/service_worker/service_worker_consts.h"
 #include "content/browser/service_worker/service_worker_context_core.h"
@@ -50,6 +50,23 @@ ServiceWorkerMetrics::EventType PurposeToEventType(
   }
   NOTREACHED();
   return ServiceWorkerMetrics::EventType::UNKNOWN;
+}
+
+storage::mojom::CacheStorageControl* GetCacheStorageControl(
+    scoped_refptr<ServiceWorkerVersion> version) {
+  DCHECK(version);
+  if (!version->context()) {
+    return nullptr;
+  }
+  auto* storage_partition = version->context()->wrapper()->storage_partition();
+  if (!storage_partition) {
+    return nullptr;
+  }
+  auto* control = storage_partition->GetCacheStorageControl();
+  if (!control) {
+    return nullptr;
+  }
+  return control;
 }
 
 }  // namespace
@@ -106,7 +123,7 @@ ServiceWorkerContainerHost::ServiceWorkerContainerHost(
     int frame_tree_node_id)
     : context_(std::move(context)),
       create_time_(base::TimeTicks::Now()),
-      client_uuid_(base::GenerateGUID()),
+      client_uuid_(base::Uuid::GenerateRandomV4().AsLowercaseString()),
       is_parent_frame_secure_(is_parent_frame_secure),
       container_(std::move(container_remote)),
       client_info_(ServiceWorkerClientInfo()),
@@ -124,7 +141,7 @@ ServiceWorkerContainerHost::ServiceWorkerContainerHost(
     ServiceWorkerClientInfo client_info)
     : context_(std::move(context)),
       create_time_(base::TimeTicks::Now()),
-      client_uuid_(base::GenerateGUID()),
+      client_uuid_(base::Uuid::GenerateRandomV4().AsLowercaseString()),
       container_(std::move(container_remote)),
       client_info_(client_info),
       process_id_for_worker_client_(process_id) {
@@ -438,6 +455,13 @@ void ServiceWorkerContainerHost::OnExecutionReady() {
   SetExecutionReady();
 }
 
+void ServiceWorkerContainerHost::GetRunningStatus(
+    GetRunningStatusCallback callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  CHECK(controller_);
+  std::move(callback).Run(controller_->running_status());
+}
+
 void ServiceWorkerContainerHost::OnVersionAttributesChanged(
     ServiceWorkerRegistration* registration,
     blink::mojom::ChangedServiceWorkerObjectsMaskPtr changed_mask) {
@@ -611,6 +635,22 @@ void ServiceWorkerContainerHost::SendSetControllerServiceWorker(
   controller_info->fetch_handler_type = controller()->fetch_handler_type();
   controller_info->effective_fetch_handler_type =
       controller()->EffectiveFetchHandlerType();
+  controller_info->fetch_handler_bypass_option =
+      controller()->fetch_handler_bypass_option();
+  controller_info->sha256_script_checksum =
+      controller()->sha256_script_checksum();
+  if (controller()->router_evaluator()) {
+    controller_info->router_data = blink::mojom::ServiceWorkerRouterData::New();
+    controller_info->router_data->router_rules =
+        controller()->router_evaluator()->rules();
+    // Pass an endpoint for the cache storage.
+    mojo::PendingRemote<blink::mojom::CacheStorage> remote_cache_storage =
+        GetRemoteCacheStorage();
+    if (remote_cache_storage) {
+      controller_info->router_data->remote_cache_storage =
+          std::move(remote_cache_storage);
+    }
+  }
 
   // Pass an endpoint for the client to talk to this controller.
   mojo::Remote<blink::mojom::ControllerServiceWorker> remote =
@@ -906,8 +946,22 @@ void ServiceWorkerContainerHost::UpdateUrls(
   DCHECK((origin_to_dcheck.opaque() && key_.origin().opaque()) ||
          origin_to_dcheck.IsSameOriginWith(key_.origin()))
       << origin_to_dcheck << " and " << key_.origin() << " should be equal.";
-  // TODO(https://crbug.com/1199077): Make `top_frame_origin` non-optional and
-  // DCHECK that it's value is compatible with storage key's top_frame_site.
+  // TODO(crbug.com/1402965): verify that `top_frame_origin` matches the
+  // `top_level_site` of `storage_key`, in most cases.
+  //
+  // This is currently not the case if:
+  //  - The storage key is not for the "real" top-level site, such as when the
+  //    top-level site is actually an extension.
+  //  - The storage key has a nonce, in which case its `top_level_site` will be
+  //    for the frame that introduced the nonce (such as a fenced frame) and not
+  //    the same as `top_level_site`.
+  //  - The storage key was generated without third-party storage partitioning.
+  //    This may be the case even when 3PSP is enabled, due to enterprise policy
+  //    or deprecation trials.
+  //
+  // Consider adding a DHCECK here once the last of those conditions is
+  // resolved. See
+  // https://chromium-review.googlesource.com/c/chromium/src/+/4378900/4.
 #endif
 
   // The remaining parts of this function don't make sense for service worker
@@ -940,7 +994,7 @@ void ServiceWorkerContainerHost::UpdateUrls(
 
     // Set UUID to the new one.
     std::string previous_client_uuid = client_uuid_;
-    client_uuid_ = base::GenerateGUID();
+    client_uuid_ = base::Uuid::GenerateRandomV4().AsLowercaseString();
     if (context_)
       context_->UpdateContainerHostClientID(previous_client_uuid, client_uuid_);
   }
@@ -1743,6 +1797,44 @@ void ServiceWorkerContainerHost::InheritControllerFrom(
     SetControllerRegistration(creator_host.controller_registration(),
                               false /* notify_controllerchange */);
   }
+}
+
+mojo::PendingRemote<blink::mojom::CacheStorage>
+ServiceWorkerContainerHost::GetRemoteCacheStorage() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK(IsContainerForClient());
+  DCHECK(controller_);
+
+  auto* control = GetCacheStorageControl(controller_);
+  if (!control) {
+    return mojo::NullRemote();
+  }
+
+  // Since this is offloading the cache storage API access in ServiceWorker,
+  // we need to follow COEP used there.
+  // The reason why COEP is enforced to the cache storage API can be seen in:
+  // crbug.com/991428.
+  const network::CrossOriginEmbedderPolicy* coep =
+      controller_->cross_origin_embedder_policy();
+  if (!coep) {
+    return mojo::NullRemote();
+  }
+
+  // Clone the COEP reporter if available.
+  mojo::PendingRemote<network::mojom::CrossOriginEmbedderPolicyReporter>
+      coep_reporter_to_be_passed;
+  if (coep_reporter_) {
+    coep_reporter_->Clone(
+        coep_reporter_to_be_passed.InitWithNewPipeAndPassReceiver());
+  }
+
+  mojo::PendingRemote<blink::mojom::CacheStorage> remote;
+  control->AddReceiver(
+      *coep, std::move(coep_reporter_to_be_passed),
+      storage::BucketLocator::ForDefaultBucket(controller_->key()),
+      storage::mojom::CacheStorageOwner::kCacheAPI,
+      remote.InitWithNewPipeAndPassReceiver());
+  return remote;
 }
 
 }  // namespace content

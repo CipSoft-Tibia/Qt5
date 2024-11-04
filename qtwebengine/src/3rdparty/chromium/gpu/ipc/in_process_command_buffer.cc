@@ -156,23 +156,21 @@ bool InProcessCommandBuffer::MakeCurrent() {
   return true;
 }
 
-absl::optional<gles2::ProgramCache::ScopedCacheUse>
-InProcessCommandBuffer::CreateCacheUse() {
-  absl::optional<gles2::ProgramCache::ScopedCacheUse> cache_use;
+void InProcessCommandBuffer::CreateCacheUse(
+    absl::optional<gles2::ProgramCache::ScopedCacheUse>& cache_use) {
   if (context_group_->has_program_cache()) {
     cache_use.emplace(
         context_group_->get_program_cache(),
         base::BindRepeating(&DecoderClient::CacheBlob, base::Unretained(this),
                             gpu::GpuDiskCacheType::kGlShaders));
   }
-  return cache_use;
 }
 
 gpu::ContextResult InProcessCommandBuffer::Initialize(
     const ContextCreationAttribs& attribs,
     scoped_refptr<base::SingleThreadTaskRunner> task_runner,
     gpu::raster::GrShaderCache* gr_shader_cache,
-    GpuProcessActivityFlags* activity_flags) {
+    GpuProcessShmCount* use_shader_cache_shm_count) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(client_sequence_checker_);
   TRACE_EVENT0("gpu", "InProcessCommandBuffer::Initialize");
 
@@ -183,7 +181,7 @@ gpu::ContextResult InProcessCommandBuffer::Initialize(
 
   Capabilities capabilities;
   InitializeOnGpuThreadParams params(attribs, &capabilities, gr_shader_cache,
-                                     activity_flags);
+                                     use_shader_cache_shm_count);
 
   base::OnceCallback<gpu::ContextResult(void)> init_task =
       base::BindOnce(&InProcessCommandBuffer::InitializeOnGpuThread,
@@ -491,12 +489,7 @@ bool InProcessCommandBuffer::DestroyOnGpuThread() {
   bool have_context = context_.get() && context_->MakeCurrent(surface_.get());
   absl::optional<gles2::ProgramCache::ScopedCacheUse> cache_use;
   if (have_context)
-    cache_use = CreateCacheUse();
-
-  // Prepare to destroy the surface while the context is still current, because
-  // some surface destructors make GL calls.
-  if (surface_)
-    surface_->PrepareToDestroy(have_context);
+    CreateCacheUse(cache_use);
 
   if (decoder_) {
     decoder_->Destroy(have_context);
@@ -616,7 +609,8 @@ void InProcessCommandBuffer::FlushOnGpuThread(
 
   if (!MakeCurrent())
     return;
-  auto cache_use = CreateCacheUse();
+  absl::optional<gles2::ProgramCache::ScopedCacheUse> cache_use;
+  CreateCacheUse(cache_use);
 
   {
     absl::optional<raster::GrShaderCache::ScopedCacheUse> gr_cache_use;
@@ -648,7 +642,8 @@ void InProcessCommandBuffer::PerformDelayedWorkOnGpuThread() {
   delayed_work_pending_ = false;
 
   if (MakeCurrent()) {
-    auto cache_use = CreateCacheUse();
+    absl::optional<gles2::ProgramCache::ScopedCacheUse> cache_use;
+    CreateCacheUse(cache_use);
     decoder_->PerformIdleWork();
     decoder_->ProcessPendingQueries(false);
     if (decoder_->HasMoreIdleWork() || decoder_->HasPendingQueries()) {
@@ -752,8 +747,9 @@ void InProcessCommandBuffer::SetGetBufferOnGpuThread(
 scoped_refptr<Buffer> InProcessCommandBuffer::CreateTransferBuffer(
     uint32_t size,
     int32_t* id,
+    uint32_t alignment,
     TransferBufferAllocationOption option) {
-  scoped_refptr<Buffer> buffer = MakeMemoryBuffer(size);
+  scoped_refptr<Buffer> buffer = MakeMemoryBuffer(size, alignment);
   *id = GetNextBufferId();
   ScheduleGpuTask(
       base::BindOnce(&InProcessCommandBuffer::RegisterTransferBufferOnGpuThread,
@@ -839,7 +835,7 @@ void InProcessCommandBuffer::OnSwapBuffers(uint64_t swap_id, uint32_t flags) {
 
 void InProcessCommandBuffer::ScheduleGrContextCleanup() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(gpu_sequence_checker_);
-  context_state_->ScheduleGrContextCleanup();
+  context_state_->ScheduleSkiaCleanup();
 }
 
 void InProcessCommandBuffer::HandleReturnData(base::span<const uint8_t> data) {
@@ -896,10 +892,21 @@ void InProcessCommandBuffer::SignalQuery(unsigned query_id,
                      std::move(callback)));
 }
 
+void InProcessCommandBuffer::CancelAllQueries() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(client_sequence_checker_);
+  ScheduleGpuTask(
+      base::BindOnce(&InProcessCommandBuffer::CancelAllQueriesOnGpuThread,
+                     gpu_thread_weak_ptr_factory_.GetWeakPtr()));
+}
+
 void InProcessCommandBuffer::SignalQueryOnGpuThread(
     unsigned query_id,
     base::OnceClosure callback) {
   decoder_->SetQueryCallback(query_id, WrapClientCallback(std::move(callback)));
+}
+
+void InProcessCommandBuffer::CancelAllQueriesOnGpuThread() {
+  decoder_->CancelAllQueries();
 }
 
 void InProcessCommandBuffer::CreateGpuFence(uint32_t gpu_fence_id,

@@ -120,6 +120,15 @@ def AddCommandLineOptions(parser):
       action='store_true',
       help='Wether to use the flags file for the apk under test. If set, '
            "the filename will be looked up in the APK's PackageInfo.")
+  parser.add_argument('--variations-test-seed-path',
+                      type=os.path.relpath,
+                      default=None,
+                      help='Path to variations seed file.')
+  parser.add_argument('--webview-variations-test-seed-path',
+                      type=os.path.relpath,
+                      default=None,
+                      help='Path to variations seed file for WebView.')
+
   parser.set_defaults(allow_unknown=True)
   parser.set_defaults(command_line_flags=None)
 
@@ -199,6 +208,7 @@ def AddCommonOptions(parser):
       namespace.local_output = True
       namespace.num_retries = 0
       namespace.skip_clear_data = True
+      namespace.use_persistent_shell = True
 
   parser.add_argument(
       '--fast-local-dev',
@@ -207,7 +217,7 @@ def AddCommonOptions(parser):
       action=FastLocalDevAction,
       help='Alias for: --num-retries=0 --enable-device-cache '
       '--enable-concurrent-adb --skip-clear-data '
-      '--extract-test-list-from-filter --local-output')
+      '--extract-test-list-from-filter --use-persistent-shell --local-output')
 
   # TODO(jbudorick): Remove this once downstream bots have switched to
   # api.test_results.
@@ -241,6 +251,12 @@ def AddCommonOptions(parser):
       '--use-persistent-shell',
       action='store_true',
       help='Uses a persistent shell connection for the adb connection.')
+
+  parser.add_argument('--disable-test-server',
+                      action='store_true',
+                      help='Disables SpawnedTestServer which doesn'
+                      't work with remote adb. '
+                      'WARNING: Will break tests which require the server.')
 
   # This is currently only implemented for gtests and instrumentation tests.
   parser.add_argument(
@@ -283,6 +299,10 @@ def AddDeviceOptions(parser):
       type=os.path.realpath,
       help='Specify the absolute path of the adb binary that '
            'should be used.')
+  parser.add_argument(
+      '--use-local-devil-tools',
+      action='store_true',
+      help='Use locally built versions of tools used by devil_chromium.')
   parser.add_argument('--denylist-file',
                       type=os.path.realpath,
                       help='Device denylist file.')
@@ -484,11 +504,6 @@ def AddInstrumentationTestOptions(parser):
       '--apk-under-test',
       help='Path or name of the apk under test.')
   parser.add_argument(
-      '--store-data-in-app-directory',
-      action='store_true',
-      help='Store test data in the application\'s data directory. By default '
-      'the test data is stored in the external storage folder.')
-  parser.add_argument(
       '--module',
       action='append',
       dest='modules',
@@ -555,6 +570,11 @@ def AddInstrumentationTestOptions(parser):
            'The original provider will be restored if possible, '
            "on Nougat the provider can't be determined and so "
            'the system will choose the default provider.')
+  parser.add_argument(
+      '--webview-command-line-arg',
+      default=[],
+      action='append',
+      help="Specifies command line arguments to add to WebView's flag file")
   parser.add_argument(
       '--run-setup-command',
       default=[],
@@ -736,13 +756,16 @@ def AddJUnitTestOptions(parser):
   parser.add_argument(
       '--runner-filter',
       help='Filters tests by runner class. Must be fully qualified.')
+  parser.add_argument('--json-config',
+                      help='Runs only tests listed in this config.')
   parser.add_argument(
       '--shards',
-      default=-1,
       type=int,
       help='Number of shards to run junit tests in parallel on. Only 1 shard '
       'is supported when test-filter is specified. Values less than 1 will '
       'use auto select.')
+  parser.add_argument('--shard-filter',
+                      help='Comma separated list of shard indices to run.')
   parser.add_argument(
       '-s', '--test-suite', required=True,
       help='JUnit test suite to run.')
@@ -920,11 +943,12 @@ def _SinkTestResult(test_result, test_file_name, result_sink_client):
                    link_url, test_result.GetName())
   if https_artifacts:
     html_artifact += '<ul>%s</ul>' % '\n'.join(https_artifacts)
-  result_sink_client.Post(test_result.GetName(),
+  result_sink_client.Post(test_result.GetNameForResultSink(),
                           test_result.GetType(),
                           test_result.GetDuration(),
-                          log_decoded.encode('utf-8'),
+                          log_decoded,
                           test_file_name,
+                          variant=test_result.GetVariantForResultSink(),
                           failure_reason=test_result.GetFailureReason(),
                           html_artifact=html_artifact)
 

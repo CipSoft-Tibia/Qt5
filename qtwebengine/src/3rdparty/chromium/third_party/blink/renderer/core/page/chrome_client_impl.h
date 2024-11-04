@@ -84,6 +84,7 @@ class CORE_EXPORT ChromeClientImpl final : public ChromeClient {
                             cc::PaintHoldingCommitTrigger) override;
   std::unique_ptr<cc::ScopedPauseRendering> PauseRendering(
       LocalFrame&) override;
+  absl::optional<int> GetMaxRenderBufferBounds(LocalFrame&) const override;
   void StartDragging(LocalFrame*,
                      const WebDragData&,
                      DragOperationsMask,
@@ -251,7 +252,7 @@ class CORE_EXPORT ChromeClientImpl final : public ChromeClient {
       Document::PageDismissalType) const override;
 
   // AutofillClient pass throughs:
-  void DidAssociateFormControlsAfterLoad(LocalFrame*) override;
+  void DidAddOrRemoveFormRelatedElementsAfterLoad(LocalFrame*) override;
   void HandleKeyboardEventOnTextField(HTMLInputElement&,
                                       KeyboardEvent&) override;
   void DidChangeValueInTextField(HTMLFormControlElement&) override;
@@ -259,7 +260,7 @@ class CORE_EXPORT ChromeClientImpl final : public ChromeClient {
   void OpenTextDataListChooser(HTMLInputElement&) override;
   void TextFieldDataListChanged(HTMLInputElement&) override;
   void DidChangeSelectionInSelectControl(HTMLFormControlElement&) override;
-  void SelectFieldOptionsChanged(HTMLFormControlElement&) override;
+  void SelectOrSelectListFieldOptionsChanged(HTMLFormControlElement&) override;
   void AjaxSucceeded(LocalFrame*) override;
   void JavaScriptChangedAutofilledValue(HTMLFormControlElement&,
                                         const String& old_value) override;

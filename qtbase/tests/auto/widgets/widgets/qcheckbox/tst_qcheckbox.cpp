@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -26,7 +26,7 @@ private slots:
     void toggle();
     void pressed();
     void toggled();
-    void stateChanged();
+    void checkStateChanged();
     void foregroundRole();
     void minimumSizeHint();
 };
@@ -64,7 +64,7 @@ void tst_QCheckBox::setCheckedSignal()
 {
     QCheckBox testWidget;
     testWidget.setCheckState(Qt::Unchecked);
-    QSignalSpy checkStateChangedSpy(&testWidget, &QCheckBox::stateChanged);
+    QSignalSpy checkStateChangedSpy(&testWidget, &QCheckBox::checkStateChanged);
     testWidget.setCheckState(Qt::Checked);
     testWidget.setCheckState(Qt::Checked);
     QTRY_COMPARE(checkStateChangedSpy.size(), 1);   // get signal only once
@@ -208,35 +208,49 @@ void tst_QCheckBox::toggled()
     QCOMPARE(click_count, 0);
 }
 
-void tst_QCheckBox::stateChanged()
+void tst_QCheckBox::checkStateChanged()
 {
     QCheckBox testWidget;
     QCOMPARE(testWidget.checkState(), Qt::Unchecked);
 
     Qt::CheckState cur_state = Qt::Unchecked;
+    QSignalSpy checkStateChangedSpy(&testWidget, &QCheckBox::checkStateChanged);
+#if QT_DEPRECATED_SINCE(6, 9)
+    QT_IGNORE_DEPRECATIONS(
     QSignalSpy stateChangedSpy(&testWidget, &QCheckBox::stateChanged);
-    connect(&testWidget, &QCheckBox::stateChanged, this, [&](auto state) { cur_state = Qt::CheckState(state); });
+    )
+#endif
+    connect(&testWidget, &QCheckBox::checkStateChanged, this, [&](auto state) { cur_state = state; });
     testWidget.setChecked(true);
-    QVERIFY(QTest::qWaitFor([&]() { return stateChangedSpy.size() == 1; }));
+    QTRY_COMPARE(checkStateChangedSpy.size(), 1);
+#if QT_DEPRECATED_SINCE(6, 9)
     QCOMPARE(stateChangedSpy.size(), 1);
+#endif
     QCOMPARE(cur_state, Qt::Checked);
     QCOMPARE(testWidget.checkState(), Qt::Checked);
 
     testWidget.setChecked(false);
-    QVERIFY(QTest::qWaitFor([&]() { return stateChangedSpy.size() == 2; }));
+    QTRY_COMPARE(checkStateChangedSpy.size(), 2);
+#if QT_DEPRECATED_SINCE(6, 9)
     QCOMPARE(stateChangedSpy.size(), 2);
+#endif
     QCOMPARE(cur_state, Qt::Unchecked);
     QCOMPARE(testWidget.checkState(), Qt::Unchecked);
 
     testWidget.setCheckState(Qt::PartiallyChecked);
-    QVERIFY(QTest::qWaitFor([&]() { return stateChangedSpy.size() == 3; }));
+    QTRY_COMPARE(checkStateChangedSpy.size(), 3);
+#if QT_DEPRECATED_SINCE(6, 9)
     QCOMPARE(stateChangedSpy.size(), 3);
+#endif
     QCOMPARE(cur_state, Qt::PartiallyChecked);
     QCOMPARE(testWidget.checkState(), Qt::PartiallyChecked);
 
     testWidget.setCheckState(Qt::PartiallyChecked);
     QCoreApplication::processEvents();
+    QCOMPARE(checkStateChangedSpy.size(), 3);
+#if QT_DEPRECATED_SINCE(6, 9)
     QCOMPARE(stateChangedSpy.size(), 3);
+#endif
 }
 
 void tst_QCheckBox::isToggleButton()

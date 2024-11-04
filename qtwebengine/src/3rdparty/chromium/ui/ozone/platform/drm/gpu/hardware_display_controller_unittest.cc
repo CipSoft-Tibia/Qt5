@@ -17,6 +17,7 @@
 #include "base/test/task_environment.h"
 #include "base/time/time.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rect_conversions.h"
 #include "ui/gfx/gpu_fence.h"
 #include "ui/gfx/gpu_fence_handle.h"
@@ -30,11 +31,15 @@
 #include "ui/ozone/platform/drm/gpu/hardware_display_controller.h"
 #include "ui/ozone/platform/drm/gpu/hardware_display_plane.h"
 #include "ui/ozone/platform/drm/gpu/mock_drm_device.h"
+#include "ui/ozone/platform/drm/gpu/mock_drm_modifiers_filter.h"
 #include "ui/ozone/platform/drm/gpu/page_flip_watchdog.h"
+#include "ui/ozone/public/drm_modifiers_filter.h"
 
 namespace ui {
 
 namespace {
+
+constexpr uint32_t kNoModesConnectorId = 404;
 
 // Create a basic mode for a 6x4 screen.
 const drmModeModeInfo kDefaultMode = {0, 6, 0, 0, 0, 0, 4,     0,
@@ -81,20 +86,32 @@ void FakeFenceFD::Signal() const {
   base::WriteFileDescriptor(write_fd.get(), "a");
 }
 
-class HardwareDisplayControllerTest : public testing::Test {
+// TODO(crbug.com/1431767): Re-enable this test
+#if defined(LEAK_SANITIZER)
+#define MAYBE_HardwareDisplayControllerTest \
+  DISABLED_HardwareDisplayControllerTest
+#else
+#define MAYBE_HardwareDisplayControllerTest HardwareDisplayControllerTest
+#endif
+class MAYBE_HardwareDisplayControllerTest : public testing::Test {
  public:
-  HardwareDisplayControllerTest() = default;
+  MAYBE_HardwareDisplayControllerTest() = default;
 
-  HardwareDisplayControllerTest(const HardwareDisplayControllerTest&) = delete;
-  HardwareDisplayControllerTest& operator=(
-      const HardwareDisplayControllerTest&) = delete;
+  MAYBE_HardwareDisplayControllerTest(
+      const MAYBE_HardwareDisplayControllerTest&) = delete;
+  MAYBE_HardwareDisplayControllerTest& operator=(
+      const MAYBE_HardwareDisplayControllerTest&) = delete;
 
-  ~HardwareDisplayControllerTest() override = default;
+  ~MAYBE_HardwareDisplayControllerTest() override = default;
 
   void SetUp() override;
   void TearDown() override;
 
-  void InitializeDrmDevice(bool use_atomic, size_t movable_planes = 0);
+  void InitializeDrmDevice(
+      bool use_atomic,
+      size_t movable_planes = 0,
+      const std::vector<uint64_t>& supported_modifiers = {},
+      std::unique_ptr<DrmModifiersFilter> modifiers_filter = nullptr);
   void SchedulePageFlip(DrmOverlayPlaneList planes);
   void OnSubmission(gfx::SwapResult swap_result,
                     gfx::GpuFenceHandle release_fence);
@@ -134,6 +151,7 @@ class HardwareDisplayControllerTest : public testing::Test {
 
   std::unique_ptr<HardwareDisplayController> controller_;
   scoped_refptr<MockDrmDevice> drm_;
+  std::unique_ptr<DrmModifiersFilter> modifiers_filter_;
 
   int successful_page_flips_count_ = 0;
   gfx::SwapResult last_swap_result_;
@@ -143,7 +161,7 @@ class HardwareDisplayControllerTest : public testing::Test {
   uint32_t secondary_crtc_ = 0;
 };
 
-void HardwareDisplayControllerTest::SetUp() {
+void MAYBE_HardwareDisplayControllerTest::SetUp() {
   successful_page_flips_count_ = 0;
   last_swap_result_ = gfx::SwapResult::SWAP_FAILED;
 
@@ -152,25 +170,40 @@ void HardwareDisplayControllerTest::SetUp() {
   InitializeDrmDevice(/* use_atomic= */ true);
 }
 
-void HardwareDisplayControllerTest::TearDown() {
+void MAYBE_HardwareDisplayControllerTest::TearDown() {
   controller_.reset();
   drm_ = nullptr;
 }
 
-void HardwareDisplayControllerTest::InitializeDrmDevice(bool use_atomic,
-                                                        size_t movable_planes) {
+void MAYBE_HardwareDisplayControllerTest::InitializeDrmDevice(
+    bool use_atomic,
+    size_t movable_planes,
+    const std::vector<uint64_t>& supported_modifiers,
+    std::unique_ptr<DrmModifiersFilter> modifiers_filter) {
   // This will change the plane_manager of the drm.
   // HardwareDisplayController is tied to the plane_manager CRTC states.
   // Destruct the controller before destructing the plane manager its CRTC
   // controllers are tied to.
   controller_ = nullptr;
+  modifiers_filter_ = std::move(modifiers_filter);
 
   // Set up the default property blob for in formats:
+  std::vector<drm_format_modifier> drm_format_modifiers;
+  for (const auto modifier : supported_modifiers) {
+    drm_format_modifiers.push_back(
+        {.formats = 1, .offset = 0, .pad = 0, .modifier = modifier});
+  }
   drm_->SetPropertyBlob(MockDrmDevice::AllocateInFormatsBlob(
-      kInFormatsBlobIdBase, {DRM_FORMAT_XRGB8888}, {}));
+      kInFormatsBlobIdBase, {DRM_FORMAT_XRGB8888}, drm_format_modifiers));
 
   auto drm_state = MockDrmDevice::MockDrmState::CreateStateWithDefaultObjects(
       /*crtc_count=*/2, /*planes_per_crtc*/ 2, movable_planes);
+
+  // Add one connected connector with no modes (sterile).
+  auto& connector_props = drm_state.AddConnector();
+  connector_props.id = kNoModesConnectorId;
+  connector_props.connection = true;
+
   drm_state.crtc_properties[0].properties.push_back(
       {.id = kVrrEnabledPropId, .value = 0});
   drm_->InitializeState(drm_state, use_atomic);
@@ -182,10 +215,10 @@ void HardwareDisplayControllerTest::InitializeDrmDevice(bool use_atomic,
   controller_ = std::make_unique<HardwareDisplayController>(
       std::make_unique<CrtcController>(drm_.get(), primary_crtc_,
                                        kConnectorIdBase),
-      gfx::Point());
+      gfx::Point(), modifiers_filter_.get());
 }
 
-bool HardwareDisplayControllerTest::ModesetWithPlanes(
+bool MAYBE_HardwareDisplayControllerTest::ModesetWithPlanes(
     const DrmOverlayPlaneList& modeset_planes) {
   CommitRequest commit_request;
   controller_->GetModesetProps(&commit_request, modeset_planes, kDefaultMode,
@@ -199,7 +232,7 @@ bool HardwareDisplayControllerTest::ModesetWithPlanes(
   return status;
 }
 
-bool HardwareDisplayControllerTest::DisableController() {
+bool MAYBE_HardwareDisplayControllerTest::DisableController() {
   CommitRequest commit_request;
   controller_->GetDisableProps(&commit_request);
   CommitRequest request_for_update = commit_request;
@@ -211,30 +244,30 @@ bool HardwareDisplayControllerTest::DisableController() {
   return status;
 }
 
-void HardwareDisplayControllerTest::SchedulePageFlip(
+void MAYBE_HardwareDisplayControllerTest::SchedulePageFlip(
     DrmOverlayPlaneList planes) {
   controller_->SchedulePageFlip(
       std::move(planes),
-      base::BindOnce(&HardwareDisplayControllerTest::OnSubmission,
+      base::BindOnce(&MAYBE_HardwareDisplayControllerTest::OnSubmission,
                      base::Unretained(this)),
-      base::BindOnce(&HardwareDisplayControllerTest::OnPresentation,
+      base::BindOnce(&MAYBE_HardwareDisplayControllerTest::OnPresentation,
                      base::Unretained(this)));
 }
 
-void HardwareDisplayControllerTest::OnSubmission(
+void MAYBE_HardwareDisplayControllerTest::OnSubmission(
     gfx::SwapResult result,
     gfx::GpuFenceHandle release_fence) {
   last_swap_result_ = result;
 }
 
-void HardwareDisplayControllerTest::OnPresentation(
+void MAYBE_HardwareDisplayControllerTest::OnPresentation(
     const gfx::PresentationFeedback& feedback) {
   if (!feedback.failed())
     successful_page_flips_count_++;
   last_presentation_feedback_ = feedback;
 }
 
-uint64_t HardwareDisplayControllerTest::GetPlanePropertyValue(
+uint64_t MAYBE_HardwareDisplayControllerTest::GetPlanePropertyValue(
     uint32_t plane,
     const std::string& property_name) {
   DrmWrapper::Property p{};
@@ -245,7 +278,7 @@ uint64_t HardwareDisplayControllerTest::GetPlanePropertyValue(
   return p.value;
 }
 
-TEST_F(HardwareDisplayControllerTest, CheckModesettingResult) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, CheckModesettingResult) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
 
@@ -254,7 +287,7 @@ TEST_F(HardwareDisplayControllerTest, CheckModesettingResult) {
       DrmOverlayPlane::GetPrimaryPlane(modeset_planes)->buffer->HasOneRef());
 }
 
-TEST_F(HardwareDisplayControllerTest, CrtcPropsAfterModeset) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, CrtcPropsAfterModeset) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
   EXPECT_TRUE(ModesetWithPlanes(modeset_planes));
@@ -281,7 +314,7 @@ TEST_F(HardwareDisplayControllerTest, CrtcPropsAfterModeset) {
   }
 }
 
-TEST_F(HardwareDisplayControllerTest, ConnectorPropsAfterModeset) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, ConnectorPropsAfterModeset) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
   EXPECT_TRUE(ModesetWithPlanes(modeset_planes));
@@ -304,7 +337,24 @@ TEST_F(HardwareDisplayControllerTest, ConnectorPropsAfterModeset) {
   }
 }
 
-TEST_F(HardwareDisplayControllerTest, PlanePropsAfterModeset) {
+TEST_F(MAYBE_HardwareDisplayControllerTest,
+       BadLinkStatusConnectorPropsAfterModeset) {
+  DrmOverlayPlaneList modeset_planes;
+  modeset_planes.emplace_back(CreateBuffer(), nullptr);
+  EXPECT_TRUE(ModesetWithPlanes(modeset_planes));
+
+  ScopedDrmObjectPropertyPtr bad_link_connector_props =
+      drm_->GetObjectProperties(kNoModesConnectorId, DRM_MODE_OBJECT_CONNECTOR);
+  {
+    DrmWrapper::Property prop = {};
+    GetDrmPropertyForName(drm_.get(), bad_link_connector_props.get(),
+                          "link-status", &prop);
+    EXPECT_EQ(kLinkStatusPropId, prop.id);
+    EXPECT_EQ(static_cast<uint64_t>(DRM_MODE_LINK_STATUS_BAD), prop.value);
+  }
+}
+
+TEST_F(MAYBE_HardwareDisplayControllerTest, PlanePropsAfterModeset) {
   const FakeFenceFD fake_fence_fd;
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), fake_fence_fd.GetGpuFence());
@@ -392,7 +442,7 @@ TEST_F(HardwareDisplayControllerTest, PlanePropsAfterModeset) {
   }
 }
 
-TEST_F(HardwareDisplayControllerTest, FenceFdValueChange) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, FenceFdValueChange) {
   DrmOverlayPlaneList modeset_planes;
   DrmOverlayPlane plane(CreateBuffer(), nullptr);
   modeset_planes.push_back(plane.Clone());
@@ -446,7 +496,7 @@ TEST_F(HardwareDisplayControllerTest, FenceFdValueChange) {
   }
 }
 
-TEST_F(HardwareDisplayControllerTest, CheckDisableResetsProps) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, CheckDisableResetsProps) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
   EXPECT_TRUE(ModesetWithPlanes(modeset_planes));
@@ -554,7 +604,7 @@ TEST_F(HardwareDisplayControllerTest, CheckDisableResetsProps) {
   }
 }
 
-TEST_F(HardwareDisplayControllerTest, CheckStateAfterPageFlip) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, CheckStateAfterPageFlip) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
   EXPECT_TRUE(ModesetWithPlanes(modeset_planes));
@@ -579,7 +629,7 @@ TEST_F(HardwareDisplayControllerTest, CheckStateAfterPageFlip) {
   EXPECT_EQ(0u, GetPlanePropertyValue(kPlaneOffset + 1, "FB_ID"));
 }
 
-TEST_F(HardwareDisplayControllerTest, CheckStateIfModesetFails) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, CheckStateIfModesetFails) {
   InitializeDrmDevice(/* use_atomic */ false);
   drm_->set_set_crtc_expectation(false);
 
@@ -588,12 +638,12 @@ TEST_F(HardwareDisplayControllerTest, CheckStateIfModesetFails) {
   EXPECT_FALSE(ModesetWithPlanes(modeset_planes));
 }
 
-TEST_F(HardwareDisplayControllerTest, CheckOverlayPresent) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, CheckOverlayPresent) {
   DrmOverlayPlaneList planes;
   planes.emplace_back(CreateBuffer(), nullptr);
   planes.emplace_back(CreateOverlayBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
-                      gfx::Rect(kOverlaySize), gfx::RectF(kDefaultModeSizeF),
-                      true, nullptr);
+                      gfx::Rect(), gfx::Rect(kOverlaySize),
+                      gfx::RectF(kDefaultModeSizeF), true, nullptr);
 
   EXPECT_TRUE(ModesetWithPlanes(planes));
   EXPECT_EQ(1, drm_->get_commit_count());
@@ -608,12 +658,12 @@ TEST_F(HardwareDisplayControllerTest, CheckOverlayPresent) {
   EXPECT_NE(0u, GetPlanePropertyValue(kPlaneOffset + 1, "FB_ID"));
 }
 
-TEST_F(HardwareDisplayControllerTest, CheckOverlayTestMode) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, CheckOverlayTestMode) {
   DrmOverlayPlaneList planes;
   planes.emplace_back(CreateBuffer(), nullptr);
   planes.emplace_back(CreateOverlayBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
-                      gfx::Rect(kOverlaySize), gfx::RectF(kDefaultModeSizeF),
-                      true, nullptr);
+                      gfx::Rect(), gfx::Rect(kOverlaySize),
+                      gfx::RectF(kDefaultModeSizeF), true, nullptr);
 
   EXPECT_TRUE(ModesetWithPlanes(planes));
   EXPECT_EQ(1, drm_->get_commit_count());
@@ -642,11 +692,11 @@ TEST_F(HardwareDisplayControllerTest, CheckOverlayTestMode) {
   EXPECT_NE(0u, GetPlanePropertyValue(kPlaneOffset + 1, "FB_ID"));
 }
 
-TEST_F(HardwareDisplayControllerTest, AcceptUnderlays) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, AcceptUnderlays) {
   DrmOverlayPlaneList planes;
   planes.emplace_back(CreateBuffer(), nullptr);
   planes.emplace_back(CreateBuffer(), -1, gfx::OVERLAY_TRANSFORM_NONE,
-                      gfx::Rect(kDefaultModeSize),
+                      gfx::Rect(), gfx::Rect(kDefaultModeSize),
                       gfx::RectF(kDefaultModeSizeF), true, nullptr);
 
   EXPECT_TRUE(ModesetWithPlanes(planes));
@@ -657,7 +707,7 @@ TEST_F(HardwareDisplayControllerTest, AcceptUnderlays) {
   EXPECT_EQ(1, successful_page_flips_count_);
 }
 
-TEST_F(HardwareDisplayControllerTest, PageflipMirroredControllers) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, PageflipMirroredControllers) {
   controller_->AddCrtc(std::make_unique<CrtcController>(
       drm_.get(), secondary_crtc_, drm_->connector_property(1).id));
 
@@ -683,7 +733,7 @@ TEST_F(HardwareDisplayControllerTest, PageflipMirroredControllers) {
   }
 }
 
-TEST_F(HardwareDisplayControllerTest, PlaneStateAfterRemoveCrtc) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, PlaneStateAfterRemoveCrtc) {
   controller_->AddCrtc(std::make_unique<CrtcController>(
       drm_.get(), secondary_crtc_, drm_->connector_property(1).id));
 
@@ -728,7 +778,7 @@ TEST_F(HardwareDisplayControllerTest, PlaneStateAfterRemoveCrtc) {
   EXPECT_EQ(secondary_crtc_, secondary_crtc_plane->owning_crtc());
 }
 
-TEST_F(HardwareDisplayControllerTest, PlaneStateAfterDestroyingCrtc) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, PlaneStateAfterDestroyingCrtc) {
   DrmOverlayPlaneList planes;
   planes.emplace_back(CreateBuffer(), nullptr);
   EXPECT_TRUE(ModesetWithPlanes(planes));
@@ -753,7 +803,7 @@ TEST_F(HardwareDisplayControllerTest, PlaneStateAfterDestroyingCrtc) {
   EXPECT_EQ(crtc_nullid, owned_plane->owning_crtc());
 }
 
-TEST_F(HardwareDisplayControllerTest, PlaneStateAfterAddCrtc) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, PlaneStateAfterAddCrtc) {
   controller_->AddCrtc(std::make_unique<CrtcController>(
       drm_.get(), secondary_crtc_, drm_->connector_property(1).id));
 
@@ -775,7 +825,8 @@ TEST_F(HardwareDisplayControllerTest, PlaneStateAfterAddCrtc) {
   ASSERT_TRUE(primary_crtc_plane != nullptr);
 
   auto hdc_controller = std::make_unique<HardwareDisplayController>(
-      controller_->RemoveCrtc(drm_, primary_crtc_), controller_->origin());
+      controller_->RemoveCrtc(drm_, primary_crtc_), controller_->origin(),
+      nullptr);
   SchedulePageFlip(DrmOverlayPlane::Clone(planes));
   drm_->RunCallbacks();
   EXPECT_EQ(gfx::SwapResult::SWAP_ACK, last_swap_result_);
@@ -789,9 +840,9 @@ TEST_F(HardwareDisplayControllerTest, PlaneStateAfterAddCrtc) {
   primary_crtc_plane->set_owning_crtc(0);
   hdc_controller->SchedulePageFlip(
       DrmOverlayPlane::Clone(planes),
-      base::BindOnce(&HardwareDisplayControllerTest::OnSubmission,
+      base::BindOnce(&MAYBE_HardwareDisplayControllerTest::OnSubmission,
                      base::Unretained(this)),
-      base::BindOnce(&HardwareDisplayControllerTest::OnPresentation,
+      base::BindOnce(&MAYBE_HardwareDisplayControllerTest::OnPresentation,
                      base::Unretained(this)));
   drm_->RunCallbacks();
   EXPECT_EQ(gfx::SwapResult::SWAP_ACK, last_swap_result_);
@@ -800,7 +851,7 @@ TEST_F(HardwareDisplayControllerTest, PlaneStateAfterAddCrtc) {
   EXPECT_EQ(primary_crtc_, primary_crtc_plane->owning_crtc());
 }
 
-TEST_F(HardwareDisplayControllerTest, ModesetWhilePageFlipping) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, ModesetWhilePageFlipping) {
   DrmOverlayPlaneList planes;
   planes.emplace_back(CreateBuffer(), nullptr);
   EXPECT_TRUE(ModesetWithPlanes(planes));
@@ -813,7 +864,8 @@ TEST_F(HardwareDisplayControllerTest, ModesetWhilePageFlipping) {
   EXPECT_EQ(1, successful_page_flips_count_);
 }
 
-TEST_F(HardwareDisplayControllerTest, FailPageFlippingWithNoSavingModeset) {
+TEST_F(MAYBE_HardwareDisplayControllerTest,
+       FailPageFlippingWithNoSavingModeset) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
   ASSERT_TRUE(ModesetWithPlanes(modeset_planes));
@@ -832,7 +884,7 @@ TEST_F(HardwareDisplayControllerTest, FailPageFlippingWithNoSavingModeset) {
       kGpuCrashLogTimeout);
 }
 
-TEST_F(HardwareDisplayControllerTest, FailPageFlippingWithSavingModeset) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, FailPageFlippingWithSavingModeset) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
   ASSERT_TRUE(ModesetWithPlanes(modeset_planes));
@@ -859,7 +911,7 @@ TEST_F(HardwareDisplayControllerTest, FailPageFlippingWithSavingModeset) {
   task_environment_.FastForwardBy(kWaitForModesetTimeout);
 }
 
-TEST_F(HardwareDisplayControllerTest,
+TEST_F(MAYBE_HardwareDisplayControllerTest,
        RecreateBuffersOnOldPlanesPageFlipFailure) {
   DrmOverlayPlaneList planes;
   planes.emplace_back(CreateBuffer(), nullptr);
@@ -887,14 +939,14 @@ TEST_F(HardwareDisplayControllerTest,
   EXPECT_EQ(1, successful_page_flips_count_);
 }
 
-TEST_F(HardwareDisplayControllerTest, CheckNoPrimaryPlaneOnFlip) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, CheckNoPrimaryPlaneOnFlip) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
   EXPECT_TRUE(ModesetWithPlanes(modeset_planes));
 
   std::vector<DrmOverlayPlane> page_flip_planes;
   page_flip_planes.emplace_back(CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
-                                gfx::Rect(kDefaultModeSize),
+                                gfx::Rect(), gfx::Rect(kDefaultModeSize),
                                 gfx::RectF(0, 0, 1, 1), true, nullptr);
   SchedulePageFlip(std::move(page_flip_planes));
 
@@ -903,7 +955,7 @@ TEST_F(HardwareDisplayControllerTest, CheckNoPrimaryPlaneOnFlip) {
   EXPECT_EQ(1, successful_page_flips_count_);
 }
 
-TEST_F(HardwareDisplayControllerTest, PageFlipWithUnassignablePlanes) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, PageFlipWithUnassignablePlanes) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
   ASSERT_TRUE(ModesetWithPlanes(modeset_planes));
@@ -911,13 +963,13 @@ TEST_F(HardwareDisplayControllerTest, PageFlipWithUnassignablePlanes) {
   {
     std::vector<DrmOverlayPlane> page_flip_planes;
     page_flip_planes.emplace_back(
-        CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+        CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
         gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
     page_flip_planes.emplace_back(
-        CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+        CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
         gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
     page_flip_planes.emplace_back(
-        CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+        CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
         gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
     SchedulePageFlip(std::move(page_flip_planes));
   }
@@ -931,7 +983,7 @@ TEST_F(HardwareDisplayControllerTest, PageFlipWithUnassignablePlanes) {
   EXPECT_EQ(gfx::SwapResult::SWAP_NAK_RECREATE_BUFFERS, last_swap_result_);
 }
 
-TEST_F(HardwareDisplayControllerTest, SomePlaneAssignmentFailuresAreOk) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, SomePlaneAssignmentFailuresAreOk) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
   ASSERT_TRUE(ModesetWithPlanes(modeset_planes));
@@ -942,13 +994,13 @@ TEST_F(HardwareDisplayControllerTest, SomePlaneAssignmentFailuresAreOk) {
     {
       std::vector<DrmOverlayPlane> page_flip_planes;
       page_flip_planes.emplace_back(
-          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
           gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
       page_flip_planes.emplace_back(
-          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
           gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
       page_flip_planes.emplace_back(
-          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
           gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
       SchedulePageFlip(std::move(page_flip_planes));
     }
@@ -964,7 +1016,7 @@ TEST_F(HardwareDisplayControllerTest, SomePlaneAssignmentFailuresAreOk) {
     {
       std::vector<DrmOverlayPlane> page_flip_planes;
       page_flip_planes.emplace_back(
-          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
           gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
       SchedulePageFlip(std::move(page_flip_planes));
     }
@@ -980,7 +1032,8 @@ TEST_F(HardwareDisplayControllerTest, SomePlaneAssignmentFailuresAreOk) {
   task_environment_.FastForwardBy(kWaitForModesetTimeout);
 }
 
-TEST_F(HardwareDisplayControllerTest, CrashOnTooManyFlakyPlaneAssignments) {
+TEST_F(MAYBE_HardwareDisplayControllerTest,
+       CrashOnTooManyFlakyPlaneAssignments) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
   ASSERT_TRUE(ModesetWithPlanes(modeset_planes));
@@ -989,7 +1042,7 @@ TEST_F(HardwareDisplayControllerTest, CrashOnTooManyFlakyPlaneAssignments) {
     {
       std::vector<DrmOverlayPlane> page_flip_planes;
       page_flip_planes.emplace_back(
-          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
           gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
       SchedulePageFlip(std::move(page_flip_planes));
     }
@@ -1003,13 +1056,13 @@ TEST_F(HardwareDisplayControllerTest, CrashOnTooManyFlakyPlaneAssignments) {
     {
       std::vector<DrmOverlayPlane> page_flip_planes;
       page_flip_planes.emplace_back(
-          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
           gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
       page_flip_planes.emplace_back(
-          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
           gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
       page_flip_planes.emplace_back(
-          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
           gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
       SchedulePageFlip(std::move(page_flip_planes));
     }
@@ -1042,7 +1095,8 @@ TEST_F(HardwareDisplayControllerTest, CrashOnTooManyFlakyPlaneAssignments) {
                          flakes, kPlaneAssignmentFlakeThreshold));
 }
 
-TEST_F(HardwareDisplayControllerTest, CrashOnTooManyFailedPlaneAssignments) {
+TEST_F(MAYBE_HardwareDisplayControllerTest,
+       CrashOnTooManyFailedPlaneAssignments) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
   ASSERT_TRUE(ModesetWithPlanes(modeset_planes));
@@ -1051,7 +1105,7 @@ TEST_F(HardwareDisplayControllerTest, CrashOnTooManyFailedPlaneAssignments) {
     {
       std::vector<DrmOverlayPlane> page_flip_planes;
       page_flip_planes.emplace_back(
-          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
           gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
       SchedulePageFlip(std::move(page_flip_planes));
     }
@@ -1065,13 +1119,13 @@ TEST_F(HardwareDisplayControllerTest, CrashOnTooManyFailedPlaneAssignments) {
     {
       std::vector<DrmOverlayPlane> page_flip_planes;
       page_flip_planes.emplace_back(
-          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
           gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
       page_flip_planes.emplace_back(
-          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
           gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
       page_flip_planes.emplace_back(
-          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
+          CreateBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE, gfx::Rect(),
           gfx::Rect(kDefaultModeSize), gfx::RectF(0, 0, 1, 1), true, nullptr);
       SchedulePageFlip(std::move(page_flip_planes));
     }
@@ -1097,7 +1151,7 @@ TEST_F(HardwareDisplayControllerTest, CrashOnTooManyFailedPlaneAssignments) {
                          kPlaneAssignmentMaximumFailures));
 }
 
-TEST_F(HardwareDisplayControllerTest, AddCrtcMidPageFlip) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, AddCrtcMidPageFlip) {
   DrmOverlayPlaneList planes;
   planes.emplace_back(CreateBuffer(), nullptr);
   EXPECT_TRUE(ModesetWithPlanes(planes));
@@ -1112,7 +1166,7 @@ TEST_F(HardwareDisplayControllerTest, AddCrtcMidPageFlip) {
   EXPECT_EQ(1, successful_page_flips_count_);
 }
 
-TEST_F(HardwareDisplayControllerTest, RemoveCrtcMidPageFlip) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, RemoveCrtcMidPageFlip) {
   DrmOverlayPlaneList planes;
   planes.emplace_back(CreateBuffer(), nullptr);
   EXPECT_TRUE(ModesetWithPlanes(planes));
@@ -1126,7 +1180,7 @@ TEST_F(HardwareDisplayControllerTest, RemoveCrtcMidPageFlip) {
   EXPECT_EQ(1, successful_page_flips_count_);
 }
 
-TEST_F(HardwareDisplayControllerTest, Disable) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, Disable) {
   // Page flipping overlays is only supported on atomic configurations.
   InitializeDrmDevice(/* use_atomic= */ true);
 
@@ -1135,8 +1189,8 @@ TEST_F(HardwareDisplayControllerTest, Disable) {
   EXPECT_TRUE(ModesetWithPlanes(planes));
 
   planes.emplace_back(CreateOverlayBuffer(), 1, gfx::OVERLAY_TRANSFORM_NONE,
-                      gfx::Rect(kOverlaySize), gfx::RectF(kDefaultModeSizeF),
-                      true, nullptr);
+                      gfx::Rect(), gfx::Rect(kOverlaySize),
+                      gfx::RectF(kDefaultModeSizeF), true, nullptr);
   SchedulePageFlip(std::move(planes));
   drm_->RunCallbacks();
   EXPECT_EQ(gfx::SwapResult::SWAP_ACK, last_swap_result_);
@@ -1152,7 +1206,7 @@ TEST_F(HardwareDisplayControllerTest, Disable) {
   ASSERT_EQ(0, planes_in_use);
 }
 
-TEST_F(HardwareDisplayControllerTest, PageflipAfterModeset) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, PageflipAfterModeset) {
   DrmOverlayPlaneList planes;
   scoped_refptr<DrmFramebuffer> buffer = CreateBuffer();
   planes.emplace_back(buffer, nullptr);
@@ -1174,7 +1228,7 @@ TEST_F(HardwareDisplayControllerTest, PageflipAfterModeset) {
                   .modeset_framebuffers.empty());
 }
 
-TEST_F(HardwareDisplayControllerTest, PageflipBeforeModeset) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, PageflipBeforeModeset) {
   DrmOverlayPlaneList planes;
   scoped_refptr<DrmFramebuffer> buffer = CreateBuffer();
   planes.emplace_back(buffer, nullptr);
@@ -1204,7 +1258,7 @@ TEST_F(HardwareDisplayControllerTest, PageflipBeforeModeset) {
   }
 }
 
-TEST_F(HardwareDisplayControllerTest, MultiplePlanesModeset) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, MultiplePlanesModeset) {
   DrmOverlayPlaneList modeset_planes;
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
   modeset_planes.emplace_back(CreateBuffer(), nullptr);
@@ -1221,7 +1275,7 @@ TEST_F(HardwareDisplayControllerTest, MultiplePlanesModeset) {
   }
 }
 
-TEST_F(HardwareDisplayControllerTest, CheckPinningAfterPageFlip) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, CheckPinningAfterPageFlip) {
   InitializeDrmDevice(/*use_atomic=*/true, /*movable_planes=*/1);
 
   DrmOverlayPlaneList modeset_planes;
@@ -1250,7 +1304,7 @@ TEST_F(HardwareDisplayControllerTest, CheckPinningAfterPageFlip) {
   EXPECT_EQ(3u, in_use_planes);
 }
 
-TEST_F(HardwareDisplayControllerTest, CheckPinningAfterFailedPageFlip) {
+TEST_F(MAYBE_HardwareDisplayControllerTest, CheckPinningAfterFailedPageFlip) {
   InitializeDrmDevice(/*use_atomic=*/true, /*movable_planes=*/1);
 
   DrmOverlayPlaneList modeset_planes;
@@ -1286,7 +1340,7 @@ TEST_F(HardwareDisplayControllerTest, CheckPinningAfterFailedPageFlip) {
                                   "be in use after a failed flip.";
 }
 
-TEST_F(HardwareDisplayControllerTest,
+TEST_F(MAYBE_HardwareDisplayControllerTest,
        PinnedPlanesAreRespectedDuringModesetting) {
   InitializeDrmDevice(/*use_atomic=*/true, /*movable_planes=*/1);
 
@@ -1314,7 +1368,8 @@ TEST_F(HardwareDisplayControllerTest,
   EXPECT_EQ(1, drm_->get_commit_count());
 }
 
-TEST_F(HardwareDisplayControllerTest, AddingAndRemovingCrtcsWithMovablePlanes) {
+TEST_F(MAYBE_HardwareDisplayControllerTest,
+       AddingAndRemovingCrtcsWithMovablePlanes) {
   InitializeDrmDevice(/*use_atomic=*/true, /*movable_planes=*/1);
 
   controller_->AddCrtc(std::make_unique<CrtcController>(
@@ -1370,7 +1425,7 @@ TEST_F(HardwareDisplayControllerTest, AddingAndRemovingCrtcsWithMovablePlanes) {
   }
 }
 
-TEST_F(HardwareDisplayControllerTest,
+TEST_F(MAYBE_HardwareDisplayControllerTest,
        ModesettingWithMirroringAndMultipleMovablePlanes) {
   InitializeDrmDevice(/*use_atomic=*/true, /*movable_planes=*/2);
 
@@ -1384,6 +1439,22 @@ TEST_F(HardwareDisplayControllerTest,
 
   EXPECT_TRUE(ModesetWithPlanes(modeset_planes))
       << "Should be able modeset with two CRTCs and two movable planes.";
+}
+
+TEST_F(MAYBE_HardwareDisplayControllerTest, ModifiersFilter) {
+  std::vector<uint64_t> filter_modifiers = {DRM_FORMAT_MOD_LINEAR,
+                                            I915_FORMAT_MOD_X_TILED};
+  std::unique_ptr<MockDrmModifiersFilter> filter =
+      std::make_unique<MockDrmModifiersFilter>(filter_modifiers);
+  InitializeDrmDevice(/*use_atomic=*/true, /*movable_planes=*/0,
+                      {I915_FORMAT_MOD_X_TILED, I915_FORMAT_MOD_Y_TILED},
+                      std::move(filter));
+
+  std::vector<uint64_t> valid_modifiers =
+      controller_->GetFormatModifiersForTestModeset(DRM_FORMAT_XRGB8888);
+
+  EXPECT_EQ(1u, valid_modifiers.size());
+  EXPECT_EQ(I915_FORMAT_MOD_X_TILED, valid_modifiers[0]);
 }
 
 }  // namespace ui

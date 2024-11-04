@@ -10,8 +10,8 @@
 }
 
 .header {
-  background-color: var(--color-background-elevation-1);
-  border-bottom: var(--legacy-divider-border);
+  background-color: var(--sys-color-surface2);
+  border-bottom: 1px solid var(--sys-color-divider);
   line-height: 1.6;
   overflow: hidden;
   padding: 0 5px;
@@ -31,7 +31,7 @@
 
 .content-section {
   padding: 16px;
-  border-bottom: var(--legacy-divider-border);
+  border-bottom: 1px solid var(--sys-color-divider);
   overflow-x: hidden;
 }
 
@@ -110,37 +110,20 @@
 
 .show-element {
   margin: 0 0 0 8px;
-  padding: 0;
-  background: none;
-  border: none;
-  -webkit-mask-image: var(--image-file-ic_show_node_16x16);
-  background-color: #333; /* stylelint-disable-line plugin/use_theme_colors */
-  /* See: crbug.com/1152736 for color variable migration. */
-  width: 16px;
-  height: 16px;
-  display: block;
   cursor: pointer;
   flex: none;
+
+  --icon-show-element: var(--icon-default);
 }
 
 .show-element:focus,
 .show-element:hover {
-  background-color: #6e6e6e; /* stylelint-disable-line plugin/use_theme_colors */
-  /* See: crbug.com/1152736 for color variable migration. */
+  --icon-show-element: var(--icon-default-hover);
 }
 
 .chrome-select {
   min-width: 0;
   max-width: 150px;
-}
-
-:host-context(.-theme-with-dark-background) .show-element {
-  background-color: rgb(204 204 204);
-}
-
-:host-context(.-theme-with-dark-background) .show-element:focus,
-:host-context(.-theme-with-dark-background) .show-element:hover {
-  background-color: #6e6e6e;
 }
 
 .color-picker {
@@ -179,5 +162,5 @@ that uses the dimensions to draw an outline around the element. */
 }
 
 .node-text-container:hover {
-  background-color: var(--item-hover-color);
+  background-color: var(--sys-color-state-hover-on-subtle);
 }

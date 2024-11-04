@@ -17,6 +17,7 @@ set(QT_USE_FIXED_QT_ADD_RESOURCE_BASE TRUE)
 set(QT_REPO_NOT_WARNINGS_CLEAN TRUE)
 find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals Core)
 find_package(Qt6 ${PROJECT_VERSION} QUIET CONFIG OPTIONAL_COMPONENTS Linguist)
+qt_internal_project_setup()
 
 include(QtSetup) # for qt_install
 

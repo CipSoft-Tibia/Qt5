@@ -47,7 +47,7 @@ void ContentSettingsRegistry::ResetForTest() {
   Init();
 }
 
-ContentSettingsRegistry::~ContentSettingsRegistry() {}
+ContentSettingsRegistry::~ContentSettingsRegistry() = default;
 
 const ContentSettingsInfo* ContentSettingsRegistry::Get(
     ContentSettingsType type) const {
@@ -110,9 +110,9 @@ void ContentSettingsRegistry::Init() {
            ContentSettingsInfo::INHERIT_IN_INCOGNITO,
            ContentSettingsInfo::EXCEPTIONS_ON_SECURE_AND_INSECURE_ORIGINS);
 
-  Register(ContentSettingsType::GET_DISPLAY_MEDIA_SET_SELECT_ALL_SCREENS,
-           "get-display-media-set-select-all-screens", CONTENT_SETTING_BLOCK,
-           WebsiteSettingsInfo::SYNCABLE, /*allowlisted_schemes=*/{},
+  Register(ContentSettingsType::ALL_SCREEN_CAPTURE,
+           "access-to-get-all-screens-media-in-session", CONTENT_SETTING_BLOCK,
+           WebsiteSettingsInfo::UNSYNCABLE, /*allowlisted_schemes=*/{},
            /*valid_settings=*/{CONTENT_SETTING_ALLOW, CONTENT_SETTING_BLOCK},
            WebsiteSettingsInfo::REQUESTING_ORIGIN_ONLY_SCOPE,
            WebsiteSettingsRegistry::ALL_PLATFORMS,
@@ -159,7 +159,8 @@ void ContentSettingsRegistry::Init() {
            {CONTENT_SETTING_ALLOW, CONTENT_SETTING_BLOCK, CONTENT_SETTING_ASK},
            WebsiteSettingsInfo::TOP_ORIGIN_ONLY_SCOPE,
            WebsiteSettingsRegistry::DESKTOP |
-               WebsiteSettingsRegistry::PLATFORM_ANDROID,
+               WebsiteSettingsRegistry::PLATFORM_ANDROID |
+               WebsiteSettingsRegistry::PLATFORM_IOS,
            ContentSettingsInfo::INHERIT_IF_LESS_PERMISSIVE,
            ContentSettingsInfo::EXCEPTIONS_ON_SECURE_ORIGINS_ONLY);
 
@@ -170,7 +171,8 @@ void ContentSettingsRegistry::Init() {
            {CONTENT_SETTING_ALLOW, CONTENT_SETTING_BLOCK, CONTENT_SETTING_ASK},
            WebsiteSettingsInfo::TOP_ORIGIN_ONLY_SCOPE,
            WebsiteSettingsRegistry::DESKTOP |
-               WebsiteSettingsRegistry::PLATFORM_ANDROID,
+               WebsiteSettingsRegistry::PLATFORM_ANDROID |
+               WebsiteSettingsRegistry::PLATFORM_IOS,
            ContentSettingsInfo::INHERIT_IF_LESS_PERMISSIVE,
            ContentSettingsInfo::EXCEPTIONS_ON_SECURE_ORIGINS_ONLY);
 
@@ -186,9 +188,16 @@ void ContentSettingsRegistry::Init() {
            ContentSettingsInfo::INHERIT_IN_INCOGNITO,
            ContentSettingsInfo::EXCEPTIONS_ON_SECURE_ORIGINS_ONLY);
 
-  // TODO(raymes): We're temporarily making midi sysex unsyncable while we roll
-  // out the kPermissionDelegation feature. We may want to make it syncable
-  // again sometime in the future. See https://crbug.com/879954 for details.
+  Register(ContentSettingsType::MIDI, "midi", CONTENT_SETTING_ASK,
+           WebsiteSettingsInfo::UNSYNCABLE, /*allowlisted_schemes=*/{},
+           /*valid_settings=*/
+           {CONTENT_SETTING_ALLOW, CONTENT_SETTING_BLOCK, CONTENT_SETTING_ASK},
+           WebsiteSettingsInfo::TOP_ORIGIN_ONLY_SCOPE,
+           WebsiteSettingsRegistry::DESKTOP |
+               WebsiteSettingsRegistry::PLATFORM_ANDROID,
+           ContentSettingsInfo::INHERIT_IF_LESS_PERMISSIVE,
+           ContentSettingsInfo::EXCEPTIONS_ON_SECURE_ORIGINS_ONLY);
+
   Register(ContentSettingsType::MIDI_SYSEX, "midi-sysex", CONTENT_SETTING_ASK,
            WebsiteSettingsInfo::UNSYNCABLE, /*allowlisted_schemes=*/{},
            /*valid_settings=*/
@@ -271,6 +280,25 @@ void ContentSettingsRegistry::Init() {
            WebsiteSettingsInfo::REQUESTING_ORIGIN_ONLY_SCOPE,
            WebsiteSettingsRegistry::ALL_PLATFORMS,
            ContentSettingsInfo::INHERIT_IN_INCOGNITO,
+           ContentSettingsInfo::EXCEPTIONS_ON_SECURE_AND_INSECURE_ORIGINS);
+
+  Register(ContentSettingsType::TPCD_SUPPORT, "3pcd-support",
+           CONTENT_SETTING_BLOCK, WebsiteSettingsInfo::UNSYNCABLE,
+           /*allowlisted_schemes=*/{},
+           /*valid_settings=*/{CONTENT_SETTING_ALLOW, CONTENT_SETTING_BLOCK},
+           WebsiteSettingsInfo::REQUESTING_AND_TOP_SCHEMEFUL_SITE_SCOPE,
+           WebsiteSettingsRegistry::DESKTOP |
+               WebsiteSettingsRegistry::PLATFORM_ANDROID,
+           ContentSettingsInfo::INHERIT_IF_LESS_PERMISSIVE,
+           ContentSettingsInfo::EXCEPTIONS_ON_SECURE_ORIGINS_ONLY);
+
+  Register(ContentSettingsType::TPCD_METADATA_GRANTS, "3pcd-metadata-grants",
+           CONTENT_SETTING_BLOCK, WebsiteSettingsInfo::UNSYNCABLE,
+           /*allowlisted_schemes=*/{},
+           /*valid_settings=*/{CONTENT_SETTING_ALLOW, CONTENT_SETTING_BLOCK},
+           WebsiteSettingsInfo::REQUESTING_AND_TOP_SCHEMEFUL_SITE_SCOPE,
+           WebsiteSettingsRegistry::ALL_PLATFORMS,
+           ContentSettingsInfo::INHERIT_IF_LESS_PERMISSIVE,
            ContentSettingsInfo::EXCEPTIONS_ON_SECURE_AND_INSECURE_ORIGINS);
 
   // Content settings that aren't used to store any data. TODO(raymes): use a
@@ -441,7 +469,7 @@ void ContentSettingsRegistry::Init() {
            /*allowlisted_schemes=*/{},
            /*valid_settings=*/
            {CONTENT_SETTING_ALLOW, CONTENT_SETTING_ASK, CONTENT_SETTING_BLOCK},
-           WebsiteSettingsInfo::REQUESTING_AND_TOP_ORIGIN_SCOPE,
+           WebsiteSettingsInfo::REQUESTING_AND_TOP_SCHEMEFUL_SITE_SCOPE,
            WebsiteSettingsRegistry::ALL_PLATFORMS,
            ContentSettingsInfo::INHERIT_IF_LESS_PERMISSIVE,
            ContentSettingsInfo::EXCEPTIONS_ON_SECURE_AND_INSECURE_ORIGINS);
@@ -522,8 +550,7 @@ void ContentSettingsRegistry::Init() {
            /*allowlisted_schemes=*/{},
            /*valid_settings=*/{CONTENT_SETTING_BLOCK, CONTENT_SETTING_ASK},
            WebsiteSettingsInfo::TOP_ORIGIN_ONLY_SCOPE,
-           WebsiteSettingsRegistry::DESKTOP |
-               WebsiteSettingsRegistry::PLATFORM_ANDROID,
+           WebsiteSettingsRegistry::DESKTOP,
            ContentSettingsInfo::INHERIT_IF_LESS_PERMISSIVE,
            ContentSettingsInfo::EXCEPTIONS_ON_SECURE_ORIGINS_ONLY);
 
@@ -582,6 +609,25 @@ void ContentSettingsRegistry::Init() {
            WebsiteSettingsRegistry::DESKTOP |
                WebsiteSettingsRegistry::PLATFORM_ANDROID,
            ContentSettingsInfo::INHERIT_IN_INCOGNITO,
+           ContentSettingsInfo::EXCEPTIONS_ON_SECURE_ORIGINS_ONLY);
+
+  Register(ContentSettingsType::THIRD_PARTY_STORAGE_PARTITIONING,
+           "third-party-storage-partitioning", CONTENT_SETTING_ALLOW,
+           WebsiteSettingsInfo::UNSYNCABLE, /*allowlisted_schemes=*/{},
+           /*valid_settings=*/{CONTENT_SETTING_ALLOW, CONTENT_SETTING_BLOCK},
+           WebsiteSettingsInfo::TOP_ORIGIN_ONLY_SCOPE,
+           WebsiteSettingsRegistry::ALL_PLATFORMS,
+           ContentSettingsInfo::INHERIT_IN_INCOGNITO,
+           ContentSettingsInfo::EXCEPTIONS_ON_SECURE_AND_INSECURE_ORIGINS);
+
+  Register(ContentSettingsType::AUTO_PICTURE_IN_PICTURE,
+           "auto-picture-in-picture", CONTENT_SETTING_ASK,
+           WebsiteSettingsInfo::UNSYNCABLE, /*allowlisted_schemes=*/{},
+           /*valid_settings=*/
+           {CONTENT_SETTING_ALLOW, CONTENT_SETTING_BLOCK, CONTENT_SETTING_ASK},
+           WebsiteSettingsInfo::TOP_ORIGIN_ONLY_SCOPE,
+           WebsiteSettingsRegistry::DESKTOP,
+           ContentSettingsInfo::INHERIT_IF_LESS_PERMISSIVE,
            ContentSettingsInfo::EXCEPTIONS_ON_SECURE_ORIGINS_ONLY);
 }
 

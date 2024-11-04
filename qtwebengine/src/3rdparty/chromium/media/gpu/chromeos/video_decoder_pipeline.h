@@ -5,9 +5,11 @@
 #ifndef MEDIA_GPU_CHROMEOS_VIDEO_DECODER_PIPELINE_H_
 #define MEDIA_GPU_CHROMEOS_VIDEO_DECODER_PIPELINE_H_
 
+#include <atomic>
 #include <memory>
 
 #include "base/functional/callback_forward.h"
+#include "base/gtest_prod_util.h"
 #include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
 #include "build/build_config.h"
@@ -21,7 +23,7 @@
 #include "media/gpu/chromeos/chromeos_status.h"
 #include "media/gpu/chromeos/fourcc.h"
 #include "media/gpu/chromeos/image_processor_with_pool.h"
-#include "media/gpu/chromeos/video_frame_converter.h"
+#include "media/gpu/chromeos/mailbox_video_frame_converter.h"
 #include "media/gpu/media_gpu_export.h"
 #include "media/mojo/mojom/stable/stable_video_decoder.mojom.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -113,9 +115,18 @@ class MEDIA_GPU_EXPORT VideoDecoderMixin : public VideoDecoder {
   virtual void ApplyResolutionChange() = 0;
 
   // For protected content implementations that require transcryption of the
-  // content before being sent into the HW decoders. (Currently only used by
-  // AMD). Default implementation returns false.
+  // content before being sent into the HW decoders. (Currently used by AMD and
+  // ARM). Default implementation returns false.
   virtual bool NeedsTranscryption();
+
+  // For protected content implementations that decrypt to a secure memory
+  // buffer (i.e. TrustZone on ARM), this is used to attach the appropriate
+  // handle for the secure buffer to the DecoderBuffer.
+  virtual CroStatus AttachSecureBuffer(scoped_refptr<DecoderBuffer>& buffer);
+  // Counterpart to AttachSecureBuffer, this should be invoked when the
+  // DecoderBuffer is no longer in use and the attached secure buffer can be
+  // released.
+  virtual void ReleaseSecureBuffer(uint64_t secure_handle);
 
   // Set the DMA coherency of the video decoder buffers. Only relevant for
   // V4L2.
@@ -154,10 +165,15 @@ class MEDIA_GPU_EXPORT VideoDecoderPipeline : public VideoDecoder,
       const gpu::GpuDriverBugWorkarounds& workarounds,
       scoped_refptr<base::SequencedTaskRunner> client_task_runner,
       std::unique_ptr<DmabufVideoFramePool> frame_pool,
-      std::unique_ptr<VideoFrameConverter> frame_converter,
+      std::unique_ptr<MailboxVideoFrameConverter> frame_converter,
       std::vector<Fourcc> renderable_fourccs,
       std::unique_ptr<MediaLog> media_log,
       mojo::PendingRemote<stable::mojom::StableVideoDecoder> oop_video_decoder);
+
+  static std::unique_ptr<VideoDecoder> CreateForTesting(
+      scoped_refptr<base::SequencedTaskRunner> client_task_runner,
+      std::unique_ptr<MediaLog> media_log,
+      bool ignore_resolution_changes_to_smaller_for_testing = false);
 
   static std::vector<Fourcc> DefaultPreferredRenderableFourccs();
 
@@ -227,7 +243,7 @@ class MEDIA_GPU_EXPORT VideoDecoderPipeline : public VideoDecoder,
       const gpu::GpuDriverBugWorkarounds& workarounds,
       scoped_refptr<base::SequencedTaskRunner> client_task_runner,
       std::unique_ptr<DmabufVideoFramePool> frame_pool,
-      std::unique_ptr<VideoFrameConverter> frame_converter,
+      std::unique_ptr<MailboxVideoFrameConverter> frame_converter,
       std::vector<Fourcc> renderable_fourccs,
       std::unique_ptr<MediaLog> media_log,
       CreateDecoderFunctionCB create_decoder_function_cb,
@@ -326,7 +342,7 @@ class MEDIA_GPU_EXPORT VideoDecoderPipeline : public VideoDecoder,
 
   // The frame converter passed from the client, otherwise used and destroyed on
   // |decoder_task_runner_|.
-  std::unique_ptr<VideoFrameConverter> frame_converter_
+  std::unique_ptr<MailboxVideoFrameConverter> frame_converter_
       GUARDED_BY_CONTEXT(decoder_sequence_checker_);
 
   // The set of output formats allowed to be used in order of preference.
@@ -389,6 +405,11 @@ class MEDIA_GPU_EXPORT VideoDecoderPipeline : public VideoDecoder,
   bool needs_bitstream_conversion_
       GUARDED_BY_CONTEXT(client_sequence_checker_) = false;
 
+  // |oop_decoder_can_read_without_stalling_| is accessed from multiple
+  // sequences: it's set on the decoder sequence for every frame we get from the
+  // |decoder_|, and it's read on the client sequence.
+  std::atomic<bool> oop_decoder_can_read_without_stalling_;
+
   // Set to true when any unexpected error occurs.
   bool has_error_ GUARDED_BY_CONTEXT(decoder_sequence_checker_) = false;
 
@@ -407,6 +428,9 @@ class MEDIA_GPU_EXPORT VideoDecoderPipeline : public VideoDecoder,
 
   // Set to true to bypass checks for encrypted content support for testing.
   bool allow_encrypted_content_for_testing_ = false;
+
+  // See VP9Decoder for information on this.
+  bool ignore_resolution_changes_to_smaller_for_testing_ = false;
 
   base::WeakPtr<VideoDecoderPipeline> decoder_weak_this_;
   // The weak pointer of this, bound to |decoder_task_runner_|.

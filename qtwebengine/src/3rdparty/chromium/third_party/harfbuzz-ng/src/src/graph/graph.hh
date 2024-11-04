@@ -49,6 +49,50 @@ struct graph_t
     unsigned end = 0;
     unsigned priority = 0;
 
+
+    bool link_positions_valid (unsigned num_objects, bool removed_nil)
+    {
+      hb_set_t assigned_bytes;
+      for (const auto& l : obj.real_links)
+      {
+        if (l.objidx >= num_objects
+            || (removed_nil && !l.objidx))
+        {
+          DEBUG_MSG (SUBSET_REPACK, nullptr,
+                     "Invalid graph. Invalid object index.");
+          return false;
+        }
+
+        unsigned start = l.position;
+        unsigned end = start + l.width - 1;
+
+        if (unlikely (l.width < 2 || l.width > 4))
+        {
+          DEBUG_MSG (SUBSET_REPACK, nullptr,
+                     "Invalid graph. Invalid link width.");
+          return false;
+        }
+
+        if (unlikely (end >= table_size ()))
+        {
+          DEBUG_MSG (SUBSET_REPACK, nullptr,
+                     "Invalid graph. Link position is out of bounds.");
+          return false;
+        }
+
+        if (unlikely (assigned_bytes.intersects (start, end)))
+        {
+          DEBUG_MSG (SUBSET_REPACK, nullptr,
+                     "Invalid graph. Found offsets whose positions overlap.");
+          return false;
+        }
+
+        assigned_bytes.add_range (start, end);
+      }
+
+      return !assigned_bytes.in_error ();
+    }
+
     void normalize ()
     {
       obj.real_links.qsort ();
@@ -79,7 +123,7 @@ struct graph_t
         while (a || b)
         {
           DEBUG_MSG (SUBSET_REPACK, nullptr,
-                     "  0x%x %s 0x%x", *a, (*a == *b) ? "==" : "!=", *b);
+                     "  0x%x %s 0x%x", (unsigned) *a, (*a == *b) ? "==" : "!=", (unsigned) *b);
           a++;
           b++;
         }
@@ -129,17 +173,19 @@ struct graph_t
 
     void remove_parent (unsigned parent_index)
     {
-      for (unsigned i = 0; i < parents.length; i++)
+      unsigned count = parents.length;
+      for (unsigned i = 0; i < count; i++)
       {
-        if (parents[i] != parent_index) continue;
-        parents.remove (i);
+        if (parents.arrayZ[i] != parent_index) continue;
+        parents.remove_unordered (i);
         break;
       }
     }
 
     void remove_real_link (unsigned child_index, const void* offset)
     {
-      for (unsigned i = 0; i < obj.real_links.length; i++)
+      unsigned count = obj.real_links.length;
+      for (unsigned i = 0; i < count; i++)
       {
         auto& link = obj.real_links.arrayZ[i];
         if (link.objidx != child_index)
@@ -148,23 +194,25 @@ struct graph_t
         if ((obj.head + link.position) != offset)
           continue;
 
-        obj.real_links.remove (i);
+        obj.real_links.remove_unordered (i);
         return;
       }
     }
 
     void remap_parents (const hb_vector_t<unsigned>& id_map)
     {
-      for (unsigned i = 0; i < parents.length; i++)
-        parents[i] = id_map[parents[i]];
+      unsigned count = parents.length;
+      for (unsigned i = 0; i < count; i++)
+        parents.arrayZ[i] = id_map[parents.arrayZ[i]];
     }
 
     void remap_parent (unsigned old_index, unsigned new_index)
     {
-      for (unsigned i = 0; i < parents.length; i++)
+      unsigned count = parents.length;
+      for (unsigned i = 0; i < count; i++)
       {
-        if (parents[i] == old_index)
-          parents[i] = new_index;
+        if (parents.arrayZ[i] == old_index)
+          parents.arrayZ[i] = new_index;
       }
     }
 
@@ -284,13 +332,12 @@ struct graph_t
     bool removed_nil = false;
     vertices_.alloc (objects.length);
     vertices_scratch_.alloc (objects.length);
-    for (unsigned i = 0; i < objects.length; i++)
+    unsigned count = objects.length;
+    for (unsigned i = 0; i < count; i++)
     {
-      // TODO(grieger): check all links point to valid objects.
-
       // If this graph came from a serialization buffer object 0 is the
       // nil object. We don't need it for our purposes here so drop it.
-      if (i == 0 && !objects[i])
+      if (i == 0 && !objects.arrayZ[i])
       {
         removed_nil = true;
         continue;
@@ -298,7 +345,10 @@ struct graph_t
 
       vertex_t* v = vertices_.push ();
       if (check_success (!vertices_.in_error ()))
-        v->obj = *objects[i];
+        v->obj = *objects.arrayZ[i];
+
+      check_success (v->link_positions_valid (count, removed_nil));
+
       if (!removed_nil) continue;
       // Fix indices to account for removed nil object.
       for (auto& l : v->obj.all_links_writer ()) {
@@ -309,7 +359,6 @@ struct graph_t
 
   ~graph_t ()
   {
-    vertices_.fini ();
     for (char* b : buffers)
       hb_free (b);
   }
@@ -351,9 +400,10 @@ struct graph_t
     return vertices_[i].obj;
   }
 
-  void add_buffer (char* buffer)
+  bool add_buffer (char* buffer)
   {
     buffers.push (buffer);
+    return !buffers.in_error ();
   }
 
   /*
@@ -417,6 +467,13 @@ struct graph_t
 
       hb_swap (sorted_graph[new_id], vertices_[next_id]);
       const vertex_t& next = sorted_graph[new_id];
+
+      if (unlikely (!check_success(new_id >= 0))) {
+        // We are out of ids. Which means we've visited a node more than once.
+        // This graph contains a cycle which is not allowed.
+        DEBUG_MSG (SUBSET_REPACK, nullptr, "Invalid graph. Contains cycle.");
+        return;
+      }
 
       id_map[next_id] = new_id--;
 
@@ -527,8 +584,8 @@ struct graph_t
     const auto& node = object (node_idx);
     if (offset < node.head || offset >= node.tail) return -1;
 
-    unsigned length = node.real_links.length;
-    for (unsigned i = 0; i < length; i++)
+    unsigned count = node.real_links.length;
+    for (unsigned i = 0; i < count; i++)
     {
       // Use direct access for increased performance, this is a hot method.
       const auto& link = node.real_links.arrayZ[i];
@@ -648,6 +705,9 @@ struct graph_t
       }
     }
 
+    if (in_error ())
+      return false;
+
     if (!made_changes)
       return false;
 
@@ -672,8 +732,7 @@ struct graph_t
     remap_obj_indices (index_map, parents.iter (), true);
 
     // Update roots set with new indices as needed.
-    uint32_t next = HB_SET_VALUE_INVALID;
-    while (roots.next (&next))
+    for (auto next : roots)
     {
       const uint32_t *v;
       if (index_map.has (next, &v))
@@ -781,7 +840,11 @@ struct graph_t
     if (index_map.has (node_idx))
       return;
 
-    index_map.set (node_idx, duplicate (node_idx));
+    unsigned clone_idx = duplicate (node_idx);
+    if (!check_success (clone_idx != (unsigned) -1))
+      return;
+
+    index_map.set (node_idx, clone_idx);
     for (const auto& l : object (node_idx).all_links ()) {
       duplicate_subgraph (l.objidx, index_map);
     }
@@ -866,12 +929,12 @@ struct graph_t
     {
       // Can't duplicate this node, doing so would orphan the original one as all remaining links
       // to child are from parent.
-      DEBUG_MSG (SUBSET_REPACK, nullptr, "  Not duplicating %d => %d",
+      DEBUG_MSG (SUBSET_REPACK, nullptr, "  Not duplicating %u => %u",
                  parent_idx, child_idx);
       return -1;
     }
 
-    DEBUG_MSG (SUBSET_REPACK, nullptr, "  Duplicating %d => %d",
+    DEBUG_MSG (SUBSET_REPACK, nullptr, "  Duplicating %u => %u",
                parent_idx, child_idx);
 
     unsigned clone_idx = duplicate (child_idx);
@@ -929,7 +992,7 @@ struct graph_t
    */
   bool raise_childrens_priority (unsigned parent_idx)
   {
-    DEBUG_MSG (SUBSET_REPACK, nullptr, "  Raising priority of all children of %d",
+    DEBUG_MSG (SUBSET_REPACK, nullptr, "  Raising priority of all children of %u",
                parent_idx);
     // This operation doesn't change ordering until a sort is run, so no need
     // to invalidate positions. It does not change graph structure so no need
@@ -941,6 +1004,72 @@ struct graph_t
     return made_change;
   }
 
+  bool is_fully_connected ()
+  {
+    update_parents();
+
+    if (root().parents)
+      // Root cannot have parents.
+      return false;
+
+    for (unsigned i = 0; i < root_idx (); i++)
+    {
+      if (!vertices_[i].parents)
+        return false;
+    }
+    return true;
+  }
+
+#if 0
+  /*
+   * Saves the current graph to a packed binary format which the repacker fuzzer takes
+   * as a seed.
+   */
+  void save_fuzzer_seed (hb_tag_t tag) const
+  {
+    FILE* f = fopen ("./repacker_fuzzer_seed", "w");
+    fwrite ((void*) &tag, sizeof (tag), 1, f);
+
+    uint16_t num_objects = vertices_.length;
+    fwrite ((void*) &num_objects, sizeof (num_objects), 1, f);
+
+    for (const auto& v : vertices_)
+    {
+      uint16_t blob_size = v.table_size ();
+      fwrite ((void*) &blob_size, sizeof (blob_size), 1, f);
+      fwrite ((const void*) v.obj.head, blob_size, 1, f);
+    }
+
+    uint16_t link_count = 0;
+    for (const auto& v : vertices_)
+      link_count += v.obj.real_links.length;
+
+    fwrite ((void*) &link_count, sizeof (link_count), 1, f);
+
+    typedef struct
+    {
+      uint16_t parent;
+      uint16_t child;
+      uint16_t position;
+      uint8_t width;
+    } link_t;
+
+    for (unsigned i = 0; i < vertices_.length; i++)
+    {
+      for (const auto& l : vertices_[i].obj.real_links)
+      {
+        link_t link {
+          (uint16_t) i, (uint16_t) l.objidx,
+          (uint16_t) l.position, (uint8_t) l.width
+        };
+        fwrite ((void*) &link, sizeof (link), 1, f);
+      }
+    }
+
+    fclose (f);
+  }
+#endif
+
   void print_orphaned_nodes ()
   {
     if (!DEBUG_ENABLED(SUBSET_REPACK)) return;
@@ -948,6 +1077,10 @@ struct graph_t
     DEBUG_MSG (SUBSET_REPACK, nullptr, "Graph is not fully connected.");
     parents_invalid = true;
     update_parents();
+
+    if (root().parents) {
+      DEBUG_MSG (SUBSET_REPACK, nullptr, "Root node has incoming edges.");
+    }
 
     for (unsigned i = 0; i < root_idx (); i++)
     {
@@ -1006,8 +1139,9 @@ struct graph_t
 
   size_t total_size_in_bytes () const {
     size_t total_size = 0;
-    for (unsigned i = 0; i < vertices_.length; i++) {
-      size_t size = vertices_[i].obj.tail - vertices_[i].obj.head;
+    unsigned count = vertices_.length;
+    for (unsigned i = 0; i < count; i++) {
+      size_t size = vertices_.arrayZ[i].obj.tail - vertices_.arrayZ[i].obj.head;
       total_size += size;
     }
     return total_size;
@@ -1054,16 +1188,23 @@ struct graph_t
   {
     if (!parents_invalid) return;
 
-    for (unsigned i = 0; i < vertices_.length; i++)
-      vertices_[i].parents.reset ();
+    unsigned count = vertices_.length;
 
-    for (unsigned p = 0; p < vertices_.length; p++)
+    for (unsigned i = 0; i < count; i++)
+      vertices_.arrayZ[i].parents.reset ();
+
+    for (unsigned p = 0; p < count; p++)
     {
-      for (auto& l : vertices_[p].obj.all_links ())
+      for (auto& l : vertices_.arrayZ[p].obj.all_links ())
       {
         vertices_[l.objidx].parents.push (p);
       }
     }
+
+    for (unsigned i = 0; i < count; i++)
+      // parents arrays must be accurate or downstream operations like cycle detection
+      // and sorting won't work correctly.
+      check_success (!vertices_.arrayZ[i].parents.in_error ());
 
     parents_invalid = false;
   }
@@ -1105,12 +1246,13 @@ struct graph_t
     // According to https://www3.cs.stonybrook.edu/~rezaul/papers/TR-07-54.pdf
     // for practical performance this is faster then using a more advanced queue
     // (such as a fibonacci queue) with a fast decrease priority.
-    for (unsigned i = 0; i < vertices_.length; i++)
+    unsigned count = vertices_.length;
+    for (unsigned i = 0; i < count; i++)
     {
       if (i == vertices_.length - 1)
-        vertices_[i].distance = 0;
+        vertices_.arrayZ[i].distance = 0;
       else
-        vertices_[i].distance = hb_int_max (int64_t);
+        vertices_.arrayZ[i].distance = hb_int_max (int64_t);
     }
 
     hb_priority_queue_t queue;
@@ -1198,10 +1340,11 @@ struct graph_t
   void remap_all_obj_indices (const hb_vector_t<unsigned>& id_map,
                               hb_vector_t<vertex_t>* sorted_graph) const
   {
-    for (unsigned i = 0; i < sorted_graph->length; i++)
+    unsigned count = sorted_graph->length;
+    for (unsigned i = 0; i < count; i++)
     {
       (*sorted_graph)[i].remap_parents (id_map);
-      for (auto& link : (*sorted_graph)[i].obj.all_links_writer ())
+      for (auto& link : sorted_graph->arrayZ[i].obj.all_links_writer ())
       {
         link.objidx = id_map[link.objidx];
       }

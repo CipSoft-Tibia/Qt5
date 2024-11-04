@@ -22,4 +22,22 @@ QtObject {
     property var tc6: (root?.uu as rect)?.height
     property var tc7: (f(true) as point)?.x
     property var tc8: (f(false) as point)?.x
+
+    property string greeting1
+    property string greeting2
+
+    readonly property string defaultGreeting: "Default Greeting"
+    property QtObject o: QtObject {
+        id: o
+        property var customGreeting
+        function greet() : string {
+            return (o.customGreeting as string) ?? root.defaultGreeting
+        }
+    }
+
+    Component.onCompleted: {
+        root.greeting1 = o.greet()
+        o.customGreeting = "Custom Greeting"
+        root.greeting2 = o.greet()
+    }
 }

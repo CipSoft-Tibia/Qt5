@@ -13,10 +13,12 @@
 #include <utility>
 #include <vector>
 
+#include "base/containers/flat_map.h"
 #include "base/gtest_prod_util.h"
 #include "base/strings/string_piece.h"
 #include "components/autofill/core/browser/autofill_field.h"
 #include "components/autofill/core/browser/autofill_type.h"
+#include "components/autofill/core/browser/country_type.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/form_parsing/field_candidates.h"
 #include "components/autofill/core/browser/form_types.h"
@@ -74,6 +76,7 @@ class FormStructure {
   // Runs several heuristics against the form fields to determine their possible
   // types.
   void DetermineHeuristicTypes(
+      const GeoIpCountryCode& client_country,
       AutofillMetrics::FormInteractionsUkmLogger* form_interactions_ukm_logger,
       LogManager* log_manager);
 
@@ -88,10 +91,10 @@ class FormStructure {
   // AutofillUploadContents elements in the vector, which encode the renderer
   // forms (see below for an explanation). These elements omit the renderer
   // form's metadata because retrieving this would require significant plumbing
-  // from ContentAutofillRouter.
+  // from AutofillDriverRouter.
   //
   // The renderer forms are the forms that constitute a frame-transcending form.
-  // ContentAutofillRouter receives these forms from the renderer and flattens
+  // AutofillDriverRouter receives these forms from the renderer and flattens
   // them into a single fresh form. Only the latter form is exposed to the rest
   // of the browser process. For server predictions, however, we want to query
   // and upload also votes also for the signatures of the renderer forms. For
@@ -244,32 +247,6 @@ class FormStructure {
   void RetrieveFromCache(const FormStructure& cached_form,
                          RetrieveFromCacheReason reason);
 
-  // Logs quality metrics for |this|, which should be a user-submitted form.
-  // This method should only be called after the possible field types have been
-  // set for each field.  |interaction_time| should be a timestamp corresponding
-  // to the user's first interaction with the form.  |submission_time| should be
-  // a timestamp corresponding to the form's submission. |observed_submission|
-  // indicates whether this method is called as a result of observing a
-  // submission event (otherwise, it may be that an upload was triggered after
-  // a form was unfocused or a navigation occurred).
-  // TODO(sebsg): We log more than quality metrics. Maybe rename or split
-  // function?
-  void LogQualityMetrics(
-      const base::TimeTicks& load_time,
-      const base::TimeTicks& interaction_time,
-      const base::TimeTicks& submission_time,
-      AutofillMetrics::FormInteractionsUkmLogger* form_interactions_ukm_logger,
-      bool did_show_suggestions,
-      bool observed_submission,
-      const FormInteractionCounts& form_interaction_counts) const;
-
-  // Log the quality of the heuristics and server predictions for this form
-  // structure, if autocomplete attributes are present on the fields (they are
-  // used as golden truths).
-  void LogQualityMetricsBasedOnAutocomplete(
-      AutofillMetrics::FormInteractionsUkmLogger* form_interactions_ukm_logger)
-      const;
-
   void LogDetermineHeuristicTypesMetrics();
 
   // Sets each field's `html_type` and `html_mode` based on the field's
@@ -286,6 +263,7 @@ class FormStructure {
 
   // Classifies each field in |fields_| using the regular expressions.
   void ParseFieldTypesWithPatterns(PatternSource pattern_source,
+                                   const GeoIpCountryCode& client_country,
                                    LogManager* log_manager);
 
   // Returns the values that can be filled into the form structure for the
@@ -301,10 +279,6 @@ class FormStructure {
   // the fields that are considered composing a first complete phone number.
   void RationalizePhoneNumbersInSection(const Section& section);
 
-  // Overrides server predictions with specific heuristic predictions:
-  // * NAME_LAST_SECOND heuristic predictions are unconditionally used.
-  void OverrideServerPredictionsWithHeuristics();
-
   // Returns the FieldGlobalIds of the |fields_| that are eligible for manual
   // filling on form interaction.
   static std::vector<FieldGlobalId> FindFieldsEligibleForManualFilling(
@@ -319,6 +293,11 @@ class FormStructure {
 
   const AutofillField* GetFieldById(FieldGlobalId field_id) const;
   AutofillField* GetFieldById(FieldGlobalId field_id);
+
+  void AddSingleUsernameData(
+      AutofillUploadContents::SingleUsernameData single_username_data) {
+    single_username_data_.push_back(single_username_data);
+  }
 
   // Returns the number of fields that are part of the form signature and that
   // are included in queries to the Autofill server.
@@ -383,6 +362,14 @@ class FormStructure {
 
   void set_form_signature(FormSignature signature) {
     form_signature_ = signature;
+  }
+
+  FormSignature alternative_form_signature() const {
+    return alternative_form_signature_;
+  }
+
+  void set_alternative_form_signature(FormSignature signature) {
+    alternative_form_signature_ = signature;
   }
 
   // Returns a FormData containing the data this form structure knows about.
@@ -467,12 +454,8 @@ class FormStructure {
 
   FormVersion version() const { return version_; }
 
-  void set_single_username_data(
-      AutofillUploadContents::SingleUsernameData single_username_data) {
-    single_username_data_ = single_username_data;
-  }
-  absl::optional<AutofillUploadContents::SingleUsernameData>
-  single_username_data() const {
+  std::vector<AutofillUploadContents::SingleUsernameData> single_username_data()
+      const {
     return single_username_data_;
   }
 
@@ -490,6 +473,9 @@ class FormStructure {
 
  private:
   friend class FormStructureTestApi;
+
+  // Sets the rank of each field in the form.
+  void DetermineFieldRanks();
 
   // Production code only uses the default parameters.
   // Unit tests also test other parameters.
@@ -635,6 +621,13 @@ class FormStructure {
   // the form name, and the form field names in a 64-bit hash.
   FormSignature form_signature_;
 
+  // The alternative signature for this form which is more stable/generic than
+  // `form_signature_`, used when signature is random/unstable at each reload.
+  // It is composed of the target url domain, the fields' form control types,
+  // and for forms with 1-2 fields, one of the following non-empty elements
+  // ordered by preference: path, reference, or query in a 64-bit hash.
+  FormSignature alternative_form_signature_;
+
   // The timestamp (not wallclock time) when this form was initially parsed.
   base::TimeTicks form_parsed_timestamp_;
 
@@ -689,8 +682,7 @@ class FormStructure {
   FormRendererId unique_renderer_id_;
 
   // Single username details, if applicable.
-  absl::optional<AutofillUploadContents::SingleUsernameData>
-      single_username_data_;
+  std::vector<AutofillUploadContents::SingleUsernameData> single_username_data_;
 
   // The signatures of forms recently submitted on the same origin within a
   // small period of time.
@@ -700,6 +692,25 @@ class FormStructure {
 
 LogBuffer& operator<<(LogBuffer& buffer, const FormStructure& form);
 std::ostream& operator<<(std::ostream& buffer, const FormStructure& form);
+
+// TODO(crbug.com/1466435): Remove once the refactoring is complete.
+// Helper struct for `GetFormDataAndServerPredictions`.
+struct FormDataAndServerPredictions {
+  FormDataAndServerPredictions();
+  FormDataAndServerPredictions(const FormDataAndServerPredictions&);
+  FormDataAndServerPredictions& operator=(const FormDataAndServerPredictions&);
+  FormDataAndServerPredictions(FormDataAndServerPredictions&&);
+  FormDataAndServerPredictions& operator=(FormDataAndServerPredictions&&);
+  ~FormDataAndServerPredictions();
+
+  std::vector<FormData> form_datas;
+  base::flat_map<FieldGlobalId, AutofillType::ServerPrediction> predictions;
+};
+
+// Returns the `FormData` and `ServerPrediction` objects underlying
+// `form_structures`.
+FormDataAndServerPredictions GetFormDataAndServerPredictions(
+    base::span<const FormStructure* const> form_structures);
 
 }  // namespace autofill
 

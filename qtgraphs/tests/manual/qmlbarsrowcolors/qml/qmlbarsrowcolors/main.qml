@@ -87,52 +87,52 @@ Item {
         id: graphAxes
     }
 
-    ThemeColor {
+    Color {
         id: color1
         color: "green"
     }
 
-    ThemeColor {
+    Color {
         id: color2
         color: "blue"
     }
 
-    ThemeColor {
+    Color {
         id: color3
         color: "red"
     }
 
-    ThemeColor {
+    Color {
         id: color4
         color: "yellow"
     }
 
-    ThemeColor {
+    Color {
         id: color5
         color: "purple"
     }
 
-    ThemeColor {
+    Color {
         id: color6
         color: "orange"
     }
 
     Theme3D {
         id: theme1
-        type: Theme3D.ThemeRetro
+        type: Theme3D.Theme.Retro
         labelBorderEnabled: true
         font.pointSize: 35
         labelBackgroundEnabled: true
-        colorStyle: Theme3D.ColorStyleUniform
+        colorStyle: Theme3D.ColorStyle.Uniform
     }
 
     Theme3D {
         id: theme2
-        type: Theme3D.ThemeArmyBlue
+        type: Theme3D.Theme.ArmyBlue
         labelBorderEnabled: true
         font.pointSize: 35
         labelBackgroundEnabled: true
-        colorStyle: Theme3D.ColorStyleUniform
+        colorStyle: Theme3D.ColorStyle.Uniform
     }
 
     ColumnLayout {
@@ -311,13 +311,13 @@ Item {
             id: barGraph
             width: dataView.width
             height: dataView.height
-            shadowQuality: AbstractGraph3D.ShadowQualityMedium
+            shadowQuality: AbstractGraph3D.ShadowQuality.Medium
             selectionMode: AbstractGraph3D.SelectionItemAndRow | AbstractGraph3D.SelectionSlice
             theme: theme1
             barThickness: 0.7
             barSpacing: Qt.size(0.5, 0.5)
             barSpacingRelative: false
-            scene.activeCamera.cameraPreset: Camera3D.CameraPresetIsometricLeftHigh
+            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeftHigh
             columnAxis: graphAxes.column
             rowAxis: graphAxes.row
             valueAxis: graphAxes.value
@@ -341,7 +341,7 @@ Item {
                     valueRolePattern: /-/
                     rowRoleReplace: "\\1"
                     columnRoleReplace: "\\1"
-                    multiMatchBehavior: ItemModelBarDataProxy.MMBCumulative
+                    multiMatchBehavior: ItemModelBarDataProxy.MultiMatchBehavior.Cumulative
                 }
             }
 
@@ -362,7 +362,7 @@ Item {
                     columnRolePattern: /^.*-(\d\d)$/
                     rowRoleReplace: "\\1"
                     columnRoleReplace: "\\1"
-                    multiMatchBehavior: ItemModelBarDataProxy.MMBCumulative
+                    multiMatchBehavior: ItemModelBarDataProxy.MultiMatchBehavior.Cumulative
                 }
             }
         }

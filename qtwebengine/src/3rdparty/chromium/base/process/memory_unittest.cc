@@ -15,7 +15,6 @@
 #include <vector>
 
 #include "base/allocator/allocator_check.h"
-#include "base/allocator/buildflags.h"
 #include "base/allocator/partition_allocator/page_allocator.h"
 #include "base/allocator/partition_allocator/partition_alloc_buildflags.h"
 #include "base/compiler_specific.h"
@@ -33,8 +32,9 @@
 #endif
 #if BUILDFLAG(IS_MAC)
 #include <malloc/malloc.h>
-#include "base/allocator/partition_allocator/shim/allocator_interception_mac.h"
+#include "base/allocator/partition_allocator/shim/allocator_interception_apple.h"
 #include "base/allocator/partition_allocator/shim/allocator_shim.h"
+#include "base/check_op.h"
 #include "base/process/memory_unittest_mac.h"
 #endif
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
@@ -289,7 +289,10 @@ TEST_F(OutOfMemoryDeathTest, NewHandlerGeneratesUnhandledException) {
 
 // OS X has no 2Gb allocation limit.
 // See https://crbug.com/169327.
-#if !BUILDFLAG(IS_MAC)
+// PartitionAlloc is not active in component builds, so cannot enforce
+// this limit. (//BUILD.gn asserts that we cannot have an official component
+// build.)
+#if !BUILDFLAG(IS_MAC) && !defined(COMPONENT_BUILD)
 TEST_F(OutOfMemoryDeathTest, SecurityNew) {
   if (ShouldSkipTest()) {
     return;

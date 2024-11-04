@@ -12,6 +12,8 @@
 #include "content/public/renderer/render_frame.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "ui/accessibility/ax_node.h"
+#include "ui/accessibility/ax_serializable_tree.h"
+#include "url/gurl.h"
 
 class MockAXTreeDistiller : public AXTreeDistiller {
  public:
@@ -21,13 +23,14 @@ class MockAXTreeDistiller : public AXTreeDistiller {
               Distill,
               (const ui::AXTree& tree,
                const ui::AXTreeUpdate& snapshot,
-               const ukm::SourceId& ukm_source_id),
+               const ukm::SourceId ukm_source_id),
               (override));
 };
 
-class MockReadAnythingPageHandler : public read_anything::mojom::PageHandler {
+class MockReadAnythingUntrustedPageHandler
+    : public read_anything::mojom::UntrustedPageHandler {
  public:
-  MockReadAnythingPageHandler() = default;
+  MockReadAnythingUntrustedPageHandler() = default;
 
   MOCK_METHOD(void,
               OnLinkClicked,
@@ -41,16 +44,34 @@ class MockReadAnythingPageHandler : public read_anything::mojom::PageHandler {
                ui::AXNodeID focus_node_id,
                int focus_offset),
               (override));
+  MOCK_METHOD(void, OnCollapseSelection, (), (override));
+  MOCK_METHOD(void, OnCopy, (), (override));
+  MOCK_METHOD(void,
+              OnLineSpaceChange,
+              (read_anything::mojom::LineSpacing line_spacing),
+              (override));
+  MOCK_METHOD(void,
+              OnLetterSpaceChange,
+              (read_anything::mojom::LetterSpacing letter_spacing),
+              (override));
+  MOCK_METHOD(void, OnFontChange, (const std::string& font), (override));
+  MOCK_METHOD(void, OnFontSizeChange, (double font_size), (override));
+  MOCK_METHOD(void,
+              OnColorChange,
+              (read_anything::mojom::Colors color),
+              (override));
 
-  mojo::PendingRemote<read_anything::mojom::PageHandler>
+  mojo::PendingRemote<read_anything::mojom::UntrustedPageHandler>
   BindNewPipeAndPassRemote() {
     return receiver_.BindNewPipeAndPassRemote();
   }
   void FlushForTesting() { receiver_.FlushForTesting(); }
 
  private:
-  mojo::Receiver<read_anything::mojom::PageHandler> receiver_{this};
+  mojo::Receiver<read_anything::mojom::UntrustedPageHandler> receiver_{this};
 };
+
+using testing::Mock;
 
 class ReadAnythingAppControllerTest : public ChromeRenderViewTest {
  public:
@@ -65,12 +86,17 @@ class ReadAnythingAppControllerTest : public ChromeRenderViewTest {
     content::RenderFrame* render_frame =
         content::RenderFrame::FromWebFrame(GetMainFrame());
     controller_ = ReadAnythingAppController::Install(render_frame);
-    controller_->SetPageHandlerForTesting(
-        page_handler_.BindNewPipeAndPassRemote());
+
+    // Set the page handler for testing.
+    controller_->page_handler_.reset();
+    controller_->page_handler_.Bind(page_handler_.BindNewPipeAndPassRemote());
+
+    // Set distiller for testing.
     std::unique_ptr<AXTreeDistiller> distiller =
         std::make_unique<MockAXTreeDistiller>(render_frame);
-    distiller_ = static_cast<MockAXTreeDistiller*>(
-        controller_->SetDistillerForTesting(std::move(distiller)));
+    controller_->distiller_ = std::move(distiller);
+    distiller_ =
+        static_cast<MockAXTreeDistiller*>(controller_->distiller_.get());
 
     // Create a tree id.
     tree_id_ = ui::AXTreeID::CreateNewAXTreeID();
@@ -93,6 +119,7 @@ class ReadAnythingAppControllerTest : public ChromeRenderViewTest {
     AccessibilityEventReceived({snapshot});
     OnActiveAXTreeIDChanged(tree_id_);
     OnAXTreeDistilled({});
+    Mock::VerifyAndClearExpectations(distiller_);
   }
 
   void SetUpdateTreeID(ui::AXTreeUpdate* update) {
@@ -118,18 +145,32 @@ class ReadAnythingAppControllerTest : public ChromeRenderViewTest {
   }
 
   void AccessibilityEventReceived(
-      const std::vector<ui::AXTreeUpdate>& updates) {
-    AccessibilityEventReceived(updates[0].tree_data.tree_id, updates);
+      const std::vector<ui::AXTreeUpdate>& updates,
+      const std::vector<ui::AXEvent>& events = std::vector<ui::AXEvent>()) {
+    AccessibilityEventReceived(updates[0].tree_data.tree_id, updates, events);
   }
 
   void AccessibilityEventReceived(
       const ui::AXTreeID& tree_id,
-      const std::vector<ui::AXTreeUpdate>& updates) {
-    controller_->AccessibilityEventReceived(tree_id, updates, {});
+      const std::vector<ui::AXTreeUpdate>& updates,
+      const std::vector<ui::AXEvent>& events = std::vector<ui::AXEvent>()) {
+    controller_->AccessibilityEventReceived(tree_id, updates, events);
+  }
+
+  // Since a11y events happen asynchronously, they can come between the time
+  // distillation finishes and pending updates are unserialized in
+  // OnAXTreeDistilled. Thus we need to be able to set distillation progress
+  // independent of OnAXTreeDistilled.
+  void SetDistillationInProgress(bool in_progress) {
+    controller_->model_.SetDistillationInProgress(in_progress);
   }
 
   void OnActiveAXTreeIDChanged(const ui::AXTreeID& tree_id) {
-    controller_->OnActiveAXTreeIDChanged(tree_id, ukm::kInvalidSourceId);
+    OnActiveAXTreeIDChanged(tree_id, GURL::EmptyGURL());
+  }
+
+  void OnActiveAXTreeIDChanged(const ui::AXTreeID& tree_id, const GURL& url) {
+    controller_->OnActiveAXTreeIDChanged(tree_id, ukm::kInvalidSourceId, url);
   }
 
   void OnAXTreeDistilled(const std::vector<ui::AXNodeID>& content_node_ids) {
@@ -155,8 +196,14 @@ class ReadAnythingAppControllerTest : public ChromeRenderViewTest {
 
   int EndOffset() { return controller_->EndOffset(); }
 
+  bool HasSelection() { return controller_->model_.has_selection(); }
+
   bool DisplayNodeIdsContains(ui::AXNodeID ax_node_id) {
-    return base::Contains(controller_->display_node_ids_, ax_node_id);
+    return base::Contains(controller_->model_.display_node_ids(), ax_node_id);
+  }
+
+  bool SelectionNodeIdsContains(ui::AXNodeID ax_node_id) {
+    return base::Contains(controller_->model_.selection_node_ids(), ax_node_id);
   }
 
   std::string FontName() { return controller_->FontName(); }
@@ -170,6 +217,10 @@ class ReadAnythingAppControllerTest : public ChromeRenderViewTest {
   float LineSpacing() { return controller_->LineSpacing(); }
 
   float LetterSpacing() { return controller_->LetterSpacing(); }
+
+  bool isSelectable() { return controller_->IsSelectable(); }
+
+  void OnFontSizeReset() { controller_->OnFontSizeReset(); }
 
   std::vector<ui::AXNodeID> GetChildren(ui::AXNodeID ax_node_id) {
     return controller_->GetChildren(ax_node_id);
@@ -207,17 +258,21 @@ class ReadAnythingAppControllerTest : public ChromeRenderViewTest {
                                    focus_offset);
   }
 
+  void OnCollapseSelection() { controller_->OnCollapseSelection(); }
+
   bool IsNodeIgnoredForReadAnything(ui::AXNodeID ax_node_id) {
-    return controller_->IsNodeIgnoredForReadAnything(ax_node_id);
+    return controller_->model_.IsNodeIgnoredForReadAnything(ax_node_id);
   }
 
-  size_t GetNumTrees() { return controller_->trees_.size(); }
+  bool HasTree(ui::AXTreeID tree_id) {
+    return controller_->model_.ContainsTree(tree_id);
+  }
 
-  size_t GetNumPendingUpdates() { return controller_->pending_updates_.size(); }
+  ui::AXTreeID ActiveTreeId() { return controller_->model_.active_tree_id(); }
 
   ui::AXTreeID tree_id_;
   MockAXTreeDistiller* distiller_ = nullptr;
-  testing::StrictMock<MockReadAnythingPageHandler> page_handler_;
+  testing::StrictMock<MockReadAnythingUntrustedPageHandler> page_handler_;
 
  private:
   // ReadAnythingAppController constructor and destructor are private so it's
@@ -288,44 +343,50 @@ TEST_F(ReadAnythingAppControllerTest, GetChildren_WithContentNodes) {
   EXPECT_EQ(4, GetChildren(1)[1]);
 }
 
-TEST_F(ReadAnythingAppControllerTest, GetChildren_WithSelection) {
+TEST_F(ReadAnythingAppControllerTest,
+       GetChildren_WithSelection_ContainsNearbyNodes) {
   // Create selection from node 3-4.
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
+  update.has_tree_data = true;
+  update.event_from = ax::mojom::EventFrom::kUser;
   update.tree_data.sel_anchor_object_id = 3;
   update.tree_data.sel_focus_object_id = 4;
   update.tree_data.sel_anchor_offset = 0;
   update.tree_data.sel_focus_offset = 0;
   update.tree_data.sel_is_backward = false;
   AccessibilityEventReceived({update});
-  OnAXTreeDistilled({});
-  EXPECT_EQ(2u, GetChildren(1).size());
+  EXPECT_EQ(3u, GetChildren(1).size());
   EXPECT_EQ(0u, GetChildren(2).size());
   EXPECT_EQ(0u, GetChildren(3).size());
   EXPECT_EQ(0u, GetChildren(4).size());
 
-  EXPECT_EQ(3, GetChildren(1)[0]);
-  EXPECT_EQ(4, GetChildren(1)[1]);
+  EXPECT_EQ(2, GetChildren(1)[0]);
+  EXPECT_EQ(3, GetChildren(1)[1]);
+  EXPECT_EQ(4, GetChildren(1)[2]);
 }
 
-TEST_F(ReadAnythingAppControllerTest, GetChildren_WithBackwardSelection) {
+TEST_F(ReadAnythingAppControllerTest,
+       GetChildren_WithBackwardSelection_ContainsNearbyNodes) {
   // Create backward selection from node 4-3.
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
+  update.has_tree_data = true;
+  update.event_from = ax::mojom::EventFrom::kUser;
   update.tree_data.sel_anchor_object_id = 4;
   update.tree_data.sel_focus_object_id = 3;
   update.tree_data.sel_anchor_offset = 0;
   update.tree_data.sel_focus_offset = 0;
   update.tree_data.sel_is_backward = true;
   AccessibilityEventReceived({update});
-  OnAXTreeDistilled({});
-  EXPECT_EQ(2u, GetChildren(1).size());
+  EXPECT_EQ(3u, GetChildren(1).size());
   EXPECT_EQ(0u, GetChildren(2).size());
   EXPECT_EQ(0u, GetChildren(3).size());
   EXPECT_EQ(0u, GetChildren(4).size());
 
-  EXPECT_EQ(3, GetChildren(1)[0]);
-  EXPECT_EQ(4, GetChildren(1)[1]);
+  EXPECT_EQ(2, GetChildren(1)[0]);
+  EXPECT_EQ(3, GetChildren(1)[1]);
+  EXPECT_EQ(4, GetChildren(1)[2]);
 }
 
 TEST_F(ReadAnythingAppControllerTest, GetHtmlTag) {
@@ -347,6 +408,47 @@ TEST_F(ReadAnythingAppControllerTest, GetHtmlTag) {
   EXPECT_EQ(span, GetHtmlTag(2));
   EXPECT_EQ(h1, GetHtmlTag(3));
   EXPECT_EQ(ul, GetHtmlTag(4));
+}
+
+TEST_F(ReadAnythingAppControllerTest, GetHtmlTag_TextFieldReturnsDiv) {
+  std::string span = "span";
+  std::string h1 = "h1";
+  std::string ul = "ul";
+  std::string div = "div";
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.nodes.resize(3);
+  update.nodes[0].id = 2;
+  update.nodes[1].id = 3;
+  update.nodes[2].id = 4;
+  update.nodes[0].AddStringAttribute(ax::mojom::StringAttribute::kHtmlTag,
+                                     span);
+  update.nodes[1].AddStringAttribute(ax::mojom::StringAttribute::kHtmlTag, h1);
+  update.nodes[1].role = ax::mojom::Role::kTextField;
+  update.nodes[2].AddStringAttribute(ax::mojom::StringAttribute::kHtmlTag, ul);
+  update.nodes[2].role = ax::mojom::Role::kTextFieldWithComboBox;
+  AccessibilityEventReceived({update});
+  OnAXTreeDistilled({});
+  EXPECT_EQ(span, GetHtmlTag(2));
+  EXPECT_EQ(div, GetHtmlTag(3));
+  EXPECT_EQ(div, GetHtmlTag(4));
+}
+
+TEST_F(ReadAnythingAppControllerTest,
+       GetHtmlTag_DivWithHeadingAndAriaLevelReturnsH) {
+  std::string h3 = "h3";
+  std::string div = "div";
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.nodes.resize(3);
+  update.nodes[0].id = 2;
+  update.nodes[1].id = 3;
+  update.nodes[2].id = 4;
+  update.nodes[1].role = ax::mojom::Role::kHeading;
+  update.nodes[1].html_attributes.emplace_back("aria-level", "3");
+  AccessibilityEventReceived({update});
+  OnAXTreeDistilled({});
+  EXPECT_EQ(h3, GetHtmlTag(3));
 }
 
 TEST_F(ReadAnythingAppControllerTest, GetTextContent_NoSelection) {
@@ -479,58 +581,59 @@ TEST_F(ReadAnythingAppControllerTest, IsNodeIgnoredForReadAnything) {
   EXPECT_EQ(true, IsNodeIgnoredForReadAnything(4));
 }
 
-TEST_F(ReadAnythingAppControllerTest, DisplayNodeIdsContains_Selection) {
+TEST_F(ReadAnythingAppControllerTest,
+       SelectionNodeIdsContains_SelectionAndNearbyNodes) {
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
+  update.has_tree_data = true;
+  update.event_from = ax::mojom::EventFrom::kUser;
   update.tree_data.sel_anchor_object_id = 2;
   update.tree_data.sel_focus_object_id = 3;
   update.tree_data.sel_anchor_offset = 0;
   update.tree_data.sel_focus_offset = 0;
   update.tree_data.sel_is_backward = false;
+
   AccessibilityEventReceived({update});
-  OnAXTreeDistilled({});
-  EXPECT_TRUE(DisplayNodeIdsContains(1));
-  EXPECT_TRUE(DisplayNodeIdsContains(2));
-  EXPECT_TRUE(DisplayNodeIdsContains(3));
-  EXPECT_FALSE(DisplayNodeIdsContains(4));
+  EXPECT_TRUE(SelectionNodeIdsContains(1));
+  EXPECT_TRUE(SelectionNodeIdsContains(2));
+  EXPECT_TRUE(SelectionNodeIdsContains(3));
+  EXPECT_TRUE(SelectionNodeIdsContains(4));
 }
 
 TEST_F(ReadAnythingAppControllerTest,
-       DisplayNodeIdsContains_BackwardSelection) {
+       SelectionNodeIdsContains_BackwardSelectionAndNearbyNodes) {
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
+  update.has_tree_data = true;
+  update.event_from = ax::mojom::EventFrom::kUser;
   update.tree_data.sel_anchor_object_id = 3;
   update.tree_data.sel_focus_object_id = 2;
   update.tree_data.sel_anchor_offset = 0;
   update.tree_data.sel_focus_offset = 0;
   update.tree_data.sel_is_backward = true;
   AccessibilityEventReceived({update});
-  OnAXTreeDistilled({});
-  EXPECT_TRUE(DisplayNodeIdsContains(1));
-  EXPECT_TRUE(DisplayNodeIdsContains(2));
-  EXPECT_TRUE(DisplayNodeIdsContains(3));
-  EXPECT_FALSE(DisplayNodeIdsContains(4));
+  EXPECT_TRUE(SelectionNodeIdsContains(1));
+  EXPECT_TRUE(SelectionNodeIdsContains(2));
+  EXPECT_TRUE(SelectionNodeIdsContains(3));
+  EXPECT_TRUE(SelectionNodeIdsContains(4));
 }
 
 TEST_F(ReadAnythingAppControllerTest, DisplayNodeIdsContains_ContentNodes) {
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
-  update.nodes.resize(3);
-  update.nodes[0].id = 4;
-  update.nodes[0].child_ids = {5, 6};
-  update.nodes[1].id = 5;
-  update.nodes[2].id = 6;
-  // This update changes the structure of the tree. When the controller receives
-  // it in AccessibilityEventReceived, it will re-distill the tree.
+  update.nodes.resize(1);
+  update.nodes[0].id = 3;
+  // This update says the page loaded. When the controller receives it in
+  // AccessibilityEventReceived, it will re-distill the tree. This is an
+  // example of a non-generated event.
   EXPECT_CALL(*distiller_, Distill).Times(1);
-  AccessibilityEventReceived({update});
-  OnAXTreeDistilled({3, 4});
+  ui::AXEvent load_complete(0, ax::mojom::Event::kLoadComplete);
+  AccessibilityEventReceived({update}, {load_complete});
+  OnAXTreeDistilled({3});
   EXPECT_TRUE(DisplayNodeIdsContains(1));
   EXPECT_FALSE(DisplayNodeIdsContains(2));
   EXPECT_TRUE(DisplayNodeIdsContains(3));
-  EXPECT_TRUE(DisplayNodeIdsContains(4));
-  EXPECT_TRUE(DisplayNodeIdsContains(5));
-  EXPECT_TRUE(DisplayNodeIdsContains(6));
+  Mock::VerifyAndClearExpectations(distiller_);
 }
 
 TEST_F(ReadAnythingAppControllerTest,
@@ -596,6 +699,66 @@ TEST_F(ReadAnythingAppControllerTest, AccessibilityEventReceived) {
   EXPECT_EQ("", GetTextContent(1));
 }
 
+TEST_F(ReadAnythingAppControllerTest,
+       AccessibilityEventReceivedWhileDistilling) {
+  // Tree starts off with no text content.
+  EXPECT_EQ("", GetTextContent(1));
+  EXPECT_EQ("", GetTextContent(2));
+  EXPECT_EQ("", GetTextContent(3));
+  EXPECT_EQ("", GetTextContent(4));
+
+  // Send a new update which settings the text content of node 2.
+  ui::AXTreeUpdate update_1;
+  SetUpdateTreeID(&update_1);
+  update_1.nodes.resize(1);
+  update_1.nodes[0].id = 2;
+  update_1.nodes[0].role = ax::mojom::Role::kStaticText;
+  update_1.nodes[0].SetName("Hello world");
+  update_1.nodes[0].SetNameFrom(ax::mojom::NameFrom::kContents);
+  AccessibilityEventReceived({update_1});
+  EXPECT_EQ("Hello world", GetTextContent(1));
+  EXPECT_EQ("Hello world", GetTextContent(2));
+  EXPECT_EQ("", GetTextContent(3));
+  EXPECT_EQ("", GetTextContent(4));
+
+  // Send three updates while distilling.
+  SetDistillationInProgress(true);
+  std::vector<ui::AXTreeUpdate> batch_updates;
+  for (int i = 2; i < 5; i++) {
+    ui::AXTreeUpdate update;
+    SetUpdateTreeID(&update);
+    update.nodes.resize(1);
+    update.nodes[0].id = i;
+    update.nodes[0].role = ax::mojom::Role::kStaticText;
+    update.nodes[0].SetName("Node " + base::NumberToString(i));
+    update.nodes[0].SetNameFrom(ax::mojom::NameFrom::kContents);
+    batch_updates.push_back(update);
+  }
+  AccessibilityEventReceived(batch_updates);
+  // The updates shouldn't be applied yet.
+  EXPECT_EQ("Hello world", GetTextContent(1));
+  EXPECT_EQ("Hello world", GetTextContent(2));
+
+  // Send another update after distillation finishes but before
+  // OnAXTreeDistilled would unserialize the pending updates. Since a11y events
+  // happen asynchronously, they can come between the time distillation finishes
+  // and pending updates are unserialized.
+  SetDistillationInProgress(false);
+  ui::AXTreeUpdate update_2;
+  SetUpdateTreeID(&update_2);
+  update_2.nodes.resize(1);
+  update_2.nodes[0].id = 2;
+  update_2.nodes[0].role = ax::mojom::Role::kStaticText;
+  update_2.nodes[0].SetName("Final update");
+  update_2.nodes[0].SetNameFrom(ax::mojom::NameFrom::kContents);
+  AccessibilityEventReceived({update_2});
+
+  EXPECT_EQ("Final updateNode 3Node 4", GetTextContent(1));
+  EXPECT_EQ("Final update", GetTextContent(2));
+  EXPECT_EQ("Node 3", GetTextContent(3));
+  EXPECT_EQ("Node 4", GetTextContent(4));
+}
+
 TEST_F(ReadAnythingAppControllerTest, OnActiveAXTreeIDChanged) {
   // Create three AXTreeUpdates with three different tree IDs.
   std::vector<ui::AXTreeID> tree_ids = {ui::AXTreeID::CreateNewAXTreeID(),
@@ -614,23 +777,54 @@ TEST_F(ReadAnythingAppControllerTest, OnActiveAXTreeIDChanged) {
     updates.push_back(update);
   }
   // Add the three updates separately since they have different tree IDs.
-  for (int i = 0; i < 3; i++) {
-    AccessibilityEventReceived({updates[i]});
-  }
-
-  OnAXTreeDistilled({1});
-
   // Check that changing the active tree ID changes the active tree which is
   // used when using a v8 getter.
   for (int i = 0; i < 3; i++) {
+    AccessibilityEventReceived({updates[i]});
+    OnAXTreeDistilled({1});
     EXPECT_CALL(*distiller_, Distill).Times(1);
     OnActiveAXTreeIDChanged(tree_ids[i]);
     EXPECT_EQ("Tree " + base::NumberToString(i), GetTextContent(1));
+    Mock::VerifyAndClearExpectations(distiller_);
   }
 
   // Changing the active tree ID to the same ID does nothing.
   EXPECT_CALL(*distiller_, Distill).Times(0);
   OnActiveAXTreeIDChanged(tree_ids[2]);
+  Mock::VerifyAndClearExpectations(distiller_);
+}
+
+TEST_F(ReadAnythingAppControllerTest,
+       OnActiveAXTreeIDChanged_DocsLabeledNotSelectable) {
+  ui::AXTreeUpdate update;
+  ui::AXTreeID id_1 = ui::AXTreeID::CreateNewAXTreeID();
+  SetUpdateTreeID(&update, id_1);
+  update.root_id = 1;
+  update.nodes.resize(1);
+  update.nodes[0].id = 1;
+  AccessibilityEventReceived({update});
+  OnAXTreeDistilled({1});
+
+  EXPECT_CALL(*distiller_, Distill).Times(1);
+  OnActiveAXTreeIDChanged(id_1, GURL("www.google.com"));
+  EXPECT_TRUE(isSelectable());
+  Mock::VerifyAndClearExpectations(distiller_);
+
+  ui::AXTreeUpdate update_1;
+  SetUpdateTreeID(&update_1, tree_id_);
+  update_1.root_id = 1;
+  update_1.nodes.resize(1);
+  update_1.nodes[0].id = 1;
+  AccessibilityEventReceived({update_1});
+  OnAXTreeDistilled({1});
+
+  EXPECT_CALL(*distiller_, Distill).Times(1);
+  OnActiveAXTreeIDChanged(
+      tree_id_, GURL("https://docs.google.com/document/d/"
+                     "1t6x1PQaQWjE8wb9iyYmFaoK1XAEgsl8G1Hx3rzfpoKA/"
+                     "edit?ouid=103677288878638916900&usp=docs_home&ths=true"));
+  EXPECT_FALSE(isSelectable());
+  Mock::VerifyAndClearExpectations(distiller_);
 }
 
 TEST_F(ReadAnythingAppControllerTest, DoesNotCrashIfActiveAXTreeIDUnknown) {
@@ -639,6 +833,7 @@ TEST_F(ReadAnythingAppControllerTest, DoesNotCrashIfActiveAXTreeIDUnknown) {
   OnActiveAXTreeIDChanged(tree_id);
   OnAXTreeDestroyed(tree_id);
   OnAXTreeDistilled({1});
+  Mock::VerifyAndClearExpectations(distiller_);
 }
 
 TEST_F(ReadAnythingAppControllerTest, DoesNotCrashIfActiveAXTreeIDNotInTrees) {
@@ -662,65 +857,30 @@ TEST_F(ReadAnythingAppControllerTest, AddAndRemoveTrees) {
   }
 
   // Start with 1 tree (the tree created in SetUp).
-  ASSERT_EQ(1u, GetNumTrees());
+  ASSERT_TRUE(HasTree(tree_id_));
 
   // Add the two trees.
   AccessibilityEventReceived({updates[0]});
-  ASSERT_EQ(2u, GetNumTrees());
+  ASSERT_TRUE(HasTree(tree_id_));
+  ASSERT_TRUE(HasTree(tree_ids[0]));
   AccessibilityEventReceived({updates[1]});
-  ASSERT_EQ(3u, GetNumTrees());
+  ASSERT_TRUE(HasTree(tree_id_));
+  ASSERT_TRUE(HasTree(tree_ids[0]));
+  ASSERT_TRUE(HasTree(tree_ids[1]));
 
   // Remove all of the trees.
   OnAXTreeDestroyed(tree_id_);
-  ASSERT_EQ(2u, GetNumTrees());
+  ASSERT_FALSE(HasTree(tree_id_));
+  ASSERT_TRUE(HasTree(tree_ids[0]));
+  ASSERT_TRUE(HasTree(tree_ids[1]));
   OnAXTreeDestroyed(tree_ids[0]);
-  ASSERT_EQ(1u, GetNumTrees());
+  ASSERT_FALSE(HasTree(tree_ids[0]));
+  ASSERT_TRUE(HasTree(tree_ids[1]));
   OnAXTreeDestroyed(tree_ids[1]);
-  ASSERT_EQ(0u, GetNumTrees());
+  ASSERT_FALSE(HasTree(tree_ids[1]));
 }
 
-TEST_F(ReadAnythingAppControllerTest, OnAXTreeDestroyed_ChildTree) {
-  // Create three AXTreeUpdates. The first has tree ID tree_id_ and the others
-  // have two new tree IDs.
-  std::vector<ui::AXTreeID> tree_ids = {tree_id_,
-                                        ui::AXTreeID::CreateNewAXTreeID(),
-                                        ui::AXTreeID::CreateNewAXTreeID()};
-  std::vector<ui::AXTreeUpdate> updates;
-  for (int i = 0; i < 3; i++) {
-    ui::AXTreeUpdate update;
-    SetUpdateTreeID(&update, tree_ids[i]);
-    update.root_id = 1;
-    update.nodes.resize(1);
-    update.nodes[0].id = 1;
-    updates.push_back(update);
-  }
-
-  // Tree_ids[0] is the parent of tree_ids[1]. Tree_ids[1] is the parent of
-  // tree_ids[2].
-  updates[1].tree_data.parent_tree_id = tree_ids[0];
-  updates[2].tree_data.parent_tree_id = tree_ids[1];
-  updates[0].nodes[0].AddChildTreeId(tree_ids[1]);
-  updates[1].nodes[0].AddChildTreeId(tree_ids[2]);
-
-  // Start with 1 tree (the tree created in SetUp).
-  ASSERT_EQ(1u, GetNumTrees());
-  AccessibilityEventReceived({updates[0]});
-  ASSERT_EQ(1u, GetNumTrees());
-
-  // Add two trees.
-  AccessibilityEventReceived({updates[1]});
-  ASSERT_EQ(2u, GetNumTrees());
-  AccessibilityEventReceived({updates[2]});
-  ASSERT_EQ(3u, GetNumTrees());
-
-  // Remove the grandparent tree (tree_ids[0]. When it is removed, its
-  // child (tree_ids[1]) and its child's child (tree_ids[2]) are both removed.
-  OnAXTreeDestroyed(tree_ids[0]);
-  ASSERT_EQ(0u, GetNumTrees());
-}
-
-TEST_F(ReadAnythingAppControllerTest,
-       DistillationInProgress_TreeUpdateReceivedOnActiveTree) {
+TEST_F(ReadAnythingAppControllerTest, OnAXTreeDestroyed_EraseTreeCalled) {
   // Set the name of each node to be its id.
   ui::AXTreeUpdate initial_update;
   SetUpdateTreeID(&initial_update);
@@ -741,6 +901,7 @@ TEST_F(ReadAnythingAppControllerTest,
   EXPECT_CALL(*distiller_, Distill).Times(0);
   AccessibilityEventReceived({initial_update});
   EXPECT_EQ("234", GetTextContent(1));
+  Mock::VerifyAndClearExpectations(distiller_);
 
   std::vector<ui::AXTreeUpdate> updates;
   for (int i = 0; i < 3; i++) {
@@ -760,55 +921,162 @@ TEST_F(ReadAnythingAppControllerTest,
     updates.push_back(update);
   }
 
-  // Send update 0, which starts distillation.
-  EXPECT_CALL(*distiller_, Distill).Times(1);
+  // Send update 0.
+  EXPECT_CALL(*distiller_, Distill).Times(0);
   AccessibilityEventReceived({updates[0]});
   EXPECT_EQ("2345", GetTextContent(1));
-  EXPECT_EQ(0u, GetNumPendingUpdates());
+  Mock::VerifyAndClearExpectations(distiller_);
 
-  // Send update 1. Since distillation is in progress, this will not be
-  // unserialized yet.
+  // Send update 1.
   EXPECT_CALL(*distiller_, Distill).Times(0);
   AccessibilityEventReceived({updates[1]});
-  EXPECT_EQ("2345", GetTextContent(1));
-  EXPECT_EQ(1u, GetNumPendingUpdates());
+  EXPECT_EQ("23456", GetTextContent(1));
+  Mock::VerifyAndClearExpectations(distiller_);
 
-  // Send update 2. This is still not unserialized yet.
-  EXPECT_CALL(*distiller_, Distill).Times(0);
-  AccessibilityEventReceived({updates[2]});
-  EXPECT_EQ("2345", GetTextContent(1));
-  EXPECT_EQ(2u, GetNumPendingUpdates());
-
-  // Complete distillation which unserializes the pending updates and distills
-  // them.
-  EXPECT_CALL(*distiller_, Distill).Times(2);
-  OnAXTreeDistilled({1});
-  EXPECT_EQ("234567", GetTextContent(1));
-  EXPECT_EQ(0u, GetNumPendingUpdates());
+  // Destroy the tree.
+  ASSERT_TRUE(HasTree(tree_id_));
+  OnAXTreeDestroyed(tree_id_);
+  ASSERT_FALSE(HasTree(tree_id_));
 }
 
 TEST_F(ReadAnythingAppControllerTest,
-       DistillationInProgress_TreeUpdateReceivedOnInactiveTree) {
-  EXPECT_EQ(0u, GetNumPendingUpdates());
+       DistillationInProgress_TreeUpdateReceivedOnActiveTree) {
+  // Set the name of each node to be its id.
+  ui::AXTreeUpdate initial_update;
+  SetUpdateTreeID(&initial_update);
+  initial_update.root_id = 1;
+  initial_update.nodes.resize(3);
+  std::vector<int> child_ids;
+  for (int i = 0; i < 3; i++) {
+    int id = i + 2;
+    child_ids.push_back(id);
+    initial_update.nodes[i].id = id;
+    initial_update.nodes[i].role = ax::mojom::Role::kStaticText;
+    initial_update.nodes[i].SetName(base::NumberToString(id));
+    initial_update.nodes[i].SetNameFrom(ax::mojom::NameFrom::kContents);
+  }
+  // No events we care about come about, so there's no distillation.
+  EXPECT_CALL(*distiller_, Distill).Times(0);
+  AccessibilityEventReceived({initial_update});
+  EXPECT_EQ("234", GetTextContent(1));
+  Mock::VerifyAndClearExpectations(distiller_);
 
-  // Create a new tree.
-  ui::AXTreeID tree_id_2 = ui::AXTreeID::CreateNewAXTreeID();
-  ui::AXTreeUpdate update_2;
-  SetUpdateTreeID(&update_2, tree_id_2);
-  update_2.root_id = 1;
-  update_2.nodes.resize(1);
-  update_2.nodes[0].id = 1;
+  std::vector<ui::AXTreeUpdate> updates;
+  for (int i = 0; i < 3; i++) {
+    int id = i + 5;
+    child_ids.push_back(id);
 
-  // Updates on inactive trees are processed immediately and are not marked as
-  // pending.
-  AccessibilityEventReceived({update_2});
-  EXPECT_EQ(0u, GetNumPendingUpdates());
+    ui::AXTreeUpdate update;
+    SetUpdateTreeID(&update);
+    update.root_id = 1;
+    update.nodes.resize(2);
+    update.nodes[0].id = 1;
+    update.nodes[0].child_ids = child_ids;
+    update.nodes[1].id = id;
+    update.nodes[1].role = ax::mojom::Role::kStaticText;
+    update.nodes[1].SetName(base::NumberToString(id));
+    update.nodes[1].SetNameFrom(ax::mojom::NameFrom::kContents);
+    updates.push_back(update);
+  }
+
+  // Send update 0. Data gets unserialized.
+  EXPECT_CALL(*distiller_, Distill).Times(0);
+  AccessibilityEventReceived({updates[0]});
+  EXPECT_EQ("2345", GetTextContent(1));
+  Mock::VerifyAndClearExpectations(distiller_);
+
+  // Send update 1. This triggers distillation via a non-generated event. The
+  // data is also unserialized.
+  EXPECT_CALL(*distiller_, Distill).Times(1);
+  ui::AXEvent load_complete_1(1, ax::mojom::Event::kLoadComplete);
+  AccessibilityEventReceived({updates[1]}, {load_complete_1});
+  EXPECT_EQ("23456", GetTextContent(1));
+  Mock::VerifyAndClearExpectations(distiller_);
+
+  // Send update 2. Distillation is still in progress; we get a non-generated
+  // event. This does not result in distillation (yet). The data is not
+  // unserialized.
+  EXPECT_CALL(*distiller_, Distill).Times(0);
+  ui::AXEvent load_complete_2(2, ax::mojom::Event::kLoadComplete);
+  AccessibilityEventReceived({updates[2]}, {load_complete_2});
+  EXPECT_EQ("23456", GetTextContent(1));
+  Mock::VerifyAndClearExpectations(distiller_);
+
+  // Complete distillation. The queued up tree update gets unserialized; we also
+  // request distillation (deferred from above) with state
+  // `requires_distillation_` from the model.
+  EXPECT_CALL(*distiller_, Distill).Times(1);
+  OnAXTreeDistilled({1});
+  EXPECT_EQ("234567", GetTextContent(1));
+  Mock::VerifyAndClearExpectations(distiller_);
+}
+
+TEST_F(ReadAnythingAppControllerTest,
+       AccessibilityReceivedAfterDistillingOnSameTree_DoesNotCrash) {
+  // Set the name of each node to be its id.
+  ui::AXTreeUpdate initial_update;
+  SetUpdateTreeID(&initial_update);
+  initial_update.root_id = 1;
+  initial_update.nodes.resize(3);
+  std::vector<int> child_ids;
+  for (int i = 0; i < 3; i++) {
+    int id = i + 2;
+    child_ids.push_back(id);
+    initial_update.nodes[i].id = id;
+    initial_update.nodes[i].role = ax::mojom::Role::kStaticText;
+    initial_update.nodes[i].SetName(base::NumberToString(id));
+    initial_update.nodes[i].SetNameFrom(ax::mojom::NameFrom::kContents);
+  }
+  // Since this update is just cosmetic (it changes the nodes' name but doesn't
+  // change the structure of the tree by adding or removing nodes), the
+  // controller does not distill.
+  EXPECT_CALL(*distiller_, Distill).Times(0);
+  AccessibilityEventReceived({initial_update});
+  EXPECT_EQ("234", GetTextContent(1));
+  Mock::VerifyAndClearExpectations(distiller_);
+
+  std::vector<ui::AXTreeUpdate> updates;
+  for (int i = 0; i < 3; i++) {
+    int id = i + 5;
+    child_ids.push_back(id);
+
+    ui::AXTreeUpdate update;
+    SetUpdateTreeID(&update);
+    update.root_id = 1;
+    update.nodes.resize(2);
+    update.nodes[0].id = 1;
+    update.nodes[0].child_ids = child_ids;
+    update.nodes[1].id = id;
+    update.nodes[1].role = ax::mojom::Role::kStaticText;
+    update.nodes[1].SetName(base::NumberToString(id));
+    update.nodes[1].SetNameFrom(ax::mojom::NameFrom::kContents);
+
+    updates.push_back(update);
+  }
+
+  // Send update 0, which starts distillation because of the load complete.
+  EXPECT_CALL(*distiller_, Distill).Times(1);
+  ui::AXEvent load_complete(1, ax::mojom::Event::kLoadComplete);
+  AccessibilityEventReceived({updates[0]}, {load_complete});
+  Mock::VerifyAndClearExpectations(distiller_);
+
+  // Send update 1. Since there's no event (generated or not) which triggers
+  // distllation, we have no calls.
+  EXPECT_CALL(*distiller_, Distill).Times(0);
+  AccessibilityEventReceived({updates[1]});
+  Mock::VerifyAndClearExpectations(distiller_);
+
+  // Ensure that there are no crashes after an accessibility event is received
+  // immediately after distilling.
+  EXPECT_CALL(*distiller_, Distill).Times(0);
+  OnAXTreeDistilled({1});
+  SetDistillationInProgress(true);
+  AccessibilityEventReceived({updates[2]});
+  Mock::VerifyAndClearExpectations(distiller_);
 }
 
 TEST_F(ReadAnythingAppControllerTest,
        DistillationInProgress_ActiveTreeIDChanges) {
-  EXPECT_EQ(0u, GetNumPendingUpdates());
-
   // Create a couple of updates which add additional nodes to the tree.
   std::vector<ui::AXTreeUpdate> updates;
   std::vector<int> child_ids = {2, 3, 4};
@@ -829,26 +1097,27 @@ TEST_F(ReadAnythingAppControllerTest,
     updates.push_back(update);
   }
 
-  EXPECT_CALL(*distiller_, Distill).Times(1);
-  AccessibilityEventReceived({updates[0]});
-  EXPECT_EQ(0u, GetNumPendingUpdates());
   EXPECT_CALL(*distiller_, Distill).Times(0);
-  AccessibilityEventReceived({updates[1]});
-  EXPECT_EQ(1u, GetNumPendingUpdates());
+  AccessibilityEventReceived({updates[0]});
+  Mock::VerifyAndClearExpectations(distiller_);
+
+  EXPECT_CALL(*distiller_, Distill).Times(1);
+  ui::AXEvent load_complete(1, ax::mojom::Event::kLoadComplete);
+  AccessibilityEventReceived({updates[1]}, {load_complete});
+  Mock::VerifyAndClearExpectations(distiller_);
+
   EXPECT_CALL(*distiller_, Distill).Times(0);
   AccessibilityEventReceived({updates[2]});
-  EXPECT_EQ(2u, GetNumPendingUpdates());
-  EXPECT_EQ("5", GetTextContent(1));
+  EXPECT_EQ("56", GetTextContent(1));
+  Mock::VerifyAndClearExpectations(distiller_);
 
-  // Switching the active AXTreeID flushes the pending updates.
+  // Calling OnActiveAXTreeID updates the active AXTreeID.
   ui::AXTreeID tree_id_2 = ui::AXTreeID::CreateNewAXTreeID();
   EXPECT_CALL(*distiller_, Distill).Times(0);
+  ASSERT_EQ(tree_id_, ActiveTreeId());
   OnActiveAXTreeIDChanged(tree_id_2);
-  EXPECT_EQ(0u, GetNumPendingUpdates());
-
-  EXPECT_CALL(*distiller_, Distill).Times(1);
-  OnActiveAXTreeIDChanged(tree_id_);
-  EXPECT_EQ("567", GetTextContent(1));
+  ASSERT_EQ(tree_id_2, ActiveTreeId());
+  Mock::VerifyAndClearExpectations(distiller_);
 }
 
 TEST_F(ReadAnythingAppControllerTest,
@@ -880,8 +1149,6 @@ TEST_F(ReadAnythingAppControllerTest,
 
 TEST_F(ReadAnythingAppControllerTest,
        ChangeActiveTreeWithPendingUpdates_UnknownID) {
-  EXPECT_EQ(0u, GetNumPendingUpdates());
-
   // Create a couple of updates which add additional nodes to the tree.
   std::vector<ui::AXTreeUpdate> updates;
   std::vector<int> child_ids = {2, 3, 4};
@@ -910,15 +1177,15 @@ TEST_F(ReadAnythingAppControllerTest,
   updates.push_back(update);
 
   // Add the three updates.
-  EXPECT_CALL(*distiller_, Distill).Times(1);
+  EXPECT_CALL(*distiller_, Distill).Times(0);
   AccessibilityEventReceived({updates[0]});
-  EXPECT_EQ(0u, GetNumPendingUpdates());
   AccessibilityEventReceived(tree_id_, {updates[1], updates[2]});
-  EXPECT_EQ(2u, GetNumPendingUpdates());
+  Mock::VerifyAndClearExpectations(distiller_);
 
   // Switch to a new active tree. Should not crash.
   EXPECT_CALL(*distiller_, Distill).Times(0);
   OnActiveAXTreeIDChanged(ui::AXTreeIDUnknown());
+  Mock::VerifyAndClearExpectations(distiller_);
 }
 
 TEST_F(ReadAnythingAppControllerTest, OnLinkClicked) {
@@ -926,6 +1193,7 @@ TEST_F(ReadAnythingAppControllerTest, OnLinkClicked) {
   EXPECT_CALL(page_handler_, OnLinkClicked(tree_id_, ax_node_id)).Times(1);
   OnLinkClicked(ax_node_id);
   page_handler_.FlushForTesting();
+  Mock::VerifyAndClearExpectations(distiller_);
 }
 
 TEST_F(ReadAnythingAppControllerTest, OnLinkClicked_DistillationInProgress) {
@@ -936,16 +1204,29 @@ TEST_F(ReadAnythingAppControllerTest, OnLinkClicked_DistillationInProgress) {
   update.nodes.resize(1);
   update.nodes[0].id = 1;
   AccessibilityEventReceived({update});
+
   EXPECT_CALL(*distiller_, Distill).Times(1);
   OnActiveAXTreeIDChanged(new_tree_id);
+  Mock::VerifyAndClearExpectations(distiller_);
 
   // If distillation is in progress, OnLinkClicked should not be called.
   EXPECT_CALL(page_handler_, OnLinkClicked).Times(0);
   OnLinkClicked(2);
   page_handler_.FlushForTesting();
+  Mock::VerifyAndClearExpectations(distiller_);
 }
 
 TEST_F(ReadAnythingAppControllerTest, OnSelectionChange) {
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.nodes.resize(3);
+  update.nodes[0].id = 2;
+  update.nodes[1].id = 3;
+  update.nodes[2].id = 4;
+  update.nodes[0].role = ax::mojom::Role::kStaticText;
+  update.nodes[1].role = ax::mojom::Role::kStaticText;
+  update.nodes[2].role = ax::mojom::Role::kStaticText;
+  AccessibilityEventReceived({update});
   ui::AXNodeID anchor_node_id = 2;
   int anchor_offset = 0;
   ui::AXNodeID focus_node_id = 3;
@@ -955,7 +1236,80 @@ TEST_F(ReadAnythingAppControllerTest, OnSelectionChange) {
                                 focus_node_id, focus_offset))
       .Times(1);
   OnSelectionChange(anchor_node_id, anchor_offset, focus_node_id, focus_offset);
+  Mock::VerifyAndClearExpectations(distiller_);
+}
+
+TEST_F(ReadAnythingAppControllerTest, OnCollapseSelection) {
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.nodes.resize(3);
+  update.nodes[0].id = 2;
+  update.nodes[1].id = 3;
+  update.nodes[2].id = 4;
+  update.nodes[0].role = ax::mojom::Role::kStaticText;
+  update.nodes[1].role = ax::mojom::Role::kStaticText;
+  update.nodes[2].role = ax::mojom::Role::kStaticText;
+  AccessibilityEventReceived({update});
+  EXPECT_CALL(page_handler_, OnCollapseSelection()).Times(1);
+  OnCollapseSelection();
+  Mock::VerifyAndClearExpectations(distiller_);
+}
+
+TEST_F(ReadAnythingAppControllerTest,
+       OnSelectionChange_ClickAfterClickDoesNotUpdateSelection) {
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.nodes.resize(2);
+  update.nodes[0].id = 2;
+  update.nodes[1].id = 3;
+  update.nodes[0].role = ax::mojom::Role::kStaticText;
+  update.nodes[1].role = ax::mojom::Role::kStaticText;
+  AccessibilityEventReceived({update});
+
+  ui::AXTreeUpdate selection;
+  SetUpdateTreeID(&selection);
+  selection.has_tree_data = true;
+  selection.event_from = ax::mojom::EventFrom::kUser;
+  selection.tree_data.sel_anchor_object_id = 2;
+  selection.tree_data.sel_focus_object_id = 2;
+  selection.tree_data.sel_anchor_offset = 0;
+  selection.tree_data.sel_focus_offset = 0;
+  AccessibilityEventReceived({selection});
+
+  EXPECT_CALL(page_handler_, OnSelectionChange).Times(0);
+  OnSelectionChange(3, 5, 3, 5);
   page_handler_.FlushForTesting();
+}
+
+TEST_F(ReadAnythingAppControllerTest,
+       OnSelectionChange_ClickAfterSelectionClearsSelection) {
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.nodes.resize(2);
+  update.nodes[0].id = 2;
+  update.nodes[1].id = 3;
+  update.nodes[0].role = ax::mojom::Role::kStaticText;
+  update.nodes[1].role = ax::mojom::Role::kStaticText;
+  AccessibilityEventReceived({update});
+
+  ui::AXTreeUpdate selection;
+  SetUpdateTreeID(&selection);
+  selection.has_tree_data = true;
+  selection.event_from = ax::mojom::EventFrom::kUser;
+  selection.tree_data.sel_anchor_object_id = 2;
+  selection.tree_data.sel_focus_object_id = 3;
+  selection.tree_data.sel_anchor_offset = 0;
+  selection.tree_data.sel_focus_offset = 1;
+  AccessibilityEventReceived({selection});
+
+  ui::AXNodeID anchor_node_id = 3;
+  int anchor_offset = 5;
+  ui::AXNodeID focus_node_id = 3;
+  int focus_offset = 5;
+  EXPECT_CALL(page_handler_, OnCollapseSelection()).Times(1);
+  OnSelectionChange(anchor_node_id, anchor_offset, focus_node_id, focus_offset);
+  page_handler_.FlushForTesting();
+  Mock::VerifyAndClearExpectations(distiller_);
 }
 
 TEST_F(ReadAnythingAppControllerTest,
@@ -965,28 +1319,57 @@ TEST_F(ReadAnythingAppControllerTest,
   SetUpdateTreeID(&update, new_tree_id);
   update.root_id = 1;
   update.nodes.resize(1);
+  update.nodes[0].role = ax::mojom::Role::kStaticText;
   update.nodes[0].id = 1;
   AccessibilityEventReceived({update});
   EXPECT_CALL(*distiller_, Distill).Times(1);
   OnActiveAXTreeIDChanged(new_tree_id);
+  Mock::VerifyAndClearExpectations(distiller_);
 
   // If distillation is in progress, OnSelectionChange should not be called.
   EXPECT_CALL(page_handler_, OnSelectionChange).Times(0);
   OnSelectionChange(2, 0, 3, 1);
   page_handler_.FlushForTesting();
+  Mock::VerifyAndClearExpectations(distiller_);
+}
+
+TEST_F(ReadAnythingAppControllerTest,
+       OnSelectionChange_NonTextFieldDoesNotUpdateSelection) {
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.nodes.resize(3);
+  update.nodes[0].id = 2;
+  update.nodes[1].id = 3;
+  update.nodes[2].id = 4;
+  update.nodes[0].role = ax::mojom::Role::kTextField;
+  update.nodes[1].role = ax::mojom::Role::kGenericContainer;
+  update.nodes[2].role = ax::mojom::Role::kTextField;
+  AccessibilityEventReceived({update});
+  ui::AXNodeID anchor_node_id = 2;
+  int anchor_offset = 0;
+  ui::AXNodeID focus_node_id = 3;
+  int focus_offset = 1;
+  EXPECT_CALL(page_handler_,
+              OnSelectionChange(tree_id_, anchor_node_id, anchor_offset,
+                                focus_node_id, focus_offset))
+      .Times(0);
+  OnSelectionChange(anchor_node_id, anchor_offset, focus_node_id, focus_offset);
+  page_handler_.FlushForTesting();
+  Mock::VerifyAndClearExpectations(distiller_);
 }
 
 TEST_F(ReadAnythingAppControllerTest, Selection_Forward) {
   // Create selection from node 3-4.
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
+  update.has_tree_data = true;
+  update.event_from = ax::mojom::EventFrom::kUser;
   update.tree_data.sel_anchor_object_id = 3;
   update.tree_data.sel_focus_object_id = 4;
   update.tree_data.sel_anchor_offset = 0;
   update.tree_data.sel_focus_offset = 1;
   update.tree_data.sel_is_backward = false;
   AccessibilityEventReceived({update});
-  OnAXTreeDistilled({});
   EXPECT_EQ(3, StartNodeId());
   EXPECT_EQ(4, EndNodeId());
   EXPECT_EQ(0, StartOffset());
@@ -997,13 +1380,14 @@ TEST_F(ReadAnythingAppControllerTest, Selection_Backward) {
   // Create backward selection from node 4-3.
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
+  update.has_tree_data = true;
+  update.event_from = ax::mojom::EventFrom::kUser;
   update.tree_data.sel_anchor_object_id = 4;
   update.tree_data.sel_focus_object_id = 3;
   update.tree_data.sel_anchor_offset = 1;
   update.tree_data.sel_focus_offset = 0;
   update.tree_data.sel_is_backward = true;
   AccessibilityEventReceived({update});
-  OnAXTreeDistilled({});
   EXPECT_EQ(3, StartNodeId());
   EXPECT_EQ(4, EndNodeId());
   EXPECT_EQ(0, StartOffset());
@@ -1036,8 +1420,36 @@ TEST_F(ReadAnythingAppControllerTest, Selection_IgnoredNode) {
   AccessibilityEventReceived({update_2});
   OnAXTreeDistilled({});
 
+  // We want to check that no crash occurs in this case. These node ids and
+  // offset are incorrect, they should be 2, 3, 0, and 5 (5 is the length of the
+  // world "Hello"). But because we don't have an AXTreeManager in the test,
+  // AXSelection::ToUnignoredSelection() exits early without calculating the
+  // actual ignored selection.
   EXPECT_EQ(2, StartNodeId());
-  EXPECT_EQ(3, EndNodeId());
+  EXPECT_EQ(4, EndNodeId());
   EXPECT_EQ(0, StartOffset());
-  EXPECT_EQ(5, EndOffset());  // The length of the word 'Hello'.
+  EXPECT_EQ(0, EndOffset());
+}
+
+TEST_F(ReadAnythingAppControllerTest, Selection_IsCollapsed) {
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.has_tree_data = true;
+  update.event_from = ax::mojom::EventFrom::kUser;
+  update.tree_data.sel_anchor_object_id = 2;
+  update.tree_data.sel_focus_object_id = 2;
+  update.tree_data.sel_anchor_offset = 3;
+  update.tree_data.sel_focus_offset = 3;
+  AccessibilityEventReceived({update});
+  EXPECT_EQ(ui::kInvalidAXNodeID, StartNodeId());
+  EXPECT_EQ(ui::kInvalidAXNodeID, EndNodeId());
+  EXPECT_EQ(-1, StartOffset());
+  EXPECT_EQ(-1, EndOffset());
+  EXPECT_EQ(false, HasSelection());
+}
+
+TEST_F(ReadAnythingAppControllerTest, OnFontSizeReset_SetsFontSizeToDefault) {
+  EXPECT_CALL(page_handler_, OnFontSizeChange(kReadAnythingDefaultFontScale))
+      .Times(1);
+  OnFontSizeReset();
 }

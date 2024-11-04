@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "base/containers/span.h"
 #include "base/memory/scoped_refptr.h"
 #include "sandbox/win/src/sandbox_types.h"
 #include "sandbox/win/src/security_level.h"
@@ -42,8 +43,8 @@ enum class SubSystem {
 enum class Semantics {
   kFilesAllowAny,       // Allows open or create for any kind of access that
                         // the file system supports.
-  kFilesAllowReadonly,  // Allows open or create with read access only.
-  kFilesAllowQuery,     // Allows access to query the attributes of a file.
+  kFilesAllowReadonly,  // Allows open or create with read access only
+                        // (includes access to query the attributes of a file).
   kNamedPipesAllowAny,  // Allows creation of a named pipe.
   kFakeGdiInit,         // Fakes user32 and gdi32 initialization. This can
                         // be used to allow the DLLs to load and initialize
@@ -221,13 +222,6 @@ class [[clang::lto_visibility_public]] TargetConfig {
   // Get the configured AppContainer.
   virtual scoped_refptr<AppContainer> GetAppContainer() = 0;
 
-  // Allows the launch of the the target process to proceed even if no job can
-  // be created.
-  virtual void SetAllowNoSandboxJob() = 0;
-
-  // Returns true if target process launch should proceed if job creation fails.
-  virtual bool GetAllowNoSandboxJob() = 0;
-
   // Adds a handle that will be closed in the target process after lockdown.
   // A nullptr value for handle_name indicates all handles of the specified
   // type. An empty string for handle_name indicates the handle is unnamed.
@@ -257,6 +251,9 @@ class [[clang::lto_visibility_public]] TargetConfig {
   // Obtains whether or not the environment for this target should be filtered.
   // See above for the variables that are allowed.
   virtual bool GetEnvironmentFiltered() = 0;
+
+  // Zeroes pShimData in the child's PEB.
+  virtual void SetZeroAppShim() = 0;
 };
 
 // We need [[clang::lto_visibility_public]] because instances of this class are
@@ -280,6 +277,11 @@ class [[clang::lto_visibility_public]] TargetPolicy {
   // Adds a handle that will be shared with the target process. Does not take
   // ownership of the handle.
   virtual void AddHandleToShare(HANDLE handle) = 0;
+
+  // Adds a blob of data that will be made available in the child early in
+  // startup via sandbox::GetDelegateData(). The contents of this data should
+  // not vary between children with the same TargetConfig().
+  virtual void AddDelegateData(base::span<const uint8_t> data) = 0;
 };
 
 }  // namespace sandbox

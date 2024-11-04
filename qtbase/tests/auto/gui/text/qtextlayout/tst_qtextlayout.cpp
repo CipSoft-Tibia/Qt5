@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
 /*
     !!!!!! Warning !!!!!
@@ -2560,6 +2561,7 @@ void tst_QTextLayout::softHyphens()
     QFont font;
     font.setPixelSize(fontSize);
     font.setHintingPreference(QFont::PreferNoHinting);
+    font.setKerning(false);
     const float xAdvance = QFontMetricsF(font).horizontalAdvance(QChar::fromLatin1('x'));
     float shyWidth = 0.0f;
     QTextLayout layout(text, font);

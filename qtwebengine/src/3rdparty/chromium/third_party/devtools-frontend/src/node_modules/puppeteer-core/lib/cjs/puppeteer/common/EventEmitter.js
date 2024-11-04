@@ -33,11 +33,12 @@ const index_js_1 = __importDefault(require("../../third_party/mitt/index.js"));
  * @public
  */
 class EventEmitter {
+    emitter;
+    eventsMap = new Map();
     /**
      * @internal
      */
     constructor() {
-        this.eventsMap = new Map();
         this.emitter = (0, index_js_1.default)(this.eventsMap);
     }
     /**
@@ -125,8 +126,7 @@ class EventEmitter {
         return this;
     }
     eventListenersCount(event) {
-        var _a;
-        return ((_a = this.eventsMap.get(event)) === null || _a === void 0 ? void 0 : _a.length) || 0;
+        return this.eventsMap.get(event)?.length || 0;
     }
 }
 exports.EventEmitter = EventEmitter;

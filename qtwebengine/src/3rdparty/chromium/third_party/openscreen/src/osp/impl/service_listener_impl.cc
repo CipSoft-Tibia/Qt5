@@ -1,16 +1,17 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "osp/impl/service_listener_impl.h"
 
 #include <algorithm>
+#include <utility>
 
 #include "platform/base/error.h"
 #include "util/osp_logging.h"
+#include "util/std_util.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 namespace {
 
 bool IsTransitionValid(ServiceListener::State from, ServiceListener::State to) {
@@ -55,14 +56,46 @@ void ServiceListenerImpl::Delegate::SetListenerImpl(
   listener_ = listener;
 }
 
-ServiceListenerImpl::ServiceListenerImpl(Delegate* delegate)
-    : delegate_(delegate) {
+ServiceListenerImpl::ServiceListenerImpl(std::unique_ptr<Delegate> delegate)
+    : delegate_(std::move(delegate)) {
   delegate_->SetListenerImpl(this);
 }
 
 ServiceListenerImpl::~ServiceListenerImpl() = default;
 
+void ServiceListenerImpl::OnReceiverUpdated(
+    const std::vector<ServiceInfo>& new_receivers) {
+  // All receivers are removed.
+  if (new_receivers.empty()) {
+    OnAllReceiversRemoved();
+  }
+
+  const auto& old_receivers = GetReceivers();
+
+  if (new_receivers.size() < old_receivers.size()) {
+    // A receiver is removed.
+    for (const auto& receiver : old_receivers) {
+      if (Contains(new_receivers, receiver)) {
+        continue;
+      }
+      OnReceiverRemoved(receiver);
+      return;
+    }
+  } else {
+    // A receiver is added or updated.
+    for (const auto& receiver : new_receivers) {
+      if (Contains(old_receivers, receiver)) {
+        continue;
+      }
+      new_receivers.size() > old_receivers.size() ? OnReceiverAdded(receiver)
+                                                  : OnReceiverChanged(receiver);
+      return;
+    }
+  }
+}
+
 void ServiceListenerImpl::OnReceiverAdded(const ServiceInfo& info) {
+  OSP_VLOG << __func__ << ": new receiver added=" << info.ToString();
   receiver_list_.OnReceiverAdded(info);
   for (auto* observer : observers_) {
     observer->OnReceiverAdded(info);
@@ -70,6 +103,7 @@ void ServiceListenerImpl::OnReceiverAdded(const ServiceInfo& info) {
 }
 
 void ServiceListenerImpl::OnReceiverChanged(const ServiceInfo& info) {
+  OSP_VLOG << __func__ << ": receiver changed=" << info.ToString();
   const Error changed_error = receiver_list_.OnReceiverChanged(info);
   if (changed_error.ok()) {
     for (auto* observer : observers_) {
@@ -79,15 +113,18 @@ void ServiceListenerImpl::OnReceiverChanged(const ServiceInfo& info) {
 }
 
 void ServiceListenerImpl::OnReceiverRemoved(const ServiceInfo& info) {
-  const Error removed_error = receiver_list_.OnReceiverRemoved(info);
-  if (removed_error.ok()) {
+  OSP_VLOG << __func__ << ": receiver removed=" << info.ToString();
+  const ErrorOr<ServiceInfo> removed_or_error =
+      receiver_list_.OnReceiverRemoved(info);
+  if (removed_or_error.is_value()) {
     for (auto* observer : observers_) {
-      observer->OnReceiverRemoved(info);
+      observer->OnReceiverRemoved(removed_or_error.value());
     }
   }
 }
 
 void ServiceListenerImpl::OnAllReceiversRemoved() {
+  OSP_VLOG << __func__ << ": all receivers removed.";
   const Error removed_all_error = receiver_list_.OnAllReceiversRemoved();
   if (removed_all_error.ok()) {
     for (auto* observer : observers_) {
@@ -96,7 +133,7 @@ void ServiceListenerImpl::OnAllReceiversRemoved() {
   }
 }
 
-void ServiceListenerImpl::OnError(ServiceListenerError error) {
+void ServiceListenerImpl::OnError(Error error) {
   last_error_ = error;
   for (auto* observer : observers_) {
     observer->OnError(error);
@@ -107,7 +144,7 @@ bool ServiceListenerImpl::Start() {
   if (state_ != State::kStopped)
     return false;
   state_ = State::kStarting;
-  delegate_->StartListener();
+  delegate_->StartListener(config_);
   return true;
 }
 
@@ -115,7 +152,7 @@ bool ServiceListenerImpl::StartAndSuspend() {
   if (state_ != State::kStopped)
     return false;
   state_ = State::kStarting;
-  delegate_->StartAndSuspendListener();
+  delegate_->StartAndSuspendListener(config_);
   return true;
 }
 
@@ -169,6 +206,14 @@ const std::vector<ServiceInfo>& ServiceListenerImpl::GetReceivers() const {
   return receiver_list_.receivers();
 }
 
+void ServiceListenerImpl::OnFatalError(Error error) {
+  OnError(error);
+}
+
+void ServiceListenerImpl::OnRecoverableError(Error error) {
+  OnError(error);
+}
+
 void ServiceListenerImpl::SetState(State state) {
   OSP_DCHECK(IsTransitionValid(state_, state));
   state_ = state;
@@ -205,5 +250,4 @@ void ServiceListenerImpl::MaybeNotifyObservers() {
   }
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

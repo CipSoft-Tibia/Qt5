@@ -7,6 +7,13 @@
 
 QT_BEGIN_NAMESPACE
 
+#ifndef GL_BACK_LEFT
+#define GL_BACK_LEFT                      0x0402
+#endif
+#ifndef GL_BACK_RIGHT
+#define GL_BACK_RIGHT                     0x0403
+#endif
+
 namespace Qt3DRender {
 namespace Render {
 
@@ -39,15 +46,20 @@ AttachmentPack::AttachmentPack(const RenderTarget *target,
     // If nothing is specified, use all the attachments as draw buffers
     if (drawBuffers.empty()) {
         m_drawBuffers.reserve(m_attachments.size());
-        for (const Attachment &attachment : std::as_const(m_attachments))
-            // only consider Color Attachments
-            if (attachment.m_point <= QRenderTargetOutput::Color15)
-                m_drawBuffers.push_back((int) attachment.m_point);
+        for (const Attachment &attachment : std::as_const(m_attachments)) {
+            if ((attachment.m_point >= QRenderTargetOutput::Color0 && attachment.m_point <= QRenderTargetOutput::Color15)
+                || attachment.m_point == QRenderTargetOutput::Left
+                || attachment.m_point == QRenderTargetOutput::Right)
+                m_drawBuffers.push_back(attachment.m_point);
+        }
     } else {
         m_drawBuffers.reserve(drawBuffers.size());
-        for (QRenderTargetOutput::AttachmentPoint drawBuffer : drawBuffers)
-            if (drawBuffer <= QRenderTargetOutput::Color15)
-                m_drawBuffers.push_back((int) drawBuffer);
+        for (QRenderTargetOutput::AttachmentPoint drawBuffer : drawBuffers) {
+            if ((drawBuffer >= QRenderTargetOutput::Color0 && drawBuffer <= QRenderTargetOutput::Color15)
+                || drawBuffer == QRenderTargetOutput::Left
+                || drawBuffer == QRenderTargetOutput::Right)
+                m_drawBuffers.push_back(drawBuffer);
+        }
     }
 }
 
@@ -55,7 +67,7 @@ AttachmentPack::AttachmentPack(const RenderTarget *target,
 int AttachmentPack::getDrawBufferIndex(QRenderTargetOutput::AttachmentPoint attachmentPoint) const
 {
     for (size_t i = 0; i < m_drawBuffers.size(); i++)
-        if (m_drawBuffers.at(i) == (int)attachmentPoint)
+        if (m_drawBuffers.at(i) == attachmentPoint)
             return int(i);
     return -1;
 }
@@ -78,7 +90,7 @@ bool operator !=(const Attachment &a, const Attachment &b)
 bool operator ==(const AttachmentPack &packA, const AttachmentPack &packB)
 {
     return (packA.attachments() == packB.attachments() &&
-            packA.getGlDrawBuffers() == packB.getGlDrawBuffers());
+            packA.getDrawBuffers() == packB.getDrawBuffers());
 }
 
 bool operator !=(const AttachmentPack &packA, const AttachmentPack &packB)

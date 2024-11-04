@@ -1,20 +1,20 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "osp/impl/quic/testing/quic_test_support.h"
 
 #include <memory>
+#include <utility>
 
 #include "osp/impl/quic/quic_client.h"
 #include "osp/impl/quic/quic_server.h"
 #include "osp/public/network_service_manager.h"
 #include "platform/test/fake_task_runner.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
-FakeQuicBridge::FakeQuicBridge(FakeTaskRunner* task_runner,
+FakeQuicBridge::FakeQuicBridge(FakeTaskRunner& task_runner,
                                ClockNowFunctionPtr now_function)
     : task_runner_(task_runner) {
   fake_bridge =
@@ -27,8 +27,7 @@ FakeQuicBridge::FakeQuicBridge(FakeTaskRunner* task_runner,
 
   auto fake_client_factory =
       std::make_unique<FakeClientQuicConnectionFactory>(fake_bridge.get());
-  client_socket_ =
-      std::make_unique<FakeUdpSocket>(task_runner_, fake_client_factory.get());
+  client_socket_ = std::make_unique<FakeUdpSocket>(fake_client_factory.get());
 
   quic_client = std::make_unique<QuicClient>(
       controller_demuxer.get(), std::move(fake_client_factory),
@@ -36,8 +35,7 @@ FakeQuicBridge::FakeQuicBridge(FakeTaskRunner* task_runner,
 
   auto fake_server_factory =
       std::make_unique<FakeServerQuicConnectionFactory>(fake_bridge.get());
-  server_socket_ =
-      std::make_unique<FakeUdpSocket>(task_runner_, fake_server_factory.get());
+  server_socket_ = std::make_unique<FakeUdpSocket>(fake_server_factory.get());
   ServerConfig config;
   config.connection_endpoints.push_back(kReceiverEndpoint);
   quic_server = std::make_unique<QuicServer>(
@@ -52,13 +50,11 @@ FakeQuicBridge::~FakeQuicBridge() = default;
 
 void FakeQuicBridge::PostClientPacket() {
   UdpPacket packet;
-  packet.set_socket(client_socket_.get());
   client_socket_->MockReceivePacket(std::move(packet));
 }
 
 void FakeQuicBridge::PostServerPacket() {
   UdpPacket packet;
-  packet.set_socket(server_socket_.get());
   server_socket_->MockReceivePacket(std::move(packet));
 }
 
@@ -68,17 +64,15 @@ void FakeQuicBridge::PostPacketsUntilIdle() {
   if (!client_idle || !server_idle) {
     PostClientPacket();
     PostServerPacket();
-    task_runner_->PostTask([this]() { this->PostPacketsUntilIdle(); });
+    task_runner_.PostTask([this]() { this->PostPacketsUntilIdle(); });
   }
 }
 
 void FakeQuicBridge::RunTasksUntilIdle() {
   PostClientPacket();
   PostServerPacket();
-  task_runner_->PostTask(
-      std::bind(&FakeQuicBridge::PostPacketsUntilIdle, this));
-  task_runner_->RunTasksUntilIdle();
+  task_runner_.PostTask(std::bind(&FakeQuicBridge::PostPacketsUntilIdle, this));
+  task_runner_.RunTasksUntilIdle();
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

@@ -44,6 +44,9 @@ import org.robolectric.annotation.Config;
 import org.chromium.base.ApiCompatibilityUtils;
 import org.chromium.base.Callback;
 import org.chromium.base.ContextUtils;
+import org.chromium.base.task.TaskTraits;
+import org.chromium.base.task.test.ShadowPostTask;
+import org.chromium.base.task.test.ShadowPostTask.TestImpl;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.Feature;
 import org.chromium.device.mojom.NdefError;
@@ -70,7 +73,7 @@ import java.util.List;
  * Unit tests for NfcImpl and NdefMessageUtils classes.
  */
 @RunWith(BaseRobolectricTestRunner.class)
-@Config(manifest = Config.NONE)
+@Config(manifest = Config.NONE, shadows = {ShadowPostTask.class})
 public class NFCTest {
     private TestNfcDelegate mDelegate;
     private int mNextWatchId;
@@ -139,6 +142,12 @@ public class NFCTest {
 
     @Before
     public void setUp() {
+        ShadowPostTask.setTestImpl(new TestImpl() {
+            @Override
+            public void postDelayedTask(@TaskTraits int taskTraits, Runnable task, long delay) {
+                task.run();
+            }
+        });
         MockitoAnnotations.initMocks(this);
         mDelegate = new TestNfcDelegate(mActivity);
         doReturn(mNfcManager).when(mContext).getSystemService(Context.NFC_SERVICE);
@@ -153,14 +162,12 @@ public class NFCTest {
                         (Bundle) isNull());
         doNothing().when(mNfcAdapter).disableReaderMode(any(Activity.class));
         // Tag handler overrides used to mock connected tag.
-        doReturn(true).when(mNfcTagHandler).isConnected();
         doReturn(false).when(mNfcTagHandler).isTagOutOfRange();
         try {
             doNothing().when(mNfcTagHandler).connect();
             doNothing().when(mNfcTagHandler).write(any(android.nfc.NdefMessage.class));
             doReturn(true).when(mNfcTagHandler).makeReadOnly();
             doReturn(createNdefMessageWithRecordId(DUMMY_RECORD_ID)).when(mNfcTagHandler).read();
-            doNothing().when(mNfcTagHandler).close();
         } catch (IOException | FormatException e) {
         }
         NfcBlocklist.overrideNfcBlocklistForTests(null /* serverProvidedValues */);

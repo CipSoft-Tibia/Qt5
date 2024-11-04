@@ -68,7 +68,7 @@ stages:
   variables:
     BUILD_OS: freebsd
     FDO_DISTRIBUTION_VERSION: "13.0"
-    FDO_DISTRIBUTION_PACKAGES: 'meson ninja pkgconf libpciaccess libpthread-stubs py39-docutils cairo'
+    FDO_DISTRIBUTION_PACKAGES: 'meson ninja pkgconf libpciaccess py39-docutils cairo'
     # bump this tag every time you change something which requires rebuilding the
     # base image
     FDO_DISTRIBUTION_TAG: "2022-08-22.0"

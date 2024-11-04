@@ -106,7 +106,7 @@ FindInVectorOfPairs(
 bool IsNodeIdIntAttribute(ax::mojom::IntAttribute attr) {
   switch (attr) {
     case ax::mojom::IntAttribute::kActivedescendantId:
-    case ax::mojom::IntAttribute::kErrormessageId:
+    case ax::mojom::IntAttribute::kErrormessageIdDeprecated:
     case ax::mojom::IntAttribute::kInPageLinkTargetId:
     case ax::mojom::IntAttribute::kMemberOfId:
     case ax::mojom::IntAttribute::kNextOnLineId:
@@ -190,6 +190,7 @@ bool IsNodeIdIntListAttribute(ax::mojom::IntListAttribute attr) {
     case ax::mojom::IntListAttribute::kControlsIds:
     case ax::mojom::IntListAttribute::kDetailsIds:
     case ax::mojom::IntListAttribute::kDescribedbyIds:
+    case ax::mojom::IntListAttribute::kErrormessageIds:
     case ax::mojom::IntListAttribute::kFlowtoIds:
     case ax::mojom::IntListAttribute::kLabelledbyIds:
     case ax::mojom::IntListAttribute::kRadioGroupIds:
@@ -213,6 +214,11 @@ bool IsNodeIdIntListAttribute(ax::mojom::IntListAttribute attr) {
     case ax::mojom::IntListAttribute::kWordStarts:
     case ax::mojom::IntListAttribute::kWordEnds:
     case ax::mojom::IntListAttribute::kCustomActionIds:
+    case ax::mojom::IntListAttribute::kTextOperationStartOffsets:
+    case ax::mojom::IntListAttribute::kTextOperationEndOffsets:
+    case ax::mojom::IntListAttribute::kTextOperationEndAnchorIds:
+    case ax::mojom::IntListAttribute::kTextOperationStartAnchorIds:
+    case ax::mojom::IntListAttribute::kTextOperations:
       return false;
   }
 }
@@ -1259,9 +1265,11 @@ std::string AXNodeData::ToString(bool verbose) const {
   }
 
   if (HasStringAttribute(ax::mojom::StringAttribute::kDisplay)) {
-    result += " display=";
-    result +=
-        GetStringAttribute(ax::mojom::StringAttribute::kDisplay).substr(0, 30);
+    std::string str = GetStringAttribute(ax::mojom::StringAttribute::kDisplay);
+    // Show CSS display type if it is interesting.
+    if (str != "block") {
+      result += " display=" + str;
+    }
   }
 
   if (!child_ids.empty()) {
@@ -1392,7 +1400,7 @@ std::string AXNodeData::ToString(bool verbose) const {
       case ax::mojom::IntAttribute::kActivedescendantId:
         result += " activedescendant=" + value;
         break;
-      case ax::mojom::IntAttribute::kErrormessageId:
+      case ax::mojom::IntAttribute::kErrormessageIdDeprecated:
         result += " errormessage=" + value;
         break;
       case ax::mojom::IntAttribute::kInPageLinkTargetId:
@@ -1579,6 +1587,9 @@ std::string AXNodeData::ToString(bool verbose) const {
           case ax::mojom::IsPopup::kAuto:
             result += " ispopup=auto";
             break;
+          case ax::mojom::IsPopup::kHint:
+            result += " ispopup=hint";
+            break;
           case ax::mojom::IsPopup::kManual:
             result += " ispopup=manual";
             break;
@@ -1709,6 +1720,9 @@ std::string AXNodeData::ToString(bool verbose) const {
         break;
       case ax::mojom::StringAttribute::kLanguage:
         result += " language=" + value;
+        break;
+      case ax::mojom::StringAttribute::kLinkTarget:
+        result += " link_target=" + value;
         break;
       case ax::mojom::StringAttribute::kLiveRelevant:
         result += " relevant=" + value;
@@ -1849,11 +1863,14 @@ std::string AXNodeData::ToString(bool verbose) const {
       case ax::mojom::BoolAttribute::kHasAriaAttribute:
         result += " has_aria_attribute=" + value;
         break;
-      case ax::mojom::BoolAttribute::kTouchPassthrough:
+      case ax::mojom::BoolAttribute::OBSOLETE_kTouchPassthrough:
         result += " touch_passthrough=" + value;
         break;
       case ax::mojom::BoolAttribute::kLongClickable:
         result += " long_clickable=" + value;
+        break;
+      case ax::mojom::BoolAttribute::kHasHiddenOffscreenNodes:
+        result += " has_hidden_nodes=" + value;
         break;
       case ax::mojom::BoolAttribute::kNone:
         break;
@@ -1877,6 +1894,9 @@ std::string AXNodeData::ToString(bool verbose) const {
         break;
       case ax::mojom::IntListAttribute::kDescribedbyIds:
         result += " describedby_ids=" + IntVectorToString(values);
+        break;
+      case ax::mojom::IntListAttribute::kErrormessageIds:
+        result += " errormessage_ids=" + IntVectorToString(values);
         break;
       case ax::mojom::IntListAttribute::kFlowtoIds:
         result += " flowto_ids=" + IntVectorToString(values);
@@ -1963,6 +1983,22 @@ std::string AXNodeData::ToString(bool verbose) const {
         break;
       case ax::mojom::IntListAttribute::kCustomActionIds:
         result += " custom_action_ids=" + IntVectorToString(values);
+        break;
+      case ax::mojom::IntListAttribute::kTextOperationStartOffsets:
+        result += " text_operation_start_offsets=" + IntVectorToString(values);
+        break;
+      case ax::mojom::IntListAttribute::kTextOperationEndOffsets:
+        result += " text_operation_end_offsets=" + IntVectorToString(values);
+        break;
+      case ax::mojom::IntListAttribute::kTextOperationStartAnchorIds:
+        result +=
+            " text_operation_start_anchor_ids=" + IntVectorToString(values);
+        break;
+      case ax::mojom::IntListAttribute::kTextOperationEndAnchorIds:
+        result += " text_operation_end_anchor_ids=" + IntVectorToString(values);
+        break;
+      case ax::mojom::IntListAttribute::kTextOperations:
+        result += " text_operations=" + IntVectorToString(values);
         break;
     }
   }

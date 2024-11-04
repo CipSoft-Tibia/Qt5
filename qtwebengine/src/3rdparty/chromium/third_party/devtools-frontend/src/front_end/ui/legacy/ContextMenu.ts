@@ -51,8 +51,8 @@ export class Item {
   #tooltip: Common.UIString.LocalizedString|undefined;
 
   constructor(
-      contextMenu: ContextMenu|null, type: string, label?: string, disabled?: boolean, checked?: boolean,
-      tooltip?: Platform.UIString.LocalizedString) {
+      contextMenu: ContextMenu|null, type: 'checkbox'|'item'|'separator'|'subMenu', label?: string, disabled?: boolean,
+      checked?: boolean, tooltip?: Platform.UIString.LocalizedString) {
     this.typeInternal = type;
     this.label = label;
     this.disabled = disabled;
@@ -87,7 +87,7 @@ export class Item {
   buildDescriptor(): SoftContextMenuDescriptor|Host.InspectorFrontendHostAPI.ContextMenuDescriptor {
     switch (this.typeInternal) {
       case 'item': {
-        const result = {
+        const result: SoftContextMenuDescriptor = {
           type: 'item',
           id: this.idInternal,
           label: this.label,
@@ -97,12 +97,10 @@ export class Item {
           tooltip: this.#tooltip,
         };
         if (this.customElement) {
-          const resultAsSoftContextMenuItem = (result as SoftContextMenuDescriptor);
-          resultAsSoftContextMenuItem.element = (this.customElement as Element);
+          result.element = this.customElement;
         }
         if (this.shortcut) {
-          const resultAsSoftContextMenuItem = (result as SoftContextMenuDescriptor);
-          resultAsSoftContextMenuItem.shortcut = this.shortcut;
+          result.shortcut = this.shortcut;
         }
         return result;
       }
@@ -117,7 +115,7 @@ export class Item {
         };
       }
       case 'checkbox': {
-        const result = {
+        const result: SoftContextMenuDescriptor = {
           type: 'checkbox',
           id: this.idInternal,
           label: this.label,
@@ -126,8 +124,7 @@ export class Item {
           subItems: undefined,
         };
         if (this.customElement) {
-          const resultAsSoftContextMenuItem = (result as SoftContextMenuDescriptor);
-          resultAsSoftContextMenuItem.element = (this.customElement as Element);
+          result.element = this.customElement;
         }
         return result;
       }
@@ -274,6 +271,10 @@ export class SubMenu extends Item {
     return this.section('default');
   }
 
+  overrideSection(): Section {
+    return this.section('override');
+  }
+
   saveSection(): Section {
     return this.section('save');
   }
@@ -282,7 +283,7 @@ export class SubMenu extends Item {
     return this.section('footer');
   }
 
-  buildDescriptor(): SoftContextMenuDescriptor|Host.InspectorFrontendHostAPI.ContextMenuDescriptor {
+  override buildDescriptor(): SoftContextMenuDescriptor|Host.InspectorFrontendHostAPI.ContextMenuDescriptor {
     const result: Host.InspectorFrontendHostAPI.ContextMenuDescriptor|SoftContextMenuDescriptor = {
       type: 'subMenu',
       label: this.label,
@@ -357,7 +358,7 @@ export interface ContextMenuOptions {
 }
 
 export class ContextMenu extends SubMenu {
-  protected contextMenu: this;
+  protected override contextMenu: this;
   private readonly defaultSectionInternal: Section;
   private pendingPromises: Promise<Provider[]>[];
   private pendingTargets: Object[];
@@ -367,9 +368,10 @@ export class ContextMenu extends SubMenu {
   private y: number;
   private onSoftMenuClosed?: () => void;
   private readonly handlers: Map<number, () => void>;
-  idInternal: number;
+  override idInternal: number;
   private softMenu?: SoftContextMenu;
   private contextMenuLabel?: string;
+  private hostedMenuOpened: boolean;
 
   constructor(event: Event, options: ContextMenuOptions = {}) {
     super(null);
@@ -386,6 +388,7 @@ export class ContextMenu extends SubMenu {
     this.onSoftMenuClosed = options.onSoftMenuClosed;
     this.handlers = new Map();
     this.idInternal = 0;
+    this.hostedMenuOpened = false;
 
     const target = deepElementFromEvent(event);
     if (target) {
@@ -412,6 +415,10 @@ export class ContextMenu extends SubMenu {
 
   nextId(): number {
     return this.idInternal++;
+  }
+
+  isHostedMenuOpen(): boolean {
+    return this.hostedMenuOpened;
   }
 
   async show(): Promise<void> {
@@ -476,7 +483,7 @@ export class ContextMenu extends SubMenu {
         Host.InspectorFrontendHost.InspectorFrontendHostInstance.events.addEventListener(
             Host.InspectorFrontendHostAPI.Events.ContextMenuItemSelected, this.onItemSelected, this);
       }
-
+      this.hostedMenuOpened = true;
       // showContextMenuAtPoint call above synchronously issues a clear event for previous context menu (if any),
       // so we skip it before subscribing to the clear event.
       queueMicrotask(listenToEvents.bind(this));
@@ -523,6 +530,8 @@ export class ContextMenu extends SubMenu {
         Host.InspectorFrontendHostAPI.Events.ContextMenuCleared, this.menuCleared, this);
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.events.removeEventListener(
         Host.InspectorFrontendHostAPI.Events.ContextMenuItemSelected, this.onItemSelected, this);
+    this.hostedMenuOpened = false;
+    this.onSoftMenuClosed?.();
   }
 
   containsTarget(target: Object): boolean {
@@ -545,7 +554,7 @@ export class ContextMenu extends SubMenu {
   // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
   // eslint-disable-next-line @typescript-eslint/naming-convention
   static readonly groupWeights =
-      ['header', 'new', 'reveal', 'edit', 'clipboard', 'debug', 'view', 'default', 'save', 'footer'];
+      ['header', 'new', 'reveal', 'edit', 'clipboard', 'debug', 'view', 'default', 'override', 'save', 'footer'];
 }
 
 export interface Provider {

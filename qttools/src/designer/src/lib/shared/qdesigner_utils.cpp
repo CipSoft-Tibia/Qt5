@@ -13,7 +13,10 @@
 #include <QtDesigner/taskmenu.h>
 #include <QtDesigner/qextensionmanager.h>
 
+#include <QtCore/qcoreapplication.h>
 #include <QtCore/qdir.h>
+#include <QtCore/qfileinfo.h>
+#include <QtCore/qoperatingsystemversion.h>
 #include <QtCore/qprocess.h>
 #include <QtCore/qlibraryinfo.h>
 #include <QtCore/qdebug.h>
@@ -143,11 +146,11 @@ namespace qdesigner_internal
         if (ok)
             *ok = valueOk;
 
-        if (!valueOk || sm == NameOnly)
+        if (!valueOk)
             return item;
 
         QString qualifiedItem;
-        appendQualifiedName(item,  qualifiedItem);
+        appendQualifiedName(item, sm, qualifiedItem);
         return qualifiedItem;
     }
 
@@ -155,18 +158,19 @@ namespace qdesigner_internal
     {
         return QCoreApplication::translate("DesignerMetaEnum",
                                            "%1 is not a valid enumeration value of '%2'.")
-                                           .arg(value).arg(name());
+                                           .arg(value).arg(enumName());
     }
 
     QString DesignerMetaEnum::messageParseFailed(const QString &s) const
     {
         return QCoreApplication::translate("DesignerMetaEnum",
                                            "'%1' could not be converted to an enumeration value of type '%2'.")
-                                           .arg(s, name());
+                                           .arg(s, enumName());
     }
     // -------------- DesignerMetaFlags
-    DesignerMetaFlags::DesignerMetaFlags(const QString &name, const QString &scope, const QString &separator) :
-       MetaEnum<uint>(name, scope, separator)
+    DesignerMetaFlags::DesignerMetaFlags(const QString &enumName, const QString &scope,
+                                         const QString &separator) :
+        MetaEnum<uint>(enumName, scope, separator)
     {
     }
 
@@ -174,18 +178,18 @@ namespace qdesigner_internal
     {
         QStringList rc;
         const uint v = static_cast<uint>(ivalue);
-        for (auto it = keyToValueMap().constBegin(), cend = keyToValueMap().constEnd(); it != cend; ++it )  {
-            const uint itemValue = it.value();
+        for (auto it = keyToValueMap().begin(), end = keyToValueMap().end(); it != end; ++it)  {
+            const uint itemValue = it->second;
             // Check for equality first as flag values can be 0 or -1, too. Takes preference over a bitwise flag
             if (v == itemValue) {
                 rc.clear();
-                rc.push_back(it.key());
+                rc.push_back(it->first);
                 return rc;
             }
             // Do not add 0-flags (None-flags)
             if (itemValue)
                 if ((v & itemValue) == itemValue)
-                    rc.push_back(it.key());
+                    rc.push_back(it->first);
         }
         return rc;
     }
@@ -201,10 +205,7 @@ namespace qdesigner_internal
         for (const auto &id : flagIds) {
             if (!rc.isEmpty())
                 rc += u'|';
-            if (sm == FullyQualified)
-                appendQualifiedName(id, rc);
-            else
-                rc += id;
+            appendQualifiedName(id, sm, rc);
         }
         return rc;
     }
@@ -219,8 +220,8 @@ namespace qdesigner_internal
         }
         uint flags = 0;
         bool valueOk = true;
-        const QStringList keys = s.split(u'|');
-        for (const QString &key : keys) {
+        const auto keys = QStringView{s}.split(u'|');
+        for (const auto &key : keys) {
             const uint flagValue = keyToValue(key, &valueOk);
             if (!valueOk) {
                 flags = 0;
@@ -237,7 +238,7 @@ namespace qdesigner_internal
     {
         return QCoreApplication::translate("DesignerMetaFlags",
                                            "'%1' could not be converted to a flag value of type '%2'.")
-                                           .arg(s, name());
+                                           .arg(s, enumName());
     }
 
     // ---------- PropertySheetEnumValue
@@ -273,11 +274,6 @@ namespace qdesigner_internal
         return path.startsWith(u':') ? ResourcePixmap : FilePixmap;
     }
 
-    int PropertySheetPixmapValue::compare(const PropertySheetPixmapValue &other) const
-    {
-        return m_path.compare(other.m_path);
-    }
-
     QString PropertySheetPixmapValue::path() const
     {
         return m_path;
@@ -296,6 +292,7 @@ namespace qdesigner_internal
     public:
         PropertySheetIconValue::ModeStateToPixmapMap m_paths;
         QString m_theme;
+        int m_themeEnum = -1;
     };
 
     PropertySheetIconValue::PropertySheetIconValue(const PropertySheetPixmapValue &pixmap) :
@@ -311,52 +308,40 @@ namespace qdesigner_internal
 
     PropertySheetIconValue::~PropertySheetIconValue() = default;
 
-    PropertySheetIconValue::PropertySheetIconValue(const PropertySheetIconValue &rhs) :
-        m_data(rhs.m_data)
+    PropertySheetIconValue::PropertySheetIconValue(const PropertySheetIconValue &rhs) noexcept = default;
+    PropertySheetIconValue &PropertySheetIconValue::operator=(const PropertySheetIconValue &rhs) = default;
+
+    PropertySheetIconValue::PropertySheetIconValue(PropertySheetIconValue &&) noexcept = default;
+    PropertySheetIconValue &PropertySheetIconValue::operator=(PropertySheetIconValue &&) noexcept = default;
+
+} // namespace qdesigner_internal
+
+namespace qdesigner_internal {
+
+    size_t qHash(const PropertySheetIconValue &p, size_t seed) noexcept
     {
+        // qHash for paths making use of the existing QPair hash functions.
+        const auto *d = p.m_data.constData();
+        return qHashMulti(qHashRange(d->m_paths.constKeyValueBegin(),
+                                     d->m_paths.constKeyValueEnd(), seed),
+                          d->m_themeEnum,
+                          d->m_theme);
     }
 
-    PropertySheetIconValue &PropertySheetIconValue::operator=(const PropertySheetIconValue &rhs)
+    bool comparesEqual(const PropertySheetIconValue &lhs,
+                       const PropertySheetIconValue &rhs) noexcept
     {
-        if (this != &rhs)
-            m_data.operator=(rhs.m_data);
-        return *this;
-    }
-
-    bool PropertySheetIconValue::equals(const PropertySheetIconValue &rhs) const
-    {
-        return m_data->m_theme == rhs.m_data->m_theme && m_data->m_paths == rhs.m_data->m_paths;
-    }
-
-    bool PropertySheetIconValue::operator<(const PropertySheetIconValue &other) const
-    {
-        if (const int themeCmp = m_data->m_theme.compare(other.m_data->m_theme))
-            return themeCmp < 0;
-        auto itThis = m_data->m_paths.cbegin();
-        auto itThisEnd = m_data->m_paths.cend();
-        auto itOther = other.m_data->m_paths.cbegin();
-        auto itOtherEnd = other.m_data->m_paths.cend();
-        while (itThis != itThisEnd && itOther != itOtherEnd) {
-            const ModeStateKey thisPair = itThis.key();
-            const ModeStateKey otherPair = itOther.key();
-            if (thisPair < otherPair)
-                return true;
-            if (otherPair < thisPair)
-                return false;
-            const int crc = itThis.value().compare(itOther.value());
-            if (crc < 0)
-                return true;
-            if (crc > 0)
-                return false;
-            ++itThis;
-            ++itOther;
-        }
-        return itOther != itOtherEnd;
+        const auto *lhsd = lhs.m_data.constData();
+        const auto *rhsd = rhs.m_data.constData();
+        return lhsd == rhsd
+            || (lhsd->m_themeEnum == rhsd->m_themeEnum
+                && lhsd->m_theme == rhsd->m_theme && lhsd->m_paths == rhsd->m_paths);
     }
 
     bool PropertySheetIconValue::isEmpty() const
     {
-        return m_data->m_theme.isEmpty() && m_data->m_paths.isEmpty();
+        return m_data->m_themeEnum == -1 && m_data->m_theme.isEmpty()
+               && m_data->m_paths.isEmpty();
     }
 
     QString PropertySheetIconValue::theme() const
@@ -369,15 +354,25 @@ namespace qdesigner_internal
         m_data->m_theme = t;
     }
 
+    int PropertySheetIconValue::themeEnum() const
+    {
+        return m_data->m_themeEnum;
+    }
+
+    void PropertySheetIconValue::setThemeEnum(int e)
+    {
+        m_data->m_themeEnum = e;
+    }
+
     PropertySheetPixmapValue PropertySheetIconValue::pixmap(QIcon::Mode mode, QIcon::State state) const
     {
-        const ModeStateKey pair = qMakePair(mode, state);
+        const ModeStateKey pair{mode, state};
         return m_data->m_paths.value(pair);
     }
 
     void PropertySheetIconValue::setPixmap(QIcon::Mode mode, QIcon::State state, const PropertySheetPixmapValue &pixmap)
     {
-        const ModeStateKey pair = qMakePair(mode, state);
+        const ModeStateKey pair{mode, state};
         if (pixmap.path().isEmpty())
             m_data->m_paths.remove(pair);
         else
@@ -412,6 +407,11 @@ namespace qdesigner_internal
             return it.value();
 
         // Match on the theme first if it is available.
+        if (value.themeEnum() != -1) {
+            const QIcon themeIcon = QIcon::fromTheme(static_cast<QIcon::ThemeIcon>(value.themeEnum()));
+            m_cache.insert(value, themeIcon);
+            return themeIcon;
+        }
         if (!value.theme().isEmpty()) {
             const QString theme = value.theme();
             if (QIcon::hasThemeIcon(theme)) {
@@ -446,14 +446,6 @@ namespace qdesigner_internal
     PropertySheetTranslatableData::PropertySheetTranslatableData(bool translatable, const QString &disambiguation, const QString &comment) :
         m_translatable(translatable), m_disambiguation(disambiguation), m_comment(comment) { }
 
-    bool PropertySheetTranslatableData::equals(const PropertySheetTranslatableData &rhs) const
-    {
-        return m_translatable == rhs.m_translatable
-               && m_disambiguation == rhs.m_disambiguation
-               && m_comment == rhs.m_comment
-               && m_id == rhs.m_id;
-    }
-
     PropertySheetStringValue::PropertySheetStringValue(const QString &value,
                     bool translatable, const QString &disambiguation, const QString &comment) :
         PropertySheetTranslatableData(translatable, disambiguation, comment), m_value(value) {}
@@ -466,11 +458,6 @@ namespace qdesigner_internal
     void PropertySheetStringValue::setValue(const QString &value)
     {
         m_value = value;
-    }
-
-    bool PropertySheetStringValue::equals(const PropertySheetStringValue &rhs) const
-    {
-        return m_value == rhs.m_value && PropertySheetTranslatableData::equals(rhs);
     }
 
     PropertySheetStringListValue::PropertySheetStringListValue(const QStringList &value,
@@ -489,11 +476,6 @@ namespace qdesigner_internal
     void PropertySheetStringListValue::setValue(const QStringList &value)
     {
         m_value = value;
-    }
-
-    bool PropertySheetStringListValue::equals(const PropertySheetStringListValue &rhs) const
-    {
-        return m_value == rhs.m_value && PropertySheetTranslatableData::equals(rhs);
     }
 
     QStringList m_value;
@@ -536,12 +518,6 @@ namespace qdesigner_internal
         return m_standardKey != QKeySequence::UnknownKey;
     }
 
-    bool PropertySheetKeySequenceValue::equals(const PropertySheetKeySequenceValue &rhs) const
-    {
-        return m_value == rhs.m_value && m_standardKey == rhs.m_standardKey
-                && PropertySheetTranslatableData::equals(rhs);
-    }
-
     /* IconSubPropertyMask: Assign each icon sub-property (pixmaps for the
      * various states/modes and the theme) a flag bit (see QFont) so that they
      * can be handled individually when assigning property values to
@@ -558,7 +534,8 @@ namespace qdesigner_internal
         ActiveOnIconMask    = 0x20,
         SelectedOffIconMask = 0x40,
         SelectedOnIconMask  = 0x80,
-        ThemeIconMask       = 0x10000
+        ThemeIconMask       = 0x10000,
+        ThemeEnumIconMask   = 0x20000
     };
 
     static inline uint iconStateToSubPropertyFlag(QIcon::Mode mode, QIcon::State state)
@@ -576,28 +553,28 @@ namespace qdesigner_internal
         return     state == QIcon::On ?   NormalOnIconMask :   NormalOffIconMask;
     }
 
-    static inline QPair<QIcon::Mode, QIcon::State> subPropertyFlagToIconModeState(unsigned flag)
+    static inline std::pair<QIcon::Mode, QIcon::State> subPropertyFlagToIconModeState(unsigned flag)
     {
         switch (flag) {
         case NormalOnIconMask:
-            return qMakePair(QIcon::Normal,   QIcon::On);
+            return {QIcon::Normal,   QIcon::On};
         case DisabledOffIconMask:
-            return qMakePair(QIcon::Disabled, QIcon::Off);
+            return {QIcon::Disabled, QIcon::Off};
         case DisabledOnIconMask:
-            return qMakePair(QIcon::Disabled, QIcon::On);
+            return {QIcon::Disabled, QIcon::On};
         case ActiveOffIconMask:
-            return qMakePair(QIcon::Active,   QIcon::Off);
+            return {QIcon::Active,   QIcon::Off};
         case ActiveOnIconMask:
-            return qMakePair(QIcon::Active,   QIcon::On);
+            return {QIcon::Active,   QIcon::On};
         case SelectedOffIconMask:
-            return qMakePair(QIcon::Selected, QIcon::Off);
+            return {QIcon::Selected, QIcon::Off};
         case SelectedOnIconMask:
-            return qMakePair(QIcon::Selected, QIcon::On);
+            return {QIcon::Selected, QIcon::On};
         case NormalOffIconMask:
         default:
             break;
         }
-        return     qMakePair(QIcon::Normal,   QIcon::Off);
+        return     {QIcon::Normal,   QIcon::Off};
     }
 
     uint PropertySheetIconValue::mask() const
@@ -607,6 +584,8 @@ namespace qdesigner_internal
             flags |= iconStateToSubPropertyFlag(it.key().first, it.key().second);
         if (!m_data->m_theme.isEmpty())
             flags |= ThemeIconMask;
+        if (m_data->m_themeEnum != -1)
+            flags |= ThemeEnumIconMask;
         return flags;
     }
 
@@ -616,13 +595,16 @@ namespace qdesigner_internal
         for (int i = 0; i < 8; i++) {
             const uint flag = 1 << i;
             if (diffMask & flag) { // if state is set in both icons, compare the values
-                const QPair<QIcon::Mode, QIcon::State> state = subPropertyFlagToIconModeState(flag);
+                const auto state = subPropertyFlagToIconModeState(flag);
                 if (pixmap(state.first, state.second) == other.pixmap(state.first, state.second))
                     diffMask &= ~flag;
             }
         }
         if ((diffMask & ThemeIconMask) && theme() == other.theme())
             diffMask &= ~ThemeIconMask;
+        if ((diffMask & ThemeEnumIconMask) && themeEnum() == other.themeEnum())
+            diffMask &= ~ThemeEnumIconMask;
+
         return diffMask;
     }
 
@@ -637,6 +619,7 @@ namespace qdesigner_internal
     {
         PropertySheetIconValue rc(*this);
         rc.m_data->m_theme.clear();
+        rc.m_data->m_themeEnum = -1;
         return rc;
     }
 
@@ -651,6 +634,8 @@ namespace qdesigner_internal
         }
         if (mask & ThemeIconMask)
             setTheme(other.theme());
+        if (mask & ThemeEnumIconMask)
+            setThemeEnum(other.themeEnum());
     }
 
     const PropertySheetIconValue::ModeStateToPixmapMap &PropertySheetIconValue::paths() const
@@ -658,17 +643,24 @@ namespace qdesigner_internal
         return m_data->m_paths;
     }
 
-    QDESIGNER_SHARED_EXPORT QDebug operator<<(QDebug d, const PropertySheetIconValue &p)
+    QDESIGNER_SHARED_EXPORT QDebug operator<<(QDebug debug, const PropertySheetIconValue &p)
     {
-        QDebug nospace = d.nospace();
-        nospace << "PropertySheetIconValue theme='" << p.theme() << "' ";
+        QDebugStateSaver saver(debug);
+        debug.nospace();
+        debug.noquote();
+        debug << "PropertySheetIconValue(mask=0x" << Qt::hex << p.mask() << Qt::dec << ", ";
+        if (p.themeEnum() != -1)
+            debug << "theme=" << p.themeEnum() << ", ";
+        if (!p.theme().isEmpty())
+            debug << "XDG theme=\"" << p.theme() << "\", ";
 
         const PropertySheetIconValue::ModeStateToPixmapMap &paths = p.paths();
-        for (auto it = paths.constBegin(), cend = paths.constEnd(); it != cend; ++it)
-            nospace << " mode=" << it.key().first << ",state=" << it.key().second
-                       << ",'" << it.value().path() << '\'';
-        nospace << " mask=0x" << QString::number(p.mask(), 16);
-        return d;
+        for (auto it = paths.constBegin(), cend = paths.constEnd(); it != cend; ++it) {
+            debug << " mode=" << it.key().first << ",state=" << it.key().second
+                << ", \"" << it.value().path() << '"';
+        }
+        debug << ')';
+        return debug;
     }
 
     QDESIGNER_SHARED_EXPORT QDesignerFormWindowCommand *createTextPropertyCommand(const QString &propertyName, const QString &text, QObject *object, QDesignerFormWindowInterface *fw)
@@ -713,7 +705,20 @@ namespace qdesigner_internal
     {
         QProcess uic;
         QStringList arguments;
-        QString binary = QLibraryInfo::path(QLibraryInfo::LibraryExecutablesPath) + "/uic"_L1;
+        static constexpr auto uicBinary =
+            QOperatingSystemVersion::currentType() != QOperatingSystemVersion::Windows
+            ? "/uic"_L1 : "/uic.exe"_L1;
+        QString binary = QLibraryInfo::path(QLibraryInfo::LibraryExecutablesPath) + uicBinary;
+        // In a PySide6 installation, there is no libexec directory; uic.exe is
+        // in the main wheel directory next to designer.exe.
+        if (!QFileInfo::exists(binary))
+            binary = QCoreApplication::applicationDirPath() + uicBinary;
+        if (!QFileInfo::exists(binary)) {
+            errorMessage = QApplication::translate("Designer", "%1 does not exist.").
+                           arg(QDir::toNativeSeparators(binary));
+            return false;
+        }
+
         switch (language) {
         case UicLanguage::Cpp:
             break;

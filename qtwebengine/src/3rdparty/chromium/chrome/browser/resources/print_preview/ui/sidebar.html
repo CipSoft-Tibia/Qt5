@@ -39,10 +39,7 @@
     error="[[error]]" sheet-count="[[sheetCount_]]" state="[[state]]"
     settings="[[settings]]" managed="[[controlsManaged]]">
 </print-preview-header>
-<!-- TODO(dizhangg): Need negative tabindex so the container doesn't get
-         focused. Delete this comment when KeyboardFocusableScrollers is enabled
-         by default. -->
-<div id="container" show-bottom-shadow tabindex="-1">
+<div id="container" show-bottom-shadow>
   <print-preview-destination-settings id="destinationSettings"
       dark="[[inDarkMode]]" destination="{{destination}}"
       destination-state="{{destinationState}}"
@@ -53,7 +50,7 @@
   </print-preview-destination-settings>
 <if expr="is_chromeos">
   <print-preview-pin-settings state="[[state]]" settings="[[settings]]"
-      disabled="[[controlsDisabled_]]"
+      disabled="[[controlsDisabled_]]" is-pin-valid="{{isPinValid_}}"
       hidden$="[[!settings.pin.available]]" class="settings-section">
   </print-preview-pin-settings>
 </if>
@@ -88,6 +85,11 @@
         hidden$="[[!settings.mediaSize.available]]"
         class="settings-section">
     </print-preview-media-size-settings>
+    <print-preview-media-type-settings settings="[[settings]]" state="[[state]]"
+        capability="[[destination.capabilities.printer.media_type]]"
+        disabled="[[controlsDisabled_]]"
+        hidden$="[[!settings.mediaType.available]]" class="settings-section">
+    </print-preview-media-type-settings>
     <print-preview-pages-per-sheet-settings settings="[[settings]]"
         disabled="[[controlsDisabled_]]"
         hidden$="[[!settings.pagesPerSheet.available]]"
@@ -133,7 +135,7 @@
   </iron-collapse>
 </div>
 <print-preview-button-strip destination="[[destination]]"
-    state="[[state]]" first-load="[[firstLoad_]]"
+    state="[[state]]" first-load="[[firstLoad_]]" is-pin-valid="[[isPinValid_]]"
     sheet-count="[[sheetCount_]]" max-sheets="[[maxSheets]]"
     on-print-button-focused="onPrintButtonFocused_">
 </print-preview-button-strip>

@@ -13,6 +13,7 @@
 #include <QtCore/qbytearrayview.h>
 
 #include <string>
+#include <string_view>
 #include <QtCore/q20type_traits.h>
 
 QT_BEGIN_NAMESPACE
@@ -132,14 +133,12 @@ private:
         return qsizetype(std::size(c));
     }
 
-    // Note: Do not replace with std::size(const Char (&)[N]), cause the result
+    // Note: Do not replace with std::size(const Char (&)[N]), because the result
     // will be of by one.
     template <typename Char, size_t N>
     static constexpr qsizetype lengthHelperContainer(const Char (&str)[N]) noexcept
     {
-        const auto it = std::char_traits<Char>::find(str, N, Char(0));
-        const auto end = it ? it : std::next(str, N);
-        return qsizetype(std::distance(str, end));
+        return QtPrivate::lengthHelperContainer(str);
     }
 
     template <typename Char>
@@ -172,8 +171,7 @@ public:
 #else
     template <typename Pointer, if_compatible_pointer<Pointer> = true>
     constexpr QBasicUtf8StringView(const Pointer &str) noexcept
-        : QBasicUtf8StringView(str,
-            str ? std::char_traits<std::remove_cv_t<std::remove_pointer_t<Pointer>>>::length(str) : 0) {}
+        : QBasicUtf8StringView(str, QtPrivate::lengthHelperPointer(str)) {}
 #endif
 
 #ifdef Q_QDOC
@@ -201,13 +199,13 @@ public:
     [[nodiscard]] inline QString toString() const; // defined in qstring.h
 
     [[nodiscard]] constexpr qsizetype size() const noexcept { return m_size; }
-    [[nodiscard]] const_pointer data() const noexcept { return reinterpret_cast<const_pointer>(m_data); }
+    [[nodiscard]] constexpr const_pointer data() const noexcept { return m_data; }
 #ifdef __cpp_char8_t
     [[nodiscard]] const char8_t *utf8() const noexcept { return reinterpret_cast<const char8_t*>(m_data); }
 #endif
 
     [[nodiscard]] constexpr storage_type operator[](qsizetype n) const
-    { return Q_ASSERT(n >= 0), Q_ASSERT(n < size()), m_data[n]; }
+    { verify(n, 1); return m_data[n]; }
 
     //
     // QString API
@@ -238,20 +236,20 @@ public:
     }
 
     [[nodiscard]] constexpr QBasicUtf8StringView sliced(qsizetype pos) const
-    { verify(pos); return QBasicUtf8StringView{m_data + pos, m_size - pos}; }
+    { verify(pos, 0); return QBasicUtf8StringView{m_data + pos, m_size - pos}; }
     [[nodiscard]] constexpr QBasicUtf8StringView sliced(qsizetype pos, qsizetype n) const
     { verify(pos, n); return QBasicUtf8StringView(m_data + pos, n); }
     [[nodiscard]] constexpr QBasicUtf8StringView first(qsizetype n) const
-    { verify(n); return QBasicUtf8StringView(m_data, n); }
+    { verify(0, n); return sliced(0, n); }
     [[nodiscard]] constexpr QBasicUtf8StringView last(qsizetype n) const
-    { verify(n); return QBasicUtf8StringView(m_data + m_size - n, n); }
+    { verify(0, n); return sliced(m_size - n, n); }
     [[nodiscard]] constexpr QBasicUtf8StringView chopped(qsizetype n) const
-    { verify(n); return QBasicUtf8StringView(m_data, m_size - n); }
+    { verify(0, n); return sliced(0, m_size - n); }
 
     constexpr void truncate(qsizetype n)
-    { verify(n); m_size = n; }
+    { verify(0, n); m_size = n; }
     constexpr void chop(qsizetype n)
-    { verify(n); m_size -= n; }
+    { verify(0, n); m_size -= n; }
 
     [[nodiscard]] inline bool isValidUtf8() const noexcept
     {
@@ -273,6 +271,9 @@ public:
     [[nodiscard]] constexpr bool empty() const noexcept { return size() == 0; }
     [[nodiscard]] constexpr storage_type front() const { return Q_ASSERT(!empty()), m_data[0]; }
     [[nodiscard]] constexpr storage_type back()  const { return Q_ASSERT(!empty()), m_data[m_size - 1]; }
+
+    [[nodiscard]] Q_IMPLICIT operator std::basic_string_view<storage_type>() const noexcept
+    { return std::basic_string_view<storage_type>(data(), size_t(size())); }
 
     //
     // Qt compatibility API:
@@ -323,7 +324,8 @@ private:
     { return QBasicUtf8StringView::compare(lhs, rhs) > 0; }
 #endif
 
-    Q_ALWAYS_INLINE constexpr void verify(qsizetype pos, qsizetype n = 0) const
+    Q_ALWAYS_INLINE constexpr void verify([[maybe_unused]] qsizetype pos = 0,
+                                          [[maybe_unused]] qsizetype n = 1) const
     {
         Q_ASSERT(pos >= 0);
         Q_ASSERT(pos <= size());

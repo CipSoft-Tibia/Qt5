@@ -54,6 +54,10 @@ static Q_LOGGING_CATEGORY(lcElfParser, "qt.core.plugin.elfparser")
 #  define PT_GNU_PROPERTY   0x6474e553
 #endif
 
+#ifndef PN_XNUM
+#  define PN_XNUM 0xffff
+#endif
+
 QT_WARNING_PUSH
 QT_WARNING_DISABLE_CLANG("-Wunused-const-variable")
 
@@ -539,6 +543,8 @@ static bool preScanProgramHeaders(QByteArrayView data, const ErrorMaker &error)
 
     // first, validate the extent of the full program header table
     T::Word e_phnum = header->e_phnum;
+    if (e_phnum == PN_XNUM)
+        return error(QLibrary::tr("unimplemented: PN_XNUM program headers")), false;
     T::Off offset = e_phnum * sizeof(T::Phdr);  // can't overflow due to size of T::Half
     if (qAddOverflow(offset, header->e_phoff, &offset) || offset > size_t(data.size()))
         return error(QLibrary::tr("program header table extends past the end of the file")), false;

@@ -13,3 +13,4 @@ accept the event if you reimplement this function. If you don't accept the
 event, call \c event->ignore().
 
 //! [accepting-events]
+

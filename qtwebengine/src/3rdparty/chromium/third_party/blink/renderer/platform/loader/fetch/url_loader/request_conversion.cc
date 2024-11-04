@@ -346,6 +346,8 @@ void PopulateResourceRequest(const ResourceRequestHead& src,
 
   dest->keepalive = src.GetKeepalive();
   dest->browsing_topics = src.GetBrowsingTopics();
+  dest->ad_auction_headers = src.GetAdAuctionHeaders();
+  dest->shared_storage_writable = src.GetSharedStorageWritable();
   dest->has_user_gesture = src.HasUserGesture();
   dest->enable_load_timing = true;
   dest->enable_upload_progress = src.ReportUploadProgress();
@@ -364,6 +366,8 @@ void PopulateResourceRequest(const ResourceRequestHead& src,
   }
 
   dest->is_fetch_like_api = src.IsFetchLikeAPI();
+
+  dest->is_fetch_later_api = src.IsFetchLaterAPI();
 
   dest->is_favicon = src.IsFavicon();
 
@@ -402,6 +406,18 @@ void PopulateResourceRequest(const ResourceRequestHead& src,
   }
 
   dest->has_storage_access = src.GetHasStorageAccess();
+
+  dest->attribution_reporting_support = src.GetAttributionReportingSupport();
+
+  dest->attribution_reporting_eligibility =
+      src.GetAttributionReportingEligibility();
+
+  dest->attribution_reporting_runtime_features =
+      src.GetAttributionReportingRuntimeFeatures();
+
+  dest->attribution_reporting_src_token = src.GetAttributionSrcToken();
+
+  dest->shared_dictionary_writer_enabled = src.SharedDictionaryWriterEnabled();
 }
 
 }  // namespace blink

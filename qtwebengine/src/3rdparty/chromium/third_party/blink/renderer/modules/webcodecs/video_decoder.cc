@@ -93,6 +93,11 @@ void DecoderSupport_OnKnown(
 bool ParseCodecString(const String& codec_string,
                       media::VideoType& out_video_type,
                       String& js_error_message) {
+  if (codec_string.LengthWithStrippedWhiteSpace() == 0) {
+    js_error_message = "Invalid codec; codec is required.";
+    return false;
+  }
+
   bool is_codec_ambiguous = true;
   media::VideoCodec codec = media::VideoCodec::kUnknown;
   media::VideoCodecProfile profile = media::VIDEO_CODEC_PROFILE_UNKNOWN;
@@ -102,14 +107,11 @@ bool ParseCodecString(const String& codec_string,
       media::ParseVideoCodecString("", codec_string.Utf8(), &is_codec_ambiguous,
                                    &codec, &profile, &level, &color_space);
 
-  if (!parse_succeeded) {
-    js_error_message = "Failed to parse codec string.";
-    return false;
-  }
-
-  if (is_codec_ambiguous) {
-    js_error_message = "Codec string is ambiguous.";
-    return false;
+  if (!parse_succeeded || is_codec_ambiguous) {
+    js_error_message = "Unknown or ambiguous codec name.";
+    out_video_type = {media::VideoCodec::kUnknown,
+                      media::VIDEO_CODEC_PROFILE_UNKNOWN, level, color_space};
+    return true;
   }
 
   out_video_type = {codec, profile, level, color_space};
@@ -285,10 +287,13 @@ ScriptPromise VideoDecoder::isConfigSupported(ScriptState* script_state,
   auto* config_copy = CopyConfig(*config);
 
   // Run the "Check Configuration Support" algorithm.
+  HardwarePreference hw_pref = GetHardwareAccelerationPreference(*config_copy);
   VideoDecoderSupport* support = VideoDecoderSupport::Create();
   support->setConfig(config_copy);
 
-  if (!media::IsSupportedVideoType(*video_type)) {
+  if ((hw_pref == HardwarePreference::kPreferSoftware &&
+       !media::IsBuiltInVideoCodec(video_type->codec)) ||
+      !media::IsSupportedVideoType(*video_type)) {
     support->setSupported(false);
     return ScriptPromise::Cast(
         script_state,
@@ -309,9 +314,9 @@ ScriptPromise VideoDecoder::isConfigSupported(ScriptState* script_state,
   }
 
   // If hardware is preferred, asynchronously check for a hardware decoder.
-  HardwarePreference hw_pref = GetHardwareAccelerationPreference(*config_copy);
   if (hw_pref == HardwarePreference::kPreferHardware) {
-    auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+    auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+        script_state, exception_state.GetContext());
     ScriptPromise promise = resolver->Promise();
     RetrieveGpuFactoriesWithKnownDecoderSupport(CrossThreadBindOnce(
         &DecoderSupport_OnKnown, MakeUnwrappingCrossThreadHandle(support),
@@ -429,6 +434,9 @@ VideoDecoder::MakeMediaVideoDecoderConfigInternal(
     NOTREACHED();
     return absl::nullopt;
   }
+  if (video_type.codec == media::VideoCodec::kUnknown) {
+    return absl::nullopt;
+  }
 
   std::vector<uint8_t> extra_data;
   if (config.hasDescription()) {
@@ -510,6 +518,7 @@ VideoDecoder::MakeMediaVideoDecoderConfigInternal(
                           media::EncryptionScheme::kUnencrypted);
   media_config.set_aspect_ratio(aspect_ratio);
   if (!media_config.IsValidConfig()) {
+    *js_error_message = "Unsupported config.";
     return absl::nullopt;
   }
 

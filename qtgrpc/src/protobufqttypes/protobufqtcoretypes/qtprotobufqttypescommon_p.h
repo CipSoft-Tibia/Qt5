@@ -20,7 +20,7 @@
 #include <QtProtobuf/qtprotobuftypes.h>
 #include <QtProtobuf/qprotobufserializer.h>
 
-#include <QtCore/QVariant>
+#include <QtCore/qvariant.h>
 #include <QtCore/private/qglobal_p.h>
 
 #include <optional>
@@ -39,42 +39,39 @@ constexpr inline bool is_optional_v<std::optional<T>> = true;
 template<typename QType, typename PType>
 void registerQtTypeHandler()
 {
-    registerHandler(
-            QMetaType::fromType<QType>(),
-            { [](const QProtobufSerializer *serializer, const QVariant &value,
-                 const QProtobufPropertyOrderingInfo &info, QByteArray &buffer) {
-                 auto do_convert = [](const QType &qtype) {
-                     auto res = convert(qtype);
-                     if constexpr (is_optional_v<decltype(res)>) {
-                         return res;
-                     } else {
-                         return std::optional<PType>(std::move(res));
-                     }
-                 };
+    registerHandler(QMetaType::fromType<QType>(),
+                    { [](const QProtobufBaseSerializer *serializer, const QVariant &value,
+                         const QProtobufPropertyOrderingInfo &info) {
+                         auto do_convert = [](const QType &qtype) {
+                             auto res = convert(qtype);
+                             if constexpr (is_optional_v<decltype(res)>) {
+                                 return res;
+                             } else {
+                                 return std::optional<PType>(std::move(res));
+                             }
+                         };
 
-                 std::optional<PType> object = do_convert(value.value<QType>());
-                 if (object) {
-                     buffer.append(serializer->serializeObject(&(object.value()),
-                                                               PType::propertyOrdering, info));
-                 } else {
-                     warnTypeConversionError();
-                 }
-              },
-              [](const QProtobufSerializer *serializer, QProtobufSelfcheckIterator &it,
-                 QVariant &value) {
-                  PType object;
-                  serializer->deserializeObject(&object, PType::propertyOrdering, it);
-                  auto res = convert(object);
-                  if constexpr (is_optional_v<decltype(res)>) {
-                      if (!res)
-                          warnTypeConversionError();
-                      else
-                          value = QVariant::fromValue<QType>(*res);
-                  } else {
-                      value = QVariant::fromValue<QType>(res);
-                  }
-              }
-            });
+                         std::optional<PType> object = do_convert(value.value<QType>());
+                         if (object) {
+                             serializer->serializeObject(&(object.value()), PType::propertyOrdering,
+                                                         info);
+                         } else {
+                             warnTypeConversionError();
+                         }
+                     },
+                      [](const QProtobufBaseSerializer *serializer, QVariant &value) {
+                          PType object;
+                          serializer->deserializeObject(&object, PType::propertyOrdering);
+                          auto res = convert(object);
+                          if constexpr (is_optional_v<decltype(res)>) {
+                              if (!res)
+                                  warnTypeConversionError();
+                              else
+                                  value = QVariant::fromValue<QType>(*res);
+                          } else {
+                              value = QVariant::fromValue<QType>(res);
+                          }
+                      } });
 }
 } // namespace QtProtobufPrivate
 

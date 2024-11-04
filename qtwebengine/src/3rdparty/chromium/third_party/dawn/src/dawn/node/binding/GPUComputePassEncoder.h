@@ -29,7 +29,7 @@ namespace wgpu::binding {
 // wgpu::ComputePassEncoder.
 class GPUComputePassEncoder final : public interop::GPUComputePassEncoder {
   public:
-    explicit GPUComputePassEncoder(wgpu::ComputePassEncoder enc);
+    GPUComputePassEncoder(const wgpu::ComputePassDescriptor& desc, wgpu::ComputePassEncoder enc);
 
     // Implicit cast operator to Dawn GPU object
     inline operator const wgpu::ComputePassEncoder&() const { return enc_; }
@@ -46,11 +46,11 @@ class GPUComputePassEncoder final : public interop::GPUComputePassEncoder {
     void end(Napi::Env) override;
     void setBindGroup(Napi::Env,
                       interop::GPUIndex32 index,
-                      interop::Interface<interop::GPUBindGroup> bindGroup,
+                      std::optional<interop::Interface<interop::GPUBindGroup>> bindGroup,
                       std::vector<interop::GPUBufferDynamicOffset> dynamicOffsets) override;
     void setBindGroup(Napi::Env,
                       interop::GPUIndex32 index,
-                      interop::Interface<interop::GPUBindGroup> bindGroup,
+                      std::optional<interop::Interface<interop::GPUBindGroup>> bindGroup,
                       interop::Uint32Array dynamicOffsetsData,
                       interop::GPUSize64 dynamicOffsetsDataStart,
                       interop::GPUSize32 dynamicOffsetsDataLength) override;
@@ -62,6 +62,7 @@ class GPUComputePassEncoder final : public interop::GPUComputePassEncoder {
 
   private:
     wgpu::ComputePassEncoder enc_;
+    std::string label_;
 };
 
 }  // namespace wgpu::binding

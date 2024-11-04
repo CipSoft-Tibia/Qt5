@@ -8,6 +8,7 @@
 #include "qmltccompilerpieces.h"
 
 #include <QtCore/qloggingcategory.h>
+#include <QtQml/private/qqmlsignalnames_p.h>
 #include <private/qqmljsutils_p.h>
 
 #include <algorithm>
@@ -86,6 +87,9 @@ void QmltcCompiler::compile(const QmltcCompilerInfo &info)
                   const InlineComponentOrDocumentRootName &b) {
                   const auto *inlineComponentAName = std::get_if<InlineComponentNameType>(&a);
                   const auto *inlineComponentBName = std::get_if<InlineComponentNameType>(&b);
+
+                  if (inlineComponentAName == inlineComponentBName)
+                      return false;
 
                   // the root comes at last, so (a < b) == true when b is the root and a is not
                   if (inlineComponentAName && !inlineComponentBName)
@@ -1507,7 +1511,13 @@ void QmltcCompiler::compileBindingByType(QmltcType &current,
         break;
     }
     case QQmlSA::BindingType::StringLiteral: {
-        assignToProperty(metaProperty, QQmlJSUtils::toLiteral(binding.stringValue()));
+        QString value = QQmlJSUtils::toLiteral(binding.stringValue());
+        if (auto type = metaProperty.type()) {
+            if (type->internalName() == u"QUrl"_s) {
+                value = u"QUrl(%1)"_s.arg(value);
+            }
+        }
+        assignToProperty(metaProperty, value);
         break;
     }
     case QQmlSA::BindingType::RegExpLiteral: {
@@ -1621,8 +1631,11 @@ static std::pair<QQmlJSMetaProperty, int> getMetaPropertyIndex(const QQmlJSScope
         // index is already added as p.index())
         if (type->isSameType(owner))
             return;
-        if (m == QQmlJSScope::ExtensionNamespace) // extension namespace properties are ignored
+
+        // extension namespace and JavaScript properties are ignored
+        if (m == QQmlJSScope::ExtensionNamespace || m == QQmlJSScope::ExtensionJavaScript)
             return;
+
         index += int(type->ownProperties().size());
     };
     QQmlJSUtils::traverseFollowingMetaObjectHierarchy(scope, owner, increment);
@@ -1728,7 +1741,7 @@ void QmltcCompiler::compileScriptBinding(QmltcType &current,
         break;
     }
     case QQmlSA::ScriptBindingKind::SignalHandler: {
-        const auto name = QQmlJSUtils::signalName(propertyName);
+        const auto name = QQmlSignalNames::handlerNameToSignalName(propertyName);
         Q_ASSERT(name.has_value());
         compileScriptSignal(*name);
         break;
@@ -1737,9 +1750,10 @@ void QmltcCompiler::compileScriptBinding(QmltcType &current,
         const QString objectClassName = objectType->internalName();
         const QString bindingFunctorName = newSymbol(bindingSymbolName + u"Functor");
 
-        const auto signalName = QQmlJSUtils::signalName(propertyName);
+        const auto signalName = QQmlSignalNames::handlerNameToSignalName(propertyName);
         Q_ASSERT(signalName.has_value()); // an error somewhere else
-        const auto actualProperty = QQmlJSUtils::changeHandlerProperty(objectType, *signalName);
+        const auto actualProperty =
+                QQmlJSUtils::propertyFromChangedHandler(objectType, propertyName);
         Q_ASSERT(actualProperty.has_value()); // an error somewhere else
         const auto actualPropertyType = actualProperty->type();
         if (!actualPropertyType) {

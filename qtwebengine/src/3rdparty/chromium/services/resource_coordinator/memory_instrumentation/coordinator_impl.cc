@@ -26,7 +26,6 @@
 #include "services/resource_coordinator/memory_instrumentation/switches.h"
 #include "services/resource_coordinator/public/cpp/memory_instrumentation/client_process_impl.h"
 #include "services/resource_coordinator/public/cpp/memory_instrumentation/tracing_observer_proto.h"
-#include "services/resource_coordinator/public/cpp/memory_instrumentation/tracing_observer_traced_value.h"
 #include "services/resource_coordinator/public/mojom/memory_instrumentation/constants.mojom.h"
 #include "services/resource_coordinator/public/mojom/memory_instrumentation/memory_instrumentation.mojom.h"
 
@@ -64,8 +63,6 @@ class StringWrapper : public base::trace_event::ConvertableToTraceFormat {
 CoordinatorImpl::CoordinatorImpl()
     : next_dump_id_(0),
       client_process_timeout_(base::Seconds(15)),
-      use_proto_writer_(!base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kUseMemoryTrackingJsonWriter)),
       write_proto_heap_profile_(
           base::CommandLine::ForCurrentProcess()->HasSwitch(
               switches::kUseHeapProfilingProtoWriter)) {
@@ -73,14 +70,6 @@ CoordinatorImpl::CoordinatorImpl()
   g_coordinator_impl = this;
   base::trace_event::MemoryDumpManager::GetInstance()->set_tracing_process_id(
       mojom::kServiceTracingProcessId);
-
-  if (use_proto_writer_) {
-    tracing_observer_ = std::make_unique<TracingObserverProto>(
-        base::trace_event::TraceLog::GetInstance(), nullptr);
-  } else {
-    tracing_observer_ = std::make_unique<TracingObserverTracedValue>(
-        base::trace_event::TraceLog::GetInstance(), nullptr);
-  }
 }
 
 CoordinatorImpl::~CoordinatorImpl() {
@@ -290,10 +279,6 @@ void CoordinatorImpl::RequestGlobalMemoryDumpInternal(
     const QueuedRequest::Args& args,
     RequestGlobalMemoryDumpInternalCallback callback) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-
-  UMA_HISTOGRAM_COUNTS_1000(
-      "Memory.Experimental.Debug.GlobalDumpQueueLength",
-      base::saturated_cast<int32_t>(queued_memory_dump_requests_.size()));
 
   bool another_dump_is_queued = !queued_memory_dump_requests_.empty();
 
@@ -581,8 +566,8 @@ void CoordinatorImpl::FinalizeGlobalMemoryDumpIfAllManagersReplied() {
     return;
   }
 
-  QueuedRequestDispatcher::Finalize(request, tracing_observer_.get(),
-                                    use_proto_writer_);
+  QueuedRequestDispatcher::Finalize(request,
+                                    TracingObserverProto::GetInstance());
 
   queued_memory_dump_requests_.pop_front();
   request = nullptr;

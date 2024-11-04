@@ -64,11 +64,11 @@ template <int N> struct FixedBufString
         buf[used] = '\0';
     }
 
-    template <typename... Args> void appendf(const char *format, Args &&... args)
+    template <typename... Args> void appendf(const char *format, Args... args)
     {
         // vsnprintf includes the terminating null
         used += qsnprintf(buf.data() + used, MaxSize - used + 1, format,
-                          std::forward<Args>(args)...);
+                              args...);
     }
 
     template <int Power = 1000> void appendScaled(qreal value, const char *unit)
@@ -490,6 +490,15 @@ void QPlainTestLogger::addMessage(MessageTypes type, const QString &message,
         return;
 
     printMessage(MessageSource::Other, QTest::ptMessageType2String(type), qPrintable(message), file, line);
+}
+
+bool QPlainTestLogger::isRepeatSupported() const
+{
+    // The plain text logger creates unstructured reports. Such reports are not
+    // parser friendly, and are unlikely to be parsed by any test reporting
+    // tools. We can therefore allow repeated test runs with minimum risk that
+    // any parsers fails to handle repeated test names.
+    return true;
 }
 
 QT_END_NAMESPACE

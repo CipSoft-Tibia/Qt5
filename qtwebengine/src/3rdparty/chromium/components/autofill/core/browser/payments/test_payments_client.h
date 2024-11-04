@@ -13,8 +13,10 @@
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
+#include "build/build_config.h"
 #include "components/autofill/core/browser/payments/payments_client.h"
 #include "components/autofill/core/browser/payments/payments_requests/update_virtual_card_enrollment_request.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace network {
 class SharedURLLoaderFactory;
@@ -47,7 +49,7 @@ class TestPaymentsClient : public payments::PaymentsClient {
   void GetUploadDetails(
       const std::vector<AutofillProfile>& addresses,
       const int detected_values,
-      const std::vector<const char*>& active_experiments,
+      const std::vector<ClientBehaviorConstants>& client_behavior_signals,
       const std::string& app_locale,
       base::OnceCallback<void(AutofillClient::PaymentsRpcResult,
                               const std::u16string&,
@@ -64,10 +66,12 @@ class TestPaymentsClient : public payments::PaymentsClient {
                               const PaymentsClient::UploadCardResponseDetails&)>
           callback) override;
 
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
   void MigrateCards(
       const MigrationRequestDetails& details,
       const std::vector<MigratableCreditCard>& migratable_credit_cards,
       MigrateCardsCallback callback) override;
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
   void SelectChallengeOption(
       const SelectChallengeOptionRequestDetails& details,
@@ -125,7 +129,8 @@ class TestPaymentsClient : public payments::PaymentsClient {
   payments::PaymentsClient::UnmaskDetails* unmask_details() {
     return &unmask_details_;
   }
-  const payments::PaymentsClient::UnmaskRequestDetails* unmask_request() {
+  const absl::optional<payments::PaymentsClient::UnmaskRequestDetails>&
+  unmask_request() const {
     return unmask_request_;
   }
   const payments::PaymentsClient::SelectChallengeOptionRequestDetails*
@@ -139,8 +144,9 @@ class TestPaymentsClient : public payments::PaymentsClient {
   const std::vector<AutofillProfile>& addresses_in_upload_card() const {
     return upload_card_addresses_;
   }
-  const std::vector<const char*>& active_experiments_in_request() const {
-    return active_experiments_;
+  const std::vector<ClientBehaviorConstants>&
+  client_behavior_signals_in_request() const {
+    return client_behavior_signals_;
   }
   int billable_service_number_in_request() const {
     return billable_service_number_;
@@ -168,8 +174,8 @@ class TestPaymentsClient : public payments::PaymentsClient {
   // useful to control whether or not GetUnmaskDetails() is responded to.
   bool should_return_unmask_details_ = true;
   payments::PaymentsClient::UnmaskDetails unmask_details_;
-  raw_ptr<const payments::PaymentsClient::UnmaskRequestDetails>
-      unmask_request_ = nullptr;
+  absl::optional<payments::PaymentsClient::UnmaskRequestDetails>
+      unmask_request_;
   payments::PaymentsClient::SelectChallengeOptionRequestDetails
       select_challenge_option_request_;
   std::vector<std::pair<int, int>> supported_card_bin_ranges_;
@@ -177,7 +183,7 @@ class TestPaymentsClient : public payments::PaymentsClient {
   std::vector<AutofillProfile> upload_card_addresses_;
   int detected_values_;
   std::string pan_first_six_;
-  std::vector<const char*> active_experiments_;
+  std::vector<ClientBehaviorConstants> client_behavior_signals_;
   int billable_service_number_;
   int64_t billing_customer_number_;
   PaymentsClient::UploadCardSource upload_card_source_;

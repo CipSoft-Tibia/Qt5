@@ -332,28 +332,64 @@ namespace QtPrivate {
         typedef decltype(std::declval<Functor>().operator()((std::declval<ArgList>())...)) Value;
     };
 
-    template<typename Function, int N> struct Functor
+    template<typename Func, typename... Args>
+    struct FunctorCallable
     {
+        using ReturnType = decltype(std::declval<Func>()(std::declval<Args>()...));
+        using Function = ReturnType(*)(Args...);
+        enum {ArgumentCount = sizeof...(Args)};
+        using Arguments = QtPrivate::List<Args...>;
+
         template <typename SignalArgs, typename R>
-        static void call(Function &f, void *, void **arg) {
-            FunctorCall<typename Indexes<N>::Value, SignalArgs, R, Function>::call(f, arg);
+        static void call(Func &f, void *, void **arg) {
+            FunctorCall<typename Indexes<ArgumentCount>::Value, SignalArgs, R, Func>::call(f, arg);
         }
     };
 
-    template<typename Func>
-    struct ZeroArgFunctor : Functor<Func, 0>
+    template <typename Functor, typename... Args>
+    struct HasCallOperatorAcceptingArgs
     {
-        using ReturnType = decltype(std::declval<Func>()());
-        using Function = ReturnType(*)();
-        enum {ArgumentCount = 0};
-        using Arguments = QtPrivate::List<>;
+    private:
+        template <typename F, typename = void>
+        struct Test : std::false_type
+        {
+        };
+        // We explicitly use .operator() to not return true for pointers to free/static function
+        template <typename F>
+        struct Test<F, std::void_t<decltype(std::declval<F>().operator()(std::declval<Args>()...))>>
+            : std::true_type
+        {
+        };
+
+    public:
+        using Type = Test<Functor>;
+        static constexpr bool value = Type::value;
     };
 
-    template<typename Func>
-    using Callable = std::conditional_t<FunctionPointer<std::decay_t<Func>>::ArgumentCount == -1,
-        ZeroArgFunctor<std::decay_t<Func>>,
-        FunctionPointer<std::decay_t<Func>>
-    >;
+    template <typename Functor, typename... Args>
+    constexpr bool
+            HasCallOperatorAcceptingArgs_v = HasCallOperatorAcceptingArgs<Functor, Args...>::value;
+
+    template <typename Func, typename... Args>
+    struct CallableHelper
+    {
+    private:
+        // Could've been std::conditional_t, but that requires all branches to
+        // be valid
+        static auto Resolve(std::true_type CallOperator) -> FunctorCallable<Func, Args...>;
+        static auto Resolve(std::false_type CallOperator) -> FunctionPointer<std::decay_t<Func>>;
+
+    public:
+        using Type = decltype(Resolve(typename HasCallOperatorAcceptingArgs<std::decay_t<Func>,
+                Args...>::Type{}));
+    };
+
+    template<typename Func, typename... Args>
+    struct Callable : CallableHelper<Func, Args...>::Type
+    {};
+    template<typename Func, typename... Args>
+    struct Callable<Func, List<Args...>> : CallableHelper<Func, Args...>::Type
+    {};
 
     /*
         Wrapper around ComputeFunctorArgumentCount and CheckCompatibleArgument,
@@ -496,10 +532,7 @@ namespace QtPrivate {
     {
         using FunctorValue = std::decay_t<Func>;
         using Storage = QtPrivate::CompactStorage<FunctorValue>;
-        using FuncType = std::conditional_t<std::is_member_function_pointer_v<FunctorValue>,
-            QtPrivate::FunctionPointer<FunctorValue>,
-            QtPrivate::Functor<FunctorValue, Args::size>
-        >;
+        using FuncType = Callable<Func, Args>;
 
 #if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
         Q_DECL_HIDDEN static void impl(int which, QSlotObjectBase *this_, QObject *r, void **a, bool *ret)

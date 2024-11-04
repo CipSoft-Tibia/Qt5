@@ -229,63 +229,6 @@ struct imag_ref_retval
   typedef typename NumTraits<Scalar>::Real & type;
 };
 
-
-/****************************************************************************
-* Implementation of sign                                                 *
-****************************************************************************/
-template<typename Scalar, bool IsComplex = (NumTraits<Scalar>::IsComplex!=0),
-    bool IsInteger = (NumTraits<Scalar>::IsInteger!=0)>
-struct sign_impl
-{
-  EIGEN_DEVICE_FUNC
-  static inline Scalar run(const Scalar& a)
-  {
-    return Scalar( (a>Scalar(0)) - (a<Scalar(0)) );
-  }
-};
-
-template<typename Scalar>
-struct sign_impl<Scalar, false, false>
-{
-  EIGEN_DEVICE_FUNC
-  static inline Scalar run(const Scalar& a)
-  {
-    return (std::isnan)(a) ? a : Scalar( (a>Scalar(0)) - (a<Scalar(0)) );
-  }
-};
-
-template<typename Scalar, bool IsInteger>
-struct sign_impl<Scalar, true, IsInteger>
-{
-  EIGEN_DEVICE_FUNC
-  static inline Scalar run(const Scalar& a)
-  {
-    using real_type = typename NumTraits<Scalar>::Real;
-    real_type aa = std::abs(a);
-    if (aa==real_type(0))
-      return Scalar(0);
-    aa = real_type(1)/aa;
-    return Scalar(a.real()*aa, a.imag()*aa );
-  }
-};
-
-// The sign function for bool is the identity.
-template<>
-struct sign_impl<bool, false, true>
-{
-  EIGEN_DEVICE_FUNC
-  static inline bool run(const bool& a)
-  {
-    return a;
-  }
-};
-
-template<typename Scalar>
-struct sign_retval
-{
-  typedef Scalar type;
-};
-
 /****************************************************************************
 * Implementation of conj                                                 *
 ****************************************************************************/
@@ -487,6 +430,13 @@ struct cast_impl
   }
 };
 
+template <typename OldType>
+struct cast_impl<OldType, bool> {
+  EIGEN_DEVICE_FUNC
+  static inline bool run(const OldType& x) { return x != OldType(0); }
+};
+
+
 // Casting from S -> Complex<T> leads to an implicit conversion from S to T,
 // generating warnings on clang.  Here we explicitly cast the real component.
 template<typename OldType, typename NewType>
@@ -513,51 +463,6 @@ inline NewType cast(const OldType& x)
 }
 
 /****************************************************************************
-* Implementation of round                                                   *
-****************************************************************************/
-
-template<typename Scalar>
-struct round_impl
-{
-  EIGEN_STATIC_ASSERT((!NumTraits<Scalar>::IsComplex), NUMERIC_TYPE_MUST_BE_REAL)
-
-  EIGEN_DEVICE_FUNC
-  static inline Scalar run(const Scalar& x)
-  {
-    EIGEN_USING_STD(round);
-    return Scalar(round(x));
-  }
-};
-
-template<typename Scalar>
-struct round_retval
-{
-  typedef Scalar type;
-};
-
-/****************************************************************************
-* Implementation of rint                                                    *
-****************************************************************************/
-
-template<typename Scalar>
-struct rint_impl {
-  EIGEN_STATIC_ASSERT((!NumTraits<Scalar>::IsComplex), NUMERIC_TYPE_MUST_BE_REAL)
-
-  EIGEN_DEVICE_FUNC
-  static inline Scalar run(const Scalar& x)
-  {
-    EIGEN_USING_STD(rint);
-    return rint(x);
-  }
-};
-
-template<typename Scalar>
-struct rint_retval
-{
-  typedef Scalar type;
-};
-
-/****************************************************************************
 * Implementation of arg                                                     *
 ****************************************************************************/
 
@@ -577,12 +482,8 @@ struct arg_default_impl<Scalar, true> {
   EIGEN_DEVICE_FUNC
   static inline RealScalar run(const Scalar& x)
   {
-    #if defined(EIGEN_HIP_DEVICE_COMPILE)
-    // HIP does not seem to have a native device side implementation for the math routine "arg"
+    // There is no official ::arg on device in CUDA/HIP, so we always need to use std::arg.
     using std::arg;
-    #else
-    EIGEN_USING_STD(arg);
-    #endif
     return static_cast<RealScalar>(arg(x));
   }
 };
@@ -664,7 +565,7 @@ struct expm1_impl {
   EIGEN_DEVICE_FUNC static inline Scalar run(const Scalar& x)
   {
     EIGEN_STATIC_ASSERT_NON_INTEGER(Scalar)
-    using std::expm1;
+    EIGEN_USING_STD(expm1);
     return expm1(x);
   }
 };
@@ -725,7 +626,7 @@ struct log1p_impl {
 
   EIGEN_DEVICE_FUNC static inline Scalar run(const Scalar& x)
   {
-    using std::log1p;
+    EIGEN_USING_STD(log1p);
     return log1p(x);
   }
 };
@@ -938,120 +839,130 @@ inline EIGEN_MATHFUNC_RETVAL(random, Scalar) random()
 
 // Implementation of is* functions
 
-// std::is* do not work with fast-math and gcc, std::is* are available on MSVC 2013 and newer, as well as in clang.
-#if (!(EIGEN_COMP_GNUC_STRICT && __FINITE_MATH_ONLY__)) || (EIGEN_COMP_MSVC) || (EIGEN_COMP_CLANG)
-#define EIGEN_USE_STD_FPCLASSIFY 1
-#else
-#define EIGEN_USE_STD_FPCLASSIFY 0
-#endif
-
-template<typename T>
-EIGEN_DEVICE_FUNC
-std::enable_if_t<internal::is_integral<T>::value,bool>
-isnan_impl(const T&) { return false; }
-
-template<typename T>
-EIGEN_DEVICE_FUNC
-std::enable_if_t<internal::is_integral<T>::value,bool>
-isinf_impl(const T&) { return false; }
-
-template<typename T>
-EIGEN_DEVICE_FUNC
-std::enable_if_t<internal::is_integral<T>::value,bool>
-isfinite_impl(const T&) { return true; }
-
-template<typename T>
-EIGEN_DEVICE_FUNC
-std::enable_if_t<(!internal::is_integral<T>::value)&&(!NumTraits<T>::IsComplex),bool>
-isfinite_impl(const T& x)
-{
-  #if defined(EIGEN_GPU_COMPILE_PHASE)
-    return (::isfinite)(x);
-  #elif EIGEN_USE_STD_FPCLASSIFY
-    using std::isfinite;
-    return isfinite EIGEN_NOT_A_MACRO (x);
-  #else
-    return x<=NumTraits<T>::highest() && x>=NumTraits<T>::lowest();
-  #endif
+template <typename T>
+EIGEN_DEVICE_FUNC std::enable_if_t<!(std::numeric_limits<T>::has_infinity ||
+                                     std::numeric_limits<T>::has_quiet_NaN ||
+                                     std::numeric_limits<T>::has_signaling_NaN),
+                                   bool>
+isfinite_impl(const T&) {
+  return true;
 }
 
-template<typename T>
+template <typename T>
+EIGEN_DEVICE_FUNC std::enable_if_t<(std::numeric_limits<T>::has_infinity || std::numeric_limits<T>::has_quiet_NaN ||
+                                    std::numeric_limits<T>::has_signaling_NaN) &&
+                                       (!NumTraits<T>::IsComplex),
+                                   bool>
+isfinite_impl(const T& x) {
+  EIGEN_USING_STD(isfinite);
+  return isfinite EIGEN_NOT_A_MACRO (x);
+}
+
+template <typename T>
+EIGEN_DEVICE_FUNC std::enable_if_t<!std::numeric_limits<T>::has_infinity, bool>
+isinf_impl(const T&) {
+  return false;
+}
+
+template <typename T>
+EIGEN_DEVICE_FUNC std::enable_if_t<
+    (std::numeric_limits<T>::has_infinity && !NumTraits<T>::IsComplex), bool>
+isinf_impl(const T& x) {
+  EIGEN_USING_STD(isinf);
+  return isinf EIGEN_NOT_A_MACRO (x);
+}
+
+template <typename T>
+EIGEN_DEVICE_FUNC std::enable_if_t<!(std::numeric_limits<T>::has_quiet_NaN ||
+                                     std::numeric_limits<T>::has_signaling_NaN),
+                                   bool>
+isnan_impl(const T&) {
+  return false;
+}
+
+template <typename T>
 EIGEN_DEVICE_FUNC
-std::enable_if_t<(!internal::is_integral<T>::value)&&(!NumTraits<T>::IsComplex),bool>
-isinf_impl(const T& x)
-{
-  #if defined(EIGEN_GPU_COMPILE_PHASE)
-    return (::isinf)(x);
-  #elif EIGEN_USE_STD_FPCLASSIFY
-    using std::isinf;
-    return isinf EIGEN_NOT_A_MACRO (x);
-  #else
-    return x>NumTraits<T>::highest() || x<NumTraits<T>::lowest();
-  #endif
+    std::enable_if_t<(std::numeric_limits<T>::has_quiet_NaN ||
+                      std::numeric_limits<T>::has_signaling_NaN) &&
+                         (!NumTraits<T>::IsComplex),
+                     bool>
+    isnan_impl(const T& x) {
+  EIGEN_USING_STD(isnan);
+  return isnan EIGEN_NOT_A_MACRO (x);
 }
-
-template<typename T>
-EIGEN_DEVICE_FUNC
-std::enable_if_t<(!internal::is_integral<T>::value)&&(!NumTraits<T>::IsComplex),bool>
-isnan_impl(const T& x)
-{
-  #if defined(EIGEN_GPU_COMPILE_PHASE)
-    return (::isnan)(x);
-  #elif EIGEN_USE_STD_FPCLASSIFY
-    using std::isnan;
-    return isnan EIGEN_NOT_A_MACRO (x);
-  #else
-    return x != x;
-  #endif
-}
-
-#if (!EIGEN_USE_STD_FPCLASSIFY)
-
-#if EIGEN_COMP_MSVC
-
-template<typename T> EIGEN_DEVICE_FUNC bool isinf_msvc_helper(T x)
-{
-  return _fpclass(x)==_FPCLASS_NINF || _fpclass(x)==_FPCLASS_PINF;
-}
-
-//MSVC defines a _isnan builtin function, but for double only
-EIGEN_DEVICE_FUNC inline bool isnan_impl(const long double& x) { return _isnan(x)!=0; }
-EIGEN_DEVICE_FUNC inline bool isnan_impl(const double& x)      { return _isnan(x)!=0; }
-EIGEN_DEVICE_FUNC inline bool isnan_impl(const float& x)       { return _isnan(x)!=0; }
-
-EIGEN_DEVICE_FUNC inline bool isinf_impl(const long double& x) { return isinf_msvc_helper(x); }
-EIGEN_DEVICE_FUNC inline bool isinf_impl(const double& x)      { return isinf_msvc_helper(x); }
-EIGEN_DEVICE_FUNC inline bool isinf_impl(const float& x)       { return isinf_msvc_helper(x); }
-
-#elif (defined __FINITE_MATH_ONLY__ && __FINITE_MATH_ONLY__ && EIGEN_COMP_GNUC)
-
-#if EIGEN_COMP_GNUC
-  #define EIGEN_TMP_NOOPT_ATTRIB EIGEN_DEVICE_FUNC inline __attribute__((optimize("no-finite-math-only")))
-#else
-  // NOTE the inline qualifier and noinline attribute are both needed: the former is to avoid linking issue (duplicate symbol),
-  //      while the second prevent too aggressive optimizations in fast-math mode:
-  #define EIGEN_TMP_NOOPT_ATTRIB EIGEN_DEVICE_FUNC inline __attribute__((noinline,optimize("no-finite-math-only")))
-#endif
-
-template<> EIGEN_TMP_NOOPT_ATTRIB bool isnan_impl(const long double& x) { return __builtin_isnan(x); }
-template<> EIGEN_TMP_NOOPT_ATTRIB bool isnan_impl(const double& x)      { return __builtin_isnan(x); }
-template<> EIGEN_TMP_NOOPT_ATTRIB bool isnan_impl(const float& x)       { return __builtin_isnan(x); }
-template<> EIGEN_TMP_NOOPT_ATTRIB bool isinf_impl(const double& x)      { return __builtin_isinf(x); }
-template<> EIGEN_TMP_NOOPT_ATTRIB bool isinf_impl(const float& x)       { return __builtin_isinf(x); }
-template<> EIGEN_TMP_NOOPT_ATTRIB bool isinf_impl(const long double& x) { return __builtin_isinf(x); }
-
-#undef EIGEN_TMP_NOOPT_ATTRIB
-
-#endif
-
-#endif
 
 // The following overload are defined at the end of this file
-template<typename T> EIGEN_DEVICE_FUNC bool isfinite_impl(const std::complex<T>& x);
-template<typename T> EIGEN_DEVICE_FUNC bool isnan_impl(const std::complex<T>& x);
-template<typename T> EIGEN_DEVICE_FUNC bool isinf_impl(const std::complex<T>& x);
+template <typename T>
+EIGEN_DEVICE_FUNC bool isfinite_impl(const std::complex<T>& x);
+template <typename T>
+EIGEN_DEVICE_FUNC bool isnan_impl(const std::complex<T>& x);
+template <typename T>
+EIGEN_DEVICE_FUNC bool isinf_impl(const std::complex<T>& x);
+template <typename T>
+T generic_fast_tanh_float(const T& a_x);
 
-template<typename T> T generic_fast_tanh_float(const T& a_x);
+/****************************************************************************
+ * Implementation of sign                                                 *
+ ****************************************************************************/
+template <typename Scalar, bool IsComplex = (NumTraits<Scalar>::IsComplex != 0),
+          bool IsInteger = (NumTraits<Scalar>::IsInteger != 0)>
+struct sign_impl {
+  EIGEN_DEVICE_FUNC
+  static inline Scalar run(const Scalar& a) {
+    return Scalar((a > Scalar(0)) - (a < Scalar(0)));
+  }
+};
+
+template <typename Scalar>
+struct sign_impl<Scalar, false, false> {
+  EIGEN_DEVICE_FUNC
+  static inline Scalar run(const Scalar& a) {
+    return (isnan_impl<Scalar>)(a) ? a
+                                   : Scalar((a > Scalar(0)) - (a < Scalar(0)));
+  }
+};
+
+template <typename Scalar, bool IsInteger>
+struct sign_impl<Scalar, true, IsInteger> {
+  EIGEN_DEVICE_FUNC
+  static inline Scalar run(const Scalar& a) {
+    using real_type = typename NumTraits<Scalar>::Real;
+    EIGEN_USING_STD(abs);
+    real_type aa = abs(a);
+    if (aa == real_type(0)) return Scalar(0);
+    aa = real_type(1) / aa;
+    return Scalar(a.real() * aa, a.imag() * aa);
+  }
+};
+
+// The sign function for bool is the identity.
+template <>
+struct sign_impl<bool, false, true> {
+  EIGEN_DEVICE_FUNC
+  static inline bool run(const bool& a) { return a; }
+};
+
+template <typename Scalar>
+struct sign_retval {
+  typedef Scalar type;
+};
+
+
+template <typename Scalar, bool IsInteger = NumTraits<typename unpacket_traits<Scalar>::type>::IsInteger>
+struct nearest_integer_impl {
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar run_floor(const Scalar& x) { EIGEN_USING_STD(floor) return floor(x); }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar run_ceil(const Scalar& x) { EIGEN_USING_STD(ceil) return ceil(x); }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar run_rint(const Scalar& x) { EIGEN_USING_STD(rint) return rint(x); }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar run_round(const Scalar& x) { EIGEN_USING_STD(round) return round(x); }
+};
+template <typename Scalar>
+struct nearest_integer_impl<Scalar, true> {
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar run_floor(const Scalar& x) { return x; }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar run_ceil(const Scalar& x) { return x; }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar run_rint(const Scalar& x) { return x; }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar run_round(const Scalar& x) { return x; }
+};
+
 } // end namespace internal
 
 /****************************************************************************
@@ -1095,6 +1006,8 @@ EIGEN_ALWAYS_INLINE double mini(const double& x, const double& y)
 {
   return fmin(x, y);
 }
+
+#ifndef EIGEN_GPU_COMPILE_PHASE
 template<>
 EIGEN_DEVICE_FUNC
 EIGEN_ALWAYS_INLINE long double mini(const long double& x, const long double& y)
@@ -1106,6 +1019,7 @@ EIGEN_ALWAYS_INLINE long double mini(const long double& x, const long double& y)
   return fminl(x, y);
 #endif
 }
+#endif
 
 template<typename T>
 EIGEN_DEVICE_FUNC
@@ -1125,6 +1039,7 @@ EIGEN_ALWAYS_INLINE double maxi(const double& x, const double& y)
 {
   return fmax(x, y);
 }
+#ifndef EIGEN_GPU_COMPILE_PHASE
 template<>
 EIGEN_DEVICE_FUNC
 EIGEN_ALWAYS_INLINE long double maxi(const long double& x, const long double& y)
@@ -1136,6 +1051,7 @@ EIGEN_ALWAYS_INLINE long double maxi(const long double& x, const long double& y)
   return fmaxl(x, y);
 #endif
 }
+#endif
 #endif
 
 #if defined(SYCL_DEVICE_ONLY)
@@ -1300,8 +1216,8 @@ EIGEN_ALWAYS_INLINE double absdiff(const double& x, const double& y)
   return fabs(x - y);
 }
 
-#if !defined(EIGEN_GPUCC)
 // HIP and CUDA do not support long double.
+#ifndef EIGEN_GPU_COMPILE_PHASE
 template<>
 EIGEN_DEVICE_FUNC
 EIGEN_ALWAYS_INLINE long double absdiff(const long double& x, const long double& y) {
@@ -1368,29 +1284,28 @@ SYCL_SPECIALIZE_FLOATING_TYPES_UNARY_FUNC_RET_TYPE(isfinite, isfinite, bool)
 #endif
 
 template<typename Scalar>
-EIGEN_DEVICE_FUNC
-inline EIGEN_MATHFUNC_RETVAL(rint, Scalar) rint(const Scalar& x)
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+Scalar rint(const Scalar& x)
 {
-  return EIGEN_MATHFUNC_IMPL(rint, Scalar)::run(x);
+  return internal::nearest_integer_impl<Scalar>::run_rint(x);
 }
 
 template<typename Scalar>
-EIGEN_DEVICE_FUNC
-inline EIGEN_MATHFUNC_RETVAL(round, Scalar) round(const Scalar& x)
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+Scalar round(const Scalar& x)
 {
-  return EIGEN_MATHFUNC_IMPL(round, Scalar)::run(x);
+  return internal::nearest_integer_impl<Scalar>::run_round(x);
 }
 
 #if defined(SYCL_DEVICE_ONLY)
 SYCL_SPECIALIZE_FLOATING_TYPES_UNARY(round, round)
 #endif
 
-template<typename T>
-EIGEN_DEVICE_FUNC
-T (floor)(const T& x)
+template<typename Scalar>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+Scalar (floor)(const Scalar& x)
 {
-  EIGEN_USING_STD(floor)
-  return floor(x);
+  return internal::nearest_integer_impl<Scalar>::run_floor(x);
 }
 
 #if defined(SYCL_DEVICE_ONLY)
@@ -1405,12 +1320,11 @@ template<> EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
 double floor(const double &x) { return ::floor(x); }
 #endif
 
-template<typename T>
-EIGEN_DEVICE_FUNC
-T (ceil)(const T& x)
+template<typename Scalar>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+Scalar (ceil)(const Scalar& x)
 {
-  EIGEN_USING_STD(ceil);
-  return ceil(x);
+  return internal::nearest_integer_impl<Scalar>::run_ceil(x);
 }
 
 #if defined(SYCL_DEVICE_ONLY)

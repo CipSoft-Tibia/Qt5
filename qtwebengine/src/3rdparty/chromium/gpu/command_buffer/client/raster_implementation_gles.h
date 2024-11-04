@@ -72,10 +72,12 @@ class RASTER_EXPORT RasterImplementationGLES : public RasterInterface {
   void WritePixels(const gpu::Mailbox& dest_mailbox,
                    int dst_x_offset,
                    int dst_y_offset,
+                   int dst_plane_index,
                    GLenum texture_target,
-                   GLuint row_bytes,
-                   const SkImageInfo& src_info,
-                   const void* src_pixels) override;
+                   const SkPixmap& src_sk_pixmap) override;
+
+  void WritePixelsYUV(const gpu::Mailbox& dest_mailbox,
+                      const SkYUVAPixmaps& src_yuv_pixmap) override;
 
   void ConvertYUVAMailboxesToRGB(
       const gpu::Mailbox& dest_mailbox,
@@ -145,7 +147,7 @@ class RASTER_EXPORT RasterImplementationGLES : public RasterInterface {
       base::OnceCallback<void()> release_mailbox,
       base::OnceCallback<void(bool)> readback_done) override;
 
-  void ReadbackImagePixels(const gpu::Mailbox& source_mailbox,
+  bool ReadbackImagePixels(const gpu::Mailbox& source_mailbox,
                            const SkImageInfo& dst_info,
                            GLuint dst_row_bytes,
                            int src_x,

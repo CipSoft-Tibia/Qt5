@@ -72,7 +72,8 @@ QHttpServer::QHttpServer(QObject *parent)
     optional special arguments: \c {const QHttpServerRequest&} and
     \c {QHttpServerResponder&&}. These special arguments must be the last in
     the parameter list, but in any order, and there can be none, one, or both
-    of them present.
+    of them present. Only handlers with \c void return type can accept
+    \c {QHttpServerResponder&&} arguments.
 
     Examples:
 
@@ -92,8 +93,9 @@ QHttpServer::QHttpServer(QObject *parent)
 
     \endcode
 
-    The request handler may return \c {QFuture<QHttpServerResponse>} if
-    asynchronous processing is desired:
+    Requests are processed sequentially inside the \c {QHttpServer}'s thread
+    by default. The request handler may return \c {QFuture<QHttpServerResponse>}
+    if asynchronous processing is desired:
 
     \code
     server.route("/feature/", [] (int id) {
@@ -103,6 +105,10 @@ QHttpServer::QHttpServer(QObject *parent)
     });
     \endcode
 
+    The body of \c QFuture is executed asynchronously, but all the network
+    communication is executed sequentially.
+    \c {QHttpServerResponder&&} special argument is not available for routes
+    returning a \c {QFuture}.
 
     \sa QHttpServerRouter::addRule
 */

@@ -16,7 +16,8 @@
 #include "base/values.h"
 #include "content/browser/metrics/histogram_synchronizer.h"
 #include "content/browser/metrics/histograms_monitor.h"
-#include "content/grit/content_resources.h"
+#include "content/grit/histograms_resources.h"
+#include "content/grit/histograms_resources_map.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
@@ -28,8 +29,6 @@
 namespace content {
 namespace {
 
-const char kHistogramsUIJs[] = "histograms_internals.js";
-const char kHistogramsUICss[] = "histograms_internals.css";
 const char kHistogramsUIRequestHistograms[] = "requestHistograms";
 const char kHistogramsUIStartMonitoring[] = "startMonitoring";
 const char kHistogramsUIFetchDiff[] = "fetchDiff";
@@ -41,13 +40,13 @@ struct JsParams {
   bool include_subprocesses;
 };
 
-WebUIDataSource* CreateHistogramsHTMLSource() {
-  WebUIDataSource* source = WebUIDataSource::Create(kChromeUIHistogramHost);
+void CreateAndAddHistogramsHTMLSource(BrowserContext* browser_context) {
+  WebUIDataSource* source =
+      WebUIDataSource::CreateAndAdd(browser_context, kChromeUIHistogramHost);
 
-  source->AddResourcePath(kHistogramsUIJs, IDR_HISTOGRAMS_INTERNALS_JS);
-  source->AddResourcePath(kHistogramsUICss, IDR_HISTOGRAMS_INTERNALS_CSS);
-  source->SetDefaultResource(IDR_HISTOGRAMS_INTERNALS_HTML);
-  return source;
+  source->AddResourcePaths(
+      base::make_span(kHistogramsResources, kHistogramsResourcesSize));
+  source->SetDefaultResource(IDR_HISTOGRAMS_HISTOGRAMS_INTERNALS_HTML);
 }
 
 // This class receives javascript messages from the renderer.
@@ -80,9 +79,9 @@ class HistogramsMessageHandler : public WebUIMessageHandler {
   HistogramsMonitor histogram_monitor_;
 };
 
-HistogramsMessageHandler::HistogramsMessageHandler() {}
+HistogramsMessageHandler::HistogramsMessageHandler() = default;
 
-HistogramsMessageHandler::~HistogramsMessageHandler() {}
+HistogramsMessageHandler::~HistogramsMessageHandler() = default;
 
 JsParams HistogramsMessageHandler::AllowJavascriptAndUnpackParams(
     const base::Value::List& args_list) {
@@ -98,9 +97,14 @@ JsParams HistogramsMessageHandler::AllowJavascriptAndUnpackParams(
 }
 
 void HistogramsMessageHandler::ImportHistograms(bool include_subprocesses) {
-  base::StatisticsRecorder::ImportProvidedHistograms();
-  if (include_subprocesses)
+  if (include_subprocesses) {
+    // Synchronously fetch subprocess histograms that live in shared memory.
+    base::StatisticsRecorder::ImportProvidedHistogramsSync();
+
+    // Asynchronously fetch subprocess histograms that do not live in shared
+    // memory (e.g., they were emitted before the shared memory was set up).
     HistogramSynchronizer::FetchHistograms();
+  }
 }
 
 void HistogramsMessageHandler::HandleRequestHistograms(
@@ -165,9 +169,8 @@ HistogramsInternalsUI::HistogramsInternalsUI(WebUI* web_ui)
   web_ui->AddMessageHandler(std::make_unique<HistogramsMessageHandler>());
 
   // Set up the chrome://histograms/ source.
-  BrowserContext* browser_context =
-      web_ui->GetWebContents()->GetBrowserContext();
-  WebUIDataSource::Add(browser_context, CreateHistogramsHTMLSource());
+  CreateAndAddHistogramsHTMLSource(
+      web_ui->GetWebContents()->GetBrowserContext());
 }
 
 }  // namespace content

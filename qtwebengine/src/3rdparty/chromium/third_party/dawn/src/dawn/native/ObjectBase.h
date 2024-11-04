@@ -19,8 +19,13 @@
 #include <string>
 
 #include "dawn/common/LinkedList.h"
+#include "dawn/common/Ref.h"
 #include "dawn/common/RefCounted.h"
 #include "dawn/native/Forward.h"
+
+namespace absl {
+class FormatSink;
+}
 
 namespace dawn::native {
 
@@ -79,11 +84,14 @@ class ApiObjectBase : public ObjectBase, public LinkNode<ApiObjectBase> {
 
     ApiObjectBase(DeviceBase* device, LabelNotImplementedTag tag);
     ApiObjectBase(DeviceBase* device, const char* label);
-    ApiObjectBase(DeviceBase* device, ErrorTag tag);
+    ApiObjectBase(DeviceBase* device, ErrorTag tag, const char* label = nullptr);
     ~ApiObjectBase() override;
 
     virtual ObjectType GetType() const = 0;
+    void SetLabel(std::string label);
     const std::string& GetLabel() const;
+
+    virtual void FormatLabel(absl::FormatSink* s) const;
 
     // The ApiObjectBase is considered alive if it is tracked in a respective linked list owned
     // by the owning device.
@@ -107,6 +115,7 @@ class ApiObjectBase : public ObjectBase, public LinkNode<ApiObjectBase> {
     // and they should ensure that their overriding versions call this underlying version
     // somewhere.
     void DeleteThis() override;
+    void LockAndDeleteThis() override;
 
     // Returns the list where this object may be tracked for future destruction. This can be
     // overrided to create hierarchical object tracking ownership:

@@ -9,7 +9,7 @@
 
 #include <QtMultimedia/qtmultimediaglobal.h>
 
-#include <QtMultimedia/qaudio.h>
+#include <QtMultimedia/qtaudio.h>
 #include <QtMultimedia/qaudioformat.h>
 #include <QtMultimedia/qaudiodevice.h>
 
@@ -49,14 +49,19 @@ public:
     qint64 processedUSecs() const;
     qint64 elapsedUSecs() const;
 
-    QAudio::Error error() const;
-    QAudio::State state() const;
+    QtAudio::Error error() const;
+    QtAudio::State state() const;
 
     void setVolume(qreal);
     qreal volume() const;
 
 Q_SIGNALS:
+#if defined(Q_QDOC)
+    void stateChanged(QtAudio::State state);
+#else
+    // use QAudio here to keep string-based connections working
     void stateChanged(QAudio::State state);
+#endif
 
 private:
     Q_DISABLE_COPY(QAudioSink)

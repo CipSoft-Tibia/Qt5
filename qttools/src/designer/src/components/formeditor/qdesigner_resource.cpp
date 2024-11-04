@@ -5,6 +5,7 @@
 #include "formwindow.h"
 #include "dynamicpropertysheet.h"
 #include "qdesigner_tabwidget_p.h"
+#include "iconloader_p.h"
 #include "qdesigner_toolbox_p.h"
 #include "qdesigner_stackedbox_p.h"
 #include "qdesigner_toolbar_p.h"
@@ -17,6 +18,8 @@
 #include "qwizard_container.h"
 #include "layout_propertysheet.h"
 
+#include <QtDesigner/abstractformeditor.h>
+#include <QtDesigner/abstractintegration.h>
 #include <QtDesigner/private/ui4_p.h>
 #include <QtDesigner/private/formbuilderextra_p.h>
 #include <QtDesigner/private/resourcebuilder_p.h>
@@ -72,8 +75,10 @@
 
 #include <QtCore/qbuffer.h>
 #include <QtCore/qdir.h>
+#include <QtCore/qlibraryinfo.h>
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qdebug.h>
+#include <QtCore/qversionnumber.h>
 #include <QtCore/qxmlstream.h>
 
 #include <algorithm>
@@ -91,12 +96,46 @@ namespace {
     using DomPropertyList = QList<DomProperty *>;
 }
 
-static const char currentUiVersion[] = "4.0";
-static const char clipboardObjectName[] = "__qt_fake_top_level";
+static constexpr auto currentUiVersion = "4.0"_L1;
+static constexpr auto clipboardObjectName = "__qt_fake_top_level"_L1;
 
 #define OLD_RESOURCE_FORMAT // Support pre 4.4 format.
 
 namespace qdesigner_internal {
+
+static QVersionNumber qtVersion(const QDesignerFormEditorInterface *core)
+{
+    const QVariant v = core->integration()->property("qtVersion");
+    return v.isValid() && v.canConvert<QVersionNumber>()
+           ? v.value<QVersionNumber>() : QLibraryInfo::version();
+}
+
+static bool supportsQualifiedEnums(const QVersionNumber &qtVersion)
+{
+    if (qtVersion >= QVersionNumber{6, 6, 2})
+        return true;
+
+    switch (qtVersion.majorVersion()) {
+    case 6: // Qt 6
+        switch (qtVersion.minorVersion()) {
+        case 5: // 6.5 LTS
+            if (qtVersion.microVersion() >= 4)
+                return true;
+            break;
+        case 2: // 6.2 LTS
+            if (qtVersion.microVersion() >= 13)
+                return true;
+            break;
+        }
+        break;
+
+    case 5: // Qt 5 LTS
+        if (qtVersion >= QVersionNumber{5, 15, 18})
+            return true;
+        break;
+    }
+    return false;
+}
 
 // -------------------- QDesignerResourceBuilder: A resource builder that works on the property sheet icon types.
 class QDesignerResourceBuilder : public QResourceBuilder
@@ -173,8 +212,15 @@ QVariant QDesignerResourceBuilder::loadResource(const QDir &workingDirectory, co
             PropertySheetIconValue icon;
             DomResourceIcon *di = property->elementIconSet();
             const bool hasTheme = di->hasAttributeTheme();
-            if (hasTheme)
-                icon.setTheme(di->attributeTheme());
+            if (hasTheme) {
+                const QString &theme = di->attributeTheme();
+                const qsizetype themeEnum = theme.startsWith("QIcon::"_L1)
+                    ? QDesignerResourceBuilder::themeIconIndex(theme) : -1;
+                if (themeEnum != -1)
+                    icon.setThemeEnum(themeEnum);
+                else
+                    icon.setTheme(theme);
+            }
             if (const int flags = iconStateFlags(di)) { // new, post 4.4 format
                 if (flags & NormalOff)
                     setIconPixmap(QIcon::Normal, QIcon::Off, workingDirectory, di->elementNormalOff()->text(), icon, m_lang);
@@ -250,8 +296,10 @@ DomProperty *QDesignerResourceBuilder::saveResource(const QDir &workingDirectory
     }
     if (value.canConvert<PropertySheetIconValue>()) {
         const PropertySheetIconValue icon = qvariant_cast<PropertySheetIconValue>(value);
-        const QMap<QPair<QIcon::Mode, QIcon::State>, PropertySheetPixmapValue> pixmaps = icon.paths();
-        const QString theme = icon.theme();
+        const auto &pixmaps = icon.paths();
+        const int themeEnum = icon.themeEnum();
+        const QString theme = themeEnum != -1
+            ? QDesignerResourceBuilder::fullyQualifiedThemeIconName(themeEnum) : icon.theme();
         if (!pixmaps.isEmpty() || !theme.isEmpty()) {
             DomResourceIcon *ri = new DomResourceIcon;
             if (!theme.isEmpty())
@@ -452,6 +500,10 @@ static inline QString messageBoxTitle()
 
 void QDesignerResource::save(QIODevice *dev, QWidget *widget)
 {
+    // Do not write fully qualified enumerations for spacer/line orientations
+    // and other enum/flag properties for older Qt versions since that breaks
+    // older uic.
+    d->m_fullyQualifiedEnums = supportsQualifiedEnums(qtVersion(m_formWindow->core()));
     QAbstractFormBuilder::save(dev, widget);
 }
 
@@ -1679,7 +1731,7 @@ DomUI *QDesignerResource::copy(const FormBuilderClipboard &selection)
     m_copyWidget = true;
 
     DomWidget *ui_widget = new DomWidget();
-    ui_widget->setAttributeName(QLatin1StringView(clipboardObjectName));
+    ui_widget->setAttributeName(clipboardObjectName);
     bool hasItems = false;
     // Widgets
     if (!selection.m_widgets.isEmpty()) {
@@ -1718,7 +1770,7 @@ DomUI *QDesignerResource::copy(const FormBuilderClipboard &selection)
     }
     // UI
     DomUI *ui = new DomUI();
-    ui->setAttributeVersion(QLatin1StringView(currentUiVersion));
+    ui->setAttributeVersion(currentUiVersion);
     ui->setElementWidget(ui_widget);
     ui->setElementResources(saveResources(m_resourceBuilder->usedQrcFiles()));
     if (DomCustomWidgets *cws = saveCustomWidgets())
@@ -1948,7 +2000,9 @@ DomProperty *QDesignerResource::createProperty(QObject *object, const QString &p
 
     if (value.canConvert<PropertySheetFlagValue>()) {
         const PropertySheetFlagValue f = qvariant_cast<PropertySheetFlagValue>(value);
-        const QString flagString = f.metaFlags.toString(f.value, DesignerMetaFlags::FullyQualified);
+        const auto mode = d->m_fullyQualifiedEnums
+                          ? DesignerMetaFlags::FullyQualified : DesignerMetaFlags::Qualified;
+        const QString flagString = f.metaFlags.toString(f.value, mode);
         if (flagString.isEmpty())
             return nullptr;
 
@@ -1962,8 +2016,10 @@ DomProperty *QDesignerResource::createProperty(QObject *object, const QString &p
     }
     if (value.canConvert<PropertySheetEnumValue>()) {
         const PropertySheetEnumValue e = qvariant_cast<PropertySheetEnumValue>(value);
+        const auto mode = d->m_fullyQualifiedEnums
+                          ? DesignerMetaEnum::FullyQualified : DesignerMetaEnum::Qualified;
         bool ok;
-        const QString id = e.metaEnum.toString(e.value, DesignerMetaEnum::FullyQualified, &ok);
+        const QString id = e.metaEnum.toString(e.value, mode, &ok);
         if (!ok)
             designerWarning(e.metaEnum.messageToStringFailed(e.value));
         if (id.isEmpty())

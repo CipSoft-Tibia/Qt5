@@ -178,7 +178,8 @@ PermissionsManager* PermissionsManagerFactory::GetForBrowserContext(
 
 content::BrowserContext* PermissionsManagerFactory::GetBrowserContextToUse(
     content::BrowserContext* browser_context) const {
-  return ExtensionsBrowserClient::Get()->GetOriginalContext(browser_context);
+  return ExtensionsBrowserClient::Get()->GetContextRedirectedToOriginal(
+      browser_context, /*force_guest_profile=*/true);
 }
 
 KeyedService* PermissionsManagerFactory::BuildServiceInstanceFor(
@@ -233,9 +234,8 @@ void PermissionsManager::RegisterProfilePrefs(
   registry->RegisterDictionaryPref(kUserPermissions.name);
 }
 
-void PermissionsManager::UpdateUserSiteSetting(
-    const url::Origin& origin,
-    PermissionsManager::UserSiteSetting site_setting) {
+void PermissionsManager::UpdateUserSiteSetting(const url::Origin& origin,
+                                               UserSiteSetting site_setting) {
   switch (site_setting) {
     case UserSiteSetting::kGrantAllExtensions:
       // Granting access to all extensions is allowed iff feature is
@@ -336,15 +336,29 @@ PermissionsManager::GetUserPermissionsSettings() const {
 
 PermissionsManager::UserSiteSetting PermissionsManager::GetUserSiteSetting(
     const url::Origin& origin) const {
-  if (user_permissions_.permitted_sites.find(origin) !=
-      user_permissions_.permitted_sites.end()) {
+  if (base::Contains(user_permissions_.permitted_sites, origin)) {
     return UserSiteSetting::kGrantAllExtensions;
   }
-  if (user_permissions_.restricted_sites.find(origin) !=
-      user_permissions_.restricted_sites.end()) {
+  if (base::Contains(user_permissions_.restricted_sites, origin)) {
     return UserSiteSetting::kBlockAllExtensions;
   }
   return UserSiteSetting::kCustomizeByExtension;
+}
+
+PermissionsManager::UserSiteAccess PermissionsManager::GetUserSiteAccess(
+    const Extension& extension,
+    const GURL& gurl) const {
+  DCHECK(
+      !extension.permissions_data()->IsRestrictedUrl(gurl, /*error=*/nullptr));
+
+  ExtensionSiteAccess site_access = GetSiteAccess(extension, gurl);
+  if (site_access.has_all_sites_access) {
+    return UserSiteAccess::kOnAllSites;
+  }
+  if (site_access.has_site_access) {
+    return UserSiteAccess::kOnSite;
+  }
+  return UserSiteAccess::kOnClick;
 }
 
 PermissionsManager::ExtensionSiteAccess PermissionsManager::GetSiteAccess(
@@ -352,9 +366,10 @@ PermissionsManager::ExtensionSiteAccess PermissionsManager::GetSiteAccess(
     const GURL& url) const {
   PermissionsManager::ExtensionSiteAccess extension_access;
 
-  // Extension that cannot be affected by host permissions has no access.
-  if (!CanAffectExtension(extension))
+  // Extension that doesn't request host permission has no access.
+  if (!ExtensionRequestsHostPermissionsOrActiveTab(extension)) {
     return extension_access;
+  }
 
   // Awkward holder object because permission sets are immutable, and when
   // return from prefs, ownership is passed.
@@ -419,6 +434,18 @@ PermissionsManager::ExtensionSiteAccess PermissionsManager::GetSiteAccess(
   return extension_access;
 }
 
+bool PermissionsManager::ExtensionRequestsHostPermissionsOrActiveTab(
+    const Extension& extension) const {
+  auto has_hosts_or_active_tab = [](const PermissionSet& permissions) {
+    return !permissions.effective_hosts().is_empty() ||
+           permissions.HasAPIPermission(mojom::APIPermissionID::kActiveTab);
+  };
+  return has_hosts_or_active_tab(
+             PermissionsParser::GetRequiredPermissions(&extension)) ||
+         has_hosts_or_active_tab(
+             PermissionsParser::GetOptionalPermissions(&extension));
+}
+
 bool PermissionsManager::CanAffectExtension(const Extension& extension) const {
   // Certain extensions are always exempt from having permissions withheld.
   if (!util::CanWithholdPermissionsFromExtension(extension))
@@ -426,8 +453,50 @@ bool PermissionsManager::CanAffectExtension(const Extension& extension) const {
 
   // The extension can be affected by runtime host permissions if it requests
   // host permissions.
-  return !PermissionsParser::GetRequiredPermissions(&extension).IsEmpty() ||
-         !PermissionsParser::GetOptionalPermissions(&extension).IsEmpty();
+  return ExtensionRequestsHostPermissionsOrActiveTab(extension);
+}
+
+bool PermissionsManager::CanUserSelectSiteAccess(
+    const Extension& extension,
+    const GURL& url,
+    UserSiteAccess site_access) const {
+  // Extensions cannot run on sites restricted to them (ever), so no type of
+  // site access is selectable.
+  if (extension.permissions_data()->IsRestrictedUrl(url, /*error=*/nullptr)) {
+    return false;
+  }
+
+  // The "on click" option is enabled if the extension has active tab,
+  // regardless of its granted host permissions.
+  if (site_access == PermissionsManager::UserSiteAccess::kOnClick &&
+      HasActiveTabAndCanAccess(extension, url)) {
+    return true;
+  }
+
+  if (!CanAffectExtension(extension)) {
+    return false;
+  }
+
+  PermissionsManager::ExtensionSiteAccess extension_access =
+      GetSiteAccess(extension, url);
+  switch (site_access) {
+    case UserSiteAccess::kOnClick:
+      // The "on click" option is only enabled if the extension has active tab,
+      // previously handled, or wants to always run on the site without user
+      // interaction.
+      return extension_access.has_site_access ||
+             extension_access.withheld_site_access;
+    case UserSiteAccess::kOnSite:
+      // The "on site" option is only enabled if the extension wants to
+      // always run on the site without user interaction.
+      return extension_access.has_site_access ||
+             extension_access.withheld_site_access;
+    case UserSiteAccess::kOnAllSites:
+      // The "on all sites" option is only enabled if the extension wants to be
+      // able to run everywhere.
+      return extension_access.has_all_sites_access ||
+             extension_access.withheld_all_sites_access;
+  }
 }
 
 bool PermissionsManager::HasGrantedHostPermission(const Extension& extension,
@@ -449,8 +518,17 @@ bool PermissionsManager::HasBroadGrantedHostPermissions(
 
 bool PermissionsManager::HasWithheldHostPermissions(
     const Extension& extension) const {
-  DCHECK(CanAffectExtension(extension));
   return extension_prefs_->GetWithholdingPermissions(extension.id());
+}
+
+bool PermissionsManager::HasActiveTabAndCanAccess(const Extension& extension,
+                                                  const GURL& url) const {
+  return extension.permissions_data()->HasAPIPermission(
+             mojom::APIPermissionID::kActiveTab) &&
+         !extension.permissions_data()->IsRestrictedUrl(url,
+                                                        /*error=*/nullptr) &&
+         (!url.SchemeIsFile() ||
+          util::AllowFileAccess(extension.id(), browser_context_));
 }
 
 std::unique_ptr<PermissionSet>
@@ -575,8 +653,9 @@ PermissionsManager::GetEffectivePermissionsToGrant(
     return desired_permissions.Clone();
   }
 
-  if (desired_permissions.effective_hosts().is_empty())
+  if (desired_permissions.effective_hosts().is_empty()) {
     return desired_permissions.Clone();  // No hosts to withhold.
+  }
 
   // Determine if we should withhold host permissions. This is different for
   // extensions that are being newly-installed and extensions that have already
@@ -671,12 +750,36 @@ PermissionsManager::GetRevokablePermissions(const Extension& extension) const {
                                          unrevokable_permissions);
 }
 
+std::unique_ptr<const PermissionSet>
+PermissionsManager::GetExtensionGrantedPermissions(
+    const Extension& extension) const {
+  // Some extensions such as policy installed extensions, have active
+  // permissions that are always granted and do not store their permissions in
+  // `GetGrantedPermissions()`. Instead, retrieve their permissions through
+  // their permissions data directly.
+  if (!CanAffectExtension(extension)) {
+    return extension.permissions_data()->active_permissions().Clone();
+  }
+
+  return HasWithheldHostPermissions(extension)
+             ? extension_prefs_->GetRuntimeGrantedPermissions(extension.id())
+             : extension_prefs_->GetGrantedPermissions(extension.id());
+}
+
 void PermissionsManager::NotifyExtensionPermissionsUpdated(
     const Extension& extension,
     const PermissionSet& permissions,
     UpdateReason reason) {
   for (Observer& observer : observers_) {
     observer.OnExtensionPermissionsUpdated(extension, permissions, reason);
+  }
+}
+
+void PermissionsManager::NotifyExtensionDismissedRequests(
+    const extensions::ExtensionId& extension_id,
+    const url::Origin& origin) {
+  for (Observer& observer : observers_) {
+    observer.OnExtensionDismissedRequests(extension_id, origin);
   }
 }
 
@@ -710,7 +813,7 @@ void PermissionsManager::OnUserPermissionsSettingsChanged() {
   // accurate.
   ExtensionRegistry* registry = ExtensionRegistry::Get(browser_context_);
   auto all_extensions = registry->GenerateInstalledExtensionsSet();
-  for (const auto& extension : *all_extensions) {
+  for (const auto& extension : all_extensions) {
     UpdatePermissionsWithUserSettings(*extension, user_allowed_set);
   }
 
@@ -758,7 +861,7 @@ void PermissionsManager::OnUserPermissionsSettingsChanged() {
   // effect in the network layer.
   NetworkPermissionsUpdater::UpdateAllExtensions(
       *browser_context_,
-      base::BindOnce(&PermissionsManager::NotifyObserversOfChange,
+      base::BindOnce(&PermissionsManager::NotifyUserPermissionSettingsChanged,
                      weak_factory_.GetWeakPtr()));
 }
 
@@ -780,9 +883,19 @@ bool PermissionsManager::RemoveRestrictedSiteAndUpdatePrefs(
   return removed_site;
 }
 
-void PermissionsManager::NotifyObserversOfChange() {
-  for (auto& observer : observers_)
+void PermissionsManager::NotifyUserPermissionSettingsChanged() {
+  for (auto& observer : observers_) {
     observer.OnUserPermissionsSettingsChanged(GetUserPermissionsSettings());
+  }
+}
+
+void PermissionsManager::NotifyShowAccessRequestsInToolbarChanged(
+    const extensions::ExtensionId& extension_id,
+    bool can_show_requests) {
+  for (auto& observer : observers_) {
+    observer.OnShowAccessRequestsInToolbarChanged(extension_id,
+                                                  can_show_requests);
+  }
 }
 
 }  // namespace extensions

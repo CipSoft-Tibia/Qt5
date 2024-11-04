@@ -12,9 +12,9 @@
 #include "base/functional/callback_helpers.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/numerics/checked_math.h"
+#include "base/task/bind_post_task.h"
 #include "base/time/time.h"
 #include "components/viz/common/gpu/raster_context_provider.h"
-#include "media/base/bind_to_current_loop.h"
 #include "media/base/limits.h"
 #include "media/base/timestamp_constants.h"
 #include "media/base/video_frame.h"
@@ -79,11 +79,6 @@ struct CrossThreadCopier<blink::VideoFrameLayout>
 namespace blink {
 
 namespace {
-
-// Controls if VideoFrame.copyTo() reads GPU frames asynchronously
-BASE_FEATURE(kVideoFrameAsyncCopyTo,
-             "VideoFrameAsyncCopyTo",
-             base::FEATURE_ENABLED_BY_DEFAULT);
 
 media::VideoPixelFormat ToMediaPixelFormat(V8VideoPixelFormat::Enum fmt) {
   switch (fmt) {
@@ -355,9 +350,6 @@ absl::optional<media::VideoPixelFormat> CopyToFormat(
   if (!(mappable || texturable))
     return absl::nullopt;
 
-  const size_t num_planes =
-      mappable ? frame.layout().num_planes() : frame.NumTextures();
-
   // The |frame|.BitDepth() restriction is to avoid treating a P016LE frame as a
   // low-bit depth frame.
   if (!mappable && frame.RequiresExternalSampler() && frame.BitDepth() == 8u) {
@@ -380,10 +372,22 @@ absl::optional<media::VideoPixelFormat> CopyToFormat(
       return absl::nullopt;
   }
 
-  // Make sure layout() is as expected before committing to being able to read
-  // back pixels.
-  if (num_planes != media::VideoFrame::NumPlanes(frame.format()))
+  if (mappable) {
+    DCHECK_EQ(frame.layout().num_planes(),
+              media::VideoFrame::NumPlanes(frame.format()));
+    return frame.format();
+  }
+
+  // Per-plane readback is not possible for multiplanar SI with external
+  // sampling. Similarly, for legacy shared image formats, readback is only
+  // possible when planes and textures are 1:1.
+  auto format_type = frame.shared_image_format_type();
+  if (format_type ==
+          media::SharedImageFormatType::kSharedImageFormatExternalSampler ||
+      (format_type == media::SharedImageFormatType::kLegacy &&
+       frame.NumTextures() != media::VideoFrame::NumPlanes(frame.format()))) {
     return absl::nullopt;
+  }
 
   return frame.format();
 }
@@ -436,7 +440,7 @@ bool CopyTexturablePlanes(media::VideoFrame& src_frame,
     uint8_t* dest_pixels = dest_buffer.data() + dest_layout.Offset(i);
     if (!media::ReadbackTexturePlaneToMemorySync(
             src_frame, i, plane_src_rect, dest_pixels, dest_layout.Stride(i),
-            ri, gr_context)) {
+            ri, gr_context, provider->GetCapabilities())) {
       // It's possible to fail after copying some but not all planes, leaving
       // the output buffer in a corrupt state D:
       return false;
@@ -654,7 +658,9 @@ VideoFrame* VideoFrame::Create(ScriptState* script_state,
       image_source->ElementSize(gfx::SizeF(), kRespectImageOrientation);
 
   SourceImageStatus status = kInvalidSourceImageStatus;
-  auto image = image_source->GetSourceImageForCanvas(&status, source_size);
+  auto image = image_source->GetSourceImageForCanvas(
+      CanvasResourceProvider::FlushReason::kCreateVideoFrame, &status,
+      source_size);
   if (!image || status != kNormalSourceImageStatus) {
     exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
                                       "Invalid source state");
@@ -706,8 +712,8 @@ VideoFrame* VideoFrame::Create(ScriptState* script_state,
 
     // The sync token needs to be updated when |frame| is released, but
     // AcceleratedStaticBitmapImage::UpdateSyncToken() is not thread-safe.
-    auto release_cb =
-        media::BindToCurrentLoop(ConvertToBaseOnceCallback(CrossThreadBindOnce(
+    auto release_cb = base::BindPostTaskToCurrentDefault(
+        ConvertToBaseOnceCallback(CrossThreadBindOnce(
             [](scoped_refptr<Image> image, const gpu::SyncToken& sync_token) {
               static_cast<StaticBitmapImage*>(image.get())
                   ->UpdateSyncToken(sync_token);
@@ -950,10 +956,10 @@ uint32_t VideoFrame::codedHeight() const {
   return local_frame->coded_size().height();
 }
 
-absl::optional<DOMRectReadOnly*> VideoFrame::codedRect() {
+DOMRectReadOnly* VideoFrame::codedRect() {
   auto local_frame = handle_->frame();
   if (!local_frame)
-    return absl::nullopt;
+    return nullptr;
 
   if (!coded_rect_) {
     coded_rect_ = MakeGarbageCollected<DOMRectReadOnly>(
@@ -963,10 +969,10 @@ absl::optional<DOMRectReadOnly*> VideoFrame::codedRect() {
   return coded_rect_;
 }
 
-absl::optional<DOMRectReadOnly*> VideoFrame::visibleRect() {
+DOMRectReadOnly* VideoFrame::visibleRect() {
   auto local_frame = handle_->frame();
   if (!local_frame)
-    return absl::nullopt;
+    return nullptr;
 
   if (!visible_rect_) {
     visible_rect_ = MakeGarbageCollected<DOMRectReadOnly>(
@@ -1126,11 +1132,9 @@ ScriptPromise VideoFrame::copyTo(ScriptState* script_state,
   } else {
     DCHECK(local_frame->HasTextures());
 
-    if (base::FeatureList::IsEnabled(kVideoFrameAsyncCopyTo)) {
-      if (auto* resolver = CopyToAsync(script_state, local_frame, src_rect,
-                                       destination, dest_layout)) {
-        return resolver->Promise();
-      }
+    if (auto* resolver = CopyToAsync(script_state, local_frame, src_rect,
+                                     destination, dest_layout)) {
+      return resolver->Promise();
     }
 
     if (!CopyTexturablePlanes(*local_frame, src_rect, dest_layout, buffer)) {
@@ -1164,6 +1168,7 @@ VideoFrame* VideoFrame::clone(ExceptionState& exception_state) {
 }
 
 scoped_refptr<Image> VideoFrame::GetSourceImageForCanvas(
+    CanvasResourceProvider::FlushReason,
     SourceImageStatus* status,
     const gfx::SizeF&,
     const AlphaDisposition alpha_disposition) {

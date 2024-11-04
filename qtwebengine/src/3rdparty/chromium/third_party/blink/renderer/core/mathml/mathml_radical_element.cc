@@ -17,11 +17,10 @@ bool MathMLRadicalElement::HasIndex() const {
 }
 
 LayoutObject* MathMLRadicalElement::CreateLayoutObject(
-    const ComputedStyle& style,
-    LegacyLayout legacy) {
-  if (!RuntimeEnabledFeatures::MathMLCoreEnabled() ||
-      !style.IsDisplayMathType() || legacy == LegacyLayout::kForce)
-    return MathMLElement::CreateLayoutObject(style, legacy);
+    const ComputedStyle& style) {
+  if (!style.IsDisplayMathType()) {
+    return MathMLElement::CreateLayoutObject(style);
+  }
   if (HasTagName(mathml_names::kMsqrtTag))
     return MakeGarbageCollected<LayoutNGMathMLBlockWithAnonymousMrow>(this);
   return MakeGarbageCollected<LayoutNGMathMLBlock>(this);

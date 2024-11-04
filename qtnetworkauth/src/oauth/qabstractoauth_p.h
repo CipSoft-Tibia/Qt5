@@ -32,6 +32,8 @@
 #include <QtNetwork/qtcpserver.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 class QUrlQuery;

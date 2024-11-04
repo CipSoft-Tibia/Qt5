@@ -125,6 +125,7 @@ class COMPONENT_EXPORT(DEVICE_FIDO) FidoDeviceAuthenticator
 
   void Reset(ResetCallback callback) override;
   void Cancel() override;
+  AuthenticatorType GetType() const override;
   std::string GetId() const override;
   std::string GetDisplayName() const override;
   ProtocolVersion SupportedProtocol() const override;
@@ -268,10 +269,6 @@ class COMPONENT_EXPORT(DEVICE_FIDO) FidoDeviceAuthenticator
       base::OnceCallback<void(CtapDeviceResponseCode)> callback,
       CtapDeviceResponseCode status,
       absl::optional<LargeBlobArrayReader> large_blob_array_reader);
-  void OnWriteLargeBlobForGetAssertion(
-      AuthenticatorGetAssertionResponse response,
-      GetAssertionCallback callback,
-      CtapDeviceResponseCode status);
 
   template <typename... Args>
   void TaskClearProxy(base::OnceCallback<void(Args...)> callback, Args... args);

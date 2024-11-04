@@ -15,7 +15,6 @@
 
 #include "testservice.qpb.h"
 
-
 namespace qtgrpc::tests {
 namespace TestService {
 
@@ -25,11 +24,14 @@ class  Client : public QAbstractGrpcClient
 
 public:
     explicit Client(QObject *parent = nullptr);
-    QGrpcStatus testMethod(const qtgrpc::tests::SimpleStringMessage &arg, qtgrpc::tests::SimpleStringMessage *ret, const QGrpcCallOptions &options = {});
     std::shared_ptr<QGrpcCallReply> testMethod(const qtgrpc::tests::SimpleStringMessage &arg, const QGrpcCallOptions &options = {});
     Q_INVOKABLE void testMethod(const qtgrpc::tests::SimpleStringMessage &arg, const QObject *context, const std::function<void(std::shared_ptr<QGrpcCallReply>)> &callback, const QGrpcCallOptions &options = {});
 
-    std::shared_ptr<QGrpcStream> streamTestMethodServerStream(const qtgrpc::tests::SimpleStringMessage &arg, const QGrpcCallOptions &options = {});
+    std::shared_ptr<QGrpcServerStream> streamTestMethodServerStream(const qtgrpc::tests::SimpleStringMessage &arg, const QGrpcCallOptions &options = {});
+
+    std::shared_ptr<QGrpcClientStream> streamTestMethodClientStream(const qtgrpc::tests::SimpleStringMessage &arg, const QGrpcCallOptions &options = {});
+
+    std::shared_ptr<QGrpcBidirStream> streamTestMethodBiStream(const qtgrpc::tests::SimpleStringMessage &arg, const QGrpcCallOptions &options = {});
 
 
 };

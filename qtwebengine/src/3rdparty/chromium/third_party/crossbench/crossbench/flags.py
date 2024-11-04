@@ -5,7 +5,8 @@
 from __future__ import annotations
 
 import collections
-from typing import (Dict, Final, Generator, Iterable, Optional, Set, Tuple,
+import logging
+from typing import (Dict, Final, Iterable, Iterator, Optional, Set, Tuple,
                     Union)
 
 
@@ -26,7 +27,7 @@ class Flags(collections.UserDict):
       return (flag_name, flag_value)
     return (flag_str, None)
 
-  def __init__(self, initial_data: Flags.InitialDataType = None):
+  def __init__(self, initial_data: Flags.InitialDataType = None) -> None:
     super().__init__(initial_data)
 
   def __setitem__(self, flag_name: str, flag_value: Optional[str]) -> None:
@@ -84,7 +85,7 @@ class Flags(collections.UserDict):
       return flag_name
     return f"{flag_name}={value}"
 
-  def get_list(self) -> Generator[str, None, None]:
+  def get_list(self) -> Iterator[str]:
     return (k if v is None else f"{k}={v}" for k, v in self.items())
 
   def __str__(self) -> str:
@@ -99,16 +100,21 @@ class JSFlags(Flags):
   """
   _NO_PREFIX = "--no"
 
+  def copy(self) -> JSFlags:
+    return self.__class__(self)
+
   def _set(self,
            flag_name: str,
            flag_value: Optional[str] = None,
            override: bool = False) -> None:
     if flag_value is not None:
-      assert "," not in flag_value, (
-          "Comma in flag value, flag escaping for chrome's "
-          f"--js-flag might not work: {flag_name}={flag_value}")
-    assert flag_name.startswith("--"), (
-        f"Only long-form flag names allowed: got '{flag_name}'")
+      if "," in flag_value:
+        raise ValueError(
+            "--js-flags: Comma in V8 flag value, flag escaping for chrome's "
+            f"--js-flags might not work: {flag_name}={flag_value}")
+    if not flag_name.startswith("--"):
+      raise ValueError("--js-flags: Only long-form flag names allowed, "
+                       f"but got '{flag_name}'")
     self._check_negated_flag(flag_name, override)
     super()._set(flag_name, flag_value, override)
 
@@ -152,14 +158,14 @@ class ChromeFlags(Flags):
   """
   _JS_FLAG = "--js-flags"
 
-  def __init__(self, initial_data: Flags.InitialDataType = None):
+  def __init__(self, initial_data: Flags.InitialDataType = None) -> None:
     self._features = ChromeFeatures()
     self._js_flags = JSFlags()
     super().__init__(initial_data)
 
   def _set(self,
            flag_name: str,
-           flag_value: Optional[str],
+           flag_value: Optional[str] = None,
            override: bool = False) -> None:
     # pylint: disable=signature-differs
     if flag_name == ChromeFeatures.ENABLE_FLAG:
@@ -181,7 +187,19 @@ class ChromeFlags(Flags):
         new_js_flags.set(js_flag_name, js_flag_value, override=override)
       self._js_flags.update(new_js_flags)
     else:
+      self._verify_flag(flag_name, flag_value)
       super()._set(flag_name, flag_value, override)
+
+  def _verify_flag(self, name: str, value: Optional[str]) -> None:
+    if name == "--enable-feature":
+      logging.error(
+          "Potentially misspelled flag: '%s'. "
+          "Did you mean to use --enable-features, with an 's'?", name)
+    elif name == "--disable-feature":
+      logging.error(
+          "Potentially misspelled flag:  '%s'. "
+          "Did you mean to use --disable-features, with an 's'?", name)
+    del value
 
   @property
   def features(self) -> ChromeFeatures:
@@ -212,7 +230,7 @@ class ChromeFeatures:
   ENABLE_FLAG: Final[str] = "--enable-features"
   DISABLE_FLAG: Final[str] = "--disable-features"
 
-  def __init__(self):
+  def __init__(self) -> None:
     self._enabled: Dict[str, Optional[str]] = {}
     # Use dict as ordered set.
     self._disabled: Dict[str, None] = {}

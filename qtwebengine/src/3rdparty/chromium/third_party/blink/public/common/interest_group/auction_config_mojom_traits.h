@@ -10,9 +10,11 @@
 
 #include "base/containers/flat_map.h"
 #include "base/time/time.h"
+#include "base/uuid.h"
 #include "third_party/abseil-cpp/absl/numeric/int128.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/common_export.h"
+#include "third_party/blink/public/common/interest_group/ad_auction_currencies.h"
 #include "third_party/blink/public/common/interest_group/auction_config.h"
 #include "third_party/blink/public/mojom/interest_group/interest_group_types.mojom-shared.h"
 
@@ -148,6 +150,43 @@ struct BLINK_COMMON_EXPORT
           blink::AuctionConfig::MaybePromiseBuyerTimeouts> {};
 
 template <>
+struct BLINK_COMMON_EXPORT
+    StructTraits<blink::mojom::AdCurrencyDataView, blink::AdCurrency> {
+  static const std::string& currency_code(const blink::AdCurrency& params) {
+    return params.currency_code();
+  }
+
+  static bool Read(blink::mojom::AdCurrencyDataView data,
+                   blink::AdCurrency* out);
+};
+
+template <>
+struct BLINK_COMMON_EXPORT
+    StructTraits<blink::mojom::AuctionAdConfigBuyerCurrenciesDataView,
+                 blink::AuctionConfig::BuyerCurrencies> {
+  static const absl::optional<base::flat_map<url::Origin, blink::AdCurrency>>&
+  per_buyer_currencies(const blink::AuctionConfig::BuyerCurrencies& params) {
+    return params.per_buyer_currencies;
+  }
+
+  static const absl::optional<blink::AdCurrency>& all_buyers_currency(
+      const blink::AuctionConfig::BuyerCurrencies& params) {
+    return params.all_buyers_currency;
+  }
+
+  static bool Read(blink::mojom::AuctionAdConfigBuyerCurrenciesDataView data,
+                   blink::AuctionConfig::BuyerCurrencies* out);
+};
+
+template <>
+struct BLINK_COMMON_EXPORT UnionTraits<
+    blink::mojom::AuctionAdConfigMaybePromiseBuyerCurrenciesDataView,
+    blink::AuctionConfig::MaybePromiseBuyerCurrencies>
+    : public AdConfigMaybePromiseTraitsHelper<
+          blink::mojom::AuctionAdConfigMaybePromiseBuyerCurrenciesDataView,
+          blink::AuctionConfig::MaybePromiseBuyerCurrencies> {};
+
+template <>
 struct BLINK_COMMON_EXPORT UnionTraits<
     blink::mojom::AuctionAdConfigMaybePromiseDirectFromSellerSignalsDataView,
     blink::AuctionConfig::MaybePromiseDirectFromSellerSignals>
@@ -175,6 +214,19 @@ struct BLINK_COMMON_EXPORT StructTraits<
   static bool Read(
       blink::mojom::AuctionReportBuyersConfigDataView data,
       blink::AuctionConfig::NonSharedParams::AuctionReportBuyersConfig* out);
+};
+
+template <>
+struct BLINK_COMMON_EXPORT
+    StructTraits<blink::mojom::AuctionAdServerResponseConfigDataView,
+                 blink::AuctionConfig::ServerResponseConfig> {
+  static const base::Uuid& request_id(
+      const blink::AuctionConfig::ServerResponseConfig& params) {
+    return params.request_id;
+  }
+
+  static bool Read(blink::mojom::AuctionAdServerResponseConfigDataView data,
+                   blink::AuctionConfig::ServerResponseConfig* out);
 };
 
 template <>
@@ -209,6 +261,16 @@ struct BLINK_COMMON_EXPORT
   static const blink::AuctionConfig::MaybePromiseBuyerTimeouts& buyer_timeouts(
       const blink::AuctionConfig::NonSharedParams& params) {
     return params.buyer_timeouts;
+  }
+
+  static const absl::optional<blink::AdCurrency>& seller_currency(
+      const blink::AuctionConfig::NonSharedParams& params) {
+    return params.seller_currency;
+  }
+
+  static const blink::AuctionConfig::MaybePromiseBuyerCurrencies&
+  buyer_currencies(const blink::AuctionConfig::NonSharedParams& params) {
+    return params.buyer_currencies;
   }
 
   static const blink::AuctionConfig::MaybePromiseBuyerTimeouts&
@@ -253,6 +315,21 @@ struct BLINK_COMMON_EXPORT
     return params.auction_report_buyers;
   }
 
+  static const blink::SellerCapabilitiesType required_seller_capabilities(
+      const blink::AuctionConfig::NonSharedParams& params) {
+    return params.required_seller_capabilities;
+  }
+
+  static const absl::optional<blink::AdSize> requested_size(
+      const blink::AuctionConfig::NonSharedParams& params) {
+    return params.requested_size;
+  }
+
+  static const absl::optional<base::Uuid>& auction_nonce(
+      const blink::AuctionConfig::NonSharedParams& params) {
+    return params.auction_nonce;
+  }
+
   static const std::vector<blink::AuctionConfig>& component_auctions(
       const blink::AuctionConfig::NonSharedParams& params) {
     return params.component_auctions;
@@ -269,7 +346,13 @@ struct BLINK_COMMON_EXPORT
     return config.seller;
   }
 
-  static const GURL& decision_logic_url(const blink::AuctionConfig& config) {
+  static const absl::optional<blink::AuctionConfig::ServerResponseConfig>&
+  server_response(const blink::AuctionConfig& config) {
+    return config.server_response;
+  }
+
+  static const absl::optional<GURL>& decision_logic_url(
+      const blink::AuctionConfig& config) {
     return config.decision_logic_url;
   }
 
@@ -286,6 +369,11 @@ struct BLINK_COMMON_EXPORT
   static const blink::AuctionConfig::MaybePromiseDirectFromSellerSignals&
   direct_from_seller_signals(const blink::AuctionConfig& params) {
     return params.direct_from_seller_signals;
+  }
+
+  static bool expects_direct_from_seller_signals_header_ad_slot(
+      const blink::AuctionConfig& params) {
+    return params.expects_direct_from_seller_signals_header_ad_slot;
   }
 
   static bool has_seller_experiment_group_id(
@@ -311,6 +399,10 @@ struct BLINK_COMMON_EXPORT
   static const base::flat_map<url::Origin, uint16_t>&
   per_buyer_experiment_group_ids(const blink::AuctionConfig& config) {
     return config.per_buyer_experiment_group_ids;
+  }
+
+  static bool expects_additional_bids(const blink::AuctionConfig& config) {
+    return config.expects_additional_bids;
   }
 
   static bool Read(blink::mojom::AuctionAdConfigDataView data,

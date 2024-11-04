@@ -232,6 +232,8 @@ calibrator_create(struct display *display, bool enable_button)
 	calibrator->window = window_create(display);
 	calibrator->widget = window_add_widget(calibrator->window, calibrator);
 	window_set_title(calibrator->window, "Wayland calibrator");
+	window_set_appid(calibrator->window,
+			"org.freedesktop.weston.wayland-calibrator");
 	calibrator->display = display;
 
 	calibrator->current_test = ARRAY_LENGTH(test_ratios) - 1;

@@ -30,6 +30,7 @@ target(link_target_type, "renderer") {
     "//content/public/renderer:renderer_sources",
     "//content/renderer:audio_decoder_fuzzer",
     "//content/renderer:content_security_policy_util_fuzzer",
+    "//media/mojo/clients:unit_tests",
   ]
 
   sources = [
@@ -252,7 +253,6 @@ target(link_target_type, "renderer") {
     "//components/viz/client",
     "//components/viz/common",
     "//content:content_resources",
-    "//content:dev_ui_content_resources",
     "//content/child",
     "//content/common",
     "//content/common:buildflags",
@@ -260,7 +260,6 @@ target(link_target_type, "renderer") {
     "//content/gpu:gpu_sources",
     "//content/public/child:child_sources",
     "//content/services/auction_worklet:auction_worklet",
-    "//content/services/shared_storage_worklet",
     "//crypto",
     "//device/base/synchronization",
     "//device/gamepad/public/cpp:shared_with_blink",
@@ -274,7 +273,6 @@ target(link_target_type, "renderer") {
     "//media:media_buildflags",
     "//media/capture",
     "//media/gpu",
-    "//media/gpu/ipc/client",
     "//media/gpu/ipc/common",
     "//media/midi",
     "//media/midi:mojo",
@@ -334,12 +332,10 @@ target(link_target_type, "renderer") {
 
   if (is_android) {
     deps += [
-      "//components/power_scheduler",
-
       # Used by Android WebView only.
       "//components/viz/service",
-      "//third_party/android_ndk:cpu_features",
       "//third_party/ashmem",
+      "//third_party/cpu_features:ndk_compat",
       "//third_party/libphonenumber",
     ]
   }
@@ -364,9 +360,8 @@ target(link_target_type, "renderer") {
 
   if (enable_cast_receiver) {
     deps += [
-      "//components/cast_streaming/public",
+      "//components/cast_streaming/common",
       "//components/cast_streaming/renderer:resource_provider",
-      "//components/cast_streaming/renderer:wrapping_renderer_factory_selector",
     ]
   }
 
@@ -502,8 +497,6 @@ target(link_target_type, "renderer") {
       "pepper/ppb_proxy_impl.h",
       "pepper/ppb_var_deprecated_impl.cc",
       "pepper/ppb_var_deprecated_impl.h",
-      "pepper/ppb_video_decoder_impl.cc",
-      "pepper/ppb_video_decoder_impl.h",
       "pepper/renderer_ppapi_host_impl.cc",
       "pepper/renderer_ppapi_host_impl.h",
       "pepper/renderer_restrict_dispatch_group.h",

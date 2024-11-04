@@ -1,7 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
-//TESTED_COMPONENT=src/multimedia
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QtCore/qlocale.h>
@@ -91,7 +89,7 @@ void tst_QSoundEffect::initTestCase()
 
 void tst_QSoundEffect::testSource()
 {
-    QSignalSpy readSignal(sound, SIGNAL(sourceChanged()));
+    QSignalSpy readSignal(sound, &QSoundEffect::sourceChanged);
 
     sound->setSource(url);
     sound->setVolume(0.1f);
@@ -110,8 +108,8 @@ void tst_QSoundEffect::testLooping()
     sound->setSource(url);
     QTRY_COMPARE(sound->status(), QSoundEffect::Ready);
 
-    QSignalSpy readSignal_Count(sound, SIGNAL(loopCountChanged()));
-    QSignalSpy readSignal_Remaining(sound, SIGNAL(loopsRemainingChanged()));
+    QSignalSpy readSignal_Count(sound, &QSoundEffect::loopCountChanged);
+    QSignalSpy readSignal_Remaining(sound, &QSoundEffect::loopsRemainingChanged);
 
     sound->setLoopCount(3);
     sound->setVolume(0.1f);
@@ -197,7 +195,7 @@ void tst_QSoundEffect::testLooping()
 
 void tst_QSoundEffect::testVolume()
 {
-    QSignalSpy readSignal(sound, SIGNAL(volumeChanged()));
+    QSignalSpy readSignal(sound, &QSoundEffect::volumeChanged);
 
     sound->setVolume(0.5);
     QCOMPARE(sound->volume(),0.5);
@@ -207,7 +205,7 @@ void tst_QSoundEffect::testVolume()
 
 void tst_QSoundEffect::testMuting()
 {
-    QSignalSpy readSignal(sound, SIGNAL(mutedChanged()));
+    QSignalSpy readSignal(sound, &QSoundEffect::mutedChanged);
 
     sound->setMuted(true);
     QCOMPARE(sound->isMuted(),true);
@@ -236,6 +234,7 @@ void tst_QSoundEffect::testPlaying()
 
     //invalid source
     sound->setSource(QUrl((QLatin1String("invalid source"))));
+    QTest::ignoreMessage(QtMsgType::QtWarningMsg, QRegularExpression(".*Error decoding source.*"));
     QTestEventLoop::instance().enterLoop(1);
     sound->play();
     QTestEventLoop::instance().enterLoop(1);
@@ -264,6 +263,7 @@ void tst_QSoundEffect::testStatus()
     sound->setLoopCount(QSoundEffect::Infinite);
 
     sound->setSource(QUrl(QLatin1String("invalid source")));
+    QTest::ignoreMessage(QtMsgType::QtWarningMsg, QRegularExpression(".*Error decoding source.*"));
     QTestEventLoop::instance().enterLoop(1);
     QCOMPARE(sound->status(), QSoundEffect::Error);
 }
@@ -376,8 +376,14 @@ void tst_QSoundEffect::testSupportedMimeTypes()
 
 void tst_QSoundEffect::testCorruptFile()
 {
+    using namespace Qt::Literals;
+    auto expectedMessagePattern =
+            QRegularExpression(uR"(^QSoundEffect\(qaudio\): Error decoding source .*$)"_s);
+
     for (int i = 0; i < 10; i++) {
-        QSignalSpy statusSpy(sound, SIGNAL(statusChanged()));
+        QSignalSpy statusSpy(sound, &QSoundEffect::statusChanged);
+        QTest::ignoreMessage(QtMsgType::QtWarningMsg, expectedMessagePattern);
+
         sound->setSource(urlCorrupted);
         QVERIFY(!sound->isPlaying());
         QVERIFY(sound->status() == QSoundEffect::Loading || sound->status() == QSoundEffect::Error);

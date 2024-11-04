@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,14 +16,12 @@
 #include "cast/common/public/cast_socket.h"
 #include "cast/receiver/channel/device_auth_namespace_handler.h"
 #include "cast/receiver/public/receiver_socket_factory.h"
-#include "platform/api/serial_delete_ptr.h"
 #include "platform/api/task_runner.h"
 #include "platform/base/error.h"
 #include "platform/base/ip_address.h"
 #include "util/json/json_value.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class CastSocket;
 
@@ -82,7 +80,7 @@ class ApplicationAgent final
   };
 
   ApplicationAgent(
-      TaskRunner* task_runner,
+      TaskRunner& task_runner,
       DeviceAuthNamespaceHandler::CredentialsProvider* credentials_provider);
 
   ~ApplicationAgent() final;
@@ -153,7 +151,7 @@ class ApplicationAgent final
   // Application LAUNCH or STOP.
   void BroadcastReceiverStatus();
 
-  TaskRunner* const task_runner_;
+  TaskRunner& task_runner_;
   DeviceAuthNamespaceHandler auth_handler_;
   VirtualConnectionRouter router_;
   ConnectionNamespaceHandler connection_handler_;
@@ -166,7 +164,6 @@ class ApplicationAgent final
   std::string launched_via_app_id_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_RECEIVER_APPLICATION_AGENT_H_

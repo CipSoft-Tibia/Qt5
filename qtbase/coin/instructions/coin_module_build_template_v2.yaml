@@ -20,25 +20,25 @@ instructions:
           equals_property: target.os
         - condition: property
           property: target.osVersion
-          not_in_values: [QEMU, WebAssembly, INTEGRITY]
+          not_in_values: [QEMU, WebAssembly, INTEGRITY, VxWorks]
         - condition: property
           property: features
           not_contains_value: "TargetBuildOnly"
         - condition: property
           property: features
           not_contains_value: "DebianPackaging"
-        - condition: property
-          property: features
-          not_contains_value: Axivion
+        - condition: runtime
+          env_var: AXIVION_ANALYSIS
+          not_equals_value: "1"
   - type: Group
     instructions:
        - !include "{{qt/qtbase}}/coin_module_axivion_template_v2.yaml"
     enable_if:
       condition: and
       conditions:
-        - condition: property
-          property: features
-          contains_value: Axivion
+        - condition: runtime
+          env_var: AXIVION_ANALYSIS
+          equals_value: "1"
         - condition: runtime
           env_var: TESTED_MODULE_COIN
           not_equals_value: "qtdoc"
@@ -60,13 +60,13 @@ instructions:
         enable_if:
           condition: property
           property: target.osVersion
-          in_values: [Android_ANY, QEMU, IOS_ANY, QNX_710, WebAssembly, INTEGRITY]
+          in_values: [Android_ANY, QEMU, IOS_ANY, QNX_710, WebAssembly, INTEGRITY, VxWorks]
     enable_if:
       condition: or
       conditions:
         - condition: property
           property: target.osVersion
-          in_values: [Android_ANY, QEMU, IOS_ANY, QNX_710, WebAssembly, INTEGRITY]
+          in_values: [Android_ANY, QEMU, IOS_ANY, QNX_710, WebAssembly, INTEGRITY, VxWorks]
         - condition: and
           conditions:
             - condition: property

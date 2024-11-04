@@ -35,11 +35,11 @@
 #include "base/dcheck_is_on.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/core/core_export.h"
-#include "third_party/blink/renderer/core/css/css_anchor_query_type.h"
+#include "third_party/blink/renderer/core/css/css_anchor_query_enums.h"
+#include "third_party/blink/renderer/core/css/css_length_resolver.h"
 #include "third_party/blink/renderer/core/css/css_math_operator.h"
 #include "third_party/blink/renderer/core/css/css_primitive_value.h"
 #include "third_party/blink/renderer/core/css/css_value.h"
-#include "third_party/blink/renderer/core/css/parser/css_parser_context.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser_token_range.h"
 #include "third_party/blink/renderer/platform/geometry/calculation_value.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
@@ -50,10 +50,11 @@ static const int kMaxExpressionDepth = 100;
 
 class CalculationExpressionNode;
 class CSSNumericLiteralValue;
+class CSSParserContext;
 
 // The order of this enum should not change since its elements are used as
 // indices in the addSubtractResult matrix.
-enum CalculationCategory {
+enum CalculationResultCategory {
   kCalcNumber,
   kCalcLength,
   kCalcPercent,
@@ -64,6 +65,7 @@ enum CalculationCategory {
   kCalcAngle,
   kCalcTime,
   kCalcFrequency,
+  kCalcResolution,
   kCalcOther,
 };
 
@@ -78,7 +80,11 @@ class CORE_EXPORT CSSMathExpressionNode
       CSSValueID function_id,
       CSSParserTokenRange tokens,
       const CSSParserContext&,
-      CSSAnchorQueryTypes allowed_anchor_queries);
+      const bool is_percentage_allowed,
+      CSSAnchorQueryTypes allowed_anchor_queries,
+      // Variable substitutions for relative color syntax.
+      // https://www.w3.org/TR/css-color-5/#relative-colors
+      const HashMap<CSSValueID, double> color_channel_keyword_values = {});
 
   virtual bool IsNumericLiteral() const { return false; }
   virtual bool IsOperation() const { return false; }
@@ -92,6 +98,9 @@ class CORE_EXPORT CSSMathExpressionNode
   // Hits DCHECK if type conversion is required.
   virtual double DoubleValue() const = 0;
 
+  double ComputeNumber(const CSSLengthResolver& length_resolver) const {
+    return ComputeDouble(length_resolver);
+  }
   virtual double ComputeLengthPx(const CSSLengthResolver&) const = 0;
   virtual bool AccumulateLengthArray(CSSLengthArray&,
                                      double multiplier) const = 0;
@@ -126,9 +135,12 @@ class CORE_EXPORT CSSMathExpressionNode
 
   virtual bool IsComputationallyIndependent() const = 0;
 
-  CalculationCategory Category() const { return category_; }
+  CalculationResultCategory Category() const { return category_; }
   bool HasPercentage() const {
     return category_ == kCalcPercent || category_ == kCalcPercentLength;
+  }
+  bool CanBeResolvedWithConversionData() const {
+    return can_be_resolved_with_conversion_data_;
   }
 
   // Returns the unit type of the math expression *without doing any type
@@ -163,16 +175,27 @@ class CORE_EXPORT CSSMathExpressionNode
   virtual void Trace(Visitor* visitor) const {}
 
  protected:
-  CSSMathExpressionNode(CalculationCategory category,
+  CSSMathExpressionNode(CalculationResultCategory category,
+                        const bool can_be_resolved_with_conversion_data,
                         bool has_comparisons,
                         bool needs_tree_scope_population)
       : category_(category),
+        can_be_resolved_with_conversion_data_(
+            can_be_resolved_with_conversion_data),
         has_comparisons_(has_comparisons),
         needs_tree_scope_population_(needs_tree_scope_population) {
     DCHECK_NE(category, kCalcOther);
   }
 
-  CalculationCategory category_;
+  virtual double ComputeDouble(
+      const CSSLengthResolver& length_resolver) const = 0;
+  static double ComputeDouble(const CSSMathExpressionNode* operand,
+                              const CSSLengthResolver& length_resolver) {
+    return operand->ComputeDouble(length_resolver);
+  }
+
+  CalculationResultCategory category_;
+  bool can_be_resolved_with_conversion_data_;
   bool is_nested_calc_ = false;
   bool has_comparisons_;
   bool needs_tree_scope_population_;
@@ -221,6 +244,9 @@ class CORE_EXPORT CSSMathExpressionNumericLiteral final
   bool InvolvesPercentageComparisons() const final;
 #endif
 
+ protected:
+  double ComputeDouble(const CSSLengthResolver& length_resolver) const final;
+
  private:
   Member<const CSSNumericLiteralValue> value_;
 };
@@ -244,8 +270,18 @@ class CORE_EXPORT CSSMathExpressionOperation final
 
   static CSSMathExpressionNode* CreateComparisonFunction(Operands&& operands,
                                                          CSSMathOperator op);
+  static CSSMathExpressionNode* CreateComparisonFunctionSimplified(
+      Operands&& operands,
+      CSSMathOperator op);
 
   static CSSMathExpressionNode* CreateTrigonometricFunctionSimplified(
+      Operands&& operands,
+      CSSValueID function_id);
+
+  static CSSMathExpressionNode* CreateSteppedValueFunction(Operands&& operands,
+                                                           CSSMathOperator op);
+
+  static CSSMathExpressionNode* CreateExponentialFunction(
       Operands&& operands,
       CSSValueID function_id);
 
@@ -254,13 +290,23 @@ class CORE_EXPORT CSSMathExpressionOperation final
       const CSSMathExpressionNode* right_side,
       CSSMathOperator op);
 
+  static CSSMathExpressionNode* CreateSignRelatedFunction(
+      Operands&& operands,
+      CSSValueID function_id);
+
   CSSMathExpressionOperation(const CSSMathExpressionNode* left_side,
                              const CSSMathExpressionNode* right_side,
                              CSSMathOperator op,
-                             CalculationCategory category);
+                             CalculationResultCategory category,
+                             const bool can_be_resolved_with_conversion_data);
 
-  CSSMathExpressionOperation(CalculationCategory category,
+  CSSMathExpressionOperation(CalculationResultCategory category,
+                             const bool can_be_resolved_with_conversion_data,
                              Operands&& operands,
+                             CSSMathOperator op);
+
+  CSSMathExpressionOperation(CalculationResultCategory category,
+                             const bool can_be_resolved_with_conversion_data,
                              CSSMathOperator op);
 
   const Operands& GetOperands() const { return operands_; }
@@ -272,9 +318,27 @@ class CORE_EXPORT CSSMathExpressionOperation final
            operator_ == CSSMathOperator::kMax;
   }
   bool IsClamp() const { return operator_ == CSSMathOperator::kClamp; }
+  bool IsRoundingStrategyKeyword() const {
+    return CSSMathOperator::kRoundNearest <= operator_ &&
+           operator_ <= CSSMathOperator::kRoundToZero && !operands_.size();
+  }
+  bool IsSteppedValueFunction() const {
+    return CSSMathOperator::kRoundNearest <= operator_ &&
+           operator_ <= CSSMathOperator::kRem;
+  }
+  bool IsTrigonometricFunction() const {
+    return operator_ == CSSMathOperator::kHypot;
+  }
+  bool IsSignRelatedFunction() const {
+    return operator_ == CSSMathOperator::kAbs ||
+           operator_ == CSSMathOperator::kSign;
+  }
 
-  // TODO(crbug.com/1284199): Check other math functions too(clamp, etc).
-  bool IsMathFunction() const final { return IsMinOrMax() || IsClamp(); }
+  // TODO(crbug.com/1284199): Check other math functions too.
+  bool IsMathFunction() const final {
+    return IsMinOrMax() || IsClamp() || IsSteppedValueFunction() ||
+           IsTrigonometricFunction() || IsSignRelatedFunction();
+  }
 
   String CSSTextAsClamp() const;
 
@@ -301,6 +365,9 @@ class CORE_EXPORT CSSMathExpressionOperation final
 #if DCHECK_IS_ON()
   bool InvolvesPercentageComparisons() const final;
 #endif
+
+ protected:
+  double ComputeDouble(const CSSLengthResolver& length_resolver) const final;
 
  private:
   static const CSSMathExpressionNode* GetNumberSide(
@@ -395,6 +462,13 @@ class CORE_EXPORT CSSMathExpressionAnchorQuery final
 #if DCHECK_IS_ON()
   bool InvolvesPercentageComparisons() const final { return false; }
 #endif
+
+ protected:
+  double ComputeDouble(const CSSLengthResolver& length_resolver) const final {
+    // We can't resolve an anchor query until layout time.
+    NOTREACHED();
+    return 0;
+  }
 
  private:
   CSSAnchorQueryType type_;

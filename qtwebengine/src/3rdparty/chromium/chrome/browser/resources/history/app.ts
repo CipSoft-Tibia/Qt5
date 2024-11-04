@@ -197,6 +197,12 @@ export class HistoryAppElement extends HistoryAppElementBase {
         value: () => loadTimeData.getBoolean('isHistoryClustersVisible'),
       },
 
+      historyClustersPath_: {
+        type: Boolean,
+        value: () =>
+            loadTimeData.getBoolean('renameJourneys') ? 'grouped' : 'journeys',
+      },
+
       showHistoryClusters_: {
         type: Boolean,
         computed:
@@ -238,7 +244,7 @@ export class HistoryAppElement extends HistoryAppElementBase {
   private pendingDelete_: boolean;
   private queryResult_: QueryResult;
   private queryState_: QueryState;
-  private selectedPage_: Page;
+  private selectedPage_: string;
   private selectedTab_: number;
   private showHistoryClusters_: boolean;
   private tabsIcons_: string[];
@@ -285,7 +291,7 @@ export class HistoryAppElement extends HistoryAppElementBase {
   override ready() {
     super.ready();
 
-    this.addEventListener('cr-toolbar-menu-tap', this.onCrToolbarMenuTap_);
+    this.addEventListener('cr-toolbar-menu-click', this.onCrToolbarMenuClick_);
     this.addEventListener('delete-selected', this.deleteSelected);
     this.addEventListener('history-checkbox-select', this.checkboxSelected);
     this.addEventListener('history-close-drawer', this.closeDrawer_);
@@ -308,7 +314,7 @@ export class HistoryAppElement extends HistoryAppElementBase {
   }
 
   private historyClustersSelected_(
-      _selectedPage: Page, _showHistoryClusters: boolean): boolean {
+      _selectedPage: string, _showHistoryClusters: boolean): boolean {
     return this.selectedPage_ === Page.HISTORY_CLUSTERS &&
         this.showHistoryClusters_;
   }
@@ -347,7 +353,7 @@ export class HistoryAppElement extends HistoryAppElementBase {
     }
   }
 
-  private onCrToolbarMenuTap_() {
+  private onCrToolbarMenuClick_() {
     this.$.drawer.get().toggle();
   }
 
@@ -469,7 +475,7 @@ export class HistoryAppElement extends HistoryAppElementBase {
     this.set('footerInfo.otherFormsOfHistory', hasOtherForms);
   }
 
-  private syncedTabsSelected_(_selectedPage: Page): boolean {
+  private syncedTabsSelected_(_selectedPage: string): boolean {
     return this.selectedPage_ === Page.SYNCED_TABS;
   }
 
@@ -482,7 +488,7 @@ export class HistoryAppElement extends HistoryAppElementBase {
     return querying && !incremental && searchTerm !== '';
   }
 
-  private selectedPageChanged_(newPage: Page, oldPage: Page) {
+  private selectedPageChanged_(newPage: string, oldPage: string) {
     this.unselectAll();
     this.historyViewChanged_();
     this.maybeUpdateSelectedHistoryTab_();

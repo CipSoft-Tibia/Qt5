@@ -34,6 +34,12 @@
 
       These requests may allow clients to do very bad things.
     </description>
+
+    <enum name="error">
+      <entry name="touch_up_with_coordinate" value="0"
+        summary="invalid coordinate"/>
+    </enum>
+
     <request name="move_surface">
       <arg name="surface" type="object" interface="wl_surface"/>
       <arg name="x" type="int"/>
@@ -79,22 +85,6 @@
     <event name="pointer_position">
       <arg name="x" type="fixed"/>
       <arg name="y" type="fixed"/>
-    </event>
-    <request name="capture_screenshot">
-      <description summary="records current screen image">
-        Records an image of what is currently displayed on a given
-        display output, returning the image as an event.
-      </description>
-      <arg name="output" type="object" interface="wl_output"
-           summary="output to capture from"/>
-      <arg name="buffer" type="object" interface="wl_buffer"
-           summary="buffer for returning screenshots to the test client"/>
-    </request>
-    <event name="capture_screenshot_done">
-	  <description summary="screenshot capture is done">
-		The capture_screenshot_done signal is sent when a screenshot has been copied into the
-		provided buffer.
-	  </description>
     </event>
     <request name="send_touch">
       <arg name="tv_sec_hi" type="uint"/>

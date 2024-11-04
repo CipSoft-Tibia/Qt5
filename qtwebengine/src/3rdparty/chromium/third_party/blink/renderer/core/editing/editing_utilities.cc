@@ -73,7 +73,6 @@
 #include "third_party/blink/renderer/core/input_type_names.h"
 #include "third_party/blink/renderer/core/layout/layout_image.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
-#include "third_party/blink/renderer/core/layout/layout_table_cell.h"
 #include "third_party/blink/renderer/core/svg/svg_image_element.h"
 #include "third_party/blink/renderer/platform/graphics/static_bitmap_image.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
@@ -195,11 +194,6 @@ static bool HasEditableLevel(const Node& node, EditableLevel editable_level) {
   for (const Node& ancestor : NodeTraversal::InclusiveAncestorsOf(node)) {
     if (!(ancestor.IsHTMLElement() || ancestor.IsDocumentNode()))
       continue;
-
-    if (auto* element = DynamicTo<Element>(&ancestor)) {
-      if (element->editContext())
-          return true;
-    }
 
     const ComputedStyle* style = ancestor.GetComputedStyle();
     if (!style)
@@ -1147,7 +1141,8 @@ static HTMLSpanElement* CreateTabSpanElement(Document& document,
                                              Text* tab_text_node) {
   // Make the span to hold the tab.
   auto* span_element = MakeGarbageCollected<HTMLSpanElement>(document);
-  span_element->setAttribute(html_names::kStyleAttr, "white-space:pre");
+  span_element->setAttribute(html_names::kStyleAttr,
+                             AtomicString("white-space:pre"));
 
   // Add tab text to that span.
   if (!tab_text_node)
@@ -1307,7 +1302,7 @@ bool IsMailHTMLBlockquoteElement(const Node* node) {
     return false;
 
   return element->HasTagName(html_names::kBlockquoteTag) &&
-         element->getAttribute("type") == "cite";
+         element->getAttribute(html_names::kTypeAttr) == "cite";
 }
 
 bool ElementCannotHaveEndTag(const Node& node) {
@@ -1649,7 +1644,8 @@ static scoped_refptr<Image> ImageFromNode(const Node& node) {
 
   if (layout_object->IsCanvas()) {
     return To<HTMLCanvasElement>(const_cast<Node&>(node))
-        .Snapshot(kFrontBuffer);
+        .Snapshot(CanvasResourceProvider::FlushReason::kClipboard,
+                  kFrontBuffer);
   }
 
   if (!layout_object->IsImage())
@@ -1675,6 +1671,14 @@ AtomicString GetUrlStringFromNode(const Node& node) {
   return AtomicString();
 }
 
+void WriteImageToClipboard(SystemClipboard& system_clipboard,
+                           const scoped_refptr<Image>& image,
+                           const KURL& url_string,
+                           const String& title) {
+  system_clipboard.WriteImageWithTag(image.get(), url_string, title);
+  system_clipboard.CommitWrite();
+}
+
 void WriteImageNodeToClipboard(SystemClipboard& system_clipboard,
                                const Node& node,
                                const String& title) {
@@ -1683,8 +1687,7 @@ void WriteImageNodeToClipboard(SystemClipboard& system_clipboard,
     return;
   const KURL url_string = node.GetDocument().CompleteURL(
       StripLeadingAndTrailingHTMLSpaces(GetUrlStringFromNode(node)));
-  system_clipboard.WriteImageWithTag(image.get(), url_string, title);
-  system_clipboard.CommitWrite();
+  WriteImageToClipboard(system_clipboard, image, url_string, title);
 }
 
 Element* FindEventTargetFrom(LocalFrame& frame,

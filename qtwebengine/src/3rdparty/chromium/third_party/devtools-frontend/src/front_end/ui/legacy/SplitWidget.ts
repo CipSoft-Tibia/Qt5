@@ -230,7 +230,7 @@ export class SplitWidget extends Common.ObjectWrapper.eventMixin<EventTypes, typ
     return this.sidebarElementInternal;
   }
 
-  childWasDetached(widget: Widget): void {
+  override childWasDetached(widget: Widget): void {
     if (this.detaching) {
       return;
     }
@@ -657,24 +657,24 @@ export class SplitWidget extends Common.ObjectWrapper.eventMixin<EventTypes, typ
     return Math.max(0, totalSize - minMainSize);
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     this.forceUpdateLayout();
     ZoomManager.instance().addEventListener(ZoomManagerEvents.ZoomChanged, this.onZoomChanged, this);
   }
 
-  willHide(): void {
+  override willHide(): void {
     ZoomManager.instance().removeEventListener(ZoomManagerEvents.ZoomChanged, this.onZoomChanged, this);
   }
 
-  onResize(): void {
+  override onResize(): void {
     this.updateLayout();
   }
 
-  onLayout(): void {
+  override onLayout(): void {
     this.updateLayout();
   }
 
-  calculateConstraints(): Constraints {
+  override calculateConstraints(): Constraints {
     if (this.showModeInternal === ShowMode.OnlyMain) {
       return this.mainWidgetInternal ? this.mainWidgetInternal.constraints() : new Constraints();
     }
@@ -858,13 +858,11 @@ export class SplitWidget extends Common.ObjectWrapper.eventMixin<EventTypes, typ
     const sidebarHidden = this.showModeInternal === ShowMode.OnlyMain;
     let glyph = '';
     if (sidebarHidden) {
-      glyph = this.isVertical() ?
-          (this.isSidebarSecond() ? 'largeicon-show-right-sidebar' : 'largeicon-show-left-sidebar') :
-          (this.isSidebarSecond() ? 'largeicon-show-bottom-sidebar' : 'largeicon-show-top-sidebar');
+      glyph = this.isVertical() ? (this.isSidebarSecond() ? 'right-panel-open' : 'left-panel-open') :
+                                  (this.isSidebarSecond() ? 'bottom-panel-open' : 'top-panel-open');
     } else {
-      glyph = this.isVertical() ?
-          (this.isSidebarSecond() ? 'largeicon-hide-right-sidebar' : 'largeicon-hide-left-sidebar') :
-          (this.isSidebarSecond() ? 'largeicon-hide-bottom-sidebar' : 'largeicon-hide-top-sidebar');
+      glyph = this.isVertical() ? (this.isSidebarSecond() ? 'right-panel-close' : 'left-panel-close') :
+                                  (this.isSidebarSecond() ? 'bottom-panel-close' : 'top-panel-close');
     }
     this.showHideSidebarButton.setGlyph(glyph);
     this.showHideSidebarButton.setTitle(sidebarHidden ? this.showSidebarButtonTitle : this.hideSidebarButtonTitle);

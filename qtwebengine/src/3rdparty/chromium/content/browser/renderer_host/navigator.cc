@@ -47,6 +47,7 @@
 #include "content/public/common/content_constants.h"
 #include "content/public/common/url_utils.h"
 #include "net/base/net_errors.h"
+#include "net/base/schemeful_site.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
 #include "services/metrics/public/cpp/ukm_recorder.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
@@ -136,6 +137,21 @@ absl::optional<WebFeature> FeatureCoepRO(CrossOriginEmbedderPolicyValue value) {
   }
 }
 
+ukm::SourceId GetPageUkmSourceId(RenderFrameHost& rfh) {
+  // RenderFrameHost::GetPageUkmSourceId does not support being called in the
+  // prerendering state, because our data collection policy disallows collecting
+  // UKMs while prerendering. This function changes calls within Navigator to
+  // use kInvalidSourceId in this state, since most other callers outside
+  // Navigator can avoid the call during prerendering.
+  // If a future use case needs a UKM during prerendering, please see
+  // //content/browser/preloading/prerender/README.md and consult the Prerender
+  // team.
+  if (rfh.IsInLifecycleState(RenderFrameHost::LifecycleState::kPrerendering)) {
+    return ukm::kInvalidSourceId;
+  }
+  return rfh.GetPageUkmSourceId();
+}
+
 // TODO(titouan): Move the feature computation logic into `NavigationRequest`,
 // and use `NavigationRequest::TakeWebFeatureToLog()` to record them later.
 void RecordWebPlatformSecurityMetrics(RenderFrameHostImpl* rfh,
@@ -192,7 +208,7 @@ void RecordWebPlatformSecurityMetrics(RenderFrameHostImpl* rfh,
     log(WebFeature::kCrossOriginSubframeWithoutEmbeddingControl);
     RenderFrameHostImpl* main_frame = rfh->GetMainFrame();
     ukm::builders::CrossOriginSubframeWithoutEmbeddingControl(
-        main_frame->GetPageUkmSourceId())
+        GetPageUkmSourceId(*main_frame))
         .SetSubframeEmbedded(1)
         .Record(ukm::UkmRecorder::Get());
   }
@@ -449,9 +465,12 @@ NavigatorDelegate* Navigator::GetDelegate() {
 
 bool Navigator::StartHistoryNavigationInNewSubframe(
     RenderFrameHostImpl* render_frame_host,
-    mojo::PendingAssociatedRemote<mojom::NavigationClient>* navigation_client) {
-  return controller_.StartHistoryNavigationInNewSubframe(render_frame_host,
-                                                         navigation_client);
+    mojo::PendingAssociatedRemote<mojom::NavigationClient>* navigation_client,
+    blink::LocalFrameToken initiator_frame_token,
+    int initiator_process_id) {
+  return controller_.StartHistoryNavigationInNewSubframe(
+      render_frame_host, navigation_client, initiator_frame_token,
+      initiator_process_id);
 }
 
 void Navigator::DidNavigate(
@@ -494,6 +513,9 @@ void Navigator::DidNavigate(
                                              was_within_same_document);
   }
 
+  // Store this information before DidNavigateFrame() potentially swaps RFHs.
+  url::Origin old_frame_origin = old_frame_host->GetLastCommittedOrigin();
+
   // DidNavigateFrame() must be called before replicating the new origin and
   // other properties to proxies.  This is because it destroys the subframes of
   // the frame we're navigating from, which might trigger those subframes to
@@ -506,6 +528,29 @@ void Navigator::DidNavigate(
           .ShouldClearProxiesOnCommit(),
       navigation_request->commit_params().frame_policy);
 
+  // The main frame, same site, and cross-site navigation checks for user
+  // activation mirror the checks in DocumentLoader::CommitNavigation() (note:
+  // CommitNavigation() is not called for same-document navigations, which is
+  // why we have the !was_within_same_document check). This is done to prevent
+  // newly navigated pages from re-using the sticky user activation state from
+  // the previously navigated page in the frame. We persist user activation
+  // across same-site navigations for compatibility reasons with user
+  // activation, and does not need to match the same-site checks used in the
+  // process model. See: crbug.com/736415, and crbug.com/40228985 for the
+  // specific regression that resulted in this requirement.
+  if (!was_within_same_document) {
+    if (!navigation_request->commit_params()
+             .should_have_sticky_user_activation) {
+      frame_tree_node->UpdateUserActivationState(
+          blink::mojom::UserActivationUpdateType::kClearActivation,
+          blink::mojom::UserActivationNotificationType::kNone);
+    } else {
+      frame_tree_node->UpdateUserActivationState(
+          blink::mojom::UserActivationUpdateType::kNotifyActivationStickyOnly,
+          blink::mojom::UserActivationNotificationType::kNone);
+    }
+  }
+
   // Save the new page's origin and other properties, and replicate them to
   // proxies, including the proxy created in DidNavigateFrame() to replace the
   // old frame in cross-process navigation cases.
@@ -516,26 +561,20 @@ void Navigator::DidNavigate(
   render_frame_host->browsing_context_state()->SetInsecureNavigationsSet(
       params.insecure_navigations_set);
 
-  if (!was_within_same_document) {
-    // Navigating to a new location means a new, fresh set of http headers
-    // and/or <meta> elements - we need to reset Permissions Policy.
-    frame_tree_node->ResetForNavigation();
-  }
-
   // If the committing URL requires the SiteInstance's site to be assigned,
   // that site assignment should've already happened at ReadyToCommit time. We
   // should never get here with a SiteInstance that doesn't have a site
   // assigned in that case.
   SiteInstanceImpl* site_instance = render_frame_host->GetSiteInstance();
+  const UrlInfo& url_info = navigation_request->GetUrlInfo();
   if (!site_instance->HasSite() &&
-      SiteInstanceImpl::ShouldAssignSiteForURL(params.url)) {
+      SiteInstanceImpl::ShouldAssignSiteForUrlInfo(url_info)) {
     NOTREACHED() << "SiteInstance should have already set a site: "
                  << params.url;
     // TODO(alexmos): convert this to a CHECK and remove the fallback call to
     // ConvertToDefaultOrSetSite() after verifying that this doesn't happen in
     // practice.
     base::debug::DumpWithoutCrashing();
-    const UrlInfo url_info(UrlInfoInit(params.url));
     site_instance->ConvertToDefaultOrSetSite(url_info);
   }
 
@@ -609,7 +648,32 @@ void Navigator::DidNavigate(
             },
             controller_.GetLastCommittedEntryIndex(),
             controller_.GetEntryCount()),
-        site_instance);
+        site_instance->group());
+  }
+
+  // If this was the navigation of a top-level frame to another browsing context
+  // group, update the browsing context group in all the renderers that have a
+  // representation of this page. Do not update the page in the main frame's own
+  // process, as it was already updated during commit.
+  // TODO(https://crbug.com/1446696): See if that can be consolidated with other
+  // similar IPCs.
+  if (render_frame_host->is_main_frame() &&
+      navigation_request->browsing_context_group_swap().ShouldSwap()) {
+    SiteInstanceImpl* final_site_instance =
+        render_frame_host->GetSiteInstance();
+    blink::BrowsingContextGroupInfo browsing_context_group_info(
+        final_site_instance->browsing_instance_token(),
+        final_site_instance->coop_related_group_token());
+    frame_tree.root()->render_manager()->ExecutePageBroadcastMethod(
+        base::BindRepeating(
+            [](const blink::BrowsingContextGroupInfo& info,
+               RenderViewHostImpl* rvh) {
+              if (auto& broadcast = rvh->GetAssociatedPageBroadcast()) {
+                broadcast->UpdatePageBrowsingContextGroup(info);
+              }
+            },
+            browsing_context_group_info),
+        final_site_instance->group());
   }
 
   // Store some information for recording WebPlatform security metrics. These
@@ -699,7 +763,7 @@ void Navigator::Navigate(std::unique_ptr<NavigationRequest> request,
 
   metrics_data_ = std::make_unique<NavigationMetricsData>(
       request->common_params().navigation_start, request->common_params().url,
-      frame_tree_node->current_frame_host()->GetPageUkmSourceId(),
+      GetPageUkmSourceId(*frame_tree_node->current_frame_host()),
       true /* is_browser_initiated_before_unload */);
 
   // Check if the BeforeUnload event needs to execute before assigning the
@@ -853,7 +917,7 @@ void Navigator::NavigateFromFrameProxy(
     const blink::LocalFrameToken* initiator_frame_token,
     int initiator_process_id,
     const url::Origin& initiator_origin,
-    const GURL& initiator_base_url,
+    const absl::optional<GURL>& initiator_base_url,
     SiteInstance* source_site_instance,
     const Referrer& referrer,
     ui::PageTransition page_transition,
@@ -873,7 +937,8 @@ void Navigator::NavigateFromFrameProxy(
     bool is_embedder_initiated_fenced_frame_navigation,
     bool is_unfenced_top_navigation,
     bool force_new_browsing_instance,
-    bool is_container_initiated) {
+    bool is_container_initiated,
+    absl::optional<std::u16string> embedder_shared_storage_context) {
   // |method != "POST"| should imply absence of |post_body|.
   if (method != "POST" && post_body) {
     NOTREACHED();
@@ -918,7 +983,8 @@ void Navigator::NavigateFromFrameProxy(
       std::move(blob_url_loader_factory), is_form_submission, impression,
       initiator_activation_and_ad_status, navigation_start_time,
       is_embedder_initiated_fenced_frame_navigation, is_unfenced_top_navigation,
-      force_new_browsing_instance, is_container_initiated);
+      force_new_browsing_instance, is_container_initiated,
+      embedder_shared_storage_context);
 }
 
 void Navigator::BeforeUnloadCompleted(FrameTreeNode* frame_tree_node,
@@ -950,7 +1016,9 @@ void Navigator::BeforeUnloadCompleted(FrameTreeNode* frame_tree_node,
   // will already have begun, so there is no need to start it again.
   if (navigation_request->state() >
       NavigationRequest::WAITING_FOR_RENDERER_RESPONSE) {
+#if !BUILDFLAG(IS_QTWEBENGINE)
     DCHECK(navigation_request->from_begin_navigation());
+#endif
     return;
   }
 
@@ -976,6 +1044,7 @@ void Navigator::OnBeginNavigation(
     mojo::PendingAssociatedRemote<mojom::NavigationClient> navigation_client,
     scoped_refptr<PrefetchedSignedExchangeCache>
         prefetched_signed_exchange_cache,
+    int initiator_process_id,
     mojo::PendingReceiver<mojom::NavigationRendererCancellationListener>
         renderer_cancellation_listener) {
   TRACE_EVENT0("navigation", "Navigator::OnBeginNavigation");
@@ -984,8 +1053,17 @@ void Navigator::OnBeginNavigation(
     // Try to find a FrameNavigationEntry that matches this frame instead, based
     // on the frame's unique name.  If this can't be found, fall back to the
     // default path below.
-    if (frame_tree_node->navigator().StartHistoryNavigationInNewSubframe(
-            frame_tree_node->current_frame_host(), &navigation_client)) {
+
+    // |initiator_frame_token| is non-null here because a navigation in a new
+    // subframe always begins with renderer action (i.e., an HTML element being
+    // inserted into the DOM), so it is always renderer-initiated.
+    // Anyway validating |initiator_frame_token| here because it's from a
+    // renderer process.
+    DCHECK(begin_params->initiator_frame_token);
+    if (begin_params->initiator_frame_token &&
+        frame_tree_node->navigator().StartHistoryNavigationInNewSubframe(
+            frame_tree_node->current_frame_host(), &navigation_client,
+            *begin_params->initiator_frame_token, initiator_process_id)) {
       return;
     }
   }
@@ -1033,7 +1111,7 @@ void Navigator::OnBeginNavigation(
   metrics_data_ = std::make_unique<NavigationMetricsData>(
       navigation_request->common_params().navigation_start,
       navigation_request->common_params().url,
-      frame_tree_node->current_frame_host()->GetPageUkmSourceId(),
+      GetPageUkmSourceId(*frame_tree_node->current_frame_host()),
       false /* is_browser_initiated_before_unload */);
 
   LogRendererInitiatedBeforeUnloadTime(
@@ -1333,7 +1411,11 @@ Navigator::GetNavigationEntryForRendererInitiatedNavigation(
   // therefore that |current_site_instance| is also the |source_site_instance|.
   SiteInstance* current_site_instance =
       frame_tree_node->current_frame_host()->GetSiteInstance();
-  SiteInstance* source_site_instance = current_site_instance;
+  absl::optional<GURL> source_process_site_url = absl::nullopt;
+  if (current_site_instance && current_site_instance->HasProcess()) {
+    source_process_site_url =
+        current_site_instance->GetProcess()->GetProcessLock().site_url();
+  }
   // If `frame_tree_node` is the outermost main frame, it rewrites a virtual
   // url in order to adjust the original input url if needed. For inner frames
   // such as fenced frames or subframes, they don't rewrite urls as the urls
@@ -1344,7 +1426,7 @@ Navigator::GetNavigationEntryForRendererInitiatedNavigation(
           NavigationControllerImpl::CreateNavigationEntry(
               common_params.url, content::Referrer(),
               common_params.initiator_origin, common_params.initiator_base_url,
-              source_site_instance, ui::PAGE_TRANSITION_LINK,
+              source_process_site_url, ui::PAGE_TRANSITION_LINK,
               true /* is_renderer_initiated */,
               std::string() /* extra_headers */,
               controller_.GetBrowserContext(),

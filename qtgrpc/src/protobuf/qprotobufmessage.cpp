@@ -3,7 +3,8 @@
 
 #include "qprotobufmessage_p.h"
 #include "qprotobufmessage.h"
-#include "qprotobufoneof.h"
+
+#include <QtProtobuf/qtprotobuftypes.h>
 
 #include <QtCore/qassert.h>
 #include <QtCore/qmetaobject.h>
@@ -12,7 +13,7 @@
 
 QT_BEGIN_NAMESPACE
 
-static std::string nul_terminate(QLatin1StringView l1) noexcept
+static std::string nullTerminate(QLatin1StringView l1) noexcept
 {
     return l1.isNull() ? std::string{} : std::string{l1.data(), size_t(l1.size())};
 }
@@ -58,7 +59,7 @@ int QProtobufMessagePrivate::getPropertyIndex(QAnyStringView propertyName) const
         } else if constexpr (std::is_same_v<QUtf8StringView, decltype(propertyName)>) {
             return metaObject->indexOfProperty(propertyName.toString().toLatin1().constData());
         } else if constexpr (std::is_same_v<QLatin1StringView, decltype(propertyName)>) {
-            return metaObject->indexOfProperty(nul_terminate(propertyName).data());
+            return metaObject->indexOfProperty(nullTerminate(propertyName).data());
         }
         return -1;
     });
@@ -139,8 +140,9 @@ QVariant QProtobufMessage::property(QAnyStringView propertyName) const
     \internal
 */
 QProtobufMessage::QProtobufMessage(const QProtobufMessage &other)
-    : d_ptr(new QProtobufMessagePrivate(*other.d_ptr))
+    : d_ptr(other.d_ptr)
 {
+    d_ptr->ref.ref();
 }
 
 /*!
@@ -148,12 +150,15 @@ QProtobufMessage::QProtobufMessage(const QProtobufMessage &other)
 */
 QProtobufMessage &QProtobufMessage::operator=(const QProtobufMessage &other)
 {
-    if (!other.d_ptr)
-        delete std::exchange(d_ptr, {}); // delete d_ptr if other.d_ptr is null
-    else if (!d_ptr)
-        d_ptr = new QProtobufMessagePrivate(*other.d_ptr);
-    else if (this != &other)
-        *d_ptr = *other.d_ptr;
+    if (other.d_ptr == d_ptr)
+        return *this;
+
+    if (d_ptr && !d_ptr->ref.deref())
+        delete d_ptr; // delete d_ptr if it's the last reference
+    d_ptr = other.d_ptr;
+    if (d_ptr)
+        d_ptr->ref.ref();
+
     return *this;
 }
 
@@ -162,7 +167,8 @@ QProtobufMessage &QProtobufMessage::operator=(const QProtobufMessage &other)
 */
 QProtobufMessage::~QProtobufMessage()
 {
-    delete d_ptr;
+    if (d_ptr && !d_ptr->ref.deref())
+        delete d_ptr;
 }
 
 /*!
@@ -242,7 +248,8 @@ QProtobufMessage::property(const QtProtobufPrivate::QProtobufPropertyOrderingInf
     if (!metaProperty.isValid())
         return {};
 
-    if (fieldInfo.getFieldFlags() & QtProtobufPrivate::Oneof) {
+    if (fieldInfo.getFieldFlags() & QtProtobufPrivate::Oneof
+        || fieldInfo.getFieldFlags() & QtProtobufPrivate::Optional) {
         int hasPropertyIndex = propertyIndex + 1;
         QMetaProperty hasProperty = metaObject()->property(hasPropertyIndex);
         Q_ASSERT_X(hasProperty.isValid() && hasProperty.metaType().id() == QMetaType::Bool,
@@ -273,6 +280,36 @@ bool QProtobufMessage::setProperty(const QtProtobufPrivate::QProtobufPropertyOrd
     if (!mp)
         return false;
     return mp->writeOnGadget(this, std::move(value));
+}
+
+/*!
+    Returns the field numbers that were not known to QtProtobuf during
+    deserialization.
+    \since 6.7
+ */
+QList<qint32> QProtobufMessage::unknownFieldNumbers() const
+{
+    return d_func()->unknownEntries.keys();
+}
+
+/*!
+    Returns the unknown \a field values sorted as they were received from the
+    wire.
+    \since 6.7
+*/
+QList<QByteArray> QProtobufMessage::unknownFieldData(qint32 field) const
+{
+    return d_func()->unknownEntries.value(field);
+}
+
+void QProtobufMessage::detachPrivate()
+{
+    if (d_ptr->ref.loadAcquire() == 1)
+        return;
+    QProtobufMessagePrivate *newD = new QProtobufMessagePrivate(*d_ptr);
+    if (!d_ptr->ref.deref())
+        delete d_ptr;
+    d_ptr = newD;
 }
 
 QT_END_NAMESPACE

@@ -2,6 +2,7 @@
 
 #include "extranamespace.qpb.h"
 #include <QtProtobuf/qprotobufserializer.h>
+#include <cmath>
 
 namespace qtprotobufnamespace::tests {
 
@@ -338,9 +339,27 @@ SimpleStringMessage *ComplexMessage::testComplexField_p() const
     return dptr->m_testComplexField ? dptr->m_testComplexField.get() : nullptr;
 }
 
-SimpleStringMessage &ComplexMessage::testComplexField() const
+bool ComplexMessage::hasTestComplexField() const
+{
+    return dptr->m_testComplexField.operator bool();
+}
+
+SimpleStringMessage &ComplexMessage::testComplexField()
+{
+    dptr.detach();
+    return *dptr->m_testComplexField;
+}
+const SimpleStringMessage &ComplexMessage::testComplexField() const
 {
     return *dptr->m_testComplexField;
+}
+
+void ComplexMessage::clearTestComplexField()
+{
+    if (dptr->m_testComplexField) {
+        dptr.detach();
+        dptr->m_testComplexField.reset();
+    }
 }
 
 void ComplexMessage::setTestFieldInt(const QtProtobuf::int32 &testFieldInt)

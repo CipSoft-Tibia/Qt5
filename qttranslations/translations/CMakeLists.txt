@@ -23,7 +23,7 @@ endfunction()
 # Create a rudimentary .ts file in ${en_ts_file_dir}.
 function(generate_empty_ts_file file_name)
     if(NOT EXISTS "${en_ts_file_dir}/${file_name}")
-        file(WRITE "${en_ts_file_dir}/${file_name}" "<TS></TS>")
+        file(WRITE "${en_ts_file_dir}/${file_name}" "<TS language=\"en_US\"></TS>")
     endif()
 endfunction()
 
@@ -37,6 +37,8 @@ function(add_ts_targets catalog)
     cmake_parse_arguments(arg "" "" "DIRECTORIES;EXCLUDE;MODULES" ${ARGN})
     generate_empty_ts_file("${catalog}_en.ts")
     file(GLOB ts_files "${catalog}_*.ts")
+
+    list(PREPEND arg_EXCLUDE "/3rdparty/" "/doc/snippets/")
 
     set(languages)
     foreach(file IN LISTS ts_files)
@@ -58,6 +60,9 @@ function(add_ts_targets catalog)
             continue()
         endif()
         file(GLOB_RECURSE catalog_files "${dir_path}/**")
+        foreach(exclude_regex IN LISTS arg_EXCLUDE)
+            list(FILTER catalog_files EXCLUDE REGEX ${exclude_regex})
+        endforeach()
         list(APPEND file_list ${catalog_files})
     endforeach()
 
@@ -89,10 +94,6 @@ function(add_ts_targets catalog)
     set(source_files_list_file "${CMAKE_CURRENT_BINARY_DIR}/${catalog}_file_list.txt")
     set(inclusion_regex "\\.h$|\\.cpp$|\\.hpp$|\\.cxx$|\\.cc$|\\.mm$|\\.qml$|\\.ui$")
     list(FILTER file_list INCLUDE REGEX "${inclusion_regex}")
-    list(FILTER file_list EXCLUDE REGEX /doc/snippets/)
-    if (arg_EXCLUDE)
-        list(FILTER file_list EXCLUDE REGEX ${arg_EXCLUDE})
-    endif()
     list(JOIN file_list "\n" file_list_string)
 
     file(GENERATE

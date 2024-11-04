@@ -13,7 +13,7 @@
 # limitations under the License.
 
 set(DAWN_NODE_GEN_DIR "${DAWN_BUILD_GEN_DIR}/node")
-set(IDLGEN_TOOL_DIR   "${CMAKE_SOURCE_DIR}/tools/src/cmd/idlgen")
+set(IDLGEN_TOOL_DIR   "${PROJECT_SOURCE_DIR}/tools/src/cmd/idlgen")
 
 # idlgen() is a function that uses the tools/src/cmd/idlgen/main.go tool to
 # generate code from an IDL file and template.
@@ -66,6 +66,7 @@ set_target_properties(dawn_node PROPERTIES
     PREFIX ""
     OUTPUT_NAME "dawn"
     SUFFIX ".node"
+    ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
     LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
     CXX_STANDARD 17
@@ -92,12 +93,16 @@ file(READ "${NODE_API_HEADERS_DIR}/symbols.js" NAPI_SYMBOLS_JS_CONTENT)
 string(REGEX MATCHALL "napi_[a-z0-9_]*" NAPI_SYMBOLS "${NAPI_SYMBOLS_JS_CONTENT}")
 
 if (WIN32)
+    set(NODE_API_BINARY_FILE "node.exe" CACHE STRING
+       "The name of the file in which to find the Node-API symbols."
+    )
+
     # Generate the NapiSymbols.def file from the Napi symbol list
     set(NAPI_SYMBOLS_DEF "${DAWN_NODE_GEN_DIR}/NapiSymbols.def")
     list(TRANSFORM NAPI_SYMBOLS PREPEND "  ")
     list(TRANSFORM NAPI_SYMBOLS APPEND "\n")
     string(REPLACE ";" "" NAPI_SYMBOLS "${NAPI_SYMBOLS}")
-    string(PREPEND NAPI_SYMBOLS "LIBRARY node.exe\nEXPORTS\n")
+    string(PREPEND NAPI_SYMBOLS "LIBRARY ${NODE_API_BINARY_FILE}\nEXPORTS\n")
     file(GENERATE OUTPUT "${NAPI_SYMBOLS_DEF}" CONTENT "${NAPI_SYMBOLS}")
     # Generate the NapiSymbols.lib from the NapiSymbols.def file
     set(NAPI_SYMBOLS_LIB "${DAWN_NODE_GEN_DIR}/NapiSymbols.lib")
@@ -130,3 +135,14 @@ else()
     file(GENERATE OUTPUT "${NAPI_SYMBOLS_H}" CONTENT "${NAPI_SYMBOLS}")
     target_sources(dawn_node PRIVATE "NapiSymbols.cpp")
 endif()
+
+macro(javascript file)
+    add_custom_command(
+        TARGET dawn_node POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${PROJECT_SOURCE_DIR}/src/dawn/node/${file}"
+            "${Dawn_BINARY_DIR}/${file}")
+endmacro()
+
+javascript("index.js")
+javascript("cts.js")

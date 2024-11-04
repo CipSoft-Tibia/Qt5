@@ -12,7 +12,7 @@ namespace extensions {
 
 namespace {
 
-const char kCancelReason[] = "ExtensionURLLoaderThrottle";
+const char kCancelReasonEULT[] = "ExtensionURLLoaderThrottle";
 
 }  // anonymous namespace
 
@@ -29,7 +29,7 @@ void ExtensionURLLoaderThrottle::WillStartRequest(
     bool* defer) {
   start_request_url_ = request->url;
   if (manager_->ShouldRejectRequest(start_request_url_))
-    delegate_->CancelWithError(net::ERR_TEMPORARILY_THROTTLED, kCancelReason);
+    delegate_->CancelWithError(net::ERR_TEMPORARILY_THROTTLED, kCancelReasonEULT);
 }
 
 void ExtensionURLLoaderThrottle::WillRedirectRequest(
@@ -40,7 +40,7 @@ void ExtensionURLLoaderThrottle::WillRedirectRequest(
     net::HttpRequestHeaders* /* modified_request_headers */,
     net::HttpRequestHeaders* /* modified_cors_exempt_request_headers */) {
   if (manager_->ShouldRejectRedirect(start_request_url_, *redirect_info)) {
-    delegate_->CancelWithError(net::ERR_TEMPORARILY_THROTTLED, kCancelReason);
+    delegate_->CancelWithError(net::ERR_TEMPORARILY_THROTTLED, kCancelReasonEULT);
   }
 }
 

@@ -15,21 +15,15 @@ list(APPEND test_data ${test_data_glob})
 
 qt_internal_add_test(tst_qaudiodecoderbackend
     SOURCES
-        ../shared/mediafileselector.h
         tst_qaudiodecoderbackend.cpp
+        ../shared/mediafileselector.h
+        ../shared/mediabackendutils.h
     INCLUDE_DIRECTORIES
+        ../shared/
         ../../../../src/multimedia/audio
     LIBRARIES
         Qt::Gui
         Qt::Multimedia
         Qt::MultimediaPrivate
     TESTDATA ${test_data}
-)
-
-## Scopes:
-#####################################################################
-
-qt_internal_extend_target(tst_qaudiodecoderbackend CONDITION boot2qt
-    DEFINES
-        WAV_SUPPORT_NOT_FORCED
 )

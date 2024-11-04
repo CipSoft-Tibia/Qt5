@@ -31,6 +31,7 @@
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/scroll/scroll_types.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
+#include "third_party/blink/renderer/core/style/style_scrollbar_color.h"
 #include "third_party/blink/renderer/platform/graphics/compositor_element_id.h"
 #include "third_party/blink/renderer/platform/graphics/paint/display_item_client.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
@@ -176,6 +177,12 @@ class CORE_EXPORT Scrollbar : public GarbageCollected<Scrollbar>,
   bool ThumbNeedsRepaint() const { return thumb_needs_repaint_; }
   void ClearThumbNeedsRepaint() { thumb_needs_repaint_ = false; }
 
+  // Returns true if either the track or the thumb needs repaint, or the thumb
+  // moved (which doesn't need to repaint the track or the thumb in some
+  // scrollbar themes).
+  bool NeedsUpdateDisplay() const { return needs_update_display_; }
+  void ClearNeedsUpdateDisplay() { needs_update_display_ = false; }
+
   // DisplayItemClient.
   String DebugName() const final {
     return orientation_ == kHorizontalScrollbar ? "HorizontalScrollbar"
@@ -205,6 +212,9 @@ class CORE_EXPORT Scrollbar : public GarbageCollected<Scrollbar>,
 
   // scrollbar-width CSS property
   EScrollbarWidth CSSScrollbarWidth() const;
+  // scrollbar-color CSS property
+  absl::optional<blink::Color> ScrollbarThumbColor() const;
+  absl::optional<blink::Color> ScrollbarTrackColor() const;
 
   // The Element that supplies our style information. If the scrollbar is
   // for a document, this is either the <body> or <html> element. Otherwise, it
@@ -257,8 +267,10 @@ class CORE_EXPORT Scrollbar : public GarbageCollected<Scrollbar>,
   bool ThumbWillBeUnderMouse() const;
   bool DeltaWillScroll(ScrollOffset delta) const;
 
-  bool track_needs_repaint_;
-  bool thumb_needs_repaint_;
+  bool track_needs_repaint_ = true;
+  bool thumb_needs_repaint_ = true;
+  bool needs_update_display_ = true;
+
   bool injected_gesture_scroll_begin_;
 
   // This is set based on the event modifiers. In scenarios like scrolling or

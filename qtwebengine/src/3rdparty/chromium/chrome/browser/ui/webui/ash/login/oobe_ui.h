@@ -10,17 +10,28 @@
 #include <string>
 #include <vector>
 
+#include "ash/webui/common/chrome_os_webui_config.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/observer_list.h"
 #include "base/values.h"
 #include "chrome/browser/ash/login/oobe_screen.h"
+#include "chrome/browser/ash/login/screens/core_oobe.h"
 #include "chrome/browser/ui/webui/ash/login/base_screen_handler.h"
 #include "chrome/browser/ui/webui/ash/login/core_oobe_handler.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chromeos/ash/services/auth_factor_config/public/mojom/auth_factor_config.mojom-forward.h"
 #include "chromeos/ash/services/cellular_setup/public/mojom/esim_manager.mojom-forward.h"
 #include "chromeos/ash/services/multidevice_setup/public/mojom/multidevice_setup.mojom-forward.h"
 #include "chromeos/services/network_config/public/mojom/cros_network_config.mojom-forward.h"
+#include "content/public/common/url_constants.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "ui/webui/mojo_web_ui_controller.h"
+#include "ui/webui/resources/cr_components/color_change_listener/color_change_listener.mojom.h"
+
+namespace ui {
+class ColorChangeHandler;
+}
 
 namespace content {
 class WebUIDataSource;
@@ -31,6 +42,17 @@ namespace ash {
 class ErrorScreen;
 class NetworkStateInformer;
 class OobeDisplayChooser;
+class OobeUI;
+
+// The WebUIConfig for chrome://oobe urls
+class OobeUIConfig : public ChromeOSWebUIConfig<OobeUI> {
+ public:
+  OobeUIConfig()
+      : ChromeOSWebUIConfig(content::kChromeUIScheme,
+                            chrome::kChromeUIOobeHost) {}
+
+  bool IsWebUIEnabled(content::BrowserContext* browser_context) override;
+};
 
 // A custom WebUI that defines datasource for out-of-box-experience (OOBE) UI:
 // - welcome screen (setup language/keyboard/network).
@@ -53,6 +75,7 @@ class OobeUI : public ui::MojoWebUIController {
     virtual void OnCurrentScreenChanged(OobeScreenId current_screen,
                                         OobeScreenId new_screen) = 0;
 
+    virtual void OnBackdropLoaded() {}
     virtual void OnDestroyingOobeUI() = 0;
 
    protected:
@@ -66,7 +89,7 @@ class OobeUI : public ui::MojoWebUIController {
 
   ~OobeUI() override;
 
-  CoreOobeView* GetCoreOobeView();
+  CoreOobe* GetCoreOobe();
   ErrorScreen* GetErrorScreen();
 
   // Collects localized strings from the owned handlers.
@@ -77,6 +100,9 @@ class OobeUI : public ui::MojoWebUIController {
 
   // Called when the screen has changed.
   void CurrentScreenChanged(OobeScreenId screen);
+
+  // Called when the backdrop image of the OOBE is loaded.
+  void OnBackdropLoaded();
 
   bool IsJSReady(base::OnceClosure display_is_ready_callback);
 
@@ -146,6 +172,17 @@ class OobeUI : public ui::MojoWebUIController {
   void BindInterface(
       mojo::PendingReceiver<ash::cellular_setup::mojom::ESimManager> receiver);
 
+  // Binds to the Jelly dynamic color Mojo
+  void BindInterface(
+      mojo::PendingReceiver<color_change_listener::mojom::PageHandler>
+          receiver);
+
+  // Binds to the cros authentication factor editing services.
+  void BindInterface(
+      mojo::PendingReceiver<auth::mojom::AuthFactorConfig> receiver);
+  void BindInterface(
+      mojo::PendingReceiver<auth::mojom::PinFactorEditor> receiver);
+
   static void AddOobeComponents(content::WebUIDataSource* source);
 
   bool ready() const { return ready_; }
@@ -170,11 +207,14 @@ class OobeUI : public ui::MojoWebUIController {
   scoped_refptr<NetworkStateInformer> network_state_informer_;
 
   // Reference to CoreOobeHandler that handles common requests of Oobe page.
-  CoreOobeHandler* core_handler_ = nullptr;
+  raw_ptr<CoreOobeHandler, ExperimentalAsh> core_handler_ = nullptr;
+  std::unique_ptr<CoreOobe> core_oobe_;
 
   std::vector<BaseWebUIHandler*> webui_handlers_;       // Non-owning pointers.
   std::vector<BaseWebUIHandler*> webui_only_handlers_;  // Non-owning pointers.
   std::vector<BaseScreenHandler*> screen_handlers_;     // Non-owning pointers.
+
+  std::unique_ptr<ui::ColorChangeHandler> color_provider_handler_;
 
   std::unique_ptr<ErrorScreen> error_screen_;
 

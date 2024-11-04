@@ -17,7 +17,6 @@
 
 #include "base/containers/adapters.h"
 #include "base/containers/contains.h"
-#include "base/cxx17_backports.h"
 #include "base/debug/crash_logging.h"
 #include "base/debug/dump_without_crashing.h"
 #include "base/json/json_writer.h"
@@ -120,8 +119,8 @@ std::pair<gfx::PointF, gfx::PointF> GetVisibleSelectionEndPoints(
     const gfx::RectF& rect,
     const gfx::PointF& top,
     const gfx::PointF& bottom) {
-  gfx::PointF start(base::clamp(top.x(), rect.x(), rect.right()),
-                    base::clamp(top.y(), rect.y(), rect.bottom()));
+  gfx::PointF start(std::clamp(top.x(), rect.x(), rect.right()),
+                    std::clamp(top.y(), rect.y(), rect.bottom()));
   gfx::PointF end = start + (bottom - top);
   return {start, end};
 }
@@ -238,10 +237,13 @@ void LayerTreeImpl::DidUpdateScrollOffset(ElementId id) {
       !base::FeatureList::IsEnabled(features::kScrollUnification) ||
       scroll_tree.CanRealizeScrollsOnCompositor(*scroll_node);
 
-  DCHECK(scroll_node->transform_id != kInvalidPropertyNodeId);
-  TransformTree& transform_tree = property_trees()->transform_tree_mutable();
-  auto* transform_node = transform_tree.Node(scroll_node->transform_id);
-  if (should_realize_scroll_on_compositor) {
+  // A ScrollNode may have an invalid transform_id if its scroller is
+  // unpainted. Since an unpainted scroller would not be visible to the
+  // user, realizing this scroll is a nop.
+  if (should_realize_scroll_on_compositor &&
+      scroll_node->transform_id != kInvalidPropertyNodeId) {
+    TransformTree& transform_tree = property_trees()->transform_tree_mutable();
+    auto* transform_node = transform_tree.Node(scroll_node->transform_id);
     if (transform_node->scroll_offset !=
         scroll_tree.current_scroll_offset(id)) {
       transform_node->scroll_offset = scroll_tree.current_scroll_offset(id);
@@ -746,10 +748,6 @@ void LayerTreeImpl::PullLayerTreePropertiesFrom(CommitState& commit_state) {
   // Transfer page transition directives.
   for (auto& request : commit_state.view_transition_requests)
     AddViewTransitionRequest(std::move(request));
-
-  SetVisualUpdateDurations(
-      commit_state.previous_surfaces_visual_update_duration,
-      commit_state.visual_update_duration);
 }
 
 void LayerTreeImpl::PushPropertyTreesTo(LayerTreeImpl* target_tree) {
@@ -880,9 +878,6 @@ void LayerTreeImpl::PushPropertiesTo(LayerTreeImpl* target_tree) {
 
   for (auto& request : TakeViewTransitionRequests())
     target_tree->AddViewTransitionRequest(std::move(request));
-
-  target_tree->SetVisualUpdateDurations(
-      previous_surfaces_visual_update_duration_, visual_update_duration_);
 }
 
 void LayerTreeImpl::HandleTickmarksVisibilityChange() {
@@ -957,8 +952,10 @@ void LayerTreeImpl::SetTransformMutated(ElementId element_id,
   DCHECK_EQ(1u,
             property_trees()->transform_tree().element_id_to_node_index().count(
                 element_id));
-  if (IsSyncTree() || IsRecycleTree())
+  if (!base::FeatureList::IsEnabled(features::kNoPreserveLastMutation) &&
+      (IsSyncTree() || IsRecycleTree())) {
     element_id_to_transform_animations_[element_id] = transform;
+  }
   if (property_trees()->transform_tree_mutable().OnTransformAnimated(element_id,
                                                                      transform))
     set_needs_update_draw_properties();
@@ -968,8 +965,10 @@ void LayerTreeImpl::SetOpacityMutated(ElementId element_id, float opacity) {
   DCHECK_EQ(1u,
             property_trees()->effect_tree().element_id_to_node_index().count(
                 element_id));
-  if (IsSyncTree() || IsRecycleTree())
+  if (!base::FeatureList::IsEnabled(features::kNoPreserveLastMutation) &&
+      (IsSyncTree() || IsRecycleTree())) {
     element_id_to_opacity_animations_[element_id] = opacity;
+  }
   if (property_trees()->effect_tree_mutable().OnOpacityAnimated(element_id,
                                                                 opacity))
     set_needs_update_draw_properties();
@@ -980,8 +979,10 @@ void LayerTreeImpl::SetFilterMutated(ElementId element_id,
   DCHECK_EQ(1u,
             property_trees()->effect_tree().element_id_to_node_index().count(
                 element_id));
-  if (IsSyncTree() || IsRecycleTree())
+  if (!base::FeatureList::IsEnabled(features::kNoPreserveLastMutation) &&
+      (IsSyncTree() || IsRecycleTree())) {
     element_id_to_filter_animations_[element_id] = filters;
+  }
   if (property_trees()->effect_tree_mutable().OnFilterAnimated(element_id,
                                                                filters))
     set_needs_update_draw_properties();
@@ -993,8 +994,10 @@ void LayerTreeImpl::SetBackdropFilterMutated(
   DCHECK_EQ(1u,
             property_trees()->effect_tree().element_id_to_node_index().count(
                 element_id));
-  if (IsSyncTree() || IsRecycleTree())
+  if (!base::FeatureList::IsEnabled(features::kNoPreserveLastMutation) &&
+      (IsSyncTree() || IsRecycleTree())) {
     element_id_to_backdrop_filter_animations_[element_id] = backdrop_filters;
+  }
   if (property_trees()->effect_tree_mutable().OnBackdropFilterAnimated(
           element_id, backdrop_filters))
     set_needs_update_draw_properties();
@@ -1095,67 +1098,70 @@ void LayerTreeImpl::UpdatePropertyTreeAnimationFromMainThread() {
   // This code is assumed to only run on the sync tree; the node updates are
   // then synced when the tree is activated. See http://crbug.com/916512
   DCHECK(IsSyncTree());
-
-  auto& effect_tree = property_trees_.effect_tree_mutable();
-  auto element_id_to_opacity = element_id_to_opacity_animations_.begin();
-  while (element_id_to_opacity != element_id_to_opacity_animations_.end()) {
-    const ElementId id = element_id_to_opacity->first;
-    EffectNode* node = effect_tree.FindNodeFromElementId(id);
-    if (!node || !node->is_currently_animating_opacity ||
-        node->opacity == element_id_to_opacity->second) {
-      element_id_to_opacity_animations_.erase(element_id_to_opacity++);
-      continue;
-    }
-    node->opacity = element_id_to_opacity->second;
-    effect_tree.set_needs_update(true);
-    ++element_id_to_opacity;
-  }
-
-  auto element_id_to_filter = element_id_to_filter_animations_.begin();
-  while (element_id_to_filter != element_id_to_filter_animations_.end()) {
-    const ElementId id = element_id_to_filter->first;
-    EffectNode* node = effect_tree.FindNodeFromElementId(id);
-    if (!node || !node->is_currently_animating_filter ||
-        node->filters == element_id_to_filter->second) {
-      element_id_to_filter_animations_.erase(element_id_to_filter++);
-      continue;
-    }
-    node->filters = element_id_to_filter->second;
-    effect_tree.set_needs_update(true);
-    ++element_id_to_filter;
-  }
-
-  auto element_id_to_backdrop_filter =
-      element_id_to_backdrop_filter_animations_.begin();
-  while (element_id_to_backdrop_filter !=
-         element_id_to_backdrop_filter_animations_.end()) {
-    const ElementId id = element_id_to_backdrop_filter->first;
-    EffectNode* node = effect_tree.FindNodeFromElementId(id);
-    if (!node || !node->is_currently_animating_backdrop_filter ||
-        node->backdrop_filters == element_id_to_backdrop_filter->second) {
-      element_id_to_backdrop_filter_animations_.erase(
-          element_id_to_backdrop_filter++);
-      continue;
-    }
-    node->backdrop_filters = element_id_to_backdrop_filter->second;
-    effect_tree.set_needs_update(true);
-    ++element_id_to_backdrop_filter;
-  }
-
   auto& transform_tree = property_trees_.transform_tree_mutable();
-  auto element_id_to_transform = element_id_to_transform_animations_.begin();
-  while (element_id_to_transform != element_id_to_transform_animations_.end()) {
-    const ElementId id = element_id_to_transform->first;
-    TransformNode* node = transform_tree.FindNodeFromElementId(id);
-    if (!node || !node->is_currently_animating ||
-        node->local == element_id_to_transform->second) {
-      element_id_to_transform_animations_.erase(element_id_to_transform++);
-      continue;
+
+  if (!base::FeatureList::IsEnabled(features::kNoPreserveLastMutation)) {
+    auto& effect_tree = property_trees_.effect_tree_mutable();
+    auto element_id_to_opacity = element_id_to_opacity_animations_.begin();
+    while (element_id_to_opacity != element_id_to_opacity_animations_.end()) {
+      const ElementId id = element_id_to_opacity->first;
+      EffectNode* node = effect_tree.FindNodeFromElementId(id);
+      if (!node || !node->is_currently_animating_opacity ||
+          node->opacity == element_id_to_opacity->second) {
+        element_id_to_opacity_animations_.erase(element_id_to_opacity++);
+        continue;
+      }
+      node->opacity = element_id_to_opacity->second;
+      effect_tree.set_needs_update(true);
+      ++element_id_to_opacity;
     }
-    node->local = element_id_to_transform->second;
-    node->needs_local_transform_update = true;
-    transform_tree.set_needs_update(true);
-    ++element_id_to_transform;
+
+    auto element_id_to_filter = element_id_to_filter_animations_.begin();
+    while (element_id_to_filter != element_id_to_filter_animations_.end()) {
+      const ElementId id = element_id_to_filter->first;
+      EffectNode* node = effect_tree.FindNodeFromElementId(id);
+      if (!node || !node->is_currently_animating_filter ||
+          node->filters == element_id_to_filter->second) {
+        element_id_to_filter_animations_.erase(element_id_to_filter++);
+        continue;
+      }
+      node->filters = element_id_to_filter->second;
+      effect_tree.set_needs_update(true);
+      ++element_id_to_filter;
+    }
+
+    auto element_id_to_backdrop_filter =
+        element_id_to_backdrop_filter_animations_.begin();
+    while (element_id_to_backdrop_filter !=
+           element_id_to_backdrop_filter_animations_.end()) {
+      const ElementId id = element_id_to_backdrop_filter->first;
+      EffectNode* node = effect_tree.FindNodeFromElementId(id);
+      if (!node || !node->is_currently_animating_backdrop_filter ||
+          node->backdrop_filters == element_id_to_backdrop_filter->second) {
+        element_id_to_backdrop_filter_animations_.erase(
+            element_id_to_backdrop_filter++);
+        continue;
+      }
+      node->backdrop_filters = element_id_to_backdrop_filter->second;
+      effect_tree.set_needs_update(true);
+      ++element_id_to_backdrop_filter;
+    }
+
+    auto element_id_to_transform = element_id_to_transform_animations_.begin();
+    while (element_id_to_transform !=
+           element_id_to_transform_animations_.end()) {
+      const ElementId id = element_id_to_transform->first;
+      TransformNode* node = transform_tree.FindNodeFromElementId(id);
+      if (!node || !node->is_currently_animating ||
+          node->local == element_id_to_transform->second) {
+        element_id_to_transform_animations_.erase(element_id_to_transform++);
+        continue;
+      }
+      node->local = element_id_to_transform->second;
+      node->needs_local_transform_update = true;
+      transform_tree.set_needs_update(true);
+      ++element_id_to_transform;
+    }
   }
 
   for (auto iter : transform_tree.element_id_to_node_index())
@@ -1294,7 +1300,7 @@ bool LayerTreeImpl::ClampTopControlsShownRatio() {
         host_impl_->browser_controls_manager()->TopControlsShownRatioRange();
   }
   return top_controls_shown_ratio_->SetCurrent(
-      base::clamp(ratio, range.first, range.second));
+      std::clamp(ratio, range.first, range.second));
 }
 
 bool LayerTreeImpl::ClampBottomControlsShownRatio() {
@@ -1307,7 +1313,7 @@ bool LayerTreeImpl::ClampBottomControlsShownRatio() {
         host_impl_->browser_controls_manager()->BottomControlsShownRatioRange();
   }
   return bottom_controls_shown_ratio_->SetCurrent(
-      base::clamp(ratio, range.first, range.second));
+      std::clamp(ratio, range.first, range.second));
 }
 
 bool LayerTreeImpl::SetCurrentBrowserControlsShownRatio(float top_ratio,
@@ -1403,7 +1409,6 @@ void LayerTreeImpl::SetDeviceScaleFactor(float device_scale_factor) {
   set_needs_update_draw_properties();
   if (IsActiveTree())
     host_impl_->SetViewportDamage(GetDeviceViewport());
-  host_impl_->SetNeedUpdateGpuRasterizationStatus();
 }
 
 void LayerTreeImpl::SetLocalSurfaceIdFromParent(
@@ -1598,77 +1603,68 @@ bool LayerTreeImpl::UpdateDrawProperties(
     draw_property_utils::CalculateDrawProperties(
         this, &render_surface_list_, output_update_layer_list_for_testing);
 
-    if (const char* client_name = GetClientNameForMetrics()) {
+    if (settings().single_thread_proxy_scheduler) {
       // This metric is only recorded for the Browser.
-      if (settings().single_thread_proxy_scheduler) {
-        UMA_HISTOGRAM_COUNTS_1M(
-            base::StringPrintf(
-                "Compositing.%s.LayerTreeImpl.CalculateDrawPropertiesUs",
-                client_name),
-            timer.Elapsed().InMicroseconds());
-      }
+      UMA_HISTOGRAM_COUNTS_1M(
+          "Compositing.Browser.LayerTreeImpl.CalculateDrawPropertiesUs",
+          timer.Elapsed().InMicroseconds());
+    } else {
+      // This metric is only recorded for the Renderer.
       UMA_HISTOGRAM_COUNTS_100(
-          base::StringPrintf("Compositing.%s.NumRenderSurfaces", client_name),
+          "Compositing.Renderer.NumRenderSurfaces",
           base::saturated_cast<int>(render_surface_list_.size()));
     }
   }
 
-  if (settings().enable_occlusion) {
-    TRACE_EVENT2("cc,benchmark",
-                 "LayerTreeImpl::UpdateDrawProperties::Occlusion", "IsActive",
-                 IsActiveTree(), "SourceFrameNumber", source_frame_number_);
-    OcclusionTracker occlusion_tracker(RootRenderSurface()->content_rect());
-    occlusion_tracker.set_minimum_tracking_size(
-        settings().minimum_occlusion_tracking_size);
+  TRACE_EVENT2("cc,benchmark", "LayerTreeImpl::UpdateDrawProperties::Occlusion",
+               "IsActive", IsActiveTree(), "SourceFrameNumber",
+               source_frame_number_);
+  OcclusionTracker occlusion_tracker(RootRenderSurface()->content_rect());
+  occlusion_tracker.set_minimum_tracking_size(
+      settings().minimum_occlusion_tracking_size);
 
-    for (EffectTreeLayerListIterator it(this);
-         it.state() != EffectTreeLayerListIterator::State::END; ++it) {
-      occlusion_tracker.EnterLayer(it);
+  for (EffectTreeLayerListIterator it(this);
+       it.state() != EffectTreeLayerListIterator::State::END; ++it) {
+    occlusion_tracker.EnterLayer(it);
 
-      if (it.state() == EffectTreeLayerListIterator::State::LAYER) {
-        LayerImpl* layer = it.current_layer();
-        layer->draw_properties().occlusion_in_content_space =
-            occlusion_tracker.GetCurrentOcclusionForLayer(
-                layer->DrawTransform());
-      }
-
-      // TODO(khushalsagar) : Skip computing occlusion for shared elements. See
-      // crbug.com/1258058.
-      if (it.state() ==
-          EffectTreeLayerListIterator::State::CONTRIBUTING_SURFACE) {
-        const RenderSurfaceImpl* occlusion_surface =
-            occlusion_tracker.OcclusionSurfaceForContributingSurface();
-        gfx::Transform draw_transform;
-        RenderSurfaceImpl* render_surface = it.current_render_surface();
-        if (occlusion_surface) {
-          // We are calculating transform between two render surfaces. So, we
-          // need to apply the surface contents scale at target and remove the
-          // surface contents scale at source.
-          property_trees()->GetToTarget(render_surface->TransformTreeIndex(),
-                                        occlusion_surface->EffectTreeIndex(),
-                                        &draw_transform);
-          const EffectNode* effect_node = property_trees()->effect_tree().Node(
-              render_surface->EffectTreeIndex());
-          draw_property_utils::ConcatInverseSurfaceContentsScale(
-              effect_node, &draw_transform);
-        }
-
-        Occlusion occlusion =
-            occlusion_tracker.GetCurrentOcclusionForContributingSurface(
-                draw_transform);
-        render_surface->set_occlusion_in_content_space(occlusion);
-      }
-
-      occlusion_tracker.LeaveLayer(it);
+    if (it.state() == EffectTreeLayerListIterator::State::LAYER) {
+      LayerImpl* layer = it.current_layer();
+      layer->draw_properties().occlusion_in_content_space =
+          occlusion_tracker.GetCurrentOcclusionForLayer(layer->DrawTransform());
     }
 
-    unoccluded_screen_space_region_ =
-        occlusion_tracker.ComputeVisibleRegionInScreen(this);
-  } else {
-    // No occlusion, entire root content rect is unoccluded.
-    unoccluded_screen_space_region_ =
-        Region(RootRenderSurface()->content_rect());
+    // TODO(khushalsagar) : Skip computing occlusion for shared elements. See
+    // crbug.com/1258058.
+    if (it.state() ==
+        EffectTreeLayerListIterator::State::CONTRIBUTING_SURFACE) {
+      const RenderSurfaceImpl* occlusion_surface =
+          occlusion_tracker.OcclusionSurfaceForContributingSurface();
+      gfx::Transform draw_transform;
+      RenderSurfaceImpl* render_surface = it.current_render_surface();
+      if (occlusion_surface) {
+        // We are calculating transform between two render surfaces. So, we
+        // need to apply the surface contents scale at target and remove the
+        // surface contents scale at source.
+        property_trees()->GetToTarget(render_surface->TransformTreeIndex(),
+                                      occlusion_surface->EffectTreeIndex(),
+                                      &draw_transform);
+        const EffectNode* effect_node = property_trees()->effect_tree().Node(
+            render_surface->EffectTreeIndex());
+        draw_property_utils::ConcatInverseSurfaceContentsScale(effect_node,
+                                                               &draw_transform);
+      }
+
+      Occlusion occlusion =
+          occlusion_tracker.GetCurrentOcclusionForContributingSurface(
+              draw_transform);
+      render_surface->set_occlusion_in_content_space(occlusion);
+    }
+
+    occlusion_tracker.LeaveLayer(it);
   }
+
+  unoccluded_screen_space_region_ =
+      occlusion_tracker.ComputeVisibleRegionInScreen(this);
 
   // Resourceless draw do not need tiles and should not affect existing tile
   // priorities.
@@ -1842,7 +1838,7 @@ const LayerTreeDebugState& LayerTreeImpl::debug_state() const {
   return host_impl_->debug_state();
 }
 
-viz::ContextProvider* LayerTreeImpl::context_provider() const {
+viz::RasterContextProvider* LayerTreeImpl::context_provider() const {
   return host_impl_->layer_tree_frame_sink()->context_provider();
 }
 
@@ -1963,10 +1959,6 @@ void LayerTreeImpl::DidAnimateScrollOffset() {
 
 bool LayerTreeImpl::use_gpu_rasterization() const {
   return host_impl_->use_gpu_rasterization();
-}
-
-GpuRasterizationStatus LayerTreeImpl::GetGpuRasterizationStatus() const {
-  return host_impl_->gpu_rasterization_status();
 }
 
 bool LayerTreeImpl::create_low_res_tiling() const {
@@ -2532,7 +2524,7 @@ LayerTreeImpl::FindLayersHitByPointInNonFastScrollableRegion(
 }
 
 std::vector<const LayerImpl*>
-LayerTreeImpl::FindAllLayersUpToAndIncludingFirstScrollable(
+LayerTreeImpl::FindLayersUpToFirstScrollableOrOpaqueToHitTest(
     const gfx::PointF& screen_space_point) {
   std::vector<const LayerImpl*> layers;
   if (layer_list_.empty())
@@ -2587,8 +2579,9 @@ LayerTreeImpl::FindAllLayersUpToAndIncludingFirstScrollable(
           std::pair<const LayerImpl*, float>(layer, distance_to_intersection));
     } else {
       layers.push_back(layer);
-      if (layer->IsScrollerOrScrollbar())
+      if (layer->IsScrollerOrScrollbar() || layer->OpaqueToHitTest()) {
         break;
+      }
     }
   }
 
@@ -2615,8 +2608,9 @@ LayerTreeImpl::FindAllLayersUpToAndIncludingFirstScrollable(
       const LayerImpl* layer = pair.first;
 
       result.push_back(layer);
-      if (layer->IsScrollerOrScrollbar())
+      if (layer->IsScrollerOrScrollbar() || layer->OpaqueToHitTest()) {
         return result;
+      }
     }
     // Append 2D layers if none of the 3D layers were scrollable.
     result.insert(result.end(), layers.begin(), layers.end());
@@ -2838,6 +2832,7 @@ void LayerTreeImpl::GetViewportSelection(
                                 : nullptr,
       device_scale_factor() * painted_device_scale_factor());
   if (selection->start.type() == gfx::SelectionBound::CENTER ||
+      selection->start.type() == gfx::SelectionBound::HIDDEN ||
       selection->start.type() == gfx::SelectionBound::EMPTY) {
     selection->end = selection->start;
   } else {
@@ -2941,21 +2936,18 @@ bool LayerTreeImpl::HasViewTransitionRequests() const {
   return !view_transition_requests_.empty();
 }
 
+bool LayerTreeImpl::HasViewTransitionSaveRequest() const {
+  for (const auto& request : view_transition_requests_) {
+    if (request->type() == ViewTransitionRequest::Type::kSave) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 bool LayerTreeImpl::IsReadyToActivate() const {
   return host_impl_->IsReadyToActivate();
-}
-
-void LayerTreeImpl::ClearVisualUpdateDurations() {
-  previous_surfaces_visual_update_duration_ = base::TimeDelta();
-  visual_update_duration_ = base::TimeDelta();
-}
-
-void LayerTreeImpl::SetVisualUpdateDurations(
-    base::TimeDelta previous_surfaces_visual_update_duration,
-    base::TimeDelta visual_update_duration) {
-  previous_surfaces_visual_update_duration_ =
-      previous_surfaces_visual_update_duration;
-  visual_update_duration_ = visual_update_duration;
 }
 
 void LayerTreeImpl::RequestImplSideInvalidationForRerasterTiling() {

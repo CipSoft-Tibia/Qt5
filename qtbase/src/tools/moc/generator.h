@@ -10,16 +10,19 @@ QT_BEGIN_NAMESPACE
 
 class Generator
 {
+    Moc *parser = nullptr;
     FILE *out;
     ClassDef *cdef;
     QList<uint> meta_data;
 
 public:
-    Generator(ClassDef *classDef, const QList<QByteArray> &metaTypes,
+    Generator(Moc *moc, ClassDef *classDef, const QList<QByteArray> &metaTypes,
               const QHash<QByteArray, QByteArray> &knownQObjectClasses,
               const QHash<QByteArray, QByteArray> &knownGadgets, FILE *outfile = nullptr,
               bool requireCompleteTypes = false);
     void generateCode();
+    qsizetype registeredStringsCount() { return strings.size(); };
+
 private:
     bool registerableMetaType(const QByteArray &propertyType);
     void registerClassInfoStrings();
@@ -37,7 +40,7 @@ private:
     void generateProperties();
     void generateMetacall();
     void generateStaticMetacall();
-    void generateSignal(FunctionDef *def, int index);
+    void generateSignal(const FunctionDef *def, int index);
     void generatePluginMetaData();
     QMultiMap<QByteArray, int> automaticPropertyMetaTypesHelper();
     QMap<int, QMultiMap<QByteArray, int>>

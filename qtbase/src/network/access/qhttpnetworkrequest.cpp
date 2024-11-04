@@ -112,7 +112,7 @@ QByteArray QHttpNetworkRequest::uri(bool throughProxy) const
 
 QByteArray QHttpNetworkRequestPrivate::header(const QHttpNetworkRequest &request, bool throughProxy)
 {
-    QList<QPair<QByteArray, QByteArray> > fields = request.header();
+    const QList<QPair<QByteArray, QByteArray> > fields = request.header();
     QByteArray ba;
     ba.reserve(40 + fields.size()*25); // very rough lower bound estimation
 
@@ -126,12 +126,10 @@ QByteArray QHttpNetworkRequestPrivate::header(const QHttpNetworkRequest &request
     ba += QByteArray::number(request.minorVersion());
     ba += "\r\n";
 
-    QList<QPair<QByteArray, QByteArray> >::const_iterator it = fields.constBegin();
-    QList<QPair<QByteArray, QByteArray> >::const_iterator endIt = fields.constEnd();
-    for (; it != endIt; ++it) {
-        ba += it->first;
+    for (const auto& [name, value] : fields) {
+        ba += name;
         ba += ": ";
-        ba += it->second;
+        ba += value;
         ba += "\r\n";
     }
     if (request.d->operation == QHttpNetworkRequest::Post) {
@@ -242,7 +240,7 @@ QList<QPair<QByteArray, QByteArray> > QHttpNetworkRequest::header() const
     return d->parser.headers();
 }
 
-QByteArray QHttpNetworkRequest::headerField(const QByteArray &name, const QByteArray &defaultValue) const
+QByteArray QHttpNetworkRequest::headerField(QByteArrayView name, const QByteArray &defaultValue) const
 {
     return d->headerField(name, defaultValue);
 }
@@ -264,6 +262,7 @@ void QHttpNetworkRequest::clearHeaders()
 
 QHttpNetworkRequest &QHttpNetworkRequest::operator=(const QHttpNetworkRequest &other)
 {
+    QHttpNetworkHeader::operator=(other);
     d = other.d;
     return *this;
 }

@@ -23,6 +23,8 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "perfetto/base/compiler.h"
@@ -106,6 +108,11 @@ struct TracingInitArgs {
   // delay, i.e. commits will be sent to the service at the next opportunity.
   uint32_t shmem_batch_commits_duration_ms = 0;
 
+  // [Optional] Enables direct producer-side patching of chunks that have not
+  // yet been committed to the service. This flag will only have an effect
+  // if the service supports direct patching, otherwise it will be ignored.
+  bool shmem_direct_patching_enabled = false;
+
   // [Optional] If set, the policy object is notified when certain SDK events
   // occur and may apply policy decisions, such as denying connections. The
   // embedder is responsible for ensuring the object remains alive for the
@@ -133,30 +140,21 @@ struct TracingInitArgs {
 
   // This flag can be set to false in order to avoid enabling the system
   // consumer in Tracing::Initialize(), so that the linker can remove the unused
-  // consumer IPC implementation to reduce binary size. When this option is
-  // false, calling Tracing::NewTrace() on the system backend will fail. This
-  // setting only has an effect if kSystemBackend is specified in |backends|.
+  // consumer IPC implementation to reduce binary size. This setting only has an
+  // effect if kSystemBackend is specified in |backends|. When this option is
+  // false, Tracing::NewTrace() will instatiate the system backend only if
+  // explicitly specified as kSystemBackend: kUndefinedBackend will consider
+  // only already instantiated backends.
   bool enable_system_consumer = true;
+
+  // When true, sets disallow_merging_with_system_tracks in TrackDescriptor,
+  // making sure that Trace Processor doesn't merge track event and system
+  // event tracks for the same thread.
+  bool disallow_merging_with_system_tracks = false;
 
  protected:
   friend class Tracing;
   friend class internal::TracingMuxerImpl;
-
-  // Used only by the DCHECK in tracing.cc, to check that the config is the
-  // same in case of re-initialization.
-  bool operator==(const TracingInitArgs& other) const {
-    return std::tie(backends, custom_backend, platform, shmem_size_hint_kb,
-                    shmem_page_size_hint_kb, in_process_backend_factory_,
-                    system_producer_backend_factory_,
-                    system_consumer_backend_factory_, dcheck_is_on_,
-                    enable_system_consumer) ==
-           std::tie(other.backends, other.custom_backend, other.platform,
-                    other.shmem_size_hint_kb, other.shmem_page_size_hint_kb,
-                    other.in_process_backend_factory_,
-                    other.system_producer_backend_factory_,
-                    other.system_consumer_backend_factory_, other.dcheck_is_on_,
-                    other.enable_system_consumer);
-  }
 
   using BackendFactoryFunction = TracingBackend* (*)();
   using ProducerBackendFactoryFunction = TracingProducerBackend* (*)();
@@ -172,7 +170,12 @@ struct TracingInitArgs {
 class PERFETTO_EXPORT_COMPONENT Tracing {
  public:
   // Initializes Perfetto with the given backends in the calling process and/or
-  // with a user-provided backend. No-op if called more than once.
+  // with a user-provided backend. It's possible to call this function more than
+  // once to initialize different backends. If a backend was already initialized
+  // the call will have no effect on it. All the members of `args` will be
+  // ignored in subsequent calls, except those require to initialize new
+  // backends (`backends`, `enable_system_consumer`, `shmem_size_hint_kb`,
+  // `shmem_page_size_hint_kb` and `shmem_batch_commits_duration_ms`).
   static inline void Initialize(const TracingInitArgs& args)
       PERFETTO_ALWAYS_INLINE {
     TracingInitArgs args_copy(args);
@@ -207,8 +210,30 @@ class PERFETTO_EXPORT_COMPONENT Tracing {
 
   // Start a new tracing session using the given tracing backend. Use
   // |kUnspecifiedBackend| to select an available backend automatically.
-  static std::unique_ptr<TracingSession> NewTrace(
-      BackendType = kUnspecifiedBackend);
+  static inline std::unique_ptr<TracingSession> NewTrace(
+      BackendType backend = kUnspecifiedBackend) PERFETTO_ALWAYS_INLINE {
+    // This code is inlined to allow dead-code elimination for unused consumer
+    // implementation. The logic behind it is the following:
+    // Nothing other than the code below references the GetInstance() method
+    // below. From a linker-graph viewpoint, those GetInstance() pull in many
+    // other pieces of the codebase (ConsumerOnlySystemTracingBackend pulls
+    // ConsumerIPCClient). Due to the inline, the compiler can see through the
+    // code and realize that some branches are always not taken. When that
+    // happens, no reference to the backends' GetInstance() is emitted and that
+    // allows the linker GC to get rid of the entire set of dependencies.
+    TracingConsumerBackend* (*system_backend_factory)();
+    system_backend_factory = nullptr;
+    // In case PERFETTO_IPC is disabled, a fake system backend is used, which
+    // always panics. NewTrace(kSystemBackend) should fail if PERFETTO_IPC is
+    // diabled, not panic.
+#if PERFETTO_BUILDFLAG(PERFETTO_IPC)
+    if (backend & kSystemBackend) {
+      system_backend_factory =
+          &internal::SystemConsumerTracingBackend::GetInstance;
+    }
+#endif
+    return NewTraceInternal(backend, system_backend_factory);
+  }
 
   // Shut down Perfetto, releasing any allocated OS resources (threads, files,
   // sockets, etc.). Note that Perfetto cannot be reinitialized again in the
@@ -300,6 +325,9 @@ class PERFETTO_EXPORT_COMPONENT Tracing {
 
  private:
   static void InitializeInternal(const TracingInitArgs&);
+  static std::unique_ptr<TracingSession> NewTraceInternal(
+      BackendType,
+      TracingConsumerBackend* (*system_backend_factory)());
 
   Tracing() = delete;
 };

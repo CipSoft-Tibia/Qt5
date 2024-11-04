@@ -8,9 +8,9 @@
 #include <map>
 #include <memory>
 
+#include "src/base/contextual.h"
 #include "src/common/globals.h"
 #include "src/torque/ast.h"
-#include "src/torque/contextual.h"
 #include "src/torque/cpp-builder.h"
 #include "src/torque/declarable.h"
 
@@ -18,7 +18,7 @@ namespace v8 {
 namespace internal {
 namespace torque {
 
-class GlobalContext : public ContextualClass<GlobalContext> {
+class GlobalContext : public base::ContextualClass<GlobalContext> {
  public:
   GlobalContext(GlobalContext&&) = default;
   GlobalContext& operator=(GlobalContext&&) = default;
@@ -141,13 +141,14 @@ T* RegisterDeclarable(std::unique_ptr<T> d) {
   return GlobalContext::Get().RegisterDeclarable(std::move(d));
 }
 
-class TargetArchitecture : public ContextualClass<TargetArchitecture> {
+class TargetArchitecture : public base::ContextualClass<TargetArchitecture> {
  public:
   explicit TargetArchitecture(bool force_32bit);
 
   static size_t TaggedSize() { return Get().tagged_size_; }
   static size_t RawPtrSize() { return Get().raw_ptr_size_; }
   static size_t ExternalPointerSize() { return Get().external_ptr_size_; }
+  static size_t IndirectPointerSize() { return Get().indirect_ptr_size_; }
   static size_t MaxHeapAlignment() { return TaggedSize(); }
   static bool ArePointersCompressed() { return TaggedSize() < RawPtrSize(); }
   static int SmiTagAndShiftSize() { return Get().smi_tag_and_shift_size_; }
@@ -157,6 +158,7 @@ class TargetArchitecture : public ContextualClass<TargetArchitecture> {
   const size_t raw_ptr_size_;
   const int smi_tag_and_shift_size_;
   const size_t external_ptr_size_;
+  const size_t indirect_ptr_size_;
 };
 
 }  // namespace torque

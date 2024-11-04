@@ -24,9 +24,12 @@ constexpr char kSequenceInformationKey[] = "sequenceInformation";
 constexpr char kSequenceId[] = "sequencingId";
 constexpr char kGenerationId[] = "generationId";
 constexpr char kPriority[] = "priority";
+constexpr char kAttachConfigurationFileKey[] = "attachConfigurationFile";
 constexpr char kAttachEncryptionSettingsKey[] = "attachEncryptionSettings";
+constexpr char kSourceKey[] = "source";
 constexpr char kDeviceKey[] = "device";
 constexpr char kBrowserKey[] = "browser";
+constexpr char kRequestId[] = "requestId";
 
 // Generate new backoff entry.
 std::unique_ptr<::net::BackoffEntry> GetBackoffEntry(
@@ -141,18 +144,22 @@ EncryptedReportingJobConfiguration::EncryptedReportingJobConfiguration(
     DMAuth auth_data,
     const std::string& server_url,
     base::Value::Dict merging_payload,
-    const std::string& dm_token,
-    const std::string& client_id,
+    CloudPolicyClient* cloud_policy_client,
     UploadCompleteCallback complete_cb)
     : ReportingJobConfigurationBase(TYPE_UPLOAD_ENCRYPTED_REPORT,
                                     factory,
                                     std::move(auth_data),
                                     server_url,
-                                    std::move(complete_cb)) {
-  // Init common payload fields.
-  // TODO(b/237809917): Init using `InitializePayloadWithoutDeviceInfo` when
-  // backend is ready to support unmanaged devices.
-  InitializePayloadWithDeviceInfo(dm_token, client_id);
+                                    std::move(complete_cb)),
+      is_device_managed_(cloud_policy_client != nullptr) {
+  if (is_device_managed_) {
+    // Payload for managed device
+    InitializePayloadWithDeviceInfo(cloud_policy_client->dm_token(),
+                                    cloud_policy_client->client_id());
+  } else {
+    // Payload for unmanaged device
+    InitializePayloadWithoutDeviceInfo();
+  }
   // Merge it into the base class payload.
   payload_.Merge(std::move(merging_payload));
   // Retrieve priorities and figure out maximum sequence id for each.
@@ -307,14 +314,22 @@ void EncryptedReportingJobConfiguration::OnURLLoadComplete(
 }
 
 std::string EncryptedReportingJobConfiguration::GetUmaString() const {
-  return "Enterprise.EncryptedReportingSuccess";
+  if (is_device_managed_) {
+    return "Browser.ERP.Managed";
+  }
+  return "Browser.ERP.Unmanaged";
 }
 
 std::set<std::string>
 EncryptedReportingJobConfiguration::GetTopLevelKeyAllowList() {
   static std::set<std::string> kTopLevelKeyAllowList{
-      kEncryptedRecordListKey, kAttachEncryptionSettingsKey, kDeviceKey,
-      kBrowserKey};
+      kAttachConfigurationFileKey,
+      kAttachEncryptionSettingsKey,
+      kBrowserKey,
+      kDeviceKey,
+      kEncryptedRecordListKey,
+      kRequestId,
+      kSourceKey};
   return kTopLevelKeyAllowList;
 }
 

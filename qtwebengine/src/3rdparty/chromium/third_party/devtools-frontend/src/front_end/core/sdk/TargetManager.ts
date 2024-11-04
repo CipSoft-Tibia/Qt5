@@ -6,8 +6,7 @@ import * as Common from '../common/common.js';
 import * as Platform from '../platform/platform.js';
 import type * as ProtocolClient from '../protocol_client/protocol_client.js';
 import type * as Protocol from '../../generated/protocol.js';
-import {Type as TargetType} from './Target.js';
-import {Target} from './Target.js';
+import {Type as TargetType, Target} from './Target.js';
 import {SDKModel} from './SDKModel.js';
 import * as Root from '../root/root.js';
 import * as Host from '../host/host.js';
@@ -32,6 +31,8 @@ export class TargetManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
   #isSuspended: boolean;
   #browserTargetInternal: Target|null;
   #scopeTarget: Target|null;
+  #defaultScopeSet: boolean;
+  readonly #scopeChangeListeners: Set<() => void>;
 
   private constructor() {
     super();
@@ -43,6 +44,8 @@ export class TargetManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
     this.#browserTargetInternal = null;
     this.#scopeTarget = null;
     this.#scopedObservers = new WeakSet();
+    this.#defaultScopeSet = false;
+    this.#scopeChangeListeners = new Set();
   }
 
   static instance({forceNew}: {
@@ -60,6 +63,11 @@ export class TargetManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
   }
 
   onInspectedURLChange(target: Target): void {
+    if (target !== this.#scopeTarget) {
+      return;
+    }
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.inspectedURLChanged(
+        target.inspectedURL() || Platform.DevToolsPath.EmptyUrlString);
     this.dispatchEventToListeners(Events.InspectedURLChanged, target);
   }
 
@@ -107,7 +115,7 @@ export class TargetManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
   }
 
   inspectedURL(): string {
-    const mainTarget = this.mainFrameTarget();
+    const mainTarget = this.primaryPageTarget();
     return mainTarget ? mainTarget.inspectedURL() : '';
   }
 
@@ -128,17 +136,17 @@ export class TargetManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
     this.#scopedObservers.delete(observer);
   }
 
-  modelAdded(target: Target, modelClass: ModelClass, model: SDKModel): void {
+  modelAdded(target: Target, modelClass: ModelClass, model: SDKModel, inScope: boolean): void {
     for (const observer of this.#modelObservers.get(modelClass).values()) {
-      if (!this.#scopedObservers.has(observer) || this.isInScope(model)) {
+      if (!this.#scopedObservers.has(observer) || inScope) {
         observer.modelAdded(model);
       }
     }
   }
 
-  private modelRemoved(target: Target, modelClass: ModelClass, model: SDKModel): void {
+  private modelRemoved(target: Target, modelClass: ModelClass, model: SDKModel, inScope: boolean): void {
     for (const observer of this.#modelObservers.get(modelClass).values()) {
-      if (!this.#scopedObservers.has(observer) || this.isInScope(model)) {
+      if (!this.#scopedObservers.has(observer) || inScope) {
         observer.modelRemoved(model);
       }
     }
@@ -210,15 +218,16 @@ export class TargetManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
     target.createModels(new Set(this.#modelObservers.keysArray()));
     this.#targetsInternal.add(target);
 
+    const inScope = this.isInScope(target);
     // Iterate over a copy. #observers might be modified during iteration.
     for (const observer of [...this.#observers]) {
-      if (!this.#scopedObservers.has(observer) || this.isInScope(target)) {
+      if (!this.#scopedObservers.has(observer) || inScope) {
         observer.targetAdded(target);
       }
     }
 
     for (const [modelClass, model] of target.models().entries()) {
-      this.modelAdded(target, modelClass, model);
+      this.modelAdded(target, modelClass, model, inScope);
     }
 
     for (const key of this.#modelListeners.keysArray()) {
@@ -230,6 +239,12 @@ export class TargetManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
       }
     }
 
+    if ((target === target.outermostTarget() &&
+         (target.type() !== TargetType.Frame || target === this.primaryPageTarget())) &&
+        !this.#defaultScopeSet) {
+      this.setScopeTarget(target);
+    }
+
     return target;
   }
 
@@ -238,16 +253,17 @@ export class TargetManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
       return;
     }
 
+    const inScope = this.isInScope(target);
     this.#targetsInternal.delete(target);
     for (const modelClass of target.models().keys()) {
       const model = target.models().get(modelClass);
       assertNotNullOrUndefined(model);
-      this.modelRemoved(target, modelClass, model);
+      this.modelRemoved(target, modelClass, model, inScope);
     }
 
     // Iterate over a copy. #observers might be modified during iteration.
     for (const observer of [...this.#observers]) {
-      if (!this.#scopedObservers.has(observer) || this.isInScope(target)) {
+      if (!this.#scopedObservers.has(observer) || inScope) {
         observer.targetRemoved(target);
       }
     }
@@ -271,12 +287,12 @@ export class TargetManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
     return this.targets().find(target => target.id() === id) || null;
   }
 
-  mainTarget(): Target|null {
+  rootTarget(): Target|null {
     return this.#targetsInternal.size ? this.#targetsInternal.values().next().value : null;
   }
 
-  mainFrameTarget(): Target|null {
-    let target = this.mainTarget();
+  primaryPageTarget(): Target|null {
+    let target = this.rootTarget();
     if (target?.type() === TargetType.Tab) {
       target =
           this.targets().find(
@@ -381,6 +397,24 @@ export class TargetManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
         }
       }
     }
+    for (const scopeChangeListener of this.#scopeChangeListeners) {
+      scopeChangeListener();
+    }
+    if (scopeTarget && scopeTarget.inspectedURL()) {
+      this.onInspectedURLChange(scopeTarget);
+    }
+  }
+
+  addScopeChangeListener(listener: () => void): void {
+    this.#scopeChangeListeners.add(listener);
+  }
+
+  removeScopeChangeListener(listener: () => void): void {
+    this.#scopeChangeListeners.delete(listener);
+  }
+
+  scopeTarget(): Target|null {
+    return this.#scopeTarget;
   }
 }
 

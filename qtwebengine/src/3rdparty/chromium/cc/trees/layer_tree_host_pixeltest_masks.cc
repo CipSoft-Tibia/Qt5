@@ -28,15 +28,12 @@ namespace {
 
 // TODO(penghuang): Fix vulkan with one copy or zero copy
 // https://crbug.com/979703
-// TODO(crbug.com/1417268): Fix SkiaGL with zero copy
 std::vector<RasterTestConfig> const kTestCases = {
     {viz::RendererType::kSoftware, TestRasterType::kBitmap},
 #if BUILDFLAG(ENABLE_GL_BACKEND_TESTS)
     {viz::RendererType::kSkiaGL, TestRasterType::kGpu},
     {viz::RendererType::kSkiaGL, TestRasterType::kOneCopy},
-#if !BUILDFLAG(IS_IOS)
     {viz::RendererType::kSkiaGL, TestRasterType::kZeroCopy},
-#endif  // !BUILDFLAG(IS_IOS)
 #endif  // BUILDFLAG(ENABLE_GL_BACKEND_TESTS)
 #if BUILDFLAG(ENABLE_VULKAN_BACKEND_TESTS)
     {viz::RendererType::kSkiaVk, TestRasterType::kGpu},
@@ -326,7 +323,8 @@ TEST_P(LayerTreeHostMaskPixelTestWithLayerList, MaskWithEffectDifferentSize) {
 TEST_P(LayerTreeHostMaskPixelTestWithLayerList, ImageMaskWithEffect) {
   MaskContentLayerClient mask_client(mask_bounds_);
 
-  sk_sp<SkSurface> surface = SkSurface::MakeRasterN32Premul(50, 50);
+  sk_sp<SkSurface> surface =
+      SkSurfaces::Raster(SkImageInfo::MakeN32Premul(50, 50));
   SkCanvas* canvas = surface->getCanvas();
   scoped_refptr<DisplayItemList> mask_display_list =
       mask_client.PaintContentsToDisplayList();
@@ -352,7 +350,8 @@ TEST_P(LayerTreeHostMasksPixelTest, ImageMaskOfLayer) {
 
   gfx::Size mask_bounds(50, 50);
 
-  sk_sp<SkSurface> surface = SkSurface::MakeRasterN32Premul(50, 50);
+  sk_sp<SkSurface> surface =
+      SkSurfaces::Raster(SkImageInfo::MakeN32Premul(50, 50));
   SkCanvas* canvas = surface->getCanvas();
   MaskContentLayerClient client(mask_bounds);
   scoped_refptr<DisplayItemList> mask_display_list =
@@ -740,14 +739,21 @@ class LayerTreeHostMaskAsBlendingPixelTest
     int small_error_allowed = 0;
     if (!use_software_renderer()) {
       percentage_pixels_large_error = 4.0f;
+#if BUILDFLAG(IS_IOS)
+      // iOS has some pixels difference. Affected tests:
+      // RotatedClippedCircle, RotatedClippedCircleUnderflow
+      // crbug.com/1422694
+      percentage_pixels_small_error = 2.7f;
+#else
       percentage_pixels_small_error = 2.0f;
+#endif  // BUILDFLAG(IS_IOS)
       average_error_allowed_in_bad_pixels = 2.1f;
       large_error_allowed = 11;
       small_error_allowed = 1;
     } else {
 #if defined(ARCH_CPU_ARM64)
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_MAC)
-      // ARM Windows, macOS, and Fuchsia has some pixels difference
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_APPLE)
+      // ARM Windows, macOS, iOS and Fuchsia have some pixels difference
       // Affected tests: RotatedClippedCircle, RotatedClippedCircleUnderflow
       // crbug.com/1030244, crbug.com/1048249, crbug.com/1128443
       percentage_pixels_large_error = 7.f;
@@ -841,7 +847,7 @@ class LayerTreeHostMaskAsBlendingPixelTest
   std::unique_ptr<TestLayerTreeFrameSink> CreateLayerTreeFrameSink(
       const viz::RendererSettings& renderer_settings,
       double refresh_rate,
-      scoped_refptr<viz::ContextProvider> compositor_context_provider,
+      scoped_refptr<viz::RasterContextProvider> compositor_context_provider,
       scoped_refptr<viz::RasterContextProvider> worker_context_provider)
       override {
     viz::RendererSettings modified_renderer_settings = renderer_settings;
@@ -857,10 +863,9 @@ class LayerTreeHostMaskAsBlendingPixelTest
   bool force_shaders_;
 };
 
-// TODO(crbug.com/1417268): Fix SkiaGL with zero copy
 MaskTestConfig const kTestConfigs[] = {
     MaskTestConfig{{viz::RendererType::kSoftware, TestRasterType::kBitmap}, 0},
-#if BUILDFLAG(ENABLE_GL_BACKEND_TESTS) && !BUILDFLAG(IS_IOS)
+#if BUILDFLAG(ENABLE_GL_BACKEND_TESTS)
     MaskTestConfig{{viz::RendererType::kSkiaGL, TestRasterType::kZeroCopy}, 0},
     MaskTestConfig{{viz::RendererType::kSkiaGL, TestRasterType::kZeroCopy},
                    kUseAntialiasing},
@@ -868,7 +873,7 @@ MaskTestConfig const kTestConfigs[] = {
                    kForceShaders},
     MaskTestConfig{{viz::RendererType::kSkiaGL, TestRasterType::kZeroCopy},
                    kUseAntialiasing | kForceShaders},
-#endif  // BUILDFLAG(ENABLE_GL_BACKEND_TESTS) && !BUILDFLAG(IS_IOS)
+#endif  // BUILDFLAG(ENABLE_GL_BACKEND_TESTS)
 #if BUILDFLAG(ENABLE_VULKAN_BACKEND_TESTS)
     MaskTestConfig{{viz::RendererType::kSkiaVk, TestRasterType::kZeroCopy}, 0},
     MaskTestConfig{{viz::RendererType::kSkiaVk, TestRasterType::kZeroCopy},

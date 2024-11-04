@@ -23,6 +23,8 @@ devtools_module("timeline_model") {
     "../../core/root:bundle",
     "../../core/sdk:bundle",
     "../../generated:protocol",
+    "../../models/trace:bundle",
+    "../cpu_profile:bundle",
   ]
 }
 
@@ -33,10 +35,9 @@ devtools_entrypoint("bundle") {
 
   visibility = [
     ":*",
-    "../../../test/unittests/front_end/helpers",
-    "../../../test/unittests/front_end/models/timeline_model/*",
-    "../../../test/unittests/front_end/panels/timeline/components/*",
+    "../../../test/unittests/*",
     "../../panels/timeline/*",
+    "../../ui/components/docs/performance_panel:*",
 
     # TODO(crbug.com/1202788): Remove invalid dependents
     "../../ui/legacy/components/perf_ui/*",

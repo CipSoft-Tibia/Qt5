@@ -13,177 +13,141 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
-    if (kind === "m") throw new TypeError("Private method is not writable");
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
-    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
-};
-var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
-    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
-};
-var _Target_browserContext, _Target_session, _Target_targetInfo, _Target_sessionFactory, _Target_ignoreHTTPSErrors, _Target_defaultViewport, _Target_pagePromise, _Target_workerPromise, _Target_screenshotTaskQueue, _Target_targetManager;
-import { WebWorker } from './WebWorker.js';
+import { Target, TargetType } from '../api/Target.js';
+import { Deferred } from '../util/Deferred.js';
+import { CDPSessionImpl } from './Connection.js';
 import { CDPPage } from './Page.js';
+import { debugError } from './util.js';
+import { WebWorker } from './WebWorker.js';
 /**
- * Target represents a
- * {@link https://chromedevtools.github.io/devtools-protocol/tot/Target/ | CDP target}.
- * In CDP a target is something that can be debugged such a frame, a page or a
- * worker.
- *
- * @public
+ * @internal
  */
-export class Target {
+export var InitializationStatus;
+(function (InitializationStatus) {
+    InitializationStatus["SUCCESS"] = "success";
+    InitializationStatus["ABORTED"] = "aborted";
+})(InitializationStatus || (InitializationStatus = {}));
+/**
+ * @internal
+ */
+export class CDPTarget extends Target {
+    #browserContext;
+    #session;
+    #targetInfo;
+    #targetManager;
+    #sessionFactory;
     /**
      * @internal
      */
-    constructor(targetInfo, session, browserContext, targetManager, sessionFactory, ignoreHTTPSErrors, defaultViewport, screenshotTaskQueue, isPageTargetCallback) {
-        _Target_browserContext.set(this, void 0);
-        _Target_session.set(this, void 0);
-        _Target_targetInfo.set(this, void 0);
-        _Target_sessionFactory.set(this, void 0);
-        _Target_ignoreHTTPSErrors.set(this, void 0);
-        _Target_defaultViewport.set(this, void 0);
-        _Target_pagePromise.set(this, void 0);
-        _Target_workerPromise.set(this, void 0);
-        _Target_screenshotTaskQueue.set(this, void 0);
-        _Target_targetManager.set(this, void 0);
-        __classPrivateFieldSet(this, _Target_session, session, "f");
-        __classPrivateFieldSet(this, _Target_targetManager, targetManager, "f");
-        __classPrivateFieldSet(this, _Target_targetInfo, targetInfo, "f");
-        __classPrivateFieldSet(this, _Target_browserContext, browserContext, "f");
+    _initializedDeferred = Deferred.create();
+    /**
+     * @internal
+     */
+    _isClosedDeferred = Deferred.create();
+    /**
+     * @internal
+     */
+    _targetId;
+    /**
+     * To initialize the target for use, call initialize.
+     *
+     * @internal
+     */
+    constructor(targetInfo, session, browserContext, targetManager, sessionFactory) {
+        super();
+        this.#session = session;
+        this.#targetManager = targetManager;
+        this.#targetInfo = targetInfo;
+        this.#browserContext = browserContext;
         this._targetId = targetInfo.targetId;
-        __classPrivateFieldSet(this, _Target_sessionFactory, sessionFactory, "f");
-        __classPrivateFieldSet(this, _Target_ignoreHTTPSErrors, ignoreHTTPSErrors, "f");
-        __classPrivateFieldSet(this, _Target_defaultViewport, defaultViewport !== null && defaultViewport !== void 0 ? defaultViewport : undefined, "f");
-        __classPrivateFieldSet(this, _Target_screenshotTaskQueue, screenshotTaskQueue, "f");
-        this._isPageTargetCallback = isPageTargetCallback;
-        this._initializedPromise = new Promise(fulfill => {
-            return (this._initializedCallback = fulfill);
-        }).then(async (success) => {
-            if (!success) {
-                return false;
-            }
-            const opener = this.opener();
-            if (!opener || !__classPrivateFieldGet(opener, _Target_pagePromise, "f") || this.type() !== 'page') {
-                return true;
-            }
-            const openerPage = await __classPrivateFieldGet(opener, _Target_pagePromise, "f");
-            if (!openerPage.listenerCount("popup" /* PageEmittedEvents.Popup */)) {
-                return true;
-            }
-            const popupPage = await this.page();
-            openerPage.emit("popup" /* PageEmittedEvents.Popup */, popupPage);
-            return true;
-        });
-        this._isClosedPromise = new Promise(fulfill => {
-            return (this._closedCallback = fulfill);
-        });
-        this._isInitialized =
-            !this._isPageTargetCallback(__classPrivateFieldGet(this, _Target_targetInfo, "f")) ||
-                __classPrivateFieldGet(this, _Target_targetInfo, "f").url !== '';
-        if (this._isInitialized) {
-            this._initializedCallback(true);
+        this.#sessionFactory = sessionFactory;
+        if (this.#session && this.#session instanceof CDPSessionImpl) {
+            this.#session._setTarget(this);
         }
+    }
+    /**
+     * @internal
+     */
+    _subtype() {
+        return this.#targetInfo.subtype;
     }
     /**
      * @internal
      */
     _session() {
-        return __classPrivateFieldGet(this, _Target_session, "f");
+        return this.#session;
     }
     /**
-     * Creates a Chrome Devtools Protocol session attached to the target.
+     * @internal
      */
+    _sessionFactory() {
+        if (!this.#sessionFactory) {
+            throw new Error('sessionFactory is not initialized');
+        }
+        return this.#sessionFactory;
+    }
     createCDPSession() {
-        return __classPrivateFieldGet(this, _Target_sessionFactory, "f").call(this, false);
+        if (!this.#sessionFactory) {
+            throw new Error('sessionFactory is not initialized');
+        }
+        return this.#sessionFactory(false).then(session => {
+            session._setTarget(this);
+            return session;
+        });
+    }
+    url() {
+        return this.#targetInfo.url;
+    }
+    type() {
+        const type = this.#targetInfo.type;
+        switch (type) {
+            case 'page':
+                return TargetType.PAGE;
+            case 'background_page':
+                return TargetType.BACKGROUND_PAGE;
+            case 'service_worker':
+                return TargetType.SERVICE_WORKER;
+            case 'shared_worker':
+                return TargetType.SHARED_WORKER;
+            case 'browser':
+                return TargetType.BROWSER;
+            case 'webview':
+                return TargetType.WEBVIEW;
+            case 'tab':
+                return TargetType.TAB;
+            default:
+                return TargetType.OTHER;
+        }
     }
     /**
      * @internal
      */
     _targetManager() {
-        return __classPrivateFieldGet(this, _Target_targetManager, "f");
+        if (!this.#targetManager) {
+            throw new Error('targetManager is not initialized');
+        }
+        return this.#targetManager;
     }
     /**
      * @internal
      */
     _getTargetInfo() {
-        return __classPrivateFieldGet(this, _Target_targetInfo, "f");
+        return this.#targetInfo;
     }
-    /**
-     * If the target is not of type `"page"` or `"background_page"`, returns `null`.
-     */
-    async page() {
-        var _a;
-        if (this._isPageTargetCallback(__classPrivateFieldGet(this, _Target_targetInfo, "f")) && !__classPrivateFieldGet(this, _Target_pagePromise, "f")) {
-            __classPrivateFieldSet(this, _Target_pagePromise, (__classPrivateFieldGet(this, _Target_session, "f")
-                ? Promise.resolve(__classPrivateFieldGet(this, _Target_session, "f"))
-                : __classPrivateFieldGet(this, _Target_sessionFactory, "f").call(this, true)).then(client => {
-                var _a;
-                return CDPPage._create(client, this, __classPrivateFieldGet(this, _Target_ignoreHTTPSErrors, "f"), (_a = __classPrivateFieldGet(this, _Target_defaultViewport, "f")) !== null && _a !== void 0 ? _a : null, __classPrivateFieldGet(this, _Target_screenshotTaskQueue, "f"));
-            }), "f");
-        }
-        return (_a = (await __classPrivateFieldGet(this, _Target_pagePromise, "f"))) !== null && _a !== void 0 ? _a : null;
-    }
-    /**
-     * If the target is not of type `"service_worker"` or `"shared_worker"`, returns `null`.
-     */
-    async worker() {
-        if (__classPrivateFieldGet(this, _Target_targetInfo, "f").type !== 'service_worker' &&
-            __classPrivateFieldGet(this, _Target_targetInfo, "f").type !== 'shared_worker') {
-            return null;
-        }
-        if (!__classPrivateFieldGet(this, _Target_workerPromise, "f")) {
-            // TODO(einbinder): Make workers send their console logs.
-            __classPrivateFieldSet(this, _Target_workerPromise, (__classPrivateFieldGet(this, _Target_session, "f")
-                ? Promise.resolve(__classPrivateFieldGet(this, _Target_session, "f"))
-                : __classPrivateFieldGet(this, _Target_sessionFactory, "f").call(this, false)).then(client => {
-                return new WebWorker(client, __classPrivateFieldGet(this, _Target_targetInfo, "f").url, () => { } /* consoleAPICalled */, () => { } /* exceptionThrown */);
-            }), "f");
-        }
-        return __classPrivateFieldGet(this, _Target_workerPromise, "f");
-    }
-    url() {
-        return __classPrivateFieldGet(this, _Target_targetInfo, "f").url;
-    }
-    /**
-     * Identifies what kind of target this is.
-     *
-     * @remarks
-     *
-     * See {@link https://developer.chrome.com/extensions/background_pages | docs} for more info about background pages.
-     */
-    type() {
-        const type = __classPrivateFieldGet(this, _Target_targetInfo, "f").type;
-        if (type === 'page' ||
-            type === 'background_page' ||
-            type === 'service_worker' ||
-            type === 'shared_worker' ||
-            type === 'browser' ||
-            type === 'webview') {
-            return type;
-        }
-        return 'other';
-    }
-    /**
-     * Get the browser the target belongs to.
-     */
     browser() {
-        return __classPrivateFieldGet(this, _Target_browserContext, "f").browser();
+        if (!this.#browserContext) {
+            throw new Error('browserContext is not initialised');
+        }
+        return this.#browserContext.browser();
     }
-    /**
-     * Get the browser context the target belongs to.
-     */
     browserContext() {
-        return __classPrivateFieldGet(this, _Target_browserContext, "f");
+        if (!this.#browserContext) {
+            throw new Error('browserContext is not initialised');
+        }
+        return this.#browserContext;
     }
-    /**
-     * Get the target that opened this target. Top-level targets return `null`.
-     */
     opener() {
-        const { openerId } = __classPrivateFieldGet(this, _Target_targetInfo, "f");
+        const { openerId } = this.#targetInfo;
         if (!openerId) {
             return;
         }
@@ -193,15 +157,107 @@ export class Target {
      * @internal
      */
     _targetInfoChanged(targetInfo) {
-        __classPrivateFieldSet(this, _Target_targetInfo, targetInfo, "f");
-        if (!this._isInitialized &&
-            (!this._isPageTargetCallback(__classPrivateFieldGet(this, _Target_targetInfo, "f")) ||
-                __classPrivateFieldGet(this, _Target_targetInfo, "f").url !== '')) {
-            this._isInitialized = true;
-            this._initializedCallback(true);
-            return;
+        this.#targetInfo = targetInfo;
+        this._checkIfInitialized();
+    }
+    /**
+     * @internal
+     */
+    _initialize() {
+        this._initializedDeferred.resolve(InitializationStatus.SUCCESS);
+    }
+    /**
+     * @internal
+     */
+    _checkIfInitialized() {
+        if (!this._initializedDeferred.resolved()) {
+            this._initializedDeferred.resolve(InitializationStatus.SUCCESS);
         }
     }
 }
-_Target_browserContext = new WeakMap(), _Target_session = new WeakMap(), _Target_targetInfo = new WeakMap(), _Target_sessionFactory = new WeakMap(), _Target_ignoreHTTPSErrors = new WeakMap(), _Target_defaultViewport = new WeakMap(), _Target_pagePromise = new WeakMap(), _Target_workerPromise = new WeakMap(), _Target_screenshotTaskQueue = new WeakMap(), _Target_targetManager = new WeakMap();
+/**
+ * @internal
+ */
+export class PageTarget extends CDPTarget {
+    #defaultViewport;
+    pagePromise;
+    #screenshotTaskQueue;
+    #ignoreHTTPSErrors;
+    /**
+     * @internal
+     */
+    constructor(targetInfo, session, browserContext, targetManager, sessionFactory, ignoreHTTPSErrors, defaultViewport, screenshotTaskQueue) {
+        super(targetInfo, session, browserContext, targetManager, sessionFactory);
+        this.#ignoreHTTPSErrors = ignoreHTTPSErrors;
+        this.#defaultViewport = defaultViewport ?? undefined;
+        this.#screenshotTaskQueue = screenshotTaskQueue;
+    }
+    _initialize() {
+        this._initializedDeferred
+            .valueOrThrow()
+            .then(async (result) => {
+            if (result === InitializationStatus.ABORTED) {
+                return;
+            }
+            const opener = this.opener();
+            if (!(opener instanceof PageTarget)) {
+                return;
+            }
+            if (!opener || !opener.pagePromise || this.type() !== 'page') {
+                return true;
+            }
+            const openerPage = await opener.pagePromise;
+            if (!openerPage.listenerCount("popup" /* PageEmittedEvents.Popup */)) {
+                return true;
+            }
+            const popupPage = await this.page();
+            openerPage.emit("popup" /* PageEmittedEvents.Popup */, popupPage);
+            return true;
+        })
+            .catch(debugError);
+        this._checkIfInitialized();
+    }
+    async page() {
+        if (!this.pagePromise) {
+            const session = this._session();
+            this.pagePromise = (session
+                ? Promise.resolve(session)
+                : this._sessionFactory()(/* isAutoAttachEmulated=*/ false)).then(client => {
+                return CDPPage._create(client, this, this.#ignoreHTTPSErrors, this.#defaultViewport ?? null, this.#screenshotTaskQueue);
+            });
+        }
+        return (await this.pagePromise) ?? null;
+    }
+    _checkIfInitialized() {
+        if (this._initializedDeferred.resolved()) {
+            return;
+        }
+        if (this._getTargetInfo().url !== '') {
+            this._initializedDeferred.resolve(InitializationStatus.SUCCESS);
+        }
+    }
+}
+/**
+ * @internal
+ */
+export class WorkerTarget extends CDPTarget {
+    #workerPromise;
+    async worker() {
+        if (!this.#workerPromise) {
+            const session = this._session();
+            // TODO(einbinder): Make workers send their console logs.
+            this.#workerPromise = (session
+                ? Promise.resolve(session)
+                : this._sessionFactory()(/* isAutoAttachEmulated=*/ false)).then(client => {
+                return new WebWorker(client, this._getTargetInfo().url, () => { } /* consoleAPICalled */, () => { } /* exceptionThrown */);
+            });
+        }
+        return this.#workerPromise;
+    }
+}
+/**
+ * @internal
+ */
+export class OtherTarget extends CDPTarget {
+}
 //# sourceMappingURL=Target.js.map

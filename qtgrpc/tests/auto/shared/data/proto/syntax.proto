@@ -59,8 +59,12 @@ message lowerCaseMessageName {
     enum nestedLowerCaseEnum {
         val0 = 0;
     }
+    enum NestedUpperCaseEnum {
+        Val0 = 0;
+    }
     sint32 testField = 1;
     nestedLowerCaseMessage testField1 = 2;
+    NestedUpperCaseMessage testField2 = 3;
 }
 
 message LowerCaseFieldMessageName {
@@ -118,4 +122,10 @@ message int {
 
 message if {
     bool else = 1;
+}
+
+message QtCppKeywords {
+    sint32 slots = 1;
+    sint32 signals = 2;
+    bool emit = 3;
 }

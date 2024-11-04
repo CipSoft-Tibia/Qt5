@@ -20,32 +20,88 @@
 namespace qtprotobufnamespace::tests {
 class RepeatedNonPackedIntMessage;
 using RepeatedNonPackedIntMessageRepeated = QList<RepeatedNonPackedIntMessage>;
+namespace RepeatedNonPackedIntMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedIntMessage_QtProtobufNested
+
 class RepeatedNonPackedSIntMessage;
 using RepeatedNonPackedSIntMessageRepeated = QList<RepeatedNonPackedSIntMessage>;
+namespace RepeatedNonPackedSIntMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedSIntMessage_QtProtobufNested
+
 class RepeatedNonPackedUIntMessage;
 using RepeatedNonPackedUIntMessageRepeated = QList<RepeatedNonPackedUIntMessage>;
+namespace RepeatedNonPackedUIntMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedUIntMessage_QtProtobufNested
+
 class RepeatedNonPackedInt64Message;
 using RepeatedNonPackedInt64MessageRepeated = QList<RepeatedNonPackedInt64Message>;
+namespace RepeatedNonPackedInt64Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedInt64Message_QtProtobufNested
+
 class RepeatedNonPackedSInt64Message;
 using RepeatedNonPackedSInt64MessageRepeated = QList<RepeatedNonPackedSInt64Message>;
+namespace RepeatedNonPackedSInt64Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedSInt64Message_QtProtobufNested
+
 class RepeatedNonPackedUInt64Message;
 using RepeatedNonPackedUInt64MessageRepeated = QList<RepeatedNonPackedUInt64Message>;
+namespace RepeatedNonPackedUInt64Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedUInt64Message_QtProtobufNested
+
 class RepeatedNonPackedFixedIntMessage;
 using RepeatedNonPackedFixedIntMessageRepeated = QList<RepeatedNonPackedFixedIntMessage>;
+namespace RepeatedNonPackedFixedIntMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedFixedIntMessage_QtProtobufNested
+
 class RepeatedNonPackedSFixedIntMessage;
 using RepeatedNonPackedSFixedIntMessageRepeated = QList<RepeatedNonPackedSFixedIntMessage>;
+namespace RepeatedNonPackedSFixedIntMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedSFixedIntMessage_QtProtobufNested
+
 class RepeatedNonPackedFixedInt64Message;
 using RepeatedNonPackedFixedInt64MessageRepeated = QList<RepeatedNonPackedFixedInt64Message>;
+namespace RepeatedNonPackedFixedInt64Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedFixedInt64Message_QtProtobufNested
+
 class RepeatedNonPackedSFixedInt64Message;
 using RepeatedNonPackedSFixedInt64MessageRepeated = QList<RepeatedNonPackedSFixedInt64Message>;
+namespace RepeatedNonPackedSFixedInt64Message_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedSFixedInt64Message_QtProtobufNested
+
 class RepeatedNonPackedBoolMessage;
 using RepeatedNonPackedBoolMessageRepeated = QList<RepeatedNonPackedBoolMessage>;
+namespace RepeatedNonPackedBoolMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedBoolMessage_QtProtobufNested
+
 class RepeatedNonPackedDoubleMessage;
 using RepeatedNonPackedDoubleMessageRepeated = QList<RepeatedNonPackedDoubleMessage>;
+namespace RepeatedNonPackedDoubleMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedDoubleMessage_QtProtobufNested
+
 class RepeatedNonPackedFloatMessage;
 using RepeatedNonPackedFloatMessageRepeated = QList<RepeatedNonPackedFloatMessage>;
+namespace RepeatedNonPackedFloatMessage_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace RepeatedNonPackedFloatMessage_QtProtobufNested
+
 class NonPackedIntMessageWithExtraMember;
 using NonPackedIntMessageWithExtraMemberRepeated = QList<NonPackedIntMessageWithExtraMember>;
+namespace NonPackedIntMessageWithExtraMember_QtProtobufNested {
+enum class QtProtobufFieldEnum;
+} // namespace NonPackedIntMessageWithExtraMember_QtProtobufNested
+
 
 class RepeatedNonPackedIntMessage_QtProtobufData;
 class RepeatedNonPackedIntMessage : public QProtobufMessage
@@ -56,11 +112,7 @@ class RepeatedNonPackedIntMessage : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::int32List testRepeatedInt READ testRepeatedInt WRITE setTestRepeatedInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedIntMessage_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedIntMessage();
     ~RepeatedNonPackedIntMessage();
     RepeatedNonPackedIntMessage(const RepeatedNonPackedIntMessage &other);
@@ -78,6 +130,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedIntMessage_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedIntMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedIntMessage_QtProtobufNested
 
 class RepeatedNonPackedSIntMessage_QtProtobufData;
 class RepeatedNonPackedSIntMessage : public QProtobufMessage
@@ -88,11 +149,7 @@ class RepeatedNonPackedSIntMessage : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::sint32List testRepeatedInt READ testRepeatedInt WRITE setTestRepeatedInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedSIntMessage_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedSIntMessage();
     ~RepeatedNonPackedSIntMessage();
     RepeatedNonPackedSIntMessage(const RepeatedNonPackedSIntMessage &other);
@@ -110,6 +167,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedSIntMessage_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedSIntMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedSIntMessage_QtProtobufNested
 
 class RepeatedNonPackedUIntMessage_QtProtobufData;
 class RepeatedNonPackedUIntMessage : public QProtobufMessage
@@ -120,11 +186,7 @@ class RepeatedNonPackedUIntMessage : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::uint32List testRepeatedInt READ testRepeatedInt WRITE setTestRepeatedInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedUIntMessage_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedUIntMessage();
     ~RepeatedNonPackedUIntMessage();
     RepeatedNonPackedUIntMessage(const RepeatedNonPackedUIntMessage &other);
@@ -142,6 +204,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedUIntMessage_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedUIntMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedUIntMessage_QtProtobufNested
 
 class RepeatedNonPackedInt64Message_QtProtobufData;
 class RepeatedNonPackedInt64Message : public QProtobufMessage
@@ -152,11 +223,7 @@ class RepeatedNonPackedInt64Message : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::int64List testRepeatedInt READ testRepeatedInt WRITE setTestRepeatedInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedInt64Message_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedInt64Message();
     ~RepeatedNonPackedInt64Message();
     RepeatedNonPackedInt64Message(const RepeatedNonPackedInt64Message &other);
@@ -174,6 +241,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedInt64Message_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedInt64Message_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedInt64Message_QtProtobufNested
 
 class RepeatedNonPackedSInt64Message_QtProtobufData;
 class RepeatedNonPackedSInt64Message : public QProtobufMessage
@@ -184,11 +260,7 @@ class RepeatedNonPackedSInt64Message : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::sint64List testRepeatedInt READ testRepeatedInt WRITE setTestRepeatedInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedSInt64Message_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedSInt64Message();
     ~RepeatedNonPackedSInt64Message();
     RepeatedNonPackedSInt64Message(const RepeatedNonPackedSInt64Message &other);
@@ -206,6 +278,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedSInt64Message_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedSInt64Message_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedSInt64Message_QtProtobufNested
 
 class RepeatedNonPackedUInt64Message_QtProtobufData;
 class RepeatedNonPackedUInt64Message : public QProtobufMessage
@@ -216,11 +297,7 @@ class RepeatedNonPackedUInt64Message : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::uint64List testRepeatedInt READ testRepeatedInt WRITE setTestRepeatedInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedUInt64Message_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedUInt64Message();
     ~RepeatedNonPackedUInt64Message();
     RepeatedNonPackedUInt64Message(const RepeatedNonPackedUInt64Message &other);
@@ -238,6 +315,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedUInt64Message_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedUInt64Message_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedUInt64Message_QtProtobufNested
 
 class RepeatedNonPackedFixedIntMessage_QtProtobufData;
 class RepeatedNonPackedFixedIntMessage : public QProtobufMessage
@@ -248,11 +334,7 @@ class RepeatedNonPackedFixedIntMessage : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::fixed32List testRepeatedInt READ testRepeatedInt WRITE setTestRepeatedInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedFixedIntMessage_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedFixedIntMessage();
     ~RepeatedNonPackedFixedIntMessage();
     RepeatedNonPackedFixedIntMessage(const RepeatedNonPackedFixedIntMessage &other);
@@ -270,6 +352,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedFixedIntMessage_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedFixedIntMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedFixedIntMessage_QtProtobufNested
 
 class RepeatedNonPackedSFixedIntMessage_QtProtobufData;
 class RepeatedNonPackedSFixedIntMessage : public QProtobufMessage
@@ -280,11 +371,7 @@ class RepeatedNonPackedSFixedIntMessage : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::sfixed32List testRepeatedInt READ testRepeatedInt WRITE setTestRepeatedInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedSFixedIntMessage_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedSFixedIntMessage();
     ~RepeatedNonPackedSFixedIntMessage();
     RepeatedNonPackedSFixedIntMessage(const RepeatedNonPackedSFixedIntMessage &other);
@@ -302,6 +389,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedSFixedIntMessage_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedSFixedIntMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedSFixedIntMessage_QtProtobufNested
 
 class RepeatedNonPackedFixedInt64Message_QtProtobufData;
 class RepeatedNonPackedFixedInt64Message : public QProtobufMessage
@@ -312,11 +408,7 @@ class RepeatedNonPackedFixedInt64Message : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::fixed64List testRepeatedInt READ testRepeatedInt WRITE setTestRepeatedInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedFixedInt64Message_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedFixedInt64Message();
     ~RepeatedNonPackedFixedInt64Message();
     RepeatedNonPackedFixedInt64Message(const RepeatedNonPackedFixedInt64Message &other);
@@ -334,6 +426,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedFixedInt64Message_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedFixedInt64Message_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedFixedInt64Message_QtProtobufNested
 
 class RepeatedNonPackedSFixedInt64Message_QtProtobufData;
 class RepeatedNonPackedSFixedInt64Message : public QProtobufMessage
@@ -344,11 +445,7 @@ class RepeatedNonPackedSFixedInt64Message : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::sfixed64List testRepeatedInt READ testRepeatedInt WRITE setTestRepeatedInt SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedIntProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedSFixedInt64Message_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedSFixedInt64Message();
     ~RepeatedNonPackedSFixedInt64Message();
     RepeatedNonPackedSFixedInt64Message(const RepeatedNonPackedSFixedInt64Message &other);
@@ -366,6 +463,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedSFixedInt64Message_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedSFixedInt64Message_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedIntProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedSFixedInt64Message_QtProtobufNested
 
 class RepeatedNonPackedBoolMessage_QtProtobufData;
 class RepeatedNonPackedBoolMessage : public QProtobufMessage
@@ -376,11 +482,7 @@ class RepeatedNonPackedBoolMessage : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::boolList testRepeatedBool READ testRepeatedBool WRITE setTestRepeatedBool SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedBoolProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedBoolMessage_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedBoolMessage();
     ~RepeatedNonPackedBoolMessage();
     RepeatedNonPackedBoolMessage(const RepeatedNonPackedBoolMessage &other);
@@ -398,6 +500,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedBoolMessage_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedBoolMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedBoolProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedBoolMessage_QtProtobufNested
 
 class RepeatedNonPackedDoubleMessage_QtProtobufData;
 class RepeatedNonPackedDoubleMessage : public QProtobufMessage
@@ -408,11 +519,7 @@ class RepeatedNonPackedDoubleMessage : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::doubleList testRepeatedDouble READ testRepeatedDouble WRITE setTestRepeatedDouble SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedDoubleProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedDoubleMessage_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedDoubleMessage();
     ~RepeatedNonPackedDoubleMessage();
     RepeatedNonPackedDoubleMessage(const RepeatedNonPackedDoubleMessage &other);
@@ -430,6 +537,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedDoubleMessage_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedDoubleMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedDoubleProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedDoubleMessage_QtProtobufNested
 
 class RepeatedNonPackedFloatMessage_QtProtobufData;
 class RepeatedNonPackedFloatMessage : public QProtobufMessage
@@ -440,11 +556,7 @@ class RepeatedNonPackedFloatMessage : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::floatList testRepeatedFloat READ testRepeatedFloat WRITE setTestRepeatedFloat SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedFloatProtoFieldNumber = 1,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = RepeatedNonPackedFloatMessage_QtProtobufNested::QtProtobufFieldEnum;
     RepeatedNonPackedFloatMessage();
     ~RepeatedNonPackedFloatMessage();
     RepeatedNonPackedFloatMessage(const RepeatedNonPackedFloatMessage &other);
@@ -462,6 +574,15 @@ public:
 private:
     QExplicitlySharedDataPointer<RepeatedNonPackedFloatMessage_QtProtobufData> dptr;
 };
+namespace RepeatedNonPackedFloatMessage_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedFloatProtoFieldNumber = 1,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace RepeatedNonPackedFloatMessage_QtProtobufNested
 
 class NonPackedIntMessageWithExtraMember_QtProtobufData;
 class NonPackedIntMessageWithExtraMember : public QProtobufMessage
@@ -473,12 +594,7 @@ class NonPackedIntMessageWithExtraMember : public QProtobufMessage
     Q_PROPERTY(QString extra READ extra WRITE setExtra SCRIPTABLE true)
 
 public:
-    enum QtProtobufFieldEnum {
-        TestRepeatedIntProtoFieldNumber = 1,
-        ExtraProtoFieldNumber = 2,
-    };
-    Q_ENUM(QtProtobufFieldEnum)
-
+    using QtProtobufFieldEnum = NonPackedIntMessageWithExtraMember_QtProtobufNested::QtProtobufFieldEnum;
     NonPackedIntMessageWithExtraMember();
     ~NonPackedIntMessageWithExtraMember();
     NonPackedIntMessageWithExtraMember(const NonPackedIntMessageWithExtraMember &other);
@@ -499,6 +615,16 @@ public:
 private:
     QExplicitlySharedDataPointer<NonPackedIntMessageWithExtraMember_QtProtobufData> dptr;
 };
+namespace NonPackedIntMessageWithExtraMember_QtProtobufNested {
+Q_NAMESPACE
+
+enum class QtProtobufFieldEnum {
+    TestRepeatedIntProtoFieldNumber = 1,
+    ExtraProtoFieldNumber = 2,
+};
+Q_ENUM_NS(QtProtobufFieldEnum)
+
+} // namespace NonPackedIntMessageWithExtraMember_QtProtobufNested
 } // namespace qtprotobufnamespace::tests
 
 Q_DECLARE_METATYPE(qtprotobufnamespace::tests::RepeatedNonPackedIntMessage)

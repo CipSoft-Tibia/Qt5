@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "base/containers/flat_set.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/shared_memory_mapping.h"
 #include "components/exo/wayland/clients/client_helper.h"
 #include "components/exo/wayland/clients/globals.h"
@@ -203,15 +204,13 @@ class ClientBase {
   std::unique_ptr<wl_shell_surface> shell_surface_;
   std::unique_ptr<xdg_surface> xdg_surface_;
   std::unique_ptr<xdg_toplevel> xdg_toplevel_;
-  std::unique_ptr<zxdg_surface_v6> zxdg_surface_;
-  std::unique_ptr<zxdg_toplevel_v6> zxdg_toplevel_;
   std::unique_ptr<wl_pointer> wl_pointer_;
   std::unique_ptr<zcr_pointer_stylus_v2> zcr_pointer_stylus_;
   Globals globals_;
 #if defined(USE_GBM)
   base::ScopedFD drm_fd_;
   std::unique_ptr<gbm_device> device_;
-  gl::GLDisplayEGL* egl_display_ = nullptr;
+  raw_ptr<gl::GLDisplayEGL, ExperimentalAsh> egl_display_ = nullptr;
 #if defined(USE_VULKAN)
   std::unique_ptr<gpu::VulkanImplementation> vk_implementation_;
   std::unique_ptr<ScopedVkInstance> vk_instance_;

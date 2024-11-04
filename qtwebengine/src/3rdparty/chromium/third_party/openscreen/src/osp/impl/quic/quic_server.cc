@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,7 @@
 #include "platform/api/time.h"
 #include "util/osp_logging.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 QuicServer::QuicServer(
     const ServerConfig& config,
@@ -20,7 +19,7 @@ QuicServer::QuicServer(
     std::unique_ptr<QuicConnectionFactory> connection_factory,
     ProtocolConnectionServer::Observer* observer,
     ClockNowFunctionPtr now_function,
-    TaskRunner* task_runner)
+    TaskRunner& task_runner)
     : ProtocolConnectionServer(demuxer, observer),
       connection_endpoints_(config.connection_endpoints),
       connection_factory_(std::move(connection_factory)),
@@ -188,5 +187,4 @@ void QuicServer::OnIncomingConnection(
                                       std::move(pending_connection_delegate_)));
 }
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp

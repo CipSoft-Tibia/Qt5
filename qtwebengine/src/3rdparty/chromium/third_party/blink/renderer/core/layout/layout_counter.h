@@ -58,6 +58,15 @@ class LayoutCounter : public LayoutText {
   ~LayoutCounter() override;
   void Trace(Visitor*) const override;
 
+  const AtomicString& Identifier() const {
+    NOT_DESTROYED();
+    return counter_->Identifier();
+  }
+  CounterNode* GetCounterNode() const {
+    NOT_DESTROYED();
+    return counter_node_;
+  }
+
   // These functions are static so that any LayoutObject can call them.
   // The reason is that any LayoutObject in the tree can have a CounterNode
   // without a LayoutCounter (e.g. by specifying 'counter-increment' without
@@ -99,7 +108,7 @@ class LayoutCounter : public LayoutText {
     NOT_DESTROYED();
     return type == kLayoutObjectCounter || LayoutText::IsOfType(type);
   }
-  scoped_refptr<StringImpl> OriginalText() const override;
+  String OriginalText() const override;
 
   // Removes the reference to the CounterNode associated with this layoutObject.
   // This is used to cause a counter display update when the CounterNode tree

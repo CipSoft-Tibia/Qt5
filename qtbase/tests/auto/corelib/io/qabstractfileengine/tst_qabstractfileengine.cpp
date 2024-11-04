@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/private/qabstractfileengine_p.h>
 #include <QtCore/private/qfsfileengine_p.h>
@@ -285,19 +285,19 @@ public:
         return QString();
     }
 
-    QDateTime fileTime(FileTime time) const override
+    QDateTime fileTime(QFile::FileTime time) const override
     {
         QSharedPointer<File> file = resolveFile(false);
         if (file) {
             QMutexLocker lock(&file->mutex);
             switch (time) {
-                case BirthTime:
+                case QFile::FileBirthTime:
                     return file->birth;
-                case MetadataChangeTime:
+                case QFile::FileMetadataChangeTime:
                     return file->change;
-                case ModificationTime:
+                case QFile::FileModificationTime:
                     return file->modification;
-                case AccessTime:
+                case QFile::FileAccessTime:
                     return file->access;
             }
         }
@@ -512,12 +512,13 @@ void tst_QAbstractFileEngine::cleanupTestCase()
     bool failed = false;
 
     FileEngineHandler handler;
-    Q_FOREACH(QString file, filesForRemoval)
+    for (const QString &file : std::as_const(filesForRemoval)) {
         if (!QFile::remove(file)
                 || QFile::exists(file)) {
             failed = true;
             qDebug() << "Couldn't remove file:" << file;
         }
+    }
 
     QVERIFY(!failed);
 
@@ -823,7 +824,8 @@ void tst_QAbstractFileEngine::mounting()
     QCOMPARE(dir.entryList(), (QStringList() << "bar" << "foo"));
     QDir dir2(fs.path());
     bool found = false;
-    foreach (QFileInfo info, dir2.entryInfoList()) {
+    const auto entries = dir2.entryInfoList();
+    for (const QFileInfo &info : entries) {
         if (info.fileName() == QLatin1String("test.tar")) {
             QVERIFY(!found);
             found = true;

@@ -225,7 +225,7 @@ static int rate_estimator(const tran_low_t *qcoeff, int eob, TX_SIZE tx_size) {
 
   for (int idx = 0; idx < eob; ++idx) {
     int abs_level = abs(qcoeff[scan_order->scan[idx]]);
-    rate_cost += (int)(log(abs_level + 1.0) / log(2.0)) + 1 + (abs_level > 0);
+    rate_cost += (int)(log1p(abs_level) / log(2.0)) + 1 + (abs_level > 0);
   }
 
   return (rate_cost << AV1_PROB_COST_SHIFT);
@@ -250,22 +250,36 @@ void av1_calc_mb_wiener_var_row(AV1_COMP *const cpi, MACROBLOCK *x,
   const int coeff_count = block_size * block_size;
   const int mb_step = mi_size_wide[bsize];
   const BitDepthInfo bd_info = get_bit_depth_info(xd);
-  const AV1EncRowMultiThreadInfo *const enc_row_mt = &cpi->mt_info.enc_row_mt;
-  // We allocate cpi->tile_data (of size 1) when we call this function in
-  // multithreaded mode, so cpi->tile_data may be a null pointer when we call
-  // this function in single-threaded mode.
-  AV1EncRowMultiThreadSync *const row_mt_sync =
-      cpi->tile_data ? &cpi->tile_data[0].row_mt_sync : NULL;
+  const AV1EncAllIntraMultiThreadInfo *const intra_mt = &cpi->mt_info.intra_mt;
+  AV1EncRowMultiThreadSync *const intra_row_mt_sync =
+      &cpi->ppi->intra_row_mt_sync;
   const int mi_cols = cm->mi_params.mi_cols;
   const int mt_thread_id = mi_row / mb_step;
   // TODO(chengchen): test different unit step size
   const int mt_unit_step = mi_size_wide[BLOCK_64X64];
   const int mt_unit_cols = (mi_cols + (mt_unit_step >> 1)) / mt_unit_step;
   int mt_unit_col = 0;
+  const int is_high_bitdepth = is_cur_buf_hbd(xd);
+
+  // We use a scratch buffer to store the prediction.
+  // The stride is the max block size (128).
+  uint8_t *pred_buffer;
+  const int dst_buffer_stride = 128;
+  const int buf_width = 128;
+  const int buf_height = 128;
+  const size_t buf_size = (buf_width * buf_height * sizeof(*pred_buffer))
+                          << is_high_bitdepth;
+  CHECK_MEM_ERROR(cm, pred_buffer, aom_memalign(32, buf_size));
+  uint8_t *dst_buffer = pred_buffer;
+  if (is_high_bitdepth) {
+    uint16_t *pred_buffer_16 = (uint16_t *)pred_buffer;
+    dst_buffer = CONVERT_TO_BYTEPTR(pred_buffer_16);
+  }
 
   for (int mi_col = 0; mi_col < mi_cols; mi_col += mb_step) {
     if (mi_col % mt_unit_step == 0) {
-      enc_row_mt->sync_read_ptr(row_mt_sync, mt_thread_id, mt_unit_col);
+      intra_mt->intra_sync_read_ptr(intra_row_mt_sync, mt_thread_id,
+                                    mt_unit_col);
     }
 
     PREDICTION_MODE best_mode = DC_PRED;
@@ -275,24 +289,32 @@ void av1_calc_mb_wiener_var_row(AV1_COMP *const cpi, MACROBLOCK *x,
     set_mode_info_offsets(&cpi->common.mi_params, &cpi->mbmi_ext_info, x, xd,
                           mi_row, mi_col);
     set_mi_row_col(xd, &xd->tile, mi_row, mi_height, mi_col, mi_width,
-                   cm->mi_params.mi_rows, cm->mi_params.mi_cols);
+                   AOMMIN(mi_row + mi_height, cm->mi_params.mi_rows),
+                   AOMMIN(mi_col + mi_width, cm->mi_params.mi_cols));
     set_plane_n4(xd, mi_size_wide[bsize], mi_size_high[bsize],
                  av1_num_planes(cm));
     xd->mi[0]->bsize = bsize;
     xd->mi[0]->motion_mode = SIMPLE_TRANSLATION;
-    av1_setup_dst_planes(xd->plane, bsize, &cm->cur_frame->buf, mi_row, mi_col,
-                         0, av1_num_planes(cm));
-    int dst_buffer_stride = xd->plane[0].dst.stride;
-    uint8_t *dst_buffer = xd->plane[0].dst.buf;
+    // Set above and left mbmi to NULL as they are not available in the
+    // preprocessing stage.
+    // They are used to detemine intra edge filter types in intra prediction.
+    if (xd->up_available) {
+      xd->above_mbmi = NULL;
+    }
+    if (xd->left_available) {
+      xd->left_mbmi = NULL;
+    }
     uint8_t *mb_buffer =
         buffer + mi_row * MI_SIZE * buf_stride + mi_col * MI_SIZE;
     for (PREDICTION_MODE mode = INTRA_MODE_START; mode < INTRA_MODE_END;
          ++mode) {
-      av1_predict_intra_block(xd, cm->seq_params->sb_size,
-                              cm->seq_params->enable_intra_edge_filter,
-                              block_size, block_size, tx_size, mode, 0, 0,
-                              FILTER_INTRA_MODES, dst_buffer, dst_buffer_stride,
-                              dst_buffer, dst_buffer_stride, 0, 0, 0);
+      // TODO(chengchen): Here we use src instead of reconstructed frame as
+      // the intra predictor to make single and multithread version match.
+      // Ideally we want to use the reconstructed.
+      av1_predict_intra_block(
+          xd, cm->seq_params->sb_size, cm->seq_params->enable_intra_edge_filter,
+          block_size, block_size, tx_size, mode, 0, 0, FILTER_INTRA_MODES,
+          mb_buffer, buf_stride, dst_buffer, dst_buffer_stride, 0, 0, 0);
       av1_subtract_block(bd_info, block_size, block_size, src_diff, block_size,
                          mb_buffer, buf_stride, dst_buffer, dst_buffer_stride);
       av1_quick_txfm(0, tx_size, bd_info, src_diff, block_size, coeff);
@@ -306,7 +328,7 @@ void av1_calc_mb_wiener_var_row(AV1_COMP *const cpi, MACROBLOCK *x,
     av1_predict_intra_block(
         xd, cm->seq_params->sb_size, cm->seq_params->enable_intra_edge_filter,
         block_size, block_size, tx_size, best_mode, 0, 0, FILTER_INTRA_MODES,
-        dst_buffer, dst_buffer_stride, dst_buffer, dst_buffer_stride, 0, 0, 0);
+        mb_buffer, buf_stride, dst_buffer, dst_buffer_stride, 0, 0, 0);
     av1_subtract_block(bd_info, block_size, block_size, src_diff, block_size,
                        mb_buffer, buf_stride, dst_buffer, dst_buffer_stride);
     av1_quick_txfm(0, tx_size, bd_info, src_diff, block_size, coeff);
@@ -405,13 +427,14 @@ void av1_calc_mb_wiener_var_row(AV1_COMP *const cpi, MACROBLOCK *x,
 
     if ((mi_col + mb_step) % mt_unit_step == 0 ||
         (mi_col + mb_step) >= mi_cols) {
-      enc_row_mt->sync_write_ptr(row_mt_sync, mt_thread_id, mt_unit_col,
-                                 mt_unit_cols);
+      intra_mt->intra_sync_write_ptr(intra_row_mt_sync, mt_thread_id,
+                                     mt_unit_col, mt_unit_cols);
       ++mt_unit_col;
     }
   }
   // Set the pointer to null since mbmi is only allocated inside this function.
   xd->mi = NULL;
+  aom_free(pred_buffer);
 }
 
 static void calc_mb_wiener_var(AV1_COMP *const cpi, double *sum_rec_distortion,
@@ -484,8 +507,8 @@ static void automatic_intra_tools_off(AV1_COMP *cpi,
 static void ext_rate_guided_quantization(AV1_COMP *cpi) {
   // Calculation uses 8x8.
   const int mb_step = mi_size_wide[cpi->weber_bsize];
-  // Accumuate to 16x16
-  const int block_step = mi_size_wide[BLOCK_16X16];
+  // Accumulate to 16x16, step size is in the unit of mi.
+  const int block_step = 4;
 
   const char *filename = cpi->oxcf.rate_distribution_info;
   FILE *pfile = fopen(filename, "r");
@@ -560,15 +583,16 @@ void av1_set_mb_wiener_variance(AV1_COMP *cpi) {
   MultiThreadInfo *const mt_info = &cpi->mt_info;
   const int num_workers =
       AOMMIN(mt_info->num_mod_workers[MOD_AI], mt_info->num_workers);
-  AV1EncRowMultiThreadInfo *const enc_row_mt = &mt_info->enc_row_mt;
-  enc_row_mt->sync_read_ptr = av1_row_mt_sync_read_dummy;
-  enc_row_mt->sync_write_ptr = av1_row_mt_sync_write_dummy;
+  AV1EncAllIntraMultiThreadInfo *const intra_mt = &mt_info->intra_mt;
+  intra_mt->intra_sync_read_ptr = av1_row_mt_sync_read_dummy;
+  intra_mt->intra_sync_write_ptr = av1_row_mt_sync_write_dummy;
   // Calculate differential contrast for each block for the entire image.
-  // TODO(aomedia:3376): Remove " && 0" when there are no data races in
-  // av1_calc_mb_wiener_var_mt(). See also bug aomedia:3380.
-  if (num_workers > 1 && 0) {
-    enc_row_mt->sync_read_ptr = av1_row_mt_sync_read;
-    enc_row_mt->sync_write_ptr = av1_row_mt_sync_write;
+  // TODO(chengchen): properly accumulate the distortion and rate in
+  // av1_calc_mb_wiener_var_mt(). Until then, call calc_mb_wiener_var() if
+  // auto_intra_tools_off is true.
+  if (num_workers > 1 && !cpi->oxcf.intra_mode_cfg.auto_intra_tools_off) {
+    intra_mt->intra_sync_read_ptr = av1_row_mt_sync_read;
+    intra_mt->intra_sync_write_ptr = av1_row_mt_sync_write;
     av1_calc_mb_wiener_var_mt(cpi, num_workers, &sum_rec_distortion,
                               &sum_est_rate);
   } else {
@@ -629,7 +653,7 @@ static int get_rate_guided_quantizer(AV1_COMP *const cpi, BLOCK_SIZE bsize,
                                      int mi_row, int mi_col) {
   // Calculation uses 8x8.
   const int mb_step = mi_size_wide[cpi->weber_bsize];
-  // Accumuate to 16x16
+  // Accumulate to 16x16
   const int block_step = mi_size_wide[BLOCK_16X16];
   double sb_rate_hific = 0.0;
   double sb_rate_uniform = 0.0;

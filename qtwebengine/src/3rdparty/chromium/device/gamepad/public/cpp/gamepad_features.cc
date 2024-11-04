@@ -24,10 +24,15 @@ BASE_FEATURE(kEnableGamepadButtonAxisEvents,
 // Enables the Windows.Gaming.Input data fetcher.
 BASE_FEATURE(kEnableWindowsGamingInputDataFetcher,
              "EnableWindowsGamingInputDataFetcher",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kRestrictGamepadAccess,
              "RestrictGamepadAccess",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enables gamepad multitouch
+BASE_FEATURE(kEnableGamepadMultitouch,
+             "EnableGamepadMultitouch",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 #if BUILDFLAG(IS_ANDROID)
@@ -46,6 +51,14 @@ bool AreGamepadButtonAxisEventsEnabled() {
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line &&
       command_line->HasSwitch(switches::kEnableGamepadButtonAxisEvents)) {
+    return true;
+  }
+
+  return false;
+}
+
+bool IsGamepadMultitouchEnabled() {
+  if (base::FeatureList::IsEnabled(kEnableGamepadMultitouch)) {
     return true;
   }
 

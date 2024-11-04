@@ -1,6 +1,6 @@
 // Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
 // Copyright (C) 2018 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QGuiApplication>
 #include <QThread>
@@ -74,7 +74,7 @@ int main(int argc, char **argv)
     cylinder->addComponent(material);
 
     QTimer *timer = new QTimer(rootEntity);
-    QObject::connect(timer, &QTimer::timeout, [=](){
+    QObject::connect(timer, &QTimer::timeout, rootEntity, [=]() {
         for (int i = 0; i < 2; i++) {
             auto *dummy = new Qt3DCore::QNode(rootEntity);
             auto *dummy2 = new Qt3DCore::QNode(dummy);
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
     timer->start(1000);
 
     QTimer *timer2 = new QTimer(rootEntity);
-    QObject::connect(timer2, &QTimer::timeout, [](){
+    QObject::connect(timer2, &QTimer::timeout, timer2, []() {
         QThread::msleep(100);
     });
     timer2->start(100);

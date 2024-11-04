@@ -33,14 +33,31 @@ void MessageDeclarationPrinter::printClassForwardDeclarationPrivate()
     m_printer->Print(m_typeMap, CommonTemplates::ClassMessageForwardDeclarationTemplate());
     m_printer->Print(m_typeMap, CommonTemplates::UsingMessageTemplate());
 
-    if (common::hasNestedMessages(m_descriptor)) {
+    if (common::hasNestedTypes(m_descriptor)) {
         auto scopeNamespaces = common::getNestedScopeNamespace(m_typeMap["classname"]);
         m_printer->Print(scopeNamespaces, CommonTemplates::NamespaceTemplate());
+
+        m_printer->Print({ { "type", CommonTemplates::QtProtobufFieldEnum() } },
+                         CommonTemplates::EnumClassForwardDeclarationTemplate());
+
+        for (int i = 0; i < m_descriptor->enum_type_count(); ++i) {
+            m_printer->Print(common::produceEnumTypeMap(m_descriptor->enum_type(i), nullptr),
+                             CommonTemplates::EnumForwardDeclarationTemplate());
+        }
+
+        common::iterateOneofFields(
+                m_descriptor, [this](const OneofDescriptor *, PropertyMap typeMap) {
+                    m_printer->Print(typeMap,
+                                     CommonTemplates::EnumClassForwardDeclarationTemplate());
+                });
+
         common::iterateNestedMessages(m_descriptor, [this](const Descriptor *nestedMessage) {
             MessageDeclarationPrinter nesterPrinter(nestedMessage, m_printer);
             nesterPrinter.printClassForwardDeclarationPrivate();
         });
+
         m_printer->Print(scopeNamespaces, CommonTemplates::NamespaceClosingTemplate());
+        m_printer->Print("\n");
     }
 }
 
@@ -61,9 +78,22 @@ void MessageDeclarationPrinter::printClassDeclarationPrivate()
     printClassBody();
     encloseClass();
 
-    if (common::hasNestedMessages(m_descriptor)) {
+    if (common::hasNestedTypes(m_descriptor)) {
         auto scopeNamespaces = common::getNestedScopeNamespace(m_typeMap["classname"]);
         m_printer->Print(scopeNamespaces, CommonTemplates::NamespaceTemplate());
+
+        if (!m_typeMap["export_macro"].empty())
+            m_printer->Print(m_typeMap, CommonTemplates::QNamespaceDeclarationTemplate());
+        else
+            m_printer->Print(m_typeMap, CommonTemplates::QNamespaceDeclarationNoExportTemplate());
+
+        if (Options::instance().hasQml())
+            m_printer->Print(m_typeMap, CommonTemplates::QmlNamedElement());
+
+        m_printer->Print("\n");
+
+        printEnums();
+
         common::iterateNestedMessages(m_descriptor, [this](const Descriptor *nestedMessage) {
             MessageDeclarationPrinter nesterPrinter(nestedMessage, m_printer);
             nesterPrinter.printClassDeclarationPrivate();
@@ -118,10 +148,29 @@ void MessageDeclarationPrinter::printMaps()
 void MessageDeclarationPrinter::printNested()
 {
     Indent();
+    m_printer->Print({ { "type", CommonTemplates::QtProtobufFieldEnum() },
+                       { "scope_namespaces",
+                         m_typeMap["classname"] + CommonTemplates::QtProtobufNestedNamespace() } },
+                     CommonTemplates::UsingEnumTemplate());
+
+    for (int i = 0; i < m_descriptor->enum_type_count(); ++i) {
+        const auto *enumDescr = m_descriptor->enum_type(i);
+        auto typeMap = common::produceEnumTypeMap(enumDescr, m_descriptor);
+        m_printer->Print(typeMap, CommonTemplates::UsingEnumTemplate());
+        m_printer->Print(typeMap, CommonTemplates::UsingRepeatedEnumTemplate());
+    }
+
+    common::iterateOneofFields(m_descriptor, [this](const OneofDescriptor *, PropertyMap typeMap) {
+        typeMap["scope_namespaces"] =
+                m_typeMap["classname"] + CommonTemplates::QtProtobufNestedNamespace();
+        m_printer->Print(typeMap, CommonTemplates::UsingEnumTemplate());
+    });
+
     common::iterateNestedMessages(m_descriptor, [&](const Descriptor *nestedMessage) {
         m_printer->Print(common::produceMessageTypeMap(nestedMessage, m_descriptor),
                         CommonTemplates::UsingNestedMessageTemplate());
     });
+
     Outdent();
 }
 
@@ -168,10 +217,17 @@ void MessageDeclarationPrinter::printProperties()
                                      : CommonTemplates::PropertyOneofTemplate());
             m_printer->Print(propertyMap, CommonTemplates::PropertyHasOneofTemplate());
             continue;
-        } else if (common::isPureMessage(field)) {
+        }
+
+        if (common::isOptionalField(field)) {
+            const auto propertyMap = common::producePropertyMap(field, m_descriptor);
+            m_printer->Print(propertyMap, CommonTemplates::PropertyOneofTemplate());
+            m_printer->Print(propertyMap, CommonTemplates::PropertyHasOneofTemplate());
+            continue;
+        }
+
+        if (common::isPureMessage(field)) {
             propertyTemplate = CommonTemplates::PropertyMessageTemplate();
-        } else if (common::hasQmlAlias(field)) {
-            propertyTemplate = CommonTemplates::PropertyNonScriptableTemplate();
         } else if (field->is_repeated() && !field->is_map()) {
             // Non-message list properties don't require an extra QQmlListProperty to access
             // their data, so the property name should not contain the 'Data' suffix
@@ -190,16 +246,6 @@ void MessageDeclarationPrinter::printProperties()
             if (common::isPureMessage(field)) {
                 m_printer->Print(common::producePropertyMap(field, m_descriptor),
                                  CommonTemplates::PropertyQmlMessageTemplate());
-            }
-        }
-
-
-        // Generate extra QmlListProperty that is mapped to list
-        for (int i = 0; i < numFields; ++i) {
-            const FieldDescriptor *field = m_descriptor->field(i);
-            if (common::hasQmlAlias(field)) {
-                m_printer->Print(common::producePropertyMap(field, m_descriptor),
-                                 CommonTemplates::PropertyNonScriptableAliasTemplate());
             }
         }
     }
@@ -222,11 +268,22 @@ void MessageDeclarationPrinter::printGetters()
                                     : CommonTemplates::GetterOneofDeclarationTemplate());
                     return;
                 }
+                if (common::isOptionalField(field)) {
+                    m_printer->Print(propertyMap,
+                                     CommonTemplates::GetterOneofDeclarationTemplate());
+                    return;
+                }
 
-                m_printer->Print(propertyMap,
-                                 common::isPureMessage(field)
-                                         ? CommonTemplates::GetterMessageDeclarationTemplate()
-                                         : CommonTemplates::GetterDeclarationTemplate());
+                if (common::isPureMessage(field)) {
+                    m_printer->Print(propertyMap,
+                                     CommonTemplates::GetterMessageDeclarationTemplate());
+                    m_printer->Print(propertyMap,
+                                     Options::instance().hasQml()
+                                         ? CommonTemplates::ClearQmlMessageDeclarationTemplate()
+                                         : CommonTemplates::ClearMessageDeclarationTemplate());
+                } else {
+                    m_printer->Print(propertyMap, CommonTemplates::GetterDeclarationTemplate());
+                }
 
                 if (field->is_repeated()) {
                     m_printer->Print(propertyMap,
@@ -251,6 +308,15 @@ void MessageDeclarationPrinter::printSetters()
                                      CommonTemplates::SetterOneofDeclarationTemplate());
                     return;
                 }
+                if (common::isOptionalField(field)) {
+                    m_printer->Print(propertyMap,
+                                     CommonTemplates::SetterOneofDeclarationTemplate());
+                    m_printer->Print(propertyMap,
+                                     Options::instance().hasQml()
+                                         ? CommonTemplates::ClearQmlOneofDeclarationTemplate()
+                                         : CommonTemplates::ClearOneofDeclarationTemplate());
+                    return;
+                }
 
                 switch (field->type()) {
                 case FieldDescriptor::TYPE_MESSAGE:
@@ -272,10 +338,14 @@ void MessageDeclarationPrinter::printSetters()
                     break;
                 }
             });
-    common::iterateOneofFields(
-            m_descriptor, [&](const OneofDescriptor *, const PropertyMap &propertyMap) {
-                m_printer->Print(propertyMap, CommonTemplates::ClearOneofDeclarationTemplate());
-            });
+    common::
+        iterateOneofFields(m_descriptor,
+                           [&](const OneofDescriptor *, const PropertyMap &propertyMap) {
+                               m_printer->Print(propertyMap,
+                                           Options::instance().hasQml()
+                                               ? CommonTemplates::ClearQmlOneofDeclarationTemplate()
+                                               : CommonTemplates::ClearOneofDeclarationTemplate());
+                           });
     Outdent();
 }
 
@@ -291,11 +361,12 @@ void MessageDeclarationPrinter::printPrivateGetters()
                                     ? CommonTemplates::
                                             PrivateGetterOneofMessageDeclarationTemplate()
                                     : CommonTemplates::PrivateGetterOneofDeclarationTemplate());
+                } else if (common::isOptionalField(field)) {
+                    m_printer->Print(propertyMap,
+                                     CommonTemplates::PrivateGetterOneofDeclarationTemplate());
                 } else if (common::isPureMessage(field)) {
                     m_printer->Print(propertyMap,
                                     CommonTemplates::PrivateGetterMessageDeclarationTemplate());
-                } else if (common::hasQmlAlias(field)) {
-                    m_printer->Print(propertyMap, CommonTemplates::GetterNonScriptableDeclarationTemplate());
                 }
             });
     Outdent();
@@ -313,11 +384,12 @@ void MessageDeclarationPrinter::printPrivateSetters()
                                     ? CommonTemplates::
                                             PrivateSetterOneofMessageDeclarationTemplate()
                                     : CommonTemplates::PrivateSetterOneofDeclarationTemplate());
+                } else if (common::isOptionalField(field)) {
+                    m_printer->Print(propertyMap,
+                                     CommonTemplates::PrivateSetterOneofDeclarationTemplate());
                 } else if (common::isPureMessage(field)) {
                     m_printer->Print(propertyMap,
                                     CommonTemplates::PrivateSetterMessageDeclarationTemplate());
-                } else if (common::hasQmlAlias(field)) {
-                    m_printer->Print(propertyMap, CommonTemplates::SetterNonScriptableDeclarationTemplate());
                 }
             });
     Outdent();
@@ -325,14 +397,11 @@ void MessageDeclarationPrinter::printPrivateSetters()
 
 void MessageDeclarationPrinter::printEnums()
 {
-    Indent();
     if (Options::instance().generateFieldEnum())
         printFieldEnum();
-    if (m_descriptor->enum_type_count() > 0)
-        printQEnums();
-    if (m_descriptor->oneof_decl_count() > 0)
-        printOneofEnums();
-    Outdent();
+
+    printQEnums();
+    printOneofEnums();
 }
 
 void MessageDeclarationPrinter::printQEnums()
@@ -351,12 +420,7 @@ void MessageDeclarationPrinter::printQEnums()
         }
         Outdent();
         m_printer->Print(CommonTemplates::SemicolonBlockEnclosureTemplate());
-        m_printer->Print(typeMap, CommonTemplates::QEnumTemplate());
-    }
-
-    for (int i = 0; i < m_descriptor->enum_type_count(); ++i) {
-        const auto *enumDescr = m_descriptor->enum_type(i);
-        auto typeMap = common::produceEnumTypeMap(enumDescr, m_descriptor);
+        m_printer->Print(typeMap, CommonTemplates::QEnumNSTemplate());
         m_printer->Print(typeMap, CommonTemplates::UsingRepeatedEnumTemplate());
     }
 }
@@ -364,7 +428,7 @@ void MessageDeclarationPrinter::printQEnums()
 void MessageDeclarationPrinter::printOneofEnums()
 {
     common::iterateOneofFields(
-            m_descriptor, [this](const OneofDescriptor *oneofDescr, PropertyMap &typeMap) {
+            m_descriptor, [this](const OneofDescriptor *oneofDescr, const PropertyMap &typeMap) {
                 m_printer->Print(typeMap, CommonTemplates::EnumClassDefinitionTemplate());
                 Indent();
                 m_printer->Print({ { "enumvalue", "UninitializedField" },
@@ -379,9 +443,16 @@ void MessageDeclarationPrinter::printOneofEnums()
                 }
                 Outdent();
                 m_printer->Print(CommonTemplates::SemicolonBlockEnclosureTemplate());
-                m_printer->Print(typeMap, CommonTemplates::QEnumTemplate());
-                m_printer->Print("\n");
+                m_printer->Print(typeMap, CommonTemplates::QEnumNSTemplate());
             });
+}
+
+void MessageDeclarationPrinter::printPublicExtras()
+{
+    if (m_descriptor->full_name() == "google.protobuf.Timestamp") {
+        m_printer->Print("static Timestamp fromDateTime(const QDateTime &dateTime);\n"
+                         "QDateTime toDateTime() const;\n");
+    }
 }
 
 void MessageDeclarationPrinter::printClassBody()
@@ -389,7 +460,6 @@ void MessageDeclarationPrinter::printClassBody()
     printProperties();
 
     printPublicBlock();
-    printEnums();
     printNested();
     printMaps();
 
@@ -408,6 +478,7 @@ void MessageDeclarationPrinter::printClassBody()
 
     Indent();
     m_printer->Print(m_typeMap, CommonTemplates::MetaTypeRegistrationDeclaration());
+    printPublicExtras();
     Outdent();
 
     printPrivateBlock();
@@ -442,7 +513,6 @@ void MessageDeclarationPrinter::printFieldEnum()
         Outdent();
         m_printer->Print(CommonTemplates::SemicolonBlockEnclosureTemplate());
         m_printer->Print({ { "type", CommonTemplates::QtProtobufFieldEnum() } },
-                         CommonTemplates::QEnumTemplate());
-        m_printer->Print("\n");
+                         CommonTemplates::QEnumNSTemplate());
     }
 }

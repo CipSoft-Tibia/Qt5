@@ -193,24 +193,10 @@ class RtpVideoSenderTestFixture {
   MockTransport& transport() { return transport_; }
   void AdvanceTime(TimeDelta delta) { time_controller_.AdvanceTime(delta); }
 
-  void Stop() {
-    RunOnTransportQueue([&]() { router_->Stop(); });
-  }
+  void Stop() { router_->Stop(); }
 
   void SetActiveModules(const std::vector<bool>& active_modules) {
-    RunOnTransportQueue([&]() { router_->SetActiveModules(active_modules); });
-  }
-
-  // Several RtpVideoSender methods expect to be called on the task queue as
-  // owned by the send transport. While the SequenceChecker may pick up the
-  // default thread as the transport queue, explicit checks for the transport
-  // queue (not just using a SequenceChecker) aren't possible unless such a
-  // queue is actually active. So RunOnTransportQueue is a convenience function
-  // that allow for running a `task` on the transport queue, similar to
-  // SendTask().
-  void RunOnTransportQueue(absl::AnyInvocable<void() &&> task) {
-    transport_controller_.GetWorkerQueue()->RunOrPost(std::move(task));
-    AdvanceTime(TimeDelta::Zero());
+    router_->SetActiveModules(active_modules);
   }
 
  private:
@@ -478,10 +464,10 @@ TEST(RtpVideoSenderTest, DoesNotRetrasmitAckedPackets) {
   EXPECT_CALL(test.transport(), SendRtp)
       .Times(2)
       .WillRepeatedly([&rtp_sequence_numbers, &transport_sequence_numbers](
-                          const uint8_t* packet, size_t length,
+                          rtc::ArrayView<const uint8_t> packet,
                           const PacketOptions& options) {
         RtpPacket rtp_packet;
-        EXPECT_TRUE(rtp_packet.Parse(packet, length));
+        EXPECT_TRUE(rtp_packet.Parse(packet));
         rtp_sequence_numbers.push_back(rtp_packet.SequenceNumber());
         transport_sequence_numbers.push_back(options.packet_id);
         return true;
@@ -505,10 +491,10 @@ TEST(RtpVideoSenderTest, DoesNotRetrasmitAckedPackets) {
   EXPECT_CALL(test.transport(), SendRtp)
       .Times(2)
       .WillRepeatedly([&retransmitted_rtp_sequence_numbers](
-                          const uint8_t* packet, size_t length,
+                          rtc::ArrayView<const uint8_t> packet,
                           const PacketOptions& options) {
         RtpPacket rtp_packet;
-        EXPECT_TRUE(rtp_packet.Parse(packet, length));
+        EXPECT_TRUE(rtp_packet.Parse(packet));
         EXPECT_EQ(rtp_packet.Ssrc(), kRtxSsrc1);
         // Capture the retransmitted sequence number from the RTX header.
         rtc::ArrayView<const uint8_t> payload = rtp_packet.payload();
@@ -546,10 +532,10 @@ TEST(RtpVideoSenderTest, DoesNotRetrasmitAckedPackets) {
   // still be retransmitted.
   test.AdvanceTime(TimeDelta::Millis(33));
   EXPECT_CALL(test.transport(), SendRtp)
-      .WillOnce([&lost_packet_feedback](const uint8_t* packet, size_t length,
+      .WillOnce([&lost_packet_feedback](rtc::ArrayView<const uint8_t> packet,
                                         const PacketOptions& options) {
         RtpPacket rtp_packet;
-        EXPECT_TRUE(rtp_packet.Parse(packet, length));
+        EXPECT_TRUE(rtp_packet.Parse(packet));
         EXPECT_EQ(rtp_packet.Ssrc(), kRtxSsrc1);
         // Capture the retransmitted sequence number from the RTX header.
         rtc::ArrayView<const uint8_t> payload = rtp_packet.payload();
@@ -649,10 +635,10 @@ TEST(RtpVideoSenderTest, EarlyRetransmits) {
   EXPECT_CALL(test.transport(), SendRtp)
       .WillOnce(
           [&frame1_rtp_sequence_number, &frame1_transport_sequence_number](
-              const uint8_t* packet, size_t length,
+              rtc::ArrayView<const uint8_t> packet,
               const PacketOptions& options) {
             RtpPacket rtp_packet;
-            EXPECT_TRUE(rtp_packet.Parse(packet, length));
+            EXPECT_TRUE(rtp_packet.Parse(packet));
             frame1_rtp_sequence_number = rtp_packet.SequenceNumber();
             frame1_transport_sequence_number = options.packet_id;
             EXPECT_EQ(rtp_packet.Ssrc(), kSsrc1);
@@ -669,10 +655,10 @@ TEST(RtpVideoSenderTest, EarlyRetransmits) {
   EXPECT_CALL(test.transport(), SendRtp)
       .WillOnce(
           [&frame2_rtp_sequence_number, &frame2_transport_sequence_number](
-              const uint8_t* packet, size_t length,
+              rtc::ArrayView<const uint8_t> packet,
               const PacketOptions& options) {
             RtpPacket rtp_packet;
-            EXPECT_TRUE(rtp_packet.Parse(packet, length));
+            EXPECT_TRUE(rtp_packet.Parse(packet));
             frame2_rtp_sequence_number = rtp_packet.SequenceNumber();
             frame2_transport_sequence_number = options.packet_id;
             EXPECT_EQ(rtp_packet.Ssrc(), kSsrc2);
@@ -687,11 +673,11 @@ TEST(RtpVideoSenderTest, EarlyRetransmits) {
   // Inject a transport feedback where the packet for the first frame is lost,
   // expect a retransmission for it.
   EXPECT_CALL(test.transport(), SendRtp)
-      .WillOnce([&frame1_rtp_sequence_number](const uint8_t* packet,
-                                              size_t length,
-                                              const PacketOptions& options) {
+      .WillOnce([&frame1_rtp_sequence_number](
+                    rtc::ArrayView<const uint8_t> packet,
+                    const PacketOptions& options) {
         RtpPacket rtp_packet;
-        EXPECT_TRUE(rtp_packet.Parse(packet, length));
+        EXPECT_TRUE(rtp_packet.Parse(packet));
         EXPECT_EQ(rtp_packet.Ssrc(), kRtxSsrc1);
 
         // Retransmitted sequence number from the RTX header should match
@@ -730,10 +716,10 @@ TEST(RtpVideoSenderTest, SupportsDependencyDescriptor) {
       kDependencyDescriptorExtensionId);
   std::vector<RtpPacket> sent_packets;
   ON_CALL(test.transport(), SendRtp)
-      .WillByDefault([&](const uint8_t* packet, size_t length,
+      .WillByDefault([&](rtc::ArrayView<const uint8_t> packet,
                          const PacketOptions& options) {
         sent_packets.emplace_back(&extensions);
-        EXPECT_TRUE(sent_packets.back().Parse(packet, length));
+        EXPECT_TRUE(sent_packets.back().Parse(packet));
         return true;
       });
 
@@ -791,9 +777,8 @@ TEST(RtpVideoSenderTest,
   std::vector<RtpPacket> sent_packets;
   ON_CALL(test.transport(), SendRtp)
       .WillByDefault(
-          [&](const uint8_t* packet, size_t length, const PacketOptions&) {
-            EXPECT_TRUE(
-                sent_packets.emplace_back(&extensions).Parse(packet, length));
+          [&](rtc::ArrayView<const uint8_t> packet, const PacketOptions&) {
+            EXPECT_TRUE(sent_packets.emplace_back(&extensions).Parse(packet));
             return true;
           });
   test.SetActiveModules({true});
@@ -837,10 +822,10 @@ TEST(RtpVideoSenderTest, SupportsDependencyDescriptorForVp9) {
       kDependencyDescriptorExtensionId);
   std::vector<RtpPacket> sent_packets;
   ON_CALL(test.transport(), SendRtp)
-      .WillByDefault([&](const uint8_t* packet, size_t length,
+      .WillByDefault([&](rtc::ArrayView<const uint8_t> packet,
                          const PacketOptions& options) {
         sent_packets.emplace_back(&extensions);
-        EXPECT_TRUE(sent_packets.back().Parse(packet, length));
+        EXPECT_TRUE(sent_packets.back().Parse(packet));
         return true;
       });
 
@@ -893,10 +878,10 @@ TEST(RtpVideoSenderTest,
       kDependencyDescriptorExtensionId);
   std::vector<RtpPacket> sent_packets;
   ON_CALL(test.transport(), SendRtp)
-      .WillByDefault([&](const uint8_t* packet, size_t length,
+      .WillByDefault([&](rtc::ArrayView<const uint8_t> packet,
                          const PacketOptions& options) {
         sent_packets.emplace_back(&extensions);
-        EXPECT_TRUE(sent_packets.back().Parse(packet, length));
+        EXPECT_TRUE(sent_packets.back().Parse(packet));
         return true;
       });
 
@@ -948,10 +933,10 @@ TEST(RtpVideoSenderTest, GenerateDependecyDescriptorForGenericCodecs) {
       kDependencyDescriptorExtensionId);
   std::vector<RtpPacket> sent_packets;
   ON_CALL(test.transport(), SendRtp)
-      .WillByDefault([&](const uint8_t* packet, size_t length,
+      .WillByDefault([&](rtc::ArrayView<const uint8_t> packet,
                          const PacketOptions& options) {
         sent_packets.emplace_back(&extensions);
-        EXPECT_TRUE(sent_packets.back().Parse(packet, length));
+        EXPECT_TRUE(sent_packets.back().Parse(packet));
         return true;
       });
 
@@ -994,10 +979,10 @@ TEST(RtpVideoSenderTest, SupportsStoppingUsingDependencyDescriptor) {
       kDependencyDescriptorExtensionId);
   std::vector<RtpPacket> sent_packets;
   ON_CALL(test.transport(), SendRtp)
-      .WillByDefault([&](const uint8_t* packet, size_t length,
+      .WillByDefault([&](rtc::ArrayView<const uint8_t> packet,
                          const PacketOptions& options) {
         sent_packets.emplace_back(&extensions);
-        EXPECT_TRUE(sent_packets.back().Parse(packet, length));
+        EXPECT_TRUE(sent_packets.back().Parse(packet));
         return true;
       });
 
@@ -1106,10 +1091,10 @@ TEST(RtpVideoSenderTest, ClearsPendingPacketsOnInactivation) {
       kDependencyDescriptorExtensionId);
   std::vector<RtpPacket> sent_packets;
   ON_CALL(test.transport(), SendRtp)
-      .WillByDefault([&](const uint8_t* packet, size_t length,
+      .WillByDefault([&](rtc::ArrayView<const uint8_t> packet,
                          const PacketOptions& options) {
         sent_packets.emplace_back(&extensions);
-        EXPECT_TRUE(sent_packets.back().Parse(packet, length));
+        EXPECT_TRUE(sent_packets.back().Parse(packet));
         return true;
       });
 
@@ -1172,6 +1157,84 @@ TEST(RtpVideoSenderTest, ClearsPendingPacketsOnInactivation) {
   // Advance time, check we get new packets - but only for the second frame.
   EXPECT_FALSE(sent_packets.empty());
   EXPECT_NE(sent_packets[0].Timestamp(), first_frame_timestamp);
+}
+
+// Integration test verifying that when retransmission mode is set to
+// kRetransmitBaseLayer,only base layer is retransmitted.
+TEST(RtpVideoSenderTest, RetransmitsBaseLayerOnly) {
+  RtpVideoSenderTestFixture test({kSsrc1, kSsrc2}, {kRtxSsrc1, kRtxSsrc2},
+                                 kPayloadType, {});
+  test.SetActiveModules({true, true});
+
+  test.router()->SetRetransmissionMode(kRetransmitBaseLayer);
+  constexpr uint8_t kPayload = 'a';
+  EncodedImage encoded_image;
+  encoded_image.SetTimestamp(1);
+  encoded_image.capture_time_ms_ = 2;
+  encoded_image._frameType = VideoFrameType::kVideoFrameKey;
+  encoded_image.SetEncodedData(EncodedImageBuffer::Create(&kPayload, 1));
+
+  // Send two tiny images, mapping to two RTP packets. Capture sequence numbers.
+  std::vector<uint16_t> rtp_sequence_numbers;
+  std::vector<uint16_t> transport_sequence_numbers;
+  std::vector<uint16_t> base_sequence_numbers;
+  EXPECT_CALL(test.transport(), SendRtp)
+      .Times(2)
+      .WillRepeatedly([&rtp_sequence_numbers, &transport_sequence_numbers](
+                          rtc::ArrayView<const uint8_t> packet,
+                          const PacketOptions& options) {
+        RtpPacket rtp_packet;
+        EXPECT_TRUE(rtp_packet.Parse(packet));
+        rtp_sequence_numbers.push_back(rtp_packet.SequenceNumber());
+        transport_sequence_numbers.push_back(options.packet_id);
+        return true;
+      });
+  CodecSpecificInfo key_codec_info;
+  key_codec_info.codecType = kVideoCodecVP8;
+  key_codec_info.codecSpecific.VP8.temporalIdx = 0;
+  EXPECT_EQ(EncodedImageCallback::Result::OK,
+            test.router()->OnEncodedImage(
+                encoded_image, &key_codec_info).error);
+  encoded_image.SetTimestamp(2);
+  encoded_image.capture_time_ms_ = 3;
+  encoded_image._frameType = VideoFrameType::kVideoFrameDelta;
+  CodecSpecificInfo delta_codec_info;
+  delta_codec_info.codecType = kVideoCodecVP8;
+  delta_codec_info.codecSpecific.VP8.temporalIdx = 1;
+  EXPECT_EQ(EncodedImageCallback::Result::OK,
+            test.router()->OnEncodedImage(
+                encoded_image, &delta_codec_info).error);
+
+  test.AdvanceTime(TimeDelta::Millis(33));
+
+  // Construct a NACK message for requesting retransmission of both packet.
+  rtcp::Nack nack;
+  nack.SetMediaSsrc(kSsrc1);
+  nack.SetPacketIds(rtp_sequence_numbers);
+  rtc::Buffer nack_buffer = nack.Build();
+
+  std::vector<uint16_t> retransmitted_rtp_sequence_numbers;
+  EXPECT_CALL(test.transport(), SendRtp)
+      .Times(1)
+      .WillRepeatedly([&retransmitted_rtp_sequence_numbers](
+                          rtc::ArrayView<const uint8_t> packet,
+                          const PacketOptions& options) {
+        RtpPacket rtp_packet;
+        EXPECT_TRUE(rtp_packet.Parse(packet));
+        EXPECT_EQ(rtp_packet.Ssrc(), kRtxSsrc1);
+        // Capture the retransmitted sequence number from the RTX header.
+        rtc::ArrayView<const uint8_t> payload = rtp_packet.payload();
+        retransmitted_rtp_sequence_numbers.push_back(
+            ByteReader<uint16_t>::ReadBigEndian(payload.data()));
+        return true;
+      });
+  test.router()->DeliverRtcp(nack_buffer.data(), nack_buffer.size());
+  test.AdvanceTime(TimeDelta::Millis(33));
+
+  // Verify that only base layer packet was retransmitted.
+  std::vector<uint16_t> base_rtp_sequence_numbers(rtp_sequence_numbers.begin(),
+                               rtp_sequence_numbers.begin() + 1);
+  EXPECT_EQ(retransmitted_rtp_sequence_numbers, base_rtp_sequence_numbers);
 }
 
 }  // namespace webrtc

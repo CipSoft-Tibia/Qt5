@@ -1,6 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtCore/QJsonArray>
@@ -237,7 +236,7 @@ void tst_QNetworkCookieJar::setCookiesFromUrl()
     QFETCH(QList<QNetworkCookie>, preset);
     QFETCH(QNetworkCookie, newCookie);
     QFETCH(QString, referenceUrl);
-    QFETCH(QList<QNetworkCookie>, expectedResult);
+    QFETCH(const QList<QNetworkCookie>, expectedResult);
     QFETCH(bool, setCookies);
 
     QList<QNetworkCookie> cookieList;
@@ -247,7 +246,7 @@ void tst_QNetworkCookieJar::setCookiesFromUrl()
     QCOMPARE(jar.setCookiesFromUrl(cookieList, referenceUrl), setCookies);
 
     QList<QNetworkCookie> result = jar.allCookies();
-    foreach (QNetworkCookie cookie, expectedResult) {
+    for (const QNetworkCookie &cookie : expectedResult) {
         QVERIFY2(result.contains(cookie), cookie.toRawForm());
         result.removeAll(cookie);
     }
@@ -518,7 +517,7 @@ void tst_QNetworkCookieJar::rfc6265_data()
 
 void tst_QNetworkCookieJar::rfc6265()
 {
-    QFETCH(QStringList, received);
+    QFETCH(const QStringList, received);
     QFETCH(QList<QNetworkCookie>, sent);
     QFETCH(QString, sentTo);
 
@@ -529,7 +528,7 @@ void tst_QNetworkCookieJar::rfc6265()
 
     QNetworkCookieJar jar;
     QList<QNetworkCookie> receivedCookies;
-    foreach (const QString &cookieLine, received)
+    for (const QString &cookieLine : received)
         receivedCookies.append(QNetworkCookie::parseCookies(cookieLine.toUtf8()));
 
     jar.setCookiesFromUrl(receivedCookies, receivedUrl);

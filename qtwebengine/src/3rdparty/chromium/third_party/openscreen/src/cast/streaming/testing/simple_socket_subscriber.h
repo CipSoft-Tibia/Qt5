@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,13 @@
 #include "cast/streaming/environment.h"
 #include "gtest/gtest.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class SimpleSubscriber : public Environment::SocketSubscriber {
   void OnSocketReady() {}
   void OnSocketInvalid(Error error) { ASSERT_TRUE(error.ok()) << error; }
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_TESTING_SIMPLE_SOCKET_SUBSCRIBER_H_

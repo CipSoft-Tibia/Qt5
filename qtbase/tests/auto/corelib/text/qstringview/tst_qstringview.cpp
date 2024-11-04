@@ -1,5 +1,5 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QStringView>
 #include <QStringTokenizer>
@@ -258,6 +258,8 @@ private Q_SLOTS:
     void tokenize_data() const;
     void tokenize() const;
 
+    void std_stringview_conversion();
+
 private:
     template <typename String>
     void conversion_tests(String arg) const;
@@ -357,6 +359,30 @@ void tst_QStringView::constExpr() const
         static_assert(sv3.isEmpty());
         static_assert(sv3.size() == 0);
     }
+#if !defined(Q_CC_GNU_ONLY) || !defined(QT_SANITIZE_UNDEFINED)
+    // Below checks are disabled because of a compilation issue with GCC and
+    // -fsanitize=undefined. See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=71962.
+    {
+        static constexpr char16_t hello[] = u"Hello";
+        constexpr QStringView sv(hello);
+        static_assert(sv.size() == 5);
+        static_assert(!sv.empty());
+        static_assert(!sv.isEmpty());
+        static_assert(!sv.isNull());
+        static_assert(*sv.utf16() == 'H');
+        static_assert(sv[0]      == QLatin1Char('H'));
+        static_assert(sv.at(0)   == QLatin1Char('H'));
+        static_assert(sv.front() == QLatin1Char('H'));
+        static_assert(sv.first() == QLatin1Char('H'));
+        static_assert(sv[4]      == QLatin1Char('o'));
+        static_assert(sv.at(4)   == QLatin1Char('o'));
+        static_assert(sv.back()  == QLatin1Char('o'));
+        static_assert(sv.last()  == QLatin1Char('o'));
+
+        constexpr auto sv2 = QStringView::fromArray(hello);
+        QCOMPARE_EQ(sv, sv2.chopped(1));
+    }
+#endif // -fsanitize=undefined
 }
 
 void tst_QStringView::basics() const
@@ -428,7 +454,7 @@ void tst_QStringView::fromArray() const
 {
     static constexpr char16_t hello[] = u"Hello\0abc\0\0.";
 
-    constexpr QStringView sv = QStringView::fromArray(hello);
+    const QStringView sv = QStringView::fromArray(hello);
     QCOMPARE(sv.size(), 13);
     QVERIFY(!sv.empty());
     QVERIFY(!sv.isEmpty());
@@ -881,6 +907,31 @@ void tst_QStringView::overloadResolution()
         QStringViewOverloadResolution::test(std::as_const(string));
         QStringViewOverloadResolution::test(std::move(string));
     }
+}
+
+void tst_QStringView::std_stringview_conversion()
+{
+    static_assert(std::is_convertible_v<QStringView, std::u16string_view>);
+
+    QStringView s;
+    std::u16string_view sv(s);
+    QCOMPARE(sv, std::u16string_view());
+
+    s = u"";
+    sv = s;
+    QCOMPARE(s.size(), 0);
+    QCOMPARE(sv.size(), size_t(0));
+    QCOMPARE(sv, std::u16string_view());
+
+    s = u"Hello";
+    sv = s;
+    QCOMPARE(sv, std::u16string_view(u"Hello"));
+
+    s = QStringView::fromArray(u"Hello\0world");
+    sv = s;
+    QCOMPARE(s.size(), 12);
+    QCOMPARE(sv.size(), size_t(12));
+    QCOMPARE(sv, std::u16string_view(u"Hello\0world\0", 12));
 }
 
 QTEST_APPLESS_MAIN(tst_QStringView)

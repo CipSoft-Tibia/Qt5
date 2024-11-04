@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,12 +13,11 @@
 #include "util/json/json_helpers.h"
 #include "util/json/json_serialization.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 
-EnumNameTable<SenderMessage::Type, 4> kMessageTypeNames{
+EnumNameTable<SenderMessage::Type, 3> kMessageTypeNames{
     {{kMessageTypeOffer, SenderMessage::Type::kOffer},
      {"GET_CAPABILITIES", SenderMessage::Type::kGetCapabilities},
      {"RPC", SenderMessage::Type::kRpc}}};
@@ -109,5 +108,4 @@ ErrorOr<Json::Value> SenderMessage::ToJson() const {
   return root;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

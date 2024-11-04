@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
+#include "base/rand_util.h"
 #include "base/time/default_tick_clock.h"
 #include "base/time/time.h"
 #include "cc/base/devtools_instrumentation.h"
@@ -21,6 +22,8 @@
 #include "cc/metrics/event_metrics.h"
 #include "cc/metrics/frame_info.h"
 #include "cc/metrics/frame_sequence_metrics.h"
+#include "cc/metrics/predictor_jank_tracker.h"
+#include "cc/metrics/scroll_jank_dropped_frame_tracker.h"
 #include "cc/scheduler/scheduler.h"
 #include "components/viz/common/frame_sinks/begin_frame_args.h"
 #include "components/viz/common/frame_timing_details.h"
@@ -41,6 +44,9 @@ struct GlobalMetricsTrackers {
   raw_ptr<LatencyUkmReporter> latency_ukm_reporter = nullptr;
   raw_ptr<FrameSequenceTrackerCollection> frame_sequence_trackers = nullptr;
   raw_ptr<EventLatencyTracker, DanglingUntriaged> event_latency_tracker =
+      nullptr;
+  raw_ptr<PredictorJankTracker> predictor_jank_tracker = nullptr;
+  raw_ptr<ScrollJankDroppedFrameTracker> scroll_jank_dropped_frame_tracker =
       nullptr;
 };
 
@@ -380,6 +386,11 @@ class CC_EXPORT CompositorFrameReporter {
   // created from this reporter using |CopyReporterAtBeginImplStage()|.
   void AdoptReporter(std::unique_ptr<CompositorFrameReporter> cloned_reporter);
 
+  // Called after the frame corresponding to this reporter was successfully
+  // presented. It doesn't get called when the frame is dropped or not submitted
+  // at all.
+  void DidSuccessfullyPresentFrame();
+
   // If this is a cloned reporter, then this returns a weak-ptr to the original
   // reporter this was cloned from (using |CopyReporterAtBeginImplStage()|).
 
@@ -418,6 +429,10 @@ class CC_EXPORT CompositorFrameReporter {
   std::vector<std::unique_ptr<EventMetrics>>& events_metrics_for_testing() {
     return events_metrics_;
   }
+
+  // Erase and return only the EventMetrics objects which depend on main thread
+  // updates (see comments on EventMetrics::requires_main_thread_update_).
+  EventMetrics::List TakeMainBlockedEventsMetrics();
 
  protected:
   void set_has_partial_update(bool has_partial_update) {
@@ -467,10 +482,6 @@ class CC_EXPORT CompositorFrameReporter {
   FrameInfo GenerateFrameInfo() const;
 
   base::WeakPtr<CompositorFrameReporter> GetWeakPtr();
-
-  // Erase and return only the EventMetrics objects which depend on main thread
-  // updates (see comments on EventMetrics::requires_main_thread_update_).
-  EventMetrics::List TakeMainBlockedEventsMetrics();
 
   void FindHighLatencyAttribution(
       CompositorLatencyInfo& previous_predictions,
@@ -572,6 +583,8 @@ class CC_EXPORT CompositorFrameReporter {
   std::vector<std::string> high_latency_substages_;
 
   ReporterType reporter_type_;
+
+  mutable base::MetricsSubSampler metrics_subsampler_;
 
   base::WeakPtrFactory<CompositorFrameReporter> weak_factory_{this};
 };

@@ -6,8 +6,8 @@
 
 QT_BEGIN_NAMESPACE
 
-QQmlProxyMetaObject::QQmlProxyMetaObject(QObject *obj, QList<ProxyData> *mList)
-: metaObjects(mList), proxies(nullptr), parent(nullptr), object(obj)
+QQmlProxyMetaObject::QQmlProxyMetaObject(QObject *obj, const QList<ProxyData> *mList)
+    : metaObjects(mList), proxies(nullptr), parent(nullptr), object(obj)
 {
     metaObject = metaObjects->constFirst().metaObject;
 
@@ -130,6 +130,14 @@ int QQmlProxyMetaObject::metaCall(QObject *o, QMetaObject::Call c, int id, void 
 QMetaObject *QQmlProxyMetaObject::toDynamicMetaObject(QObject *)
 {
     return metaObject;
+}
+
+void QQmlProxyMetaObject::objectDestroyed(QObject *object)
+{
+    if (parent)
+        parent->objectDestroyed(object);
+    else
+        QDynamicMetaObjectData::objectDestroyed(object);
 }
 
 QT_END_NAMESPACE

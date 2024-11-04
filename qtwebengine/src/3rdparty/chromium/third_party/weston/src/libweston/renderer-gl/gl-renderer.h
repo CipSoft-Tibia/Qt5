@@ -23,6 +23,8 @@
  * SOFTWARE.
  */
 
+#pragma once
+
 #include "config.h"
 
 #include <stdint.h>
@@ -64,16 +66,17 @@ enum gl_renderer_border_side {
  * \see struct gl_renderer_interface
  */
 struct gl_renderer_display_options {
+	struct weston_renderer_options base;
 	/** The EGL platform identifier */
 	EGLenum egl_platform;
 	/** The native display corresponding to the given EGL platform */
 	void *egl_native_display;
 	/** EGL_SURFACE_TYPE bits for the base EGLConfig */
 	EGLint egl_surface_type;
-	/** Array of DRM pixel formats acceptable for the base EGLConfig */
-	const uint32_t *drm_formats;
-	/** The \c drm_formats array length */
-	unsigned drm_formats_count;
+	/** Array of pixel formats acceptable for the base EGLConfig */
+	const struct pixel_format_info **formats;
+	/** The \c formats array length */
+	unsigned formats_count;
 };
 
 struct gl_renderer_output_options {
@@ -81,21 +84,25 @@ struct gl_renderer_output_options {
 	EGLNativeWindowType window_for_legacy;
 	/** Native window handle for \c eglCreatePlatformWindowSurface */
 	void *window_for_platform;
-	/** Array of DRM pixel formats acceptable for the window */
-	const uint32_t *drm_formats;
-	/** The \c drm_formats array length */
-	unsigned drm_formats_count;
+	/** Size of the framebuffer in pixels, including borders */
+	struct weston_size fb_size;
+	/** Area inside the framebuffer in pixels for composited content */
+	struct weston_geometry area;
+	/** Array of pixel formats acceptable for the window */
+	const struct pixel_format_info **formats;
+	/** The \c formats array length */
+	unsigned formats_count;
 };
 
 struct gl_renderer_pbuffer_options {
-	/** Width of the rendering surface in pixels */
-	int width;
-	/** Height of the rendering surface in pixels */
-	int height;
-	/** Array of DRM pixel formats acceptable for the pbuffer */
-	const uint32_t *drm_formats;
-	/** The \c drm_formats array length */
-	unsigned drm_formats_count;
+	/** Size of the framebuffer in pixels, including borders */
+	struct weston_size fb_size;
+	/** Area inside the framebuffer in pixels for composited content */
+	struct weston_geometry area;
+	/** Array of pixel formats acceptable for the pbuffer */
+	const struct pixel_format_info **formats;
+	/** The \c formats array length */
+	unsigned formats_count;
 };
 
 struct gl_renderer_interface {
@@ -116,14 +123,14 @@ struct gl_renderer_interface {
 	 * advertises it. Without the advertisement this function fails.
 	 *
 	 * If neither EGL_KHR_no_config_context or EGL_MESA_configless_context
-	 * are supported, the arguments egl_surface_type, drm_formats, and
-	 * drm_formats_count are used to find a so called base EGLConfig. The
+	 * are supported, the arguments egl_surface_type, formats, and
+	 * formats_count are used to find a so called base EGLConfig. The
 	 * GL context is created with the base EGLConfig, and outputs will be
 	 * required to use the same config as well. If one or both of the
 	 * extensions are supported, these arguments are unused, and each
 	 * output can use a different EGLConfig (pixel format).
 	 *
-	 * The first format in drm_formats that matches any EGLConfig
+	 * The first format in formats that matches any EGLConfig
 	 * determines which EGLConfig is chosen. On EGL GBM platform, the
 	 * pixel format must match exactly. On other platforms, it is enough
 	 * that each R, G, B, A channel has the same number of bits as in the
@@ -147,7 +154,7 @@ struct gl_renderer_interface {
 	 * used, otherwise \c window_for_legacy is used. This is because the
 	 * handle on X11 platform is different between the two.
 	 *
-	 * The first format in drm_formats that matches any EGLConfig
+	 * The first format in formats that matches any EGLConfig
 	 * determines which EGLConfig is chosen. See \c display_create about
 	 * how the matching works and the possible limitations.
 	 *
@@ -168,7 +175,7 @@ struct gl_renderer_interface {
 	 * the output. The repaint results will be kept internal and can only
 	 * be accessed through e.g. screen capture.
 	 *
-	 * The first format in drm_formats that matches any EGLConfig
+	 * The first format in formats that matches any EGLConfig
 	 * determines which EGLConfig is chosen. See \c display_create about
 	 * how the matching works and the possible limitations.
 	 *

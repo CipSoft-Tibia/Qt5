@@ -49,8 +49,6 @@ class V8ObjectBuilder;
 using PerformanceEntryType = unsigned;
 using PerformanceEntryTypeMask = unsigned;
 
-constexpr uint32_t kNavigationIdDefaultValue = 1;
-
 class CORE_EXPORT PerformanceEntry : public ScriptWrappable {
   DEFINE_WRAPPERTYPEINFO();
 
@@ -74,11 +72,13 @@ class CORE_EXPORT PerformanceEntry : public ScriptWrappable {
     kVisibilityState = 1 << 12,
     kBackForwardCacheRestoration = 1 << 13,
     kSoftNavigation = 1 << 14,
+    kLongAnimationFrame = 1 << 15,
+    kScript = 1 << 16,
   };
 
   const AtomicString& name() const { return name_; }
   DOMHighResTimeStamp startTime() const;
-  uint32_t navigationId() const;
+  String navigationId() const;
   // source() will return null if the PerformanceEntry did not originate from a
   // Window context.
   DOMWindow* source() const;
@@ -98,8 +98,20 @@ class CORE_EXPORT PerformanceEntry : public ScriptWrappable {
 
   static bool StartTimeCompareLessThan(PerformanceEntry* a,
                                        PerformanceEntry* b) {
-    if (a->startTime() == b->startTime())
-      return a->index_ < b->index_;
+    if (a->startTime() == b->startTime()) {
+      // The navigation entry is created lazily, and we want it to always be
+      // first for compatibility.
+      // TODO: create NT entry eagerly so that we don't have to do this
+      // https://bugs.chromium.org/p/chromium/issues/detail?id=1432565
+      if (a->EntryTypeEnum() == kNavigation) {
+        return true;
+      } else if (b->EntryTypeEnum() == kNavigation) {
+        return false;
+      } else {
+        return a->index_ < b->index_;
+      }
+    }
+
     return a->startTime() < b->startTime();
   }
 
@@ -118,11 +130,12 @@ class CORE_EXPORT PerformanceEntry : public ScriptWrappable {
     DEFINE_THREAD_SAFE_STATIC_LOCAL(
         HashSet<PerformanceEntryType>, valid_timeline_entry_types,
         ({kNavigation, kMark, kMeasure, kResource, kTaskAttribution, kPaint,
-          kFirstInput, kBackForwardCacheRestoration, kSoftNavigation}));
+          kFirstInput, kBackForwardCacheRestoration, kSoftNavigation,
+          kLongAnimationFrame, kVisibilityState}));
     return valid_timeline_entry_types.Contains(entry_type);
   }
 
-  static uint32_t GetNavigationId(ScriptState* script_state);
+  static String GetNavigationId(ScriptState* script_state);
 
   // PerformanceMark/Measure override this and it returns Mojo structure pointer
   // which has all members of PerformanceMark/Measure. Common data members are
@@ -158,10 +171,10 @@ class CORE_EXPORT PerformanceEntry : public ScriptWrappable {
   const AtomicString name_;
   const double start_time_;
   const int index_;
-  const uint32_t navigation_id_;
+  const String navigation_id_;
   // source_ will be null if the PerformanceEntry did not originate from a
   // Window context.
-  const Member<DOMWindow> source_;
+  const WeakMember<DOMWindow> source_;
   const bool is_triggered_by_soft_navigation_;
 };
 

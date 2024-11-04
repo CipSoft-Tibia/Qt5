@@ -731,11 +731,16 @@ void X11Window::Minimize() {
 }
 
 void X11Window::Restore() {
-  should_maximize_after_map_ = false;
-  restore_in_flight_ = true;
-  SetWMSpecState(false, x11::GetAtom("_NET_WM_STATE_MAXIMIZED_VERT"),
-                 x11::GetAtom("_NET_WM_STATE_MAXIMIZED_HORZ"));
-  SetWMSpecState(false, x11::GetAtom("_NET_WM_STATE_HIDDEN"), x11::Atom::None);
+  if (IsMinimized()) {
+    restore_in_flight_ = true;
+    SetWMSpecState(false, x11::GetAtom("_NET_WM_STATE_HIDDEN"),
+                   x11::Atom::None);
+  } else if (IsMaximized()) {
+    restore_in_flight_ = true;
+    should_maximize_after_map_ = false;
+    SetWMSpecState(false, x11::GetAtom("_NET_WM_STATE_MAXIMIZED_VERT"),
+                   x11::GetAtom("_NET_WM_STATE_MAXIMIZED_HORZ"));
+  }
 }
 
 PlatformWindowState X11Window::GetPlatformWindowState() const {
@@ -1099,7 +1104,8 @@ void X11Window::SetDecorationInsets(const gfx::Insets* insets_px) {
   }
 }
 
-void X11Window::SetOpaqueRegion(const std::vector<gfx::Rect>* region_px) {
+void X11Window::SetOpaqueRegion(
+    absl::optional<std::vector<gfx::Rect>> region_px) {
   auto atom = x11::GetAtom("_NET_WM_OPAQUE_REGION");
   if (!region_px) {
     x11::DeleteProperty(xwindow_, atom);
@@ -1115,7 +1121,7 @@ void X11Window::SetOpaqueRegion(const std::vector<gfx::Rect>* region_px) {
   x11::SetArrayProperty(xwindow_, atom, x11::Atom::CARDINAL, value);
 }
 
-void X11Window::SetInputRegion(const gfx::Rect* region_px) {
+void X11Window::SetInputRegion(absl::optional<gfx::Rect> region_px) {
   if (!region_px) {
     // Reset the input region.
     connection_->shape().Mask({
@@ -1890,6 +1896,10 @@ bool X11Window::IsMinimized() const {
 }
 
 bool X11Window::IsMaximized() const {
+  // In X11, if a maximized window is minimized, it will have both the "hidden"
+  // and "maximized" states.
+  if (IsMinimized())
+    return false;
   return (HasWMSpecProperty(window_properties_,
                             x11::GetAtom("_NET_WM_STATE_MAXIMIZED_VERT")) &&
           HasWMSpecProperty(window_properties_,
@@ -2276,13 +2286,7 @@ void X11Window::OnWindowMapped() {
 
 void X11Window::OnConfigureEvent(const x11::ConfigureNotifyEvent& configure,
                                  bool send_event) {
-  DCHECK_EQ(xwindow_, configure.event);
-
-  // ConfigureNotifyEvent could be received for child windows. Ignore events for
-  // child windows.
-  if (xwindow_ != configure.window) {
-    return;
-  }
+  DCHECK_EQ(xwindow_, configure.window);
 
   if (pending_counter_value_) {
     DCHECK(!configure_counter_value_);

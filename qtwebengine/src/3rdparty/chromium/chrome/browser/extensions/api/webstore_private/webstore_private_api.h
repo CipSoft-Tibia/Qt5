@@ -8,7 +8,9 @@
 #include <memory>
 #include <string>
 
+#include "base/auto_reset.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/values.h"
 #include "chrome/browser/bitmap_fetcher/bitmap_fetcher_delegate.h"
 #include "chrome/browser/extensions/active_install_data.h"
@@ -24,16 +26,15 @@
 #include "third_party/skia/include/core/SkBitmap.h"
 
 #if BUILDFLAG(ENABLE_SUPERVISED_USERS)
-// TODO(https://crbug.com/1060801): Here and elsewhere, possibly switch build
-// flag to #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/supervised_user/supervised_user_extensions_metrics_recorder.h"
-#include "chrome/browser/ui/supervised_user/parent_permission_dialog.h"
+#include "extensions/browser/supervised_user_extensions_delegate.h"
 #endif  // BUILDFLAG(ENABLE_SUPERVISED_USERS)
 
 class Profile;
 
 namespace content {
 class GpuFeatureChecker;
+class WebContents;
 }
 
 namespace extensions {
@@ -43,9 +44,18 @@ class ScopedActiveInstall;
 
 class WebstorePrivateApi {
  public:
-  // Allows you to override the WebstoreInstaller delegate for testing.
-  static void SetWebstoreInstallerDelegateForTesting(
-      WebstoreInstaller::Delegate* delegate);
+  class Delegate {
+   public:
+    virtual ~Delegate() = default;
+    virtual void OnExtensionInstallSuccess(const std::string& id) {}
+    virtual void OnExtensionInstallFailure(
+        const std::string& id,
+        const std::string& error,
+        WebstoreInstaller::FailureReason reason) {}
+  };
+
+  // Sets a delegate for testing.
+  static base::AutoReset<Delegate*> SetDelegateForTesting(Delegate* delegate);
 
   // Gets the pending approval for the |extension_id| in |profile|. Pending
   // approvals are held between the calls to beginInstallWithManifest and
@@ -92,19 +102,23 @@ class WebstorePrivateBeginInstallWithManifest3Function
                               const std::string& error_message) override;
 
 #if BUILDFLAG(ENABLE_SUPERVISED_USERS)
-  void OnParentPermissionDone(ParentPermissionDialog::Result result);
+  void RequestExtensionApproval(content::WebContents* web_contents);
 
-  void OnParentPermissionReceived();
+  // Handles the result of the extension approval flow.
+  void OnExtensionApprovalDone(
+      SupervisedUserExtensionsDelegate::ExtensionApprovalResult result);
 
-  void OnParentPermissionCanceled();
+  void OnExtensionApprovalApproved();
 
-  void OnParentPermissionFailed();
+  void OnExtensionApprovalCanceled();
+
+  void OnExtensionApprovalFailed();
+
+  void OnExtensionApprovalBlocked();
 
   // Returns true if the parental approval prompt was shown, false if there was
   // an error showing it.
   bool PromptForParentApproval();
-
-  void OnBlockedByParentDialogDone();
 #endif  // BUILDFLAG(ENABLE_SUPERVISED_USERS)
 
   void OnFrictionPromptDone(bool result);
@@ -140,7 +154,7 @@ class WebstorePrivateBeginInstallWithManifest3Function
 
   const Params::Details& details() const { return params_->details; }
 
-  std::unique_ptr<Params> params_;
+  absl::optional<Params> params_;
 
   raw_ptr<Profile> profile_ = nullptr;
 
@@ -156,7 +170,6 @@ class WebstorePrivateBeginInstallWithManifest3Function
   std::u16string blocked_by_policy_error_message_;
 
 #if BUILDFLAG(ENABLE_SUPERVISED_USERS)
-  std::unique_ptr<ParentPermissionDialog> parent_permission_dialog_;
   SupervisedUserExtensionsMetricsRecorder
       supervised_user_extensions_metrics_recorder_;
 #endif  // BUILDFLAG(ENABLE_SUPERVISED_USERS)
@@ -166,9 +179,7 @@ class WebstorePrivateBeginInstallWithManifest3Function
   bool friction_dialog_shown_ = false;
 };
 
-class WebstorePrivateCompleteInstallFunction
-    : public ExtensionFunction,
-      public WebstoreInstaller::Delegate {
+class WebstorePrivateCompleteInstallFunction : public ExtensionFunction {
  public:
   DECLARE_EXTENSION_FUNCTION("webstorePrivate.completeInstall",
                              WEBSTOREPRIVATE_COMPLETEINSTALL)
@@ -181,17 +192,18 @@ class WebstorePrivateCompleteInstallFunction
   // ExtensionFunction:
   ExtensionFunction::ResponseAction Run() override;
 
-  // WebstoreInstaller::Delegate:
-  void OnExtensionInstallSuccess(const std::string& id) override;
-  void OnExtensionInstallFailure(
-      const std::string& id,
-      const std::string& error,
-      WebstoreInstaller::FailureReason reason) override;
+  // WebstoreInstaller::Delegate callbacks
+  void OnExtensionInstallSuccess(const std::string& id);
+  void OnExtensionInstallFailure(const std::string& id,
+                                 const std::string& error,
+                                 WebstoreInstaller::FailureReason reason);
 
   void OnInstallSuccess(const std::string& id);
 
   std::unique_ptr<WebstoreInstaller::Approval> approval_;
   std::unique_ptr<ScopedActiveInstall> scoped_active_install_;
+  base::WeakPtrFactory<WebstorePrivateCompleteInstallFunction>
+      weak_ptr_factory_{this};
 };
 
 class WebstorePrivateEnableAppLauncherFunction : public ExtensionFunction {

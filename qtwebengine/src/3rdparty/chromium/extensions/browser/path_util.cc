@@ -15,7 +15,8 @@
 
 #if BUILDFLAG(IS_MAC)
 #include <CoreFoundation/CoreFoundation.h>
-#include "base/mac/foundation_util.h"
+#include "base/apple/foundation_util.h"
+#include "base/apple/scoped_cftyperef.h"
 #endif
 
 namespace extensions {
@@ -27,18 +28,22 @@ namespace {
 // Retrieves the localized display name for the base name of the given path.
 // If the path is not localized, this will just return the base name.
 std::string GetDisplayBaseName(const base::FilePath& path) {
-  base::ScopedCFTypeRef<CFURLRef> url(CFURLCreateFromFileSystemRepresentation(
-      NULL, (const UInt8*)path.value().c_str(), path.value().length(), true));
-  if (!url)
+  base::apple::ScopedCFTypeRef<CFURLRef> url(
+      CFURLCreateFromFileSystemRepresentation(
+          nullptr, (const UInt8*)path.value().c_str(), path.value().length(),
+          /*isDirectory=*/true));
+  if (!url) {
     return path.BaseName().value();
+  }
 
-  CFStringRef str;
-  if (!CFURLCopyResourcePropertyForKey(url, kCFURLLocalizedNameKey, &str, NULL))
+  base::apple::ScopedCFTypeRef<CFStringRef> str;
+  if (!CFURLCopyResourcePropertyForKey(url, kCFURLLocalizedNameKey,
+                                       str.InitializeInto(),
+                                       /*error=*/nullptr)) {
     return path.BaseName().value();
+  }
 
-  std::string result(base::SysCFStringRefToUTF8(str));
-  CFRelease(str);
-  return result;
+  return base::SysCFStringRefToUTF8(str);
 }
 
 #endif  // BUILDFLAG(IS_MAC)

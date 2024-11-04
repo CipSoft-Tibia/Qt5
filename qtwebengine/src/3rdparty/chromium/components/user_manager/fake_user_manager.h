@@ -21,7 +21,7 @@ namespace user_manager {
 // and set as logged in, and those users can be returned.
 class USER_MANAGER_EXPORT FakeUserManager : public UserManagerBase {
  public:
-  FakeUserManager();
+  explicit FakeUserManager(PrefService* local_state = nullptr);
 
   FakeUserManager(const FakeUserManager&) = delete;
   FakeUserManager& operator=(const FakeUserManager&) = delete;
@@ -56,10 +56,6 @@ class USER_MANAGER_EXPORT FakeUserManager : public UserManagerBase {
   void SetUserNonCryptohomeDataEphemeral(const AccountId& account_id,
                                          bool is_ephemeral);
 
-  void set_local_state(PrefService* local_state) { local_state_ = local_state; }
-  void set_is_current_user_new(bool is_current_user_new) {
-    is_current_user_new_ = is_current_user_new;
-  }
   void set_is_current_user_owner(bool is_current_user_owner) {
     is_current_user_owner_ = is_current_user_owner;
   }
@@ -81,11 +77,6 @@ class USER_MANAGER_EXPORT FakeUserManager : public UserManagerBase {
   void SwitchActiveUser(const AccountId& account_id) override;
   void SaveUserDisplayName(const AccountId& account_id,
                            const std::u16string& display_name) override;
-  const AccountId& GetGuestAccountId() const override;
-  bool IsFirstExecAfterBoot() const override;
-  bool IsGuestAccountId(const AccountId& account_id) const override;
-  bool IsStubAccountId(const AccountId& account_id) const override;
-  bool HasBrowserRestarted() const override;
 
   // Not implemented.
   void Shutdown() override {}
@@ -94,8 +85,7 @@ class USER_MANAGER_EXPORT FakeUserManager : public UserManagerBase {
   const AccountId& GetOwnerAccountId() const override;
   void OnSessionStarted() override {}
   void RemoveUser(const AccountId& account_id,
-                  UserRemovalReason reason,
-                  RemoveUserDelegate* delegate) override {}
+                  UserRemovalReason reason) override {}
   void RemoveUserFromList(const AccountId& account_id) override;
   void RemoveUserFromListForRecreation(const AccountId& account_id) override;
   bool IsKnownUser(const AccountId& account_id) const override;
@@ -111,12 +101,11 @@ class USER_MANAGER_EXPORT FakeUserManager : public UserManagerBase {
                             const std::string& display_email) override {}
   absl::optional<std::string> GetOwnerEmail() override;
   bool IsCurrentUserOwner() const override;
-  bool IsCurrentUserNew() const override;
   bool IsCurrentUserNonCryptohomeDataEphemeral() const override;
   bool CanCurrentUserLock() const override;
   bool IsUserLoggedIn() const override;
   bool IsLoggedInAsUserWithGaiaAccount() const override;
-  bool IsLoggedInAsPublicAccount() const override;
+  bool IsLoggedInAsManagedGuestSession() const override;
   bool IsLoggedInAsGuest() const override;
   bool IsLoggedInAsKioskApp() const override;
   bool IsLoggedInAsArcKioskApp() const override;
@@ -133,12 +122,6 @@ class USER_MANAGER_EXPORT FakeUserManager : public UserManagerBase {
   bool IsGuestSessionAllowed() const override;
   bool IsGaiaUserAllowed(const User& user) const override;
   bool IsUserAllowed(const User& user) const override;
-  bool AreEphemeralUsersEnabled() const override;
-  void UpdateLoginState(const User* active_user,
-                        const User* primary_user,
-                        bool is_current_user_owner) const override;
-  bool GetPlatformKnownUserId(const std::string& user_email,
-                              AccountId* out_account_id) const override;
   void AsyncRemoveCryptohome(const AccountId& account_id) const override;
   bool IsDeprecatedSupervisedAccountId(
       const AccountId& account_id) const override;
@@ -150,27 +133,25 @@ class USER_MANAGER_EXPORT FakeUserManager : public UserManagerBase {
   bool IsValidDefaultUserImageId(int image_index) const override;
 
   // UserManagerBase overrides:
-  void SetEphemeralUsersEnabled(bool enabled) override;
+  void SetEphemeralModeConfig(
+      EphemeralModeConfig ephemeral_mode_config) override;
+
   const std::string& GetApplicationLocale() const override;
-  PrefService* GetLocalState() const override;
   bool IsEnterpriseManaged() const override;
   void LoadDeviceLocalAccounts(
       std::set<AccountId>* device_local_accounts_set) override {}
-  void PerformPostUserListLoadingActions() override {}
   void PerformPostUserLoggedInActions(bool browser_restart) override {}
   bool IsDeviceLocalAccountMarkedForRemoval(
       const AccountId& account_id) const override;
   void KioskAppLoggedIn(User* user) override {}
   void PublicAccountUserLoggedIn(User* user) override {}
-  void OnUserRemoved(const AccountId& account_id) override {}
 
  protected:
-  // Can be set by set_local_state().
-  raw_ptr<PrefService> local_state_ = nullptr;
-
   // If set this is the active user. If empty, the first created user is the
   // active user.
   AccountId active_account_id_ = EmptyAccountId();
+
+  bool IsEphemeralAccountIdByPolicy(const AccountId& account_id) const override;
 
  private:
   // We use this internal function for const-correctness.
@@ -183,7 +164,6 @@ class USER_MANAGER_EXPORT FakeUserManager : public UserManagerBase {
   gfx::ImageSkia empty_image_;
 
   bool is_current_user_owner_ = false;
-  bool is_current_user_new_ = false;
 
   // Contains AccountIds for which IsCurrentUserNonCryptohomeDataEphemeral will
   // return true.

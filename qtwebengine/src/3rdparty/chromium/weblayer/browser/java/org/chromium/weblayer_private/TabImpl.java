@@ -33,8 +33,8 @@ import org.chromium.base.annotations.CalledByNative;
 import org.chromium.base.annotations.JNINamespace;
 import org.chromium.base.annotations.NativeMethods;
 import org.chromium.base.supplier.ObservableSupplier;
-import org.chromium.components.autofill.AutofillActionModeCallback;
 import org.chromium.components.autofill.AutofillProvider;
+import org.chromium.components.autofill.AutofillSelectionMenuItemProvider;
 import org.chromium.components.browser_ui.display_cutout.DisplayCutoutController;
 import org.chromium.components.browser_ui.media.MediaSessionHelper;
 import org.chromium.components.browser_ui.widget.InsetObserverView;
@@ -52,6 +52,7 @@ import org.chromium.content_public.browser.GestureListenerManager;
 import org.chromium.content_public.browser.GestureStateListener;
 import org.chromium.content_public.browser.LoadUrlParams;
 import org.chromium.content_public.browser.MessagePayload;
+import org.chromium.content_public.browser.MessagePayloadType;
 import org.chromium.content_public.browser.MessagePort;
 import org.chromium.content_public.browser.MessagePort.MessageCallback;
 import org.chromium.content_public.browser.NavigationHandle;
@@ -80,7 +81,6 @@ import org.chromium.weblayer_private.interfaces.IObjectWrapper;
 import org.chromium.weblayer_private.interfaces.IStringCallback;
 import org.chromium.weblayer_private.interfaces.ITab;
 import org.chromium.weblayer_private.interfaces.ITabClient;
-import org.chromium.weblayer_private.interfaces.IWebMessageCallbackClient;
 import org.chromium.weblayer_private.interfaces.ObjectWrapper;
 import org.chromium.weblayer_private.interfaces.ScrollNotificationType;
 import org.chromium.weblayer_private.interfaces.StrictModeWorkaround;
@@ -90,7 +90,6 @@ import org.chromium.weblayer_private.media.MediaStreamManager;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -140,7 +139,7 @@ public final class TabImpl extends ITab.Stub {
     private DisplayCutoutController mDisplayCutoutController;
 
     private boolean mPostContainerViewInitDone;
-    private ActionModeCallback mActionModeCallback;
+    private WebLayerActionModeCallback mActionModeCallback;
 
     private Set<FaviconCallbackProxy> mFaviconCallbackProxies = new HashSet<>();
 
@@ -321,7 +320,7 @@ public final class TabImpl extends ITab.Stub {
 
             SelectionPopupController selectionPopupController =
                     SelectionPopupController.fromWebContents(mWebContents);
-            mActionModeCallback = new ActionModeCallback(mWebContents);
+            mActionModeCallback = new WebLayerActionModeCallback(mWebContents);
             mActionModeCallback.setTabClient(mClient);
             selectionPopupController.setActionModeCallback(mActionModeCallback);
             selectionPopupController.setSelectionClient(
@@ -372,7 +371,7 @@ public final class TabImpl extends ITab.Stub {
                     mAutofillProvider = null;
                 }
                 if (selectionController != null) {
-                    selectionController.setNonSelectionActionModeCallback(null);
+                    selectionController.setNonSelectionAdditionalMenuItemProvider(null);
                 }
             } else {
                 if (mAutofillProvider == null) {
@@ -388,15 +387,14 @@ public final class TabImpl extends ITab.Stub {
                         mBrowser.getBrowserFragment().getViewAndroidDelegateContainerView());
                 mAutofillProvider.setWebContents(mWebContents);
                 if (selectionController != null) {
-                    selectionController.setNonSelectionActionModeCallback(
-                            new AutofillActionModeCallback(
+                    selectionController.setNonSelectionAdditionalMenuItemProvider(
+                            new AutofillSelectionMenuItemProvider(
                                     mBrowser.getContext(), mAutofillProvider));
                 }
             }
         }
     }
 
-    @VisibleForTesting
     public AutofillProvider getAutofillProviderForTesting() {
         // The test needs to make sure the |mAutofillProvider| is not null.
         return mAutofillProvider;
@@ -548,7 +546,6 @@ public final class TabImpl extends ITab.Stub {
         return mNativeTab;
     }
 
-    @VisibleForTesting
     public InfoBarContainer getInfoBarContainerForTesting() {
         return mInfoBarContainer;
     }
@@ -984,49 +981,28 @@ public final class TabImpl extends ITab.Stub {
     @Override
     public void postMessage(String message, String targetOrigin) {
         StrictModeWorkaround.apply();
-        mChannel = mWebContents.createMessageChannel();
-        mChannel[0].setMessageCallback(new MessageCallback() {
-            @Override
-            public void onMessage(MessagePayload messagePayload, MessagePort[] sentPorts) {
-                try {
-                    // TODO(rayankans): Convert the byte buffer to a string as well.
-                    mClient.onPostMessage(messagePayload.getAsString(),
-                            mWebContents.getVisibleUrl().getOrigin().getSpec());
-                } catch (RemoteException e) {
+
+        if (mChannel == null || mChannel[0].isClosed() || mChannel[0].isTransferred()
+                || mChannel[1].isClosed() || mChannel[1].isTransferred()) {
+            mChannel = mWebContents.createMessageChannel();
+            mChannel[0].setMessageCallback(new MessageCallback() {
+                @Override
+                public void onMessage(MessagePayload messagePayload, MessagePort[] sentPorts) {
+                    try {
+                        if (messagePayload.getType() == MessagePayloadType.ARRAY_BUFFER) {
+                            // TODO(rayankans): Consider supporting passing array buffers.
+                            return;
+                        }
+                        mClient.onPostMessage(messagePayload.getAsString(),
+                                mWebContents.getVisibleUrl().getOrigin().getSpec());
+                    } catch (RemoteException e) {
+                    }
                 }
-            }
-        }, null);
-        // TODO(rayankans): Work out channel lifetime so the web content can hold on to the port.
+            }, null);
+        }
+
         mWebContents.postMessageToMainFrame(new MessagePayload(message), getAppOrigin(),
                 targetOrigin, new MessagePort[] {mChannel[1]});
-    }
-
-    @Override
-    public void registerWebMessageCallback(
-            String jsObjectName, List<String> allowedOrigins, IWebMessageCallbackClient client) {
-        StrictModeWorkaround.apply();
-        if (jsObjectName.isEmpty()) {
-            throw new IllegalArgumentException("JS object name must not be empty");
-        }
-        if (allowedOrigins.isEmpty()) {
-            throw new IllegalArgumentException("At least one origin must be specified");
-        }
-        for (String origin : allowedOrigins) {
-            if (TextUtils.isEmpty(origin)) {
-                throw new IllegalArgumentException("Origin must not be non-empty");
-            }
-        }
-        String registerError = TabImplJni.get().registerWebMessageCallback(mNativeTab, jsObjectName,
-                allowedOrigins.toArray(new String[allowedOrigins.size()]), client);
-        if (!TextUtils.isEmpty(registerError)) {
-            throw new IllegalArgumentException(registerError);
-        }
-    }
-
-    @Override
-    public void unregisterWebMessageCallback(String jsObjectName) {
-        StrictModeWorkaround.apply();
-        TabImplJni.get().unregisterWebMessageCallback(mNativeTab, jsObjectName);
     }
 
     public void destroy() {
@@ -1239,12 +1215,10 @@ public final class TabImpl extends ITab.Stub {
         return viewController != null && viewController.getTab() == this ? viewController : null;
     }
 
-    @VisibleForTesting
     public boolean canInfoBarContainerScrollForTesting() {
         return mInfoBarContainer.getContainerViewForTesting().isAllowedToAutoHide();
     }
 
-    @VisibleForTesting
     public String getTranslateInfoBarTargetLanguageForTesting() {
         if (!mInfoBarContainer.hasInfoBars()) return null;
 
@@ -1277,9 +1251,6 @@ public final class TabImpl extends ITab.Stub {
                 ValueCallback<Pair<Bitmap, Integer>> valueCallback);
         boolean setData(long nativeTabImpl, String[] data);
         String[] getData(long nativeTabImpl);
-        String registerWebMessageCallback(long nativeTabImpl, String jsObjectName,
-                String[] allowedOrigins, IWebMessageCallbackClient client);
-        void unregisterWebMessageCallback(long nativeTabImpl, String jsObjectName);
         boolean canTranslate(long nativeTabImpl);
         void showTranslateUi(long nativeTabImpl);
         void setTranslateTargetLanguage(long nativeTabImpl, String targetLanguage);

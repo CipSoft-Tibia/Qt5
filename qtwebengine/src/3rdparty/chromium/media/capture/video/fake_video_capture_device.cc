@@ -5,15 +5,16 @@
 #include "media/capture/video/fake_video_capture_device.h"
 
 #include <stddef.h>
+
 #include <algorithm>
 #include <utility>
 
-#include "base/cxx17_backports.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/stringprintf.h"
+#include "base/task/bind_post_task.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
 #include "base/time/time.h"
@@ -334,8 +335,7 @@ std::unique_ptr<FrameDeliverer> FrameDelivererFactory::CreateFrameDeliverer(
       return std::make_unique<GpuMemoryBufferFrameDeliverer>(
           std::move(frame_painter), gmb_support_.get());
   }
-  NOTREACHED();
-  return nullptr;
+  NOTREACHED_NORETURN();
 }
 
 PacmanFramePainter::PacmanFramePainter(Format pixel_format,
@@ -697,23 +697,23 @@ void FakePhotoDevice::SetPhotoOptions(
 
   if (settings->has_pan) {
     device_state_write_access->pan =
-        base::clamp(settings->pan, kMinPan, kMaxPan);
+        std::clamp(settings->pan, kMinPan, kMaxPan);
   }
   if (settings->has_tilt) {
     device_state_write_access->tilt =
-        base::clamp(settings->tilt, kMinTilt, kMaxTilt);
+        std::clamp(settings->tilt, kMinTilt, kMaxTilt);
   }
   if (settings->has_zoom) {
     device_state_write_access->zoom =
-        base::clamp(settings->zoom, kMinZoom, kMaxZoom);
+        std::clamp(settings->zoom, kMinZoom, kMaxZoom);
   }
   if (settings->has_exposure_time) {
-    device_state_write_access->exposure_time = base::clamp(
-        settings->exposure_time, kMinExposureTime, kMaxExposureTime);
+    device_state_write_access->exposure_time =
+        std::clamp(settings->exposure_time, kMinExposureTime, kMaxExposureTime);
   }
 
   if (settings->has_focus_distance) {
-    device_state_write_access->focus_distance = base::clamp(
+    device_state_write_access->focus_distance = std::clamp(
         settings->focus_distance, kMinFocusDistance, kMaxFocusDistance);
   }
 
@@ -733,10 +733,8 @@ void FakePhotoDevice::SetPhotoOptions(
 
 void FakeVideoCaptureDevice::TakePhoto(TakePhotoCallback callback) {
   DCHECK(thread_checker_.CalledOnValidThread());
-  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-      FROM_HERE, base::BindOnce(&FakePhotoDevice::TakePhoto,
-                                base::Unretained(photo_device_.get()),
-                                std::move(callback), elapsed_time_));
+  photo_device_->TakePhoto(
+      base::BindPostTaskToCurrentDefault(std::move(callback)), elapsed_time_);
 }
 
 OwnBufferFrameDeliverer::OwnBufferFrameDeliverer(
@@ -868,6 +866,23 @@ void GpuMemoryBufferFrameDeliverer::PaintAndDeliverNextFrame(
         ConvertReservationFailureToFrameDropReason(reserve_result));
     return;
   }
+#if BUILDFLAG(IS_WIN)
+  // On windows the GMBs aren't mappable natively. Instead mapping only copies
+  // data to a shared memory region. So a different mechanism is used for
+  // writable access.
+  auto buffer_access =
+      capture_buffer.handle_provider->GetHandleForInProcessAccess();
+  uint8_t* data_ptr = buffer_access->data();
+  memset(data_ptr, 0, buffer_access->mapped_size());
+  frame_painter()->PaintFrame(timestamp_to_paint, data_ptr,
+                              buffer_size.width());
+  // Need to destroy `handle` so that the changes are committed to the GMB.
+  buffer_access.reset();
+  // Premap always just in case the client requests it.
+  if (capture_buffer.handle_provider->DuplicateAsUnsafeRegion().IsValid()) {
+    capture_buffer.is_premapped = true;
+  }
+#else
   ScopedNV12GpuMemoryBufferMapping scoped_mapping(std::move(gmb));
   memset(scoped_mapping.y_plane(), 0,
          scoped_mapping.y_stride() * buffer_size.height());
@@ -875,7 +890,7 @@ void GpuMemoryBufferFrameDeliverer::PaintAndDeliverNextFrame(
          scoped_mapping.uv_stride() * (buffer_size.height() / 2));
   frame_painter()->PaintFrame(timestamp_to_paint, scoped_mapping.y_plane(),
                               scoped_mapping.y_stride());
-
+#endif  // if BUILDFLAG(IS_WIN)
   base::TimeTicks now = base::TimeTicks::Now();
   VideoCaptureFormat modified_format = device_state()->format;
   // When GpuMemoryBuffer is used, the frame data is opaque to the CPU for most

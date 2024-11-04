@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtQuick3DRuntimeRender/private/qssgrhiquadrenderer_p.h>
+#include <QtQuick3DUtils/private/qquick3dprofiler_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -85,24 +86,25 @@ void QSSGRhiQuadRenderer::recordRenderQuad(QSSGRhiContext *rhiCtx,
                                            QRhiRenderPassDescriptor *rpDesc, Flags flags)
 {
     // ps must have viewport and shaderPipeline set already
+    auto &ia = QSSGRhiInputAssemblerStatePrivate::get(*ps);
     if (flags.testFlag(UvCoords)) {
-        ps->ia.inputLayout.setAttributes({
+        ia.inputLayout.setAttributes({
                                             { 0, 0, QRhiVertexInputAttribute::Float3, 0 },
                                             { 0, 1, QRhiVertexInputAttribute::Float2, 3 * sizeof(float) }
                                         });
-        ps->ia.inputs << QSSGRhiInputAssemblerState::PositionSemantic << QSSGRhiInputAssemblerState::TexCoord0Semantic;
+        ia.inputs << QSSGRhiInputAssemblerState::PositionSemantic << QSSGRhiInputAssemblerState::TexCoord0Semantic;
     } else {
-        ps->ia.inputLayout.setAttributes({ { 0, 0, QRhiVertexInputAttribute::Float3, 0 } });
-        ps->ia.inputs << QSSGRhiInputAssemblerState::PositionSemantic;
+        ia.inputLayout.setAttributes({ { 0, 0, QRhiVertexInputAttribute::Float3, 0 } });
+        ia.inputs << QSSGRhiInputAssemblerState::PositionSemantic;
     }
-    ps->ia.inputLayout.setBindings({ 5 * sizeof(float) });
-    ps->ia.topology = QRhiGraphicsPipeline::Triangles;
+    ia.inputLayout.setBindings({ 5 * sizeof(float) });
+    ia.topology = QRhiGraphicsPipeline::Triangles;
 
-    ps->depthTestEnable = flags.testFlag(DepthTest);
-    ps->depthWriteEnable = flags.testFlag(DepthWrite);
+    ps->flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::DepthTestEnabled, flags.testFlag(DepthTest));
+    ps->flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::DepthWriteEnabled, flags.testFlag(DepthWrite));
     ps->cullMode = QRhiGraphicsPipeline::None;
     if (flags.testFlag(PremulBlend)) {
-        ps->blendEnable = true;
+        ps->flags |= QSSGRhiGraphicsPipelineState::Flag::BlendEnabled;
         ps->targetBlend.srcColor = QRhiGraphicsPipeline::One;
         ps->targetBlend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
         ps->targetBlend.srcAlpha = QRhiGraphicsPipeline::One;
@@ -114,7 +116,8 @@ void QSSGRhiQuadRenderer::recordRenderQuad(QSSGRhiContext *rhiCtx,
         ps->targetBlend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
     }
 
-    QRhiGraphicsPipeline *pipeline = rhiCtx->pipeline(QSSGGraphicsPipelineStateKey::create(*ps, rpDesc, srb), rpDesc, srb);
+    QSSGRhiContextPrivate *rhiCtxD = QSSGRhiContextPrivate::get(rhiCtx);
+    QRhiGraphicsPipeline *pipeline = rhiCtxD->pipeline(*ps, rpDesc, srb);
     // Make sure that we were able to create the pipeline before trying to use it
     // When GraphicsPipeline creation fails it should return nullptr and print a warning
     if (!pipeline)
@@ -140,7 +143,7 @@ void QSSGRhiQuadRenderer::recordRenderQuadPass(QSSGRhiContext *rhiCtx,
                                                QRhiTextureRenderTarget *rt, Flags flags)
 {
     QRhiCommandBuffer *cb = rhiCtx->commandBuffer();
-    cb->beginPass(rt, Qt::black, { 1.0f, 0 }, nullptr, QSSGRhiContext::commonPassFlags());
+    cb->beginPass(rt, Qt::black, { 1.0f, 0 }, nullptr, rhiCtx->commonPassFlags());
     QSSGRHICTX_STAT(rhiCtx, beginRenderPass(rt));
     recordRenderQuad(rhiCtx, ps, srb, rt->renderPassDescriptor(), flags);
     cb->endPass();
@@ -157,17 +160,18 @@ void QSSGRhiCubeRenderer::prepareCube(QSSGRhiContext *rhiCtx, QRhiResourceUpdate
 //### The flags UvCoords and RenderBehind are ignored
 void QSSGRhiCubeRenderer::recordRenderCube(QSSGRhiContext *rhiCtx, QSSGRhiGraphicsPipelineState *ps, QRhiShaderResourceBindings *srb, QRhiRenderPassDescriptor *rpDesc, QSSGRhiQuadRenderer::Flags flags)
 {
+    auto &ia = QSSGRhiInputAssemblerStatePrivate::get(*ps);
     // ps must have viewport and shaderPipeline set already
-    ps->ia.inputLayout.setAttributes({ { 0, 0, QRhiVertexInputAttribute::Float3, 0 } });
-    ps->ia.inputs << QSSGRhiInputAssemblerState::PositionSemantic;
-    ps->ia.inputLayout.setBindings({ 3 * sizeof(float) });
-    ps->ia.topology = QRhiGraphicsPipeline::Triangles;
+    ia.inputLayout.setAttributes({ { 0, 0, QRhiVertexInputAttribute::Float3, 0 } });
+    ia.inputs << QSSGRhiInputAssemblerState::PositionSemantic;
+    ia.inputLayout.setBindings({ 3 * sizeof(float) });
+    ia.topology = QRhiGraphicsPipeline::Triangles;
 
-    ps->depthTestEnable = flags.testFlag(QSSGRhiQuadRenderer::DepthTest);
-    ps->depthWriteEnable = flags.testFlag(QSSGRhiQuadRenderer::DepthWrite);
+    ps->flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::DepthTestEnabled, flags.testFlag(QSSGRhiQuadRenderer::DepthTest));
+    ps->flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::DepthWriteEnabled, flags.testFlag(QSSGRhiQuadRenderer::DepthWrite));
     ps->cullMode = QRhiGraphicsPipeline::None;
     if (flags.testFlag(QSSGRhiQuadRenderer::PremulBlend)) {
-        ps->blendEnable = true;
+        ps->flags |= QSSGRhiGraphicsPipelineState::Flag::BlendEnabled;
         ps->targetBlend.srcColor = QRhiGraphicsPipeline::One;
         ps->targetBlend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
         ps->targetBlend.srcAlpha = QRhiGraphicsPipeline::One;
@@ -179,7 +183,8 @@ void QSSGRhiCubeRenderer::recordRenderCube(QSSGRhiContext *rhiCtx, QSSGRhiGraphi
         ps->targetBlend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
     }
 
-    QRhiGraphicsPipeline *pipeline = rhiCtx->pipeline(QSSGGraphicsPipelineStateKey::create(*ps, rpDesc, srb), rpDesc, srb);
+    QSSGRhiContextPrivate *rhiCtxD = QSSGRhiContextPrivate::get(rhiCtx);
+    QRhiGraphicsPipeline *pipeline = rhiCtxD->pipeline(*ps, rpDesc, srb);
     // Make sure that we were able to create the pipeline before trying to use it
     // When GraphicsPipeline creation fails it should return nullptr and print a warning
     if (!pipeline)

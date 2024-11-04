@@ -13,15 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import { Page } from '../api/Page.js';
 import { CDPSession } from './Connection.js';
+import { DeviceRequestPromptManager } from './DeviceRequestPrompt.js';
 import { EventEmitter } from './EventEmitter.js';
 import { ExecutionContext } from './ExecutionContext.js';
 import { Frame } from './Frame.js';
 import { FrameTree } from './FrameTree.js';
 import { NetworkManager } from './NetworkManager.js';
-import { Page } from '../api/Page.js';
-import { Target } from './Target.js';
+import { CDPTarget } from './Target.js';
 import { TimeoutSettings } from './TimeoutSettings.js';
+/**
+ * @internal
+ */
+export declare const UTILITY_WORLD_NAME = "__puppeteer_utility_world__";
 /**
  * We use symbols to prevent external parties listening to these events.
  * They are internal to Puppeteer.
@@ -35,8 +40,6 @@ export declare const FrameManagerEmittedEvents: {
     FrameSwapped: symbol;
     LifecycleEvent: symbol;
     FrameNavigatedWithinDocument: symbol;
-    ExecutionContextCreated: symbol;
-    ExecutionContextDestroyed: symbol;
 };
 /**
  * A frame manager manages the frames for a given {@link Page | page}.
@@ -48,19 +51,29 @@ export declare class FrameManager extends EventEmitter {
     /**
      * @internal
      */
-    _frameTree: FrameTree;
+    _frameTree: FrameTree<Frame>;
     get timeoutSettings(): TimeoutSettings;
     get networkManager(): NetworkManager;
     get client(): CDPSession;
     constructor(client: CDPSession, page: Page, ignoreHTTPSErrors: boolean, timeoutSettings: TimeoutSettings);
+    /**
+     * When the main frame is replaced by another main frame,
+     * we maintain the main frame object identity while updating
+     * its frame tree and ID.
+     */
+    swapFrameTree(client: CDPSession): Promise<void>;
     private setupEventListeners;
     initialize(client?: CDPSession): Promise<void>;
     executionContextById(contextId: number, session?: CDPSession): ExecutionContext;
+    getExecutionContextById(contextId: number, session?: CDPSession): ExecutionContext | undefined;
     page(): Page;
     mainFrame(): Frame;
     frames(): Frame[];
     frame(frameId: string): Frame | null;
-    onAttachedToTarget(target: Target): void;
-    onDetachedFromTarget(target: Target): void;
+    onAttachedToTarget(target: CDPTarget): void;
+    /**
+     * @internal
+     */
+    _deviceRequestPromptManager(client: CDPSession): DeviceRequestPromptManager;
 }
 //# sourceMappingURL=FrameManager.d.ts.map

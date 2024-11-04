@@ -1,4 +1,4 @@
-// Copyright (C) 2022 The Qt Company Ltd.
+// Copyright (C) 2023 The Qt Company Ltd.
 // Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
@@ -6,48 +6,19 @@ package org.qtproject.qt.android;
 
 import android.app.Activity;
 import android.content.Context;
-import android.graphics.Rect;
 import android.os.Build;
-import android.util.Log;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
 import android.view.Display;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.WindowInsets;
-import android.view.WindowManager;
-import android.graphics.Insets;
-import android.view.WindowMetrics;
-import android.content.res.Configuration;
-import android.content.res.Resources;
 
 public class QtLayout extends ViewGroup
 {
-    private Runnable m_startApplicationRunnable;
-
-    private int m_activityDisplayRotation = -1;
-    private int m_ownDisplayRotation = -1;
-    private int m_nativeOrientation = -1;
-
-    public void setActivityDisplayRotation(int rotation)
-    {
-        m_activityDisplayRotation = rotation;
-    }
-
-    public void setNativeOrientation(int orientation)
-    {
-        m_nativeOrientation = orientation;
-    }
-
-    public int displayRotation()
-    {
-        return m_ownDisplayRotation;
-    }
-
-    public QtLayout(Context context, Runnable startRunnable)
+    public QtLayout(Context context)
     {
         super(context);
-        m_startApplicationRunnable = startRunnable;
     }
 
     public QtLayout(Context context, AttributeSet attrs)
@@ -58,74 +29,6 @@ public class QtLayout extends ViewGroup
     public QtLayout(Context context, AttributeSet attrs, int defStyle)
     {
         super(context, attrs, defStyle);
-    }
-
-    @Override
-    protected void onSizeChanged (int w, int h, int oldw, int oldh)
-    {
-        Activity activity = (Activity)getContext();
-        if (activity == null)
-            return;
-
-        final WindowManager windowManager = activity.getWindowManager();
-        Display display;
-
-        final WindowInsets rootInsets = getRootWindowInsets();
-
-        int insetLeft = 0;
-        int insetTop = 0;
-
-        int maxWidth = 0;
-        int maxHeight = 0;
-
-        if (android.os.Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            display = windowManager.getDefaultDisplay();
-
-            final DisplayMetrics maxMetrics = new DisplayMetrics();
-            display.getRealMetrics(maxMetrics);
-            maxWidth = maxMetrics.widthPixels;
-            maxHeight = maxMetrics.heightPixels;
-
-            insetLeft = rootInsets.getStableInsetLeft();
-            insetTop = rootInsets.getStableInsetTop();
-        } else {
-            display = activity.getDisplay();
-
-            final WindowMetrics maxMetrics = windowManager.getMaximumWindowMetrics();
-            maxWidth = maxMetrics.getBounds().width();
-            maxHeight = maxMetrics.getBounds().height();
-
-            insetLeft = rootInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars()).left;
-            insetTop = rootInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars()).top;
-        }
-
-        final DisplayMetrics displayMetrics = activity.getResources().getDisplayMetrics();
-        double xdpi = displayMetrics.xdpi;
-        double ydpi = displayMetrics.ydpi;
-        double density = displayMetrics.density;
-        double scaledDensity = displayMetrics.scaledDensity;
-        float refreshRate = display.getRefreshRate();
-
-        QtNative.setApplicationDisplayMetrics(maxWidth, maxHeight, insetLeft,
-                                              insetTop, w, h,
-                                              xdpi,ydpi,scaledDensity, density,
-                                              refreshRate);
-
-        int newRotation = display.getRotation();
-        if (m_ownDisplayRotation != m_activityDisplayRotation
-            && newRotation == m_activityDisplayRotation) {
-            // If the saved rotation value does not match the one from the
-            // activity, it means that we got orientation change before size
-            // change, and the value was cached. So we need to notify about
-            // orientation change now.
-            QtNative.handleOrientationChanged(newRotation, m_nativeOrientation);
-        }
-        m_ownDisplayRotation = newRotation;
-
-        if (m_startApplicationRunnable != null) {
-            m_startApplicationRunnable.run();
-            m_startApplicationRunnable = null;
-        }
     }
 
     @Override
@@ -146,11 +49,15 @@ public class QtLayout extends ViewGroup
                 int childRight;
                 int childBottom;
 
-                QtLayout.LayoutParams lp
-                        = (QtLayout.LayoutParams) child.getLayoutParams();
-
-                childRight = lp.x + child.getMeasuredWidth();
-                childBottom = lp.y + child.getMeasuredHeight();
+                if (child.getLayoutParams() instanceof QtLayout.LayoutParams) {
+                    QtLayout.LayoutParams lp
+                            = (QtLayout.LayoutParams) child.getLayoutParams();
+                    childRight = lp.x + child.getMeasuredWidth();
+                    childBottom = lp.y + child.getMeasuredHeight();
+                } else {
+                    childRight = child.getMeasuredWidth();
+                    childBottom = child.getMeasuredHeight();
+                }
 
                 maxWidth = Math.max(maxWidth, childRight);
                 maxHeight = Math.max(maxHeight, childBottom);
@@ -184,7 +91,6 @@ public class QtLayout extends ViewGroup
     protected void onLayout(boolean changed, int l, int t, int r, int b)
     {
         int count = getChildCount();
-
         for (int i = 0; i < count; i++) {
             View child = getChildAt(i);
             if (child.getVisibility() != GONE) {
@@ -193,10 +99,11 @@ public class QtLayout extends ViewGroup
 
                 int childLeft = lp.x;
                 int childTop = lp.y;
-                child.layout(childLeft, childTop,
-                        childLeft + child.getMeasuredWidth(),
-                        childTop + child.getMeasuredHeight());
-
+                int childRight = (lp.width == ViewGroup.LayoutParams.MATCH_PARENT) ?
+                                 r - l : childLeft + child.getMeasuredWidth();
+                int childBottom = (lp.height == ViewGroup.LayoutParams.MATCH_PARENT) ?
+                                 b - t : childTop + child.getMeasuredHeight();
+                child.layout(childLeft, childTop, childRight, childBottom);
             }
         }
     }
@@ -216,8 +123,7 @@ public class QtLayout extends ViewGroup
 
     /**
     * Per-child layout information associated with AbsoluteLayout.
-    * See
-    * {@link android.R.styleable#AbsoluteLayout_Layout Absolute Layout Attributes}
+    * See {android.R.styleable#AbsoluteLayout_Layout Absolute Layout Attributes}
     * for a list of all child view attributes that this class supports.
     */
     public static class LayoutParams extends ViewGroup.LayoutParams
@@ -249,6 +155,11 @@ public class QtLayout extends ViewGroup
             this.y = y;
         }
 
+        public LayoutParams(int width, int height)
+        {
+            super(width, height);
+        }
+
         /**
         * {@inheritDoc}
         */
@@ -274,7 +185,7 @@ public class QtLayout extends ViewGroup
 
     /**
     * set the layout params on a child view.
-    *
+    * <p>
     * Note: This function adds the child view if it's not in the
     *       layout already.
     */

@@ -84,9 +84,25 @@
     QCoreApplication::testAttribute().
 
 
+    \value [since 6.7] AA_QtQuickUseDefaultSizePolicy Qt Quick Layouts use the built-in size
+           policy of \l Item. For example, when this is set, \l Button fills the available
+           width, but has a fixed height. When this is not set, it will use the default
+           sizing behavior of the layout it's in, which is to use its implicit size as the
+           preferred size. This is explained in detail in \l {Specifying preferred size} and
+           \l {Size constraints}. When this is set, the default size policy of the item
+           with the layout can be overridden by explicitly setting
+           \l{Layout::fillWidth}{Layout.fillWidth} or
+           \l{Layout::fillHeight}{Layout.fillHeight}.
+           \b Note: This API is considered tech preview and may change or be removed in future
+           versions of Qt.
+
+
     \value AA_DontShowIconsInMenus Actions with the Icon property won't be
            shown in any menus unless specifically set by the
-           QAction::iconVisibleInMenu property.
+           QAction::iconVisibleInMenu property. The default value of this
+           attribute depends on the platform. To override the default
+           behavior, set the attribute after QGuiApplication has been
+           instantiated.
            Menus that are currently open or menus already created in the native
            \macos menubar \e{may not} pick up a change in this attribute. Changes
            in the QAction::iconVisibleInMenu property will always be picked up.
@@ -191,9 +207,9 @@
 
     \value AA_UseStyleSheetPropagationInWidgetStyles By default, Qt Style Sheets
            disable regular QWidget palette and font propagation. When this flag
-           is enabled, font and palette changes propagate as though the user had
-           manually called the corresponding QWidget methods. See
-           \l{The Style Sheet Syntax#Inheritance}{The Style Sheet Syntax - Inheritance}
+           is enabled, font and palette changes done from a style sheet will propagate
+           a single time, when the style sheet is set.
+           See \l{The Style Sheet Syntax#Inheritance}{The Style Sheet Syntax - Inheritance}
            for more details.
            This value was added in Qt 5.7.
 
@@ -1441,6 +1457,7 @@
     \value Key_Help
     \value Key_Direction_L
     \value Key_Direction_R
+
     \value Key_Space
     \value Key_Any
     \value Key_Exclam
@@ -1532,7 +1549,8 @@
     \value Key_twosuperior
     \value Key_threesuperior
     \value Key_acute
-    \value Key_mu
+    \value [since 6.7] Key_micro
+    \value Key_mu Deprecated alias for Key_micro
     \value Key_paragraph
     \value Key_periodcentered
     \value Key_cedilla
@@ -1577,6 +1595,7 @@
     \value Key_ssharp
     \value Key_division
     \value Key_ydiaeresis
+
     \value Key_Multi_key
     \value Key_Codeinput
     \value Key_SingleCandidate
@@ -3456,10 +3475,10 @@
 */
 
 /*!
-  \fn QKeyCombination operator|(Qt::Modifier modifier, Qt::Key key) noexcept
-  \fn QKeyCombination operator|(Qt::KeyboardModifier modifier, Qt::Key key) noexcept
-  \fn QKeyCombination operator|(Qt::Key key, Qt::Modifier modifier) noexcept
-  \fn QKeyCombination operator|(Qt::Key key, Qt::KeyboardModifier modifier) noexcept
+  \fn QKeyCombination Qt::operator|(Qt::Modifier modifier, Qt::Key key) noexcept
+  \fn QKeyCombination Qt::operator|(Qt::KeyboardModifier modifier, Qt::Key key) noexcept
+  \fn QKeyCombination Qt::operator|(Qt::Key key, Qt::Modifier modifier) noexcept
+  \fn QKeyCombination Qt::operator|(Qt::Key key, Qt::KeyboardModifier modifier) noexcept
 
   \relates QKeyCombination
 
@@ -3468,10 +3487,10 @@
 */
 
 /*!
-  \fn QKeyCombination operator|(Qt::Modifiers modifiers, Qt::Key key) noexcept
-  \fn QKeyCombination operator|(Qt::KeyboardModifiers modifiers, Qt::Key key) noexcept
-  \fn QKeyCombination operator|(Qt::Key key, Qt::Modifiers modifiers) noexcept
-  \fn QKeyCombination operator|(Qt::Key key, Qt::KeyboardModifiers modifiers) noexcept
+  \fn QKeyCombination Qt::operator|(Qt::Modifiers modifiers, Qt::Key key) noexcept
+  \fn QKeyCombination Qt::operator|(Qt::KeyboardModifiers modifiers, Qt::Key key) noexcept
+  \fn QKeyCombination Qt::operator|(Qt::Key key, Qt::Modifiers modifiers) noexcept
+  \fn QKeyCombination Qt::operator|(Qt::Key key, Qt::KeyboardModifiers modifiers) noexcept
 
   \relates QKeyCombination
 
@@ -3480,10 +3499,10 @@
 */
 
 /*!
-  \fn QKeyCombination operator+(Qt::Modifier modifier, Qt::Key key) noexcept
-  \fn QKeyCombination operator+(Qt::KeyboardModifier modifier, Qt::Key key) noexcept
-  \fn QKeyCombination operator+(Qt::Key key, Qt::Modifier modifier) noexcept
-  \fn QKeyCombination operator+(Qt::Key key, Qt::KeyboardModifier modifier) noexcept
+  \fn QKeyCombination Qt::operator+(Qt::Modifier modifier, Qt::Key key) noexcept
+  \fn QKeyCombination Qt::operator+(Qt::KeyboardModifier modifier, Qt::Key key) noexcept
+  \fn QKeyCombination Qt::operator+(Qt::Key key, Qt::Modifier modifier) noexcept
+  \fn QKeyCombination Qt::operator+(Qt::Key key, Qt::KeyboardModifier modifier) noexcept
 
   \relates QKeyCombination
   \deprecated
@@ -3495,10 +3514,10 @@
 */
 
 /*!
-  \fn QKeyCombination operator+(Qt::Modifiers modifiers, Qt::Key key) noexcept
-  \fn QKeyCombination operator+(Qt::KeyboardModifiers modifiers, Qt::Key key) noexcept
-  \fn QKeyCombination operator+(Qt::Key key, Qt::Modifiers modifiers) noexcept
-  \fn QKeyCombination operator+(Qt::Key key, Qt::KeyboardModifiers modifiers) noexcept
+  \fn QKeyCombination Qt::operator+(Qt::Modifiers modifiers, Qt::Key key) noexcept
+  \fn QKeyCombination Qt::operator+(Qt::KeyboardModifiers modifiers, Qt::Key key) noexcept
+  \fn QKeyCombination Qt::operator+(Qt::Key key, Qt::Modifiers modifiers) noexcept
+  \fn QKeyCombination Qt::operator+(Qt::Key key, Qt::KeyboardModifiers modifiers) noexcept
 
   \relates QKeyCombination
   \deprecated

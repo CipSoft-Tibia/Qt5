@@ -9,7 +9,6 @@
 #include "build/build_config.h"
 #include "components/vector_icons/vector_icons.h"
 #include "ui/accessibility/ax_enums.mojom.h"
-#include "ui/accessibility/ax_node_data.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
@@ -35,12 +34,38 @@ TooltipIcon::TooltipIcon(const std::u16string& tooltip, int tooltip_icon_size)
   SetBorder(CreateEmptyBorder(
       LayoutProvider::Get()->GetInsetsMetric(INSETS_VECTOR_IMAGE_BUTTON)));
   InstallCircleHighlightPathGenerator(this);
+
+  // The tooltip icon, despite visually being an icon with no text, actually
+  // opens a bubble whenever the user mouses over it or focuses it, so it's
+  // essentially a text control that hides itself when not in view without
+  // altering the bubble's layout when shown. As such, have it behave like
+  // static text for screenreader users, since that's the role it serves here
+  // anyway.
+  SetAccessibilityProperties(ax::mojom::Role::kStaticText, tooltip_);
 }
 
 TooltipIcon::~TooltipIcon() {
   for (auto& observer : observers_)
     observer.OnTooltipIconDestroying(this);
   HideBubble();
+}
+
+void TooltipIcon::SetBubbleWidth(int preferred_width) {
+  preferred_width_ = preferred_width;
+  OnPropertyChanged(&preferred_width_, kPropertyEffectsPreferredSizeChanged);
+}
+
+int TooltipIcon::GetBubbleWidth() const {
+  return preferred_width_;
+}
+
+void TooltipIcon::SetAnchorPointArrow(BubbleBorder::Arrow arrow) {
+  anchor_point_arrow_ = arrow;
+  OnPropertyChanged(&anchor_point_arrow_, kPropertyEffectsPaint);
+}
+
+BubbleBorder::Arrow TooltipIcon::GetAnchorPointArrow() const {
+  return anchor_point_arrow_;
 }
 
 void TooltipIcon::OnMouseEntered(const ui::MouseEvent& event) {
@@ -75,17 +100,6 @@ void TooltipIcon::OnGestureEvent(ui::GestureEvent* event) {
     ShowBubble();
     event->SetHandled();
   }
-}
-
-void TooltipIcon::GetAccessibleNodeData(ui::AXNodeData* node_data) {
-  // The tooltip icon, despite visually being an icon with no text, actually
-  // opens a bubble whenever the user mouses over it or focuses it, so it's
-  // essentially a text control that hides itself when not in view without
-  // altering the bubble's layout when shown. As such, have it behave like
-  // static text for screenreader users, since that's the role it serves here
-  // anyway.
-  node_data->role = ax::mojom::Role::kStaticText;
-  node_data->SetNameChecked(tooltip_);
 }
 
 void TooltipIcon::OnThemeChanged() {
@@ -160,6 +174,8 @@ void TooltipIcon::OnWidgetDestroyed(Widget* widget) {
 }
 
 BEGIN_METADATA(TooltipIcon, ImageView)
+ADD_PROPERTY_METADATA(int, BubbleWidth)
+ADD_PROPERTY_METADATA(BubbleBorder::Arrow, AnchorPointArrow)
 END_METADATA
 
 }  // namespace views

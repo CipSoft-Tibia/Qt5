@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 source_set("text_selection") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "text_classifier_model_service.h",
     "text_classifier_model_service.mm",
@@ -16,13 +15,12 @@ source_set("text_selection") {
     "//components/keyed_service/ios",
     "//components/optimization_guide/core",
     "//components/optimization_guide/proto:optimization_guide_proto",
-    "//ios/chrome/browser/browser_state",
     "//ios/chrome/browser/optimization_guide",
+    "//ios/chrome/browser/shared/model/browser_state",
   ]
 }
 
 source_set("text_selection_utils") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "text_selection_util.h",
     "text_selection_util.mm",
@@ -31,7 +29,6 @@ source_set("text_selection_utils") {
 }
 
 source_set("test_support") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
   sources = [
     "text_classifier_model_service_fake.h",
@@ -42,7 +39,7 @@ source_set("test_support") {
     "//base",
     "//components/keyed_service/ios",
     "//components/optimization_guide/core",
-    "//ios/chrome/browser/browser_state",
     "//ios/chrome/browser/optimization_guide",
+    "//ios/chrome/browser/shared/model/browser_state",
   ]
 }

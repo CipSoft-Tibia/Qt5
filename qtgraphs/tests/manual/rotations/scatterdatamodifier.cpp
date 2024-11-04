@@ -5,7 +5,6 @@
 #include <QtGraphs/qscatterdataproxy.h>
 #include <QtGraphs/qvalue3daxis.h>
 #include <QtGraphs/q3dscene.h>
-#include <QtGraphs/q3dcamera.h>
 #include <QtGraphs/qscatter3dseries.h>
 #include <QtGraphs/q3dtheme.h>
 #include <QtGraphs/QCustom3DItem>
@@ -25,17 +24,16 @@ ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
       m_arrowsPerLine(16),
       m_magneticField(new QScatter3DSeries),
       m_sun(new QCustom3DItem),
-      m_magneticFieldArray(0),
       m_angleOffset(0.0f),
       m_angleStep(doublePi / m_arrowsPerLine / animationFrames)
 {
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQualityNone);
-    m_graph->scene()->activeCamera()->setCameraPreset(Q3DCamera::CameraPresetFront);
+    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::None);
+    m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::Front);
 
     // Magnetic field lines use custom narrow arrow
     m_magneticField->setItemSize(0.2f);
     //! [3]
-    m_magneticField->setMesh(QAbstract3DSeries::MeshUserDefined);
+    m_magneticField->setMesh(QAbstract3DSeries::Mesh::UserDefined);
     m_magneticField->setUserDefinedMesh(QStringLiteral(":/mesh/narrowarrow.mesh"));
     //! [3]
     //! [4]
@@ -43,7 +41,7 @@ ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
     fieldGradient.setColorAt(0.0, Qt::black);
     fieldGradient.setColorAt(1.0, Qt::white);
     m_magneticField->setBaseGradient(fieldGradient);
-    m_magneticField->setColorStyle(Q3DTheme::ColorStyleRangeGradient);
+    m_magneticField->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
     //! [4]
 
     // For 'sun' we use a custom large sphere
@@ -77,16 +75,11 @@ ScatterDataModifier::~ScatterDataModifier()
 
 void ScatterDataModifier::generateData()
 {
-    // Reusing existing array is computationally cheaper than always generating new array, even if
-    // all data items change in the array, if the array size doesn't change.
-    if (!m_magneticFieldArray)
-        m_magneticFieldArray = new QScatterDataArray;
-
     int arraySize = m_fieldLines * m_arrowsPerLine;
-    if (arraySize != m_magneticFieldArray->size())
-        m_magneticFieldArray->resize(arraySize);
+    if (arraySize != m_magneticFieldArray.size())
+        m_magneticFieldArray.resize(arraySize);
 
-    QScatterDataItem *ptrToDataArray = &m_magneticFieldArray->first();
+    QScatterDataItem *ptrToDataArray = &m_magneticFieldArray.first();
 
     for (float i = 0; i < m_fieldLines; i++) {
         float horizontalAngle = (doublePi * i) / m_fieldLines;

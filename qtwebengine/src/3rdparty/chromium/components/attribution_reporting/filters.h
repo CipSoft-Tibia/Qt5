@@ -10,7 +10,7 @@
 
 #include "base/component_export.h"
 #include "base/containers/flat_map.h"
-#include "base/strings/string_piece_forward.h"
+#include "base/time/time.h"
 #include "base/types/expected.h"
 #include "base/values.h"
 #include "components/attribution_reporting/source_registration_error.mojom-forward.h"
@@ -20,11 +20,13 @@
 
 namespace attribution_reporting {
 
-class Filters;
-
 struct FilterPair;
 
 using FilterValues = base::flat_map<std::string, std::vector<std::string>>;
+
+class FilterConfig;
+
+using FiltersDisjunction = std::vector<FilterConfig>;
 
 // Set on sources.
 class COMPONENT_EXPORT(ATTRIBUTION_REPORTING) FilterData {
@@ -51,55 +53,42 @@ class COMPONENT_EXPORT(ATTRIBUTION_REPORTING) FilterData {
 
   base::Value::Dict ToJson() const;
 
-  bool Matches(mojom::SourceType, const FilterPair&) const;
+  bool Matches(mojom::SourceType,
+               const base::Time& source_time,
+               const base::Time& trigger_time,
+               const FilterPair&) const;
 
-  bool MatchesForTesting(mojom::SourceType, const Filters&, bool negated) const;
+  bool MatchesForTesting(mojom::SourceType,
+                         const base::Time& source_time,
+                         const base::Time& trigger_time,
+                         const FiltersDisjunction&,
+                         bool negated) const;
 
  private:
   explicit FilterData(FilterValues);
 
-  bool Matches(mojom::SourceType, const Filters&, bool negated) const;
-
-  FilterValues filter_values_;
-};
-
-// Set on triggers.
-class COMPONENT_EXPORT(ATTRIBUTION_REPORTING) Filters {
- public:
-  // Filters are allowed to contain a `source_type` filter.
-  static absl::optional<Filters> Create(FilterValues);
-
-  static base::expected<Filters, mojom::TriggerRegistrationError> FromJSON(
-      base::Value*);
-
-  // Returns filters that match only the given source type.
-  static Filters ForSourceTypeForTesting(mojom::SourceType);
-
-  Filters();
-
-  ~Filters();
-
-  Filters(const Filters&);
-  Filters(Filters&&);
-
-  Filters& operator=(const Filters&);
-  Filters& operator=(Filters&&);
-
-  const FilterValues& filter_values() const { return filter_values_; }
-
-  base::Value::Dict ToJson() const;
-
-  void SerializeIfNotEmpty(base::Value::Dict&, base::StringPiece key) const;
-
- private:
-  explicit Filters(FilterValues);
+  bool Matches(mojom::SourceType,
+               const base::Time& source_time,
+               const base::Time& trigger_time,
+               const FiltersDisjunction&,
+               bool negated) const;
 
   FilterValues filter_values_;
 };
 
 struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING) FilterPair {
-  Filters positive;
-  Filters negative;
+  FilterPair();
+  FilterPair(FiltersDisjunction positive, FiltersDisjunction negative);
+  ~FilterPair();
+
+  FilterPair(const FilterPair&);
+  FilterPair(FilterPair&&);
+
+  FilterPair& operator=(const FilterPair&);
+  FilterPair& operator=(FilterPair&&);
+
+  FiltersDisjunction positive;
+  FiltersDisjunction negative;
 
   // Destructively parses the `filters` and `not_filters` fields from the given
   // dict, if present.
@@ -108,6 +97,43 @@ struct COMPONENT_EXPORT(ATTRIBUTION_REPORTING) FilterPair {
 
   void SerializeIfNotEmpty(base::Value::Dict&) const;
 };
+
+class COMPONENT_EXPORT(ATTRIBUTION_REPORTING) FilterConfig {
+ public:
+  static constexpr char kLookbackWindowKey[] = "_lookback_window";
+
+  // If set, FilterConfig's `lookback_window` must be positive.
+  static absl::optional<FilterConfig> Create(
+      FilterValues,
+      absl::optional<base::TimeDelta> lookback_window = absl::nullopt);
+
+  FilterConfig();
+  ~FilterConfig();
+
+  FilterConfig(const FilterConfig&);
+  FilterConfig(FilterConfig&&);
+
+  FilterConfig& operator=(const FilterConfig&);
+  FilterConfig& operator=(FilterConfig&&);
+
+  const absl::optional<base::TimeDelta>& lookback_window() const {
+    return lookback_window_;
+  }
+  const FilterValues& filter_values() const { return filter_values_; }
+
+ private:
+  explicit FilterConfig(FilterValues,
+                        absl::optional<base::TimeDelta> lookback_window);
+  absl::optional<base::TimeDelta> lookback_window_;
+  FilterValues filter_values_;
+};
+
+COMPONENT_EXPORT(ATTRIBUTION_REPORTING)
+base::expected<FiltersDisjunction, mojom::TriggerRegistrationError>
+FiltersFromJSONForTesting(base::Value* input_value);
+
+COMPONENT_EXPORT(ATTRIBUTION_REPORTING)
+base::Value::List ToJsonForTesting(const FiltersDisjunction& filters);
 
 }  // namespace attribution_reporting
 

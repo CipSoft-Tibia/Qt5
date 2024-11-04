@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,6 @@
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "cast/streaming/message_fields.h"
 #include "cast/streaming/resolution.h"
 #include "cast/streaming/rtp_defines.h"
@@ -21,8 +19,7 @@
 
 // This file contains the implementation of the Cast V2 Mirroring Control
 // Protocol offer object definition.
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // If the target delay provided by the sender is not bounded by
 // [kMinTargetDelay, kMaxTargetDelay], it will be set to
@@ -111,7 +108,6 @@ struct Offer {
   std::vector<VideoStream> video_streams;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STREAMING_OFFER_MESSAGES_H_

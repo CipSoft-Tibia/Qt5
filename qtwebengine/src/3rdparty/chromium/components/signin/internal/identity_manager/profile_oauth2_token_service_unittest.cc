@@ -100,7 +100,7 @@ class ProfileOAuth2TokenServiceTest : public testing::Test {
     test_url_loader_factory_ = delegate->test_url_loader_factory();
     oauth2_service_ = std::make_unique<ProfileOAuth2TokenService>(
         &prefs_, std::move(delegate));
-    account_id_ = CoreAccountId("test_user@gmail.com");
+    account_id_ = CoreAccountId::FromGaiaId("test_user");
   }
 
   void TearDown() override {
@@ -121,9 +121,10 @@ class ProfileOAuth2TokenServiceTest : public testing::Test {
       base::test::SingleThreadTaskEnvironment::MainThreadType::
           IO};  // net:: stuff needs IO
                 // message loop.
-  raw_ptr<network::TestURLLoaderFactory> test_url_loader_factory_ = nullptr;
-  raw_ptr<FakeProfileOAuth2TokenServiceDelegate> delegate_ptr_ =
-      nullptr;  // Not owned.
+  raw_ptr<network::TestURLLoaderFactory, DanglingUntriaged>
+      test_url_loader_factory_ = nullptr;
+  raw_ptr<FakeProfileOAuth2TokenServiceDelegate, DanglingUntriaged>
+      delegate_ptr_ = nullptr;  // Not owned.
   std::unique_ptr<ProfileOAuth2TokenService> oauth2_service_;
   CoreAccountId account_id_;
   TestingOAuth2AccessTokenManagerConsumer consumer_;
@@ -463,7 +464,7 @@ TEST_F(ProfileOAuth2TokenServiceTest, StartRequestForMultiloginDesktop) {
       std::make_unique<FakeProfileOAuth2TokenServiceDelegateDesktop>());
 
   token_service.GetDelegate()->UpdateCredentials(account_id_, "refreshToken");
-  const CoreAccountId account_id_2("account_id_2");
+  const CoreAccountId account_id_2 = CoreAccountId::FromGaiaId("account_id_2");
   token_service.GetDelegate()->UpdateCredentials(account_id_2, "refreshToken");
   token_service.GetDelegate()->UpdateAuthError(
       account_id_2,
@@ -490,8 +491,8 @@ TEST_F(ProfileOAuth2TokenServiceTest, StartRequestForMultiloginDesktop) {
   std::unique_ptr<OAuth2AccessTokenManager::Request> request2(
       token_service.StartRequestForMultilogin(account_id_2, &consumer));
   std::unique_ptr<OAuth2AccessTokenManager::Request> request3(
-      token_service.StartRequestForMultilogin(CoreAccountId("unknown_account"),
-                                              &consumer));
+      token_service.StartRequestForMultilogin(
+          CoreAccountId::FromGaiaId("unknown_account"), &consumer));
   base::RunLoop().RunUntilIdle();
 }
 
@@ -561,7 +562,7 @@ TEST_F(ProfileOAuth2TokenServiceTest, InvalidateTokensForMultiloginDesktop) {
       .Times(1);
 
   token_service.GetDelegate()->UpdateCredentials(account_id_, "refreshToken");
-  const CoreAccountId account_id_2("account_id_2");
+  const CoreAccountId account_id_2 = CoreAccountId::FromGaiaId("account_id_2");
   token_service.GetDelegate()->UpdateCredentials(account_id_2, "refreshToken2");
   token_service.InvalidateTokenForMultilogin(account_id_, "refreshToken");
   // Check that refresh tokens for failed accounts are set in error.
@@ -585,7 +586,7 @@ TEST_F(ProfileOAuth2TokenServiceTest, InvalidateTokensForMultiloginMobile) {
 
   oauth2_service_->GetDelegate()->UpdateCredentials(account_id_,
                                                     "refreshToken");
-  const CoreAccountId account_id_2("account_id_2");
+  const CoreAccountId account_id_2 = CoreAccountId::FromGaiaId("account_id_2");
   oauth2_service_->GetDelegate()->UpdateCredentials(account_id_2,
                                                     "refreshToken2");
   ;
@@ -689,8 +690,8 @@ TEST_F(ProfileOAuth2TokenServiceTest, RequestParametersOrderTest) {
   OAuth2AccessTokenManager::ScopeSet set_1;
   set_1.insert("1");
 
-  const CoreAccountId account_id0("0");
-  const CoreAccountId account_id1("1");
+  const CoreAccountId account_id0 = CoreAccountId::FromGaiaId("0");
+  const CoreAccountId account_id1 = CoreAccountId::FromGaiaId("1");
   OAuth2AccessTokenManager::RequestParameters params[] = {
       OAuth2AccessTokenManager::RequestParameters("0", account_id0, set_0),
       OAuth2AccessTokenManager::RequestParameters("0", account_id0, set_1),

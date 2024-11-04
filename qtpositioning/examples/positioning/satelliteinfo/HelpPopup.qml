@@ -24,7 +24,7 @@ QC.Popup {
                 Layout.alignment: Qt.AlignHCenter
             }
             Text {
-                text: qsTr("SatelliteInfo")
+                text: qsTr("Satellite Info")
                 color: Theme.textMainColor
                 font.pixelSize: Theme.largeFontSize
                 font.weight: Theme.fontDefaultWeight

@@ -13,6 +13,7 @@
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/observer_list.h"
+#include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "components/page_load_metrics/browser/metrics_lifecycle_observer.h"
 #include "components/page_load_metrics/browser/page_load_metrics_embedder_interface.h"
@@ -112,6 +113,7 @@ MetricsWebContentsObserver* MetricsWebContentsObserver::CreateForWebContents(
     metrics = new MetricsWebContentsObserver(web_contents,
                                              std::move(embedder_interface));
     web_contents->SetUserData(UserDataKey(), base::WrapUnique(metrics));
+    metrics->created_ = base::TimeTicks::Now();
   }
   return metrics;
 }
@@ -373,6 +375,10 @@ PageLoadTracker* MetricsWebContentsObserver::GetTrackerOrNullForRequest(
     if (primary_page_ &&
         primary_page_->HasMatchingNavigationRequestID(request_id)) {
       return primary_page_.get();
+    }
+    if (auto page_pair = inactive_pages_.find(render_frame_host_or_null);
+        page_pair != inactive_pages_.end()) {
+      return page_pair->second.get();
     }
   } else {
     // Non main resources are always associated with the currently committed
@@ -1060,8 +1066,9 @@ void MetricsWebContentsObserver::OnTimingUpdated(
     mojom::FrameRenderDataUpdatePtr render_data,
     mojom::CpuTimingPtr cpu_timing,
     mojom::InputTimingPtr input_timing_delta,
-    mojom::SubresourceLoadMetricsPtr subresource_load_metrics,
-    uint32_t soft_navigation_count) {
+    const absl::optional<blink::SubresourceLoadMetrics>&
+        subresource_load_metrics,
+    mojom::SoftNavigationMetricsPtr soft_navigation_metrics) {
   // Replacing this call by GetPageLoadTracker breaks some tests.
   //
   // Note that if a PLMO only observes events at outermost page, misusing
@@ -1091,7 +1098,7 @@ void MetricsWebContentsObserver::OnTimingUpdated(
         render_frame_host, std::move(timing), std::move(metadata),
         std::move(new_features), resources, std::move(render_data),
         std::move(cpu_timing), std::move(input_timing_delta),
-        std::move(subresource_load_metrics), soft_navigation_count);
+        subresource_load_metrics, std::move(soft_navigation_metrics));
   }
 }
 
@@ -1120,14 +1127,15 @@ void MetricsWebContentsObserver::UpdateTiming(
     mojom::FrameRenderDataUpdatePtr render_data,
     mojom::CpuTimingPtr cpu_timing,
     mojom::InputTimingPtr input_timing_delta,
-    mojom::SubresourceLoadMetricsPtr subresource_load_metrics,
-    uint32_t soft_navigation_count) {
+    const absl::optional<blink::SubresourceLoadMetrics>&
+        subresource_load_metrics,
+    mojom::SoftNavigationMetricsPtr soft_navigation_metrics) {
   content::RenderFrameHost* render_frame_host =
       page_load_metrics_receivers_.GetCurrentTargetFrame();
   OnTimingUpdated(render_frame_host, std::move(timing), std::move(metadata),
                   new_features, resources, std::move(render_data),
                   std::move(cpu_timing), std::move(input_timing_delta),
-                  std::move(subresource_load_metrics), soft_navigation_count);
+                  subresource_load_metrics, std::move(soft_navigation_metrics));
 }
 
 void MetricsWebContentsObserver::SetUpSharedMemoryForSmoothness(
@@ -1252,6 +1260,10 @@ void MetricsWebContentsObserver::OnSharedStorageWorkletHostCreated(
 
   if (PageLoadTracker* tracker = GetPageLoadTracker(rfh))
     tracker->OnSharedStorageWorkletHostCreated();
+}
+
+base::TimeTicks MetricsWebContentsObserver::GetCreated() {
+  return created_;
 }
 
 // This contains some bugs. RenderFrameHost::IsActive is not relevant to

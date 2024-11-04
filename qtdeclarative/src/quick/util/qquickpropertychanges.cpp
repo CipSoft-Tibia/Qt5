@@ -20,8 +20,10 @@
 #include <private/qqmlirbuilder_p.h>
 
 #include <QtCore/qdebug.h>
+#include <QtQml/private/qqmlsignalnames_p.h>
 
 #include <private/qobject_p.h>
+#include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -101,7 +103,7 @@ QT_BEGIN_NAMESPACE
     edited with \l{Qt Design Studio}. Mind that \l{Qt Design Studio} also imposes a number
     of further restrictions on the files it can work with.
 
-    \sa {Qt Quick Examples - Animation#States}{States example}, {Qt Quick States}, {Qt QML}
+    \sa {Qt Quick Examples - Animation#States}{States example}, {Qt Quick States}, {Qt Qml}
 */
 
 /*!
@@ -267,7 +269,7 @@ void QQuickPropertyChangesPrivate::decodeBinding(const QString &propertyPrefix, 
         break;
     }
 
-    if (binding->isSignalHandler() || QmlIR::IRBuilder::isSignalPropertyName(propertyName)) {
+    if (binding->isSignalHandler() || QQmlSignalNames::isHandlerName(propertyName)) {
         QQmlProperty prop = property(propertyName);
         if (prop.isSignalProperty()) {
             QQuickReplaceSignalHandler *handler = new QQuickReplaceSignalHandler;

@@ -64,11 +64,18 @@ export class InfiniteList extends PolymerElement {
         observer: 'onItemsChanged_',
         value: [],
       },
+
+      selectedItem: {
+        type: Object,
+        readonly: true,
+        notify: true,
+      },
     };
   }
 
   maxHeight: number;
   items: Object[];
+  selectedItem: Object|null;
   private instanceConstructors_:
       Map<string,
           new(args: {item: Object, index?: number}) =>
@@ -404,7 +411,8 @@ export class InfiniteList extends PolymerElement {
       // selectable items' length, we need to check if the selected index is
       // still valid and if not adjust it.
       const selector = this.$.selector;
-      if (selector.selected >= this.selectableIndexToItemIndex_!.size()) {
+      if ((selector.selected as number) >=
+          this.selectableIndexToItemIndex_!.size()) {
         selector.selected = this.selectableIndexToItemIndex_!.size() - 1;
       }
 
@@ -596,13 +604,8 @@ export class InfiniteList extends PolymerElement {
         NO_SELECTION;
   }
 
-  get selectedItem(): Object|null {
-    if (this.$.selector.selected === undefined) {
-      return null;
-    }
-
-    return this.items[this.selectableIndexToItemIndex_!.get(
-        this.$.selector.selected as number)!]!;
+  private onSelectedItemChanged_() {
+    this.selectedItem = (this.$.selector.selectedItem as any)?.data;
   }
 }
 

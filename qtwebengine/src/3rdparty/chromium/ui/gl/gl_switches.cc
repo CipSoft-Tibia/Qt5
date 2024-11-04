@@ -62,17 +62,6 @@ const char kSwapChainFormatBGRA[] = "bgra";
 
 namespace switches {
 
-// Disables use of D3D11.
-const char kDisableD3D11[]                  = "disable-d3d11";
-
-// Disables use of ES3 backend (use ES2 backend instead).
-const char kDisableES3GLContext[]           = "disable-es3-gl-context";
-
-// Disables use of ES3 backend at a lower level, for testing purposes.
-// This isn't guaranteed to work everywhere, so it's test-only.
-const char kDisableES3GLContextForTesting[] =
-    "disable-es3-gl-context-for-testing";
-
 // Disable workarounds for various GPU driver bugs.
 const char kDisableGpuDriverBugWorkarounds[] =
     "disable-gpu-driver-bug-workarounds";
@@ -146,18 +135,10 @@ const char kDisableGLExtensions[] = "disable-gl-extensions";
 // Enables SwapBuffersWithBounds if it is supported.
 const char kEnableSwapBuffersWithBounds[] = "enable-swap-buffers-with-bounds";
 
-// Disables DirectComposition surface.
-const char kDisableDirectComposition[] = "disable-direct-composition";
-
 // Enables using DirectComposition video overlays, even if hardware overlays
 // aren't supported.
 const char kEnableDirectCompositionVideoOverlays[] =
     "enable-direct-composition-video-overlays";
-
-// Disables using DirectComposition video overlays, even if hardware overlays
-// are supported.
-const char kDisableDirectCompositionVideoOverlays[] =
-    "disable-direct-composition-video-overlays";
 
 // Initialize the GPU process using the adapter with the specified LUID. This is
 // only used on Windows, as LUID is a Windows specific structure.
@@ -174,9 +155,6 @@ const char kDirectCompositionVideoSwapChainFormat[] =
 const char* const kGLSwitchesCopiedFromGpuProcessHost[] = {
     kDisableGpuDriverBugWorkarounds,
     kDisableGpuVsync,
-    kDisableD3D11,
-    kDisableES3GLContext,
-    kDisableES3GLContextForTesting,
     kEnableGPUServiceLogging,
     kEnableGPUServiceTracing,
     kEnableSgiVideoSync,
@@ -185,12 +163,10 @@ const char* const kGLSwitchesCopiedFromGpuProcessHost[] = {
     kOverrideUseSoftwareGLForTests,
     kUseANGLE,
     kEnableSwapBuffersWithBounds,
-    kDisableDirectComposition,
     kEnableDirectCompositionVideoOverlays,
-    kDisableDirectCompositionVideoOverlays,
     kDirectCompositionVideoSwapChainFormat,
 };
-const int kGLSwitchesCopiedFromGpuProcessHostNumSwitches =
+const size_t kGLSwitchesCopiedFromGpuProcessHostNumSwitches =
     std::size(kGLSwitchesCopiedFromGpuProcessHost);
 
 const char kCreateDefaultGLContext[] = "create-default-gl-context";
@@ -198,6 +174,15 @@ const char kCreateDefaultGLContext[] = "create-default-gl-context";
 }  // namespace switches
 
 namespace features {
+
+// Enable DComp debug visualizations. This can be useful to determine how much
+// work DWM is doing when we update our tree.
+//
+// Please be aware that some of these visualizations result in quickly flashing
+// colors.
+BASE_FEATURE(kDCompDebugVisualization,
+             "DCompDebugVisualization",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Use BufferCount of 3 for the direct composition root swap chain.
 BASE_FEATURE(kDCompTripleBufferRootSwapChain,
@@ -207,6 +192,11 @@ BASE_FEATURE(kDCompTripleBufferRootSwapChain,
 // Use BufferCount of 3 for direct composition video swap chains.
 BASE_FEATURE(kDCompTripleBufferVideoSwapChain,
              "DCompTripleBufferVideoSwapChain",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enables incremental update of dcomp visual tree.
+BASE_FEATURE(kDCompVisualTreeOptimization,
+             "DCompVisualTreeOptimization",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Use presentation feedback event queries (must be enabled) to limit latency.
@@ -236,14 +226,18 @@ const base::FeatureParam<int> kVerifyDrawOffsetY{
 // that DWM power optimization can be turned on.
 BASE_FEATURE(kDirectCompositionLetterboxVideoOptimization,
              "DirectCompositionLetterboxVideoOptimization",
-             base::FEATURE_ENABLED_BY_DEFAULT);
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Allow dual GPU rendering through EGL where supported, i.e., allow a WebGL
 // or WebGPU context to be on the high performance GPU if preferred and Chrome
 // internal rendering to be on the low power GPU.
-BASE_FEATURE(kEGLDualGPURendering,
+CONSTINIT const base::Feature kEGLDualGPURendering(
              "EGLDualGPURendering",
+#if BUILDFLAG(IS_MAC)
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#else
              base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
 
 // Allow overlay swapchain to use Intel video processor for super resolution.
 BASE_FEATURE(kIntelVpSuperResolution,
@@ -253,6 +247,11 @@ BASE_FEATURE(kIntelVpSuperResolution,
 // Allow overlay swapchain to use NVIDIA video processor for super resolution.
 BASE_FEATURE(kNvidiaVpSuperResolution,
              "NvidiaVpSuperResolution",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Allow overlay swapchain to use NVIDIA video processor for trueHDR.
+BASE_FEATURE(kNvidiaVpTrueHDR,
+             "NvidiaVpTrueHDR",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Default to using ANGLE's OpenGL backend

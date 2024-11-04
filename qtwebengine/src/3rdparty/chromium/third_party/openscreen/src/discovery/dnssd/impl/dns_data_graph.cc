@@ -1,23 +1,23 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "discovery/dnssd/impl/dns_data_graph.h"
 
+#include <optional>
 #include <utility>
 
 #include "discovery/dnssd/impl/conversion_layer.h"
 #include "discovery/dnssd/impl/instance_key.h"
 #include "util/std_util.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 namespace {
 
 ErrorOr<DnsSdInstanceEndpoint> CreateEndpoint(
     const DomainName& domain,
-    const absl::optional<ARecordRdata>& a,
-    const absl::optional<AAAARecordRdata>& aaaa,
+    const std::optional<ARecordRdata>& a,
+    const std::optional<AAAARecordRdata>& aaaa,
     const SrvRecordRdata& srv,
     const TxtRecordRdata& txt,
     NetworkInterfaceIndex network_interface) {
@@ -102,12 +102,12 @@ class DnsDataGraphImpl : public DnsDataGraph {
     Error ApplyDataRecordChange(MdnsRecord record, RecordChangedEvent event);
 
     // Returns the first rdata of a record with type matching |type| in this
-    // node's |records_|, or absl::nullopt if no such record exists.
+    // node's |records_|, or std::nullopt if no such record exists.
     template <typename T>
-    absl::optional<T> GetRdata(DnsType type) {
+    std::optional<T> GetRdata(DnsType type) {
       auto it = FindRecord(type);
       if (it == records_.end()) {
-        return absl::nullopt;
+        return std::nullopt;
       } else {
         return std::cref(absl::get<T>(it->rdata()));
       }
@@ -475,7 +475,7 @@ std::vector<ErrorOr<DnsSdInstanceEndpoint>> DnsDataGraphImpl::CreateEndpoints(
       // First, there has to be a SRV record present (to provide the port
       // number), and the target of that SRV record has to be the node where the
       // address records are sourced from.
-      const absl::optional<SrvRecordRdata> srv =
+      const std::optional<SrvRecordRdata> srv =
           srv_and_txt->GetRdata<SrvRecordRdata>(DnsType::kSRV);
       if (!srv.has_value() || srv.value().target() != address->name()) {
         continue;
@@ -483,7 +483,7 @@ std::vector<ErrorOr<DnsSdInstanceEndpoint>> DnsDataGraphImpl::CreateEndpoints(
 
       // Next, a TXT record must be present to provide additional connection
       // information about the service per RFC 6763.
-      const absl::optional<TxtRecordRdata> txt =
+      const std::optional<TxtRecordRdata> txt =
           srv_and_txt->GetRdata<TxtRecordRdata>(DnsType::kTXT);
       if (!txt.has_value()) {
         continue;
@@ -491,9 +491,9 @@ std::vector<ErrorOr<DnsSdInstanceEndpoint>> DnsDataGraphImpl::CreateEndpoints(
 
       // Last, at least one address record must be present to provide an
       // endpoint for this instance.
-      const absl::optional<ARecordRdata> a =
+      const std::optional<ARecordRdata> a =
           address->GetRdata<ARecordRdata>(DnsType::kA);
-      const absl::optional<AAAARecordRdata> aaaa =
+      const std::optional<AAAARecordRdata> aaaa =
           address->GetRdata<AAAARecordRdata>(DnsType::kAAAA);
       if (!a.has_value() && !aaaa.has_value()) {
         continue;
@@ -516,18 +516,18 @@ std::vector<ErrorOr<DnsSdInstanceEndpoint>> DnsDataGraphImpl::CreateEndpoints(
 
 // static
 bool DnsDataGraphImpl::IsValidAddressNode(Node* node) {
-  const absl::optional<ARecordRdata> a =
+  const std::optional<ARecordRdata> a =
       node->GetRdata<ARecordRdata>(DnsType::kA);
-  const absl::optional<AAAARecordRdata> aaaa =
+  const std::optional<AAAARecordRdata> aaaa =
       node->GetRdata<AAAARecordRdata>(DnsType::kAAAA);
   return a.has_value() || aaaa.has_value();
 }
 
 // static
 bool DnsDataGraphImpl::IsValidSrvAndTxtNode(Node* node) {
-  const absl::optional<SrvRecordRdata> srv =
+  const std::optional<SrvRecordRdata> srv =
       node->GetRdata<SrvRecordRdata>(DnsType::kSRV);
-  const absl::optional<TxtRecordRdata> txt =
+  const std::optional<TxtRecordRdata> txt =
       node->GetRdata<TxtRecordRdata>(DnsType::kTXT);
 
   return srv.has_value() && txt.has_value();
@@ -587,5 +587,4 @@ DnsDataGraphImpl::DomainGroup DnsDataGraph::GetDomainGroup(
   return GetDomainGroup(record.dns_type());
 }
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery

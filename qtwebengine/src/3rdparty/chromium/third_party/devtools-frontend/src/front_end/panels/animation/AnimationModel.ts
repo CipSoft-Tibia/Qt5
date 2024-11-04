@@ -27,7 +27,7 @@ export class AnimationModel extends SDK.SDKModel.SDKModel<EventTypes> {
     this.playbackRate = 1;
     const resourceTreeModel =
         (target.model(SDK.ResourceTreeModel.ResourceTreeModel) as SDK.ResourceTreeModel.ResourceTreeModel);
-    resourceTreeModel.addEventListener(SDK.ResourceTreeModel.Events.MainFrameNavigated, this.reset, this);
+    resourceTreeModel.addEventListener(SDK.ResourceTreeModel.Events.PrimaryPageChanged, this.reset, this);
     const screenCaptureModel = target.model(SDK.ScreenCaptureModel.ScreenCaptureModel);
     if (screenCaptureModel) {
       this.#screenshotCapture = new ScreenshotCapture(this, screenCaptureModel);
@@ -139,12 +139,12 @@ export class AnimationModel extends SDK.SDKModel.SDKModel<EventTypes> {
     void this.agent.invoke_releaseAnimations({animations});
   }
 
-  async suspendModel(): Promise<void> {
+  override async suspendModel(): Promise<void> {
     this.reset();
     await this.agent.invoke_disable();
   }
 
-  async resumeModel(): Promise<void> {
+  override async resumeModel(): Promise<void> {
     if (!this.#enabled) {
       return;
     }

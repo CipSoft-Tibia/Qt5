@@ -165,13 +165,13 @@ TEST(MaybeOwned, Move) {
 
     MaybeOwned<PseudoDeletable> ptr3(std::move(ptr1));
     MaybeOwned<PseudoDeletable> ptr4(std::move(ptr2));
-    EXPECT_FALSE(ptr1.IsOwned());
-    EXPECT_FALSE(ptr2.IsOwned());
+    EXPECT_FALSE(ptr1.IsOwned());  // Unowned and null.
+    EXPECT_FALSE(ptr1.Get());
+    EXPECT_TRUE(ptr2.IsOwned());  // Owned but null.
+    EXPECT_FALSE(ptr2.Get());
     EXPECT_FALSE(ptr3.IsOwned());
     EXPECT_TRUE(ptr4.IsOwned());
     EXPECT_EQ(0, delete_count);
-    EXPECT_FALSE(ptr1.Get());
-    EXPECT_FALSE(ptr2.Get());
     EXPECT_EQ(100, ptr3->GetID());
     EXPECT_EQ(200, ptr4->GetID());
 
@@ -179,17 +179,55 @@ TEST(MaybeOwned, Move) {
     MaybeOwned<PseudoDeletable> ptr6;
     ptr5 = std::move(ptr3);
     ptr6 = std::move(ptr4);
-    EXPECT_FALSE(ptr3.IsOwned());
-    EXPECT_FALSE(ptr4.IsOwned());
+    EXPECT_FALSE(ptr3.IsOwned());  // Unowned and null.
+    EXPECT_FALSE(ptr3.Get());
+    EXPECT_TRUE(ptr4.IsOwned());  // Owned but null.
+    EXPECT_FALSE(ptr4.Get());
     EXPECT_FALSE(ptr5.IsOwned());
     EXPECT_TRUE(ptr6.IsOwned());
     EXPECT_EQ(0, delete_count);
-    EXPECT_FALSE(ptr3.Get());
-    EXPECT_FALSE(ptr4.Get());
     EXPECT_EQ(100, ptr5->GetID());
     EXPECT_EQ(200, ptr6->GetID());
   }
   EXPECT_EQ(1, delete_count);
+}
+
+namespace {
+
+class Thing {
+ public:
+  int x = 42;
+};
+
+class Owner {
+ public:
+  explicit Owner(std::unique_ptr<Thing> thing) : thing_(std::move(thing)) {}
+
+ private:
+  std::unique_ptr<Thing> thing_;
+};
+
+class Manager {
+ public:
+  Manager()
+      : transient_(std::make_unique<Thing>()),
+        owner_(std::make_unique<Owner>(transient_.Release())),
+        thing_(std::move(transient_).Get()) {}
+
+  bool has_transient() const { return !!transient_.Get(); }
+
+ private:
+  MaybeOwned<Thing> transient_;         // For initializng next two members.
+  const std::unique_ptr<Owner> owner_;  // Must outlive thing_.
+  const UnownedPtr<Thing> thing_;
+};
+
+}  // namespace
+
+TEST(MaybeOwned, MoveElisionThwarted) {
+  // Test fails if the std::move() in Manager::Manager() is elided.
+  Manager manager;
+  EXPECT_FALSE(manager.has_transient());
 }
 
 }  // namespace fxcrt

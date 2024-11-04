@@ -31,7 +31,9 @@ class ConstructorFails : public TestCustomElementDefinition {
 }  // namespace
 
 TEST_F(CustomElementDefinitionTest, upgrade_clearsReactionQueueOnFailure) {
-  Element& element = *CreateElement("a-a").InDocument(&GetDocument());
+  CustomElementTestingScope testing_scope;
+  Element& element =
+      *CreateElement(AtomicString("a-a")).InDocument(&GetDocument());
   EXPECT_EQ(CustomElementState::kUndefined, element.GetCustomElementState())
       << "sanity check: this element should be ready to upgrade";
   {
@@ -44,7 +46,8 @@ TEST_F(CustomElementDefinitionTest, upgrade_clearsReactionQueueOnFailure) {
     reactions.EnqueueToCurrentQueue(
         stack, element,
         *MakeGarbageCollected<TestReaction>(std::move(commands)));
-    ConstructorFails definition(CustomElementDescriptor("a-a", "a-a"));
+    ConstructorFails definition(
+        CustomElementDescriptor(AtomicString("a-a"), AtomicString("a-a")));
     definition.Upgrade(element);
   }
   EXPECT_EQ(CustomElementState::kFailed, element.GetCustomElementState())
@@ -53,7 +56,9 @@ TEST_F(CustomElementDefinitionTest, upgrade_clearsReactionQueueOnFailure) {
 
 TEST_F(CustomElementDefinitionTest,
        upgrade_clearsReactionQueueOnFailure_backupStack) {
-  Element& element = *CreateElement("a-a").InDocument(&GetDocument());
+  CustomElementTestingScope testing_scope;
+  Element& element =
+      *CreateElement(AtomicString("a-a")).InDocument(&GetDocument());
   EXPECT_EQ(CustomElementState::kUndefined, element.GetCustomElementState())
       << "sanity check: this element should be ready to upgrade";
   ResetCustomElementReactionStackForTest reset_reaction_stack(
@@ -63,7 +68,8 @@ TEST_F(CustomElementDefinitionTest,
       "upgrade failure should clear the reaction queue"));
   reset_reaction_stack.Stack().EnqueueToBackupQueue(
       element, *MakeGarbageCollected<TestReaction>(std::move(commands)));
-  ConstructorFails definition(CustomElementDescriptor("a-a", "a-a"));
+  ConstructorFails definition(
+      CustomElementDescriptor(AtomicString("a-a"), AtomicString("a-a")));
   definition.Upgrade(element);
   EXPECT_EQ(CustomElementState::kFailed, element.GetCustomElementState())
       << "failing to construct should have set the 'failed' element state";

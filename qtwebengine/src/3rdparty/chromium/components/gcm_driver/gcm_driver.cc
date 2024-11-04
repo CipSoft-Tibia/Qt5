@@ -14,6 +14,7 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/trace_event/trace_event.h"
 #include "components/gcm_driver/crypto/gcm_decryption_result.h"
 #include "components/gcm_driver/crypto/gcm_encryption_result.h"
 #include "components/gcm_driver/gcm_app_handler.h"
@@ -190,6 +191,7 @@ void GCMDriver::UnregisterWithSenderIdImpl(const std::string& app_id,
 void GCMDriver::RegisterFinished(const std::string& app_id,
                                  const std::string& registration_id,
                                  GCMClient::Result result) {
+  TRACE_EVENT0("identity", "GCMDriver::RegisterFinished");
   auto callback_iter = register_callbacks_.find(app_id);
   if (callback_iter == register_callbacks_.end()) {
     // The callback could have been removed when the app is uninstalled.
@@ -371,8 +373,6 @@ void GCMDriver::EncryptMessage(const std::string& app_id,
 void GCMDriver::OnMessageEncrypted(EncryptMessageCallback callback,
                                    GCMEncryptionResult result,
                                    std::string message) {
-  UMA_HISTOGRAM_ENUMERATION("GCM.Crypto.EncryptMessageResult", result,
-                            GCMEncryptionResult::ENUM_SIZE);
   std::move(callback).Run(result, std::move(message));
 }
 

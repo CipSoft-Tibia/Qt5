@@ -24,15 +24,20 @@
 
 #include <private/qtquickglobal_p.h>
 #include <private/qrawfont_p.h>
+#include <private/qfontengine_p.h>
 
 #include <QtQuick/qsgnode.h>
 #include <QtQuick/qsgrendererinterface.h>
+#include <QtQuick/qsgtextnode.h>
+
+#include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
 
 class QSGContextPrivate;
 class QSGInternalRectangleNode;
 class QSGInternalImageNode;
+class QSGInternalTextNode;
 class QSGPainterNode;
 class QSGGlyphNode;
 class QSGRenderer;
@@ -50,6 +55,7 @@ class QSGRendererInterface;
 class QSGShaderEffectNode;
 class QSGGuiThreadShaderEffectManager;
 class QSGRectangleNode;
+class QSGTextNode;
 class QSGImageNode;
 class QSGNinePatchNode;
 class QSGSpriteNode;
@@ -60,6 +66,8 @@ class QRhiRenderTarget;
 class QRhiRenderPassDescriptor;
 class QRhiCommandBuffer;
 class QQuickGraphicsConfiguration;
+class QQuickItem;
+class QSGCurveGlyphAtlas;
 
 Q_DECLARE_LOGGING_CATEGORY(QSG_LOG_TIME_RENDERLOOP)
 Q_DECLARE_LOGGING_CATEGORY(QSG_LOG_TIME_COMPILATION)
@@ -91,8 +99,9 @@ public:
     QSGInternalRectangleNode *createInternalRectangleNode(const QRectF &rect, const QColor &c);
     virtual QSGInternalRectangleNode *createInternalRectangleNode() = 0;
     virtual QSGInternalImageNode *createInternalImageNode(QSGRenderContext *renderContext) = 0;
+    virtual QSGInternalTextNode *createInternalTextNode(QSGRenderContext *renderContext);
     virtual QSGPainterNode *createPainterNode(QQuickPaintedItem *item) = 0;
-    virtual QSGGlyphNode *createGlyphNode(QSGRenderContext *rc, bool preferNativeGlyphNode, int renderTypeQuality) = 0;
+    virtual QSGGlyphNode *createGlyphNode(QSGRenderContext *rc, QSGTextNode::RenderType renderType, int renderTypeQuality) = 0;
     virtual QSGLayer *createLayer(QSGRenderContext *renderContext) = 0;
     virtual QSGGuiThreadShaderEffectManager *createGuiThreadShaderEffectManager();
     virtual QSGShaderEffectNode *createShaderEffectNode(QSGRenderContext *renderContext);
@@ -108,6 +117,7 @@ public:
 
     virtual QSGRendererInterface *rendererInterface(QSGRenderContext *renderContext);
 
+    virtual QSGTextNode *createTextNode(QSGRenderContext *renderContext);
     virtual QSGRectangleNode *createRectangleNode() = 0;
     virtual QSGImageNode *createImageNode() = 0;
     virtual QSGNinePatchNode *createNinePatchNode() = 0;
@@ -158,6 +168,7 @@ public:
     virtual void preprocess();
     virtual void invalidateGlyphCaches();
     virtual QSGDistanceFieldGlyphCache *distanceFieldGlyphCache(const QRawFont &font, int renderTypeQuality);
+    virtual QSGCurveGlyphAtlas *curveGlyphAtlas(const QRawFont &font);
     QSGTexture *textureForFactory(QQuickTextureFactory *factory, QQuickWindow *window);
 
     virtual QSGTexture *createTexture(const QImage &image, uint flags = CreateTexture_Alpha) const = 0;
@@ -180,18 +191,47 @@ public Q_SLOTS:
     void textureFactoryDestroyed(QObject *o);
 
 protected:
+    struct FontKey {
+        FontKey(const QRawFont &font, int renderTypeQuality);
+
+        QFontEngine::FaceId faceId;
+        QFont::Style style;
+        int weight;
+        int renderTypeQuality;
+        QString familyName;
+        QString styleName;
+    };
+    friend bool operator==(const QSGRenderContext::FontKey &f1, const QSGRenderContext::FontKey &f2);
+    friend size_t qHash(const QSGRenderContext::FontKey &f, size_t seed);
+
     // Hold m_sg with QPointer in the rare case it gets deleted before us.
     QPointer<QSGContext> m_sg;
 
     QMutex m_mutex;
     QHash<QObject *, QSGTexture *> m_textures;
     QSet<QSGTexture *> m_texturesToDelete;
-    QHash<QString, QSGDistanceFieldGlyphCache *> m_glyphCaches;
+    QHash<FontKey, QSGDistanceFieldGlyphCache *> m_glyphCaches;
 
     // References to font engines that are currently in use by native rendering glyph nodes
     // and which must be kept alive as long as they are used in the render thread.
     QHash<QFontEngine *, int> m_fontEnginesToClean;
 };
+
+inline bool operator ==(const QSGRenderContext::FontKey &f1, const QSGRenderContext::FontKey &f2)
+{
+    return f1.faceId == f2.faceId
+        && f1.style == f2.style
+        && f1.weight == f2.weight
+        && f1.renderTypeQuality == f2.renderTypeQuality
+        && f1.familyName == f2.familyName
+        && f1.styleName == f2.styleName;
+}
+
+inline size_t qHash(const QSGRenderContext::FontKey &f, size_t seed = 0)
+{
+    return qHashMulti(seed, f.faceId, f.renderTypeQuality, f.familyName, f.styleName, f.style, f.weight);
+}
+
 
 QT_END_NAMESPACE
 

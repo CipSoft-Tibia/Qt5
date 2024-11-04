@@ -39,17 +39,26 @@ declare_args() {
   # Build PDFium using C++20 if set to true. Otherwise builds with C++17.
   # There is no "pdf_use_cxx20_override" variable because this is only used in
   # standalone PDFium, and not when PDFium is embedded in our projects.
-  pdf_use_cxx20 = is_win && is_component_build
+  pdf_use_cxx20 = (is_win && is_component_build) || is_fuchsia
 
-  # Build PDFium with PartitionAlloc as the memory allocator.
+  # Build PDFium against PartitionAlloc. When false, PDFium must build without
+  # requiring any PartitionAlloc headers or code to be present. When true,
+  # PDFium will use PartitionAlloc partitions to separate strings, scalars,
+  # etc. from other allocations. However, the use of PartitionAlloc for new or
+  # malloc is controlled by args in build_overrides/partition_alloc.gni.
   pdf_use_partition_alloc = pdf_use_partition_alloc_override
+
+  # Temporary config allowing chromium to switch its location of the
+  # partition_alloc library. https://crbug.com/1467773
+  pdf_use_partition_alloc_new_location = false
 
   # Build PDFium to use Skia (experimental) for all PDFium graphics.
   # If enabled, coexists in build with AGG graphics and the default
   # renderer is selectable at runtime.
   pdf_use_skia = pdf_use_skia_override
 
-  # Build PDFium standalone
+  # Build PDFium standalone. Now only controls whether the test binaries
+  # are built. Most logic is conditioned by build_with_chromium.
   pdf_is_standalone = false
 
   # Build a complete static library
@@ -57,9 +66,6 @@ declare_args() {
 
   # Enable callgrind for performance profiling
   enable_callgrind = false
-
-  # Don't build against bundled zlib.
-  pdfium_use_system_zlib = false
 
   # Don't build against bundled lcms2.
   use_system_lcms2 = false
@@ -70,8 +76,11 @@ declare_args() {
   # Don't build against bundled libpng.
   pdfium_use_system_libpng = false
 
-  # Don't build against bundled libtiff
+  # Don't build against bundled libtiff.
   pdfium_use_system_libtiff = false
+
+  # Don't build against bundled zlib.
+  pdfium_use_system_zlib = false
 
   # Enable SSE2 for MSVC builds. Ignored if it's not a MSVC build.
   msvc_use_sse2 = true

@@ -51,7 +51,11 @@ void DownloadWidget::updateWidget()
 {
     qreal totalBytes = m_download->totalBytes();
     qreal receivedBytes = m_download->receivedBytes();
-    qreal bytesPerSecond = receivedBytes / m_timeAdded.elapsed() * 1000;
+    qreal bytesPerSecond = 0;  // Initialized to 0 for a reasonable default value
+
+    // Check for division by zero
+    if (m_timeAdded.elapsed() != 0)
+        bytesPerSecond = receivedBytes / m_timeAdded.elapsed() * 1000;
 
     auto state = m_download->state();
     switch (state) {
@@ -59,7 +63,7 @@ void DownloadWidget::updateWidget()
         Q_UNREACHABLE();
         break;
     case QWebEngineDownloadRequest::DownloadInProgress:
-        if (totalBytes >= 0) {
+        if (totalBytes > 0) {
             m_progressBar->setValue(qRound(100 * receivedBytes / totalBytes));
             m_progressBar->setDisabled(false);
             m_progressBar->setFormat(
@@ -98,11 +102,13 @@ void DownloadWidget::updateWidget()
     }
 
     if (state == QWebEngineDownloadRequest::DownloadInProgress) {
-        static QIcon cancelIcon(u":process-stop.png"_s);
+        static QIcon cancelIcon(QIcon::fromTheme(QIcon::ThemeIcon::ProcessStop,
+                                                 QIcon(":process-stop.png"_L1)));
         m_cancelButton->setIcon(cancelIcon);
         m_cancelButton->setToolTip(tr("Stop downloading"));
     } else {
-        static QIcon removeIcon(u":edit-clear.png"_s);
+        static QIcon removeIcon(QIcon::fromTheme(QIcon::ThemeIcon::EditClear,
+                                                 QIcon(":edit-clear.png"_L1)));
         m_cancelButton->setIcon(removeIcon);
         m_cancelButton->setToolTip(tr("Remove from list"));
     }

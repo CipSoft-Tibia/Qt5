@@ -56,6 +56,7 @@ if (ozone_platform_x11) {
       ":gbm",
       "//base",
       "//skia",
+      "//third_party/minigbm",
       "//ui/gfx:buffer_types",
       "//ui/gfx:memory_buffer",
       "//ui/gfx/x",

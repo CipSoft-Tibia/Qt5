@@ -5,16 +5,15 @@
 #include "third_party/blink/renderer/modules/peerconnection/transceiver_state_surfacer.h"
 
 #include "base/task/single_thread_task_runner.h"
-#include "third_party/blink/renderer/platform/peerconnection/webrtc_util.h"
 #include "third_party/webrtc/api/rtp_transceiver_interface.h"
 #include "third_party/webrtc/api/sctp_transport_interface.h"
 
 namespace blink {
 namespace {
 
-Vector<webrtc::RtpHeaderExtensionCapability> GetHeaderExtensionsNegotiated(
+Vector<webrtc::RtpHeaderExtensionCapability> GetNegotiatedHeaderExtensions(
     const webrtc::RtpTransceiverInterface* webrtc_transceiver) {
-  auto std_extensions = webrtc_transceiver->HeaderExtensionsNegotiated();
+  auto std_extensions = webrtc_transceiver->GetNegotiatedHeaderExtensions();
   Vector<webrtc::RtpHeaderExtensionCapability> extensions;
   std::move(std_extensions.begin(), std_extensions.end(),
             std::back_inserter(extensions));
@@ -67,7 +66,7 @@ TransceiverStateSurfacer& TransceiverStateSurfacer::operator=(
 }
 
 void TransceiverStateSurfacer::Initialize(
-    scoped_refptr<webrtc::PeerConnectionInterface> native_peer_connection,
+    rtc::scoped_refptr<webrtc::PeerConnectionInterface> native_peer_connection,
     scoped_refptr<blink::WebRtcMediaStreamTrackAdapterMap> track_adapter_map,
     std::vector<rtc::scoped_refptr<webrtc::RtpTransceiverInterface>>
         webrtc_transceivers) {
@@ -130,11 +129,10 @@ void TransceiverStateSurfacer::Initialize(
     transceiver_states_.emplace_back(
         main_task_runner_, signaling_task_runner_, webrtc_transceiver.get(),
         std::move(sender_state), std::move(receiver_state),
-        blink::ToAbslOptional(webrtc_transceiver->mid()),
-        webrtc_transceiver->direction(),
-        blink::ToAbslOptional(webrtc_transceiver->current_direction()),
-        blink::ToAbslOptional(webrtc_transceiver->fired_direction()),
-        GetHeaderExtensionsNegotiated(webrtc_transceiver.get()));
+        webrtc_transceiver->mid(), webrtc_transceiver->direction(),
+        webrtc_transceiver->current_direction(),
+        webrtc_transceiver->fired_direction(),
+        GetNegotiatedHeaderExtensions(webrtc_transceiver.get()));
   }
   is_initialized_ = true;
 }

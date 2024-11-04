@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,8 +19,7 @@
 #include "cast/standalone_receiver/dummy_player.h"  // nogncheck
 #endif  // defined(CAST_STANDALONE_RECEIVER_HAVE_EXTERNAL_LIBS)
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class StreamingPlaybackController final : public ReceiverSession::Client {
  public:
@@ -33,8 +32,13 @@ class StreamingPlaybackController final : public ReceiverSession::Client {
     virtual ~Client();
   };
 
-  StreamingPlaybackController(TaskRunner* task_runner,
+#if defined(CAST_STANDALONE_RECEIVER_HAVE_EXTERNAL_LIBS)
+  StreamingPlaybackController(TaskRunner& task_runner,
                               StreamingPlaybackController::Client* client);
+#else
+  explicit StreamingPlaybackController(
+      StreamingPlaybackController::Client* client);
+#endif  // defined(CAST_STANDALONE_RECEIVER_HAVE_EXTERNAL_LIBS)
 
   // ReceiverSession::Client overrides.
   void OnNegotiated(const ReceiverSession* session,
@@ -47,13 +51,14 @@ class StreamingPlaybackController final : public ReceiverSession::Client {
   void OnError(const ReceiverSession* session, Error error) override;
 
  private:
-  TaskRunner* const task_runner_;
   StreamingPlaybackController::Client* client_;
 
   void Initialize(ReceiverSession::ConfiguredReceivers receivers);
 
 #if defined(CAST_STANDALONE_RECEIVER_HAVE_EXTERNAL_LIBS)
   void HandleKeyboardEvent(const SDL_KeyboardEvent& event);
+
+  TaskRunner& task_runner_;
 
   // NOTE: member ordering is important, since the sub systems must be
   // first-constructed, last-destroyed. Make sure any new SDL related
@@ -75,7 +80,6 @@ class StreamingPlaybackController final : public ReceiverSession::Client {
   std::unique_ptr<SimpleRemotingReceiver> remoting_receiver_;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_STANDALONE_RECEIVER_STREAMING_PLAYBACK_CONTROLLER_H_

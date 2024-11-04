@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 #include "qtexttospeech_mock.h"
@@ -71,9 +71,10 @@ QList<QVoice> QTextToSpeechEngineMock::availableVoices() const
         }
     } else {
         const QString voiceData = m_locale.bcp47Name();
-        const auto newVoice = [=](const QString &name, QVoice::Gender gender,
+        const auto newVoice = [this, &voiceData](const QString &name, QVoice::Gender gender,
                                   QVoice::Age age, const char *suffix) {
-            return createVoice(name, m_locale, gender, age, voiceData + suffix);
+            return createVoice(name, m_locale, gender, age,
+                               QVariant::fromValue<QString>(voiceData + suffix));
         };
         switch (m_locale.language()) {
         case QLocale::English: {

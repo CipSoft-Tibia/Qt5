@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,7 @@
 #include "util/osp_logging.h"
 #include "util/trace_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 constexpr char kVideoMediaType[] = "video";
@@ -27,7 +26,7 @@ constexpr EnumNameTable<VideoCodec, 6> kFfmpegCodecDescriptors{
      {"libaom-av1", VideoCodec::kAv1}}};
 
 SDLVideoPlayer::SDLVideoPlayer(ClockNowFunctionPtr now_function,
-                               TaskRunner* task_runner,
+                               TaskRunner& task_runner,
                                Receiver* receiver,
                                VideoCodec codec,
                                SDL_Renderer* renderer,
@@ -210,5 +209,4 @@ uint32_t SDLVideoPlayer::GetSDLPixelFormat(const AVFrame& picture) {
   return SDL_PIXELFORMAT_UNKNOWN;
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

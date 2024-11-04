@@ -172,7 +172,7 @@ OtoolInfo findDependencyInfo(const QString &binaryPath)
 
     outputLines.removeFirst(); // remove line containing the binary path
     if (binaryPath.contains(".framework/") || binaryPath.endsWith(".dylib")) {
-        const auto match = regexp.match(outputLines.first());
+        const auto match = regexp.match(outputLines.constFirst());
         if (match.hasMatch()) {
             QString installname = match.captured(1);
             if (QFileInfo(binaryPath).fileName() == QFileInfo(installname).fileName()) {
@@ -184,7 +184,7 @@ OtoolInfo findDependencyInfo(const QString &binaryPath)
                 info.installName = binaryPath;
             }
         } else {
-            LogDebug() << "Could not parse otool output line:" << outputLines.first();
+            LogDebug() << "Could not parse otool output line:" << outputLines.constFirst();
             outputLines.removeFirst();
         }
     }
@@ -605,7 +605,7 @@ QStringList getBinaryDependencies(const QString executablePath,
         } else if (trimmedLine.startsWith("@rpath/")) {
             if (!rpathsLoaded) {
                 rpaths = getBinaryRPaths(path, true, executablePath);
-                foreach (const QString &binaryPath, additionalBinariesContainingRpaths)
+                for (const QString &binaryPath : additionalBinariesContainingRpaths)
                     rpaths += getBinaryRPaths(binaryPath, true);
                 rpaths.removeDuplicates();
                 rpathsLoaded = true;
@@ -634,15 +634,16 @@ QStringList getBinaryDependencies(const QString executablePath,
 bool recursiveCopy(const QString &sourcePath, const QString &destinationPath,
                    const QRegularExpression &ignoreRegExp = QRegularExpression())
 {
-    if (!QDir(sourcePath).exists())
+    const QDir sourceDir(sourcePath);
+    if (!sourceDir.exists())
         return false;
     QDir().mkpath(destinationPath);
 
     LogNormal() << "copy:" << sourcePath << destinationPath;
 
-    QStringList files = QDir(sourcePath).entryList(QStringList() << "*", QDir::Files | QDir::NoDotAndDotDot);
+    const QStringList files = sourceDir.entryList(QStringList() << "*", QDir::Files | QDir::NoDotAndDotDot);
     const bool hasValidRegExp = ignoreRegExp.isValid() && ignoreRegExp.pattern().length() > 0;
-    foreach (QString file, files) {
+    for (const QString &file : files) {
         if (hasValidRegExp && ignoreRegExp.match(file).hasMatch())
             continue;
         const QString fileSourcePath = sourcePath + "/" + file;
@@ -650,7 +651,7 @@ bool recursiveCopy(const QString &sourcePath, const QString &destinationPath,
         copyFilePrintStatus(fileSourcePath, fileDestinationPath);
     }
 
-    QStringList subdirs = QDir(sourcePath).entryList(QStringList() << "*", QDir::Dirs | QDir::NoDotAndDotDot);
+    const QStringList subdirs = sourceDir.entryList(QStringList() << "*", QDir::Dirs | QDir::NoDotAndDotDot);
     for (const QString &dir : subdirs) {
         recursiveCopy(sourcePath + "/" + dir, destinationPath + "/" + dir);
     }
@@ -662,15 +663,20 @@ void recursiveCopyAndDeploy(const QString &appBundlePath, const QList<QString> &
     QDir().mkpath(destinationPath);
 
     LogNormal() << "copy:" << sourcePath << destinationPath;
-    const bool isDwarfPath = sourcePath.endsWith("DWARF");
 
-    QStringList files = QDir(sourcePath).entryList(QStringList() << QStringLiteral("*"), QDir::Files | QDir::NoDotAndDotDot);
+    const QDir sourceDir(sourcePath);
+
+    const QStringList files = sourceDir.entryList(QStringList() << QStringLiteral("*"), QDir::Files | QDir::NoDotAndDotDot);
     for (const QString &file : files) {
+        if (file.endsWith("_debug.dylib"))
+            continue; // Skip debug versions
+
+        if (file.endsWith(".qrc"))
+            continue;
+
         const QString fileSourcePath = sourcePath + u'/' + file;
 
-        if (file.endsWith("_debug.dylib")) {
-            continue; // Skip debug versions
-        } else if (!isDwarfPath && file.endsWith(QStringLiteral(".dylib"))) {
+        if (file.endsWith(QStringLiteral(".dylib"))) {
             // App store code signing rules forbids code binaries in Contents/Resources/,
             // which poses a problem for deploying mixed .qml/.dylib Qt Quick imports.
             // Solve this by placing the dylibs in Contents/PlugIns/quick, and then
@@ -710,8 +716,11 @@ void recursiveCopyAndDeploy(const QString &appBundlePath, const QList<QString> &
         }
     }
 
-    QStringList subdirs = QDir(sourcePath).entryList(QStringList() << QStringLiteral("*"), QDir::Dirs | QDir::NoDotAndDotDot);
+    const QStringList subdirs = sourceDir.entryList(QStringList() << QStringLiteral("*"), QDir::Dirs | QDir::NoDotAndDotDot);
     for (const QString &dir : subdirs) {
+        if (dir.endsWith(".dSYM"))
+            continue;
+
         recursiveCopyAndDeploy(appBundlePath, rpaths, sourcePath + u'/' + dir, destinationPath + u'/' + dir);
     }
 }
@@ -1167,13 +1176,15 @@ void deployPlugins(const ApplicationBundleInfo &appBundleInfo, const QString &pl
         });
     }
 
+    // FIXME: Parse modules/Foo.json's plugin_types instead
     static const std::map<QString, std::vector<QString>> map {
         {QStringLiteral("Multimedia"), {QStringLiteral("multimedia")}},
         {QStringLiteral("3DRender"), {QStringLiteral("sceneparsers"), QStringLiteral("geometryloaders"), QStringLiteral("renderers")}},
         {QStringLiteral("3DQuickRender"), {QStringLiteral("renderplugins")}},
         {QStringLiteral("Positioning"), {QStringLiteral("position")}},
         {QStringLiteral("Location"), {QStringLiteral("geoservices")}},
-        {QStringLiteral("TextToSpeech"), {QStringLiteral("texttospeech")}}
+        {QStringLiteral("TextToSpeech"), {QStringLiteral("texttospeech")}},
+        {QStringLiteral("SerialBus"), {QStringLiteral("canbus")}},
     };
 
     for (const auto &it : map) {

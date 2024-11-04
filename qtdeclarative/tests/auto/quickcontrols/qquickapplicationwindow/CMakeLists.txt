@@ -6,7 +6,7 @@
 if (NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
     cmake_minimum_required(VERSION 3.16)
     project(tst_qquickapplicationwindow LANGUAGES C CXX ASM)
-    find_package(Qt6BuildInternals COMPONENTS STANDALONE_TEST)
+    find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
 endif()
 
 #####################################################################
@@ -40,11 +40,11 @@ qt_internal_add_test(tst_qquickapplicationwindow
     TESTDATA ${test_data}
 )
 
-#### Keys ignored in scope 1:.:.:qquickapplicationwindow.pro:<TRUE>:
-# OTHER_FILES = "data/*.qml"
-
-## Scopes:
-#####################################################################
+# Make the QML files available to Creator's locator.
+target_sources(tst_qquickapplicationwindow
+    PRIVATE
+        ${test_data}
+)
 
 qt_internal_extend_target(tst_qquickapplicationwindow CONDITION ANDROID OR IOS
     DEFINES

@@ -134,7 +134,7 @@ full-copy of the DB.
 /ci
     # For post-submit jobs.
     /branches
-        /master-20190626000853
+        /main-20190626000853
         # ┃     ┗━ Committer-date of the HEAD of the branch.
         # ┗━ Branch name
         {
@@ -144,12 +144,12 @@ full-copy of the DB.
             time_committed: "2019-07-06T02:35:14Z"
             jobs:
             {
-                20190708153242--branches-master-20190626000853--android-...: 0
-                20190708153242--branches-master-20190626000853--linux-...:  0
+                20190708153242--branches-main-20190626000853--android-...: 0
+                20190708153242--branches-main-20190626000853--linux-...:  0
                 ...
             }
         }
-        /master-20190701235742 {...}
+        /main-20190701235742 {...}
 
     # For pre-submit jobs.
     /cls
@@ -317,6 +317,13 @@ but this involves:
 
    `make -C infra/ci restart-workers`
 
+### Purging the job queue
+
+This can be useful when there is an outage and too many jobs pile up.
+ - Stop the workers: `make -C infra/ci stop-workers`
+ - Open https://console.firebase.google.com/u/0/project/perfetto-ci/database/perfetto-ci/data/~2Fci
+ - Delete the `jobs_running`, `jobs_queued`, `workers` subtrees
+ - Restart the workers: `make -C infra/ci start-workers`
 
 ## Security considerations
 

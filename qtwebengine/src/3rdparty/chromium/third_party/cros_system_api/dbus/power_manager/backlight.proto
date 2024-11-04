@@ -83,7 +83,9 @@ message BacklightBrightnessChange {
     USER_TOGGLED_OFF = 11;
     // Backlights are toggled on by user.
     USER_TOGGLED_ON = 12;
-    // Next value to use: 13
+    // Changed due to battery saver state change.
+    BATTERY_SAVER_STATE_CHANGED = 13;
+    // Next value to use: 14
   }
   optional Cause cause = 2;
 

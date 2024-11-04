@@ -351,27 +351,12 @@ void QQuickAnimatedImage::load()
     }
 }
 
-#define ANIMATEDIMAGE_MAXIMUM_REDIRECT_RECURSION 16
-
 void QQuickAnimatedImage::movieRequestFinished()
 {
     Q_D(QQuickAnimatedImage);
 
 #if QT_CONFIG(qml_network)
     if (d->reply) {
-        d->redirectCount++;
-        if (d->redirectCount < ANIMATEDIMAGE_MAXIMUM_REDIRECT_RECURSION) {
-            QVariant redirect = d->reply->attribute(QNetworkRequest::RedirectionTargetAttribute);
-            if (redirect.isValid()) {
-                QUrl url = d->reply->url().resolved(redirect.toUrl());
-                d->reply->deleteLater();
-                setSource(url);
-                return;
-            }
-        }
-
-        d->redirectCount=0;
-
         auto movie = new QMovie(d->reply);
         // From this point, we no longer need to handle the reply.
         // I.e. it will be used only as a data source for QMovie,

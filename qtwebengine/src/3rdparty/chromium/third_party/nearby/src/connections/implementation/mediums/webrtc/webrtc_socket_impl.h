@@ -15,6 +15,8 @@
 #ifndef CORE_INTERNAL_MEDIUMS_WEBRTC_WEBRTC_SOCKET_IMPL_H_
 #define CORE_INTERNAL_MEDIUMS_WEBRTC_WEBRTC_SOCKET_IMPL_H_
 
+#ifndef NO_WEBRTC
+
 #include <memory>
 
 #include "connections/listeners.h"
@@ -98,8 +100,8 @@ class WebRtcSocket : public Socket, public webrtc::DataChannelObserver {
   std::string name_;
   rtc::scoped_refptr<webrtc::DataChannelInterface> data_channel_;
 
-  Pipe pipe_;
-
+  std::unique_ptr<InputStream> pipe_input_;
+  std::unique_ptr<OutputStream> pipe_output_;
   OutputStreamImpl output_stream_{this};
 
   AtomicBoolean closed_{false};
@@ -117,5 +119,7 @@ class WebRtcSocket : public Socket, public webrtc::DataChannelObserver {
 }  // namespace mediums
 }  // namespace connections
 }  // namespace nearby
+
+#endif
 
 #endif  // CORE_INTERNAL_MEDIUMS_WEBRTC_WEBRTC_SOCKET_IMPL_H_

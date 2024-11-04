@@ -282,6 +282,7 @@ qt_internal_add_module(3DRender
         texture/textureimage.cpp texture/textureimage_p.h
     DEFINES
         BUILD_QT3D_MODULE
+        QT_NO_CONTEXTLESS_CONNECT
     INCLUDE_DIRECTORIES
         backend
         framegraph
@@ -310,10 +311,16 @@ qt_internal_add_module(3DRender
         Qt::Concurrent
         Qt::CorePrivate
         Qt::3DCorePrivate
-)
 
-# QTransform conflicts
-set_target_properties(3DRender PROPERTIES UNITY_BUILD OFF)
+    NO_UNITY_BUILD_SOURCES
+        # name clashes with internal linkage
+        backend/pointsvisitor.cpp
+        backend/segmentsvisitor.cpp
+        framegraph/frustumculling.cpp
+        jobs/frustumcullingjob.cpp
+        io/qsceneimportfactory.cpp
+        io/qsceneexportfactory.cpp
+)
 
 # Resources:
 set(materialsystem_resource_files

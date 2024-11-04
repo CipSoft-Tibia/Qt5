@@ -12,6 +12,8 @@
 #include "src/codegen/assembler.h"
 #include "src/codegen/loong64/assembler-loong64.h"
 #include "src/common/globals.h"
+#include "src/execution/frame-constants.h"
+#include "src/execution/isolate-data.h"
 #include "src/objects/tagged-index.h"
 
 namespace v8 {
@@ -52,7 +54,7 @@ Register GetRegisterThatIsNotOneOf(Register reg1, Register reg2 = no_reg,
 // -----------------------------------------------------------------------------
 // Static helper functions.
 
-#define SmiWordOffset(offset) (offset + kPointerSize / 2)
+#define SmiWordOffset(offset) (offset + kSystemPointerSize / 2)
 
 // Generate a MemOperand for loading a field from an object.
 inline MemOperand FieldMemOperand(Register object, int offset) {
@@ -86,6 +88,10 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   void InitializeRootRegister() {
     ExternalReference isolate_root = ExternalReference::isolate_root(isolate());
     li(kRootRegister, Operand(isolate_root));
+#ifdef V8_COMPRESS_POINTERS
+    LoadRootRelative(kPtrComprCageBaseRegister,
+                     IsolateData::cage_base_offset());
+#endif
   }
 
   // Jump unconditionally to given label.
@@ -103,18 +109,27 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   void Assert(Condition cc, AbortReason reason, Register rj,
               Operand rk) NOOP_UNLESS_DEBUG_CODE;
 
+  void AssertJSAny(Register object, Register map_tmp, Register tmp,
+                   AbortReason abort_reason) NOOP_UNLESS_DEBUG_CODE;
+
   // Like Assert(), but always enabled.
   void Check(Condition cc, AbortReason reason, Register rj, Operand rk);
 
   // Print a message to stdout and abort execution.
   void Abort(AbortReason msg);
 
+  void CompareWord(Condition cond, Register dst, Register lhs,
+                   const Operand& rhs);
   void Branch(Label* label, bool need_link = false);
   void Branch(Label* label, Condition cond, Register r1, const Operand& r2,
               bool need_link = false);
   void BranchShort(Label* label, Condition cond, Register r1, const Operand& r2,
                    bool need_link = false);
-  void Branch(Label* L, Condition cond, Register rj, RootIndex index);
+  void Branch(Label* L, Condition cond, Register rj, RootIndex index,
+              bool need_sign_extend = true);
+
+  void CompareTaggedAndBranch(Label* label, Condition cond, Register r1,
+                              const Operand& r2, bool need_link = false);
 
   // Floating point branches
   void CompareF32(FPURegister cmp1, FPURegister cmp2, FPUCondition cc,
@@ -153,7 +168,9 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   inline void li(Register rd, int32_t j, LiFlags mode = OPTIMIZE_SIZE) {
     li(rd, Operand(static_cast<int64_t>(j)), mode);
   }
-  void li(Register dst, Handle<HeapObject> value, LiFlags mode = OPTIMIZE_SIZE);
+  void li(Register dst, Handle<HeapObject> value,
+          RelocInfo::Mode rmode = RelocInfo::NO_INFO,
+          LiFlags mode = OPTIMIZE_SIZE);
   void li(Register dst, ExternalReference value, LiFlags mode = OPTIMIZE_SIZE);
 
   void LoadFromConstantsTable(Register destination, int constant_index) final;
@@ -184,10 +201,6 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   void Jump(Register target, COND_ARGS);
   void Jump(intptr_t target, RelocInfo::Mode rmode, COND_ARGS);
   void Jump(Address target, RelocInfo::Mode rmode, COND_ARGS);
-  // Deffer from li, this method save target to the memory, and then load
-  // it to register use ld_d, it can be used in wasm jump table for concurrent
-  // patching.
-  void PatchAndJump(Address target);
   void Jump(Handle<Code> code, RelocInfo::Mode rmode, COND_ARGS);
   void Jump(const ExternalReference& reference);
   void Call(Register target, COND_ARGS);
@@ -196,26 +209,25 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
             COND_ARGS);
   void Call(Label* target);
 
-  // Load the builtin given by the Smi in |builtin_index| into the same
-  // register.
-  void LoadEntryFromBuiltinIndex(Register builtin);
+  // Load the builtin given by the Smi in |builtin_index| into |target|.
+  void LoadEntryFromBuiltinIndex(Register builtin_index, Register target);
   void LoadEntryFromBuiltin(Builtin builtin, Register destination);
   MemOperand EntryFromBuiltinAsOperand(Builtin builtin);
 
-  void CallBuiltinByIndex(Register builtin);
+  void CallBuiltinByIndex(Register builtin_index, Register target);
   void CallBuiltin(Builtin builtin);
   void TailCallBuiltin(Builtin builtin);
 
   // Load the code entry point from the Code object.
-  void LoadCodeEntry(Register destination, Register code_data_container_object);
-  // Load code entry point from the Code object and compute
-  // InstructionStream object pointer out of it. Must not be used for
-  // Codes corresponding to builtins, because their entry points
-  // values point to the embedded instruction stream in .text section.
-  void LoadCodeInstructionStreamNonBuiltin(Register destination,
-                                           Register code_data_container_object);
+  void LoadCodeInstructionStart(Register destination,
+                                Register code_data_container_object);
   void CallCodeObject(Register code_data_container_object);
   void JumpCodeObject(Register code_data_container_object,
+                      JumpMode jump_mode = JumpMode::kJump);
+
+  // Convenience functions to call/jmp to the code of a JSFunction object.
+  void CallJSFunction(Register function_object);
+  void JumpJSFunction(Register function_object,
                       JumpMode jump_mode = JumpMode::kJump);
 
   // Generates an instruction sequence s.t. the return address points to the
@@ -250,43 +262,43 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   void Push(Smi smi);
 
   void Push(Register src) {
-    Add_d(sp, sp, Operand(-kPointerSize));
+    Add_d(sp, sp, Operand(-kSystemPointerSize));
     St_d(src, MemOperand(sp, 0));
   }
 
   // Push two registers. Pushes leftmost register first (to highest address).
   void Push(Register src1, Register src2) {
-    Sub_d(sp, sp, Operand(2 * kPointerSize));
-    St_d(src1, MemOperand(sp, 1 * kPointerSize));
-    St_d(src2, MemOperand(sp, 0 * kPointerSize));
+    Sub_d(sp, sp, Operand(2 * kSystemPointerSize));
+    St_d(src1, MemOperand(sp, 1 * kSystemPointerSize));
+    St_d(src2, MemOperand(sp, 0 * kSystemPointerSize));
   }
 
   // Push three registers. Pushes leftmost register first (to highest address).
   void Push(Register src1, Register src2, Register src3) {
-    Sub_d(sp, sp, Operand(3 * kPointerSize));
-    St_d(src1, MemOperand(sp, 2 * kPointerSize));
-    St_d(src2, MemOperand(sp, 1 * kPointerSize));
-    St_d(src3, MemOperand(sp, 0 * kPointerSize));
+    Sub_d(sp, sp, Operand(3 * kSystemPointerSize));
+    St_d(src1, MemOperand(sp, 2 * kSystemPointerSize));
+    St_d(src2, MemOperand(sp, 1 * kSystemPointerSize));
+    St_d(src3, MemOperand(sp, 0 * kSystemPointerSize));
   }
 
   // Push four registers. Pushes leftmost register first (to highest address).
   void Push(Register src1, Register src2, Register src3, Register src4) {
-    Sub_d(sp, sp, Operand(4 * kPointerSize));
-    St_d(src1, MemOperand(sp, 3 * kPointerSize));
-    St_d(src2, MemOperand(sp, 2 * kPointerSize));
-    St_d(src3, MemOperand(sp, 1 * kPointerSize));
-    St_d(src4, MemOperand(sp, 0 * kPointerSize));
+    Sub_d(sp, sp, Operand(4 * kSystemPointerSize));
+    St_d(src1, MemOperand(sp, 3 * kSystemPointerSize));
+    St_d(src2, MemOperand(sp, 2 * kSystemPointerSize));
+    St_d(src3, MemOperand(sp, 1 * kSystemPointerSize));
+    St_d(src4, MemOperand(sp, 0 * kSystemPointerSize));
   }
 
   // Push five registers. Pushes leftmost register first (to highest address).
   void Push(Register src1, Register src2, Register src3, Register src4,
             Register src5) {
-    Sub_d(sp, sp, Operand(5 * kPointerSize));
-    St_d(src1, MemOperand(sp, 4 * kPointerSize));
-    St_d(src2, MemOperand(sp, 3 * kPointerSize));
-    St_d(src3, MemOperand(sp, 2 * kPointerSize));
-    St_d(src4, MemOperand(sp, 1 * kPointerSize));
-    St_d(src5, MemOperand(sp, 0 * kPointerSize));
+    Sub_d(sp, sp, Operand(5 * kSystemPointerSize));
+    St_d(src1, MemOperand(sp, 4 * kSystemPointerSize));
+    St_d(src2, MemOperand(sp, 3 * kSystemPointerSize));
+    St_d(src3, MemOperand(sp, 2 * kSystemPointerSize));
+    St_d(src4, MemOperand(sp, 1 * kSystemPointerSize));
+    St_d(src5, MemOperand(sp, 0 * kSystemPointerSize));
   }
 
   enum PushArrayOrder { kNormal, kReverse };
@@ -343,23 +355,23 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
 
   void Pop(Register dst) {
     Ld_d(dst, MemOperand(sp, 0));
-    Add_d(sp, sp, Operand(kPointerSize));
+    Add_d(sp, sp, Operand(kSystemPointerSize));
   }
 
   // Pop two registers. Pops rightmost register first (from lower address).
   void Pop(Register src1, Register src2) {
     DCHECK(src1 != src2);
-    Ld_d(src2, MemOperand(sp, 0 * kPointerSize));
-    Ld_d(src1, MemOperand(sp, 1 * kPointerSize));
-    Add_d(sp, sp, 2 * kPointerSize);
+    Ld_d(src2, MemOperand(sp, 0 * kSystemPointerSize));
+    Ld_d(src1, MemOperand(sp, 1 * kSystemPointerSize));
+    Add_d(sp, sp, 2 * kSystemPointerSize);
   }
 
   // Pop three registers. Pops rightmost register first (from lower address).
   void Pop(Register src1, Register src2, Register src3) {
-    Ld_d(src3, MemOperand(sp, 0 * kPointerSize));
-    Ld_d(src2, MemOperand(sp, 1 * kPointerSize));
-    Ld_d(src1, MemOperand(sp, 2 * kPointerSize));
-    Add_d(sp, sp, 3 * kPointerSize);
+    Ld_d(src3, MemOperand(sp, 0 * kSystemPointerSize));
+    Ld_d(src2, MemOperand(sp, 1 * kSystemPointerSize));
+    Ld_d(src1, MemOperand(sp, 2 * kSystemPointerSize));
+    Add_d(sp, sp, 3 * kSystemPointerSize);
   }
 
   // Pops multiple values from the stack and load them in the
@@ -473,7 +485,7 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
       AssertSmi(smi);
     }
     DCHECK(SmiValuesAre32Bits() || SmiValuesAre31Bits());
-    SmiUntag(smi);
+    SmiUntag(smi, smi);
   }
 
   // Abort execution if argument is a smi, enabled via --debug-code.
@@ -524,7 +536,7 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
     li(a1, ref);
   }
 
-  void CheckPageFlag(const Register& object, int mask, Condition cc,
+  void CheckPageFlag(Register object, int mask, Condition cc,
                      Label* condition_met);
 #undef COND_ARGS
 
@@ -543,8 +555,6 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
 
   void LoadZeroIfConditionNotZero(Register dest, Register condition);
   void LoadZeroIfConditionZero(Register dest, Register condition);
-  void LoadZeroOnCondition(Register rd, Register rj, const Operand& rk,
-                           Condition cond);
 
   void Clz_w(Register rd, Register rj);
   void Clz_d(Register rd, Register rj);
@@ -683,8 +693,10 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   void LoadRoot(Register destination, RootIndex index) final;
   void LoadRoot(Register destination, RootIndex index, Condition cond,
                 Register src1, const Operand& src2);
+  void LoadTaggedRoot(Register destination, RootIndex index);
 
   void LoadMap(Register destination, Register object);
+  void LoadCompressedMap(Register dst, Register object);
 
   // If the value is a NaN, canonicalize the value else, do nothing.
   void FPUCanonicalizeNaN(const DoubleRegister dst, const DoubleRegister src);
@@ -784,17 +796,60 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   // Define an exception handler and bind a label.
   void BindExceptionHandler(Label* label) { bind(label); }
 
-  // It assumes that the arguments are located below the stack pointer.
-  // argc is the number of arguments not including the receiver.
-  // TODO(LOONG_dev): LOONG64: Remove this function once we stick with the
-  // reversed arguments order.
-  void LoadReceiver(Register dest, Register argc) {
-    Ld_d(dest, MemOperand(sp, 0));
-  }
+  // ---------------------------------------------------------------------------
+  // Pointer compression Support
 
-  void StoreReceiver(Register rec, Register argc, Register scratch) {
-    St_d(rec, MemOperand(sp, 0));
-  }
+  // Loads a field containing any tagged value and decompresses it if necessary.
+  void LoadTaggedField(Register destination, const MemOperand& field_operand);
+
+  // Loads a field containing a tagged signed value and decompresses it if
+  // necessary.
+  void LoadTaggedSignedField(Register destination,
+                             const MemOperand& field_operand);
+
+  // Loads a field containing smi value and untags it.
+  void SmiUntagField(Register dst, const MemOperand& src);
+
+  // Compresses and stores tagged value to given on-heap location.
+  void StoreTaggedField(Register src, const MemOperand& dst);
+
+  void AtomicStoreTaggedField(Register dst, const MemOperand& src);
+
+  void DecompressTaggedSigned(Register dst, const MemOperand& src);
+  void DecompressTagged(Register dst, const MemOperand& src);
+  void DecompressTagged(Register dst, Register src);
+  void DecompressTagged(Register dst, Tagged_t immediate);
+
+  void AtomicDecompressTaggedSigned(Register dst, const MemOperand& src);
+  void AtomicDecompressTagged(Register dst, const MemOperand& src);
+
+  // ---------------------------------------------------------------------------
+  // V8 Sandbox support
+
+  // Transform a SandboxedPointer from/to its encoded form, which is used when
+  // the pointer is stored on the heap and ensures that the pointer will always
+  // point into the sandbox.
+  void DecodeSandboxedPointer(Register value);
+  void LoadSandboxedPointerField(Register destination,
+                                 MemOperand field_operand);
+  void StoreSandboxedPointerField(Register value, MemOperand dst_field_operand);
+
+  // Loads a field containing off-heap pointer and does necessary decoding
+  // if sandboxed external pointers are enabled.
+  void LoadExternalPointerField(Register destination, MemOperand field_operand,
+                                ExternalPointerTag tag,
+                                Register isolate_root = no_reg);
+
+  // Performs a truncating conversion of a floating point number as used by
+  // the JS bitwise operations. See ECMA-262 9.5: ToInt32. Goes to 'done' if it
+  // succeeds, otherwise falls through if result is saturated. On return
+  // 'result' either holds answer, or is clobbered on fall through.
+  void TryInlineTruncateDoubleToI(Register result, DoubleRegister input,
+                                  Label* done);
+
+  // It assumes that the arguments are located below the stack pointer.
+  void LoadReceiver(Register dest) { Ld_d(dest, MemOperand(sp, 0)); }
+  void StoreReceiver(Register rec) { St_d(rec, MemOperand(sp, 0)); }
 
   bool IsNear(Label* L, Condition cond, int rs_reg);
 
@@ -816,24 +871,33 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
 
   // Compare the object in a register to a value and jump if they are equal.
   void JumpIfRoot(Register with, RootIndex index, Label* if_equal) {
-    UseScratchRegisterScope temps(this);
-    Register scratch = temps.Acquire();
-    LoadRoot(scratch, index);
-    Branch(if_equal, eq, with, Operand(scratch));
+    Branch(if_equal, eq, with, index);
   }
 
   // Compare the object in a register to a value and jump if they are not equal.
   void JumpIfNotRoot(Register with, RootIndex index, Label* if_not_equal) {
-    UseScratchRegisterScope temps(this);
-    Register scratch = temps.Acquire();
-    LoadRoot(scratch, index);
-    Branch(if_not_equal, ne, with, Operand(scratch));
+    Branch(if_not_equal, ne, with, index);
   }
 
   // Checks if value is in range [lower_limit, higher_limit] using a single
   // comparison.
   void JumpIfIsInRange(Register value, unsigned lower_limit,
                        unsigned higher_limit, Label* on_in_range);
+
+  void JumpIfObjectType(Label* target, Condition cc, Register object,
+                        InstanceType instance_type, Register scratch = no_reg);
+  // Fast check if the object is a js receiver type. Assumes only primitive
+  // objects or js receivers are passed.
+  void JumpIfJSAnyIsNotPrimitive(
+      Register heap_object, Register scratch, Label* target,
+      Label::Distance distance = Label::kFar,
+      Condition condition = Condition::kUnsignedGreaterThanEqual);
+  void JumpIfJSAnyIsPrimitive(Register heap_object, Register scratch,
+                              Label* target,
+                              Label::Distance distance = Label::kFar) {
+    return JumpIfJSAnyIsNotPrimitive(heap_object, scratch, target, distance,
+                                     Condition::kUnsignedLessThan);
+  }
 
   // ---------------------------------------------------------------------------
   // GC Support
@@ -960,9 +1024,6 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   void JumpToExternalReference(const ExternalReference& builtin,
                                bool builtin_exit_frame = false);
 
-  // Generates a trampoline to jump to the off-heap instruction stream.
-  void JumpToOffHeapInstructionStream(Address entry);
-
   // ---------------------------------------------------------------------------
   // In-place weak references.
   void LoadWeakValue(Register out, Register in, Label* target_if_cleared);
@@ -1066,8 +1127,6 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
   // the JS bitwise operations. See ECMA-262 9.5: ToInt32. Goes to 'done' if it
   // succeeds, otherwise falls through if result is saturated. On return
   // 'result' either holds answer, or is clobbered on fall through.
-  void TryInlineTruncateDoubleToI(Register result, DoubleRegister input,
-                                  Label* done);
 
   bool BranchShortOrFallback(Label* L, Condition cond, Register rj,
                              const Operand& rk, bool need_link);
@@ -1121,9 +1180,35 @@ struct MoveCycleState {
   base::Optional<DoubleRegister> scratch_fpreg;
 };
 
-#define ACCESS_MASM(masm) masm->
+// Provides access to exit frame parameters (GC-ed).
+inline MemOperand ExitFrameStackSlotOperand(int offset) {
+  // The slot at [sp] is reserved in all ExitFrames for storing the return
+  // address before doing the actual call, it's necessary for frame iteration
+  // (see StoreReturnAddressAndCall for details).
+  static constexpr int kSPOffset = 1 * kSystemPointerSize;
+  return MemOperand(sp, kSPOffset + offset);
+}
+
+// Provides access to exit frame parameters (GC-ed).
+inline MemOperand ExitFrameCallerStackSlotOperand(int index) {
+  return MemOperand(fp, (ExitFrameConstants::kFixedSlotCountAboveFp + index) *
+                            kSystemPointerSize);
+}
+
+// Calls an API function. Allocates HandleScope, extracts returned value
+// from handle and propagates exceptions.  Restores context.  On return removes
+// *stack_space_operand * kSystemPointerSize or stack_space * kSystemPointerSize
+// (GCed, includes the call JS arguments space and the additional space
+// allocated for the fast call).
+void CallApiFunctionAndReturn(MacroAssembler* masm, bool with_profiling,
+                              Register function_address,
+                              ExternalReference thunk_ref, Register thunk_arg,
+                              int stack_space, MemOperand* stack_space_operand,
+                              MemOperand return_value_operand);
 
 }  // namespace internal
 }  // namespace v8
+
+#define ACCESS_MASM(masm) masm->
 
 #endif  // V8_CODEGEN_LOONG64_MACRO_ASSEMBLER_LOONG64_H_

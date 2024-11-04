@@ -5,7 +5,7 @@
 #ifndef QTGRPCGLOBAL_H
 #define QTGRPCGLOBAL_H
 
-#include <QtCore/QtGlobal>
+#include <QtCore/qglobal.h>
 #include <QtCore/qtconfigmacros.h>
 #include <QtCore/qtcore-config.h>
 #include <QtGrpc/qtgrpc-config.h>

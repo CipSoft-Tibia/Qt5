@@ -16,10 +16,14 @@
 #include <xnnpack/allocator.h>
 #include <xnnpack/cache.h>
 #include <xnnpack/compute.h>
+#include <xnnpack/config.h>
 #include <xnnpack/microkernel-type.h>
 #include <xnnpack/operator-type.h>
 #include <xnnpack/params.h>
 
+
+// Maximum number of pthreadpool parallelization invocations per operator.
+#define XNN_MAX_COMPUTE_INVOCATIONS 2
 
 struct xnn_ukernel_conv2d {
   union {
@@ -54,6 +58,7 @@ struct xnn_ukernel_dwconv2d {
 
 struct xnn_ukernel_gemm {
   struct xnn_hmp_gemm_ukernel gemm_cases[XNN_MAX_MR];
+  xnn_packw_gemm_goi_ukernel_fn packw_gemm_goi;
   uint8_t mr;
   uint8_t nr;
   uint8_t kr;
@@ -181,6 +186,7 @@ struct xnn_operator {
   size_t last_output_height;
   size_t last_output_width;
   void* last_output;
+  uint32_t last_mr;
 
   uint32_t block_size;
 
@@ -188,6 +194,8 @@ struct xnn_operator {
   void* lookup_table;
   void* pixelwise_buffer;
   struct subconvolution_params* subconvolution_buffer;
+  void* workspace;
+  size_t workspace_size;
   uint32_t flags;
 
   union {
@@ -198,6 +206,7 @@ struct xnn_operator {
     union xnn_f16_lrelu_params f16_lrelu;
     union xnn_f16_neg_params f16_neg;
     union xnn_f16_sigmoid_params f16_sigmoid;
+    union xnn_f16_tanh_params f16_tanh;
     union xnn_f32_abs_params f32_abs;
     union xnn_f32_default_params f32_default;
     union xnn_f32_elu_params f32_elu;
@@ -206,6 +215,7 @@ struct xnn_operator {
     union xnn_f32_rnd_params f32_rnd;
     union xnn_f32_sigmoid_params f32_sigmoid;
     union xnn_f32_sqrt_params f32_sqrt;
+    union xnn_f32_tanh_params f32_tanh;
     // Parameters for Global Average Pooling in CHW layout
     union xnn_f16_gavgpool_params f16_gavgpool;
     union xnn_f32_gavgpool_params f32_gavgpool;
@@ -229,6 +239,7 @@ struct xnn_operator {
     union xnn_f32_qu8_cvt_params f32_qu8_cvt;
     union xnn_qs8_cvt_params qs8_cvt;
     union xnn_qs8_f32_cvt_params qs8_f32_cvt;
+    union xnn_qs16_qs8_cvt_params qs16_qs8_cvt;
     union xnn_qu8_cvt_params qu8_cvt;
     union xnn_qu8_f32_cvt_params qu8_f32_cvt;
     union xnn_qs8_conv_minmax_params qs8_conv_minmax;
@@ -272,8 +283,42 @@ struct xnn_operator {
   enum xnn_operator_type type;
   struct xnn_ukernel ukernel;
 
-  struct compute_parameters compute;
-  struct compute_parameters compute2;
+  union {
+    const struct xnn_argmaxpool_config* argmaxpool_config;
+    struct {
+      const struct xnn_avgpool_config* avgpool_config;
+      const struct xnn_gavgpool_config* gavgpool_config;
+      const struct xnn_pavgpool_config* pavgpool_config;
+    };
+    const struct xnn_gavgpool_cw_config* gavgpool_cw_config;
+    const struct xnn_ibilinear_chw_config* ibilinear_chw_config;
+    const struct xnn_ibilinear_config* ibilinear_config;
+    struct {
+      const struct xnn_rmax_config* rmax_config;
+      union {
+        // For QU8.
+        const struct xnn_lut32norm_config* lut32norm_config;
+        // For F16 and F32.
+        struct {
+          const struct xnn_raddstoreexpminusmax_config* raddstoreexpminusmax_config;
+          const struct xnn_binary_elementwise_config* vmul_config;
+        };
+      };
+    };  // For softmax operator.
+    const struct xnn_maxpool_config* maxpool_config;
+    const struct xnn_prelu_config* prelu_config;
+    const struct xnn_unpool_config* unpool_config;
+    const struct xnn_zip_config* zip_config;
+    struct {
+      const struct xnn_xx_fill_config* fill_config;
+      const struct xnn_xx_pad_config* pad_config;
+    };  // For constant pad operator.
+    const struct xnn_x8_lut_config* lut_config;
+    const struct xnn_unary_elementwise_config* copy_config;
+    const struct xnn_transpose_config* transpose_config;
+  };
+
+  struct compute_parameters compute[XNN_MAX_COMPUTE_INVOCATIONS];
   union {
     struct argmax_pooling_context argmax_pooling;
     struct average_pooling_context average_pooling;
@@ -282,7 +327,11 @@ struct xnn_operator {
     struct dwconv2d_context dwconv2d;
     struct dwconv_context dwconv;
     struct elementwise_binary_context elementwise_binary;
-    struct gemm_context gemm;
+    // PACKW GEMM GOI + GEMM are used together in Dynamic Fully Connected.
+    struct {
+      struct gemm_context gemm;
+      struct packw_gemm_goi_context packw_gemm_goi;
+    };
     struct global_average_pooling_nwc_context global_average_pooling_nwc;
     struct global_average_pooling_ncw_context global_average_pooling_ncw;
     struct igemm_context igemm;

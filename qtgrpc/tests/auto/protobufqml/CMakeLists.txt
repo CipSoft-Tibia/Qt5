@@ -4,7 +4,7 @@
 add_subdirectory(basic)
 add_subdirectory(enums)
 add_subdirectory(nopackage)
-add_subdirectory(nested)
 add_subdirectory(syntax)
+add_subdirectory(nested)
 add_subdirectory(messagelists)
-
+add_subdirectory(oneof)

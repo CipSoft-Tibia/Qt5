@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QCoreApplication>
 #include <QDomDocument>
@@ -31,6 +31,14 @@ private slots:
     void properties_data();
     void properties();
 };
+
+static void addAnnotation(QDBusIntrospection::Annotations &annotations, const QString &name,
+                          const QString &value)
+{
+    annotations.insert(
+            name,
+            QDBusIntrospection::Annotation{ QDBusIntrospection::SourceLocation{}, name, value });
+}
 
 void tst_QDBusXmlParser::initTestCase()
 {
@@ -100,7 +108,7 @@ void tst_QDBusXmlParser::parsing_data()
 
 void tst_QDBusXmlParser::parsing_common(const QString &xmlData)
 {
-    QDBusIntrospection::Object obj =
+    const QDBusIntrospection::Object obj =
         QDBusIntrospection::parseObject(xmlData, "local.testing", "/");
     QFETCH(int, interfaceCount);
     QFETCH(int, objectCount);
@@ -114,7 +122,7 @@ void tst_QDBusXmlParser::parsing_common(const QString &xmlData)
 
     // also verify the naming
     int i = 0;
-    foreach (QString name, obj.interfaces) {
+    for (const QString &name : obj.interfaces) {
         const QString expectedName = QString("iface.iface%1").arg(i+1);
         QCOMPARE(name, expectedName);
 
@@ -124,7 +132,7 @@ void tst_QDBusXmlParser::parsing_common(const QString &xmlData)
     }
 
     i = 0;
-    foreach (QString name, obj.childObjects)
+    for (const QString &name : obj.childObjects)
         QCOMPARE(name, QString("obj%1").arg(++i));
 }
 
@@ -191,7 +199,7 @@ void tst_QDBusXmlParser::methods_data()
 
     // add a third, with annotations
     method.name = "Baz";
-    method.annotations.insert("foo.testing", "nothing to see here");
+    addAnnotation(method.annotations, "foo.testing", "nothing to see here");
     map << method;
     QTest::newRow("method-with-annotation") <<
         "<method name=\"Foo\"/>"
@@ -290,7 +298,7 @@ void tst_QDBusXmlParser::methods_data()
     method = QDBusIntrospection::Method();
     method.inputArgs << arg("a{sv}", "variantMap") << arg("u", "index");
     method.outputArgs << arg("s", "key") << arg("v", "value");
-    method.annotations.insert("foo.equivalent", "QVariantMap");
+    addAnnotation(method.annotations, "foo.equivalent", "QVariantMap");
     method.name = "Method2";
     map << method;
 
@@ -359,7 +367,7 @@ void tst_QDBusXmlParser::signals__data()
 
     // add a third, with annotations
     signal.name = "Baz";
-    signal.annotations.insert("foo.testing", "nothing to see here");
+    addAnnotation(signal.annotations, "foo.testing", "nothing to see here");
     map << signal;
     QTest::newRow("signal-with-annotation") <<
         "<signal name=\"Foo\"/>"
@@ -408,7 +416,7 @@ void tst_QDBusXmlParser::signals__data()
     // with annotation "foo.equivalent":"QVariantMap"
     signal = QDBusIntrospection::Signal();
     signal.outputArgs << arg("s", "key") << arg("v", "value");
-    signal.annotations.insert("foo.equivalent", "QVariantMap");
+    addAnnotation(signal.annotations, "foo.equivalent", "QVariantMap");
     signal.name = "Signal2";
     map << signal;
 
@@ -492,8 +500,8 @@ void tst_QDBusXmlParser::properties_data()
     prop.name = "baz";
     prop.type = "as";
     prop.access = QDBusIntrospection::Property::Write;
-    prop.annotations.insert("foo.annotation", "Hello, World");
-    prop.annotations.insert("foo.annotation2", "Goodbye, World");
+    addAnnotation(prop.annotations, "foo.annotation", "Hello, World");
+    addAnnotation(prop.annotations, "foo.annotation2", "Goodbye, World");
     map << prop;
     QTest::newRow("complex") <<
         "<property access=\"read\" type=\"i\" name=\"bar\"/>"

@@ -101,6 +101,7 @@ private:
             QSize bounds = {0, 0};
             QSize size = {0, 0};
             Qt::WindowStates states = Qt::WindowNoState;
+            bool suspended = false;
         }  m_pending, m_applied;
         QWaylandWindow::ToplevelWindowTilingStates m_toplevelStates = QWaylandWindow::WindowNoState;
         QSize m_normalSize;
@@ -139,7 +140,6 @@ private:
     Toplevel *m_toplevel = nullptr;
     Popup *m_popup = nullptr;
     bool m_configured = false;
-    QRegion m_exposeRegion;
     uint m_pendingConfigureSerial = 0;
     uint m_appliedConfigureSerial = 0;
     QString m_activationToken;

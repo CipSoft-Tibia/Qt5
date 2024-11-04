@@ -25,12 +25,14 @@
 #include "components/feed/core/v2/persistent_key_value_store_impl.h"
 #include "components/feed/core/v2/prefs.h"
 #include "components/feed/core/v2/public/refresh_task_scheduler.h"
+#include "components/feed/core/v2/resource_fetcher.h"
 #include "components/feed/feed_feature_list.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/history/core/browser/history_service_observer.h"
 #include "components/history/core/browser/history_types.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/consent_level.h"
+#include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "net/base/network_change_notifier.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
@@ -124,10 +126,12 @@ class FeedService::StreamDelegateImpl : public FeedStream::Delegate {
  public:
   StreamDelegateImpl(PrefService* local_state,
                      FeedService::Delegate* service_delegate,
-                     signin::IdentityManager* identity_manager)
+                     signin::IdentityManager* identity_manager,
+                     PrefService* profile_prefs)
       : service_delegate_(service_delegate),
         eula_notifier_(local_state),
-        identity_manager_(identity_manager) {}
+        identity_manager_(identity_manager),
+        profile_prefs_(profile_prefs) {}
   StreamDelegateImpl(const StreamDelegateImpl&) = delete;
   StreamDelegateImpl& operator=(const StreamDelegateImpl&) = delete;
 
@@ -149,9 +153,6 @@ class FeedService::StreamDelegateImpl : public FeedStream::Delegate {
   std::string GetLanguageTag() override {
     return service_delegate_->GetLanguageTag();
   }
-  bool IsAutoplayEnabled() override {
-    return service_delegate_->IsAutoplayEnabled();
-  }
   TabGroupEnabledState GetTabGroupEnabledState() override {
     return service_delegate_->GetTabGroupEnabledState();
   }
@@ -162,6 +163,11 @@ class FeedService::StreamDelegateImpl : public FeedStream::Delegate {
   AccountInfo GetAccountInfo() override {
     return AccountInfo(identity_manager_->GetPrimaryAccountInfo(
         GetConsentLevelNeededForPersonalizedFeed()));
+  }
+  // Returns if signin is allowed on Android. Return true on other platform so
+  // behavior is unchanged there.
+  bool IsSigninAllowed() override {
+    return profile_prefs_->GetBoolean(::prefs::kSigninAllowed);
   }
   bool IsSyncOn() override {
     return identity_manager_->HasPrimaryAccount(signin::ConsentLevel::kSync);
@@ -183,6 +189,7 @@ class FeedService::StreamDelegateImpl : public FeedStream::Delegate {
   std::unique_ptr<EulaObserver> eula_observer_;
   std::unique_ptr<HistoryObserverImpl> history_observer_;
   raw_ptr<signin::IdentityManager> identity_manager_;
+  raw_ptr<PrefService> profile_prefs_;
 };
 
 class FeedService::IdentityManagerObserverImpl
@@ -238,11 +245,12 @@ FeedService::FeedService(
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
     scoped_refptr<base::SequencedTaskRunner> background_task_runner,
     const std::string& api_key,
-    const ChromeInfo& chrome_info)
+    const ChromeInfo& chrome_info,
+    TemplateURLService* template_url_service)
     : delegate_(std::move(delegate)),
       refresh_task_scheduler_(std::move(refresh_task_scheduler)) {
   stream_delegate_ = std::make_unique<StreamDelegateImpl>(
-      local_state, delegate_.get(), identity_manager);
+      local_state, delegate_.get(), identity_manager, profile_prefs);
   network_delegate_ =
       std::make_unique<NetworkDelegateImpl>(delegate_.get(), identity_manager);
   metrics_reporter_ = std::make_unique<MetricsReporter>(profile_prefs);
@@ -250,6 +258,7 @@ FeedService::FeedService(
       network_delegate_.get(), identity_manager, api_key, url_loader_factory,
       profile_prefs);
   image_fetcher_ = std::make_unique<ImageFetcher>(url_loader_factory);
+  resource_fetcher_ = std::make_unique<ResourceFetcher>(url_loader_factory);
   store_ = std::make_unique<FeedStore>(std::move(database));
   persistent_key_value_store_ = std::make_unique<PersistentKeyValueStoreImpl>(
       std::move(key_value_store_database));
@@ -257,8 +266,8 @@ FeedService::FeedService(
   stream_ = std::make_unique<FeedStream>(
       refresh_task_scheduler_.get(), metrics_reporter_.get(),
       stream_delegate_.get(), profile_prefs, feed_network_.get(),
-      image_fetcher_.get(), store_.get(), persistent_key_value_store_.get(),
-      chrome_info);
+      image_fetcher_.get(), resource_fetcher_.get(), store_.get(),
+      persistent_key_value_store_.get(), template_url_service, chrome_info);
   api_ = stream_.get();
 
   history_observer_ = std::make_unique<HistoryObserverImpl>(

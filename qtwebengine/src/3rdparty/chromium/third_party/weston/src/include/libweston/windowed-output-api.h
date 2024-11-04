@@ -35,7 +35,7 @@ extern "C" {
 struct weston_compositor;
 struct weston_output;
 
-#define WESTON_WINDOWED_OUTPUT_API_NAME "weston_windowed_output_api_v1"
+#define WESTON_WINDOWED_OUTPUT_API_NAME "weston_windowed_output_api_v2"
 
 struct weston_windowed_output_api {
 	/** Assign a given width and height to an output.
@@ -47,7 +47,7 @@ struct weston_windowed_output_api {
 	 * Returns 0 on success, -1 on failure.
 	 *
 	 * This assigns a desired width and height to a windowed
-         * output. The backend decides what should be done and applies
+	 * output. The backend decides what should be done and applies
 	 * the desired configuration. After using this function and
 	 * generic weston_output_set_*, a windowed
 	 * output should be in a state where weston_output_enable()
@@ -58,7 +58,7 @@ struct weston_windowed_output_api {
 
 	/** Create a new windowed head.
 	 *
-	 * \param compositor The compositor instance.
+	 * \param backend    The backend.
 	 * \param name       Desired name for a new head, not NULL.
 	 *
 	 * Returns 0 on success, -1 on failure.
@@ -74,7 +74,7 @@ struct weston_windowed_output_api {
 	 * \sa weston_compositor_set_heads_changed_cb(),
 	 * weston_compositor_create_output_with_head()
 	 */
-	int (*create_head)(struct weston_compositor *compositor,
+	int (*create_head)(struct weston_backend *backend,
 			   const char *name);
 };
 

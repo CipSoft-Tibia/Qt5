@@ -62,9 +62,9 @@ if (has_nasm_deps) {
       "-P" + rebase_path("$platform_config_root/config.asm", root_build_dir),
     ]
 
-    if (is_mac) {
+    if (is_apple) {
       # Necessary to ensure symbols end up with a _ prefix; added by
-      # yasm_assemble.gni for Windows, but not Mac.
+      # yasm_assemble.gni for Windows, but not for Apple.
       defines += [ "PREFIX" ]
     }
 

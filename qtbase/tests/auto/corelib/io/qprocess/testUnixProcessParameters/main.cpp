@@ -1,5 +1,5 @@
 // Copyright (C) 2023 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <string_view>
 
@@ -27,6 +27,14 @@ int main(int argc, char **argv)
     if (cmd.size() == 0) {
         // just checking that we did get here
         return EXIT_SUCCESS;
+    }
+
+    if (cmd == "reset-ids") {
+        if (getuid() == geteuid() && getgid() == getegid())
+            return EXIT_SUCCESS;
+        fprintf(stderr, "Real: %d %d; Effective: %d %d\n",
+                getuid(), getgid(), geteuid(), getegid());
+        return EXIT_FAILURE;
     }
 
     if (cmd == "reset-sighand") {
@@ -78,6 +86,22 @@ int main(int argc, char **argv)
         if (close(fd2) == 0 || errno != EBADF)
             fprintf(stderr, "%d is a valid file descriptor\n", fd2);
         return EXIT_SUCCESS;
+    }
+
+    if (cmd == "noctty") {
+        int fd = open("/dev/tty", O_RDONLY);
+        if (fd == -1)
+            return EXIT_SUCCESS;
+        fprintf(stderr, "Could open /dev/tty\n");
+        return EXIT_FAILURE;
+    }
+
+    if (cmd == "setsid") {
+        pid_t pgid = getpgrp();
+        if (pgid == getpid())
+            return EXIT_SUCCESS;
+        fprintf(stderr, "Process group was %d\n", pgid);
+        return EXIT_FAILURE;
     }
 
     fprintf(stderr, "Unknown command \"%s\"", cmd.data());

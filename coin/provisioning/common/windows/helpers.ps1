@@ -196,6 +196,28 @@ function Is64BitWinHost
     return [environment]::Is64BitOperatingSystem
 }
 
+enum CpuArch {
+    x64
+    x86
+    arm64
+    unknown
+}
+
+function Get-CpuArchitecture
+{
+    # Possible values are "AMD64", "IA64", "ARM64", and "x86"
+    $arch = [System.Environment]::GetEnvironmentVariable('PROCESSOR_ARCHITECTURE', 'Machine')
+    if ($arch -eq "AMD64") {
+        return [CpuArch]::x64
+    } elseif ($arch -eq "x86") {
+        return [CpuArch]::x86
+    } elseif ($arch -eq "ARM64") {
+        return [CpuArch]::arm64
+    }
+
+    return [CpuArch]::unknown
+}
+
 function IsProxyEnabled {
     return (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings').proxyEnable
 }
@@ -275,34 +297,86 @@ function DeleteSchedulerTask {
     SCHTASKS /DELETE /TN "Microsoft\Windows\$Task" /F
 }
 
-function GetVSPath {
+function GetVsProperty {
     Param (
-        [string]$VSWhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe",
-        [string]$Component = "Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
+        [string]$Component = 'Microsoft.VisualStudio.Component.VC.CoreIde',
+        [string]$Property,
+        [switch]$Latest
     )
 
-    return (& $VSWhere -nologo -latest -products * -requires $Component -property installationPath)
+    $vsWhereProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $vsWhereProcessInfo.FileName = "${Env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    $vsWhereProcessInfo.RedirectStandardError = $true
+    $vsWhereProcessInfo.RedirectStandardOutput = $true
+    $vsWhereProcessInfo.UseShellExecute = $false
+
+    # -sort: sorts the instances from newest version and last installed to oldest
+    $vsWhereProcessInfo.Arguments = " -nologo -sort -products * -requires $Component -property $Property"
+    if ($Latest) {
+        # -latest: return only the newest version and last installed
+        $vsWhereProcessInfo.Arguments += ' -latest'
+    }
+
+    $vsWhereProcess = New-Object System.Diagnostics.Process
+    $vsWhereProcess.StartInfo = $vsWhereProcessInfo
+
+    $vsWhereProcess.Start() | Out-Null
+    $vsWhereProcess.WaitForExit()
+
+    $standardOutput = $vsWhereProcess.StandardOutput.ReadToEnd()
+    if ([string]::IsNullOrEmpty($standardOutput)) {
+        throw "vswhere could not find property '$Property'"
+    }
+
+    $exitCode = $vsWhereProcess.ExitCode
+    if ($exitCode -ne 0) {
+        $standardError = $vsWhereProcess.StandardError.ReadToEnd()
+        throw "vswhere failed with exit code $exitCode ($standardError)"
+    }
+
+    return $standardOutput.Split([Environment]::NewLine, [StringSplitOptions]::RemoveEmptyEntries) | Select-Object -Last 1
+}
+
+function GetVsInstallationPath {
+    Param (
+        [switch]$Latest
+    )
+
+    return GetVsProperty -Property 'installationPath' @PSBoundParameters
 }
 
 function EnterVSDevShell {
-    # Add cl to path if it is not already there.
-    if (Get-Command cl.exe -ErrorAction SilentlyContinue) {
-        return $true
-    }
+    Param (
+        [string]$HostArch = "amd64",
+        [string]$Arch = "amd64"
+    )
 
-    $vsWere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
-    $vcComponent = "Microsoft.VisualStudio.Component.VC.CoreIde"
     # We pick the oldest build tools we can find and use that to be compatible with it and any newer version:
     # If MSVC has an ABI break this will stop working, and yet another build must be added.
-    $VSPath = (& $vsWere -nologo -products * -requires $vcComponent -sort -format value -property installationPath | Select-Object -Last 1)
+    $VSPath = GetVsInstallationPath
 
-    Write-Host "Enter VisualStudio developer shell"
+    Write-Host "Enter VisualStudio developer shell (-host_arch=$HostArch -arch=$Arch -VsInstallPath='$VSPath')"
     try {
         Import-Module "$VSPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
-        Enter-VsDevShell -VsInstallPath $VSPath -DevCmdArguments "-arch=x64 -no_logo"
+        Enter-VsDevShell -VsInstallPath $VSPath -DevCmdArguments "-host_arch=$HostArch -arch=$Arch -no_logo"
     } catch {
         Write-Host "Failed to enter VisualStudio DevShell"
         return $false
     }
     return $true
+}
+
+function Invoke-MtCommand {
+  param(
+    [String] $vcVarsScript,
+    [String] $arch,
+    [String] $manifest,
+    [String] $executable
+  )
+  $tempFile = [IO.Path]::GetTempFileName()
+  Add-Content -Path $tempFile -Value $manifest
+  $cmdLine = """$vcVarsScript"" $arch &  mt.exe -manifest ""$tempFile"" -outputresource:""$executable"";1"
+  Write-Output Executing $cmdLine
+  & $Env:SystemRoot\system32\cmd.exe /c $cmdLine | Write-Output
+  Remove-Item $tempFile
 }

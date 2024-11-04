@@ -5,7 +5,6 @@
 #ifndef SERVICES_DEVICE_PUBLIC_CPP_GEOLOCATION_SYSTEM_GEOLOCATION_SOURCE_MAC_H_
 #define SERVICES_DEVICE_PUBLIC_CPP_GEOLOCATION_SYSTEM_GEOLOCATION_SOURCE_MAC_H_
 
-#include "base/mac/scoped_nsobject.h"
 #include "base/memory/weak_ptr.h"
 #include "services/device/public/cpp/geolocation/geolocation_manager.h"
 #include "services/device/public/cpp/geolocation/system_geolocation_source.h"
@@ -35,15 +34,20 @@ class COMPONENT_EXPORT(GEOLOCATION) SystemGeolocationSourceMac
   // To be called from the macOS backend via callback when the position is
   // updated
   void PositionUpdated(const mojom::Geoposition& position);
+  void PositionError(const mojom::GeopositionError& error);
 
   void StartWatchingPosition(bool high_accuracy) override;
   void StopWatchingPosition() override;
+  void RequestPermission() override;
+
+  // Calls requestWhenInUseAuthorization from CLLocationManager.
+  void TrackGeolocationAttempted() override;
 
  private:
   LocationSystemPermissionStatus GetSystemPermission() const;
 
-  base::scoped_nsobject<GeolocationManagerDelegate> delegate_;
-  base::scoped_nsobject<CLLocationManager> location_manager_;
+  GeolocationManagerDelegate* __strong delegate_;
+  CLLocationManager* __strong location_manager_;
   SEQUENCE_CHECKER(sequence_checker_);
   PermissionUpdateCallback permission_update_callback_;
   PositionUpdateCallback position_update_callback_;

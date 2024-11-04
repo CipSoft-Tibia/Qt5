@@ -29,14 +29,14 @@ class StubClientSharedImageInterface : public gpu::ClientSharedImageInterface {
   StubClientSharedImageInterface() : gpu::ClientSharedImageInterface(nullptr) {}
   gpu::SyncToken GenVerifiedSyncToken() override { return gpu::SyncToken(); }
 
-  gpu::Mailbox CreateSharedImage(
-      gfx::GpuMemoryBuffer* gpu_memory_buffer,
-      gpu::GpuMemoryBufferManager* gpu_memory_buffer_manager,
-      gfx::BufferPlane plane,
-      const gfx::ColorSpace& color_space,
-      GrSurfaceOrigin surface_origin,
-      SkAlphaType alpha_type,
-      uint32_t usage) override {
+  gpu::Mailbox CreateSharedImage(viz::SharedImageFormat format,
+                                 const gfx::Size& size,
+                                 const gfx::ColorSpace& color_space,
+                                 GrSurfaceOrigin surface_origin,
+                                 SkAlphaType alpha_type,
+                                 uint32_t usage,
+                                 base::StringPiece debug_label,
+                                 gfx::GpuMemoryBufferHandle handle) override {
     return gpu::Mailbox();
   }
 };
@@ -100,9 +100,10 @@ void DCOMPTextureWrapperTest::CreateDXBackedVideoFrameTestTask(
 
   dcomp_texture_wrapper->CreateVideoFrame(
       frame_size, std::move(dx_handle),
-      base::BindRepeating(
+      base::BindOnce(
           [](gfx::Size orig_frame_size, base::WaitableEvent* wait_event,
-             scoped_refptr<media::VideoFrame> frame) {
+             scoped_refptr<media::VideoFrame> frame,
+             const gpu::Mailbox& mailbox) {
             EXPECT_EQ(frame->coded_size().width(), orig_frame_size.width());
             EXPECT_EQ(frame->coded_size().height(), orig_frame_size.height());
             wait_event->Signal();

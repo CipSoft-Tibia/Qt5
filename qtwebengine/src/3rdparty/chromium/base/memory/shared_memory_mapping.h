@@ -114,9 +114,9 @@ class BASE_EXPORT ReadOnlySharedMemoryMapping : public SharedMemoryMapping {
   // large enough to contain a T, or nullptr otherwise.
   template <typename T>
   const T* GetMemoryAs() const {
-    static_assert(std::is_trivially_copyable<T>::value,
-                  "Copying non-trivially-copyable object across memory spaces "
-                  "is dangerous");
+//    static_assert(std::is_trivially_copyable<T>::value,
+//                  "Copying non-trivially-copyable object across memory spaces "
+//                  "is dangerous");
     if (!IsValid())
       return nullptr;
     if (sizeof(T) > size())

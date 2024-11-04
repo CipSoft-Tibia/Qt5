@@ -104,6 +104,12 @@ void NavigationPolicyContainerBuilder::SetIsOriginPotentiallyTrustworthy(
   delivered_policies_.is_web_secure_context = value;
 }
 
+void NavigationPolicyContainerBuilder::SetAllowCrossOriginIsolation(
+    bool value) {
+  DCHECK(!HasComputedPolicies());
+  delivered_policies_.allow_cross_origin_isolation = value;
+}
+
 void NavigationPolicyContainerBuilder::AddContentSecurityPolicy(
     network::mojom::ContentSecurityPolicyPtr policy) {
   DCHECK(!HasComputedPolicies());
@@ -311,6 +317,14 @@ NavigationPolicyContainerBuilder::CreatePolicyContainerForBlink() {
   DCHECK(HasComputedPolicies());
 
   return host_->CreatePolicyContainerForBlink();
+}
+
+scoped_refptr<PolicyContainerHost>
+NavigationPolicyContainerBuilder::GetPolicyContainerHost() {
+  DCHECK(HasComputedPolicies());
+  CHECK(host_);
+
+  return host_;
 }
 
 scoped_refptr<PolicyContainerHost>

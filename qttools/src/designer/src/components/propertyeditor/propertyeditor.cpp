@@ -44,19 +44,20 @@
 
 #include <QtCore/qdebug.h>
 #include <QtCore/qtextstream.h>
-
-static const char SettingsGroupC[] = "PropertyEditor";
-static const char ViewKeyC[] = "View";
-static const char ColorKeyC[] = "Colored";
-static const char SortedKeyC[] = "Sorted";
-static const char ExpansionKeyC[] = "ExpandedItems";
-static const char SplitterPositionKeyC[] = "SplitterPosition";
+#include <QtCore/qtimezone.h>
 
 enum SettingsView { TreeView, ButtonView };
 
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+
+static constexpr auto SettingsGroupC = "PropertyEditor"_L1;
+static constexpr auto ViewKeyC = "View"_L1;
+static constexpr auto ColorKeyC = "Colored"_L1;
+static constexpr auto SortedKeyC = "Sorted"_L1;
+static constexpr auto ExpansionKeyC = "ExpandedItems"_L1;
+static constexpr auto SplitterPositionKeyC = "SplitterPosition"_L1;
 
 // ---------------------------------------------------------------------------------
 
@@ -183,10 +184,10 @@ PropertyEditor::PropertyEditor(QDesignerFormEditorInterface *core, QWidget *pare
     m_propertyManager(new DesignerPropertyManager(m_core, this)),
     m_stackedWidget(new QStackedWidget),
     m_filterWidget(new QLineEdit),
-    m_addDynamicAction(new QAction(createIconSet(u"plus.png"_s), tr("Add Dynamic Property..."), this)),
-    m_removeDynamicAction(new QAction(createIconSet(u"minus.png"_s), tr("Remove Dynamic Property"), this)),
-    m_sortingAction(new QAction(createIconSet(u"sort.png"_s), tr("Sorting"), this)),
-    m_coloringAction(new QAction(createIconSet(u"color.png"_s), tr("Color Groups"), this)),
+    m_addDynamicAction(new QAction(createIconSet("plus.png"_L1), tr("Add Dynamic Property..."), this)),
+    m_removeDynamicAction(new QAction(createIconSet("minus.png"_L1), tr("Remove Dynamic Property"), this)),
+    m_sortingAction(new QAction(createIconSet("sort.png"_L1), tr("Sorting"), this)),
+    m_coloringAction(new QAction(createIconSet("color.png"_L1), tr("Color Groups"), this)),
     m_treeAction(new QAction(tr("Tree View"), this)),
     m_buttonAction(new QAction(tr("Drop Down Button View"), this)),
     m_classLabel(new ElidingLabel)
@@ -196,20 +197,20 @@ PropertyEditor::PropertyEditor(QDesignerFormEditorInterface *core, QWidget *pare
     const int darknessFactor = 250;
     m_colors.reserve(std::size(colors));
     for (const QColor &c : colors)
-        m_colors.push_back(qMakePair(c, c.darker(darknessFactor)));
+        m_colors.append({c, c.darker(darknessFactor)});
     QColor dynamicColor(191, 207, 255);
     QColor layoutColor(255, 191, 191);
-    m_dynamicColor = qMakePair(dynamicColor, dynamicColor.darker(darknessFactor));
-    m_layoutColor = qMakePair(layoutColor, layoutColor.darker(darknessFactor));
+    m_dynamicColor = {dynamicColor, dynamicColor.darker(darknessFactor)};
+    m_layoutColor = {layoutColor, layoutColor.darker(darknessFactor)};
 
     updateForegroundBrightness();
 
     QActionGroup *actionGroup = new QActionGroup(this);
 
     m_treeAction->setCheckable(true);
-    m_treeAction->setIcon(createIconSet(u"widgets/listview.png"_s));
+    m_treeAction->setIcon(createIconSet("widgets/listview.png"_L1));
     m_buttonAction->setCheckable(true);
-    m_buttonAction->setIcon(createIconSet(u"dropdownbutton.png"_s));
+    m_buttonAction->setIcon(createIconSet("dropdownbutton.png"_L1));
 
     actionGroup->addAction(m_treeAction);
     actionGroup->addAction(m_buttonAction);
@@ -239,7 +240,7 @@ PropertyEditor::PropertyEditor(QDesignerFormEditorInterface *core, QWidget *pare
     connect(m_removeDynamicAction, &QAction::triggered, this, &PropertyEditor::slotRemoveDynamicProperty);
     // Configure
     QAction *configureAction = new QAction(tr("Configure Property Editor"), this);
-    configureAction->setIcon(createIconSet(u"configure.png"_s));
+    configureAction->setIcon(createIconSet("configure.png"_L1));
     QMenu *configureMenu = new QMenu(this);
     configureAction->setMenu(configureMenu);
 
@@ -308,13 +309,13 @@ PropertyEditor::PropertyEditor(QDesignerFormEditorInterface *core, QWidget *pare
 
     // retrieve initial settings
     QDesignerSettingsInterface *settings = m_core->settingsManager();
-    settings->beginGroup(QLatin1StringView(SettingsGroupC));
-    const SettingsView view = settings->value(QLatin1StringView(ViewKeyC), TreeView).toInt() == TreeView ? TreeView :  ButtonView;
+    settings->beginGroup(SettingsGroupC);
+    const SettingsView view = settings->value(ViewKeyC, TreeView).toInt() == TreeView ? TreeView :  ButtonView;
     // Coloring not available unless treeview and not sorted
-    m_sorting = settings->value(QLatin1StringView(SortedKeyC), false).toBool();
-    m_coloring = settings->value(QLatin1StringView(ColorKeyC), true).toBool();
-    const QVariantMap expansionState = settings->value(QLatin1StringView(ExpansionKeyC), QVariantMap()).toMap();
-    const int splitterPosition = settings->value(QLatin1StringView(SplitterPositionKeyC), 150).toInt();
+    m_sorting = settings->value(SortedKeyC, false).toBool();
+    m_coloring = settings->value(ColorKeyC, true).toBool();
+    const QVariantMap expansionState = settings->value(ExpansionKeyC, QVariantMap()).toMap();
+    const int splitterPosition = settings->value(SplitterPositionKeyC, 150).toInt();
     settings->endGroup();
     // Apply settings
     m_sortingAction->setChecked(m_sorting);
@@ -351,16 +352,16 @@ PropertyEditor::~PropertyEditor()
 void PropertyEditor::saveSettings() const
 {
     QDesignerSettingsInterface *settings = m_core->settingsManager();
-    settings->beginGroup(QLatin1StringView(SettingsGroupC));
-    settings->setValue(QLatin1StringView(ViewKeyC), QVariant(m_treeAction->isChecked() ? TreeView : ButtonView));
-    settings->setValue(QLatin1StringView(ColorKeyC), QVariant(m_coloring));
-    settings->setValue(QLatin1StringView(SortedKeyC), QVariant(m_sorting));
+    settings->beginGroup(SettingsGroupC);
+    settings->setValue(ViewKeyC, QVariant(m_treeAction->isChecked() ? TreeView : ButtonView));
+    settings->setValue(ColorKeyC, QVariant(m_coloring));
+    settings->setValue(SortedKeyC, QVariant(m_sorting));
     // Save last expansionState as QVariant map
     QVariantMap expansionState;
     for (auto it = m_expansionState.cbegin(), cend = m_expansionState.cend(); it != cend; ++it)
         expansionState.insert(it.key(), QVariant(it.value()));
-    settings->setValue(QLatin1StringView(ExpansionKeyC), expansionState);
-    settings->setValue(QLatin1StringView(SplitterPositionKeyC), m_treeBrowser->splitterPosition());
+    settings->setValue(ExpansionKeyC, expansionState);
+    settings->setValue(SplitterPositionKeyC, m_treeBrowser->splitterPosition());
     settings->endGroup();
 }
 
@@ -542,7 +543,7 @@ QColor PropertyEditor::propertyColor(QtProperty *property) const
         groupProperty = m_nameToGroup.value(itProp.value());
 
     const int groupIdx = m_groups.indexOf(groupProperty);
-    QPair<QColor, QColor> pair;
+    std::pair<QColor, QColor> pair;
     if (groupIdx != -1) {
         if (groupProperty == m_dynamicGroup)
             pair = m_dynamicColor;
@@ -844,6 +845,9 @@ static const char *typeName(int type)
         return "invalid";
     if (type == QMetaType::User)
         return "user type";
+    const auto metaType = QMetaType(type);
+    if (metaType.isValid())
+        return metaType.name();
     return nullptr;
 }
 
@@ -853,7 +857,7 @@ static QString msgUnsupportedType(const QString &propertyName, int type)
     QTextStream str(&rc);
     const char *typeS = typeName(type);
     str << "The property \"" << propertyName << "\" of type ("
-        << (typeS ? typeS : "unknown") << ") is not supported yet!";
+        << (typeS ? typeS : "unknown") << ") is not supported yet.";
     return rc;
 }
 
@@ -973,10 +977,10 @@ void PropertyEditor::setObject(QObject *object)
                         m_updatingBrowser = false;
                     } else if (type == DesignerPropertyManager::designerFlagTypeId()) {
                         const PropertySheetFlagValue f = qvariant_cast<PropertySheetFlagValue>(value);
-                        QList<QPair<QString, uint> > flags;
+                        QList<std::pair<QString, uint>> flags;
                         for (const QString &name : f.metaFlags.keys()) {
                             const uint val = f.metaFlags.keyToValue(name);
-                            flags.append(qMakePair(name, val));
+                            flags.append({name, val});
                         }
                         m_updatingBrowser = true;
                         QVariant v;
@@ -1078,7 +1082,10 @@ void PropertyEditor::setObject(QObject *object)
                     }
                 }
             } else {
-                qWarning("%s", qPrintable(msgUnsupportedType(propertyName, type)));
+                // QTBUG-80417, suppress warning for QDateEdit::timeZone
+                const int typeId = value.typeId();
+                if (typeId != qMetaTypeId<QTimeZone>())
+                    qWarning("%s", qPrintable(msgUnsupportedType(propertyName, type)));
             }
         }
     }

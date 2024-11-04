@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,14 +8,14 @@
 
 #include <algorithm>
 #include <string>
+#include <utility>
 
 #include "cast/common/channel/proto/cast_channel.pb.h"
 #include "gtest/gtest.h"
 #include "util/big_endian.h"
 #include "util/std_util.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace message_serialization {
 
 using ::cast::channel::CastMessage;
@@ -49,10 +49,8 @@ class CastFramerTest : public testing::Test {
     memcpy(&buffer_[0], data.data(), data.size());
   }
 
-  absl::Span<uint8_t> GetSpan(size_t size) {
-    return absl::Span<uint8_t>(&buffer_[0], size);
-  }
-  absl::Span<uint8_t> GetSpan() { return GetSpan(cast_message_serial_.size()); }
+  ByteBuffer GetSpan(size_t size) { return ByteBuffer(&buffer_[0], size); }
+  ByteBuffer GetSpan() { return GetSpan(cast_message_serial_.size()); }
 
  protected:
   CastMessage cast_message_;
@@ -149,5 +147,4 @@ TEST_F(CastFramerTest, TestUnparsableBodyProto) {
 }
 
 }  // namespace message_serialization
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

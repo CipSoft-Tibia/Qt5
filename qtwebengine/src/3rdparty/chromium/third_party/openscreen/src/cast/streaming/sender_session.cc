@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,6 +15,7 @@
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "cast/streaming/capture_recommendations.h"
+#include "cast/streaming/clock_offset_estimator.h"
 #include "cast/streaming/environment.h"
 #include "cast/streaming/message_fields.h"
 #include "cast/streaming/offer_messages.h"
@@ -26,8 +27,7 @@
 #include "util/osp_logging.h"
 #include "util/stringprintf.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 namespace {
 // Default error message for a bad CAPABILITIES_RESPONSE message.
@@ -71,7 +71,7 @@ AudioStream CreateStream(int index,
                             config.target_playout_delay,
                             GenerateRandomBytes16(),
                             GenerateRandomBytes16(),
-                            false /* receiver_rtcp_event_log */,
+                            true /* receiver_rtcp_event_log */,
                             {} /* receiver_rtcp_dscp */,
                             config.sample_rate,
                             config.codec_parameter},
@@ -92,7 +92,7 @@ VideoStream CreateStream(int index,
              config.target_playout_delay,
              GenerateRandomBytes16(),
              GenerateRandomBytes16(),
-             false /* receiver_rtcp_event_log */,
+             true /* receiver_rtcp_event_log */,
              {} /* receiver_rtcp_dscp */,
              kRtpVideoTimebase,
              config.codec_parameter},
@@ -307,6 +307,25 @@ int SenderSession::GetEstimatedNetworkBandwidth() const {
   return packet_router_.ComputeNetworkBandwidth();
 }
 
+void SenderSession::SetStatsClient(SenderStatsClient* client) {
+  OSP_CHECK(!stats_client_) << "Client should only be set once.";
+  stats_client_ = client;
+
+  // Create a StatisticsAnalyzer which can call the given stats_client_.
+  stats_analyzer_ = std::make_unique<StatisticsAnalyzer>(
+      stats_client_, config_.environment->now_function(),
+      config_.environment->task_runner(), ClockOffsetEstimator::Create());
+
+  // Instantiating StatisticsAnalyzer will create a StatisticsCollector, which
+  // should be set as the StatsCollector for the environment.
+  config_.environment->SetStatisticsCollector(
+      stats_analyzer_->statistics_collector());
+
+  // Repeatedly takes and analyzes frame / packet events, and sends stats to
+  // `stats_client_`.
+  stats_analyzer_->ScheduleAnalysis();
+}
+
 void SenderSession::ResetState() {
   state_ = State::kIdle;
   current_negotiation_.reset();
@@ -445,7 +464,8 @@ std::unique_ptr<Sender> SenderSession::CreateSender(Ssrc receiver_ssrc,
                        stream.target_delay,
                        stream.aes_key,
                        stream.aes_iv_mask,
-                       /* is_pli_enabled*/ true};
+                       /* is_pli_enabled*/ true,
+                       ToStreamType(type, config_.use_android_rtp_hack)};
   OSP_DCHECK(config.IsValid());
   return std::make_unique<Sender>(config_.environment, &packet_router_,
                                   std::move(config), type);
@@ -526,5 +546,4 @@ void SenderSession::SendRpcMessage(std::vector<uint8_t> message_body) {
   }
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

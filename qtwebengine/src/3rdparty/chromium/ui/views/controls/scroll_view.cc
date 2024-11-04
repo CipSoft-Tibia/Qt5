@@ -7,7 +7,6 @@
 #include <algorithm>
 
 #include "base/check_op.h"
-#include "base/cxx17_backports.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/i18n/rtl.h"
@@ -35,6 +34,7 @@
 #include "ui/views/controls/focus_ring.h"
 #include "ui/views/style/platform_style.h"
 #include "ui/views/view.h"
+#include "ui/views/view_utils.h"
 #include "ui/views/widget/widget.h"
 
 namespace views {
@@ -64,11 +64,16 @@ class ScrollCornerView : public View {
   ScrollCornerView& operator=(const ScrollCornerView&) = delete;
 
   void OnPaint(gfx::Canvas* canvas) override {
-    ui::NativeTheme::ExtraParams ignored;
+#if BUILDFLAG(IS_APPLE)
+    ui::NativeTheme::ExtraParams params(
+        absl::in_place_type<ui::NativeTheme::ScrollbarExtraParams>);
+#else
+    ui::NativeTheme::ExtraParams params(
+        absl::in_place_type<ui::NativeTheme::ScrollbarTrackExtraParams>);
+#endif
     GetNativeTheme()->Paint(canvas->sk_canvas(), GetColorProvider(),
                             ui::NativeTheme::kScrollbarCorner,
-                            ui::NativeTheme::kNormal, GetLocalBounds(),
-                            ignored);
+                            ui::NativeTheme::kNormal, GetLocalBounds(), params);
   }
 };
 
@@ -86,7 +91,7 @@ bool DoesDescendantHaveLayer(View* view) {
 // Returns the position for the view so that it isn't scrolled off the visible
 // region.
 int CheckScrollBounds(int viewport_size, int content_size, int current_pos) {
-  return base::clamp(current_pos, 0, std::max(content_size - viewport_size, 0));
+  return std::clamp(current_pos, 0, std::max(content_size - viewport_size, 0));
 }
 
 // Make sure the content is not scrolled out of bounds
@@ -148,6 +153,14 @@ class ScrollView::Viewport : public View {
   void ScrollRectToVisible(const gfx::Rect& rect) override {
     if (children().empty() || !parent())
       return;
+
+    // If scrolling is disabled, it may have been handled by a parent View class
+    // so fall back to it.
+    if (!scroll_view_->IsHorizontalScrollEnabled() &&
+        !scroll_view_->IsVerticalScrollEnabled()) {
+      View::ScrollRectToVisible(rect);
+      return;
+    }
 
     View* contents = children().front();
     gfx::Rect scroll_rect(rect);
@@ -313,10 +326,12 @@ ScrollView::ScrollView(ScrollWithLayers scroll_with_layers)
   }
 
   FocusRing::Install(this);
-  views::FocusRing::Get(this)->SetHasFocusPredicate([](View* view) -> bool {
-    auto* v = static_cast<ScrollView*>(view);
-    return v->draw_focus_indicator_;
-  });
+  views::FocusRing::Get(this)->SetHasFocusPredicate(
+      base::BindRepeating([](const View* view) {
+        const auto* v = views::AsViewClass<ScrollView>(view);
+        CHECK(v);
+        return v->draw_focus_indicator_;
+      }));
 }
 
 ScrollView::~ScrollView() = default;
@@ -350,7 +365,8 @@ void ScrollView::SetContentsImpl(std::unique_ptr<View> a_view) {
         &ScrollView::OnLayerScrolled, base::Unretained(this)));
     a_view->layer()->SetScrollable(contents_viewport_->bounds().size());
   }
-  SetHeaderOrContents(contents_viewport_, std::move(a_view), &contents_);
+  contents_ = ReplaceChildView(
+      contents_viewport_, contents_.ExtractAsDangling(), std::move(a_view));
   UpdateBackground();
 }
 
@@ -374,7 +390,8 @@ void ScrollView::SetContentsLayerType(ui::LayerType layer_type) {
 }
 
 void ScrollView::SetHeaderImpl(std::unique_ptr<View> a_header) {
-  SetHeaderOrContents(header_viewport_, std::move(a_header), &header_);
+  header_ = ReplaceChildView(header_viewport_, header_.ExtractAsDangling(),
+                             std::move(a_header));
 }
 
 void ScrollView::SetHeader(std::nullptr_t) {
@@ -544,7 +561,7 @@ ScrollBar* ScrollView::SetHorizontalScrollBar(
     std::unique_ptr<ScrollBar> horiz_sb) {
   horiz_sb->SetVisible(horiz_sb_->GetVisible());
   horiz_sb->set_controller(this);
-  RemoveChildViewT(horiz_sb_.get());
+  RemoveChildViewT(horiz_sb_.ExtractAsDangling());
   horiz_sb_ = AddChildView(std::move(horiz_sb));
   return horiz_sb_;
 }
@@ -554,7 +571,7 @@ ScrollBar* ScrollView::SetVerticalScrollBar(
   DCHECK(vert_sb);
   vert_sb->SetVisible(vert_sb_->GetVisible());
   vert_sb->set_controller(this);
-  RemoveChildViewT(vert_sb_.get());
+  RemoveChildViewT(vert_sb_.ExtractAsDangling());
   vert_sb_ = AddChildView(std::move(vert_sb));
   return vert_sb_;
 }
@@ -598,7 +615,7 @@ int ScrollView::GetHeightForWidth(int width) const {
   width = std::max(0, width - insets.width());
   int height = contents_ ? contents_->GetHeightForWidth(width) + insets.height()
                          : insets.height();
-  return base::clamp(height, min_height_, max_height_);
+  return std::clamp(height, min_height_, max_height_);
 }
 
 void ScrollView::Layout() {
@@ -1006,21 +1023,22 @@ void ScrollView::UpdateViewportLayerForClipping() {
     contents_viewport_->DestroyLayer();
 }
 
-void ScrollView::SetHeaderOrContents(View* parent,
-                                     std::unique_ptr<View> new_view,
-                                     View** member) {
-  if (*member)
-    parent->RemoveChildViewT(*member);
-  if (new_view.get())
-    *member = parent->AddChildViewAt(std::move(new_view), 0);
-  else
-    *member = nullptr;
+View* ScrollView::ReplaceChildView(View* parent,
+                                   raw_ptr<View>::DanglingType old_view,
+                                   std::unique_ptr<View> new_view) {
+  if (old_view) {
+    parent->RemoveChildViewT(old_view);
+  }
+  View* result = nullptr;
+  if (new_view.get()) {
+    result = parent->AddChildViewAt(std::move(new_view), 0);
+  }
   InvalidateLayout();
+  return result;
 }
 
 void ScrollView::ScrollContentsRegionToBeVisible(const gfx::Rect& rect) {
-  if (!contents_ ||
-      (!IsHorizontalScrollEnabled() && !IsVerticalScrollEnabled())) {
+  if (!contents_) {
     return;
   }
 
@@ -1033,8 +1051,8 @@ void ScrollView::ScrollContentsRegionToBeVisible(const gfx::Rect& rect) {
   const int contents_max_y =
       std::max(contents_viewport_->height(), contents_->height());
 
-  int x = base::clamp(contents_region.x(), 0, contents_max_x);
-  int y = base::clamp(contents_region.y(), 0, contents_max_y);
+  int x = std::clamp(contents_region.x(), 0, contents_max_x);
+  int y = std::clamp(contents_region.y(), 0, contents_max_y);
 
   // Figure out how far and down the rectangle will go taking width
   // and height into account.  This will be "clipped" by the viewport.

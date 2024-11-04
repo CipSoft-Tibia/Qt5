@@ -7,14 +7,14 @@ Current builders include:
 
 | Name                   | Arch   | OS                     | Toolchain | Build   | Notes                  |
 |------------------------|--------|------------------------|-----------|---------|------------------------|
-| linux64_debug          | x86-64 | Ubuntu Linux 18.04     | clang     | debug   | ASAN enabled           |
+| linux64_debug          | x86-64 | Ubuntu Linux 20.04     | clang     | debug   | ASAN enabled           |
 | linux_arm64_debug      | arm64  | Ubuntu Linux 20.04 [*] | clang     | debug   |                        |
-| linux64_gcc_debug      | x86-64 | Ubuntu Linux 18.04     | gcc-7     | debug   |                        |
-| linux64_tsan           | x86-64 | Ubuntu Linux 18.04     | clang     | release | TSAN enabled           |
-| linux64_coverage_debug | x86-64 | Ubuntu Linux 18.04     | clang     | debug   | used for code coverage |
-| linux_arm64_cast_debug | arm64  | Ubuntu Linux 18.04     | clang     | debug   | Builds cast standalone |
+| linux64_gcc_debug      | x86-64 | Ubuntu Linux 20.04     | gcc-9     | debug   |                        |
+| linux64_tsan           | x86-64 | Ubuntu Linux 20.04     | clang     | release | TSAN enabled           |
+| linux64_coverage_debug | x86-64 | Ubuntu Linux 20.04     | clang     | debug   | used for code coverage |
+| linux_arm64_cast_debug | arm64  | Ubuntu Linux 20.04 [*] | clang     | debug   | Builds cast standalone |
 | mac_debug              | x86-64 | Mac OS X/Xcode         | clang     | debug   |                        |
-| chromium_linux64_debug | x86-64 | Ubuntu Linux 18.04     | clang     | debug   | built with chromium    |
+| chromium_linux64_debug | x86-64 | Ubuntu Linux 20.04     | clang     | debug   | built with chromium    |
 | chromium_mac_debug     | x86-64 | Mac OS X 10.15         | clang     | debug   | built with chromium    |
 <br />
 

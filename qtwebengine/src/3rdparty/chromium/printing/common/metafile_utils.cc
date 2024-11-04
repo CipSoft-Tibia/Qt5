@@ -12,7 +12,8 @@
 #include "third_party/skia/include/core/SkPicture.h"
 #include "third_party/skia/include/core/SkPictureRecorder.h"
 #include "third_party/skia/include/core/SkStream.h"
-#include "third_party/skia/include/core/SkTime.h"
+#include "third_party/skia/include/core/SkString.h"
+#include "third_party/skia/include/core/SkTypeface.h"
 #include "third_party/skia/include/docs/SkPDFDocument.h"
 #include "ui/accessibility/ax_node.h"
 #include "ui/accessibility/ax_role_properties.h"
@@ -20,8 +21,6 @@
 #include "ui/accessibility/ax_tree_update.h"
 
 namespace {
-
-#if BUILDFLAG(ENABLE_TAGGED_PDF)
 
 // Table 333 in PDF 32000-1:2008 spec, section 14.8.4.2
 const char kPDFStructureTypeDocument[] = "Document";
@@ -62,12 +61,10 @@ SkString GetHeadingStructureType(int heading_level) {
   return SkString(kPDFStructureTypeHeading);
 }
 
-#endif  // BUILDFLAG(ENABLE_TAGGED_PDF)
-
-SkTime::DateTime TimeToSkTime(base::Time time) {
+SkPDF::DateTime TimeToSkTime(base::Time time) {
   base::Time::Exploded exploded;
   time.UTCExplode(&exploded);
-  SkTime::DateTime skdate;
+  SkPDF::DateTime skdate;
   skdate.fTimeZoneMinutes = 0;
   skdate.fYear = exploded.year;
   skdate.fMonth = exploded.month;
@@ -93,7 +90,6 @@ sk_sp<SkPicture> GetEmptyPicture() {
 // have enough data to build a valid tree.
 bool RecursiveBuildStructureTree(const ui::AXNode* ax_node,
                                  SkPDF::StructureElementNode* tag) {
-#if BUILDFLAG(ENABLE_TAGGED_PDF)
   bool valid = false;
 
   tag->fNodeId = ax_node->GetIntAttribute(ax::mojom::IntAttribute::kDOMNodeId);
@@ -210,9 +206,6 @@ bool RecursiveBuildStructureTree(const ui::AXNode* ax_node,
   }
 
   return valid;
-#else  // BUILDFLAG(ENABLE_TAGGED_PDF)
-  return false;
-#endif
 }
 
 }  // namespace
@@ -223,7 +216,7 @@ sk_sp<SkDocument> MakePdfDocument(base::StringPiece creator,
                                   const ui::AXTreeUpdate& accessibility_tree,
                                   SkWStream* stream) {
   SkPDF::Metadata metadata;
-  SkTime::DateTime now = TimeToSkTime(base::Time::Now());
+  SkPDF::DateTime now = TimeToSkTime(base::Time::Now());
   metadata.fCreation = now;
   metadata.fModified = now;
   // TODO(crbug.com/691162): Switch to SkString's string_view constructor when
@@ -276,7 +269,7 @@ sk_sp<SkPicture> DeserializeOopPicture(const void* data,
 
 sk_sp<SkData> SerializeOopTypeface(SkTypeface* typeface, void* ctx) {
   auto* context = reinterpret_cast<TypefaceSerializationContext*>(ctx);
-  SkFontID typeface_id = typeface->uniqueID();
+  SkTypefaceID typeface_id = typeface->uniqueID();
   bool data_included = context->insert(typeface_id).second;
 
   // Need the typeface ID to identify the desired typeface.  Include an
@@ -300,7 +293,7 @@ sk_sp<SkTypeface> DeserializeOopTypeface(const void* data,
     return nullptr;
   }
 
-  SkFontID id;
+  SkTypefaceID id;
   if (!stream->readU32(&id)) {
     return nullptr;
   }

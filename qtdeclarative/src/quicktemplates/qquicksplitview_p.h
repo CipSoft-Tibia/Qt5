@@ -18,6 +18,8 @@
 #include <QtQuickTemplates2/private/qquickcontainer_p.h>
 #include <QtQml/qqmllist.h>
 
+QT_REQUIRE_CONFIG(quicktemplates2_container);
+
 QT_BEGIN_NAMESPACE
 
 class QQuickSplitViewPrivate;
@@ -184,9 +186,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickSplitView)
-
-QML_DECLARE_TYPE(QQuickSplitHandleAttached)
 
 #endif // QQUICKSPLITVIEW_P_H

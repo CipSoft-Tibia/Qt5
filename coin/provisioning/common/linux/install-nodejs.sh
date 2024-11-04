@@ -25,7 +25,7 @@ case "$uname_m" in
     *) fatal "Unknown architecture in uname: $uname_m" 43 ;;
 esac
 
-internalUrl="http://ci-files01-hki.intra.qt.io/input/nodejs/$pkgname"
+internalUrl="http://ci-files01-hki.ci.qt.io/input/nodejs/$pkgname"
 externalUrl="https://nodejs.org/dist/v$version/$pkgname"
 
 targetFile="$HOME/$pkgname"

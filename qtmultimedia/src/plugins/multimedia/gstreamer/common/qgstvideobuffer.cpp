@@ -12,7 +12,7 @@
 #include <gst/video/gstvideometa.h>
 #include <gst/pbutils/gstpluginsbaseversion.h>
 
-#include "qgstutils_p.h"
+#include <common/qgstutils_p.h>
 
 #if QT_CONFIG(gstreamer_gl)
 #  include <QtGui/rhi/qrhi.h>
@@ -24,10 +24,12 @@
 #  include <gst/gl/gstglmemory.h>
 #  include <gst/gl/gstglsyncmeta.h>
 
-#  include <EGL/egl.h>
-#  include <EGL/eglext.h>
+#  if QT_CONFIG(gstreamer_gl_egl)
+#    include <EGL/egl.h>
+#    include <EGL/eglext.h>
+#  endif
 
-#  if QT_CONFIG(linux_dmabuf)
+#  if QT_CONFIG(gstreamer_gl_egl) && QT_CONFIG(linux_dmabuf)
 #    include <gst/allocators/gstdmabuf.h>
 #  endif
 #endif
@@ -51,39 +53,33 @@ QT_BEGIN_NAMESPACE
 #define DRM_FORMAT_GR1616       fourcc_code('G', 'R', '3', '2') /* [31:0] G:R 16:16 little endian */
 #define DRM_FORMAT_BGRA1010102  fourcc_code('B', 'A', '3', '0') /* [31:0] B:G:R:A 10:10:10:2 little endian */
 
-QGstVideoBuffer::QGstVideoBuffer(GstBuffer *buffer, const GstVideoInfo &info, QGstreamerVideoSink *sink,
-                                 const QVideoFrameFormat &frameFormat,
+QGstVideoBuffer::QGstVideoBuffer(QGstBufferHandle buffer, const GstVideoInfo &info,
+                                 QGstreamerVideoSink *sink, const QVideoFrameFormat &frameFormat,
                                  QGstCaps::MemoryFormat format)
-    : QAbstractVideoBuffer((sink && sink->rhi() && format != QGstCaps::CpuMemory) ?
-                            QVideoFrame::RhiTextureHandle : QVideoFrame::NoHandle, sink ? sink->rhi() : nullptr)
-    , memoryFormat(format)
-    , m_frameFormat(frameFormat)
-    , m_rhi(sink ? sink->rhi() : nullptr)
-    , m_videoInfo(info)
-    , m_buffer(buffer)
+    : QAbstractVideoBuffer((sink && sink->rhi() && format != QGstCaps::CpuMemory)
+                                   ? QVideoFrame::RhiTextureHandle
+                                   : QVideoFrame::NoHandle,
+                           sink ? sink->rhi() : nullptr),
+      memoryFormat(format),
+      m_frameFormat(frameFormat),
+      m_rhi(sink ? sink->rhi() : nullptr),
+      m_videoInfo(info),
+      m_buffer(std::move(buffer))
 {
-    gst_buffer_ref(m_buffer);
+#if QT_CONFIG(gstreamer_gl_egl)
     if (sink) {
         eglDisplay =  sink->eglDisplay();
         eglImageTargetTexture2D = sink->eglImageTargetTexture2D();
     }
-
-#if !QT_CONFIG(gstreamer_gl)
-    Q_UNUSED(memoryFormat);
 #endif
+    Q_UNUSED(memoryFormat);
+    Q_UNUSED(eglDisplay);
+    Q_UNUSED(eglImageTargetTexture2D);
 }
 
 QGstVideoBuffer::~QGstVideoBuffer()
 {
     unmap();
-
-    gst_buffer_unref(m_buffer);
-}
-
-
-QVideoFrame::MapMode QGstVideoBuffer::mapMode() const
-{
-    return m_mode;
 }
 
 QAbstractVideoBuffer::MapData QGstVideoBuffer::map(QVideoFrame::MapMode mode)
@@ -96,7 +92,7 @@ QAbstractVideoBuffer::MapData QGstVideoBuffer::map(QVideoFrame::MapMode mode)
         return mapData;
 
     if (m_videoInfo.finfo->n_planes == 0) {         // Encoded
-        if (gst_buffer_map(m_buffer, &m_frame.map[0], flags)) {
+        if (gst_buffer_map(m_buffer.get(), &m_frame.map[0], flags)) {
             mapData.nPlanes = 1;
             mapData.bytesPerLine[0] = -1;
             mapData.size[0] = m_frame.map[0].size;
@@ -104,7 +100,7 @@ QAbstractVideoBuffer::MapData QGstVideoBuffer::map(QVideoFrame::MapMode mode)
 
             m_mode = mode;
         }
-    } else if (gst_video_frame_map(&m_frame, &m_videoInfo, m_buffer, flags)) {
+    } else if (gst_video_frame_map(&m_frame, &m_videoInfo, m_buffer.get(), flags)) {
         mapData.nPlanes = GST_VIDEO_FRAME_N_PLANES(&m_frame);
 
         for (guint i = 0; i < GST_VIDEO_FRAME_N_PLANES(&m_frame); ++i) {
@@ -122,14 +118,14 @@ void QGstVideoBuffer::unmap()
 {
     if (m_mode != QVideoFrame::NotMapped) {
         if (m_videoInfo.finfo->n_planes == 0)
-            gst_buffer_unmap(m_buffer, &m_frame.map[0]);
+            gst_buffer_unmap(m_buffer.get(), &m_frame.map[0]);
         else
             gst_video_frame_unmap(&m_frame);
     }
     m_mode = QVideoFrame::NotMapped;
 }
 
-#if QT_CONFIG(gstreamer_gl) && QT_CONFIG(linux_dmabuf)
+#if QT_CONFIG(gstreamer_gl_egl) && QT_CONFIG(linux_dmabuf)
 static int
 fourccFromVideoInfo(const GstVideoInfo * info, int plane)
 {
@@ -220,7 +216,7 @@ struct GlTextures
 {
     uint count = 0;
     bool owned = false;
-    std::array<guint32, QVideoTextureHelper::TextureDescription::maxPlanes> names;
+    std::array<guint32, QVideoTextureHelper::TextureDescription::maxPlanes> names{};
 };
 
 class QGstQVideoFrameTextures : public QVideoFrameTextures
@@ -258,9 +254,10 @@ private:
     std::unique_ptr<QRhiTexture> m_textures[QVideoTextureHelper::TextureDescription::maxPlanes];
 };
 
-
-static GlTextures mapFromGlTexture(GstBuffer *buffer, GstVideoFrame &frame, GstVideoInfo &videoInfo)
+static GlTextures mapFromGlTexture(const QGstBufferHandle &bufferHandle, GstVideoFrame &frame,
+                                   GstVideoInfo &videoInfo)
 {
+    GstBuffer *buffer = bufferHandle.get();
     auto *mem = GST_GL_BASE_MEMORY_CAST(gst_buffer_peek_memory(buffer, 0));
     if (!mem)
         return {};
@@ -292,11 +289,13 @@ static GlTextures mapFromGlTexture(GstBuffer *buffer, GstVideoFrame &frame, GstV
     return textures;
 }
 
-#if GST_GL_HAVE_PLATFORM_EGL && QT_CONFIG(linux_dmabuf)
-static GlTextures mapFromDmaBuffer(QRhi *rhi, GstBuffer *buffer, GstVideoFrame &frame,
-                                   GstVideoInfo &videoInfo, Qt::HANDLE eglDisplay,
-                                   QFunctionPointer eglImageTargetTexture2D)
+#  if QT_CONFIG(gstreamer_gl_egl) && QT_CONFIG(linux_dmabuf)
+static GlTextures mapFromDmaBuffer(QRhi *rhi, const QGstBufferHandle &bufferHandle,
+                                   GstVideoFrame &frame, GstVideoInfo &videoInfo,
+                                   Qt::HANDLE eglDisplay, QFunctionPointer eglImageTargetTexture2D)
 {
+    GstBuffer *buffer = bufferHandle.get();
+
     Q_ASSERT(gst_is_dmabuf_memory(gst_buffer_peek_memory(buffer, 0)));
     Q_ASSERT(eglDisplay);
     Q_ASSERT(eglImageTargetTexture2D);
@@ -377,14 +376,15 @@ std::unique_ptr<QVideoFrameTextures> QGstVideoBuffer::mapTextures(QRhi *rhi)
 
 #if QT_CONFIG(gstreamer_gl)
     GlTextures textures = {};
-    if (memoryFormat == QGstCaps::GLTexture) {
+    if (memoryFormat == QGstCaps::GLTexture)
         textures = mapFromGlTexture(m_buffer, m_frame, m_videoInfo);
-    }
-#if GST_GL_HAVE_PLATFORM_EGL && QT_CONFIG(linux_dmabuf)
-    else if (memoryFormat == QGstCaps::DMABuf) {
-        textures = mapFromDmaBuffer(m_rhi, m_buffer, m_frame, m_videoInfo, eglDisplay, eglImageTargetTexture2D);
-    }
-#endif
+
+#  if QT_CONFIG(gstreamer_gl_egl) && QT_CONFIG(linux_dmabuf)
+    else if (memoryFormat == QGstCaps::DMABuf)
+        textures = mapFromDmaBuffer(m_rhi, m_buffer, m_frame, m_videoInfo, eglDisplay,
+                                    eglImageTargetTexture2D);
+
+#  endif
     if (textures.count > 0)
         return std::make_unique<QGstQVideoFrameTextures>(rhi, QSize{m_videoInfo.width, m_videoInfo.height},
                                                          m_frameFormat.pixelFormat(), textures);

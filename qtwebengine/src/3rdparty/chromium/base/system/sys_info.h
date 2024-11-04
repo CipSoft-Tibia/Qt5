@@ -14,8 +14,10 @@
 #include "base/base_export.h"
 #include "base/functional/callback_forward.h"
 #include "base/gtest_prod_util.h"
+#include "base/metrics/field_trial_params.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 #if BUILDFLAG(IS_MAC)
 #include "base/feature_list.h"
@@ -40,6 +42,10 @@ namespace debug {
 FORWARD_DECLARE_TEST(SystemMetricsTest, ParseMeminfo);
 }
 
+namespace test {
+class ScopedAmountOfPhysicalMemoryOverride;
+}
+
 class FilePath;
 struct SystemMemoryInfoKB;
 
@@ -48,7 +54,7 @@ class BASE_EXPORT SysInfo {
   // Returns the number of processors/cores available for the current
   // application. This is typically the number of logical cores installed on the
   // system, but could instead be the number of physical cores when
-  // SetIsCpuSecurityMitigationsEnabled() has been invoked to indicate that CPU
+  // SetCpuSecurityMitigationsEnabled() has been invoked to indicate that CPU
   // security mitigations are enabled on Mac.
   static int NumberOfProcessors();
 
@@ -129,9 +135,10 @@ class BASE_EXPORT SysInfo {
 
   // Retrieves detailed numeric values for the OS version.
   // DON'T USE THIS ON THE MAC OR WINDOWS to determine the current OS release
-  // for OS version-specific feature checks and workarounds. If you must use
-  // an OS version check instead of a feature check, use the base::mac::IsOS*
-  // family from base/mac/mac_util.h, or base::win::GetVersion from
+  // for OS version-specific feature checks and workarounds. If you must use an
+  // OS version check instead of a feature check, use
+  // base::mac::MacOSVersion()/MacOSMajorVersion() family from
+  // base/mac/mac_util.h, or base::win::GetVersion() from
   // base/win/windows_version.h.
   static void OperatingSystemVersionNumbers(int32_t* major_version,
                                             int32_t* minor_version,
@@ -150,10 +157,9 @@ class BASE_EXPORT SysInfo {
   // none of the above.
   static std::string ProcessCPUArchitecture();
 
-  // Avoid using this. Use base/cpu.h to get information about the CPU instead.
-  // http://crbug.com/148884
   // Returns the CPU model name of the system. If it can not be figured out,
   // an empty string is returned.
+  // More detailed info can be obtained from base/cpu.h.
   static std::string CPUModelName();
 
   // Return the smallest amount of memory (in bytes) which the VM system will
@@ -200,7 +206,8 @@ class BASE_EXPORT SysInfo {
   static std::string KernelVersion();
 
   // Crashes if running on Chrome OS non-test image. Use only for really
-  // sensitive and risky use cases.
+  // sensitive and risky use cases. Only works while running in verified mode,
+  // this check an easily be bypassed in dev mode.
   static void CrashIfChromeOSNonTestImage();
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
@@ -239,14 +246,28 @@ class BASE_EXPORT SysInfo {
   // On Desktop this returns true when memory <= 2GB.
   static bool IsLowEndDevice();
 
+  // The same as IsLowEndDevice() except on Android.
+  //
+  // On Android this returns:
+  //   true when IsLowEndDevice() returns true.
+  //   true when the physical memory of the device is 4gb or 6gb and
+  //             the feature: kPartialLowEndModeOnMidEndDevices() is enabled.
+  static bool IsLowEndDeviceOrPartialLowEndModeEnabled();
+  static bool IsLowEndDeviceOrPartialLowEndModeEnabled(
+      const FeatureParam<bool>& param_for_exclusion);
+
 #if BUILDFLAG(IS_MAC)
-  // Sets whether CPU security mitigations are enabled for the current process.
-  // This is used to control the behavior of NumberOfProcessors(), see comment
-  // on that method.
-  static void SetIsCpuSecurityMitigationsEnabled(bool is_enabled);
+  // Indicates that CPU security mitigations are enabled for the current
+  // process. This is used to control the behavior of NumberOfProcessors(), see
+  // comment on that method.
+  static void SetCpuSecurityMitigationsEnabled();
+
+  // Resets all state associated with CPU security mitigations.
+  static void ResetCpuSecurityMitigationsEnabledForTesting();
 #endif
 
  private:
+  friend class test::ScopedAmountOfPhysicalMemoryOverride;
   FRIEND_TEST_ALL_PREFIXES(SysInfoTest, AmountOfAvailablePhysicalMemory);
   FRIEND_TEST_ALL_PREFIXES(debug::SystemMetricsTest, ParseMeminfo);
 
@@ -261,6 +282,12 @@ class BASE_EXPORT SysInfo {
   static uint64_t AmountOfAvailablePhysicalMemory(
       const SystemMemoryInfoKB& meminfo);
 #endif
+
+  // Sets the amount of physical memory in MB for testing, thus allowing tests
+  // to run irrespective of the host machine's configuration.
+  static absl::optional<uint64_t> SetAmountOfPhysicalMemoryMbForTesting(
+      uint64_t amount_of_memory_mb);
+  static void ClearAmountOfPhysicalMemoryMbForTesting();
 };
 
 }  // namespace base

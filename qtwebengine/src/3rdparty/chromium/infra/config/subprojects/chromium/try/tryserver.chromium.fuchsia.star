@@ -5,7 +5,7 @@
 
 load("//lib/branches.star", "branches")
 load("//lib/builder_config.star", "builder_config")
-load("//lib/builders.star", "os", "reclient")
+load("//lib/builders.star", "os", "reclient", "siso")
 load("//lib/consoles.star", "consoles")
 load("//lib/try.star", "try_")
 load("//project.star", "settings")
@@ -23,6 +23,9 @@ try_.defaults.set(
     reclient_instance = reclient.instance.DEFAULT_UNTRUSTED,
     reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CQ,
     service_account = try_.DEFAULT_SERVICE_ACCOUNT,
+    siso_enable_cloud_profiler = True,
+    siso_enable_cloud_trace = True,
+    siso_project = siso.project.DEFAULT_UNTRUSTED,
 )
 
 consoles.list_view(
@@ -47,34 +50,31 @@ try_.builder(
 )
 
 try_.builder(
-    name = "fuchsia-arm64-chrome-rel",
-    mirrors = [
-        "ci/fuchsia-arm64-chrome-rel",
-    ],
-)
-
-try_.orchestrator_builder(
     name = "fuchsia-arm64-rel",
     branch_selector = branches.selector.FUCHSIA_BRANCHES,
     mirrors = [
         "ci/fuchsia-arm64-rel",
     ],
-    compilator = "fuchsia-arm64-rel-compilator",
     experiments = {
         "enable_weetbix_queries": 100,
         "weetbix.retry_weak_exonerations": 100,
         "weetbix.enable_weetbix_exonerations": 100,
     },
     main_list_view = "try",
-    tryjob = try_.job(),
-)
+    tryjob = try_.job(
+        location_filters = [
+            # Covers //fuchsia_web and //fuchsia changes, including
+            # SDK rolls.
+            ".*fuchsia.*",
 
-try_.compilator_builder(
-    name = "fuchsia-arm64-rel-compilator",
-    branch_selector = branches.selector.FUCHSIA_BRANCHES,
-    # TODO(crbug.com/1298110): Set to True once compilator bots are moved
-    ssd = None,
-    main_list_view = "try",
+            # In 04/2022 - 04/2023, there was an independent failure.
+            "media/.+",
+
+            # TODO(crbug.com/1377994): When arm64 graphics are supported on
+            # emulator, fuchsia-arm64-rel tests should be tested.
+            "components/viz/viz.gni",
+        ],
+    ),
 )
 
 try_.builder(
@@ -136,6 +136,7 @@ try_.orchestrator_builder(
         "ci/fuchsia-x64-cast-receiver-rel",
     ],
     compilator = "fuchsia-x64-cast-receiver-rel-compilator",
+    coverage_test_types = ["unit", "overall"],
     experiments = {
         "enable_weetbix_queries": 100,
         "weetbix.retry_weak_exonerations": 100,
@@ -143,6 +144,7 @@ try_.orchestrator_builder(
     },
     main_list_view = "try",
     tryjob = try_.job(),
+    use_clang_coverage = True,
 )
 
 try_.compilator_builder(
@@ -153,11 +155,35 @@ try_.compilator_builder(
     main_list_view = "try",
 )
 
-try_.builder(
-    name = "fuchsia-x64-chrome-rel",
-    mirrors = [
-        "ci/fuchsia-x64-chrome-rel",
-    ],
+try_.orchestrator_builder(
+    name = "fuchsia-x64-cast-receiver-siso-rel",
+    description_html = """\
+This builder shadows fuchsia-x64-cast-receiver-rel builder to compare between Siso builds and Ninja builds.<br/>
+This builder should be removed after migrating fuchsia-x64-cast-receiver-rel from Ninja to Siso. b/277863839
+""",
+    mirrors = builder_config.copy_from("try/fuchsia-x64-cast-receiver-rel"),
+    try_settings = builder_config.try_settings(
+        is_compile_only = True,
+    ),
+    compilator = "fuchsia-x64-cast-receiver-siso-rel-compilator",
+    coverage_test_types = ["unit", "overall"],
+    experiments = {
+        "enable_weetbix_queries": 100,
+        "weetbix.retry_weak_exonerations": 100,
+        "weetbix.enable_weetbix_exonerations": 100,
+    },
+    main_list_view = "try",
+    tryjob = try_.job(
+        experiment_percentage = 20,
+    ),
+    use_clang_coverage = True,
+)
+
+try_.compilator_builder(
+    name = "fuchsia-x64-cast-receiver-siso-rel-compilator",
+    ssd = True,
+    main_list_view = "try",
+    siso_enabled = True,
 )
 
 try_.builder(

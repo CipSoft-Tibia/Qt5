@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef TST_QDBUSCONNECTION_H
 #define TST_QDBUSCONNECTION_H
@@ -120,6 +120,7 @@ private slots:
     void callVirtualObject();
     void callVirtualObjectLocal();
     void pendingCallWhenDisconnected();
+    void connectionLimit();
 
     void emptyServerAddress();
 
@@ -164,7 +165,7 @@ public:
 
     bool registerObject()
     {
-        Q_FOREACH (const QString &name, m_connections) {
+        for (const QString &name : std::as_const(m_connections)) {
             if (!registerObject(QDBusConnection(name)))
                 return false;
         }
@@ -173,7 +174,7 @@ public:
 
     void unregisterObject()
     {
-        Q_FOREACH (const QString &name, m_connections) {
+        for (const QString &name : std::as_const(m_connections)) {
             QDBusConnection c(name);
             c.unregisterObject(m_path);
         }

@@ -149,17 +149,29 @@ void WebTestWebFrameWidgetImpl::ScheduleAnimationInternal(bool do_raster) {
   }
 }
 
+bool WebTestWebFrameWidgetImpl::RequestedMainFramePending() {
+  if (Thread::CompositorThread()) {
+    return WebFrameWidgetImpl::RequestedMainFramePending();
+  }
+  return animation_scheduled_;
+}
+
 void WebTestWebFrameWidgetImpl::StartDragging(
+    LocalFrame* source_frame,
     const WebDragData& data,
     DragOperationsMask mask,
     const SkBitmap& drag_image,
     const gfx::Vector2d& cursor_offset,
     const gfx::Rect& drag_obj_rect) {
-  doing_drag_and_drop_ = true;
-  GetTestRunner()->SetDragImage(drag_image);
+  if (!GetTestRunner()->AutomaticDragDropEnabled()) {
+    return WebFrameWidgetImpl::StartDragging(
+        source_frame, data, mask, drag_image, cursor_offset, drag_obj_rect);
+  }
 
   // When running a test, we need to fake a drag drop operation otherwise
   // Windows waits for real mouse events to know when the drag is over.
+  doing_drag_and_drop_ = true;
+  GetTestRunner()->SetDragImage(drag_image);
   event_sender_->DoDragDrop(data, mask);
 }
 
@@ -170,6 +182,7 @@ WebTestWebFrameWidgetImpl::GetFrameWidgetTestHelperForTesting() {
 
 void WebTestWebFrameWidgetImpl::Reset() {
   event_sender_->Reset();
+
   // Ends any synthetic gestures started in |event_sender_|.
   FlushInputProcessedCallback();
 

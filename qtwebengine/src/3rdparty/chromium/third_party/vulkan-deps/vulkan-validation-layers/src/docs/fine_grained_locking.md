@@ -191,7 +191,7 @@ The following objects have already been updated to meet the above construction r
 * VkPipelineLayout / PIPELINE_LAYOUT_STATE
 * VkDescriptorSetLayout / cvdescriptorset::DescriptorSetLayout
 * VkQueryPool / QUERY_POOL_STATE
-* VkShaderModule / SHADER_MODULE_STATE
+* VkShaderModule / SPIRV_MODULE_STATE
 * VkPipeline / Pipeline state
 
 Other state objects SHOULD make member data fields `const` if possible.
@@ -442,9 +442,7 @@ bool CoreChecks::PreCallValidateCmdSetScissorWithCount(VkCommandBuffer commandBu
     bool skip = false;
     // BUG: This helper method also called GetRead<>(), which will deadlock
     skip = ValidateExtendedDynamicState(commandBuffer, CMD_SETSCISSORWITHCOUNT, ...);
-    skip |= ForbidInheritedViewportScissor(commandBuffer, cb_state.get(),
-                                           "VUID-vkCmdSetScissorWithCount-commandBuffer-04820",
-                                           CMD_SETSCISSORWITHCOUNTEXT);
+    skip |= ForbidInheritedViewportScissor(cb_state.get(), "VUID-vkCmdSetScissorWithCount-commandBuffer-04820", error_obj.location);
 
     return skip;
 }

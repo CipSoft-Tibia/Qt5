@@ -8,6 +8,7 @@
 #include <limits>
 #include <utility>
 
+#include "base/debug/crash_logging.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/important_file_writer.h"
@@ -333,6 +334,14 @@ std::unique_ptr<HistogramBase> PersistentHistogramAllocator::AllocateHistogram(
     memcpy(histogram_data->name, name.c_str(), name.size() + 1);
     histogram_data->histogram_type = histogram_type;
     histogram_data->flags = flags | HistogramBase::kIsPersistent;
+
+    // |counts_ref| relies on being zero'd out initially. Even though this
+    // should always be the case, manually zero it out again here in case there
+    // was memory corruption (e.g. if the memory was mapped from a corrupted
+    // spare file).
+    // TODO(crbug.com/1432981): Remove this if this has no effect, and try to
+    // understand better why there is sometimes garbage written in this field.
+    histogram_data->counts_ref.store(0, std::memory_order_relaxed);
   }
 
   // Create the remaining metadata necessary for regular histograms.
@@ -456,6 +465,34 @@ void PersistentHistogramAllocator::MergeHistogramDeltaToStatisticsRecorder(
     return;
   }
 
+  // TODO(crbug/1432981): Remove this. Used to investigate unexpected failures.
+  HistogramType type = existing->GetHistogramType();
+  if ((type == HistogramType::HISTOGRAM ||
+       type == HistogramType::LINEAR_HISTOGRAM ||
+       type == HistogramType::BOOLEAN_HISTOGRAM ||
+       type == HistogramType::CUSTOM_HISTOGRAM) &&
+      histogram->GetHistogramType() == type) {
+    const BucketRanges* existing_buckets =
+        static_cast<Histogram*>(existing)->bucket_ranges();
+    const BucketRanges* histogram_buckets =
+        static_cast<Histogram*>(histogram)->bucket_ranges();
+    DCHECK(existing_buckets->HasValidChecksum() &&
+           histogram_buckets->HasValidChecksum());
+
+    // If the buckets do not match, then the call to AddSamples() below should
+    // trigger a NOTREACHED(). This may be indicative that a child process is
+    // emitting a histogram with different parameters than the browser
+    // process, for example.
+    if (!existing_buckets->Equals(histogram_buckets)) {
+#if !BUILDFLAG(IS_NACL)
+      SCOPED_CRASH_KEY_STRING256("PersistentHistogramAllocator", "histogram",
+                                 existing->histogram_name());
+#endif  // !BUILDFLAG(IS_NACL)
+      existing->AddSamples(*histogram->SnapshotDelta());
+      return;
+    }
+  }
+
   // Merge the delta from the passed object to the one in the SR.
   existing->AddSamples(*histogram->SnapshotDelta());
 }
@@ -576,9 +613,9 @@ std::unique_ptr<HistogramBase> PersistentHistogramAllocator::CreateHistogram(
   // it is needed, memory will be allocated from the persistent segment and
   // a reference to it stored at the passed address. Other threads can then
   // notice the valid reference and access the same data.
-  DelayedPersistentAllocation counts_data(
-      memory_allocator_.get(), &histogram_data_ptr->counts_ref,
-      kTypeIdCountsArray, counts_bytes, false);
+  DelayedPersistentAllocation counts_data(memory_allocator_.get(),
+                                          &histogram_data_ptr->counts_ref,
+                                          kTypeIdCountsArray, counts_bytes);
 
   // A second delayed allocations is defined using the same reference storage
   // location as the first so the allocation of one will automatically be found
@@ -586,8 +623,7 @@ std::unique_ptr<HistogramBase> PersistentHistogramAllocator::CreateHistogram(
   // and the second half is for "logged counts".
   DelayedPersistentAllocation logged_data(
       memory_allocator_.get(), &histogram_data_ptr->counts_ref,
-      kTypeIdCountsArray, counts_bytes, counts_bytes / 2,
-      /*make_iterable=*/false);
+      kTypeIdCountsArray, counts_bytes, counts_bytes / 2);
 
   // Create the right type of histogram.
   const char* name = histogram_data_ptr->name;
@@ -659,7 +695,7 @@ PersistentHistogramAllocator::GetOrCreateStatisticsRecorderHistogram(
     return nullptr;
 
   // Make sure there is no "serialization" flag set.
-  DCHECK_EQ(0, existing->flags() & HistogramBase::kIPCSerializationSourceFlag);
+  DCHECK(!existing->HasFlags(HistogramBase::kIPCSerializationSourceFlag));
   // Record the newly created histogram in the SR.
   return StatisticsRecorder::RegisterOrDeleteDuplicate(existing);
 }
@@ -675,7 +711,8 @@ void GlobalHistogramAllocator::CreateWithPersistentMemory(
     StringPiece name) {
   Set(WrapUnique(
       new GlobalHistogramAllocator(std::make_unique<PersistentMemoryAllocator>(
-          base, size, page_size, id, name, false))));
+          base, size, page_size, id, name,
+          PersistentMemoryAllocator::kReadWrite))));
 }
 
 // static
@@ -704,7 +741,8 @@ bool GlobalHistogramAllocator::CreateWithFile(const FilePath& file_path,
 
   std::unique_ptr<MemoryMappedFile> mmfile(new MemoryMappedFile());
   bool success = false;
-  if (file.created()) {
+  const bool file_created = file.created();
+  if (file_created) {
     success = mmfile->Initialize(std::move(file), {0, size},
                                  MemoryMappedFile::READ_WRITE_EXTEND);
   } else {
@@ -712,12 +750,19 @@ bool GlobalHistogramAllocator::CreateWithFile(const FilePath& file_path,
   }
   if (!success ||
       !FilePersistentMemoryAllocator::IsFileAcceptable(*mmfile, true)) {
+    if (file_created) {
+      // If we created the file, but it couldn't be used, delete it.
+      // This could happen if we were able to create a file of all-zeroes, but
+      // couldn't write to it due to lack of disk space.
+      base::DeleteFile(file_path);
+    }
     return false;
   }
 
   Set(WrapUnique(new GlobalHistogramAllocator(
-      std::make_unique<FilePersistentMemoryAllocator>(std::move(mmfile), 0, id,
-                                                      name, false))));
+      std::make_unique<FilePersistentMemoryAllocator>(
+          std::move(mmfile), 0, id, name,
+          PersistentMemoryAllocator::kReadWrite))));
   Get()->SetPersistentLocation(file_path);
   return true;
 }
@@ -917,6 +962,25 @@ const FilePath& GlobalHistogramAllocator::GetPersistentLocation() const {
   return persistent_location_;
 }
 
+bool GlobalHistogramAllocator::HasPersistentLocation() const {
+  return !persistent_location_.empty();
+}
+
+bool GlobalHistogramAllocator::MovePersistentFile(const FilePath& dir) {
+  DCHECK(HasPersistentLocation());
+
+  FilePath new_file_path = dir.Append(persistent_location_.BaseName());
+
+  // Change the location of the persistent file. This is fine to do even though
+  // the file is currently "opened" by this process.
+  if (!base::ReplaceFile(persistent_location_, new_file_path, nullptr)) {
+    return false;
+  }
+
+  SetPersistentLocation(new_file_path);
+  return true;
+}
+
 bool GlobalHistogramAllocator::WriteToPersistentLocation() {
 #if BUILDFLAG(IS_NACL)
   // NACL doesn't support file operations, including ImportantFileWriter.
@@ -924,7 +988,7 @@ bool GlobalHistogramAllocator::WriteToPersistentLocation() {
   return false;
 #else
   // Stop if no destination is set.
-  if (persistent_location_.empty()) {
+  if (!HasPersistentLocation()) {
     NOTREACHED() << "Could not write \"" << Name() << "\" persistent histograms"
                  << " to file because no location was set.";
     return false;
@@ -948,8 +1012,9 @@ void GlobalHistogramAllocator::DeletePersistentLocation() {
 #if BUILDFLAG(IS_NACL)
   NOTREACHED();
 #else
-  if (persistent_location_.empty())
+  if (!HasPersistentLocation()) {
     return;
+  }
 
   // Open (with delete) and then immediately close the file by going out of
   // scope. This is the only cross-platform safe way to delete a file that may

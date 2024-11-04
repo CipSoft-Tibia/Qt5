@@ -18,11 +18,12 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_platform_part.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/webui/ash/settings/search/search_tag_registry.h"
 #include "chrome/browser/ui/webui/metrics_handler.h"
 #include "chrome/browser/ui/webui/plural_string_handler.h"
 #include "chrome/browser/ui/webui/policy_indicator_localized_strings_provider.h"
 #include "chrome/browser/ui/webui/settings/ash/os_settings_features_util.h"
-#include "chrome/browser/ui/webui/settings/ash/search/search_tag_registry.h"
+#include "chrome/browser/ui/webui/settings/ash/os_settings_hats_handler.h"
 #include "chrome/browser/ui/webui/settings/ash/send_search_feedback_handler.h"
 #include "chrome/browser/ui/webui/settings/browser_lifetime_handler.h"
 #include "chrome/browser/ui/webui/webui_util.h"
@@ -145,6 +146,7 @@ void MainSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
       {"menuButtonLabel", IDS_SETTINGS_MENU_BUTTON_LABEL},
       {"moreActions", IDS_SETTINGS_MORE_ACTIONS},
       {"ok", IDS_OK},
+      {"opensInNewTab", IDS_OS_SETTINGS_OPENS_IN_NEW_TAB_A11Y_LABEL},
       {"restart", IDS_SETTINGS_RESTART},
       {"save", IDS_SAVE},
       {"searchResultBubbleText", IDS_SEARCH_RESULT_BUBBLE_TEXT},
@@ -174,14 +176,16 @@ void MainSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
 
   // This handler is for chrome://os-settings.
   html_source->AddBoolean("isOSSettings", true);
-  html_source->AddBoolean("searchFeedbackEnabled",
-                          ash::features::IsOsSettingsSearchFeedbackEnabled());
+
+  // Add app-wide feature flags
+  html_source->AddBoolean("isRevampWayfindingEnabled",
+                          ash::features::IsOsSettingsRevampWayfindingEnabled());
 
   html_source->AddBoolean("isGuest", IsGuestModeActive());
   html_source->AddBoolean(
       "isKioskModeActive",
       user_manager::UserManager::Get()->IsLoggedInAsAnyKioskApp());
-  html_source->AddBoolean("isChildAccount", profile()->IsChild());
+  html_source->AddBoolean("isChild", IsChildUser());
 
   // Add the System Web App resources for Settings.
   html_source->AddResourcePath("icon-192.png", IDR_SETTINGS_LOGO_192);
@@ -194,6 +198,10 @@ void MainSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
   html_source->AddInteger(
       "entryPointEnumSize",
       static_cast<int>(PersonalizationEntryPoint::kMaxValue) + 1);
+
+  html_source->AddString(
+      "chromeRefresh2023Attribute",
+      features::IsOsSettingsTestChromeRefresh() ? "chrome-refresh-2023" : "");
 
   AddSearchInSettingsStrings(html_source);
   AddChromeOSUserStrings(html_source);
@@ -212,6 +220,8 @@ void MainSection::AddHandlers(content::WebUI* web_ui) {
   web_ui->AddMessageHandler(CreatePluralStringHandler());
 
   web_ui->AddMessageHandler(std::make_unique<SendSearchFeedbackHandler>());
+
+  web_ui->AddMessageHandler(std::make_unique<OsSettingsHatsHandler>(profile()));
 }
 
 int MainSection::GetSectionNameMessageId() const {
@@ -229,9 +239,9 @@ mojom::SearchResultIcon MainSection::GetSectionIcon() const {
   return mojom::SearchResultIcon::kMinValue;
 }
 
-std::string MainSection::GetSectionPath() const {
+const char* MainSection::GetSectionPath() const {
   NOTIMPLEMENTED();
-  return std::string();
+  return "";
 }
 
 bool MainSection::LogMetric(mojom::Setting setting, base::Value& value) const {

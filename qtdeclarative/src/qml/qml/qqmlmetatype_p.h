@@ -30,85 +30,80 @@ class QQmlValueType;
 
 namespace QV4 { class ExecutableCompilationUnit; }
 
-struct CompositeMetaTypeIds
-{
-private:
-    int *refCount = nullptr;
-    void deref();
-    void ref()
-    {
-        Q_ASSERT(refCount);
-        ++*refCount;
-    }
-public:
-    CompositeMetaTypeIds() = default;
-    CompositeMetaTypeIds(QMetaType id, QMetaType listId) : id(id), listId(listId) {}
-    CompositeMetaTypeIds(const CompositeMetaTypeIds &other)
-        : refCount(other.refCount), id(other.id), listId(other.listId)
-    {
-        if (refCount)
-            ref();
-    }
-    CompositeMetaTypeIds(CompositeMetaTypeIds &&other)
-        : refCount(other.refCount), id(other.id), listId(other.listId)
-    {
-        other.refCount = nullptr;
-    }
-    CompositeMetaTypeIds &operator=(const CompositeMetaTypeIds &other)
-    {
-        if (refCount)
-            deref();
-        refCount = other.refCount;
-        id = other.id;
-        listId = other.listId;
-        if (refCount)
-            ref();
-        return *this;
-    }
-    CompositeMetaTypeIds &operator=(CompositeMetaTypeIds &&other)
-    {
-        if (refCount)
-            deref();
-        refCount = other.refCount;
-        id = other.id;
-        listId = other.listId;
-        other.refCount = nullptr;
-        return *this;
-    }
-    ~CompositeMetaTypeIds();
-    static CompositeMetaTypeIds fromCompositeName(const QByteArray &name);
-public:
-    QMetaType id;
-    QMetaType listId;
-    bool isValid() const { return id.isValid() && listId.isValid(); }
-};
-
 class Q_QML_PRIVATE_EXPORT QQmlMetaType
 {
-    friend struct CompositeMetaTypeIds;
     friend class QQmlDesignerMetaObject;
 
-    static CompositeMetaTypeIds registerInternalCompositeType(const QByteArray &className);
-    static void unregisterInternalCompositeType(const CompositeMetaTypeIds &typeIds);
-
 public:
+
     enum class RegistrationResult {
         Success,
         Failure,
         NoRegistrationFunction
     };
 
+    static QUrl inlineComponentUrl(const QUrl &baseUrl, const QString &name)
+    {
+        QUrl icUrl = baseUrl;
+        icUrl.setFragment(name);
+        return icUrl;
+    }
+
+    static bool equalBaseUrls(const QUrl &aUrl, const QUrl &bUrl)
+    {
+        // Everything but fragment has to match
+        return aUrl.port() == bUrl.port()
+                && aUrl.scheme() == bUrl.scheme()
+                && aUrl.userName() == bUrl.userName()
+                && aUrl.password() == bUrl.password()
+                && aUrl.host() == bUrl.host()
+                && aUrl.path() == bUrl.path()
+                && aUrl.query() == bUrl.query();
+    }
+
+    enum CompositeTypeLookupMode {
+        NonSingleton,
+        Singleton,
+    };
+
+    static QQmlType findCompositeType(
+        const QUrl &url, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
+        CompositeTypeLookupMode mode = NonSingleton);
+    static QQmlType findInlineComponentType(
+            const QUrl &url, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit);
+    static QQmlType findInlineComponentType(
+            const QUrl &baseUrl, const QString &name,
+            const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit)
+    {
+        return findInlineComponentType(inlineComponentUrl(baseUrl, name), compilationUnit);
+    }
+
+    static void unregisterInternalCompositeType(QMetaType metaType, QMetaType listMetaType);
     static QQmlType registerType(const QQmlPrivate::RegisterType &type);
     static QQmlType registerInterface(const QQmlPrivate::RegisterInterface &type);
-    static QQmlType registerSingletonType(const QQmlPrivate::RegisterSingletonType &type);
-    static QQmlType registerCompositeSingletonType(const QQmlPrivate::RegisterCompositeSingletonType &type);
+    static QQmlType registerSingletonType(
+            const QQmlPrivate::RegisterSingletonType &type,
+            const QQmlType::SingletonInstanceInfo::ConstPtr &siinfo);
+    static QQmlType registerCompositeSingletonType(
+            const QQmlPrivate::RegisterCompositeSingletonType &type,
+            const QQmlType::SingletonInstanceInfo::ConstPtr &siinfo);
     static QQmlType registerCompositeType(const QQmlPrivate::RegisterCompositeType &type);
     static RegistrationResult registerPluginTypes(QObject *instance, const QString &basePath,
                                                   const QString &uri, const QString &typeNamespace,
                                                   QTypeRevision version, QList<QQmlError> *errors);
+
     static QQmlType typeForUrl(const QString &urlString, const QHashedStringRef& typeName,
-                               bool isCompositeSingleton, QList<QQmlError> *errors,
+                               CompositeTypeLookupMode mode, QList<QQmlError> *errors,
                                QTypeRevision version = QTypeRevision());
+
+    static QQmlType fetchOrCreateInlineComponentTypeForUrl(const QUrl &url);
+    static QQmlType inlineComponentType(const QQmlType &outerType, const QString &name)
+    {
+        return outerType.isComposite()
+                ? fetchOrCreateInlineComponentTypeForUrl(
+                        inlineComponentUrl(outerType.sourceUrl(), name))
+                : QQmlType();
+    }
 
     static void unregisterType(int type);
 
@@ -143,8 +138,6 @@ public:
     static QQmlType qmlListType(QMetaType metaType);
 
     static QQmlType qmlType(const QUrl &unNormalizedUrl, bool includeNonFileImports = false);
-    static QQmlType inlineComponentType(const QQmlType &containingType, const QString &name);
-    static void associateInlineComponent(const QQmlType &containingType, const QString &name, const CompositeMetaTypeIds &metaTypeIds, QQmlType existingType);
 
     static QQmlPropertyCache::ConstPtr propertyCache(
             QObject *object, QTypeRevision version = QTypeRevision());
@@ -199,8 +192,6 @@ public:
     static void prependCachedUnitLookupFunction(QQmlPrivate::QmlUnitCacheLookupFunction handler);
     static void removeCachedUnitLookupFunction(QQmlPrivate::QmlUnitCacheLookupFunction handler);
 
-    static QRecursiveMutex *typeRegistrationLock();
-
     static QString prettyTypeName(const QObject *object);
 
     template <typename QQmlTypeContainer>
@@ -219,8 +210,9 @@ public:
     static void removeFromInlineComponents(
         InlineComponentContainer &container, const QQmlTypePrivate *reference)
     {
+        const QUrl referenceUrl = QQmlType(reference).sourceUrl();
         for (auto it = container.begin(), end = container.end(); it != end;) {
-            if (it.key().containingType == reference)
+            if (equalBaseUrls(it.key(), referenceUrl))
                 it = container.erase(it);
             else
                 ++it;
@@ -261,9 +253,14 @@ public:
     static const QMetaObject *metaObjectForValueType(QMetaType type);
 
     static QQmlPropertyCache::ConstPtr findPropertyCacheInCompositeTypes(QMetaType t);
-    static void registerInternalCompositeType(QV4::ExecutableCompilationUnit *compilationUnit);
-    static void unregisterInternalCompositeType(QV4::ExecutableCompilationUnit *compilationUnit);
-    static QV4::ExecutableCompilationUnit *obtainExecutableCompilationUnit(QMetaType type);
+    static void registerInternalCompositeType(
+        const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit);
+    static void unregisterInternalCompositeType(
+        const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit);
+    static int countInternalCompositeTypeSelfReferences(
+        const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit);
+    static QQmlRefPointer<QV4::ExecutableCompilationUnit> obtainExecutableCompilationUnit(
+        QMetaType type);
 };
 
 Q_DECLARE_TYPEINFO(QQmlMetaType, Q_RELOCATABLE_TYPE);

@@ -247,8 +247,11 @@ class MESSAGE_CENTER_EXPORT NotificationViewBase
 
   std::vector<views::LabelButton*> action_buttons() { return action_buttons_; }
 
+  views::ProgressBar* progress_bar_view() const { return progress_bar_view_; }
+
   NotificationInputContainer* inline_reply() { return inline_reply_; }
 
+  views::Label* status_view() { return status_view_; }
   const views::Label* status_view() const { return status_view_; }
   const std::vector<views::View*> item_views() const { return item_views_; }
 
@@ -261,7 +264,7 @@ class MESSAGE_CENTER_EXPORT NotificationViewBase
 
   virtual bool IsExpandable() const = 0;
 
-  virtual void SetExpandButtonEnabled(bool enabled);
+  virtual void SetExpandButtonVisibility(bool visible);
 
   // Returns the size of `icon_view_`.
   virtual gfx::Size GetIconViewSize() const = 0;
@@ -319,7 +322,7 @@ class MESSAGE_CENTER_EXPORT NotificationViewBase
   void CreateOrUpdateActionButtonViews(const Notification& notification);
 
   // View containing close and settings buttons
-  NotificationControlButtonsView* control_buttons_view_ = nullptr;
+  raw_ptr<NotificationControlButtonsView> control_buttons_view_ = nullptr;
 
   // Whether this notification is expanded or not.
   bool expanded_ = false;
@@ -340,30 +343,31 @@ class MESSAGE_CENTER_EXPORT NotificationViewBase
   // Describes whether this view is for an ash/ChromeOS notification (ash
   // notification UI uses AshNotificationView, which has customized layout,
   // header view, etc.).
-  bool for_ash_notification_ = true;
+  const bool for_ash_notification_;
 
   // Describes whether the view can display inline settings or not.
   bool inline_settings_enabled_ = false;
 
   // Container views directly attached to this view.
-  NotificationHeaderView* header_row_ = nullptr;
-  views::View* content_row_ = nullptr;
+  raw_ptr<NotificationHeaderView> header_row_ = nullptr;
+  raw_ptr<views::View> content_row_ = nullptr;
   raw_ptr<views::View> actions_row_ = nullptr;
-  views::View* settings_row_ = nullptr;
+  raw_ptr<views::View> settings_row_ = nullptr;
 
   // Containers for left and right side on |content_row_|
-  views::View* left_content_ = nullptr;
-  views::View* right_content_ = nullptr;
+  raw_ptr<views::View> left_content_ = nullptr;
+  raw_ptr<views::View> right_content_ = nullptr;
 
   // Views which are dynamically created inside view hierarchy.
   raw_ptr<views::Label, DanglingUntriaged> message_label_ = nullptr;
   raw_ptr<views::Label, DanglingUntriaged> status_view_ = nullptr;
-  raw_ptr<ProportionalImageView> icon_view_ = nullptr;
-  views::View* image_container_view_ = nullptr;
+  raw_ptr<ProportionalImageView, DanglingUntriaged> icon_view_ = nullptr;
+  raw_ptr<views::View> image_container_view_ = nullptr;
   std::vector<views::LabelButton*> action_buttons_;
   std::vector<views::View*> item_views_;
   raw_ptr<views::ProgressBar, DanglingUntriaged> progress_bar_view_ = nullptr;
-  raw_ptr<CompactTitleMessageView> compact_title_message_view_ = nullptr;
+  raw_ptr<CompactTitleMessageView, DanglingUntriaged>
+      compact_title_message_view_ = nullptr;
   raw_ptr<views::View> action_buttons_row_ = nullptr;
   raw_ptr<NotificationInputContainer> inline_reply_ = nullptr;
 

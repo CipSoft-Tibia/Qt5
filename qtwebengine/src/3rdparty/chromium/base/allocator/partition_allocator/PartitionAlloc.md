@@ -81,7 +81,7 @@ PartitionAlloc guarantees that returned pointers are aligned on
 64-bit systems, and 8B on 32-bit).
 
 PartitionAlloc also supports higher levels of alignment, that can be requested
-via `PartitionAlloc::AlignedAllocWithFlags()` or platform-specific APIs (such as
+via `PartitionAlloc::AlignedAlloc()` or platform-specific APIs (such as
 `posix_memalign()`). The requested
 alignment has to be a power of two. PartitionAlloc reserves the right to round
 up the requested size to the nearest power of two, greater than or equal to the
@@ -192,7 +192,7 @@ There is no need for a full span list. The lists are updated lazily. An empty,
 decommitted or full span may stay on the active list for some time, until
 `PartitionBucket::SetNewActiveSlotSpan()` encounters it.
 A decommitted span may stay on the empty list for some time,
-until `PartitionBucket<thread_safe>::SlowPathAlloc()` encounters it. However,
+until `PartitionBucket::SlowPathAlloc()` encounters it. However,
 the inaccuracy can't happen in the other direction, i.e. an active span can only
 be on the active list, and an empty span can only be on the active or empty
 list.

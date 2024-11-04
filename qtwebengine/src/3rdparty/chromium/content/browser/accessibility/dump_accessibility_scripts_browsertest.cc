@@ -75,12 +75,6 @@ class DumpAccessibilityScriptTest : public DumpAccessibilityTestBase {
       delete;
 
  protected:
-  void SetUpCommandLine(base::CommandLine* command_line) override {
-    // Enable MathMLCore for some MathML tests.
-    base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
-        switches::kEnableBlinkFeatures, "MathMLCore");
-  }
-
   std::vector<ui::AXPropertyFilter> DefaultFilters() const override {
     return {};
   }
@@ -92,7 +86,7 @@ class DumpAccessibilityScriptTest : public DumpAccessibilityTestBase {
     property_filters->push_back(AXPropertyFilter(filter, type));
   }
 
-  std::vector<std::string> Dump() override {
+  std::vector<std::string> Dump(ui::AXMode mode) override {
     std::vector<std::string> dump;
     std::unique_ptr<AXTreeFormatter> formatter(CreateFormatter());
     BrowserAccessibility* root = GetManager()->GetBrowserAccessibilityRoot();
@@ -129,8 +123,9 @@ class DumpAccessibilityScriptTest : public DumpAccessibilityTestBase {
         auto pair = CaptureEvents(
             base::BindOnce(&DumpAccessibilityScriptTest::EvaluateScript,
                            base::Unretained(this), formatter.get(), root,
-                           scenario_.script_instructions, start_index, index));
-        actual_contents = pair.first.GetString();
+                           scenario_.script_instructions, start_index, index),
+            ui::kAXModeComplete);
+        actual_contents = pair.first.ExtractString();
         for (auto event : pair.second) {
           if (base::StartsWith(event, wait_for)) {
             actual_contents += event + '\n';
@@ -166,14 +161,15 @@ class DumpAccessibilityScriptTest : public DumpAccessibilityTestBase {
     return dump;
   }
 
-  base::Value EvaluateScript(
+  EvalJsResult EvaluateScript(
       AXTreeFormatter* formatter,
       BrowserAccessibility* root,
       const std::vector<AXScriptInstruction>& instructions,
       size_t start_index,
       size_t end_index) {
-    return base::Value(
-        formatter->EvaluateScript(root, instructions, start_index, end_index));
+    return EvalJsResult(/*value=*/base::Value(formatter->EvaluateScript(
+                            root, instructions, start_index, end_index)),
+                        /*error=*/"");
   }
 
   RenderWidgetHost* GetWidgetHost() {
@@ -184,11 +180,13 @@ class DumpAccessibilityScriptTest : public DumpAccessibilityTestBase {
   }
 };
 
+typedef std::pair<ui::AXApiType::Type, bool> TestParamType;
+
 // Parameterize the tests so that each test-pass is run independently.
 struct TestPassToString {
   std::string operator()(
-      const ::testing::TestParamInfo<ui::AXApiType::Type>& i) const {
-    return std::string(i.param);
+      const ::testing::TestParamInfo<TestParamType>& i) const {
+    return std::string(i.param.first) + (i.param.second ? "1" : "0");
   }
 };
 
@@ -198,10 +196,12 @@ struct TestPassToString {
 
 #if BUILDFLAG(IS_MAC)
 
-INSTANTIATE_TEST_SUITE_P(All,
-                         DumpAccessibilityScriptTest,
-                         ::testing::Values(ui::AXApiType::kMac),
-                         TestPassToString());
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    DumpAccessibilityScriptTest,
+    ::testing::Values(TestParamType(ui::AXApiType::kMac, true),
+                      TestParamType(ui::AXApiType::kMac, false)),
+    TestPassToString());
 
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest, AXAccessKey) {
   RunTypedTest<kMacAttributes>("ax-access-key.html");
@@ -455,6 +455,23 @@ IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest,
   RunTypedTest<kMacAttributedString>("suggestion.html");
 }
 
+IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest, AttributedStringBold) {
+  RunTypedTest<kMacAttributedString>("bold.html");
+}
+
+IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest, AttributedStringItalic) {
+  RunTypedTest<kMacAttributedString>("italic.html");
+}
+
+IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest,
+                       AttributedStringStrikethrough) {
+  RunTypedTest<kMacAttributedString>("strikethrough.html");
+}
+
+IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest, AttributedStringUnderline) {
+  RunTypedTest<kMacAttributedString>("underline.html");
+}
+
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest, ChromeAXNodeId) {
   RunTypedTest<kMacAttributes>("chrome-ax-node-id.html");
 }
@@ -462,10 +479,11 @@ IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest, ChromeAXNodeId) {
 // Before macOS 11 aria-description must be exposed in AXHelp, and since macOS
 // 11, it should only be exposed in AXCustomContent.
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest, AriaDescription) {
-  if (base::mac::IsAtLeastOS11())
+  if (base::mac::MacOSMajorVersion() >= 11) {
     RunTypedTest<kMacDescription>("aria-description-in-axcustomcontent.html");
-  else
+  } else {
     RunTypedTest<kMacDescription>("aria-description-in-axhelp.html");
+  }
 }
 
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest, SelectAllTextarea) {
@@ -590,10 +608,12 @@ IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest, AXStringForRange) {
 
 #if BUILDFLAG(IS_WIN)
 
-INSTANTIATE_TEST_SUITE_P(All,
-                         DumpAccessibilityScriptTest,
-                         ::testing::Values(ui::AXApiType::kWinIA2),
-                         TestPassToString());
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    DumpAccessibilityScriptTest,
+    ::testing::Values(TestParamType(ui::AXApiType::kWinIA2, true),
+                      TestParamType(ui::AXApiType::kWinIA2, false)),
+    TestPassToString());
 
 // IAccessible
 

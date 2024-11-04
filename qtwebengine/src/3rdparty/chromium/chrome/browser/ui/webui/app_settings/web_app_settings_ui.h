@@ -8,7 +8,6 @@
 #include "base/scoped_observation.h"
 #include "chrome/browser/ui/webui/app_management/app_management_page_handler.h"
 #include "chrome/browser/ui/webui/app_management/app_management_page_handler_factory.h"
-#include "chrome/browser/web_applications/app_registrar_observer.h"
 #include "chrome/browser/web_applications/web_app_id.h"
 #include "chrome/browser/web_applications/web_app_install_manager.h"
 #include "chrome/browser/web_applications/web_app_install_manager_observer.h"
@@ -36,7 +35,9 @@ class WebAppSettingsUI : public ui::MojoWebUIController,
           receiver);
 
   // WebAppInstallManagerObserver:
-  void OnWebAppUninstalled(const web_app::AppId& app_id) override;
+  void OnWebAppUninstalled(
+      const web_app::AppId& app_id,
+      webapps::WebappUninstallSource uninstall_source) override;
   void OnWebAppInstallManagerDestroyed() override;
 
  private:

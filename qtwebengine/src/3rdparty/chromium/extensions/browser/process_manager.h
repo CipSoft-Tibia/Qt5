@@ -19,9 +19,11 @@
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "base/scoped_multi_source_observation.h"
+#include "base/uuid.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "content/public/browser/devtools_agent_host_observer.h"
 #include "content/public/browser/render_process_host_observer.h"
+#include "content/public/browser/service_worker_external_request_result.h"
 #include "content/public/browser/service_worker_external_request_timeout_type.h"
 #include "extensions/browser/activity.h"
 #include "extensions/browser/event_page_tracker.h"
@@ -59,6 +61,24 @@ class ProcessManager : public KeyedService,
                        public ExtensionHostObserver {
  public:
   using ExtensionHostSet = std::set<extensions::ExtensionHost*>;
+
+  // A struct representing an active service worker keepalive.
+  struct ServiceWorkerKeepaliveData {
+    // The worker ID associated with the keepalive.
+    WorkerId worker_id;
+    // The type of activity for the keepalive.
+    Activity::Type activity_type;
+    // Any "additional data" for the keepalive; for instance, this could be
+    // the API function or event name.
+    std::string extra_data;
+    // The timeout behavior for the given request.
+    content::ServiceWorkerExternalRequestTimeoutType timeout_type;
+    // The result of trying to start an external request with the service
+    // worker layer.
+    content::ServiceWorkerExternalRequestResult start_result;
+  };
+  using ServiceWorkerKeepaliveDataMap =
+      std::map<base::Uuid, ServiceWorkerKeepaliveData>;
 
   static ProcessManager* Get(content::BrowserContext* context);
 
@@ -162,7 +182,7 @@ class ProcessManager : public KeyedService,
   // The increment method returns the guid that needs to be passed to the
   // decrement method.
   // |timeout_type| is the SW's timeout behavior.
-  std::string IncrementServiceWorkerKeepaliveCount(
+  base::Uuid IncrementServiceWorkerKeepaliveCount(
       const WorkerId& worker_id,
       content::ServiceWorkerExternalRequestTimeoutType timeout_type,
       Activity::Type activity_type,
@@ -170,7 +190,7 @@ class ProcessManager : public KeyedService,
   // Decrements the ref-count of the specified worker with |worker_id| that
   // had its ref-count incremented with |request_uuid|.
   void DecrementServiceWorkerKeepaliveCount(const WorkerId& worker_id,
-                                            const std::string& request_uuid,
+                                            const base::Uuid& request_uuid,
                                             Activity::Type activity_type,
                                             const std::string& extra_data);
 
@@ -239,6 +259,18 @@ class ProcessManager : public KeyedService,
   // Returns all the Service Worker infos that is active for the extension with
   // |extension_id|.
   std::vector<WorkerId> GetServiceWorkersForExtension(
+      const ExtensionId& extension_id) const;
+
+  // Returns the context ID for the given `worker_id`, if `worker_id` is
+  // registered in the process manager. Otherwise, returns an empty base::Uuid.
+  base::Uuid GetContextIdForWorker(const WorkerId& worker_id) const;
+
+  // Returns the active service worker keepalives for the given `extension_id`.
+  // Note: This should be used for debugging and metrics purposes; callers
+  // should only interact with the service worker keepalives they themselves
+  // created via IncrementServiceWorkerKeepaliveCount().
+  std::vector<ServiceWorkerKeepaliveData>
+  GetServiceWorkerKeepaliveDataForRecords(
       const ExtensionId& extension_id) const;
 
   bool startup_background_hosts_created_for_test() const {
@@ -364,6 +396,9 @@ class ProcessManager : public KeyedService,
   // Contains all active extension Service Worker information for all
   // extensions.
   WorkerIdSet all_extension_workers_;
+  // Maps worker IDs to extension context IDs (as used in the runtime API) for
+  // running workers.
+  std::map<WorkerId, base::Uuid> worker_context_ids_;
 
   BackgroundPageDataMap background_page_data_;
 
@@ -401,6 +436,9 @@ class ProcessManager : public KeyedService,
   // Maps render render_process_id -> extension_id for all Service Workers this
   // ProcessManager manages.
   std::map<int, std::set<ExtensionId>> worker_process_to_extension_ids_;
+
+  // A map of the active service worker keepalives.
+  ServiceWorkerKeepaliveDataMap service_worker_keepalives_;
 
   // Must be last member, see doc on WeakPtrFactory.
   base::WeakPtrFactory<ProcessManager> weak_ptr_factory_{this};

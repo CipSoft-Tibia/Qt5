@@ -2,10 +2,10 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//ios/web/public/js_messaging/optimize_js.gni")
+import("//build/config/features.gni")
+import("//ios/web/public/js_messaging/optimize_ts.gni")
 
 source_set("browser") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "ios_translate_driver.h",
     "ios_translate_driver.mm",
@@ -43,10 +43,9 @@ source_set("browser") {
   ]
 }
 
-optimize_js("injected_js") {
+optimize_ts("injected_js") {
   visibility = [ ":browser" ]
-  primary_script = "resources/translate_ios.js"
-  sources = [ "resources/translate_ios.js" ]
+  sources = [ "resources/translate_ios.ts" ]
 
   deps = [
     "//ios/web/public/js_messaging:gcrweb",
@@ -55,7 +54,6 @@ optimize_js("injected_js") {
 }
 
 source_set("unit_tests") {
-  configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
   sources = [
     "ios_translate_driver_unittest.mm",
@@ -80,4 +78,12 @@ source_set("unit_tests") {
     "//ui/base",
     "//url",
   ]
+
+  # TODO(crbug.com/1427365): Test currently fails on iOS blink.
+  if (is_ios && use_blink) {
+    sources -= [
+      "js_translate_web_frame_manager_unittest.mm",
+      "translate_controller_unittest.mm",
+    ]
+  }
 }

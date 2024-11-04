@@ -297,8 +297,12 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
       gfx::HasExtension(extensions, "GL_ANGLE_memory_object_fuchsia");
   ext.b_GL_ANGLE_multi_draw =
       gfx::HasExtension(extensions, "GL_ANGLE_multi_draw");
+  ext.b_GL_ANGLE_polygon_mode =
+      gfx::HasExtension(extensions, "GL_ANGLE_polygon_mode");
   ext.b_GL_ANGLE_provoking_vertex =
       gfx::HasExtension(extensions, "GL_ANGLE_provoking_vertex");
+  ext.b_GL_ANGLE_renderability_validation =
+      gfx::HasExtension(extensions, "GL_ANGLE_renderability_validation");
   ext.b_GL_ANGLE_request_extension =
       gfx::HasExtension(extensions, "GL_ANGLE_request_extension");
   ext.b_GL_ANGLE_robust_client_memory =
@@ -307,6 +311,8 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
       gfx::HasExtension(extensions, "GL_ANGLE_robust_resource_initialization");
   ext.b_GL_ANGLE_semaphore_fuchsia =
       gfx::HasExtension(extensions, "GL_ANGLE_semaphore_fuchsia");
+  ext.b_GL_ANGLE_shader_pixel_local_storage =
+      gfx::HasExtension(extensions, "GL_ANGLE_shader_pixel_local_storage");
   ext.b_GL_ANGLE_texture_external_update =
       gfx::HasExtension(extensions, "GL_ANGLE_texture_external_update");
   ext.b_GL_ANGLE_translated_shader_source =
@@ -381,6 +387,8 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
       gfx::HasExtension(extensions, "GL_EXT_blend_func_extended");
   ext.b_GL_EXT_clear_texture =
       gfx::HasExtension(extensions, "GL_EXT_clear_texture");
+  ext.b_GL_EXT_clip_control =
+      gfx::HasExtension(extensions, "GL_EXT_clip_control");
   ext.b_GL_EXT_debug_marker =
       gfx::HasExtension(extensions, "GL_EXT_debug_marker");
   ext.b_GL_EXT_direct_state_access =
@@ -413,6 +421,8 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
       gfx::HasExtension(extensions, "GL_EXT_multisampled_render_to_texture");
   ext.b_GL_EXT_occlusion_query_boolean =
       gfx::HasExtension(extensions, "GL_EXT_occlusion_query_boolean");
+  ext.b_GL_EXT_polygon_offset_clamp =
+      gfx::HasExtension(extensions, "GL_EXT_polygon_offset_clamp");
   ext.b_GL_EXT_robustness = gfx::HasExtension(extensions, "GL_EXT_robustness");
   ext.b_GL_EXT_semaphore = gfx::HasExtension(extensions, "GL_EXT_semaphore");
   ext.b_GL_EXT_semaphore_fd =
@@ -483,6 +493,12 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
   if (ver->IsAtLeastGL(4u, 1u) || ver->IsAtLeastGLES(3u, 1u)) {
     fn.glActiveShaderProgramFn = reinterpret_cast<glActiveShaderProgramProc>(
         GetGLProcAddress("glActiveShaderProgram"));
+  }
+
+  if (ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glBeginPixelLocalStorageANGLEFn =
+        reinterpret_cast<glBeginPixelLocalStorageANGLEProc>(
+            GetGLProcAddress("glBeginPixelLocalStorageANGLE"));
   }
 
   if (!ver->is_es || ver->IsAtLeastGLES(3u, 0u)) {
@@ -732,6 +748,11 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
   if (ext.b_GL_APPLE_sync) {
     fn.glClientWaitSyncAPPLEFn = reinterpret_cast<glClientWaitSyncAPPLEProc>(
         GetGLProcAddress("glClientWaitSyncAPPLE"));
+  }
+
+  if (ext.b_GL_EXT_clip_control) {
+    fn.glClipControlEXTFn = reinterpret_cast<glClipControlEXTProc>(
+        GetGLProcAddress("glClipControlEXT"));
   }
 
   if (ver->IsAtLeastGL(3u, 0u) || ver->IsAtLeastGLES(3u, 2u)) {
@@ -1118,6 +1139,12 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
         reinterpret_cast<glEnableiOESProc>(GetGLProcAddress("glEnableiOES"));
   }
 
+  if (ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glEndPixelLocalStorageANGLEFn =
+        reinterpret_cast<glEndPixelLocalStorageANGLEProc>(
+            GetGLProcAddress("glEndPixelLocalStorageANGLE"));
+  }
+
   if (!ver->is_es || ver->IsAtLeastGLES(3u, 0u)) {
     fn.glEndQueryFn =
         reinterpret_cast<glEndQueryProc>(GetGLProcAddress("glEndQuery"));
@@ -1175,6 +1202,12 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
             GetGLProcAddress("glFlushMappedBufferRangeEXT"));
   }
 
+  if (ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glFramebufferMemorylessPixelLocalStorageANGLEFn =
+        reinterpret_cast<glFramebufferMemorylessPixelLocalStorageANGLEProc>(
+            GetGLProcAddress("glFramebufferMemorylessPixelLocalStorageANGLE"));
+  }
+
   if (ver->IsAtLeastGL(4u, 3u) || ver->IsAtLeastGLES(3u, 1u)) {
     fn.glFramebufferParameteriFn =
         reinterpret_cast<glFramebufferParameteriProc>(
@@ -1183,6 +1216,36 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
     fn.glFramebufferParameteriFn =
         reinterpret_cast<glFramebufferParameteriProc>(
             GetGLProcAddress("glFramebufferParameteriMESA"));
+  }
+
+  if (ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glFramebufferPixelLocalClearValuefvANGLEFn =
+        reinterpret_cast<glFramebufferPixelLocalClearValuefvANGLEProc>(
+            GetGLProcAddress("glFramebufferPixelLocalClearValuefvANGLE"));
+  }
+
+  if (ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glFramebufferPixelLocalClearValueivANGLEFn =
+        reinterpret_cast<glFramebufferPixelLocalClearValueivANGLEProc>(
+            GetGLProcAddress("glFramebufferPixelLocalClearValueivANGLE"));
+  }
+
+  if (ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glFramebufferPixelLocalClearValueuivANGLEFn =
+        reinterpret_cast<glFramebufferPixelLocalClearValueuivANGLEProc>(
+            GetGLProcAddress("glFramebufferPixelLocalClearValueuivANGLE"));
+  }
+
+  if (ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glFramebufferPixelLocalStorageInterruptANGLEFn =
+        reinterpret_cast<glFramebufferPixelLocalStorageInterruptANGLEProc>(
+            GetGLProcAddress("glFramebufferPixelLocalStorageInterruptANGLE"));
+  }
+
+  if (ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glFramebufferPixelLocalStorageRestoreANGLEFn =
+        reinterpret_cast<glFramebufferPixelLocalStorageRestoreANGLEProc>(
+            GetGLProcAddress("glFramebufferPixelLocalStorageRestoreANGLE"));
   }
 
   if (ver->IsAtLeastGL(3u, 0u) || ver->is_es) {
@@ -1225,6 +1288,12 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
     fn.glFramebufferTextureMultiviewOVRFn =
         reinterpret_cast<glFramebufferTextureMultiviewOVRProc>(
             GetGLProcAddress("glFramebufferTextureMultiviewOVR"));
+  }
+
+  if (ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glFramebufferTexturePixelLocalStorageANGLEFn =
+        reinterpret_cast<glFramebufferTexturePixelLocalStorageANGLEProc>(
+            GetGLProcAddress("glFramebufferTexturePixelLocalStorageANGLE"));
   }
 
   if (ver->IsAtLeastGL(3u, 0u) || ver->is_es) {
@@ -1432,6 +1501,38 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
     fn.glGetFramebufferParameterivRobustANGLEFn =
         reinterpret_cast<glGetFramebufferParameterivRobustANGLEProc>(
             GetGLProcAddress("glGetFramebufferParameterivRobustANGLE"));
+  }
+
+  if (ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glGetFramebufferPixelLocalStorageParameterfvANGLEFn =
+        reinterpret_cast<glGetFramebufferPixelLocalStorageParameterfvANGLEProc>(
+            GetGLProcAddress(
+                "glGetFramebufferPixelLocalStorageParameterfvANGLE"));
+  }
+
+  if (ext.b_GL_ANGLE_robust_client_memory ||
+      ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glGetFramebufferPixelLocalStorageParameterfvRobustANGLEFn =
+        reinterpret_cast<
+            glGetFramebufferPixelLocalStorageParameterfvRobustANGLEProc>(
+            GetGLProcAddress(
+                "glGetFramebufferPixelLocalStorageParameterfvRobustANGLE"));
+  }
+
+  if (ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glGetFramebufferPixelLocalStorageParameterivANGLEFn =
+        reinterpret_cast<glGetFramebufferPixelLocalStorageParameterivANGLEProc>(
+            GetGLProcAddress(
+                "glGetFramebufferPixelLocalStorageParameterivANGLE"));
+  }
+
+  if (ext.b_GL_ANGLE_robust_client_memory ||
+      ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glGetFramebufferPixelLocalStorageParameterivRobustANGLEFn =
+        reinterpret_cast<
+            glGetFramebufferPixelLocalStorageParameterivRobustANGLEProc>(
+            GetGLProcAddress(
+                "glGetFramebufferPixelLocalStorageParameterivRobustANGLE"));
   }
 
   if (ver->IsAtLeastGL(4u, 5u) || ver->IsAtLeastGLES(3u, 2u)) {
@@ -2243,6 +2344,12 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
             GetGLProcAddress("glPauseTransformFeedback"));
   }
 
+  if (ext.b_GL_ANGLE_shader_pixel_local_storage) {
+    fn.glPixelLocalStorageBarrierANGLEFn =
+        reinterpret_cast<glPixelLocalStorageBarrierANGLEProc>(
+            GetGLProcAddress("glPixelLocalStorageBarrierANGLE"));
+  }
+
   if (!ver->is_es) {
     fn.glPointParameteriFn = reinterpret_cast<glPointParameteriProc>(
         GetGLProcAddress("glPointParameteri"));
@@ -2251,6 +2358,17 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
   if (!ver->is_es) {
     fn.glPolygonModeFn =
         reinterpret_cast<glPolygonModeProc>(GetGLProcAddress("glPolygonMode"));
+  }
+
+  if (ext.b_GL_ANGLE_polygon_mode) {
+    fn.glPolygonModeANGLEFn = reinterpret_cast<glPolygonModeANGLEProc>(
+        GetGLProcAddress("glPolygonModeANGLE"));
+  }
+
+  if (ext.b_GL_EXT_polygon_offset_clamp) {
+    fn.glPolygonOffsetClampEXTFn =
+        reinterpret_cast<glPolygonOffsetClampEXTProc>(
+            GetGLProcAddress("glPolygonOffsetClampEXT"));
   }
 
   if (ver->IsAtLeastGL(4u, 3u) || ver->IsAtLeastGLES(3u, 2u)) {
@@ -3073,6 +3191,11 @@ void GLApiBase::glAttachShaderFn(GLuint program, GLuint shader) {
   driver_->fn.glAttachShaderFn(program, shader);
 }
 
+void GLApiBase::glBeginPixelLocalStorageANGLEFn(GLsizei n,
+                                                const GLenum* loadops) {
+  driver_->fn.glBeginPixelLocalStorageANGLEFn(n, loadops);
+}
+
 void GLApiBase::glBeginQueryFn(GLenum target, GLuint id) {
   driver_->fn.glBeginQueryFn(target, id);
 }
@@ -3341,6 +3464,10 @@ GLenum GLApiBase::glClientWaitSyncAPPLEFn(GLsync sync,
                                           GLbitfield flags,
                                           GLuint64 timeout) {
   return driver_->fn.glClientWaitSyncAPPLEFn(sync, flags, timeout);
+}
+
+void GLApiBase::glClipControlEXTFn(GLenum origin, GLenum depth) {
+  driver_->fn.glClipControlEXTFn(origin, depth);
 }
 
 void GLApiBase::glColorMaskFn(GLboolean red,
@@ -3860,6 +3987,11 @@ void GLApiBase::glEnableVertexAttribArrayFn(GLuint index) {
   driver_->fn.glEnableVertexAttribArrayFn(index);
 }
 
+void GLApiBase::glEndPixelLocalStorageANGLEFn(GLsizei n,
+                                              const GLenum* storeops) {
+  driver_->fn.glEndPixelLocalStorageANGLEFn(n, storeops);
+}
+
 void GLApiBase::glEndQueryFn(GLenum target) {
   driver_->fn.glEndQueryFn(target);
 }
@@ -3902,10 +4034,42 @@ void GLApiBase::glFlushMappedBufferRangeFn(GLenum target,
   driver_->fn.glFlushMappedBufferRangeFn(target, offset, length);
 }
 
+void GLApiBase::glFramebufferMemorylessPixelLocalStorageANGLEFn(
+    GLint plane,
+    GLenum internalformat) {
+  driver_->fn.glFramebufferMemorylessPixelLocalStorageANGLEFn(plane,
+                                                              internalformat);
+}
+
 void GLApiBase::glFramebufferParameteriFn(GLenum target,
                                           GLenum pname,
                                           GLint param) {
   driver_->fn.glFramebufferParameteriFn(target, pname, param);
+}
+
+void GLApiBase::glFramebufferPixelLocalClearValuefvANGLEFn(
+    GLint plane,
+    const GLfloat* value) {
+  driver_->fn.glFramebufferPixelLocalClearValuefvANGLEFn(plane, value);
+}
+
+void GLApiBase::glFramebufferPixelLocalClearValueivANGLEFn(GLint plane,
+                                                           const GLint* value) {
+  driver_->fn.glFramebufferPixelLocalClearValueivANGLEFn(plane, value);
+}
+
+void GLApiBase::glFramebufferPixelLocalClearValueuivANGLEFn(
+    GLint plane,
+    const GLuint* value) {
+  driver_->fn.glFramebufferPixelLocalClearValueuivANGLEFn(plane, value);
+}
+
+void GLApiBase::glFramebufferPixelLocalStorageInterruptANGLEFn() {
+  driver_->fn.glFramebufferPixelLocalStorageInterruptANGLEFn();
+}
+
+void GLApiBase::glFramebufferPixelLocalStorageRestoreANGLEFn() {
+  driver_->fn.glFramebufferPixelLocalStorageRestoreANGLEFn();
 }
 
 void GLApiBase::glFramebufferRenderbufferEXTFn(GLenum target,
@@ -3952,6 +4116,15 @@ void GLApiBase::glFramebufferTextureMultiviewOVRFn(GLenum target,
                                                    GLsizei numViews) {
   driver_->fn.glFramebufferTextureMultiviewOVRFn(
       target, attachment, texture, level, baseViewIndex, numViews);
+}
+
+void GLApiBase::glFramebufferTexturePixelLocalStorageANGLEFn(
+    GLint plane,
+    GLuint backingtexture,
+    GLint level,
+    GLint layer) {
+  driver_->fn.glFramebufferTexturePixelLocalStorageANGLEFn(
+      plane, backingtexture, level, layer);
 }
 
 void GLApiBase::glFrontFaceFn(GLenum mode) {
@@ -4213,6 +4386,42 @@ void GLApiBase::glGetFramebufferParameterivRobustANGLEFn(GLenum target,
                                                          GLint* params) {
   driver_->fn.glGetFramebufferParameterivRobustANGLEFn(target, pname, bufSize,
                                                        length, params);
+}
+
+void GLApiBase::glGetFramebufferPixelLocalStorageParameterfvANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLfloat* params) {
+  driver_->fn.glGetFramebufferPixelLocalStorageParameterfvANGLEFn(plane, pname,
+                                                                  params);
+}
+
+void GLApiBase::glGetFramebufferPixelLocalStorageParameterfvRobustANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLsizei bufSize,
+    GLsizei* length,
+    GLfloat* params) {
+  driver_->fn.glGetFramebufferPixelLocalStorageParameterfvRobustANGLEFn(
+      plane, pname, bufSize, length, params);
+}
+
+void GLApiBase::glGetFramebufferPixelLocalStorageParameterivANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLint* params) {
+  driver_->fn.glGetFramebufferPixelLocalStorageParameterivANGLEFn(plane, pname,
+                                                                  params);
+}
+
+void GLApiBase::glGetFramebufferPixelLocalStorageParameterivRobustANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLsizei bufSize,
+    GLsizei* length,
+    GLint* params) {
+  driver_->fn.glGetFramebufferPixelLocalStorageParameterivRobustANGLEFn(
+      plane, pname, bufSize, length, params);
 }
 
 GLenum GLApiBase::glGetGraphicsResetStatusARBFn(void) {
@@ -5165,6 +5374,10 @@ void GLApiBase::glPauseTransformFeedbackFn(void) {
   driver_->fn.glPauseTransformFeedbackFn();
 }
 
+void GLApiBase::glPixelLocalStorageBarrierANGLEFn() {
+  driver_->fn.glPixelLocalStorageBarrierANGLEFn();
+}
+
 void GLApiBase::glPixelStoreiFn(GLenum pname, GLint param) {
   driver_->fn.glPixelStoreiFn(pname, param);
 }
@@ -5177,8 +5390,18 @@ void GLApiBase::glPolygonModeFn(GLenum face, GLenum mode) {
   driver_->fn.glPolygonModeFn(face, mode);
 }
 
+void GLApiBase::glPolygonModeANGLEFn(GLenum face, GLenum mode) {
+  driver_->fn.glPolygonModeANGLEFn(face, mode);
+}
+
 void GLApiBase::glPolygonOffsetFn(GLfloat factor, GLfloat units) {
   driver_->fn.glPolygonOffsetFn(factor, units);
+}
+
+void GLApiBase::glPolygonOffsetClampEXTFn(GLfloat factor,
+                                          GLfloat units,
+                                          GLfloat clamp) {
+  driver_->fn.glPolygonOffsetClampEXTFn(factor, units, clamp);
 }
 
 void GLApiBase::glPopDebugGroupFn() {
@@ -6451,6 +6674,13 @@ void TraceGLApi::glAttachShaderFn(GLuint program, GLuint shader) {
   gl_api_->glAttachShaderFn(program, shader);
 }
 
+void TraceGLApi::glBeginPixelLocalStorageANGLEFn(GLsizei n,
+                                                 const GLenum* loadops) {
+  TRACE_EVENT_BINARY_EFFICIENT0("gpu",
+                                "TraceGLAPI::glBeginPixelLocalStorageANGLE");
+  gl_api_->glBeginPixelLocalStorageANGLEFn(n, loadops);
+}
+
 void TraceGLApi::glBeginQueryFn(GLenum target, GLuint id) {
   TRACE_EVENT_BINARY_EFFICIENT0("gpu", "TraceGLAPI::glBeginQuery");
   gl_api_->glBeginQueryFn(target, id);
@@ -6770,6 +7000,11 @@ GLenum TraceGLApi::glClientWaitSyncAPPLEFn(GLsync sync,
                                            GLuint64 timeout) {
   TRACE_EVENT_BINARY_EFFICIENT0("gpu", "TraceGLAPI::glClientWaitSyncAPPLE");
   return gl_api_->glClientWaitSyncAPPLEFn(sync, flags, timeout);
+}
+
+void TraceGLApi::glClipControlEXTFn(GLenum origin, GLenum depth) {
+  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "TraceGLAPI::glClipControlEXT");
+  gl_api_->glClipControlEXTFn(origin, depth);
 }
 
 void TraceGLApi::glColorMaskFn(GLboolean red,
@@ -7379,6 +7614,13 @@ void TraceGLApi::glEnableVertexAttribArrayFn(GLuint index) {
   gl_api_->glEnableVertexAttribArrayFn(index);
 }
 
+void TraceGLApi::glEndPixelLocalStorageANGLEFn(GLsizei n,
+                                               const GLenum* storeops) {
+  TRACE_EVENT_BINARY_EFFICIENT0("gpu",
+                                "TraceGLAPI::glEndPixelLocalStorageANGLE");
+  gl_api_->glEndPixelLocalStorageANGLEFn(n, storeops);
+}
+
 void TraceGLApi::glEndQueryFn(GLenum target) {
   TRACE_EVENT_BINARY_EFFICIENT0("gpu", "TraceGLAPI::glEndQuery");
   gl_api_->glEndQueryFn(target);
@@ -7431,11 +7673,56 @@ void TraceGLApi::glFlushMappedBufferRangeFn(GLenum target,
   gl_api_->glFlushMappedBufferRangeFn(target, offset, length);
 }
 
+void TraceGLApi::glFramebufferMemorylessPixelLocalStorageANGLEFn(
+    GLint plane,
+    GLenum internalformat) {
+  TRACE_EVENT_BINARY_EFFICIENT0(
+      "gpu", "TraceGLAPI::glFramebufferMemorylessPixelLocalStorageANGLE");
+  gl_api_->glFramebufferMemorylessPixelLocalStorageANGLEFn(plane,
+                                                           internalformat);
+}
+
 void TraceGLApi::glFramebufferParameteriFn(GLenum target,
                                            GLenum pname,
                                            GLint param) {
   TRACE_EVENT_BINARY_EFFICIENT0("gpu", "TraceGLAPI::glFramebufferParameteri");
   gl_api_->glFramebufferParameteriFn(target, pname, param);
+}
+
+void TraceGLApi::glFramebufferPixelLocalClearValuefvANGLEFn(
+    GLint plane,
+    const GLfloat* value) {
+  TRACE_EVENT_BINARY_EFFICIENT0(
+      "gpu", "TraceGLAPI::glFramebufferPixelLocalClearValuefvANGLE");
+  gl_api_->glFramebufferPixelLocalClearValuefvANGLEFn(plane, value);
+}
+
+void TraceGLApi::glFramebufferPixelLocalClearValueivANGLEFn(
+    GLint plane,
+    const GLint* value) {
+  TRACE_EVENT_BINARY_EFFICIENT0(
+      "gpu", "TraceGLAPI::glFramebufferPixelLocalClearValueivANGLE");
+  gl_api_->glFramebufferPixelLocalClearValueivANGLEFn(plane, value);
+}
+
+void TraceGLApi::glFramebufferPixelLocalClearValueuivANGLEFn(
+    GLint plane,
+    const GLuint* value) {
+  TRACE_EVENT_BINARY_EFFICIENT0(
+      "gpu", "TraceGLAPI::glFramebufferPixelLocalClearValueuivANGLE");
+  gl_api_->glFramebufferPixelLocalClearValueuivANGLEFn(plane, value);
+}
+
+void TraceGLApi::glFramebufferPixelLocalStorageInterruptANGLEFn() {
+  TRACE_EVENT_BINARY_EFFICIENT0(
+      "gpu", "TraceGLAPI::glFramebufferPixelLocalStorageInterruptANGLE");
+  gl_api_->glFramebufferPixelLocalStorageInterruptANGLEFn();
+}
+
+void TraceGLApi::glFramebufferPixelLocalStorageRestoreANGLEFn() {
+  TRACE_EVENT_BINARY_EFFICIENT0(
+      "gpu", "TraceGLAPI::glFramebufferPixelLocalStorageRestoreANGLE");
+  gl_api_->glFramebufferPixelLocalStorageRestoreANGLEFn();
 }
 
 void TraceGLApi::glFramebufferRenderbufferEXTFn(GLenum target,
@@ -7490,6 +7777,17 @@ void TraceGLApi::glFramebufferTextureMultiviewOVRFn(GLenum target,
                                 "TraceGLAPI::glFramebufferTextureMultiviewOVR");
   gl_api_->glFramebufferTextureMultiviewOVRFn(target, attachment, texture,
                                               level, baseViewIndex, numViews);
+}
+
+void TraceGLApi::glFramebufferTexturePixelLocalStorageANGLEFn(
+    GLint plane,
+    GLuint backingtexture,
+    GLint level,
+    GLint layer) {
+  TRACE_EVENT_BINARY_EFFICIENT0(
+      "gpu", "TraceGLAPI::glFramebufferTexturePixelLocalStorageANGLE");
+  gl_api_->glFramebufferTexturePixelLocalStorageANGLEFn(plane, backingtexture,
+                                                        level, layer);
 }
 
 void TraceGLApi::glFrontFaceFn(GLenum mode) {
@@ -7803,6 +8101,52 @@ void TraceGLApi::glGetFramebufferParameterivRobustANGLEFn(GLenum target,
       "gpu", "TraceGLAPI::glGetFramebufferParameterivRobustANGLE");
   gl_api_->glGetFramebufferParameterivRobustANGLEFn(target, pname, bufSize,
                                                     length, params);
+}
+
+void TraceGLApi::glGetFramebufferPixelLocalStorageParameterfvANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLfloat* params) {
+  TRACE_EVENT_BINARY_EFFICIENT0(
+      "gpu", "TraceGLAPI::glGetFramebufferPixelLocalStorageParameterfvANGLE");
+  gl_api_->glGetFramebufferPixelLocalStorageParameterfvANGLEFn(plane, pname,
+                                                               params);
+}
+
+void TraceGLApi::glGetFramebufferPixelLocalStorageParameterfvRobustANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLsizei bufSize,
+    GLsizei* length,
+    GLfloat* params) {
+  TRACE_EVENT_BINARY_EFFICIENT0(
+      "gpu",
+      "TraceGLAPI::glGetFramebufferPixelLocalStorageParameterfvRobustANGLE");
+  gl_api_->glGetFramebufferPixelLocalStorageParameterfvRobustANGLEFn(
+      plane, pname, bufSize, length, params);
+}
+
+void TraceGLApi::glGetFramebufferPixelLocalStorageParameterivANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLint* params) {
+  TRACE_EVENT_BINARY_EFFICIENT0(
+      "gpu", "TraceGLAPI::glGetFramebufferPixelLocalStorageParameterivANGLE");
+  gl_api_->glGetFramebufferPixelLocalStorageParameterivANGLEFn(plane, pname,
+                                                               params);
+}
+
+void TraceGLApi::glGetFramebufferPixelLocalStorageParameterivRobustANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLsizei bufSize,
+    GLsizei* length,
+    GLint* params) {
+  TRACE_EVENT_BINARY_EFFICIENT0(
+      "gpu",
+      "TraceGLAPI::glGetFramebufferPixelLocalStorageParameterivRobustANGLE");
+  gl_api_->glGetFramebufferPixelLocalStorageParameterivRobustANGLEFn(
+      plane, pname, bufSize, length, params);
 }
 
 GLenum TraceGLApi::glGetGraphicsResetStatusARBFn(void) {
@@ -8940,6 +9284,12 @@ void TraceGLApi::glPauseTransformFeedbackFn(void) {
   gl_api_->glPauseTransformFeedbackFn();
 }
 
+void TraceGLApi::glPixelLocalStorageBarrierANGLEFn() {
+  TRACE_EVENT_BINARY_EFFICIENT0("gpu",
+                                "TraceGLAPI::glPixelLocalStorageBarrierANGLE");
+  gl_api_->glPixelLocalStorageBarrierANGLEFn();
+}
+
 void TraceGLApi::glPixelStoreiFn(GLenum pname, GLint param) {
   TRACE_EVENT_BINARY_EFFICIENT0("gpu", "TraceGLAPI::glPixelStorei");
   gl_api_->glPixelStoreiFn(pname, param);
@@ -8955,9 +9305,21 @@ void TraceGLApi::glPolygonModeFn(GLenum face, GLenum mode) {
   gl_api_->glPolygonModeFn(face, mode);
 }
 
+void TraceGLApi::glPolygonModeANGLEFn(GLenum face, GLenum mode) {
+  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "TraceGLAPI::glPolygonModeANGLE");
+  gl_api_->glPolygonModeANGLEFn(face, mode);
+}
+
 void TraceGLApi::glPolygonOffsetFn(GLfloat factor, GLfloat units) {
   TRACE_EVENT_BINARY_EFFICIENT0("gpu", "TraceGLAPI::glPolygonOffset");
   gl_api_->glPolygonOffsetFn(factor, units);
+}
+
+void TraceGLApi::glPolygonOffsetClampEXTFn(GLfloat factor,
+                                           GLfloat units,
+                                           GLfloat clamp) {
+  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "TraceGLAPI::glPolygonOffsetClampEXT");
+  gl_api_->glPolygonOffsetClampEXTFn(factor, units, clamp);
 }
 
 void TraceGLApi::glPopDebugGroupFn() {
@@ -10440,6 +10802,14 @@ void LogGLApi::glAttachShaderFn(GLuint program, GLuint shader) {
   gl_api_->glAttachShaderFn(program, shader);
 }
 
+void LogGLApi::glBeginPixelLocalStorageANGLEFn(GLsizei n,
+                                               const GLenum* loadops) {
+  GL_SERVICE_LOG("glBeginPixelLocalStorageANGLE"
+                 << "(" << n << ", " << static_cast<const void*>(loadops)
+                 << ")");
+  gl_api_->glBeginPixelLocalStorageANGLEFn(n, loadops);
+}
+
 void LogGLApi::glBeginQueryFn(GLenum target, GLuint id) {
   GL_SERVICE_LOG("glBeginQuery"
                  << "(" << GLEnums::GetStringEnum(target) << ", " << id << ")");
@@ -10849,6 +11219,13 @@ GLenum LogGLApi::glClientWaitSyncAPPLEFn(GLsync sync,
   GLenum result = gl_api_->glClientWaitSyncAPPLEFn(sync, flags, timeout);
   GL_SERVICE_LOG("GL_RESULT: " << result);
   return result;
+}
+
+void LogGLApi::glClipControlEXTFn(GLenum origin, GLenum depth) {
+  GL_SERVICE_LOG("glClipControlEXT"
+                 << "(" << GLEnums::GetStringEnum(origin) << ", "
+                 << GLEnums::GetStringEnum(depth) << ")");
+  gl_api_->glClipControlEXTFn(origin, depth);
 }
 
 void LogGLApi::glColorMaskFn(GLboolean red,
@@ -11638,6 +12015,14 @@ void LogGLApi::glEnableVertexAttribArrayFn(GLuint index) {
   gl_api_->glEnableVertexAttribArrayFn(index);
 }
 
+void LogGLApi::glEndPixelLocalStorageANGLEFn(GLsizei n,
+                                             const GLenum* storeops) {
+  GL_SERVICE_LOG("glEndPixelLocalStorageANGLE"
+                 << "(" << n << ", " << static_cast<const void*>(storeops)
+                 << ")");
+  gl_api_->glEndPixelLocalStorageANGLEFn(n, storeops);
+}
+
 void LogGLApi::glEndQueryFn(GLenum target) {
   GL_SERVICE_LOG("glEndQuery"
                  << "(" << GLEnums::GetStringEnum(target) << ")");
@@ -11710,6 +12095,16 @@ void LogGLApi::glFlushMappedBufferRangeFn(GLenum target,
   gl_api_->glFlushMappedBufferRangeFn(target, offset, length);
 }
 
+void LogGLApi::glFramebufferMemorylessPixelLocalStorageANGLEFn(
+    GLint plane,
+    GLenum internalformat) {
+  GL_SERVICE_LOG("glFramebufferMemorylessPixelLocalStorageANGLE"
+                 << "(" << plane << ", "
+                 << GLEnums::GetStringEnum(internalformat) << ")");
+  gl_api_->glFramebufferMemorylessPixelLocalStorageANGLEFn(plane,
+                                                           internalformat);
+}
+
 void LogGLApi::glFramebufferParameteriFn(GLenum target,
                                          GLenum pname,
                                          GLint param) {
@@ -11717,6 +12112,46 @@ void LogGLApi::glFramebufferParameteriFn(GLenum target,
                  << "(" << GLEnums::GetStringEnum(target) << ", "
                  << GLEnums::GetStringEnum(pname) << ", " << param << ")");
   gl_api_->glFramebufferParameteriFn(target, pname, param);
+}
+
+void LogGLApi::glFramebufferPixelLocalClearValuefvANGLEFn(
+    GLint plane,
+    const GLfloat* value) {
+  GL_SERVICE_LOG("glFramebufferPixelLocalClearValuefvANGLE"
+                 << "(" << plane << ", " << static_cast<const void*>(value)
+                 << ")");
+  gl_api_->glFramebufferPixelLocalClearValuefvANGLEFn(plane, value);
+}
+
+void LogGLApi::glFramebufferPixelLocalClearValueivANGLEFn(GLint plane,
+                                                          const GLint* value) {
+  GL_SERVICE_LOG("glFramebufferPixelLocalClearValueivANGLE"
+                 << "(" << plane << ", " << static_cast<const void*>(value)
+                 << ")");
+  gl_api_->glFramebufferPixelLocalClearValueivANGLEFn(plane, value);
+}
+
+void LogGLApi::glFramebufferPixelLocalClearValueuivANGLEFn(
+    GLint plane,
+    const GLuint* value) {
+  GL_SERVICE_LOG("glFramebufferPixelLocalClearValueuivANGLE"
+                 << "(" << plane << ", " << static_cast<const void*>(value)
+                 << ")");
+  gl_api_->glFramebufferPixelLocalClearValueuivANGLEFn(plane, value);
+}
+
+void LogGLApi::glFramebufferPixelLocalStorageInterruptANGLEFn() {
+  GL_SERVICE_LOG("glFramebufferPixelLocalStorageInterruptANGLE"
+                 << "("
+                 << ")");
+  gl_api_->glFramebufferPixelLocalStorageInterruptANGLEFn();
+}
+
+void LogGLApi::glFramebufferPixelLocalStorageRestoreANGLEFn() {
+  GL_SERVICE_LOG("glFramebufferPixelLocalStorageRestoreANGLE"
+                 << "("
+                 << ")");
+  gl_api_->glFramebufferPixelLocalStorageRestoreANGLEFn();
 }
 
 void LogGLApi::glFramebufferRenderbufferEXTFn(GLenum target,
@@ -11787,6 +12222,18 @@ void LogGLApi::glFramebufferTextureMultiviewOVRFn(GLenum target,
                  << ")");
   gl_api_->glFramebufferTextureMultiviewOVRFn(target, attachment, texture,
                                               level, baseViewIndex, numViews);
+}
+
+void LogGLApi::glFramebufferTexturePixelLocalStorageANGLEFn(
+    GLint plane,
+    GLuint backingtexture,
+    GLint level,
+    GLint layer) {
+  GL_SERVICE_LOG("glFramebufferTexturePixelLocalStorageANGLE"
+                 << "(" << plane << ", " << backingtexture << ", " << level
+                 << ", " << layer << ")");
+  gl_api_->glFramebufferTexturePixelLocalStorageANGLEFn(plane, backingtexture,
+                                                        level, layer);
 }
 
 void LogGLApi::glFrontFaceFn(GLenum mode) {
@@ -12214,6 +12661,56 @@ void LogGLApi::glGetFramebufferParameterivRobustANGLEFn(GLenum target,
                  << static_cast<const void*>(params) << ")");
   gl_api_->glGetFramebufferParameterivRobustANGLEFn(target, pname, bufSize,
                                                     length, params);
+}
+
+void LogGLApi::glGetFramebufferPixelLocalStorageParameterfvANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLfloat* params) {
+  GL_SERVICE_LOG("glGetFramebufferPixelLocalStorageParameterfvANGLE"
+                 << "(" << plane << ", " << GLEnums::GetStringEnum(pname)
+                 << ", " << static_cast<const void*>(params) << ")");
+  gl_api_->glGetFramebufferPixelLocalStorageParameterfvANGLEFn(plane, pname,
+                                                               params);
+}
+
+void LogGLApi::glGetFramebufferPixelLocalStorageParameterfvRobustANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLsizei bufSize,
+    GLsizei* length,
+    GLfloat* params) {
+  GL_SERVICE_LOG("glGetFramebufferPixelLocalStorageParameterfvRobustANGLE"
+                 << "(" << plane << ", " << GLEnums::GetStringEnum(pname)
+                 << ", " << bufSize << ", " << static_cast<const void*>(length)
+                 << ", " << static_cast<const void*>(params) << ")");
+  gl_api_->glGetFramebufferPixelLocalStorageParameterfvRobustANGLEFn(
+      plane, pname, bufSize, length, params);
+}
+
+void LogGLApi::glGetFramebufferPixelLocalStorageParameterivANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLint* params) {
+  GL_SERVICE_LOG("glGetFramebufferPixelLocalStorageParameterivANGLE"
+                 << "(" << plane << ", " << GLEnums::GetStringEnum(pname)
+                 << ", " << static_cast<const void*>(params) << ")");
+  gl_api_->glGetFramebufferPixelLocalStorageParameterivANGLEFn(plane, pname,
+                                                               params);
+}
+
+void LogGLApi::glGetFramebufferPixelLocalStorageParameterivRobustANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLsizei bufSize,
+    GLsizei* length,
+    GLint* params) {
+  GL_SERVICE_LOG("glGetFramebufferPixelLocalStorageParameterivRobustANGLE"
+                 << "(" << plane << ", " << GLEnums::GetStringEnum(pname)
+                 << ", " << bufSize << ", " << static_cast<const void*>(length)
+                 << ", " << static_cast<const void*>(params) << ")");
+  gl_api_->glGetFramebufferPixelLocalStorageParameterivRobustANGLEFn(
+      plane, pname, bufSize, length, params);
 }
 
 GLenum LogGLApi::glGetGraphicsResetStatusARBFn(void) {
@@ -13711,6 +14208,13 @@ void LogGLApi::glPauseTransformFeedbackFn(void) {
   gl_api_->glPauseTransformFeedbackFn();
 }
 
+void LogGLApi::glPixelLocalStorageBarrierANGLEFn() {
+  GL_SERVICE_LOG("glPixelLocalStorageBarrierANGLE"
+                 << "("
+                 << ")");
+  gl_api_->glPixelLocalStorageBarrierANGLEFn();
+}
+
 void LogGLApi::glPixelStoreiFn(GLenum pname, GLint param) {
   GL_SERVICE_LOG("glPixelStorei"
                  << "(" << GLEnums::GetStringEnum(pname) << ", " << param
@@ -13732,10 +14236,25 @@ void LogGLApi::glPolygonModeFn(GLenum face, GLenum mode) {
   gl_api_->glPolygonModeFn(face, mode);
 }
 
+void LogGLApi::glPolygonModeANGLEFn(GLenum face, GLenum mode) {
+  GL_SERVICE_LOG("glPolygonModeANGLE"
+                 << "(" << GLEnums::GetStringEnum(face) << ", "
+                 << GLEnums::GetStringEnum(mode) << ")");
+  gl_api_->glPolygonModeANGLEFn(face, mode);
+}
+
 void LogGLApi::glPolygonOffsetFn(GLfloat factor, GLfloat units) {
   GL_SERVICE_LOG("glPolygonOffset"
                  << "(" << factor << ", " << units << ")");
   gl_api_->glPolygonOffsetFn(factor, units);
+}
+
+void LogGLApi::glPolygonOffsetClampEXTFn(GLfloat factor,
+                                         GLfloat units,
+                                         GLfloat clamp) {
+  GL_SERVICE_LOG("glPolygonOffsetClampEXT"
+                 << "(" << factor << ", " << units << ", " << clamp << ")");
+  gl_api_->glPolygonOffsetClampEXTFn(factor, units, clamp);
 }
 
 void LogGLApi::glPopDebugGroupFn() {
@@ -15626,6 +16145,11 @@ void NoContextGLApi::glAttachShaderFn(GLuint program, GLuint shader) {
   NoContextHelper("glAttachShader");
 }
 
+void NoContextGLApi::glBeginPixelLocalStorageANGLEFn(GLsizei n,
+                                                     const GLenum* loadops) {
+  NoContextHelper("glBeginPixelLocalStorageANGLE");
+}
+
 void NoContextGLApi::glBeginQueryFn(GLenum target, GLuint id) {
   NoContextHelper("glBeginQuery");
 }
@@ -15898,6 +16422,10 @@ GLenum NoContextGLApi::glClientWaitSyncAPPLEFn(GLsync sync,
                                                GLuint64 timeout) {
   NoContextHelper("glClientWaitSyncAPPLE");
   return static_cast<GLenum>(0);
+}
+
+void NoContextGLApi::glClipControlEXTFn(GLenum origin, GLenum depth) {
+  NoContextHelper("glClipControlEXT");
 }
 
 void NoContextGLApi::glColorMaskFn(GLboolean red,
@@ -16400,6 +16928,11 @@ void NoContextGLApi::glEnableVertexAttribArrayFn(GLuint index) {
   NoContextHelper("glEnableVertexAttribArray");
 }
 
+void NoContextGLApi::glEndPixelLocalStorageANGLEFn(GLsizei n,
+                                                   const GLenum* storeops) {
+  NoContextHelper("glEndPixelLocalStorageANGLE");
+}
+
 void NoContextGLApi::glEndQueryFn(GLenum target) {
   NoContextHelper("glEndQuery");
 }
@@ -16444,10 +16977,42 @@ void NoContextGLApi::glFlushMappedBufferRangeFn(GLenum target,
   NoContextHelper("glFlushMappedBufferRange");
 }
 
+void NoContextGLApi::glFramebufferMemorylessPixelLocalStorageANGLEFn(
+    GLint plane,
+    GLenum internalformat) {
+  NoContextHelper("glFramebufferMemorylessPixelLocalStorageANGLE");
+}
+
 void NoContextGLApi::glFramebufferParameteriFn(GLenum target,
                                                GLenum pname,
                                                GLint param) {
   NoContextHelper("glFramebufferParameteri");
+}
+
+void NoContextGLApi::glFramebufferPixelLocalClearValuefvANGLEFn(
+    GLint plane,
+    const GLfloat* value) {
+  NoContextHelper("glFramebufferPixelLocalClearValuefvANGLE");
+}
+
+void NoContextGLApi::glFramebufferPixelLocalClearValueivANGLEFn(
+    GLint plane,
+    const GLint* value) {
+  NoContextHelper("glFramebufferPixelLocalClearValueivANGLE");
+}
+
+void NoContextGLApi::glFramebufferPixelLocalClearValueuivANGLEFn(
+    GLint plane,
+    const GLuint* value) {
+  NoContextHelper("glFramebufferPixelLocalClearValueuivANGLE");
+}
+
+void NoContextGLApi::glFramebufferPixelLocalStorageInterruptANGLEFn() {
+  NoContextHelper("glFramebufferPixelLocalStorageInterruptANGLE");
+}
+
+void NoContextGLApi::glFramebufferPixelLocalStorageRestoreANGLEFn() {
+  NoContextHelper("glFramebufferPixelLocalStorageRestoreANGLE");
 }
 
 void NoContextGLApi::glFramebufferRenderbufferEXTFn(GLenum target,
@@ -16489,6 +17054,14 @@ void NoContextGLApi::glFramebufferTextureMultiviewOVRFn(GLenum target,
                                                         GLint baseViewIndex,
                                                         GLsizei numViews) {
   NoContextHelper("glFramebufferTextureMultiviewOVR");
+}
+
+void NoContextGLApi::glFramebufferTexturePixelLocalStorageANGLEFn(
+    GLint plane,
+    GLuint backingtexture,
+    GLint level,
+    GLint layer) {
+  NoContextHelper("glFramebufferTexturePixelLocalStorageANGLE");
 }
 
 void NoContextGLApi::glFrontFaceFn(GLenum mode) {
@@ -16748,6 +17321,38 @@ void NoContextGLApi::glGetFramebufferParameterivRobustANGLEFn(GLenum target,
                                                               GLsizei* length,
                                                               GLint* params) {
   NoContextHelper("glGetFramebufferParameterivRobustANGLE");
+}
+
+void NoContextGLApi::glGetFramebufferPixelLocalStorageParameterfvANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLfloat* params) {
+  NoContextHelper("glGetFramebufferPixelLocalStorageParameterfvANGLE");
+}
+
+void NoContextGLApi::glGetFramebufferPixelLocalStorageParameterfvRobustANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLsizei bufSize,
+    GLsizei* length,
+    GLfloat* params) {
+  NoContextHelper("glGetFramebufferPixelLocalStorageParameterfvRobustANGLE");
+}
+
+void NoContextGLApi::glGetFramebufferPixelLocalStorageParameterivANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLint* params) {
+  NoContextHelper("glGetFramebufferPixelLocalStorageParameterivANGLE");
+}
+
+void NoContextGLApi::glGetFramebufferPixelLocalStorageParameterivRobustANGLEFn(
+    GLint plane,
+    GLenum pname,
+    GLsizei bufSize,
+    GLsizei* length,
+    GLint* params) {
+  NoContextHelper("glGetFramebufferPixelLocalStorageParameterivRobustANGLE");
 }
 
 GLenum NoContextGLApi::glGetGraphicsResetStatusARBFn(void) {
@@ -17693,6 +18298,10 @@ void NoContextGLApi::glPauseTransformFeedbackFn(void) {
   NoContextHelper("glPauseTransformFeedback");
 }
 
+void NoContextGLApi::glPixelLocalStorageBarrierANGLEFn() {
+  NoContextHelper("glPixelLocalStorageBarrierANGLE");
+}
+
 void NoContextGLApi::glPixelStoreiFn(GLenum pname, GLint param) {
   NoContextHelper("glPixelStorei");
 }
@@ -17705,8 +18314,18 @@ void NoContextGLApi::glPolygonModeFn(GLenum face, GLenum mode) {
   NoContextHelper("glPolygonMode");
 }
 
+void NoContextGLApi::glPolygonModeANGLEFn(GLenum face, GLenum mode) {
+  NoContextHelper("glPolygonModeANGLE");
+}
+
 void NoContextGLApi::glPolygonOffsetFn(GLfloat factor, GLfloat units) {
   NoContextHelper("glPolygonOffset");
+}
+
+void NoContextGLApi::glPolygonOffsetClampEXTFn(GLfloat factor,
+                                               GLfloat units,
+                                               GLfloat clamp) {
+  NoContextHelper("glPolygonOffsetClampEXT");
 }
 
 void NoContextGLApi::glPopDebugGroupFn() {

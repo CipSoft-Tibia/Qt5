@@ -18,6 +18,7 @@
 #include "components/web_package/test_support/signed_web_bundles/web_bundle_signer.h"
 #include "components/web_package/web_bundle_builder.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
+#include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
@@ -26,10 +27,6 @@ namespace web_package {
 namespace {
 
 constexpr char kPrimaryUrl[] = "https://test.example.com/";
-constexpr char kValidityUrl[] =
-    "https://test.example.org/resource.validity.msg";
-const uint64_t kSignatureDate = 1564272000;  // 2019-07-28T00:00:00Z
-const uint64_t kSignatureDuration = 7 * 24 * 60 * 60;
 
 std::string GetTestFileContents(const base::FilePath& path) {
   base::FilePath test_data_dir;
@@ -105,9 +102,7 @@ ParseSignedBundleIntegrityBlockResult ParseSignedBundleIntegrityBlock(
   mojo::PendingRemote<mojom::BundleDataSource> source_remote;
   data_source->AddReceiver(source_remote.InitWithNewPipeAndPassReceiver());
 
-  mojo::PendingRemote<mojom::WebBundleParser> parser_remote;
-  WebBundleParser parser_impl(parser_remote.InitWithNewPipeAndPassReceiver(),
-                              std::move(source_remote), base_url);
+  WebBundleParser parser_impl(std::move(source_remote), base_url);
   mojom::WebBundleParser& parser = parser_impl;
 
   base::test::TestFuture<mojom::BundleIntegrityBlockPtr,
@@ -124,15 +119,14 @@ ParseSignedBundleIntegrityBlockResult ParseSignedBundleIntegrityBlock(
 using ParseUnsignedBundleResult =
     std::pair<mojom::BundleMetadataPtr, mojom::BundleMetadataParseErrorPtr>;
 
-ParseUnsignedBundleResult ParseUnsignedBundle(TestDataSource* data_source,
-                                              const GURL& base_url = GURL(),
-                                              int64_t offset = -1) {
+ParseUnsignedBundleResult ParseUnsignedBundle(
+    TestDataSource* data_source,
+    const GURL& base_url = GURL(),
+    absl::optional<uint64_t> offset = absl::nullopt) {
   mojo::PendingRemote<mojom::BundleDataSource> source_remote;
   data_source->AddReceiver(source_remote.InitWithNewPipeAndPassReceiver());
 
-  mojo::PendingRemote<mojom::WebBundleParser> parser_remote;
-  WebBundleParser parser_impl(parser_remote.InitWithNewPipeAndPassReceiver(),
-                              std::move(source_remote), base_url);
+  WebBundleParser parser_impl(std::move(source_remote), base_url);
   mojom::WebBundleParser& parser = parser_impl;
 
   base::test::TestFuture<mojom::BundleMetadataPtr,
@@ -155,8 +149,9 @@ mojom::BundleResponseLocationPtr FindResponse(
     const mojom::BundleMetadataPtr& metadata,
     const GURL& url) {
   const auto item = metadata->requests.find(url);
-  if (item == metadata->requests.end())
+  if (item == metadata->requests.end()) {
     return nullptr;
+  }
 
   return item->second.Clone();
 }
@@ -168,9 +163,7 @@ mojom::BundleResponsePtr ParseResponse(
   mojo::PendingRemote<mojom::BundleDataSource> source_remote;
   data_source->AddReceiver(source_remote.InitWithNewPipeAndPassReceiver());
 
-  mojo::PendingRemote<mojom::WebBundleParser> parser_remote;
-  WebBundleParser parser_impl(parser_remote.InitWithNewPipeAndPassReceiver(),
-                              std::move(source_remote), base_url);
+  WebBundleParser parser_impl(std::move(source_remote), base_url);
   mojom::WebBundleParser& parser = parser_impl;
 
   base::test::TestFuture<mojom::BundleResponsePtr,
@@ -179,14 +172,6 @@ mojom::BundleResponsePtr ParseResponse(
   parser.ParseResponse(location->offset, location->length,
                        future.GetCallback());
   return std::get<0>(future.Take());
-}
-
-cbor::Value CreateByteString(base::StringPiece s) {
-  return cbor::Value(base::as_bytes(base::make_span(s)));
-}
-
-std::string AsString(const std::vector<uint8_t>& data) {
-  return std::string(reinterpret_cast<const char*>(data.data()), data.size());
 }
 
 std::vector<uint8_t> CreateSmallBundle() {
@@ -204,8 +189,7 @@ struct SignedWebBundleAndKeys {
 
 SignedWebBundleAndKeys SignBundle(
     const std::vector<uint8_t>& unsigned_bundle,
-    WebBundleSigner::ErrorForTesting error_for_testing =
-        WebBundleSigner::ErrorForTesting::kNoError,
+    WebBundleSigner::ErrorsForTesting errors_for_testing = {},
     size_t num_signatures = 1) {
   std::vector<WebBundleSigner::KeyPair> key_pairs;
   for (size_t i = 0; i < num_signatures; ++i) {
@@ -214,7 +198,7 @@ SignedWebBundleAndKeys SignBundle(
 
   return {
       WebBundleSigner::SignBundle(unsigned_bundle, key_pairs,
-                                  error_for_testing),
+                                  errors_for_testing),
       key_pairs,
   };
 }
@@ -492,145 +476,6 @@ TEST_F(WebBundleParserTest, UnknownSectionInCritical) {
   ExpectFormatError(ParseUnsignedBundle(&data_source));
 }
 
-TEST_F(WebBundleParserTest, EmptySignaturesSection) {
-  WebBundleBuilder builder;
-  builder.AddExchange("https://test.example.com/",
-                      {{":status", "200"}, {"content-type", "text/plain"}},
-                      "payload");
-  // WebBundleBuilder omits signatures section if empty, so create it
-  // ourselves.
-  cbor::Value::ArrayValue signatures_section;
-  signatures_section.emplace_back(cbor::Value::ArrayValue());  // authorities
-  signatures_section.emplace_back(
-      cbor::Value::ArrayValue());  // vouched-subsets
-  builder.AddSection("signatures", cbor::Value(signatures_section));
-  TestDataSource data_source(builder.CreateBundle());
-
-  mojom::BundleMetadataPtr metadata = ParseUnsignedBundle(&data_source).first;
-  ASSERT_TRUE(metadata);
-  EXPECT_TRUE(metadata->authorities.empty());
-  EXPECT_TRUE(metadata->vouched_subsets.empty());
-}
-
-TEST_F(WebBundleParserTest, SignaturesSection) {
-  WebBundleBuilder builder;
-  builder.AddExchange("https://test.example.com/",
-                      {{":status", "200"}, {"content-type", "text/plain"}},
-                      "payload");
-
-  // Create a signatures section with some dummy data.
-  cbor::Value::MapValue authority;
-  authority.emplace("cert", CreateByteString("[cert]"));
-  authority.emplace("ocsp", CreateByteString("[ocsp]"));
-  authority.emplace("sct", CreateByteString("[sct]"));
-  builder.AddAuthority(std::move(authority));
-
-  cbor::Value signed_bytes = builder.CreateEncodedSigned(
-      kValidityUrl, "[auth-sha256]", kSignatureDate,
-      kSignatureDate + kSignatureDuration, "https://test.example.com/",
-      "[header-sha256]", "[payload-integrity]");
-  cbor::Value::MapValue vouched_subset;
-  vouched_subset.emplace("authority", 0);
-  vouched_subset.emplace("sig", CreateByteString("[sig]"));
-  vouched_subset.emplace("signed", signed_bytes.Clone());
-  builder.AddVouchedSubset(std::move(vouched_subset));
-
-  TestDataSource data_source(builder.CreateBundle());
-
-  mojom::BundleMetadataPtr metadata = ParseUnsignedBundle(&data_source).first;
-  ASSERT_TRUE(metadata);
-
-  ASSERT_EQ(metadata->authorities.size(), 1u);
-  EXPECT_EQ(AsString(metadata->authorities[0]->cert), "[cert]");
-  ASSERT_TRUE(metadata->authorities[0]->ocsp.has_value());
-  EXPECT_EQ(AsString(*metadata->authorities[0]->ocsp), "[ocsp]");
-  ASSERT_TRUE(metadata->authorities[0]->sct.has_value());
-  EXPECT_EQ(AsString(*metadata->authorities[0]->sct), "[sct]");
-
-  ASSERT_EQ(metadata->vouched_subsets.size(), 1u);
-  EXPECT_EQ(metadata->vouched_subsets[0]->authority, 0u);
-  EXPECT_EQ(AsString(metadata->vouched_subsets[0]->sig), "[sig]");
-  EXPECT_EQ(AsString(metadata->vouched_subsets[0]->raw_signed),
-            signed_bytes.GetBytestringAsString());
-
-  const auto& parsed_signed = metadata->vouched_subsets[0]->parsed_signed;
-  EXPECT_EQ(parsed_signed->validity_url, kValidityUrl);
-  EXPECT_EQ(AsString(parsed_signed->auth_sha256), "[auth-sha256]");
-  EXPECT_EQ(parsed_signed->date, kSignatureDate);
-  EXPECT_EQ(parsed_signed->expires, kSignatureDate + kSignatureDuration);
-
-  EXPECT_EQ(parsed_signed->subset_hashes.size(), 1u);
-  const auto& hashes =
-      parsed_signed->subset_hashes[GURL("https://test.example.com/")];
-  ASSERT_TRUE(hashes);
-  EXPECT_EQ(hashes->variants_value, "");
-  ASSERT_EQ(hashes->resource_integrities.size(), 1u);
-  EXPECT_EQ(AsString(hashes->resource_integrities[0]->header_sha256),
-            "[header-sha256]");
-  EXPECT_EQ(hashes->resource_integrities[0]->payload_integrity_header,
-            "[payload-integrity]");
-}
-
-TEST_F(WebBundleParserTest, MultipleSignatures) {
-  WebBundleBuilder builder;
-  builder.AddExchange("https://test.example.com/",
-                      {{":status", "200"}, {"content-type", "text/plain"}},
-                      "payload");
-
-  // Create a signatures section with some dummy data.
-  cbor::Value::MapValue authority1;
-  authority1.emplace("cert", CreateByteString("[cert1]"));
-  authority1.emplace("ocsp", CreateByteString("[ocsp]"));
-  authority1.emplace("sct", CreateByteString("[sct]"));
-  builder.AddAuthority(std::move(authority1));
-  cbor::Value::MapValue authority2;
-  authority2.emplace("cert", CreateByteString("[cert2]"));
-  builder.AddAuthority(std::move(authority2));
-
-  cbor::Value signed_bytes1 = builder.CreateEncodedSigned(
-      kValidityUrl, "[auth-sha256]", kSignatureDate,
-      kSignatureDate + kSignatureDuration, "https://test.example.com/",
-      "[header-sha256]", "[payload-integrity]");
-  cbor::Value::MapValue vouched_subset1;
-  vouched_subset1.emplace("authority", 0);
-  vouched_subset1.emplace("sig", CreateByteString("[sig1]"));
-  vouched_subset1.emplace("signed", signed_bytes1.Clone());
-  builder.AddVouchedSubset(std::move(vouched_subset1));
-
-  cbor::Value signed_bytes2 = builder.CreateEncodedSigned(
-      kValidityUrl, "[auth-sha256-2]", kSignatureDate,
-      kSignatureDate + kSignatureDuration, "https://test.example.org/",
-      "[header-sha256-2]", "[payload-integrity-2]");
-  cbor::Value::MapValue vouched_subset2;
-  vouched_subset2.emplace("authority", 1);
-  vouched_subset2.emplace("sig", CreateByteString("[sig2]"));
-  vouched_subset2.emplace("signed", signed_bytes2.Clone());
-  builder.AddVouchedSubset(std::move(vouched_subset2));
-
-  TestDataSource data_source(builder.CreateBundle());
-
-  mojom::BundleMetadataPtr metadata = ParseUnsignedBundle(&data_source).first;
-  ASSERT_TRUE(metadata);
-
-  ASSERT_EQ(metadata->authorities.size(), 2u);
-  EXPECT_EQ(AsString(metadata->authorities[0]->cert), "[cert1]");
-  EXPECT_TRUE(metadata->authorities[0]->ocsp.has_value());
-  EXPECT_TRUE(metadata->authorities[0]->sct.has_value());
-  EXPECT_EQ(AsString(metadata->authorities[1]->cert), "[cert2]");
-  EXPECT_FALSE(metadata->authorities[1]->ocsp.has_value());
-  EXPECT_FALSE(metadata->authorities[1]->sct.has_value());
-
-  ASSERT_EQ(metadata->vouched_subsets.size(), 2u);
-  EXPECT_EQ(metadata->vouched_subsets[0]->authority, 0u);
-  EXPECT_EQ(AsString(metadata->vouched_subsets[0]->sig), "[sig1]");
-  EXPECT_EQ(AsString(metadata->vouched_subsets[0]->raw_signed),
-            signed_bytes1.GetBytestringAsString());
-  EXPECT_EQ(metadata->vouched_subsets[1]->authority, 1u);
-  EXPECT_EQ(AsString(metadata->vouched_subsets[1]->sig), "[sig2]");
-  EXPECT_EQ(AsString(metadata->vouched_subsets[1]->raw_signed),
-            signed_bytes2.GetBytestringAsString());
-}
-
 TEST_F(WebBundleParserTest, ParseGoldenFile) {
   TestDataSource data_source(base::FilePath(FILE_PATH_LITERAL("hello_b2.wbn")));
 
@@ -660,31 +505,6 @@ TEST_F(WebBundleParserTest, ParseGoldenFile) {
   EXPECT_TRUE(responses["https://test.example.org/index.html"]);
   EXPECT_TRUE(responses["https://test.example.org/manifest.webmanifest"]);
   EXPECT_TRUE(responses["https://test.example.org/script.js"]);
-}
-
-TEST_F(WebBundleParserTest, ParseFileWithVouchedSubsets) {
-  TestDataSource data_source(
-      base::FilePath(FILE_PATH_LITERAL("hello_vouched_subsets.wbn")));
-
-  mojom::BundleMetadataPtr metadata = ParseUnsignedBundle(&data_source).first;
-  ASSERT_TRUE(metadata);
-  EXPECT_EQ(metadata->authorities.size(), 1u);
-  ASSERT_EQ(metadata->vouched_subsets.size(), 1u);
-  EXPECT_EQ(metadata->vouched_subsets[0]->authority, 0u);
-
-  const auto& parsed_signed = metadata->vouched_subsets[0]->parsed_signed;
-  EXPECT_EQ(parsed_signed->validity_url, kValidityUrl);
-  EXPECT_EQ(parsed_signed->date, kSignatureDate);
-  EXPECT_EQ(parsed_signed->expires, kSignatureDate + kSignatureDuration);
-
-  EXPECT_EQ(parsed_signed->subset_hashes.size(), metadata->requests.size());
-  const auto& hashes =
-      parsed_signed->subset_hashes[GURL("https://test.example.org/")];
-  ASSERT_TRUE(hashes);
-  EXPECT_EQ(hashes->variants_value, "");
-  ASSERT_EQ(hashes->resource_integrities.size(), 1u);
-  EXPECT_EQ(hashes->resource_integrities[0]->payload_integrity_header,
-            "digest/mi-sha256-03");
 }
 
 TEST_F(WebBundleParserTest, SingleEntry) {
@@ -929,8 +749,8 @@ TEST_F(WebBundleParserTest, SignedBundleIntegrityBlockIsParsedCorrectly) {
 TEST_F(WebBundleParserTest,
        SignedBundleIntegrityBlockIsParsedCorrectlyWithTwoSignatures) {
   auto unsigned_bundle = CreateSmallBundle();
-  auto bundle_and_keys = SignBundle(
-      unsigned_bundle, WebBundleSigner::ErrorForTesting::kNoError, 2);
+  auto bundle_and_keys =
+      SignBundle(unsigned_bundle, /*errors_for_testing=*/{}, 2);
   TestDataSource data_source(bundle_and_keys.bundle);
 
   auto [integrity_block, error] = ParseSignedBundleIntegrityBlock(&data_source);
@@ -1002,8 +822,8 @@ TEST_F(WebBundleParserTest, SignedBundleEmptySignatureStack) {
 TEST_F(WebBundleParserTest, SignedBundleSignatureStackWithThreeEntries) {
   WebBundleBuilder builder;
   std::vector<uint8_t> unsigned_bundle = builder.CreateBundle();
-  auto bundle_and_keys = SignBundle(
-      unsigned_bundle, WebBundleSigner::ErrorForTesting::kNoError, 3);
+  auto bundle_and_keys = SignBundle(unsigned_bundle,
+                                    /*errors_for_testing=*/{}, 3);
   TestDataSource data_source(bundle_and_keys.bundle);
 
   mojom::BundleIntegrityBlockParseErrorPtr error =
@@ -1019,7 +839,7 @@ TEST_F(WebBundleParserTest, SignedBundleWrongSignatureLength) {
   auto unsigned_bundle = CreateSmallBundle();
   auto bundle_and_keys =
       SignBundle(unsigned_bundle,
-                 WebBundleSigner::ErrorForTesting::kInvalidSignatureLength);
+                 {WebBundleSigner::ErrorForTesting::kInvalidSignatureLength});
   TestDataSource data_source(bundle_and_keys.bundle);
 
   auto error = ParseSignedBundleIntegrityBlock(&data_source).second;
@@ -1032,9 +852,9 @@ TEST_F(WebBundleParserTest, SignedBundleWrongSignatureLength) {
 
 TEST_F(WebBundleParserTest, SignedBundleWrongSignatureStackEntryLength) {
   auto unsigned_bundle = CreateSmallBundle();
-  auto bundle_and_keys = SignBundle(
-      unsigned_bundle,
-      WebBundleSigner::ErrorForTesting::kAdditionalSignatureStackEntryElement);
+  auto bundle_and_keys =
+      SignBundle(unsigned_bundle, {WebBundleSigner::ErrorForTesting::
+                                       kAdditionalSignatureStackEntryElement});
   TestDataSource data_source(bundle_and_keys.bundle);
 
   auto error = ParseSignedBundleIntegrityBlock(&data_source).second;
@@ -1046,9 +866,9 @@ TEST_F(WebBundleParserTest, SignedBundleWrongSignatureStackEntryLength) {
 
 TEST_F(WebBundleParserTest, SignedBundleWrongAdditionalAttribute) {
   auto unsigned_bundle = CreateSmallBundle();
-  auto bundle_and_keys =
-      SignBundle(unsigned_bundle, WebBundleSigner::ErrorForTesting::
-                                      kAdditionalSignatureStackEntryAttribute);
+  auto bundle_and_keys = SignBundle(
+      unsigned_bundle, {WebBundleSigner::ErrorForTesting::
+                            kAdditionalSignatureStackEntryAttribute});
   TestDataSource data_source(bundle_and_keys.bundle);
 
   auto error = ParseSignedBundleIntegrityBlock(&data_source).second;
@@ -1061,9 +881,9 @@ TEST_F(WebBundleParserTest, SignedBundleWrongAdditionalAttribute) {
 
 TEST_F(WebBundleParserTest, SignedBundleNoPublicKeyAttribute) {
   auto unsigned_bundle = CreateSmallBundle();
-  auto bundle_and_keys =
-      SignBundle(unsigned_bundle, WebBundleSigner::ErrorForTesting::
-                                      kNoPublicKeySignatureStackEntryAttribute);
+  auto bundle_and_keys = SignBundle(
+      unsigned_bundle, {WebBundleSigner::ErrorForTesting::
+                            kNoPublicKeySignatureStackEntryAttribute});
   TestDataSource data_source(bundle_and_keys.bundle);
 
   auto error = ParseSignedBundleIntegrityBlock(&data_source).second;
@@ -1076,9 +896,9 @@ TEST_F(WebBundleParserTest, SignedBundleNoPublicKeyAttribute) {
 
 TEST_F(WebBundleParserTest, SignedBundleWrongPublicKeyAttribute) {
   auto unsigned_bundle = CreateSmallBundle();
-  auto bundle_and_keys = SignBundle(
-      unsigned_bundle,
-      WebBundleSigner::ErrorForTesting::kWrongSignatureStackEntryAttributeName);
+  auto bundle_and_keys =
+      SignBundle(unsigned_bundle, {WebBundleSigner::ErrorForTesting::
+                                       kWrongSignatureStackEntryAttributeName});
   TestDataSource data_source(bundle_and_keys.bundle);
 
   auto error = ParseSignedBundleIntegrityBlock(&data_source).second;
@@ -1094,7 +914,7 @@ TEST_F(WebBundleParserTest, SignedBundleWrongPublicKeyLength) {
   auto unsigned_bundle = CreateSmallBundle();
   auto bundle_and_keys =
       SignBundle(unsigned_bundle,
-                 WebBundleSigner::ErrorForTesting::kInvalidPublicKeyLength);
+                 {WebBundleSigner::ErrorForTesting::kInvalidPublicKeyLength});
   TestDataSource data_source(bundle_and_keys.bundle);
 
   auto error = ParseSignedBundleIntegrityBlock(&data_source).second;
@@ -1120,12 +940,10 @@ TEST_F(WebBundleParserTest, DisconnectWhileParsingMetadata) {
     mojo::PendingRemote<mojom::BundleDataSource> source_remote;
     data_source.AddReceiver(source_remote.InitWithNewPipeAndPassReceiver());
 
-    mojo::PendingRemote<mojom::WebBundleParser> parser_remote;
-    WebBundleParser parser_impl(parser_remote.InitWithNewPipeAndPassReceiver(),
-                                std::move(source_remote), GURL());
+    WebBundleParser parser_impl(std::move(source_remote), GURL());
     mojom::WebBundleParser& parser = parser_impl;
 
-    parser.ParseMetadata(-1 /* offset */, future.GetCallback());
+    parser.ParseMetadata(/*offset=*/absl::nullopt, future.GetCallback());
     // |data_source| and |parser_impl| are deleted here.
   }
 
@@ -1155,9 +973,7 @@ TEST_F(WebBundleParserTest, DisconnectWhileParsingResponse) {
     mojo::PendingRemote<mojom::BundleDataSource> source_remote;
     data_source.AddReceiver(source_remote.InitWithNewPipeAndPassReceiver());
 
-    mojo::PendingRemote<mojom::WebBundleParser> parser_remote;
-    WebBundleParser parser_impl(parser_remote.InitWithNewPipeAndPassReceiver(),
-                                std::move(source_remote), GURL());
+    WebBundleParser parser_impl(std::move(source_remote), GURL());
     mojom::WebBundleParser& parser = parser_impl;
 
     parser.ParseResponse(location->offset, location->length,
@@ -1169,6 +985,66 @@ TEST_F(WebBundleParserTest, DisconnectWhileParsingResponse) {
   ASSERT_TRUE(error);
   EXPECT_EQ(error->type, mojom::BundleParseErrorType::kParserInternalError);
   EXPECT_EQ(error->message, "Data source disconnected.");
+}
+
+// This data source implementation never run result callback
+// making the calls to it permanently pending.
+class BlockingDataSource : public mojom::BundleDataSource {
+ public:
+  void Read(uint64_t offset, uint64_t length, ReadCallback callback) override {}
+  void Length(LengthCallback callback) override {}
+  void IsRandomAccessContext(IsRandomAccessContextCallback callback) override {}
+};
+
+TEST_F(WebBundleParserTest, DestructorWhileParsing) {
+  base::test::TestFuture<mojom::BundleResponsePtr,
+                         mojom::BundleResponseParseErrorPtr>
+      response_future;
+  base::test::TestFuture<mojom::BundleMetadataPtr,
+                         mojom::BundleMetadataParseErrorPtr>
+      metadata_future;
+  base::test::TestFuture<mojom::BundleIntegrityBlockPtr,
+                         mojom::BundleIntegrityBlockParseErrorPtr>
+      integrity_block_future;
+
+  mojo::PendingRemote<mojom::BundleDataSource> source_remote;
+  mojo::MakeSelfOwnedReceiver(std::make_unique<BlockingDataSource>(),
+                              source_remote.InitWithNewPipeAndPassReceiver());
+  {
+    WebBundleParser parser_impl(std::move(source_remote), GURL());
+    mojom::WebBundleParser& parser = parser_impl;
+
+    parser.ParseResponse(/*response_offset=*/100, /*response_length=*/1234,
+                         response_future.GetCallback());
+    parser.ParseMetadata(/*offset=*/absl::nullopt,
+                         metadata_future.GetCallback());
+    parser.ParseIntegrityBlock(integrity_block_future.GetCallback());
+    //|parser_impl| are deleted here.
+  }
+
+  {
+    auto error_response = std::get<1>(response_future.Take());
+    ASSERT_TRUE(error_response);
+    EXPECT_EQ(error_response->type,
+              mojom::BundleParseErrorType::kParserInternalError);
+    EXPECT_EQ(error_response->message, "Data source disconnected.");
+  }
+
+  {
+    auto error_metadata = std::get<1>(metadata_future.Take());
+    ASSERT_TRUE(error_metadata);
+    EXPECT_EQ(error_metadata->type,
+              mojom::BundleParseErrorType::kParserInternalError);
+    EXPECT_EQ(error_metadata->message, "Data source disconnected.");
+  }
+
+  {
+    auto error_integrity_block = std::get<1>(integrity_block_future.Take());
+    ASSERT_TRUE(error_integrity_block);
+    EXPECT_EQ(error_integrity_block->type,
+              mojom::BundleParseErrorType::kParserInternalError);
+    EXPECT_EQ(error_integrity_block->message, "Data source disconnected.");
+  }
 }
 
 }  // namespace web_package

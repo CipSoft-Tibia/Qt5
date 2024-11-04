@@ -489,6 +489,15 @@ angle::Result VertexArrayGL::streamAttributes(
                     // The workaround is only for latest Mac Intel so glMapBufferRange should be
                     // supported
                     ASSERT(CanMapBufferForRead(functions));
+                    // Validate if there is OOB access of the input buffer.
+                    angle::CheckedNumeric<GLint64> inputRequiredSize;
+                    inputRequiredSize = copySize;
+                    inputRequiredSize += static_cast<unsigned int>(binding.getOffset());
+                    ANGLE_CHECK(GetImplAs<ContextGL>(context),
+                                inputRequiredSize.IsValid() && inputRequiredSize.ValueOrDie() <=
+                                                                   bindingBufferPointer->getSize(),
+                                "Failed to map buffer range of the attribute buffer.",
+                                GL_OUT_OF_MEMORY);
                     uint8_t *inputBufferPointer = MapBufferRangeWithFallback(
                         functions, GL_ARRAY_BUFFER, binding.getOffset(), copySize, GL_MAP_READ_BIT);
                     ASSERT(inputBufferPointer);
@@ -915,13 +924,21 @@ angle::Result VertexArrayGL::syncDirtyBinding(
 {
     // Dependent state changes in buffers can trigger updates with no dirty bits set.
 
-    for (size_t dirtyBit : dirtyBindingBits)
+    for (auto iter = dirtyBindingBits.begin(), endIter = dirtyBindingBits.end(); iter != endIter;
+         ++iter)
     {
+        size_t dirtyBit = *iter;
         switch (dirtyBit)
         {
             case VertexArray::DIRTY_BINDING_BUFFER:
+            case VertexArray::DIRTY_BINDING_STRIDE:
+            case VertexArray::DIRTY_BINDING_OFFSET:
                 ASSERT(supportVertexAttribBinding(context));
                 ANGLE_TRY(updateBindingBuffer(context, bindingIndex));
+                // Clear these bits to avoid repeated processing
+                iter.resetLaterBits(gl::VertexArray::DirtyBindingBits{
+                    VertexArray::DIRTY_BINDING_BUFFER, VertexArray::DIRTY_BINDING_STRIDE,
+                    VertexArray::DIRTY_BINDING_OFFSET});
                 break;
 
             case VertexArray::DIRTY_BINDING_DIVISOR:
@@ -960,10 +977,23 @@ angle::Result VertexArrayGL::syncState(const gl::Context *context,
     StateManagerGL *stateManager = GetStateManagerGL(context);
     stateManager->bindVertexArray(mVertexArrayID, mNativeState);
 
-    for (size_t dirtyBit : dirtyBits)
+    for (auto iter = dirtyBits.begin(), endIter = dirtyBits.end(); iter != endIter; ++iter)
     {
+        size_t dirtyBit = *iter;
         switch (dirtyBit)
         {
+            case gl::VertexArray::DIRTY_BIT_LOST_OBSERVATION:
+            {
+                // If vertex array was not observing while unbound, we need to check buffer's
+                // internal storage and take action if buffer has changed while not observing.
+                // For now we just simply assume buffer storage has changed and always dirty all
+                // binding points.
+                iter.setLaterBits(
+                    gl::VertexArray::DirtyBits(mState.getBufferBindingMask().to_ulong()
+                                               << gl::VertexArray::DIRTY_BIT_BINDING_0));
+                break;
+            }
+
             case VertexArray::DIRTY_BIT_ELEMENT_ARRAY_BUFFER:
                 ANGLE_TRY(updateElementArrayBufferBinding(context));
                 break;

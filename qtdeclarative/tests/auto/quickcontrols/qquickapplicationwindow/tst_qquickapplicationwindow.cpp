@@ -1,5 +1,5 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtest.h>
 #include <QtCore/qoperatingsystemversion.h>
@@ -12,6 +12,7 @@
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtQuickTestUtils/private/visualtestutils_p.h>
 #include <QtGui/private/qguiapplication_p.h>
+#include <QtQuickTemplates2/private/qquickabstractbutton_p.h>
 #include <QtQuickTemplates2/private/qquickapplicationwindow_p.h>
 #include <QtQuickTemplates2/private/qquickoverlay_p.h>
 #include <QtQuickTemplates2/private/qquickcontrol_p.h>
@@ -22,8 +23,10 @@
 #include <QtQuickTemplates2/private/qquicktextfield_p.h>
 #include <QtQuickTemplates2/private/qquicktheme_p_p.h>
 #include <QtQuickControls2/qquickstyle.h>
+#include <QtQuickControlsTestUtils/private/controlstestutils_p.h>
 
 using namespace QQuickVisualTestUtils;
+using namespace QQuickControlsTestUtils;
 
 class tst_QQuickApplicationWindow : public QQmlDataTest
 {
@@ -50,6 +53,8 @@ private slots:
     void layoutLayout();
     void componentComplete();
     void opacity();
+    void backgroundSize();
+    void explicitBackgroundSizeBinding();
 };
 
 tst_QQuickApplicationWindow::tst_QQuickApplicationWindow()
@@ -275,6 +280,10 @@ void tst_QQuickApplicationWindow::implicitFill()
 
 void tst_QQuickApplicationWindow::attachedProperties()
 {
+    if (QGuiApplication::platformName().startsWith(QLatin1String("eglfs"), Qt::CaseInsensitive))
+    {
+        QSKIP("This test uses multiple windows and it crashes on EGLFS because of that");
+    }
     QQmlEngine engine;
     QQmlComponent component(&engine);
     component.loadUrl(testFileUrl("attachedProperties.qml"));
@@ -928,6 +937,68 @@ void tst_QQuickApplicationWindow::opacity()
 
     QQuickApplicationWindow *window = qobject_cast<QQuickApplicationWindow *>(object.data());
     QVERIFY(window);
+}
+
+void tst_QQuickApplicationWindow::backgroundSize()
+{
+    QQuickControlsApplicationHelper helper(this, QLatin1String("backgroundSize.qml"));
+    QVERIFY2(helper.ready, helper.failureMessage());
+    QQuickApplicationWindow *window = helper.appWindow;
+    QCOMPARE(window->width(), 600);
+    QCOMPARE(window->height(), 400);
+
+    auto *background = window->background();
+    QCOMPARE(background->implicitWidth(), 123);
+    QCOMPARE(background->implicitHeight(), 456);
+    QCOMPARE(background->width(), window->width());
+    QCOMPARE(background->height(), window->height());
+
+    // Changing the implicit size of the background shouldn't have any effect
+    // on its size if it was never explicitly set.
+    background->setImplicitWidth(234);
+    QCOMPARE(background->implicitWidth(), 234);
+    QCOMPARE(window->width(), 600);
+    QCOMPARE(background->width(), window->width());
+
+    background->setImplicitHeight(567);
+    QCOMPARE(background->implicitHeight(), 567);
+    QCOMPARE(window->height(), 400);
+    QCOMPARE(background->height(), window->height());
+
+    // Explicitly setting the size of the background should ensure
+    // that it's respected from that point onwards.
+    background->setWidth(345);
+    QCOMPARE(background->implicitWidth(), 234);
+    QCOMPARE(window->width(), 600);
+    QCOMPARE(background->width(), 345);
+
+    window->setWidth(610);
+    QCOMPARE(background->width(), 345);
+
+    background->setHeight(678);
+    QCOMPARE(background->implicitHeight(), 567);
+    QCOMPARE(window->height(), 400);
+    QCOMPARE(background->height(), 678);
+
+    window->setHeight(410);
+    QCOMPARE(background->height(), 678);
+}
+
+void tst_QQuickApplicationWindow::explicitBackgroundSizeBinding()
+{
+    QQuickControlsApplicationHelper helper(this, QLatin1String("explicitBackgroundSizeBinding.qml"));
+    QVERIFY2(helper.ready, helper.failureMessage());
+    QQuickApplicationWindow *window = helper.appWindow;
+    window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+
+    auto *background = window->background();
+    QCOMPARE(background->width(), window->width());
+    QCOMPARE(background->height(), window->height());
+
+    window->setProperty("scaleFactor", 0.5);
+    QCOMPARE(background->width(), window->width() / 2);
+    QCOMPARE(background->height(), window->height() / 2);
 }
 
 QTEST_MAIN(tst_QQuickApplicationWindow)

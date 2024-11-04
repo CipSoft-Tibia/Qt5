@@ -1,5 +1,5 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/qhighdpiscaling_p.h>
 #include <qpa/qplatformscreen.h>
@@ -771,7 +771,7 @@ void tst_QHighDpi::mouseVelocity()
         {
             velocity = ev->points().first().velocity();
             if (ev->buttons())
-                qDebug(lcTests) << "velocity" << velocity << ev;
+                qCDebug(lcTests) << "velocity" << velocity << ev;
         }
     };
 

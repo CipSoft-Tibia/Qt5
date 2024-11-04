@@ -23,9 +23,6 @@
 
 namespace autofill {
 
-#if BUILDFLAG(IS_ANDROID)
-using features::kAutofillKeyboardAccessory;
-#endif
 using mojom::FocusedFieldType;
 using mojom::SubmissionIndicatorEvent;
 using mojom::SubmissionSource;
@@ -60,7 +57,7 @@ bool IsShowAutofillSignaturesEnabled() {
 
 bool IsKeyboardAccessoryEnabled() {
 #if BUILDFLAG(IS_ANDROID)
-  return base::FeatureList::IsEnabled(kAutofillKeyboardAccessory);
+  return true;
 #else  // !BUILDFLAG(IS_ANDROID)
   return false;
 #endif
@@ -164,11 +161,19 @@ bool ShouldAutoselectFirstSuggestionOnArrowDown() {
 }
 
 bool IsFillable(FocusedFieldType focused_field_type) {
-  return focused_field_type == FocusedFieldType::kFillableTextArea ||
-         focused_field_type == FocusedFieldType::kFillableSearchField ||
-         focused_field_type == FocusedFieldType::kFillableNonSearchField ||
-         focused_field_type == FocusedFieldType::kFillableUsernameField ||
-         focused_field_type == FocusedFieldType::kFillablePasswordField;
+  switch (focused_field_type) {
+    case FocusedFieldType::kFillableTextArea:
+    case FocusedFieldType::kFillableSearchField:
+    case FocusedFieldType::kFillableNonSearchField:
+    case FocusedFieldType::kFillableUsernameField:
+    case FocusedFieldType::kFillablePasswordField:
+    case FocusedFieldType::kFillableWebauthnTaggedField:
+      return true;
+    case FocusedFieldType::kUnfillableElement:
+    case FocusedFieldType::kUnknown:
+      return false;
+  }
+  NOTREACHED_NORETURN();
 }
 
 SubmissionIndicatorEvent ToSubmissionIndicatorEvent(SubmissionSource source) {

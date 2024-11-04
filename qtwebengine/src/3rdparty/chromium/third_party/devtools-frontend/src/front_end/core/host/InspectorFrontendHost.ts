@@ -37,11 +37,12 @@ import * as Platform from '../platform/platform.js';
 import * as Root from '../root/root.js';
 
 import {
-  EventDescriptors,
-  Events,
   type CanShowSurveyResult,
   type ContextMenuDescriptor,
+  type DoAidaConversationResult,
   type EnumeratedHistogram,
+  EventDescriptors,
+  Events,
   type EventTypes,
   type ExtensionDescriptor,
   type InspectorFrontendHostAPI,
@@ -50,6 +51,14 @@ import {
   type SyncInformation,
 } from './InspectorFrontendHostAPI.js';
 import {streamWrite as resourceLoaderStreamWrite} from './ResourceLoader.js';
+
+interface DecompressionStream extends GenericTransformStream {
+  readonly format: string;
+}
+declare const DecompressionStream: {
+  prototype: DecompressionStream,
+  new (format: string): DecompressionStream,
+};
 
 const UIStrings = {
   /**
@@ -69,6 +78,8 @@ export class InspectorFrontendHostStub implements InspectorFrontendHostAPI {
   events!: Common.EventTarget.EventTarget<EventTypes>;
   #fileSystem: FileSystem|null = null;
 
+  recordedCountHistograms:
+      {histogramName: string, sample: number, min: number, exclusiveMax: number, bucketSize: number}[] = [];
   recordedEnumeratedHistograms: {actionName: EnumeratedHistogram, actionCode: number}[] = [];
   recordedPerformanceHistograms: {histogramName: string, duration: number}[] = [];
 
@@ -210,6 +221,14 @@ export class InspectorFrontendHostStub implements InspectorFrontendHostAPI {
   sendMessageToBackend(message: string): void {
   }
 
+  recordCountHistogram(histogramName: string, sample: number, min: number, exclusiveMax: number, bucketSize: number):
+      void {
+    if (this.recordedCountHistograms.length >= MAX_RECORDED_HISTOGRAMS_SIZE) {
+      this.recordedCountHistograms.shift();
+    }
+    this.recordedCountHistograms.push({histogramName, sample, min, exclusiveMax, bucketSize});
+  }
+
   recordEnumeratedHistogram(actionName: EnumeratedHistogram, actionCode: number, bucketSize: number): void {
     if (this.recordedEnumeratedHistograms.length >= MAX_RECORDED_HISTOGRAMS_SIZE) {
       this.recordedEnumeratedHistograms.shift();
@@ -270,8 +289,30 @@ export class InspectorFrontendHostStub implements InspectorFrontendHostAPI {
 
   loadNetworkResource(
       url: string, headers: string, streamId: number, callback: (arg0: LoadNetworkResourceResult) => void): void {
+    // Read the first 3 bytes looking for the gzip signature in the file header
+    function isGzip(ab: ArrayBuffer): boolean {
+      const buf = new Uint8Array(ab);
+      if (!buf || buf.length < 3) {
+        return false;
+      }
+
+      // https://www.rfc-editor.org/rfc/rfc1952#page-6
+      return buf[0] === 0x1F && buf[1] === 0x8B && buf[2] === 0x08;
+    }
     fetch(url)
-        .then(result => result.text())
+        .then(async result => {
+          const resultArrayBuf = await result.arrayBuffer();
+          let decoded: ReadableStream|ArrayBuffer = resultArrayBuf;
+          if (isGzip(resultArrayBuf)) {
+            const ds = new DecompressionStream('gzip');
+            const writer = ds.writable.getWriter();
+            void writer.write(resultArrayBuf);
+            void writer.close();
+            decoded = ds.readable;
+          }
+          const text = await new Response(decoded).text();
+          return text;
+        })
         .then(function(text) {
           resourceLoaderStreamWrite(streamId, text);
           callback({
@@ -408,6 +449,12 @@ export class InspectorFrontendHostStub implements InspectorFrontendHostAPI {
 
   async initialTargetId(): Promise<string|null> {
     return null;
+  }
+
+  doAidaConversation(request: string, callback: (result: DoAidaConversationResult) => void): void {
+    callback({
+      response: '{}',
+    });
   }
 }
 

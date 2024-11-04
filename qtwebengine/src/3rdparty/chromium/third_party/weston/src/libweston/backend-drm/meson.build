@@ -2,6 +2,17 @@ if not get_option('backend-drm')
 	subdir_done()
 endif
 
+dep_libdisplay_info = dependency(
+	'libdisplay-info',
+	version: ['>= 0.1.1', '< 0.2.0'],
+	fallback: ['display-info', 'di_dep'],
+	default_options: [
+		'werror=false',
+	],
+	required: false,
+)
+config_h.set10('HAVE_LIBDISPLAY_INFO', dep_libdisplay_info.found())
+
 lib_backlight = static_library(
 	'backlight',
 	'libbacklight.c',
@@ -24,6 +35,7 @@ srcs_drm = [
 	'fb.c',
 	'modes.c',
 	'kms.c',
+	'kms-color.c',
 	'state-helpers.c',
 	'state-propose.c',
 	linux_dmabuf_unstable_v1_protocol_c,
@@ -32,12 +44,16 @@ srcs_drm = [
 ]
 
 deps_drm = [
+	dep_egl, # optional
+	dep_libm,
 	dep_libdl,
+	dep_libshared,
 	dep_libweston_private,
 	dep_session_helper,
 	dep_libdrm,
 	dep_libinput_backend,
 	dependency('libudev', version: '>= 136'),
+	dep_libdisplay_info,
 	dep_backlight
 ]
 

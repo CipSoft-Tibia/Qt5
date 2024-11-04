@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,15 @@
 #define CAST_COMMON_CHANNEL_TESTING_FAKE_CAST_SOCKET_H_
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "cast/common/channel/proto/cast_channel.pb.h"
 #include "cast/common/public/cast_socket.h"
 #include "gmock/gmock.h"
 #include "platform/test/mock_tls_connection.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 class MockCastSocketClient final : public CastSocket::Client {
  public:
@@ -102,7 +103,6 @@ struct FakeCastSocketPair {
   std::unique_ptr<CastSocket> peer_socket;
 };
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast
 
 #endif  // CAST_COMMON_CHANNEL_TESTING_FAKE_CAST_SOCKET_H_

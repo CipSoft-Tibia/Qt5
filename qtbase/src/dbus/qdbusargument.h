@@ -47,7 +47,7 @@ public:
 
     void swap(QDBusArgument &other) noexcept { qt_ptr_swap(d, other.d); }
 
-    // used for marshalling (Qt -> D-BUS)
+    // used for marshalling (Qt -> D-Bus)
     QDBusArgument &operator<<(uchar arg);
     QDBusArgument &operator<<(bool arg);
     QDBusArgument &operator<<(short arg);
@@ -80,7 +80,7 @@ public:
 
     void appendVariant(const QVariant &v);
 
-    // used for de-marshalling (D-BUS -> Qt)
+    // used for de-marshalling (D-Bus -> Qt)
     QString currentSignature() const;
     ElementType currentType() const;
 
@@ -304,7 +304,7 @@ inline QDBusArgument &operator<<(QDBusArgument &arg, const QVariantHash &map)
 }
 
 template <typename T1, typename T2>
-inline QDBusArgument &operator<<(QDBusArgument &arg, const QPair<T1, T2> &pair)
+inline QDBusArgument &operator<<(QDBusArgument &arg, const std::pair<T1, T2> &pair)
 {
     arg.beginStructure();
     arg << pair.first << pair.second;
@@ -313,7 +313,7 @@ inline QDBusArgument &operator<<(QDBusArgument &arg, const QPair<T1, T2> &pair)
 }
 
 template <typename T1, typename T2>
-inline const QDBusArgument &operator>>(const QDBusArgument &arg, QPair<T1, T2> &pair)
+inline const QDBusArgument &operator>>(const QDBusArgument &arg, std::pair<T1, T2> &pair)
 {
     arg.beginStructure();
     arg >> pair.first >> pair.second;

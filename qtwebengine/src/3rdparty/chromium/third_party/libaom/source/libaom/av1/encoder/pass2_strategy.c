@@ -17,6 +17,7 @@
  */
 /*! @} - end defgroup gf_group_algo */
 
+#include <assert.h>
 #include <stdint.h>
 
 #include "aom_mem/aom_mem.h"
@@ -180,7 +181,7 @@ static void twopass_update_bpm_factor(AV1_COMP *cpi, int rate_err_tol) {
   // Based on recent history adjust expectations of bits per macroblock.
   double damp_fac = AOMMAX(5.0, rate_err_tol / 10.0);
   double rate_err_factor = 1.0;
-  const double adj_limit = AOMMAX(0.20, (double)(100 - rate_err_tol) / 200.0);
+  const double adj_limit = AOMMAX(0.2, (double)(100 - rate_err_tol) / 200.0);
   const double min_fac = 1.0 - adj_limit;
   const double max_fac = 1.0 + adj_limit;
 
@@ -254,7 +255,6 @@ static void twopass_update_bpm_factor(AV1_COMP *cpi, int rate_err_tol) {
       rate_err_factor = 1.0 - ((double)(bits_off_target) /
                                AOMMAX(total_actual_bits, bits_left));
     }
-    rate_err_factor = AOMMAX(min_fac, AOMMIN(max_fac, rate_err_factor));
 
     // Adjustment is damped if this is 1 pass with look ahead processing
     // (as there are only ever a few frames of data) and for all but the first
@@ -262,6 +262,7 @@ static void twopass_update_bpm_factor(AV1_COMP *cpi, int rate_err_tol) {
     if ((twopass->bpm_factor != 1.0) || cpi->ppi->lap_enabled) {
       rate_err_factor = 1.0 + ((rate_err_factor - 1.0) / damp_fac);
     }
+    rate_err_factor = AOMMAX(min_fac, AOMMIN(max_fac, rate_err_factor));
   }
 
   // Is the rate control trending in the right direction. Only make
@@ -269,7 +270,12 @@ static void twopass_update_bpm_factor(AV1_COMP *cpi, int rate_err_tol) {
   if ((rate_err_factor < 1.0 && err_estimate >= 0) ||
       (rate_err_factor > 1.0 && err_estimate <= 0)) {
     twopass->bpm_factor *= rate_err_factor;
-    twopass->bpm_factor = AOMMAX(min_fac, AOMMIN(max_fac, twopass->bpm_factor));
+    if (rate_err_tol >= 100) {
+      twopass->bpm_factor =
+          AOMMAX(min_fac, AOMMIN(max_fac, twopass->bpm_factor));
+    } else {
+      twopass->bpm_factor = AOMMAX(0.1, AOMMIN(10.0, twopass->bpm_factor));
+    }
   }
 }
 
@@ -513,12 +519,12 @@ static void accumulate_this_frame_stats(const FIRSTPASS_STATS *stats,
   gf_stats->gf_group_inactive_zone_rows += stats->inactive_zone_rows;
 }
 
-void av1_accumulate_next_frame_stats(const FIRSTPASS_STATS *stats,
-                                     const int flash_detected,
-                                     const int frames_since_key,
-                                     const int cur_idx,
-                                     GF_GROUP_STATS *gf_stats, int f_w,
-                                     int f_h) {
+static void accumulate_next_frame_stats(const FIRSTPASS_STATS *stats,
+                                        const int flash_detected,
+                                        const int frames_since_key,
+                                        const int cur_idx,
+                                        GF_GROUP_STATS *gf_stats, int f_w,
+                                        int f_h) {
   accumulate_frame_motion_stats(stats, gf_stats, f_w, f_h);
   // sum up the metric values of current gf group
   gf_stats->avg_sr_coded_error += stats->sr_coded_error;
@@ -939,6 +945,7 @@ static void allocate_gf_group_bits(GF_GROUP *gf_group,
   // Allocate extra bits to each ARF layer
   int i;
   int layer_extra_bits[MAX_ARF_LAYERS + 1] = { 0 };
+  assert(max_arf_layer <= MAX_ARF_LAYERS);
   for (i = 1; i <= max_arf_layer; ++i) {
     double fraction = (i == max_arf_layer) ? 1.0 : layer_fraction[i];
     layer_extra_bits[i] =
@@ -1033,9 +1040,9 @@ static INLINE int detect_gf_cut(AV1_COMP *cpi, int frame_index, int cur_start,
   return 0;
 }
 
-static int is_shorter_gf_interval_better(AV1_COMP *cpi,
-                                         EncodeFrameParams *frame_params) {
-  RATE_CONTROL *const rc = &cpi->rc;
+static int is_shorter_gf_interval_better(
+    AV1_COMP *cpi, const EncodeFrameParams *frame_params) {
+  const RATE_CONTROL *const rc = &cpi->rc;
   PRIMARY_RATE_CONTROL *const p_rc = &cpi->ppi->p_rc;
   int gop_length_decision_method = cpi->sf.tpl_sf.gop_length_decision_method;
   int shorten_gf_interval;
@@ -1937,9 +1944,8 @@ static void calculate_gf_length(AV1_COMP *cpi, int max_gop_length,
       flash_detected = detect_flash(twopass, &cpi->twopass_frame, 0);
       // TODO(bohanli): remove redundant accumulations here, or unify
       // this and the ones in define_gf_group
-      av1_accumulate_next_frame_stats(&next_frame, flash_detected,
-                                      rc->frames_since_key, i, &gf_stats, f_w,
-                                      f_h);
+      accumulate_next_frame_stats(&next_frame, flash_detected,
+                                  rc->frames_since_key, i, &gf_stats, f_w, f_h);
 
       cut_here = detect_gf_cut(cpi, i, cur_start, flash_detected,
                                active_max_gf_interval, active_min_gf_interval,
@@ -2277,9 +2283,8 @@ static void accumulate_gop_stats(AV1_COMP *cpi, int is_intra_only, int f_w,
     flash_detected = detect_flash(twopass, &cpi->twopass_frame, 0);
 
     // accumulate stats for next frame
-    av1_accumulate_next_frame_stats(next_frame, flash_detected,
-                                    rc->frames_since_key, i, gf_stats, f_w,
-                                    f_h);
+    accumulate_next_frame_stats(next_frame, flash_detected,
+                                rc->frames_since_key, i, gf_stats, f_w, f_h);
 
     ++i;
   }
@@ -3411,13 +3416,13 @@ static INLINE void set_twopass_params_based_on_fp_stats(
   TWO_PASS_FRAME *twopass_frame = &cpi->twopass_frame;
   // The multiplication by 256 reverses a scaling factor of (>> 8)
   // applied when combining MB error values for the frame.
-  twopass_frame->mb_av_energy = log((this_frame_ptr->intra_error) + 1.0);
+  twopass_frame->mb_av_energy = log1p(this_frame_ptr->intra_error);
 
   const FIRSTPASS_STATS *const total_stats =
       cpi->ppi->twopass.stats_buf_ctx->total_stats;
   if (is_fp_wavelet_energy_invalid(total_stats) == 0) {
     twopass_frame->frame_avg_haar_energy =
-        log((this_frame_ptr->frame_avg_wavelet_energy) + 1.0);
+        log1p(this_frame_ptr->frame_avg_wavelet_energy);
   }
 
   // Set the frame content type flag.
@@ -3674,6 +3679,10 @@ void av1_get_second_pass_params(AV1_COMP *cpi,
     frame_params->show_frame =
         !(gf_group->update_type[cpi->gf_frame_index] == ARF_UPDATE ||
           gf_group->update_type[cpi->gf_frame_index] == INTNL_ARF_UPDATE);
+    if (cpi->gf_frame_index == 0) {
+      av1_tf_info_reset(&cpi->ppi->tf_info);
+      av1_tf_info_filtering(&cpi->ppi->tf_info, cpi, gf_group);
+    }
     return;
   }
 
@@ -4197,33 +4206,50 @@ void av1_twopass_postencode_update(AV1_COMP *cpi) {
 
   // If the rate control is drifting consider adjustment to min or maxq.
   if ((rc_cfg->mode != AOM_Q) && !cpi->rc.is_src_frame_alt_ref) {
-    int maxq_adj_limit;
     int minq_adj_limit;
-    maxq_adj_limit = rc->worst_quality - rc->active_worst_quality;
+    int maxq_adj_limit;
     minq_adj_limit =
         (rc_cfg->mode == AOM_CQ ? MINQ_ADJ_LIMIT_CQ : MINQ_ADJ_LIMIT);
-    // Undershoot.
-    if (p_rc->rate_error_estimate > rc_cfg->under_shoot_pct) {
-      --twopass->extend_maxq;
-      if (p_rc->rolling_target_bits >= p_rc->rolling_actual_bits)
-        ++twopass->extend_minq;
-      // Overshoot.
-    } else if (p_rc->rate_error_estimate < -rc_cfg->over_shoot_pct) {
-      --twopass->extend_minq;
-      if (p_rc->rolling_target_bits < p_rc->rolling_actual_bits)
-        ++twopass->extend_maxq;
+    maxq_adj_limit = rc->worst_quality - rc->active_worst_quality;
+
+    // Undershoot
+    if ((rc_cfg->under_shoot_pct < 100) &&
+        (p_rc->rolling_actual_bits < p_rc->rolling_target_bits)) {
+      int pct_error =
+          ((p_rc->rolling_target_bits - p_rc->rolling_actual_bits) * 100) /
+          p_rc->rolling_target_bits;
+
+      if ((pct_error >= rc_cfg->under_shoot_pct) &&
+          (p_rc->rate_error_estimate > 0)) {
+        twopass->extend_minq += 1;
+      }
+      twopass->extend_maxq -= 1;
+      // Overshoot
+    } else if ((rc_cfg->over_shoot_pct < 100) &&
+               (p_rc->rolling_actual_bits > p_rc->rolling_target_bits)) {
+      int pct_error =
+          ((p_rc->rolling_actual_bits - p_rc->rolling_target_bits) * 100) /
+          p_rc->rolling_target_bits;
+
+      pct_error = clamp(pct_error, 0, 100);
+      if ((pct_error >= rc_cfg->over_shoot_pct) &&
+          (p_rc->rate_error_estimate < 0)) {
+        twopass->extend_maxq += 1;
+      }
+      twopass->extend_minq -= 1;
     } else {
       // Adjustment for extreme local overshoot.
+      // Only applies when normal adjustment above is not used (e.g.
+      // when threshold is set to 100).
       if (rc->projected_frame_size > (2 * rc->base_frame_target) &&
           rc->projected_frame_size > (2 * rc->avg_frame_bandwidth))
         ++twopass->extend_maxq;
-      // Unwind undershoot or overshoot adjustment.
-      if (p_rc->rolling_target_bits < p_rc->rolling_actual_bits)
-        --twopass->extend_minq;
+      // Unwind extreme overshoot adjustment.
       else if (p_rc->rolling_target_bits > p_rc->rolling_actual_bits)
         --twopass->extend_maxq;
     }
-    twopass->extend_minq = clamp(twopass->extend_minq, 0, minq_adj_limit);
+    twopass->extend_minq =
+        clamp(twopass->extend_minq, -minq_adj_limit, minq_adj_limit);
     twopass->extend_maxq = clamp(twopass->extend_maxq, 0, maxq_adj_limit);
 
     // If there is a big and undexpected undershoot then feed the extra
@@ -4237,19 +4263,6 @@ void av1_twopass_postencode_update(AV1_COMP *cpi) {
             fast_extra_thresh - rc->projected_frame_size;
         p_rc->vbr_bits_off_target_fast = AOMMIN(p_rc->vbr_bits_off_target_fast,
                                                 (4 * rc->avg_frame_bandwidth));
-
-        // Fast adaptation of minQ if necessary to use up the extra bits.
-        if (rc->avg_frame_bandwidth) {
-          twopass->extend_minq_fast = (int)(p_rc->vbr_bits_off_target_fast * 8 /
-                                            rc->avg_frame_bandwidth);
-        }
-        twopass->extend_minq_fast = AOMMIN(
-            twopass->extend_minq_fast, minq_adj_limit - twopass->extend_minq);
-      } else if (p_rc->vbr_bits_off_target_fast) {
-        twopass->extend_minq_fast = AOMMIN(
-            twopass->extend_minq_fast, minq_adj_limit - twopass->extend_minq);
-      } else {
-        twopass->extend_minq_fast = 0;
       }
     }
 
@@ -4260,7 +4273,6 @@ void av1_twopass_postencode_update(AV1_COMP *cpi) {
           p_rc->vbr_bits_off_target_fast;
       cpi->ppi->p_rc.temp_extend_minq = twopass->extend_minq;
       cpi->ppi->p_rc.temp_extend_maxq = twopass->extend_maxq;
-      cpi->ppi->p_rc.temp_extend_minq_fast = twopass->extend_minq_fast;
     }
 #endif
   }

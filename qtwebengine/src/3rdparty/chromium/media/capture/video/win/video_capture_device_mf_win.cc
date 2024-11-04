@@ -11,15 +11,19 @@
 #include <mferror.h>
 #include <stddef.h>
 #include <wincodec.h>
+#include <wrl/implements.h>
 
+#include <d3d11.h>
 #include <memory>
 #include <thread>
 #include <utility>
 
+#include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/memory/ref_counted.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/stringprintf.h"
@@ -27,8 +31,10 @@
 #include "base/synchronization/waitable_event.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/threading/platform_thread.h"
+#include "base/trace_event/trace_event.h"
 #include "base/win/scoped_co_mem.h"
 #include "base/win/windows_version.h"
+#include "media/base/media_switches.h"
 #include "media/base/win/color_space_util_win.h"
 #include "media/capture/mojom/image_capture_types.h"
 #include "media/capture/video/blob_utils.h"
@@ -36,6 +42,7 @@
 #include "media/capture/video/win/sink_filter_win.h"
 #include "media/capture/video/win/video_capture_device_utils_win.h"
 #include "ui/gfx/color_space.h"
+#include "ui/gfx/gpu_memory_buffer.h"
 
 using base::Location;
 using base::win::ScopedCoMem;
@@ -55,6 +62,15 @@ namespace media {
 #endif
 
 namespace {
+
+// Provide an unique GUID for reusing |handle| and |token| by
+// SetPrivateDataInterface/GetPrivateData.
+// {79BFE1AB-CE47-4C3D-BDB2-06E6B886368C}
+constexpr GUID DXGIHandlePrivateDataGUID = {
+    0x79bfe1ab,
+    0xce47,
+    0x4c3d,
+    {0xbd, 0xb2, 0x6, 0xe6, 0xb8, 0x86, 0x36, 0x8c}};
 
 // How many times we try to restart D3D11 path.
 constexpr int kMaxD3DRestarts = 2;
@@ -193,7 +209,9 @@ class ScopedBufferLock {
  private:
   ComPtr<IMFMediaBuffer> buffer_;
   ComPtr<IMF2DBuffer> buffer_2d_;
-  BYTE* data_ = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #addr-of
+  RAW_PTR_EXCLUSION BYTE* data_ = nullptr;
   DWORD length_ = 0;
   LONG pitch_ = 0;
 };
@@ -550,9 +568,10 @@ HRESULT GetTextureFromMFBuffer(IMFMediaBuffer* mf_buffer,
   return hr;
 }
 
-void GetTextureSizeAndFormat(ID3D11Texture2D* texture,
-                             gfx::Size& size,
-                             VideoPixelFormat& format) {
+void GetTextureInfo(ID3D11Texture2D* texture,
+                    gfx::Size& size,
+                    VideoPixelFormat& format,
+                    bool& is_cross_process_shared_texture) {
   D3D11_TEXTURE2D_DESC desc;
   texture->GetDesc(&desc);
   size.set_width(desc.Width);
@@ -568,10 +587,28 @@ void GetTextureSizeAndFormat(ID3D11Texture2D* texture,
       format = PIXEL_FORMAT_UNKNOWN;
       break;
   }
+
+  // According to
+  // https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_resource_misc_flag,
+  // D3D11_RESOURCE_MISC_RESTRICT_SHARED_RESOURCE and
+  // D3D11_RESOURCE_MISC_RESTRICT_SHARED_RESOURCE_DRIVER only support shared
+  // texture on same process.
+  is_cross_process_shared_texture =
+      (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED) &&
+      (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE) &&
+      !(desc.MiscFlags & D3D11_RESOURCE_MISC_RESTRICT_SHARED_RESOURCE) &&
+      !(desc.MiscFlags & D3D11_RESOURCE_MISC_RESTRICT_SHARED_RESOURCE_DRIVER);
+
+  // Log this in an UMA histogram to determine what proportion of frames might
+  // actually benefit from zero-copy.
+  base::UmaHistogramBoolean("Media.VideoCapture.Win.Device.IsSharedTexture",
+                            is_cross_process_shared_texture);
 }
 
 HRESULT CopyTextureToGpuMemoryBuffer(ID3D11Texture2D* texture,
                                      HANDLE dxgi_handle) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "CopyTextureToGpuMemoryBuffer");
   Microsoft::WRL::ComPtr<ID3D11Device> texture_device;
   texture->GetDevice(&texture_device);
 
@@ -614,10 +651,32 @@ HRESULT CopyTextureToGpuMemoryBuffer(ID3D11Texture2D* texture,
 // Destruction helper. Can't use base::DoNothingAs<> since ComPtr isn't POD.
 void DestroyCaptureEngine(Microsoft::WRL::ComPtr<IMFCaptureEngine>) {}
 
+class DXGIHandlePrivateData
+    : public Microsoft::WRL::RuntimeClass<
+          Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+          IUnknown> {
+ public:
+  explicit DXGIHandlePrivateData(base::win::ScopedHandle texture_handle)
+      : texture_handle_(std::move(texture_handle)) {}
+
+  gfx::DXGIHandleToken GetDXGIToken() { return dxgi_token_; }
+  HANDLE GetTextureHandle() { return texture_handle_.get(); }
+
+ private:
+  gfx::DXGIHandleToken dxgi_token_;
+  const base::win::ScopedHandle texture_handle_;
+  ~DXGIHandlePrivateData() override = default;
+};
+
+void RecordErrorHistogram(HRESULT hr) {
+  base::UmaHistogramSparse("Media.VideoCapture.Win.ErrorEvent", hr);
+}
+
 }  // namespace
 
-class MFVideoCallback final
+class VideoCaptureDeviceMFWin::MFVideoCallback final
     : public base::RefCountedThreadSafe<MFVideoCallback>,
+      public IMFCameraControlNotify,
       public IMFCaptureEngineOnSampleCallback,
       public IMFCaptureEngineOnEventCallback {
  public:
@@ -627,6 +686,9 @@ class MFVideoCallback final
     HRESULT hr = E_NOINTERFACE;
     if (riid == IID_IUnknown) {
       *object = this;
+      hr = S_OK;
+    } else if (riid == IID_IMFCameraControlNotify) {
+      *object = static_cast<IMFCameraControlNotify*>(this);
       hr = S_OK;
     } else if (riid == IID_IMFCaptureEngineOnSampleCallback) {
       *object = static_cast<IMFCaptureEngineOnSampleCallback*>(this);
@@ -651,7 +713,25 @@ class MFVideoCallback final
     return 1U;
   }
 
+  IFACEMETHODIMP_(void) OnChange(REFGUID control_set, UINT32 id) override {
+    base::AutoLock lock(lock_);
+    if (!observer_) {
+      return;
+    }
+    observer_->OnCameraControlChange(control_set, id);
+  }
+
+  IFACEMETHODIMP_(void) OnError(HRESULT status) override {
+    base::AutoLock lock(lock_);
+    if (!observer_) {
+      return;
+    }
+    observer_->OnCameraControlError(status);
+  }
+
   IFACEMETHODIMP OnEvent(IMFMediaEvent* media_event) override {
+    TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+                 "MFVideoCallback::OnEvent");
     base::AutoLock lock(lock_);
     if (!observer_) {
       return S_OK;
@@ -661,6 +741,8 @@ class MFVideoCallback final
   }
 
   IFACEMETHODIMP OnSample(IMFSample* sample) override {
+    TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+                 "MFVideoCallback::OnSample");
     base::AutoLock lock(lock_);
     if (!observer_) {
       return S_OK;
@@ -705,6 +787,89 @@ class MFVideoCallback final
   // Protects access to |observer_|.
   base::Lock lock_;
   raw_ptr<VideoCaptureDeviceMFWin> observer_ GUARDED_BY(lock_);
+};
+
+class VideoCaptureDeviceMFWin::MFActivitiesReportCallback final
+    : public base::RefCountedThreadSafe<MFActivitiesReportCallback>,
+      public IMFSensorActivitiesReportCallback {
+ public:
+  MFActivitiesReportCallback(
+      base::WeakPtr<VideoCaptureDeviceMFWin> observer,
+      scoped_refptr<base::SequencedTaskRunner> main_thread_task_runner,
+      std::string device_id)
+      : observer_(std::move(observer)),
+        main_thread_task_runner_(main_thread_task_runner),
+        device_id_(device_id) {}
+
+  IFACEMETHODIMP QueryInterface(REFIID riid, void** object) override {
+    HRESULT hr = E_NOINTERFACE;
+    if (riid == IID_IUnknown) {
+      *object = this;
+      hr = S_OK;
+    } else if (riid == IID_IMFSensorActivitiesReportCallback) {
+      *object = static_cast<IMFSensorActivitiesReportCallback*>(this);
+      hr = S_OK;
+    }
+    if (SUCCEEDED(hr)) {
+      AddRef();
+    }
+
+    return hr;
+  }
+
+  IFACEMETHODIMP_(ULONG) AddRef() override {
+    base::RefCountedThreadSafe<MFActivitiesReportCallback>::AddRef();
+    return 1U;
+  }
+
+  IFACEMETHODIMP_(ULONG) Release() override {
+    base::RefCountedThreadSafe<MFActivitiesReportCallback>::Release();
+    return 1U;
+  }
+
+  IFACEMETHODIMP_(HRESULT)
+  OnActivitiesReport(
+      IMFSensorActivitiesReport* sensorActivitiesReport) override {
+    bool in_use = false;
+
+    ComPtr<IMFSensorActivityReport> activity_report;
+    HRESULT hr = sensorActivitiesReport->GetActivityReportByDeviceName(
+        base::SysUTF8ToWide(device_id_).c_str(), &activity_report);
+    if (FAILED(hr)) {
+      return S_OK;
+    }
+    unsigned long proc_cnt = 0;
+    hr = activity_report->GetProcessCount(&proc_cnt);
+    // There can be several callback calls, some with empty process list. Ignore
+    // these.
+    if (FAILED(hr) || proc_cnt == 0) {
+      return S_OK;
+    }
+
+    for (size_t idx = 0; idx < proc_cnt; ++idx) {
+      ComPtr<IMFSensorProcessActivity> process_activity;
+      hr = activity_report->GetProcessActivity(idx, &process_activity);
+      if (SUCCEEDED(hr)) {
+        BOOL streaming_state = false;
+        hr = process_activity->GetStreamingState(&streaming_state);
+        in_use |= SUCCEEDED(hr) && streaming_state;
+      }
+    }
+
+    main_thread_task_runner_->PostTask(
+        FROM_HERE,
+        base::BindOnce(&VideoCaptureDeviceMFWin::OnCameraInUseReport, observer_,
+                       in_use, /*is_default_action=*/false));
+    return S_OK;
+  }
+
+ private:
+  friend class base::RefCountedThreadSafe<MFActivitiesReportCallback>;
+  ~MFActivitiesReportCallback() {}
+
+  base::WeakPtr<VideoCaptureDeviceMFWin> observer_;
+  scoped_refptr<base::SequencedTaskRunner> main_thread_task_runner_;
+  std::string device_id_;
 };
 
 // static
@@ -752,6 +917,87 @@ VideoCaptureControlSupport VideoCaptureDeviceMFWin::GetControlSupport(
   }
 
   return control_support;
+}
+
+bool VideoCaptureDeviceMFWin::CreateMFCameraControlMonitor() {
+  DCHECK(video_callback_);
+
+  if (base::win::GetVersion() < base::win::Version::WIN11_22H2) {
+    return false;
+  }
+
+  // The MF DLLs have been loaded by VideoCaptureDeviceFactoryWin.
+  // Just get a DLL module handle here, once.
+  static const HMODULE module = GetModuleHandleW(L"mfsensorgroup.dll");
+  if (!module) {
+    DLOG(ERROR) << "Failed to get the mfsensorgroup.dll module handle";
+    return false;
+  }
+  using MFCreateCameraControlMonitorType =
+      decltype(&MFCreateCameraControlMonitor);
+  static const MFCreateCameraControlMonitorType create_camera_control_monitor =
+      reinterpret_cast<MFCreateCameraControlMonitorType>(
+          GetProcAddress(module, "MFCreateCameraControlMonitor"));
+  if (!create_camera_control_monitor) {
+    DLOG(ERROR) << "Failed to get the MFCreateCameraControlMonitor function";
+    return false;
+  }
+
+  ComPtr<IMFCameraControlMonitor> camera_control_monitor;
+  HRESULT hr = create_camera_control_monitor(
+      base::SysUTF8ToWide(device_descriptor_.device_id).c_str(),
+      video_callback_.get(), &camera_control_monitor);
+  if (!camera_control_monitor) {
+    LOG(ERROR) << "Failed to create IMFCameraControlMonitor: "
+               << logging::SystemErrorCodeToString(hr);
+    return false;
+  }
+  hr = camera_control_monitor->AddControlSubscription(
+      KSPROPERTYSETID_ANYCAMERACONTROL, 0);
+  if (FAILED(hr)) {
+    LOG(ERROR) << "Failed to add IMFCameraControlMonitor control subscription: "
+               << logging::SystemErrorCodeToString(hr);
+    return false;
+  }
+  hr = camera_control_monitor->Start();
+  if (FAILED(hr)) {
+    LOG(ERROR) << "Failed to start IMFCameraControlMonitor: "
+               << logging::SystemErrorCodeToString(hr);
+    return false;
+  }
+  camera_control_monitor_ = std::move(camera_control_monitor);
+  return true;
+}
+
+bool VideoCaptureDeviceMFWin::CreateMFSensorActivityMonitor() {
+  DCHECK(video_callback_);
+
+  // The MF DLLs have been loaded by VideoCaptureDeviceFactoryWin.
+  // Just get a DLL module handle here, once.
+  static const HMODULE module = GetModuleHandleW(L"mfsensorgroup.dll");
+  if (!module) {
+    DLOG(ERROR) << "Failed to get the mfsensorgroup.dll module handle";
+    return false;
+  }
+
+  using MFCreateSensorActivityMonitorType =
+      decltype(&MFCreateSensorActivityMonitor);
+  static const MFCreateSensorActivityMonitorType create_function =
+      reinterpret_cast<MFCreateSensorActivityMonitorType>(
+          GetProcAddress(module, "MFCreateSensorActivityMonitor"));
+  if (!create_function) {
+    DLOG(ERROR) << "Failed to get the MFCreateSensorActivityMonitor function";
+    return false;
+  }
+
+  HRESULT hr =
+      create_function(activities_report_callback_.get(), &activity_monitor_);
+  if (!activity_monitor_) {
+    LOG(ERROR) << "Failed to create IMFSensorActivityMonitor: "
+               << logging::SystemErrorCodeToString(hr);
+    return false;
+  }
+  return true;
 }
 
 HRESULT VideoCaptureDeviceMFWin::ExecuteHresultCallbackWithRetries(
@@ -830,6 +1076,8 @@ HRESULT VideoCaptureDeviceMFWin::FillCapabilities(
     IMFCaptureSource* source,
     bool photo,
     CapabilityList* capabilities) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::FillCapabilities");
   DWORD stream_count = 0;
   HRESULT hr = GetDeviceStreamCount(source, &stream_count);
   if (FAILED(hr))
@@ -889,6 +1137,71 @@ HRESULT VideoCaptureDeviceMFWin::FillCapabilities(
   return hr;
 }
 
+HRESULT VideoCaptureDeviceMFWin::SetAndCommitExtendedCameraControlFlags(
+    KSPROPERTY_CAMERACONTROL_EXTENDED_PROPERTY property_id,
+    ULONGLONG flags) {
+  DCHECK(extended_camera_controller_);
+  ComPtr<IMFExtendedCameraControl> extended_camera_control;
+  HRESULT hr = extended_camera_controller_->GetExtendedCameraControl(
+      MF_CAPTURE_ENGINE_MEDIASOURCE, property_id, &extended_camera_control);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to retrieve IMFExtendedCameraControl",
+                              hr);
+  if (FAILED(hr)) {
+    return hr;
+  }
+  if (extended_camera_control->GetFlags() != flags) {
+    hr = extended_camera_control->SetFlags(flags);
+    DLOG_IF_FAILED_WITH_HRESULT("Failed to set extended camera control flags",
+                                hr);
+    if (FAILED(hr)) {
+      return hr;
+    }
+    hr = extended_camera_control->CommitSettings();
+    DLOG_IF_FAILED_WITH_HRESULT(
+        "Failed to commit extended camera control settings", hr);
+    if (FAILED(hr)) {
+      return hr;
+    }
+  }
+  if (camera_control_monitor_) {
+    // Save the flags for |OnCameraControlChangeInternal()|.
+    set_extended_camera_control_flags_[property_id] = flags;
+  }
+  return hr;
+}
+
+HRESULT VideoCaptureDeviceMFWin::SetCameraControlProperty(
+    CameraControlProperty property,
+    long value,
+    long flags) {
+  DCHECK(camera_control_);
+  HRESULT hr = camera_control_->Set(property, value, flags);
+  if (FAILED(hr)) {
+    return hr;
+  }
+  if (camera_control_monitor_) {
+    // Save the value and the flags for |OnCameraControlChangeInternal()|.
+    set_camera_control_properties_[property] = {value, flags};
+  }
+  return hr;
+}
+
+HRESULT VideoCaptureDeviceMFWin::SetVideoControlProperty(
+    VideoProcAmpProperty property,
+    long value,
+    long flags) {
+  DCHECK(video_control_);
+  HRESULT hr = video_control_->Set(property, value, flags);
+  if (FAILED(hr)) {
+    return hr;
+  }
+  if (camera_control_monitor_) {
+    // Save the value and the flags for |OnCameraControlChangeInternal()|.
+    set_video_control_properties_[property] = {value, flags};
+  }
+  return hr;
+}
+
 VideoCaptureDeviceMFWin::VideoCaptureDeviceMFWin(
     const VideoCaptureDeviceDescriptor& device_descriptor,
     ComPtr<IMFMediaSource> source,
@@ -931,9 +1244,7 @@ VideoCaptureDeviceMFWin::VideoCaptureDeviceMFWin(
 VideoCaptureDeviceMFWin::~VideoCaptureDeviceMFWin() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  if (video_callback_) {
-    video_callback_->Shutdown();
-  }
+  DeinitVideoCallbacksControlsAndMonitors();
 
   // In case there's about to be a new device created with a different config,
   // defer destruction of the IMFCaptureEngine since it force unloads a bunch of
@@ -945,9 +1256,32 @@ VideoCaptureDeviceMFWin::~VideoCaptureDeviceMFWin() {
   }
 }
 
+void VideoCaptureDeviceMFWin::DeinitVideoCallbacksControlsAndMonitors() {
+  // Deinitialize (shutdown and reset) video callbacks, control monitors,
+  // controls and controllers created by |Init()|.
+
+  camera_control_.Reset();
+  video_control_.Reset();
+  extended_camera_controller_.Reset();
+
+  if (camera_control_monitor_) {
+    camera_control_monitor_->Shutdown();
+    camera_control_monitor_.Reset();
+  }
+
+  if (video_callback_) {
+    video_callback_->Shutdown();
+    video_callback_.reset();
+  }
+}
+
 bool VideoCaptureDeviceMFWin::Init() {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::Init");
   DCHECK(!is_initialized_);
   HRESULT hr;
+
+  DeinitVideoCallbacksControlsAndMonitors();
 
   hr = source_.As(&camera_control_);
   DLOG_IF_FAILED_WITH_HRESULT("Failed to retrieve IAMCameraControl", hr);
@@ -960,8 +1294,8 @@ bool VideoCaptureDeviceMFWin::Init() {
   DLOG_IF_FAILED_WITH_HRESULT("Failed to retrieve IMFGetService", hr);
 
   if (get_service) {
-    hr = get_service->GetService(GUID_NULL, IID_IMFExtendedCameraController,
-                                 &extended_camera_controller_);
+    hr = get_service->GetService(GUID_NULL,
+                                 IID_PPV_ARGS(&extended_camera_controller_));
     DLOG_IF_FAILED_WITH_HRESULT(
         "Failed to retrieve IMFExtendedCameraController", hr);
   }
@@ -1004,6 +1338,8 @@ bool VideoCaptureDeviceMFWin::Init() {
     return false;
   }
 
+  CreateMFCameraControlMonitor();
+
   is_initialized_ = true;
   return true;
 }
@@ -1011,6 +1347,8 @@ bool VideoCaptureDeviceMFWin::Init() {
 void VideoCaptureDeviceMFWin::AllocateAndStart(
     const VideoCaptureParams& params,
     std::unique_ptr<VideoCaptureDevice::Client> client) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::AllocateAndStart");
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   params_ = params;
   client_ = std::move(client);
@@ -1192,6 +1530,8 @@ void VideoCaptureDeviceMFWin::AllocateAndStart(
 }
 
 void VideoCaptureDeviceMFWin::StopAndDeAllocate() {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::StopAndDeAllocate");
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (is_started_ && engine_) {
     engine_->StopPreview();
@@ -1214,6 +1554,8 @@ void VideoCaptureDeviceMFWin::StopAndDeAllocate() {
 }
 
 void VideoCaptureDeviceMFWin::TakePhoto(TakePhotoCallback callback) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::TakePhoto");
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   if (!is_started_)
@@ -1445,11 +1787,6 @@ void VideoCaptureDeviceMFWin::SetPhotoOptions(
 
   if (!photo_capabilities_.empty() &&
       (settings->has_height || settings->has_width)) {
-    if (FAILED(hr)) {
-      LogError(FROM_HERE, hr);
-      return;
-    }
-
     ComPtr<IMFMediaType> current_source_media_type;
     hr = source->GetCurrentDeviceMediaType(
         selected_photo_capability_->stream_index, &current_source_media_type);
@@ -1474,8 +1811,8 @@ void VideoCaptureDeviceMFWin::SetPhotoOptions(
   if (camera_control_ && video_control_) {
     if (settings->has_white_balance_mode) {
       if (settings->white_balance_mode == mojom::MeteringMode::CONTINUOUS) {
-        hr = video_control_->Set(VideoProcAmp_WhiteBalance, 0L,
-                                 VideoProcAmp_Flags_Auto);
+        hr = SetVideoControlProperty(VideoProcAmp_WhiteBalance, 0L,
+                                     VideoProcAmp_Flags_Auto);
         DLOG_IF_FAILED_WITH_HRESULT("Auto white balance config failed", hr);
         if (FAILED(hr))
           return;
@@ -1485,9 +1822,9 @@ void VideoCaptureDeviceMFWin::SetPhotoOptions(
       }
     }
     if (white_balance_mode_manual_ && settings->has_color_temperature) {
-      hr = video_control_->Set(VideoProcAmp_WhiteBalance,
-                               settings->color_temperature,
-                               VideoProcAmp_Flags_Manual);
+      hr = SetVideoControlProperty(VideoProcAmp_WhiteBalance,
+                                   settings->color_temperature,
+                                   VideoProcAmp_Flags_Manual);
       DLOG_IF_FAILED_WITH_HRESULT("Color temperature config failed", hr);
       if (FAILED(hr))
         return;
@@ -1495,8 +1832,8 @@ void VideoCaptureDeviceMFWin::SetPhotoOptions(
 
     if (settings->has_exposure_mode) {
       if (settings->exposure_mode == mojom::MeteringMode::CONTINUOUS) {
-        hr = camera_control_->Set(CameraControl_Exposure, 0L,
-                                  CameraControl_Flags_Auto);
+        hr = SetCameraControlProperty(CameraControl_Exposure, 0L,
+                                      CameraControl_Flags_Auto);
         DLOG_IF_FAILED_WITH_HRESULT("Auto exposure config failed", hr);
         if (FAILED(hr))
           return;
@@ -1506,7 +1843,7 @@ void VideoCaptureDeviceMFWin::SetPhotoOptions(
       }
     }
     if (exposure_mode_manual_ && settings->has_exposure_time) {
-      hr = camera_control_->Set(
+      hr = SetCameraControlProperty(
           CameraControl_Exposure,
           CaptureExposureTimeToPlatformValue(settings->exposure_time),
           CameraControl_Flags_Manual);
@@ -1517,8 +1854,8 @@ void VideoCaptureDeviceMFWin::SetPhotoOptions(
 
     if (settings->has_focus_mode) {
       if (settings->focus_mode == mojom::MeteringMode::CONTINUOUS) {
-        hr = camera_control_->Set(CameraControl_Focus, 0L,
-                                  CameraControl_Flags_Auto);
+        hr = SetCameraControlProperty(CameraControl_Focus, 0L,
+                                      CameraControl_Flags_Auto);
         DLOG_IF_FAILED_WITH_HRESULT("Auto focus config failed", hr);
         if (FAILED(hr))
           return;
@@ -1528,68 +1865,71 @@ void VideoCaptureDeviceMFWin::SetPhotoOptions(
       }
     }
     if (focus_mode_manual_ && settings->has_focus_distance) {
-      hr = camera_control_->Set(CameraControl_Focus, settings->focus_distance,
-                                CameraControl_Flags_Manual);
+      hr = SetCameraControlProperty(CameraControl_Focus,
+                                    settings->focus_distance,
+                                    CameraControl_Flags_Manual);
       DLOG_IF_FAILED_WITH_HRESULT("Focus Distance config failed", hr);
       if (FAILED(hr))
         return;
     }
 
     if (settings->has_brightness) {
-      hr = video_control_->Set(VideoProcAmp_Brightness, settings->brightness,
-                               VideoProcAmp_Flags_Manual);
+      hr =
+          SetVideoControlProperty(VideoProcAmp_Brightness, settings->brightness,
+                                  VideoProcAmp_Flags_Manual);
       DLOG_IF_FAILED_WITH_HRESULT("Brightness config failed", hr);
       if (FAILED(hr))
         return;
     }
     if (settings->has_contrast) {
-      hr = video_control_->Set(VideoProcAmp_Contrast, settings->contrast,
-                               VideoProcAmp_Flags_Manual);
+      hr = SetVideoControlProperty(VideoProcAmp_Contrast, settings->contrast,
+                                   VideoProcAmp_Flags_Manual);
       DLOG_IF_FAILED_WITH_HRESULT("Contrast config failed", hr);
       if (FAILED(hr))
         return;
     }
     if (settings->has_exposure_compensation) {
-      hr = video_control_->Set(VideoProcAmp_Gain,
-                               settings->exposure_compensation,
-                               VideoProcAmp_Flags_Manual);
+      hr = SetVideoControlProperty(VideoProcAmp_Gain,
+                                   settings->exposure_compensation,
+                                   VideoProcAmp_Flags_Manual);
       DLOG_IF_FAILED_WITH_HRESULT("Exposure Compensation config failed", hr);
       if (FAILED(hr))
         return;
     }
     if (settings->has_saturation) {
-      hr = video_control_->Set(VideoProcAmp_Saturation, settings->saturation,
-                               VideoProcAmp_Flags_Manual);
+      hr =
+          SetVideoControlProperty(VideoProcAmp_Saturation, settings->saturation,
+                                  VideoProcAmp_Flags_Manual);
       DLOG_IF_FAILED_WITH_HRESULT("Saturation config failed", hr);
       if (FAILED(hr))
         return;
     }
     if (settings->has_sharpness) {
-      hr = video_control_->Set(VideoProcAmp_Sharpness, settings->sharpness,
-                               VideoProcAmp_Flags_Manual);
+      hr = SetVideoControlProperty(VideoProcAmp_Sharpness, settings->sharpness,
+                                   VideoProcAmp_Flags_Manual);
       DLOG_IF_FAILED_WITH_HRESULT("Sharpness config failed", hr);
       if (FAILED(hr))
         return;
     }
     if (settings->has_pan) {
-      hr = camera_control_->Set(CameraControl_Pan,
-                                CaptureAngleToPlatformValue(settings->pan),
-                                CameraControl_Flags_Manual);
+      hr = SetCameraControlProperty(CameraControl_Pan,
+                                    CaptureAngleToPlatformValue(settings->pan),
+                                    CameraControl_Flags_Manual);
       DLOG_IF_FAILED_WITH_HRESULT("Pan config failed", hr);
       if (FAILED(hr))
         return;
     }
     if (settings->has_tilt) {
-      hr = camera_control_->Set(CameraControl_Tilt,
-                                CaptureAngleToPlatformValue(settings->tilt),
-                                CameraControl_Flags_Manual);
+      hr = SetCameraControlProperty(CameraControl_Tilt,
+                                    CaptureAngleToPlatformValue(settings->tilt),
+                                    CameraControl_Flags_Manual);
       DLOG_IF_FAILED_WITH_HRESULT("Tilt config failed", hr);
       if (FAILED(hr))
         return;
     }
     if (settings->has_zoom) {
-      hr = camera_control_->Set(CameraControl_Zoom, settings->zoom,
-                                CameraControl_Flags_Manual);
+      hr = SetCameraControlProperty(CameraControl_Zoom, settings->zoom,
+                                    CameraControl_Flags_Manual);
       DLOG_IF_FAILED_WITH_HRESULT("Zoom config failed", hr);
       if (FAILED(hr))
         return;
@@ -1597,18 +1937,7 @@ void VideoCaptureDeviceMFWin::SetPhotoOptions(
   }
 
   if (extended_camera_controller_) {
-    ComPtr<IMFExtendedCameraControl> extended_camera_control;
     if (settings->has_background_blur_mode) {
-      hr = extended_camera_controller_->GetExtendedCameraControl(
-          MF_CAPTURE_ENGINE_MEDIASOURCE,
-          KSPROPERTY_CAMERACONTROL_EXTENDED_BACKGROUNDSEGMENTATION,
-          &extended_camera_control);
-      DLOG_IF_FAILED_WITH_HRESULT(
-          "Failed to retrieve IMFExtendedCameraControl for background "
-          "segmentation",
-          hr);
-      if (FAILED(hr))
-        return;
       ULONGLONG flag;
       switch (settings->background_blur_mode) {
         case mojom::BackgroundBlurMode::OFF:
@@ -1618,17 +1947,11 @@ void VideoCaptureDeviceMFWin::SetPhotoOptions(
           flag = KSCAMERA_EXTENDEDPROP_BACKGROUNDSEGMENTATION_BLUR;
           break;
       }
-      if (extended_camera_control->GetFlags() != flag) {
-        hr = extended_camera_control->SetFlags(flag);
-        DLOG_IF_FAILED_WITH_HRESULT("Failed to set background segmentation",
-                                    hr);
-        if (FAILED(hr))
-          return;
-        hr = extended_camera_control->CommitSettings();
-        DLOG_IF_FAILED_WITH_HRESULT("Failed to commit background segmentation",
-                                    hr);
-        if (FAILED(hr))
-          return;
+      hr = SetAndCommitExtendedCameraControlFlags(
+          KSPROPERTY_CAMERACONTROL_EXTENDED_BACKGROUNDSEGMENTATION, flag);
+      DLOG_IF_FAILED_WITH_HRESULT("Background blur mode config failed", hr);
+      if (FAILED(hr)) {
+        return;
       }
     }
   }
@@ -1642,25 +1965,122 @@ void VideoCaptureDeviceMFWin::OnUtilizationReport(
   last_feedback_ = feedback;
 }
 
-void VideoCaptureDeviceMFWin::OnIncomingCapturedData(
-    Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer,
-    base::TimeTicks reference_time,
-    base::TimeDelta timestamp) {
-  // This is called on IMFCaptureEngine thread.
+void VideoCaptureDeviceMFWin::OnCameraControlChange(REFGUID control_set,
+                                                    UINT32 id) {
+  // This is called on IMFCameraControlNotify thread.
   // To serialize all access to this class we post to the task
   // runner which is used for Video capture service API calls
   // (E.g. DeallocateAndStop).
   main_thread_task_runner_->PostTask(
       FROM_HERE,
-      base::BindOnce(&VideoCaptureDeviceMFWin::OnIncomingCapturedDataInternal,
-                     weak_factory_.GetWeakPtr(), std::move(buffer),
-                     reference_time, timestamp));
+      base::BindOnce(&VideoCaptureDeviceMFWin::OnCameraControlChangeInternal,
+                     weak_factory_.GetWeakPtr(), control_set, id));
+}
+
+void VideoCaptureDeviceMFWin::OnCameraControlChangeInternal(REFGUID control_set,
+                                                            UINT32 id) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  // Ignore changes caused by |SetPhotoOptions()|.
+  if (control_set == PROPSETID_VIDCAP_CAMERACONTROL) {
+    auto iter = set_camera_control_properties_.find(id);
+    if (iter != set_camera_control_properties_.end()) {
+      // Get the current value and flags and compare with previously set value
+      // and flags. If there are no meaningful differences (the current flags
+      // include the previously set auto or manual flag and either the current
+      // value equals to the previously set value or the current value is
+      // determined automatically), this is not an external configuration
+      // change unrelated to |SetPhotoOptions()| of which |client_| should be
+      // notified.
+      long value, flags;
+      if (camera_control_ &&
+          SUCCEEDED(camera_control_->Get(id, &value, &flags)) &&
+          (flags & (CameraControl_Flags_Auto | CameraControl_Flags_Manual)) ==
+              iter->second.flags &&
+          (value == iter->second.value || (flags & CameraControl_Flags_Auto))) {
+        return;
+      }
+    }
+  } else if (control_set == PROPSETID_VIDCAP_VIDEOPROCAMP) {
+    auto iter = set_video_control_properties_.find(id);
+    if (iter != set_video_control_properties_.end()) {
+      // Get the current value and flags and compare with previously set value
+      // and flags. If there are no meaningful differences (the current flags
+      // include the previously set auto or manual flag and either the current
+      // value equals to the previously set value or the current value is
+      // determined automatically), this is not an external configuration
+      // change unrelated to |SetPhotoOptions()| of which |client_| should be
+      // notified.
+      long value, flags;
+      if (video_control_ &&
+          SUCCEEDED(video_control_->Get(id, &value, &flags)) &&
+          (flags & (VideoProcAmp_Flags_Auto | VideoProcAmp_Flags_Manual)) ==
+              iter->second.flags &&
+          (value == iter->second.value || (flags & VideoProcAmp_Flags_Auto))) {
+        return;
+      }
+    }
+  } else if (control_set == KSPROPERTYSETID_ExtendedCameraControl) {
+    auto iter = set_extended_camera_control_flags_.find(id);
+    if (iter != set_extended_camera_control_flags_.end()) {
+      // Get the current flags and compare with previously set flags. If there
+      // are no meaningful differences, this is not an external configuration
+      // change unrelated to |SetPhotoOptions()| of which |client_| should be
+      // notified.
+      ComPtr<IMFExtendedCameraControl> extended_camera_control;
+      if (extended_camera_controller_ &&
+          SUCCEEDED(extended_camera_controller_->GetExtendedCameraControl(
+              MF_CAPTURE_ENGINE_MEDIASOURCE, id, &extended_camera_control)) &&
+          extended_camera_control->GetFlags() == iter->second) {
+        return;
+      }
+    }
+  }
+
+  // Let the client do remaining filtering.
+  client_->OnCaptureConfigurationChanged();
+}
+
+void VideoCaptureDeviceMFWin::OnCameraControlError(HRESULT status) const {
+  // This is called on IMFCameraControlNotify thread.
+  LogError(FROM_HERE, status);
+}
+
+void VideoCaptureDeviceMFWin::OnIncomingCapturedData(
+    Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer,
+    base::TimeTicks reference_time,
+    base::TimeDelta timestamp) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::OnIncomingCapturedData");
+  // This is called on IMFCaptureEngine thread.
+  // To serialize all access to this class we post to the task
+  // runner which is used for Video capture service API calls
+  // (E.g. DeallocateAndStop).
+
+  bool need_to_post = false;
+  {
+    base::AutoLock lock(queueing_lock_);
+    need_to_post = !input_buffer_;
+    input_buffer_ = std::move(buffer);
+    input_reference_time_ = reference_time;
+    input_timestamp_ = timestamp;
+  }
+
+  if (need_to_post) {
+    main_thread_task_runner_->PostTask(
+        FROM_HERE,
+        base::BindOnce(&VideoCaptureDeviceMFWin::OnIncomingCapturedDataInternal,
+                       weak_factory_.GetWeakPtr()));
+  }
 }
 
 HRESULT VideoCaptureDeviceMFWin::DeliverTextureToClient(
+    Microsoft::WRL::ComPtr<IMFMediaBuffer> imf_buffer,
     ID3D11Texture2D* texture,
     base::TimeTicks reference_time,
     base::TimeDelta timestamp) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::DeliverTextureToClient");
   // Check for device loss
   Microsoft::WRL::ComPtr<ID3D11Device> texture_device;
   texture->GetDevice(&texture_device);
@@ -1688,10 +2108,19 @@ HRESULT VideoCaptureDeviceMFWin::DeliverTextureToClient(
 
   gfx::Size texture_size;
   VideoPixelFormat pixel_format;
-  GetTextureSizeAndFormat(texture, texture_size, pixel_format);
+  bool is_cross_process_shared_texture;
+  GetTextureInfo(texture, texture_size, pixel_format,
+                 is_cross_process_shared_texture);
 
   if (pixel_format != PIXEL_FORMAT_NV12) {
     return MF_E_UNSUPPORTED_FORMAT;
+  }
+
+  if (base::FeatureList::IsEnabled(kMediaFoundationD3D11VideoCaptureZeroCopy) &&
+      is_cross_process_shared_texture) {
+    return DeliverExternalBufferToClient(std::move(imf_buffer), texture,
+                                         texture_size, pixel_format,
+                                         reference_time, timestamp);
   }
 
   VideoCaptureDevice::Client::Buffer capture_buffer;
@@ -1761,11 +2190,89 @@ HRESULT VideoCaptureDeviceMFWin::DeliverTextureToClient(
   return hr;
 }
 
-void VideoCaptureDeviceMFWin::OnIncomingCapturedDataInternal(
-    Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer,
+HRESULT VideoCaptureDeviceMFWin::DeliverExternalBufferToClient(
+    Microsoft::WRL::ComPtr<IMFMediaBuffer> imf_buffer,
+    ID3D11Texture2D* texture,
+    const gfx::Size& texture_size,
+    const VideoPixelFormat& pixel_format,
     base::TimeTicks reference_time,
     base::TimeDelta timestamp) {
+  UINT private_data_size;
+  Microsoft::WRL::ComPtr<DXGIHandlePrivateData> private_data;
+  HRESULT hr =
+      texture->GetPrivateData(DXGIHandlePrivateDataGUID, &private_data_size,
+                              static_cast<void**>(&private_data));
+
+  if (SUCCEEDED(hr) && private_data) {
+    DCHECK_EQ(private_data_size, static_cast<UINT>(sizeof(&private_data)));
+  } else {
+    // It's failed to get valid |private_data|, create and set a new value.
+    Microsoft::WRL::ComPtr<IDXGIResource1> dxgi_resource;
+    hr = texture->QueryInterface(IID_PPV_ARGS(&dxgi_resource));
+    if (FAILED(hr)) {
+      DLOG(ERROR) << logging::SystemErrorCodeToString(hr);
+      return hr;
+    }
+    HANDLE texture_handle;
+    hr = dxgi_resource->CreateSharedHandle(
+        nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
+        nullptr, &texture_handle);
+    if (FAILED(hr)) {
+      DLOG(ERROR) << logging::SystemErrorCodeToString(hr);
+      return hr;
+    }
+    private_data = Microsoft::WRL::Make<DXGIHandlePrivateData>(
+        base::win::ScopedHandle(texture_handle));
+
+    hr = texture->SetPrivateDataInterface(DXGIHandlePrivateDataGUID,
+                                          private_data.Get());
+    if (FAILED(hr)) {
+      DLOG(ERROR) << "failed to set private data to texture, "
+                  << logging::SystemErrorCodeToString(hr);
+      return hr;
+    }
+  }
+
+  // Set reused |token| and |share_handle| to gmb handle.
+  gfx::GpuMemoryBufferHandle gmb_handle;
+  gmb_handle.type = gfx::GpuMemoryBufferType::DXGI_SHARED_HANDLE;
+  HANDLE texture_handle_duplicated = nullptr;
+  CHECK(::DuplicateHandle(GetCurrentProcess(), private_data->GetTextureHandle(),
+                          GetCurrentProcess(), &texture_handle_duplicated, 0,
+                          FALSE, DUPLICATE_SAME_ACCESS))
+      << "failed to reuse handle.";
+
+  gmb_handle.dxgi_handle.Set(texture_handle_duplicated);
+  gmb_handle.dxgi_token = private_data->GetDXGIToken();
+
+  media::CapturedExternalVideoBuffer external_buffer =
+      media::CapturedExternalVideoBuffer(
+          std::move(imf_buffer), std::move(gmb_handle),
+          VideoCaptureFormat(
+              texture_size,
+              selected_video_capability_->supported_format.frame_rate,
+              pixel_format),
+          gfx::ColorSpace());
+  client_->OnIncomingCapturedExternalBuffer(std::move(external_buffer), {},
+                                            reference_time, timestamp,
+                                            gfx::Rect(texture_size));
+  return hr;
+}
+
+void VideoCaptureDeviceMFWin::OnIncomingCapturedDataInternal() {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::OnIncomingCapturedDataInternal");
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
+  base::TimeTicks reference_time;
+  base::TimeDelta timestamp;
+  {
+    base::AutoLock lock(queueing_lock_);
+    buffer = std::move(input_buffer_);
+    reference_time = input_reference_time_;
+    timestamp = input_timestamp_;
+  }
 
   SendOnStartedIfNotYetSent();
 
@@ -1778,14 +2285,16 @@ void VideoCaptureDeviceMFWin::OnIncomingCapturedDataInternal(
       camera_rotation_ = GetCameraRotation(device_descriptor_.facing);
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
-    // Use the hardware path only if it is enabled and the selected pixel format
-    // is NV12 (which is the only supported one).
+    // Use the hardware path only if it is enabled and the produced pixel format
+    // is NV12 (which is the only supported one) and the requested format is
+    // also NV12.
     if (dxgi_device_manager_ &&
         selected_video_capability_->supported_format.pixel_format ==
             PIXEL_FORMAT_NV12 &&
+        params_.requested_format.pixel_format == PIXEL_FORMAT_NV12 &&
         SUCCEEDED(GetTextureFromMFBuffer(buffer.Get(), &texture))) {
-      HRESULT hr =
-          DeliverTextureToClient(texture.Get(), reference_time, timestamp);
+      HRESULT hr = DeliverTextureToClient(buffer, texture.Get(), reference_time,
+                                          timestamp);
       DLOG_IF_FAILED_WITH_HRESULT("Failed to deliver D3D11 texture to client.",
                                   hr);
       delivered_texture = SUCCEEDED(hr);
@@ -1831,6 +2340,8 @@ void VideoCaptureDeviceMFWin::OnIncomingCapturedDataInternal(
 
 void VideoCaptureDeviceMFWin::OnFrameDropped(
     VideoCaptureFrameDropReason reason) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::OnFrameDropped");
   // This is called on IMFCaptureEngine thread.
   // To serialize all access to this class we post to the task
   // runner which is used for Video capture service API calls
@@ -1843,6 +2354,8 @@ void VideoCaptureDeviceMFWin::OnFrameDropped(
 
 void VideoCaptureDeviceMFWin::OnFrameDroppedInternal(
     VideoCaptureFrameDropReason reason) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::OnFrameDroppedInternal");
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   SendOnStartedIfNotYetSent();
@@ -1853,6 +2366,9 @@ void VideoCaptureDeviceMFWin::OnFrameDroppedInternal(
 }
 
 void VideoCaptureDeviceMFWin::OnEvent(IMFMediaEvent* media_event) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::OnEvent");
+
   HRESULT hr;
   GUID capture_event_guid = GUID_NULL;
 
@@ -1862,6 +2378,9 @@ void VideoCaptureDeviceMFWin::OnEvent(IMFMediaEvent* media_event) {
   // When MF_CAPTURE_ENGINE_ERROR is returned the captureengine object is no
   // longer valid.
   if (capture_event_guid == MF_CAPTURE_ENGINE_ERROR || FAILED(hr)) {
+    TRACE_EVENT_INSTANT1(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+                         "VideoCaptureDeviceMFWin::OnEvent",
+                         TRACE_EVENT_SCOPE_PROCESS, "error HR", hr);
     // Safe to access this on a potentially different sequence, as
     // this thread is write only and there is a barrier synchronization due
     // to |capture_error_| event.
@@ -1887,7 +2406,39 @@ void VideoCaptureDeviceMFWin::OnEvent(IMFMediaEvent* media_event) {
 }
 
 void VideoCaptureDeviceMFWin::ProcessEventError(HRESULT hr) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::ProcessEventError");
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (hr == MF_E_HW_MFT_FAILED_START_STREAMING) {
+    // This may indicate that the camera is in use by another application.
+    if (!activities_report_callback_) {
+      activities_report_callback_ = new MFActivitiesReportCallback(
+          weak_factory_.GetWeakPtr(), main_thread_task_runner_,
+          device_descriptor_.device_id);
+    }
+    if (!activity_monitor_) {
+      bool created = CreateMFSensorActivityMonitor();
+      if (!created) {
+        // Can't rely on activity monitor to check if the camera is in use.
+        // Just report the error.
+        RecordErrorHistogram(hr);
+        OnError(VideoCaptureError::kWinMediaFoundationGetMediaEventStatusFailed,
+                FROM_HERE, hr);
+        return;
+      }
+    }
+    // Post default action in case there will be no callback calls.
+    activity_report_pending_ = true;
+    main_thread_task_runner_->PostDelayedTask(
+        FROM_HERE,
+        base::BindOnce(&VideoCaptureDeviceMFWin::OnCameraInUseReport,
+                       weak_factory_.GetWeakPtr(), /*in_use=*/false,
+                       /*is_default_action=*/true),
+        base::Milliseconds(500));
+    activity_monitor_->Start();
+    return;
+  }
 
   if (hr == DXGI_ERROR_DEVICE_REMOVED && dxgi_device_manager_ != nullptr) {
     // Removed device can happen for external reasons.
@@ -1931,7 +2482,7 @@ void VideoCaptureDeviceMFWin::ProcessEventError(HRESULT hr) {
   }
 
   if (FAILED(hr)) {
-    base::UmaHistogramSparse("Media.VideoCapture.Win.ErrorEvent", hr);
+    RecordErrorHistogram(hr);
     OnError(VideoCaptureError::kWinMediaFoundationGetMediaEventStatusFailed,
             FROM_HERE, hr);
   }
@@ -1965,6 +2516,8 @@ void VideoCaptureDeviceMFWin::SendOnStartedIfNotYetSent() {
 }
 
 HRESULT VideoCaptureDeviceMFWin::WaitOnCaptureEvent(GUID capture_event_guid) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::WaitOnCaptureEvent");
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   HRESULT hr = S_OK;
@@ -2004,6 +2557,8 @@ HRESULT VideoCaptureDeviceMFWin::WaitOnCaptureEvent(GUID capture_event_guid) {
 }
 
 bool VideoCaptureDeviceMFWin::RecreateMFSource() {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureDeviceMFWin::RecreateMFSource");
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   const bool is_sensor_api = device_descriptor_.capture_api ==
@@ -2036,4 +2591,33 @@ bool VideoCaptureDeviceMFWin::RecreateMFSource() {
   }
   return true;
 }
+
+void VideoCaptureDeviceMFWin::OnCameraInUseReport(bool in_use,
+                                                  bool is_default_action) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (!activity_report_pending_) {
+    return;
+  }
+  activity_report_pending_ = false;
+
+  // Default action for no reports received can be only "camera not in use".
+  DCHECK(!in_use || !is_default_action);
+
+  base::UmaHistogramBoolean("Media.VideoCapture.Win.ActivityReportProcessed",
+                            is_default_action);
+
+  if (in_use) {
+    OnError(VideoCaptureError::kWinMediaFoundationCameraBusy, FROM_HERE,
+            "Camera is in use by another process");
+  } else {
+    RecordErrorHistogram(MF_E_HW_MFT_FAILED_START_STREAMING);
+    OnError(VideoCaptureError::kWinMediaFoundationGetMediaEventStatusFailed,
+            FROM_HERE, MF_E_HW_MFT_FAILED_START_STREAMING);
+  }
+
+  if (activity_monitor_) {
+    activity_monitor_->Stop();
+  }
+}
+
 }  // namespace media

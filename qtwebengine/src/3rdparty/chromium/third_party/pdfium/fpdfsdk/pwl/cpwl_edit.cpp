@@ -46,17 +46,18 @@ void CPWL_Edit::SetText(const WideString& csText) {
   m_pEditImpl->Paint();
 }
 
-bool CPWL_Edit::RePosChildWnd() {
+bool CPWL_Edit::RepositionChildWnd() {
   if (CPWL_ScrollBar* pVSB = GetVScrollBar()) {
     CFX_FloatRect rcWindow = m_rcOldWindow;
     CFX_FloatRect rcVScroll =
         CFX_FloatRect(rcWindow.right, rcWindow.bottom,
                       rcWindow.right + CPWL_ScrollBar::kWidth, rcWindow.top);
 
-    ObservedPtr<CPWL_Edit> thisObserved(this);
+    ObservedPtr<CPWL_Edit> this_observed(this);
     pVSB->Move(rcVScroll, true, false);
-    if (!thisObserved)
+    if (!this_observed) {
       return false;
+    }
   }
 
   if (m_pCaret && !HasFlag(PES_TEXTOVERFLOW)) {
@@ -237,12 +238,15 @@ void CPWL_Edit::OnKillFocus() {
   ObservedPtr<CPWL_Edit> observed_ptr(this);
   CPWL_ScrollBar* pScroll = GetVScrollBar();
   if (pScroll && pScroll->IsVisible()) {
-    pScroll->SetVisible(false);
-    if (!observed_ptr)
+    if (!pScroll->SetVisible(false)) {
       return;
-
-    if (!Move(m_rcOldWindow, true, true))
+    }
+    if (!observed_ptr) {
       return;
+    }
+    if (!Move(m_rcOldWindow, true, true)) {
+      return;
+    }
   }
 
   m_pEditImpl->SelectNone();
@@ -342,7 +346,7 @@ bool CPWL_Edit::OnKeyDown(FWL_VKEYCODE nKeyCode, Mask<FWL_EVENTFLAG> nFlag) {
     if (nSelStart == nSelEnd)
       nSelEnd = nSelStart + 1;
 
-    ObservedPtr<CPWL_Wnd> thisObserved(this);
+    ObservedPtr<CPWL_Wnd> this_observed(this);
 
     bool bRC;
     bool bExit;
@@ -350,8 +354,9 @@ bool CPWL_Edit::OnKeyDown(FWL_VKEYCODE nKeyCode, Mask<FWL_EVENTFLAG> nFlag) {
         GetAttachedData(), strChange, strChangeEx, nSelStart, nSelEnd, true,
         nFlag);
 
-    if (!thisObserved)
+    if (!this_observed) {
       return false;
+    }
 
     if (!bRC)
       return false;
@@ -423,15 +428,16 @@ bool CPWL_Edit::OnChar(uint16_t nChar, Mask<FWL_EVENTFLAG> nFlag) {
         break;
     }
 
-    ObservedPtr<CPWL_Wnd> thisObserved(this);
+    ObservedPtr<CPWL_Wnd> this_observed(this);
 
     WideString strChangeEx;
     std::tie(bRC, bExit) = GetFillerNotify()->OnBeforeKeyStroke(
         GetAttachedData(), swChange, strChangeEx, nSelStart, nSelEnd, true,
         nFlag);
 
-    if (!thisObserved)
+    if (!this_observed) {
       return false;
+    }
   }
 
   if (!bRC)
@@ -785,10 +791,11 @@ bool CPWL_Edit::SetCaret(bool bVisible,
   if (!IsFocused() || m_pEditImpl->IsSelected())
     bVisible = false;
 
-  ObservedPtr<CPWL_Edit> thisObserved(this);
+  ObservedPtr<CPWL_Edit> this_observed(this);
   m_pCaret->SetCaret(bVisible, ptHead, ptFoot);
-  if (!thisObserved)
+  if (!this_observed) {
     return false;
+  }
 
   return true;
 }

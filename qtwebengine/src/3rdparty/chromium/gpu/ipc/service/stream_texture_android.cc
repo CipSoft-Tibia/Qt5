@@ -55,6 +55,13 @@ TextureOwner::Mode GetTextureOwnerMode() {
              : TextureOwner::Mode::kSurfaceTextureInsecure;
 }
 
+scoped_refptr<gpu::RefCountedLock> CreateDrDcLockIfNeeded() {
+  if (features::NeedThreadSafeAndroidMedia()) {
+    return base::MakeRefCounted<gpu::RefCountedLock>();
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 // static
@@ -93,9 +100,10 @@ StreamTexture::StreamTexture(
     int32_t route_id,
     mojo::PendingAssociatedReceiver<mojom::StreamTexture> receiver,
     scoped_refptr<SharedContextState> context_state)
-    : texture_owner_(TextureOwner::Create(GetTextureOwnerMode(),
+    : RefCountedLockHelperDrDc(CreateDrDcLockIfNeeded()),
+      texture_owner_(TextureOwner::Create(GetTextureOwnerMode(),
                                           context_state,
-                                          /*drdc_lock=*/nullptr)),
+                                          GetDrDcLock())),
       has_pending_frame_(false),
       channel_(channel),
       route_id_(route_id),
@@ -139,12 +147,7 @@ bool StreamTexture::IsUsingGpuMemory() const {
   return true;
 }
 
-void StreamTexture::UpdateAndBindTexImage(GLuint service_id) {
-  // UpdateTexImage happens via OnFrameAvailable callback now. So we
-  // just need to ensure that image is bound to the correct texture id.
-  DCHECK_GT(service_id, static_cast<unsigned>(0));
-  texture_owner_->EnsureTexImageBound(service_id);
-}
+void StreamTexture::UpdateAndBindTexImage() {}
 
 bool StreamTexture::HasTextureOwner() const {
   return !!texture_owner_;
@@ -241,7 +244,7 @@ gpu::Mailbox StreamTexture::CreateSharedImage(const gfx::Size& coded_size) {
   auto shared_image = AndroidVideoImageBacking::Create(
       mailbox, coded_size, gfx::ColorSpace::CreateSRGB(),
       kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType, this, context_state_,
-      /*drdc_lock=*/nullptr);
+      GetDrDcLock());
   channel_->shared_image_stub()->factory()->RegisterBacking(
       std::move(shared_image));
 

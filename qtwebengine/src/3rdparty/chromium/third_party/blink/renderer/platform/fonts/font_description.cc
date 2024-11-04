@@ -53,7 +53,8 @@ struct SameSizeAsFontDescription {
   scoped_refptr<FontPalette> palette_;
   scoped_refptr<FontVariantAlternates> font_variant_alternates_;
   AtomicString locale;
-  float sizes[6];
+  float sizes[5];
+  FontSizeAdjust size_adjust_;
   FontSelectionRequest selection_request_;
   FieldsAsUnsignedType bitfields;
 };
@@ -81,7 +82,6 @@ FontDescription::FontDescription()
     : specified_size_(0),
       computed_size_(0),
       adjusted_size_(0),
-      size_adjust_(kFontSizeAdjustNone),
       letter_spacing_(0),
       word_spacing_(0),
       font_selection_request_(NormalWeightValue(),
@@ -249,9 +249,9 @@ float FontDescription::AdjustedSpecifiedSize() const {
 
 FontDescription FontDescription::SizeAdjustedFontDescription(
     float size_adjust) const {
-  // TODO(crbug.com/451346): The font-size-adjust property and size-adjust
-  // descriptor currently don't work together. For sanity, if both are set, we
-  // ignore size-adjust. Fix it when shipping font-size-adjust.
+  // See note in: https://www.w3.org/TR/css-fonts-5/#font-size-adjust-prop
+  // When the font-size-adjust property is applied while a size-adjust
+  // descriptor is set, the latter must not have an effect
   if (HasSizeAdjust())
     return *this;
 
@@ -265,8 +265,7 @@ FontDescription FontDescription::SizeAdjustedFontDescription(
 
 FontCacheKey FontDescription::CacheKey(
     const FontFaceCreationParams& creation_params,
-    bool is_unique_match,
-    bool is_generic_family) const {
+    bool is_unique_match) const {
   unsigned options =
       static_cast<unsigned>(fields_.font_optical_sizing_) << 7 |  // bit 8
       static_cast<unsigned>(fields_.synthetic_italic_) << 6 |     // bit 7
@@ -282,13 +281,13 @@ FontCacheKey FontDescription::CacheKey(
 #endif
   FontCacheKey cache_key(creation_params, EffectiveFontSize(),
                          options | font_selection_request_.GetHash() << 9,
-                         device_scale_factor_for_key, variation_settings_,
-                         font_palette_, font_variant_alternates_,
-                         is_unique_match, is_generic_family);
+                         device_scale_factor_for_key, size_adjust_,
+                         variation_settings_, font_palette_,
+                         font_variant_alternates_, is_unique_match);
 #if BUILDFLAG(IS_ANDROID)
   if (const LayoutLocale* locale = Locale()) {
     if (FontCache::GetLocaleSpecificFamilyName(creation_params.Family()))
-      cache_key.SetLocale(locale->LocaleForSkFontMgr());
+      cache_key.SetLocale(AtomicString(locale->LocaleForSkFontMgr()));
   }
 #endif  // BUILDFLAG(IS_ANDROID)
   return cache_key;
@@ -381,8 +380,13 @@ unsigned FontDescription::StyleHashWithoutFamilyList() const {
     }
   }
 
-  if (VariationSettings())
+  if (VariationSettings()) {
     WTF::AddIntToHash(hash, VariationSettings()->GetHash());
+  }
+
+  if (font_palette_) {
+    WTF::AddIntToHash(hash, font_palette_->GetHash());
+  }
 
   if (locale_) {
     const AtomicString& locale = locale_->LocaleString();
@@ -394,12 +398,12 @@ unsigned FontDescription::StyleHashWithoutFamilyList() const {
   WTF::AddFloatToHash(hash, NormalizeSign(specified_size_));
   WTF::AddFloatToHash(hash, NormalizeSign(computed_size_));
   WTF::AddFloatToHash(hash, NormalizeSign(adjusted_size_));
-  WTF::AddFloatToHash(hash, NormalizeSign(size_adjust_));
   WTF::AddFloatToHash(hash, NormalizeSign(letter_spacing_));
   WTF::AddFloatToHash(hash, NormalizeSign(word_spacing_));
   WTF::AddIntToHash(hash, fields_as_unsigned_.parts[0]);
   WTF::AddIntToHash(hash, fields_as_unsigned_.parts[1]);
   WTF::AddIntToHash(hash, font_selection_request_.GetHash());
+  WTF::AddIntToHash(hash, size_adjust_.GetHash());
 
   return hash;
 }
@@ -735,7 +739,7 @@ String FontDescription::ToString() const {
       // hyphenation and script. Consider adding a more detailed
       // string method.
       (locale_ ? locale_->LocaleString().Ascii().c_str() : ""), specified_size_,
-      computed_size_, adjusted_size_, size_adjust_, letter_spacing_,
+      computed_size_, adjusted_size_, size_adjust_.Value(), letter_spacing_,
       word_spacing_, font_selection_request_.ToString().Ascii().c_str(),
       blink::ToString(
           static_cast<TypesettingFeatures>(fields_.typesetting_features_))

@@ -1124,9 +1124,9 @@ redraw_handler(struct widget *widget, void *data)
 				cairo_stroke(cr);
 			}
 
-                        /* skip space glyph (RLE) we use as a placeholder of
-                           the right half of a double-width character,
-                           because RLE is not available in every font. */
+			/* skip space glyph (RLE) we use as a placeholder of
+			   the right half of a double-width character,
+			   because RLE is not available in every font. */
 			if (p_row[col].ch == 0x200B)
 				continue;
 
@@ -2949,6 +2949,8 @@ terminal_create(struct display *display)
 	terminal->widget = window_frame_create(terminal->window, terminal);
 	terminal->title = xstrdup("Wayland Terminal");
 	window_set_title(terminal->window, terminal->title);
+	window_set_appid(terminal->window,
+			 "org.freedesktop.weston.wayland-terminal");
 	widget_set_transparent(terminal->widget, 0);
 
 	init_state_machine(&terminal->state_machine);
@@ -3021,13 +3023,22 @@ static void
 terminal_destroy(struct terminal *terminal)
 {
 	display_unwatch_fd(terminal->display, terminal->master);
-	window_destroy(terminal->window);
 	close(terminal->master);
+
+	cairo_scaled_font_destroy(terminal->font_bold);
+	cairo_scaled_font_destroy(terminal->font_normal);
+
+	widget_destroy(terminal->widget);
+	window_destroy(terminal->window);
+
 	wl_list_remove(&terminal->link);
 
 	if (wl_list_empty(&terminal_list))
 		display_exit(terminal->display);
 
+	free(terminal->data);
+	free(terminal->data_attr);
+	free(terminal->tab_ruler);
 	free(terminal->title);
 	free(terminal);
 }
@@ -3046,10 +3057,12 @@ io_handler(struct task *task, uint32_t events)
 	}
 
 	len = read(terminal->master, buffer, sizeof buffer);
-	if (len < 0)
+	if (len < 0) {
 		terminal_destroy(terminal);
-	else
-		terminal_data(terminal, buffer, len);
+		return;
+	}
+
+	terminal_data(terminal, buffer, len);
 }
 
 static int
@@ -3126,7 +3139,7 @@ static const struct weston_option terminal_options[] = {
 int main(int argc, char *argv[])
 {
 	struct display *d;
-	struct terminal *terminal;
+	struct terminal *terminal, *tmp;
 	const char *config_file;
 	struct sigaction sigpipe;
 	struct weston_config *config;
@@ -3138,12 +3151,12 @@ int main(int argc, char *argv[])
 
 	option_shell = getenv("SHELL");
 	if (!option_shell)
-		option_shell = "/bin/bash";
+		option_shell = "/bin/sh";
 
 	config_file = weston_config_get_name_from_env();
 	config = weston_config_parse(config_file);
 	s = weston_config_get_section(config, "terminal", NULL, NULL);
-	weston_config_section_get_string(s, "font", &option_font, "mono");
+	weston_config_section_get_string(s, "font", &option_font, "monospace");
 	weston_config_section_get_int(s, "font-size", &option_font_size, 14);
 	weston_config_section_get_string(s, "term", &option_term, "xterm");
 	weston_config_destroy(config);
@@ -3180,6 +3193,10 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 
 	display_run(d);
+
+	wl_list_for_each_safe(terminal, tmp, &terminal_list, link)
+		terminal_destroy(terminal);
+	display_destroy(d);
 
 	return 0;
 }

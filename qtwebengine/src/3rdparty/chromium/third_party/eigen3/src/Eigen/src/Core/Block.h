@@ -357,7 +357,7 @@ class BlockImpl_dense<XprType,BlockRows,BlockCols, InnerPanel,true>
       */
     EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
     BlockImpl_dense(XprType& xpr, Index i)
-      : Base(add_to_nullable_pointer(xpr.data(),
+      : Base((BlockRows == 0 || BlockCols == 0) ? nullptr : add_to_nullable_pointer(xpr.data(),
                  i * (    ((BlockRows==1) && (BlockCols==XprType::ColsAtCompileTime) && (!XprTypeIsRowMajor))
                        || ((BlockRows==XprType::RowsAtCompileTime) && (BlockCols==1) && ( XprTypeIsRowMajor)) ? xpr.innerStride() : xpr.outerStride())),
              BlockRows==1 ? 1 : xpr.rows(),
@@ -373,7 +373,7 @@ class BlockImpl_dense<XprType,BlockRows,BlockCols, InnerPanel,true>
       */
     EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
     BlockImpl_dense(XprType& xpr, Index startRow, Index startCol)
-      : Base(add_to_nullable_pointer(xpr.data(),
+      : Base((BlockRows == 0 || BlockCols == 0) ? nullptr : add_to_nullable_pointer(xpr.data(),
                  xpr.innerStride()*(XprTypeIsRowMajor?startCol:startRow) + xpr.outerStride()*(XprTypeIsRowMajor?startRow:startCol))),
         m_xpr(xpr), m_startRow(startRow), m_startCol(startCol)
     {
@@ -386,7 +386,7 @@ class BlockImpl_dense<XprType,BlockRows,BlockCols, InnerPanel,true>
     BlockImpl_dense(XprType& xpr,
           Index startRow, Index startCol,
           Index blockRows, Index blockCols)
-      : Base(add_to_nullable_pointer(xpr.data(),
+      : Base((blockRows == 0 || blockCols == 0) ? nullptr : add_to_nullable_pointer(xpr.data(),
                  xpr.innerStride()*(XprTypeIsRowMajor?startCol:startRow) + xpr.outerStride()*(XprTypeIsRowMajor?startRow:startCol)),
              blockRows, blockCols),
         m_xpr(xpr), m_startRow(startRow), m_startCol(startCol)

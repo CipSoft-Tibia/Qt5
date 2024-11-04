@@ -41,9 +41,24 @@
 #define READONLY_SEALS (F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE)
 
 int
+os_fd_clear_cloexec(int fd)
+{
+	int flags;
+
+	flags = fcntl(fd, F_GETFD);
+	if (flags == -1)
+		return -1;
+
+	if (fcntl(fd, F_SETFD, flags & ~(int)FD_CLOEXEC) == -1)
+		return -1;
+
+	return 0;
+}
+
+int
 os_fd_set_cloexec(int fd)
 {
-	long flags;
+	int flags;
 
 	if (fd == -1)
 		return -1;
@@ -327,7 +342,7 @@ os_ro_anonymous_file_size(struct ro_anonymous_file *file)
  * The returned file descriptor must not be shared between multiple clients.
  * When \p mapmode is RO_ANONYMOUS_FILE_MAPMODE_PRIVATE the file descriptor is
  * only guaranteed to be mmapable with \c MAP_PRIVATE, when \p mapmode is
- * RO_ANONYMOUS_FILE_MAPMODE_SHARED the file descriptor can be mmaped with
+ * RO_ANONYMOUS_FILE_MAPMODE_SHARED the file descriptor can be mmapped with
  * either MAP_PRIVATE or MAP_SHARED.
  * When you're done with the fd you must call \c os_ro_anonymous_file_put_fd
  * instead of calling \c close.

@@ -5,6 +5,7 @@
 #define QEVENTLOOP_H
 
 #include <QtCore/qobject.h>
+#include <QtCore/qdeadlinetimer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -36,6 +37,7 @@ public:
 
     bool processEvents(ProcessEventsFlags flags = AllEvents);
     void processEvents(ProcessEventsFlags flags, int maximumTime);
+    void processEvents(ProcessEventsFlags flags, QDeadlineTimer deadline);
 
     int exec(ProcessEventsFlags flags = AllEvents);
     bool isRunning() const;
@@ -60,6 +62,13 @@ public:
     Q_NODISCARD_CTOR Q_CORE_EXPORT explicit QEventLoopLocker(QEventLoop *loop) noexcept;
     Q_NODISCARD_CTOR Q_CORE_EXPORT explicit QEventLoopLocker(QThread *thread) noexcept;
     Q_CORE_EXPORT ~QEventLoopLocker();
+
+    Q_NODISCARD_CTOR QEventLoopLocker(QEventLoopLocker &&other) noexcept
+        : p{std::exchange(other.p, 0)} {}
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QEventLoopLocker)
+
+    void swap(QEventLoopLocker &other) noexcept { std::swap(p, other.p); }
+    friend void swap(QEventLoopLocker &lhs, QEventLoopLocker &rhs) noexcept { lhs.swap(rhs); }
 
 private:
     Q_DISABLE_COPY(QEventLoopLocker)

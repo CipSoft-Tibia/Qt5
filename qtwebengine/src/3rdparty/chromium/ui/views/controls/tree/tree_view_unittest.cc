@@ -149,7 +149,7 @@ class TreeViewTest : public ViewsTestBase {
   PrefixSelector* selector() { return tree_->GetPrefixSelector(); }
 
   ui::TreeNodeModel<TestNode> model_;
-  raw_ptr<TreeView> tree_;
+  raw_ptr<TreeView, AcrossTasksDanglingUntriaged> tree_;
   UniqueWidgetPtr widget_;
 
  private:
@@ -447,7 +447,7 @@ TEST_F(TreeViewTest, SetSelectedNode) {
                 std::make_pair(GetTreeAccessibilityView(),
                                ax::mojom::Event::kChildrenChanged),
                 std::make_pair(GetAccessibilityViewByName("b"),
-                               ax::mojom::Event::kStateChanged),
+                               ax::mojom::Event::kExpandedChanged),
                 std::make_pair(GetAccessibilityViewByName("b"),
                                ax::mojom::Event::kRowExpanded),
                 std::make_pair(GetTreeAccessibilityView(),
@@ -495,7 +495,7 @@ TEST_F(TreeViewTest, Expand) {
                 std::make_pair(GetTreeAccessibilityView(),
                                ax::mojom::Event::kChildrenChanged),
                 std::make_pair(GetAccessibilityViewByName("b1"),
-                               ax::mojom::Event::kStateChanged),
+                               ax::mojom::Event::kExpandedChanged),
                 std::make_pair(GetAccessibilityViewByName("b1"),
                                ax::mojom::Event::kRowExpanded),
                 std::make_pair(GetTreeAccessibilityView(),
@@ -529,7 +529,7 @@ TEST_F(TreeViewTest, Collapse) {
                 std::make_pair(GetAccessibilityViewByName("b"),
                                ax::mojom::Event::kSelection),
                 std::make_pair(GetAccessibilityViewByName("b"),
-                               ax::mojom::Event::kStateChanged),
+                               ax::mojom::Event::kExpandedChanged),
                 std::make_pair(GetAccessibilityViewByName("b"),
                                ax::mojom::Event::kRowCollapsed),
                 std::make_pair(GetTreeAccessibilityView(),
@@ -597,7 +597,7 @@ TEST_F(TreeViewTest, TreeNodesAdded) {
                 std::make_pair(GetTreeAccessibilityView(),
                                ax::mojom::Event::kChildrenChanged),
                 std::make_pair(GetAccessibilityViewByName("b"),
-                               ax::mojom::Event::kStateChanged),
+                               ax::mojom::Event::kExpandedChanged),
                 std::make_pair(GetAccessibilityViewByName("b"),
                                ax::mojom::Event::kRowExpanded),
                 std::make_pair(GetTreeAccessibilityView(),

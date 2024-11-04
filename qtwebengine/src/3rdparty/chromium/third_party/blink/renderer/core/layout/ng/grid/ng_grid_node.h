@@ -24,7 +24,7 @@ class CORE_EXPORT NGGridNode final : public NGBlockNode {
   // If |oof_children| is provided, aggregate any out of flow children.
   GridItems ConstructGridItems(const NGGridPlacementData& placement_data,
                                HeapVector<Member<LayoutBox>>* oof_children,
-                               bool* has_nested_subgrid) const;
+                               bool* has_nested_subgrid = nullptr) const;
 
   void AppendSubgriddedItems(GridItems* grid_items) const;
 
@@ -32,6 +32,7 @@ class CORE_EXPORT NGGridNode final : public NGBlockNode {
   GridItems ConstructGridItems(
       const NGGridPlacementData& placement_data,
       const ComputedStyle& root_grid_style,
+      const ComputedStyle& parent_grid_style,
       bool must_consider_grid_items_for_column_sizing,
       bool must_consider_grid_items_for_row_sizing,
       HeapVector<Member<LayoutBox>>* oof_children = nullptr,

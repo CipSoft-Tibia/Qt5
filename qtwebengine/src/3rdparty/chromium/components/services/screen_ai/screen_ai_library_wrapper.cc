@@ -4,6 +4,7 @@
 
 #include "components/services/screen_ai/screen_ai_library_wrapper.h"
 
+#include "base/metrics/histogram_functions.h"
 #include "ui/accessibility/accessibility_features.h"
 
 namespace screen_ai {
@@ -28,24 +29,15 @@ void HandleLibraryLogging(int severity, const char* message) {
 }
 #endif
 
-std::vector<char> LoadModelFile(base::File& model_file) {
-  std::vector<char> buffer;
-  int64_t length = model_file.GetLength();
-  if (length < 0) {
-    VLOG(0) << "Could not query Screen AI model file's length.";
-    return buffer;
-  }
-
-  buffer.resize(length);
-  if (model_file.Read(0, buffer.data(), length) != length) {
-    buffer.clear();
-    VLOG(0) << "Could not read Screen AI model file's content.";
-  }
-
-  return buffer;
-}
-
 }  // namespace
+
+ScreenAILibraryWrapper::MainContentExtractionModelData::
+    MainContentExtractionModelData(std::vector<char> config,
+                                   std::vector<char> tflite)
+    : config(std::move(config)), tflite(std::move(tflite)) {}
+
+ScreenAILibraryWrapper::MainContentExtractionModelData::
+    ~MainContentExtractionModelData() = default;
 
 ScreenAILibraryWrapper::ScreenAILibraryWrapper() = default;
 
@@ -61,19 +53,20 @@ bool ScreenAILibraryWrapper::LoadFunction(T& function_variable,
   return true;
 }
 
-bool ScreenAILibraryWrapper::Init(const base::FilePath& library_path) {
+bool ScreenAILibraryWrapper::Load(const base::FilePath& library_path) {
   library_ = base::ScopedNativeLibrary(library_path);
 
-  if (library_.GetError() == nullptr) {
-    VLOG(0) << "Library load state cannot be read.";
-    return false;
-  }
 #if BUILDFLAG(IS_WIN)
-  if (library_.GetError()->code != 0u) {
+  DWORD error = library_.GetError()->code;
+  base::UmaHistogramSparse(
+      "Accessibility.ScreenAI.LibraryLoadDetailedResultOnWindows",
+      static_cast<int>(error));
+  if (error != ERROR_SUCCESS) {
     VLOG(0) << "Library load error: " << library_.GetError()->code;
     return false;
   }
 #else
+
   if (!library_.GetError()->message.empty()) {
     VLOG(0) << "Library load error: " << library_.GetError()->message;
     return false;
@@ -84,15 +77,16 @@ bool ScreenAILibraryWrapper::Init(const base::FilePath& library_path) {
   if (!LoadFunction(set_logger_, "SetLogger")) {
     return false;
   }
-  DCHECK(set_logger_);
 #endif
 
   // General functions.
   if (!LoadFunction(get_library_version_, "GetLibraryVersion") ||
       !LoadFunction(get_library_version_, "GetLibraryVersion") ||
       !LoadFunction(enable_debug_mode_, "EnableDebugMode") ||
-      !LoadFunction(read_buffered_int32_array_, "ReadBufferedInt32Array") ||
-      !LoadFunction(read_buffered_char_array_, "ReadBufferedCharArray")) {
+      !LoadFunction(free_library_allocated_int32_array_,
+                    "FreeLibraryAllocatedInt32Array") ||
+      !LoadFunction(free_library_allocated_char_array_,
+                    "FreeLibraryAllocatedCharArray")) {
     return false;
   }
 
@@ -104,21 +98,18 @@ bool ScreenAILibraryWrapper::Init(const base::FilePath& library_path) {
     }
   }
 
-  // OCR functions.
-  if (features::IsPdfOcrEnabled()) {
-    if (!LoadFunction(init_ocr_, "InitOCR") ||
-        !LoadFunction(perform_ocr_, "PerformOCR")) {
-      return false;
-    }
+#if !BUILDFLAG(IS_WIN)
+  if (!LoadFunction(init_ocr_, "InitOCR") ||
+      !LoadFunction(perform_ocr_, "PerformOCR")) {
+    return false;
   }
+#endif
 
   // Main Content Extraction functions.
-  if (features::IsReadAnythingWithScreen2xEnabled()) {
-    if (!LoadFunction(init_main_content_extraction_,
-                      "InitMainContentExtraction") ||
-        !LoadFunction(extract_main_content_, "ExtractMainContent")) {
-      return false;
-    }
+  if (!LoadFunction(init_main_content_extraction_,
+                    "InitMainContentExtraction") ||
+      !LoadFunction(extract_main_content_, "ExtractMainContent")) {
+    return false;
   }
 
   return true;
@@ -127,7 +118,7 @@ bool ScreenAILibraryWrapper::Init(const base::FilePath& library_path) {
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 NO_SANITIZE("cfi-icall")
 void ScreenAILibraryWrapper::ScreenAILibraryWrapper::SetLogger() {
-  DCHECK(set_logger_);
+  CHECK(set_logger_);
   set_logger_(&HandleLibraryLogging);
 }
 #endif
@@ -135,94 +126,138 @@ void ScreenAILibraryWrapper::ScreenAILibraryWrapper::SetLogger() {
 NO_SANITIZE("cfi-icall")
 void ScreenAILibraryWrapper::GetLibraryVersion(uint32_t& major,
                                                uint32_t& minor) {
-  DCHECK(get_library_version_);
+  CHECK(get_library_version_);
   get_library_version_(major, minor);
 }
 
 NO_SANITIZE("cfi-icall")
 void ScreenAILibraryWrapper::EnableDebugMode() {
-  DCHECK(enable_debug_mode_);
+  CHECK(enable_debug_mode_);
   enable_debug_mode_();
 }
 
 NO_SANITIZE("cfi-icall")
 bool ScreenAILibraryWrapper::InitLayoutExtraction() {
-  DCHECK(init_layout_extraction_);
+  CHECK(init_layout_extraction_);
   return init_layout_extraction_();
 }
 
 NO_SANITIZE("cfi-icall")
 bool ScreenAILibraryWrapper::InitOCR(const base::FilePath& models_folder) {
-  DCHECK(init_ocr_);
+  CHECK(init_ocr_);
   return init_ocr_(models_folder.MaybeAsASCII().c_str());
 }
 
 NO_SANITIZE("cfi-icall")
 bool ScreenAILibraryWrapper::InitMainContentExtraction(
-    base::File& model_config_file,
-    base::File& model_tflite_file) {
-  DCHECK(init_main_content_extraction_);
+    const MainContentExtractionModelData& model_data) {
+  CHECK(init_main_content_extraction_);
 
-  std::vector<char> model_config = LoadModelFile(model_config_file);
-  std::vector<char> model_tflite = LoadModelFile(model_tflite_file);
-  if (model_config.empty() || model_tflite.empty()) {
+  if (model_data.config.empty() || model_data.tflite.empty()) {
     return false;
   }
 
-  return init_main_content_extraction_(model_config.data(), model_config.size(),
-                                       model_tflite.data(),
-                                       model_tflite.size());
+  return init_main_content_extraction_(
+      model_data.config.data(), model_data.config.size(),
+      model_data.tflite.data(), model_data.tflite.size());
 }
 
 NO_SANITIZE("cfi-icall")
-bool ScreenAILibraryWrapper::PerformOcr(const SkBitmap& image,
-                                        std::string& annotation_proto) {
-  DCHECK(perform_ocr_);
-  DCHECK(read_buffered_char_array_);
+absl::optional<chrome_screen_ai::VisualAnnotation>
+ScreenAILibraryWrapper::PerformOcr(const SkBitmap& image) {
+  CHECK(perform_ocr_);
+  CHECK(free_library_allocated_char_array_);
 
-  uint32_t annotation_proto_length;
-  if (!perform_ocr_(image, annotation_proto_length)) {
-    return false;
+  absl::optional<chrome_screen_ai::VisualAnnotation> annotation_proto;
+
+  uint32_t annotation_proto_length = 0;
+  std::unique_ptr<char, decltype(free_library_allocated_char_array_)>
+      library_buffer(perform_ocr_(image, annotation_proto_length),
+                     free_library_allocated_char_array_);
+
+  if (!library_buffer) {
+    return annotation_proto;
   }
 
-  annotation_proto.resize(annotation_proto_length);
-  return read_buffered_char_array_(annotation_proto.data(),
-                                   annotation_proto_length);
+  annotation_proto = chrome_screen_ai::VisualAnnotation();
+  if (!annotation_proto->ParseFromArray(library_buffer.get(),
+                                        annotation_proto_length)) {
+    annotation_proto.reset();
+  }
+
+  // TODO(crbug.com/1443341): Remove this after fixing the crash issue on Linux
+  // official.
+#if BUILDFLAG(IS_LINUX)
+  free_library_allocated_char_array_(library_buffer.release());
+#endif
+
+  return annotation_proto;
 }
 
 NO_SANITIZE("cfi-icall")
-bool ScreenAILibraryWrapper::ExtractLayout(const SkBitmap& image,
-                                           std::string& annotation_proto) {
-  DCHECK(extract_layout_);
-  DCHECK(read_buffered_char_array_);
-  uint32_t annotation_proto_length;
-  if (!extract_layout_(image, annotation_proto_length)) {
-    return false;
+absl::optional<chrome_screen_ai::VisualAnnotation>
+ScreenAILibraryWrapper::ExtractLayout(const SkBitmap& image) {
+  CHECK(extract_layout_);
+  CHECK(free_library_allocated_char_array_);
+
+  absl::optional<chrome_screen_ai::VisualAnnotation> annotation_proto;
+
+  uint32_t annotation_proto_length = 0;
+  std::unique_ptr<char, decltype(free_library_allocated_char_array_)>
+      library_buffer(extract_layout_(image, annotation_proto_length),
+                     free_library_allocated_char_array_);
+
+  if (!library_buffer) {
+    return annotation_proto;
   }
 
-  annotation_proto.resize(annotation_proto_length);
-  return read_buffered_char_array_(annotation_proto.data(),
-                                   annotation_proto_length);
+  annotation_proto = chrome_screen_ai::VisualAnnotation();
+  if (!annotation_proto->ParseFromArray(library_buffer.get(),
+                                        annotation_proto_length)) {
+    annotation_proto.reset();
+  }
+
+  // TODO(crbug.com/1443341): Remove this after fixing the crash issue on Linux
+  // official.
+#if BUILDFLAG(IS_LINUX)
+  free_library_allocated_char_array_(library_buffer.release());
+#endif
+
+  return annotation_proto;
 }
 
 NO_SANITIZE("cfi-icall")
-bool ScreenAILibraryWrapper::ExtractMainContent(
-    const std::string& serialized_view_hierarchy,
-    std::vector<int32_t>& node_ids) {
-  DCHECK(extract_main_content_);
-  DCHECK(read_buffered_int32_array_);
+absl::optional<std::vector<int32_t>> ScreenAILibraryWrapper::ExtractMainContent(
+    const std::string& serialized_view_hierarchy) {
+  CHECK(extract_main_content_);
+  CHECK(free_library_allocated_int32_array_);
 
-  uint32_t nodes_count;
-  if (!extract_main_content_(serialized_view_hierarchy.data(),
-                             serialized_view_hierarchy.length(), nodes_count)) {
-    return false;
-  }
-  node_ids.resize(nodes_count);
-  if (nodes_count == 0) {
-    return true;
+  absl::optional<std::vector<int32_t>> node_ids;
+
+  uint32_t nodes_count = 0;
+  std::unique_ptr<int32_t, decltype(free_library_allocated_int32_array_)>
+      library_buffer(extract_main_content_(serialized_view_hierarchy.data(),
+                                           serialized_view_hierarchy.length(),
+                                           nodes_count),
+                     free_library_allocated_int32_array_);
+
+  if (!library_buffer) {
+    return node_ids;
   }
 
-  return read_buffered_int32_array_(node_ids.data(), nodes_count);
+  node_ids = std::vector<int32_t>(nodes_count);
+  if (nodes_count != 0) {
+    memcpy(node_ids->data(), library_buffer.get(),
+           nodes_count * sizeof(int32_t));
+  }
+
+  // TODO(crbug.com/1443341): Remove this after fixing the crash issue on Linux
+  // official.
+#if BUILDFLAG(IS_LINUX)
+  free_library_allocated_int32_array_(library_buffer.release());
+#endif
+
+  return node_ids;
 }
 
 }  // namespace screen_ai

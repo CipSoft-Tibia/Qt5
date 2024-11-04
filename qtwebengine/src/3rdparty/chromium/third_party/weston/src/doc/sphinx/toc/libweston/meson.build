@@ -5,6 +5,8 @@ files = [
 	'log.rst',
 	'output.rst',
 	'output-management.rst',
+        'weston-config.rst',
+        'shell-utils.rst',
 ]
 
 foreach file : files

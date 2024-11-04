@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,12 +10,11 @@
 #include <chrono>
 
 #include "discovery/dnssd/impl/constants.h"
-#include "discovery/mdns/mdns_records.h"
+#include "discovery/mdns/public/mdns_records.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-namespace openscreen {
-namespace discovery {
+namespace openscreen::discovery {
 
 class FakeDnsRecordFactory {
  public:
@@ -31,7 +30,6 @@ class FakeDnsRecordFactory {
   static MdnsRecord CreateFullyPopulatedSrvRecord(uint16_t port = kPortNum);
 };
 
-}  // namespace discovery
-}  // namespace openscreen
+}  // namespace openscreen::discovery
 
 #endif  // DISCOVERY_DNSSD_TESTING_FAKE_DNS_RECORD_FACTORY_H_

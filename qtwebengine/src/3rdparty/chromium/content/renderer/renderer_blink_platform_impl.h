@@ -31,11 +31,7 @@
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
 #include "third_party/blink/public/mojom/cache_storage/cache_storage.mojom.h"
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
-#include "components/services/font/public/cpp/font_loader.h"  // nogncheck
-#include "third_party/skia/include/core/SkRefCnt.h"           // nogncheck
-#endif
+#include "third_party/blink/public/mojom/service_worker/service_worker_fetch_handler_bypass_option.mojom-shared.h"
 
 namespace blink {
 namespace scheduler {
@@ -85,12 +81,8 @@ class CONTENT_EXPORT RendererBlinkPlatformImpl : public BlinkPlatformImpl {
   uint64_t VisitedLinkHash(const char* canonicalURL, size_t length) override;
   bool IsLinkVisited(uint64_t linkHash) override;
   blink::WebString UserAgent() override;
-  blink::WebString FullUserAgent() override;
-  blink::WebString ReducedUserAgent() override;
   blink::UserAgentMetadata UserAgentMetadata() override;
   bool IsRedirectSafe(const GURL& from_url, const GURL& to_url) override;
-  blink::WebResourceRequestSenderDelegate* GetResourceRequestSenderDelegate()
-      override;
   void AppendVariationsThrottles(
       const url::Origin& top_origin,
       std::vector<std::unique_ptr<blink::URLLoaderThrottle>>* throttles)
@@ -143,7 +135,7 @@ class CONTENT_EXPORT RendererBlinkPlatformImpl : public BlinkPlatformImpl {
       blink::WebAudioDeviceSourceType source_type,
       blink::WebLocalFrame* web_frame,
       const media::AudioSinkParameters& params) override;
-  media::AudioLatency::LatencyType GetAudioSourceLatencyType(
+  media::AudioLatency::Type GetAudioSourceLatencyType(
       blink::WebAudioDeviceSourceType source_type) override;
   bool ShouldEnforceWebRTCRoutingPreferences() override;
   bool UsesFakeCodecForPeerConnection() override;
@@ -157,7 +149,6 @@ class CONTENT_EXPORT RendererBlinkPlatformImpl : public BlinkPlatformImpl {
                                     bool* allow_mdns_obfuscation) override;
   bool IsWebRtcHWEncodingEnabled() override;
   bool IsWebRtcHWDecodingEnabled() override;
-  bool IsWebRtcSrtpAesGcmEnabled() override;
   bool IsWebRtcSrtpEncryptedHeadersEnabled() override;
   bool AllowsLoopbackInPeerConnection() override;
   blink::WebVideoCaptureImplManager* GetVideoCaptureImplManager() override;
@@ -166,13 +157,13 @@ class CONTENT_EXPORT RendererBlinkPlatformImpl : public BlinkPlatformImpl {
   std::unique_ptr<blink::WebGraphicsContext3DProvider>
   CreateOffscreenGraphicsContext3DProvider(
       const blink::Platform::ContextAttributes& attributes,
-      const blink::WebURL& top_document_web_url,
+      const blink::WebURL& document_url,
       blink::Platform::GraphicsInfo* gl_info) override;
   std::unique_ptr<blink::WebGraphicsContext3DProvider>
   CreateSharedOffscreenGraphicsContext3DProvider() override;
   std::unique_ptr<blink::WebGraphicsContext3DProvider>
   CreateWebGPUGraphicsContext3DProvider(
-      const blink::WebURL& top_document_web_url) override;
+      const blink::WebURL& document_url) override;
   gpu::GpuMemoryBufferManager* GetGpuMemoryBufferManager() override;
   blink::WebString ConvertIDNToUnicode(const blink::WebString& host) override;
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
@@ -226,14 +217,16 @@ class CONTENT_EXPORT RendererBlinkPlatformImpl : public BlinkPlatformImpl {
       const blink::WebURL& url,
       blink::WebVector<blink::WebContentSecurityPolicyHeader>* csp) override;
   base::PlatformThreadId GetIOThreadId() const override;
-  attribution_reporting::mojom::OsSupport GetOsSupportForAttributionReporting()
-      override;
+  network::mojom::AttributionSupport GetAttributionReportingSupport() override;
   scoped_refptr<base::SingleThreadTaskRunner> VideoFrameCompositorTaskRunner()
       override;
 #if BUILDFLAG(IS_ANDROID)
   void SetPrivateMemoryFootprint(
       uint64_t private_memory_footprint_bytes) override;
-#endif
+  bool IsUserLevelMemoryPressureSignalEnabled() override;
+  std::pair<base::TimeDelta, base::TimeDelta>
+  InertAndMinimumIntervalOfUserLevelMemoryPressureSignal() override;
+#endif  // BUILDFLAG(IS_ANDROID)
 
   // Tells this platform that the renderer is locked to a site (i.e., a scheme
   // plus eTLD+1, such as https://google.com), or to a more specific origin.
@@ -264,10 +257,6 @@ class CONTENT_EXPORT RendererBlinkPlatformImpl : public BlinkPlatformImpl {
   // Event that signals `io_thread_id_` is set and ready to be read.
   mutable base::WaitableEvent io_thread_id_ready_event_;
   base::PlatformThreadId io_thread_id_ = base::kInvalidThreadId;
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
-  sk_sp<font_service::FontLoader> font_loader_;
-#endif
 
   // Thread to run the VideoFrameCompositor on.
   std::unique_ptr<base::Thread> video_frame_compositor_thread_;

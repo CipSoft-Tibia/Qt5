@@ -7,6 +7,7 @@
 #include "build/build_config.h"
 #include "third_party/blink/public/common/input/web_mouse_wheel_event.h"
 #include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/dom/flat_tree_traversal.h"
 #include "third_party/blink/renderer/core/events/wheel_event.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
@@ -108,9 +109,9 @@ WebInputEventResult MouseWheelEventManager::HandleWheelEvent(
         (event.delta_units == ui::ScrollGranularity::kScrollByPercentage)
             ? WheelEvent::Create(event,
                                  ResolveMouseWheelPercentToWheelDelta(event),
-                                 wheel_target_->GetDocument().domWindow())
+                                 *wheel_target_->GetDocument().domWindow())
             : WheelEvent::Create(event,
-                                 wheel_target_->GetDocument().domWindow());
+                                 *wheel_target_->GetDocument().domWindow());
 
     // The event handler might remove |wheel_target_| from DOM so we should get
     // this value now (see https://crbug.com/857013).

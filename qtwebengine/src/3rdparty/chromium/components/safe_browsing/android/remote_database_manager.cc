@@ -10,6 +10,8 @@
 
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
+#include "base/metrics/field_trial_params.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
@@ -19,7 +21,6 @@
 #include "components/safe_browsing/core/browser/db/v4_get_hash_protocol_manager.h"
 #include "components/safe_browsing/core/browser/db/v4_protocol_manager_util.h"
 #include "components/safe_browsing/core/common/features.h"
-#include "components/variations/variations_associated_data.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
@@ -33,6 +34,23 @@ namespace {
 // Android field trial for controlling types_to_check.
 const char kAndroidFieldExperiment[] = "SafeBrowsingAndroid";
 const char kAndroidTypesToCheckParam[] = "types_to_check";
+
+constexpr char kCanCheckUrlBaseHistogramName[] = "SB2.RemoteCall.CanCheckUrl";
+
+void LogCanCheckUrl(bool can_check_url, CheckBrowseUrlType check_type) {
+  base::UmaHistogramBoolean(kCanCheckUrlBaseHistogramName, can_check_url);
+  std::string metrics_suffix;
+  switch (check_type) {
+    case CheckBrowseUrlType::kHashDatabase:
+      metrics_suffix = ".HashDatabase";
+      break;
+    case CheckBrowseUrlType::kHashRealTime:
+      metrics_suffix = ".HashRealTime";
+      break;
+  }
+  base::UmaHistogramBoolean(kCanCheckUrlBaseHistogramName + metrics_suffix,
+                            can_check_url);
+}
 
 }  // namespace
 
@@ -77,7 +95,10 @@ void RemoteSafeBrowsingDatabaseManager::ClientRequest::OnRequestDoneWeak(
     const base::WeakPtr<ClientRequest>& req,
     SBThreatType matched_threat_type,
     const ThreatMetadata& metadata) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  DCHECK_CURRENTLY_ON(
+      base::FeatureList::IsEnabled(safe_browsing::kSafeBrowsingOnUIThread)
+          ? content::BrowserThread::UI
+          : content::BrowserThread::IO);
   if (!req) {
     return;  // Previously canceled
   }
@@ -102,7 +123,8 @@ void RemoteSafeBrowsingDatabaseManager::ClientRequest::OnRequestDone(
 // TODO(nparker): Add more tests for this class
 RemoteSafeBrowsingDatabaseManager::RemoteSafeBrowsingDatabaseManager()
     : SafeBrowsingDatabaseManager(content::GetUIThreadTaskRunner({}),
-                                  content::GetIOThreadTaskRunner({})) {
+                                  content::GetIOThreadTaskRunner({})),
+      enabled_(false) {
   // Avoid memory allocations growing the underlying vector. Although this
   // usually wastes a bit of memory, it will still be less than the default
   // vector allocation strategy.
@@ -121,13 +143,13 @@ RemoteSafeBrowsingDatabaseManager::RemoteSafeBrowsingDatabaseManager()
   // The param is expected to be a comma-separated list of ints
   // corresponding to the enum types.  We're keeping this finch
   // control around so we can add back types if they later become dangerous.
-  const std::string ints_str = variations::GetVariationParamValue(
+  const std::string ints_str = base::GetFieldTrialParamValue(
       kAndroidFieldExperiment, kAndroidTypesToCheckParam);
   if (ints_str.empty()) {
     // By default, we check all types except a few.
     static_assert(
         network::mojom::RequestDestination::kMaxValue ==
-            network::mojom::RequestDestination::kWebIdentity,
+            network::mojom::RequestDestination::kDictionary,
         "Decide if new request destination should be skipped on mobile.");
     for (int t_int = 0;
          t_int <=
@@ -164,7 +186,7 @@ RemoteSafeBrowsingDatabaseManager::~RemoteSafeBrowsingDatabaseManager() {
 }
 
 void RemoteSafeBrowsingDatabaseManager::CancelCheck(Client* client) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  DCHECK(sb_task_runner()->RunsTasksInCurrentSequence());
   DCHECK(enabled_);
   for (auto itr = current_requests_.begin(); itr != current_requests_.end();
        ++itr) {
@@ -195,8 +217,9 @@ bool RemoteSafeBrowsingDatabaseManager::CheckBrowseUrl(
     const GURL& url,
     const SBThreatTypeSet& threat_types,
     Client* client,
-    MechanismExperimentHashDatabaseCache experiment_cache_selection) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+    MechanismExperimentHashDatabaseCache experiment_cache_selection,
+    CheckBrowseUrlType check_type) {
+  DCHECK(sb_task_runner()->RunsTasksInCurrentSequence());
   DCHECK(!threat_types.empty());
   DCHECK(SBThreatTypeSetIsValidForCheckBrowseUrl(threat_types));
   if (!enabled_) {
@@ -204,7 +227,7 @@ bool RemoteSafeBrowsingDatabaseManager::CheckBrowseUrl(
   }
 
   bool can_check_url = CanCheckUrl(url);
-  UMA_HISTOGRAM_BOOLEAN("SB2.RemoteCall.CanCheckUrl", can_check_url);
+  LogCanCheckUrl(can_check_url, check_type);
   if (!can_check_url) {
     return true;  // Safe, continue right away.
   }
@@ -215,9 +238,15 @@ bool RemoteSafeBrowsingDatabaseManager::CheckBrowseUrl(
   auto callback =
       std::make_unique<SafeBrowsingApiHandlerBridge::ResponseCallback>(
           base::BindOnce(&ClientRequest::OnRequestDoneWeak, req->GetWeakPtr()));
-  SafeBrowsingApiHandlerBridge::GetInstance().StartURLCheck(std::move(callback),
-                                                            url, threat_types);
-
+  switch (check_type) {
+    case CheckBrowseUrlType::kHashDatabase:
+      SafeBrowsingApiHandlerBridge::GetInstance().StartHashDatabaseUrlCheck(
+          std::move(callback), url, threat_types);
+      break;
+    case CheckBrowseUrlType::kHashRealTime:
+      SafeBrowsingApiHandlerBridge::GetInstance().StartHashRealTimeUrlCheck(
+          std::move(callback), url, threat_types);
+  }
   current_requests_.push_back(req.release());
 
   // Defer the resource load.
@@ -244,32 +273,31 @@ bool RemoteSafeBrowsingDatabaseManager::CheckResourceUrl(const GURL& url,
   return true;
 }
 
-bool RemoteSafeBrowsingDatabaseManager::CheckUrlForHighConfidenceAllowlist(
+void RemoteSafeBrowsingDatabaseManager::CheckUrlForHighConfidenceAllowlist(
     const GURL& url,
-    const std::string& metric_variation) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+    const std::string& metric_variation,
+    base::OnceCallback<void(bool)> callback) {
+  DCHECK(sb_task_runner()->RunsTasksInCurrentSequence());
 
   if (!enabled_ || !CanCheckUrl(url)) {
-    return false;
+    sb_task_runner()->PostTask(FROM_HERE,
+                               base::BindOnce(std::move(callback), false));
+    return;
   }
 
-  if (base::FeatureList::IsEnabled(kComponentUpdaterAndroidProtegoAllowlist)) {
-    // SafeBrowsingComponentUpdaterAndroidProtegoAllowlist is enabled.
-    IsInAllowlistResult match_result =
-        RealTimeUrlChecksAllowlist::GetInstance()->IsInAllowlist(url);
-    // Note that if the allowlist is unavailable, we say that is a match.
-    return match_result == IsInAllowlistResult::kInAllowlist ||
-           match_result == IsInAllowlistResult::kAllowlistUnavailable;
-  }
-
-  return SafeBrowsingApiHandlerBridge::GetInstance()
-      .StartHighConfidenceAllowlistCheck(url);
+  IsInAllowlistResult match_result =
+      RealTimeUrlChecksAllowlist::GetInstance()->IsInAllowlist(url);
+  // Note that if the allowlist is unavailable, we say that is a match.
+  bool is_match = match_result == IsInAllowlistResult::kInAllowlist ||
+                  match_result == IsInAllowlistResult::kAllowlistUnavailable;
+  sb_task_runner()->PostTask(FROM_HERE,
+                             base::BindOnce(std::move(callback), is_match));
 }
 
 bool RemoteSafeBrowsingDatabaseManager::CheckUrlForSubresourceFilter(
     const GURL& url,
     Client* client) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  DCHECK(sb_task_runner()->RunsTasksInCurrentSequence());
 
   if (!enabled_ || !CanCheckUrl(url)) {
     return true;
@@ -281,7 +309,7 @@ bool RemoteSafeBrowsingDatabaseManager::CheckUrlForSubresourceFilter(
   auto callback =
       std::make_unique<SafeBrowsingApiHandlerBridge::ResponseCallback>(
           base::BindOnce(&ClientRequest::OnRequestDoneWeak, req->GetWeakPtr()));
-  SafeBrowsingApiHandlerBridge::GetInstance().StartURLCheck(
+  SafeBrowsingApiHandlerBridge::GetInstance().StartHashDatabaseUrlCheck(
       std::move(callback), url,
       CreateSBThreatTypeSet(
           {SB_THREAT_TYPE_SUBRESOURCE_FILTER, SB_THREAT_TYPE_URL_PHISHING}));
@@ -295,7 +323,7 @@ bool RemoteSafeBrowsingDatabaseManager::CheckUrlForSubresourceFilter(
 AsyncMatch RemoteSafeBrowsingDatabaseManager::CheckCsdAllowlistUrl(
     const GURL& url,
     Client* client) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  DCHECK(sb_task_runner()->RunsTasksInCurrentSequence());
 
   // If this URL's scheme isn't supported, call is safe.
   if (!CanCheckUrl(url)) {
@@ -308,20 +336,27 @@ AsyncMatch RemoteSafeBrowsingDatabaseManager::CheckCsdAllowlistUrl(
   return is_match ? AsyncMatch::MATCH : AsyncMatch::NO_MATCH;
 }
 
-bool RemoteSafeBrowsingDatabaseManager::MatchDownloadAllowlistUrl(
-    const GURL& url) {
+void RemoteSafeBrowsingDatabaseManager::MatchDownloadAllowlistUrl(
+    const GURL& url,
+    base::OnceCallback<void(bool)> callback) {
   NOTREACHED();
-  return true;
+  sb_task_runner()->PostTask(FROM_HERE,
+                             base::BindOnce(std::move(callback), true));
 }
 
-bool RemoteSafeBrowsingDatabaseManager::MatchMalwareIP(
-    const std::string& ip_address) {
-  NOTREACHED();
-  return false;
+safe_browsing::ThreatSource
+RemoteSafeBrowsingDatabaseManager::GetBrowseUrlThreatSource(
+    CheckBrowseUrlType check_type) const {
+  switch (check_type) {
+    case CheckBrowseUrlType::kHashDatabase:
+      return safe_browsing::ThreatSource::REMOTE;
+    case CheckBrowseUrlType::kHashRealTime:
+      return safe_browsing::ThreatSource::ANDROID_SAFEBROWSING_REAL_TIME;
+  }
 }
 
-safe_browsing::ThreatSource RemoteSafeBrowsingDatabaseManager::GetThreatSource()
-    const {
+safe_browsing::ThreatSource
+RemoteSafeBrowsingDatabaseManager::GetNonBrowseUrlThreatSource() const {
   return safe_browsing::ThreatSource::REMOTE;
 }
 
@@ -329,18 +364,18 @@ bool RemoteSafeBrowsingDatabaseManager::IsDownloadProtectionEnabled() const {
   return false;
 }
 
-void RemoteSafeBrowsingDatabaseManager::StartOnIOThread(
+void RemoteSafeBrowsingDatabaseManager::StartOnSBThread(
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
     const V4ProtocolConfig& config) {
   VLOG(1) << "RemoteSafeBrowsingDatabaseManager starting";
-  SafeBrowsingDatabaseManager::StartOnIOThread(url_loader_factory, config);
+  SafeBrowsingDatabaseManager::StartOnSBThread(url_loader_factory, config);
 
   enabled_ = true;
 }
 
-void RemoteSafeBrowsingDatabaseManager::StopOnIOThread(bool shutdown) {
+void RemoteSafeBrowsingDatabaseManager::StopOnSBThread(bool shutdown) {
   // |shutdown| is not used.
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  DCHECK(sb_task_runner()->RunsTasksInCurrentSequence());
   DVLOG(1) << "RemoteSafeBrowsingDatabaseManager stopping";
 
   // Call back and delete any remaining clients. OnRequestDone() modifies
@@ -352,7 +387,11 @@ void RemoteSafeBrowsingDatabaseManager::StopOnIOThread(bool shutdown) {
   }
   enabled_ = false;
 
-  SafeBrowsingDatabaseManager::StopOnIOThread(shutdown);
+  SafeBrowsingDatabaseManager::StopOnSBThread(shutdown);
+}
+
+bool RemoteSafeBrowsingDatabaseManager::IsDatabaseReady() const {
+  return enabled_;
 }
 
 }  // namespace safe_browsing

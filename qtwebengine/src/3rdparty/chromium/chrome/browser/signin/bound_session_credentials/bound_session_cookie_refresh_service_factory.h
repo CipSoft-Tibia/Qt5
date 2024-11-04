@@ -10,6 +10,10 @@
 
 class BoundSessionCookieRefreshService;
 
+namespace user_prefs {
+class PrefRegistrySyncable;
+}
+
 class BoundSessionCookieRefreshServiceFactory
     : public ProfileKeyedServiceFactory {
  public:
@@ -24,9 +28,11 @@ class BoundSessionCookieRefreshServiceFactory
   BoundSessionCookieRefreshServiceFactory();
   ~BoundSessionCookieRefreshServiceFactory() override;
 
-  // BrowserContextKeyedServiceFactory:
-  KeyedService* BuildServiceInstanceFor(
+  // ProfileKeyedServiceFactory:
+  std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
       content::BrowserContext* context) const override;
+  void RegisterProfilePrefs(
+      user_prefs::PrefRegistrySyncable* registry) override;
 };
 
 #endif  // CHROME_BROWSER_SIGNIN_BOUND_SESSION_CREDENTIALS_BOUND_SESSION_COOKIE_REFRESH_SERVICE_FACTORY_H_

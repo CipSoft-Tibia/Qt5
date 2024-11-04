@@ -3,7 +3,6 @@
 
 #include "data.h"
 #include <QtGraphs/QValue3DAxis>
-#include <QtGraphs/Q3DCamera>
 #include <QtGraphs/QBar3DSeries>
 #include <QtGraphs/QScatter3DSeries>
 #include <QtGraphs/QSurface3DSeries>
@@ -28,7 +27,7 @@ Data::Data(Q3DSurface *surface, Q3DScatter *scatter, Q3DBars *bars,
     m_started(false)
 {
     // Initialize surface
-    m_surface->activeTheme()->setType(Q3DTheme::ThemeIsabelle);
+    m_surface->activeTheme()->setType(Q3DTheme::Theme::Isabelle);
     QLinearGradient gradient;
     gradient.setColorAt(0.0, Qt::black);
     gradient.setColorAt(0.33, Qt::blue);
@@ -37,33 +36,33 @@ Data::Data(Q3DSurface *surface, Q3DScatter *scatter, Q3DBars *bars,
     m_surface->setSelectionMode(QAbstract3DGraph::SelectionNone);
     m_surface->activeTheme()->setGridEnabled(false);
     m_surface->activeTheme()->setBackgroundEnabled(false);
-    m_surface->scene()->activeCamera()->setCameraPosition(0.0, 90.0, 150.0);
+    m_surface->setCameraPosition(0.0, 90.0, 150.0);
     QSurface3DSeries *series1 = new QSurface3DSeries(new QHeightMapSurfaceDataProxy());
     series1->setFlatShadingEnabled(true);
     series1->setDrawMode(QSurface3DSeries::DrawSurface);
-    series1->setColorStyle(Q3DTheme::ColorStyleRangeGradient);
+    series1->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
     series1->setBaseGradient(gradient);
     m_surface->addSeries(series1);
 
     // Initialize scatter
-    m_scatter->activeTheme()->setType(Q3DTheme::ThemeStoneMoss);
+    m_scatter->activeTheme()->setType(Q3DTheme::Theme::StoneMoss);
     m_scatter->setSelectionMode(QAbstract3DGraph::SelectionNone);
     m_scatter->activeTheme()->setGridEnabled(false);
-    m_scatter->setShadowQuality(QAbstract3DGraph::ShadowQualitySoftLow);
-    m_scatter->scene()->activeCamera()->setCameraPosition(0.0, 85.0, 150.0);
+    m_scatter->setShadowQuality(QAbstract3DGraph::ShadowQuality::SoftLow);
+    m_scatter->setCameraPosition(0.0, 85.0, 150.0);
     QScatter3DSeries *series2 = new QScatter3DSeries;
-    series2->setMesh(QAbstract3DSeries::MeshPoint);
+    series2->setMesh(QAbstract3DSeries::Mesh::Point);
     m_scatter->addSeries(series2);
 
     // Initialize bars
-    m_bars->activeTheme()->setType(Q3DTheme::ThemeQt);
+    m_bars->activeTheme()->setType(Q3DTheme::Theme::Qt);
     m_bars->setSelectionMode(QAbstract3DGraph::SelectionItemAndRow | QAbstract3DGraph::SelectionSlice);
     m_bars->activeTheme()->setGridEnabled(false);
-    m_bars->setShadowQuality(QAbstract3DGraph::ShadowQualityLow);
+    m_bars->setShadowQuality(QAbstract3DGraph::ShadowQuality::Low);
     m_bars->setBarSpacing(QSizeF(0.0, 0.0));
-    m_bars->scene()->activeCamera()->setCameraPosition(0.0, 75.0, 150.0);
+    m_bars->setCameraPosition(0.0, 75.0, 150.0);
     QBar3DSeries *series3 = new QBar3DSeries;
-    series3->setMesh(QAbstract3DSeries::MeshBar);
+    series3->setMesh(QAbstract3DSeries::Mesh::Bar);
     m_bars->addSeries(series3);
 
     // Hide scroll bar
@@ -76,7 +75,6 @@ Data::~Data()
     delete m_surface;
     delete m_scatter;
     delete m_widget;
-    delete m_scatterDataArray; // only portion of this array is set to graph
 }
 
 void Data::updateData()
@@ -97,9 +95,9 @@ void Data::updateData()
 
 void Data::clearData()
 {
-    m_bars->seriesList().at(0)->dataProxy()->resetArray(0);
-    m_scatter->seriesList().at(0)->dataProxy()->resetArray(0);
-    m_surface->seriesList().at(0)->dataProxy()->resetArray(0);
+    m_bars->seriesList().at(0)->dataProxy()->resetArray();
+    m_scatter->seriesList().at(0)->dataProxy()->resetArray();
+    m_surface->seriesList().at(0)->dataProxy()->resetArray();
 }
 
 void Data::setResolution(int selection)
@@ -130,17 +128,15 @@ void Data::setResolution(int selection)
     if (m_mode == Scatter) {
         m_resize = true;
         m_resolution /= 3;
-        delete m_scatterDataArray;
-        m_scatterDataArray = new QScatterDataArray;
-        m_scatterDataArray->resize(m_resolution.width() * m_resolution.height());
+        m_scatterDataArray.resize(m_resolution.width() * m_resolution.height());
     } else if (m_mode == Bars) {
         m_resize = true;
         m_resolution /= 6;
-        m_barDataArray = new QBarDataArray;
-        m_barDataArray->reserve(m_resolution.height());
+        m_barDataArray.clear();
+        m_barDataArray.reserve(m_resolution.height());
         for (int i = 0; i < m_resolution.height(); i++) {
-            QBarDataRow *newProxyRow = new QBarDataRow(m_resolution.width());
-            m_barDataArray->append(newProxyRow);
+            QBarDataRow newProxyRow(m_resolution.width());
+            m_barDataArray.append(newProxyRow);
         }
     }
 
@@ -158,26 +154,26 @@ void Data::scrollDown()
 
 void Data::useGradientOne()
 {
-    m_surface->activeTheme()->setType(Q3DTheme::ThemeIsabelle);
+    m_surface->activeTheme()->setType(Q3DTheme::Theme::Isabelle);
     QLinearGradient gradient;
     gradient.setColorAt(0.0, Qt::black);
     gradient.setColorAt(0.33, Qt::blue);
     gradient.setColorAt(0.67, Qt::red);
     gradient.setColorAt(1.0, Qt::yellow);
     m_surface->seriesList().at(0)->setBaseGradient(gradient);
-    m_surface->seriesList().at(0)->setColorStyle(Q3DTheme::ColorStyleRangeGradient);
+    m_surface->seriesList().at(0)->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
     m_statusArea->append(QStringLiteral("<b>Colors:</b> Thermal image imitation"));
 }
 
 void Data::useGradientTwo()
 {
-    m_surface->activeTheme()->setType(Q3DTheme::ThemeQt);
+    m_surface->activeTheme()->setType(Q3DTheme::Theme::Qt);
     QLinearGradient gradient;
     gradient.setColorAt(0.0, Qt::white);
     gradient.setColorAt(0.8, Qt::red);
     gradient.setColorAt(1.0, Qt::green);
     m_surface->seriesList().at(0)->setBaseGradient(gradient);
-    m_surface->seriesList().at(0)->setColorStyle(Q3DTheme::ColorStyleRangeGradient);
+    m_surface->seriesList().at(0)->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
     m_statusArea->append(QStringLiteral("<b>Colors:</b> Highlight foreground"));
 }
 
@@ -193,7 +189,7 @@ void Data::setData(const QImage &image)
     int widthBits = imageWidth * 4;
 
     if (m_mode == Scatter) {
-        QScatterDataItem *ptrToDataArray = &m_scatterDataArray->first();
+        QScatterDataItem *ptrToDataArray = &m_scatterDataArray.first();
 
         int limitsX = imageWidth / 2;
         int limitsZ = imageHeight / 2;
@@ -211,14 +207,14 @@ void Data::setData(const QImage &image)
             }
         }
 
-        QScatterDataArray *dataArray = new QScatterDataArray(m_scatterDataArray->mid(0, count));
+        QScatterDataArray dataArray(m_scatterDataArray.mid(0, count));
         m_scatter->seriesList().at(0)->dataProxy()->resetArray(dataArray);
     } else {
-        QBarDataArray *dataArray = m_barDataArray;
+        QBarDataArray dataArray = m_barDataArray;
         for (int i = 0; i < imageHeight; i++, bitCount -= widthBits) {
-            QBarDataRow &newRow = *dataArray->at(i);
+            QBarDataRow &newRow = dataArray[i];
             for (int j = 0; j < imageWidth; j++)
-                newRow[j] = float(bits[bitCount + (j * 4)]);
+                newRow[j] = QBarDataItem(float(bits[bitCount + (j * 4)]));
         }
 
         m_bars->seriesList().at(0)->dataProxy()->resetArray(dataArray);

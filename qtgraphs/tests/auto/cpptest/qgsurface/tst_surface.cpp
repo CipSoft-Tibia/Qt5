@@ -37,12 +37,12 @@ private:
 QSurface3DSeries *newSeries()
 {
     QSurface3DSeries *series = new QSurface3DSeries;
-    QSurfaceDataArray *data = new QSurfaceDataArray;
-    QSurfaceDataRow *dataRow1 = new QSurfaceDataRow;
-    QSurfaceDataRow *dataRow2 = new QSurfaceDataRow;
-    *dataRow1 << QVector3D(0.0f, 0.1f, 0.5f) << QVector3D(1.0f, 0.5f, 0.5f);
-    *dataRow2 << QVector3D(0.0f, 1.8f, 1.0f) << QVector3D(1.0f, 1.2f, 1.0f);
-    *data << dataRow1 << dataRow2;
+    QSurfaceDataArray data;
+    QSurfaceDataRow dataRow1;
+    QSurfaceDataRow dataRow2;
+    dataRow1 << QSurfaceDataItem(0.0f, 0.1f, 0.5f) << QSurfaceDataItem(1.0f, 0.5f, 0.5f);
+    dataRow2 << QSurfaceDataItem(0.0f, 1.8f, 1.0f) << QSurfaceDataItem(1.0f, 1.2f, 1.0f);
+    data << dataRow1 << dataRow2;
     series->dataProxy()->resetArray(data);
 
     return series;
@@ -81,25 +81,23 @@ void tst_surface::initialProperties()
     QCOMPARE(m_graph->seriesList().size(), 0);
     QVERIFY(!m_graph->selectedSeries());
     QCOMPARE(m_graph->flipHorizontalGrid(), false);
-    QCOMPARE(m_graph->axisX()->orientation(), QAbstract3DAxis::AxisOrientationX);
-    QCOMPARE(m_graph->axisY()->orientation(), QAbstract3DAxis::AxisOrientationY);
-    QCOMPARE(m_graph->axisZ()->orientation(), QAbstract3DAxis::AxisOrientationZ);
+    QCOMPARE(m_graph->axisX()->orientation(), QAbstract3DAxis::AxisOrientation::X);
+    QCOMPARE(m_graph->axisY()->orientation(), QAbstract3DAxis::AxisOrientation::Y);
+    QCOMPARE(m_graph->axisZ()->orientation(), QAbstract3DAxis::AxisOrientation::Z);
 
     // Common properties
-    QCOMPARE(m_graph->activeTheme()->type(), Q3DTheme::ThemeQt);
+    QCOMPARE(m_graph->activeTheme()->type(), Q3DTheme::Theme::Qt);
     QCOMPARE(m_graph->selectionMode(), QAbstract3DGraph::SelectionItem);
-    QCOMPARE(m_graph->shadowQuality(), QAbstract3DGraph::ShadowQualityMedium);
+    QCOMPARE(m_graph->shadowQuality(), QAbstract3DGraph::ShadowQuality::Medium);
     QVERIFY(m_graph->scene());
     QCOMPARE(m_graph->measureFps(), false);
     QCOMPARE(m_graph->isOrthoProjection(), false);
-    QCOMPARE(m_graph->selectedElement(), QAbstract3DGraph::ElementNone);
+    QCOMPARE(m_graph->selectedElement(), QAbstract3DGraph::ElementType::None);
     QCOMPARE(m_graph->aspectRatio(), 2.0);
-    QCOMPARE(m_graph->optimizationHints(), QAbstract3DGraph::OptimizationDefault);
+    QCOMPARE(m_graph->optimizationHint(), QAbstract3DGraph::OptimizationHint::Default);
     QCOMPARE(m_graph->isPolar(), false);
     QCOMPARE(m_graph->radialLabelOffset(), 1.0);
     QCOMPARE(m_graph->horizontalAspectRatio(), 0.0);
-    QCOMPARE(m_graph->isReflection(), false);
-    QCOMPARE(m_graph->reflectivity(), 0.5);
     QCOMPARE(m_graph->locale(), QLocale("C"));
     QCOMPARE(m_graph->queriedGraphPosition(), QVector3D(0, 0, 0));
     QCOMPARE(m_graph->margin(), -1.0);
@@ -111,35 +109,31 @@ void tst_surface::initializeProperties()
 
     QCOMPARE(m_graph->flipHorizontalGrid(), true);
 
-    Q3DTheme *theme = new Q3DTheme(Q3DTheme::ThemeDigia);
+    Q3DTheme *theme = new Q3DTheme(Q3DTheme::Theme::Retro);
     m_graph->setActiveTheme(theme);
     m_graph->setSelectionMode(QAbstract3DGraph::SelectionItem | QAbstract3DGraph::SelectionRow | QAbstract3DGraph::SelectionSlice);
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQualitySoftHigh);
-    QCOMPARE(m_graph->shadowQuality(), QAbstract3DGraph::ShadowQualitySoftHigh);
+    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::SoftHigh);
+    QCOMPARE(m_graph->shadowQuality(), QAbstract3DGraph::ShadowQuality::SoftHigh);
     m_graph->setMeasureFps(true);
     m_graph->setOrthoProjection(true);
     m_graph->setAspectRatio(1.0);
-    m_graph->setOptimizationHints(QAbstract3DGraph::OptimizationDefault);
+    m_graph->setOptimizationHint(QAbstract3DGraph::OptimizationHint::Default);
     m_graph->setPolar(true);
     m_graph->setRadialLabelOffset(0.1f);
     m_graph->setHorizontalAspectRatio(1.0);
-    m_graph->setReflection(true);
-    m_graph->setReflectivity(0.1);
     m_graph->setLocale(QLocale("FI"));
     m_graph->setMargin(1.0);
 
-    QCOMPARE(m_graph->activeTheme()->type(), Q3DTheme::ThemeDigia);
+    QCOMPARE(m_graph->activeTheme()->type(), Q3DTheme::Theme::Retro);
     QCOMPARE(m_graph->selectionMode(), QAbstract3DGraph::SelectionItem | QAbstract3DGraph::SelectionRow | QAbstract3DGraph::SelectionSlice);
-    QCOMPARE(m_graph->shadowQuality(), QAbstract3DGraph::ShadowQualityNone); // Ortho disables shadows
+    QCOMPARE(m_graph->shadowQuality(), QAbstract3DGraph::ShadowQuality::None); // Ortho disables shadows
     QCOMPARE(m_graph->measureFps(), true);
     QCOMPARE(m_graph->isOrthoProjection(), true);
     QCOMPARE(m_graph->aspectRatio(), 1.0);
-    QCOMPARE(m_graph->optimizationHints(), QAbstract3DGraph::OptimizationDefault);
+    QCOMPARE(m_graph->optimizationHint(), QAbstract3DGraph::OptimizationHint::Default);
     QCOMPARE(m_graph->isPolar(), true);
     QCOMPARE(m_graph->radialLabelOffset(), 0.1f);
     QCOMPARE(m_graph->horizontalAspectRatio(), 1.0);
-    //QCOMPARE(m_graph->isReflection(), true); // TODO: QTBUG-99816
-    QCOMPARE(m_graph->reflectivity(), 0.1);
     QCOMPARE(m_graph->locale(), QLocale("FI"));
     QCOMPARE(m_graph->margin(), 1.0);
 }
@@ -149,13 +143,11 @@ void tst_surface::invalidProperties()
     m_graph->setSelectionMode(QAbstract3DGraph::SelectionColumn | QAbstract3DGraph::SelectionRow | QAbstract3DGraph::SelectionSlice);
     m_graph->setAspectRatio(-1.0);
     m_graph->setHorizontalAspectRatio(-1.0);
-    m_graph->setReflectivity(-1.0);
     m_graph->setLocale(QLocale("XX"));
 
     QCOMPARE(m_graph->selectionMode(), QAbstract3DGraph::SelectionItem);
     QCOMPARE(m_graph->aspectRatio(), -1.0/*2.0*/); // TODO: Fix once QTRD-3367 is done
     QCOMPARE(m_graph->horizontalAspectRatio(), -1.0/*0.0*/); // TODO: Fix once QTRD-3367 is done
-    QCOMPARE(m_graph->reflectivity(), -1.0/*0.5*/); // TODO: Fix once QTRD-3367 is done
     QCOMPARE(m_graph->locale(), QLocale("C"));
 }
 

@@ -36,9 +36,6 @@ Timeline.EventsTimelineTreeView = TimelineModule.EventsTimelineTreeView.EventsTi
 Timeline.EventsTimelineTreeView.Filters = TimelineModule.EventsTimelineTreeView.Filters;
 
 /** @constructor */
-Timeline.ExtensionTracingSession = TimelineModule.ExtensionTracingSession.ExtensionTracingSession;
-
-/** @constructor */
 Timeline.PerformanceModel = TimelineModule.PerformanceModel.PerformanceModel;
 
 /** @enum {symbol} */
@@ -60,9 +57,6 @@ Timeline.TimelineDetailsView.Tab = TimelineModule.TimelineDetailsView.Tab;
 Timeline.TimelineEventOverview = TimelineModule.TimelineEventOverview.TimelineEventOverview;
 
 /** @constructor */
-Timeline.TimelineEventOverviewInput = TimelineModule.TimelineEventOverview.TimelineEventOverviewInput;
-
-/** @constructor */
 Timeline.TimelineEventOverviewNetwork = TimelineModule.TimelineEventOverview.TimelineEventOverviewNetwork;
 
 /** @constructor */
@@ -79,9 +73,6 @@ Timeline.TimelineEventOverviewMemory = TimelineModule.TimelineEventOverview.Time
 
 /** @constructor */
 Timeline.Quantizer = TimelineModule.TimelineEventOverview.Quantizer;
-
-/** @constructor */
-Timeline.TimelineEventOverviewCoverage = TimelineModule.TimelineEventOverview.TimelineEventOverviewCoverage;
 
 Timeline.TimelineFilters = {};
 
@@ -159,9 +150,6 @@ Timeline.TimelinePanel = TimelineModule.TimelinePanel.TimelinePanel;
 /** @enum {symbol} */
 Timeline.TimelinePanel.State = TimelineModule.TimelinePanel.State;
 
-/** @enum {string} */
-Timeline.TimelinePanel.ViewMode = TimelineModule.TimelinePanel.ViewMode;
-
 Timeline.TimelinePanel.rowHeight = TimelineModule.TimelinePanel.rowHeight;
 Timeline.TimelinePanel.headerHeight = TimelineModule.TimelinePanel.headerHeight;
 
@@ -172,7 +160,7 @@ Timeline.TimelinePanel.StatusPane = TimelineModule.TimelinePanel.StatusPane;
 Timeline.TimelinePanel.ActionDelegate = TimelineModule.TimelinePanel.ActionDelegate;
 
 /** @constructor */
-Timeline.TimelineSelection = TimelineModule.TimelinePanel.TimelineSelection;
+Timeline.TimelineSelection = TimelineModule.TimelineSelection.TimelineSelection;
 
 /** @interface */
 Timeline.TimelineModeViewDelegate = TimelineModule.TimelinePanel.TimelineModeViewDelegate;

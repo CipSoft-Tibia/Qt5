@@ -35,6 +35,43 @@
 
 namespace blink {
 
+// The HTML left by the dumper script will contain any <style> tags that were
+// in the DOM, which will be interpreted by setInnerHTML() and converted to
+// style sheets. However, we already have our own canonical list of sheets
+// (from the JSON) that we want to use. Keeping both will make for duplicated
+// rules, enabling rules and sheets that have since been deleted
+// (occasionally even things like “display: none !important”) and so on.
+// Thus, as a kludge, we strip all <style> tags from the HTML here before
+// parsing.
+static WTF::String StripStyleTags(const WTF::String& html) {
+  StringBuilder stripped_html;
+  wtf_size_t pos = 0;
+  for (;;) {
+    wtf_size_t style_start =
+        html.FindIgnoringCase("<style", pos);  // Allow <style id=" etc.
+    if (style_start == kNotFound) {
+      // No more <style> tags, so append the rest of the string.
+      stripped_html.Append(html.Substring(pos, html.length() - pos));
+      break;
+    }
+    // Bail out if it's not “<style>” or “<style ”; it's probably
+    // a false positive then.
+    if (style_start + 6 >= html.length() ||
+        (html[style_start + 6] != ' ' && html[style_start + 6] != '>')) {
+      stripped_html.Append(html.Substring(pos, style_start - pos));
+      pos = style_start + 6;
+      continue;
+    }
+    wtf_size_t style_end = html.FindIgnoringCase("</style>", style_start);
+    if (style_end == kNotFound) {
+      LOG(FATAL) << "Mismatched <style> tag";
+    }
+    stripped_html.Append(html.Substring(pos, style_start - pos));
+    pos = style_end + 8;
+  }
+  return stripped_html.ToString();
+}
+
 static std::unique_ptr<DummyPageHolder> LoadDumpedPage(
     const base::Value::Dict& dict,
     base::TimeDelta& parse_time,
@@ -53,8 +90,9 @@ static std::unique_ptr<DummyPageHolder> LoadDumpedPage(
 
   Document& document = page->GetDocument();
   StyleEngine& engine = document.GetStyleEngine();
-  document.body()->setInnerHTML(WTF::String(*dict.FindString("html")),
-                                ASSERT_NO_EXCEPTION);
+  document.body()->setInnerHTML(
+      StripStyleTags(WTF::String(*dict.FindString("html"))),
+      ASSERT_NO_EXCEPTION);
 
   int num_sheets = 0;
   int num_bytes = 0;
@@ -70,9 +108,9 @@ static std::unique_ptr<DummyPageHolder> LoadDumpedPage(
                          /*allow_import_rules=*/true);
     }
     if (*sheet_dict.FindString("type") == "user") {
-      engine.InjectSheet("", sheet, WebCssOrigin::kUser);
+      engine.InjectSheet(g_empty_atom, sheet, WebCssOrigin::kUser);
     } else {
-      engine.InjectSheet("", sheet, WebCssOrigin::kAuthor);
+      engine.InjectSheet(g_empty_atom, sheet, WebCssOrigin::kAuthor);
     }
     ++num_sheets;
     num_bytes += sheet_dict.FindString("text")->size();
@@ -133,12 +171,16 @@ static StylePerfResult MeasureStyleForDumpedPage(
   {
     scoped_refptr<SharedBuffer> serialized =
         test::ReadFromFile(test::StylePerfTestDataPath(filename));
-    absl::optional<base::Value> json = base::JSONReader::Read(
-        base::StringPiece(serialized->Data(), serialized->size()));
-    if (!json.has_value()) {
+    if (!serialized) {
+      // Some test data is very large and needs to be downloaded separately,
+      // so it may not always be present. Do not fail, but report the test as
+      // skipped.
       result.skipped = true;
       return result;
     }
+    absl::optional<base::Value> json = base::JSONReader::Read(
+        base::StringPiece(serialized->Data(), serialized->size()));
+    CHECK(json.has_value());
     page = LoadDumpedPage(json->GetDict(), result.parse_time, reporter);
   }
 

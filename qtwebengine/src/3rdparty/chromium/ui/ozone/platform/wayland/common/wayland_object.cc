@@ -10,6 +10,7 @@
 #include <content-type-v1-client-protocol.h>
 #include <cursor-shapes-unstable-v1-client-protocol.h>
 #include <extended-drag-unstable-v1-client-protocol.h>
+#include <fractional-scale-v1-client-protocol.h>
 #include <gtk-primary-selection-client-protocol.h>
 #include <gtk-shell-client-protocol.h>
 #include <idle-client-protocol.h>
@@ -24,6 +25,7 @@
 #include <presentation-time-client-protocol.h>
 #include <primary-selection-unstable-v1-client-protocol.h>
 #include <relative-pointer-unstable-v1-client-protocol.h>
+#include <single-pixel-buffer-v1-client-protocol.h>
 #include <stylus-unstable-v2-client-protocol.h>
 #include <surface-augmenter-client-protocol.h>
 #include <text-input-extension-unstable-v1-client-protocol.h>
@@ -97,6 +99,10 @@ void delete_touch(wl_touch* touch) {
     wl_touch_release(touch);
   else
     wl_touch_destroy(touch);
+}
+
+void delete_zaura_output_manager(zaura_output_manager* manager) {
+  zaura_output_manager_destroy(manager);
 }
 
 void delete_zaura_shell(zaura_shell* shell) {
@@ -217,10 +223,13 @@ IMPLEMENT_WAYLAND_OBJECT_TRAITS(wl_surface)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS_WITH_DELETER(wl_touch, delete_touch)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(wp_presentation)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(wp_presentation_feedback)
+IMPLEMENT_WAYLAND_OBJECT_TRAITS(wp_single_pixel_buffer_manager_v1)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(wp_viewport)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(wp_viewporter)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(wp_content_type_v1)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(wp_content_type_manager_v1)
+IMPLEMENT_WAYLAND_OBJECT_TRAITS(wp_fractional_scale_manager_v1)
+IMPLEMENT_WAYLAND_OBJECT_TRAITS(wp_fractional_scale_v1)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(xdg_activation_v1)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(xdg_activation_token_v1)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(xdg_popup)
@@ -228,6 +237,8 @@ IMPLEMENT_WAYLAND_OBJECT_TRAITS(xdg_positioner)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(xdg_surface)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(xdg_toplevel)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(xdg_wm_base)
+IMPLEMENT_WAYLAND_OBJECT_TRAITS_WITH_DELETER(zaura_output_manager,
+                                             delete_zaura_output_manager)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS_WITH_DELETER(zaura_shell, delete_zaura_shell)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS_WITH_DELETER(zaura_surface,
                                              delete_zaura_surface)
@@ -266,6 +277,7 @@ IMPLEMENT_WAYLAND_OBJECT_TRAITS(zwp_linux_surface_synchronization_v1)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(zwp_locked_pointer_v1)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(zwp_pointer_constraints_v1)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(zwp_pointer_gesture_pinch_v1)
+IMPLEMENT_WAYLAND_OBJECT_TRAITS(zwp_pointer_gesture_hold_v1)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(zwp_pointer_gestures_v1)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(zwp_primary_selection_device_v1)
 IMPLEMENT_WAYLAND_OBJECT_TRAITS(zwp_primary_selection_device_manager_v1)

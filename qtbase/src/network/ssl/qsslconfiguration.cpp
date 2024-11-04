@@ -105,6 +105,12 @@ const char QSslConfiguration::NextProtocolHttp1_1[] = "http/1.1";
 */
 
 /*!
+    \variable QSslConfiguration::ALPNProtocolHTTP2
+    \brief The value used for negotiating HTTP 2 during the Application-Layer
+    Protocol Negotiation.
+*/
+
+/*!
     Constructs an empty SSL configuration. This configuration contains
     no valid settings and the state will be empty. isNull() will
     return true after this constructor is called.
@@ -550,8 +556,6 @@ void QSslConfiguration::setPrivateKey(const QSslKey &key)
     ciphers. You can revert to using the entire set by calling
     setCiphers() with the list returned by supportedCiphers().
 
-    \note This is not currently supported in the Schannel backend.
-
     \sa setCiphers(), supportedCiphers()
 */
 QList<QSslCipher> QSslConfiguration::ciphers() const
@@ -566,8 +570,6 @@ QList<QSslCipher> QSslConfiguration::ciphers() const
 
     Restricting the cipher suite must be done before the handshake
     phase, where the session cipher is chosen.
-
-    \note This is not currently supported in the Schannel backend.
 
     \sa ciphers(), supportedCiphers()
 */
@@ -587,7 +589,8 @@ void QSslConfiguration::setCiphers(const QList<QSslCipher> &ciphers)
     must be done before the handshake phase, where the session cipher
     is chosen.
 
-    \note This is not currently supported in the Schannel backend.
+    \note With the Schannel backend the order of the ciphers is ignored and Schannel
+          picks the most secure one during the handshake.
 
     \sa ciphers()
 */
@@ -938,6 +941,9 @@ QSslDiffieHellmanParameters QSslConfiguration::diffieHellmanParameters() const
 
     If no Diffie-Hellman parameters have been set, the QSslConfiguration object
     defaults to using the 2048-bit MODP group from RFC 3526.
+
+    Since 6.7 you can provide an empty Diffie-Hellman parameter to use auto selection
+    (see SSL_CTX_set_dh_auto of openssl) if the tls backend supports it.
 
     \note The default parameters may change in future Qt versions.
     Please check the documentation of the \e{exact Qt version} that you

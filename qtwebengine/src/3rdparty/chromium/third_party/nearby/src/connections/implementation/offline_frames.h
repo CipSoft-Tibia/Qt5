@@ -45,7 +45,13 @@ location::nearby::connections::V1Frame::FrameType GetFrameType(
     const location::nearby::connections::OfflineFrame& offline_frame);
 
 // Builds Connection Request / Response messages.
-ByteArray ForConnectionRequest(const ConnectionInfo& conection_info);
+ByteArray ForConnectionRequestConnections(
+    const location::nearby::connections::ConnectionsDevice&
+        proto_connections_device,
+    const ConnectionInfo& conection_info);
+ByteArray ForConnectionRequestPresence(
+    const location::nearby::connections::PresenceDevice& proto_presence_device,
+    const ConnectionInfo& connection_info);
 ByteArray ForConnectionResponse(
     std::int32_t status, const location::nearby::connections::OsInfo& os_info);
 
@@ -92,8 +98,8 @@ ByteArray ForBwuLastWrite();
 ByteArray ForBwuSafeToClose();
 
 ByteArray ForKeepAlive();
-ByteArray ForDisconnection();
-
+ByteArray ForDisconnection(bool request_safe_to_disconnect,
+                           bool ack_safe_to_disconnect);
 UpgradePathInfo::Medium MediumToUpgradePathInfoMedium(Medium medium);
 Medium UpgradePathInfoMediumToMedium(UpgradePathInfo::Medium medium);
 

@@ -124,7 +124,7 @@ class OutgoingStream::UnderlyingSink final : public UnderlyingSinkBase {
     DCHECK(!reason.IsEmpty());
 
     uint8_t code = 0;
-    WebTransportError* exception = V8WebTransportError::ToImplWithTypeCheck(
+    WebTransportError* exception = V8WebTransportError::ToWrappable(
         script_state->GetIsolate(), reason.V8Value());
     if (exception) {
       code = exception->streamErrorCode().value_or(0);
@@ -473,6 +473,11 @@ void OutgoingStream::ErrorStreamAbortAndReset(ScriptValue reason) {
   } else if (controller_) {
     controller_->error(script_state_, reason);
     controller_ = nullptr;
+  }
+  if (close_promise_resolver_) {
+    pending_operation_ = nullptr;
+    close_promise_resolver_->Reject(reason);
+    close_promise_resolver_ = nullptr;
   }
 
   AbortAndReset();

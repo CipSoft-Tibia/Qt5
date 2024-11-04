@@ -15,6 +15,7 @@
 #include "base/component_export.h"
 #include "base/files/file.h"
 #include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ref_counted_delete_on_sequence.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
@@ -22,6 +23,7 @@
 #include "base/threading/sequence_bound.h"
 #include "base/types/pass_key.h"
 #include "build/build_config.h"
+#include "components/file_access/scoped_file_access_delegate.h"
 #include "components/services/storage/public/cpp/quota_error_or.h"
 #include "components/services/storage/public/mojom/quota_client.mojom.h"
 #include "mojo/public/cpp/bindings/receiver.h"
@@ -52,7 +54,6 @@ namespace storage {
 
 class AsyncFileUtil;
 class CopyOrMoveFileValidatorFactory;
-class ExternalFileSystemBackend;
 class ExternalMountPoints;
 class FileStreamReader;
 class FileStreamWriter;
@@ -72,6 +73,8 @@ class SandboxFileSystemBackend;
 class SandboxFileSystemBackendDelegate;
 class SpecialStoragePolicy;
 class WatcherManager;
+
+enum class OperationType;
 
 struct BucketInfo;
 struct FileSystemInfo;
@@ -151,7 +154,8 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) FileSystemContext
       const FileSystemOptions& options,
       base::PassKey<FileSystemContext>);
 
-  bool DeleteDataForStorageKeyOnFileTaskRunner(
+  // Called by CookiesTreeModel, to be removed in crbug.com/1304449.
+  void DeleteDataForStorageKeyOnFileTaskRunner(
       const blink::StorageKey& storage_key);
 
   // Creates a new QuotaReservation for the given `storage_key` and `type`.
@@ -206,11 +210,6 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) FileSystemContext
 
   // Returns all registered filesystem types.
   std::vector<FileSystemType> GetFileSystemTypes() const;
-
-  // Returns a FileSystemBackend instance for external filesystem
-  // type, which is used only by chromeos for now.  This is equivalent to
-  // calling GetFileSystemBackend(kFileSystemTypeExternal).
-  ExternalFileSystemBackend* external_backend() const;
 
   // Used for OpenFileSystem.
   using OpenFileSystemCallback =
@@ -281,7 +280,9 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) FileSystemContext
       const FileSystemURL& url,
       int64_t offset,
       int64_t max_bytes_to_read,
-      const base::Time& expected_modification_time);
+      const base::Time& expected_modification_time,
+      file_access::ScopedFileAccessDelegate::RequestFilesAccessIOCallback
+          file_access = base::NullCallback());
 
   // Creates new FileStreamWriter instance to write into a file pointed by
   // `url` from `offset`.
@@ -375,6 +376,7 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) FileSystemContext
   //
   // Called by FileSystemOperationRunner.
   std::unique_ptr<FileSystemOperation> CreateFileSystemOperation(
+      OperationType type,
       const FileSystemURL& url,
       base::File::Error* error_code);
 
@@ -396,7 +398,11 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) FileSystemContext
                                       const GURL& filesystem_root,
                                       const std::string& filesystem_name,
                                       base::File::Error error);
-
+  void OnGetBucketForDeleteFileSystem(FileSystemType type,
+                                      StatusCallback callback,
+                                      QuotaErrorOr<BucketInfo> result);
+  void OnGetBucketForStorageKeyDeletion(std::vector<FileSystemType> type,
+                                        QuotaErrorOr<BucketInfo> result);
   // OnGetOrCreateBucket is the callback for calling
   // QuotaManagerProxy::GetOrCreateDefault.
   void OnGetOrCreateBucket(const blink::StorageKey& storage_key,

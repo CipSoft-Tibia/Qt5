@@ -112,9 +112,10 @@ def expr_and(terms):
     terms = list(filter(lambda x: not x.is_always_true, terms))
     if not terms:
         return _Expr(True)
+    terms = expr_uniq(terms)
     if len(terms) == 1:
         return terms[0]
-    return _binary_op(" && ", expr_uniq(terms))
+    return _binary_op(" && ", terms)
 
 
 def expr_or(terms):
@@ -127,9 +128,10 @@ def expr_or(terms):
     terms = list(filter(lambda x: not x.is_always_false, terms))
     if not terms:
         return _Expr(False)
+    terms = expr_uniq(terms)
     if len(terms) == 1:
         return terms[0]
-    return _binary_op(" || ", expr_uniq(terms))
+    return _binary_op(" || ", terms)
 
 
 def expr_uniq(terms):
@@ -161,6 +163,7 @@ def expr_from_exposure(exposure,
     assert (global_names is None
             or (isinstance(global_names, (list, tuple))
                 and all(isinstance(name, str) for name in global_names)))
+    assert isinstance(may_use_feature_selector, bool)
 
     # The property exposures are categorized into three.
     # - Unconditional: Always exposed.
@@ -253,6 +256,7 @@ def expr_from_exposure(exposure,
         "ServiceWorker": "IsServiceWorkerGlobalScope",
         "ShadowRealm": "IsShadowRealmGlobalScope",
         "SharedWorker": "IsSharedWorkerGlobalScope",
+        "SharedStorageWorklet": "IsSharedStorageWorkletGlobalScope",
         "Window": "IsWindow",
         "Worker": "IsWorkerGlobalScope",
         "Worklet": "IsWorkletGlobalScope",
@@ -291,8 +295,7 @@ def expr_from_exposure(exposure,
                 # of [TargetOfExposed] exposure. If this is actually a global,
                 # add it to GLOBAL_NAME_TO_EXECUTION_CONTEXT_CHECK.
                 return _Expr(
-                    "(::logging::NotReachedError::NotReached"
-                    "(__FILE__, __LINE__) << "
+                    "(::logging::NotReachedError::NotReached() << "
                     "\"{} exposure test is not supported at runtime\", false)".
                     format(entry.global_name))
 

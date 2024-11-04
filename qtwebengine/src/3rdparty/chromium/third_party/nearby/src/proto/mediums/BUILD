@@ -12,9 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+
 licenses(["notice"])
 
 package(default_visibility = ["//visibility:public"])
+
+proto_library(
+    name = "multiplex_frames_proto",
+    srcs = [
+        "multiplex_frames.proto",
+    ],
+)
 
 proto_library(
     name = "nfc_frames_proto",

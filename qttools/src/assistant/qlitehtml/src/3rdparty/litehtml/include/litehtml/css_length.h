@@ -16,19 +16,23 @@ namespace litehtml
 		bool		m_is_predefined;
 	public:
 		css_length();
-		css_length(const css_length& val);
-
-		css_length&	operator=(const css_length& val);
+		css_length(float val, css_units units = css_units_px);
 		css_length&	operator=(float val);
+
 		bool		is_predefined() const;
 		void		predef(int val);
 		int			predef() const;
+		static css_length predef_value(int val = 0);
 		void		set_value(float val, css_units units);
 		float		val() const;
 		css_units	units() const;
 		int			calc_percent(int width) const;
-		void		fromString(const tstring& str, const tstring& predefs = _t(""), int defValue = 0);
+		void		fromString(const string& str, const string& predefs = "", int defValue = 0);
+		static css_length from_string(const string& str, const string& predefs = "", int defValue = 0);
+		string		to_string() const;
 	};
+
+	using length_vector = std::vector<css_length>;
 
 	// css_length inlines
 
@@ -40,31 +44,11 @@ namespace litehtml
 		m_is_predefined	= false;
 	}
 
-	inline css_length::css_length(const css_length& val)
+	inline css_length::css_length(float val, css_units units)
 	{
-		if(val.is_predefined())
-		{
-			m_predef	= val.m_predef;
-		} else
-		{
-			m_value		= val.m_value;
-		}
-		m_units			= val.m_units;
-		m_is_predefined	= val.m_is_predefined;
-	}
-
-	inline css_length&	css_length::operator=(const css_length& val)
-	{
-		if(val.is_predefined())
-		{
-			m_predef	= val.m_predef;
-		} else
-		{
-			m_value		= val.m_value;
-		}
-		m_units			= val.m_units;
-		m_is_predefined	= val.m_is_predefined;
-		return *this;
+		m_value = val;
+		m_units = units;
+		m_is_predefined = false;
 	}
 
 	inline css_length&	css_length::operator=(float val)
@@ -95,7 +79,7 @@ namespace litehtml
 		return 0;
 	}
 
-	inline void css_length::set_value(float val, css_units units)		
+	inline void css_length::set_value(float val, css_units units)
 	{ 
 		m_value			= val; 
 		m_is_predefined = false;	

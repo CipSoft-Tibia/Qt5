@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,9 +23,9 @@
 #include "testing/util/read_file.h"
 #include "util/crypto/pem_helpers.h"
 #include "util/osp_logging.h"
+#include "util/span_util.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 
 // TODO(crbug.com/openscreen/90): Remove these after Chromium is migrated to
 // openscreen::cast
@@ -155,20 +155,13 @@ class CastAuthUtilTest : public ::testing::Test {
     response.set_hash_algorithm(digest_algorithm);
     switch (digest_algorithm) {
       case ::cast::channel::SHA1:
-        response.set_signature(
-            std::string(reinterpret_cast<const char*>(signatures.sha1.data),
-                        signatures.sha1.length));
+        response.set_signature(ByteViewToString(signatures.sha1));
         break;
       case ::cast::channel::SHA256:
-        response.set_signature(
-            std::string(reinterpret_cast<const char*>(signatures.sha256.data),
-                        signatures.sha256.length));
+        response.set_signature(ByteViewToString(signatures.sha256));
         break;
     }
-    *signed_data = std::vector<uint8_t>(
-        signatures.message.data,
-        signatures.message.data + signatures.message.length);
-
+    signed_data->assign(signatures.message.cbegin(), signatures.message.cend());
     return response;
   }
 
@@ -492,5 +485,4 @@ TEST_F(CastAuthUtilTest, CRLTestSuite) {
 }
 
 }  // namespace
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

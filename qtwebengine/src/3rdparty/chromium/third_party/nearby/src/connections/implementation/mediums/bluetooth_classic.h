@@ -17,6 +17,8 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
+#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -38,12 +40,10 @@ class BluetoothClassic {
   using ScanMode = BluetoothAdapter::ScanMode;
 
   // Callback that is invoked when a new connection is accepted.
-  struct AcceptedConnectionCallback {
-    std::function<void(const std::string& service_id, BluetoothSocket socket)>
-        accepted_cb = [](const std::string&, BluetoothSocket) {};
-  };
+  using AcceptedConnectionCallback = absl::AnyInvocable<void(
+      const std::string& service_id, BluetoothSocket socket)>;
 
-  explicit BluetoothClassic(BluetoothRadio& bluetooth_radio);
+  explicit BluetoothClassic(BluetoothRadio& radio);
   ~BluetoothClassic();
 
   // Returns true, if BT communications are supported by a platform.
@@ -97,7 +97,7 @@ class BluetoothClassic {
   // Returns true if this object owns a valid platform implementation.
   bool IsMediumValid() const ABSL_LOCKS_EXCLUDED(mutex_) {
     MutexLock lock(&mutex_);
-    return medium_.IsValid();
+    return medium_->IsValid();
   }
 
   // Returns true if this object has a valid BluetoothAdapter reference.
@@ -120,6 +120,15 @@ class BluetoothClassic {
 
   BluetoothDevice GetRemoteDevice(const std::string& mac_address)
       ABSL_LOCKS_EXCLUDED(mutex_);
+
+ protected:
+  // Use for unit tests only to inject a BluetoothClassicMedium.
+  BluetoothClassic(BluetoothRadio& radio,
+                   std::unique_ptr<BluetoothClassicMedium> medium);
+
+  // Used in unit tests to determine how many calls to `AttemptToConnect`
+  // occured during a call to `Connect`, per service id.
+  std::map<std::string, int> service_id_to_connect_attempts_count_map_;
 
  private:
   struct ScanInfo {
@@ -175,9 +184,8 @@ class BluetoothClassic {
 
   mutable Mutex mutex_;
   BluetoothRadio& radio_ ABSL_GUARDED_BY(mutex_);
-  BluetoothAdapter& adapter_ ABSL_GUARDED_BY(mutex_){
-      radio_.GetBluetoothAdapter()};
-  BluetoothClassicMedium medium_ ABSL_GUARDED_BY(mutex_){adapter_};
+  BluetoothAdapter& adapter_ ABSL_GUARDED_BY(mutex_);
+  std::unique_ptr<BluetoothClassicMedium> medium_ ABSL_GUARDED_BY(mutex_);
 
   // A bundle of state required to do a Bluetooth Classic scan. When non-null,
   // we are currently performing a Bluetooth scan.

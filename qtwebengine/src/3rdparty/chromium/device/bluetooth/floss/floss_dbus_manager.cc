@@ -19,6 +19,7 @@
 #include "device/bluetooth/floss/fake_floss_admin_client.h"
 #include "device/bluetooth/floss/fake_floss_advertiser_client.h"
 #include "device/bluetooth/floss/fake_floss_battery_manager_client.h"
+#include "device/bluetooth/floss/fake_floss_bluetooth_telephony_client.h"
 #include "device/bluetooth/floss/fake_floss_gatt_manager_client.h"
 #include "device/bluetooth/floss/fake_floss_lescan_client.h"
 #include "device/bluetooth/floss/fake_floss_logging_client.h"
@@ -27,6 +28,7 @@
 #include "device/bluetooth/floss/floss_adapter_client.h"
 #include "device/bluetooth/floss/floss_advertiser_client.h"
 #include "device/bluetooth/floss/floss_battery_manager_client.h"
+#include "device/bluetooth/floss/floss_bluetooth_telephony_client.h"
 #include "device/bluetooth/floss/floss_lescan_client.h"
 #include "device/bluetooth/floss/floss_logging_client.h"
 #include "device/bluetooth/floss/floss_manager_client.h"
@@ -46,13 +48,25 @@ const int FlossDBusManager::kInvalidAdapter = -1;
 
 static bool g_using_floss_dbus_manager_for_testing = false;
 
+// Wait 2s for clients to become ready before timing out.
+constexpr int kClientReadyTimeoutMs = 2000;
+
+FlossDBusManager::ClientInitializer::ClientInitializer(
+    base::OnceClosure on_ready,
+    int client_count)
+    : expected_closure_count_(client_count),
+      pending_client_ready_(client_count),
+      on_ready_(std::move(on_ready)) {}
+
+FlossDBusManager::ClientInitializer::~ClientInitializer() = default;
+
 FlossDBusManager::FlossDBusManager(dbus::Bus* bus, bool use_stubs) : bus_(bus) {
   if (use_stubs) {
     client_bundle_ = std::make_unique<FlossClientBundle>(use_stubs);
     active_adapter_ = 0;
     object_manager_supported_ = true;
     object_manager_support_known_ = true;
-    InitializeAdapterClients(active_adapter_);
+    InitializeAdapterClients(active_adapter_, base::DoNothing());
     return;
   }
 
@@ -153,7 +167,7 @@ void FlossDBusManager::OnObjectManagerSupported(dbus::Response* response) {
   // Initialize the manager client (which doesn't depend on any specific
   // adapter being present)
   client_bundle_->manager_client()->Init(GetSystemBus(), kManagerInterface,
-                                         kInvalidAdapter);
+                                         kInvalidAdapter, base::DoNothing());
 
   object_manager_support_known_ = true;
   if (object_manager_support_known_callback_) {
@@ -174,13 +188,14 @@ void FlossDBusManager::OnObjectManagerNotSupported(
   }
 }
 
-void FlossDBusManager::SwitchAdapter(int adapter) {
+void FlossDBusManager::SwitchAdapter(int adapter, base::OnceClosure on_ready) {
   if (!object_manager_supported_) {
     DVLOG(1) << "Floss can't switch to adapter without object manager";
+    std::move(on_ready).Run();
     return;
   }
 
-  InitializeAdapterClients(adapter);
+  InitializeAdapterClients(adapter, std::move(on_ready));
   return;
 }
 
@@ -220,6 +235,10 @@ FlossBatteryManagerClient* FlossDBusManager::GetBatteryManagerClient() {
   return client_bundle_->battery_manager_client();
 }
 
+FlossBluetoothTelephonyClient* FlossDBusManager::GetBluetoothTelephonyClient() {
+  return client_bundle_->bluetooth_telephony_client();
+}
+
 FlossLoggingClient* FlossDBusManager::GetLoggingClient() {
   return client_bundle_->logging_client();
 }
@@ -230,37 +249,67 @@ FlossAdminClient* FlossDBusManager::GetAdminClient() {
 }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-void FlossDBusManager::InitializeAdapterClients(int adapter) {
+void FlossDBusManager::InitializeAdapterClients(int adapter,
+                                                base::OnceClosure on_ready) {
   // Clean up active adapter clients
   if (active_adapter_ != kInvalidAdapter) {
     client_bundle_->ResetAdapterClients();
+  }
+
+  // Initializing already current adapter.
+  if (active_adapter_ == adapter) {
+    std::move(on_ready).Run();
+    return;
   }
 
   // Set current adapter. If it's kInvalidAdapter, this doesn't need to do any
   // init.
   active_adapter_ = adapter;
   if (adapter == kInvalidAdapter) {
+    std::move(on_ready).Run();
     return;
   }
 
+  // Initialize callback readiness. If clients aren't ready within a certain
+  // period, we will time out and send the ready signal anyway.
+  client_on_ready_ = ClientInitializer::CreateWithTimeout(
+      std::move(on_ready),
+#if BUILDFLAG(IS_CHROMEOS)
+      /*client_count=*/9,
+#else
+      /*client_count=*/8,
+#endif
+      base::Milliseconds(kClientReadyTimeoutMs));
+
   // Initialize any adapter clients.
-  client_bundle_->adapter_client()->Init(GetSystemBus(), kAdapterService,
-                                         active_adapter_);
-  client_bundle_->gatt_manager_client()->Init(GetSystemBus(), kAdapterService,
-                                              active_adapter_);
-  client_bundle_->socket_manager()->Init(GetSystemBus(), kAdapterService,
-                                         active_adapter_);
+  client_bundle_->adapter_client()->Init(
+      GetSystemBus(), kAdapterService, active_adapter_,
+      client_on_ready_->CreateReadyClosure());
+  client_bundle_->gatt_manager_client()->Init(
+      GetSystemBus(), kAdapterService, active_adapter_,
+      client_on_ready_->CreateReadyClosure());
+  client_bundle_->socket_manager()->Init(
+      GetSystemBus(), kAdapterService, active_adapter_,
+      client_on_ready_->CreateReadyClosure());
   client_bundle_->lescan_client()->Init(GetSystemBus(), kAdapterService,
-                                        active_adapter_);
-  client_bundle_->advertiser_client()->Init(GetSystemBus(), kAdapterService,
-                                            active_adapter_);
+                                        active_adapter_,
+                                        client_on_ready_->CreateReadyClosure());
+  client_bundle_->advertiser_client()->Init(
+      GetSystemBus(), kAdapterService, active_adapter_,
+      client_on_ready_->CreateReadyClosure());
   client_bundle_->battery_manager_client()->Init(
-      GetSystemBus(), kAdapterService, active_adapter_);
-  client_bundle_->logging_client()->Init(GetSystemBus(), kAdapterService,
-                                         active_adapter_);
+      GetSystemBus(), kAdapterService, active_adapter_,
+      client_on_ready_->CreateReadyClosure());
+  client_bundle_->bluetooth_telephony_client()->Init(
+      GetSystemBus(), kAdapterService, active_adapter_,
+      client_on_ready_->CreateReadyClosure());
+  client_bundle_->logging_client()->Init(
+      GetSystemBus(), kAdapterService, active_adapter_,
+      client_on_ready_->CreateReadyClosure());
 #if BUILDFLAG(IS_CHROMEOS)
   client_bundle_->admin_client()->Init(GetSystemBus(), kAdapterService,
-                                       active_adapter_);
+                                       active_adapter_,
+                                       client_on_ready_->CreateReadyClosure());
 #endif  // BUILDFLAG(IS_CHROMEOS)
 }
 
@@ -299,6 +348,12 @@ void FlossDBusManagerSetter::SetFlossAdvertiserClient(
 void FlossDBusManagerSetter::SetFlossBatteryManagerClient(
     std::unique_ptr<FlossBatteryManagerClient> client) {
   FlossDBusManager::Get()->client_bundle_->battery_manager_client_ =
+      std::move(client);
+}
+
+void FlossDBusManagerSetter::SetFlossBluetoothTelephonyClient(
+    std::unique_ptr<FlossBluetoothTelephonyClient> client) {
+  FlossDBusManager::Get()->client_bundle_->bluetooth_telephony_client_ =
       std::move(client);
 }
 
@@ -346,6 +401,7 @@ void FlossClientBundle::ResetAdapterClients() {
     lescan_client_ = FlossLEScanClient::Create();
     advertiser_client_ = FlossAdvertiserClient::Create();
     battery_manager_client_ = FlossBatteryManagerClient::Create();
+    bluetooth_telephony_client_ = FlossBluetoothTelephonyClient::Create();
     logging_client_ = FlossLoggingClient::Create();
 #if BUILDFLAG(IS_CHROMEOS)
     admin_client_ = FlossAdminClient::Create();
@@ -357,6 +413,8 @@ void FlossClientBundle::ResetAdapterClients() {
     lescan_client_ = std::make_unique<FakeFlossLEScanClient>();
     advertiser_client_ = std::make_unique<FakeFlossAdvertiserClient>();
     battery_manager_client_ = std::make_unique<FakeFlossBatteryManagerClient>();
+    bluetooth_telephony_client_ =
+        std::make_unique<FakeFlossBluetoothTelephonyClient>();
     logging_client_ = std::make_unique<FakeFlossLoggingClient>();
 #if BUILDFLAG(IS_CHROMEOS)
     admin_client_ = std::make_unique<FakeFlossAdminClient>();

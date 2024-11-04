@@ -324,21 +324,7 @@ bool IsGoodExplicitInteraction(FeedUserActionType action) {
 }  // namespace
 MetricsReporter::LoadStreamResultSummary::LoadStreamResultSummary() = default;
 MetricsReporter::LoadStreamResultSummary::LoadStreamResultSummary(
-    LoadStreamStatus load_from_store_status,
-    LoadStreamStatus final_status,
-    bool is_initial_load,
-    bool loaded_new_content_from_network,
-    base::TimeDelta stored_content_age,
-    ContentOrder content_order,
-    absl::optional<feedstore::Metadata::StreamMetadata> stream_metadata) {
-  this->load_from_store_status = load_from_store_status;
-  this->final_status = final_status;
-  this->is_initial_load = is_initial_load;
-  this->loaded_new_content_from_network = loaded_new_content_from_network;
-  this->stored_content_age = stored_content_age;
-  this->content_order = content_order;
-  this->stream_metadata = stream_metadata;
-}
+    const LoadStreamResultSummary& src) = default;
 MetricsReporter::LoadStreamResultSummary::~LoadStreamResultSummary() = default;
 
 MetricsReporter::SurfaceWaiting::SurfaceWaiting() = default;
@@ -772,6 +758,7 @@ void MetricsReporter::OtherUserAction(const StreamType& stream_type,
     case FeedUserActionType::kTappedRefreshFollowingFeedOnSnackbar:
     case FeedUserActionType::kTappedFeedSignInPromoUIContinue:
     case FeedUserActionType::kTappedFeedSignInPromoUICancel:
+    case FeedUserActionType::kNonSwipeManualRefresh:
       // Nothing additional for these actions. Note that some of these are iOS
       // only.
 
@@ -784,13 +771,19 @@ void MetricsReporter::ReportStableContentSliceVisibilityTimeForGoodVisits(
   good_visit_state_.AddTimeInFeed(delta);
 }
 
-void MetricsReporter::SurfaceOpened(const StreamType& stream_type,
-                                    SurfaceId surface_id) {
+void MetricsReporter::SurfaceOpened(
+    const StreamType& stream_type,
+    SurfaceId surface_id,
+    SingleWebFeedEntryPoint single_web_feed_entry_point) {
   VVLOG << "Feed SurfaceOpened " << stream_type << " id=" << surface_id;
   ReportPersistentDataIfDayIsDone();
   surfaces_waiting_for_content_.emplace(
       surface_id, SurfaceWaiting{stream_type, base::TimeTicks::Now()});
   ReportUserActionHistogram(FeedUserActionType::kOpenedFeedSurface);
+  if (stream_type.IsSingleWebFeed()) {
+    base::UmaHistogramEnumeration("ContentSuggestions.SingleWebFeed.EntryPoint",
+                                  single_web_feed_entry_point);
+  }
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
       FROM_HERE,
       base::BindOnce(&MetricsReporter::ReportOpenFeedIfNeeded, GetWeakPtr(),
@@ -1068,6 +1061,11 @@ void MetricsReporter::OnImageFetched(const GURL& url,
                                      int net_error_or_http_status) {
   VVLOG << "OnImageFetched status=" << net_error_or_http_status << " " << url;
   base::UmaHistogramSparse("ContentSuggestions.Feed.ImageFetchStatus",
+                           net_error_or_http_status);
+}
+
+void MetricsReporter::OnResourceFetched(int net_error_or_http_status) {
+  base::UmaHistogramSparse("ContentSuggestions.Feed.ResourceFetchStatus",
                            net_error_or_http_status);
 }
 

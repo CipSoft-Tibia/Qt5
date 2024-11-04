@@ -24,31 +24,28 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_STYLE_DATA_REF_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_STYLE_DATA_REF_H_
 
-#include "base/memory/scoped_refptr.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 
 namespace blink {
 
 template <typename T>
 class DataRef {
-  USING_FAST_MALLOC(DataRef);
+  DISALLOW_NEW();
 
  public:
-  const T* Get() const { return data_.get(); }
+  explicit DataRef(T* data) : data_(data) {}
+
+  const T* Get() const { return data_.Get(); }
 
   const T& operator*() const { return *Get(); }
   const T* operator->() const { return Get(); }
 
-  T* Access() {
-    if (!data_->HasOneRef()) {
+  T* Access(bool& access_flag) {
+    if (!access_flag) {
+      access_flag = true;
       data_ = data_->Copy();
     }
-    return data_.get();
-  }
-
-  void Init() {
-    DCHECK(!data_);
-    data_ = T::Create();
+    return data_.Get();
   }
 
   bool operator==(const DataRef<T>& o) const {
@@ -65,8 +62,12 @@ class DataRef {
 
   void operator=(std::nullptr_t) { data_ = nullptr; }
 
+  void Trace(Visitor* visitor) const { visitor->Trace(data_); }
+
  private:
-  scoped_refptr<T> data_;
+  // These ComputedStyle sub-objects are heavily inlined, and on relatively hot
+  // codepaths. Disable pointer-compression.
+  subtle::UncompressedMember<T> data_;
 };
 
 }  // namespace blink

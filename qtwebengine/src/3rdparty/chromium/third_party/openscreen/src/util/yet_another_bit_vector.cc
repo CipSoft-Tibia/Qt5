@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,6 +16,10 @@ namespace {
 // Returns a bitmask where all the bits whose positions are in the range
 // [begin,begin+count) are set, and all other bits are cleared.
 constexpr uint64_t MakeBitmask(int begin, int count) {
+  if (begin >= std::numeric_limits<uint64_t>::digits) {
+    return 0;
+  }
+
   // Form a contiguous sequence of bits by subtracting one from the appropriate
   // power of 2. Set all the bits if count >= 64.
   const uint64_t bits_in_wrong_position =
@@ -42,14 +46,14 @@ YetAnotherBitVector::~YetAnotherBitVector() {
   }
 }
 
-YetAnotherBitVector::YetAnotherBitVector(YetAnotherBitVector&& other)
+YetAnotherBitVector::YetAnotherBitVector(YetAnotherBitVector&& other) noexcept
     : size_(other.size_), bits_(other.bits_) {
   other.size_ = 0;
   other.bits_.as_integer = 0;
 }
 
 YetAnotherBitVector& YetAnotherBitVector::operator=(
-    YetAnotherBitVector&& other) {
+    YetAnotherBitVector&& other) noexcept {
   if (this == &other) {
     return *this;
   }
@@ -136,13 +140,15 @@ void YetAnotherBitVector::ShiftRight(int steps) {
     // With |steps| now less than 64, shift the bits right within each array
     // element. Start from the back of the array, working towards the front, and
     // propagating any bits that are moving across array elements.
-    uint64_t incoming_carry_bits = 0;
-    const uint64_t outgoing_mask = MakeBitmask(0, steps);
-    for (int i = num_integers; i-- > 0;) {
-      const uint64_t outgoing_carry_bits = bits_.as_array[i] & outgoing_mask;
-      bits_.as_array[i] >>= steps;
-      bits_.as_array[i] |= (incoming_carry_bits << (kBitsPerInteger - steps));
-      incoming_carry_bits = outgoing_carry_bits;
+    if (steps > 0) {
+      uint64_t incoming_carry_bits = 0;
+      const uint64_t outgoing_mask = MakeBitmask(0, steps);
+      for (int i = num_integers; i-- > 0;) {
+        const uint64_t outgoing_carry_bits = bits_.as_array[i] & outgoing_mask;
+        bits_.as_array[i] >>= steps;
+        bits_.as_array[i] |= (incoming_carry_bits << (kBitsPerInteger - steps));
+        incoming_carry_bits = outgoing_carry_bits;
+      }
     }
   } else {
     if (steps < kBitsPerInteger) {

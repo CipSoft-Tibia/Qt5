@@ -14,7 +14,6 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/threading/simple_thread.h"
 #include "media/base/audio_glitch_info.h"
-#include "media/base/audio_hash.h"
 
 namespace media {
 
@@ -48,9 +47,9 @@ class ClocklessAudioSinkThread : public base::DelegateSimpleThread::Delegate {
     return playback_time_;
   }
 
-  std::string GetAudioHash() {
+  const AudioHash& GetAudioHash() const {
     DCHECK(audio_hash_);
-    return audio_hash_->ToString();
+    return *audio_hash_;
   }
 
  private:
@@ -76,7 +75,7 @@ class ClocklessAudioSinkThread : public base::DelegateSimpleThread::Delegate {
     }
   }
 
-  raw_ptr<AudioRendererSink::RenderCallback> callback_;
+  raw_ptr<AudioRendererSink::RenderCallback, DanglingUntriaged> callback_;
   std::unique_ptr<AudioBus> audio_bus_;
   std::unique_ptr<base::WaitableEvent> stop_event_;
   std::unique_ptr<base::DelegateSimpleThread> thread_;
@@ -164,8 +163,8 @@ void ClocklessAudioSink::StartAudioHashForTesting() {
   hashing_ = true;
 }
 
-std::string ClocklessAudioSink::GetAudioHashForTesting() {
-  return thread_ && hashing_ ? thread_->GetAudioHash() : std::string();
+const AudioHash& ClocklessAudioSink::GetAudioHashForTesting() const {
+  return thread_->GetAudioHash();
 }
 
 void ClocklessAudioSink::SetIsOptimizedForHardwareParametersForTesting(

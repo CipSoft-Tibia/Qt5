@@ -10,6 +10,8 @@
 
 #include "base/check.h"
 #include "base/memory/scoped_refptr.h"
+#include "content/browser/browsing_instance.h"
+#include "content/browser/coop_related_group.h"
 #include "content/browser/isolation_context.h"
 #include "content/browser/site_info.h"
 #include "content/browser/web_exposed_isolation_info.h"
@@ -29,7 +31,6 @@ namespace content {
 
 class AgentSchedulingGroupHost;
 class BrowserContext;
-class BrowsingInstance;
 class SiteInstanceGroup;
 class StoragePartitionConfig;
 class StoragePartitionImpl;
@@ -111,7 +112,14 @@ class CONTENT_EXPORT SiteInstanceImpl final : public SiteInstance {
       BrowserContext* browser_context,
       const GURL& url);
 
-  static bool ShouldAssignSiteForURL(const GURL& url);
+  // Determine if a URL should "use up" a site.  URLs such as about:blank or
+  // chrome-native:// leave the site unassigned.
+  //
+  // This is similar to SiteInstance::ShouldAssignSiteForURL() in the public
+  // API, except that it takes a UrlInfo rather than a URL.  This allows this
+  // function to consider additional information, such as the overridden origin
+  // for a URL being navigated to.
+  static bool ShouldAssignSiteForUrlInfo(const UrlInfo& url_info);
 
   // Returns the SiteInstanceGroup |this| belongs to.
   // Currently, each SiteInstanceGroup has exactly one SiteInstance, but that
@@ -124,6 +132,15 @@ class CONTENT_EXPORT SiteInstanceImpl final : public SiteInstance {
   // GetRelatedSiteInstance (overridden from SiteInstance).
   scoped_refptr<SiteInstanceImpl> GetRelatedSiteInstanceImpl(
       const UrlInfo& url_info);
+
+  // This function is used during navigation to get a SiteInstance in the same
+  // CoopRelatedGroup. If the provided `url_info` matches one of the existing
+  // BrowsingInstance of that group, a new or already existing SiteInstance in
+  // that BrowsingInstance, will be picked. Therefore returning the same
+  // SiteInstance is possible, if called with perfectly matching `url_info`.
+  scoped_refptr<SiteInstanceImpl> GetCoopRelatedSiteInstanceImpl(
+      const UrlInfo& url_info);
+
   bool IsSameSiteWithURLInfo(const UrlInfo& url_info);
 
   // Returns an AgentSchedulingGroupHost, or creates one if
@@ -180,6 +197,10 @@ class CONTENT_EXPORT SiteInstanceImpl final : public SiteInstance {
     // randomly.
     REUSE_PENDING_OR_COMMITTED_SITE,
 
+    // Similar to REUSE_PENDING_OR_COMMITTED_SITE, but limits the number of
+    // main frames a RenderProcessHost can host to a certain threshold.
+    REUSE_PENDING_OR_COMMITTED_SITE_WITH_MAIN_FRAME_THRESHOLD,
+
     // In this mode, SiteInstances don't proactively reuse processes. An
     // existing process with an unmatched service worker for the site is reused
     // only for navigations, not for service workers. When the process limit has
@@ -200,9 +221,9 @@ class CONTENT_EXPORT SiteInstanceImpl final : public SiteInstance {
   // process-per-site model should be used.
   bool ShouldUseProcessPerSite() const;
 
-  // Checks if |current_process| can be reused for this SiteInstance, and
-  // sets |process_| to |current_process| if so.
-  void ReuseCurrentProcessIfPossible(RenderProcessHost* current_process);
+  // Checks if |existing_process| can be reused for this SiteInstance, and
+  // sets |process_| to |existing_process| if so.
+  void ReuseExistingProcessIfPossible(RenderProcessHost* existing_process);
 
   // Whether the SiteInstance is created for a service worker. If this flag
   // is true, when a new process is created for this SiteInstance or a randomly
@@ -431,6 +452,32 @@ class CONTENT_EXPORT SiteInstanceImpl final : public SiteInstance {
   // WebExposedIsolationInfo of this BrowsingInstance.
   bool IsCrossOriginIsolated() const;
 
+  // Returns whether the two SiteInstances belong to the same CoopRelatedGroup.
+  // If so, a subset of JavaScript interactions that are permitted across
+  // origins (window.postMessage() and window.closed) should be supported. This
+  // is weaker than IsRelatedSiteInstance: if two SiteInstances belong to the
+  // same BrowsingInstance, they are related and COOP related.
+  bool IsCoopRelatedSiteInstance(const SiteInstanceImpl* instance) const;
+
+  // Returns the token uniquely identifying the BrowsingInstance this
+  // SiteInstance belongs to. Can safely be sent to the renderer unlike the
+  // BrowsingInstanceID.
+  base::UnguessableToken browsing_instance_token() const {
+    return browsing_instance_->token();
+  }
+
+  // Returns the token uniquely identifying the CoopRelatedGroup this
+  // SiteInstance belongs to. Can safely be sent to the renderer.
+  base::UnguessableToken coop_related_group_token() const {
+    return browsing_instance_->coop_related_group_token();
+  }
+
+  // Returns the unique origin of all top-level documents in this
+  // BrowsingInstance. This is only guaranteed by the use of a unique COOP value
+  // across the BrowsingInstance. It is empty if the BrowsingInstance does not
+  // contain COOP: same-origin or COOP: restrict-properties documents.
+  const absl::optional<url::Origin>& GetCommonCoopOrigin() const;
+
   // Finds an existing SiteInstance in this SiteInstance's BrowsingInstance that
   // matches this `url_info` but with the `is_sandboxed_` flag true. It's
   // assumed that `url_info.url` is 'about:srcdoc' here, so the new SiteInstance
@@ -446,8 +493,38 @@ class CONTENT_EXPORT SiteInstanceImpl final : public SiteInstance {
   // BrowsingInstance.
   RenderProcessHost* GetDefaultProcessForBrowsingInstance();
 
+  // Sets the process for `this`, creating a SiteInstanceGroup if necessary.
+  void SetProcessForTesting(RenderProcessHost* process);
+
+  // Increments the active document count after a new document that uses `this`
+  // finishes committing and becomes active. `url_derived_site_info` is the
+  // SiteInfo calculated from the UrlInfo of the navigation that committed the
+  // document, which might not be the same as `site_info_` in case of default
+  // SiteInstances (`site_info_`'s URL will be "unisolated.invalid", while
+  // `url_derived_site_info`'s URL will be the actual document's URL).
+  void IncrementActiveDocumentCount(const SiteInfo& url_derived_site_info);
+
+  // Decrement the active document count after a previous document that uses
+  // `this` got swapped out/replaced and becomes inactive due to another
+  // document committing in the same frame. See comment above for details on
+  // `url_derived_site_info`.
+  void DecrementActiveDocumentCount(const SiteInfo& url_derived_site_info);
+
+  // Returns the number of active documents using `this` whose URL-derived
+  // SiteInfo is `url_derived_site_info` (see comment above for details on what
+  // that means.). The active documents can span multiple pages/WebContents, but
+  // still within the same BrowsingInstance.
+  size_t GetActiveDocumentCount(const SiteInfo& url_derived_site_info);
+
+  // Set a callback to be run from this SiteInstance's destructor. Used only in
+  // tests.
+  void set_destruction_callback_for_testing(base::OnceClosure callback) {
+    destruction_callback_for_testing_ = std::move(callback);
+  }
+
  private:
   friend class BrowsingInstance;
+  friend class SiteInstanceGroupManager;
   friend class SiteInstanceTestBrowserClient;
 
   // Friend tests that need direct access to IsSameSite().
@@ -537,6 +614,9 @@ class CONTENT_EXPORT SiteInstanceImpl final : public SiteInstance {
       const GURL& url,
       const SiteInfo& site_info);
 
+  // This getter is only used to construct SiteInstanceGroups.
+  BrowsingInstance* browsing_instance() { return browsing_instance_.get(); }
+
   // A unique ID for this SiteInstance.
   SiteInstanceId id_;
 
@@ -585,6 +665,18 @@ class CONTENT_EXPORT SiteInstanceImpl final : public SiteInstance {
   // Keeps track of whether we need to verify that the StoragePartition
   // information does not change when `site_info_` is set.
   bool verify_storage_partition_info_ = false;
+
+  // Tracks the number of active documents currently in this SiteInstance that
+  // use the same URL-derived SiteInfo. Note that this might be different from
+  // `site_info_`. See the comment for `IncrementActiveDocumentCount()` for more
+  // details.
+  // TODO(https://crbug.com/1195535): Remove this once SiteInstanceGroup is
+  // fully implemented, as at that point the SiteInstance's SiteInfo will be the
+  // same as the URL-derived SiteInfo.
+  std::map<SiteInfo, size_t> active_document_counts_;
+
+  // Test-only callback to run when this SiteInstance is destroyed.
+  base::OnceClosure destruction_callback_for_testing_;
 };
 
 }  // namespace content

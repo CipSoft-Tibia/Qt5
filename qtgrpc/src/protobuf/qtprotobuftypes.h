@@ -6,16 +6,13 @@
 #define QTPROTOBUFTYPES_H
 
 #include <QtProtobuf/qtprotobufglobal.h>
+#include <QtProtobuf/qprotobufmessage.h>
 
-#include <QtCore/QList>
-#include <QtCore/QHash>
-#include <QtCore/QMetaType>
-#include <QtCore/QtEndian>
-#include <QtProtobuf/QProtobufMessage>
+#include <QtCore/qhash.h>
+#include <QtCore/qmetatype.h>
+#include <QtCore/qendian.h>
 
 #include <memory>
-#include <functional>
-#include <list>
 #include <type_traits>
 #include <utility>
 
@@ -23,7 +20,7 @@ QT_BEGIN_NAMESPACE
 
 namespace QtProtobufPrivate {
 
-enum FieldFlag : uint { NoFlags = 0x0, NonPacked = 0x1, Oneof = 0x02 };
+enum FieldFlag : uint { NoFlags = 0x0, NonPacked = 0x1, Oneof = 0x02, Optional = 0x04 };
 
 struct QProtobufPropertyOrdering
 {
@@ -70,10 +67,6 @@ struct QProtobufPropertyOrderingInfo
     }
     int getPropertyIndex() const { return ordering.getPropertyIndex(index); }
     uint getFieldFlags() const { return ordering.getFieldFlags(index); }
-
-    // Needed for maps, which uses field number 1 and 2 for key and value respectively
-    QProtobufPropertyOrderingInfo infoForMapKey() const { return { ordering, index, 1 }; }
-    QProtobufPropertyOrderingInfo infoForMapValue() const { return { ordering, index, 2 }; }
 
 private:
     QProtobufPropertyOrderingInfo(QProtobufPropertyOrdering ord, int ind, int fieldNumber)

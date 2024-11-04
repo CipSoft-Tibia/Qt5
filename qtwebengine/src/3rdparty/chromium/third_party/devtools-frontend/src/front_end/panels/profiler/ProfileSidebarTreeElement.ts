@@ -30,6 +30,10 @@ const UIStrings = {
    *@description Text to delete something
    */
   delete: 'Delete',
+  /**
+   *@description Text for screen reader to announce when focusing on save element.
+   */
+  enterToSave: 'Save. Press enter to save file',
 };
 const str_ = i18n.i18n.registerUIStrings('panels/profiler/ProfileSidebarTreeElement.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -47,7 +51,7 @@ export class ProfileSidebarTreeElement extends UI.TreeOutline.TreeElement {
   readonly iconElement: HTMLDivElement;
   readonly titlesElement: HTMLDivElement;
   titleContainer: HTMLElement;
-  titleElement: HTMLElement;
+  override titleElement: HTMLElement;
   subtitleElement: HTMLElement;
   readonly className: string;
   small: boolean;
@@ -82,7 +86,10 @@ export class ProfileSidebarTreeElement extends UI.TreeOutline.TreeElement {
   createSaveLink(): void {
     this.saveLinkElement = this.titleContainer.createChild('span', 'save-link');
     this.saveLinkElement.textContent = i18nString(UIStrings.save);
+    this.saveLinkElement.tabIndex = 0;
+    UI.ARIAUtils.setLabel(this.saveLinkElement, i18nString(UIStrings.enterToSave));
     this.saveLinkElement.addEventListener('click', this.saveProfile.bind(this), false);
+    this.saveLinkElement.addEventListener('keydown', this.saveProfileKeyDown.bind(this), true);
   }
 
   onProfileReceived(): void {
@@ -94,6 +101,7 @@ export class ProfileSidebarTreeElement extends UI.TreeOutline.TreeElement {
     if (statusUpdate.subtitle !== null) {
       this.subtitleElement.textContent = statusUpdate.subtitle || '';
       this.titlesElement.classList.toggle('no-subtitle', !statusUpdate.subtitle);
+      UI.ARIAUtils.setLabel(this.listItemElement, `${this.profile.title}, ${statusUpdate.subtitle}`);
     }
     if (typeof statusUpdate.wait === 'boolean' && this.listItemElement) {
       this.iconElement.classList.toggle('spinner', statusUpdate.wait);
@@ -101,7 +109,7 @@ export class ProfileSidebarTreeElement extends UI.TreeOutline.TreeElement {
     }
   }
 
-  ondblclick(event: Event): boolean {
+  override ondblclick(event: Event): boolean {
     if (!this.editing) {
       this.startEditing((event.target as Element));
     }
@@ -131,17 +139,17 @@ export class ProfileSidebarTreeElement extends UI.TreeOutline.TreeElement {
     this.profile.removeEventListener(ProfileHeaderEvents.ProfileReceived, this.onProfileReceived, this);
   }
 
-  onselect(): boolean {
+  override onselect(): boolean {
     this.dataDisplayDelegate.showProfile(this.profile);
     return true;
   }
 
-  ondelete(): boolean {
+  override ondelete(): boolean {
     this.profile.profileType().removeProfile(this.profile);
     return true;
   }
 
-  onattach(): void {
+  override onattach(): void {
     if (this.className) {
       this.listItemElement.classList.add(this.className);
     }
@@ -173,6 +181,12 @@ export class ProfileSidebarTreeElement extends UI.TreeOutline.TreeElement {
 
   saveProfile(_event: Event): void {
     this.profile.saveToFile();
+  }
+
+  saveProfileKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      this.profile.saveToFile();
+    }
   }
 
   setSmall(small: boolean): void {

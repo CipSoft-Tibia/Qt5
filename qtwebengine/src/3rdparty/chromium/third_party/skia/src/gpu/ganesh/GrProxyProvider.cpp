@@ -9,6 +9,7 @@
 
 #include "include/core/SkBitmap.h"
 #include "include/core/SkImage.h"
+#include "include/core/SkTextureCompressionType.h"
 #include "include/gpu/GrDirectContext.h"
 #include "include/private/base/SingleOwner.h"
 #include "include/private/gpu/ganesh/GrImageContext.h"
@@ -33,6 +34,7 @@
 #include "src/image/SkImage_Base.h"
 
 #ifdef SK_VULKAN
+#include "include/gpu/ganesh/vk/GrVkBackendSurface.h"
 #include "include/gpu/vk/GrVkTypes.h"
 #endif
 
@@ -117,7 +119,7 @@ sk_sp<GrTextureProxy> GrProxyProvider::findProxyByUniqueKey(const skgpu::UniqueK
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#if GR_TEST_UTILS
+#if defined(GR_TEST_UTILS)
 sk_sp<GrTextureProxy> GrProxyProvider::testingOnly_createInstantiatedProxy(
         SkISize dimensions,
         const GrBackendFormat& format,
@@ -522,7 +524,7 @@ sk_sp<GrTextureProxy> GrProxyProvider::createCompressedTextureProxy(
         skgpu::Budgeted budgeted,
         GrMipmapped mipmapped,
         GrProtected isProtected,
-        SkImage::CompressionType compressionType,
+        SkTextureCompressionType compressionType,
         sk_sp<SkData> data) {
     ASSERT_SINGLE_OWNER
     if (this->isAbandoned()) {
@@ -752,7 +754,7 @@ sk_sp<GrRenderTargetProxy> GrProxyProvider::wrapVulkanSecondaryCBAsRenderTarget(
     GrColorType colorType = SkColorTypeToGrColorType(imageInfo.colorType());
 
     if (!this->caps()->isFormatAsColorTypeRenderable(
-            colorType, GrBackendFormat::MakeVk(vkInfo.fFormat), /*sampleCount=*/1)) {
+            colorType, GrBackendFormats::MakeVk(vkInfo.fFormat), /*sampleCount=*/1)) {
         return nullptr;
     }
 

@@ -13,7 +13,10 @@ const char kDebugdServiceName[] = "org.chromium.debugd";
 // Methods.
 const char kCupsAddManuallyConfiguredPrinter[] =
     "CupsAddManuallyConfiguredPrinter";
+const char kCupsAddManuallyConfiguredPrinterV2[] =
+    "CupsAddManuallyConfiguredPrinterV2";
 const char kCupsAddAutoConfiguredPrinter[] = "CupsAddAutoConfiguredPrinter";
+const char kCupsAddAutoConfiguredPrinterV2[] = "CupsAddAutoConfiguredPrinterV2";
 const char kCupsRemovePrinter[] = "CupsRemovePrinter";
 const char kCupsRetrievePpd[] = "CupsRetrievePpd";
 const char kDumpDebugLogs[] = "DumpDebugLogs";
@@ -32,7 +35,7 @@ const char kSystraceStatus[] = "SystraceStatus";
 const char kGetLog[] = "GetLog";
 const char kGetAllLogs[] = "GetAllLogs";
 const char kGetFeedbackLogsV2[] = "GetFeedbackLogsV2";
-const char kGetFeedbackLogsV3[] = "kGetFeedbackLogsV3";
+const char kGetFeedbackLogsV3[] = "GetFeedbackLogsV3";
 const char kKstaledSetRatio[] = "KstaledSetRatio";
 const char kTestICMP[] = "TestICMP";
 const char kTestICMPWithOptions[] = "TestICMPWithOptions";
@@ -66,6 +69,7 @@ const char kKernelFeatureList[] = "KernelFeatureList";
 const char kKernelFeatureEnable[] = "KernelFeatureEnable";
 // PacketCaptureStart method isn't defined as it's not needed by any component.
 const char kPacketCaptureStop[] = "PacketCaptureStop";
+const char kDRMTraceAnnotateLog[] = "DRMTraceAnnotateLog";
 
 // Signals.
 const char kPacketCaptureStartSignal[] = "PacketCaptureStart";
@@ -150,6 +154,7 @@ enum FeedbackLogType {
   PERF_DATA = 7,
   OS_RELEASE_INFO = 8,
   VAR_LOG_FILES = 9,
+  PMT_DATA = 10,
 };
 
 // PrintscanDebugCategories flags. These values must align with those in

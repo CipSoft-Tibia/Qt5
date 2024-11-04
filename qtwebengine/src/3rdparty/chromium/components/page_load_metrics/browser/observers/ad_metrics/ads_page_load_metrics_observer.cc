@@ -135,8 +135,6 @@ void RecordHeavyAdInterventionDisallowedByBlocklist(bool disallowed) {
 }
 
 using ResourceMimeType = AdsPageLoadMetricsObserver::ResourceMimeType;
-const char kIgnoredByReloadHistogramName[] =
-    "PageLoad.Clients.Ads.HeavyAds.IgnoredByReload";
 
 blink::mojom::HeavyAdReason GetHeavyAdReason(HeavyAdStatus status) {
   switch (status) {
@@ -428,8 +426,6 @@ void AdsPageLoadMetricsObserver::UpdateAdFrameData(
                               std::forward_as_tuple(ad_id),
                               std::forward_as_tuple());
 
-      if (should_ignore_detected_ad)
-        RecordAdFrameIgnoredByRestrictedAdTagging(true /* ignored */);
       return;
     }
 
@@ -455,12 +451,6 @@ void AdsPageLoadMetricsObserver::UpdateAdFrameData(
 
   bool should_create_new_frame_data =
       !ad_data && is_adframe && !should_ignore_detected_ad;
-
-  // If would've recorded a new ad data normally, record that a frame was
-  // ignored.
-  if (!ad_data && is_adframe && should_ignore_detected_ad) {
-    RecordAdFrameIgnoredByRestrictedAdTagging(true);
-  }
 
   // NOTE: Frame look-up only used for determining cross-origin
   // status for metrics, not granting security permissions.
@@ -926,23 +916,6 @@ void AdsPageLoadMetricsObserver::RecordPageResourceTotalHistograms(
   PAGE_BYTES_HISTOGRAM("PageLoad.Clients.Ads.Resources.Bytes.Ads2",
                        resource_data.ad_network_bytes());
 
-  if (page_ad_density_tracker_.MaxPageAdDensityByArea() != -1) {
-    UMA_HISTOGRAM_PERCENTAGE("PageLoad.Clients.Ads.AdDensity.MaxPercentByArea",
-                             page_ad_density_tracker_.MaxPageAdDensityByArea());
-  }
-
-  if (page_ad_density_tracker_.MaxPageAdDensityByHeight() != -1) {
-    UMA_HISTOGRAM_PERCENTAGE(
-        "PageLoad.Clients.Ads.AdDensity.MaxPercentByHeight",
-        page_ad_density_tracker_.MaxPageAdDensityByHeight());
-  }
-
-  // Records true if both of the density calculations succeeded on the page.
-  UMA_HISTOGRAM_BOOLEAN(
-      "PageLoad.Clients.Ads.AdDensity.Recorded",
-      page_ad_density_tracker_.MaxPageAdDensityByArea() != -1 &&
-          page_ad_density_tracker_.MaxPageAdDensityByHeight() != -1);
-
   ukm::builders::AdPageLoad builder(source_id);
   builder.SetTotalBytes(resource_data.network_bytes() >> 10)
       .SetAdBytes(resource_data.ad_network_bytes() >> 10)
@@ -979,7 +952,6 @@ void AdsPageLoadMetricsObserver::RecordHistograms(ukm::SourceId source_id) {
   RecordAggregateHistogramsForAdTagging(FrameVisibility::kVisible);
   RecordAggregateHistogramsForAdTagging(FrameVisibility::kAnyVisibility);
   RecordAggregateHistogramsForCpuUsage();
-  RecordAggregateHistogramsForHeavyAds();
   RecordPageResourceTotalHistograms(source_id);
 }
 
@@ -1072,10 +1044,6 @@ void AdsPageLoadMetricsObserver::RecordAggregateHistogramsForAdTagging(
                 visibility, visibility_data.bytes);
   ADS_HISTOGRAM("Bytes.AdFrames.Aggregate.Network", PAGE_BYTES_HISTOGRAM,
                 visibility, visibility_data.network_bytes);
-  if (base::FeatureList::IsEnabled(::features::kV8PerFrameMemoryMonitoring)) {
-    ADS_HISTOGRAM("Memory.Aggregate.Max", PAGE_BYTES_HISTOGRAM, visibility,
-                  visibility_data.memory.max_bytes_used());
-  }
 
   // Only record same origin and main frame totals for the AnyVisibility suffix
   // as these numbers do not change for different visibility types.
@@ -1099,14 +1067,6 @@ void AdsPageLoadMetricsObserver::RecordAggregateHistogramsForAdTagging(
     UMA_HISTOGRAM_COUNTS_10000("PageLoad.Clients.Ads.Memory.UpdateCount",
                                memory_update_count_);
   }
-}
-
-void AdsPageLoadMetricsObserver::RecordAggregateHistogramsForHeavyAds() {
-  if (!heavy_ad_on_page_)
-    return;
-
-  UMA_HISTOGRAM_BOOLEAN("PageLoad.Clients.Ads.HeavyAds.UserDidReload",
-                        GetDelegate().GetPageEndReason() == END_RELOAD);
 }
 
 void AdsPageLoadMetricsObserver::RecordPerFrameMetrics(
@@ -1166,8 +1126,6 @@ void AdsPageLoadMetricsObserver::RecordPerFrameHistogramsForAdTagging(
   if (!ad_frame_data.ShouldRecordFrameForMetrics())
     return;
 
-  RecordAdFrameIgnoredByRestrictedAdTagging(false /*ignored */);
-
   // Record per-frame histograms to the appropriate visibility prefixes.
   for (const auto visibility :
        {FrameVisibility::kAnyVisibility, ad_frame_data.visibility()}) {
@@ -1184,10 +1142,6 @@ void AdsPageLoadMetricsObserver::RecordPerFrameHistogramsForAdTagging(
                   visibility, resource_data.bytes());
     ADS_HISTOGRAM("Bytes.AdFrames.PerFrame.Network", PAGE_BYTES_HISTOGRAM,
                   visibility, resource_data.network_bytes());
-    if (base::FeatureList::IsEnabled(::features::kV8PerFrameMemoryMonitoring)) {
-      ADS_HISTOGRAM("Memory.PerFrame.Max", PAGE_BYTES_HISTOGRAM, visibility,
-                    ad_frame_data.v8_max_memory_bytes_used());
-    }
     ADS_HISTOGRAM("FrameCounts.AdFrames.PerFrame.OriginStatus",
                   UMA_HISTOGRAM_ENUMERATION, visibility,
                   ad_frame_data.origin_status());
@@ -1226,17 +1180,6 @@ void AdsPageLoadMetricsObserver::RecordPerFrameHistogramsForHeavyAds(
                   UMA_HISTOGRAM_ENUMERATION, visibility,
                   ad_frame_data.heavy_ad_status_with_noise());
   }
-
-  // Only record the following histograms if the frame was a heavy ad.
-  if (ad_frame_data.heavy_ad_status_with_noise() == HeavyAdStatus::kNone)
-    return;
-
-  heavy_ad_on_page_ = true;
-
-  // Record whether the frame was removed prior to the page being unloaded.
-  UMA_HISTOGRAM_BOOLEAN(
-      "PageLoad.Clients.Ads.HeavyAds.FrameRemovedPriorToPageEnd",
-      GetDelegate().GetPageEndReason() == END_NONE);
 }
 
 void AdsPageLoadMetricsObserver::ProcessOngoingNavigationResource(
@@ -1256,12 +1199,6 @@ void AdsPageLoadMetricsObserver::ProcessOngoingNavigationResource(
 
   ProcessResourceForFrame(rfh, frame_id_and_request->second);
   ongoing_navigation_resources_.erase(frame_id_and_request);
-}
-
-void AdsPageLoadMetricsObserver::RecordAdFrameIgnoredByRestrictedAdTagging(
-    bool ignored) {
-  UMA_HISTOGRAM_BOOLEAN(
-      "PageLoad.Clients.Ads.FrameCounts.IgnoredByRestrictedAdTagging", ignored);
 }
 
 FrameTreeData* AdsPageLoadMetricsObserver::FindFrameData(FrameTreeNodeId id) {
@@ -1309,7 +1246,6 @@ void AdsPageLoadMetricsObserver::MaybeTriggerHeavyAdIntervention(
   // privacy mitigations flag to help developers debug (otherwise they need to
   // trigger new navigations to the site to test it).
   if (heavy_ad_privacy_mitigations_enabled_) {
-    UMA_HISTOGRAM_BOOLEAN(kIgnoredByReloadHistogramName, page_load_is_reload_);
     // Skip firing the intervention, but mark that an action occurred on the
     // frame.
     if (page_load_is_reload_) {
@@ -1428,8 +1364,7 @@ void AdsPageLoadMetricsObserver::MaybeTriggerHeavyAdIntervention(
   GetDelegate().GetWebContents()->GetController().LoadPostCommitErrorPage(
       render_frame_host, render_frame_host->GetLastCommittedURL(),
       heavy_ad_intervention::PrepareHeavyAdPage(
-          application_locale_getter_.Run()),
-      net::ERR_BLOCKED_BY_CLIENT);
+          application_locale_getter_.Run()));
 }
 
 bool AdsPageLoadMetricsObserver::IsBlocklisted(bool report) {

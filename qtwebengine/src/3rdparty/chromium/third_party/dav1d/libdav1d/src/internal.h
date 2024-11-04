@@ -115,6 +115,7 @@ struct Dav1dContext {
     Dav1dMasteringDisplay *mastering_display;
     Dav1dRef *itut_t35_ref;
     Dav1dITUTT35 *itut_t35;
+    int n_itut_t35;
 
     // decoded output picture queue
     Dav1dData in;
@@ -174,15 +175,6 @@ struct Dav1dContext {
 
     Dav1dDSPContext dsp[3 /* 8, 10, 12 bits/component */];
     Dav1dRefmvsDSPContext refmvs_dsp;
-
-    // tree to keep track of which edges are available
-    struct {
-        EdgeNode *root[2 /* BL_128X128 vs. BL_64X64 */];
-        EdgeBranch branch_sb128[1 + 4 + 16 + 64];
-        EdgeBranch branch_sb64[1 + 4 + 16];
-        EdgeTip tip_sb128[256];
-        EdgeTip tip_sb64[64];
-    } intra_edge;
 
     Dav1dPicAllocator allocator;
     int apply_grain;

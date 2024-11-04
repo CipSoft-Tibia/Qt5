@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 import("//build/buildflag_header.gni")
+import("//build/config/cronet/config.gni")
 import("//build/config/features.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 import("//build/config/ui.gni")
@@ -26,6 +27,8 @@ declare_args() {
   cast_test_extra_flags = ""
   vendor_cast_media_gtest_excludes = []
 }
+
+assert(!is_cronet_build)
 
 # Depends on all non-test targets that should be built by the Chromecast
 # internal build infrastructure.
@@ -283,14 +286,12 @@ cast_test_group("cast_tests") {
       } else {
         # Disable ProcessMetricsTest.GetNumberOfThreads (b/15610509)
         # Disable ProcessUtilTest.* (need to define OS_ANDROID)
-        # Disable StackContainer.BufferAlignment (don't support 16-byte alignment)
         # Disable SystemMetrics2Test.GetSystemMemoryInfo (buffers>0 can't be guaranteed)
         # Disable PostTasksViaTaskRunner/* to green up devices (b/62246873)
         # Disable WorkerDetaches to green up devices (b/62246873)
         gtest_excludes += [
           "ProcessMetricsTest.GetNumberOfThreads",
           "ProcessUtilTest.*",
-          "StackContainer.BufferAlignment",
           "SystemMetrics2Test.GetSystemMemoryInfo",
           "OneTraitsExecutionModePair/ThreadPoolImplTest.PostTasksViaTaskRunner/*",
           "TaskSchedulerWorkerTest.WorkerDetaches",
@@ -578,7 +579,7 @@ if (!is_fuchsia) {
       "$root_gen_dir/chromecast/app/shell_resources.pak",
       "$root_gen_dir/components/cast/named_message_port_connector/named_message_port_connector_resources.pak",
       "$root_gen_dir/content/content_resources.pak",
-      "$root_gen_dir/content/dev_ui_content_resources.pak",
+      "$root_gen_dir/content/gpu_resources.pak",
       "$root_gen_dir/mojo/public/js/mojo_bindings_resources.pak",
       "$root_gen_dir/net/net_resources.pak",
       "$root_gen_dir/third_party/blink/public/resources/blink_resources.pak",
@@ -597,7 +598,7 @@ if (!is_fuchsia) {
       "//chromecast/app:resources",
       "//components/cast/named_message_port_connector:resources",
       "//content:content_resources",
-      "//content:dev_ui_content_resources",
+      "//content/browser/resources/gpu:resources",
       "//mojo/public/js:resources",
       "//net:net_resources",
       "//third_party/blink/public:resources",
@@ -627,11 +628,6 @@ if (!is_fuchsia) {
           "$root_gen_dir/chromecast/internal/castui/app_strings_${locale}.pak",
         ]
         deps += [ "//chromecast/internal/castui:cast_ui_app_strings" ]
-
-        if (enable_chromecast_webui) {
-          sources += [ "$root_gen_dir/chromecast/internal/castui/ui_localized_${locale}.pak" ]
-          deps += [ "//chromecast/internal/castui:cast_ui_localized" ]
-        }
       }
     }
   }
@@ -652,7 +648,6 @@ buildflag_header("chromecast_buildflags") {
     "DEFAULT_COMMAND_LINE_FLAGS=\"$_command_line_flags\"",
     "DISABLE_SECURE_FLAC_OPUS_DECODING=$disable_secure_flac_and_opus_decoding",
     "ENABLE_ASSISTANT=$enable_assistant",
-    "ENABLE_CHROMECAST_WEBUI=$enable_chromecast_webui",
     "ENABLE_EXTERNAL_MOJO_SERVICES=$enable_external_mojo_services",
     "ENABLE_PLAYREADY=$enable_playready",
     "ENABLE_VIDEO_CAPTURE_SERVICE=$enable_video_capture_service",
@@ -665,14 +660,6 @@ buildflag_header("chromecast_buildflags") {
 }
 
 if (is_android) {
-  generate_jni_registration("cast_shell_jni_registration") {
-    targets = [ ":cast_shell_apk" ]
-    if (chromecast_branding != "public") {
-      targets += [ ":cast_browser_generic_bundle_module" ]
-    }
-    manual_jni_registration = true
-  }
-
   android_assets("cast_shell_apk_assets") {
     sources = [ "$root_out_dir/assets/cast_shell.pak" ]
 
@@ -713,6 +700,8 @@ if (is_android) {
     target_sdk_version = 33
 
     shared_libraries = [ "//chromecast/android:libcast_shell_android" ]
+    srcjar_deps =
+        [ "//chromecast/android:libcast_shell_android__jni_registration" ]
 
     deps = [
       ":cast_shell_apk_assets",
@@ -728,6 +717,8 @@ if (is_android) {
 
     command_line_flags_file = "castshell-command-line"
     enable_multidex = true
+
+    product_config_java_packages = [ "org.chromium.chromecast.shell" ]
   }
 
   if (chromecast_branding != "public") {
@@ -750,6 +741,8 @@ if (is_android) {
         package_id = 125
 
         shared_libraries = [ "//chromecast/android:libcast_browser_android" ]
+        srcjar_deps =
+            [ "//chromecast/android:libcast_browser_android__jni_registration" ]
         deps = [
           "//base:base_java",
           "//base:jni_java",

@@ -8,7 +8,8 @@
 #include "base/ranges/algorithm.h"
 #include "base/trace_event/process_memory_dump.h"
 #include "build/build_config.h"
-#include "components/viz/common/resources/resource_format_utils.h"
+#include "components/viz/common/resources/shared_image_format_utils.h"
+#include "gpu/command_buffer/common/mailbox.h"
 #include "gpu/command_buffer/common/shared_image_trace_utils.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "gpu/command_buffer/service/memory_tracking.h"
@@ -34,8 +35,6 @@ const char* BackingTypeToString(SharedImageBackingType type) {
       return "AHardwareBufferImageBacking";
     case SharedImageBackingType::kAngleVulkan:
       return "AngleVulkanImageBacking";
-    case SharedImageBackingType::kGLImage:
-      return "GLImageBacking";
     case SharedImageBackingType::kGLTexture:
       return "GLTextureImageBacking";
     case SharedImageBackingType::kOzone:
@@ -45,7 +44,7 @@ const char* BackingTypeToString(SharedImageBackingType type) {
     case SharedImageBackingType::kSharedMemory:
       return "SharedMemoryImageBacking";
     case SharedImageBackingType::kVideo:
-      return "SharedImageVideo";
+      return "AndroidVideoImageBacking";
     case SharedImageBackingType::kWrappedSkImage:
       return "WrappedSkImage";
     case SharedImageBackingType::kCompound:
@@ -58,21 +57,25 @@ const char* BackingTypeToString(SharedImageBackingType type) {
       return "DCompSurface";
     case SharedImageBackingType::kDXGISwapChain:
       return "DXGISwapChain";
+    case SharedImageBackingType::kWrappedGraphiteTexture:
+      return "WrappedGraphiteTexture";
   }
-  NOTREACHED();
+  NOTREACHED_NORETURN();
 }
 
 }  // namespace
 
-SharedImageBacking::SharedImageBacking(const Mailbox& mailbox,
-                                       viz::SharedImageFormat format,
-                                       const gfx::Size& size,
-                                       const gfx::ColorSpace& color_space,
-                                       GrSurfaceOrigin surface_origin,
-                                       SkAlphaType alpha_type,
-                                       uint32_t usage,
-                                       size_t estimated_size,
-                                       bool is_thread_safe)
+SharedImageBacking::SharedImageBacking(
+    const Mailbox& mailbox,
+    viz::SharedImageFormat format,
+    const gfx::Size& size,
+    const gfx::ColorSpace& color_space,
+    GrSurfaceOrigin surface_origin,
+    SkAlphaType alpha_type,
+    uint32_t usage,
+    size_t estimated_size,
+    bool is_thread_safe,
+    absl::optional<gfx::BufferUsage> buffer_usage)
     : mailbox_(mailbox),
       format_(format),
       size_(size),
@@ -80,7 +83,8 @@ SharedImageBacking::SharedImageBacking(const Mailbox& mailbox,
       surface_origin_(surface_origin),
       alpha_type_(alpha_type),
       usage_(usage),
-      estimated_size_(estimated_size) {
+      estimated_size_(estimated_size),
+      buffer_usage_(std::move(buffer_usage)) {
   DCHECK_CALLED_ON_VALID_THREAD(factory_thread_checker_);
 
   if (is_thread_safe)
@@ -95,10 +99,11 @@ void SharedImageBacking::OnContextLost() {
   have_context_ = false;
 }
 
-SkImageInfo SharedImageBacking::AsSkImageInfo() const {
-  return SkImageInfo::Make(size_.width(), size_.height(),
+SkImageInfo SharedImageBacking::AsSkImageInfo(int plane_index) const {
+  gfx::Size plane_size = format_.GetPlaneSize(plane_index, size_);
+  return SkImageInfo::Make(plane_size.width(), plane_size.height(),
                            viz::ToClosestSkColorType(
-                               /*gpu_compositing=*/true, format()),
+                               /*gpu_compositing=*/true, format(), plane_index),
                            alpha_type_, color_space_.ToSkColorSpace());
 }
 
@@ -144,7 +149,8 @@ base::trace_event::MemoryAllocatorDump* SharedImageBacking::OnMemoryDump(
   // Add ownership edge to `client_guid` which expresses shared ownership with
   // the client process.
   pmd->CreateSharedGlobalAllocatorDump(client_guid);
-  pmd->AddOwnershipEdge(dump->guid(), client_guid, kNonOwningEdgeImportance);
+  pmd->AddOwnershipEdge(dump->guid(), client_guid,
+                        static_cast<int>(gpu::TracingImportance::kNotOwner));
 
   return dump;
 }
@@ -165,15 +171,36 @@ std::unique_ptr<SkiaImageRepresentation> SharedImageBacking::ProduceSkia(
     SharedImageManager* manager,
     MemoryTypeTracker* tracker,
     scoped_refptr<SharedContextState> context_state) {
+  // For testing if no context state, then default to SkiaGanesh representation.
+  if (!context_state || context_state->gr_context()) {
+    return ProduceSkiaGanesh(manager, tracker, context_state);
+  }
+  CHECK(context_state->graphite_context());
+  return ProduceSkiaGraphite(manager, tracker, context_state);
+}
+
+std::unique_ptr<SkiaGaneshImageRepresentation>
+SharedImageBacking::ProduceSkiaGanesh(
+    SharedImageManager* manager,
+    MemoryTypeTracker* tracker,
+    scoped_refptr<SharedContextState> context_state) {
+  return nullptr;
+}
+
+std::unique_ptr<SkiaGraphiteImageRepresentation>
+SharedImageBacking::ProduceSkiaGraphite(
+    SharedImageManager* manager,
+    MemoryTypeTracker* tracker,
+    scoped_refptr<SharedContextState> context_state) {
   return nullptr;
 }
 
 std::unique_ptr<DawnImageRepresentation> SharedImageBacking::ProduceDawn(
     SharedImageManager* manager,
     MemoryTypeTracker* tracker,
-    WGPUDevice device,
-    WGPUBackendType backend_type,
-    std::vector<WGPUTextureFormat> view_formats) {
+    const wgpu::Device& device,
+    wgpu::BackendType backend_type,
+    std::vector<wgpu::TextureFormat> view_formats) {
   return nullptr;
 }
 
@@ -356,7 +383,8 @@ ClearTrackingSharedImageBacking::ClearTrackingSharedImageBacking(
     SkAlphaType alpha_type,
     uint32_t usage,
     size_t estimated_size,
-    bool is_thread_safe)
+    bool is_thread_safe,
+    absl::optional<gfx::BufferUsage> buffer_usage)
     : SharedImageBacking(mailbox,
                          format,
                          size,
@@ -365,7 +393,8 @@ ClearTrackingSharedImageBacking::ClearTrackingSharedImageBacking(
                          alpha_type,
                          usage,
                          estimated_size,
-                         is_thread_safe) {}
+                         is_thread_safe,
+                         std::move(buffer_usage)) {}
 
 gfx::Rect ClearTrackingSharedImageBacking::ClearedRect() const {
   AutoLock auto_lock(this);
@@ -389,6 +418,14 @@ void ClearTrackingSharedImageBacking::SetClearedRectInternal(
 
 scoped_refptr<gfx::NativePixmap> SharedImageBacking::GetNativePixmap() {
   return nullptr;
+}
+
+gfx::GpuMemoryBufferHandle SharedImageBacking::GetGpuMemoryBufferHandle() {
+  // Reaching here is invalid since this method should be only called for
+  // backings which implements it,i.e., memory buffer handle should only be
+  // retrieved from the backings which supports native buffer or shared memory.
+  NOTREACHED();
+  return gfx::GpuMemoryBufferHandle();
 }
 
 bool SharedImageBacking::IsPurgeable() const {

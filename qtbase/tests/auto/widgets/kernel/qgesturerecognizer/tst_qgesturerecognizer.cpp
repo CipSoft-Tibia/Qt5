@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QtTest/QTest>
@@ -71,7 +71,7 @@ TestWidget::TestWidget(const GestureTypeVector &gestureTypes)
 {
     setAttribute(Qt::WA_AcceptTouchEvents);
 
-    foreach (Qt::GestureType gestureType, gestureTypes) {
+    for (Qt::GestureType gestureType : gestureTypes) {
         grabGesture(gestureType);
         m_receivedGestures.insert(gestureType, false);
     }

@@ -21,11 +21,12 @@
 #include "modules/skcms/skcms.h"
 
 #include <cstddef>
+#include <functional>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <vector>
 
-class SkAndroidCodec;
 class SkData;
 class SkFrameHolder;
 class SkImage;
@@ -40,7 +41,6 @@ namespace SkCodecAnimation {
 enum class Blend;
 enum class DisposalMethod;
 }
-
 
 namespace DM {
 class CodecSrc;
@@ -821,7 +821,7 @@ protected:
      *  This is called by getPixels(), getYUV8Planes(), startIncrementalDecode() and
      *  startScanlineDecode(). Subclasses may call if they need to rewind at another time.
      */
-    bool SK_WARN_UNUSED_RESULT rewindIfNeeded();
+    [[nodiscard]] bool rewindIfNeeded();
 
     /**
      *  Called by rewindIfNeeded, if the stream needed to be rewound.
@@ -917,8 +917,8 @@ private:
     bool fStartedIncrementalDecode = false;
 
     // Allows SkAndroidCodec to call handleFrameIndex (potentially decoding a prior frame and
-    // clearing to transparent) without SkCodec calling it, too.
-    bool fAndroidCodecHandlesFrameIndex = false;
+    // clearing to transparent) without SkCodec itself calling it, too.
+    bool fUsingCallbackForHandleFrameIndex = false;
 
     bool initializeColorXform(const SkImageInfo& dstInfo, SkEncodedInfo::Alpha, bool srcIsOpaque);
 
@@ -942,17 +942,23 @@ private:
         return nullptr;
     }
 
+    // Callback for decoding a prior frame. The `Options::fFrameIndex` is ignored,
+    // being replaced by frameIndex. This allows opts to actually be a subclass of
+    // SkCodec::Options which SkCodec itself does not know how to copy or modify,
+    // but just passes through to the caller (where it can be reinterpret_cast'd).
+    using GetPixelsCallback = std::function<Result(const SkImageInfo&, void* pixels,
+                                                   size_t rowBytes, const Options& opts,
+                                                   int frameIndex)>;
+
     /**
      *  Check for a valid Options.fFrameIndex, and decode prior frames if necessary.
      *
-     *  If androidCodec is not null, that means this SkCodec is owned by an SkAndroidCodec. In that
-     *  case, the Options will be treated as an AndroidOptions, and SkAndroidCodec will be used to
-     *  decode a prior frame, if a prior frame is needed. When such an owned SkCodec calls
-     *  handleFrameIndex, it will immediately return kSuccess, since SkAndroidCodec already handled
-     *  it.
+     * If GetPixelsCallback is not null, it will be used to decode a prior frame instead
+     * of using this SkCodec directly. It may also be used recursively, if that in turn
+     * depends on a prior frame. This is used by SkAndroidCodec.
      */
     Result handleFrameIndex(const SkImageInfo&, void* pixels, size_t rowBytes, const Options&,
-            SkAndroidCodec* androidCodec = nullptr);
+                            GetPixelsCallback = nullptr);
 
     // Methods for scanline decoding.
     virtual Result onStartScanlineDecode(const SkImageInfo& /*dstInfo*/,
@@ -1002,8 +1008,33 @@ private:
     virtual SkSampler* getSampler(bool /*createIfNecessary*/) { return nullptr; }
 
     friend class DM::CodecSrc;  // for fillIncompleteImage
+    friend class PNGCodecGM;    // for fillIncompleteImage
     friend class SkSampledCodec;
     friend class SkIcoCodec;
     friend class SkAndroidCodec; // for fEncodedInfo
 };
+
+namespace SkCodecs {
+
+using DecodeContext = void*;
+using IsFormatCallback = bool (*)(const void* data, size_t len);
+using MakeFromStreamCallback = std::unique_ptr<SkCodec> (*)(std::unique_ptr<SkStream>,
+                                                            SkCodec::Result*,
+                                                            DecodeContext);
+
+struct SK_API Decoder {
+    // By convention, we use all lowercase letters and go with the primary filename extension.
+    // For example "png", "jpg", "ico", "webp", etc
+    std::string id;
+    IsFormatCallback isFormat;
+    MakeFromStreamCallback makeFromStream;
+};
+
+// Add the decoder to the end of a linked list of decoders, which will be used to identify calls to
+// SkCodec::MakeFromStream. If a decoder with the same id already exists, this new decoder
+// will replace the existing one (in the same position). This is not thread-safe, so make sure all
+// initialization is done before the first call.
+void SK_API Register(Decoder d);
+}
+
 #endif // SkCodec_DEFINED

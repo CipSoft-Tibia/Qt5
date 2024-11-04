@@ -42,6 +42,7 @@ import "protos/perfetto/trace/ftrace/ftrace.proto";
 import "protos/perfetto/trace/ftrace/g2d.proto";
 import "protos/perfetto/trace/ftrace/gpu_mem.proto";
 import "protos/perfetto/trace/ftrace/gpu_scheduler.proto";
+import "protos/perfetto/trace/ftrace/hyp.proto";
 import "protos/perfetto/trace/ftrace/i2c.proto";
 import "protos/perfetto/trace/ftrace/ion.proto";
 import "protos/perfetto/trace/ftrace/ipi.proto";
@@ -60,6 +61,7 @@ import "protos/perfetto/trace/ftrace/power.proto";
 import "protos/perfetto/trace/ftrace/printk.proto";
 import "protos/perfetto/trace/ftrace/raw_syscalls.proto";
 import "protos/perfetto/trace/ftrace/regulator.proto";
+import "protos/perfetto/trace/ftrace/samsung.proto";
 import "protos/perfetto/trace/ftrace/sched.proto";
 import "protos/perfetto/trace/ftrace/scm.proto";
 import "protos/perfetto/trace/ftrace/sde.proto";
@@ -84,14 +86,17 @@ import "protos/perfetto/trace/ftrace/generic.proto";
 package perfetto.protos;
 
 message FtraceEvent {
-  // Nanoseconds since an epoch.
-  // Epoch is configurable by writing into trace_clock.
-  // By default this timestamp is CPU local.
-  // TODO: Figure out a story for reconciling the various clocks.
+  // Timestamp in nanoseconds using .../tracing/trace_clock.
   optional uint64 timestamp = 1;
 
-  // Kernel pid (do not confuse with userspace pid aka tgid)
+  // Kernel pid (do not confuse with userspace pid aka tgid).
   optional uint32 pid = 2;
+
+  // Not populated in actual traces. Wire format might change.
+  // Placeholder declaration so that the ftrace parsing code accepts the
+  // existence of this common field. If this becomes needed for all events:
+  // consider merging with common_preempt_count to avoid extra proto tags.
+  optional uint32 common_flags = 5;
 
   oneof event {
     PrintFtraceEvent print = 3;
@@ -585,5 +590,14 @@ message FtraceEvent {
     MaliMaliKCPUFENCESIGNALFtraceEvent mali_mali_KCPU_FENCE_SIGNAL = 473;
     MaliMaliKCPUFENCEWAITSTARTFtraceEvent mali_mali_KCPU_FENCE_WAIT_START = 474;
     MaliMaliKCPUFENCEWAITENDFtraceEvent mali_mali_KCPU_FENCE_WAIT_END = 475;
+    HypEnterFtraceEvent hyp_enter = 476;
+    HypExitFtraceEvent hyp_exit = 477;
+    HostHcallFtraceEvent host_hcall = 478;
+    HostSmcFtraceEvent host_smc = 479;
+    HostMemAbortFtraceEvent host_mem_abort = 480;
+    SuspendResumeMinimalFtraceEvent suspend_resume_minimal = 481;
+    MaliMaliCSFINTERRUPTSTARTFtraceEvent mali_mali_CSF_INTERRUPT_START = 482;
+    MaliMaliCSFINTERRUPTENDFtraceEvent mali_mali_CSF_INTERRUPT_END = 483;
+    SamsungTracingMarkWriteFtraceEvent samsung_tracing_mark_write = 484;
   }
 }

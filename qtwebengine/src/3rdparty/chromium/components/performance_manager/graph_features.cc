@@ -19,6 +19,7 @@
 #include "components/performance_manager/graph/worker_node_impl_describer.h"
 #include "components/performance_manager/public/graph/graph.h"
 #include "components/performance_manager/public/metrics/metrics_collector.h"
+#include "components/performance_manager/resource_attribution/resource_context_registry_storage.h"
 #include "components/performance_manager/v8_memory/v8_context_tracker.h"
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -39,24 +40,27 @@ void Install(Graph* graph) {
 void GraphFeatures::ConfigureGraph(Graph* graph) const {
   if (flags_.execution_context_registry)
     Install<execution_context::ExecutionContextRegistryImpl>(graph);
-  if (flags_.frame_node_impl_describer)
-    Install<FrameNodeImplDescriber>(graph);
   if (flags_.frame_visibility_decorator)
     Install<FrameVisibilityDecorator>(graph);
   if (flags_.metrics_collector)
     Install<MetricsCollector>(graph);
+  if (flags_.node_impl_describers) {
+    Install<FrameNodeImplDescriber>(graph);
+    Install<PageNodeImplDescriber>(graph);
+    Install<ProcessNodeImplDescriber>(graph);
+    Install<WorkerNodeImplDescriber>(graph);
+  }
   if (flags_.freezing_vote_decorator)
     Install<FreezingVoteDecorator>(graph);
   if (flags_.page_load_tracker_decorator)
     Install<PageLoadTrackerDecorator>(graph);
-  if (flags_.page_node_impl_describer)
-    Install<PageNodeImplDescriber>(graph);
   if (flags_.process_hosted_content_types_aggregator)
     Install<ProcessHostedContentTypesAggregator>(graph);
-  if (flags_.process_node_impl_describer)
-    Install<ProcessNodeImplDescriber>(graph);
-  if (flags_.worker_node_impl_describer)
-    Install<WorkerNodeImplDescriber>(graph);
+  if (flags_.resource_attribution_registries) {
+    // ResourceContextRegistryStorage owns the facades for each ResourceContext
+    // type.
+    Install<resource_attribution::ResourceContextRegistryStorage>(graph);
+  }
 
 #if !BUILDFLAG(IS_ANDROID) && !defined(TOOLKIT_QT)
   if (flags_.site_data_recorder)

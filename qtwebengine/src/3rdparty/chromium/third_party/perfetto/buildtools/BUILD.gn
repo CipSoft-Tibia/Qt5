@@ -74,6 +74,8 @@ config("libunwindstack_config") {
     rebase_path("android-libbase/include", root_build_dir),
     perfetto_isystem_cflag,
     rebase_path("android-core/demangle/include", root_build_dir),
+    perfetto_isystem_cflag,
+    rebase_path("rustc-demangle-capi", root_build_dir),
   ]
   defines = [ "NO_LIBDEXFILE_SUPPORT" ]
 }
@@ -129,6 +131,13 @@ config("protobuf_config") {
 
   defines = [ "HAVE_PTHREAD=1" ]
   cflags = []
+
+  # Fixed upstream in:
+  # https://github.com/protocolbuffers/protobuf/pull/10112
+  # But we don't have that yet.
+  if (is_mac) {
+    cflags += [ "-Wno-deprecated-declarations" ]
+  }
   if (!is_clang && !is_win) {  # implies gcc
     cflags += [ "-Wno-stringop-overread" ]
   }
@@ -1176,39 +1185,54 @@ source_set("zlib") {
   visibility = _buildtools_visibility
   sources = [
     "zlib/adler32.c",
+    "zlib/chromeconf.h",
     "zlib/compress.c",
+    "zlib/contrib/optimizations/insert_string.h",
     "zlib/cpu_features.c",
+    "zlib/cpu_features.h",
     "zlib/crc32.c",
+    "zlib/crc32.h",
     "zlib/deflate.c",
+    "zlib/deflate.h",
     "zlib/gzclose.c",
+    "zlib/gzguts.h",
     "zlib/gzlib.c",
     "zlib/gzread.c",
     "zlib/gzwrite.c",
     "zlib/infback.c",
     "zlib/inffast.c",
+    "zlib/inffast.h",
+    "zlib/inffixed.h",
     "zlib/inflate.c",
+    "zlib/inflate.h",
     "zlib/inftrees.c",
+    "zlib/inftrees.h",
     "zlib/trees.c",
+    "zlib/trees.h",
     "zlib/uncompr.c",
+    "zlib/zconf.h",
+    "zlib/zlib.h",
     "zlib/zutil.c",
+    "zlib/zutil.h",
   ]
   configs -= [ "//gn/standalone:extra_warnings" ]
-  cflags = []
   public_configs = [ ":zlib_config" ]
   deps = [ "//gn:default_deps" ]
 
-  # TODO(primiano): look into ADLER32_SIMD_SSSE3 and other SIMD optimizations
-  # (from chromium's third_party/zlib/BUILD.gn).
   if (is_win) {
     defines = [ "X86_WINDOWS" ]
   }
+
+  # TODO(primiano): look into ADLER32_SIMD_SSSE3 and other SIMD optimizations
+  # (from chromium's third_party/zlib/BUILD.gn).
 }
 
 config("zlib_config") {
   visibility = _buildtools_visibility
-  if (!is_win) {
-    defines = [ "HAVE_HIDDEN" ]
-  }
+  defines = [
+    "ZLIB_IMPLEMENTATION",
+    "CHROMIUM_ZLIB_NO_CHROMECONF",
+  ]
   cflags = [
     # Using -isystem instead of include_dirs (-I), so we don't need to suppress
     # warnings coming from third-party headers. Doing so would mask warnings in
@@ -1253,6 +1277,7 @@ source_set("libunwindstack") {
     "android-libbase/stringprintf.cpp",
     "android-libbase/strings.cpp",
     "android-unwinding/libunwindstack/ArmExidx.cpp",
+    "android-unwinding/libunwindstack/Demangle.cpp",
     "android-unwinding/libunwindstack/DwarfCfa.cpp",
     "android-unwinding/libunwindstack/DwarfEhFrameWithHdr.cpp",
     "android-unwinding/libunwindstack/DwarfMemory.cpp",
@@ -1270,8 +1295,6 @@ source_set("libunwindstack") {
     "android-unwinding/libunwindstack/Regs.cpp",
     "android-unwinding/libunwindstack/RegsArm.cpp",
     "android-unwinding/libunwindstack/RegsArm64.cpp",
-    "android-unwinding/libunwindstack/RegsMips.cpp",
-    "android-unwinding/libunwindstack/RegsMips64.cpp",
     "android-unwinding/libunwindstack/RegsRiscv64.cpp",
     "android-unwinding/libunwindstack/RegsX86.cpp",
     "android-unwinding/libunwindstack/RegsX86_64.cpp",

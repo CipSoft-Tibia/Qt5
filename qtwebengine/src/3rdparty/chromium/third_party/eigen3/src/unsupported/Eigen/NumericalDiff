@@ -48,7 +48,9 @@ namespace Eigen {
 
 //@{
 
+// IWYU pragma: begin_exports
 #include "src/NumericalDiff/NumericalDiff.h"
+// IWYU pragma: end_exports
 
 //@}
 

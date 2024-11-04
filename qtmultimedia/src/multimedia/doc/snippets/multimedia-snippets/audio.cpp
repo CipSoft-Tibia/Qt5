@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 /* Audio related snippets */
 #include <QFile>
@@ -217,9 +217,9 @@ void applyVolume(int volumeSliderValue)
 {
     // volumeSliderValue is in the range [0..100]
 
-    qreal linearVolume = QAudio::convertVolume(volumeSliderValue / qreal(100.0),
-                                               QAudio::LogarithmicVolumeScale,
-                                               QAudio::LinearVolumeScale);
+    qreal linearVolume = QtAudio::convertVolume(volumeSliderValue / qreal(100.0),
+                                                QtAudio::LogarithmicVolumeScale,
+                                                QtAudio::LinearVolumeScale);
 
     player.setVolume(qRound(linearVolume * 100));
 }

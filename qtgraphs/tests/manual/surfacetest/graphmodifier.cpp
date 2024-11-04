@@ -125,24 +125,24 @@ void GraphModifier::fillSeries()
 {
     float full = m_limitX * m_limitZ;
 
-    QSurfaceDataArray *dataArray1 = new QSurfaceDataArray;
-    dataArray1->reserve(m_zCount);
-    QSurfaceDataArray *dataArray2 = new QSurfaceDataArray;
-    dataArray2->reserve(m_zCount);
-    QSurfaceDataArray *dataArray3 = new QSurfaceDataArray;
-    dataArray3->reserve(m_zCount);
-    QSurfaceDataArray *dataArray4 = new QSurfaceDataArray;
-    dataArray4->reserve(m_zCount);
+    QSurfaceDataArray dataArray1;
+    dataArray1.reserve(m_zCount);
+    QSurfaceDataArray dataArray2;
+    dataArray2.reserve(m_zCount);
+    QSurfaceDataArray dataArray3;
+    dataArray3.reserve(m_zCount);
+    QSurfaceDataArray dataArray4;
+    dataArray4.reserve(m_zCount);
 
 
     for (int i = 0; i < m_zCount; i++) {
-        QSurfaceDataRow *newRow[4];
+        QSurfaceDataRow newRow[4];
         float zAdjust = 0.0f;
         if (i == 2)
             zAdjust = 0.7f;
 
         for (int s = 0; s < 4; s++) {
-            newRow[s] = new QSurfaceDataRow(m_xCount);
+            newRow[s].resize(m_xCount);
             float z = float(i) - m_limitZ + 0.5f + m_multiSampleOffsetZ[s] + zAdjust;
             for (int j = 0; j < m_xCount; j++) {
                 float xAdjust = 0.0f;
@@ -151,13 +151,13 @@ void GraphModifier::fillSeries()
                 float x = float(j) - m_limitX + 0.5f + m_multiSampleOffsetX[s] + xAdjust;
                 float angle = (z * x) / full * 1.57f;
                 float y = (qSin(angle * float(qPow(1.3f, s))) + 1.1f * s) * 3.0f - 5.0f + xAdjust + zAdjust;
-                (*newRow[s])[j].setPosition(QVector3D(x, y, z));
+                newRow[s][j].setPosition(QVector3D(x, y, z));
             }
         }
-        *dataArray1 << newRow[0];
-        *dataArray2 << newRow[1];
-        *dataArray3 << newRow[2];
-        *dataArray4 << newRow[3];
+        dataArray1 << newRow[0];
+        dataArray2 << newRow[1];
+        dataArray3 << newRow[2];
+        dataArray4 << newRow[3];
     }
 
     m_multiseries[0]->dataProxy()->resetArray(dataArray1);
@@ -369,10 +369,10 @@ void GraphModifier::toggleSqrtSin(int enable)
         float stepX = (maxX - minX) / float(m_xCount - 1);
         float stepZ = (maxZ - minZ) / float(m_zCount - 1);
 
-        QSurfaceDataArray *dataArray = new QSurfaceDataArray;
-        dataArray->reserve(m_zCount);
+        QSurfaceDataArray dataArray;
+        dataArray.reserve(m_zCount);
         for (float i = 0; i < m_zCount; i++) {
-            QSurfaceDataRow *newRow = new QSurfaceDataRow(m_xCount);
+            QSurfaceDataRow newRow(m_xCount);
             // Keep values within range bounds, since just adding step can cause minor drift due
             // to the rounding errors.
             float z = qMin(maxZ, (i * stepZ + minZ));
@@ -380,9 +380,9 @@ void GraphModifier::toggleSqrtSin(int enable)
                 float x = qMin(maxX, (j * stepX + minX));
                 float R = qSqrt(x * x + z * z) + 0.01f;
                 float y = (qSin(R) / R + 0.24f) * 1.61f + 1.0f;
-                (*newRow)[j].setPosition(QVector3D(x, y, z));
+                newRow[j].setPosition(QVector3D(x, y, z));
             }
-            *dataArray << newRow;
+            dataArray << newRow;
         }
 
         m_graph->axisY()->setRange(1.0, 3.0);
@@ -404,7 +404,7 @@ void GraphModifier::togglePlane(int enable)
     qDebug() << "GraphModifier::togglePlane " << enable;
 
     if (enable) {
-        m_planeArray = new QSurfaceDataArray;
+        m_planeArray.clear();
 
 #ifdef JITTER_PLANE
         m_timer.start(0);
@@ -413,7 +413,7 @@ void GraphModifier::togglePlane(int enable)
         m_graph->axisX()->setLabelFormat("%.2f");
         m_graph->axisZ()->setLabelFormat("%.2f");
 
-        m_planeArray->reserve(m_zCount);
+        m_planeArray.reserve(m_zCount);
         float minX = -10.0f;
         float maxX = 20.0f;
         float minZ = -10.0f;
@@ -448,7 +448,7 @@ void GraphModifier::togglePlane(int enable)
         resetArrayAndSliders(m_planeArray, minZ, maxZ + add, minX, m_xCount * maxStepX + minX);
 #else
         for (float i = 0; i < m_zCount; i++) {
-            QSurfaceDataRow *newRow = new QSurfaceDataRow(m_xCount);
+            QSurfaceDataRow newRow(m_xCount);
             // Keep values within range bounds, since just adding step can cause minor drift due
             // to the rounding errors.
             float zVal;
@@ -459,10 +459,10 @@ void GraphModifier::togglePlane(int enable)
 
             float j = 0;
             for (; j < m_xCount - 1; j++)
-                (*newRow)[j].setPosition(QVector3D(j * stepX + minX, -0.04f, zVal));
-            (*newRow)[j].setPosition(QVector3D(maxX, -0.04f, zVal));
+                newRow[j].setPosition(QVector3D(j * stepX + minX, -0.04f, zVal));
+            newRow[j].setPosition(QVector3D(maxX, -0.04f, zVal));
 
-            *m_planeArray << newRow;
+            m_planeArray << newRow;
         }
 
         m_theSeries->setName("Plane");
@@ -486,11 +486,11 @@ void GraphModifier::setHeightMapData(bool enable)
         // Easier alternative would be to use the QHeightMapSurfaceDataProxy.
         QImage image(":/maps/map");
 
-        QSurfaceDataArray *dataArray = new QSurfaceDataArray;
+        QSurfaceDataArray dataArray;
         uchar *bits = image.bits();
 
         int p = image.width() * 4 * (image.height() - 1);
-        dataArray->reserve(image.height());
+        dataArray.reserve(image.height());
         float minX = 34.0;
         float maxX = 40.0;
         float minZ = 18.0;
@@ -498,13 +498,13 @@ void GraphModifier::setHeightMapData(bool enable)
         float xMul = (maxX - minX) / float(image.width() - 1);
         float zMul = (maxZ - minZ) / float(image.height() - 1);
         for (int i = 0; i < image.height(); i++, p -= image.width() * 4) {
-            QSurfaceDataRow *newRow = new QSurfaceDataRow(image.width());
+            QSurfaceDataRow newRow(image.width());
             for (int j = 0; j < image.width(); j++) {
-                (*newRow)[j].setPosition(QVector3D((float(j) * xMul) + minX,
+                newRow[j].setPosition(QVector3D((float(j) * xMul) + minX,
                                                    (float(bits[p + (j * 4)]) + 1.0f) / 1.0f,
                                                    (float(i) * zMul) + minZ));
             }
-            *dataArray << newRow;
+            dataArray << newRow;
         }
 
         m_graph->axisY()->setAutoAdjustRange(true);
@@ -600,17 +600,17 @@ void GraphModifier::adjustZMin(int min)
 
 void GraphModifier::gradientPressed()
 {
-    static Q3DTheme::ColorStyle colorStyle = Q3DTheme::ColorStyleUniform;
+    static Q3DTheme::ColorStyle colorStyle = Q3DTheme::ColorStyle::Uniform;
 
-    if (colorStyle == Q3DTheme::ColorStyleRangeGradient) {
-        colorStyle = Q3DTheme::ColorStyleObjectGradient;
-        qDebug() << "Color style: ColorStyleObjectGradient";
-    } else if (colorStyle == Q3DTheme::ColorStyleObjectGradient) {
-        colorStyle = Q3DTheme::ColorStyleUniform;
-        qDebug() << "Color style: ColorStyleUniform";
+    if (colorStyle == Q3DTheme::ColorStyle::RangeGradient) {
+        colorStyle = Q3DTheme::ColorStyle::ObjectGradient;
+        qDebug() << "Color style: ObjectGradient";
+    } else if (colorStyle == Q3DTheme::ColorStyle::ObjectGradient) {
+        colorStyle = Q3DTheme::ColorStyle::Uniform;
+        qDebug() << "Color style: Uniform";
     } else {
-        colorStyle = Q3DTheme::ColorStyleRangeGradient;
-        qDebug() << "Color style: ColorStyleRangeGradient";
+        colorStyle = Q3DTheme::ColorStyle::RangeGradient;
+        qDebug() << "Color style: RangeGradient";
     }
 
     QLinearGradient gradient;
@@ -666,17 +666,17 @@ void GraphModifier::flipViews()
 
 void GraphModifier::timeout()
 {
-    int rows = m_planeArray->size();
-    int columns = m_planeArray->at(0)->size();
+    int rows = m_planeArray.size();
+    int columns = m_planeArray.at(0).size();
 
     // Induce minor random jitter to the existing plane array
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < columns; j++) {
-            (*m_planeArray->at(i))[j].setX(m_planeArray->at(i)->at(j).x()
+            m_planeArray[i][j].setX(m_planeArray.at(i).at(j).x()
                                            * ((float((QRandomGenerator::global()->bounded(10)) + 5.0f) / 10000.0f) + 0.999f));
-            (*m_planeArray->at(i))[j].setY(m_planeArray->at(i)->at(j).y()
+            m_planeArray[i][j].setY(m_planeArray.at(i).at(j).y()
                                            * ((float((QRandomGenerator::global()->bounded(10)) + 5.0f) / 1000.0f) + 0.99f) + 0.0001f);
-            (*m_planeArray->at(i))[j].setZ(m_planeArray->at(i)->at(j).z()
+            m_planeArray[i][j].setZ(m_planeArray.at(i).at(j).z()
                                            * ((float((QRandomGenerator::global()->bounded(10)) + 5.0f) / 10000.0f) + 0.999f));
         }
     }
@@ -741,24 +741,26 @@ void GraphModifier::toggleXAscending(int enabled)
     m_ascendingX = enabled;
 
     // Flip data array contents if necessary
-    foreach (QSurface3DSeries *series, m_graph->seriesList()) {
-        QSurfaceDataArray *array = const_cast<QSurfaceDataArray *>(series->dataProxy()->array());
-        const int rowCount = array->size();
-        const int columnCount = array->at(0)->size();
-        const bool dataAscending = array->at(0)->at(0).x() < array->at(0)->at(columnCount - 1).x();
+
+    const auto surfaceSeriesList = m_graph->seriesList();
+    for (const auto &series : surfaceSeriesList) {
+        QSurfaceDataArray &array = const_cast<QSurfaceDataArray &>(series->dataProxy()->array());
+        const int rowCount = array.size();
+        const int columnCount = array.at(0).size();
+        const bool dataAscending = array.at(0).at(0).x() < array.at(0).at(columnCount - 1).x();
         if (dataAscending != enabled) {
             // Create new array of equal size
-            QSurfaceDataArray *newArray = new QSurfaceDataArray;
-            newArray->reserve(rowCount);
+            QSurfaceDataArray newArray;
+            newArray.reserve(rowCount);
             for (int i = 0; i < rowCount; i++)
-                newArray->append(new QSurfaceDataRow(columnCount));
+                newArray.append(QSurfaceDataRow(columnCount));
 
             // Flip each row
             for (int i = 0; i < rowCount; i++) {
-                QSurfaceDataRow *oldRow = array->at(i);
-                QSurfaceDataRow *newRow = newArray->at(i);
+                QSurfaceDataRow oldRow = array.at(i);
+                QSurfaceDataRow &newRow = newArray[i];
                 for (int j = 0; j < columnCount; j++)
-                    (*newRow)[j] = oldRow->at(columnCount - 1 - j);
+                    newRow[j] = oldRow.at(columnCount - 1 - j);
             }
 
             series->dataProxy()->resetArray(newArray);
@@ -771,24 +773,25 @@ void GraphModifier::toggleZAscending(int enabled)
     m_ascendingZ = enabled;
 
     // Flip data array contents if necessary
-    foreach (QSurface3DSeries *series, m_graph->seriesList()) {
-        QSurfaceDataArray *array = const_cast<QSurfaceDataArray *>(series->dataProxy()->array());
-        const int rowCount = array->size();
-        const int columnCount = array->at(0)->size();
-        const bool dataAscending = array->at(0)->at(0).z() < array->at(rowCount - 1)->at(0).z();
+    const auto surfaceSeriesList = m_graph->seriesList();
+    for (const auto &series : surfaceSeriesList) {
+        QSurfaceDataArray &array = const_cast<QSurfaceDataArray &>(series->dataProxy()->array());
+        const int rowCount = array.size();
+        const int columnCount = array.at(0).size();
+        const bool dataAscending = array.at(0).at(0).z() < array.at(rowCount - 1).at(0).z();
         if (dataAscending != enabled) {
             // Create new array of equal size
-            QSurfaceDataArray *newArray = new QSurfaceDataArray;
-            newArray->reserve(rowCount);
+            QSurfaceDataArray newArray;
+            newArray.reserve(rowCount);
             for (int i = 0; i < rowCount; i++)
-                newArray->append(new QSurfaceDataRow(columnCount));
+                newArray.append(QSurfaceDataRow(columnCount));
 
             // Flip each column
             for (int i = 0; i < rowCount; i++) {
-                QSurfaceDataRow *oldRow = array->at(rowCount - 1 - i);
-                QSurfaceDataRow *newRow = newArray->at(i);
+                QSurfaceDataRow oldRow = array.at(rowCount - 1 - i);
+                QSurfaceDataRow &newRow = newArray[i];
                 for (int j = 0; j < columnCount; j++)
-                    (*newRow)[j] = oldRow->at(j);
+                    newRow[j] = oldRow.at(j);
             }
 
             series->dataProxy()->resetArray(newArray);
@@ -805,7 +808,7 @@ void GraphModifier::setCameraTargetX(int value)
 {
     // Value is (-100, 100), normalize
     m_cameraTarget.setX(float(value) / 100.0f);
-    m_graph->scene()->activeCamera()->setTarget(m_cameraTarget);
+    m_graph->setCameraTargetPosition(m_cameraTarget);
     qDebug() << "m_cameraTarget:" << m_cameraTarget;
 }
 
@@ -813,7 +816,7 @@ void GraphModifier::setCameraTargetY(int value)
 {
     // Value is (-100, 100), normalize
     m_cameraTarget.setY(float(value) / 100.0f);
-    m_graph->scene()->activeCamera()->setTarget(m_cameraTarget);
+    m_graph->setCameraTargetPosition(m_cameraTarget);
     qDebug() << "m_cameraTarget:" << m_cameraTarget;
 }
 
@@ -821,7 +824,7 @@ void GraphModifier::setCameraTargetZ(int value)
 {
     // Value is (-100, 100), normalize
     m_cameraTarget.setZ(float(value) / 100.0f);
-    m_graph->scene()->activeCamera()->setTarget(m_cameraTarget);
+    m_graph->setCameraTargetPosition(m_cameraTarget);
     qDebug() << "m_cameraTarget:" << m_cameraTarget;
 }
 
@@ -831,7 +834,37 @@ void GraphModifier::setGraphMargin(int value)
     qDebug() << "Setting margin:" << m_graph->margin() << value;
 }
 
-void GraphModifier::resetArrayAndSliders(QSurfaceDataArray *array, float minZ, float maxZ, float minX, float maxX)
+void GraphModifier::setXAxisSegemntCount(int count)
+{
+    m_graph->axisX()->setSegmentCount(count);
+}
+
+void GraphModifier::setYAxisSegemntCount(int count)
+{
+    m_graph->axisY()->setSegmentCount(count);
+}
+
+void GraphModifier::setZAxisSegemntCount(int count)
+{
+    m_graph->axisZ()->setSegmentCount(count);
+}
+
+void GraphModifier::setXAxisSubsegemntCount(int count)
+{
+    m_graph->axisX()->setSubSegmentCount(count);
+}
+
+void GraphModifier::setYAxisSubsegemntCount(int count)
+{
+    m_graph->axisY()->setSubSegmentCount(count);
+}
+
+void GraphModifier::setZAxisSubsegemntCount(int count)
+{
+    m_graph->axisZ()->setSubSegmentCount(count);
+}
+
+void GraphModifier::resetArrayAndSliders(QSurfaceDataArray array, float minZ, float maxZ, float minX, float maxX)
 {
     m_axisMinSliderX->setValue(minX);
     m_axisMinSliderZ->setValue(minZ);
@@ -868,13 +901,13 @@ void GraphModifier::changeRow()
         float stepZ = (maxZ - minZ) / float(m_zCount - 1);
         float i = float(QRandomGenerator::global()->bounded(m_zCount));
 
-        QSurfaceDataRow *newRow = new QSurfaceDataRow(m_xCount);
+        QSurfaceDataRow newRow(m_xCount);
         float z = qMin(maxZ, (i * stepZ + minZ));
         for (float j = 0; j < m_xCount; j++) {
             float x = qMin(maxX, (j * stepX + minX));
             float R = qSqrt(x * x + z * z) + 0.01f;
             float y = (qSin(R) / R + 0.24f) * 1.61f + 1.2f;
-            (*newRow)[j].setPosition(QVector3D(x, y, z));
+            newRow[j].setPosition(QVector3D(x, y, z));
         }
 
         m_theSeries->dataProxy()->setRow(int(i), newRow);
@@ -884,7 +917,7 @@ void GraphModifier::changeRow()
         qDebug() << "Generating new values to a row at random pos for series " << changeRowSeries;
 
         int row = QRandomGenerator::global()->bounded(m_zCount);
-        QSurfaceDataRow *newRow = createMultiRow(row, changeRowSeries, true);
+        QSurfaceDataRow newRow = createMultiRow(row, changeRowSeries, true);
         if (m_ascendingZ)
             m_multiseries[changeRowSeries]->dataProxy()->setRow(row, newRow);
         else
@@ -899,25 +932,25 @@ void GraphModifier::changeRow()
     }
 }
 
-QSurfaceDataRow *GraphModifier::createMultiRow(int row, int series, bool change)
+QSurfaceDataRow GraphModifier::createMultiRow(int row, int series, bool change)
 {
     int full = m_limitX * m_limitZ;
     float i = float(row);
-    QSurfaceDataRow *newRow = new QSurfaceDataRow(m_xCount);
+    QSurfaceDataRow newRow(m_xCount);
     float z = float(i) - m_limitZ + 0.5f + m_multiSampleOffsetZ[series];
     if (m_ascendingX) {
         for (int j = 0; j < m_xCount; j++) {
             float x = float(j) - m_limitX + 0.5f + m_multiSampleOffsetX[series];
             float angle = (z * x) / float(full) * 1.57f;
             float y = qSin(angle * float(qPow(1.3f, series))) + 0.2f * float(change) + 1.1f *series;
-            (*newRow)[j].setPosition(QVector3D(x, y, z));
+            newRow[j].setPosition(QVector3D(x, y, z));
         }
     } else {
         for (int j = m_xCount - 1; j >= 0 ; j--) {
             float x = float(j) - m_limitX + 0.5f + m_multiSampleOffsetX[series];
             float angle = (z * x) / float(full) * 1.57f;
             float y = qSin(angle * float(qPow(1.3f, series))) + 0.2f * float(change) + 1.1f *series;
-            (*newRow)[(m_xCount - 1) - j].setPosition(QVector3D(x, y, z));
+            newRow[(m_xCount - 1) - j].setPosition(QVector3D(x, y, z));
         }
     }
 
@@ -928,19 +961,19 @@ void GraphModifier::populateRisingSeries(QSurface3DSeries *series, int rows, int
                                          float minValue, float maxValue, bool ascendingX,
                                          bool ascendingZ)
 {
-    QSurfaceDataArray *dataArray = new QSurfaceDataArray;
-    dataArray->reserve(rows);
+    QSurfaceDataArray dataArray;
+    dataArray.reserve(rows);
     float range = maxValue - minValue;
     int arraySize = rows * columns;
     for (int i = 0; i < rows; i++) {
-        QSurfaceDataRow *dataRow = new QSurfaceDataRow(columns);
+        QSurfaceDataRow dataRow(columns);
         for (int j = 0; j < columns; j++) {
             float xValue = ascendingX ? float(j) : float(columns - j - 1);
             float yValue = minValue + (range * i * j / arraySize);
             float zValue = ascendingZ ? float(i) : float(rows - i - 1);
-            (*dataRow)[j].setPosition(QVector3D(xValue, yValue, zValue));
+            dataRow[j].setPosition(QVector3D(xValue, yValue, zValue));
         }
-        dataArray->append(dataRow);
+        dataArray.append(dataRow);
     }
     series->dataProxy()->resetArray(dataArray);
 
@@ -962,13 +995,13 @@ void GraphModifier::changeRows()
         QSurfaceDataArray dataArray;
 
         for (float i = start; i < (start + 3.0f); i++) {
-            QSurfaceDataRow *newRow = new QSurfaceDataRow(m_xCount);
+            QSurfaceDataRow newRow(m_xCount);
             float z = qMin(maxZ, (i * stepZ + minZ));
             for (float j = 0; j < m_xCount; j++) {
                 float x = qMin(maxX, (j * stepX + minX));
                 float R = qSqrt(x * x + z * z) + 0.01f;
                 float y = (qSin(R) / R + 0.24f) * 1.61f + 1.2f;
-                (*newRow)[j].setPosition(QVector3D(x, y, z));
+                newRow[j].setPosition(QVector3D(x, y, z));
             }
             dataArray.append(newRow);
         }
@@ -982,7 +1015,7 @@ void GraphModifier::changeRows()
         int row = QRandomGenerator::global()->bounded(m_zCount - 3);
         QSurfaceDataArray dataArray;
         for (int i = 0; i < 3; i++) {
-            QSurfaceDataRow *newRow = createMultiRow(row + i, changeRowSeries, true);
+            QSurfaceDataRow newRow = createMultiRow(row + i, changeRowSeries, true);
             dataArray.append(newRow);
         }
         m_multiseries[changeRowSeries]->dataProxy()->setRows(row, dataArray);
@@ -1070,13 +1103,13 @@ void GraphModifier::addRow()
         float stepX = (maxX - minX) / float(m_xCount - 1);
         float stepZ = (maxZ - minZ) / float(m_zCount - 1);
 
-        QSurfaceDataRow *newRow = new QSurfaceDataRow(m_xCount);
+        QSurfaceDataRow newRow(m_xCount);
         float z = float(m_addRowCounter) * stepZ + minZ;
         for (float j = 0; j < m_xCount; j++) {
             float x = qMin(maxX, (j * stepX + minX));
             float R = qSqrt(x * x + z * z) + 0.01f;
             float y = (qSin(R) / R + 0.24f) * 1.61f + 1.0f;
-            (*newRow)[j].setPosition(QVector3D(x, y, z));
+            newRow[j].setPosition(QVector3D(x, y, z));
         }
         m_addRowCounter++;
 
@@ -1087,12 +1120,12 @@ void GraphModifier::addRow()
         int full = m_limitX * m_limitZ;
         int series = 2;
 
-        QSurfaceDataRow *newRow = new QSurfaceDataRow(m_xCount);
+        QSurfaceDataRow newRow(m_xCount);
         float z = float(m_addRowCounter) - m_limitZ + 0.5f + m_multiSampleOffsetZ[series];
         for (int j = 0; j < m_xCount; j++) {
             float x = float(j) - m_limitX + 0.5f + m_multiSampleOffsetX[series];
             float angle = float(z * x) / float(full) * 1.57f;
-            (*newRow)[j].setPosition(QVector3D(x, qSin(angle *float(qPow(1.3f, series))) + 1.1f * series, z));
+            newRow[j].setPosition(QVector3D(x, qSin(angle *float(qPow(1.3f, series))) + 1.1f * series, z));
         }
         m_addRowCounter++;
 
@@ -1118,13 +1151,13 @@ void GraphModifier::addRows()
         QSurfaceDataArray dataArray;
 
         for (int i = 0; i < 3; i++) {
-            QSurfaceDataRow *newRow = new QSurfaceDataRow(m_xCount);
+            QSurfaceDataRow newRow(m_xCount);
             float z = m_addRowCounter * stepZ + minZ;
             for (float j = 0; j < m_xCount; j++) {
                 float x = qMin(maxX, (j * stepX + minX));
                 float R = qSqrt(x * x + z * z) + 0.01f;
                 float y = (qSin(R) / R + 0.24f) * 1.61f + 1.0f;
-                (*newRow)[j].setPosition(QVector3D(x, y, z));
+                newRow[j].setPosition(QVector3D(x, y, z));
             }
             dataArray.append(newRow);
             m_addRowCounter++;
@@ -1138,7 +1171,7 @@ void GraphModifier::addRows()
 
     QSurfaceDataArray dataArray;
     for (int i = 0; i < 3; i++) {
-        QSurfaceDataRow *newRow = createMultiRow(m_addRowCounter, changedSeries, false);
+        QSurfaceDataRow newRow = createMultiRow(m_addRowCounter, changedSeries, false);
         dataArray.append(newRow);
         m_addRowCounter++;
     }
@@ -1161,13 +1194,13 @@ void GraphModifier::insertRow()
         float stepX = (maxX - minX) / float(m_xCount - 1);
         float stepZ = (maxZ - minZ) / float(m_zCount - 1);
 
-        QSurfaceDataRow *newRow = new QSurfaceDataRow(m_xCount);
+        QSurfaceDataRow newRow(m_xCount);
         float z = qMin(maxZ, (float(m_insertTestZPos) * stepZ + minZ + (stepZ / 2.0f)));
         for (float j = 0; j < m_xCount; j++) {
             float x = qMin(maxX, (j * stepX + minX));
             float R = qSqrt(x * x + z * z) + 0.01f;
             float y = (qSin(R) / R + 0.24f) * 1.61f + 1.3f;
-            (*newRow)[j].setPosition(QVector3D(x, y, z));
+            newRow[j].setPosition(QVector3D(x, y, z));
         }
         m_insertTestZPos++;
 
@@ -1179,12 +1212,12 @@ void GraphModifier::insertRow()
     int full = m_limitX * m_limitZ;
     int changedSeries = 2;
 
-    QSurfaceDataRow *newRow = new QSurfaceDataRow(m_xCount);
+    QSurfaceDataRow newRow(m_xCount);
     float z = float(m_insertTestZPos) - m_limitZ + m_multiSampleOffsetZ[changedSeries];
     for (int j = 0; j < m_xCount; j++) {
         float x = float(j) - m_limitX + m_multiSampleOffsetX[changedSeries];
         float angle = (z * x) / float(full) * 1.57f;
-        (*newRow)[j].setPosition(QVector3D(x + 0.5f,
+        newRow[j].setPosition(QVector3D(x + 0.5f,
                                            qSin(angle * float(qPow(1.3f, changedSeries))) + 1.2f * changedSeries,
                                            z + 1.0f));
     }
@@ -1212,13 +1245,13 @@ void GraphModifier::insertRows()
 
         QSurfaceDataArray dataArray;
         for (int i = 0; i < 3; i++) {
-            QSurfaceDataRow *newRow = new QSurfaceDataRow(m_xCount);
+            QSurfaceDataRow newRow(m_xCount);
             float z = qMin(maxZ, (float(m_insertTestZPos) * stepZ + minZ + i * (stepZ / 4.0f)));
             for (float j = 0; j < m_xCount; j++) {
                 float x = qMin(maxX, (j * stepX + minX));
                 float R = qSqrt(x * x + z * z) + 0.01f;
                 float y = (qSin(R) / R + 0.24f) * 1.61f + 1.3f;
-                (*newRow)[j].setPosition(QVector3D(x, y, z));
+                newRow[j].setPosition(QVector3D(x, y, z));
             }
             dataArray.append(newRow);
         }
@@ -1235,13 +1268,13 @@ void GraphModifier::insertRows()
     QSurfaceDataArray dataArray;
     float zAdd = 0.25f;
     for (int i = 0; i < 3; i++) {
-        QSurfaceDataRow *newRow = new QSurfaceDataRow(m_xCount);
+        QSurfaceDataRow newRow(m_xCount);
         float z = float(m_insertTestZPos) - m_limitZ  + 0.5f + zAdd + m_multiSampleOffsetZ[changedSeries];
         for (int j = 0; j < m_xCount; j++) {
             float x = float(j) - m_limitX + 0.5f + m_multiSampleOffsetX[changedSeries];
             float angle = (z * x) / float(full) * 1.57f;
             float y = qSin(angle * float(qPow(1.3f, changedSeries))) + + 1.2f * changedSeries;
-            (*newRow)[j].setPosition(QVector3D(x, y, z));
+            newRow[j].setPosition(QVector3D(x, y, z));
         }
         zAdd += 0.25f;
         dataArray.append(newRow);
@@ -1280,16 +1313,16 @@ void GraphModifier::resetArray()
     int rows = 10;
     int columns = 10;
     float randFactor = float(QRandomGenerator::global()->bounded(100)) / 100.0f;
-    QSurfaceDataArray *planeArray = new QSurfaceDataArray;
-    planeArray->reserve(rows);
+    QSurfaceDataArray planeArray;
+    planeArray.reserve(rows);
 
     for (int i = 0; i < rows; i++) {
-        planeArray->append(new QSurfaceDataRow);
-        (*planeArray)[i]->resize(columns);
+        planeArray.append(QSurfaceDataRow());
+        planeArray[i].resize(columns);
         for (int j = 0; j < columns; j++) {
-            (*planeArray->at(i))[j].setX(float(j) * randFactor);
-            (*planeArray->at(i))[j].setY(float(i - j) * randFactor);
-            (*planeArray->at(i))[j].setZ(float(i));
+            planeArray[i][j].setX(float(j) * randFactor);
+            planeArray[i][j].setY(float(i - j) * randFactor);
+            planeArray[i][j].setZ(float(i));
         }
     }
 
@@ -1303,12 +1336,11 @@ void GraphModifier::resetArray()
 
 void GraphModifier::resetArrayEmpty()
 {
-    QSurfaceDataArray *emptyArray = new QSurfaceDataArray;
 #ifdef MULTI_SERIES
     int series = QRandomGenerator::global()->bounded(4);
-    m_multiseries[series]->dataProxy()->resetArray(emptyArray);
+    m_multiseries[series]->dataProxy()->resetArray();
 #else
-    m_theSeries->dataProxy()->resetArray(emptyArray);
+    m_theSeries->dataProxy()->resetArray();
 #endif
 }
 
@@ -1334,8 +1366,8 @@ void GraphModifier::massiveDataTest()
         float rowBase = minY;
         float direction = 1.0f;
         for (int i = 0; i < cacheSize; i++) {
-            m_massiveTestCacheArray.append(new QSurfaceDataRow);
-            m_massiveTestCacheArray[i]->resize(columns);
+            m_massiveTestCacheArray.append(QSurfaceDataRow());
+            m_massiveTestCacheArray[i].resize(columns);
             rowBase += direction * (float(QRandomGenerator::global()->bounded(3)) / 100.0f);
             if (rowBase > maxY) {
                 rowBase = maxY;
@@ -1346,8 +1378,8 @@ void GraphModifier::massiveDataTest()
             }
             for (int j = 0; j < columns; j++) {
                 float randFactor = float(QRandomGenerator::global()->bounded(100)) / (100 / yRangeMargin);
-                (*m_massiveTestCacheArray.at(i))[j].setX(float(j));
-                (*m_massiveTestCacheArray.at(i))[j].setY(rowBase + randFactor);
+                m_massiveTestCacheArray[i][j].setX(float(j));
+                m_massiveTestCacheArray[i][j].setY(rowBase + randFactor);
                 // Z value is irrelevant, we replace it anyway when we take row to use
             }
         }
@@ -1370,24 +1402,25 @@ void GraphModifier::massiveDataTest()
         m_graph->setAxisX(xAxis);
         m_graph->setAxisY(yAxis);
         m_graph->setAxisZ(zAxis);
-        m_graph->scene()->activeCamera()->setCameraPreset(Q3DCamera::CameraPresetRight);
-        m_graph->setShadowQuality(QAbstract3DGraph::ShadowQualityNone);
-        foreach (QAbstract3DSeries *series, m_graph->seriesList())
-            m_graph->removeSeries(static_cast<QSurface3DSeries *>(series));
+        m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::Right);
+        m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::None);
+        const auto surfaceSeriesList = m_graph->seriesList();
+        for (const auto &series : surfaceSeriesList)
+            m_graph->removeSeries(series);
 
         qDebug() << __FUNCTION__ << testPhase << ": Creating massive array..."
                  << rows << "x" << columns;
         // Reset to zero first to avoid having memory allocated for two massive arrays at the same
         // time on the second and subsequent runs.
-        series->dataProxy()->resetArray(0);
-        QSurfaceDataArray *massiveArray = new QSurfaceDataArray;
-        massiveArray->reserve(rows);
+        series->dataProxy()->resetArray();
+        QSurfaceDataArray massiveArray;
+        massiveArray.reserve(rows);
 
         for (int i = 0; i < rows; i++) {
-            QSurfaceDataRow *newRow = new QSurfaceDataRow(*m_massiveTestCacheArray.at(i % cacheSize));
+            QSurfaceDataRow newRow(m_massiveTestCacheArray.at(i % cacheSize));
             for (int j = 0; j < columns; j++)
-                (*newRow)[j].setZ(float(i));
-            massiveArray->append(newRow);
+                newRow[j].setZ(float(i));
+            massiveArray.append(newRow);
         }
         qDebug() << __FUNCTION__ << testPhase << ": Massive array creation finished!";
 
@@ -1444,9 +1477,9 @@ void GraphModifier::massiveTestAppendAndScroll()
     QSurfaceDataArray appendArray;
     appendArray.reserve(addedRows);
     for (int i = 0; i < addedRows; i++) {
-        QSurfaceDataRow *newRow = new QSurfaceDataRow(*m_massiveTestCacheArray.at((i + maxRows) % 1000));
+        QSurfaceDataRow newRow(m_massiveTestCacheArray.at((i + maxRows) % 1000));
         for (int j = 0; j < columns; j++)
-            (*newRow)[j].setZ(float(maxRows + i));
+            newRow[j].setZ(float(maxRows + i));
         appendArray.append(newRow);
     }
     m_graph->seriesList().at(0)->dataProxy()->addRows(appendArray);
@@ -1466,9 +1499,11 @@ void GraphModifier::testAxisReverse()
     switch (counter) {
     case 0: {
         qDebug() << __FUNCTION__ << counter << "Setup test";
-        foreach (QSurface3DSeries *series, m_graph->seriesList())
+        const auto surfaceSeriesList = m_graph->seriesList();
+        for (const auto &series : surfaceSeriesList)
             m_graph->removeSeries(series);
-        foreach (QValue3DAxis *axis, m_graph->axes())
+        const auto axes = m_graph->axes();
+        for (const auto &axis : axes)
             m_graph->releaseAxis(axis);
         delete series0;
         delete series1;
@@ -1534,9 +1569,11 @@ void GraphModifier::testDataOrdering()
     switch (counter) {
     case 0: {
         qDebug() << __FUNCTION__ << counter << "Setup test - both ascending";
-        foreach (QSurface3DSeries *series, m_graph->seriesList())
+        const auto surfaceSeriesList = m_graph->seriesList();
+        for (const auto &series : surfaceSeriesList)
             m_graph->removeSeries(series);
-        foreach (QValue3DAxis *axis, m_graph->axes())
+        const auto axes = m_graph->axes();
+        for (const auto &axis : axes)
             m_graph->releaseAxis(axis);
         delete series0;
         delete series1;
@@ -1581,43 +1618,43 @@ void GraphModifier::changeMesh()
     static int model = 0;
     switch (model) {
     case 0:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshCylinder);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Cylinder);
         m_graph->seriesList().at(0)->setMeshSmooth(false);
         break;
     case 1:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshCylinder);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Cylinder);
         m_graph->seriesList().at(0)->setMeshSmooth(true);
         break;
     case 2:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshCone);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Cone);
         m_graph->seriesList().at(0)->setMeshSmooth(false);
         break;
     case 3:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshCone);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Cone);
         m_graph->seriesList().at(0)->setMeshSmooth(true);
         break;
     case 4:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshBar);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Bar);
         m_graph->seriesList().at(0)->setMeshSmooth(false);
         break;
     case 5:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshBar);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Bar);
         m_graph->seriesList().at(0)->setMeshSmooth(true);
         break;
     case 6:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshPyramid);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Pyramid);
         m_graph->seriesList().at(0)->setMeshSmooth(false);
         break;
     case 7:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshPyramid);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Pyramid);
         m_graph->seriesList().at(0)->setMeshSmooth(true);
         break;
     case 8:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshBevelBar);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::BevelBar);
         m_graph->seriesList().at(0)->setMeshSmooth(false);
         break;
     case 9:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshBevelBar);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::BevelBar);
         m_graph->seriesList().at(0)->setMeshSmooth(true);
         break;
     }

@@ -113,7 +113,7 @@ QGeoAreaMonitorSource::~QGeoAreaMonitorSource()
 QGeoAreaMonitorSource *QGeoAreaMonitorSource::createDefaultSource(QObject *parent)
 {
     const QList<QCborMap> plugins = QGeoPositionInfoSourcePrivate::pluginsSorted();
-    foreach (const QCborMap &obj, plugins) {
+    for (const QCborMap &obj : plugins) {
         if (obj.value(QStringLiteral("Monitor")).isBool()
                 && obj.value(QStringLiteral("Monitor")).toBool())
         {

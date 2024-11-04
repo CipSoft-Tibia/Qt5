@@ -1316,12 +1316,28 @@ TEST_F(FPDFFormFillEmbedderTest, BUG_765384) {
   FORM_OnLButtonUp(form_handle(), page, 0, 140, 590);
   UnloadPage(page);
 }
+
+// Test passes if DCHECK() not hit.
+TEST_F(FPDFFormFillEmbedderTest, BUG_1477093) {
+  EmbedderTestTimerHandlingDelegate delegate;
+  SetDelegate(&delegate);
+
+  ASSERT_TRUE(OpenDocument("bug_1477093.pdf"));
+  FPDF_PAGE page = LoadPage(0);
+  EXPECT_TRUE(page);
+
+  DoOpenActions();
+  delegate.AdvanceTime(1000);
+  delegate.AdvanceTime(1000);
+  UnloadPage(page);
+}
+
 #endif  // PDF_ENABLE_V8
 
 TEST_F(FPDFFormFillEmbedderTest, FormText) {
   const char* focused_text_form_with_abc_checksum = []() {
     if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "07a179a9dfb8f5462746262984109a99";
+      return "b9fb2245a98ac48146da84237a37f8cc";
 #if BUILDFLAG(IS_APPLE)
     return "9fb14198d75ca0a107060c60ca21b0c7";
 #else
@@ -1330,7 +1346,7 @@ TEST_F(FPDFFormFillEmbedderTest, FormText) {
   }();
   const char* unfocused_text_form_with_abc_checksum = []() {
     if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "a21b74cc620db8a9891ebd69e1aeda98";
+      return "5f3205f0189d9dde54665f970838f614";
 #if BUILDFLAG(IS_APPLE)
     return "3c3209357e0c057a0620afa7d83eb784";
 #else
@@ -1432,7 +1448,7 @@ TEST_F(FPDFFormFillEmbedderTest, Bug1302455RenderOnly) {
 TEST_F(FPDFFormFillEmbedderTest, Bug1302455EditFirstForm) {
   const char* checksum = []() {
     if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "29a06da3e47f67535e266b090a5ac82d";
+      return "143c2bb79fcaecf24f5aa104dce27beb";
 #if BUILDFLAG(IS_APPLE)
     return "bf5423874f188427d2500a2bc4abebbe";
 #else
@@ -1465,7 +1481,7 @@ TEST_F(FPDFFormFillEmbedderTest, Bug1302455EditFirstForm) {
 TEST_F(FPDFFormFillEmbedderTest, Bug1302455EditSecondForm) {
   const char* checksum = []() {
     if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "19f8574d6378ee36e349376d88b7a2c4";
+      return "e36726414acb616dc203e8851b510e2c";
 #if BUILDFLAG(IS_APPLE)
     return "8a0fd8772dba6e1e952e49d159cc64b5";
 #else
@@ -1498,7 +1514,7 @@ TEST_F(FPDFFormFillEmbedderTest, Bug1302455EditSecondForm) {
 TEST_F(FPDFFormFillEmbedderTest, Bug1302455EditBothForms) {
   const char* checksum = []() {
     if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "edbc9b0e190118a9039fffc11e494081";
+      return "f82a807c056e22aa55d3d7228eedfe6f";
 #if BUILDFLAG(IS_APPLE)
     return "1f422ee1c520ad74b1a993b64bd4dc4a";
 #else
@@ -1537,11 +1553,14 @@ TEST_F(FPDFFormFillEmbedderTest, Bug1302455EditBothForms) {
 
 TEST_F(FPDFFormFillEmbedderTest, RemoveFormFieldHighlight) {
   const char* no_highlight_checksum = []() {
+    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+      return "3bfddb2529085021ad283b7e65f71525";
+    }
 #if BUILDFLAG(IS_APPLE)
-    if (!CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "5c82aa43e3b478aa1e4c94bb9ef1f11f";
-#endif
+    return "5c82aa43e3b478aa1e4c94bb9ef1f11f";
+#else
     return "a6268304f7eedfa9ee98fac3caaf2efb";
+#endif
   }();
 
   ASSERT_TRUE(OpenDocument("text_form.pdf"));
@@ -3365,7 +3384,7 @@ class FPDFFormFillActionUriTest : public EmbedderTest {
   }
 
   void SetFocusOnNthAnnot(size_t n) {
-    DCHECK_NE(n, 0);
+    DCHECK_NE(n, 0u);
     // Setting focus on first annot.
     FORM_OnMouseMove(form_handle(), page(), /*modifier=*/0, 100, 680);
     FORM_OnLButtonDown(form_handle(), page(), /*modifier=*/0, 100, 680);

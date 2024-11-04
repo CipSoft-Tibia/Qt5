@@ -3,6 +3,12 @@
 
 # The whole file is written manually.
 
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(tst_selftests LANGUAGES CXX)
+    find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
+endif()
+
 include(../../../../src/testlib/selfcover.cmake)
 
 # ------------- Test runner -------------
@@ -21,6 +27,8 @@ qt_internal_add_test(tst_selftests
     SOURCES
         tst_selftests.cpp
         catch.cpp
+    NO_PCH_SOURCES
+        tst_selftests.cpp # undef QT_NO_FOREACH
     LIBRARIES
         Qt::TestPrivate
     TESTDATA ${qmake_expected_files_resource_files}
@@ -83,9 +91,11 @@ set(subprograms
     printdatatagswithglobaltags
     qexecstringlist
     silent
+    silent_fatal
     signaldumper
     singleskip
     skip
+    skipblacklisted
     skipcleanup
     skipcleanuptestcase
     skipinit

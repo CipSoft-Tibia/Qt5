@@ -5,7 +5,10 @@
 #ifndef UI_GFX_LINEAR_GRADIENT_H_
 #define UI_GFX_LINEAR_GRADIENT_H_
 
+#include <stdint.h>
+
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 

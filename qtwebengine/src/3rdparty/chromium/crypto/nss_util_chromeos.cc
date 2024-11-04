@@ -17,6 +17,7 @@
 #include <utility>
 
 #include "base/callback_list.h"
+#include "base/containers/contains.h"
 #include "base/debug/stack_trace.h"
 #include "base/files/file_enumerator.h"
 #include "base/files/file_path.h"
@@ -25,9 +26,9 @@
 #include "base/lazy_instance.h"
 #include "base/location.h"
 #include "base/logging.h"
+#include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
 #include "base/path_service.h"
-#include "base/strings/string_piece.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
@@ -148,7 +149,7 @@ class ChromeOSTokenManager {
     explicit TPMModuleAndSlot(SECMODModule* init_chaps_module)
         : chaps_module(init_chaps_module) {}
 
-    SECMODModule* chaps_module;
+    raw_ptr<SECMODModule, ExperimentalAsh> chaps_module;
     ScopedPK11Slot tpm_slot;
   };
 
@@ -280,7 +281,7 @@ class ChromeOSTokenManager {
   bool InitializeNSSForChromeOSUser(const std::string& username_hash,
                                     const base::FilePath& path) {
     DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-    if (chromeos_user_map_.find(username_hash) != chromeos_user_map_.end()) {
+    if (base::Contains(chromeos_user_map_, username_hash)) {
       // This user already exists in our mapping.
       DVLOG(2) << username_hash << " already initialized.";
       return false;
@@ -297,7 +298,7 @@ class ChromeOSTokenManager {
 
   bool ShouldInitializeTPMForChromeOSUser(const std::string& username_hash) {
     DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-    DCHECK(chromeos_user_map_.find(username_hash) != chromeos_user_map_.end());
+    DCHECK(base::Contains(chromeos_user_map_, username_hash));
 
     return !chromeos_user_map_[username_hash]
                 ->private_slot_initialization_started();
@@ -305,7 +306,7 @@ class ChromeOSTokenManager {
 
   void WillInitializeTPMForChromeOSUser(const std::string& username_hash) {
     DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-    DCHECK(chromeos_user_map_.find(username_hash) != chromeos_user_map_.end());
+    DCHECK(base::Contains(chromeos_user_map_, username_hash));
 
     chromeos_user_map_[username_hash]
         ->set_private_slot_initialization_started();
@@ -314,7 +315,7 @@ class ChromeOSTokenManager {
   void InitializeTPMForChromeOSUser(const std::string& username_hash,
                                     CK_SLOT_ID slot_id) {
     DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-    DCHECK(chromeos_user_map_.find(username_hash) != chromeos_user_map_.end());
+    DCHECK(base::Contains(chromeos_user_map_, username_hash));
     DCHECK(chromeos_user_map_[username_hash]
                ->private_slot_initialization_started());
 
@@ -351,7 +352,7 @@ class ChromeOSTokenManager {
       const std::string& username_hash) {
     DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
     VLOG(1) << "using software private slot for " << username_hash;
-    DCHECK(chromeos_user_map_.find(username_hash) != chromeos_user_map_.end());
+    DCHECK(base::Contains(chromeos_user_map_, username_hash));
     DCHECK(chromeos_user_map_[username_hash]
                ->private_slot_initialization_started());
 
@@ -374,7 +375,7 @@ class ChromeOSTokenManager {
       return ScopedPK11Slot();
     }
 
-    if (chromeos_user_map_.find(username_hash) == chromeos_user_map_.end()) {
+    if (!base::Contains(chromeos_user_map_, username_hash)) {
       LOG(ERROR) << username_hash << " not initialized.";
       return ScopedPK11Slot();
     }
@@ -395,7 +396,7 @@ class ChromeOSTokenManager {
       return ScopedPK11Slot();
     }
 
-    DCHECK(chromeos_user_map_.find(username_hash) != chromeos_user_map_.end());
+    DCHECK(base::Contains(chromeos_user_map_, username_hash));
 
     return chromeos_user_map_[username_hash]->GetPrivateSlot(
         std::move(callback));
@@ -487,7 +488,7 @@ class ChromeOSTokenManager {
   std::unique_ptr<base::OnceClosureList> tpm_ready_callback_list_ =
       std::make_unique<base::OnceClosureList>();
 
-  SECMODModule* chaps_module_ = nullptr;
+  raw_ptr<SECMODModule, ExperimentalAsh> chaps_module_ = nullptr;
   ScopedPK11Slot system_slot_;
   std::map<std::string, std::unique_ptr<ChromeOSUserData>> chromeos_user_map_;
   ScopedPK11Slot prepared_test_private_slot_;

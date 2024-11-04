@@ -18,6 +18,9 @@
     the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
     Boston, MA 02110-1301, USA.
 */
+
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include <QtWebEngineCore/private/qtwebenginecore-config_p.h>
 #include <qtest.h>
 #include <util.h>
@@ -182,8 +185,12 @@ private Q_SLOTS:
     void inspectElement();
     void navigateOnDrop_data();
     void navigateOnDrop();
+    void emptyUriListOnDrop();
     void datalist();
     void longKeyEventText();
+    void pageWithPaintListeners();
+    void deferredDelete();
+    void setCursorOnEmbeddedView();
 };
 
 // This will be called before the first test function is executed.
@@ -207,6 +214,95 @@ void tst_QWebEngineView::init()
 void tst_QWebEngineView::cleanup()
 {
     QTRY_COMPARE(QApplication::topLevelWidgets().size(), 0);
+}
+
+class PageWithPaintListeners : public QWebEnginePage
+{
+    Q_OBJECT
+public:
+    PageWithPaintListeners(QObject *parent = nullptr) : QWebEnginePage(parent)
+    {
+        addFirstContentfulPaintListener();
+        addLargestContentfulPaintListener();
+    }
+
+    void javaScriptConsoleMessage(JavaScriptConsoleMessageLevel level, const QString &message,
+                                  int lineNumber, const QString &sourceID) override
+    {
+        Q_UNUSED(level)
+        Q_UNUSED(lineNumber)
+        Q_UNUSED(sourceID)
+        if (message.contains("firstContentfulPaint"))
+            emit firstContentfulPaint();
+        if (message.contains("largestContentfulPaint"))
+            emit largestContentfulPaint();
+    }
+
+    // https://developer.mozilla.org/en-US/docs/Web/API/PerformanceObserver
+    void addFirstContentfulPaintListener()
+    {
+        QObject::connect(this, &QWebEnginePage::loadFinished, [this]() {
+            runJavaScript(QStringLiteral(
+                    "new PerformanceObserver((entryList) => {"
+                    "   if (entryList.getEntriesByType('first-contentful-paint'))"
+                    "       console.log('firstContentfulPaint');"
+                    "}).observe({type: 'paint', buffered: true});"));
+        });
+    }
+
+    void addLargestContentfulPaintListener()
+    {
+        QObject::connect(this, &QWebEnginePage::loadFinished, [this]() {
+            runJavaScript(QStringLiteral(
+                    "new PerformanceObserver((entryList) => {"
+                    "   console.log('largestContentfulPaint');"
+                    "}).observe({type: 'largest-contentful-paint', buffered: true});"));
+        });
+    }
+
+signals:
+    void firstContentfulPaint(); // https://web.dev/articles/fcp
+    void largestContentfulPaint(); // https://web.dev/articles/lcp
+};
+
+void tst_QWebEngineView::pageWithPaintListeners()
+{
+    PageWithPaintListeners page;
+
+    QSignalSpy firstContentfulPaintSpy(&page, &PageWithPaintListeners::firstContentfulPaint);
+    QSignalSpy largestContentfulPaintSpy(&page, &PageWithPaintListeners::largestContentfulPaint);
+
+    const QString empty =
+            QStringLiteral("<html><body style='width:100x;height:100px;'></body></html>");
+    const QString scrollBars =
+            QStringLiteral("<html><body style='width:1000px;height:1000px;'></body></html>");
+    const QString backgroundColor =
+            QStringLiteral("<html><body style='background-color:green'></body></html>");
+    const QString text = QStringLiteral("<html><body>text</body></html>");
+
+    QWebEngineView view;
+    view.setPage(&page);
+    view.resize(600, 600);
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+
+    page.setHtml(empty);
+    QTest::qWait(500); // empty page should not trigger
+    QVERIFY(firstContentfulPaintSpy.size() == 0);
+    QVERIFY(largestContentfulPaintSpy.size() == 0);
+
+    page.setHtml(backgroundColor);
+    QTRY_VERIFY(firstContentfulPaintSpy.size() == 1);
+
+    page.setHtml(text);
+    QTRY_VERIFY(firstContentfulPaintSpy.size() == 2);
+    QTRY_VERIFY(largestContentfulPaintSpy.size() == 1);
+
+#if !QT_CONFIG(webengine_embedded_build)
+    // Embedded builds have different scrollbars that are only painted on hover
+    page.setHtml(scrollBars);
+    QTRY_VERIFY(firstContentfulPaintSpy.size() == 3);
+#endif
 }
 
 void tst_QWebEngineView::renderHints()
@@ -695,14 +791,18 @@ void tst_QWebEngineView::horizontalScrollbarTest()
                  "</body></html>");
 
     QWebEngineView view;
+    PageWithPaintListeners page;
+    view.setPage(&page);
     view.setFixedSize(600, 600);
     view.show();
 
     QVERIFY(QTest::qWaitForWindowExposed(&view));
 
+    QSignalSpy firstPaintSpy(&page, &PageWithPaintListeners::firstContentfulPaint);
     QSignalSpy loadSpy(view.page(), SIGNAL(loadFinished(bool)));
     view.setHtml(html);
     QTRY_COMPARE(loadSpy.size(), 1);
+    QTRY_COMPARE(firstPaintSpy.size(), 1);
 
     QVERIFY(view.page()->scrollPosition() == QPoint(0, 0));
     QSignalSpy scrollSpy(view.page(), SIGNAL(scrollPositionChanged(QPointF)));
@@ -3690,6 +3790,28 @@ void tst_QWebEngineView::navigateOnDrop()
     }
 }
 
+void tst_QWebEngineView::emptyUriListOnDrop()
+{
+    QWebEngineView view;
+    view.resize(640, 480);
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+
+    QMimeData mimeData;
+    mimeData.setUrls({}); // creates an empty uri-list MIME type entry
+    QVERIFY(mimeData.hasUrls());
+
+    QDragEnterEvent dee(view.rect().center(), Qt::CopyAction, &mimeData, Qt::LeftButton,
+                        Qt::NoModifier);
+    QApplication::sendEvent(&view, &dee);
+    QDropEvent de(view.rect().center(), Qt::CopyAction, &mimeData, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&view, &de);
+
+    QSignalSpy loadSpy(&view, &QWebEngineView::loadFinished);
+    view.setUrl(QUrl("about:blank"));
+    QTRY_COMPARE(loadSpy.size(), 1);
+}
+
 void tst_QWebEngineView::datalist()
 {
     QString html("<html><body>"
@@ -3881,6 +4003,80 @@ void tst_QWebEngineView::longKeyEventText()
     QKeyEvent event(QKeyEvent::KeyPress, key, Qt::NoModifier, QKeySequence(key).toString());
     QApplication::sendEvent(view.focusProxy(), &event);
     QTRY_VERIFY(consoleMessageSpy.size());
+}
+
+void tst_QWebEngineView::deferredDelete()
+{
+    {
+        QWebEngineView view;
+        QSignalSpy loadFinishedSpy(view.page(), &QWebEnginePage::loadFinished);
+        view.load(QUrl("chrome://qt"));
+        view.show();
+        QTRY_VERIFY(loadFinishedSpy.size());
+        QCOMPARE(QApplication::allWidgets().size(), 2); // QWebEngineView and WebEngineQuickWidget
+    }
+
+    QCOMPARE(QApplication::allWidgets().size(), 0);
+}
+
+// QTBUG-111927
+void tst_QWebEngineView::setCursorOnEmbeddedView()
+{
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
+        QSKIP("Wayland: Can't manipulate the mouse cursor in auto test.");
+
+    const QString html(QStringLiteral("<html><body"
+                                      " style=\"cursor:pointer;"
+                                      "        background-color:green;"
+                                      "        text-align:center;\">"
+                                      "Pointer"
+                                      "</body>"
+                                      "</html>"));
+    QWidget parentWidget;
+    QWebEngineView view(&parentWidget);
+    PageWithPaintListeners page;
+    view.setPage(&page);
+
+    // Move the view to it's parent rightBottom corner
+    parentWidget.resize(600, 600);
+    view.resize(150, 150);
+    view.move(450, 450);
+
+    QSignalSpy firstPaintSpy(&page, &PageWithPaintListeners::largestContentfulPaint);
+    view.setHtml(html);
+    parentWidget.show();
+    view.show();
+
+    QVERIFY(QTest::qWaitForWindowExposed(&parentWidget));
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+
+    QTRY_VERIFY(firstPaintSpy.size());
+
+    const QPoint step = QPoint(25, 25);
+    QPoint cursorPos = view.pos() - step;
+
+    // Single QTest::mouseMove may not move the cursor on macOS.
+    for (int i = 0; i < 5; i++) {
+        QTest::mouseMove(&parentWidget, cursorPos);
+        cursorPos += step;
+    }
+
+    QQuickWidget *webEngineQuickWidget = qobject_cast<QQuickWidget *>(view.focusProxy());
+    QVERIFY(webEngineQuickWidget);
+    QTRY_COMPARE(webEngineQuickWidget->hasFocus(), true);
+
+    QQuickItem *root = webEngineQuickWidget->rootObject();
+    // The root item should not has focus, otherwise it would handle mouse events
+    // instead of the RenderWidgetHostViewQtDelegateItem.
+    QVERIFY(!root->hasFocus());
+
+    QCOMPARE(root->childItems().size(), 1);
+    QQuickItem *renderWidgetHostViewQtDelegateItem = root->childItems().at(0);
+    QVERIFY(renderWidgetHostViewQtDelegateItem);
+    QTRY_COMPARE(renderWidgetHostViewQtDelegateItem->hasFocus(), true);
+
+    QTRY_COMPARE(renderWidgetHostViewQtDelegateItem->cursor().shape(), Qt::PointingHandCursor);
+    QTRY_COMPARE(view.cursor().shape(), Qt::PointingHandCursor);
 }
 
 QTEST_MAIN(tst_QWebEngineView)

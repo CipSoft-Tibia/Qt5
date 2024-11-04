@@ -37,8 +37,6 @@
 // propagate the 'noContraction' qualifier.
 //
 
-#ifndef GLSLANG_WEB
-
 #include "propagateNoContraction.h"
 
 #include <cstdlib>
@@ -48,7 +46,6 @@
 #include <unordered_set>
 
 #include "localintermediate.h"
-
 namespace QtShaderTools {
 namespace {
 
@@ -425,7 +422,7 @@ getSymbolToDefinitionMappingAndPreciseSymbolIDs(const glslang::TIntermediate& in
                                         ReturnBranchNodeSet());
 
     TIntermNode* root = intermediate.getTreeRoot();
-    if (root == 0)
+    if (root == nullptr)
         return result_tuple;
 
     NodeMapping& symbol_definition_mapping = std::get<0>(result_tuple);
@@ -868,6 +865,4 @@ void PropagateNoContraction(const glslang::TIntermediate& intermediate)
     }
 }
 }
-};
-
-#endif // GLSLANG_WEB
+} // namespace QtShaderTools

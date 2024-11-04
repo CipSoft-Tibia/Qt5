@@ -104,7 +104,7 @@ export class BinaryResourceView extends UI.Widget.VBox {
     }
     this.toolbar.appendToolbarItem(this.binaryViewTypeCombobox);
 
-    const copyButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.copyToClipboard), 'largeicon-copy');
+    const copyButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.copyToClipboard), 'copy');
     copyButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, _event => {
       void this.copySelectedViewToClipboard();
     }, this);
@@ -148,7 +148,7 @@ export class BinaryResourceView extends UI.Widget.VBox {
     this.addFadeoutSettimeoutId = window.setTimeout(addFadeoutClass.bind(this), 2000);
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     this.updateView();
     this.registerCSSFiles([binaryResourceViewStyles]);
   }

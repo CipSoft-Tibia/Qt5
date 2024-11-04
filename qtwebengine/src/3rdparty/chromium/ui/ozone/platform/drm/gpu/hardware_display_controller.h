@@ -14,6 +14,7 @@
 
 #include "base/containers/flat_map.h"
 #include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
@@ -23,6 +24,7 @@
 #include "ui/ozone/platform/drm/gpu/drm_overlay_plane.h"
 #include "ui/ozone/platform/drm/gpu/hardware_display_plane_manager.h"
 #include "ui/ozone/platform/drm/gpu/page_flip_watchdog.h"
+#include "ui/ozone/public/drm_modifiers_filter.h"
 #include "ui/ozone/public/swap_completion_callback.h"
 
 namespace gfx {
@@ -93,7 +95,8 @@ class DrmDevice;
 class HardwareDisplayController {
  public:
   HardwareDisplayController(std::unique_ptr<CrtcController> controller,
-                            const gfx::Point& origin);
+                            const gfx::Point& origin,
+                            raw_ptr<DrmModifiersFilter> drm_modifiers_filter);
 
   HardwareDisplayController(const HardwareDisplayController&) = delete;
   HardwareDisplayController& operator=(const HardwareDisplayController&) =
@@ -232,7 +235,7 @@ class HardwareDisplayController {
   std::unique_ptr<DrmDumbBuffer> cursor_buffers_[2];
   gfx::Point cursor_location_;
   int cursor_frontbuffer_ = 0;
-  DrmDumbBuffer* current_cursor_ = nullptr;
+  raw_ptr<DrmDumbBuffer, ExperimentalAsh> current_cursor_ = nullptr;
 
   // Maps each fourcc_format to its preferred modifier which was generated
   // through modeset-test and updated in UpdatePreferredModifierForFormat().
@@ -241,6 +244,8 @@ class HardwareDisplayController {
 
   // Used to crash the GPU process when unrecoverable failures occur.
   PageFlipWatchdog watchdog_;
+
+  raw_ptr<DrmModifiersFilter> drm_modifiers_filter_;
 
   base::WeakPtrFactory<HardwareDisplayController> weak_ptr_factory_{this};
 };

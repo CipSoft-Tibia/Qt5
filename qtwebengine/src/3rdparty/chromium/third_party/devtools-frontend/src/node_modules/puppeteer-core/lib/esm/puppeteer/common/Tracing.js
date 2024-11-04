@@ -1,15 +1,3 @@
-var __classPrivateFieldSet = (this && this.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
-    if (kind === "m") throw new TypeError("Private method is not writable");
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
-    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
-};
-var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (receiver, state, kind, f) {
-    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
-    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
-    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
-};
-var _Tracing_client, _Tracing_recording, _Tracing_path;
 /**
  * Copyright 2017 Google Inc. All rights reserved.
  *
@@ -26,8 +14,9 @@ var _Tracing_client, _Tracing_recording, _Tracing_path;
  * limitations under the License.
  */
 import { assert } from '../util/assert.js';
-import { getReadableAsBuffer, getReadableFromProtocolStream } from './util.js';
+import { Deferred } from '../util/Deferred.js';
 import { isErrorLike } from '../util/ErrorLike.js';
+import { getReadableAsBuffer, getReadableFromProtocolStream } from './util.js';
 /**
  * The Tracing class exposes the tracing audit interface.
  * @remarks
@@ -45,14 +34,20 @@ import { isErrorLike } from '../util/ErrorLike.js';
  * @public
  */
 export class Tracing {
+    #client;
+    #recording = false;
+    #path;
     /**
      * @internal
      */
     constructor(client) {
-        _Tracing_client.set(this, void 0);
-        _Tracing_recording.set(this, false);
-        _Tracing_path.set(this, void 0);
-        __classPrivateFieldSet(this, _Tracing_client, client, "f");
+        this.#client = client;
+    }
+    /**
+     * @internal
+     */
+    updateClient(client) {
+        this.#client = client;
     }
     /**
      * Starts a trace for the current page.
@@ -62,7 +57,7 @@ export class Tracing {
      * @param options - Optional `TracingOptions`.
      */
     async start(options = {}) {
-        assert(!__classPrivateFieldGet(this, _Tracing_recording, "f"), 'Cannot start recording trace while already recording trace.');
+        assert(!this.#recording, 'Cannot start recording trace while already recording trace.');
         const defaultCategories = [
             '-*',
             'devtools.timeline',
@@ -90,9 +85,9 @@ export class Tracing {
         const includedCategories = categories.filter(cat => {
             return !cat.startsWith('-');
         });
-        __classPrivateFieldSet(this, _Tracing_path, path, "f");
-        __classPrivateFieldSet(this, _Tracing_recording, true, "f");
-        await __classPrivateFieldGet(this, _Tracing_client, "f").send('Tracing.start', {
+        this.#path = path;
+        this.#recording = true;
+        await this.#client.send('Tracing.start', {
             transferMode: 'ReturnAsStream',
             traceConfig: {
                 excludedCategories,
@@ -105,31 +100,25 @@ export class Tracing {
      * @returns Promise which resolves to buffer with trace data.
      */
     async stop() {
-        let resolve;
-        let reject;
-        const contentPromise = new Promise((x, y) => {
-            resolve = x;
-            reject = y;
-        });
-        __classPrivateFieldGet(this, _Tracing_client, "f").once('Tracing.tracingComplete', async (event) => {
+        const contentDeferred = Deferred.create();
+        this.#client.once('Tracing.tracingComplete', async (event) => {
             try {
-                const readable = await getReadableFromProtocolStream(__classPrivateFieldGet(this, _Tracing_client, "f"), event.stream);
-                const buffer = await getReadableAsBuffer(readable, __classPrivateFieldGet(this, _Tracing_path, "f"));
-                resolve(buffer !== null && buffer !== void 0 ? buffer : undefined);
+                const readable = await getReadableFromProtocolStream(this.#client, event.stream);
+                const buffer = await getReadableAsBuffer(readable, this.#path);
+                contentDeferred.resolve(buffer ?? undefined);
             }
             catch (error) {
                 if (isErrorLike(error)) {
-                    reject(error);
+                    contentDeferred.reject(error);
                 }
                 else {
-                    reject(new Error(`Unknown error: ${error}`));
+                    contentDeferred.reject(new Error(`Unknown error: ${error}`));
                 }
             }
         });
-        await __classPrivateFieldGet(this, _Tracing_client, "f").send('Tracing.end');
-        __classPrivateFieldSet(this, _Tracing_recording, false, "f");
-        return contentPromise;
+        await this.#client.send('Tracing.end');
+        this.#recording = false;
+        return contentDeferred.valueOrThrow();
     }
 }
-_Tracing_client = new WeakMap(), _Tracing_recording = new WeakMap(), _Tracing_path = new WeakMap();
 //# sourceMappingURL=Tracing.js.map

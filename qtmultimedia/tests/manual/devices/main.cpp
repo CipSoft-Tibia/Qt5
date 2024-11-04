@@ -1,5 +1,5 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QAudioDevice>
 #include <QAudioFormat>
@@ -93,7 +93,7 @@ static void printVideoDeviceInfo(QTextStream &out, const QCameraDevice &cameraDe
     out.setFieldWidth(30);
     out << "Photo Resolutions: ";
     for (auto &resolution : photoResolutions) {
-        QString s = QString("%1x%2").arg(resolution.width()).arg(resolution.height());
+        QString s = QStringLiteral("%1x%2").arg(resolution.width()).arg(resolution.height());
         out << qSetFieldWidth(0) << s << ", ";
     }
     out.setFieldWidth(10);
@@ -102,11 +102,15 @@ static void printVideoDeviceInfo(QTextStream &out, const QCameraDevice &cameraDe
     for (auto &format : videoFormats) {
         out.setFieldWidth(30);
         QString s =
-                QString("%1x%2").arg(format.resolution().width()).arg(format.resolution().height());
+                QStringLiteral("%1x%2").arg(format.resolution().width()).arg(format.resolution().height());
         out << "Resolution: " << s << qSetFieldWidth(0) << Qt::endl;
         out.setFieldWidth(30);
         out << "Frame Rate: " << qSetFieldWidth(0) << "Min:" << format.minFrameRate()
             << " Max:" << format.maxFrameRate() << Qt::endl;
+        out.setFieldWidth(30);
+        out << "Format: " << qSetFieldWidth(0)
+            << QVideoFrameFormat::pixelFormatToString(format.pixelFormat()) << Qt::endl;
+        out << Qt::endl;
     }
 
     out << Qt::endl;

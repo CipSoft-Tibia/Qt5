@@ -4,8 +4,6 @@
 
 #include "components/password_manager/core/browser/votes_uploader.h"
 
-#include <ctype.h>
-
 #include <iostream>
 #include <utility>
 
@@ -15,6 +13,7 @@
 #include "base/metrics/histogram_macros.h"
 #include "base/rand_util.h"
 #include "base/ranges/algorithm.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "components/autofill/core/browser/autofill_download_manager.h"
@@ -27,7 +26,6 @@
 #include "components/autofill/core/common/form_field_data.h"
 #include "components/autofill/core/common/signatures.h"
 #include "components/password_manager/core/browser/browser_save_password_progress_logger.h"
-#include "components/password_manager/core/browser/field_info_manager.h"
 #include "components/password_manager/core/browser/password_manager_client.h"
 #include "components/password_manager/core/browser/password_manager_util.h"
 #include "components/password_manager/core/common/password_manager_features.h"
@@ -61,12 +59,16 @@ constexpr uint32_t kNumberOfLowEntropyHashValues = 64;
 // TODO(crbug/1260336): The function is needed to only detect a
 // field name collision and report that in a metric. Once the bug is fixed, the
 // metric becomes obsolete and the function can be inlined.
-void SetFieldType(const std::u16string& field_name,
+void SetFieldType(const FieldRendererId& field_renderer_id,
                   const ServerFieldType type,
                   FieldTypeMap& field_types,
                   bool& field_name_collision) {
+  if (field_renderer_id.is_null()) {
+    return;
+  }
+
   std::pair<FieldTypeMap::iterator, bool> it = field_types.insert(
-      std::pair<std::u16string, ServerFieldType>(field_name, type));
+      std::pair<FieldRendererId, ServerFieldType>(field_renderer_id, type));
   if (!it.second) {
     field_name_collision = true;
     // To preserve the old behavior, overwrite the type.
@@ -87,13 +89,16 @@ void SetFieldLabelsOnUpdate(const ServerFieldType password_type,
          password_type == autofill::PROBABLY_NEW_PASSWORD ||
          password_type == autofill::NOT_NEW_PASSWORD)
       << password_type;
-  if (submitted_form.new_password_element.empty())
+  if (submitted_form.new_password_element_renderer_id.is_null()) {
     return;
+  }
 
-  SetFieldType(submitted_form.password_element, autofill::PASSWORD, field_types,
-               field_name_collision);
-  SetFieldType(submitted_form.new_password_element, password_type, field_types,
-               field_name_collision);
+  if (submitted_form.password_element_renderer_id) {
+    SetFieldType(submitted_form.password_element_renderer_id,
+                 autofill::PASSWORD, field_types, field_name_collision);
+  }
+  SetFieldType(submitted_form.new_password_element_renderer_id, password_type,
+               field_types, field_name_collision);
 }
 
 // Sets the autofill type of the password field stored in |submitted_form| to
@@ -107,11 +112,11 @@ void SetFieldLabelsOnSave(const ServerFieldType password_type,
          password_type == autofill::NOT_ACCOUNT_CREATION_PASSWORD)
       << password_type;
 
-  if (!form.new_password_element.empty()) {
-    SetFieldType(form.new_password_element, password_type, field_types,
-                 field_name_collision);
-  } else if (!form.password_element.empty()) {
-    SetFieldType(form.password_element, password_type, field_types,
+  if (!form.new_password_element_renderer_id.is_null()) {
+    SetFieldType(form.new_password_element_renderer_id, password_type,
+                 field_types, field_name_collision);
+  } else if (!form.password_element_renderer_id.is_null()) {
+    SetFieldType(form.password_element_renderer_id, password_type, field_types,
                  field_name_collision);
   }
 }
@@ -131,21 +136,18 @@ void LabelFields(const FieldTypeMap& field_types,
     AutofillField* field = form_structure->field(i);
 
     ServerFieldType type = autofill::UNKNOWN_TYPE;
-    if (!field->name.empty()) {
-      auto iter = field_types.find(field->name);
-      if (iter != field_types.end()) {
-        type = iter->second;
-        available_field_types->insert(type);
-      }
-
-      auto vote_type_iter = vote_types.find(field->name);
-      if (vote_type_iter != vote_types.end()) {
-        field->set_vote_type(vote_type_iter->second);
-      }
-      DCHECK(type != autofill::USERNAME ||
-             field->vote_type() !=
-                 AutofillUploadContents::Field::NO_INFORMATION);
+    if (auto iter = field_types.find(field->unique_renderer_id);
+        iter != field_types.end()) {
+      type = iter->second;
+      available_field_types->insert(type);
     }
+
+    if (auto vote_type_iter = vote_types.find(field->unique_renderer_id);
+        vote_type_iter != vote_types.end()) {
+      field->set_vote_type(vote_type_iter->second);
+    }
+    CHECK(type != autofill::USERNAME ||
+          field->vote_type() != AutofillUploadContents::Field::NO_INFORMATION);
     ServerFieldTypeSet types;
     types.insert(type);
     field->set_possible_types(types);
@@ -160,8 +162,17 @@ bool IsAddingUsernameToExistingMatch(
   if (credentials.username_value.empty())
     return false;
   const PasswordForm* match = FindFormByUsername(matches, std::u16string());
-  return match && !match->is_public_suffix_match &&
-         match->password_value == credentials.password_value;
+
+  if (!match) {
+    return false;
+  }
+
+  if (password_manager_util::GetMatchType(*match) ==
+      password_manager_util::GetLoginMatchType::kPSL) {
+    return false;
+  }
+
+  return match->password_value == credentials.password_value;
 }
 
 // Returns a uniformly distributed random symbol from the set of random symbols
@@ -224,7 +235,67 @@ AutofillUploadContents::ValueType GetValueType(
   return AutofillUploadContents::VALUE_WITH_NO_WHITESPACE;
 }
 
+// Fills fake renderer id for to the significant field with `field_name` iff
+// it isn't set.
+void FillRendererIdIfNotSet(
+    const std::u16string& field_name,
+    autofill::FieldRendererId* element_renderer_id,
+    const std::map<std::u16string, autofill::FieldRendererId>&
+        field_name_to_renderer_id) {
+  CHECK(element_renderer_id->is_null())
+      << "Unexpected non-null renderer_id in a form deserialized from "
+         "LoginDatabase.";
+  if (!field_name.empty()) {
+    auto iter = field_name_to_renderer_id.find(field_name);
+    if (iter != field_name_to_renderer_id.end()) {
+      *element_renderer_id = iter->second;
+    }
+  }
+}
+
+// Generates fake renderer ids for the `matched_form` deserialized from
+// `LoginDatabase`. Field renderer id is used later in `UploadPasswordVote` to
+// identify fields and generate votes for this form.
+// TODO(crbug/1260336): The function is needed to only provide a way to identify
+// fields using field renderer ids for forms from LoginDatabase as it doesn't
+// store renderer ids for fields. It should be removed after migrating to a
+// stable unique field identifier (e.g. FieldSignature).
+void GenerateSyntheticRenderIdsAndAssignThem(PasswordForm& matched_form) {
+  uint32_t renderer_id_counter_ = 1;
+
+  std::map<std::u16string, autofill::FieldRendererId> field_name_to_renderer_id;
+  for (autofill::FormFieldData& field : matched_form.form_data.fields) {
+    CHECK(field.unique_renderer_id.is_null())
+        << "Unexpected non-null unique_renderer_id in a from deserialized form "
+           "LoginDatabase.";
+    field.unique_renderer_id =
+        autofill::FieldRendererId(renderer_id_counter_++);
+    field_name_to_renderer_id.insert({field.name, field.unique_renderer_id});
+  }
+
+  FillRendererIdIfNotSet(matched_form.username_element,
+                         &matched_form.username_element_renderer_id,
+                         field_name_to_renderer_id);
+  FillRendererIdIfNotSet(matched_form.password_element,
+                         &matched_form.password_element_renderer_id,
+                         field_name_to_renderer_id);
+  FillRendererIdIfNotSet(matched_form.new_password_element,
+                         &matched_form.new_password_element_renderer_id,
+                         field_name_to_renderer_id);
+  FillRendererIdIfNotSet(
+      matched_form.confirmation_password_element,
+      &matched_form.confirmation_password_element_renderer_id,
+      field_name_to_renderer_id);
+}
+
 }  // namespace
+
+SingleUsernameVoteData::SingleUsernameVoteData()
+    : SingleUsernameVoteData(FieldRendererId(),
+                             /*username_value=*/std::u16string(),
+                             FormPredictions(),
+                             /*stored_credentials=*/{},
+                             /*password_form_had_username_field=*/false) {}
 
 SingleUsernameVoteData::SingleUsernameVoteData(
     FieldRendererId renderer_id,
@@ -238,7 +309,7 @@ SingleUsernameVoteData::SingleUsernameVoteData(
   base::TrimWhitespace(username_value, base::TrimPositions::TRIM_ALL,
                        &username_candidate_value);
   value_type = GetValueType(username_candidate_value, stored_credentials);
-  prompt_edit = autofill::AutofillUploadContents::EDIT_UNSPECIFIED;
+  prompt_edit = AutofillUploadContents::EDIT_UNSPECIFIED;
 }
 
 SingleUsernameVoteData::SingleUsernameVoteData(
@@ -272,13 +343,14 @@ void VotesUploader::SendVotesOnSave(
   // Credentials that have been previously used (e.g., PSL matches) are checked
   // to see if they are valid account creation forms.
   if (pending_credentials->times_used_in_html_form == 0) {
-    MaybeSendSingleUsernameVote();
+    MaybeSendSingleUsernameVotes();
     UploadPasswordVote(*pending_credentials, submitted_form, autofill::PASSWORD,
                        std::string());
     if (username_correction_vote_) {
-      UploadPasswordVote(*username_correction_vote_, submitted_form,
-                         autofill::USERNAME,
-                         FormStructure(observed).FormSignatureAsStr());
+      UploadPasswordVote(
+          *username_correction_vote_, submitted_form, autofill::USERNAME,
+          base::NumberToString(*autofill::CalculateFormSignature(observed)));
+      username_correction_vote_.reset();
     }
   } else {
     SendVoteOnCredentialsReuse(observed, submitted_form, pending_credentials);
@@ -375,8 +447,9 @@ bool VotesUploader::UploadPasswordVote(
                        autofill_type == autofill::NOT_NEW_PASSWORD;
 
       if (is_update) {
-        if (form_to_upload.new_password_element.empty())
+        if (form_to_upload.new_password_element_renderer_id.is_null()) {
           return false;
+        }
         SetFieldLabelsOnUpdate(autofill_type, form_to_upload, field_types,
                                field_name_collision);
       } else {  // Saving.
@@ -387,25 +460,29 @@ bool VotesUploader::UploadPasswordVote(
         // If |autofill_type| == autofill::ACCOUNT_CREATION_PASSWORD, Chrome
         // will upload a vote for another form: the one that the credential was
         // saved on.
-        SetFieldType(submitted_form.confirmation_password_element,
+        SetFieldType(submitted_form.confirmation_password_element_renderer_id,
                      autofill::CONFIRMATION_PASSWORD, field_types,
                      field_name_collision);
         form_structure.set_passwords_were_revealed(
             has_passwords_revealed_vote_);
       }
       // If a user accepts a save or update prompt, send a single username vote.
-      if ((autofill_type == autofill::PASSWORD ||
-           autofill_type == autofill::NEW_PASSWORD) &&
-          single_username_vote_data_) {
-        SetSingleUsernameVoteOnPasswordForm(form_structure);
+      if (autofill_type == autofill::PASSWORD ||
+          autofill_type == autofill::NEW_PASSWORD) {
+        if (single_username_vote_data_.has_value() &&
+            base::FeatureList::IsEnabled(
+                features::kUsernameFirstFlowFallbackCrowdsourcing)) {
+          SetSingleUsernameVoteOnPasswordForm(
+              single_username_vote_data_.value(), form_structure);
+        }
       }
     }
     if (autofill_type != autofill::ACCOUNT_CREATION_PASSWORD) {
       if (generation_popup_was_shown_)
         AddGeneratedVote(&form_structure);
       if (username_change_state_ == UsernameChangeState::kChangedToKnownValue) {
-        SetFieldType(form_to_upload.username_element, autofill::USERNAME,
-                     field_types, field_name_collision);
+        SetFieldType(form_to_upload.username_element_renderer_id,
+                     autofill::USERNAME, field_types, field_name_collision);
         username_vote_type = AutofillUploadContents::Field::USERNAME_EDITED;
       }
     } else {  // User reuses credentials.
@@ -413,8 +490,8 @@ bool VotesUploader::UploadPasswordVote(
       // username.
       if (!submitted_form.username_value.empty()) {
         DCHECK(submitted_form.username_value == form_to_upload.username_value);
-        SetFieldType(form_to_upload.username_element, autofill::USERNAME,
-                     field_types, field_name_collision);
+        SetFieldType(form_to_upload.username_element_renderer_id,
+                     autofill::USERNAME, field_types, field_name_collision);
         username_vote_type = AutofillUploadContents::Field::CREDENTIALS_REUSED;
       }
     }
@@ -429,16 +506,17 @@ bool VotesUploader::UploadPasswordVote(
                                      &form_structure);
     }
   } else {  // User overwrites username.
-    SetFieldType(form_to_upload.username_element, autofill::USERNAME,
-                 field_types, field_name_collision);
-    SetFieldType(form_to_upload.password_element,
+    SetFieldType(form_to_upload.username_element_renderer_id,
+                 autofill::USERNAME, field_types, field_name_collision);
+    SetFieldType(form_to_upload.password_element_renderer_id,
                  autofill::ACCOUNT_CREATION_PASSWORD, field_types,
                  field_name_collision);
     username_vote_type = AutofillUploadContents::Field::USERNAME_OVERWRITTEN;
   }
-  LabelFields(field_types, field_name_collision,
-              {{form_to_upload.username_element, username_vote_type}},
-              &form_structure, &available_field_types);
+  LabelFields(
+      field_types, field_name_collision,
+      {{form_to_upload.username_element_renderer_id, username_vote_type}},
+      &form_structure, &available_field_types);
 
   // Force uploading as these events are relatively rare and we want to make
   // sure to receive them.
@@ -458,13 +536,10 @@ bool VotesUploader::UploadPasswordVote(
 
   // TODO(crbug.com/875768): Use VotesUploader::StartUploadRequest for avoiding
   // code duplication.
-  bool success = download_manager->StartUploadRequest(
+  return download_manager->StartUploadRequest(
       form_structure, false /* was_autofilled */, available_field_types,
       login_form_signature, true /* observed_submission */, nullptr /* prefs */,
       nullptr /* observer */);
-
-  UMA_HISTOGRAM_BOOLEAN("PasswordGeneration.UploadStarted", success);
-  return success;
 }
 
 // TODO(crbug.com/840384): Share common code with UploadPasswordVote.
@@ -487,14 +562,14 @@ void VotesUploader::UploadFirstLoginVotes(
 
   FieldTypeMap field_types;
   bool field_name_collision = false;
-  SetFieldType(form_to_upload.username_element, autofill::USERNAME, field_types,
-               field_name_collision);
-  VoteTypeMap vote_types = {{form_to_upload.username_element,
+  SetFieldType(form_to_upload.username_element_renderer_id, autofill::USERNAME,
+               field_types, field_name_collision);
+  VoteTypeMap vote_types = {{form_to_upload.username_element_renderer_id,
                              AutofillUploadContents::Field::FIRST_USE}};
   if (!password_overridden_) {
-    SetFieldType(form_to_upload.password_element, autofill::PASSWORD,
-                 field_types, field_name_collision);
-    vote_types[form_to_upload.password_element] =
+    SetFieldType(form_to_upload.password_element_renderer_id,
+                 autofill::PASSWORD, field_types, field_name_collision);
+    vote_types[form_to_upload.password_element_renderer_id] =
         AutofillUploadContents::Field::FIRST_USE;
   }
 
@@ -549,106 +624,67 @@ void VotesUploader::SetInitialHashValueOfUsernameField(
   }
 }
 
-void VotesUploader::MaybeSendSingleUsernameVote() {
-  if (!single_username_vote_data_)
-    return;
+void VotesUploader::MaybeSendSingleUsernameVotes() {
+// UFF votes are not sent on Android, since it wasn't possible to edit the
+// username in prompt before UFF was launched. Later, password edit dialog
+// was added, but Android votes were never evaluated.
+// TODO(crbug/1475295): Verify if the votes are produced as expected on Android
+// and enable UFF voting.
+#if !BUILDFLAG(IS_ANDROID)
+  if (single_username_vote_data_ &&
+      MaybeSendSingleUsernameVote(single_username_vote_data_.value(),
+                                  single_username_vote_data_->form_predictions,
+                                  /*is_forgot_password_vote=*/false)) {
+    base::UmaHistogramBoolean(
+        "PasswordManager.SingleUsername.PasswordFormHadUsernameField",
+        single_username_vote_data_->password_form_had_username_field);
+  }
+#endif  // !BUILDFLAG(IS_ANDROID)
 
-  FieldInfoManager* field_info_manager = client_->GetFieldInfoManager();
-  if (!field_info_manager)
-    return;
-
-  const FormPredictions& predictions =
-      single_username_vote_data_->form_predictions;
-  std::vector<FieldSignature> field_signatures;
-  for (const auto& field : predictions.fields)
-    field_signatures.push_back(field.signature);
-
-  std::unique_ptr<FormStructure> form_to_upload =
-      FormStructure::CreateForPasswordManagerUpload(predictions.form_signature,
-                                                    field_signatures);
-
-  // Label the username field with a SINGLE_USERNAME or NOT_USERNAME vote.
-  // TODO(crbug.com/552420): Use LabelFields() when cl/1667453 is landed.
-  ServerFieldTypeSet available_field_types;
-  for (size_t i = 0; i < form_to_upload->field_count(); ++i) {
-    AutofillField* field = form_to_upload->field(i);
-    FieldRendererId field_renderer_id = predictions.fields[i].renderer_id;
-
-    if (field_renderer_id != single_username_vote_data_->renderer_id) {
-      field->set_possible_types({autofill::UNKNOWN_TYPE});
-      continue;
-    }
-    if (field_info_manager->GetFieldType(predictions.form_signature,
-                                         predictions.fields[i].signature) !=
-        autofill::UNKNOWN_TYPE) {
-      // The vote for this field has been already sent. Don't send again.
-      break;
-    }
-    if (!SetSingleUsernameVoteOnUsernameForm(field, &available_field_types,
-                                             predictions.form_signature)) {
-      // The single username field has no field type. Don't send vote.
-      return;
-    }
+  for (auto& [field_id, vote_data] : forgot_password_vote_data_) {
+    MaybeSendSingleUsernameVote(vote_data, vote_data.form_predictions,
+                                /*is_forgot_password_vote=*/true);
   }
 
-  // Upload a vote on the username form if available.
-  if (!available_field_types.empty()) {
-    if (password_manager_util::IsLoggingActive(client_)) {
-      BrowserSavePasswordProgressLogger logger(client_->GetLogManager());
-      logger.LogFormStructure(Logger::STRING_USERNAME_FIRST_FLOW_VOTE,
-                              *form_to_upload);
+  SingleUsernameVoteDataAvailability availability =
+      SingleUsernameVoteDataAvailability::kNone;
+  if (single_username_vote_data_.has_value()) {
+    if (forgot_password_vote_data_.size() > 0) {
+      availability = forgot_password_vote_data_.contains(
+                         single_username_vote_data_->renderer_id)
+                         ? SingleUsernameVoteDataAvailability::kBothWithOverlap
+                         : SingleUsernameVoteDataAvailability::kBothNoOverlap;
+    } else {  // `forgot_password_vote_data_` is empty.
+      availability = SingleUsernameVoteDataAvailability::kUsernameFirstOnly;
     }
 
-    if (StartUploadRequest(std::move(form_to_upload), available_field_types)) {
-      base::UmaHistogramBoolean(
-          "PasswordManager.SingleUsername.PasswordFormHadUsernameField",
-          single_username_vote_data_->password_form_had_username_field);
+  } else {  // `single_username_vote_data_` has no value.
+    if (forgot_password_vote_data_.size() > 0) {
+      availability = SingleUsernameVoteDataAvailability::kForgotPasswordOnly;
     }
   }
+  base::UmaHistogramEnumeration(
+      "PasswordManager.SingleUsername.VoteDataAvailability", availability);
 }
 
-#if !BUILDFLAG(IS_ANDROID)
 void VotesUploader::CalculateUsernamePromptEditState(
     const std::u16string& saved_username) {
-  if (!single_username_vote_data_ ||
-      single_username_vote_data_->username_candidate_value.empty()) {
-    return;
+  if (single_username_vote_data_ &&
+      !single_username_vote_data_->username_candidate_value.empty()) {
+    single_username_vote_data_->prompt_edit = CalculateUsernamePromptEdit(
+        saved_username, single_username_vote_data_->username_candidate_value);
   }
-  const auto& single_username_value =
-      single_username_vote_data_->username_candidate_value;
-
-  autofill::AutofillUploadContents::SingleUsernamePromptEdit prompt_edit =
-      autofill::AutofillUploadContents::EDIT_UNSPECIFIED;
-  if (saved_username != suggested_username_) {
-    // In this branch, the user edited the username in a prompt before accepting
-    // it.
-
-    // The user removed some suggested username and that username wasn't the
-    // possible single username (|single_username_value|) => this is neither
-    // negative nor positive vote. If the user removes |single_username_value|,
-    // then it is a negative signal and will be reported below.
-    if (saved_username.empty() &&
-        suggested_username_ != single_username_value) {
-      return;
-    }
-
-    if (saved_username == single_username_value)
-      prompt_edit = autofill::AutofillUploadContents::EDITED_POSITIVE;
-    else
-      prompt_edit = autofill::AutofillUploadContents::EDITED_NEGATIVE;
-
-  } else {  // saved_username == suggested_username
-    // In this branch the user did NOT edit the username in prompt and accepted
-    // it as it is.
-
-    if (saved_username == single_username_value)
-      prompt_edit = autofill::AutofillUploadContents::NOT_EDITED_POSITIVE;
-    else
-      prompt_edit = autofill::AutofillUploadContents::NOT_EDITED_NEGATIVE;
+  for (auto& [field_id, vote_data] : forgot_password_vote_data_) {
+    vote_data.prompt_edit = CalculateUsernamePromptEdit(
+        saved_username, vote_data.username_candidate_value);
   }
-  single_username_vote_data_->prompt_edit = prompt_edit;
 }
-#endif  // !BUILDFLAG(IS_ANDROID)
+
+void VotesUploader::AddForgotPasswordVoteData(
+    const SingleUsernameVoteData& vote_data) {
+  // TODO(crbug/1468297): Implement votes uploading based on this.
+  forgot_password_vote_data_[vote_data.renderer_id] = vote_data;
+}
 
 void VotesUploader::AddGeneratedVote(FormStructure* form_structure) {
   DCHECK(form_structure);
@@ -723,15 +759,14 @@ void VotesUploader::SetKnownValueFlag(
   }
 }
 
-bool VotesUploader::FindUsernameInOtherPossibleUsernames(
+bool VotesUploader::FindUsernameInOtherAlternativeUsernames(
     const PasswordForm& match,
     const std::u16string& username) {
-  DCHECK(!username_correction_vote_);
-
-  for (const ValueElementPair& pair : match.all_possible_usernames) {
-    if (pair.first == username) {
+  for (const AlternativeElement& element : match.all_alternative_usernames) {
+    if (element.value == username) {
       username_correction_vote_ = match;
-      username_correction_vote_->username_element = pair.second;
+      username_correction_vote_->username_element = element.name;
+      GenerateSyntheticRenderIdsAndAssignThem(*username_correction_vote_);
       return true;
     }
   }
@@ -742,11 +777,13 @@ bool VotesUploader::FindCorrectedUsernameElement(
     const std::vector<const PasswordForm*>& matches,
     const std::u16string& username,
     const std::u16string& password) {
+  // As the username may have changed, re-compute |username_correction_vote_|.
+  username_correction_vote_.reset();
   if (username.empty())
     return false;
   for (const PasswordForm* match : matches) {
     if ((match->password_value == password) &&
-        FindUsernameInOtherPossibleUsernames(*match, username)) {
+        FindUsernameInOtherAlternativeUsernames(*match, username)) {
       return true;
     }
   }
@@ -841,71 +878,149 @@ bool VotesUploader::StartUploadRequest(
       nullptr);
 }
 
-void VotesUploader::SaveFieldVote(FormSignature form_signature,
-                                  FieldSignature field_signature,
-                                  autofill::ServerFieldType field_type) {
-  FieldInfoManager* field_info_manager = client_->GetFieldInfoManager();
-  if (!field_info_manager)
-    return;
-  field_info_manager->AddFieldType(form_signature, field_signature, field_type);
-}
-
 bool VotesUploader::SetSingleUsernameVoteOnUsernameForm(
     AutofillField* field,
+    const SingleUsernameVoteData& single_username,
     ServerFieldTypeSet* available_field_types,
-    FormSignature form_signature) {
+    FormSignature form_signature,
+    bool is_forgot_password_vote) {
   ServerFieldType type = autofill::UNKNOWN_TYPE;
   autofill::AutofillUploadContents_Field_SingleUsernameVoteType vote_type =
       AutofillUploadContents::Field::DEFAULT;
 
   // Send a negative vote if the possible username value contains whitespaces.
-  const std::u16string single_username_value =
-      single_username_vote_data_->username_candidate_value;
-  if (single_username_value.find(' ') != std::u16string::npos) {
+  if (single_username.username_candidate_value.find(' ') !=
+      std::u16string::npos) {
     type = autofill::NOT_USERNAME;
     vote_type = AutofillUploadContents::Field::STRONG;
   } else {
-// It's not possible to edit username in the save prompt on Android, thus it's
-// not possible to rely on this heuristic.
-#if !BUILDFLAG(IS_ANDROID)
-    const auto& prompt_edit = single_username_vote_data_->prompt_edit;
+    const auto& prompt_edit = single_username.prompt_edit;
     // There is no meaningful data on prompt edit, the vote should not be sent.
     if (prompt_edit == AutofillUploadContents::EDIT_UNSPECIFIED)
       return false;
-    type = (prompt_edit == AutofillUploadContents::EDITED_POSITIVE ||
-            prompt_edit == AutofillUploadContents::NOT_EDITED_POSITIVE)
-               ? autofill::SINGLE_USERNAME
-               : autofill::NOT_USERNAME;
-    vote_type = (prompt_edit == AutofillUploadContents::EDITED_POSITIVE ||
-                 prompt_edit == AutofillUploadContents::EDITED_NEGATIVE)
-                    ? AutofillUploadContents::Field::STRONG
-                    : AutofillUploadContents::Field::WEAK;
-#else
-    return false;
-#endif  // !BUILDFLAG(IS_ANDROID)
+
+    if (prompt_edit == AutofillUploadContents::EDITED_POSITIVE ||
+        prompt_edit == AutofillUploadContents::NOT_EDITED_POSITIVE) {
+      type = is_forgot_password_vote ? autofill::SINGLE_USERNAME_FORGOT_PASSWORD
+                                     : autofill::SINGLE_USERNAME;
+    } else {
+      type = autofill::NOT_USERNAME;
+    }
+
+    if (prompt_edit == AutofillUploadContents::EDITED_POSITIVE ||
+        prompt_edit == AutofillUploadContents::EDITED_NEGATIVE) {
+      vote_type = is_forgot_password_vote
+                      ? AutofillUploadContents::Field::STRONG_FORGOT_PASSWORD
+                      : AutofillUploadContents::Field::STRONG;
+    } else {
+      vote_type = is_forgot_password_vote
+                      ? AutofillUploadContents::Field::WEAK_FORGOT_PASSWORD
+                      : AutofillUploadContents::Field::WEAK;
+    }
   }
+  CHECK_NE(type, autofill::UNKNOWN_TYPE);
+  CHECK_NE(vote_type, AutofillUploadContents::Field::DEFAULT);
   available_field_types->insert(type);
-  SaveFieldVote(form_signature, field->GetFieldSignature(), type);
   field->set_possible_types({type});
   field->set_single_username_vote_type(vote_type);
   return true;
 }
 
 void VotesUploader::SetSingleUsernameVoteOnPasswordForm(
+    const SingleUsernameVoteData& vote_data,
     FormStructure& form_structure) {
-  if (!base::FeatureList::IsEnabled(
-          features::kUsernameFirstFlowFallbackCrowdsourcing)) {
-    return;
-  }
   AutofillUploadContents::SingleUsernameData single_username_data;
   single_username_data.set_username_form_signature(
-      single_username_vote_data_->form_predictions.form_signature.value());
+      vote_data.form_predictions.form_signature.value());
   single_username_data.set_username_field_signature(
-      GetUsernameFieldSignature(*single_username_vote_data_).value());
-  single_username_data.set_value_type(single_username_vote_data_->value_type);
-  single_username_data.set_prompt_edit(single_username_vote_data_->prompt_edit);
+      GetUsernameFieldSignature(vote_data).value());
+  single_username_data.set_value_type(vote_data.value_type);
+  single_username_data.set_prompt_edit(vote_data.prompt_edit);
 
-  form_structure.set_single_username_data(single_username_data);
+  form_structure.AddSingleUsernameData(single_username_data);
+}
+
+AutofillUploadContents::SingleUsernamePromptEdit
+VotesUploader::CalculateUsernamePromptEdit(
+    const std::u16string& saved_username,
+    const std::u16string& potential_username) {
+  AutofillUploadContents::SingleUsernamePromptEdit prompt_edit =
+      AutofillUploadContents::EDIT_UNSPECIFIED;
+  if (saved_username != suggested_username_) {
+    // In this branch, the user edited the username in a prompt before accepting
+    // it.
+
+    // The user removed some suggested username and that username wasn't the
+    // |potential_username| => this is neither negative nor positive vote. If
+    // the user removes |potential_username|, then it is a negative signal and
+    // will be reported below.
+    if (saved_username.empty() && suggested_username_ != potential_username) {
+      return prompt_edit;
+    }
+
+    if (saved_username == potential_username) {
+      prompt_edit = AutofillUploadContents::EDITED_POSITIVE;
+    } else {
+      prompt_edit = AutofillUploadContents::EDITED_NEGATIVE;
+    }
+
+  } else {  // saved_username == suggested_username
+    // In this branch the user did NOT edit the username in prompt and accepted
+    // it as it is.
+
+    if (saved_username == potential_username) {
+      prompt_edit = AutofillUploadContents::NOT_EDITED_POSITIVE;
+    } else {
+      prompt_edit = AutofillUploadContents::NOT_EDITED_NEGATIVE;
+    }
+  }
+  return prompt_edit;
+}
+
+bool VotesUploader::MaybeSendSingleUsernameVote(
+    const SingleUsernameVoteData& single_username,
+    const FormPredictions& predictions,
+    bool is_forgot_password_vote) {
+  std::vector<FieldSignature> field_signatures;
+  for (const auto& field : predictions.fields) {
+    field_signatures.push_back(field.signature);
+  }
+
+  std::unique_ptr<FormStructure> form_to_upload =
+      FormStructure::CreateForPasswordManagerUpload(predictions.form_signature,
+                                                    field_signatures);
+
+  // Label the username field with a SINGLE_USERNAME or NOT_USERNAME vote.
+  ServerFieldTypeSet available_field_types;
+  for (size_t i = 0; i < form_to_upload->field_count(); ++i) {
+    AutofillField* field = form_to_upload->field(i);
+    FieldRendererId field_renderer_id = predictions.fields[i].renderer_id;
+
+    if (field_renderer_id != single_username.renderer_id) {
+      field->set_possible_types({autofill::UNKNOWN_TYPE});
+      continue;
+    }
+    if (!SetSingleUsernameVoteOnUsernameForm(
+            field, single_username, &available_field_types,
+            predictions.form_signature, is_forgot_password_vote)) {
+      // The single username field has no field type. Don't send vote.
+      return false;
+    }
+  }
+
+  // Upload a vote on the username form if available.
+  if (!available_field_types.empty()) {
+    if (password_manager_util::IsLoggingActive(client_)) {
+      BrowserSavePasswordProgressLogger logger(client_->GetLogManager());
+      logger.LogFormStructure(Logger::STRING_USERNAME_FIRST_FLOW_VOTE,
+                              *form_to_upload);
+    }
+
+    if (StartUploadRequest(std::move(form_to_upload), available_field_types)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace password_manager

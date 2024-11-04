@@ -6,14 +6,14 @@
 #define QUICHE_BALSA_BALSA_VISITOR_INTERFACE_H_
 
 #include <cstddef>
+#include <memory>
 
 #include "absl/strings/string_view.h"
 #include "quiche/balsa/balsa_enums.h"
+#include "quiche/balsa/balsa_headers.h"
 #include "quiche/common/platform/api/quiche_export.h"
 
 namespace quiche {
-
-class BalsaHeaders;
 
 // By default the BalsaFrame instantiates a class derived from this interface
 // that does absolutely nothing. If you'd prefer to have interesting
@@ -85,7 +85,17 @@ class QUICHE_EXPORT BalsaVisitorInterface {
   // Arguments:
   //   trailer - contains the parsed headers in the order in which
   //             they occurred in the trailer.
+  // TODO(b/134507471): Remove this and update the OnTrailers() comment.
   virtual void ProcessTrailers(const BalsaHeaders& trailer) = 0;
+
+  // Summary:
+  //   Called when the trailers are framed and processed. This callback is only
+  //   called when the trailers option is set in the framer, and it is mutually
+  //   exclusive with ProcessTrailers().
+  // Arguments:
+  //   trailers - contains the parsed headers in the order in which they
+  //              occurred in the trailers.
+  virtual void OnTrailers(std::unique_ptr<BalsaHeaders> trailers) = 0;
 
   // Summary:
   //   Called when the first line of the message is parsed, in this case, for a
@@ -127,12 +137,22 @@ class QUICHE_EXPORT BalsaVisitorInterface {
   virtual void OnChunkExtensionInput(absl::string_view input) = 0;
 
   // Summary:
-  //   Called when the header is framed and processed.
-  virtual void HeaderDone() = 0;
+  //   Called when an interim response (response code 1xx) is framed and
+  //   processed. This callback is mutually exclusive with ContinueHeaderDone().
+  // Arguments:
+  //   headers - contains the parsed headers in the order in which they occurred
+  //             in the interim response.
+  virtual void OnInterimHeaders(std::unique_ptr<BalsaHeaders> headers) = 0;
 
   // Summary:
-  //   Called when the 100 Continue headers are framed and processed.
+  //   Called when the 100 Continue headers are framed and processed. This
+  //   callback is mutually exclusive with OnInterimHeaders().
+  // TODO(b/68801833): Remove this and update the OnInterimHeaders() comment.
   virtual void ContinueHeaderDone() = 0;
+
+  // Summary:
+  //   Called when the header is framed and processed.
+  virtual void HeaderDone() = 0;
 
   // Summary:
   //   Called when the message is framed and processed.

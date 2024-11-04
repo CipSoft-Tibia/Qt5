@@ -69,8 +69,8 @@ void tst_series::initialProperties()
     QCOMPARE(m_series->wireframeColor(), QColor(Qt::black));
     // Common properties. The ones identical between different series are tested in QBar3DSeries tests
     QCOMPARE(m_series->itemLabelFormat(), QString("@xLabel, @yLabel, @zLabel"));
-    QCOMPARE(m_series->mesh(), QAbstract3DSeries::MeshSphere);
-    QCOMPARE(m_series->type(), QAbstract3DSeries::SeriesTypeSurface);
+    QCOMPARE(m_series->mesh(), QAbstract3DSeries::Mesh::Sphere);
+    QCOMPARE(m_series->type(), QAbstract3DSeries::SeriesType::Surface);
 }
 
 void tst_series::initializeProperties()
@@ -89,16 +89,16 @@ void tst_series::initializeProperties()
     QCOMPARE(m_series->wireframeColor(), QColor(Qt::red));
 
     // Common properties. The ones identical between different series are tested in QBar3DSeries tests
-    m_series->setMesh(QAbstract3DSeries::MeshPyramid);
+    m_series->setMesh(QAbstract3DSeries::Mesh::Pyramid);
 
-    QCOMPARE(m_series->mesh(), QAbstract3DSeries::MeshPyramid);
+    QCOMPARE(m_series->mesh(), QAbstract3DSeries::Mesh::Pyramid);
 }
 
 void tst_series::invalidProperties()
 {
-    m_series->setMesh(QAbstract3DSeries::MeshPoint);
+    m_series->setMesh(QAbstract3DSeries::Mesh::Point);
 
-    QCOMPARE(m_series->mesh(), QAbstract3DSeries::MeshSphere);
+    QCOMPARE(m_series->mesh(), QAbstract3DSeries::Mesh::Sphere);
 }
 
 QTEST_MAIN(tst_series)

@@ -13,9 +13,10 @@
 #include <iterator>
 #include <type_traits>
 
+#include "core/fxcrt/fx_memcpy_wrappers.h"
 #include "core/fxcrt/fx_system.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
 namespace fxcrt {
 
@@ -214,7 +215,7 @@ class StringViewTemplate {
     if (!IsValidIndex(first + count - 1))
       return StringViewTemplate();
 
-    return StringViewTemplate(m_Span.data() + first, count);
+    return StringViewTemplate(m_Span.subspan(first, count));
   }
 
   StringViewTemplate First(size_t count) const {

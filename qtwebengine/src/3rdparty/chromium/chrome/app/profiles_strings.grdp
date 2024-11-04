@@ -2,12 +2,6 @@
 <!-- Profiles specific strings (included from generated_resources.grd). -->
 <grit-part>
   <!-- Supervised User (Legacy and Accounts for Kids) Avatar Menu -->
-  <message name="IDS_CHILD_INFO_ONE_CUSTODIAN" desc="Text which explains that a child user is managed by a single parent.">
-    This is an account for kids managed by <ph name="CUSTODIAN_EMAIL">$1<ex>Jane.Doe@gmail.com</ex></ph>.
-  </message>
-  <message name="IDS_CHILD_INFO_TWO_CUSTODIANS" desc="Text which explains that a child user is managed by two parents.">
-    This is an account for kids managed by <ph name="CUSTODIAN_EMAIL">$1<ex>John.Doe@gmail.com</ex></ph> and <ph name="SECOND_CUSTODIAN_EMAIL">$2<ex>Jane.Doe@gmail.com</ex></ph>.
-  </message>
   <message name="IDS_AVATAR_BUTTON_GUEST" desc="Short label for the avatar button when the user is in guest mode and the number of open guest windows if there are more than one guest window open. [ICU Syntax]" meaning="This window is browsing in guest mode and there are more than one guest windows open. The counter is not shown when there is only one guest window open.">
     {0, plural,
       =1 {Guest}
@@ -46,12 +40,6 @@
   </message>
   <message name="IDS_AVATAR_BUTTON_SYNC_PAUSED" desc="Short label for the avatar button when sync is paused for the current profile." meaning="Sync is paused">
     Paused
-  </message>
-
-  <!-- Supervised User Block Interstitial data -->
-   <message name="IDS_BLOCK_INTERSTITIAL_DEFAULT_FEEDBACK_TEXT" desc="The default text for feedback about a blocked site.">
-    <ph name="REASON">$1<ex>It may have mature content.</ex></ph>
-    I don't think this site should be blocked!
   </message>
 
   <!-- Multi-profile -->
@@ -115,9 +103,6 @@
   </message>
   <message name="IDS_PROFILES_SIGNIN_PROMO" desc="Text describing the benefits of signing in.">
     Sign in to get your bookmarks, history, passwords, and other settings on all your devices.
-  </message>
-  <message name="IDS_PROFILES_PASSWORDS_LINK" desc="Text of the menu item leading to the list of saved passwords.">
-    Passwords
   </message>
   <message name="IDS_PROFILES_CREDIT_CARDS_LINK" desc="Text of the menu item leading to the list of saved credit cards.">
     Payment methods
@@ -614,8 +599,8 @@
     <message name="IDS_PROFILE_PICKER_REMOVE_WARNING_HISTORY" desc="The title of a statistic (browsing history) shown inside a table below the warning text when attempting to remove an user. A number is displayed next to it.">
       Browsing history
     </message>
-    <message name="IDS_PROFILE_PICKER_REMOVE_WARNING_PASSWORDS" desc="The title of a statistic (passwords) shown inside a table below the warning text when attempting to remove a profile. A number is displayed next to it.">
-      Passwords
+    <message name="IDS_PROFILE_PICKER_REMOVE_WARNING_PASSWORDS" desc="The title of a statistic (sign-in methods) shown inside a table below the warning text when attempting to remove a profile. A number is displayed next to it.">
+      Sign-in methods
     </message>
     <message name="IDS_PROFILE_PICKER_REMOVE_WARNING_BOOKMARKS" desc="The title of a statistic (bookmarks) shown inside a table below the warning text when attempting to remove a profile. A number is displayed next to it.">
       Bookmarks
@@ -632,26 +617,14 @@
     <message name="IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_NOT_NOW_BUTTON_LABEL" desc="Label for a button to decline a prompt to sign in">
       Continue without an account
     </message>
+    <!-- TODO(crbug.com/1442940): Update the string ids for local profile
+         creatiom since they are now used outside the Profile Picker, in
+         Profile Customization UI instead. -->
     <message name="IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_CUSTOMIZE_AVATAR_BUTTON_LABEL" desc="Accessibility label for edit avatar button when the pencil icon is focused that is not rendered.">
       Customize avatar
     </message>
-    <message name="IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_THEME_TEXT" desc="Text of a section to pick a color for the profile.">
-      Pick a theme color
-    </message>
     <message name="IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_AVATAR_TEXT" desc="Text of a section to pick an avatar for the profile.">
       Pick an avatar
-    </message>
-    <message name="IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_DONE" desc="Label of a button to finish the profile creation.">
-      Done
-    </message>
-    <message name="IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_AVATAR_DONE" desc="Label of a button to close avatar selection.">
-      Done
-    </message>
-    <message name="IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_INPUT_NAME" desc="Name of the input to configure the profile name in the profile customization window.">
-      Add a name or a label like Work, Personal, or Kids
-    </message>
-    <message name="IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_LOCAL_PROFILE_CREATION_SHORTCUT_TEXT" desc="Text of a box creating a desktop shortcut for the profile.">
-      Create a desktop shortcut
     </message>
     <message name="IDS_PROFILE_PICKER_TAKE_A_TOUR_BUTTON_LABEL" desc="Label of a button that starts a tour for the picker using IPH bubbles.">
       Take a tour
@@ -766,12 +739,22 @@
         desc="This is the body text in one of three cards that represent the top benefits for why a user should sign in to Chrome with a Google Account. The cards appear on a full-page screen when the user launches Chrome for the first time. The body is preceded by the headline 'Back up data'. This card's body means that users can back up their data (like bookmarks, history, passwords, settings) so that the data can't get lost if a device malfunctions. Translate 'bookmarks' according to https://localization.google.com/glossary/termset?gid=27517723&amp;tsid=59c31bb . Translate 'passwords' as the plural version of https://localization.google.com/glossary/termset?gid=27517723&amp;tsid=281e09e1 . Translate 'and more' so that it conveys that there are additional similar items that are not listed. The tone should be informative.">
         Save your bookmarks, passwords and more with sync
       </message>
-      <message name="IDS_FRE_DECLINE_SIGN_IN_BUTTON_TITLE" desc="The title of the button giving the users the choice not to sign in to Chrome">
-        Don't sign in
-      </message>
-      <message name="IDS_FRE_ACCEPT_SIGN_IN_BUTTON_TITLE" desc="The title of the button giving the users the choice to sign in to Chrome">
-        Sign in
-      </message>
+      <if expr="not use_titlecase">
+        <message name="IDS_FRE_DECLINE_SIGN_IN_BUTTON_TITLE" desc="The title of the button giving the users the choice not to sign in to Chrome">
+          Don't sign in
+        </message>
+        <message name="IDS_FRE_ACCEPT_SIGN_IN_BUTTON_TITLE" desc="The title of the button giving the users the choice to sign in to Chrome">
+          Sign in
+        </message>
+      </if>
+      <if expr="use_titlecase">
+        <message name="IDS_FRE_DECLINE_SIGN_IN_BUTTON_TITLE" desc="In Title Case. The title of the button giving the users the choice not to sign in to Chrome">
+          Don't Sign In
+        </message>
+        <message name="IDS_FRE_ACCEPT_SIGN_IN_BUTTON_TITLE" desc="In Title Case. The title of the button giving the users the choice to sign in to Chrome">
+          Sign In
+        </message>
+      </if>
       <message name="IDS_FRE_MANAGED_DESCRIPTION" desc="The disclaimer explaining to the users that their device is managed by their organization">
         Your device is managed by your organization. Administrators can access the data in any profile on this device.
       </message>
@@ -779,6 +762,20 @@
         Your device is managed by <ph name="DOMAIN">$1<ex>example.com</ex></ph>. Administrators can access the data in any profile on this device.
       </message>
     </if>
+
+    <!-- Default Browser Promo -->
+    <message name="IDS_FRE_DEFAULT_BROWSER_TITLE_NEW" desc="Title for the page that prompts user to set Chrome as their default browser in the first run experience.">
+      Set your default browser
+    </message>
+    <message name="IDS_FRE_DEFAULT_BROWSER_SUBTITLE" desc="Subtitle for the page that prompts user to set Chrome as their default browser in the first run experience.">
+      Get Google Search and Google smarts every time you browse
+    </message>
+    <message name="IDS_FRE_DEFAULT_BROWSER_SET_AS_DEFAULT" desc="The label for a button to confirm setting Chrome as their default browser.">
+      Set as default
+    </message>
+    <message name="IDS_FRE_DEFAULT_BROWSER_SKIP" desc="The label for a button to skip setting Chrome as their default browser.">
+      Skip
+    </message>
 
   </if>
 </grit-part>

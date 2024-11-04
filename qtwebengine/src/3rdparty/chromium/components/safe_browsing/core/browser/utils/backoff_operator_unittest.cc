@@ -25,9 +25,12 @@ class BackoffOperatorTest : public PlatformTest {
         kMaxBackOffResetDurationInSeconds);
   }
 
-  void ReportError() { backoff_operator_->ReportError(); }
+  bool ReportError() { return backoff_operator_->ReportError(); }
   void ReportSuccess() { backoff_operator_->ReportSuccess(); }
   bool IsInBackoffMode() { return backoff_operator_->IsInBackoffMode(); }
+  base::TimeDelta GetBackoffRemainingDuration() {
+    return backoff_operator_->GetBackoffRemainingDuration();
+  }
 
   std::unique_ptr<BackoffOperator> backoff_operator_;
   base::test::TaskEnvironment task_environment_{
@@ -37,30 +40,40 @@ class BackoffOperatorTest : public PlatformTest {
 TEST_F(BackoffOperatorTest, TestBackoffAndTimerReset) {
   // Not in backoff at the beginning.
   ASSERT_FALSE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(0));
 
   // Failure 1: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 2: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 3: Entered backoff.
-  ReportError();
+  EXPECT_TRUE(ReportError());
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(300));
 
   // Backoff not reset after 1 second.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(299));
 
   // Backoff not reset after 299 seconds.
   task_environment_.FastForwardBy(base::Seconds(298));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1));
 
   // Backoff should have been reset after 300 seconds.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_FALSE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(0));
+
+  // Backoff should still be reset after 310 seconds.
+  task_environment_.FastForwardBy(base::Seconds(10));
+  EXPECT_FALSE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(0));
 }
 
 TEST_F(BackoffOperatorTest, TestBackoffAndRequestSuccessReset) {
@@ -68,7 +81,7 @@ TEST_F(BackoffOperatorTest, TestBackoffAndRequestSuccessReset) {
   ASSERT_FALSE(IsInBackoffMode());
 
   // Failure 1: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Request success resets the backoff counter.
@@ -76,11 +89,11 @@ TEST_F(BackoffOperatorTest, TestBackoffAndRequestSuccessReset) {
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 1: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 2: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Request success resets the backoff counter.
@@ -88,15 +101,15 @@ TEST_F(BackoffOperatorTest, TestBackoffAndRequestSuccessReset) {
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 1: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 2: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 3: Entered backoff.
-  ReportError();
+  EXPECT_TRUE(ReportError());
   EXPECT_TRUE(IsInBackoffMode());
 
   // Request success resets the backoff counter.
@@ -113,24 +126,27 @@ TEST_F(BackoffOperatorTest, TestExponentialBackoff) {
   ASSERT_FALSE(IsInBackoffMode());
 
   // Failure 1: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 2: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 3: Entered backoff.
-  ReportError();
+  EXPECT_TRUE(ReportError());
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(300));
 
   // Backoff not reset after 1 second.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(299));
 
   // Backoff not reset after 299 seconds.
   task_environment_.FastForwardBy(base::Seconds(298));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1));
 
   // Backoff should have been reset after 300 seconds.
   task_environment_.FastForwardBy(base::Seconds(1));
@@ -140,93 +156,109 @@ TEST_F(BackoffOperatorTest, TestExponentialBackoff) {
   // Exponential backoff 1: 600 seconds
   /////////////////////////////////////
 
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
-  ReportError();
+  EXPECT_TRUE(ReportError());
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(600));
 
   // Backoff not reset after 1 second.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(599));
 
   // Backoff not reset after 599 seconds.
   task_environment_.FastForwardBy(base::Seconds(598));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1));
 
   // Backoff should have been reset after 600 seconds.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_FALSE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(0));
 
   //////////////////////////////////////
   // Exponential backoff 2: 1200 seconds
   //////////////////////////////////////
 
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
-  ReportError();
+  EXPECT_TRUE(ReportError());
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1200));
 
   // Backoff not reset after 1 second.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1199));
 
   // Backoff not reset after 1199 seconds.
   task_environment_.FastForwardBy(base::Seconds(1198));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1));
 
   // Backoff should have been reset after 1200 seconds.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_FALSE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(0));
 
   ///////////////////////////////////////////////////
   // Exponential backoff 3: 1800 seconds (30 minutes)
   ///////////////////////////////////////////////////
 
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
-  ReportError();
+  EXPECT_TRUE(ReportError());
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1800));
 
   // Backoff not reset after 1 second.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1799));
 
   // Backoff not reset after 1799 seconds.
   task_environment_.FastForwardBy(base::Seconds(1798));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1));
 
   // Backoff should have been reset after 1800 seconds.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_FALSE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(0));
 
   ///////////////////////////////////////////////////
   // Exponential backoff 4: 1800 seconds (30 minutes)
   ///////////////////////////////////////////////////
 
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
-  ReportError();
+  EXPECT_TRUE(ReportError());
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1800));
 
   // Backoff not reset after 1 second.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1799));
 
   // Backoff not reset after 1799 seconds.
   task_environment_.FastForwardBy(base::Seconds(1798));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1));
 
   // Backoff should have been reset after 1800 seconds.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_FALSE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(0));
 }
 
 TEST_F(BackoffOperatorTest, TestExponentialBackoffWithResetOnSuccess) {
@@ -238,79 +270,91 @@ TEST_F(BackoffOperatorTest, TestExponentialBackoffWithResetOnSuccess) {
   ASSERT_FALSE(IsInBackoffMode());
 
   // Failure 1: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 2: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 3: Entered backoff.
-  ReportError();
+  EXPECT_TRUE(ReportError());
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(300));
 
   // Backoff not reset after 1 second.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(299));
 
   // Backoff not reset after 299 seconds.
   task_environment_.FastForwardBy(base::Seconds(298));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1));
 
   // Backoff should have been reset after 300 seconds.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_FALSE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(0));
 
   /////////////////////////////////////
   // Exponential backoff 1: 600 seconds
   /////////////////////////////////////
 
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
-  ReportError();
+  EXPECT_TRUE(ReportError());
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(600));
 
   // Backoff not reset after 1 second.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(599));
 
   // Backoff not reset after 599 seconds.
   task_environment_.FastForwardBy(base::Seconds(598));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1));
 
   // Backoff should have been reset after 600 seconds.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_FALSE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(0));
 
   // The next request is a success. This should reset the backoff duration to
   // |min_backoff_reset_duration_in_seconds_|
   ReportSuccess();
 
   // Failure 1: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 2: No backoff.
-  ReportError();
+  EXPECT_FALSE(ReportError());
   EXPECT_FALSE(IsInBackoffMode());
 
   // Failure 3: Entered backoff.
-  ReportError();
+  EXPECT_TRUE(ReportError());
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(300));
 
   // Backoff not reset after 1 second.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(299));
 
   // Backoff not reset after 299 seconds.
   task_environment_.FastForwardBy(base::Seconds(298));
   EXPECT_TRUE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(1));
 
   // Backoff should have been reset after 300 seconds.
   task_environment_.FastForwardBy(base::Seconds(1));
   EXPECT_FALSE(IsInBackoffMode());
+  EXPECT_EQ(GetBackoffRemainingDuration(), base::Seconds(0));
 }
 
 }  // namespace safe_browsing

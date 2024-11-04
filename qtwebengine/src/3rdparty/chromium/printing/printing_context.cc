@@ -201,7 +201,7 @@ mojom::ResultCode PrintingContext::UpdatePrintSettingsFromPOD(
 }
 #endif
 
-void PrintingContext::ApplyPrintSettings(const PrintSettings& settings) {
+void PrintingContext::SetPrintSettings(const PrintSettings& settings) {
   *settings_ = settings;
 }
 

@@ -8,7 +8,6 @@
 #include <QtGraphs/qlogvalue3daxisformatter.h>
 #include <QtGraphs/qbardataproxy.h>
 #include <QtGraphs/q3dscene.h>
-#include <QtGraphs/q3dcamera.h>
 #include <QtGraphs/q3dtheme.h>
 #include <QtGraphs/q3dinputhandler.h>
 #include <QtGraphs/qcustom3ditem.h>
@@ -57,7 +56,7 @@ GraphModifier::GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog)
       m_useNullInputHandler(false),
       m_defaultInputHandler(0),
       m_ownTheme(0),
-      m_builtinTheme(new Q3DTheme(Q3DTheme::ThemeStoneMoss)),
+      m_builtinTheme(new Q3DTheme(Q3DTheme::Theme::StoneMoss)),
       m_customInputHandler(new CustomInputHandler),
       m_extraSeries(0)
 {
@@ -122,7 +121,7 @@ GraphModifier::GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog)
     m_graph->addAxis(m_genericColumnAxis);
 
     m_graph->setActiveTheme(m_builtinTheme);
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQualitySoftMedium);
+    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::SoftMedium);
 
     m_temperatureData->setName("Oulu");
     m_temperatureData2->setName("Helsinki");
@@ -313,7 +312,8 @@ void GraphModifier::releaseAxes()
 
 void GraphModifier::releaseSeries()
 {
-    foreach (QBar3DSeries *series, m_graph->seriesList())
+    const auto barSeriesList = m_graph->seriesList();
+    for (const auto &series : barSeriesList)
         m_graph->removeSeries(series);
 }
 
@@ -348,19 +348,19 @@ void GraphModifier::createMassiveArray()
             genericRowLabels << QStringLiteral("Row %1").arg(i);
     }
 
-    QBarDataArray *dataArray = new QBarDataArray;
-    dataArray->reserve(arrayDimension);
+    QBarDataArray dataArray;
+    dataArray.reserve(arrayDimension);
     for (int i = 0; i < arrayDimension; i++) {
-        QBarDataRow *dataRow = new QBarDataRow(arrayDimension);
+        QBarDataRow dataRow(arrayDimension);
         for (int j = 0; j < arrayDimension; j++) {
             if (!m_negativeValuesOn)
-                (*dataRow)[j].setValue((float(i % 300 + 1) / 300.0)
+                dataRow[j].setValue((float(i % 300 + 1) / 300.0)
                                        * QRandomGenerator::global()->bounded(m_maxval));
             else
-                (*dataRow)[j].setValue((float(i % 300 + 1) / 300.0)
+                dataRow[j].setValue((float(i % 300 + 1) / 300.0)
                                        * QRandomGenerator::global()->bounded(m_maxval) + m_minval);
         }
-        dataArray->append(dataRow);
+        dataArray.append(dataRow);
     }
 
     m_genericData->dataProxy()->resetArray(dataArray, genericRowLabels, genericColumnLabels);
@@ -382,36 +382,35 @@ void GraphModifier::resetTemperatureData()
     };
 
     // Create data rows
-    QBarDataArray *dataSet = new QBarDataArray;
-    QBarDataRow *dataRow;
+    QBarDataArray dataSet;
 
-    dataSet->reserve(m_years.size());
+    dataSet.reserve(m_years.size());
     for (int year = 0; year < m_years.size(); year++) {
-        dataRow = new QBarDataRow(m_months.size());
+        QBarDataRow dataRow(m_months.size());
         // Create data items
         for (int month = 0; month < m_months.size(); month++) {
             // Add data to rows
-            (*dataRow)[month].setValue(temp[year][month]);
+            dataRow[month].setValue(temp[year][month]);
         }
         // Add row to set
-        dataSet->append(dataRow);
+        dataSet.append(dataRow);
     }
 
-    QBarDataArray *dataSet2 = new QBarDataArray;
+    QBarDataArray dataSet2;
 
-    dataSet2->reserve(m_years.size());
+    dataSet2.reserve(m_years.size());
     for (int year = m_years.size() - 1; year >= 0; year--) {
-        dataRow = new QBarDataRow(m_months.size());
+        QBarDataRow dataRow(m_months.size());
         // Create data items
         for (int month = m_months.size() - 1; month >= 0 ; month--) {
             // Add data to rows
-            (*dataRow)[month].setValue(temp[year][month]);
+            dataRow[month].setValue(temp[year][month]);
         }
         // Add row to set
-        dataSet2->append(dataRow);
+        dataSet2.append(dataRow);
     }
 
-    // Add data to chart (chart assumes ownership)
+    // Add data to graph (graph assumes ownership)
     m_temperatureData->dataProxy()->resetArray(dataSet, m_years, m_months);
     m_temperatureData2->dataProxy()->resetArray(dataSet2, m_years, m_months);
 }
@@ -423,13 +422,13 @@ static int changeCounter = 0;
 
 void GraphModifier::addRow()
 {
-    QBarDataRow *dataRow = new QBarDataRow(m_columnCount);
+    QBarDataRow dataRow(m_columnCount);
     for (float i = 0; i < m_columnCount; i++) {
         if (!m_negativeValuesOn)
-            (*dataRow)[i].setValue(((i + 1) / (float)m_columnCount)
+            dataRow[i].setValue(((i + 1) / (float)m_columnCount)
                                    * QRandomGenerator::global()->bounded(m_maxval));
         else
-            (*dataRow)[i].setValue(((i + 1) / (float)m_columnCount)
+            dataRow[i].setValue(((i + 1) / (float)m_columnCount)
                                    * QRandomGenerator::global()->bounded(m_maxval)
                                    - QRandomGenerator::global()->bounded(m_minval));
     }
@@ -444,9 +443,9 @@ void GraphModifier::addRows()
     QBarDataArray dataArray;
     QStringList labels;
     for (int i = 0; i < m_rowCount; i++) {
-        QBarDataRow *dataRow = new QBarDataRow(m_columnCount);
+        QBarDataRow dataRow(m_columnCount);
         for (int j = 0; j < m_columnCount; j++)
-            (*dataRow)[j].setValue(float(j + i + m_genericData->dataProxy()->rowCount()) + m_minval);
+            dataRow[j].setValue(float(j + i + m_genericData->dataProxy()->rowCount()) + m_minval);
         dataArray.append(dataRow);
         labels.append(QStringLiteral("Add %1").arg(addCounter++));
     }
@@ -457,9 +456,9 @@ void GraphModifier::addRows()
 
 void GraphModifier::insertRow()
 {
-    QBarDataRow *dataRow = new QBarDataRow(m_columnCount);
+    QBarDataRow dataRow(m_columnCount);
     for (float i = 0; i < m_columnCount; i++)
-        (*dataRow)[i].setValue(((i + 1) / (float)m_columnCount)
+        dataRow[i].setValue(((i + 1) / (float)m_columnCount)
                                * QRandomGenerator::global()->bounded(m_maxval) + m_minval);
 
     // TODO Needs to be changed to account for data window offset once it is implemented.
@@ -475,9 +474,9 @@ void GraphModifier::insertRows()
     QBarDataArray dataArray;
     QStringList labels;
     for (int i = 0; i < m_rowCount; i++) {
-        QBarDataRow *dataRow = new QBarDataRow(m_columnCount);
+        QBarDataRow dataRow(m_columnCount);
         for (int j = 0; j < m_columnCount; j++)
-            (*dataRow)[j].setValue(float(j + i + m_genericData->dataProxy()->rowCount()) + m_minval);
+            dataRow[j].setValue(float(j + i + m_genericData->dataProxy()->rowCount()) + m_minval);
         dataArray.append(dataRow);
         labels.append(QStringLiteral("Insert %1").arg(insertCounter++));
     }
@@ -504,9 +503,9 @@ void GraphModifier::changeRow()
     // TODO Needs to be changed to account for data window offset once it is implemented.
     int row = m_selectedBar.x();
     if (row >= 0) {
-        QBarDataRow *newRow = new QBarDataRow(m_genericData->dataProxy()->rowAt(row)->size());
-        for (int i = 0; i < newRow->size(); i++)
-            (*newRow)[i].setValue(QRandomGenerator::global()->bounded(m_maxval) + m_minval);
+        QBarDataRow newRow(m_genericData->dataProxy()->rowAt(row).size());
+        for (int i = 0; i < newRow.size(); i++)
+            newRow[i].setValue(QRandomGenerator::global()->bounded(m_maxval) + m_minval);
         QString label = QStringLiteral("Change %1").arg(changeCounter++);
         m_genericData->dataProxy()->setRow(row, newRow, label);
     }
@@ -521,9 +520,9 @@ void GraphModifier::changeRows()
         QBarDataArray newArray;
         QStringList labels;
         for (int i = startRow; i <= row; i++ ) {
-            QBarDataRow *newRow = new QBarDataRow(m_genericData->dataProxy()->rowAt(i)->size());
-            for (int j = 0; j < newRow->size(); j++)
-                (*newRow)[j].setValue(QRandomGenerator::global()->bounded(m_maxval) + m_minval);
+            QBarDataRow newRow(m_genericData->dataProxy()->rowAt(i).size());
+            for (int j = 0; j < newRow.size(); j++)
+                newRow[j].setValue(QRandomGenerator::global()->bounded(m_maxval) + m_minval);
             newArray.append(newRow);
             labels.append(QStringLiteral("Change %1").arg(changeCounter++));
         }
@@ -554,43 +553,43 @@ void GraphModifier::changeStyle()
     static int model = 0;
     switch (model) {
     case 0:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshCylinder);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Cylinder);
         m_graph->seriesList().at(0)->setMeshSmooth(false);
         break;
     case 1:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshCylinder);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Cylinder);
         m_graph->seriesList().at(0)->setMeshSmooth(true);
         break;
     case 2:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshCone);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Cone);
         m_graph->seriesList().at(0)->setMeshSmooth(false);
         break;
     case 3:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshCone);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Cone);
         m_graph->seriesList().at(0)->setMeshSmooth(true);
         break;
     case 4:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshBar);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Bar);
         m_graph->seriesList().at(0)->setMeshSmooth(false);
         break;
     case 5:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshBar);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Bar);
         m_graph->seriesList().at(0)->setMeshSmooth(true);
         break;
     case 6:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshPyramid);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Pyramid);
         m_graph->seriesList().at(0)->setMeshSmooth(false);
         break;
     case 7:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshPyramid);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Pyramid);
         m_graph->seriesList().at(0)->setMeshSmooth(true);
         break;
     case 8:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshBevelBar);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::BevelBar);
         m_graph->seriesList().at(0)->setMeshSmooth(false);
         break;
     case 9:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::MeshBevelBar);
+        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::BevelBar);
         m_graph->seriesList().at(0)->setMeshSmooth(true);
         break;
     }
@@ -601,17 +600,17 @@ void GraphModifier::changeStyle()
 
 void GraphModifier::changePresetCamera()
 {
-    static int preset = Q3DCamera::CameraPresetFrontLow;
+    static int preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
 
-    m_graph->scene()->activeCamera()->setCameraPreset((Q3DCamera::CameraPreset)preset);
+    m_graph->setCameraPreset((QAbstract3DGraph::CameraPreset)preset);
 
-    if (++preset > Q3DCamera::CameraPresetDirectlyBelow)
-        preset = Q3DCamera::CameraPresetFrontLow;
+    if (++preset > int(QAbstract3DGraph::CameraPreset::DirectlyBelow))
+        preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
 }
 
 void GraphModifier::changeTheme()
 {
-    static int theme = Q3DTheme::ThemeQt;
+    static int theme = int(Q3DTheme::Theme::Qt);
 
     Q3DTheme *currentTheme = m_graph->activeTheme();
     m_builtinTheme->setType(Q3DTheme::Theme(theme));
@@ -619,37 +618,34 @@ void GraphModifier::changeTheme()
         m_graph->setActiveTheme(m_builtinTheme);
 
     switch (theme) {
-    case Q3DTheme::ThemeQt:
-        qDebug() << __FUNCTION__ << "ThemeQt";
+    case int(Q3DTheme::Theme::Qt):
+        qDebug() << __FUNCTION__ << "Qt";
         break;
-    case Q3DTheme::ThemePrimaryColors:
-        qDebug() << __FUNCTION__ << "ThemePrimaryColors";
+    case int(Q3DTheme::Theme::PrimaryColors):
+        qDebug() << __FUNCTION__ << "PrimaryColors";
         break;
-    case Q3DTheme::ThemeDigia:
-        qDebug() << __FUNCTION__ << "ThemeDigia";
+    case int(Q3DTheme::Theme::StoneMoss):
+        qDebug() << __FUNCTION__ << "StoneMoss";
         break;
-    case Q3DTheme::ThemeStoneMoss:
-        qDebug() << __FUNCTION__ << "ThemeStoneMoss";
+    case int(Q3DTheme::Theme::ArmyBlue):
+        qDebug() << __FUNCTION__ << "ArmyBlue";
         break;
-    case Q3DTheme::ThemeArmyBlue:
-        qDebug() << __FUNCTION__ << "ThemeArmyBlue";
+    case int(Q3DTheme::Theme::Retro):
+        qDebug() << __FUNCTION__ << "Retro";
         break;
-    case Q3DTheme::ThemeRetro:
-        qDebug() << __FUNCTION__ << "ThemeRetro";
+    case int(Q3DTheme::Theme::Ebony):
+        qDebug() << __FUNCTION__ << "Ebony";
         break;
-    case Q3DTheme::ThemeEbony:
-        qDebug() << __FUNCTION__ << "ThemeEbony";
-        break;
-    case Q3DTheme::ThemeIsabelle:
-        qDebug() << __FUNCTION__ << "ThemeIsabelle";
+    case int(Q3DTheme::Theme::Isabelle):
+        qDebug() << __FUNCTION__ << "Isabelle";
         break;
     default:
         qDebug() << __FUNCTION__ << "Unknown theme";
         break;
     }
 
-    if (++theme > Q3DTheme::ThemeIsabelle)
-        theme = Q3DTheme::ThemeQt;
+    if (++theme > int(Q3DTheme::Theme::Isabelle))
+        theme = int(Q3DTheme::Theme::Qt);
 }
 
 void GraphModifier::changeLabelStyle()
@@ -695,7 +691,9 @@ void GraphModifier::handleSelectionChange(const QPoint &position)
 {
     m_selectedBar = position;
     int index = 0;
-    foreach (QBar3DSeries *series, m_graph->seriesList()) {
+
+    const auto barSeriesList = m_graph->seriesList();
+    for (const auto &series : barSeriesList) {
         if (series == sender()) {
             if (series->selectedBar() != QBar3DSeries::invalidSelectionPosition())
                 m_selectedSeries = series;
@@ -757,7 +755,7 @@ void GraphModifier::showFiveSeries()
     releaseAxes();
     m_graph->setSelectionMode(QAbstract3DGraph::SelectionItemRowAndColumn | QAbstract3DGraph::SelectionMultiSeries);
 
-    m_dummyData->dataProxy()->resetArray(makeDummyData(), QStringList(), QStringList());
+    m_dummyData->dataProxy()->resetArray(makeDummyData());
     m_dummyData2->dataProxy()->resetArray(makeDummyData(), QStringList(), QStringList());
     m_dummyData3->dataProxy()->resetArray(makeDummyData(), QStringList(), QStringList());
     m_dummyData4->dataProxy()->resetArray(makeDummyData(), QStringList(), QStringList());
@@ -774,7 +772,7 @@ void GraphModifier::showFiveSeries()
         m_graph->addSeries(m_dummyData5);
 }
 
-QBarDataArray *GraphModifier::makeDummyData()
+QBarDataArray GraphModifier::makeDummyData()
 {
     // Set up data
     static const float temp[4][4] = {
@@ -785,19 +783,19 @@ QBarDataArray *GraphModifier::makeDummyData()
     };
 
     // Create data rows
-    QBarDataArray *dataSet = new QBarDataArray;
-    QBarDataRow *dataRow;
+    QBarDataArray dataSet;
+    QBarDataRow dataRow;
 
-    dataSet->reserve(4);
+    dataSet.reserve(4);
     for (int i = 0; i < 4; i++) {
-        dataRow = new QBarDataRow(4);
+        dataRow.resize(4);
         // Create data items
         for (int j = 0; j < 4; j++) {
             // Add data to rows
-            (*dataRow)[j].setValue(temp[i][j]);
+            dataRow[j].setValue(temp[i][j]);
         }
         // Add row to set
-        dataSet->append(dataRow);
+        dataSet.append(dataRow);
     }
     return dataSet;
 }
@@ -1146,12 +1144,12 @@ void GraphModifier::addRemoveSeries()
         break;
     case 1: {
         qDebug() << __FUNCTION__ << counter << "Add data to series";
-        QBarDataArray *array = new QBarDataArray;
-        array->reserve(5);
+        QBarDataArray array;
+        array.reserve(5);
         for (int i = 0; i < 5; i++) {
-            array->append(new QBarDataRow(10));
+            array.append(QBarDataRow(10));
             for (int j = 0; j < 10; j++)
-                (*array->at(i))[j].setValue(i * j);
+               array[i][j].setValue(i * j);
         }
         m_extraSeries->dataProxy()->resetArray(array);
     }
@@ -1166,9 +1164,9 @@ void GraphModifier::addRemoveSeries()
         QBarDataArray array;
         array.reserve(5);
         for (int i = 0; i < 5; i++) {
-            array.append(new QBarDataRow(10));
+            array.append(QBarDataRow(10));
             for (int j = 0; j < 10; j++)
-                (*array.at(i))[j].setValue(2 * i * j);
+                array[i][j].setValue(2 * i * j);
         }
         m_extraSeries->dataProxy()->addRows(array);
     }
@@ -1385,7 +1383,7 @@ void GraphModifier::testItemAndRowChanges(bool checked)
         qDebug() << __FUNCTION__ << counter << "Change row to different length";
         series0->dataProxy()->setRow(4, createFlatRow(5, 20.0f));
         series1->dataProxy()->setRow(4, createFlatRow(0, 20.0f));
-        series2->dataProxy()->setRow(4, 0);
+        series2->dataProxy()->setRow(4, QBarDataRow());
     }
         break;
     case 19: {
@@ -1436,9 +1434,9 @@ void GraphModifier::insertRemoveTimerTimeout()
 {
     if (m_insertRemoveStep < 32) {
         for (int k = 0; k < 1; k++) {
-            QBarDataRow *dataRow = new QBarDataRow(10);
+            QBarDataRow dataRow(10);
             for (float i = 0; i < 10; i++)
-                (*dataRow)[i].setValue(((i + 1) / 10.0f) * (float)(QRandomGenerator::global()->bounded(100)));
+                dataRow[i].setValue(((i + 1) / 10.0f) * (float)(QRandomGenerator::global()->bounded(100)));
 
             QString label = QStringLiteral("Insert %1").arg(insertCounter++);
             m_dummyData->dataProxy()->insertRow(0, dataRow, label);
@@ -1450,9 +1448,9 @@ void GraphModifier::insertRemoveTimerTimeout()
 
     if (m_insertRemoveStep < 16 || (m_insertRemoveStep > 31 && m_insertRemoveStep < 48)) {
         for (int k = 0; k < 2; k++) {
-            QBarDataRow *dataRow = new QBarDataRow(10);
+            QBarDataRow dataRow(10);
             for (float i = 0; i < 10; i++)
-                (*dataRow)[i].setValue(((i + 1) / 10.0f) * (float)(QRandomGenerator::global()->bounded(100)));
+                dataRow[i].setValue(((i + 1) / 10.0f) * (float)(QRandomGenerator::global()->bounded(100)));
 
             QString label = QStringLiteral("Insert %1").arg(insertCounter++);
             m_dummyData2->dataProxy()->insertRow(0, dataRow, label);
@@ -1476,7 +1474,7 @@ void GraphModifier::triggerRotation()
     if (m_selectedSeries) {
         QPoint selectedBar = m_selectedSeries->selectedBar();
         if (selectedBar != QBar3DSeries::invalidSelectionPosition()) {
-            QBarDataItem item(*(m_selectedSeries->dataProxy()->itemAt(selectedBar.x(), selectedBar.y())));
+            QBarDataItem item(m_selectedSeries->dataProxy()->itemAt(selectedBar.x(), selectedBar.y()));
             item.setRotation(item.rotation() + 1.0f);
             m_selectedSeries->dataProxy()->setItem(selectedBar.x(), selectedBar.y(), item);
         }
@@ -1503,7 +1501,7 @@ void GraphModifier::setCameraTargetX(int value)
 {
     // Value is (-100, 100), normalize
     m_cameraTarget.setX(float(value) / 100.0f);
-    m_graph->scene()->activeCamera()->setTarget(m_cameraTarget);
+    m_graph->setCameraTargetPosition(m_cameraTarget);
     qDebug() << "m_cameraTarget:" << m_cameraTarget;
 }
 
@@ -1511,7 +1509,7 @@ void GraphModifier::setCameraTargetY(int value)
 {
     // Value is (-100, 100), normalize
     m_cameraTarget.setY(float(value) / 100.0f);
-    m_graph->scene()->activeCamera()->setTarget(m_cameraTarget);
+    m_graph->setCameraTargetPosition(m_cameraTarget);
     qDebug() << "m_cameraTarget:" << m_cameraTarget;
 }
 
@@ -1519,7 +1517,7 @@ void GraphModifier::setCameraTargetZ(int value)
 {
     // Value is (-100, 100), normalize
     m_cameraTarget.setZ(float(value) / 100.0f);
-    m_graph->scene()->activeCamera()->setTarget(m_cameraTarget);
+    m_graph->setCameraTargetPosition(m_cameraTarget);
     qDebug() << "m_cameraTarget:" << m_cameraTarget;
 }
 
@@ -1537,13 +1535,13 @@ void GraphModifier::setGraphMargin(int value)
 
 void GraphModifier::populateFlatSeries(QBar3DSeries *series, int rows, int columns, float value)
 {
-    QBarDataArray *dataArray = new QBarDataArray;
-    dataArray->reserve(rows);
+    QBarDataArray dataArray;
+    dataArray.reserve(rows);
     for (int i = 0; i < rows; i++) {
-        QBarDataRow *dataRow = new QBarDataRow(columns);
+        QBarDataRow dataRow(columns);
         for (int j = 0; j < columns; j++)
-            (*dataRow)[j].setValue(value);
-        dataArray->append(dataRow);
+            dataRow[j].setValue(value);
+        dataArray.append(dataRow);
     }
     QStringList axisLabels;
     int count = qMax(rows, columns);
@@ -1553,11 +1551,11 @@ void GraphModifier::populateFlatSeries(QBar3DSeries *series, int rows, int colum
     series->dataProxy()->resetArray(dataArray, axisLabels, axisLabels);
 }
 
-QBarDataRow *GraphModifier::createFlatRow(int columns, float value)
+QBarDataRow GraphModifier::createFlatRow(int columns, float value)
 {
-    QBarDataRow *dataRow = new QBarDataRow(columns);
+    QBarDataRow dataRow(columns);
     for (int j = 0; j < columns; j++)
-        (*dataRow)[j].setValue(value);
+        dataRow[j].setValue(value);
     return dataRow;
 }
 
@@ -1574,13 +1572,13 @@ void GraphModifier::setGridEnabled(int enabled)
 void GraphModifier::rotateX(int rotation)
 {
     m_xRotation = rotation;
-    m_graph->scene()->activeCamera()->setCameraPosition(m_xRotation, m_yRotation);
+    m_graph->setCameraPosition(m_xRotation, m_yRotation);
 }
 
 void GraphModifier::rotateY(int rotation)
 {
     m_yRotation = rotation;
-    m_graph->scene()->activeCamera()->setCameraPosition(m_xRotation, m_yRotation);
+    m_graph->setCameraPosition(m_xRotation, m_yRotation);
 }
 
 void GraphModifier::setFpsMeasurement(int enable)
@@ -1655,10 +1653,10 @@ void GraphModifier::setMaxY(int max)
 void GraphModifier::changeColorStyle(bool checked)
 {
     Q_UNUSED(checked)
-    int style = m_graph->activeTheme()->colorStyle();
+    int style = int(m_graph->activeTheme()->colorStyle());
 
-    if (++style > Q3DTheme::ColorStyleRangeGradient)
-        style = Q3DTheme::ColorStyleUniform;
+    if (++style > int(Q3DTheme::ColorStyle::RangeGradient))
+        style = int(Q3DTheme::ColorStyle::Uniform);
 
     m_graph->activeTheme()->setColorStyle(Q3DTheme::ColorStyle(style));
 }
@@ -1676,9 +1674,8 @@ void GraphModifier::useOwnTheme(bool checked)
         QList<QColor> colors;
         colors.append(QColor(QRgb(0x209fdf)));
         m_ownTheme->setBaseColors(colors);
-        m_ownTheme->setColorStyle(Q3DTheme::ColorStyleUniform);
+        m_ownTheme->setColorStyle(Q3DTheme::ColorStyle::Uniform);
         m_ownTheme->setGridLineColor(QColor(QRgb(0x99ca53)));
-        m_ownTheme->setHighlightLightStrength(7.0f);
         m_ownTheme->setLabelBackgroundEnabled(true);
         m_ownTheme->setLabelBorderEnabled(true);
         m_ownTheme->setLightColor(Qt::white);
@@ -1736,23 +1733,12 @@ void GraphModifier::setGradient(bool checked)
     m_graph->activeTheme()->setSingleHighlightGradient(singleHighlightGradient);
     m_graph->activeTheme()->setMultiHighlightGradient(multiHighlightGradient);
 
-    m_graph->activeTheme()->setColorStyle(Q3DTheme::ColorStyleObjectGradient);
+    m_graph->activeTheme()->setColorStyle(Q3DTheme::ColorStyle::ObjectGradient);
 }
 
 void GraphModifier::toggleMultiseriesScaling()
 {
     m_graph->setMultiSeriesUniform(!m_graph->isMultiSeriesUniform());
-}
-
-void GraphModifier::setReflection(int enabled)
-{
-    m_graph->setReflection(enabled);
-}
-
-void GraphModifier::setReflectivity(int value)
-{
-    qreal reflectivity = (qreal)value / 100.0;
-    m_graph->setReflectivity(reflectivity);
 }
 
 void GraphModifier::toggleCustomItem()

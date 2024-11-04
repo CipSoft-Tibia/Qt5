@@ -177,6 +177,8 @@ class ServiceWorkerContextClient
                                   network::mojom::URLLoaderClientInterfaceBase>
                                   preload_url_loader_client_receiver) override;
   void RequestTermination(RequestTerminationCallback callback) override;
+  bool ShouldNotifyServiceWorkerOnWebSocketActivity(
+      v8::Local<v8::Context> context) override;
   scoped_refptr<blink::WebServiceWorkerFetchContext>
   CreateWorkerFetchContextOnInitiatorThread() override;
   void OnNavigationPreloadResponse(
@@ -298,6 +300,8 @@ class ServiceWorkerContextClient
   int32_t service_worker_route_id_;
 
   std::vector<std::string> cors_exempt_header_list_;
+
+  base::TimeTicks top_level_script_loading_start_time_ = base::TimeTicks::Now();
 };
 
 }  // namespace content

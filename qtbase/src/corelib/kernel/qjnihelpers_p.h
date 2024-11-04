@@ -19,12 +19,11 @@
 #include <functional>
 #include <QtCore/private/qglobal_p.h>
 #include <QtCore/qcoreapplication_platform.h>
-#include <QtCore/QJniEnvironment>
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_JNI_TYPE(Activity, "Landroid/app/Activity;")
-Q_DECLARE_JNI_TYPE(Service, "Landroid/app/Service;")
+Q_DECLARE_JNI_CLASS(Activity, "android/app/Activity")
+Q_DECLARE_JNI_CLASS(Service, "android/app/Service")
 
 namespace QtAndroidPrivate
 {
@@ -48,20 +47,6 @@ namespace QtAndroidPrivate
         virtual ~ResumePauseListener();
         virtual void handlePause();
         virtual void handleResume();
-    };
-
-    class Q_CORE_EXPORT GenericMotionEventListener
-    {
-    public:
-        virtual ~GenericMotionEventListener();
-        virtual bool handleGenericMotionEvent(jobject event) = 0;
-    };
-
-    class Q_CORE_EXPORT KeyEventListener
-    {
-    public:
-        virtual ~KeyEventListener();
-        virtual bool handleKeyEvent(jobject event) = 0;
     };
 
     class Q_CORE_EXPORT OnBindListener
@@ -96,12 +81,6 @@ namespace QtAndroidPrivate
     Q_CORE_EXPORT void handleResume();
     Q_CORE_EXPORT void registerResumePauseListener(ResumePauseListener *listener);
     Q_CORE_EXPORT void unregisterResumePauseListener(ResumePauseListener *listener);
-
-    Q_CORE_EXPORT void registerGenericMotionEventListener(GenericMotionEventListener *listener);
-    Q_CORE_EXPORT void unregisterGenericMotionEventListener(GenericMotionEventListener *listener);
-
-    Q_CORE_EXPORT void registerKeyEventListener(KeyEventListener *listener);
-    Q_CORE_EXPORT void unregisterKeyEventListener(KeyEventListener *listener);
 
     Q_CORE_EXPORT void waitForServiceSetup();
     Q_CORE_EXPORT int acuqireServiceSetup(int flags);

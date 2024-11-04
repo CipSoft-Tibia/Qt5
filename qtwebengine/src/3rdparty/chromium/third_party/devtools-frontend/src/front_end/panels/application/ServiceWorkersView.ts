@@ -198,7 +198,7 @@ export class ServiceWorkersView extends UI.Widget.VBox implements
     super(true);
 
     // TODO(crbug.com/1156978): Replace UI.ReportView.ReportView with ReportView.ts web component.
-    this.currentWorkersView = new UI.ReportView.ReportView(i18n.i18n.lockedString('Service Workers'));
+    this.currentWorkersView = new UI.ReportView.ReportView(i18n.i18n.lockedString('Service workers'));
     this.currentWorkersView.setBodyScrollable(false);
     this.contentElement.classList.add('service-worker-list');
     this.currentWorkersView.show(this.contentElement);
@@ -226,8 +226,9 @@ export class ServiceWorkersView extends UI.Widget.VBox implements
             .html`<a class="devtools-link" role="link" tabindex="0" href="chrome://serviceworker-internals" target="_blank" style="display: inline; cursor: pointer;">${
                 i18nString(UIStrings.seeAllRegistrations)}</a>`;
     self.onInvokeElement(seeOthers, event => {
-      const mainTarget = SDK.TargetManager.TargetManager.instance().mainTarget();
-      mainTarget && mainTarget.targetAgent().invoke_createTarget({url: 'chrome://serviceworker-internals?devtools'});
+      const rootTarget = SDK.TargetManager.TargetManager.instance().rootTarget();
+      rootTarget &&
+          void rootTarget.targetAgent().invoke_createTarget({url: 'chrome://serviceworker-internals?devtools'});
       event.consume(true);
     });
     othersSectionRow.appendChild(seeOthers);
@@ -277,7 +278,7 @@ export class ServiceWorkersView extends UI.Widget.VBox implements
   }
 
   modelAdded(serviceWorkerManager: SDK.ServiceWorkerManager.ServiceWorkerManager): void {
-    if (serviceWorkerManager.target() !== SDK.TargetManager.TargetManager.instance().mainFrameTarget()) {
+    if (serviceWorkerManager.target() !== SDK.TargetManager.TargetManager.instance().primaryPageTarget()) {
       return;
     }
     this.manager = serviceWorkerManager;
@@ -462,7 +463,7 @@ export class ServiceWorkersView extends UI.Widget.VBox implements
   private updateListVisibility(): void {
     this.contentElement.classList.toggle('service-worker-list-empty', this.sections.size === 0);
   }
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([
       serviceWorkersViewStyles,
@@ -554,7 +555,7 @@ export class Section {
 
     editor.value = initialValue;
     editor.placeholder = placeholder;
-    UI.ARIAUtils.setAccessibleName(editor, label);
+    UI.ARIAUtils.setLabel(editor, label);
 
     form.addEventListener('submit', (e: Event) => {
       callback(editor.value || '');
@@ -612,10 +613,14 @@ export class Section {
     link.tabIndex = 0;
     name.appendChild(link);
     if (this.registration.errors.length) {
-      const errorsLabel = UI.UIUtils.createIconLabel(String(this.registration.errors.length), 'smallicon-error');
+      const errorsLabel = UI.UIUtils.createIconLabel({
+        title: String(this.registration.errors.length),
+        iconName: 'cross-circle-filled',
+        color: 'var(--icon-error)',
+      });
       errorsLabel.classList.add('devtools-link', 'link');
       errorsLabel.tabIndex = 0;
-      UI.ARIAUtils.setAccessibleName(
+      UI.ARIAUtils.setLabel(
           errorsLabel, i18nString(UIStrings.sRegistrationErrors, {PH1: this.registration.errors.length}));
       self.onInvokeElement(errorsLabel, () => Common.Console.Console.instance().show());
       name.appendChild(errorsLabel);

@@ -5,6 +5,8 @@
 #ifndef COMPONENTS_SEGMENTATION_PLATFORM_INTERNAL_SEGMENTATION_UKM_HELPER_H_
 #define COMPONENTS_SEGMENTATION_PLATFORM_INTERNAL_SEGMENTATION_UKM_HELPER_H_
 
+#include <vector>
+
 #include "base/containers/flat_set.h"
 #include "base/no_destructor.h"
 #include "base/time/time.h"
@@ -40,7 +42,7 @@ class SegmentationUkmHelper {
       SegmentId segment_id,
       int64_t model_version,
       const ModelProvider::Request& input_tensor,
-      float result);
+      const std::vector<float>& results);
 
   // Record segmentation model training data as UKM message.
   // `input_tensors` contains the values for training inputs.
@@ -60,8 +62,8 @@ class SegmentationUkmHelper {
       absl::optional<proto::PredictionResult> prediction_result,
       absl::optional<SelectedSegment> selected_segment);
 
-  // Returns whether a segment is allowed to upload training tensors.
-  bool CanUploadTensors(const proto::SegmentInfo& segment_info) const;
+  // Returns whether a segment needs to upload training tensors.
+  bool IsUploadRequested(const proto::SegmentInfo& segment_info) const;
 
   // Helper method to encode a float number into int64.
   static int64_t FloatToInt64(float f);
@@ -88,6 +90,7 @@ class SegmentationUkmHelper {
   SegmentationUkmHelper();
   ~SegmentationUkmHelper();
 
+  int sampling_rate_;
   base::flat_set<SegmentId> allowed_segment_ids_;
 };
 

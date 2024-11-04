@@ -16,6 +16,7 @@
 #include "cc/slim/layer.h"
 #include "cc/slim/layer_tree.h"
 #include "cc/slim/nine_patch_layer.h"
+#include "cc/slim/solid_color_layer.h"
 #include "cc/slim/surface_layer.h"
 #include "cc/slim/test_layer_tree_client.h"
 #include "cc/slim/ui_resource_layer.h"
@@ -27,6 +28,7 @@
 #include "ui/gfx/geometry/point3_f.h"
 #include "ui/gfx/geometry/point_f.h"
 #include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/rounded_corners_f.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/geometry/transform.h"
 
@@ -40,6 +42,10 @@ class SlimLayerTest : public testing::TestWithParam<bool> {
     } else {
       scoped_feature_list_.InitAndDisableFeature(features::kSlimCompositor);
     }
+  }
+
+  static bool HasNonTrivialMaskFilterInfo(const Layer* layer) {
+    return layer->HasNonTrivialMaskFilterInfo();
   }
 
  protected:
@@ -118,9 +124,8 @@ TEST_P(SlimLayerTest, LayerProperties) {
   EXPECT_EQ(layer->transform_origin(), gfx::Point3F(1.f, 2.f, 3.f));
 
   layer->SetIsDrawable(true);
-  layer->SetDrawsContent(true);
   EXPECT_TRUE(layer->draws_content());
-  layer->SetDrawsContent(false);
+  layer->SetIsDrawable(false);
   EXPECT_FALSE(layer->draws_content());
 
   layer->SetBackgroundColor(SkColors::kGray);
@@ -147,6 +152,35 @@ TEST_P(SlimLayerTest, LayerProperties) {
   std::vector<Filter> filters;
   filters.push_back(Filter::CreateBrightness(0.5f));
   layer->SetFilters(std::move(filters));
+
+  if (GetParam()) {
+    EXPECT_FALSE(HasNonTrivialMaskFilterInfo(layer.get()));
+  }
+  layer->SetRoundedCorner(gfx::RoundedCornersF(50));
+  EXPECT_EQ(layer->corner_radii(), gfx::RoundedCornersF(50));
+  if (GetParam()) {
+    EXPECT_TRUE(HasNonTrivialMaskFilterInfo(layer.get()));
+  }
+  layer->SetRoundedCorner(gfx::RoundedCornersF());
+  if (GetParam()) {
+    EXPECT_FALSE(HasNonTrivialMaskFilterInfo(layer.get()));
+  }
+
+  gfx::LinearGradient gradient;
+  gradient.AddStep(0.0f, 0);
+  gradient.AddStep(1.0f, 255);
+  if (GetParam()) {
+    EXPECT_FALSE(HasNonTrivialMaskFilterInfo(layer.get()));
+  }
+  layer->SetGradientMask(gradient);
+  EXPECT_EQ(layer->gradient_mask(), gradient);
+  if (GetParam()) {
+    EXPECT_TRUE(HasNonTrivialMaskFilterInfo(layer.get()));
+  }
+  layer->SetGradientMask(gfx::LinearGradient());
+  if (GetParam()) {
+    EXPECT_FALSE(HasNonTrivialMaskFilterInfo(layer.get()));
+  }
 }
 
 TEST_P(SlimLayerTest, SurfaceLayerProperties) {
@@ -231,6 +265,55 @@ TEST_P(SlimLayerTest, NinePatchLayerProperties) {
   EXPECT_EQ(layer_tree->GetUIResourceManager()
                 ->owned_shared_resources_size_for_test(),
             1u);
+}
+
+TEST_P(SlimLayerTest, NumDescendantsThatDrawContent) {
+  auto layer0 = Layer::Create();
+  auto layer1 = Layer::Create();
+  auto layer2 = Layer::Create();
+
+  layer0->AddChild(layer1);
+  layer0->AddChild(layer2);
+
+  EXPECT_EQ(layer0->NumDescendantsThatDrawContent(), 0);
+  EXPECT_EQ(layer1->NumDescendantsThatDrawContent(), 0);
+  EXPECT_EQ(layer2->NumDescendantsThatDrawContent(), 0);
+
+  auto drawing_layer0 = SolidColorLayer::Create();
+  auto drawing_layer1 = SolidColorLayer::Create();
+  auto drawing_layer2 = SolidColorLayer::Create();
+  drawing_layer0->SetIsDrawable(true);
+  drawing_layer1->SetIsDrawable(true);
+  drawing_layer2->SetIsDrawable(true);
+  EXPECT_TRUE(drawing_layer0->draws_content());
+  EXPECT_TRUE(drawing_layer1->draws_content());
+  EXPECT_TRUE(drawing_layer2->draws_content());
+
+  layer1->AddChild(drawing_layer0);
+  EXPECT_EQ(layer0->NumDescendantsThatDrawContent(), 1);
+  EXPECT_EQ(layer1->NumDescendantsThatDrawContent(), 1);
+  EXPECT_EQ(layer2->NumDescendantsThatDrawContent(), 0);
+
+  drawing_layer0->AddChild(drawing_layer1);
+  EXPECT_EQ(layer0->NumDescendantsThatDrawContent(), 2);
+  EXPECT_EQ(layer1->NumDescendantsThatDrawContent(), 2);
+  EXPECT_EQ(layer2->NumDescendantsThatDrawContent(), 0);
+  EXPECT_EQ(drawing_layer0->NumDescendantsThatDrawContent(), 1);
+
+  layer1->AddChild(drawing_layer2);
+  EXPECT_EQ(layer0->NumDescendantsThatDrawContent(), 3);
+  EXPECT_EQ(layer1->NumDescendantsThatDrawContent(), 3);
+  EXPECT_EQ(layer2->NumDescendantsThatDrawContent(), 0);
+
+  drawing_layer0->RemoveFromParent();
+  EXPECT_EQ(layer0->NumDescendantsThatDrawContent(), 1);
+  EXPECT_EQ(layer1->NumDescendantsThatDrawContent(), 1);
+  EXPECT_EQ(layer2->NumDescendantsThatDrawContent(), 0);
+
+  layer2->AddChild(drawing_layer0);
+  EXPECT_EQ(layer0->NumDescendantsThatDrawContent(), 3);
+  EXPECT_EQ(layer1->NumDescendantsThatDrawContent(), 1);
+  EXPECT_EQ(layer2->NumDescendantsThatDrawContent(), 2);
 }
 
 INSTANTIATE_TEST_SUITE_P(All, SlimLayerTest, testing::Bool());

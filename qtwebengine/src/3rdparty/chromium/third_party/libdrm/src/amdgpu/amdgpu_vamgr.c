@@ -274,7 +274,6 @@ drm_public int amdgpu_va_range_alloc(amdgpu_device_handle dev,
 			amdgpu_vamgr_free_va(vamgr, *va_base_allocated, size);
 			return -ENOMEM;
 		}
-		va->dev = dev;
 		va->address = *va_base_allocated;
 		va->size = size;
 		va->range = va_range_type;

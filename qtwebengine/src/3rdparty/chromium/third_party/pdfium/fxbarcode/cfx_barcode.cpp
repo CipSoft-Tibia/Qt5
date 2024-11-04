@@ -18,8 +18,8 @@
 #include "fxbarcode/cbc_pdf417i.h"
 #include "fxbarcode/cbc_qrcode.h"
 #include "fxbarcode/cbc_upca.h"
+#include "third_party/base/memory/ptr_util.h"
 #include "third_party/base/notreached.h"
-#include "third_party/base/ptr_util.h"
 
 namespace {
 
@@ -50,8 +50,7 @@ std::unique_ptr<CBC_CodeBase> CreateBarCodeEngineObject(BC_TYPE type) {
     case BC_TYPE::kUnknown:
       return nullptr;
   }
-  NOTREACHED();
-  return nullptr;
+  NOTREACHED_NORETURN();
 }
 
 }  // namespace

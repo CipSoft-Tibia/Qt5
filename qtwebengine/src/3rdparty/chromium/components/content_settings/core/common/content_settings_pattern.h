@@ -88,6 +88,8 @@ class ContentSettingsPattern {
     PatternParts& operator=(const PatternParts& other);
     PatternParts& operator=(PatternParts&& other);
 
+    bool operator==(const PatternParts& other) const;
+
     // Lowercase string of the URL scheme to match. This string is empty if the
     // |is_scheme_wildcard| flag is set.
     std::string scheme;
@@ -123,7 +125,7 @@ class ContentSettingsPattern {
 
   class BuilderInterface {
    public:
-    virtual ~BuilderInterface() {}
+    virtual ~BuilderInterface() = default;
 
     virtual BuilderInterface* WithPort(const std::string& port) = 0;
 
@@ -220,6 +222,11 @@ class ContentSettingsPattern {
 
   // Returns a std::string representation of this pattern.
   std::string ToString() const;
+
+  // Returns a valid URL that matches the pattern if a host part is specified.
+  // If the pattern matches a file:// scheme, the path needs to be specified.
+  // Returns GURL() otherwise.
+  GURL ToRepresentativeUrl() const;
 
   // Returns scheme type of pattern.
   ContentSettingsPattern::SchemeType GetScheme() const;

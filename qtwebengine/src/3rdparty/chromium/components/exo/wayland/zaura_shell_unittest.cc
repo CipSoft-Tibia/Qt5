@@ -14,9 +14,11 @@
 #include "ash/wm/desks/desks_util.h"
 #include "ash/wm/window_util.h"
 #include "base/containers/cxx20_erase_list.h"
+#include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "components/exo/buffer.h"
 #include "components/exo/shell_surface.h"
+#include "components/exo/shell_surface_util.h"
 #include "components/exo/test/exo_test_base.h"
 #include "components/exo/test/shell_surface_builder.h"
 #include "components/exo/wayland/scoped_wl.h"
@@ -51,6 +53,7 @@ namespace wayland {
 namespace {
 
 constexpr auto kTransitionDuration = base::Seconds(3);
+constexpr int kTooltipExpectedHeight = 28;
 
 class TestAuraSurface : public AuraSurface {
  public:
@@ -67,6 +70,9 @@ class TestAuraSurface : public AuraSurface {
     return last_sent_occlusion_state_;
   }
   int num_occlusion_updates() const { return num_occlusion_updates_; }
+  bool send_occlusion_state_called() const {
+    return send_occlusion_state_called_;
+  }
 
   MOCK_METHOD(void,
               OnTooltipShown,
@@ -85,6 +91,7 @@ class TestAuraSurface : public AuraSurface {
   void SendOcclusionState(
       const aura::Window::OcclusionState occlusion_state) override {
     last_sent_occlusion_state_ = occlusion_state;
+    send_occlusion_state_called_ = true;
   }
 
  private:
@@ -92,6 +99,7 @@ class TestAuraSurface : public AuraSurface {
   aura::Window::OcclusionState last_sent_occlusion_state_ =
       aura::Window::OcclusionState::UNKNOWN;
   int num_occlusion_updates_ = 0;
+  bool send_occlusion_state_called_ = false;
 };
 
 class MockSurfaceDelegate : public SurfaceDelegate {
@@ -141,6 +149,7 @@ class MockSurfaceDelegate : public SurfaceDelegate {
   MOCK_METHOD(void, Pin, (bool trusted), (override));
   MOCK_METHOD(void, Unpin, (), (override));
   MOCK_METHOD(void, SetSystemModal, (bool modal), (override));
+  MOCK_METHOD(void, SetTopInset, (int height), (override));
   MOCK_METHOD(SecurityDelegate*, GetSecurityDelegate, (), (override));
 };
 
@@ -226,7 +235,8 @@ class ZAuraSurfaceTest : public test::ExoTestBase,
 };
 
 TEST_F(ZAuraSurfaceTest, OcclusionTrackingStartsAfterCommit) {
-  surface().OnWindowOcclusionChanged();
+  surface().OnWindowOcclusionChanged(aura::Window::OcclusionState::UNKNOWN,
+                                     aura::Window::OcclusionState::UNKNOWN);
 
   EXPECT_EQ(-1.0f, aura_surface().last_sent_occlusion_fraction());
   EXPECT_EQ(aura::Window::OcclusionState::UNKNOWN,
@@ -371,7 +381,8 @@ TEST_F(ZAuraSurfaceTest, OcclusionIncludesOffScreenArea) {
   surface().Attach(buffer.get());
   surface().Commit();
 
-  surface().OnWindowOcclusionChanged();
+  surface().OnWindowOcclusionChanged(aura::Window::OcclusionState::UNKNOWN,
+                                     aura::Window::OcclusionState::VISIBLE);
 
   EXPECT_EQ(0.75f, aura_surface().last_sent_occlusion_fraction());
   EXPECT_EQ(aura::Window::OcclusionState::VISIBLE,
@@ -382,7 +393,8 @@ TEST_F(ZAuraSurfaceTest, ZeroSizeWindowSendsZeroOcclusionFraction) {
   // Zero sized window should not be occluded.
   surface().window()->SetBounds(gfx::Rect(0, 0, 0, 0));
   surface().Commit();
-  surface().OnWindowOcclusionChanged();
+  surface().OnWindowOcclusionChanged(aura::Window::OcclusionState::UNKNOWN,
+                                     aura::Window::OcclusionState::VISIBLE);
   EXPECT_EQ(0.0f, aura_surface().last_sent_occlusion_fraction());
   EXPECT_EQ(aura::Window::OcclusionState::VISIBLE,
             aura_surface().last_sent_occlusion_state());
@@ -424,6 +436,40 @@ TEST_F(ZAuraSurfaceTest, CanSetFullscreenModeToImmersive) {
   EXPECT_CALL(delegate, SetUseImmersiveForFullscreen(true));
 
   aura_surface().SetFullscreenMode(ZAURA_SURFACE_FULLSCREEN_MODE_IMMERSIVE);
+}
+
+TEST_F(ZAuraSurfaceTest, CanSetAccessibilityId) {
+  aura_surface().SetAccessibilityId(123);
+
+  EXPECT_EQ(123, exo::GetShellClientAccessibilityId(surface().window()));
+}
+
+TEST_F(ZAuraSurfaceTest, CanUnsetAccessibilityId) {
+  aura_surface().SetAccessibilityId(-1);
+
+  EXPECT_FALSE(
+      exo::GetShellClientAccessibilityId(surface().window()).has_value());
+}
+
+using ZAuraSurfaceOcclusionTest = test::ExoTestBase;
+
+TEST_F(ZAuraSurfaceOcclusionTest, SkipFirstHidden) {
+  Surface surface;
+  TestAuraSurface aura_surface(&surface);
+
+  surface.SetOcclusionTracking(true);
+  surface.Commit();
+  EXPECT_TRUE(surface.IsTrackingOcclusion());
+
+  // Skip sending occlusion state change if its from UNKNOWN to HIDDEN because
+  // the first state is calculated without a buffer attached to the surface.
+  surface.OnWindowOcclusionChanged(aura::Window::OcclusionState::UNKNOWN,
+                                   aura::Window::OcclusionState::HIDDEN);
+  EXPECT_FALSE(aura_surface.send_occlusion_state_called());
+
+  surface.OnWindowOcclusionChanged(aura::Window::OcclusionState::UNKNOWN,
+                                   aura::Window::OcclusionState::VISIBLE);
+  EXPECT_TRUE(aura_surface.send_occlusion_state_called());
 }
 
 // Test without setting surfaces on SetUp().
@@ -472,7 +518,7 @@ TEST_F(ZAuraSurfaceCustomTest, ShowTooltipFromCursor) {
 
   const char* text = "my tooltip";
   gfx::Rect expected_tooltip_position =
-      gfx::Rect(mouse_position, gfx::Size(77, 24));
+      gfx::Rect(mouse_position, gfx::Size(77, kTooltipExpectedHeight));
   views::corewm::TooltipAura::AdjustToCursor(&expected_tooltip_position);
   aura::Window::ConvertRectToTarget(surface->window(),
                                     surface->window()->GetToplevelWindow(),
@@ -505,7 +551,7 @@ TEST_F(ZAuraSurfaceCustomTest, ShowTooltipFromKeyboard) {
 
   const char* text = "my tooltip";
   gfx::Point anchor_point = surface->window()->bounds().bottom_center();
-  gfx::Size expected_tooltip_size = gfx::Size(77, 24);
+  gfx::Size expected_tooltip_size = gfx::Size(77, kTooltipExpectedHeight);
   // Calculate expected tooltip position. For keyboard tooltip, it should be
   // shown right below and in the center of tooltip target window while it must
   // fit inside the display bounds.
@@ -556,7 +602,7 @@ TEST_F(ZAuraSurfaceCustomTest, ShowTooltipOnMenuFromCursor) {
   const char* text = "my tooltip";
   // Size of the tooltip depends on the text to show.
   gfx::Rect expected_tooltip_position =
-      gfx::Rect(mouse_position, gfx::Size(77, 24));
+      gfx::Rect(mouse_position, gfx::Size(77, kTooltipExpectedHeight));
   views::corewm::TooltipAura::AdjustToCursor(&expected_tooltip_position);
   aura::Window::ConvertRectToTarget(surface->window(),
                                     surface->window()->GetToplevelWindow(),
@@ -589,7 +635,7 @@ TEST_F(ZAuraSurfaceCustomTest, ShowTooltipOnMenuFromKeyboard) {
 
   const char* text = "my tooltip";
   gfx::Point anchor_point = surface->window()->bounds().bottom_center();
-  gfx::Size expected_tooltip_size = gfx::Size(77, 24);
+  gfx::Size expected_tooltip_size = gfx::Size(77, kTooltipExpectedHeight);
   // Calculate expected tooltip position. For keyboard tooltip, it should be
   // shown right below and in the center of tooltip target window while it must
   // fit inside the display bounds.
@@ -705,7 +751,7 @@ class ZAuraOutputTest : public test::ExoTestBase {
     std::unique_ptr<WaylandDisplayOutput> output;
     std::unique_ptr<WaylandDisplayHandler> handler;
 
-    wl_client* client;
+    raw_ptr<wl_client, ExperimentalAsh> client;
 
     void CreateAuraOutput() {
       DCHECK(!aura_output);
@@ -728,7 +774,7 @@ class ZAuraOutputTest : public test::ExoTestBase {
  private:
   std::vector<std::unique_ptr<OutputHolder>> output_holder_list_;
   std::unique_ptr<wl_display, WlDisplayDeleter> wayland_display_;
-  wl_client* client_ = nullptr;
+  raw_ptr<wl_client, ExperimentalAsh> client_ = nullptr;
 };
 
 TEST_F(ZAuraOutputTest, SendInsets) {

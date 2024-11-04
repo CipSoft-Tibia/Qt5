@@ -12,7 +12,7 @@ QT_BEGIN_NAMESPACE
     \inmodule QtOpcUa
     \brief The OPC UA AttributeOperand type.
 
-    The AttributeOperand is defined in OPC-UA part 4, 7.4.4.4.
+    The AttributeOperand is defined in OPC UA 1.05 part 4, 7.7.4.4.
     It has the same purpose as \l QOpcUaSimpleAttributeOperand but has more configurable options.
 */
 
@@ -154,5 +154,27 @@ void QOpcUaAttributeOperand::setNodeId(const QString &nodeId)
 {
     data->nodeId = nodeId;
 }
+
+/*!
+    \fn bool QOpcUaAttributeOperand::operator==(const QOpcUaAttributeOperand &lhs,
+                                                const QOpcUaAttributeOperand &rhs)
+    \since 6.7
+
+    Returns \c true if \a lhs has the same value as \a rhs.
+*/
+bool comparesEqual(const QOpcUaAttributeOperand &lhs, const QOpcUaAttributeOperand &rhs) noexcept
+{
+    return lhs.nodeId() == rhs.nodeId() && lhs.attributeId() == rhs.attributeId() &&
+           lhs.alias() == rhs.alias() && lhs.browsePath() == rhs.browsePath() &&
+           lhs.indexRange() == rhs.indexRange();
+}
+
+/*!
+    \fn bool QOpcUaAttributeOperand::operator!=(const QOpcUaAttributeOperand &lhs,
+                                                const QOpcUaAttributeOperand &rhs)
+    \since 6.7
+
+    Returns \c true if \a lhs has a different value than \a rhs.
+*/
 
 QT_END_NAMESPACE

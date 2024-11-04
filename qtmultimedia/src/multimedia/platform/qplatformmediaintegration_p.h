@@ -53,6 +53,13 @@ class QPlatformAudioOutput;
 class QPlatformVideoDevices;
 class QCapturableWindow;
 class QPlatformCapturableWindows;
+class QVideoFrame;
+
+class Q_MULTIMEDIA_EXPORT QAbstractPlatformSpecificInterface
+{
+public:
+    virtual ~QAbstractPlatformSpecificInterface() = default;
+};
 
 class Q_MULTIMEDIA_EXPORT QPlatformMediaIntegration : public QObject
 {
@@ -61,7 +68,7 @@ class Q_MULTIMEDIA_EXPORT QPlatformMediaIntegration : public QObject
 public:
     static QPlatformMediaIntegration *instance();
 
-    QPlatformMediaIntegration();
+    explicit QPlatformMediaIntegration(QLatin1String);
     virtual ~QPlatformMediaIntegration();
     const QPlatformMediaFormatInfo *formatInfo();
 
@@ -94,6 +101,12 @@ public:
     QPlatformMediaDevices *mediaDevices();
 
     static QStringList availableBackends();
+    QLatin1String name(); // for unit tests
+
+    // Convert a QVideoFrame to the destination format
+    virtual QVideoFrame convertVideoFrame(QVideoFrame &, const QVideoFrameFormat &);
+
+    virtual QAbstractPlatformSpecificInterface *platformSpecificInterface() { return nullptr; }
 
 protected:
     virtual QPlatformMediaFormatInfo *createFormatInfo();
@@ -116,6 +129,8 @@ private:
 
     std::unique_ptr<QPlatformMediaDevices> m_mediaDevices;
     std::once_flag m_mediaDevicesOnceFlag;
+
+    const QLatin1String m_backendName;
 };
 
 QT_END_NAMESPACE

@@ -74,6 +74,10 @@ ui::AXTreeUpdate BrowserAccessibilityManagerAndroid::GetEmptyDocument() {
   return update;
 }
 
+void BrowserAccessibilityManagerAndroid::ResetWebContentsAccessibility() {
+  web_contents_accessibility_.reset();
+}
+
 bool BrowserAccessibilityManagerAndroid::ShouldAllowImageDescriptions() {
   WebContentsAccessibilityAndroid* wcax = GetWebContentsAXFromRootManager();
   return (wcax && wcax->should_allow_image_descriptions()) ||
@@ -383,6 +387,7 @@ void BrowserAccessibilityManagerAndroid::FireGeneratedEvent(
     case ui::AXEventGenerator::Event::MULTILINE_STATE_CHANGED:
     case ui::AXEventGenerator::Event::MULTISELECTABLE_STATE_CHANGED:
     case ui::AXEventGenerator::Event::OBJECT_ATTRIBUTE_CHANGED:
+    case ui::AXEventGenerator::Event::ORIENTATION_CHANGED:
     case ui::AXEventGenerator::Event::OTHER_ATTRIBUTE_CHANGED:
     case ui::AXEventGenerator::Event::PARENT_CHANGED:
     case ui::AXEventGenerator::Event::PLACEHOLDER_CHANGED:
@@ -605,40 +610,6 @@ void BrowserAccessibilityManagerAndroid::OnAtomicUpdateFinished(
 
   // Update the maximum number of nodes in the cache after each atomic update.
   wcax->UpdateMaxNodesInCache();
-}
-
-void BrowserAccessibilityManagerAndroid::OnNodeCreated(ui::AXTree* tree,
-                                                       ui::AXNode* node) {
-  BrowserAccessibilityManager::OnNodeCreated(tree, node);
-  if (node->data().GetBoolAttribute(
-          ax::mojom::BoolAttribute::kTouchPassthrough)) {
-    auto* root = static_cast<BrowserAccessibilityManagerAndroid*>(
-        GetManagerForRootFrame());
-    if (root)
-      root->EnableTouchPassthrough();
-    else
-      EnableTouchPassthrough();
-  }
-}
-
-void BrowserAccessibilityManagerAndroid::OnBoolAttributeChanged(
-    ui::AXTree* tree,
-    ui::AXNode* node,
-    ax::mojom::BoolAttribute attr,
-    bool new_value) {
-  BrowserAccessibilityManager::OnBoolAttributeChanged(tree, node, attr,
-                                                      new_value);
-  if (new_value && attr == ax::mojom::BoolAttribute::kTouchPassthrough) {
-    // TODO(accessibility): there's a tiny chance we could get this
-    // called on an iframe before it's attached to the root frame manager.
-    // If this ever becomes an issue in practice, make this more robust.
-    auto* root = static_cast<BrowserAccessibilityManagerAndroid*>(
-        GetManagerForRootFrame());
-    if (root)
-      root->EnableTouchPassthrough();
-    else
-      EnableTouchPassthrough();
-  }
 }
 
 WebContentsAccessibilityAndroid*

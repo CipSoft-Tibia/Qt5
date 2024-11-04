@@ -931,13 +931,11 @@ TEST_F(CorsURLLoaderTest, CrossOriginPreflightReceiveRedirect) {
 
   const net::NetLogEntry* entry =
       FindEntryByType(entries, net::NetLogEventType::CORS_PREFLIGHT_ERROR);
-  const base::Value::Dict* params = entry->params.GetIfDict();
-  ASSERT_TRUE(params);
-  EXPECT_THAT(params->FindString("error"), Pointee(Eq("ERR_FAILED")));
-  EXPECT_THAT(params->FindInt("cors-error"),
+  EXPECT_THAT(entry->params.FindString("error"), Pointee(Eq("ERR_FAILED")));
+  EXPECT_THAT(entry->params.FindInt("cors-error"),
               Optional(Eq(static_cast<int>(
                   mojom::CorsError::kPreflightDisallowedRedirect))));
-  EXPECT_THAT(params->FindString("failed-parameter"), IsNull());
+  EXPECT_THAT(entry->params.FindString("failed-parameter"), IsNull());
 }
 
 TEST_F(CorsURLLoaderTest, RedirectInfoShouldBeUsed) {
@@ -2006,7 +2004,7 @@ TEST_F(CorsURLLoaderTest, DevToolsObserverOnCorsErrorCallback) {
   EXPECT_TRUE(devtools_observer.cors_error_params());
   const network::MockDevToolsObserver::OnCorsErrorParams& params =
       *devtools_observer.cors_error_params();
-  EXPECT_EQ(mojom::CorsError::kDisallowedByMode, params.status.cors_error);
+  EXPECT_EQ(mojom::CorsError::kDisallowedByMode, params.status->cors_error);
   EXPECT_EQ(initiator_origin, params.initiator_origin);
   EXPECT_EQ(url, params.url);
 }
@@ -2258,13 +2256,11 @@ TEST_F(CorsURLLoaderTest, NetLogPreflightMissingAllowOrigin) {
 
   const net::NetLogEntry* entry =
       FindEntryByType(entries, net::NetLogEventType::CORS_PREFLIGHT_ERROR);
-  const base::Value::Dict* params = entry->params.GetIfDict();
-  ASSERT_TRUE(params);
-  EXPECT_THAT(params->FindString("error"), Pointee(Eq("ERR_FAILED")));
-  EXPECT_THAT(params->FindInt("cors-error"),
+  EXPECT_THAT(entry->params.FindString("error"), Pointee(Eq("ERR_FAILED")));
+  EXPECT_THAT(entry->params.FindInt("cors-error"),
               Optional(Eq(static_cast<int>(
                   mojom::CorsError::kPreflightMissingAllowOriginHeader))));
-  EXPECT_THAT(params->FindString("failed-parameter"), IsNull());
+  EXPECT_THAT(entry->params.FindString("failed-parameter"), IsNull());
 }
 
 TEST_F(CorsURLLoaderTest, NetLogPreflightMethodDisallowed) {
@@ -2296,19 +2292,15 @@ TEST_F(CorsURLLoaderTest, NetLogPreflightMethodDisallowed) {
 
   const net::NetLogEntry* entry =
       FindEntryByType(entries, net::NetLogEventType::CORS_PREFLIGHT_RESULT);
-  ASSERT_EQ(entry->params.type(), base::Value::Type::DICT);
-  EXPECT_THAT(
-      entry->params.GetDict().FindString("access-control-allow-methods"),
-      Pointee(Eq("GET")));
+  EXPECT_THAT(entry->params.FindString("access-control-allow-methods"),
+              Pointee(Eq("GET")));
 
   entry = FindEntryByType(entries, net::NetLogEventType::CORS_PREFLIGHT_ERROR);
-  const base::Value::Dict* params = entry->params.GetIfDict();
-  ASSERT_TRUE(params);
-  EXPECT_THAT(params->FindString("error"), Pointee(Eq("ERR_FAILED")));
-  EXPECT_THAT(params->FindInt("cors-error"),
+  EXPECT_THAT(entry->params.FindString("error"), Pointee(Eq("ERR_FAILED")));
+  EXPECT_THAT(entry->params.FindInt("cors-error"),
               Optional(Eq(static_cast<int>(
                   mojom::CorsError::kMethodDisallowedByPreflightResponse))));
-  EXPECT_THAT(params->FindString("failed-parameter"), Pointee(Eq("PUT")));
+  EXPECT_THAT(entry->params.FindString("failed-parameter"), Pointee(Eq("PUT")));
 }
 
 TEST_F(CorsURLLoaderTest, NetLogPreflightNetError) {
@@ -2331,10 +2323,10 @@ TEST_F(CorsURLLoaderTest, NetLogPreflightNetError) {
   ASSERT_THAT(GetTypesOfNetLogEntries(entries), Contains(type).Times(1));
 
   const net::NetLogEntry* entry = FindEntryByType(entries, type);
-  const base::Value::Dict* params = entry->params.GetIfDict();
-  EXPECT_THAT(params->FindString("error"), Pointee(Eq("ERR_INVALID_ARGUMENT")));
-  EXPECT_THAT(params->FindInt("cors-error"), Eq(absl::nullopt));
-  EXPECT_THAT(params->FindString("failed-parameter"), IsNull());
+  EXPECT_THAT(entry->params.FindString("error"),
+              Pointee(Eq("ERR_INVALID_ARGUMENT")));
+  EXPECT_THAT(entry->params.FindInt("cors-error"), Eq(absl::nullopt));
+  EXPECT_THAT(entry->params.FindString("failed-parameter"), IsNull());
 }
 
 TEST_F(CorsURLLoaderTest, PreflightMissingAllowOrigin) {
@@ -2389,6 +2381,127 @@ TEST_F(CorsURLLoaderTest, NonBrowserNavigationRedirect) {
   EXPECT_THAT(bad_message_helper.bad_message_reports(),
               ElementsAre("CorsURLLoader: navigate from non-browser-process "
                           "should not call FollowRedirect"));
+}
+
+TEST_F(CorsURLLoaderTest, RedirectBlockedByResourceBlockList) {
+  url::Origin top_frame_origin =
+      url::Origin::Create(GURL("https://example.com"));
+  const GURL url("https://example.com/foo.png");
+  const GURL new_url("https://block.com/bar.png");
+
+  ResetFactoryParams factory_params;
+  factory_params.is_trusted = true;
+  ResetFactory(top_frame_origin, kRendererProcessId, factory_params);
+
+  ResourceRequest request;
+  request.mode = mojom::RequestMode::kCors;
+  request.credentials_mode = mojom::CredentialsMode::kOmit;
+  request.method = net::HttpRequestHeaders::kGetMethod;
+  request.url = url;
+  request.request_initiator = top_frame_origin;
+  request.trusted_params = ResourceRequest::TrustedParams();
+
+  url::Origin request_origin = url::Origin::Create(request.url);
+  request.trusted_params->isolation_info = net::IsolationInfo::Create(
+      net::IsolationInfo::RequestType::kOther, top_frame_origin, request_origin,
+      net::SiteForCookies());
+
+  AddResourceBlockListRule("block.com", "other.com");
+
+  CreateLoaderAndStart(request);
+  RunUntilCreateLoaderAndStartCalled();
+
+  EXPECT_EQ(1, num_created_loaders());
+  EXPECT_EQ(GetRequest().url, url);
+  EXPECT_EQ(GetRequest().method, "GET");
+
+  NotifyLoaderClientOnReceiveRedirect(
+      CreateRedirectInfo(301, "GET", new_url),
+      {{"Access-Control-Allow-Origin", "https://example.com"}});
+  RunUntilRedirectReceived();
+
+  EXPECT_TRUE(IsNetworkLoaderStarted());
+  EXPECT_FALSE(client().has_received_completion());
+  EXPECT_FALSE(client().has_received_response());
+  EXPECT_TRUE(client().has_received_redirect());
+
+  ClearHasReceivedRedirect();
+  FollowRedirect();
+
+  NotifyLoaderClientOnReceiveResponse(
+      {{"Access-Control-Allow-Origin", "https://example.com"}});
+
+  NotifyLoaderClientOnComplete(net::OK);
+  RunUntilComplete();
+
+  // original_loader->FollowRedirect() is called, so no new loader is created.
+  EXPECT_EQ(1, num_created_loaders());
+  EXPECT_EQ(GetRequest().url, url);
+
+  EXPECT_FALSE(client().has_received_redirect());
+  EXPECT_TRUE(client().has_received_completion());
+  EXPECT_EQ(net::ERR_BLOCKED_BY_CLIENT,
+            client().completion_status().error_code);
+}
+
+TEST_F(CorsURLLoaderTest, BypassBlockListDuringRedirect) {
+  url::Origin top_frame_origin =
+      url::Origin::Create(GURL("https://example.com"));
+  const GURL url("https://other.example.com/foo.png");
+  const GURL new_url("https://block.com/bar.png");
+
+  ResetFactoryParams factory_params;
+  factory_params.is_trusted = true;
+  ResetFactory(top_frame_origin, kRendererProcessId, factory_params);
+
+  ResourceRequest request;
+  request.mode = mojom::RequestMode::kCors;
+  request.credentials_mode = mojom::CredentialsMode::kOmit;
+  request.method = net::HttpRequestHeaders::kGetMethod;
+  request.url = url;
+  request.request_initiator = top_frame_origin;
+  request.trusted_params = ResourceRequest::TrustedParams();
+
+  request.trusted_params->isolation_info = net::IsolationInfo::Create(
+      net::IsolationInfo::RequestType::kOther, top_frame_origin,
+      top_frame_origin, net::SiteForCookies());
+
+  // Redirect will bypass the block list because the top frame matches the
+  // bypass rule.
+  AddResourceBlockListRule("block.com", "example.com");
+
+  CreateLoaderAndStart(request);
+  RunUntilCreateLoaderAndStartCalled();
+
+  EXPECT_EQ(1, num_created_loaders());
+  EXPECT_EQ(GetRequest().url, url);
+  EXPECT_EQ(GetRequest().method, "GET");
+
+  NotifyLoaderClientOnReceiveRedirect(CreateRedirectInfo(301, "GET", new_url),
+                                      {{"Access-Control-Allow-Origin", "*"}});
+  RunUntilRedirectReceived();
+
+  EXPECT_TRUE(IsNetworkLoaderStarted());
+  EXPECT_FALSE(client().has_received_completion());
+  EXPECT_FALSE(client().has_received_response());
+  EXPECT_TRUE(client().has_received_redirect());
+
+  ClearHasReceivedRedirect();
+  FollowRedirect();
+
+  NotifyLoaderClientOnReceiveResponse({{"Access-Control-Allow-Origin", "*"}});
+
+  NotifyLoaderClientOnComplete(net::OK);
+  RunUntilComplete();
+
+  // original_loader->FollowRedirect() is called, so no new loader is created.
+  EXPECT_EQ(1, num_created_loaders());
+  EXPECT_EQ(GetRequest().url, url);
+
+  EXPECT_FALSE(client().has_received_redirect());
+  EXPECT_TRUE(client().has_received_response());
+  EXPECT_TRUE(client().has_received_completion());
+  EXPECT_EQ(net::OK, client().completion_status().error_code);
 }
 
 }  // namespace

@@ -124,6 +124,7 @@ enum ContainerFeature {
   UNKNOWN = 0;
   ENABLE_GTK3_IME_SUPPORT = 1;
   ENABLE_VIRTUAL_KEYBOARD_SUPPORT = 2;
+  ENABLE_QT_IME_SUPPORT = 3;
 }
 
 // Request to launch on application in the specified VM/container. Used with the

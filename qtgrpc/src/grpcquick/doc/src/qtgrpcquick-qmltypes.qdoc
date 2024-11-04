@@ -1,0 +1,175 @@
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+/*!
+    \qmlmodule QtGrpc
+    \title Qt GRPC QML Types
+    \since 6.7
+    \ingroup qmlmodules
+    \brief Provides Qt GRPC functionality in QML.
+
+    The Qt GRPC Quick module provides the Qt GRPC functionality in QML.
+
+    The QML types can be imported into your application using the
+    following import statement in your .qml file:
+
+    \qml
+    import QtGrpc
+    \endqml
+
+    \section1 QML Types
+
+    \generatelist {qmltypesbymodule QtGrpc}
+
+    \section1 Related Information
+
+    \list
+        \li \l {magic8ball} {Qt GRPC QML example}
+        \li \l {The qtgrpcgen Tool} {Qt GRPC QML-types generation}
+        \li \l{Qt Protobuf QML Types} {Qt Protobuf QML-types generation}
+    \endlist
+
+    \noautolist
+*/
+
+/*!
+    \qmltype QQmlGrpcCallOptions
+    \inqmlmodule QtGrpc
+    \instantiates QGrpcCallOptions
+    \brief The QQmlGrpcCallOptions is a storage class used to set
+           additional call options.
+
+    Provides a set of properties to access the call options
+    that are used by gRPC channels to communicate with the services.
+    \sa QGrpcCallOptions
+*/
+
+/*!
+    \qmlproperty int QQmlGrpcCallOptions::deadline
+    Holds a deadline value for a call.
+    \sa QGrpcCallOptions::deadline
+*/
+
+/*!
+    \qmlproperty QQmlGrpcMetadata QQmlGrpcCallOptions::metadata
+    Holds a pointer to the metadata used for a call.
+    \sa QQmlGrpcMetadata, QGrpcMetadata
+*/
+
+/*!
+    \qmltype QQmlGrpcChannelOptions
+    \inqmlmodule QtGrpc
+    \instantiates QGrpcChannelOptions
+    \brief  The QQmlGrpcChannelOptions is an storage class used to set
+            additional channel options.
+
+    Provides a set of properties to access the channel
+    options that are used by gRPC channels to communicate with the services.
+    \sa QGrpcChannelOptions
+*/
+
+/*!
+    \qmlproperty int QQmlGrpcChannelOptions::deadline
+    Holds a deadline value for a channel.
+    \sa QGrpcChannelOptions::deadline
+*/
+
+/*!
+    \qmlproperty QUrl QQmlGrpcChannelOptions::host
+    Holds a host \c URL for the channel.
+    \note host is \c REQUIRED property. It must be set for object creation.
+    \sa QGrpcChannelOptions::host
+*/
+
+/*!
+    \qmlproperty QQmlGrpcMetadata QQmlGrpcChannelOptions::metadata
+    Holds a pointer to the metadata object used for a channel.
+
+    \sa QQmlGrpcMetadata, QGrpcMetadata
+*/
+
+/*!
+    \qmltype QQmlGrpcMetadata
+    \inqmlmodule QtGrpc
+    \brief  The QQmlGrpcMetadata is a class that stores metadata in unordered
+            multimap container.
+
+    Metadata is information about a particular gRPC call or channel
+    (such as authentication details) in the form of a list of key-value pairs,
+    where the keys are strings and the values are typically strings, but can
+    be binary data.
+    The class provides the possibility to store data in an unordered container.
+    Also, it is possible to store several values by the same key.
+    \note Use the comma symbol to set several values by the same key.
+    \sa QGrpcMetadata
+*/
+
+/*!
+    \qmlproperty QVariantMap QQmlGrpcMetadata::data
+    Provides access to metadata container and holds it in QVariantMap format
+    in QML.
+    \note Use the comma symbol to set several values by the same key.
+          See example below:
+    \code
+        GrpcMetadata {
+            id: grpcData
+            data: ({ "user-name": "localhost, remotehost",
+                    "user-password": "qwerty, 123456"})
+        }
+    \endcode
+*/
+
+/*!
+    \qmltype QQmlAbstractGrpcChannel
+    \inqmlmodule QtGrpc
+    \brief The QQmlAbstractGrpcChannel class is interface that represents
+           common gRPC channel functionality in QML.
+
+    You may implement this interface to create your own channels for gRPC
+    transport.
+    QQmlAbstractGrpcChannel is not creatable in QML,
+    but it can be used for custom channel implementation.
+    \note QQmlGrpcHttp2Channel, which are full implementations of
+          QQmlAbstractGrpcChannel, is recommended to use for HTTP2 protocol.
+    \sa QAbstractGrpcChannel, QQmlGrpcHttp2Channel
+*/
+
+/*!
+    \qmlmethod std::shared_ptr<QAbstractGrpcChannel> QQmlAbstractGrpcChannel::getChannel() = 0
+
+    This function returns the pointer to the gRPC channel object.
+    This is a pure virtual function. You may override that function
+    in the derived class.
+
+    \sa QAbstractGrpcChannel, QQmlGrpcHttp2Channel
+*/
+
+/*!
+    \qmltype QQmlGrpcHttp2Channel
+    \inqmlmodule QtGrpc
+    \instantiates QGrpcHttp2Channel
+    \brief Implements QQmlAbstractGrpcChannel class in QML.
+
+    Implements QQmlAbstractGrpcChannel interface for HTTP2 channel type.
+    It allows to set QQmlGrpcChannelOptions options required for a channel
+    creation and returns a pointer to the QAbstractGrpcChannel-based object.
+    \note You can inherit from QQmlGrpcChannelOptions for importing custom
+          channel in QML.
+    \sa QQmlAbstractGrpcChannel, QGrpcHttp2Channel
+*/
+
+/*!
+    \qmlproperty QQmlGrpcChannelOptions QQmlGrpcHttp2Channel::options
+    Returns a pointer to the QQmlGrpcChannelOptions object.
+    \note options is \c REQUIRED property. It must be set for object creation.
+    \sa QQmlGrpcChannelOptions
+*/
+
+/*!
+    \qmlmethod std::shared_ptr<QAbstractGrpcChannel> QQmlGrpcHttp2Channel::getChannel()
+
+    This function is virtual. It returns the pointer to
+    the QGrpcHttp2Channel object.
+
+    \sa QAbstractGrpcChannel, QGrpcHttp2Channel
+*/

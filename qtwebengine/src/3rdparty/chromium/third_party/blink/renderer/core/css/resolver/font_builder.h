@@ -60,7 +60,7 @@ class CORE_EXPORT FontBuilder {
   float FontSizeForKeyword(unsigned keyword, bool is_monospace) const;
 
   void SetSize(const FontDescription::Size&);
-  void SetSizeAdjust(const float aspect_value);
+  void SetSizeAdjust(const FontSizeAdjust&);
 
   void SetStretch(FontSelectionValue);
   void SetStyle(FontSelectionValue);
@@ -88,7 +88,9 @@ class CORE_EXPORT FontBuilder {
   void SetVariantPosition(FontDescription::FontVariantPosition);
 
   // FIXME: These need to just vend a Font object eventually.
-  void UpdateFontDescription(FontDescription&,
+  // UpdateFontDescription() returns true if any properties were actually
+  // changed.
+  bool UpdateFontDescription(FontDescription&,
                              FontOrientation = FontOrientation::kHorizontal);
   void CreateFont(ComputedStyleBuilder&, const ComputedStyle* parent_style);
   void CreateInitialFont(ComputedStyleBuilder&);
@@ -111,7 +113,7 @@ class CORE_EXPORT FontBuilder {
     return FontDescription::Size(FontSizeFunctions::InitialKeywordSize(), 0.0f,
                                  false);
   }
-  static float InitialSizeAdjust() { return kFontSizeAdjustNone; }
+  static FontSizeAdjust InitialSizeAdjust() { return FontSizeAdjust(); }
   static TextRenderingMode InitialTextRendering() { return kAutoTextRendering; }
   static FontDescription::FontVariantCaps InitialVariantCaps() {
     return FontDescription::kCapsNormal;

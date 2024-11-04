@@ -390,8 +390,10 @@ void AXEventGenerator::OnStateChanged(AXTree* tree,
 
   switch (state) {
     case ax::mojom::State::kExpanded:
-      AddEvent(node, new_value ? Event::EXPANDED : Event::COLLAPSED);
-
+      if (node->data().HasState(ax::mojom::State::kCollapsed) ||
+          node->data().HasState(ax::mojom::State::kExpanded)) {
+        AddEvent(node, new_value ? Event::EXPANDED : Event::COLLAPSED);
+      }
       if (IsTableRow(node->GetRole()) ||
           node->GetRole() == ax::mojom::Role::kTreeItem) {
         AXNode* container = node;
@@ -412,6 +414,10 @@ void AXEventGenerator::OnStateChanged(AXTree* tree,
       break;
     case ax::mojom::State::kAutofillAvailable:
       AddEvent(node, Event::AUTOFILL_AVAILABILITY_CHANGED);
+      break;
+    case ax::mojom::State::kHorizontal:
+    case ax::mojom::State::kVertical:
+      AddEvent(node, Event::ORIENTATION_CHANGED);
       break;
     default:
       break;
@@ -828,6 +834,13 @@ void AXEventGenerator::OnAtomicUpdateFinished(
     } else if (change.type != NODE_CREATED) {
       FireRelationSourceEvents(tree, change.node);
       continue;
+    }
+
+    if (change.node->GetBoolAttribute(ax::mojom::BoolAttribute::kSelected) &&
+        (change.type == SUBTREE_CREATED || change.type == NODE_CREATED)) {
+      OnBoolAttributeChanged(tree, change.node,
+                             ax::mojom::BoolAttribute::kSelected,
+                             /*new_value*/ true);
     }
 
     if (IsAlert(change.node->GetRole()))
@@ -1317,6 +1330,8 @@ const char* ToString(AXEventGenerator::Event event) {
       return "nameChanged";
     case AXEventGenerator::Event::OBJECT_ATTRIBUTE_CHANGED:
       return "objectAttributeChanged";
+    case AXEventGenerator::Event::ORIENTATION_CHANGED:
+      return "orientationChanged";
     case AXEventGenerator::Event::OTHER_ATTRIBUTE_CHANGED:
       return "otherAttributeChanged";
     case AXEventGenerator::Event::PARENT_CHANGED:

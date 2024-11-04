@@ -9,7 +9,6 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qthread.h>
-#include <QtCore/private/qeventdispatcher_wasm_p.h>
 #include <QtCore/private/qoffsetstringarray_p.h>
 #include <QtCore/private/qtools_p.h>
 
@@ -63,7 +62,7 @@ QNetworkReplyWasmImplPrivate::QNetworkReplyWasmImplPrivate()
     , downloadBufferCurrentSize(0)
     , totalDownloadSize(0)
     , percentFinished(0)
-    , m_fetch(0)
+    , m_fetch(nullptr)
 {
 }
 
@@ -80,6 +79,9 @@ QNetworkReplyWasmImpl::QNetworkReplyWasmImpl(QObject *parent)
 
 QNetworkReplyWasmImpl::~QNetworkReplyWasmImpl()
 {
+    if (isRunning())
+        abort();
+    close();
 }
 
 QByteArray QNetworkReplyWasmImpl::methodName() const
@@ -132,7 +134,8 @@ void QNetworkReplyWasmImpl::abort()
 void QNetworkReplyWasmImplPrivate::setCanceled()
 {
     Q_Q(QNetworkReplyWasmImpl);
-    m_fetch->userData = nullptr;
+    if (m_fetch)
+        m_fetch->userData = nullptr;
 
     emitReplyError(QNetworkReply::OperationCanceledError, QStringLiteral("Operation canceled"));
     q->setFinished(true);
@@ -292,14 +295,11 @@ void QNetworkReplyWasmImplPrivate::doSendRequest()
     attr.timeoutMSecs = request.transferTimeout();
     attr.userData = reinterpret_cast<void *>(this);
 
-    QString dPath = QStringLiteral("/home/web_user/") + request.url().fileName();
+    QString dPath = "/home/web_user/"_L1 + request.url().fileName();
     QByteArray destinationPath = dPath.toUtf8();
     attr.destinationPath = destinationPath.constData();
 
-    auto url = request.url().toString().toUtf8();
-    QEventDispatcherWasm::runOnMainThread([attr, url]() mutable {
-        emscripten_fetch(&attr, url);
-    });
+    m_fetch = emscripten_fetch(&attr, request.url().toString().toUtf8());
     state = Working;
 }
 
@@ -493,6 +493,7 @@ void QNetworkReplyWasmImplPrivate::downloadSucceeded(emscripten_fetch_t *fetch)
 void QNetworkReplyWasmImplPrivate::setReplyFinished()
 {
     Q_Q(QNetworkReplyWasmImpl);
+    state = QNetworkReplyPrivate::Finished;
     q->setFinished(true);
     emit q->readChannelFinished();
     emit q->finished();

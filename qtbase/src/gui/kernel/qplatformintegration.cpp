@@ -6,6 +6,7 @@
 #include <qpa/qplatformfontdatabase.h>
 #include <qpa/qplatformclipboard.h>
 #include <qpa/qplatformaccessibility.h>
+#include <qpa/qplatformkeymapper.h>
 #include <qpa/qplatformtheme.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qpixmap_raster_p.h>
@@ -228,6 +229,11 @@ QPlatformServices *QPlatformIntegration::services() const
     \value ScreenWindowGrabbing The platform supports grabbing window on screen.
     On Wayland, this capability can be reported as \c false. The default implementation
     of hasCapability() returns \c true.
+
+    \value BackingStoreStaticContents The platform backingstore supports static contents.
+    On resize of the backingstore the static contents region is provided, and the backing
+    store is expected to propagate the static content to the resized backing store, without
+    clients needing to repaint the static content region.
  */
 
 /*!
@@ -340,6 +346,21 @@ void QPlatformIntegration::destroy()
 QPlatformInputContext *QPlatformIntegration::inputContext() const
 {
     return nullptr;
+}
+
+/*!
+    Accessor for the platform integration's key mapper.
+
+    Default implementation returns a default QPlatformKeyMapper.
+
+    \sa QPlatformKeyMapper
+*/
+QPlatformKeyMapper *QPlatformIntegration::keyMapper() const
+{
+    static QPlatformKeyMapper *keyMapper = nullptr;
+    if (!keyMapper)
+        keyMapper = new QPlatformKeyMapper;
+    return keyMapper;
 }
 
 #if QT_CONFIG(accessibility)

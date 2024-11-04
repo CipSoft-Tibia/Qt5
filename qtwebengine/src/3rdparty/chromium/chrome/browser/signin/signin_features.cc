@@ -9,7 +9,14 @@
 
 #if !BUILDFLAG(IS_CHROMEOS_ASH) && !BUILDFLAG(IS_ANDROID)
 // Enables the new style, "For You" First Run Experience
-BASE_FEATURE(kForYouFre, "ForYouFre", base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kForYouFre,
+             "ForYouFre",
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+             base::FEATURE_ENABLED_BY_DEFAULT
+#else
+             base::FEATURE_DISABLED_BY_DEFAULT
+#endif
+);
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 // Whether the browser should be opened when the user closes the FRE window. If
@@ -30,6 +37,30 @@ const base::FeatureParam<SigninPromoVariant> kForYouFreSignInPromoVariant{
     &kForYouFre, /*name=*/"signin_promo_variant",
     /*default_value=*/SigninPromoVariant::kSignIn,
     /*options=*/&kSignInPromoVariantOptions};
+
+constexpr base::FeatureParam<WithDefaultBrowserStep>::Option
+    kWithDefaultBrowserStepOptions[] = {
+        {WithDefaultBrowserStep::kYes, "yes"},
+        {WithDefaultBrowserStep::kNo, "no"},
+        {WithDefaultBrowserStep::kForced, "forced"},
+};
+
+const base::FeatureParam<WithDefaultBrowserStep>
+    kForYouFreWithDefaultBrowserStep{
+        &kForYouFre, /*name=*/"with_default_browser_step",
+        /*default_value=*/WithDefaultBrowserStep::kNo,
+        /*options=*/&kWithDefaultBrowserStepOptions};
+
+constexpr base::FeatureParam<DefaultBrowserVariant>::Option
+    kDefaultBrowserVariantOptions[] = {
+        {DefaultBrowserVariant::kCurrent, "current"},
+        {DefaultBrowserVariant::kNew, "new"},
+};
+
+const base::FeatureParam<DefaultBrowserVariant> kForYouFreDefaultBrowserVariant{
+    &kForYouFre, /*name=*/"default_browser_variant",
+    /*default_value=*/DefaultBrowserVariant::kCurrent,
+    /*options=*/&kDefaultBrowserVariantOptions};
 
 // Feature that indicates that we should put the client in a study group
 // (provided through `kForYouFreStudyGroup`) to be able to look at metrics in
@@ -54,17 +85,6 @@ BASE_FEATURE(kProcessGaiaRemoveLocalAccountHeader,
              "ProcessGaiaRemoveLocalAccountHeader",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-// Enables the sync promo after the sign-in intercept.
-BASE_FEATURE(kSyncPromoAfterSigninIntercept,
-             "SyncPromoAfterSigninIntercept",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-// Enables using new style (strings, illustration, and disclaimer if needed)
-// for the sign-in intercept bubble.
-BASE_FEATURE(kSigninInterceptBubbleV2,
-             "SigninInterceptBubbleV2",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
 // Enables showing the enterprise dialog after every signin into a managed
 // account.
 BASE_FEATURE(kShowEnterpriseDialogForAllManagedAccountsSignin,
@@ -74,4 +94,32 @@ BASE_FEATURE(kShowEnterpriseDialogForAllManagedAccountsSignin,
 // Disables signout for enteprise managed profiles
 BASE_FEATURE(kDisallowManagedProfileSignout,
              "DisallowManagedProfileSignout",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+#if BUILDFLAG(ENABLE_MIRROR)
+BASE_FEATURE(kVerifyRequestInitiatorForMirrorHeaders,
+             "VerifyRequestInitiatorForMirrorHeaders",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(ENABLE_MIRROR)
+
+BASE_FEATURE(kProfilesReordering,
+             "ProfilesReordering",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kForceSigninFlowInProfilePicker,
+             "ForceSigninFlowInProfilePicker",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kGaiaSigninUrlEmbedded,
+             "GaiaSigninUrlEmbedded",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Complimentary switch to `switches::kEnableBoundSessionCredentials` to enable
+// the bound session credentials feature in DICE profiles. For this switch to
+// have an effect, `switches::kEnableBoundSessionCredentials` should also be
+// enabled.
+#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+BASE_FEATURE(kEnableBoundSessionCredentialsOnDiceProfiles,
+             "EnableBoundSessionCredentialsOnDiceProfiles",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif

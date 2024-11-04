@@ -1,9 +1,10 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cast/standalone_sender/looping_file_cast_agent.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -20,8 +21,7 @@
 #include "util/stringprintf.h"
 #include "util/trace_logging.h"
 
-namespace openscreen {
-namespace cast {
+namespace openscreen::cast {
 namespace {
 
 using DeviceMediaPolicy = SenderSocketFactory::DeviceMediaPolicy;
@@ -29,7 +29,7 @@ using DeviceMediaPolicy = SenderSocketFactory::DeviceMediaPolicy;
 }  // namespace
 
 LoopingFileCastAgent::LoopingFileCastAgent(
-    TaskRunner* task_runner,
+    TaskRunner& task_runner,
     std::unique_ptr<TrustStore> cast_trust_store,
     ShutdownCallback shutdown_callback)
     : task_runner_(task_runner),
@@ -59,8 +59,10 @@ void LoopingFileCastAgent::Connect(ConnectionSettings settings) {
                           ? DeviceMediaPolicy::kIncludesVideo
                           : DeviceMediaPolicy::kAudioOnly;
 
-  task_runner_->PostTask([this, policy] {
+  task_runner_.PostTask([this, policy] {
+#if defined(MAC_OSX)
     wake_lock_ = ScopedWakeLock::Create(task_runner_);
+#endif  // defined(MAC_OSX)
     socket_factory_.Connect(connection_settings_->receiver_endpoint, policy,
                             &router_);
   });
@@ -79,14 +81,12 @@ void LoopingFileCastAgent::OnConnected(SenderSocketFactory* factory,
   router_.TakeSocket(this, std::move(socket));
 
   OSP_LOG_INFO << "Launching Mirroring App on the Cast Receiver...";
-  static constexpr char kLaunchMessageTemplate[] =
-      R"({"type":"LAUNCH", "requestId":%d, "appId":"%s"})";
-  router_.Send(VirtualConnection{kPlatformSenderId, kPlatformReceiverId,
-                                 message_port_.GetSocketId()},
-               MakeSimpleUTF8Message(
-                   kReceiverNamespace,
-                   StringPrintf(kLaunchMessageTemplate, next_request_id_++,
-                                GetStreamingAppId())));
+  // First, CONNECT to the platform receiver.
+  platform_remote_connection_.emplace(VirtualConnection{
+      kPlatformSenderId, kPlatformReceiverId, message_port_.GetSocketId()});
+  connection_handler_.OpenRemoteConnection(
+      *platform_remote_connection_,
+      [this](bool success) { OnReceiverMessagingOpened(success); });
 }
 
 void LoopingFileCastAgent::OnError(SenderSocketFactory* factory,
@@ -129,7 +129,11 @@ void LoopingFileCastAgent::OnMessage(VirtualConnectionRouter* router,
 
   if (message.namespace_() == kReceiverNamespace &&
       message_port_.GetSocketId() == ToCastSocketId(socket)) {
-    const ErrorOr<Json::Value> payload = json::Parse(message.payload_utf8());
+    if (message.payload_type() != ::cast::channel::CastMessage::STRING) {
+      OSP_DLOG_WARN << ": received an unsupported BINARY type message.";
+    }
+
+    const ErrorOr<Json::Value> payload = json::Parse(GetPayload(message));
     if (payload.is_error()) {
       OSP_LOG_ERROR << "Failed to parse message: " << payload.error();
     }
@@ -172,12 +176,18 @@ void LoopingFileCastAgent::HandleReceiverStatus(const Json::Value& status) {
   std::string running_app_id;
   if (!json::TryParseString(details[kMessageKeyAppId], &running_app_id) ||
       running_app_id != GetStreamingAppId()) {
-    // The mirroring app is not running. If it was just stopped, Shutdown() will
-    // tear everything down. If it has been stopped already, Shutdown() is a
-    // no-op.
-    Shutdown();
+    if (has_launched_) {
+      // The mirroring app is not running and should have already been launched.
+      // If it was just stopped, Shutdown() will tear everything down. If it has
+      // been stopped already, Shutdown() is a no-op.
+      Shutdown();
+    }
     return;
   }
+
+  // If the mirroring app is the current streaming application, we can now
+  // safely say we have been launched.
+  has_launched_ = true;
 
   std::string session_id;
   if (!json::TryParseString(details[kMessageKeySessionId], &session_id) ||
@@ -244,6 +254,26 @@ void LoopingFileCastAgent::OnRemoteMessagingOpened(bool success) {
   }
 }
 
+void LoopingFileCastAgent::OnReceiverMessagingOpened(bool success) {
+  // We established a platform connection and now need to launch.
+  OSP_DCHECK(platform_remote_connection_);
+  OSP_DCHECK(!remote_connection_);
+  if (!success) {
+    OSP_LOG_INFO << "Failed to establish messaging to the Cast Receiver.";
+    Shutdown();
+    return;
+  }
+
+  static constexpr char kLaunchMessageTemplate[] =
+      R"({"type":"LAUNCH", "requestId":%d, "appId":"%s", "language": "en-US",
+       "supportedAppTypes":["WEB"]})";
+  router_.Send(*platform_remote_connection_,
+               MakeSimpleUTF8Message(
+                   kReceiverNamespace,
+                   StringPrintf(kLaunchMessageTemplate, next_request_id_++,
+                                GetStreamingAppId())));
+}
+
 void LoopingFileCastAgent::CreateAndStartSession() {
   TRACE_DEFAULT_SCOPED(TraceCategory::kStandaloneSender);
 
@@ -260,6 +290,7 @@ void LoopingFileCastAgent::CreateAndStartSession() {
       remote_connection_->peer_id,
       connection_settings_->use_android_rtp_hack};
   current_session_ = std::make_unique<SenderSession>(std::move(config));
+  current_session_->SetStatsClient(this);
   OSP_DCHECK(!message_port_.source_id().empty());
 
   AudioCaptureConfig audio_config;
@@ -314,6 +345,16 @@ void LoopingFileCastAgent::OnError(const SenderSession* session, Error error) {
   Shutdown();
 }
 
+void LoopingFileCastAgent::OnStatisticsUpdated(
+    const SenderStats& updated_stats) {
+  // Only log every 10 times, or roughly every 5 seconds.
+  constexpr int kLoggingInterval = 10;
+  if ((num_times_on_statistics_updated_called_++ % kLoggingInterval) == 0) {
+    OSP_VLOG << __func__ << ": updated_stats=" << updated_stats.ToString();
+  }
+  last_reported_statistics_ = std::make_optional<SenderStats>(updated_stats);
+}
+
 void LoopingFileCastAgent::OnReady() {
   OSP_DCHECK(cast_mode_ == CastMode::kRemoting);
   is_ready_for_remoting_ = true;
@@ -342,9 +383,22 @@ void LoopingFileCastAgent::Shutdown() {
   if (current_session_) {
     OSP_LOG_INFO << "Stopping mirroring session...";
     current_session_.reset();
+
+    if (last_reported_statistics_) {
+      OSP_LOG_INFO << "Last reported statistics="
+                   << last_reported_statistics_->ToString();
+    }
   }
   OSP_DCHECK(message_port_.source_id().empty());
   environment_.reset();
+
+  if (platform_remote_connection_) {
+    const VirtualConnection connection = *platform_remote_connection_;
+    // Reset |platform_remote_connection_| because ConnectionNamespaceHandler
+    // may call-back into OnReceiverMessagingOpened().
+    platform_remote_connection_.reset();
+    connection_handler_.CloseRemoteConnection(connection);
+  }
 
   if (remote_connection_) {
     const VirtualConnection connection = *remote_connection_;
@@ -380,5 +434,4 @@ void LoopingFileCastAgent::Shutdown() {
   }
 }
 
-}  // namespace cast
-}  // namespace openscreen
+}  // namespace openscreen::cast

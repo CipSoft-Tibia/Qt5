@@ -35,7 +35,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Installer.Postinstall.BiosType" enum="ChromeOSBiosType"
-    expires_after="2023-10-01">
+    expires_after="2024-02-11">
   <owner>tbrandston@google.com</owner>
   <owner>chromeos-flex-eng@google.com</owner>
   <summary>
@@ -52,7 +52,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Installer.Postinstall.EfiBootEntryCount" units="entries"
-    expires_after="2023-10-01">
+    expires_after="2024-02-11">
   <owner>tbrandston@google.com</owner>
   <owner>chromeos-flex-eng@google.com</owner>
   <summary>
@@ -104,8 +104,18 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="Installer.Postinstall.ESPMountRetries" units="retries"
+    expires_after="2024-01-20">
+  <owner>khionu@google.com</owner>
+  <owner>chromeos-flex-eng@google.com</owner>
+  <summary>
+    How many retries were necessary when attempting to mount the boot Partition
+    after partition updates. Reported once during postinstall. ChromeOS only.
+  </summary>
+</histogram>
+
 <histogram name="Installer.Postinstall.ManagedEfiBootEntryCount"
-    units="entries" expires_after="2023-10-01">
+    units="entries" expires_after="2024-02-11">
   <owner>tbrandston@google.com</owner>
   <owner>chromeos-flex-eng@google.com</owner>
   <summary>
@@ -149,8 +159,23 @@ chromium-metrics-reviews@google.com.
   </token>
 </histogram>
 
+<histogram name="Installer.Postinstall.RevenPartitionMigration"
+    enum="ChromeOSRevenPartitionMigration" expires_after="2024-02-11">
+  <owner>nicholasbishop@google.com</owner>
+  <owner>chromeos-flex-eng@google.com</owner>
+  <summary>
+    Result of running the Reven (ChromeOS Flex) partition migration.
+
+    This is reported at the end of the partition migration, which is run during
+    postinstall. The migration is only run with USE=reven_partition_migration.
+
+    Note that some metrics may be lost during postinstall, see:
+    https://source.chromium.org/chromiumos/chromiumos/codesearch/+/main:src/platform2/installer/docs/postinst_metrics.md
+  </summary>
+</histogram>
+
 <histogram name="Installer.PowerwashCount" units="powerwashes"
-    expires_after="2023-08-13">
+    expires_after="2024-02-20">
   <owner>kimjae@chromium.org</owner>
   <owner>chromeos-core-services@chromium.org</owner>
   <summary>
@@ -161,7 +186,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Installer.PowerwashDays" units="powerwashdays"
-    expires_after="2023-08-20">
+    expires_after="2024-02-25">
   <owner>qianwan@google.com</owner>
   <owner>chromeos-data@google.com</owner>
   <summary>
@@ -177,8 +202,21 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="Installer.Recovery.NbrDurationMinutes" units="minutes"
+    expires_after="2024-01-01">
+  <owner>yuanpengni@chromium.org</owner>
+  <owner>chromeos-core-services@google.com</owner>
+  <summary>
+    The duration in minutes for the network based recovery to complete.
+
+    This is reported on reboot after a successful recovery.
+
+    This metric is specific to Chrome OS.
+  </summary>
+</histogram>
+
 <histogram name="Installer.Recovery.Reason" enum="ChromeOSRecoveryReason"
-    expires_after="2023-08-13">
+    expires_after="2024-02-20">
   <owner>kimjae@chromium.org</owner>
   <owner>chromeos-core-services@google.com</owner>
   <summary>

@@ -9,12 +9,15 @@
 #include "third_party/blink/renderer/core/animation/element_animations.h"
 #include "third_party/blink/renderer/core/css/css_container_rule.h"
 #include "third_party/blink/renderer/core/css/css_test_helpers.h"
+#include "third_party/blink/renderer/core/css/parser/css_parser_context.h"
 #include "third_party/blink/renderer/core/css/post_style_update_scope.h"
 #include "third_party/blink/renderer/core/css/properties/css_property_ref.h"
 #include "third_party/blink/renderer/core/css/style_engine.h"
+#include "third_party/blink/renderer/core/css/style_sheet_contents.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
+#include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
@@ -201,6 +204,7 @@ TEST_F(ContainerQueryTest, ValidFeatures) {
   EXPECT_FALSE(ParseAtContainer("@container (color-index >= 1) {}"));
   EXPECT_FALSE(ParseAtContainer("@container (grid) {}"));
   EXPECT_FALSE(ParseAtContainer("@container (resolution: 150dpi) {}"));
+  EXPECT_FALSE(ParseAtContainer("@container (resolution: calc(6x / 3)) {}"));
   EXPECT_FALSE(ParseAtContainer("@container size(width) {}"));
   EXPECT_FALSE(ParseAtContainer("@container test_name size(width) {}"));
 }
@@ -285,6 +289,26 @@ TEST_F(ContainerQueryTest, ImplicitContainerSelector) {
             orientation.Type(WritingMode::kVerticalRl));
 }
 
+TEST_F(ContainerQueryTest, StickyContainerSelector) {
+  ContainerSelector stuck_right = ContainerSelectorFrom("state(stuck: right)");
+  EXPECT_EQ(kContainerTypeSticky, stuck_right.Type(WritingMode::kHorizontalTb));
+
+  ContainerSelector stuck_and_style =
+      ContainerSelectorFrom("state(stuck: right) and style(--foo: bar)");
+  EXPECT_EQ(kContainerTypeSticky,
+            stuck_and_style.Type(WritingMode::kHorizontalTb));
+
+  ContainerSelector stuck_and_inline_size = ContainerSelectorFrom(
+      "state(stuck: inset-block-end) or (inline-size > 10px)");
+  EXPECT_EQ((kContainerTypeSticky | kContainerTypeInlineSize),
+            stuck_and_inline_size.Type(WritingMode::kHorizontalTb));
+
+  ContainerSelector stuck_and_block_size =
+      ContainerSelectorFrom("state(stuck: inset-block-end) and (height)");
+  EXPECT_EQ((kContainerTypeSticky | kContainerTypeBlockSize),
+            stuck_and_block_size.Type(WritingMode::kHorizontalTb));
+}
+
 TEST_F(ContainerQueryTest, RuleParsing) {
   StyleRuleContainer* container = ParseAtContainer(R"CSS(
     @container test_name (min-width: 100px) {
@@ -367,18 +391,18 @@ TEST_F(ContainerQueryTest, ContainerQueryEvaluation) {
       <div id=div></div>
     </div>
   )HTML");
-  Element* div = GetDocument().getElementById("div");
+  Element* div = GetDocument().getElementById(AtomicString("div"));
   ASSERT_TRUE(div);
   EXPECT_EQ(2, div->ComputedStyleRef().ZIndex());
 
   // Check that dependent elements are responsive to changes:
-  Element* container = GetDocument().getElementById("container");
+  Element* container = GetDocument().getElementById(AtomicString("container"));
   ASSERT_TRUE(container);
-  container->setAttribute(html_names::kClassAttr, "adjust");
+  container->setAttribute(html_names::kClassAttr, AtomicString("adjust"));
   UpdateAllLifecyclePhasesForTest();
   EXPECT_EQ(3, div->ComputedStyleRef().ZIndex());
 
-  container->setAttribute(html_names::kClassAttr, "");
+  container->setAttribute(html_names::kClassAttr, g_empty_atom);
   UpdateAllLifecyclePhasesForTest();
   EXPECT_EQ(2, div->ComputedStyleRef().ZIndex());
 }
@@ -419,20 +443,28 @@ TEST_F(ContainerQueryTest, QueryZoom) {
     </div>
   )HTML");
 
-  Element* target1 = GetDocument().getElementById("target1");
-  Element* target2 = GetDocument().getElementById("target2");
+  Element* target1 = GetDocument().getElementById(AtomicString("target1"));
+  Element* target2 = GetDocument().getElementById(AtomicString("target2"));
   ASSERT_TRUE(target1);
   ASSERT_TRUE(target2);
 
-  EXPECT_TRUE(target1->ComputedStyleRef().GetVariableData("--w100"));
-  EXPECT_TRUE(target1->ComputedStyleRef().GetVariableData("--h200"));
-  EXPECT_FALSE(target1->ComputedStyleRef().GetVariableData("--w200"));
-  EXPECT_FALSE(target1->ComputedStyleRef().GetVariableData("--h400"));
+  EXPECT_TRUE(
+      target1->ComputedStyleRef().GetVariableData(AtomicString("--w100")));
+  EXPECT_TRUE(
+      target1->ComputedStyleRef().GetVariableData(AtomicString("--h200")));
+  EXPECT_FALSE(
+      target1->ComputedStyleRef().GetVariableData(AtomicString("--w200")));
+  EXPECT_FALSE(
+      target1->ComputedStyleRef().GetVariableData(AtomicString("--h400")));
 
-  EXPECT_FALSE(target2->ComputedStyleRef().GetVariableData("--w100"));
-  EXPECT_FALSE(target2->ComputedStyleRef().GetVariableData("--h200"));
-  EXPECT_TRUE(target2->ComputedStyleRef().GetVariableData("--w200"));
-  EXPECT_TRUE(target2->ComputedStyleRef().GetVariableData("--h400"));
+  EXPECT_FALSE(
+      target2->ComputedStyleRef().GetVariableData(AtomicString("--w100")));
+  EXPECT_FALSE(
+      target2->ComputedStyleRef().GetVariableData(AtomicString("--h200")));
+  EXPECT_TRUE(
+      target2->ComputedStyleRef().GetVariableData(AtomicString("--w200")));
+  EXPECT_TRUE(
+      target2->ComputedStyleRef().GetVariableData(AtomicString("--h400")));
 }
 
 TEST_F(ContainerQueryTest, QueryFontRelativeWithZoom) {
@@ -478,16 +510,19 @@ TEST_F(ContainerQueryTest, QueryFontRelativeWithZoom) {
     </div>
   )HTML");
 
-  Element* em_target = GetDocument().getElementById("em-target");
-  Element* ex_target = GetDocument().getElementById("ex-target");
-  Element* ch_target = GetDocument().getElementById("ch-target");
+  Element* em_target = GetDocument().getElementById(AtomicString("em-target"));
+  Element* ex_target = GetDocument().getElementById(AtomicString("ex-target"));
+  Element* ch_target = GetDocument().getElementById(AtomicString("ch-target"));
   ASSERT_TRUE(em_target);
   ASSERT_TRUE(ex_target);
   ASSERT_TRUE(ch_target);
 
-  EXPECT_TRUE(em_target->ComputedStyleRef().GetVariableData("--em"));
-  EXPECT_TRUE(ex_target->ComputedStyleRef().GetVariableData("--ex"));
-  EXPECT_TRUE(ch_target->ComputedStyleRef().GetVariableData("--ch"));
+  EXPECT_TRUE(
+      em_target->ComputedStyleRef().GetVariableData(AtomicString("--em")));
+  EXPECT_TRUE(
+      ex_target->ComputedStyleRef().GetVariableData(AtomicString("--ex")));
+  EXPECT_TRUE(
+      ch_target->ComputedStyleRef().GetVariableData(AtomicString("--ch")));
 }
 
 TEST_F(ContainerQueryTest, ContainerUnitsViewportFallback) {
@@ -537,7 +572,8 @@ TEST_F(ContainerQueryTest, ContainerUnitsViewportFallback) {
     </div>
   )HTML");
 
-  Element* inline_target = GetDocument().getElementById("inline_target");
+  Element* inline_target =
+      GetDocument().getElementById(AtomicString("inline_target"));
   ASSERT_TRUE(inline_target);
   EXPECT_EQ(ComputedValueString(inline_target, "--cqw"), "10px");
   EXPECT_EQ(ComputedValueString(inline_target, "--cqi"), "10px");
@@ -550,7 +586,8 @@ TEST_F(ContainerQueryTest, ContainerUnitsViewportFallback) {
   EXPECT_EQ(ComputedValueString(inline_target, "--cqmax"),
             ComputedValueString(inline_target, "--fallback-max-cqi-vh"));
 
-  Element* size_target = GetDocument().getElementById("size_target");
+  Element* size_target =
+      GetDocument().getElementById(AtomicString("size_target"));
   ASSERT_TRUE(size_target);
   EXPECT_EQ(ComputedValueString(size_target, "--cqw"), "10px");
   EXPECT_EQ(ComputedValueString(size_target, "--cqi"), "10px");
@@ -589,8 +626,8 @@ TEST_F(ContainerQueryTest, OldStyleForTransitions) {
     </div>
   )HTML");
 
-  Element* container = GetDocument().getElementById("container");
-  target = GetDocument().getElementById("target");
+  Element* container = GetDocument().getElementById(AtomicString("container"));
+  target = GetDocument().getElementById(AtomicString("target"));
   ASSERT_TRUE(target);
   ASSERT_TRUE(container);
 
@@ -660,8 +697,8 @@ TEST_F(ContainerQueryTest, TransitionAppearingInFinalPass) {
     </div>
   )HTML");
 
-  Element* container = GetDocument().getElementById("container");
-  Element* target = GetDocument().getElementById("target");
+  Element* container = GetDocument().getElementById(AtomicString("container"));
+  Element* target = GetDocument().getElementById(AtomicString("target"));
   ASSERT_TRUE(target);
   ASSERT_TRUE(container);
 
@@ -731,8 +768,8 @@ TEST_F(ContainerQueryTest, TransitionTemporarilyAppearing) {
     </div>
   )HTML");
 
-  Element* container = GetDocument().getElementById("container");
-  Element* target = GetDocument().getElementById("target");
+  Element* container = GetDocument().getElementById(AtomicString("container"));
+  Element* target = GetDocument().getElementById(AtomicString("target"));
   ASSERT_TRUE(target);
   ASSERT_TRUE(container);
 
@@ -803,8 +840,8 @@ TEST_F(ContainerQueryTest, RedefiningAnimations) {
     </div>
   )HTML");
 
-  Element* container = GetDocument().getElementById("container");
-  Element* target = GetDocument().getElementById("target");
+  Element* container = GetDocument().getElementById(AtomicString("container"));
+  Element* target = GetDocument().getElementById(AtomicString("target"));
   ASSERT_TRUE(target);
   ASSERT_TRUE(container);
 
@@ -870,8 +907,8 @@ TEST_F(ContainerQueryTest, UnsetAnimation) {
     </div>
   )HTML");
 
-  Element* container = GetDocument().getElementById("container");
-  Element* target = GetDocument().getElementById("target");
+  Element* container = GetDocument().getElementById(AtomicString("container"));
+  Element* target = GetDocument().getElementById(AtomicString("target"));
   ASSERT_TRUE(target);
   ASSERT_TRUE(container);
 
@@ -1120,11 +1157,11 @@ TEST_F(ContainerQueryTest, CQDependentContentVisibilityHidden) {
 
   UpdateAllLifecyclePhasesForTest();
 
-  Element* ancestor = GetDocument().getElementById("ancestor");
+  Element* ancestor = GetDocument().getElementById(AtomicString("ancestor"));
   ancestor->SetInlineStyleProperty(CSSPropertyID::kWidth, "200px");
 
-  Element* locker = GetDocument().getElementById("locker");
-  locker->setAttribute(html_names::kClassAttr, "locked");
+  Element* locker = GetDocument().getElementById(AtomicString("locker"));
+  locker->setAttribute(html_names::kClassAttr, AtomicString("locked"));
   locker->setInnerHTML("<span>Visible?</span>");
 
   UpdateAllLifecyclePhasesForTest();
@@ -1172,10 +1209,10 @@ TEST_F(ContainerQueryTest, QueryViewportDependency) {
 
   UpdateAllLifecyclePhasesForTest();
 
-  Element* target1 = GetDocument().getElementById("target1");
-  Element* target2 = GetDocument().getElementById("target2");
-  Element* target3 = GetDocument().getElementById("target3");
-  Element* target4 = GetDocument().getElementById("target4");
+  Element* target1 = GetDocument().getElementById(AtomicString("target1"));
+  Element* target2 = GetDocument().getElementById(AtomicString("target2"));
+  Element* target3 = GetDocument().getElementById(AtomicString("target3"));
+  Element* target4 = GetDocument().getElementById(AtomicString("target4"));
 
   ASSERT_TRUE(target1);
   ASSERT_TRUE(target2);
@@ -1214,11 +1251,83 @@ TEST_F(ContainerQueryTest, NoStyleQueryWhenDisabled) {
 
   UpdateAllLifecyclePhasesForTest();
   const ComputedStyle& style =
-      GetDocument().getElementById("span")->ComputedStyleRef();
+      GetDocument().getElementById(AtomicString("span"))->ComputedStyleRef();
   EXPECT_EQ(style.Display(), EDisplay::kInline)
       << "style() should not match when disabled";
   EXPECT_EQ(style.VerticalAlign(), EVerticalAlign::kBaseline)
       << "style() should be unknown when disabled";
+}
+
+TEST_F(ContainerQueryTest, TreeScopedReferenceUserOrigin) {
+  StyleSheetKey user_sheet_key("user_sheet");
+  auto* parsed_user_sheet = MakeGarbageCollected<StyleSheetContents>(
+      MakeGarbageCollected<CSSParserContext>(GetDocument()));
+  parsed_user_sheet->ParseString(R"HTML(
+      @container author-container (width >= 0) {
+        div > span {
+          z-index: 13;
+        }
+      }
+      .user_container {
+        container: user-container / inline-size;
+      }
+  )HTML");
+  GetStyleEngine().InjectSheet(user_sheet_key, parsed_user_sheet,
+                               WebCssOrigin::kUser);
+
+  GetDocument().body()->setInnerHTMLWithDeclarativeShadowDOMForTesting(R"HTML(
+    <style>
+      @container user-container (width >= 0) {
+        div > span {
+          z-index: 17;
+        }
+      }
+      .author_container {
+        container: author-container / inline-size;
+      }
+    </style>
+    <div class="author_container">
+      <span id="author_target"></span>
+    </div>
+    <div class="user_container">
+      <span id="user_target"></span>
+    </div>
+    <div id="host">
+      <template shadowrootmode="open">
+        <style>
+          @container user-container (width >= 0) {
+            div > span {
+              z-index: 29;
+            }
+          }
+          .author_container {
+            container: author-container / inline-size;
+          }
+        </style>
+        <div class="author_container">
+          <span id="shadow_author_target"></span>
+        </div>
+        <div class="user_container">
+          <span id="shadow_user_target"></span>
+        </div>
+      </template>
+    </div>
+  )HTML");
+
+  UpdateAllLifecyclePhasesForTest();
+
+  Element* author_target = GetElementById("author_target");
+  Element* user_target = GetElementById("user_target");
+  ShadowRoot* shadow_root = GetElementById("host")->GetShadowRoot();
+  Element* shadow_author_target =
+      shadow_root->getElementById(AtomicString("shadow_author_target"));
+  Element* shadow_user_target =
+      shadow_root->getElementById(AtomicString("shadow_user_target"));
+
+  EXPECT_EQ(author_target->ComputedStyleRef().ZIndex(), 13);
+  EXPECT_EQ(shadow_author_target->ComputedStyleRef().ZIndex(), 13);
+  EXPECT_EQ(user_target->ComputedStyleRef().ZIndex(), 17);
+  EXPECT_EQ(shadow_user_target->ComputedStyleRef().ZIndex(), 29);
 }
 
 }  // namespace blink

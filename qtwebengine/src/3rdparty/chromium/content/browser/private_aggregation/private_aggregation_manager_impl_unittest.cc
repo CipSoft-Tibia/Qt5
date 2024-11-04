@@ -17,6 +17,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/test/bind.h"
+#include "base/test/gmock_callback_support.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/time/time.h"
 #include "content/browser/aggregation_service/aggregatable_report.h"
@@ -26,13 +27,14 @@
 #include "content/browser/private_aggregation/private_aggregation_budgeter.h"
 #include "content/browser/private_aggregation/private_aggregation_host.h"
 #include "content/browser/private_aggregation/private_aggregation_test_utils.h"
-#include "content/common/aggregatable_report.mojom.h"
+#include "content/public/browser/private_aggregation_data_model.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/test/browser_task_environment.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
+#include "third_party/blink/public/mojom/private_aggregation/aggregatable_report.mojom.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -46,8 +48,7 @@ using testing::Return;
 
 using Checkpoint = testing::MockFunction<void(int step)>;
 
-// TODO(alexmt): Consider making FromJavaTime() constexpr.
-const base::Time kExampleTime = base::Time::FromJavaTime(1652984901234);
+constexpr base::Time kExampleTime = base::Time::FromJavaTime(1652984901234);
 
 constexpr char kExampleOriginUrl[] = "https://origin.example";
 constexpr char kExampleMainFrameUrl[] = "https://main_frame.example";
@@ -90,9 +91,9 @@ class PrivateAggregationManagerImplTest : public testing::Test {
   BrowserTaskEnvironment task_environment_;
 
   // Keep pointers around for EXPECT_CALL.
-  raw_ptr<MockPrivateAggregationBudgeter> budgeter_;
-  raw_ptr<MockPrivateAggregationHost> host_;
-  raw_ptr<MockAggregationService> aggregation_service_;
+  raw_ptr<MockPrivateAggregationBudgeter, DanglingUntriaged> budgeter_;
+  raw_ptr<MockPrivateAggregationHost, DanglingUntriaged> host_;
+  raw_ptr<MockAggregationService, DanglingUntriaged> aggregation_service_;
 
   testing::StrictMock<PrivateAggregationManagerImplUnderTest> manager_;
 };
@@ -107,7 +108,7 @@ TEST_F(PrivateAggregationManagerImplTest,
   PrivateAggregationBudgetKey example_key =
       PrivateAggregationBudgetKey::Create(
           example_origin, kExampleTime,
-          PrivateAggregationBudgetKey::Api::kFledge)
+          PrivateAggregationBudgetKey::Api::kProtectedAudience)
           .value();
 
   AggregatableReportRequest expected_request =
@@ -152,7 +153,7 @@ TEST_F(PrivateAggregationManagerImplTest,
       aggregation_service::CloneReportRequest(expected_request), example_key);
 
   histogram.ExpectUniqueSample(
-      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult",
+      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult2",
       PrivateAggregationBudgeter::RequestResult::kApproved, 1);
 }
 
@@ -166,7 +167,7 @@ TEST_F(PrivateAggregationManagerImplTest,
   PrivateAggregationBudgetKey example_key =
       PrivateAggregationBudgetKey::Create(
           example_origin, kExampleTime,
-          PrivateAggregationBudgetKey::Api::kFledge)
+          PrivateAggregationBudgetKey::Api::kProtectedAudience)
           .value();
 
   AggregatableReportRequest example_request =
@@ -174,12 +175,12 @@ TEST_F(PrivateAggregationManagerImplTest,
   AggregationServicePayloadContents payload_contents =
       example_request.payload_contents();
   payload_contents.contributions = {
-      mojom::AggregatableReportHistogramContribution(/*bucket=*/123,
-                                                     /*value=*/100),
-      mojom::AggregatableReportHistogramContribution(/*bucket=*/123,
-                                                     /*value=*/5),
-      mojom::AggregatableReportHistogramContribution(/*bucket=*/456,
-                                                     /*value=*/20)};
+      blink::mojom::AggregatableReportHistogramContribution(/*bucket=*/123,
+                                                            /*value=*/100),
+      blink::mojom::AggregatableReportHistogramContribution(/*bucket=*/123,
+                                                            /*value=*/5),
+      blink::mojom::AggregatableReportHistogramContribution(/*bucket=*/456,
+                                                            /*value=*/20)};
 
   AggregatableReportRequest expected_request =
       AggregatableReportRequest::Create(payload_contents,
@@ -216,7 +217,7 @@ TEST_F(PrivateAggregationManagerImplTest,
       aggregation_service::CloneReportRequest(expected_request), example_key);
 
   histogram.ExpectUniqueSample(
-      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult",
+      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult2",
       PrivateAggregationBudgeter::RequestResult::kApproved, 1);
 }
 
@@ -230,7 +231,7 @@ TEST_F(PrivateAggregationManagerImplTest,
   PrivateAggregationBudgetKey example_key =
       PrivateAggregationBudgetKey::Create(
           example_origin, kExampleTime,
-          PrivateAggregationBudgetKey::Api::kFledge)
+          PrivateAggregationBudgetKey::Api::kProtectedAudience)
           .value();
 
   AggregatableReportRequest expected_request =
@@ -252,8 +253,8 @@ TEST_F(PrivateAggregationManagerImplTest,
                                  PrivateAggregationBudgeter::RequestResult)>
                                  on_done) {
           checkpoint.Call(1);
-          std::move(on_done).Run(
-              PrivateAggregationBudgeter::RequestResult::kInsufficientBudget);
+          std::move(on_done).Run(PrivateAggregationBudgeter::RequestResult::
+                                     kInsufficientSmallerScopeBudget);
         }));
     EXPECT_CALL(checkpoint, Call(1));
     EXPECT_CALL(*aggregation_service_, ScheduleReport).Times(0);
@@ -265,8 +266,10 @@ TEST_F(PrivateAggregationManagerImplTest,
       aggregation_service::CloneReportRequest(expected_request), example_key);
 
   histogram.ExpectUniqueSample(
-      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult",
-      PrivateAggregationBudgeter::RequestResult::kInsufficientBudget, 1);
+      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult2",
+      PrivateAggregationBudgeter::RequestResult::
+          kInsufficientSmallerScopeBudget,
+      1);
 }
 
 TEST_F(PrivateAggregationManagerImplTest,
@@ -279,7 +282,7 @@ TEST_F(PrivateAggregationManagerImplTest,
   PrivateAggregationBudgetKey example_key =
       PrivateAggregationBudgetKey::Create(
           example_origin, kExampleTime,
-          PrivateAggregationBudgetKey::Api::kFledge)
+          PrivateAggregationBudgetKey::Api::kProtectedAudience)
           .value();
 
   AggregatableReportRequest example_request =
@@ -287,11 +290,11 @@ TEST_F(PrivateAggregationManagerImplTest,
   AggregationServicePayloadContents payload_contents =
       example_request.payload_contents();
   payload_contents.contributions = {
-      mojom::AggregatableReportHistogramContribution(
+      blink::mojom::AggregatableReportHistogramContribution(
           /*bucket=*/123,
           /*value=*/std::numeric_limits<int>::max()),
-      mojom::AggregatableReportHistogramContribution(/*bucket=*/456,
-                                                     /*value=*/1)};
+      blink::mojom::AggregatableReportHistogramContribution(/*bucket=*/456,
+                                                            /*value=*/1)};
 
   AggregatableReportRequest expected_request =
       AggregatableReportRequest::Create(payload_contents,
@@ -304,7 +307,7 @@ TEST_F(PrivateAggregationManagerImplTest,
       aggregation_service::CloneReportRequest(expected_request), example_key);
 
   histogram.ExpectUniqueSample(
-      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult",
+      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult2",
       PrivateAggregationBudgeter::RequestResult::kRequestedMoreThanTotalBudget,
       1);
 }
@@ -322,7 +325,7 @@ TEST_F(PrivateAggregationManagerImplTest,
   PrivateAggregationBudgetKey example_key =
       PrivateAggregationBudgetKey::Create(
           example_request.shared_info().reporting_origin, kExampleTime,
-          PrivateAggregationBudgetKey::Api::kFledge)
+          PrivateAggregationBudgetKey::Api::kProtectedAudience)
           .value();
 
   absl::optional<AggregatableReportRequest> standard_request =
@@ -333,7 +336,7 @@ TEST_F(PrivateAggregationManagerImplTest,
       AggregatableReportRequest::Create(
           example_request.payload_contents(), std::move(shared_info),
           /*reporting_path=*/
-          "/.well-known/private-aggregation/debug/report-fledge");
+          "/.well-known/private-aggregation/debug/report-protected-audience");
   ASSERT_TRUE(standard_request.has_value());
   ASSERT_TRUE(expected_debug_request.has_value());
 
@@ -367,7 +370,68 @@ TEST_F(PrivateAggregationManagerImplTest,
       example_key);
 
   histogram.ExpectUniqueSample(
-      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult",
+      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult2",
+      PrivateAggregationBudgeter::RequestResult::kApproved, 1);
+}
+
+TEST_F(PrivateAggregationManagerImplTest,
+       DebugRequestWithContextId_ImmediatelySentAfterBudgetRequest) {
+  base::HistogramTester histogram;
+
+  AggregatableReportRequest example_request =
+      aggregation_service::CreateExampleRequest();
+  AggregatableReportSharedInfo shared_info =
+      example_request.shared_info().Clone();
+  shared_info.debug_mode = AggregatableReportSharedInfo::DebugMode::kEnabled;
+
+  PrivateAggregationBudgetKey example_key =
+      PrivateAggregationBudgetKey::Create(
+          example_request.shared_info().reporting_origin, kExampleTime,
+          PrivateAggregationBudgetKey::Api::kProtectedAudience)
+          .value();
+
+  absl::optional<AggregatableReportRequest> standard_request =
+      AggregatableReportRequest::Create(
+          example_request.payload_contents(), shared_info.Clone(),
+          /*reporting_path=*/"/example-reporting-path",
+          /*debug_key=*/absl::nullopt,
+          /*additional_fields=*/{{"context_id", "example_context_id"}});
+  absl::optional<AggregatableReportRequest> expected_debug_request =
+      AggregatableReportRequest::Create(
+          example_request.payload_contents(), std::move(shared_info),
+          /*reporting_path=*/
+          "/.well-known/private-aggregation/debug/report-protected-audience",
+          /*debug_key=*/absl::nullopt,
+          /*additional_fields=*/{{"context_id", "example_context_id"}});
+  ASSERT_TRUE(standard_request.has_value());
+  ASSERT_TRUE(expected_debug_request.has_value());
+
+  EXPECT_CALL(
+      *budgeter_,
+      ConsumeBudget(standard_request->payload_contents().contributions[0].value,
+                    example_key, _))
+      .WillOnce(base::test::RunOnceCallback<2>(
+          PrivateAggregationBudgeter::RequestResult::kApproved));
+  EXPECT_CALL(*aggregation_service_, AssembleAndSendReport)
+      .WillOnce(Invoke([&](AggregatableReportRequest report_request) {
+        EXPECT_TRUE(aggregation_service::ReportRequestsEqual(
+            report_request, expected_debug_request.value()));
+      }));
+
+  // Still triggers the standard (non-debug) report.
+  EXPECT_CALL(*aggregation_service_, ScheduleReport)
+      .WillOnce(
+          Invoke([&standard_request](AggregatableReportRequest report_request) {
+            EXPECT_TRUE(aggregation_service::ReportRequestsEqual(
+                report_request, standard_request.value()));
+          }));
+
+  manager_.OnReportRequestReceivedFromHost(
+      aggregation_service::CloneReportRequest(standard_request.value()),
+      example_key);
+
+  histogram.ExpectUniqueSample(
+      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult2",
       PrivateAggregationBudgeter::RequestResult::kApproved, 1);
 }
 
@@ -386,10 +450,10 @@ TEST_F(PrivateAggregationManagerImplTest, DebugReportingPath) {
           /*reporting_path=*/"/example-reporting-path");
   ASSERT_TRUE(standard_request.has_value());
 
-  PrivateAggregationBudgetKey fledge_key =
+  PrivateAggregationBudgetKey protected_audience_key =
       PrivateAggregationBudgetKey::Create(
           example_request.shared_info().reporting_origin, kExampleTime,
-          PrivateAggregationBudgetKey::Api::kFledge)
+          PrivateAggregationBudgetKey::Api::kProtectedAudience)
           .value();
   PrivateAggregationBudgetKey shared_storage_key =
       PrivateAggregationBudgetKey::Create(
@@ -401,7 +465,7 @@ TEST_F(PrivateAggregationManagerImplTest, DebugReportingPath) {
   {
     testing::InSequence seq;
 
-    EXPECT_CALL(*budgeter_, ConsumeBudget(_, fledge_key, _))
+    EXPECT_CALL(*budgeter_, ConsumeBudget(_, protected_audience_key, _))
         .WillOnce(
             Invoke([](int, const PrivateAggregationBudgetKey&,
                       base::OnceCallback<void(
@@ -414,7 +478,8 @@ TEST_F(PrivateAggregationManagerImplTest, DebugReportingPath) {
           EXPECT_EQ(report_request.shared_info().reporting_origin,
                     example_request.shared_info().reporting_origin);
           EXPECT_EQ(report_request.reporting_path(),
-                    "/.well-known/private-aggregation/debug/report-fledge");
+                    "/.well-known/private-aggregation/debug/"
+                    "report-protected-audience");
         }));
     // Still triggers the standard (non-debug) report.
     EXPECT_CALL(*aggregation_service_, ScheduleReport);
@@ -443,14 +508,14 @@ TEST_F(PrivateAggregationManagerImplTest, DebugReportingPath) {
 
   manager_.OnReportRequestReceivedFromHost(
       aggregation_service::CloneReportRequest(standard_request.value()),
-      fledge_key);
+      protected_audience_key);
   checkpoint.Call(1);
   manager_.OnReportRequestReceivedFromHost(
       aggregation_service::CloneReportRequest(standard_request.value()),
       shared_storage_key);
 
   histogram.ExpectUniqueSample(
-      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult",
+      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult2",
       PrivateAggregationBudgeter::RequestResult::kApproved, 2);
 }
 
@@ -467,7 +532,7 @@ TEST_F(PrivateAggregationManagerImplTest,
   PrivateAggregationBudgetKey example_key =
       PrivateAggregationBudgetKey::Create(
           example_request.shared_info().reporting_origin, kExampleTime,
-          PrivateAggregationBudgetKey::Api::kFledge)
+          PrivateAggregationBudgetKey::Api::kProtectedAudience)
           .value();
 
   absl::optional<AggregatableReportRequest> standard_request =
@@ -495,7 +560,7 @@ TEST_F(PrivateAggregationManagerImplTest,
       example_key);
 
   histogram.ExpectUniqueSample(
-      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult",
+      "PrivacySandbox.PrivateAggregation.Budgeter.RequestResult2",
       PrivateAggregationBudgeter::RequestResult::kBadValuesOnDisk, 1);
 }
 
@@ -506,23 +571,38 @@ TEST_F(PrivateAggregationManagerImplTest,
   const url::Origin example_main_frame_origin =
       url::Origin::Create(GURL(kExampleMainFrameUrl));
 
-  EXPECT_CALL(*host_,
-              BindNewReceiver(example_origin, example_main_frame_origin,
-                              PrivateAggregationBudgetKey::Api::kFledge, _))
+  EXPECT_CALL(*host_, BindNewReceiver(
+                          example_origin, example_main_frame_origin,
+                          PrivateAggregationBudgetKey::Api::kProtectedAudience,
+                          testing::Eq(absl::nullopt), _))
       .WillOnce(Return(true));
   EXPECT_TRUE(manager_.BindNewReceiver(
       example_origin, example_main_frame_origin,
-      PrivateAggregationBudgetKey::Api::kFledge,
-      mojo::PendingReceiver<mojom::PrivateAggregationHost>()));
+      PrivateAggregationBudgetKey::Api::kProtectedAudience,
+      /*context_id=*/absl::nullopt,
+      mojo::PendingReceiver<blink::mojom::PrivateAggregationHost>()));
 
-  EXPECT_CALL(*host_, BindNewReceiver(
-                          example_origin, example_main_frame_origin,
-                          PrivateAggregationBudgetKey::Api::kSharedStorage, _))
+  EXPECT_CALL(*host_,
+              BindNewReceiver(example_origin, example_main_frame_origin,
+                              PrivateAggregationBudgetKey::Api::kSharedStorage,
+                              testing::Eq(absl::nullopt), _))
       .WillOnce(Return(false));
   EXPECT_FALSE(manager_.BindNewReceiver(
       example_origin, example_main_frame_origin,
       PrivateAggregationBudgetKey::Api::kSharedStorage,
-      mojo::PendingReceiver<mojom::PrivateAggregationHost>()));
+      /*context_id=*/absl::nullopt,
+      mojo::PendingReceiver<blink::mojom::PrivateAggregationHost>()));
+
+  EXPECT_CALL(*host_, BindNewReceiver(
+                          example_origin, example_main_frame_origin,
+                          PrivateAggregationBudgetKey::Api::kProtectedAudience,
+                          testing::Eq("example_context_id"), _))
+      .WillOnce(Return(true));
+  EXPECT_TRUE(manager_.BindNewReceiver(
+      example_origin, example_main_frame_origin,
+      PrivateAggregationBudgetKey::Api::kProtectedAudience,
+      "example_context_id",
+      mojo::PendingReceiver<blink::mojom::PrivateAggregationHost>()));
 }
 
 TEST_F(PrivateAggregationManagerImplTest,
@@ -563,6 +643,58 @@ TEST_F(PrivateAggregationManagerImplTest,
         }));
     manager_.ClearBudgetData(kExampleTime - base::Days(10), kExampleTime,
                              example_filter, run_loop.QuitClosure());
+    run_loop.Run();
+  }
+}
+
+TEST_F(PrivateAggregationManagerImplTest,
+       BrowsingDataModel_CallbacksProperlyCalled) {
+  AggregatableReportRequest expected_request =
+      aggregation_service::CreateExampleRequest();
+
+  std::vector<PrivateAggregationDataModel::DataKey> expected = {
+      PrivateAggregationDataModel::DataKey(
+          url::Origin::Create(GURL("https://example.com"))),
+      PrivateAggregationDataModel::DataKey(
+          url::Origin::Create(GURL("https://example2.com")))};
+
+  {
+    base::RunLoop run_loop;
+    std::set<PrivateAggregationDataModel::DataKey> data_keys;
+    auto cb = base::BindLambdaForTesting(
+        [&](std::set<PrivateAggregationDataModel::DataKey> returned_keys) {
+          data_keys = std::move(returned_keys);
+        });
+
+    EXPECT_CALL(*budgeter_, GetAllDataKeys)
+        .WillOnce(base::test::RunOnceCallback<0>(
+            std::set<PrivateAggregationDataModel::DataKey>{expected[0]}));
+    EXPECT_CALL(*aggregation_service_, GetPendingReportReportingOrigins)
+        .WillOnce(testing::DoAll(
+            base::test::RunOnceClosure(run_loop.QuitClosure()),
+            base::test::RunOnceCallback<0>(
+                std::set<url::Origin>{expected[1].reporting_origin()})));
+
+    manager_.GetAllDataKeys(cb);
+    run_loop.Run();
+
+    EXPECT_THAT(data_keys,
+                testing::UnorderedElementsAre(expected[0], expected[1]));
+  }
+
+  {
+    base::RunLoop run_loop;
+
+    PrivateAggregationDataModel::DataKey data_key(
+        expected_request.shared_info().reporting_origin);
+
+    EXPECT_CALL(*budgeter_, DeleteByDataKey)
+        .WillOnce(base::test::RunOnceCallback<1>());
+    EXPECT_CALL(*aggregation_service_, ClearData)
+        .WillOnce(base::test::RunOnceCallback<3>());
+
+    manager_.RemovePendingDataKey(data_key, run_loop.QuitClosure());
+
     run_loop.Run();
   }
 }

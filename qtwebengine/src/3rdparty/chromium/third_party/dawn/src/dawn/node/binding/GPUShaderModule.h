@@ -30,13 +30,15 @@ namespace wgpu::binding {
 // wgpu::ShaderModule.
 class GPUShaderModule final : public interop::GPUShaderModule {
   public:
-    GPUShaderModule(wgpu::ShaderModule shader, std::shared_ptr<AsyncRunner> async);
+    GPUShaderModule(const wgpu::ShaderModuleDescriptor& desc,
+                    wgpu::ShaderModule shader,
+                    std::shared_ptr<AsyncRunner> async);
 
     // Implicit cast operator to Dawn GPU object
     inline operator const wgpu::ShaderModule&() const { return shader_; }
 
     // interop::GPUShaderModule interface compliance
-    interop::Promise<interop::Interface<interop::GPUCompilationInfo>> compilationInfo(
+    interop::Promise<interop::Interface<interop::GPUCompilationInfo>> getCompilationInfo(
         Napi::Env) override;
     std::string getLabel(Napi::Env) override;
     void setLabel(Napi::Env, std::string value) override;
@@ -44,6 +46,7 @@ class GPUShaderModule final : public interop::GPUShaderModule {
   private:
     wgpu::ShaderModule shader_;
     std::shared_ptr<AsyncRunner> async_;
+    std::string label_;
 };
 
 }  // namespace wgpu::binding

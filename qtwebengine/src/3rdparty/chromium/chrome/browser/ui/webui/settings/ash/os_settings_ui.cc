@@ -9,29 +9,34 @@
 #include "ash/constants/ash_features.h"
 #include "ash/public/cpp/audio_config_service.h"
 #include "ash/public/cpp/bluetooth_config_service.h"
+#include "ash/public/cpp/connectivity_services.h"
 #include "ash/public/cpp/esim_manager.h"
 #include "ash/public/cpp/hotspot_config_service.h"
 #include "ash/public/cpp/network_config_service.h"
+#include "ash/webui/common/trusted_types_util.h"
 #include "ash/webui/personalization_app/search/search.mojom.h"
 #include "ash/webui/personalization_app/search/search_handler.h"
 #include "base/metrics/histogram_functions.h"
+#include "chrome/browser/ash/drive/file_system_util.h"
 #include "chrome/browser/ash/login/quick_unlock/pin_backend.h"
 #include "chrome/browser/ash/login/quick_unlock/quick_unlock_factory.h"
-#include "chrome/browser/ash/web_applications/personalization_app/personalization_app_manager.h"
-#include "chrome/browser/ash/web_applications/personalization_app/personalization_app_manager_factory.h"
-#include "chrome/browser/ash/web_applications/personalization_app/personalization_app_utils.h"
+#include "chrome/browser/ash/system_web_apps/apps/personalization_app/personalization_app_manager.h"
+#include "chrome/browser/ash/system_web_apps/apps/personalization_app/personalization_app_manager_factory.h"
+#include "chrome/browser/ash/system_web_apps/apps/personalization_app/personalization_app_utils.h"
 #include "chrome/browser/nearby_sharing/contacts/nearby_share_contact_manager.h"
 #include "chrome/browser/nearby_sharing/nearby_receive_manager.h"
 #include "chrome/browser/nearby_sharing/nearby_share_settings.h"
 #include "chrome/browser/nearby_sharing/nearby_sharing_service_factory.h"
 #include "chrome/browser/nearby_sharing/nearby_sharing_service_impl.h"
+#include "chrome/browser/ui/webui/ash/settings/search/search_handler.h"
 #include "chrome/browser/ui/webui/managed_ui_handler.h"
 #include "chrome/browser/ui/webui/settings/ash/device_storage_handler.h"
 #include "chrome/browser/ui/webui/settings/ash/os_apps_page/app_notification_handler.h"
+#include "chrome/browser/ui/webui/settings/ash/os_settings_hats_manager.h"
+#include "chrome/browser/ui/webui/settings/ash/os_settings_hats_manager_factory.h"
 #include "chrome/browser/ui/webui/settings/ash/os_settings_manager.h"
 #include "chrome/browser/ui/webui/settings/ash/os_settings_manager_factory.h"
 #include "chrome/browser/ui/webui/settings/ash/pref_names.h"
-#include "chrome/browser/ui/webui/settings/ash/search/search_handler.h"
 #include "chrome/browser/ui/webui/settings/ash/settings_user_action_tracker.h"
 #include "chrome/browser/ui/webui/webui_util.h"
 #include "chrome/common/webui_url_constants.h"
@@ -40,6 +45,7 @@
 #include "chromeos/ash/services/auth_factor_config/in_process_instances.h"
 #include "chromeos/ash/services/cellular_setup/cellular_setup_impl.h"
 #include "chromeos/ash/services/cellular_setup/public/mojom/esim_manager.mojom.h"
+#include "chromeos/constants/chromeos_features.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/web_contents.h"
@@ -48,6 +54,11 @@
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "ui/gfx/native_widget_types.h"
 #include "ui/webui/color_change_listener/color_change_handler.h"
+
+#if !BUILDFLAG(OPTIMIZE_WEBUI)
+#include "chrome/grit/settings_shared_resources.h"
+#include "chrome/grit/settings_shared_resources_map.h"
+#endif
 
 namespace {
 
@@ -94,8 +105,17 @@ OSSettingsUI::OSSettingsUI(content::WebUI* web_ui)
   webui::SetupWebUIDataSource(
       html_source,
       base::make_span(kOsSettingsResources, kOsSettingsResourcesSize),
-      IDR_OS_SETTINGS_OS_SETTINGS_V3_HTML);
-  html_source->DisableTrustedTypesCSP();
+      IDR_OS_SETTINGS_OS_SETTINGS_HTML);
+  ash::EnableTrustedTypesCSP(html_source);
+
+#if !BUILDFLAG(OPTIMIZE_WEBUI)
+  html_source->AddResourcePaths(
+      base::make_span(kSettingsSharedResources, kSettingsSharedResourcesSize));
+#endif
+
+  html_source->OverrideContentSecurityPolicy(
+      network::mojom::CSPDirectiveName::WorkerSrc,
+      "worker-src blob: chrome://resources 'self';");
 
   ManagedUIHandler::Initialize(web_ui, html_source);
 }
@@ -107,6 +127,19 @@ OSSettingsUI::~OSSettingsUI() {
                                 /*min=*/base::Microseconds(500),
                                 /*max=*/base::Hours(1),
                                 /*buckets=*/50);
+
+  // Sends request for OsSettingsHats notification upon shutting down the app.
+  OsSettingsHatsManager* settingsHatsManager =
+      OsSettingsHatsManagerFactory::GetInstance()->GetForProfile(
+          Profile::FromWebUI(web_ui()));
+  settingsHatsManager->MaybeSendSettingsHats();
+
+  // OsSettingsHatsManager records whether the user used the Search
+  // functionality per each session that Settings app has opened up. When the
+  // Settings app is closed, OsSettingsHatsManager will remain alive in the
+  // background and the state remains stored in the manager, so we will reset
+  // that knowledge.
+  settingsHatsManager->SetSettingsUsedSearch(false);
 }
 
 void OSSettingsUI::BindInterface(
@@ -224,7 +257,6 @@ void OSSettingsUI::BindInterface(
 
 void OSSettingsUI::BindInterface(
     mojo::PendingReceiver<audio_config::mojom::CrosAudioConfig> receiver) {
-  DCHECK(features::IsAudioSettingsPageEnabled());
   GetAudioConfigService(std::move(receiver));
 }
 
@@ -250,7 +282,7 @@ void OSSettingsUI::BindInterface(
 
 void OSSettingsUI::BindInterface(
     mojo::PendingReceiver<color_change_listener::mojom::PageHandler> receiver) {
-  if (!features::IsJellyEnabled()) {
+  if (!chromeos::features::IsJellyEnabled()) {
     mojo::ReportBadMessage(
         "Jelly not enabled: OSSettingsUI should not listen to color changes.");
     return;
@@ -266,6 +298,35 @@ void OSSettingsUI::BindInterface(
   auth::BindToPinFactorEditor(std::move(receiver),
                               quick_unlock::QuickUnlockFactory::GetDelegate(),
                               *pin_backend);
+}
+
+void OSSettingsUI::BindInterface(
+    mojo::PendingReceiver<auth::mojom::PasswordFactorEditor> receiver) {
+  auth::BindToPasswordFactorEditor(
+      std::move(receiver), quick_unlock::QuickUnlockFactory::GetDelegate());
+}
+
+void OSSettingsUI::BindInterface(
+    mojo::PendingReceiver<google_drive::mojom::PageHandlerFactory> receiver) {
+  // The PageHandlerFactory is reused across same-origin navigations, so ensure
+  // any existing factories are reset.
+  google_drive_page_handler_factory_.reset();
+  google_drive_page_handler_factory_ =
+      std::make_unique<GoogleDrivePageHandlerFactory>(
+          Profile::FromWebUI(web_ui()), std::move(receiver));
+}
+
+void OSSettingsUI::BindInterface(
+    mojo::PendingReceiver<one_drive::mojom::PageHandlerFactory> receiver) {
+  one_drive_page_handler_factory_ =
+      std::make_unique<OneDrivePageHandlerFactory>(Profile::FromWebUI(web_ui()),
+                                                   std::move(receiver));
+}
+
+void OSSettingsUI::BindInterface(
+    mojo::PendingReceiver<chromeos::connectivity::mojom::PasspointService>
+        receiver) {
+  ash::GetPasspointService(std::move(receiver));
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(OSSettingsUI)

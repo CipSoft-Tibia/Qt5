@@ -21,9 +21,11 @@
 #include "chrome/browser/extensions/api/language_settings_private/language_settings_private_delegate_factory.h"
 #include "chrome/browser/extensions/api/networking_private/networking_private_ui_delegate_factory_impl.h"
 #include "chrome/browser/extensions/api/omnibox/omnibox_api.h"
+#include "chrome/browser/extensions/api/passwords_private/passwords_private_delegate_factory.h"
 #include "chrome/browser/extensions/api/passwords_private/passwords_private_event_router_factory.h"
 #include "chrome/browser/extensions/api/preference/preference_api.h"
 #include "chrome/browser/extensions/api/processes/processes_api.h"
+#include "chrome/browser/extensions/api/reading_list/reading_list_event_router.h"
 #include "chrome/browser/extensions/api/safe_browsing_private/safe_browsing_private_event_router_factory.h"
 #include "chrome/browser/extensions/api/sessions/sessions_api.h"
 #include "chrome/browser/extensions/api/settings_overrides/settings_overrides_api.h"
@@ -43,6 +45,10 @@
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 #include "chrome/browser/extensions/api/system_indicator/system_indicator_manager_factory.h"
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chrome/browser/chromeos/extensions/wm/wm_desks_private_events.h"
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
@@ -89,12 +95,14 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
       ->SetUIDelegateFactory(std::move(networking_private_ui_delegate_factory));
 #endif
   extensions::OmniboxAPI::GetFactoryInstance();
+  extensions::PasswordsPrivateDelegateFactory::GetInstance();
   extensions::PasswordsPrivateEventRouterFactory::GetInstance();
 #if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
   extensions::PdfViewerPrivateEventRouterFactory::GetInstance();
 #endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
   extensions::PreferenceAPI::GetFactoryInstance();
   extensions::ProcessesAPI::GetFactoryInstance();
+  extensions::ReadingListEventRouter::GetFactoryInstance();
   extensions::SafeBrowsingPrivateEventRouterFactory::GetInstance();
   extensions::SessionsAPI::GetFactoryInstance();
   extensions::SettingsPrivateEventRouterFactory::GetInstance();
@@ -116,6 +124,9 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
   extensions::WebAuthenticationProxyAPI::GetFactoryInstance();
   extensions::WebNavigationAPI::GetFactoryInstance();
   extensions::WebrtcAudioPrivateEventService::GetFactoryInstance();
+#if BUILDFLAG(IS_CHROMEOS)
+  extensions::WMDesksPrivateEventsAPI::GetFactoryInstance();
+#endif
 }
 
 }  // namespace chrome_extensions

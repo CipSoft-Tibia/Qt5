@@ -5,7 +5,8 @@
 #ifndef GPU_IPC_CLIENT_CLIENT_SHARED_IMAGE_INTERFACE_H_
 #define GPU_IPC_CLIENT_CLIENT_SHARED_IMAGE_INTERFACE_H_
 
-#include "base/containers/flat_set.h"
+#include <set>
+
 #include "base/memory/raw_ptr.h"
 #include "base/synchronization/lock.h"
 #include "base/thread_annotations.h"
@@ -50,6 +51,7 @@ class GPU_EXPORT ClientSharedImageInterface : public SharedImageInterface {
                             GrSurfaceOrigin surface_origin,
                             SkAlphaType alpha_type,
                             uint32_t usage,
+                            base::StringPiece debug_label,
                             gpu::SurfaceHandle surface_handle) override;
   Mailbox CreateSharedImage(viz::SharedImageFormat format,
                             const gfx::Size& size,
@@ -57,6 +59,7 @@ class GPU_EXPORT ClientSharedImageInterface : public SharedImageInterface {
                             GrSurfaceOrigin surface_origin,
                             SkAlphaType alpha_type,
                             uint32_t usage,
+                            base::StringPiece debug_label,
                             base::span<const uint8_t> pixel_data) override;
   Mailbox CreateSharedImage(viz::SharedImageFormat format,
                             const gfx::Size& size,
@@ -64,19 +67,33 @@ class GPU_EXPORT ClientSharedImageInterface : public SharedImageInterface {
                             GrSurfaceOrigin surface_origin,
                             SkAlphaType alpha_type,
                             uint32_t usage,
+                            base::StringPiece debug_label,
+                            gpu::SurfaceHandle surface_handle,
+                            gfx::BufferUsage buffer_usage) override;
+  Mailbox CreateSharedImage(viz::SharedImageFormat format,
+                            const gfx::Size& size,
+                            const gfx::ColorSpace& color_space,
+                            GrSurfaceOrigin surface_origin,
+                            SkAlphaType alpha_type,
+                            uint32_t usage,
+                            base::StringPiece debug_label,
                             gfx::GpuMemoryBufferHandle buffer_handle) override;
+  // NOTE: The below method is DEPRECATED for `gpu_memory_buffer` only with
+  // single planar eg. RGB BufferFormats. Please use the equivalent method above
+  // taking in single planar SharedImageFormat with GpuMemoryBufferHandle.
   Mailbox CreateSharedImage(gfx::GpuMemoryBuffer* gpu_memory_buffer,
                             GpuMemoryBufferManager* gpu_memory_buffer_manager,
                             gfx::BufferPlane plane,
                             const gfx::ColorSpace& color_space,
                             GrSurfaceOrigin surface_origin,
                             SkAlphaType alpha_type,
-                            uint32_t usage) override;
+                            uint32_t usage,
+                            base::StringPiece debug_label) override;
 #if BUILDFLAG(IS_WIN)
   void CopyToGpuMemoryBuffer(const SyncToken& sync_token,
                              const Mailbox& mailbox) override;
 #endif
-  SwapChainMailboxes CreateSwapChain(viz::ResourceFormat format,
+  SwapChainMailboxes CreateSwapChain(viz::SharedImageFormat format,
                                      const gfx::Size& size,
                                      const gfx::ColorSpace& color_space,
                                      GrSurfaceOrigin surface_origin,
@@ -87,13 +104,20 @@ class GPU_EXPORT ClientSharedImageInterface : public SharedImageInterface {
   uint32_t UsageForMailbox(const Mailbox& mailbox) override;
   void NotifyMailboxAdded(const Mailbox& mailbox, uint32_t usage) override;
 
+  void AddReferenceToSharedImage(const SyncToken& sync_token,
+                                 const Mailbox& mailbox,
+                                 uint32_t usage) override;
+
+  std::unique_ptr<SharedImageInterface::ScopedMapping> MapSharedImage(
+      const Mailbox& mailbox) override;
+
  private:
   Mailbox AddMailbox(const Mailbox& mailbox);
 
   const raw_ptr<SharedImageInterfaceProxy> proxy_;
 
   base::Lock lock_;
-  base::flat_set<Mailbox> mailboxes_ GUARDED_BY(lock_);
+  std::multiset<Mailbox> mailboxes_ GUARDED_BY(lock_);
 };
 
 }  // namespace gpu

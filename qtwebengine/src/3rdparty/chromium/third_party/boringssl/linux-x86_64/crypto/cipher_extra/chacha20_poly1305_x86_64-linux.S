@@ -1,22 +1,16 @@
 // This file is generated from a similarly-named Perl script in the BoringSSL
 // source tree. Do not edit by hand.
 
-#if defined(__has_feature)
-#if __has_feature(memory_sanitizer) && !defined(OPENSSL_NO_ASM)
-#define OPENSSL_NO_ASM
-#endif
-#endif
+#include <openssl/asm_base.h>
 
-#if defined(__x86_64__) && !defined(OPENSSL_NO_ASM) && defined(__ELF__)
-#if defined(BORINGSSL_PREFIX)
-#include <boringssl_prefix_symbols_asm.h>
-#endif
+#if !defined(OPENSSL_NO_ASM) && defined(OPENSSL_X86_64) && defined(__ELF__)
 .text	
 .extern	OPENSSL_ia32cap_P
 .hidden OPENSSL_ia32cap_P
 
 chacha20_poly1305_constants:
 
+.section	.rodata
 .align	64
 .Lchacha20_consts:
 .byte	'e','x','p','a','n','d',' ','3','2','-','b','y','t','e',' ','k'
@@ -54,6 +48,7 @@ chacha20_poly1305_constants:
 .byte	0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0x00
 .byte	0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00
 .byte	0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff
+.text	
 
 .type	poly_hash_ad_internal,@function
 .align	64
@@ -228,6 +223,7 @@ poly_hash_ad_internal:
 .align	64
 chacha20_poly1305_open:
 .cfi_startproc	
+_CET_ENDBR
 	pushq	%rbp
 .cfi_adjust_cfa_offset	8
 .cfi_offset	%rbp,-16
@@ -2113,6 +2109,7 @@ chacha20_poly1305_open:
 .align	64
 chacha20_poly1305_seal:
 .cfi_startproc	
+_CET_ENDBR
 	pushq	%rbp
 .cfi_adjust_cfa_offset	8
 .cfi_offset	%rbp,-16
@@ -8918,8 +8915,4 @@ chacha20_poly1305_seal_avx2:
 	jmp	.Lseal_sse_tail_16
 .cfi_endproc	
 .size	chacha20_poly1305_seal_avx2, .-chacha20_poly1305_seal_avx2
-#endif
-#if defined(__ELF__)
-// See https://www.airs.com/blog/archives/518.
-.section .note.GNU-stack,"",%progbits
 #endif

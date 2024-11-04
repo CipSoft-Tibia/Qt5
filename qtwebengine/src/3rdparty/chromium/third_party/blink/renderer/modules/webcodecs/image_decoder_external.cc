@@ -119,7 +119,8 @@ ScriptPromise ImageDecoderExternal::isTypeSupported(ScriptState* script_state,
 ImageDecoderExternal::ImageDecoderExternal(ScriptState* script_state,
                                            const ImageDecoderInit* init,
                                            ExceptionState& exception_state)
-    : ExecutionContextLifecycleObserver(ExecutionContext::From(script_state)),
+    : ActiveScriptWrappable<ImageDecoderExternal>({}),
+      ExecutionContextLifecycleObserver(ExecutionContext::From(script_state)),
       script_state_(script_state),
       tracks_(MakeGarbageCollected<ImageTrackList>(this)),
       completed_property_(
@@ -139,9 +140,9 @@ ImageDecoderExternal::ImageDecoderExternal(ScriptState* script_state,
   DCHECK(init->data());
 
   constexpr char kNoneOption[] = "none";
-  auto color_behavior = ColorBehavior::Tag();
+  auto color_behavior = ColorBehavior::kTag;
   if (init->colorSpaceConversion() == kNoneOption)
-    color_behavior = ColorBehavior::Ignore();
+    color_behavior = ColorBehavior::kIgnore;
 
   auto desired_size = SkISize::MakeEmpty();
   if (init->hasDesiredWidth() && init->hasDesiredHeight())
@@ -303,8 +304,8 @@ void ImageDecoderExternal::UpdateSelectedTrack() {
     return;
   }
 
-  animation_option_ = AnimationOptionFromIsAnimated(
-      tracks_->selectedTrack().value()->animated());
+  animation_option_ =
+      AnimationOptionFromIsAnimated(tracks_->selectedTrack()->animated());
 
   decoder_->AsyncCall(&ImageDecoderCore::Reinitialize)
       .WithArgs(animation_option_);
@@ -567,7 +568,7 @@ void ImageDecoderExternal::OnDecodeReady(
         ExceptionMessages::IndexOutsideRange<uint32_t>(
             "frame index", request->frame_index, 0,
             ExceptionMessages::kInclusiveBound,
-            tracks_->selectedTrack().value()->frameCount(),
+            tracks_->selectedTrack()->frameCount(),
             ExceptionMessages::kExclusiveBound);
     MaybeSatisfyPendingDecodes();
     return;
@@ -638,8 +639,8 @@ void ImageDecoderExternal::OnMetadata(
   }
 
   if (!tracks_->IsEmpty()) {
-    tracks_->selectedTrack().value()->UpdateTrack(metadata.frame_count,
-                                                  metadata.repetition_count);
+    tracks_->selectedTrack()->UpdateTrack(metadata.frame_count,
+                                          metadata.repetition_count);
     if (did_complete)
       MaybeSatisfyPendingDecodes();
     return;

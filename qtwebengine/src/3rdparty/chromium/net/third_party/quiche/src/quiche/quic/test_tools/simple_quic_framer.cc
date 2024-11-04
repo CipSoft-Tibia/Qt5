@@ -31,9 +31,6 @@ class SimpleFramerVisitor : public QuicFramerVisitorInterface {
   }
 
   void OnPacket() override {}
-  void OnPublicResetPacket(const QuicPublicResetPacket& packet) override {
-    public_reset_packet_ = std::make_unique<QuicPublicResetPacket>((packet));
-  }
   void OnVersionNegotiationPacket(
       const QuicVersionNegotiationPacket& packet) override {
     version_negotiation_packet_ =
@@ -112,9 +109,11 @@ class SimpleFramerVisitor : public QuicFramerVisitorInterface {
     return true;
   }
 
-  void OnAckEcnCounts(const QuicEcnCounts& /*ecn_counts*/) override {}
-
-  bool OnAckFrameEnd(QuicPacketNumber /*start*/) override { return true; }
+  bool OnAckFrameEnd(
+      QuicPacketNumber /*start*/,
+      const absl::optional<QuicEcnCounts>& /*ecn_counts*/) override {
+    return true;
+  }
 
   bool OnStopWaitingFrame(const QuicStopWaitingFrame& frame) override {
     stop_waiting_frames_.push_back(frame);
@@ -290,7 +289,6 @@ class SimpleFramerVisitor : public QuicFramerVisitorInterface {
   bool has_header_;
   QuicPacketHeader header_;
   std::unique_ptr<QuicVersionNegotiationPacket> version_negotiation_packet_;
-  std::unique_ptr<QuicPublicResetPacket> public_reset_packet_;
   std::unique_ptr<QuicIetfStatelessResetPacket> stateless_reset_packet_;
   std::vector<QuicAckFrame> ack_frames_;
   std::vector<QuicStopWaitingFrame> stop_waiting_frames_;

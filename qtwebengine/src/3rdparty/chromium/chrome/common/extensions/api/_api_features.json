@@ -58,14 +58,24 @@
        "A9A9FC0228ADF541F0334F22BEFB8F9C245B21D7"   // http://crbug.com/839189
     ]
   },
+  "accessibilityServicePrivate": {
+    "dependencies": ["permission:accessibilityServicePrivate"],
+    "channel": "stable",
+    "contexts": ["blessed_extension"],
+    "platforms": ["chromeos", "lacros"],
+    "feature_flag": "ApiAccessibilityServicePrivate"
+  },
   "action": {
     "dependencies": ["manifest:action"],
     "contexts": ["blessed_extension"]
   },
-  "action.openPopup": {
+  "action.openPopup": [{
     // TODO(https://crbug.com/1245093): Upgrade to stable channel.
     "channel": "dev"
-  },
+  }, {
+    "channel": "stable",
+    "location": "policy"
+  }],
   "action.isEnabled": {
     "channel": "stable"
   },
@@ -127,10 +137,7 @@
     "dependencies": ["permission:autotestPrivate"],
     "contexts": ["blessed_extension"]
   },
-  "bookmarkManagerPrivate": [{
-    "dependencies": ["permission:bookmarkManagerPrivate"],
-    "contexts": ["blessed_extension"]
-  }, {
+  "bookmarkManagerPrivate": {
     "channel": "stable",
     "contexts": ["webui"],
     "matches": [
@@ -138,7 +145,7 @@
       "chrome://bookmarks-side-panel.top-chrome/*",
       "chrome://read-later.top-chrome/*"
     ]
-  }],
+  },
   "bookmarks": [{
     "dependencies": ["permission:bookmarks"],
     "contexts": ["blessed_extension"],
@@ -188,7 +195,6 @@
     "channel": "stable",
     "dependencies": ["manifest:browser_action"],
     "allowlist": [
-      "63ED55E43214C211F82122ED56407FF1A807F2A3",  // Dev
       // The extensions below here only use openPopup on a user action,
       // so are safe, and can be removed when the allowlist on that
       // capability is lifted. See crbug.com/436489 for context.
@@ -226,7 +232,7 @@
     "matches": [
       "chrome://version/*"
     ],
-    "platforms": ["chromeos"]
+    "platforms": ["chromeos", "lacros"]
   }],
   "chromeWebViewInternal": [{
     "internal": true,
@@ -248,6 +254,15 @@
       "chrome://password-change/*",
       "chrome://lock-reauth/*"
     ]
+  }, {
+    // This feature is used by the Controlled Frame API and is specifically
+    // enabled by //chrome.
+    "internal": true,
+    "channel": "dev",
+    "contexts": ["web_page"],
+    // This feature is only enabled if the embedder's delegated check returns
+    // true.
+    "requires_delegated_availability_check": true
   }],
   "commandLinePrivate": {
     "dependencies": ["permission:commandLinePrivate"],
@@ -311,17 +326,10 @@
     "dependencies": ["permission:declarativeContent"],
     "contexts": ["blessed_extension"]
   },
-  "desktopCapture": [{
+  "desktopCapture": {
     "dependencies": ["permission:desktopCapture"],
     "contexts": ["blessed_extension"]
-  }, {
-    "dependencies": ["permission:desktopCapturePrivate"],
-    "allowlist": [
-      "63ED55E43214C211F82122ED56407FF1A807F2A3",  // Media Router Dev
-      "226CF815E39A363090A1E547D53063472B8279FA"   // Media Router Stable
-    ],
-    "contexts": ["blessed_extension"]
-  }],
+  },
   "developerPrivate": [{
     "dependencies": ["permission:developerPrivate", "permission:management"],
     "contexts": ["blessed_extension"]
@@ -369,7 +377,8 @@
     {
       "internal": true,
       "channel": "stable",
-      "contexts": ["blessed_extension"]
+      "contexts": ["blessed_extension"],
+      "dependencies": ["permission:downloads"]
     },
     {
       "internal": true,
@@ -572,12 +581,12 @@
     "dependencies": ["permission:identity"],
     "contexts": ["blessed_extension"]
   },
-  "identityPrivate": {
-    "dependencies": ["permission:identityPrivate"],
-    "contexts": ["blessed_extension"]
-  },
   "idltest": {
     "dependencies": ["permission:idltest"],
+    "contexts": ["blessed_extension"]
+  },
+  "imageLoaderPrivate": {
+    "dependencies": ["permission:imageLoaderPrivate"],
     "contexts": ["blessed_extension"]
   },
   "input.ime": {
@@ -616,8 +625,7 @@
   }],
   "login": {
     "dependencies": ["permission:login"],
-    "contexts": ["blessed_extension"],
-    "disallow_for_service_workers": true
+    "contexts": ["blessed_extension"]
   },
   "loginScreenStorage": {
     "dependencies": ["permission:loginScreenStorage"],
@@ -745,6 +753,11 @@
     ],
     "platforms": ["chromeos", "lacros"]
   },
+  "readingList": {
+    "dependencies": ["permission:readingList"],
+    "contexts": ["blessed_extension"],
+    "feature_flag": "ApiReadingList"
+  },
   "resourcesPrivate": [{
     "dependencies": ["permission:resourcesPrivate"],
     "contexts": ["blessed_extension"]
@@ -796,6 +809,15 @@
     "dependencies": ["permission:sidePanel"],
     "contexts": ["blessed_extension"]
   },
+  "sidePanel.open": [{
+    "feature_flag": "ApiSidePanelOpen"
+  }, {
+    "allowlist": [
+      // Note: this list is also enforced in the sidePanel.open() implementation
+      // as a sanity check.
+      "3CEFE7915CDBD48D769E214807ACAA51581724A0"  // https://crbug.com/1446731
+    ]
+  }],
   "smartCardProviderPrivate": {
     "dependencies": ["permission:smartCardProviderPrivate"],
     "contexts": ["blessed_extension"]
@@ -818,7 +840,9 @@
   },
   "tabCapture": {
     "dependencies": ["permission:tabCapture"],
-    "contexts": ["blessed_extension"],
+    "contexts": ["blessed_extension"]
+  },
+  "tabCapture.capture": {
     "disallow_for_service_workers": true
   },
   "tabGroups": {

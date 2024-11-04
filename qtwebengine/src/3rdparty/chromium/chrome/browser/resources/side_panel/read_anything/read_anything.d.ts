@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-/** @fileoverview Definitions for chrome.readAnything API */
+/** @fileoverview Definitions for chrome.readingMode API */
 
 declare namespace chrome {
-  export namespace readAnything {
+  export namespace readingMode {
     /////////////////////////////////////////////////////////////////////
     // Implemented in read_anything_app_controller.cc and consumed by ts.
     /////////////////////////////////////////////////////////////////////
@@ -30,6 +30,32 @@ declare namespace chrome {
     let backgroundColor: number;
     let lineSpacing: number;
     let letterSpacing: number;
+
+    // The current color theme value.
+    let colorTheme: number;
+
+    // Enum values for various visual theme changes.
+    let standardLineSpacing: number;
+    let looseLineSpacing: number;
+    let veryLooseLineSpacing: number;
+    let standardLetterSpacing: number;
+    let wideLetterSpacing: number;
+    let veryWideLetterSpacing: number;
+    let defaultTheme: number;
+    let lightTheme: number;
+    let darkTheme: number;
+    let yellowTheme: number;
+    let blueTheme: number;
+
+    // Whether the WebUI toolbar feature flag is enabled.
+    let isWebUIToolbarVisible: boolean;
+
+    // Whether the Read Aloud feature flag is enabled.
+    let isReadAloudEnabled: boolean;
+
+    // Indicates if select-to-distill works on the web page. Used to
+    // determine which empty state to display.
+    let isSelectable: boolean;
 
     // Returns a list of AXNodeIDs corresponding to the unignored children of
     // the AXNode for the provided AXNodeID. If there is a selection contained
@@ -64,16 +90,58 @@ declare namespace chrome {
     // element is added to the document.
     function onConnected(): void;
 
+    // Called when a user tries to copy text from reading mode with keyboard
+    // shortcuts.
+    function onCopy(): void;
+
+    // Called when the Read Anything panel is scrolled.
+    function onScroll(onSelection: boolean): void;
+
     // Called when a user clicks a link. NodeID is an AXNodeID which identifies
     // the link's corresponding AXNode in the main pane.
     function onLinkClicked(nodeId: number): void;
 
+    // Called when the line spacing is changed via the webui toolbar.
+    function onStandardLineSpacing(): void;
+    function onLooseLineSpacing(): void;
+    function onVeryLooseLineSpacing(): void;
+
+    // Called when a user makes a font size change via the webui toolbar.
+    function onFontSizeChanged(increase: boolean): void;
+    function onFontSizeReset(): void;
+
+    // Called when the letter spacing is changed via the webui toolbar.
+    function onStandardLetterSpacing(): void;
+    function onWideLetterSpacing(): void;
+    function onVeryWideLetterSpacing(): void;
+
+    // Called when the color theme is changed via the webui toolbar.
+    function onDefaultTheme(): void;
+    function onLightTheme(): void;
+    function onDarkTheme(): void;
+    function onYellowTheme(): void;
+    function onBlueTheme(): void;
+
+    // Called when the font is changed via the webui toolbar.
+    function onFontChange(font: string): void;
+
+    // Returns the actual spacing value to use based on the given lineSpacing
+    // category.
+    function getLineSpacingValue(lineSpacing: number): number;
+
+    // Returns the actual spacing value to use based on the given letterSpacing
+    // category.
+    function getLetterSpacingValue(letterSpacing: number): number;
+
     // Called when a user makes a selection change. AnchorNodeID and
     // focusAXNodeID are AXNodeIDs which identify the anchor and focus AXNodes
-    // in the main pane.
+    // in the main pane. The selection can either be forward or backwards.
     function onSelectionChange(
         anchorNodeId: number, anchorOffset: number, focusNodeId: number,
         focusOffset: number): void;
+    // Called when a user collapses the selection. This is usually accomplished
+    // by clicking.
+    function onCollapseSelection(): void;
 
     // Set the content. Used by tests only.
     // SnapshotLite is a data structure which resembles an AXTreeUpdate. E.g.:
@@ -105,12 +173,25 @@ declare namespace chrome {
     // Implemented in read_anything/app.ts and called by native c++.
     ////////////////////////////////////////////////////////////////
 
+    // Display a loading screen to tell the user we are distilling the page.
+    function showLoading(): void;
+
+    // Display the empty state page to tell the user we can't distill the page.
+    function showEmpty(): void;
+
     // Ping that an AXTree has been distilled for the active tab's render frame
     // and is available to consume.
     function updateContent(): void;
 
+    // Ping that the selection has been updated.
+    function updateSelection(): void;
+
     // Ping that the theme choices of the user have been changed using the
     // toolbar and are ready to consume.
     function updateTheme(): void;
+
+    // Ping that the theme choices of the user have been retrieved from
+    // preferences and can be used to set up the page.
+    function restoreSettingsFromPrefs(): void;
   }
 }

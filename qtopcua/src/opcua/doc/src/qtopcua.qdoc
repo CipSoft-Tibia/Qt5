@@ -30,16 +30,8 @@
     \brief Implements OPC UA connectivity through a Qt API.
     \preliminary
 
-    The \l{Qt OPC UA Overview}{Qt OPC UA} module implements a Qt API to
-    interact with OPC UA on top of a 3rd party OPC UA stack.
-
-    The stacks are integrated as plugins and can be selected at runtime.
-    Currently, the following implementations are supported:
-
-    \list
-    \li Open62541 v1.3.6, MPLv2
-    \li Unified Automation C++ SDK (UACpp), Commercial
-    \endlist
+    The \l{Qt OPC UA Overview}{Qt OPC UA} module implements a Qt API to interact with OPC UA
+    servers on top of the \l{https://www.open62541.org/}{open62541} library.
 
     The QML API is still in development but are available as a technology preview.
     This means those parts are unstable, likely to change, and provided as a convenience only.
@@ -85,7 +77,7 @@
            \li \l{Qt OPC UA Overview}{Overview}
            \li \l{Using the OpenSSL Dependency for Security Support and GDS}
            \li \l{Building Qt OPC UA Open62541 Plugin}
-           \li \l{Building Qt OPC UA UACPP Plugin}
+           \li \l{The Qt OPC UA data type generator}
            \li \l{https://opcfoundation.org/about/opc-technologies/opc-ua/}
                {OPC UA at the OPC foundation}
     \endlist
@@ -152,205 +144,160 @@
     \table
     \header
     \li Feature
-    \li Open62541 plugin
-    \li UACpp plugin
     \row
     \li Read
-    \li X
-    \li X
     \row
     \li Batch read
-    \li X
-    \li X
     \row
-    \li HistoryRead
-    \li Raw
-    \li
+    \li HistoryRead (Raw)
     \row
     \li Write
-    \li X
-    \li X
     \row
     \li Batch write
-    \li X
-    \li X
     \row
     \li Multidimensional arrays
-    \li X
-    \li X
     \row
     \li Browse
-    \li X
-    \li X
     \row
     \li Data change subscriptions
-    \li X
-    \li X
     \row
     \li Event subscriptions
-    \li X
-    \li X
     \row
     \li Modify subscriptions / monitored Items
-    \li X
-    \li X
     \row
     \li Method calls
-    \li X
-    \li X
     \row
     \li Browse path resolution
-    \li X
-    \li X
     \row
     \li GetEndpoints
-    \li X
-    \li X
     \row
     \li FindServers
-    \li X
-    \li X
     \row
     \li NodeManagement
-    \li X
-    \li X
+    \row
+    \li RegisterNodes
+    \row
+    \li UnregisterNodes
     \endtable
 
     \section1 Data Types
     A subset of the OPC UA data types is currently supported in Qt OPC UA.
-    Most of them are available with all backends.
 
     \table
     \header
     \li Data type
-    \li Open62541 plugin
-    \li UACpp plugin
     \li Qt OPC UA data type
     \row
     \li Int16, Int32, Int64
-    \li X
-    \li X
     \li Directly used
     \row
     \li UInt16, UInt32, UInt64
-    \li X
-    \li X
     \li Directly used
     \row
     \li Byte
-    \li X
-    \li X
     \li quint8
     \row
     \li SByte
-    \li X
-    \li X
     \li qint8
     \row
     \li Boolean
-    \li X
-    \li X
     \li Directly used
     \row
     \li Double
-    \li X
-    \li X
     \li Directly used
     \row
     \li Float
-    \li X
-    \li X
     \li Directly used
     \row
     \li String
-    \li X
-    \li X
     \li QString
     \row
     \li LocalizedText
-    \li X
-    \li X
     \li \l QOpcUaLocalizedText
     \row
     \li DateTime
-    \li X
-    \li X
     \li QDateTime
     \row
     \li ByteString
-    \li X
-    \li X
     \li QByteArray
     \row
     \li XmlElement
-    \li X
-    \li X
     \li QString
     \row
     \li NodeId
-    \li X
-    \li X
     \li QString
     \row
     \li GUID
-    \li X
-    \li X
     \li QUuid
     \row
     \li QualifiedName
-    \li X
-    \li X
     \li \l QOpcUaQualifiedName
     \row
     \li StatusCode
-    \li X
-    \li X
     \li \l QOpcUa::UaStatusCode
     \row
     \li Range
-    \li X
-    \li X
     \li \l QOpcUaRange
     \row
     \li EUInformation
-    \li X
-    \li X
     \li \l QOpcUaEUInformation
     \row
     \li ComplexNumber
-    \li X
-    \li X
     \li \l QOpcUaComplexNumber
     \row
     \li DoubleComplexNumber
-    \li X
-    \li X
     \li \l QOpcUaDoubleComplexNumber
     \row
     \li AxisInformation
-    \li X
-    \li X
     \li \l QOpcUaAxisInformation
     \row
     \li XV
-    \li X
-    \li X
     \li \l QOpcUaXValue
     \row
     \li Argument
-    \li X
-    \li X
     \li QOpcUaArgument
     \row
     \li ExpandedNodeId
-    \li X
-    \li X
     \li QOpcUaExpandedNodeId
     \row
     \li ExtensionObject
-    \li X
-    \li X
     \li QOpcUaExtensionObject
+    \row
+    \li StructureDefinition
+    \li QOpcUaStructureDefinition
+    \row
+    \li StructureField
+    \li QOpcUaStructureField
+    \row
+    \li EnumDefinition
+    \li QOpcUaEnumDefinition
+    \row
+    \li EnumField
+    \li QOpcUaEnumField
+    \row
+    \li DiagnosticInfo
+    \li QOpcUaDiagnosticInfo
+    \row
+    \li SimpleAttributeOperand
+    \li QOpcUaSimpleAttributeOperand
+    \row
+    \li AttributeOperand
+    \li QOpcUaAttributeOperand
+    \row
+    \li LiteralOperand
+    \li QOpcUaLiteralOperand
+    \row
+    \li ElementOperand
+    \li QOpcUaElementOperand
+    \row
+    \li RelativePathElement
+    \li QOpcUaRelativePathElement
+    \row
+    \li ContentFilterElement
+    \li QOpcUaContentFilterElement
+    \row
+    \li EventFilter
+    \li QOpcUaMonitoringParameters::EventFilter
     \endtable
 
     \section1 Classes and Ownership
@@ -371,9 +318,6 @@
     \row
     \li qt.opcua.plugins.open62541
     \li Messages generated by the open62541 plugin
-    \row
-    \li qt.opcua.plugins.uacpp
-    \li Messages generated by the UACpp plugin
     \endtable
 
     \section2 Open62541 specific Logging Categories
@@ -434,13 +378,6 @@
     The security support is provided by the OpenSSL plugins of the open62541 library.
     If the open62541 plugin is built with security support and OpenSSL is not available
     on the target system, the open62541 plugin will fail to load.
-
-    \section2 UA CPP
-
-    The UA CPP plugin is available under commercial licenses from \l{The Qt Company}.
-    In addition, it is available under the \l{GNU General Public License, version 3}.
-    The UA CPP library itself is available under commercial licenses from
-    \l {https://www.unified-automation.com}{Unified Automation}.
 */
 
 /*!
@@ -451,7 +388,7 @@
     The Open62541 plugin is built by default from the included 3rd party sources and has no external dependencies.
     The open62541 library uses OpenSSL for security. If the OpenSSL library is detected during configuration,
     security is enabled for the tests and the open62541 backend.
-    The Open62541 source and header files bundled with Qt OPC UA have been generated from the open62541 v1.3.6
+    The Open62541 source and header files bundled with Qt OPC UA have been generated from the open62541 v1.3.9
     tag using the following commands:
 
     \code
@@ -459,13 +396,7 @@
         make
     \endcode
 
-    In order to disable the Open62541 plugin completely, use:
-
-    \code
-        cmake </path/to/qtopcua> -DINPUT_open62541=no
-    \endcode
-
-    In case you want to build a custom version of the Open62541 plugin, Open62541 v1.3.6 built with the same options as above is required.
+    In case you want to build a custom version of the Open62541 plugin, Open62541 v1.3.9 built with the same options as above is required.
 
     The following options must be passed to cmake when building with open62541 installed to a custom location:
 
@@ -500,27 +431,6 @@
 */
 
 /*!
-    \page qtopcua-build-uacpp.html
-    \title Building Qt OPC UA UACPP Plugin
-    \brief Build instructions for the Qt OPC UA UACPP plugin.
-
-    See \l {Creating OPC UA Clients with security support} for detailed instructions for setting up the Unified Automation SDK including
-    security extensions.
-
-    The following options must be passed to cmake in order to find the UACPP headers and libraries:
-
-    \code
-        -DUACPP_PREFIX=/path/to/sdk
-    \endcode
-
-    The output of the configuration step indicates whether the detection was successful:
-
-    \code
-        Unified Automation C++ SDK ............. yes
-    \endcode
-*/
-
-/*!
     \page qtopcua-build-openssl.html
     \title Using the OpenSSL Dependency for Security Support and GDS
     \brief Using the OpenSSL Dependency for Security Support and GDS
@@ -540,4 +450,47 @@
 
     The security capabilities of the Open62541 plugin and the GDS feature will be
     automatically disabled if OpenSSL is not detected during configuration.
+*/
+
+/*!
+    \page qopcuaxmldatatypes2cpp.html
+    \title The Qt OPC UA data type generator
+    \brief The Qt OPC UA data type generator
+
+    Starting with Qt 6.7, Qt OPC UA comes with a data type generator named \a qopcuaxmldatatypes2cpp
+    which generates Qt OPC UA compatible C++ enumerations and data classes from enums and structured types
+    in .bsd files.
+
+    The generator is a command line tool which can be controlled by the following argument:
+
+    \table
+    \header
+    \li Long
+    \li Short
+    \li Purpose
+    \row
+    \li --input
+    \li -i
+    \li A .bsd file for which all contained enum and struct types will be generated. Can be used more than once to generate code for multiple models.
+    \row
+    \li --dependencyinput
+    \li -d
+    \li A dependency input .bsd file where only types required by a struct from an input file passed via ---input will be generated. Can be used more than once to accommodate models with dependencies to multiple other models.
+    \row
+    \li --output
+    \li -o
+    \li The output directory where the generated files will be placed.
+    \row
+    \li --prefix
+    \li -p
+    \li The prefix for the generated file, enum and class names. The default value is \a GeneratedOpcUa.
+    \endtable
+
+    The following files are generated for each run:
+
+    \list
+    \li One \a .h file containing a namespace with all enumerated types
+    \li One \a .h and one \a .cpp file for each structured type
+    \li One \a .h and one \a .cpp file containing encoding and decoding methods
+    \endlist
 */

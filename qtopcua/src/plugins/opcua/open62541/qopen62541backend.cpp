@@ -188,7 +188,6 @@ void Open62541AsyncBackend::writeAttributes(quint64 handle, UA_NodeId id, QOpcUa
                                                       &requestId, m_asyncRequestTimeout);
 
     if (result != UA_STATUSCODE_GOOD) {
-        index = 0;
         for (auto it = toWrite.begin(); it != toWrite.end(); ++it) {
             emit attributeWritten(handle, it.key(), it.value(), static_cast<QOpcUa::UaStatusCode>(result));
         }
@@ -478,12 +477,10 @@ void Open62541AsyncBackend::open62541LogHandler (void *logContext, UA_LogLevel l
 
 void Open62541AsyncBackend::findServers(const QUrl &url, const QStringList &localeIds, const QStringList &serverUris)
 {
-    UA_Client *tmpClient = UA_Client_new();
-    auto conf = UA_Client_getConfig(tmpClient);
-
-    conf->logger = m_open62541Logger;
-
-    UA_ClientConfig_setDefault(UA_Client_getConfig(tmpClient));
+    UA_ClientConfig initialConfig {};
+    initialConfig.logger = m_open62541Logger;
+    UA_ClientConfig_setDefault(&initialConfig);
+    UA_Client *tmpClient = UA_Client_newWithConfig(&initialConfig);
 
     UaDeleter<UA_Client> clientDeleter(tmpClient, UA_Client_delete);
 
@@ -648,7 +645,7 @@ void Open62541AsyncBackend::readHistoryRaw(QOpcUaHistoryReadRawRequest request, 
         if (!continuationPoints.isEmpty())
             QOpen62541ValueConverter::scalarFromQt<UA_ByteString, QByteArray>(continuationPoints.at(i), &uarequest.nodesToRead[i].continuationPoint);
     }
-    uarequest.timestampsToReturn = UA_TIMESTAMPSTORETURN_BOTH;
+    uarequest.timestampsToReturn = static_cast<UA_TimestampsToReturn>(request.timestampsToReturn());
 
     if (releaseContinuationPoints)
         uarequest.releaseContinuationPoints = releaseContinuationPoints;
@@ -676,6 +673,63 @@ void Open62541AsyncBackend::readHistoryRaw(QOpcUaHistoryReadRawRequest request, 
     }
 
     m_asyncReadHistoryDataContext[requestId] = {handle, request};
+}
+
+void Open62541AsyncBackend::readHistoryEvents(const QOpcUaHistoryReadEventRequest &request, const QList<QByteArray> &continuationPoints,
+                                              bool releaseContinuationPoints, quint64 handle)
+{
+    if (!m_uaclient) {
+        emit historyDataAvailable({}, {}, QOpcUa::UaStatusCode::BadDisconnect, handle);
+        return;
+    }
+
+    if (!continuationPoints.empty() && continuationPoints.size() != request.nodesToRead().size()) {
+        emit historyDataAvailable({}, {}, QOpcUa::UaStatusCode::BadInternalError, handle);
+        return;
+    }
+
+    UA_HistoryReadRequest uarequest;
+    UA_HistoryReadRequest_init(&uarequest);
+    uarequest.requestHeader.timeoutHint = m_asyncRequestTimeout;
+    uarequest.nodesToReadSize = request.nodesToRead().size();
+    uarequest.nodesToRead = static_cast<UA_HistoryReadValueId*>(UA_Array_new(uarequest.nodesToReadSize, &UA_TYPES[UA_TYPES_HISTORYREADVALUEID]));
+
+    for (size_t i = 0; i < uarequest.nodesToReadSize; ++i) {
+        uarequest.nodesToRead[i].nodeId = Open62541Utils::nodeIdFromQString(request.nodesToRead().at(i).nodeId());
+        QOpen62541ValueConverter::scalarFromQt<UA_String, QString>(request.nodesToRead().at(i).indexRange(), &uarequest.nodesToRead[i].indexRange);
+        uarequest.nodesToRead[i].dataEncoding = UA_QUALIFIEDNAME_ALLOC(0, "Default Binary");
+        if (!continuationPoints.isEmpty())
+            QOpen62541ValueConverter::scalarFromQt<UA_ByteString, QByteArray>(continuationPoints.at(i), &uarequest.nodesToRead[i].continuationPoint);
+    }
+
+    uarequest.timestampsToReturn = UA_TIMESTAMPSTORETURN_BOTH;
+
+    if (releaseContinuationPoints)
+        uarequest.releaseContinuationPoints = releaseContinuationPoints;
+
+    uarequest.historyReadDetails.encoding = UA_EXTENSIONOBJECT_DECODED;
+    uarequest.historyReadDetails.content.decoded.type = &UA_TYPES[UA_TYPES_READEVENTDETAILS];
+    UA_ReadEventDetails *details = UA_ReadEventDetails_new();
+    uarequest.historyReadDetails.content.decoded.data = details;
+    QOpen62541ValueConverter::scalarFromQt<UA_DateTime, QDateTime>(request.startTimestamp(), &details->startTime);
+    QOpen62541ValueConverter::scalarFromQt<UA_DateTime, QDateTime>(request.endTimestamp(), &details->endTime);
+    details->numValuesPerNode = request.numValuesPerNode();
+
+    QOpen62541ValueConverter::scalarFromQt<UA_EventFilter, QOpcUaMonitoringParameters::EventFilter>(request.filter(), &details->filter);
+
+    quint32 requestId = 0;
+    UA_StatusCode resultCode = __UA_Client_AsyncService(m_uaclient, &uarequest, &UA_TYPES[UA_TYPES_HISTORYREADREQUEST], &asyncReadHistoryEventsCallback,
+                                                        &UA_TYPES[UA_TYPES_HISTORYREADRESPONSE], this, &requestId);
+
+    UA_HistoryReadRequest_clear(&uarequest);
+
+    if (resultCode != UA_STATUSCODE_GOOD) {
+        qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Read history data failed:" << resultCode;
+        emit historyDataAvailable({}, {}, QOpcUa::UaStatusCode(resultCode), handle);
+        return;
+    }
+
+    m_asyncReadHistoryEventsContext[requestId] = {handle, request};
 }
 
 void Open62541AsyncBackend::addNode(const QOpcUaAddNodeItem &nodeToAdd)
@@ -952,10 +1006,11 @@ void Open62541AsyncBackend::connectToEndpoint(const QOpcUaEndpointDescription &e
 
     emit stateAndOrErrorChanged(QOpcUaClient::Connecting, QOpcUaClient::NoError);
 
-    m_uaclient = UA_Client_new();
-    auto conf = UA_Client_getConfig(m_uaclient);
+    UA_ClientConfig initialConfig {};
+    initialConfig.logger = m_open62541Logger;
+    m_uaclient = UA_Client_newWithConfig(&initialConfig);
 
-    conf->logger = m_open62541Logger;
+    auto conf = UA_Client_getConfig(m_uaclient);
 
     const auto identity = m_clientImpl->m_client->applicationIdentity();
     const auto authInfo = m_clientImpl->m_client->authenticationInformation();
@@ -1140,12 +1195,10 @@ void Open62541AsyncBackend::disconnectFromEndpoint()
 
 void Open62541AsyncBackend::requestEndpoints(const QUrl &url)
 {
-    UA_Client *tmpClient = UA_Client_new();
-    auto conf = UA_Client_getConfig(tmpClient);
-
-    conf->logger = m_open62541Logger;
-
-    UA_ClientConfig_setDefault(conf);
+    UA_ClientConfig initialConfig {};
+    initialConfig.logger = m_open62541Logger;
+    UA_ClientConfig_setDefault(&initialConfig);
+    UA_Client *tmpClient = UA_Client_newWithConfig(&initialConfig);
 
     size_t numEndpoints = 0;
     UA_EndpointDescription *endpoints = nullptr;
@@ -1264,6 +1317,66 @@ void Open62541AsyncBackend::cleanupSubscriptions()
     m_subscriptions.clear();
     m_attributeMapping.clear();
     m_minPublishingInterval = 0;
+}
+
+void Open62541AsyncBackend::registerNodes(const QStringList &nodesToRegister)
+{
+    if (!m_uaclient) {
+        emit registerNodesFinished(nodesToRegister, {}, QOpcUa::UaStatusCode::BadDisconnect);
+        return;
+    }
+
+    UA_RegisterNodesRequest req;
+    UA_RegisterNodesRequest_init(&req);
+
+    req.nodesToRegisterSize = nodesToRegister.size();
+    req.nodesToRegister = static_cast<UA_NodeId *>(UA_Array_new(nodesToRegister.size(), &UA_TYPES[UA_TYPES_NODEID]));
+
+    for (int i = 0; i < nodesToRegister.size(); ++i)
+        QOpen62541ValueConverter::scalarFromQt<UA_NodeId, QString>(nodesToRegister.at(i), &req.nodesToRegister[i]);
+
+    quint32 requestId = 0;
+    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &req, &UA_TYPES[UA_TYPES_REGISTERNODESREQUEST],
+                                                      &asyncRegisterNodesCallback,
+                                                      &UA_TYPES[UA_TYPES_REGISTERNODESRESPONSE],
+                                                      this, &requestId, m_asyncRequestTimeout);
+
+    UA_RegisterNodesRequest_clear(&req);
+
+    if (result != UA_STATUSCODE_GOOD)
+        emit registerNodesFinished(nodesToRegister, {}, QOpcUa::UaStatusCode(result));
+    else
+        m_asyncRegisterUnregisterNodesContext[requestId] = { nodesToRegister };
+}
+
+void Open62541AsyncBackend::unregisterNodes(const QStringList &nodesToUnregister)
+{
+    if (!m_uaclient) {
+        emit unregisterNodesFinished(nodesToUnregister, QOpcUa::UaStatusCode::BadDisconnect);
+        return;
+    }
+
+    UA_UnregisterNodesRequest req;
+    UA_UnregisterNodesRequest_init(&req);
+
+    req.nodesToUnregisterSize = nodesToUnregister.size();
+    req.nodesToUnregister = static_cast<UA_NodeId *>(UA_Array_new(nodesToUnregister.size(), &UA_TYPES[UA_TYPES_NODEID]));
+
+    for (int i = 0; i < nodesToUnregister.size(); ++i)
+        QOpen62541ValueConverter::scalarFromQt<UA_NodeId, QString>(nodesToUnregister.at(i), &req.nodesToUnregister[i]);
+
+    quint32 requestId = 0;
+    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &req, &UA_TYPES[UA_TYPES_UNREGISTERNODESREQUEST],
+                                                      &asyncUnregisterNodesCallback,
+                                                      &UA_TYPES[UA_TYPES_UNREGISTERNODESRESPONSE],
+                                                      this, &requestId, m_asyncRequestTimeout);
+
+    UA_UnregisterNodesRequest_clear(&req);
+
+    if (result != UA_STATUSCODE_GOOD)
+        emit unregisterNodesFinished(nodesToUnregister, QOpcUa::UaStatusCode(result));
+    else
+        m_asyncRegisterUnregisterNodesContext[requestId] = { nodesToUnregister };
 }
 
 void Open62541AsyncBackend::asyncMethodCallback(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response)
@@ -1469,7 +1582,7 @@ void Open62541AsyncBackend::asyncBrowseCallback(UA_Client *client, void *userdat
 
     convertBrowseResult(references, referencesSize, context.results);
 
-    if (statusCode == UA_STATUSCODE_GOOD && continuationPoint->length) {
+    if (statusCode == UA_STATUSCODE_GOOD && continuationPoint && continuationPoint->length) {
         UA_BrowseNextRequest request;
         UA_BrowseNextRequest_init(&request);
         UaDeleter<UA_BrowseNextRequest> requestDeleter(&request, UA_BrowseNextRequest_clear);
@@ -1611,6 +1724,91 @@ void Open62541AsyncBackend::asyncReadHistoryDataCallBack(UA_Client *client, void
     }
 
     emit backend->historyDataAvailable(historyData, continuationPoints, QOpcUa::UaStatusCode(res->responseHeader.serviceResult), context.handle);
+}
+
+void Open62541AsyncBackend::asyncRegisterNodesCallback(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response)
+{
+    Q_UNUSED(client)
+
+    Open62541AsyncBackend *backend = static_cast<Open62541AsyncBackend *>(userdata);
+    const auto context = backend->m_asyncRegisterUnregisterNodesContext.take(requestId);
+
+    const auto res = static_cast<UA_RegisterNodesResponse *>(response);
+
+    const auto serviceResult = QOpcUa::UaStatusCode(res->responseHeader.serviceResult);
+
+    if (serviceResult != QOpcUa::UaStatusCode::Good) {
+        qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Register nodes failed:" << serviceResult;
+        emit backend->registerNodesFinished(context.nodeIds, {}, serviceResult);
+    } else {
+        QStringList resultIds;
+        for (size_t i = 0; i < res->registeredNodeIdsSize; ++i)
+            resultIds.push_back(QOpen62541ValueConverter::scalarToQt<QString, UA_NodeId>(&res->registeredNodeIds[i]));
+
+        emit backend->registerNodesFinished(context.nodeIds, resultIds, serviceResult);
+    }
+}
+
+void Open62541AsyncBackend::asyncUnregisterNodesCallback(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response)
+{
+    Q_UNUSED(client)
+
+    Open62541AsyncBackend *backend = static_cast<Open62541AsyncBackend *>(userdata);
+    const auto context = backend->m_asyncRegisterUnregisterNodesContext.take(requestId);
+
+    const auto res = static_cast<UA_UnregisterNodesResponse *>(response);
+
+    const auto serviceResult = QOpcUa::UaStatusCode(res->responseHeader.serviceResult);
+
+    if (serviceResult != QOpcUa::UaStatusCode::Good)
+        qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Unregister nodes failed:" << serviceResult;
+
+    emit backend->unregisterNodesFinished(context.nodeIds, serviceResult);
+}
+
+void Open62541AsyncBackend::asyncReadHistoryEventsCallback(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response)
+{
+    Q_UNUSED(client);
+
+    Open62541AsyncBackend *backend = static_cast<Open62541AsyncBackend *>(userdata);
+    auto context = backend->m_asyncReadHistoryEventsContext.take(requestId);
+
+    auto res = static_cast<UA_HistoryReadResponse*>(response);
+
+    QList<QByteArray> continuationPoints;
+
+    QList<QOpcUaHistoryEvent> historyEvents;
+
+    for (size_t i = 0; i < res->resultsSize; ++i) {
+        if (res->results[i].historyData.encoding != UA_EXTENSIONOBJECT_DECODED) {
+            emit backend->historyEventsAvailable({}, {}, QOpcUa::UaStatusCode(res->responseHeader.serviceResult), context.handle);
+            return;
+        }
+
+        historyEvents.push_back(QOpcUaHistoryEvent(context.historyReadEventRequest.nodesToRead().at(i).nodeId()));
+
+        historyEvents[i].setStatusCode(QOpcUa::UaStatusCode(res->results[i].statusCode));
+
+        if (res->results[i].statusCode != UA_STATUSCODE_GOOD)
+            continue;
+
+        if (res->results[i].historyData.content.decoded.type != &UA_TYPES[UA_TYPES_HISTORYEVENT]) {
+            historyEvents[i].setStatusCode(QOpcUa::UaStatusCode::BadInternalError);
+            continue;
+        }
+
+        auto events = static_cast<UA_HistoryEvent *>(res->results[i].historyData.content.decoded.data);
+        for (size_t j = 0; j < events->eventsSize; ++j) {
+            QVariantList eventFields;
+            for (size_t k = 0; k < events->events[j].eventFieldsSize; ++k)
+                eventFields.push_back(QOpen62541ValueConverter::toQVariant(events->events[j].eventFields[k]));
+            historyEvents.back().addEvent(eventFields);
+        }
+
+        continuationPoints.push_back(QOpen62541ValueConverter::scalarToQt<QByteArray, UA_ByteString>(&res->results[i].continuationPoint));
+    }
+
+    emit backend->historyEventsAvailable(historyEvents, continuationPoints, QOpcUa::UaStatusCode(res->responseHeader.serviceResult), context.handle);
 }
 
 bool Open62541AsyncBackend::loadFileToByteString(const QString &location, UA_ByteString *target) const

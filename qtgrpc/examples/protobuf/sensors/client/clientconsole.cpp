@@ -27,7 +27,8 @@ void ClientConsole::onTemperatureUpdated(const qt::examples::sensors::Temperatur
     ui->temperature->setText(
             QString("%1 %2")
                     .arg(QString::number(temp.value()))
-                    .arg(temp.units() == qt::examples::sensors::Temperature::Celsius ? 'C' : 'F'));
+                    .arg(temp.units() == qt::examples::sensors::Temperature::Unit::Celsius ? 'C'
+                                                                                           : 'F'));
 }
 
 void ClientConsole::onWarning(const qt::examples::sensors::WarningNotification &warn)

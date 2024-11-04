@@ -140,7 +140,8 @@ bool WebNode::IsFocusable() const {
     return false;
   if (!private_->GetDocument().HaveRenderBlockingResourcesLoaded())
     return false;
-  private_->GetDocument().UpdateStyleAndLayoutTreeForNode(private_.Get());
+  private_->GetDocument().UpdateStyleAndLayoutTreeForNode(
+      private_.Get(), DocumentUpdateReason::kFocus);
   return element->IsFocusable();
 }
 
@@ -223,11 +224,8 @@ bool WebNode::Focused() const {
   return private_->IsFocused();
 }
 
-uint64_t WebNode::ScrollingElementIdForTesting() const {
-  return private_->GetLayoutBox()
-      ->GetScrollableArea()
-      ->GetScrollElementId()
-      .GetStableId();
+cc::ElementId WebNode::ScrollingElementIdForTesting() const {
+  return private_->GetLayoutBox()->GetScrollableArea()->GetScrollElementId();
 }
 
 WebPluginContainer* WebNode::PluginContainer() const {

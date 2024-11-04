@@ -1,4 +1,3 @@
-pragma FunctionSignatureBehavior: Enforced
 import QtQml
 
 QtObject {

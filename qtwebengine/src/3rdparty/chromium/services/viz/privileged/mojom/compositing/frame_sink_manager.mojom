@@ -30,6 +30,8 @@ struct RootCompositorFrameSinkParams {
   bool send_swap_size_notifications = false;
   // Disables begin frame rate limiting for the display compositor.
   bool disable_frame_rate_limit = false;
+  // Whether to use variable refresh rates when generating begin frames.
+  bool enable_variable_refresh_rate = false;
 
   [EnableIf=is_android]
   float refresh_rate;
@@ -57,6 +59,7 @@ struct FrameCountingData {
 struct FrameCountingPerSinkData {
   CompositorFrameSinkType type;
   bool is_root;
+  string debug_label;
 
   // Bucket index of the first bucket in `presented_frames` based on the
   // timestamp of the first presented frame in the bucket and start time.
@@ -155,7 +158,8 @@ interface FrameSinkManager {
   // Creates a FrameSinkVideoCapturer instance.
   CreateVideoCapturer(pending_receiver<FrameSinkVideoCapturer> receiver);
 
-  // Marks the given SurfaceIds for destruction.
+  // Marks the given SurfaceIds for destruction. The client must supply a sorted
+  // `surface_ids`.
   EvictSurfaces(array<SurfaceId> surface_ids);
 
   // Throttles the frame sinks specified by |frame_sink_ids| and all their
@@ -178,7 +182,11 @@ interface FrameSinkManager {
   // Takes a snapshot of |surface_id| or a newer surface with the same
   // FrameSinkId. The request will be queued up until such surface exists and is
   // reachable from the root surface.
-  RequestCopyOfOutput(SurfaceId surface_id, CopyOutputRequest request);
+  //
+  // `capture_exact_surface_id`, when set to true, makes sure the snapshot will
+  // only be taken by the surface with the exact `surface_id`.
+  RequestCopyOfOutput(SurfaceId surface_id, CopyOutputRequest request,
+                      bool capture_exact_surface_id);
 
 
   // Caches the back buffer for the |root_frame_sink_id|. The back buffer is

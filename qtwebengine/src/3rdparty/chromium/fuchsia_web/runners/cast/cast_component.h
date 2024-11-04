@@ -5,6 +5,7 @@
 #ifndef FUCHSIA_WEB_RUNNERS_CAST_CAST_COMPONENT_H_
 #define FUCHSIA_WEB_RUNNERS_CAST_CAST_COMPONENT_H_
 
+#include <chromium/cast/cpp/fidl.h>
 #include <fuchsia/web/cpp/fidl.h>
 
 #include <memory>
@@ -18,7 +19,6 @@
 #include "base/message_loop/message_pump_fuchsia.h"
 #include "fuchsia_web/runners/cast/api_bindings_client.h"
 #include "fuchsia_web/runners/cast/application_controller_impl.h"
-#include "fuchsia_web/runners/cast/fidl/fidl/hlcpp/chromium/cast/cpp/fidl.h"
 #include "fuchsia_web/runners/cast/named_message_port_connector_fuchsia.h"
 #include "fuchsia_web/runners/common/web_component.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -52,11 +52,14 @@ class CastComponent final
     // Parameters asynchronously initialized by PendingCastComponent.
     std::unique_ptr<ApiBindingsClient> api_bindings_client;
     chromium::cast::ApplicationConfig application_config;
-    fidl::InterfaceHandle<chromium::cast::ApplicationContext>
-        application_context;
+    fidl::ClientEnd<chromium_cast::ApplicationContext> application_context;
     absl::optional<std::vector<fuchsia::web::UrlRequestRewriteRule>>
         initial_url_rewrite_rules;
     absl::optional<fuchsia::web::FrameMediaSettings> media_settings;
+
+    // ID of flow used in the with the Fuchsia Trace API to trace the
+    // application lifetime.
+    uint64_t trace_flow_id;
   };
 
   // See WebComponent documentation for details of `debug_name` and `runner`.
@@ -79,8 +82,7 @@ class CastComponent final
 
   // WebComponent overrides.
   void StartComponent() override;
-  void DestroyComponent(int64_t termination_exit_code,
-                        fuchsia::sys::TerminationReason reason) override;
+  void DestroyComponent(int64_t exit_code) override;
 
  private:
   void OnRewriteRulesReceived(
@@ -93,11 +95,6 @@ class CastComponent final
       OnNavigationStateChangedCallback callback) override;
 
   // fuchsia::ui::app::ViewProvider implementation.
-  void CreateView(
-      zx::eventpair view_token,
-      fidl::InterfaceRequest<fuchsia::sys::ServiceProvider> incoming_services,
-      fidl::InterfaceHandle<fuchsia::sys::ServiceProvider> outgoing_services)
-      override;
   void CreateViewWithViewRef(zx::eventpair view_token,
                              fuchsia::ui::views::ViewRefControl control_ref,
                              fuchsia::ui::views::ViewRef view_ref) override;
@@ -121,7 +118,7 @@ class CastComponent final
   std::unique_ptr<NamedMessagePortConnectorFuchsia> connector_;
   std::unique_ptr<ApiBindingsClient> api_bindings_client_;
   std::unique_ptr<ApplicationControllerImpl> application_controller_;
-  chromium::cast::ApplicationContextPtr application_context_;
+  fidl::Client<chromium_cast::ApplicationContext> application_context_;
   fuchsia::web::FrameMediaSettings media_settings_;
   zx::eventpair headless_view_token_;
 
@@ -130,6 +127,8 @@ class CastComponent final
       component_controller_{this};
 
   base::MessagePumpForIO::ZxHandleWatchController headless_disconnect_watch_;
+
+  uint64_t trace_flow_id_;
 };
 
 #endif  // FUCHSIA_WEB_RUNNERS_CAST_CAST_COMPONENT_H_

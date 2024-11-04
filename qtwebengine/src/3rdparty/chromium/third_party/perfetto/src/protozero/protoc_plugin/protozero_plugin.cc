@@ -874,8 +874,9 @@ static inline const char* $local_name$_Name($local_name$ value) {
 
       for (int j = 0; j < nested_enum->value_count(); ++j) {
         const EnumValueDescriptor* value = nested_enum->value(j);
-        stub_h_->Print("static const $class$ $name$ = $class$::$name$;\n",
-                       "class", nested_enum->name(), "name", value->name());
+        stub_h_->Print(
+            "static inline const $class$ $name$ = $class$::$name$;\n", "class",
+            nested_enum->name(), "name", value->name());
       }
     }
 
@@ -913,14 +914,7 @@ using $field_metadata_type$ =
     $cpp_type$,
     $message_cpp_type$>;
 
-// Ceci n'est pas une pipe.
-// This is actually a variable of FieldMetadataHelper<FieldMetadata<...>>
-// type (and users are expected to use it as such, hence kCamelCase name).
-// It is declared as a function to keep protozero bindings header-only as
-// inline constexpr variables are not available until C++17 (while inline
-// functions are).
-// TODO(altimin): Use inline variable instead after adopting C++17.
-static constexpr $field_metadata_type$ $field_metadata_var$() { return {}; }
+static constexpr $field_metadata_type$ $field_metadata_var${};
 )";
 
     stub_h_->Print(code_stub, "field_id", std::to_string(field->number()),

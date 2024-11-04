@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtSql/QtSql>
@@ -76,6 +76,9 @@ private slots:
     void forwardOnlyMultipleResultSet();
     void psql_forwardOnlyQueryResultsLost_data() { generic_data("QPSQL"); }
     void psql_forwardOnlyQueryResultsLost();
+
+    void positionalBindingEnabled_data() { generic_data(); }
+    void positionalBindingEnabled();
 
     // Bug-specific tests:
     void oci_nullBlob_data() { generic_data("QOCI"); }
@@ -253,6 +256,9 @@ private slots:
     void ibaseDateTimeWithTZ();
     void ibaseTimeStampTzArray_data() { generic_data("QIBASE"); }
     void ibaseTimeStampTzArray();
+
+    void psqlJsonOperator_data() { generic_data("QPSQL"); }
+    void psqlJsonOperator();
 
     // Double addDatabase() with same name leaves system in a state that breaks
     // invalidQuery() if run later; so put this one last !
@@ -4454,7 +4460,7 @@ void tst_QSqlQuery::aggregateFunctionTypes()
                             .arg(tableName)));
 
         QVERIFY_SQL(q, exec("SELECT MAX(txt) FROM " + tableName));
-        QVERIFY(q.next());
+        QVERIFY_SQL(q, next());
         if (dbType == QSqlDriver::SQLite)
             QCOMPARE(q.record().field(0).metaType().id(), QMetaType::UnknownType);
         else
@@ -4468,6 +4474,19 @@ void tst_QSqlQuery::aggregateFunctionTypes()
         QVERIFY_SQL(q, exec("SELECT MAX(txt) FROM " + tableName));
         QVERIFY(q.next());
         QCOMPARE(q.value(0).toString(), QLatin1String("upper"));
+        QCOMPARE(q.record().field(0).metaType().id(), QMetaType::QString);
+
+        QVERIFY_SQL(q, exec(QLatin1String("DELETE FROM %1").arg(tableName)));
+        QVERIFY_SQL(q, exec(QString::fromUtf8("INSERT INTO %1 (id, txt) VALUES (1, 'löW€RÄ')")
+                            .arg(tableName)));
+        QVERIFY_SQL(q, exec("SELECT LOWER(txt) FROM " + tableName));
+        QVERIFY(q.next());
+        QCOMPARE(q.value(0).toString(), QString::fromUtf8("löw€rä"));
+        QCOMPARE(q.record().field(0).metaType().id(), QMetaType::QString);
+
+        QVERIFY_SQL(q, exec("SELECT UPPER(txt) FROM " + tableName));
+        QVERIFY(q.next());
+        QCOMPARE(q.value(0).toString(), QString::fromUtf8("LÖW€RÄ"));
         QCOMPARE(q.record().field(0).metaType().id(), QMetaType::QString);
     }
 }
@@ -5034,6 +5053,84 @@ void tst_QSqlQuery::ibase_executeBlock()
     QVERIFY(qry.next());
     QCOMPARE(qry.value(0).toInt(), 4);
 }
+
+void tst_QSqlQuery::positionalBindingEnabled()
+{
+    QFETCH(QString, dbName);
+    QSqlDatabase db = QSqlDatabase::database(dbName);
+    QSqlDriver::DbmsType dbType = tst_Databases::getDatabaseType(db);
+    CHECK_DATABASE(db);
+    TableScope ts(db, "positionalBinding", __FILE__);
+    const QString &tableName = ts.tableName();
+
+    QSqlQuery qry(db);
+    QVERIFY_SQL(qry, exec("CREATE TABLE " + tableName + " (integer_col integer)"));
+    QVERIFY_SQL(qry, exec("INSERT INTO " + tableName + "(integer_col) VALUES(42)"));
+
+    qry.setPositionalBindingEnabled(true);
+    QCOMPARE(qry.isPositionalBindingEnabled(), true);
+    QVERIFY_SQL(qry, prepare("SELECT integer_col FROM " + tableName + " WHERE integer_col = :integer_val"));
+    qry.bindValue(":integer_val", 42);
+    QVERIFY_SQL(qry, exec());
+    QVERIFY_SQL(qry, next());
+    QCOMPARE(qry.value(0).toInt(), 42);
+    QVERIFY_SQL(qry, prepare("SELECT integer_col FROM " + tableName + " WHERE integer_col = ?"));
+    qry.bindValue(0, 42);
+    QVERIFY_SQL(qry, exec());
+    QVERIFY_SQL(qry, next());
+    QCOMPARE(qry.value(0).toInt(), 42);
+
+    qry.setPositionalBindingEnabled(false);
+    QCOMPARE(qry.isPositionalBindingEnabled(), false);
+    QVERIFY_SQL(qry, prepare("SELECT integer_col FROM " + tableName + " WHERE integer_col = :integer_val"));
+    qry.bindValue(":integer_val", 42);
+    QVERIFY_SQL(qry, exec());
+    QVERIFY_SQL(qry, next());
+    QCOMPARE(qry.value(0).toInt(), 42);
+    // the next query will only work when the underlying database support question mark notation natively
+    if (dbType == QSqlDriver::PostgreSQL) {
+        QVERIFY(!qry.prepare("SELECT integer_col FROM " + tableName + " WHERE integer_col = ?"));
+        qry.bindValue(0, 42);
+        QVERIFY(!qry.exec());
+        QVERIFY(!qry.next());
+    } else {
+        QVERIFY_SQL(qry, prepare("SELECT integer_col FROM " + tableName + " WHERE integer_col = ?"));
+        qry.bindValue(0, 42);
+        QVERIFY_SQL(qry, exec());
+        QVERIFY_SQL(qry, next());
+        QCOMPARE(qry.value(0).toInt(), 42);
+    }
+}
+
+void tst_QSqlQuery::psqlJsonOperator()
+{
+    QFETCH(QString, dbName);
+    QSqlDatabase db = QSqlDatabase::database(dbName);
+    CHECK_DATABASE(db);
+    TableScope ts(db, "qTableName", __FILE__);
+    const QString &tableName = ts.tableName();
+
+    QSqlQuery qry(db);
+    qry.setPositionalBindingEnabled(false); // don't allow / handle '?' as placeholder
+    QVERIFY_SQL(qry, exec("CREATE TABLE " + tableName + " (integer_col integer, json_col jsonb)"));
+    QVERIFY_SQL(qry, exec("INSERT INTO " + tableName + "(integer_col, json_col) VALUES(42, '{\"a\": [1, 2]}')"));
+    QVERIFY_SQL(qry, exec("INSERT INTO " + tableName + "(integer_col, json_col) VALUES(43, '{\"b\": [3, 4]}')"));
+
+    QVERIFY_SQL(qry, prepare("SELECT integer_col, json_col FROM " + tableName + " WHERE json_col @? '$.a[*] ? (@ == 1)' and integer_col = :int"));
+    qry.bindValue(":int", 42);
+    QVERIFY_SQL(qry, exec());
+    QVERIFY_SQL(qry, next());
+    QCOMPARE(qry.value(0).toInt(), 42);
+    QCOMPARE(qry.value(1).toByteArray(), "{\"a\": [1, 2]}");
+
+    QVERIFY_SQL(qry, prepare("SELECT integer_col, json_col FROM " + tableName + " WHERE json_col ? 'b' and integer_col = :int"));
+    qry.bindValue(":int", 43);
+    QVERIFY_SQL(qry, exec());
+    QVERIFY_SQL(qry, next());
+    QCOMPARE(qry.value(0).toInt(), 43);
+    QCOMPARE(qry.value(1).toByteArray(), "{\"b\": [3, 4]}");
+}
+
 
 QTEST_MAIN(tst_QSqlQuery)
 #include "tst_qsqlquery.moc"

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "components/password_manager/core/browser/well_known_change_password_state.h"
+#include <cstddef>
 
 #include "base/files/file_util.h"
 #include "base/task/sequenced_task_runner.h"

@@ -6,6 +6,8 @@
 
 #include <stddef.h>
 
+#include "base/command_line.h"
+#include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/unsafe_shared_memory_region.h"
@@ -22,9 +24,7 @@
 #include "content/renderer/pepper/video_decoder_shim.h"
 #include "gpu/ipc/client/command_buffer_proxy_impl.h"
 #include "media/base/limits.h"
-#include "media/base/media_switches.h"
 #include "media/base/media_util.h"
-#include "media/gpu/ipc/client/gpu_video_decode_accelerator_host.h"
 #include "media/video/video_decode_accelerator.h"
 #include "ppapi/c/pp_completion_callback.h"
 #include "ppapi/c/pp_errors.h"
@@ -139,31 +139,17 @@ PepperVideoDecoderHost::PepperVideoDecoderHost(RendererPpapiHost* host,
       renderer_ppapi_host_(host) {}
 
 PepperVideoDecoderHost::~PepperVideoDecoderHost() {
-  DCHECK(!(legacy_hardware_video_decoder_path_initialized_ &&
-           mojo_video_decoder_path_initialized_));
-
   auto hw_behavior = HardwareAccelerationBehavior::kOther;
   if (software_fallback_used_) {
-    if (!legacy_hardware_video_decoder_path_initialized_ &&
-        !mojo_video_decoder_path_initialized_) {
-      hw_behavior = HardwareAccelerationBehavior::kSoftwareDecoderOnly;
-    } else if (legacy_hardware_video_decoder_path_initialized_) {
-      hw_behavior = HardwareAccelerationBehavior::
-          kHardwareDecoderWithoutMojoVideoDecoderAndThenSoftwareDecoder;
-    } else if (mojo_video_decoder_path_initialized_) {
+    if (mojo_video_decoder_path_initialized_) {
       hw_behavior = HardwareAccelerationBehavior::
           kHardwareDecoderWithMojoVideoDecoderAndThenSoftwareDecoder;
     } else {
-      NOTREACHED();
+      hw_behavior = HardwareAccelerationBehavior::kSoftwareDecoderOnly;
     }
-  } else {
-    if (legacy_hardware_video_decoder_path_initialized_) {
-      hw_behavior = HardwareAccelerationBehavior::
-          kHardwareDecoderOnlyWithoutMojoVideoDecoder;
-    } else if (mojo_video_decoder_path_initialized_) {
-      hw_behavior = HardwareAccelerationBehavior::
-          kHardwareDecoderOnlyWithMojoVideoDecoder;
-    }
+  } else if (mojo_video_decoder_path_initialized_) {
+    hw_behavior =
+        HardwareAccelerationBehavior::kHardwareDecoderOnlyWithMojoVideoDecoder;
   }
 
   base::UmaHistogramEnumeration(
@@ -221,36 +207,18 @@ int32_t PepperVideoDecoderHost::OnHostMsgInitialize(
   min_picture_count_ = min_picture_count;
 
   if (acceleration != PP_HARDWAREACCELERATION_NONE) {
-    if (!media::IsUseMojoVideoDecoderForPepperEnabled()) {
-      // This is not synchronous, but subsequent IPC messages will be buffered,
-      // so it is okay to immediately send IPC messages.
-      if (command_buffer->channel()) {
-        decoder_ = base::WrapUnique<media::VideoDecodeAccelerator>(
-            new media::GpuVideoDecodeAcceleratorHost(command_buffer));
-        media::VideoDecodeAccelerator::Config vda_config(profile_);
-        vda_config.supported_output_formats.assign(
-            {media::PIXEL_FORMAT_XRGB, media::PIXEL_FORMAT_ARGB});
-        if (decoder_->Initialize(vda_config, this)) {
-          initialized_ = true;
-          legacy_hardware_video_decoder_path_initialized_ = true;
-          return PP_OK;
-        }
-      }
-    } else {
-      uint32_t shim_texture_pool_size = media::limits::kMaxVideoFrames + 1;
-      shim_texture_pool_size =
-          std::max(shim_texture_pool_size, min_picture_count_);
-      auto new_decoder = VideoDecoderShim::Create(this, shim_texture_pool_size,
-                                                  /*use_hw_decoder=*/true);
-      if (new_decoder &&
-          new_decoder->Initialize(
-              media::VideoDecodeAccelerator::Config(profile_), this)) {
-        decoder_.reset(new_decoder.release());
-        initialized_ = true;
-        mojo_video_decoder_path_initialized_ = true;
-        return PP_OK;
-      }
+    uint32_t shim_texture_pool_size = media::limits::kMaxVideoFrames + 1;
+    shim_texture_pool_size =
+        std::max(shim_texture_pool_size, min_picture_count_);
+    auto new_decoder = VideoDecoderShim::Create(this, shim_texture_pool_size,
+                                                /*use_hw_decoder=*/true);
+    if (new_decoder && new_decoder->Initialize(profile_)) {
+      decoder_.reset(new_decoder.release());
+      initialized_ = true;
+      mojo_video_decoder_path_initialized_ = true;
+      return PP_OK;
     }
+
     decoder_.reset();
     if (acceleration == PP_HARDWAREACCELERATION_ONLY)
       return PP_ERROR_NOTSUPPORTED;
@@ -378,14 +346,14 @@ int32_t PepperVideoDecoderHost::OnHostMsgAssignTextures(
   // Verify that the new texture IDs are unique and store them in
   // |new_textures|.
   PictureBufferMap new_textures;
-  for (uint32_t i = 0; i < texture_ids.size(); i++) {
-    if (picture_buffer_map_.find(texture_ids[i]) != picture_buffer_map_.end() ||
-        new_textures.find(texture_ids[i]) != new_textures.end()) {
+  for (uint32_t texture_id : texture_ids) {
+    if (base::Contains(picture_buffer_map_, texture_id) ||
+        base::Contains(new_textures, texture_id)) {
       // Can't assign the same texture more than once.
       return PP_ERROR_BADARGUMENT;
     }
     new_textures.insert(
-        std::make_pair(texture_ids[i], PictureBufferState::ASSIGNED));
+        std::make_pair(texture_id, PictureBufferState::ASSIGNED));
   }
 
   picture_buffer_map_.insert(new_textures.begin(), new_textures.end());
@@ -588,8 +556,7 @@ bool PepperVideoDecoderHost::TryFallbackToSoftwareDecoder() {
                                     min_picture_count_);
   std::unique_ptr<VideoDecoderShim> new_decoder(VideoDecoderShim::Create(
       this, shim_texture_pool_size, /*use_hw_decoder=*/false));
-  if (!new_decoder->Initialize(media::VideoDecodeAccelerator::Config(profile_),
-                               this)) {
+  if (!new_decoder->Initialize(profile_)) {
     return false;
   }
 

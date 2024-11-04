@@ -2,18 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import type * as Protocol from '../../generated/protocol.js';
 import * as Common from '../common/common.js';
 import * as Host from '../host/host.js';
 import * as i18n from '../i18n/i18n.js';
 import type * as Platform from '../platform/platform.js';
-import type * as Protocol from '../../generated/protocol.js';
 
 import {FrameManager} from './FrameManager.js';
 import {IOModel} from './IOModel.js';
-import {MultitargetNetworkManager} from './NetworkManager.js';
-import {NetworkManager} from './NetworkManager.js';
-
-import {Events as ResourceTreeModelEvents, ResourceTreeModel, type ResourceTreeFrame} from './ResourceTreeModel.js';
+import {MultitargetNetworkManager, NetworkManager} from './NetworkManager.js';
+import {
+  Events as ResourceTreeModelEvents,
+  PrimaryPageChangeType,
+  type ResourceTreeFrame,
+  ResourceTreeModel,
+} from './ResourceTreeModel.js';
 import {type Target} from './Target.js';
 import {TargetManager} from './TargetManager.js';
 
@@ -22,10 +25,6 @@ const UIStrings = {
    *@description Error message for canceled source map loads
    */
   loadCanceledDueToReloadOf: 'Load canceled due to reload of inspected page',
-  /**
-   *@description Error message for canceled source map loads
-   */
-  loadCanceledDueToLoadTimeout: 'Load canceled due to load timeout',
 };
 const str_ = i18n.i18n.registerUIStrings('core/sdk/PageResourceLoader.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -62,34 +61,34 @@ interface LoadQueueEntry {
  */
 export class PageResourceLoader extends Common.ObjectWrapper.ObjectWrapper<EventTypes> {
   #currentlyLoading: number;
+  #currentlyLoadingPerTarget: Map<Protocol.Target.TargetID|'main', number>;
   readonly #maxConcurrentLoads: number;
-  readonly #pageResources: Map<string, PageResource>;
+  #pageResources: Map<string, PageResource>;
   #queuedLoads: LoadQueueEntry[];
   readonly #loadOverride: ((arg0: string) => Promise<{
                              success: boolean,
                              content: string,
                              errorDescription: Host.ResourceLoader.LoadErrorDescription,
                            }>)|null;
-  readonly #loadTimeout: number;
   constructor(
       loadOverride: ((arg0: string) => Promise<{
                        success: boolean,
                        content: string,
                        errorDescription: Host.ResourceLoader.LoadErrorDescription,
                      }>)|null,
-      maxConcurrentLoads: number, loadTimeout: number) {
+      maxConcurrentLoads: number) {
     super();
     this.#currentlyLoading = 0;
+    this.#currentlyLoadingPerTarget = new Map();
     this.#maxConcurrentLoads = maxConcurrentLoads;
     this.#pageResources = new Map();
     this.#queuedLoads = [];
     TargetManager.instance().addModelListener(
-        ResourceTreeModel, ResourceTreeModelEvents.MainFrameNavigated, this.onMainFrameNavigated, this);
+        ResourceTreeModel, ResourceTreeModelEvents.PrimaryPageChanged, this.onPrimaryPageChanged, this);
     this.#loadOverride = loadOverride;
-    this.#loadTimeout = loadTimeout;
   }
 
-  static instance({forceNew, loadOverride, maxConcurrentLoads, loadTimeout}: {
+  static instance({forceNew, loadOverride, maxConcurrentLoads}: {
     forceNew: boolean,
     loadOverride: (null|((arg0: string) => Promise<{
                            success: boolean,
@@ -97,15 +96,13 @@ export class PageResourceLoader extends Common.ObjectWrapper.ObjectWrapper<Event
                            errorDescription: Host.ResourceLoader.LoadErrorDescription,
                          }>)),
     maxConcurrentLoads: number,
-    loadTimeout: number,
   } = {
     forceNew: false,
     loadOverride: null,
     maxConcurrentLoads: 500,
-    loadTimeout: 30000,
   }): PageResourceLoader {
     if (!pageResourceLoader || forceNew) {
-      pageResourceLoader = new PageResourceLoader(loadOverride, maxConcurrentLoads, loadTimeout);
+      pageResourceLoader = new PageResourceLoader(loadOverride, maxConcurrentLoads);
     }
 
     return pageResourceLoader;
@@ -115,21 +112,37 @@ export class PageResourceLoader extends Common.ObjectWrapper.ObjectWrapper<Event
     pageResourceLoader = null;
   }
 
-  onMainFrameNavigated(event: Common.EventTarget.EventTargetEvent<ResourceTreeFrame>): void {
-    const mainFrame = event.data;
-    if (!mainFrame.isTopFrame()) {
+  onPrimaryPageChanged(
+      event: Common.EventTarget.EventTargetEvent<{frame: ResourceTreeFrame, type: PrimaryPageChangeType}>): void {
+    const {frame: mainFrame, type} = event.data;
+    if (!mainFrame.isOutermostFrame()) {
       return;
     }
     for (const {reject} of this.#queuedLoads) {
       reject(new Error(i18nString(UIStrings.loadCanceledDueToReloadOf)));
     }
     this.#queuedLoads = [];
-    this.#pageResources.clear();
+    const mainFrameTarget = mainFrame.resourceTreeModel().target();
+    const keptResources = new Map<string, PageResource>();
+    // If the navigation is a prerender-activation, the pageResources for the destination page have
+    // already been preloaded. In such cases, we therefore don't just discard all pageResources, but
+    // instead make sure to keep the pageResources for the prerendered target.
+    for (const [key, pageResource] of this.#pageResources.entries()) {
+      if ((type === PrimaryPageChangeType.Activation) && mainFrameTarget === pageResource.initiator.target) {
+        keptResources.set(key, pageResource);
+      }
+    }
+    this.#pageResources = keptResources;
     this.dispatchEventToListeners(Events.Update);
   }
 
   getResourcesLoaded(): Map<string, PageResource> {
     return this.#pageResources;
+  }
+
+  getScopedResourcesLoaded(): Map<string, PageResource> {
+    return new Map([...this.#pageResources].filter(
+        ([_, pageResource]) => TargetManager.instance().isInScope(pageResource.initiator.target)));
   }
 
   /**
@@ -145,8 +158,27 @@ export class PageResourceLoader extends Common.ObjectWrapper.ObjectWrapper<Event
     return {loading: this.#currentlyLoading, queued: this.#queuedLoads.length, resources: this.#pageResources.size};
   }
 
-  private async acquireLoadSlot(): Promise<void> {
+  getScopedNumberOfResources(): {
+    loading: number,
+    resources: number,
+  } {
+    const targetManager = TargetManager.instance();
+    let loadingCount = 0;
+    for (const [targetId, count] of this.#currentlyLoadingPerTarget) {
+      const target = targetManager.targetById(targetId);
+      if (targetManager.isInScope(target)) {
+        loadingCount += count;
+      }
+    }
+    return {loading: loadingCount, resources: this.getScopedResourcesLoaded().size};
+  }
+
+  private async acquireLoadSlot(target: Target|null): Promise<void> {
     this.#currentlyLoading++;
+    if (target) {
+      const currentCount = this.#currentlyLoadingPerTarget.get(target.id()) || 0;
+      this.#currentlyLoadingPerTarget.set(target.id(), currentCount + 1);
+    }
     if (this.#currentlyLoading > this.#maxConcurrentLoads) {
       const entry: LoadQueueEntry = {resolve: (): void => {}, reject: (): void => {}};
       const waitForCapacity = new Promise<void>((resolve, reject) => {
@@ -158,19 +190,18 @@ export class PageResourceLoader extends Common.ObjectWrapper.ObjectWrapper<Event
     }
   }
 
-  private releaseLoadSlot(): void {
+  private releaseLoadSlot(target: Target|null): void {
     this.#currentlyLoading--;
+    if (target) {
+      const currentCount = this.#currentlyLoadingPerTarget.get(target.id());
+      if (currentCount) {
+        this.#currentlyLoadingPerTarget.set(target.id(), currentCount - 1);
+      }
+    }
     const entry = this.#queuedLoads.shift();
     if (entry) {
       entry.resolve();
     }
-  }
-
-  static async withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
-    const timeoutPromise = new Promise<T>(
-        (_, reject) =>
-            window.setTimeout(reject, timeout, new Error(i18nString(UIStrings.loadCanceledDueToLoadTimeout))));
-    return Promise.race([promise, timeoutPromise]);
   }
 
   static makeKey(url: Platform.DevToolsPath.UrlString, initiator: PageResourceLoadInitiator): string {
@@ -191,9 +222,9 @@ export class PageResourceLoader extends Common.ObjectWrapper.ObjectWrapper<Event
     this.#pageResources.set(key, pageResource);
     this.dispatchEventToListeners(Events.Update);
     try {
-      await this.acquireLoadSlot();
+      await this.acquireLoadSlot(initiator.target);
       const resultPromise = this.dispatchLoad(url, initiator);
-      const result = await PageResourceLoader.withTimeout(resultPromise, this.#loadTimeout);
+      const result = await resultPromise;
       pageResource.errorMessage = result.errorDescription.message;
       pageResource.success = result.success;
       if (result.success) {
@@ -210,7 +241,7 @@ export class PageResourceLoader extends Common.ObjectWrapper.ObjectWrapper<Event
       }
       throw e;
     } finally {
-      this.releaseLoadSlot();
+      this.releaseLoadSlot(initiator.target);
       this.dispatchEventToListeners(Events.Update);
     }
   }

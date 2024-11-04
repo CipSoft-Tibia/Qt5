@@ -10,7 +10,6 @@
 #include <utility>
 
 #include "base/check_op.h"
-#include "base/cxx17_backports.h"
 #include "base/logging.h"
 #include "base/no_destructor.h"
 #include "base/notreached.h"
@@ -130,7 +129,7 @@ SkPath GetVisibleArrowPath(BubbleBorder::Arrow arrow,
 
 const gfx::ShadowValues& GetShadowValues(
     const ui::ColorProvider* color_provider,
-    absl::optional<int> elevation,
+    const absl::optional<int>& elevation,
     BubbleBorder::Shadow shadow_type) {
   // If the color provider does not exist the shadow values are being created in
   // order to calculate Insets. In that case the color plays no role so always
@@ -168,13 +167,13 @@ const gfx::ShadowValues& GetShadowValues(
     }
 #endif
   } else {
-    constexpr int kSmallShadowVerticalOffset = 2;
+    constexpr gfx::Vector2d kOffset(0, 2);
     constexpr int kSmallShadowBlur = 4;
-    SkColor kSmallShadowColor =
+    const SkColor small_shadow_color =
         color_provider
             ? color_provider->GetColor(ui::kColorBubbleBorderShadowSmall)
             : gfx::kPlaceholderColor;
-    SkColor kLargeShadowColor =
+    const SkColor large_shadow_color =
         color_provider
             ? color_provider->GetColor(ui::kColorBubbleBorderShadowLarge)
             : gfx::kPlaceholderColor;
@@ -182,10 +181,8 @@ const gfx::ShadowValues& GetShadowValues(
     // whereas these blur values only describe the outside portion, hence they
     // must be doubled.
     shadows = gfx::ShadowValues({
-        {gfx::Vector2d(0, kSmallShadowVerticalOffset), 2 * kSmallShadowBlur,
-         kSmallShadowColor},
-        {gfx::Vector2d(0, BubbleBorder::kShadowVerticalOffset),
-         2 * BubbleBorder::kShadowBlur, kLargeShadowColor},
+        {kOffset, 2 * kSmallShadowBlur, small_shadow_color},
+        {kOffset, 2 * BubbleBorder::kShadowBlur, large_shadow_color},
     });
   }
 
@@ -193,9 +190,16 @@ const gfx::ShadowValues& GetShadowValues(
   return shadow_map->find(key)->second;
 }
 
+bool ShouldDrawStrokeForArgs(const absl::optional<bool>& draw_border_stroke,
+                             const absl::optional<int>& elevation,
+                             BubbleBorder::Shadow shadow_type) {
+  return draw_border_stroke.value_or(!elevation.has_value() &&
+                                     shadow_type != BubbleBorder::NO_SHADOW);
+}
+
 const cc::PaintFlags& GetBorderAndShadowFlags(
     const ui::ColorProvider* color_provider,
-    absl::optional<int> elevation,
+    const absl::optional<int>& elevation,
     BubbleBorder::Shadow shadow_type) {
   // The flags are always the same for any elevation and color combination, so
   // construct them once and cache.
@@ -208,8 +212,7 @@ const cc::PaintFlags& GetBorderAndShadowFlags(
     return flag_map->find(key)->second;
 
   cc::PaintFlags flags;
-  flags.setColor(
-      color_provider->GetColor(ui::kColorBubbleBorderWhenShadowPresent));
+  flags.setColor(color_provider->GetColor(ui::kColorBubbleBorder));
   flags.setAntiAlias(true);
   flags.setLooper(gfx::CreateShadowDrawLooper(
       GetShadowValues(color_provider, elevation, shadow_type)));
@@ -223,10 +226,10 @@ void DrawBorderAndShadowImpl(
     void (cc::PaintCanvas::*draw)(const T&, const cc::PaintFlags&),
     gfx::Canvas* canvas,
     const ui::ColorProvider* color_provider,
-    absl::optional<int> shadow_elevation = absl::nullopt,
+    bool draw_stroke = true,
+    const absl::optional<int>& elevation = absl::nullopt,
     BubbleBorder::Shadow shadow_type = BubbleBorder::STANDARD_SHADOW) {
-  // Borders with custom shadow elevations do not draw the 1px border.
-  if (!shadow_elevation.has_value()) {
+  if (draw_stroke) {
     // Provide a 1 px border outside the bounds.
     constexpr int kBorderStrokeThicknessPx = 1;
     const SkScalar one_pixel =
@@ -235,19 +238,10 @@ void DrawBorderAndShadowImpl(
   }
 
   (canvas->sk_canvas()->*draw)(
-      rect,
-      GetBorderAndShadowFlags(color_provider, shadow_elevation, shadow_type));
+      rect, GetBorderAndShadowFlags(color_provider, elevation, shadow_type));
 }
 
 }  // namespace
-
-constexpr int BubbleBorder::kBorderThicknessDip;
-constexpr int BubbleBorder::kShadowBlur;
-constexpr int BubbleBorder::kShadowVerticalOffset;
-constexpr int BubbleBorder::kVisibleArrowGap;
-constexpr int BubbleBorder::kVisibleArrowLength;
-constexpr int BubbleBorder::kVisibleArrowRadius;
-constexpr int BubbleBorder::kVisibleArrowBuffer;
 
 BubbleBorder::BubbleBorder(Arrow arrow, Shadow shadow, ui::ColorId color_id)
     : arrow_(arrow), shadow_(shadow), color_id_(color_id) {
@@ -258,31 +252,19 @@ BubbleBorder::~BubbleBorder() = default;
 
 // static
 gfx::Insets BubbleBorder::GetBorderAndShadowInsets(
-    absl::optional<int> elevation,
+    const absl::optional<int>& elevation,
+    const absl::optional<bool>& draw_border_stroke,
     BubbleBorder::Shadow shadow_type) {
-  // Borders with custom shadow elevations do not draw the 1px border.
-  if (elevation.has_value())
-    return -gfx::ShadowValue::GetMargin(
-        GetShadowValues(nullptr, elevation, shadow_type));
-
-  constexpr gfx::Insets blur(kShadowBlur + kBorderThicknessDip);
-  constexpr auto offset =
-      gfx::Insets::TLBR(-kShadowVerticalOffset, 0, kShadowVerticalOffset, 0);
-  return blur + offset;
+  return gfx::Insets(
+             ShouldDrawStrokeForArgs(draw_border_stroke, elevation, shadow_type)
+                 ? kBorderThicknessDip
+                 : 0) -
+         gfx::ShadowValue::GetMargin(
+             GetShadowValues(nullptr, elevation, shadow_type));
 }
 
 void BubbleBorder::SetCornerRadius(int corner_radius) {
   corner_radius_ = corner_radius;
-}
-
-void BubbleBorder::SetRoundedCorners(int top_left,
-                                     int top_right,
-                                     int bottom_right,
-                                     int bottom_left) {
-  radii_[0].iset(top_left, top_left);
-  radii_[1].iset(top_right, top_right);
-  radii_[2].iset(bottom_right, bottom_right);
-  radii_[3].iset(bottom_left, bottom_left);
 }
 
 void BubbleBorder::SetColor(SkColor color) {
@@ -318,11 +300,7 @@ gfx::Rect BubbleBorder::GetBounds(const gfx::Rect& anchor_rect,
   // may cause misalignment in scale factors greater than 1.
   // TODO(estade): when it becomes possible to provide px bounds instead of
   // dip bounds, fix this.
-  // Borders with custom shadow elevations do not draw the 1px border.
-  const gfx::Insets border_insets =
-      shadow_ == NO_SHADOW || md_shadow_elevation_.has_value()
-          ? gfx::Insets()
-          : gfx::Insets(kBorderThicknessDip);
+  const gfx::Insets border_insets(ShouldDrawStroke() ? kBorderThicknessDip : 0);
   const gfx::Insets insets = GetInsets();
   const gfx::Insets shadow_insets = insets - border_insets;
   // TODO(dfried): Collapse border into visible arrow where applicable.
@@ -451,8 +429,8 @@ void BubbleBorder::Paint(const views::View& view, gfx::Canvas* canvas) {
   canvas->sk_canvas()->clipRRect(r_rect, SkClipOp::kDifference,
                                  true /*doAntiAlias*/);
   DrawBorderAndShadowImpl(r_rect, &cc::PaintCanvas::drawRRect, canvas,
-                          view.GetColorProvider(), md_shadow_elevation_,
-                          shadow_);
+                          view.GetColorProvider(), ShouldDrawStroke(),
+                          md_shadow_elevation_, shadow_);
 
   if (visible_arrow_)
     PaintVisibleArrow(view, canvas);
@@ -480,7 +458,8 @@ gfx::Insets BubbleBorder::GetInsets() const {
 #if BUILDFLAG(IS_CHROMEOS_ASH)
     case CHROMEOS_SYSTEM_UI_SHADOW:
 #endif
-      insets = GetBorderAndShadowInsets(md_shadow_elevation_, shadow_);
+      insets = GetBorderAndShadowInsets(md_shadow_elevation_,
+                                        draw_border_stroke_, shadow_);
       break;
     default:
       break;
@@ -556,8 +535,8 @@ bool BubbleBorder::AddArrowToBubbleCornerAndPointTowardsAnchor(
     }
 
     // Make sure the x position is limited to the range defined by the bubble.
-    x_position = base::clamp(x_optimal_position, leftmost_position_on_bubble,
-                             rightmost_position_on_bubble);
+    x_position = std::clamp(x_optimal_position, leftmost_position_on_bubble,
+                            rightmost_position_on_bubble);
 
     // Calculate the y position of the arrow to be either on top of below the
     // bubble.
@@ -581,7 +560,7 @@ bool BubbleBorder::AddArrowToBubbleCornerAndPointTowardsAnchor(
     }
 
     int popup_y_adjusted =
-        base::clamp(popup_bounds.y(), popup_y_lower_bound, popup_y_upper_bound);
+        std::clamp(popup_bounds.y(), popup_y_lower_bound, popup_y_upper_bound);
     popup_bounds.set_y(popup_y_adjusted);
 
     // For an horizontal arrow, the x position is either the left or the right
@@ -608,8 +587,8 @@ bool BubbleBorder::AddArrowToBubbleCornerAndPointTowardsAnchor(
     // Here, there is no differentiation between the different positions of a
     // left or right aligned arrow.
     y_position =
-        base::clamp(anchor_rect.CenterPoint().y() - kVisibleArrowRadius,
-                    topmost_position_on_bubble, bottommost_position_on_bubble);
+        std::clamp(anchor_rect.CenterPoint().y() - kVisibleArrowRadius,
+                   topmost_position_on_bubble, bottommost_position_on_bubble);
   }
 
   visible_arrow_rect_.set_size(GetVisibleArrowSize(arrow_));
@@ -664,14 +643,18 @@ void BubbleBorder::CalculateVisibleArrowRect(
 SkRRect BubbleBorder::GetClientRect(const View& view) const {
   gfx::RectF bounds(view.GetLocalBounds());
   bounds.Inset(gfx::InsetsF(GetInsets()));
-  SkRRect r_rect = SkRRect::MakeRectXY(gfx::RectFToSkRect(bounds),
-                                       corner_radius(), corner_radius());
-  if (!radii_[0].isZero() || !radii_[1].isZero() || !radii_[2].isZero() ||
-      !radii_[3].isZero()) {
-    r_rect.setRectRadii(gfx::RectFToSkRect(bounds), radii_);
-  }
 
-  return r_rect;
+  // Give precedence to customized rounded corners when non-empty.
+  const gfx::RoundedCornersF corners =
+      rounded_corners_.IsEmpty() ? gfx::RoundedCornersF(corner_radius_)
+                                 : rounded_corners_;
+
+  return SkRRect(gfx::RRectF(bounds, corners));
+}
+
+bool BubbleBorder::ShouldDrawStroke() const {
+  return ShouldDrawStrokeForArgs(draw_border_stroke_, md_shadow_elevation_,
+                                 shadow_);
 }
 
 void BubbleBorder::UpdateColor(View* view) {
@@ -709,8 +692,7 @@ void BubbleBorder::PaintVisibleArrow(const View& view, gfx::Canvas* canvas) {
   cc::PaintFlags flags;
   flags.setStrokeCap(cc::PaintFlags::kRound_Cap);
 
-  flags.setColor(view.GetColorProvider()->GetColor(
-      ui::kColorBubbleBorderWhenShadowPresent));
+  flags.setColor(view.GetColorProvider()->GetColor(ui::kColorBubbleBorder));
   flags.setStyle(cc::PaintFlags::kStroke_Style);
   flags.setStrokeWidth(1.2);
   flags.setAntiAlias(true);
@@ -735,7 +717,13 @@ void BubbleBackground::Paint(gfx::Canvas* canvas, views::View* view) const {
   gfx::RectF bounds(view->GetLocalBounds());
   bounds.Inset(gfx::InsetsF(border_->GetInsets()));
 
-  canvas->DrawRoundRect(bounds, border_->corner_radius(), flags);
+  // Give precedence to customized rounded corners when non-empty.
+  const gfx::RoundedCornersF corners =
+      border_->rounded_corners().IsEmpty()
+          ? gfx::RoundedCornersF(border_->corner_radius())
+          : border_->rounded_corners();
+
+  canvas->sk_canvas()->drawRRect(SkRRect(gfx::RRectF(bounds, corners)), flags);
 }
 
 }  // namespace views

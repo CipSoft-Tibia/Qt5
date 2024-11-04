@@ -42,6 +42,7 @@
 
 #if BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) && \
     PA_CONFIG(THREAD_CACHE_SUPPORTED)
+#include "base/allocator/partition_allocator/extended_api.h"
 #include "base/allocator/partition_allocator/thread_cache.h"
 #endif  // BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) &&
         // PA_CONFIG(THREAD_CACHE_SUPPORTED)
@@ -924,13 +925,16 @@ class WorkerThreadThreadCacheDelegate : public WorkerThreadDefaultDelegate {
   std::atomic<bool> first_wakeup_done_{false};
 };
 
-TEST(ThreadPoolWorkerThreadCachePurgeTest, Purge) {
+// TODO(crbug.com/1469364): Re-enable this test on Mac.
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_Purge DISABLED_Purge
+#else
+#define MAYBE_Purge Purge
+#endif
+TEST(ThreadPoolWorkerThreadCachePurgeTest, MAYBE_Purge) {
   // Make sure the thread cache is enabled in the main partition.
-  if (!allocator_shim::internal::PartitionAllocMalloc::Allocator()
-           ->thread_cache_for_testing()) {
-    allocator_shim::internal::PartitionAllocMalloc::Allocator()
-        ->EnableThreadCacheIfSupported();
-  }
+  partition_alloc::internal::ThreadCacheProcessScopeForTesting scope(
+      allocator_shim::internal::PartitionAllocMalloc::Allocator());
 
   Thread service_thread = Thread("ServiceThread");
   Thread::Options service_thread_options;

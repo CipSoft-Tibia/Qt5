@@ -37,7 +37,6 @@
 #include "third_party/blink/renderer/platform/graphics/dark_mode_settings.h"
 #include "third_party/blink/renderer/platform/graphics/dash_array.h"
 #include "third_party/blink/renderer/platform/graphics/dom_node_id.h"
-#include "third_party/blink/renderer/platform/graphics/draw_looper_builder.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_context_state.h"
 #include "third_party/blink/renderer/platform/graphics/image_orientation.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_filter.h"
@@ -48,7 +47,6 @@
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 #include "third_party/skia/include/core/SkClipOp.h"
-#include "third_party/skia/include/core/SkRefCnt.h"
 #include "ui/gfx/geometry/rect_f.h"
 #include "ui/gfx/geometry/skia_conversions.h"
 #include "ui/gfx/geometry/vector2d_f.h"
@@ -56,6 +54,10 @@
 class SkPath;
 class SkRRect;
 struct SkRect;
+
+namespace cc {
+class ColorFilter;
+}
 
 namespace paint_preview {
 class PaintPreviewTracker;
@@ -267,10 +269,6 @@ class PLATFORM_EXPORT GraphicsContext {
 
   // ---------- End state management methods -----------------
 
-  // DrawRect() fills and always strokes using a 1-pixel stroke inset from
-  // the rect borders (of the pre-set stroke color).
-  void DrawRect(const gfx::Rect&, const AutoDarkMode& auto_dark_mode);
-
   // DrawLine() only operates on horizontal or vertical lines and uses the
   // current stroke settings. For dotted or dashed stroke, the line need to be
   // top-to-down or left-to-right to get correct interval of dots/dashes.
@@ -457,7 +455,7 @@ class PLATFORM_EXPORT GraphicsContext {
   // the backdrop (i.e. EndLayer()).
   void BeginLayer(float opacity = 1.0f);
   void BeginLayer(SkBlendMode);
-  void BeginLayer(sk_sp<SkColorFilter>);
+  void BeginLayer(sk_sp<cc::ColorFilter>);
   void BeginLayer(sk_sp<PaintFilter>);
   void EndLayer();
 

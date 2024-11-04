@@ -12,20 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {BigintMath as BIMath} from '../../base/bigint_math';
 import {search} from '../../base/binary_search';
 import {assertFalse} from '../../base/logging';
 import {Actions} from '../../common/actions';
 import {cropText} from '../../common/canvas_utils';
 import {colorForState} from '../../common/colorizer';
-import {PluginContext} from '../../common/plugin_api';
-import {NUM, NUM_NULL, STR_NULL} from '../../common/query_result';
+import {LONG, NUM, NUM_NULL, STR_NULL} from '../../common/query_result';
 import {translateState} from '../../common/thread_state';
-import {fromNs, toNs} from '../../common/time';
+import {duration, Time, time} from '../../common/time';
 import {TrackData} from '../../common/track_data';
 import {TrackController} from '../../controller/track_controller';
 import {checkerboardExcept} from '../../frontend/checkerboard';
 import {globals} from '../../frontend/globals';
 import {NewTrackArgs, Track} from '../../frontend/track';
+import {Plugin, PluginContext, PluginInfo} from '../../public';
 
 
 export const THREAD_STATE_TRACK_KIND = 'ThreadStateTrack';
@@ -33,8 +34,8 @@ export const THREAD_STATE_TRACK_KIND = 'ThreadStateTrack';
 export interface Data extends TrackData {
   strings: string[];
   ids: Float64Array;
-  starts: Float64Array;
-  ends: Float64Array;
+  starts: BigInt64Array;
+  ends: BigInt64Array;
   cpu: Int8Array;
   state: Uint16Array;  // Index into |strings|.
 }
@@ -46,7 +47,7 @@ export interface Config {
 class ThreadStateTrackController extends TrackController<Config, Data> {
   static readonly kind = THREAD_STATE_TRACK_KIND;
 
-  private maxDurNs = 0;
+  private maxDurNs: duration = 0n;
 
   async onSetup() {
     await this.query(`
@@ -66,23 +67,14 @@ class ThreadStateTrackController extends TrackController<Config, Data> {
       select ifnull(max(dur), 0) as maxDur
       from ${this.tableName('thread_state')}
     `);
-    this.maxDurNs = queryRes.firstRow({maxDur: NUM}).maxDur;
+    this.maxDurNs = queryRes.firstRow({maxDur: LONG}).maxDur;
   }
 
-  async onBoundsChange(start: number, end: number, resolution: number):
+  async onBoundsChange(start: time, end: time, resolution: duration):
       Promise<Data> {
-    const resolutionNs = toNs(resolution);
-    const startNs = toNs(start);
-    const endNs = toNs(end);
-
-    // ns per quantization bucket (i.e. ns per pixel). /2 * 2 is to force it to
-    // be an even number, so we can snap in the middle.
-    const bucketNs =
-        Math.max(Math.round(resolutionNs * this.pxSize() / 2) * 2, 1);
-
     const query = `
       select
-        (ts + ${bucketNs / 2}) / ${bucketNs} * ${bucketNs} as tsq,
+        (ts + ${resolution / 2n}) / ${resolution} * ${resolution} as tsq,
         ts,
         state = 'S' as is_sleep,
         max(dur) as dur,
@@ -92,8 +84,8 @@ class ThreadStateTrackController extends TrackController<Config, Data> {
         ifnull(id, -1) as id
       from ${this.tableName('thread_state')}
       where
-        ts >= ${startNs - this.maxDurNs} and
-        ts <= ${endNs}
+        ts >= ${start - this.maxDurNs} and
+        ts <= ${end}
       group by tsq, is_sleep
       order by tsq
     `;
@@ -107,8 +99,8 @@ class ThreadStateTrackController extends TrackController<Config, Data> {
       resolution,
       length: numRows,
       ids: new Float64Array(numRows),
-      starts: new Float64Array(numRows),
-      ends: new Float64Array(numRows),
+      starts: new BigInt64Array(numRows),
+      ends: new BigInt64Array(numRows),
       strings: [],
       state: new Uint16Array(numRows),
       cpu: new Int8Array(numRows),
@@ -127,22 +119,21 @@ class ThreadStateTrackController extends TrackController<Config, Data> {
       return idx;
     }
     const it = queryRes.iter({
-      'tsq': NUM,
-      'ts': NUM,
-      'dur': NUM,
+      'tsq': LONG,
+      'ts': LONG,
+      'dur': LONG,
       'cpu': NUM,
       'state': STR_NULL,
       'ioWait': NUM_NULL,
       'id': NUM,
     });
     for (let row = 0; it.valid(); it.next(), row++) {
-      const startNsQ = it.tsq;
-      const startNs = it.ts;
-      const durNs = it.dur;
-      const endNs = startNs + durNs;
-
-      let endNsQ = Math.floor((endNs + bucketNs / 2 - 1) / bucketNs) * bucketNs;
-      endNsQ = Math.max(endNsQ, startNsQ + bucketNs);
+      const startQ = it.tsq;
+      const start = it.ts;
+      const dur = it.dur;
+      const end = start + dur;
+      const minEnd = startQ + resolution;
+      const endQ = BIMath.max(BIMath.quant(end, resolution), minEnd);
 
       const cpu = it.cpu;
       const state = it.state || undefined;
@@ -151,10 +142,10 @@ class ThreadStateTrackController extends TrackController<Config, Data> {
 
       // We should never have the end timestamp being the same as the bucket
       // start.
-      assertFalse(startNsQ === endNsQ);
+      assertFalse(startQ === endQ);
 
-      data.starts[row] = fromNs(startNsQ);
-      data.ends[row] = fromNs(endNsQ);
+      data.starts[row] = startQ;
+      data.ends[row] = endQ;
       data.state[row] = internState(state, ioWait);
       data.ids[row] = id;
       data.cpu[row] = cpu;
@@ -167,8 +158,8 @@ class ThreadStateTrackController extends TrackController<Config, Data> {
   }
 }
 
-const MARGIN_TOP = 4;
-const RECT_HEIGHT = 14;
+const MARGIN_TOP = 3;
+const RECT_HEIGHT = 12;
 const EXCESS_WIDTH = 10;
 
 class ThreadStateTrack extends Track<Config, Data> {
@@ -186,7 +177,11 @@ class ThreadStateTrack extends Track<Config, Data> {
   }
 
   renderCanvas(ctx: CanvasRenderingContext2D): void {
-    const {timeScale, visibleWindowTime} = globals.frontendLocalState;
+    const {
+      visibleTimeScale: timeScale,
+      visibleTimeSpan,
+      windowSpan,
+    } = globals.frontendLocalState;
     const data = this.data();
     const charWidth = ctx.measureText('dbpqaouk').width / 8;
 
@@ -199,8 +194,8 @@ class ThreadStateTrack extends Track<Config, Data> {
     checkerboardExcept(
         ctx,
         this.getHeight(),
-        timeScale.timeToPx(visibleWindowTime.start),
-        timeScale.timeToPx(visibleWindowTime.end),
+        windowSpan.start,
+        windowSpan.end,
         timeScale.timeToPx(data.start),
         timeScale.timeToPx(data.end),
     );
@@ -217,10 +212,10 @@ class ThreadStateTrack extends Track<Config, Data> {
       // we get a more accurate representation of the trace and prevent weird
       // artifacts when zooming.
       // See b/201793731 for an example of why we do this.
-      const tStart = data.starts[i];
-      const tEnd = data.ends[i];
+      const tStart = Time.fromRaw(data.starts[i]);
+      const tEnd = Time.fromRaw(data.ends[i]);
       const state = data.strings[data.state[i]];
-      if (tEnd <= visibleWindowTime.start || tStart >= visibleWindowTime.end) {
+      if (!visibleTimeSpan.intersects(tStart, tEnd)) {
         continue;
       }
 
@@ -256,9 +251,8 @@ class ThreadStateTrack extends Track<Config, Data> {
         drawRectOnSelected = () => {
           const rectStart =
               Math.max(0 - EXCESS_WIDTH, timeScale.timeToPx(tStart));
-          const rectEnd = Math.min(
-              timeScale.timeToPx(visibleWindowTime.end) + EXCESS_WIDTH,
-              timeScale.timeToPx(tEnd));
+          const rectEnd =
+              Math.min(windowSpan.end + EXCESS_WIDTH, timeScale.timeToPx(tEnd));
           const color = colorForState(state);
           ctx.strokeStyle = `hsl(${color.h},${color.s}%,${color.l * 0.7}%)`;
           ctx.beginPath();
@@ -278,11 +272,10 @@ class ThreadStateTrack extends Track<Config, Data> {
   onMouseClick({x}: {x: number}) {
     const data = this.data();
     if (data === undefined) return false;
-    const {timeScale} = globals.frontendLocalState;
-    const time = timeScale.pxToTime(x);
-    const index = search(data.starts, time);
+    const {visibleTimeScale} = globals.frontendLocalState;
+    const time = visibleTimeScale.pxToHpTime(x);
+    const index = search(data.starts, time.toTime());
     if (index === -1) return false;
-
     const id = data.ids[index];
     globals.makeSelection(
         Actions.selectThreadState({id, trackId: this.trackState.id}));
@@ -290,12 +283,14 @@ class ThreadStateTrack extends Track<Config, Data> {
   }
 }
 
-function activate(ctx: PluginContext) {
-  ctx.registerTrack(ThreadStateTrack);
-  ctx.registerTrackController(ThreadStateTrackController);
+class ThreadState implements Plugin {
+  onActivate(ctx: PluginContext): void {
+    ctx.registerTrack(ThreadStateTrack);
+    ctx.registerTrackController(ThreadStateTrackController);
+  }
 }
 
-export const plugin = {
+export const plugin: PluginInfo = {
   pluginId: 'perfetto.ThreadState',
-  activate,
+  plugin: ThreadState,
 };

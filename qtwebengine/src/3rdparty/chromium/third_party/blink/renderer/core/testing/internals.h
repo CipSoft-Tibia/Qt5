@@ -31,6 +31,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/script_value.h"
 #include "third_party/blink/renderer/core/css/css_computed_style_declaration.h"
 #include "third_party/blink/renderer/core/testing/color_scheme_helper.h"
+#include "third_party/blink/renderer/core/testing/internals_ukm_recorder.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
@@ -59,12 +60,14 @@ class HTMLIFrameElement;
 class HTMLInputElement;
 class HTMLMediaElement;
 class HTMLSelectElement;
+class HTMLSelectListElement;
 class HTMLVideoElement;
 class HitTestLayerRectList;
 class HitTestLocation;
 class HitTestResult;
 class InternalRuntimeFlags;
 class InternalSettings;
+class InternalsUkmRecorder;
 class LocalDOMWindow;
 class LocalFrame;
 class Location;
@@ -84,6 +87,7 @@ class StaticSelection;
 class Text;
 class TypeConversions;
 class UnionTypesTest;
+class HTMLImageElement;
 
 template <typename NodeType>
 class StaticNodeTypeList;
@@ -110,7 +114,11 @@ class Internals final : public ScriptWrappable {
 
   ScriptPromise getInitialResourcePriority(ScriptState*,
                                            const String& url,
-                                           Document*);
+                                           Document*,
+                                           bool new_load_only = false);
+  ScriptPromise getInitialResourcePriorityOfNewLoad(ScriptState*,
+                                                    const String& url,
+                                                    Document*);
   String getResourceHeader(const String& url, const String& header, Document*);
 
   bool doesWindowHaveUrlFragment(DOMWindow*);
@@ -185,6 +193,7 @@ class Internals final : public ScriptWrappable {
   DOMRectReadOnly* boundingBox(Element*);
 
   void setMarker(Document*, const Range*, const String&, ExceptionState&);
+  void removeMarker(Document*, const Range*, const String&, ExceptionState&);
   unsigned markerCountForNode(Text*, const String&, ExceptionState&);
   unsigned activeMarkerCountForNode(Text*);
   Range* markerRangeForNode(Text*,
@@ -292,6 +301,8 @@ class Internals final : public ScriptWrappable {
   String idleTimeSpellCheckerState(Document*, ExceptionState&);
   void runIdleTimeSpellChecker(Document*, ExceptionState&);
 
+  bool hasLastEditCommand(Document*, ExceptionState&);
+
   Vector<AtomicString> userPreferredLanguages() const;
   void setUserPreferredLanguages(const Vector<String>&);
   void setSystemTimeZone(const String&);
@@ -320,7 +331,8 @@ class Internals final : public ScriptWrappable {
 
   // This is used to test rect based hit testing like what's done on touch
   // screens.
-  StaticNodeList* nodesFromRect(Document*,
+  StaticNodeList* nodesFromRect(ScriptState* script_state,
+                                Document*,
                                 int x,
                                 int y,
                                 int width,
@@ -458,6 +470,8 @@ class Internals final : public ScriptWrappable {
   bool selectPopupItemStyleIsRtl(Node*, int);
   int selectPopupItemStyleFontHeight(Node*, int);
   void resetTypeAheadSession(HTMLSelectElement*);
+
+  void resetSelectListTypeAheadSession(HTMLSelectListElement*);
 
   StaticSelection* getDragCaret();
   StaticSelection* getSelectionInFlatTree(DOMWindow*, ExceptionState&);
@@ -626,6 +640,12 @@ class Internals final : public ScriptWrappable {
 
   void setAllowPerChunkTransferring(ReadableStream* stream);
   void setBackForwardCacheRestorationBufferSize(unsigned int maxSize);
+
+  InternalsUkmRecorder* initializeUKMRecorder();
+
+  // Returns scripts that created an image, as observed by
+  // the LCPScriptObserver Probe.
+  Vector<String> getCreatorScripts(HTMLImageElement* img);
 
  private:
   Document* ContextDocument() const;

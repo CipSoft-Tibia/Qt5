@@ -1270,6 +1270,37 @@ QSql::NumericalPrecisionPolicy QSqlQuery::numericalPrecisionPolicy() const
 }
 
 /*!
+  Enables or disables the positional \l {Approaches to Binding Values}{binding}
+  for this query, depending on \a enable (default is \c true).
+  Disabling positional bindings is useful if the query itself contains a '?'
+  which must not be handled as a positional binding parameter but, for example,
+  as a JSON operator for a PostgreSQL database.
+
+  This function will have no effect when the database has native
+  support for positional bindings with question marks (see also
+  \l{QSqlDriver::PositionalPlaceholders}).
+
+  \since 6.7
+  \sa isPositionalBindingEnabled()
+*/
+void QSqlQuery::setPositionalBindingEnabled(bool enable)
+{
+    d->sqlResult->setPositionalBindingEnabled(enable);
+}
+
+/*!
+  Returns \c true if the positional binding is currently enabled.
+
+  \since 6.7
+  \sa setPositionalBindingEnabled()
+*/
+bool QSqlQuery::isPositionalBindingEnabled() const
+{
+    return d->sqlResult->isPositionalBindingEnabled();
+}
+
+
+/*!
   \since 4.3.2
 
   Instruct the database driver that no more data will be fetched from
@@ -1331,3 +1362,5 @@ bool QSqlQuery::nextResult()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qsqlquery.cpp"

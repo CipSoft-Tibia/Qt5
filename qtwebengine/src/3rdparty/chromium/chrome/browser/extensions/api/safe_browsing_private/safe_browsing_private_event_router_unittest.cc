@@ -25,9 +25,9 @@
 #include "chrome/browser/enterprise/connectors/connectors_service.h"
 #include "chrome/browser/enterprise/connectors/reporting/realtime_reporting_client.h"
 #include "chrome/browser/enterprise/connectors/reporting/realtime_reporting_client_factory.h"
+#include "chrome/browser/enterprise/connectors/test/deep_scanning_test_utils.h"
 #include "chrome/browser/extensions/api/safe_browsing_private/safe_browsing_private_event_router_factory.h"
 #include "chrome/browser/policy/dm_token_utils.h"
-#include "chrome/browser/safe_browsing/cloud_content_scanning/deep_scanning_test_utils.h"
 #include "chrome/browser/safe_browsing/cloud_content_scanning/deep_scanning_utils.h"
 #include "chrome/browser/safe_browsing/test_extension_event_observer.h"
 #include "chrome/common/chrome_switches.h"
@@ -133,7 +133,7 @@ class SafeBrowsingPrivateEventRouterTestBase : public testing::Test {
   void SetUp() override {
     profile_ = profile_manager_.CreateTestingProfile("test-user");
     policy::SetDMTokenForTesting(
-        policy::DMToken::CreateValidTokenForTesting("fake-token"));
+        policy::DMToken::CreateValidToken("fake-token"));
   }
 
   void TriggerOnPolicySpecifiedPasswordReuseDetectedEvent(bool warning_shown) {
@@ -262,9 +262,9 @@ class SafeBrowsingPrivateEventRouterTestBase : public testing::Test {
       const std::map<std::string, std::vector<std::string>>&
           enabled_opt_in_events =
               std::map<std::string, std::vector<std::string>>()) {
-    safe_browsing::SetOnSecurityEventReporting(profile_->GetPrefs(), enabled,
-                                               enabled_event_names,
-                                               enabled_opt_in_events);
+    enterprise_connectors::test::SetOnSecurityEventReporting(
+        profile_->GetPrefs(), enabled, enabled_event_names,
+        enabled_opt_in_events);
 
     // If we are not enabling reporting, or if the client has already been
     // set for testing, just return.
@@ -309,6 +309,10 @@ class SafeBrowsingPrivateEventRouterTestBase : public testing::Test {
                        enabled_event_names, enabled_opt_in_events);
   }
 
+  std::string GetProfileIdentifier() const {
+    return profile_->GetPath().AsUTF8Unsafe();
+  }
+
  protected:
   content::BrowserTaskEnvironment task_environment_;
   std::unique_ptr<policy::MockCloudPolicyClient> client_;
@@ -344,7 +348,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnReuseDetected_Warned) {
   event_router_->AddEventObserver(&event_observer);
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnPolicySpecifiedPasswordReuseDetectedEvent(/*warning_shown*/ true);
@@ -382,7 +386,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnReuseDetected_Allowed) {
   event_router_->AddEventObserver(&event_observer);
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnPolicySpecifiedPasswordReuseDetectedEvent(/*warning_shown*/ false);
@@ -419,7 +423,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnPasswordChanged) {
   event_router_->AddEventObserver(&event_observer);
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnPolicySpecifiedPasswordChangedEvent();
@@ -448,7 +452,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnDangerousDownloadOpened) {
   event_router_->AddEventObserver(&event_observer);
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnDangerousDownloadOpenedEvent();
@@ -496,7 +500,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   event_router_->AddEventObserver(&event_observer);
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnSecurityInterstitialProceededEvent();
@@ -534,7 +538,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnSecurityInterstitialShown) {
   event_router_->AddEventObserver(&event_observer);
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnSecurityInterstitialShownEvent();
@@ -572,7 +576,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnDangerousDownloadWarning) {
   event_router_->AddEventObserver(&event_observer);
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnDangerousDownloadEvent();
@@ -610,7 +614,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   event_router_->AddEventObserver(&event_observer);
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnDangerousDownloadEventBypass();
@@ -646,7 +650,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, PolicyControlOnToOffIsDynamic) {
       api::safe_browsing_private::OnSecurityInterstitialShown::kEventName);
   event_router_->AddEventObserver(&event_observer);
 
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(1);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(1);
   TriggerOnSecurityInterstitialShownEvent();
   base::RunLoop().RunUntilIdle();
   EXPECT_EQ(1u, event_observer.PassEventArgs().GetList().size());
@@ -654,7 +658,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, PolicyControlOnToOffIsDynamic) {
 
   // Now turn off policy.  This time no report should be generated.
   SetReportingPolicy(false);
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(0);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(0);
   TriggerOnSecurityInterstitialShownEvent();
   base::RunLoop().RunUntilIdle();
   EXPECT_EQ(1u, event_observer.PassEventArgs().GetList().size());
@@ -673,7 +677,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, PolicyControlOffToOnIsDynamic) {
 
   // Now turn on policy.
   SetReportingPolicy(true);
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(1);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(1);
   TriggerOnSecurityInterstitialShownEvent();
   base::RunLoop().RunUntilIdle();
   EXPECT_EQ(1u, event_observer.PassEventArgs().GetList().size());
@@ -688,7 +692,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestUnauthorizedOnReuseDetected) {
   event_router_->AddEventObserver(&event_observer);
 
   base::Value report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(0);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(0);
 
   TriggerOnPolicySpecifiedPasswordReuseDetectedEvent(/*warning_shown*/ true);
   base::RunLoop().RunUntilIdle();
@@ -704,7 +708,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestUnauthorizedOnPasswordChanged) {
   event_router_->AddEventObserver(&event_observer);
 
   base::Value report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(0);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(0);
 
   TriggerOnPolicySpecifiedPasswordChangedEvent();
   base::RunLoop().RunUntilIdle();
@@ -721,7 +725,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   event_router_->AddEventObserver(&event_observer);
 
   base::Value report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(0);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(0);
 
   TriggerOnDangerousDownloadOpenedEvent();
   base::RunLoop().RunUntilIdle();
@@ -738,7 +742,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   event_router_->AddEventObserver(&event_observer);
 
   base::Value report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(0);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(0);
 
   TriggerOnSecurityInterstitialProceededEvent();
   base::RunLoop().RunUntilIdle();
@@ -755,7 +759,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   event_router_->AddEventObserver(&event_observer);
 
   base::Value report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(0);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(0);
 
   TriggerOnSecurityInterstitialShownEvent();
   base::RunLoop().RunUntilIdle();
@@ -772,7 +776,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   event_router_->AddEventObserver(&event_observer);
 
   base::Value report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(0);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(0);
 
   TriggerOnDangerousDownloadEvent();
   base::RunLoop().RunUntilIdle();
@@ -789,7 +793,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   event_router_->AddEventObserver(&event_observer);
 
   base::Value report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(0);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(0);
 
   TriggerOnDangerousDownloadEventBypass();
   base::RunLoop().RunUntilIdle();
@@ -806,15 +810,16 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnLoginEvent) {
       /*enabled_opt_in_events=*/{{"loginEvent", {"*"}}});
 
   signin::IdentityTestEnvironment identity_test_environment;
-  SafeBrowsingPrivateEventRouterFactory::GetForProfile(profile_)
+  enterprise_connectors::RealtimeReportingClientFactory::GetForProfile(profile_)
       ->SetIdentityManagerForTesting(
           identity_test_environment.identity_manager());
   identity_test_environment.MakePrimaryAccountAvailable(
       profile_->GetProfileUserName(), signin::ConsentLevel::kSignin);
 
-  safe_browsing::EventReportValidator validator(client_.get());
+  enterprise_connectors::test::EventReportValidator validator(client_.get());
   validator.ExpectLoginEvent("https://www.example.com/", false, "",
-                             profile_->GetProfileUserName(), u"*****");
+                             profile_->GetProfileUserName(),
+                             GetProfileIdentifier(), u"*****");
 
   TriggerOnLoginEvent(GURL("https://www.example.com/"), u"login-username");
 }
@@ -828,13 +833,13 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
       /*enabled_opt_in_events=*/{{"loginEvent", {"notexample.com"}}});
 
   signin::IdentityTestEnvironment identity_test_environment;
-  SafeBrowsingPrivateEventRouterFactory::GetForProfile(profile_)
+  enterprise_connectors::RealtimeReportingClientFactory::GetForProfile(profile_)
       ->SetIdentityManagerForTesting(
           identity_test_environment.identity_manager());
   identity_test_environment.MakePrimaryAccountAvailable(
       profile_->GetProfileUserName(), signin::ConsentLevel::kSignin);
 
-  safe_browsing::EventReportValidator validator(client_.get());
+  enterprise_connectors::test::EventReportValidator validator(client_.get());
   validator.ExpectNoReport();
 
   TriggerOnLoginEvent(GURL("https://www.example.com/"), u"login-username");
@@ -849,16 +854,16 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
       /*enabled_opt_in_events=*/{{"loginEvent", {"*"}}});
 
   signin::IdentityTestEnvironment identity_test_environment;
-  SafeBrowsingPrivateEventRouterFactory::GetForProfile(profile_)
+  enterprise_connectors::RealtimeReportingClientFactory::GetForProfile(profile_)
       ->SetIdentityManagerForTesting(
           identity_test_environment.identity_manager());
   identity_test_environment.MakePrimaryAccountAvailable(
       profile_->GetProfileUserName(), signin::ConsentLevel::kSignin);
 
-  safe_browsing::EventReportValidator validator(client_.get());
+  enterprise_connectors::test::EventReportValidator validator(client_.get());
   validator.ExpectLoginEvent("https://www.example.com/", false, "",
                              profile_->GetProfileUserName(),
-                             u"*****@example.com");
+                             GetProfileIdentifier(), u"*****@example.com");
 
   TriggerOnLoginEvent(GURL("https://www.example.com/"),
                       u"login-username@example.com");
@@ -872,16 +877,16 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnLoginEventFederated) {
       /*enabled_opt_in_events=*/{{"loginEvent", {"*"}}});
 
   signin::IdentityTestEnvironment identity_test_environment;
-  SafeBrowsingPrivateEventRouterFactory::GetForProfile(profile_)
+  enterprise_connectors::RealtimeReportingClientFactory::GetForProfile(profile_)
       ->SetIdentityManagerForTesting(
           identity_test_environment.identity_manager());
   identity_test_environment.MakePrimaryAccountAvailable(
       profile_->GetProfileUserName(), signin::ConsentLevel::kSignin);
 
-  safe_browsing::EventReportValidator validator(client_.get());
-  validator.ExpectLoginEvent("https://www.example.com/", true,
-                             "https://www.google.com",
-                             profile_->GetProfileUserName(), u"*****");
+  enterprise_connectors::test::EventReportValidator validator(client_.get());
+  validator.ExpectLoginEvent(
+      "https://www.example.com/", true, "https://www.google.com",
+      profile_->GetProfileUserName(), GetProfileIdentifier(), u"*****");
 
   TriggerOnLoginEvent(GURL("https://www.example.com/"), u"login-username",
                       url::Origin::Create(GURL("https://www.google.com")));
@@ -895,20 +900,20 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnPasswordBreach) {
       /*enabled_opt_in_events=*/{{"passwordBreachEvent", {"*"}}});
 
   signin::IdentityTestEnvironment identity_test_environment;
-  SafeBrowsingPrivateEventRouterFactory::GetForProfile(profile_)
+  enterprise_connectors::RealtimeReportingClientFactory::GetForProfile(profile_)
       ->SetIdentityManagerForTesting(
           identity_test_environment.identity_manager());
   identity_test_environment.MakePrimaryAccountAvailable(
       profile_->GetProfileUserName(), signin::ConsentLevel::kSignin);
 
-  safe_browsing::EventReportValidator validator(client_.get());
+  enterprise_connectors::test::EventReportValidator validator(client_.get());
   validator.ExpectPasswordBreachEvent(
       "SAFETY_CHECK",
       {
           {"https://first.example.com/", u"*****"},
           {"https://second.example.com/", u"*****@gmail.com"},
       },
-      profile_->GetProfileUserName());
+      profile_->GetProfileUserName(), GetProfileIdentifier());
 
   TriggerOnPasswordBreachEvent(
       "SAFETY_CHECK",
@@ -927,13 +932,13 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
       /*enabled_opt_in_events=*/{{"passwordBreachEvent", {"notexample.com"}}});
 
   signin::IdentityTestEnvironment identity_test_environment;
-  SafeBrowsingPrivateEventRouterFactory::GetForProfile(profile_)
+  enterprise_connectors::RealtimeReportingClientFactory::GetForProfile(profile_)
       ->SetIdentityManagerForTesting(
           identity_test_environment.identity_manager());
   identity_test_environment.MakePrimaryAccountAvailable(
       profile_->GetProfileUserName(), signin::ConsentLevel::kSignin);
 
-  safe_browsing::EventReportValidator validator(client_.get());
+  enterprise_connectors::test::EventReportValidator validator(client_.get());
   validator.ExpectNoReport();
 
   TriggerOnPasswordBreachEvent(
@@ -954,7 +959,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
       {{"passwordBreachEvent", {"secondexample.com"}}});
 
   signin::IdentityTestEnvironment identity_test_environment;
-  SafeBrowsingPrivateEventRouterFactory::GetForProfile(profile_)
+  enterprise_connectors::RealtimeReportingClientFactory::GetForProfile(profile_)
       ->SetIdentityManagerForTesting(
           identity_test_environment.identity_manager());
   identity_test_environment.MakePrimaryAccountAvailable(
@@ -962,13 +967,13 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
 
   // The event is only enabled on secondexample.com, so expect only the
   // information related to that origin to be reported.
-  safe_browsing::EventReportValidator validator(client_.get());
+  enterprise_connectors::test::EventReportValidator validator(client_.get());
   validator.ExpectPasswordBreachEvent(
       "SAFETY_CHECK",
       {
           {"https://secondexample.com/", u"*****"},
       },
-      profile_->GetProfileUserName());
+      profile_->GetProfileUserName(), GetProfileIdentifier());
 
   TriggerOnPasswordBreachEvent(
       "SAFETY_CHECK",
@@ -982,7 +987,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnSensitiveDataEvent_Allowed) {
   SetUpRouters(/*authorized=*/true);
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnSensitiveDataEvent(safe_browsing::EventResult::ALLOWED);
@@ -1037,7 +1042,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnSensitiveDataEvent_Blocked) {
   SetUpRouters();
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnSensitiveDataEvent(safe_browsing::EventResult::BLOCKED);
@@ -1093,7 +1098,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   SetUpRouters();
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnUrlFilteringInterstitial("ENTERPRISE_BLOCKED_SEEN");
@@ -1132,7 +1137,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   SetUpRouters();
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnUrlFilteringInterstitial("ENTERPRISE_WARNED_SEEN");
@@ -1171,7 +1176,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest,
   SetUpRouters();
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnUrlFilteringInterstitial("ENTERPRISE_WARNED_BYPASS");
@@ -1209,7 +1214,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnUnscannedFileEvent_Allowed) {
   SetUpRouters();
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnUnscannedFileEvent(safe_browsing::EventResult::ALLOWED);
@@ -1253,7 +1258,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestOnUnscannedFileEvent_Blocked) {
   SetUpRouters();
 
   base::Value::Dict report;
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
+  EXPECT_CALL(*client_, UploadSecurityEventReport)
       .WillOnce(CaptureArg(&report));
 
   TriggerOnUnscannedFileEvent(safe_browsing::EventResult::BLOCKED);
@@ -1300,12 +1305,11 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestProfileUsername) {
   event_router_->AddEventObserver(&event_observer);
 
   signin::IdentityTestEnvironment identity_test_environment;
-  SafeBrowsingPrivateEventRouterFactory::GetForProfile(profile_)
+  enterprise_connectors::RealtimeReportingClientFactory::GetForProfile(profile_)
       ->SetIdentityManagerForTesting(
           identity_test_environment.identity_manager());
 
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
-      .WillRepeatedly(Return());
+  EXPECT_CALL(*client_, UploadSecurityEventReport).WillRepeatedly(Return());
 
   // With no primary account, we should not set the username.
   TriggerOnSecurityInterstitialShownEvent();
@@ -1350,7 +1354,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestPasswordChangedEnabled) {
       api::safe_browsing_private::OnPolicySpecifiedPasswordChanged::kEventName);
   event_router_->AddEventObserver(&event_observer);
 
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(1);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(1);
   TriggerOnPolicySpecifiedPasswordChangedEvent();
   base::RunLoop().RunUntilIdle();
 
@@ -1374,7 +1378,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestPasswordReuseEnabled) {
           kEventName);
   event_router_->AddEventObserver(&event_observer);
 
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(1);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(1);
   TriggerOnPolicySpecifiedPasswordReuseDetectedEvent(/*warning_shown*/ true);
   base::RunLoop().RunUntilIdle();
 
@@ -1397,7 +1401,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestDangerousDownloadEnabled) {
       api::safe_browsing_private::OnDangerousDownloadOpened::kEventName);
   event_router_->AddEventObserver(&event_observer);
 
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(3);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(3);
   TriggerOnDangerousDownloadEvent();
   TriggerOnDangerousDownloadEventBypass();
   TriggerOnDangerousDownloadOpenedEvent();
@@ -1425,7 +1429,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestInterstitialEnabled) {
   event_router_->AddEventObserver(&event_observer1);
   event_router_->AddEventObserver(&event_observer2);
 
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(2);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(2);
   TriggerOnSecurityInterstitialShownEvent();
   TriggerOnSecurityInterstitialProceededEvent();
   base::RunLoop().RunUntilIdle();
@@ -1446,7 +1450,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestSensitiveDataEnabled) {
   SetUpRouters(/*authorized=*/true, /*realtime_reporting_enable=*/true,
                enabled_event_names);
 
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(1);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(1);
   TriggerOnSensitiveDataEvent(safe_browsing::EventResult::BLOCKED);
   base::RunLoop().RunUntilIdle();
 
@@ -1462,7 +1466,7 @@ TEST_F(SafeBrowsingPrivateEventRouterTest, TestUnscannedFileEnabled) {
   SetUpRouters(/*authorized=*/true, /*realtime_reporting_enable=*/true,
                enabled_event_names);
 
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(1);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(1);
   TriggerOnUnscannedFileEvent(safe_browsing::EventResult::ALLOWED);
   base::RunLoop().RunUntilIdle();
 
@@ -1545,13 +1549,13 @@ TEST_P(SafeBrowsingIsRealtimeReportingEnabledTest, CheckRealtimeReport) {
   bool should_report = is_policy_enabled_ && is_authorized_;
 
   if (should_report) {
-    EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(1);
+    EXPECT_CALL(*client_, UploadSecurityEventReport).Times(1);
   } else if (client_) {
     // Because the test will crate a |client_| object when the policy is
     // set, even if the feature flag or other conditions indicate that
     // reports should not be sent, it is possible that the pointer is not
     // null. In this case, make sure UploadSecurityEventReport() is not called.
-    EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _)).Times(0);
+    EXPECT_CALL(*client_, UploadSecurityEventReport).Times(0);
   }
 
   TriggerOnPolicySpecifiedPasswordChangedEvent();
@@ -1618,8 +1622,7 @@ TEST_P(SafeBrowsingIsRealtimeReportingEventDisabledTest,
   event_router_->AddEventObserver(&event_observer5);
 
   // Only 1 of the 9 triggers should make it to an upload.
-  EXPECT_CALL(*client_, UploadSecurityEventReport_(_, _, _, _))
-      .Times(num_triggers_);
+  EXPECT_CALL(*client_, UploadSecurityEventReport).Times(num_triggers_);
   TriggerOnPolicySpecifiedPasswordChangedEvent();
   TriggerOnPolicySpecifiedPasswordReuseDetectedEvent(/*warning_shown*/ true);
   TriggerOnDangerousDownloadOpenedEvent();

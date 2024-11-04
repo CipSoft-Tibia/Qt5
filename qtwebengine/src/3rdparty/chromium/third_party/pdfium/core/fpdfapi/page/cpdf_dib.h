@@ -17,7 +17,7 @@
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/unowned_ptr.h"
 #include "core/fxge/dib/cfx_dibbase.h"
-#include "third_party/base/span.h"
+#include "third_party/base/containers/span.h"
 
 class CPDF_Dictionary;
 class CPDF_Document;
@@ -45,7 +45,7 @@ class CPDF_DIB final : public CFX_DIBBase {
   CONSTRUCT_VIA_MAKE_RETAIN;
 
   // CFX_DIBBase:
-  pdfium::span<uint8_t> GetBuffer() const override;
+  pdfium::span<const uint8_t> GetBuffer() const override;
   pdfium::span<const uint8_t> GetScanline(int line) const override;
   bool SkipToScanline(int line, PauseIndicatorIface* pPause) const override;
   size_t GetEstimatedImageMemoryBurden() const override;

@@ -1251,7 +1251,7 @@ static int deshake_opencl_init(AVFilterContext *avctx)
     }
     ctx->sw_format = hw_frames_ctx->sw_format;
 
-    err = ff_opencl_filter_load_program(avctx, &ff_opencl_source_deshake, 1);
+    err = ff_opencl_filter_load_program(avctx, &ff_source_deshake_cl, 1);
     if (err < 0)
         goto fail;
 
@@ -2169,5 +2169,6 @@ const AVFilter ff_vf_deshake_opencl = {
     FILTER_INPUTS(deshake_opencl_inputs),
     FILTER_OUTPUTS(deshake_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
-    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE
+    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

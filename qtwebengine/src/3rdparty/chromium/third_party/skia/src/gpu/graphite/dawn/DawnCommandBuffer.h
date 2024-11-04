@@ -12,16 +12,21 @@
 #include "src/gpu/graphite/DrawPass.h"
 #include "src/gpu/graphite/GpuWorkSubmission.h"
 #include "src/gpu/graphite/Log.h"
+#include "src/gpu/graphite/compute/DispatchGroup.h"
 #include "src/gpu/graphite/dawn/DawnGraphicsPipeline.h"
 
 #include "webgpu/webgpu_cpp.h"
 
 namespace skgpu::graphite {
+class ComputePipeline;
 class DawnBuffer;
+class DawnComputePipeline;
 class DawnQueueManager;
 class DawnResourceProvider;
 class DawnSharedContext;
 class DawnTexture;
+class DispatchGroup;
+struct WorkgroupSize;
 
 class DawnCommandBuffer final : public CommandBuffer {
 public:
@@ -42,10 +47,8 @@ private:
                          const Texture* resolveTexture,
                          const Texture* depthStencilTexture,
                          SkRect viewport,
-                         const std::vector<std::unique_ptr<DrawPass>>& drawPasses) override;
-    bool onAddComputePass(const ComputePassDesc&,
-                          const ComputePipeline*,
-                          const std::vector<ResourceBinding>& bindings) override;
+                         const DrawPassList&) override;
+    bool onAddComputePass(const DispatchGroupList&) override;
 
     // Methods for populating a Dawn RenderPassEncoder:
     bool beginRenderPass(const RenderPassDesc&,
@@ -102,8 +105,8 @@ private:
     // Methods for populating a Dawn ComputePassEncoder:
     void beginComputePass();
     void bindComputePipeline(const ComputePipeline*);
-    void bindBuffer(const Buffer* buffer, unsigned int offset, unsigned int index);
-    void dispatchThreadgroups(const WorkgroupSize& globalSize, const WorkgroupSize& localSize);
+    void bindDispatchResources(const DispatchGroup&, const DispatchGroup::Dispatch&);
+    void dispatchWorkgroups(const WorkgroupSize& globalSize);
     void endComputePass();
 
     // Methods for doing texture/buffer to texture/buffer copying:
@@ -124,7 +127,8 @@ private:
     bool onCopyTextureToTexture(const Texture* src,
                                 SkIRect srcRect,
                                 const Texture* dst,
-                                SkIPoint dstPoint) override;
+                                SkIPoint dstPoint,
+                                int mipLevel) override;
     bool onSynchronizeBufferToCpu(const Buffer*, bool* outDidResultInWork) override;
     bool onClearBuffer(const Buffer*, size_t offset, size_t size) override;
 
@@ -143,9 +147,10 @@ private:
     wgpu::Buffer fCurrentIndirectBuffer;
     size_t fCurrentIndirectBufferOffset = 0;
 
-    wgpu::Buffer fInstrinsicConstantBuffer;
+    wgpu::Buffer fIntrinsicConstantBuffer;
 
     const DawnGraphicsPipeline* fActiveGraphicsPipeline = nullptr;
+    const DawnComputePipeline* fActiveComputePipeline = nullptr;
     const DawnSharedContext* fSharedContext;
     DawnResourceProvider* fResourceProvider;
 };

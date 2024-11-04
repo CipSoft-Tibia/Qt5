@@ -42,13 +42,19 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
+#include "fractional-scale-v1-client-protocol.h"
+#include "viewporter-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
+#include "tearing-control-v1-client-protocol.h"
+
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <libweston/matrix.h>
 #include "shared/helpers.h"
 #include "shared/platform.h"
 #include "shared/weston-egl-ext.h"
+#include "shared/xalloc.h"
 
 struct window;
 struct seat;
@@ -66,12 +72,17 @@ struct display {
 	struct wl_cursor_theme *cursor_theme;
 	struct wl_cursor *default_cursor;
 	struct wl_surface *cursor_surface;
+	struct wp_tearing_control_manager_v1 *tearing_manager;
+	struct wp_viewporter *viewporter;
+	struct wp_fractional_scale_manager_v1 *fractional_scale_manager;
 	struct {
 		EGLDisplay dpy;
 		EGLContext ctx;
 		EGLConfig conf;
 	} egl;
 	struct window *window;
+
+	struct wl_list output_list; /* struct output::link */
 
 	PFNEGLSWAPBUFFERSWITHDAMAGEEXTPROC swap_buffers_with_damage;
 };
@@ -82,22 +93,52 @@ struct geometry {
 
 struct window {
 	struct display *display;
-	struct geometry geometry, window_size;
+	struct geometry window_size;
+	struct geometry logical_size;
+	struct geometry buffer_size;
+	int32_t buffer_scale;
+	double fractional_buffer_scale;
+	enum wl_output_transform buffer_transform;
+	bool needs_buffer_geometry_update;
+
 	struct {
 		GLuint rotation_uniform;
 		GLuint pos;
 		GLuint col;
 	} gl;
 
-	uint32_t benchmark_time, frames;
+	uint32_t frames;
+	uint32_t initial_frame_time;
+	uint32_t benchmark_time;
 	struct wl_egl_window *native;
 	struct wl_surface *surface;
 	struct xdg_surface *xdg_surface;
 	struct xdg_toplevel *xdg_toplevel;
 	EGLSurface egl_surface;
-	struct wl_callback *callback;
-	int fullscreen, maximized, opaque, buffer_size, frame_sync, delay;
+	int fullscreen, maximized, opaque, buffer_bpp, frame_sync, delay;
+	struct wp_tearing_control_v1 *tear_control;
+	struct wp_viewport *viewport;
+	struct wp_fractional_scale_v1 *fractional_scale_obj;
+	bool tearing, toggled_tearing, tear_enabled;
+	bool vertical_bar;
+	bool fullscreen_ratio;
 	bool wait_for_configure;
+
+	struct wl_list window_output_list; /* struct window_output::link */
+};
+
+struct output {
+	struct display *display;
+	struct wl_output *wl_output;
+	uint32_t name;
+	struct wl_list link; /* struct display::output_list */
+	enum wl_output_transform transform;
+	int32_t scale;
+};
+
+struct window_output {
+	struct output *output;
+	struct wl_list link; /* struct window::window_output_list */
 };
 
 static const char *vert_shader_text =
@@ -151,11 +192,11 @@ init_egl(struct display *display, struct window *window)
 		EGL_NONE
 	};
 
-	EGLint major, minor, n, count, i, size;
+	EGLint major, minor, n, count, i;
 	EGLConfig *configs;
 	EGLBoolean ret;
 
-	if (window->opaque || window->buffer_size == 16)
+	if (window->opaque || window->buffer_bpp == 16)
 		config_attribs[9] = 0;
 
 	display->egl.dpy =
@@ -179,9 +220,13 @@ init_egl(struct display *display, struct window *window)
 	assert(ret && n >= 1);
 
 	for (i = 0; i < n; i++) {
+		EGLint buffer_bpp, red_size;
 		eglGetConfigAttrib(display->egl.dpy,
-				   configs[i], EGL_BUFFER_SIZE, &size);
-		if (window->buffer_size == size) {
+				   configs[i], EGL_BUFFER_SIZE, &buffer_bpp);
+		eglGetConfigAttrib(display->egl.dpy,
+				   configs[i], EGL_RED_SIZE, &red_size);
+		if ((window->buffer_bpp == 0 ||
+		     window->buffer_bpp == buffer_bpp) && red_size < 10) {
 			display->egl.conf = configs[i];
 			break;
 		}
@@ -189,7 +234,7 @@ init_egl(struct display *display, struct window *window)
 	free(configs);
 	if (display->egl.conf == NULL) {
 		fprintf(stderr, "did not find config with buffer size %d\n",
-			window->buffer_size);
+			window->buffer_bpp);
 		exit(EXIT_FAILURE);
 	}
 
@@ -252,12 +297,154 @@ create_shader(struct window *window, const char *source, GLenum shader_type)
 	return shader;
 }
 
+static int32_t
+compute_buffer_scale(struct window *window)
+{
+	struct window_output *window_output;
+	int32_t scale = 1;
+
+	wl_list_for_each(window_output, &window->window_output_list, link) {
+		if (window_output->output->scale > scale)
+			scale = window_output->output->scale;
+	}
+
+	return scale;
+}
+
+static enum wl_output_transform
+compute_buffer_transform(struct window *window)
+{
+	struct window_output *window_output;
+	enum wl_output_transform transform = WL_OUTPUT_TRANSFORM_NORMAL;
+
+	wl_list_for_each(window_output, &window->window_output_list, link) {
+		/* If the surface spans over multiple outputs the optimal
+		 * transform value can be ambiguous. Thus just return the value
+		 * from the oldest entered output.
+		 */
+		transform = window_output->output->transform;
+		break;
+	}
+
+	return transform;
+}
+
+static void
+update_buffer_geometry(struct window *window)
+{
+	enum wl_output_transform new_buffer_transform;
+	struct geometry new_buffer_size;
+	struct geometry new_viewport_dest_size;
+
+	new_buffer_transform = compute_buffer_transform(window);
+	if (window->buffer_transform != new_buffer_transform) {
+		window->buffer_transform = new_buffer_transform;
+		wl_surface_set_buffer_transform(window->surface,
+						window->buffer_transform);
+	}
+
+	switch (window->buffer_transform) {
+	case WL_OUTPUT_TRANSFORM_NORMAL:
+	case WL_OUTPUT_TRANSFORM_180:
+	case WL_OUTPUT_TRANSFORM_FLIPPED:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+		new_buffer_size.width = window->logical_size.width;
+		new_buffer_size.height = window->logical_size.height;
+		break;
+	case WL_OUTPUT_TRANSFORM_90:
+	case WL_OUTPUT_TRANSFORM_270:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+		new_buffer_size.width = window->logical_size.height;
+		new_buffer_size.height = window->logical_size.width;
+		break;
+	}
+
+	if (window->fractional_buffer_scale > 0.0) {
+		if (window->buffer_scale > 1) {
+			window->buffer_scale = 1;
+			wl_surface_set_buffer_scale(window->surface,
+						    window->buffer_scale);
+		}
+
+		new_buffer_size.width = ceil(new_buffer_size.width *
+					     window->fractional_buffer_scale);
+		new_buffer_size.height = ceil(new_buffer_size.height *
+					      window->fractional_buffer_scale);
+	} else {
+		int32_t new_buffer_scale;
+
+		new_buffer_scale = compute_buffer_scale(window);
+		if (window->buffer_scale != new_buffer_scale) {
+			window->buffer_scale = new_buffer_scale;
+			wl_surface_set_buffer_scale(window->surface,
+						    window->buffer_scale);
+		}
+
+		new_buffer_size.width *= window->buffer_scale;
+		new_buffer_size.height *= window->buffer_scale;
+	}
+
+	if (window->fullscreen && window->fullscreen_ratio) {
+		int new_buffer_size_min;
+		int new_viewport_dest_size_min;
+
+		new_buffer_size_min = MIN(new_buffer_size.width,
+					  new_buffer_size.height);
+		new_buffer_size.width = new_buffer_size_min;
+		new_buffer_size.height = new_buffer_size_min;
+
+		new_viewport_dest_size_min = MIN(window->logical_size.width,
+						 window->logical_size.height);
+		new_viewport_dest_size.width = new_viewport_dest_size_min;
+		new_viewport_dest_size.height = new_viewport_dest_size_min;
+	} else {
+		new_viewport_dest_size.width = window->logical_size.width;
+		new_viewport_dest_size.height = window->logical_size.height;
+	}
+
+	if (window->buffer_size.width != new_buffer_size.width ||
+	    window->buffer_size.height != new_buffer_size.height) {
+		window->buffer_size = new_buffer_size;
+		if (window->native)
+			wl_egl_window_resize(window->native,
+					     window->buffer_size.width,
+					     window->buffer_size.height, 0, 0);
+	}
+
+	if (window->fractional_buffer_scale > 0.0)
+		wp_viewport_set_destination(window->viewport,
+					    new_viewport_dest_size.width,
+					    new_viewport_dest_size.height);
+
+	window->needs_buffer_geometry_update = false;
+}
+
 static void
 init_gl(struct window *window)
 {
 	GLuint frag, vert;
 	GLuint program;
 	GLint status;
+	EGLBoolean ret;
+
+	if (window->needs_buffer_geometry_update)
+		update_buffer_geometry(window);
+
+	window->native = wl_egl_window_create(window->surface,
+					      window->buffer_size.width,
+					      window->buffer_size.height);
+	window->egl_surface =
+		weston_platform_create_egl_surface(window->display->egl.dpy,
+						   window->display->egl.conf,
+						   window->native, NULL);
+
+	ret = eglMakeCurrent(window->display->egl.dpy, window->egl_surface,
+			     window->egl_surface, window->display->egl.ctx);
+	assert(ret == EGL_TRUE);
+
+	if (!window->frame_sync)
+		eglSwapInterval(window->display->egl.dpy, 0);
 
 	frag = create_shader(window, frag_shader_text, GL_FRAGMENT_SHADER);
 	vert = create_shader(window, vert_shader_text, GL_VERTEX_SHADER);
@@ -331,16 +518,13 @@ handle_toplevel_configure(void *data, struct xdg_toplevel *toplevel,
 			window->window_size.width = width;
 			window->window_size.height = height;
 		}
-		window->geometry.width = width;
-		window->geometry.height = height;
+		window->logical_size.width = width;
+		window->logical_size.height = height;
 	} else if (!window->fullscreen && !window->maximized) {
-		window->geometry = window->window_size;
+		window->logical_size = window->window_size;
 	}
 
-	if (window->native)
-		wl_egl_window_resize(window->native,
-				     window->geometry.width,
-				     window->geometry.height, 0, 0);
+	window->needs_buffer_geometry_update = true;
 }
 
 static void
@@ -355,21 +539,217 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener = {
 };
 
 static void
+add_window_output(struct window *window, struct wl_output *wl_output)
+{
+	struct output *output;
+	struct output *output_found = NULL;
+	struct window_output *window_output;
+
+	wl_list_for_each(output, &window->display->output_list, link) {
+		if (output->wl_output == wl_output) {
+			output_found = output;
+			break;
+		}
+	}
+
+	if (!output_found)
+		return;
+
+	window_output = xmalloc(sizeof *window_output);
+	window_output->output = output_found;
+
+	wl_list_insert(window->window_output_list.prev, &window_output->link);
+	window->needs_buffer_geometry_update = true;
+}
+
+static void
+destroy_window_output(struct window *window, struct wl_output *wl_output)
+{
+	struct window_output *window_output;
+	struct window_output *window_output_found = NULL;
+
+	wl_list_for_each(window_output, &window->window_output_list, link) {
+		if (window_output->output->wl_output == wl_output) {
+			window_output_found = window_output;
+			break;
+		}
+	}
+
+	if (window_output_found) {
+		wl_list_remove(&window_output_found->link);
+		free(window_output_found);
+		window->needs_buffer_geometry_update = true;
+	}
+}
+
+static void
+draw_triangle(struct window *window, EGLint buffer_age)
+{
+	struct display *display = window->display;
+	static const GLfloat verts[3][2] = {
+		{ -0.5, -0.5 },
+		{  0.5, -0.5 },
+		{  0,    0.5 }
+	};
+	static const GLfloat colors[3][3] = {
+		{ 1, 0, 0 },
+		{ 0, 1, 0 },
+		{ 0, 0, 1 }
+	};
+	struct wl_region *region;
+	EGLint rect[4];
+
+	glVertexAttribPointer(window->gl.pos, 2, GL_FLOAT, GL_FALSE, 0, verts);
+	glVertexAttribPointer(window->gl.col, 3, GL_FLOAT, GL_FALSE, 0, colors);
+	glEnableVertexAttribArray(window->gl.pos);
+	glEnableVertexAttribArray(window->gl.col);
+
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+
+	glDisableVertexAttribArray(window->gl.pos);
+	glDisableVertexAttribArray(window->gl.col);
+
+	usleep(window->delay);
+
+	if (window->opaque || window->fullscreen) {
+		region = wl_compositor_create_region(window->display->compositor);
+		wl_region_add(region, 0, 0, INT32_MAX, INT32_MAX);
+		wl_surface_set_opaque_region(window->surface, region);
+		wl_region_destroy(region);
+	} else {
+		wl_surface_set_opaque_region(window->surface, NULL);
+	}
+
+	if (display->swap_buffers_with_damage && buffer_age > 0) {
+		rect[0] = window->buffer_size.width / 4 - 1;
+		rect[1] = window->buffer_size.height / 4 - 1;
+		rect[2] = window->buffer_size.width / 2 + 2;
+		rect[3] = window->buffer_size.height / 2 + 2;
+		display->swap_buffers_with_damage(display->egl.dpy,
+						  window->egl_surface,
+						  rect, 1);
+	} else {
+		eglSwapBuffers(display->egl.dpy, window->egl_surface);
+	}
+}
+
+static void
+draw_bar(struct window *window, EGLint buffer_age, struct weston_matrix *rotation)
+{
+	struct display *display = window->display;
+	GLfloat verts[4][2] = {
+		{ -1, 1 },
+		{  -0.9, 1 },
+		{  -1, -1 },
+		{  -0.9, -1   }
+	};
+	static const GLfloat colors[4][3] = {
+		{ 1, 1, 1 },
+		{ 1, 1, 1 },
+		{ 1, 1, 1 },
+		{ 1, 1, 1 }
+	};
+	struct wl_region *region;
+	int i;
+	const float delta = 0.01;
+	static float offset = 0;
+
+	offset += delta;
+	if (offset > 2)
+		offset = 0;
+
+	for (i = 0 ; i < 4; i++) {
+		verts[i][0] += offset;
+	}
+	glVertexAttribPointer(window->gl.pos, 2, GL_FLOAT, GL_FALSE, 0, verts);
+	glVertexAttribPointer(window->gl.col, 3, GL_FLOAT, GL_FALSE, 0, colors);
+	glEnableVertexAttribArray(window->gl.pos);
+	glEnableVertexAttribArray(window->gl.col);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	glDisableVertexAttribArray(window->gl.pos);
+	glDisableVertexAttribArray(window->gl.col);
+
+	usleep(window->delay);
+
+	if (window->opaque || window->fullscreen) {
+		region = wl_compositor_create_region(window->display->compositor);
+		wl_region_add(region, 0, 0, INT32_MAX, INT32_MAX);
+		wl_surface_set_opaque_region(window->surface, region);
+		wl_region_destroy(region);
+	} else {
+		wl_surface_set_opaque_region(window->surface, NULL);
+	}
+
+	eglSwapBuffers(display->egl.dpy, window->egl_surface);
+}
+
+static void
+set_tearing(struct window *window, bool enable)
+{
+	if (!window->tear_control)
+		return;
+
+	if (enable) {
+		wp_tearing_control_v1_set_presentation_hint(window->tear_control,
+							    WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC);
+	} else {
+		wp_tearing_control_v1_set_presentation_hint(window->tear_control,
+							    WP_TEARING_CONTROL_V1_PRESENTATION_HINT_VSYNC);
+	}
+	window->tear_enabled = enable;
+}
+
+static void
+surface_enter(void *data,
+	      struct wl_surface *wl_surface, struct wl_output *wl_output)
+{
+	struct window *window = data;
+
+	add_window_output(window, wl_output);
+}
+
+static void
+surface_leave(void *data,
+	      struct wl_surface *wl_surface, struct wl_output *wl_output)
+{
+	struct window *window = data;
+
+	destroy_window_output(window, wl_output);
+}
+
+static const struct wl_surface_listener surface_listener = {
+	surface_enter,
+	surface_leave
+};
+
+static void fractional_scale_handle_preferred_scale(void *data,
+						    struct wp_fractional_scale_v1 *info,
+						    uint32_t wire_scale) {
+	struct window *window = data;
+
+	window->fractional_buffer_scale = wire_scale / 120.0;
+	window->needs_buffer_geometry_update = true;
+}
+
+static const struct wp_fractional_scale_v1_listener fractional_scale_listener = {
+	.preferred_scale = fractional_scale_handle_preferred_scale,
+};
+
+static void
 create_surface(struct window *window)
 {
 	struct display *display = window->display;
-	EGLBoolean ret;
 
 	window->surface = wl_compositor_create_surface(display->compositor);
+	wl_surface_add_listener(window->surface, &surface_listener, window);
 
-	window->native =
-		wl_egl_window_create(window->surface,
-				     window->geometry.width,
-				     window->geometry.height);
-	window->egl_surface =
-		weston_platform_create_egl_surface(display->egl.dpy,
-						   display->egl.conf,
-						   window->native, NULL);
+	if (display->tearing_manager && window->tearing) {
+		window->tear_control = wp_tearing_control_manager_v1_get_tearing_control(
+			display->tearing_manager,
+			window->surface);
+		set_tearing(window, true);
+	}
 
 	window->xdg_surface = xdg_wm_base_get_xdg_surface(display->wm_base,
 							  window->surface);
@@ -382,22 +762,27 @@ create_surface(struct window *window)
 				  &xdg_toplevel_listener, window);
 
 	xdg_toplevel_set_title(window->xdg_toplevel, "simple-egl");
-
-	window->wait_for_configure = true;
-	wl_surface_commit(window->surface);
-
-	ret = eglMakeCurrent(window->display->egl.dpy, window->egl_surface,
-			     window->egl_surface, window->display->egl.ctx);
-	assert(ret == EGL_TRUE);
-
-	if (!window->frame_sync)
-		eglSwapInterval(display->egl.dpy, 0);
-
-	if (!display->wm_base)
-		return;
+	xdg_toplevel_set_app_id(window->xdg_toplevel,
+			"org.freedesktop.weston.simple-egl");
 
 	if (window->fullscreen)
 		xdg_toplevel_set_fullscreen(window->xdg_toplevel, NULL);
+	else if (window->maximized)
+		xdg_toplevel_set_maximized(window->xdg_toplevel);
+
+	if (display->viewporter && display->fractional_scale_manager) {
+		window->viewport = wp_viewporter_get_viewport(display->viewporter,
+							      window->surface);
+		window->fractional_scale_obj =
+			wp_fractional_scale_manager_v1_get_fractional_scale(display->fractional_scale_manager,
+									    window->surface);
+		wp_fractional_scale_v1_add_listener(window->fractional_scale_obj,
+						    &fractional_scale_listener,
+						    window);
+	}
+
+	window->wait_for_configure = true;
+	wl_surface_commit(window->surface);
 }
 
 static void
@@ -416,50 +801,33 @@ destroy_surface(struct window *window)
 		xdg_toplevel_destroy(window->xdg_toplevel);
 	if (window->xdg_surface)
 		xdg_surface_destroy(window->xdg_surface);
+	if (window->viewport)
+		wp_viewport_destroy(window->viewport);
+	if (window->fractional_scale_obj)
+		wp_fractional_scale_v1_destroy(window->fractional_scale_obj);
 	wl_surface_destroy(window->surface);
-
-	if (window->callback)
-		wl_callback_destroy(window->callback);
 }
 
+
 static void
-redraw(void *data, struct wl_callback *callback, uint32_t time)
+redraw(struct window *window)
 {
-	struct window *window = data;
 	struct display *display = window->display;
-	static const GLfloat verts[3][2] = {
-		{ -0.5, -0.5 },
-		{  0.5, -0.5 },
-		{  0,    0.5 }
-	};
-	static const GLfloat colors[3][3] = {
-		{ 1, 0, 0 },
-		{ 0, 1, 0 },
-		{ 0, 0, 1 }
-	};
 	GLfloat angle;
-	GLfloat rotation[4][4] = {
-		{ 1, 0, 0, 0 },
-		{ 0, 1, 0, 0 },
-		{ 0, 0, 1, 0 },
-		{ 0, 0, 0, 1 }
-	};
+	struct weston_matrix rotation;
 	static const uint32_t speed_div = 5, benchmark_interval = 5;
-	struct wl_region *region;
-	EGLint rect[4];
 	EGLint buffer_age = 0;
 	struct timeval tv;
 
-	assert(window->callback == callback);
-	window->callback = NULL;
-
-	if (callback)
-		wl_callback_destroy(callback);
+	if (window->needs_buffer_geometry_update)
+		update_buffer_geometry(window);
 
 	gettimeofday(&tv, NULL);
-	time = tv.tv_sec * 1000 + tv.tv_usec / 1000;
-	if (window->frames == 0)
+	uint32_t time = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+	if (window->frames == 0) {
+		window->initial_frame_time = time;
 		window->benchmark_time = time;
+	}
 	if (time - window->benchmark_time > (benchmark_interval * 1000)) {
 		printf("%d frames in %d seconds: %f fps\n",
 		       window->frames,
@@ -467,60 +835,72 @@ redraw(void *data, struct wl_callback *callback, uint32_t time)
 		       (float) window->frames / benchmark_interval);
 		window->benchmark_time = time;
 		window->frames = 0;
+		if (window->toggled_tearing)
+			set_tearing(window, window->tear_enabled ^ true);
 	}
 
-	angle = (time / speed_div) % 360 * M_PI / 180.0;
-	rotation[0][0] =  cos(angle);
-	rotation[0][2] =  sin(angle);
-	rotation[2][0] = -sin(angle);
-	rotation[2][2] =  cos(angle);
+	weston_matrix_init(&rotation);
+	if (window->vertical_bar) {
+		angle = 0;
+	} else {
+		angle = ((time - window->initial_frame_time) / speed_div)
+			% 360 * M_PI / 180.0;
+	}
+	rotation.d[0] =   cos(angle);
+	rotation.d[2] =   sin(angle);
+	rotation.d[8] =  -sin(angle);
+	rotation.d[10] =  cos(angle);
+
+	switch (window->buffer_transform) {
+	case WL_OUTPUT_TRANSFORM_FLIPPED:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+		weston_matrix_scale(&rotation, -1, 1, 1);
+		break;
+	default:
+		break;
+	}
+
+	switch (window->buffer_transform) {
+	default:
+	case WL_OUTPUT_TRANSFORM_NORMAL:
+	case WL_OUTPUT_TRANSFORM_FLIPPED:
+		break;
+	case WL_OUTPUT_TRANSFORM_90:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+		weston_matrix_rotate_xy(&rotation, 0, 1);
+		break;
+	case WL_OUTPUT_TRANSFORM_180:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+		weston_matrix_rotate_xy(&rotation, -1, 0);
+		break;
+	case WL_OUTPUT_TRANSFORM_270:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+		weston_matrix_rotate_xy(&rotation, 0, -1);
+		break;
+	}
 
 	if (display->swap_buffers_with_damage)
 		eglQuerySurface(display->egl.dpy, window->egl_surface,
 				EGL_BUFFER_AGE_EXT, &buffer_age);
 
-	glViewport(0, 0, window->geometry.width, window->geometry.height);
+	glViewport(0, 0, window->buffer_size.width, window->buffer_size.height);
 
 	glUniformMatrix4fv(window->gl.rotation_uniform, 1, GL_FALSE,
-			   (GLfloat *) rotation);
+			   (GLfloat *) rotation.d);
 
-	glClearColor(0.0, 0.0, 0.0, 0.5);
+	if (window->opaque || window->fullscreen)
+		glClearColor(0.0, 0.0, 0.0, 1);
+	else
+		glClearColor(0.0, 0.0, 0.0, 0.5);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glVertexAttribPointer(window->gl.pos, 2, GL_FLOAT, GL_FALSE, 0, verts);
-	glVertexAttribPointer(window->gl.col, 3, GL_FLOAT, GL_FALSE, 0, colors);
-	glEnableVertexAttribArray(window->gl.pos);
-	glEnableVertexAttribArray(window->gl.col);
+	if (window->vertical_bar)
+		draw_bar(window, buffer_age, &rotation);
+	else
+		draw_triangle(window, buffer_age);
 
-	glDrawArrays(GL_TRIANGLES, 0, 3);
-
-	glDisableVertexAttribArray(window->gl.pos);
-	glDisableVertexAttribArray(window->gl.col);
-
-	usleep(window->delay);
-
-	if (window->opaque || window->fullscreen) {
-		region = wl_compositor_create_region(window->display->compositor);
-		wl_region_add(region, 0, 0,
-			      window->geometry.width,
-			      window->geometry.height);
-		wl_surface_set_opaque_region(window->surface, region);
-		wl_region_destroy(region);
-	} else {
-		wl_surface_set_opaque_region(window->surface, NULL);
-	}
-
-	if (display->swap_buffers_with_damage && buffer_age > 0) {
-		rect[0] = window->geometry.width / 4 - 1;
-		rect[1] = window->geometry.height / 4 - 1;
-		rect[2] = window->geometry.width / 2 + 2;
-		rect[3] = window->geometry.height / 2 + 2;
-		display->swap_buffers_with_damage(display->egl.dpy,
-						  window->egl_surface,
-						  rect, 1);
-	} else {
-		eglSwapBuffers(display->egl.dpy, window->egl_surface);
-	}
 	window->frames++;
 }
 
@@ -739,6 +1119,92 @@ static const struct xdg_wm_base_listener wm_base_listener = {
 };
 
 static void
+display_handle_geometry(void *data,
+			struct wl_output *wl_output,
+			int32_t x, int32_t y,
+			int32_t physical_width,
+			int32_t physical_height,
+			int32_t subpixel,
+			const char *make,
+			const char *model,
+			int32_t transform)
+{
+	struct output *output = data;
+
+	output->transform = transform;
+	output->display->window->needs_buffer_geometry_update = true;
+}
+
+static void
+display_handle_mode(void *data,
+		    struct wl_output *wl_output,
+		    uint32_t flags,
+		    int32_t width,
+		    int32_t height,
+		    int32_t refresh)
+{
+}
+
+static void
+display_handle_done(void *data,
+		     struct wl_output *wl_output)
+{
+}
+
+static void
+display_handle_scale(void *data,
+		     struct wl_output *wl_output,
+		     int32_t scale)
+{
+	struct output *output = data;
+
+	output->scale = scale;
+	output->display->window->needs_buffer_geometry_update = true;
+}
+
+static const struct wl_output_listener output_listener = {
+	display_handle_geometry,
+	display_handle_mode,
+	display_handle_done,
+	display_handle_scale
+};
+
+static void
+display_add_output(struct display *d, uint32_t name)
+{
+	struct output *output;
+
+	output = xzalloc(sizeof *output);
+	output->display = d;
+	output->scale = 1;
+	output->wl_output =
+		wl_registry_bind(d->registry, name, &wl_output_interface, 2);
+	output->name = name;
+	wl_list_insert(d->output_list.prev, &output->link);
+
+	wl_output_add_listener(output->wl_output, &output_listener, output);
+}
+
+static void
+display_destroy_output(struct display *d, struct output *output)
+{
+	destroy_window_output(d->window, output->wl_output);
+	wl_output_destroy(output->wl_output);
+	wl_list_remove(&output->link);
+	free(output);
+}
+
+static void
+display_destroy_outputs(struct display *d)
+{
+	struct output *tmp;
+	struct output *output;
+
+	wl_list_for_each_safe(output, tmp, &d->output_list, link)
+		display_destroy_output(d, output);
+}
+
+static void
 registry_handle_global(void *data, struct wl_registry *registry,
 		       uint32_t name, const char *interface, uint32_t version)
 {
@@ -771,6 +1237,21 @@ registry_handle_global(void *data, struct wl_registry *registry,
 			fprintf(stderr, "unable to load default left pointer\n");
 			// TODO: abort ?
 		}
+	} else if (strcmp(interface, "wl_output") == 0 && version >= 2) {
+		display_add_output(d, name);
+	} else if (strcmp(interface, "wp_tearing_control_manager_v1") == 0) {
+		d->tearing_manager = wl_registry_bind(registry, name,
+						      &wp_tearing_control_manager_v1_interface,
+						      1);
+	} else if (strcmp(interface, wp_viewporter_interface.name) == 0) {
+		d->viewporter = wl_registry_bind(registry, name,
+						 &wp_viewporter_interface,
+						 1);
+	} else if (strcmp(interface, wp_fractional_scale_manager_v1_interface.name) == 0) {
+		d->fractional_scale_manager =
+			wl_registry_bind(registry, name,
+					 &wp_fractional_scale_manager_v1_interface,
+					 1);
 	}
 }
 
@@ -778,6 +1259,15 @@ static void
 registry_handle_global_remove(void *data, struct wl_registry *registry,
 			      uint32_t name)
 {
+	struct display *d = data;
+	struct output *output;
+
+	wl_list_for_each(output, &d->output_list, link) {
+		if (output->name == name) {
+			display_destroy_output(d, output);
+			break;
+		}
+	}
 }
 
 static const struct wl_registry_listener registry_listener = {
@@ -797,9 +1287,14 @@ usage(int error_code)
 	fprintf(stderr, "Usage: simple-egl [OPTIONS]\n\n"
 		"  -d <us>\tBuffer swap delay in microseconds\n"
 		"  -f\tRun in fullscreen mode\n"
+		"  -r\tUse fixed width/height ratio when run in fullscreen mode\n"
+		"  -m\tRun in maximized mode\n"
 		"  -o\tCreate an opaque surface\n"
 		"  -s\tUse a 16 bpp EGL config\n"
 		"  -b\tDon't sync to compositor redraw (eglSwapInterval 0)\n"
+		"  -t\tEnable tearing via the tearing_control protocol\n"
+		"  -T\tEnable and disable tearing every 5 seconds\n"
+		"  -v\tDraw a moving vertical bar instead of a triangle\n"
 		"  -h\tThis help text\n\n");
 
 	exit(error_code);
@@ -815,24 +1310,42 @@ main(int argc, char **argv)
 
 	window.display = &display;
 	display.window = &window;
-	window.geometry.width  = 250;
-	window.geometry.height = 250;
-	window.window_size = window.geometry;
-	window.buffer_size = 32;
+	window.buffer_size.width  = 250;
+	window.buffer_size.height = 250;
+	window.window_size = window.buffer_size;
+	window.buffer_scale = 1;
+	window.buffer_transform = WL_OUTPUT_TRANSFORM_NORMAL;
+	window.needs_buffer_geometry_update = false;
+	window.buffer_bpp = 0;
 	window.frame_sync = 1;
 	window.delay = 0;
+	window.fullscreen_ratio = false;
+
+	wl_list_init(&display.output_list);
+	wl_list_init(&window.window_output_list);
 
 	for (i = 1; i < argc; i++) {
 		if (strcmp("-d", argv[i]) == 0 && i+1 < argc)
 			window.delay = atoi(argv[++i]);
 		else if (strcmp("-f", argv[i]) == 0)
 			window.fullscreen = 1;
+		else if (strcmp("-r", argv[i]) == 0)
+			window.fullscreen_ratio = true;
+		else if (strcmp("-m", argv[i]) == 0)
+			window.maximized = 1;
 		else if (strcmp("-o", argv[i]) == 0)
 			window.opaque = 1;
 		else if (strcmp("-s", argv[i]) == 0)
-			window.buffer_size = 16;
+			window.buffer_bpp = 16;
 		else if (strcmp("-b", argv[i]) == 0)
 			window.frame_sync = 0;
+		else if (strcmp("-t", argv[i]) == 0) {
+			window.tearing = true;
+		} else if (strcmp("-T", argv[i]) == 0) {
+			window.tearing = true;
+			window.toggled_tearing = true;
+		} else if (strcmp("-v", argv[i]) == 0)
+			window.vertical_bar = true;
 		else if (strcmp("-h", argv[i]) == 0)
 			usage(EXIT_SUCCESS);
 		else
@@ -848,9 +1361,24 @@ main(int argc, char **argv)
 
 	wl_display_roundtrip(display.display);
 
+	if (!display.wm_base) {
+		fprintf(stderr, "xdg-shell support required. simple-egl exiting\n");
+		goto out_no_xdg_shell;
+	}
+
 	init_egl(&display, &window);
 	create_surface(&window);
-	init_gl(&window);
+
+	/* we already have wait_for_configure set after create_surface() */
+	while (running && ret != -1 && window.wait_for_configure) {
+		ret = wl_display_dispatch(display.display);
+
+		/* wait until xdg_surface::configure acks the new dimensions */
+		if (window.wait_for_configure)
+			continue;
+
+		init_gl(&window);
+	}
 
 	display.cursor_surface =
 		wl_compositor_create_surface(display.compositor);
@@ -860,17 +1388,9 @@ main(int argc, char **argv)
 	sigint.sa_flags = SA_RESETHAND;
 	sigaction(SIGINT, &sigint, NULL);
 
-	/* The mainloop here is a little subtle.  Redrawing will cause
-	 * EGL to read events so we can just call
-	 * wl_display_dispatch_pending() to handle any events that got
-	 * queued up as a side effect. */
 	while (running && ret != -1) {
-		if (window.wait_for_configure) {
-			ret = wl_display_dispatch(display.display);
-		} else {
-			ret = wl_display_dispatch_pending(display.display);
-			redraw(&window, NULL, 0);
-		}
+		ret = wl_display_dispatch_pending(display.display);
+		redraw(&window);
 	}
 
 	fprintf(stderr, "simple-egl exiting\n");
@@ -879,14 +1399,38 @@ main(int argc, char **argv)
 	fini_egl(&display);
 
 	wl_surface_destroy(display.cursor_surface);
+out_no_xdg_shell:
+	display_destroy_outputs(&display);
+
 	if (display.cursor_theme)
 		wl_cursor_theme_destroy(display.cursor_theme);
+
+	if (display.shm)
+		wl_shm_destroy(display.shm);
+
+	if (display.pointer)
+		wl_pointer_destroy(display.pointer);
+
+	if (display.keyboard)
+		wl_keyboard_destroy(display.keyboard);
+
+	if (display.touch)
+		wl_touch_destroy(display.touch);
+
+	if (display.seat)
+		wl_seat_destroy(display.seat);
 
 	if (display.wm_base)
 		xdg_wm_base_destroy(display.wm_base);
 
 	if (display.compositor)
 		wl_compositor_destroy(display.compositor);
+
+	if (display.viewporter)
+		wp_viewporter_destroy(display.viewporter);
+
+	if (display.fractional_scale_manager)
+		wp_fractional_scale_manager_v1_destroy(display.fractional_scale_manager);
 
 	wl_registry_destroy(display.registry);
 	wl_display_flush(display.display);

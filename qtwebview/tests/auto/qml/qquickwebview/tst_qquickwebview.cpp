@@ -444,7 +444,7 @@ void tst_QQuickWebView::settings_JS()
     webView()->settings()->setJavaScriptEnabled(jsEnabled);
     webView()->setUrl(testUrl);
     QVERIFY(waitForLoadSucceeded(webView()));
-    QCOMPARE(webView()->title(), expectedTitle);
+    QTRY_COMPARE(webView()->title(), expectedTitle);
     webView()->settings()->setJavaScriptEnabled(wasJsEnabled);
 }
 

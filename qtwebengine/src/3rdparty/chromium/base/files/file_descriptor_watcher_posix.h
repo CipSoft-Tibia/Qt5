@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "base/auto_reset.h"
 #include "base/base_export.h"
 #include "base/dcheck_is_on.h"
 #include "base/functional/callback.h"
@@ -75,7 +76,7 @@ class BASE_EXPORT FileDescriptorWatcher {
     // Controller is deleted, ownership of |watcher_| is transfered to a delete
     // task posted to the MessageLoopForIO. This ensures that |watcher_| isn't
     // deleted while it is being used by the MessageLoopForIO.
-    raw_ptr<Watcher, DanglingUntriaged> watcher_;
+    raw_ptr<Watcher, AcrossTasksDanglingUntriaged> watcher_;
 
     // An event for the watcher to notify controller that it's destroyed.
     // As the |watcher_| is owned by Controller, always outlives the Watcher.
@@ -121,12 +122,10 @@ class BASE_EXPORT FileDescriptorWatcher {
       const RepeatingClosure& callback);
 
   // Asserts that usage of this API is allowed on this thread.
-  static void AssertAllowed()
 #if DCHECK_IS_ON()
-      ;
+  static void AssertAllowed();
 #else
-  {
-  }
+  static void AssertAllowed() {}
 #endif
 
  private:
@@ -134,6 +133,7 @@ class BASE_EXPORT FileDescriptorWatcher {
     return io_thread_task_runner_;
   }
 
+  const AutoReset<FileDescriptorWatcher*> resetter_;
   const scoped_refptr<SingleThreadTaskRunner> io_thread_task_runner_;
 };
 

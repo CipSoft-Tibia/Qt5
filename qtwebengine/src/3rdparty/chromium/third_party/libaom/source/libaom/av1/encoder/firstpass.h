@@ -12,6 +12,8 @@
 #ifndef AOM_AV1_ENCODER_FIRSTPASS_H_
 #define AOM_AV1_ENCODER_FIRSTPASS_H_
 
+#include <stdbool.h>
+
 #include "av1/common/av1_common_int.h"
 #include "av1/common/enums.h"
 #include "av1/encoder/lookahead.h"
@@ -161,6 +163,14 @@ typedef struct FIRSTPASS_STATS {
    * Correlation coefficient with the previous frame
    */
   double cor_coeff;
+  /*!
+   * log of intra_error
+   */
+  double log_intra_error;
+  /*!
+   * log of coded_error
+   */
+  double log_coded_error;
 } FIRSTPASS_STATS;
 
 // We want to keep one past stats for key frame detection
@@ -386,9 +396,9 @@ typedef struct GF_GROUP {
   // 2 : frame occurs later in encode order in a given parallel encode set.
   int frame_parallel_level[MAX_STATIC_GF_GROUP_LENGTH];
   // Indicates whether a frame should act as non-reference frame.
-  // 0 : frame is a reference frame.
-  // 1 : frame is a non-reference frame.
-  int is_frame_non_ref[MAX_STATIC_GF_GROUP_LENGTH];
+  bool is_frame_non_ref[MAX_STATIC_GF_GROUP_LENGTH];
+  // Indicates whether a frame is dropped.
+  bool is_frame_dropped[MAX_STATIC_GF_GROUP_LENGTH];
 
   // Stores the display order hint of the frames not to be
   // refreshed by the current frame.
@@ -454,7 +464,6 @@ typedef struct {
   int last_kfgroup_zeromotion_pct;
   int extend_minq;
   int extend_maxq;
-  int extend_minq_fast;
   /*!\endcond */
 } TWO_PASS;
 
@@ -558,6 +567,8 @@ void av1_first_pass_row(struct AV1_COMP *cpi, struct ThreadData *td,
                         struct TileDataEnc *tile_data, const int mb_row,
                         const BLOCK_SIZE fp_block_size);
 void av1_end_first_pass(struct AV1_COMP *cpi);
+
+void av1_free_firstpass_data(FirstPassData *firstpass_data);
 
 void av1_twopass_zero_stats(FIRSTPASS_STATS *section);
 void av1_accumulate_stats(FIRSTPASS_STATS *section,

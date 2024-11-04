@@ -78,8 +78,10 @@ Q_LOGGING_CATEGORY(QRHI_LOG_INFO, "qt.rhi.general")
     \l{https://learn.microsoft.com/en-us/windows/win32/direct3darticles/directx-warp}{software
     adapter} is still an option.
 
-    \li Direct3D 12.0 or newer, with Shader Model 5.0 or newer. The D3D12
-    device is by default created with specifying a minimum feature level of
+    \li Direct3D 12 on Windows 10 version 1703 and newer, with Shader Model 5.0
+    or newer. Qt requires ID3D12Device2 to be present, hence the requirement
+    for at least version 1703 of Windows 10. The D3D12 device is by default
+    created with specifying a minimum feature level of
     \c{D3D_FEATURE_LEVEL_11_0}.
 
     \li Metal 1.2 or newer.
@@ -663,6 +665,17 @@ Q_LOGGING_CATEGORY(QRHI_LOG_INFO, "qt.rhi.general")
     mechanisms for shader/program binaries provided by Qt. Writing to those may
     get disabled whenever this flag is set since storing program binaries to
     multiple caches is not sensible.
+
+    \value SuppressSmokeTestWarnings Indicates that, with backends where this
+    is relevant, certain, non-fatal QRhi::create() failures should not
+    produce qWarning() calls. For example, with D3D11, passing this flag
+    makes a number of warning messages (that appear due to QRhi::create()
+    failing) to become categorized debug prints instead under the commonly used
+    \c{qt.rhi.general} logging category. This can be used by engines, such as
+    Qt Quick, that feature fallback logic, i.e. they retry calling create()
+    with a different set of flags (such as, \l PreferSoftwareRenderer), in order
+    to hide the unconditional warnings from the output that would be printed
+    when the first create() attempt had failed.
  */
 
 /*!
@@ -700,9 +713,12 @@ Q_LOGGING_CATEGORY(QRHI_LOG_INFO, "qt.rhi.general")
     QRhiCommandBuffer::debugMarkBegin()) are supported.
 
     \value Timestamps Indicates that command buffer timestamps are supported.
-    Relevant for QRhiCommandBuffer::lastCompletedGpuTime(). Can be expected to
-    be supported on Metal, Vulkan, and Direct 3D, assuming the underlying
-    implementation supports timestamp queries or similar.
+    Relevant for QRhiCommandBuffer::lastCompletedGpuTime(). This can be
+    expected to be supported on Metal, Vulkan, Direct 3D 11 and 12, and OpenGL
+    contexts of version 3.3 or newer. However, with some of these APIs support
+    for timestamp queries is technically optional, and therefore it cannot be
+    guaranteed that this feature is always supported with every implementation
+    of them.
 
     \value Instancing Indicates that instanced drawing is supported. In
     practice this feature will be unsupported with OpenGL ES 2.0 and OpenGL
@@ -967,6 +983,26 @@ Q_LOGGING_CATEGORY(QRHI_LOG_INFO, "qt.rhi.general")
     \value ThreeDimensionalTextureMipmaps Indicates that generating 3D texture
     mipmaps are supported. In practice this feature will be unsupported with
     Direct 3D 12.
+
+    \value MultiView Indicates that multiview, see e.g.
+    \l{https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_multiview.html}{VK_KHR_multiview}
+    is supported. With OpenGL ES 2.0, Direct 3D 11, and OpenGL (ES)
+    implementations without \c{GL_OVR_multiview2} this feature will not be
+    supported. With Vulkan 1.1 and newer, and Direct 3D 12 multiview is
+    typically supported. When reported as supported, creating a
+    QRhiTextureRenderTarget with a QRhiColorAttachment that references a texture
+    array and has \l{QRhiColorAttachment::setMultiViewCount()}{multiViewCount}
+    set enables recording a render pass that uses multiview rendering. In addition,
+    any QRhiGraphicsPipeline used in that render pass must have
+    \l{QRhiGraphicsPipeline::setMultiViewCount()}{the same view count set}. Note that
+    multiview is only available in combination with 2D texture arrays. It cannot
+    be used to optimize the rendering into individual textures (e.g. two, for
+    the left and right eyes). Rather, the target of a multiview render pass is
+    always a texture array, automatically rendering to the layer (array element)
+    corresponding to each view. Therefore this feature implies \l TextureArrays
+    as well. Multiview rendering is not supported in combination with
+    tessellation or geometry shaders. See QRhiColorAttachment::setMultiViewCount()
+    for further details on multiview rendering. This enum value has been introduced in Qt 6.7.
  */
 
 /*!
@@ -2262,16 +2298,40 @@ QRhiColorAttachment::QRhiColorAttachment(QRhiRenderBuffer *renderBuffer)
     \nullptr if there is none.
 
     Setting a non-null resolve texture is applicable when the attachment
-    references a multisample, color renderbuffer. (i.e., renderBuffer() is set)
-    The QRhiTexture in the resolveTexture() is then a regular, 2D,
-    non-multisample texture with the same size (but a sample count of 1). The
-    multisample content is automatically resolved into this texture at the end
-    of each render pass.
+    references a multisample texture or renderbuffer. The QRhiTexture in the
+    resolveTexture() is then a non-multisample 2D texture (or texture array)
+    with the same size (but a sample count of 1). The multisample content is
+    automatically resolved into this texture at the end of each render pass.
  */
 
 /*!
     \fn void QRhiColorAttachment::setResolveTexture(QRhiTexture *tex)
+
     Sets the resolve texture \a tex.
+
+    \a tex is expected to be a 2D texture or a 2D texture array. In either
+    case, resolving targets a single mip level of a single layer (array
+    element) of \a tex. The mip level and array layer are specified by
+    resolveLevel() and resolveLayer().
+
+    An exception is \l{setMultiViewCount()}{multiview}: when the color
+    attachment is associated with a texture array and multiview is enabled, the
+    resolve texture must also be a texture array with sufficient elements for
+    all views. In this case all elements that correspond to views are resolved
+    automatically; the behavior is similar to the following pseudo-code:
+    \badcode
+        for (i = 0; i < multiViewCount(); ++i)
+            resolve texture's layer() + i into resolveTexture's resolveLayer() + i
+    \endcode
+
+    Setting a non-multisample texture to resolve a multisample texture or
+    renderbuffer automatically at the end of the render pass is often
+    preferable to working with multisample textures (and not setting a resolve
+    texture), because it avoids the need for writing dedicated fragment shaders
+    that work exclusively with multisample textures (\c sampler2DMS, \c
+    texelFetch, etc.), and rather allows using the same shader as one would if
+    the attachment's texture was not multisampled to begin with. This comes at
+    the expense of an additional resource (the non-multisample \a tex).
  */
 
 /*!
@@ -2292,6 +2352,71 @@ QRhiColorAttachment::QRhiColorAttachment(QRhiRenderBuffer *renderBuffer)
 /*!
     \fn void QRhiColorAttachment::setResolveLevel(int level)
     Sets the resolve texture mip \a level to use.
+ */
+
+/*!
+    \fn int QRhiColorAttachment::multiViewCount() const
+
+    \return the currently set number of views. Defaults to 0 which indicates
+    the render target with this color attachment is not going to be used with
+    multiview rendering.
+
+    \since 6.7
+ */
+
+/*!
+    \fn void QRhiColorAttachment::setMultiViewCount(int count)
+
+    Sets the view \a count. Setting a value larger than 1 indicates that the
+    render target with this color attachment is going to be used with multiview
+    rendering. The default value is 0. Values smaller than 2 indicate no
+    multiview rendering.
+
+    When \a count is set to \c 2 or greater, the color attachment must be
+    associated with a 2D texture array. layer() and multiViewCount() together
+    define the range of texture array elements that are targeted during
+    multiview rendering.
+
+    For example, if \c layer is \c 0 and \c multiViewCount is \c 2, the texture
+    array must have 2 (or more) elements, and the multiview rendering will
+    target elements 0 and 1. The \c{gl_ViewIndex} variable in the shaders has a
+    value of \c 0 or \c 1 then, where view \c 0 corresponds to the texture array
+    element \c 0, and view \c 1 to the array element \c 1.
+
+    \note Setting a \a count larger than 1, using a texture array as texture(),
+    and calling \l{QRhiCommandBuffer::beginPass()}{beginPass()} on a
+    QRhiTextureRenderTarget with this color attachment implies multiview
+    rendering for the entire render pass. multiViewCount() should not be set
+    unless multiview rendering is wanted. Multiview cannot be used with texture
+    types other than 2D texture arrays. (although 3D textures may work,
+    depending on the graphics API and backend; applications are nonetheless
+    advised not to rely on that and only use 2D texture arrays as the render
+    targets of multiview rendering)
+
+    See
+    \l{https://registry.khronos.org/OpenGL/extensions/OVR/OVR_multiview.txt}{GL_OVR_multiview}
+    for more details regarding multiview rendering. Do note that Qt requires
+    \l{https://registry.khronos.org/OpenGL/extensions/OVR/OVR_multiview2.txt}{GL_OVR_multiview2}
+    as well, when running on OpenGL (ES).
+
+    Multiview rendering is available only when the
+    \l{QRhi::MultiView}{MultiView} feature is reported as supported from
+    \l{QRhi::isFeatureSupported()}{isFeatureSupported()}.
+
+    \note For portability, be aware of limitations that exist for multiview
+    rendering with some of the graphics APIs. It is recommended that multiview
+    render passes do not rely on any of the features that
+    \l{https://registry.khronos.org/OpenGL/extensions/OVR/OVR_multiview.txt}{GL_OVR_multiview}
+    declares as unsupported. The one exception is shader stage outputs other
+    than \c{gl_Position} depending on \c{gl_ViewIndex}: that can be relied on
+    (even with OpenGL) because QRhi never reports multiview as supported without
+    \c{GL_OVR_multiview2} also being present.
+
+    \note Multiview rendering is not supported in combination with tessellation
+    or geometry shaders, even though some implementations of some graphics APIs
+    may allow this.
+
+    \since 6.7
  */
 
 /*!
@@ -2344,7 +2469,7 @@ QRhiColorAttachment::QRhiColorAttachment(QRhiRenderBuffer *renderBuffer)
     renderbuffer as depth/stencil to enable depth testing:
 
     \code
-        QRhiTexture *texture = rhi->newTexture(QRhiTexture::RGBA8, QSize(512, 512), 1. QRhiTexture::RenderTarget);
+        QRhiTexture *texture = rhi->newTexture(QRhiTexture::RGBA8, QSize(512, 512), 1, QRhiTexture::RenderTarget);
         texture->create();
         QRhiRenderBuffer *depthStencil = rhi->newRenderBuffer(QRhiRenderBuffer::DepthStencil, QSize(512, 512));
         depthStencil->create();
@@ -2463,6 +2588,16 @@ QRhiTextureRenderTargetDescription::QRhiTextureRenderTargetDescription(const QRh
 
     \note depthStencilBuffer() and depthTexture() cannot be both set (cannot be
     non-null at the same time).
+
+    Using a QRhiRenderBuffer over a 2D QRhiTexture as the depth or
+    depth/stencil buffer is very common, and is the recommended approach for
+    applications. Using a QRhiTexture, and so setDepthTexture() becomes
+    relevant if the depth data is meant to be accessed (e.g. sampled in a
+    shader) afterwards, or when
+    \l{QRhiColorAttachment::setMultiViewCount()}{multiview rendering} is
+    involved (because then the depth texture must be a texture array).
+
+    \sa setDepthTexture()
  */
 
 /*!
@@ -2479,6 +2614,16 @@ QRhiTextureRenderTargetDescription::QRhiTextureRenderTargetDescription(const QRh
 
     \note depthStencilBuffer() and depthTexture() cannot be both set (cannot be
     non-null at the same time).
+
+    \a texture can either be a 2D texture or a 2D texture array (when texture
+    arrays are supported). Specifying a texture array is relevant in particular
+    with
+    \l{QRhiColorAttachment::setMultiViewCount()}{multiview rendering}.
+
+    \note If \a texture is a format with a stencil component, such as
+    \l QRhiTexture::D24S8, it will serve as the stencil buffer as well.
+
+    \sa setDepthStencilBuffer()
  */
 
 /*!
@@ -3672,7 +3817,7 @@ QRhiResource::Type QRhiBuffer::resourceType() const
  */
 QRhiBuffer::NativeBuffer QRhiBuffer::nativeBuffer()
 {
-    return {};
+    return { {}, 0 };
 }
 
 /*!
@@ -4738,7 +4883,8 @@ QRhiResource::Type QRhiSwapChainRenderTarget::resourceType() const
 
     For multisample rendering the common approach is to use a renderbuffer as
     the color attachment and set the non-multisample destination texture as the
-    \c{resolve texture}.
+    \c{resolve texture}. For more information, read the detailed description of
+    the \l QRhiColorAttachment class.
 
     \note Textures used in combination with QRhiTextureRenderTarget must be
     created with the QRhiTexture::RenderTarget flag.
@@ -4940,6 +5086,14 @@ QRhiResource::Type QRhiTextureRenderTarget::resourceType() const
     \note This is a RHI API with limited compatibility guarantees, see \l QRhi
     for details.
  */
+
+/*!
+    \typedef QRhiShaderResourceBindingSet
+    \relates QRhi
+    \since 6.7
+
+    Synonym for QRhiShaderResourceBindings.
+*/
 
 /*!
     \internal
@@ -6692,6 +6846,29 @@ QRhiResource::Type QRhiGraphicsPipeline::resourceType() const
  */
 
 /*!
+    \fn int QRhiGraphicsPipeline::multiViewCount() const
+    \return the view count. The default is 0, indicating no multiview rendering.
+    \since 6.7
+ */
+
+/*!
+    \fn void QRhiGraphicsPipeline::setMultiViewCount(int count)
+    Sets the view \a count for multiview rendering. The default is 0,
+    indicating no multiview rendering.
+    \a count must be 2 or larger to trigger multiview rendering.
+
+    Multiview is only available when the \l{QRhi::MultiView}{MultiView feature}
+    is reported as supported. The render target must be a 2D texture array, and
+    the color attachment for the render target must have the same \a count set.
+
+    See QRhiColorAttachment::setMultiViewCount() for further details on
+    multiview rendering.
+
+    \since 6.7
+    \sa QRhi::MultiView, QRhiColorAttachment::setMultiViewCount()
+ */
+
+/*!
     \class QRhiSwapChain
     \inmodule QtGui
     \since 6.6
@@ -6908,10 +7085,14 @@ QRhiResource::Type QRhiGraphicsPipeline::resourceType() const
     (same as SDR/sRGB) and linear colors. Conversion to the display's native
     color space (such as, HDR10) is performed by the windowing system. On
     Windows this is the canonical color space of the system compositor, and is
-    the recommended format for HDR swapchains in general.
+    the recommended format for HDR swapchains in general on desktop platforms.
 
     \value HDR10 10-bit unsigned int RGB or BGR with 2 bit alpha, high dynamic
     range, HDR10 (Rec. 2020) color space with an ST2084 PQ transfer function.
+
+    \value HDRExtendedDisplayP3Linear 16-bit float RGBA, high dynamic range,
+    extended linear Display P3 color space. The primary choice for HDR on
+    platforms such as iOS and VisionOS.
  */
 
 /*!
@@ -7068,10 +7249,9 @@ QRhiResource::Type QRhiSwapChain::resourceType() const
     is backed by two color buffers, one for each eye, instead of just one.
 
     When stereoscopic rendering is not supported, the return value will be
-    the default target. For the time being the only backend and 3D API where traditional
-    stereoscopic rendering is supported is OpenGL (excluding OpenGL ES), in
+    the default target. It is supported by all hardware backends except for Metal, in
     combination with \l QSurfaceFormat::StereoBuffers, assuming it is supported
-    by the graphics and display driver stack at run time. All other backends
+    by the graphics and display driver stack at run time. Metal and Null backends
     are going to return the default render target from this overload.
 
     \note the value must not be cached and reused between frames
@@ -7208,22 +7388,18 @@ QRhiRenderTarget *QRhiSwapChain::currentFrameRenderTarget(StereoTargetBuffer tar
     \brief Describes the high dynamic range related information of the
     swapchain's associated output.
 
-    To perform tonemapping, one often needs to know the maximum luminance of
-    the display the swapchain's window is associated with. While this is often
-    made user-configurable, it can be highly useful to set defaults based on
-    the values reported by the display itself, thus providing a decent starting
-    point.
+    To perform HDR-compatible tonemapping, where the target range is not [0,1],
+    one often needs to know the maximum luminance of the display the
+    swapchain's window is associated with. While this is often made
+    user-configurable (think brightness, gamma and similar settings in games),
+    it can be highly useful to set defaults based on the values reported by the
+    display itself, thus providing a decent starting point.
 
     There are some problems however: the information is exposed in different
     forms on different platforms, whereas with cross-platform graphics APIs
     there is often no associated solution at all, because managing such
     information is not in the scope of the API (and may rather be retrievable
     via other platform-specific means, if any).
-
-    The struct returned from QRhiSwapChain::hdrInfo() contains either some
-    hard-coded defaults, indicated by the \c isHardCodedDefaults field, or real
-    values received from an API such as DXGI (IDXGIOutput6) or Cocoa
-    (NSScreen). The default is 1000 nits for maximum luminance.
 
     With Metal on macOS/iOS, there is no luminance values exposed in the
     platform APIs. Instead, the maximum color component value, that would be
@@ -7233,8 +7409,21 @@ QRhiRenderTarget *QRhiSwapChain::currentFrameRenderTarget(StereoTargetBuffer tar
     fit.
 
     With an API like Vulkan, where there is no way to get such information, the
-    values are always the built-in defaults and \c isHardCodedDefaults is
-    always true.
+    values are always the built-in defaults.
+
+    Therefore, the struct returned from QRhiSwapChain::hdrInfo() contains
+    either some hard-coded defaults or real values received from an API such as
+    DXGI (IDXGIOutput6) or Cocoa (NSScreen). When no platform queries are
+    available (or needs using platform facilities out of scope for QRhi), the
+    hard-coded defaults are a maximum luminance of 1000 nits and an SDR white
+    level of 200.
+
+    The struct also exposes the presumed luminance behavior of the platform and
+    its compositor, to indicate what a color component value of 1.0 is treated
+    as in a HDR color buffer. In some cases it will be necessary to perform
+    color correction of non-HDR content composited with HDR content. To enable
+    this, the SDR white level is queried from the system on some platforms
+    (Windows) and exposed here.
 
     \note This is a RHI API with limited compatibility guarantees, see \l QRhi
     for details.
@@ -7253,16 +7442,20 @@ QRhiRenderTarget *QRhiSwapChain::currentFrameRenderTarget(StereoTargetBuffer tar
 */
 
 /*!
-    \variable QRhiSwapChainHdrInfo::isHardCodedDefaults
+    \enum QRhiSwapChainHdrInfo::LuminanceBehavior
 
-    Set to true when the data in the QRhiSwapChainHdrInfo consists entirely of
-    the hard-coded default values, for example because there is no way to query
-    the relevant information with a given graphics API or platform. (or because
-    querying it can be achieved only by means, e.g. platform APIs in some other
-    area, that are out of scope for the QRhi layer of the Qt graphics stack to
-    handle)
+    \value SceneReferred Indicates that the color value of 1.0 is interpreted
+    as 80 nits. This is the behavior of HDR-enabled windows with the Windows
+    compositor. See
+    \l{https://learn.microsoft.com/en-us/windows/win32/direct3darticles/high-dynamic-range}{this
+    page} for more information on HDR on Windows.
 
-    \sa QRhiSwapChain::hdrInfo()
+    \value DisplayReferred Indicates that the color value of 1.0 is interpreted
+    as the value of the SDR white. (which can be e.g. 200 nits, but will vary
+    depending on screen brightness) This is the behavior of HDR-enabled windows
+    on Apple platforms. See
+    \l{https://developer.apple.com/documentation/metal/hdr_content/displaying_hdr_content_in_a_metal_layer}{this
+    page} for more information on Apple's EDR system.
 */
 
 /*!
@@ -7292,7 +7485,27 @@ QRhiRenderTarget *QRhiSwapChain::currentFrameRenderTarget(StereoTargetBuffer tar
         } luminanceInNits;
     \endcode
 
-    Whereas for macOS/iOS, the current maximum and potential maximum color
+    On Windows the minimum and maximum luminance depends on the screen
+    brightness. While not relevant for desktops, on laptops the screen
+    brightness may change at any time. Increasing brightness implies decreased
+    maximum luminance. In addition, the results may also be dependent on the
+    HDR Content Brightness set in Windows Settings' System/Display/HDR view,
+    if there is such a setting.
+
+    Note however that the changes made to the laptop screen's brightness or in
+    the system settings while the application is running are not necessarily
+    reflected in the returned values, meaning calling hdrInfo() again may still
+    return the same luminance range as before for the rest of the process'
+    lifetime. The exact behavior is up to DXGI and Qt has no control over it.
+
+    \note The Windows compositor works in scene-referred mode for HDR content.
+    A color component value of 1.0 corresponds to a luminance of 80 nits. When
+    rendering non-HDR content (e.g. 2D UI elements), the correction of the
+    white level is often necessary. (e.g., outputting the fragment color (1, 1,
+    1) will likely lead to showing a shade of white that is too dim on-screen)
+    See \l sdrWhiteLevel.
+
+    For macOS/iOS, the current maximum and potential maximum color
     component values are provided:
 
     \code
@@ -7302,14 +7515,62 @@ QRhiRenderTarget *QRhiSwapChain::currentFrameRenderTarget(StereoTargetBuffer tar
         } colorComponentValue;
     \endcode
 
+    The value may depend on the screen brightness, which on laptops means that
+    the result may change in the next call to hdrInfo() if the brightness was
+    changed in the meantime. The maximum screen brightness implies a maximum
+    color value of 1.0.
+
+    \note Apple's EDR is display-referred. 1.0 corresponds to a luminance level
+    of SDR white (e.g. 200 nits), the value of which varies based on the screen
+    brightness and possibly other settings. The exact luminance value for that,
+    or the maximum luminance of the display, are not exposed to the
+    applications.
+
+    \note It has been observed that the color component values are not set to
+    the correct larger-than-1 value right away on startup on some macOS
+    systems, but the values tend to change during or after the first frame.
+
     \sa QRhiSwapChain::hdrInfo()
+*/
+
+/*!
+    \variable QRhiSwapChainHdrInfo::luminanceBehavior
+
+    Describes the platform's presumed behavior with regards to color values.
+
+    \sa sdrWhiteLevel
+ */
+
+/*!
+    \variable QRhiSwapChainHdrInfo::sdrWhiteLevel
+
+    On Windows this is the dynamic SDR white level in nits. The value is
+    dependent on the screen brightness (on laptops), and the SDR or HDR Content
+    Brightness settings in the Windows settings' System/Display/HDR view.
+
+    To perform white level correction for non-HDR (SDR) content, such as 2D UI
+    elemenents, multiply the final color with sdrWhiteLevel / 80.0 whenever
+    \l luminanceBehavior is SceneReferred. (assuming Windows and a linear
+    extended sRGB (scRGB) color space)
+
+    On other platforms the value is always a pre-defined value, 200. This may
+    not match the system's actual SDR white level, but the value of this
+    variable is not relevant in practice when the \l luminanceBehavior is
+    DisplayReferred, because then the color component value of 1.0 refers to
+    the SDR white by default.
+
+    \sa luminanceBehavior
 */
 
 /*!
     \return the HDR information for the associated display.
 
-    The returned struct is always the default one if createOrResize() has not
-    been successfully called yet.
+    Do not assume that this is a cheap operation. Depending on the platform,
+    this function makes various platform queries which may have a performance
+    impact.
+
+    \note Can be called before createOrResize() as long as the window is
+    \l{setWindow()}{set}.
 
     \note What happens when moving a window with an initialized swapchain
     between displays (HDR to HDR with different characteristics, HDR to SDR,
@@ -7324,10 +7585,11 @@ QRhiRenderTarget *QRhiSwapChain::currentFrameRenderTarget(StereoTargetBuffer tar
 QRhiSwapChainHdrInfo QRhiSwapChain::hdrInfo()
 {
     QRhiSwapChainHdrInfo info;
-    info.isHardCodedDefaults = true;
     info.limitsType = QRhiSwapChainHdrInfo::LuminanceInNits;
     info.limits.luminanceInNits.minLuminance = 0.0f;
     info.limits.luminanceInNits.maxLuminance = 1000.0f;
+    info.luminanceBehavior = QRhiSwapChainHdrInfo::SceneReferred;
+    info.sdrWhiteLevel = 200.0f;
     return info;
 }
 
@@ -7335,7 +7597,7 @@ QRhiSwapChainHdrInfo QRhiSwapChain::hdrInfo()
 QDebug operator<<(QDebug dbg, const QRhiSwapChainHdrInfo &info)
 {
     QDebugStateSaver saver(dbg);
-    dbg.nospace() << "QRhiSwapChainHdrInfo(" << (info.isHardCodedDefaults ? "with hard-coded defaults" : "queried from system");
+    dbg.nospace() << "QRhiSwapChainHdrInfo(";
     switch (info.limitsType) {
     case QRhiSwapChainHdrInfo::LuminanceInNits:
         dbg.nospace() << " minLuminance=" << info.limits.luminanceInNits.minLuminance
@@ -7344,6 +7606,14 @@ QDebug operator<<(QDebug dbg, const QRhiSwapChainHdrInfo &info)
     case QRhiSwapChainHdrInfo::ColorComponentValue:
         dbg.nospace() << " maxColorComponentValue=" << info.limits.colorComponentValue.maxColorComponentValue;
         dbg.nospace() << " maxPotentialColorComponentValue=" << info.limits.colorComponentValue.maxPotentialColorComponentValue;
+        break;
+    }
+    switch (info.luminanceBehavior) {
+    case QRhiSwapChainHdrInfo::SceneReferred:
+        dbg.nospace() << " scene-referred, SDR white level=" << info.sdrWhiteLevel;
+        break;
+    case QRhiSwapChainHdrInfo::DisplayReferred:
+        dbg.nospace() << " display-referred";
         break;
     }
     dbg.nospace() << ')';
@@ -7771,6 +8041,17 @@ void QRhiImplementation::textureFormatInfo(QRhiTexture::Format format, const QSi
         *bytesPerPixel = bpc;
 }
 
+bool QRhiImplementation::isStencilSupportingFormat(QRhiTexture::Format format) const
+{
+    switch (format) {
+    case QRhiTexture::D24S8:
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+
 bool QRhiImplementation::sanityCheckGraphicsPipeline(QRhiGraphicsPipeline *ps)
 {
     if (ps->cbeginShaderStages() == ps->cendShaderStages()) {
@@ -7967,7 +8248,8 @@ void QRhiImplementation::prepareForCreate(QRhi *rhi, QRhi::Implementation impl, 
 
 /*!
     \return a new QRhi instance with a backend for the graphics API specified
-    by \a impl with the specified \a flags.
+    by \a impl with the specified \a flags. \return \c nullptr if the
+    function fails.
 
     \a params must point to an instance of one of the backend-specific
     subclasses of QRhiInitParams, such as, QRhiVulkanInitParams,
@@ -8042,9 +8324,17 @@ QRhi *QRhi::create(Implementation impl, QRhiInitParams *params, Flags flags, QRh
 #endif
     case D3D12:
 #ifdef Q_OS_WIN
+#ifdef QRHI_D3D12_AVAILABLE
         r->d = new QRhiD3D12(static_cast<QRhiD3D12InitParams *>(params),
                              static_cast<QRhiD3D12NativeHandles *>(importDevice));
         break;
+#else
+        qWarning("Qt was built without Direct3D 12 support. "
+                 "This is likely due to having ancient SDK headers (such as d3d12.h) in the Qt build environment. "
+                 "Rebuild Qt with an SDK supporting D3D12 features introduced in Windows 10 version 1703, "
+                 "or use an MSVC build as those typically are built with more up-to-date SDKs.");
+        break;
+#endif
 #else
         qWarning("This platform has no Direct3D 12 support");
         break;
@@ -8186,9 +8476,11 @@ const char *QRhi::backendName() const
 
 /*!
     \enum QRhiDriverInfo::DeviceType
-    Specifies the graphics device's type, when the information is available. In
-    practice this is only applicable with Vulkan and Metal. With others the
-    value will always be UnknownDevice.
+    Specifies the graphics device's type, when the information is available.
+
+    In practice this is only applicable with Vulkan and Metal. With Direct 3D
+    11 and 12, using an adapter with the software flag set leads to the value
+    \c CpuDevice. Otherwise, and with OpenGL, the value is always UnknownDevice.
 
     \value UnknownDevice
     \value IntegratedDevice
@@ -9422,8 +9714,17 @@ void QRhiCommandBuffer::endExternal()
 }
 
 /*!
-    \return the last available timestamp, in seconds. The value indicates the
-    elapsed time on the GPU during the last completed frame.
+    \return the last available timestamp, in seconds, when
+    \l QRhi::EnableTimestamps was enabled when creating the QRhi. The value
+    indicates the elapsed time on the GPU during the last completed frame.
+
+    \note Do not expect results other than 0 when the QRhi::Timestamps feature
+    is not reported as supported, or when QRhi::EnableTimestamps was not passed
+    to QRhi::create(). There are exceptions to this, because with some graphics
+    APIs (Metal) timings are available without having to perform extra
+    operations (timestamp queries), but portable applications should always
+    consciously opt-in to timestamp collection when they know it is needed, and
+    call this function accordingly.
 
     Care must be exercised with the interpretation of the value, as its
     precision and granularity is often not controlled by Qt, and depends on the
@@ -9431,25 +9732,47 @@ void QRhiCommandBuffer::endExternal()
     the values between different graphics APIs and hardware is discouraged and
     may be meaningless.
 
-    The timing values may become available asynchronously. The returned value
-    may therefore be 0 or the last known value referring to some previous
-    frame. The value my also become 0 again under certain conditions, such as
-    when resizing the window. It can be expected that the most up-to-date
-    available value is retrieved in beginFrame() and becomes queriable via this
-    function once beginFrame() returns.
+    When the frame was recorded with \l{QRhi::beginFrame()}{beginFrame()} and
+    \l{QRhi::endFrame()}{endFrame()}, i.e., with a swapchain, the timing values
+    will likely become available asynchronously. The returned value may
+    therefore be 0 (e.g., for the first 1-2 frames) or the last known value
+    referring to some previous frame. The value my also
+    become 0 again under certain conditions, such as when resizing the window.
+    It can be expected that the most up-to-date available value is retrieved in
+    beginFrame() and becomes queriable via this function once beginFrame()
+    returns.
 
     \note Do not assume that the value refers to the previous
     (\c{currently_recorded - 1}) frame. It may refer to \c{currently_recorded -
     2} or \c{currently_recorded - 3} as well. The exact behavior may depend on
     the graphics API and its implementation.
 
-    \note The result is always 0 when the QRhi::Timestamps feature is not
-    reported as supported, or when QRhi::EnableTimestamps was not passed to
-    QRhi::create(). There are exceptions to the latter, because with some
-    graphics APIs timings are available without having to perform extra
-    operations, but portable applications should always consciously opt-in to
-    timestamp collection when they know it is needed, and call this function
-    accordingly.
+    On the other hand, with offscreen frames the returned value is up-to-date
+    once \l{QRhi::endOffscreenFrame()}{endOffscreenFrame()} returns, because
+    offscreen frames reduce GPU pipelining and wait the the commands to be
+    complete.
+
+    \note This means that, unlike with swapchain frames, with offscreen frames
+    the returned value is guaranteed to refer to the frame that has just been
+    submitted and completed. (assuming this function is called after
+    endOffscreenFrame() but before the next beginOffscreenFrame())
+
+    Watch out for the consequences of GPU frequency scaling and GPU clock
+    changes, depending on the platform. For example, on Windows the returned
+    timing may vary in a quite wide range between frames with modern graphics
+    cards, even when submitting frames with a similar, or the same workload.
+    This is out of scope for Qt to control and solve, generally speaking.
+    However, the D3D12 backend automatically calls
+    \l{https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device-setstablepowerstate}{ID3D12Device::SetStablePowerState()}
+    whenever the environment variable \c QT_D3D_STABLE_POWER_STATE is set to a
+    non-zero value. This can greatly stabilize the result. It can also have a
+    non-insignificant effect on the CPU-side timings measured via QElapsedTimer
+    for example, especially when offscreen frames are involved.
+
+    \note Do not and never ship applications to production with
+    \c QT_D3D_STABLE_POWER_STATE set. See the Windows API documentation for details.
+
+    \sa QRhi::Timestamps, QRhi::EnableTimestamps
  */
 double QRhiCommandBuffer::lastCompletedGpuTime()
 {

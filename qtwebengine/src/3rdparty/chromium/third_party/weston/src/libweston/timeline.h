@@ -33,6 +33,8 @@
 #include <libweston/weston-log.h>
 #include <wayland-server-core.h>
 
+#include "shared/helpers.h"
+
 enum timeline_type {
 	TLT_END = 0,
 	TLT_OUTPUT,
@@ -66,11 +68,6 @@ struct weston_timeline_subscription_object {
 	struct wl_list subscription_link;       /**< weston_timeline_subscription::objects */
 	struct wl_listener destroy_listener;
 };
-
-#define TYPEVERIFY(type, arg) ({		\
-	typeof(arg) tmp___ = (arg);		\
-	(void)((type)0 == tmp___);		\
-	tmp___; })
 
 /**
  * Should be used as the last argument when using TL_POINT macro

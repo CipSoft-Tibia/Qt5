@@ -56,6 +56,7 @@ component("crypto") {
     "unexportable_key.h",
     "unexportable_key_metrics.cc",
     "unexportable_key_metrics.h",
+    "unexportable_key_software_unsecure.cc",
   ]
 
   deps = [
@@ -111,8 +112,6 @@ component("crypto") {
   }
   if (is_win) {
     sources += [
-      "capi_util.cc",
-      "capi_util.h",
       "scoped_capi_types.h",
       "scoped_cng_types.h",
       "unexportable_key_win.cc",

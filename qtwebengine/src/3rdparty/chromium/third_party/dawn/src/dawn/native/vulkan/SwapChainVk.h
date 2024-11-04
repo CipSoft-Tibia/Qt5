@@ -27,32 +27,21 @@ class Device;
 class Texture;
 struct VulkanSurfaceInfo;
 
-class OldSwapChain : public OldSwapChainBase {
-  public:
-    static Ref<OldSwapChain> Create(Device* device, const SwapChainDescriptor* descriptor);
-
-  protected:
-    OldSwapChain(Device* device, const SwapChainDescriptor* descriptor);
-    ~OldSwapChain() override;
-
-    TextureBase* GetNextTextureImpl(const TextureDescriptor* descriptor) override;
-    MaybeError OnBeforePresent(TextureViewBase* texture) override;
-
-  private:
-    wgpu::TextureUsage mTextureUsage;
-};
-
-class SwapChain : public NewSwapChainBase {
+class SwapChain : public SwapChainBase {
   public:
     static ResultOrError<Ref<SwapChain>> Create(Device* device,
                                                 Surface* surface,
-                                                NewSwapChainBase* previousSwapChain,
+                                                SwapChainBase* previousSwapChain,
                                                 const SwapChainDescriptor* descriptor);
+
+    static ResultOrError<wgpu::TextureUsage> GetSupportedSurfaceUsage(const Device* device,
+                                                                      const Surface* surface);
+
     ~SwapChain() override;
 
   private:
-    using NewSwapChainBase::NewSwapChainBase;
-    MaybeError Initialize(NewSwapChainBase* previousSwapChain);
+    using SwapChainBase::SwapChainBase;
+    MaybeError Initialize(SwapChainBase* previousSwapChain);
     void DestroyImpl() override;
 
     struct Config {
@@ -75,11 +64,11 @@ class SwapChain : public NewSwapChainBase {
         bool needsBlit = false;
     };
     ResultOrError<Config> ChooseConfig(const VulkanSurfaceInfo& surfaceInfo) const;
-    ResultOrError<Ref<TextureViewBase>> GetCurrentTextureViewInternal(bool isReentrant = false);
+    ResultOrError<Ref<TextureBase>> GetCurrentTextureInternal(bool isReentrant = false);
 
-    // NewSwapChainBase implementation
+    // SwapChainBase implementation
     MaybeError PresentImpl() override;
-    ResultOrError<Ref<TextureViewBase>> GetCurrentTextureViewImpl() override;
+    ResultOrError<Ref<TextureBase>> GetCurrentTextureImpl() override;
     void DetachFromSurfaceImpl() override;
 
     Config mConfig;
@@ -87,6 +76,7 @@ class SwapChain : public NewSwapChainBase {
     VkSurfaceKHR mVkSurface = VK_NULL_HANDLE;
     VkSwapchainKHR mSwapChain = VK_NULL_HANDLE;
     std::vector<VkImage> mSwapChainImages;
+    std::vector<VkSemaphore> mSwapChainSemaphores;
     uint32_t mLastImageIndex = 0;
 
     Ref<Texture> mBlitTexture;

@@ -21,7 +21,7 @@ if(NOT "${QT_HOST_PATH}" STREQUAL "")
 endif()
 
 find_package(Qt6 ${PROJECT_VERSION} CONFIG OPTIONAL_COMPONENTS Network Gui Widgets Quick
-    QuickControls2)
+    QmlNetwork QuickControls2 QuickTest)
 qt_internal_project_setup()
 
 include("${CMAKE_CURRENT_LIST_DIR}/src/tools/qtprotobufgen/Qt6ProtobufToolsMacros.cmake")

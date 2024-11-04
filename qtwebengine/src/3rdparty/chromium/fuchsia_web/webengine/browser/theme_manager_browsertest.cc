@@ -11,11 +11,11 @@
 #include "base/strings/stringprintf.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
+#include "fuchsia_web/common/test/frame_for_test.h"
 #include "fuchsia_web/common/test/frame_test_util.h"
 #include "fuchsia_web/common/test/test_navigation_listener.h"
 #include "fuchsia_web/webengine/browser/context_impl.h"
 #include "fuchsia_web/webengine/browser/frame_impl.h"
-#include "fuchsia_web/webengine/test/frame_for_test.h"
 #include "fuchsia_web/webengine/test/test_data.h"
 #include "fuchsia_web/webengine/test/web_engine_browser_test.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -92,14 +92,12 @@ class ThemeManagerTest : public WebEngineBrowserTest,
             ->web_contents_for_test();
 
     for (const char* scheme : {kCssDark, kCssLight}) {
-      bool matches;
-      EXPECT_TRUE(ExecuteScriptAndExtractBool(
-          web_contents,
-          base::StringPrintf(
-              "window.domAutomationController.send(window."
-              "matchMedia('(prefers-color-scheme: %s)').matches)",
-              scheme),
-          &matches));
+      bool matches =
+          EvalJs(web_contents,
+                 base::StringPrintf(
+                     "window.matchMedia('(prefers-color-scheme: %s)').matches",
+                     scheme))
+              .ExtractBool();
 
       if (matches)
         return scheme;

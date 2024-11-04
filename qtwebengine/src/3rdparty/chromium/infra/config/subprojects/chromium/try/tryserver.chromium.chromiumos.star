@@ -5,7 +5,7 @@
 
 load("//lib/branches.star", "branches")
 load("//lib/builder_config.star", "builder_config")
-load("//lib/builders.star", "goma", "os", "reclient")
+load("//lib/builders.star", "os", "reclient", "siso")
 load("//lib/try.star", "try_")
 load("//lib/consoles.star", "consoles")
 load("//project.star", "settings")
@@ -23,6 +23,9 @@ try_.defaults.set(
     reclient_instance = reclient.instance.DEFAULT_UNTRUSTED,
     reclient_jobs = reclient.jobs.LOW_JOBS_FOR_CQ,
     service_account = try_.DEFAULT_SERVICE_ACCOUNT,
+    siso_enable_cloud_profiler = True,
+    siso_enable_cloud_trace = True,
+    siso_project = siso.project.DEFAULT_UNTRUSTED,
 )
 
 consoles.list_view(
@@ -57,6 +60,10 @@ try_.orchestrator_builder(
     branch_selector = branches.selector.CROS_LTS_BRANCHES,
     mirrors = ["ci/chromeos-amd64-generic-rel"],
     compilator = "chromeos-amd64-generic-rel-compilator",
+    experiments = {
+        # go/nplus1shardsproposal
+        "chromium.add_one_test_shard": 10,
+    },
     main_list_view = "try",
     tryjob = try_.job(),
     # TODO(crbug.com/1372179): Use orchestrator pool once overloaded test pools
@@ -67,8 +74,37 @@ try_.orchestrator_builder(
 try_.compilator_builder(
     name = "chromeos-amd64-generic-rel-compilator",
     branch_selector = branches.selector.CROS_LTS_BRANCHES,
-    cores = 8,
+    cores = "8|16",
     main_list_view = "try",
+)
+
+try_.orchestrator_builder(
+    name = "chromeos-amd64-generic-siso-rel",
+    description_html = """\
+This builder shadows chromeos-amd64-generic-rel builder to compare between Siso builds and Ninja builds.<br/>
+This builder should be removed after migrating chromeos-amd64-generic-rel from Ninja to Siso. b/277863839
+""",
+    mirrors = builder_config.copy_from("try/chromeos-amd64-generic-rel"),
+    try_settings = builder_config.try_settings(
+        is_compile_only = True,
+    ),
+    compilator = "chromeos-amd64-generic-siso-rel-compilator",
+    experiments = {
+        # go/nplus1shardsproposal
+        "chromium.add_one_test_shard": 10,
+    },
+    main_list_view = "try",
+    tryjob = try_.job(
+        # TODO(b/277863839): increase percentage.
+        # TODO(b/294160948): Siso doesn't support cxx actions for lacros.
+        experiment_percentage = 0.01,
+    ),
+)
+
+try_.compilator_builder(
+    name = "chromeos-amd64-generic-siso-rel-compilator",
+    main_list_view = "try",
+    siso_enabled = True,
 )
 
 try_.builder(
@@ -104,17 +140,6 @@ try_.builder(
     tryjob = try_.job(),
 )
 
-try_.orchestrator_builder(
-    name = "lacros-amd64-generic-rel-orchestrator",
-    branch_selector = branches.selector.CROS_BRANCHES,
-    mirrors = [
-        "ci/lacros-amd64-generic-rel",
-    ],
-    compilator = "lacros-amd64-generic-rel-compilator",
-    main_list_view = "try",
-    use_orchestrator_pool = True,
-)
-
 try_.builder(
     name = "lacros-amd64-generic-rel-skylab",
     branch_selector = branches.selector.CROS_BRANCHES,
@@ -148,16 +173,6 @@ try_.builder(
     ),
 )
 
-try_.compilator_builder(
-    name = "lacros-amd64-generic-rel-compilator",
-    branch_selector = branches.selector.CROS_BRANCHES,
-    cores = None,
-    # TODO (crbug.com/1287228): Set correct values once bots are set up
-    ssd = None,
-    goma_backend = goma.backend.RBE_PROD,
-    main_list_view = "try",
-)
-
 try_.builder(
     name = "lacros-amd64-generic-rel-skylab-fyi",
     branch_selector = branches.selector.CROS_BRANCHES,
@@ -183,7 +198,6 @@ try_.builder(
         ),
     ),
     builderless = not settings.is_main,
-    goma_backend = goma.backend.RBE_PROD,
     main_list_view = "try",
 )
 
@@ -212,7 +226,6 @@ try_.builder(
     mirrors = [
         "ci/lacros-arm64-generic-rel",
     ],
-    goma_backend = goma.backend.RBE_PROD,
     main_list_view = "try",
 )
 
@@ -238,7 +251,6 @@ try_.builder(
     mirrors = [
         "ci/chromeos-jacuzzi-rel",
     ],
-    goma_backend = goma.backend.RBE_PROD,
     main_list_view = "try",
 )
 
@@ -248,7 +260,6 @@ try_.builder(
     mirrors = [
         "ci/chromeos-octopus-rel",
     ],
-    goma_backend = goma.backend.RBE_PROD,
     main_list_view = "try",
 )
 
@@ -265,6 +276,10 @@ try_.orchestrator_builder(
     ],
     compilator = "linux-chromeos-rel-compilator",
     coverage_test_types = ["unit", "overall"],
+    experiments = {
+        # go/nplus1shardsproposal
+        "chromium.add_one_test_shard": 10,
+    },
     main_list_view = "try",
     tryjob = try_.job(),
     use_clang_coverage = True,
@@ -276,7 +291,37 @@ try_.orchestrator_builder(
 try_.compilator_builder(
     name = "linux-chromeos-rel-compilator",
     branch_selector = branches.selector.CROS_LTS_BRANCHES,
+    cores = 32,
     main_list_view = "try",
+)
+
+try_.orchestrator_builder(
+    name = "linux-chromeos-siso-rel",
+    description_html = """\
+This builder shadows linux-chromeos-rel builder to compare between Siso builds and Ninja builds.<br/>
+This builder should be removed after migrating linux-chromeos-rel from Ninja to Siso. b/277863839
+""",
+    mirrors = builder_config.copy_from("try/linux-chromeos-rel"),
+    try_settings = builder_config.try_settings(
+        is_compile_only = True,
+    ),
+    compilator = "linux-chromeos-siso-rel-compilator",
+    coverage_test_types = ["unit", "overall"],
+    experiments = {
+        # go/nplus1shardsproposal
+        "chromium.add_one_test_shard": 10,
+    },
+    main_list_view = "try",
+    tryjob = try_.job(
+        experiment_percentage = 20,
+    ),
+    use_clang_coverage = True,
+)
+
+try_.compilator_builder(
+    name = "linux-chromeos-siso-rel-compilator",
+    main_list_view = "try",
+    siso_enabled = True,
 )
 
 try_.builder(
@@ -294,10 +339,11 @@ try_.orchestrator_builder(
         "ci/linux-lacros-builder-rel",
         "ci/linux-lacros-tester-rel",
     ],
-    check_for_flakiness = True,
     compilator = "linux-lacros-rel-compilator",
+    coverage_test_types = ["unit", "overall"],
     main_list_view = "try",
     tryjob = try_.job(),
+    use_clang_coverage = True,
     # TODO(crbug.com/1372179): Use orchestrator pool once overloaded test pools
     # are addressed
     # use_orchestrator_pool = True,
@@ -308,6 +354,32 @@ try_.compilator_builder(
     branch_selector = branches.selector.CROS_BRANCHES,
     cores = 32,
     main_list_view = "try",
+)
+
+try_.orchestrator_builder(
+    name = "linux-lacros-siso-rel",
+    description_html = """\
+This builder shadows linux-lacros-rel builder to compare between Siso builds and Ninja builds.<br/>
+This builder should be removed after migrating linux-lacros-rel from Ninja to Siso. b/277863839
+""",
+    mirrors = builder_config.copy_from("try/linux-lacros-rel"),
+    try_settings = builder_config.try_settings(
+        is_compile_only = True,
+    ),
+    compilator = "linux-lacros-siso-rel-compilator",
+    coverage_test_types = ["unit", "overall"],
+    main_list_view = "try",
+    tryjob = try_.job(
+        experiment_percentage = 20,
+    ),
+    use_clang_coverage = True,
+)
+
+try_.compilator_builder(
+    name = "linux-lacros-siso-rel-compilator",
+    cores = 32,
+    main_list_view = "try",
+    siso_enabled = True,
 )
 
 try_.builder(
@@ -344,24 +416,4 @@ try_.builder(
             "chrome/test/data/webui/chromeos/chromebox_for_meetings/.+",
         ],
     ),
-)
-
-# RTS builders
-
-try_.builder(
-    name = "linux-chromeos-rel-rts",
-    mirrors = [
-        "ci/linux-chromeos-rel",
-    ],
-    try_settings = builder_config.try_settings(
-        rts_config = builder_config.rts_config(
-            condition = builder_config.rts_condition.ALWAYS,
-        ),
-    ),
-    builderless = False,
-    coverage_test_types = ["unit", "overall"],
-    tryjob = try_.job(
-        experiment_percentage = 5,
-    ),
-    use_clang_coverage = True,
 )

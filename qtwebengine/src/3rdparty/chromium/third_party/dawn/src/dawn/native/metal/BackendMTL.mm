@@ -146,14 +146,12 @@ MaybeError API_AVAILABLE(macos(10.13))
 MaybeError GetDevicePCIInfo(id<MTLDevice> device, PCIIDs* ids) {
     // [device registryID] is introduced on macOS 10.13+, otherwise workaround to get vendor
     // id by vendor name on old macOS
-    if (@available(macos 10.13, *)) {
-        auto result = GetDeviceIORegistryPCIInfo(device, ids);
-        if (result.IsError()) {
-            dawn::WarningLog() << "GetDeviceIORegistryPCIInfo failed: "
-                               << result.AcquireError()->GetFormattedMessage();
-        } else if (ids->vendorId != 0) {
-            return result;
-        }
+    auto result = GetDeviceIORegistryPCIInfo(device, ids);
+    if (result.IsError()) {
+        dawn::WarningLog() << "GetDeviceIORegistryPCIInfo failed: "
+                           << result.AcquireError()->GetFormattedMessage();
+    } else if (ids->vendorId != 0) {
+        return result;
     }
 
     return GetVendorIdFromVendors(device, ids);
@@ -171,29 +169,12 @@ MaybeError GetDevicePCIInfo(id<MTLDevice> device, PCIIDs* ids) {
 #error "Unsupported Apple platform."
 #endif
 
-// This method has seen hard-to-debug crashes. See crbug.com/dawn/1102.
-// For now, it is written defensively, with many potentially unnecessary guards until
-// we narrow down the cause of the problem.
-DAWN_NOINLINE bool IsGPUCounterSupported(id<MTLDevice> device,
-                                         MTLCommonCounterSet counterSetName,
-                                         std::vector<MTLCommonCounter> counterNames)
+bool IsGPUCounterSupported(id<MTLDevice> device,
+                           MTLCommonCounterSet counterSetName,
+                           std::vector<MTLCommonCounter> counterNames)
     API_AVAILABLE(macos(10.15), ios(14.0)) {
-    NSPRef<id<MTLCounterSet>> counterSet = nil;
-    if (![device respondsToSelector:@selector(counterSets)]) {
-        dawn::ErrorLog() << "MTLDevice does not respond to selector: counterSets.";
-        return false;
-    }
-    NSArray<id<MTLCounterSet>>* counterSets = device.counterSets;
-    if (counterSets == nil) {
-        // On some systems, [device counterSets] may be null and not an empty array.
-        return false;
-    }
-    // MTLDevice’s counterSets property declares which counter sets it supports. Check
-    // whether it's available on the device before requesting a counter set.
-    // Note: Don't do for..in loop to avoid potentially crashy interaction with
-    // NSFastEnumeration.
-    for (NSUInteger i = 0; i < counterSets.count; ++i) {
-        id<MTLCounterSet> set = [counterSets objectAtIndex:i];
+    id<MTLCounterSet> counterSet = nil;
+    for (id<MTLCounterSet> set in [device counterSets]) {
         if ([set.name caseInsensitiveCompare:counterSetName] == NSOrderedSame) {
             counterSet = set;
             break;
@@ -205,25 +186,13 @@ DAWN_NOINLINE bool IsGPUCounterSupported(id<MTLDevice> device,
         return false;
     }
 
-    if (![*counterSet respondsToSelector:@selector(counters)]) {
-        dawn::ErrorLog() << "MTLCounterSet does not respond to selector: counters.";
-        return false;
-    }
-    NSArray<id<MTLCounter>>* countersInSet = (*counterSet).counters;
-    if (countersInSet == nil) {
-        // On some systems, [MTLCounterSet counters] may be null and not an empty array.
-        return false;
-    }
-
+    NSArray<id<MTLCounter>>* countersInSet = [counterSet counters];
     // A GPU might support a counter set, but only support a subset of the counters in that
     // set, check if the counter set supports all specific counters we need. Return false
     // if there is a counter unsupported.
     for (MTLCommonCounter counterName : counterNames) {
         bool found = false;
-        // Note: Don't do for..in loop to avoid potentially crashy interaction with
-        // NSFastEnumeration.
-        for (NSUInteger i = 0; i < countersInSet.count; ++i) {
-            id<MTLCounter> counter = [countersInSet objectAtIndex:i];
+        for (id<MTLCounter> counter in countersInSet) {
             if ([counter.name caseInsensitiveCompare:counterName] == NSOrderedSame) {
                 found = true;
                 break;
@@ -251,16 +220,16 @@ DAWN_NOINLINE bool IsGPUCounterSupported(id<MTLDevice> device,
 
 }  // anonymous namespace
 
-// The Metal backend's Adapter.
+// The Metal backend's PhysicalDevice.
 
-class Adapter : public AdapterBase {
+class PhysicalDevice : public PhysicalDeviceBase {
   public:
-    Adapter(InstanceBase* instance, id<MTLDevice> device)
-        : AdapterBase(instance, wgpu::BackendType::Metal), mDevice(device) {
+    PhysicalDevice(InstanceBase* instance, NSPRef<id<MTLDevice>> device)
+        : PhysicalDeviceBase(instance, wgpu::BackendType::Metal), mDevice(std::move(device)) {
         mName = std::string([[*mDevice name] UTF8String]);
 
         PCIIDs ids;
-        if (!instance->ConsumedError(GetDevicePCIInfo(device, &ids))) {
+        if (!instance->ConsumedError(GetDevicePCIInfo(*mDevice, &ids))) {
             mVendorId = ids.vendorId;
             mDeviceId = ids.deviceId;
         }
@@ -269,7 +238,7 @@ class Adapter : public AdapterBase {
         mAdapterType = wgpu::AdapterType::IntegratedGPU;
         const char* systemName = "iOS ";
 #elif DAWN_PLATFORM_IS(MACOS)
-        if ([device isLowPower]) {
+        if ([*mDevice isLowPower]) {
             mAdapterType = wgpu::AdapterType::IntegratedGPU;
         } else {
             mAdapterType = wgpu::AdapterType::DiscreteGPU;
@@ -283,26 +252,29 @@ class Adapter : public AdapterBase {
         mDriverDescription = "Metal driver on " + std::string(systemName) + [osVersion UTF8String];
     }
 
-    // AdapterBase Implementation
+    // PhysicalDeviceBase Implementation
     bool SupportsExternalImages() const override {
         // Via dawn::native::metal::WrapIOSurface
         return true;
     }
 
+    bool SupportsFeatureLevel(FeatureLevel) const override { return true; }
+
   private:
-    ResultOrError<Ref<DeviceBase>> CreateDeviceImpl(const DeviceDescriptor* descriptor,
+    ResultOrError<Ref<DeviceBase>> CreateDeviceImpl(AdapterBase* adapter,
+                                                    const DeviceDescriptor* descriptor,
                                                     const TogglesState& deviceToggles) override {
-        return Device::Create(this, mDevice, descriptor, deviceToggles);
+        return Device::Create(adapter, mDevice, descriptor, deviceToggles);
     }
+
+    void SetupBackendAdapterToggles(TogglesState* adapterToggles) const override {}
 
     void SetupBackendDeviceToggles(TogglesState* deviceToggles) const override {
         {
             bool haveStoreAndMSAAResolve = false;
 #if DAWN_PLATFORM_IS(MACOS)
-            if (@available(macOS 10.12, *)) {
-                haveStoreAndMSAAResolve =
-                    [*mDevice supportsFeatureSet:MTLFeatureSet_macOS_GPUFamily1_v2];
-            }
+            haveStoreAndMSAAResolve =
+                [*mDevice supportsFeatureSet:MTLFeatureSet_macOS_GPUFamily1_v2];
 #elif DAWN_PLATFORM_IS(IOS)
             haveStoreAndMSAAResolve = [*mDevice supportsFeatureSet:MTLFeatureSet_iOS_GPUFamily3_v2];
 #endif
@@ -404,6 +376,10 @@ class Adapter : public AdapterBase {
                                    true);
         }
 
+        if (gpu_info::IsApple(vendorId)) {
+            deviceToggles->Default(Toggle::MetalFillEmptyOcclusionQueriesWithZero, true);
+        }
+
         // Local testing shows the workaround is needed on AMD Radeon HD 8870M (gcn-1) MacOS 12.1;
         // not on AMD Radeon Pro 555 (gcn-4) MacOS 13.1.
         // Conservatively enable the workaround on AMD unless the system is MacOS 13.1+
@@ -428,41 +404,73 @@ class Adapter : public AdapterBase {
     MaybeError InitializeImpl() override { return {}; }
 
     void InitializeSupportedFeaturesImpl() override {
-        // Check compressed texture format with deprecated MTLFeatureSet way.
+        // Check texture formats with deprecated MTLFeatureSet way.
 #if DAWN_PLATFORM_IS(MACOS)
         if ([*mDevice supportsFeatureSet:MTLFeatureSet_macOS_GPUFamily1_v1]) {
-            mSupportedFeatures.EnableFeature(Feature::TextureCompressionBC);
+            EnableFeature(Feature::TextureCompressionBC);
+        }
+        if (@available(macOS 10.14, *)) {
+            if ([*mDevice supportsFeatureSet:MTLFeatureSet_macOS_GPUFamily2_v1]) {
+                EnableFeature(Feature::Float32Filterable);
+            }
         }
 #endif
 #if DAWN_PLATFORM_IS(IOS)
         if ([*mDevice supportsFeatureSet:MTLFeatureSet_iOS_GPUFamily1_v1]) {
-            mSupportedFeatures.EnableFeature(Feature::TextureCompressionETC2);
+            EnableFeature(Feature::TextureCompressionETC2);
         }
         if ([*mDevice supportsFeatureSet:MTLFeatureSet_iOS_GPUFamily2_v1]) {
-            mSupportedFeatures.EnableFeature(Feature::TextureCompressionASTC);
+            EnableFeature(Feature::TextureCompressionASTC);
         }
 #endif
 
-        // Check compressed texture format with MTLGPUFamily
+        // Check texture formats with MTLGPUFamily
         if (@available(macOS 10.15, iOS 13.0, *)) {
             if ([*mDevice supportsFamily:MTLGPUFamilyMac1]) {
-                mSupportedFeatures.EnableFeature(Feature::TextureCompressionBC);
+                EnableFeature(Feature::TextureCompressionBC);
+            }
+            if ([*mDevice supportsFamily:MTLGPUFamilyMac2]) {
+                EnableFeature(Feature::Float32Filterable);
             }
             if ([*mDevice supportsFamily:MTLGPUFamilyApple2]) {
-                mSupportedFeatures.EnableFeature(Feature::TextureCompressionETC2);
+                EnableFeature(Feature::TextureCompressionETC2);
             }
             if ([*mDevice supportsFamily:MTLGPUFamilyApple3]) {
-                mSupportedFeatures.EnableFeature(Feature::TextureCompressionASTC);
+                EnableFeature(Feature::TextureCompressionASTC);
             }
         }
 
         if (@available(macOS 10.15, iOS 14.0, *)) {
+            auto ShouldLeakCounterSets = [this] {
+                // Intentionally leak counterSets to workaround an issue where the driver
+                // over-releases the handle if it is accessed more than once. It becomes a zombie.
+                // For more information, see crbug.com/1443658.
+                // Appears to occur on Intel prior to MacOS 11, and continuing on Intel Gen 7 after
+                // that OS version.
+                uint32_t vendorId = GetVendorId();
+                uint32_t deviceId = GetDeviceId();
+                if (gpu_info::IsIntelGen7(vendorId, deviceId)) {
+                    return true;
+                }
+                if (gpu_info::IsIntelGen11(vendorId, deviceId)) {
+                    return true;
+                }
+#if DAWN_PLATFORM_IS(MACOS)
+                if (gpu_info::IsIntel(vendorId) && !IsMacOSVersionAtLeast(11)) {
+                    return true;
+                }
+#endif
+                return false;
+            };
+            if (ShouldLeakCounterSets()) {
+                [[*mDevice counterSets] retain];
+            }
             if (IsGPUCounterSupported(
                     *mDevice, MTLCommonCounterSetStatistic,
                     {MTLCommonCounterVertexInvocations, MTLCommonCounterClipperInvocations,
                      MTLCommonCounterClipperPrimitivesOut, MTLCommonCounterFragmentInvocations,
                      MTLCommonCounterComputeKernelInvocations})) {
-                mSupportedFeatures.EnableFeature(Feature::PipelineStatisticsQuery);
+                EnableFeature(Feature::PipelineStatisticsQuery);
             }
 
             if (IsGPUCounterSupported(*mDevice, MTLCommonCounterSetTimestamp,
@@ -486,33 +494,67 @@ class Adapter : public AdapterBase {
 #endif
 
                 if (enableTimestampQuery) {
-                    mSupportedFeatures.EnableFeature(Feature::TimestampQuery);
+                    EnableFeature(Feature::TimestampQuery);
                 }
 
                 if (enableTimestampQueryInsidePasses) {
-                    mSupportedFeatures.EnableFeature(Feature::TimestampQueryInsidePasses);
+                    EnableFeature(Feature::TimestampQueryInsidePasses);
                 }
             }
         }
 
         if (@available(macOS 10.11, iOS 11.0, *)) {
-            mSupportedFeatures.EnableFeature(Feature::DepthClipControl);
+            EnableFeature(Feature::DepthClipControl);
         }
 
         if (@available(macOS 10.11, iOS 9.0, *)) {
-            mSupportedFeatures.EnableFeature(Feature::Depth32FloatStencil8);
+            EnableFeature(Feature::Depth32FloatStencil8);
         }
 
         // Uses newTextureWithDescriptor::iosurface::plane which is available
         // on ios 11.0+ and macOS 11.0+
         if (@available(macOS 10.11, iOS 11.0, *)) {
-            mSupportedFeatures.EnableFeature(Feature::MultiPlanarFormats);
+            EnableFeature(Feature::DawnMultiPlanarFormats);
         }
 
-        mSupportedFeatures.EnableFeature(Feature::IndirectFirstInstance);
-        mSupportedFeatures.EnableFeature(Feature::ShaderF16);
-        mSupportedFeatures.EnableFeature(Feature::RG11B10UfloatRenderable);
-        mSupportedFeatures.EnableFeature(Feature::BGRA8UnormStorage);
+        if (@available(macOS 11.0, iOS 10.0, *)) {
+            // Memoryless storage mode for Metal textures is available only
+            // from the Apple2 family of GPUs on.
+            if ([*mDevice supportsFamily:MTLGPUFamilyApple2]) {
+                EnableFeature(Feature::TransientAttachments);
+            }
+        }
+
+        EnableFeature(Feature::IndirectFirstInstance);
+        EnableFeature(Feature::ShaderF16);
+        EnableFeature(Feature::RG11B10UfloatRenderable);
+        EnableFeature(Feature::BGRA8UnormStorage);
+        EnableFeature(Feature::SurfaceCapabilities);
+        EnableFeature(Feature::MSAARenderToSingleSampled);
+        EnableFeature(Feature::DualSourceBlending);
+        EnableFeature(Feature::ChromiumExperimentalDp4a);
+
+        // SIMD-scoped permute operations is supported by GPU family Metal3, Apple6, Apple7, Apple8,
+        // and Mac2.
+        // https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf
+        // Metal3 family is a superset of Apple7 and Apple8, and introduced in macOS 13.0+ or
+        // iOS 16.0+. However when building with Chrome, mac_sdk_official_version in mac_sdk.gni
+        // explicitly use Xcode 13.3 and MacOS 12.3 version 21E226, so does not support
+        // MTLGPUFamilyMetal3.
+        // Note that supportsFamily: method requires macOS 10.15+ or iOS 13.0+
+        if (@available(macOS 10.15, iOS 13.0, *)) {
+            if ([*mDevice supportsFamily:MTLGPUFamilyApple6] ||
+                [*mDevice supportsFamily:MTLGPUFamilyMac2]) {
+                EnableFeature(Feature::ChromiumExperimentalSubgroups);
+            }
+        }
+
+        EnableFeature(Feature::SharedTextureMemoryIOSurface);
+        if (@available(macOS 10.14, iOS 12.0, *)) {
+            EnableFeature(Feature::SharedFenceMTLSharedEvent);
+        }
+
+        EnableFeature(Feature::Norm16TextureFormats);
     }
 
     void InitializeVendorArchitectureImpl() override {
@@ -587,7 +629,7 @@ class Adapter : public AdapterBase {
             }
         }
 
-#if TARGET_OS_OSX
+#if DAWN_PLATFORM_IS(MACOS)
         if (@available(macOS 10.14, *)) {
             if ([*mDevice supportsFeatureSet:MTLFeatureSet_macOS_GPUFamily2_v1]) {
                 return MTLGPUFamily::Mac2;
@@ -596,7 +638,7 @@ class Adapter : public AdapterBase {
         if ([*mDevice supportsFeatureSet:MTLFeatureSet_macOS_GPUFamily1_v1]) {
             return MTLGPUFamily::Mac1;
         }
-#elif TARGET_OS_IOS
+#elif DAWN_PLATFORM_IS(IOS)
         if (@available(iOS 10.11, *)) {
             if ([*mDevice supportsFeatureSet:MTLFeatureSet_iOS_GPUFamily4_v1]) {
                 return MTLGPUFamily::Apple4;
@@ -716,10 +758,10 @@ class Adapter : public AdapterBase {
         //   buffers, 128 textures, and 16 samplers. Mac GPU families
         //   with tier 2 argument buffers support 500000 buffers and
         //   textures, and 1024 unique samplers
-        limits->v1.maxDynamicUniformBuffersPerPipelineLayout =
-            limits->v1.maxUniformBuffersPerShaderStage;
-        limits->v1.maxDynamicStorageBuffersPerPipelineLayout =
-            limits->v1.maxStorageBuffersPerShaderStage;
+        // Without argument buffers, we have slots [0 -> 29], inclusive, which is 30 total.
+        // 8 are used by maxVertexBuffers.
+        limits->v1.maxDynamicUniformBuffersPerPipelineLayout = 11u;
+        limits->v1.maxDynamicStorageBuffersPerPipelineLayout = 11u;
 
         // The WebGPU limit is the limit across all vertex buffers, combined.
         limits->v1.maxVertexAttributes =
@@ -755,9 +797,8 @@ class Adapter : public AdapterBase {
         return {};
     }
 
-    MaybeError ValidateFeatureSupportedWithDeviceTogglesImpl(
-        wgpu::FeatureName feature,
-        const TogglesState& deviceToggles) override {
+    MaybeError ValidateFeatureSupportedWithTogglesImpl(wgpu::FeatureName feature,
+                                                       const TogglesState& toggles) const override {
         return {};
     }
 
@@ -774,41 +815,44 @@ Backend::Backend(InstanceBase* instance) : BackendConnection(instance, wgpu::Bac
 
 Backend::~Backend() = default;
 
-std::vector<Ref<AdapterBase>> Backend::DiscoverDefaultAdapters() {
-    AdapterDiscoveryOptions options;
-    auto result = DiscoverAdapters(&options);
-    if (result.IsError()) {
-        GetInstance()->ConsumedError(result.AcquireError());
+std::vector<Ref<PhysicalDeviceBase>> Backend::DiscoverPhysicalDevices(
+    const RequestAdapterOptions* options) {
+    if (options->forceFallbackAdapter) {
         return {};
     }
-    return result.AcquireSuccess();
+    if (!mPhysicalDevices.empty()) {
+        // Devices already discovered.
+        return std::vector<Ref<PhysicalDeviceBase>>{mPhysicalDevices};
+    }
+    @autoreleasepool {
+#if DAWN_PLATFORM_IS(MACOS)
+        for (id<MTLDevice> device in MTLCopyAllDevices()) {
+            Ref<PhysicalDevice> physicalDevice =
+                AcquireRef(new PhysicalDevice(GetInstance(), AcquireNSPRef(device)));
+            if (!GetInstance()->ConsumedErrorAndWarnOnce(physicalDevice->Initialize())) {
+                mPhysicalDevices.push_back(std::move(physicalDevice));
+            }
+        }
+#endif
+
+        // iOS only has a single device so MTLCopyAllDevices doesn't exist there.
+#if DAWN_PLATFORM_IS(IOS)
+        Ref<PhysicalDevice> physicalDevice = AcquireRef(
+            new PhysicalDevice(GetInstance(), AcquireNSPRef(MTLCreateSystemDefaultDevice())));
+        if (!GetInstance()->ConsumedErrorAndWarnOnce(physicalDevice->Initialize())) {
+            mPhysicalDevices.push_back(std::move(physicalDevice));
+        }
+#endif
+    }
+    return std::vector<Ref<PhysicalDeviceBase>>{mPhysicalDevices};
 }
 
-ResultOrError<std::vector<Ref<AdapterBase>>> Backend::DiscoverAdapters(
-    const AdapterDiscoveryOptionsBase* optionsBase) {
-    ASSERT(optionsBase->backendType == WGPUBackendType_Metal);
+void Backend::ClearPhysicalDevices() {
+    mPhysicalDevices.clear();
+}
 
-    std::vector<Ref<AdapterBase>> adapters;
-#if DAWN_PLATFORM_IS(MACOS)
-    NSRef<NSArray<id<MTLDevice>>> devices = AcquireNSRef(MTLCopyAllDevices());
-
-    for (id<MTLDevice> device in devices.Get()) {
-        Ref<Adapter> adapter = AcquireRef(new Adapter(GetInstance(), device));
-        if (!GetInstance()->ConsumedError(adapter->Initialize())) {
-            adapters.push_back(std::move(adapter));
-        }
-    }
-#endif
-
-    // iOS only has a single device so MTLCopyAllDevices doesn't exist there.
-#if defined(DAWN_PLATFORM_IOS)
-    Ref<Adapter> adapter = AcquireRef(new Adapter(GetInstance(), MTLCreateSystemDefaultDevice()));
-    if (!GetInstance()->ConsumedError(adapter->Initialize())) {
-        adapters.push_back(std::move(adapter));
-    }
-#endif
-
-    return adapters;
+size_t Backend::GetPhysicalDeviceCountForTesting() const {
+    return mPhysicalDevices.size();
 }
 
 BackendConnection* Connect(InstanceBase* instance) {

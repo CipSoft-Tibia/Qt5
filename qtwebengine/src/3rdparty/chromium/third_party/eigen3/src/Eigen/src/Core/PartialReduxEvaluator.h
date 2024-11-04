@@ -93,7 +93,7 @@ struct packetwise_redux_impl<Func, Evaluator, CompleteUnrolling>
  * This specialization is not required for general reductions, which is
  * why it is defined here.
  */
-template<typename Func, typename Evaluator, int Start>
+template<typename Func, typename Evaluator, Index Start>
 struct redux_vec_unroller<Func, Evaluator, Start, 0>
 {
   template<typename PacketType>

@@ -3,12 +3,13 @@
 // found in the LICENSE file.
 
 import * as Common from '../../core/common/common.js';
+import * as i18n from '../../core/i18n/i18n.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
 import type * as Resources from './application.js';
+import * as PreloadingHelper from './preloading/helper/helper.js';
 
-import * as i18n from '../../core/i18n/i18n.js';
 const UIStrings = {
   /**
    *@description Text in Application Panel Sidebar of the Application panel
@@ -92,9 +93,9 @@ UI.ActionRegistration.registerActionExtension({
 
 UI.ActionRegistration.registerActionExtension({
   actionId: 'background-service.toggle-recording',
-  iconClass: UI.ActionRegistration.IconClass.LARGEICON_START_RECORDING,
+  iconClass: UI.ActionRegistration.IconClass.START_RECORDING,
   toggleable: true,
-  toggledIconClass: UI.ActionRegistration.IconClass.LARGEICON_STOP_RECORDING,
+  toggledIconClass: UI.ActionRegistration.IconClass.STOP_RECORDING,
   toggleWithRedColor: true,
   contextTypes() {
     return maybeRetrieveContextTypes(Resources => [Resources.BackgroundServiceView.BackgroundServiceView]);
@@ -149,5 +150,27 @@ Common.Revealer.registerRevealer({
   async loadRevealer() {
     const Resources = await loadResourcesModule();
     return Resources.ResourcesPanel.FrameDetailsRevealer.instance();
+  },
+});
+
+Common.Revealer.registerRevealer({
+  contextTypes() {
+    return [PreloadingHelper.PreloadingForward.RuleSetView];
+  },
+  destination: Common.Revealer.RevealerDestination.APPLICATION_PANEL,
+  async loadRevealer() {
+    const Resources = await loadResourcesModule();
+    return Resources.ResourcesPanel.RuleSetViewRevealer.instance();
+  },
+});
+
+Common.Revealer.registerRevealer({
+  contextTypes() {
+    return [PreloadingHelper.PreloadingForward.AttemptViewWithFilter];
+  },
+  destination: Common.Revealer.RevealerDestination.APPLICATION_PANEL,
+  async loadRevealer() {
+    const Resources = await loadResourcesModule();
+    return Resources.ResourcesPanel.AttemptViewWithFilterRevealer.instance();
   },
 });

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifndef NO_WEBRTC
+
 #include "connections/implementation/mediums/webrtc/connection_flow.h"
 
 #include <iterator>
@@ -493,12 +495,17 @@ bool ConnectionFlow::CloseOnSignalingThread() {
     return false;
   }
   state_ = State::kEnded;
+  // Close the socket wrapper before terminating the PeerConnection
+  // since the teardown process of the PC may close threads that are
+  // otherwise depended upon by objects kept alive by the socket_wrapper.
+  if (socket_wrapper_.IsValid()) socket_wrapper_.Close();
+
   // This prevents other tasks from queuing on the signaling thread for this
   // object.
   auto pc = GetAndResetPeerConnection();
 
   NEARBY_LOG(INFO, "Closing WebRTC peer connection.");
-  // NOTE: Closing the peer conection will close the data channel and thus the
+  // NOTE: Closing the peer connection will close the data channel and thus the
   // socket implicitly.
   if (pc) pc->Close();
   NEARBY_LOG(INFO, "Closed WebRTC peer connection.");
@@ -558,3 +565,5 @@ ConnectionFlow::GetAndResetPeerConnection() {
 }  // namespace mediums
 }  // namespace connections
 }  // namespace nearby
+
+#endif

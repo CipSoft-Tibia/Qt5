@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 /* possible connection parameters */
 
 #ifndef TST_DATABASES_H
@@ -118,12 +118,14 @@ public:
         if (port > 0)
             cName += QLatin1Char(':') + QString::number(port);
 
+        QString opts = params;
         if (driver == "QSQLITE") {
             // Since the database for sqlite is generated at runtime it's always
             // available, but we use QTempDir so it's always in a different
             // location. Thus, let's ignore the path completely.
             cName = "SQLite";
             qInfo("SQLite will use the database located at %ls", qUtf16Printable(dbName));
+            opts += QStringLiteral(";QSQLITE_ENABLE_NON_ASCII_CASE_FOLDING");
         }
 
         auto db = QSqlDatabase::addDatabase(driver, cName);
@@ -137,7 +139,7 @@ public:
         db.setPassword(passwd);
         db.setHostName(host);
         db.setPort(port);
-        db.setConnectOptions(params);
+        db.setConnectOptions(opts);
         dbNames.append(cName);
     }
 
@@ -516,7 +518,10 @@ protected:
     void cleanup()
     {
         QSqlQuery q(m_db);
-        q.exec("DROP PROCEDURE IF EXISTS " + m_procName);
+        if (m_db.driverName() == "QIBASE")
+            q.exec("DROP PROCEDURE " + m_procName);
+        else
+            q.exec("DROP PROCEDURE IF EXISTS " + m_procName);
     }
 private:
     QSqlDatabase m_db;

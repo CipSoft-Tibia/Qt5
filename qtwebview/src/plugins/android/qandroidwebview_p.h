@@ -19,8 +19,12 @@
 #include <QtCore/qurl.h>
 #include <QtGui/qwindow.h>
 #include <QtCore/qjniobject.h>
+#include <QtCore/qjnitypes.h>
 
 #include <private/qabstractwebview_p.h>
+
+Q_DECLARE_JNI_CLASS(WebViewController, "org/qtproject/qt/android/view/QtAndroidWebViewController");
+Q_DECLARE_JNI_CLASS(WebView, "android/webkit/WebView");
 
 QT_BEGIN_NAMESPACE
 
@@ -28,7 +32,8 @@ class QAndroidWebViewSettingsPrivate : public QAbstractWebViewSettings
 {
     Q_OBJECT
 public:
-    explicit QAndroidWebViewSettingsPrivate(QJniObject viewController, QObject *p = nullptr);
+    explicit QAndroidWebViewSettingsPrivate(const QtJniTypes::WebViewController &viewController,
+                                            QObject *p = nullptr);
 
     bool localStorageEnabled() const;
     bool javascriptEnabled() const;
@@ -42,7 +47,7 @@ public Q_SLOTS:
     void setAllowFileAccess(bool enabled);
 
 private:
-    QJniObject m_viewController;
+    QtJniTypes::WebViewController m_viewController;
 };
 
 class QAndroidWebViewPrivate : public QAbstractWebView
@@ -87,11 +92,10 @@ private Q_SLOTS:
     void onApplicationStateChanged(Qt::ApplicationState state);
 
 private:
-    quintptr m_id;
     quint64 m_callbackId;
     QWindow *m_window;
-    QJniObject m_viewController;
-    QJniObject m_webView;
+    QtJniTypes::WebViewController m_viewController;
+    QtJniTypes::WebView m_webView;
     QAndroidWebViewSettingsPrivate *m_settings;
 };
 

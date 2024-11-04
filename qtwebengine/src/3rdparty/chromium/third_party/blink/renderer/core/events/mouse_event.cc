@@ -524,8 +524,9 @@ void MouseEvent::ComputeRelativePosition() {
     PaintLayer* layer = n->GetLayoutObject()->EnclosingLayer();
     layer = layer->EnclosingSelfPaintingLayer();
 
-    PhysicalOffset physical_offset;
-    layer->ConvertToLayerCoords(nullptr, physical_offset);
+    PhysicalOffset physical_offset =
+        layer->GetLayoutObject().LocalToAbsolutePoint(PhysicalOffset(),
+                                                      kIgnoreTransforms);
     layer_location_ -= gfx::Vector2dF(physical_offset);
 
     layer_location_.Scale(inverse_zoom_factor);

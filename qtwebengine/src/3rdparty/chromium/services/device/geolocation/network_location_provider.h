@@ -24,13 +24,14 @@
 #include "services/device/geolocation/wifi_data_provider_handle.h"
 #include "services/device/public/cpp/geolocation/geolocation_manager.h"
 #include "services/device/public/cpp/geolocation/location_provider.h"
+#include "services/device/public/mojom/geolocation_internals.mojom.h"
 #include "services/device/public/mojom/geoposition.mojom.h"
 
 namespace device {
 class PositionCache;
 
 class NetworkLocationProvider : public LocationProvider
-#if BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_APPLE)
     ,
                                 public GeolocationManager::PermissionObserver
 #endif
@@ -41,7 +42,8 @@ class NetworkLocationProvider : public LocationProvider
       GeolocationManager* geolocation_manager,
       const scoped_refptr<base::SingleThreadTaskRunner> main_task_runner,
       const std::string& api_key,
-      PositionCache* position_cache);
+      PositionCache* position_cache,
+      base::RepeatingClosure internals_updated_closure);
 
   NetworkLocationProvider(const NetworkLocationProvider&) = delete;
   NetworkLocationProvider& operator=(const NetworkLocationProvider&) = delete;
@@ -49,13 +51,14 @@ class NetworkLocationProvider : public LocationProvider
   ~NetworkLocationProvider() override;
 
   // LocationProvider implementation
+  void FillDiagnostics(mojom::GeolocationDiagnostics& diagnostics) override;
   void SetUpdateCallback(const LocationProviderUpdateCallback& cb) override;
   void StartProvider(bool high_accuracy) override;
   void StopProvider() override;
-  const mojom::Geoposition& GetPosition() override;
+  const mojom::GeopositionResult* GetPosition() override;
   void OnPermissionGranted() override;
 
-#if BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_APPLE)
   // GeolocationPermissionObserver implementation.
   void OnSystemPermissionUpdated(
       LocationSystemPermissionStatus new_status) override;
@@ -71,7 +74,7 @@ class NetworkLocationProvider : public LocationProvider
 
   bool IsStarted() const;
 
-  void OnLocationResponse(const mojom::Geoposition& position,
+  void OnLocationResponse(mojom::GeopositionResultPtr result,
                           bool server_error,
                           const WifiData& wifi_data);
 
@@ -79,16 +82,21 @@ class NetworkLocationProvider : public LocationProvider
   // StartProvider() and StopProvider(), and checked via IsStarted().
   std::unique_ptr<WifiDataProviderHandle> wifi_data_provider_handle_;
 
+  // True if the provider was started with high accuracy enabled.
+  // `high_accuracy_` does not modify the behavior of this provider, it is only
+  // stored for diagnostics.
+  bool high_accuracy_ = false;
+
   WifiDataProviderHandle::WifiDataUpdateCallback wifi_data_update_callback_;
 
-#if BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_APPLE)
   // Used to keep track of macOS System Permission changes. Also, ensures
   // lifetime of PermissionObserverList as the BrowserProcess may destroy its
   // reference on the UI Thread before we destroy this provider.
   scoped_refptr<GeolocationManager::PermissionObserverList>
       permission_observers_;
 
-  raw_ptr<GeolocationManager> geolocation_manager_;
+  raw_ptr<GeolocationManager, DanglingUntriaged> geolocation_manager_;
 #endif
 
   // The  wifi data and a flag to indicate if the data set is complete.
@@ -113,11 +121,13 @@ class NetworkLocationProvider : public LocationProvider
 
   base::ThreadChecker thread_checker_;
 
-#if BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_APPLE)
   bool is_system_permission_granted_ = false;
 
   bool is_awaiting_initial_permission_status_ = true;
 #endif
+
+  base::RepeatingClosure internals_updated_closure_;
 
   base::WeakPtrFactory<NetworkLocationProvider> weak_factory_{this};
 };

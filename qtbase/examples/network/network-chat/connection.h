@@ -12,8 +12,6 @@
 #include <QTcpSocket>
 #include <QTimer>
 
-static const int MaxBufferSize = 1024000;
-
 class Connection : public QTcpSocket
 {
     Q_OBJECT
@@ -22,6 +20,7 @@ public:
     enum ConnectionState {
         WaitingForGreeting,
         ReadingGreeting,
+        ProcessingGreeting,
         ReadyForUse
     };
     enum DataType {
@@ -37,8 +36,10 @@ public:
     ~Connection();
 
     QString name() const;
-    void setGreetingMessage(const QString &message);
+    void setGreetingMessage(const QString &message, const QByteArray &uniqueId);
     bool sendMessage(const QString &message);
+
+    QByteArray uniqueId() const;
 
 signals:
     void readyForUse();
@@ -64,6 +65,8 @@ private:
     QTimer pingTimer;
     QElapsedTimer pongTime;
     QString buffer;
+    QByteArray localUniqueId;
+    QByteArray peerUniqueId;
     ConnectionState state = WaitingForGreeting;
     DataType currentDataType = Undefined;
     int transferTimerId = -1;

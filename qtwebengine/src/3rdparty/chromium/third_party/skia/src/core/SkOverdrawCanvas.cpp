@@ -16,7 +16,6 @@
 #include "include/private/base/SkTo.h"
 #include "src/core/SkDevice.h"
 #include "src/core/SkDrawShadowInfo.h"
-#include "src/core/SkGlyphBuffer.h"
 #include "src/core/SkGlyphRunPainter.h"
 #include "src/core/SkImagePriv.h"
 #include "src/core/SkLatticeIter.h"
@@ -64,8 +63,8 @@ public:
         }
     }
 
-    void    drawBitmap(const SkBitmap&, const SkMatrix&, const SkRect* dstOrNull,
-                       const SkSamplingOptions&, const SkPaint&) const override {}
+    void drawBitmap(const SkBitmap&, const SkMatrix&, const SkRect* dstOrNull,
+                    const SkSamplingOptions&, const SkPaint&) const override {}
 
     void onDrawGlyphRunList(SkCanvas* canvas,
                             const sktext::GlyphRunList& glyphRunList,

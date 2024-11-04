@@ -14,7 +14,7 @@ In particular, it supports \b slicing that consists in taking a set of rows, col
 All the aforementioned operations are handled through the generic DenseBase::operator()(const RowIndices&, const ColIndices&) method.
 Each argument can be:
   - An integer indexing a single row or column, including symbolic indices.
-  - The symbol Eigen::all representing the whole set of respective rows or columns in increasing order.
+  - The symbol Eigen::placeholders::all representing the whole set of respective rows or columns in increasing order.
   - An ArithmeticSequence as constructed by the Eigen::seq, Eigen::seqN, or Eigen::placeholders::lastN functions.
   - Any 1D vector/array of integers including %Eigen's vector/array, expressions, std::vector, std::array, as well as plain C arrays: `int[N]`.
 

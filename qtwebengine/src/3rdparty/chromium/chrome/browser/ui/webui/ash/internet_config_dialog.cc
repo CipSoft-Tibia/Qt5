@@ -4,8 +4,8 @@
 
 #include "chrome/browser/ui/webui/ash/internet_config_dialog.h"
 
-#include "ash/constants/ash_features.h"
 #include "ash/public/cpp/network_config_service.h"
+#include "ash/webui/common/trusted_types_util.h"
 #include "base/json/json_writer.h"
 #include "base/values.h"
 #include "chrome/browser/profiles/profile.h"
@@ -20,12 +20,14 @@
 #include "chromeos/ash/components/network/network_state.h"
 #include "chromeos/ash/components/network/network_state_handler.h"
 #include "chromeos/ash/components/network/network_util.h"
+#include "chromeos/constants/chromeos_features.h"
 #include "chromeos/services/network_config/public/mojom/cros_network_config.mojom.h"  // nogncheck
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
 #include "ui/chromeos/strings/grit/ui_chromeos_strings.h"
 #include "ui/chromeos/strings/network/network_element_localized_strings_provider.h"
+#include "ui/webui/color_change_listener/color_change_handler.h"
 #include "ui/wm/core/shadow_types.h"
 
 namespace ash {
@@ -150,10 +152,8 @@ std::string InternetConfigDialog::GetDialogArgs() const {
   // Provide the UI with information on whether a user is currently logged in.
   // This information is used to avoid an edge case when configuring a network.
   // For more information see b/253247084.
-  if (base::FeatureList::IsEnabled(ash::features::kHiddenNetworkMigration)) {
-    args.Set("loggedIn", base::Value(LoginState::IsInitialized() &&
-                                     LoginState::Get()->IsUserLoggedIn()));
-  }
+  args.Set("loggedIn", base::Value(LoginState::IsInitialized() &&
+                                   LoginState::Get()->IsUserLoggedIn()));
   std::string json;
   base::JSONWriter::Write(args, &json);
   return json;
@@ -166,8 +166,7 @@ InternetConfigDialogUI::InternetConfigDialogUI(content::WebUI* web_ui)
   content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
       Profile::FromWebUI(web_ui), chrome::kChromeUIInternetConfigDialogHost);
 
-  source->DisableTrustedTypesCSP();
-
+  source->AddBoolean("isJellyEnabled", ::chromeos::features::IsJellyEnabled());
   AddInternetStrings(source);
   source->AddLocalizedString("title", IDS_SETTINGS_INTERNET_CONFIG);
 
@@ -176,6 +175,10 @@ InternetConfigDialogUI::InternetConfigDialogUI(content::WebUI* web_ui)
       base::make_span(kInternetConfigDialogResources,
                       kInternetConfigDialogResourcesSize),
       IDR_INTERNET_CONFIG_DIALOG_INTERNET_CONFIG_DIALOG_CONTAINER_HTML);
+  // Enabling trusted types via trusted_types_util must be done after
+  // webui::SetupWebUIDataSource to override the trusted type CSP with correct
+  // policies for JS WebUIs.
+  ash::EnableTrustedTypesCSP(source);
 }
 
 InternetConfigDialogUI::~InternetConfigDialogUI() {}
@@ -184,6 +187,12 @@ void InternetConfigDialogUI::BindInterface(
     mojo::PendingReceiver<chromeos::network_config::mojom::CrosNetworkConfig>
         receiver) {
   GetNetworkConfigService(std::move(receiver));
+}
+
+void InternetConfigDialogUI::BindInterface(
+    mojo::PendingReceiver<color_change_listener::mojom::PageHandler> receiver) {
+  color_change_handler_ = std::make_unique<ui::ColorChangeHandler>(
+      web_ui()->GetWebContents(), std::move(receiver));
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(InternetConfigDialogUI)

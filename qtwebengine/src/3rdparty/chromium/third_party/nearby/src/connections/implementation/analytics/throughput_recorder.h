@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC
+// Copyright 2022-2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,7 +19,9 @@
 #include <string>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/time/time.h"
 #include "connections/implementation/analytics/packet_meta_data.h"
 #include "connections/payload_type.h"
 #include "internal/platform/mutex.h"
@@ -85,7 +87,7 @@ class ThroughputRecorder {
   int64_t GetDurationMillis();
   void OnFrameSent(Medium medium, PacketMetaData& packetMetaData);
   void OnFrameReceived(Medium medium, PacketMetaData& packetMetaData);
-  void MarkAsSuccess() { success_ = true; }
+  void MarkAsSuccess();
 
  private:
   void CalculateDurationTimes(PacketMetaData packetMetaData);

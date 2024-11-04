@@ -61,10 +61,12 @@ static_library("model") {
     "sync_metadata_store.h",
     "sync_metadata_store_change_list.cc",
     "sync_metadata_store_change_list.h",
+    "syncable_service.cc",
     "syncable_service.h",
     "syncable_service_based_bridge.cc",
     "syncable_service_based_bridge.h",
     "type_entities_count.h",
+    "wipe_model_upon_sync_disabled_behavior.h",
   ]
 
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
@@ -77,5 +79,8 @@ static_library("model") {
     "//third_party/leveldatabase",
   ]
 
-  deps = [ "//components/keyed_service/core" ]
+  deps = [
+    "//components/keyed_service/core",
+    "//components/version_info",
+  ]
 }

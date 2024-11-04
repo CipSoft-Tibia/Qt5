@@ -105,7 +105,7 @@ TEST_F(ExtensionCookiesTest, ExtensionTypeCreation) {
   EXPECT_EQ("/", cookie1.path);
   EXPECT_FALSE(cookie1.secure);
   EXPECT_FALSE(cookie1.http_only);
-  EXPECT_EQ(api::cookies::SAME_SITE_STATUS_NO_RESTRICTION, cookie1.same_site);
+  EXPECT_EQ(api::cookies::SameSiteStatus::kNoRestriction, cookie1.same_site);
   EXPECT_TRUE(cookie1.session);
   EXPECT_FALSE(cookie1.expiration_date);
   EXPECT_EQ("some cookie store", cookie1.store_id);
@@ -121,7 +121,7 @@ TEST_F(ExtensionCookiesTest, ExtensionTypeCreation) {
       cookies_helpers::CreateCookie(*canonical_cookie2, "some cookie store");
   EXPECT_FALSE(cookie2.host_only);
   EXPECT_FALSE(cookie2.session);
-  EXPECT_EQ(api::cookies::SAME_SITE_STATUS_STRICT, cookie2.same_site);
+  EXPECT_EQ(api::cookies::SameSiteStatus::kStrict, cookie2.same_site);
   ASSERT_TRUE(cookie2.expiration_date);
   EXPECT_EQ(10000, *cookie2.expiration_date);
 
@@ -159,8 +159,7 @@ TEST_F(ExtensionCookiesTest, GetURLFromCanonicalCookie) {
 TEST_F(ExtensionCookiesTest, EmptyDictionary) {
   base::Value::Dict dict;
   GetAll::Params::Details details;
-  bool rv =
-      GetAll::Params::Details::Populate(base::Value(std::move(dict)), &details);
+  bool rv = GetAll::Params::Details::Populate(dict, details);
   ASSERT_TRUE(rv);
   cookies_helpers::MatchFilter filter(&details);
   net::CanonicalCookie cookie;
@@ -180,7 +179,7 @@ TEST_F(ExtensionCookiesTest, DomainMatching) {
     base::Value::Dict dict;
     dict.Set(keys::kDomainKey, tests[i].filter);
     args.Append(std::move(dict));
-    std::unique_ptr<GetAll::Params> params(GetAll::Params::Create(args));
+    absl::optional<GetAll::Params> params = GetAll::Params::Create(args);
 
     cookies_helpers::MatchFilter filter(&params->details);
     std::unique_ptr<net::CanonicalCookie> cookie =

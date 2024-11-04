@@ -46,7 +46,7 @@ class NGAbsoluteUtilsTest : public RenderingTest {
     )HTML");
     RunDocumentLifecycle();
 
-    element_ = GetDocument().getElementById("target");
+    element_ = GetDocument().getElementById(AtomicString("target"));
     ltr_space_ = CreateConstraintSpace(
         {WritingMode::kHorizontalTb, TextDirection::kLtr});
     rtl_space_ = CreateConstraintSpace(
@@ -99,19 +99,22 @@ class NGAbsoluteUtilsTest : public RenderingTest {
       const NGLogicalStaticPosition& static_position,
       const WritingDirectionMode container_writing_direction,
       NGLogicalOutOfFlowDimensions* dimensions) {
+    GetDocument().Lifecycle().AdvanceTo(DocumentLifecycle::kInStyleRecalc);
+    GetDocument().Lifecycle().AdvanceTo(DocumentLifecycle::kStyleClean);
+    GetDocument().Lifecycle().AdvanceTo(DocumentLifecycle::kInPerformLayout);
     WritingModeConverter container_converter(
         container_writing_direction,
         ToPhysicalSize(space.AvailableSize(),
                        container_writing_direction.GetWritingMode()));
     NGLogicalAnchorQuery anchor_query;
     NGAnchorEvaluatorImpl anchor_evaluator(
-        anchor_query, /* default_anchor_specifier */ nullptr,
+        *node.GetLayoutBox(), anchor_query,
+        /* default_anchor_specifier */ nullptr,
         /* implicit_anchor */ nullptr, container_converter,
         /* self_writing_direction */
         {WritingMode::kHorizontalTb, TextDirection::kLtr},
         /* offset_to_padding_box */
-        PhysicalOffset(),
-        /* is_in_top_layer */ false);
+        PhysicalOffset());
     const NGLogicalOutOfFlowInsets insets = ComputeOutOfFlowInsets(
         node.Style(), space.AvailableSize(), &anchor_evaluator);
     LogicalSize computed_available_size =
@@ -121,6 +124,8 @@ class NGAbsoluteUtilsTest : public RenderingTest {
         node, node.Style(), space, insets, border_padding, static_position,
         computed_available_size, absl::nullopt, container_writing_direction,
         /* anchor_evaluator */ nullptr, dimensions);
+    GetDocument().Lifecycle().AdvanceTo(DocumentLifecycle::kAfterPerformLayout);
+    GetDocument().Lifecycle().AdvanceTo(DocumentLifecycle::kLayoutClean);
   }
 
   void ComputeOutOfFlowBlockDimensions(
@@ -130,19 +135,22 @@ class NGAbsoluteUtilsTest : public RenderingTest {
       const NGLogicalStaticPosition& static_position,
       const WritingDirectionMode container_writing_direction,
       NGLogicalOutOfFlowDimensions* dimensions) {
+    GetDocument().Lifecycle().AdvanceTo(DocumentLifecycle::kInStyleRecalc);
+    GetDocument().Lifecycle().AdvanceTo(DocumentLifecycle::kStyleClean);
+    GetDocument().Lifecycle().AdvanceTo(DocumentLifecycle::kInPerformLayout);
     WritingModeConverter container_converter(
         container_writing_direction,
         ToPhysicalSize(space.AvailableSize(),
                        container_writing_direction.GetWritingMode()));
     NGLogicalAnchorQuery anchor_query;
     NGAnchorEvaluatorImpl anchor_evaluator(
-        anchor_query, /* default_anchor_specifier */ nullptr,
+        *node.GetLayoutBox(), anchor_query,
+        /* default_anchor_specifier */ nullptr,
         /* implicit_anchor */ nullptr, container_converter,
         /* self_writing_direction */
         {WritingMode::kHorizontalTb, TextDirection::kLtr},
         /* offset_to_padding_box */
-        PhysicalOffset(),
-        /* is_in_top_layer */ false);
+        PhysicalOffset());
     const NGLogicalOutOfFlowInsets insets = ComputeOutOfFlowInsets(
         node.Style(), space.AvailableSize(), &anchor_evaluator);
     LogicalSize computed_available_size =
@@ -152,6 +160,8 @@ class NGAbsoluteUtilsTest : public RenderingTest {
         node, node.Style(), space, insets, border_padding, static_position,
         computed_available_size, absl::nullopt, container_writing_direction,
         /* anchor_evaluator */ nullptr, dimensions);
+    GetDocument().Lifecycle().AdvanceTo(DocumentLifecycle::kAfterPerformLayout);
+    GetDocument().Lifecycle().AdvanceTo(DocumentLifecycle::kLayoutClean);
   }
 
   Persistent<Element> element_;

@@ -26,7 +26,6 @@ non_web_component_files = [
   "fake_system_routine_controller.ts",
   "frequency_channel_utils.ts",
   "mojo_interface_provider.js",
-  "mojo_utils.ts",
   "routine_group.ts",
   "routine_list_executor.ts",
 ]
@@ -141,7 +140,6 @@ copy("copy_webui_mojo") {
 }
 
 ts_library("build_ts") {
-  allow_js = true
   root_dir = "$target_gen_dir/$preprocessed_dir"
   out_dir = "$target_gen_dir/tsc"
   tsconfig_base = "tsconfig_base.json"
@@ -155,10 +153,12 @@ ts_library("build_ts") {
 
   definitions = [ "//tools/typescript/definitions/chrome_send.d.ts" ]
   deps = [
+    "//ash/webui/common/resources:build_ts",
     "//third_party/polymer/v3_0:library",
+    "//ui/webui/resources/cr_components/color_change_listener:build_ts",
     "//ui/webui/resources/cr_elements:build_ts",
     "//ui/webui/resources/js:build_ts",
-    "//ui/webui/resources/mojo:library",
+    "//ui/webui/resources/mojo:build_ts",
   ]
 
   extra_deps = [
@@ -174,10 +174,8 @@ generate_grd("build_grd") {
   input_files_base_dir = rebase_path(".", "//")
   input_files = static_resource_files
   deps = [ ":build_ts" ]
-  public_deps = [ "//third_party/d3:build_grdp" ]
-  grdp_files = [ "$root_gen_dir/third_party/d3/d3_resources.grdp" ]
   manifest_files =
-      filter_include(get_target_outputs(":build_ts"), [ "*.manifest" ])
+      filter_include(get_target_outputs(":build_ts"), [ "*_manifest.json" ])
   grd_prefix = "ash_diagnostics_app"
   out_grd = "$target_gen_dir/${grd_prefix}_resources.grd"
 }

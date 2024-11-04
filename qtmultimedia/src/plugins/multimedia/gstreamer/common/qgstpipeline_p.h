@@ -15,51 +15,33 @@
 // We mean it.
 //
 
-#include <private/qtmultimediaglobal_p.h>
-#include <QObject>
+#include <QtMultimedia/private/qtmultimediaglobal_p.h>
+#include <QtCore/qobject.h>
 
-#include <qgst_p.h>
+#include "qgst_p.h"
 
 QT_BEGIN_NAMESPACE
 
 class QGstreamerMessage;
-
-class QGstreamerSyncMessageFilter {
-public:
-    //returns true if message was processed and should be dropped, false otherwise
-    virtual bool processSyncMessage(const QGstreamerMessage &message) = 0;
-};
-
-
-class QGstreamerBusMessageFilter {
-public:
-    //returns true if message was processed and should be dropped, false otherwise
-    virtual bool processBusMessage(const QGstreamerMessage &message) = 0;
-};
-
+class QGstreamerSyncMessageFilter;
+class QGstreamerBusMessageFilter;
 class QGstPipelinePrivate;
 
 class QGstPipeline : public QGstBin
 {
-    QGstPipelinePrivate *d = nullptr;
+    static constexpr auto defaultQueryTimeout = std::chrono::seconds{ 5 };
+
 public:
     constexpr QGstPipeline() = default;
-    QGstPipeline(const QGstPipeline &o);
-    QGstPipeline &operator=(const QGstPipeline &o);
-    explicit QGstPipeline(GstPipeline *p);
-    ~QGstPipeline() override;
+    QGstPipeline(const QGstPipeline &) = default;
+    QGstPipeline(QGstPipeline &&) = default;
+    QGstPipeline &operator=(const QGstPipeline &) = default;
+    QGstPipeline &operator=(QGstPipeline &&) noexcept = default;
+    QGstPipeline(GstPipeline *, RefMode mode);
+    ~QGstPipeline();
 
+    static QGstPipeline createFromFactory(const char *factory, const char *name);
     static QGstPipeline create(const char *name);
-
-    // This is needed to help us avoid sending QVideoFrames or audio buffers to the
-    // application while we're prerolling the pipeline.
-    // QMediaPlayer is still in a stopped state, while we put the gstreamer pipeline into a
-    // Paused state so that we can get the required metadata of the stream and also have a fast
-    // transition to play.
-    bool inStoppedState() const;
-    void setInStoppedState(bool stopped);
-
-    void setFlushOnConfigChanges(bool flush);
 
     void installMessageFilter(QGstreamerSyncMessageFilter *filter);
     void removeMessageFilter(QGstreamerSyncMessageFilter *filter);
@@ -70,20 +52,9 @@ public:
 
     GstPipeline *pipeline() const { return GST_PIPELINE_CAST(get()); }
 
-    void dumpGraph(const char *fileName)
-    {
-        if (isNull())
-            return;
-
-#if 1 //def QT_GST_CAPTURE_DEBUG
-        GST_DEBUG_BIN_TO_DOT_FILE(bin(),
-                                  GstDebugGraphDetails(GST_DEBUG_GRAPH_SHOW_ALL |
-                                                       GST_DEBUG_GRAPH_SHOW_MEDIA_TYPE | GST_DEBUG_GRAPH_SHOW_NON_DEFAULT_PARAMS | GST_DEBUG_GRAPH_SHOW_STATES),
-                                  fileName);
-#else
-        Q_UNUSED(fileName);
-#endif
-    }
+    bool processNextPendingMessage(GstMessageType = GST_MESSAGE_ANY,
+                                   std::chrono::nanoseconds timeout = {});
+    bool processNextPendingMessage(std::chrono::nanoseconds timeout);
 
     template <typename Functor>
     void modifyPipelineWhileNotRunning(Functor &&fn)
@@ -93,18 +64,43 @@ public:
         endConfig();
     }
 
+    template <typename Functor>
+    static void modifyPipelineWhileNotRunning(QGstPipeline &&pipeline, Functor &&fn)
+    {
+        if (pipeline)
+            pipeline.modifyPipelineWhileNotRunning(fn);
+        else
+            fn();
+    }
+
     void flush();
 
-    bool seek(qint64 pos, double rate);
-    bool setPlaybackRate(double rate);
+    void setPlaybackRate(double rate, bool forceFlushingSeek = false);
     double playbackRate() const;
+    void applyPlaybackRate(bool forceFlushingSeek = false);
 
-    bool setPosition(qint64 pos);
-    qint64 position() const;
+    void setPosition(std::chrono::nanoseconds pos);
+    std::chrono::nanoseconds position() const;
+    std::chrono::milliseconds positionInMs() const;
 
-    qint64 duration() const;
+    void setPositionAndRate(std::chrono::nanoseconds pos, double rate);
+
+    std::optional<std::chrono::nanoseconds>
+    queryPosition(std::chrono::nanoseconds timeout = defaultQueryTimeout) const;
+    std::optional<std::chrono::nanoseconds>
+    queryDuration(std::chrono::nanoseconds timeout = defaultQueryTimeout) const;
+    std::optional<std::pair<std::chrono::nanoseconds, std::chrono::nanoseconds>>
+    queryPositionAndDuration(std::chrono::nanoseconds timeout = defaultQueryTimeout) const;
 
 private:
+    // installs QGstPipelinePrivate as "pipeline-private" gobject property
+    static QGstPipeline adopt(GstPipeline *);
+
+    void seek(std::chrono::nanoseconds pos, double rate);
+    void seek(std::chrono::nanoseconds pos);
+
+    QGstPipelinePrivate *getPrivate() const;
+
     void beginConfig();
     void endConfig();
 };

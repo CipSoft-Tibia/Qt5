@@ -118,16 +118,6 @@ enum class CookieAccessSemantics {
   LEGACY,
 };
 
-enum class CookieSamePartyStatus {
-  // Used when there should be no SameParty enforcement (either because the
-  // cookie is not marked SameParty, or the enforcement is irrelevant).
-  kNoSamePartyEnforcement = 0,
-  // Used when SameParty enforcement says to exclude the cookie.
-  kEnforceSamePartyExclude = 1,
-  // Used when SameParty enforcement says to include the cookie.
-  kEnforceSamePartyInclude = 2,
-};
-
 // What scheme was used in the setting of a cookie.
 // Do not renumber.
 enum class CookieSourceScheme {
@@ -297,7 +287,7 @@ enum class CookieSourceSchemeName {
   kHttpsScheme = 14,
   kJavaScriptScheme = 15,
   kMailToScheme = 16,
-  kQuicTransportScheme = 17,
+  kQuicTransportScheme_Obsoleted = 17,
   kTelScheme = 18,
   kUrnScheme = 19,
   kWsScheme = 20,

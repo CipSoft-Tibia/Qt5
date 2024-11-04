@@ -10,8 +10,9 @@ import "url/mojom/url.mojom";
 
 // Events that indicate that the user is about to navigate to a suggestion.
 enum NavigationPredictor {
-  kMouseDown = 1,           // The user pushed the mouse button down.
-  kUpOrDownArrowButton = 2  // The user pushed the down or up arrow button.
+  kMouseDown = 1,            // The user pushed the mouse button down.
+  kUpOrDownArrowButton = 2,  // The user pushed the down or up arrow button.
+  kTouchDown = 3             // The user touched down on a suggestion.
 };
 
 // See components/omnibox/browser/autocomplete_match.h.
@@ -39,7 +40,7 @@ struct SuggestionAnswer {
 struct AutocompleteMatch {
   mojo_base.mojom.String16 a11y_label;
   bool allowed_to_be_default_match;
-  Action? action;
+  array<Action> actions;
   SuggestionAnswer? answer;
   mojo_base.mojom.String16 contents;
   array<ACMatchClassification> contents_class;
@@ -97,10 +98,27 @@ struct AutocompleteResult {
   array<AutocompleteMatch> matches;
 };
 
+enum SelectionLineState {
+  kFocusedButtonHeader = 0,
+  kNormal = 1,
+  kKeywordMode = 2,
+  kFocusedButtonAction = 3,
+  kFocusedButtonRemoveSuggestion = 4,
+};
+
+// See components/omnibox/browser/omnibox_popup_selection.h
+struct OmniboxPopupSelection {
+  uint8 line;
+  SelectionLineState state;
+  uint8 action_index;
+};
+
 // Browser-side handler for requests from WebUI page.
 interface PageHandler {
   // The RealboxBrowserProxy singleton calls this when it's first initialized.
   SetPage(pending_remote<Page> page);
+  // Informs the handler and model about focus state changes.
+  OnFocusChanged(bool focused);
   // Queries autocomplete matches from the browser.
   QueryAutocomplete(mojo_base.mojom.String16 input,
                     bool prevent_inline_autocomplete);
@@ -108,16 +126,13 @@ interface PageHandler {
   // |clear_result| is true.
   StopAutocomplete(bool clear_result);
   // Handles navigation to an autocomplete match (i.e. an item in the realbox's
-  // list of matches). Note: |url| is passed solely to verify that the browser
-  // and renderer are in sync; don't trust this content or use it for anything
-  // other than verification purposes (i.e. is the URL still the same?).
-  // TODO(crbug.com/1076604): replace |url| with an unguessable token.
+  // list of matches).
+  // Note: |url| is only used to confirm the match |line| selection.
   // |mouse_button| indicates which mouse button was pressed on the match. See
   // https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent/button
   OpenAutocompleteMatch(uint8 line,
                         url.mojom.Url url,
                         bool are_matches_showing,
-                        mojo_base.mojom.TimeDelta time_elapsed_since_last_focus,
                         uint8 mouse_button,
                         bool alt_key,
                         bool ctrl_key,
@@ -126,20 +141,23 @@ interface PageHandler {
   // Informs the browser that the user has changed the selected suggestion. The
   // new suggestion is located at |line|. |navigation_predictor|
   // indicates the event that indicated navigation was likely.
-  OnNavigationLikely(uint8 line, NavigationPredictor navigation_predictor);
+  // |url| is only used to confirm the match |line| selection.
+  OnNavigationLikely(uint8 line,
+                     url.mojom.Url url,
+                     NavigationPredictor navigation_predictor);
   // Deletes the AutocompleteMatch in the current results by |line| number if
-  // it is deletable.
-  DeleteAutocompleteMatch(uint8 line);
+  // it is deletable. |url| is used to confirm the match |line| selection.
+  DeleteAutocompleteMatch(uint8 line, url.mojom.Url url);
   // Tells the browser to allow suggestions with the given suggestion group ID
   // to appear in the results if they currently are not allowed to or to prevent
   // them from appearing in the results if they are currently permitted to.
   ToggleSuggestionGroupIdVisibility(int32 suggestion_group_id);
-  // Logs the time it took in milliseconds since the first character (in a
-  // series of characters) was typed until Autocomplete results were painted.
-  LogCharTypedToRepaintLatency(mojo_base.mojom.TimeDelta latency);
   // Executes the Pedal Action. match_selection_timestamp is the number of
   // microseconds since Jan. 1, 1970 (ECMAScript epoch).
+  // |url| is only used to confirm the match |line| selection.
   ExecuteAction(uint8 line,
+                uint8 action_index,
+                url.mojom.Url url,
                 mojo_base.mojom.TimeTicks match_selection_timestamp,
                 uint8 mouse_button,
                 bool alt_key,
@@ -150,10 +168,8 @@ interface PageHandler {
 
 // WebUI-side handler for requests from the browser.
 interface Page {
-  // Updates the NTP realbox with the autocomplete results.
+  // Updates the page with the autocomplete results.
   AutocompleteResultChanged(AutocompleteResult result);
-  // Updates the WebUI omnibox with the autocomplete results.
-  OmniboxAutocompleteResultChanged(AutocompleteResult result);
-  // Selects the match located at |line|.
-  SelectMatchAtLine(uint8 line);
+  // Updates the UI's selected line and action based on the |selection|.
+  UpdateSelection(OmniboxPopupSelection selection);
 };

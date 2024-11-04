@@ -4,12 +4,9 @@
     android:installLocation="auto"
     android:versionCode="1"
     android:versionName="1.0">
-    <!-- The comment below will be replaced with dependencies permissions upon deployment.
-             Remove the comment if you do not require these default permissions. -->
+
     <!-- %%INSERT_PERMISSIONS -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <!-- The comment below will be replaced with dependencies permissions upon deployment.
-             Remove the comment if you do not require these default features. -->
     <!-- %%INSERT_FEATURES -->
 
     <supports-screens
@@ -45,10 +42,6 @@
             <meta-data
                 android:name="android.app.background_running"
                 android:value="false"/>
-
-            <meta-data
-                android:name="android.app.extract_android_style"
-                android:value="none" />
         </activity>
     </application>
 </manifest>

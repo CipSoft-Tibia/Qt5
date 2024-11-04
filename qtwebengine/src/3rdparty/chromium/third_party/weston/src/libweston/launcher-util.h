@@ -33,7 +33,7 @@
 struct weston_launcher;
 
 struct weston_launcher *
-weston_launcher_connect(struct weston_compositor *compositor, int tty,
+weston_launcher_connect(struct weston_compositor *compositor,
 			const char *seat_id, bool sync_drm);
 
 void

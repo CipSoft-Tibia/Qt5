@@ -47,7 +47,6 @@ const char kXrCompositingSandbox[] = "xr_compositing";
 const char kIconReaderSandbox[] = "icon_reader";
 const char kMediaFoundationCdmSandbox[] = "mf_cdm";
 const char kWindowsSystemProxyResolverSandbox[] = "proxy_resolver_win";
-const char kFileUtilSandbox[] = "file_util";
 #endif  // BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(IS_MAC)
@@ -70,14 +69,6 @@ const char kLibassistantSandbox[] = "libassistant";
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 // Flags owned by the service manager sandbox.
-
-// Enables the sandboxed processes to run without a job object assigned to them.
-// This flag is required to allow Chrome to run in RemoteApps or Citrix. This
-// flag can reduce the security of the sandboxed processes and allow them to do
-// certain API calls like shut down Windows or access the clipboard. Also we
-// lose the chance to kill some processes until the outer job that owns them
-// finishes.
-const char kAllowNoSandboxJob[] = "allow-no-sandbox-job";
 
 // Allows debugging of sandboxed processes (see zygote_main_linux.cc).
 const char kAllowSandboxDebugging[] = "allow-sandbox-debugging";

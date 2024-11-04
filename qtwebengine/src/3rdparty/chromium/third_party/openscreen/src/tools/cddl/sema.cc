@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,19 +13,18 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tools/cddl/logging.h"
 
 std::vector<CppType*> CppSymbolTable::TypesWithId() {
   if (!this->TypesWithId_.size()) {
     for (const std::unique_ptr<CppType>& ptr : this->cpp_types) {
-      if (ptr->type_key == absl::nullopt) {
+      if (ptr->type_key == std::nullopt) {
         continue;
       }
       this->TypesWithId_.emplace_back(ptr.get());
@@ -127,7 +126,7 @@ void CppType::InitBytes() {
   which = Which::kBytes;
 }
 
-void InitString(std::string* s, absl::string_view value) {
+void InitString(std::string* s, std::string_view value) {
   new (s) std::string(value);
 }
 
@@ -350,15 +349,16 @@ CddlGroup* AnalyzeGroup(CddlSymbolTable* table, const AstNode& group) {
 // Parses a string into an optional uint64_t, with the value being that
 // represented by the string if it is present and nullopt if it cannot
 // be parsed.
-// TODO(rwkeane): Add support for hex and binary options.
-absl::optional<uint64_t> ParseOptionalUint(const std::string& text) {
+// TODO(issuetracker.google.com/281741443): Add support for hex and binary
+// options.
+std::optional<uint64_t> ParseOptionalUint(const std::string& text) {
   if (text == "0") {
     return 0;
   }
 
   uint64_t parsed = std::strtoul(text.c_str(), nullptr, 10);
   if (!parsed) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return parsed;
 }
@@ -459,7 +459,7 @@ std::pair<bool, CddlSymbolTable> BuildSymbolTable(const AstNode& rules) {
       return result;
     }
     bool is_type = node->type == AstNode::Type::kTypename;
-    absl::string_view name = node->text;
+    std::string_view name = node->text;
 
     // Ensure that the node is assignment.
     node = node->sibling;
@@ -473,9 +473,9 @@ std::pair<bool, CddlSymbolTable> BuildSymbolTable(const AstNode& rules) {
     node = node->sibling;
     if (is_type) {
       CddlType* type = AnalyzeType(&table, *node);
-      if (rule->type_key != absl::nullopt) {
+      if (rule->type_key != std::nullopt) {
         auto parsed_type_key = ParseOptionalUint(rule->type_key.value());
-        if (parsed_type_key == absl::nullopt) {
+        if (parsed_type_key == std::nullopt) {
           return result;
         }
         type->type_key = parsed_type_key.value();
@@ -825,8 +825,8 @@ bool ValidateCppTypes(const CppSymbolTable& cpp_symbols) {
       });
 }
 
-std::string DumpTypeKey(absl::optional<uint64_t> key) {
-  if (key != absl::nullopt) {
+std::string DumpTypeKey(std::optional<uint64_t> key) {
+  if (key != std::nullopt) {
     return " (type key=\"" + std::to_string(key.value()) + "\")";
   }
   return "";

@@ -4,11 +4,11 @@
 
 #include "third_party/blink/renderer/modules/xr/xr_system.h"
 
-#include <algorithm>
 #include <memory>
 #include <utility>
 
 #include "base/containers/contains.h"
+#include "base/ranges/algorithm.h"
 #include "base/trace_event/trace_id_helper.h"
 #include "base/trace_event/typed_macros.h"
 #include "build/build_config.h"
@@ -143,8 +143,7 @@ Vector<device::mojom::XRDepthUsage> ParseDepthUsages(
     const Vector<V8XRDepthUsage>& usages) {
   Vector<device::mojom::XRDepthUsage> result;
 
-  std::transform(usages.begin(), usages.end(), std::back_inserter(result),
-                 ParseDepthUsage);
+  base::ranges::transform(usages, std::back_inserter(result), ParseDepthUsage);
 
   return result;
 }
@@ -163,8 +162,8 @@ Vector<device::mojom::XRDepthDataFormat> ParseDepthFormats(
     const Vector<V8XRDepthDataFormat>& formats) {
   Vector<device::mojom::XRDepthDataFormat> result;
 
-  std::transform(formats.begin(), formats.end(), std::back_inserter(result),
-                 ParseDepthFormat);
+  base::ranges::transform(formats, std::back_inserter(result),
+                          ParseDepthFormat);
 
   return result;
 }
@@ -933,7 +932,8 @@ ScriptPromise XRSystem::InternalIsSessionSupported(
     return ScriptPromise();  // Will be rejected by generated bindings
   }
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
 
   device::mojom::blink::XRSessionMode session_mode = stringToSessionMode(mode);
@@ -1161,12 +1161,16 @@ XRSystem::RequestedXRSessionFeatureSet XRSystem::ParseRequestedFeatures(
   for (const auto& feature : features) {
     String feature_string;
     if (feature.ToString(feature_string)) {
-      auto feature_enum =
-          StringToXRSessionFeature(GetExecutionContext(), feature_string);
+      auto feature_enum = StringToXRSessionFeature(feature_string);
 
       if (!feature_enum) {
         AddConsoleMessage(error_level,
                           "Unrecognized feature requested: " + feature_string);
+        result.invalid_features = true;
+      } else if (!IsFeatureEnabledForContext(feature_enum.value(),
+                                             GetExecutionContext())) {
+        AddConsoleMessage(error_level,
+                          "Unsupported feature requested: " + feature_string);
         result.invalid_features = true;
       } else if (!IsFeatureValidForMode(feature_enum.value(), session_mode,
                                         session_init, GetExecutionContext(),
@@ -1282,7 +1286,8 @@ ScriptPromise XRSystem::requestSession(ScriptState* script_state,
     }
   }
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
 
   PendingRequestSessionQuery* query =
@@ -1572,12 +1577,6 @@ void XRSystem::FinishSessionCreation(
       // element is already in fullscreen mode, and the session can proceed.
       session->SetDOMOverlayElement(query->DOMOverlayElement());
     }
-
-    if (query->mode() == device::mojom::blink::XRSessionMode::kImmersiveVr &&
-        session->UsesInputEventing()) {
-      frameProvider()->GetImmersiveDataProvider()->SetInputSourceButtonListener(
-          session->GetInputClickListener());
-    }
   }
 
   UseCounter::Count(ExecutionContext::From(query->GetScriptState()),
@@ -1589,8 +1588,7 @@ void XRSystem::FinishSessionCreation(
 void XRSystem::AddedEventListener(
     const AtomicString& event_type,
     RegisteredEventListener& registered_listener) {
-  EventTargetWithInlineData::AddedEventListener(event_type,
-                                                registered_listener);
+  EventTarget::AddedEventListener(event_type, registered_listener);
 
   // If we're adding an event listener we should spin up the service, if we can,
   // so that we can actually register for notifications.
@@ -1748,7 +1746,7 @@ void XRSystem::Trace(Visitor* visitor) const {
   visitor->Trace(fullscreen_exit_observer_);
   Supplement<Navigator>::Trace(visitor);
   ExecutionContextLifecycleObserver::Trace(visitor);
-  EventTargetWithInlineData::Trace(visitor);
+  EventTarget::Trace(visitor);
 }
 
 }  // namespace blink

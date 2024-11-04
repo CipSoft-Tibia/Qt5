@@ -34,6 +34,7 @@ class QQuick3DPhysicsMesh
 {
 public:
     QQuick3DPhysicsMesh(const QString &qmlSource) : m_meshPath(qmlSource) { }
+    QQuick3DPhysicsMesh(const QQuick3DGeometry *geometrySource) : m_meshGeometry(geometrySource) { }
     ~QQuick3DPhysicsMesh() { }
 
     QList<QVector3D> positions();
@@ -58,8 +59,13 @@ public:
 
 private:
     void loadSsgMesh();
+    physx::PxConvexMesh *convexMeshQmlSource();
+    physx::PxConvexMesh *convexMeshGeometrySource();
+    physx::PxTriangleMesh *triangleMeshQmlSource();
+    physx::PxTriangleMesh *triangleMeshGeometrySource();
 
     QString m_meshPath;
+    const QQuick3DGeometry *m_meshGeometry = nullptr;
     QSSGMesh::Mesh m_ssgMesh;
     int m_posOffset = 0;
 
@@ -72,10 +78,12 @@ class QQuick3DPhysicsMeshManager
 {
 public:
     static QQuick3DPhysicsMesh *getMesh(const QUrl &source, const QObject *contextObject);
+    static QQuick3DPhysicsMesh *getMesh(QQuick3DGeometry *source);
     static void releaseMesh(QQuick3DPhysicsMesh *mesh);
 
 private:
-    static QHash<QString, QQuick3DPhysicsMesh *> meshHash;
+    static QHash<QString, QQuick3DPhysicsMesh *> sourceMeshHash;
+    static QHash<QQuick3DGeometry *, QQuick3DPhysicsMesh *> geometryMeshHash;
 };
 
 QT_END_NAMESPACE

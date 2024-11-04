@@ -1,8 +1,9 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "testserver.h"
 #include "qopen62541utils.h"
+#include "generated/namespace_qtopcuatestmodel_generated.h"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
@@ -22,6 +23,11 @@
 #include <QtOpcUa/QOpcUaQualifiedName>
 #include <QtOpcUa/QOpcUaRange>
 #include <QtOpcUa/QOpcUaXValue>
+#include <QtOpcUa/QOpcUaStructureDefinition>
+#include <QtOpcUa/QOpcUaStructureField>
+#include <QtOpcUa/QOpcUaEnumDefinition>
+#include <QtOpcUa/QOpcUaEnumField>
+#include <QtOpcUa/QOpcUaDiagnosticInfo>
 
 #include <csignal>
 
@@ -127,6 +133,8 @@ int main()
                                      QOpcUaArgument(QStringLiteral("Argument2"), QStringLiteral("ns=0;i=12"), 2,
                                                        {2, 2}, QOpcUaLocalizedText(QStringLiteral("en"), QStringLiteral("Description2")))}),
                        QOpcUa::Types::Argument);
+    server.addVariable(testFolder, "ns=2;s=Demo.Static.Arrays.EventFilter", "EventFilterArrayTest",
+                       QVariantList{QOpcUaMonitoringParameters::EventFilter(), QOpcUaMonitoringParameters::EventFilter()}, QOpcUa::Types::EventFilter);
     server.addVariable(testFolder, "ns=2;s=Demo.Static.Arrays.ExtensionObject", "ExtensionObjectArrayTest",
                                                     QVariantList({QOpcUaExtensionObject(), QOpcUaExtensionObject()}),
                        QOpcUa::Types::ExtensionObject);
@@ -175,6 +183,8 @@ int main()
                        QOpcUaArgument(QStringLiteral("Argument1"), QStringLiteral("ns=0;i=12"), -1,
                                          {},QOpcUaLocalizedText(QStringLiteral("en"), QStringLiteral("Description1"))),
                        QOpcUa::Types::Argument);
+    server.addVariable(testFolder, "ns=2;s=Demo.Static.Scalar.EventFilter", "EventFilterScalarTest", QOpcUaMonitoringParameters::EventFilter(),
+                       QOpcUa::Types::EventFilter);
     server.addVariable(testFolder, "ns=2;s=Demo.Static.Scalar.ExtensionObject", "ExtensionObjectScalarTest",
                                                     QOpcUaExtensionObject(), QOpcUa::Types::ExtensionObject);
     server.addNodeWithFixedTimestamp(testFolder, "ns=2;s=Demo.Static.FixedTimestamp", "FixedTimestamp");
@@ -189,6 +199,69 @@ int main()
                        QList<quint32>(), UA_VALUERANK_ANY, true);
     server.addVariable(testFolder, "ns=2;s=Demo.Static.Historizing2.ContinuationPoint", "HistorizingContinuationPointTest2", 0, QOpcUa::Types::Int32,
                        QList<quint32>(), UA_VALUERANK_ANY, true, 5);
+
+    // DataTypeDefinition nodes
+    QOpcUaStructureField structureField;
+    structureField.setArrayDimensions({1, 2, 3});
+    structureField.setDataType(QOpcUa::namespace0Id(QOpcUa::NodeIds::Namespace0::Double));
+    structureField.setDescription(QOpcUaLocalizedText("en", "This is a test"));
+    structureField.setIsOptional(false);
+    structureField.setMaxStringLength(100);
+    structureField.setName("MyDouble");
+    structureField.setValueRank(-1);
+
+    QOpcUaStructureDefinition structureDefinition;
+    structureDefinition.setBaseDataType(QOpcUa::namespace0Id(QOpcUa::NodeIds::Namespace0::Structure));
+    structureDefinition.setDefaultEncodingId("ns=2;i=1234");
+    structureDefinition.setStructureType(QOpcUaStructureDefinition::StructureType::Structure);
+    structureDefinition.setFields({structureField});
+
+    QOpcUaEnumField enumField;
+    enumField.setDescription(QOpcUaLocalizedText("en", "This is a Test"));
+    enumField.setDisplayName(QOpcUaLocalizedText("en", "Test"));
+    enumField.setName("MyOption");
+    enumField.setValue(0)
+            ;
+    QOpcUaEnumDefinition enumDefinition;
+    enumDefinition.setFields({enumField});
+
+    server.addVariable(testFolder, "ns=2;s=Demo.Static.Scalar.StructureField", "StructureField", structureField, QOpcUa::Types::StructureField);
+    server.addVariable(testFolder, "ns=2;s=Demo.Static.Scalar.StructureDefinition", "StructureDefinition", structureDefinition, QOpcUa::Types::StructureDefinition);
+    server.addVariable(testFolder, "ns=2;s=Demo.Static.Scalar.EnumField", "EnumField", enumField, QOpcUa::Types::EnumField);
+    server.addVariable(testFolder, "ns=2;s=Demo.Static.Scalar.EnumDefinition", "EnumDefinition", enumDefinition, QOpcUa::Types::EnumDefinition);
+
+
+    server.addVariable(testFolder, "ns=2;s=Demo.Static.Arrays.StructureField", "StructureFieldArray", QVariantList{structureField}, QOpcUa::Types::StructureField, {0}, UA_VALUERANK_ONE_DIMENSION);
+    server.addVariable(testFolder, "ns=2;s=Demo.Static.Arrays.StructureDefinition", "StructureDefinitionArray", QVariantList{structureDefinition}, QOpcUa::Types::StructureDefinition, {0}, UA_VALUERANK_ONE_DIMENSION);
+    server.addVariable(testFolder, "ns=2;s=Demo.Static.Arrays.EnumField", "EnumFieldArray", QVariantList{enumField}, QOpcUa::Types::EnumField, {0}, UA_VALUERANK_ONE_DIMENSION);
+    server.addVariable(testFolder, "ns=2;s=Demo.Static.Arrays.EnumDefinition", "EnumDefinitionArray", QVariantList{enumDefinition}, QOpcUa::Types::EnumDefinition, {0}, UA_VALUERANK_ONE_DIMENSION);
+
+    QOpcUaDiagnosticInfo diagnosticInfo;
+    diagnosticInfo.setHasSymbolicId(true);
+    diagnosticInfo.setSymbolicId(1);
+    diagnosticInfo.setHasNamespaceUri(true);
+    diagnosticInfo.setNamespaceUri(2);
+    diagnosticInfo.setHasLocale(true);
+    diagnosticInfo.setLocale(3);
+    diagnosticInfo.setHasLocalizedText(true);
+    diagnosticInfo.setLocalizedText(4);
+    diagnosticInfo.setHasAdditionalInfo(true);
+    diagnosticInfo.setAdditionalInfo(QStringLiteral("My additional info"));
+    diagnosticInfo.setHasInnerStatusCode(true);
+    diagnosticInfo.setInnerStatusCode(QOpcUa::UaStatusCode::BadInternalError);
+    diagnosticInfo.setHasInnerDiagnosticInfo(true);
+    diagnosticInfo.innerDiagnosticInfoRef().setHasAdditionalInfo(true);
+    diagnosticInfo.innerDiagnosticInfoRef().setAdditionalInfo(QStringLiteral("My inner additional info"));
+
+    QOpcUaDiagnosticInfo diagnosticInfo2;
+    diagnosticInfo2.setHasLocale(true);
+    diagnosticInfo2.setLocale(1);
+    diagnosticInfo2.setHasInnerStatusCode(true);
+    diagnosticInfo2.setInnerStatusCode(QOpcUa::UaStatusCode::BadTypeMismatch);
+
+    server.addVariable(testFolder, "ns=2;s=Demo.Static.Scalar.DiagnosticInfo", "DiagnosticInfo", diagnosticInfo, QOpcUa::Types::DiagnosticInfo);
+    server.addVariable(testFolder, "ns=2;s=Demo.Static.Arrays.DiagnosticInfo", "DiagnosticInfoArray", QVariantList{ diagnosticInfo, diagnosticInfo2 },
+                       QOpcUa::Types::DiagnosticInfo, {0}, UA_VALUERANK_ONE_DIMENSION);
 
     // Create folders containing child nodes with string, guid and opaque node ids
     UA_NodeId testStringIdsFolder = server.addFolder("ns=3;s=testStringIdsFolder", "testStringIdsFolder");
@@ -229,7 +302,19 @@ int main()
 
     server.addEventTrigger(testFolder);
 
-    const auto result = server.run(&running);
+    server.addEventHistorian(UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER));
+
+    server.addServerStatusTypeTestNodes(testFolder);
+
+    server.addUnreadableVariableNode(testFolder);
+
+    // Add test nodes for the generic type decoder
+    auto result = server.addEncoderTestModel();
+
+    if (result != UA_STATUSCODE_GOOD)
+        qFatal("Failed to initialize decoder test nodeset: %s", UA_StatusCode_name(result));
+
+    result = server.run(&running);
 
     if (result != UA_STATUSCODE_GOOD)
         qFatal("Failed to launch open62541 test server");

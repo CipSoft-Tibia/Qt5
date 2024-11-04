@@ -34,9 +34,9 @@
 namespace cc {
 
 RenderSurfaceImpl::RenderSurfaceImpl(LayerTreeImpl* layer_tree_impl,
-                                     uint64_t stable_id)
+                                     ElementId id)
     : layer_tree_impl_(layer_tree_impl),
-      stable_id_(stable_id),
+      id_(id),
       effect_tree_index_(kInvalidPropertyNodeId),
       num_contributors_(0),
       has_contributing_layer_that_escapes_clip_(false),
@@ -46,6 +46,7 @@ RenderSurfaceImpl::RenderSurfaceImpl(LayerTreeImpl* layer_tree_impl,
       is_render_surface_list_member_(false),
       intersects_damage_under_(true),
       nearest_occlusion_immune_ancestor_(nullptr) {
+  DCHECK(id);
   damage_tracker_ = DamageTracker::Create();
 }
 
@@ -91,8 +92,7 @@ gfx::RectF RenderSurfaceImpl::DrawableContentRect() const {
   }
   gfx::RectF drawable_content_rect = MathUtil::MapClippedRect(
       draw_transform(), gfx::RectF(surface_content_rect));
-  if (!filters.IsEmpty() && is_clipped()) {
-    // Filter could move pixels around, but still need to be clipped.
+  if (is_clipped()) {
     drawable_content_rect.Intersect(gfx::RectF(clip_rect()));
   }
 
@@ -193,6 +193,11 @@ const EffectNode* RenderSurfaceImpl::OwningEffectNode() const {
       EffectTreeIndex());
 }
 
+EffectNode* RenderSurfaceImpl::OwningEffectNodeMutableForTest() const {
+  return layer_tree_impl_->property_trees()->effect_tree_mutable().Node(
+      EffectTreeIndex());
+}
+
 const ViewTransitionElementId& RenderSurfaceImpl::GetViewTransitionElementId()
     const {
   return OwningEffectNode()->view_transition_shared_element_id;
@@ -284,6 +289,15 @@ void RenderSurfaceImpl::CalculateContentRectFromAccumulatedContentRect(
   // use accumulated content rect, and then try to clip it.
   gfx::Rect surface_content_rect = CalculateClippedAccumulatedContentRect();
 
+  // Render passes induced for elements participating in a ViewTransition
+  // shouldn't be larger than max texture size.
+#if DCHECK_IS_ON()
+  if (OwningEffectNode()->view_transition_element_resource_id.IsValid()) {
+    DCHECK_LE(surface_content_rect.width(), max_texture_size);
+    DCHECK_LE(surface_content_rect.height(), max_texture_size);
+  }
+#endif
+
   // The RenderSurfaceImpl backing texture cannot exceed the maximum supported
   // texture size.
   surface_content_rect.set_width(
@@ -343,23 +357,16 @@ void RenderSurfaceImpl::AccumulateContentRectFromContributingRenderSurface(
 }
 
 bool RenderSurfaceImpl::SurfacePropertyChanged() const {
-  // Surface property changes are tracked as follows:
-  //
-  // - surface_property_changed_ is flagged when the clip_rect or content_rect
-  //   change. As of now, these are the only two properties that can be affected
-  //   by descendant layers.
-  //
-  // - all other property changes come from the surface's property tree nodes
-  //   (or some ancestor node that propagates its change to one of these nodes).
-  //
-  return surface_property_changed_ || AncestorPropertyChanged();
-}
-
-bool RenderSurfaceImpl::SurfacePropertyChangedOnlyFromDescendant() const {
-  return surface_property_changed_ && !AncestorPropertyChanged();
+  // |surface_property_changed_| is flagged when the clip_rect or content_rect
+  // change. As of now, these are the only two properties that can be affected
+  // by descendant layers.
+  return surface_property_changed_;
 }
 
 bool RenderSurfaceImpl::AncestorPropertyChanged() const {
+  // All property changes come from the surface's property tree nodes.
+  // (or some ancestor node that propagates its change to one of these nodes).
+  //
   const PropertyTrees* property_trees = layer_tree_impl_->property_trees();
   return ancestor_property_changed_ || property_trees->full_tree_damaged() ||
          property_trees->transform_tree()
@@ -454,6 +461,7 @@ void RenderSurfaceImpl::AppendQuads(DrawMode draw_mode,
                             mask_filter_info(), clip_rect, contents_opaque,
                             draw_properties_.draw_opacity, BlendMode(),
                             sorting_context_id);
+  shared_quad_state->is_fast_rounded_corner = is_fast_rounded_corner();
 
   if (layer_tree_impl_->debug_state().show_debug_borders.test(
           DebugBorderType::RENDERPASS)) {

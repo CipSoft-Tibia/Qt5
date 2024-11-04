@@ -323,6 +323,7 @@ function(qt6_deploy_runtime_dependencies)
         EXECUTABLE
         BIN_DIR
         LIB_DIR
+        LIBEXEC_DIR
         PLUGINS_DIR
         QML_DIR
     )
@@ -346,6 +347,7 @@ function(qt6_deploy_runtime_dependencies)
         ADDITIONAL_LIBRARIES
         ADDITIONAL_MODULES
         ${file_GRD_options}
+        DEPLOY_TOOL_OPTIONS
     )
     cmake_parse_arguments(PARSE_ARGV 0 arg
         "${no_value_options}" "${single_value_options}" "${multi_value_options}"
@@ -362,6 +364,9 @@ function(qt6_deploy_runtime_dependencies)
     # None of these are used if the executable is a macOS app bundle
     if(NOT arg_BIN_DIR)
         set(arg_BIN_DIR "${QT_DEPLOY_BIN_DIR}")
+    endif()
+    if(NOT arg_LIBEXEC_DIR)
+        set(arg_LIBEXEC_DIR "${QT_DEPLOY_LIBEXEC_DIR}")
     endif()
     if(NOT arg_LIB_DIR)
         set(arg_LIB_DIR "${QT_DEPLOY_LIB_DIR}")
@@ -424,6 +429,7 @@ function(qt6_deploy_runtime_dependencies)
             --libdir    "${arg_BIN_DIR}"     # NOTE: Deliberately not arg_LIB_DIR
             --plugindir "${arg_PLUGINS_DIR}"
             --qml-deploy-dir "${arg_QML_DIR}"
+            --translationdir "${QT_DEPLOY_TRANSLATIONS_DIR}"
         )
         if(NOT arg_NO_OVERWRITE)
             list(APPEND tool_options --force)
@@ -437,10 +443,16 @@ function(qt6_deploy_runtime_dependencies)
 
         # Specify path to target Qt's qtpaths .exe or .bat file, so windeployqt deploys the correct
         # libraries when cross-compiling from x86_64 to arm64 windows.
-        if(__QT_DEPLOY_TARGET_QT_PATHS_PATH)
+        if(__QT_DEPLOY_TARGET_QT_PATHS_PATH AND EXISTS "${__QT_DEPLOY_TARGET_QT_PATHS_PATH}")
             list(APPEND tool_options --qtpaths "${__QT_DEPLOY_TARGET_QT_PATHS_PATH}")
+        else()
+            message(WARNING
+                "No qtpaths executable found for target Qt "
+                "at: ${__QT_DEPLOY_TARGET_QT_PATHS_PATH}. "
+                "Libraries may not be deployed correctly.")
         endif()
 
+        list(APPEND tool_options ${arg_DEPLOY_TOOL_OPTIONS})
     elseif(__QT_DEPLOY_SYSTEM_NAME STREQUAL Darwin)
         set(extra_binaries_option "-executable=")
         if(NOT arg_NO_APP_STORE_COMPLIANCE)
@@ -449,6 +461,7 @@ function(qt6_deploy_runtime_dependencies)
         if(NOT arg_NO_OVERWRITE)
             list(APPEND tool_options -always-overwrite)
         endif()
+        list(APPEND tool_options ${arg_DEPLOY_TOOL_OPTIONS})
     endif()
 
     # This is an internal variable. It is normally unset and is only intended
@@ -457,6 +470,13 @@ function(qt6_deploy_runtime_dependencies)
 
     if(__QT_DEPLOY_TOOL STREQUAL "GRD")
         message(STATUS "Running generic Qt deploy tool on ${arg_EXECUTABLE}")
+
+        if(NOT "${arg_DEPLOY_TOOL_OPTIONS}" STREQUAL "")
+            message(WARNING
+                "DEPLOY_TOOL_OPTIONS was specified but has no effect when using the generic "
+                "deployment tool."
+            )
+        endif()
 
         # Construct the EXECUTABLES, LIBRARIES and MODULES arguments.
         list(APPEND tool_options EXECUTABLES ${arg_EXECUTABLE})
@@ -526,10 +546,19 @@ if(NOT __QT_NO_CREATE_VERSIONLESS_FUNCTIONS)
 endif()
 
 function(_qt_internal_show_skip_runtime_deploy_message qt_build_type_string)
+    set(no_value_options "")
+    set(single_value_options
+        EXTRA_MESSAGE
+    )
+    set(multi_value_options "")
+    cmake_parse_arguments(PARSE_ARGV 1 arg
+        "${no_value_options}" "${single_value_options}" "${multi_value_options}"
+    )
     message(STATUS
         "Skipping runtime deployment steps. "
         "Support for installing runtime dependencies is not implemented for "
-        "this target platform (${__QT_DEPLOY_SYSTEM_NAME}, ${qt_build_type_string})."
+        "this target platform (${__QT_DEPLOY_SYSTEM_NAME}, ${qt_build_type_string}). "
+        "${arg_EXTRA_MESSAGE}"
     )
 endfunction()
 
@@ -556,7 +585,7 @@ function(qt6_deploy_translations)
     if(arg_CATALOGS)
         set(catalogs ${arg_CATALOGS})
     else()
-        set(catalogs qt qtbase)
+        set(catalogs qtbase)
 
         # Find the translations that belong to the Qt modules that are used by the project.
         # "Used by the project" means just all modules that are pulled in via find_package for now.

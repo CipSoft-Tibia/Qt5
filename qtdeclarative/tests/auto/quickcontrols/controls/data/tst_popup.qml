@@ -1,9 +1,10 @@
 // Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtQuick
 import QtTest
 import QtQuick.Controls
+import QtQuick.Layouts
 import QtQuick.Templates as T
 import QtQuick.NativeStyle as NativeStyle
 import Qt.test.controls
@@ -319,8 +320,8 @@ TestCase {
 
         control.x = -10
         control.y = -10
-        compare(control.x, 0)
-        compare(control.y, 0)
+        compare(control.x, -10)
+        compare(control.y, -10)
     }
 
     function test_margins() {
@@ -1240,6 +1241,10 @@ TestCase {
     function test_anchors() {
         var control = createTemporaryObject(popupControl, applicationWindow.contentItem.Overlay.overlay,
             { visible: true, width: 100, height: 100 })
+
+        applicationWindow.visible = true
+        verify(waitForRendering(applicationWindow.contentItem))
+
         verify(control)
         verify(control.visible)
         // If there is a transition then make sure it is finished
@@ -1255,8 +1260,6 @@ TestCase {
         var centerInSpy = createTemporaryObject(signalSpy, testCase, { target: control.anchors, signalName: "centerInChanged" })
         verify(centerInSpy.valid)
 
-        applicationWindow.visible = true
-        verify(waitForRendering(applicationWindow.contentItem))
         verify(overlay.width > 0)
         verify(overlay.height > 0)
 
@@ -1483,6 +1486,44 @@ TestCase {
         tryCompare(control, "opened", true)
         let rect = findChild(control.Overlay.overlay, "rect")
         verify(rect)
+    }
+
+    Component {
+        id: popupOverlay
+
+        Popup {
+            id: popupCenterIn
+            property alias text: toastText.text
+            anchors.centerIn: Overlay.overlay
+            dim: true
+            modal: true
+            contentItem: ColumnLayout {
+                Text {
+                    id: toastText
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                }
+            }
+        }
+    }
+
+    function test_popupOverlayCenterIn() {
+        let control = createTemporaryObject(popupOverlay, testCase)
+        verify(control)
+
+        // Modify text in the popup content item
+        control.text = "this is a long text causing a line break to show the binding loop "
+                        + "(height) again after the first initialization of the text";
+
+        // Open popup item and wait for it to be rendered
+        control.open()
+        waitForRendering(testCase)
+        tryCompare(control, "opened", true)
+
+        // Verify popup position
+        compare(control.x, 0)
+        compare(control.y, control.parent.height / 2 - control.height / 2)
+        control.close()
     }
 
     Component {

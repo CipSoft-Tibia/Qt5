@@ -736,7 +736,7 @@ static void inspectImpl(const v8::FunctionCallbackInfo<v8::Value>& info,
   if (!injectedScript) return;
   std::unique_ptr<protocol::Runtime::RemoteObject> wrappedObject;
   protocol::Response response = injectedScript->wrapObject(
-      value, "", WrapMode::kNoPreview, &wrappedObject);
+      value, "", WrapOptions({WrapMode::kIdOnly}), &wrappedObject);
   if (!response.IsSuccess()) return;
 
   std::unique_ptr<protocol::DictionaryValue> hints =
@@ -982,8 +982,7 @@ V8Console::CommandLineAPIScope::CommandLineAPIScope(
              ->SetAccessor(context, name.As<v8::Name>(),
                            CommandLineAPIScope::accessorGetterCallback,
                            CommandLineAPIScope::accessorSetterCallback,
-                           m_thisReference, v8::DEFAULT, v8::DontEnum,
-                           v8::SideEffectType::kHasNoSideEffect)
+                           m_thisReference, v8::DEFAULT, v8::DontEnum)
              .FromMaybe(false)) {
       bool removed = m_installedMethods->Delete(context, name).FromMaybe(false);
       DCHECK(removed);

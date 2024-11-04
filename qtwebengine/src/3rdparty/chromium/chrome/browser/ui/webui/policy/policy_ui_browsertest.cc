@@ -181,7 +181,17 @@ void SetChromeMetaData(base::Value::Dict& expected) {
 #endif
 }
 
+void InitPolicyCategory(base::Value::Dict& expected_dict,
+                        const std::string& key,
+                        const std::string& name) {
+  base::Value::Dict* dict =
+      expected_dict.EnsureDict("policyValues")->EnsureDict(key);
+  dict->Set("name", name);
+  dict->Set("policies", base::Value::Dict());
+}
+
 void SetExpectedPolicy(base::Value::Dict& expected,
+                       const std::string& category,
                        const std::string& name,
                        const std::string& level,
                        const std::string& scope,
@@ -190,8 +200,10 @@ void SetExpectedPolicy(base::Value::Dict& expected,
                        const std::string& warning,
                        bool ignored,
                        const base::Value& value) {
-  base::Value::Dict* dict =
-      expected.EnsureDict("chromePolicies")->EnsureDict(name.c_str());
+  base::Value::Dict* dict = expected.EnsureDict("policyValues")
+                                ->EnsureDict(category)
+                                ->EnsureDict("policies")
+                                ->EnsureDict(name.c_str());
   dict->Set("level", level);
   dict->Set("scope", scope);
   dict->Set("source", source);
@@ -268,7 +280,7 @@ class TestSelectFileDialog : public ui::SelectFileDialog {
     return false;
   }
 
-  void ListenerDestroyed() override {}
+  void ListenerDestroyed() override { listener_ = nullptr; }
 
   bool HasMultipleFileTypeChoicesImpl() override { return false; }
 
@@ -339,10 +351,9 @@ void PolicyUITest::VerifyPolicies(
       "    policies.push(values);"
       "  }"
       "}"
-      "domAutomationController.send(JSON.stringify(policies));";
-  std::string json;
-  ASSERT_TRUE(content::ExecuteScriptAndExtractString(web_contents(), javascript,
-                                                     &json));
+      "JSON.stringify(policies);";
+  std::string json =
+      content::EvalJs(web_contents(), javascript).ExtractString();
   absl::optional<base::Value> value_ptr = base::JSONReader::Read(json);
   ASSERT_TRUE(value_ptr);
   ASSERT_TRUE(value_ptr->is_list());
@@ -365,18 +376,22 @@ void PolicyUITest::VerifyPolicies(
 }
 
 void PolicyUITest::VerifyReportButton(bool visible) {
-  const std::string kJavaScript =
-      "domAutomationController.send(getReportButtonVisibility());";
-  std::string ret;
-  ASSERT_TRUE(content::ExecuteScriptAndExtractString(web_contents(),
-                                                     kJavaScript, &ret));
+  const std::string kJavaScript = "getReportButtonVisibility();";
+  std::string ret =
+      content::EvalJs(web_contents(), kJavaScript).ExtractString();
+
+#if !BUILDFLAG(IS_CHROMEOS)
   EXPECT_EQ(visible, ret != "none");
+#else
+  EXPECT_FALSE(ret != "none");
+#endif
 }
 
 #if !BUILDFLAG(IS_ANDROID)
 void PolicyUITest::VerifyExportingPolicies(const base::Value::Dict& expected) {
   // Set SelectFileDialog to use our factory.
-  ui::SelectFileDialog::SetFactory(new TestSelectFileDialogFactory());
+  ui::SelectFileDialog::SetFactory(
+      std::make_unique<TestSelectFileDialogFactory>());
 
   // Navigate to the about:policy page.
   ASSERT_TRUE(
@@ -385,7 +400,7 @@ void PolicyUITest::VerifyExportingPolicies(const base::Value::Dict& expected) {
   // Click on 'save policies' button.
   const std::string javascript =
       "document.getElementById('export-policies').click()";
-  EXPECT_TRUE(content::ExecuteScript(web_contents(), javascript));
+  EXPECT_TRUE(content::ExecJs(web_contents(), javascript));
 
   base::ThreadPoolInstance::Get()->FlushForTesting();
   // Open the created file.
@@ -443,27 +458,29 @@ IN_PROC_BROWSER_TEST_F(PolicyUITest, MAYBE_WritePoliciesToJSONFile) {
   // Set policy values and generate expected dictionary.
   policy::PolicyMap values;
   base::Value::Dict expected_values;
-
+  InitPolicyCategory(expected_values, "chrome", "Chrome Policies");
   SetChromeMetaData(expected_values);
+  expected_values.FindDict("policyValues")
+      ->Set("extensions", base::Value::Dict());
 
-  base::Value::List popups_blocked_for_urls;
-  popups_blocked_for_urls.Append("aaa");
+  auto popups_blocked_for_urls = base::Value::List().Append("aaa");
   popups_blocked_for_urls.Append("bbb");
   popups_blocked_for_urls.Append("ccc");
   values.Set(policy::key::kPopupsBlockedForUrls, policy::POLICY_LEVEL_MANDATORY,
              policy::POLICY_SCOPE_MACHINE, policy::POLICY_SOURCE_PLATFORM,
              base::Value(popups_blocked_for_urls.Clone()), nullptr);
-  SetExpectedPolicy(expected_values, policy::key::kPopupsBlockedForUrls,
-                    "mandatory", "machine", "platform", std::string(),
-                    std::string(), false,
+  SetExpectedPolicy(expected_values, "chrome",
+                    policy::key::kPopupsBlockedForUrls, "mandatory", "machine",
+                    "platform", std::string(), std::string(), false,
                     base::Value(popups_blocked_for_urls.Clone()));
 
   values.Set(policy::key::kDefaultImagesSetting, policy::POLICY_LEVEL_MANDATORY,
              policy::POLICY_SCOPE_MACHINE, policy::POLICY_SOURCE_CLOUD,
              base::Value(2), nullptr);
-  SetExpectedPolicy(expected_values, policy::key::kDefaultImagesSetting,
-                    "mandatory", "machine", "cloud", std::string(),
-                    std::string(), false, base::Value(2));
+  SetExpectedPolicy(expected_values, "chrome",
+                    policy::key::kDefaultImagesSetting, "mandatory", "machine",
+                    "cloud", std::string(), std::string(), false,
+                    base::Value(2));
 
   // This also checks that we save complex policies correctly.
   base::Value::Dict unknown_policy;
@@ -475,19 +492,29 @@ IN_PROC_BROWSER_TEST_F(PolicyUITest, MAYBE_WritePoliciesToJSONFile) {
   values.Set(kUnknownPolicy, policy::POLICY_LEVEL_RECOMMENDED,
              policy::POLICY_SCOPE_USER, policy::POLICY_SOURCE_CLOUD,
              base::Value(unknown_policy.Clone()), nullptr);
-  SetExpectedPolicy(expected_values, kUnknownPolicy, "recommended", "user",
-                    "cloud", l10n_util::GetStringUTF8(IDS_POLICY_UNKNOWN),
-                    std::string(), false,
-                    base::Value(std::move(unknown_policy)));
+  SetExpectedPolicy(expected_values, "chrome", kUnknownPolicy, "recommended",
+                    "user", "cloud",
+                    l10n_util::GetStringUTF8(IDS_POLICY_UNKNOWN), std::string(),
+                    false, base::Value(std::move(unknown_policy)));
 
-  // Set the extension policies to an empty dictionary as we haven't added any
-  // such policies.
-  expected_values.Set("extensionPolicies", base::Value::Dict());
   expected_values.Set("status", base::Value::Dict());
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-  expected_values.Set("loginScreenExtensionPolicies", base::Value::Dict());
-  expected_values.Set("deviceLocalAccountPolicies", base::Value::Dict());
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+
+#if BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  InitPolicyCategory(expected_values, "updater", "Google Update Policies");
+#endif  // BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
+
+#if !BUILDFLAG(IS_CHROMEOS)
+  InitPolicyCategory(expected_values, "precedence", "Policy Precedence");
+  // Set the default precedence order.
+  base::Value::List precedence_order;
+  precedence_order.Append("Platform machine");
+  precedence_order.Append("Cloud machine");
+  precedence_order.Append("Platform user");
+  precedence_order.Append("Cloud user");
+  expected_values.FindDict("policyValues")
+      ->FindDict("precedence")
+      ->Set("precedenceOrder", std::move(precedence_order));
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
   provider_.UpdateChromePolicy(values);
 
@@ -497,17 +524,42 @@ IN_PROC_BROWSER_TEST_F(PolicyUITest, MAYBE_WritePoliciesToJSONFile) {
   // Change policy values.
   values.Erase(policy::key::kDefaultImagesSetting);
   expected_values.RemoveByDottedPath(
-      std::string("chromePolicies.") +
+      std::string("policyValues.chrome.policies.") +
       std::string(policy::key::kDefaultImagesSetting));
 
   popups_blocked_for_urls.Append("ddd");
   values.Set(policy::key::kPopupsBlockedForUrls, policy::POLICY_LEVEL_MANDATORY,
              policy::POLICY_SCOPE_MACHINE, policy::POLICY_SOURCE_PLATFORM,
              base::Value(popups_blocked_for_urls.Clone()), nullptr);
-  SetExpectedPolicy(expected_values, policy::key::kPopupsBlockedForUrls,
-                    "mandatory", "machine", "platform", std::string(),
-                    std::string(), false,
+  SetExpectedPolicy(expected_values, "chrome",
+                    policy::key::kPopupsBlockedForUrls, "mandatory", "machine",
+                    "platform", std::string(), std::string(), false,
                     base::Value(popups_blocked_for_urls.Clone()));
+
+#if !BUILDFLAG(IS_CHROMEOS)
+  values.Set(policy::key::kCloudPolicyOverridesPlatformPolicy,
+             policy::POLICY_LEVEL_MANDATORY, policy::POLICY_SCOPE_MACHINE,
+             policy::POLICY_SOURCE_PLATFORM, base::Value(true), nullptr);
+  SetExpectedPolicy(expected_values, "chrome",
+                    policy::key::kCloudPolicyOverridesPlatformPolicy,
+                    "mandatory", "machine", "platform", std::string(),
+                    std::string(), false, base::Value(true));
+  SetExpectedPolicy(expected_values, "precedence",
+                    policy::key::kCloudPolicyOverridesPlatformPolicy,
+                    "mandatory", "machine", "platform", std::string(),
+                    std::string(), false, base::Value(true));
+
+  // Update the precedence order since cloud machine policies now override
+  // platform machine policies due to policy CloudPolicyOverridesPlatformPolicy.
+  base::Value::List precedence_order_updated;
+  precedence_order_updated.Append("Cloud machine");
+  precedence_order_updated.Append("Platform machine");
+  precedence_order_updated.Append("Platform user");
+  precedence_order_updated.Append("Cloud user");
+  expected_values.FindDict("policyValues")
+      ->FindDict("precedence")
+      ->Set("precedenceOrder", std::move(precedence_order_updated));
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
   provider_.UpdateChromePolicy(values);
 
@@ -571,39 +623,42 @@ class PolicyUIStatusTest : public MixinBasedInProcessBrowserTest {
 bool PolicyUIStatusTest::ReadStatusFor(
     const std::string& policy_legend,
     base::flat_map<std::string, std::string>* policy_status) {
-  // Retrieve the text contents of the status table with specified legend.
+  // Retrieve the text contents of the status table with specified heading.
   const std::string javascript = R"JS(
     (function() {
       function readStatus() {
         // Wait for the status box to appear in case page just loaded.
         const statusSection = document.getElementById('status-section');
         if (statusSection.hidden) {
-          window.requestIdleCallback(readStatus);
-          return;
+          return new Promise(resolve => {
+            window.requestIdleCallback(resolve);
+          }).then(readStatus);
         }
 
         const policies = getPolicyFieldsets();
         const statuses = {};
         for (let i = 0; i < policies.length; ++i) {
-          const legend = policies[i].querySelector('legend').textContent;
+          const statusHeading = policies[i]
+            .querySelector('.status-box-heading').textContent;
           const entries = {};
           const rows = policies[i]
             .querySelectorAll('.status-entry div:nth-child(2)');
           for (let j = 0; j < rows.length; ++j) {
-            entries[rows[j].className] = rows[j].textContent.trim();
+            entries[rows[j].className.split(' ')[0]] = rows[j].textContent
+              .trim();
           }
-          statuses[legend.trim()] = entries;
+          statuses[statusHeading.trim()] = entries;
         }
-        domAutomationController.send(JSON.stringify(statuses));
-      }
-      window.requestIdleCallback(readStatus);
+        return JSON.stringify(statuses);
+      };
+      return new Promise(resolve => {
+        window.requestIdleCallback(resolve);
+      }).then(readStatus);
     })();
   )JS";
   content::WebContents* contents =
       chrome_test_utils::GetActiveWebContents(this);
-  std::string json;
-  if (!content::ExecuteScriptAndExtractString(contents, javascript, &json))
-    return false;
+  std::string json = content::EvalJs(contents, javascript).ExtractString();
   absl::optional<base::Value> statuses = base::JSONReader::Read(json);
   if (!statuses.has_value() || !statuses->is_dict())
     return false;
@@ -626,18 +681,21 @@ bool PolicyUIStatusTest::ReloadPolicies() {
       // Wait until reload button becomes enabled again, i.e. policies reloaded.
       function waitForPoliciesToReload() {
         if (reloadPoliciesBtn.disabled) {
-          window.requestIdleCallback(waitForPoliciesToReload);
+          return new Promise(resolve => {
+            window.requestIdleCallback(resolve);
+          }).then(waitForPoliciesToReload);
         } else {
-          domAutomationController.send(true);
+          return true;
         }
       }
-      window.requestIdleCallback(waitForPoliciesToReload);
+      return new Promise(resolve => {
+        window.requestIdleCallback(resolve);
+      }).then(waitForPoliciesToReload);
     })();
   )JS";
   content::WebContents* contents =
       chrome_test_utils::GetActiveWebContents(this);
-  bool ignored;
-  return content::ExecuteScriptAndExtractBool(contents, javascript, &ignored);
+  return content::ExecJs(contents, javascript);
 }
 
 IN_PROC_BROWSER_TEST_F(PolicyUIStatusTest,
@@ -882,14 +940,33 @@ IN_PROC_BROWSER_TEST_F(PolicyUITest, ReportButton) {
                  policy::POLICY_LEVEL_MANDATORY, policy::POLICY_SCOPE_MACHINE,
                  policy::POLICY_SOURCE_CLOUD, base::Value(true), nullptr);
   provider_.UpdateChromePolicy(policy_map);
-#if !BUILDFLAG(IS_CHROMEOS)
   VerifyReportButton(/*visible=*/true);
-#else
-  // Always hide on Chrome OS.
-  VerifyReportButton(/*visible=*/false);
-#endif
+
   // Hide while policy is off.
   policy_map.Set(policy::key::kCloudReportingEnabled,
+                 policy::POLICY_LEVEL_MANDATORY, policy::POLICY_SCOPE_MACHINE,
+                 policy::POLICY_SOURCE_CLOUD, base::Value(false), nullptr);
+  provider_.UpdateChromePolicy(policy_map);
+  VerifyReportButton(/*visible=*/false);
+}
+
+IN_PROC_BROWSER_TEST_F(PolicyUITest, ReportButtonWithProfileReporting) {
+  ASSERT_TRUE(
+      content::NavigateToURL(web_contents(), GURL(chrome::kChromeUIPolicyURL)));
+
+  // Hide by default.
+  VerifyReportButton(/*visible=*/false);
+
+  // Turn on with the policy
+  policy::PolicyMap policy_map;
+  policy_map.Set(policy::key::kCloudProfileReportingEnabled,
+                 policy::POLICY_LEVEL_MANDATORY, policy::POLICY_SCOPE_MACHINE,
+                 policy::POLICY_SOURCE_CLOUD, base::Value(true), nullptr);
+  provider_.UpdateChromePolicy(policy_map);
+  VerifyReportButton(/*visible=*/true);
+
+  // Hide while policy is off.
+  policy_map.Set(policy::key::kCloudProfileReportingEnabled,
                  policy::POLICY_LEVEL_MANDATORY, policy::POLICY_SCOPE_MACHINE,
                  policy::POLICY_SOURCE_CLOUD, base::Value(false), nullptr);
   provider_.UpdateChromePolicy(policy_map);
@@ -937,7 +1014,7 @@ class PolicyPrecedenceUITest
   // Used to retrieve the contents of the policy precedence rows.
   const std::string kJavaScript =
       "var precedence_row = getPrecedenceRowValue();"
-      "domAutomationController.send(precedence_row.textContent);";
+      "precedence_row.textContent;";
 };
 
 // Verify that the precedence order displayed in the Policy Precedence table is
@@ -968,9 +1045,8 @@ IN_PROC_BROWSER_TEST_P(PolicyPrecedenceUITest, PrecedenceOrder) {
   // Retrieve the contents of the policy precedence rows.
   ASSERT_TRUE(
       content::NavigateToURL(web_contents(), GURL(chrome::kChromeUIPolicyURL)));
-  std::string precedence_row_value;
-  ASSERT_TRUE(content::ExecuteScriptAndExtractString(
-      web_contents(), kJavaScript, &precedence_row_value));
+  std::string precedence_row_value =
+      content::EvalJs(web_contents(), kJavaScript).ExtractString();
 
   ValidatePrecedenceValue(precedence_row_value);
 }
@@ -1066,18 +1142,17 @@ IN_PROC_BROWSER_TEST_P(ExtensionPolicyUITest,
   base::WriteFile(schema_path, json_data);
 
   // Build extension that contains the policy schema.
-  extensions::DictionaryBuilder storage;
-  storage.Set("managed_schema", schema_file);
+  auto storage = base::Value::Dict().Set("managed_schema", schema_file);
 
-  extensions::DictionaryBuilder manifest;
-  manifest.Set("name", "test")
-      .Set("version", "1")
-      .Set("manifest_version", 2)
-      .Set("storage", storage.Build());
+  auto manifest = base::Value::Dict()
+                      .Set("name", "test")
+                      .Set("version", "1")
+                      .Set("manifest_version", 2)
+                      .Set("storage", std::move(storage));
 
   extensions::ExtensionBuilder builder;
   builder.SetPath(temp_dir_.GetPath());
-  builder.SetManifest(manifest.Build());
+  builder.SetManifest(std::move(manifest));
   builder.SetLocation(
       extensions::mojom::ManifestLocation::kExternalPolicyDownload);
 

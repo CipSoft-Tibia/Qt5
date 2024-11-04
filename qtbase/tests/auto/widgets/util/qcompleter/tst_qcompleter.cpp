@@ -1,11 +1,10 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtGui>
 #include <QtWidgets>
 #include <QtDebug>
-#include <QPair>
 #include <QList>
 #include <QPointer>
 #include <QSignalSpy>
@@ -109,6 +108,8 @@ private slots:
 
     void dynamicSortOrder();
     void disabledItems();
+
+    void hideWidget();
 
     // task-specific tests below me
     void task178797_activatedOnReturn();
@@ -612,6 +613,9 @@ void tst_QCompleter::fileSystemModel_data()
         const QString androidDir = androidHomePath();
         const QString tag = QStringLiteral("%1/fil").arg(androidDir);
         QTest::newRow(tag.toUtf8().data()) << tag << "" << "files" << androidDir + "/files";
+#elif defined(Q_OS_VXWORKS)
+        QTest::newRow("()") << "" << "" << "/" << "/";
+        QTest::newRow("(/tm)") << "/tm" << "" << "tmp" << "/tmp";
 #else
         QTest::newRow("()") << "" << "" << "/" << "/";
 #if !defined(Q_OS_AIX) && !defined(Q_OS_HPUX) && !defined(Q_OS_QNX)
@@ -1184,6 +1188,32 @@ void tst_QCompleter::disabledItems()
     QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, view->visualRect(view->model()->index(1, 0)).center());
     QCOMPARE(spy.size(), 1);
     QVERIFY(!view->isVisible());
+}
+
+void tst_QCompleter::hideWidget()
+{
+    // hiding the widget should hide/close the popup
+    QWidget w;
+    w.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
+    w.setLayout(new QVBoxLayout);
+
+    QLineEdit edit;
+    edit.setCompleter(new QCompleter({ "foo", "bar" }));
+
+    w.layout()->addWidget(&edit);
+
+    const auto pos = w.screen()->availableGeometry().topLeft() + QPoint(200, 200);
+    w.move(pos);
+    w.show();
+    QApplicationPrivate::setActiveWindow(&w);
+    QVERIFY(QTest::qWaitForWindowActive(&w));
+
+    // activate the completer
+    QTest::keyClick(&edit, Qt::Key_F);
+    QVERIFY(edit.completer()->popup());
+    QTRY_VERIFY(edit.completer()->popup()->isVisible());
+    edit.hide();
+    QVERIFY(!edit.completer()->popup()->isVisible());
 }
 
 void tst_QCompleter::task178797_activatedOnReturn()

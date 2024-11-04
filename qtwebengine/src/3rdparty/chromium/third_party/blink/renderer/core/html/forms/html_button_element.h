@@ -46,11 +46,11 @@ class CORE_EXPORT HTMLButtonElement final : public HTMLFormControlElement {
                          InputDeviceCapabilities*) override;
 
  private:
-  enum Type { kSubmit, kReset, kButton };
+  enum Type { kSubmit, kReset, kButton, kSelectlist };
 
   const AtomicString& FormControlType() const override;
 
-  LayoutObject* CreateLayoutObject(const ComputedStyle&, LegacyLayout) override;
+  LayoutObject* CreateLayoutObject(const ComputedStyle&) override;
 
   // HTMLFormControlElement always creates one, but buttons don't need it.
   bool AlwaysCreateUserAgentShadowRoot() const override { return false; }

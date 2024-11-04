@@ -8,6 +8,7 @@
 
 #include "base/check_op.h"
 #include "base/metrics/histogram_macros.h"
+#include "third_party/blink/public/common/scheduler/task_attribution_id.h"
 #include "third_party/blink/renderer/bindings/core/v8/idl_types.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_value.h"
@@ -22,26 +23,17 @@
 #include "third_party/blink/renderer/core/inspector/inspector_trace_events.h"
 #include "third_party/blink/renderer/core/probe/core_probes.h"
 #include "third_party/blink/renderer/modules/scheduler/dom_task_signal.h"
+#include "third_party/blink/renderer/modules/scheduler/script_wrappable_task_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/scheduler/public/task_attribution_tracker.h"
+#include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/web_scheduling_priority.h"
 #include "third_party/blink/renderer/platform/scheduler/public/web_scheduling_task_queue.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 #include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
 
 namespace blink {
-
-#define QUEUEING_TIME_PER_PRIORITY_METRIC_NAME \
-  "DOMScheduler.QueueingDurationPerPriority"
-
-#define PRIORITY_CHANGED_HISTOGRAM_NAME \
-  "DOMSchedler.TaskSignalPriorityWasChanged"
-
-// Same as UMA_HISTOGRAM_TIMES but for a broader view of this metric we end
-// at 1 minute instead of 10 seconds.
-#define QUEUEING_TIME_HISTOGRAM(name, sample)                                 \
-  UMA_HISTOGRAM_CUSTOM_TIMES(QUEUEING_TIME_PER_PRIORITY_METRIC_NAME name,     \
-                             sample, base::Milliseconds(1), base::Minutes(1), \
-                             50)
 
 namespace {
 
@@ -91,23 +83,22 @@ void AbortPostTaskCallbackTraceEventData(perfetto::TracedValue trace_context,
 
 DOMTask::DOMTask(ScriptPromiseResolver* resolver,
                  V8SchedulerPostTaskCallback* callback,
-                 AbortSignal* signal,
+                 AbortSignal* abort_source,
+                 DOMTaskSignal* priority_source,
                  DOMScheduler::DOMTaskQueue* task_queue,
                  base::TimeDelta delay)
     : callback_(callback),
       resolver_(resolver),
-      signal_(signal),
+      abort_source_(abort_source),
+      priority_source_(priority_source),
       task_queue_(task_queue),
-      // TODO(crbug.com/1291798): Expose queuing time from
-      // base::sequence_manager so we don't have to recalculate it here.
-      queue_time_(delay.is_zero() ? base::TimeTicks::Now() : base::TimeTicks()),
       delay_(delay),
       task_id_for_tracing_(NextIdForTracing()) {
-  DCHECK(task_queue_);
-  DCHECK(callback_);
+  CHECK(task_queue_);
+  CHECK(callback_);
 
-  if (signal_) {
-    abort_handle_ = signal_->AddAlgorithm(
+  if (abort_source_ && abort_source_->CanAbort()) {
+    abort_handle_ = abort_source_->AddAlgorithm(
         WTF::BindOnce(&DOMTask::OnAbort, WrapWeakPersistent(this)));
   }
 
@@ -118,6 +109,14 @@ DOMTask::DOMTask(ScriptPromiseResolver* resolver,
   ScriptState* script_state =
       callback_->CallbackRelevantScriptStateOrReportError("DOMTask", "Create");
   DCHECK(script_state && script_state->ContextIsValid());
+
+  if (script_state->World().IsMainWorld()) {
+    if (auto* tracker =
+            ThreadScheduler::Current()->GetTaskAttributionTracker()) {
+      parent_task_id_ = tracker->RunningTaskAttributionId(script_state);
+    }
+  }
+
   auto* context = ExecutionContext::From(script_state);
   DEVTOOLS_TIMELINE_TRACE_EVENT_INSTANT(
       "SchedulePostTaskCallback", SchedulePostTaskCallbackTraceEventData,
@@ -130,7 +129,8 @@ DOMTask::DOMTask(ScriptPromiseResolver* resolver,
 void DOMTask::Trace(Visitor* visitor) const {
   visitor->Trace(callback_);
   visitor->Trace(resolver_);
-  visitor->Trace(signal_);
+  visitor->Trace(abort_source_);
+  visitor->Trace(priority_source_);
   visitor->Trace(abort_handle_);
   visitor->Trace(task_queue_);
 }
@@ -143,8 +143,10 @@ void DOMTask::Invoke() {
   // ExecutionContext is detached. Note that this context can be different
   // from the the callback's relevant context.
   ExecutionContext* scheduler_context = resolver_->GetExecutionContext();
-  if (!scheduler_context || scheduler_context->IsContextDestroyed())
+  if (!scheduler_context || scheduler_context->IsContextDestroyed()) {
+    RemoveAbortAlgorithm();
     return;
+  }
 
   ScriptState* script_state =
       callback_->CallbackRelevantScriptStateOrReportError("DOMTask", "Invoke");
@@ -160,11 +162,12 @@ void DOMTask::Invoke() {
     // up the ScriptPromiseResolver since it is associated with a different
     // context.
     resolver_->Detach();
+    RemoveAbortAlgorithm();
     return;
   }
 
-  RecordTaskStartMetrics();
   InvokeInternal(script_state);
+  RemoveAbortAlgorithm();
   callback_.Release();
 }
 
@@ -181,13 +184,31 @@ void DOMTask::InvokeInternal(ScriptState* script_state) {
       WebSchedulingPriorityToString(task_queue_->GetPriority()),
       delay_.InMillisecondsF());
   probe::AsyncTask async_task(context, &async_task_context_);
-  probe::UserCallback probe(context, "postTask", AtomicString(), true);
+
+  std::unique_ptr<scheduler::TaskAttributionTracker::TaskScope>
+      task_attribution_scope;
+  // For the main thread (tracker exists), create the task scope with the signal
+  // to set up propagation. On workers, set the current context here since there
+  // is no tracker.
+  if (auto* tracker = ThreadScheduler::Current()->GetTaskAttributionTracker()) {
+    task_attribution_scope = tracker->CreateTaskScope(
+        script_state, parent_task_id_,
+        scheduler::TaskAttributionTracker::TaskScopeType::kSchedulerPostTask,
+        abort_source_, priority_source_);
+  } else if (RuntimeEnabledFeatures::SchedulerYieldEnabled(
+                 ExecutionContext::From(script_state))) {
+    ScriptWrappableTaskState::SetCurrent(
+        script_state,
+        MakeGarbageCollected<ScriptWrappableTaskState>(
+            scheduler::TaskAttributionId(), abort_source_, priority_source_));
+  }
 
   ScriptValue result;
-  if (callback_->Invoke(nullptr).To(&result))
+  if (callback_->Invoke(nullptr).To(&result)) {
     resolver_->Resolve(result.V8Value());
-  else if (try_catch.HasCaught())
+  } else if (try_catch.HasCaught()) {
     resolver_->Reject(try_catch.Exception());
+  }
 }
 
 void DOMTask::OnAbort() {
@@ -221,33 +242,15 @@ void DOMTask::OnAbort() {
   // TODO(crbug.com/1293949): Add an error message.
   resolver_->Reject(
       ToV8Traits<IDLAny>::ToV8(resolver_script_state,
-                               signal_->reason(resolver_script_state))
+                               abort_source_->reason(resolver_script_state))
           .ToLocalChecked());
 }
 
-void DOMTask::RecordTaskStartMetrics() {
-  auto status =
-      (signal_ && IsA<DOMTaskSignal>(signal_.Get()))
-          ? To<DOMTaskSignal>(signal_.Get())->GetPriorityChangeStatus()
-          : DOMTaskSignal::PriorityChangeStatus::kNoPriorityChange;
-  UMA_HISTOGRAM_ENUMERATION(PRIORITY_CHANGED_HISTOGRAM_NAME, status);
-
-  if (queue_time_ > base::TimeTicks()) {
-    base::TimeDelta queue_duration = base::TimeTicks::Now() - queue_time_;
-    DCHECK_GT(queue_duration, base::TimeDelta());
-    if (status == DOMTaskSignal::PriorityChangeStatus::kNoPriorityChange) {
-      switch (task_queue_->GetPriority()) {
-        case WebSchedulingPriority::kUserBlockingPriority:
-          QUEUEING_TIME_HISTOGRAM(".UserBlocking", queue_duration);
-          break;
-        case WebSchedulingPriority::kUserVisiblePriority:
-          QUEUEING_TIME_HISTOGRAM(".UserVisable", queue_duration);
-          break;
-        case WebSchedulingPriority::kBackgroundPriority:
-          QUEUEING_TIME_HISTOGRAM(".Background", queue_duration);
-          break;
-      }
-    }
+void DOMTask::RemoveAbortAlgorithm() {
+  if (abort_handle_) {
+    CHECK(abort_source_);
+    abort_source_->RemoveAlgorithm(abort_handle_);
+    abort_handle_ = nullptr;
   }
 }
 

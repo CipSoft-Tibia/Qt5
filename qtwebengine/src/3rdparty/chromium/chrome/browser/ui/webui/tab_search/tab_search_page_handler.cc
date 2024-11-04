@@ -29,6 +29,7 @@
 #include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/browser_live_tab_context.h"
 #include "chrome/browser/ui/browser_window.h"
+#include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_renderer_data.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
@@ -39,6 +40,7 @@
 #include "chrome/browser/ui/webui/util/image_util.h"
 #include "chrome/common/webui_url_constants.h"
 #include "ui/base/l10n/time_format.h"
+#include "ui/color/color_provider.h"
 
 namespace {
 constexpr base::TimeDelta kTabsChangeDelay = base::Milliseconds(50);
@@ -92,6 +94,17 @@ void CreateTabGroupIfNotPresent(
     tab_group_ids.insert(tab_group_id);
     tab_groups.push_back(std::move(tab_group));
   }
+}
+
+// Applies theming to favicons where necessary. This is needed to handle favicon
+// resources that are rasterized in a theme-unaware way. This is common of
+// favicons not sourced directly from the browser.
+gfx::ImageSkia ThemeFavicon(const gfx::ImageSkia& source,
+                            const ui::ColorProvider& provider) {
+  return favicon::ThemeFavicon(
+      source, provider.GetColor(kColorTabSearchPrimaryForeground),
+      provider.GetColor(kColorTabSearchBackground),
+      provider.GetColor(kColorTabSearchBackground));
 }
 
 }  // namespace
@@ -456,14 +469,24 @@ tab_search::mojom::TabPtr TabSearchPageHandler::GetTab(
           ? tab_renderer_data.visible_url
           : last_committed_url;
 
-  if (tab_renderer_data.favicon.isNull()) {
+  if (tab_renderer_data.favicon.IsEmpty()) {
     tab_data->is_default_favicon = true;
   } else {
+    const ui::ColorProvider& provider =
+        web_ui_->GetWebContents()->GetColorProvider();
+    const gfx::ImageSkia default_favicon =
+        favicon::GetDefaultFaviconModel().Rasterize(&provider);
+    gfx::ImageSkia raster_favicon =
+        tab_renderer_data.favicon.Rasterize(&provider);
+
+    if (tab_renderer_data.should_themify_favicon) {
+      raster_favicon = ThemeFavicon(raster_favicon, provider);
+    }
+
     tab_data->favicon_url = GURL(webui::EncodePNGAndMakeDataURI(
-        tab_renderer_data.favicon, web_ui_->GetDeviceScaleFactor()));
+        raster_favicon, web_ui_->GetDeviceScaleFactor()));
     tab_data->is_default_favicon =
-        tab_renderer_data.favicon.BackedBySameObjectAs(
-            favicon::GetDefaultFavicon().AsImageSkia());
+        raster_favicon.BackedBySameObjectAs(default_favicon);
   }
 
   tab_data->show_icon = tab_renderer_data.show_icon;

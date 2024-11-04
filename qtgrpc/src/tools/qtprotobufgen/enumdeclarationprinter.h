@@ -27,8 +27,7 @@ public:
 private:
     void startEnum();
     void printEnum();
-    void encloseEnum() { encloseClass(); }
-    void printEnumClass();
+    void encloseEnum();
 };
 
 } // namespace QtProtobuf

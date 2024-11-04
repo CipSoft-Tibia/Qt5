@@ -14,7 +14,7 @@ rtc_library("webrtc_fuzzer_main") {
   sources = [ "webrtc_fuzzer_main.cc" ]
   deps = [
     "../../rtc_base:logging",
-    "//testing/libfuzzer:libfuzzer_main",
+    "//testing/libfuzzer:fuzzing_engine_main",
   ]
 
   # When WebRTC fuzzer tests are built on Chromium bots they need to link
@@ -123,6 +123,16 @@ webrtc_fuzzer_test("h264_bitstream_parser_fuzzer") {
   ]
 }
 
+if (rtc_use_h265) {
+  webrtc_fuzzer_test("h265_bitstream_parser_fuzzer") {
+    sources = [ "h265_bitstream_parser_fuzzer.cc" ]
+    deps = [
+      "../../common_video",
+      "../../modules/video_coding/",
+    ]
+  }
+}
+
 webrtc_fuzzer_test("forward_error_correction_fuzzer") {
   sources = [ "forward_error_correction_fuzzer.cc" ]
   deps = [
@@ -227,15 +237,16 @@ webrtc_fuzzer_test("rtp_packetizer_av1_fuzzer") {
   ]
 }
 
-webrtc_fuzzer_test("congestion_controller_feedback_fuzzer") {
-  sources = [ "congestion_controller_feedback_fuzzer.cc" ]
+webrtc_fuzzer_test("receive_side_congestion_controller_fuzzer") {
+  sources = [ "receive_side_congestion_controller_fuzzer.cc" ]
   deps = [
+    "../../api:array_view",
+    "../../api/units:time_delta",
+    "../../api/units:timestamp",
     "../../modules/congestion_controller",
-    "../../modules/pacing",
-    "../../modules/remote_bitrate_estimator",
     "../../modules/rtp_rtcp:rtp_rtcp_format",
+    "../../system_wrappers",
   ]
-  absl_deps = [ "//third_party/abseil-cpp/absl/functional:bind_front" ]
 }
 
 rtc_library("audio_decoder_fuzzer") {
@@ -656,6 +667,7 @@ if (rtc_build_libvpx) {
       "../../api:field_trials_view",
       "../../api/video:video_frame",
       "../../api/video_codecs:video_codecs_api",
+      "../../media:media_constants",
       "../../modules/video_coding:frame_dependencies_calculator",
       "../../modules/video_coding:webrtc_libvpx_interface",
       "../../modules/video_coding:webrtc_vp9",

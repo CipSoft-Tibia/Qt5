@@ -68,6 +68,15 @@ llvm::llvm_shutdown_obj llvmShutdownObj;
 // for destructing objects at exit. See crbug.com/1074222
 thread_local rr::JITBuilder *jit = nullptr;
 
+auto getNumElements(llvm::FixedVectorType *vec)
+{
+#if LLVM_VERSION_MAJOR >= 11
+	return vec->getElementCount();
+#else
+	return vec->getNumElements();
+#endif
+}
+
 llvm::Value *lowerPAVG(llvm::Value *x, llvm::Value *y)
 {
 	llvm::VectorType *ty = llvm::cast<llvm::VectorType>(x->getType());
@@ -142,13 +151,8 @@ llvm::Value *lowerPCMP(llvm::ICmpInst::Predicate pred, llvm::Value *x,
 	llvm::Constant *one;
 	if(llvm::FixedVectorType *vectorTy = llvm::dyn_cast<llvm::FixedVectorType>(ty))
 	{
-		one = llvm::ConstantVector::getSplat(
-#if LLVM_VERSION_MAJOR >= 11
-		    vectorTy->getElementCount(),
-#else
-		    vectorTy->getNumElements(),
-#endif
-		    llvm::ConstantFP::get(vectorTy->getElementType(), 1));
+		one = llvm::ConstantVector::getSplat(getNumElements(vectorTy),
+		                                     llvm::ConstantFP::get(vectorTy->getElementType(), 1));
 	}
 	else
 	{
@@ -165,39 +169,24 @@ llvm::Value *lowerPCMP(llvm::ICmpInst::Predicate pred, llvm::Value *x,
 [[maybe_unused]] llvm::Value *lowerVectorShl(llvm::Value *x, uint64_t scalarY)
 {
 	llvm::FixedVectorType *ty = llvm::cast<llvm::FixedVectorType>(x->getType());
-	llvm::Value *y = llvm::ConstantVector::getSplat(
-#if LLVM_VERSION_MAJOR >= 11
-	    ty->getElementCount(),
-#else
-	    ty->getNumElements(),
-#endif
-	    llvm::ConstantInt::get(ty->getElementType(), scalarY));
+	llvm::Value *y = llvm::ConstantVector::getSplat(getNumElements(ty),
+	                                                llvm::ConstantInt::get(ty->getElementType(), scalarY));
 	return jit->builder->CreateShl(x, y);
 }
 
 [[maybe_unused]] llvm::Value *lowerVectorAShr(llvm::Value *x, uint64_t scalarY)
 {
 	llvm::FixedVectorType *ty = llvm::cast<llvm::FixedVectorType>(x->getType());
-	llvm::Value *y = llvm::ConstantVector::getSplat(
-#if LLVM_VERSION_MAJOR >= 11
-	    ty->getElementCount(),
-#else
-	    ty->getNumElements(),
-#endif
-	    llvm::ConstantInt::get(ty->getElementType(), scalarY));
+	llvm::Value *y = llvm::ConstantVector::getSplat(getNumElements(ty),
+	                                                llvm::ConstantInt::get(ty->getElementType(), scalarY));
 	return jit->builder->CreateAShr(x, y);
 }
 
 [[maybe_unused]] llvm::Value *lowerVectorLShr(llvm::Value *x, uint64_t scalarY)
 {
 	llvm::FixedVectorType *ty = llvm::cast<llvm::FixedVectorType>(x->getType());
-	llvm::Value *y = llvm::ConstantVector::getSplat(
-#if LLVM_VERSION_MAJOR >= 11
-	    ty->getElementCount(),
-#else
-	    ty->getNumElements(),
-#endif
-	    llvm::ConstantInt::get(ty->getElementType(), scalarY));
+	llvm::Value *y = llvm::ConstantVector::getSplat(getNumElements(ty),
+	                                                llvm::ConstantInt::get(ty->getElementType(), scalarY));
 	return jit->builder->CreateLShr(x, y);
 }
 
@@ -354,6 +343,23 @@ llvm::Value *lowerMulHigh(llvm::Value *x, llvm::Value *y, bool sext)
 	llvm::IntegerType *intTy = llvm::cast<llvm::IntegerType>(ty->getElementType());
 	llvm::Value *mulh = jit->builder->CreateAShr(mult, intTy->getBitWidth());
 	return jit->builder->CreateTrunc(mulh, ty);
+}
+
+// TODO(crbug.com/swiftshader/185): A temporary workaround for failing chromium tests.
+llvm::Value *clampForShift(llvm::Value *rhs)
+{
+	llvm::Value *max;
+	if(auto *vec = llvm::dyn_cast<llvm::FixedVectorType>(rhs->getType()))
+	{
+		auto N = vec->getElementType()->getIntegerBitWidth() - 1;
+		max = llvm::ConstantVector::getSplat(getNumElements(vec), llvm::ConstantInt::get(vec->getElementType(), N));
+	}
+	else
+	{
+		auto N = rhs->getType()->getIntegerBitWidth() - 1;
+		max = llvm::ConstantInt::get(rhs->getType(), N);
+	}
+	return jit->builder->CreateSelect(jit->builder->CreateICmpULE(rhs, max), rhs, max);
 }
 
 }  // namespace
@@ -806,13 +812,15 @@ RValue<Float4> operator%(RValue<Float4> lhs, RValue<Float4> rhs)
 Value *Nucleus::createShl(Value *lhs, Value *rhs)
 {
 	RR_DEBUG_INFO_UPDATE_LOC();
-	return V(jit->builder->CreateShl(V(lhs), V(rhs)));
+	auto *clamped_rhs = clampForShift(V(rhs));
+	return V(jit->builder->CreateShl(V(lhs), clamped_rhs));
 }
 
 Value *Nucleus::createLShr(Value *lhs, Value *rhs)
 {
 	RR_DEBUG_INFO_UPDATE_LOC();
-	return V(jit->builder->CreateLShr(V(lhs), V(rhs)));
+	auto *clamped_rhs = clampForShift(V(rhs));
+	return V(jit->builder->CreateLShr(V(lhs), clamped_rhs));
 }
 
 Value *Nucleus::createAShr(Value *lhs, Value *rhs)

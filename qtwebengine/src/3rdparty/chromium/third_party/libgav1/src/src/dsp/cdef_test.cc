@@ -304,7 +304,7 @@ template <int bitdepth, typename Pixel>
 void CdefFilteringTest<bitdepth, Pixel>::TestRandomValues(int num_runs) {
   const int id = static_cast<int>(param_.rows4x4 < 4) * 3 +
                  (param_.subsampling_x + param_.subsampling_y) * 6;
-  absl::Duration elapsed_time;
+  absl::Duration elapsed_time[kMaxPlanes];
   for (int num_tests = 0; num_tests < num_runs; ++num_tests) {
     for (int plane = kPlaneY; plane < kMaxPlanes; ++plane) {
       const int subsampling_x = (plane == kPlaneY) ? 0 : param_.subsampling_x;
@@ -355,7 +355,7 @@ void CdefFilteringTest<bitdepth, Pixel>::TestRandomValues(int num_runs) {
           source_ + offset, kSourceStride, block_height, primary_strength_,
           secondary_strength_, damping_, direction_, dest_[plane],
           kTestBufferStride * sizeof(dest_[0][0]));
-      elapsed_time += absl::Now() - start;
+      elapsed_time[plane] += absl::Now() - start;
     }
   }
 
@@ -379,7 +379,7 @@ void CdefFilteringTest<bitdepth, Pixel>::TestRandomValues(int num_runs) {
     ASSERT_NE(expected_digest, nullptr);
     test_utils::CheckMd5Digest(kCdef, kCdefFilterName, expected_digest,
                                reinterpret_cast<uint8_t*>(dest_[plane]),
-                               sizeof(dest_[plane]), elapsed_time);
+                               sizeof(dest_[plane]), elapsed_time[plane]);
   }
 }
 

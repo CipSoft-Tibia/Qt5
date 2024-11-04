@@ -11,7 +11,7 @@ The entryPoint assigned in descriptor include:
 
 TODO:
 - Test unicode normalization (gpuweb/gpuweb#1160)
-- Fine-tune test cases to reduce number by removing trivially similiar cases
+- Fine-tune test cases to reduce number by removing trivially similar cases
 `;
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
@@ -37,7 +37,7 @@ const kEntryPointTestCases = [
   { shaderModuleEntryPoint: 'main_t12V3', stageEntryPoint: 'main_t12V5' },
   { shaderModuleEntryPoint: 'main_t12V3', stageEntryPoint: '_main_t12V3' },
   { shaderModuleEntryPoint: 'séquençage', stageEntryPoint: 'séquençage' },
-  { shaderModuleEntryPoint: 'séquençage', stageEntryPoint: 'sequencage' },
+  { shaderModuleEntryPoint: 'séquençage', stageEntryPoint: 'séquençage' },
 ];
 
 g.test('compute')

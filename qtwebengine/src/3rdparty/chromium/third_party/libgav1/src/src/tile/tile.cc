@@ -2605,17 +2605,17 @@ void Tile::StoreMotionFieldMvsIntoCurrentFrame(const Block& block) {
   ReferenceInfo* reference_info = current_frame_.reference_info();
   for (int i = 1; i >= 0; --i) {
     const ReferenceFrameType reference_frame_to_store = bp.reference_frame[i];
+    if (reference_frame_to_store <= kReferenceFrameIntra) continue;
     // Must make a local copy so that StoreMotionFieldMvs() knows there is no
     // overlap between load and store.
     const MotionVector mv_to_store = bp.mv.mv[i];
     const int mv_row = std::abs(mv_to_store.mv[0]);
     const int mv_column = std::abs(mv_to_store.mv[1]);
-    if (reference_frame_to_store > kReferenceFrameIntra &&
-        // kRefMvsLimit equals 0x07FF, so we can first bitwise OR the two
-        // absolute values and then compare with kRefMvsLimit to save a branch.
-        // The next line is equivalent to:
-        // mv_row <= kRefMvsLimit && mv_column <= kRefMvsLimit
-        (mv_row | mv_column) <= kRefMvsLimit &&
+    // kRefMvsLimit equals 0x07FF, so we can first bitwise OR the two absolute
+    // values and then compare with kRefMvsLimit to save a branch.
+    // The next line is equivalent to:
+    // mv_row <= kRefMvsLimit && mv_column <= kRefMvsLimit
+    if ((mv_row | mv_column) <= kRefMvsLimit &&
         reference_info->relative_distance_from[reference_frame_to_store] < 0) {
       const int row_start8x8 = DivideBy2(row_start4x4);
       const int row_limit8x8 = DivideBy2(row_limit4x4);

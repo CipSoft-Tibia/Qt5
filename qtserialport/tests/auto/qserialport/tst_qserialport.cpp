@@ -1,5 +1,5 @@
 // Copyright (C) 2014 Denis Shienkov <denis.shienkov@gmail.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QtTest/private/qpropertytesthelper_p.h>
@@ -1285,6 +1285,9 @@ void tst_QSerialPort::bindingsAndProperties()
     }
 
     // -- stop bits
+
+    static_assert(std::is_same_v<decltype(sp.bindableStopBits()),
+                                 QBindable<QSerialPort::StopBits>>);
 
     QTestPrivate::testReadWritePropertyBasics(sp, QSerialPort::StopBits::OneAndHalfStop,
                                               QSerialPort::StopBits::TwoStop, "stopBits");

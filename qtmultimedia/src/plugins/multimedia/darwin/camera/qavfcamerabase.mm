@@ -93,7 +93,23 @@ bool qt_convert_exposure_mode(AVCaptureDevice *captureDevice, QCamera::ExposureM
 
 #endif // defined(Q_OS_IOS)
 
+// Helper function to translate AVCaptureDevicePosition enum to QCameraDevice::Position enum.
+QCameraDevice::Position qt_AVCaptureDevicePosition_to_QCameraDevicePosition(AVCaptureDevicePosition input)
+{
+    switch (input) {
+        case AVCaptureDevicePositionFront:
+            return QCameraDevice::Position::FrontFace;
+        case AVCaptureDevicePositionBack:
+            return QCameraDevice::Position::BackFace;
+        case AVCaptureDevicePositionUnspecified:
+            return QCameraDevice::Position::UnspecifiedPosition;
+        default:
+            return QCameraDevice::Position::UnspecifiedPosition;
+    }
+}
+
 } // Unnamed namespace.
+
 
 
 QAVFVideoDevices::QAVFVideoDevices(QPlatformMediaIntegration *integration)
@@ -192,6 +208,7 @@ void QAVFVideoDevices::updateCameraDevices()
             info->isDefault = true;
         info->id = QByteArray([[device uniqueID] UTF8String]);
         info->description = QString::fromNSString([device localizedName]);
+        info->position = qt_AVCaptureDevicePosition_to_QCameraDevicePosition([device position]);
 
         qCDebug(qLcCamera) << "Handling camera info" << info->description
                            << (info->isDefault ? "(default)" : "");
@@ -627,16 +644,19 @@ void QAVFCameraBase::zoomTo(float factor, float rate)
     factor = qBound(captureDevice.minAvailableVideoZoomFactor, factor,
                     captureDevice.activeFormat.videoMaxZoomFactor);
 
-    const AVFConfigurationLock lock(captureDevice);
-    if (!lock) {
-        qCDebug(qLcCamera) << Q_FUNC_INFO << "failed to lock for configuration";
-        return;
-    }
+    {
+        const AVFConfigurationLock lock(captureDevice);
+        if (!lock) {
+            qCDebug(qLcCamera) << Q_FUNC_INFO << "failed to lock for configuration";
+            return;
+        }
 
-   if (rate <= 0)
-        captureDevice.videoZoomFactor = factor;
-   else
-       [captureDevice rampToVideoZoomFactor:factor withRate:rate];
+        if (rate <= 0)
+            captureDevice.videoZoomFactor = factor;
+        else
+            [captureDevice rampToVideoZoomFactor:factor withRate:rate];
+    }
+    zoomFactorChanged(factor);
 #endif
 }
 

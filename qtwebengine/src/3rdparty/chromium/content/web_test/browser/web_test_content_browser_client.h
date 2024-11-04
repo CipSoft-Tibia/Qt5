@@ -20,10 +20,10 @@
 #include "services/service_manager/public/cpp/binder_registry.h"
 #include "third_party/blink/public/mojom/badging/badging.mojom.h"
 #include "third_party/blink/public/mojom/clipboard/clipboard.mojom.h"
-#include "third_party/blink/public/mojom/conversions/attribution_reporting_automation.mojom-forward.h"
 #include "third_party/blink/public/mojom/cookie_manager/cookie_manager_automation.mojom-forward.h"
 #include "third_party/blink/public/mojom/permissions/permission_automation.mojom-forward.h"
 #include "third_party/blink/public/mojom/storage_access/storage_access_automation.mojom-forward.h"
+#include "third_party/blink/public/mojom/webid/federated_auth_request_automation.mojom-forward.h"
 
 namespace blink {
 namespace web_pref {
@@ -104,7 +104,7 @@ class WebTestContentBrowserClient : public ShellContentBrowserClient {
       bool first_auth_attempt,
       LoginAuthRequiredCallback auth_required_callback) override;
 #if BUILDFLAG(IS_WIN)
-  bool PreSpawnChild(sandbox::TargetPolicy* policy,
+  bool PreSpawnChild(sandbox::TargetConfig* config,
                      sandbox::mojom::Sandbox sandbox_type,
                      ChildSpawnFlags flags) override;
 #endif
@@ -113,6 +113,10 @@ class WebTestContentBrowserClient : public ShellContentBrowserClient {
                                  InterestGroupApiOperation operation,
                                  const url::Origin& top_frame_origin,
                                  const url::Origin& api_origin) override;
+  bool IsPrivacySandboxReportingDestinationAttested(
+      content::BrowserContext* browser_context,
+      const url::Origin& destination_origin,
+      content::PrivacySandboxInvokingAPI invoking_api) override;
   void GetHyphenationDictionary(
       base::OnceCallback<void(const base::FilePath&)>) override;
 
@@ -147,14 +151,17 @@ class WebTestContentBrowserClient : public ShellContentBrowserClient {
       mojo::PendingReceiver<blink::test::mojom::CookieManagerAutomation>
           receiver);
 
-  void BindAttributionReportingAutomation(
+  void BindFedCmAutomation(
       RenderFrameHost* render_frame_host,
-      mojo::PendingReceiver<blink::test::mojom::AttributionReportingAutomation>
+      mojo::PendingReceiver<blink::test::mojom::FederatedAuthRequestAutomation>
           receiver);
 
   void BindWebTestControlHost(
       int render_process_id,
       mojo::PendingAssociatedReceiver<mojom::WebTestControlHost> receiver);
+
+  void BindNonAssociatedWebTestControlHost(
+      mojo::PendingReceiver<mojom::NonAssociatedWebTestControlHost> receiver);
 
   bool block_popups_ = true;
   bool screen_orientation_changed_ = false;
@@ -166,8 +173,8 @@ class WebTestContentBrowserClient : public ShellContentBrowserClient {
   std::unique_ptr<MockBadgeService> mock_badge_service_;
   mojo::UniqueReceiverSet<blink::test::mojom::CookieManagerAutomation>
       cookie_managers_;
-  mojo::UniqueReceiverSet<blink::test::mojom::AttributionReportingAutomation>
-      attribution_reporting_receivers_;
+  mojo::UniqueReceiverSet<blink::test::mojom::FederatedAuthRequestAutomation>
+      fedcm_managers_;
 };
 
 }  // namespace content

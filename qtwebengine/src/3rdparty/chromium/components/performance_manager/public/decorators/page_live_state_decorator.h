@@ -117,6 +117,8 @@ class PageLiveStateDecorator : public GraphOwnedDefaultImpl,
 
   // PageNode::ObserverDefaultImpl implementation:
   void OnMainFrameUrlChanged(const PageNode* page_node) override;
+  void OnTitleUpdated(const PageNode* page_node) override;
+  void OnFaviconUpdated(const PageNode* page_node) override;
 
   void OnContentSettingsReceived(
       const GURL& url,
@@ -152,6 +154,10 @@ class PageLiveStateDecorator::Data {
   virtual bool IsContentSettingTypeAllowed(ContentSettingsType type) const = 0;
   virtual bool IsDevToolsOpen() const = 0;
 
+  // TODO(https://crbug.com/1418410): Add a notifier for this to
+  // PageLiveStateObserver.
+  virtual bool UpdatedTitleOrFaviconInBackground() const = 0;
+
   static const Data* FromPageNode(const PageNode* page_node);
   static Data* GetOrCreateForPageNode(const PageNode* page_node);
 
@@ -169,6 +175,7 @@ class PageLiveStateDecorator::Data {
   virtual void SetContentSettingsForTesting(
       const std::map<ContentSettingsType, ContentSetting>& settings) = 0;
   virtual void SetIsDevToolsOpenForTesting(bool value) = 0;
+  virtual void SetUpdatedTitleOrFaviconInBackgroundForTesting(bool value) = 0;
 
  protected:
   base::ObserverList<PageLiveStateObserver> observers_
@@ -198,6 +205,32 @@ class PageLiveStateObserver : public base::CheckedObserver {
   virtual void OnIsPinnedTabChanged(const PageNode* page_node) = 0;
   virtual void OnContentSettingsChanged(const PageNode* page_node) = 0;
   virtual void OnIsDevToolsOpenChanged(const PageNode* page_node) = 0;
+};
+
+class PageLiveStateObserverDefaultImpl : public PageLiveStateObserver {
+ public:
+  PageLiveStateObserverDefaultImpl();
+  ~PageLiveStateObserverDefaultImpl() override;
+  PageLiveStateObserverDefaultImpl(
+      const PageLiveStateObserverDefaultImpl& other) = delete;
+  PageLiveStateObserverDefaultImpl& operator=(
+      const PageLiveStateObserverDefaultImpl&) = delete;
+
+  // PageLiveStateObserver:
+  void OnIsConnectedToUSBDeviceChanged(const PageNode* page_node) override {}
+  void OnIsConnectedToBluetoothDeviceChanged(
+      const PageNode* page_node) override {}
+  void OnIsCapturingVideoChanged(const PageNode* page_node) override {}
+  void OnIsCapturingAudioChanged(const PageNode* page_node) override {}
+  void OnIsBeingMirroredChanged(const PageNode* page_node) override {}
+  void OnIsCapturingWindowChanged(const PageNode* page_node) override {}
+  void OnIsCapturingDisplayChanged(const PageNode* page_node) override {}
+  void OnIsAutoDiscardableChanged(const PageNode* page_node) override {}
+  void OnWasDiscardedChanged(const PageNode* page_node) override {}
+  void OnIsActiveTabChanged(const PageNode* page_node) override {}
+  void OnIsPinnedTabChanged(const PageNode* page_node) override {}
+  void OnContentSettingsChanged(const PageNode* page_node) override {}
+  void OnIsDevToolsOpenChanged(const PageNode* page_node) override {}
 };
 
 }  // namespace performance_manager

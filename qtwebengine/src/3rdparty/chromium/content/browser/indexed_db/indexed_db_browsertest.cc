@@ -24,10 +24,14 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/bind.h"
+#include "base/test/gmock_expected_support.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/test_future.h"
 #include "base/test/thread_test_helper.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "components/services/storage/indexed_db/transactional_leveldb/transactional_leveldb_database.h"
 #include "components/services/storage/privileged/mojom/indexed_db_control.mojom-test-utils.h"
 #include "components/services/storage/privileged/mojom/indexed_db_control_test.mojom.h"
@@ -291,6 +295,21 @@ class IndexedDBBrowserTest : public ContentBrowserTest {
     loop.Run();
   }
 
+  storage::QuotaErrorOr<storage::BucketInfo> GetOrCreateBucket(
+      const storage::BucketInitParams& params) {
+    base::test::TestFuture<storage::QuotaErrorOr<storage::BucketInfo>> future;
+    shell()
+        ->web_contents()
+        ->GetBrowserContext()
+        ->GetDefaultStoragePartition()
+        ->GetQuotaManager()
+        ->proxy()
+        ->UpdateOrCreateBucket(
+            params, base::SingleThreadTaskRunner::GetCurrentDefault(),
+            future.GetCallback());
+    return future.Take();
+  }
+
  private:
   mojo::Remote<storage::mojom::MockFailureInjector> failure_injector_;
 };
@@ -328,7 +347,17 @@ IN_PROC_BROWSER_TEST_F(IndexedDBBrowserTest, KeyTypesTest) {
 }
 
 IN_PROC_BROWSER_TEST_F(IndexedDBBrowserTest, ObjectStoreTest) {
+  base::HistogramTester tester;
+
   SimpleTest(GetTestUrl("indexeddb", "object_store_test.html"));
+
+  content::FetchHistogramsFromChildProcesses();
+  tester.ExpectTotalCount("WebCore.IndexedDB.RequestDuration.ObjectStorePut",
+                          0);
+  tester.ExpectTotalCount("WebCore.IndexedDB.RequestDuration.ObjectStoreAdd",
+                          3);
+  tester.ExpectTotalCount("WebCore.IndexedDB.RequestDuration.ObjectStoreGet",
+                          3);
 }
 
 IN_PROC_BROWSER_TEST_F(IndexedDBBrowserTest, DatabaseTest) {
@@ -394,18 +423,12 @@ IN_PROC_BROWSER_TEST_F(IndexedDBBrowserTest, NegativeDBSchemaVersion) {
   std::string value = "\xF6\xFF\xFF\xFF\xFF\xFF\xFF\xFF";
 
   // Find the bucket that was created.
-  const auto maybe_bucket_info =
-      shell()
-          ->web_contents()
-          ->GetBrowserContext()
-          ->GetDefaultStoragePartition()
-          ->GetQuotaManager()
-          ->proxy()
-          ->GetOrCreateBucketSync(storage::BucketInitParams::ForDefaultBucket(
-              blink::StorageKey::CreateFirstParty(
-                  url::Origin::Create(database_open_url))));
-  ASSERT_TRUE(maybe_bucket_info.ok());
-  const auto bucket_locator = maybe_bucket_info->ToBucketLocator();
+  ASSERT_OK_AND_ASSIGN(
+      const auto bucket_info,
+      GetOrCreateBucket(storage::BucketInitParams::ForDefaultBucket(
+          blink::StorageKey::CreateFirstParty(
+              url::Origin::Create(database_open_url)))));
+  const auto bucket_locator = bucket_info.ToBucketLocator();
 
   auto control_test = GetControlTest();
   base::RunLoop loop;
@@ -433,18 +456,12 @@ IN_PROC_BROWSER_TEST_F(IndexedDBBrowserTest, NegativeDBDataVersion) {
   std::string value = "\xF6\xFF\xFF\xFF\xFF\xFF\xFF\xFF";
 
   // Find the bucket that was created.
-  const auto maybe_bucket_info =
-      shell()
-          ->web_contents()
-          ->GetBrowserContext()
-          ->GetDefaultStoragePartition()
-          ->GetQuotaManager()
-          ->proxy()
-          ->GetOrCreateBucketSync(storage::BucketInitParams::ForDefaultBucket(
-              blink::StorageKey::CreateFirstParty(
-                  url::Origin::Create(database_open_url))));
-  ASSERT_TRUE(maybe_bucket_info.ok());
-  const auto bucket_locator = maybe_bucket_info->ToBucketLocator();
+  ASSERT_OK_AND_ASSIGN(
+      const auto bucket_info,
+      GetOrCreateBucket(storage::BucketInitParams::ForDefaultBucket(
+          blink::StorageKey::CreateFirstParty(
+              url::Origin::Create(database_open_url)))));
+  const auto bucket_locator = bucket_info.ToBucketLocator();
 
   auto control_test = GetControlTest();
   base::RunLoop loop;
@@ -768,17 +785,11 @@ IN_PROC_BROWSER_TEST_F(IndexedDBBrowserTest, EmptyBlob) {
   const blink::StorageKey kTestStorageKey =
       blink::StorageKey::CreateFirstParty(url::Origin::Create(kTestUrl));
   DeleteForStorageKey(kTestStorageKey);
-  const auto maybe_bucket_info =
-      shell()
-          ->web_contents()
-          ->GetBrowserContext()
-          ->GetDefaultStoragePartition()
-          ->GetQuotaManager()
-          ->proxy()
-          ->GetOrCreateBucketSync(
-              storage::BucketInitParams::ForDefaultBucket(kTestStorageKey));
-  ASSERT_TRUE(maybe_bucket_info.ok());
-  const auto bucket_locator = maybe_bucket_info->ToBucketLocator();
+  ASSERT_OK_AND_ASSIGN(
+      const auto bucket_info,
+      GetOrCreateBucket(
+          storage::BucketInitParams::ForDefaultBucket(kTestStorageKey)));
+  const auto bucket_locator = bucket_info.ToBucketLocator();
   EXPECT_EQ(0,
             RequestBlobFileCount(bucket_locator));  // Start with no blob files.
   // For some reason Android's futimes fails (EPERM) in this test. Do not assert
@@ -1071,7 +1082,7 @@ IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTestWithCorruption,
           base::SequencedTaskRunner::GetCurrentDefault(),
           base::BindLambdaForTesting(
               [&](storage::QuotaErrorOr<storage::BucketInfo> result) {
-                ASSERT_TRUE(result.ok());
+                ASSERT_TRUE(result.has_value());
                 bucket_locator = result->ToBucketLocator();
                 loop.Quit();
               }));
@@ -1232,18 +1243,12 @@ IN_PROC_BROWSER_TEST_F(IndexedDBBrowserTestV2SchemaCorruption, LifecycleTest) {
   SimpleTest(embedded_test_server()->GetURL(test_file));
 
   // Find the bucket that was created.
-  const auto maybe_bucket_info =
-      shell()
-          ->web_contents()
-          ->GetBrowserContext()
-          ->GetDefaultStoragePartition()
-          ->GetQuotaManager()
-          ->proxy()
-          ->GetOrCreateBucketSync(storage::BucketInitParams::ForDefaultBucket(
-              blink::StorageKey::CreateFirstParty(
-                  url::Origin::Create(embedded_test_server()->base_url()))));
-  ASSERT_TRUE(maybe_bucket_info.ok());
-  const auto bucket_locator = maybe_bucket_info->ToBucketLocator();
+  ASSERT_OK_AND_ASSIGN(
+      const auto bucket_info,
+      GetOrCreateBucket(storage::BucketInitParams::ForDefaultBucket(
+          blink::StorageKey::CreateFirstParty(
+              url::Origin::Create(embedded_test_server()->base_url())))));
+  const auto bucket_locator = bucket_info.ToBucketLocator();
 
   // Verify the backing store does not have corruption.
   storage::mojom::V2SchemaCorruptionStatus has_corruption =
@@ -1328,18 +1333,12 @@ IN_PROC_BROWSER_TEST_F(IndexedDBBrowserTestBlobKeyCorruption, LifecycleTest) {
   SimpleTest(embedded_test_server()->GetURL(test_file));
 
   // Find the bucket that was created.
-  const auto maybe_bucket_info =
-      shell()
-          ->web_contents()
-          ->GetBrowserContext()
-          ->GetDefaultStoragePartition()
-          ->GetQuotaManager()
-          ->proxy()
-          ->GetOrCreateBucketSync(storage::BucketInitParams::ForDefaultBucket(
-              blink::StorageKey::CreateFirstParty(
-                  url::Origin::Create(embedded_test_server()->base_url()))));
-  ASSERT_TRUE(maybe_bucket_info.ok());
-  const auto bucket_locator = maybe_bucket_info->ToBucketLocator();
+  ASSERT_OK_AND_ASSIGN(
+      const auto bucket_info,
+      GetOrCreateBucket(storage::BucketInitParams::ForDefaultBucket(
+          blink::StorageKey::CreateFirstParty(
+              url::Origin::Create(embedded_test_server()->base_url())))));
+  const auto bucket_locator = bucket_info.ToBucketLocator();
   int64_t next_blob_number = GetNextBlobNumber(bucket_locator, 1);
 
   base::FilePath first_blob =
@@ -1351,7 +1350,7 @@ IN_PROC_BROWSER_TEST_F(IndexedDBBrowserTestBlobKeyCorruption, LifecycleTest) {
     EXPECT_TRUE(base::PathExists(first_blob));
     EXPECT_FALSE(base::PathExists(corrupt_blob));
     const char kCorruptData[] = "corrupt";
-    base::WriteFile(corrupt_blob, kCorruptData, sizeof(kCorruptData));
+    base::WriteFile(corrupt_blob, kCorruptData);
   }
 
   SimpleTest(embedded_test_server()->GetURL(test_file));

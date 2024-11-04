@@ -454,7 +454,7 @@ endfunction()
 
 macro(qt_internal_setup_autodetect)
     # This needs to be here because QtAutoDetect loads before any other modules
-    option(QT_USE_VCPKG "Enable the use of vcpkg" ON)
+    option(QT_USE_VCPKG "Enable the use of vcpkg" OFF)
 
     include("${CMAKE_CURRENT_LIST_DIR}/QtPublicAppleHelpers.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/QtPublicWasmToolchainHelpers.cmake")

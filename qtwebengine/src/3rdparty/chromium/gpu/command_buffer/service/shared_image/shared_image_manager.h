@@ -54,6 +54,10 @@ class GPU_GLES2_EXPORT SharedImageManager
       std::unique_ptr<SharedImageBacking> backing,
       MemoryTypeTracker* ref);
 
+  std::unique_ptr<SharedImageRepresentationFactoryRef> AddSecondaryReference(
+      const Mailbox& mailbox,
+      MemoryTypeTracker* tracker);
+
   // Accessors which return a SharedImageRepresentation. Representations also
   // take a ref on the mailbox, releasing it when the representation is
   // destroyed.
@@ -76,9 +80,9 @@ class GPU_GLES2_EXPORT SharedImageManager
   std::unique_ptr<DawnImageRepresentation> ProduceDawn(
       const Mailbox& mailbox,
       MemoryTypeTracker* ref,
-      WGPUDevice device,
-      WGPUBackendType backend_type,
-      std::vector<WGPUTextureFormat> view_formats);
+      const wgpu::Device& device,
+      wgpu::BackendType backend_type,
+      std::vector<wgpu::TextureFormat> view_formats);
   std::unique_ptr<OverlayImageRepresentation> ProduceOverlay(
       const Mailbox& mailbox,
       MemoryTypeTracker* ref);

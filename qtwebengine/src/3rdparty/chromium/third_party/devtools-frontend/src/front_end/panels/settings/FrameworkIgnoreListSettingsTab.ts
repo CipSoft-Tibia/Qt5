@@ -4,6 +4,7 @@
 
 import * as Common from '../../core/common/common.js';
 import * as i18n from '../../core/i18n/i18n.js';
+import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
 import frameworkIgnoreListSettingsTabStyles from './frameworkIgnoreListSettingsTab.css.js';
@@ -20,20 +21,11 @@ const UIStrings = {
   /**
    *@description Text in Framework Ignore List Settings Tab of the Settings
    */
-  ignoreListContentScripts: 'Add content scripts to ignore list',
-  /**
-   *@description Ignore List content scripts title in Framework Ignore List Settings Tab of the Settings
-   */
-  ignoreListContentScriptsExtension: 'Add content scripts to ignore list (extension scripts in the page)',
+  ignoreListContentScripts: 'Content scripts injected by extensions',
   /**
    *@description Text in Framework Ignore List Settings Tab of the Settings
    */
-  automaticallyIgnoreListKnownThirdPartyScripts: 'Automatically add known third-party scripts to ignore list',
-  /**
-   *@description Text in Framework Ignore List Settings Tab of the Settings
-   */
-  automaticallyIgnoreListKnownThirdPartyScriptsTooltip:
-      'Add sources from the `x_google_ignoreList` field from source maps to the ignore list',
+  automaticallyIgnoreListKnownThirdPartyScripts: 'Known third-party scripts from source maps',
   /**
    *@description Text in Framework Ignore List Settings Tab of the Settings
    */
@@ -80,6 +72,10 @@ const UIStrings = {
    *@description Error message in Framework Ignore List settings pane that declares pattern must be a valid regular expression
    */
   patternMustBeAValidRegular: 'Pattern must be a valid regular expression',
+  /**
+   *@description Text that is usually a hyperlink to more documentation
+   */
+  learnMore: 'Learn more',
 };
 const str_ = i18n.i18n.registerUIStrings('panels/settings/FrameworkIgnoreListSettingsTab.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -116,14 +112,20 @@ export class FrameworkIgnoreListSettingsTab extends UI.Widget.VBox implements
     ignoreListContentScripts.appendChild(UI.SettingsUI.createSettingCheckbox(
         i18nString(UIStrings.ignoreListContentScripts),
         Common.Settings.Settings.instance().moduleSetting('skipContentScripts'), true));
-    UI.Tooltip.Tooltip.install(ignoreListContentScripts, i18nString(UIStrings.ignoreListContentScriptsExtension));
 
     const automaticallyIgnoreList = ignoreListOptions.createChild('div', 'ignore-list-option');
     automaticallyIgnoreList.appendChild(UI.SettingsUI.createSettingCheckbox(
         i18nString(UIStrings.automaticallyIgnoreListKnownThirdPartyScripts),
         Common.Settings.Settings.instance().moduleSetting('automaticallyIgnoreListKnownThirdPartyScripts'), true));
-    UI.Tooltip.Tooltip.install(
-        automaticallyIgnoreList, i18nString(UIStrings.automaticallyIgnoreListKnownThirdPartyScriptsTooltip));
+
+    const automaticallyIgnoreLink = UI.XLink.XLink.create('http://goo.gle/skip-third-party');
+    automaticallyIgnoreLink.textContent = '';
+    automaticallyIgnoreLink.setAttribute('aria-label', i18nString(UIStrings.learnMore));
+
+    const automaticallyIgnoreLinkIcon = new IconButton.Icon.Icon();
+    automaticallyIgnoreLinkIcon.data = {iconName: 'help', color: 'var(--icon-default)', width: '16px', height: '16px'};
+    automaticallyIgnoreLink.prepend(automaticallyIgnoreLinkIcon);
+    automaticallyIgnoreList.appendChild(automaticallyIgnoreLink);
 
     ignoreListOptions.createChild('div', 'ignore-list-option-group').textContent =
         i18nString(UIStrings.customExclusionRules);
@@ -137,7 +139,7 @@ export class FrameworkIgnoreListSettingsTab extends UI.Widget.VBox implements
     this.list.show(ignoreListOptions);
     const addPatternButton =
         UI.UIUtils.createTextButton(i18nString(UIStrings.addPattern), this.addButtonClicked.bind(this), 'add-button');
-    UI.ARIAUtils.setAccessibleName(addPatternButton, i18nString(UIStrings.addFilenamePattern));
+    UI.ARIAUtils.setLabel(addPatternButton, i18nString(UIStrings.addFilenamePattern));
     ignoreListOptions.appendChild(addPatternButton);
     this.setting =
         Common.Settings.Settings.instance().moduleSetting('skipStackFramesPattern') as Common.Settings.RegExpSetting;
@@ -167,7 +169,7 @@ export class FrameworkIgnoreListSettingsTab extends UI.Widget.VBox implements
     return frameworkIgnoreListSettingsTabInstance;
   }
 
-  wasShown(): void {
+  override wasShown(): void {
     super.wasShown();
     this.list.registerCSSFiles([frameworkIgnoreListSettingsTabStyles]);
     this.registerCSSFiles([frameworkIgnoreListSettingsTabStyles]);
@@ -250,7 +252,7 @@ export class FrameworkIgnoreListSettingsTab extends UI.Widget.VBox implements
 
     const fields = content.createChild('div', 'ignore-list-edit-row');
     const pattern = editor.createInput('pattern', 'text', '/framework\\.js$', patternValidator.bind(this));
-    UI.ARIAUtils.setAccessibleName(pattern, i18nString(UIStrings.pattern));
+    UI.ARIAUtils.setLabel(pattern, i18nString(UIStrings.pattern));
     fields.createChild('div', 'ignore-list-pattern').appendChild(pattern);
 
     return editor;

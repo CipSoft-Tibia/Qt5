@@ -21,10 +21,11 @@
 #include <condition_variable>
 #include <deque>
 #include <future>
-#include <set>
 #include <thread>
 #include <vector>
-#include "vk_layer_utils.h"
+#include "containers/custom_containers.h"
+#include "error_message/error_location.h"
+#include "utils/vk_layer_utils.h"
 
 class CMD_BUFFER_STATE;
 class QUEUE_STATE;
@@ -115,10 +116,11 @@ class SEMAPHORE_STATE : public REFCOUNTED_NODE {
     }
 
     struct SemOp {
-        SemOp(OpType ot, QUEUE_STATE *q, uint64_t queue_seq, uint64_t timeline_payload)
-            : op_type(ot), queue(q), seq(queue_seq), payload(timeline_payload) {}
+        SemOp(OpType ot, QUEUE_STATE *q, uint64_t queue_seq, uint64_t timeline_payload, vvl::Func command = vvl::Func::Empty)
+            : op_type(ot), command(command), queue(q), seq(queue_seq), payload(timeline_payload) {}
 
         OpType op_type;
+        vvl::Func command;
         QUEUE_STATE *queue;
         uint64_t seq;
         uint64_t payload;
@@ -140,13 +142,18 @@ class SEMAPHORE_STATE : public REFCOUNTED_NODE {
     struct TimePoint {
         TimePoint(SemOp &op) : signal_op(), completed(), waiter(completed.get_future()) {
             if (op.op_type == kWait) {
-                wait_ops.emplace(op);
+                AddWaitOp(op);
             } else {
                 signal_op.emplace(op);
             }
         }
+        void AddWaitOp(const SemOp &op) {
+            assert(op.op_type == kWait);
+            assert(wait_ops.empty() || wait_ops[0].payload == op.payload);
+            wait_ops.emplace_back(op);
+        }
         std::optional<SemOp> signal_op;
-        std::set<SemOp> wait_ops;
+        small_vector<SemOp, 1, uint32_t> wait_ops;
         std::promise<void> completed;
         std::shared_future<void> waiter;
 
@@ -209,7 +216,7 @@ class SEMAPHORE_STATE : public REFCOUNTED_NODE {
     void EnqueueWait(QUEUE_STATE *queue, uint64_t queue_seq, uint64_t &payload);
 
     // Binary only special cases enqueue functions
-    void EnqueueAcquire();
+    void EnqueueAcquire(vvl::Func command);
 
     // Signal queue(s) that need to retire because a wait on this payload has finished
     void Notify(uint64_t payload);

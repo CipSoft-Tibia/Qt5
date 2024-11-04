@@ -21,25 +21,25 @@ Item {
         anchors.right: mainview.right;
 
         //! [0]
-        ColorGradient {
+        Gradient {
             id: layerOneGradient
-            ColorGradientStop { position: 0.0; color: "black" }
-            ColorGradientStop { position: 0.31; color: "tan" }
-            ColorGradientStop { position: 0.32; color: "green" }
-            ColorGradientStop { position: 0.40; color: "darkslategray" }
-            ColorGradientStop { position: 1.0; color: "white" }
+            GradientStop { position: 0.0; color: "black" }
+            GradientStop { position: 0.31; color: "tan" }
+            GradientStop { position: 0.32; color: "green" }
+            GradientStop { position: 0.40; color: "darkslategray" }
+            GradientStop { position: 1.0; color: "white" }
         }
 
-        ColorGradient {
+        Gradient {
             id: layerTwoGradient
-            ColorGradientStop { position: 0.315; color: "blue" }
-            ColorGradientStop { position: 0.33; color: "white" }
+            GradientStop { position: 0.315; color: "blue" }
+            GradientStop { position: 0.33; color: "white" }
         }
 
-        ColorGradient {
+        Gradient {
             id: layerThreeGradient
-            ColorGradientStop { position: 0.0; color: "red" }
-            ColorGradientStop { position: 0.15; color: "black" }
+            GradientStop { position: 0.0; color: "red" }
+            GradientStop { position: 0.15; color: "black" }
         }
         //! [0]
 
@@ -48,13 +48,13 @@ Item {
             width: surfaceView.width
             height: surfaceView.height
             theme: Theme3D {
-                type: Theme3D.ThemeEbony
+                type: Theme3D.Theme.Ebony
                 font.pointSize: 35
-                colorStyle: Theme3D.ColorStyleRangeGradient
+                colorStyle: Theme3D.ColorStyle.RangeGradient
             }
-            shadowQuality: AbstractGraph3D.ShadowQualityNone
+            shadowQuality: AbstractGraph3D.ShadowQuality.None
             selectionMode: AbstractGraph3D.SelectionRow | AbstractGraph3D.SelectionSlice
-            scene.activeCamera.cameraPreset: Camera3D.CameraPresetIsometricLeft
+            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeft
             axisY.min: 20
             axisY.max: 200
             axisX.segmentCount: 5
@@ -223,11 +223,11 @@ Item {
             Layout.minimumHeight: 40
             text: "Show Shadows"
             onClicked: {
-                if (surfaceLayers.shadowQuality === AbstractGraph3D.ShadowQualityNone) {
-                    surfaceLayers.shadowQuality = AbstractGraph3D.ShadowQualityLow
+                if (surfaceLayers.shadowQuality === AbstractGraph3D.ShadowQuality.None) {
+                    surfaceLayers.shadowQuality = AbstractGraph3D.ShadowQuality.Low
                     text = "Hide Shadows"
                 } else {
-                    surfaceLayers.shadowQuality = AbstractGraph3D.ShadowQualityNone
+                    surfaceLayers.shadowQuality = AbstractGraph3D.ShadowQuality.None
                     text = "Show Shadows"
                 }
             }
@@ -241,20 +241,20 @@ Item {
             onClicked: {
                 var modeText = "Indirect "
                 var aaText
-                if (surfaceLayers.renderingMode === AbstractGraph3D.RenderIndirect &&
+                if (surfaceLayers.renderingMode === AbstractGraph3D.RenderingMode.Indirect &&
                         surfaceLayers.msaaSamples === 0) {
-                    surfaceLayers.renderingMode = AbstractGraph3D.RenderDirectToBackground
+                    surfaceLayers.renderingMode = AbstractGraph3D.RenderingMode.DirectToBackground
                     modeText = "BackGround "
-                } else if (surfaceLayers.renderingMode === AbstractGraph3D.RenderIndirect &&
+                } else if (surfaceLayers.renderingMode === AbstractGraph3D.RenderingMode.Indirect &&
                            surfaceLayers.msaaSamples === 4) {
-                    surfaceLayers.renderingMode = AbstractGraph3D.RenderIndirect
+                    surfaceLayers.renderingMode = AbstractGraph3D.RenderingMode.Indirect
                     surfaceLayers.msaaSamples = 0
-                } else if (surfaceLayers.renderingMode === AbstractGraph3D.RenderIndirect &&
+                } else if (surfaceLayers.renderingMode === AbstractGraph3D.RenderingMode.Indirect &&
                            surfaceLayers.msaaSamples === 8) {
-                    surfaceLayers.renderingMode = AbstractGraph3D.RenderIndirect
+                    surfaceLayers.renderingMode = AbstractGraph3D.RenderingMode.Indirect
                     surfaceLayers.msaaSamples = 4
                 } else {
-                    surfaceLayers.renderingMode = AbstractGraph3D.RenderIndirect
+                    surfaceLayers.renderingMode = AbstractGraph3D.RenderingMode.Indirect
                     surfaceLayers.msaaSamples = 8
                 }
 

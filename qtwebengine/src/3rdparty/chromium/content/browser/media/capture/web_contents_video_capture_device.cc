@@ -14,14 +14,13 @@
 #include "build/build_config.h"
 #include "content/browser/media/capture/mouse_cursor_overlay_controller.h"
 #include "content/browser/renderer_host/render_widget_host_view_base.h"
-#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "media/capture/video/video_capture_feedback.h"
 #include "media/capture/video_capture_types.h"
 #include "mojo/public/cpp/bindings/callback_helpers.h"
-#include "ui/base/layout.h"
 
 namespace content {
 

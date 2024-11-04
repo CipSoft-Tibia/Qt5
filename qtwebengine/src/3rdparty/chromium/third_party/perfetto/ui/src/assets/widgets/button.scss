@@ -23,12 +23,22 @@
   transition: background $pf-anim-timing, box-shadow $pf-anim-timing;
   border-radius: $pf-border-radius;
   padding: 4px 8px;
+  white-space: nowrap;
+  min-width: max-content;
+
+  & > .pf-left-icon {
+    float: left;
+    margin-right: 6px; // Make some room between the icon and label
+  }
+
+  & > .pf-right-icon {
+    float: right;
+    margin-left: 6px; // Make some room between the icon and label
+  }
 
   & > .material-icons {
     font-size: inherit;
     line-height: inherit;
-    float: left;
-    margin-right: 4px; // Make some room between the icon and label
   }
 
   &:hover {
@@ -40,6 +50,10 @@
     transition: none;
     background: $pf-primary-background-active;
     box-shadow: inset 1px 1px 4px #00000040;
+  }
+
+  &:focus-visible {
+    @include focus;
   }
 
   &[disabled] {
@@ -73,15 +87,22 @@
   // Reduce padding when compact
   &.pf-compact {
     padding: 2px 4px;
+    & > .pf-left-icon {
+      margin-right: 2px;
+    }
+
+    & > .pf-right-icon {
+      margin-left: 2px;
+    }
   }
 
   // Reduce padding when we are icon-only
   &.pf-icon-only {
-    & > i {
+    & > .pf-left-icon {
       margin: 0;
     }
 
-    padding: 4px 4px;
+    padding: 4px;
 
     &.pf-compact {
       padding: 0;

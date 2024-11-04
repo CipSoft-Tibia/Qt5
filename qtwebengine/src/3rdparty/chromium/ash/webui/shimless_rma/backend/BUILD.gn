@@ -15,9 +15,12 @@ static_library("backend") {
     "version_updater.h",
   ]
 
+  public_deps = [ "//components/web_package:web_package" ]
+
   deps = [
     "//ash",
     "//ash/public/cpp:cpp",
+    "//ash/webui/shimless_rma/3p_diagnostics",
     "//ash/webui/shimless_rma/mojom",
     "//chromeos/ash/components/dbus",
     "//chromeos/ash/components/dbus/rmad",
@@ -66,6 +69,7 @@ source_set("unit_tests") {
     "//components/proxy_config:proxy_config",
     "//components/qr_code_generator",
     "//components/sync_preferences:test_support",
+    "//components/user_manager:test_support",
     "//content/test:test_support",
     "//services/data_decoder/public/cpp:test_support",
     "//services/device/public/cpp:test_support",

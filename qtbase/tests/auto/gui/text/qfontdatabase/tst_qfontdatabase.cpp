@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QSignalSpy>
@@ -12,6 +12,9 @@
 #include <private/qfont_p.h>
 #include <private/qfontengine_p.h>
 #include <qpa/qplatformfontdatabase.h>
+#include <qpa/qplatformintegration.h>
+
+#include <QtGui/private/qguiapplication_p.h>
 
 using namespace Qt::StringLiterals;
 
@@ -61,6 +64,8 @@ private slots:
 
     void stretchRespected();
 
+    void variableFont();
+
 #ifdef Q_OS_WIN
     void findCourier();
 #endif
@@ -70,6 +75,7 @@ private:
     QString m_testFont;
     QString m_testFontCondensed;
     QString m_testFontItalic;
+    QString m_testFontVariable;
 };
 
 tst_QFontDatabase::tst_QFontDatabase()
@@ -82,10 +88,12 @@ void tst_QFontDatabase::initTestCase()
     m_testFont = QFINDTESTDATA("testfont.ttf");
     m_testFontCondensed = QFINDTESTDATA("testfont_condensed.ttf");
     m_testFontItalic = QFINDTESTDATA("testfont_italic.ttf");
+    m_testFontVariable = QFINDTESTDATA("testfont_variable.ttf");
     QVERIFY(!m_ledFont.isEmpty());
     QVERIFY(!m_testFont.isEmpty());
     QVERIFY(!m_testFontCondensed.isEmpty());
     QVERIFY(!m_testFontItalic.isEmpty());
+    QVERIFY(!m_testFontVariable.isEmpty());
 }
 
 void tst_QFontDatabase::styles_data()
@@ -504,6 +512,46 @@ void tst_QFontDatabase::findCourier()
     QCOMPARE(info.pointSize(), 64);
 }
 #endif
+
+void tst_QFontDatabase::variableFont()
+{
+    {
+        QPlatformFontDatabase *pfdb = QGuiApplicationPrivate::platformIntegration()->fontDatabase();
+        if (!pfdb->supportsVariableApplicationFonts())
+            QSKIP("Variable application fonts not supported on this platform");
+    }
+
+    int id = QFontDatabase::addApplicationFont(m_testFontVariable);
+    if (id == -1)
+        QSKIP("Skip the test since app fonts are not supported on this system");
+
+    QString family = QFontDatabase::applicationFontFamilies(id).first();
+    {
+        QFont font(family);
+        QCOMPARE(QFontInfo(font).styleName(), u"Regular"_s);
+        QCOMPARE(QFontInfo(font).weight(), QFont::Normal);
+    }
+
+    {
+        QFont font(family);
+        font.setWeight(QFont::Black);
+        QCOMPARE(QFontInfo(font).styleName(), u"QtExtraBold"_s);
+        QCOMPARE(QFontInfo(font).weight(), int(QFont::Black));
+    }
+
+    {
+        QFont regularFont(family);
+        QFont extraBoldFont(family);
+        extraBoldFont.setStyleName(u"QtExtraBold"_s);
+
+        QFontMetricsF regularFm(regularFont);
+        QFontMetricsF extraBoldFm(extraBoldFont);
+
+        QVERIFY(regularFm.horizontalAdvance(QLatin1Char('1')) < extraBoldFm.horizontalAdvance(QLatin1Char('1')));
+    }
+
+    QFontDatabase::removeApplicationFont(id);
+}
 
 QTEST_MAIN(tst_QFontDatabase)
 #include "tst_qfontdatabase.moc"

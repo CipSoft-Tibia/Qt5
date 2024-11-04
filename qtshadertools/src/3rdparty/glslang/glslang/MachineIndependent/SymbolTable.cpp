@@ -66,7 +66,6 @@ void TType::buildMangledName(TString& mangledName) const
     case EbtInt:                mangledName += 'i';      break;
     case EbtUint:               mangledName += 'u';      break;
     case EbtBool:               mangledName += 'b';      break;
-#ifndef GLSLANG_WEB
     case EbtDouble:             mangledName += 'd';      break;
     case EbtFloat16:            mangledName += "f16";    break;
     case EbtInt8:               mangledName += "i8";     break;
@@ -79,12 +78,10 @@ void TType::buildMangledName(TString& mangledName) const
     case EbtAccStruct:          mangledName += "as";     break;
     case EbtRayQuery:           mangledName += "rq";     break;
     case EbtSpirvType:          mangledName += "spv-t";  break;
-#endif
+    case EbtHitObjectNV:        mangledName += "ho";     break;
     case EbtSampler:
         switch (sampler.type) {
-#ifndef GLSLANG_WEB
         case EbtFloat16: mangledName += "f16"; break;
-#endif
         case EbtInt:   mangledName += "i"; break;
         case EbtUint:  mangledName += "u"; break;
         case EbtInt64:   mangledName += "i64"; break;
@@ -111,12 +108,10 @@ void TType::buildMangledName(TString& mangledName) const
         case Esd2D:       mangledName += "2";  break;
         case Esd3D:       mangledName += "3";  break;
         case EsdCube:     mangledName += "C";  break;
-#ifndef GLSLANG_WEB
         case Esd1D:       mangledName += "1";  break;
         case EsdRect:     mangledName += "R2"; break;
         case EsdBuffer:   mangledName += "B";  break;
         case EsdSubpass:  mangledName += "P";  break;
-#endif
         default: break; // some compilers want this
         }
 
@@ -183,8 +178,6 @@ void TType::buildMangledName(TString& mangledName) const
         }
     }
 }
-
-#if !defined(GLSLANG_WEB) && !defined(GLSLANG_ANGLE)
 
 //
 // Dump functions.
@@ -263,8 +256,6 @@ void TSymbolTable::dump(TInfoSink& infoSink, bool complete) const
         table[level]->dump(infoSink, complete);
     }
 }
-
-#endif
 
 //
 // Functions have buried pointers to delete.
@@ -382,9 +373,9 @@ TVariable* TVariable::clone() const
 TFunction::TFunction(const TFunction& copyOf) : TSymbol(copyOf)
 {
     for (unsigned int i = 0; i < copyOf.parameters.size(); ++i) {
-        TParameter param;
+        TParameter param{};
         parameters.push_back(param);
-        parameters.back().copyParam(copyOf.parameters[i]);
+        (void)parameters.back().copyParam(copyOf.parameters[i]);
     }
 
     extensions = nullptr;
@@ -398,9 +389,7 @@ TFunction::TFunction(const TFunction& copyOf) : TSymbol(copyOf)
     implicitThis = copyOf.implicitThis;
     illegalImplicitThis = copyOf.illegalImplicitThis;
     defaultParamCount = copyOf.defaultParamCount;
-#ifndef GLSLANG_WEB
     spirvInst = copyOf.spirvInst;
-#endif
 }
 
 TFunction* TFunction::clone() const
@@ -417,7 +406,7 @@ TAnonMember* TAnonMember::clone() const
     // copy of the original container.
     assert(0);
 
-    return 0;
+    return nullptr;
 }
 
 TSymbolTableLevel* TSymbolTableLevel::clone() const

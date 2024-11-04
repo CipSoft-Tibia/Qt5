@@ -105,7 +105,7 @@ EGLSurface CreatePlatformWindowSurfaceEXT(Thread *thread,
 
     ANGLE_EGL_TRY_RETURN(
         thread, display->createWindowSurface(configPacked, nativeWindow, attributes, &surface),
-        "eglPlatformCreateWindowSurfaceEXT", GetDisplayIfValid(display), EGL_NO_SURFACE);
+        "eglCreatePlatformWindowSurfaceEXT", GetDisplayIfValid(display), EGL_NO_SURFACE);
 
     return reinterpret_cast<EGLSurface>(static_cast<uintptr_t>(surface->id().value));
 }
@@ -212,6 +212,7 @@ EGLDisplay GetPlatformDisplayEXT(Thread *thread,
         case EGL_PLATFORM_ANGLE_ANGLE:
         case EGL_PLATFORM_GBM_KHR:
         case EGL_PLATFORM_WAYLAND_EXT:
+        case EGL_PLATFORM_SURFACELESS_MESA:
         {
             return egl::Display::GetDisplayFromNativeDisplay(
                 platform, gl::bitCast<EGLNativeDisplayType>(native_display), attribMap);
@@ -628,40 +629,24 @@ EGLBoolean SwapBuffersWithDamageKHR(Thread *thread,
 {
     Surface *eglSurface = display->getSurface(surfaceID);
 
-    ANGLE_EGL_TRY_RETURN(thread, display->prepareForCall(), "eglSwapBuffersWithDamageEXT",
+    ANGLE_EGL_TRY_RETURN(thread, display->prepareForCall(), "eglSwapBuffersWithDamageKHR",
                          GetDisplayIfValid(display), EGL_FALSE);
     ANGLE_EGL_TRY_RETURN(thread, eglSurface->swapWithDamage(thread->getContext(), rects, n_rects),
-                         "eglSwapBuffersWithDamageEXT", GetSurfaceIfValid(display, surfaceID),
+                         "eglSwapBuffersWithDamageKHR", GetSurfaceIfValid(display, surfaceID),
                          EGL_FALSE);
 
     thread->setSuccess();
     return EGL_TRUE;
 }
 
-EGLBoolean PrepareSwapBuffersANGLE(EGLDisplay dpy, EGLSurface surface)
+EGLBoolean PrepareSwapBuffersANGLE(Thread *thread, Display *display, SurfaceID surfaceID)
 {
-    ANGLE_SCOPED_GLOBAL_SURFACE_LOCK();
+    Surface *eglSurface = display->getSurface(surfaceID);
 
-    egl::Display *dpyPacked = PackParam<egl::Display *>(dpy);
-    SurfaceID surfacePacked = PackParam<SurfaceID>(surface);
-    Thread *thread          = egl::GetCurrentThread();
-    Surface *surfacePtr     = nullptr;
-    {
-        ANGLE_SCOPED_GLOBAL_LOCK();
-
-        EGL_EVENT(PrepareSwapBuffersANGLE, "dpy = 0x%016" PRIxPTR ", surface = 0x%016" PRIxPTR "",
-                  (uintptr_t)dpy, (uintptr_t)surface);
-
-        ANGLE_EGL_VALIDATE(thread, PrepareSwapBuffersANGLE, GetDisplayIfValid(dpyPacked),
-                           EGLBoolean, dpyPacked, surfacePacked);
-
-        ANGLE_EGL_TRY_RETURN(thread, dpyPacked->prepareForCall(), "eglPrepareSwapBuffersANGLE",
-                             GetDisplayIfValid(dpyPacked), EGL_FALSE);
-
-        surfacePtr = dpyPacked->getSurface(surfacePacked);
-    }
-    ANGLE_EGL_TRY_RETURN(thread, surfacePtr->prepareSwap(thread->getContext()), "prepareSwap",
-                         GetSurfaceIfValid(dpyPacked, surfacePacked), EGL_FALSE);
+    ANGLE_EGL_TRY_RETURN(thread, display->prepareForCall(), "eglPrepareSwapBuffersANGLE",
+                         GetDisplayIfValid(display), EGL_FALSE);
+    ANGLE_EGL_TRY_RETURN(thread, eglSurface->prepareSwap(thread->getContext()),
+                         "eglPrepareSwapBuffersANGLE", eglSurface, EGL_FALSE);
 
     thread->setSuccess();
     return EGL_TRUE;
@@ -1025,4 +1010,25 @@ void *CopyMetalSharedEventANGLE(Thread *thread, Display *display, SyncID syncID)
     return result;
 }
 
+void AcquireExternalContextANGLE(Thread *thread, egl::Display *display, SurfaceID drawAndReadPacked)
+{
+    Surface *eglSurface = display->getSurface(drawAndReadPacked);
+
+    ANGLE_EGL_TRY(thread, display->prepareForCall(), "eglAcquireExternalContextANGLE",
+                  GetDisplayIfValid(display));
+    ANGLE_EGL_TRY(thread, thread->getContext()->acquireExternalContext(eglSurface),
+                  "eglAcquireExternalContextANGLE", GetDisplayIfValid(display));
+
+    thread->setSuccess();
+}
+
+void ReleaseExternalContextANGLE(Thread *thread, egl::Display *display)
+{
+    ANGLE_EGL_TRY(thread, display->prepareForCall(), "eglReleaseExternalContextANGLE",
+                  GetDisplayIfValid(display));
+    ANGLE_EGL_TRY(thread, thread->getContext()->releaseExternalContext(),
+                  "eglReleaseExternalContextANGLE", GetDisplayIfValid(display));
+
+    thread->setSuccess();
+}
 }  // namespace egl

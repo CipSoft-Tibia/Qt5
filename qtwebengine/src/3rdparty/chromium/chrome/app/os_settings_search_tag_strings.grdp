@@ -143,21 +143,26 @@
   <message name="IDS_OS_SETTINGS_TAG_VPN" desc="Text for search result item which, when clicked, navigates the user to VPN settings.">
     VPN
   </message>
-  <!-- TODO(b/260277007): Remove translateble false and upload snapshots when strings finalized. -->
-  <message translateable="false" name="IDS_OS_SETTINGS_TAG_AUDIO_SETTINGS"  desc="Text for search result item which, when clicked, navigates the user to Audio settings.">
+  <message name="IDS_OS_SETTINGS_TAG_AUDIO_SETTINGS"  desc="Text for search result item which, when clicked, navigates the user to Audio settings.">
     Audio
   </message>
-  <message translateable="false" name="IDS_OS_SETTINGS_TAG_AUDIO_SETTINGS_ALT1"  desc="Text for search result item which, when clicked, navigates the user to Audio settings. Alternative phrase for: 'Audio'.">
+  <message name="IDS_OS_SETTINGS_TAG_AUDIO_SETTINGS_ALT1"  desc="Text for search result item which, when clicked, navigates the user to Audio settings. Alternative phrase for: 'Audio'.">
     Volume
   </message>
-  <message translateable="false" name="IDS_OS_SETTINGS_TAG_AUDIO_SETTINGS_ALT2"  desc="Text for search result item which, when clicked, navigates the user to Audio settings. Alternative phrase for: 'Audio'.">
+  <message name="IDS_OS_SETTINGS_TAG_AUDIO_SETTINGS_ALT2"  desc="Text for search result item which, when clicked, navigates the user to Audio settings. Alternative phrase for: 'Audio'.">
     Sound
   </message>
-  <message translateable="false" name="IDS_OS_SETTINGS_TAG_AUDIO_SETTINGS_ALT3"  desc="Text for search result item which, when clicked, navigates the user to Audio settings. Alternative phrase for: 'Audio'.">
+  <message name="IDS_OS_SETTINGS_TAG_AUDIO_SETTINGS_ALT3"  desc="Text for search result item which, when clicked, navigates the user to Audio settings. Alternative phrase for: 'Audio'.">
     Speakers
   </message>
-  <message translateable="false" name="IDS_OS_SETTINGS_TAG_AUDIO_SETTINGS_ALT4"  desc="Text for search result item which, when clicked, navigates the user to Audio settings. Alternative phrase for: 'Audio'.">
+  <message name="IDS_OS_SETTINGS_TAG_AUDIO_SETTINGS_ALT4"  desc="Text for search result item which, when clicked, navigates the user to Audio settings. Alternative phrase for: 'Audio'.">
     Microphone
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_CHARGING_SOUNDS" desc="Text for search result item which, when clicked, navigates the user to settings to toggle whether the device plays charging sounds.">
+    Charging sounds
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_LOW_BATTERY_SOUND" desc="Text for search result item which, when clicked, navigates the user to settings to toggle whether the device plays the low battery warning sound.">
+    Low battery sound
   </message>
   <message name="IDS_OS_SETTINGS_TAG_AUTO_CONNECT_NETWORK" desc="Text for search result item which, when clicked, navigates the user to settings to toggle whether the device auto-connects to a network. Alternate phrase for: 'Auto connect to network'">
     Automatically connect to network
@@ -466,6 +471,9 @@
   <message name="IDS_OS_SETTINGS_TAG_GOOGLE_DRIVE_SEARCH_SUGGESTIONS" desc="Text for search result item which, when clicked, navigates the user to Google services settings, with a toggle to enable/disable a feature which provides suggestions to visit Google Drive items when the user types in the address bar.">
     Show Google Drive suggestions
   </message>
+  <message name="IDS_OS_SETTINGS_TAG_LOCAL_DATA_RECOVERY" desc="Text for search result item which, when clicked, navigates the user to Local Data Recovry toggle.">
+    Local Data Recovery
+  </message>
 
   <!-- Kerberos section. -->
   <message name="IDS_OS_SETTINGS_TAG_KERBEROS_SECTION" desc="Text for search result item which, when clicked, navigates the user to Kerberos (authentication mechanism) settings section.">
@@ -493,6 +501,24 @@
   </message>
   <message name="IDS_OS_SETTINGS_TAG_KEYBOARD_FUNCTION_KEYS" desc="Text for search result item which, when clicked, navigates the user to keyboard settings, with a toggle to enable/disable treating the top row as function keys.">
     Keyboard function keys
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_KEYBOARD_BLOCK_META_FKEY_COMBO_REWRITES" translateable="false" desc="Text for search result item which, when clicked, navigates the user to keyboard settings, with a toggle to enable/disable system/launcher keys to switch the top row between function keys and chromeos actions.">
+    Block meta F-key combo rewrites
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_KEYBOARD_REMAP_KEYS" translateable="false" desc="Text for search result item which, when clicked, navigates the user to keyboard settings, with a button leading the user to remap keyboard keys page.">
+    Remap keyboard keys
+    </message>
+  <message name="IDS_OS_SETTINGS_TAG_KEYBOARD_DIACRITIC" desc="Text for search result item which, when clicked, navigates the user to keyboard settings, with a toggle to enable/disable a method of inserting accented characters via long pressing a key.">
+    Diacritics
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_KEYBOARD_DIACRITIC1" desc="Text for search result item which, when clicked, navigates the user to keyboard settings, with a toggle to enable/disable a method of inserting accented characters via long pressing a key.">
+    Accent marks
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_KEYBOARD_DIACRITIC2" desc="Text for search result item which, when clicked, navigates the user to keyboard settings, with a toggle to enable/disable a method of inserting accented characters via long pressing a key.">
+    Special characters
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_KEYBOARD_DIACRITIC3" desc="Text for search result item which, when clicked, navigates the user to keyboard settings, with a toggle to enable/disable a method of inserting accented characters via long pressing a key.">
+    Tones
   </message>
   <message name="IDS_OS_SETTINGS_TAG_KEYBOARD_AUTO_REPEAT" desc="Text for search result item which, when clicked, navigates the user to keyboard settings, with toggles/sliders to set the auto-repeat state. Alternate phrase for: 'Keyboard repeat latency'">
     Keyboard auto-repeat
@@ -721,6 +747,9 @@
   </message>
   <message name="IDS_OS_SETTINGS_TAG_DISPLAY_OVERSCAN" desc="Text for search result item which, when clicked, navigates the user to display settings, with an option to adjust monitor overscan.">
     Overscan
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_POWER_BATTERY_SAVER" desc="Text for search result item which, when clicked, navigates the user to power settings, with an option to enable battery saver.">
+    Battery Saver
   </message>
 
   <!-- Personalization section. -->
@@ -1042,6 +1071,7 @@
   <message name="IDS_OS_SETTINGS_TAG_LANGUAGES_CHANGE_DEVICE_LANGUAGE" desc="Text for search result item which, when clicked, navigates the user to languages and input settings, with allows users to change device language.">
     Change device language
   </message>
+
   <message name="IDS_OS_SETTINGS_TAG_LANGUAGES_OFFER_TRANSLATION" desc="Text for search result item which, when clicked, navigates the user to languages and input settings, with a toggle to enable/disable translation prompts.">
     Translation suggestion
   </message>
@@ -1072,6 +1102,9 @@
   <message name="IDS_OS_SETTINGS_TAG_LANGUAGES_EMOJI_SUGGESTIONS" desc="Text for search result item which, when clicked, navigates the user to suggestions settings, with a section having a toggle to enable/disable showing emoji suggestions after an user types a word.">
     Emoji suggestions
   </message>
+  <message name="IDS_OS_SETTINGS_TAG_LANGUAGES_AUTO_CORRECTION" desc="Text for search result item which, when clicked, navigates the user to the settings page for the current input method, with a section having a toggle to enable/disable performing auto-corrections after an user types a word.">
+    Auto-correction
+  </message>
   <message name="IDS_OS_SETTINGS_TAG_LANGUAGES_PREDICTIVE_WRITING" desc="Text for search result item which, when clicked, navigates the user to suggestions settings, with a section having a toggle to enable/disable showing predictive writing suggestions after a user types a word.">
     Predictive writing
   </message>
@@ -1086,7 +1119,7 @@
   <message name="IDS_OS_SETTINGS_TAG_FILES" desc="Text for search result item which, when clicked, navigates the user to files settings.">
     Files
   </message>
-  <message name="IDS_OS_SETTINGS_TAG_FILES_DISCONNECT_GOOGLE_DRIVE" desc="Text for search result item which, when clicked, navigates the user to files settings, with a toggle to enable/disable connecting the user's Google Drive account.">
+  <message name="IDS_OS_SETTINGS_TAG_FILES_DISCONNECT_GOOGLE_DRIVE" desc="Text for search result item that, when clicked, navigates the user to Settings: Google Drive settings, with a toggle to enable/disable connecting the user's Google Drive account.">
     Disconnect Google Drive account
   </message>
   <message name="IDS_OS_SETTINGS_TAG_FILES_NETWORK_FILE_SHARES" desc="Text for search result item which, when clicked, navigates the user to network file share (a.k.a. SMB share) settings. Alternate phrase for: 'SMB share'">
@@ -1097,6 +1130,9 @@
   </message>
   <message name="IDS_OS_SETTINGS_TAG_FILES_OFFICE" translateable="false" desc="Text for search result item which, when clicked, navigates the user to the Office file handler settings.">
     Office file settings
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_FILES_GOOGLE_DRIVE" translateable="false" desc="Text for search result item which, when clicked, navigates the user to the Google Drive settings.">
+    Google Drive settings
   </message>
 
   <!-- Printing section. -->
@@ -1164,6 +1200,9 @@
   </message>
   <message name="IDS_OS_SETTINGS_TAG_A11Y_TEXT_TO_SPEECH_PAGE_ALT4" desc="Text for search result item which, when clicked, navigates the user to text-to-speech accessibility settings. Alternate phrase for: 'Text-to-speech'">
     Speech synthesis
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_A11Y_TEXT_TO_SPEECH_PAGE_ALT5" desc="Text for search result item which, when clicked, navigates the user to text-to-speech accessibility settings. Alternate phrase for: 'Text-to-speech'">
+    TTS
   </message>
   <message name="IDS_OS_SETTINGS_TAG_A11y_CHROMEVOX" desc="Text for search result item which, when clicked, navigates the user to accessibility settings, with a toggle to enable/disable ChromeVox (spoken feedback).">
     ChromeVox (spoken feedback)
@@ -1381,6 +1420,24 @@
   </message>
   <message name="IDS_OS_SETTINGS_TAG_A11Y_LABELS_FROM_GOOGLE" desc="Text for search result item which, when clicked, navigates the user to accessibility settings, with a toggle to enable/disable getting image descriptions from Google.">
     Get image descriptions from Google
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_A11Y_COLOR_CORRECTION" desc="Text for search result item which, when clicked, navigates the user to the accessibility settings, with a toggle to enable/disable color correction.">
+    Color correction
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_A11Y_COLOR_CORRECTION_ALT1" desc="Text for search result item which, when clicked, navigates the user to the accessibility settings, with a toggle to enable/disable color correction.">
+    Color filters
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_A11Y_COLOR_CORRECTION_ALT2" desc="Text for search result item which, when clicked, navigates the user to the accessibility settings, with a toggle to enable/disable color correction.">
+    Color blindness
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_A11Y_COLOR_CORRECTION_ALT3" desc="Text for search result item which, when clicked, navigates the user to the accessibility settings, with a toggle to enable/disable color correction. One common type of color vision deficiency that can be helped by color correction is protanopia, and color correction filters include a protanopia filter.">
+    Protanomaly
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_A11Y_COLOR_CORRECTION_ALT4" desc="Text for search result item which, when clicked, navigates the user to the accessibility settings, with a toggle to enable/disable color correction. One common type of color vision deficiency that can be helped by color correction is deuteranopia, and color correction filters include a deuteranopia filter.">
+    Deuteranomaly
+  </message>
+  <message name="IDS_OS_SETTINGS_TAG_A11Y_COLOR_CORRECTION_ALT5" desc="Text for search result item which, when clicked, navigates the user to the accessibility settings, with a toggle to enable/disable color correction. One common type of color vision deficiency that can be helped by color correction is tritanopia, and color correction filters include a tritanopia filter.">
+    Tritanomaly
   </message>
 
   <!-- Reset section. -->

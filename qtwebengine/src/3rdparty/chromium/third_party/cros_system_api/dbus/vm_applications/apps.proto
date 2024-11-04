@@ -50,6 +50,7 @@ message App {
   bool startup_notify = 7;
   LocaleStrings keywords = 9;
   string exec = 12;
+  bool terminal = 13;
 
   // This is the first argument of the 'exec' key, representing the name of the
   // executable.

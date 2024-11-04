@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmacheifhandler.h"
-#include "qiiofhelpers_p.h"
 #include <QVariant>
 
 QT_BEGIN_NAMESPACE
@@ -24,6 +23,7 @@ bool QMacHeifHandler::canRead(QIODevice *iod)
         bCanRead = (!qstrncmp(buf + 4, "ftyp", 4) &&
                     (!qstrncmp(buf + 8, "heic", 4) ||
                      !qstrncmp(buf + 8, "heix", 4) ||
+                     !qstrncmp(buf + 8, "msf1", 4) ||
                      !qstrncmp(buf + 8, "mif1", 4)));
     }
     return bCanRead;

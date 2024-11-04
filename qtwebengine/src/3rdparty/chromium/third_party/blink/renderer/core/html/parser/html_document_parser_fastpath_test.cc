@@ -108,7 +108,7 @@ TEST(HTMLDocumentParserFastpathTest, MaximumHTMLParserDOMTreeDepth) {
 
   // Because kMaximumHTMLParserDOMTreeDepth was encountered, the deepest
   // node should have siblings.
-  Element* deepest = div->getElementById("deepest");
+  Element* deepest = div->getElementById(AtomicString("deepest"));
   ASSERT_TRUE(deepest);
   EXPECT_EQ(deepest->parentNode()->CountChildren(), 3u);
 }
@@ -254,6 +254,55 @@ TEST(HTMLDocumentParserFastpathTest, CharacterReferenceCases) {
   div->setInnerHTML("&nbsp&a");
   div->setInnerHTML("&nbsp&");
   div->setInnerHTML("&nbsp-");
+}
+
+TEST(HTMLDocumentParserFastpathTest, HandlesCompleteCharacterReference) {
+  ScopedNullExecutionContext execution_context;
+  auto* document =
+      HTMLDocument::CreateForTest(execution_context.GetExecutionContext());
+  document->write("<body></body>");
+  auto* div = MakeGarbageCollected<HTMLDivElement>(*document);
+
+  base::HistogramTester histogram_tester;
+  div->setInnerHTML("&cent;");
+  Text* text_node = To<Text>(div->firstChild());
+  ASSERT_TRUE(text_node);
+  EXPECT_EQ(text_node->data(), String(u"\u00A2"));
+  histogram_tester.ExpectTotalCount("Blink.HTMLFastPathParser.ParseResult", 1);
+  histogram_tester.ExpectUniqueSample("Blink.HTMLFastPathParser.ParseResult",
+                                      HtmlFastPathResult::kSucceeded, 1);
+}
+
+TEST(HTMLDocumentParserFastpathTest, FailsWithNestedLis) {
+  ScopedNullExecutionContext execution_context;
+  auto* document =
+      HTMLDocument::CreateForTest(execution_context.GetExecutionContext());
+  document->write("<body></body>");
+  auto* div = MakeGarbageCollected<HTMLDivElement>(*document);
+
+  base::HistogramTester histogram_tester;
+  div->setInnerHTML("<li><li></li></li>");
+  // The html results in two children (nested <li>s implicitly close the open
+  // <li>, resulting in two sibling <li>s, not one). The fast path parser does
+  // not handle this case.
+  EXPECT_EQ(2u, div->CountChildren());
+  histogram_tester.ExpectTotalCount("Blink.HTMLFastPathParser.ParseResult", 1);
+  histogram_tester.ExpectBucketCount("Blink.HTMLFastPathParser.ParseResult",
+                                     HtmlFastPathResult::kSucceeded, 0);
+}
+
+TEST(HTMLDocumentParserFastpathTest, HandlesLi) {
+  ScopedNullExecutionContext execution_context;
+  auto* document =
+      HTMLDocument::CreateForTest(execution_context.GetExecutionContext());
+  document->write("<body></body>");
+  auto* div = MakeGarbageCollected<HTMLDivElement>(*document);
+
+  base::HistogramTester histogram_tester;
+  div->setInnerHTML("<div><li></li></div>");
+  histogram_tester.ExpectTotalCount("Blink.HTMLFastPathParser.ParseResult", 1);
+  histogram_tester.ExpectUniqueSample("Blink.HTMLFastPathParser.ParseResult",
+                                      HtmlFastPathResult::kSucceeded, 1);
 }
 
 }  // namespace

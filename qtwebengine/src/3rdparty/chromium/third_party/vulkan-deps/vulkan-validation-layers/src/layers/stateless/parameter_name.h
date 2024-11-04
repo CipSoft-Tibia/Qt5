@@ -15,13 +15,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef PARAMETER_NAME_H
-#define PARAMETER_NAME_H
+#pragma once
 
 #include <cassert>
 #include <sstream>
 #include <string>
 #include <vector>
+#include <cstring>
+#include <cstdint>
 
 /**
  * Parameter name string supporting deferred formatting for array subscripts.
@@ -126,5 +127,3 @@ class ParameterName {
     const size_t *args_;  ///< Array index values for formatting.
     size_t num_indices_;  ///< Number of array index values.
 };
-
-#endif  // PARAMETER_NAME_H

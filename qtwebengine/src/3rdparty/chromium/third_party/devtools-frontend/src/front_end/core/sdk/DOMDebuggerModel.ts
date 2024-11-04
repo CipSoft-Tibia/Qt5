@@ -261,11 +261,11 @@ export class DOMDebuggerModel extends SDKModel<EventTypes> {
     return this.#runtimeModelInternal;
   }
 
-  async suspendModel(): Promise<void> {
+  override async suspendModel(): Promise<void> {
     this.suspended = true;
   }
 
-  async resumeModel(): Promise<void> {
+  override async resumeModel(): Promise<void> {
     this.suspended = false;
   }
 
@@ -720,7 +720,7 @@ export class DOMEventListenerBreakpoint extends CategorizedBreakpoint {
     this.eventTargetNames = eventTargetNames;
   }
 
-  setEnabled(enabled: boolean): void {
+  override setEnabled(enabled: boolean): void {
     if (this.enabled() === enabled) {
       return;
     }
@@ -812,7 +812,7 @@ export class DOMDebuggerManager implements SDKModelObserver<DOMDebuggerModel> {
         i18nString(UIStrings.clipboard), ['copy', 'cut', 'paste', 'beforecopy', 'beforecut', 'beforepaste'], ['*']);
     this.createEventListenerBreakpoints(
         i18nString(UIStrings.control),
-        ['resize', 'scroll', 'zoom', 'focus', 'blur', 'select', 'change', 'submit', 'reset'], ['*']);
+        ['resize', 'scroll', 'scrollend', 'zoom', 'focus', 'blur', 'select', 'change', 'submit', 'reset'], ['*']);
     this.createEventListenerBreakpoints(i18nString(UIStrings.device), ['deviceorientation', 'devicemotion'], ['*']);
     this.createEventListenerBreakpoints(
         i18nString(UIStrings.domMutation),

@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "base/containers/contains.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
@@ -48,7 +49,7 @@ class UpdateDataProviderExtensionsBrowserClient
 
   bool IsExtensionEnabled(const std::string& id,
                           content::BrowserContext* context) const override {
-    return enabled_ids_.find(id) != enabled_ids_.end();
+    return base::Contains(enabled_ids_, id);
   }
 
   void AddEnabledExtension(const std::string& id) { enabled_ids_.insert(id); }
@@ -86,10 +87,8 @@ class UpdateDataProviderTest : public ExtensionsTest {
                           const base::FilePath& relative_path,
                           const std::string& content) const {
     const base::FilePath full_path = directory.Append(relative_path);
-    if (!base::CreateDirectory(full_path.DirName()))
-      return false;
-    int result = base::WriteFile(full_path, content.data(), content.size());
-    return (static_cast<size_t>(result) == content.size());
+    return base::CreateDirectory(full_path.DirName()) &&
+           base::WriteFile(full_path, content);
   }
 
   void AddExtension(const std::string& extension_id,
@@ -118,13 +117,13 @@ class UpdateDataProviderTest : public ExtensionsTest {
     ASSERT_TRUE(AddFileToDirectory(temp_dir.GetPath(), bar_html, "world"));
 
     ExtensionBuilder builder;
-    DictionaryBuilder manifest_builder;
-    manifest_builder.Set("name", "My First Extension")
-        .Set("version", version)
-        .Set("manifest_version", 2);
+    auto manifest_builder = base::Value::Dict()
+                                .Set("name", "My First Extension")
+                                .Set("version", version)
+                                .Set("manifest_version", 2);
     if (!fingerprint.empty())
       manifest_builder.Set("differential_fingerprint", fingerprint);
-    builder.SetManifest(manifest_builder.Build());
+    builder.SetManifest(std::move(manifest_builder));
     builder.SetID(extension_id);
     builder.SetPath(temp_dir.GetPath());
     builder.SetLocation(location);

@@ -44,6 +44,7 @@
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/page_type.h"
+#include "content/public/common/result_codes.h"
 #include "content/public/test/accessibility_notification_waiter.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
@@ -378,7 +379,7 @@ IN_PROC_BROWSER_TEST_F(PortalDefaultActivationBrowserTest,
   VerifyActivationTraceEvents(StopTracing());
 }
 
-#if BUILDFLAG(IS_MAC) && defined(ARCH_CPU_ARM64)
+#if BUILDFLAG(IS_MAC)
 // https://crbug.com/1222682
 #define MAYBE_AdoptPredecessor DISABLED_AdoptPredecessor
 #else
@@ -2323,8 +2324,7 @@ IN_PROC_BROWSER_TEST_F(PortalBrowserTest,
   std::string error_html = "Error page";
   TestNavigationObserver error_observer(portal_contents);
   portal_contents->GetController().LoadPostCommitErrorPage(
-      portal_contents->GetPrimaryMainFrame(), portal_url, error_html,
-      net::ERR_BLOCKED_BY_CLIENT);
+      portal_contents->GetPrimaryMainFrame(), portal_url, error_html);
   error_observer.Wait();
   EXPECT_FALSE(error_observer.last_navigation_succeeded());
   EXPECT_EQ(net::ERR_BLOCKED_BY_CLIENT, error_observer.last_net_error_code());
@@ -2708,6 +2708,44 @@ IN_PROC_BROWSER_TEST_F(PortalBrowserTest, CallActivateTwice) {
 }
 #endif
 
+// Regression test for crbug.com/1436050. After a portal crashes and navigates
+// to a URL that returns a 204, it is in a weird state where it has a
+// non-initial navigation entry and a live RenderFrameHost, but the RFH is the
+// initial empty document. The RFH is committed due to the post-crash early
+// commit optimization, but the navigation itself isn't committed due to the 204
+// response.
+IN_PROC_BROWSER_TEST_F(PortalBrowserTest, ActivateAfterCrashAnd204) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL("portal.test", "/title1.html")));
+
+  WebContentsImpl* web_contents_impl =
+      static_cast<WebContentsImpl*>(shell()->web_contents());
+  RenderFrameHostImpl* main_frame = web_contents_impl->GetPrimaryMainFrame();
+
+  const GURL url = embedded_test_server()->GetURL("a.com", "/title1.html");
+  Portal* portal = CreatePortalToUrl(web_contents_impl, url);
+  WebContentsImpl* portal_contents = portal->GetPortalContents();
+  RenderFrameHostImpl* portal_rfh = portal_contents->GetPrimaryMainFrame();
+
+  RenderProcessHost* portal_process = portal_rfh->GetProcess();
+  RenderProcessHostWatcher process_exit_observer(
+      portal_process, RenderProcessHostWatcher::WATCH_FOR_PROCESS_EXIT);
+  ASSERT_TRUE(portal_process->Shutdown(RESULT_CODE_KILLED));
+  process_exit_observer.Wait();
+
+  const GURL url_204 = embedded_test_server()->GetURL("a.com", "/page204.html");
+  PortalActivatedObserver activated_observer(portal);
+  ExecuteScriptAsync(
+      main_frame, JsReplace("const portal = document.querySelector('portal'); "
+                            "portal.src = $1; "
+                            "portal.activate();",
+                            url_204));
+  activated_observer.WaitForActivateResult();
+  EXPECT_TRUE(activated_observer.has_activated());
+  EXPECT_EQ(activated_observer.result(),
+            blink::mojom::PortalActivateResult::kRejectedDueToPortalNotReady);
+}
+
 // Tests that various ways of enabling features via the command line produce a
 // valid configuration. That is, a configuration where we don't have the
 // renderer thinking that portals are enabled when the browser thinks portals
@@ -3048,7 +3086,7 @@ class TestRenderWidgetHostViewBaseObserver
 
  private:
   base::OnceClosure quit_closure_;
-  RenderWidgetHostViewBase* view_ = nullptr;
+  raw_ptr<RenderWidgetHostViewBase> view_ = nullptr;
 };
 
 // Tests that a RenderWidgetHostView for a fenced frame inside a portal should

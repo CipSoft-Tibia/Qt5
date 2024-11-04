@@ -45,11 +45,11 @@ Item {
             compare(initial.labelAutoRotation, 0.0)
             compare(initial.max, 10)
             compare(initial.min, 0)
-            compare(initial.orientation, AbstractAxis3D.AxisOrientationNone)
+            compare(initial.orientation, AbstractAxis3D.AxisOrientation.None)
             compare(initial.title, "")
             compare(initial.titleFixed, true)
             compare(initial.titleVisible, false)
-            compare(initial.type, AbstractAxis3D.AxisTypeCategory)
+            compare(initial.type, AbstractAxis3D.AxisType.Category)
         }
     }
 

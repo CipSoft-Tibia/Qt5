@@ -205,6 +205,10 @@ message FreeBuffersResponse {}
 // Arguments for rpc Flush().
 message FlushRequest {
   optional uint32 timeout_ms = 1;
+
+  // More details such as flush reason and originator. Introduced in v38 / V.
+  // See FlushFlags in include/perfetto/ext/tracing/core/flush_flags.h.
+  optional uint64 flags = 2;
 }
 
 message FlushResponse {}
@@ -270,7 +274,7 @@ message SaveTraceForBugreportRequest {}
 // or something failed.
 message SaveTraceForBugreportResponse {
   // If true, an eligible the trace was saved into a known location (on Android
-  // /data/misc/perfetto-traces, see GetBugreportPath()).
+  // /data/misc/perfetto-traces, see GetBugreportTracePath()).
   // If false no trace with bugreport_score > 0 was found or an error occurred.
   // see |msg| in that case for details about the failure.
   optional bool success = 1;
@@ -279,6 +283,8 @@ message SaveTraceForBugreportResponse {
 
 // Arguments for rpc CloneSession.
 message CloneSessionRequest {
+  // The session ID to clone. If session_id == kBugreportSessionId (0xff...ff)
+  // the session with the highest bugreport score is cloned (if any exists).
   optional uint64 session_id = 1;
 }
 
@@ -287,4 +293,8 @@ message CloneSessionResponse {
   // the details about the failure.
   optional bool success = 1;
   optional string error = 2;
+
+  // The UUID of the cloned session.
+  optional int64 uuid_msb = 3;
+  optional int64 uuid_lsb = 4;
 }

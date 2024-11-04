@@ -53,6 +53,19 @@ COMPONENT_EXPORT(NETWORK_CPP)
 mojom::AllowCSPFromHeaderValuePtr ParseAllowCSPFromHeader(
     const net::HttpResponseHeaders& headers);
 
+// Parses a CSP source expression.
+// https://w3c.github.io/webappsec-csp/#source-lists
+//
+// Return false on errors.
+// Adds parsing error messages to |parsing_errors|.
+// Notice that this can return true and still add some parsing error message
+// (for example, if there is a url with a non-empty query part).
+COMPONENT_EXPORT(NETWORK_CPP)
+bool ParseSource(mojom::CSPDirectiveName directive_name,
+                 base::StringPiece expression,
+                 mojom::CSPSource* csp_source,
+                 std::vector<std::string>& parsing_errors);
+
 // Return true when the |policy| allows a request to the |url| in relation to
 // the |directive| for a given |context|.
 // Note: Any policy violation are reported to the |context|.
@@ -103,6 +116,13 @@ bool Subsumes(const mojom::ContentSecurityPolicy& policy_a,
 
 COMPONENT_EXPORT(NETWORK_CPP)
 std::string ToString(mojom::CSPDirectiveName name);
+
+// Return true if |request_origin| is allowed by Allow-CSP-From header. Note
+// that |allow_csp_from| can be a null pointer.
+COMPONENT_EXPORT(NETWORK_CPP)
+bool AllowCspFromAllowOrigin(
+    const url::Origin& request_origin,
+    const network::mojom::AllowCSPFromHeaderValue* allow_csp_from);
 
 // Return true if the response allows the embedder to enforce arbitrary policy
 // on its behalf. |required_csp| is modified so that its self_origin matches the

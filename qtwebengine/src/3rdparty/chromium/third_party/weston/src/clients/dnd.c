@@ -416,9 +416,9 @@ data_source_dnd_finished(void *data, struct wl_data_source *source)
 	delete_item =
 		dnd_drag->dnd_action == WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE;
 
-        /* The operation is already finished, we can destroy all
-         * related data.
-         */
+	/* The operation is already finished, we can destroy all
+	 * related data.
+	 */
 	dnd_drag_destroy(dnd_drag, delete_item);
 	window_schedule_redraw(dnd->window);
 }
@@ -789,6 +789,8 @@ dnd_create(struct display *display)
 	dnd->window = window_create(display);
 	dnd->widget = window_frame_create(dnd->window, dnd);
 	window_set_title(dnd->window, "Wayland Drag and Drop Demo");
+	window_set_appid(dnd->window,
+			 "org.freedesktop.weston.wayland-drag-and-drop-demo");
 
 	dnd->display = display;
 	dnd->key = 100;

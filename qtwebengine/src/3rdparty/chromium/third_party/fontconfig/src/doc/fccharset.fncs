@@ -55,7 +55,7 @@ running out of memory.
 @FUNC@          FcCharSetDelChar
 @TYPE1@         FcCharSet *             @ARG1@          fcs
 @TYPE2@         FcChar32%               @ARG2@          ucs4
-@PURPOSE@       Add a character to a charset
+@PURPOSE@       Delete a character from a charset
 @DESC@
 <function>FcCharSetDelChar</function> deletes a single Unicode char from the set,
 returning FcFalse on failure, either as a result of a constant set or from

@@ -263,7 +263,7 @@ public:
     QPropertyObserver &operator=(QPropertyObserver &&other) noexcept;
     ~QPropertyObserver();
 
-    template<typename Property, typename = typename Property::InheritsQUntypedPropertyData>
+    template <typename Property, QtPrivate::IsUntypedPropertyData<Property> = true>
     void setSource(const Property &property)
     { setSource(property.bindingData()); }
     void setSource(const QtPrivate::QPropertyBindingData &property);
@@ -302,7 +302,7 @@ public:
     {
     }
 
-    template<typename Property, typename = typename Property::InheritsQUntypedPropertyData>
+    template <typename Property, QtPrivate::IsUntypedPropertyData<Property> = true>
     Q_NODISCARD_CTOR
     QPropertyChangeHandler(const Property &property, Functor handler)
         : QPropertyObserver([](QPropertyObserver *self, QUntypedPropertyData *) {
@@ -332,7 +332,8 @@ public:
     {
     }
 
-    template<typename Functor, typename Property, typename = typename Property::InheritsQUntypedPropertyData>
+    template <typename Functor, typename Property,
+              QtPrivate::IsUntypedPropertyData<Property> = true>
     Q_NODISCARD_CTOR
     QPropertyNotifier(const Property &property, Functor handler)
         : QPropertyObserver([](QPropertyObserver *self, QUntypedPropertyData *) {
@@ -906,7 +907,7 @@ public:
             iface->setObserver(aliasedProperty(), this);
     }
 
-    template<typename Property, typename = typename Property::InheritsQUntypedPropertyData>
+    template <typename Property, QtPrivate::IsUntypedPropertyData<Property> = true>
     QPropertyAlias(Property *property)
         : QPropertyObserver(property),
           iface(&QtPrivate::QBindableInterfaceForProperty<Property>::iface)

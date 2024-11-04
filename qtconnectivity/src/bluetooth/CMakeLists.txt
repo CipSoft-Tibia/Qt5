@@ -36,7 +36,7 @@ qt_internal_add_module(Bluetooth
         qprivatelinearbuffer_p.h
         qtbluetoothglobal.h qtbluetoothglobal_p.h
     DEFINES
-        QT_NO_FOREACH
+        QT_NO_CONTEXTLESS_CONNECT
     LIBRARIES
         Qt::CorePrivate
         Qt::NetworkPrivate

@@ -108,10 +108,9 @@ std::string GetCookiesDirect(WebContentsImpl* tab, const GURL& url) {
 
 class CookieBrowserTest : public ContentBrowserTest {
  protected:
-  void SetUp() override {
-    base::CommandLine::ForCurrentProcess()->AppendSwitch(
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    command_line->AppendSwitch(
         switches::kEnableExperimentalWebPlatformFeatures);
-    ContentBrowserTest::SetUp();
   }
 
   void SetUpOnMainThread() override {
@@ -282,7 +281,97 @@ IN_PROC_BROWSER_TEST_F(CookieBrowserTest, SameSiteCookies) {
   EXPECT_EQ("none=1", GetCookieFromJS(b_iframe));
 }
 
-IN_PROC_BROWSER_TEST_F(CookieBrowserTest, CookieTruncatingChar) {
+class TruncatedCookieBrowserTestP : public CookieBrowserTest,
+                                    public testing::WithParamInterface<bool> {
+ public:
+  TruncatedCookieBrowserTestP() {
+    truncated_cookies_blocked_ = GetParam();
+
+    if (TruncatedCookiesBlocked()) {
+      feature_list_.InitAndEnableFeature(net::features::kBlockTruncatedCookies);
+    } else {
+      feature_list_.InitAndDisableFeature(
+          net::features::kBlockTruncatedCookies);
+    }
+  }
+
+  bool TruncatedCookiesBlocked() { return truncated_cookies_blocked_; }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+  bool truncated_cookies_blocked_;
+};
+
+INSTANTIATE_TEST_SUITE_P(TruncatedCookieBrowserTests,
+                         TruncatedCookieBrowserTestP,
+                         testing::Values(true, false));
+
+IN_PROC_BROWSER_TEST_P(TruncatedCookieBrowserTestP,
+                       CookieTruncatingCharFromJavascript) {
+  using std::string_literals::operator""s;
+
+  base::HistogramTester histogram;
+
+  ASSERT_TRUE(embedded_test_server()->Start());
+
+  ASSERT_TRUE(
+      NavigateToURL(shell(), embedded_test_server()->GetURL("/empty.html")));
+
+  WebContentsImpl* tab = static_cast<WebContentsImpl*>(shell()->web_contents());
+  RenderFrameHost* frame = tab->GetPrimaryMainFrame();
+
+  // Test scenarios where a control char may appear at start, middle and end of
+  // a cookie line. Control char array with NULL (\x0), CR (\xD), and LF (xA).
+  const std::string kTestChars[] = {"\\x00", "\\x0D", "\\x0A"};
+
+  for (const std::string& ctl_string : kTestChars) {
+    // Control char at the start of the string.
+    // Note that when truncation of this cookie string occurs, no histogram
+    // entries get recorded because the code bails out early on the resulting
+    // empty cookie string.
+    std::string cookie_string = ctl_string + "foo1=bar"s;
+    SetCookieFromJS(frame, cookie_string);
+
+    // Control char in the middle of the string.
+    cookie_string = "foo2=bar;"s + ctl_string + "httponly"s;
+    SetCookieFromJS(frame, cookie_string);
+
+    cookie_string = "foo3=ba"s + ctl_string + "r; httponly"s;
+    SetCookieFromJS(frame, cookie_string);
+
+    // Control char at the end of the string.
+    cookie_string = "foo4=bar;" + ctl_string;
+    SetCookieFromJS(frame, cookie_string);
+  }
+
+  int expected_histogram_hit_count;
+  if (TruncatedCookiesBlocked()) {
+    EXPECT_EQ("", GetCookieFromJS(frame));
+    expected_histogram_hit_count = 0;
+  } else {
+    // Note: the last three test cases above are detectable as truncations
+    // (since the first case results in a failure that occurs before the
+    // histogram is recorded), so check for that below.
+    EXPECT_EQ("foo2=bar; foo3=ba; foo4=bar", GetCookieFromJS(frame));
+    expected_histogram_hit_count = 3;
+  }
+
+  FetchHistogramsFromChildProcesses();
+  histogram.ExpectBucketCount(
+      "Cookie.TruncatingCharacterInCookieString",
+      net::TruncatingCharacterInCookieStringType::kTruncatingCharNull,
+      expected_histogram_hit_count);
+  histogram.ExpectBucketCount(
+      "Cookie.TruncatingCharacterInCookieString",
+      net::TruncatingCharacterInCookieStringType::kTruncatingCharNewline,
+      expected_histogram_hit_count);
+  histogram.ExpectBucketCount(
+      "Cookie.TruncatingCharacterInCookieString",
+      net::TruncatingCharacterInCookieStringType::kTruncatingCharLineFeed,
+      expected_histogram_hit_count);
+}
+
+IN_PROC_BROWSER_TEST_F(CookieBrowserTest, CookieTruncatingCharFromHeaders) {
   using std::string_literals::operator""s;
 
   std::string cookie_string;
@@ -312,6 +401,9 @@ IN_PROC_BROWSER_TEST_F(CookieBrowserTest, CookieTruncatingChar) {
 
     // ctrl char at middle of string
     cookie_string = "foo=bar;"s + ctl_string + "httponly"s;
+    EXPECT_TRUE(NavigateToURL(shell(), http_url));
+
+    cookie_string = "foo=ba"s + ctl_string + "r; httponly"s;
     EXPECT_TRUE(NavigateToURL(shell(), http_url));
 
     // ctrl char at end of string
@@ -361,10 +453,11 @@ class RestrictedCookieManagerInterceptor
                         const net::SiteForCookies& site_for_cookies,
                         const url::Origin& top_frame_origin,
                         bool has_storage_access,
+                        bool get_version_shared_memory,
                         GetCookiesStringCallback callback) override {
     GetForwardingInterface()->GetCookiesString(
         URLToUse(url), site_for_cookies, top_frame_origin, has_storage_access,
-        std::move(callback));
+        get_version_shared_memory, std::move(callback));
   }
 
  private:
@@ -490,6 +583,93 @@ IN_PROC_BROWSER_TEST_F(CookieBrowserTest, CrossSiteCookieSecurityEnforcement) {
       "Where A = http://127.0.0.1/\n"
       "      B = http://baz.com/",
       v.DepictFrameTree(tab->GetPrimaryFrameTree().root()));
+}
+
+// Cookies for an eTLD should be stored (via JS) if they match the URL host,
+// even if they begin with `.` or have non-canonical capitalization.
+IN_PROC_BROWSER_TEST_F(CookieBrowserTest, ETldDomainCookies) {
+  ASSERT_TRUE(embedded_test_server()->Start());
+
+  // This test uses `gov.br` as an example of an eTLD.
+  GURL http_url = embedded_test_server()->GetURL("gov.br", "/empty.html");
+  EXPECT_TRUE(NavigateToURL(shell(), http_url));
+
+  WebContentsImpl* web_contents_http =
+      static_cast<WebContentsImpl*>(shell()->web_contents());
+  RenderFrameHost* frame = web_contents_http->GetPrimaryMainFrame();
+
+  const char* kCases[] = {
+      // A host cookie.
+      "c=1",
+      // A cookie for this domain.
+      "c=1; domain=gov.br",
+      // Same, but with a preceding dot. This dot should be ignored.
+      "c=1; domain=.gov.br",
+      // Same, but with non-canonical case. This should be canonicalized.
+      "c=1; domain=gOv.bR",
+  };
+
+  for (const char* set_cookie : kCases) {
+    SCOPED_TRACE(set_cookie);
+    SetCookieFromJS(frame, set_cookie);
+    EXPECT_EQ("c=1", GetCookieFromJS(frame));
+    SetCookieFromJS(frame, "c=;expires=Thu, 01 Jan 1970 00:00:00 GMT");
+    EXPECT_EQ("", GetCookieFromJS(frame));
+  }
+}
+
+// Cookies for an eTLD should be stored (via header) if they match the URL host,
+// even if they begin with `.` or have non-canonical capitalization.
+IN_PROC_BROWSER_TEST_F(CookieBrowserTest, ETldDomainCookiesHeader) {
+  std::string got_cookie_on_request;
+  std::string set_cookie_on_response;
+  embedded_test_server()->RegisterRequestHandler(base::BindLambdaForTesting(
+      [&](const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        auto response = std::make_unique<net::test_server::BasicHttpResponse>();
+        if (request.headers.contains("Cookie")) {
+          got_cookie_on_request = request.headers.at("Cookie");
+        } else {
+          got_cookie_on_request = "";
+        }
+        if (set_cookie_on_response.size() != 0) {
+          response->AddCustomHeader("Set-Cookie", set_cookie_on_response);
+          set_cookie_on_response = "";
+        }
+        return std::move(response);
+      }));
+
+  ASSERT_TRUE(embedded_test_server()->Start());
+
+  // This test uses `gov.br` as an example of an eTLD.
+  GURL http_url = embedded_test_server()->GetURL("gov.br", "/empty.html");
+
+  const char* kCases[] = {
+      // A host cookie.
+      "c=1",
+      // A cookie for this domain.
+      "c=1; domain=gov.br",
+      // Same, but with a preceding dot. This dot should be ignored.
+      "c=1; domain=.gov.br",
+      // Same, but with non-canonical case. This should be canonicalized.
+      "c=1; domain=gOv.bR",
+  };
+
+  for (const char* set_cookie : kCases) {
+    SCOPED_TRACE(set_cookie);
+
+    set_cookie_on_response = set_cookie;
+    EXPECT_TRUE(NavigateToURL(shell(), http_url));
+
+    EXPECT_TRUE(NavigateToURL(shell(), http_url));
+    EXPECT_EQ("c=1", got_cookie_on_request);
+
+    set_cookie_on_response = "c=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    EXPECT_TRUE(NavigateToURL(shell(), http_url));
+
+    EXPECT_TRUE(NavigateToURL(shell(), http_url));
+    EXPECT_EQ("", got_cookie_on_request);
+  }
 }
 
 }  // namespace content

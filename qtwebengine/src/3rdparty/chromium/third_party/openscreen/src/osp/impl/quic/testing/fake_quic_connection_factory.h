@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,7 @@
 #include "osp/impl/quic/testing/fake_quic_connection.h"
 #include "osp/public/message_demuxer.h"
 
-namespace openscreen {
-namespace osp {
+namespace openscreen::osp {
 
 class FakeQuicConnectionFactoryBridge {
  public:
@@ -102,7 +101,6 @@ class FakeServerQuicConnectionFactory final : public QuicConnectionFactory {
   bool idle_ = true;
 };
 
-}  // namespace osp
-}  // namespace openscreen
+}  // namespace openscreen::osp
 
 #endif  // OSP_IMPL_QUIC_TESTING_FAKE_QUIC_CONNECTION_FACTORY_H_

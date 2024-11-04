@@ -88,7 +88,7 @@ QSizeF ChartBarCategoryAxisX::sizeHint(Qt::SizeHint which, const QSizeF &constra
 
     QSizeF sh;
     QSizeF base = HorizontalAxis::sizeHint(which, constraint);
-    QStringList ticksList = m_categoriesAxis->categories();
+    const QStringList ticksList = m_categoriesAxis->categories();
 
     qreal width = 0; // Width is irrelevant for X axes with interval labels
     qreal height = 0;
@@ -109,7 +109,7 @@ QSizeF ChartBarCategoryAxisX::sizeHint(Qt::SizeHint which, const QSizeF &constra
     case Qt::PreferredSize:{
         if (labelsVisible()) {
             qreal labelHeight = 0.0;
-            foreach (const QString& s, ticksList) {
+            for (const QString &s : ticksList) {
                 QRectF rect = ChartPresenter::textBoundingRect(axis()->labelsFont(), s, axis()->labelsAngle());
                 labelHeight = qMax(rect.height(), labelHeight);
             }

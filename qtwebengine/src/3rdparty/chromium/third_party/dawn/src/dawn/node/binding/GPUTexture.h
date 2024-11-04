@@ -27,7 +27,7 @@ namespace wgpu::binding {
 // GPUTexture is an implementation of interop::GPUTexture that wraps a wgpu::Texture.
 class GPUTexture final : public interop::GPUTexture {
   public:
-    explicit GPUTexture(wgpu::Device device, wgpu::Texture texture);
+    GPUTexture(wgpu::Device device, const wgpu::TextureDescriptor& desc, wgpu::Texture texture);
 
     // Implicit cast operator to Dawn GPU object
     inline operator const wgpu::Texture&() const { return texture_; }
@@ -37,20 +37,21 @@ class GPUTexture final : public interop::GPUTexture {
         Napi::Env,
         interop::GPUTextureViewDescriptor descriptor) override;
     void destroy(Napi::Env) override;
-    interop::GPUIntegerCoordinate getWidth(Napi::Env) override;
-    interop::GPUIntegerCoordinate getHeight(Napi::Env) override;
-    interop::GPUIntegerCoordinate getDepthOrArrayLayers(Napi::Env) override;
-    interop::GPUIntegerCoordinate getMipLevelCount(Napi::Env) override;
-    interop::GPUSize32 getSampleCount(Napi::Env) override;
+    interop::GPUIntegerCoordinateOut getWidth(Napi::Env) override;
+    interop::GPUIntegerCoordinateOut getHeight(Napi::Env) override;
+    interop::GPUIntegerCoordinateOut getDepthOrArrayLayers(Napi::Env) override;
+    interop::GPUIntegerCoordinateOut getMipLevelCount(Napi::Env) override;
+    interop::GPUSize32Out getSampleCount(Napi::Env) override;
     interop::GPUTextureDimension getDimension(Napi::Env) override;
     interop::GPUTextureFormat getFormat(Napi::Env) override;
-    interop::GPUTextureUsageFlags getUsage(Napi::Env) override;
+    interop::GPUFlagsConstant getUsage(Napi::Env) override;
     std::string getLabel(Napi::Env) override;
     void setLabel(Napi::Env, std::string value) override;
 
   private:
     wgpu::Device device_;
     wgpu::Texture texture_;
+    std::string label_;
 };
 
 }  // namespace wgpu::binding
